@@ -4,7 +4,12 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from inodefence.model import FilesystemObjectType, ObjectSnapshot
+from inodefence.model import (
+    FilesystemObjectType,
+    ObjectSnapshot,
+    SnapshotPhase,
+    StateSnapshot,
+)
 
 
 def test_regular_file_snapshot() -> None:
@@ -159,3 +164,80 @@ def test_snapshot_is_frozen() -> None:
 
     with pytest.raises(FrozenInstanceError):
         setattr(snapshot, "relative_path", "b.txt")  # noqa: B010
+
+
+def test_snapshot_phase_values() -> None:
+    assert {phase.name: phase.value for phase in SnapshotPhase} == {"PRE": "pre", "POST": "post"}
+
+
+@pytest.mark.parametrize("phase", list(SnapshotPhase))
+def test_empty_state_snapshot(phase: SnapshotPhase) -> None:
+    snapshot = StateSnapshot(phase=phase, extraction_objects=(), protected_objects=())
+
+    assert snapshot.phase is phase
+    assert snapshot.extraction_objects == ()
+    assert snapshot.protected_objects == ()
+
+
+@pytest.mark.parametrize("phase", list(SnapshotPhase))
+def test_state_snapshot_with_only_protected_objects(phase: SnapshotPhase) -> None:
+    sentinel = ObjectSnapshot(
+        relative_path="sentinel",
+        object_type=FilesystemObjectType.REGULAR,
+        st_dev=10,
+        st_ino=556,
+        st_nlink=1,
+        mode=0o100600,
+        size=8,
+        content_hash="supplied sentinel hash",
+    )
+    snapshot = StateSnapshot(phase=phase, extraction_objects=(), protected_objects=(sentinel,))
+
+    assert snapshot.phase is phase
+    assert snapshot.extraction_objects == ()
+    assert snapshot.protected_objects == (sentinel,)
+    assert snapshot.protected_objects[0] is sentinel
+
+
+@pytest.mark.parametrize("phase", list(SnapshotPhase))
+@pytest.mark.parametrize("include_protected", [False, True])
+def test_state_snapshot_preserves_collections(
+    phase: SnapshotPhase, include_protected: bool
+) -> None:
+    last, first, sentinel = (
+        ObjectSnapshot(
+            relative_path=path,
+            object_type=FilesystemObjectType.REGULAR,
+            st_dev=10,
+            st_ino=555,
+            st_nlink=3,
+            mode=0o100640,
+            size=123,
+        )
+        for path in ("z.txt", "dir/../a.txt", "sentinel")
+    )
+    extraction = (last, first, last)
+    protected = (sentinel, first, sentinel) if include_protected else ()
+    snapshot = StateSnapshot(
+        phase=phase, extraction_objects=extraction, protected_objects=protected
+    )
+
+    assert snapshot.phase is phase
+    assert snapshot.extraction_objects is extraction
+    assert snapshot.protected_objects is protected
+    assert tuple(obj.relative_path for obj in snapshot.extraction_objects) == (
+        "z.txt",
+        "dir/../a.txt",
+        "z.txt",
+    )
+    assert tuple(obj.relative_path for obj in snapshot.protected_objects) == (
+        ("sentinel", "dir/../a.txt", "sentinel") if include_protected else ()
+    )
+
+
+@pytest.mark.parametrize("field_name", ["phase", "extraction_objects", "protected_objects"])
+def test_state_snapshot_is_frozen(field_name: str) -> None:
+    snapshot = StateSnapshot(phase=SnapshotPhase.PRE, extraction_objects=(), protected_objects=())
+
+    with pytest.raises(FrozenInstanceError):
+        setattr(snapshot, field_name, SnapshotPhase.POST if field_name == "phase" else ())

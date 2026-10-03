@@ -56,9 +56,11 @@ Layer 6 — Baseline / Evaluation / Paper    ⬜
 - `ArchiveCase`: entry tuple로 순서와 중복 경로를 보존하는 frozen dataclass
 - `ExecutionResult`: 종료 코드, stdout/stderr, 초 단위 실행 시간과 timeout 여부를 표현하는 frozen dataclass
 - `ObjectSnapshot`: object 종류(`FilesystemObjectType`), 경로, identity, link count, raw mode/size와 선택적 symlink target/hash를 보존하는 frozen dataclass
+- `StateSnapshot`: 실행 전후(`SnapshotPhase.PRE` / `POST`)의 extraction object와 controlled protected object tuple을 보존하는 frozen dataclass
 - [모델 구현과 책임](../src/inodefence/model/README.md), baseline 4종의 논리 구조와 데이터 보존 테스트
 - 프로세스 실행 결과 표현, 출력·시간 보존과 불변성 테스트
 - filesystem object의 raw 값 보존, 동일 identity를 가진 여러 path 표현과 불변성 테스트
+- PRE/POST 상태, 빈 collection, 영역별 object tuple의 순서·중복·겹침 보존과 불변성 테스트
 
 Layer 2는 아직 완료되지 않았다. 나머지 공통 모델과 자동 pipeline은 미구현이다.
 
@@ -68,13 +70,12 @@ Layer 2는 아직 완료되지 않았다. 나머지 공통 모델과 자동 pipe
 
 우선 후보:
 
-- `StateSnapshot`
 - `StateSignature`
 - `ViolationResult`
 
 아직 모든 모델을 한 번에 구현하지 않는다.
 
-`ArchiveEntry`, `ArchiveCase`, `ExecutionResult`, `ObjectSnapshot`은 구현했으며, 다음 모델은 최소 pipeline의 요구에 맞춰 확정한다.
+`ArchiveEntry`, `ArchiveCase`, `ExecutionResult`, `ObjectSnapshot`, `StateSnapshot`은 구현했으며, 다음 모델은 최소 pipeline의 요구에 맞춰 확정한다.
 
 ## 지금 하지 않을 것
 

@@ -21,9 +21,9 @@
 
 현재는 **개발 Layer 2 공통 Data Model 진행 중**이다.
 
-현재 구현에는 개발환경, smoke test, TAR baseline fixture, 연구 설계 문서와 모듈별 README가 있다. `model/archive.py`에 `ArchiveEntry`, `ArchiveCase`, `EntryType`이, `model/execution.py`에 `ExecutionResult`가, `model/filesystem.py`에 `ObjectSnapshot`, `FilesystemObjectType`이 구현되어 있으며 다른 엔진 하위 패키지는 대부분 빈 `__init__.py`만 있다.
+현재 구현에는 개발환경, smoke test, TAR baseline fixture, 연구 설계 문서와 모듈별 README가 있다. `model/archive.py`에 `ArchiveEntry`, `ArchiveCase`, `EntryType`이, `model/execution.py`에 `ExecutionResult`가, `model/filesystem.py`에 `ObjectSnapshot`, `FilesystemObjectType`, `StateSnapshot`, `SnapshotPhase`가 구현되어 있으며 다른 엔진 하위 패키지는 대부분 빈 `__init__.py`만 있다.
 
-`StateSnapshot` 등의 나머지 모델과 runtime pipeline은 **설계 후보**이며 아직 구현되지 않았다.
+`StateSignature`, `ViolationResult` 등의 나머지 모델과 runtime pipeline은 **설계 후보**이며 아직 구현되지 않았다.
 
 ### 개발 Layer와 Runtime Stage를 구분한다
 
@@ -211,7 +211,7 @@ StateSnapshot
 
 # 7. 공통 Data Model 설계
 
-`ArchiveEntry`, `ArchiveCase`, `ExecutionResult`, `ObjectSnapshot`의 현재 Python field와 type은 아래와 같다. 나머지 모델의 정확한 field와 type은 개발 Layer 2의 후속 작업에서 결정하며, 아래 내용은 의미적 책임을 설명한다.
+`ArchiveEntry`, `ArchiveCase`, `ExecutionResult`, `ObjectSnapshot`, `StateSnapshot`의 현재 Python field와 type은 아래와 같다. 나머지 모델의 정확한 field와 type은 개발 Layer 2의 후속 작업에서 결정하며, 아래 내용은 의미적 책임을 설명한다.
 
 ## 7.1 ArchiveEntry
 
@@ -357,7 +357,7 @@ Linux에서 초기 identity 기준은 주로:
 관계다.
 
 서로 다른 path의 snapshot이 같은 identity를 표현할 수 있다. 이 모델은 관계 비교나
-Security Contract 판정을 수행하지 않으며 Observer / StateSnapshot / Oracle은 아직 미구현이다.
+Security Contract 판정을 수행하지 않으며 Observer / Oracle은 아직 미구현이다.
 
 ---
 
@@ -365,15 +365,27 @@ Security Contract 판정을 수행하지 않으며 Observer / StateSnapshot / Or
 
 특정 시점의 sandbox 상태를 나타낸다.
 
+현재 구현: `src/inodefence/model/filesystem.py`의 frozen dataclass.
+
 ```text
 StateSnapshot
-├── extraction_root objects
-├── protected sentinel objects
-├── snapshot timing
-└── observation metadata
+├── phase: SnapshotPhase
+├── extraction_objects: tuple[ObjectSnapshot, ...]
+└── protected_objects: tuple[ObjectSnapshot, ...]
 ```
 
-초기 구현은 syscall 전체 trace보다 다음을 우선한다.
+`SnapshotPhase(Enum)`은 `PRE = "pre"`, `POST = "post"`로 extractor 실행 전후를 표현한다.
+`extraction_objects`는 extraction root 내부의 관찰 결과이며, `protected_objects`는
+root 밖이면서 disposable sandbox 안에 있는 controlled sentinel / protected object의 관찰 결과다.
+각 object의 metadata는 기존 `ObjectSnapshot`에 보존한다. 모든 필드는 생성 시 명시적으로 전달한다.
+빈 tuple, 입력 순서, 중복 path/object, 동일 identity를 가진 여러 path와 두 collection의 겹침을 허용한다.
+phase별 내용 제약, 유일성이나 protected object의 존재를 검증하지 않으며 정렬·중복 제거·path 정규화·identity 병합도 하지 않는다.
+timestamp와 observation metadata는 현재 구현에 없으며 필요할 때 별도로 설계한다.
+
+모델은 filesystem 접근, sentinel 관리, PRE/POST 비교, identity 비교나 보안 판정을 하지 않는다.
+상태 정규화와 Contract 판정은 향후 `StateSignature` / Oracle의 책임이다.
+
+향후 초기 관찰 구현은 syscall 전체 trace보다 다음을 우선한다.
 
 ```text
 Pre-State

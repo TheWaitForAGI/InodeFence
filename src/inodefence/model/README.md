@@ -7,19 +7,20 @@
 ## 입력
 
 entry의 경로·종류·내용·link target과 순서, 프로세스 실행 결과 값,
-filesystem object 하나의 관찰 결과 값.
+filesystem object의 관찰 결과 값과 extractor 실행 전후의 관찰 시점.
 
 ## 출력
 
 `ArchiveEntry`, `ArchiveCase`로 표현한 논리 archive 구조, `ExecutionResult`로 표현한
-프로세스 실행 결과와 `ObjectSnapshot`으로 표현한 filesystem object의 관찰 사실.
+프로세스 실행 결과, `ObjectSnapshot`으로 표현한 filesystem object의 관찰 사실과
+`StateSnapshot`으로 묶은 특정 시점의 sandbox 상태.
 
 ## 책임
 
 예: notes.txt 파일 entry의 경로와 내용을 실행 없이 표현한다.
 
 구현은 [archive.py](archive.py), [execution.py](execution.py), [filesystem.py](filesystem.py)에
-있으며 `inodefence.model`에서 import할 수 있다. 네 모델은 `frozen=True` dataclass다.
+있으며 `inodefence.model`에서 import할 수 있다. 다섯 모델은 `frozen=True` dataclass다.
 
 | 모델 | 실제 필드 | 의미 |
 | --- | --- | --- |
@@ -110,7 +111,31 @@ archive가 요청한 logical type인 `EntryType`과 구분한다. hardlink는 �
 숫자 범위, 상대 경로 여부, object type과 symlink target의 조합을 검증하지 않는다.
 `../outside/file`, absolute path 등도 보존하며 path/target을 normalize하거나 resolve하지 않는다.
 mode bit를 해석하거나 filesystem에 접근하지 않는다. identity 비교와 Security Contract 판정은
-이후 소비자의 책임이다. 여러 object와 관찰 context를 묶는 `StateSnapshot`은 아직 미구현이다.
+이후 소비자의 책임이다.
+
+### StateSnapshot
+
+특정 관찰 시점의 sandbox 상태를 기존 `ObjectSnapshot`의 두 tuple로 묶는다.
+`StateSnapshot`과 `SnapshotPhase`는 `filesystem.py`에 있으며 `inodefence.model`에서 import한다.
+모든 필드는 생성 시 명시적으로 전달한다.
+
+| 실제 필드 | 의미 |
+| --- | --- |
+| `phase: SnapshotPhase` | extractor 실행 전(`PRE`) 또는 실행 후(`POST`)의 관찰 시점 |
+| `extraction_objects: tuple[ObjectSnapshot, ...]` | extraction root 내부에서 관찰된 object들 |
+| `protected_objects: tuple[ObjectSnapshot, ...]` | extraction root 밖이면서 disposable sandbox 안에 있는 controlled sentinel / protected object들 |
+
+`SnapshotPhase(Enum)`의 값은 `PRE = "pre"`, `POST = "post"`다.
+현재 Minimal Pipeline의 관찰 시점은 이 phase로 표현하며 timestamp나 observation metadata는 추가하지 않는다.
+protected object는 실험용 sentinel을 의미하며 실제 host 민감 파일을 대상으로 하지 않는다.
+각 object의 경로와 metadata는 `ObjectSnapshot`에 보존한다.
+
+두 tuple은 빈 값, 입력 순서, 중복 path/object와 동일 identity를 가진 여러 path까지 그대로 보존한다.
+정렬, 중복 제거, path 정규화나 identity 병합을 하지 않는다.
+PRE/POST별 collection의 비어 있음 여부, path/identity 유일성, 두 collection의 겹침이나
+protected object의 존재를 검증하지 않는다.
+filesystem 접근·관찰, sentinel 생성·관리, PRE/POST 비교, identity 비교와 보안 판정을 수행하지 않는다.
+상태 정규화와 Security Contract 판정은 향후 `StateSignature` / Oracle의 책임이다.
 
 ## 하지 않는 것
 
@@ -130,6 +155,8 @@ observation, oracle, feedback, CVE-specific 처리.
 `ObjectSnapshot`, `FilesystemObjectType`을 구현했고
 [filesystem 모델 테스트](../../../tests/test_filesystem_model.py)로 object 종류, raw 값 보존,
 선택적 hash, 검증 없는 필드 조합, 여러 path의 동일 identity 표현과 불변성을 검증한다.
+같은 테스트 파일에서 `StateSnapshot`, `SnapshotPhase`의 PRE/POST 표현, 빈 collection,
+영역별 tuple의 순서·중복·겹침·동일 identity 보존과 불변성을 검증한다.
 [STATUS](../../../docs/STATUS.md)의 Layer 2는 진행 중이며 다른 공통 모델과 pipeline은 미구현이다.
 
 ## 파일 배치 규칙

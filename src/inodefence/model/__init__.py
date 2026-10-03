@@ -2,7 +2,12 @@
 
 from inodefence.model.archive import ArchiveCase, ArchiveEntry, EntryType
 from inodefence.model.execution import ExecutionResult
-from inodefence.model.filesystem import FilesystemObjectType, ObjectSnapshot
+from inodefence.model.filesystem import (
+    FilesystemObjectType,
+    ObjectSnapshot,
+    SnapshotPhase,
+    StateSnapshot,
+)
 
 __all__ = [
     "ArchiveCase",
@@ -11,4 +16,6 @@ __all__ = [
     "ExecutionResult",
     "FilesystemObjectType",
     "ObjectSnapshot",
+    "SnapshotPhase",
+    "StateSnapshot",
 ]

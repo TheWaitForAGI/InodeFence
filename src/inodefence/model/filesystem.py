@@ -44,3 +44,28 @@ class ObjectSnapshot:
     size: int
     symlink_target: str | None = None
     content_hash: str | None = None
+
+
+class SnapshotPhase(Enum):
+    """Observation timing before (PRE) or after (POST) extractor execution."""
+
+    PRE = "pre"
+    POST = "post"
+
+
+@dataclass(frozen=True)
+class StateSnapshot:
+    """Supplied sandbox object snapshots at one phase of extractor execution.
+
+    extraction_objects holds observations inside the extraction root.
+    protected_objects holds observations of controlled sentinel/protected objects
+    outside that root, within the disposable sandbox.
+    Both collections are supplied as tuples and preserved unchanged, including
+    empty tuples, order, duplicate paths/identities, and overlap between them.
+    Phase/content combinations are not validated. This model does not access the
+    filesystem, normalize paths, compare identities or phases, or judge security.
+    """
+
+    phase: SnapshotPhase
+    extraction_objects: tuple[ObjectSnapshot, ...]
+    protected_objects: tuple[ObjectSnapshot, ...]

@@ -32,9 +32,32 @@ Dockerfile과 devcontainer.json이 구현되어 있다. node-tar/ oras-go adapte
 
 이미지 구성은 Dockerfile, mount·에디터·초기 설치 설정은 devcontainer.json에 둔다. 실험 데이터는 이 폴더에 두지 않는다.
 
-## Codex 버전 정책
+## Codex CLI 업데이트 정책
 
-팀이 Dev Container에서 실제로 정상 사용 중인 `codex --version`을 확인한 뒤
-post-create.sh의 설치 버전을 exact version으로 pin한다. 버전을 추측하지 않는다.
-이번 점검의 실행 중인 컨테이너에는 Codex CLI가 없어 기존 `@latest`를 유지한다.
-설치 후 정상 동작을 확인한 팀 버전으로 고정하는 후속 작업이 필요하다.
+Codex CLI는 팀의 바이브코딩 생산성을 위한 개발 도구이며, 빠르게 개선되는 특성을
+고려해 exact version으로 고정하지 않고 rolling latest로 운영한다.
+
+Dev Container 생성 시 post-create.sh에서 최신 버전을 설치한다.
+
+```bash
+npm install --global @openai/codex@latest
+```
+
+기존 Dev Container를 사용하는 팀원도 필요할 때 다음 명령으로 업데이트하고 버전을
+확인할 수 있다. Codex 업데이트가 나오면 최신 버전 사용을 우선한다.
+
+```bash
+npm install --global @openai/codex@latest
+codex --version
+```
+
+Codex CLI 버전은 formal experiment reproducibility 기준에 포함하지 않는다.
+실험 재현성은 다음을 기준으로 관리한다.
+
+- InodeFence Git commit
+- target 및 target version
+- Python/runtime
+- experiment config
+- random seed
+- execution budget
+- OS / architecture 및 실험에 실제 영향을 주는 runtime dependency version

@@ -1,0 +1,82 @@
+{
+  "canonical_validation": {
+    "environment": "Linux Dev Container / Python 3.12.3 / aarch64",
+    "tests_passed": 377
+  },
+  "classification": "engineering-validation-only",
+  "runs": [
+    {
+      "final_corpus_stats": {
+        "interesting_observations": 13,
+        "observations": 25,
+        "retained_cases": 13,
+        "unique_states": 13,
+        "unique_violation_fingerprints": 0
+      },
+      "hash_seed": "17",
+      "manifest_sha256": "5253c135683a3d6adc2bf44905f71ddda506109f6b4274eca004467ba01843fe",
+      "provenance": {
+        "architecture": "aarch64",
+        "config": {
+          "execution_budget": 25,
+          "random_seed": 71
+        },
+        "hash_seed": "17",
+        "platform": "Linux-7.0.14-orbstack-00380-ga7e0a2dc9535-aarch64-with-glibc2.39",
+        "python_version": "3.12.3",
+        "runtime_root": "/var/lib/inodefence",
+        "source_revision": "240dbf7a0c9170dd9803ab91dace3600bf52c002",
+        "target_id": "python-tarfile-data",
+        "target_version": "3.12.3",
+        "timeout_seconds": 10.0
+      },
+      "raw_directory": "experiments/raw/final-main-audit-hashseed-17",
+      "semantic_sha256": "27d8bcf4462fc0b57ec7e6445c901dd563c937f8a47f049e9c7f4d7559154dc8",
+      "statuses": {
+        "failed": 7,
+        "rejected": 3,
+        "success": 15,
+        "timed_out": 0
+      },
+      "steps_sha256": "5761699e2aff59432017912ee139dced99a4cf4f1a52d9e81ab89b5022368cba"
+    },
+    {
+      "final_corpus_stats": {
+        "interesting_observations": 13,
+        "observations": 25,
+        "retained_cases": 13,
+        "unique_states": 13,
+        "unique_violation_fingerprints": 0
+      },
+      "hash_seed": "999",
+      "manifest_sha256": "52c9753fc17725f1e988c0f46310277d205fc0f061387f375df6ea97e53d41a4",
+      "provenance": {
+        "architecture": "aarch64",
+        "config": {
+          "execution_budget": 25,
+          "random_seed": 71
+        },
+        "hash_seed": "999",
+        "platform": "Linux-7.0.14-orbstack-00380-ga7e0a2dc9535-aarch64-with-glibc2.39",
+        "python_version": "3.12.3",
+        "runtime_root": "/var/lib/inodefence",
+        "source_revision": "240dbf7a0c9170dd9803ab91dace3600bf52c002",
+        "target_id": "python-tarfile-data",
+        "target_version": "3.12.3",
+        "timeout_seconds": 10.0
+      },
+      "raw_directory": "experiments/raw/final-main-audit-hashseed-999",
+      "semantic_sha256": "27d8bcf4462fc0b57ec7e6445c901dd563c937f8a47f049e9c7f4d7559154dc8",
+      "statuses": {
+        "failed": 7,
+        "rejected": 3,
+        "success": 15,
+        "timed_out": 0
+      },
+      "steps_sha256": "105a21e8dc32ed4010822c784fb23050ae1e3a3c2f3a101a9a8469c75dc0016f"
+    }
+  ],
+  "semantic_digest_match": true,
+  "static_import_cycles": 0,
+  "static_internal_import_modules": 28
+}

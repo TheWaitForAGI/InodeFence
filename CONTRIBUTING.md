@@ -14,6 +14,22 @@
 
 용어가 헷갈리면 `docs/GLOSSARY.md`, 설계 이유가 궁금하면 `docs/DECISIONS.md`를 본다.
 
+## Issue와 Task Contract
+
+[Issue Forms](.github/ISSUE_TEMPLATE/)로 작업을 생성하고 목표, 현재 Layer,
+수정 가능/금지 영역, 입력/출력과 완료 조건을 확정한다. 병렬 작업은 담당 영역을
+Issue에서 합의하고 서로의 interface 변경을 PR로 공유한다. 관련 scoped AGENTS도 읽는다.
+확정된 Issue 명세를 Codex 또는 사람에게 그대로 전달한다. 직접 전달된 작업 명세는
+Task Contract로 사용할 수 있으며 PR에 출처를 남긴다.
+
+```text
+Issue → Task Contract 확정 → branch → AI / 사람 구현 → make check
+      → PR → GitHub Actions CI → 사람 review → merge
+```
+
+GitHub Project를 운영한다면 Backlog → Ready → In Progress → PR → Done의
+5단계를 권장한다. 이 안내는 실제 board를 생성하거나 repository 설정을 변경하지 않는다.
+
 ## Branch
 
 `main`에서 직접 개발하지 않는다.
@@ -22,12 +38,13 @@
 
 ```bash
 git switch main
-git pull origin main
+git pull --ff-only origin main
 git switch -c feat/archive-entry-model
 ```
 
 권장 prefix:
 
+- `chore/`
 - `feat/`
 - `fix/`
 - `test/`
@@ -77,11 +94,23 @@ git switch -c feat/archive-entry-model
 Dev Container 안에서:
 
 ```bash
-python scripts/check_dev_env.py
-python -m ruff check .
-python -m ruff format --check .
-python -m pytest
+make check
 ```
+
+`make check`는 lint, format-check, Pyright, pytest, 환경 검사와 문서 검사의
+canonical command다. 최초 의존성 설치는 `make install`을 사용한다.
+CI도 Ubuntu Linux / Python 3.12와 `/var/lib/inodefence`에서 같은 명령을 실행한다.
+개별 검사는 `make lint`, `make format-check`, `make typecheck`, `make test`,
+`make env-check`, `make docs-check`로 실행할 수 있다.
+안전한 baseline 재생성은 `make fixtures`, 수동 관찰은 `make probe CASE=hardlink`로 실행한다
+(기본 CASE는 regular-file; 기존 네 baseline case만 허용).
+
+PR에는 관련 Issue, 실제 검증 결과, 사람이 이해하고 확인한 AI 설계 판단을 적는다.
+CI 통과 후 사람이 architecture와 연구 규칙을 검토한다. Squash merge와 merge 후
+branch 삭제를 권장하며 repository UI 설정 여부는 maintainer가 별도로 확인한다.
+
+실험은 [summaries 규칙](experiments/summaries/README.md)에 따라 raw → validated summary
+→ finding / paper evidence를 연결한다. 미공개 finding은 [SECURITY.md](SECURITY.md)를 따른다.
 
 ## 문서도 함께 수정해야 하는 경우
 

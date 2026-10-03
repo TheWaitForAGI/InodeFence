@@ -80,10 +80,7 @@ macOS 또는 Windows + WSL2에서 저장소를 **Dev Container**로 엽니다. �
 컨테이너 안에서 환경과 코드를 확인합니다.
 
 ```bash
-python scripts/check_dev_env.py
-python -m ruff check .
-python -m ruff format --check .
-python -m pytest
+make check
 ```
 
 파일시스템 실험은 `/var/lib/inodefence`의 disposable sandbox와 보호용 sentinel에서 수행합니다. 환경 설정은 [개발환경 안내](.devcontainer/README.md)를 참고하세요.

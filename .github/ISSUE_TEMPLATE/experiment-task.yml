@@ -1,0 +1,97 @@
+name: "실험 작업"
+description: "재현 가능한 실험의 config와 evidence 명세"
+body:
+  - type: markdown
+    attributes:
+      value: "확정한 명세를 AI/사람에게 전달하세요. 미확인 finding이나 미공개 PoC는 공개 Issue에 올리지 말고 SECURITY.md를 따르세요. 해당 없으면 이유를 적으세요."
+  - type: textarea
+    id: question
+    attributes:
+      label: "연구 질문"
+      description: "측정으로 답할 질문"
+    validations:
+      required: true
+  - type: textarea
+    id: hypothesis
+    attributes:
+      label: "가설"
+      description: "사실과 구분하고 반증 가능한 형태로 작성"
+    validations:
+      required: true
+  - type: textarea
+    id: target
+    attributes:
+      label: "Target"
+      description: "extractor 이름"
+    validations:
+      required: true
+  - type: textarea
+    id: version
+    attributes:
+      label: "Target version"
+      description: "정확한 버전/commit"
+    validations:
+      required: true
+  - type: textarea
+    id: baseline
+    attributes:
+      label: "Baseline"
+      description: "비교 대상과 시작 corpus"
+    validations:
+      required: true
+  - type: textarea
+    id: variables
+    attributes:
+      label: "독립 변수"
+      description: "바꿀 조건과 통제할 조건"
+    validations:
+      required: true
+  - type: textarea
+    id: metrics
+    attributes:
+      label: "측정값 / Metric"
+      description: "정의, 단위, 집계 기준"
+    validations:
+      required: true
+  - type: textarea
+    id: budget
+    attributes:
+      label: "Execution budget"
+      description: "실행 수, 시간, timeout, 반복 수"
+    validations:
+      required: true
+  - type: textarea
+    id: seed
+    attributes:
+      label: "Random seed"
+      description: "seed 또는 사전 확정한 seed 목록"
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: "환경"
+      description: "OS/architecture, 의존성, Linux runtime, InodeFence commit 기록 방법"
+    validations:
+      required: true
+  - type: textarea
+    id: criteria
+    attributes:
+      label: "성공/실패 조건"
+      description: "timeout/실패도 기록; 결과를 미리 가정하지 않음"
+    validations:
+      required: true
+  - type: textarea
+    id: results
+    attributes:
+      label: "저장할 결과"
+      description: "config, raw 위치, 요약 생성 명령, summaries provenance"
+    validations:
+      required: true
+  - type: checkboxes
+    id: contract
+    attributes:
+      label: 작업 명세 확인
+      options:
+        - label: "작업 범위와 완료 조건을 확인했고 root 및 관련 scoped AGENTS와 연구·안전 규칙을 따릅니다."
+          required: true

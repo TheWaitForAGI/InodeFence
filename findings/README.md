@@ -26,8 +26,14 @@ case, target 버전, 설정, snapshot과 oracle 근거(계획).
 
 ## 현재 상태
 
-.gitkeep과 이 안내만 있다. finding은 아직 없다.
+private/와 published/ 보관 경로만 있다. finding은 아직 없다.
 
 ## 파일 배치 규칙
 
-finding별로 입력·환경·근거·재현 방법과 후보/확인 상태를 묶는다. README와 .gitkeep 외 파일은 Git ignore 대상이므로 공유할 증거는 별도로 명시한다.
+finding별로 입력·환경·근거·재현 방법과 후보/확인 상태를 묶는다.
+
+- `private/`: 아직 공개하면 안 되는 finding. 내용은 Git ignore하고 `.gitkeep`만 추적한다.
+- [published/](published/README.md): 공개 결정이 끝난 sanitized/reproducible finding만 추적한다.
+
+공개 운영은 [SECURITY.md](../SECURITY.md)를 따른다. private 데이터의 접근 통제와
+보존·공유 경로는 별도로 관리한다.

@@ -26,8 +26,8 @@ PR 작성과 리뷰를 돕는 저장소 설정을 둔다.
 
 ## 현재 상태
 
-pull_request_template.md만 있다. GitHub Actions workflow는 없다.
+PR template, 작업별 Issue Forms, `make check` CI와 weekly Dependabot 설정이 있다.
 
 ## 파일 배치 규칙
 
-PR 안내는 pull_request_template.md에 둔다. workflow 추가는 별도 작업으로 진행한다.
+PR 안내는 pull_request_template.md, 작업 명세는 ISSUE_TEMPLATE/, 자동 검증은 workflows/ci.yml에 둔다. repository UI 설정은 maintainer가 별도로 관리한다.

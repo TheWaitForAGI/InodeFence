@@ -15,6 +15,10 @@
 
 현재 Layer보다 앞선 기능을 임의로 추가하지 않는다.
 
+작업을 시작하기 전 관련 Issue를 확인하고 Issue의 수정 가능 영역과 금지 영역을 따른다.
+사용자가 직접 확정한 작업 명세가 있으면 이를 Task Contract로 따른다.
+하위 scoped `AGENTS.md`가 존재하면 root 규칙과 scoped 규칙을 모두 따른다.
+
 ## 프로젝트 목적
 
 InodeFence는 TAR 압축 해제 보안을 연구하기 위한 프로토타입이다.
@@ -159,7 +163,13 @@ python scripts/check_dev_env.py
 
 ## 코드 품질
 
-PR 전에 실행:
+완료 전 Dev Container에서 canonical validation command를 실행한다:
+
+```bash
+make check
+```
+
+개별 검사 명령:
 
 ```bash
 python -m ruff check .

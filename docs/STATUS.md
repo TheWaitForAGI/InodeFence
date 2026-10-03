@@ -29,7 +29,9 @@ Layer 6 — Baseline / Evaluation / Paper    ⬜
 - Linux runtime volume
 - hardlink/symlink self-check
 - LF line ending 통일
-- Ruff / pytest
+- `make check`: Ruff / Pyright / pytest / 환경 검사 / 문서 integrity 검사
+- PR/main CI, Issue Forms와 scoped AGENTS 기반 협업 규칙
+- finding disclosure 정책과 검증된 experiment summary 보관 규칙
 
 ### 연구 기반
 

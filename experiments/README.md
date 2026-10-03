@@ -26,8 +26,10 @@ raw 결과를 검토 없이 논문 결론으로 승격하기, source mount에서
 
 ## 현재 상태
 
-configs/와 raw/에는 .gitkeep만 있다. 실험 실행기와 결과는 없다.
+configs/와 raw/에는 .gitkeep만 있다. summaries/는 작은 검증 요약의 보관 규칙을 제공한다. 실험 실행기와 결과는 없다.
 
 ## 파일 배치 규칙
 
 설정은 configs/, raw 기록은 raw/에 둔다. raw/*와 results/는 Git ignore 대상이므로 결과 보존·공유 경로를 명시한다. 설정에 seed, 환경, target 버전과 결과 식별자를 남긴다.
+
+작은 검증 요약은 [summaries/](summaries/README.md)에 config, commit, target/version, seed, budget, result와 원본 근거를 연결해 추적한다.

@@ -1,3 +1,7 @@
+## Related Issue
+
+Closes #
+
 ## 무엇을 바꿨나?
 
 <!-- 2~5줄로 설명 -->
@@ -35,12 +39,17 @@
 
 ## 확인
 
-- [ ] `python -m ruff check .`
-- [ ] `python -m ruff format --check .`
-- [ ] `python -m pytest`
+- [ ] `make check` (Dev Container에서 실행; 실제 결과를 아래에 기록)
+
+<!-- 실행 환경, 통과/실패와 실행하지 못한 검사를 기록 -->
+
 - [ ] 필요한 문서를 갱신함
 - [ ] CVE-specific PoC/조건을 generic logic에 하드코딩하지 않음
 - [ ] 실제 host 민감 파일을 실험 대상으로 사용하지 않음
+
+## 사람이 확인한 AI 설계 판단
+
+<!-- AI가 생성한 코드 중 사람이 직접 이해하고 확인한 설계 판단은 무엇인가? -->
 
 ## 리뷰어가 꼭 봐야 할 부분
 

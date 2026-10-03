@@ -77,7 +77,7 @@ Layer 2  공통 Data Model           ✅
 Layer 3  Minimal Pipeline          ✅ Python reference, snapshot 관찰 범위
 Layer 4  Mutation                  ✅ Generic Mutation v1
 Layer 5  Feedback / Corpus         ✅ v1: 독립 novelty / in-memory / uniform 선택
-         bounded fuzzing loop     ← 다음 (별도 Task Contract)
+         bounded campaign v1     ✅ 명시적 seed / execution budget / lineage
 Layer 6  Experiment / Paper        미진행
 ```
 
@@ -107,13 +107,14 @@ Layer 6  Experiment / Paper        미진행
 
 ## 6. 파일을 어디에 만들까?
 
-폴더별 책임과 파일 배치 규칙은 [문서 지도](README.md)와 [엔진 모듈 지도](../src/inodefence/README.md)를 본다. 상세 pipeline과 데이터 흐름은 [architecture.md](research/design/architecture.md)가 기준이다. `pipeline.run_case`는 입력 하나를 실제 실행·관찰·판정한다. Generic Mutation v1은 별도 ArchiveCase 변형 API다. Feedback / Corpus v1은 독립 state/violation novelty로 parent를 보존하고 caller RNG로 균등 선택한다. Fuzzing loop/campaign runner, adaptive scheduler, persistence, benchmark adapters와 연구 효과 검증은 후속 작업이다.
+폴더별 책임과 파일 배치 규칙은 [문서 지도](README.md)와 [엔진 모듈 지도](../src/inodefence/README.md)를 본다. 상세 pipeline과 데이터 흐름은 [architecture.md](research/design/architecture.md)가 기준이다. `pipeline.run_case`는 입력 하나를 실제 실행·관찰·판정한다. Generic Mutation v1은 별도 ArchiveCase 변형 API다. Feedback / Corpus v1은 독립 state/violation novelty로 parent를 보존하고 caller RNG로 균등 선택한다. Bounded campaign v1은 명시적 seed와 budget을 받아 API를 조합한다. Adaptive scheduler, persistence, benchmark adapters와 연구 효과 검증은 후속 작업이다.
 
 ```text
 src/inodefence/model/       공통 데이터 표현과 canonical JSON
 src/inodefence/builder.py   결정적 USTAR 직렬화
 src/inodefence/runtime.py   disposable runtime와 sentinel
 src/inodefence/pipeline.py  입력 하나의 실행·관찰·판정 연결
+src/inodefence/campaign.py  bounded campaign / parent lineage / full run evidence
 src/inodefence/generator/   초기 archive case 생성
 src/inodefence/mutator/     TAR entry 변형
 src/inodefence/targets/     공통 실행 경계와 Python reference (benchmark adapters는 이후)

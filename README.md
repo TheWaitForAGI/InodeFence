@@ -236,8 +236,7 @@ Target-specific 실행 로직은 adapter에 두고, generic mutation·observer·
 - caller-owned RNG와 canonical ArchiveCase를 사용하는 [Generic Mutation v1](src/inodefence/mutator/README.md); builder와 별도 모듈이며 adaptive scheduler는 이후 구현
 - inspectable FeedbackDecision, compact CorpusEntry와 immutable CorpusStats를 제공하는 [Feedback / Corpus v1](src/inodefence/feedback/README.md); full RunResult를 corpus에 저장하지 않음
 
-Python reference는 architecture 검증과 baseline용이며 **node-tar를 대체하는 최종 benchmark target이 아닙니다.** Fuzzing loop, 실험 실행기, 평가 결과와 확인된 finding은 아직 없습니다.
-다음 PR은 명시적인 budget/seed/provenance를 기록하는 bounded deterministic fuzzing-loop orchestration입니다.
+Python reference는 architecture 검증과 baseline용이며 **node-tar를 대체하는 최종 benchmark target이 아닙니다.** 실행 수로 제한한 [캠페인 API](src/inodefence/campaign.py)는 구현됐습니다. 평가 결과와 확인된 finding은 아직 없습니다.
 
 ## 개발 환경과 현재 실행 가능한 명령
 
@@ -301,13 +300,22 @@ corpus = Corpus()  # 한 caller-controlled campaign context에 속하는 in-memo
 decision = corpus.consider(result)
 rng = random.Random(1234)
 parent = corpus.select_case(rng)
-child = mutate(parent, rng)  # loop 없이 API를 caller 수준에서 조합
+child = mutate(parent, rng)  # 개별 API도 caller 수준에서 조합 가능
+
+from inodefence.campaign import CampaignConfig, run_campaign
+
+campaign = run_campaign((case,), PythonTarfileTarget(), CampaignConfig(1234, 25))
+assert len(campaign.steps) == 25
 ```
 
 Corpus retention은 다음 mutation parent로 보존한다는 뜻입니다. 새로운 normalized state나
-contract-violation evidence class가 자동으로 취약점은 아닙니다. Raw evidence 저장과 commit,
-target/version/config, OS/kernel, seed/budget/timeout 등의 campaign provenance는 후속 runner의
-책임이며 Corpus v1은 persistence나 완전한 campaign key를 제공하지 않습니다.
+contract-violation evidence class가 자동으로 취약점은 아닙니다. Campaign은 명시적 initial cases를 먼저 순서대로 실행합니다. Seed 실행도 budget에 포함하며
+중복 initial case ID, 빈 seed와 부족한 budget은 거부합니다. Parent 선택과 mutation은 하나의
+campaign-owned RNG를 사용하고 no-op도 재시도 없이 한 번 실행합니다. 네 target status는 모두
+기록하고 harness 오류는 그대로 전달합니다. Steps는 zero-based index, parent ID, full RunResult와
+feedback을 보존하므로 메모리는 O(execution_budget)이며 개별 evidence 크기에도 비례합니다.
+Config/initial IDs와 admission order는 결과에 남지만 commit/environment provenance와 disk export는
+아직 caller 책임입니다. Corpus v1은 persistence나 완전한 campaign key를 제공하지 않습니다.
 
 `violated=False`는 관찰 범위 안에서 증거가 없다는 뜻입니다. Snapshot은 일시적 operation이나 sandbox 밖의 상태를 증명하지 못합니다. C0 namespace 변화와 C2 content/metadata effect를 구분하며, 관찰 오류는 harness 오류로 올립니다. Runtime directory는 cleanup 경계이고 임의 executable을 가두는 OS sandbox가 아닙니다. Unsafe benchmark adapter에는 추가 process/filesystem isolation이 필요합니다. 상세 API와 한계는 [architecture](docs/research/design/architecture.md)와 [계약 구현 범위](docs/research/design/security-contracts.md)를 따릅니다.
 

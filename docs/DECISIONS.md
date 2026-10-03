@@ -224,3 +224,14 @@ Formal runner가 commit, target/version/config, OS/kernel/architecture, seed/bud
 dependency provenance 및 raw evidence 보존을 소유한다. Cross-target persistence safety,
 연구 effectiveness 또는 evaluation/ablation 성과를 주장하지 않는다. 다음 구현 단위는 별도
 Task Contract의 bounded deterministic fuzzing-loop orchestration이다.
+
+## D017 — Bounded campaign은 single-case pipeline의 상위 caller
+
+**상태:** bounded v1 구현
+
+`run_case`는 한 번의 실행을 유지한다. Campaign은 명시적 unique initial seeds를 순서대로
+실행한 뒤 새 Corpus의 parent 선택 → mutation → 실행 → consider를 연결한다. Seed-inclusive
+execution budget이며 target 반환 status/no-op도 실행 하나다. Seed는 search RNG를 소비하지
+않고 이후 한 campaign RNG를 선택과 mutation에 공유한다. Infrastructure exception은 전달한다.
+Frozen steps에 parent lineage와 full RunResult를 남겨 O(budget) memory를 허용한다. Default
+seeds, persistence/resume와 adaptive scheduler는 추가하지 않는다. 효과 평가는 별도 연구다.

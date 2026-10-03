@@ -98,21 +98,21 @@ C0의 direct path use 전체와 transient state는 snapshot만으로 판정할 �
 - caller 수준의 Corpus.select_case → Mutator → 단일 run_case → Corpus.consider 조합 regression
 - 한 Corpus는 한 caller-controlled campaign context; complete campaign key/persistence를 제공하지 않음
 
-Fuzzing loop/campaign runner, adaptive scheduler, persistence, benchmark adapter와 Node-tar/ORAS campaign은 미구현이다. Known-vulnerability rediscovery, new vulnerability discovery, research effectiveness와 evaluation/ablation 결과는 아직 없다. C3/C4와 Layer 6도 후속 단계다. Corpus retention/stats는 연구 효과나 취약점 확정의 증거가 아니다.
+Bounded deterministic campaign v1은 구현됐으며 adaptive scheduler, persistence, benchmark adapter와 Node-tar/ORAS campaign은 미구현이다. Known-vulnerability rediscovery, new vulnerability discovery, research effectiveness와 evaluation/ablation 결과는 아직 없다. C3/C4와 Layer 6도 후속 단계다. Corpus retention/stats는 연구 효과나 취약점 확정의 증거가 아니다.
 
 ## 다음 작업
 
-다음 PR의 Task Contract는 **bounded deterministic fuzzing-loop orchestration**이다.
-`Corpus.select_case → Mutator → run_case → Corpus.consider`를 명시적인 budget/seed/provenance와
-조합한다. 이 loop는 현재 v1에 포함하지 않으며 별도 PR에서 구현한다. Campaign context와 raw
-evidence 기록의 책임도 caller/runner에 확정해야 한다. Adaptive scheduler/persistence,
+다음 작업은 safe Python reference의 작은 deterministic campaign 개발 pilot, 명시적인 minimal
+seed-corpus API와 완료된 campaign의 structured export다. 개발 pilot은 효과 평가가 아니다.
+Campaign은 config/initial IDs/lineage/full RunResult를 memory에 보존하며 추가 환경 provenance와
+disk export는 아직 caller 책임이다. Adaptive scheduler/persistence,
 benchmark adapters와 evaluation/ablation은 이후 작업이다. Layer 5 구현과 단위/integration test
 통과를 feedback 효과의 증명으로 해석하지 않는다.
 Benchmark adapter 우선순위는 node-tar → oras-go → 선택 GNU tar를 유지한다. Unsafe target 연결 전에는 OS 수준 실행 격리와 target/version 설정을 함께 검토해야 한다.
 
 ## 지금 하지 않을 것
 
-- 본격 fuzzing loop
+- 대규모/parallel fuzzing campaign
 - CVE-specific payload generator
 - 복잡한 symlink chain generator
 - eBPF/fanotify instrumentation
@@ -141,3 +141,13 @@ Benchmark adapter 우선순위는 node-tar → oras-go → 선택 GNU tar를 유
 - 큰 blocker가 생길 때
 
 작은 refactor나 단순 버그 수정 때마다 갱신할 필요는 없다.
+
+## Bounded deterministic campaign v1
+
+- `campaign.run_campaign`: explicit seeds → select → mutate → one-case run → consider
+- Positive integer execution budget, nonempty initial cases, sufficient budget, duplicate initial ID 거부
+- Seed 실행부터 모두 budget에 포함; seed는 search RNG를 소비하지 않음
+- 한 campaign RNG, no-op 재시도 없음, 모든 target status 보존, harness exception 전달
+- Frozen config/step/result, zero-based index와 parent lineage, final CorpusStats/admission order
+- Full RunResult를 steps에 보존하므로 O(budget) memory; persistence/resume 없음
+- Unit contract와 Linux Python reference semantic-repeatability integration 검사

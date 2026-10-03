@@ -112,7 +112,7 @@ from inodefence.feedback import Corpus
 from inodefence.mutator import mutate
 from inodefence.pipeline import run_case
 
-# case와 target은 호출자가 정한다. 반복 실행 loop는 아직 구현하지 않는다.
+# case와 target은 호출자가 정한다. 개별 API의 caller 수준 조합 예다.
 corpus = Corpus()
 result = run_case(case, target)
 decision = corpus.consider(result)
@@ -133,7 +133,7 @@ Corpus는 parent를 선택하고 Mutator는 case를 변형한다. Mutator → Fe
 Corpus는 dynamic command path를 hash하거나 false campaign ID를 만들지 않는다.
 Cross-target persistence safety를 주장하지 않으며 이번 v1에는 disk persistence가 없다.
 
-Fuzzing loop/campaign runner, adaptive scheduler, persistence/checkpoint, benchmark adapters,
+[Bounded campaign](../campaign.py)은 상위 caller에 구현됐으며 adaptive scheduler, persistence/checkpoint, benchmark adapters,
 C3/C4, minimization/lineage DB와 effectiveness/ablation은 후속 작업이다. 계약 정의는
 [Oracle](../oracle/README.md)과 canonical contract 문서에 둔다.
 

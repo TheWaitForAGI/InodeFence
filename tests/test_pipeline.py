@@ -348,3 +348,53 @@ def test_execution_output_preserves_undecodable_bytes_in_json_evidence() -> None
     value = json.loads(canonical_json(result))["value"]
     assert value["stdout"].encode("utf-8", "surrogateescape") == output
     assert value["stderr"].encode("utf-8", "surrogateescape") == output
+
+
+@pytest.mark.parametrize(
+    ("status", "exit_code"),
+    [
+        (ExecutionStatus.SUCCESS, 0),
+        (ExecutionStatus.REJECTED, 2),
+        (ExecutionStatus.FAILED, -9),
+        (ExecutionStatus.TIMED_OUT, None),
+    ],
+)
+@pytest.mark.parametrize("duration_seconds", [0.0, 100.0])
+@pytest.mark.parametrize("external_effect", [False, True])
+def test_pipeline_verdict_and_signature_do_not_depend_on_duration_or_execution_status(
+    status: ExecutionStatus,
+    exit_code: int | None,
+    duration_seconds: float,
+    external_effect: bool,
+) -> None:
+    class ControlledAdapter:
+        def run(self, archive_path: Path, extraction_root: Path) -> ExecutionResult:
+            if external_effect:
+                sentinel = extraction_root.parent / "outside" / "sentinel.txt"
+                alias = extraction_root / "alias"
+                os.link(sentinel, alias)
+                alias.write_bytes(b"controlled external effect")
+            # Supplied process evidence isolates the pipeline's observation/evaluation boundary.
+            return ExecutionResult(
+                "controlled",
+                "test",
+                (),
+                status,
+                exit_code,
+                "",
+                "",
+                duration_seconds=duration_seconds,
+                timeout_seconds=1.0,
+            )
+
+    result = run_case(ArchiveCase(()), ControlledAdapter())
+    assert result.execution.duration_seconds == duration_seconds
+    assert tuple(verdict.violated for verdict in result.violations) == (
+        False,
+        external_effect,
+        external_effect,
+    )
+    assert result.signature == state_signature(result.before, result.after)
+    assert result.signature.identity_groups == (
+        (("extract/alias", "outside/sentinel.txt"),) if external_effect else ()
+    )

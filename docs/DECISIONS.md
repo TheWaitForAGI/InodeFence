@@ -174,10 +174,12 @@ Baseline ownership은 BEFORE의 실제 objects와 runtime lifecycle로 표현한
 
 ## D015 — model stack integration과 actual duration evidence
 
-**상태:** PR #15 final integration patch
+**상태:** 채택
 
 PR #13의 ArchiveCase order/duplicate/raw archive path 의미는 PR #15가 이미 포함하며 더 강한 field invariants와 canonical case identity를 제공한다. PR #17/#18의 ObjectSnapshot/StateSnapshot에 해당하는 canonical 구현도 PR #15의 실제 Observer/Oracle/Signature pipeline에 연결되어 있다. 특히 #18의 arbitrary duplicate snapshot objects와 extraction/protected objects를 별도 loose collection으로 보존하는 모델은 현재 sorted unique full-sandbox snapshot contract와 맞지 않는다. 따라서 #13/#17/#18의 별도 모델을 병합하지 않는다.
 
 PR #16에서는 `duration_seconds` 개념만 canonical ExecutionResult에 흡수한다. Configured `timeout_seconds`와 별개인 finite/nonnegative actual elapsed evidence를 모든 반환 status에 기록한다. Python reference는 monotonic `perf_counter()`로 subprocess 실행 직전부터 완료 또는 timeout kill/wait 이후까지 측정하므로 process startup과 timeout cleanup overhead를 포함한다. Path validation과 pipeline의 setup/observation/판정/cleanup은 측정 구간 밖이다.
 
 Duration은 RunResult.execution의 기존 canonical JSON 경로로 보존하며 중복 field를 만들지 않는다. Security verdict, StateSignature v2 또는 ArchiveCase identity에 포함하지 않는다. 측정 evidence를 추가하는 결정이며 throughput/time-to-first-violation 평가, Mutation/Corpus 또는 Layer 4/5 구현을 의미하지 않는다.
+
+**Archive input path != Observed filesystem path.** ArchiveEntry.path/link_target은 normalization하지 않는 untrusted raw logical input이고 ObjectSnapshot.path는 Observer가 만든 canonical sandbox-relative evidence다. ArchiveCase의 order/duplicate 의미를 observed objects에 적용하지 않으며 StateSnapshot.objects는 unique/sorted다. StateSnapshot의 sandbox_root/phase/objects/protected_paths 구조를 유지한다. **StateSnapshot = full raw observation/evidence**, **StateSignature = normalized security-state representation**의 경계를 유지한다. `path_region()`은 current runtime-layout classification policy이며 filesystem object의 intrinsic property가 아니다.

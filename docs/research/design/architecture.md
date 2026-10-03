@@ -287,25 +287,26 @@ ArchiveCase
 
 Target Adapter가 extractor를 실행한 **프로세스 실행 결과**다.
 
-개념 필드:
+현재 필드:
 
 ```text
 ExecutionResult
-├── target
+├── target_id
 ├── target_version
+├── command
+├── status
 ├── exit_code
 ├── stdout
 ├── stderr
-├── duration
-├── timed_out
-├── archive_path
-├── extraction_root
-└── execution_metadata
+├── duration_seconds
+└── timeout_seconds
 ```
 
 `ExecutionResult`와 filesystem 상태는 같은 것이 아니다.
 
 `exit_code == 0`이어도 Security Contract 위반이 있을 수 있고, `exit_code != 0`이어도 남겨진 filesystem state가 분석 가치가 있을 수 있다.
+
+**ExecutionResult = process evidence, not security verdict.** `ExecutionStatus.TIMED_OUT`가 authoritative이고 별도 timed_out bool은 없다. Configured timeout과 actual monotonic elapsed duration의 현재 contract와 측정 구간은 7.8을 따른다.
 
 ---
 
@@ -346,12 +347,10 @@ Linux에서 초기 identity 기준은 주로:
 
 ```text
 StateSnapshot
-├── extraction_root objects
-├── harness root / archive artifacts
-├── other external namespace objects
-├── protected sentinel objects
-├── snapshot timing
-└── observation metadata
+├── sandbox_root
+├── phase
+├── objects (extraction / harness / external 전체)
+└── protected_paths (sentinel 삭제 후에도 유지)
 ```
 
 초기 구현은 syscall 전체 trace보다 다음을 우선한다.
@@ -445,8 +444,8 @@ st_ino = Y
 | --- | --- |
 | ArchiveEntry | path, entry_type, content, link_target, mode; raw input text 보존 |
 | ArchiveCase | entries tuple; canonical logical representation의 SHA-256 case_id property |
-| ExecutionResult | target_id/version, command, status, exit_code, stdout/stderr, duration_seconds, timeout_seconds |
-| ObjectSnapshot | sandbox-relative path, type, dev/inode/nlink, mode/size, uid/gid, mtime/ctime ns, link text, SHA-256 |
+| ExecutionResult | target_id/version, command, status, exit_code, stdout/stderr, duration_seconds(actual), timeout_seconds(budget) |
+| ObjectSnapshot | canonical sandbox-relative path, ObjectType, dev/inode/nlink, permission/special mode bits/size, uid/gid, mtime/ctime ns, raw link text, regular content_digest(SHA-256 lowercase hex) |
 | StateSnapshot | full raw observation: absolute sandbox_root provenance, BEFORE/AFTER phase, harness 포함 sorted objects, protected_paths |
 | StateChange | path, before/after ObjectSnapshot 또는 None, ordered ChangeField tuple |
 | StateSignature | schema v2, EXTRACTION/EXTERNAL normalized objects, scoped same-object groups, external field-change labels, protected_paths |
@@ -455,17 +454,21 @@ st_ino = Y
 
 Archive input은 `Path.resolve()`/normalization을 거치지 않는다. NUL, surrogate code point, 잘못된 entry field 조합은 model boundary에서 거부한다. regular content는 immutable bytes이며 directory는 content/target을 가지지 않는다. link는 nonempty target 필수다. Duplicate entry와 entry 순서는 그대로 유지한다. Long name은 model에 허용하지만 현재 builder가 표현할 수 없는 USTAR 값은 명시적으로 거부한다.
 
-ExecutionResult의 `timeout_seconds`는 configured execution budget이고 필수 `duration_seconds`는 실제 monotonic elapsed wall-clock evidence다. Duration은 float-compatible numeric 값으로 finite/0 이상이어야 하며 0.0도 허용한다. Python reference는 `perf_counter()`로 subprocess.run 직전부터 완료 또는 timeout exception 처리 진입 직후까지 측정한다. Process startup과 timeout kill/wait overhead를 포함하며 path validation, snapshot, oracle/signature 계산과 cleanup 시간은 제외한다. Timeout 설정값을 duration으로 복사하지 않는다. 모든 반환 status에 기록하고 RunResult의 execution을 통해 canonical JSON으로 보존한다. Observer/Oracle/Feedback은 duration을 security verdict로 사용하지 않으며 StateSignature v2와 case ID에도 포함하지 않는다.
+ExecutionResult의 `timeout_seconds`는 configured execution budget이고 필수 `duration_seconds`는 실제 monotonic elapsed process execution evidence다. Duration은 float-compatible numeric 값으로 finite/0 이상이어야 하며 0.0과 numeric int 값도 허용한다. Python reference는 `perf_counter()`로 subprocess.run 직전부터 완료 또는 timeout exception 처리 진입 직후까지 측정한다. Process startup과 timeout kill/wait overhead를 포함하며 path validation, snapshot, oracle/signature 계산과 cleanup 시간은 제외한다. Timeout 설정값을 duration으로 복사하지 않는다. 모든 반환 status에 기록하고 RunResult의 execution을 통해 canonical JSON으로 보존한다. Observer/Oracle/Feedback은 duration을 security verdict로 사용하지 않으며 StateSignature v2와 case ID에도 포함하지 않는다.
 
-Observer path는 archive input과 달리 관찰된 canonical sandbox-relative namespace다. Snapshot에 없는 path는 부재이며, sentinel 설정은 삭제 후에도 남는다. IO 오류는 부재로 바꾸지 않고 ObservationError로 올린다. Symlink identity는 lstat object 자체이고 referent identity가 아니다.
+**Archive input path != Observed filesystem path.** `ArchiveEntry.path`/`link_target`은 `../` 및 absolute-looking spelling을 보존하는 untrusted raw logical input이며 normalization하지 않는다. `ObjectSnapshot.path`는 Observer가 만든 canonical sandbox-relative evidence다. Absolute path, 빈/`.`/`..` component는 거부한다(루트 자체의 `.`는 허용). StateSnapshot.objects는 canonical path 기준 unique/sorted이며 ArchiveCase의 duplicate/order semantics를 적용하지 않는다. Malformed TAR encoding fuzzing은 향후 Builder/encoding mutation layer의 책임이며 ObjectSnapshot/StateSnapshot invariant를 느슨하게 만들지 않는다.
+
+ObjectSnapshot은 ObjectType enum, nonnegative integer dev/inode/nlink/size/uid/gid, integer mtime/ctime ns를 검증한다. `mode = stat.S_IMODE(st_mode)`는 permission/special mode bits(`0..0o7777`)이며 object type bits를 포함하지 않는다. `content_digest`는 regular file content의 SHA-256 lowercase hexadecimal evidence(64자)이며 regular에 필수, 다른 type에는 None이다. Symlink에만 nonempty raw readlink target이 필수이며 resolve하지 않는다. Identity는 `(st_dev, st_ino)`다. Hardlink는 별도 type이 아닌 same-identity regular object 관계이고 symlink identity는 referent가 아닌 lstat object 자체다. Snapshot에 없는 path는 부재이며, sentinel 설정은 삭제 후에도 남는다. IO 오류는 부재로 바꾸지 않고 ObservationError로 올린다.
 
 Region은 model의 `path_region`에서 공통으로 정의하며 Observer/Oracle/Feedback에 별도 path 예외를 두지 않는다.
+
+`path_region()`은 아래 namespace 분류를 따르는 현재 runtime-layout policy이며 filesystem object의 intrinsic property가 아니다. 향후 target/runtime layout 확장 시 함께 검토한다.
 
 | Region | namespace scope |
 | --- | --- |
 | EXTRACTION | `extract`, `extract/**` |
 | HARNESS | `.`, `archive`, `archive/**`; 입력과 harness bookkeeping |
-| EXTERNAL | 나머지 모든 sandbox-relative path; `outside/**` 및 root-level `escape.txt` 포함 |
+| EXTERNAL | 나머지 모든 canonical sandbox-relative path; `outside/**` 및 root-level `escape.txt` 포함 |
 
 Region.HARNESS는 normalization role이며 security trust boundary나 creator attribution이 아니다. Model의 `is_extraction_path`는 `extract`/`extract/**` membership만 정의한다. Oracle의 `_is_c0_namespace_transition`은 그 밖의 모든 경로에서 EXISTENCE/IDENTITY/OBJECT_TYPE 전이를 검사한다. 따라서 HARNESS object는 signature에서 제외되어도 C0에서 면제되지 않는다. `archive/escaped.txt` 생성과 archive/input.tar 삭제·replacement도 evidence다. Content/metadata-only effect는 기존 C0/C2 separation을 유지한다.
 

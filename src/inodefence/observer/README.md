@@ -10,7 +10,7 @@
 
 ## 수집 의미
 
-경로마다 lstat type, st_dev/st_ino/st_nlink, mode, size, uid/gid, mtime/ctime nanoseconds, symlink text와 regular SHA-256을 보존한다. Digest는 stream으로 계산하고 content 전체는 저장하지 않는다. atime은 관찰 자체의 read effect를 피하려고 제외한다.
+경로마다 lstat type, st_dev/st_ino/st_nlink, mode, size, uid/gid, mtime/ctime nanoseconds, raw symlink text와 regular content의 SHA-256 lowercase hexadecimal digest를 보존한다. `mode = stat.S_IMODE(st_mode)`는 permission/special bits이며 type bits는 ObjectType으로 분리한다. Digest는 stream으로 계산하고 content 전체는 저장하지 않는다. atime은 관찰 자체의 read effect를 피하려고 제외한다.
 
 Directory descriptor와 O_NOFOLLOW를 사용한다. Symlink를 따라 stat/hash하거나 directory로 내려가지 않는다. FIFO 같은 special object는 열지 않는다. IO/permission 오류는 ObservationError이며 missing sentinel과 구분한다. 동시 filesystem 변경은 초기 threat model 밖이고, digest 중 불일치가 감지되면 오류로 올린다.
 

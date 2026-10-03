@@ -26,8 +26,8 @@ class ExecutionStatus(StrEnum):
 class ExecutionResult:
     """Raw process evidence, with configured budget and actual elapsed time.
 
-    duration_seconds is finite, nonnegative monotonic wall-clock time spent on
-    process execution, including timeout cleanup/wait. It is not a verdict.
+    duration_seconds is finite, nonnegative actual monotonic elapsed process
+    execution time, including timeout cleanup/wait. It is not a verdict.
     """
 
     target_id: str

@@ -24,6 +24,12 @@ class ExecutionStatus(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class ExecutionResult:
+    """Raw process evidence, with configured budget and actual elapsed time.
+
+    duration_seconds is finite, nonnegative monotonic wall-clock time spent on
+    process execution, including timeout cleanup/wait. It is not a verdict.
+    """
+
     target_id: str
     target_version: str
     command: tuple[str, ...]
@@ -31,6 +37,7 @@ class ExecutionResult:
     exit_code: int | None
     stdout: str
     stderr: str
+    duration_seconds: float
     timeout_seconds: float | None = None
 
     def __post_init__(self) -> None:
@@ -40,6 +47,8 @@ class ExecutionResult:
             raise ValueError("execution requires target identity and version")
         if not isinstance(self.stdout, str) or not isinstance(self.stderr, str):
             raise ValueError("stdout and stderr must be decoded text")
+        if not math.isfinite(self.duration_seconds) or self.duration_seconds < 0:
+            raise ValueError("duration_seconds must be finite and nonnegative")
         if self.timeout_seconds is not None and (
             not math.isfinite(self.timeout_seconds) or self.timeout_seconds <= 0
         ):

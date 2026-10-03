@@ -99,4 +99,4 @@ def test_execution_result_rejects_contradictory_status(
     status: ExecutionStatus, exit_code: int | None
 ) -> None:
     with pytest.raises(ValueError):
-        ExecutionResult("target", "version", (), status, exit_code, "", "")
+        ExecutionResult("target", "version", (), status, exit_code, "", "", duration_seconds=0.0)

@@ -445,7 +445,7 @@ st_ino = Y
 | --- | --- |
 | ArchiveEntry | path, entry_type, content, link_target, mode; raw input text 보존 |
 | ArchiveCase | entries tuple; canonical logical representation의 SHA-256 case_id property |
-| ExecutionResult | target_id/version, command, status, exit_code, stdout/stderr, timeout_seconds |
+| ExecutionResult | target_id/version, command, status, exit_code, stdout/stderr, duration_seconds, timeout_seconds |
 | ObjectSnapshot | sandbox-relative path, type, dev/inode/nlink, mode/size, uid/gid, mtime/ctime ns, link text, SHA-256 |
 | StateSnapshot | full raw observation: absolute sandbox_root provenance, BEFORE/AFTER phase, harness 포함 sorted objects, protected_paths |
 | StateChange | path, before/after ObjectSnapshot 또는 None, ordered ChangeField tuple |
@@ -454,6 +454,8 @@ st_ino = Y
 | RunResult | case, archive_sha256/format, execution, before/after, changes, signature, violations |
 
 Archive input은 `Path.resolve()`/normalization을 거치지 않는다. NUL, surrogate code point, 잘못된 entry field 조합은 model boundary에서 거부한다. regular content는 immutable bytes이며 directory는 content/target을 가지지 않는다. link는 nonempty target 필수다. Duplicate entry와 entry 순서는 그대로 유지한다. Long name은 model에 허용하지만 현재 builder가 표현할 수 없는 USTAR 값은 명시적으로 거부한다.
+
+ExecutionResult의 `timeout_seconds`는 configured execution budget이고 필수 `duration_seconds`는 실제 monotonic elapsed wall-clock evidence다. Duration은 float-compatible numeric 값으로 finite/0 이상이어야 하며 0.0도 허용한다. Python reference는 `perf_counter()`로 subprocess.run 직전부터 완료 또는 timeout exception 처리 진입 직후까지 측정한다. Process startup과 timeout kill/wait overhead를 포함하며 path validation, snapshot, oracle/signature 계산과 cleanup 시간은 제외한다. Timeout 설정값을 duration으로 복사하지 않는다. 모든 반환 status에 기록하고 RunResult의 execution을 통해 canonical JSON으로 보존한다. Observer/Oracle/Feedback은 duration을 security verdict로 사용하지 않으며 StateSignature v2와 case ID에도 포함하지 않는다.
 
 Observer path는 archive input과 달리 관찰된 canonical sandbox-relative namespace다. Snapshot에 없는 path는 부재이며, sentinel 설정은 삭제 후에도 남는다. IO 오류는 부재로 바꾸지 않고 ObservationError로 올린다. Symlink identity는 lstat object 자체이고 referent identity가 아니다.
 

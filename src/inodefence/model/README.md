@@ -23,6 +23,8 @@ Region.HARNESS는 normalization namespace role이며 security trust boundary나 
 
 ExecutionResult의 status와 filesystem verdict는 독립적이다. RunResult는 case, TAR format/hash, 실행 provenance, before/after, 변화, signature와 계약 evidence를 보존한다. 실제 run directory는 반환 전에 삭제된다.
 
+ExecutionResult의 필수 `duration_seconds`는 finite/0 이상인 실제 monotonic elapsed execution evidence이며 0.0과 numeric int 값도 허용한다. `timeout_seconds`는 configured budget으로 별개다. Duration은 process startup과 timeout 종료·회수 overhead를 포함하고 RunResult.execution의 canonical JSON으로 보존한다. Security verdict, StateSignature v2와 case ID에는 사용하지 않는다.
+
 `canonical_json(model)`은 envelope schema v1/model type과 정렬된 JSON key를 기록하고 bytes를 base64로 보존한다. Signature 내부 schema v2와는 별개이며 case encoding은 유지한다. Raw snapshot에는 inode·timestamp 원값이 있지만 portable signature에는 없다. 이는 export 경계이며 database나 deserializer는 아니다. Formal experiment runner는 commit, OS/kernel, config/seed/budget provenance를 추가해야 한다.
 
 ## 하지 않는 것

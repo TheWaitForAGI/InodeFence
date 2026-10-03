@@ -1,5 +1,6 @@
 import hashlib
 import json
+import math
 import os
 import subprocess
 import sys
@@ -39,6 +40,8 @@ def test_real_reference_pipeline_baselines_and_self_contained_evidence(case_name
     assert result.execution.succeeded and result.execution.exit_code == 0
     assert result.execution.target_id == "python-tarfile-data"
     assert result.execution.target_version.startswith("3.12.")
+    assert math.isfinite(result.execution.duration_seconds)
+    assert result.execution.duration_seconds >= 0
     assert not any(contract.violated for contract in result.violations)
     assert result.case == case
     assert result.before.get("extract/a.txt") is None
@@ -58,6 +61,7 @@ def test_real_reference_pipeline_baselines_and_self_contained_evidence(case_name
     encoded = json.loads(canonical_json(result))
     assert encoded["schema_version"] == 1
     assert encoded["value"]["execution"]["status"] == "success"
+    assert encoded["value"]["execution"]["duration_seconds"] == result.execution.duration_seconds
     assert encoded["value"]["violations"][0]["contract_id"] == "C0"
     assert len(result.archive_sha256) == 64
 
@@ -153,7 +157,14 @@ def test_pipeline_c0_harness_transitions_are_independent_of_signature(operation:
                 current_mode = archive_path.lstat().st_mode & 0o777
                 archive_path.chmod(0o600 if current_mode != 0o600 else 0o640)
             return ExecutionResult(
-                "controlled-transition", "test", (), ExecutionStatus.SUCCESS, 0, "", ""
+                "controlled-transition",
+                "test",
+                (),
+                ExecutionStatus.SUCCESS,
+                0,
+                "",
+                "",
+                duration_seconds=0.0,
             )
 
     case = baseline_case("regular-file")
@@ -206,6 +217,8 @@ def test_reference_rejection_is_not_a_violation_and_partial_extraction_is_observ
     )
     result = run_case(case, PythonTarfileTarget())
     assert result.execution.status == ExecutionStatus.REJECTED
+    assert math.isfinite(result.execution.duration_seconds)
+    assert result.execution.duration_seconds >= 0
     assert result.execution.exit_code == 2 and "OutsideDestinationError" in result.execution.stderr
     assert result.after.get("extract/first.txt") is not None
     assert result.after.get("outside/rejected.txt") is None
@@ -217,6 +230,8 @@ def test_reference_parser_failure_has_execution_evidence(sandbox: RuntimeSandbox
     sandbox.archive_path.write_bytes(b"not a tar archive")
     result = PythonTarfileTarget().run(sandbox.archive_path, sandbox.extraction_root)
     assert result.status == ExecutionStatus.FAILED and result.exit_code == 3
+    assert math.isfinite(result.duration_seconds)
+    assert result.duration_seconds >= 0
     assert "ReadError" in result.stderr
     assert list(sandbox.extraction_root.iterdir()) == []
 
@@ -224,6 +239,8 @@ def test_reference_parser_failure_has_execution_evidence(sandbox: RuntimeSandbox
 def test_real_worker_timeout_stops_worker_and_still_observes_after_state() -> None:
     result = run_case(baseline_case("regular-file"), PythonTarfileTarget(timeout_seconds=1e-9))
     assert result.execution.status == ExecutionStatus.TIMED_OUT
+    assert math.isfinite(result.execution.duration_seconds)
+    assert result.execution.duration_seconds >= 0
     assert result.execution.exit_code is None
     assert not any(contract.violated for contract in result.violations)
     assert result.after.get("outside/sentinel.txt") is not None
@@ -319,7 +336,14 @@ print(canonical_json(result.signature))
 def test_execution_output_preserves_undecodable_bytes_in_json_evidence() -> None:
     output = b"diagnostic\xff\0\n"
     result = ExecutionResult(
-        "target", "version", (), ExecutionStatus.FAILED, 1, _text(output), _text(output)
+        "target",
+        "version",
+        (),
+        ExecutionStatus.FAILED,
+        1,
+        _text(output),
+        _text(output),
+        duration_seconds=0.0,
     )
     value = json.loads(canonical_json(result))["value"]
     assert value["stdout"].encode("utf-8", "surrogateescape") == output

@@ -6,6 +6,7 @@ import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from time import perf_counter
 
 from inodefence.model import ExecutionResult, ExecutionStatus
 from inodefence.runtime import open_runtime_directory
@@ -34,6 +35,8 @@ class PythonTarfileTarget:
 
     data filter behavior depends on the recorded Python patch version. Modes
     accepted by the builder need not be preserved by this extraction policy.
+    Duration covers subprocess execution through completion or timeout cleanup,
+    including process startup and kill/wait overhead, excluding path validation.
     """
 
     timeout_seconds: float = 10.0
@@ -52,6 +55,7 @@ class PythonTarfileTarget:
             str(extraction_root),
         )
         version = platform.python_version()
+        start = perf_counter()
         try:
             completed = subprocess.run(
                 command,
@@ -61,6 +65,7 @@ class PythonTarfileTarget:
                 check=False,
             )
         except subprocess.TimeoutExpired as error:
+            elapsed = perf_counter() - start
             # subprocess.run kills and waits for this single worker before raising.
             return ExecutionResult(
                 "python-tarfile-data",
@@ -70,8 +75,10 @@ class PythonTarfileTarget:
                 None,
                 _text(error.stdout),
                 _text(error.stderr),
-                self.timeout_seconds,
+                duration_seconds=elapsed,
+                timeout_seconds=self.timeout_seconds,
             )
+        elapsed = perf_counter() - start
         status = (
             ExecutionStatus.SUCCESS
             if completed.returncode == 0
@@ -87,5 +94,6 @@ class PythonTarfileTarget:
             completed.returncode,
             _text(completed.stdout),
             _text(completed.stderr),
-            self.timeout_seconds,
+            duration_seconds=elapsed,
+            timeout_seconds=self.timeout_seconds,
         )

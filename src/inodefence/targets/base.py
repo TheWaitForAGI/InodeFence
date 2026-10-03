@@ -11,6 +11,10 @@ class TargetAdapter(Protocol):
 
     Return after the target has stopped, including on timeout. Unexpected harness
     failures raise; archive rejection and target failure return ExecutionResult.
+    Record the configured timeout_seconds separately from duration_seconds,
+    the actual monotonic elapsed process time including timeout cleanup/wait.
+    Timing is raw evidence: Observer/Oracle/Feedback do not use it as a verdict
+    or include it in StateSignature or ArchiveCase identity.
     An adapter for an unsafe target must supply adequate process/filesystem
     isolation; a disposable directory alone does not restrict its OS privileges.
 

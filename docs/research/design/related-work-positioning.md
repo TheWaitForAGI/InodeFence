@@ -1,114 +1,114 @@
-# Related-Work Positioning
+# 선행연구 포지셔닝
 
-This document records the current working position of InodeFence relative to the closest prior work.
+이 문서는 InodeFence가 가장 가까운 선행연구와 어떤 관계에 있는지 현재 기준으로 정리한다.
 
-It exists to prevent the project from accidentally presenting already-established ideas as new contributions.
+이미 알려진 아이디어를 실수로 신규 기여처럼 표현하지 않기 위한 기준 문서다.
 
 ## Jana & Shmatikov — 2012
 
 **Abusing File Processing in Malware Detectors for Fun and Profit**
 
-Relevant points:
+확인된 관련 내용:
 
-- studied semantic gaps between file-processing implementations,
-- included TAR-related attacks,
-- used black-box differential techniques for some formats,
-- showed that malformed archive/file metadata can create security-relevant interpretation differences.
+- file-processing 구현 사이 semantic gap 연구
+- TAR 관련 공격 포함
+- 일부 format에 black-box differential technique 사용
+- malformed archive/file metadata가 보안 관련 해석 차이를 만들 수 있음을 보임
 
-What this removes from our novelty space:
+따라서 신규성에서 제외되는 것:
 
-- TAR malformed inputs are not new,
-- TAR semantic-gap attacks are not new,
-- header/metadata mutation is not new.
+- TAR malformed input 자체
+- TAR semantic-gap 공격 자체
+- header/metadata mutation 자체
 
-Current distinction to investigate:
+현재 추가 검증할 차이:
 
-- archive extraction guided by filesystem object identity and external-effect feedback is not established by this work.
+- filesystem object identity와 external-effect feedback으로 archive extraction 탐색을 유도하는 방법은 이 연구에서 확립된 것으로 확인되지 않음
 
 ## ZIPDiff — 2025
 
 **My ZIP isn't your ZIP: Identifying and Exploiting Semantic Gaps Between ZIP Parsers**
 
-Relevant points:
+확인된 관련 내용:
 
-- archive-aware mutation,
-- byte-level mutation,
-- feedback-guided corpus evolution,
-- extraction-output comparison,
-- large-scale differential testing across ZIP parsers.
+- archive-aware mutation
+- byte-level mutation
+- feedback-guided corpus evolution
+- extraction-output comparison
+- 여러 ZIP parser 대상 대규모 differential testing
 
-What this removes from our novelty space:
+따라서 신규성에서 제외되는 것:
 
-- archive-aware fuzzing is not new,
-- feedback-guided archive fuzzing is not new,
-- interesting-seed retention is not new,
-- path/order mutation by itself is not enough for novelty.
+- archive-aware fuzzing
+- feedback-guided archive fuzzing
+- interesting-seed retention
+- path/order mutation 자체
 
-Important limitation for InodeFence:
+InodeFence 관점의 중요한 한계:
 
-Later work reports that ZIPDiff did not discover tested symlink vulnerabilities that required more complex link composition and creation-order behavior.
+후속 연구에서는 ZIPDiff가 복잡한 link composition과 creation order가 필요한 테스트 대상 symlink vulnerability를 찾지 못했다고 보고했다.
 
 ## LinkZard — 2025
 
 **Pig in a Poke: Automatically Detecting and Exploiting Link Following Vulnerabilities in Windows File Operations**
 
-Relevant points:
+확인된 관련 내용:
 
-- feedback-driven file-state fuzzing,
-- state-query-driven mutation,
-- file-operation sequence analysis,
-- link-related state including hardlink information and link count.
+- feedback-driven file-state fuzzing
+- state-query-driven mutation
+- file-operation sequence 분석
+- hardlink 정보와 link count를 포함한 link-related state
 
-What this removes from our novelty space:
+따라서 신규성에서 제외되는 것:
 
-- filesystem-state fuzzing in general is not new,
-- observing hardlink state is not new,
-- observing link count is not new,
-- analyzing ordered file operations is not new.
+- filesystem-state fuzzing 일반
+- hardlink state 관찰
+- link count 관찰
+- ordered file operation 분석
 
-Current distinction to investigate:
+현재 추가 검증할 차이:
 
-- LinkZard is not an archive-entry mutation framework and does not use a TAR archive as the evolving input corpus.
+- LinkZard는 archive-entry mutation framework가 아니며, TAR archive 자체를 evolving input corpus로 사용하지 않는다.
 
 ## Wormholes — 2026
 
 **Wormholes in the File System: Understanding the Misunderstanding of Symlinks**
 
-This is currently the closest prior work.
+현재 InodeFence와 가장 직접적으로 가까운 선행연구다.
 
-Relevant points:
+확인된 관련 내용:
 
-- archive extraction is a core scenario,
-- symlink composition,
-- entry creation order,
-- dangling symlinks,
-- symlink updates,
-- extraction-root manipulation,
-- hardlink creation through symlink-related paths,
-- arbitrary file write/read consequences.
+- archive extraction이 핵심 scenario
+- symlink composition
+- entry creation order
+- dangling symlink
+- symlink update
+- extraction-root manipulation
+- symlink 관련 path를 통한 hardlink creation
+- arbitrary file read/write effect
 
-What this removes from our novelty space:
+따라서 신규성에서 제외되는 것:
 
-- symlink attacks are not new,
-- hardlink attacks are not new,
-- symlink + hardlink combinations are not new,
-- entry-order attacks are not new,
-- state changes across archive entries are not new,
-- outside-root effects are not new.
+- symlink 공격 자체
+- hardlink 공격 자체
+- symlink + hardlink 조합
+- entry-order 공격
+- archive entry 간 state 변화
+- outside-root effect
 
-## Current InodeFence Research Gap Hypothesis
+## 현재 InodeFence Research Gap 가설
 
-The current question is not:
+현재 질문은 다음이 아니다.
 
-> Can TAR hardlinks, symlinks, or entry ordering cause extraction vulnerabilities?
+> TAR hardlink, symlink, entry order가 extraction vulnerability를 만들 수 있는가?
 
-Prior work already answers that.
+이 부분은 이미 선행연구가 보여줬다.
 
-The question is:
+현재 질문은 다음이다.
 
-> Can generic archive-entry mutation be guided by filesystem object identity and external-effect state so that a fuzzer evolves its corpus toward security-relevant states without being given a fixed attack recipe?
+> 고정된 공격 recipe 없이 generic archive-entry mutation을 수행하면서 filesystem object identity와 external-effect state를 feedback으로 사용하면, fuzzer가 security-relevant state 방향으로 corpus를 발전시킬 수 있는가?
 
-Conceptually:
+개념적으로:
 
 ```text
 Fixed strategy
@@ -125,29 +125,29 @@ InodeFence hypothesis
         -> mutate again
 ```
 
-## Claims We Must Not Make Yet
+## 아직 하면 안 되는 주장
 
-Do not currently claim:
+현재 단계에서는 다음을 주장하지 않는다.
 
-- "InodeFence is the first state-guided archive fuzzer."
-- "No prior work uses inode information."
-- "No prior work fuzzes archive links."
-- "No prior work considers entry ordering."
-- "The proposed method is better than fixed strategies."
-- "The proposed method generalizes across extractors."
+- "InodeFence가 최초의 state-guided archive fuzzer다."
+- "기존 연구는 inode 정보를 사용하지 않았다."
+- "기존 연구는 archive link를 fuzzing하지 않았다."
+- "기존 연구는 entry ordering을 보지 않았다."
+- "제안 방법이 fixed strategy보다 우수하다."
+- "제안 방법이 여러 extractor에 일반화된다."
 
-These are either contradicted by prior work or require experiments / broader literature review.
+일부는 선행연구와 충돌하고, 일부는 추가 문헌조사나 실험이 필요하다.
 
-## What the Evaluation Must Establish
+## Evaluation에서 반드시 보여줘야 할 것
 
-The project becomes defensible if experiments show that the proposed state representation and feedback loop provide measurable value.
+제안하는 state representation과 feedback loop가 실제 측정 가능한 가치를 제공해야 한다.
 
-Examples:
+예:
 
-- faster rediscovery under equal budget,
-- higher rediscovery rate,
-- exploration of more security-relevant states,
-- useful generalization across target implementations,
-- discovery of states not reached by weaker baselines.
+- 동일 budget에서 더 빠른 rediscovery
+- 더 높은 rediscovery rate
+- 더 많은 security-relevant state 탐색
+- 여러 target implementation에서 유용한 일반성
+- 약한 baseline이 도달하지 못한 state 탐색
 
-Until those measurements exist, these remain hypotheses.
+실험 전까지 이 내용은 모두 가설이다.

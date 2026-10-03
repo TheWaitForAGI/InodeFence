@@ -304,12 +304,15 @@ child = mutate(parent, rng)  # 개별 API도 caller 수준에서 조합 가능
 
 from inodefence.campaign import CampaignConfig, run_campaign
 from inodefence.generator import minimal_seed_corpus
+from inodefence.campaign_export import export_campaign
+from pathlib import Path
 
 campaign = run_campaign((case,), PythonTarfileTarget(), CampaignConfig(1234, 25))
 assert len(campaign.steps) == 25
 
 # 고정된 4종 정상 seed를 사용할 때도 명시적으로 전달
 seeded = run_campaign(minimal_seed_corpus(), PythonTarfileTarget(), CampaignConfig(11, 25))
+manifest, steps = export_campaign(seeded, Path("experiments/raw/example-campaign"))
 ```
 
 Corpus retention은 다음 mutation parent로 보존한다는 뜻입니다. 새로운 normalized state나
@@ -318,8 +321,11 @@ contract-violation evidence class가 자동으로 취약점은 아닙니다. Cam
 campaign-owned RNG를 사용하고 no-op도 재시도 없이 한 번 실행합니다. 네 target status는 모두
 기록하고 harness 오류는 그대로 전달합니다. Steps는 zero-based index, parent ID, full RunResult와
 feedback을 보존하므로 메모리는 O(execution_budget)이며 개별 evidence 크기에도 비례합니다.
-Config/initial IDs와 admission order는 결과에 남지만 commit/environment provenance와 disk export는
-아직 caller 책임입니다. Corpus v1은 persistence나 완전한 campaign key를 제공하지 않습니다.
+Config/initial IDs와 admission order는 결과에 남습니다. `export_campaign`은 새 directory에
+`manifest.json`과 canonical `steps.jsonl`을 기록하고 기존 output은 거부합니다. Raw inode/time과
+모든 status를 그대로 보존하며 결과를 분석/claim으로 승격하지 않습니다. Manifest의
+export_environment는 export한 process의 환경이고 과거 target 실행 환경이 아닙니다.
+Source commit과 실행 환경의 추가 provenance는 caller 책임입니다. Corpus v1은 persistence나 완전한 campaign key를 제공하지 않습니다.
 
 `violated=False`는 관찰 범위 안에서 증거가 없다는 뜻입니다. Snapshot은 일시적 operation이나 sandbox 밖의 상태를 증명하지 못합니다. C0 namespace 변화와 C2 content/metadata effect를 구분하며, 관찰 오류는 harness 오류로 올립니다. Runtime directory는 cleanup 경계이고 임의 executable을 가두는 OS sandbox가 아닙니다. Unsafe benchmark adapter에는 추가 process/filesystem isolation이 필요합니다. 상세 API와 한계는 [architecture](docs/research/design/architecture.md)와 [계약 구현 범위](docs/research/design/security-contracts.md)를 따릅니다.
 

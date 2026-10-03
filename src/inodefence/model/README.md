@@ -11,7 +11,7 @@
 | [results.py](results.py) | ExecutionResult, IdentityEvidence, ViolationResult, RunResult |
 | [serialization.py](serialization.py) | canonical_json, schema version 1 |
 
-ArchiveEntry는 raw path/link text를 보존하고 NUL·잘못된 field 조합을 거부한다. regular는 bytes content, directory는 content/target 없음, hardlink/symlink는 target 필수다. USTAR 길이 제한은 builder의 책임이다. ArchiveCase는 order/duplicate를 보존하며 versioned canonical representation의 SHA-256을 `case_id`로 제공한다. Mutation lineage는 후속 설계다.
+ArchiveEntry는 raw path/link text를 보존하고 NUL·잘못된 field 조합을 거부한다. regular는 bytes content, directory는 content/target 없음, hardlink/symlink는 target 필수다. USTAR 길이 제한은 builder의 책임이다. ArchiveCase는 order/duplicate를 보존하며 versioned canonical representation의 SHA-256을 `case_id`로 제공한다. Parent lineage는 상위 campaign step에 기록하며 ArchiveCase identity에 섞지 않는다.
 
 **Archive input path != Observed filesystem path.** `ArchiveEntry.path`/`link_target`은 `../`, absolute-looking spelling을 포함한 untrusted raw logical input이다. `ObjectSnapshot.path`는 Observer가 만든 canonical sandbox-relative evidence이며 absolute path, 빈/`.`/`..` component를 거부한다(루트 자체의 `.`는 허용). Malformed raw TAR encoding fuzzing은 향후 Builder/encoding mutation layer의 책임이며 observed snapshot invariant를 느슨하게 만들지 않는다.
 
@@ -45,7 +45,8 @@ RunResult는 case, TAR format/hash, 실행 provenance, before/after, 변화, sig
 
 ExecutionResult의 필수 `duration_seconds`는 finite/0 이상인 실제 monotonic elapsed execution evidence이며 0.0과 numeric int 값도 허용한다. `timeout_seconds`는 configured budget으로 별개다. Duration은 process startup과 timeout 종료·회수 overhead를 포함하고 RunResult.execution의 canonical JSON으로 보존한다. Security verdict, StateSignature v2와 case ID에는 사용하지 않는다.
 
-`canonical_json(model)`은 envelope schema v1/model type과 정렬된 JSON key를 기록하고 bytes를 base64로 보존한다. Signature 내부 schema v2와는 별개이며 case encoding은 유지한다. Raw snapshot에는 inode·timestamp 원값이 있지만 portable signature에는 없다. 이는 export 경계이며 database나 deserializer는 아니다. Formal experiment runner는 commit, OS/kernel, config/seed/budget provenance를 추가해야 한다.
+`canonical_json(model)`은 envelope schema v1/model type과 정렬된 JSON key를 기록하고 bytes를 base64로 보존한다. Signature 내부 schema v2와는 별개이며 case encoding은 유지한다. Raw snapshot에는 inode·timestamp 원값이 있지만 portable signature에는 없다. 이는 export 경계이며 database나 deserializer는 아니다. 상위 campaign exporter도 이 encoding을 그대로 사용한다. Config/seed/budget은 campaign result에
+있으며 source commit과 실제 execution OS/kernel provenance는 caller가 별도 기록해야 한다.
 
 ## 하지 않는 것
 

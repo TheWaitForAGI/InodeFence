@@ -23,6 +23,7 @@ builder.build_tar → disposable runtime → before snapshot
 | [runtime.py](runtime.py) | Linux runtime와 sentinel lifecycle |
 | [pipeline.py](pipeline.py) | 입력 하나의 실행 순서 연결 |
 | [campaign.py](campaign.py) | 명시적 seed와 실행 budget으로 select → mutate → run → consider 연결 |
+| [campaign_export.py](campaign_export.py) | 완료된 결과의 manifest JSON / canonical step JSONL |
 | [generator](generator/README.md) | explicit deterministic minimal_seed_corpus |
 | [mutator](mutator/README.md) | Generic Mutation v1, 8개 독립 ArchiveCase 변형 operator |
 | [targets](targets/README.md) | 실제 extractor 실행 |
@@ -55,4 +56,14 @@ No-op/rejected/failed/timed-out도 실행 하나로 기록하며 harness 오류�
 `CampaignResult`는 config/initial IDs, immutable steps, final stats와 admission-order retained IDs다.
 Zero-based step은 origin/parent ID/full RunResult/FeedbackDecision을 보존한다. 메모리는
 O(execution_budget)이며 개별 evidence 크기에도 비례한다. Semantic feedback이 같을 때 lineage가
-재현되며 raw inode/timestamp/duration은 재현을 요구하지 않는다. Disk export/resume는 없다.
+재현되며 raw inode/timestamp/duration은 재현을 요구하지 않는다. `campaign_export.export_campaign(result, destination)`은 별도 완료-result writer다. Resume는 없다.
+
+## Campaign export v1
+
+Writer는 model/campaign만 의존하고 target을 실행하거나 feedback을 재판정하지 않는다.
+Manifest schema v1은 config/initial IDs, steps count/stats/retained order, 결과의 execution contexts와
+JSONL SHA-256을 담는다. `steps.jsonl`은 기존 `canonical_json(CampaignStep)`을 그대로 사용한다.
+Exporter environment는 writer process의 정보이며 execution environment/source revision을
+추정하지 않는다. 같은 result/exporter 환경은 동일 bytes를 만든다. 별도 run의 raw allocation/time은
+보존하므로 byte equality를 요구하지 않는다. IO/encoding 오류는 전달하고 partial output이 남을
+수 있다. Writer/reader/resume는 별도 개념이며 현재는 writer만 제공한다.

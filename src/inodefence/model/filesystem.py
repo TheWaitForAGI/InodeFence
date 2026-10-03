@@ -51,8 +51,9 @@ def is_extraction_path(path: str) -> bool:
 
 
 def path_region(path: str) -> Region:
-    """Classify canonical observed paths, keeping unreserved escapes external.
+    """Apply the current fixed runtime-layout policy to canonical observed paths.
 
+    Region is not an intrinsic filesystem object property.
     The run root and archive subtree belong to the harness. Every other path
     outside extract/ is external, including root-level traversal results. New
     harness artifacts must live under archive/ to share this normalization role.
@@ -71,6 +72,11 @@ class ObjectSnapshot:
 
     Identity is the symlink's own identity, never its referent. atime is omitted
     because observation itself can read a file. Times are raw evidence only.
+    path is canonical sandbox-relative evidence, unlike raw ArchiveEntry.path.
+    mode is stat.S_IMODE permission/special bits; object_type holds the kind.
+    Regular content_digest is SHA-256 lowercase hexadecimal evidence. Only
+    symlinks have symlink_target, preserving raw readlink text without resolution.
+    Hardlinks are regular objects sharing (st_dev, st_ino), not a separate type.
     """
 
     path: str

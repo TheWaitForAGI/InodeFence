@@ -56,6 +56,9 @@ Fixture generator는 core builder를 사용하며 기존 TAR bytes와 probe beha
 
 - 순서·중복·raw path/link 의미를 보존하는 immutable ArchiveEntry/ArchiveCase
 - ExecutionResult, lstat ObjectSnapshot/StateSnapshot, StateSignature, typed ViolationResult/RunResult
+- PR #13/#16/#17/#18과 PR #15의 model contract reconciliation: E2E schema/frozen-slots invariant 유지, raw archive input과 canonical observed path의 경계 명시
+- ExecutionResult는 process evidence이며 security verdict가 아님; 네 status의 actual duration_seconds를 monotonic `perf_counter()`로 기록하고 configured timeout_seconds와 분리
+- ObjectSnapshot의 permission/special mode bits와 regular SHA-256 lowercase hex evidence 의미 및 current runtime-layout Region policy 명시
 - 고정 metadata, strict UTF-8, USTAR builder와 format provenance/SHA-256
 - TargetAdapter Protocol과 별도 process의 Python tarfile/data reference adapter
 - `/var/lib/inodefence` 내 disposable runtime, 보호 sentinel, symlink를 따라가지 않는 관찰·cleanup

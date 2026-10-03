@@ -1,5 +1,6 @@
 import hashlib
 import os
+import stat
 from dataclasses import replace
 
 import pytest
@@ -30,6 +31,38 @@ def test_real_files_directories_hardlinks_and_digest(sandbox: RuntimeSandbox) ->
     assert a.content_digest == b.content_digest == hashlib.sha256(b"\0\xffreal bytes").hexdigest()
     assert ("extract/b", "extract/dir/a") in state.identity_groups()
     assert directory.content_digest is None
+
+
+def test_observed_mode_and_timestamps_match_lstat_evidence(sandbox: RuntimeSandbox) -> None:
+    file = sandbox.extraction_root / "special-mode"
+    file.write_bytes(b"evidence")
+    file.chmod(0o4640)
+    state = capture_state(sandbox.root, SnapshotPhase.AFTER, sandbox.protected_paths)
+    observed = state.get("extract/special-mode")
+    assert observed is not None
+    metadata = file.lstat()
+    assert observed.mode == stat.S_IMODE(metadata.st_mode) == 0o4640
+    assert stat.S_IFMT(observed.mode) == 0
+    assert observed.object_type == ObjectType.REGULAR
+    assert (observed.uid, observed.gid, observed.mtime_ns, observed.ctime_ns) == (
+        metadata.st_uid,
+        metadata.st_gid,
+        metadata.st_mtime_ns,
+        metadata.st_ctime_ns,
+    )
+
+
+@pytest.mark.parametrize("target", ["../outside/file", "/outside/file", "dir/../file"])
+def test_observed_symlink_target_preserves_raw_readlink_text(
+    sandbox: RuntimeSandbox,
+    target: str,
+) -> None:
+    link = sandbox.extraction_root / "raw-link"
+    os.symlink(target, link)
+    state = capture_state(sandbox.root, SnapshotPhase.AFTER, sandbox.protected_paths)
+    observed = state.get("extract/raw-link")
+    assert observed is not None and observed.symlink_target == os.readlink(link) == target
+    assert observed.content_digest is None
 
 
 def test_symlink_lstat_no_referent_read_or_directory_traversal(sandbox: RuntimeSandbox) -> None:

@@ -5,8 +5,10 @@ import pytest
 
 from inodefence.feedback import state_signature
 from inodefence.model import (
+    ArchiveEntry,
     ChangeField,
     ContractId,
+    EntryType,
     IdentityEvidence,
     ObjectSnapshot,
     ObjectType,
@@ -327,3 +329,42 @@ def test_evidence_boundary_rejects_contradictory_proof() -> None:
         ViolationResult(ContractId.C2, True, (identity,), "wrong evidence", ())
     with pytest.raises(ValueError, match="internal and external"):
         IdentityEvidence("outside/a", sentinel.path, 1, 10)
+
+
+@pytest.mark.parametrize("path", ["../outside", "/foo/bar", "a/../../b", "a//b", "./a"])
+def test_archive_input_path_and_observed_path_are_different_domains(path: str) -> None:
+    entry = ArchiveEntry(path, EntryType.SYMLINK, link_target=path)
+    assert entry.path == entry.link_target == path
+    observed = regular("extract/a", 20)
+    with pytest.raises(ValueError, match="observed paths"):
+        replace(observed, path=path)
+
+
+@pytest.mark.parametrize("field", ["st_dev", "st_ino", "st_nlink", "size", "uid", "gid"])
+@pytest.mark.parametrize("value", [-1, True, 1.5])
+def test_observed_stat_facts_require_nonnegative_integers(field: str, value: object) -> None:
+    with pytest.raises(ValueError, match="nonnegative integers"):
+        replace(regular("extract/a", 20), **{field: value})
+
+
+@pytest.mark.parametrize("mode", [-1, 0o100644, True])
+def test_observed_mode_is_permission_and_special_bits_only(mode: int) -> None:
+    with pytest.raises(ValueError, match="permission mask"):
+        replace(regular("extract/a", 20), mode=mode)
+
+
+@pytest.mark.parametrize(
+    "digest", [None, "", "arbitrary hash", "A" * 64, "x" * 64, "0" * 63, "0" * 65]
+)
+def test_regular_content_digest_requires_lowercase_sha256(digest: str | None) -> None:
+    with pytest.raises(ValueError, match="content digest|SHA-256"):
+        replace(regular("extract/a", 20), content_digest=digest)
+
+
+@pytest.mark.parametrize("kind", [ObjectType.DIRECTORY, ObjectType.SYMLINK, ObjectType.OTHER])
+def test_observed_type_requires_matching_link_and_digest_evidence(kind: ObjectType) -> None:
+    observed = regular("extract/a", 20)
+    with pytest.raises(ValueError):
+        replace(observed, object_type=kind)
+    with pytest.raises(ValueError, match="symlink target"):
+        replace(observed, symlink_target="../outside/sentinel.txt")

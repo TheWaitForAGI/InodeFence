@@ -165,3 +165,23 @@ run-UUID/
 ```
 
 Observer는 extraction 전후 sentinel state를 기록한다.
+
+## 현재 snapshot Oracle의 구현 범위
+
+계약 정의와 초기 관찰 능력을 구분한다. `violated=False`는 관찰 범위 내 위반 증거가 없다는 뜻이며, 모든 filesystem operation이 안전했음을 증명하지 않는다. 각 ViolationResult는 이 한계를 `limitations`에 기록한다.
+
+공통 Region 분류는 `extract`/`extract/**`를 EXTRACTION, `.`/`archive`/`archive/**`를 HARNESS, 나머지 경로를 EXTERNAL로 둔다. 보호 sentinel은 EXTERNAL path만 허용한다. EXTERNAL은 `outside/**`에 한정하지 않으며 extraction 밖에 생성된 root-level `escape.txt`와 다른 subtree도 포함한다.
+
+**Region.HARNESS는 security trust boundary가 아니다.** Signature의 HARNESS 제외는 input/harness novelty 오염 방지용 normalization 정책이다. C0 scope는 이 정책과 독립적으로 실제 extraction root boundary를 따른다.
+
+- **C0:** model의 `is_extraction_path`가 False인 모든 sandbox-relative path에서 persistent namespace 생성·삭제·identity/type 교체를 검사한다. HARNESS도 포함하므로 archive/escaped.txt 생성과 기존 archive/input.tar 삭제·inode/type 교체는 evidence다. 단순 archive path spelling이나 reject 여부를 위반 조건으로 사용하지 않는다. Content/metadata-only effect는 C0에 넣지 않으며 외부 path 직접 사용을 추정하지 않는다. Direct-use, transient 생성 후 삭제와 sandbox 밖 접근은 operation tracing/추가 격리 없이 판정하지 못한다.
+- **C1:** extraction object와 지정 sentinel의 post-state `(st_dev, st_ino)` equality를 비교한다. 초기 정책은 cross-boundary identity 공유를 허용하지 않는다. Runner는 빈 extract/와 controlled sentinel로 시작한다. Symlink는 lstat object만 비교하며 referent identity는 추론하지 않는다.
+- **C2:** 지정 sentinel의 existence, object type, dev/inode identity, content digest, size, mode, nlink, uid/gid, mtime/ctime nanoseconds를 비교한다. atime은 Observer의 read 때문에 변할 수 있어 제외한다. Creation/deletion은 전후 object의 부재로 표현하고 replacement 증거도 보존한다.
+
+StateChange는 양쪽 ObjectSnapshot과 changed-field enum을 보존한다. C1 evidence는 internal/sentinel path와 실제 identity pair다. Safe rejection이나 nonzero exit라도 같은 Oracle을 적용한다. 판정은 contract violation 후보이며 confirmed vulnerability에는 재현·root-cause 검토가 추가로 필요하다.
+
+Target attribution은 lifecycle 전제에 의존한다. Runner는 layout/sentinel/input TAR를 모두 준비한 뒤 BEFORE를 찍고 target.run 종료 직후 bookkeeping/cleanup 이전에 AFTER를 찍는다. 정상 setup은 BEFORE baseline에 이미 있어 C0가 아니다. 관찰 구간에는 harness namespace write를 하지 않아야 한다. Snapshot 자체는 actor를 식별하지 못하므로 adapter가 이 구간에 log/bookkeeping을 생성·삭제·교체하면 C0 false positive가 생길 수 있다. 이를 경로 면제로 해결하면 실제 HARNESS escape를 놓친다. 이 전제와 한계를 C0 limitations에도 기록한다.
+
+`StateSnapshot = full raw observation/evidence`와 `StateSignature = normalized security-state representation for future feedback/corpus`는 별도 책임이다. Signature v2는 HARNESS object/identity-group member와 ArchiveCase/TAR artifact identity를 제외하지만 protected paths, extraction↔sentinel relation 및 EXTERNAL effect를 유지한다. Nonregular nlink 값을 None으로 정규화해도 Observer의 raw nlink와 C2 metadata 비교 및 external change labels는 줄이지 않는다. Signature equality는 raw evidence equality나 모든 operation의 안전성을 뜻하지 않는다. HARNESS namespace 전이는 C0로 판정하지만 보호 sentinel이 아닌 object의 content/metadata-only integrity는 현재 별도 계약으로 판정하지 않는다. 이후 corpus는 signature와 verdict를 독립적으로 소비해야 하며 signature가 같다는 이유로 violation 후보를 버리면 안 된다.
+
+Snapshot은 두 시점 사이의 모든 변화를 복구하지 못한다. Inode 재사용으로 같은 숫자가 다시 할당되는 경우도 구분하지 못한다. IO/permission 실패는 ObservationError로 올리며 incomplete snapshot으로 nonviolation을 반환하지 않는다. C3/C4와 full tracing은 후속 단계다.

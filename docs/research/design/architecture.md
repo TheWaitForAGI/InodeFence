@@ -19,11 +19,11 @@
 
 ## 1. 현재 상태와 용어
 
-현재는 **개발 Layer 1 완료 → Layer 2 공통 Data Model 시작 직전**이다.
+현재는 **개발 Layer 2와 최소 Layer 3 구현·검증 완료**다. Feature branch의 구현 상태 표시는 main merge를 의미하지 않는다.
 
-현재 main에는 개발환경, smoke test, 연구 설계 문서와 모듈별 README가 있다. 기존 엔진 하위 패키지는 대부분 빈 `__init__.py`만 있으며, `model/`은 안내 문서만 있고 Python Data Model은 아직 구현되지 않았다.
+ArchiveCase → 결정적 USTAR → Python reference worker → pre/post snapshot → C0/C1/C2 evidence의 실제 API가 있다. Generator/Mutator와 corpus loop, benchmark adapter 및 evaluation은 후속 단계다.
 
-따라서 아래에 등장하는 `ArchiveCase`, `ExecutionResult`, `StateSnapshot` 등의 이름은 **설계 후보**다. 이미 실행 가능한 API가 존재한다는 뜻이 아니다.
+아래 개념 그림에는 lineage, tracing, corpus 등 미래 설계도 포함한다. 현재 확정된 field/API는 **7.8 현재 구현 경계**를 따른다. Python reference는 최종 benchmark target이 아니다.
 
 ### 개발 Layer와 Runtime Stage를 구분한다
 
@@ -159,7 +159,7 @@ flowchart LR
 
 이 그림은 최종 목표 구조다.
 
-현재 바로 다음 구현은 이 전체 루프가 아니라 **공통 Data Model → 최소 관찰 경로**다.
+현재 구현은 이 전체 루프 중 **공통 Data Model → 최소 관찰 경로**다. 다음 작업은 Generic Mutation의 Task Contract 확정이다.
 
 ---
 
@@ -170,13 +170,13 @@ flowchart LR
 | 공통 Data Model | [model/](../../../src/inodefence/model/README.md) | 모듈끼리 무엇을 주고받는가? |
 | Seed Generator | [generator/](../../../src/inodefence/generator/README.md) | 최초 case는 어떻게 생기는가? |
 | Structure Mutator | [mutator/](../../../src/inodefence/mutator/README.md) | 기존 case를 어떤 generic rule로 바꾸는가? |
-| TAR Builder | 위치 미확정 | 논리 case를 실제 TAR로 어떻게 표현하는가? |
+| TAR Builder | [builder.py](../../../src/inodefence/builder.py) | 논리 case를 실제 TAR로 어떻게 표현하는가? |
 | Target Adapter | [targets/](../../../src/inodefence/targets/README.md) | 실제 extractor를 어떻게 실행하는가? |
 | State Observer | [observer/](../../../src/inodefence/observer/README.md) | filesystem에 실제로 무슨 일이 생겼는가? |
 | Security Oracle | [oracle/](../../../src/inodefence/oracle/README.md) | 관찰 상태가 어떤 Contract를 위반하는가? |
 | Feedback / Corpus | [feedback/](../../../src/inodefence/feedback/README.md) | 다음 탐색에 남길 가치가 있는가? |
 
-Builder, Runner, Corpus를 별도 패키지로 분리할 가능성은 있지만 **필요성이 생기기 전에는 빈 추상화와 디렉터리를 미리 만들지 않는다.**
+Runner는 [pipeline.py](../../../src/inodefence/pipeline.py), runtime lifecycle은 [runtime.py](../../../src/inodefence/runtime.py)에 둔다. Builder/Runner는 작은 module이며 corpus package는 만들지 않았다. **필요성이 생기기 전에는 빈 추상화와 디렉터리를 미리 만들지 않는다.**
 
 ---
 
@@ -211,7 +211,7 @@ StateSnapshot
 
 # 7. 공통 Data Model 설계
 
-정확한 Python field와 type은 개발 Layer 2에서 결정한다. 아래 내용은 각 모델이 담당해야 할 의미적 책임이다.
+아래 개념 구조는 모델의 의미적 책임과 미래 확장 후보를 설명한다. 현재 Python field와 type은 7.8 및 [model](../../../src/inodefence/model/README.md)을 따른다.
 
 ## 7.1 ArchiveEntry
 
@@ -287,25 +287,26 @@ ArchiveCase
 
 Target Adapter가 extractor를 실행한 **프로세스 실행 결과**다.
 
-개념 필드:
+현재 필드:
 
 ```text
 ExecutionResult
-├── target
+├── target_id
 ├── target_version
+├── command
+├── status
 ├── exit_code
 ├── stdout
 ├── stderr
-├── duration
-├── timed_out
-├── archive_path
-├── extraction_root
-└── execution_metadata
+├── duration_seconds
+└── timeout_seconds
 ```
 
 `ExecutionResult`와 filesystem 상태는 같은 것이 아니다.
 
 `exit_code == 0`이어도 Security Contract 위반이 있을 수 있고, `exit_code != 0`이어도 남겨진 filesystem state가 분석 가치가 있을 수 있다.
+
+**ExecutionResult = process evidence, not security verdict.** `ExecutionStatus.TIMED_OUT`가 authoritative이고 별도 timed_out bool은 없다. Configured timeout과 actual monotonic elapsed duration의 현재 contract와 측정 구간은 7.8을 따른다.
 
 ---
 
@@ -342,14 +343,14 @@ Linux에서 초기 identity 기준은 주로:
 
 ## 7.5 StateSnapshot
 
-특정 시점의 sandbox 상태를 나타낸다.
+특정 시점의 sandbox 전체를 나타낸다. **StateSnapshot = full raw observation/evidence**이며 harness artifact도 관찰한다.
 
 ```text
 StateSnapshot
-├── extraction_root objects
-├── protected sentinel objects
-├── snapshot timing
-└── observation metadata
+├── sandbox_root
+├── phase
+├── objects (extraction / harness / external 전체)
+└── protected_paths (sentinel 삭제 후에도 유지)
 ```
 
 초기 구현은 syscall 전체 trace보다 다음을 우선한다.
@@ -368,7 +369,9 @@ Post-State
 
 ## 7.6 StateSignature
 
-Feedback을 위해 filesystem state를 **비교 가능한 형태로 정규화**한다.
+**StateSignature = normalized security-state representation for future feedback/corpus**다. Feedback을 위해 security-relevant filesystem state를 비교 가능한 형태로 정규화한다. Snapshot 전체를 그대로 key로 바꾸지 않는다.
+
+ArchiveCase identity와 TAR artifact identity는 signature에 직접 포함하지 않는 invariant를 따른다. 입력 순서/bytes가 달라도 같은 semantic filesystem/security state와 effect를 만들면 signature는 같아야 한다. HARNESS object와 metadata는 제외하지만 raw evidence에서는 보존한다.
 
 실행마다 달라질 수 있는 raw inode 번호 자체를 corpus key로 사용하면 안 된다.
 
@@ -433,6 +436,67 @@ st_ino = Y
 
 ---
 
+## 7.8 현재 구현 경계
+
+모델은 frozen/slots dataclass, enum과 ordered tuple을 사용한다. Model은 실행/관찰/판정 모듈을 import하지 않는다.
+
+| 모델 | 현재 field / 의미 |
+| --- | --- |
+| ArchiveEntry | path, entry_type, content, link_target, mode; raw input text 보존 |
+| ArchiveCase | entries tuple; canonical logical representation의 SHA-256 case_id property |
+| ExecutionResult | target_id/version, command, status, exit_code, stdout/stderr, duration_seconds(actual), timeout_seconds(budget) |
+| ObjectSnapshot | canonical sandbox-relative path, ObjectType, dev/inode/nlink, permission/special mode bits/size, uid/gid, mtime/ctime ns, raw link text, regular content_digest(SHA-256 lowercase hex) |
+| StateSnapshot | full raw observation: absolute sandbox_root provenance, BEFORE/AFTER phase, harness 포함 sorted objects, protected_paths |
+| StateChange | path, before/after ObjectSnapshot 또는 None, ordered ChangeField tuple |
+| StateSignature | schema v2, EXTRACTION/EXTERNAL normalized objects, scoped same-object groups, external field-change labels, protected_paths |
+| ViolationResult | contract_id, violated, typed evidence, explanation, limitations |
+| RunResult | case, archive_sha256/format, execution, before/after, changes, signature, violations |
+
+Archive input은 `Path.resolve()`/normalization을 거치지 않는다. NUL, surrogate code point, 잘못된 entry field 조합은 model boundary에서 거부한다. regular content는 immutable bytes이며 directory는 content/target을 가지지 않는다. link는 nonempty target 필수다. Duplicate entry와 entry 순서는 그대로 유지한다. Long name은 model에 허용하지만 현재 builder가 표현할 수 없는 USTAR 값은 명시적으로 거부한다.
+
+ExecutionResult의 `timeout_seconds`는 configured execution budget이고 필수 `duration_seconds`는 실제 monotonic elapsed process execution evidence다. Duration은 float-compatible numeric 값으로 finite/0 이상이어야 하며 0.0과 numeric int 값도 허용한다. Python reference는 `perf_counter()`로 subprocess.run 직전부터 완료 또는 timeout exception 처리 진입 직후까지 측정한다. Process startup과 timeout kill/wait overhead를 포함하며 path validation, snapshot, oracle/signature 계산과 cleanup 시간은 제외한다. Timeout 설정값을 duration으로 복사하지 않는다. 모든 반환 status에 기록하고 RunResult의 execution을 통해 canonical JSON으로 보존한다. Observer/Oracle/Feedback은 duration을 security verdict로 사용하지 않으며 StateSignature v2와 case ID에도 포함하지 않는다.
+
+**Archive input path != Observed filesystem path.** `ArchiveEntry.path`/`link_target`은 `../` 및 absolute-looking spelling을 보존하는 untrusted raw logical input이며 normalization하지 않는다. `ObjectSnapshot.path`는 Observer가 만든 canonical sandbox-relative evidence다. Absolute path, 빈/`.`/`..` component는 거부한다(루트 자체의 `.`는 허용). StateSnapshot.objects는 canonical path 기준 unique/sorted이며 ArchiveCase의 duplicate/order semantics를 적용하지 않는다. Malformed TAR encoding fuzzing은 향후 Builder/encoding mutation layer의 책임이며 ObjectSnapshot/StateSnapshot invariant를 느슨하게 만들지 않는다.
+
+ObjectSnapshot은 ObjectType enum, nonnegative integer dev/inode/nlink/size/uid/gid, integer mtime/ctime ns를 검증한다. `mode = stat.S_IMODE(st_mode)`는 permission/special mode bits(`0..0o7777`)이며 object type bits를 포함하지 않는다. `content_digest`는 regular file content의 SHA-256 lowercase hexadecimal evidence(64자)이며 regular에 필수, 다른 type에는 None이다. Symlink에만 nonempty raw readlink target이 필수이며 resolve하지 않는다. Identity는 `(st_dev, st_ino)`다. Hardlink는 별도 type이 아닌 same-identity regular object 관계이고 symlink identity는 referent가 아닌 lstat object 자체다. Snapshot에 없는 path는 부재이며, sentinel 설정은 삭제 후에도 남는다. IO 오류는 부재로 바꾸지 않고 ObservationError로 올린다.
+
+Region은 model의 `path_region`에서 공통으로 정의하며 Observer/Oracle/Feedback에 별도 path 예외를 두지 않는다.
+
+`path_region()`은 아래 namespace 분류를 따르는 현재 runtime-layout policy이며 filesystem object의 intrinsic property가 아니다. 향후 target/runtime layout 확장 시 함께 검토한다.
+
+| Region | namespace scope |
+| --- | --- |
+| EXTRACTION | `extract`, `extract/**` |
+| HARNESS | `.`, `archive`, `archive/**`; 입력과 harness bookkeeping |
+| EXTERNAL | 나머지 모든 canonical sandbox-relative path; `outside/**` 및 root-level `escape.txt` 포함 |
+
+Region.HARNESS는 normalization role이며 security trust boundary나 creator attribution이 아니다. Model의 `is_extraction_path`는 `extract`/`extract/**` membership만 정의한다. Oracle의 `_is_c0_namespace_transition`은 그 밖의 모든 경로에서 EXISTENCE/IDENTITY/OBJECT_TYPE 전이를 검사한다. 따라서 HARNESS object는 signature에서 제외되어도 C0에서 면제되지 않는다. `archive/escaped.txt` 생성과 archive/input.tar 삭제·replacement도 evidence다. Content/metadata-only effect는 기존 C0/C2 separation을 유지한다.
+
+StateSnapshot은 세 region 전체와 TAR content digest를 보존한다. StateSignature v2는 HARNESS object를 제외하며 case ID/TAR SHA-256을 직접 포함하지 않는다. Path/type/mode, regular nlink/size/content digest, textual link target, same-object path group과 external change 종류를 담는다. Identity group은 signature object scope로 projection한 뒤 singleton을 제거하므로 제외된 harness path가 dangling relation을 만들지 않는다. Protected paths는 sentinel 삭제 뒤에도 유지한다.
+
+`SignatureObject.st_nlink`는 `int | None`이며 regular만 정수, directory/symlink/other는 None이다. Raw dev/inode, timestamp/ownership 값과 nonregular size도 제외한다. Raw nlink는 Observer와 C2에 그대로 남고 외부 metadata-change labels도 보존하므로 cross-filesystem effect equivalence까지 보장하지는 않는다. Raw identity는 run 안에서 group을 계산하거나 identity 변경을 감지할 때만 쓴다. Absolute link text의 literal sandbox prefix는 `$RUN`으로 치환하며 다른 철자와 `..`를 유지한다. Resolution/reachability는 추론하지 않는다. Extraction symlink가 harness를 가리키는 link text는 유지하되 harness referent digest/identity를 포함하지 않는다. 이 representation은 초기 후보이며 Layer 5의 baseline/ablation 정책을 미리 확정하지 않는다.
+
+실제 `run_case()` regression은 동일 content/mode의 독립 regular entry 두 개를 반대 순서로 추출한다. Case ID/TAR SHA-256은 다르지만 signature와 canonical representation은 같아야 한다. 다른 inode allocation/PYTHONHASHSEED의 기존 regression도 유지한다.
+
+`canonical_json(model)`의 envelope schema version 1과 model type, sorted JSON keys, ordered tuple 배열은 유지한다. Signature 내부 schema version은 2이며 이전 signature와 key 호환성을 주장하지 않는다. Bytes는 base64로 lossless export한다. Raw run evidence는 run-specific inode/times를 보존하고 cross-run key는 logical case 또는 normalized signature로 만든다. Deserialize/database layer는 아직 없다. 향후 formal experiment runner는 InodeFence commit, OS/kernel, config/seed/budget과 dependency provenance를 별도로 기록해야 한다.
+
+현재 내부 API:
+
+```text
+build_tar(case) -> bytes
+disposable_sandbox(sentinels) -> context manager[RuntimeSandbox]
+TargetAdapter.run(archive_path, extraction_root) -> ExecutionResult
+capture_state(root, phase, protected_paths) -> StateSnapshot
+compare_states(before, after) -> tuple[StateChange, ...]
+evaluate_contracts(before, after) -> tuple[ViolationResult, ...]
+state_signature(before, after) -> StateSignature
+run_case(case, target, sentinels=...) -> RunResult
+```
+
+Generic pipeline이 target CLI, vulnerability recipe, mutation/corpus 정책을 소유하지 않는다. Oracle은 filesystem에 접근하지 않는다. Snapshot 비교는 사실만 반환하며, signature와 계약 판정은 이를 독립적으로 사용한다. 실제 [사용 예](../../../README.md)는 reference adapter를 주입한다.
+
+---
+
 # 8. Execution Sandbox
 
 filesystem security 연구에서는 **어디에서 실행하는가** 자체가 설계의 일부다.
@@ -467,6 +531,36 @@ extract/
 ──────────── security boundary
 outside/
 ```
+
+현재 layout은 runtime root의 `core-run-<random>/archive/input.tar`, `extract/`, `outside/`다. Runtime root는 기존 Linux `/var/lib/inodefence` 또는 그 하위의 명시적 환경 설정만 허용한다. Configuration path의 모든 component는 O_NOFOLLOW로 검증한다. Sentinel은 safe relative name/bytes/mode로 생성하고, 정상·실패 종료 모두 symlink-resistant cleanup을 적용한다. Case path는 이 검증 과정에 넣어 변형하지 않는다.
+
+### Observation window와 baseline ownership
+
+Harness-owned baseline은 `.`, archive, archive/input.tar, extract, outside, controlled sentinel 등 BEFORE에 존재하는 실제 object다. Region이 실제 생성 주체를 증명하지는 않는다. 현재 lifecycle은 다음과 같다.
+
+```text
+disposable_sandbox: layout / sentinel setup
+→ run_case: input.tar 생성
+→ BEFORE (완료된 baseline)
+→ target.run (종료/timeout 회수)
+→ AFTER (target effects 관찰)
+→ 순수 비교 / oracle / signature / RunResult
+→ bookkeeping이 필요하면 이 시점 이후 / cleanup
+```
+
+정상 setup은 BEFORE에 포함되어 namespace transition이 아니므로 C0 오탐이 아니다. TargetAdapter.run은 관찰 구간의 실행 책임이며 harness log/setup/bookkeeping의 namespace write를 하지 않아야 한다. 현재 Python reference는 stdout/stderr를 memory에 수집해 ExecutionResult로 반환한다. 관찰은 atime을 기록하지 않으며 security verdict를 결정하지 않는다.
+
+| 설계 질문 | 코드 기준 결정 / 한계 |
+| --- | --- |
+| Q1. Snapshot으로 target/harness 생성 주체를 아는가? | 알 수 없다. BEFORE/AFTER는 순서와 상태만 기록하며 actor provenance는 없다. |
+| Q2. 현재 AFTER 전 harness mutation이 있는가? | run_case와 reference adapter에는 없다. Layout/sentinel/input 생성은 BEFORE 전, cleanup은 AFTER 후다. |
+| Q3. 향후 adapter bookkeeping이 들어올 수 있는가? | 가능하다. Diagnostics는 ExecutionResult에 두고 setup/bookkeeping은 관찰 구간 밖에서 해야 한다. 이를 지킬 수 없다면 별도 provenance/관찰 설계가 필요하다. |
+| Q4. HARNESS 전이를 C0로 보면 legitimate false positive는? | 관찰 구간의 adapter log 생성·삭제·교체처럼 lifecycle 계약을 어긴 harness 동작을 target 효과로 오인할 수 있다. |
+| Q5. Provenance 없이 이를 면제하면? | archive namespace의 실제 target escape도 숨긴다. 경로 whitelist 대신 lifecycle 계약과 명시적 attribution limitation을 유지한다. |
+
+기존 harness-only 테스트는 setup 완료 후 BEFORE를 찍어 nonviolation을 유지하고, 같은 setup 변화를 잘못된 baseline으로 비교하면 C0 evidence가 생긴다고 명시한다. Controlled adapter E2E는 archive namespace 생성·삭제·identity/type 교체를 탐지하면서 HARNESS signature exclusion이 유지됨을 검증한다. 이는 actor attribution instrumentation이나 취약한 extractor의 재현을 구현했다는 뜻이 아니다.
+
+Disposable directory는 harness storage/cleanup 경계이며 임의 executable에 OS 접근 권한을 제한하지 않는다. 현재 검증은 Dev Container 안의 controlled baseline과 Python reference/data filter로 한다. Unsafe benchmark adapter는 process/filesystem isolation을 추가하고 종료 후 자식 process가 남지 않도록 해야 한다. Snapshot은 sandbox 밖의 접근을 관찰하지 않으며 완전한 containment를 입증하지 않는다.
 
 ---
 
@@ -640,7 +734,7 @@ Builder
 Mutation Policy ≠ TAR Encoding
 ```
 
-현재 별도 builder package 위치는 확정하지 않았다.
+현재 builder는 [builder.py](../../../src/inodefence/builder.py)의 `build_tar`다. `ustar-utf8-v1` format, strict UTF-8, zero mtime/uid/gid와 empty uname/gname을 고정한다. Directory name의 trailing slash도 입력 철자를 보존한다. Fixture script가 같은 builder를 사용하며 기존 baseline bytes를 유지한다.
 
 표준 라이브러리로 충분한 초기 단계와, 향후 비정상 TAR encoding을 직접 다뤄야 하는 단계의 요구가 달라질 수 있으므로 실제 필요가 생길 때 경계를 고정한다.
 
@@ -661,6 +755,8 @@ Target Adapter는 generic InodeFence pipeline과 실제 extractor 사이의 경�
 1. node-tar
 2. oras-go
 3. 일정이 허용하면 GNU tar
+
+위 순서는 연구 benchmark adapter 우선순위다. 현재 Python tarfile/data reference는 architecture/integration 검증용 예외이며 benchmark 우선순위를 바꾸지 않는다. 별도 Python worker의 filter rejection/parser failure/timeout도 execution 결과로 반환하고 이후 snapshot을 관찰한다. Filter가 metadata를 제한할 수 있으므로 TAR encoding 보존과 target extraction policy를 구분한다.
 
 개념 interface:
 
@@ -843,7 +939,7 @@ Runner에 들어가면 안 되는 것:
 
 Runner는 순서를 연결하는 역할만 한다.
 
-현재 package 위치는 미확정이다.
+현재 orchestration은 [pipeline.py](../../../src/inodefence/pipeline.py)의 `run_case`다. Builder/environment/Observer/예상하지 못한 adapter 오류는 harness exception으로 전달하고 PASS를 만들지 않는다. Target 결과는 success/rejected/failed/timed_out으로 반환하며 모든 결과에서 after snapshot을 시도한다. Result는 sandbox 삭제 후에도 case와 evidence를 기록할 수 있다.
 
 ---
 
@@ -1215,6 +1311,8 @@ flowchart LR
 ---
 
 # 29. 구현 순서
+
+Milestone 1~3은 core foundation에서 순차적으로 구현·검증했다. 아래는 개발 순서이며 후속 mutation/feedback/evaluation을 앞당겨 구현하지 않는다.
 
 ## Milestone 1 — Common Data Model
 

@@ -1,33 +1,25 @@
 # filesystem 사실 관찰
 
-## 이 폴더는 무엇인가
+## 입력과 출력
 
-실행 전후 filesystem 상태를 snapshot으로 기록한다.
+`capture_state(sandbox_root, phase, protected_paths) -> StateSnapshot`
 
-## 입력
+`compare_states(before, after) -> tuple[StateChange, ...]`
 
-run sandbox, 관찰 대상과 보호 sentinel 설정, 실행 기록(계획).
+[Snapshot 구현](snapshot.py)은 sandbox 전체의 reachable tree를 관찰한다. `StateSnapshot = full raw observation/evidence`이므로 `archive/input.tar` SHA-256과 harness metadata도 제외하지 않는다. [공통 Region](../model/README.md)은 extract/를 EXTRACTION, `.`과 archive/를 HARNESS, 나머지를 EXTERNAL로 분류한다. Outside sentinel뿐 아니라 root-level escape와 기타 external namespace 생성·삭제도 기록한다. 비교는 같은 root/보호 대상의 BEFORE/AFTER에만 허용한다.
 
-## 출력
+## 수집 의미
 
-ObjectSnapshot / StateSnapshot(계획).
+경로마다 lstat type, st_dev/st_ino/st_nlink, mode, size, uid/gid, mtime/ctime nanoseconds, raw symlink text와 regular content의 SHA-256 lowercase hexadecimal digest를 보존한다. `mode = stat.S_IMODE(st_mode)`는 permission/special bits이며 type bits는 ObjectType으로 분리한다. Digest는 stream으로 계산하고 content 전체는 저장하지 않는다. atime은 관찰 자체의 read effect를 피하려고 제외한다.
 
-## 책임
+Directory descriptor와 O_NOFOLLOW를 사용한다. Symlink를 따라 stat/hash하거나 directory로 내려가지 않는다. FIFO 같은 special object는 열지 않는다. IO/permission 오류는 ObservationError이며 missing sentinel과 구분한다. 동시 filesystem 변경은 초기 threat model 밖이고, digest 중 불일치가 감지되면 오류로 올린다.
 
-예: 두 경로의 (st_dev, st_ino)가 같다는 사실과 sentinel hash의 전후 값을 기록한다.
+부재는 snapshot path 없음으로 표현하되 protected_paths를 유지한다. [모델](../model/README.md)에 순서/identity 의미가 있다. Compare는 생성·삭제·type·identity·content·metadata 변화를 사실로 반환한다.
+
+HARNESS 변화도 다른 region과 동일하게 관찰·비교하며 security trust를 부여하지 않는다. Region.HARNESS의 signature 제외는 Feedback normalization 정책이고, C0는 extraction root 밖의 persistent namespace transition을 별도로 검사한다. Snapshot/compare는 actor를 식별하지 않는다. 정상 setup과 실행 효과를 구분하려면 runner가 setup 완료 후 BEFORE, target 종료 후 bookkeeping/cleanup 이전 AFTER를 찍어야 한다. Phase label 검증만으로 이 lifecycle을 증명하지는 않는다.
+
+`StateSignature = normalized security-state representation for future feedback/corpus`는 [feedback](../feedback/README.md)의 책임이다. Harness를 signature에서 제외해도 raw observation/change/identity group의 정보는 줄이지 않는다. ArchiveCase/TAR artifact identity를 feedback key로 유출하지 않는 invariant는 signature scope에서 적용한다.
 
 ## 하지 않는 것
 
-취약 여부 판정, mutation, extractor 실행.
-
-## 다른 모듈과의 연결
-
-[targets](../targets/README.md) 실행 전후에 관찰하고 snapshot을 [oracle](../oracle/README.md)과 [feedback](../feedback/README.md)에 전달한다.
-
-## 현재 상태
-
-빈 __init__.py만 있다. 초기 설계는 pre/post snapshot이며 full operation trace는 없다.
-
-## 파일 배치 규칙
-
-filesystem 정보 수집을 둔다. C0~C4 판정이나 CVE 조건을 넣지 않는다. 관찰 한계는 [architecture](../../../docs/research/design/architecture.md)에 명시한다.
+취약점·interestingness 판정, target 실행, CVE/target 정책. 결과는 [oracle](../oracle/README.md)과 [signature](../feedback/README.md)에서 별도로 소비한다. Transient operation이나 symlink referent identity는 snapshot에 없다.

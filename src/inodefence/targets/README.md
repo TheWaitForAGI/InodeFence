@@ -1,33 +1,19 @@
 # extractor 실행 경계
 
-## 이 폴더는 무엇인가
+## 입력과 출력
 
-실제 extractor의 실행 차이를 adapter로 격리한다.
+[TargetAdapter](base.py)의 `run(archive_path: Path, extraction_root: Path) -> ExecutionResult`는 target이 멈춘 뒤 반환한다. Adapter가 command/version/options와 success/rejection/failure/timeout 분류를 소유한다. Observer·Oracle·Feedback은 target command를 알지 않는다.
 
-## 입력
+## Reference target
 
-빌드된 TAR, 실행 sandbox와 target 설정(계획).
+[PythonTarfileTarget](python_tarfile.py)은 별도 interpreter에서 [_python_worker](_python_worker.py)를 실행한다. Worker는 uncompressed TAR와 명시적인 `filter="data"`, `errorlevel=2`를 사용한다. FilterError는 REJECTED, parser/IO 오류는 FAILED로 반환한다. Timeout은 subprocess.run이 worker를 종료·회수한 뒤 반환한다. Unexpected harness 실패는 exception으로 올린다.
 
-## 출력
+Command, Python patch version, configured `timeout_seconds`, actual `duration_seconds`와 stdout/stderr를 모든 반환 status에 기록한다. Duration은 `perf_counter()`로 subprocess.run 직전부터 완료 또는 timeout kill/wait 후까지 측정하며 process startup과 timeout cleanup/wait overhead를 포함한다. Path validation과 pipeline의 setup/snapshot/판정/cleanup은 제외하고 timeout 설정값을 복사하지 않는다. Raw execution evidence이며 security verdict, StateSignature나 case identity로 사용하지 않는다. Output은 UTF-8/surrogateescape로 decode하여 undecodable bytes도 JSON evidence에서 복원할 수 있다. Data filter가 archive mode를 제한하거나 일부 입력을 변형할 수 있으므로 builder의 mode 보존과 reference의 extraction policy를 구분한다. 실패 후 부분 state도 runner가 관찰한다. 동작 기준은 [Python tarfile 문서](https://docs.python.org/3.12/library/tarfile.html#extraction-filters)다.
 
-ExecutionResult와 실행 후 관찰할 sandbox 상태(계획).
+이 target은 **architecture 검증·integration·reference baseline용**이며 node-tar 대체 benchmark가 아니다. 최종 adapter 우선순위 node-tar → oras-go → 선택 GNU tar는 유지한다.
 
-## 책임
+## 실행 경계
 
-예: target마다 다른 명령·옵션을 공통 실행 경계 안에서 처리한다.
+Reference는 동일 run의 archive/input.tar와 extract/ 경로를 검증하고 runtime symlink component를 거부한다. Directory layout은 cleanup 경계이고 OS 권한 격리가 아니다. Unsafe benchmark adapter는 추가 process/filesystem isolation을 제공하고 timeout 후 자식 process까지 멈춘 상태를 보장해야 한다. [architecture](../../../docs/research/design/architecture.md)와 [observer](../observer/README.md)를 따른다.
 
-## 하지 않는 것
-
-generic mutation, 계약 판정, corpus 선택.
-
-## 다른 모듈과의 연결
-
-[observer](../observer/README.md)가 실행 전후 상태를 기록한다. 공통 표현은 [model](../model/README.md), target 순서는 [architecture](../../../docs/research/design/architecture.md)를 따른다.
-
-## 현재 상태
-
-빈 __init__.py만 있다. node-tar, oras-go, 일정이 허용하면 GNU tar 순서가 계획이다.
-
-## 파일 배치 규칙
-
-target별 명령·버전·실행 옵션과 필요한 instrumentation은 여기 둔다. 특정 target 처리를 generic 모듈에 넣지 않는다.
+`run`은 BEFORE/AFTER 관찰 구간 안에서 호출된다. Harness setup/log/bookkeeping의 namespace write는 이 구간 밖에서 해야 한다. Diagnostics는 현재 reference처럼 ExecutionResult로 반환한다. Region.HARNESS는 target mutation의 면제 영역이 아니므로 adapter bookkeeping을 archive 아래에 기록해도 C0에서 자동 제외되지 않는다. Snapshot은 actor provenance가 없어 계약을 어긴 harness write를 target effect와 구분하지 못한다. 향후 adapter가 이 lifecycle을 지킬 수 없으면 별도 provenance/관찰 설계가 필요하다.

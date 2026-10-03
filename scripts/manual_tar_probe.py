@@ -5,27 +5,13 @@ from __future__ import annotations
 import argparse
 import os
 import stat
-import sys
 import tarfile
 import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
 
-RUNTIME_BASE = Path("/var/lib/inodefence")
-
-
-def runtime_root() -> Path:
-    """Require an existing Linux runtime directory within /var/lib/inodefence."""
-    if sys.platform != "linux":
-        raise ValueError("Run this probe in the Linux Dev Container.")
-    root = Path(os.environ.get("INODEFENCE_RUNTIME_ROOT", str(RUNTIME_BASE)))
-    if not root.is_absolute():
-        raise ValueError("INODEFENCE_RUNTIME_ROOT must be an absolute path.")
-    root = root.resolve(strict=True)
-    if not root.is_relative_to(RUNTIME_BASE) or not root.is_dir():
-        raise ValueError("INODEFENCE_RUNTIME_ROOT must be a directory within /var/lib/inodefence.")
-    return root
+from inodefence.runtime import runtime_root
 
 
 @contextmanager

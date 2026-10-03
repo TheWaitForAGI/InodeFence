@@ -120,6 +120,8 @@ Known CVE는:
 
 실제 benchmark 구성 시 version을 별도로 고정한다.
 
+Core foundation의 Python tarfile/data reference adapter는 architecture/integration 검증용이다. 최종 benchmark target 우선순위를 바꾸지 않는다.
+
 ## D010 — 문서는 구현의 일부
 
 **상태:** 확정
@@ -127,3 +129,57 @@ Known CVE는:
 공통 interface, 연구 범위, 큰 설계 결정이 바뀌면 관련 문서를 함께 수정한다.
 
 특히 바이브코딩에서는 "코드만 맞고 팀이 이해하지 못하는 상태"를 완료로 보지 않는다.
+
+## D011 — 초기 직렬화와 evidence 경계
+
+**상태:** core foundation 구현
+
+Logical case는 raw path/link text와 ordered tuple을 유지한다. 초기 TAR encoding은 strict UTF-8 USTAR와 고정 metadata(`ustar-utf8-v1`)다. Encoding 불가능한 길이는 truncate하거나 다른 format으로 자동 전환하지 않고 거부한다. Fixture script도 core builder를 사용한다.
+
+Model/result export는 versioned canonical JSON이다. Bytes는 base64로 보존하고 raw observations와 portable signature를 구분한다. Inode 숫자·timestamp 원값을 signature key로 쓰지 않는다. 현재 signature는 초기 schema이며 최종 feedback 정책은 Layer 5에서 평가한다.
+
+## D012 — snapshot 판정 범위를 결과에 보존
+
+**상태:** core foundation 구현
+
+C0 external namespace evidence와 C2 object effect를 구분한다. External content change만으로 direct external path use를 추정하지 않는다. Full operation tracing 없이 증명할 수 없는 범위는 ViolationResult.limitations에 기록한다. Observer 오류를 incomplete snapshot이나 PASS로 바꾸지 않는다.
+
+Runtime directory는 cleanup 경계이며 OS execution isolation을 대신하지 않는다. Unsafe benchmark adapter에는 별도 process/filesystem isolation이 필요하다. Reference worker만 추가하며 node-tar/ oras-go benchmark와 연구 효과 검증은 후속 작업으로 유지한다.
+
+## D013 — raw evidence와 normalized security-state scope 분리
+
+**상태:** PR #15 review 수정
+
+Human/AI review에서 snapshot 전체를 signature로 옮기면 `archive/input.tar` digest가 input novelty를 security-state novelty로 오인하게 만든다는 문제가 확인됐다. `StateSnapshot = full raw observation/evidence`를 유지하고 `StateSignature = normalized security-state representation for future feedback/corpus`로 범위를 분리한다. ArchiveCase identity와 TAR artifact identity는 signature에 직접 포함하지 않는다.
+
+공통 `path_region`이 fixed runtime layout의 namespace role을 정의한다. `extract`와 하위는 EXTRACTION, `.`과 `archive` 및 하위는 HARNESS, 나머지는 EXTERNAL이다. Harness bookkeeping은 archive 아래에 둔다. EXTERNAL은 outside만으로 제한하지 않으므로 sandbox root의 `escape.txt`도 C0 evidence와 signature에 남는다. HARNESS는 signature에서 제외하되 raw snapshot/change에서 보존한다. Security trust나 생성 주체를 나타내지 않으며 C0 scope는 D014를 따른다.
+
+StateSignature v2는 HARNESS object를 제외하고 identity group도 같은 scope로 projection하여 singleton을 제거한다. Protected paths와 extraction↔sentinel relation, external-effect labels는 유지한다. `SignatureObject.st_nlink`는 regular file만 정수이며 directory/symlink/other는 None이다. Directory size와 nlink 값은 filesystem allocation/semantics에 따라 달라질 수 있기 때문이다. Raw nlink와 C2 metadata 비교, external nlink-change label은 그대로 보존한다. 따라서 portable representation은 모든 filesystem의 effect pattern이 같다는 보장은 아니다.
+
+Signature 내부 schema는 v1→v2로 변경한다. Canonical JSON envelope v1과 case identity encoding은 유지한다. Corpus/persistence/deserializer는 아직 없고 이전 signature와 같은 key로 비교하지 않는다. 서로 독립인 regular entry 두 개의 순서만 다른 입력을 `run_case()`로 실행해 case/TAR SHA-256은 다르고 signature는 같은지 검증한다. 최종 feedback/corpus 정책과 연구 효과 평가는 Layer 5 이후다.
+
+## D014 — C0 boundary scope와 HARNESS normalization role 분리
+
+**상태:** PR #15 C0/HARNESS follow-up 수정
+
+D013 구현에서 HARNESS를 signature뿐 아니라 C0에서도 제외한 정책은 폐기한다. Target execution 중 `archive/escaped.txt`가 생겨도 HARNESS라서 PASS가 될 수 있었다. Region.HARNESS는 feedback normalization을 위한 namespace role이며 security trust boundary나 actor provenance가 아니다.
+
+Model의 `is_extraction_path`는 fixed layout의 namespace membership만 정의한다. Oracle의 `_is_c0_namespace_transition`은 extraction root 밖 모든 관찰 경로에서 EXISTENCE/IDENTITY/OBJECT_TYPE 변화가 있는지 판정한다. HARNESS와 EXTERNAL에 같은 C0 기준을 적용하고 content/metadata-only effect는 계속 제외한다. 따라서 archive/input.tar 삭제·inode/type 교체도 C0 evidence이며 단순 content/mode 변화는 C0가 아니다. Signature v2와 C1/C2 정책은 변경하지 않는다.
+
+Baseline ownership은 BEFORE의 실제 objects와 runtime lifecycle로 표현한다. `disposable_sandbox`가 `.`, archive/extract/outside와 sentinel을 준비하고 `run_case`가 input.tar를 쓴 뒤 BEFORE를 찍는다. AFTER는 target.run 종료 직후 bookkeeping/cleanup 전에 찍는다. 이 구간에 현재 harness namespace mutation은 없다. Phase enum과 runner/adapter 계약을 문서화하고 C0 limitations에 actor attribution의 전제 조건을 기록한다. Snapshot은 actor를 식별하지 않으므로 가상의 provenance field나 path whitelist로 변화를 면제하지 않는다.
+
+향후 adapter가 관찰 구간 중 log/bookkeeping을 생성·삭제·교체하면 C0 false positive가 생길 수 있다. Diagnostics는 ExecutionResult로 반환하고 setup/bookkeeping은 관찰 구간 밖에 둔다. 이를 지킬 수 없는 adapter에는 별도 provenance/관찰 설계가 필요하며 HARNESS blanket exemption으로 해결하지 않는다. False negative를 숨기는 것보다 lifecycle 위반 가능성을 명시한다.
+
+기존 harness-only regression의 AFTER 생성 + 모든 verdict nonviolation 가정은 actor를 snapshot에서 추론하므로 잘못된 가정이었다. Test는 setup을 BEFORE 전에 마치고 nonviolation assertion을 유지한다. 동시에 setup을 관찰 구간에 잘못 포함한 동일 raw transition은 C0가 되어야 한다고 검증한다. C1/C2 regression의 harness alias도 baseline에 만들고 root replacement의 retained inode는 extraction 안에 보관해 기존 판정 assertion을 유지한다. 실제 run_case/controlled adapter의 생성·삭제·교체·type/content/mode effect regression은 verdict와 signature equality가 독립적임을 증명한다.
+
+## D015 — model stack integration과 actual duration evidence
+
+**상태:** 채택
+
+PR #13의 ArchiveCase order/duplicate/raw archive path 의미는 PR #15가 이미 포함하며 더 강한 field invariants와 canonical case identity를 제공한다. PR #17/#18의 ObjectSnapshot/StateSnapshot에 해당하는 canonical 구현도 PR #15의 실제 Observer/Oracle/Signature pipeline에 연결되어 있다. 특히 #18의 arbitrary duplicate snapshot objects와 extraction/protected objects를 별도 loose collection으로 보존하는 모델은 현재 sorted unique full-sandbox snapshot contract와 맞지 않는다. 따라서 #13/#17/#18의 별도 모델을 병합하지 않는다.
+
+PR #16에서는 `duration_seconds` 개념만 canonical ExecutionResult에 흡수한다. Configured `timeout_seconds`와 별개인 finite/nonnegative actual elapsed evidence를 모든 반환 status에 기록한다. Python reference는 monotonic `perf_counter()`로 subprocess 실행 직전부터 완료 또는 timeout kill/wait 이후까지 측정하므로 process startup과 timeout cleanup overhead를 포함한다. Path validation과 pipeline의 setup/observation/판정/cleanup은 측정 구간 밖이다.
+
+Duration은 RunResult.execution의 기존 canonical JSON 경로로 보존하며 중복 field를 만들지 않는다. Security verdict, StateSignature v2 또는 ArchiveCase identity에 포함하지 않는다. 측정 evidence를 추가하는 결정이며 throughput/time-to-first-violation 평가, Mutation/Corpus 또는 Layer 4/5 구현을 의미하지 않는다.
+
+**Archive input path != Observed filesystem path.** ArchiveEntry.path/link_target은 normalization하지 않는 untrusted raw logical input이고 ObjectSnapshot.path는 Observer가 만든 canonical sandbox-relative evidence다. ArchiveCase의 order/duplicate 의미를 observed objects에 적용하지 않으며 StateSnapshot.objects는 unique/sorted다. StateSnapshot의 sandbox_root/phase/objects/protected_paths 구조를 유지한다. **StateSnapshot = full raw observation/evidence**, **StateSignature = normalized security-state representation**의 경계를 유지한다. `path_region()`은 current runtime-layout classification policy이며 filesystem object의 intrinsic property가 아니다.

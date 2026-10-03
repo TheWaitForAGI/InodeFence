@@ -24,6 +24,7 @@ htmlcov/
 # InodeFence runtime data
 findings/*
 !findings/.gitkeep
+!findings/README.md
 
 corpus/generated/
 experiments/results/
@@ -35,3 +36,4 @@ experiments/raw/*
 # Generated artifacts
 artifacts/*
 !artifacts/.gitkeep
+!artifacts/README.md

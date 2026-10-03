@@ -1,0 +1,33 @@
+# 생성물 보관
+
+## 이 폴더는 무엇인가
+
+의도적으로 남길 생성 파일의 보관 위치다.
+
+## 입력
+
+향후 생성한 TAR 또는 분석·검토용 파일.
+
+## 출력
+
+원래 case/config와 연결할 수 있는 생성물.
+
+## 책임
+
+예: TAR 파일에 해당 case와 실험 기록 식별자를 연결한다.
+
+## 하지 않는 것
+
+filesystem 실행 sandbox, canonical 설계 문서, 영구 corpus 위치의 확정.
+
+## 다른 모듈과의 연결
+
+[experiments](../experiments/README.md)와 [findings](../findings/README.md)의 기록에서 생성물 출처를 연결한다. 실행 공간 규칙은 [architecture](../docs/research/design/architecture.md)를 따른다.
+
+## 현재 상태
+
+.gitkeep과 이 안내만 있다. 생성물은 없다.
+
+## 파일 배치 규칙
+
+생성물에 출처와 재생성 방법을 연결한다. README와 .gitkeep 외 파일은 Git ignore 대상이다. 대용량 파일을 자동으로 Git에 추가하지 않는다.

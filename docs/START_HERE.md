@@ -106,8 +106,11 @@ Layer 6  Experiment / Paper
 
 ## 6. 파일을 어디에 만들까?
 
+폴더별 책임과 파일 배치 규칙은 [문서 지도](README.md)와 [엔진 모듈 지도](../src/inodefence/README.md)를 본다. 상세 pipeline과 계획된 데이터 흐름은 [architecture.md](research/design/architecture.md)가 기준이다. 아래 소스 경로는 책임 배치 계획이며 현재 실행 가능한 pipeline을 뜻하지 않는다.
+
 ```text
-src/inodefence/generator/   TAR 생성
+src/inodefence/model/       공통 데이터 표현 (아직 README만 있음)
+src/inodefence/generator/   초기 archive case 생성
 src/inodefence/mutator/     TAR entry 변형
 src/inodefence/targets/     node-tar / oras-go / GNU tar 실행
 src/inodefence/observer/    filesystem 상태 관찰
@@ -119,6 +122,7 @@ scripts/                    개발/실험 보조 명령
 docs/research/              연구 근거와 설계
 experiments/                실험 설정과 결과
 findings/                   재현 가능한 finding
+artifacts/                  의도적으로 보존할 생성물 (실행 sandbox 아님)
 paper/                      논문에 실제로 사용할 자료
 ```
 

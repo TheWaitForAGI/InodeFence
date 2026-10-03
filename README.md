@@ -137,8 +137,11 @@ Filesystem-security 실험은 다음 경로에서만 수행한다.
 
 ## 저장소 구조
 
+폴더별 책임은 [문서 지도](docs/README.md)와 [엔진 모듈 지도](src/inodefence/README.md)에서 확인한다. 상세 설계의 기준은 [architecture.md](docs/research/design/architecture.md)다. 엔진은 현재 빈 패키지이며 `model/`에는 안내 문서만 있다.
+
 ```text
 src/inodefence/
+├── model/       공통 모델 계획 (README만 있음)
 ├── generator/
 ├── mutator/
 ├── targets/
@@ -150,11 +153,14 @@ docs/            처음 읽는 문서 + 연구/설계 문서
 experiments/     실험 설정과 결과
 paper/           논문 작성용 자료
 findings/        의도적으로 저장한 finding
+artifacts/       의도적으로 보존할 생성물
 scripts/         개발/실험 보조 도구
 tests/           자동 테스트
 ```
 
 ## 작업 방식
+
+환경과 협업 설정은 [.devcontainer](.devcontainer/README.md), [.github](.github/README.md)를 본다. 작업별 안내는 [tests](tests/README.md), [scripts](scripts/README.md), [experiments](experiments/README.md), [findings](findings/README.md), [artifacts](artifacts/README.md), [paper](paper/README.md)에 있다.
 
 자세한 작업 방식은 [CONTRIBUTING.md](CONTRIBUTING.md)를 따른다.
 

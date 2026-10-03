@@ -5,23 +5,39 @@ from inodefence.model import (
     ContractId,
     IdentityEvidence,
     Region,
+    StateChange,
     StateSnapshot,
     ViolationResult,
 )
-from inodefence.model.filesystem import path_region
+from inodefence.model.filesystem import is_extraction_path
 from inodefence.observer import compare_states
 
 _SNAPSHOT_LIMITS = (
     "Only persistent sandbox state is covered; transient operations are not traced.",
     "Device/inode equality is an observation-time proxy; inode reuse is not distinguishable.",
 )
+_C0_NAMESPACE_FIELDS = frozenset(
+    (ChangeField.EXISTENCE, ChangeField.IDENTITY, ChangeField.OBJECT_TYPE)
+)
+
+
+def _is_c0_namespace_transition(change: StateChange) -> bool:
+    """Check boundary evidence regardless of the path's normalization role.
+
+    Content/metadata-only changes do not establish direct external path use.
+    HARNESS is a signature scope, not permission to mutate the namespace.
+    """
+    return not is_extraction_path(change.path) and bool(
+        _C0_NAMESPACE_FIELDS.intersection(change.fields)
+    )
 
 
 def evaluate_contracts(before: StateSnapshot, after: StateSnapshot) -> tuple[ViolationResult, ...]:
     """Apply the initial policy: all specified sentinels are protected.
 
-    C0 covers external namespace evidence, excluding harness-owned paths. All
-    unreserved paths outside extract/ count, including root-level escapes.
+    C0 covers namespace transitions outside extract/, including HARNESS paths.
+    All setup must precede BEFORE; harness bookkeeping must follow AFTER.
+    Snapshots cannot attribute actors if that lifecycle contract is violated.
     A content change through an internal alias
     does not establish use of an external path; C2 records that effect separately.
     C1 forbids any post-state inside/sentinel identity sharing. The runner starts
@@ -33,13 +49,7 @@ def evaluate_contracts(before: StateSnapshot, after: StateSnapshot) -> tuple[Vio
         before.get(path) is None for path in before.protected_paths
     ):
         raise ValueError("oracle requires initially existing protected sentinels")
-    namespace_fields = {ChangeField.EXISTENCE, ChangeField.IDENTITY, ChangeField.OBJECT_TYPE}
-    boundary_evidence = tuple(
-        change
-        for change in changes
-        if path_region(change.path) == Region.EXTERNAL
-        and namespace_fields.intersection(change.fields)
-    )
+    boundary_evidence = tuple(change for change in changes if _is_c0_namespace_transition(change))
     identity_evidence = []
     for obj in after.objects:
         if obj.region != Region.EXTRACTION:
@@ -54,11 +64,15 @@ def evaluate_contracts(before: StateSnapshot, after: StateSnapshot) -> tuple[Vio
             ContractId.C0,
             bool(boundary_evidence),
             boundary_evidence,
-            "Persistent external namespace creation/deletion/replacement observed."
+            "Persistent namespace creation/deletion/replacement outside extraction root observed."
             if boundary_evidence
-            else "No persistent external namespace change observed.",
+            else "No persistent namespace change outside extraction root observed.",
             _SNAPSHOT_LIMITS
-            + ("External path use without namespace changes requires operation tracing.",),
+            + (
+                "External path use without namespace changes requires operation tracing.",
+                "Snapshots do not identify actors; target attribution requires no harness "
+                "namespace writes between captures.",
+            ),
         ),
         ViolationResult(
             ContractId.C1,

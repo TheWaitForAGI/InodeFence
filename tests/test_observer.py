@@ -97,11 +97,12 @@ def test_controlled_external_identity_and_effect_have_real_evidence(
     sandbox: RuntimeSandbox,
 ) -> None:
     sentinel = sandbox.root / sandbox.protected_paths[0]
+    # A harness alias is baseline setup, not part of the observed execution effects.
+    os.link(sentinel, sandbox.archive_path)
     before = capture_state(sandbox.root, SnapshotPhase.BEFORE, sandbox.protected_paths)
     alias = sandbox.extraction_root / "alias"
     os.link(sentinel, alias)
     alias.write_bytes(b"controlled changed bytes")
-    os.link(sentinel, sandbox.archive_path)
     after = capture_state(sandbox.root, SnapshotPhase.AFTER, sandbox.protected_paths)
     c0, c1, c2 = evaluate_contracts(before, after)
     assert not c0.violated  # Content effects do not prove an external namespace operation.
@@ -124,8 +125,9 @@ def test_harness_artifact_changes_remain_raw_evidence_without_state_novelty(
     sandbox: RuntimeSandbox,
 ) -> None:
     sandbox.archive_path.write_bytes(b"first input artifact")
-    before = capture_state(sandbox.root, SnapshotPhase.BEFORE, sandbox.protected_paths)
+    setup_before = capture_state(sandbox.root, SnapshotPhase.BEFORE, sandbox.protected_paths)
     baseline = capture_state(sandbox.root, SnapshotPhase.AFTER, sandbox.protected_paths)
+    # Bookkeeping is legitimate setup only when it precedes the execution baseline.
     sandbox.archive_path.write_bytes(b"different input artifact bytes")
     sandbox.archive_path.chmod(0o640)
     sandbox.archive_path.parent.chmod(0o710)
@@ -133,14 +135,25 @@ def test_harness_artifact_changes_remain_raw_evidence_without_state_novelty(
     extra = sandbox.archive_path.parent / "nested"
     extra.mkdir()
     (extra / "evidence.txt").write_bytes(b"harness bookkeeping")
+    before = capture_state(sandbox.root, SnapshotPhase.BEFORE, sandbox.protected_paths)
+    # A no-op execution window follows the complete setup, as in run_case.
     after = capture_state(sandbox.root, SnapshotPhase.AFTER, sandbox.protected_paths)
-    changes = {change.path: change for change in compare_states(before, after)}
+    changes = {change.path: change for change in compare_states(setup_before, after)}
     assert {".", "archive", "archive/input.tar", "archive/nested/evidence.txt"} <= changes.keys()
     assert ChangeField.CONTENT in changes["archive/input.tar"].fields
     assert ChangeField.MODE in changes["."].fields
-    assert before != after and baseline != after
+    assert setup_before != after and baseline != after
     assert all(not verdict.violated for verdict in evaluate_contracts(before, after))
-    assert state_signature(before, baseline) == state_signature(before, after)
+    assert compare_states(before, after) == ()
+    assert state_signature(setup_before, baseline) == state_signature(setup_before, after)
+    assert state_signature(before, after) == state_signature(setup_before, after)
+    # With the wrong baseline the same facts must trigger C0; snapshots cannot know the actor.
+    unbracketed_c0 = evaluate_contracts(setup_before, after)[0]
+    assert unbracketed_c0.violated
+    assert {e.path for e in unbracketed_c0.evidence if isinstance(e, StateChange)} == {
+        "archive/nested",
+        "archive/nested/evidence.txt",
+    }
 
 
 @pytest.mark.parametrize("operation", ["create", "delete", "replace"])
@@ -156,7 +169,7 @@ def test_root_level_external_namespace_escape_is_c0_evidence(
     else:
         if operation == "replace":
             # Keep the old inode alive so replacement cannot be hidden by reuse.
-            escape.rename(sandbox.archive_path.parent / "retained-escape")
+            escape.rename(sandbox.extraction_root / "retained-escape")
         escape.write_bytes(b"controlled external object")
     after = capture_state(sandbox.root, SnapshotPhase.AFTER, sandbox.protected_paths)
     c0, c1, c2 = evaluate_contracts(before, after)

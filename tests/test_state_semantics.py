@@ -17,7 +17,7 @@ from inodefence.model import (
     ViolationResult,
     canonical_json,
 )
-from inodefence.model.filesystem import path_region
+from inodefence.model.filesystem import is_extraction_path, path_region
 from inodefence.oracle import evaluate_contracts
 
 
@@ -65,6 +65,7 @@ def state(
 )
 def test_region_ownership_includes_unreserved_external_paths(path: str, region: Region) -> None:
     assert path_region(path) == regular(path, 10).region == region
+    assert is_extraction_path(path) == (region == Region.EXTRACTION)
 
 
 @pytest.mark.parametrize("path", [".", "archive", "archive/input.tar", "extract", "extract/a"])

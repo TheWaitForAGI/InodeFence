@@ -13,14 +13,18 @@ from inodefence.feedback import state_signature
 from inodefence.model import (
     ArchiveCase,
     ArchiveEntry,
+    ChangeField,
     EntryType,
     ExecutionResult,
     ExecutionStatus,
     ObjectType,
+    Region,
     SnapshotPhase,
+    StateChange,
     StateSnapshot,
     canonical_json,
 )
+from inodefence.model.filesystem import path_region
 from inodefence.observer import ObservationError, capture_state
 from inodefence.pipeline import run_case
 from inodefence.runtime import RuntimeSandbox, SentinelSpec, disposable_sandbox, runtime_root
@@ -120,6 +124,77 @@ def test_different_cases_and_tar_bytes_with_same_semantic_state_have_same_signat
         assert "archive/input.tar" not in signature_text
     assert first.signature == second.signature
     assert canonical_json(first.signature) == canonical_json(second.signature)
+
+
+@pytest.mark.parametrize("operation", ["create", "delete", "replace", "type", "content", "mode"])
+def test_pipeline_c0_harness_transitions_are_independent_of_signature(operation: str) -> None:
+    class ControlledTransitionAdapter:
+        """Simulate a persistent execution effect without an unsafe extractor."""
+
+        def run(self, archive_path: Path, extraction_root: Path) -> ExecutionResult:
+            assert PythonTarfileTarget().run(archive_path, extraction_root).succeeded
+            if operation == "create":
+                (archive_path.parent / "escaped.txt").write_bytes(b"controlled namespace effect")
+            elif operation == "delete":
+                archive_path.unlink()
+            elif operation in ("replace", "type"):
+                # Keep the old allocation alive to make the identity evidence nonvacuous.
+                with archive_path.open("rb") as retained:
+                    previous_inode = os.fstat(retained.fileno()).st_ino
+                    archive_path.unlink()
+                    if operation == "type":
+                        archive_path.mkdir()
+                    else:
+                        archive_path.write_bytes(b"controlled replacement")
+                    assert archive_path.lstat().st_ino != previous_inode
+            elif operation == "content":
+                archive_path.write_bytes(b"controlled content-only effect")
+            else:
+                current_mode = archive_path.lstat().st_mode & 0o777
+                archive_path.chmod(0o600 if current_mode != 0o600 else 0o640)
+            return ExecutionResult(
+                "controlled-transition", "test", (), ExecutionStatus.SUCCESS, 0, "", ""
+            )
+
+    case = baseline_case("regular-file")
+    baseline = run_case(case, PythonTarfileTarget())
+    result = run_case(case, ControlledTransitionAdapter())
+    assert baseline.execution.succeeded and result.execution.succeeded
+    assert all(not verdict.violated for verdict in baseline.violations)
+    before_archive = result.before.get("archive/input.tar")
+    assert before_archive is not None and before_archive.content_digest == result.archive_sha256
+    path = "archive/escaped.txt" if operation == "create" else "archive/input.tar"
+    assert path_region(path) == Region.HARNESS
+    if operation == "create":
+        assert result.before.get(path) is None and result.after.get(path) is not None
+    if operation == "delete":
+        assert result.after.get(path) is None
+    change = next(change for change in result.changes if change.path == path)
+    namespace_field = {
+        "create": ChangeField.EXISTENCE,
+        "delete": ChangeField.EXISTENCE,
+        "replace": ChangeField.IDENTITY,
+        "type": ChangeField.OBJECT_TYPE,
+    }.get(operation)
+    c0, c1, c2 = result.violations
+    assert c0.violated == (namespace_field is not None)
+    assert not c1.violated and not c2.violated
+    if namespace_field is not None:
+        assert c0.evidence == (change,) and isinstance(c0.evidence[0], StateChange)
+        assert namespace_field in change.fields
+    else:
+        assert c0.evidence == ()
+        assert (
+            ChangeField.CONTENT if operation == "content" else ChangeField.MODE
+        ) in change.fields
+        assert ChangeField.IDENTITY not in change.fields
+    # HARNESS remains excluded from novelty even when the independent C0 verdict changes.
+    assert all(path_region(obj.path) != Region.HARNESS for obj in result.signature.objects)
+    assert all(
+        path_region(effect.path) != Region.HARNESS for effect in result.signature.external_effects
+    )
+    assert result.signature == baseline.signature
+    assert canonical_json(result.signature) == canonical_json(baseline.signature)
 
 
 def test_reference_rejection_is_not_a_violation_and_partial_extraction_is_observed() -> None:

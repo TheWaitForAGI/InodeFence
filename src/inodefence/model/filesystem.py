@@ -12,7 +12,11 @@ class ObjectType(StrEnum):
 
 
 class Region(StrEnum):
-    """Namespace role in the fixed archive/extract/outside runtime layout."""
+    """Namespace role for normalization, not creator attribution or trust.
+
+    HARNESS marks the run root and reserved archive namespace. It does not
+    authorize the target to create, delete or replace objects there.
+    """
 
     EXTRACTION = "extraction"
     HARNESS = "harness"
@@ -20,6 +24,12 @@ class Region(StrEnum):
 
 
 class SnapshotPhase(StrEnum):
+    """Bracket target execution: BEFORE after setup, AFTER before bookkeeping.
+
+    Phase labels carry no actor provenance. The runner/adapter must keep harness
+    namespace writes outside the observation window for target attribution.
+    """
+
     BEFORE = "before"
     AFTER = "after"
 
@@ -32,14 +42,23 @@ def validate_observed_path(path: str) -> None:
         raise ValueError("observed paths must use canonical relative components")
 
 
+def is_extraction_path(path: str) -> bool:
+    """Test canonical observed namespace membership, independently of region role.
+
+    This is a layout fact, not a security verdict or symlink resolution.
+    """
+    return path == "extract" or path.startswith("extract/")
+
+
 def path_region(path: str) -> Region:
     """Classify canonical observed paths, keeping unreserved escapes external.
 
     The run root and archive subtree belong to the harness. Every other path
     outside extract/ is external, including root-level traversal results. New
-    harness artifacts must live under archive/ to share this ownership policy.
+    harness artifacts must live under archive/ to share this normalization role.
+    A HARNESS path is still outside the extraction boundary and is not trusted.
     """
-    if path == "extract" or path.startswith("extract/"):
+    if is_extraction_path(path):
         return Region.EXTRACTION
     if path in (".", "archive") or path.startswith("archive/"):
         return Region.HARNESS
@@ -114,6 +133,7 @@ class StateSnapshot:
     used for feedback. Region classification never removes raw observations.
     protected_paths are retained even when a sentinel disappears. An IO error is
     not absence: the observer raises instead of returning an incomplete snapshot.
+    Phase labels describe the execution window, not who caused each change.
     """
 
     sandbox_root: str

@@ -152,8 +152,22 @@ Runtime directory는 cleanup 경계이며 OS execution isolation을 대신하지
 
 Human/AI review에서 snapshot 전체를 signature로 옮기면 `archive/input.tar` digest가 input novelty를 security-state novelty로 오인하게 만든다는 문제가 확인됐다. `StateSnapshot = full raw observation/evidence`를 유지하고 `StateSignature = normalized security-state representation for future feedback/corpus`로 범위를 분리한다. ArchiveCase identity와 TAR artifact identity는 signature에 직접 포함하지 않는다.
 
-공통 `path_region`이 fixed runtime layout의 namespace role을 정의한다. `extract`와 하위는 EXTRACTION, `.`과 `archive` 및 하위는 HARNESS, 나머지는 EXTERNAL이다. Harness bookkeeping은 archive 아래에 둔다. EXTERNAL은 outside만으로 제한하지 않으므로 sandbox root의 `escape.txt`도 C0 evidence와 signature에 남는다. Harness 경로는 C0 namespace evidence에서 제외하되 raw snapshot/change에서 보존한다. 이는 path ownership 분류이며 operation의 원인 추론이 아니다.
+공통 `path_region`이 fixed runtime layout의 namespace role을 정의한다. `extract`와 하위는 EXTRACTION, `.`과 `archive` 및 하위는 HARNESS, 나머지는 EXTERNAL이다. Harness bookkeeping은 archive 아래에 둔다. EXTERNAL은 outside만으로 제한하지 않으므로 sandbox root의 `escape.txt`도 C0 evidence와 signature에 남는다. HARNESS는 signature에서 제외하되 raw snapshot/change에서 보존한다. Security trust나 생성 주체를 나타내지 않으며 C0 scope는 D014를 따른다.
 
 StateSignature v2는 HARNESS object를 제외하고 identity group도 같은 scope로 projection하여 singleton을 제거한다. Protected paths와 extraction↔sentinel relation, external-effect labels는 유지한다. `SignatureObject.st_nlink`는 regular file만 정수이며 directory/symlink/other는 None이다. Directory size와 nlink 값은 filesystem allocation/semantics에 따라 달라질 수 있기 때문이다. Raw nlink와 C2 metadata 비교, external nlink-change label은 그대로 보존한다. 따라서 portable representation은 모든 filesystem의 effect pattern이 같다는 보장은 아니다.
 
 Signature 내부 schema는 v1→v2로 변경한다. Canonical JSON envelope v1과 case identity encoding은 유지한다. Corpus/persistence/deserializer는 아직 없고 이전 signature와 같은 key로 비교하지 않는다. 서로 독립인 regular entry 두 개의 순서만 다른 입력을 `run_case()`로 실행해 case/TAR SHA-256은 다르고 signature는 같은지 검증한다. 최종 feedback/corpus 정책과 연구 효과 평가는 Layer 5 이후다.
+
+## D014 — C0 boundary scope와 HARNESS normalization role 분리
+
+**상태:** PR #15 C0/HARNESS follow-up 수정
+
+D013 구현에서 HARNESS를 signature뿐 아니라 C0에서도 제외한 정책은 폐기한다. Target execution 중 `archive/escaped.txt`가 생겨도 HARNESS라서 PASS가 될 수 있었다. Region.HARNESS는 feedback normalization을 위한 namespace role이며 security trust boundary나 actor provenance가 아니다.
+
+Model의 `is_extraction_path`는 fixed layout의 namespace membership만 정의한다. Oracle의 `_is_c0_namespace_transition`은 extraction root 밖 모든 관찰 경로에서 EXISTENCE/IDENTITY/OBJECT_TYPE 변화가 있는지 판정한다. HARNESS와 EXTERNAL에 같은 C0 기준을 적용하고 content/metadata-only effect는 계속 제외한다. 따라서 archive/input.tar 삭제·inode/type 교체도 C0 evidence이며 단순 content/mode 변화는 C0가 아니다. Signature v2와 C1/C2 정책은 변경하지 않는다.
+
+Baseline ownership은 BEFORE의 실제 objects와 runtime lifecycle로 표현한다. `disposable_sandbox`가 `.`, archive/extract/outside와 sentinel을 준비하고 `run_case`가 input.tar를 쓴 뒤 BEFORE를 찍는다. AFTER는 target.run 종료 직후 bookkeeping/cleanup 전에 찍는다. 이 구간에 현재 harness namespace mutation은 없다. Phase enum과 runner/adapter 계약을 문서화하고 C0 limitations에 actor attribution의 전제 조건을 기록한다. Snapshot은 actor를 식별하지 않으므로 가상의 provenance field나 path whitelist로 변화를 면제하지 않는다.
+
+향후 adapter가 관찰 구간 중 log/bookkeeping을 생성·삭제·교체하면 C0 false positive가 생길 수 있다. Diagnostics는 ExecutionResult로 반환하고 setup/bookkeeping은 관찰 구간 밖에 둔다. 이를 지킬 수 없는 adapter에는 별도 provenance/관찰 설계가 필요하며 HARNESS blanket exemption으로 해결하지 않는다. False negative를 숨기는 것보다 lifecycle 위반 가능성을 명시한다.
+
+기존 harness-only regression의 AFTER 생성 + 모든 verdict nonviolation 가정은 actor를 snapshot에서 추론하므로 잘못된 가정이었다. Test는 setup을 BEFORE 전에 마치고 nonviolation assertion을 유지한다. 동시에 setup을 관찰 구간에 잘못 포함한 동일 raw transition은 C0가 되어야 한다고 검증한다. C1/C2 regression의 harness alias도 baseline에 만들고 root replacement의 retained inode는 extraction 안에 보관해 기존 판정 assertion을 유지한다. 실제 run_case/controlled adapter의 생성·삭제·교체·type/content/mode effect regression은 verdict와 signature equality가 독립적임을 증명한다.

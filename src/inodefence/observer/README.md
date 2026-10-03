@@ -16,6 +16,8 @@ Directory descriptor와 O_NOFOLLOW를 사용한다. Symlink를 따라 stat/hash�
 
 부재는 snapshot path 없음으로 표현하되 protected_paths를 유지한다. [모델](../model/README.md)에 순서/identity 의미가 있다. Compare는 생성·삭제·type·identity·content·metadata 변화를 사실로 반환한다.
 
+HARNESS 변화도 다른 region과 동일하게 관찰·비교하며 security trust를 부여하지 않는다. Region.HARNESS의 signature 제외는 Feedback normalization 정책이고, C0는 extraction root 밖의 persistent namespace transition을 별도로 검사한다. Snapshot/compare는 actor를 식별하지 않는다. 정상 setup과 실행 효과를 구분하려면 runner가 setup 완료 후 BEFORE, target 종료 후 bookkeeping/cleanup 이전 AFTER를 찍어야 한다. Phase label 검증만으로 이 lifecycle을 증명하지는 않는다.
+
 `StateSignature = normalized security-state representation for future feedback/corpus`는 [feedback](../feedback/README.md)의 책임이다. Harness를 signature에서 제외해도 raw observation/change/identity group의 정보는 줄이지 않는다. ArchiveCase/TAR artifact identity를 feedback key로 유출하지 않는 invariant는 signature scope에서 적용한다.
 
 ## 하지 않는 것

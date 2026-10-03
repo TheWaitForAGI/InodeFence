@@ -22,12 +22,18 @@ def run_case(
     Target failure/rejection still gets an after snapshot. Builder, environment,
     observer and unexpected adapter errors propagate as harness failures instead
     of invented passing results. Returned evidence contains no live Path objects.
+
+    The observation window contains only target.run and observation: setup and
+    input creation precede BEFORE, and AFTER precedes any post-run bookkeeping
+    or cleanup. Adapters must not perform harness namespace writes in this window.
     """
     archive = build_tar(case)
     with disposable_sandbox(sentinels) as sandbox:
         sandbox.archive_path.write_bytes(archive)
+        # Harness baseline is complete; region ownership never exempts target effects.
         before = capture_state(sandbox.root, SnapshotPhase.BEFORE, sandbox.protected_paths)
         execution = target.run(sandbox.archive_path, sandbox.extraction_root)
+        # Capture target effects before any harness bookkeeping or sandbox cleanup.
         after = capture_state(sandbox.root, SnapshotPhase.AFTER, sandbox.protected_paths)
         return RunResult(
             case,

@@ -66,6 +66,12 @@ class SentinelSpec:
 
 @dataclass(frozen=True, slots=True)
 class RuntimeSandbox:
+    """Harness-prepared layout, not a whitelist of paths the target may mutate.
+
+    The caller writes the input artifact before BEFORE. Setup/baseline objects
+    can belong to any region; ownership roles do not imply security permission.
+    """
+
     root: Path
     extraction_root: Path
     archive_path: Path
@@ -80,6 +86,8 @@ def disposable_sandbox(
 
     TemporaryDirectory uses Python's fd-based, symlink-resistant rmtree on Linux.
     No saved artifacts or extraction results are written back into the source.
+    Layout/sentinel setup finishes before yielding. The caller must finish input
+    setup before BEFORE and capture AFTER before bookkeeping and context cleanup.
     """
     if (
         not isinstance(sentinels, tuple)

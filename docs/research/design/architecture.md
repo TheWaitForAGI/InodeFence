@@ -465,6 +465,8 @@ Region은 model의 `path_region`에서 공통으로 정의하며 Observer/Oracle
 | HARNESS | `.`, `archive`, `archive/**`; 입력과 harness bookkeeping |
 | EXTERNAL | 나머지 모든 sandbox-relative path; `outside/**` 및 root-level `escape.txt` 포함 |
 
+Region.HARNESS는 normalization role이며 security trust boundary나 creator attribution이 아니다. Model의 `is_extraction_path`는 `extract`/`extract/**` membership만 정의한다. Oracle의 `_is_c0_namespace_transition`은 그 밖의 모든 경로에서 EXISTENCE/IDENTITY/OBJECT_TYPE 전이를 검사한다. 따라서 HARNESS object는 signature에서 제외되어도 C0에서 면제되지 않는다. `archive/escaped.txt` 생성과 archive/input.tar 삭제·replacement도 evidence다. Content/metadata-only effect는 기존 C0/C2 separation을 유지한다.
+
 StateSnapshot은 세 region 전체와 TAR content digest를 보존한다. StateSignature v2는 HARNESS object를 제외하며 case ID/TAR SHA-256을 직접 포함하지 않는다. Path/type/mode, regular nlink/size/content digest, textual link target, same-object path group과 external change 종류를 담는다. Identity group은 signature object scope로 projection한 뒤 singleton을 제거하므로 제외된 harness path가 dangling relation을 만들지 않는다. Protected paths는 sentinel 삭제 뒤에도 유지한다.
 
 `SignatureObject.st_nlink`는 `int | None`이며 regular만 정수, directory/symlink/other는 None이다. Raw dev/inode, timestamp/ownership 값과 nonregular size도 제외한다. Raw nlink는 Observer와 C2에 그대로 남고 외부 metadata-change labels도 보존하므로 cross-filesystem effect equivalence까지 보장하지는 않는다. Raw identity는 run 안에서 group을 계산하거나 identity 변경을 감지할 때만 쓴다. Absolute link text의 literal sandbox prefix는 `$RUN`으로 치환하며 다른 철자와 `..`를 유지한다. Resolution/reachability는 추론하지 않는다. Extraction symlink가 harness를 가리키는 link text는 유지하되 harness referent digest/identity를 포함하지 않는다. 이 representation은 초기 후보이며 Layer 5의 baseline/ablation 정책을 미리 확정하지 않는다.
@@ -526,6 +528,32 @@ outside/
 ```
 
 현재 layout은 runtime root의 `core-run-<random>/archive/input.tar`, `extract/`, `outside/`다. Runtime root는 기존 Linux `/var/lib/inodefence` 또는 그 하위의 명시적 환경 설정만 허용한다. Configuration path의 모든 component는 O_NOFOLLOW로 검증한다. Sentinel은 safe relative name/bytes/mode로 생성하고, 정상·실패 종료 모두 symlink-resistant cleanup을 적용한다. Case path는 이 검증 과정에 넣어 변형하지 않는다.
+
+### Observation window와 baseline ownership
+
+Harness-owned baseline은 `.`, archive, archive/input.tar, extract, outside, controlled sentinel 등 BEFORE에 존재하는 실제 object다. Region이 실제 생성 주체를 증명하지는 않는다. 현재 lifecycle은 다음과 같다.
+
+```text
+disposable_sandbox: layout / sentinel setup
+→ run_case: input.tar 생성
+→ BEFORE (완료된 baseline)
+→ target.run (종료/timeout 회수)
+→ AFTER (target effects 관찰)
+→ 순수 비교 / oracle / signature / RunResult
+→ bookkeeping이 필요하면 이 시점 이후 / cleanup
+```
+
+정상 setup은 BEFORE에 포함되어 namespace transition이 아니므로 C0 오탐이 아니다. TargetAdapter.run은 관찰 구간의 실행 책임이며 harness log/setup/bookkeeping의 namespace write를 하지 않아야 한다. 현재 Python reference는 stdout/stderr를 memory에 수집해 ExecutionResult로 반환한다. 관찰은 atime을 기록하지 않으며 security verdict를 결정하지 않는다.
+
+| 설계 질문 | 코드 기준 결정 / 한계 |
+| --- | --- |
+| Q1. Snapshot으로 target/harness 생성 주체를 아는가? | 알 수 없다. BEFORE/AFTER는 순서와 상태만 기록하며 actor provenance는 없다. |
+| Q2. 현재 AFTER 전 harness mutation이 있는가? | run_case와 reference adapter에는 없다. Layout/sentinel/input 생성은 BEFORE 전, cleanup은 AFTER 후다. |
+| Q3. 향후 adapter bookkeeping이 들어올 수 있는가? | 가능하다. Diagnostics는 ExecutionResult에 두고 setup/bookkeeping은 관찰 구간 밖에서 해야 한다. 이를 지킬 수 없다면 별도 provenance/관찰 설계가 필요하다. |
+| Q4. HARNESS 전이를 C0로 보면 legitimate false positive는? | 관찰 구간의 adapter log 생성·삭제·교체처럼 lifecycle 계약을 어긴 harness 동작을 target 효과로 오인할 수 있다. |
+| Q5. Provenance 없이 이를 면제하면? | archive namespace의 실제 target escape도 숨긴다. 경로 whitelist 대신 lifecycle 계약과 명시적 attribution limitation을 유지한다. |
+
+기존 harness-only 테스트는 setup 완료 후 BEFORE를 찍어 nonviolation을 유지하고, 같은 setup 변화를 잘못된 baseline으로 비교하면 C0 evidence가 생긴다고 명시한다. Controlled adapter E2E는 archive namespace 생성·삭제·identity/type 교체를 탐지하면서 HARNESS signature exclusion이 유지됨을 검증한다. 이는 actor attribution instrumentation이나 취약한 extractor의 재현을 구현했다는 뜻이 아니다.
 
 Disposable directory는 harness storage/cleanup 경계이며 임의 executable에 OS 접근 권한을 제한하지 않는다. 현재 검증은 Dev Container 안의 controlled baseline과 Python reference/data filter로 한다. Unsafe benchmark adapter는 process/filesystem isolation을 추가하고 종료 후 자식 process가 남지 않도록 해야 한다. Snapshot은 sandbox 밖의 접근을 관찰하지 않으며 완전한 containment를 입증하지 않는다.
 

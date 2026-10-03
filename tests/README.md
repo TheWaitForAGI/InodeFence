@@ -38,6 +38,25 @@ pytest 결과.
 
 Snapshot-only 관찰은 transient operation/direct path use/sandbox 밖 access와 actor attribution을 완전히 증명하지 못한다. Phase label은 provenance가 아니며 runner/adapter가 관찰 구간 내 harness namespace write 금지 계약을 지켜야 한다.
 
+`test_feedback_corpus.py`는 C0/C1/C2 stable fingerprints의 contract/path/field 구분과
+raw dev/inode/timestamp/value/prose exclusion, evidence/result ordering과 dedup을 검증한다.
+Corpus의 state/violation 독립 novelty, 같은 case_id의 단일 보존, interesting observation과
+새 entry 구분, 이미 보존한 case의 새 outcome에 대한 seen-index 갱신, 최초 admission
+metadata 보존, 정확한 stats와 immutable exposed records를 검사한다. Uniform parent 선택은
+insertion order와 caller RNG state로 재현되며 empty selection과 global random isolation도
+검증한다.
+
+`test_feedback_corpus_integration.py`의 필수 C0/HARNESS regression은 실제 `run_case()`를
+사용한다. 서로 다른 case/TAR를 controlled no-effect target으로 실행한 A/B는 같은 signature이고
+B는 보존하지 않는다. C는 TargetAdapter.run 관찰 구간에서 `archive/escaped.txt`를 생성하므로
+같은 signature라도 새 C0 fingerprint로 보존한다. CVE PoC나 unsafe extractor를 사용하지 않는다.
+다른 case/TAR/input digest, HARNESS mode, 네 execution status/duration과 relabeled raw
+inode/device/timestamp가 novelty로 유출되지 않음을 추가로 검증한다. Caller 수준의 parent
+선택 → `mutate` → child 한 번 실행 → consider 조합은 모듈 결합이나 fuzzing loop를 추가하지 않는다.
+
+이 테스트들은 Layer 5 state retention contract를 검증하며 effectiveness, benchmark
+rediscovery 또는 paper 결과를 증명하지 않는다.
+
 4종 baseline TAR는 fixtures/tar/에 두며 [실행과 관찰 방법](../docs/examples/tar-baseline.md)을 따른다. Canonical validation은 Dev Container의 `make check`다. Filesystem test는 `/var/lib/inodefence` 내 disposable sandbox만 사용한다. 서로 다른 run의 inode normalization 검사는 두 sandbox를 동시에 유지해 inode 재사용을 피한다.
 
 ## 파일 배치 규칙

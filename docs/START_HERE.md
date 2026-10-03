@@ -76,8 +76,9 @@ Layer 1  연구 범위/규칙/아키텍처   ✅
 Layer 2  공통 Data Model           ✅
 Layer 3  Minimal Pipeline          ✅ Python reference, snapshot 관찰 범위
 Layer 4  Mutation                  ✅ Generic Mutation v1
-Layer 5  Feedback / Corpus         ← 다음 (미구현)
-Layer 6  Experiment / Paper
+Layer 5  Feedback / Corpus         ✅ v1: 독립 novelty / in-memory / uniform 선택
+         bounded fuzzing loop     ← 다음 (별도 Task Contract)
+Layer 6  Experiment / Paper        미진행
 ```
 
 ## 5. 코딩하기 전에 딱 이것만 읽기
@@ -106,7 +107,7 @@ Layer 6  Experiment / Paper
 
 ## 6. 파일을 어디에 만들까?
 
-폴더별 책임과 파일 배치 규칙은 [문서 지도](README.md)와 [엔진 모듈 지도](../src/inodefence/README.md)를 본다. 상세 pipeline과 데이터 흐름은 [architecture.md](research/design/architecture.md)가 기준이다. `pipeline.run_case`는 입력 하나를 실제 실행·관찰·판정한다. Generic Mutation v1은 별도 ArchiveCase 변형 API이며 Corpus/fuzzing loop와 연구 효과 검증은 후속 작업이다.
+폴더별 책임과 파일 배치 규칙은 [문서 지도](README.md)와 [엔진 모듈 지도](../src/inodefence/README.md)를 본다. 상세 pipeline과 데이터 흐름은 [architecture.md](research/design/architecture.md)가 기준이다. `pipeline.run_case`는 입력 하나를 실제 실행·관찰·판정한다. Generic Mutation v1은 별도 ArchiveCase 변형 API다. Feedback / Corpus v1은 독립 state/violation novelty로 parent를 보존하고 caller RNG로 균등 선택한다. Fuzzing loop/campaign runner, adaptive scheduler, persistence, benchmark adapters와 연구 효과 검증은 후속 작업이다.
 
 ```text
 src/inodefence/model/       공통 데이터 표현과 canonical JSON
@@ -118,7 +119,7 @@ src/inodefence/mutator/     TAR entry 변형
 src/inodefence/targets/     공통 실행 경계와 Python reference (benchmark adapters는 이후)
 src/inodefence/observer/    filesystem 상태 관찰
 src/inodefence/oracle/      security contract 판정
-src/inodefence/feedback/    초기 state signature (corpus 선택은 이후)
+src/inodefence/feedback/    signature v2 / semantic fingerprints / in-memory Corpus v1
 
 tests/                      코드 테스트
 scripts/                    개발/실험 보조 명령

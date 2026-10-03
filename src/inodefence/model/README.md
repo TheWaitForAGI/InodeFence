@@ -1,33 +1,24 @@
 # 공통 데이터 모델
 
-## 이 폴더는 무엇인가
-
-모듈이 주고받을 case와 결과의 표현을 위한 위치다.
-
-## 입력
-
-entry 내용·관계·순서, 실행 기록과 관찰 자료(계획).
-
-## 출력
-
-ArchiveEntry, ArchiveCase부터 정의할 공통 표현(계획).
-
 ## 책임
 
-예: notes.txt 파일 entry의 경로와 내용을 실행 없이 표현한다.
+실행이나 판정 없이 모듈 사이의 immutable 데이터와 evidence를 표현한다. 모두 frozen/slots dataclass와 tuple collection을 사용한다. [architecture의 현재 API](../../../docs/research/design/architecture.md)를 따른다.
+
+| 파일 | 주요 모델 |
+| --- | --- |
+| [archive.py](archive.py) | ArchiveEntry, EntryType, ArchiveCase |
+| [filesystem.py](filesystem.py) | ObjectSnapshot, StateSnapshot, StateChange, StateSignature |
+| [results.py](results.py) | ExecutionResult, IdentityEvidence, ViolationResult, RunResult |
+| [serialization.py](serialization.py) | canonical_json, schema version 1 |
+
+ArchiveEntry는 raw path/link text를 보존하고 NUL·잘못된 field 조합을 거부한다. regular는 bytes content, directory는 content/target 없음, hardlink/symlink는 target 필수다. USTAR 길이 제한은 builder의 책임이다. ArchiveCase는 order/duplicate를 보존하며 versioned canonical representation의 SHA-256을 `case_id`로 제공한다. Mutation lineage는 후속 설계다.
+
+ObjectSnapshot은 존재하는 lstat object다. `StateSnapshot.get(path) is None`은 부재를 나타내며 protected_paths는 sentinel 삭제 후에도 남는다. Snapshot은 path 순서와 보호 대상 설정을 검증한다. Symlink identity는 referent가 아닌 링크 자체다.
+
+ExecutionResult의 status와 filesystem verdict는 독립적이다. RunResult는 case, TAR format/hash, 실행 provenance, before/after, 변화, signature와 계약 evidence를 보존한다. 실제 run directory는 반환 전에 삭제된다.
+
+`canonical_json(model)`은 schema/model type과 정렬된 JSON key를 기록하고 bytes를 base64로 보존한다. Raw snapshot에는 inode·timestamp 원값이 있지만 portable signature에는 없다. 이는 export 경계이며 database나 deserializer는 아니다. Formal experiment runner는 commit, OS/kernel, config/seed/budget provenance를 추가해야 한다.
 
 ## 하지 않는 것
 
-TAR 생성 정책, extractor 실행, mutation, 보안 판정.
-
-## 다른 모듈과의 연결
-
-[architecture의 데이터 흐름](../../../docs/research/design/architecture.md)에서 각 모델의 소비자를 본다.
-
-## 현재 상태
-
-이번 작업에서 README만 추가했다. Python 패키지와 모델은 미구현이다. 첫 구현 대상은 [STATUS](../../../docs/STATUS.md)의 ArchiveEntry와 ArchiveCase다.
-
-## 파일 배치 규칙
-
-모델 구현 시 필드 의미와 제약을 docstring과 관련 design 문서에 남긴다. target별 실행 옵션은 넣지 않는다.
+TAR encoding, target-specific 옵션, filesystem 실행, mutation, security/interestingness 판정.

@@ -23,7 +23,7 @@ builder.build_tar → disposable runtime → before snapshot
 | [runtime.py](runtime.py) | Linux runtime와 sentinel lifecycle |
 | [pipeline.py](pipeline.py) | 실행 순서 연결 |
 | [generator](generator/README.md) | 초기 case 생성 정책, 후속 구현 |
-| [mutator](mutator/README.md) | 기존 case 구조 변경, 후속 구현 |
+| [mutator](mutator/README.md) | Generic Mutation v1, 8개 독립 ArchiveCase 변형 operator |
 | [targets](targets/README.md) | 실제 extractor 실행 |
 | [observer](observer/README.md) | filesystem 사실 관찰과 비교 |
 | [oracle](oracle/README.md) | Security Contract 판정 |
@@ -33,7 +33,7 @@ Observer는 사실만 기록하고 Oracle은 사실에 계약을 적용한다. S
 
 ## 현재 상태와 한계
 
-Layer 2와 최소 Layer 3가 구현됐다. Python tarfile/data target은 architecture/reference용이며 최종 benchmark target이 아니다. Unsafe target에는 추가 OS 실행 격리가 필요하다. Disposable runtime directory 자체는 OS sandbox가 아니다.
+Layer 2, 최소 Layer 3와 Generic Mutation v1이 구현됐다. Feedback-driven corpus scheduling과 fuzzing loop, 연구 효과 검증은 후속 작업이다. Python tarfile/data target은 architecture/reference용이며 최종 benchmark target이 아니다. Unsafe target에는 추가 OS 실행 격리가 필요하다. Disposable runtime directory 자체는 OS sandbox가 아니다.
 
 Snapshot의 `violated=False`는 관찰 범위에서 위반 증거가 없다는 뜻이다. Transient operation, sandbox 밖의 상태, symlink referent identity와 full C0 direct-use는 증명하지 못한다. 관찰 실패는 harness 오류로 올리며 passing result를 만들지 않는다.
 

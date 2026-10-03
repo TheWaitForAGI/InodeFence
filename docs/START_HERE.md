@@ -75,8 +75,8 @@ Layer 0  개발환경                  ✅
 Layer 1  연구 범위/규칙/아키텍처   ✅
 Layer 2  공통 Data Model           ✅
 Layer 3  Minimal Pipeline          ✅ Python reference, snapshot 관찰 범위
-Layer 4  Mutation                  ← 다음
-Layer 5  Feedback / Corpus
+Layer 4  Mutation                  ✅ Generic Mutation v1
+Layer 5  Feedback / Corpus         ← 다음 (미구현)
 Layer 6  Experiment / Paper
 ```
 
@@ -106,7 +106,7 @@ Layer 6  Experiment / Paper
 
 ## 6. 파일을 어디에 만들까?
 
-폴더별 책임과 파일 배치 규칙은 [문서 지도](README.md)와 [엔진 모듈 지도](../src/inodefence/README.md)를 본다. 상세 pipeline과 데이터 흐름은 [architecture.md](research/design/architecture.md)가 기준이다. `pipeline.run_case`는 입력 하나를 실제 실행·관찰·판정한다. Mutation과 Corpus loop는 후속 작업이다.
+폴더별 책임과 파일 배치 규칙은 [문서 지도](README.md)와 [엔진 모듈 지도](../src/inodefence/README.md)를 본다. 상세 pipeline과 데이터 흐름은 [architecture.md](research/design/architecture.md)가 기준이다. `pipeline.run_case`는 입력 하나를 실제 실행·관찰·판정한다. Generic Mutation v1은 별도 ArchiveCase 변형 API이며 Corpus/fuzzing loop와 연구 효과 검증은 후속 작업이다.
 
 ```text
 src/inodefence/model/       공통 데이터 표현과 canonical JSON

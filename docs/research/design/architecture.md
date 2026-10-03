@@ -19,9 +19,9 @@
 
 ## 1. 현재 상태와 용어
 
-현재는 **개발 Layer 2와 최소 Layer 3 구현·검증 완료**다. Feature branch의 구현 상태 표시는 main merge를 의미하지 않는다.
+현재는 **개발 Layer 2, 최소 Layer 3와 Layer 4 Generic Mutation v1 구현** 단계다. Feature branch의 구현 상태 표시는 main merge를 의미하지 않는다.
 
-ArchiveCase → 결정적 USTAR → Python reference worker → pre/post snapshot → C0/C1/C2 evidence의 실제 API가 있다. Generator/Mutator와 corpus loop, benchmark adapter 및 evaluation은 후속 단계다.
+ArchiveCase → 결정적 USTAR → Python reference worker → pre/post snapshot → C0/C1/C2 evidence의 실제 API가 있다. Generic Mutation v1은 별도 ArchiveCase → ArchiveCase API다. Generator, feedback-driven corpus scheduling과 fuzzing loop, benchmark adapter 및 evaluation은 후속 단계다.
 
 아래 개념 그림에는 lineage, tracing, corpus 등 미래 설계도 포함한다. 현재 확정된 field/API는 **7.8 현재 구현 경계**를 따른다. Python reference는 최종 benchmark target이 아니다.
 
@@ -159,7 +159,7 @@ flowchart LR
 
 이 그림은 최종 목표 구조다.
 
-현재 구현은 이 전체 루프 중 **공통 Data Model → 최소 관찰 경로**다. 다음 작업은 Generic Mutation의 Task Contract 확정이다.
+현재 구현은 이 전체 루프 중 **공통 Data Model → 최소 관찰 경로**와 별도 Generic Mutation v1이다. 다음 작업은 Feedback / Corpus의 Task Contract 확정이며, 전체 fuzzing loop나 연구 효과를 검증한 단계는 아니다.
 
 ---
 
@@ -655,7 +655,9 @@ src/inodefence/mutator/
 
 Mutator는 archive의 **구조적 의미**를 변화시킨다.
 
-초기 mutation 축:
+현재 [Generic Mutation v1](../../../src/inodefence/mutator/README.md)은 add/remove/duplicate/reorder/path/hardlink/symlink/link-target 8개 함수를 독립적으로 export한다. 각 함수는 `(case: ArchiveCase, rng: random.Random) -> ArchiveCase`이며 caller-owned RNG만 사용한다. Uniform `mutate()`는 baseline convenience 함수다. 향후 adaptive scheduler는 개별 함수를 직접 선택할 수 있으며 mutator는 Observer/Oracle/Feedback/StateSignature/TargetAdapter/pipeline/corpus 또는 TAR encoding에 의존하지 않는다. Constructor와 builder의 조합 검사는 별도 integration test에 둔다.
+
+현재 v1과 후속 확장 후보를 포함한 mutation 축:
 
 - entry type
 - entry path

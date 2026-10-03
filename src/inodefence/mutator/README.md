@@ -74,6 +74,12 @@ Observer/oracle/feedback/targets/pipeline을 import하지 않는다.
 Dependency 방향은 **상위 → Mutator → archive model**이며 Mutator가 Feedback/Corpus를
 import하지 않는다. 변형 결과를 builder에 전달하는 책임도 호출자에게 있다.
 
+[mutator 단위 검사](../../../tests/test_mutator.py)와 별도
+[constructor/builder integration 검사](../../../tests/test_mutator_builder.py)를 둔다.
+Integration 검사는 caller 수준에서 raw spelling/순서/중복, deterministic encoding과
+명시적인 USTAR 길이 거부를 확인하며 mutator 구현에 builder 의존성을 추가하지 않는다.
+이 검증은 feedback-driven corpus scheduling이나 연구 효과를 입증하지 않는다.
+
 초기 seed 생성, CVE-specific recipe/known PoC mutation, TAR byte/encoding mutation,
 corpus persistence, feedback-guided selection, scheduler/energy assignment, fuzzing loop,
 testcase minimization, mutation history DB는 이번 범위에 포함하지 않는다.

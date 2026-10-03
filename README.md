@@ -1,37 +1,37 @@
 # InodeFence
 
-InodeFence is a research prototype for **filesystem-security-state-guided fuzzing of TAR extraction**.
+InodeFence는 **TAR extraction을 대상으로 filesystem security state를 feedback으로 사용하는 fuzzing 연구 프로토타입**이다.
 
-The project investigates whether archive fuzzing can be guided by security-relevant filesystem state — especially object identity and external effects — instead of relying only on fixed attack recipes, output paths, crashes, or code coverage.
+고정된 공격 패턴, 출력 경로, crash, code coverage만 사용하는 대신, 특히 **filesystem object identity와 external effect** 같은 보안 관련 상태를 이용해 archive fuzzing을 유도할 수 있는지 검증한다.
 
-## Research Question
+## 핵심 연구 질문
 
-> Can generic TAR-entry mutation combined with filesystem-security-state feedback discover archive-extraction boundary violations efficiently without hardcoding a specific CVE PoC or fixed attack sequence?
+> 특정 CVE PoC나 고정된 공격 순서를 하드코딩하지 않고, generic TAR-entry mutation과 filesystem-security-state feedback을 결합하면 archive-extraction 보안 경계 위반을 효과적으로 탐색할 수 있는가?
 
-This is a research hypothesis, not a claim that the approach is already proven or novel.
+이 문장은 아직 검증 전의 **연구 가설**이다. 이미 성능이나 novelty가 입증됐다는 의미가 아니다.
 
-## Current Status
+## 현재 상태
 
-**Layer 0 — Reproducible development environment: complete**
+**Layer 0 — 재현 가능한 개발환경: 완료**
 
-Verified on:
+검증 환경:
 
-- macOS / ARM64 through the repository Dev Container
-- Windows / WSL2 / x86_64 through the same Dev Container
+- macOS / ARM64 + 저장소 Dev Container
+- Windows / WSL2 / x86_64 + 동일 Dev Container
 
-Container baseline:
+Container 기준:
 
 - Ubuntu 24.04
 - Python 3.12
 - pytest
 - Ruff
-- dedicated Linux runtime volume for filesystem-semantics experiments
+- filesystem semantics 실험용 전용 Linux runtime volume
 
-The project is now entering **Layer 1 — research context and architecture definition**.
+**Layer 1 — 연구 문맥/범위/아키텍처 정의: 완료**
 
-No production fuzzer exists yet.
+아직 실제 fuzzer 구현은 시작하지 않았다.
 
-## Core Pipeline
+## 전체 Pipeline
 
 ```text
 Seed Generator
@@ -50,51 +50,52 @@ Feedback / Corpus
     └──────────────→ next mutation
 ```
 
-## Initial Research Focus
+## 초기 연구 범위
 
-The first implementation focuses on:
+첫 구현에서 집중하는 범위:
 
 - TAR
 - Linux filesystem semantics
-- regular files, directories, hardlinks, and a required subset of symlinks
+- regular file / directory / hardlink / 필요한 범위의 symlink
 - filesystem object identity
-- protected external sentinels
-- pre/post state observation
+- 보호된 external sentinel
+- extraction 전/후 state observation
 - security-state-guided corpus selection
 
-Initial target order:
+초기 target 순서:
 
 1. node-tar
 2. oras-go
-3. GNU tar if time permits
+3. 일정이 허용하면 GNU tar
 
-## What InodeFence Does Not Claim
+## InodeFence가 새롭다고 주장하지 않는 것
 
-The project does not claim that the following are new on their own:
+다음 요소 자체는 신규 기여라고 주장하지 않는다.
 
 - TAR fuzzing
-- hardlink or symlink attacks
-- entry-order attacks
+- hardlink/symlink 공격
+- entry-order 공격
 - filesystem-state fuzzing
-- outside-root writes
+- outside-root write
 - feedback-guided fuzzing
 
-The research contribution must be supported by comparison with prior work and experiments.
+연구 기여는 반드시 선행연구 비교와 실험 결과로 뒷받침해야 한다.
 
-See:
+관련 문서:
 
 - `docs/research/design/project-scope.md`
 - `docs/research/design/research-questions.md`
 - `docs/research/design/security-contracts.md`
 - `docs/research/design/threat-model.md`
+- `docs/research/design/related-work-positioning.md`
 - `docs/research/design/architecture.md`
 - `AGENTS.md`
 
-## Development Environment
+## 개발 환경
 
-Open the repository in its Dev Container.
+저장소를 Dev Container로 연다.
 
-Then verify the environment:
+환경 확인:
 
 ```bash
 python scripts/check_dev_env.py
@@ -103,15 +104,15 @@ python -m ruff format --check .
 python -m pytest
 ```
 
-Filesystem-security experiments must run under:
+Filesystem-security 실험은 다음 경로에서만 수행한다.
 
 ```text
 /var/lib/inodefence
 ```
 
-Do not use real sensitive host files as experimental targets.
+실제 host의 민감 파일은 실험 대상으로 사용하지 않는다.
 
-## Repository Layout
+## 저장소 구조
 
 ```text
 src/inodefence/
@@ -122,19 +123,19 @@ src/inodefence/
 ├── oracle/
 └── feedback/
 
-docs/research/   research and design notes
-experiments/     experiment configuration and results
-paper/           paper-ready material
-findings/        intentionally saved findings
-scripts/         development and experiment helpers
-tests/           automated tests
+docs/research/   연구/설계/선행연구 문서
+experiments/     실험 설정과 결과
+paper/           논문 작성용 자료
+findings/        의도적으로 저장한 finding
+scripts/         개발/실험 보조 도구
+tests/           자동 테스트
 ```
 
-## Workflow
+## 작업 방식
 
-- Do not develop directly on `main`.
-- Use focused branches.
-- Open a PR into `main`.
-- Keep generic research logic separate from target-specific CVE details.
+- `main`에서 직접 개발하지 않는다.
+- 기능별 branch를 사용한다.
+- PR을 통해 `main`에 merge한다.
+- generic 연구 로직과 target-specific CVE 로직을 분리한다.
 
-See `AGENTS.md` for the repository-wide rules.
+저장소 전체 규칙은 `AGENTS.md`를 따른다.

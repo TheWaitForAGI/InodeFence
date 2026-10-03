@@ -73,3 +73,9 @@ timestamp와 duration equality를 요구하지 않으며 연구 효과를 주장
 표현, 불변성과 filesystem/RNG independence를 검증한다. `test_generator_integration.py`는
 기존 fixture bytes와의 동일성 및 explicit seed-only Python reference campaign에서 정상
 hardlink/symlink 의미론을 검증한다. 기존 fixture regression은 그대로 유지한다.
+
+`test_campaign_export.py`는 같은 완료 result의 deterministic LF bytes, manifest provenance와
+JSONL checksum, canonical step encoding, 모든 status/raw allocation/time/bytes/text, C2 evidence와
+feedback 보존, context ordering, 기존 output 거부와 IO 예외 전달을 검증한다.
+`test_campaign_export_integration.py`는 Linux safe reference 결과가 runtime cleanup 후에도
+완전히 export되는지 검사한다. Reader/deserializer API는 추가하지 않는다.

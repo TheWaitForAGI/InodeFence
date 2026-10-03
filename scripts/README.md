@@ -30,7 +30,7 @@ generate_tar_fixtures.py는 4종 TAR baseline을 재생성한다. manual_tar_pro
 
 ## 현재 상태
 
-환경 확인과 [TAR baseline 예제](../docs/examples/tar-baseline.md)의 fixture 생성·수동 관찰 명령이 있다. 자동 pipeline 실행 CLI는 아직 없다.
+환경 확인과 [TAR baseline 예제](../docs/examples/tar-baseline.md)의 fixture 생성·수동 관찰 명령이 있다. Safe reference의 bounded campaign 개발 pilot 명령이 있다. 일반 target 선택/benchmark CLI는 없다.
 
 ## 파일 배치 규칙
 

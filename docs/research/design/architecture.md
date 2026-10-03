@@ -1042,6 +1042,7 @@ admission-order retained IDs의 immutable snapshot이다. Full evidence 보존�
 O(execution_budget)이며 run당 evidence 크기에 비례한다. Semantic feedback이 같은 조건에서
 lineage를 재현하며 raw inode/timestamp/duration equality는 요구하지 않는다. Persistence,
 checkpoint/resume, adaptive scheduling과 default seed 선택은 없다.
+완료된 결과의 structured writer는 별도 campaign_export.py에 둔다.
 
 ---
 
@@ -1312,6 +1313,26 @@ violation=C1
 - environment/config reference
 
 실험 분석이 stdout 문자열 parsing에 의존하지 않게 한다.
+
+현재 [campaign_export.py](../../../src/inodefence/campaign_export.py)의
+`export_campaign(result: CampaignResult, destination: Path) -> tuple[Path, Path]`는 완료된 결과를
+새 directory의 manifest.json/steps.jsonl로 기록한다. 기존 destination은 거부하고 IO/encoding
+오류는 전달한다. Step별 existing canonical_json envelope/schema/bytes-base64 encoding을
+그대로 사용하며 result(raw evidence)와 feedback(decision)은 별도 field로 유지한다. Lineage,
+모든 execution status, snapshots, signature와 verdict/evidence를 보존한다.
+
+Manifest schema v1은 format/classification, config, initial IDs, step count/final stats/retained
+order와 결과에서 얻은 target ID/version/builder format/timeout contexts를 기록한다. Context는
+first-occurrence order의 unique tuple이며 변동 provenance를 첫 step 값으로 숨기지 않는다.
+steps_file/steps_sha256으로 실제 JSONL을 연결한다. export_environment는 writer process의
+Python version/system/release/architecture다. Target 실행 환경이나 source commit을 추정하지
+않는다. Unknown runtime provenance는 caller가 별도 기록해야 한다.
+
+동일한 완료 result와 exporter environment는 destination과 무관하게 같은 sorted-key ASCII JSON,
+LF bytes를 만든다. 별도 campaign의 raw inode/timestamp/duration equality는 요구하지 않는다.
+한 step씩 encode하므로 full campaign encoding을 추가로 memory에 만들지 않는다. Manifest는
+마지막에 쓰지만 interrupted/failed export는 partial files를 남길 수 있다. Atomic transaction,
+reader/deserializer/validator, resume/checkpoint/database와 validated analysis는 제공하지 않는다.
 
 ---
 

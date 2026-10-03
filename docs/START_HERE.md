@@ -115,6 +115,7 @@ src/inodefence/builder.py   결정적 USTAR 직렬화
 src/inodefence/runtime.py   disposable runtime와 sentinel
 src/inodefence/pipeline.py  입력 하나의 실행·관찰·판정 연결
 src/inodefence/campaign.py  bounded campaign / parent lineage / full run evidence
+src/inodefence/campaign_export.py  manifest.json / canonical steps.jsonl
 src/inodefence/generator/   명시적 minimal_seed_corpus (정상 baseline 4종)
 src/inodefence/mutator/     TAR entry 변형
 src/inodefence/targets/     공통 실행 경계와 Python reference (benchmark adapters는 이후)

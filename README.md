@@ -5,7 +5,7 @@
 InodeFence는 TAR archive entry를 생성·변형하고, 실제 extractor(압축 해제 프로그램)를 실행한 뒤, filesystem의 보안 관련 상태를 관찰해 archive extraction의 보안 경계 위반을 탐색하려는 프로젝트입니다.
 경로뿐 아니라 **파일 객체의 identity와 외부 상태 변화**를 다음 입력을 선택하는 feedback으로 활용할 가치가 있는지 연구합니다.
 
-현재는 **공통 데이터 모델, 최소 단일 실행 pipeline, Generic Mutation v1과 Layer 5 Feedback / Corpus v1**을 구현했습니다. Corpus는 normalized state와 violation novelty를 독립적으로 추적하고 mutation parent를 in-memory로 보존·균등 선택합니다. Python `tarfile`/`data` reference target으로 검증하며, fuzzing loop/campaign runner, adaptive scheduler, persistence와 연구 효과 검증은 후속 작업입니다.
+현재는 **공통 데이터 모델, 최소 단일 실행 pipeline, Generic Mutation v1과 Layer 5 Feedback / Corpus v1**을 구현했습니다. Corpus는 normalized state와 violation novelty를 독립적으로 추적하고 mutation parent를 in-memory로 보존·균등 선택합니다. Python `tarfile`/`data` reference target으로 검증하며, bounded campaign runner·explicit minimal seeds·structured export를 제공합니다. Adaptive scheduler, persistence와 연구 효과 검증은 후속 작업입니다.
 
 [현재 상태](docs/STATUS.md) · [시작 안내](docs/START_HERE.md) · [아키텍처](docs/research/design/architecture.md) · [Security Contracts](docs/research/design/security-contracts.md) · [개발 가이드](CONTRIBUTING.md)
 
@@ -272,14 +272,18 @@ make probe CASE=hardlink
 
 Probe는 Python `tarfile`의 `data` filter를 사용하는 학습·관찰 도구입니다.
 임시 sandbox를 사용하고 실행 후 정리합니다. 기본 CASE는 `regular-file`이며 `directory`, `hardlink`, `symlink`도 지원합니다.
-이 명령은 node-tar/ oras-go adapter나 자동 security oracle을 실행하지 않습니다. 실제 fuzzer 실행 명령은 아직 없습니다.
+이 명령은 node-tar/ oras-go adapter나 자동 security oracle을 실행하지 않습니다. 현재 campaign CLI는 [safe reference 개발 pilot](scripts/reference_campaign_pilot.py)에 제한됩니다.
 
 최초 `make install` 후 Dev Container의 Python에서 내부 API를 실행할 수 있습니다.
 
 ```python
 import random
+from pathlib import Path
 
+from inodefence.campaign import CampaignConfig, run_campaign
+from inodefence.campaign_export import export_campaign
 from inodefence.feedback import Corpus
+from inodefence.generator import minimal_seed_corpus
 from inodefence.model import ArchiveCase, ArchiveEntry, EntryType, canonical_json
 from inodefence.mutator import mutate
 from inodefence.pipeline import run_case
@@ -302,14 +306,12 @@ rng = random.Random(1234)
 parent = corpus.select_case(rng)
 child = mutate(parent, rng)  # 개별 API도 caller 수준에서 조합 가능
 
-from inodefence.campaign import CampaignConfig, run_campaign
-from inodefence.generator import minimal_seed_corpus
-
 campaign = run_campaign((case,), PythonTarfileTarget(), CampaignConfig(1234, 25))
 assert len(campaign.steps) == 25
 
 # 고정된 4종 정상 seed를 사용할 때도 명시적으로 전달
 seeded = run_campaign(minimal_seed_corpus(), PythonTarfileTarget(), CampaignConfig(11, 25))
+manifest, steps = export_campaign(seeded, Path("experiments/raw/example-campaign"))
 ```
 
 Corpus retention은 다음 mutation parent로 보존한다는 뜻입니다. 새로운 normalized state나
@@ -318,8 +320,11 @@ contract-violation evidence class가 자동으로 취약점은 아닙니다. Cam
 campaign-owned RNG를 사용하고 no-op도 재시도 없이 한 번 실행합니다. 네 target status는 모두
 기록하고 harness 오류는 그대로 전달합니다. Steps는 zero-based index, parent ID, full RunResult와
 feedback을 보존하므로 메모리는 O(execution_budget)이며 개별 evidence 크기에도 비례합니다.
-Config/initial IDs와 admission order는 결과에 남지만 commit/environment provenance와 disk export는
-아직 caller 책임입니다. Corpus v1은 persistence나 완전한 campaign key를 제공하지 않습니다.
+Config/initial IDs와 admission order는 결과에 남습니다. `export_campaign`은 새 directory에
+`manifest.json`과 canonical `steps.jsonl`을 기록하고 기존 output은 거부합니다. Raw inode/time과
+모든 status를 그대로 보존하며 결과를 분석/claim으로 승격하지 않습니다. Manifest의
+export_environment는 export한 process의 환경이고 과거 target 실행 환경이 아닙니다.
+Source commit과 실행 환경의 추가 provenance는 caller 책임입니다. Corpus v1은 persistence나 완전한 campaign key를 제공하지 않습니다.
 
 `violated=False`는 관찰 범위 안에서 증거가 없다는 뜻입니다. Snapshot은 일시적 operation이나 sandbox 밖의 상태를 증명하지 못합니다. C0 namespace 변화와 C2 content/metadata effect를 구분하며, 관찰 오류는 harness 오류로 올립니다. Runtime directory는 cleanup 경계이고 임의 executable을 가두는 OS sandbox가 아닙니다. Unsafe benchmark adapter에는 추가 process/filesystem isolation이 필요합니다. 상세 API와 한계는 [architecture](docs/research/design/architecture.md)와 [계약 구현 범위](docs/research/design/security-contracts.md)를 따릅니다.
 
@@ -360,7 +365,7 @@ Experiment Config → Raw Execution → Validated Summary
 Codex CLI 버전은 formal experiment reproducibility 기준에 포함하지 않습니다.
 
 [experiments](experiments/README.md)는 설정·raw 기록과 [검증 요약](experiments/summaries/README.md), [findings](findings/README.md)는 개별 사례의 재현·검토 근거, [paper](paper/README.md)는 논문에 사용할 준비가 된 자료를 담당합니다.
-현재는 보관 구조와 규칙이 마련되어 있으며 실험 결과나 finding이 있는 단계는 아닙니다.
+Safe Python reference의 [개발 pilot 요약](experiments/summaries/reference-campaign-pilot-v1.md)이 있습니다. Formal effectiveness 결과나 확인된 finding은 아직 없습니다.
 
 ## 보안 연구 안전 정책
 

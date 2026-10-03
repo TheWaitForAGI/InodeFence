@@ -1,18 +1,18 @@
 # 현재 프로젝트 상태
 
-이 문서는 **현재 main이 어디까지 왔고 다음에 무엇을 할지**만 기록한다.
+이 문서는 **현재 checkout에서 구현·검증한 범위와 다음 작업**을 기록한다. Feature branch의 완료 표시는 main merge를 의미하지 않으며, 사람의 review와 merge가 필요하다.
 
 설계 근거나 긴 설명은 다른 문서에 둔다.
 
 ## 현재 단계
 
-**Layer 1 완료 → Layer 2 시작 직전**
+**Layer 2 완료 + Layer 3 최소 pipeline 완료 → Layer 4 Generic Mutation 준비**
 
 ```text
 Layer 0 — 개발환경                         ✅ 완료
 Layer 1 — 연구 기반/범위/아키텍처          ✅ 완료
-Layer 2 — 공통 Data Model                  ⏭ 다음
-Layer 3 — Minimal End-to-End Pipeline      ⬜
+Layer 2 — 공통 Data Model                  ✅ 완료
+Layer 3 — Minimal End-to-End Pipeline      ✅ Python reference / snapshot 범위
 Layer 4 — Generic Mutation                 ⬜
 Layer 5 — Feedback / Corpus                ⬜
 Layer 6 — Baseline / Evaluation / Paper    ⬜
@@ -44,31 +44,35 @@ Layer 6 — Baseline / Evaluation / Paper    ⬜
 - 개발환경 정책
 - AGENTS 규칙
 
-### Data Model 구현 전 기초 예제
+### 기초 예제와 regression
 
 - regular file / directory / hardlink / symlink TAR fixture 4종과 결정적 재생성 script
 - Linux runtime sandbox에서 extraction 후 metadata를 출력하는 수동 probe
 - [TAR baseline 실행·관찰 안내](examples/tar-baseline.md)와 filesystem 의미론 테스트
 
-Layer 2의 공통 Data Model과 자동 pipeline은 아직 구현하지 않았다.
+Fixture generator는 core builder를 사용하며 기존 TAR bytes와 probe behavior를 유지한다.
+
+### Core engine foundation
+
+- 순서·중복·raw path/link 의미를 보존하는 immutable ArchiveEntry/ArchiveCase
+- ExecutionResult, lstat ObjectSnapshot/StateSnapshot, StateSignature, typed ViolationResult/RunResult
+- 고정 metadata, strict UTF-8, USTAR builder와 format provenance/SHA-256
+- TargetAdapter Protocol과 별도 process의 Python tarfile/data reference adapter
+- `/var/lib/inodefence` 내 disposable runtime, 보호 sentinel, symlink를 따라가지 않는 관찰·cleanup
+- Before/after 생성·삭제·identity·내용·metadata 변화 비교
+- C0 persistent 외부 namespace 변화, C1 lstat identity 공유, C2 sentinel 변화 판정
+- raw inode/timestamp 없는 관계 signature; 최종 feedback 정책은 후속 작업
+- versioned canonical JSON으로 case·실행·snapshot·판정 근거 export
+- 실제 Linux filesystem, reject/partial extraction/timeout, E2E와 기존 baseline regression 테스트
+
+Python reference는 architecture 검증과 integration baseline용이며 최종 연구 benchmark가 아니다.
+C0의 direct path use 전체와 transient state는 snapshot만으로 판정할 수 없다. 관찰 실패를 PASS로 처리하지 않는다.
 
 ## 다음 작업
 
-다음 구현 Layer에서는 **공통 Data Model**만 정의한다.
-
-우선 후보:
-
-- `ArchiveEntry`
-- `ArchiveCase`
-- `ExecutionResult`
-- `ObjectSnapshot`
-- `StateSnapshot`
-- `StateSignature`
-- `ViolationResult`
-
-아직 모든 모델을 한 번에 구현하지 않는다.
-
-첫 시작점은 `ArchiveEntry`와 `ArchiveCase` 정의다.
+다음 Task Contract는 **Layer 4의 Generic Mutation** 범위를 확정한다. 기존 ArchiveCase를 입력/출력으로 사용하고, entry type/path/link/order/dependency를 일반 규칙으로 변형한다.
+이후 Layer 5에서 signature schema와 corpus 선택 정책을 실험용으로 고정한다.
+Benchmark adapter 우선순위는 node-tar → oras-go → 선택 GNU tar를 유지한다. Unsafe target 연결 전에는 OS 수준 실행 격리와 target/version 설정을 함께 검토해야 한다.
 
 ## 지금 하지 않을 것
 
@@ -92,7 +96,7 @@ Layer 2의 공통 Data Model과 자동 pipeline은 아직 구현하지 않았다
 
 ## 이 문서를 언제 갱신하나?
 
-다음 중 하나가 main에 merge되면 갱신한다.
+다음 변경을 담는 PR에서 구현 상태를 함께 갱신한다. main에서의 완료는 해당 PR merge 후 성립한다.
 
 - Layer가 넘어갈 때
 - 공통 interface가 확정될 때

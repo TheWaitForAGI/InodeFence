@@ -165,3 +165,15 @@ run-UUID/
 ```
 
 Observer는 extraction 전후 sentinel state를 기록한다.
+
+## 현재 snapshot Oracle의 구현 범위
+
+계약 정의와 초기 관찰 능력을 구분한다. `violated=False`는 관찰 범위 내 위반 증거가 없다는 뜻이며, 모든 filesystem operation이 안전했음을 증명하지 않는다. 각 ViolationResult는 이 한계를 `limitations`에 기록한다.
+
+- **C0:** sandbox 전체의 persistent external namespace 생성·삭제·identity/type 교체를 전후 비교한다. 단순 archive path spelling이나 reject 여부를 위반 조건으로 사용하지 않는다. Content/metadata effect만으로 외부 path 직접 사용을 추정하지 않는다. Direct-use, transient 생성 후 삭제와 sandbox 밖 접근은 operation tracing/추가 격리 없이 판정하지 못한다.
+- **C1:** extraction object와 지정 sentinel의 post-state `(st_dev, st_ino)` equality를 비교한다. 초기 정책은 cross-boundary identity 공유를 허용하지 않는다. Runner는 빈 extract/와 controlled sentinel로 시작한다. Symlink는 lstat object만 비교하며 referent identity는 추론하지 않는다.
+- **C2:** 지정 sentinel의 existence, object type, dev/inode identity, content digest, size, mode, nlink, uid/gid, mtime/ctime nanoseconds를 비교한다. atime은 Observer의 read 때문에 변할 수 있어 제외한다. Creation/deletion은 전후 object의 부재로 표현하고 replacement 증거도 보존한다.
+
+StateChange는 양쪽 ObjectSnapshot과 changed-field enum을 보존한다. C1 evidence는 internal/sentinel path와 실제 identity pair다. Safe rejection이나 nonzero exit라도 같은 Oracle을 적용한다. 판정은 contract violation 후보이며 confirmed vulnerability에는 재현·root-cause 검토가 추가로 필요하다.
+
+Snapshot은 두 시점 사이의 모든 변화를 복구하지 못한다. Inode 재사용으로 같은 숫자가 다시 할당되는 경우도 구분하지 못한다. IO/permission 실패는 ObservationError로 올리며 incomplete snapshot으로 nonviolation을 반환하지 않는다. C3/C4와 full tracing은 후속 단계다.

@@ -5,7 +5,7 @@
 InodeFence는 TAR archive entry를 생성·변형하고, 실제 extractor(압축 해제 프로그램)를 실행한 뒤, filesystem의 보안 관련 상태를 관찰해 archive extraction의 보안 경계 위반을 탐색하려는 프로젝트입니다.
 경로뿐 아니라 **파일 객체의 identity와 외부 상태 변화**를 다음 입력을 선택하는 feedback으로 활용할 가치가 있는지 연구합니다.
 
-현재는 **개발환경과 연구 설계를 완료하고 공통 데이터 모델 구현을 시작하기 직전**입니다. 자동 fuzzing pipeline과 연구 효과는 아직 구현·검증되지 않았습니다.
+현재는 **공통 데이터 모델과 입력 하나를 실제 실행·관찰·판정하는 최소 pipeline**을 구현했습니다. Python `tarfile`/`data` reference target으로 검증하며, mutation·corpus loop와 연구 효과는 아직 구현·검증되지 않았습니다.
 
 [현재 상태](docs/STATUS.md) · [시작 안내](docs/START_HERE.md) · [아키텍처](docs/research/design/architecture.md) · [Security Contracts](docs/research/design/security-contracts.md) · [개발 가이드](CONTRIBUTING.md)
 
@@ -56,7 +56,7 @@ flowchart TD
     C --> M
 ```
 
-`ArchiveCase`는 TAR 입력 하나를 논리적으로 표현할 데이터 모델의 설계 후보입니다.
+`ArchiveCase`는 순서와 중복을 보존하는 immutable TAR 입력 모델입니다.
 Mutation(입력 변형)은 entry의 경로, type, link target, 순서, 의존 관계 등을 일반적인 규칙으로 바꾸는 것을 뜻합니다.
 Corpus는 다음 변형의 출발점으로 남기는 입력 모음입니다.
 
@@ -66,7 +66,7 @@ Corpus는 다음 변형의 출발점으로 남기는 입력 모음입니다.
 ## 무엇을 관찰하는가
 
 초기 Observer(관찰 모듈)는 압축 해제 **전후 snapshot**, 즉 각 시점의 filesystem 상태 기록을 우선합니다.
-관찰 후보는 다음과 같습니다. 자동 Observer의 데이터 모델과 구현은 아직 없습니다.
+현재 Observer는 다음 정보를 기록합니다. symlink는 `lstat`과 link text만 관찰하고 referent를 따라 읽지 않습니다.
 
 | 관찰 정보 | 확인하려는 의미 |
 | --- | --- |
@@ -80,7 +80,7 @@ Corpus는 다음 변형의 출발점으로 남기는 입력 모음입니다.
 
 **중요한 것은 raw inode 번호 자체보다 객체 사이의 관계와 변화입니다.**
 예를 들어 “inode 번호가 123이다”보다 “내부 파일과 외부 sentinel이 같은 객체다”, “외부 sentinel의 내용이 변했다”가 탐색에 의미 있는 정보입니다.
-실행마다 달라질 수 있는 번호를 그대로 새로운 상태로 세지 않도록 관계 기반 정규화를 설계할 예정입니다.
+초기 StateSignature는 정렬된 path/type, same-object group, link text와 외부 변경 종류로 정규화합니다. raw inode·timestamp 값과 directory size는 signature에서 제외하며, 최종 feedback/ablation 정책은 후속 실험에서 정합니다.
 
 ## Security Contracts: 무엇을 위반으로 볼 것인가
 
@@ -89,9 +89,9 @@ Security Contract는 안전한 압축 해제가 지켜야 할 일반화된 보�
 
 | ID | Contract | 쉽게 말하면 | 구현 계획 |
 | --- | --- | --- | --- |
-| C0 | Path Boundary Confinement | 생성하거나 직접 사용하는 경로가 의도한 extraction boundary를 벗어나면 안 됨 | 초기 baseline / sanity |
-| C1 | Object Identity Confinement | 내부 객체가 보호된 외부 sentinel과 의도치 않게 같은 객체를 공유하면 안 됨 | 초기 핵심 |
-| C2 | External Effect Noninterference | 압축 해제로 외부 sentinel의 내용·metadata가 의도치 않게 변하면 안 됨 | 초기 핵심 |
+| C0 | Path Boundary Confinement | 생성하거나 직접 사용하는 경로가 의도한 extraction boundary를 벗어나면 안 됨 | persistent 외부 namespace 변화; direct-use tracing은 이후 |
+| C1 | Object Identity Confinement | 내부 객체가 보호된 외부 sentinel과 의도치 않게 같은 객체를 공유하면 안 됨 | post-state lstat identity 공유 판정 |
+| C2 | External Effect Noninterference | 압축 해제로 외부 sentinel의 내용·metadata가 의도치 않게 변하면 안 됨 | sentinel 전후 변화 판정 |
 | C3 | Extraction Root Integrity | 목적지 자체가 교체·redirect되어 이후 추출이 경계 밖으로 향하면 안 됨 | 최소 pipeline 이후 |
 | C4 | Check/Use Coherence | 검증한 경로·객체와 실제 operation에서 사용한 대상의 의미가 일관되어야 함 | instrumentation이 필요한 후속 단계 |
 
@@ -192,19 +192,19 @@ Target-specific 실행 로직은 adapter에 두고, generic mutation·observer·
 
 ## 현재 구현 상태
 
-**Layer 1 완료 → Layer 2 시작 직전**입니다. 최신 상태와 다음 작업은 [STATUS.md](docs/STATUS.md)에서 관리합니다.
+**Layer 2와 Layer 3의 최소 관찰 pipeline을 구현·검증했습니다.** 최신 상태와 다음 작업은 [STATUS.md](docs/STATUS.md)에서 관리합니다. Feature branch의 구현 상태 표시는 main merge를 의미하지 않습니다.
 
 | 개발 Layer | 상태 |
 | --- | --- |
 | Layer 0 — 개발환경 | 완료 |
 | Layer 1 — 연구 기반 / 범위 / 아키텍처 | 완료 |
-| Layer 2 — 공통 Data Model | 다음: `ArchiveEntry`, `ArchiveCase`부터 정의 |
-| Layer 3 — Minimal End-to-End Pipeline | 미구현 |
+| Layer 2 — 공통 Data Model | 완료: archive, execution, snapshot, signature, evidence/result |
+| Layer 3 — Minimal End-to-End Pipeline | 완료: Python reference target, C0 관찰 범위 제한 |
 | Layer 4 — Generic Mutation | 미구현 |
 | Layer 5 — Feedback / Corpus | 미구현 |
 | Layer 6 — Baseline / Evaluation / Paper | 미진행 |
 
-현재 main에 있는 기반은 다음과 같습니다.
+현재 코드에 있는 기반은 다음과 같습니다.
 
 - Ubuntu 24.04 / Python 3.12 Dev Container, Linux runtime volume, hardlink/symlink 환경 검사
 - Codex CLI rolling latest 정책
@@ -214,8 +214,11 @@ Target-specific 실행 로직은 adapter에 두고, generic mutation·observer·
 - extraction 후 metadata와 객체 관계를 출력하는 수동 filesystem probe
 - finding disclosure 정책과 검증된 experiment summary 보관 규칙
 
-엔진 하위 패키지는 대부분 빈 뼈대이며 공통 Python 데이터 모델은 아직 없습니다.
-자동 Observer·Oracle·fuzzing loop, 실험 실행기와 평가 결과, 확인된 finding은 아직 없습니다.
+- 결정적 USTAR builder, disposable sandbox, 실제 reference worker, pre/post Observer
+- C0/C1/C2 structured evidence, portable signature, versioned canonical JSON export
+- 실제 Linux filesystem과 E2E semantics 테스트
+
+Python reference는 architecture 검증과 baseline용이며 **node-tar를 대체하는 최종 benchmark target이 아닙니다.** Fuzzing loop, 실험 실행기, 평가 결과와 확인된 finding은 아직 없습니다.
 
 ## 개발 환경과 현재 실행 가능한 명령
 
@@ -252,6 +255,27 @@ make probe CASE=hardlink
 Probe는 Python `tarfile`의 `data` filter를 사용하는 학습·관찰 도구입니다.
 임시 sandbox를 사용하고 실행 후 정리합니다. 기본 CASE는 `regular-file`이며 `directory`, `hardlink`, `symlink`도 지원합니다.
 이 명령은 node-tar/ oras-go adapter나 자동 security oracle을 실행하지 않습니다. 실제 fuzzer 실행 명령은 아직 없습니다.
+
+최초 `make install` 후 Dev Container의 Python에서 내부 API를 실행할 수 있습니다.
+
+```python
+from inodefence.model import ArchiveCase, ArchiveEntry, EntryType, canonical_json
+from inodefence.pipeline import run_case
+from inodefence.targets import PythonTarfileTarget
+
+case = ArchiveCase(
+    (
+        ArchiveEntry("a.txt", EntryType.REGULAR, content=b"hello inodefence"),
+        ArchiveEntry("b.txt", EntryType.HARDLINK, link_target="a.txt"),
+    )
+)
+result = run_case(case, PythonTarfileTarget())
+assert result.execution.succeeded
+assert all(not verdict.violated for verdict in result.violations)
+record = canonical_json(result)  # sandbox 정리 후에도 case·snapshot·evidence 보존
+```
+
+`violated=False`는 관찰 범위 안에서 증거가 없다는 뜻입니다. Snapshot은 일시적 operation이나 sandbox 밖의 상태를 증명하지 못합니다. C0 namespace 변화와 C2 content/metadata effect를 구분하며, 관찰 오류는 harness 오류로 올립니다. Runtime directory는 cleanup 경계이고 임의 executable을 가두는 OS sandbox가 아닙니다. Unsafe benchmark adapter에는 추가 process/filesystem isolation이 필요합니다. 상세 API와 한계는 [architecture](docs/research/design/architecture.md)와 [계약 구현 범위](docs/research/design/security-contracts.md)를 따릅니다.
 
 Codex CLI는 exact version으로 고정하지 않는 **rolling latest** 정책입니다.
 설정·업데이트 방법은 [.devcontainer/README.md](.devcontainer/README.md), baseline 설명은 [TAR baseline 안내](docs/examples/tar-baseline.md)를 참고하세요.

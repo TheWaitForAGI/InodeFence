@@ -14,7 +14,7 @@ pytest 결과.
 
 ## 책임
 
-패키지 import, Python 3.12, TAR baseline의 entry 구조·재생성·extraction 결과와 수동 probe 출력을 확인한다.
+모델 invariant와 raw path 의미, 결정적 USTAR encoding, 실제 Linux lstat/hardlink/symlink/digest, snapshot 변화, portable signature, C0/C1/C2 evidence와 reference E2E를 검증한다. 기존 baseline 재생성·extraction·probe regression도 유지한다.
 
 ## 하지 않는 것
 
@@ -26,7 +26,9 @@ pytest 결과.
 
 ## 현재 상태
 
-test_smoke.py와 test_tar_fixtures.py가 있다. 4종 baseline TAR는 fixtures/tar/에 두며 [실행과 관찰 방법](../docs/examples/tar-baseline.md)을 따른다. 모델·pipeline·oracle 테스트는 아직 없다.
+`test_core_model.py`, `test_builder.py`, `test_observer.py`, `test_state_semantics.py`, `test_runtime.py`, `test_pipeline.py`가 core semantics를 검증한다. Oracle positive case는 synthetic 또는 직접 제어한 disposable sentinel state이며, vulnerable extractor나 CVE PoC를 재현하지 않는다. E2E는 실제 Python subprocess로 정상 entry, reject 후 부분 추출, parser 실패와 timeout을 확인한다. IO 오류/cleanup의 단위 검사는 오류를 주입하며 실제 실행 검사를 대체하지 않는다.
+
+4종 baseline TAR는 fixtures/tar/에 두며 [실행과 관찰 방법](../docs/examples/tar-baseline.md)을 따른다. Canonical validation은 Dev Container의 `make check`다. Filesystem test는 `/var/lib/inodefence` 내 disposable sandbox만 사용한다. 서로 다른 run의 inode normalization 검사는 두 sandbox를 동시에 유지해 inode 재사용을 피한다.
 
 ## 파일 배치 규칙
 

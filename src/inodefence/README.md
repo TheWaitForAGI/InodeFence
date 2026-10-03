@@ -1,45 +1,40 @@
 # InodeFence 엔진 모듈
 
-## 이 폴더는 무엇인가
+상세 구조와 데이터 흐름은 [architecture](../../docs/research/design/architecture.md)가 canonical source다.
 
-TAR 입력을 만들고 extractor 실행 결과를 관찰·판정·선택할 엔진의 위치다. 상세 구조와 데이터 흐름은 [architecture](../../docs/research/design/architecture.md)가 canonical source다.
+## 실제 입력 하나의 경로
 
-## 입력
+`pipeline.run_case(ArchiveCase, TargetAdapter, sentinels=...) -> RunResult`
 
-초기 case 설정, 기존 corpus 입력, target 및 sandbox 설정(계획).
+```text
+builder.build_tar → disposable runtime → before snapshot
+→ TargetAdapter.run → after snapshot → compare_states
+→ C0/C1/C2 Oracle + StateSignature → RunResult → cleanup
+```
 
-## 출력
+입력은 immutable case와 명시적인 target/sentinel 설정이다. 결과에는 case, TAR hash/format, target/version/command/timeout, 전후 snapshot, 변화와 typed evidence가 남는다. [root 사용 예](../../README.md)를 따른다.
 
-case, 실행 기록, snapshot, 계약 판정, corpus 선택 결과(계획).
+## 책임 배치
 
-## 책임
-
-각 모듈은 아래 한 가지 책임을 맡는다. 예를 들어 “두 path의 identity가 같다”는 Observer의 사실이고, “보호 대상과의 공유가 계약을 위반한다”는 Oracle의 판정이다.
-
-| 폴더 | 책임 |
+| 위치 | 책임 |
 | --- | --- |
-| [model](model/README.md) | 공통 입력과 결과 표현 |
-| [generator](generator/README.md) | 초기 archive case 생성 |
-| [mutator](mutator/README.md) | 기존 case 구조 변경 |
+| [model](model/README.md) | 공통 입력과 결과, canonical JSON |
+| [builder.py](builder.py) | 결정적 USTAR 직렬화 |
+| [runtime.py](runtime.py) | Linux runtime와 sentinel lifecycle |
+| [pipeline.py](pipeline.py) | 실행 순서 연결 |
+| [generator](generator/README.md) | 초기 case 생성 정책, 후속 구현 |
+| [mutator](mutator/README.md) | 기존 case 구조 변경, 후속 구현 |
 | [targets](targets/README.md) | 실제 extractor 실행 |
-| [observer](observer/README.md) | filesystem 상태 관찰 |
-| [oracle](oracle/README.md) | Security Contract 위반 판정 |
-| [feedback](feedback/README.md) | interesting state 판정 및 corpus 관리 |
+| [observer](observer/README.md) | filesystem 사실 관찰과 비교 |
+| [oracle](oracle/README.md) | Security Contract 판정 |
+| [feedback](feedback/README.md) | 초기 signature; corpus 선택은 후속 구현 |
 
-TAR Builder는 별도 직렬화 책임이며 파일 위치는 아직 미확정이다.
+Observer는 사실만 기록하고 Oracle은 사실에 계약을 적용한다. Signature 계산은 계약 판정과 독립적이다. Pipeline은 각 알고리즘을 호출할 뿐 target 옵션이나 mutation 전략을 소유하지 않는다.
 
-## 하지 않는 것
+## 현재 상태와 한계
 
-Observer의 취약 판정, Oracle의 filesystem 실행·mutation, Feedback의 계약 정의, generic 모듈의 target-specific 처리.
+Layer 2와 최소 Layer 3가 구현됐다. Python tarfile/data target은 architecture/reference용이며 최종 benchmark target이 아니다. Unsafe target에는 추가 OS 실행 격리가 필요하다. Disposable runtime directory 자체는 OS sandbox가 아니다.
 
-## 다른 모듈과의 연결
+Snapshot의 `violated=False`는 관찰 범위에서 위반 증거가 없다는 뜻이다. Transient operation, sandbox 밖의 상태, symlink referent identity와 full C0 direct-use는 증명하지 못한다. 관찰 실패는 harness 오류로 올리며 passing result를 만들지 않는다.
 
-[tests](../../tests/README.md)는 구현을 검증하고 [experiments](../../experiments/README.md)는 실험 설정과 결과를 관리한다. 보존할 증거는 [findings](../../findings/README.md)와 [artifacts](../../artifacts/README.md)에 연결한다.
-
-## 현재 상태
-
-기존 패키지는 빈 __init__.py만 있다. model/에는 이번에 추가한 README만 있다. 동작하는 pipeline이나 공개 실행 API는 없으며 다음 구현은 [STATUS](../../docs/STATUS.md)의 공통 Data Model이다.
-
-## 파일 배치 규칙
-
-변경할 책임의 하위 폴더에 코드를 둔다. 새로운 공통 interface는 관련 design 문서와 함께 설명하고, 조율 코드나 Builder 위치는 구현 단계에서 합의한다. 연구 문서나 runtime 결과를 Python 패키지에 넣지 않는다.
+[tests](../../tests/README.md)는 semantics를 검증하고 [experiments](../../experiments/README.md)는 연구 실험을 담당한다. Runtime 결과를 소스에 넣지 않는다. 새 공통 interface는 design 문서와 함께 갱신한다.

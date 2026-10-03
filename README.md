@@ -1,124 +1,83 @@
+<div align="center">
+
 # InodeFence
 
-InodeFence는 **TAR extraction을 대상으로 filesystem security state를 feedback으로 사용하는 fuzzing 연구 프로토타입**이다.
+**압축을 푼 뒤, 파일시스템의 보안 경계는 안전할까?**
 
-고정된 공격 패턴, 출력 경로, crash, code coverage만 사용하는 대신, 특히 **filesystem object identity와 external effect** 같은 보안 관련 상태를 이용해 archive fuzzing을 유도할 수 있는지 검증한다.
+TAR 압축 해제 보안을 탐색하는 filesystem-state-guided fuzzing 연구 프로토타입
 
-## 처음 왔다면
+`TAR` · `Linux` · `Python 3.12` · `Research Prototype`
 
-모든 문서를 읽을 필요는 없다.
+[시작 안내](docs/START_HERE.md) · [현재 상태](docs/STATUS.md) · [아키텍처](docs/research/design/architecture.md) · [개발 가이드](CONTRIBUTING.md)
 
-먼저 이 세 개만 읽는다.
+</div>
 
-1. [docs/START_HERE.md](docs/START_HERE.md) — 프로젝트를 5분 안에 이해하기
-2. [docs/STATUS.md](docs/STATUS.md) — 지금 어디까지 했고 다음에 뭘 하는지
-3. [AGENTS.md](AGENTS.md) — 사람/코딩 에이전트가 지켜야 할 규칙
+---
 
-용어가 헷갈리면 [docs/GLOSSARY.md](docs/GLOSSARY.md), 큰 설계 결정의 이유는 [docs/DECISIONS.md](docs/DECISIONS.md)를 본다.
+## 무엇을 연구하나요?
 
-> 이 프로젝트에서는 문서도 구현의 일부다. AI가 만든 코드를 팀원이 설명할 수 없는 상태는 완료로 보지 않는다.
+InodeFence는 TAR 안의 파일 경로, 링크, 순서를 조금씩 바꾸고, 실제 압축 해제 프로그램이 만든 **파일시스템 상태**를 관찰하는 퍼저를 연구합니다.
 
-## 핵심 연구 질문
+핵심은 파일 이름뿐 아니라 **어떤 파일이 실제로 같은 객체를 가리키는지**, **추출 폴더 밖의 보호 파일이 바뀌었는지**까지 살펴보는 것입니다.
 
-> 특정 CVE PoC나 고정된 공격 순서를 하드코딩하지 않고, generic TAR-entry mutation과 filesystem-security-state feedback을 결합하면 archive-extraction 보안 경계 위반을 효과적으로 탐색할 수 있는가?
-
-이 문장은 아직 검증 전의 **연구 가설**이다. 이미 성능이나 novelty가 입증됐다는 의미가 아니다.
-
-## 현재 상태
-
-상세 최신 상태는 [docs/STATUS.md](docs/STATUS.md)를 기준으로 한다.
-
-현재 큰 단계:
+예를 들어 서로 다른 경로가 같은 inode를 가리키면, 내부 파일에 쓰는 작업이 외부 보호 파일에도 영향을 줄 수 있습니다.
 
 ```text
-Layer 0 — 재현 가능한 개발환경          ✅
-Layer 1 — 연구 문맥/범위/아키텍처       ✅
-Layer 2 — 공통 Data Model              ← 다음
-Layer 3 — Minimal Pipeline
-Layer 4 — Mutation
-Layer 5 — Feedback / Corpus
-Layer 6 — Experiment / Paper
+추출 폴더/result.txt ─┐
+                     ├── 같은 파일 객체 (inode)
+외부 보호 파일       ─┘
 ```
 
-## 전체 Pipeline
+> 이런 객체 관계와 외부 변화를 다음 입력을 고르는 feedback으로 쓰면,
+> 압축 해제의 보안 경계 위반을 더 잘 찾을 수 있을까요?
+
+이것이 검증할 연구 가설입니다. 효과와 새로움은 선행연구 비교와 실험으로 확인할 예정입니다.
+
+## 어떻게 동작하나요?
+
+계획 중인 탐색 흐름은 다음과 같습니다.
 
 ```text
-Seed Generator
-    ↓
-Structure Mutator
-    ↓
-TAR Builder
-    ↓
-Target Adapter
-    ↓
-State Observer
-    ↓
-Security Oracle
-    ↓
-Feedback / Corpus
-    └──────────────→ next mutation
+TAR 입력 생성·변형 → 압축 해제 → 상태 관찰 → 보안 계약 판정
+       ↑                                      ↓
+       └──────── 보존한 입력으로 다시 변형 ← 상태 기반 선택
 ```
 
-## 초기 연구 범위
+| 관찰할 것 | 확인하려는 경계 |
+| --- | --- |
+| 생성된 파일의 경로 | 추출 폴더 밖으로 벗어났는가? |
+| 내부·외부 파일의 객체 관계 | 보호 파일과 의도치 않게 같은 객체를 공유하는가? |
+| 외부 보호 파일의 내용·메타데이터 | 압축 해제로 보호 파일이 바뀌었는가? |
 
-첫 구현에서 집중하는 범위:
+초기 범위는 **Linux의 TAR 압축 해제**입니다. 대상 프로그램은 node-tar → oras-go → 일정이 허용하면 GNU tar 순으로 계획하고 있습니다. 자세한 판정 기준은 [Security Contract](docs/research/design/security-contracts.md)를 참고하세요.
 
-- TAR
-- Linux filesystem semantics
-- regular file / directory / hardlink / 필요한 범위의 symlink
-- filesystem object identity
-- 보호된 external sentinel
-- extraction 전/후 state observation
-- security-state-guided corpus selection
+## 지금 어디까지 왔나요?
 
-초기 target 순서:
+**개발환경과 연구 설계를 마쳤고, 공통 데이터 모델 구현을 시작하기 직전입니다.** 실행 가능한 fuzzing pipeline은 아직 없습니다.
 
-1. node-tar
-2. oras-go
-3. 일정이 허용하면 GNU tar
+```text
+✅ 개발환경 · 연구 설계
+📍 다음: 공통 데이터 모델
+⬜ 최소 실행 경로 → 입력 변형 → Feedback / Corpus → 실험·평가
+```
 
-## InodeFence가 새롭다고 주장하지 않는 것
+최신 진행 상황과 다음 작업은 [STATUS](docs/STATUS.md)에 기록합니다.
 
-다음 요소 자체는 신규 기여라고 주장하지 않는다.
+## 둘러보기
 
-- TAR fuzzing
-- hardlink/symlink 공격
-- entry-order 공격
-- filesystem-state fuzzing
-- outside-root write
-- feedback-guided fuzzing
+| 목적 | 안내 |
+| --- | --- |
+| 프로젝트 이해하기 | [START_HERE](docs/START_HERE.md) |
+| 코드와 폴더의 역할 보기 | [엔진 모듈 지도](src/inodefence/README.md) · [문서 지도](docs/README.md) |
+| 연구 근거와 설계 읽기 | [연구 문서](docs/research/README.md) |
+| 실험과 증거 살펴보기 | [experiments](experiments/README.md) · [findings](findings/README.md) · [paper](paper/README.md) |
+| 개발에 참여하기 | [CONTRIBUTING](CONTRIBUTING.md) · [AGENTS](AGENTS.md) |
 
-연구 기여는 반드시 선행연구 비교와 실험 결과로 뒷받침해야 한다.
+## 개발 시작하기
 
-## Security Contract 요약
+macOS 또는 Windows + WSL2에서 저장소를 **Dev Container**로 엽니다. 기준 환경은 Ubuntu 24.04 + Python 3.12입니다.
 
-초기 계약:
-
-1. **Path Boundary Confinement** — 가장 기본적인 path 경계 sanity/baseline
-2. **Object Identity Confinement** — 내부 object가 보호된 외부 object와 같은 identity를 공유하지 않아야 함
-3. **External Effect Noninterference** — 외부 sentinel의 content/metadata가 바뀌지 않아야 함
-4. **Extraction Root Integrity** — extraction root의 실제 의미가 공격적으로 redirect되지 않아야 함
-5. **Check/Use Coherence** — 검증한 대상과 실제 operation에 사용한 대상의 의미가 일관되어야 함
-
-자세한 정의는 [docs/research/design/security-contracts.md](docs/research/design/security-contracts.md)를 본다.
-
-## 관련 연구 문서
-
-필요할 때만 읽는다.
-
-- `docs/research/design/project-scope.md`
-- `docs/research/design/research-questions.md`
-- `docs/research/design/security-contracts.md`
-- `docs/research/design/threat-model.md`
-- `docs/research/design/related-work-positioning.md`
-- `docs/research/design/architecture.md`
-- `docs/research/design/development-environment.md`
-
-## 개발 환경
-
-저장소를 Dev Container로 연다.
-
-환경 확인:
+컨테이너 안에서 환경과 코드를 확인합니다.
 
 ```bash
 python scripts/check_dev_env.py
@@ -127,46 +86,4 @@ python -m ruff format --check .
 python -m pytest
 ```
 
-Filesystem-security 실험은 다음 경로에서만 수행한다.
-
-```text
-/var/lib/inodefence
-```
-
-실제 host의 민감 파일은 실험 대상으로 사용하지 않는다.
-
-## 저장소 구조
-
-폴더별 책임은 [문서 지도](docs/README.md)와 [엔진 모듈 지도](src/inodefence/README.md)에서 확인한다. 상세 설계의 기준은 [architecture.md](docs/research/design/architecture.md)다. 엔진은 현재 빈 패키지이며 `model/`에는 안내 문서만 있다.
-
-```text
-src/inodefence/
-├── model/       공통 모델 계획 (README만 있음)
-├── generator/
-├── mutator/
-├── targets/
-├── observer/
-├── oracle/
-└── feedback/
-
-docs/            처음 읽는 문서 + 연구/설계 문서
-experiments/     실험 설정과 결과
-paper/           논문 작성용 자료
-findings/        의도적으로 저장한 finding
-artifacts/       의도적으로 보존할 생성물
-scripts/         개발/실험 보조 도구
-tests/           자동 테스트
-```
-
-## 작업 방식
-
-환경과 협업 설정은 [.devcontainer](.devcontainer/README.md), [.github](.github/README.md)를 본다. 작업별 안내는 [tests](tests/README.md), [scripts](scripts/README.md), [experiments](experiments/README.md), [findings](findings/README.md), [artifacts](artifacts/README.md), [paper](paper/README.md)에 있다.
-
-자세한 작업 방식은 [CONTRIBUTING.md](CONTRIBUTING.md)를 따른다.
-
-핵심만 요약하면:
-
-- `main`에서 직접 개발하지 않는다.
-- 한 PR에는 가능하면 하나의 목적만 둔다.
-- generic 연구 로직과 target-specific CVE 로직을 분리한다.
-- 공통 interface나 연구 가정이 바뀌면 문서도 같이 수정한다.
+파일시스템 실험은 `/var/lib/inodefence`의 disposable sandbox와 보호용 sentinel에서 수행합니다. 환경 설정은 [개발환경 안내](.devcontainer/README.md)를 참고하세요.

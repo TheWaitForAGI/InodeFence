@@ -105,11 +105,13 @@ def test_entry_is_frozen() -> None:
     entry = ArchiveEntry(path="a.txt", entry_type=EntryType.REGULAR)
 
     with pytest.raises(FrozenInstanceError):
-        entry.path = "b.txt"
+        setattr(entry, "path", "b.txt")  # noqa: B010
 
 
 def test_case_is_frozen() -> None:
     case = ArchiveCase(entries=())
 
     with pytest.raises(FrozenInstanceError):
-        case.entries = (ArchiveEntry(path="a.txt", entry_type=EntryType.REGULAR),)
+        setattr(  # noqa: B010
+            case, "entries", (ArchiveEntry(path="a.txt", entry_type=EntryType.REGULAR),)
+        )

@@ -1,0 +1,32 @@
+{
+  "name": "InodeFence",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+
+  "remoteUser": "vscode",
+
+  "mounts": [
+    "source=inodefence-runtime,target=/var/lib/inodefence,type=volume"
+  ],
+
+  "postCreateCommand": "sudo chown -R vscode:vscode /var/lib/inodefence && python -m pip install -e '.[dev]'",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "charliermarsh.ruff",
+        "ms-azuretools.vscode-containers"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/opt/venv/bin/python",
+        "python.testing.pytestEnabled": true,
+        "python.testing.unittestEnabled": false,
+        "editor.formatOnSave": true
+      }
+    }
+  }
+}

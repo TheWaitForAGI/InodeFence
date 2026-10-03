@@ -6,15 +6,17 @@
 
 ## 입력
 
-현재 스크립트는 Python 환경과 INODEFENCE_RUNTIME_ROOT를 읽는다.
+Python 환경과 INODEFENCE_RUNTIME_ROOT를 읽는다. manual_tar_probe.py는 작은 baseline TAR 경로를 입력받는다.
 
 ## 출력
 
-환경 정보와 검사 성공 또는 실패.
+환경 검사 결과, 재생성된 fixture TAR, 사람이 읽을 수 있는 filesystem metadata.
 
 ## 책임
 
 check_dev_env.py는 임시 sandbox에서 hardlink identity, symlink, 공유 object write effect를 확인한다.
+
+generate_tar_fixtures.py는 4종 TAR baseline을 재생성한다. manual_tar_probe.py는 Linux runtime sandbox에 TAR를 풀고 lstat/readlink 결과를 출력한 뒤 sandbox를 삭제한다.
 
 ## 하지 않는 것
 
@@ -26,7 +28,7 @@ check_dev_env.py는 임시 sandbox에서 hardlink identity, symlink, 공유 obje
 
 ## 현재 상태
 
-check_dev_env.py만 있다. 실험 실행 CLI는 없다.
+환경 확인과 [TAR baseline 예제](../docs/examples/tar-baseline.md)의 fixture 생성·수동 관찰 명령이 있다. 자동 pipeline 실행 CLI는 아직 없다.
 
 ## 파일 배치 규칙
 

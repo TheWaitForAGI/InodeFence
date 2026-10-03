@@ -42,6 +42,14 @@ Layer 6 — Baseline / Evaluation / Paper    ⬜
 - 개발환경 정책
 - AGENTS 규칙
 
+### Data Model 구현 전 기초 예제
+
+- regular file / directory / hardlink / symlink TAR fixture 4종과 결정적 재생성 script
+- Linux runtime sandbox에서 extraction 후 metadata를 출력하는 수동 probe
+- [TAR baseline 실행·관찰 안내](examples/tar-baseline.md)와 filesystem 의미론 테스트
+
+Layer 2의 공통 Data Model과 자동 pipeline은 아직 구현하지 않았다.
+
 ## 다음 작업
 
 다음 구현 Layer에서는 **공통 Data Model**만 정의한다.

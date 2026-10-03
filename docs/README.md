@@ -22,7 +22,7 @@
 
 ## 다른 모듈과의 연결
 
-[research](research/README.md)는 연구 문서, [소스 안내](../src/inodefence/README.md)는 모듈 지도다.
+[research](research/README.md)는 연구 문서, [소스 안내](../src/inodefence/README.md)는 모듈 지도다. [TAR baseline 예제](examples/tar-baseline.md)는 작은 archive의 생성·extraction·filesystem 관찰 방법을 설명한다.
 
 ## 현재 상태
 

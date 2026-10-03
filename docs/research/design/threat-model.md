@@ -55,6 +55,7 @@ LinkZard의 OpLock과 같은 runtime 외부 조작 모델은 초기 범위에서
 
 다음과 같은 경우 보안 관련 상태로 본다.
 
+- 생성/사용된 path가 의도한 extraction boundary를 직접 벗어남
 - 내부 path가 외부 sentinel과 의도하지 않게 동일 identity를 공유
 - 외부 sentinel content/metadata 변경
 - 보호된 외부 object가 의도하지 않게 생성/교체/삭제/link

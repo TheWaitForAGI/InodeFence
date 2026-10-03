@@ -4,6 +4,20 @@ InodeFence는 **TAR extraction을 대상으로 filesystem security state를 feed
 
 고정된 공격 패턴, 출력 경로, crash, code coverage만 사용하는 대신, 특히 **filesystem object identity와 external effect** 같은 보안 관련 상태를 이용해 archive fuzzing을 유도할 수 있는지 검증한다.
 
+## 처음 왔다면
+
+모든 문서를 읽을 필요는 없다.
+
+먼저 이 세 개만 읽는다.
+
+1. [docs/START_HERE.md](docs/START_HERE.md) — 프로젝트를 5분 안에 이해하기
+2. [docs/STATUS.md](docs/STATUS.md) — 지금 어디까지 했고 다음에 뭘 하는지
+3. [AGENTS.md](AGENTS.md) — 사람/코딩 에이전트가 지켜야 할 규칙
+
+용어가 헷갈리면 [docs/GLOSSARY.md](docs/GLOSSARY.md), 큰 설계 결정의 이유는 [docs/DECISIONS.md](docs/DECISIONS.md)를 본다.
+
+> 이 프로젝트에서는 문서도 구현의 일부다. AI가 만든 코드를 팀원이 설명할 수 없는 상태는 완료로 보지 않는다.
+
 ## 핵심 연구 질문
 
 > 특정 CVE PoC나 고정된 공격 순서를 하드코딩하지 않고, generic TAR-entry mutation과 filesystem-security-state feedback을 결합하면 archive-extraction 보안 경계 위반을 효과적으로 탐색할 수 있는가?
@@ -12,24 +26,19 @@ InodeFence는 **TAR extraction을 대상으로 filesystem security state를 feed
 
 ## 현재 상태
 
-**Layer 0 — 재현 가능한 개발환경: 완료**
+상세 최신 상태는 [docs/STATUS.md](docs/STATUS.md)를 기준으로 한다.
 
-검증 환경:
+현재 큰 단계:
 
-- macOS / ARM64 + 저장소 Dev Container
-- Windows / WSL2 / x86_64 + 동일 Dev Container
-
-Container 기준:
-
-- Ubuntu 24.04
-- Python 3.12
-- pytest
-- Ruff
-- filesystem semantics 실험용 전용 Linux runtime volume
-
-**Layer 1 — 연구 문맥/범위/아키텍처 정의: 완료**
-
-아직 실제 fuzzer 구현은 시작하지 않았다.
+```text
+Layer 0 — 재현 가능한 개발환경          ✅
+Layer 1 — 연구 문맥/범위/아키텍처       ✅
+Layer 2 — 공통 Data Model              ← 다음
+Layer 3 — Minimal Pipeline
+Layer 4 — Mutation
+Layer 5 — Feedback / Corpus
+Layer 6 — Experiment / Paper
+```
 
 ## 전체 Pipeline
 
@@ -81,7 +90,21 @@ Feedback / Corpus
 
 연구 기여는 반드시 선행연구 비교와 실험 결과로 뒷받침해야 한다.
 
-관련 문서:
+## Security Contract 요약
+
+초기 계약:
+
+1. **Path Boundary Confinement** — 가장 기본적인 path 경계 sanity/baseline
+2. **Object Identity Confinement** — 내부 object가 보호된 외부 object와 같은 identity를 공유하지 않아야 함
+3. **External Effect Noninterference** — 외부 sentinel의 content/metadata가 바뀌지 않아야 함
+4. **Extraction Root Integrity** — extraction root의 실제 의미가 공격적으로 redirect되지 않아야 함
+5. **Check/Use Coherence** — 검증한 대상과 실제 operation에 사용한 대상의 의미가 일관되어야 함
+
+자세한 정의는 [docs/research/design/security-contracts.md](docs/research/design/security-contracts.md)를 본다.
+
+## 관련 연구 문서
+
+필요할 때만 읽는다.
 
 - `docs/research/design/project-scope.md`
 - `docs/research/design/research-questions.md`
@@ -89,7 +112,7 @@ Feedback / Corpus
 - `docs/research/design/threat-model.md`
 - `docs/research/design/related-work-positioning.md`
 - `docs/research/design/architecture.md`
-- `AGENTS.md`
+- `docs/research/design/development-environment.md`
 
 ## 개발 환경
 
@@ -123,7 +146,7 @@ src/inodefence/
 ├── oracle/
 └── feedback/
 
-docs/research/   연구/설계/선행연구 문서
+docs/            처음 읽는 문서 + 연구/설계 문서
 experiments/     실험 설정과 결과
 paper/           논문 작성용 자료
 findings/        의도적으로 저장한 finding
@@ -133,9 +156,11 @@ tests/           자동 테스트
 
 ## 작업 방식
 
-- `main`에서 직접 개발하지 않는다.
-- 기능별 branch를 사용한다.
-- PR을 통해 `main`에 merge한다.
-- generic 연구 로직과 target-specific CVE 로직을 분리한다.
+자세한 작업 방식은 [CONTRIBUTING.md](CONTRIBUTING.md)를 따른다.
 
-저장소 전체 규칙은 `AGENTS.md`를 따른다.
+핵심만 요약하면:
+
+- `main`에서 직접 개발하지 않는다.
+- 한 PR에는 가능하면 하나의 목적만 둔다.
+- generic 연구 로직과 target-specific CVE 로직을 분리한다.
+- 공통 interface나 연구 가정이 바뀌면 문서도 같이 수정한다.

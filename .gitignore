@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+
+# Test / tooling
+.pytest_cache/
+.coverage
+htmlcov/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# InodeFence runtime data
+findings/*
+!findings/.gitkeep
+
+corpus/generated/
+experiments/results/
+
+# Experiment runtime output
+experiments/raw/*
+!experiments/raw/.gitkeep
+
+# Generated artifacts
+artifacts/*
+!artifacts/.gitkeep

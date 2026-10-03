@@ -1,11 +1,25 @@
 # 초기 case 생성
 
-## 책임
+## 책임과 API
 
-작고 설명 가능한 초기 ArchiveCase를 생성하는 정책을 둔다. 기존 case mutation, TAR encoding, extractor 실행이나 CVE recipe를 소유하지 않는다.
+`minimal_seed_corpus() -> tuple[ArchiveCase, ...]`는 작고 정상적인 네 시작 case를 반환한다.
+순서는 regular file → directory/file → regular/hardlink → regular/symlink다. 고정 raw path,
+content(`b"hello inodefence"`)와 mode를 사용하고 link target은 먼저 나온 `a.txt`다.
+기존 개발 fixture의 logical cases와 TAR bytes를 유지한다. Return 값과 entries는 immutable다.
 
-## 현재 상태
+```python
+from inodefence.campaign import CampaignConfig, run_campaign
+from inodefence.generator import minimal_seed_corpus
+from inodefence.targets import PythonTarfileTarget
 
-Generic generator는 아직 미구현이다. 작은 4종 baseline case는 개발용 [fixture script](../../../scripts/generate_tar_fixtures.py)의 `baseline_case`에 있다. Script는 공통 [model](../model/README.md)과 [builder.py](../builder.py)를 사용하므로 TAR encoding을 중복하지 않는다.
+result = run_campaign(minimal_seed_corpus(), PythonTarfileTarget(), CampaignConfig(11, 25))
+```
 
-후속 generator는 ArchiveCase를 반환하고 [mutator](../mutator/README.md)에 연결한다. 직렬화 정책은 builder에 둔다. 책임 기준은 [architecture](../../../docs/research/design/architecture.md)다.
+Generator는 표준 library와 canonical archive model만 의존한다. Filesystem/RNG access,
+feedback/pipeline/target dependency, TAR byte serialization과 CVE recipe는 없다. Campaign은
+계속 initial cases를 명시적으로 받으며 이 API를 자동으로 호출하거나 default seed를 고르지 않는다.
+
+[Fixture script](../../../scripts/generate_tar_fixtures.py)의 `baseline_case`는 이 API에 위임한다.
+Builder가 TAR encoding을, Mutator가 기존 case 변형을 담당한다. 모듈 경계는
+[architecture](../../../docs/research/design/architecture.md)를 따른다. 이 corpus의 연구 효과나
+benchmark 적합성은 아직 평가하지 않았다.

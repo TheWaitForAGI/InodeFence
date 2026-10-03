@@ -21,7 +21,7 @@
 
 현재는 **개발 Layer 2, 최소 Layer 3, Layer 4 Generic Mutation v1과 Layer 5 Feedback / Corpus v1 구현** 단계다. Feature branch의 구현 상태 표시는 main merge를 의미하지 않는다.
 
-ArchiveCase → 결정적 USTAR → Python reference worker → pre/post snapshot → C0/C1/C2 evidence의 실제 API가 있다. Generic Mutation v1은 별도 ArchiveCase → ArchiveCase API다. Layer 5는 RunResult의 독립 state/violation novelty에 따른 in-memory retention과 uniform caller-RNG parent selection을 제공한다. Bounded campaign v1은 명시적 seed와 execution budget으로 API를 조합한다. Generator, adaptive scheduler/persistence, benchmark adapter 및 evaluation은 후속 단계다.
+ArchiveCase → 결정적 USTAR → Python reference worker → pre/post snapshot → C0/C1/C2 evidence의 실제 API가 있다. Generic Mutation v1은 별도 ArchiveCase → ArchiveCase API다. Layer 5는 RunResult의 독립 state/violation novelty에 따른 in-memory retention과 uniform caller-RNG parent selection을 제공한다. Bounded campaign v1은 명시적 seed와 execution budget으로 API를 조합한다. Minimal seed generator는 기존 4종 정상 baseline을 명시적으로 제공한다. Adaptive scheduler/persistence, benchmark adapter 및 evaluation은 후속 단계다.
 
 아래 개념 그림에는 lineage, tracing, corpus 등 미래 설계도 포함한다. 현재 확정된 field/API는 **7.8 현재 구현 경계**를 따른다. Python reference는 최종 benchmark target이 아니다.
 
@@ -636,6 +636,11 @@ flowchart TD
 ```text
 src/inodefence/generator/
 ```
+
+현재 `minimal_seed_corpus() -> tuple[ArchiveCase, ...]`는 regular, directory/file,
+regular/hardlink, regular/symlink 순서의 기존 정상 baseline을 반환한다. 고정 content/path/mode와
+immutable model만 사용하며 IO/RNG/feedback/pipeline/target/TAR encoding에 의존하지 않는다.
+Fixture script가 이 API를 공유한다. Campaign은 caller가 seeds를 명시적으로 전달해야 한다.
 
 역할:
 

@@ -1,33 +1,23 @@
 # Security Contract 판정
 
-## 이 폴더는 무엇인가
+## 입력과 출력
 
-관찰 결과에 일반화된 보안 계약을 적용한다.
+`evaluate_contracts(before, after) -> tuple[ViolationResult, ...]`
 
-## 입력
+[구현](contracts.py)은 같은 run의 snapshot을 비교하며 초기 보호 sentinel의 존재를 요구한다. Runner가 archive case와 execution provenance를 결과에 함께 보존한다. Oracle은 archive spelling이나 exit status로 verdict를 결정하지 않으며 reject/failure 뒤에도 같은 기준을 적용한다.
 
-StateSnapshot과 보호 대상·계약 설정(계획).
+정확한 계약과 관찰 한계는 [security-contracts](../../../docs/research/design/security-contracts.md)가 canonical source다.
 
-## 출력
+| 계약 | 현재 evidence |
+| --- | --- |
+| C0 | external namespace path의 생성·삭제·identity/type 교체 |
+| C1 | extraction object와 지정 sentinel의 post-state lstat identity 공유 |
+| C2 | 지정 sentinel의 존재·내용·identity·선택 metadata 전후 변화 |
 
-ViolationResult와 판정 근거(계획).
+C0는 content effect만으로 external path의 직접 사용을 추정하지 않는다. C1 초기 정책은 cross-boundary identity 공유를 허용하지 않으며 runner는 빈 extraction root에서 시작한다. C2는 atime을 제외한다.
 
-## 책임
-
-예: 내부 파일과 보호 sentinel의 의도하지 않은 identity 공유를 C1 위반 후보로 판정한다.
+Evidence는 StateChange의 전후 observation 또는 IdentityEvidence의 경로/identity 관계다. `violated=False`는 관찰 범위 내 증거 부재이며 모든 실행의 안전성 증명이 아니다. 각 verdict에 limitations를 기록한다. 결과는 vulnerability 확정이 아닌 재현·원인 분석 대상 contract candidate다.
 
 ## 하지 않는 것
 
-filesystem을 직접 실행하거나 mutation하기, CVE/버전으로 취약 판정하기.
-
-## 다른 모듈과의 연결
-
-[observer](../observer/README.md)의 사실을 받아 [feedback](../feedback/README.md)에 판정을 제공한다. 정의는 [security-contracts](../../../docs/research/design/security-contracts.md)에만 둔다.
-
-## 현재 상태
-
-빈 __init__.py만 있다. C0/C1/C2 우선이며 C3/C4는 후속 계획이다.
-
-## 파일 배치 규칙
-
-계약별 generic 판정 로직을 둔다. 수집은 Observer, 실행 차이는 Target Adapter에 둔다.
+Filesystem read/write, target 실행, mutation, signature/interestingness 결정, CVE 문자열/버전 판정. C3/C4와 full operation tracing은 후속 작업이다.

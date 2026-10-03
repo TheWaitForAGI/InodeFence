@@ -1,0 +1,283 @@
+{
+  "provenance": {
+    "architecture": "aarch64",
+    "classification": "engineering-validation-only",
+    "engine_revision": "cac0ed307251c53f43c56963887bc03b06e9f62a",
+    "initial_cases": [
+      {
+        "model": "ArchiveCase",
+        "schema_version": 1,
+        "value": {
+          "entries": [
+            {
+              "content": {
+                "data": "aGVsbG8gaW5vZGVmZW5jZQ==",
+                "encoding": "base64"
+              },
+              "entry_type": "regular",
+              "link_target": null,
+              "mode": 420,
+              "path": "a.txt"
+            }
+          ]
+        }
+      },
+      {
+        "model": "ArchiveCase",
+        "schema_version": 1,
+        "value": {
+          "entries": [
+            {
+              "content": null,
+              "entry_type": "directory",
+              "link_target": null,
+              "mode": 493,
+              "path": "dir/"
+            },
+            {
+              "content": {
+                "data": "aGVsbG8gaW5vZGVmZW5jZQ==",
+                "encoding": "base64"
+              },
+              "entry_type": "regular",
+              "link_target": null,
+              "mode": 420,
+              "path": "dir/a.txt"
+            }
+          ]
+        }
+      },
+      {
+        "model": "ArchiveCase",
+        "schema_version": 1,
+        "value": {
+          "entries": [
+            {
+              "content": {
+                "data": "aGVsbG8gaW5vZGVmZW5jZQ==",
+                "encoding": "base64"
+              },
+              "entry_type": "regular",
+              "link_target": null,
+              "mode": 420,
+              "path": "a.txt"
+            },
+            {
+              "content": null,
+              "entry_type": "hardlink",
+              "link_target": "a.txt",
+              "mode": 420,
+              "path": "b.txt"
+            }
+          ]
+        }
+      },
+      {
+        "model": "ArchiveCase",
+        "schema_version": 1,
+        "value": {
+          "entries": [
+            {
+              "content": {
+                "data": "aGVsbG8gaW5vZGVmZW5jZQ==",
+                "encoding": "base64"
+              },
+              "entry_type": "regular",
+              "link_target": null,
+              "mode": 420,
+              "path": "a.txt"
+            },
+            {
+              "content": null,
+              "entry_type": "symlink",
+              "link_target": "a.txt",
+              "mode": 511,
+              "path": "b.txt"
+            }
+          ]
+        }
+      }
+    ],
+    "jobs": [
+      {
+        "execution_budget": 25,
+        "random_seed": 11
+      },
+      {
+        "execution_budget": 50,
+        "random_seed": 11
+      },
+      {
+        "execution_budget": 100,
+        "random_seed": 11
+      },
+      {
+        "execution_budget": 25,
+        "random_seed": 23
+      },
+      {
+        "execution_budget": 50,
+        "random_seed": 23
+      },
+      {
+        "execution_budget": 100,
+        "random_seed": 23
+      },
+      {
+        "execution_budget": 50,
+        "random_seed": 23
+      }
+    ],
+    "platform": "Linux-7.0.14-orbstack-00380-ga7e0a2dc9535-aarch64-with-glibc2.39",
+    "python_version": "3.12.3",
+    "runner_sha256": "fee81d171c66cfaf7c44f8ebd582cc74ad13350c73cc37a68bc37b4f640727e8",
+    "runtime_root": "/var/lib/inodefence",
+    "target_id": "python-tarfile-data",
+    "target_version": "3.12.3",
+    "timeout_seconds": 5.0
+  },
+  "repeat_semantics_match": true,
+  "runs": [
+    {
+      "elapsed_seconds": 0.6987647779969848,
+      "execution_budget": 25,
+      "peak_traced_bytes": 525592,
+      "random_seed": 11,
+      "raw_file": "campaign-0-seed-11-budget-25.json",
+      "raw_sha256": "0b149d6a55e4de424286140bf4add230f35c241e659657065ee5257531cd07ce",
+      "stats": {
+        "interesting_observations": 12,
+        "observations": 25,
+        "retained_cases": 12,
+        "unique_states": 12,
+        "unique_violation_fingerprints": 0
+      },
+      "statuses": {
+        "failed": 1,
+        "rejected": 2,
+        "success": 22
+      }
+    },
+    {
+      "elapsed_seconds": 1.4158128009985376,
+      "execution_budget": 50,
+      "peak_traced_bytes": 730723,
+      "random_seed": 11,
+      "raw_file": "campaign-1-seed-11-budget-50.json",
+      "raw_sha256": "70e912a69b8710a59f09c26a7a233b9ba52e6448e4d685c3e51a7c907c053b95",
+      "stats": {
+        "interesting_observations": 20,
+        "observations": 50,
+        "retained_cases": 20,
+        "unique_states": 20,
+        "unique_violation_fingerprints": 0
+      },
+      "statuses": {
+        "failed": 3,
+        "rejected": 6,
+        "success": 41
+      }
+    },
+    {
+      "elapsed_seconds": 2.8578451800021867,
+      "execution_budget": 100,
+      "peak_traced_bytes": 1193604,
+      "random_seed": 11,
+      "raw_file": "campaign-2-seed-11-budget-100.json",
+      "raw_sha256": "873ef2698a59a649888003d26869cdf879c86f7584944ef296e1053b5a5e488e",
+      "stats": {
+        "interesting_observations": 38,
+        "observations": 100,
+        "retained_cases": 38,
+        "unique_states": 38,
+        "unique_violation_fingerprints": 0
+      },
+      "statuses": {
+        "failed": 10,
+        "rejected": 14,
+        "success": 76
+      }
+    },
+    {
+      "elapsed_seconds": 0.7234741050015145,
+      "execution_budget": 25,
+      "peak_traced_bytes": 501090,
+      "random_seed": 23,
+      "raw_file": "campaign-3-seed-23-budget-25.json",
+      "raw_sha256": "0569ef5977b5709b73debb110175a06b4d9fd84916951b641badfc10c475b758",
+      "stats": {
+        "interesting_observations": 14,
+        "observations": 25,
+        "retained_cases": 14,
+        "unique_states": 14,
+        "unique_violation_fingerprints": 0
+      },
+      "statuses": {
+        "failed": 3,
+        "rejected": 5,
+        "success": 17
+      }
+    },
+    {
+      "elapsed_seconds": 1.4399032959991018,
+      "execution_budget": 50,
+      "peak_traced_bytes": 718083,
+      "random_seed": 23,
+      "raw_file": "campaign-4-seed-23-budget-50.json",
+      "raw_sha256": "4acabbf8b505754a1472e2a119c05e8f337ccb8d4adffa023d3f3c468078b063",
+      "stats": {
+        "interesting_observations": 20,
+        "observations": 50,
+        "retained_cases": 20,
+        "unique_states": 20,
+        "unique_violation_fingerprints": 0
+      },
+      "statuses": {
+        "failed": 7,
+        "rejected": 10,
+        "success": 33
+      }
+    },
+    {
+      "elapsed_seconds": 2.8793966330013063,
+      "execution_budget": 100,
+      "peak_traced_bytes": 1151049,
+      "random_seed": 23,
+      "raw_file": "campaign-5-seed-23-budget-100.json",
+      "raw_sha256": "a4974061017d7644ca9907db21d2781c1b6fb6c521b3a325e2ee9939ba5d79c9",
+      "stats": {
+        "interesting_observations": 34,
+        "observations": 100,
+        "retained_cases": 34,
+        "unique_states": 34,
+        "unique_violation_fingerprints": 0
+      },
+      "statuses": {
+        "failed": 9,
+        "rejected": 17,
+        "success": 74
+      }
+    },
+    {
+      "elapsed_seconds": 1.464674331000424,
+      "execution_budget": 50,
+      "peak_traced_bytes": 718095,
+      "random_seed": 23,
+      "raw_file": "campaign-6-seed-23-budget-50.json",
+      "raw_sha256": "9dc636b43ea78c813e0dfad950a85c6956546f406de3af7bdb68e28462e36eeb",
+      "stats": {
+        "interesting_observations": 20,
+        "observations": 50,
+        "retained_cases": 20,
+        "unique_states": 20,
+        "unique_violation_fingerprints": 0
+      },
+      "statuses": {
+        "failed": 7,
+        "rejected": 10,
+        "success": 33
+      }
+    }
+  ],
+  "runtime_cleanup_verified": true
+}

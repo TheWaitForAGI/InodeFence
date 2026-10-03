@@ -102,8 +102,10 @@ Bounded deterministic campaign v1은 구현됐으며 adaptive scheduler, persist
 
 ## 다음 작업
 
-다음 작업은 safe Python reference의 작은 deterministic campaign 개발 pilot, 명시적인 minimal
-seed-corpus API와 완료된 campaign의 structured export다. 개발 pilot은 효과 평가가 아니다.
+다음 작업은 명시적인 minimal seed-corpus API와 완료된 campaign의 structured export다.
+Safe Python reference의 7개 작은 campaign/400 executions 개발 pilot을 완료했다. Repeat의
+semantic lineage/feedback과 budget/cleanup을 검증했으며 효과 평가는 아니다.
+기록은 [개발 pilot 요약](../experiments/summaries/reference-campaign-pilot-v1.md)을 따른다.
 Campaign은 config/initial IDs/lineage/full RunResult를 memory에 보존하며 추가 환경 provenance와
 disk export는 아직 caller 책임이다. Adaptive scheduler/persistence,
 benchmark adapters와 evaluation/ablation은 이후 작업이다. Layer 5 구현과 단위/integration test

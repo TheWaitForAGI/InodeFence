@@ -21,7 +21,7 @@
 
 현재는 **개발 Layer 2 공통 Data Model 진행 중**이다.
 
-현재 구현에는 개발환경, smoke test, TAR baseline fixture, 연구 설계 문서와 모듈별 README가 있다. `model/archive.py`에 `ArchiveEntry`, `ArchiveCase`, `EntryType`이, `model/execution.py`에 `ExecutionResult`가 구현되어 있으며 다른 엔진 하위 패키지는 대부분 빈 `__init__.py`만 있다.
+현재 구현에는 개발환경, smoke test, TAR baseline fixture, 연구 설계 문서와 모듈별 README가 있다. `model/archive.py`에 `ArchiveEntry`, `ArchiveCase`, `EntryType`이, `model/execution.py`에 `ExecutionResult`가, `model/filesystem.py`에 `ObjectSnapshot`, `FilesystemObjectType`이 구현되어 있으며 다른 엔진 하위 패키지는 대부분 빈 `__init__.py`만 있다.
 
 `StateSnapshot` 등의 나머지 모델과 runtime pipeline은 **설계 후보**이며 아직 구현되지 않았다.
 
@@ -211,7 +211,7 @@ StateSnapshot
 
 # 7. 공통 Data Model 설계
 
-`ArchiveEntry`, `ArchiveCase`, `ExecutionResult`의 현재 Python field와 type은 아래와 같다. 나머지 모델의 정확한 field와 type은 개발 Layer 2의 후속 작업에서 결정하며, 아래 내용은 의미적 책임을 설명한다.
+`ArchiveEntry`, `ArchiveCase`, `ExecutionResult`, `ObjectSnapshot`의 현재 Python field와 type은 아래와 같다. 나머지 모델의 정확한 field와 type은 개발 Layer 2의 후속 작업에서 결정하며, 아래 내용은 의미적 책임을 설명한다.
 
 ## 7.1 ArchiveEntry
 
@@ -319,20 +319,32 @@ ExecutionResult
 
 filesystem object 하나에 대한 관찰 결과다.
 
-초기 후보:
+현재 구현: `src/inodefence/model/filesystem.py`의 frozen dataclass.
 
 ```text
 ObjectSnapshot
-├── relative_path
-├── object_type
-├── st_dev
-├── st_ino
-├── st_nlink
-├── mode
-├── size
-├── symlink_target
-└── selected_content_hash
+├── relative_path: str
+├── object_type: FilesystemObjectType
+├── st_dev: int
+├── st_ino: int
+├── st_nlink: int
+├── mode: int
+├── size: int
+├── symlink_target: str | None = None
+└── content_hash: str | None = None
 ```
+
+`FilesystemObjectType(Enum)`은 `REGULAR = "regular"`, `DIRECTORY = "directory"`,
+`SYMLINK = "symlink"`, `OTHER = "other"`로 실제 관찰된 종류를 표현한다.
+archive가 요청한 logical type인 `EntryType`과 구분하며 hardlink는 별도 object type으로 두지 않는다.
+
+`relative_path`는 관찰 기준 root에 대한 상대 경로 용도이며 문자열을 그대로 보존한다.
+`st_dev`, `st_ino`, `st_nlink`는 각각 device ID, inode 번호, hardlink count다.
+`mode`는 type/permission bit를 포함한 raw stat mode이고 `size`는 관찰된 byte 단위 크기다.
+`symlink_target`은 resolve하지 않은 raw readlink-style 문자열이다.
+기존 후보 `selected_content_hash`는 선택적으로 전달받은 hash를 보존하는 `content_hash`로 구현했다.
+모델은 hash 계산, algorithm/형식 검사, filesystem 접근을 하지 않는다.
+숫자 범위, path 안전성/상대 경로 여부, 필드 조합을 검증하거나 값을 normalize하지 않는다.
 
 여기서 핵심은 path 문자열뿐 아니라 **object identity 관계**를 관찰할 수 있는 정보다.
 
@@ -343,6 +355,9 @@ Linux에서 초기 identity 기준은 주로:
 ```
 
 관계다.
+
+서로 다른 path의 snapshot이 같은 identity를 표현할 수 있다. 이 모델은 관계 비교나
+Security Contract 판정을 수행하지 않으며 Observer / StateSnapshot / Oracle은 아직 미구현이다.
 
 ---
 

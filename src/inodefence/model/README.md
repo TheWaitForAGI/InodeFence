@@ -6,19 +6,20 @@
 
 ## 입력
 
-entry의 경로·종류·내용·link target과 순서, 프로세스 실행 결과 값.
-filesystem 관찰 자료는 향후 모델의 입력 후보다.
+entry의 경로·종류·내용·link target과 순서, 프로세스 실행 결과 값,
+filesystem object 하나의 관찰 결과 값.
 
 ## 출력
 
-`ArchiveEntry`, `ArchiveCase`로 표현한 논리 archive 구조와 `ExecutionResult`로 표현한 프로세스 실행 결과.
+`ArchiveEntry`, `ArchiveCase`로 표현한 논리 archive 구조, `ExecutionResult`로 표현한
+프로세스 실행 결과와 `ObjectSnapshot`으로 표현한 filesystem object의 관찰 사실.
 
 ## 책임
 
 예: notes.txt 파일 entry의 경로와 내용을 실행 없이 표현한다.
 
-구현은 [archive.py](archive.py), [execution.py](execution.py)에 있으며
-`inodefence.model`에서 import할 수 있다. 세 모델은 `frozen=True` dataclass다.
+구현은 [archive.py](archive.py), [execution.py](execution.py), [filesystem.py](filesystem.py)에
+있으며 `inodefence.model`에서 import할 수 있다. 네 모델은 `frozen=True` dataclass다.
 
 | 모델 | 실제 필드 | 의미 |
 | --- | --- | --- |
@@ -82,6 +83,35 @@ timeout과 exit code의 조합이나 duration의 범위를 제한하지 않는�
 stderr 유무와 exit code로 실패·취약 여부를 판정하지 않는다.
 filesystem 상태와 Security Contract 판정은 향후 Observer / Oracle의 책임이다.
 
+### ObjectSnapshot
+
+향후 Observer가 전달할 filesystem object 하나의 관찰 사실을 target-independent하게 표현한다.
+`ObjectSnapshot`과 `FilesystemObjectType`은 `inodefence.model`에서 import할 수 있다.
+
+| 실제 필드 | 의미 |
+| --- | --- |
+| `relative_path: str` | 관찰 기준 root에 대한 상대 경로 용도; 입력 문자열 그대로 보존 |
+| `object_type: FilesystemObjectType` | 실제 관찰된 종류: `REGULAR`, `DIRECTORY`, `SYMLINK`, `OTHER` |
+| `st_dev: int` | 관찰된 device ID |
+| `st_ino: int` | 관찰된 inode 번호; `st_dev`와 함께 object identity 표현 |
+| `st_nlink: int` | 관찰된 hardlink count |
+| `mode: int` | type/permission bit를 포함한 raw stat mode 값 |
+| `size: int` | 관찰된 byte 단위 크기 |
+| `symlink_target: str \| None = None` | readlink 결과와 같은 raw target 문자열; 미기록 시 `None` |
+| `content_hash: str \| None = None` | 선택적으로 전달받은 hash 문자열; 미기록 시 `None` |
+
+`FilesystemObjectType(Enum)`의 값은 각각 `"regular"`, `"directory"`, `"symlink"`, `"other"`다.
+archive가 요청한 logical type인 `EntryType`과 구분한다. hardlink는 별도 object type이
+아니며 서로 다른 path의 snapshot에 같은 `st_dev` / `st_ino`와 link count를 기록할 수 있다.
+`OTHER`는 regular file, directory, symlink 이외의 관찰된 종류를 표현한다.
+
+설계 후보의 `selected_content_hash`는 `content_hash`로 구현했다. 선택적 수집이라는 의미는
+`None` 허용으로 유지하며 모델이 hash를 계산하거나 algorithm/문자열 형식을 검사하지 않는다.
+숫자 범위, 상대 경로 여부, object type과 symlink target의 조합을 검증하지 않는다.
+`../outside/file`, absolute path 등도 보존하며 path/target을 normalize하거나 resolve하지 않는다.
+mode bit를 해석하거나 filesystem에 접근하지 않는다. identity 비교와 Security Contract 판정은
+이후 소비자의 책임이다. 여러 object와 관찰 context를 묶는 `StateSnapshot`은 아직 미구현이다.
+
 ## 하지 않는 것
 
 TAR serialization, filesystem 작업, extractor 실행, mutation, 경로 보안 검증·정규화,
@@ -97,6 +127,9 @@ observation, oracle, feedback, CVE-specific 처리.
 [논리 구조 테스트](../../../tests/test_archive_model.py)로 baseline 4종과 데이터 보존을 검증한다.
 `ExecutionResult`를 구현했고 [실행 결과 모델 테스트](../../../tests/test_execution_model.py)로
 성공·non-zero 종료·timeout 표현, 출력·시간 보존과 불변성을 검증한다.
+`ObjectSnapshot`, `FilesystemObjectType`을 구현했고
+[filesystem 모델 테스트](../../../tests/test_filesystem_model.py)로 object 종류, raw 값 보존,
+선택적 hash, 검증 없는 필드 조합, 여러 path의 동일 identity 표현과 불변성을 검증한다.
 [STATUS](../../../docs/STATUS.md)의 Layer 2는 진행 중이며 다른 공통 모델과 pipeline은 미구현이다.
 
 ## 파일 배치 규칙

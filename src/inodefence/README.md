@@ -23,7 +23,7 @@ builder.build_tar → disposable runtime → before snapshot
 | [runtime.py](runtime.py) | Linux runtime와 sentinel lifecycle |
 | [pipeline.py](pipeline.py) | 입력 하나의 실행 순서 연결 |
 | [campaign.py](campaign.py) | 명시적 seed와 실행 budget으로 select → mutate → run → consider 연결 |
-| [generator](generator/README.md) | 초기 case 생성 정책, 후속 구현 |
+| [generator](generator/README.md) | explicit deterministic minimal_seed_corpus |
 | [mutator](mutator/README.md) | Generic Mutation v1, 8개 독립 ArchiveCase 변형 operator |
 | [targets](targets/README.md) | 실제 extractor 실행 |
 | [observer](observer/README.md) | filesystem 사실 관찰과 비교 |

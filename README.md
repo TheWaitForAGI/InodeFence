@@ -303,9 +303,13 @@ parent = corpus.select_case(rng)
 child = mutate(parent, rng)  # 개별 API도 caller 수준에서 조합 가능
 
 from inodefence.campaign import CampaignConfig, run_campaign
+from inodefence.generator import minimal_seed_corpus
 
 campaign = run_campaign((case,), PythonTarfileTarget(), CampaignConfig(1234, 25))
 assert len(campaign.steps) == 25
+
+# 고정된 4종 정상 seed를 사용할 때도 명시적으로 전달
+seeded = run_campaign(minimal_seed_corpus(), PythonTarfileTarget(), CampaignConfig(11, 25))
 ```
 
 Corpus retention은 다음 mutation parent로 보존한다는 뜻입니다. 새로운 normalized state나

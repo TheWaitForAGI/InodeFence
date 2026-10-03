@@ -68,3 +68,8 @@ rediscovery 또는 paper 결과를 증명하지 않는다.
 검증한다. `test_campaign_integration.py`는 Linux disposable runtime와 Python reference로 같은
 config를 두 번 실행하고 semantic case lineage/feedback/admission order를 비교한다. Raw inode,
 timestamp와 duration equality를 요구하지 않으며 연구 효과를 주장하지 않는다.
+
+`test_generator.py`는 minimal seeds의 고정 순서/내용/의존 관계, unique case IDs, 반복 canonical
+표현, 불변성과 filesystem/RNG independence를 검증한다. `test_generator_integration.py`는
+기존 fixture bytes와의 동일성 및 explicit seed-only Python reference campaign에서 정상
+hardlink/symlink 의미론을 검증한다. 기존 fixture regression은 그대로 유지한다.

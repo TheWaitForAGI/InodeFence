@@ -102,7 +102,9 @@ Bounded deterministic campaign v1은 구현됐으며 adaptive scheduler, persist
 
 ## 다음 작업
 
-다음 작업은 명시적인 minimal seed-corpus API와 완료된 campaign의 structured export다.
+다음 작업은 완료된 campaign의 structured export다.
+`generator.minimal_seed_corpus()`는 기존 정상 baseline 4종을 deterministic immutable tuple로
+반환한다. Fixture script도 이 API를 사용하며 campaign의 explicit-seed 계약은 유지한다.
 Safe Python reference의 7개 작은 campaign/400 executions 개발 pilot을 완료했다. Repeat의
 semantic lineage/feedback과 budget/cleanup을 검증했으며 효과 평가는 아니다.
 기록은 [개발 pilot 요약](../experiments/summaries/reference-campaign-pilot-v1.md)을 따른다.

@@ -14,7 +14,7 @@ pytest 결과.
 
 ## 책임
 
-패키지 import, Python 3.12, TAR baseline의 entry 구조·재생성·extraction 결과와 수동 probe 출력을 확인한다.
+패키지 import, Python 3.12, 논리 archive 모델의 구조·데이터 보존, TAR baseline의 entry 구조·재생성·extraction 결과와 수동 probe 출력을 확인한다.
 
 ## 하지 않는 것
 
@@ -26,7 +26,7 @@ pytest 결과.
 
 ## 현재 상태
 
-test_smoke.py와 test_tar_fixtures.py가 있다. 4종 baseline TAR는 fixtures/tar/에 두며 [실행과 관찰 방법](../docs/examples/tar-baseline.md)을 따른다. 모델·pipeline·oracle 테스트는 아직 없다.
+test_smoke.py, test_tar_fixtures.py와 test_archive_model.py가 있다. 모델 테스트는 TAR 생성·extraction 없이 baseline 4종의 논리 구조를 확인한다. 4종 baseline TAR는 fixtures/tar/에 두며 [실행과 관찰 방법](../docs/examples/tar-baseline.md)을 따른다. pipeline·oracle 테스트는 아직 없다.
 
 ## 파일 배치 규칙
 

@@ -6,12 +6,12 @@
 
 ## 현재 단계
 
-**Layer 1 완료 → Layer 2 시작 직전**
+**Layer 2 — 공통 Data Model 진행 중**
 
 ```text
 Layer 0 — 개발환경                         ✅ 완료
 Layer 1 — 연구 기반/범위/아키텍처          ✅ 완료
-Layer 2 — 공통 Data Model                  ⏭ 다음
+Layer 2 — 공통 Data Model                  🔄 진행 중
 Layer 3 — Minimal End-to-End Pipeline      ⬜
 Layer 4 — Generic Mutation                 ⬜
 Layer 5 — Feedback / Corpus                ⬜
@@ -50,16 +50,20 @@ Layer 6 — Baseline / Evaluation / Paper    ⬜
 - Linux runtime sandbox에서 extraction 후 metadata를 출력하는 수동 probe
 - [TAR baseline 실행·관찰 안내](examples/tar-baseline.md)와 filesystem 의미론 테스트
 
-Layer 2의 공통 Data Model과 자동 pipeline은 아직 구현하지 않았다.
+### 공통 Data Model 첫 구현
+
+- `ArchiveEntry`: 경로, `EntryType` Enum, bytes 내용, link target을 표현하는 frozen dataclass
+- `ArchiveCase`: entry tuple로 순서와 중복 경로를 보존하는 frozen dataclass
+- [모델 구현과 책임](../src/inodefence/model/README.md), baseline 4종의 논리 구조와 데이터 보존 테스트
+
+Layer 2는 아직 완료되지 않았다. 나머지 공통 모델과 자동 pipeline은 미구현이다.
 
 ## 다음 작업
 
-다음 구현 Layer에서는 **공통 Data Model**만 정의한다.
+현재 Layer에서 필요한 **후속 공통 Data Model**을 작은 단위로 정의한다.
 
 우선 후보:
 
-- `ArchiveEntry`
-- `ArchiveCase`
 - `ExecutionResult`
 - `ObjectSnapshot`
 - `StateSnapshot`
@@ -68,7 +72,7 @@ Layer 2의 공통 Data Model과 자동 pipeline은 아직 구현하지 않았다
 
 아직 모든 모델을 한 번에 구현하지 않는다.
 
-첫 시작점은 `ArchiveEntry`와 `ArchiveCase` 정의다.
+`ArchiveEntry`와 `ArchiveCase`는 구현했으며, 다음 모델은 최소 pipeline의 요구에 맞춰 확정한다.
 
 ## 지금 하지 않을 것
 

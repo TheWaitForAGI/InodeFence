@@ -19,11 +19,11 @@
 
 ## 1. 현재 상태와 용어
 
-현재는 **개발 Layer 1 완료 → Layer 2 공통 Data Model 시작 직전**이다.
+현재는 **개발 Layer 2 공통 Data Model 진행 중**이다.
 
-현재 main에는 개발환경, smoke test, 연구 설계 문서와 모듈별 README가 있다. 기존 엔진 하위 패키지는 대부분 빈 `__init__.py`만 있으며, `model/`은 안내 문서만 있고 Python Data Model은 아직 구현되지 않았다.
+현재 구현에는 개발환경, smoke test, TAR baseline fixture, 연구 설계 문서와 모듈별 README가 있다. `model/archive.py`에 `ArchiveEntry`, `ArchiveCase`, `EntryType`이 구현되어 있으며 다른 엔진 하위 패키지는 대부분 빈 `__init__.py`만 있다.
 
-따라서 아래에 등장하는 `ArchiveCase`, `ExecutionResult`, `StateSnapshot` 등의 이름은 **설계 후보**다. 이미 실행 가능한 API가 존재한다는 뜻이 아니다.
+`ArchiveEntry`와 `ArchiveCase` 이외의 `ExecutionResult`, `StateSnapshot` 등의 모델과 runtime pipeline은 **설계 후보**이며 아직 구현되지 않았다.
 
 ### 개발 Layer와 Runtime Stage를 구분한다
 
@@ -211,31 +211,32 @@ StateSnapshot
 
 # 7. 공통 Data Model 설계
 
-정확한 Python field와 type은 개발 Layer 2에서 결정한다. 아래 내용은 각 모델이 담당해야 할 의미적 책임이다.
+`ArchiveEntry`와 `ArchiveCase`의 현재 Python field와 type은 아래와 같다. 나머지 모델의 정확한 field와 type은 개발 Layer 2의 후속 작업에서 결정하며, 아래 내용은 의미적 책임을 설명한다.
 
 ## 7.1 ArchiveEntry
 
 TAR 내부의 **entry 하나**를 논리적으로 표현한다.
 
-초기 entry type 후보:
+초기 entry type은 `EntryType(Enum)`으로 표현한다:
 
-- regular file
-- directory
-- hardlink
-- 필요한 범위의 symlink
+- `REGULAR = "regular"`
+- `DIRECTORY = "directory"`
+- `HARDLINK = "hardlink"`
+- `SYMLINK = "symlink"`
 
-개념 구조:
+현재 구현: `src/inodefence/model/archive.py`의 frozen dataclass.
 
 ```text
 ArchiveEntry
-├── path
-├── entry_type
-├── content
-├── link_target
-├── mode
-├── uid / gid
-└── metadata
+├── path: str
+├── entry_type: EntryType
+├── content: bytes = b""
+└── link_target: str | None = None
 ```
+
+`content`는 regular file의 bytes, `link_target`은 hardlink/symlink의 target 문자열이다. directory와 link는 기본 `content=b""`로 표현한다. 필드 조합이나 경로의 안전성을 검증하지 않으며 `path`와 `link_target`은 normalize/sanitize하지 않고 입력 그대로 보존한다. Security 판단은 향후 Oracle의 책임이다.
+
+`mode`, `uid / gid`, `metadata`는 후속 확장 후보이며 현재 구현에는 없다.
 
 ArchiveEntry는 raw TAR header나 byte buffer 그 자체가 아니다.
 
@@ -252,14 +253,16 @@ ArchiveEntry는 raw TAR header나 byte buffer 그 자체가 아니다.
 
 한 번의 fuzzing 입력 전체를 표현한다.
 
+현재 구현: `src/inodefence/model/archive.py`의 frozen dataclass.
+
 ```text
 ArchiveCase
-├── case_id
-├── entries[]
-├── parent_case_id
-├── mutation_history
-└── generation_metadata
+└── entries: tuple[ArchiveEntry, ...]
 ```
+
+`entries`는 tuple로 전달하며 archive entry 순서와 중복 경로를 그대로 보존한다. 빈 tuple도 표현할 수 있으며 link target의 존재 여부나 entry dependency를 검증하지 않는다.
+
+`case_id`, `parent_case_id`, `mutation_history`, `generation_metadata`는 후속 확장 후보이며 현재 구현에는 없다.
 
 예:
 

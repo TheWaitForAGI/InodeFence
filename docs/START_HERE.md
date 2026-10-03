@@ -73,7 +73,7 @@ InodeFence는 이런 **object identity와 external effect를 fuzzing feedback으
 ```text
 Layer 0  개발환경                  ✅
 Layer 1  연구 범위/규칙/아키텍처   ✅
-Layer 2  공통 Data Model           ← 다음
+Layer 2  공통 Data Model           ← 진행 중
 Layer 3  Minimal Pipeline
 Layer 4  Mutation
 Layer 5  Feedback / Corpus
@@ -109,7 +109,7 @@ Layer 6  Experiment / Paper
 폴더별 책임과 파일 배치 규칙은 [문서 지도](README.md)와 [엔진 모듈 지도](../src/inodefence/README.md)를 본다. 상세 pipeline과 계획된 데이터 흐름은 [architecture.md](research/design/architecture.md)가 기준이다. 아래 소스 경로는 책임 배치 계획이며 현재 실행 가능한 pipeline을 뜻하지 않는다.
 
 ```text
-src/inodefence/model/       공통 데이터 표현 (아직 README만 있음)
+src/inodefence/model/       공통 데이터 표현 (ArchiveEntry / ArchiveCase 구현)
 src/inodefence/generator/   초기 archive case 생성
 src/inodefence/mutator/     TAR entry 변형
 src/inodefence/targets/     node-tar / oras-go / GNU tar 실행

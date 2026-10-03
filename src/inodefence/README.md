@@ -38,7 +38,7 @@ Observer의 취약 판정, Oracle의 filesystem 실행·mutation, Feedback의 �
 
 ## 현재 상태
 
-기존 패키지는 빈 __init__.py만 있다. model/에는 이번에 추가한 README만 있다. 동작하는 pipeline이나 공개 실행 API는 없으며 다음 구현은 [STATUS](../../docs/STATUS.md)의 공통 Data Model이다.
+model/에는 ArchiveEntry, ArchiveCase와 EntryType이 구현되어 있고 다른 엔진 하위 패키지는 빈 __init__.py만 있다. 동작하는 pipeline이나 공개 실행 API는 없으며 [STATUS](../../docs/STATUS.md)의 공통 Data Model은 진행 중이다.
 
 ## 파일 배치 규칙
 

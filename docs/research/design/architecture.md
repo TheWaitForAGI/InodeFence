@@ -103,10 +103,11 @@ Target-specific 로직은 이 Layer에 둔다. generic oracle이나 mutation 코
 
 초기 구현 순서:
 
-1. Object Identity Confinement
-2. External Effect Noninterference
-3. Extraction Root Integrity
-4. 이후 instrumentation이 추가되면 Check/Use Coherence
+1. Path Boundary Confinement — sanity/baseline
+2. Object Identity Confinement
+3. External Effect Noninterference
+4. Extraction Root Integrity
+5. 이후 instrumentation이 추가되면 Check/Use Coherence
 
 ## Layer 7 — Feedback / Corpus
 
@@ -156,7 +157,7 @@ Interesting / Boring
     → 하나의 target
     → sandbox
     → pre/post snapshot
-    → identity/effect oracle
+    → path + identity + effect oracle
 ```
 
 ### Milestone 2 — Generic TAR 생성

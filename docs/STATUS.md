@@ -102,8 +102,10 @@ Bounded deterministic campaign v1은 구현됐으며 adaptive scheduler, persist
 
 ## 다음 작업
 
-다음 작업은 현재 main의 correctness/reproducibility audit다. Structured export v1은 완료된
-campaign을 manifest.json/canonical steps.jsonl로 기록한다. Resume/reader/database는 없다.
+현재 source의 [engineering audit](../experiments/summaries/final-engineering-audit-v1.md)을 완료했다.
+다음 engineering 작업은 caller-level execution-time provenance contract다. Source revision,
+실행 환경과 explicit sentinel/adapter configuration을 실행 전에 기록하는 작은 interface를 검토한다.
+Structured export v1은 완료된 campaign을 manifest.json/canonical steps.jsonl로 기록한다. Resume/reader/database는 없다.
 `generator.minimal_seed_corpus()`는 기존 정상 baseline 4종을 deterministic immutable tuple로
 반환한다. Fixture script도 이 API를 사용하며 campaign의 explicit-seed 계약은 유지한다.
 Safe Python reference의 7개 작은 campaign/400 executions 개발 pilot을 완료했다. Repeat의

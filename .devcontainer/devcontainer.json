@@ -7,11 +7,18 @@
 
   "remoteUser": "vscode",
 
+  "features": {
+    "ghcr.io/devcontainers/features/node:2": {
+      "version": "22"
+    }
+  },
+
   "mounts": [
-    "source=inodefence-runtime,target=/var/lib/inodefence,type=volume"
+    "source=inodefence-runtime,target=/var/lib/inodefence,type=volume",
+    "source=inodefence-codex,target=/home/vscode/.codex,type=volume"
   ],
 
-  "postCreateCommand": "sudo chown -R vscode:vscode /var/lib/inodefence && python -m pip install -e '.[dev]'",
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
 
   "customizations": {
     "vscode": {

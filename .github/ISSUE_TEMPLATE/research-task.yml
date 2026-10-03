@@ -1,0 +1,55 @@
+name: "연구 조사"
+description: "출처와 비교 기준을 갖춘 연구 문서 명세"
+body:
+  - type: markdown
+    attributes:
+      value: "확정한 명세를 AI/사람에게 전달하세요. 미확인 finding이나 미공개 PoC는 공개 Issue에 올리지 말고 SECURITY.md를 따르세요. 해당 없으면 이유를 적으세요."
+  - type: textarea
+    id: question
+    attributes:
+      label: "조사 질문"
+      description: "어떤 불확실성을 해소할 것인가"
+    validations:
+      required: true
+  - type: textarea
+    id: subjects
+    attributes:
+      label: "대상 논문/CVE/기술"
+      description: "식별자, 제목, 링크"
+    validations:
+      required: true
+  - type: textarea
+    id: claims
+    attributes:
+      label: "확인해야 할 주장"
+      description: "관찰, 가설, 예상 결과를 구분"
+    validations:
+      required: true
+  - type: textarea
+    id: sources
+    attributes:
+      label: "필요한 출처"
+      description: "원문/공식 문서/실험 근거와 인용 범위"
+    validations:
+      required: true
+  - type: textarea
+    id: comparison
+    attributes:
+      label: "InodeFence와 비교할 기준"
+      description: "기존 연구가 다루는 범위 및 검증할 차이; 근거 없는 novelty 주장 금지"
+    validations:
+      required: true
+  - type: textarea
+    id: deliverable
+    attributes:
+      label: "최종 산출물"
+      description: "파일 경로, 완료 조건, 검토할 근거; 연구 메모와 paper claim 구분"
+    validations:
+      required: true
+  - type: checkboxes
+    id: contract
+    attributes:
+      label: 작업 명세 확인
+      options:
+        - label: "작업 범위와 완료 조건을 확인했고 root 및 관련 scoped AGENTS와 연구·안전 규칙을 따릅니다."
+          required: true

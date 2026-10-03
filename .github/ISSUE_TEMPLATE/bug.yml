@@ -1,0 +1,86 @@
+name: "버그"
+description: "안전한 재현과 예상/실제 동작 명세"
+body:
+  - type: markdown
+    attributes:
+      value: "확정한 명세를 AI/사람에게 전달하세요. 미확인 finding이나 미공개 PoC는 공개 Issue에 올리지 말고 SECURITY.md를 따르세요. 해당 없으면 이유를 적으세요."
+  - type: textarea
+    id: location
+    attributes:
+      label: "발생 위치"
+      description: "모듈, 파일, InodeFence commit"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: "재현 방법"
+      description: "disposable sandbox와 sentinel만 사용하는 최소 절차"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: "예상 동작"
+      description: "문서/계약 근거"
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: "실제 동작"
+      description: "관찰한 결과와 오류"
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: "환경"
+      description: "OS/architecture, Python, target/version, config, seed"
+    validations:
+      required: true
+  - type: dropdown
+    id: layer
+    attributes:
+      label: "관련 Layer"
+      description: "STATUS 기준"
+      options:
+        - "Documentation / Environment / Project Foundation"
+        - "Layer 0"
+        - "Layer 1"
+        - "Layer 2"
+        - "Layer 3"
+        - "Layer 4"
+        - "Layer 5"
+        - "Layer 6"
+    validations:
+      required: true
+  - type: dropdown
+    id: security_contract
+    attributes:
+      label: "관련 Contract"
+      description: "관련 없으면 직접 관련 없음 선택"
+      options:
+        - "직접 관련 없음"
+        - "Path Boundary Confinement"
+        - "Object Identity Confinement"
+        - "External Effect Noninterference"
+        - "Extraction Root Integrity"
+        - "Check/Use Coherence"
+        - "여러 Contract — 관련 문서에 명시"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: "로그"
+      description: "민감 자료를 제거한 로그; 미공개 finding evidence는 SECURITY.md에 따라 private 관리"
+    validations:
+      required: false
+  - type: checkboxes
+    id: contract
+    attributes:
+      label: 작업 명세 확인
+      options:
+        - label: "작업 범위와 완료 조건을 확인했고 root 및 관련 scoped AGENTS와 연구·안전 규칙을 따릅니다."
+          required: true

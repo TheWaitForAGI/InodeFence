@@ -22,9 +22,8 @@ htmlcov/
 .idea/
 
 # InodeFence runtime data
-findings/*
-!findings/.gitkeep
-!findings/README.md
+findings/private/*
+!findings/private/.gitkeep
 
 corpus/generated/
 experiments/results/
@@ -37,3 +36,8 @@ experiments/raw/*
 artifacts/*
 !artifacts/.gitkeep
 !artifacts/README.md
+
+# Local environment / secrets
+.env
+.env.*
+!.env.example

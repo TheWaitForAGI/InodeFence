@@ -272,7 +272,7 @@ make probe CASE=hardlink
 
 Probe는 Python `tarfile`의 `data` filter를 사용하는 학습·관찰 도구입니다.
 임시 sandbox를 사용하고 실행 후 정리합니다. 기본 CASE는 `regular-file`이며 `directory`, `hardlink`, `symlink`도 지원합니다.
-이 명령은 node-tar/ oras-go adapter나 자동 security oracle을 실행하지 않습니다. 실제 fuzzer 실행 명령은 아직 없습니다.
+이 명령은 node-tar/ oras-go adapter나 자동 security oracle을 실행하지 않습니다. 현재 campaign CLI는 [safe reference 개발 pilot](scripts/reference_campaign_pilot.py)에 제한됩니다.
 
 최초 `make install` 후 Dev Container의 Python에서 내부 API를 실행할 수 있습니다.
 

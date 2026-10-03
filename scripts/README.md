@@ -35,3 +35,9 @@ generate_tar_fixtures.py는 4종 TAR baseline을 재생성한다. manual_tar_pro
 ## 파일 배치 규칙
 
 사용 목적을 알 수 있는 스크립트명과 입력 설정을 남긴다. 공통 엔진 로직은 src에 두고 raw output은 실험 기록으로 관리한다.
+
+`python -m scripts.reference_campaign_pilot --output experiments/raw/<new-directory>`는 safe
+Python reference만 사용하는 7개 작은 bounded campaign의 개발 검증이다. Explicit baseline
+seeds, provenance, raw canonical results와 generated summary를 기록하며 exact repeat의 semantic
+lineage/feedback, budget/cleanup을 assertion으로 검사한다. 기존 output을 덮어쓰지 않는다.
+효과 평가나 일반 third-party campaign CLI는 아니다.

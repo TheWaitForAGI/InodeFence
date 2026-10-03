@@ -26,7 +26,9 @@ raw 결과를 검토 없이 논문 결론으로 승격하기, source mount에서
 
 ## 현재 상태
 
-configs/와 raw/에는 .gitkeep만 있다. summaries/는 작은 검증 요약의 보관 규칙을 제공한다. 실험 실행기와 결과는 없다.
+summaries/에는 [safe reference 개발 pilot](summaries/reference-campaign-pilot-v1.md)의 작은
+engineering summary가 있다. Raw 결과는 로컬 experiments/raw/reference-pilot-v1/에 Git ignore로
+보관하며 재생성 명령과 checksum을 요약에 기록한다. Formal effectiveness 실험 결과는 없다.
 
 ## 파일 배치 규칙
 

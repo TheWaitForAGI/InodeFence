@@ -19,9 +19,9 @@
 
 ## 1. 현재 상태와 용어
 
-현재는 **개발 Layer 2, 최소 Layer 3와 Layer 4 Generic Mutation v1 구현** 단계다. Feature branch의 구현 상태 표시는 main merge를 의미하지 않는다.
+현재는 **개발 Layer 2, 최소 Layer 3, Layer 4 Generic Mutation v1과 Layer 5 Feedback / Corpus v1 구현** 단계다. Feature branch의 구현 상태 표시는 main merge를 의미하지 않는다.
 
-ArchiveCase → 결정적 USTAR → Python reference worker → pre/post snapshot → C0/C1/C2 evidence의 실제 API가 있다. Generic Mutation v1은 별도 ArchiveCase → ArchiveCase API다. Generator, feedback-driven corpus scheduling과 fuzzing loop, benchmark adapter 및 evaluation은 후속 단계다.
+ArchiveCase → 결정적 USTAR → Python reference worker → pre/post snapshot → C0/C1/C2 evidence의 실제 API가 있다. Generic Mutation v1은 별도 ArchiveCase → ArchiveCase API다. Layer 5는 RunResult의 독립 state/violation novelty에 따른 in-memory retention과 uniform caller-RNG parent selection을 제공한다. Generator, fuzzing loop/campaign runner, adaptive scheduler/persistence, benchmark adapter 및 evaluation은 후속 단계다.
 
 아래 개념 그림에는 lineage, tracing, corpus 등 미래 설계도 포함한다. 현재 확정된 field/API는 **7.8 현재 구현 경계**를 따른다. Python reference는 최종 benchmark target이 아니다.
 
@@ -159,7 +159,7 @@ flowchart LR
 
 이 그림은 최종 목표 구조다.
 
-현재 구현은 이 전체 루프 중 **공통 Data Model → 최소 관찰 경로**와 별도 Generic Mutation v1이다. 다음 작업은 Feedback / Corpus의 Task Contract 확정이며, 전체 fuzzing loop나 연구 효과를 검증한 단계는 아니다.
+현재 구현은 **공통 Data Model → 최소 관찰 경로**, 별도 Generic Mutation v1과 Feedback / Corpus v1이다. 다음 작업은 명시적인 budget/seed/provenance를 기록하는 bounded deterministic fuzzing-loop orchestration의 별도 Task Contract다. 전체 loop나 연구 효과를 검증한 단계는 아니다.
 
 ---
 
@@ -176,7 +176,7 @@ flowchart LR
 | Security Oracle | [oracle/](../../../src/inodefence/oracle/README.md) | 관찰 상태가 어떤 Contract를 위반하는가? |
 | Feedback / Corpus | [feedback/](../../../src/inodefence/feedback/README.md) | 다음 탐색에 남길 가치가 있는가? |
 
-Runner는 [pipeline.py](../../../src/inodefence/pipeline.py), runtime lifecycle은 [runtime.py](../../../src/inodefence/runtime.py)에 둔다. Builder/Runner는 작은 module이며 corpus package는 만들지 않았다. **필요성이 생기기 전에는 빈 추상화와 디렉터리를 미리 만들지 않는다.**
+단일 실행 Runner는 [pipeline.py](../../../src/inodefence/pipeline.py), runtime lifecycle은 [runtime.py](../../../src/inodefence/runtime.py)에 둔다. Builder/Runner는 작은 module이며 Corpus v1은 기존 feedback package의 corpus.py에 둔다. **필요성이 생기기 전에는 빈 추상화와 디렉터리를 미리 만들지 않는다.**
 
 ---
 
@@ -399,7 +399,8 @@ signature 후보 축:
 - external-effect pattern
 - contract-relevant state class
 
-정확한 정규화 schema는 개발 Layer 5에서 실험을 통해 고정한다.
+현재 normalized representation은 7.8의 StateSignature v2로 고정하며 Corpus v1은 이
+value equality를 사용한다. 후속 evaluation/ablation은 representation의 연구 가치를 검증한다.
 
 ---
 
@@ -494,6 +495,29 @@ run_case(case, target, sentinels=...) -> RunResult
 ```
 
 Generic pipeline이 target CLI, vulnerability recipe, mutation/corpus 정책을 소유하지 않는다. Oracle은 filesystem에 접근하지 않는다. Snapshot 비교는 사실만 반환하며, signature와 계약 판정은 이를 독립적으로 사용한다. 실제 [사용 예](../../../README.md)는 reference adapter를 주입한다.
+
+Layer 5의 추가 public records는 model을 재설계하지 않고 feedback package에 둔다.
+
+| Record | 현재 field / 의미 |
+| --- | --- |
+| ChangeFingerprint | path, fields; raw ObjectSnapshot/value 제외 |
+| IdentityFingerprint | internal_path, sentinel_path; raw dev/inode 제외 |
+| ViolationFingerprint | contract_id, sorted unique semantic evidence tuple |
+| FeedbackDecision | case_id, state_novel, new_violation_fingerprints, already_retained; interesting/retained는 derived properties |
+| CorpusEntry | case, admission_signature, admission_violation_fingerprints; 최초 admission의 모든 fingerprints |
+| CorpusStats | observations, interesting_observations, retained_cases, unique_states, unique_violation_fingerprints |
+
+```text
+violation_fingerprints(violations) -> tuple[ViolationFingerprint, ...]
+Corpus.consider(result: RunResult) -> FeedbackDecision
+Corpus.select_case(rng: random.Random) -> ArchiveCase
+Corpus.entries -> tuple[CorpusEntry, ...]
+Corpus.stats -> CorpusStats
+len(corpus) -> retained case count
+```
+
+기존 StateSnapshot/StateSignature/ViolationResult/RunResult와 single-case `run_case()` 책임은
+유지한다. Corpus는 실행/관찰/계약 판정/변형을 수행하지 않는다. 상세 정책은 16을 따른다.
 
 ---
 
@@ -899,16 +923,69 @@ Interesting ≠ Vulnerable
 
 Contract violation이 없더라도 처음 보는 identity/link/effect 관계라면 향후 탐색 가치가 있을 수 있다.
 
+현재 v1은 [corpus.py](../../../src/inodefence/feedback/corpus.py)의 in-memory Corpus와
+[fingerprint.py](../../../src/inodefence/feedback/fingerprint.py)의 pure semantic fingerprints다.
+StateSignature v2 equality와 violation novelty를 서로 독립적인 seen indexes로 관리한다.
+
 ~~~mermaid
 flowchart TD
-    R["Executed Case"] --> S["StateSignature"]
-    S --> K{"Seen equivalent state?"}
-    K -->|No| C["Retain in corpus"]
-    K -->|Yes| D["Discard or deprioritize"]
-    C --> M["Schedule for next mutation"]
+    R["RunResult"] --> S["StateSignature v2 equality"]
+    R --> V["Semantic violation fingerprints"]
+    S --> N{"New state OR new violation class?"}
+    V --> N
+    N -->|No| D["No admission"]
+    N -->|Yes| I["Interesting observation"]
+    I --> K{"Case already retained?"}
+    K -->|No| C["Append compact CorpusEntry"]
+    K -->|Yes| A["Preserve existing entry"]
+    R --> U["Advance both seen indexes and observation stats"]
+    C --> M["Caller RNG uniform parent selection"]
 ~~~
 
-향후 Corpus 책임이 커지면 독립 package가 필요할 수 있지만 현재는 미확정이다.
+**Signature equality는 raw evidence equality나 안전성 판정이 아니다.** `archive/**`는
+HARNESS라서 signature scope에서 제외되므로 관찰 구간에 `archive/escaped.txt`가 생성되어도 signature는
+같을 수 있다. 그러나 C0는 이 namespace effect를 판정한다. Corpus는 같은 signature의 새
+violation fingerprint도 interesting으로 취급해 이 evidence를 잃지 않는다.
+
+Violation fingerprints는 이미 판정된 violated 결과만 소비하며 contract를 정의/재평가하지 않는다.
+C0/C2는 contract ID와 StateChange.path/fields, C1은 contract ID와 internal/sentinel path를
+사용한다. C0와 C2의 동일 path/fields는 다른 class다. Raw dev/inode allocation,
+timestamp/content/mode 원값, ObjectSnapshot, explanation/limitations는 key에서 제외한다.
+Changed-field labels는 보존하며 raw identity 판정과 reproduction evidence는 Oracle/RunResult에
+남긴다. Evidence/result는 sorted unique tuple로 canonicalize한다. 한 violated contract의 전체
+semantic evidence tuple이 하나의 class이고, 추가 path/relation은 다른 class다. EXISTENCE
+creation/deletion은 같은 class이며 실제 결과 차이는 독립 state channel/raw evidence에서 본다.
+
+```text
+interesting = state_novel OR bool(new_violation_fingerprints)
+retained = interesting AND NOT already_retained
+```
+
+Case/TAR/input digest/HARNESS metadata와 execution status/exit code/duration은 novelty가 아니다.
+Case_id는 retained parent 중복 방지에만 사용한다. 다른 case가 같은 normalized state와 이미 본
+violation class를 만들면 보존하지 않는다. 같은 retained case가 새 state/class를 만들면
+interesting observation 수와 seen indexes는 증가하지만 entry를 중복 추가하지 않는다.
+
+CorpusEntry는 case와 최초 admission signature/모든 semantic fingerprints만 보존한다. Full
+RunResult/raw logs/mutation history는 저장하지 않으며 최초 metadata를 나중에 덮어쓰지 않는다.
+Entries는 admission order의 immutable tuple snapshot이고 stats는 immutable search/reporting
+snapshot이다. Observations는 consider 호출 수, interesting_observations는 interesting decision 수,
+retained_cases는 현재 parent 수, unique_states/unique_violation_fingerprints는 seen index 크기다.
+이 숫자는 연구 효과나 paper result가 아니다.
+
+Parent selection은 retained entries에 균등한 caller-owned random.Random baseline이다.
+같은 insertion order와 RNG state는 같은 selection을 만든다. Global RNG/implicit seed는 없고,
+empty corpus는 RNG 소비 없이 ValueError다. Corpus는 mutation operator 선택이나 mutation을
+실행하지 않는다. Caller가 선택한 ArchiveCase를 Mutator에 전달한다.
+
+한 Corpus는 한 caller-controlled campaign context에 속한다. RunResult에는 complete stable
+campaign key가 없으므로 false identifier/dynamic command hash를 만들지 않는다. Formal runner는
+commit, target/version/config, OS/kernel/architecture, seed/budget/timeout, dependency version과
+raw evidence 기록을 소유한다. Cross-target persistence safety를 주장하지 않는다.
+
+Adaptive scheduler, reward/energy, persistence/resume, fuzzing loop, benchmark adapters와
+research effectiveness는 후속 작업이다. 현재 Corpus는 기존 feedback package에 둔다.
+정책 근거는 D016과 [feedback API 안내](../../../src/inodefence/feedback/README.md)를 따른다.
 
 ---
 
@@ -942,6 +1019,10 @@ Runner에 들어가면 안 되는 것:
 Runner는 순서를 연결하는 역할만 한다.
 
 현재 orchestration은 [pipeline.py](../../../src/inodefence/pipeline.py)의 `run_case`다. Builder/environment/Observer/예상하지 못한 adapter 오류는 harness exception으로 전달하고 PASS를 만들지 않는다. Target 결과는 success/rejected/failed/timed_out으로 반환하며 모든 결과에서 after snapshot을 시도한다. Result는 sandbox 삭제 후에도 case와 evidence를 기록할 수 있다.
+
+`run_case()`는 의도적으로 한 번만 실행한다. Mutation strategy, corpus scheduling/adaptive
+feedback, target selection과 CVE logic을 넣지 않는다. 후속 bounded loop는 별도 caller가
+Corpus.select_case, Mutator, run_case, Corpus.consider를 budget/seed/provenance와 조합한다.
 
 ---
 
@@ -1009,6 +1090,8 @@ our harness / environment bug
 ---
 
 # 20. Testcase Lineage
+
+아래 lineage는 후속 campaign/evidence 설계이며 Corpus v1에는 mutation-history DB를 넣지 않는다.
 
 최종 finding만 저장하면 “어떻게 그 상태에 도달했는가”를 설명하기 어렵다.
 
@@ -1233,6 +1316,11 @@ model ← mutator / targets / observer / oracle / feedback
 - `mutator`가 node-tar command를 알지 않는다.
 - `targets`가 generic feedback policy를 결정하지 않는다.
 
+현재 Layer 5의 corpus/fingerprint production modules는 표준 라이브러리와 model/semantic
+fingerprint types만 import한다. Pipeline/targets/runtime/observer/oracle/mutator/builder 구현을
+import하지 않는다. 기존 state_signature의 snapshot 비교 의존성은 유지한다. Mutator는 archive
+model만 의존하고 Feedback을 import하지 않는다. 후속 runner가 세 API를 caller 수준에서 조합한다.
+
 순환 의존이 생기면 책임 경계가 무너진 신호로 본다.
 
 ---
@@ -1314,7 +1402,8 @@ flowchart LR
 
 # 29. 구현 순서
 
-Milestone 1~3은 core foundation에서 순차적으로 구현·검증했다. 아래는 개발 순서이며 후속 mutation/feedback/evaluation을 앞당겨 구현하지 않는다.
+Milestone 1~3은 core foundation, 4는 Generic Mutation v1, 5는 Feedback / Corpus v1으로
+구현·검증했다. 아래는 개발 순서이며 loop/campaign/evaluation을 앞당겨 구현하지 않는다.
 
 ## Milestone 1 — Common Data Model
 
@@ -1343,9 +1432,11 @@ Known TAR
 
 구조 변화 operator를 추가한다.
 
-## Milestone 5 — Feedback Loop
+## Milestone 5 — Feedback / Corpus v1
 
-StateSignature와 corpus evolution을 추가한다.
+기존 StateSignature v2와 독립 semantic violation novelty로 in-memory corpus evolution을 구현한다.
+Uniform caller-RNG selection은 baseline이다. 다음 별도 PR은 bounded deterministic fuzzing-loop
+orchestration이며, 이 milestone의 v1 구현이 loop 또는 연구 효과 검증 완료를 뜻하지 않는다.
 
 ## Milestone 6 — Evaluation
 

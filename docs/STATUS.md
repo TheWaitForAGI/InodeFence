@@ -6,7 +6,7 @@
 
 ## 현재 단계
 
-**Layer 2 완료 + Layer 3 최소 pipeline 완료 + Layer 4 Generic Mutation v1 구현 → Layer 5 준비**
+**Layer 2 완료 + Layer 3 최소 pipeline 완료 + Layer 4 Generic Mutation v1 + Layer 5 Feedback / Corpus v1 구현**
 
 ```text
 Layer 0 — 개발환경                         ✅ 완료
@@ -14,7 +14,7 @@ Layer 1 — 연구 기반/범위/아키텍처          ✅ 완료
 Layer 2 — 공통 Data Model                  ✅ 완료
 Layer 3 — Minimal End-to-End Pipeline      ✅ Python reference / snapshot 범위
 Layer 4 — Generic Mutation                 ✅ v1: 독립 operator / uniform baseline
-Layer 5 — Feedback / Corpus                ⬜
+Layer 5 — Feedback / Corpus                ✅ v1: 독립 novelty / in-memory / uniform 선택
 Layer 6 — Baseline / Evaluation / Paper    ⬜
 ```
 
@@ -66,7 +66,7 @@ Fixture generator는 core builder를 사용하며 기존 TAR bytes와 probe beha
 - C0 HARNESS 포함 extraction root 밖 persistent namespace 변화, C1 lstat identity 공유, C2 sentinel 변화 판정
 - `StateSnapshot`: archive/input.tar digest와 harness metadata를 포함한 sandbox 전체 raw evidence
 - `StateSignature` v2: EXTRACTION/EXTERNAL의 normalized security state; HARNESS(`.`, `archive/**`)와 case/TAR identity 제외
-- scope 안의 identity group과 sentinel effect 보존, regular-only nlink(nonregular는 None), raw inode/timestamp 값 제외; 최종 feedback 정책은 후속 작업
+- scope 안의 identity group과 sentinel effect 보존, regular-only nlink(nonregular는 None), raw inode/timestamp 값 제외; 연구 효과와 최종 feedback 정책 평가는 후속 작업
 - versioned canonical JSON으로 case·실행·snapshot·판정 근거 export
 - 실제 Linux filesystem, reject/partial extraction/timeout, E2E와 기존 baseline regression 테스트
 - 서로 다른 case/TAR SHA-256의 동일 semantic state가 같은 signature라는 실제 `run_case()` regression
@@ -85,11 +85,29 @@ C0의 direct path use 전체와 transient state는 snapshot만으로 판정할 �
 - uniform `mutate()`는 baseline convenience API; 향후 scheduler가 개별 operator를 직접 선택 가능
 - constructor와 deterministic USTAR builder의 경계를 별도 integration test로 검증
 
-Feedback-driven corpus scheduling, fuzzing loop, benchmark adapter와 Node-tar/ORAS campaign은 미구현이다. Known-vulnerability rediscovery, new vulnerability discovery, research effectiveness와 ablation 결과는 아직 없다. C3/C4도 후속 단계다.
+### Feedback / Corpus v1
+
+- 기존 StateSignature v2 equality와 stable semantic violation fingerprints의 독립 novelty channel
+- C0/C2는 path/changed-field labels, C1은 internal/sentinel path 관계; raw dev/inode/timestamp/값/prose 제외
+- 같은 signature의 새 C0/HARNESS evidence도 interesting으로 보존하는 실제 run_case regression
+- inspectable FeedbackDecision: interesting observation과 새 retained entry를 구분
+- in-memory Corpus: 같은 case_id는 한 번만 보존하되 이미 보존한 case의 새 outcome도 seen indexes에 반영
+- compact frozen CorpusEntry: ArchiveCase와 최초 admission signature/fingerprints; full RunResult/raw logs는 저장하지 않음
+- immutable CorpusStats/entries snapshot, insertion order와 caller-owned RNG를 사용하는 uniform baseline parent 선택
+- case/TAR/input digest, HARNESS metadata, execution status/exit code/duration과 raw inode allocation의 novelty 유출 방지
+- caller 수준의 Corpus.select_case → Mutator → 단일 run_case → Corpus.consider 조합 regression
+- 한 Corpus는 한 caller-controlled campaign context; complete campaign key/persistence를 제공하지 않음
+
+Fuzzing loop/campaign runner, adaptive scheduler, persistence, benchmark adapter와 Node-tar/ORAS campaign은 미구현이다. Known-vulnerability rediscovery, new vulnerability discovery, research effectiveness와 evaluation/ablation 결과는 아직 없다. C3/C4와 Layer 6도 후속 단계다. Corpus retention/stats는 연구 효과나 취약점 확정의 증거가 아니다.
 
 ## 다음 작업
 
-다음 Task Contract는 **Layer 5의 Feedback / Corpus** 범위를 확정한다. Signature schema와 corpus 선택 정책은 후속 실험을 위한 별도 설계·검증이 필요하다. Generic Mutation v1의 존재나 단위/integration test 통과를 feedback 효과의 증명으로 해석하지 않는다.
+다음 PR의 Task Contract는 **bounded deterministic fuzzing-loop orchestration**이다.
+`Corpus.select_case → Mutator → run_case → Corpus.consider`를 명시적인 budget/seed/provenance와
+조합한다. 이 loop는 현재 v1에 포함하지 않으며 별도 PR에서 구현한다. Campaign context와 raw
+evidence 기록의 책임도 caller/runner에 확정해야 한다. Adaptive scheduler/persistence,
+benchmark adapters와 evaluation/ablation은 이후 작업이다. Layer 5 구현과 단위/integration test
+통과를 feedback 효과의 증명으로 해석하지 않는다.
 Benchmark adapter 우선순위는 node-tar → oras-go → 선택 GNU tar를 유지한다. Unsafe target 연결 전에는 OS 수준 실행 격리와 target/version 설정을 함께 검토해야 한다.
 
 ## 지금 하지 않을 것

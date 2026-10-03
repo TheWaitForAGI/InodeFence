@@ -5,7 +5,7 @@
 InodeFence는 TAR archive entry를 생성·변형하고, 실제 extractor(압축 해제 프로그램)를 실행한 뒤, filesystem의 보안 관련 상태를 관찰해 archive extraction의 보안 경계 위반을 탐색하려는 프로젝트입니다.
 경로뿐 아니라 **파일 객체의 identity와 외부 상태 변화**를 다음 입력을 선택하는 feedback으로 활용할 가치가 있는지 연구합니다.
 
-현재는 **공통 데이터 모델, 입력 하나를 실제 실행·관찰·판정하는 최소 pipeline과 Generic Mutation v1**을 구현했습니다. Python `tarfile`/`data` reference target으로 검증하며, feedback-driven corpus scheduling과 fuzzing loop는 아직 구현하지 않았고 연구 효과도 검증하지 않았습니다.
+현재는 **공통 데이터 모델, 최소 단일 실행 pipeline, Generic Mutation v1과 Layer 5 Feedback / Corpus v1**을 구현했습니다. Corpus는 normalized state와 violation novelty를 독립적으로 추적하고 mutation parent를 in-memory로 보존·균등 선택합니다. Python `tarfile`/`data` reference target으로 검증하며, fuzzing loop/campaign runner, adaptive scheduler, persistence와 연구 효과 검증은 후속 작업입니다.
 
 [현재 상태](docs/STATUS.md) · [시작 안내](docs/START_HERE.md) · [아키텍처](docs/research/design/architecture.md) · [Security Contracts](docs/research/design/security-contracts.md) · [개발 가이드](CONTRIBUTING.md)
 
@@ -88,6 +88,13 @@ Corpus는 다음 변형의 출발점으로 남기는 입력 모음입니다.
 Schema v2는 정렬된 path/type/mode, regular nlink/size/content digest, scope 안의 same-object group, link text와 외부 변경 종류를 담습니다. Directory를 포함한 nonregular nlink는 `None`이며 raw inode·timestamp·ownership 값과 nonregular size를 제외합니다. Raw nlink와 외부 metadata-change labels는 보존하며, 최종 feedback/ablation 정책은 후속 실험에서 정합니다.
 
 **Region.HARNESS는 security trust boundary가 아닙니다.** Signature에서 HARNESS를 제외하는 것은 input/harness novelty 오염을 막기 위한 normalization 정책입니다. C0는 별도로 extraction root 밖의 persistent namespace 생성·삭제·identity/type 교체를 검사하므로 `archive/escaped.txt` 생성이나 기존 `archive/input.tar` 삭제·교체도 evidence입니다. Content/metadata-only 변화는 기존 C0/C2 구분에 따라 C0 조건으로 삼지 않습니다.
+
+**Corpus는 state novelty와 violation novelty를 독립적으로 추적합니다.** 같은 signature라도
+새 C0/HARNESS evidence class면 보존할 수 있습니다. Stable violation fingerprint는 contract ID와
+path/changed-field 또는 internal/sentinel path 관계만 담으며 raw dev/inode allocation은 제외합니다.
+Case/TAR identity와 execution status/duration은 novelty가 아닙니다. 같은 case_id는 한 번만 보존하되
+새 outcome의 seen indexes는 갱신하므로 interesting observation이 항상 새 corpus entry는 아닙니다.
+상세 API와 정책은 [Feedback / Corpus v1](src/inodefence/feedback/README.md)을 따릅니다.
 
 `run_case()`는 layout·sentinel·input TAR setup 완료 후 BEFORE를 찍고, `target.run()` 종료 직후 bookkeeping/cleanup 이전에 AFTER를 찍습니다. 정상 setup은 baseline에 이미 있으므로 C0가 아닙니다. Snapshot은 생성 주체를 알 수 없으므로 adapter의 harness bookkeeping도 이 관찰 구간 밖에서 처리해야 합니다. 이 lifecycle 없이 HARNESS 변화를 면제하면 실제 boundary escape를 숨길 수 있습니다.
 
@@ -201,7 +208,7 @@ Target-specific 실행 로직은 adapter에 두고, generic mutation·observer·
 
 ## 현재 구현 상태
 
-**Layer 2, Layer 3의 최소 관찰 pipeline과 Layer 4 Generic Mutation v1을 구현했습니다.** 최신 상태와 다음 작업은 [STATUS.md](docs/STATUS.md)에서 관리합니다. Feature branch의 구현 상태 표시는 main merge를 의미하지 않습니다.
+**Layer 2, Layer 3의 최소 관찰 pipeline, Layer 4 Generic Mutation v1과 Layer 5 Feedback / Corpus v1을 구현했습니다.** 최신 상태와 다음 작업은 [STATUS.md](docs/STATUS.md)에서 관리합니다. Feature branch의 구현 상태 표시는 main merge를 의미하지 않습니다.
 
 | 개발 Layer | 상태 |
 | --- | --- |
@@ -210,7 +217,7 @@ Target-specific 실행 로직은 adapter에 두고, generic mutation·observer·
 | Layer 2 — 공통 Data Model | 완료: archive, execution, snapshot, signature, evidence/result |
 | Layer 3 — Minimal End-to-End Pipeline | 완료: Python reference target, C0 관찰 범위 제한 |
 | Layer 4 — Generic Mutation | v1 구현: 8개 독립 operator와 uniform baseline |
-| Layer 5 — Feedback / Corpus | 미구현 |
+| Layer 5 — Feedback / Corpus | v1 구현: 독립 novelty, in-memory retention, uniform caller-RNG 선택 |
 | Layer 6 — Baseline / Evaluation / Paper | 미진행 |
 
 현재 코드에 있는 기반은 다음과 같습니다.
@@ -227,8 +234,10 @@ Target-specific 실행 로직은 adapter에 두고, generic mutation·observer·
 - C0/C1/C2 structured evidence, portable signature, versioned canonical JSON export
 - 실제 Linux filesystem과 E2E semantics 테스트
 - caller-owned RNG와 canonical ArchiveCase를 사용하는 [Generic Mutation v1](src/inodefence/mutator/README.md); builder와 별도 모듈이며 adaptive scheduler는 이후 구현
+- inspectable FeedbackDecision, compact CorpusEntry와 immutable CorpusStats를 제공하는 [Feedback / Corpus v1](src/inodefence/feedback/README.md); full RunResult를 corpus에 저장하지 않음
 
 Python reference는 architecture 검증과 baseline용이며 **node-tar를 대체하는 최종 benchmark target이 아닙니다.** Fuzzing loop, 실험 실행기, 평가 결과와 확인된 finding은 아직 없습니다.
+다음 PR은 명시적인 budget/seed/provenance를 기록하는 bounded deterministic fuzzing-loop orchestration입니다.
 
 ## 개발 환경과 현재 실행 가능한 명령
 
@@ -269,7 +278,11 @@ Probe는 Python `tarfile`의 `data` filter를 사용하는 학습·관찰 도구
 최초 `make install` 후 Dev Container의 Python에서 내부 API를 실행할 수 있습니다.
 
 ```python
+import random
+
+from inodefence.feedback import Corpus
 from inodefence.model import ArchiveCase, ArchiveEntry, EntryType, canonical_json
+from inodefence.mutator import mutate
 from inodefence.pipeline import run_case
 from inodefence.targets import PythonTarfileTarget
 
@@ -283,7 +296,18 @@ result = run_case(case, PythonTarfileTarget())
 assert result.execution.succeeded
 assert all(not verdict.violated for verdict in result.violations)
 record = canonical_json(result)  # sandbox 정리 후에도 case·snapshot·evidence 보존
+
+corpus = Corpus()  # 한 caller-controlled campaign context에 속하는 in-memory search state
+decision = corpus.consider(result)
+rng = random.Random(1234)
+parent = corpus.select_case(rng)
+child = mutate(parent, rng)  # loop 없이 API를 caller 수준에서 조합
 ```
+
+Corpus retention은 다음 mutation parent로 보존한다는 뜻입니다. 새로운 normalized state나
+contract-violation evidence class가 자동으로 취약점은 아닙니다. Raw evidence 저장과 commit,
+target/version/config, OS/kernel, seed/budget/timeout 등의 campaign provenance는 후속 runner의
+책임이며 Corpus v1은 persistence나 완전한 campaign key를 제공하지 않습니다.
 
 `violated=False`는 관찰 범위 안에서 증거가 없다는 뜻입니다. Snapshot은 일시적 operation이나 sandbox 밖의 상태를 증명하지 못합니다. C0 namespace 변화와 C2 content/metadata effect를 구분하며, 관찰 오류는 harness 오류로 올립니다. Runtime directory는 cleanup 경계이고 임의 executable을 가두는 OS sandbox가 아닙니다. Unsafe benchmark adapter에는 추가 process/filesystem isolation이 필요합니다. 상세 API와 한계는 [architecture](docs/research/design/architecture.md)와 [계약 구현 범위](docs/research/design/security-contracts.md)를 따릅니다.
 

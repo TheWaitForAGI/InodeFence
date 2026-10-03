@@ -183,3 +183,44 @@ PR #16에서는 `duration_seconds` 개념만 canonical ExecutionResult에 흡수
 Duration은 RunResult.execution의 기존 canonical JSON 경로로 보존하며 중복 field를 만들지 않는다. Security verdict, StateSignature v2 또는 ArchiveCase identity에 포함하지 않는다. 측정 evidence를 추가하는 결정이며 throughput/time-to-first-violation 평가, Mutation/Corpus 또는 Layer 4/5 구현을 의미하지 않는다.
 
 **Archive input path != Observed filesystem path.** ArchiveEntry.path/link_target은 normalization하지 않는 untrusted raw logical input이고 ObjectSnapshot.path는 Observer가 만든 canonical sandbox-relative evidence다. ArchiveCase의 order/duplicate 의미를 observed objects에 적용하지 않으며 StateSnapshot.objects는 unique/sorted다. StateSnapshot의 sandbox_root/phase/objects/protected_paths 구조를 유지한다. **StateSnapshot = full raw observation/evidence**, **StateSignature = normalized security-state representation**의 경계를 유지한다. `path_region()`은 current runtime-layout classification policy이며 filesystem object의 intrinsic property가 아니다.
+
+## D016 — Feedback / Corpus v1의 독립 novelty와 unique-case retention
+
+**상태:** v1 구현, 연구 효과는 미검증
+
+StateSignature v2 value equality를 normalized-state novelty channel로 사용한다. 기존 schema나
+HARNESS exclusion을 변경하지 않는다. Violation novelty는 Oracle의 violated 결과에서 만든
+stable semantic fingerprint로 **독립적으로** 추적한다. 같은 signature라는 이유로 새 violation
+evidence를 버리지 않는다. 특히 관찰 구간의 `archive/escaped.txt` 생성은 signature가 같아도
+새 C0 evidence class로 interesting이어야 한다.
+
+C0/C2 fingerprint는 contract ID와 observed path/ChangeField labels를, C1은 contract ID와
+internal/sentinel path 관계를 보존한다. Raw dev/inode allocation, timestamp/content/mode
+원값, ObjectSnapshot, explanation/limitations는 key에서 제외한다. 실제 `(st_dev, st_ino)`
+identity 판정과 raw evidence는 기존 Oracle/RunResult에 그대로 남는다. 한 violated contract의
+전체 sorted unique semantic evidence tuple이 한 class이며 incidental order/중복은 제거한다.
+EXISTENCE creation/deletion과 같은 path/field의 서로 다른 변경 값은 같은 class다.
+
+ArchiveCase case_id, TAR SHA-256, input artifact digest/HARNESS metadata와 execution
+status/exit code/duration은 state novelty가 아니다. `interesting = new state OR new violation
+fingerprint`이며 retention은 미래 mutation parent 보존을 뜻한다. 새로운 상태나 contract
+candidate를 취약점 확정과 동일시하지 않는다.
+
+Corpus v1은 feedback package 안의 in-memory object다. 같은 case_id는 한 번만 보존한다.
+이미 보존한 case의 새 outcome은 interesting일 수 있지만 새 entry를 만들지 않는다. 이 경우도
+seen state/violation indexes는 갱신하고 interesting-observation count를 올린다. 따라서
+interesting observation과 retained corpus entry는 다르다. Entry는 ArchiveCase와 최초
+admission observation의 signature/모든 fingerprints만 보존하며 full RunResult/raw logs나
+mutation history를 저장하지 않는다. 이후 outcome으로 최초 metadata를 덮어쓰지 않는다.
+
+Parent selection은 retained insertion order와 caller-owned random.Random에 대한 균등 baseline이다.
+Global RNG/implicit seed를 사용하지 않고 empty corpus는 ValueError다. Corpus가 target 실행이나
+mutation을 호출하지 않는다. Mutator → Feedback dependency도 추가하지 않는다. Adaptive scheduler,
+energy/reward model, disk persistence와 fuzzing loop는 이번 범위 밖이다.
+
+한 Corpus instance는 한 caller-controlled campaign context에 속한다. RunResult에 완전한 stable
+campaign-config key가 없으므로 false campaign ID나 dynamic command hash를 만들지 않는다.
+Formal runner가 commit, target/version/config, OS/kernel/architecture, seed/budget/timeout와
+dependency provenance 및 raw evidence 보존을 소유한다. Cross-target persistence safety,
+연구 effectiveness 또는 evaluation/ablation 성과를 주장하지 않는다. 다음 구현 단위는 별도
+Task Contract의 bounded deterministic fuzzing-loop orchestration이다.

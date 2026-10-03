@@ -62,3 +62,9 @@ rediscovery 또는 paper 결과를 증명하지 않는다.
 ## 파일 배치 규칙
 
 대상 책임을 식별할 test_*.py 파일을 둔다. 향후 filesystem 테스트는 Linux runtime의 disposable sandbox를 사용한다.
+
+`test_campaign.py`는 정확한 seed-inclusive budget, 선언 순서, 중복/빈 seed/config 거부, RNG
+호출 순서와 global isolation, no-op 실행, 네 status, 예외 전달, index/parent, stats와 불변성을
+검증한다. `test_campaign_integration.py`는 Linux disposable runtime와 Python reference로 같은
+config를 두 번 실행하고 semantic case lineage/feedback/admission order를 비교한다. Raw inode,
+timestamp와 duration equality를 요구하지 않으며 연구 효과를 주장하지 않는다.

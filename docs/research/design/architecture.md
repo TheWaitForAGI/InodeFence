@@ -21,7 +21,7 @@
 
 현재는 **개발 Layer 2, 최소 Layer 3, Layer 4 Generic Mutation v1과 Layer 5 Feedback / Corpus v1 구현** 단계다. Feature branch의 구현 상태 표시는 main merge를 의미하지 않는다.
 
-ArchiveCase → 결정적 USTAR → Python reference worker → pre/post snapshot → C0/C1/C2 evidence의 실제 API가 있다. Generic Mutation v1은 별도 ArchiveCase → ArchiveCase API다. Layer 5는 RunResult의 독립 state/violation novelty에 따른 in-memory retention과 uniform caller-RNG parent selection을 제공한다. Generator, fuzzing loop/campaign runner, adaptive scheduler/persistence, benchmark adapter 및 evaluation은 후속 단계다.
+ArchiveCase → 결정적 USTAR → Python reference worker → pre/post snapshot → C0/C1/C2 evidence의 실제 API가 있다. Generic Mutation v1은 별도 ArchiveCase → ArchiveCase API다. Layer 5는 RunResult의 독립 state/violation novelty에 따른 in-memory retention과 uniform caller-RNG parent selection을 제공한다. Bounded campaign v1은 명시적 seed와 execution budget으로 API를 조합한다. Generator, adaptive scheduler/persistence, benchmark adapter 및 evaluation은 후속 단계다.
 
 아래 개념 그림에는 lineage, tracing, corpus 등 미래 설계도 포함한다. 현재 확정된 field/API는 **7.8 현재 구현 경계**를 따른다. Python reference는 최종 benchmark target이 아니다.
 
@@ -159,7 +159,7 @@ flowchart LR
 
 이 그림은 최종 목표 구조다.
 
-현재 구현은 **공통 Data Model → 최소 관찰 경로**, 별도 Generic Mutation v1과 Feedback / Corpus v1이다. 다음 작업은 명시적인 budget/seed/provenance를 기록하는 bounded deterministic fuzzing-loop orchestration의 별도 Task Contract다. 전체 loop나 연구 효과를 검증한 단계는 아니다.
+현재 구현은 **공통 Data Model → 최소 관찰 경로**, 별도 Generic Mutation v1과 Feedback / Corpus v1이다. Bounded campaign v1은 명시적 seed/budget과 parent lineage/full RunResult를 보존한다. 연구 효과를 검증한 단계는 아니다.
 
 ---
 
@@ -983,7 +983,7 @@ campaign key가 없으므로 false identifier/dynamic command hash를 만들지 
 commit, target/version/config, OS/kernel/architecture, seed/budget/timeout, dependency version과
 raw evidence 기록을 소유한다. Cross-target persistence safety를 주장하지 않는다.
 
-Adaptive scheduler, reward/energy, persistence/resume, fuzzing loop, benchmark adapters와
+Adaptive scheduler, reward/energy, persistence/resume, benchmark adapters와
 research effectiveness는 후속 작업이다. 현재 Corpus는 기존 feedback package에 둔다.
 정책 근거는 D016과 [feedback API 안내](../../../src/inodefence/feedback/README.md)를 따른다.
 
@@ -1021,8 +1021,22 @@ Runner는 순서를 연결하는 역할만 한다.
 현재 orchestration은 [pipeline.py](../../../src/inodefence/pipeline.py)의 `run_case`다. Builder/environment/Observer/예상하지 못한 adapter 오류는 harness exception으로 전달하고 PASS를 만들지 않는다. Target 결과는 success/rejected/failed/timed_out으로 반환하며 모든 결과에서 after snapshot을 시도한다. Result는 sandbox 삭제 후에도 case와 evidence를 기록할 수 있다.
 
 `run_case()`는 의도적으로 한 번만 실행한다. Mutation strategy, corpus scheduling/adaptive
-feedback, target selection과 CVE logic을 넣지 않는다. 후속 bounded loop는 별도 caller가
-Corpus.select_case, Mutator, run_case, Corpus.consider를 budget/seed/provenance와 조합한다.
+feedback, target selection과 CVE logic을 넣지 않는다. 현재 [campaign.py](../../../src/inodefence/campaign.py)의 `run_campaign`이 별도 caller로
+Corpus.select_case, Mutator, run_case, Corpus.consider를 조합한다.
+
+CampaignConfig는 frozen/slots의 integer random_seed와 positive integer execution_budget이다.
+Initial cases는 명시적으로 받으며 nonempty, unique case IDs와 budget >= seed count를 실행 전에
+검증한다. Seed를 선언 순서대로 실행하고 consider하며 search RNG를 소비하지 않는다. 이후
+하나의 random.Random(seed)으로 select → mutate → execute → consider 순서를 지킨다. No-op도
+재시도 없이 한 execution이고 SUCCESS/REJECTED/FAILED/TIMED_OUT 모두 budget에 포함한다.
+Infrastructure exception은 전달하며 완료되지 않은 campaign을 정상 결과로 만들지 않는다.
+
+CampaignStep은 zero-based index, SEED/MUTATION origin, seed에는 None인 parent_case_id,
+full RunResult와 FeedbackDecision이다. CampaignResult는 config/initial IDs/steps/final stats와
+admission-order retained IDs의 immutable snapshot이다. Full evidence 보존으로 메모리는
+O(execution_budget)이며 run당 evidence 크기에 비례한다. Semantic feedback이 같은 조건에서
+lineage를 재현하며 raw inode/timestamp/duration equality는 요구하지 않는다. Persistence,
+checkpoint/resume, adaptive scheduling과 default seed 선택은 없다.
 
 ---
 
@@ -1091,7 +1105,7 @@ our harness / environment bug
 
 # 20. Testcase Lineage
 
-아래 lineage는 후속 campaign/evidence 설계이며 Corpus v1에는 mutation-history DB를 넣지 않는다.
+Bounded campaign v1은 steps의 parent_case_id와 origin을 기록한다. 아래 상세 mutation history는 후속 설계이며 Corpus v1에는 mutation-history DB를 넣지 않는다.
 
 최종 finding만 저장하면 “어떻게 그 상태에 도달했는가”를 설명하기 어렵다.
 
@@ -1319,7 +1333,7 @@ model ← mutator / targets / observer / oracle / feedback
 현재 Layer 5의 corpus/fingerprint production modules는 표준 라이브러리와 model/semantic
 fingerprint types만 import한다. Pipeline/targets/runtime/observer/oracle/mutator/builder 구현을
 import하지 않는다. 기존 state_signature의 snapshot 비교 의존성은 유지한다. Mutator는 archive
-model만 의존하고 Feedback을 import하지 않는다. 후속 runner가 세 API를 caller 수준에서 조합한다.
+model만 의존하고 Feedback을 import하지 않는다. Campaign runner가 세 API를 caller 수준에서 조합한다.
 
 순환 의존이 생기면 책임 경계가 무너진 신호로 본다.
 
@@ -1403,7 +1417,7 @@ flowchart LR
 # 29. 구현 순서
 
 Milestone 1~3은 core foundation, 4는 Generic Mutation v1, 5는 Feedback / Corpus v1으로
-구현·검증했다. 아래는 개발 순서이며 loop/campaign/evaluation을 앞당겨 구현하지 않는다.
+구현·검증했다. 아래는 개발 순서이며 evaluation을 앞당겨 구현하지 않는다.
 
 ## Milestone 1 — Common Data Model
 
@@ -1435,8 +1449,8 @@ Known TAR
 ## Milestone 5 — Feedback / Corpus v1
 
 기존 StateSignature v2와 독립 semantic violation novelty로 in-memory corpus evolution을 구현한다.
-Uniform caller-RNG selection은 baseline이다. 다음 별도 PR은 bounded deterministic fuzzing-loop
-orchestration이며, 이 milestone의 v1 구현이 loop 또는 연구 효과 검증 완료를 뜻하지 않는다.
+Uniform caller-RNG selection은 baseline이다. Bounded campaign v1이 상위 caller로 실행 budget과
+lineage를 기록한다. 이 구현은 연구 효과 검증 완료를 뜻하지 않는다.
 
 ## Milestone 6 — Evaluation
 

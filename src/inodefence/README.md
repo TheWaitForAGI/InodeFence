@@ -21,7 +21,8 @@ builder.build_tar → disposable runtime → before snapshot
 | [model](model/README.md) | 공통 입력과 결과, canonical JSON |
 | [builder.py](builder.py) | 결정적 USTAR 직렬화 |
 | [runtime.py](runtime.py) | Linux runtime와 sentinel lifecycle |
-| [pipeline.py](pipeline.py) | 실행 순서 연결 |
+| [pipeline.py](pipeline.py) | 입력 하나의 실행 순서 연결 |
+| [campaign.py](campaign.py) | 명시적 seed와 실행 budget으로 select → mutate → run → consider 연결 |
 | [generator](generator/README.md) | 초기 case 생성 정책, 후속 구현 |
 | [mutator](mutator/README.md) | Generic Mutation v1, 8개 독립 ArchiveCase 변형 operator |
 | [targets](targets/README.md) | 실제 extractor 실행 |
@@ -39,8 +40,19 @@ context 한계는 [feedback](feedback/README.md)를 따른다.
 
 ## 현재 상태와 한계
 
-Layer 2, 최소 Layer 3, Generic Mutation v1과 Layer 5 Feedback / Corpus v1이 구현됐다. Corpus는 in-memory이며 caller RNG 기반 uniform baseline 선택만 제공한다. Bounded deterministic fuzzing-loop orchestration, campaign provenance/runner, adaptive scheduler, persistence와 연구 효과 검증은 후속 작업이다. Python tarfile/data target은 architecture/reference용이며 최종 benchmark target이 아니다. Unsafe target에는 추가 OS 실행 격리가 필요하다. Disposable runtime directory 자체는 OS sandbox가 아니다.
+Layer 2, 최소 Layer 3, Generic Mutation v1과 Layer 5 Feedback / Corpus v1이 구현됐다. Corpus는 in-memory이며 caller RNG 기반 uniform baseline 선택만 제공한다. Bounded deterministic campaign은 구현됐으며 adaptive scheduler, persistence와 연구 효과 검증은 후속 작업이다. Python tarfile/data target은 architecture/reference용이며 최종 benchmark target이 아니다. Unsafe target에는 추가 OS 실행 격리가 필요하다. Disposable runtime directory 자체는 OS sandbox가 아니다.
 
 Snapshot의 `violated=False`는 관찰 범위에서 위반 증거가 없다는 뜻이다. Transient operation, sandbox 밖의 상태, symlink referent identity와 full C0 direct-use는 증명하지 못한다. 관찰 실패는 harness 오류로 올리며 passing result를 만들지 않는다.
 
 [tests](../../tests/README.md)는 semantics를 검증하고 [experiments](../../experiments/README.md)는 연구 실험을 담당한다. Runtime 결과를 소스에 넣지 않는다. 새 공통 interface는 design 문서와 함께 갱신한다.
+
+## Bounded campaign v1
+
+`run_campaign(initial_cases, target, CampaignConfig(random_seed, execution_budget), sentinels=...)`는
+새 Corpus로 시작한다. Initial cases는 nonempty/unique case IDs이며 모두 budget에 포함한다.
+선언 순서의 seed 실행 후 한 campaign RNG로 parent 선택과 mutation을 순서대로 수행한다.
+No-op/rejected/failed/timed-out도 실행 하나로 기록하며 harness 오류는 전달한다.
+`CampaignResult`는 config/initial IDs, immutable steps, final stats와 admission-order retained IDs다.
+Zero-based step은 origin/parent ID/full RunResult/FeedbackDecision을 보존한다. 메모리는
+O(execution_budget)이며 개별 evidence 크기에도 비례한다. Semantic feedback이 같을 때 lineage가
+재현되며 raw inode/timestamp/duration은 재현을 요구하지 않는다. Disk export/resume는 없다.

@@ -1,107 +1,113 @@
-# Security Contracts
+# Security Contract
 
-Security contracts are generic rules that describe what a safe extraction should preserve.
+Security Contract는 안전한 archive extraction이 지켜야 할 일반화된 보안 규칙이다.
 
-They are intentionally independent of individual CVE identifiers.
+특정 CVE 식별자와 독립적으로 정의한다.
 
 ## Contract A — Object Identity Confinement
 
-### Rule
+### 규칙
 
-An object created inside the extraction area must not unexpectedly share filesystem identity with a protected external sentinel.
+Extraction 영역 내부에 생성된 object가 보호된 외부 sentinel과 의도하지 않게 동일한 filesystem identity를 공유하면 안 된다.
 
-### Initial Observable
+### 초기 관찰 방법
 
-On the same filesystem, compare:
+같은 filesystem에서 다음을 비교한다.
 
 ```text
 (st_dev, st_ino)
 ```
 
-A candidate violation exists when an internal object and a protected external sentinel unexpectedly share the same object identity.
+내부 object와 보호된 외부 sentinel이 의도하지 않게 같은 object identity를 공유하면 violation 후보로 본다.
 
-### Why It Matters
+### 왜 중요한가?
 
-Different paths can refer to the same underlying object. A path-only observer may therefore miss a security-relevant relationship.
+서로 다른 path가 같은 underlying object를 가리킬 수 있다.
 
-### Initial Priority
+따라서 path-only observer는 보안 관련 관계를 놓칠 수 있다.
 
-High. This is part of the minimal implementation.
+### 초기 우선순위
+
+높음. Minimal implementation에 포함한다.
 
 ---
 
 ## Contract B — External Effect Noninterference
 
-### Rule
+### 규칙
 
-Processing an untrusted archive must not unexpectedly change protected external sentinel objects.
+Untrusted archive 처리 때문에 보호된 외부 sentinel object가 의도하지 않게 변경되면 안 된다.
 
-### Candidate Observables
+### 후보 관찰 정보
 
 - existence
 - content hash
 - file size
 - mode
-- selected timestamps
-- later: ownership where the experiment environment supports it safely
+- 선택 timestamp
+- 이후 필요 시 ownership
 
-### Example
+### 예
 
-If modifying or creating an extraction result causes a protected external sentinel's content to change, the extraction has produced an external side effect.
+Extraction 결과를 생성/수정했는데 보호된 외부 sentinel의 content가 바뀌었다면 external side effect가 발생한 것이다.
 
-### Initial Priority
+### 초기 우선순위
 
-High. This is part of the minimal implementation.
+높음. Minimal implementation에 포함한다.
 
 ---
 
 ## Contract C — Extraction Root Integrity
 
-### Rule
+### 규칙
 
-The physical meaning of the extraction root must not be redirected or replaced in a way that causes later extraction operations to escape the intended boundary.
+Extraction root의 실제 object/redirect 의미가 공격자 entry에 의해 바뀌어 이후 extraction이 의도한 boundary 밖으로 향하면 안 된다.
 
-### Notes
+### 메모
 
-This contract is relevant to destination-manipulation patterns, but it should not block the minimal A/B implementation.
+Destination manipulation 계열 패턴을 다루는 데 중요하지만 초기 A/B contract 구현을 막지 않도록 후순위로 둔다.
 
-### Initial Priority
+### 초기 우선순위
 
-Medium.
+중간.
 
 ---
 
 ## Contract D — Check/Use Coherence
 
-### Rule
+### 규칙
 
-When a target validates one path or object and later performs a filesystem operation, the validated target and the used target should remain semantically consistent.
+Target이 어떤 path/object를 검증한 뒤 filesystem operation을 수행한다면, 검증한 대상과 실제 사용한 대상의 의미가 일관되어야 한다.
 
-### Notes
+### 메모
 
-This contract may require target-specific instrumentation or operation tracing. It is useful for root-cause analysis of validation/use mismatches, but it is not required for the first end-to-end fuzzer.
+Target-specific instrumentation이나 operation tracing이 필요할 수 있다.
 
-### Initial Priority
+Validation/use mismatch의 root-cause 분석에 유용하지만 첫 end-to-end fuzzer의 필수요건은 아니다.
 
-Later.
+### 초기 우선순위
+
+후순위.
 
 ---
 
-## Oracle Design Principles
+## Oracle 설계 원칙
 
-The oracle must:
+Oracle은 다음 조건을 만족해야 한다.
 
-- express a general security property,
-- avoid checks such as `if target_version == vulnerable_version`,
-- avoid matching a known PoC byte sequence,
-- produce enough evidence to reproduce a finding,
-- distinguish a suspicious state from a confirmed security violation when necessary.
+- 일반화된 보안 속성을 표현할 것
+- `if target_version == vulnerable_version` 같은 조건을 피할 것
+- Known PoC byte sequence를 직접 매칭하지 않을 것
+- finding 재현에 충분한 증거를 남길 것
+- 필요할 경우 suspicious state와 confirmed violation을 구분할 것
 
-## Sentinel Policy
+## Sentinel 정책
 
-Never target real host-sensitive files.
+실제 host의 민감 파일을 target으로 사용하지 않는다.
 
-Each run should create controlled sentinels inside the dedicated runtime sandbox, for example:
+각 run은 전용 runtime sandbox 안에 controlled sentinel을 생성한다.
+
+예:
 
 ```text
 run-UUID/
@@ -111,4 +117,4 @@ run-UUID/
 └── extract/
 ```
 
-The observer records sentinel state before and after extraction.
+Observer는 extraction 전후 sentinel state를 기록한다.

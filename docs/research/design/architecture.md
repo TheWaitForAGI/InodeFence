@@ -21,9 +21,9 @@
 
 현재는 **개발 Layer 2 공통 Data Model 진행 중**이다.
 
-현재 구현에는 개발환경, smoke test, TAR baseline fixture, 연구 설계 문서와 모듈별 README가 있다. `model/archive.py`에 `ArchiveEntry`, `ArchiveCase`, `EntryType`이 구현되어 있으며 다른 엔진 하위 패키지는 대부분 빈 `__init__.py`만 있다.
+현재 구현에는 개발환경, smoke test, TAR baseline fixture, 연구 설계 문서와 모듈별 README가 있다. `model/archive.py`에 `ArchiveEntry`, `ArchiveCase`, `EntryType`이, `model/execution.py`에 `ExecutionResult`가 구현되어 있으며 다른 엔진 하위 패키지는 대부분 빈 `__init__.py`만 있다.
 
-`ArchiveEntry`와 `ArchiveCase` 이외의 `ExecutionResult`, `StateSnapshot` 등의 모델과 runtime pipeline은 **설계 후보**이며 아직 구현되지 않았다.
+`StateSnapshot` 등의 나머지 모델과 runtime pipeline은 **설계 후보**이며 아직 구현되지 않았다.
 
 ### 개발 Layer와 Runtime Stage를 구분한다
 
@@ -211,7 +211,7 @@ StateSnapshot
 
 # 7. 공통 Data Model 설계
 
-`ArchiveEntry`와 `ArchiveCase`의 현재 Python field와 type은 아래와 같다. 나머지 모델의 정확한 field와 type은 개발 Layer 2의 후속 작업에서 결정하며, 아래 내용은 의미적 책임을 설명한다.
+`ArchiveEntry`, `ArchiveCase`, `ExecutionResult`의 현재 Python field와 type은 아래와 같다. 나머지 모델의 정확한 field와 type은 개발 Layer 2의 후속 작업에서 결정하며, 아래 내용은 의미적 책임을 설명한다.
 
 ## 7.1 ArchiveEntry
 
@@ -290,21 +290,24 @@ ArchiveCase
 
 Target Adapter가 extractor를 실행한 **프로세스 실행 결과**다.
 
-개념 필드:
+현재 구현: `src/inodefence/model/execution.py`의 frozen dataclass.
 
 ```text
 ExecutionResult
-├── target
-├── target_version
-├── exit_code
-├── stdout
-├── stderr
-├── duration
-├── timed_out
-├── archive_path
-├── extraction_root
-└── execution_metadata
+├── exit_code: int | None
+├── stdout: str
+├── stderr: str
+├── duration_seconds: float
+└── timed_out: bool
 ```
+
+`exit_code`는 프로세스 종료 코드이며 timeout 등으로 코드를 얻지 못하면 `None`으로 표현한다.
+`stdout`과 `stderr`는 전달받은 출력 문자열을 그대로 보존한다.
+`duration_seconds`는 초 단위 실행 시간, `timed_out`은 timeout 발생 여부다.
+모든 필드는 생성 시 명시적으로 전달하며 runtime validation이나 값 변환을 하지 않는다.
+음수 exit code, timeout과 exit code의 조합, duration의 범위를 제한하지 않는다.
+
+`target`, `target_version`, `archive_path`, `extraction_root`, `execution_metadata`는 후속 확장 후보이며 현재 구현에는 없다. 실제 실행과 timeout enforcement도 아직 구현하지 않았다.
 
 `ExecutionResult`와 filesystem 상태는 같은 것이 아니다.
 

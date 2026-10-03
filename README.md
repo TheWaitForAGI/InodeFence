@@ -5,7 +5,7 @@
 InodeFence는 TAR archive entry를 생성·변형하고, 실제 extractor(압축 해제 프로그램)를 실행한 뒤, filesystem의 보안 관련 상태를 관찰해 archive extraction의 보안 경계 위반을 탐색하려는 프로젝트입니다.
 경로뿐 아니라 **파일 객체의 identity와 외부 상태 변화**를 다음 입력을 선택하는 feedback으로 활용할 가치가 있는지 연구합니다.
 
-현재는 **공통 데이터 모델, 최소 단일 실행 pipeline, Generic Mutation v1과 Layer 5 Feedback / Corpus v1**을 구현했습니다. Corpus는 normalized state와 violation novelty를 독립적으로 추적하고 mutation parent를 in-memory로 보존·균등 선택합니다. Python `tarfile`/`data` reference target으로 검증하며, fuzzing loop/campaign runner, adaptive scheduler, persistence와 연구 효과 검증은 후속 작업입니다.
+현재는 **공통 데이터 모델, 최소 단일 실행 pipeline, Generic Mutation v1과 Layer 5 Feedback / Corpus v1**을 구현했습니다. Corpus는 normalized state와 violation novelty를 독립적으로 추적하고 mutation parent를 in-memory로 보존·균등 선택합니다. Python `tarfile`/`data` reference target으로 검증하며, bounded campaign runner·explicit minimal seeds·structured export를 제공합니다. Adaptive scheduler, persistence와 연구 효과 검증은 후속 작업입니다.
 
 [현재 상태](docs/STATUS.md) · [시작 안내](docs/START_HERE.md) · [아키텍처](docs/research/design/architecture.md) · [Security Contracts](docs/research/design/security-contracts.md) · [개발 가이드](CONTRIBUTING.md)
 
@@ -278,8 +278,12 @@ Probe는 Python `tarfile`의 `data` filter를 사용하는 학습·관찰 도구
 
 ```python
 import random
+from pathlib import Path
 
+from inodefence.campaign import CampaignConfig, run_campaign
+from inodefence.campaign_export import export_campaign
 from inodefence.feedback import Corpus
+from inodefence.generator import minimal_seed_corpus
 from inodefence.model import ArchiveCase, ArchiveEntry, EntryType, canonical_json
 from inodefence.mutator import mutate
 from inodefence.pipeline import run_case
@@ -301,11 +305,6 @@ decision = corpus.consider(result)
 rng = random.Random(1234)
 parent = corpus.select_case(rng)
 child = mutate(parent, rng)  # 개별 API도 caller 수준에서 조합 가능
-
-from inodefence.campaign import CampaignConfig, run_campaign
-from inodefence.generator import minimal_seed_corpus
-from inodefence.campaign_export import export_campaign
-from pathlib import Path
 
 campaign = run_campaign((case,), PythonTarfileTarget(), CampaignConfig(1234, 25))
 assert len(campaign.steps) == 25
@@ -366,7 +365,7 @@ Experiment Config → Raw Execution → Validated Summary
 Codex CLI 버전은 formal experiment reproducibility 기준에 포함하지 않습니다.
 
 [experiments](experiments/README.md)는 설정·raw 기록과 [검증 요약](experiments/summaries/README.md), [findings](findings/README.md)는 개별 사례의 재현·검토 근거, [paper](paper/README.md)는 논문에 사용할 준비가 된 자료를 담당합니다.
-현재는 보관 구조와 규칙이 마련되어 있으며 실험 결과나 finding이 있는 단계는 아닙니다.
+Safe Python reference의 [개발 pilot 요약](experiments/summaries/reference-campaign-pilot-v1.md)이 있습니다. Formal effectiveness 결과나 확인된 finding은 아직 없습니다.
 
 ## 보안 연구 안전 정책
 

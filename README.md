@@ -5,7 +5,7 @@
 InodeFence는 TAR archive entry를 생성·변형하고, 실제 extractor(압축 해제 프로그램)를 실행한 뒤, filesystem의 보안 관련 상태를 관찰해 archive extraction의 보안 경계 위반을 탐색하려는 프로젝트입니다.
 경로뿐 아니라 **파일 객체의 identity와 외부 상태 변화**를 다음 입력을 선택하는 feedback으로 활용할 가치가 있는지 연구합니다.
 
-현재는 **공통 데이터 모델과 입력 하나를 실제 실행·관찰·판정하는 최소 pipeline**을 구현했습니다. Python `tarfile`/`data` reference target으로 검증하며, mutation·corpus loop와 연구 효과는 아직 구현·검증되지 않았습니다.
+현재는 **공통 데이터 모델, 입력 하나를 실제 실행·관찰·판정하는 최소 pipeline과 Generic Mutation v1**을 구현했습니다. Python `tarfile`/`data` reference target으로 검증하며, feedback-driven corpus scheduling과 fuzzing loop는 아직 구현하지 않았고 연구 효과도 검증하지 않았습니다.
 
 [현재 상태](docs/STATUS.md) · [시작 안내](docs/START_HERE.md) · [아키텍처](docs/research/design/architecture.md) · [Security Contracts](docs/research/design/security-contracts.md) · [개발 가이드](CONTRIBUTING.md)
 
@@ -201,7 +201,7 @@ Target-specific 실행 로직은 adapter에 두고, generic mutation·observer·
 
 ## 현재 구현 상태
 
-**Layer 2와 Layer 3의 최소 관찰 pipeline을 구현·검증했습니다.** 최신 상태와 다음 작업은 [STATUS.md](docs/STATUS.md)에서 관리합니다. Feature branch의 구현 상태 표시는 main merge를 의미하지 않습니다.
+**Layer 2, Layer 3의 최소 관찰 pipeline과 Layer 4 Generic Mutation v1을 구현했습니다.** 최신 상태와 다음 작업은 [STATUS.md](docs/STATUS.md)에서 관리합니다. Feature branch의 구현 상태 표시는 main merge를 의미하지 않습니다.
 
 | 개발 Layer | 상태 |
 | --- | --- |
@@ -209,7 +209,7 @@ Target-specific 실행 로직은 adapter에 두고, generic mutation·observer·
 | Layer 1 — 연구 기반 / 범위 / 아키텍처 | 완료 |
 | Layer 2 — 공통 Data Model | 완료: archive, execution, snapshot, signature, evidence/result |
 | Layer 3 — Minimal End-to-End Pipeline | 완료: Python reference target, C0 관찰 범위 제한 |
-| Layer 4 — Generic Mutation | 미구현 |
+| Layer 4 — Generic Mutation | v1 구현: 8개 독립 operator와 uniform baseline |
 | Layer 5 — Feedback / Corpus | 미구현 |
 | Layer 6 — Baseline / Evaluation / Paper | 미진행 |
 
@@ -226,6 +226,7 @@ Target-specific 실행 로직은 adapter에 두고, generic mutation·observer·
 - 결정적 USTAR builder, disposable sandbox, 실제 reference worker, pre/post Observer
 - C0/C1/C2 structured evidence, portable signature, versioned canonical JSON export
 - 실제 Linux filesystem과 E2E semantics 테스트
+- caller-owned RNG와 canonical ArchiveCase를 사용하는 [Generic Mutation v1](src/inodefence/mutator/README.md); builder와 별도 모듈이며 adaptive scheduler는 이후 구현
 
 Python reference는 architecture 검증과 baseline용이며 **node-tar를 대체하는 최종 benchmark target이 아닙니다.** Fuzzing loop, 실험 실행기, 평가 결과와 확인된 finding은 아직 없습니다.
 

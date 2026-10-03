@@ -6,14 +6,14 @@
 
 ## 현재 단계
 
-**Layer 2 완료 + Layer 3 최소 pipeline 완료 → Layer 4 Generic Mutation 준비**
+**Layer 2 완료 + Layer 3 최소 pipeline 완료 + Layer 4 Generic Mutation v1 구현 → Layer 5 준비**
 
 ```text
 Layer 0 — 개발환경                         ✅ 완료
 Layer 1 — 연구 기반/범위/아키텍처          ✅ 완료
 Layer 2 — 공통 Data Model                  ✅ 완료
 Layer 3 — Minimal End-to-End Pipeline      ✅ Python reference / snapshot 범위
-Layer 4 — Generic Mutation                 ⬜
+Layer 4 — Generic Mutation                 ✅ v1: 독립 operator / uniform baseline
 Layer 5 — Feedback / Corpus                ⬜
 Layer 6 — Baseline / Evaluation / Paper    ⬜
 ```
@@ -78,10 +78,18 @@ Fixture generator는 core builder를 사용하며 기존 TAR bytes와 probe beha
 Python reference는 architecture 검증과 integration baseline용이며 최종 연구 benchmark가 아니다.
 C0의 direct path use 전체와 transient state는 snapshot만으로 판정할 수 없다. Snapshot은 actor provenance가 없으며 target attribution은 runner/adapter lifecycle 계약에 의존한다. 관찰 실패를 PASS로 처리하지 않는다.
 
+### Generic Mutation v1
+
+- canonical ArchiveCase → ArchiveCase 변형: add/remove/duplicate/reorder/path/hardlink/symlink/link-target 8개 독립 operator
+- caller-owned `random.Random`만 사용하며 원본 불변성, raw spelling, 순서·중복과 적용 불가 시 deterministic no-op 유지
+- uniform `mutate()`는 baseline convenience API; 향후 scheduler가 개별 operator를 직접 선택 가능
+- constructor와 deterministic USTAR builder의 경계를 별도 integration test로 검증
+
+Feedback-driven corpus scheduling, fuzzing loop, benchmark adapter와 Node-tar/ORAS campaign은 미구현이다. Known-vulnerability rediscovery, new vulnerability discovery, research effectiveness와 ablation 결과는 아직 없다. C3/C4도 후속 단계다.
+
 ## 다음 작업
 
-다음 Task Contract는 **Layer 4의 Generic Mutation** 범위를 확정한다. 기존 ArchiveCase를 입력/출력으로 사용하고, entry type/path/link/order/dependency를 일반 규칙으로 변형한다.
-이후 Layer 5에서 signature schema와 corpus 선택 정책을 실험용으로 고정한다.
+다음 Task Contract는 **Layer 5의 Feedback / Corpus** 범위를 확정한다. Signature schema와 corpus 선택 정책은 후속 실험을 위한 별도 설계·검증이 필요하다. Generic Mutation v1의 존재나 단위/integration test 통과를 feedback 효과의 증명으로 해석하지 않는다.
 Benchmark adapter 우선순위는 node-tar → oras-go → 선택 GNU tar를 유지한다. Unsafe target 연결 전에는 OS 수준 실행 격리와 target/version 설정을 함께 검토해야 한다.
 
 ## 지금 하지 않을 것

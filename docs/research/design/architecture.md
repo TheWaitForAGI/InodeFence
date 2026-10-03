@@ -1,12 +1,14 @@
-# System Architecture
+# 시스템 아키텍처
 
-## Design Goal
+## 설계 목표
 
-Build the smallest end-to-end loop that can later grow into a feedback-guided fuzzer.
+처음부터 완전한 퍼저를 만들지 않는다.
 
-Do not begin with the full mutation space or complex runtime tracing.
+먼저 **가장 작은 end-to-end pipeline**을 만들고, 이후 feedback-guided fuzzer로 확장한다.
 
-## High-Level Pipeline
+전체 mutation space나 복잡한 runtime tracing부터 시작하지 않는다.
+
+## 상위 Pipeline
 
 ```text
 Seed Generator
@@ -27,58 +29,58 @@ Feedback / Corpus
 
 ## Layer 1 — Seed Generator
 
-Purpose:
+역할:
 
-- create small, valid TAR test cases,
-- keep seeds understandable,
-- provide stable initial input for experiments.
+- 작고 정상적인 TAR test case 생성
+- 사람이 이해할 수 있는 seed 유지
+- 실험의 안정적인 초기 입력 제공
 
-Initial seed support should be minimal.
+초기 seed 기능은 최소화한다.
 
 ## Layer 2 — Structure Mutator
 
-Purpose:
+역할:
 
-- mutate entry type,
-- mutate path,
-- mutate link target,
-- reorder entries,
-- add/remove/duplicate entries,
-- vary target-existence dependencies.
+- entry type 변경
+- path 변경
+- link target 변경
+- entry 순서 변경
+- entry 추가/삭제/복제
+- target 존재 여부와 dependency 변경
 
-Important:
+중요:
 
-Mutation operators are generic. They must not simply encode a CVE PoC or a numbered Wormholes bypass.
+Mutation operator는 generic해야 한다. 특정 CVE PoC나 Wormholes의 특정 bypass 번호를 그대로 encoding하지 않는다.
 
 ## Layer 3 — TAR Builder
 
-Purpose:
+역할:
 
-- serialize an internal archive representation into a concrete TAR input,
-- keep archive construction separate from mutation policy.
+- 내부 archive representation을 실제 TAR 파일로 serialize
+- mutation 정책과 archive 생성 로직을 분리
 
 ## Layer 4 — Target Adapter
 
-Purpose:
+역할:
 
-- execute a specific extractor with a common interface,
-- isolate target-specific invocation details.
+- 공통 interface로 실제 extractor 실행
+- target마다 다른 실행 방식을 격리
 
-Initial target order:
+초기 target 순서:
 
 1. node-tar
 2. oras-go
-3. GNU tar if time permits
+3. 일정이 허용하면 GNU tar
 
-Target-specific logic belongs here, not in generic oracle or mutation code.
+Target-specific 로직은 이 Layer에 둔다. generic oracle이나 mutation 코드에 섞지 않는다.
 
 ## Layer 5 — State Observer
 
-Purpose:
+역할:
 
-- snapshot relevant filesystem state before and after extraction.
+- extraction 전/후의 보안 관련 filesystem state를 snapshot
 
-Initial observations:
+초기 관찰 정보:
 
 - relative path
 - object type
@@ -88,36 +90,36 @@ Initial observations:
 - mode
 - size
 - symlink target
-- content hash for selected objects
-- protected sentinel state
+- 선택된 object의 content hash
+- 보호된 sentinel state
 
-The initial version uses pre/post snapshots rather than full operation tracing.
+초기 버전은 full operation trace 대신 pre/post snapshot을 사용한다.
 
 ## Layer 6 — Security Oracle
 
-Purpose:
+역할:
 
-- evaluate generic security contracts.
+- generic security contract 위반 여부 판정
 
-Initial implementation order:
+초기 구현 순서:
 
 1. Object Identity Confinement
 2. External Effect Noninterference
 3. Extraction Root Integrity
-4. Check/Use Coherence if instrumentation is later added
+4. 이후 instrumentation이 추가되면 Check/Use Coherence
 
-## Layer 7 — Feedback and Corpus
+## Layer 7 — Feedback / Corpus
 
-Purpose:
+역할:
 
-- convert observed state into a stable signature,
-- decide whether a test case is interesting,
-- retain security-relevant novel states,
-- schedule retained seeds for further mutation.
+- 관찰된 state를 안정적인 signature로 변환
+- test case가 interesting한지 판정
+- 새로운 security-relevant state를 만든 입력 보존
+- 보존한 seed를 다음 mutation 대상으로 스케줄링
 
-This layer is the core research mechanism.
+이 Layer가 InodeFence의 핵심 연구 메커니즘이다.
 
-## Planned Common Data Flow
+## 계획 중인 공통 Data Flow
 
 ```text
 ArchiveCase
@@ -143,32 +145,32 @@ feedback
 Interesting / Boring
 ```
 
-The exact Python data models should be introduced in the next implementation layer, after these responsibilities are agreed upon.
+정확한 Python data model은 각 책임이 합의된 뒤 다음 구현 Layer에서 고정한다.
 
-## Implementation Order
+## 구현 순서
 
-### Milestone 1 — Minimal observation path
+### Milestone 1 — 최소 관찰 경로
 
 ```text
-Known small TAR
-    → one target
+작은 Known TAR
+    → 하나의 target
     → sandbox
     → pre/post snapshot
     → identity/effect oracle
 ```
 
-### Milestone 2 — Generic TAR generation
+### Milestone 2 — Generic TAR 생성
 
-Create equivalent TAR cases from internal data models.
+내부 data model로 동일한 TAR case를 생성한다.
 
 ### Milestone 3 — Mutation
 
-Add generic structural mutations.
+generic structural mutation을 추가한다.
 
-### Milestone 4 — Feedback loop
+### Milestone 4 — Feedback Loop
 
-Retain and reschedule interesting security states.
+interesting security state를 보존하고 다시 mutation 대상으로 사용한다.
 
 ### Milestone 5 — Evaluation
 
-Run baselines, ablations, known-vulnerability rediscovery, and current-version campaigns.
+baseline, ablation, known-vulnerability rediscovery, current-version campaign을 수행한다.

@@ -1,19 +1,17 @@
-# Development Environment
+# 개발 환경
 
-## Goal
+## 목표
 
-A developer should be able to work on InodeFence from either:
+InodeFence는 다음 두 환경에서 동일한 저장소와 Dev Container를 이용해 개발할 수 있어야 한다.
 
-- macOS,
-- Windows through WSL2,
+- macOS
+- Windows + WSL2
 
-while running the project inside the same repository Dev Container.
+Host 환경 자체를 canonical filesystem-semantics 환경으로 간주하지 않는다.
 
-The host environment is not treated as the canonical filesystem-semantics environment.
+## 기준 Container
 
-## Canonical Container
-
-Current baseline:
+현재 기준:
 
 - Ubuntu 24.04
 - Python 3.12
@@ -23,13 +21,13 @@ Current baseline:
 - jq
 - strace
 
-The virtual environment is:
+가상환경:
 
 ```text
 /opt/venv
 ```
 
-The repository is mounted at:
+저장소 mount 경로:
 
 ```text
 /workspaces/InodeFence
@@ -37,61 +35,61 @@ The repository is mounted at:
 
 ## Runtime Filesystem
 
-Filesystem-security experiments use:
+Filesystem-security 실험은 다음 경로를 사용한다.
 
 ```text
 /var/lib/inodefence
 ```
 
-This path is backed by a Docker volume rather than the source-code bind mount.
+이 경로는 source-code bind mount가 아니라 Docker volume으로 제공된다.
 
-Reason:
+이유:
 
-InodeFence studies hardlink, symlink, inode, and filesystem side effects. Host-shared source mounts may have different semantics across macOS and WSL hosts.
+InodeFence는 hardlink, symlink, inode, filesystem side effect를 연구한다. macOS와 WSL host의 공유 폴더는 filesystem semantics가 달라질 수 있기 때문에 소스 디렉터리와 실험 디렉터리를 분리한다.
 
-## Verified Hosts
+## 검증한 Host
 
 ### macOS
 
-Verified with:
+검증 조건:
 
 - ARM64 host
 - OrbStack Docker engine
 - Ubuntu 24.04 Dev Container
 - Python 3.12.3
-- Linux volume with working hardlinks and symlinks
+- hardlink/symlink가 정상 동작하는 Linux volume
 
 ### Windows / WSL2
 
-Verified with:
+검증 조건:
 
 - x86_64 WSL2 host
 - Ubuntu 24.04 Dev Container
 - Python 3.12.3
 - Linux ext4-backed runtime volume
-- working hardlinks and symlinks
+- hardlink/symlink 정상 동작
 
-The CPU architecture and backing filesystem may differ during development.
+개발 중 CPU architecture와 backing filesystem은 host에 따라 달라질 수 있다.
 
-Do not mix results from different development hosts into one formal evaluation dataset.
+서로 다른 개발 host에서 나온 결과를 하나의 정식 논문 evaluation dataset으로 섞지 않는다.
 
-## Environment Check
+## 환경 확인
 
-Inside the Dev Container:
+Dev Container 내부:
 
 ```bash
 python scripts/check_dev_env.py
 ```
 
-The check validates:
+확인 항목:
 
 - Python 3.12
-- runtime root availability
+- runtime root 존재 여부
 - hardlink identity
-- symlink behavior
+- symlink 동작
 - shared-object write effect
 
-Then run:
+이후:
 
 ```bash
 python -m ruff check .
@@ -99,50 +97,52 @@ python -m ruff format --check .
 python -m pytest
 ```
 
-## Line Endings
+## 줄바꿈
 
-Repository text files use LF.
+저장소의 텍스트 파일은 LF를 사용한다.
 
-This is enforced by:
+다음으로 강제한다.
 
 - `.gitattributes`
 - `.editorconfig`
-- Ruff formatting configuration
+- Ruff formatting 설정
 
-Inspect when needed:
+확인이 필요할 때:
 
 ```bash
 git ls-files --eol
 ```
 
-Meaningful text files should normally report:
+내용이 있는 일반 텍스트 파일은 보통 다음처럼 보여야 한다.
 
 ```text
 i/lf w/lf
 ```
 
-## WSL Repository Location
+## WSL 저장소 위치
 
-Keep the repository in the WSL Linux filesystem, for example:
+저장소는 WSL Linux filesystem 안에 둔다.
+
+예:
 
 ```text
 ~/Projects/InodeFence
 ```
 
-Do not use `/mnt/c/...` as the normal project location for filesystem-sensitive development.
+Filesystem-sensitive 개발에서 `/mnt/c/...` 아래를 기본 프로젝트 경로로 사용하지 않는다.
 
-## Formal Evaluation
+## 정식 Evaluation
 
-The final paper must select and record one canonical evaluation environment.
+최종 논문 실험에서는 하나의 canonical evaluation environment를 고정한다.
 
-At minimum record:
+최소 기록 항목:
 
 - OS version
 - CPU architecture
 - filesystem
 - container/runtime setup
 - Python version
-- target versions
+- target version
 - experiment configuration
 
-Development portability and formal experimental reproducibility are separate requirements.
+개발의 이식성과 논문 실험의 재현성은 서로 다른 요구사항으로 관리한다.

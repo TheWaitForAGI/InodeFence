@@ -80,7 +80,7 @@ class IdentityEvidence:
         validate_observed_path(self.internal_path)
         validate_observed_path(self.sentinel_path)
         if path_region(self.internal_path) != Region.EXTRACTION or (
-            path_region(self.sentinel_path) != Region.EXTERNAL or self.sentinel_path == "."
+            path_region(self.sentinel_path) != Region.EXTERNAL
         ):
             raise ValueError("identity evidence requires internal and external paths")
         if any(type(number) is not int or number < 0 for number in (self.st_dev, self.st_ino)):

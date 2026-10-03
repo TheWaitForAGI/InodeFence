@@ -145,3 +145,15 @@ Model/result export는 versioned canonical JSON이다. Bytes는 base64로 보존
 C0 external namespace evidence와 C2 object effect를 구분한다. External content change만으로 direct external path use를 추정하지 않는다. Full operation tracing 없이 증명할 수 없는 범위는 ViolationResult.limitations에 기록한다. Observer 오류를 incomplete snapshot이나 PASS로 바꾸지 않는다.
 
 Runtime directory는 cleanup 경계이며 OS execution isolation을 대신하지 않는다. Unsafe benchmark adapter에는 별도 process/filesystem isolation이 필요하다. Reference worker만 추가하며 node-tar/ oras-go benchmark와 연구 효과 검증은 후속 작업으로 유지한다.
+
+## D013 — raw evidence와 normalized security-state scope 분리
+
+**상태:** PR #15 review 수정
+
+Human/AI review에서 snapshot 전체를 signature로 옮기면 `archive/input.tar` digest가 input novelty를 security-state novelty로 오인하게 만든다는 문제가 확인됐다. `StateSnapshot = full raw observation/evidence`를 유지하고 `StateSignature = normalized security-state representation for future feedback/corpus`로 범위를 분리한다. ArchiveCase identity와 TAR artifact identity는 signature에 직접 포함하지 않는다.
+
+공통 `path_region`이 fixed runtime layout의 namespace role을 정의한다. `extract`와 하위는 EXTRACTION, `.`과 `archive` 및 하위는 HARNESS, 나머지는 EXTERNAL이다. Harness bookkeeping은 archive 아래에 둔다. EXTERNAL은 outside만으로 제한하지 않으므로 sandbox root의 `escape.txt`도 C0 evidence와 signature에 남는다. Harness 경로는 C0 namespace evidence에서 제외하되 raw snapshot/change에서 보존한다. 이는 path ownership 분류이며 operation의 원인 추론이 아니다.
+
+StateSignature v2는 HARNESS object를 제외하고 identity group도 같은 scope로 projection하여 singleton을 제거한다. Protected paths와 extraction↔sentinel relation, external-effect labels는 유지한다. `SignatureObject.st_nlink`는 regular file만 정수이며 directory/symlink/other는 None이다. Directory size와 nlink 값은 filesystem allocation/semantics에 따라 달라질 수 있기 때문이다. Raw nlink와 C2 metadata 비교, external nlink-change label은 그대로 보존한다. 따라서 portable representation은 모든 filesystem의 effect pattern이 같다는 보장은 아니다.
+
+Signature 내부 schema는 v1→v2로 변경한다. Canonical JSON envelope v1과 case identity encoding은 유지한다. Corpus/persistence/deserializer는 아직 없고 이전 signature와 같은 key로 비교하지 않는다. 서로 독립인 regular entry 두 개의 순서만 다른 입력을 `run_case()`로 실행해 case/TAR SHA-256은 다르고 signature는 같은지 검증한다. 최종 feedback/corpus 정책과 연구 효과 평가는 Layer 5 이후다.

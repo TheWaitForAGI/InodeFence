@@ -13,15 +13,19 @@ from inodefence.observer import compare_states
 
 
 def state_signature(before: StateSnapshot, after: StateSnapshot) -> StateSignature:
-    """Represent paths, same-object groups, textual links and external changes.
+    """Normalize extraction/external state, excluding harness input artifacts.
 
+    Raw snapshots remain complete evidence. Object and identity-group scope is
+    identical so excluded harness names cannot leave dangling relations.
     Absolute link text under this run gets a literal $RUN prefix. This is text
     normalization, not symlink resolution; no target reachability is asserted.
     Absolute paths elsewhere retain their spelling. Identity numbers, timestamp
-    values, uid/gid and allocation-dependent directory sizes are excluded.
+    values, uid/gid, nonregular nlink and sizes are excluded. External change
+    labels still record metadata effects without their raw values.
     """
+    scoped_objects = tuple(obj for obj in after.objects if obj.region != Region.HARNESS)
     nodes = []
-    for obj in after.objects:
+    for obj in scoped_objects:
         target = obj.symlink_target
         if target is not None and (
             target == after.sandbox_root or target.startswith(after.sandbox_root + "/")
@@ -32,15 +36,21 @@ def state_signature(before: StateSnapshot, after: StateSnapshot) -> StateSignatu
                 obj.path,
                 obj.object_type,
                 obj.mode,
-                obj.st_nlink,
+                obj.st_nlink if obj.object_type == ObjectType.REGULAR else None,
                 obj.size if obj.object_type == ObjectType.REGULAR else None,
                 obj.content_digest,
                 target,
             )
         )
+    scoped_paths = {obj.path for obj in scoped_objects}
+    groups = []
+    for raw_group in after.identity_groups():
+        group = tuple(path for path in raw_group if path in scoped_paths)
+        if len(group) > 1:
+            groups.append(group)
     effects = tuple(
         ExternalEffect(change.path, change.fields)
         for change in compare_states(before, after)
         if path_region(change.path) == Region.EXTERNAL
     )
-    return StateSignature(1, tuple(nodes), after.identity_groups(), effects, after.protected_paths)
+    return StateSignature(2, tuple(nodes), tuple(sorted(groups)), effects, after.protected_paths)

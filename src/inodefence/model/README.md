@@ -15,9 +15,13 @@ ArchiveEntry는 raw path/link text를 보존하고 NUL·잘못된 field 조합�
 
 ObjectSnapshot은 존재하는 lstat object다. `StateSnapshot.get(path) is None`은 부재를 나타내며 protected_paths는 sentinel 삭제 후에도 남는다. Snapshot은 path 순서와 보호 대상 설정을 검증한다. Symlink identity는 referent가 아닌 링크 자체다.
 
+`StateSnapshot = full raw observation/evidence`: sandbox 전체와 harness artifact의 digest/metadata를 보존한다. 공통 `Region`/`path_region`은 `extract`와 하위를 EXTRACTION, `.`/`archive`와 하위를 HARNESS, 나머지를 EXTERNAL로 분류한다. Root-level escape도 EXTERNAL이며 sentinel 설정은 EXTERNAL만 허용한다. Harness bookkeeping은 archive 아래에 둔다.
+
+`StateSignature = normalized security-state representation for future feedback/corpus`: 내부 schema v2는 HARNESS를 제외한다. ArchiveCase identity와 TAR artifact identity는 직접 포함하지 않는다. Identity group도 같은 object scope로 projection하고 singleton을 제거한다. Protected paths와 extraction↔sentinel relation, external effect labels는 유지한다. `SignatureObject.st_nlink: int | None`은 regular만 정수이고 directory/symlink/other는 None이다. Raw nlink와 C2 metadata 판정은 바뀌지 않는다.
+
 ExecutionResult의 status와 filesystem verdict는 독립적이다. RunResult는 case, TAR format/hash, 실행 provenance, before/after, 변화, signature와 계약 evidence를 보존한다. 실제 run directory는 반환 전에 삭제된다.
 
-`canonical_json(model)`은 schema/model type과 정렬된 JSON key를 기록하고 bytes를 base64로 보존한다. Raw snapshot에는 inode·timestamp 원값이 있지만 portable signature에는 없다. 이는 export 경계이며 database나 deserializer는 아니다. Formal experiment runner는 commit, OS/kernel, config/seed/budget provenance를 추가해야 한다.
+`canonical_json(model)`은 envelope schema v1/model type과 정렬된 JSON key를 기록하고 bytes를 base64로 보존한다. Signature 내부 schema v2와는 별개이며 case encoding은 유지한다. Raw snapshot에는 inode·timestamp 원값이 있지만 portable signature에는 없다. 이는 export 경계이며 database나 deserializer는 아니다. Formal experiment runner는 commit, OS/kernel, config/seed/budget provenance를 추가해야 한다.
 
 ## 하지 않는 것
 

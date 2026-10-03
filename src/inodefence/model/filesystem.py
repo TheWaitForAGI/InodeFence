@@ -12,7 +12,10 @@ class ObjectType(StrEnum):
 
 
 class Region(StrEnum):
+    """Namespace role in the fixed archive/extract/outside runtime layout."""
+
     EXTRACTION = "extraction"
+    HARNESS = "harness"
     EXTERNAL = "external"
 
 
@@ -30,9 +33,17 @@ def validate_observed_path(path: str) -> None:
 
 
 def path_region(path: str) -> Region:
-    return (
-        Region.EXTRACTION if path == "extract" or path.startswith("extract/") else Region.EXTERNAL
-    )
+    """Classify canonical observed paths, keeping unreserved escapes external.
+
+    The run root and archive subtree belong to the harness. Every other path
+    outside extract/ is external, including root-level traversal results. New
+    harness artifacts must live under archive/ to share this ownership policy.
+    """
+    if path == "extract" or path.startswith("extract/"):
+        return Region.EXTRACTION
+    if path in (".", "archive") or path.startswith("archive/"):
+        return Region.HARNESS
+    return Region.EXTERNAL
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,8 +108,10 @@ class ObjectSnapshot:
 
 @dataclass(frozen=True, slots=True)
 class StateSnapshot:
-    """Complete reachable sandbox tree, with no traversal through symlinks.
+    """Full raw observation/evidence, with no traversal through symlinks.
 
+    Includes harness artifacts and their metadata/digests, not just the objects
+    used for feedback. Region classification never removes raw observations.
     protected_paths are retained even when a sentinel disappears. An IO error is
     not absence: the observer raises instead of returning an incomplete snapshot.
     """
@@ -124,7 +137,7 @@ class StateSnapshot:
             raise ValueError("protected paths must be a unique sorted tuple")
         for path in self.protected_paths:
             validate_observed_path(path)
-            if path_region(path) != Region.EXTERNAL or path == ".":
+            if path_region(path) != Region.EXTERNAL:
                 raise ValueError("sentinels must be external sandbox paths")
 
     def get(self, path: str) -> ObjectSnapshot | None:
@@ -185,10 +198,16 @@ class StateChange:
 
 @dataclass(frozen=True, slots=True)
 class SignatureObject:
+    """A security-state object; nlink/size/digest apply only to regular files.
+
+    Nonregular nlink is None: directory counts depend on filesystem semantics.
+    Symlinks retain textual targets without inferring their referents.
+    """
+
     path: str
     object_type: ObjectType
     mode: int
-    st_nlink: int
+    st_nlink: int | None
     size: int | None
     content_digest: str | None
     symlink_target: str | None
@@ -202,11 +221,15 @@ class ExternalEffect:
 
 @dataclass(frozen=True, slots=True)
 class StateSignature:
-    """Initial schema, not a validated feedback policy. No raw identity/times.
+    """Normalized security state for future feedback/corpus, not raw evidence.
 
-    Directory sizes are omitted because they depend on allocation/layout.
+    Schema v2 excludes harness objects and projects identity groups onto the
+    same scope, dropping singleton groups. Neither ArchiveCase identity nor TAR
+    artifact identity is included. No raw device/inode or timestamp values.
+    Nonregular nlink and size are omitted to avoid filesystem allocation noise.
     Effect labels retain changes in identity/metadata without their volatile
-    values. This schema must be versioned when later ablations change it.
+    values; raw nlink change labels remain external-effect evidence. This is an
+    initial representation, not a validated feedback selection policy.
     """
 
     schema_version: int

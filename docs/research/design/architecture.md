@@ -342,11 +342,13 @@ Linux에서 초기 identity 기준은 주로:
 
 ## 7.5 StateSnapshot
 
-특정 시점의 sandbox 상태를 나타낸다.
+특정 시점의 sandbox 전체를 나타낸다. **StateSnapshot = full raw observation/evidence**이며 harness artifact도 관찰한다.
 
 ```text
 StateSnapshot
 ├── extraction_root objects
+├── harness root / archive artifacts
+├── other external namespace objects
 ├── protected sentinel objects
 ├── snapshot timing
 └── observation metadata
@@ -368,7 +370,9 @@ Post-State
 
 ## 7.6 StateSignature
 
-Feedback을 위해 filesystem state를 **비교 가능한 형태로 정규화**한다.
+**StateSignature = normalized security-state representation for future feedback/corpus**다. Feedback을 위해 security-relevant filesystem state를 비교 가능한 형태로 정규화한다. Snapshot 전체를 그대로 key로 바꾸지 않는다.
+
+ArchiveCase identity와 TAR artifact identity는 signature에 직접 포함하지 않는 invariant를 따른다. 입력 순서/bytes가 달라도 같은 semantic filesystem/security state와 effect를 만들면 signature는 같아야 한다. HARNESS object와 metadata는 제외하지만 raw evidence에서는 보존한다.
 
 실행마다 달라질 수 있는 raw inode 번호 자체를 corpus key로 사용하면 안 된다.
 
@@ -443,9 +447,9 @@ st_ino = Y
 | ArchiveCase | entries tuple; canonical logical representation의 SHA-256 case_id property |
 | ExecutionResult | target_id/version, command, status, exit_code, stdout/stderr, timeout_seconds |
 | ObjectSnapshot | sandbox-relative path, type, dev/inode/nlink, mode/size, uid/gid, mtime/ctime ns, link text, SHA-256 |
-| StateSnapshot | absolute sandbox_root provenance, BEFORE/AFTER phase, sorted objects, protected_paths |
+| StateSnapshot | full raw observation: absolute sandbox_root provenance, BEFORE/AFTER phase, harness 포함 sorted objects, protected_paths |
 | StateChange | path, before/after ObjectSnapshot 또는 None, ordered ChangeField tuple |
-| StateSignature | schema version, normalized objects, sorted same-object groups, external field-change labels, protected_paths |
+| StateSignature | schema v2, EXTRACTION/EXTERNAL normalized objects, scoped same-object groups, external field-change labels, protected_paths |
 | ViolationResult | contract_id, violated, typed evidence, explanation, limitations |
 | RunResult | case, archive_sha256/format, execution, before/after, changes, signature, violations |
 
@@ -453,9 +457,21 @@ Archive input은 `Path.resolve()`/normalization을 거치지 않는다. NUL, sur
 
 Observer path는 archive input과 달리 관찰된 canonical sandbox-relative namespace다. Snapshot에 없는 path는 부재이며, sentinel 설정은 삭제 후에도 남는다. IO 오류는 부재로 바꾸지 않고 ObservationError로 올린다. Symlink identity는 lstat object 자체이고 referent identity가 아니다.
 
-StateSignature v1은 path/type/mode/nlink, regular size/content digest, textual link target, same-object path group과 external change 종류를 담는다. Raw dev/inode, timestamp/ownership 값, directory size는 제외한다. Raw identity는 run 안에서 group을 계산하거나 identity 변경을 감지할 때만 쓴다. Absolute link text의 literal sandbox prefix는 `$RUN`으로 치환하며 다른 철자와 `..`를 유지한다. Resolution/reachability는 추론하지 않는다. 이 representation은 초기 후보이며 Layer 5의 baseline/ablation 정책을 미리 확정하지 않는다.
+Region은 model의 `path_region`에서 공통으로 정의하며 Observer/Oracle/Feedback에 별도 path 예외를 두지 않는다.
 
-`canonical_json(model)`은 schema version 1과 model type, sorted JSON keys, ordered tuple 배열을 기록한다. Bytes는 base64로 lossless export한다. Raw run evidence는 run-specific inode/times를 보존하고 cross-run key는 logical case 또는 normalized signature로 만든다. Deserialize/database layer는 아직 없다. 향후 formal experiment runner는 InodeFence commit, OS/kernel, config/seed/budget과 dependency provenance를 별도로 기록해야 한다.
+| Region | namespace scope |
+| --- | --- |
+| EXTRACTION | `extract`, `extract/**` |
+| HARNESS | `.`, `archive`, `archive/**`; 입력과 harness bookkeeping |
+| EXTERNAL | 나머지 모든 sandbox-relative path; `outside/**` 및 root-level `escape.txt` 포함 |
+
+StateSnapshot은 세 region 전체와 TAR content digest를 보존한다. StateSignature v2는 HARNESS object를 제외하며 case ID/TAR SHA-256을 직접 포함하지 않는다. Path/type/mode, regular nlink/size/content digest, textual link target, same-object path group과 external change 종류를 담는다. Identity group은 signature object scope로 projection한 뒤 singleton을 제거하므로 제외된 harness path가 dangling relation을 만들지 않는다. Protected paths는 sentinel 삭제 뒤에도 유지한다.
+
+`SignatureObject.st_nlink`는 `int | None`이며 regular만 정수, directory/symlink/other는 None이다. Raw dev/inode, timestamp/ownership 값과 nonregular size도 제외한다. Raw nlink는 Observer와 C2에 그대로 남고 외부 metadata-change labels도 보존하므로 cross-filesystem effect equivalence까지 보장하지는 않는다. Raw identity는 run 안에서 group을 계산하거나 identity 변경을 감지할 때만 쓴다. Absolute link text의 literal sandbox prefix는 `$RUN`으로 치환하며 다른 철자와 `..`를 유지한다. Resolution/reachability는 추론하지 않는다. Extraction symlink가 harness를 가리키는 link text는 유지하되 harness referent digest/identity를 포함하지 않는다. 이 representation은 초기 후보이며 Layer 5의 baseline/ablation 정책을 미리 확정하지 않는다.
+
+실제 `run_case()` regression은 동일 content/mode의 독립 regular entry 두 개를 반대 순서로 추출한다. Case ID/TAR SHA-256은 다르지만 signature와 canonical representation은 같아야 한다. 다른 inode allocation/PYTHONHASHSEED의 기존 regression도 유지한다.
+
+`canonical_json(model)`의 envelope schema version 1과 model type, sorted JSON keys, ordered tuple 배열은 유지한다. Signature 내부 schema version은 2이며 이전 signature와 key 호환성을 주장하지 않는다. Bytes는 base64로 lossless export한다. Raw run evidence는 run-specific inode/times를 보존하고 cross-run key는 logical case 또는 normalized signature로 만든다. Deserialize/database layer는 아직 없다. 향후 formal experiment runner는 InodeFence commit, OS/kernel, config/seed/budget과 dependency provenance를 별도로 기록해야 한다.
 
 현재 내부 API:
 

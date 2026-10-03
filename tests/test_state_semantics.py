@@ -10,12 +10,14 @@ from inodefence.model import (
     IdentityEvidence,
     ObjectSnapshot,
     ObjectType,
+    Region,
     SnapshotPhase,
     StateChange,
     StateSnapshot,
     ViolationResult,
     canonical_json,
 )
+from inodefence.model.filesystem import path_region
 from inodefence.oracle import evaluate_contracts
 
 
@@ -42,6 +44,35 @@ def state(
     return StateSnapshot(
         root, phase, tuple(sorted(objects, key=lambda obj: obj.path)), ("outside/sentinel.txt",)
     )
+
+
+@pytest.mark.parametrize(
+    ("path", "region"),
+    [
+        ("extract", Region.EXTRACTION),
+        ("extract/dir/a", Region.EXTRACTION),
+        (".", Region.HARNESS),
+        ("archive", Region.HARNESS),
+        ("archive/input.tar", Region.HARNESS),
+        ("archive/nested/evidence", Region.HARNESS),
+        ("outside", Region.EXTERNAL),
+        ("outside/nested/sentinel", Region.EXTERNAL),
+        ("escape.txt", Region.EXTERNAL),
+        ("escaped/dir/a", Region.EXTERNAL),
+        ("archive-other/input.tar", Region.EXTERNAL),
+        ("extract-other/a", Region.EXTERNAL),
+    ],
+)
+def test_region_ownership_includes_unreserved_external_paths(path: str, region: Region) -> None:
+    assert path_region(path) == regular(path, 10).region == region
+
+
+@pytest.mark.parametrize("path", [".", "archive", "archive/input.tar", "extract", "extract/a"])
+def test_harness_and_extraction_paths_cannot_be_protected_sentinels(path: str) -> None:
+    with pytest.raises(ValueError, match="external sandbox paths"):
+        replace(state(SnapshotPhase.BEFORE), protected_paths=(path,))
+    with pytest.raises(ValueError, match="internal and external"):
+        IdentityEvidence("extract/a", path, 1, 10)
 
 
 def test_safe_internal_hardlink_relation_is_not_a_violation() -> None:
@@ -189,6 +220,63 @@ def test_signature_distinguishes_relations_and_external_effects() -> None:
     assert state_signature(before, same) != state_signature(before, separate)
     changed = state(SnapshotPhase.AFTER, replace(sentinel, mode=0o644), alias)
     assert state_signature(before, same) != state_signature(before, changed)
+
+
+def test_signature_projects_raw_identity_groups_and_drops_singletons() -> None:
+    sentinel = regular("outside/sentinel.txt", 10, st_nlink=3)
+    before = state(SnapshotPhase.BEFORE, sentinel)
+    after = state(
+        SnapshotPhase.AFTER,
+        sentinel,
+        regular("archive/input.tar", 10, st_nlink=3),
+        regular("extract/alias", 10, st_nlink=3),
+        regular("archive/other", 20, st_nlink=2),
+        regular("extract/single", 20, st_nlink=2),
+        regular("archive/harness-a", 30, st_nlink=2),
+        regular("archive/harness-b", 30, st_nlink=2),
+    )
+    assert len(after.identity_groups()) == 3  # Raw evidence retains all aliases.
+    signature = state_signature(before, after)
+    assert signature.schema_version == 2
+    assert signature.identity_groups == (("extract/alias", "outside/sentinel.txt"),)
+    paths = {obj.path for obj in signature.objects}
+    assert paths == {"extract/alias", "extract/single", "outside/sentinel.txt"}
+    assert all(path in paths for group in signature.identity_groups for path in group)
+
+
+@pytest.mark.parametrize("path", ["extract/dir", "outside/dir"])
+def test_signature_normalizes_directory_nlink_but_keeps_regular_hardlink_count(path: str) -> None:
+    sentinel = regular("outside/sentinel.txt", 10)
+    directory = replace(regular(path, 20), object_type=ObjectType.DIRECTORY, content_digest=None)
+    before = state(SnapshotPhase.BEFORE, sentinel, directory)
+    after = state(SnapshotPhase.AFTER, sentinel, directory)
+    other_directory = replace(directory, st_nlink=7, size=4096)
+    equivalent_before = state(SnapshotPhase.BEFORE, sentinel, other_directory)
+    equivalent_after = state(SnapshotPhase.AFTER, sentinel, other_directory)
+    assert directory.st_nlink != other_directory.st_nlink  # Raw counts are still available.
+    signature = state_signature(before, after)
+    equivalent = state_signature(equivalent_before, equivalent_after)
+    assert signature == equivalent and canonical_json(signature) == canonical_json(equivalent)
+    node = next(obj for obj in signature.objects if obj.path == path)
+    assert node.st_nlink is None and node.size is None
+    # Regular-file counts remain meaningful even if the second alias is unobserved.
+    extra_link = state(SnapshotPhase.AFTER, replace(sentinel, st_nlink=2), directory)
+    assert state_signature(before, extra_link) != signature
+
+
+def test_directory_nlink_change_remains_raw_external_effect_and_c2_evidence() -> None:
+    directory = replace(
+        regular("outside/dir", 10), object_type=ObjectType.DIRECTORY, content_digest=None
+    )
+    before = replace(state(SnapshotPhase.BEFORE, directory), protected_paths=(directory.path,))
+    after = replace(before, phase=SnapshotPhase.AFTER, objects=(replace(directory, st_nlink=2),))
+    c0, c1, c2 = evaluate_contracts(before, after)
+    assert not c0.violated and not c1.violated and c2.violated
+    assert isinstance(c2.evidence[0], StateChange)
+    assert c2.evidence[0].fields == (ChangeField.NLINK,)
+    signature = state_signature(before, after)
+    assert signature.objects[0].st_nlink is None
+    assert signature.external_effects[0].fields == (ChangeField.NLINK,)
 
 
 def test_absolute_run_link_text_normalized_without_claiming_resolution() -> None:

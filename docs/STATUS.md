@@ -61,9 +61,13 @@ Fixture generator는 core builder를 사용하며 기존 TAR bytes와 probe beha
 - `/var/lib/inodefence` 내 disposable runtime, 보호 sentinel, symlink를 따라가지 않는 관찰·cleanup
 - Before/after 생성·삭제·identity·내용·metadata 변화 비교
 - C0 persistent 외부 namespace 변화, C1 lstat identity 공유, C2 sentinel 변화 판정
-- raw inode/timestamp 없는 관계 signature; 최종 feedback 정책은 후속 작업
+- `StateSnapshot`: archive/input.tar digest와 harness metadata를 포함한 sandbox 전체 raw evidence
+- `StateSignature` v2: EXTRACTION/EXTERNAL의 normalized security state; HARNESS(`.`, `archive/**`)와 case/TAR identity 제외
+- scope 안의 identity group과 sentinel effect 보존, regular-only nlink(nonregular는 None), raw inode/timestamp 값 제외; 최종 feedback 정책은 후속 작업
 - versioned canonical JSON으로 case·실행·snapshot·판정 근거 export
 - 실제 Linux filesystem, reject/partial extraction/timeout, E2E와 기존 baseline regression 테스트
+- 서로 다른 case/TAR SHA-256의 동일 semantic state가 같은 signature라는 실제 `run_case()` regression
+- harness-only 변화의 novelty/C0 오탐 방지, root-level external 생성·삭제·교체, identity-group scope와 directory nlink 정규화 regression
 
 Python reference는 architecture 검증과 integration baseline용이며 최종 연구 benchmark가 아니다.
 C0의 direct path use 전체와 transient state는 snapshot만으로 판정할 수 없다. 관찰 실패를 PASS로 처리하지 않는다.

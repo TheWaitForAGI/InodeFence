@@ -20,7 +20,9 @@ _SNAPSHOT_LIMITS = (
 def evaluate_contracts(before: StateSnapshot, after: StateSnapshot) -> tuple[ViolationResult, ...]:
     """Apply the initial policy: all specified sentinels are protected.
 
-    C0 has namespace evidence only. A content change through an internal alias
+    C0 covers external namespace evidence, excluding harness-owned paths. All
+    unreserved paths outside extract/ count, including root-level escapes.
+    A content change through an internal alias
     does not establish use of an external path; C2 records that effect separately.
     C1 forbids any post-state inside/sentinel identity sharing. The runner starts
     with an empty extraction directory and no permitted cross-boundary aliases.

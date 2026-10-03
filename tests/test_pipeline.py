@@ -82,6 +82,46 @@ def test_pipeline_signature_equal_across_real_runs_with_different_inodes() -> No
         assert canonical_json(signatures[0]) == canonical_json(signatures[1])
 
 
+def test_different_cases_and_tar_bytes_with_same_semantic_state_have_same_signature() -> None:
+    a = ArchiveEntry("a.txt", EntryType.REGULAR, content=b"alpha", mode=0o640)
+    b = ArchiveEntry("b.txt", EntryType.REGULAR, content=b"beta", mode=0o600)
+    first_case, second_case = ArchiveCase((a, b)), ArchiveCase((b, a))
+    assert first_case != second_case and first_case.case_id != second_case.case_id
+
+    first = run_case(first_case, PythonTarfileTarget())
+    second = run_case(second_case, PythonTarfileTarget())
+    assert first.archive_sha256 != second.archive_sha256
+    for result in (first, second):
+        assert result.execution.succeeded
+        assert all(not verdict.violated for verdict in result.violations)
+        # The input artifact remains raw evidence, both before and after extraction.
+        for snapshot in (result.before, result.after):
+            archive = snapshot.get("archive/input.tar")
+            assert archive is not None and archive.content_digest == result.archive_sha256
+            assert snapshot.get(".") is not None and snapshot.get("archive") is not None
+        for entry in (a, b):
+            extracted = result.after.get(f"extract/{entry.path}")
+            assert extracted is not None
+            assert entry.content is not None
+            assert (
+                extracted.mode == entry.mode
+                and extracted.content_digest == hashlib.sha256(entry.content).hexdigest()
+            )
+        assert {obj.path for obj in result.signature.objects} == {
+            "extract",
+            "extract/a.txt",
+            "extract/b.txt",
+            "outside",
+            "outside/sentinel.txt",
+        }
+        assert result.signature.protected_paths == ("outside/sentinel.txt",)
+        signature_text = canonical_json(result.signature)
+        assert result.archive_sha256 not in signature_text
+        assert "archive/input.tar" not in signature_text
+    assert first.signature == second.signature
+    assert canonical_json(first.signature) == canonical_json(second.signature)
+
+
 def test_reference_rejection_is_not_a_violation_and_partial_extraction_is_observed() -> None:
     case = ArchiveCase(
         (

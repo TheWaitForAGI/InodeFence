@@ -80,7 +80,12 @@ Corpus는 다음 변형의 출발점으로 남기는 입력 모음입니다.
 
 **중요한 것은 raw inode 번호 자체보다 객체 사이의 관계와 변화입니다.**
 예를 들어 “inode 번호가 123이다”보다 “내부 파일과 외부 sentinel이 같은 객체다”, “외부 sentinel의 내용이 변했다”가 탐색에 의미 있는 정보입니다.
-초기 StateSignature는 정렬된 path/type, same-object group, link text와 외부 변경 종류로 정규화합니다. raw inode·timestamp 값과 directory size는 signature에서 제외하며, 최종 feedback/ablation 정책은 후속 실험에서 정합니다.
+
+`StateSnapshot = full raw observation/evidence`입니다. Sandbox 전체를 기록하므로 `archive/input.tar`의 SHA-256과 harness metadata도 그대로 보존합니다.
+`StateSignature = normalized security-state representation for future feedback/corpus`입니다. `extract/**` 결과와 external 상태·effect, 보호 sentinel 및 내부↔sentinel identity 관계를 사용합니다. `.`과 `archive/**`는 `Region.HARNESS`로 제외하며, 그 외 extraction 밖 경로는 EXTERNAL이므로 root-level `escape.txt`도 유지합니다.
+
+**StateSignature는 ArchiveCase identity나 TAR artifact identity를 직접 포함하지 않습니다.** 서로 다른 case/TAR가 같은 의미의 filesystem/security state를 만들면 같은 signature여야 합니다. 실제 Python reference extraction에서 독립 regular entry의 순서를 바꾸는 E2E regression으로 이 invariant를 확인합니다.
+Schema v2는 정렬된 path/type/mode, regular nlink/size/content digest, scope 안의 same-object group, link text와 외부 변경 종류를 담습니다. Directory를 포함한 nonregular nlink는 `None`이며 raw inode·timestamp·ownership 값과 nonregular size를 제외합니다. Raw nlink와 외부 metadata-change labels는 보존하며, 최종 feedback/ablation 정책은 후속 실험에서 정합니다.
 
 ## Security Contracts: 무엇을 위반으로 볼 것인가
 

@@ -4,6 +4,7 @@ from dataclasses import replace
 
 import pytest
 
+from inodefence.feedback import state_signature
 from inodefence.model import ChangeField, ObjectType, SnapshotPhase, StateChange
 from inodefence.observer import ObservationError, capture_state, compare_states
 from inodefence.observer import snapshot as snapshot_module
@@ -100,6 +101,7 @@ def test_controlled_external_identity_and_effect_have_real_evidence(
     alias = sandbox.extraction_root / "alias"
     os.link(sentinel, alias)
     alias.write_bytes(b"controlled changed bytes")
+    os.link(sentinel, sandbox.archive_path)
     after = capture_state(sandbox.root, SnapshotPhase.AFTER, sandbox.protected_paths)
     c0, c1, c2 = evaluate_contracts(before, after)
     assert not c0.violated  # Content effects do not prove an external namespace operation.
@@ -109,6 +111,65 @@ def test_controlled_external_identity_and_effect_have_real_evidence(
     assert internal is not None and external is not None
     assert internal.identity == external.identity
     assert c1.evidence and c2.evidence
+    assert after.identity_groups() == (
+        ("archive/input.tar", "extract/alias", "outside/sentinel.txt"),
+    )
+    signature = state_signature(before, after)
+    assert signature.identity_groups == (("extract/alias", "outside/sentinel.txt"),)
+    assert signature.protected_paths == after.protected_paths
+    assert any(effect.path == "outside/sentinel.txt" for effect in signature.external_effects)
+
+
+def test_harness_artifact_changes_remain_raw_evidence_without_state_novelty(
+    sandbox: RuntimeSandbox,
+) -> None:
+    sandbox.archive_path.write_bytes(b"first input artifact")
+    before = capture_state(sandbox.root, SnapshotPhase.BEFORE, sandbox.protected_paths)
+    baseline = capture_state(sandbox.root, SnapshotPhase.AFTER, sandbox.protected_paths)
+    sandbox.archive_path.write_bytes(b"different input artifact bytes")
+    sandbox.archive_path.chmod(0o640)
+    sandbox.archive_path.parent.chmod(0o710)
+    sandbox.root.chmod(0o750)
+    extra = sandbox.archive_path.parent / "nested"
+    extra.mkdir()
+    (extra / "evidence.txt").write_bytes(b"harness bookkeeping")
+    after = capture_state(sandbox.root, SnapshotPhase.AFTER, sandbox.protected_paths)
+    changes = {change.path: change for change in compare_states(before, after)}
+    assert {".", "archive", "archive/input.tar", "archive/nested/evidence.txt"} <= changes.keys()
+    assert ChangeField.CONTENT in changes["archive/input.tar"].fields
+    assert ChangeField.MODE in changes["."].fields
+    assert before != after and baseline != after
+    assert all(not verdict.violated for verdict in evaluate_contracts(before, after))
+    assert state_signature(before, baseline) == state_signature(before, after)
+
+
+@pytest.mark.parametrize("operation", ["create", "delete", "replace"])
+def test_root_level_external_namespace_escape_is_c0_evidence(
+    sandbox: RuntimeSandbox, operation: str
+) -> None:
+    escape = sandbox.root / "escape.txt"
+    if operation != "create":
+        escape.write_bytes(b"controlled previous object")
+    before = capture_state(sandbox.root, SnapshotPhase.BEFORE, sandbox.protected_paths)
+    if operation == "delete":
+        escape.unlink()
+    else:
+        if operation == "replace":
+            # Keep the old inode alive so replacement cannot be hidden by reuse.
+            escape.rename(sandbox.archive_path.parent / "retained-escape")
+        escape.write_bytes(b"controlled external object")
+    after = capture_state(sandbox.root, SnapshotPhase.AFTER, sandbox.protected_paths)
+    c0, c1, c2 = evaluate_contracts(before, after)
+    assert c0.violated and not c1.violated and not c2.violated
+    assert len(c0.evidence) == 1
+    evidence = c0.evidence[0]
+    assert isinstance(evidence, StateChange) and evidence.path == "escape.txt"
+    assert (ChangeField.IDENTITY if operation == "replace" else ChangeField.EXISTENCE) in (
+        evidence.fields
+    )
+    signature = state_signature(before, after)
+    assert any(effect.path == "escape.txt" for effect in signature.external_effects)
+    assert ("escape.txt" in {obj.path for obj in signature.objects}) == (operation != "delete")
 
 
 def test_missing_sentinel_and_external_creation(sandbox: RuntimeSandbox) -> None:
@@ -124,6 +185,9 @@ def test_missing_sentinel_and_external_creation(sandbox: RuntimeSandbox) -> None
         "outside/new-file",
         "outside/sentinel.txt",
     }
+    signature = state_signature(before, after)
+    assert signature.protected_paths == before.protected_paths
+    assert any(effect.path == "outside/sentinel.txt" for effect in signature.external_effects)
 
 
 def test_io_failure_is_not_missing_state(

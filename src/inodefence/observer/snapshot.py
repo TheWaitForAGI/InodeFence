@@ -73,7 +73,7 @@ def _observe(
 def capture_state(
     sandbox_root: Path, phase: SnapshotPhase, protected_paths: tuple[str, ...]
 ) -> StateSnapshot:
-    """Capture the entire reachable run tree, including external namespace paths.
+    """Capture full raw evidence, including harness and external namespace paths.
 
     Missing sentinels remain in protected_paths. Permission/read failures raise;
     symlink referents (including dangling ones) are never stat'ed or hashed.

@@ -11,10 +11,10 @@ from inodefence.targets._process import run_process
 
 
 def _assert_child_stopped(pid: int) -> None:
-    # The OS can reap an already stopped orphan between any exists/read pair.
+    # Reaping can remove the proc path (ENOENT) or invalidate an open read (ESRCH).
     try:
         state = Path(f"/proc/{pid}/stat").read_text()
-    except FileNotFoundError:
+    except (FileNotFoundError, ProcessLookupError):
         return
     assert state.split()[2] == "Z"
 
@@ -49,9 +49,25 @@ def test_timeout_stops_worker_and_ordinary_child(sandbox: RuntimeSandbox) -> Non
     assert result.duration_seconds >= 0.5
 
 
-def test_child_reaped_during_inspection_is_stopped(monkeypatch) -> None:
+@pytest.mark.parametrize("error", (FileNotFoundError, ProcessLookupError))
+def test_child_reaped_during_inspection_is_stopped(monkeypatch, error) -> None:
     def reaped(*args, **kwargs):
-        raise FileNotFoundError("controlled reaping race")
+        raise error("controlled reaping race")
 
     monkeypatch.setattr(Path, "read_text", reaped)
     _assert_child_stopped(123)
+
+
+def test_live_child_is_not_considered_stopped(monkeypatch) -> None:
+    monkeypatch.setattr(Path, "read_text", lambda *args, **kwargs: "123 (python) S")
+    with pytest.raises(AssertionError):
+        _assert_child_stopped(123)
+
+
+def test_other_process_inspection_errors_propagate(monkeypatch) -> None:
+    def denied(*args, **kwargs):
+        raise PermissionError("controlled inspection failure")
+
+    monkeypatch.setattr(Path, "read_text", denied)
+    with pytest.raises(PermissionError):
+        _assert_child_stopped(123)

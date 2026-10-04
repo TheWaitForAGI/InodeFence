@@ -48,3 +48,26 @@ Unit tests는 semantic violation condition 유지, 실패/timeout, deterministic
 negative budget/callback/binding과 rejected evidence 보존을 검사한다. 기존 Linux disposable runtime의
 Python reference integration은 benign observed-content predicate의 end-to-end composition만 검증한다.
 이 검증은 benchmark qualification, 취약점 발견 또는 연구 효과의 증거가 아니다.
+
+## Exact violation condition and archive binding
+
+`minimize_violation(case, evaluate, execution_budget=...)`는 기존 generic reduction engine을
+사용하면서 baseline의 모든 semantic violation fingerprints를 explicit frozen
+`ViolationCondition`으로 고정한다. Policy ID는 `exact-violation-fingerprints-v1`이다.
+Canonical fingerprint set이 정확하게 일치해야 채택하며 extra/missing contract, path relation,
+changed-field label도 다른 condition이다. Raw dev/inode/timestamp values는 fingerprint 의미에
+포함하지 않는다. 이것은 선언한 evidence class 보존이며 root-cause 동일성 보장은 아니다.
+
+각 trial의 candidate를 current deterministic USTAR builder로 먼저 직렬화하고 SHA-256을
+계산한다. Evaluator의 returned case, archive format과 hash가 정확하게 일치해야 preservation을
+판단한다. Baseline은 한 번만 실행하며 budget에 포함한다. Unknown condition policy, empty
+fingerprints, nonviolating baseline과 archive/case drift는 명시적으로 거부한다. Execution status로
+violation condition을 대체하지 않는다. Existing arbitrary-predicate `minimize_case` API는 그대로다.
+
+`ViolationMinimizationResult` envelope v1은 reduction의 모든 full trial RunResult와 versioned
+condition을 함께 보존한다. `final_result`는 마지막 accepted case의 raw evidence이며 뒤따르는
+rejected trials와 구분한다. Stored ArchiveCase로 TAR를 재생성해 recorded hash와 비교할 수 있다.
+Evaluator isolation, target/config/source provenance와 evidence authenticity는 caller 책임이다.
+이 binding은 external replay infrastructure와 독립적이며 replay certification을 주장하지 않는다.
+Builder가 unsupported case/candidate를 만나면 현재는 exception을 전달한다; generic byte-length
+감소가 lossless USTAR representation을 항상 유지하지 않는 corner case는 별도 policy 작업이다.

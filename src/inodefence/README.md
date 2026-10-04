@@ -84,5 +84,5 @@ Stored experiment_config_id는 manifest에 보존하며 actual source/platform p
 현재 config CLI는 safe reference만 실행한다. [설정 계약](../../experiments/configs/README.md)을 따른다.
 
 현재 준비 상태는 ENGINEERING FOUNDATION이다. Reference engine 경로의 구현/검증과
-third-party benchmark readiness를 구분한다. Node-tar 정상 fixture와 별도 container helper는 통과했지만 Node image/config/provenance
-binding과 Node campaign smoke는 없다. [준비 상태와 다음 작업](../../docs/STATUS.md)을 따른다.
+third-party benchmark readiness를 구분한다. Node-tar 정상 fixture와 별도 container helper는 통과했지만 Pinned Node image/contained fixture 실행은 완료했지만 frozen config/provenance
+binding과 Node campaign smoke는 후속이다. [준비 상태와 다음 작업](../../docs/STATUS.md)을 따른다.

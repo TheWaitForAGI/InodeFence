@@ -338,3 +338,16 @@ digest-pinned distroless Debian 12 runtime에는 Node binary, modules, lock과 w
 실행은 mutable tag가 아닌 immutable local image ID를 받는다. Platform/build metadata로
 image ID가 달라질 수 있어 bit-for-bit build reproducibility를 주장하지 않는다.
 Image packaging은 campaign permission이나 Security Contract verdict가 아니다.
+
+## D024 — Target invocation과 contained execution을 composition으로 연결
+
+NodeTarTarget은 immutable image/command/version/status descriptor다. bind는 실제
+image 안에서 identity를 확인하고 IsolatedTarget을 반환한다. Descriptor에는 run이나
+subprocess fallback이 없다. IsolatedTarget과 ExecutionBackend가 lifecycle을 소유하며
+새 backend 구현은 trusted controller code의 검토 대상이다. Campaign admission은
+별도 frozen isolation/config binding이 완료되기 전까지 기존 rejection을 유지한다.
+
+PreparedTarget context를 pipeline의 BEFORE/AFTER 바깥에 배치한다. Reference path는
+기존 run 호출을 유지한다. Setup/cleanup은 관찰 결과를 오염시키지 않고 AFTER 오류에도
+container/runtime을 회수한다. Start deadline이 launch 전에 끝나면 daemon의 뒤늦은
+start를 막기 위해 container identity를 먼저 파괴·확인하고 AFTER를 캡처한다.

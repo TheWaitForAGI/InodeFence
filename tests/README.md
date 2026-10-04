@@ -91,12 +91,11 @@ feedback 보존, context ordering, 기존 output 거부와 IO 예외 전달을 �
 보존과 unchanged isolation requirement를 검사한다. Actual runtime/source/results는 config identity와
 분리한다.
 
-`test_node_tar.py`는 locked Node/node-tar로 ordinary file/directory/hardlink/symlink, invalid format,
-controlled timeout과 version guard를 검증한다. Generated-input Node campaign은 실행 전에 거부한다.
-`test_target_process.py`는 streams/nonzero exit, 같은 process group의 worker/child timeout 종료를
-검사한다. Reaping 중 ENOENT/ESRCH는 absent process이며 readable child는 zombie여야 한다. Live
-child와 다른 inspection 오류는 여전히 실패한다. 이 검사는 OS sandbox/전체 descendant containment
-검증이나 vulnerability reproduction이 아니다.
+`test_node_tar.py` covers portable invocation/binding/classification and campaign
+rejection. The seven original real Node fixture cases moved to the explicit
+container suite: `scripts.container_host ... validate-node-target` runs them plus
+AFTER-error cleanup (8 cases). No real extractor runs outside its target container;
+CI invokes this suite and unavailable runtime is an error, not a skipped PASS.
 
 `test_linux_isolation_support.py`는 namespace prerequisite 진단의 denied/missing/timeout/error/
 unsupported-platform 처리를 검사한다. Tool 설치만으로 지원을 주장하지 않으며 성공도 containment

@@ -11,11 +11,9 @@ from dataclasses import dataclass
 from time import monotonic
 from typing import Protocol, TextIO
 
+from .base import BackendError
+
 OUTPUT_LIMIT = 1024 * 1024
-
-
-class BackendError(RuntimeError):
-    """Infrastructure failure; never an extractor exit status."""
 
 
 @dataclass(frozen=True, slots=True)

@@ -22,7 +22,7 @@ def main() -> int:
     parser.add_argument("--controller", required=True)
     parser.add_argument("--volume", required=True)
     parser.add_argument("--image", required=True)
-    parser.add_argument("mode", choices=("validate", "validate-node-image"))
+    parser.add_argument("mode", choices=("validate", "validate-node-image", "validate-node-target"))
     args = parser.parse_args()
     executable = shutil.which("docker")
     if executable is None:

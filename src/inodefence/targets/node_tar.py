@@ -1,92 +1,121 @@
-"""node-tar integration for explicitly controlled benign fixtures only today."""
+"""Node-specific command/version/status; execution is always composed containment."""
 
 import json
 import math
 import re
-import shutil
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
+from inodefence.execution.base import (
+    BackendError,
+    ContainerOutcome,
+    ContainerRequest,
+    ExecutionBackend,
+)
 from inodefence.model import ExecutionResult, ExecutionStatus
 from inodefence.model.provenance import TargetProvenance
+from inodefence.runtime import disposable_sandbox
 
-from ._paths import validate_run_paths
-from ._process import run_process
+from .isolated import IsolatedTarget
 
-WORKER = Path(__file__).with_name("_node_worker.cjs")
+NODE = "/usr/local/bin/node"
+WORKER = "/target/worker.cjs"
+MODULE = "/target/node_modules/tar"
+LOCK = "/target/package-lock.json"
 
 
-def _identify(node: str, module: Path, cwd: Path) -> tuple[str, str]:
-    outcome = run_process((node, str(WORKER), "--identify", str(module)), cwd, 5.0)
-    if outcome.exit_code != 0:
-        raise ValueError("node-tar version discovery failed")
-    try:
-        value = json.loads(outcome.stdout)
-        return value["node_version"], value["tar_version"]
-    except (ValueError, KeyError, TypeError) as error:
-        raise ValueError("node-tar version discovery returned invalid metadata") from error
+def _validate_binding(image_id: str, timeout: float) -> None:
+    if not isinstance(image_id, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", image_id):
+        raise ValueError("target image requires an immutable SHA-256 image ID")
+    if type(timeout) not in (int, float) or not math.isfinite(timeout) or not 0 < timeout <= 120:
+        raise ValueError("timeout_seconds must be finite, positive and at most 120 seconds")
+
+
+def _identify(backend: ExecutionBackend, image_id: str) -> dict:
+    backend.validate_image(image_id)
+    with disposable_sandbox() as sandbox:
+        request = ContainerRequest(
+            image_id, (NODE, WORKER, "--identify", MODULE, LOCK), sandbox.root, 10
+        )
+        with backend.prepare(request) as prepared:
+            outcome = prepared.execute()
+            if outcome.exit_code != 0 or outcome.output_truncated:
+                raise BackendError("node-tar image version discovery failed")
+            try:
+                return json.loads(outcome.stdout)
+            except ValueError as error:
+                raise BackendError("node-tar image returned invalid metadata") from error
 
 
 @dataclass(frozen=True, slots=True)
 class NodeTarTarget:
-    """Pin the executable/module location and discover exact versions at setup.
+    """Immutable invocation descriptor; bind() discovers identity inside its image.
 
-    Worker options are strict=true/preservePaths=false, otherwise node-tar defaults.
-    Process group cleanup is lifecycle management, never filesystem isolation.
-    Campaign execution is forbidden until a validated OS boundary is implemented.
+    No local executable/package_root or direct subprocess API exists. The returned
+    IsolatedTarget owns execution via the backend. Options remain strict=true,
+    preservePaths=false and upstream defaults; metadata is never Oracle truth.
     """
 
-    package_root: Path
+    image_id: str
+    node_version: str
+    tar_version: str
+    worker_sha256: str
+    package_lock_sha256: str
     timeout_seconds: float = 10.0
-    node_executable: str = "node"
-    node_version: str = field(init=False)
-    tar_version: str = field(init=False)
 
     def __post_init__(self) -> None:
-        if (
-            type(self.timeout_seconds) not in (int, float)
-            or not math.isfinite(self.timeout_seconds)
-            or self.timeout_seconds <= 0
-        ):
-            raise ValueError("timeout_seconds must be finite and positive")
-        node = shutil.which(self.node_executable)
-        if node is None:
-            raise ValueError("node executable unavailable")
-        root = self.package_root.resolve(strict=True)
-        module = root / "node_modules" / "tar"
-        version, tar_version = _identify(str(Path(node).resolve()), module, root)
-        for value in (version, tar_version):
+        _validate_binding(self.image_id, self.timeout_seconds)
+        for value in (self.node_version, self.tar_version):
             if (
                 not isinstance(value, str)
                 or re.fullmatch(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?", value) is None
             ):
                 raise ValueError("target version must be exact semantic version text")
-        object.__setattr__(self, "package_root", root)
-        object.__setattr__(self, "node_executable", str(Path(node).resolve()))
-        object.__setattr__(self, "node_version", version)
-        object.__setattr__(self, "tar_version", tar_version)
+        for value in (self.worker_sha256, self.package_lock_sha256):
+            if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value):
+                raise ValueError("worker/lock identity requires SHA-256")
+
+    @classmethod
+    def bind(
+        cls, backend: ExecutionBackend, image_id: str, timeout_seconds: float = 10.0
+    ) -> IsolatedTarget:
+        if not isinstance(backend, ExecutionBackend):
+            raise ValueError("target requires a trusted ExecutionBackend implementation")
+        _validate_binding(image_id, timeout_seconds)
+        value = _identify(backend, image_id)
+        try:
+            invocation = cls(
+                image_id,
+                value["node_version"],
+                value["tar_version"],
+                value["worker_sha256"],
+                value["package_lock_sha256"],
+                timeout_seconds,
+            )
+        except (KeyError, TypeError) as error:
+            raise BackendError("node-tar image returned incomplete metadata") from error
+        return IsolatedTarget(invocation, backend)
 
     @property
     def provenance(self) -> TargetProvenance:
-        # Never allow the caller to downgrade this third-party target's requirement.
         return TargetProvenance(
             "node-tar-strict",
             f"node={self.node_version};tar={self.tar_version}",
             self.timeout_seconds,
         )
 
-    def run(self, archive_path: Path, extraction_root: Path) -> ExecutionResult:
-        validate_run_paths(archive_path, extraction_root)
-        command = (
-            self.node_executable,
-            str(WORKER),
-            str(self.package_root / "node_modules" / "tar"),
+    def command(self, archive_path: Path, extraction_root: Path) -> tuple[str, ...]:
+        return (
+            NODE,
+            WORKER,
+            MODULE,
             str(archive_path),
             str(extraction_root),
             self.node_version,
             self.tar_version,
         )
-        outcome = run_process(command, extraction_root, self.timeout_seconds)
+
+    def classify(self, outcome: ContainerOutcome, command: tuple[str, ...]) -> ExecutionResult:
         if outcome.exit_code == 3:
             raise RuntimeError("node-tar execution identity changed after setup")
         status = (

@@ -14,9 +14,12 @@ existing disposable run root and timeout. `ContainerExecutionBackend.prepare()`
 creates and checks the container before BEFORE. `PreparedContainer.execute()`
 starts it once, captures bounded output and verifies stopped state before AFTER.
 Context exit removes the container after AFTER, including on observation errors.
+If the start deadline expires in created state, removal and absence verification
+precede AFTER to prevent a delayed daemon start; no controlled-run paths are changed.
 Missing runtime/image, creation/startup, policy mismatch and cleanup failures are
-visible `BackendError`s. No direct-process fallback exists. Campaign integration
-and frozen container provenance are separate subsequent work; the current
+visible `BackendError`s. No direct-process fallback exists. Production Node invocation uses the narrow ExecutionBackend/IsolatedTarget
+composition and pipeline preparation contract. Campaign admission
+and frozen container provenance remain subsequent work; the current
 third-party campaign safety rejection is unchanged.
 
 ## Enforced view and policy
@@ -45,6 +48,7 @@ third-party campaign safety rejection is unchanged.
   While the primary is alive, orphan reaping remains its responsibility.
 - No daemon log persistence (`log-driver=none`). Attached output retains the first
   1 MiB per stream, drains the remainder and marks truncation in the outcome.
+  IsolatedTarget aborts incomplete output with OutputLimitError retaining that prefix.
   Timeout retains the captured prefix; it need not contain final buffered bytes.
   CLI deadlines include pipe draining and waiting even after both pipes close.
 - Unique names and invocation UUID labels. Cleanup checks ownership, removes by

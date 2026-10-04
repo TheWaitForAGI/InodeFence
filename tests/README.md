@@ -79,3 +79,16 @@ JSONL checksum, canonical step encoding, 모든 status/raw allocation/time/bytes
 feedback 보존, context ordering, 기존 output 거부와 IO 예외 전달을 검증한다.
 `test_campaign_export_integration.py`는 Linux safe reference 결과가 runtime cleanup 후에도
 완전히 export되는지 검사한다. Reader/deserializer API는 추가하지 않는다.
+
+`test_provenance.py`와 campaign/export regression은 immutable 설정, 실행 전 capture, 같은 stored
+값 보존, supplied config/adapter/result drift 거부와 exporter의 사후 재구성 방지를 검증한다.
+`test_experiment_config.py`는 strict parsing, canonical config ID, critical-value binding, CLI config
+보존과 unchanged isolation requirement를 검사한다. Actual runtime/source/results는 config identity와
+분리한다.
+
+`test_node_tar.py`는 locked Node/node-tar로 ordinary file/directory/hardlink/symlink, invalid format,
+controlled timeout과 version guard를 검증한다. Generated-input Node campaign은 실행 전에 거부한다.
+`test_target_process.py`는 streams/nonzero exit, 같은 process group의 worker/child timeout 종료를
+검사한다. Reaping 중 ENOENT/ESRCH는 absent process이며 readable child는 zombie여야 한다. Live
+child와 다른 inspection 오류는 여전히 실패한다. 이 검사는 OS sandbox/전체 descendant containment
+검증이나 vulnerability reproduction이 아니다.

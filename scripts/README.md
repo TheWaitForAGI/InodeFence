@@ -30,7 +30,7 @@ generate_tar_fixtures.py는 4종 TAR baseline을 재생성한다. manual_tar_pro
 
 ## 현재 상태
 
-환경 확인과 [TAR baseline 예제](../docs/examples/tar-baseline.md)의 fixture 생성·수동 관찰 명령이 있다. Safe reference의 bounded campaign 개발 pilot 명령이 있다. 일반 target 선택/benchmark CLI는 없다.
+환경 확인과 [TAR baseline 예제](../docs/examples/tar-baseline.md)의 fixture 생성·수동 관찰 명령이 있다. Safe reference의 bounded campaign 개발 pilot과 strict config CLI가 있다. 일반 target 선택/benchmark CLI는 없다.
 
 ## 파일 배치 규칙
 
@@ -41,3 +41,9 @@ Python reference만 사용하는 7개 작은 bounded campaign의 개발 검증�
 seeds, provenance, raw canonical results와 generated summary를 기록하며 exact repeat의 semantic
 lineage/feedback, budget/cleanup을 assertion으로 검사한다. 기존 output을 덮어쓰지 않는다.
 효과 평가나 일반 third-party campaign CLI는 아니다.
+
+`python -m scripts.run_configured_reference <config.json> --output <new-directory>`는
+[ExperimentConfig v1](../experiments/configs/README.md)을 읽고 explicit minimal seeds/actual target
+binding을 실행 전에 검증한다. Safe Python reference만 지원하며 config version과 실제 Python
+version이 다르면 거부한다. Stored config ID/frozen provenance와 experiment.json/manifest.json/
+steps.jsonl을 보존한다. Node campaign safety gate를 우회하는 명령은 없다.

@@ -21,7 +21,11 @@
 
 현재는 **개발 Layer 2, 최소 Layer 3, Layer 4 Generic Mutation v1과 Layer 5 Feedback / Corpus v1 구현** 단계다. Feature branch의 구현 상태 표시는 main merge를 의미하지 않는다.
 
-ArchiveCase → 결정적 USTAR → Python reference worker → pre/post snapshot → C0/C1/C2 evidence의 실제 API가 있다. Generic Mutation v1은 별도 ArchiveCase → ArchiveCase API다. Layer 5는 RunResult의 독립 state/violation novelty에 따른 in-memory retention과 uniform caller-RNG parent selection을 제공한다. Bounded campaign v1은 명시적 seed와 execution budget으로 API를 조합한다. Minimal seed generator는 기존 4종 정상 baseline을 명시적으로 제공한다. Adaptive scheduler/persistence, benchmark adapter 및 evaluation은 후속 단계다.
+ArchiveCase → 결정적 USTAR → Python reference worker → pre/post snapshot → C0/C1/C2 evidence의 실제 API가 있다. Generic Mutation v1은 별도 ArchiveCase → ArchiveCase API다. Layer 5는 RunResult의 독립 state/violation novelty에 따른 in-memory retention과 uniform caller-RNG parent selection을 제공한다. Bounded campaign v1은 명시적 seed와 execution budget으로 API를 조합한다. Minimal seed generator는 기존 4종 정상 baseline을 명시적으로 제공한다. Node-tar adapter는 정상 fixture로 검증했다. Third-party campaign 격리, 추가 adapters, adaptive scheduler/persistence 및 evaluation은 후속 단계다.
+
+현재 준비 분류는 ENGINEERING FOUNDATION이다. ExperimentConfig/실행 전 provenance/structured
+evidence 경로는 구현됐지만 validated OS isolation이 없어 benchmark-ready는 아니다. Development
+tests와 reference repeat 검증은 evaluation 결과가 아니다. [현재 상태](../../STATUS.md)를 따른다.
 
 아래 개념 그림에는 lineage, tracing, corpus 등 미래 설계도 포함한다. 현재 확정된 field/API는 **7.8 현재 구현 경계**를 따른다. Python reference는 최종 benchmark target이 아니다.
 
@@ -452,7 +456,7 @@ st_ino = Y
 | StateSignature | schema v2, EXTRACTION/EXTERNAL normalized objects, scoped same-object groups, external field-change labels, protected_paths |
 | ViolationResult | contract_id, violated, typed evidence, explanation, limitations |
 | RunResult | case, archive_sha256/format, execution, before/after, changes, signature, violations |
-| ExecutionProvenance | 실행 전 source(revision/dirty), environment(platform strings), declared target(ID/version/timeout), sorted sentinel(name/content SHA-256/mode) |
+| ExecutionProvenance | 실행 전 source(revision/dirty), environment(platform strings), declared target(ID/version/timeout/execution_safety), sorted sentinel(name/content SHA-256/mode) |
 
 Archive input은 `Path.resolve()`/normalization을 거치지 않는다. NUL, surrogate code point, 잘못된 entry field 조합은 model boundary에서 거부한다. regular content는 immutable bytes이며 directory는 content/target을 가지지 않는다. link는 nonempty target 필수다. Duplicate entry와 entry 순서는 그대로 유지한다. Long name은 model에 허용하지만 현재 builder가 표현할 수 없는 USTAR 값은 명시적으로 거부한다.
 
@@ -480,7 +484,7 @@ StateSnapshot은 세 region 전체와 TAR content digest를 보존한다. StateS
 
 실제 `run_case()` regression은 동일 content/mode의 독립 regular entry 두 개를 반대 순서로 추출한다. Case ID/TAR SHA-256은 다르지만 signature와 canonical representation은 같아야 한다. 다른 inode allocation/PYTHONHASHSEED의 기존 regression도 유지한다.
 
-`canonical_json(model)`의 envelope schema version 1과 model type, sorted JSON keys, ordered tuple 배열은 유지한다. Signature 내부 schema version은 2이며 이전 signature와 key 호환성을 주장하지 않는다. Bytes는 base64로 lossless export한다. Raw run evidence는 run-specific inode/times를 보존하고 cross-run key는 logical case 또는 normalized signature로 만든다. Deserialize/database layer는 아직 없다. Campaign은 실행 전 InodeFence commit/dirty와 process OS/kernel/platform 정보를 ExecutionProvenance에 고정한다. Complete dependency lock과 formal experiment configuration은 후속 작업이다.
+`canonical_json(model)`의 envelope schema version 1과 model type, sorted JSON keys, ordered tuple 배열은 유지한다. Signature 내부 schema version은 2이며 이전 signature와 key 호환성을 주장하지 않는다. Bytes는 base64로 lossless export한다. Raw run evidence는 run-specific inode/times를 보존하고 cross-run key는 logical case 또는 normalized signature로 만든다. Deserialize/database layer는 아직 없다. Campaign은 실행 전 InodeFence commit/dirty와 process OS/kernel/platform 정보를 ExecutionProvenance에 고정한다. ExperimentConfig v1은 explicit 설정과 stable ID를 제공한다. Node tooling은 pin/lock이 있지만 전체 execution environment의 content attestation/dependency lock은 없다.
 
 현재 내부 API:
 

@@ -18,6 +18,21 @@ Layer 5 — Feedback / Corpus                ✅ v1: 독립 novelty / in-memory 
 Layer 6 — Baseline / Evaluation / Paper    ⬜
 ```
 
+## 실행 준비 상태
+
+전체 분류는 **ENGINEERING FOUNDATION**이다.
+
+| 기준 | 현재 상태 | 근거 / 남은 조건 |
+| --- | --- | --- |
+| ENGINE READY | trusted Python reference 범위에서 준비 | bounded runner, explicit seeds, frozen provenance, config binding, raw export와 Linux regression |
+| BENCHMARK READY | 아직 아님 | Node adapter의 정상 fixture는 통과했지만 validated OS isolation과 안전한 Node campaign smoke가 없음 |
+| EVALUATION READY | 아직 아님; EVALUATION NOT YET RUN | benchmark boundary 승인, 별도 연구 Task Contract, baseline/ablation/반복 계획이 필요 |
+
+현재 실행 경로는 strict ExperimentConfig → explicit seeds/target binding → campaign safety gate
+→ frozen ExecutionProvenance → bounded reference campaign → raw export다. Node-tar는 별도의
+controlled fixture integration 경로만 사용한다. [인프라 검증 기록](../experiments/summaries/infrastructure-readiness-v1.md)은
+실제 설정/원본 checksum/반복 결과/한계와 audit 범위를 기록한다.
+
 ## 완료된 것
 
 ### 개발환경
@@ -102,7 +117,8 @@ Bounded deterministic campaign v1과 node-tar adapter의 정상 fixture integrat
 
 ## 다음 작업
 
-현재 source의 [engineering audit](../experiments/summaries/final-engineering-audit-v1.md)을 완료했다.
+Provenance/configuration 이후 [인프라 audit](../experiments/summaries/infrastructure-readiness-v1.md)을
+완료했다. 기존 [engineering audit](../experiments/summaries/final-engineering-audit-v1.md)은 이전 revision의 역사적 기록이다.
 Execution Provenance v1은 source revision/dirty, 실행 환경, explicit sentinel/adapter 설정을
 첫 실행 전에 고정하며 campaign 결과와 manifest v2에 보존한다. Target execution safety contract는
 explicit trusted reference campaign만 허용하며 isolation-required/미선언 target을 runtime 이전에
@@ -110,7 +126,10 @@ explicit trusted reference campaign만 허용하며 isolation-required/미선언
 Node-tar adapter engineering은 정상 fixture 범위에서 완료됐으며 generated-input campaign은 금지한다.
 ExperimentConfig v1은 필수 JSON 설정/정규화된 config ID와 pre-execution seed/target binding을
 제공한다. Safe reference config CLI가 실행 전 config ID를 campaign/manifest에 보존한다.
-다음 검증은 안전한 benchmark smoke이며 Node-tar campaign은 validated OS isolation 부재로 막혀 있다.
+다음 PR의 우선순위는 Linux target execution의 검증 가능한 OS isolation boundary다. Process/filesystem,
+credential/network/resource 제한, child 종료와 관찰 구간을 정상 controlled helper로 검증해야 한다.
+그 뒤에만 설정 기반의 아주 작은 benign Node campaign smoke를 수행한다. 현재 Node campaign은
+runtime/provenance capture/첫 run_case 이전에 거부됐으며 실행 수는 0이다. Requirement를 낮추지 않았다.
 Structured export v1은 완료된 campaign을 manifest.json/canonical steps.jsonl로 기록한다. Resume/reader/database는 없다.
 `generator.minimal_seed_corpus()`는 기존 정상 baseline 4종을 deterministic immutable tuple로
 반환한다. Fixture script도 이 API를 사용하며 campaign의 explicit-seed 계약은 유지한다.
@@ -120,9 +139,11 @@ semantic lineage/feedback과 budget/cleanup을 검증했으며 효과 평가는 
 Campaign은 config/initial IDs/lineage/full RunResult를 memory에 보존한다. Structured writer는
 결과에 있는 observed target/version/builder/timeout과 exporter 환경을 별도 기록한다. 실행 전
 provenance는 stored 값이며 supplied source/environment 정확성은 caller 책임이다. Adaptive scheduler/persistence,
-benchmark adapters와 evaluation/ablation은 이후 작업이다. Layer 5 구현과 단위/integration test
+추가 benchmark adapters와 evaluation/ablation은 이후 작업이다. Layer 5 구현과 단위/integration test
 통과를 feedback 효과의 증명으로 해석하지 않는다.
 Benchmark adapter 우선순위는 node-tar → oras-go → 선택 GNU tar를 유지한다. Unsafe target 연결 전에는 OS 수준 실행 격리와 target/version 설정을 함께 검토해야 한다.
+Known-vulnerability rediscovery/PoC/long security campaign은 격리·benchmark 설정에 대한 사람의 검토와
+별도 연구 Task Contract가 필요하다. 현재의 engineering smoke를 paper-ready evidence로 사용하지 않는다.
 
 ## 지금 하지 않을 것
 

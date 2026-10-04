@@ -5,7 +5,9 @@
 InodeFence는 TAR archive entry를 생성·변형하고, 실제 extractor(압축 해제 프로그램)를 실행한 뒤, filesystem의 보안 관련 상태를 관찰해 archive extraction의 보안 경계 위반을 탐색하려는 프로젝트입니다.
 경로뿐 아니라 **파일 객체의 identity와 외부 상태 변화**를 다음 입력을 선택하는 feedback으로 활용할 가치가 있는지 연구합니다.
 
-현재는 **공통 데이터 모델, 최소 단일 실행 pipeline, Generic Mutation v1과 Layer 5 Feedback / Corpus v1**을 구현했습니다. Corpus는 normalized state와 violation novelty를 독립적으로 추적하고 mutation parent를 in-memory로 보존·균등 선택합니다. Python `tarfile`/`data` reference target으로 검증하며, bounded campaign runner·explicit minimal seeds·structured export를 제공합니다. Adaptive scheduler, persistence와 연구 효과 검증은 후속 작업입니다.
+현재는 **공통 데이터 모델, 최소 단일 실행 pipeline, Generic Mutation v1과 Layer 5 Feedback / Corpus v1**을 구현했습니다. Corpus는 normalized state와 violation novelty를 독립적으로 추적하고 mutation parent를 in-memory로 보존·균등 선택합니다. Python `tarfile`/`data` reference target으로 검증하며, bounded campaign·explicit seeds·실행 전 provenance·strict JSON config·structured export를 제공합니다.
+
+현재 준비 상태는 **ENGINEERING FOUNDATION**입니다. Reference engine은 실행 가능하고 node-tar adapter는 정상 fixture로 검증했습니다. 검증된 OS 실행 격리가 없어 third-party campaign은 실행 전에 거부하며, **BENCHMARK READY / EVALUATION READY는 아직 아닙니다.** 비교 평가와 취약점 재발견 실험은 실행하지 않았습니다. [인프라 검증 기록](experiments/summaries/infrastructure-readiness-v1.md)을 참고하세요.
 
 [현재 상태](docs/STATUS.md) · [시작 안내](docs/START_HERE.md) · [아키텍처](docs/research/design/architecture.md) · [Security Contracts](docs/research/design/security-contracts.md) · [개발 가이드](CONTRIBUTING.md)
 
@@ -41,7 +43,7 @@ symlink도 경로가 실제로 향하는 대상에 영향을 주므로, 경로 �
 Fuzzing은 입력을 반복해서 바꾸고 실행하며 예상하지 못한 동작을 찾는 탐색 방법입니다.
 InodeFence는 TAR를 filesystem을 변화시키는 entry sequence(항목의 순서)로 보고, 그 결과 만들어진 보안 관련 상태를 다음 탐색에 사용하려 합니다.
 
-계획한 흐름은 다음과 같습니다. **아래 루프는 현재 실행 가능한 기능이 아닌 구현 목표**입니다.
+아래 루프는 bounded Python reference campaign에서 실행 가능합니다. Third-party generated-input campaign은 검증된 OS 격리 전까지 허용하지 않습니다.
 
 ```mermaid
 flowchart TD
@@ -273,7 +275,15 @@ make probe CASE=hardlink
 
 Probe는 Python `tarfile`의 `data` filter를 사용하는 학습·관찰 도구입니다.
 임시 sandbox를 사용하고 실행 후 정리합니다. 기본 CASE는 `regular-file`이며 `directory`, `hardlink`, `symlink`도 지원합니다.
-이 명령은 node-tar/ oras-go adapter나 자동 security oracle을 실행하지 않습니다. 현재 campaign CLI는 [safe reference 개발 pilot](scripts/reference_campaign_pilot.py)에 제한됩니다.
+이 명령은 node-tar/ oras-go adapter나 자동 security oracle을 실행하지 않습니다. Campaign CLI는 safe Python reference만 지원합니다. [개발 pilot](scripts/reference_campaign_pilot.py)과 [설정 기반 CLI](scripts/run_configured_reference.py)가 있습니다.
+
+Exact Python version이 설정과 일치하는 Linux 환경에서 작은 설정 기반 실행을 기록합니다. 예제는 Python 3.12.3이며 다른 patch version에서는 [설정](experiments/configs/README.md)을 명시적으로 갱신해야 합니다.
+
+```bash
+python -m scripts.run_configured_reference experiments/configs/reference-smoke-v1.json --output experiments/raw/configured-reference
+```
+
+새 output에 `experiment.json`, `manifest.json`, `steps.jsonl`을 보존합니다. Existing output은 거부합니다. Node adapter의 정상 fixture 검증은 `make check`에 포함되며 Node campaign CLI는 없습니다.
 
 최초 `make install` 후 Dev Container의 Python에서 내부 API를 실행할 수 있습니다.
 
@@ -325,7 +335,7 @@ Config/initial IDs와 admission order는 결과에 남습니다. `export_campaig
 `manifest.json`과 canonical `steps.jsonl`을 기록하고 기존 output은 거부합니다. Raw inode/time과
 모든 status를 그대로 보존하며 결과를 분석/claim으로 승격하지 않습니다. Manifest의
 export_environment는 export한 process의 환경이고 과거 target 실행 환경이 아닙니다.
-Source commit과 실행 환경의 추가 provenance는 caller 책임입니다. Corpus v1은 persistence나 완전한 campaign key를 제공하지 않습니다.
+Campaign은 실행 전 source revision/dirty, process 환경, target/version/timeout/safety와 sentinel digest/mode를 고정해 결과와 manifest에 보존합니다. Supplied source/environment의 정확성은 caller 책임이고 dirty bit는 source patch를 보존하지 않습니다. Formal config ID는 실제 execution provenance와 별개입니다. Corpus v1은 persistence나 완전한 campaign key를 제공하지 않습니다.
 
 `violated=False`는 관찰 범위 안에서 증거가 없다는 뜻입니다. Snapshot은 일시적 operation이나 sandbox 밖의 상태를 증명하지 못합니다. C0 namespace 변화와 C2 content/metadata effect를 구분하며, 관찰 오류는 harness 오류로 올립니다. Runtime directory는 cleanup 경계이고 임의 executable을 가두는 OS sandbox가 아닙니다. Unsafe benchmark adapter에는 추가 process/filesystem isolation이 필요합니다. 상세 API와 한계는 [architecture](docs/research/design/architecture.md)와 [계약 구현 범위](docs/research/design/security-contracts.md)를 따릅니다.
 

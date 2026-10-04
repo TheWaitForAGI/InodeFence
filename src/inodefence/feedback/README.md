@@ -133,7 +133,7 @@ Corpus는 parent를 선택하고 Mutator는 case를 변형한다. Mutator → Fe
 Corpus는 dynamic command path를 hash하거나 false campaign ID를 만들지 않는다.
 Cross-target persistence safety를 주장하지 않으며 이번 v1에는 disk persistence가 없다.
 
-[Bounded campaign](../campaign.py)은 상위 caller에 구현됐으며 adaptive scheduler, persistence/checkpoint, benchmark adapters,
+[Bounded campaign](../campaign.py)은 상위 caller에 구현됐으며 adaptive scheduler, persistence/checkpoint, 추가 adapters와 third-party campaign 격리,
 C3/C4, minimization/lineage DB와 effectiveness/ablation은 후속 작업이다. 계약 정의는
 [Oracle](../oracle/README.md)과 canonical contract 문서에 둔다.
 

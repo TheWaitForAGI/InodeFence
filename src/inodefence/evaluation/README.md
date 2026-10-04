@@ -109,3 +109,27 @@ rediscovery, qualification or paper claim is inferred. A single verified campaig
 has one validated target/config context; summaries preserve those identifiers.
 Multi-run/per-target grouping requires separate dataset compatibility validation.
 Infrastructure ledgers and incomplete journals are not execution inputs.
+
+## Dataset compatibility
+
+`validate_dataset((DatasetMember(directory, protocol_version, manifest_digest), ...))`
+verifies every bundle and the original stored ExperimentConfig through its public
+parser, then checks its binding against execution evidence. Source must be pinned
+and clean. Missing config/protocol/source, duplicate raw runs and hard differences
+(source, builder/schema/protocol, seed profile/order, budget, timeout, sentinels,
+search policy or isolation policy) are `incompatible`, with no pooling strata.
+
+Target/artifact, runtime and environment-profile differences return
+`requires_stratification` and explicit member-index groups. Seed differences do
+the same unless the caller explicitly sets `allow_seed_variation=True` for
+independent repetitions. Only `compatible` permits pooling. All records remain
+in the report; invalid members are reported rather than silently discarded.
+
+CLI: `python -m inodefence.evaluation.dataset DIRECTORY... --protocol-version VERSION`
+with optional `--allow-seed-variation`. JSON report and exit 0 only on compatibility.
+Protocol is an explicit caller binding because raw manifest v4 does not record it;
+the validator cannot prove that an operator followed a protocol. Environment
+profile is a declared setup label; observed harness/container runtime is checked
+separately. Reference Python binary contents and dirty patches are absent from
+the existing evidence. Compatibility covers recorded conditions, not authorship,
+qualification, statistical sufficiency or paper readiness.

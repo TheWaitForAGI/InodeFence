@@ -152,3 +152,11 @@ duplicate-case behavior, stats와 immutable records/caller RNG를 검증한다.
 [Integration regression](../../../tests/test_feedback_corpus_integration.py)은 실제 `run_case`
 관찰 구간의 C0/HARNESS same-signature admission, input/process/raw-allocation isolation과
 caller 수준의 select → mutate → 단일 실행 조합을 검증한다.
+
+## Versioned search-policy core
+
+`SearchPolicy`, `SearchState(initial_cases, policy)`, `SearchDecision`은 독립 B0/B1/B3
+policy API다. Full diagnostic novelty와 explicit admission을 분리하고 B0는 이전 child로
+전진한다. Legacy Corpus/B3 campaign serialization은 유지한다.
+[Core 계약과 campaign/Evaluation 통합 요구사항](../../../docs/research/design/search-policy-core-v1.md)을
+따른다. Alternative IDs는 아직 ExperimentConfig에 연결되지 않았으며 silent fallback은 없다.

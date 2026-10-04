@@ -18,6 +18,10 @@ Command, Python patch version, configured `timeout_seconds`, actual `duration_se
 
 ## Node-tar adapter (정상 fixture integration)
 
+별도 [pinned target image](../../../tools/node-tar/README.md#disposable-target-image-v1)는
+Node 22.22.0/tar 7.5.22와 worker/lock content identity를 실제 container에서 검증한다.
+Production adapter/backend binding과 frozen isolation provenance는 후속 작업이다.
+
 NodeTarTarget은 explicit package_root의 node_modules/tar와 resolved Node executable을 사용한다.
 Setup의 `--identify` worker에서 exact Node/package version을 고정하며 target_version은
 `node=<version>;tar=<version>`이다. Extraction worker는 이 기대 version을 tar.x 이전에 확인하고

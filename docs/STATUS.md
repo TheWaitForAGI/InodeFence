@@ -26,7 +26,7 @@ Dev Container 권한은 유지한다. [Enforced policy와 실행 명령](../src/
 따른다. Node image와 production contained invocation, frozen policy/provenance 및
 ExperimentConfig v2 binding을 구현했다. Tiny benign full-path campaign에서 8 archives/9 container contexts, exact lineage/config/
 provenance/export와 cleanup을 검증했다. 모든 status는 SUCCESS, Corpus states/retained6,
-violation fingerprints0이었다. 다음은 lifecycle/export durability/integration freeze다.
+violation fingerprints0이었다. Lifecycle review와 completed export durability를 검증했고 다음은 integration freeze다.
 아직 full audit readiness로 올리지 않는다.
 
 전체 분류는 **ENGINEERING FOUNDATION**이다.

@@ -1380,7 +1380,7 @@ violation=C1
 실험 분석이 stdout 문자열 parsing에 의존하지 않게 한다.
 
 현재 [campaign_export.py](../../../src/inodefence/campaign_export.py)의
-`export_campaign(result: CampaignResult, destination: Path) -> tuple[Path, Path]`는 완료된 결과를
+`export_campaign(result, destination, *, experiment_config_json=None) -> tuple[Path, Path]`는 완료된 결과를
 새 directory의 manifest.json/steps.jsonl로 기록한다. 기존 destination은 거부하고 IO/encoding
 오류는 전달한다. Step별 existing canonical_json envelope/schema/bytes-base64 encoding을
 그대로 사용하며 result(raw evidence)와 feedback(decision)은 별도 field로 유지한다. Lineage,
@@ -1702,7 +1702,7 @@ ExecutionProvenance. Only the exact IsolatedTarget composition satisfies require
 isolation; subclasses/declarations cannot substitute execution. Availability/mismatch
 fails before campaign runtime and first case; policy/artifact drift fails before next case.
 
-ExecutionProvenance/CampaignResult canonical envelopes are v2; manifest is v3 and
+ExecutionProvenance/CampaignResult canonical envelopes are v2; manifest is v4 and
 serializes stored nullable isolation. ArchiveCase, RunResult, CampaignStep and signature
 encoding/novelty are unchanged. Runtime/PID/temp paths never enter config or feedback.
 No campaign-to-Docker implementation import exists: the campaign sees the enforced

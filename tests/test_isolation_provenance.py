@@ -121,7 +121,7 @@ def test_frozen_before_execution_and_export_ignores_changed_backend_defaults(tmp
     monkeypatch.setattr(backend, "capture_isolation", forbidden)
     manifest, steps = export_campaign(result, tmp_path / "export")
     value = json.loads(manifest.read_bytes())
-    assert value["schema_version"] == 3
+    assert value["schema_version"] == 4
     assert value["execution_provenance"]["isolation"]["policy"]["resources"]["pids"] == 64
     assert value["steps_sha256"] == sha256(steps.read_bytes()).hexdigest()
     assert json.loads(canonical_json(result.provenance))["schema_version"] == 2

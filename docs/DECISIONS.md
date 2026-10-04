@@ -371,3 +371,16 @@ version을 올린다. ArchiveCase/RunResult/CampaignStep encoding, C0/C1/C2, sig
 mutation/RNG/budget은 유지한다. Export는 stored facts만 serialize한다. Image ID는 compact
 content anchor이며 worker/lock digest를 함께 기록한다. Dirty patch 보존은 미구현이고
 container/kernel trust, snapshot-only 관찰 및 storage/CPU 제한은 계속 명시한다.
+
+## D026 — Completed evidence uses Linux staged no-overwrite publication
+
+A completed result writer stages a unique 0700 sibling directory. It flushes/fsyncs closed
+files, verifies generated JSONL/checksum/config/manifest, syncs staging, publishes through
+renameat2(RENAME_NOREPLACE), then syncs the parent. Ordinary rename is not a fallback because
+it can replace a concurrently created empty directory. Unsupported Linux/libc/filesystem fails
+visibly; this matches the supported Linux execution workflow, not a portability promise.
+Manifest v4 explicitly records optional config file/checksum; supplied config bytes must match
+the stored config ID and are published with evidence. Historical manifests remain historical.
+Pre-publication exceptions remove staging and leave final absent. Hard interruption may leave
+staging; after-publication sync error leaves complete evidence and propagates. Parent creation
+is not rolled back. No database/checkpoint/crash-proof storage claim is made.

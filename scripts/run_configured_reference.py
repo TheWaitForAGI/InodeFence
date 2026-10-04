@@ -22,9 +22,8 @@ def main() -> None:
     result = run_configured_campaign(
         config, minimal_seed_corpus(), PythonTarfileTarget(config.target.timeout_seconds)
     )
-    manifest, _ = export_campaign(result, args.output)
-    # Serialize the same immutable config read before execution, never RunResult.
-    (args.output / "experiment.json").write_text(config.to_json() + "\n", encoding="ascii")
+    # Publish the same immutable config with the bundle, never append after publication.
+    manifest, _ = export_campaign(result, args.output, experiment_config_json=config.to_json())
     print(f"config_id={config.config_id} executions={len(result.steps)} manifest={manifest}")
 
 

@@ -1380,13 +1380,13 @@ violation=C1
 실험 분석이 stdout 문자열 parsing에 의존하지 않게 한다.
 
 현재 [campaign_export.py](../../../src/inodefence/campaign_export.py)의
-`export_campaign(result: CampaignResult, destination: Path) -> tuple[Path, Path]`는 완료된 결과를
+`export_campaign(result, destination, *, experiment_config_json=None) -> tuple[Path, Path]`는 완료된 결과를
 새 directory의 manifest.json/steps.jsonl로 기록한다. 기존 destination은 거부하고 IO/encoding
 오류는 전달한다. Step별 existing canonical_json envelope/schema/bytes-base64 encoding을
 그대로 사용하며 result(raw evidence)와 feedback(decision)은 별도 field로 유지한다. Lineage,
 모든 execution status, snapshots, signature와 verdict/evidence를 보존한다.
 
-Manifest schema v3는 nullable isolation을 포함한 stored execution_provenance, format/classification, config, initial IDs, step count/final stats/retained
+Manifest schema v4는 optional experiment_config_file/experiment_config_sha256과 nullable isolation을 포함한 stored execution_provenance, format/classification, config, initial IDs, step count/final stats/retained
 order와 결과에서 얻은 target ID/version/builder format/timeout contexts를 기록한다. Context는
 first-occurrence order의 unique tuple이며 변동 provenance를 첫 step 값으로 숨기지 않는다.
 steps_file/steps_sha256으로 실제 JSONL을 연결한다. export_environment는 writer process의
@@ -1398,8 +1398,14 @@ environment는 harness process를 설명한다. Dirty state는 source patch를 �
 동일한 완료 result와 exporter environment는 destination과 무관하게 같은 sorted-key ASCII JSON,
 LF bytes를 만든다. 별도 campaign의 raw inode/timestamp/duration equality는 요구하지 않는다.
 한 step씩 encode하므로 full campaign encoding을 추가로 memory에 만들지 않는다. Manifest는
-마지막에 쓰지만 interrupted/failed export는 partial files를 남길 수 있다. Atomic transaction,
-reader/deserializer/validator, resume/checkpoint/database와 validated analysis는 제공하지 않는다.
+마지막에 쓴다. Optional pre-read config JSON은 stored experiment_config_id의 SHA-256과 일치해야
+하며 같은 bundle로 공개한다. 각 파일 flush/fsync, JSONL checksum/read-back, staging directory fsync
+후 같은 parent 안에서 Linux renameat2(RENAME_NOREPLACE)로 atomic no-overwrite publication하고
+parent를 fsync한다. 기존 destination 및 동시 생성된 empty directory도 덮어쓰지 않는다.
+공개 전 실패는 최종 destination absent/staging cleanup을 보장하고 예외를 전달한다. Parent
+생성은 rollback하지 않는다. Hard interruption은 staging을 남길 수 있고, 공개 후 parent fsync 실패는
+complete bundle을 남기고 오류를 전달한다. Unsupported OS/libc/kernel/filesystem에는 fallback이 없다.
+이 publication은 database transaction, reader/deserializer, resume/checkpoint 또는 validated analysis가 아니다.
 
 ---
 
@@ -1696,7 +1702,7 @@ ExecutionProvenance. Only the exact IsolatedTarget composition satisfies require
 isolation; subclasses/declarations cannot substitute execution. Availability/mismatch
 fails before campaign runtime and first case; policy/artifact drift fails before next case.
 
-ExecutionProvenance/CampaignResult canonical envelopes are v2; manifest is v3 and
+ExecutionProvenance/CampaignResult canonical envelopes are v2; manifest is v4 and
 serializes stored nullable isolation. ArchiveCase, RunResult, CampaignStep and signature
 encoding/novelty are unchanged. Runtime/PID/temp paths never enter config or feedback.
 No campaign-to-Docker implementation import exists: the campaign sees the enforced

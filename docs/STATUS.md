@@ -260,3 +260,11 @@ Legacy/M1에 각각 versioned no-reorder policy를 추가했다. Reorder slot의
 RNG 소비는 유지하며 output contribution만 제거한다. 다른 operator를 reweight하지 않는다.
 Full/A3의 동일 case/RNG 조건에서 slot, 나머지 결과와 RNG state를 비교 검증했다.
 Configured ablation campaign binding은 기존 Evaluation integration dependency다.
+
+### Generic minimizer core
+
+`minimize_case`는 caller evaluator/evidence predicate를 사용하는 deterministic bounded reduction이다.
+Entry/content/path/mode/link-target 후보를 고정 순서로 시도하며 rejected trial의 full RunResult도 보존한다.
+Policy ID, budget와 local-fixed-point/budget termination을 기록한다. 특정 target/CVE 규칙은 없다.
+[Core 계약](research/design/generic-minimizer-v1.md)을 따른다. Python reference의 benign content condition
+integration을 검증했으며 replay/export/finding workflow 연결은 별도 dependency다.

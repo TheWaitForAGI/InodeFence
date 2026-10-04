@@ -1752,3 +1752,10 @@ evaluated research. Feature expansion stops until that full audit and a later Ta
 
 Layer 5의 별도 SearchState API는 B0/B1/B3 policy admission과 full diagnostics를 분리한다.
 Legacy Corpus/campaign/evidence shape는 유지한다. [계약과 binding 요구사항](search-policy-core-v1.md)을 따른다.
+
+## Generic archive reduction
+
+Search 이후 caller-level `minimizer.minimize_case`는 ArchiveCase 후보를 줄이고 caller가 제공한
+RunResult evidence predicate로 채택 여부를 판단한다. Mutation/observer/oracle responsibilities는
+유지하며 replay tooling이나 특정 target 규칙을 core에 넣지 않는다.
+[Versioned API, budget, evidence와 한계](generic-minimizer-v1.md)를 따른다.

@@ -32,7 +32,7 @@ Dev Container는 Linux toolchain/filesystem semantics 개발환경이며 hostile
 credential/network/resource boundary를 제공하지 않는다. Generated third-party target campaign에는
 별도 검증된 execution isolation이 필요하며 현재 campaign entry가 이를 거부한다.
 
-Dockerfile과 devcontainer.json이 구현되어 있다. node-tar/ oras-go adapter 설치는 구현되어 있지 않다.
+Dockerfile과 devcontainer.json이 구현되어 있다. Node 22.22.0과 locked node-tar 7.5.22 정상 fixture dependency를 준비한다. oras-go는 미구현이다.
 
 ## 파일 배치 규칙
 

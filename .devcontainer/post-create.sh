@@ -5,6 +5,7 @@ sudo chown -R vscode:vscode /var/lib/inodefence
 sudo chown -R vscode:vscode /home/vscode/.codex
 
 python -m pip install -e '.[dev]'
+make target-tools
 
 npm install --global @openai/codex@latest
 

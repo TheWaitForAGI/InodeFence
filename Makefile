@@ -2,7 +2,10 @@ PYTHON ?= python
 CASE ?= regular-file
 BASELINE_CASES := regular-file directory hardlink symlink
 
-.PHONY: install lint format-check typecheck test env-check docs-check check fixtures probe
+.PHONY: install target-tools lint format-check typecheck test env-check docs-check check fixtures probe
+
+target-tools:
+	npm ci --prefix tools/node-tar --ignore-scripts --no-audit --no-fund
 
 install:
 	$(PYTHON) -m pip install -e '.[dev]'

@@ -9,7 +9,7 @@
 
   "features": {
     "ghcr.io/devcontainers/features/node:2": {
-      "version": "22"
+      "version": "22.22.0"
     }
   },
 

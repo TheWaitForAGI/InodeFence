@@ -42,7 +42,7 @@ context 한계는 [feedback](feedback/README.md)를 따른다.
 
 ## 현재 상태와 한계
 
-Layer 2, 최소 Layer 3, Generic Mutation v1과 Layer 5 Feedback / Corpus v1이 구현됐다. Corpus는 in-memory이며 caller RNG 기반 uniform baseline 선택만 제공한다. Bounded deterministic campaign은 구현됐으며 adaptive scheduler, persistence와 연구 효과 검증은 후속 작업이다. Python tarfile/data target은 architecture/reference용이며 최종 benchmark target이 아니다. Unsafe target에는 추가 OS 실행 격리가 필요하다. Disposable runtime directory 자체는 OS sandbox가 아니다.
+Layer 2, 최소 Layer 3, Generic Mutation v1과 Layer 5 Feedback / Corpus v1이 구현됐다. Corpus는 in-memory이며 caller RNG 기반 uniform baseline 선택만 제공한다. Bounded deterministic campaign은 구현됐으며 adaptive scheduler, persistence와 연구 효과 검증은 후속 작업이다. Python tarfile/data target은 architecture/reference용이며 최종 benchmark target이 아니다. Node-tar adapter는 정상 fixture 검증만 제공한다. Unsafe target에는 추가 OS 실행 격리가 필요하다. Disposable runtime directory 자체는 OS sandbox가 아니다.
 
 Snapshot의 `violated=False`는 관찰 범위에서 위반 증거가 없다는 뜻이다. Transient operation, sandbox 밖의 상태, symlink referent identity와 full C0 direct-use는 증명하지 못한다. 관찰 실패는 harness 오류로 올리며 passing result를 만들지 않는다.
 

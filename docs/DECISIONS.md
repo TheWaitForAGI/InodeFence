@@ -277,3 +277,19 @@ process/filesystem/credential/network/resource 경계와 자식 process 종료 �
 그 전에는 explicit ordinary controlled fixtures를 사용한 adapter engineering만 허용한다.
 Low-level TargetAdapter.run/run_case는 caller-owned fixture execution API이며 campaign safety
 gate를 대신하지 않는다. 임의 생성 입력 또는 untrusted archive를 third-party에 연결하지 않는다.
+
+## D020 — Node-tar는 고정 tooling으로 정상 fixture integration만 검증
+
+**상태:** adapter v1; third-party campaign isolation은 미구현
+
+Node-specific worker/invocation/version/status와 process lifecycle는 targets/에 둔다. Node/package
+version은 setup에서 발견하고 worker가 tar.x 전에 기대 version을 확인한다. Target identity는
+node-tar-strict / node=<exact>;tar=<exact>, timeout과 ISOLATION_REQUIRED를 provenance로 선언한다.
+Strict=true/preservePaths=false와 나머지 upstream defaults를 사용한다. TAR_* error는 REJECTED,
+worker error는 FAILED이며 version mismatch는 harness error다. Raw streams/command/duration은
+ExecutionResult에 남고 generic observer/oracle/feedback/mutation에는 Node logic이 없다.
+
+Node 22.22.0/tar 7.5.22와 npm transitive lock은 benign validation baseline이며 vulnerable-version
+benchmark 선택이 아니다. Linux process group kill/direct-child wait는 timeout lifecycle이고
+OS sandbox/detached descendant containment/subreaper가 아니다. No credential env inheritance,
+no observation-window bookkeeping을 지킨다. Campaign의 isolation-required rejection은 유지한다.

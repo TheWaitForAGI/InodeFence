@@ -4,6 +4,7 @@ import io
 import tarfile
 from collections.abc import Mapping
 from types import MappingProxyType
+from typing import Literal
 
 from inodefence.model import ArchiveCase, EntryType
 
@@ -26,6 +27,23 @@ class _RawPathTarInfo(tarfile.TarInfo):
         info = dict(super().get_info())
         info["name"] = self.name
         return info
+
+    def tobuf(
+        self,
+        format: Literal[0, 1, 2] = tarfile.DEFAULT_FORMAT,
+        encoding: str = tarfile.ENCODING,
+        errors: str = "surrogateescape",
+    ) -> bytes:
+        header = super().tobuf(format, encoding, errors)
+        if format == tarfile.USTAR_FORMAT:
+            # An empty USTAR prefix contributes no separator when read. Check the
+            # actual encoded fields before addfile writes this entry's header.
+            prefix = header[345:500].split(b"\0", 1)[0]
+            name = header[:100].split(b"\0", 1)[0]
+            reconstructed = prefix + b"/" + name if prefix else name
+            if reconstructed != self.name.encode(encoding, errors):
+                raise ValueError("USTAR name/prefix split would change the raw path")
+        return header
 
 
 def build_tar(case: ArchiveCase) -> bytes:

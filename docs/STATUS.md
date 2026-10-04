@@ -20,8 +20,12 @@ Layer 6 — Baseline / Evaluation / Paper    ⬜
 
 ## 실행 준비 상태
 
-**READY FOR FULL CODE / ARCHITECTURE AUDIT** — pre-audit infrastructure 작업을 완료했다.
-Full repository audit와 security evaluation은 아직 수행하지 않았다.
+**AUDIT PHASES 1–2 COMPLETE — PHASE-3 FIX REVIEW PENDING.**
+Audited main은 `fae2954906fa1a95235cde5cddd4dcb73f334169`이며 Global Findings Freeze v1은
+0 Blocker / 2 Major / 7 Minor / 6 Note / 1 uncounted regression gap이다.
+이 branch는 EN-001–005의 engine fixes를 구현하며 review/merge를 기다린다.
+[Finding mapping과 frozen audit evidence](audits/engine-findings-fix-v1.md)를 따른다.
+나머지 fix lane과 Phase 4는 별도 범위다. Benchmark/security evaluation은 아직 수행하지 않았다.
 
 Trusted Linux controller → explicit host stdio Docker broker → disposable untrusted target
 container 경계를 구현·검증했다. 기존 Dev Container의 권한은 변경하지 않았다. Target에는
@@ -43,10 +47,10 @@ no-overwrite atomic publication한다. Full suite614와 별도 실제 container 
 
 | 기준 | 현재 상태 | 범위 |
 | --- | --- | --- |
-| ENGINE READY | 준비 | bounded engine/config/provenance/evidence와 기존 semantics regression |
-| BENCHMARK INFRASTRUCTURE READY | 준비 | contained Node의 tiny benign full-path 및 lifecycle 검증 |
-| READY FOR FULL CODE / ARCHITECTURE AUDIT | 준비 | 다음 작업은 repository-wide audit; full audit를 했다는 뜻은 아님 |
-| EVALUATION READY | 아님; EVALUATION NOT YET RUN | benchmark/CVE 평가 전 full audit와 별도 연구 Task Contract 필요 |
+| Engine fixes | review 대기 | 이 branch의 EN-001–005; main merge를 의미하지 않음 |
+| Contained benign infrastructure | 기존 검증 기록 | tiny benign full-path/lifecycle 범위; benchmark qualification 아님 |
+| Audit Phases 1–2 | 완료, findings frozen | pinned main과 두 audit revision; 후속 fixes review 필요 |
+| Evaluation | NOT YET RUN | 나머지 frozen findings disposition과 별도 연구 Task Contract 필요 |
 
 Actual path: ExperimentConfig → target/policy binding → safety gate → backend attestation →
 frozen ExecutionProvenance → bounded Campaign/Corpus/mutation → run_case → target container →
@@ -56,8 +60,9 @@ Source/provenance, isolation policy와 config ID는 feedback novelty가 아니�
 PR34의 in-Dev-Container namespace EPERM/cgroup read-only는 [역사적 환경 지원 기록](../experiments/summaries/linux-isolation-support-v1.md)이다.
 그 환경을 약화하지 않고 별도 container backend를 선택했다. Snapshot-only observation,
 runtime/kernel trust/portability, total storage/CPU bounds, dirty patch 미보존 및 persistence의
-hard-interruption 한계는 계속 명시한다. ENGINEERING FOUNDATION에서 audit 준비 단계로 이동했으며
-feature expansion은 여기서 멈춘다.
+hard-interruption 한계는 계속 명시한다. Pre-audit revision은 ENGINEERING FOUNDATION에서
+audit 준비 단계로 이동한 기록이며 현재는 frozen findings fix review 단계다. Feature expansion은 멈춘다. 위 benign 결과와 suite614는 pre-audit revision의
+검증 기록이며 이 fix branch의 새 validation 결과는 finding mapping에 별도로 기록한다.
 
 ## 완료된 것
 
@@ -106,7 +111,7 @@ Fixture generator는 core builder를 사용하며 기존 TAR bytes와 probe beha
 - Before/after 생성·삭제·identity·내용·metadata 변화 비교
 - C0 HARNESS 포함 extraction root 밖 persistent namespace 변화, C1 lstat identity 공유, C2 sentinel 변화 판정
 - `StateSnapshot`: archive/input.tar digest와 harness metadata를 포함한 sandbox 전체 raw evidence
-- `StateSignature` v2: EXTRACTION/EXTERNAL의 normalized security state; HARNESS(`.`, `archive/**`)와 case/TAR identity 제외
+- `StateSignature` v3: EXTRACTION/EXTERNAL의 normalized security state; HARNESS(`.`, `archive/**`)와 case/TAR identity 제외
 - scope 안의 identity group과 sentinel effect 보존, regular-only nlink(nonregular는 None), raw inode/timestamp 값 제외; 연구 효과와 최종 feedback 정책 평가는 후속 작업
 - versioned canonical JSON으로 case·실행·snapshot·판정 근거 export
 - 실제 Linux filesystem, reject/partial extraction/timeout, E2E와 기존 baseline regression 테스트
@@ -128,7 +133,7 @@ C0의 direct path use 전체와 transient state는 snapshot만으로 판정할 �
 
 ### Feedback / Corpus v1
 
-- 기존 StateSignature v2 equality와 stable semantic violation fingerprints의 독립 novelty channel
+- 기존 StateSignature v3 equality와 stable semantic violation fingerprints의 독립 novelty channel
 - C0/C2는 path/changed-field labels, C1은 internal/sentinel path 관계; raw dev/inode/timestamp/값/prose 제외
 - 같은 signature의 새 C0/HARNESS evidence도 interesting으로 보존하는 실제 run_case regression
 - inspectable FeedbackDecision: interesting observation과 새 retained entry를 구분
@@ -143,8 +148,9 @@ Bounded deterministic campaign v1과 node-tar adapter의 정상 fixture integrat
 
 ## 다음 작업
 
-**Full repository-wide code, architecture, security-contract, reproducibility, maintainability
-and test-quality audit.** 그 audit 이후에만 benchmark/CVE evaluation을 별도 Task Contract로 진행한다.
+**Phase-3 frozen findings fixes의 review와 CI 확인.** EN-001–005 외의 fix lane과
+Phase 4/PR #35 refresh는 각 owner의 별도 범위다. Benchmark/CVE evaluation은 후속
+disposition과 별도 연구 Task Contract 이후에만 진행한다.
 
 [Pre-audit freeze](../experiments/summaries/pre-audit-readiness-v1.md)는 제한된 integration review이며
 전체 code audit가 아니다. [이전 infrastructure review](../experiments/summaries/infrastructure-readiness-v1.md),
@@ -152,9 +158,11 @@ and test-quality audit.** 그 audit 이후에만 benchmark/CVE evaluation을 별
 [reference pilot](../experiments/summaries/reference-campaign-pilot-v1.md)은 해당 revision의 역사적 기록이다.
 
 Backend는 narrow execution contract를 제공한다. Future ORAS/GNU-tar는 target invocation/image를
-추가하는 위치가 명시돼 있으나 구현하지 않았다. C0/C1/C2/Signature/feedback/RNG/budget semantics는
-변경하지 않았다. Image ID/worker/lock digest를 content anchor로 사용하며 massive dependency hashing은
-추가하지 않았다. Dirty patch/exact Python binary/image availability의 한계는 다음 audit에서 검토한다.
+추가하는 위치가 명시돼 있으나 구현하지 않았다. C0/C1/C2, feedback policy와 RNG/budget semantics는
+유지한다. Signature v3는 symlink target을 tag해 literal/run anchor를 구분한다.
+Image ID/worker/lock digest를 content anchor로 사용하며 massive dependency hashing은
+추가하지 않았다. Dirty patch/exact Python binary/image availability의 한계는 frozen
+audit에 기록됐으며 이 engine fix 범위에서는 유지한다.
 
 ## 지금 하지 않을 것
 

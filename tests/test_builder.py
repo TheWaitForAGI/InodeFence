@@ -71,3 +71,69 @@ def test_utf8_ustar_prefix_and_empty_archive() -> None:
 def test_unrepresentable_ustar_input_rejected_without_truncation(entry: ArchiveEntry) -> None:
     with pytest.raises(ValueError, match="entry 0 cannot be represented in USTAR"):
         build_tar(ArchiveCase((entry,)))
+
+
+@pytest.mark.parametrize("kind", tuple(EntryType))
+@pytest.mark.parametrize(
+    ("path", "accepted"),
+    [
+        ("/" + "a" * 99, True),
+        ("/" + "a" * 100, False),
+        ("//" + "a" * 99, False),
+        ("/dir/" + "a" * 96, False),
+        ("/" + "é" * 50, False),
+        ("///" + "a" * 98, False),
+        ("//" + "a" * 100, True),
+        ("a//" + "b" * 99, True),
+        ("a/" + "b" * 100, True),
+        ("a/" + "b" * 101, False),
+        ("x" * 154 + "/" + "y" * 100, True),
+        ("x" * 155 + "/" + "y" * 100, True),
+        ("x" * 156 + "/" + "y" * 100, False),
+        ("é" * 77 + "x/" + "é" * 50, True),
+        ("é" * 78 + "/" + "é" * 50, False),
+        ("é" * 77 + "/" + "é" * 51, False),
+        ("dir//", True),
+        ("x" * 155 + "/" + "y" * 99 + "/", True),
+    ],
+)
+def test_ustar_emits_exact_raw_path_or_rejects(kind: EntryType, path: str, accepted: bool) -> None:
+    entry = ArchiveEntry(
+        path,
+        kind,
+        content=b"inert" if kind == EntryType.REGULAR else None,
+        link_target="benign" if kind in (EntryType.HARDLINK, EntryType.SYMLINK) else None,
+    )
+    case = ArchiveCase((entry,))
+    if not accepted:
+        with pytest.raises(ValueError, match="entry 0 cannot be represented in USTAR"):
+            build_tar(case)
+        # Each frozen slash-loss witness has a different, representable relative case.
+        if path.startswith("/"):
+            relative = ArchiveCase(
+                (ArchiveEntry(path[1:], kind, entry.content, entry.link_target, entry.mode),)
+            )
+            assert relative.case_id != case.case_id
+            assert build_tar(relative)
+    else:
+        data = build_tar(case)
+        prefix = data[345:500].split(b"\0", 1)[0]
+        name = data[:100].split(b"\0", 1)[0]
+        reconstructed = prefix + b"/" + name if prefix else name
+        assert reconstructed == path.encode("utf-8")
+        assert data == build_tar(case)
+    assert entry.path == path
+
+
+@pytest.mark.parametrize("kind", (EntryType.HARDLINK, EntryType.SYMLINK))
+@pytest.mark.parametrize("target", ("/" + "a" * 99, "é" * 50, "a//b"))
+def test_link_target_byte_boundary_preserves_raw_text(kind: EntryType, target: str) -> None:
+    data = build_tar(ArchiveCase((ArchiveEntry("link", kind, link_target=target),)))
+    assert data[157:257].split(b"\0", 1)[0] == target.encode("utf-8")
+
+
+@pytest.mark.parametrize("kind", (EntryType.HARDLINK, EntryType.SYMLINK))
+@pytest.mark.parametrize("target", ("/" + "a" * 100, "é" * 50 + "x"))
+def test_link_target_over_byte_boundary_fails(kind: EntryType, target: str) -> None:
+    with pytest.raises(ValueError, match="entry 0 cannot be represented in USTAR"):
+        build_tar(ArchiveCase((ArchiveEntry("link", kind, link_target=target),)))

@@ -3,6 +3,8 @@
 from dataclasses import dataclass
 from enum import StrEnum
 
+from ._validation import validate_sha256
+
 
 class ObjectType(StrEnum):
     REGULAR = "regular"
@@ -111,16 +113,15 @@ class ObjectSnapshot:
         if (self.object_type == ObjectType.SYMLINK) != (self.symlink_target is not None):
             raise ValueError("only symlinks require a symlink target")
         if self.symlink_target is not None and (
-            not self.symlink_target or "\0" in self.symlink_target
+            not isinstance(self.symlink_target, str)
+            or not self.symlink_target
+            or "\0" in self.symlink_target
         ):
             raise ValueError("invalid observed symlink target")
         if (self.object_type == ObjectType.REGULAR) != (self.content_digest is not None):
             raise ValueError("only regular files require a content digest")
-        if self.content_digest is not None and (
-            len(self.content_digest) != 64
-            or any(c not in "0123456789abcdef" for c in self.content_digest)
-        ):
-            raise ValueError("content_digest must be a lowercase SHA-256 hex digest")
+        if self.content_digest is not None:
+            validate_sha256(self.content_digest)
 
     @property
     def identity(self) -> tuple[int, int]:
@@ -148,7 +149,11 @@ class StateSnapshot:
     protected_paths: tuple[str, ...]
 
     def __post_init__(self) -> None:
-        if not self.sandbox_root.startswith("/") or not isinstance(self.phase, SnapshotPhase):
+        if (
+            not isinstance(self.sandbox_root, str)
+            or not self.sandbox_root.startswith("/")
+            or not isinstance(self.phase, SnapshotPhase)
+        ):
             raise ValueError("snapshot requires an absolute root and explicit phase")
         if not isinstance(self.objects, tuple) or not all(
             isinstance(obj, ObjectSnapshot) for obj in self.objects
@@ -157,8 +162,10 @@ class StateSnapshot:
         paths = tuple(obj.path for obj in self.objects)
         if paths != tuple(sorted(set(paths))):
             raise ValueError("snapshot objects must have unique sorted paths")
-        if not isinstance(self.protected_paths, tuple) or self.protected_paths != tuple(
-            sorted(set(self.protected_paths))
+        if (
+            not isinstance(self.protected_paths, tuple)
+            or not all(isinstance(path, str) for path in self.protected_paths)
+            or self.protected_paths != tuple(sorted(set(self.protected_paths)))
         ):
             raise ValueError("protected paths must be a unique sorted tuple")
         for path in self.protected_paths:
@@ -192,9 +199,36 @@ class ChangeField(StrEnum):
     CONTENT = "content_digest"
 
 
+def validate_change_fields(fields: tuple[ChangeField, ...]) -> None:
+    """Require nonempty, immutable field labels in their canonical schema order."""
+    if (
+        not isinstance(fields, tuple)
+        or not fields
+        or not all(isinstance(field, ChangeField) for field in fields)
+        or fields != tuple(field for field in ChangeField if field in fields)
+    ):
+        raise ValueError("change fields must be unique enums in schema order")
+
+
+def observed_change_fields(
+    before: ObjectSnapshot | None, after: ObjectSnapshot | None
+) -> tuple[ChangeField, ...]:
+    """Exact raw difference labels; creation/deletion carries only EXISTENCE."""
+    if before is None and after is None:
+        return ()
+    if before is None or after is None:
+        return (ChangeField.EXISTENCE,)
+    return tuple(
+        field
+        for field in ChangeField
+        if field != ChangeField.EXISTENCE
+        and getattr(before, field.value) != getattr(after, field.value)
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class StateChange:
-    """Observed creation/deletion/change, retaining both sides as evidence."""
+    """Observed change with exact field labels, retaining both sides as evidence."""
 
     path: str
     before: ObjectSnapshot | None
@@ -208,18 +242,14 @@ class StateChange:
         for obj in (self.before, self.after):
             if obj is not None and (not isinstance(obj, ObjectSnapshot) or obj.path != self.path):
                 raise ValueError("change observations must match the changed path")
-        if (
-            not isinstance(self.fields, tuple)
-            or not self.fields
-            or not all(isinstance(field, ChangeField) for field in self.fields)
-            or self.fields != tuple(field for field in ChangeField if field in self.fields)
-        ):
-            raise ValueError("change fields must be unique enums in schema order")
+        validate_change_fields(self.fields)
         absent = self.before is None or self.after is None
         if absent != (self.fields == (ChangeField.EXISTENCE,)):
             raise ValueError("existence changes must have one absent side")
         if not absent and (ChangeField.EXISTENCE in self.fields or self.before == self.after):
             raise ValueError("an existing-object change requires different observations")
+        if self.fields != observed_change_fields(self.before, self.after):
+            raise ValueError("change fields must exactly match the before/after observations")
 
 
 @dataclass(frozen=True, slots=True)
@@ -227,7 +257,8 @@ class SignatureObject:
     """A security-state object; nlink/size/digest apply only to regular files.
 
     Nonregular nlink is None: directory counts depend on filesystem semantics.
-    Symlinks retain textual targets without inferring their referents.
+    Symlink text is tagged as run:<raw suffix> or literal:<raw target> in v3;
+    no referent is inferred.
     """
 
     path: str
@@ -238,18 +269,51 @@ class SignatureObject:
     content_digest: str | None
     symlink_target: str | None
 
+    def __post_init__(self) -> None:
+        validate_observed_path(self.path)
+        if path_region(self.path) == Region.HARNESS:
+            raise ValueError("signature objects must be in extraction/external scope")
+        if not isinstance(self.object_type, ObjectType):
+            raise ValueError("object_type must be an ObjectType")
+        if type(self.mode) is not int or not 0 <= self.mode <= 0o7777:
+            raise ValueError("mode must be a permission mask")
+        if self.object_type == ObjectType.REGULAR:
+            if any(type(value) is not int or value < 0 for value in (self.st_nlink, self.size)):
+                raise ValueError("regular signature count and size must be nonnegative integers")
+            validate_sha256(self.content_digest)
+        elif any(value is not None for value in (self.st_nlink, self.size, self.content_digest)):
+            raise ValueError("only regular signature objects have count/size/digest")
+        if self.object_type == ObjectType.SYMLINK:
+            target = self.symlink_target
+            if not isinstance(target, str) or "\0" in target:
+                raise ValueError("signature symlink requires tagged target text")
+            if target.startswith("run:"):
+                if target[4:] and not target[4:].startswith("/"):
+                    raise ValueError("run target suffix must be empty or start with a slash")
+            elif not target.startswith("literal:") or not target[8:]:
+                raise ValueError("signature symlink requires tagged target text")
+        elif self.symlink_target is not None:
+            raise ValueError("only symlinks have a signature target")
+
 
 @dataclass(frozen=True, slots=True)
 class ExternalEffect:
     path: str
     fields: tuple[ChangeField, ...]
 
+    def __post_init__(self) -> None:
+        validate_observed_path(self.path)
+        if path_region(self.path) != Region.EXTERNAL:
+            raise ValueError("external effects require external paths")
+        validate_change_fields(self.fields)
+
 
 @dataclass(frozen=True, slots=True)
 class StateSignature:
     """Normalized security state for future feedback/corpus, not raw evidence.
 
-    Schema v2 excludes harness objects and projects identity groups onto the
+    Schema v3 tags symlink targets to distinguish run anchors from literals.
+    Like v2, it excludes harness objects and projects identity groups onto the
     same scope, dropping singleton groups. Neither ArchiveCase identity nor TAR
     artifact identity is included. No raw device/inode or timestamp values.
     Nonregular nlink and size are omitted to avoid filesystem allocation noise.
@@ -263,3 +327,45 @@ class StateSignature:
     identity_groups: tuple[tuple[str, ...], ...]
     external_effects: tuple[ExternalEffect, ...]
     protected_paths: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if type(self.schema_version) is not int or self.schema_version != 3:
+            raise ValueError("StateSignature requires schema version 3")
+        if not isinstance(self.objects, tuple) or not all(
+            isinstance(obj, SignatureObject) for obj in self.objects
+        ):
+            raise ValueError("signature objects must be a tuple of SignatureObject records")
+        paths = tuple(obj.path for obj in self.objects)
+        if paths != tuple(sorted(set(paths))):
+            raise ValueError("signature objects must have unique sorted paths")
+        if not isinstance(self.identity_groups, tuple) or not all(
+            isinstance(group, tuple) and all(isinstance(path, str) for path in group)
+            for group in self.identity_groups
+        ):
+            raise ValueError("identity groups must be tuples of path tuples")
+        if self.identity_groups != tuple(sorted(set(self.identity_groups))):
+            raise ValueError("identity groups must be unique and sorted")
+        grouped_paths: set[str] = set()
+        for group in self.identity_groups:
+            if len(group) < 2 or group != tuple(sorted(set(group))):
+                raise ValueError("identity groups require unique sorted nonsingleton paths")
+            if not set(group) <= set(paths) or grouped_paths.intersection(group):
+                raise ValueError("identity groups must partition paths in signature scope")
+            grouped_paths.update(group)
+        if not isinstance(self.external_effects, tuple) or not all(
+            isinstance(effect, ExternalEffect) for effect in self.external_effects
+        ):
+            raise ValueError("external effects must be a tuple of ExternalEffect records")
+        effects = tuple(effect.path for effect in self.external_effects)
+        if effects != tuple(sorted(set(effects))):
+            raise ValueError("external effects must have unique sorted paths")
+        if (
+            not isinstance(self.protected_paths, tuple)
+            or not all(isinstance(path, str) for path in self.protected_paths)
+            or self.protected_paths != tuple(sorted(set(self.protected_paths)))
+        ):
+            raise ValueError("protected paths must be a unique sorted tuple of text")
+        for path in self.protected_paths:
+            validate_observed_path(path)
+            if path_region(path) != Region.EXTERNAL:
+                raise ValueError("sentinels must be external sandbox paths")

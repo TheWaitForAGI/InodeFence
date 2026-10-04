@@ -33,5 +33,8 @@ records exact Node/tar versions and verifies worker/lock SHA-256 against source.
 That mode does not execute an archive or enable campaign execution.
 `validate-node-target` separately executes eight mandatory ordinary fixture/lifecycle cases. Image packaging is
 not a bit-for-bit reproducibility claim: platform, builder and attestation metadata
-can change the resulting image identity. Frozen image/runtime/worker/lock attestation is now bound to config/provenance; the
-full-path benign campaign validation follows next.
+can change the resulting image identity. Isolation/config/provenance binding and the
+tiny benign configured campaign's full path have been validated; see the
+[recorded smoke scope and limits](../../experiments/summaries/benign-node-container-smoke-v1.md).
+Snapshot observation, runtime/kernel trust and portability limits remain. Benchmark/security
+evaluation and research effectiveness have not been evaluated.

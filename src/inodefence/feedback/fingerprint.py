@@ -9,6 +9,12 @@ from inodefence.model import (
     StateChange,
     ViolationResult,
 )
+from inodefence.model.filesystem import (
+    Region,
+    path_region,
+    validate_change_fields,
+    validate_observed_path,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,6 +28,10 @@ class ChangeFingerprint:
     path: str
     fields: tuple[ChangeField, ...]
 
+    def __post_init__(self) -> None:
+        validate_observed_path(self.path)
+        validate_change_fields(self.fields)
+
 
 @dataclass(frozen=True, slots=True)
 class IdentityFingerprint:
@@ -29,6 +39,14 @@ class IdentityFingerprint:
 
     internal_path: str
     sentinel_path: str
+
+    def __post_init__(self) -> None:
+        validate_observed_path(self.internal_path)
+        validate_observed_path(self.sentinel_path)
+        if path_region(self.internal_path) != Region.EXTRACTION or (
+            path_region(self.sentinel_path) != Region.EXTERNAL
+        ):
+            raise ValueError("identity fingerprint requires internal and external paths")
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +60,21 @@ class ViolationFingerprint:
 
     contract_id: ContractId
     evidence: tuple[ChangeFingerprint | IdentityFingerprint, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.contract_id, ContractId):
+            raise ValueError("fingerprint requires a ContractId")
+        evidence_type = (
+            IdentityFingerprint if self.contract_id == ContractId.C1 else ChangeFingerprint
+        )
+        if (
+            not isinstance(self.evidence, tuple)
+            or not self.evidence
+            or not all(isinstance(item, evidence_type) for item in self.evidence)
+        ):
+            raise ValueError("fingerprint requires a nonempty tuple of contract evidence")
+        if self.evidence != tuple(sorted(set(self.evidence), key=_evidence_key)):
+            raise ValueError("fingerprint evidence must be unique and sorted")
 
 
 def _evidence_fingerprint(

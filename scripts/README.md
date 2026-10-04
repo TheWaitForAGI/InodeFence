@@ -47,3 +47,16 @@ lineage/feedback, budget/cleanup을 assertion으로 검사한다. 기존 output�
 binding을 실행 전에 검증한다. Safe Python reference만 지원하며 config version과 실제 Python
 version이 다르면 거부한다. Stored config ID/frozen provenance와 experiment.json/manifest.json/
 steps.jsonl을 보존한다. Node campaign safety gate를 우회하는 명령은 없다.
+
+`python scripts/check_linux_isolation_support.py` (`make isolation-support`)는 Linux namespace
+생성 전제 조건을 JSON schema v1로 진단한다. 고정된 `unshare`/`true` 8개 probe만 실행하며
+mount operation, fork, network traffic, archive extraction이나 runtime 생성은 하지 않는다.
+5개 user-namespace 조합이 모두 성공하면 exit 0, 그 외에는 exit 1이다. Tool 존재와 syscall
+실패를 구분하고 missing tool/platform, timeout/launch error와 실제 stderr를 보존한다.
+`/proc`의 capability/seccomp, cgroup mount read-only 여부와 현재 resource limits도 기록한다.
+Resource limit의 -1은 unlimited이며 이 명령은 limit을 설정하지 않는다.
+
+Exit 0도 filesystem view/network 차단/credential 제한/child cleanup을 검증하지 않는다.
+결과는 campaign gate의 입력이나 execution provenance가 아니며 target 실행을 허가하지 않는다.
+환경마다 재실행해야 하므로 canonical `make check`와 분리한다.
+[현재 환경 blocker](../experiments/summaries/linux-isolation-support-v1.md)를 따른다.

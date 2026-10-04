@@ -87,6 +87,8 @@ Evaluation은 실행하지 않았다. [인프라 검증 기록](../experiments/s
 
 Campaign은 explicit trusted Python reference만 실행한다. Third-party target의 isolation requirement는
 실행 전에 거부한다. Runtime directory/Dev Container는 검증된 OS execution isolation이 아니다.
+확인한 Dev Container의 namespace 생성은 EPERM으로 차단됐다. 실행 환경 정책 선택이 필요한
+[구체적 blocker와 재검증 명령](../experiments/summaries/linux-isolation-support-v1.md)을 따른다.
 
 ## 5. 코딩하기 전에 딱 이것만 읽기
 

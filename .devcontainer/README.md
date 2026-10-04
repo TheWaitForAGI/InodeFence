@@ -32,6 +32,13 @@ Dev Container는 Linux toolchain/filesystem semantics 개발환경이며 hostile
 credential/network/resource boundary를 제공하지 않는다. Generated third-party target campaign에는
 별도 검증된 execution isolation이 필요하며 현재 campaign entry가 이를 거부한다.
 
+2026-10-04 확인한 nonprivileged OrbStack Dev Container에서는 uid 1000의 user/mount/network/PID
+namespace 생성이 모두 EPERM으로 거부됐고 cgroup v2 mount는 read-only였다. Kernel feature
+미구현으로 단정하지 않는다. 자세한 사실과 필요한 환경 결정은
+[지원 진단 기록](../experiments/summaries/linux-isolation-support-v1.md)에 있다.
+컨테이너 안에서 `make isolation-support`로 다시 확인한다. 이 진단은 현재 security policy를
+변경하지 않으며 성공하더라도 target execution boundary 검증을 대신하지 않는다.
+
 Dockerfile과 devcontainer.json이 구현되어 있다. Node 22.22.0과 locked node-tar 7.5.22 정상 fixture dependency를 준비한다. oras-go는 미구현이다.
 
 ## 파일 배치 규칙

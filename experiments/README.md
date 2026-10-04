@@ -56,3 +56,9 @@ policy/runtime/image/worker/lock provenance. Uncontained third-party campaigns f
 before setup; this pre-audit contract authorizes only the tiny benign Node smoke.
 Manifest v3 stores these facts; snapshot/security/novelty semantics are unchanged.
 No benchmark effectiveness or known-vulnerability result is implied.
+
+
+The [benign Node container smoke](summaries/benign-node-container-smoke-v1.md) records
+one tiny engineering campaign, exact stored conditions/checksums and observed stats.
+CI retains its raw bundle as an artifact. Audit preparation and lifecycle/export review
+remain; no effectiveness/security evaluation follows automatically.

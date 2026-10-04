@@ -94,3 +94,18 @@ Each append revalidates its prefix (quadratic total work); optimize only with
 measured need. There is no concurrent-writer or malicious-parent guarantee.
 Checksums do not authenticate authorship, and an externally deleted unfinalized
 tail cannot be detected without a separately retained anchor.
+
+## Campaign summary
+
+`python -m inodefence.evaluation.summary DIRECTORY --format json|markdown`
+or `summarize_campaign(directory)` verifies the complete input before aggregation.
+Both formats anchor the original manifest/steps digests. Counts include all four
+target statuses, C0/C1/C2 observed executions, any-contract observations, first
+observed violation (zero-based step and one-based execution including seeds),
+unique signatures/fingerprints, retained cases and unique executed cases.
+
+A no-hit run has a null first observation within its budget. No duration, rate,
+rediscovery, qualification or paper claim is inferred. A single verified campaign
+has one validated target/config context; summaries preserve those identifiers.
+Multi-run/per-target grouping requires separate dataset compatibility validation.
+Infrastructure ledgers and incomplete journals are not execution inputs.

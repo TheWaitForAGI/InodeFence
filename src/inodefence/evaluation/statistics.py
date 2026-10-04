@@ -60,6 +60,15 @@ def summarize_statistics(
         _summarize(verify_campaign(member.directory, expected_manifest_sha256=digest))
         for member, digest in zip(members, report.manifest_sha256, strict=True)
     ]
+    return _aggregate_observations(
+        summaries, asdict(report) if summaries else None, report.manifest_sha256
+    )
+
+
+def _aggregate_observations(
+    summaries: Sequence[dict], dataset_validation: dict | None, manifest_digests: tuple[str, ...]
+) -> dict:
+    """Shared denominator/censoring arithmetic after schema-specific verification."""
     hits, censored = [], []
     success_count, executions = 0, 0
     for summary in summaries:
@@ -80,7 +89,7 @@ def summarize_statistics(
         "schema_version": 1,
         "classification": "contract-observation-statistics" if count else "empty-template",
         "input_scope": "selected_verified_completed_campaigns",
-        "dataset_validation": asdict(report) if count else None,
+        "dataset_validation": dataset_validation,
         "number_valid_runs": count,
         "number_invalid_runs": None,
         "invalid_runs_note": "unavailable in completed-only exports; use repetition metadata",
@@ -100,7 +109,7 @@ def summarize_statistics(
         "no_hit_handling": "right_censored_at_recorded_budget; no imputed hit index",
         "censored_runs": censored,
         "rediscovery_classification": "not_available; observations are not benchmark rediscovery",
-        "manifest_sha256": report.manifest_sha256,
+        "manifest_sha256": manifest_digests,
     }
 
 

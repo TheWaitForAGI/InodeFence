@@ -46,3 +46,25 @@ for external anchoring. A synced temporary file is published with Linux atomic
 no-overwrite hardlink and parent fsync. Prepublication failure leaves no final
 file; postpublication fsync failure may leave a complete file and propagates.
 Hard interruption can leave an ignored temporary file. Parents are trusted.
+
+## Infrastructure failure ledger
+
+`failure_record(exception, FailureContext(...))` captures the actual exception
+and a timezone-qualified record timestamp; `write_failure(path, record)` publishes
+a checksummed schema-v1 record without overwrite. `read_failure` verifies it.
+Context preserves attempt/experiment/config/source/target identifiers, attempted
+step and phase, last fully completed step, available diagnostics/logs/snapshots,
+cleanup status/diagnostics and artifact digest references. Unavailable evidence
+is `None`; default cleanup is `UNKNOWN`. Record time is not attempt duration.
+
+Every record is `infrastructure_invalid`, distinct from SUCCESS, REJECTED, FAILED,
+TIMED_OUT and C0/C1/C2. It must not enter an execution/nonviolation denominator.
+Artifact references describe caller-recorded availability, not guaranteed later
+existence. Checksums cover the record itself via the evaluation storage wrapper.
+
+Core `run_campaign` currently propagates infrastructure exceptions and exposes
+neither a completed-step callback nor its partial step list on failure. This
+ledger cannot recover inaccessible evidence or infer which lifecycle phase
+failed. Evaluation callers explicitly supply the evidence they retained and
+handle publication errors. No core monkeypatch, fabricated result, automatic
+campaign rerun or altered exception/status classification is introduced.

@@ -8,7 +8,7 @@ no exploit archive generated, no target installed or vulnerable fuzzing run.
 
 ## Final repository context and moving-main audit
 
-Audited main: `475a6f2d7e5ef0b19d48c01eed0fbe2462ebecb2` (2026-10-04).
+Audited main: `a22d20127d8e01bc539363764582ef907d51cbf1` (2026-10-04).
 Research branch: `research/benchmark-evaluation-prep-v1`; Draft
 [PR #35](https://github.com/TheWaitForAGI/InodeFence/pull/35), base main.
 Main was merged into this branch without rewriting published history, preserving
@@ -19,9 +19,10 @@ not embedded in its own tracked contents.
 adds a disposable Linux container backend, helper regressions and a separate CI
 container-integration job. The [engine audit](engine-contract-audit.md) supersedes
 the older no-backend assumptions. Helper validation is implemented platform
-engineering evidence, while Node image/config/provenance/campaign integration
-is NOT_IMPLEMENTED. The run volume is mounted at the same random absolute
-controller path; no stable alias or arbitrary CWD setting is promised.
+engineering evidence, and PR #37 adds a pinned benign Node image with
+metadata-only container checks. Node backend/config/provenance/campaign
+integration is NOT_IMPLEMENTED. The run volume is mounted at the same random
+absolute controller path; no stable alias or arbitrary CWD setting is promised.
 
 [STATUS](../../STATUS.md) remains ENGINEERING FOUNDATION; Node configured
 campaigns have zero executions, and benchmark/evaluation readiness remain false.
@@ -93,7 +94,7 @@ unqualified GNU run.
 ## Ordered implementation tickets after audit fixes
 
 **P00 — primary lane prerequisite, before the tickets below:** bind the existing
-container lifecycle around pipeline BEFORE/AFTER, add immutable Node image/config/
+container lifecycle around pipeline BEFORE/AFTER, bind the existing pinned Node image and freeze config/
 provenance/export identity, retain fail-closed ISOLATION_REQUIRED enforcement,
 validate an explicitly benign configured full path, publish pre-audit freeze,
 finish the full audit and fixes. Relevant boundaries are
@@ -173,10 +174,22 @@ repetition, censoring, replay and raw-evidence gates. Scope review checks that
 research metadata stays separate from production changes and exploit material.
 Capability gaps are not asserted vulnerability findings.
 
-Final validation is recorded after repository checks and CI complete. Static
-catalog/document validation is not benchmark evidence. Canonical make check
-covers inherited engineering regressions; the separate container-integration CI
-job covers controlled helper boundary regressions, not Node benchmark readiness.
+Local validation at the final audited main: **make check PASS**, Ruff and format
+PASS, Pyright zero errors/warnings, **532 pytest tests passed**, Linux runtime
+environment PASS and docs-check PASS (70 Markdown files). A supplemental local
+path/anchor check passed all 70 documents and 16 local anchor references. Catalog
+validation passed 15 planning records; 12 negative checks rejected duplicate IDs/
+keys, missing/unknown fields, unsupported contracts/enums/taxonomy, missing primary
+pins and fabricated readiness/execution/binding. `git diff --check` passed.
+The diff against audited main contains research/navigation documents and static
+metadata validation only; no production source, tests, tooling or CI changes.
+
+Canonical tests use existing locked benign Node tooling; no new target version
+was installed. Local container integration was not executed by this lane: it
+requires the approved host broker/runtime. Current-head CI is authoritative in
+[PR checks](https://github.com/TheWaitForAGI/InodeFence/pull/35/checks), with both
+`check` and `container-integration` accounted for. Static validation is not
+benchmark evidence; helper/image CI success is not Node campaign readiness.
 
 **EVALUATION NOT RUN.** Benchmark qualification, pilot, known-class rediscovery,
 identical-input validation replay, baseline comparisons, ablations and formal

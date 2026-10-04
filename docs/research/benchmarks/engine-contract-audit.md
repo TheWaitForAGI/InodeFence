@@ -1,7 +1,7 @@
 # Engine capabilities and research assumptions
 
 **Implementation audit, not an experiment result or full repository audit.**
-Audited main: `475a6f2d7e5ef0b19d48c01eed0fbe2462ebecb2` (2026-10-04), merged
+Audited main: `a22d20127d8e01bc539363764582ef907d51cbf1` (2026-10-04), merged
 into the published research branch without rebasing. This supersedes the original
 `433ffb0f49f82476b1c3d152e647a5c9a9710485` audit. Current source and tests take
 precedence over historical readiness summaries and stale adapter docstrings.
@@ -30,7 +30,8 @@ Predictions, future work and future measurements are separate from these facts.
 | Direct-process Node adapter for controlled benign fixtures | A | [Node tests](../../../tests/test_node_tar.py); no generated-input campaign |
 | Container policy, lifecycle and fail-closed transport logic | A | [backend unit tests](../../../tests/test_container_backend.py); fake-runtime tests cannot establish real isolation |
 | Container helper boundary on documented Docker/OrbStack platform | B | [execution validation scope](../../../src/inodefence/execution/README.md), [six real-runtime regressions](../../../tests/container_integration/check_boundary.py); inherited platform evidence, not a new benchmark run |
-| Node image/config/provenance/full campaign integration | D | Campaign still rejects ISOLATION_REQUIRED; no container binding in pipeline/config |
+| Pinned benign Node target image and metadata validation | B | [image packaging](../../../tools/node-tar/README.md), [metadata-only regression](../../../tests/container_integration/check_node_image.py); no archive execution |
+| Node backend/config/provenance/full campaign integration | D | Campaign still rejects ISOLATION_REQUIRED; no container binding in pipeline/config |
 | General component replacement, alternative policies, incremental failure export | C/D | Proposed here; absent from production mutator/config/campaign/export |
 | C3/C4 and operation tracing | C/D | Canonical definitions exist; no oracle implementation |
 | Benchmark qualification, rediscovery and comparative evaluation | D | No such execution is performed by this package |
@@ -169,7 +170,19 @@ vulnerable benchmark pin. Adapter options are strict=true, preservePaths=false;
 other defaults remain upstream. Campaign still rejects third-party execution
 before runtime/provenance capture. ORAS and GNU benchmark adapters do not exist.
 
-## Container helper boundary versus Node configured integration
+## Container helper/image validation versus Node configured integration
+
+The second coherent refresh includes merged PR #37. Main now packages the benign
+Node 22.22.0/tar 7.5.22 target in a [digest-pinned multistage image](../../../tools/node-tar/Dockerfile).
+The build stage installs committed npm locks; the distroless runtime contains
+Node/modules/worker/lock without shell/package-manager/build tools at the standard
+paths checked by the test. `--identify` reports exact versions and worker/lock
+SHA-256. The [metadata-only real-container test](../../../tests/container_integration/check_node_image.py)
+verifies those identities through the backend and cleanup. CI now runs it after
+helper boundary checks. It executes no archive and establishes neither candidate
+version compatibility nor campaign readiness. Mutable tags are build conveniences;
+execution requests require a local immutable image ID. Image contents are pinned
+inputs, but bit-for-bit image rebuild equality is not claimed (D023).
 
 Main now implements [execution/container.py](../../../src/inodefence/execution/container.py)
 and an explicit trusted host broker. [D022](../../DECISIONS.md) and the
@@ -211,8 +224,8 @@ documentation/integration gaps, not permission to bypass the gate.
 
 [STATUS](../../STATUS.md) remains ENGINEERING FOUNDATION: benchmark and evaluation
 readiness are false; Node configured campaigns have zero executions. Primary
-engineering must finish pinned image/config/provenance binding and a small benign
-full-path smoke, then freeze for full audit and required fixes. Selected benchmark
+engineering must finish backend/config/provenance binding to the pinned image
+and a small benign full-path smoke, then freeze for full audit and required fixes. Selected benchmark
 grammar, policies, independent qualification and evaluation still require the
 [post-audit tasks](post-audit-backlog.md) and a new Task Contract.
 

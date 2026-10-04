@@ -41,8 +41,10 @@ failed_gate_or_missing_prerequisite: TBD
 
 ## Rediscovery results
 
-Per-run record; aborted attempts keep NOT_RUN/INCOMPLETE as appropriate rather
-than an invented complete RunResult. One run refers to a scheduled campaign;
+Per-run record; an unstarted attempt remains NOT_RUN. An aborted attempted run
+keeps its QUALIFICATION_ONLY/EVALUATION_RUN execution category with a separate
+INCOMPLETE result classification, rather than an invented complete RunResult.
+One run refers to a scheduled campaign;
 one repetition is a benchmark/version/policy/RNG cell.
 
 ```yaml

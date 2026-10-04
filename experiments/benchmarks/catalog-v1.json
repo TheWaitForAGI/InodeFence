@@ -2,7 +2,7 @@
   "schema_version": 1,
   "status": "planning_only",
   "evidence_accessed": "2026-10-04",
-  "engine_revision": "475a6f2d7e5ef0b19d48c01eed0fbe2462ebecb2",
+  "engine_revision": "a22d20127d8e01bc539363764582ef907d51cbf1",
   "benchmarks": [
     {
       "benchmark_id": "node-link-sanitize",

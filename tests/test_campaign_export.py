@@ -2,6 +2,8 @@
 
 import base64
 import json
+import os
+from contextlib import contextmanager
 from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
@@ -424,4 +426,130 @@ def test_config_mismatch_is_rejected_before_staging(tmp_path, stored_id):
     result = replace(_campaign(), experiment_config_id=stored_id)
     with pytest.raises(ValueError, match="stored experiment_config_id"):
         export_campaign(result, tmp_path / "output", experiment_config_json='{"different":true}')
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("configured", (False, True))
+def test_ex004_export_durability_protocol_order(tmp_path, monkeypatch, configured):
+    """Check syscall/stream order, not proof of recovery after power loss.
+
+    Atomic visibility occurs at no-replace publication; parent fsync is a
+    separate durability step whose failure can leave a complete visible bundle.
+    """
+    from inodefence import campaign_export
+
+    result = _campaign()
+    config = '{"controlled_config":true}' if configured else None
+    if config is not None:
+        result = replace(result, experiment_config_id=sha256(config.encode("ascii")).hexdigest())
+    events = []
+    descriptors = {}
+    original_open = Path.open
+    original_fsync = os.fsync
+    original_publish = campaign_export._publish_directory
+    output = tmp_path / "output"
+
+    class TrackedStream:
+        def __init__(self, stream, path, mode):
+            self.stream, self.path, self.mode = stream, path, mode
+
+        def __getattr__(self, name):
+            return getattr(self.stream, name)
+
+        def write(self, data):
+            events.append((self.path.name, "write"))
+            return self.stream.write(data)
+
+        def flush(self):
+            events.append((self.path.name, "flush"))
+            return self.stream.flush()
+
+        def read(self, *args):
+            events.append((self.path.name, "readback"))
+            return self.stream.read(*args)
+
+        def readinto(self, *args):
+            events.append((self.path.name, "readback"))
+            return self.stream.readinto(*args)
+
+    @contextmanager
+    def track_open(path, mode="r", *args, **kwargs):
+        with original_open(path, mode, *args, **kwargs) as stream:
+            descriptors[stream.fileno()] = path.name
+            try:
+                yield TrackedStream(stream, path, mode)
+            finally:
+                del descriptors[stream.fileno()]
+
+    def track_fsync(descriptor):
+        if descriptor in descriptors:
+            events.append((descriptors[descriptor], "fsync"))
+        else:
+            # Observe the directory syscall itself: calling a sync helper whose
+            # fsync was removed must not satisfy this regression.
+            path = Path(os.readlink(f"/proc/self/fd/{descriptor}"))
+            events.append(("parent" if path == tmp_path else "staging", "sync"))
+        original_fsync(descriptor)
+
+    def track_publish(staged, destination):
+        assert destination == output and not destination.exists()
+        events.append(("bundle", "publish"))
+        original_publish(staged, destination)
+
+    monkeypatch.setattr(Path, "open", track_open)
+    monkeypatch.setattr(os, "fsync", track_fsync)
+    monkeypatch.setattr(campaign_export, "_publish_directory", track_publish)
+    export_campaign(result, output, experiment_config_json=config)
+    assert events[-3:] == [("staging", "sync"), ("bundle", "publish"), ("parent", "sync")]
+    names = (
+        ("steps.jsonl", "manifest.json", "experiment.json")
+        if configured
+        else ("steps.jsonl", "manifest.json")
+    )
+    for name in names:
+        file_events = [event for item, event in events if item == name]
+        assert file_events.count("fsync") == 1
+        assert file_events.index("write") < file_events.index("flush")
+        assert file_events.index("flush") < file_events.index("fsync")
+        assert file_events.index("fsync") < file_events.index("readback")
+        assert all(event == "write" for event in file_events[: file_events.index("flush")])
+        assert all(event == "readback" for event in file_events[file_events.index("readback") :])
+
+
+@pytest.mark.parametrize("failed_file", ("steps.jsonl", "manifest.json", "experiment.json"))
+def test_ex004_file_sync_failure_cannot_publish(tmp_path, monkeypatch, failed_file):
+    original_fsync = os.fsync
+    config = '{"controlled_config":true}'
+    result = replace(_campaign(), experiment_config_id=sha256(config.encode("ascii")).hexdigest())
+
+    def fail_fsync(descriptor):
+        if Path(os.readlink(f"/proc/self/fd/{descriptor}")).name == failed_file:
+            raise OSError("controlled file fsync failure")
+        original_fsync(descriptor)
+
+    monkeypatch.setattr(os, "fsync", fail_fsync)
+    with pytest.raises(OSError, match="file fsync"):
+        export_campaign(result, tmp_path / "output", experiment_config_json=config)
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("corrupted_file", ("manifest.json", "experiment.json"))
+def test_ex004_readback_validates_manifest_and_config_before_publication(
+    tmp_path, monkeypatch, corrupted_file
+):
+    original = Path.open
+    config = '{"controlled_config":true}'
+    result = replace(_campaign(), experiment_config_id=sha256(config.encode("ascii")).hexdigest())
+
+    @contextmanager
+    def corrupt(path, mode="r", *args, **kwargs):
+        with original(path, mode, *args, **kwargs) as stream:
+            yield stream
+        if path.name == corrupted_file and mode == "xb":
+            with original(path, "ab") as stream:
+                stream.write(b"controlled corruption")
+
+    monkeypatch.setattr(Path, "open", corrupt)
+    with pytest.raises(OSError, match="staged (manifest|config) differs"):
+        export_campaign(result, tmp_path / "output", experiment_config_json=config)
     assert list(tmp_path.iterdir()) == []

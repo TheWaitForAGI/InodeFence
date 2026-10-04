@@ -105,7 +105,9 @@ def test_tiny_benign_configured_node_campaign(
         assert not Path(step.result.after.sandbox_root).exists()
         signature = canonical_json(step.result.signature)
         assert container_image not in signature and config.config_id not in signature
-    assert len(identities) == len(set(identities)) == 9  # one metadata context + eight archives
+    # Bind discovery + pre-freeze verification + eight per-run verifications + eight archives.
+    assert len(identities) == len(set(identities)) == 18
+    assert sum("--identify" in request.command for request in requests) == 10
     assert sum("--identify" not in request.command for request in requests) == 8
     assert all(not request.run_root.exists() for request in requests)
     assert set(runtime_root().iterdir()) == roots_before
@@ -115,6 +117,12 @@ def test_tiny_benign_configured_node_campaign(
     manifest_value = json.loads(manifest.read_bytes())
     assert manifest_value["experiment_config_id"] == config.config_id
     assert manifest_value["schema_version"] == 4
+    isolation = manifest_value["execution_provenance"]["isolation"]
+    assert isolation["schema_version"] == 2
+    assert isolation["artifact_origin"] == "image-identification-v1"
+    assert isolation["artifacts"] == [
+        {"name": item.name, "sha256": item.sha256} for item in target.invocation.artifacts
+    ]
     assert manifest_value["experiment_config_file"] == "experiment.json"
     assert (
         manifest_value["experiment_config_sha256"]
@@ -140,8 +148,8 @@ def test_tiny_benign_configured_node_campaign(
         "corpus_stats": asdict(result.final_corpus_stats),
         "violation_fingerprints": [],
         "retained_case_ids": result.retained_case_ids,
-        "containers_created": 9,
-        "containers_removed": 9,
+        "containers_created": len(identities),
+        "containers_removed": len(identities),
         "archive_contexts": 8,
         "runtime_cleanup": True,
         "steps_sha256": manifest_value["steps_sha256"],

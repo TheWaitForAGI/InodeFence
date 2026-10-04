@@ -50,6 +50,8 @@ def test_frozen_image_runtime_and_worker_content_attestation(container_backend, 
     assert frozen.runtime_version and frozen.runtime_api_version
     assert frozen.runtime_os == "linux"
     assert frozen.runtime_architecture and frozen.image_architecture
+    assert frozen.schema_version == 2
+    assert frozen.artifact_origin == "image-identification-v1"
     assert [(item.name, item.sha256) for item in frozen.artifacts] == [
         (
             "node-tar-package-lock",

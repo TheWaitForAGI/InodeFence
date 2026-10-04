@@ -21,6 +21,13 @@ OWNER_LABEL = "org.inodefence.execution-owner"
 IMPLEMENTATION = "docker-volume-subpath-v1"
 
 
+def _expected_environment(image: dict) -> tuple[str, ...]:
+    """Clear image values, then apply the two explicit policy overrides."""
+    values = {value.split("=", 1)[0]: "" for value in image["Config"].get("Env") or ()}
+    values.update(PATH="/usr/local/bin:/usr/bin:/bin", LANG="C.UTF-8")
+    return tuple(f"{name}={value}" for name, value in values.items())
+
+
 def checked(result: CommandResult, operation: str) -> bytes:
     if result.returncode != 0 or result.timed_out or result.truncated:
         raise BackendError(
@@ -145,11 +152,7 @@ class ContainerExecutionBackend(ExecutionBackend):
         root = str(request.run_root)
         subpath = request.run_root.relative_to(RUNTIME_BASE).as_posix()
         # Clear image defaults as well as excluding controller credential variables.
-        env = tuple(
-            arg
-            for value in image["Config"].get("Env") or ()
-            for arg in ("--env", value.split("=", 1)[0] + "=")
-        )
+        env = tuple(arg for value in _expected_environment(image) for arg in ("--env", value))
         return (
             "container",
             "create",
@@ -191,10 +194,6 @@ class ContainerExecutionBackend(ExecutionBackend):
             "--workdir",
             root + "/extract",
             *env,
-            "--env",
-            "PATH=/usr/local/bin:/usr/bin:/bin",
-            "--env",
-            "LANG=C.UTF-8",
             "--entrypoint",
             request.command[0],
             request.image_id,
@@ -219,6 +218,7 @@ class ContainerExecutionBackend(ExecutionBackend):
                     .strip()
                 )
                 info = self.inspect(identity)
+                config = info["Config"]
                 host = info["HostConfig"]
                 policy = self.resources
                 mount = host["Mounts"]
@@ -230,6 +230,17 @@ class ContainerExecutionBackend(ExecutionBackend):
                         del options["DriverConfig"]
                 if (
                     info["Image"] != request.image_id
+                    or not {"Entrypoint", "Cmd", "WorkingDir", "Env"} <= config.keys()
+                    or config.get("Entrypoint") != [request.command[0]]
+                    # Docker emits null or [] for an explicitly cleared empty Cmd.
+                    or (
+                        config.get("Cmd") != list(request.command[1:])
+                        and not (len(request.command) == 1 and config.get("Cmd") is None)
+                    )
+                    or config.get("WorkingDir") != str(request.run_root / "extract")
+                    or not isinstance(config.get("Env"), list)
+                    or not all(isinstance(value, str) for value in config["Env"])
+                    or sorted(config["Env"]) != sorted(_expected_environment(image))
                     or host["NetworkMode"] != "none"
                     or not host["ReadonlyRootfs"]
                     or host["Privileged"]

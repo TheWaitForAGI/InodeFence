@@ -62,7 +62,14 @@ class FakeDocker:
             self.target = {
                 "Id": "d" * 64,
                 "Image": IMAGE,
-                "Config": {"Labels": {OWNER_LABEL: OWNER}, "User": "1000:1000"},
+                "Config": {
+                    "Labels": {OWNER_LABEL: OWNER},
+                    "User": "1000:1000",
+                    "Entrypoint": [args[args.index("--entrypoint") + 1]],
+                    "Cmd": list(args[args.index(IMAGE) + 1 :]) or None,
+                    "WorkingDir": root + "/extract",
+                    "Env": [args[index + 1] for index, arg in enumerate(args) if arg == "--env"],
+                },
                 "State": {"Running": False, "Pid": 0, "Status": "created"},
                 "HostConfig": {
                     "NetworkMode": "bridge" if self.bad_policy else "none",
@@ -142,6 +149,93 @@ def fake_backend(monkeypatch):
     monkeypatch.setattr("socket.gethostname", lambda: CONTROLLER[:12])
     docker = FakeDocker()
     return docker, ContainerExecutionBackend(docker, CONTROLLER, "inodefence-runtime", OWNER)
+
+
+@pytest.mark.parametrize(
+    "field,value",
+    (
+        ("Entrypoint", ["/different-benign-helper"]),
+        ("Cmd", ["different"]),
+        ("WorkingDir", "/tmp"),
+        ("Env", ["AUDIT_DOUBLE=1"]),
+        ("Env", ["SECRET=ignored", "PATH=/usr/local/bin:/usr/bin:/bin", "LANG=C.UTF-8"]),
+        ("Env", ["SECRET=", "PATH=/usr/bin", "LANG=C.UTF-8"]),
+        ("Env", ["SECRET=", "PATH=/usr/local/bin:/usr/bin:/bin", "LANG=C.UTF-8", "SECRET="]),
+    ),
+)
+def test_cr002_inspected_invocation_drift_fails_before_start(fake_backend, sandbox, field, value):
+    docker, backend = fake_backend
+    original = docker.run
+
+    def drift(args, timeout):
+        result = original(args, timeout)
+        if args[:2] == ("container", "create"):
+            docker.target["Config"][field] = value
+        return result
+
+    docker.run = drift
+    with pytest.raises(BackendError, match="execution policy"):
+        with backend.prepare(
+            ContainerRequest(IMAGE, ("/expected-helper", "expected"), sandbox.root, 5)
+        ):
+            raise AssertionError("drift must fail during preparation")
+    assert not any(call[:2] == ("container", "start") for call in docker.calls)
+    assert docker.target is None
+
+
+@pytest.mark.parametrize("field", ("Entrypoint", "Cmd", "WorkingDir", "Env"))
+def test_cr002_missing_inspected_invocation_fields_fail_closed(fake_backend, sandbox, field):
+    docker, backend = fake_backend
+    original = docker.run
+
+    def missing(args, timeout):
+        result = original(args, timeout)
+        if args[:2] == ("container", "create"):
+            del docker.target["Config"][field]
+        return result
+
+    docker.run = missing
+    with pytest.raises(BackendError, match="execution policy"):
+        with backend.prepare(ContainerRequest(IMAGE, ("/expected-helper",), sandbox.root, 5)):
+            raise AssertionError("missing invocation configuration must not execute")
+    assert not any(call[:2] == ("container", "start") for call in docker.calls)
+    assert docker.target is None
+
+
+def test_cr002_environment_order_does_not_change_the_policy(fake_backend, sandbox):
+    docker, backend = fake_backend
+    original = docker.run
+
+    def reordered(args, timeout):
+        result = original(args, timeout)
+        if args[:2] == ("container", "create"):
+            docker.target["Config"]["Env"].reverse()
+        return result
+
+    docker.run = reordered
+    with backend.prepare(
+        ContainerRequest(IMAGE, ("/expected-helper", "argument"), sandbox.root, 5)
+    ):
+        pass
+
+
+def test_ex003_timed_out_cli_with_exited_zero_primary_is_not_success(fake_backend, sandbox):
+    docker, backend = fake_backend
+    docker.exit_code = 0
+    original = docker.run
+
+    def expired_pipes(args, timeout):
+        result = original(args, timeout)
+        if args[:2] == ("container", "start"):
+            assert docker.target["State"]["Status"] == "exited"
+            return replace(result, timed_out=True)
+        return result
+
+    docker.run = expired_pipes
+    with backend.prepare(
+        ContainerRequest(IMAGE, ("/expected-helper",), sandbox.root, 5)
+    ) as prepared:
+        assert prepared.execute().exit_code is None
 
 
 @pytest.mark.parametrize("field", ResourcePolicy.__dataclass_fields__)

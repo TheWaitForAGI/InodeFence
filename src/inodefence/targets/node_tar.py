@@ -9,15 +9,13 @@ from pathlib import Path
 from inodefence.execution.base import (
     BackendError,
     ContainerOutcome,
-    ContainerRequest,
     ExecutionBackend,
 )
 from inodefence.model import ExecutionResult, ExecutionStatus
 from inodefence.model.isolation import ArtifactDigest
 from inodefence.model.provenance import TargetProvenance
-from inodefence.runtime import disposable_sandbox
 
-from .isolated import IsolatedTarget
+from .isolated import IsolatedTarget, identify_image
 
 NODE = "/usr/local/bin/node"
 WORKER = "/target/worker.cjs"
@@ -33,28 +31,22 @@ def _validate_binding(image_id: str, timeout: float) -> None:
 
 
 def _identify(backend: ExecutionBackend, image_id: str) -> dict:
-    backend.validate_image(image_id)
-    with disposable_sandbox() as sandbox:
-        request = ContainerRequest(
-            image_id, (NODE, WORKER, "--identify", MODULE, LOCK), sandbox.root, 10
-        )
-        with backend.prepare(request) as prepared:
-            outcome = prepared.execute()
-            if outcome.exit_code != 0 or outcome.output_truncated:
-                raise BackendError("node-tar image version discovery failed")
-            try:
-                return json.loads(outcome.stdout)
-            except ValueError as error:
-                raise BackendError("node-tar image returned invalid metadata") from error
+    stdout = identify_image(backend, image_id, (NODE, WORKER, "--identify", MODULE, LOCK))
+    try:
+        return json.loads(stdout)
+    except ValueError as error:
+        raise BackendError("node-tar image returned invalid metadata") from error
 
 
 @dataclass(frozen=True, slots=True)
 class NodeTarTarget:
-    """Immutable invocation descriptor; bind() discovers identity inside its image.
+    """Immutable expected identity; bind() discovers defaults inside its image.
 
     No local executable/package_root or direct subprocess API exists. The returned
     IsolatedTarget owns execution via the backend. Options remain strict=true,
     preservePaths=false and upstream defaults; metadata is never Oracle truth.
+    Constructed/replaced values remain declarations. The wrapper must observe
+    and verify them before provenance freeze and before archive execution.
     """
 
     image_id: str
@@ -107,10 +99,32 @@ class NodeTarTarget:
 
     @property
     def artifacts(self) -> tuple[ArtifactDigest, ...]:
+        """Expected digests; only verified probe output may enter isolation.artifacts."""
         return (
             ArtifactDigest("node-tar-package-lock", self.package_lock_sha256),
             ArtifactDigest("node-tar-worker", self.worker_sha256),
         )
+
+    @property
+    def identity_command(self) -> tuple[str, ...]:
+        return (NODE, WORKER, "--identify", MODULE, LOCK)
+
+    def verify_identity(self, stdout: bytes) -> tuple[ArtifactDigest, ...]:
+        try:
+            value = json.loads(stdout)
+            observed = NodeTarTarget(
+                self.image_id,
+                value["node_version"],
+                value["tar_version"],
+                value["worker_sha256"],
+                value["package_lock_sha256"],
+                self.timeout_seconds,
+            )
+        except (ValueError, KeyError, TypeError) as error:
+            raise BackendError("node-tar image returned invalid identity metadata") from error
+        if observed != self:
+            raise BackendError("node-tar execution identity changed after setup")
+        return observed.artifacts
 
     def command(self, archive_path: Path, extraction_root: Path) -> tuple[str, ...]:
         return (

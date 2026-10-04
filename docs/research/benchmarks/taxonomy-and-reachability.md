@@ -1,0 +1,135 @@
+# Vulnerability taxonomy, observation and mutation reachability
+
+**Predictions derived from candidate evidence and inspected source; no hits measured.**
+[Candidate matrix](candidate-matrix.md) provides adjacent advisory/patch sources;
+[engine audit](engine-contract-audit.md) is the implementation basis. C0/C1/C2
+retain their canonical definitions. Root causes below describe why extraction
+can fail; effect labels describe what remains in the filesystem afterward.
+
+## Root-cause classes
+
+| Class | Plain-language meaning / technical definition | What changes in the archive | Required filesystem state | Effect and InodeFence relevance |
+| --- | --- | --- | --- | --- |
+| R1 Lexical confinement failure | A text check accepts a path outside its intended root; incomplete stripping or missing link-field validation | Absolute/repeated-root member or link target, or parent components in selected members | Writable external destination; hardlink source must exist on same device | Outside namespace or sentinel alias/effect; C0/C1/C2 depending on operation. N01/N05/G02 |
+| R2 Validation-base mismatch | The same relative text names different objects because checking and creation start in different directories | Hardlink destination depth and relative link target | External controlled file; O01 additionally requires process CWD outside extraction | Internal alias, C1 and C2 link metadata. Checking the archive spelling alone misses the relationship. N02/O01 |
+| R3 Link-resolution composition | String cleanup ignores that earlier symlinks change how later components are resolved | Multiple dependent links; hardlink target or later regular member traverses the chain | Nested directories; external existing file for identity arm or writable directory for creation arm | Persistent alias or write. C1 captures N03; C2/C0 capture O02. Order matters because links must exist when consumed |
+| R4 Stale directory-safety cache | Extractor still believes a directory is safe after it becomes a symlink | Directory/symlink collision then descendant file; N06 adds POSIX alternate spellings | Outside directory or protected file destination; cache filled earlier in same extraction | External write/creation, C2/C0. N04/N06 test state transition, not a static traversal string |
+| R5 Filesystem-name equivalence mismatch | Extractor treats two spellings as different while filesystem treats them as one object | Unicode/case/short-name equivalents; directory/link replacement or concurrent reservations | Normalization/case-insensitive filesystem or Windows short-name semantics | Possible outside write; persistent effect may be seen, but equivalence/race cause cannot be inferred from snapshots. N07/N08 outside Linux v1 |
+| R6 Archive-parser interpretation mismatch | Metadata changes which members a parser sees | PAX override and intervening GNU metadata headers | Two parser consumers; no special filesystem state required | Member disagreement is not itself C0/C1/C2. N09 outside USTAR and filesystem-contract scope |
+| R7 Configured-root mismatch | Extractor's extra top-level directory is not also used to confine hardlink sources | Hardlink under top-level extraction option; optional subsequent write/link interaction | Existing source in working directory; pre-existing symlink for stronger effect | C1/C2 if source protected; C0 only if actual configured boundary is represented correctly. G01 needs boundary qualification |
+| R8 Existing-state / input-sink assumption | Safety depends on prior tree contents or a non-TAR filename input | G03 reuses state across archives; O03 changes OCI title rather than TAR entries | Pre-existing internal symlink and external writable destination | C0/C2 can see effect given setup, but current empty-extract single-case campaign cannot express the scenario. Does not prove a default extractor defect |
+
+E1 = persistent outside namespace change; E2 = internal/external identity sharing;
+E3 = external bytes/metadata change; E4 = link referent or parser behavior without
+persistent E1–E3 evidence. These are effect categories, not new oracle contracts.
+Existing-object replacement and entry order are cross-cutting requirements of
+R3/R4/R8, rather than separate independent vulnerability counts.
+
+## Candidate-by-candidate observation map
+
+Expected = follows from the specified persistent effect and controlled setup;
+possible = depends on which object/operation survives; not relevant = no such
+evidence for that arm. “Expected” is a hypothesis, not a guarantee of rediscovery.
+For platform-excluded cases, entries describe the required platform, not current
+Linux support. C2 includes metadata, even when bytes are unchanged.
+
+| Candidate | C0 | C1 | C2 | Overall current-contract coverage / exact qualification |
+| --- | --- | --- | --- | --- |
+| N01 | Not relevant for internal hardlink alone; possible for additional external replacement | Expected if alias remains to protected file | Expected nlink/ctime; possible content write | PARTIALLY OBSERVABLE: hardlink arm observable; symlink text alone has no referent verdict |
+| N02 | Not relevant for alias alone | Expected protected-file alias | Expected nlink/ctime; possible bytes | OBSERVABLE WITH CURRENT CONTRACTS for persistent alias; root-cause check/use trace absent |
+| N03 | Not relevant for alias alone | Expected if final alias persists | Expected link metadata; possible bytes | OBSERVABLE WITH CURRENT CONTRACTS for alias; removed alias/transient chain effect not covered |
+| N04 | Possible: external creation/replacement, not in-place overwrite | Not relevant for symlink-directed write | Expected if protected file changed | OBSERVABLE WITH CURRENT CONTRACTS for protected write or persistent external creation; cache cause requires review |
+| N05 | Expected for external creation/replacement; possible for overwrite | Not relevant | Possible if destination protected | OBSERVABLE WITH CURRENT CONTRACTS for persistent effect; absolute destination must be in observed sandbox |
+| N06 | Possible external creation/replacement | Not relevant | Expected when protected destination modified | OBSERVABLE WITH CURRENT CONTRACTS for POSIX persistent write; different spelling by itself is not violation |
+| N07 | Possible | Not relevant for symlink arm | Possible protected write | PARTIALLY OBSERVABLE: effects only if platform equivalence supplied; no equivalence evidence/event history |
+| N08 | Possible | Not relevant for symlink arm | Possible protected write | PARTIALLY OBSERVABLE: persistent effects, not race cause or transient event sequence |
+| N09 | Not relevant to parser disagreement | Not relevant | Not relevant | NOT OBSERVABLE: missing parser-member comparison and required encoding, irrespective of incidental later effects |
+| O01 | Not relevant for internal alias alone | Expected protected CWD-file alias | Expected nlink/ctime; possible bytes | OBSERVABLE WITH CURRENT CONTRACTS once CWD/source setup is available |
+| O02 | Possible external creation/replacement | Not relevant for symlink-directed write | Expected if protected file overwritten | OBSERVABLE WITH CURRENT CONTRACTS for effect; lexical/final-component cause requires source review |
+| O03 | Possible external creation/replacement | Not relevant | Possible protected write | PARTIALLY OBSERVABLE: effects supported, non-TAR title and existing-state setup absent |
+| G01 | Possible only with correctly modeled designated root | Expected if surviving link names a protected source | Expected link metadata; possible bytes | PARTIALLY OBSERVABLE: fixed layout cannot automatically classify a narrower nested --one-top-level boundary |
+| G02 | Possible persistent external creation/replacement | Not relevant | Possible protected overwrite | OBSERVABLE WITH CURRENT CONTRACTS for persistent effect; CLI selection/precondition must be fixed |
+| G03 | Possible persistent external creation/replacement | Not relevant | Possible protected write | PARTIALLY OBSERVABLE: reused-tree setup absent; policy interpretation disputed, snapshots cannot settle it |
+
+C4 is not inferred from R2 effects: a validated alias proves C1, not the exact
+check/use sequence. No C3/C4 implementation or full tracing is requested for v1.
+Writes outside the observed sandbox, dangling external links, confidential reads,
+and effects undone before AFTER need evidence that current snapshots lack.
+
+## Reachability means two different things
+
+**Structure reachability** asks whether the seeds/operators' output language can
+encode the semantic shape. **Benchmark reachability** additionally requires
+reaching a protected controlled object under the actual runtime setup. Neither
+measures how likely a finite search is to discover it. YES means a justified
+finite construction exists in that language, not a bounded hit rate. PARTIAL
+means some required semantics are representable but a named missing capability
+remains. NO means a demonstrated language/setup exclusion; UNKNOWN means the
+published condition is insufficiently specified.
+
+Current seeds plus operator name vocabulary cannot spell `outside` or default
+`sentinel.txt`: operators preserve existing characters and only append `x` or
+path punctuation. In particular the needed `o`, `u`, `s`, `n` characters cannot
+appear from the current stem/seed language. Thus no selected sentinel alias or
+protected-byte rediscovery is reachable with the current default setup, even
+if an arbitrary unprotected outside creation might be. This is a source-level
+exclusion, not a failed fuzzing measurement.
+
+## Gap matrix
+
+✓ = required; – = not required for the selected arm; ? = condition unresolved.
+“Existing FS” distinguishes an ordinary external sentinel from a required
+pre-existing object inside extraction; only the latter needs a new setup hook.
+
+| Candidates / class | Path | Hardlink | Symlink | Order | Existing FS | Structure / benchmark reachability now |
+| --- | --- | --- | --- | --- | --- | --- |
+| N01 / R1 link-field | ✓ | ✓ | – | – | External source | YES for simple link; NO for selected sentinel address |
+| N02 / R2 | ✓ | ✓ | – | – | External source | PARTIAL nested path/target composition; NO for default sentinel |
+| N03 / R3 | ✓ | ✓ | ✓ | ✓ | External source, nested parents | PARTIAL chain/component construction; NO for default sentinel |
+| N04 / R4 | ✓ | – | ✓ | ✓ | External directory/file | PARTIAL directory/link collision names and link-to-directory target; NO for default protected destination |
+| N05 / R1 member-root | ✓ | – | – | – | External writable directory | YES repeated-root spellings; NO for selected sentinel address |
+| N06 / R4 alternate spelling | ✓ | – | ✓ | ✓ | External directory/file | NO: POSIX backslash spelling absent from output alphabet |
+| N07/N08 / R5 | ✓ | – | ✓ | ✓ | Equivalent-name filesystem | NO: alphabet and supported filesystem prerequisites missing |
+| N09 / R6 | ✓ | ? | ? | ✓ | None | NO: PAX/GNU metadata not in model/builder |
+| O01 / R2 | ✓ | ✓ | – | – | External CWD source | YES relative link text; PARTIAL end-to-end: generic-name sentinel and isolated external CWD required |
+| O02 / R3 write | ✓ | – | ✓ | ✓ | External file | PARTIAL chains, duplicate type/path alignment; NO for default sentinel |
+| O03 / R8 API sink | ✓ | – | ✓ | – | Existing internal symlink | NO: title input and setup absent, not TAR-mutation benchmark |
+| G01 / R7 | ✓ | ✓ | Possible | Possible | Source under wider CWD, optional internal symlink | UNKNOWN exact invocation/pin/root; PARTIAL types available |
+| G02 / R1 selection | ✓ | – | – | ? | CLI-selected name and destination | UNKNOWN selection details; NO for default sentinel address |
+| G03 / R8 reused tree | ✓ | – | ✓ | ✓ across runs | Existing internal symlink | NO: campaign creates fresh empty extract for each input |
+
+## Smallest post-audit mutation work justified by these candidates
+
+**M1: generic path-component replacement/recombination.** Allow an explicit
+finite component dictionary and splice/replace operations for entry and link
+text, including controlled sandbox-visible directory/file names. Include benign
+archive components and sandbox topology for every target/variant equally;
+exclude CVE-specific link sequences. N01 requires addressable external names (relative sanitation arm preferred);
+N03 requires link target component composition; N04 requires renaming its
+existing directory seed to collide with a link. Pin the complete dictionary,
+sandbox-visible layout, grammar and probabilities in configuration.
+Never substitute run paths after hashing/export without recording the logical
+input and actual TAR mapping. Prefer relative names for selected structures: the unmerged container PR #36
+preserves the identical random absolute run path, rather than a stable alias.
+Absolute-address experiments need explicit input/run-context binding or a
+qualified mount mapping, and are optional; do not request a competing backend.
+Keep proposals within USTAR field limits; an over-limit proposal becomes a
+deterministic counted no-op under the pinned future grammar, not a free retry.
+
+M1 should be sufficient in principle with seeded directory entries and existing
+reorder/duplicate/link operators. No new entry type, arbitrary mode mutation or
+new-directory constructor is required by the four selected classes. Validate
+this with constructive **logical, non-executing** reachability checks after the
+audit; do not claim practical discoverability before a pilot.
+
+**M2: optional generic dependency-aware link-chain proposal.** Consider only if
+M1 still produces essentially no valid multi-link dependency states within a
+predeclared pilot budget for N03 (or later O02). It may select existing paths and
+compose multiple generic entries, without encoding an advisory recipe. Compare
+all feedback variants using identical M2 policy. A multi-step macro changes the
+search problem and must get its own policy revision. It is not required now.
+
+**M3: optional literal-backslash component support** only if N06 is admitted to
+a later set. Ordinary POSIX backslash semantics do not require Windows support.
+Do not add Unicode, Windows aliases, PAX, races or persistent extraction trees
+for excluded candidates merely to enlarge the feature list.

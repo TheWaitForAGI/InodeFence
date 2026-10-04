@@ -1,0 +1,359 @@
+{
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "enum": [
+        1
+      ]
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "planning_only"
+      ]
+    },
+    "evidence_accessed": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "engine_revision": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "benchmarks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "benchmark_id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]+$"
+          },
+          "known_issue": {
+            "type": "string",
+            "minLength": 1
+          },
+          "component": {
+            "type": "string",
+            "minLength": 1
+          },
+          "advisory_date": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          },
+          "affected_version_range": {
+            "type": "string",
+            "minLength": 1
+          },
+          "fixed_version_range": {
+            "type": "string",
+            "minLength": 1
+          },
+          "root_cause": {
+            "type": "string",
+            "minLength": 1
+          },
+          "reported_effect": {
+            "type": "string",
+            "minLength": 1
+          },
+          "expected_observable_effect": {
+            "type": "string",
+            "minLength": 1
+          },
+          "contract_reason": {
+            "type": "string",
+            "minLength": 1
+          },
+          "analysis_document": {
+            "type": "string",
+            "minLength": 1
+          },
+          "target_family": {
+            "type": "string",
+            "enum": [
+              "node-tar",
+              "oras-go",
+              "gnu-tar"
+            ]
+          },
+          "selected_pair": {
+            "type": "object",
+            "properties": {
+              "vulnerable": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "minLength": 1
+              },
+              "fixed": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "minLength": 1
+              }
+            },
+            "required": [
+              "vulnerable",
+              "fixed"
+            ],
+            "additionalProperties": false
+          },
+          "root_cause_class": {
+            "type": "string",
+            "enum": [
+              "R1",
+              "R2",
+              "R3",
+              "R4",
+              "R5",
+              "R6",
+              "R7",
+              "R8"
+            ]
+          },
+          "entry_types": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "regular",
+                "directory",
+                "hardlink",
+                "symlink",
+                "pax",
+                "gnu_longname",
+                "gnu_longlink"
+              ]
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "path_semantics": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "entry_order_dependency": {
+            "type": "string",
+            "enum": [
+              "required",
+              "none",
+              "unknown"
+            ]
+          },
+          "filesystem_preconditions": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "contract_mapping": {
+            "type": "object",
+            "properties": {
+              "C0": {
+                "type": "string",
+                "enum": [
+                  "expected",
+                  "possible",
+                  "not_relevant"
+                ]
+              },
+              "C1": {
+                "type": "string",
+                "enum": [
+                  "expected",
+                  "possible",
+                  "not_relevant"
+                ]
+              },
+              "C2": {
+                "type": "string",
+                "enum": [
+                  "expected",
+                  "possible",
+                  "not_relevant"
+                ]
+              }
+            },
+            "required": [
+              "C0",
+              "C1",
+              "C2"
+            ],
+            "additionalProperties": false
+          },
+          "required_mutations": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "structure_reachability": {
+            "type": "string",
+            "enum": [
+              "YES",
+              "PARTIAL",
+              "NO",
+              "UNKNOWN"
+            ]
+          },
+          "current_reachability": {
+            "type": "string",
+            "enum": [
+              "YES",
+              "PARTIAL",
+              "NO",
+              "UNKNOWN"
+            ]
+          },
+          "observability": {
+            "type": "string",
+            "enum": [
+              "OBSERVABLE WITH CURRENT CONTRACTS",
+              "PARTIALLY OBSERVABLE",
+              "NOT OBSERVABLE"
+            ]
+          },
+          "selection": {
+            "type": "string",
+            "enum": [
+              "primary",
+              "secondary",
+              "excluded"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "selected_pending_qualification",
+              "secondary_pending",
+              "excluded_v1"
+            ]
+          },
+          "observer_requirements": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "uncertainties": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "source_type": {
+                  "type": "string",
+                  "enum": [
+                    "upstream_advisory",
+                    "patch",
+                    "patch_pointer",
+                    "release",
+                    "official_database",
+                    "vendor_advisory",
+                    "upstream_policy",
+                    "upstream_source"
+                  ]
+                },
+                "publisher": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "identifier": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "url": {
+                  "type": "string",
+                  "pattern": "^https://"
+                },
+                "inspected": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "source_type",
+                "publisher",
+                "identifier",
+                "url",
+                "inspected"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "benchmark_id",
+          "known_issue",
+          "component",
+          "advisory_date",
+          "affected_version_range",
+          "fixed_version_range",
+          "root_cause",
+          "reported_effect",
+          "expected_observable_effect",
+          "contract_reason",
+          "analysis_document",
+          "target_family",
+          "selected_pair",
+          "root_cause_class",
+          "entry_types",
+          "path_semantics",
+          "entry_order_dependency",
+          "filesystem_preconditions",
+          "contract_mapping",
+          "required_mutations",
+          "structure_reachability",
+          "current_reachability",
+          "observability",
+          "selection",
+          "status",
+          "observer_requirements",
+          "uncertainties",
+          "sources"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "uniqueItems": true
+    }
+  },
+  "required": [
+    "schema_version",
+    "status",
+    "evidence_accessed",
+    "engine_revision",
+    "benchmarks"
+  ],
+  "additionalProperties": false,
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "InodeFence planning-only benchmark catalog v1",
+  "description": "Static metadata only; not an execution configuration. No payloads, commands or archive bytes."
+}

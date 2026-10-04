@@ -156,3 +156,21 @@ not independently prove the assertions inside arbitrary assessor output or run
 target qualification. A file/digest is integrity evidence, not authorship. Actual
 benign/status/timeout/lifecycle probes must be supplied before declaring PASS.
 Existing smoke CI and planning catalog are not retroactively marked qualified.
+
+## Target matrix and protocol binding
+
+The separate `EvaluationCatalog` stores unique `ProtocolBinding` records with
+benchmark/family, exact A/B TargetProvenance versions, expected full source/
+runtime/isolation/image/artifact/sentinel provenance, required profiles/protocol,
+pinned builder and checksummed qualification links. Core ExperimentConfig and
+the existing planning-only benchmark catalog are unchanged.
+
+`validate_catalog(path)` freshly verifies both qualification reports and their
+underlying artifacts, then compares every expected binding. READY requires both
+fully qualified reports and matching pair source/sentinels. Missing bindings or
+NOT_RUN/FAIL reports are NOT_READY; corrupt/missing/mismatched declared links are
+INVALID. `require_ready(path, benchmark_id)` raises unless READY. No input boolean
+or document assertion can enable a benchmark. Target release strings retain all
+runtime/version components that the actual core adapter records; no missing
+version information is invented. This is protocol/evidence binding, not proof
+that an assessor's assertions are independently true or a rediscovery outcome.

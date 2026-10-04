@@ -327,3 +327,14 @@ Container setup은 BEFORE 이전, stopped PID namespace 확인은 AFTER 이전, 
 AFTER 이후다. Host broker는 invocation 소유 identity만 다시 cleanup하며 runtime 오류를
 target status로 숨기지 않는다. 구체적 policy/검증/한계는
 [execution 계약](../src/inodefence/execution/README.md)을 따른다.
+
+## D023 — Node target image는 build tooling과 runtime을 분리
+
+**상태:** pinned image와 metadata-only container 검증.
+
+Digest-pinned Node build stage에서 committed npm lock으로 dependencies를 설치하고,
+digest-pinned distroless Debian 12 runtime에는 Node binary, modules, lock과 worker만
+복사한다. Exact Node/tar version 및 worker/lock SHA-256을 container 안에서 확인한다.
+실행은 mutable tag가 아닌 immutable local image ID를 받는다. Platform/build metadata로
+image ID가 달라질 수 있어 bit-for-bit build reproducibility를 주장하지 않는다.
+Image packaging은 campaign permission이나 Security Contract verdict가 아니다.

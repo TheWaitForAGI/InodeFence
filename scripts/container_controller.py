@@ -29,13 +29,14 @@ def main() -> int:
     parser.add_argument("--volume", required=True)
     parser.add_argument("--owner", required=True)
     parser.add_argument("--image", required=True)
-    parser.add_argument("mode", choices=("validate",))
+    parser.add_argument("mode", choices=("validate", "validate-node-image"))
     args = parser.parse_args()
     client = StdioDockerClient(sys.stdin, sys.stdout)
     with redirect_stdout(sys.stderr):
         backend = ContainerExecutionBackend(client, args.controller, args.volume, args.owner)
+        suite = "check_boundary.py" if args.mode == "validate" else "check_node_image.py"
         return pytest.main(
-            ["tests/container_integration/check_boundary.py", "-q", "-s", "-p", "no:cacheprovider"],
+            [f"tests/container_integration/{suite}", "-q", "-s", "-p", "no:cacheprovider"],
             plugins=[IntegrationFixtures(backend, args.image)],
         )
 

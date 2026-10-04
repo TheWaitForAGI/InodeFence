@@ -141,7 +141,8 @@ explicit trusted reference campaign만 허용하며 isolation-required/미선언
 Node-tar adapter engineering은 정상 fixture 범위에서 완료됐으며 generated-input campaign은 금지한다.
 ExperimentConfig v1은 필수 JSON 설정/정규화된 config ID와 pre-execution seed/target binding을
 제공한다. Safe reference config CLI가 실행 전 config ID를 campaign/manifest에 보존한다.
-다음 PR은 Node target image와 validated backend의 target/config/provenance binding이다.
+Pinned Node 22.22.0/tar 7.5.22 distroless target image와 실제 container metadata 검증을 추가했다.
+Worker/lock digest는 image 안에서 확인한다. 다음은 validated backend의 target/config/provenance binding이다.
 Container helper의 filesystem/network/credential/resource/descendant 검증은 이미 수행했다.
 그 뒤에만 설정 기반의 아주 작은 benign Node campaign smoke를 수행한다. 현재 Node campaign은
 runtime/provenance capture/첫 run_case 이전에 거부됐으며 실행 수는 0이다. Requirement를 낮추지 않았다.

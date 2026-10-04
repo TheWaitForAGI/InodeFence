@@ -55,6 +55,7 @@ jobs:
         run: |
           docker build -f .devcontainer/Dockerfile -t inodefence-controller:ci .
           docker build -f tools/container-helper/Dockerfile -t inodefence-helper:ci .
+          docker build -f tools/node-tar/Dockerfile -t inodefence-node-tar:ci .
       - name: Prepare independent trusted Linux controller
         run: |
           docker volume create inodefence-ci-runtime
@@ -66,6 +67,10 @@ jobs:
         run: |
           IF_HELPER_IMAGE=$(docker image inspect inodefence-helper:ci --format '{{.Id}}')
           PYTHONPATH=src python -m scripts.container_host --context default --controller inodefence-ci-controller --volume inodefence-ci-runtime --image "$IF_HELPER_IMAGE" validate
+      - name: Pinned Node image metadata through the validated backend
+        run: |
+          IF_NODE_IMAGE=$(docker image inspect inodefence-node-tar:ci --format '{{.Id}}')
+          PYTHONPATH=src python -m scripts.container_host --context default --controller inodefence-ci-controller --volume inodefence-ci-runtime --image "$IF_NODE_IMAGE" validate-node-image
       - name: Remove only this job's trusted controller and volume
         if: always()
         run: |

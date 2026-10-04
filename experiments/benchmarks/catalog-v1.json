@@ -1,0 +1,1511 @@
+{
+  "schema_version": 1,
+  "status": "planning_only",
+  "evidence_accessed": "2026-10-04",
+  "engine_revision": "d1982e4cf3174e28d4eeb73af7b32829f6751b30",
+  "benchmarks": [
+    {
+      "benchmark_id": "node-link-sanitize",
+      "known_issue": "CVE-2026-23745",
+      "target_family": "node-tar",
+      "component": "Unpack linkpath handling",
+      "advisory_date": "2026-01-16",
+      "affected_version_range": "<=7.5.2",
+      "fixed_version_range": "7.5.3",
+      "selected_pair": {
+        "vulnerable": "7.5.2",
+        "fixed": "7.5.3"
+      },
+      "root_cause_class": "R1",
+      "root_cause": "Link targets lack member-path confinement sanitation.",
+      "reported_effect": "External hardlink alias; separate symlink poisoning claim.",
+      "entry_types": [
+        "hardlink",
+        "symlink"
+      ],
+      "path_semantics": [
+        "absolute or relative external link target",
+        "link target confinement"
+      ],
+      "entry_order_dependency": "none",
+      "filesystem_preconditions": [
+        "Owned same-device external regular sentinel; explicit target-visible path mapping."
+      ],
+      "expected_observable_effect": "Persistent internal sentinel alias; nlink/ctime may change.",
+      "contract_mapping": {
+        "C0": "possible",
+        "C1": "expected",
+        "C2": "expected"
+      },
+      "contract_reason": "Hardlink arm: C1 identity and C2 link metadata; C0 only for additional outside namespace change. Symlink text alone has no referent verdict.",
+      "required_mutations": [
+        "add_hardlink",
+        "mutate_link_target",
+        "component_recombination_planned"
+      ],
+      "structure_reachability": "YES",
+      "current_reachability": "NO",
+      "observability": "PARTIALLY OBSERVABLE",
+      "selection": "primary",
+      "status": "selected_pending_qualification",
+      "observer_requirements": [
+        "Complete before/after sandbox snapshots; no harness writes between captures; observe configured protected objects."
+      ],
+      "uncertainties": [
+        "Linux qualification pending; symlink-only arm excluded from rediscovery; current grammar cannot spell selected sentinel address.",
+        "Relative hardlink sanitation arm inferred from inspected 7.5.2 source/fix; qualify correspondence; advisory describes absolute arm.",
+        "Official package identities and upstream tag ancestry verified statically; benchmark dependency lock/images/worker pins and runtime/strict behavior remain unqualified."
+      ],
+      "sources": [
+        {
+          "source_type": "upstream_advisory",
+          "publisher": "isaacs/node-tar",
+          "identifier": "GHSA-8qq5-rm4j-mr97",
+          "url": "https://github.com/isaacs/node-tar/security/advisories/GHSA-8qq5-rm4j-mr97",
+          "inspected": true
+        },
+        {
+          "source_type": "patch",
+          "publisher": "isaacs/node-tar",
+          "identifier": "340eb285b6d986e91969a1170d7fe9b0face405e",
+          "url": "https://github.com/isaacs/node-tar/commit/340eb285b6d986e91969a1170d7fe9b0face405e",
+          "inspected": true
+        },
+        {
+          "source_type": "upstream_source",
+          "publisher": "isaacs/node-tar",
+          "identifier": "v7.5.2 src/unpack.ts",
+          "url": "https://github.com/isaacs/node-tar/blob/v7.5.2/src/unpack.ts",
+          "inspected": true
+        },
+        {
+          "source_type": "official_registry",
+          "publisher": "npm registry",
+          "identifier": "tar@7.5.2 dist/engines/gitHead",
+          "url": "https://registry.npmjs.org/tar/7.5.2",
+          "inspected": true
+        },
+        {
+          "source_type": "official_registry",
+          "publisher": "npm registry",
+          "identifier": "tar@7.5.3 dist/engines/gitHead",
+          "url": "https://registry.npmjs.org/tar/7.5.3",
+          "inspected": true
+        }
+      ],
+      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md",
+      "candidate_id": "N01",
+      "taxonomy_ids": [
+        "S03",
+        "S04",
+        "S07",
+        "S09",
+        "S10",
+        "S14"
+      ],
+      "archive_format": "TAR",
+      "representation": "YES",
+      "seed_start": "PARTIAL",
+      "isolated_execution": "NOT_IMPLEMENTED",
+      "qualification": "IMPLEMENTATION_BLOCKED",
+      "execution": "NOT_RUN",
+      "artifact_metadata": [
+        {
+          "ecosystem": "npm",
+          "version": "7.5.2",
+          "upstream_tag": "v7.5.2",
+          "upstream_commit": "d9ea73a9b3fc0a2f9734fda65279f48c7cc99f28",
+          "registry_url": "https://registry.npmjs.org/tar/7.5.2",
+          "integrity": "sha512-7NyxrTE4Anh8km8iEy7o0QYPs+0JKBTj5ZaqHg6B39erLg0qYXN3BijtShwbsNSvQ+LN75+KV+C4QR/f6Gwnpg==",
+          "shasum": "115c061495ec51ff3c6745ff8f6d0871c5b1dedc",
+          "tarball_url": "https://registry.npmjs.org/tar/-/tar-7.5.2.tgz",
+          "declared_runtime": ">=18",
+          "upstream_lock_sha256": "7d88a2eee8bcfee0285e2d48f8e3a7ae3d03842c55db56ff42ea3b817d9bc744"
+        },
+        {
+          "ecosystem": "npm",
+          "version": "7.5.3",
+          "upstream_tag": "v7.5.3",
+          "upstream_commit": "03138441b238f48070fb22824b2529c445bc70c7",
+          "registry_url": "https://registry.npmjs.org/tar/7.5.3",
+          "integrity": "sha512-ENg5JUHUm2rDD7IvKNFGzyElLXNjachNLp6RaGf4+JOgxXHkqA+gq81ZAMCUmtMtqBsoU62lcp6S27g1LCYGGQ==",
+          "shasum": "e1a41236e32446f75e63b720222112c4ffe5b3a1",
+          "tarball_url": "https://registry.npmjs.org/tar/-/tar-7.5.3.tgz",
+          "declared_runtime": ">=18",
+          "upstream_lock_sha256": "f8c16ee22830cd8384a542df56646e20dbc2b6b03ce8b1526c87443e989e6b85"
+        }
+      ],
+      "static_runtime": {
+        "runtime": "Node 22.22.0",
+        "classification": "STATICALLY COMPATIBLE",
+        "runtime_qualification": "NOT_RUN"
+      }
+    },
+    {
+      "benchmark_id": "node-hardlink-base",
+      "known_issue": "CVE-2026-24842",
+      "target_family": "node-tar",
+      "component": "Unpack hardlink validation",
+      "advisory_date": "2026-01-27",
+      "affected_version_range": "<=7.5.6",
+      "fixed_version_range": ">=7.5.7",
+      "selected_pair": {
+        "vulnerable": "7.5.6",
+        "fixed": "7.5.7"
+      },
+      "root_cause_class": "R2",
+      "root_cause": "Validation relative to entry parent differs from creation relative to extraction CWD.",
+      "reported_effect": "External identity acquisition.",
+      "entry_types": [
+        "hardlink"
+      ],
+      "path_semantics": [
+        "relative link target",
+        "nested destination",
+        "validation base"
+      ],
+      "entry_order_dependency": "none",
+      "filesystem_preconditions": [
+        "Owned same-device external regular sentinel."
+      ],
+      "expected_observable_effect": "Persistent internal/external alias; sentinel link metadata changes.",
+      "contract_mapping": {
+        "C0": "not_relevant",
+        "C1": "expected",
+        "C2": "expected"
+      },
+      "contract_reason": "Internal alias alone causes no C0 namespace evidence; C1 and C2 metadata identify persistent result.",
+      "required_mutations": [
+        "add_hardlink",
+        "mutate_link_target",
+        "component_recombination_planned",
+        "mutate_path"
+      ],
+      "structure_reachability": "PARTIAL",
+      "current_reachability": "NO",
+      "observability": "OBSERVABLE WITH CURRENT CONTRACTS",
+      "selection": "secondary",
+      "status": "secondary_pending",
+      "observer_requirements": [
+        "Complete before/after sandbox snapshots; no harness writes between captures; observe configured protected objects."
+      ],
+      "uncertainties": [
+        "Selected pair pending qualification; semantic class overlaps ORAS CWD case."
+      ],
+      "sources": [
+        {
+          "source_type": "upstream_advisory",
+          "publisher": "isaacs/node-tar",
+          "identifier": "GHSA-34x7-hfp2-rc4v",
+          "url": "https://github.com/isaacs/node-tar/security/advisories/GHSA-34x7-hfp2-rc4v",
+          "inspected": true
+        },
+        {
+          "source_type": "patch",
+          "publisher": "isaacs/node-tar",
+          "identifier": "f4a7aa9bc3d717c987fdf1480ff7a64e87ffdb46",
+          "url": "https://github.com/isaacs/node-tar/commit/f4a7aa9bc3d717c987fdf1480ff7a64e87ffdb46",
+          "inspected": true
+        }
+      ],
+      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md",
+      "candidate_id": "N02",
+      "taxonomy_ids": [
+        "S03",
+        "S07",
+        "S10",
+        "S11",
+        "S14"
+      ],
+      "archive_format": "TAR",
+      "representation": "YES",
+      "seed_start": "PARTIAL",
+      "isolated_execution": "NOT_IMPLEMENTED",
+      "qualification": "IMPLEMENTATION_BLOCKED",
+      "execution": "NOT_RUN"
+    },
+    {
+      "benchmark_id": "node-link-compose",
+      "known_issue": "CVE-2026-26960",
+      "target_family": "node-tar",
+      "component": "Unpack symlink/hardlink target resolution",
+      "advisory_date": "2026-02-16",
+      "affected_version_range": "<=7.5.7",
+      "fixed_version_range": "7.5.8",
+      "selected_pair": {
+        "vulnerable": "7.5.7",
+        "fixed": "7.5.8"
+      },
+      "root_cause_class": "R3",
+      "root_cause": "Lexical checks miss filesystem resolution through composed symlinks.",
+      "reported_effect": "External identity acquisition enabling later reads/writes.",
+      "entry_types": [
+        "directory",
+        "symlink",
+        "hardlink"
+      ],
+      "path_semantics": [
+        "link-chain composition",
+        "nested path",
+        "link target"
+      ],
+      "entry_order_dependency": "required",
+      "filesystem_preconditions": [
+        "Owned same-device external sentinel; archive-created nested parents."
+      ],
+      "expected_observable_effect": "Persistent internal alias and sentinel link metadata.",
+      "contract_mapping": {
+        "C0": "not_relevant",
+        "C1": "expected",
+        "C2": "expected"
+      },
+      "contract_reason": "C1 sees surviving alias; C2 nlink/ctime corroborate it. Transient or removed aliases are not covered.",
+      "required_mutations": [
+        "add_hardlink",
+        "mutate_link_target",
+        "component_recombination_planned",
+        "add_symlink",
+        "mutate_path",
+        "reorder_entries",
+        "duplicate_entry"
+      ],
+      "structure_reachability": "PARTIAL",
+      "current_reachability": "NO",
+      "observability": "OBSERVABLE WITH CURRENT CONTRACTS",
+      "selection": "primary",
+      "status": "selected_pending_qualification",
+      "observer_requirements": [
+        "Complete before/after sandbox snapshots; no harness writes between captures; observe configured protected objects."
+      ],
+      "uncertainties": [
+        "Published demonstration on macOS; Linux support inferred, not validated; composition grammar incomplete.",
+        "Official package identities and upstream tag ancestry verified statically; benchmark dependency lock/images/worker pins and runtime/strict behavior remain unqualified."
+      ],
+      "sources": [
+        {
+          "source_type": "upstream_advisory",
+          "publisher": "isaacs/node-tar",
+          "identifier": "GHSA-83g3-92jg-28cx",
+          "url": "https://github.com/isaacs/node-tar/security/advisories/GHSA-83g3-92jg-28cx",
+          "inspected": true
+        },
+        {
+          "source_type": "patch",
+          "publisher": "isaacs/node-tar",
+          "identifier": "d18e4e1f846f4ddddc153b0f536a19c050e7499f",
+          "url": "https://github.com/isaacs/node-tar/commit/d18e4e1f846f4ddddc153b0f536a19c050e7499f",
+          "inspected": true
+        },
+        {
+          "source_type": "patch",
+          "publisher": "isaacs/node-tar",
+          "identifier": "2cb1120bcefe28d7ecc719b41441ade59c52e384",
+          "url": "https://github.com/isaacs/node-tar/commit/2cb1120bcefe28d7ecc719b41441ade59c52e384",
+          "inspected": true
+        },
+        {
+          "source_type": "official_registry",
+          "publisher": "npm registry",
+          "identifier": "tar@7.5.7 dist/engines/gitHead",
+          "url": "https://registry.npmjs.org/tar/7.5.7",
+          "inspected": true
+        },
+        {
+          "source_type": "official_registry",
+          "publisher": "npm registry",
+          "identifier": "tar@7.5.8 dist/engines/gitHead",
+          "url": "https://registry.npmjs.org/tar/7.5.8",
+          "inspected": true
+        }
+      ],
+      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md",
+      "candidate_id": "N03",
+      "taxonomy_ids": [
+        "S03",
+        "S04",
+        "S06",
+        "S10",
+        "S11",
+        "S14"
+      ],
+      "archive_format": "TAR",
+      "representation": "YES",
+      "seed_start": "PARTIAL",
+      "isolated_execution": "NOT_IMPLEMENTED",
+      "qualification": "IMPLEMENTATION_BLOCKED",
+      "execution": "NOT_RUN",
+      "artifact_metadata": [
+        {
+          "ecosystem": "npm",
+          "version": "7.5.7",
+          "upstream_tag": "v7.5.7",
+          "upstream_commit": "4a37eb9a1cf1137df4eb70c5c7f849f412ff3cdb",
+          "registry_url": "https://registry.npmjs.org/tar/7.5.7",
+          "integrity": "sha512-fov56fJiRuThVFXD6o6/Q354S7pnWMJIVlDBYijsTNx6jKSE4pvrDTs6lUnmGvNyfJwFQQwWy3owKz1ucIhveQ==",
+          "shasum": "adf99774008ba1c89819f15dbd6019c630539405",
+          "tarball_url": "https://registry.npmjs.org/tar/-/tar-7.5.7.tgz",
+          "declared_runtime": ">=18",
+          "upstream_lock_sha256": "7167a1fefb651016c67718543871d4875368a2e158e99d23a3443343979b9809"
+        },
+        {
+          "ecosystem": "npm",
+          "version": "7.5.8",
+          "upstream_tag": "v7.5.8",
+          "upstream_commit": "6b8eba0ef367ac937e703238daa6df94ae6f823f",
+          "registry_url": "https://registry.npmjs.org/tar/7.5.8",
+          "integrity": "sha512-SYkBtK99u0yXa+IWL0JRzzcl7RxNpvX/U08Z+8DKnysfno7M+uExnTZH8K+VGgShf2qFPKtbNr9QBl8n7WBP6Q==",
+          "shasum": "6bbdfdb487914803d401bab6a2abb100aaa253d5",
+          "tarball_url": "https://registry.npmjs.org/tar/-/tar-7.5.8.tgz",
+          "declared_runtime": ">=18",
+          "upstream_lock_sha256": "c407e007ea0eb574469440b3639e5d42fedc6b41d1a70d4a2b9dedfc599a791f"
+        }
+      ],
+      "static_runtime": {
+        "runtime": "Node 22.22.0",
+        "classification": "STATICALLY COMPATIBLE",
+        "runtime_qualification": "NOT_RUN"
+      }
+    },
+    {
+      "benchmark_id": "node-cache-transition",
+      "known_issue": "CVE-2021-32803",
+      "target_family": "node-tar",
+      "component": "Unpack directory cache",
+      "advisory_date": "2021-08-03",
+      "affected_version_range": "<3.2.3 || 4.x<4.4.15 || 5.x<5.0.7 || 6.x<6.1.2",
+      "fixed_version_range": "3.2.3 || 4.4.15 || 5.0.7 || 6.1.2",
+      "selected_pair": {
+        "vulnerable": "6.1.1",
+        "fixed": "6.1.2"
+      },
+      "root_cause_class": "R4",
+      "root_cause": "Directory cache remains trusted after directory is replaced with symlink.",
+      "reported_effect": "External file creation or overwrite.",
+      "entry_types": [
+        "directory",
+        "symlink",
+        "regular"
+      ],
+      "path_semantics": [
+        "duplicate path",
+        "replacement",
+        "descendant path"
+      ],
+      "entry_order_dependency": "required",
+      "filesystem_preconditions": [
+        "External controlled directory and protected regular file; empty initial extraction."
+      ],
+      "expected_observable_effect": "Protected content/size effect or persistent outside namespace change.",
+      "contract_mapping": {
+        "C0": "possible",
+        "C1": "not_relevant",
+        "C2": "expected"
+      },
+      "contract_reason": "C2 covers selected protected overwrite; C0 covers creation/replacement, not in-place bytes; no symlink referent C1.",
+      "required_mutations": [
+        "add_symlink",
+        "add_entry",
+        "mutate_path",
+        "mutate_link_target",
+        "duplicate_entry",
+        "reorder_entries",
+        "component_recombination_planned"
+      ],
+      "structure_reachability": "PARTIAL",
+      "current_reachability": "NO",
+      "observability": "OBSERVABLE WITH CURRENT CONTRACTS",
+      "selection": "primary",
+      "status": "selected_pending_qualification",
+      "observer_requirements": [
+        "Complete before/after sandbox snapshots; no harness writes between captures; observe configured protected objects."
+      ],
+      "uncertainties": [
+        "Node runtime compatibility and strict-mode class behavior pending; current collision names/destination vocabulary incomplete.",
+        "Official package identities and upstream tag ancestry verified statically; benchmark dependency lock/images/worker pins and runtime/strict behavior remain unqualified."
+      ],
+      "sources": [
+        {
+          "source_type": "upstream_advisory",
+          "publisher": "isaacs/node-tar",
+          "identifier": "GHSA-r628-mhmh-qjhw",
+          "url": "https://github.com/isaacs/node-tar/security/advisories/GHSA-r628-mhmh-qjhw",
+          "inspected": true
+        },
+        {
+          "source_type": "patch",
+          "publisher": "isaacs/node-tar",
+          "identifier": "9dbdeb6df8e9dbd96fa9e84341b9d74734be6c20",
+          "url": "https://github.com/isaacs/node-tar/commit/9dbdeb6df8e9dbd96fa9e84341b9d74734be6c20",
+          "inspected": true
+        },
+        {
+          "source_type": "official_registry",
+          "publisher": "npm registry",
+          "identifier": "tar@6.1.1 dist/engines/gitHead",
+          "url": "https://registry.npmjs.org/tar/6.1.1",
+          "inspected": true
+        },
+        {
+          "source_type": "official_registry",
+          "publisher": "npm registry",
+          "identifier": "tar@6.1.2 dist/engines/gitHead",
+          "url": "https://registry.npmjs.org/tar/6.1.2",
+          "inspected": true
+        }
+      ],
+      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md",
+      "candidate_id": "N04",
+      "taxonomy_ids": [
+        "S01",
+        "S02",
+        "S04",
+        "S05",
+        "S06",
+        "S13",
+        "S14"
+      ],
+      "archive_format": "TAR",
+      "representation": "YES",
+      "seed_start": "PARTIAL",
+      "isolated_execution": "NOT_IMPLEMENTED",
+      "qualification": "IMPLEMENTATION_BLOCKED",
+      "execution": "NOT_RUN",
+      "artifact_metadata": [
+        {
+          "ecosystem": "npm",
+          "version": "6.1.1",
+          "upstream_tag": "v6.1.1",
+          "upstream_commit": "1e33534e1e96ca6385b3a4749876aea2cda61cea",
+          "registry_url": "https://registry.npmjs.org/tar/6.1.1",
+          "integrity": "sha512-GG0R7yt/CQkvG4fueXDi52Zskqxe2AyRJ+Wm54yqarnBgcX3qRIWh10qLVAAN+mlPFGTfP5UxvD3Fbi11UOTUQ==",
+          "shasum": "4d7da4b132b334bb8c175ed1de466fe9157ea0eb",
+          "tarball_url": "https://registry.npmjs.org/tar/-/tar-6.1.1.tgz",
+          "declared_runtime": ">= 10",
+          "upstream_lock_sha256": "22392cf7740ce688a1aec82b33e6723ebc90bf8f0d21eb0bc54170afa7c404ae"
+        },
+        {
+          "ecosystem": "npm",
+          "version": "6.1.2",
+          "upstream_tag": "v6.1.2",
+          "upstream_commit": "3f7b20097e0daba10441507becbf5b87c6b83b8b",
+          "registry_url": "https://registry.npmjs.org/tar/6.1.2",
+          "integrity": "sha512-EwKEgqJ7nJoS+s8QfLYVGMDmAsj+StbI2AM/RTHeUSsOw6Z8bwNBRv5z3CY0m7laC5qUAqruLX5AhMuc5deY3Q==",
+          "shasum": "1f045a90a6eb23557a603595f41a16c57d47adc6",
+          "tarball_url": "https://registry.npmjs.org/tar/-/tar-6.1.2.tgz",
+          "declared_runtime": ">= 10",
+          "upstream_lock_sha256": "3741094775f59337455865caa6d90c908feb6047730d72e23644e3b1ad360b18"
+        }
+      ],
+      "static_runtime": {
+        "runtime": "Node 22.22.0",
+        "classification": "STATICALLY COMPATIBLE",
+        "runtime_qualification": "NOT_RUN"
+      }
+    },
+    {
+      "benchmark_id": "node-repeated-root",
+      "known_issue": "CVE-2021-32804",
+      "target_family": "node-tar",
+      "component": "Absolute member path stripping",
+      "advisory_date": "2021-08-03",
+      "affected_version_range": "<3.2.2 || 4.x<4.4.14 || 5.x<5.0.6 || 6.x<6.1.1",
+      "fixed_version_range": "3.2.2 || 4.4.14 || 5.0.6 || 6.1.1",
+      "selected_pair": {
+        "vulnerable": "6.1.0",
+        "fixed": "6.1.1"
+      },
+      "root_cause_class": "R1",
+      "root_cause": "Removing one root leaves a repeated-root member absolute.",
+      "reported_effect": "External file creation/overwrite.",
+      "entry_types": [
+        "regular"
+      ],
+      "path_semantics": [
+        "absolute member path",
+        "repeated root"
+      ],
+      "entry_order_dependency": "none",
+      "filesystem_preconditions": [
+        "External writable controlled directory."
+      ],
+      "expected_observable_effect": "Outside namespace transition or protected-file overwrite.",
+      "contract_mapping": {
+        "C0": "possible",
+        "C1": "not_relevant",
+        "C2": "possible"
+      },
+      "contract_reason": "C0 for persistent namespace, C2 only when protected destination changed.",
+      "required_mutations": [
+        "mutate_path",
+        "component_recombination_planned"
+      ],
+      "structure_reachability": "YES",
+      "current_reachability": "NO",
+      "observability": "OBSERVABLE WITH CURRENT CONTRACTS",
+      "selection": "secondary",
+      "status": "secondary_pending",
+      "observer_requirements": [
+        "Complete before/after sandbox snapshots; no harness writes between captures; observe configured protected objects."
+      ],
+      "uncertainties": [
+        "Strict warnings may abort before effect; exact selected absolute destination currently unreachable; patch pointer not independently inspected."
+      ],
+      "sources": [
+        {
+          "source_type": "upstream_advisory",
+          "publisher": "isaacs/node-tar",
+          "identifier": "GHSA-3jfq-g458-7qm9",
+          "url": "https://github.com/isaacs/node-tar/security/advisories/GHSA-3jfq-g458-7qm9",
+          "inspected": true
+        },
+        {
+          "source_type": "patch_pointer",
+          "publisher": "isaacs/node-tar",
+          "identifier": "v6.1.0...v6.1.1",
+          "url": "https://github.com/isaacs/node-tar/compare/v6.1.0...v6.1.1",
+          "inspected": false
+        }
+      ],
+      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md",
+      "candidate_id": "N05",
+      "taxonomy_ids": [
+        "S01",
+        "S09",
+        "S14"
+      ],
+      "archive_format": "TAR",
+      "representation": "YES",
+      "seed_start": "PARTIAL",
+      "isolated_execution": "NOT_IMPLEMENTED",
+      "qualification": "IMPLEMENTATION_BLOCKED",
+      "execution": "NOT_RUN"
+    },
+    {
+      "benchmark_id": "node-posix-cache-spelling",
+      "known_issue": "CVE-2021-37701",
+      "target_family": "node-tar",
+      "component": "Directory cache path normalization",
+      "advisory_date": "2021-08-31",
+      "affected_version_range": "<4.4.16 || 5<5.0.8 || 6<6.1.7",
+      "fixed_version_range": "4.4.16 || 5.0.8 || 6.1.7",
+      "selected_pair": {
+        "vulnerable": "6.1.6",
+        "fixed": "6.1.7"
+      },
+      "root_cause_class": "R4",
+      "root_cause": "POSIX backslash names are treated inconsistently by cache path splitting.",
+      "reported_effect": "External create/overwrite; additional case-insensitive variant.",
+      "entry_types": [
+        "directory",
+        "symlink",
+        "regular"
+      ],
+      "path_semantics": [
+        "POSIX literal backslash",
+        "alternate spelling",
+        "replacement"
+      ],
+      "entry_order_dependency": "required",
+      "filesystem_preconditions": [
+        "External controlled destination; POSIX literal-backslash semantics."
+      ],
+      "expected_observable_effect": "External write or namespace effect.",
+      "contract_mapping": {
+        "C0": "possible",
+        "C1": "not_relevant",
+        "C2": "expected"
+      },
+      "contract_reason": "Expected C2 for protected write; C0 only namespace transition; alternate text alone not violation.",
+      "required_mutations": [
+        "add_symlink",
+        "add_entry",
+        "mutate_path",
+        "mutate_link_target",
+        "reorder_entries",
+        "backslash_components_planned"
+      ],
+      "structure_reachability": "NO",
+      "current_reachability": "NO",
+      "observability": "OBSERVABLE WITH CURRENT CONTRACTS",
+      "selection": "secondary",
+      "status": "secondary_pending",
+      "observer_requirements": [
+        "Complete before/after sandbox snapshots; no harness writes between captures; observe configured protected objects."
+      ],
+      "uncertainties": [
+        "Current alphabet lacks backslashes; case-insensitive arm excluded; patch pointer uninspected."
+      ],
+      "sources": [
+        {
+          "source_type": "upstream_advisory",
+          "publisher": "isaacs/node-tar",
+          "identifier": "GHSA-9r2w-394v-53qc",
+          "url": "https://github.com/isaacs/node-tar/security/advisories/GHSA-9r2w-394v-53qc",
+          "inspected": true
+        },
+        {
+          "source_type": "patch_pointer",
+          "publisher": "isaacs/node-tar",
+          "identifier": "v6.1.6...v6.1.7",
+          "url": "https://github.com/isaacs/node-tar/compare/v6.1.6...v6.1.7",
+          "inspected": false
+        }
+      ],
+      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md",
+      "candidate_id": "N06",
+      "taxonomy_ids": [
+        "S01",
+        "S02",
+        "S04",
+        "S06",
+        "S13",
+        "S14"
+      ],
+      "archive_format": "TAR",
+      "representation": "YES",
+      "seed_start": "PARTIAL",
+      "isolated_execution": "NOT_IMPLEMENTED",
+      "qualification": "IMPLEMENTATION_BLOCKED",
+      "execution": "NOT_RUN"
+    },
+    {
+      "benchmark_id": "node-equivalent-cache-names",
+      "known_issue": "CVE-2021-37712",
+      "target_family": "node-tar",
+      "component": "Directory cache equivalent-name handling",
+      "advisory_date": "2021-08-31",
+      "affected_version_range": "6<=6.1.8 || 5<=5.0.9 || <=4.4.17",
+      "fixed_version_range": "6.1.9 || 5.0.10 || 4.4.18",
+      "selected_pair": {
+        "vulnerable": null,
+        "fixed": null
+      },
+      "root_cause_class": "R5",
+      "root_cause": "Filesystem-equivalent spellings evade cache invalidation.",
+      "reported_effect": "External create/overwrite.",
+      "entry_types": [
+        "directory",
+        "symlink",
+        "regular"
+      ],
+      "path_semantics": [
+        "Unicode equivalence",
+        "Windows short names"
+      ],
+      "entry_order_dependency": "required",
+      "filesystem_preconditions": [
+        "Normalization-insensitive filesystem or Windows short-name semantics."
+      ],
+      "expected_observable_effect": "Possible persistent external write under required platform.",
+      "contract_mapping": {
+        "C0": "possible",
+        "C1": "not_relevant",
+        "C2": "possible"
+      },
+      "contract_reason": "Snapshots can see persistent effect but not name-equivalence cause; platform absent from Linux v1.",
+      "required_mutations": [
+        "add_symlink",
+        "add_entry",
+        "reorder_entries",
+        "unsupported_equivalent_names"
+      ],
+      "structure_reachability": "NO",
+      "current_reachability": "NO",
+      "observability": "PARTIALLY OBSERVABLE",
+      "selection": "excluded",
+      "status": "excluded_v1",
+      "observer_requirements": [
+        "Complete before/after sandbox snapshots; no harness writes between captures; observe configured protected objects."
+      ],
+      "uncertainties": [
+        "Platform outside supported Linux profile; mutation alphabet cannot supply equivalents."
+      ],
+      "sources": [
+        {
+          "source_type": "upstream_advisory",
+          "publisher": "isaacs/node-tar",
+          "identifier": "GHSA-qq89-hq3f-393p",
+          "url": "https://github.com/isaacs/node-tar/security/advisories/GHSA-qq89-hq3f-393p",
+          "inspected": true
+        }
+      ],
+      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md",
+      "candidate_id": "N07",
+      "taxonomy_ids": [
+        "S01",
+        "S02",
+        "S04",
+        "S06",
+        "S13",
+        "S14"
+      ],
+      "archive_format": "TAR",
+      "representation": "YES",
+      "seed_start": "NO",
+      "isolated_execution": "NOT_IMPLEMENTED",
+      "qualification": "SOURCE_VERIFIED",
+      "execution": "NOT_RUN"
+    },
+    {
+      "benchmark_id": "node-equivalent-reservations",
+      "known_issue": "CVE-2026-23950",
+      "target_family": "node-tar",
+      "component": "PathReservations",
+      "advisory_date": "2026-01-19",
+      "affected_version_range": "<=7.5.3",
+      "fixed_version_range": "7.5.4",
+      "selected_pair": {
+        "vulnerable": null,
+        "fixed": null
+      },
+      "root_cause_class": "R5",
+      "root_cause": "Equivalent Unicode paths are not serialized by path reservations.",
+      "reported_effect": "Race-dependent symlink poisoning and external effects.",
+      "entry_types": [
+        "directory",
+        "symlink",
+        "regular"
+      ],
+      "path_semantics": [
+        "Unicode equivalence",
+        "concurrent path reservation"
+      ],
+      "entry_order_dependency": "required",
+      "filesystem_preconditions": [
+        "Normalization/case-insensitive filesystem such as advisory APFS environment."
+      ],
+      "expected_observable_effect": "Possible persistent external writes; event order unknown.",
+      "contract_mapping": {
+        "C0": "possible",
+        "C1": "not_relevant",
+        "C2": "possible"
+      },
+      "contract_reason": "Outcome can be observed, not concurrent check/use history.",
+      "required_mutations": [
+        "add_symlink",
+        "add_entry",
+        "unsupported_equivalent_names",
+        "unsupported_race_control"
+      ],
+      "structure_reachability": "NO",
+      "current_reachability": "NO",
+      "observability": "PARTIALLY OBSERVABLE",
+      "selection": "excluded",
+      "status": "excluded_v1",
+      "observer_requirements": [
+        "Complete before/after sandbox snapshots; no harness writes between captures; observe configured protected objects."
+      ],
+      "uncertainties": [
+        "No Linux equivalence evidence; races outside v1."
+      ],
+      "sources": [
+        {
+          "source_type": "upstream_advisory",
+          "publisher": "isaacs/node-tar",
+          "identifier": "GHSA-r6q2-hw4h-h46w",
+          "url": "https://github.com/isaacs/node-tar/security/advisories/GHSA-r6q2-hw4h-h46w",
+          "inspected": true
+        }
+      ],
+      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md",
+      "candidate_id": "N08",
+      "taxonomy_ids": [
+        "S01",
+        "S04",
+        "S06",
+        "S11",
+        "S14"
+      ],
+      "archive_format": "TAR",
+      "representation": "YES",
+      "seed_start": "NO",
+      "isolated_execution": "NOT_IMPLEMENTED",
+      "qualification": "SOURCE_VERIFIED",
+      "execution": "NOT_RUN"
+    },
+    {
+      "benchmark_id": "node-parser-metadata-differential",
+      "known_issue": "CVE-2026-53655",
+      "target_family": "node-tar",
+      "component": "PAX and GNU metadata parsing",
+      "advisory_date": "2026-06-01",
+      "affected_version_range": "<=7.5.15",
+      "fixed_version_range": "7.5.16",
+      "selected_pair": {
+        "vulnerable": null,
+        "fixed": null
+      },
+      "root_cause_class": "R6",
+      "root_cause": "PAX size override changes interpretation of intermediary GNU metadata.",
+      "reported_effect": "Parser disagreement and hidden members.",
+      "entry_types": [
+        "pax",
+        "gnu_longname",
+        "gnu_longlink"
+      ],
+      "path_semantics": [
+        "metadata header interpretation"
+      ],
+      "entry_order_dependency": "required",
+      "filesystem_preconditions": [
+        "Multiple parser consumers; no special filesystem state."
+      ],
+      "expected_observable_effect": "Parser-member disagreement, outside current filesystem verdicts.",
+      "contract_mapping": {
+        "C0": "not_relevant",
+        "C1": "not_relevant",
+        "C2": "not_relevant"
+      },
+      "contract_reason": "C0/C1/C2 do not classify parser disagreement itself.",
+      "required_mutations": [
+        "unsupported_pax_gnu_encoding"
+      ],
+      "structure_reachability": "NO",
+      "current_reachability": "NO",
+      "observability": "NOT OBSERVABLE",
+      "selection": "excluded",
+      "status": "excluded_v1",
+      "observer_requirements": [
+        "Parser member comparison absent from current snapshots."
+      ],
+      "uncertainties": [
+        "Encoding and parser differential scope excluded."
+      ],
+      "sources": [
+        {
+          "source_type": "upstream_advisory",
+          "publisher": "isaacs/node-tar",
+          "identifier": "GHSA-vmf3-w455-68vh",
+          "url": "https://github.com/isaacs/node-tar/security/advisories/GHSA-vmf3-w455-68vh",
+          "inspected": true
+        }
+      ],
+      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md",
+      "candidate_id": "N09",
+      "taxonomy_ids": [
+        "S06"
+      ],
+      "archive_format": "TAR",
+      "representation": "NO",
+      "seed_start": "NO",
+      "isolated_execution": "NOT_IMPLEMENTED",
+      "qualification": "SOURCE_VERIFIED",
+      "execution": "NOT_RUN"
+    },
+    {
+      "benchmark_id": "oras-cwd-hardlink",
+      "known_issue": "CVE-2026-50163",
+      "target_family": "oras-go",
+      "component": "content/file ensureLinkPath and TypeLink",
+      "advisory_date": "2026-06-11",
+      "affected_version_range": "Upstream v2.6.0; ecosystem <2.6.2",
+      "fixed_version_range": "v2.6.2",
+      "selected_pair": {
+        "vulnerable": "2.6.0",
+        "fixed": "2.6.2"
+      },
+      "root_cause_class": "R2",
+      "root_cause": "Unresolved validated hardlink target passed to CWD-relative os.Link.",
+      "reported_effect": "External CWD-file identity acquisition.",
+      "entry_types": [
+        "hardlink"
+      ],
+      "path_semantics": [
+        "relative link target",
+        "process CWD",
+        "validation base"
+      ],
+      "entry_order_dependency": "none",
+      "filesystem_preconditions": [
+        "Controlled process CWD outside extraction; owned same-device generic-name sentinel; public unpack-enabled file.Store input."
+      ],
+      "expected_observable_effect": "Persistent protected alias, nlink/ctime changes.",
+      "contract_mapping": {
+        "C0": "not_relevant",
+        "C1": "expected",
+        "C2": "expected"
+      },
+      "contract_reason": "C1 persistent alias and C2 link metadata suffice without reading or writing through alias.",
+      "required_mutations": [
+        "add_hardlink",
+        "mutate_link_target",
+        "mutate_path",
+        "isolated_cwd_planned"
+      ],
+      "structure_reachability": "YES",
+      "current_reachability": "PARTIAL",
+      "observability": "OBSERVABLE WITH CURRENT CONTRACTS",
+      "selection": "primary",
+      "status": "selected_pending_qualification",
+      "observer_requirements": [
+        "Complete before/after sandbox snapshots; no harness writes between captures; observe configured protected objects."
+      ],
+      "uncertainties": [
+        "Upstream advisory specifically names v2.6.0; current reviewed GitHub API gives <=2.6.1 and first patched 2.6.2, consistent with v2 repair/release; wider historical range not independently executed.",
+        "Public offline Store.Push route source-verified; deterministic gzip/title namespace transport, wrapper/CWD binding and actual effect remain unimplemented/unqualified.",
+        "Fixed go.mod requires Go 1.25.0; common exact compiler/base/image/wrapper identity pending. Release summary dependency text differs from tagged go.mod; source pin takes precedence for builds."
+      ],
+      "sources": [
+        {
+          "source_type": "upstream_advisory",
+          "publisher": "oras-project/oras-go",
+          "identifier": "GHSA-fxhp-mv3v-67qp",
+          "url": "https://github.com/oras-project/oras-go/security/advisories/GHSA-fxhp-mv3v-67qp",
+          "inspected": true
+        },
+        {
+          "source_type": "patch",
+          "publisher": "oras-project/oras-go",
+          "identifier": "c463c654ab3ef34422c1764cd619806cebf20451",
+          "url": "https://github.com/oras-project/oras-go/commit/c463c654ab3ef34422c1764cd619806cebf20451",
+          "inspected": true
+        },
+        {
+          "source_type": "release",
+          "publisher": "oras-project/oras-go",
+          "identifier": "v2.6.2",
+          "url": "https://github.com/oras-project/oras-go/releases/tag/v2.6.2",
+          "inspected": true
+        },
+        {
+          "source_type": "official_registry",
+          "publisher": "Go module proxy",
+          "identifier": "oras.land/oras-go/v2 v2.6.0 origin",
+          "url": "https://proxy.golang.org/oras.land/oras-go/v2/@v/v2.6.0.info",
+          "inspected": true
+        },
+        {
+          "source_type": "official_registry",
+          "publisher": "Go checksum database",
+          "identifier": "oras.land/oras-go/v2 v2.6.0 h1 checksums",
+          "url": "https://sum.golang.org/lookup/oras.land/oras-go/v2@v2.6.0",
+          "inspected": true
+        },
+        {
+          "source_type": "official_registry",
+          "publisher": "Go module proxy",
+          "identifier": "oras.land/oras-go/v2 v2.6.2 origin",
+          "url": "https://proxy.golang.org/oras.land/oras-go/v2/@v/v2.6.2.info",
+          "inspected": true
+        },
+        {
+          "source_type": "official_registry",
+          "publisher": "Go checksum database",
+          "identifier": "oras.land/oras-go/v2 v2.6.2 h1 checksums",
+          "url": "https://sum.golang.org/lookup/oras.land/oras-go/v2@v2.6.2",
+          "inspected": true
+        },
+        {
+          "source_type": "official_database",
+          "publisher": "GitHub Advisory Database",
+          "identifier": "GHSA-fxhp-mv3v-67qp current API, updated 2026-08-04",
+          "url": "https://api.github.com/advisories/GHSA-fxhp-mv3v-67qp",
+          "inspected": true
+        }
+      ],
+      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md",
+      "candidate_id": "O01",
+      "taxonomy_ids": [
+        "S03",
+        "S10",
+        "S12",
+        "S14"
+      ],
+      "archive_format": "TAR",
+      "representation": "YES",
+      "seed_start": "PARTIAL",
+      "isolated_execution": "NOT_IMPLEMENTED",
+      "qualification": "IMPLEMENTATION_BLOCKED",
+      "execution": "NOT_RUN",
+      "artifact_metadata": [
+        {
+          "ecosystem": "go",
+          "version": "2.6.0",
+          "upstream_tag": "v2.6.0",
+          "upstream_commit": "05a2b09cbf2eab1df691411884dc4df741ec56ab",
+          "registry_url": "https://proxy.golang.org/oras.land/oras-go/v2/@v/v2.6.0.info",
+          "module_sum": "h1:X4ELRsiGkrbeox69+9tzTu492FMUu7zJQW6eJU+I2oc=",
+          "go_mod_sum": "h1:magiQDfG6H1O9APp+rOsvCPcW1GD2MM7vgnKY0Y+u1o=",
+          "declared_runtime": "go 1.23.0"
+        },
+        {
+          "ecosystem": "go",
+          "version": "2.6.2",
+          "upstream_tag": "v2.6.2",
+          "upstream_commit": "105715ee12eac6895ec736a075285c34d9f2eeb6",
+          "registry_url": "https://proxy.golang.org/oras.land/oras-go/v2/@v/v2.6.2.info",
+          "module_sum": "h1:N04RXngAp1LJKTG6ifz3xHPipasEkWr+hFmInja5YKo=",
+          "go_mod_sum": "h1:PlTtg4JTDJkDe8yVHpM2wz7/YDc00GVas+i4jAW2TZ4=",
+          "declared_runtime": "go 1.25.0"
+        }
+      ],
+      "static_runtime": {
+        "runtime": "common Go compiler >=1.25.0; exact version pending",
+        "classification": "REQUIRES RUNTIME QUALIFICATION",
+        "runtime_qualification": "NOT_RUN"
+      }
+    },
+    {
+      "benchmark_id": "oras-symlink-chain-write",
+      "known_issue": "CVE-2026-85731",
+      "target_family": "oras-go",
+      "component": "file.Store pushDir tar extraction",
+      "advisory_date": "2026-08-01",
+      "affected_version_range": "<=2.6.1",
+      "fixed_version_range": "v2.6.2 per advisory",
+      "selected_pair": {
+        "vulnerable": "2.6.1",
+        "fixed": "2.6.2"
+      },
+      "root_cause_class": "R3",
+      "root_cause": "Lexical symlink validation and omitted final-component check permit followed write.",
+      "reported_effect": "External file create/overwrite.",
+      "entry_types": [
+        "directory",
+        "symlink",
+        "regular"
+      ],
+      "path_semantics": [
+        "link-chain composition",
+        "duplicate path",
+        "final-component following"
+      ],
+      "entry_order_dependency": "required",
+      "filesystem_preconditions": [
+        "External writable controlled destination and archive-created nested directories."
+      ],
+      "expected_observable_effect": "Protected bytes/size changes or external namespace transition.",
+      "contract_mapping": {
+        "C0": "possible",
+        "C1": "not_relevant",
+        "C2": "expected"
+      },
+      "contract_reason": "No referent C1 from symlink; C2 sees protected write; C0 namespace only.",
+      "required_mutations": [
+        "add_symlink",
+        "add_entry",
+        "mutate_path",
+        "mutate_link_target",
+        "duplicate_entry",
+        "reorder_entries",
+        "component_recombination_planned"
+      ],
+      "structure_reachability": "PARTIAL",
+      "current_reachability": "NO",
+      "observability": "OBSERVABLE WITH CURRENT CONTRACTS",
+      "selection": "secondary",
+      "status": "secondary_pending",
+      "observer_requirements": [
+        "Complete before/after sandbox snapshots; no harness writes between captures; observe configured protected objects."
+      ],
+      "uncertainties": [
+        "Advisory published after claimed fixed release; exact fixing patch not confirmed; release notes identify hardlink fix only."
+      ],
+      "sources": [
+        {
+          "source_type": "upstream_advisory",
+          "publisher": "oras-project/oras-go",
+          "identifier": "GHSA-m37j-52j7-pjw7",
+          "url": "https://github.com/oras-project/oras-go/security/advisories/GHSA-m37j-52j7-pjw7",
+          "inspected": true
+        },
+        {
+          "source_type": "release",
+          "publisher": "oras-project/oras-go",
+          "identifier": "v2.6.2",
+          "url": "https://github.com/oras-project/oras-go/releases/tag/v2.6.2",
+          "inspected": true
+        }
+      ],
+      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md",
+      "candidate_id": "O02",
+      "taxonomy_ids": [
+        "S01",
+        "S04",
+        "S05",
+        "S06",
+        "S10",
+        "S11",
+        "S13",
+        "S14"
+      ],
+      "archive_format": "TAR",
+      "representation": "YES",
+      "seed_start": "PARTIAL",
+      "isolated_execution": "NOT_IMPLEMENTED",
+      "qualification": "IMPLEMENTATION_BLOCKED",
+      "execution": "NOT_RUN"
+    },
+    {
+      "benchmark_id": "oras-title-existing-symlink",
+      "known_issue": "CVE-2026-50162",
+      "target_family": "oras-go",
+      "component": "file.Store pushFile / resolveWritePath",
+      "advisory_date": "2026-06-11",
+      "affected_version_range": "Upstream v2.6.0; ecosystem <2.6.1",
+      "fixed_version_range": "Upstream v2.6.2; ecosystem 2.6.1",
+      "selected_pair": {
+        "vulnerable": null,
+        "fixed": null
+      },
+      "root_cause_class": "R8",
+      "root_cause": "Lexical blob title confinement follows existing symlink components.",
+      "reported_effect": "External file write.",
+      "entry_types": [
+        "regular"
+      ],
+      "path_semantics": [
+        "OCI title input",
+        "existing symlink"
+      ],
+      "entry_order_dependency": "none",
+      "filesystem_preconditions": [
+        "Pre-existing internal symlink; controlled external directory; blob title input."
+      ],
+      "expected_observable_effect": "Potential external namespace/protected write.",
+      "contract_mapping": {
+        "C0": "possible",
+        "C1": "not_relevant",
+        "C2": "possible"
+      },
+      "contract_reason": "Persistent effect observable if setup exists; input sink is not TAR entries.",
+      "required_mutations": [
+        "unsupported_oci_title_mutation",
+        "unsupported_existing_tree_setup"
+      ],
+      "structure_reachability": "NO",
+      "current_reachability": "NO",
+      "observability": "PARTIALLY OBSERVABLE",
+      "selection": "excluded",
+      "status": "excluded_v1",
+      "observer_requirements": [
+        "Complete before/after sandbox snapshots; no harness writes between captures; observe configured protected objects."
+      ],
+      "uncertainties": [
+        "Conflicting version fields; no TAR-only campaign reachability."
+      ],
+      "sources": [
+        {
+          "source_type": "upstream_advisory",
+          "publisher": "oras-project/oras-go",
+          "identifier": "GHSA-8xwf-rjm4-xvhv",
+          "url": "https://github.com/oras-project/oras-go/security/advisories/GHSA-8xwf-rjm4-xvhv",
+          "inspected": true
+        },
+        {
+          "source_type": "official_database",
+          "publisher": "GitHub Advisory Database",
+          "identifier": "GHSA-8xwf-rjm4-xvhv",
+          "url": "https://github.com/advisories/GHSA-8xwf-rjm4-xvhv",
+          "inspected": true
+        },
+        {
+          "source_type": "release",
+          "publisher": "oras-project/oras-go",
+          "identifier": "v2.6.1",
+          "url": "https://github.com/oras-project/oras-go/releases/tag/v2.6.1",
+          "inspected": true
+        }
+      ],
+      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md",
+      "candidate_id": "O03",
+      "taxonomy_ids": [
+        "S12",
+        "S14"
+      ],
+      "archive_format": "N/A",
+      "representation": "NO",
+      "seed_start": "NO",
+      "isolated_execution": "NOT_IMPLEMENTED",
+      "qualification": "SOURCE_VERIFIED",
+      "execution": "NOT_RUN"
+    },
+    {
+      "benchmark_id": "gnu-top-level-hardlink",
+      "known_issue": "CVE-2026-18508",
+      "target_family": "gnu-tar",
+      "component": "--one-top-level hardlink resolution",
+      "advisory_date": "2026-08-03",
+      "affected_version_range": "Exact upstream range unknown; affected RHEL tar packages",
+      "fixed_version_range": "RHEL 2:1.30-13.el8_10 / 2:1.34-13.el9_8 / 2:1.35-13.el10_2; upstream unknown",
+      "selected_pair": {
+        "vulnerable": null,
+        "fixed": null
+      },
+      "root_cause_class": "R7",
+      "root_cause": "Hardlink target confinement does not use designated top-level root.",
+      "reported_effect": "Alias outside configured top-level boundary; optional symlink-composed external write.",
+      "entry_types": [
+        "hardlink",
+        "symlink",
+        "regular"
+      ],
+      "path_semantics": [
+        "configured top-level root",
+        "working-directory resolution"
+      ],
+      "entry_order_dependency": "unknown",
+      "filesystem_preconditions": [
+        "Existing source in wider CWD; existing symlink for stronger write arm; correct observation boundary."
+      ],
+      "expected_observable_effect": "Potential protected alias and external write.",
+      "contract_mapping": {
+        "C0": "possible",
+        "C1": "expected",
+        "C2": "expected"
+      },
+      "contract_reason": "C1/C2 for protected surviving source; C0 needs narrower designated-root mapping.",
+      "required_mutations": [
+        "add_hardlink",
+        "mutate_link_target",
+        "configured_root_unresolved",
+        "unsupported_existing_tree_setup"
+      ],
+      "structure_reachability": "UNKNOWN",
+      "current_reachability": "UNKNOWN",
+      "observability": "PARTIALLY OBSERVABLE",
+      "selection": "secondary",
+      "status": "secondary_pending",
+      "observer_requirements": [
+        "Complete before/after sandbox snapshots; no harness writes between captures; observe configured protected objects."
+      ],
+      "uncertainties": [
+        "Exact upstream source/fix unresolved; vendor backports not upstream versions; fixed extraction layout may miss nested boundary.",
+        "Upstream 1b91f5f66f8e6c490eef0fdee50f652cfe155844 changes CWD and hardlink target handling, but CVE/vendor-backport mapping unverified; no containing release tag at inspected upstream c17976eba549f44cbc34233cfaac4faddb3918c0. Pair remains UNKNOWN."
+      ],
+      "sources": [
+        {
+          "source_type": "vendor_advisory",
+          "publisher": "Red Hat",
+          "identifier": "CVE-2026-18508",
+          "url": "https://access.redhat.com/security/cve/CVE-2026-18508",
+          "inspected": true
+        },
+        {
+          "source_type": "official_database",
+          "publisher": "CVE Program / Red Hat CNA",
+          "identifier": "CVE-2026-18508",
+          "url": "https://www.cve.org/CVERecord?id=CVE-2026-18508",
+          "inspected": true
+        },
+        {
+          "source_type": "vendor_advisory",
+          "publisher": "Red Hat",
+          "identifier": "RHSA-2026:50807",
+          "url": "https://access.redhat.com/errata/RHSA-2026:50807",
+          "inspected": false
+        },
+        {
+          "source_type": "official_database",
+          "publisher": "CVE Program / Red Hat CNA",
+          "identifier": "CVE-2026-18508 JSON",
+          "url": "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/18xxx/CVE-2026-18508.json",
+          "inspected": true
+        },
+        {
+          "source_type": "patch_pointer",
+          "publisher": "GNU tar upstream",
+          "identifier": "1b91f5f66f8e6c490eef0fdee50f652cfe155844 candidate; CVE association unverified",
+          "url": "https://cgit.git.savannah.gnu.org/cgit/tar.git/commit/?id=1b91f5f66f8e6c490eef0fdee50f652cfe155844",
+          "inspected": true
+        }
+      ],
+      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md",
+      "candidate_id": "G01",
+      "taxonomy_ids": [
+        "S03",
+        "S09",
+        "S12",
+        "S14"
+      ],
+      "archive_format": "TAR",
+      "representation": "YES",
+      "seed_start": "PARTIAL",
+      "isolated_execution": "NOT_IMPLEMENTED",
+      "qualification": "SOURCE_VERIFIED",
+      "execution": "NOT_RUN"
+    },
+    {
+      "benchmark_id": "gnu-selected-member-traversal",
+      "known_issue": "CVE-2016-6321",
+      "target_family": "gnu-tar",
+      "component": "safer_name_suffix / extract_archive",
+      "advisory_date": "2016-11-21",
+      "affected_version_range": "Reported GNU tar 1.14 through 1.29",
+      "fixed_version_range": "Patch 7340f67 in 1.29.90 Git development line; Ubuntu 1.29b-1ubuntu0.1 backport",
+      "selected_pair": {
+        "vulnerable": null,
+        "fixed": null
+      },
+      "root_cause_class": "R1",
+      "root_cause": "Selected-member extraction bypasses path sanitation; patch skips original parent-component names.",
+      "reported_effect": "External overwrite.",
+      "entry_types": [
+        "regular"
+      ],
+      "path_semantics": [
+        "parent component",
+        "CLI selected member"
+      ],
+      "entry_order_dependency": "unknown",
+      "filesystem_preconditions": [
+        "External writable destination; qualified member-selection invocation."
+      ],
+      "expected_observable_effect": "Potential external namespace or protected-file write.",
+      "contract_mapping": {
+        "C0": "possible",
+        "C1": "not_relevant",
+        "C2": "possible"
+      },
+      "contract_reason": "C0 for persistent namespace; C2 only protected effect; invocation not yet frozen.",
+      "required_mutations": [
+        "mutate_path",
+        "component_recombination_planned",
+        "selected_member_cli_unresolved"
+      ],
+      "structure_reachability": "UNKNOWN",
+      "current_reachability": "NO",
+      "observability": "OBSERVABLE WITH CURRENT CONTRACTS",
+      "selection": "secondary",
+      "status": "secondary_pending",
+      "observer_requirements": [
+        "Complete before/after sandbox snapshots; no harness writes between captures; observe configured protected objects."
+      ],
+      "uncertainties": [
+        "Advisory date is Ubuntu vendor notice; public report October 2016 and CNA publication December; 1.29.90 is development not fixed release."
+      ],
+      "sources": [
+        {
+          "source_type": "vendor_advisory",
+          "publisher": "Ubuntu",
+          "identifier": "USN-3132-1",
+          "url": "https://ubuntu.com/security/notices/USN-3132-1",
+          "inspected": true
+        },
+        {
+          "source_type": "official_database",
+          "publisher": "CVE Program",
+          "identifier": "CVE-2016-6321",
+          "url": "https://www.cve.org/CVERecord?id=CVE-2016-6321",
+          "inspected": true
+        },
+        {
+          "source_type": "patch",
+          "publisher": "GNU tar",
+          "identifier": "7340f67b9860ea0531c1450e5aa261c50f67165d",
+          "url": "https://git.savannah.gnu.org/cgit/tar.git/commit/?id=7340f67b9860ea0531c1450e5aa261c50f67165d",
+          "inspected": true
+        }
+      ],
+      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md",
+      "candidate_id": "G02",
+      "taxonomy_ids": [
+        "S01",
+        "S07",
+        "S14"
+      ],
+      "archive_format": "TAR",
+      "representation": "YES",
+      "seed_start": "PARTIAL",
+      "isolated_execution": "NOT_IMPLEMENTED",
+      "qualification": "IMPLEMENTATION_BLOCKED",
+      "execution": "NOT_RUN"
+    },
+    {
+      "benchmark_id": "gnu-reused-extraction-tree",
+      "known_issue": "CVE-2025-45582",
+      "target_family": "gnu-tar",
+      "component": "Repeated extraction into same tree",
+      "advisory_date": "2025-07-11",
+      "affected_version_range": "Reported through 1.35",
+      "fixed_version_range": "No accepted fixed pair identified",
+      "selected_pair": {
+        "vulnerable": null,
+        "fixed": null
+      },
+      "root_cause_class": "R8",
+      "root_cause": "Reused extraction tree violates documented independent-empty-directory usage.",
+      "reported_effect": "Second extraction follows first extraction symlink and overwrites outside.",
+      "entry_types": [
+        "symlink",
+        "regular"
+      ],
+      "path_semantics": [
+        "existing symlink",
+        "cross-archive reused state"
+      ],
+      "entry_order_dependency": "required",
+      "filesystem_preconditions": [
+        "Pre-existing internal symlink from prior extraction; controlled outside destination."
+      ],
+      "expected_observable_effect": "Persistent external write if reused state supplied.",
+      "contract_mapping": {
+        "C0": "possible",
+        "C1": "not_relevant",
+        "C2": "possible"
+      },
+      "contract_reason": "C0/C2 see resulting effect; current fresh-empty extraction cannot express two-run setup.",
+      "required_mutations": [
+        "add_symlink",
+        "add_entry",
+        "unsupported_existing_tree_setup"
+      ],
+      "structure_reachability": "NO",
+      "current_reachability": "NO",
+      "observability": "PARTIALLY OBSERVABLE",
+      "selection": "excluded",
+      "status": "excluded_v1",
+      "observer_requirements": [
+        "Complete before/after sandbox snapshots; no harness writes between captures; observe configured protected objects."
+      ],
+      "uncertainties": [
+        "Maintainer characterizes report as documented misuse; no accepted fixed comparator.",
+        "2025-11-15 maintainer correspondence identifies multi-patch hardening; exact released fixed comparator remains UNKNOWN. Excluded for reused-tree scope irrespective of later hardening."
+      ],
+      "sources": [
+        {
+          "source_type": "official_database",
+          "publisher": "CVE Program",
+          "identifier": "CVE-2025-45582",
+          "url": "https://www.cve.org/CVERecord?id=CVE-2025-45582",
+          "inspected": true
+        },
+        {
+          "source_type": "upstream_policy",
+          "publisher": "GNU tar / Paul Eggert",
+          "identifier": "bug-tar 2025-08-11",
+          "url": "https://lists.gnu.org/archive/html/bug-tar/2025-08/msg00012.html",
+          "inspected": true
+        },
+        {
+          "source_type": "upstream_policy",
+          "publisher": "GNU tar / Paul Eggert",
+          "identifier": "bug-tar 2025-11-15",
+          "url": "https://lists.gnu.org/r/bug-tar/2025-11/msg00014.html",
+          "inspected": true
+        },
+        {
+          "source_type": "patch_pointer",
+          "publisher": "GNU tar",
+          "identifier": "75b03fdff48916bd0654677ed21379bdb0db016d",
+          "url": "https://cgit.git.savannah.gnu.org/cgit/tar.git/commit/?id=75b03fdff48916bd0654677ed21379bdb0db016d",
+          "inspected": false
+        }
+      ],
+      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md",
+      "candidate_id": "G03",
+      "taxonomy_ids": [
+        "S01",
+        "S04",
+        "S12",
+        "S14"
+      ],
+      "archive_format": "TAR",
+      "representation": "PARTIAL",
+      "seed_start": "NO",
+      "isolated_execution": "NOT_IMPLEMENTED",
+      "qualification": "SOURCE_VERIFIED",
+      "execution": "NOT_RUN"
+    }
+  ]
+}

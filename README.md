@@ -7,7 +7,7 @@ InodeFence는 TAR archive entry를 생성·변형하고, 실제 extractor(압축
 
 현재는 **공통 데이터 모델, 최소 단일 실행 pipeline, Generic Mutation v1과 Layer 5 Feedback / Corpus v1**을 구현했습니다. Corpus는 normalized state와 violation novelty를 독립적으로 추적하고 mutation parent를 in-memory로 보존·균등 선택합니다. Python `tarfile`/`data` reference target으로 검증하며, bounded campaign·explicit seeds·실행 전 provenance·strict JSON config·structured export를 제공합니다.
 
-현재 준비 상태는 **READY FOR FULL CODE / ARCHITECTURE AUDIT**입니다. 별도 [container backend](src/inodefence/execution/README.md), pinned Node-tar image, frozen config/provenance와 tiny benign configured campaign을 검증했고 completed evidence를 staged atomic publication합니다. **ENGINE READY / BENCHMARK INFRASTRUCTURE READY**의 범위는 이 engineering 경로입니다. 비교 평가와 취약점 재발견 실험은 실행하지 않았으며 다음은 전체 repository audit입니다. [실제 검증·checksum·한계](experiments/summaries/pre-audit-readiness-v1.md)를 참고하세요.
+현재는 **AUDIT PHASES 1–3 COMPLETE — PHASE-4 GLOBAL CLOSEOUT PENDING**입니다. Pre-audit freeze, 두 audit lane과 cross-review/findings freeze를 완료했고 Runtime #45와 Engine #46 수정이 main `d1982e4`에 병합됐습니다. 별도 [container backend](src/inodefence/execution/README.md), pinned Node-tar image, verified artifact/invocation evidence, frozen config/provenance와 tiny benign configured campaign을 검증했습니다. [최종 Engine/Research 감사 #47](https://github.com/TheWaitForAGI/InodeFence/pull/47)은 기능 검증 통과와 잔여 문서 drift를 구분합니다. 이 PR #35는 그 문서/계획 수정 제안이며 아직 병합되지 않았습니다. 비교 평가·benchmark qualification·취약점 재발견은 모두 NOT_RUN입니다. [과거 pre-audit 검증·checksum·한계](experiments/summaries/pre-audit-readiness-v1.md)는 해당 revision의 engineering 기록입니다.
 
 [현재 상태](docs/STATUS.md) · [시작 안내](docs/START_HERE.md) · [아키텍처](docs/research/design/architecture.md) · [Security Contracts](docs/research/design/security-contracts.md) · [개발 가이드](CONTRIBUTING.md)
 
@@ -87,7 +87,7 @@ Corpus는 다음 변형의 출발점으로 남기는 입력 모음입니다.
 `StateSignature = normalized security-state representation for future feedback/corpus`입니다. `extract/**` 결과와 external 상태·effect, 보호 sentinel 및 내부↔sentinel identity 관계를 사용합니다. `.`과 `archive/**`는 `Region.HARNESS`로 제외하며, 그 외 extraction 밖 경로는 EXTERNAL이므로 root-level `escape.txt`도 유지합니다.
 
 **StateSignature는 ArchiveCase identity나 TAR artifact identity를 직접 포함하지 않습니다.** 서로 다른 case/TAR가 같은 의미의 filesystem/security state를 만들면 같은 signature여야 합니다. 실제 Python reference extraction에서 독립 regular entry의 순서를 바꾸는 E2E regression으로 이 invariant를 확인합니다.
-Schema v2는 정렬된 path/type/mode, regular nlink/size/content digest, scope 안의 same-object group, link text와 외부 변경 종류를 담습니다. Directory를 포함한 nonregular nlink는 `None`이며 raw inode·timestamp·ownership 값과 nonregular size를 제외합니다. Raw nlink와 외부 metadata-change labels는 보존하며, 최종 feedback/ablation 정책은 후속 실험에서 정합니다.
+Schema v3는 정렬된 path/type/mode, regular nlink/size/content digest, scope 안의 same-object group, link text와 외부 변경 종류를 담습니다. Symlink target은 `run:<raw suffix>` 또는 `literal:<raw target>`으로 tag하며 반복 slash와 `..` spelling을 보존하고 referent를 resolve하지 않습니다. V2 key 호환성이나 migration은 제공하지 않습니다. Directory를 포함한 nonregular nlink는 `None`이며 raw inode·timestamp·ownership 값과 nonregular size를 제외합니다. Raw nlink와 외부 metadata-change labels는 보존하며, 최종 feedback/ablation 정책은 후속 실험에서 정합니다.
 
 **Region.HARNESS는 security trust boundary가 아닙니다.** Signature에서 HARNESS를 제외하는 것은 input/harness novelty 오염을 막기 위한 normalization 정책입니다. C0는 별도로 extraction root 밖의 persistent namespace 생성·삭제·identity/type 교체를 검사하므로 `archive/escaped.txt` 생성이나 기존 `archive/input.tar` 삭제·교체도 evidence입니다. Content/metadata-only 변화는 기존 C0/C2 구분에 따라 C0 조건으로 삼지 않습니다.
 

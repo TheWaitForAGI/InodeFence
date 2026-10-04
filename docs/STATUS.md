@@ -276,3 +276,11 @@ Unknown 및 core-only/unbound IDs의 immediate rejection, 모든 execution statu
 B0/B1/B3 × FULL/A1/A2 × M1/A3 조합의 deterministic logical lineage를 검증했다.
 B2의 alternative configured campaign binding은 Evaluation reader/journal/manifest 지원이 필요한
 남은 의존성이다. [정확한 interface 요구사항](research/design/search-policy-core-v1.md)을 따른다.
+
+### Bound violation minimization
+
+`minimize_violation`는 baseline의 exact semantic fingerprint condition을 versioned record로 보존하고
+모든 trial의 requested ArchiveCase / deterministic USTAR hash / format binding을 검증한다.
+Raw evidence와 rejected trials는 그대로 남으며 execution status를 evidence로 대체하지 않는다.
+Existing arbitrary-predicate minimizer는 유지한다. [Binding 의미와 한계](research/design/generic-minimizer-v1.md)를
+따른다. Long USTAR path의 simplification으로 unsupported spelling이 생기는 문제는 별도 policy 작업이다.

@@ -3,8 +3,11 @@
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, replace
 from enum import StrEnum
+from hashlib import sha256
 
-from inodefence.model import ArchiveCase, EntryType, RunResult
+from inodefence.builder import BUILDER_FORMAT, build_tar
+from inodefence.feedback import ViolationFingerprint, violation_fingerprints
+from inodefence.model import ArchiveCase, EntryType, RunResult, canonical_json
 
 MINIMIZATION_POLICY = "greedy-archive-reduction-v1"
 
@@ -166,3 +169,96 @@ def minimize_case(
                 break
         else:
             return finish(MinimizationTermination.FIXED_POINT)
+
+
+VIOLATION_CONDITION_POLICY = "exact-violation-fingerprints-v1"
+
+
+def _canonical_fingerprints(result: RunResult) -> tuple[ViolationFingerprint, ...]:
+    if not isinstance(result, RunResult):
+        raise ValueError("violation preservation requires a RunResult")
+    return tuple(sorted(violation_fingerprints(result.violations), key=canonical_json))
+
+
+@dataclass(frozen=True, slots=True)
+class ViolationCondition:
+    """Exact semantic evidence set, excluding volatile raw observation values.
+
+    Matching fingerprints preserves the declared evidence class, not an inferred
+    root cause or vulnerability. Full raw results remain in minimization steps.
+    """
+
+    fingerprints: tuple[ViolationFingerprint, ...]
+    policy_id: str = VIOLATION_CONDITION_POLICY
+
+    def __post_init__(self) -> None:
+        if self.policy_id != VIOLATION_CONDITION_POLICY:
+            raise ValueError("unsupported violation preservation policy")
+        if (
+            not isinstance(self.fingerprints, tuple)
+            or not self.fingerprints
+            or not all(isinstance(item, ViolationFingerprint) for item in self.fingerprints)
+        ):
+            raise ValueError("condition requires at least one violation fingerprint")
+        if self.fingerprints != tuple(sorted(set(self.fingerprints), key=canonical_json)):
+            raise ValueError("condition fingerprints must be unique and canonical")
+
+    @classmethod
+    def from_result(cls, result: RunResult) -> "ViolationCondition":
+        return cls(_canonical_fingerprints(result))
+
+    def matches(self, result: RunResult) -> bool:
+        return _canonical_fingerprints(result) == self.fingerprints
+
+
+@dataclass(frozen=True, slots=True)
+class ViolationMinimizationResult:
+    """Trusted bound-minimizer output with the explicit preservation condition.
+
+    Each trial retains its case, exact TAR hash/format and full RunResult. This
+    record is raw reduction evidence, not imported evidence certification.
+    """
+
+    reduction: MinimizationResult
+    condition: ViolationCondition
+
+    @property
+    def final_result(self) -> RunResult:
+        """Evidence of the final accepted case, even after rejected trials."""
+        return next(step.result for step in reversed(self.reduction.steps) if step.accepted)
+
+
+def minimize_violation(
+    case: ArchiveCase,
+    evaluate: Callable[[ArchiveCase], RunResult],
+    *,
+    execution_budget: int,
+) -> ViolationMinimizationResult:
+    """Bind each trial to deterministic USTAR and freeze baseline fingerprints.
+
+    Baseline is evaluated once and consumes the declared budget. Every returned
+    case/hash/format must match its candidate before preservation is considered.
+    No execution status substitutes for evidence; nonviolating baselines fail.
+    Caller owns execution isolation, target/config consistency and source
+    provenance. Exact archive binding does not authenticate the evaluator.
+    """
+    condition: ViolationCondition | None = None
+
+    def checked(candidate: ArchiveCase) -> RunResult:
+        digest = sha256(build_tar(candidate)).hexdigest()
+        result = evaluate(candidate)
+        if not isinstance(result, RunResult) or result.case != candidate:
+            raise ValueError("evaluator must return RunResult for the requested case")
+        if result.archive_format != BUILDER_FORMAT or result.archive_sha256 != digest:
+            raise ValueError("evaluator archive hash/format differs from the requested archive")
+        return result
+
+    def preserves(result: RunResult) -> bool:
+        nonlocal condition
+        if condition is None:
+            condition = ViolationCondition.from_result(result)
+        return condition.matches(result)
+
+    reduction = minimize_case(case, checked, preserves, execution_budget=execution_budget)
+    assert condition is not None  # baseline was successfully evaluated by minimize_case
+    return ViolationMinimizationResult(reduction, condition)

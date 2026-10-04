@@ -161,6 +161,11 @@ def fake_backend(monkeypatch):
         ("Env", ["SECRET=ignored", "PATH=/usr/local/bin:/usr/bin:/bin", "LANG=C.UTF-8"]),
         ("Env", ["SECRET=", "PATH=/usr/bin", "LANG=C.UTF-8"]),
         ("Env", ["SECRET=", "PATH=/usr/local/bin:/usr/bin:/bin", "LANG=C.UTF-8", "SECRET="]),
+        ("Entrypoint", ["/expected-helper", "unexpected"]),
+        ("Cmd", ["unexpected", "extra"]),
+        ("Env", ["SECRET=", "PATH=/usr/local/bin:/usr/bin:/bin", "LANG=C.UTF-8", "SECRET=other"]),
+        ("Env", {"SECRET": "", "PATH": "/usr/local/bin:/usr/bin:/bin", "LANG": "C.UTF-8"}),
+        ("Env", ["SECRET=", "PATH=/usr/local/bin:/usr/bin:/bin", "LANG=C.UTF-8", None]),
     ),
 )
 def test_cr002_inspected_invocation_drift_fails_before_start(fake_backend, sandbox, field, value):
@@ -217,6 +222,48 @@ def test_cr002_environment_order_does_not_change_the_policy(fake_backend, sandbo
         ContainerRequest(IMAGE, ("/expected-helper", "argument"), sandbox.root, 5)
     ):
         pass
+
+
+@pytest.mark.parametrize("empty_cmd", (None, []))
+def test_final_cr002_cleared_cmd_accepts_only_documented_empty_forms(
+    fake_backend, sandbox, empty_cmd
+):
+    docker, backend = fake_backend
+    original = docker.run
+
+    def normalized(args, timeout):
+        result = original(args, timeout)
+        if args[:2] == ("container", "create"):
+            docker.target["Config"]["Cmd"] = empty_cmd
+        return result
+
+    docker.run = normalized
+    with backend.prepare(ContainerRequest(IMAGE, ("/expected-helper",), sandbox.root, 5)):
+        pass
+    assert docker.target is None
+
+
+@pytest.mark.parametrize("inspection", ("image", "prepared"))
+def test_final_cr001_actual_image_mismatch_prevents_start(fake_backend, sandbox, inspection):
+    docker, backend = fake_backend
+    original = docker.run
+
+    def altered(args, timeout):
+        result = original(args, timeout)
+        if inspection == "image" and args[:2] == ("image", "inspect"):
+            info = json.loads(result.stdout)[0]
+            info["Id"] = "sha256:" + "e" * 64
+            return docker.result(info)
+        if inspection == "prepared" and args[:2] == ("container", "create"):
+            docker.target["Image"] = "sha256:" + "e" * 64
+        return result
+
+    docker.run = altered
+    with pytest.raises(BackendError, match="identity|execution policy"):
+        with backend.prepare(ContainerRequest(IMAGE, ("/expected-helper",), sandbox.root, 5)):
+            raise AssertionError("mismatched image must not execute")
+    assert not any(call[:2] == ("container", "start") for call in docker.calls)
+    assert docker.target is None
 
 
 def test_ex003_timed_out_cli_with_exited_zero_primary_is_not_success(fake_backend, sandbox):

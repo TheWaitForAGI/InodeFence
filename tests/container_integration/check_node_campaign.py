@@ -90,6 +90,13 @@ def test_tiny_benign_configured_node_campaign(
     assert [step.index for step in result.steps] == list(range(8))
     admitted = set()
     for step in result.steps:
+        assert step.result.signature.schema_version == 3
+        input_before = step.result.before.get("archive/input.tar")
+        input_after = step.result.after.get("archive/input.tar")
+        assert input_before is not None and input_after is not None
+        assert (
+            input_before.content_digest == input_after.content_digest == step.result.archive_sha256
+        )
         if step.index < 4:
             assert step.parent_case_id is None
             for entry in seeds[step.index].entries:
@@ -137,6 +144,10 @@ def test_tiny_benign_configured_node_campaign(
     assert all(
         json.loads(line)["value"]["index"] == index
         for index, line in enumerate(steps.read_text().splitlines())
+    )
+    assert all(
+        json.loads(line)["value"]["result"]["signature"]["schema_version"] == 3
+        for line in steps.read_text().splitlines()
     )
     summary = {
         "config_id": config.config_id,

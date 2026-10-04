@@ -403,3 +403,20 @@ def test_cli_deadline_still_applies_after_pipes_close(tmp_path):
 def test_broker_rejects_invalid_command(args, timeout):
     with pytest.raises(BackendError):
         validate_command(args, timeout)
+
+
+def test_start_deadline_before_launch_destroys_context_before_return(fake_backend, sandbox):
+    docker, backend = fake_backend
+    original = docker.run
+
+    def expired(args, timeout):
+        if args[:2] == ("container", "start"):
+            return CommandResult(-9, b"", b"", timed_out=True)
+        return original(args, timeout)
+
+    docker.run = expired
+    with backend.prepare(ContainerRequest(IMAGE, ("python",), sandbox.root, 1e-9)) as prepared:
+        result = prepared.execute()
+        assert result.exit_code is None
+        assert docker.target is None
+        assert not any(call[:2] == ("container", "wait") for call in docker.calls)

@@ -398,3 +398,49 @@ def test_pipeline_verdict_and_signature_do_not_depend_on_duration_or_execution_s
     assert result.signature.identity_groups == (
         (("extract/alias", "outside/sentinel.txt"),) if external_effect else ()
     )
+
+
+@pytest.mark.parametrize("after_error", (False, True))
+def test_managed_target_setup_and_cleanup_bracket_observation(after_error, monkeypatch):
+    from contextlib import contextmanager
+
+    events = []
+    roots = []
+
+    class ManagedAdapter:
+        @contextmanager
+        def prepare(self, archive_path, extraction_root):
+            roots.append(extraction_root.parent)
+            events.append("setup")
+            # A disposable setup canary becomes BEFORE baseline, not target effect.
+            (extraction_root.parent / "outside/setup-canary").write_bytes(b"setup")
+            try:
+
+                def execute():
+                    events.append("execute")
+                    return PythonTarfileTarget().run(archive_path, extraction_root)
+
+                yield execute
+            finally:
+                assert extraction_root.exists()
+                events.append("cleanup")
+
+        def run(self, archive_path, extraction_root):
+            raise AssertionError("managed target must execute its prepared context")
+
+    def capture(root, phase, protected):
+        events.append(phase.value)
+        if after_error and phase == SnapshotPhase.AFTER:
+            raise ObservationError("controlled AFTER failure")
+        return capture_state(root, phase, protected)
+
+    monkeypatch.setattr(pipeline_module, "capture_state", capture)
+    if after_error:
+        with pytest.raises(ObservationError, match="AFTER failure"):
+            run_case(baseline_case("regular-file"), ManagedAdapter())
+    else:
+        result = run_case(baseline_case("regular-file"), ManagedAdapter())
+        assert not any(verdict.violated for verdict in result.violations)
+        assert result.before.get("outside/setup-canary") == result.after.get("outside/setup-canary")
+    assert events == ["setup", "before", "execute", "after", "cleanup"]
+    assert len(roots) == 1 and not roots[0].exists()

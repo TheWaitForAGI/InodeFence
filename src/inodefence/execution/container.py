@@ -1,7 +1,6 @@
 """Docker-compatible disposable Linux containers; no target-specific decisions."""
 
 import json
-import math
 import os
 import re
 import socket
@@ -9,76 +8,16 @@ import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from pathlib import Path
 from time import monotonic
 from uuid import uuid4
 
 from inodefence.runtime import RUNTIME_BASE, open_runtime_directory
 
-from .docker_client import BackendError, CommandResult, DockerClient
+from .base import BackendError, ContainerOutcome, ContainerRequest, ExecutionBackend, ResourcePolicy
+from .docker_client import CommandResult, DockerClient
 
 OWNER_LABEL = "org.inodefence.execution-owner"
 IMPLEMENTATION = "docker-volume-subpath-v1"
-
-
-@dataclass(frozen=True, slots=True)
-class ResourcePolicy:
-    """Per-container bounds, not a volume quota; units are bytes/counts."""
-
-    memory_bytes: int = 512 * 1024 * 1024
-    pids: int = 64
-    open_files: int = 1024
-    file_size_bytes: int = 64 * 1024 * 1024
-    tmpfs_bytes: int = 32 * 1024 * 1024
-
-    def __post_init__(self) -> None:
-        for name in self.__dataclass_fields__:
-            value = getattr(self, name)
-            if type(value) is not int or value <= 0:
-                raise ValueError(f"{name} must be a positive integer")
-
-
-@dataclass(frozen=True, slots=True)
-class ContainerRequest:
-    """Immutable content anchor, explicit argv and one existing controlled run."""
-
-    image_id: str
-    command: tuple[str, ...]
-    run_root: Path
-    timeout_seconds: float
-
-    def __post_init__(self) -> None:
-        if not isinstance(self.image_id, str) or not re.fullmatch(
-            r"sha256:[0-9a-f]{64}", self.image_id
-        ):
-            raise ValueError("target image must be an immutable local SHA-256 image ID")
-        if (
-            not isinstance(self.command, tuple)
-            or not self.command
-            or not all(isinstance(arg, str) and arg and "\0" not in arg for arg in self.command)
-        ):
-            raise ValueError("target command must be nonempty explicit argv")
-        relative = self.run_root.relative_to(RUNTIME_BASE)
-        spelling = relative.as_posix()
-        if ".." in relative.parts or not re.fullmatch(
-            r"(?:[a-zA-Z0-9_.-]+/)*core-run-[a-zA-Z0-9_-]+", spelling
-        ):
-            raise ValueError("target mounts require a disposable core-run directory")
-        if (
-            type(self.timeout_seconds) not in (int, float)
-            or not math.isfinite(self.timeout_seconds)
-            or not 0 < self.timeout_seconds <= 120
-        ):
-            raise ValueError("target wall-clock timeout must be positive and at most 120 seconds")
-
-
-@dataclass(frozen=True, slots=True)
-class ContainerOutcome:
-    exit_code: int | None
-    stdout: bytes
-    stderr: bytes
-    duration_seconds: float
-    output_truncated: bool
 
 
 def checked(result: CommandResult, operation: str) -> bytes:
@@ -119,7 +58,7 @@ def _container_absent(result: CommandResult, identity: str) -> bool:
 
 
 @dataclass(frozen=True, slots=True)
-class ContainerExecutionBackend:
+class ContainerExecutionBackend(ExecutionBackend):
     """Trusted controller's named volume is shared one run at a time.
 
     Construction verifies Linux runtime and controller-volume binding before any
@@ -176,6 +115,9 @@ class ContainerExecutionBackend:
         if info["Id"] != image_id or info["Os"] != "linux" or info["Config"].get("Volumes"):
             raise BackendError("image identity/platform/implicit volumes do not match the boundary")
         return info
+
+    def validate_image(self, image_id: str) -> None:
+        self.image(image_id)
 
     def create_command(self, request: ContainerRequest, name: str, image: dict) -> tuple[str, ...]:
         policy = self.resources
@@ -334,6 +276,17 @@ class PreparedContainer:
         )
         state = self.backend.inspect(self.identity)["State"]
         if state["Status"] == "created":
+            if attached.timed_out:
+                # The daemon may still be handling start after its client died.
+                # Destroy this identity to rule out a later start before AFTER.
+                remove_owned(client, self.identity, self.backend.owner)
+                return ContainerOutcome(
+                    None,
+                    attached.stdout,
+                    attached.stderr,
+                    monotonic() - start,
+                    attached.truncated,
+                )
             raise BackendError("container target could not start")
         timed_out = attached.timed_out
         if not timed_out and state["Running"]:

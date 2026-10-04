@@ -1668,3 +1668,14 @@ Paper
 ```
 
 이 세 흐름 — **연구 정의, Runtime 탐색, Evidence 검증** — 을 섞지 않는 것이 InodeFence 전체 설계의 중심 원칙이다.
+
+
+### Prepared target execution
+
+`TargetInvocation` describes image/argv/version/status; `IsolatedTarget` composes it
+with the narrow `ExecutionBackend`. Node's descriptor has no ordinary subprocess
+fallback. Pipeline calls `PreparedTarget.prepare` outside its snapshot pair and
+executes the yielded invocation exactly once. Preparation precedes BEFORE,
+complete execution-context stop precedes AFTER, removal follows AFTER, including
+on observer exceptions. Trusted reference adapters without preparation retain the
+existing one-run path. No campaign loop or contract verdict enters this boundary.

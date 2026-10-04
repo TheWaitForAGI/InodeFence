@@ -1,36 +1,73 @@
-"""Only ordinary controlled fixtures; never generated security campaigns."""
+"""Portable invocation contracts; real fixture cases live in the explicit container suite."""
 
 import json
-from pathlib import Path
+from contextlib import contextmanager
+from dataclasses import replace
 
 import pytest
 
 from inodefence.campaign import CampaignConfig, run_campaign
+from inodefence.execution.base import (
+    BackendError,
+    ContainerOutcome,
+    ExecutionBackend,
+    OutputLimitError,
+)
 from inodefence.generator import minimal_seed_corpus
 from inodefence.model import ExecutionStatus
 from inodefence.model.provenance import ExecutionSafety
-from inodefence.pipeline import run_case
-from inodefence.runtime import RuntimeSandbox, SentinelSpec, runtime_root
+from inodefence.runtime import SentinelSpec, runtime_root
+from inodefence.targets.isolated import IsolatedTarget
 from inodefence.targets.node_tar import NodeTarTarget
 
-PACKAGE_ROOT = Path(__file__).resolve().parents[1] / "tools" / "node-tar"
+IMAGE = "sha256:" + "a" * 64
+META = {
+    "node_version": "22.22.0",
+    "tar_version": "7.5.22",
+    "worker_sha256": "b" * 64,
+    "package_lock_sha256": "c" * 64,
+}
 
 
-def test_exact_discovered_versions_and_fixed_safety_requirement() -> None:
-    target = NodeTarTarget(PACKAGE_ROOT, timeout_seconds=3.5)
-    assert target.tar_version == "7.5.22"
-    assert target.node_version.startswith("22.")
-    assert (
-        target.provenance.target_version == f"node={target.node_version};tar={target.tar_version}"
-    )
-    assert target.provenance.timeout_seconds == 3.5
-    assert target.provenance.execution_safety == ExecutionSafety.ISOLATION_REQUIRED
+class ControlledBackend(ExecutionBackend):
+    """Test double, never evidence that a real runtime enforces containment."""
+
+    outcome = ContainerOutcome(0, b"", b"", 0.5, False)
+
+    def validate_image(self, image_id):
+        assert image_id == IMAGE
+
+    @contextmanager
+    def prepare(self, request):
+        backend = self
+
+        class Prepared:
+            def execute(self):
+                if "--identify" in request.command:
+                    return ContainerOutcome(0, json.dumps(META).encode(), b"", 0, False)
+                return backend.outcome
+
+        yield Prepared()
+
+
+def target(timeout: float = 10):
+    return NodeTarTarget.bind(ControlledBackend(), IMAGE, timeout)
+
+
+def test_exact_discovered_versions_and_fixed_safety_requirement():
+    bound = target(3.5)
+    assert isinstance(bound.invocation, NodeTarTarget)
+    assert bound.invocation.node_version == "22.22.0"
+    assert bound.invocation.tar_version == "7.5.22"
+    assert bound.provenance.target_version == "node=22.22.0;tar=7.5.22"
+    assert bound.provenance.timeout_seconds == 3.5
+    assert bound.provenance.execution_safety == ExecutionSafety.ISOLATION_REQUIRED
     with pytest.raises(ValueError, match="requires execution isolation"):
-        run_campaign(minimal_seed_corpus(), target, CampaignConfig(1, 4))
+        run_campaign(minimal_seed_corpus(), bound, CampaignConfig(1, 4))
 
 
 @pytest.mark.parametrize("configured", (False, True))
-def test_node_campaign_paths_reject_before_freeze_or_runtime(configured, monkeypatch) -> None:
+def test_node_campaign_paths_reject_before_freeze_or_runtime(configured, monkeypatch):
     from inodefence.experiment_config import (
         FEEDBACK_POLICY,
         MUTATION_POLICY,
@@ -39,7 +76,7 @@ def test_node_campaign_paths_reject_before_freeze_or_runtime(configured, monkeyp
         run_configured_campaign,
     )
 
-    target = NodeTarTarget(PACKAGE_ROOT)
+    bound = target()
     seeds = minimal_seed_corpus()
     budget = CampaignConfig(11, 8)
     existing = set(runtime_root().iterdir())
@@ -49,11 +86,11 @@ def test_node_campaign_paths_reject_before_freeze_or_runtime(configured, monkeyp
 
     monkeypatch.setattr("inodefence.campaign.freeze_provenance", forbidden)
     monkeypatch.setattr("inodefence.pipeline.disposable_sandbox", forbidden)
-    monkeypatch.setattr(NodeTarTarget, "run", forbidden)
+    monkeypatch.setattr(IsolatedTarget, "run", forbidden)
     with pytest.raises(ValueError, match="requires execution isolation"):
         if configured:
             config = ExperimentConfig(
-                target.provenance,
+                bound.provenance,
                 SEED_PROFILE,
                 tuple(case.case_id for case in seeds),
                 budget,
@@ -62,108 +99,100 @@ def test_node_campaign_paths_reject_before_freeze_or_runtime(configured, monkeyp
                 (SentinelSpec(),),
                 "linux-development-v1",
             )
-            run_configured_campaign(config, seeds, target)
+            run_configured_campaign(config, seeds, bound)
         else:
-            run_campaign(seeds, target, budget)
+            run_campaign(seeds, bound, budget)
     assert set(runtime_root().iterdir()) == existing
 
 
-@pytest.mark.parametrize("index", range(4))
-def test_benign_baseline_extraction_has_no_harness_bookkeeping(index: int) -> None:
-    target = NodeTarTarget(PACKAGE_ROOT)
-    result = run_case(minimal_seed_corpus()[index], target)
-    assert result.execution.status == ExecutionStatus.SUCCESS
-    assert result.execution.target_version == target.provenance.target_version
-    assert result.execution.timeout_seconds == target.timeout_seconds
-    assert result.execution.duration_seconds >= 0
-    assert result.execution.stdout == result.execution.stderr == ""
-    assert not any(verdict.violated for verdict in result.violations)
-    assert all(change.path.startswith("extract") for change in result.changes)
-    if index == 2:
-        first, second = result.after.get("extract/a.txt"), result.after.get("extract/b.txt")
-        assert first is not None and second is not None
-        assert first.identity == second.identity
-    if index == 3:
-        link = result.after.get("extract/b.txt")
-        assert link is not None and link.symlink_target == "a.txt"
-    assert not Path(result.after.sandbox_root).exists()
-
-
-def test_nonarchive_input_returns_error_diagnostics(sandbox: RuntimeSandbox) -> None:
-    sandbox.archive_path.write_bytes(b"ordinary invalid format")
-    result = NodeTarTarget(PACKAGE_ROOT).run(sandbox.archive_path, sandbox.extraction_root)
-    assert result.status == ExecutionStatus.REJECTED
-    diagnostic = json.loads(result.stderr)
-    assert diagnostic["code"] == "TAR_BAD_ARCHIVE"
-    assert result.stdout == ""
-
-
-def test_version_discovery_is_mockable_and_invalid_identity_rejected(monkeypatch) -> None:
-    monkeypatch.setattr("inodefence.targets.node_tar._identify", lambda *args: ("22.0.0", "1.2.3"))
-    assert NodeTarTarget(PACKAGE_ROOT).tar_version == "1.2.3"
+def test_version_discovery_is_mockable_and_invalid_identity_rejected(monkeypatch):
     monkeypatch.setattr(
-        "inodefence.targets.node_tar._identify", lambda *args: ("latest", "installed")
+        "inodefence.targets.node_tar._identify", lambda *args: META | {"tar_version": "1.2.3"}
+    )
+    discovered = target().invocation
+    assert isinstance(discovered, NodeTarTarget)
+    assert discovered.tar_version == "1.2.3"
+    monkeypatch.setattr(
+        "inodefence.targets.node_tar._identify", lambda *args: META | {"node_version": "latest"}
     )
     with pytest.raises(ValueError, match="version"):
-        NodeTarTarget(PACKAGE_ROOT)
+        target()
 
 
-def test_invalid_timeout_and_missing_node_rejected(monkeypatch) -> None:
+def test_invalid_timeout_and_missing_backend_rejected():
     with pytest.raises(ValueError):
-        NodeTarTarget(PACKAGE_ROOT, timeout_seconds=True)
-    monkeypatch.setattr("shutil.which", lambda *args: None)
-    with pytest.raises(ValueError, match="executable"):
-        NodeTarTarget(PACKAGE_ROOT)
+        target(True)
+    with pytest.raises(ValueError, match="ExecutionBackend"):
+        NodeTarTarget.bind(None, IMAGE)  # type: ignore[arg-type]
 
 
-def test_timeout_status_and_streams_preserved(sandbox: RuntimeSandbox, monkeypatch) -> None:
-    from inodefence.targets._process import ProcessOutcome
+def test_backend_unavailable_precedes_runtime_creation(monkeypatch):
+    class Unavailable(ControlledBackend):
+        def validate_image(self, image_id):
+            raise BackendError("image unavailable")
 
-    target = NodeTarTarget(PACKAGE_ROOT)
-    monkeypatch.setattr(
-        "inodefence.targets.node_tar.run_process",
-        lambda *args, **kwargs: ProcessOutcome(None, b"output\xff", b"error", 0.5),
-    )
-    result = target.run(sandbox.archive_path, sandbox.extraction_root)
-    assert result.status == ExecutionStatus.TIMED_OUT
+    def forbidden(*args, **kwargs):
+        raise AssertionError("unavailable boundary must precede runtime")
+
+    monkeypatch.setattr("inodefence.targets.node_tar.disposable_sandbox", forbidden)
+    with pytest.raises(BackendError, match="unavailable"):
+        NodeTarTarget.bind(Unavailable(), IMAGE)
+
+
+@pytest.mark.parametrize(
+    "exit_code,status",
+    (
+        (None, ExecutionStatus.TIMED_OUT),
+        (1, ExecutionStatus.FAILED),
+        (2, ExecutionStatus.REJECTED),
+        (0, ExecutionStatus.SUCCESS),
+    ),
+)
+def test_status_and_streams_preserved(sandbox, exit_code, status):
+    bound = target()
+    assert isinstance(bound.backend, ControlledBackend)
+    bound.backend.outcome = ContainerOutcome(exit_code, b"output\xff", b"error", 0.5, False)
+    result = bound.run(sandbox.archive_path, sandbox.extraction_root)
+    assert result.status == status
     assert result.stdout == "output\udcff" and result.stderr == "error"
     assert result.duration_seconds == 0.5
 
 
-def test_unexpected_worker_error_is_failed(sandbox: RuntimeSandbox, monkeypatch) -> None:
-    from inodefence.targets._process import ProcessOutcome
-
-    target = NodeTarTarget(PACKAGE_ROOT)
-    monkeypatch.setattr(
-        "inodefence.targets.node_tar.run_process",
-        lambda *args, **kwargs: ProcessOutcome(1, b"", b"controlled worker error", 0.5),
-    )
-    assert (
-        target.run(sandbox.archive_path, sandbox.extraction_root).status == ExecutionStatus.FAILED
-    )
-
-
-def test_real_timeout_of_ordinary_fixture_preserves_after_state_and_cleanup() -> None:
-    result = run_case(minimal_seed_corpus()[0], NodeTarTarget(PACKAGE_ROOT, timeout_seconds=1e-9))
-    assert result.execution.status == ExecutionStatus.TIMED_OUT
-    assert result.execution.duration_seconds > 0
-    assert not Path(result.after.sandbox_root).exists()
-
-
-def test_layout_rejection_precedes_worker_invocation(sandbox: RuntimeSandbox, monkeypatch) -> None:
-    target = NodeTarTarget(PACKAGE_ROOT)
+def test_layout_rejection_precedes_backend_invocation(sandbox, monkeypatch):
+    bound = target()
 
     def forbidden(*args, **kwargs):
         raise AssertionError("bad harness paths must never execute")
 
-    monkeypatch.setattr("inodefence.targets.node_tar.run_process", forbidden)
+    monkeypatch.setattr(bound.backend, "prepare", forbidden)
     with pytest.raises(ValueError, match="layout"):
-        target.run(sandbox.archive_path, sandbox.root)
+        bound.run(sandbox.archive_path, sandbox.root)
 
 
-def test_worker_identity_guard_precedes_extraction(sandbox: RuntimeSandbox, monkeypatch) -> None:
-    monkeypatch.setattr("inodefence.targets.node_tar._identify", lambda *args: ("99.0.0", "7.5.22"))
-    target = NodeTarTarget(PACKAGE_ROOT)
-    with pytest.raises(RuntimeError, match="identity changed"):
-        target.run(sandbox.archive_path, sandbox.extraction_root)
-    assert tuple(sandbox.extraction_root.iterdir()) == ()
+def test_output_limit_aborts_incomplete_evidence_with_bounded_prefix(sandbox):
+    bound = target()
+    assert isinstance(bound.backend, ControlledBackend)
+    bound.backend.outcome = ContainerOutcome(0, b"prefix", b"", 1, True)
+    with pytest.raises(OutputLimitError) as caught:
+        bound.run(sandbox.archive_path, sandbox.extraction_root)
+    assert caught.value.outcome.stdout == b"prefix"
+
+
+def test_descriptor_has_no_direct_process_execution_or_safety_override():
+    bound = target()
+    assert isinstance(bound.invocation, NodeTarTarget)
+    assert not hasattr(bound.invocation, "run")
+    with pytest.raises(TypeError):
+        replace(bound.invocation, execution_safety=ExecutionSafety.TRUSTED_REFERENCE)
+
+
+@pytest.mark.parametrize("change", ({"timeout_seconds": True}, {"image_id": "latest"}))
+def test_invalid_binding_configuration_precedes_identity_execution(change, monkeypatch):
+    def forbidden(*args, **kwargs):
+        raise AssertionError("invalid configuration must not allocate runtime or identify")
+
+    monkeypatch.setattr("inodefence.targets.node_tar._identify", forbidden)
+    with pytest.raises(ValueError):
+        NodeTarTarget.bind(
+            ControlledBackend(), **({"image_id": IMAGE, "timeout_seconds": 10} | change)
+        )

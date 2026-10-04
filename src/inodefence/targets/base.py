@@ -1,7 +1,9 @@
 """Target execution interface; filesystem observation belongs to the runner."""
 
+from collections.abc import Callable
+from contextlib import AbstractContextManager
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, runtime_checkable
 
 from inodefence.model import ExecutionResult
 from inodefence.model.provenance import TargetProvenance
@@ -33,3 +35,12 @@ class CampaignTarget(TargetAdapter, Protocol):
 
     @property
     def provenance(self) -> TargetProvenance: ...
+
+
+@runtime_checkable
+class PreparedTarget(TargetAdapter, Protocol):
+    """Setup before BEFORE; yielded invocation stops before AFTER; cleanup after."""
+
+    def prepare(
+        self, archive_path: Path, extraction_root: Path
+    ) -> AbstractContextManager[Callable[[], ExecutionResult]]: ...

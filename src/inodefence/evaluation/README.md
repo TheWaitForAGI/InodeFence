@@ -68,3 +68,29 @@ ledger cannot recover inaccessible evidence or infer which lifecycle phase
 failed. Evaluation callers explicitly supply the evidence they retained and
 handle publication errors. No core monkeypatch, fabricated result, automatic
 campaign rerun or altered exception/status classification is introduced.
+
+## Incremental evidence journal
+
+`EvidenceJournal.create(directory, JournalHeader(...))` starts a single-writer
+sink with explicit config, initial case IDs, optional original config JSON and
+frozen provenance. `append(completed_step)` verifies and atomically publishes each
+canonical step without overwrite. `read_journal(directory)` validates all prefix
+records and returns an explicit incomplete snapshot until completion is marked.
+Torn published records, gaps, index/lineage/binding/feedback drift fail closed.
+Orphan staging files are ignored; previously published steps remain readable.
+
+`finish()` requires the exact execution budget. It produces the unchanged core
+manifest-v4 export and verifies it, then publishes a checksummed completion marker
+binding header, all step digests, manifest and JSONL. An interrupted final
+publication can be retried without executing targets or overwriting evidence.
+A missing marker always means an incomplete journal, including when all records
+or a full standalone export exist. A marker is checked against every record.
+
+This is a passive evidence sink, not campaign/search checkpointing. Callers with
+completed steps can publish before their next execution; the current opaque
+`run_campaign` API cannot stream its internal steps, so direct automatic campaign
+attachment remains blocked by that public interface. No monkeypatch is used.
+Each append revalidates its prefix (quadratic total work); optimize only with
+measured need. There is no concurrent-writer or malicious-parent guarantee.
+Checksums do not authenticate authorship, and an externally deleted unfinalized
+tail cannot be detected without a separately retained anchor.

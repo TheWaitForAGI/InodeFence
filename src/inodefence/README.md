@@ -85,6 +85,7 @@ ExperimentConfig v1/v2는 seed/profile/policy/target/sentinel/environment-profil
 Stored experiment_config_id는 manifest에 보존하며 actual source/platform provenance와 분리한다.
 현재 config CLI는 safe reference만 실행한다. [설정 계약](../../experiments/configs/README.md)을 따른다.
 
-현재 준비 상태는 ENGINEERING FOUNDATION이다. Reference engine 경로의 구현/검증과
-third-party benchmark readiness를 구분한다. Pinned Node image, contained fixture, frozen config/provenance binding과 8회 benign full-path smoke를
-검증했다. 최종 lifecycle/export/freeze 검토가 남았다. [준비 상태와 다음 작업](../../docs/STATUS.md)을 따른다.
+현재 준비 상태는 READY FOR FULL CODE / ARCHITECTURE AUDIT이다. Pinned Node image,
+contained fixtures, frozen config/provenance와 8회 benign full-path smoke, focused lifecycle,
+Linux staged export 및 dependency direction을 검증했다. 다음은 전체 repository audit이며
+security evaluation은 아직 실행하지 않았다. [준비 상태와 다음 작업](../../docs/STATUS.md)을 따른다.

@@ -27,7 +27,7 @@ raw 결과를 검토 없이 논문 결론으로 승격하기, source mount에서
 ## 현재 상태
 
 Execution Provenance v1은 campaign 시작 전에 source/environment/adapter/sentinel 값을 고정한다.
-Manifest v2는 stored configuration과 실제 RunResult contexts/exporter 환경을 분리한다. Git 정보가
+Manifest v4는 stored configuration과 실제 RunResult contexts/exporter 환경을 분리한다. Git 정보가
 없으면 None이며 dirty checkout의 commit은 patch 내용을 보존하지 않는다. Metadata만으로
 연구 결과의 재현성 또는 OS execution isolation을 보장하지 않는다.
 
@@ -35,14 +35,14 @@ summaries/에는 [safe reference 개발 pilot](summaries/reference-campaign-pilo
 engineering summary가 있다. Raw 결과는 로컬 experiments/raw/reference-pilot-v1/에 Git ignore로
 보관하며 재생성 명령과 checksum을 요약에 기록한다. Formal effectiveness 실험 결과는 없다.
 
-Strict JSON ExperimentConfig v1과 [reference config CLI](../scripts/run_configured_reference.py)가
+Strict JSON ExperimentConfig v1/v2와 [reference config CLI](../scripts/run_configured_reference.py)가
 실행 전 binding을 검증하고 stored config ID/actual execution provenance를 raw export에 연결한다.
 Configuration identity는 result/source/kernel를 포함하지 않으며 평가 결과가 아니다.
 
 [인프라 검증 요약](summaries/infrastructure-readiness-v1.md)은 clean source의 작은 reference repeat,
-Node campaign 실행 전 거부와 local raw checksums를 연결한다. Engineering readiness는
-ENGINEERING FOUNDATION이다. Node-tar 정상 fixture integration과 third-party campaign의 OS 격리는
-별개이며 benchmark smoke/evaluation은 아직 수행하지 않았다.
+uncontained Node campaign 실행 전 거부와 local raw checksums를 연결하는 역사적 기록이다.
+현재는 [pre-audit readiness](summaries/pre-audit-readiness-v1.md)의 contained Node benign smoke,
+lifecycle, durable export와 dependency 검증까지 완료했다. 다음은 full audit이며 evaluation은 미실행이다.
 
 ## 파일 배치 규칙
 
@@ -54,14 +54,14 @@ ENGINEERING FOUNDATION이다. Node-tar 정상 fixture integration과 third-party
 Container-bound configurations use explicit ExperimentConfig v2 and frozen isolation
 policy/runtime/image/worker/lock provenance. Uncontained third-party campaigns fail
 before setup; this pre-audit contract authorizes only the tiny benign Node smoke.
-Manifest v3 stores these facts; snapshot/security/novelty semantics are unchanged.
+Manifest v4 stores these facts; snapshot/security/novelty semantics are unchanged.
 No benchmark effectiveness or known-vulnerability result is implied.
 
 
 The [benign Node container smoke](summaries/benign-node-container-smoke-v1.md) records
 one tiny engineering campaign, exact stored conditions/checksums and observed stats.
-CI retains its raw bundle as an artifact. Audit preparation and lifecycle/export review
-remain; no effectiveness/security evaluation follows automatically.
+CI retains its raw bundle as an artifact. Lifecycle/export review and limited integration freeze
+are complete; next is the full repository audit. No effectiveness/security evaluation follows automatically.
 
 ## Completed export publication
 

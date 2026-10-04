@@ -384,3 +384,16 @@ the stored config ID and are published with evidence. Historical manifests remai
 Pre-publication exceptions remove staging and leave final absent. Hard interruption may leave
 staging; after-publication sync error leaves complete evidence and propagates. Parent creation
 is not rolled back. No database/checkpoint/crash-proof storage claim is made.
+
+## D027 — Pre-audit infrastructure freeze after benign contained Node validation
+
+Container backend, pinned target, exact config/provenance binding, lifecycle validation and
+staged export establish ENGINE READY / BENCHMARK INFRASTRUCTURE READY for the approved
+benign path. Status becomes READY FOR FULL CODE / ARCHITECTURE AUDIT. This is a limited
+integration/dependency/attestation review, not the full code audit or evaluation readiness.
+Image ID plus worker/lock digests provide the compact content anchor; no extra tree hashing
+is justified before that audit. Dirty patch, exact Python binary, runtime/kernel portability,
+total storage/CPU limits and hard-interruption persistence remain explicit limitations.
+Feature expansion stops; next is the full repository-wide audit, then a separate research
+Task Contract before benchmark/CVE evaluation. Historical audit/smoke summaries keep their
+original revision and claims rather than being rewritten as current guarantees.

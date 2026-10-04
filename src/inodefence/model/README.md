@@ -10,7 +10,7 @@
 | [filesystem.py](filesystem.py) | ObjectSnapshot, StateSnapshot, StateChange, StateSignature |
 | [results.py](results.py) | ExecutionResult, IdentityEvidence, ViolationResult, RunResult |
 | [provenance.py](provenance.py) | Source/Environment/Target/Sentinel/ExecutionProvenance configuration values |
-| [serialization.py](serialization.py) | canonical_json, schema version 1 |
+| [serialization.py](serialization.py) | canonical_json, default envelope v1 / provenance and campaign v2 |
 
 ArchiveEntry는 raw path/link text를 보존하고 NUL·잘못된 field 조합을 거부한다. regular는 bytes content, directory는 content/target 없음, hardlink/symlink는 target 필수다. USTAR 길이 제한은 builder의 책임이다. ArchiveCase는 order/duplicate를 보존하며 versioned canonical representation의 SHA-256을 `case_id`로 제공한다. Parent lineage는 상위 campaign step에 기록하며 ArchiveCase identity에 섞지 않는다.
 
@@ -71,6 +71,7 @@ Encoding compatibility: ExecutionProvenance and CampaignResult top-level canonic
  envelopes are explicitly schema v2; other evidence (ArchiveCase, RunResult,
 CampaignStep, snapshots/signatures) retains its existing envelope/schema and identity.
 The contained policy/provenance payloads have independent schema v1. Manifest writers
-now emit schema v3 with stored nullable isolation; historical manifest v2 lacked it.
+now emit schema v4 with stored nullable isolation and optional config file/checksum;
+historical manifest v2 lacked isolation and v3 introduced it.
 No old-evidence reader or migration guarantee is supplied. ExperimentConfig v1 IDs
 remain unchanged; contained configs require v2 and the full isolation policy.

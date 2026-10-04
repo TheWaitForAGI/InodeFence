@@ -24,7 +24,6 @@ Unvalidated predictions are labeled as such; selected cases still require
 post-audit Linux qualification. A failed qualification is reported and does not
 silently become another benchmark.
 
-The first coherent deliverable is the engine audit. The remaining linked files
-are filled in as the same Draft PR progresses. Final state and review evidence
-are recorded in the handoff; no implementation may begin until isolation,
+The complete planning package is kept in one Draft PR. Final state and review
+evidence are recorded in the handoff; no implementation may begin until isolation,
 repository audit and audit fixes are complete under a new Task Contract.

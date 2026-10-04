@@ -49,3 +49,9 @@ ENGINEERING FOUNDATION이다. Node-tar 정상 fixture integration과 third-party
 설정은 configs/, raw 기록은 raw/에 둔다. raw/*와 results/는 Git ignore 대상이므로 결과 보존·공유 경로를 명시한다. 설정에 seed, 환경, target 버전과 결과 식별자를 남긴다.
 
 작은 검증 요약은 [summaries/](summaries/README.md)에 config, commit, target/version, seed, budget, result와 원본 근거를 연결해 추적한다.
+
+## Benchmark/evaluation 준비
+
+[정적 benchmark catalog와 빈 표](benchmarks/README.md)는
+[연구 설계 v1](../docs/research/benchmarks/README.md)에 연결된다.
+실행 설정 또는 실험 결과가 아니며 isolation, 전체 audit와 audit fixes 이후의 handoff다.

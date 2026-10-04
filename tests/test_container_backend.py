@@ -234,6 +234,31 @@ def test_wrong_policy_prevents_start_and_removes_container(fake_backend, sandbox
     assert not any(call[:2] == ("container", "start") for call in docker.calls)
 
 
+@pytest.mark.parametrize("driver, accepted", (({}, True), ({"Name": "unapproved"}, False)))
+def test_only_empty_runtime_default_volume_driver_is_accepted(
+    fake_backend, sandbox, driver, accepted
+):
+    docker, backend = fake_backend
+    original = docker.run
+
+    def configured(args, timeout):
+        outcome = original(args, timeout)
+        if args[:2] == ("container", "create"):
+            assert docker.target is not None
+            docker.target["HostConfig"]["Mounts"][0]["VolumeOptions"]["DriverConfig"] = driver
+        return outcome
+
+    docker.run = configured
+    if accepted:
+        with backend.prepare(ContainerRequest(IMAGE, ("python",), sandbox.root, 5)) as prepared:
+            assert prepared.execute().exit_code == 4
+    else:
+        with pytest.raises(BackendError, match="policy"):
+            with backend.prepare(ContainerRequest(IMAGE, ("python",), sandbox.root, 5)):
+                pytest.fail("unapproved driver must not execute")
+    assert docker.target is None
+
+
 def test_timeout_stops_context_before_return(fake_backend, sandbox):
     docker, backend = fake_backend
     docker.timeout = True

@@ -35,7 +35,7 @@ def main() -> int:
     with redirect_stdout(sys.stderr):
         backend = ContainerExecutionBackend(client, args.controller, args.volume, args.owner)
         return pytest.main(
-            ["tests/container_integration/check_boundary.py", "-q", "-s"],
+            ["tests/container_integration/check_boundary.py", "-q", "-s", "-p", "no:cacheprovider"],
             plugins=[IntegrationFixtures(backend, args.image)],
         )
 

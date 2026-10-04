@@ -259,6 +259,12 @@ class ContainerExecutionBackend:
                 host = info["HostConfig"]
                 policy = self.resources
                 mount = host["Mounts"]
+                # Docker versions differ only in emitting an empty default here.
+                # Nonempty drivers/options and any other extra fields stay rejected.
+                for entry in mount:
+                    options = entry.get("VolumeOptions") or {}
+                    if options.get("DriverConfig") == {}:
+                        del options["DriverConfig"]
                 if (
                     info["Image"] != request.image_id
                     or host["NetworkMode"] != "none"

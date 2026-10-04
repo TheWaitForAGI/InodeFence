@@ -89,10 +89,10 @@ def test_real_startup_failure_is_infrastructure_error_and_cleans_up(
     from inodefence.execution import BackendError
 
     with disposable_sandbox() as sandbox:
-        with pytest.raises(BackendError):
-            with container_backend.prepare(
-                ContainerRequest(container_image, ("/missing-benign-helper",), sandbox.root, 3)
-            ) as prepared:
+        with container_backend.prepare(
+            ContainerRequest(container_image, ("/missing-benign-helper",), sandbox.root, 3)
+        ) as prepared:
+            with pytest.raises(BackendError):
                 prepared.execute()
         assert (
             container_backend.client.run(("container", "inspect", prepared.identity), 10).returncode

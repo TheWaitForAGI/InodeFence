@@ -253,3 +253,10 @@ Versioned FeedbackProjection A1/A2는 admission key에서 identity_groups 또는
 count를 full-state count와 구분하며 inode/timestamp/run-anchor 차이에 대한 regression을
 추가했다. SearchDecision core envelope는 v2이며 legacy campaign encoding은 그대로다.
 ExperimentConfig/provenance/evaluation binding은 [별도 의존성](research/design/search-policy-core-v1.md)이다.
+
+### A3 reorder core
+
+Legacy/M1에 각각 versioned no-reorder policy를 추가했다. Reorder slot의 uniform 확률과
+RNG 소비는 유지하며 output contribution만 제거한다. 다른 operator를 reweight하지 않는다.
+Full/A3의 동일 case/RNG 조건에서 slot, 나머지 결과와 RNG state를 비교 검증했다.
+Configured ablation campaign binding은 기존 Evaluation integration dependency다.

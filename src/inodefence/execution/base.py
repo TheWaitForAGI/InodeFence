@@ -8,28 +8,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from inodefence.model.isolation import IsolationPolicy, IsolationProvenance
+from inodefence.model.isolation import ResourcePolicy as ResourcePolicy
 from inodefence.runtime import RUNTIME_BASE
 
 
 class BackendError(RuntimeError):
     """Infrastructure failure; never an extractor exit status."""
-
-
-@dataclass(frozen=True, slots=True)
-class ResourcePolicy:
-    """Per-container bounds, not a volume quota; units are bytes/counts."""
-
-    memory_bytes: int = 512 * 1024 * 1024
-    pids: int = 64
-    open_files: int = 1024
-    file_size_bytes: int = 64 * 1024 * 1024
-    tmpfs_bytes: int = 32 * 1024 * 1024
-
-    def __post_init__(self) -> None:
-        for name in self.__dataclass_fields__:
-            value = getattr(self, name)
-            if type(value) is not int or value <= 0:
-                raise ValueError(f"{name} must be a positive integer")
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,6 +75,12 @@ class ExecutionBackend(ABC):
 
     @abstractmethod
     def validate_image(self, image_id: str) -> None: ...
+
+    @abstractmethod
+    def policy(self, image_id: str) -> IsolationPolicy: ...
+
+    @abstractmethod
+    def capture_isolation(self, image_id: str) -> IsolationProvenance: ...
 
     @abstractmethod
     def prepare(self, request: ContainerRequest) -> AbstractContextManager[PreparedExecution]: ...

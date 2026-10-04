@@ -13,6 +13,7 @@ from inodefence.execution.base import (
     ExecutionBackend,
 )
 from inodefence.model import ExecutionResult, ExecutionStatus
+from inodefence.model.isolation import ArtifactDigest
 from inodefence.model.provenance import TargetProvenance
 from inodefence.runtime import disposable_sandbox
 
@@ -102,6 +103,13 @@ class NodeTarTarget:
             "node-tar-strict",
             f"node={self.node_version};tar={self.tar_version}",
             self.timeout_seconds,
+        )
+
+    @property
+    def artifacts(self) -> tuple[ArtifactDigest, ...]:
+        return (
+            ArtifactDigest("node-tar-package-lock", self.package_lock_sha256),
+            ArtifactDigest("node-tar-worker", self.worker_sha256),
         )
 
     def command(self, archive_path: Path, extraction_root: Path) -> tuple[str, ...]:

@@ -4,8 +4,10 @@ import math
 import re
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import ClassVar
 
 from .filesystem import validate_observed_path
+from .isolation import IsolationProvenance
 
 
 def _text(value: str, field: str) -> None:
@@ -54,7 +56,7 @@ class ExecutionSafety(StrEnum):
 
     Only the controlled reference implementation may run generated cases under
     today's development environment. Other targets require a separately validated
-    execution isolation boundary; no implementation of that boundary exists yet.
+    execution isolation boundary and configured execution binding.
     """
 
     TRUSTED_REFERENCE = "trusted_reference"
@@ -108,12 +110,17 @@ class SentinelProvenance:
 class ExecutionProvenance:
     """Frozen before execution. CampaignConfig separately owns seed and budget."""
 
+    serialization_schema: ClassVar[int] = 2
+
     source: SourceProvenance
     environment: EnvironmentProvenance
     target: TargetProvenance
     sentinels: tuple[SentinelProvenance, ...]
+    isolation: IsolationProvenance | None = None
 
     def __post_init__(self) -> None:
+        if self.isolation is not None and not isinstance(self.isolation, IsolationProvenance):
+            raise ValueError("isolation requires IsolationProvenance or None")
         for field, kind in (
             ("source", SourceProvenance),
             ("environment", EnvironmentProvenance),

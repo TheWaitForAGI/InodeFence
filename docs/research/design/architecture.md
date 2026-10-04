@@ -535,13 +535,15 @@ Current run의 named-volume subpath만 공유해 Observer inode identity와 sent
 유지한다. 준비 context는 BEFORE 이전 생성/정책 확인, execution은 stopped PID namespace
 이후 반환, context exit는 AFTER 이후 removal이다. Backend는 target/Oracle/feedback을
 알지 않는다. Dev Container 자체를 target sandbox로 바꾸지 않는다. 아래 campaign gate는
-아직 unchanged이며 Node/config/provenance integration은 후속 PR에서 별도 검증한다.
+exact IsolatedTarget composition과 frozen isolation policy/attestation에 연결됐다.
 
 현재 enforced safety contract는 TargetProvenance.execution_safety의 ExecutionSafety enum이다.
 Default ISOLATION_REQUIRED이며 Python reference는 TRUSTED_REFERENCE를 선언한다. Campaign은
-explicit trusted reference만 허용하고 미선언/isolation-required target은 provenance capture/runtime/
+explicit trusted reference 또는 exact contained composition을 허용한다. 미선언/uncontained
+isolation-required target은 provenance capture/runtime/
 첫 run_case 이전에 거부한다. Caller의 supplied provenance가 requirement를 낮출 수 없다.
-선언은 OS containment 증명이 아니다. 별도 container helper는 검증했지만 campaign binding은 아직 없다.
+선언은 OS containment 증명이 아니다. Contained campaign에는 enforced backend와 frozen
+policy/attestation이 필요하며 config가 있으면 actual policy와 exact binding을 검증한다.
 Low-level adapter.run/run_case는 controlled fixture caller 책임이며 third-party의 arbitrary generated
 archive 실행은 별도 OS boundary 검증 전까지 허용하지 않는다.
 
@@ -850,7 +852,8 @@ ExecutionBackend에 composition으로 연결하며 local subprocess fallback은 
 Generic run_case/Observer/Oracle/StateSignature/Corpus/mutation의 책임은 바꾸지 않는다.
 [Target 안내](../../../src/inodefence/targets/README.md)와 [locked tooling](../../../tools/node-tar/README.md)을
 따른다. Node 22.22.0/tar 7.5.22에서 ordinary controlled fixtures만 검증한다. ISOLATION_REQUIRED는
-고정이고 campaign은 frozen isolation/config binding 전까지 계속 거부한다. Actual fixtures는
+고정이고 uncontained campaign은 계속 거부한다. Contained composition은 config/policy/
+attestation binding 뒤에만 campaign이 허용한다. Actual fixtures는
 별도 target container에서만 실행하고 setup/cleanup은 BEFORE/AFTER 구간 바깥에 둔다.
 
 ---
@@ -1383,7 +1386,7 @@ violation=C1
 그대로 사용하며 result(raw evidence)와 feedback(decision)은 별도 field로 유지한다. Lineage,
 모든 execution status, snapshots, signature와 verdict/evidence를 보존한다.
 
-Manifest schema v2는 stored execution_provenance, format/classification, config, initial IDs, step count/final stats/retained
+Manifest schema v3는 nullable isolation을 포함한 stored execution_provenance, format/classification, config, initial IDs, step count/final stats/retained
 order와 결과에서 얻은 target ID/version/builder format/timeout contexts를 기록한다. Context는
 first-occurrence order의 unique tuple이며 변동 provenance를 첫 step 값으로 숨기지 않는다.
 steps_file/steps_sha256으로 실제 JSONL을 연결한다. export_environment는 writer process의
@@ -1682,3 +1685,19 @@ executes the yielded invocation exactly once. Preparation precedes BEFORE,
 complete execution-context stop precedes AFTER, removal follows AFTER, including
 on observer exceptions. Trusted reference adapters without preparation retain the
 existing one-run path. No campaign loop or contract verdict enters this boundary.
+
+
+### Isolation/config evidence versions
+
+ExperimentConfig v1 identity is preserved without isolation; v2 requires complete
+IsolationPolicy v1 and actual target/backend equality. Before archive execution,
+Campaign captures backend runtime/image facts and target artifact digests, then freezes
+ExecutionProvenance. Only the exact IsolatedTarget composition satisfies required
+isolation; subclasses/declarations cannot substitute execution. Availability/mismatch
+fails before campaign runtime and first case; policy/artifact drift fails before next case.
+
+ExecutionProvenance/CampaignResult canonical envelopes are v2; manifest is v3 and
+serializes stored nullable isolation. ArchiveCase, RunResult, CampaignStep and signature
+encoding/novelty are unchanged. Runtime/PID/temp paths never enter config or feedback.
+No campaign-to-Docker implementation import exists: the campaign sees the enforced
+composition, while concrete runtime command construction stays in execution/container.

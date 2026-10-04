@@ -5,7 +5,8 @@ The lock records transitive versions/integrities for the image build. The produc
 adapter no longer resolves a controller-local Node/module or launches it directly.
 `NodeTarTarget.bind(backend, immutable_image_id)` returns the contained adapter.
 Worker version guards and strict=true/preservePaths=false remain target-specific.
-Generated-input campaign admission is still closed pending isolation/config binding.
+Campaign admission requires the enforced wrapper and frozen isolation/config binding.
+Only the approved tiny benign infrastructure smoke is within the current Task Contract.
 No benchmark security evaluation or vulnerable-version selection is provided.
 API/options follow [upstream node-tar](https://github.com/isaacs/node-tar).
 
@@ -32,4 +33,5 @@ records exact Node/tar versions and verifies worker/lock SHA-256 against source.
 That mode does not execute an archive or enable campaign execution.
 `validate-node-target` separately executes eight mandatory ordinary fixture/lifecycle cases. Image packaging is
 not a bit-for-bit reproducibility claim: platform, builder and attestation metadata
-can change the resulting image identity. Config/provenance binding follows next.
+can change the resulting image identity. Frozen image/runtime/worker/lock attestation is now bound to config/provenance; the
+full-path benign campaign validation follows next.

@@ -47,14 +47,15 @@ The seven original real fixture cases (four ordinary baselines, invalid format,
 real timeout and worker version guard) now execute only through the container
 backend in `tests/container_integration/check_node_target.py`. An additional
 AFTER-error cleanup case is mandatory. Portable tests cover invocation/binding/
-status/safety rejection; they do not claim real containment. Campaign admission
-still rejects ISOLATION_REQUIRED pending frozen isolation/config binding.
+status/safety rejection; they do not claim real containment. Campaign admits ISOLATION_REQUIRED only through this final composed wrapper, with
+backend attestation and matching policy frozen before the first archive.
 
 ## 공통 실행 경계
 
 TargetProvenance.execution_safety는 explicit ExecutionSafety enum이며 default ISOLATION_REQUIRED다.
 Python reference는 TRUSTED_REFERENCE를 선언한다. Campaign은 requirement를 첫 run_case 이전에
-검증하며 isolation-required/미선언 target은 거부한다. Caller override/bypass는 없다. Manifest는
+검증하며 미선언/uncontained isolation-required target은 거부한다. Contained target은
+exact IsolatedTarget composition과 frozen backend policy/attestation이 필요하다. Caller override/bypass는 없다. Manifest는
 frozen requirement를 보존한다. 이는 trust 선언이며 OS isolation 보장이 아니다.
 
 Low-level isolated adapter.run/run_case also enforces the backend; no direct Node fallback exists.

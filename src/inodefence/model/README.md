@@ -59,3 +59,18 @@ ISOLATION_REQUIRED이고 TRUSTED_REFERENCE는 현재 controlled reference adapte
 이 값은 configuration이며 model 자체가 OS 격리를 수행하거나 보장하지 않는다.
 
 TAR encoding, target-specific 옵션, filesystem 실행, mutation, security/interestingness 판정.
+
+
+IsolationPolicy/ResourcePolicy, ArtifactDigest and IsolationProvenance are pure frozen
+values in [isolation.py](isolation.py). ExecutionProvenance includes nullable isolation:
+None is the trusted-reference path, not a containment claim. Policy/facts remain separate
+from filesystem security evidence, signatures and corpus novelty. Capture/enforcement
+stays in the execution backend and upper provenance/target composition layers.
+
+Encoding compatibility: ExecutionProvenance and CampaignResult top-level canonical
+ envelopes are explicitly schema v2; other evidence (ArchiveCase, RunResult,
+CampaignStep, snapshots/signatures) retains its existing envelope/schema and identity.
+The contained policy/provenance payloads have independent schema v1. Manifest writers
+now emit schema v3 with stored nullable isolation; historical manifest v2 lacked it.
+No old-evidence reader or migration guarantee is supplied. ExperimentConfig v1 IDs
+remain unchanged; contained configs require v2 and the full isolation policy.

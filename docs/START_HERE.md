@@ -68,7 +68,7 @@ InodeFence는 이런 **object identity와 external effect를 fuzzing feedback으
 
 별도 [disposable Linux container backend](../src/inodefence/execution/README.md)의 benign
 helper validation을 추가했다. 기존 Dev Container 권한은 유지하고 trusted host stdio
-broker로 sibling target을 실행한다. Node campaign/config/provenance binding은 후속이다.
+broker로 sibling target을 실행한다. Node image/contained invocation/config/provenance binding을 구현했고 tiny benign campaign은 다음 검증이다.
 
 항상 최신 상태는 [STATUS.md](STATUS.md)를 본다.
 
@@ -86,11 +86,11 @@ Layer 6  Experiment / Paper        미진행
 ```
 
 현재 준비 상태는 **ENGINEERING FOUNDATION**이다. Engine은 trusted reference 범위에서 준비됐고
-benchmark는 Node container image/config/provenance binding과 full-path smoke가 없어 아직 준비되지 않았다.
+benchmark는 Node full-path smoke가 아직 없어 아직 준비되지 않았다.
 Evaluation은 실행하지 않았다. [인프라 검증 기록](../experiments/summaries/infrastructure-readiness-v1.md)을 따른다.
 
-Campaign은 explicit trusted Python reference만 실행한다. Third-party target의 isolation requirement는
-실행 전에 거부한다. Runtime directory/Dev Container는 검증된 OS execution isolation이 아니다.
+Campaign은 explicit trusted reference 또는 enforced IsolatedTarget composition을 받는다.
+Third-party target은 validated backend와 bound policy 없이는 실행 전에 거부한다. Runtime directory/Dev Container는 검증된 OS execution isolation이 아니다.
 확인한 Dev Container의 namespace 생성은 EPERM으로 차단됐다. 실행 환경 정책 선택이 필요한
 [구체적 blocker와 재검증 명령](../experiments/summaries/linux-isolation-support-v1.md)을 따른다.
 

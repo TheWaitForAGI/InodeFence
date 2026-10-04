@@ -5,6 +5,7 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import ClassVar
 
 from inodefence.feedback import Corpus, CorpusStats, FeedbackDecision
 from inodefence.model import ArchiveCase, RunResult
@@ -14,6 +15,7 @@ from inodefence.pipeline import run_case
 from inodefence.provenance import freeze_provenance, sentinel_provenance
 from inodefence.runtime import SentinelSpec
 from inodefence.targets.base import CampaignTarget
+from inodefence.targets.isolated import IsolatedTarget
 
 
 @dataclass(frozen=True, slots=True)
@@ -55,6 +57,8 @@ class CampaignResult:
     or validated analysis. There is no persistence, checkpointing or resume.
     """
 
+    serialization_schema: ClassVar[int] = 2
+
     config: CampaignConfig
     initial_case_ids: tuple[str, ...]
     steps: tuple[CampaignStep, ...]
@@ -83,8 +87,9 @@ def run_campaign(
     immutable provenance is preserved by identity after configuration validation;
     callers own its source/environment accuracy. Result configuration drift is
     a harness error, never a reason to rewrite the frozen configuration.
-    Only explicitly trusted reference adapters can run campaigns today. Isolation
-    requirements fail before capture/runtime/execution; there is no bypass flag.
+    Trusted references or the enforced IsolatedTarget composition can run campaigns.
+    Boundary availability/attestation is checked before capture/runtime/execution;
+    there is no bypass flag, subclass override or ordinary subprocess fallback.
     Every returned target status counts. Infrastructure exceptions propagate;
     an aborted campaign does not return an invented completed result.
 
@@ -109,15 +114,41 @@ def run_campaign(
     declared_target = getattr(target, "provenance", None)
     if not isinstance(declared_target, TargetProvenance):
         raise ValueError("campaign target must declare TargetProvenance before execution")
-    if declared_target.execution_safety != ExecutionSafety.TRUSTED_REFERENCE:
-        raise ValueError("target requires execution isolation; no validated boundary is available")
-    frozen = freeze_provenance(declared_target, sentinels) if provenance is None else provenance
+    if isinstance(target, IsolatedTarget) and (
+        type(target) is not IsolatedTarget
+        or declared_target.execution_safety != ExecutionSafety.ISOLATION_REQUIRED
+    ):
+        raise ValueError("target requires execution isolation through the enforced target wrapper")
+    isolation = None
+    if declared_target.execution_safety == ExecutionSafety.ISOLATION_REQUIRED:
+        # Exact composition owns execution; subclass/attribute declarations cannot bypass it.
+        if type(target) is not IsolatedTarget:
+            raise ValueError(
+                "target requires execution isolation through the enforced target wrapper"
+            )
+        isolation = target.capture_isolation()
+    frozen = (
+        freeze_provenance(declared_target, sentinels, isolation=isolation)
+        if provenance is None
+        else provenance
+    )
     if not isinstance(frozen, ExecutionProvenance):
         raise ValueError("provenance must be ExecutionProvenance")
-    if frozen.target != declared_target or frozen.sentinels != sentinel_provenance(sentinels):
-        raise ValueError("provenance must match target and sentinel configuration")
+    if (
+        frozen.target != declared_target
+        or frozen.sentinels != sentinel_provenance(sentinels)
+        or frozen.isolation != isolation
+    ):
+        raise ValueError("provenance must match target, sentinel and isolation configuration")
 
     def execute(case: ArchiveCase) -> RunResult:
+        if type(target) is IsolatedTarget:
+            assert frozen.isolation is not None  # validated against captured isolation above
+            if (
+                target.isolation_policy != frozen.isolation.policy
+                or target.invocation.artifacts != frozen.isolation.artifacts
+            ):
+                raise ValueError("isolation configuration changed during campaign")
         if target.provenance != frozen.target:
             raise ValueError("target configuration changed during campaign")
         result = run_case(case, target, sentinels=sentinels)

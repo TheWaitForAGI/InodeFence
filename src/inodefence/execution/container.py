@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from time import monotonic
 from uuid import uuid4
 
+from inodefence.model.isolation import IsolationPolicy, IsolationProvenance
 from inodefence.runtime import RUNTIME_BASE, open_runtime_directory
 
 from .base import BackendError, ContainerOutcome, ContainerRequest, ExecutionBackend, ResourcePolicy
@@ -119,8 +120,28 @@ class ContainerExecutionBackend(ExecutionBackend):
     def validate_image(self, image_id: str) -> None:
         self.image(image_id)
 
+    def policy(self, image_id: str) -> IsolationPolicy:
+        return IsolationPolicy(image_id, os.getuid(), os.getgid(), self.resources, IMPLEMENTATION)
+
+    def capture_isolation(self, image_id: str) -> IsolationProvenance:
+        image = self.image(image_id)
+        server = json.loads(
+            checked(self.client.run(("version", "--format", "{{json .Server}}"), 10), "version")
+        )
+        return IsolationProvenance(
+            self.policy(image_id),
+            "docker-compatible",
+            server["Version"],
+            server["ApiVersion"],
+            server["Os"],
+            server["Arch"],
+            image["Architecture"],
+            tuple(sorted(image.get("RepoDigests") or ())),
+        )
+
     def create_command(self, request: ContainerRequest, name: str, image: dict) -> tuple[str, ...]:
-        policy = self.resources
+        isolation = self.policy(request.image_id)
+        policy = isolation.resources
         root = str(request.run_root)
         subpath = request.run_root.relative_to(RUNTIME_BASE).as_posix()
         # Clear image defaults as well as excluding controller credential variables.
@@ -137,14 +158,14 @@ class ContainerExecutionBackend(ExecutionBackend):
             "--label",
             f"{OWNER_LABEL}={self.owner}",
             "--network",
-            "none",
+            isolation.network_policy,
             "--read-only",
             "--cap-drop",
-            "ALL",
+            isolation.cap_drop[0],
             "--security-opt",
             "no-new-privileges=true",
             "--user",
-            f"{os.getuid()}:{os.getgid()}",
+            f"{isolation.uid}:{isolation.gid}",
             "--ipc",
             "private",
             "--cgroupns",
@@ -162,7 +183,7 @@ class ContainerExecutionBackend(ExecutionBackend):
             "--tmpfs",
             f"/tmp:rw,noexec,nosuid,nodev,size={policy.tmpfs_bytes},mode=1777",
             "--shm-size",
-            "16m",
+            str(isolation.shm_bytes),
             "--log-driver",
             "none",
             "--mount",
@@ -223,6 +244,7 @@ class ContainerExecutionBackend(ExecutionBackend):
                     or host["Memory"] != self.resources.memory_bytes
                     or host["MemorySwap"] != policy.memory_bytes
                     or host["LogConfig"]["Type"] != "none"
+                    or host["ShmSize"] != self.policy(request.image_id).shm_bytes
                     or sorted(host["Ulimits"], key=lambda limit: limit["Name"])
                     != [
                         {

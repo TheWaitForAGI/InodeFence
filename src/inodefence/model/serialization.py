@@ -23,7 +23,11 @@ def canonical_json(value: object) -> str:
     if not is_dataclass(value) or isinstance(value, type):
         raise TypeError("canonical_json requires a model dataclass instance")
     return json.dumps(
-        {"schema_version": SCHEMA_VERSION, "model": type(value).__name__, "value": asdict(value)},
+        {
+            "schema_version": getattr(value, "serialization_schema", SCHEMA_VERSION),
+            "model": type(value).__name__,
+            "value": asdict(value),
+        },
         default=_encode_bytes,
         sort_keys=True,
         separators=(",", ":"),

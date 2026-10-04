@@ -2,9 +2,9 @@
 
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, final
 
 from inodefence.execution.base import (
     ContainerOutcome,
@@ -13,7 +13,8 @@ from inodefence.execution.base import (
     OutputLimitError,
 )
 from inodefence.model import ExecutionResult
-from inodefence.model.provenance import TargetProvenance
+from inodefence.model.isolation import ArtifactDigest, IsolationPolicy, IsolationProvenance
+from inodefence.model.provenance import ExecutionSafety, TargetProvenance
 
 from ._paths import validate_run_paths
 
@@ -27,11 +28,15 @@ class TargetInvocation(Protocol):
     @property
     def provenance(self) -> TargetProvenance: ...
 
+    @property
+    def artifacts(self) -> tuple[ArtifactDigest, ...]: ...
+
     def command(self, archive_path: Path, extraction_root: Path) -> tuple[str, ...]: ...
 
     def classify(self, outcome: ContainerOutcome, command: tuple[str, ...]) -> ExecutionResult: ...
 
 
+@final
 @dataclass(frozen=True, slots=True)
 class IsolatedTarget:
     """The public executable adapter; descriptors cannot supply a direct fallback."""
@@ -42,11 +47,29 @@ class IsolatedTarget:
     def __post_init__(self) -> None:
         if not isinstance(self.backend, ExecutionBackend):
             raise ValueError("target requires a trusted ExecutionBackend implementation")
+        if self.provenance.execution_safety != ExecutionSafety.ISOLATION_REQUIRED:
+            raise ValueError("contained targets cannot downgrade isolation requirement")
+        timeout = self.provenance.timeout_seconds
+        if timeout is None or timeout > 120:
+            raise ValueError("isolated target requires a bounded timeout of at most 120 seconds")
         self.backend.validate_image(self.invocation.image_id)
 
     @property
     def provenance(self) -> TargetProvenance:
         return self.invocation.provenance
+
+    @property
+    def isolation_policy(self) -> IsolationPolicy:
+        policy = self.backend.policy(self.invocation.image_id)
+        if policy.image_id != self.invocation.image_id:
+            raise ValueError("backend policy image identity differs from target invocation")
+        return policy
+
+    def capture_isolation(self) -> IsolationProvenance:
+        captured = self.backend.capture_isolation(self.invocation.image_id)
+        if captured.policy != self.isolation_policy:
+            raise ValueError("backend attestation differs from configured policy")
+        return replace(captured, artifacts=self.invocation.artifacts)
 
     @contextmanager
     def prepare(

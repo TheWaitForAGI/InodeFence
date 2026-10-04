@@ -1,10 +1,20 @@
 # Engine capabilities and research assumptions
 
 **Implementation audit, not an experiment result or full repository audit.**
-Audited main: `a22d20127d8e01bc539363764582ef907d51cbf1` (2026-10-04), merged
-into the published research branch without rebasing. This supersedes the original
-`433ffb0f49f82476b1c3d152e647a5c9a9710485` audit. Current source and tests take
-precedence over historical readiness summaries and stale adapter docstrings.
+Audited main: `f02024cc520868056c26919b128d18628012e8f2` (2026-10-04), checked
+by a targeted source/test delta review from the full capability-audit base
+`a22d20127d8e01bc539363764582ef907d51cbf1`. That base was previously merged
+into the published research branch; **f02024c was inspected without merging**.
+Local source links refer to the branch's a22d201 implementation; immutable
+f02024c links identify changed implementation and regression evidence below.
+The original `433ffb0f49f82476b1c3d152e647a5c9a9710485` audit is superseded.
+Current source and tests take precedence over historical readiness summaries.
+
+The f02024c delta changes execution composition, pipeline lifecycle, Node binding
+and related tests/docs/CI. Archive model/builder/seeds/mutations, snapshot/oracle,
+feedback/Corpus, Campaign, ExperimentConfig and provenance/export implementation
+are unchanged from a22d201. Their existing conclusions remain applicable; no new
+external research or benchmark execution was required for this review.
 
 Evidence levels apply only to the explicitly bounded claim:
 
@@ -27,11 +37,12 @@ Predictions, future work and future measurements are separate from these facts.
 | Signature v2, fingerprints, independent novelty and unique-case retention | A | [semantic tests](../../../tests/test_state_semantics.py), [corpus tests](../../../tests/test_feedback_corpus.py), [corpus integration](../../../tests/test_feedback_corpus_integration.py) |
 | Seed-inclusive trusted-reference campaigns and lineage | A | [campaign tests](../../../tests/test_campaign.py), [campaign integration](../../../tests/test_campaign_integration.py) |
 | Strict config binding, frozen provenance and completed raw export | A | [config tests](../../../tests/test_experiment_config.py), [provenance tests](../../../tests/test_provenance.py), [export tests](../../../tests/test_campaign_export.py) |
-| Direct-process Node adapter for controlled benign fixtures | A | [Node tests](../../../tests/test_node_tar.py); no generated-input campaign |
-| Container policy, lifecycle and fail-closed transport logic | A | [backend unit tests](../../../tests/test_container_backend.py); fake-runtime tests cannot establish real isolation |
+| Node invocation descriptor, enforced backend composition and prepared pipeline lifecycle | A | [Node descriptor/binding](https://github.com/TheWaitForAGI/InodeFence/blob/f02024cc520868056c26919b128d18628012e8f2/src/inodefence/targets/node_tar.py), [composition](https://github.com/TheWaitForAGI/InodeFence/blob/f02024cc520868056c26919b128d18628012e8f2/src/inodefence/targets/isolated.py), [portable Node tests](https://github.com/TheWaitForAGI/InodeFence/blob/f02024cc520868056c26919b128d18628012e8f2/tests/test_node_tar.py), [pipeline lifecycle tests](https://github.com/TheWaitForAGI/InodeFence/blob/f02024cc520868056c26919b128d18628012e8f2/tests/test_pipeline.py); fake backends do not validate containment |
+| Container policy, lifecycle and fail-closed transport logic | A | [backend unit tests at f02024c](https://github.com/TheWaitForAGI/InodeFence/blob/f02024cc520868056c26919b128d18628012e8f2/tests/test_container_backend.py); fake-runtime tests cannot establish real isolation |
 | Container helper boundary on documented Docker/OrbStack platform | B | [execution validation scope](../../../src/inodefence/execution/README.md), [six real-runtime regressions](../../../tests/container_integration/check_boundary.py); inherited platform evidence, not a new benchmark run |
 | Pinned benign Node target image and metadata validation | B | [image packaging](../../../tools/node-tar/README.md), [metadata-only regression](../../../tests/container_integration/check_node_image.py); no archive execution |
-| Node backend/config/provenance/full campaign integration | D | Campaign still rejects ISOLATION_REQUIRED; no container binding in pipeline/config |
+| Controlled benign Node fixtures through the real container backend and pipeline | B | [explicit container fixture suite](https://github.com/TheWaitForAGI/InodeFence/blob/f02024cc520868056c26919b128d18628012e8f2/tests/container_integration/check_node_target.py), [main CI](https://github.com/TheWaitForAGI/InodeFence/actions/runs/37180369305); not a configured campaign or candidate qualification |
+| Frozen isolation/config/provenance and Node configured campaign integration | D | Campaign still rejects ISOLATION_REQUIRED; config/provenance have no frozen container binding |
 | General component replacement, alternative policies, incremental failure export | C/D | Proposed here; absent from production mutator/config/campaign/export |
 | C3/C4 and operation tracing | C/D | Canonical definitions exist; no oracle implementation |
 | Benchmark qualification, rediscovery and comparative evaluation | D | No such execution is performed by this package |
@@ -170,7 +181,7 @@ vulnerable benchmark pin. Adapter options are strict=true, preservePaths=false;
 other defaults remain upstream. Campaign still rejects third-party execution
 before runtime/provenance capture. ORAS and GNU benchmark adapters do not exist.
 
-## Container helper/image validation versus Node configured integration
+## Container helper/image/fixture validation versus Node configured integration
 
 The second coherent refresh includes merged PR #37. Main now packages the benign
 Node 22.22.0/tar 7.5.22 target in a [digest-pinned multistage image](../../../tools/node-tar/Dockerfile).
@@ -193,7 +204,10 @@ current disposable run and timeout. One volume subpath is mounted at the identic
 absolute run path; no stable mount alias is implemented.
 
 Preparation/policy verification happen before BEFORE; execution verifies stopped
-PID namespace before AFTER; removal follows AFTER. Targets see the whole writable
+PID namespace before AFTER; normal removal follows AFTER. In f02024c, a start
+deadline expiring while the container remains created instead removes and verifies
+its absence before AFTER, preventing a delayed daemon start; controlled run paths
+remain available to observation. Targets see the whole writable
 controlled run (including archive and outside), while source/home/adjacent runs/
 runtime socket are excluded. The backend enforces network-none, read-only rootfs,
 non-root uid/gid, dropped capabilities, no-new-privileges, private namespaces,
@@ -212,20 +226,39 @@ fully bounded. Procfs/devices/ephemeral mounts are outside snapshot evidence.
 Hard broker kill or daemon loss may prevent cleanup. These limits require review
 for future budgets; they do not justify changing controls in this PR.
 
-**NOT_IMPLEMENTED integration:** pipeline still calls TargetAdapter.run inside
-the observation window and has no prepared-container lifecycle hook. NodeTarTarget
-uses its existing direct-process benign-fixture worker. Campaign has no binding
+**Implemented in f02024c (D024):** NodeTarTarget is an immutable invocation
+descriptor with no direct-process/run fallback. `bind(backend, image_id, timeout_seconds)`
+identifies exact Node/tar versions and worker/lock digests inside the immutable
+image and returns IsolatedTarget. The trusted ExecutionBackend owns containment;
+the descriptor owns argv and process classification. The
+[prepared pipeline](https://github.com/TheWaitForAGI/InodeFence/blob/f02024cc520868056c26919b128d18628012e8f2/src/inodefence/pipeline.py)
+enters setup before BEFORE; execution returns with the target context stopped
+before AFTER, and context exit cleans up after AFTER, including on observation
+errors. The Python reference retains its existing run path. IsolatedTarget raises OutputLimitError
+on truncated output, preserving the bounded raw prefix; incomplete evidence is
+an infrastructure exception, not a completed RunResult or security verdict.
+
+**Inherited validation, not execution by this research lane:** main CI at
+f02024c passed both `check` and `container-integration`. The latter now explicitly
+runs eight benign Node fixture checks: four minimal seeds with identity/link
+assertions, ordinary invalid-format rejection, timeout, version drift and AFTER
+failure cleanup. This validates the low-level contained invocation on that CI
+platform; it does not exercise run_configured_campaign or any catalog candidate.
+
+**NOT_IMPLEMENTED configured integration:** Campaign has no admission binding
 that proves the backend meets ISOLATION_REQUIRED, ExperimentConfig has no image/
 backend policy fields, and ExecutionProvenance/export have no frozen container
-configuration. The rejection diagnostic still says no validated boundary is
-available; it describes the campaign path, not the newly present helper backend.
-Older ExecutionSafety/Node docstrings also predate the helper. These are follow-up
-documentation/integration gaps, not permission to bypass the gate.
+configuration. Descriptor identity is not frozen campaign provenance. The existing
+campaign rejection remains before runtime/provenance capture. Its diagnostic
+describes the blocked campaign path, not absence of the implemented backend or
+Node fixture binding. It grants no permission to bypass the gate.
 
-[STATUS](../../STATUS.md) remains ENGINEERING FOUNDATION: benchmark and evaluation
-readiness are false; Node configured campaigns have zero executions. Primary
-engineering must finish backend/config/provenance binding to the pinned image
-and a small benign full-path smoke, then freeze for full audit and required fixes. Selected benchmark
+[STATUS at f02024c](https://github.com/TheWaitForAGI/InodeFence/blob/f02024cc520868056c26919b128d18628012e8f2/docs/STATUS.md)
+remains ENGINEERING FOUNDATION: benchmark and evaluation readiness are false;
+Node configured campaigns have zero executions. Primary engineering must finish
+frozen isolation/config/provenance and campaign admission, then a small benign
+configured campaign smoke, pre-audit freeze, full audit and required fixes. Selected
+benchmark
 grammar, policies, independent qualification and evaluation still require the
 [post-audit tasks](post-audit-backlog.md) and a new Task Contract.
 

@@ -8,7 +8,11 @@ no exploit archive generated, no target installed or vulnerable fuzzing run.
 
 ## Final repository context and moving-main audit
 
-Audited main: `a22d20127d8e01bc539363764582ef907d51cbf1` (2026-10-04).
+Audited main: `f02024cc520868056c26919b128d18628012e8f2` (2026-10-04), a
+targeted delta review from full capability-audit base a22d201. The branch contains
+the previously merged `a22d20127d8e01bc539363764582ef907d51cbf1`; f02024c was
+inspected through Git snapshots without merging, as required by the follow-up
+Task Contract. No new research or production changes belong to this follow-up.
 Research branch: `research/benchmark-evaluation-prep-v1`; Draft
 [PR #35](https://github.com/TheWaitForAGI/InodeFence/pull/35), base main.
 Main was merged into this branch without rewriting published history, preserving
@@ -20,14 +24,18 @@ adds a disposable Linux container backend, helper regressions and a separate CI
 container-integration job. The [engine audit](engine-contract-audit.md) supersedes
 the older no-backend assumptions. Helper validation is implemented platform
 engineering evidence, and PR #37 adds a pinned benign Node image with
-metadata-only container checks. Node backend/config/provenance/campaign
-integration is NOT_IMPLEMENTED. The run volume is mounted at the same random
-absolute controller path; no stable alias or arbitrary CWD setting is promised.
+metadata-only container checks. PR #38/f02024c implements Node invocation/backend
+composition and prepared pipeline lifecycle, with eight benign real-container
+fixture checks in passing main CI. Frozen isolation/config/provenance and
+configured campaign admission remain NOT_IMPLEMENTED; the completed low-level
+binding must be reused rather than rebuilt. The run volume is mounted at the same
+random absolute controller path; no stable alias or arbitrary CWD setting is promised.
 
-[STATUS](../../STATUS.md) remains ENGINEERING FOUNDATION; Node configured
+[STATUS at f02024c](https://github.com/TheWaitForAGI/InodeFence/blob/f02024cc520868056c26919b128d18628012e8f2/docs/STATUS.md)
+remains ENGINEERING FOUNDATION; Node configured
 campaigns have zero executions, and benchmark/evaluation readiness remain false.
-Primary engineering owns remaining integration, benign full-path smoke and the
-pre-audit freeze. Full audit and required fixes precede the proposed tickets.
+Primary engineering owns remaining configured integration, benign campaign smoke
+and the pre-audit freeze. Full audit and required fixes precede the proposed tickets.
 This capability audit does not assert that the full architecture audit occurred.
 
 At coherent milestones fetch origin, compare the last audited main to origin/main,
@@ -45,7 +53,7 @@ isolation correctness and architectural changes.
 
 | Priority / necessity | Gap and motivating evidence | Minimum resolution after audit |
 | --- | --- | --- |
-| BLOCKING / required prerequisite | Campaign rejects all isolation-required targets despite the implemented helper backend; Node binding is absent | Finish binding to the existing approved backend, freeze image/config/provenance, benign Node full-path validation, full audit and fixes |
+| BLOCKING / required prerequisite | Campaign rejects all isolation-required targets despite the implemented backend and low-level Node binding; frozen campaign binding is absent | Reuse prepared Node execution, freeze image/config/provenance and campaign admission, benign configured Node validation, full audit and fixes |
 | BLOCKING / required for selected sentinel benchmarks | Mutation output language cannot spell controlled outside/default sentinel components; N01/N03/N04 not fully reachable | M1 finite generic component dictionary/recombination, explicit target-visible path mapping/config; same policy for every arm; logical reachability evidence |
 | BLOCKING / required for ORAS primary | O01 requires external process CWD and public file.Store unpack path; no ORAS adapter/config today | Offline public API wrapper, pinned modules, explicit CWD under observed sandbox, setup before BEFORE; never private helper bypass |
 | BLOCKING / required for formal comparison | Config permits only full feedback; B0/B1 and projections do not exist | Small explicit search-policy binding after audit, versioned policy identifiers, identical execution plumbing and validation |
@@ -93,15 +101,19 @@ unqualified GNU run.
 
 ## Ordered implementation tickets after audit fixes
 
-**P00 — primary lane prerequisite, before the tickets below:** bind the existing
-container lifecycle around pipeline BEFORE/AFTER, bind the existing pinned Node image and freeze config/
-provenance/export identity, retain fail-closed ISOLATION_REQUIRED enforcement,
+**P00 — primary lane prerequisite, before the tickets below:** reuse the
+implemented Node/backend binding and prepared BEFORE/AFTER lifecycle; freeze
+isolation/config/provenance/export identity and connect campaign admission,
+retaining fail-closed ISOLATION_REQUIRED enforcement,
 validate an explicitly benign configured full path, publish pre-audit freeze,
 finish the full audit and fixes. Relevant boundaries are
 [execution](../../../src/inodefence/execution/README.md),
 [pipeline.py](../../../src/inodefence/pipeline.py),
 [campaign.py](../../../src/inodefence/campaign.py),
 [config](../../../src/inodefence/experiment_config.py) and provenance/export.
+The [f02024c composition](https://github.com/TheWaitForAGI/InodeFence/blob/f02024cc520868056c26919b128d18628012e8f2/src/inodefence/targets/isolated.py)
+and [prepared pipeline](https://github.com/TheWaitForAGI/InodeFence/blob/f02024cc520868056c26919b128d18628012e8f2/src/inodefence/pipeline.py)
+already provide the low-level lifecycle; adding a second runner is unnecessary.
 Tests must reject missing runtime/image, policy drift, unsafe binding and failed
 cleanup before reporting success, preserve shared sentinel identity and prove
 all target children stop before AFTER. Update stale adapter/safety documentation.
@@ -174,22 +186,38 @@ repetition, censoring, replay and raw-evidence gates. Scope review checks that
 research metadata stays separate from production changes and exploit material.
 Capability gaps are not asserted vulnerability findings.
 
-Local validation at the final audited main: **make check PASS**, Ruff and format
-PASS, Pyright zero errors/warnings, **532 pytest tests passed**, Linux runtime
+Original package validation on the research branch's a22d201 engine base: **make check PASS**,
+Ruff and format PASS, Pyright zero errors/warnings, **532 pytest tests passed**, Linux runtime
 environment PASS and docs-check PASS (70 Markdown files). A supplemental local
 path/anchor check passed all 70 documents and 16 local anchor references. Catalog
 validation passed 15 planning records; 12 negative checks rejected duplicate IDs/
 keys, missing/unknown fields, unsupported contracts/enums/taxonomy, missing primary
 pins and fabricated readiness/execution/binding. `git diff --check` passed.
-The diff against audited main contains research/navigation documents and static
-metadata validation only; no production source, tests, tooling or CI changes.
+The original package diff against a22d201 contains research/navigation documents
+and static metadata validation only; no production source, tests, tooling or CI changes.
+
+The f02024c follow-up checks only that commit's changed assumptions. It updates
+the engine audit, this handoff, candidate execution wording and catalog revision/
+state explanation. Model/generation, observer/oracle, feedback, config/campaign
+and provenance/export source are unchanged. The local branch retains the older
+engine, so its checks do not reproduce f02024c's new Node/backend tests.
+[Main CI at f02024c](https://github.com/TheWaitForAGI/InodeFence/actions/runs/37180369305)
+passed `check` and `container-integration`, including the explicit benign Node
+target suite. This is inherited engineering evidence, not a research execution.
+Follow-up validation re-ran **make check PASS (532 tests)**, catalog validation
+(15 unchanged candidate records), docs-check and all 16 local anchors across 70
+documents. All eight immutable f02024c source-link paths exist in the reviewed
+snapshot. Scope/LF and diff checks passed: only five affected planning files;
+all candidate metadata other than engine_revision and every NOT_RUN state are
+unchanged.
 
 Canonical tests use existing locked benign Node tooling; no new target version
 was installed. Local container integration was not executed by this lane: it
 requires the approved host broker/runtime. Current-head CI is authoritative in
 [PR checks](https://github.com/TheWaitForAGI/InodeFence/pull/35/checks), with both
 `check` and `container-integration` accounted for. Static validation is not
-benchmark evidence; helper/image CI success is not Node campaign readiness.
+benchmark evidence; helper/image/fixture CI success is not Node configured
+campaign readiness.
 
 **EVALUATION NOT RUN.** Benchmark qualification, pilot, known-class rediscovery,
 identical-input validation replay, baseline comparisons, ablations and formal

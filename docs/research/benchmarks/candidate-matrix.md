@@ -25,14 +25,20 @@ means some benign types exist, not an attack-bearing seed. Reachability includes
 actual controlled setup; the taxonomy separately records structural reachability.
 Observability concerns a predicted persistent effect only.
 
+At f02024c, enforced low-level Node/backend binding and benign container fixture
+validation exist (see [engine audit](engine-contract-audit.md)). In the table,
+"candidate campaign binding" means the still-missing frozen image/config/
+provenance and campaign admission for the exact benchmark versions, not the
+implemented benign Node invocation. No candidate gate changes in this review.
+
 | Candidate | ArchiveCase represents semantics? | Minimal seeds start near them? | Mutation/setup reaches benchmark now? | Oracle observes selected effect? | Future isolated Linux route / qualification |
 | --- | --- | --- | --- | --- | --- |
-| N01 | YES | PARTIAL internal hardlink | NO default sentinel address | YES hardlink arm; PARTIAL whole advisory | Node image/binding pending; IMPLEMENTATION_BLOCKED |
-| N02 | YES | PARTIAL internal hardlink | NO addressing/composition | YES persistent alias | Node image/binding pending; IMPLEMENTATION_BLOCKED |
-| N03 | YES | PARTIAL separate link seeds | NO addressing/chain composition | YES persistent alias | Node binding plus Linux gate; IMPLEMENTATION_BLOCKED |
-| N04 | YES | PARTIAL directory seed | NO addressing/type-path alignment | YES protected write/C0 namespace | Node binding plus runtime/strict qualification; IMPLEMENTATION_BLOCKED |
-| N05 | YES | PARTIAL regular file | NO selected external address | YES controlled persistent effect | Node binding plus absolute input/run binding; IMPLEMENTATION_BLOCKED |
-| N06 | YES POSIX arm | PARTIAL directory seed | NO backslash vocabulary/addressing | YES persistent POSIX effect | Node binding/grammar missing; IMPLEMENTATION_BLOCKED |
+| N01 | YES | PARTIAL internal hardlink | NO default sentinel address | YES hardlink arm; PARTIAL whole advisory | Exact candidate image/campaign binding pending; IMPLEMENTATION_BLOCKED |
+| N02 | YES | PARTIAL internal hardlink | NO addressing/composition | YES persistent alias | Exact candidate image/campaign binding pending; IMPLEMENTATION_BLOCKED |
+| N03 | YES | PARTIAL separate link seeds | NO addressing/chain composition | YES persistent alias | Candidate campaign binding plus Linux gate; IMPLEMENTATION_BLOCKED |
+| N04 | YES | PARTIAL directory seed | NO addressing/type-path alignment | YES protected write/C0 namespace | Candidate campaign binding plus runtime/strict qualification; IMPLEMENTATION_BLOCKED |
+| N05 | YES | PARTIAL regular file | NO selected external address | YES controlled persistent effect | Candidate campaign binding plus absolute input/run binding; IMPLEMENTATION_BLOCKED |
+| N06 | YES POSIX arm | PARTIAL directory seed | NO backslash vocabulary/addressing | YES persistent POSIX effect | Candidate campaign binding/grammar missing; IMPLEMENTATION_BLOCKED |
 | N07 | YES raw names | NO equivalent-name class | NO alphabet/platform | PARTIAL on required platform | Linux v1 platform gate failed; SOURCE_VERIFIED, excluded |
 | N08 | YES raw names/order | NO concurrency/equivalence | NO platform/race | PARTIAL persistent effect only | Linux v1 platform/race gate failed; SOURCE_VERIFIED, excluded |
 | N09 | NO PAX/GNU metadata | NO | NO encoding | NO parser-disagreement verdict | Encoding/measurement scope gate failed; SOURCE_VERIFIED, excluded |
@@ -43,8 +49,9 @@ Observability concerns a predicted persistent effect only.
 | G02 | YES regular member | PARTIAL regular file | NO addressing; invocation UNKNOWN | YES persistent controlled effect | GNU adapter/member-selection pin pending; IMPLEMENTATION_BLOCKED |
 | G03 | PARTIAL entries, no reused session | NO initial tree | NO fresh-empty setup | PARTIAL with reused setup | Existing-state scope gate failed; SOURCE_VERIFIED, excluded |
 
-Container helper validation is a shared infrastructure prerequisite, not candidate
-qualification. Every candidate `isolated_execution` is NOT_IMPLEMENTED and every
+Container helper/image/benign Node fixture validation is shared infrastructure
+evidence, not candidate qualification. Every candidate `isolated_execution`
+(exact candidate campaign binding) is NOT_IMPLEMENTED and every
 execution state is NOT_RUN. Unknown platform/version/invocation facts remain
 UNKNOWN; no third-party target is TRUSTED_REFERENCE. These claims become stale
 when the [audited engine](engine-contract-audit.md) changes.

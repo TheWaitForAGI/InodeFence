@@ -12,8 +12,11 @@ observable effect and C0/C1/C2 mapping, required current/planned capabilities,
 structural versus complete benchmark reachability, observer needs, selection,
 qualification status, uncertainties and typed source references.
 
-The catalog's `engine_revision` is the audited main SHA; generation, observation
-and execution fields must be rechecked after relevant source changes.
+The catalog's `engine_revision` is the source-reviewed main SHA, not necessarily
+the engine checked out on the research branch. The
+[engine audit](../../docs/research/benchmarks/engine-contract-audit.md) records the
+capability-audit base and f02024c's targeted delta review without a merge. Generation,
+observation and execution fields must be rechecked after relevant source changes.
 `candidate_id` (N/O/G series), descriptive `benchmark_id`, R root-cause ID and S
 semantic IDs are stable joins, not display names or CVE-based oracle rules.
 `representation`, `seed_start`, `structure_reachability`, `current_reachability`
@@ -47,8 +50,11 @@ invalidate qualification. Admission also requires the per-gate records in the
 Current primaries are IMPLEMENTATION_BLOCKED; excluded candidates remain
 SOURCE_VERIFIED with excluded_v1 scope. G01 remains SOURCE_VERIFIED with unresolved
 pin/root gates. All 15 execution states are NOT_RUN, all candidate isolated
-bindings NOT_IMPLEMENTED, and none is READY. Helper validation inherited from main
-does not change these fields. The planning-only validator rejects executed
+campaign bindings NOT_IMPLEMENTED, and none is READY. `isolated_execution` refers
+to an exact candidate's frozen image/config/provenance and approved campaign
+path. The implemented benign Node/backend composition and passing helper/image/
+fixture CI at f02024c do not qualify historical benchmark versions or change
+these fields. The planning-only validator rejects executed
 qualification/READY/evaluation assertions; future ingestion needs a reviewed
 schema/state transition and retained gate evidence.
 

@@ -12,6 +12,13 @@ from inodefence.model import ArchiveCase, EntryType, RunResult, canonical_json
 MINIMIZATION_POLICY = "greedy-archive-reduction-v1"
 
 
+class ReductionPolicy(StrEnum):
+    """Declared candidate grammar; generic v1 remains available unchanged."""
+
+    GENERIC = MINIMIZATION_POLICY
+    USTAR = "greedy-ustar-archive-reduction-v1"
+
+
 class ReductionKind(StrEnum):
     INITIAL = "initial"
     ENTRY = "entry-deletion"
@@ -65,7 +72,7 @@ def _text_reductions(value: str) -> tuple[str, ...]:
     )
 
 
-def reduction_candidates(case: ArchiveCase) -> Iterator[tuple[ReductionKind, ArchiveCase]]:
+def _raw_candidates(case: ArchiveCase) -> Iterator[tuple[ReductionKind, ArchiveCase]]:
     """Fixed transformation/entry order; every yielded case is strictly smaller.
 
     No dependency repair or normalization is performed. Text changes are raw
@@ -119,12 +126,37 @@ def reduction_candidates(case: ArchiveCase) -> Iterator[tuple[ReductionKind, Arc
                 yield from unique(kind, candidate)
 
 
+def reduction_candidates(
+    case: ArchiveCase,
+    *,
+    policy: ReductionPolicy = ReductionPolicy.GENERIC,
+) -> Iterator[tuple[ReductionKind, ArchiveCase]]:
+    """Deterministic raw reductions, optionally restricted to lossless USTAR.
+
+    USTAR policy validates the baseline then filters builder-unrepresentable
+    candidates without changing raw spellings or invoking the target/evaluator.
+    A skipped representation is not an execution or a rejected RunResult.
+    """
+    if not isinstance(policy, ReductionPolicy):
+        raise ValueError("policy must be a supported ReductionPolicy")
+    if policy == ReductionPolicy.USTAR:
+        build_tar(case)
+    for kind, candidate in _raw_candidates(case):
+        if policy == ReductionPolicy.USTAR:
+            try:
+                build_tar(candidate)
+            except ValueError:
+                continue
+        yield kind, candidate
+
+
 def minimize_case(
     case: ArchiveCase,
     evaluate: Callable[[ArchiveCase], RunResult],
     preserves: Callable[[RunResult], bool],
     *,
     execution_budget: int,
+    policy: ReductionPolicy = ReductionPolicy.GENERIC,
 ) -> MinimizationResult:
     """Evaluate baseline then greedily accept smaller cases preserving the predicate.
 
@@ -139,6 +171,10 @@ def minimize_case(
         raise ValueError("case must be an ArchiveCase")
     if type(execution_budget) is not int or execution_budget <= 0:
         raise ValueError("execution_budget must be a positive integer")
+    if not isinstance(policy, ReductionPolicy):
+        raise ValueError("policy must be a supported ReductionPolicy")
+    if policy == ReductionPolicy.USTAR:
+        build_tar(case)
     steps: list[MinimizationStep] = []
 
     def trial(candidate: ArchiveCase, kind: ReductionKind) -> bool:
@@ -157,11 +193,11 @@ def minimize_case(
 
     def finish(termination: MinimizationTermination) -> MinimizationResult:
         return MinimizationResult(
-            MINIMIZATION_POLICY, execution_budget, case, current, tuple(steps), termination
+            policy.value, execution_budget, case, current, tuple(steps), termination
         )
 
     while True:
-        for kind, candidate in reduction_candidates(current):
+        for kind, candidate in reduction_candidates(current, policy=policy):
             if len(steps) == execution_budget:
                 return finish(MinimizationTermination.BUDGET)
             if trial(candidate, kind):
@@ -233,11 +269,14 @@ def minimize_violation(
     evaluate: Callable[[ArchiveCase], RunResult],
     *,
     execution_budget: int,
+    reduction_policy: ReductionPolicy = ReductionPolicy.USTAR,
 ) -> ViolationMinimizationResult:
     """Bind each trial to deterministic USTAR and freeze baseline fingerprints.
 
     Baseline is evaluated once and consumes the declared budget. Every returned
     case/hash/format must match its candidate before preservation is considered.
+    Default USTAR reduction filters unrepresentable candidates before execution;
+    explicit generic v1 restores the original raw candidate/exception behavior.
     No execution status substitutes for evidence; nonviolating baselines fail.
     Caller owns execution isolation, target/config consistency and source
     provenance. Exact archive binding does not authenticate the evaluator.
@@ -259,6 +298,8 @@ def minimize_violation(
             condition = ViolationCondition.from_result(result)
         return condition.matches(result)
 
-    reduction = minimize_case(case, checked, preserves, execution_budget=execution_budget)
+    reduction = minimize_case(
+        case, checked, preserves, execution_budget=execution_budget, policy=reduction_policy
+    )
     assert condition is not None  # baseline was successfully evaluated by minimize_case
     return ViolationMinimizationResult(reduction, condition)

@@ -96,9 +96,9 @@ dirty-patch preservation, resource policy와 interrupted export 한계는 그대
 ## 보존된 원본과 최종 local validation
 
 [Support JSON 원본](linux-isolation-support-v1.json)은 clean diagnostic revision
-`04c418f881b7ce817579281901745c4197db77bc`에서 수집했다. Source dirty=false다.
-로컬 Git-ignored `experiments/raw/preaudit-isolation-20261004/isolation-support.json`과 byte-identical
-복사본이며 SHA-256은 `5a026225c30d25f171d52a25986d1cf8701a99e7328a55c0642e8ec5d1b354c7`다. JSON을 수동 수정하지 않았다.
+`95d8de9ce962a3b333e26ce2e24b15ef27e06abd`에서 수집했다. Source dirty=false다.
+로컬 Git-ignored `experiments/raw/preaudit-isolation-20261004/isolation-support-final.json`과 byte-identical
+복사본이며 SHA-256은 `f5a6353440ed05e945e12c5153053d8da0183d82a16637de1600073ef4b61c34`다. JSON을 수동 수정하지 않았다.
 원본 실행의 engine은 기준 main과 같으며 diagnostic/script/tests/docs만 추가됐다.
 Util-linux (`unshare`, `setpriv`, `prlimit`) version은 2.39.3이었다.
 
@@ -106,7 +106,8 @@ Util-linux (`unshare`, `setpriv`, `prlimit`) version은 2.39.3이었다.
 `git diff --check` PASS. `make fixtures`와 regular-file/directory/hardlink/symlink 4 probes PASS,
 기존 fixture bytes 불변이다. 기존 test 삭제/skip/weakening과 production engine 변경은 없다.
 
-같은 clean diagnostic revision에서 reference config CLI를 실행했다:
+Reference config CLI는 별도의 clean diagnostic revision
+`04c418f881b7ce817579281901745c4197db77bc`에서 실행했다 (engine은 동일하다):
 
 ```bash
 python -m scripts.run_configured_reference experiments/configs/reference-smoke-v1.json --output experiments/raw/preaudit-isolation-20261004/reference

@@ -452,6 +452,7 @@ st_ino = Y
 | StateSignature | schema v2, EXTRACTION/EXTERNAL normalized objects, scoped same-object groups, external field-change labels, protected_paths |
 | ViolationResult | contract_id, violated, typed evidence, explanation, limitations |
 | RunResult | case, archive_sha256/format, execution, before/after, changes, signature, violations |
+| ExecutionProvenance | 실행 전 source(revision/dirty), environment(platform strings), declared target(ID/version/timeout), sorted sentinel(name/content SHA-256/mode) |
 
 Archive input은 `Path.resolve()`/normalization을 거치지 않는다. NUL, surrogate code point, 잘못된 entry field 조합은 model boundary에서 거부한다. regular content는 immutable bytes이며 directory는 content/target을 가지지 않는다. link는 nonempty target 필수다. Duplicate entry와 entry 순서는 그대로 유지한다. Long name은 model에 허용하지만 현재 builder가 표현할 수 없는 USTAR 값은 명시적으로 거부한다.
 
@@ -479,7 +480,7 @@ StateSnapshot은 세 region 전체와 TAR content digest를 보존한다. StateS
 
 실제 `run_case()` regression은 동일 content/mode의 독립 regular entry 두 개를 반대 순서로 추출한다. Case ID/TAR SHA-256은 다르지만 signature와 canonical representation은 같아야 한다. 다른 inode allocation/PYTHONHASHSEED의 기존 regression도 유지한다.
 
-`canonical_json(model)`의 envelope schema version 1과 model type, sorted JSON keys, ordered tuple 배열은 유지한다. Signature 내부 schema version은 2이며 이전 signature와 key 호환성을 주장하지 않는다. Bytes는 base64로 lossless export한다. Raw run evidence는 run-specific inode/times를 보존하고 cross-run key는 logical case 또는 normalized signature로 만든다. Deserialize/database layer는 아직 없다. 향후 formal experiment runner는 InodeFence commit, OS/kernel, config/seed/budget과 dependency provenance를 별도로 기록해야 한다.
+`canonical_json(model)`의 envelope schema version 1과 model type, sorted JSON keys, ordered tuple 배열은 유지한다. Signature 내부 schema version은 2이며 이전 signature와 key 호환성을 주장하지 않는다. Bytes는 base64로 lossless export한다. Raw run evidence는 run-specific inode/times를 보존하고 cross-run key는 logical case 또는 normalized signature로 만든다. Deserialize/database layer는 아직 없다. Campaign은 실행 전 InodeFence commit/dirty와 process OS/kernel/platform 정보를 ExecutionProvenance에 고정한다. Complete dependency lock과 formal experiment configuration은 후속 작업이다.
 
 현재 내부 API:
 
@@ -1038,7 +1039,14 @@ Infrastructure exception은 전달하며 완료되지 않은 campaign을 정상 
 
 CampaignStep은 zero-based index, SEED/MUTATION origin, seed에는 None인 parent_case_id,
 full RunResult와 FeedbackDecision이다. CampaignResult는 config/initial IDs/steps/final stats와
-admission-order retained IDs의 immutable snapshot이다. Full evidence 보존으로 메모리는
+admission-order retained IDs와 실행 전 ExecutionProvenance의 immutable snapshot이다.
+CampaignTarget은 TargetAdapter에 pre-execution TargetProvenance property를 추가한다. 첫 run_case
+전에 source/environment와 target/sentinel config를 freeze하며 supplied provenance는 target/sentinel
+일치를 확인한다. Supplied source/environment 정확성은 caller 책임이다. Adapter 선언 또는 result의
+target/version/timeout drift는 harness 오류로 중단한다. Model에는 capture logic이 없고 상위
+provenance.py가 Git/platform/config를 읽는다. Sentinel order는 name 기준이며 content는 digest다.
+이 값은 StateSignature, Corpus novelty나 Security Contract evidence에 들어가지 않는다.
+Full evidence 보존으로 메모리는
 O(execution_budget)이며 run당 evidence 크기에 비례한다. Semantic feedback이 같은 조건에서
 lineage를 재현하며 raw inode/timestamp/duration equality는 요구하지 않는다. Persistence,
 checkpoint/resume, adaptive scheduling과 default seed 선택은 없다.
@@ -1321,12 +1329,14 @@ violation=C1
 그대로 사용하며 result(raw evidence)와 feedback(decision)은 별도 field로 유지한다. Lineage,
 모든 execution status, snapshots, signature와 verdict/evidence를 보존한다.
 
-Manifest schema v1은 format/classification, config, initial IDs, step count/final stats/retained
+Manifest schema v2는 stored execution_provenance, format/classification, config, initial IDs, step count/final stats/retained
 order와 결과에서 얻은 target ID/version/builder format/timeout contexts를 기록한다. Context는
 first-occurrence order의 unique tuple이며 변동 provenance를 첫 step 값으로 숨기지 않는다.
 steps_file/steps_sha256으로 실제 JSONL을 연결한다. export_environment는 writer process의
 Python version/system/release/architecture다. Target 실행 환경이나 source commit을 추정하지
-않는다. Unknown runtime provenance는 caller가 별도 기록해야 한다.
+않는다. Execution provenance는 실행 전 stored 값이고 exporter는 재구성하지 않는다. Source
+revision은 full Git ID/dirty 또는 명시적 None이다. Platform의 release는 kernel/platform 문자열이며
+environment는 harness process를 설명한다. Dirty state는 source patch를 보존하지 않는다.
 
 동일한 완료 result와 exporter environment는 destination과 무관하게 같은 sorted-key ASCII JSON,
 LF bytes를 만든다. 별도 campaign의 raw inode/timestamp/duration equality는 요구하지 않는다.

@@ -15,4 +15,9 @@
 
 숨은 수동 설정을 최소화한다.
 
+현재 CampaignConfig는 seed/budget이고 ExecutionProvenance는 실행 전 source/environment,
+target/version/timeout과 sorted sentinel name/content SHA-256/mode다. Campaign이 자동 freeze하거나
+caller가 frozen 값을 제공하며 target/sentinel 불일치는 실행 전에 거부한다. 결과에서 설정을
+재구성하지 않는다. Formal experiment config parser/identity는 후속 작업이다.
+
 같은 이름의 실험이라도 조건이 달라졌다면 결과를 덮어쓰지 말고 구분 가능한 config로 남긴다.

@@ -1,4 +1,4 @@
-from .base import TargetAdapter
+from .base import CampaignTarget, TargetAdapter
 from .python_tarfile import PythonTarfileTarget
 
-__all__ = ["PythonTarfileTarget", "TargetAdapter"]
+__all__ = ["CampaignTarget", "PythonTarfileTarget", "TargetAdapter"]

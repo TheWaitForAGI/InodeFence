@@ -19,7 +19,9 @@ from inodefence.model import (
     SnapshotPhase,
     StateSnapshot,
 )
+from inodefence.model.provenance import SourceProvenance, TargetProvenance
 from inodefence.mutator import mutate
+from inodefence.provenance import freeze_provenance
 from inodefence.runtime import SentinelSpec
 from inodefence.targets import TargetAdapter
 
@@ -51,6 +53,10 @@ def _result(case: ArchiveCase, status: ExecutionStatus = ExecutionStatus.SUCCESS
 
 
 class UnusedTarget:
+    @property
+    def provenance(self) -> TargetProvenance:
+        return TargetProvenance("controlled", "test", None)
+
     def run(self, archive_path: Path, extraction_root: Path) -> ExecutionResult:
         raise AssertionError("unit tests must not execute a target")
 
@@ -247,3 +253,82 @@ def test_sentinel_configuration_is_forwarded(monkeypatch: pytest.MonkeyPatch) ->
 
     monkeypatch.setattr(campaign, "run_case", execute)
     run_campaign((_case("a"),), UnusedTarget(), CampaignConfig(3, 3), sentinels=specs)
+
+
+def test_provenance_frozen_before_first_execution_and_same_value_stored(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    target = UnusedTarget()
+    specs = (SentinelSpec(),)
+    frozen = freeze_provenance(target.provenance, specs, source=SourceProvenance("a" * 40, False))
+    events: list[str] = []
+
+    def freeze(*args, **kwargs):
+        events.append("freeze")
+        return frozen
+
+    def execute(case, target, *, sentinels):
+        assert events[0] == "freeze"
+        events.append("execute")
+        return _result(case)
+
+    monkeypatch.setattr(campaign, "freeze_provenance", freeze)
+    monkeypatch.setattr(campaign, "run_case", execute)
+    result = run_campaign((_case("a"),), target, CampaignConfig(1, 2), sentinels=specs)
+    assert events == ["freeze", "execute", "execute"]
+    assert result.provenance is frozen
+    supplied = run_campaign((_case("a"),), target, CampaignConfig(1, 1), provenance=frozen)
+    assert supplied.provenance is frozen
+    assert events.count("freeze") == 1
+
+
+@pytest.mark.parametrize(
+    "changes",
+    ({"target_version": "different"}, {"timeout_seconds": 1.0}, {"target_id": "different"}),
+)
+def test_result_cannot_rewrite_frozen_provenance(monkeypatch: pytest.MonkeyPatch, changes) -> None:
+    calls = []
+
+    def execute(case, target, *, sentinels):
+        calls.append(case)
+        raw = _result(case)
+        return replace(raw, execution=replace(raw.execution, **changes))
+
+    monkeypatch.setattr(campaign, "run_case", execute)
+    with pytest.raises(ValueError, match="differs from frozen"):
+        run_campaign((_case("a"),), UnusedTarget(), CampaignConfig(1, 3))
+    assert len(calls) == 1
+
+
+def test_mismatched_supplied_provenance_rejected_before_execution(
+    executions: list[ArchiveCase],
+) -> None:
+    target = UnusedTarget()
+    frozen = freeze_provenance(target.provenance, (SentinelSpec("other"),))
+    with pytest.raises(ValueError, match="must match"):
+        run_campaign((_case("a"),), target, CampaignConfig(1, 1), provenance=frozen)
+    assert executions == []
+
+
+def test_mutable_adapter_configuration_change_stops_before_next_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class ChangingTarget(UnusedTarget):
+        version = "test"
+
+        @property
+        def provenance(self) -> TargetProvenance:
+            return TargetProvenance("controlled", self.version, None)
+
+    target = ChangingTarget()
+    calls = []
+
+    def execute(case, adapter, *, sentinels):
+        calls.append(case)
+        target.version = "changed"
+        return _result(case)
+
+    monkeypatch.setattr(campaign, "run_case", execute)
+    with pytest.raises(ValueError, match="configuration changed"):
+        run_campaign((_case("a"),), target, CampaignConfig(1, 3))
+    assert len(calls) == 1

@@ -103,8 +103,9 @@ Bounded deterministic campaign v1은 구현됐으며 adaptive scheduler, persist
 ## 다음 작업
 
 현재 source의 [engineering audit](../experiments/summaries/final-engineering-audit-v1.md)을 완료했다.
-다음 engineering 작업은 caller-level execution-time provenance contract다. Source revision,
-실행 환경과 explicit sentinel/adapter configuration을 실행 전에 기록하는 작은 interface를 검토한다.
+Execution Provenance v1은 source revision/dirty, 실행 환경, explicit sentinel/adapter 설정을
+첫 실행 전에 고정하며 campaign 결과와 manifest v2에 보존한다. 다음 작업은 target execution
+safety/isolation contract다. Disposable runtime cleanup은 OS 격리가 아니다.
 Structured export v1은 완료된 campaign을 manifest.json/canonical steps.jsonl로 기록한다. Resume/reader/database는 없다.
 `generator.minimal_seed_corpus()`는 기존 정상 baseline 4종을 deterministic immutable tuple로
 반환한다. Fixture script도 이 API를 사용하며 campaign의 explicit-seed 계약은 유지한다.
@@ -112,8 +113,8 @@ Safe Python reference의 7개 작은 campaign/400 executions 개발 pilot을 완
 semantic lineage/feedback과 budget/cleanup을 검증했으며 효과 평가는 아니다.
 기록은 [개발 pilot 요약](../experiments/summaries/reference-campaign-pilot-v1.md)을 따른다.
 Campaign은 config/initial IDs/lineage/full RunResult를 memory에 보존한다. Structured writer는
-결과에 있는 target/version/builder/timeout과 exporter 환경만 기록한다. Source commit과 실제
-execution environment의 추가 provenance는 caller 책임이다. Adaptive scheduler/persistence,
+결과에 있는 observed target/version/builder/timeout과 exporter 환경을 별도 기록한다. 실행 전
+provenance는 stored 값이며 supplied source/environment 정확성은 caller 책임이다. Adaptive scheduler/persistence,
 benchmark adapters와 evaluation/ablation은 이후 작업이다. Layer 5 구현과 단위/integration test
 통과를 feedback 효과의 증명으로 해석하지 않는다.
 Benchmark adapter 우선순위는 node-tar → oras-go → 선택 GNU tar를 유지한다. Unsafe target 연결 전에는 OS 수준 실행 격리와 target/version 설정을 함께 검토해야 한다.

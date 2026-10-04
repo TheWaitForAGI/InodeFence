@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Protocol
 
 from inodefence.model import ExecutionResult
+from inodefence.model.provenance import TargetProvenance
 
 
 class TargetAdapter(Protocol):
@@ -25,3 +26,10 @@ class TargetAdapter(Protocol):
     """
 
     def run(self, archive_path: Path, extraction_root: Path) -> ExecutionResult: ...
+
+
+class CampaignTarget(TargetAdapter, Protocol):
+    """Campaign adapters additionally declare stable pre-execution configuration."""
+
+    @property
+    def provenance(self) -> TargetProvenance: ...

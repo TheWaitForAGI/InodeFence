@@ -9,6 +9,7 @@ from pathlib import Path
 from time import perf_counter
 
 from inodefence.model import ExecutionResult, ExecutionStatus
+from inodefence.model.provenance import TargetProvenance
 from inodefence.runtime import open_runtime_directory
 
 
@@ -42,8 +43,18 @@ class PythonTarfileTarget:
     timeout_seconds: float = 10.0
 
     def __post_init__(self) -> None:
-        if not math.isfinite(self.timeout_seconds) or self.timeout_seconds <= 0:
+        if (
+            type(self.timeout_seconds) not in (int, float)
+            or not math.isfinite(self.timeout_seconds)
+            or self.timeout_seconds <= 0
+        ):
             raise ValueError("timeout_seconds must be finite and positive")
+
+    @property
+    def provenance(self) -> TargetProvenance:
+        return TargetProvenance(
+            "python-tarfile-data", platform.python_version(), self.timeout_seconds
+        )
 
     def run(self, archive_path: Path, extraction_root: Path) -> ExecutionResult:
         _validate_paths(archive_path, extraction_root)
@@ -54,7 +65,8 @@ class PythonTarfileTarget:
             str(archive_path),
             str(extraction_root),
         )
-        version = platform.python_version()
+        provenance = self.provenance
+        version = provenance.target_version
         start = perf_counter()
         try:
             completed = subprocess.run(
@@ -68,7 +80,7 @@ class PythonTarfileTarget:
             elapsed = perf_counter() - start
             # subprocess.run kills and waits for this single worker before raising.
             return ExecutionResult(
-                "python-tarfile-data",
+                provenance.target_id,
                 version,
                 command,
                 ExecutionStatus.TIMED_OUT,
@@ -87,7 +99,7 @@ class PythonTarfileTarget:
             else ExecutionStatus.FAILED
         )
         return ExecutionResult(
-            "python-tarfile-data",
+            provenance.target_id,
             version,
             command,
             status,

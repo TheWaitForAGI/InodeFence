@@ -353,3 +353,70 @@ def test_cr001_invalid_probe_metadata_fails_closed(metadata):
     bound = target()
     with pytest.raises(BackendError, match="invalid identity metadata"):
         bound.invocation.verify_identity(metadata)
+
+
+def test_final_cr001_stale_probe_after_first_case_aborts_before_second_before(monkeypatch):
+    """Integrated pipeline, not a synthetic run_case; only backend outcomes are mocked."""
+    from inodefence import pipeline
+    from inodefence.observer import capture_state
+
+    class DriftingBackend(ControlledBackend):
+        archives = 0
+        probes = 0
+
+        @contextmanager
+        def prepare(self, request):
+            backend = self
+
+            class Prepared:
+                def execute(self):
+                    if "--identify" in request.command:
+                        backend.probes += 1
+                        metadata = (
+                            META if backend.archives == 0 else META | {"worker_sha256": "d" * 64}
+                        )
+                        return ContainerOutcome(0, json.dumps(metadata).encode(), b"", 0.0, False)
+                    backend.archives += 1
+                    return backend.outcome
+
+            yield Prepared()
+
+    backend = DriftingBackend()
+    bound = NodeTarTarget.bind(backend, IMAGE)
+    phases = []
+    roots = []
+
+    def capture(root, phase, protected):
+        phases.append(phase.value)
+        roots.append(root)
+        return capture_state(root, phase, protected)
+
+    monkeypatch.setattr(pipeline, "capture_state", capture)
+    with pytest.raises(BackendError, match="identity changed"):
+        run_campaign(minimal_seed_corpus()[:2], bound, CampaignConfig(11, 2))
+    assert backend.archives == 1 and backend.probes == 4
+    assert phases == ["before", "after"]
+    assert all(not root.exists() for root in roots)
+
+
+def test_final_cr001_supplied_verified_origin_cannot_bless_false_artifacts(monkeypatch):
+    from inodefence.model.isolation import ArtifactDigest
+    from inodefence.provenance import freeze_provenance
+
+    bound = target()
+    observed = bound.capture_isolation()
+    false_record = replace(
+        observed,
+        artifacts=(
+            ArtifactDigest("node-tar-package-lock", "d" * 64),
+            ArtifactDigest("node-tar-worker", "e" * 64),
+        ),
+    )
+    supplied = freeze_provenance(bound.provenance, (SentinelSpec(),), isolation=false_record)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("supplied provenance mismatch must precede archive execution")
+
+    monkeypatch.setattr("inodefence.campaign.run_case", forbidden)
+    with pytest.raises(ValueError, match="provenance must match"):
+        run_campaign(minimal_seed_corpus(), bound, CampaignConfig(11, 4), provenance=supplied)

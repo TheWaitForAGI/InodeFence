@@ -1,6 +1,7 @@
 """Benign CLI transport helpers; these are not target-container isolation tests."""
 
 import os
+import selectors
 import signal
 import subprocess
 import sys
@@ -132,3 +133,83 @@ def test_kill_permission_failure_is_bounded_and_not_success(monkeypatch, tmp_pat
         for process in processes:
             process.kill()
             process.wait(timeout=2)
+
+
+@pytest.mark.parametrize("esrch_race", (False, True))
+def test_final_ex003_pipe_error_stops_exited_primary_group(monkeypatch, tmp_path, esrch_race):
+    """Error-path counterpart of the frozen benign fork/pipe deadline witness."""
+    executable = tmp_path / "benign-error-helper"
+    pid_file = tmp_path / "child.pid"
+    executable.write_text(
+        f"#!{sys.executable}\n"
+        "import os,time\n"
+        "child=os.fork()\n"
+        "if child == 0:\n"
+        "    time.sleep(30)\n"
+        "    os._exit(0)\n"
+        f"with open({str(pid_file)!r}, 'w') as stream:\n"
+        "    stream.write(str(child))\n"
+        "os.write(1,b'controlled')\n"
+        "os._exit(0)\n"
+    )
+    executable.chmod(0o700)
+    original_popen = subprocess.Popen
+    original_killpg = os.killpg
+    processes = []
+    signalled = []
+
+    def tracked(*args, **kwargs):
+        process = original_popen(*args, **kwargs)
+        processes.append(process)
+        return process
+
+    def failed_read(self, timeout):
+        deadline = monotonic() + 2
+        while monotonic() < deadline:
+            state = Path(f"/proc/{processes[0].pid}/stat").read_text()
+            if state.rsplit(")", 1)[1].split()[0] == "Z":
+                # Confirm exit without poll()/wait(): the primary still pins its group ID.
+                raise OSError("controlled pipe error after primary exit")
+            sleep(0.01)
+        raise AssertionError("benign primary did not exit")
+
+    def signal_group(pid, sig):
+        signalled.append(pid)
+        original_killpg(pid, sig)
+        if esrch_race:
+            raise ProcessLookupError("controlled already-stopped group race")
+
+    monkeypatch.setattr(subprocess, "Popen", tracked)
+    monkeypatch.setattr(selectors.DefaultSelector, "select", failed_read)
+    monkeypatch.setattr(os, "killpg", signal_group)
+    with original_popen(
+        (sys.executable, "-c", "import time; time.sleep(30)"), start_new_session=True
+    ) as unrelated:
+        try:
+            start = monotonic()
+            with pytest.raises(BackendError) as caught:
+                DockerCLI(str(executable), "audit-double").run(("version",), 5)
+            assert isinstance(caught.value.__cause__, OSError)
+            assert monotonic() - start < 3
+            primary = processes[0]
+            assert primary.returncode == 0 and signalled == [primary.pid]
+            with pytest.raises(ChildProcessError):
+                os.waitpid(primary.pid, os.WNOHANG)
+            child = int(pid_file.read_text())
+            deadline = monotonic() + 2
+            while True:
+                try:
+                    _assert_stopped(child)
+                    break
+                except AssertionError:
+                    if monotonic() >= deadline:
+                        raise
+                    sleep(0.01)
+            assert unrelated.poll() is None
+        finally:
+            unrelated.kill()
+            if pid_file.exists():
+                try:
+                    os.kill(int(pid_file.read_text()), signal.SIGKILL)
+                except ProcessLookupError:
+                    pass

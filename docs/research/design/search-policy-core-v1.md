@@ -70,3 +70,18 @@ SearchDecision에 feedback_key_novel을 추가하여 core envelope를 v2로 올�
 Legacy FeedbackDecision/Corpus/CampaignStep/manifest/config schema와 ID는 바꾸지 않았다.
 Projection ID는 core 설정 property에서 식별할 수 있지만 ExperimentConfig/provenance
 binding은 아직 Evaluation interface dependency다. Baseline 비교 실험은 실행하지 않았다.
+
+## Bound config compatibility and composed baseline checks
+
+ExperimentConfig의 기존 B3/legacy mutation constants는 SearchPolicy.B3와 MutationPolicy.LEGACY의
+versioned ID를 사용한다. Serialized strings, JSON schema와 기존 config ID는 그대로다.
+Fixed target version의 golden config ID로 compatibility를 검사한다.
+Unknown ID와 현재 core-only B0/B1/M1/A3 ID는 모두 config에서 즉시 거부하며 실행되지 않는다.
+이 검사는 alternative policies가 ExperimentConfig에 연결됐다는 의미가 아니다.
+
+All execution statuses에서 semantic state가 같으면 novelty/admission이 생기지 않는다.
+반대로 completed observation의 새로운 semantic state는 status와 무관하게 B1/B3에서 admission
+후보가 된다. B0/B1/B3 × FULL/A1/A2 × M1/A3의 caller-level composition은 shared RNG, seed order,
+no-op child, violation novelty를 함께 검사한다. Raw dev/inode/timestamp를 바꿔도 같은 semantic
+outcomes이면 logical parent/child lineage, diagnostics, entries, stats와 final RNG state가 같다.
+이 unit composition은 configured baseline campaign/evaluation 실행 결과가 아니다.

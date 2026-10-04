@@ -9,18 +9,20 @@ from dataclasses import asdict, dataclass
 from hashlib import sha256
 
 from inodefence.campaign import CampaignConfig, CampaignResult, run_campaign
+from inodefence.feedback import SearchPolicy
 from inodefence.generator import minimal_seed_corpus
 from inodefence.model import ArchiveCase
 from inodefence.model.isolation import IsolationPolicy
 from inodefence.model.provenance import ExecutionSafety, TargetProvenance
+from inodefence.mutator import MutationPolicy
 from inodefence.provenance import sentinel_provenance
 from inodefence.runtime import SentinelSpec
 from inodefence.targets import CampaignTarget
 from inodefence.targets.isolated import IsolatedTarget
 
 SEED_PROFILE = "minimal-generic-v1"
-MUTATION_POLICY = "uniform-generic-v1"
-FEEDBACK_POLICY = "state-v2-or-violation-v1-uniform-parent-v1"
+MUTATION_POLICY = MutationPolicy.LEGACY.value
+FEEDBACK_POLICY = SearchPolicy.B3.value
 
 
 def _object(value: object, keys: set[str]) -> dict:

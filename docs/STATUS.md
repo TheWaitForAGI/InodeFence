@@ -268,3 +268,11 @@ Entry/content/path/mode/link-target 후보를 고정 순서로 시도하며 reje
 Policy ID, budget와 local-fixed-point/budget termination을 기록한다. 특정 target/CVE 규칙은 없다.
 [Core 계약](research/design/generic-minimizer-v1.md)을 따른다. Python reference의 benign content condition
 integration을 검증했으며 replay/export/finding workflow 연결은 별도 dependency다.
+
+### Search/config contract checks
+
+Legacy ExperimentConfig의 policy ID source를 core versioned enums에 연결했고 JSON/config ID를 유지했다.
+Unknown 및 core-only/unbound IDs의 immediate rejection, 모든 execution status의 novelty 독립성,
+B0/B1/B3 × FULL/A1/A2 × M1/A3 조합의 deterministic logical lineage를 검증했다.
+B2의 alternative configured campaign binding은 Evaluation reader/journal/manifest 지원이 필요한
+남은 의존성이다. [정확한 interface 요구사항](research/design/search-policy-core-v1.md)을 따른다.

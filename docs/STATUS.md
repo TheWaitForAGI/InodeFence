@@ -20,20 +20,26 @@ Layer 6 — Baseline / Evaluation / Paper    ⬜
 
 ## 실행 준비 상태
 
+별도 disposable Linux container backend와 benign helper boundary 검증을 추가했다.
+Trusted Linux controller가 host-side stdio Docker broker를 명시적으로 사용하며 기존
+Dev Container 권한은 유지한다. [Enforced policy와 실행 명령](../src/inodefence/execution/README.md)을
+따른다. 현재 campaign safety gate는 unchanged이며 Node image/config/provenance/full-path
+smoke는 아직 후속 작업이다. Full audit readiness로 올리지 않는다.
+
 전체 분류는 **ENGINEERING FOUNDATION**이다.
 
-Pre-audit infrastructure 작업은 **Work Package A의 실행 환경 지원에서 차단**됐다.
+기존 in-Dev-Container namespace 설계는 PR #34에서 **환경 지원 차단**으로 기록됐다.
 2026-10-04 확인한 nonprivileged Dev Container에서 uid 1000의 namespace 생성 8개 probe는 모두
 EPERM으로 실패했고 cgroup v2는 read-only였다. `make isolation-support`가 사실과 실패를 JSON으로
-기록한다. 진단 성공도 validated execution boundary가 아니다. 환경 정책을 먼저 결정한 뒤 A의
-실제 격리 구현·검증을 재개한다. A/B merge 전 Node configured campaign은 계속 0 executions이며
-B–G 완료 또는 READY FOR FULL CODE / ARCHITECTURE AUDIT로 표시하지 않는다.
+기록한다. 진단 성공도 validated execution boundary가 아니다. 새 Task Contract는 별도
+container backend를 선택했고 helper 검증까지 진행했다. Node configured campaign은 계속
+0 executions이며 image/config/provenance/full-path smoke 완료 전 audit-ready로 표시하지 않는다.
 [Blocker 기록](../experiments/summaries/linux-isolation-support-v1.md)에 근거와 후속 조건이 있다.
 
 | 기준 | 현재 상태 | 근거 / 남은 조건 |
 | --- | --- | --- |
 | ENGINE READY | trusted Python reference 범위에서 준비 | bounded runner, explicit seeds, frozen provenance, config binding, raw export와 Linux regression |
-| BENCHMARK READY | 아직 아님 | Node adapter의 정상 fixture는 통과했지만 validated OS isolation과 안전한 Node campaign smoke가 없음 |
+| BENCHMARK READY | 아직 아님 | Node fixture와 container helper는 통과했지만 Node image/config/provenance binding과 full-path smoke가 없음 |
 | EVALUATION READY | 아직 아님; EVALUATION NOT YET RUN | benchmark boundary 승인, 별도 연구 Task Contract, baseline/ablation/반복 계획이 필요 |
 
 현재 실행 경로는 strict ExperimentConfig → explicit seeds/target binding → campaign safety gate
@@ -130,12 +136,13 @@ Provenance/configuration 이후 [인프라 audit](../experiments/summaries/infra
 Execution Provenance v1은 source revision/dirty, 실행 환경, explicit sentinel/adapter 설정을
 첫 실행 전에 고정하며 campaign 결과와 manifest v2에 보존한다. Target execution safety contract는
 explicit trusted reference campaign만 허용하며 isolation-required/미선언 target을 runtime 이전에
-거부한다. Disposable runtime/Dev Container는 OS 격리가 아니고 검증된 isolation helper는 없다.
+거부한다. Disposable runtime/Dev Container는 OS 격리가 아니다. 별도 container helper 검증은
+완료했으며 아직 campaign binding은 없다.
 Node-tar adapter engineering은 정상 fixture 범위에서 완료됐으며 generated-input campaign은 금지한다.
 ExperimentConfig v1은 필수 JSON 설정/정규화된 config ID와 pre-execution seed/target binding을
 제공한다. Safe reference config CLI가 실행 전 config ID를 campaign/manifest에 보존한다.
-다음 PR의 우선순위는 Linux target execution의 검증 가능한 OS isolation boundary다. Process/filesystem,
-credential/network/resource 제한, child 종료와 관찰 구간을 정상 controlled helper로 검증해야 한다.
+다음 PR은 Node target image와 validated backend의 target/config/provenance binding이다.
+Container helper의 filesystem/network/credential/resource/descendant 검증은 이미 수행했다.
 그 뒤에만 설정 기반의 아주 작은 benign Node campaign smoke를 수행한다. 현재 Node campaign은
 runtime/provenance capture/첫 run_case 이전에 거부됐으며 실행 수는 0이다. Requirement를 낮추지 않았다.
 Structured export v1은 완료된 campaign을 manifest.json/canonical steps.jsonl로 기록한다. Resume/reader/database는 없다.

@@ -528,11 +528,19 @@ len(corpus) -> retained case count
 
 # 8. Execution Sandbox
 
+별도 [container backend](../../../src/inodefence/execution/README.md)는 trusted Linux
+controller → explicit host stdio broker → disposable target container 경계를 구현한다.
+Current run의 named-volume subpath만 공유해 Observer inode identity와 sentinel evidence를
+유지한다. 준비 context는 BEFORE 이전 생성/정책 확인, execution은 stopped PID namespace
+이후 반환, context exit는 AFTER 이후 removal이다. Backend는 target/Oracle/feedback을
+알지 않는다. Dev Container 자체를 target sandbox로 바꾸지 않는다. 아래 campaign gate는
+아직 unchanged이며 Node/config/provenance integration은 후속 PR에서 별도 검증한다.
+
 현재 enforced safety contract는 TargetProvenance.execution_safety의 ExecutionSafety enum이다.
 Default ISOLATION_REQUIRED이며 Python reference는 TRUSTED_REFERENCE를 선언한다. Campaign은
 explicit trusted reference만 허용하고 미선언/isolation-required target은 provenance capture/runtime/
 첫 run_case 이전에 거부한다. Caller의 supplied provenance가 requirement를 낮출 수 없다.
-선언은 OS containment 증명이 아니고 현재 validated isolation helper는 없다.
+선언은 OS containment 증명이 아니다. 별도 container helper는 검증했지만 campaign binding은 아직 없다.
 Low-level adapter.run/run_case는 controlled fixture caller 책임이며 third-party의 arbitrary generated
 archive 실행은 별도 OS boundary 검증 전까지 허용하지 않는다.
 

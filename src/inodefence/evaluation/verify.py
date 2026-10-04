@@ -94,6 +94,35 @@ def verify_run(result: RunResult) -> None:
         raise ValueError("recorded contracts differ from snapshots")
 
 
+def verify_binding(result: RunResult, provenance: ExecutionProvenance) -> None:
+    """Verify target/isolation/sentinel configuration against actual evidence."""
+    execution = result.execution
+    target = provenance.target
+    if (execution.target_id, execution.target_version, execution.timeout_seconds) != (
+        target.target_id,
+        target.target_version,
+        target.timeout_seconds,
+    ):
+        raise ValueError("target result differs from frozen provenance")
+    if (
+        provenance.isolation is None
+        and target.execution_safety != ExecutionSafety.TRUSTED_REFERENCE
+    ):
+        raise ValueError("missing required isolation provenance")
+    if result.before.protected_paths != tuple(
+        f"outside/{item.name}" for item in provenance.sentinels
+    ):
+        raise ValueError("sentinel configuration differs from snapshots")
+    for sentinel in provenance.sentinels:
+        obj = result.before.get(f"outside/{sentinel.name}")
+        if (
+            obj is None
+            or obj.content_digest != sentinel.content_sha256
+            or obj.mode != sentinel.mode
+        ):
+            raise ValueError("BEFORE sentinel differs from configuration")
+
+
 def verify_campaign(
     directory: Path, *, expected_manifest_sha256: str | None = None
 ) -> VerifiedCampaign:
@@ -184,31 +213,8 @@ def _verify(directory: Path, expected_digest: str | None) -> VerifiedCampaign:
         }:
             raise ValueError("mutation parent was not previously retained")
         verify_run(step.result)
+        verify_binding(step.result, provenance)
         execution = step.result.execution
-        target = provenance.target
-        if (execution.target_id, execution.target_version, execution.timeout_seconds) != (
-            target.target_id,
-            target.target_version,
-            target.timeout_seconds,
-        ):
-            raise ValueError("target result differs from frozen provenance")
-        if (
-            provenance.isolation is None
-            and target.execution_safety != ExecutionSafety.TRUSTED_REFERENCE
-        ):
-            raise ValueError("missing required isolation provenance")
-        if step.result.before.protected_paths != tuple(
-            f"outside/{item.name}" for item in provenance.sentinels
-        ):
-            raise ValueError("sentinel configuration differs from snapshots")
-        for sentinel in provenance.sentinels:
-            obj = step.result.before.get(f"outside/{sentinel.name}")
-            if (
-                obj is None
-                or obj.content_digest != sentinel.content_sha256
-                or obj.mode != sentinel.mode
-            ):
-                raise ValueError("BEFORE sentinel differs from configuration")
         if step.feedback != corpus.consider(step.result):
             raise ValueError("feedback evidence mismatch")
         context = {

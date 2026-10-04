@@ -29,3 +29,20 @@ readiness. It does not reconstruct RNG/search execution or a dirty source patch.
 The caller owns the directory's parents; bundle/file symlinks are rejected.
 This reader loads the complete bundle in memory, matching the core's bounded
 campaign representation. No partial record is returned as verified evidence.
+
+## Pair records
+
+`compare_pair(case, PairArm(provenance_a, result_a), PairArm(provenance_b, result_b))`
+checks two caller-produced runs against the requested case and regenerated TAR.
+`export_pair(pair, path)` preserves their full core results and their respective
+execution provenance in a canonical checksummed record. `read_pair(path)` fails
+closed on corruption or input/binding drift. Targets and outcomes may differ.
+No CVE, expected result, ranking or automatic target execution is encoded here.
+Execution remains caller-owned; this first pair API is the evidence boundary.
+
+Evaluation records use a strict schema-v1 wrapper around existing canonical model
+encoding. Payload SHA-256 is declared in the wrapper; whole-file digest is returned
+for external anchoring. A synced temporary file is published with Linux atomic
+no-overwrite hardlink and parent fsync. Prepublication failure leaves no final
+file; postpublication fsync failure may leave a complete file and propagates.
+Hard interruption can leave an ignored temporary file. Parents are trusted.

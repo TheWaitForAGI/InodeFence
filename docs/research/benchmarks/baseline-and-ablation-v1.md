@@ -125,3 +125,32 @@ vulnerable-target tests, to verify B0 cannot read novelty, B1 cannot admit on
 violations alone, B3 matches current behavior, and A1/A2 alter only feedback keys.
 Record no-op operator slots/draw consumption for A3. Experiment binding must
 reject unsupported policy IDs rather than silently select full feedback.
+
+## Policy seam revalidation after container admission
+
+Reviewed #39 Campaign still creates `Corpus()` once, calls `consider(result)`
+for each completed seed/child, and calls `select_case(rng)` before mutation.
+Contained admission/frozen identity wraps that unchanged search. The smallest
+future seam is parent selection plus post-observation admission/diagnostics at
+those calls, sharing the existing execute function and evidence steps. B0 also
+needs previous-child state, so a retention switch alone cannot implement it.
+ExperimentConfig's explicit `feedback_policy` is a suitable versioned binding
+point, but the current parser accepts only B3 and has no policy dispatcher.
+
+A concrete model limitation remains: FeedbackDecision.interesting is hardcoded
+as state OR violation novelty, and retained as interesting AND not already retained.
+B1 cannot truthfully report a new violation while declining admission with this
+unchanged value; B0 cannot report diagnostic novelty and zero corpus admission.
+Future work must distinguish policy admission from full analysis novelty in a
+reviewed decision/evidence representation. Hiding fingerprints, claiming an
+unretained child was retained or filtering oracle evidence would corrupt reports.
+This requires an explicit model/config/serialization contract, not a copied runner.
+
+B1/B3 retain uniform selection and the same unique-case/insertion/seen rules.
+B0's active walk intentionally changes the parent distribution; interpret B0 as
+a whole-search comparator, not an isolated retention effect. Require clean and
+equivalent seed admissions, log parent pool sizes/admissions, count every returned
+status/no-op and keep full raw states for all arms. RNG calls differ after the
+seed phase; paired seeds are reproducible blocks, not identical mutated inputs.
+Container creation/timeout/cleanup, target options and observer/oracle stay
+identical. No policy implementation or alternative config is enabled here.

@@ -164,3 +164,41 @@ search problem and must get its own policy revision. It is not required now.
 a later set. Ordinary POSIX backslash semantics do not require Windows support.
 Do not add Unicode, Windows aliases, PAX, races or persistent extraction trees
 for excluded candidates merely to enlarge the feature list.
+
+## Post-audit M1 address vocabulary requirements
+
+Requirements only; no API or mutator implementation is introduced. Vocabulary
+comes from the controlled setup and finite generic grammar, without CVE IDs,
+upstream vulnerability paths, fix versions or target-specific entry sequences.
+
+| Concept | Meaning / information later supplied by setup |
+| --- | --- |
+| Extraction root | Declared target-visible extraction directory and its relative name in the observed run; object identity belongs to observation, not mutation. |
+| Controlled external root | Owned, observed external directory, same-device relation and relative components from the extraction root; no real host path or secret. |
+| Protected sentinel basename | Public controlled relative name/component list for each regular sentinel, plus its declared protection role; exact spelling available to every comparison arm. |
+| Archive namespace | Logical entry-name namespace and any declared upstream transport prefix; Node can use the logical root, ORAS's title-prefix transport must be explicit and separately hashed. |
+| Relative component names | Finite ordinary names from seed/archive/setup plus declared generic names and syntax components; entry order and duplicate spellings remain significant. |
+
+A future generic mutator needs a versioned finite vocabulary, applicable USTAR
+byte bounds, current case names/link text, caller RNG and component-composition
+rules. It does not need target family, CVE/version, protected inode, observed
+violation or a recipe. Layout relation/protection names are public configuration;
+oracle classification and success logic are not mutation hints. Freeze vocabulary,
+order/weights/limits and digest in research config/provenance for all baseline arms.
+
+Generic component replacement/splicing must be able to reuse names across
+member/link fields, create differing-type same-name collisions and compose
+relative paths from ordinary components, separators, dot and parent components.
+Bound component depth/encoded byte lengths; define deterministic counted no-op
+for inapplicable/out-of-bounds proposals. These are grammar capabilities, not a
+prescribed attack order. Avoid binding a finite dictionary to one known target
+path, one sentinel literal or one CVE. The same setup-derived words and grammar
+must serve Node and ORAS; wrapper transport belongs to invocation, not a Node/
+ORAS conditional in mutation.
+
+Absolute per-run addresses, if later required, need separately frozen explicit
+mapping and a generic grammar rule; they are not secretly interpolated into input.
+Primary v1 does not require a stable mount alias for N01's relative arm. Do not
+normalize raw spelling or link targets to make a candidate fit. Qualified logical
+reachability and serializability tests will establish grammar ability after audit;
+static requirements do not imply a measured search probability or oracle hit.

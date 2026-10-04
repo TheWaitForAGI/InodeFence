@@ -163,7 +163,7 @@ adjudication completion or an explicit pending-data limitation.
 | --- | --- | --- |
 | Rediscovery success proportion | H/V complete campaigns; also H/K scheduled campaigns as conservative yield; percent and counts | Complete no-hit = 0; returned timeout/failure remains eligible if complete matching evidence; invalid runs excluded from H/V but shown in H/K and reason counts |
 | Executions to first confirmed class evidence | 1-based original campaign index of earliest subsequently validated matching case; denominator one campaign; executions | Complete no-hit right-censored at N, reported `>N`; never give it a fictitious hit at N. Invalid truncated campaign separate |
-| Time to first confirmed class evidence | Monotonic seconds from first seed pipeline setup through AFTER/evidence completion of earliest confirmed original step; one campaign | No-hit right-censored at completed campaign elapsed; target timeout costs included. Post-campaign replay/adjudication time excluded and reported separately. Current ExecutionResult.duration_seconds alone is insufficient |
+| Time to first confirmed class evidence | Monotonic seconds from first seed pipeline setup through completed return/cleanup of earliest confirmed original step; one campaign | No-hit right-censored at completed campaign elapsed; target timeout costs included. Post-campaign replay/adjudication time excluded and reported separately. Current ExecutionResult.duration_seconds alone is insufficient |
 | Unique StateSignatures | Count of distinct full v2 signature values over E; states/campaign; auxiliary count/E states per execution | All returned statuses included; no novelty from missing snapshot. Raw count is not number of bugs and digest/path novelty can inflate it |
 | Unique violation fingerprints | Distinct canonical generic fingerprints over E; classes/campaign; auxiliary count/E | No-hit can still have unrelated violations. Values omit effect direction; count is not vulnerability count |
 | Corpus growth | R_end − R_after_seed; parents/campaign; auxiliary growth/(E−4) | Report R_after_seed and R_end; fixed-seed policy has zero growing corpus; never compare raw size as effectiveness |
@@ -255,3 +255,71 @@ No-hit fixed runs support only absence of observed matching evidence in this
 budget. B1 is full StateSignature novelty, **not path-only feedback**. Existing
 RQ2 fixed-recipe/path-only comparisons remain unevaluated unless a separately
 specified comparison is added; no misleading substitution is permitted.
+
+## Post-audit timing and failure ticket precision
+
+At reviewed #39, PreparedContainer.execute starts monotonic timing immediately
+before attached start and ends after stop/wait/inspect (or startup-race removal).
+It includes CLI start/attach/draining and verified termination, not TAR building,
+sentinel setup, container creation/inspection before BEFORE, snapshots, oracle/
+feedback, normal container removal, sandbox removal, corpus selection/mutation,
+admission/provenance capture, Node bind/identify or export. Snapshot phases are
+not timestamps. No complete campaign elapsed/first-evidence clock exists.
+
+Future P04 needs an orchestration monotonic origin, per-step start/evidence-ready/
+fully-completed offsets and campaign completion/failure offset, with start/end UTC
+for scheduling only. Full-step cost includes build/setup, container preparation,
+BEFORE, start/termination, AFTER/analysis and backend/runtime cleanup. Only a
+successful run_case return after both cleanup contexts is a completed step.
+Evidence computed before cleanup is provisional if cleanup subsequently fails.
+The time-to-first-confirmed-evidence metric uses that completed original step's
+offset; later replay/adjudication costs are separate. Report full campaign elapsed
+from admission through completion, search elapsed from first seed setup, and
+bind/identify/preflight/export costs separately; do not silently discard them in
+throughput or extrapolate container cost from target durations.
+
+Infrastructure-invalid attempts include unavailable image/runtime, bad container
+policy/start, attached disconnect, uncertain stop/removal, output overflow,
+builder failure, incomplete BEFORE/AFTER, identity/config drift and export IO/
+encoding failure. Current exceptions abort without a partial CampaignResult;
+completed earlier steps stay only in memory, while partial export may lack a
+manifest. OutputLimitError preserves a bounded prefix in the exception but has
+no durable ledger. None is a target nonviolation or ordinary no-hit censor.
+
+The post-audit ledger must preserve frozen config/source/artifacts, attempt/index,
+phase, exception, bounded output/available snapshot evidence, last fully complete
+step, cleanup outcome and incomplete-artifact checksums, even when no final result
+returns. Export failure is distinct from execution failure. Completed records
+need append/durability semantics and tamper checks; torn records/uncertain cleanup
+must remain invalid. Controlled clocks/exceptions/IO failures can test this with
+benign doubles; no vulnerable target is required to validate the infrastructure.
+
+## Post-audit replay/adjudication ticket precision
+
+Current manifest v3 supplies stored policy/image/runtime/target/sentinel facts,
+config ID, seed IDs, executed contexts and steps SHA-256. Each canonical step
+contains logical ArchiveCase/content, case ID, TAR SHA-256/builder format, command/
+status/duration, full BEFORE/AFTER, signature, violations, lineage and feedback.
+It supplies no reader, retained TAR byte file, full ExperimentConfig JSON, replay
+runner/record, original nomination timestamp or incremental failure history.
+The caller must retain the exact config artifact separately. EC-01 limits trust
+in recorded worker/lock facts until resolved; runtime UUID/inode/time need not match.
+
+P05 must verify manifest/steps checksums, schema/complete-record counts, original
+case ID and raw spelling/order/content, then rebuild with the pinned builder and
+reject a TAR hash mismatch before executing anything. Record any ORAS namespace/
+gzip transport hash separately and reproduce the same wrapper mapping. Select
+candidates deterministically from all completed raw steps, independently of
+whether search admitted them. Link each nomination to its original step/index.
+
+Replay the identical logical input/TAR in three fresh affected runs and three
+fresh fixed runs with complete raw evidence and verified teardown. Each member
+matches its own frozen version/config/image identity; affected and fixed configs
+necessarily differ in declared target artifacts. Compare a documented invariant
+setup/options/runtime/policy subset, not equality of their full config hashes.
+Record all six results, failed attempts and root-cause adjudication separately.
+Matching 3/3 affected versus 0/3 fixed satisfies the planned classification only
+with lifecycle-valid generic C0/C1/C2 evidence and source correspondence. Flaky,
+infrastructure-invalid or unadjudicated inputs remain separate/pending; no CVE
+number or version condition enters Oracle. Benign round-trip/tamper tests and
+mocked six-run adjudication must precede any separately authorized affected replay.

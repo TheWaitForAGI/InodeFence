@@ -333,6 +333,20 @@ suites and failure cases; fake Docker responses do not establish containment.
   provides narrower current coverage, not a general arbitrary-CWD contract.
 - **Status:** OPEN audit test gap; no production changes.
 
+### EC-03 — contradictory primary status paragraph
+
+- **Severity:** Minor. **Reviewed main:** same SHA.
+- **Affected:** docs/STATUS.md, execution-readiness versus Next work paragraph.
+- **Observed / evidence:** readiness and the later D025 summary correctly say
+  contained admission/policy binding is implemented; the older Next work paragraph
+  still says only trusted references can campaign and campaign binding is absent.
+- **Why it matters:** research could mistakenly plan to reimplement completed
+  infrastructure. The explicit latest summary is used for this handoff.
+- **Expected invariant:** implementation status is consistent within STATUS.
+- **Suggested direction:** primary's freeze documentation should reconcile the
+  historical paragraph with #39; source/tests are unchanged by that correction.
+- **Status:** OPEN documentation drift; not edited from the research lane.
+
 ### Deliberate incorrect-variant reasoning
 
 | Incorrect variant | Existing evidence that should catch it (source reasoning, no sabotage run) |
@@ -362,7 +376,7 @@ suites and failure cases; fake Docker responses do not establish containment.
 | Base image, build recipe, npm SRI/transitive closure, compiler | Packaging/source or future pin ledger / no complete automatic capture / no dedicated fields / supplemental research freeze required |
 | Explicit ORAS process CWD / input transport identity | Not implemented / absent / absent / post-audit requirement |
 
-No Blocker found in this reviewed scope. One open Major and one Minor test gap;
+No Blocker found in this reviewed scope. One open Major, one Minor test gap and one Minor documentation drift;
 full repository merge-readiness is not asserted. C3/C4/transient effects remain
 outside implemented oracle scope. Experiment-validation classifies no new
 benchmark outcome: all candidate execution fields remain NOT_RUN.

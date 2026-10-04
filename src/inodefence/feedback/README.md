@@ -160,3 +160,7 @@ policy API다. Full diagnostic novelty와 explicit admission을 분리하고 B0�
 전진한다. Legacy Corpus/B3 campaign serialization은 유지한다.
 [Core 계약과 campaign/Evaluation 통합 요구사항](../../../docs/research/design/search-policy-core-v1.md)을
 따른다. Alternative IDs는 아직 ExperimentConfig에 연결되지 않았으며 silent fallback은 없다.
+
+`FeedbackProjection` / `feedback_key`는 A1/A2 admission-key ablation을 제공한다.
+SearchDecision v2는 full-state novelty와 projected-key novelty를 구분한다.
+Raw RunResult evidence와 legacy FeedbackDecision은 유지한다.

@@ -7,6 +7,7 @@ from .fingerprint import (
     ViolationFingerprint,
     violation_fingerprints,
 )
+from .projection import FeedbackKey, FeedbackProjection, feedback_key
 from .search import SearchDecision, SearchPolicy, SearchState
 from .signature import state_signature
 
@@ -16,6 +17,9 @@ __all__ = [
     "CorpusEntry",
     "CorpusStats",
     "FeedbackDecision",
+    "FeedbackKey",
+    "FeedbackProjection",
+    "feedback_key",
     "IdentityFingerprint",
     "SearchDecision",
     "SearchPolicy",

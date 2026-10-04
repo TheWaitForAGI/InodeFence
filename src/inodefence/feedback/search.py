@@ -11,6 +11,7 @@ from inodefence.model import ArchiveCase, RunResult
 from ._novelty import NoveltyIndex
 from .corpus import CorpusEntry, CorpusStats, FeedbackDecision
 from .fingerprint import ViolationFingerprint
+from .projection import FeedbackKey, FeedbackProjection, feedback_key
 
 
 class SearchPolicy(StrEnum):
@@ -27,20 +28,21 @@ class SearchDecision:
     declared policy and never suppresses raw oracle evidence.
     """
 
-    serialization_schema: ClassVar[int] = 1
+    serialization_schema: ClassVar[int] = 2
 
     case_id: str
     state_novel: bool
     new_violation_fingerprints: tuple[ViolationFingerprint, ...]
     already_retained: bool
     admission_eligible: bool
+    feedback_key_novel: bool
 
     def __post_init__(self) -> None:
         FeedbackDecision(
             self.case_id, self.state_novel, self.new_violation_fingerprints, self.already_retained
         )
-        if type(self.admission_eligible) is not bool:
-            raise ValueError("admission_eligible must be bool")
+        if type(self.admission_eligible) is not bool or type(self.feedback_key_novel) is not bool:
+            raise ValueError("admission_eligible and feedback_key_novel must be bool")
 
     @property
     def interesting(self) -> bool:
@@ -61,15 +63,25 @@ class SearchState:
     duplicate case identity or novelty. No execution, mutation or IO occurs here.
     """
 
-    def __init__(self, initial_cases: Sequence[ArchiveCase], policy: SearchPolicy) -> None:
+    def __init__(
+        self,
+        initial_cases: Sequence[ArchiveCase],
+        policy: SearchPolicy,
+        *,
+        projection: FeedbackProjection = FeedbackProjection.FULL,
+    ) -> None:
         if not isinstance(policy, SearchPolicy):
             raise ValueError("policy must be a supported SearchPolicy")
+        if not isinstance(projection, FeedbackProjection):
+            raise ValueError("projection must be a supported FeedbackProjection")
         cases = tuple(initial_cases)
         if not cases or not all(isinstance(case, ArchiveCase) for case in cases):
             raise ValueError("initial cases must be nonempty ArchiveCase records")
         if len({case.case_id for case in cases}) != len(cases):
             raise ValueError("initial cases contain duplicate case IDs")
         self._policy = policy
+        self._projection = projection
+        self._keys: set[FeedbackKey] = set()
         self._seeds = cases
         self._novelty = NoveltyIndex()
         self._entries: list[CorpusEntry] = []
@@ -80,24 +92,36 @@ class SearchState:
     def policy(self) -> SearchPolicy:
         return self._policy
 
+    @property
+    def projection(self) -> FeedbackProjection:
+        return self._projection
+
+    @property
+    def unique_feedback_keys(self) -> int:
+        """Projected-key count; stats.unique_states always counts full states."""
+        return len(self._keys)
+
     def consider(self, result: RunResult) -> SearchDecision:
         index = self._novelty.observations
         is_seed = index < len(self._seeds)
         if is_seed and result.case != self._seeds[index]:
             raise ValueError("seed observations must match declared cases/order")
+        key = feedback_key(result.signature, self.projection)
+        key_novel = key not in self._keys
         state_novel, new, fingerprints = self._novelty.observe(result)
+        self._keys.add(key)
         diagnostic = FeedbackDecision(
             result.case.case_id, state_novel, new, result.case.case_id in self._retained_ids
         )
         eligible = (
             False
             if self.policy == SearchPolicy.B0
-            else state_novel
+            else key_novel
             if self.policy == SearchPolicy.B1
-            else diagnostic.interesting
+            else key_novel or bool(new)
         )
         decision = SearchDecision(
-            diagnostic.case_id, state_novel, new, diagnostic.already_retained, eligible
+            diagnostic.case_id, state_novel, new, diagnostic.already_retained, eligible, key_novel
         )
         if decision.retained:
             self._entries.append(CorpusEntry(result.case, result.signature, fingerprints))

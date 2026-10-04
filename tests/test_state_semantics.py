@@ -240,7 +240,7 @@ def test_signature_projects_raw_identity_groups_and_drops_singletons() -> None:
     )
     assert len(after.identity_groups()) == 3  # Raw evidence retains all aliases.
     signature = state_signature(before, after)
-    assert signature.schema_version == 2
+    assert signature.schema_version == 3
     assert signature.identity_groups == (("extract/alias", "outside/sentinel.txt"),)
     paths = {obj.path for obj in signature.objects}
     assert paths == {"extract/alias", "extract/single", "outside/sentinel.txt"}
@@ -311,7 +311,51 @@ def test_absolute_run_link_text_normalized_without_claiming_resolution() -> None
         state(SnapshotPhase.AFTER, sentinel, second_link, root=second_root),
     )
     assert first == second
-    assert first.objects[0].symlink_target == "$RUN/outside/../outside/sentinel.txt"
+    assert first.objects[0].symlink_target == "run:/outside/../outside/sentinel.txt"
+
+
+@pytest.mark.parametrize("suffix", ("", "/outside/sentinel.txt", "//outside/../sentinel.txt"))
+def test_signature_distinguishes_run_anchor_from_literal_target(suffix: str) -> None:
+    root = "/var/lib/inodefence/synthetic"
+    sentinel = regular("outside/sentinel.txt", 10)
+    before = state(SnapshotPhase.BEFORE, sentinel, root=root)
+    link = ObjectSnapshot(
+        "extract/sym",
+        ObjectType.SYMLINK,
+        1,
+        30,
+        1,
+        0o777,
+        0,
+        1000,
+        1000,
+        10,
+        10,
+        symlink_target=root + suffix,
+    )
+    absolute = state(SnapshotPhase.AFTER, sentinel, link, root=root)
+    signature = state_signature(before, absolute)
+    assert signature.schema_version == 3
+    assert signature.objects[0].symlink_target == "run:" + suffix
+    for raw in ("$RUN" + suffix, "run:" + suffix, "literal:" + suffix, root + "-other" + suffix):
+        literal = state(SnapshotPhase.AFTER, sentinel, replace(link, symlink_target=raw), root=root)
+        other = state_signature(before, literal)
+        assert signature != other
+        assert canonical_json(signature) != canonical_json(other)
+        assert other.objects[0].symlink_target == "literal:" + raw
+        assert literal.get(link.path) == replace(link, symlink_target=raw)
+    assert absolute.get(link.path) == link
+    # Normalize only the allocation prefix; redundant separators/dot components stay raw.
+    new_root = root + "-new"
+    renamed = state_signature(
+        replace(before, sandbox_root=new_root),
+        replace(
+            absolute,
+            sandbox_root=new_root,
+            objects=(replace(link, symlink_target=new_root + suffix), sentinel),
+        ),
+    )
+    assert renamed == signature
 
 
 def test_evidence_boundary_rejects_contradictory_proof() -> None:

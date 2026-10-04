@@ -68,7 +68,7 @@ InodeFence는 이런 **object identity와 external effect를 fuzzing feedback으
 
 별도 [disposable Linux container backend](../src/inodefence/execution/README.md)의 benign
 helper validation을 추가했다. 기존 Dev Container 권한은 유지하고 trusted host stdio
-broker로 sibling target을 실행한다. Node image/contained invocation/config/provenance binding을 구현했고 tiny benign campaign8회 full-path를 검증했다. Lifecycle/export/freeze 검토를 완료했고 다음은 전체 repository audit다.
+broker로 sibling target을 실행한다. Node image/contained invocation/config/provenance binding을 구현했고 tiny benign campaign8회 full-path를 검증했다. Audit Phases 1–2와 Global Findings Freeze v1을 완료했고 현재는 Phase-3 engine fix review 단계다.
 
 항상 최신 상태는 [STATUS.md](STATUS.md)를 본다.
 
@@ -85,8 +85,11 @@ Layer 5  Feedback / Corpus         ✅ v1: 독립 novelty / in-memory / uniform 
 Layer 6  Experiment / Paper        미진행
 ```
 
-현재 준비 상태는 **READY FOR FULL CODE / ARCHITECTURE AUDIT**다. Engine과 contained Node의
-benign benchmark infrastructure 경로를 검증했다. Full audit와 evaluation은 아직 수행하지 않았다.
+현재 상태는 **AUDIT PHASES 1–2 COMPLETE — PHASE-3 FIX REVIEW PENDING**이다.
+이 branch는 EN-001–005의 serialization/evidence/signature/documentation fixes를 구현한다.
+[Frozen evidence와 fix mapping](audits/engine-findings-fix-v1.md)을 따른다.
+Contained Node의 기존 benign infrastructure 검증은 benchmark qualification이 아니며
+benchmark/security evaluation은 아직 수행하지 않았다.
 [Pre-audit 검증 기록과 한계](../experiments/summaries/pre-audit-readiness-v1.md)를 따른다.
 
 Campaign은 explicit trusted reference 또는 enforced IsolatedTarget composition을 받는다.

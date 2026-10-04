@@ -17,7 +17,8 @@ def state_signature(before: StateSnapshot, after: StateSnapshot) -> StateSignatu
 
     Raw snapshots remain complete evidence. Object and identity-group scope is
     identical so excluded harness names cannot leave dangling relations.
-    Absolute link text under this run gets a literal $RUN prefix. This is text
+    Every link target is tagged: run:<suffix> for an absolute run-root prefix,
+    literal:<raw target> otherwise. The disjoint tags avoid token collisions. This is text
     normalization, not symlink resolution; no target reachability is asserted.
     Absolute paths elsewhere retain their spelling. Identity numbers, timestamp
     values, uid/gid, nonregular nlink and sizes are excluded. External change
@@ -27,10 +28,11 @@ def state_signature(before: StateSnapshot, after: StateSnapshot) -> StateSignatu
     nodes = []
     for obj in scoped_objects:
         target = obj.symlink_target
-        if target is not None and (
-            target == after.sandbox_root or target.startswith(after.sandbox_root + "/")
-        ):
-            target = "$RUN" + target[len(after.sandbox_root) :]
+        if target is not None:
+            if target == after.sandbox_root or target.startswith(after.sandbox_root + "/"):
+                target = "run:" + target[len(after.sandbox_root) :]
+            else:
+                target = "literal:" + target
         nodes.append(
             SignatureObject(
                 obj.path,
@@ -53,4 +55,4 @@ def state_signature(before: StateSnapshot, after: StateSnapshot) -> StateSignatu
         for change in compare_states(before, after)
         if path_region(change.path) == Region.EXTERNAL
     )
-    return StateSignature(2, tuple(nodes), tuple(sorted(groups)), effects, after.protected_paths)
+    return StateSignature(3, tuple(nodes), tuple(sorted(groups)), effects, after.protected_paths)

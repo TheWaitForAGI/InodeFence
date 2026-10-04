@@ -93,7 +93,7 @@ def test_execution_duration_does_not_change_state_signature_or_case_identity() -
     assert first.changes == second.changes and first.violations == second.violations
     assert first.signature == second.signature == state_signature(first.before, first.after)
     assert second.signature == state_signature(second.before, second.after)
-    assert first.signature.schema_version == 2
+    assert first.signature.schema_version == 3
     assert canonical_json(first.signature) == canonical_json(second.signature)
     assert "duration_seconds" not in canonical_json(first.signature)
     assert "duration_seconds" not in canonical_json(first.case)

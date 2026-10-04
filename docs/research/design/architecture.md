@@ -23,9 +23,9 @@
 
 ArchiveCase → 결정적 USTAR → Python reference worker → pre/post snapshot → C0/C1/C2 evidence의 실제 API가 있다. Generic Mutation v1은 별도 ArchiveCase → ArchiveCase API다. Layer 5는 RunResult의 독립 state/violation novelty에 따른 in-memory retention과 uniform caller-RNG parent selection을 제공한다. Bounded campaign v1은 명시적 seed와 execution budget으로 API를 조합한다. Minimal seed generator는 기존 4종 정상 baseline을 명시적으로 제공한다. Node-tar는 별도 contained target으로 정상 fixture와 tiny benign configured campaign을 검증했다. 추가 adapters, adaptive scheduler/persistence 및 evaluation은 후속 단계다.
 
-현재 준비 분류는 READY FOR FULL CODE / ARCHITECTURE AUDIT이다. Container-backed target,
+Audit Phases 1–2와 Global Findings Freeze v1을 완료했고 현재는 Phase-3 fix review 단계다. Container-backed target,
 frozen isolation/config/provenance와 benign Node full-path, lifecycle 및 staged export를 검증했다.
-Limited integration freeze 이후 다음은 전체 repository audit다. Development tests/smoke는
+EN-001–005의 engine fixes는 feature branch에서 review 대기 중이다. Development tests/smoke는
 evaluation 결과가 아니다. [현재 상태](../../STATUS.md)와 [실제 검증 기록](../../../experiments/summaries/pre-audit-readiness-v1.md)을 따른다.
 
 아래 개념 그림에는 lineage, tracing, corpus 등 미래 설계도 포함한다. 현재 확정된 field/API는 **7.8 현재 구현 경계**를 따른다. Python reference는 최종 benchmark target이 아니다.
@@ -404,7 +404,7 @@ signature 후보 축:
 - external-effect pattern
 - contract-relevant state class
 
-현재 normalized representation은 7.8의 StateSignature v2로 고정하며 Corpus v1은 이
+현재 normalized representation은 7.8의 StateSignature v3로 고정하며 Corpus v1은 이
 value equality를 사용한다. 후속 evaluation/ablation은 representation의 연구 가치를 검증한다.
 
 ---
@@ -453,15 +453,21 @@ st_ino = Y
 | ExecutionResult | target_id/version, command, status, exit_code, stdout/stderr, duration_seconds(actual), timeout_seconds(budget) |
 | ObjectSnapshot | canonical sandbox-relative path, ObjectType, dev/inode/nlink, permission/special mode bits/size, uid/gid, mtime/ctime ns, raw link text, regular content_digest(SHA-256 lowercase hex) |
 | StateSnapshot | full raw observation: absolute sandbox_root provenance, BEFORE/AFTER phase, harness 포함 sorted objects, protected_paths |
-| StateChange | path, before/after ObjectSnapshot 또는 None, ordered ChangeField tuple |
-| StateSignature | schema v2, EXTRACTION/EXTERNAL normalized objects, scoped same-object groups, external field-change labels, protected_paths |
+| StateChange | path, before/after ObjectSnapshot 또는 None, actual difference와 정확히 일치하는 ordered ChangeField tuple |
+| StateSignature | schema v3, EXTRACTION/EXTERNAL normalized objects, scoped same-object groups, external field-change labels, protected_paths |
 | ViolationResult | contract_id, violated, typed evidence, explanation, limitations |
 | RunResult | case, archive_sha256/format, execution, before/after, changes, signature, violations |
 | ExecutionProvenance | 실행 전 source(revision/dirty), environment(platform strings), declared target(ID/version/timeout/execution_safety), sorted sentinel(name/content SHA-256/mode) |
 
 Archive input은 `Path.resolve()`/normalization을 거치지 않는다. NUL, surrogate code point, 잘못된 entry field 조합은 model boundary에서 거부한다. regular content는 immutable bytes이며 directory는 content/target을 가지지 않는다. link는 nonempty target 필수다. Duplicate entry와 entry 순서는 그대로 유지한다. Long name은 model에 허용하지만 현재 builder가 표현할 수 없는 USTAR 값은 명시적으로 거부한다.
 
-ExecutionResult의 `timeout_seconds`는 configured execution budget이고 필수 `duration_seconds`는 실제 monotonic elapsed process execution evidence다. Duration은 float-compatible numeric 값으로 finite/0 이상이어야 하며 0.0과 numeric int 값도 허용한다. Python reference는 `perf_counter()`로 subprocess.run 직전부터 완료 또는 timeout exception 처리 진입 직후까지 측정한다. Process startup과 timeout kill/wait overhead를 포함하며 path validation, snapshot, oracle/signature 계산과 cleanup 시간은 제외한다. Timeout 설정값을 duration으로 복사하지 않는다. 모든 반환 status에 기록하고 RunResult의 execution을 통해 canonical JSON으로 보존한다. Observer/Oracle/Feedback은 duration을 security verdict로 사용하지 않으며 StateSignature v2와 case ID에도 포함하지 않는다.
+Public immutable evidence constructor는 scalar type와 nested tuple/member type를 검증한다.
+StateChange는 exact raw difference labels를 요구한다. RunResult의 cross-record TAR/snapshot/
+signature/verdict correspondence는 pipeline-owned trusted assembly다. CampaignStep/Result와
+CorpusStats도 runner/Corpus의 trusted derived output이며 임의 construction은 evidence ingest가
+아니다. [Model boundary](../../../src/inodefence/model/README.md)를 따른다.
+
+ExecutionResult의 `timeout_seconds`는 configured execution budget이고 필수 `duration_seconds`는 실제 monotonic elapsed process execution evidence다. Duration은 bool을 제외한 int/float 값으로 finite/0 이상이어야 하며 0.0과 numeric int 값도 허용한다. Python reference는 `perf_counter()`로 subprocess.run 직전부터 완료 또는 timeout exception 처리 진입 직후까지 측정한다. Process startup과 timeout kill/wait overhead를 포함하며 path validation, snapshot, oracle/signature 계산과 cleanup 시간은 제외한다. Timeout 설정값을 duration으로 복사하지 않는다. 모든 반환 status에 기록하고 RunResult의 execution을 통해 canonical JSON으로 보존한다. Observer/Oracle/Feedback은 duration을 security verdict로 사용하지 않으며 StateSignature v3와 case ID에도 포함하지 않는다.
 
 **Archive input path != Observed filesystem path.** `ArchiveEntry.path`/`link_target`은 `../` 및 absolute-looking spelling을 보존하는 untrusted raw logical input이며 normalization하지 않는다. `ObjectSnapshot.path`는 Observer가 만든 canonical sandbox-relative evidence다. Absolute path, 빈/`.`/`..` component는 거부한다(루트 자체의 `.`는 허용). StateSnapshot.objects는 canonical path 기준 unique/sorted이며 ArchiveCase의 duplicate/order semantics를 적용하지 않는다. Malformed TAR encoding fuzzing은 향후 Builder/encoding mutation layer의 책임이며 ObjectSnapshot/StateSnapshot invariant를 느슨하게 만들지 않는다.
 
@@ -479,13 +485,13 @@ Region은 model의 `path_region`에서 공통으로 정의하며 Observer/Oracle
 
 Region.HARNESS는 normalization role이며 security trust boundary나 creator attribution이 아니다. Model의 `is_extraction_path`는 `extract`/`extract/**` membership만 정의한다. Oracle의 `_is_c0_namespace_transition`은 그 밖의 모든 경로에서 EXISTENCE/IDENTITY/OBJECT_TYPE 전이를 검사한다. 따라서 HARNESS object는 signature에서 제외되어도 C0에서 면제되지 않는다. `archive/escaped.txt` 생성과 archive/input.tar 삭제·replacement도 evidence다. Content/metadata-only effect는 기존 C0/C2 separation을 유지한다.
 
-StateSnapshot은 세 region 전체와 TAR content digest를 보존한다. StateSignature v2는 HARNESS object를 제외하며 case ID/TAR SHA-256을 직접 포함하지 않는다. Path/type/mode, regular nlink/size/content digest, textual link target, same-object path group과 external change 종류를 담는다. Identity group은 signature object scope로 projection한 뒤 singleton을 제거하므로 제외된 harness path가 dangling relation을 만들지 않는다. Protected paths는 sentinel 삭제 뒤에도 유지한다.
+StateSnapshot은 세 region 전체와 TAR content digest를 보존한다. StateSignature v3는 HARNESS object를 제외하며 case ID/TAR SHA-256을 직접 포함하지 않는다. Path/type/mode, regular nlink/size/content digest, textual link target, same-object path group과 external change 종류를 담는다. Identity group은 signature object scope로 projection한 뒤 singleton을 제거하므로 제외된 harness path가 dangling relation을 만들지 않는다. Protected paths는 sentinel 삭제 뒤에도 유지한다.
 
-`SignatureObject.st_nlink`는 `int | None`이며 regular만 정수, directory/symlink/other는 None이다. Raw dev/inode, timestamp/ownership 값과 nonregular size도 제외한다. Raw nlink는 Observer와 C2에 그대로 남고 외부 metadata-change labels도 보존하므로 cross-filesystem effect equivalence까지 보장하지는 않는다. Raw identity는 run 안에서 group을 계산하거나 identity 변경을 감지할 때만 쓴다. Absolute link text의 literal sandbox prefix는 `$RUN`으로 치환하며 다른 철자와 `..`를 유지한다. Resolution/reachability는 추론하지 않는다. Extraction symlink가 harness를 가리키는 link text는 유지하되 harness referent digest/identity를 포함하지 않는다. 이 representation은 초기 후보이며 Layer 5의 baseline/ablation 정책을 미리 확정하지 않는다.
+`SignatureObject.st_nlink`는 `int | None`이며 regular만 정수, directory/symlink/other는 None이다. Raw dev/inode, timestamp/ownership 값과 nonregular size도 제외한다. Raw nlink는 Observer와 C2에 그대로 남고 외부 metadata-change labels도 보존하므로 cross-filesystem effect equivalence까지 보장하지는 않는다. Raw identity는 run 안에서 group을 계산하거나 identity 변경을 감지할 때만 쓴다. Symlink target은 absolute sandbox prefix가 일치하면 `run:<raw suffix>`, 그 외에는 `literal:<raw target>`으로 tag한다. Exact root의 suffix는 비어 있고 slash와 `..` 철자는 유지한다. Literal `$RUN/...` 또는 `run:...`은 absolute run anchor와 구분된다. Resolution/reachability는 추론하지 않는다. Extraction symlink가 harness를 가리키는 link text는 유지하되 harness referent digest/identity를 포함하지 않는다. 이 representation은 초기 후보이며 Layer 5의 baseline/ablation 정책을 미리 확정하지 않는다.
 
 실제 `run_case()` regression은 동일 content/mode의 독립 regular entry 두 개를 반대 순서로 추출한다. Case ID/TAR SHA-256은 다르지만 signature와 canonical representation은 같아야 한다. 다른 inode allocation/PYTHONHASHSEED의 기존 regression도 유지한다.
 
-`canonical_json(model)`의 기본 envelope schema version은 1이며 ExecutionProvenance/CampaignResult는 명시적으로 v2다. Model type, sorted JSON keys, ordered tuple 배열은 유지한다. Signature 내부 schema version은 2이며 이전 signature와 key 호환성을 주장하지 않는다. Bytes는 base64로 lossless export한다. Raw run evidence는 run-specific inode/times를 보존하고 cross-run key는 logical case 또는 normalized signature로 만든다. Deserialize/database layer는 아직 없다. Campaign은 실행 전 InodeFence commit/dirty와 process OS/kernel/platform 정보를 ExecutionProvenance에 고정한다. ExperimentConfig v1/v2는 explicit 설정과 stable ID를 제공한다. Contained Node는 immutable image ID와 실제 worker/lock digest를 기록한다. 전체 controller/Python executable/dirty patch contents attestation은 제공하지 않는다.
+`canonical_json(model)`의 기본 envelope schema version은 1이며 ExecutionProvenance/CampaignResult는 명시적으로 v2다. Model type, sorted JSON keys, ordered tuple 배열은 유지한다. Signature 내부 schema version은 3이며 이전 signature와 key 호환성을 주장하지 않는다. Bytes는 base64로 lossless export한다. Raw run evidence는 run-specific inode/times를 보존하고 cross-run key는 logical case 또는 normalized signature로 만든다. Deserialize/database layer는 아직 없다. Campaign은 실행 전 InodeFence commit/dirty와 process OS/kernel/platform 정보를 ExecutionProvenance에 고정한다. ExperimentConfig v1/v2는 explicit 설정과 stable ID를 제공한다. Contained Node는 immutable image ID와 실제 worker/lock digest를 기록한다. 전체 controller/Python executable/dirty patch contents attestation은 제공하지 않는다.
 
 현재 내부 API:
 
@@ -797,6 +803,10 @@ Mutation Policy ≠ TAR Encoding
 
 현재 builder는 [builder.py](../../../src/inodefence/builder.py)의 `build_tar`다. `ustar-utf8-v1` format, strict UTF-8, zero mtime/uid/gid와 empty uname/gname을 고정한다. Directory name의 trailing slash도 입력 철자를 보존한다. Fixture script가 같은 builder를 사용하며 기존 baseline bytes를 유지한다.
 
+USTAR의 실제 name/prefix header에서 복원한 raw UTF-8 bytes는 model input과 정확히 일치해야
+한다. Empty-prefix split처럼 spelling을 바꾸는 경우 indexed ValueError로 실패한다.
+이 rejection-only guard는 기존 valid encoding bytes와 format ID를 유지한다.
+
 표준 라이브러리로 충분한 초기 단계와, 향후 비정상 TAR encoding을 직접 다뤄야 하는 단계의 요구가 달라질 수 있으므로 실제 필요가 생길 때 경계를 고정한다.
 
 ---
@@ -974,11 +984,11 @@ Contract violation이 없더라도 처음 보는 identity/link/effect 관계라�
 
 현재 v1은 [corpus.py](../../../src/inodefence/feedback/corpus.py)의 in-memory Corpus와
 [fingerprint.py](../../../src/inodefence/feedback/fingerprint.py)의 pure semantic fingerprints다.
-StateSignature v2 equality와 violation novelty를 서로 독립적인 seen indexes로 관리한다.
+StateSignature v3 equality와 violation novelty를 서로 독립적인 seen indexes로 관리한다.
 
 ~~~mermaid
 flowchart TD
-    R["RunResult"] --> S["StateSignature v2 equality"]
+    R["RunResult"] --> S["StateSignature v3 equality"]
     R --> V["Semantic violation fingerprints"]
     S --> N{"New state OR new violation class?"}
     V --> N
@@ -1547,7 +1557,7 @@ Known TAR
 
 ## Milestone 5 — Feedback / Corpus v1
 
-기존 StateSignature v2와 독립 semantic violation novelty로 in-memory corpus evolution을 구현한다.
+기존 StateSignature v3와 독립 semantic violation novelty로 in-memory corpus evolution을 구현한다.
 Uniform caller-RNG selection은 baseline이다. Bounded campaign v1이 상위 caller로 실행 budget과
 lineage를 기록한다. 이 구현은 연구 효과 검증 완료를 뜻하지 않는다.
 
@@ -1703,8 +1713,8 @@ isolation; subclasses/declarations cannot substitute execution. Availability/mis
 fails before campaign runtime and first case; policy/artifact drift fails before next case.
 
 ExecutionProvenance/CampaignResult canonical envelopes are v2; manifest is v4 and
-serializes stored nullable isolation. ArchiveCase, RunResult, CampaignStep and signature
-encoding/novelty are unchanged. Runtime/PID/temp paths never enter config or feedback.
+serializes stored nullable isolation. ArchiveCase, RunResult and CampaignStep canonical envelopes remain unchanged.
+StateSignature now uses internal v3 tagged target encoding; its novelty policy is unchanged. Runtime/PID/temp paths never enter config or feedback.
 No campaign-to-Docker implementation import exists: the campaign sees the enforced
 composition, while concrete runtime command construction stays in execution/container.
 

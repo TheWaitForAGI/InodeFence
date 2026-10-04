@@ -39,7 +39,10 @@ class CampaignOrigin(StrEnum):
 
 @dataclass(frozen=True, slots=True)
 class CampaignStep:
-    """Zero-based execution index, parent lineage, raw evidence and feedback."""
+    """Trusted runner-produced index, lineage, raw evidence and feedback.
+
+    Direct construction is an internal assembly path, not validated evidence ingest.
+    """
 
     index: int
     origin: CampaignOrigin
@@ -55,6 +58,8 @@ class CampaignResult:
     Evidence size per run also depends on case/output size. Retained IDs preserve
     Corpus admission order. These records are engineering evidence, not findings
     or validated analysis. There is no persistence, checkpointing or resume.
+    Construction is trusted runner assembly, not validated imported evidence;
+    use run_campaign for the enforced configuration and completion path.
     """
 
     serialization_schema: ClassVar[int] = 2

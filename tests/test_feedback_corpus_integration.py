@@ -78,7 +78,7 @@ def test_same_signature_new_c0_harness_violation_remains_interesting() -> None:
     assert len({result.case.case_id for result in results}) == 3
     assert len({result.archive_sha256 for result in results}) == 3
     assert first.signature == equivalent.signature == escaped.signature
-    assert first.signature.schema_version == 2
+    assert first.signature.schema_version == 3
     for result in results:
         for snapshot in (result.before, result.after):
             artifact = snapshot.get("archive/input.tar")

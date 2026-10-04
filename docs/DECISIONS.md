@@ -397,3 +397,22 @@ total storage/CPU limits and hard-interruption persistence remain explicit limit
 Feature expansion stops; next is the full repository-wide audit, then a separate research
 Task Contract before benchmark/CVE evaluation. Historical audit/smoke summaries keep their
 original revision and claims rather than being rewritten as current guarantees.
+
+## D028 — Frozen engine findings v1: exact serialization and typed evidence
+
+EN-001–005의 Phase-3 Task Contract는 audited main fae2954906fa1a95235cde5cddd4dcb73f334169에서
+시작한다. Audit artifacts는 pinned evidence이며 production ancestry가 아니다.
+
+USTAR builder는 실제 encoded name/prefix에서 복원한 raw path가 input과 정확히 같은지
+검증한다. Lossy split은 reject하며 existing valid bytes와 `ustar-utf8-v1` ID를 유지한다.
+Public immutable evidence/key constructor는 text/scalar와 nested tuple/member types를 검증한다.
+StateChange labels는 모든 실제 차이와 정확히 일치하며 creation/deletion은 EXISTENCE만 가진다.
+RunResult의 cross-record derivation은 pipeline-owned이고 campaign/Corpus counter assembly는
+trusted producer 경계다. 이 변경은 reader나 provenance authenticity 검증을 제공하지 않는다.
+
+StateSignature v3는 symlink target을 `run:<raw suffix>` 또는 `literal:<raw target>`으로 tag한다.
+Run-root allocation만 normalize하며 raw snapshots, repeated slash와 `..`를 보존하고 referent를
+resolve하지 않는다. V2 keys와 호환성/migration은 제공하지 않는다. Canonical envelope v1,
+ArchiveCase identity, fingerprint/novelty policy, RNG/budget 및 C0/C1/C2 predicates는 유지한다.
+Historical decisions/audit/smoke summaries는 이전 revision의 기록으로 남긴다.
+[Fix mapping과 frozen evidence](audits/engine-findings-fix-v1.md)를 따른다.

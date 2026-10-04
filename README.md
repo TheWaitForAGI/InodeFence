@@ -7,7 +7,7 @@ InodeFence는 TAR archive entry를 생성·변형하고, 실제 extractor(압축
 
 현재는 **공통 데이터 모델, 최소 단일 실행 pipeline, Generic Mutation v1과 Layer 5 Feedback / Corpus v1**을 구현했습니다. Corpus는 normalized state와 violation novelty를 독립적으로 추적하고 mutation parent를 in-memory로 보존·균등 선택합니다. Python `tarfile`/`data` reference target으로 검증하며, bounded campaign·explicit seeds·실행 전 provenance·strict JSON config·structured export를 제공합니다.
 
-현재 준비 상태는 **ENGINEERING FOUNDATION**입니다. Reference engine은 실행 가능하고 node-tar adapter는 정상 fixture로 검증했습니다. 검증된 OS 실행 격리가 없어 third-party campaign은 실행 전에 거부하며, **BENCHMARK READY / EVALUATION READY는 아직 아닙니다.** 비교 평가와 취약점 재발견 실험은 실행하지 않았습니다. [인프라 검증 기록](experiments/summaries/infrastructure-readiness-v1.md)을 참고하세요.
+현재 준비 상태는 **ENGINEERING FOUNDATION**입니다. Reference engine은 실행 가능하고 node-tar adapter는 정상 fixture로 검증했습니다. 별도 [container backend/helper](src/inodefence/execution/README.md)는 검증했지만 campaign binding이 없어 third-party campaign은 실행 전에 거부하며, **BENCHMARK READY / EVALUATION READY는 아직 아닙니다.** 비교 평가와 취약점 재발견 실험은 실행하지 않았습니다. [인프라 검증 기록](experiments/summaries/infrastructure-readiness-v1.md)을 참고하세요.
 
 [현재 상태](docs/STATUS.md) · [시작 안내](docs/START_HERE.md) · [아키텍처](docs/research/design/architecture.md) · [Security Contracts](docs/research/design/security-contracts.md) · [개발 가이드](CONTRIBUTING.md)
 

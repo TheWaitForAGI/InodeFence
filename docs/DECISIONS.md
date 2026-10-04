@@ -310,3 +310,20 @@ Campaign은 optional explicit experiment_config_id를 첫 실행 전에 받고 r
 남긴다. None은 formal config 없이 실행한 API다. Config wrapper/CLI는 actual configuration binding을
 검증하며 low-level caller assertion과 구분한다. CLI는 safe Python reference 전용이고 immutable
 config를 experiment.json으로 raw evidence와 함께 보존한다. Node-tar campaign safety gate는 유지한다.
+
+## D022 — Untrusted target은 별도 disposable Linux container에서 실행
+
+**상태:** container backend와 benign helper 검증; campaign binding은 후속.
+
+PR #34의 Dev Container namespace EPERM을 근거로 maintainer Task Contract가 별도
+container boundary를 선택했다. Dev Container privileges를 넓히지 않는다. Trusted
+Linux controller는 explicit stdio host CLI broker를 통해 sibling target container를
+생성한다. Target에는 controller의 source/home/socket이나 전체 runtime volume을 주지
+않고 현재 run의 volume-subpath만 동일 absolute path로 노출한다. Observer의 object
+identity와 전체 controlled external/harness effects를 보존한다. Backend는 Oracle,
+feedback, mutation과 target-specific policy를 import하지 않는다.
+
+Container setup은 BEFORE 이전, stopped PID namespace 확인은 AFTER 이전, removal은
+AFTER 이후다. Host broker는 invocation 소유 identity만 다시 cleanup하며 runtime 오류를
+target status로 숨기지 않는다. 구체적 policy/검증/한계는
+[execution 계약](../src/inodefence/execution/README.md)을 따른다.

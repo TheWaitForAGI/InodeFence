@@ -6,11 +6,11 @@
 
 ## 입력
 
-고정한 seed/config, target 버전, 환경과 엔진 실행 기록(계획).
+명시적 seed/config, exact target 버전, 실행 전 provenance와 엔진 실행 기록.
 
 ## 출력
 
-비교·분석 가능한 raw 결과와 재현 설정(계획).
+Configuration JSON, campaign manifest와 raw steps JSONL. 비교 실험과 분석은 아직 없다.
 
 ## 책임
 
@@ -38,6 +38,11 @@ engineering summary가 있다. Raw 결과는 로컬 experiments/raw/reference-pi
 Strict JSON ExperimentConfig v1과 [reference config CLI](../scripts/run_configured_reference.py)가
 실행 전 binding을 검증하고 stored config ID/actual execution provenance를 raw export에 연결한다.
 Configuration identity는 result/source/kernel를 포함하지 않으며 평가 결과가 아니다.
+
+[인프라 검증 요약](summaries/infrastructure-readiness-v1.md)은 clean source의 작은 reference repeat,
+Node campaign 실행 전 거부와 local raw checksums를 연결한다. Engineering readiness는
+ENGINEERING FOUNDATION이다. Node-tar 정상 fixture integration과 third-party campaign의 OS 격리는
+별개이며 benchmark smoke/evaluation은 아직 수행하지 않았다.
 
 ## 파일 배치 규칙
 

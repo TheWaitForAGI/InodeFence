@@ -1,0 +1,140 @@
+{
+  "audit_scope": {
+    "core_python_modules": 34,
+    "raw_directory": "experiments/raw/session-f-audit",
+    "raw_shared_upload": false,
+    "static_import_cycles": 0,
+    "static_internal_import_edges": 73
+  },
+  "ci_regression": {
+    "base_sha": "de8427e5be92ab905f898b72e07e800b9e593987",
+    "ci": "SUCCESS",
+    "ci_log_sha256": "ae877f84eb9295d6f0b844c51b9900da44fa814e3fcd18e3df52456147662b71",
+    "ci_run": "https://github.com/TheWaitForAGI/InodeFence/actions/runs/37167092056",
+    "fix_pr": 32,
+    "focused_tests": 19,
+    "full_tests": 462,
+    "merge_sha": "52add4e5e7735ab70ebf9232fe8c00f6c8776f8e",
+    "original_failed_main_run": "https://github.com/TheWaitForAGI/InodeFence/actions/runs/37166760656"
+  },
+  "classification": "engineering-validation-only",
+  "main_focused_tests": 116,
+  "main_full_tests": 459,
+  "node_campaign": {
+    "capture_and_run_case_not_called": true,
+    "executions": 0,
+    "rejection": "target requires execution isolation; no validated boundary is available",
+    "runtime_unchanged": true
+  },
+  "node_target": {
+    "execution_safety": "isolation_required",
+    "target_id": "node-tar-strict",
+    "target_version": "node=22.22.0;tar=7.5.22",
+    "timeout_seconds": 5
+  },
+  "readiness": {
+    "benchmark_ready": false,
+    "blocker": "no validated OS execution isolation; Node campaign smoke deferred",
+    "classification": "ENGINEERING FOUNDATION",
+    "evaluation_run": false,
+    "reference_engine_ready": true
+  },
+  "reference_runs": [
+    {
+      "config_id": "5a24679b4a55f55fa20272e8817c9fd8f7d97fc994495c964d2b37f0967863a0",
+      "executions": 8,
+      "name": "reference-1",
+      "provenance": {
+        "environment": {
+          "machine": "aarch64",
+          "python_version": "3.12.3",
+          "release": "7.0.14-orbstack-00380-ga7e0a2dc9535",
+          "system": "Linux"
+        },
+        "sentinels": [
+          {
+            "content_sha256": "caed2ac112733b3f5e3f56d9372f7ce6ba88dfafd57eb58807bb29f16548e36b",
+            "mode": 384,
+            "name": "sentinel.txt"
+          }
+        ],
+        "source": {
+          "dirty": false,
+          "revision": "de8427e5be92ab905f898b72e07e800b9e593987"
+        },
+        "target": {
+          "execution_safety": "trusted_reference",
+          "target_id": "python-tarfile-data",
+          "target_version": "3.12.3",
+          "timeout_seconds": 5.0
+        }
+      },
+      "runtime_cleanup_verified": true,
+      "sha256": {
+        "experiment.json": "4d99dfed6077c87f75f55d519256e1c3c1ea843fa275a7fc6706bd96aaf34527",
+        "manifest.json": "e28d563e9441ca99a6cf6806e0265d010724e12d8b3ef0a11c1040b666938c14",
+        "steps.jsonl": "bda4308693c1b9a6b24031a6b45010000b3979293a3d56bc3856ec0b9096f58f"
+      },
+      "stats": {
+        "interesting_observations": 5,
+        "observations": 8,
+        "retained_cases": 5,
+        "unique_states": 5,
+        "unique_violation_fingerprints": 0
+      },
+      "statuses": {
+        "success": 8
+      },
+      "violated_contracts": 0
+    },
+    {
+      "config_id": "5a24679b4a55f55fa20272e8817c9fd8f7d97fc994495c964d2b37f0967863a0",
+      "executions": 8,
+      "name": "reference-2",
+      "provenance": {
+        "environment": {
+          "machine": "aarch64",
+          "python_version": "3.12.3",
+          "release": "7.0.14-orbstack-00380-ga7e0a2dc9535",
+          "system": "Linux"
+        },
+        "sentinels": [
+          {
+            "content_sha256": "caed2ac112733b3f5e3f56d9372f7ce6ba88dfafd57eb58807bb29f16548e36b",
+            "mode": 384,
+            "name": "sentinel.txt"
+          }
+        ],
+        "source": {
+          "dirty": false,
+          "revision": "de8427e5be92ab905f898b72e07e800b9e593987"
+        },
+        "target": {
+          "execution_safety": "trusted_reference",
+          "target_id": "python-tarfile-data",
+          "target_version": "3.12.3",
+          "timeout_seconds": 5.0
+        }
+      },
+      "runtime_cleanup_verified": true,
+      "sha256": {
+        "experiment.json": "4d99dfed6077c87f75f55d519256e1c3c1ea843fa275a7fc6706bd96aaf34527",
+        "manifest.json": "e0bdd6fe4ed595146fda4f1f6e273b62e30dcb3446d96cd34040bd4be0e6d38a",
+        "steps.jsonl": "b8d837a1da6ef6c4772d1b234a4150c20ccc8cb2920cdbbbf4880473e5979b67"
+      },
+      "stats": {
+        "interesting_observations": 5,
+        "observations": 8,
+        "retained_cases": 5,
+        "unique_states": 5,
+        "unique_violation_fingerprints": 0
+      },
+      "statuses": {
+        "success": 8
+      },
+      "violated_contracts": 0
+    }
+  ],
+  "repeat_semantics_match": true,
+  "source_revision": "de8427e5be92ab905f898b72e07e800b9e593987"
+}

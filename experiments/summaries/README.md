@@ -21,3 +21,6 @@ raw data 없이 summary 숫자를 수동으로 invent하지 않는다. 원본을
 재현 가능한 변환으로 요약한다. 서로 다른 환경을 집계한다면 환경별 결과와 비교 가능성
 검증을 남긴다. 요약 검증과 paper 해석은 별개이며 미공개 finding은
 [disclosure 정책](../../SECURITY.md)을 따른다.
+
+[인프라 검증 v1](infrastructure-readiness-v1.md)은 실행 전 provenance/config 도입 이후의
+engineering audit와 reference semantic repeat를 기록한다. Node benchmark/evaluation 결과가 아니다.

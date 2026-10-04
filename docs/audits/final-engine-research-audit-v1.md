@@ -19,9 +19,10 @@ does not replace the Runtime auditor's final execution audit.
 **No new Blocker, Major or Minor established. EN-001–EN-004 are CLOSED in code.**
 The three originally consolidated EN-005 locations are corrected, but current
 navigation elsewhere still contradicts integrated main. **EN-005 remains OPEN
-(existing Minor, residual drift)**, with exact evidence in §6. EN-006 is eligible
-for a safe documentation-only refresh because no new Blocker/Major invalidates
-the engine/research foundation. Its delivery record is in §11.
+(existing Minor, residual drift)**, with exact evidence in §6. No new Blocker/Major
+invalidated the foundation, so the ordered documentation-only PR #35 refresh was
+completed. **EN-006 drift is corrected on the submitted Draft**, with review/main
+acceptance still separate. Its exact delivery record is in §11.
 
 **Lane recommendation on the audited main: NO-GO for unconditional global closeout**
 until the residual current-documentation EN-005 and PR #35 EN-006 dispositions are
@@ -195,8 +196,8 @@ fingerprints, Corpus decisions and the next selected/mutated child.
 | Step | Actual input/result | Feedback/next-search meaning |
 | --- | --- | --- |
 | 0–3 | Four unchanged minimal seed IDs; SUCCESS 4; all C0/C1/C2 nonviolations | Four distinct normalized states admitted; no fingerprints |
-| 4 | Directory-seed parent `cdcc8045…`; child `61cb426a…`, new raw `../dir/item`; TAR SHA-256 `e8efb2e3efe7064edc01f8d90a216848f3b0891ea839f8cac558bbbec809b96f`; reference REJECTED | Persistent partial state has same signature as directory seed; no contract evidence; interesting=False, retained=False |
-| 5 | Uniformly selected directory parent again; inapplicable mutation returns same case; SUCCESS | Same state and already retained case; no novelty/admission; no-op consumes one execution |
+| 4 | Directory-seed parent `cdcc8045…`; add_entry child `61cb426a…`, regular raw `../dir/item`, bytes `461bed856ee0d230`; TAR SHA-256 `e8efb2e3efe7064edc01f8d90a216848f3b0891ea839f8cac558bbbec809b96f`; reference REJECTED | Persistent partial state has same signature as directory seed; no contract evidence; interesting=False, retained=False |
+| 5 | Uniformly selected directory parent again; inapplicable mutate_link_target returns same case; SUCCESS | Same state and already retained case; no novelty/admission; no-op consumes one execution |
 
 Flow is ArchiveCase → caller RNG mutation → build_tar → setup/prepare → BEFORE →
 target execution/stop → AFTER → compare_states → C0/C1/C2 and StateSignature v3 →
@@ -253,9 +254,40 @@ benchmark implementation, artifact installation or vulnerable execution is neede
 
 ## 11. PR #35 delivery record
 
-The engine review and its validations above completed before research-branch
-mutation. PR #35 refresh delivery/validation will be recorded here after it is
-pushed to the existing Draft. Until that record exists, EN-006 remains OPEN.
+The engine review and its validations above completed before any research-branch
+mutation. The actual PR #35 branch was already checked out in the clean existing
+`/tmp/inodefence-research` worktree at its verified remote head. It was refreshed
+there; the root audit worktree remained isolated. No competing branch/PR or force
+push was needed.
+
+- History-preserving main merge: `3300ad240238790612baddfdc8580803ea9e0b2d`, parents
+  `5b3745e40e5d43c3b79fa9fe7ca1872f1d2e1106` and audited `d1982e4…`.
+- **Refreshed and pushed same-PR head: `cf207d89a0ec465301270f39e57841215e35a06a`.**
+- Current planning/navigation and catalog engine_revision were corrected. Existing
+  #39 history/reproductions remain explicitly historical; EC-01/02 are resolved
+  by #45 and EC-03 remains resolved by #42. All §10 refresh mappings were applied.
+- Residual EN-005 navigation/version/status/provenance corrections are proposed in
+  PR #35. Production Python, tests, CI, runnable configs and fixtures match audited
+  main. Neither this audit nor the research refresh repairs production engine code.
+- All 15 catalog records compare equal with the published input except top-level
+  engine_revision; every execution remains NOT_RUN, candidate bindings remain
+  NOT_IMPLEMENTED, and no candidate is READY. Static qualification stays static.
+- Refreshed branch `PYTHONPATH=src make check`: **PASS, 803 tests in 25.85s**, Ruff,
+  format, Pyright 0 errors/warnings, environment checks and 74 Markdown documents.
+  Catalog PASS (15 records); 14 negative metadata/state cases rejected. Diff,
+  LF, source/scope and both ancestry checks PASS. Docs integrity was rechecked
+  after recording those validation results.
+- [Refreshed PR #35 CI 37199499806](https://github.com/TheWaitForAGI/InodeFence/actions/runs/37199499806):
+  check and container-integration PASS at the refreshed head, including raw smoke
+  evidence upload and owned controller/volume cleanup. No local Docker rerun or
+  benchmark qualification is inferred from those engineering jobs.
+
+**EN-006 final verdict: corrected/CLOSED on refreshed PR #35, awaiting acceptance;
+not represented as merged-main work.** Both PR #35 and audit PR #47 remain OPEN,
+unmerged and auto-merge disabled; PR #35 remains Draft. The audited-main lane
+recommendation remains NO-GO for unconditional closeout pending residual
+documentation disposition and global final acceptance. Functional engine checks
+pass; no benchmark implementation/execution or effectiveness claim follows.
 
 ## 12. Validation and limits
 
@@ -270,6 +302,7 @@ Environment: supported non-root Linux Dev Container, Python 3.12.3,
 | `make check` on integrated production code plus audit witness file | PASS: Ruff/format, Pyright 0 errors/warnings, **803 tests in 21.65s**, environment/filesystem checks and docs integrity |
 | `git diff --check` | PASS |
 | Exact integrated-main canonical CI | [Run 37197933974](https://github.com/TheWaitForAGI/InodeFence/actions/runs/37197933974): check and container-integration PASS on d1982e4 |
+| Initial audit PR CI | [Run 37198831242](https://github.com/TheWaitForAGI/InodeFence/actions/runs/37198831242): PASS on initial audit head `668f4a3…`; final report-only delivery does not change production/witness code |
 
 CI [container job 111423543386](https://github.com/TheWaitForAGI/InodeFence/actions/runs/37197933974/job/111423543386)
 logs were independently read: helper boundary **6 passed**, image **2 passed**,

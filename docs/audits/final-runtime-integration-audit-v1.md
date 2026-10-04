@@ -323,3 +323,27 @@ Engine/Runtime evidence regression was established. Retain the Notes and trust/
 scope limits in subsequent research planning. This audit neither proves benchmark
 effectiveness nor starts benchmark implementation/execution. The audit PR targets
 main and must remain open, unmerged, with auto-merge disabled.
+
+
+## Post-#35 closeout recheck
+
+After this runtime audit returned GO, PR #35 was accepted and merged as
+`52692ba1567e8972fad8426c3bdd539d68df31f1`. The accepted research refresh
+changes repository navigation/research-planning documents and benchmark catalog
+revision metadata; it does not modify the Runtime/Execution production modules,
+the Phase-3 runtime fixes, container policy, target invocation, C0/C1/C2,
+mutation/feedback behavior, or runnable benchmark configuration.
+
+This audit branch was history-preservingly merged with the post-#35 main before
+final CI. The Runtime findings therefore retain their final disposition:
+
+- CR-001: **CLOSED**
+- CR-002: **CLOSED**
+- EX-003: **CLOSED**
+- EX-004: **CLOSED** as the uncounted regression gap
+- New Blocker / Major / Minor: **0 / 0 / 0**
+- Runtime / Execution / Integration verdict: **GO**
+
+The accepted documentation/research refresh does not itself authorize benchmark
+execution or constitute benchmark evidence. All benchmark candidates remain
+NOT_RUN.

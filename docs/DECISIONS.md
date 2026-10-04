@@ -258,3 +258,22 @@ release는 kernel/platform 문자열, unavailable platform field는 empty string
 Manifest v2는 stored execution_provenance와 observed execution_contexts/export_environment를
 분리한다. Step의 기존 canonical envelope schema v1은 유지한다. 이 metadata는 raw engineering
 provenance이며 scientific interpretation, OS isolation 보장이나 완전한 dependency lock이 아니다.
+
+## D019 — Target execution safety 선언과 campaign fail-closed 경계
+
+**상태:** contract 구현; OS execution isolation은 미구현
+
+TargetProvenance의 ExecutionSafety는 adapter trust/configuration 선언이다. Default는
+ISOLATION_REQUIRED이며 string/미선언 값은 허용하지 않는다. 현재 Python reference만
+TRUSTED_REFERENCE를 선언한다. Campaign은 isolation-required/미선언 target을 provenance capture,
+runtime 생성과 첫 run_case 이전에 거부한다. Caller가 supplied provenance로 requirement를
+낮추거나 runtime 경로/container 여부로 isolation을 추정하는 option은 없다. Requirement는
+stored provenance/manifest에 남고 StateSignature나 Oracle verdict가 되지 않는다.
+
+이 선언은 OS containment 증명이 아니다. Dev Container/CI는 development 환경으로 source
+쓰기/network/설정된 volume/동일 사용자 권한 접근이 남는다. O_NOFOLLOW와 fd-safe cleanup은
+harness 경로 검증/cleanup만 담당한다. Future third-party campaign에는 별도로 검증한 OS
+process/filesystem/credential/network/resource 경계와 자식 process 종료 보장이 필요하다.
+그 전에는 explicit ordinary controlled fixtures를 사용한 adapter engineering만 허용한다.
+Low-level TargetAdapter.run/run_case는 caller-owned fixture execution API이며 campaign safety
+gate를 대신하지 않는다. 임의 생성 입력 또는 untrusted archive를 third-party에 연결하지 않는다.

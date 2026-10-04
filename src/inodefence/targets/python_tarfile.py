@@ -9,7 +9,7 @@ from pathlib import Path
 from time import perf_counter
 
 from inodefence.model import ExecutionResult, ExecutionStatus
-from inodefence.model.provenance import TargetProvenance
+from inodefence.model.provenance import ExecutionSafety, TargetProvenance
 from inodefence.runtime import open_runtime_directory
 
 
@@ -53,7 +53,10 @@ class PythonTarfileTarget:
     @property
     def provenance(self) -> TargetProvenance:
         return TargetProvenance(
-            "python-tarfile-data", platform.python_version(), self.timeout_seconds
+            "python-tarfile-data",
+            platform.python_version(),
+            self.timeout_seconds,
+            ExecutionSafety.TRUSTED_REFERENCE,
         )
 
     def run(self, archive_path: Path, extraction_root: Path) -> ExecutionResult:

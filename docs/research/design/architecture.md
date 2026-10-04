@@ -524,6 +524,20 @@ len(corpus) -> retained case count
 
 # 8. Execution Sandbox
 
+현재 enforced safety contract는 TargetProvenance.execution_safety의 ExecutionSafety enum이다.
+Default ISOLATION_REQUIRED이며 Python reference는 TRUSTED_REFERENCE를 선언한다. Campaign은
+explicit trusted reference만 허용하고 미선언/isolation-required target은 provenance capture/runtime/
+첫 run_case 이전에 거부한다. Caller의 supplied provenance가 requirement를 낮출 수 없다.
+선언은 OS containment 증명이 아니고 현재 validated isolation helper는 없다.
+Low-level adapter.run/run_case는 controlled fixture caller 책임이며 third-party의 arbitrary generated
+archive 실행은 별도 OS boundary 검증 전까지 허용하지 않는다.
+
+Dev Container와 CI는 source/설정된 volume/동일 사용자 파일/network 접근을 포함하는 development
+환경이다. Runtime directory, subprocess, data filter, cleanup은 이를 privilege sandbox로 바꾸지
+않는다. Future adapter campaign은 검증된 process/filesystem/credential/network/resource 경계와
+timeout 후 전체 자식 process 종료를 제공해야 한다. 정상 fixture adapter integration과 hostile-input
+campaign readiness는 별도다. Requirement는 stored provenance/export에 남고 C0/C1/C2와 무관하다.
+
 filesystem security 연구에서는 **어디에서 실행하는가** 자체가 설계의 일부다.
 
 기본 runtime root:

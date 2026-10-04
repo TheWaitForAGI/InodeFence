@@ -19,7 +19,7 @@ from inodefence.model import (
     SnapshotPhase,
     StateSnapshot,
 )
-from inodefence.model.provenance import SourceProvenance, TargetProvenance
+from inodefence.model.provenance import ExecutionSafety, SourceProvenance, TargetProvenance
 from inodefence.mutator import mutate
 from inodefence.provenance import freeze_provenance
 from inodefence.runtime import SentinelSpec
@@ -55,7 +55,7 @@ def _result(case: ArchiveCase, status: ExecutionStatus = ExecutionStatus.SUCCESS
 class UnusedTarget:
     @property
     def provenance(self) -> TargetProvenance:
-        return TargetProvenance("controlled", "test", None)
+        return TargetProvenance("controlled", "test", None, ExecutionSafety.TRUSTED_REFERENCE)
 
     def run(self, archive_path: Path, extraction_root: Path) -> ExecutionResult:
         raise AssertionError("unit tests must not execute a target")
@@ -318,7 +318,9 @@ def test_mutable_adapter_configuration_change_stops_before_next_run(
 
         @property
         def provenance(self) -> TargetProvenance:
-            return TargetProvenance("controlled", self.version, None)
+            return TargetProvenance(
+                "controlled", self.version, None, ExecutionSafety.TRUSTED_REFERENCE
+            )
 
     target = ChangingTarget()
     calls = []
@@ -332,3 +334,45 @@ def test_mutable_adapter_configuration_change_stops_before_next_run(
     with pytest.raises(ValueError, match="configuration changed"):
         run_campaign((_case("a"),), target, CampaignConfig(1, 3))
     assert len(calls) == 1
+
+
+def test_isolation_requirement_rejected_before_any_execution_side_effect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class RequiresIsolation(UnusedTarget):
+        @property
+        def provenance(self) -> TargetProvenance:
+            return TargetProvenance("third-party", "1.2.3", 1.0)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("rejection must precede provenance capture, execution and mutation")
+
+    for function in ("run_case", "freeze_provenance", "mutate"):
+        monkeypatch.setattr(campaign, function, forbidden)
+    with pytest.raises(ValueError, match="requires execution isolation"):
+        run_campaign((_case("a"),), RequiresIsolation(), CampaignConfig(1, 2))
+
+
+def test_campaign_cannot_downgrade_required_isolation_with_supplied_provenance(
+    executions: list[ArchiveCase],
+) -> None:
+    class RequiresIsolation(UnusedTarget):
+        @property
+        def provenance(self) -> TargetProvenance:
+            return TargetProvenance("controlled", "test", None)
+
+    frozen = freeze_provenance(UnusedTarget().provenance, (SentinelSpec(),))
+    with pytest.raises(ValueError, match="requires execution isolation"):
+        run_campaign((_case("a"),), RequiresIsolation(), CampaignConfig(1, 1), provenance=frozen)
+    assert executions == []
+
+
+def test_campaign_requires_explicit_preexecution_target_declaration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class UndeclaredTarget:
+        def run(self, archive_path: Path, extraction_root: Path) -> ExecutionResult:
+            raise AssertionError("undeclared target must never run")
+
+    with pytest.raises(ValueError, match="declare TargetProvenance"):
+        run_campaign((_case("a"),), UndeclaredTarget(), CampaignConfig(1, 1))  # type: ignore[arg-type]

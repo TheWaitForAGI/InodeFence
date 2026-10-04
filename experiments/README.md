@@ -55,3 +55,9 @@ ENGINEERING FOUNDATION이다. Node-tar 정상 fixture integration과 third-party
 [정적 benchmark catalog와 빈 표](benchmarks/README.md)는
 [연구 설계 v1](../docs/research/benchmarks/README.md)에 연결된다.
 실행 설정 또는 실험 결과가 아니며 isolation, 전체 audit와 audit fixes 이후의 handoff다.
+
+Container-bound configurations use explicit ExperimentConfig v2 and frozen isolation
+policy/runtime/image/worker/lock provenance. Uncontained third-party campaigns fail
+before setup; this pre-audit contract authorizes only the tiny benign Node smoke.
+Manifest v3 stores these facts; snapshot/security/novelty semantics are unchanged.
+No benchmark effectiveness or known-vulnerability result is implied.

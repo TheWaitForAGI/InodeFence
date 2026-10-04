@@ -16,36 +16,50 @@ Command, Python patch version, configured `timeout_seconds`, actual `duration_se
 
 이 target은 **architecture 검증·integration·reference baseline용**이며 node-tar 대체 benchmark가 아니다. 최종 adapter 우선순위 node-tar → oras-go → 선택 GNU tar는 유지한다.
 
-## Node-tar adapter (정상 fixture integration)
+## Node-tar container invocation
 
-별도 [pinned target image](../../../tools/node-tar/README.md#disposable-target-image-v1)는
-Node 22.22.0/tar 7.5.22와 worker/lock content identity를 실제 container에서 검증한다.
-Production adapter/backend binding과 frozen isolation provenance는 후속 작업이다.
+`NodeTarTarget.bind(backend, image_id, timeout_seconds)` identifies exact Node/tar
+and worker/lock digests inside the immutable target image, then returns an
+`IsolatedTarget`. `NodeTarTarget` is an immutable WHAT-to-execute descriptor, with
+no direct subprocess/run fallback. `IsolatedTarget` owns HOW-to-execute through
+an explicit trusted `ExecutionBackend` implementation. Future targets can supply
+commands/classification without changing Campaign, Observer, Oracle or Feedback.
+A new backend implementation is a controller trust decision, not a target boolean.
 
-NodeTarTarget은 explicit package_root의 node_modules/tar와 resolved Node executable을 사용한다.
-Setup의 `--identify` worker에서 exact Node/package version을 고정하며 target_version은
-`node=<version>;tar=<version>`이다. Extraction worker는 이 기대 version을 tar.x 이전에 확인하고
-변경되면 harness 오류로 중단한다. Same-version package content 교체까지 검증하는 hash는 없다.
-옵션은 strict=true/preservePaths=false, 나머지는 upstream defaults이며 target_id=node-tar-strict다.
-TAR_* error는 REJECTED, 다른 worker error는 FAILED, timeout은 TIMED_OUT이다. stdout/stderr는
-surrogateescape로 보존하며 namespace log를 쓰지 않는다. Security 판정은 Observer/Oracle에 남는다.
+The [pinned image](../../../tools/node-tar/README.md#disposable-target-image-v1) uses
+Node 22.22.0/tar 7.5.22. Worker options remain strict=true/preservePaths=false and
+upstream defaults. ID is node-tar-strict, version node=<exact>;tar=<exact>.
+Version drift exits before extraction and raises a harness error. TAR_* errors
+are REJECTED, other worker errors FAILED, deadline expiry TIMED_OUT. Raw command,
+streams, duration and timeout are preserved. Output exceeding the backend's
+capture bound raises OutputLimitError with the bounded raw prefix, rather than
+returning incomplete evidence as a completed run. Security truth stays outside.
 
-[Locked tooling](../../../tools/node-tar/README.md)은 Node 22.22.0/tar 7.5.22 baseline이다. Tests는
-정상 file/directory/hardlink/symlink와 invalid format/controlled timeout helper만 사용한다.
-Worker는 새 Linux process group으로 시작해 timeout/완료 때 같은 group을 kill하고 direct child를
-회수한다. Cleanup communication은 5초로 제한한다. Detached descendants를 가두거나 회수하는
-OS isolation/subreaper가 아니며 orphan zombie의 reaping은 OS parent 책임이다. Environment는
-PATH=os.defpath/LANG=C.UTF-8만 전달해 NODE_OPTIONS/credential 환경 변수를 상속하지 않는다.
-ISOLATION_REQUIRED는 고정이며 generated-input campaign은 실행 전에 계속 거부한다.
+`PreparedTarget.prepare()` brackets the observation window: setup → BEFORE →
+yielded invocation → AFTER → context cleanup. The pipeline uses this contract for
+contained targets and retains the one-case/one-execution/one-snapshot-pair behavior.
+Stopped PID context is checked before AFTER; removal follows AFTER, including on
+observation exceptions. A start deadline before launch destroys the container
+before AFTER to rule out a delayed daemon start; this changes no controlled-run
+namespace. All paths share the same Linux volume inode identity.
+
+The seven original real fixture cases (four ordinary baselines, invalid format,
+real timeout and worker version guard) now execute only through the container
+backend in `tests/container_integration/check_node_target.py`. An additional
+AFTER-error cleanup case is mandatory. Portable tests cover invocation/binding/
+status/safety rejection; they do not claim real containment. Campaign admits ISOLATION_REQUIRED only through this final composed wrapper, with
+backend attestation and matching policy frozen before the first archive.
 
 ## 공통 실행 경계
 
 TargetProvenance.execution_safety는 explicit ExecutionSafety enum이며 default ISOLATION_REQUIRED다.
 Python reference는 TRUSTED_REFERENCE를 선언한다. Campaign은 requirement를 첫 run_case 이전에
-검증하며 isolation-required/미선언 target은 거부한다. Caller override/bypass는 없다. Manifest는
+검증하며 미선언/uncontained isolation-required target은 거부한다. Contained target은
+exact IsolatedTarget composition과 frozen backend policy/attestation이 필요하다. Caller override/bypass는 없다. Manifest는
 frozen requirement를 보존한다. 이는 trust 선언이며 OS isolation 보장이 아니다.
 
-Low-level adapter.run/run_case는 controlled fixture validation용 caller-owned API다. Third-party
+Low-level isolated adapter.run/run_case also enforces the backend; no direct Node fallback exists.
+These APIs remain controlled fixture validation entry points pending campaign binding. Third-party
 adapter 개발은 명시적으로 검토한 정상 fixture만 사용한다. Generated/untrusted archive의 campaign은
 별도 검증된 OS isolation 구현 전까지 금지한다. Adapter는 안전성을 version이나 path에서 추론하거나
 TRUSTED_REFERENCE를 third-party에 붙여 이 gate를 우회하지 않는다.

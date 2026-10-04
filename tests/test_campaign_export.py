@@ -119,7 +119,7 @@ def test_manifest_records_campaign_stored_provenance_and_observed_contexts(tmp_p
     manifest_path, steps_path = export_campaign(result, tmp_path / "output")
     manifest = json.loads(manifest_path.read_bytes())
     assert manifest["format"] == "inodefence-bounded-campaign"
-    assert manifest["schema_version"] == 2
+    assert manifest["schema_version"] == 3
     assert manifest["evidence_classification"] == "raw-campaign"
     assert manifest["config"] == {"random_seed": 17, "execution_budget": 4}
     assert manifest["initial_case_ids"] == list(result.initial_case_ids)

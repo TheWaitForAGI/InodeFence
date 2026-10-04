@@ -5,6 +5,7 @@ import subprocess
 from hashlib import sha256
 from pathlib import Path
 
+from inodefence.model.isolation import IsolationProvenance
 from inodefence.model.provenance import (
     EnvironmentProvenance,
     ExecutionProvenance,
@@ -79,6 +80,7 @@ def freeze_provenance(
     sentinels: tuple[SentinelSpec, ...],
     *,
     source: SourceProvenance | None = None,
+    isolation: IsolationProvenance | None = None,
 ) -> ExecutionProvenance:
     """Capture exactly once before the first run; supplied source is preserved."""
     return ExecutionProvenance(
@@ -86,4 +88,5 @@ def freeze_provenance(
         capture_environment(),
         target,
         sentinel_provenance(sentinels),
+        isolation,
     )

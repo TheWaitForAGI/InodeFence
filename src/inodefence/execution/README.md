@@ -14,10 +14,14 @@ existing disposable run root and timeout. `ContainerExecutionBackend.prepare()`
 creates and checks the container before BEFORE. `PreparedContainer.execute()`
 starts it once, captures bounded output and verifies stopped state before AFTER.
 Context exit removes the container after AFTER, including on observation errors.
+If the start deadline expires in created state, removal and absence verification
+precede AFTER to prevent a delayed daemon start; no controlled-run paths are changed.
 Missing runtime/image, creation/startup, policy mismatch and cleanup failures are
-visible `BackendError`s. No direct-process fallback exists. Campaign integration
-and frozen container provenance are separate subsequent work; the current
-third-party campaign safety rejection is unchanged.
+visible `BackendError`s. No direct-process fallback exists. Production Node invocation uses the narrow ExecutionBackend/IsolatedTarget
+composition and pipeline preparation contract. Campaign admission accepts only this enforced IsolatedTarget composition for
+isolation-required targets. Availability and frozen policy/runtime/image attestation
+precede source/environment freeze and the first archive execution. No declaration
+attribute, supplied provenance, subclass override or fallback can replace this path.
 
 ## Enforced view and policy
 
@@ -45,6 +49,7 @@ third-party campaign safety rejection is unchanged.
   While the primary is alive, orphan reaping remains its responsibility.
 - No daemon log persistence (`log-driver=none`). Attached output retains the first
   1 MiB per stream, drains the remainder and marks truncation in the outcome.
+  IsolatedTarget aborts incomplete output with OutputLimitError retaining that prefix.
   Timeout retains the captured prefix; it need not contain final buffered bytes.
   CLI deadlines include pipe draining and waiting even after both pipes close.
 - Unique names and invocation UUID labels. Cleanup checks ownership, removes by
@@ -84,3 +89,21 @@ C0/C1/C2 still cover persistent controlled-run state, not all filesystem operati
 FSIZE is per-file, not a total volume quota; file count/storage/CPU are not fully
 bounded. Hard host-broker SIGKILL or daemon loss can prevent cleanup; errors cannot
 manufacture cleanup evidence or a completed campaign. No global scavenger exists.
+
+
+## Frozen policy and provenance
+
+Pure `model.isolation` values describe network/rootfs/namespaces/uid/gid/capabilities/
+NNP/environment/view policy, resources, shared-memory and capture limits plus the
+immutable image ID. Backend policy is the actual configuration source; configured
+runner requires exact equality with ExperimentConfig v2. Unsupported weaker policies
+are rejected, never silently rewritten. Policy/image/resource changes alter config ID;
+container IDs, volume names, paths, PIDs and time do not enter that identity.
+
+Before the first archive, backend attestation records Docker-compatible server version,
+API version, OS/architecture and actual image architecture/available repository digests.
+Node identification contributes worker/lock digests. Local image ID remains the mandatory
+content anchor when repository digests are absent. ExecutionProvenance stores the frozen
+record; exporter never queries the backend. Drift in policy/artifacts stops before the
+next case. This is execution configuration, not C0/C1/C2 evidence or feedback novelty.
+A backend implementation is trusted controller code, not an untrusted plugin verifier.

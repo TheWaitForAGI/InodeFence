@@ -7,7 +7,7 @@ InodeFence는 TAR archive entry를 생성·변형하고, 실제 extractor(압축
 
 현재는 **공통 데이터 모델, 최소 단일 실행 pipeline, Generic Mutation v1과 Layer 5 Feedback / Corpus v1**을 구현했습니다. Corpus는 normalized state와 violation novelty를 독립적으로 추적하고 mutation parent를 in-memory로 보존·균등 선택합니다. Python `tarfile`/`data` reference target으로 검증하며, bounded campaign·explicit seeds·실행 전 provenance·strict JSON config·structured export를 제공합니다.
 
-현재 준비 상태는 **ENGINEERING FOUNDATION**입니다. Reference engine은 실행 가능하고 node-tar adapter는 정상 fixture로 검증했습니다. 별도 [container backend/helper](src/inodefence/execution/README.md)는 검증했지만 campaign binding이 없어 third-party campaign은 실행 전에 거부하며, **BENCHMARK READY / EVALUATION READY는 아직 아닙니다.** 비교 평가와 취약점 재발견 실험은 실행하지 않았습니다. [인프라 검증 기록](experiments/summaries/infrastructure-readiness-v1.md)을 참고하세요.
+현재 준비 상태는 **ENGINEERING FOUNDATION**입니다. Reference engine은 실행 가능하고 node-tar adapter는 정상 fixture로 검증했습니다. 별도 [container backend/helper](src/inodefence/execution/README.md)는 검증했고 contained target/config/provenance binding을 구현했습니다. Uncontained third-party campaign은 실행 전에 거부하며, **BENCHMARK READY / EVALUATION READY는 아직 아닙니다.** 비교 평가와 취약점 재발견 실험은 실행하지 않았습니다. [인프라 검증 기록](experiments/summaries/infrastructure-readiness-v1.md)을 참고하세요.
 
 [현재 상태](docs/STATUS.md) · [시작 안내](docs/START_HERE.md) · [아키텍처](docs/research/design/architecture.md) · [Security Contracts](docs/research/design/security-contracts.md) · [개발 가이드](CONTRIBUTING.md)
 
@@ -261,7 +261,7 @@ Host와 공유하는 source bind mount를 실험 공간으로 쓰지 않고 Linu
 ```bash
 # 최초 개발 의존성 설치
 make install
-make target-tools  # pinned Node 22.22.0과 locked node-tar 정상 fixture 검증
+make target-tools  # pinned Node/node-tar lock tooling; target 실행은 별도 image/backend
 
 # 코드·타입·환경·문서 통합 검증
 make check
@@ -283,7 +283,9 @@ Exact Python version이 설정과 일치하는 Linux 환경에서 작은 설정 
 python -m scripts.run_configured_reference experiments/configs/reference-smoke-v1.json --output experiments/raw/configured-reference
 ```
 
-새 output에 `experiment.json`, `manifest.json`, `steps.jsonl`을 보존합니다. Existing output은 거부합니다. Node adapter의 정상 fixture 검증은 `make check`에 포함되며 Node campaign CLI는 없습니다.
+새 output에 `experiment.json`, `manifest.json`, `steps.jsonl`을 보존합니다. Existing output은 거부합니다. Portable Node invocation 검증은 `make check`에 포함되고 실제 fixture 검증은
+`container_host ... validate-node-target`와 별도 CI job에서 container로 실행합니다.
+Node campaign CLI는 아직 없습니다.
 
 최초 `make install` 후 Dev Container의 Python에서 내부 API를 실행할 수 있습니다.
 

@@ -1,5 +1,6 @@
 """One-case orchestration; no mutation, target policy, or corpus scheduling."""
 
+from contextlib import nullcontext
 from hashlib import sha256
 
 from inodefence.builder import BUILDER_FORMAT, build_tar
@@ -9,6 +10,7 @@ from inodefence.observer import capture_state, compare_states
 from inodefence.oracle import evaluate_contracts
 from inodefence.runtime import SentinelSpec, disposable_sandbox
 from inodefence.targets import TargetAdapter
+from inodefence.targets.base import PreparedTarget
 
 
 def run_case(
@@ -30,19 +32,25 @@ def run_case(
     archive = build_tar(case)
     with disposable_sandbox(sentinels) as sandbox:
         sandbox.archive_path.write_bytes(archive)
-        # Harness baseline is complete; region ownership never exempts target effects.
-        before = capture_state(sandbox.root, SnapshotPhase.BEFORE, sandbox.protected_paths)
-        execution = target.run(sandbox.archive_path, sandbox.extraction_root)
-        # Capture target effects before any harness bookkeeping or sandbox cleanup.
-        after = capture_state(sandbox.root, SnapshotPhase.AFTER, sandbox.protected_paths)
-        return RunResult(
-            case,
-            sha256(archive).hexdigest(),
-            BUILDER_FORMAT,
-            execution,
-            before,
-            after,
-            compare_states(before, after),
-            state_signature(before, after),
-            evaluate_contracts(before, after),
+        context = (
+            target.prepare(sandbox.archive_path, sandbox.extraction_root)
+            if isinstance(target, PreparedTarget)
+            else nullcontext(lambda: target.run(sandbox.archive_path, sandbox.extraction_root))
         )
+        with context as execute:
+            # Harness baseline is complete; region ownership never exempts target effects.
+            before = capture_state(sandbox.root, SnapshotPhase.BEFORE, sandbox.protected_paths)
+            execution = execute()
+            # The target context is stopped; cleanup must follow AFTER.
+            after = capture_state(sandbox.root, SnapshotPhase.AFTER, sandbox.protected_paths)
+            return RunResult(
+                case,
+                sha256(archive).hexdigest(),
+                BUILDER_FORMAT,
+                execution,
+                before,
+                after,
+                compare_states(before, after),
+                state_signature(before, after),
+                evaluate_contracts(before, after),
+            )

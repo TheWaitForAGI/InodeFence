@@ -71,6 +71,7 @@ jobs:
         run: |
           IF_NODE_IMAGE=$(docker image inspect inodefence-node-tar:ci --format '{{.Id}}')
           PYTHONPATH=src python -m scripts.container_host --context default --controller inodefence-ci-controller --volume inodefence-ci-runtime --image "$IF_NODE_IMAGE" validate-node-image
+          PYTHONPATH=src python -m scripts.container_host --context default --controller inodefence-ci-controller --volume inodefence-ci-runtime --image "$IF_NODE_IMAGE" validate-node-target
       - name: Remove only this job's trusted controller and volume
         if: always()
         run: |

@@ -11,8 +11,11 @@ from .operators import (
     remove_entry,
     reorder_entries,
 )
+from .policy import MutationPolicy, mutate_with_policy
 
 __all__ = [
+    "MutationPolicy",
+    "mutate_with_policy",
     "add_entry",
     "add_hardlink",
     "add_symlink",

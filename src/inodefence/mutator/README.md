@@ -83,3 +83,12 @@ Integration 검사는 caller 수준에서 raw spelling/순서/중복, determinis
 초기 seed 생성, CVE-specific recipe/known PoC mutation, TAR byte/encoding mutation,
 corpus persistence, feedback-guided selection, scheduler/energy assignment, fuzzing loop,
 testcase minimization, mutation history DB는 이번 범위에 포함하지 않는다.
+
+## Versioned M1 API
+
+`MutationPolicy`와 `mutate_with_policy`는 legacy `uniform-generic-v1` 및
+`uniform-generic-m1-v1`을 명시적으로 선택한다. 기존 `mutate`는 그대로다.
+M1의 nested/raw path, controlled name reuse, insertion, type replacement와 link composition은
+[grammar와 RNG 계약](../../../docs/research/design/mutation-m1-v1.md)을 따른다.
+M1은 current USTAR의 conservative text bound를 지키며 multi-step builder 검사를 제공한다.
+Campaign/config binding은 documented dependency이며 core API와 별도다.

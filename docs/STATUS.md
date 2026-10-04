@@ -237,3 +237,11 @@ analysis novelty와 policy admission을 분리했다. Legacy B3 campaign / confi
 schema는 유지한다. Alternative configured campaigns는 아직 지원하지 않는다.
 Evaluation reader/journal의 versioned policy 지원이 필요하여 해당 통합은 skip했으며
 [interface 요구사항](research/design/search-policy-core-v1.md)을 기록했다.
+
+### Generic M1 core
+
+`MutationPolicy` / `mutate_with_policy`로 legacy와 M1을 strict versioned ID로 구분한다.
+M1은 nested/raw spelling, repeated names, file/directory collision, link-to-link dependency와
+임의 삽입 위치를 지원하며 USTAR-compatible input의 multi-step buildability를 검증한다.
+Adaptive scheduling은 없다. [M1 계약과 campaign binding 의존성](research/design/mutation-m1-v1.md)을
+따른다. Baseline 비교 campaign/evaluation은 아직 실행하지 않았다.

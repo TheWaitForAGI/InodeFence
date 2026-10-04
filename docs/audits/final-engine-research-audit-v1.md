@@ -317,3 +317,38 @@ tests; it was corrected to actual repository paths before the passing selection.
 No failed command is counted as validation. Documentation integrity cannot prove
 semantic currency, and local reference/unit tests cannot substitute for container
 isolation validation. Historical evidence stays pinned to its original scope.
+
+
+## 12. Post-refresh acceptance addendum — global-closeout disposition
+
+PR #35 was reviewed, marked ready and merged after the audit at merge commit
+`52692ba1567e8972fad8426c3bdd539d68df31f1`. The accepted PR #35 head was
+`cf207d89a0ec465301270f39e57841215e35a06a`; its changes are documentation,
+research-planning/navigation and catalog revision metadata only. It does not add
+benchmark execution, vulnerable targets, production engine changes, test changes,
+CI changes or runnable benchmark configuration.
+
+The merged refresh corrects the residual current-navigation contradictions listed
+under EN-005, including Phase-3 status, StateSignature v3, integrated #45/#46 state,
+IsolationProvenance v2 and benchmark NOT_RUN wording. It also refreshes the
+research package/backlog against current implementation, closing the stale
+research-package drift tracked as EN-006 without promoting static source research
+to runtime qualification.
+
+Final post-refresh disposition:
+
+- **EN-005: CLOSED** by accepted PR #35 documentation/navigation corrections.
+- **EN-006: CLOSED** by accepted PR #35 research-package refresh.
+- **EN-001–EN-004: CLOSED** as established by the pinned functional re-audit above.
+- **EN-007–EN-011: STILL VALID Notes**, unchanged and explicitly deferred.
+- **New Blocker / Major / Minor: 0 / 0 / 0.**
+- **Engine / Research lane verdict: GO** for global Phase-4 closeout and subsequent
+  benchmark implementation under new Task Contracts.
+
+This GO does not claim benchmark qualification, rediscovery, effectiveness or a
+new vulnerability. All 15 benchmark candidates remain **NOT_RUN**. The original
+NO-GO wording above is preserved as the historical verdict on audited main
+`d1982e4...` before the documentation/research refresh was accepted.
+
+This audit branch was then merged with post-#35 main before this addendum, so the
+final CI for the updated PR is the integration check for this closeout state.

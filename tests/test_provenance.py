@@ -10,6 +10,7 @@ from inodefence.model import canonical_json
 from inodefence.model.provenance import (
     EnvironmentProvenance,
     ExecutionProvenance,
+    ExecutionSafety,
     SentinelProvenance,
     SourceProvenance,
     TargetProvenance,
@@ -133,3 +134,12 @@ def test_execution_provenance_is_a_value_contract() -> None:
     encoded = canonical_json(value)
     assert '"revision":null' in encoded
     assert "st_ino" not in encoded and "duration_seconds" not in encoded
+
+
+def test_safety_requirement_defaults_to_isolation_and_requires_enum() -> None:
+    target = TargetProvenance("target", "1.2.3", 1.0)
+    assert target.execution_safety == ExecutionSafety.ISOLATION_REQUIRED
+    assert '"execution_safety":"isolation_required"' in canonical_json(target)
+    with pytest.raises(ValueError):
+        replace(target, execution_safety="trusted_reference")
+    assert PythonTarfileTarget().provenance.execution_safety == ExecutionSafety.TRUSTED_REFERENCE

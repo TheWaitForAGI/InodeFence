@@ -54,4 +54,8 @@ dirty bool/None, platform 문자열, declared target/timeout, sorted unique sent
 
 ## 하지 않는 것
 
+TargetProvenance.execution_safety는 ExecutionSafety enum으로 검증한다. Default는
+ISOLATION_REQUIRED이고 TRUSTED_REFERENCE는 현재 controlled reference adapter의 trust 선언이다.
+이 값은 configuration이며 model 자체가 OS 격리를 수행하거나 보장하지 않는다.
+
 TAR encoding, target-specific 옵션, filesystem 실행, mutation, security/interestingness 판정.

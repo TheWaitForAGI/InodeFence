@@ -3,6 +3,7 @@
 import math
 import re
 from dataclasses import dataclass
+from enum import StrEnum
 
 from .filesystem import validate_observed_path
 
@@ -48,6 +49,18 @@ class EnvironmentProvenance:
                 raise ValueError(f"{field} must be text without NUL")
 
 
+class ExecutionSafety(StrEnum):
+    """Adapter trust declaration, not proof of OS containment.
+
+    Only the controlled reference implementation may run generated cases under
+    today's development environment. Other targets require a separately validated
+    execution isolation boundary; no implementation of that boundary exists yet.
+    """
+
+    TRUSTED_REFERENCE = "trusted_reference"
+    ISOLATION_REQUIRED = "isolation_required"
+
+
 @dataclass(frozen=True, slots=True)
 class TargetProvenance:
     """Adapter-declared configuration before invocation; separate from result."""
@@ -55,10 +68,13 @@ class TargetProvenance:
     target_id: str
     target_version: str
     timeout_seconds: float | None
+    execution_safety: ExecutionSafety = ExecutionSafety.ISOLATION_REQUIRED
 
     def __post_init__(self) -> None:
         _text(self.target_id, "target_id")
         _text(self.target_version, "target_version")
+        if not isinstance(self.execution_safety, ExecutionSafety):
+            raise ValueError("execution_safety must be ExecutionSafety")
         if self.timeout_seconds is not None and (
             type(self.timeout_seconds) not in (int, float)
             or not math.isfinite(self.timeout_seconds)

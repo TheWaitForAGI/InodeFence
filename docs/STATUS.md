@@ -104,8 +104,10 @@ Bounded deterministic campaign v1은 구현됐으며 adaptive scheduler, persist
 
 현재 source의 [engineering audit](../experiments/summaries/final-engineering-audit-v1.md)을 완료했다.
 Execution Provenance v1은 source revision/dirty, 실행 환경, explicit sentinel/adapter 설정을
-첫 실행 전에 고정하며 campaign 결과와 manifest v2에 보존한다. 다음 작업은 target execution
-safety/isolation contract다. Disposable runtime cleanup은 OS 격리가 아니다.
+첫 실행 전에 고정하며 campaign 결과와 manifest v2에 보존한다. Target execution safety contract는
+explicit trusted reference campaign만 허용하며 isolation-required/미선언 target을 runtime 이전에
+거부한다. Disposable runtime/Dev Container는 OS 격리가 아니고 검증된 isolation helper는 없다.
+다음은 정상 fixture만 사용한 node-tar adapter engineering이며 generated-input campaign은 금지한다.
 Structured export v1은 완료된 campaign을 manifest.json/canonical steps.jsonl로 기록한다. Resume/reader/database는 없다.
 `generator.minimal_seed_corpus()`는 기존 정상 baseline 4종을 deterministic immutable tuple로
 반환한다. Fixture script도 이 API를 사용하며 campaign의 explicit-seed 계약은 유지한다.

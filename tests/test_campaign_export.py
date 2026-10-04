@@ -189,7 +189,12 @@ def test_manifest_preserves_context_variation_in_first_occurrence_order(tmp_path
     assert contexts[1]["timeout_seconds"] is None
     # Observed variation never reconstructs or overwrites frozen configuration.
     stored = json.loads(manifest_path.read_bytes())["execution_provenance"]["target"]
-    assert stored == {"target_id": "controlled", "target_version": "test", "timeout_seconds": 5.0}
+    assert stored == {
+        "target_id": "controlled",
+        "target_version": "test",
+        "timeout_seconds": 5.0,
+        "execution_safety": "isolation_required",
+    }
 
 
 def test_export_does_not_capture_execution_environment_again(tmp_path: Path, monkeypatch) -> None:

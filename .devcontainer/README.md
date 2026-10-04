@@ -26,6 +26,12 @@ fuzzing pipeline 구현이나 정식 evaluation 환경의 자동 확정.
 
 ## 현재 상태
 
+Dev Container는 Linux toolchain/filesystem semantics 개발환경이며 hostile target sandbox가 아니다.
+저장소는 writable bind mount이고 runtime/Codex 등 configured volumes와 network 및 같은 user의
+파일 접근이 남는다. Runtime TemporaryDirectory는 cleanup boundary다. CI도 extraction별 mount,
+credential/network/resource boundary를 제공하지 않는다. Generated third-party target campaign에는
+별도 검증된 execution isolation이 필요하며 현재 campaign entry가 이를 거부한다.
+
 Dockerfile과 devcontainer.json이 구현되어 있다. node-tar/ oras-go adapter 설치는 구현되어 있지 않다.
 
 ## 파일 배치 규칙

@@ -64,6 +64,10 @@ O(execution_budget)이며 개별 evidence 크기에도 비례한다. Semantic fe
 
 ## Campaign export v1
 
+TargetProvenance의 execution_safety는 default ISOLATION_REQUIRED다. Campaign은 explicit
+TRUSTED_REFERENCE만 허용하고 그 밖의 target/미선언 adapter는 runtime 이전에 거부한다.
+현재 OS isolation helper가 없으며 low-level run_case는 controlled fixture caller 책임이다.
+
 Writer는 model/campaign만 의존하고 target을 실행하거나 feedback을 재판정하지 않는다.
 Manifest schema v2는 stored execution_provenance, config/initial IDs, steps count/stats/retained order, 결과의 execution contexts와
 JSONL SHA-256을 담는다. `steps.jsonl`은 기존 `canonical_json(CampaignStep)`을 그대로 사용한다.

@@ -81,6 +81,9 @@ Layer 5  Feedback / Corpus         ✅ v1: 독립 novelty / in-memory / uniform 
 Layer 6  Experiment / Paper        미진행
 ```
 
+Campaign은 explicit trusted Python reference만 실행한다. Third-party target의 isolation requirement는
+실행 전에 거부한다. Runtime directory/Dev Container는 검증된 OS execution isolation이 아니다.
+
 ## 5. 코딩하기 전에 딱 이것만 읽기
 
 ### 모든 작업 공통

@@ -7,7 +7,7 @@ from enum import StrEnum
 
 from inodefence.feedback import Corpus, CorpusStats, FeedbackDecision
 from inodefence.model import ArchiveCase, RunResult
-from inodefence.model.provenance import ExecutionProvenance, TargetProvenance
+from inodefence.model.provenance import ExecutionProvenance, ExecutionSafety, TargetProvenance
 from inodefence.mutator import mutate
 from inodefence.pipeline import run_case
 from inodefence.provenance import freeze_provenance, sentinel_provenance
@@ -80,6 +80,8 @@ def run_campaign(
     immutable provenance is preserved by identity after configuration validation;
     callers own its source/environment accuracy. Result configuration drift is
     a harness error, never a reason to rewrite the frozen configuration.
+    Only explicitly trusted reference adapters can run campaigns today. Isolation
+    requirements fail before capture/runtime/execution; there is no bypass flag.
     Every returned target status counts. Infrastructure exceptions propagate;
     an aborted campaign does not return an invented completed result.
 
@@ -96,7 +98,11 @@ def run_campaign(
     if len(set(initial_ids)) != len(initial_ids):
         raise ValueError("initial cases contain duplicate case IDs")
 
-    declared_target = target.provenance
+    declared_target = getattr(target, "provenance", None)
+    if not isinstance(declared_target, TargetProvenance):
+        raise ValueError("campaign target must declare TargetProvenance before execution")
+    if declared_target.execution_safety != ExecutionSafety.TRUSTED_REFERENCE:
+        raise ValueError("target requires execution isolation; no validated boundary is available")
     frozen = freeze_provenance(declared_target, sentinels) if provenance is None else provenance
     if not isinstance(frozen, ExecutionProvenance):
         raise ValueError("provenance must be ExecutionProvenance")
@@ -110,7 +116,10 @@ def run_campaign(
         execution = result.execution
         if (
             TargetProvenance(
-                execution.target_id, execution.target_version, execution.timeout_seconds
+                execution.target_id,
+                execution.target_version,
+                execution.timeout_seconds,
+                frozen.target.execution_safety,
             )
             != frozen.target
         ):

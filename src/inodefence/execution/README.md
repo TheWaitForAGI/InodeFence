@@ -24,6 +24,9 @@ third-party campaign safety rejection is unchanged.
 - One named-volume subdirectory: the current `core-run-*` at its identical Linux
   absolute path. No source/home/host bind or runtime socket is passed to a target.
   Backend construction checks the controller's volume mount at `/var/lib/inodefence`.
+  The controller must use Docker's default ID-based hostname; a different controller
+  ID/custom hostname is rejected before runtime creation. Run path components are
+  restricted to unambiguous ASCII mount-option spelling and opened without symlinks.
   No image-declared anonymous volumes are accepted.
 - Entire controlled run is writable, including `archive/`, `extract/`, `outside/`.
   This preserves namespace and sentinel effects for C0/C1/C2; archive/ is not an

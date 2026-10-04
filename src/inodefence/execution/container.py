@@ -4,6 +4,7 @@ import json
 import math
 import os
 import re
+import socket
 import sys
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -58,7 +59,10 @@ class ContainerRequest:
         ):
             raise ValueError("target command must be nonempty explicit argv")
         relative = self.run_root.relative_to(RUNTIME_BASE)
-        if ".." in relative.parts or not relative.name.startswith("core-run-"):
+        spelling = relative.as_posix()
+        if ".." in relative.parts or not re.fullmatch(
+            r"(?:[a-zA-Z0-9_.-]+/)*core-run-[a-zA-Z0-9_-]+", spelling
+        ):
             raise ValueError("target mounts require a disposable core-run directory")
         if (
             type(self.timeout_seconds) not in (int, float)
@@ -147,6 +151,11 @@ class ContainerExecutionBackend:
         if version["Os"] != "linux":
             raise BackendError("target runtime must use Linux containers")
         controller = self.inspect(self.controller_id)
+        if (
+            socket.gethostname() != self.controller_id[:12]
+            or controller["Config"]["Hostname"] != self.controller_id[:12]
+        ):
+            raise BackendError("controller identity does not match this Linux process")
         if not any(
             mount["Type"] == "volume"
             and mount.get("Name") == self.volume

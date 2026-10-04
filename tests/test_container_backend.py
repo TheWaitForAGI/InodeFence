@@ -96,7 +96,8 @@ class FakeDocker:
                                 "Destination": "/var/lib/inodefence",
                                 "RW": True,
                             }
-                        ]
+                        ],
+                        "Config": {"Hostname": CONTROLLER[:12]},
                     }
                 )
             if self.target is None:
@@ -128,6 +129,7 @@ class FakeDocker:
 def fake_backend(monkeypatch):
     monkeypatch.setattr("inodefence.execution.container.os.getuid", lambda: 1000)
     monkeypatch.setattr("inodefence.execution.container.os.getgid", lambda: 1000)
+    monkeypatch.setattr("socket.gethostname", lambda: CONTROLLER[:12])
     docker = FakeDocker()
     return docker, ContainerExecutionBackend(docker, CONTROLLER, "inodefence-runtime", OWNER)
 
@@ -148,6 +150,7 @@ def test_invalid_resources_rejected(field, value):
         {"run_root": Path("/home/user/core-run-test")},
         {"run_root": Path("/var/lib/inodefence/../core-run-test")},
         {"run_root": Path("/var/lib/inodefence")},
+        {"run_root": Path("/var/lib/inodefence/sub,readonly/core-run-test")},
         {"timeout_seconds": True},
         {"timeout_seconds": 0},
         {"timeout_seconds": float("inf")},
@@ -197,6 +200,14 @@ def test_missing_backend_fails_before_runtime(monkeypatch):
 
     with pytest.raises(BackendError, match="unavailable"):
         ContainerExecutionBackend(Missing(), CONTROLLER, "inodefence-runtime", OWNER)
+
+
+def test_wrong_controller_identity_fails_before_runtime(fake_backend, monkeypatch):
+    docker, _ = fake_backend
+    monkeypatch.setattr("socket.gethostname", lambda: "another-controller")
+    with pytest.raises(BackendError, match="controller identity"):
+        ContainerExecutionBackend(docker, CONTROLLER, "inodefence-runtime", OWNER)
+    assert not any(call[:2] == ("container", "create") for call in docker.calls)
 
 
 @pytest.mark.parametrize(

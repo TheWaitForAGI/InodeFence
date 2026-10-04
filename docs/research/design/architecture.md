@@ -1747,3 +1747,8 @@ binary contents are not preserved. C0/C1/C2, signature/feedback and RNG/budget a
 The [actual conditions, checksums, policy and limits](../../../experiments/summaries/pre-audit-readiness-v1.md)
 are engineering evidence. Architecture is READY FOR FULL CODE / ARCHITECTURE AUDIT, not
 evaluated research. Feature expansion stops until that full audit and a later Task Contract.
+
+## Independent search-policy core
+
+Layer 5의 별도 SearchState API는 B0/B1/B3 policy admission과 full diagnostics를 분리한다.
+Legacy Corpus/campaign/evidence shape는 유지한다. [계약과 binding 요구사항](search-policy-core-v1.md)을 따른다.

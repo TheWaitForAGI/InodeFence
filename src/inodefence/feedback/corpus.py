@@ -5,7 +5,8 @@ from dataclasses import dataclass
 
 from inodefence.model import ArchiveCase, RunResult, StateSignature
 
-from .fingerprint import ViolationFingerprint, violation_fingerprints
+from ._novelty import NoveltyIndex
+from .fingerprint import ViolationFingerprint
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,10 +100,7 @@ class Corpus:
     def __init__(self) -> None:
         self._entries: list[CorpusEntry] = []
         self._retained_case_ids: set[str] = set()
-        self._seen_states: set[StateSignature] = set()
-        self._seen_violations: set[ViolationFingerprint] = set()
-        self._observations = 0
-        self._interesting_observations = 0
+        self._novelty = NoveltyIndex()
 
     def consider(self, result: RunResult) -> FeedbackDecision:
         """Observe both novelty channels, then admit an interesting unique case.
@@ -112,22 +110,13 @@ class Corpus:
         the original admission metadata. Execution outcome/duration is unused.
         """
         case_id = result.case.case_id
-        fingerprints = violation_fingerprints(result.violations)
+        state_novel, new, fingerprints = self._novelty.observe(result)
         decision = FeedbackDecision(
             case_id=case_id,
-            state_novel=result.signature not in self._seen_states,
-            new_violation_fingerprints=tuple(
-                fingerprint
-                for fingerprint in fingerprints
-                if fingerprint not in self._seen_violations
-            ),
+            state_novel=state_novel,
+            new_violation_fingerprints=new,
             already_retained=case_id in self._retained_case_ids,
         )
-        self._seen_states.add(result.signature)
-        self._seen_violations.update(fingerprints)
-        self._observations += 1
-        if decision.interesting:
-            self._interesting_observations += 1
         if decision.retained:
             self._entries.append(CorpusEntry(result.case, result.signature, fingerprints))
             self._retained_case_ids.add(case_id)
@@ -152,11 +141,11 @@ class Corpus:
     @property
     def stats(self) -> CorpusStats:
         return CorpusStats(
-            observations=self._observations,
-            interesting_observations=self._interesting_observations,
+            observations=self._novelty.observations,
+            interesting_observations=self._novelty.interesting_observations,
             retained_cases=len(self._entries),
-            unique_states=len(self._seen_states),
-            unique_violation_fingerprints=len(self._seen_violations),
+            unique_states=len(self._novelty.states),
+            unique_violation_fingerprints=len(self._novelty.violations),
         )
 
     def __len__(self) -> int:

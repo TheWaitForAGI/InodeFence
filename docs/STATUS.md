@@ -228,3 +228,12 @@ audit에 기록됐으며 현재도 유지한다.
 [Contained benign Node smoke](../experiments/summaries/benign-node-container-smoke-v1.md)는
 실제 정책/versions/config/checksum/stats/cleanup과 제한을 기록한다. Unexpected evidence는
 보존 후 중단하며 security evaluation이나 effectiveness 결과로 해석하지 않는다.
+
+## Search-track core
+
+사용자가 확정한 Search/Mutation/Feedback Task Contract에 따라 Layer 4–5 독립 확장을
+진행한다. `SearchState` core에서 B0/B1/B3 admission과 parent selection을 구현하고 full
+analysis novelty와 policy admission을 분리했다. Legacy B3 campaign / config IDs / export
+schema는 유지한다. Alternative configured campaigns는 아직 지원하지 않는다.
+Evaluation reader/journal의 versioned policy 지원이 필요하여 해당 통합은 skip했으며
+[interface 요구사항](research/design/search-policy-core-v1.md)을 기록했다.

@@ -70,13 +70,16 @@ TargetProvenance의 execution_safety는 default ISOLATION_REQUIRED다. Campaign�
 low-level run_case도 contained target의 prepare/execute/AFTER/cleanup 순서를 유지한다.
 
 Writer는 model/campaign만 의존하고 target을 실행하거나 feedback을 재판정하지 않는다.
-Manifest schema v3는 stored execution/isolation_provenance, config/initial IDs, steps count/stats/retained order, 결과의 execution contexts와
+Manifest schema v4는 stored execution/isolation_provenance, config/initial IDs, steps count/stats/retained order, 결과의 execution contexts와
 JSONL SHA-256을 담는다. `steps.jsonl`은 기존 `canonical_json(CampaignStep)`을 그대로 사용한다.
 Exporter environment는 writer process의 정보이며 execution environment/source revision을
 추정하지 않는다. Execution environment/source는 실행 전 stored provenance에 있다.
 같은 result/exporter 환경은 동일 bytes를 만든다. 별도 run의 raw allocation/time은
-보존하므로 byte equality를 요구하지 않는다. IO/encoding 오류는 전달하고 partial output이 남을
-수 있다. Writer/reader/resume는 별도 개념이며 현재는 writer만 제공한다.
+보존하므로 byte equality를 요구하지 않는다. Optional pre-read config JSON은 stored config ID와
+비교하고 experiment.json/checksum으로 같은 bundle에 기록한다. Linux staging/flush/fsync/checksum
+검증 후 renameat2(RENAME_NOREPLACE)로 공개하므로 기존/동시 destination을 덮어쓰지 않는다.
+공개 전 오류는 final absent/staging cleanup이며 공개 후 parent fsync 오류는 complete bundle을 남기고
+전달한다. Hard interruption은 staging을 남길 수 있다. 지원되지 않는 OS/libc/filesystem에는 fallback이 없다. Writer/reader/resume는 별도 개념이며 현재는 writer만 제공한다.
 
 ExperimentConfig v1/v2는 seed/profile/policy/target/sentinel/environment-profile 조건을 실행 전에 검증한다.
 Stored experiment_config_id는 manifest에 보존하며 actual source/platform provenance와 분리한다.

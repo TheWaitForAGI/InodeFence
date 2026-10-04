@@ -109,10 +109,17 @@ def test_tiny_benign_configured_node_campaign(
     assert sum("--identify" not in request.command for request in requests) == 8
     assert all(not request.run_root.exists() for request in requests)
     assert set(runtime_root().iterdir()) == roots_before
-    manifest, steps = export_campaign(result, campaign_evidence)
-    (campaign_evidence / "experiment.json").write_text(encoded_config + "\n", encoding="ascii")
+    manifest, steps = export_campaign(
+        result, campaign_evidence, experiment_config_json=encoded_config
+    )
     manifest_value = json.loads(manifest.read_bytes())
     assert manifest_value["experiment_config_id"] == config.config_id
+    assert manifest_value["schema_version"] == 4
+    assert manifest_value["experiment_config_file"] == "experiment.json"
+    assert (
+        manifest_value["experiment_config_sha256"]
+        == sha256((campaign_evidence / "experiment.json").read_bytes()).hexdigest()
+    )
     assert (
         manifest_value["execution_provenance"]
         == json.loads(canonical_json(result.provenance))["value"]

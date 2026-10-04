@@ -62,3 +62,18 @@ The [benign Node container smoke](summaries/benign-node-container-smoke-v1.md) r
 one tiny engineering campaign, exact stored conditions/checksums and observed stats.
 CI retains its raw bundle as an artifact. Audit preparation and lifecycle/export review
 remain; no effectiveness/security evaluation follows automatically.
+
+## Completed export publication
+
+Manifest v4 stages closed/flushed/fsynced files and verifies JSONL/checksum/read-back before
+Linux `renameat2(RENAME_NOREPLACE)` publication; supported libc/kernel/filesystem are required.
+An existing or concurrently created destination is never replaced. Optional immutable config JSON
+is checked against the stored config ID and published in the same bundle. Before-publication errors
+leave the final destination absent and staging cleaned. Parent directories may remain. Hard process
+interruption can leave staging; a post-publication parent-fsync error leaves the complete bundle
+and propagates. Unexpected-evidence emergency preservation is separate and can still be partial
+if its writes fail. This is atomic publication, not resume/database or crash-proof storage.
+
+Schemas1/2/3 are historical exports; the writer emits v4. Step JSONL/ArchiveCase/RunResult/signature
+encoding and provenance/config schemas are unchanged. The no-overwrite mechanism follows the
+[Linux rename manual](https://man7.org/linux/man-pages/man2/rename.2.html).

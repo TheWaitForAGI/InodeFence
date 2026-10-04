@@ -108,3 +108,8 @@ The explicit `benign-node-smoke` container suite runs one fixed eight-archive fu
 campaign and preserves raw evidence outside target views. Portable benign-validation
 tests check input guards and stop/preserve on a controlled disposable sentinel effect.
 These do not replace the actual container checks or claim vulnerability rediscovery.
+
+Completed export durability regressions cover steps/manifest/config write failure, partial step
+encoding, corrupted checksum, destination kinds and concurrent empty-directory creation, unsupported
+publication, pre/post-publication fsync errors, identical successful bytes and config-ID binding.
+The real Node smoke and configured reference CLI publish all three files together on supported Linux.

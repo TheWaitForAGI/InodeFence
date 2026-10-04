@@ -50,7 +50,9 @@ Supported Linux에서 실행:
 python -m scripts.run_configured_reference experiments/configs/reference-smoke-v1.json --output experiments/raw/configured-reference
 ```
 
-CLI는 safe Python reference만 실행하고 experiment.json/manifest.json/steps.jsonl을 보존한다.
+CLI는 safe Python reference만 실행하고 동일 immutable config를 experiment.json/manifest.json/steps.jsonl과
+함께 staged atomic publication한다. Manifest v4는 config file/checksum을 명시하며 stored config ID와
+JSON bytes의 hash 일치를 검증한다. Config v1/v2 encoding/identity는 바뀌지 않는다.
 Uncontained Node-tar campaign은 계속 거부되고 contained configured execution에는 v2 policy가 필요하다. Config와 raw evidence는
 비교 실험 완료, research effectiveness 또는 validated isolation을 의미하지 않는다.
 

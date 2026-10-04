@@ -138,7 +138,7 @@ Bounded deterministic campaign v1과 node-tar adapter의 정상 fixture integrat
 Provenance/configuration 이후 [인프라 audit](../experiments/summaries/infrastructure-readiness-v1.md)을
 완료했다. 기존 [engineering audit](../experiments/summaries/final-engineering-audit-v1.md)은 이전 revision의 역사적 기록이다.
 Execution Provenance v1은 source revision/dirty, 실행 환경, explicit sentinel/adapter 설정을
-첫 실행 전에 고정하며 campaign 결과와 manifest v3에 보존한다. Isolation provenance/config binding도
+첫 실행 전에 고정하며 campaign 결과와 manifest v4에 보존한다. Isolation provenance/config binding도
 실행 전에 고정한다. Safety gate는 explicit trusted reference 또는 정확한 IsolatedTarget/backend
 binding만 허용하고 uncontained/미선언 target을 runtime 이전에 거부한다. Disposable runtime/Dev Container는
 OS 격리가 아니다. 별도 container helper와 campaign binding을 검증했다.
@@ -148,7 +148,7 @@ ExperimentConfig v1은 필수 JSON 설정/정규화된 config ID와 pre-executio
 제공한다. Safe reference config CLI가 실행 전 config ID를 campaign/manifest에 보존한다.
 Pinned Node 22.22.0/tar 7.5.22 distroless target image와 실제 container metadata 검증을 추가했다.
 Worker/lock digest는 image 안에서 확인한다. Node production invocation은 backend만 사용하며 pipeline은 setup/BEFORE/execute/AFTER/cleanup을
-보존한다. Frozen isolation/config/provenance binding과 campaign gate를 연결했다. Tiny benign smoke를 완료했으며 다음은 export durability와 pre-audit freeze다.
+보존한다. Frozen isolation/config/provenance binding과 campaign gate를 연결했다. Tiny benign smoke를 완료했으며 completed export는 Linux staged no-overwrite publication/manifest v4로 보강했고 다음은 pre-audit freeze다.
 Container helper의 filesystem/network/credential/resource/descendant 검증은 이미 수행했다.
 설정 기반의 아주 작은 benign Node campaign smoke도 완료했다. 이전 uncontained Node campaign은
 runtime/provenance capture/첫 run_case 이전에 거부됐으며 별도 contained benign smoke는8 archives를 실행했다. Requirement를 낮추지 않았다.

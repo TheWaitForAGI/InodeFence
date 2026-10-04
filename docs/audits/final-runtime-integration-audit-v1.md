@@ -347,3 +347,16 @@ final CI. The Runtime findings therefore retain their final disposition:
 The accepted documentation/research refresh does not itself authorize benchmark
 execution or constitute benchmark evidence. All benchmark candidates remain
 NOT_RUN.
+
+
+## Post-#47 final integration recheck
+
+Engine/Research final audit PR #47 was merged as
+`ccdbbd066808e2b477ad31ee5cca674abdde624d` after its post-#35 CI passed.
+That merge adds only the final engine/research audit report and its acceptance
+witness; it does not alter Runtime/Execution production code, container policy,
+target invocation, mutation/feedback behavior or benchmark execution state.
+
+This runtime branch was merged with that global-closeout main before the final CI.
+The Runtime / Execution / Integration verdict therefore remains **GO**, with
+CR-001, CR-002, EX-003 and EX-004 closed and no new Blocker/Major/Minor.

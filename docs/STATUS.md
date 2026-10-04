@@ -98,7 +98,7 @@ C0의 direct path use 전체와 transient state는 snapshot만으로 판정할 �
 - caller 수준의 Corpus.select_case → Mutator → 단일 run_case → Corpus.consider 조합 regression
 - 한 Corpus는 한 caller-controlled campaign context; complete campaign key/persistence를 제공하지 않음
 
-Bounded deterministic campaign v1은 구현됐으며 adaptive scheduler, persistence, benchmark adapter와 Node-tar/ORAS campaign은 미구현이다. Known-vulnerability rediscovery, new vulnerability discovery, research effectiveness와 evaluation/ablation 결과는 아직 없다. C3/C4와 Layer 6도 후속 단계다. Corpus retention/stats는 연구 효과나 취약점 확정의 증거가 아니다.
+Bounded deterministic campaign v1은 구현됐으며 adaptive scheduler, persistence, node-tar adapter의 정상 fixture integration이 있으며 Node-tar/ORAS generated-input campaign은 미구현/금지다. Known-vulnerability rediscovery, new vulnerability discovery, research effectiveness와 evaluation/ablation 결과는 아직 없다. C3/C4와 Layer 6도 후속 단계다. Corpus retention/stats는 연구 효과나 취약점 확정의 증거가 아니다.
 
 ## 다음 작업
 
@@ -107,7 +107,8 @@ Execution Provenance v1은 source revision/dirty, 실행 환경, explicit sentin
 첫 실행 전에 고정하며 campaign 결과와 manifest v2에 보존한다. Target execution safety contract는
 explicit trusted reference campaign만 허용하며 isolation-required/미선언 target을 runtime 이전에
 거부한다. Disposable runtime/Dev Container는 OS 격리가 아니고 검증된 isolation helper는 없다.
-다음은 정상 fixture만 사용한 node-tar adapter engineering이며 generated-input campaign은 금지한다.
+Node-tar adapter engineering은 정상 fixture 범위에서 완료됐으며 generated-input campaign은 금지한다.
+다음은 explicit experiment configuration v1이다.
 Structured export v1은 완료된 campaign을 manifest.json/canonical steps.jsonl로 기록한다. Resume/reader/database는 없다.
 `generator.minimal_seed_corpus()`는 기존 정상 baseline 4종을 deterministic immutable tuple로
 반환한다. Fixture script도 이 API를 사용하며 campaign의 explicit-seed 계약은 유지한다.

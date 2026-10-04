@@ -122,7 +122,7 @@ src/inodefence/campaign_export.py  manifest.json / canonical steps.jsonl
 src/inodefence/provenance.py  실행 전 source/environment/target/sentinel 설정 고정
 src/inodefence/generator/   명시적 minimal_seed_corpus (정상 baseline 4종)
 src/inodefence/mutator/     TAR entry 변형
-src/inodefence/targets/     공통 실행 경계와 Python reference (benchmark adapters는 이후)
+src/inodefence/targets/     공통 실행 경계 / Python reference / 정상 fixture용 node-tar
 src/inodefence/observer/    filesystem 상태 관찰
 src/inodefence/oracle/      security contract 판정
 src/inodefence/feedback/    signature v2 / semantic fingerprints / in-memory Corpus v1

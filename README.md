@@ -166,7 +166,7 @@ InodeFence의 기여 여부는 **선행연구 비교, baseline, ablation, known-
 
 Target 구현 우선순위는 **node-tar → oras-go → 일정이 허용하면 GNU tar**입니다.
 처음부터 모든 target을 동시에 지원하지 않으며, benchmark용 target version은 별도로 고정합니다.
-현재 node-tar/ oras-go adapter는 구현되지 않았습니다.
+node-tar adapter는 정상 fixture integration용으로 구현됐고 generated-input campaign은 isolation gate로 거부합니다. oras-go adapter는 미구현입니다.
 
 공격자가 TAR entry를 제어한다고 가정하되, 실행 중 외부 process로 filesystem을 바꾸는 race 모델은 초기 범위에서 제외합니다.
 자세한 경계는 [project-scope.md](docs/research/design/project-scope.md)와 [threat-model.md](docs/research/design/threat-model.md)를 따릅니다.
@@ -259,6 +259,7 @@ Host와 공유하는 source bind mount를 실험 공간으로 쓰지 않고 Linu
 ```bash
 # 최초 개발 의존성 설치
 make install
+make target-tools  # pinned Node 22.22.0과 locked node-tar 정상 fixture 검증
 
 # 코드·타입·환경·문서 통합 검증
 make check

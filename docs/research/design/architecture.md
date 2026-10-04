@@ -829,6 +829,17 @@ generic Mutation, Observer, Oracle, Feedback에 node-tar 전용 처리 로직을
 
 ---
 
+## Node-tar adapter v1의 현재 integration 경계
+
+Target-specific Node worker는 targets/에 있고 exact setup identity/worker pre-extraction version
+check, strict=true/preservePaths=false, process-group lifecycle과 streams/status를 소유한다.
+Generic run_case/Observer/Oracle/StateSignature/Corpus/mutation의 책임은 바꾸지 않는다.
+[Target 안내](../../../src/inodefence/targets/README.md)와 [locked tooling](../../../tools/node-tar/README.md)을
+따른다. Node 22.22.0/tar 7.5.22에서 ordinary controlled fixtures만 검증한다. ISOLATION_REQUIRED는
+고정이고 campaign은 계속 거부한다. Process group cleanup은 검증된 OS execution isolation이 아니다.
+
+---
+
 # 14. Stage E — State Observer
 
 위치:

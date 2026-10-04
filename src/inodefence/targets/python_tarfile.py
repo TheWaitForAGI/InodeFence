@@ -10,19 +10,8 @@ from time import perf_counter
 
 from inodefence.model import ExecutionResult, ExecutionStatus
 from inodefence.model.provenance import ExecutionSafety, TargetProvenance
-from inodefence.runtime import open_runtime_directory
 
-
-def _validate_paths(archive_path: Path, extraction_root: Path) -> None:
-    if (
-        extraction_root.name != "extract"
-        or archive_path.parent.name != "archive"
-        or archive_path.parent.parent != extraction_root.parent
-    ):
-        raise ValueError("reference target requires a run's archive/ and extract/ layout")
-    with open_runtime_directory(extraction_root), open_runtime_directory(archive_path.parent):
-        if archive_path.name != "input.tar":
-            raise ValueError("reference archive must be archive/input.tar")
+from ._paths import validate_run_paths as _validate_paths
 
 
 def _text(value: str | bytes | None) -> str:

@@ -261,7 +261,7 @@ Host와 공유하는 source bind mount를 실험 공간으로 쓰지 않고 Linu
 ```bash
 # 최초 개발 의존성 설치
 make install
-make target-tools  # pinned Node 22.22.0과 locked node-tar 정상 fixture 검증
+make target-tools  # pinned Node/node-tar lock tooling; target 실행은 별도 image/backend
 
 # 코드·타입·환경·문서 통합 검증
 make check
@@ -283,7 +283,9 @@ Exact Python version이 설정과 일치하는 Linux 환경에서 작은 설정 
 python -m scripts.run_configured_reference experiments/configs/reference-smoke-v1.json --output experiments/raw/configured-reference
 ```
 
-새 output에 `experiment.json`, `manifest.json`, `steps.jsonl`을 보존합니다. Existing output은 거부합니다. Node adapter의 정상 fixture 검증은 `make check`에 포함되며 Node campaign CLI는 없습니다.
+새 output에 `experiment.json`, `manifest.json`, `steps.jsonl`을 보존합니다. Existing output은 거부합니다. Portable Node invocation 검증은 `make check`에 포함되고 실제 fixture 검증은
+`container_host ... validate-node-target`와 별도 CI job에서 container로 실행합니다.
+Node campaign CLI는 아직 없습니다.
 
 최초 `make install` 후 Dev Container의 Python에서 내부 API를 실행할 수 있습니다.
 

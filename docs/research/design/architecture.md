@@ -24,7 +24,8 @@
 ArchiveCase → 결정적 USTAR → Python reference worker → pre/post snapshot → C0/C1/C2 evidence의 실제 API가 있다. Generic Mutation v1은 별도 ArchiveCase → ArchiveCase API다. Layer 5는 RunResult의 독립 state/violation novelty에 따른 in-memory retention과 uniform caller-RNG parent selection을 제공한다. Bounded campaign v1은 명시적 seed와 execution budget으로 API를 조합한다. Minimal seed generator는 기존 4종 정상 baseline을 명시적으로 제공한다. Node-tar adapter는 정상 fixture로 검증했다. Third-party campaign 격리, 추가 adapters, adaptive scheduler/persistence 및 evaluation은 후속 단계다.
 
 현재 준비 분류는 ENGINEERING FOUNDATION이다. ExperimentConfig/실행 전 provenance/structured
-evidence 경로는 구현됐지만 validated OS isolation이 없어 benchmark-ready는 아니다. Development
+evidence 경로와 별도 container boundary는 구현됐지만 frozen isolation/config binding과
+Node campaign smoke가 없어 benchmark-ready는 아니다. Development
 tests와 reference repeat 검증은 evaluation 결과가 아니다. [현재 상태](../../STATUS.md)를 따른다.
 
 아래 개념 그림에는 lineage, tracing, corpus 등 미래 설계도 포함한다. 현재 확정된 field/API는 **7.8 현재 구현 경계**를 따른다. Python reference는 최종 benchmark target이 아니다.
@@ -844,11 +845,13 @@ generic Mutation, Observer, Oracle, Feedback에 node-tar 전용 처리 로직을
 ## Node-tar adapter v1의 현재 integration 경계
 
 Target-specific Node worker는 targets/에 있고 exact setup identity/worker pre-extraction version
-check, strict=true/preservePaths=false, process-group lifecycle과 streams/status를 소유한다.
+check, strict=true/preservePaths=false와 streams/status를 소유한다. Invocation은 IsolatedTarget과
+ExecutionBackend에 composition으로 연결하며 local subprocess fallback은 없다.
 Generic run_case/Observer/Oracle/StateSignature/Corpus/mutation의 책임은 바꾸지 않는다.
 [Target 안내](../../../src/inodefence/targets/README.md)와 [locked tooling](../../../tools/node-tar/README.md)을
 따른다. Node 22.22.0/tar 7.5.22에서 ordinary controlled fixtures만 검증한다. ISOLATION_REQUIRED는
-고정이고 campaign은 계속 거부한다. Process group cleanup은 검증된 OS execution isolation이 아니다.
+고정이고 campaign은 frozen isolation/config binding 전까지 계속 거부한다. Actual fixtures는
+별도 target container에서만 실행하고 setup/cleanup은 BEFORE/AFTER 구간 바깥에 둔다.
 
 ---
 

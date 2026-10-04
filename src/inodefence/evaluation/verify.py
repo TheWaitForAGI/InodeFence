@@ -53,6 +53,7 @@ class VerifiedCampaign:
     manifest_bytes: bytes
     manifest_sha256: str
     steps_sha256: str
+    experiment_config_bytes: bytes | None = None
 
 
 def _digest(value: object) -> str:
@@ -157,6 +158,7 @@ def _verify(directory: Path, expected_digest: str | None) -> VerifiedCampaign:
     config = decode(CampaignConfig, manifest["config"])
     provenance = decode(ExecutionProvenance, manifest["execution_provenance"])
     config_id = manifest["experiment_config_id"]
+    config_bytes = None
     if config_id is not None:
         _digest(config_id)
     if manifest["experiment_config_file"] is None:
@@ -166,6 +168,7 @@ def _verify(directory: Path, expected_digest: str | None) -> VerifiedCampaign:
         if manifest["experiment_config_file"] != "experiment.json" or config_id is None:
             raise ValueError("unsupported/unbound experiment config")
         content = _read_file(directory / "experiment.json")
+        config_bytes = content
         if sha256(content).hexdigest() != _digest(manifest["experiment_config_sha256"]):
             raise ValueError("experiment config file checksum mismatch")
         if not content.endswith(b"\n") or sha256(content[:-1]).hexdigest() != config_id:
@@ -240,4 +243,4 @@ def _verify(directory: Path, expected_digest: str | None) -> VerifiedCampaign:
     result = CampaignResult(
         config, initial_ids, tuple(steps), stats, retained, provenance, config_id
     )
-    return VerifiedCampaign(result, manifest_bytes, manifest_digest, steps_digest)
+    return VerifiedCampaign(result, manifest_bytes, manifest_digest, steps_digest, config_bytes)

@@ -40,3 +40,15 @@ M1 core는 독립적으로 사용할 수 있다. 기존 ExperimentConfig/campaig
 이 ID를 연결하지 않았다. Mutation policy를 manifest/result와 evaluation pooling/replay에
 정확하게 연결하는 변경이 필요하다. 현재 config는 unsupported ID를 명시적으로 거부하며
 legacy mutation으로 fallback하지 않는다. 이 API 검증은 baseline 비교 실험 결과가 아니다.
+
+## A3 reorder contribution ablation
+
+`uniform-generic-no-reorder-v1`과 `uniform-generic-m1-no-reorder-v1`은 각각 legacy/M1의
+8개 slot을 같은 순서와 확률로 선택한다. Reorder slot도 원래 operator의 RNG draws를
+소비하지만 계산된 child를 버리고 원본 case를 반환한다. 다른 slot의 결과는 그대로다.
+재시도나 weight 재분배가 없으며 no-op child도 caller가 한 번 실행한다.
+
+동일 input/RNG state에서 full/A3는 같은 slot과 같은 RNG 소비를 보장한다. 이후 campaign은
+서로 다른 parent state 때문에 다른 draw stream을 가질 수 있으므로 campaign 전체의
+draw 동일성을 주장하지 않는다. MutationPolicy에 명시적인 versioned ID를 저장한다.
+ExperimentConfig/provenance/evaluation binding은 위의 기존 integration dependency다.

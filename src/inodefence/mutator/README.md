@@ -92,3 +92,6 @@ M1의 nested/raw path, controlled name reuse, insertion, type replacement와 lin
 [grammar와 RNG 계약](../../../docs/research/design/mutation-m1-v1.md)을 따른다.
 M1은 current USTAR의 conservative text bound를 지키며 multi-step builder 검사를 제공한다.
 Campaign/config binding은 documented dependency이며 core API와 별도다.
+
+A3 `LEGACY_NO_REORDER` / `M1_NO_REORDER`는 reorder slot과 RNG 소비를 유지하면서
+reorder child만 버린다. 다른 operator 확률은 그대로이며 retry는 없다.

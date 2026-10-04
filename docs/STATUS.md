@@ -108,7 +108,9 @@ Execution Provenance v1은 source revision/dirty, 실행 환경, explicit sentin
 explicit trusted reference campaign만 허용하며 isolation-required/미선언 target을 runtime 이전에
 거부한다. Disposable runtime/Dev Container는 OS 격리가 아니고 검증된 isolation helper는 없다.
 Node-tar adapter engineering은 정상 fixture 범위에서 완료됐으며 generated-input campaign은 금지한다.
-다음은 explicit experiment configuration v1이다.
+ExperimentConfig v1은 필수 JSON 설정/정규화된 config ID와 pre-execution seed/target binding을
+제공한다. Safe reference config CLI가 실행 전 config ID를 campaign/manifest에 보존한다.
+다음 검증은 안전한 benchmark smoke이며 Node-tar campaign은 validated OS isolation 부재로 막혀 있다.
 Structured export v1은 완료된 campaign을 manifest.json/canonical steps.jsonl로 기록한다. Resume/reader/database는 없다.
 `generator.minimal_seed_corpus()`는 기존 정상 baseline 4종을 deterministic immutable tuple로
 반환한다. Fixture script도 이 API를 사용하며 campaign의 explicit-seed 계약은 유지한다.

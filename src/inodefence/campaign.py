@@ -1,6 +1,7 @@
 """Execution-count-bounded caller of mutation, one-case runs and feedback."""
 
 import random
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import StrEnum
@@ -60,6 +61,7 @@ class CampaignResult:
     final_corpus_stats: CorpusStats
     retained_case_ids: tuple[str, ...]
     provenance: ExecutionProvenance
+    experiment_config_id: str | None = None
 
 
 def run_campaign(
@@ -69,6 +71,7 @@ def run_campaign(
     *,
     sentinels: tuple[SentinelSpec, ...] = (SentinelSpec(),),
     provenance: ExecutionProvenance | None = None,
+    experiment_config_id: str | None = None,
 ) -> CampaignResult:
     """Run explicit seeds in order, then select → mutate → execute → consider.
 
@@ -89,6 +92,11 @@ def run_campaign(
     as the same initial cases, config and RNG implementation. Raw filesystem
     allocation, timestamps and process durations need not repeat.
     """
+    if experiment_config_id is not None and (
+        not isinstance(experiment_config_id, str)
+        or re.fullmatch(r"[0-9a-f]{64}", experiment_config_id) is None
+    ):
+        raise ValueError("experiment_config_id must be lowercase SHA-256 or None")
     cases = tuple(initial_cases)
     if not cases:
         raise ValueError("initial cases must be non-empty")
@@ -152,4 +160,5 @@ def run_campaign(
         corpus.stats,
         tuple(entry.case.case_id for entry in corpus.entries),
         frozen,
+        experiment_config_id,
     )

@@ -245,3 +245,11 @@ M1은 nested/raw spelling, repeated names, file/directory collision, link-to-lin
 임의 삽입 위치를 지원하며 USTAR-compatible input의 multi-step buildability를 검증한다.
 Adaptive scheduling은 없다. [M1 계약과 campaign binding 의존성](research/design/mutation-m1-v1.md)을
 따른다. Baseline 비교 campaign/evaluation은 아직 실행하지 않았다.
+
+### A1/A2 feedback-key core
+
+Versioned FeedbackProjection A1/A2는 admission key에서 identity_groups 또는 external_effects만
+제외한다. Raw snapshots/oracle/full signature와 analysis novelty는 유지한다. Projected-key
+count를 full-state count와 구분하며 inode/timestamp/run-anchor 차이에 대한 regression을
+추가했다. SearchDecision core envelope는 v2이며 legacy campaign encoding은 그대로다.
+ExperimentConfig/provenance/evaluation binding은 [별도 의존성](research/design/search-policy-core-v1.md)이다.

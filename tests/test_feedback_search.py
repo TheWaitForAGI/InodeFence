@@ -168,7 +168,7 @@ def test_invalid_policy_and_seed_phase_fail_without_rng_or_index_changes() -> No
 
 
 def test_explicit_admission_is_serialized_and_validated() -> None:
-    decision = SearchDecision("case", True, (), False, False)
+    decision = SearchDecision("case", True, (), False, False, True)
     assert decision.interesting and not decision.retained
     assert json.loads(canonical_json(decision))["value"]["admission_eligible"] is False
     with pytest.raises(ValueError, match="bool"):

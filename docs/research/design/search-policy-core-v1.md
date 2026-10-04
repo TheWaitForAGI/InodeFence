@@ -8,21 +8,22 @@ B0/B1은 core에서 구현됐지만 ExperimentConfig / campaign binding은 아�
 | Policy ID | Admission | Seed phase 이후 parent |
 | --- | --- | --- |
 | `unretained-walk-v1` (B0) | 없음 | 첫 선택은 seed bank에서 균등, 이후 이전 observed child |
-| `state-v3-uniform-parent-v1` (B1) | unseen full StateSignature | retained unique cases에서 균등 |
-| `state-v2-or-violation-v1-uniform-parent-v1` (B3 legacy ID) | unseen full signature OR violation fingerprint | retained unique cases에서 균등 |
+| `state-v3-uniform-parent-v1` (B1) | unseen feedback key (default: full StateSignature) | retained unique cases에서 균등 |
+| `state-v2-or-violation-v1-uniform-parent-v1` (B3 legacy ID) | unseen feedback key OR violation fingerprint | retained unique cases에서 균등 |
 
 선언한 immutable initial cases는 nonempty / unique case ID여야 한다. `consider`는
 먼저 seed results를 선언 순서로 요구한다. Seed phase가 끝나기 전 selection은 RNG를
-소비하지 않고 거부한다. B1/B3 seed admission도 동일한 novelty 규칙을 사용한다.
+소비하지 않고 거부한다. B1/B3 seed admission도 선택한 projection의 key novelty 규칙을 사용한다.
 B0는 seed bank와 active case 한 개만 parent로 사용하며 retained entries는 항상 없다.
 Diagnostic state/fingerprint indexes는 B0에서도 누적되므로 전체 메모리가 O(1)은 아니다.
 모든 status와 no-op child를 동등하게 관찰한다. Oracle/target 정보를 selection에 넣지 않는다.
 
 `SearchDecision`은 별도의 frozen/slots record다. Full `state_novel`,
-`new_violation_fingerprints`, `already_retained`와 explicit `admission_eligible`을 담는다.
+`new_violation_fingerprints`, `already_retained`, explicit `admission_eligible`과
+`feedback_key_novel`을 담는다.
 `interesting`은 항상 full state OR violation novelty이며, 실제 `retained`는
 `admission_eligible AND NOT already_retained`다. 기존 FeedbackDecision의 B3 의미나
-serialized shape를 수정하지 않는다. SearchDecision은 자기 model name과 envelope v1을
+serialized shape를 수정하지 않는다. SearchDecision은 자기 model name과 envelope v2를
 가지며 CampaignStep에 묵시적으로 넣지 않는다. RunResult/raw snapshots/verdict는 그대로
 caller에게 남는다. 동일 case의 새로운 outcome은 indexes를 갱신하되 parent를 복제하지 않는다.
 
@@ -49,3 +50,23 @@ Search 담당은 이 파일들을 변경하지 않는다. Alternative campaign b
 
 이 통합은 Evaluation 영역 변경 없이는 완료할 수 없으므로 skip한다. Core APIs는 독립
 검증할 수 있다. 새 campaign/export schema 지원 여부는 main에서 다시 확인한다.
+
+## A1/A2 feedback projection
+
+`SearchState(..., projection=FeedbackProjection.FULL)`의 default key는 full signature다.
+`state-v3-no-identity-groups-key-v1` (A1)은 identity_groups만,
+`state-v3-no-external-effects-key-v1` (A2)은 external_effects만 key에서 제외한다.
+`feedback_key`는 policy-tagged FeedbackKey를 만들고 원본 signature/snapshot/verdict를
+변경하지 않는다. Regular nlink, object content/path/type, protected paths와 다른 field는
+유지한다. 따라서 해당 field 외의 정보로 유사 관계를 구별할 가능성은 남는다.
+
+`state_novel`과 CorpusStats.unique_states는 항상 full diagnostic state를 센다.
+`feedback_key_novel`과 SearchState.unique_feedback_keys는 projected admission key를 센다.
+B1은 key novelty만, B3는 key novelty OR violation novelty를 사용한다. A1/A2에서도
+violation fingerprints는 그대로이므로 새로운 violation만으로 B3 admission은 가능하다.
+B0는 두 novelty channel과 projection에 관계없이 이전 child로 진행한다.
+
+SearchDecision에 feedback_key_novel을 추가하여 core envelope를 v2로 올렸다.
+Legacy FeedbackDecision/Corpus/CampaignStep/manifest/config schema와 ID는 바꾸지 않았다.
+Projection ID는 core 설정 property에서 식별할 수 있지만 ExperimentConfig/provenance
+binding은 아직 Evaluation interface dependency다. Baseline 비교 실험은 실행하지 않았다.

@@ -15,7 +15,7 @@ or several target versions alone is neither a feedback baseline nor an ablation.
 
 | ID | Implementation at audited main | Configuration representation | Comparison purpose / isolated measurement |
 | --- | --- | --- | --- |
-| B3 | IMPLEMENTED NOW, trusted-reference path only | Existing `state-v2-or-violation-v1-uniform-parent-v1` with `uniform-generic-v1` | Combined retention control; no measured effectiveness |
+| B3 | IMPLEMENTED NOW, trusted reference and exact contained wrapper | Existing `state-v2-or-violation-v1-uniform-parent-v1` with `uniform-generic-v1` | Combined retention control; no measured effectiveness |
 | B0 | NOT_IMPLEMENTED | Proposed `unretained-walk-v1`; rejected today | Guided evolving corpus versus unguided multi-step walk; success/censored first-hit; changes parent selection and retention together |
 | B1 | NOT_IMPLEMENTED | Proposed `state-v2-uniform-parent-v1`; rejected today | Marginal violation-novelty admission with uniform evolving parents constant; success/censored first-hit |
 | B2 | NOT_IMPLEMENTED; optional | Proposed `violation-v1-seed-bank-uniform-parent-v1`; seed-bank comparator revision required | Post-hit violation guidance; not a primary first-hit comparison |

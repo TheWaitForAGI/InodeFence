@@ -1,20 +1,22 @@
 # Engine capabilities and research assumptions
 
 **Implementation audit, not an experiment result or full repository audit.**
-Audited main: `f02024cc520868056c26919b128d18628012e8f2` (2026-10-04), checked
-by a targeted source/test delta review from the full capability-audit base
-`a22d20127d8e01bc539363764582ef907d51cbf1`. That base was previously merged
-into the published research branch; **f02024c was inspected without merging**.
-Local source links refer to the branch's a22d201 implementation; immutable
-f02024c links identify changed implementation and regression evidence below.
-The original `433ffb0f49f82476b1c3d152e647a5c9a9710485` audit is superseded.
-Current source and tests take precedence over historical readiness summaries.
+Last independently reviewed main: `efe1dbb5ec3787dee42eadb643646be2b326b489` (2026-10-04).
+The research branch now contains this main revision. Review scope: current #36–#39
+execution/backend/broker, Node image and invocation, pipeline/runtime lifecycle,
+isolation/config/provenance/campaign admission/export, and their tests/docs.
+PR titles, bodies, base/head and changed-file lists were checked against the
+maintainer Task Contract. This replaces the older f02024c delta-only review.
+Generation, observer/oracle and Corpus were read for contract/architecture fit;
+this is not a full repository audit or candidate execution qualification.
 
-The f02024c delta changes execution composition, pipeline lifecycle, Node binding
-and related tests/docs/CI. Archive model/builder/seeds/mutations, snapshot/oracle,
-feedback/Corpus, Campaign, ExperimentConfig and provenance/export implementation
-are unchanged from a22d201. Their existing conclusions remain applicable; no new
-external research or benchmark execution was required for this review.
+#39 implements frozen container policy, pre-execution runtime/image facts,
+worker/lock records, ExperimentConfig v2, exact-wrapper campaign admission and
+manifest v3. Its normal bind path is implemented; EC-01 below remains an
+independent Major about public artifact composition. Node configured smoke and
+pre-audit freeze are still pending in the reviewed STATUS. Local canonical
+validation passed 585 tests on this merged engine using `PYTHONPATH=src make check`;
+container suites were source-reviewed, not run locally by this lane.
 
 Evidence levels apply only to the explicitly bounded claim:
 
@@ -42,7 +44,7 @@ Predictions, future work and future measurements are separate from these facts.
 | Container helper boundary on documented Docker/OrbStack platform | B | [execution validation scope](../../../src/inodefence/execution/README.md), [six real-runtime regressions](../../../tests/container_integration/check_boundary.py); inherited platform evidence, not a new benchmark run |
 | Pinned benign Node target image and metadata validation | B | [image packaging](../../../tools/node-tar/README.md), [metadata-only regression](../../../tests/container_integration/check_node_image.py); no archive execution |
 | Controlled benign Node fixtures through the real container backend and pipeline | B | [explicit container fixture suite](https://github.com/TheWaitForAGI/InodeFence/blob/f02024cc520868056c26919b128d18628012e8f2/tests/container_integration/check_node_target.py), [main CI](https://github.com/TheWaitForAGI/InodeFence/actions/runs/37180369305); not a configured campaign or candidate qualification |
-| Frozen isolation/config/provenance and Node configured campaign integration | D | Campaign still rejects ISOLATION_REQUIRED; config/provenance have no frozen container binding |
+| Frozen isolation/config/provenance and contained campaign admission | A with EC-01 limitation | [isolation/admission/export tests](../../../tests/test_isolation_provenance.py), [pure values](../../../src/inodefence/model/isolation.py); real configured Node smoke remains NOT_RUN |
 | General component replacement, alternative policies, incremental failure export | C/D | Proposed here; absent from production mutator/config/campaign/export |
 | C3/C4 and operation tracing | C/D | Canonical definitions exist; no oracle implementation |
 | Benchmark qualification, rediscovery and comparative evaluation | D | No such execution is performed by this package |
@@ -151,7 +153,7 @@ seeds first, consuming budget but no search RNG. One Random(seed) serves parent
 selection and mutation thereafter. No-op, reject, failure and timeout consume
 one execution when a result returns. Infrastructure exceptions propagate; an
 aborted run does not return a partial CampaignResult. Memory is O(budget) full
-run evidence. The exporter writes completed manifest v2/steps JSONL; no reader,
+run evidence. The exporter writes completed manifest v3/steps JSONL; no reader,
 checkpoint or resume exists.
 
 [ExperimentConfig](../../../src/inodefence/experiment_config.py) currently
@@ -167,19 +169,29 @@ and adapter TargetProvenance before Campaign. Lower-level Campaign accepts other
 explicit unique cases, but that does not make them a supported configured seed
 profile. Config rejects unknown fields/policies and version placeholders
 `latest`, `installed`, `current`; an exact version string is not an artifact hash.
-The reference CLI selects only the Python adapter. Frozen provenance contains
-source revision/dirty, four platform strings, target ID/version/timeout/trust
-declaration and sentinel name/digest/mode; it has no container image/backend/
-resource-policy identity. Manifest v2 separately records stored execution
-provenance and exporter environment; exporting later cannot attest the earlier
-environment. Raw steps retain logical content for reconstruction, but no
-deserialize/replay reader exists.
+The reference CLI selects only the Python adapter. ExperimentConfig v2 adds the
+complete explicit IsolationPolicy and binds it to the composed target before
+campaign execution. Reference v1 JSON/config ID remains unchanged. Campaign freezes
+ExecutionProvenance v2 once before the first case: source/environment/target/
+sentinels plus policy, runtime/API/platform/image facts and descriptor artifacts.
+Each step rejects policy/artifact/target drift against that stored value.
+Manifest v3 exports the stored provenance without querying current defaults;
+exporter environment remains separate. Policy facts never enter StateSignature
+or violation fingerprints. Image base/build identity and full dependency closure
+still require the supplemental artifact ledger. EC-01 qualifies the artifact
+attestation claim. Raw steps retain logical content and TAR SHA-256; no reader/
+replay or failure ledger exists.
 
-[Targets](../../../src/inodefence/targets/README.md) declares node-tar
-ISOLATION_REQUIRED. Locked benign tooling is Node 22.22.0 / tar 7.5.22, not a
-vulnerable benchmark pin. Adapter options are strict=true, preservePaths=false;
-other defaults remain upstream. Campaign still rejects third-party execution
-before runtime/provenance capture. ORAS and GNU benchmark adapters do not exist.
+[Targets](../../../src/inodefence/targets/README.md) declare node-tar
+ISOLATION_REQUIRED. Benign packaging uses Node 22.22.0 / tar 7.5.22, unrelated to
+selected historical pins. Adapter options remain strict=true, preservePaths=false.
+Campaign admits only the exact IsolatedTarget for isolation-required declarations;
+subclasses, uncontained descriptors and unavailable/mismatched boundary facts fail
+before campaign setup. Public run_case is a low-level trusted adapter API, with
+no independent campaign admission gate: caller-supplied adapter code is trusted.
+The actual Node descriptor has no run/prepare path, so run_case cannot give it a
+local subprocess fallback. A new target descriptor/backend is trusted controller
+implementation, not something archive bytes can select. ORAS/GNU adapters are absent.
 
 ## Container helper/image/fixture validation versus Node configured integration
 
@@ -245,22 +257,115 @@ assertions, ordinary invalid-format rejection, timeout, version drift and AFTER
 failure cleanup. This validates the low-level contained invocation on that CI
 platform; it does not exercise run_configured_campaign or any catalog candidate.
 
-**NOT_IMPLEMENTED configured integration:** Campaign has no admission binding
-that proves the backend meets ISOLATION_REQUIRED, ExperimentConfig has no image/
-backend policy fields, and ExecutionProvenance/export have no frozen container
-configuration. Descriptor identity is not frozen campaign provenance. The existing
-campaign rejection remains before runtime/provenance capture. Its diagnostic
-describes the blocked campaign path, not absence of the implemented backend or
-Node fixture binding. It grants no permission to bypass the gate.
+**Implemented in #39 (D025):** frozen isolation/config/provenance and exact-wrapper
+campaign admission. These are no longer missing infrastructure. The approved benign
+configured Node smoke is still NOT_RUN in this reviewed main. Historical fixture
+CI does not supply that evidence. STATUS remains ENGINEERING FOUNDATION, with
+benign full-path smoke, pre-audit freeze, full audit and fixes preceding benchmark
+work. No selected candidate was qualified or executed.
 
-[STATUS at f02024c](https://github.com/TheWaitForAGI/InodeFence/blob/f02024cc520868056c26919b128d18628012e8f2/docs/STATUS.md)
-remains ENGINEERING FOUNDATION: benchmark and evaluation readiness are false;
-Node configured campaigns have zero executions. Primary engineering must finish
-frozen isolation/config/provenance and campaign admission, then a small benign
-configured campaign smoke, pre-audit freeze, full audit and required fixes. Selected
-benchmark
-grammar, policies, independent qualification and evaluation still require the
-[post-audit tasks](post-audit-backlog.md) and a new Task Contract.
+## Independent execution review
+
+All assertions below refer to the last-reviewed SHA above. Source links resolve
+to its merged implementation. Tests were inspected, including real-runtime
+suites and failure cases; fake Docker responses do not establish containment.
+
+| Question / invariant | Observed implementation and limit |
+| --- | --- |
+| Public Node fallback/bypass | NodeTarTarget has no run or subprocess API; IsolatedTarget requires ExecutionBackend. Campaign rejects uncontained/subclass paths before freeze/setup. Low-level run_case trusts custom adapter implementations, as described above. |
+| Filesystem exposure | create_command mounts exactly one current-run volume subpath at the same absolute path; prepare inspects that policy and rejects implicit image volumes. Source/home/socket/neighbor paths are absent by design and helper canaries test this on the documented platform. The complete controlled run is writable/observed. |
+| Network/privileges | network=none, cap-drop ALL, no-new-privileges, positive non-root UID/GID, read-only rootfs and private PID/IPC/cgroup namespace policies are passed/inspected; helper checks live effects. |
+| Resource enforcement | PID/memory/swap/nofile/fsize/tmpfs/shm passed and inspected; output transport drains and retains bounded prefixes. FSIZE is per file; total storage/file count/CPU quotas are absent and documented. |
+| Image/command defaults | Immutable local ID required; image/created-container IDs match. Entry point/workdir/environment overrides are generated. Actual Config.Entrypoint/Cmd/WorkingDir/Env are not rechecked in prepare: EC-02 test gap. |
+| Broker/control separation | Host/controller use a dedicated trusted stdio channel; target streams are encoded as base64 fields. No target output is parsed as Docker requests. DockerCLI retains at most 1 MiB per stream and drains the rest; StdioDockerClient bounds its response line. |
+| Timeout/start race | Created-at-deadline state destroys/verifies identity before returning; running deadline kills/waits and verifies exited/Pid=0. No AFTER on unverified execution. |
+| Detached descendants | PID namespace termination precedes returned execution; real suite exercises setsid child/grandchild and checks stopped context. Kernel/runtime correctness remains trusted. |
+| Cleanup ownership/reuse | Random per-container name plus broker invocation owner; cleanup inspects label then removes full returned ID and verifies absence. No prune/name-wide destruction. Concurrent malicious daemon/controller identity replacement is outside the trusted-runtime model. |
+| Observation failures | Backend context surrounds BEFORE/execute/AFTER; finally cleans up on either snapshot exception. Normal remove follows AFTER; startup-race removal is the documented exception and changes no controlled-run files. |
+| Bookkeeping and attribution | Open runtime FDs and container preparation precede BEFORE; target stops before AFTER; normal backend/runtime removal follows AFTER. Worker uses pipes, no observation-window harness logs. C0 includes HARNESS; C1/C2 retain raw pre/post identity/effects. |
+| Cleanup failure | Removal failure raises BackendError; no completed RunResult escapes that context. Host broker has ownership-checked fallback. Hard broker kill/daemon outage can prevent verified cleanup; documented operational limit, not proof of safe termination. |
+| Architecture | Campaign knows generic IsolatedTarget, not Docker; backend has no Node branches; observer/oracle/feedback/mutator do not import Docker/Node/CVE metadata. ORAS/GNU can compose new invocation/image; ORAS needs a declared controlled CWD extension. |
+
+### EC-01 — unverified worker/lock facts on public composition
+
+- **Severity:** Major. **Reviewed main:** efe1dbb5ec3787dee42eadb643646be2b326b489.
+- **Affected:** targets/node_tar.py::NodeTarTarget constructor/bind;
+  targets/isolated.py::IsolatedTarget.capture_isolation; campaign.py::run_campaign.
+- **Observed:** bind identifies image contents, but the public frozen descriptor
+  can be reconstructed/replaced with different digest values (or moved to another
+  same-version image). capture_isolation replaces the backend artifacts with the
+  descriptor values. Campaign freezes them and checks subsequent consistency only
+  against that declaration. Worker invocation checks version text, not digests.
+- **Evidence:** using only tests/test_node_tar.py::ControlledBackend, bind returns
+  worker `b` repeated 64 times; construct
+  `IsolatedTarget(replace(bound.invocation, worker_sha256="d" * 64), bound.backend)`
+  and call run_campaign with the four benign seeds/budget=4. It returns four fake
+  steps and frozen `node-tar-worker` SHA-256 `d` repeated 64 times. No extraction,
+  container, affected package, PoC or exploit archive was executed. The same
+  unverified assignment is visible statically on the real backend path.
+- **Why it matters:** exported worker/dependency facts can disagree with the
+  immutable image used; future benchmark provenance/replay cannot treat them as
+  attested identities. This is not an isolation escape or a defect in ordinary bind.
+- **Expected invariant:** values labeled actual artifact facts match the bound
+  image, including supported public composition paths; asserted metadata is distinct.
+- **Suggested direction:** primary engineering should enforce verified binding
+  or re-identify/check artifacts before freezing. Regression must reject changed
+  worker/lock digests and stale artifacts after same-version image replacement,
+  before the first campaign case. Existing tests validate normal bind and later
+  drift, but do not challenge this pre-freeze composition.
+- **Status:** OPEN; escalated in [PR #35 comment](https://github.com/TheWaitForAGI/InodeFence/pull/35#issuecomment-5977145667).
+  No production patch contributed by this lane.
+
+### EC-02 — command/default inspection coverage
+
+- **Severity:** Minor (test gap). **Reviewed main:** same SHA.
+- **Affected:** execution/container.py::prepare/create_command;
+  tests/test_container_backend.py::FakeDocker and policy regression.
+- **Observed:** generated argv overrides entrypoint, workdir and image env, but
+  prepare does not compare those actual Config fields. FakeDocker omits them;
+  the portable command test checks env clearing but not entrypoint/workdir.
+- **Why it matters / reasoning:** a future incorrect worker/CWD override could
+  survive this portable suite; ORAS depends on exact CWD. Current Docker argv is
+  correct and no live mismatch is established, so this is not Major.
+- **Expected invariant:** command/CWD/env actually used agree with the invocation.
+- **Suggested direction:** negative Config mismatch tests plus explicit argv
+  assertions; consider actual inspection before start. Real helper/Node behavior
+  provides narrower current coverage, not a general arbitrary-CWD contract.
+- **Status:** OPEN audit test gap; no production changes.
+
+### Deliberate incorrect-variant reasoning
+
+| Incorrect variant | Existing evidence that should catch it (source reasoning, no sabotage run) |
+| --- | --- |
+| Remove campaign safety gate | uncontained/descriptor/subclass tests in test_node_tar and test_isolation_provenance |
+| Add local Node fallback | descriptor-has-no-run test and ExecutionBackend type checks; actual Node has no subprocess import |
+| Accept mutable image tag | request/policy/binding negative tests and actual image-ID equality |
+| Mount whole runtime/source/home/socket or bridge network | exact mount and network inspections, wrong-policy test, real helper canaries/network assertion |
+| Remove cap-drop/no-new-privileges/rootfs/user | command assertions, actual inspect policy, live helper privileges/rootfs checks |
+| Omit a resource from config identity | per-resource identity/strict schema tests; command enforcement is separately checked by live helper |
+| Skip cleanup on AFTER exception | portable preparation lifecycle plus real Node AFTER-error cleanup test |
+| Recompute provenance during export | test_frozen_before_execution_and_export_ignores_changed_backend_defaults |
+| Put execution/container metadata into novelty | signature/corpus semantic regressions exclude execution/config/TAR identity; no container-specific same-state comparison yet |
+| Forge descriptor artifacts before freeze | NOT caught: EC-01 reproduction accepted |
+| Lose command/CWD override | Partial coverage only: EC-02 |
+
+### Isolation/provenance readiness mapping
+
+| Required fact | Implemented / frozen before first case / exported / config-bound |
+| --- | --- |
+| Immutable target image ID | Yes / Yes / Yes / v2 IsolationPolicy |
+| Backend implementation and runtime/API/architecture | Yes / Yes / Yes / implementation policy bound; actual runtime version is provenance, not config ID |
+| Network, filesystem view, UID/GID, capabilities, no-new-privileges, rootfs | Yes / Yes / Yes / complete v2 policy |
+| PID/memory/swap/nofile/fsize/tmpfs/shm/capture limits | Yes / Yes / Yes / resources and fixed policy values; no CPU/total storage quota |
+| Target version and timeout | Yes / Yes / Yes / TargetProvenance; worker checks version |
+| Worker and npm lock identity | Normal bind Yes; EC-01 / descriptor values frozen / Yes / absent from ExperimentConfig; anchored indirectly by image only |
+| Base image, build recipe, npm SRI/transitive closure, compiler | Packaging/source or future pin ledger / no complete automatic capture / no dedicated fields / supplemental research freeze required |
+| Explicit ORAS process CWD / input transport identity | Not implemented / absent / absent / post-audit requirement |
+
+No Blocker found in this reviewed scope. One open Major and one Minor test gap;
+full repository merge-readiness is not asserted. C3/C4/transient effects remain
+outside implemented oracle scope. Experiment-validation classifies no new
+benchmark outcome: all candidate execution fields remain NOT_RUN.
 
 ## Moving-main review rule
 

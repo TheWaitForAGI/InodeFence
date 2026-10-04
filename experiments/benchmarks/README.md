@@ -15,7 +15,7 @@ qualification status, uncertainties and typed source references.
 The catalog's `engine_revision` is the source-reviewed main SHA, not necessarily
 the engine checked out on the research branch. The
 [engine audit](../../docs/research/benchmarks/engine-contract-audit.md) records the
-capability-audit base and f02024c's targeted delta review without a merge. Generation,
+current merged main and independent #36–#39 review. Generation,
 observation and execution fields must be rechecked after relevant source changes.
 `candidate_id` (N/O/G series), descriptive `benchmark_id`, R root-cause ID and S
 semantic IDs are stable joins, not display names or CVE-based oracle rules.
@@ -53,7 +53,7 @@ pin/root gates. All 15 execution states are NOT_RUN, all candidate isolated
 campaign bindings NOT_IMPLEMENTED, and none is READY. `isolated_execution` refers
 to an exact candidate's frozen image/config/provenance and approved campaign
 path. The implemented benign Node/backend composition and passing helper/image/
-fixture CI at f02024c do not qualify historical benchmark versions or change
+fixture CI and implemented admission at efe1dbb do not qualify historical benchmark versions or change
 these fields. The planning-only validator rejects executed
 qualification/READY/evaluation assertions; future ingestion needs a reviewed
 schema/state transition and retained gate evidence.

@@ -48,6 +48,8 @@ def test_creation_success_has_no_containment_claim_and_uses_fixed_benign_command
     for command, kwargs in commands:
         assert command[0] == "/usr/bin/unshare" and command[-1] == "/usr/bin/true"
         assert "--fork" not in command and "--mount-proc" not in command
+        if "--mount" in command:
+            assert command[command.index("--propagation") + 1] == "unchanged"
         assert kwargs["timeout"] == 5.0
         assert kwargs["env"] == {"PATH": support.os.defpath, "LANG": "C.UTF-8"}
         assert not kwargs.get("shell", False)

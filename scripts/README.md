@@ -51,6 +51,7 @@ steps.jsonl을 보존한다. Node campaign safety gate를 우회하는 명령은
 `python scripts/check_linux_isolation_support.py` (`make isolation-support`)는 Linux namespace
 생성 전제 조건을 JSON schema v1로 진단한다. 고정된 `unshare`/`true` 8개 probe만 실행하며
 mount operation, fork, network traffic, archive extraction이나 runtime 생성은 하지 않는다.
+Mount probe는 `--propagation unchanged`로 util-linux의 자동 propagation 변경도 생략한다.
 5개 user-namespace 조합이 모두 성공하면 exit 0, 그 외에는 exit 1이다. Tool 존재와 syscall
 실패를 구분하고 missing tool/platform, timeout/launch error와 실제 stderr를 보존한다.
 `/proc`의 capability/seccomp, cgroup mount read-only 여부와 현재 resource limits도 기록한다.

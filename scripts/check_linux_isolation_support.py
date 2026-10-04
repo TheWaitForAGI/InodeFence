@@ -85,6 +85,10 @@ def collect_support() -> dict:
     unshare, true = tools["unshare"], tools["true"]
     probes = []
     for name, flags in _PROBES:
+        # unshare otherwise changes mount propagation automatically on success.
+        # This diagnostic tests creation only, without any mount(2) operation.
+        if "--mount" in flags:
+            flags = (*flags, "--propagation", "unchanged")
         command = (unshare, *flags, true)
         record = {
             "name": name,

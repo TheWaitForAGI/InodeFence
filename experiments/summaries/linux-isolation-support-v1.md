@@ -22,6 +22,7 @@ python scripts/check_linux_isolation_support.py > experiments/raw/isolation-supp
 각각 wall-clock timeout 5초로 실행한다. RNG/seed, archive, target adapter, execution budget,
 sentinel 설정은 해당 없음이며 Node campaign archive execution 수는 0이다.
 새 namespace 생성 외에 mount operation, fork, network traffic, runtime 생성은 하지 않는다.
+Mount 조합에는 `--propagation unchanged`를 명시해 util-linux의 자동 propagation 변경을 생략한다.
 PID probe는 `pid_for_children` namespace 생성 전제만 검사하며 새 PID namespace의 child 실행이나
 reaping을 검증하지 않는다. Resource 값은 현재 process의 관찰값이며 target limit policy가 아니다.
 

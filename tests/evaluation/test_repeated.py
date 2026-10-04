@@ -4,7 +4,12 @@ import pytest
 
 from inodefence.campaign import run_campaign
 from inodefence.campaign_export import export_campaign
-from inodefence.evaluation.failure import FailureContext, FailurePhase, failure_record, write_failure
+from inodefence.evaluation.failure import (
+    FailureContext,
+    FailurePhase,
+    failure_record,
+    write_failure,
+)
 from inodefence.evaluation.repeated import (
     RepetitionController,
     RepetitionPlan,

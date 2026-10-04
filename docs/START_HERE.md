@@ -68,7 +68,7 @@ InodeFence는 이런 **object identity와 external effect를 fuzzing feedback으
 
 별도 [disposable Linux container backend](../src/inodefence/execution/README.md)의 benign
 helper validation을 추가했다. 기존 Dev Container 권한은 유지하고 trusted host stdio
-broker로 sibling target을 실행한다. Node image/contained invocation/config/provenance binding을 구현했고 tiny benign campaign8회 full-path를 검증했다. Lifecycle/export/freeze 검토가 남았다.
+broker로 sibling target을 실행한다. Node image/contained invocation/config/provenance binding을 구현했고 tiny benign campaign8회 full-path를 검증했다. Lifecycle/export/freeze 검토를 완료했고 다음은 전체 repository audit다.
 
 항상 최신 상태는 [STATUS.md](STATUS.md)를 본다.
 
@@ -85,14 +85,14 @@ Layer 5  Feedback / Corpus         ✅ v1: 독립 novelty / in-memory / uniform 
 Layer 6  Experiment / Paper        미진행
 ```
 
-현재 준비 상태는 **ENGINEERING FOUNDATION**이다. Engine은 trusted reference 범위에서 준비됐고
-benchmark는 full-path smoke는 완료됐지만 최종 lifecycle/export/freeze 검토가 남았다.
-Evaluation은 실행하지 않았다. [인프라 검증 기록](../experiments/summaries/infrastructure-readiness-v1.md)을 따른다.
+현재 준비 상태는 **READY FOR FULL CODE / ARCHITECTURE AUDIT**다. Engine과 contained Node의
+benign benchmark infrastructure 경로를 검증했다. Full audit와 evaluation은 아직 수행하지 않았다.
+[Pre-audit 검증 기록과 한계](../experiments/summaries/pre-audit-readiness-v1.md)를 따른다.
 
 Campaign은 explicit trusted reference 또는 enforced IsolatedTarget composition을 받는다.
 Third-party target은 validated backend와 bound policy 없이는 실행 전에 거부한다. Runtime directory/Dev Container는 검증된 OS execution isolation이 아니다.
-확인한 Dev Container의 namespace 생성은 EPERM으로 차단됐다. 실행 환경 정책 선택이 필요한
-[구체적 blocker와 재검증 명령](../experiments/summaries/linux-isolation-support-v1.md)을 따른다.
+확인한 Dev Container의 namespace 생성은 EPERM으로 차단됐다. 그 환경을 약화하지 않고
+별도 container backend를 구현했다. [이전 blocker 기록](../experiments/summaries/linux-isolation-support-v1.md)은 이 선택의 근거다.
 
 ## 5. 코딩하기 전에 딱 이것만 읽기
 
@@ -133,7 +133,7 @@ src/inodefence/provenance.py  실행 전 source/environment/target/sentinel 설�
 src/inodefence/experiment_config.py  strict JSON 설정 / config ID / explicit 실행 binding
 src/inodefence/generator/   명시적 minimal_seed_corpus (정상 baseline 4종)
 src/inodefence/mutator/     TAR entry 변형
-src/inodefence/targets/     공통 실행 경계 / Python reference / 정상 fixture용 node-tar
+src/inodefence/targets/     공통 실행 경계 / Python reference / contained node-tar
 src/inodefence/observer/    filesystem 상태 관찰
 src/inodefence/oracle/      security contract 판정
 src/inodefence/feedback/    signature v2 / semantic fingerprints / in-memory Corpus v1

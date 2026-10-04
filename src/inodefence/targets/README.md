@@ -59,11 +59,11 @@ exact IsolatedTarget composition과 frozen backend policy/attestation이 필요�
 frozen requirement를 보존한다. 이는 trust 선언이며 OS isolation 보장이 아니다.
 
 Low-level isolated adapter.run/run_case also enforces the backend; no direct Node fallback exists.
-These APIs remain controlled fixture validation entry points pending campaign binding. Third-party
-adapter 개발은 명시적으로 검토한 정상 fixture만 사용한다. Generated/untrusted archive의 campaign은
-별도 검증된 OS isolation 구현 전까지 금지한다. Adapter는 안전성을 version이나 path에서 추론하거나
+The configured contained campaign path is bound and validated by the approved tiny benign smoke.
+현재 engineering Task Contract는 이 정상 입력 검증까지만 승인한다. Full audit 이후의
+security evaluation에는 별도 연구 Task Contract가 필요하다. Adapter는 안전성을 version이나 path에서 추론하거나
 TRUSTED_REFERENCE를 third-party에 붙여 이 gate를 우회하지 않는다.
 
-Reference는 동일 run의 archive/input.tar와 extract/ 경로를 검증하고 runtime symlink component를 거부한다. Directory layout은 cleanup 경계이고 OS 권한 격리가 아니다. Unsafe benchmark adapter는 추가 process/filesystem isolation을 제공하고 timeout 후 자식 process까지 멈춘 상태를 보장해야 한다. [architecture](../../../docs/research/design/architecture.md)와 [observer](../observer/README.md)를 따른다.
+Reference는 동일 run의 archive/input.tar와 extract/ 경로를 검증하고 runtime symlink component를 거부한다. Directory layout은 cleanup 경계이고 OS 권한 격리가 아니다. Contained target은 validated backend의 filesystem/process 경계와 timeout 후 전체 context 종료를 사용한다. [architecture](../../../docs/research/design/architecture.md)와 [observer](../observer/README.md)를 따른다.
 
 `run`은 BEFORE/AFTER 관찰 구간 안에서 호출된다. Harness setup/log/bookkeeping의 namespace write는 이 구간 밖에서 해야 한다. Diagnostics는 현재 reference처럼 ExecutionResult로 반환한다. Region.HARNESS는 target mutation의 면제 영역이 아니므로 adapter bookkeeping을 archive 아래에 기록해도 C0에서 자동 제외되지 않는다. Snapshot은 actor provenance가 없어 계약을 어긴 harness write를 target effect와 구분하지 못한다. 향후 adapter가 이 lifecycle을 지킬 수 없으면 별도 provenance/관찰 설계가 필요하다.

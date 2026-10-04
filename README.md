@@ -7,7 +7,7 @@ InodeFence는 TAR archive entry를 생성·변형하고, 실제 extractor(압축
 
 현재는 **공통 데이터 모델, 최소 단일 실행 pipeline, Generic Mutation v1과 Layer 5 Feedback / Corpus v1**을 구현했습니다. Corpus는 normalized state와 violation novelty를 독립적으로 추적하고 mutation parent를 in-memory로 보존·균등 선택합니다. Python `tarfile`/`data` reference target으로 검증하며, bounded campaign·explicit seeds·실행 전 provenance·strict JSON config·structured export를 제공합니다.
 
-현재 준비 상태는 **ENGINEERING FOUNDATION**입니다. Reference engine은 실행 가능하고 node-tar adapter는 정상 fixture로 검증했습니다. 별도 [container backend/helper](src/inodefence/execution/README.md)는 검증했고 contained target/config/provenance binding을 구현했습니다. Uncontained third-party campaign은 실행 전에 거부하며, **BENCHMARK READY / EVALUATION READY는 아직 아닙니다.** 비교 평가와 취약점 재발견 실험은 실행하지 않았습니다. [인프라 검증 기록](experiments/summaries/infrastructure-readiness-v1.md)을 참고하세요.
+현재 준비 상태는 **READY FOR FULL CODE / ARCHITECTURE AUDIT**입니다. 별도 [container backend](src/inodefence/execution/README.md), pinned Node-tar image, frozen config/provenance와 tiny benign configured campaign을 검증했고 completed evidence를 staged atomic publication합니다. **ENGINE READY / BENCHMARK INFRASTRUCTURE READY**의 범위는 이 engineering 경로입니다. 비교 평가와 취약점 재발견 실험은 실행하지 않았으며 다음은 전체 repository audit입니다. [실제 검증·checksum·한계](experiments/summaries/pre-audit-readiness-v1.md)를 참고하세요.
 
 [현재 상태](docs/STATUS.md) · [시작 안내](docs/START_HERE.md) · [아키텍처](docs/research/design/architecture.md) · [Security Contracts](docs/research/design/security-contracts.md) · [개발 가이드](CONTRIBUTING.md)
 
@@ -168,7 +168,7 @@ InodeFence의 기여 여부는 **선행연구 비교, baseline, ablation, known-
 
 Target 구현 우선순위는 **node-tar → oras-go → 일정이 허용하면 GNU tar**입니다.
 처음부터 모든 target을 동시에 지원하지 않으며, benchmark용 target version은 별도로 고정합니다.
-node-tar adapter는 정상 fixture integration용으로 구현됐고 generated-input campaign은 isolation gate로 거부합니다. oras-go adapter는 미구현입니다.
+Node-tar는 disposable target container에서 정상 fixture와 tiny benign configured campaign을 실행합니다. Uncontained target은 gate가 거부합니다. ORAS/GNU-tar adapter와 security evaluation은 다음 단계이며 현재 구현하지 않았습니다.
 
 공격자가 TAR entry를 제어한다고 가정하되, 실행 중 외부 process로 filesystem을 바꾸는 race 모델은 초기 범위에서 제외합니다.
 자세한 경계는 [project-scope.md](docs/research/design/project-scope.md)와 [threat-model.md](docs/research/design/threat-model.md)를 따릅니다.
@@ -334,12 +334,12 @@ campaign-owned RNG를 사용하고 no-op도 재시도 없이 한 번 실행합�
 기록하고 harness 오류는 그대로 전달합니다. Steps는 zero-based index, parent ID, full RunResult와
 feedback을 보존하므로 메모리는 O(execution_budget)이며 개별 evidence 크기에도 비례합니다.
 Config/initial IDs와 admission order는 결과에 남습니다. `export_campaign`은 새 directory에
-`manifest.json`과 canonical `steps.jsonl`을 기록하고 기존 output은 거부합니다. Raw inode/time과
+`manifest.json`과 canonical `steps.jsonl`을 staging 후 공개하고 기존/동시 output을 덮어쓰지 않습니다. Optional immutable config JSON도 stored config ID와 비교해 같은 bundle로 공개합니다. Raw inode/time과
 모든 status를 그대로 보존하며 결과를 분석/claim으로 승격하지 않습니다. Manifest의
 export_environment는 export한 process의 환경이고 과거 target 실행 환경이 아닙니다.
 Campaign은 실행 전 source revision/dirty, process 환경, target/version/timeout/safety와 sentinel digest/mode를 고정해 결과와 manifest에 보존합니다. Supplied source/environment의 정확성은 caller 책임이고 dirty bit는 source patch를 보존하지 않습니다. Formal config ID는 실제 execution provenance와 별개입니다. Corpus v1은 persistence나 완전한 campaign key를 제공하지 않습니다.
 
-`violated=False`는 관찰 범위 안에서 증거가 없다는 뜻입니다. Snapshot은 일시적 operation이나 sandbox 밖의 상태를 증명하지 못합니다. C0 namespace 변화와 C2 content/metadata effect를 구분하며, 관찰 오류는 harness 오류로 올립니다. Runtime directory는 cleanup 경계이고 임의 executable을 가두는 OS sandbox가 아닙니다. Unsafe benchmark adapter에는 추가 process/filesystem isolation이 필요합니다. 상세 API와 한계는 [architecture](docs/research/design/architecture.md)와 [계약 구현 범위](docs/research/design/security-contracts.md)를 따릅니다.
+`violated=False`는 관찰 범위 안에서 증거가 없다는 뜻입니다. Snapshot은 일시적 operation이나 sandbox 밖의 상태를 증명하지 못합니다. C0 namespace 변화와 C2 content/metadata effect를 구분하며, 관찰 오류는 harness 오류로 올립니다. Runtime directory는 cleanup 경계이고 임의 executable을 가두는 OS sandbox가 아닙니다. Isolation-required target은 validated backend/policy binding이 필요합니다. Snapshot 증거와 OS 실행 경계의 policy/한계는 별도로 기록합니다. 상세 API와 한계는 [architecture](docs/research/design/architecture.md)와 [계약 구현 범위](docs/research/design/security-contracts.md)를 따릅니다.
 
 Codex CLI는 exact version으로 고정하지 않는 **rolling latest** 정책입니다.
 설정·업데이트 방법은 [.devcontainer/README.md](.devcontainer/README.md), baseline 설명은 [TAR baseline 안내](docs/examples/tar-baseline.md)를 참고하세요.

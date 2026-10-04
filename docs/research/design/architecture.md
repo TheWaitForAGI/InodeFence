@@ -21,12 +21,12 @@
 
 현재는 **개발 Layer 2, 최소 Layer 3, Layer 4 Generic Mutation v1과 Layer 5 Feedback / Corpus v1 구현** 단계다. Feature branch의 구현 상태 표시는 main merge를 의미하지 않는다.
 
-ArchiveCase → 결정적 USTAR → Python reference worker → pre/post snapshot → C0/C1/C2 evidence의 실제 API가 있다. Generic Mutation v1은 별도 ArchiveCase → ArchiveCase API다. Layer 5는 RunResult의 독립 state/violation novelty에 따른 in-memory retention과 uniform caller-RNG parent selection을 제공한다. Bounded campaign v1은 명시적 seed와 execution budget으로 API를 조합한다. Minimal seed generator는 기존 4종 정상 baseline을 명시적으로 제공한다. Node-tar adapter는 정상 fixture로 검증했다. Third-party campaign 격리, 추가 adapters, adaptive scheduler/persistence 및 evaluation은 후속 단계다.
+ArchiveCase → 결정적 USTAR → Python reference worker → pre/post snapshot → C0/C1/C2 evidence의 실제 API가 있다. Generic Mutation v1은 별도 ArchiveCase → ArchiveCase API다. Layer 5는 RunResult의 독립 state/violation novelty에 따른 in-memory retention과 uniform caller-RNG parent selection을 제공한다. Bounded campaign v1은 명시적 seed와 execution budget으로 API를 조합한다. Minimal seed generator는 기존 4종 정상 baseline을 명시적으로 제공한다. Node-tar는 별도 contained target으로 정상 fixture와 tiny benign configured campaign을 검증했다. 추가 adapters, adaptive scheduler/persistence 및 evaluation은 후속 단계다.
 
-현재 준비 분류는 ENGINEERING FOUNDATION이다. ExperimentConfig/실행 전 provenance/structured
-evidence 경로와 별도 container boundary는 구현됐지만 frozen isolation/config binding과
-Node campaign smoke가 없어 benchmark-ready는 아니다. Development
-tests와 reference repeat 검증은 evaluation 결과가 아니다. [현재 상태](../../STATUS.md)를 따른다.
+현재 준비 분류는 READY FOR FULL CODE / ARCHITECTURE AUDIT이다. Container-backed target,
+frozen isolation/config/provenance와 benign Node full-path, lifecycle 및 staged export를 검증했다.
+Limited integration freeze 이후 다음은 전체 repository audit다. Development tests/smoke는
+evaluation 결과가 아니다. [현재 상태](../../STATUS.md)와 [실제 검증 기록](../../../experiments/summaries/pre-audit-readiness-v1.md)을 따른다.
 
 아래 개념 그림에는 lineage, tracing, corpus 등 미래 설계도 포함한다. 현재 확정된 field/API는 **7.8 현재 구현 경계**를 따른다. Python reference는 최종 benchmark target이 아니다.
 
@@ -485,7 +485,7 @@ StateSnapshot은 세 region 전체와 TAR content digest를 보존한다. StateS
 
 실제 `run_case()` regression은 동일 content/mode의 독립 regular entry 두 개를 반대 순서로 추출한다. Case ID/TAR SHA-256은 다르지만 signature와 canonical representation은 같아야 한다. 다른 inode allocation/PYTHONHASHSEED의 기존 regression도 유지한다.
 
-`canonical_json(model)`의 envelope schema version 1과 model type, sorted JSON keys, ordered tuple 배열은 유지한다. Signature 내부 schema version은 2이며 이전 signature와 key 호환성을 주장하지 않는다. Bytes는 base64로 lossless export한다. Raw run evidence는 run-specific inode/times를 보존하고 cross-run key는 logical case 또는 normalized signature로 만든다. Deserialize/database layer는 아직 없다. Campaign은 실행 전 InodeFence commit/dirty와 process OS/kernel/platform 정보를 ExecutionProvenance에 고정한다. ExperimentConfig v1은 explicit 설정과 stable ID를 제공한다. Node tooling은 pin/lock이 있지만 전체 execution environment의 content attestation/dependency lock은 없다.
+`canonical_json(model)`의 기본 envelope schema version은 1이며 ExecutionProvenance/CampaignResult는 명시적으로 v2다. Model type, sorted JSON keys, ordered tuple 배열은 유지한다. Signature 내부 schema version은 2이며 이전 signature와 key 호환성을 주장하지 않는다. Bytes는 base64로 lossless export한다. Raw run evidence는 run-specific inode/times를 보존하고 cross-run key는 logical case 또는 normalized signature로 만든다. Deserialize/database layer는 아직 없다. Campaign은 실행 전 InodeFence commit/dirty와 process OS/kernel/platform 정보를 ExecutionProvenance에 고정한다. ExperimentConfig v1/v2는 explicit 설정과 stable ID를 제공한다. Contained Node는 immutable image ID와 실제 worker/lock digest를 기록한다. 전체 controller/Python executable/dirty patch contents attestation은 제공하지 않는다.
 
 현재 내부 API:
 
@@ -544,8 +544,8 @@ isolation-required target은 provenance capture/runtime/
 첫 run_case 이전에 거부한다. Caller의 supplied provenance가 requirement를 낮출 수 없다.
 선언은 OS containment 증명이 아니다. Contained campaign에는 enforced backend와 frozen
 policy/attestation이 필요하며 config가 있으면 actual policy와 exact binding을 검증한다.
-Low-level adapter.run/run_case는 controlled fixture caller 책임이며 third-party의 arbitrary generated
-archive 실행은 별도 OS boundary 검증 전까지 허용하지 않는다.
+Low-level contained adapter.run/run_case도 backend를 강제한다. Configured contained campaign은
+현재 승인된 tiny benign smoke로 검증했으며 security evaluation은 full audit 이후 별도 Task Contract다.
 
 Dev Container와 CI는 source/설정된 volume/동일 사용자 파일/network 접근을 포함하는 development
 환경이다. Runtime directory, subprocess, data filter, cleanup은 이를 privilege sandbox로 바꾸지
@@ -614,7 +614,7 @@ disposable_sandbox: layout / sentinel setup
 
 기존 harness-only 테스트는 setup 완료 후 BEFORE를 찍어 nonviolation을 유지하고, 같은 setup 변화를 잘못된 baseline으로 비교하면 C0 evidence가 생긴다고 명시한다. Controlled adapter E2E는 archive namespace 생성·삭제·identity/type 교체를 탐지하면서 HARNESS signature exclusion이 유지됨을 검증한다. 이는 actor attribution instrumentation이나 취약한 extractor의 재현을 구현했다는 뜻이 아니다.
 
-Disposable directory는 harness storage/cleanup 경계이며 임의 executable에 OS 접근 권한을 제한하지 않는다. 현재 검증은 Dev Container 안의 controlled baseline과 Python reference/data filter로 한다. Unsafe benchmark adapter는 process/filesystem isolation을 추가하고 종료 후 자식 process가 남지 않도록 해야 한다. Snapshot은 sandbox 밖의 접근을 관찰하지 않으며 완전한 containment를 입증하지 않는다.
+Disposable directory는 harness storage/cleanup 경계이며 임의 executable에 OS 접근 권한을 제한하지 않는다. 현재 검증은 Linux controller의 Python reference/data filter와 별도 contained Node target의 benign 입력으로 한다. Isolation-required invocation은 validated backend를 사용하며 종료 후 전체 PID context가 멈춘 상태를 확인한다. Snapshot은 sandbox 밖의 접근을 관찰하지 않으며 완전한 containment를 입증하지 않는다.
 
 ---
 
@@ -1097,7 +1097,7 @@ checkpoint/resume, adaptive scheduling과 default seed 선택은 없다.
 
 ---
 
-## Explicit ExperimentConfig v1
+## Explicit ExperimentConfig v1/v2
 
 상위 experiment_config.py는 기존 CampaignConfig/TargetProvenance/SentinelSpec을 재사용해 필수
 JSON 설정과 stable config_id를 표현한다. Exact target/version/timeout/safety, ordered seed IDs/profile,
@@ -1707,3 +1707,16 @@ serializes stored nullable isolation. ArchiveCase, RunResult, CampaignStep and s
 encoding/novelty are unchanged. Runtime/PID/temp paths never enter config or feedback.
 No campaign-to-Docker implementation import exists: the campaign sees the enforced
 composition, while concrete runtime command construction stays in execution/container.
+
+
+### Pre-audit integration freeze
+
+Container/image/config/provenance/lifecycle and tiny benign full-path validation are complete.
+Completed manifest v4 publication is staged and atomic no-overwrite on supported Linux.
+The limited dependency review found no forbidden reverse imports; target-specific invocation
+remains separate from generic execution, Campaign, Observer/Oracle and feedback. Image ID
+and worker/lock digests anchor target contents; dirty patches and exact reference Python
+binary contents are not preserved. C0/C1/C2, signature/feedback and RNG/budget are unchanged.
+The [actual conditions, checksums, policy and limits](../../../experiments/summaries/pre-audit-readiness-v1.md)
+are engineering evidence. Architecture is READY FOR FULL CODE / ARCHITECTURE AUDIT, not
+evaluated research. Feature expansion stops until that full audit and a later Task Contract.

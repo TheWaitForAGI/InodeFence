@@ -8,6 +8,18 @@ promoting raw runs. This protocol does not authorize PoC execution in this lane.
 
 ## Experimental unit and independent variables
 
+| Research question | Measurement connection | Interpretation limit |
+| --- | --- | --- |
+| RQ1 Rediscovery | Confirmed success, censored first-hit index and identical-input affected/fixed replay | Only admitted classes/releases and declared grammar |
+| RQ2 Feedback effectiveness | Paired B3 versus B0/B1 success and first-hit summaries | B0 changes overall search policy; B1 isolates violation admission; no path-only/fixed-recipe comparison |
+| RQ3 Ablation | A1/A2/A3 versus B3 on declared subsets, common full-state counts | Redundant nlink/fingerprint signals remain; projections preserve security evidence |
+| RQ4 Generality | Qualified Node and ORAS evidence under the same oracle | Unevaluated with fewer than two families; not universal coverage |
+| RQ5 Unknown-state discovery | Preserve unrelated contract candidates separately | Exploratory; no new vulnerability or zero-day requirement |
+
+State/fingerprint/corpus counts explain search behavior; **more state signatures
+!= more vulnerabilities**. Throughput is an infrastructure feasibility metric
+including setup/observation, not just target process time.
+
 One campaign = benchmark × exact target version × search policy × RNG seed ×
 frozen environment/setup profile. Fresh runtime for each input, new search corpus
 for each campaign. The same logical seeds, grammar, dictionary, oracle, setup,
@@ -18,6 +30,12 @@ conditions. Random seed equality does not imply identical evolved inputs:
 feedback changes parent pools. Record lineage and actual generated cases.
 
 ## Budget, repetition and scheduling
+
+Numeric values below are **proposed planning parameters, not frozen runnable
+configuration or measured results**. Freeze only after isolated full-path
+qualification, safe throughput/storage/memory evidence and policy implementation.
+Lock the protocol revision and complete schedule before formal runs. No value
+asserts that ExperimentConfig supports these policies now.
 
 - Qualification pilot: 5 independent seeds 9001–9005, 200 executions per
   admitted condition. Pilot data is separate, never added to formal estimates.

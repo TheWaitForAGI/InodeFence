@@ -8,32 +8,33 @@ no exploit archive generated, no target installed or vulnerable fuzzing run.
 
 ## Final repository context and moving-main audit
 
-Final refresh reference: `433ffb0f49f82476b1c3d152e647a5c9a9710485`.
+Audited main: `475a6f2d7e5ef0b19d48c01eed0fbe2462ebecb2` (2026-10-04).
 Research branch: `research/benchmark-evaluation-prep-v1`; Draft
 [PR #35](https://github.com/TheWaitForAGI/InodeFence/pull/35), base main.
-Independent worktree: `/tmp/inodefence-research`; shared main remains at
-`/workspaces/InodeFence`. Branch SHA is Git/PR head, not embedded in its own
-tracked contents (which would be self-referential).
+Main was merged into this branch without rewriting published history, preserving
+all existing research work. Branch HEAD is available from Git/PR metadata; it is
+not embedded in its own tracked contents.
 
-At landscape, protocol and final checkpoints origin/main remained unchanged.
-No merged architecture drift to merge. Primary-engineer
-[PR #36](https://github.com/TheWaitForAGI/InodeFence/pull/36) is open for a
-disposable Linux container backend; its body reports benign shared-volume
-identity/lifecycle validation, while campaign/config/provenance integration and
-Node full-path readiness remain later work. This is an unmerged implementation,
-not an updated main contract or an independently reproduced boundary result.
-Its execution README was inspected: one named-volume run subdirectory is mounted
-at its identical random absolute controller path; the run is writable, rootfs
-read-only, and preparation/cleanup bracket BEFORE/AFTER. No stable mount alias
-is promised. The plan prefers relative protected-name addressing, preserves
-HARNESS C0 scope and does not ask this lane to alter that backend.
-Final source/status check still says
-ENGINEERING FOUNDATION, no validated third-party campaign isolation, and Node
-campaign count zero. No primary pre-audit completion signal observed; leave PR
-Draft and unmerged. When that signal arrives, fetch, inspect significant changes,
-merge latest origin/main at a clean milestone, reconcile these assumptions, run
-checks and refresh this record before human review. That future refresh is not
-benchmark execution authorization.
+[PR #36](https://github.com/TheWaitForAGI/InodeFence/pull/36) is now merged and
+adds a disposable Linux container backend, helper regressions and a separate CI
+container-integration job. The [engine audit](engine-contract-audit.md) supersedes
+the older no-backend assumptions. Helper validation is implemented platform
+engineering evidence, while Node image/config/provenance/campaign integration
+is NOT_IMPLEMENTED. The run volume is mounted at the same random absolute
+controller path; no stable alias or arbitrary CWD setting is promised.
+
+[STATUS](../../STATUS.md) remains ENGINEERING FOUNDATION; Node configured
+campaigns have zero executions, and benchmark/evaluation readiness remain false.
+Primary engineering owns remaining integration, benign full-path smoke and the
+pre-audit freeze. Full audit and required fixes precede the proposed tickets.
+This capability audit does not assert that the full architecture audit occurred.
+
+At coherent milestones fetch origin, compare the last audited main to origin/main,
+merge relevant changes at a clean point and re-audit affected execution, binding,
+config, provenance, campaign, observation, oracle, feedback/export and readiness
+claims. Refresh catalog engine_revision with the audit. Any later main change
+invalidates only the affected assumptions, not retained external source evidence.
+No completion signal grants this lane benchmark execution authorization.
 
 ## Engine gap report
 
@@ -43,7 +44,7 @@ isolation correctness and architectural changes.
 
 | Priority / necessity | Gap and motivating evidence | Minimum resolution after audit |
 | --- | --- | --- |
-| BLOCKING / required prerequisite | Current campaign rejects all isolation-required targets; infrastructure owner is working on container execution | Approved implemented boundary, benign Node full-path validation, full audit and fixes; research branch supplies no competing backend |
+| BLOCKING / required prerequisite | Campaign rejects all isolation-required targets despite the implemented helper backend; Node binding is absent | Finish binding to the existing approved backend, freeze image/config/provenance, benign Node full-path validation, full audit and fixes |
 | BLOCKING / required for selected sentinel benchmarks | Mutation output language cannot spell controlled outside/default sentinel components; N01/N03/N04 not fully reachable | M1 finite generic component dictionary/recombination, explicit target-visible path mapping/config; same policy for every arm; logical reachability evidence |
 | BLOCKING / required for ORAS primary | O01 requires external process CWD and public file.Store unpack path; no ORAS adapter/config today | Offline public API wrapper, pinned modules, explicit CWD under observed sandbox, setup before BEFORE; never private helper bypass |
 | BLOCKING / required for formal comparison | Config permits only full feedback; B0/B1 and projections do not exist | Small explicit search-policy binding after audit, versioned policy identifiers, identical execution plumbing and validation |
@@ -91,6 +92,23 @@ unqualified GNU run.
 
 ## Ordered implementation tickets after audit fixes
 
+**P00 — primary lane prerequisite, before the tickets below:** bind the existing
+container lifecycle around pipeline BEFORE/AFTER, add immutable Node image/config/
+provenance/export identity, retain fail-closed ISOLATION_REQUIRED enforcement,
+validate an explicitly benign configured full path, publish pre-audit freeze,
+finish the full audit and fixes. Relevant boundaries are
+[execution](../../../src/inodefence/execution/README.md),
+[pipeline.py](../../../src/inodefence/pipeline.py),
+[campaign.py](../../../src/inodefence/campaign.py),
+[config](../../../src/inodefence/experiment_config.py) and provenance/export.
+Tests must reject missing runtime/image, policy drift, unsafe binding and failed
+cleanup before reporting success, preserve shared sentinel identity and prove
+all target children stop before AFTER. Update stale adapter/safety documentation.
+Acceptance: approved immutable binding plus benign raw smoke evidence, full-audit
+record and resolved required findings. Impacts every primary/S class; changes
+execution/config/provenance contracts, not C0/C1/C2. Requires its own primary-lane
+Task Contract; no P00 implementation belongs to this research PR.
+
 Each row is a proposed separate Task Contract/Issue, not implementation in this
 PR. Scope estimates are relative: S = focused helper/config addition; M = one
 module boundary plus integration/documentation checks. They are not deadlines.
@@ -115,27 +133,53 @@ precedes effectiveness claims; policy/timing helpers may be reviewed before any
 vulnerable target is executed. No uncontrolled CVE archive is required to
 validate these helper implementations.
 
+## Ticket evidence, tests and research-contract impact
+
+The gap report and engine audit provide source evidence; this table attaches
+specific taxonomy scope and tests to the ordered acceptance criteria above.
+Every P01–P11 item requires a **new Task Contract**. Execution items additionally
+need explicit authorization covering the qualified target, setup and evidence.
+No item changes C0/C1/C2 verdict definitions; a later need to change those requires
+separate security-contract review and canonical-document updates.
+
+| Ticket | Gap evidence / affected IDs | Smallest implementation and concrete module boundary | Required tests before acceptance | Research-contract change? |
+| --- | --- | --- | --- | --- |
+| P01 | Provenance lacks image/locks/mapping; N01/N03/N04/O01, S09/S12/S14 | Freeze candidate artifacts and environment profile in tooling/config and execution provenance; reuse P00 binding | Pin drift rejected; benign versions compatible; root/device/uid mapping recorded; no mutable version/tag fallback | YES reproducibility/setup profile; no oracle change |
+| P02 | Affix-only operators cannot spell outside/sentinel; N01/N03/N04/O01, S02/S05/S07/S10/S11/S13/S14 | Finite dictionary plus component replacement/splicing in mutator/operators.py and explicit config; retain eight operator slots unless policy revision says otherwise | Pure logical constructive reachability, raw order/duplicates/immutable input, deterministic RNG, byte-limit counted no-op, no target-specific imports | YES grammar/dictionary/versioned mutation policy |
+| P03 | Config/Corpus supports B3 only; all primaries, S01–S14 feedback | Small policy binding at campaign/feedback/config; no duplicate runner | Synthetic outcomes prove B0 independent of novelty, B1 state-only admission, B3 unchanged, bootstrap/seen indexes and uniform selection; projection-only A1/A2 and A3 RNG/no-op checks | YES search policy/config; preserve raw signature/oracle |
+| P04 | ExecutionResult excludes full pipeline time; exceptions lose completed campaign export; all primaries | Monotonic orchestration offsets plus append-only completed-step/failure ledger in campaign/export or research wrapper | Controlled clock/exception/export/cleanup failures; last complete step retained; no-hit and infrastructure abort distinct; checksums verify | YES evidence/timing interface; no verdict change |
+| P05 | Export has no reader/replay; all primaries, S01–S14 | Research reader rebuilds ArchiveCase/TAR with builder and verifies canonical IDs/hashes; separate adjudication records | Benign round-trip, bytes/order preserved, tamper/hash mismatch rejection, deterministic nomination deduplication, mocked 3/3 versus 0/3 classification | NO security contract; YES analysis/reproduction schema |
+| P06 | No selected Node pair qualified; N01/N04/N03, R1/R4/R3, S03/S04/S06/S13/S14 | Pinned Node benchmark profiles and reviewed qualification records, using P00/P01–P05 | Benign fixture smoke first; later authorized Linux effect/fixed comparator qualification; strict-mode failure blocks admission; no attack seeds | NO oracle change; YES benchmark ground truth/admission |
+| P07 | ORAS adapter absent; backend CWD fixed to extract; O01/R2, S03/S10/S12/S14 | Offline public file.Store adapter under targets/, exact Go sums, explicit isolated CWD within controlled run; add invocation binding only as required | Benign public API/annotation integration; pin/network/CWD rejection; same-device observation lifecycle; later authorized pair qualification | YES target invocation/provenance/setup, no oracle change |
+| P08 | Formal cost unmeasured; admitted primaries | Freeze schedule/config/artifact/protocol hashes and separate pilot orchestration | All planned cells accounted for; pilot separated from formal data; feasibility thresholds/amendment recorded before formal run | YES freeze experiment protocol; no engine verdict change |
+| P09 | No effectiveness dataset; admitted primaries/RQ1/RQ2 | Execute declared blocks with existing qualified policies and immutable raw storage | Validate every scheduled repetition, all outcomes/failures, censored indices, paired blocks and raw checksums | NO implementation contract; instantiate frozen protocol |
+| P10 | No ablation/summary data; N03/O01/N04, S06/S11/S14 | Configured feedback projections and research aggregation with traceable raw refs | Analysis fixtures include zero hits, censoring, invalid and pending cases; common full-state counts unaffected; no success-only statistics | YES declared projection/dataset revision if newly introduced |
+| P11 | GNU pair/invocation/root UNKNOWN; G01/G02, R7/R1, S07/S09/S12/S14 | Source/pin/invocation admission research first; adapter only after gates pass | Static source/pin checks; later benign boundary tests; failed gate remains failed with no silent substitution | YES only if later set/invocation/boundary scope admitted |
+
+P01/P02 depend on P00 freeze and audit fixes; P03/P04 may proceed independently
+once audit APIs and P02 vocabulary are frozen. P05 consumes their evidence
+interfaces. P06/P07 qualify targets before P08; P09/P10 follow protocol freeze.
+Optional M2/M3 remain deferred: smallest additions are a generic relationship
+proposal or literal-backslash dictionary respectively, each with its own policy
+revision, logical tests and Task Contract. No generalized pre-existing-tree,
+PAX/GNU parser, C3/C4, race or attack-generator work is required for primary v1.
+
 ## Review and validation record
 
-Security-contract-review applied to the mapping: C0 namespace versus content
-separation, C1 lstat/ref identity, C2 metadata, HARNESS independence and snapshot
-limits checked. Experiment-validation applied to the design: benign seeds,
-version-independent verdicts, equal budgets, repetition, censoring, replay and
-raw evidence gates checked. PR-review applied to Task Contract, changed-file
-scope, sources/version uncertainty, architecture boundaries and claim limits.
-No code/audit finding is asserted merely from a research capability gap.
+Contract mappings were checked against the canonical security-contract document
+and actual oracle, normalization and lifecycle code. Experiment-validation was
+applied to the planning design: benign seeds, generic verdicts, equal budgets,
+repetition, censoring, replay and raw-evidence gates. Scope review checks that
+research metadata stays separate from production changes and exploit material.
+Capability gaps are not asserted vulnerability findings.
 
-Local final validation: catalog syntax/schema/IDs/contracts PASS (15 records);
-negative metadata checks reject duplicate ID/key, missing field, unknown contract,
-bad enum, unknown field and missing primary pin; git diff --check and docs-check
-PASS (69 Markdown files). Canonical make check PASS: Ruff, format, Pyright,
-**474 pytest tests**, Linux runtime environment and docs. The first make check
-failed 13 existing Node tests because this independent worktree lacked ignored
-node_modules; it passed after a temporary link to already installed main tooling
-with matching package/lock hashes. No target was installed. That validation link
-was removed after checks. Environment was Ubuntu/Python 3.12.3 on Linux x86_64
-WSL2 kernel 6.18.33.2-microsoft-standard-WSL2, runtime /var/lib/inodefence.
+Final validation is recorded after repository checks and CI complete. Static
+catalog/document validation is not benchmark evidence. Canonical make check
+covers inherited engineering regressions; the separate container-integration CI
+job covers controlled helper boundary regressions, not Node benchmark readiness.
 
-Documentation/catalog checks demonstrate static integrity only;
-canonical make check demonstrates inherited engineering regressions at this
-revision, not benchmark success or production coverage added by this work.
+**EVALUATION NOT RUN.** Benchmark qualification, pilot, known-class rediscovery,
+identical-input validation replay, baseline comparisons, ablations and formal
+benchmark execution are all NOT_RUN. The primary Node configured smoke also
+remains NOT_RUN at the audited main. Existing reference/fixture/helper engineering
+records remain separately scoped historical evidence.

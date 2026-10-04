@@ -307,6 +307,85 @@
             },
             "minItems": 1,
             "uniqueItems": true
+          },
+          "candidate_id": {
+            "type": "string",
+            "pattern": "^[A-Z][0-9]{2,}$"
+          },
+          "taxonomy_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "S01",
+                "S02",
+                "S03",
+                "S04",
+                "S05",
+                "S06",
+                "S07",
+                "S08",
+                "S09",
+                "S10",
+                "S11",
+                "S12",
+                "S13",
+                "S14"
+              ]
+            },
+            "minItems": 1,
+            "uniqueItems": true
+          },
+          "archive_format": {
+            "type": "string",
+            "enum": [
+              "TAR",
+              "N/A"
+            ]
+          },
+          "representation": {
+            "type": "string",
+            "enum": [
+              "YES",
+              "PARTIAL",
+              "NO",
+              "UNKNOWN"
+            ]
+          },
+          "seed_start": {
+            "type": "string",
+            "enum": [
+              "YES",
+              "PARTIAL",
+              "NO",
+              "UNKNOWN"
+            ]
+          },
+          "isolated_execution": {
+            "type": "string",
+            "enum": [
+              "NOT_IMPLEMENTED",
+              "ISOLATION_QUALIFIED"
+            ]
+          },
+          "qualification": {
+            "type": "string",
+            "enum": [
+              "PROPOSED",
+              "SOURCE_VERIFIED",
+              "SEMANTICS_VERIFIED",
+              "IMPLEMENTATION_BLOCKED",
+              "ISOLATION_QUALIFIED",
+              "READY"
+            ]
+          },
+          "execution": {
+            "type": "string",
+            "enum": [
+              "NOT_RUN",
+              "QUALIFICATION_ONLY",
+              "EVALUATION_RUN"
+            ]
           }
         },
         "required": [
@@ -337,7 +416,15 @@
           "status",
           "observer_requirements",
           "uncertainties",
-          "sources"
+          "sources",
+          "candidate_id",
+          "taxonomy_ids",
+          "archive_format",
+          "representation",
+          "seed_start",
+          "isolated_execution",
+          "qualification",
+          "execution"
         ],
         "additionalProperties": false
       },

@@ -2,7 +2,7 @@
   "schema_version": 1,
   "status": "planning_only",
   "evidence_accessed": "2026-10-04",
-  "engine_revision": "433ffb0f49f82476b1c3d152e647a5c9a9710485",
+  "engine_revision": "475a6f2d7e5ef0b19d48c01eed0fbe2462ebecb2",
   "benchmarks": [
     {
       "benchmark_id": "node-link-sanitize",
@@ -78,7 +78,22 @@
           "inspected": true
         }
       ],
-      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md"
+      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md",
+      "candidate_id": "N01",
+      "taxonomy_ids": [
+        "S03",
+        "S04",
+        "S07",
+        "S09",
+        "S10",
+        "S14"
+      ],
+      "archive_format": "TAR",
+      "representation": "YES",
+      "seed_start": "PARTIAL",
+      "isolated_execution": "NOT_IMPLEMENTED",
+      "qualification": "IMPLEMENTATION_BLOCKED",
+      "execution": "NOT_RUN"
     },
     {
       "benchmark_id": "node-hardlink-base",
@@ -147,7 +162,21 @@
           "inspected": true
         }
       ],
-      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md"
+      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md",
+      "candidate_id": "N02",
+      "taxonomy_ids": [
+        "S03",
+        "S07",
+        "S10",
+        "S11",
+        "S14"
+      ],
+      "archive_format": "TAR",
+      "representation": "YES",
+      "seed_start": "PARTIAL",
+      "isolated_execution": "NOT_IMPLEMENTED",
+      "qualification": "IMPLEMENTATION_BLOCKED",
+      "execution": "NOT_RUN"
     },
     {
       "benchmark_id": "node-link-compose",
@@ -228,7 +257,22 @@
           "inspected": true
         }
       ],
-      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md"
+      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md",
+      "candidate_id": "N03",
+      "taxonomy_ids": [
+        "S03",
+        "S04",
+        "S06",
+        "S10",
+        "S11",
+        "S14"
+      ],
+      "archive_format": "TAR",
+      "representation": "YES",
+      "seed_start": "PARTIAL",
+      "isolated_execution": "NOT_IMPLEMENTED",
+      "qualification": "IMPLEMENTATION_BLOCKED",
+      "execution": "NOT_RUN"
     },
     {
       "benchmark_id": "node-cache-transition",
@@ -302,7 +346,23 @@
           "inspected": true
         }
       ],
-      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md"
+      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md",
+      "candidate_id": "N04",
+      "taxonomy_ids": [
+        "S01",
+        "S02",
+        "S04",
+        "S05",
+        "S06",
+        "S13",
+        "S14"
+      ],
+      "archive_format": "TAR",
+      "representation": "YES",
+      "seed_start": "PARTIAL",
+      "isolated_execution": "NOT_IMPLEMENTED",
+      "qualification": "IMPLEMENTATION_BLOCKED",
+      "execution": "NOT_RUN"
     },
     {
       "benchmark_id": "node-repeated-root",
@@ -368,7 +428,19 @@
           "inspected": false
         }
       ],
-      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md"
+      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md",
+      "candidate_id": "N05",
+      "taxonomy_ids": [
+        "S01",
+        "S09",
+        "S14"
+      ],
+      "archive_format": "TAR",
+      "representation": "YES",
+      "seed_start": "PARTIAL",
+      "isolated_execution": "NOT_IMPLEMENTED",
+      "qualification": "IMPLEMENTATION_BLOCKED",
+      "execution": "NOT_RUN"
     },
     {
       "benchmark_id": "node-posix-cache-spelling",
@@ -441,7 +513,22 @@
           "inspected": false
         }
       ],
-      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md"
+      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md",
+      "candidate_id": "N06",
+      "taxonomy_ids": [
+        "S01",
+        "S02",
+        "S04",
+        "S06",
+        "S13",
+        "S14"
+      ],
+      "archive_format": "TAR",
+      "representation": "YES",
+      "seed_start": "PARTIAL",
+      "isolated_execution": "NOT_IMPLEMENTED",
+      "qualification": "IMPLEMENTATION_BLOCKED",
+      "execution": "NOT_RUN"
     },
     {
       "benchmark_id": "node-equivalent-cache-names",
@@ -504,7 +591,22 @@
           "inspected": true
         }
       ],
-      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md"
+      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md",
+      "candidate_id": "N07",
+      "taxonomy_ids": [
+        "S01",
+        "S02",
+        "S04",
+        "S06",
+        "S13",
+        "S14"
+      ],
+      "archive_format": "TAR",
+      "representation": "YES",
+      "seed_start": "NO",
+      "isolated_execution": "NOT_IMPLEMENTED",
+      "qualification": "SOURCE_VERIFIED",
+      "execution": "NOT_RUN"
     },
     {
       "benchmark_id": "node-equivalent-reservations",
@@ -567,7 +669,21 @@
           "inspected": true
         }
       ],
-      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md"
+      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md",
+      "candidate_id": "N08",
+      "taxonomy_ids": [
+        "S01",
+        "S04",
+        "S06",
+        "S11",
+        "S14"
+      ],
+      "archive_format": "TAR",
+      "representation": "YES",
+      "seed_start": "NO",
+      "isolated_execution": "NOT_IMPLEMENTED",
+      "qualification": "SOURCE_VERIFIED",
+      "execution": "NOT_RUN"
     },
     {
       "benchmark_id": "node-parser-metadata-differential",
@@ -626,7 +742,17 @@
           "inspected": true
         }
       ],
-      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md"
+      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md",
+      "candidate_id": "N09",
+      "taxonomy_ids": [
+        "S06"
+      ],
+      "archive_format": "TAR",
+      "representation": "NO",
+      "seed_start": "NO",
+      "isolated_execution": "NOT_IMPLEMENTED",
+      "qualification": "SOURCE_VERIFIED",
+      "execution": "NOT_RUN"
     },
     {
       "benchmark_id": "oras-cwd-hardlink",
@@ -702,7 +828,20 @@
           "inspected": true
         }
       ],
-      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md"
+      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md",
+      "candidate_id": "O01",
+      "taxonomy_ids": [
+        "S03",
+        "S10",
+        "S12",
+        "S14"
+      ],
+      "archive_format": "TAR",
+      "representation": "YES",
+      "seed_start": "PARTIAL",
+      "isolated_execution": "NOT_IMPLEMENTED",
+      "qualification": "IMPLEMENTATION_BLOCKED",
+      "execution": "NOT_RUN"
     },
     {
       "benchmark_id": "oras-symlink-chain-write",
@@ -776,7 +915,24 @@
           "inspected": true
         }
       ],
-      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md"
+      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md",
+      "candidate_id": "O02",
+      "taxonomy_ids": [
+        "S01",
+        "S04",
+        "S05",
+        "S06",
+        "S10",
+        "S11",
+        "S13",
+        "S14"
+      ],
+      "archive_format": "TAR",
+      "representation": "YES",
+      "seed_start": "PARTIAL",
+      "isolated_execution": "NOT_IMPLEMENTED",
+      "qualification": "IMPLEMENTATION_BLOCKED",
+      "execution": "NOT_RUN"
     },
     {
       "benchmark_id": "oras-title-existing-symlink",
@@ -849,7 +1005,18 @@
           "inspected": true
         }
       ],
-      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md"
+      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md",
+      "candidate_id": "O03",
+      "taxonomy_ids": [
+        "S12",
+        "S14"
+      ],
+      "archive_format": "N/A",
+      "representation": "NO",
+      "seed_start": "NO",
+      "isolated_execution": "NOT_IMPLEMENTED",
+      "qualification": "SOURCE_VERIFIED",
+      "execution": "NOT_RUN"
     },
     {
       "benchmark_id": "gnu-top-level-hardlink",
@@ -924,9 +1091,29 @@
           "identifier": "RHSA-2026:50807",
           "url": "https://access.redhat.com/errata/RHSA-2026:50807",
           "inspected": false
+        },
+        {
+          "source_type": "official_database",
+          "publisher": "CVE Program / Red Hat CNA",
+          "identifier": "CVE-2026-18508 JSON",
+          "url": "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/18xxx/CVE-2026-18508.json",
+          "inspected": true
         }
       ],
-      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md"
+      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md",
+      "candidate_id": "G01",
+      "taxonomy_ids": [
+        "S03",
+        "S09",
+        "S12",
+        "S14"
+      ],
+      "archive_format": "TAR",
+      "representation": "YES",
+      "seed_start": "PARTIAL",
+      "isolated_execution": "NOT_IMPLEMENTED",
+      "qualification": "SOURCE_VERIFIED",
+      "execution": "NOT_RUN"
     },
     {
       "benchmark_id": "gnu-selected-member-traversal",
@@ -1000,7 +1187,19 @@
           "inspected": true
         }
       ],
-      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md"
+      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md",
+      "candidate_id": "G02",
+      "taxonomy_ids": [
+        "S01",
+        "S07",
+        "S14"
+      ],
+      "archive_format": "TAR",
+      "representation": "YES",
+      "seed_start": "PARTIAL",
+      "isolated_execution": "NOT_IMPLEMENTED",
+      "qualification": "IMPLEMENTATION_BLOCKED",
+      "execution": "NOT_RUN"
     },
     {
       "benchmark_id": "gnu-reused-extraction-tree",
@@ -1050,7 +1249,8 @@
         "Complete before/after sandbox snapshots; no harness writes between captures; observe configured protected objects."
       ],
       "uncertainties": [
-        "Maintainer characterizes report as documented misuse; no accepted fixed comparator."
+        "Maintainer characterizes report as documented misuse; no accepted fixed comparator.",
+        "2025-11-15 maintainer correspondence identifies multi-patch hardening; exact released fixed comparator remains UNKNOWN. Excluded for reused-tree scope irrespective of later hardening."
       ],
       "sources": [
         {
@@ -1066,9 +1266,36 @@
           "identifier": "bug-tar 2025-08-11",
           "url": "https://lists.gnu.org/archive/html/bug-tar/2025-08/msg00012.html",
           "inspected": true
+        },
+        {
+          "source_type": "upstream_policy",
+          "publisher": "GNU tar / Paul Eggert",
+          "identifier": "bug-tar 2025-11-15",
+          "url": "https://lists.gnu.org/r/bug-tar/2025-11/msg00014.html",
+          "inspected": true
+        },
+        {
+          "source_type": "patch_pointer",
+          "publisher": "GNU tar",
+          "identifier": "75b03fdff48916bd0654677ed21379bdb0db016d",
+          "url": "https://cgit.git.savannah.gnu.org/cgit/tar.git/commit/?id=75b03fdff48916bd0654677ed21379bdb0db016d",
+          "inspected": false
         }
       ],
-      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md"
+      "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md",
+      "candidate_id": "G03",
+      "taxonomy_ids": [
+        "S01",
+        "S04",
+        "S12",
+        "S14"
+      ],
+      "archive_format": "TAR",
+      "representation": "PARTIAL",
+      "seed_start": "NO",
+      "isolated_execution": "NOT_IMPLEMENTED",
+      "qualification": "SOURCE_VERIFIED",
+      "execution": "NOT_RUN"
     }
   ]
 }

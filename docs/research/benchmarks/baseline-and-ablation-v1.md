@@ -11,6 +11,26 @@ A baseline is a complete alternative search policy. An ablation removes one
 specified component to test its marginal contribution. Comparing several CVEs
 or several target versions alone is neither a feedback baseline nor an ablation.
 
+## IMPLEMENTED NOW versus REQUIRES FUTURE IMPLEMENTATION
+
+| ID | Implementation at audited main | Configuration representation | Comparison purpose / isolated measurement |
+| --- | --- | --- | --- |
+| B3 | IMPLEMENTED NOW, trusted-reference path only | Existing `state-v2-or-violation-v1-uniform-parent-v1` with `uniform-generic-v1` | Combined retention control; no measured effectiveness |
+| B0 | NOT_IMPLEMENTED | Proposed `unretained-walk-v1`; rejected today | Guided evolving corpus versus unguided multi-step walk; success/censored first-hit; changes parent selection and retention together |
+| B1 | NOT_IMPLEMENTED | Proposed `state-v2-uniform-parent-v1`; rejected today | Marginal violation-novelty admission with uniform evolving parents constant; success/censored first-hit |
+| B2 | NOT_IMPLEMENTED; optional | Proposed `violation-v1-seed-bank-uniform-parent-v1`; seed-bank comparator revision required | Post-hit violation guidance; not a primary first-hit comparison |
+| A1 | NOT_IMPLEMENTED | Proposed `state-v2-no-groups-or-violation-v1-uniform-parent-v1` | Identity-group key contribution only; full evidence/other signals constant |
+| A2 | NOT_IMPLEMENTED | Proposed `state-v2-no-effects-or-violation-v1-uniform-parent-v1` | External changed-field key contribution only; object content/C2 constant |
+| A3 | NOT_IMPLEMENTED | Proposed mutation `uniform-generic-no-reorder-v1`, same B3 feedback | Swap contribution with its probability slot retained; append/duplicate remain |
+
+These are specification identifiers, not accepted JSON options. M1 grammar and
+dictionary binding is also NOT_IMPLEMENTED and must be constant in every arm.
+No general fresh-archive uniform generator exists beyond four minimal seeds;
+one-step-from-seed search would cap depth and is not substituted for B0. Adaptive
+scheduling and a path-only key are also absent. Existing `mutate()` is a uniform
+operator convenience API; it does not implement an unguided campaign mode.
+B0 tests the complete search policy, not a retention-only causal change.
+
 ## Smallest useful baseline set
 
 Use B0, B1 and B3 for the formal vulnerable-version feedback experiment.

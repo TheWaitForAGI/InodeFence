@@ -99,11 +99,24 @@ def validate_value(value: object, schema: dict, location: str) -> None:
 def validate_catalog(catalog: dict, schema: dict) -> None:
     validate_value(catalog, schema, "catalog")
     identifiers: set[str] = set()
+    candidate_ids: set[str] = set()
     for record in catalog["benchmarks"]:
         identifier = record["benchmark_id"]
         if identifier in identifiers:
             raise ValueError(f"duplicate benchmark ID: {identifier}")
         identifiers.add(identifier)
+        candidate_id = record["candidate_id"]
+        if candidate_id in candidate_ids:
+            raise ValueError(f"duplicate candidate ID: {candidate_id}")
+        candidate_ids.add(candidate_id)
+        if record["execution"] != "NOT_RUN" or record["qualification"] in {
+            "SEMANTICS_VERIFIED",
+            "ISOLATION_QUALIFIED",
+            "READY",
+        }:
+            raise ValueError(f"{identifier}: planning catalog cannot assert executed qualification")
+        if record["isolated_execution"] != "NOT_IMPLEMENTED":
+            raise ValueError(f"{identifier}: no isolated benchmark binding at audited revision")
         expected_status = {
             "primary": "selected_pending_qualification",
             "secondary": "secondary_pending",

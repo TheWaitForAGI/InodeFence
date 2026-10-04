@@ -12,6 +12,31 @@ persistent C0/C1/C2 evidence and a justified route to generic generation after
 the documented minimal gaps. Platform/range/invocation uncertainty is an explicit
 qualification gate. Diversity and reproducibility matter more than CVE count.
 
+## Admission gates and current disposition
+
+Selection means planned membership only. PASS below is documentary evidence,
+PENDING requires independent verification, and BLOCKED names missing implementation.
+READY requires every gate to pass with immutable evidence links; no ordinal score
+or famous CVE compensates for a failed gate.
+
+| Gate | Required evidence | N01 | N03 | N04 | O01 |
+| --- | --- | --- | --- | --- | --- |
+| G1 Source trust | Upstream advisory plus production fixing patch | PASS | PASS | PASS | PASS |
+| G2 Exact pin | Exact releases, artifact hashes/locks and runtime compatibility | Artifacts PENDING | Artifacts PENDING | Artifacts PENDING | Artifacts PENDING |
+| G3 Semantics | Selected arm matched to Linux/default safety settings | Relative arm PENDING | Linux PENDING | Strict/cache PENDING | Public unpack/CWD PENDING |
+| G4 Reachability | USTAR plus constructive generic reachability from benign seeds | BLOCKED M1 | BLOCKED M1 | BLOCKED M1 | BLOCKED CWD/adapter |
+| G5 Execution | Audited candidate image/config/provenance/full-path binding | BLOCKED | BLOCKED | BLOCKED | BLOCKED |
+| G6 Observation | Complete lifecycle-valid persistent C0/C1/C2 evidence | Predicted; PENDING | Predicted; PENDING | Predicted; PENDING | Predicted; PENDING |
+| G7 Expected outcome | Fresh same-input affected/fixed comparison and root-cause review | NOT EXECUTED | NOT EXECUTED | NOT EXECUTED | NOT EXECUTED |
+| G8 Explicit setup | Named owned same-device objects, CWD/root mapping, no magic state | Freeze PENDING | Freeze PENDING | Freeze PENDING | External CWD freeze PENDING |
+
+All primary admission states are IMPLEMENTATION_BLOCKED, execution NOT_RUN.
+G1 does not assert G7. Missing platform reproduction, incompatible options or a
+failed fixed comparison keeps that benchmark out of formal cells. Record the
+dataset reduction and protocol amendment instead of substituting a case.
+
+## Selection judgments
+
 Scores are ordinal prioritization judgments, not experimental results. 0 means
 poor/unestablished, 1 conditional, 2 strong evidence. Columns: root-cause
 relevance (R), filesystem-state relevance (F), contract observability (O), current

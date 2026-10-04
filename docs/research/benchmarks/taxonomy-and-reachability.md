@@ -6,6 +6,37 @@
 retain their canonical definitions. Root causes below describe why extraction
 can fail; effect labels describe what remains in the filesystem afterward.
 
+## Semantic capability taxonomy
+
+S IDs describe reusable archive semantics; R IDs below describe external root
+causes; E IDs describe effects. They are not vulnerability IDs. This table is
+source-derived analysis at the [audited revision](engine-contract-audit.md).
+YES is ability within builder bounds, PARTIAL names a narrower ability, NO names
+an exclusion, and N/A means an input-only property has no direct snapshot verdict.
+Representation ≠ reachability ≠ observation ≠ confirmed vulnerability.
+
+| ID / semantic class | Model represents? | Builder serializes? | Minimal seed contains? | Mutation v1 reaches? | Snapshot/oracle observes? | Current feedback use / blocking gap |
+| --- | --- | --- | --- | --- | --- | --- |
+| S01 Regular file | YES, arbitrary bytes/mode | YES, fixed uid/gid/mtime | YES | YES add_entry; no existing content/mode edit | Persistent bytes/digest/size/mode; protected effects C2 | State object digest/size/mode; novelty is not a bug |
+| S02 Directory | YES, explicit ordered entry | YES, raw trailing spelling | YES one directory-bearing seed | PARTIAL inherit/duplicate/affix rename; no new-directory operator | Persistent lstat type/mode; namespace C0 if external | State paths/type/mode; arbitrary directory components absent |
+| S03 Hardlink | YES unresolved text | YES within linkname limit | YES preceding internal source | YES add_hardlink, target affixes; external-name addressing blocked | lstat groups; persistent sentinel equality C1; link metadata C2 | Groups, regular nlink, fingerprints; symlink referents excluded |
+| S04 Symlink | YES unresolved text | YES within linkname limit | YES preceding internal target | YES add_symlink/target affixes; arbitrary composition absent | Raw readlink/lstat, no referent walk; protected subsequent write C2 | Raw normalized text/type; outside link alone has no C1 verdict |
+| S05 Duplicate path | YES duplicates preserved | YES ordered duplicates | NO | YES duplicate_entry; PARTIAL different-type same-name alignment | Only surviving type/effect, no overwrite event history | Final state/fingerprints; intermediate duplicates invisible |
+| S06 Entry ordering | YES ordered tuple | YES exact order | YES internal links follow file | YES swap unequal values; duplicate insertion also varies order | Consequences only, not executed operation sequence | Useful only when final state/effect differs |
+| S07 Parent-relative path | YES raw text | YES | NO | YES affixes/new prefixes | Persistent scoped effect C0/C2; spelling alone not violation | Observed path/effect keys; default sentinel components absent |
+| S08 Dot-relative path | YES raw text | YES | NO | YES affixes/new prefixes | Canonical observed paths merge equivalent outcomes | No novelty merely for different TAR spelling |
+| S09 Absolute-looking path | YES raw text | YES within USTAR fields | NO | YES slash prefixes, including repeated roots | Only actual controlled-run effects; no outside-sandbox observation | No absolute input novelty; random full run address is not generically available |
+| S10 Link-target mutation | YES nonempty text for links | YES ≤100 UTF-8 bytes | PARTIAL benign internal targets | PARTIAL copy existing path on creation, then affixes; no component substitution | Link text and surviving relationship/effect | Text/groups/effects; M1 component composition proposed |
+| S11 Cross-entry relationship | YES ordered related entries | YES; no dependency solving | YES simple internal link pairs | PARTIAL existing-path links/swaps; no dependency-aware proposal | Final identity groups, link text and effects | Generic groups/fingerprints; transient relationship absent |
+| S12 Pre-existing filesystem objects | NO setup in ArchiveCase | N/A archive-independent | N/A | NO arbitrary tree/session setup; external sentinels already supplied by runtime | Existing protected regular sentinels YES; other setup NOT_IMPLEMENTED | Protected paths/effects already present; reused extraction trees out of v1 |
+| S13 Replacement / type transition | YES distinct entries sharing path | YES | NO | PARTIAL type/path combinations through add/duplicate/rename; no conversion operator | Persistent replacement C0/C2; intermediate type history absent | Final objects/effect labels; no generic name replacement today |
+| S14 External object identity / effect | PARTIAL describes operations, not runtime object identities | YES for four supported entry types | NO external relationship | NO selected default sentinel effect; required names outside output language | C1 surviving alias, C2 protected changes, C0 persistent external namespace | State relations/effects plus independent violation novelty; no transient/all-object claim |
+
+Serializable semantic shapes remain subject to exact byte lengths and numeric
+field limits; model and builder failures are infrastructure exceptions today.
+The builder creates archive operations; the target decides their filesystem
+meaning. The seed bank does not imply all seed structures coexist in one parent.
+
 ## Root-cause classes
 
 | Class | Plain-language meaning / technical definition | What changes in the archive | Required filesystem state | Effect and InodeFence relevance |
@@ -109,7 +140,7 @@ N03 requires link target component composition; N04 requires renaming its
 existing directory seed to collide with a link. Pin the complete dictionary,
 sandbox-visible layout, grammar and probabilities in configuration.
 Never substitute run paths after hashing/export without recording the logical
-input and actual TAR mapping. Prefer relative names for selected structures: the unmerged container PR #36
+input and actual TAR mapping. Prefer relative names for selected structures: the merged container backend
 preserves the identical random absolute run path, rather than a stable alias.
 Absolute-address experiments need explicit input/run-context binding or a
 qualified mount mapping, and are optional; do not request a competing backend.

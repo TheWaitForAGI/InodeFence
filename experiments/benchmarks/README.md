@@ -12,6 +12,46 @@ observable effect and C0/C1/C2 mapping, required current/planned capabilities,
 structural versus complete benchmark reachability, observer needs, selection,
 qualification status, uncertainties and typed source references.
 
+The catalog's `engine_revision` is the audited main SHA; generation, observation
+and execution fields must be rechecked after relevant source changes.
+`candidate_id` (N/O/G series), descriptive `benchmark_id`, R root-cause ID and S
+semantic IDs are stable joins, not display names or CVE-based oracle rules.
+`representation`, `seed_start`, `structure_reachability`, `current_reachability`
+and `isolated_execution` answer different questions. Seed proximity cannot
+establish complete benchmark reachability.
+
+## Independent state fields
+
+`selection` and its legacy `status` record scope/prioritization only.
+`qualification` records evidence gates, independent of `execution`:
+
+| Qualification | Meaning |
+| --- | --- |
+| PROPOSED | Candidate nominated; source gates incomplete |
+| SOURCE_VERIFIED | Trustworthy metadata inspected; version/platform fields may remain UNKNOWN |
+| SEMANTICS_VERIFIED | Selected effect independently qualified with retained evidence; source prose alone does not suffice |
+| IMPLEMENTATION_BLOCKED | Concrete engine/config/setup prerequisites absent; source evidence retained |
+| ISOLATION_QUALIFIED | Candidate image/invocation/full path has approved boundary evidence; helper success alone does not suffice |
+| READY | Every Set v1 gate passed for exact version/setup/policy with linked evidence |
+
+These are gate summaries, not a monotonic score; source/engine changes can
+invalidate qualification. Admission also requires the per-gate records in the
+[qualification template](result-templates.md); one state cannot replace them.
+
+| Execution | Meaning |
+| --- | --- |
+| NOT_RUN | No benchmark qualification/evaluation execution |
+| QUALIFICATION_ONLY | Authorized qualification performed; no formal evaluation |
+| EVALUATION_RUN | Formal executions exist; evidence validation remains separate |
+
+Current primaries are IMPLEMENTATION_BLOCKED; excluded candidates remain
+SOURCE_VERIFIED with excluded_v1 scope. G01 remains SOURCE_VERIFIED with unresolved
+pin/root gates. All 15 execution states are NOT_RUN, all candidate isolated
+bindings NOT_IMPLEMENTED, and none is READY. Helper validation inherited from main
+does not change these fields. The planning-only validator rejects executed
+qualification/READY/evaluation assertions; future ingestion needs a reviewed
+schema/state transition and retained gate evidence.
+
 `selected_pending_qualification` means chosen for implementation planning, not
 ready to execute or validated. `secondary_pending` preserves optional candidates;
 `excluded_v1` means intentionally outside this evaluation. Date is the source's
@@ -45,6 +85,6 @@ files. Schema/catalog changes require re-running both commands. Never deserializ
 this catalog as execution settings: actual future configs need audited adapters,
 locked artifacts, complete environment, policy binding and approved isolation.
 
-[Result templates](result-templates.md) contain headers only. Raw future datasets
+[Result templates](result-templates.md) contain empty tables and placeholder records only. Raw future datasets
 belong in ignored experiments/raw with immutable shared-storage identifiers and
 checksums; validated summaries follow [summaries rules](../summaries/README.md).

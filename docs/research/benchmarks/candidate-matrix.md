@@ -15,6 +15,40 @@ result, such as an internal name sharing an external inode. Similar effects do
 not imply identical bugs; several identifiers for the same mistake do not imply
 independent semantic coverage.
 
+## Engine fit at the audited main
+
+Machine fields are canonical in the catalog: `candidate_id` joins this index to
+stable `benchmark_id`; S IDs join the [semantic taxonomy](taxonomy-and-reachability.md).
+All cases are TAR except O03 (OCI blob-title input). Representation is logical
+input ability within USTAR bounds, not proof of target behavior. Seed proximity
+means some benign types exist, not an attack-bearing seed. Reachability includes
+actual controlled setup; the taxonomy separately records structural reachability.
+Observability concerns a predicted persistent effect only.
+
+| Candidate | ArchiveCase represents semantics? | Minimal seeds start near them? | Mutation/setup reaches benchmark now? | Oracle observes selected effect? | Future isolated Linux route / qualification |
+| --- | --- | --- | --- | --- | --- |
+| N01 | YES | PARTIAL internal hardlink | NO default sentinel address | YES hardlink arm; PARTIAL whole advisory | Node image/binding pending; IMPLEMENTATION_BLOCKED |
+| N02 | YES | PARTIAL internal hardlink | NO addressing/composition | YES persistent alias | Node image/binding pending; IMPLEMENTATION_BLOCKED |
+| N03 | YES | PARTIAL separate link seeds | NO addressing/chain composition | YES persistent alias | Node binding plus Linux gate; IMPLEMENTATION_BLOCKED |
+| N04 | YES | PARTIAL directory seed | NO addressing/type-path alignment | YES protected write/C0 namespace | Node binding plus runtime/strict qualification; IMPLEMENTATION_BLOCKED |
+| N05 | YES | PARTIAL regular file | NO selected external address | YES controlled persistent effect | Node binding plus absolute input/run binding; IMPLEMENTATION_BLOCKED |
+| N06 | YES POSIX arm | PARTIAL directory seed | NO backslash vocabulary/addressing | YES persistent POSIX effect | Node binding/grammar missing; IMPLEMENTATION_BLOCKED |
+| N07 | YES raw names | NO equivalent-name class | NO alphabet/platform | PARTIAL on required platform | Linux v1 platform gate failed; SOURCE_VERIFIED, excluded |
+| N08 | YES raw names/order | NO concurrency/equivalence | NO platform/race | PARTIAL persistent effect only | Linux v1 platform/race gate failed; SOURCE_VERIFIED, excluded |
+| N09 | NO PAX/GNU metadata | NO | NO encoding | NO parser-disagreement verdict | Encoding/measurement scope gate failed; SOURCE_VERIFIED, excluded |
+| O01 | YES | PARTIAL hardlink seed | PARTIAL generic-name sentinel possible; CWD/adapter absent | YES persistent alias | ORAS adapter/external CWD pending; IMPLEMENTATION_BLOCKED |
+| O02 | YES | PARTIAL link/file seeds | NO composition/addressing | YES persistent protected write | ORAS binding/exact fix unresolved; IMPLEMENTATION_BLOCKED |
+| O03 | NO non-TAR input/setup | NO | NO | PARTIAL with extra setup | Outside TAR v1; SOURCE_VERIFIED, excluded |
+| G01 | YES types; invocation UNKNOWN | PARTIAL link/file seeds | UNKNOWN pin/root semantics | PARTIAL narrower boundary | GNU adapter/pair/root gates pending; SOURCE_VERIFIED |
+| G02 | YES regular member | PARTIAL regular file | NO addressing; invocation UNKNOWN | YES persistent controlled effect | GNU adapter/member-selection pin pending; IMPLEMENTATION_BLOCKED |
+| G03 | PARTIAL entries, no reused session | NO initial tree | NO fresh-empty setup | PARTIAL with reused setup | Existing-state scope gate failed; SOURCE_VERIFIED, excluded |
+
+Container helper validation is a shared infrastructure prerequisite, not candidate
+qualification. Every candidate `isolated_execution` is NOT_IMPLEMENTED and every
+execution state is NOT_RUN. Unknown platform/version/invocation facts remain
+UNKNOWN; no third-party target is TRUSTED_REFERENCE. These claims become stale
+when the [audited engine](engine-contract-audit.md) changes.
+
 ## Candidates and version evidence
 
 | ID / target | Component and root cause | Advisory date; reported affected → fixed | Minimum semantic requirements and expected effect | Disposition / uncertainty |
@@ -118,7 +152,8 @@ formal use on post-audit qualification. A URL is not a claim that its PoC ran.
 ### G03
 
 - Official [CVE record](https://www.cve.org/CVERecord?id=CVE-2025-45582): reported two-extraction scenario.
-- Upstream maintainer [Paul Eggert, bug-tar 2025-08-11](https://lists.gnu.org/archive/html/bug-tar/2025-08/msg00012.html): says scenario violates documented usage assumptions; inspected mailing-list text.
+- Upstream maintainer [Paul Eggert, bug-tar 2025-08-11](https://lists.gnu.org/archive/html/bug-tar/2025-08/msg00012.html): says scenario violates documented usage assumptions; previously inspected mailing-list text.
+- Later upstream [Paul Eggert, 2025-11-15](https://lists.gnu.org/r/bug-tar/2025-11/msg00014.html) identifies hardening at [75b03fd](https://cgit.git.savannah.gnu.org/cgit/tar.git/commit/?id=75b03fdff48916bd0654677ed21379bdb0db016d) and says additional patches are required. This is a source-backed patch pointer, not an inspected complete patch set or qualified fixed release. The reused-state exclusion still applies.
 - Upstream [manual: integrity](https://www.gnu.org/software/tar/manual/html_node/Integrity.html): usage-policy reference from maintainer; direct retrieval timed out this pass. No claim of independently inspecting that page.
 
 ## Scope screening

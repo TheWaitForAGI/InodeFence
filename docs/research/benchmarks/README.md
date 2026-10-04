@@ -5,6 +5,12 @@ requested by the maintainer's Task Contract. No production engine changes, CVE
 execution, exploit archives, target installation or generated-input campaigns
 belong to this branch. Keep the Draft PR unmerged while infrastructure moves.
 
+The final audited source revision is recorded in the [engine audit](engine-contract-audit.md).
+Implemented repository behavior, upstream source facts, source-derived reachability
+predictions and future experiment results have separate evidence labels. No benchmark
+qualification, pilot, rediscovery, replay, baseline, ablation or evaluation has run.
+Inherited engineering fixture/helper tests are not benchmark results.
+
 Read in this order:
 
 1. [Engine contract audit](engine-contract-audit.md): capabilities and evidence limits.
@@ -23,6 +29,14 @@ They do not change the [security contracts](../design/security-contracts.md),
 Unvalidated predictions are labeled as such; selected cases still require
 post-audit Linux qualification. A failed qualification is reported and does not
 silently become another benchmark.
+
+Admission follows the [Set v1 gates](benchmark-set-v1.md): verify sources and
+exact release pairs, describe semantics and generic reachability, finish approved
+isolated binding, independently qualify the effect and fixed comparator, then
+attach complete evidence before READY. Selection is prioritization only.
+The [catalog state definitions](../../../experiments/benchmarks/README.md) keep
+qualification independent of execution; missing capability remains
+IMPLEMENTATION_BLOCKED and all current execution states remain NOT_RUN.
 
 The complete planning package is kept in one Draft PR. Final state and review
 evidence are recorded in the handoff; no implementation may begin until isolation,

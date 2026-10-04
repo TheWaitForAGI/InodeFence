@@ -292,3 +292,12 @@ Existing arbitrary-predicate minimizer는 유지한다. [Binding 의미와 한�
 budget-consuming trial을 만들지 않는다. `minimize_violation`은 이 policy를 기본으로 기록한다.
 Existing generic v1은 `minimize_case` default 및 explicit enum으로 재현 가능하다.
 [ASCII/UTF-8 boundary와 policy 의미](research/design/generic-minimizer-v1.md)를 따른다.
+
+### Policy-aware bounded campaign
+
+`run_search_campaign`과 frozen `SearchCampaignConfig`로 B0/B1/B3 × FULL/A1/A2 × legacy/M1/A3를
+직접 실행할 수 있다. Existing campaign의 fail-closed isolation/provenance gate를 공유하며 raw
+evidence와 diagnostic/admission decision을 새 result/step model에 보존한다. Legacy B3 lineage와
+기존 schema/config ID는 유지한다. Unit composition과 tiny trusted Python reference 실행을 검증했다.
+ExperimentConfig, manifest/journal/readers와 validated comparison binding은 아직 별도 dependency다.
+[Caller API와 정확한 boundary](research/design/search-policy-core-v1.md)를 따른다.

@@ -31,7 +31,7 @@ builder.build_tar → disposable runtime → before snapshot
 | [targets](targets/README.md) | 실제 extractor 실행 |
 | [observer](observer/README.md) | filesystem 사실 관찰과 비교 |
 | [oracle](oracle/README.md) | Security Contract 판정 |
-| [feedback](feedback/README.md) | signature v2, 독립 violation novelty, in-memory Corpus v1과 uniform parent 선택 |
+| [feedback](feedback/README.md) | signature v3, 독립 violation novelty, in-memory Corpus v1과 uniform parent 선택 |
 
 Observer는 사실만 기록하고 Oracle은 사실에 계약을 적용한다. Signature 계산은 계약 판정과 독립적이다. Pipeline은 각 알고리즘을 호출할 뿐 target 옵션이나 mutation 전략을 소유하지 않는다.
 
@@ -85,7 +85,7 @@ ExperimentConfig v1/v2는 seed/profile/policy/target/sentinel/environment-profil
 Stored experiment_config_id는 manifest에 보존하며 actual source/platform provenance와 분리한다.
 현재 config CLI는 safe reference만 실행한다. [설정 계약](../../experiments/configs/README.md)을 따른다.
 
-Audit Phases 1–2와 Global Findings Freeze v1을 완료했고 Phase-3 engine fix review를 기다린다. Pinned Node image,
+Pre-audit freeze, Audit Phases 1–2와 Global Findings Freeze v1을 완료했고 Phase-3 Runtime #45 / Engine #46 fixes는 main `d1982e4`에 병합됐다. Phase-4 global closeout과 문서 disposition은 아직 대기 중이다. Pinned Node image,
 contained fixtures, frozen config/provenance와 8회 benign full-path smoke, focused lifecycle,
-Linux staged export 및 dependency direction은 pre-audit revision에서 검증했다. 이 branch는 EN-001–005를 수정하며
-security evaluation은 아직 실행하지 않았다. [준비 상태와 다음 작업](../../docs/STATUS.md)을 따른다.
+Linux staged export 및 dependency direction은 pre-audit revision에서 검증했다. Merged fixes의 functional re-audit는 통과했고 이 PR #35는 잔여 EN-005/006 문서·계획 correction을 제안한다.
+Benchmark qualification/security evaluation은 NOT_RUN이다. [준비 상태와 다음 작업](../../docs/STATUS.md)을 따른다.

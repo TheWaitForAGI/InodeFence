@@ -68,7 +68,7 @@ InodeFence는 이런 **object identity와 external effect를 fuzzing feedback으
 
 별도 [disposable Linux container backend](../src/inodefence/execution/README.md)의 benign
 helper validation을 추가했다. 기존 Dev Container 권한은 유지하고 trusted host stdio
-broker로 sibling target을 실행한다. Node image/contained invocation/config/provenance binding을 구현했고 tiny benign campaign8회 full-path를 검증했다. Audit Phases 1–2와 Global Findings Freeze v1을 완료했고 현재는 Phase-3 engine fix review 단계다.
+broker로 sibling target을 실행한다. Node image/contained invocation/config/provenance binding을 구현했고 tiny benign campaign8회 full-path를 검증했다. Pre-audit freeze, Audit Phases 1–2와 Global Findings Freeze v1을 완료했고 Phase-3 Runtime #45 / Engine #46 fixes가 main `d1982e4`에 병합됐다. 현재는 Phase-4 global closeout 대기 단계다.
 
 항상 최신 상태는 [STATUS.md](STATUS.md)를 본다.
 
@@ -85,9 +85,14 @@ Layer 5  Feedback / Corpus         ✅ v1: 독립 novelty / in-memory / uniform 
 Layer 6  Experiment / Paper        미진행
 ```
 
-현재 상태는 **AUDIT PHASES 1–2 COMPLETE — PHASE-3 FIX REVIEW PENDING**이다.
-이 branch는 EN-001–005의 serialization/evidence/signature/documentation fixes를 구현한다.
-[Frozen evidence와 fix mapping](audits/engine-findings-fix-v1.md)을 따른다.
+현재 상태는 **AUDIT PHASES 1–3 COMPLETE — PHASE-4 GLOBAL CLOSEOUT PENDING**이다.
+Merged engine fixes는 lossless-or-reject USTAR, public evidence validation,
+exact StateChange labels와 signature v3를 제공한다. Runtime fixes는 artifact identity
+observation, actual invocation 검증과 Docker CLI descendant lifecycle을 강화했다.
+[Phase-3 frozen evidence와 fix mapping](audits/engine-findings-fix-v1.md)은 역사적 fix 기록이다.
+[Final Engine/Research 감사 #47](https://github.com/TheWaitForAGI/InodeFence/pull/47)은
+audited main의 잔여 EN-005 문서 drift를 기록하며 이 PR #35는 수정 제안이다.
+이 문서/연구 계획의 branch 갱신은 main merge나 global GO를 의미하지 않는다.
 Contained Node의 기존 benign infrastructure 검증은 benchmark qualification이 아니며
 benchmark/security evaluation은 아직 수행하지 않았다.
 [Pre-audit 검증 기록과 한계](../experiments/summaries/pre-audit-readiness-v1.md)를 따른다.
@@ -139,7 +144,7 @@ src/inodefence/mutator/     TAR entry 변형
 src/inodefence/targets/     공통 실행 경계 / Python reference / contained node-tar
 src/inodefence/observer/    filesystem 상태 관찰
 src/inodefence/oracle/      security contract 판정
-src/inodefence/feedback/    signature v2 / semantic fingerprints / in-memory Corpus v1
+src/inodefence/feedback/    signature v3 / semantic fingerprints / in-memory Corpus v1
 
 tests/                      코드 테스트
 scripts/                    개발/실험 보조 명령

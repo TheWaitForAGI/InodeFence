@@ -26,7 +26,9 @@
 
 ## 현재 상태
 
-design 문서는 있고 나머지 세 하위 폴더에는 연구 내용이 아직 없다.
+design 문서와 [benchmark/evaluation 준비 v1](benchmarks/README.md)이 있다.
+Benchmark 문서는 출처 기반 계획이며 실험 결과나 benchmark readiness를 의미하지 않는다.
+prior-work와 meeting-notes에는 아직 별도 연구 내용이 없다.
 
 ## 파일 배치 규칙
 

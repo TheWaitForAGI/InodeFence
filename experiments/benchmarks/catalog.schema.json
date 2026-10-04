@@ -277,7 +277,8 @@
                     "official_database",
                     "vendor_advisory",
                     "upstream_policy",
-                    "upstream_source"
+                    "upstream_source",
+                    "official_registry"
                   ]
                 },
                 "publisher": {
@@ -386,6 +387,106 @@
               "QUALIFICATION_ONLY",
               "EVALUATION_RUN"
             ]
+          },
+          "artifact_metadata": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "ecosystem": {
+                  "type": "string",
+                  "enum": [
+                    "npm",
+                    "go"
+                  ]
+                },
+                "version": {
+                  "type": "string",
+                  "pattern": "^\\d+\\.\\d+\\.\\d+$"
+                },
+                "upstream_tag": {
+                  "type": "string",
+                  "pattern": "^v\\d+\\.\\d+\\.\\d+$"
+                },
+                "upstream_commit": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{40}$"
+                },
+                "registry_url": {
+                  "type": "string",
+                  "pattern": "^https://"
+                },
+                "declared_runtime": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "integrity": {
+                  "type": "string",
+                  "pattern": "^sha512-[A-Za-z0-9+/]{86}==$"
+                },
+                "shasum": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{40}$"
+                },
+                "tarball_url": {
+                  "type": "string",
+                  "pattern": "^https://registry\\.npmjs\\.org/tar/-/tar-\\d+\\.\\d+\\.\\d+\\.tgz$"
+                },
+                "upstream_lock_sha256": {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "module_sum": {
+                  "type": "string",
+                  "pattern": "^h1:[A-Za-z0-9+/]{43}=$"
+                },
+                "go_mod_sum": {
+                  "type": "string",
+                  "pattern": "^h1:[A-Za-z0-9+/]{43}=$"
+                }
+              },
+              "required": [
+                "ecosystem",
+                "version",
+                "upstream_tag",
+                "upstream_commit",
+                "registry_url",
+                "declared_runtime"
+              ],
+              "additionalProperties": false
+            },
+            "minItems": 2,
+            "uniqueItems": true
+          },
+          "static_runtime": {
+            "type": "object",
+            "properties": {
+              "runtime": {
+                "type": "string",
+                "minLength": 1
+              },
+              "classification": {
+                "type": "string",
+                "enum": [
+                  "STATICALLY COMPATIBLE",
+                  "STATICALLY INCOMPATIBLE",
+                  "REQUIRES RUNTIME QUALIFICATION",
+                  "UNKNOWN"
+                ]
+              },
+              "runtime_qualification": {
+                "type": "string",
+                "enum": [
+                  "NOT_RUN"
+                ]
+              }
+            },
+            "required": [
+              "runtime",
+              "classification",
+              "runtime_qualification"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [

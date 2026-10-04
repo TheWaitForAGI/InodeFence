@@ -53,7 +53,8 @@
       ],
       "uncertainties": [
         "Linux qualification pending; symlink-only arm excluded from rediscovery; current grammar cannot spell selected sentinel address.",
-        "Relative hardlink sanitation arm inferred from inspected 7.5.2 source/fix; qualify correspondence; advisory describes absolute arm."
+        "Relative hardlink sanitation arm inferred from inspected 7.5.2 source/fix; qualify correspondence; advisory describes absolute arm.",
+        "Official package identities and upstream tag ancestry verified statically; benchmark dependency lock/images/worker pins and runtime/strict behavior remain unqualified."
       ],
       "sources": [
         {
@@ -76,6 +77,20 @@
           "identifier": "v7.5.2 src/unpack.ts",
           "url": "https://github.com/isaacs/node-tar/blob/v7.5.2/src/unpack.ts",
           "inspected": true
+        },
+        {
+          "source_type": "official_registry",
+          "publisher": "npm registry",
+          "identifier": "tar@7.5.2 dist/engines/gitHead",
+          "url": "https://registry.npmjs.org/tar/7.5.2",
+          "inspected": true
+        },
+        {
+          "source_type": "official_registry",
+          "publisher": "npm registry",
+          "identifier": "tar@7.5.3 dist/engines/gitHead",
+          "url": "https://registry.npmjs.org/tar/7.5.3",
+          "inspected": true
         }
       ],
       "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md",
@@ -93,7 +108,38 @@
       "seed_start": "PARTIAL",
       "isolated_execution": "NOT_IMPLEMENTED",
       "qualification": "IMPLEMENTATION_BLOCKED",
-      "execution": "NOT_RUN"
+      "execution": "NOT_RUN",
+      "artifact_metadata": [
+        {
+          "ecosystem": "npm",
+          "version": "7.5.2",
+          "upstream_tag": "v7.5.2",
+          "upstream_commit": "d9ea73a9b3fc0a2f9734fda65279f48c7cc99f28",
+          "registry_url": "https://registry.npmjs.org/tar/7.5.2",
+          "integrity": "sha512-7NyxrTE4Anh8km8iEy7o0QYPs+0JKBTj5ZaqHg6B39erLg0qYXN3BijtShwbsNSvQ+LN75+KV+C4QR/f6Gwnpg==",
+          "shasum": "115c061495ec51ff3c6745ff8f6d0871c5b1dedc",
+          "tarball_url": "https://registry.npmjs.org/tar/-/tar-7.5.2.tgz",
+          "declared_runtime": ">=18",
+          "upstream_lock_sha256": "7d88a2eee8bcfee0285e2d48f8e3a7ae3d03842c55db56ff42ea3b817d9bc744"
+        },
+        {
+          "ecosystem": "npm",
+          "version": "7.5.3",
+          "upstream_tag": "v7.5.3",
+          "upstream_commit": "03138441b238f48070fb22824b2529c445bc70c7",
+          "registry_url": "https://registry.npmjs.org/tar/7.5.3",
+          "integrity": "sha512-ENg5JUHUm2rDD7IvKNFGzyElLXNjachNLp6RaGf4+JOgxXHkqA+gq81ZAMCUmtMtqBsoU62lcp6S27g1LCYGGQ==",
+          "shasum": "e1a41236e32446f75e63b720222112c4ffe5b3a1",
+          "tarball_url": "https://registry.npmjs.org/tar/-/tar-7.5.3.tgz",
+          "declared_runtime": ">=18",
+          "upstream_lock_sha256": "f8c16ee22830cd8384a542df56646e20dbc2b6b03ce8b1526c87443e989e6b85"
+        }
+      ],
+      "static_runtime": {
+        "runtime": "Node 22.22.0",
+        "classification": "STATICALLY COMPATIBLE",
+        "runtime_qualification": "NOT_RUN"
+      }
     },
     {
       "benchmark_id": "node-hardlink-base",
@@ -232,7 +278,8 @@
         "Complete before/after sandbox snapshots; no harness writes between captures; observe configured protected objects."
       ],
       "uncertainties": [
-        "Published demonstration on macOS; Linux support inferred, not validated; composition grammar incomplete."
+        "Published demonstration on macOS; Linux support inferred, not validated; composition grammar incomplete.",
+        "Official package identities and upstream tag ancestry verified statically; benchmark dependency lock/images/worker pins and runtime/strict behavior remain unqualified."
       ],
       "sources": [
         {
@@ -255,6 +302,20 @@
           "identifier": "2cb1120bcefe28d7ecc719b41441ade59c52e384",
           "url": "https://github.com/isaacs/node-tar/commit/2cb1120bcefe28d7ecc719b41441ade59c52e384",
           "inspected": true
+        },
+        {
+          "source_type": "official_registry",
+          "publisher": "npm registry",
+          "identifier": "tar@7.5.7 dist/engines/gitHead",
+          "url": "https://registry.npmjs.org/tar/7.5.7",
+          "inspected": true
+        },
+        {
+          "source_type": "official_registry",
+          "publisher": "npm registry",
+          "identifier": "tar@7.5.8 dist/engines/gitHead",
+          "url": "https://registry.npmjs.org/tar/7.5.8",
+          "inspected": true
         }
       ],
       "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md",
@@ -272,7 +333,38 @@
       "seed_start": "PARTIAL",
       "isolated_execution": "NOT_IMPLEMENTED",
       "qualification": "IMPLEMENTATION_BLOCKED",
-      "execution": "NOT_RUN"
+      "execution": "NOT_RUN",
+      "artifact_metadata": [
+        {
+          "ecosystem": "npm",
+          "version": "7.5.7",
+          "upstream_tag": "v7.5.7",
+          "upstream_commit": "4a37eb9a1cf1137df4eb70c5c7f849f412ff3cdb",
+          "registry_url": "https://registry.npmjs.org/tar/7.5.7",
+          "integrity": "sha512-fov56fJiRuThVFXD6o6/Q354S7pnWMJIVlDBYijsTNx6jKSE4pvrDTs6lUnmGvNyfJwFQQwWy3owKz1ucIhveQ==",
+          "shasum": "adf99774008ba1c89819f15dbd6019c630539405",
+          "tarball_url": "https://registry.npmjs.org/tar/-/tar-7.5.7.tgz",
+          "declared_runtime": ">=18",
+          "upstream_lock_sha256": "7167a1fefb651016c67718543871d4875368a2e158e99d23a3443343979b9809"
+        },
+        {
+          "ecosystem": "npm",
+          "version": "7.5.8",
+          "upstream_tag": "v7.5.8",
+          "upstream_commit": "6b8eba0ef367ac937e703238daa6df94ae6f823f",
+          "registry_url": "https://registry.npmjs.org/tar/7.5.8",
+          "integrity": "sha512-SYkBtK99u0yXa+IWL0JRzzcl7RxNpvX/U08Z+8DKnysfno7M+uExnTZH8K+VGgShf2qFPKtbNr9QBl8n7WBP6Q==",
+          "shasum": "6bbdfdb487914803d401bab6a2abb100aaa253d5",
+          "tarball_url": "https://registry.npmjs.org/tar/-/tar-7.5.8.tgz",
+          "declared_runtime": ">=18",
+          "upstream_lock_sha256": "c407e007ea0eb574469440b3639e5d42fedc6b41d1a70d4a2b9dedfc599a791f"
+        }
+      ],
+      "static_runtime": {
+        "runtime": "Node 22.22.0",
+        "classification": "STATICALLY COMPATIBLE",
+        "runtime_qualification": "NOT_RUN"
+      }
     },
     {
       "benchmark_id": "node-cache-transition",
@@ -328,7 +420,8 @@
         "Complete before/after sandbox snapshots; no harness writes between captures; observe configured protected objects."
       ],
       "uncertainties": [
-        "Node runtime compatibility and strict-mode class behavior pending; current collision names/destination vocabulary incomplete."
+        "Node runtime compatibility and strict-mode class behavior pending; current collision names/destination vocabulary incomplete.",
+        "Official package identities and upstream tag ancestry verified statically; benchmark dependency lock/images/worker pins and runtime/strict behavior remain unqualified."
       ],
       "sources": [
         {
@@ -343,6 +436,20 @@
           "publisher": "isaacs/node-tar",
           "identifier": "9dbdeb6df8e9dbd96fa9e84341b9d74734be6c20",
           "url": "https://github.com/isaacs/node-tar/commit/9dbdeb6df8e9dbd96fa9e84341b9d74734be6c20",
+          "inspected": true
+        },
+        {
+          "source_type": "official_registry",
+          "publisher": "npm registry",
+          "identifier": "tar@6.1.1 dist/engines/gitHead",
+          "url": "https://registry.npmjs.org/tar/6.1.1",
+          "inspected": true
+        },
+        {
+          "source_type": "official_registry",
+          "publisher": "npm registry",
+          "identifier": "tar@6.1.2 dist/engines/gitHead",
+          "url": "https://registry.npmjs.org/tar/6.1.2",
           "inspected": true
         }
       ],
@@ -362,7 +469,38 @@
       "seed_start": "PARTIAL",
       "isolated_execution": "NOT_IMPLEMENTED",
       "qualification": "IMPLEMENTATION_BLOCKED",
-      "execution": "NOT_RUN"
+      "execution": "NOT_RUN",
+      "artifact_metadata": [
+        {
+          "ecosystem": "npm",
+          "version": "6.1.1",
+          "upstream_tag": "v6.1.1",
+          "upstream_commit": "1e33534e1e96ca6385b3a4749876aea2cda61cea",
+          "registry_url": "https://registry.npmjs.org/tar/6.1.1",
+          "integrity": "sha512-GG0R7yt/CQkvG4fueXDi52Zskqxe2AyRJ+Wm54yqarnBgcX3qRIWh10qLVAAN+mlPFGTfP5UxvD3Fbi11UOTUQ==",
+          "shasum": "4d7da4b132b334bb8c175ed1de466fe9157ea0eb",
+          "tarball_url": "https://registry.npmjs.org/tar/-/tar-6.1.1.tgz",
+          "declared_runtime": ">= 10",
+          "upstream_lock_sha256": "22392cf7740ce688a1aec82b33e6723ebc90bf8f0d21eb0bc54170afa7c404ae"
+        },
+        {
+          "ecosystem": "npm",
+          "version": "6.1.2",
+          "upstream_tag": "v6.1.2",
+          "upstream_commit": "3f7b20097e0daba10441507becbf5b87c6b83b8b",
+          "registry_url": "https://registry.npmjs.org/tar/6.1.2",
+          "integrity": "sha512-EwKEgqJ7nJoS+s8QfLYVGMDmAsj+StbI2AM/RTHeUSsOw6Z8bwNBRv5z3CY0m7laC5qUAqruLX5AhMuc5deY3Q==",
+          "shasum": "1f045a90a6eb23557a603595f41a16c57d47adc6",
+          "tarball_url": "https://registry.npmjs.org/tar/-/tar-6.1.2.tgz",
+          "declared_runtime": ">= 10",
+          "upstream_lock_sha256": "3741094775f59337455865caa6d90c908feb6047730d72e23644e3b1ad360b18"
+        }
+      ],
+      "static_runtime": {
+        "runtime": "Node 22.22.0",
+        "classification": "STATICALLY COMPATIBLE",
+        "runtime_qualification": "NOT_RUN"
+      }
     },
     {
       "benchmark_id": "node-repeated-root",
@@ -803,7 +941,9 @@
         "Complete before/after sandbox snapshots; no harness writes between captures; observe configured protected objects."
       ],
       "uncertainties": [
-        "Upstream and ecosystem affected ranges differ; 2.6.0 specifically selected; offline public wrapper/CWD binding absent."
+        "Upstream advisory specifically names v2.6.0; current reviewed GitHub API gives <=2.6.1 and first patched 2.6.2, consistent with v2 repair/release; wider historical range not independently executed.",
+        "Public offline Store.Push route source-verified; deterministic gzip/title namespace transport, wrapper/CWD binding and actual effect remain unimplemented/unqualified.",
+        "Fixed go.mod requires Go 1.25.0; common exact compiler/base/image/wrapper identity pending. Release summary dependency text differs from tagged go.mod; source pin takes precedence for builds."
       ],
       "sources": [
         {
@@ -826,6 +966,41 @@
           "identifier": "v2.6.2",
           "url": "https://github.com/oras-project/oras-go/releases/tag/v2.6.2",
           "inspected": true
+        },
+        {
+          "source_type": "official_registry",
+          "publisher": "Go module proxy",
+          "identifier": "oras.land/oras-go/v2 v2.6.0 origin",
+          "url": "https://proxy.golang.org/oras.land/oras-go/v2/@v/v2.6.0.info",
+          "inspected": true
+        },
+        {
+          "source_type": "official_registry",
+          "publisher": "Go checksum database",
+          "identifier": "oras.land/oras-go/v2 v2.6.0 h1 checksums",
+          "url": "https://sum.golang.org/lookup/oras.land/oras-go/v2@v2.6.0",
+          "inspected": true
+        },
+        {
+          "source_type": "official_registry",
+          "publisher": "Go module proxy",
+          "identifier": "oras.land/oras-go/v2 v2.6.2 origin",
+          "url": "https://proxy.golang.org/oras.land/oras-go/v2/@v/v2.6.2.info",
+          "inspected": true
+        },
+        {
+          "source_type": "official_registry",
+          "publisher": "Go checksum database",
+          "identifier": "oras.land/oras-go/v2 v2.6.2 h1 checksums",
+          "url": "https://sum.golang.org/lookup/oras.land/oras-go/v2@v2.6.2",
+          "inspected": true
+        },
+        {
+          "source_type": "official_database",
+          "publisher": "GitHub Advisory Database",
+          "identifier": "GHSA-fxhp-mv3v-67qp current API, updated 2026-08-04",
+          "url": "https://api.github.com/advisories/GHSA-fxhp-mv3v-67qp",
+          "inspected": true
         }
       ],
       "analysis_document": "../../docs/research/benchmarks/candidate-matrix.md",
@@ -841,7 +1016,34 @@
       "seed_start": "PARTIAL",
       "isolated_execution": "NOT_IMPLEMENTED",
       "qualification": "IMPLEMENTATION_BLOCKED",
-      "execution": "NOT_RUN"
+      "execution": "NOT_RUN",
+      "artifact_metadata": [
+        {
+          "ecosystem": "go",
+          "version": "2.6.0",
+          "upstream_tag": "v2.6.0",
+          "upstream_commit": "05a2b09cbf2eab1df691411884dc4df741ec56ab",
+          "registry_url": "https://proxy.golang.org/oras.land/oras-go/v2/@v/v2.6.0.info",
+          "module_sum": "h1:X4ELRsiGkrbeox69+9tzTu492FMUu7zJQW6eJU+I2oc=",
+          "go_mod_sum": "h1:magiQDfG6H1O9APp+rOsvCPcW1GD2MM7vgnKY0Y+u1o=",
+          "declared_runtime": "go 1.23.0"
+        },
+        {
+          "ecosystem": "go",
+          "version": "2.6.2",
+          "upstream_tag": "v2.6.2",
+          "upstream_commit": "105715ee12eac6895ec736a075285c34d9f2eeb6",
+          "registry_url": "https://proxy.golang.org/oras.land/oras-go/v2/@v/v2.6.2.info",
+          "module_sum": "h1:N04RXngAp1LJKTG6ifz3xHPipasEkWr+hFmInja5YKo=",
+          "go_mod_sum": "h1:PlTtg4JTDJkDe8yVHpM2wz7/YDc00GVas+i4jAW2TZ4=",
+          "declared_runtime": "go 1.25.0"
+        }
+      ],
+      "static_runtime": {
+        "runtime": "common Go compiler >=1.25.0; exact version pending",
+        "classification": "REQUIRES RUNTIME QUALIFICATION",
+        "runtime_qualification": "NOT_RUN"
+      }
     },
     {
       "benchmark_id": "oras-symlink-chain-write",
@@ -1068,7 +1270,8 @@
         "Complete before/after sandbox snapshots; no harness writes between captures; observe configured protected objects."
       ],
       "uncertainties": [
-        "Exact upstream source/fix unresolved; vendor backports not upstream versions; fixed extraction layout may miss nested boundary."
+        "Exact upstream source/fix unresolved; vendor backports not upstream versions; fixed extraction layout may miss nested boundary.",
+        "Upstream 1b91f5f66f8e6c490eef0fdee50f652cfe155844 changes CWD and hardlink target handling, but CVE/vendor-backport mapping unverified; no containing release tag at inspected upstream c17976eba549f44cbc34233cfaac4faddb3918c0. Pair remains UNKNOWN."
       ],
       "sources": [
         {
@@ -1097,6 +1300,13 @@
           "publisher": "CVE Program / Red Hat CNA",
           "identifier": "CVE-2026-18508 JSON",
           "url": "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/18xxx/CVE-2026-18508.json",
+          "inspected": true
+        },
+        {
+          "source_type": "patch_pointer",
+          "publisher": "GNU tar upstream",
+          "identifier": "1b91f5f66f8e6c490eef0fdee50f652cfe155844 candidate; CVE association unverified",
+          "url": "https://cgit.git.savannah.gnu.org/cgit/tar.git/commit/?id=1b91f5f66f8e6c490eef0fdee50f652cfe155844",
           "inspected": true
         }
       ],

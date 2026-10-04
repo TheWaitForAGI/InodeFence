@@ -143,6 +143,23 @@ def validate_catalog(catalog: dict, schema: dict) -> None:
             }
             if not {"upstream_advisory", "patch"} <= inspected_kinds:
                 raise ValueError(f"{identifier}: primary requires inspected advisory and patch")
+        artifacts = record.get("artifact_metadata")
+        if artifacts is not None:
+            versions = [item["version"] for item in artifacts]
+            if len(versions) != 2 or set(versions) != set(record["selected_pair"].values()):
+                raise ValueError(f"{identifier}: artifact versions must match the selected pair")
+            if "static_runtime" not in record:
+                raise ValueError(f"{identifier}: static artifacts require a runtime limitation")
+            npm_fields = {"integrity", "shasum", "tarball_url", "upstream_lock_sha256"}
+            go_fields = {"module_sum", "go_mod_sum"}
+            for item in artifacts:
+                expected = "npm" if record["target_family"] == "node-tar" else "go"
+                required = npm_fields if expected == "npm" else go_fields
+                excluded = go_fields if expected == "npm" else npm_fields
+                if item["ecosystem"] != expected or not required <= item.keys():
+                    raise ValueError(f"{identifier}: incomplete artifact ecosystem identity")
+                if excluded & item.keys() or item["upstream_tag"] != "v" + item["version"]:
+                    raise ValueError(f"{identifier}: artifact namespace/tag mismatch")
 
 
 def main() -> int:

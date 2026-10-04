@@ -42,7 +42,7 @@ images/locks/setup and independent qualification, all still pending.
 | N07 | YES raw names | NO equivalent-name class | NO alphabet/platform | PARTIAL on required platform | Linux v1 platform gate failed; SOURCE_VERIFIED, excluded |
 | N08 | YES raw names/order | NO concurrency/equivalence | NO platform/race | PARTIAL persistent effect only | Linux v1 platform/race gate failed; SOURCE_VERIFIED, excluded |
 | N09 | NO PAX/GNU metadata | NO | NO encoding | NO parser-disagreement verdict | Encoding/measurement scope gate failed; SOURCE_VERIFIED, excluded |
-| O01 | YES | PARTIAL hardlink seed | PARTIAL generic-name sentinel possible; CWD/adapter absent | YES persistent alias | ORAS adapter/external CWD pending; IMPLEMENTATION_BLOCKED |
+| O01 | YES | PARTIAL hardlink seed | PARTIAL generic-name sentinel possible; CWD/adapter absent | YES persistent alias | Public offline API verified; wrapper/transport/external CWD pending; IMPLEMENTATION_BLOCKED |
 | O02 | YES | PARTIAL link/file seeds | NO composition/addressing | YES persistent protected write | ORAS binding/exact fix unresolved; IMPLEMENTATION_BLOCKED |
 | O03 | NO non-TAR input/setup | NO | NO | PARTIAL with extra setup | Outside TAR v1; SOURCE_VERIFIED, excluded |
 | G01 | YES types; invocation UNKNOWN | PARTIAL link/file seeds | UNKNOWN pin/root semantics | PARTIAL narrower boundary | GNU adapter/pair/root gates pending; SOURCE_VERIFIED |
@@ -69,7 +69,7 @@ when the [audited engine](engine-contract-audit.md) changes.
 | N07 / node-tar CVE-2021-37712 | Unicode/short-name equivalents evade directory-cache invalidation | 2021-08-31; 6<=6.1.8; 5<=5.0.9; <=4.4.17 → 6.1.9/5.0.10/4.4.18 | Colliding names on a filesystem that treats them as equivalent, directory/symlink/file order | EXCLUDED from Linux v1; ordinary case-sensitive Linux does not supply the required equivalence [N07 sources](#n07) |
 | N08 / node-tar CVE-2026-23950 | Path reservations do not serialize filesystem-equivalent Unicode names | 2026-01-19; <=7.5.3 → 7.5.4 | Equivalent names and concurrent operations on normalization/case-insensitive filesystem; possible external writes | EXCLUDED: macOS/APFS and race dependence; no Linux equivalence evidence [N08 sources](#n08) |
 | N09 / node-tar CVE-2026-53655 | PAX size applied to intervening GNU metadata headers desynchronizes parsers | 2026-06-01; <=7.5.15 → 7.5.16 | PAX plus GNU long-name/link metadata; conflicting parser interpretation | EXCLUDED: builder cannot encode it; parser disagreement itself has no C0/C1/C2 verdict [N09 sources](#n09) |
-| O01 / oras-go CVE-2026-50163 | Validated target returned unresolved, then os.Link interprets it against process CWD | 2026-06-11; upstream names v2.6.0; reviewed ecosystem range <2.6.2 → v2.6.2 | Relative hardlink, external process CWD with same-device controlled file, local unpack-enabled layer; internal alias | PRIMARY; pin 2.6.0, rather than assert all earlier versions tested [O01 sources](#o01) |
+| O01 / oras-go CVE-2026-50163 | Validated target returned unresolved, then os.Link interprets it against process CWD | 2026-06-11; upstream names v2.6.0; current ecosystem API <=2.6.1 → v2.6.2 | Relative hardlink, external process CWD with same-device controlled file, local unpack-enabled layer; internal alias | PRIMARY; pin 2.6.0, rather than assert all earlier versions tested [O01 sources](#o01) |
 | O02 / oras-go CVE-2026-85731 | Lexical symlink checks and missing final-component check allow composed links to be followed by file write | 2026-08-01; <=2.6.1 → v2.6.2 per advisory | Nested directory/link chain, duplicate symlink/regular path, ordered writes; external writable object | SECONDARY; patch identity not independently confirmed, release mentions O01 but not this issue [O02 sources](#o02) |
 | O03 / oras-go CVE-2026-50162 | file.Store pushFile checks lexical title confinement but follows existing symlink components | 2026-06-11; upstream names v2.6.0→v2.6.2; reviewed ecosystem <2.6.1→2.6.1 | Blob annotation title and pre-existing symlink under store root; external write | EXCLUDED from TAR rediscovery: pushFile/OCI title input, not archive entry mutation; conflicting upstream range recorded [O03 sources](#o03) |
 | G01 / GNU tar CVE-2026-18508 | --one-top-level does not confine hardlink targets to the chosen top-level directory | 2026-08-03 CNA; upstream exact range unknown; RHEL fixes include 2:1.30-13.el8_10, 2:1.34-13.el9_8, 2:1.35-13.el10_2 | Configured top-level boundary, hardlink, existing object; pre-existing symlink can permit writes beyond working directory | SECONDARY pending upstream patch/version and root mapping; vendor versions are not upstream tar releases [G01 sources](#g01) |
@@ -172,3 +172,13 @@ screened using the upstream advisory indexes. They do not materially improve
 this Linux filesystem-contract benchmark, so were not promoted to serious
 candidate records. Resource failures remain campaign data, not rediscovery.
 No additional extractor family is needed to explain the selected classes.
+
+## Selected artifact qualification refresh
+
+[Static artifact qualification](artifact-qualification-v1.md) records all six
+Node npm SRI/shasums/source tag commits/upstream locks, repair ancestry, common
+Node 22.22.0 metadata compatibility, ORAS proxy/sumdb/source/compiler requirements
+and the supported offline public Push path. G01 has a source-backed candidate
+upstream top-level/CWD change, but no verified CVE/backport chain or released
+fixed pair. Only documented G2/G3 research subgates improved; no runtime/effect
+qualification or execution state changed.

@@ -14,7 +14,8 @@ Inherited engineering fixture/helper tests are not benchmark results.
 Read in this order:
 
 1. [Engine contract audit](engine-contract-audit.md): capabilities and evidence limits.
-2. [Candidate matrix](candidate-matrix.md): sources, versions and semantic requirements.
+2. [Candidate matrix](candidate-matrix.md): sources, versions and semantic requirements;
+   [static artifact qualification](artifact-qualification-v1.md) gives pin/runtime/public-API evidence.
 3. [Taxonomy and reachability](taxonomy-and-reachability.md): why a structure can or cannot arise.
 4. [Benchmark Set v1](benchmark-set-v1.md): selected pairs and admission gates.
 5. [Evaluation protocol](evaluation-protocol-v1.md): success, budgets, repetitions and metrics.

@@ -10,7 +10,11 @@ and version fields, selected exact pair (nullable when unresolved), root cause
 and reported effect, entry/path/order/filesystem requirements, expected
 observable effect and C0/C1/C2 mapping, required current/planned capabilities,
 structural versus complete benchmark reachability, observer needs, selection,
-qualification status, uncertainties and typed source references.
+qualification status, uncertainties and typed source references. Optional
+`artifact_metadata` stores official package/module identities and source commits
+for the selected primary pair; `static_runtime` labels metadata compatibility
+separately from runtime qualification (NOT_RUN). Upstream lock hashes identify
+source files, not benchmark locks. npm SRI/go.sum h1 are not container digests.
 
 The catalog's `engine_revision` is the source-reviewed main SHA, not necessarily
 the engine checked out on the research branch. The

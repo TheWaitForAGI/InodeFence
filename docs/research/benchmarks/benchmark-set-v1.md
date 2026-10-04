@@ -22,8 +22,8 @@ or famous CVE compensates for a failed gate.
 | Gate | Required evidence | N01 | N03 | N04 | O01 |
 | --- | --- | --- | --- | --- | --- |
 | G1 Source trust | Upstream advisory plus production fixing patch | PASS | PASS | PASS | PASS |
-| G2 Exact pin | Exact releases, artifact hashes/locks and runtime compatibility | Artifacts PENDING | Artifacts PENDING | Artifacts PENDING | Artifacts PENDING |
-| G3 Semantics | Selected arm matched to Linux/default safety settings | Relative arm PENDING | Linux PENDING | Strict/cache PENDING | Public unpack/CWD PENDING |
+| G2 Exact pin | Exact releases, artifact hashes/locks and runtime compatibility | Registry/source VERIFIED; image/runtime PENDING | Registry/source VERIFIED; image/runtime PENDING | Registry/source VERIFIED; image/runtime PENDING | Module/source VERIFIED; wrapper/compiler/image PENDING |
+| G3 Semantics | Selected arm matched to Linux/default safety settings | Relative arm PENDING | Linux PENDING | Strict/cache PENDING | Public route source VERIFIED; CWD/effect PENDING |
 | G4 Reachability | USTAR plus constructive generic reachability from benign seeds | BLOCKED M1 | BLOCKED M1 | BLOCKED M1 | BLOCKED CWD/adapter |
 | G5 Execution | Audited candidate image/config/provenance/full-path binding | BLOCKED | BLOCKED | BLOCKED | BLOCKED |
 | G6 Observation | Complete lifecycle-valid persistent C0/C1/C2 evidence | Predicted; PENDING | Predicted; PENDING | Predicted; PENDING | Predicted; PENDING |
@@ -67,7 +67,8 @@ a language ecosystem. Hard gates and semantic overlap override scores.
 ## Primary pairs and expected evidence
 
 Versions below are **selected exact release pairs**, backed by the adjacent
-[candidate sources](candidate-matrix.md), not installed/qualified artifacts.
+[candidate sources](candidate-matrix.md), not installed/runtime-qualified artifacts. Static identities and common-runtime limits
+are now recorded in [artifact qualification](artifact-qualification-v1.md).
 Use one Node 22.22.0 runtime for all Node pairs if benign qualification succeeds;
 otherwise choose and document a common compatible Node runtime before formal
 runs, rerun qualification, and freeze the revised environment. Do not change
@@ -113,7 +114,8 @@ every variant; none encodes a vulnerability sequence.
 - **oras-cwd-hardlink:** process CWD must be the controlled outside directory,
   while extraction root remains extract/. Protect a generic-name file there.
   A local offline layer wrapper must reach public file.Store unpack behavior
-  with fixed benign title and unpack annotation; it must not bypass upstream
+  with fixed benign title and unpack annotation, deterministic gzip/title-prefix
+  transport and separately recorded input hashes; it must not bypass upstream
   validation by exporting/calling a private helper. No network registry needed.
   Preserve equivalent target-visible extraction layout and title across versions.
 

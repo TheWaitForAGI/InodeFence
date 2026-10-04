@@ -1,6 +1,7 @@
 """Pure comparison of observations; no contract or interestingness decisions."""
 
-from inodefence.model import ChangeField, SnapshotPhase, StateChange, StateSnapshot
+from inodefence.model import SnapshotPhase, StateChange, StateSnapshot
+from inodefence.model.filesystem import observed_change_fields
 
 
 def compare_states(before: StateSnapshot, after: StateSnapshot) -> tuple[StateChange, ...]:
@@ -17,15 +18,7 @@ def compare_states(before: StateSnapshot, after: StateSnapshot) -> tuple[StateCh
     changes = []
     for path in sorted(old.keys() | new.keys()):
         previous, current = old.get(path), new.get(path)
-        if previous is None or current is None:
-            fields = (ChangeField.EXISTENCE,)
-        else:
-            fields = tuple(
-                field
-                for field in ChangeField
-                if field != ChangeField.EXISTENCE
-                and getattr(previous, field.value) != getattr(current, field.value)
-            )
+        fields = observed_change_fields(previous, current)
         if fields:
             changes.append(StateChange(path, previous, current, fields))
     return tuple(changes)

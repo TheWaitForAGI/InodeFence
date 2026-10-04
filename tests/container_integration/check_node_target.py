@@ -104,5 +104,27 @@ def test_after_observation_failure_removes_real_container_and_runtime(
     with pytest.raises(ObservationError, match="AFTER failure"):
         run_case(minimal_seed_corpus()[0], target)
     assert len(roots) == 2 and all(not root.exists() for root in roots)
-    assert len(identities) == 1
-    assert container_backend.client.run(("container", "inspect", identities[0]), 10).returncode != 0
+    assert len(identities) == 2  # identity verification and archive execution
+    assert all(
+        container_backend.client.run(("container", "inspect", identity), 10).returncode != 0
+        for identity in identities
+    )
+
+
+@pytest.mark.parametrize("field", ("worker_sha256", "package_lock_sha256"))
+def test_cr001_real_image_rejects_replaced_digest_before_extraction(
+    sandbox, container_backend, container_image, field
+):
+    from dataclasses import replace
+
+    from inodefence.execution.base import BackendError
+    from inodefence.targets.isolated import IsolatedTarget
+
+    bound = NodeTarTarget.bind(container_backend, container_image)
+    assert isinstance(bound.invocation, NodeTarTarget)
+    target = IsolatedTarget(replace(bound.invocation, **{field: "0" * 64}), container_backend)
+    with pytest.raises(BackendError, match="identity changed"):
+        target.capture_isolation()
+    with pytest.raises(BackendError, match="identity changed"):
+        target.run(sandbox.archive_path, sandbox.extraction_root)
+    assert tuple(sandbox.extraction_root.iterdir()) == ()

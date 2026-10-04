@@ -153,7 +153,7 @@ def test_backend_unavailable_precedes_runtime_creation(monkeypatch):
     def forbidden(*args, **kwargs):
         raise AssertionError("unavailable boundary must precede runtime")
 
-    monkeypatch.setattr("inodefence.targets.node_tar.disposable_sandbox", forbidden)
+    monkeypatch.setattr("inodefence.targets.isolated.disposable_sandbox", forbidden)
     with pytest.raises(BackendError, match="unavailable"):
         NodeTarTarget.bind(Unavailable(), IMAGE)
 
@@ -215,3 +215,141 @@ def test_invalid_binding_configuration_precedes_identity_execution(change, monke
         NodeTarTarget.bind(
             ControlledBackend(), **({"image_id": IMAGE, "timeout_seconds": 10} | change)
         )
+
+
+@pytest.mark.parametrize("configured", (False, True))
+@pytest.mark.parametrize("construction", ("direct", "replace", "other-image"))
+def test_cr001_audit_declarations_cannot_be_frozen_as_observed_artifacts(
+    configured, construction, monkeypatch
+):
+    """Converted frozen audit witness; metadata execution is a benign test double."""
+    from inodefence.experiment_config import (
+        FEEDBACK_POLICY,
+        MUTATION_POLICY,
+        SEED_PROFILE,
+        ExperimentConfig,
+        run_configured_campaign,
+    )
+
+    class TwoImages(ControlledBackend):
+        def validate_image(self, image_id):
+            assert image_id in (IMAGE, "sha256:" + "d" * 64)
+
+        @contextmanager
+        def prepare(self, request):
+            assert "--identify" in request.command, "no archive may execute"
+            metadata = META if request.image_id == IMAGE else META | {"worker_sha256": "e" * 64}
+
+            class Prepared:
+                def execute(self):
+                    return ContainerOutcome(0, json.dumps(metadata).encode(), b"", 0, False)
+
+            yield Prepared()
+
+    backend = TwoImages()
+    descriptor = NodeTarTarget(IMAGE, "22.22.0", "7.5.22", "d" * 64, "e" * 64)
+    if construction != "direct":
+        descriptor = NodeTarTarget.bind(backend, IMAGE).invocation
+        assert isinstance(descriptor, NodeTarTarget)
+        descriptor = replace(
+            descriptor,
+            **(
+                {"image_id": "sha256:" + "d" * 64}
+                if construction == "other-image"
+                else {"worker_sha256": "d" * 64, "package_lock_sha256": "e" * 64}
+            ),
+        )
+    target = IsolatedTarget(descriptor, backend)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("false artifact declarations must fail before freeze/first case")
+
+    monkeypatch.setattr("inodefence.campaign.freeze_provenance", forbidden)
+    monkeypatch.setattr("inodefence.campaign.run_case", forbidden)
+    seeds = minimal_seed_corpus()
+    budget = CampaignConfig(11, 4)
+    config = ExperimentConfig(
+        target.provenance,
+        SEED_PROFILE,
+        tuple(case.case_id for case in seeds),
+        budget,
+        MUTATION_POLICY,
+        FEEDBACK_POLICY,
+        (SentinelSpec(),),
+        "test-double-v1",
+        target.isolation_policy,
+    )
+    with pytest.raises(BackendError, match="identity changed"):
+        if configured:
+            run_configured_campaign(config, seeds, target)
+        else:
+            run_campaign(seeds, target, budget)
+
+
+@pytest.mark.parametrize(
+    "field", ("worker_sha256", "package_lock_sha256", "node_version", "tar_version")
+)
+def test_cr001_each_false_identity_declaration_rejects_standalone_execution(sandbox, field):
+    bound = target()
+    assert isinstance(bound.invocation, NodeTarTarget)
+    value = "0" * 64 if field.endswith("sha256") else "99.0.0"
+    changed = IsolatedTarget(replace(bound.invocation, **{field: value}), bound.backend)
+    with pytest.raises(BackendError, match="identity changed"):
+        changed.run(sandbox.archive_path, sandbox.extraction_root)
+
+
+def test_cr001_verified_origin_survives_configured_freeze_and_manifest_export(
+    tmp_path, monkeypatch
+):
+    """Synthetic backend observations, not a claim of real container validation."""
+    from inodefence.campaign_export import export_campaign
+    from inodefence.experiment_config import (
+        FEEDBACK_POLICY,
+        MUTATION_POLICY,
+        SEED_PROFILE,
+        ExperimentConfig,
+        run_configured_campaign,
+    )
+
+    bound = target()
+    seeds = minimal_seed_corpus()
+    config = ExperimentConfig(
+        bound.provenance,
+        SEED_PROFILE,
+        tuple(case.case_id for case in seeds),
+        CampaignConfig(11, 4),
+        MUTATION_POLICY,
+        FEEDBACK_POLICY,
+        (SentinelSpec(),),
+        "test-double-v1",
+        bound.isolation_policy,
+    )
+    result = run_configured_campaign(config, seeds, bound)
+    assert result.provenance.isolation is not None
+    assert result.provenance.isolation.artifact_origin == "image-identification-v1"
+    assert result.provenance.isolation.artifacts == bound.invocation.artifacts
+    assert result.provenance.isolation.policy.image_id == IMAGE
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("export must preserve frozen observations without reidentification")
+
+    monkeypatch.setattr(bound.backend, "prepare", forbidden)
+    manifest, _ = export_campaign(
+        result, tmp_path / "evidence", experiment_config_json=config.to_json()
+    )
+    value = json.loads(manifest.read_bytes())
+    isolation = value["execution_provenance"]["isolation"]
+    assert value["schema_version"] == 4
+    assert value["experiment_config_id"] == config.config_id
+    assert isolation["artifact_origin"] == "image-identification-v1"
+    assert isolation["artifacts"] == [
+        {"name": "node-tar-package-lock", "sha256": META["package_lock_sha256"]},
+        {"name": "node-tar-worker", "sha256": META["worker_sha256"]},
+    ]
+
+
+@pytest.mark.parametrize("metadata", (b"{}", b"[]", b"invalid-json"))
+def test_cr001_invalid_probe_metadata_fails_closed(metadata):
+    bound = target()
+    with pytest.raises(BackendError, match="invalid identity metadata"):
+        bound.invocation.verify_identity(metadata)

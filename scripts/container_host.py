@@ -10,6 +10,7 @@ import base64
 import json
 import shutil
 import subprocess
+from pathlib import Path
 from uuid import uuid4
 
 from inodefence.execution.container import OWNER_LABEL, checked, remove_owned
@@ -22,8 +23,16 @@ def main() -> int:
     parser.add_argument("--controller", required=True)
     parser.add_argument("--volume", required=True)
     parser.add_argument("--image", required=True)
-    parser.add_argument("mode", choices=("validate", "validate-node-image", "validate-node-target"))
+    parser.add_argument(
+        "--evidence", type=Path, help="new absolute output path inside trusted Linux controller"
+    )
+    parser.add_argument(
+        "mode",
+        choices=("validate", "validate-node-image", "validate-node-target", "benign-node-smoke"),
+    )
     args = parser.parse_args()
+    if (args.mode == "benign-node-smoke") != (args.evidence is not None):
+        parser.error("benign-node-smoke requires --evidence; validation modes do not export")
     executable = shutil.which("docker")
     if executable is None:
         raise BackendError("host Docker CLI unavailable")
@@ -56,6 +65,7 @@ def main() -> int:
         owner,
         "--image",
         args.image,
+        *(("--evidence", str(args.evidence)) if args.evidence is not None else ()),
         args.mode,
     )
     try:

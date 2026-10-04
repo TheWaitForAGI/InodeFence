@@ -26,7 +26,10 @@
 
 ## 현재 상태
 
-Layer 1 설계가 마련되어 있다. 데이터 모델 필드와 pipeline은 아직 구현 전이다.
+Layer 2 공통 데이터 모델, Layer 3 최소 pipeline, Layer 4 Generic Mutation v1과
+Layer 5 Feedback / Corpus 및 bounded campaign이 구현됐다. Contained Node의 tiny benign
+configured campaign도 검증했다. Snapshot 관찰 범위와 runtime/kernel trust 한계는 유지하며,
+Layer 6 benchmark/security evaluation과 연구 효과 검증은 아직 수행하지 않았다.
 
 ## 파일 배치 규칙
 

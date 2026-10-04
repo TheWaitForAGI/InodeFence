@@ -43,7 +43,7 @@ context 한계는 [feedback](feedback/README.md)를 따른다.
 
 ## 현재 상태와 한계
 
-Layer 2, 최소 Layer 3, Generic Mutation v1과 Layer 5 Feedback / Corpus v1이 구현됐다. Corpus는 in-memory이며 caller RNG 기반 uniform baseline 선택만 제공한다. Bounded deterministic campaign은 구현됐으며 adaptive scheduler, persistence와 연구 효과 검증은 후속 작업이다. Python tarfile/data target은 architecture/reference용이며 최종 benchmark target이 아니다. Node-tar adapter는 정상 fixture 검증만 제공한다. Unsafe target에는 추가 OS 실행 격리가 필요하다. Disposable runtime directory 자체는 OS sandbox가 아니다.
+Layer 2, 최소 Layer 3, Generic Mutation v1과 Layer 5 Feedback / Corpus v1이 구현됐다. Corpus는 in-memory이며 caller RNG 기반 uniform baseline 선택만 제공한다. Bounded deterministic campaign은 구현됐으며 adaptive scheduler, persistence와 연구 효과 검증은 후속 작업이다. Python tarfile/data target은 architecture/reference용이며 최종 benchmark target이 아니다. Node-tar는 pinned target image와 validated container backend로 정상 fixture 및 tiny benign configured campaign을 실행한다. Isolation-required target은 이 boundary 없이 campaign을 실행할 수 없다. Disposable runtime directory 자체는 OS sandbox가 아니다.
 
 Snapshot의 `violated=False`는 관찰 범위에서 위반 증거가 없다는 뜻이다. Transient operation, sandbox 밖의 상태, symlink referent identity와 full C0 direct-use는 증명하지 못한다. 관찰 실패는 harness 오류로 올리며 passing result를 만들지 않는다.
 
@@ -65,24 +65,27 @@ O(execution_budget)이며 개별 evidence 크기에도 비례한다. Semantic fe
 
 ## Campaign export v1
 
-TargetProvenance의 execution_safety는 default ISOLATION_REQUIRED다. Campaign은 explicit
-TRUSTED_REFERENCE만 허용하고 그 밖의 target/미선언 adapter는 runtime 이전에 거부한다.
-별도 container backend/helper 검증은 있으나 campaign binding은 아직 없으며 low-level run_case는
-controlled fixture caller 책임이다.
+TargetProvenance의 execution_safety는 default ISOLATION_REQUIRED다. Campaign은 explicit TRUSTED_REFERENCE 또는 정확한 IsolatedTarget/backend binding만 허용한다.
+미선언/uncontained adapter는 runtime 이전에 거부한다. Node invocation은 직접 실행 경로가 없으며
+low-level run_case도 contained target의 prepare/execute/AFTER/cleanup 순서를 유지한다.
 
 Writer는 model/campaign만 의존하고 target을 실행하거나 feedback을 재판정하지 않는다.
-Manifest schema v2는 stored execution_provenance, config/initial IDs, steps count/stats/retained order, 결과의 execution contexts와
+Manifest schema v4는 stored execution/isolation_provenance, config/initial IDs, steps count/stats/retained order, 결과의 execution contexts와
 JSONL SHA-256을 담는다. `steps.jsonl`은 기존 `canonical_json(CampaignStep)`을 그대로 사용한다.
 Exporter environment는 writer process의 정보이며 execution environment/source revision을
 추정하지 않는다. Execution environment/source는 실행 전 stored provenance에 있다.
 같은 result/exporter 환경은 동일 bytes를 만든다. 별도 run의 raw allocation/time은
-보존하므로 byte equality를 요구하지 않는다. IO/encoding 오류는 전달하고 partial output이 남을
-수 있다. Writer/reader/resume는 별도 개념이며 현재는 writer만 제공한다.
+보존하므로 byte equality를 요구하지 않는다. Optional pre-read config JSON은 stored config ID와
+비교하고 experiment.json/checksum으로 같은 bundle에 기록한다. Linux staging/flush/fsync/checksum
+검증 후 renameat2(RENAME_NOREPLACE)로 공개하므로 기존/동시 destination을 덮어쓰지 않는다.
+공개 전 오류는 final absent/staging cleanup이며 공개 후 parent fsync 오류는 complete bundle을 남기고
+전달한다. Hard interruption은 staging을 남길 수 있다. 지원되지 않는 OS/libc/filesystem에는 fallback이 없다. Writer/reader/resume는 별도 개념이며 현재는 writer만 제공한다.
 
-ExperimentConfig v1은 seed/profile/policy/target/sentinel/environment-profile 조건을 실행 전에 검증한다.
+ExperimentConfig v1/v2는 seed/profile/policy/target/sentinel/environment-profile 조건을 실행 전에 검증한다.
 Stored experiment_config_id는 manifest에 보존하며 actual source/platform provenance와 분리한다.
 현재 config CLI는 safe reference만 실행한다. [설정 계약](../../experiments/configs/README.md)을 따른다.
 
-현재 준비 상태는 ENGINEERING FOUNDATION이다. Reference engine 경로의 구현/검증과
-third-party benchmark readiness를 구분한다. Node-tar 정상 fixture와 별도 container helper는 통과했지만 Pinned Node image/contained fixture 실행은 완료했지만 frozen config/provenance
-binding을 추가했으며 Node full-path smoke는 다음 검증이다. [준비 상태와 다음 작업](../../docs/STATUS.md)을 따른다.
+Audit Phases 1–2와 Global Findings Freeze v1을 완료했고 Phase-3 engine fix review를 기다린다. Pinned Node image,
+contained fixtures, frozen config/provenance와 8회 benign full-path smoke, focused lifecycle,
+Linux staged export 및 dependency direction은 pre-audit revision에서 검증했다. 이 branch는 EN-001–005를 수정하며
+security evaluation은 아직 실행하지 않았다. [준비 상태와 다음 작업](../../docs/STATUS.md)을 따른다.

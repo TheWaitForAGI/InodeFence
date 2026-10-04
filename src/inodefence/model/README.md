@@ -10,7 +10,7 @@
 | [filesystem.py](filesystem.py) | ObjectSnapshot, StateSnapshot, StateChange, StateSignature |
 | [results.py](results.py) | ExecutionResult, IdentityEvidence, ViolationResult, RunResult |
 | [provenance.py](provenance.py) | Source/Environment/Target/Sentinel/ExecutionProvenance configuration values |
-| [serialization.py](serialization.py) | canonical_json, schema version 1 |
+| [serialization.py](serialization.py) | canonical_json, default envelope v1 / provenance and campaign v2 |
 
 ArchiveEntry는 raw path/link text를 보존하고 NUL·잘못된 field 조합을 거부한다. regular는 bytes content, directory는 content/target 없음, hardlink/symlink는 target 필수다. USTAR 길이 제한은 builder의 책임이다. ArchiveCase는 order/duplicate를 보존하며 versioned canonical representation의 SHA-256을 `case_id`로 제공한다. Parent lineage는 상위 campaign step에 기록하며 ArchiveCase identity에 섞지 않는다.
 
@@ -26,7 +26,7 @@ StateSnapshot의 field는 `sandbox_root: str`, `phase: SnapshotPhase`, `objects:
 
 Region.HARNESS는 normalization namespace role이며 security trust boundary나 생성 주체의 증거가 아니다. `is_extraction_path`는 region과 독립적으로 fixed extraction namespace membership을 표현한다. 이 layout 사실을 소비해 C0 정책을 적용하는 책임은 Oracle에 있다. Baseline ownership은 setup 후 BEFORE의 실제 objects로 기록하고, SnapshotPhase는 target 실행을 전후로 구분한다. Phase가 actor provenance를 제공하지는 않는다. Runner/adapter는 BEFORE 이전에 setup을 마치고 AFTER 이후에 bookkeeping/cleanup을 해야 한다.
 
-`StateSignature = normalized security-state representation for future feedback/corpus`: 내부 schema v2는 HARNESS를 제외한다. ArchiveCase identity와 TAR artifact identity는 직접 포함하지 않는다. Identity group도 같은 object scope로 projection하고 singleton을 제거한다. Protected paths와 extraction↔sentinel relation, external effect labels는 유지한다. `SignatureObject.st_nlink: int | None`은 regular만 정수이고 directory/symlink/other는 None이다. Raw nlink와 C2 metadata 판정은 바뀌지 않는다.
+`StateSignature = normalized security-state representation for future feedback/corpus`: 내부 schema v3는 HARNESS를 제외한다. ArchiveCase identity와 TAR artifact identity는 직접 포함하지 않는다. Identity group도 같은 object scope로 projection하고 singleton을 제거한다. Protected paths와 extraction↔sentinel relation, external effect labels는 유지한다. `SignatureObject.st_nlink: int | None`은 regular만 정수이고 directory/symlink/other는 None이다. Raw nlink와 C2 metadata 판정은 바뀌지 않는다.
 
 **ExecutionResult = process evidence, not security verdict.** Status, exit code, duration을 safe/vulnerable 의미로 해석하지 않는다. `TIMED_OUT`가 authoritative하며 별도 timed_out bool은 없다. 기존 status/exit-code consistency를 유지한다.
 
@@ -44,9 +44,23 @@ Python reference는 `time.perf_counter()`로 subprocess 실행 직전부터 정�
 
 RunResult는 case, TAR format/hash, 실행 provenance, before/after, 변화, signature와 계약 evidence를 보존한다. 실제 run directory는 반환 전에 삭제된다.
 
-ExecutionResult의 필수 `duration_seconds`는 finite/0 이상인 실제 monotonic elapsed execution evidence이며 0.0과 numeric int 값도 허용한다. `timeout_seconds`는 configured budget으로 별개다. Duration은 process startup과 timeout 종료·회수 overhead를 포함하고 RunResult.execution의 canonical JSON으로 보존한다. Security verdict, StateSignature v2와 case ID에는 사용하지 않는다.
+Public evidence constructor는 annotation만 신뢰하지 않는다. ObjectSnapshot의 digest와
+readlink target은 str, signature/effect/RunResult의 collection은 typed tuple이어야 한다.
+Signature v3는 supported schema, canonical object/effect path order와 scoped identity-group
+shape를 검증한다. Symlink text는 `run:<raw suffix>` 또는 `literal:<raw target>`으로 tag하며
+raw ObjectSnapshot은 바꾸지 않는다. StateChange.fields는 supplied before/after의 모든 실제
+차이와 schema order까지 일치해야 한다. Creation/deletion은 EXISTENCE만 가진다.
+ExecutionResult seconds는 finite int/float이며 bool은 거부한다.
 
-`canonical_json(model)`은 envelope schema v1/model type과 정렬된 JSON key를 기록하고 bytes를 base64로 보존한다. Signature 내부 schema v2와는 별개이며 case encoding은 유지한다. Raw snapshot에는 inode·timestamp 원값이 있지만 portable signature에는 없다. 이는 export 경계이며 database나 deserializer는 아니다. 상위 campaign exporter도 이 encoding을 그대로 사용한다. Config/seed/budget은 campaign result에
+RunResult의 runtime validation은 immutable typed shape의 경계다. TAR/hash correspondence,
+snapshot pairing, signature/oracle의 cross-record derivation은 pipeline의 trusted assembly
+책임이며 constructor가 재실행하거나 authenticity를 검증하지 않는다. CampaignStep,
+CampaignResult와 CorpusStats는 runner/Corpus가 만드는 trusted derived records이며 임의
+직접 construction을 evidence ingest로 사용하지 않는다. Reader/deserializer는 아직 없다.
+
+ExecutionResult의 필수 `duration_seconds`는 finite/0 이상인 실제 monotonic elapsed execution evidence이며 0.0과 numeric int 값도 허용한다. `timeout_seconds`는 configured budget으로 별개다. Duration은 process startup과 timeout 종료·회수 overhead를 포함하고 RunResult.execution의 canonical JSON으로 보존한다. Security verdict, StateSignature v3와 case ID에는 사용하지 않는다.
+
+`canonical_json(model)`은 envelope schema v1/model type과 정렬된 JSON key를 기록하고 bytes를 base64로 보존한다. Signature 내부 schema v3와는 별개이며 case encoding은 유지한다. Raw snapshot에는 inode·timestamp 원값이 있지만 portable signature에는 없다. 이는 export 경계이며 database나 deserializer는 아니다. 상위 campaign exporter도 이 encoding을 그대로 사용한다. Config/seed/budget은 campaign result에
 있으며 실행 전 source/environment/target/sentinel provenance는 CampaignResult에 별도 보존한다.
 모델은 실행 logic이 없고 capture helper는 상위 provenance.py에 있다. Full Git ID 또는 None,
 dirty bool/None, platform 문자열, declared target/timeout, sorted unique sentinel name/digest/mode를
@@ -69,8 +83,10 @@ stays in the execution backend and upper provenance/target composition layers.
 
 Encoding compatibility: ExecutionProvenance and CampaignResult top-level canonical
  envelopes are explicitly schema v2; other evidence (ArchiveCase, RunResult,
-CampaignStep, snapshots/signatures) retains its existing envelope/schema and identity.
+CampaignStep, snapshots/signatures) retains its envelope v1. ArchiveCase identity is
+unchanged; StateSignature's internal schema is v3 with tagged symlink targets.
 The contained policy/provenance payloads have independent schema v1. Manifest writers
-now emit schema v3 with stored nullable isolation; historical manifest v2 lacked it.
+now emit schema v4 with stored nullable isolation and optional config file/checksum;
+historical manifest v2 lacked isolation and v3 introduced it.
 No old-evidence reader or migration guarantee is supplied. ExperimentConfig v1 IDs
 remain unchanged; contained configs require v2 and the full isolation policy.

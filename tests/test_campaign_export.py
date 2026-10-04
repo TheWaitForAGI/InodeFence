@@ -2,6 +2,8 @@
 
 import base64
 import json
+import os
+from contextlib import contextmanager
 from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
@@ -119,7 +121,9 @@ def test_manifest_records_campaign_stored_provenance_and_observed_contexts(tmp_p
     manifest_path, steps_path = export_campaign(result, tmp_path / "output")
     manifest = json.loads(manifest_path.read_bytes())
     assert manifest["format"] == "inodefence-bounded-campaign"
-    assert manifest["schema_version"] == 3
+    assert manifest["schema_version"] == 4
+    assert manifest["experiment_config_file"] is None
+    assert manifest["experiment_config_sha256"] is None
     assert manifest["evidence_classification"] == "raw-campaign"
     assert manifest["config"] == {"random_seed": 17, "execution_budget": 4}
     assert manifest["initial_case_ids"] == list(result.initial_case_ids)
@@ -218,22 +222,26 @@ def test_existing_output_is_not_overwritten(tmp_path: Path) -> None:
     assert {path.name: path.read_bytes() for path in output.iterdir()} == before
 
 
-def test_write_error_propagates_without_completed_manifest(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize("failed_file", ("steps.jsonl", "manifest.json", "experiment.json"))
+def test_write_error_leaves_final_absent_and_temporary_artifacts_cleaned(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, failed_file: str
 ) -> None:
     original = Path.open
     error = OSError("controlled export write failure")
 
     def fail_steps(path: Path, mode: str = "r"):
-        if path.name == "steps.jsonl":
+        if path.name == failed_file:
             raise error
         return original(path, mode)
 
     monkeypatch.setattr(Path, "open", fail_steps)
+    config = '{"controlled_config":true}'
+    result = replace(_campaign(), experiment_config_id=sha256(config.encode("ascii")).hexdigest())
     with pytest.raises(OSError) as caught:
-        export_campaign(_campaign(), tmp_path / "output")
+        export_campaign(result, tmp_path / "output", experiment_config_json=config)
     assert caught.value is error
-    assert not (tmp_path / "output" / "manifest.json").exists()
+    assert not (tmp_path / "output").exists()
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_contract_evidence_and_feedback_decision_are_preserved(tmp_path: Path) -> None:
@@ -265,3 +273,283 @@ def test_contract_evidence_and_feedback_decision_are_preserved(tmp_path: Path) -
     assert step["result"]["violations"][2]["evidence"][0]["fields"] == ["mode"]
     assert step["feedback"]["new_violation_fingerprints"][0]["contract_id"] == "C2"
     assert step["feedback"]["already_retained"]
+
+
+@pytest.mark.parametrize("kind", ("empty-directory", "file", "dangling-symlink"))
+def test_existing_destination_of_any_kind_is_preserved(tmp_path, kind):
+    output = tmp_path / "output"
+    if kind == "empty-directory":
+        output.mkdir()
+    elif kind == "file":
+        output.write_bytes(b"existing evidence")
+    else:
+        output.symlink_to(tmp_path / "missing")
+    identity = output.lstat().st_ino
+    with pytest.raises(FileExistsError):
+        export_campaign(_campaign(), output)
+    assert output.lstat().st_ino == identity
+    assert list(tmp_path.iterdir()) == [output]
+
+
+def test_concurrent_empty_destination_is_never_replaced(tmp_path, monkeypatch):
+    from inodefence import campaign_export
+
+    original = campaign_export._publish_directory
+    output = tmp_path / "output"
+    existing = []
+
+    def concurrent(staged, destination):
+        destination.mkdir()
+        existing.append(destination.stat().st_ino)
+        original(staged, destination)
+
+    monkeypatch.setattr(campaign_export, "_publish_directory", concurrent)
+    with pytest.raises(FileExistsError):
+        export_campaign(_campaign(), output)
+    assert output.stat().st_ino == existing[0]
+    assert list(output.iterdir()) == []
+    assert list(tmp_path.iterdir()) == [output]
+
+
+def test_unsupported_atomic_publication_fails_without_fallback(tmp_path, monkeypatch):
+    import errno
+
+    def unsupported(*args):
+        raise OSError(errno.EOPNOTSUPP, "controlled filesystem does not support no-replace")
+
+    monkeypatch.setattr("inodefence.campaign_export._publish_directory", unsupported)
+    with pytest.raises(OSError) as caught:
+        export_campaign(_campaign(), tmp_path / "output")
+    assert caught.value.errno == errno.EOPNOTSUPP
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("unsupported", ("platform", "libc"))
+def test_publication_requires_linux_and_libc_support(tmp_path, monkeypatch, unsupported):
+    from types import SimpleNamespace
+
+    result = _campaign()
+    if unsupported == "platform":
+        monkeypatch.setattr("inodefence.campaign_export.sys.platform", "unsupported")
+    else:
+        monkeypatch.setattr(
+            "inodefence.campaign_export.ctypes.CDLL", lambda *a, **k: SimpleNamespace()
+        )
+    with pytest.raises(NotImplementedError):
+        export_campaign(result, tmp_path / "output")
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_encoding_failure_after_one_step_cleans_partial_staging(tmp_path, monkeypatch):
+    result = _campaign()
+    calls = []
+
+    def encode(step):
+        calls.append(step)
+        if len(calls) == 2:
+            raise ValueError("controlled second-step encoding failure")
+        return canonical_json(step)
+
+    monkeypatch.setattr("inodefence.campaign_export.canonical_json", encode)
+    with pytest.raises(ValueError, match="second-step"):
+        export_campaign(result, tmp_path / "output")
+    assert len(calls) == 2
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_corrupted_steps_are_rejected_before_publication(tmp_path, monkeypatch):
+    from contextlib import contextmanager
+
+    result = _campaign()
+    original = Path.open
+
+    @contextmanager
+    def corrupt(path, mode="r", *args, **kwargs):
+        with original(path, mode, *args, **kwargs) as stream:
+            yield stream
+        if path.name == "steps.jsonl" and mode == "xb":
+            with original(path, "ab") as stream:
+                stream.write(b"controlled corruption")
+
+    monkeypatch.setattr(Path, "open", corrupt)
+    with pytest.raises(OSError, match="checksum"):
+        export_campaign(result, tmp_path / "output")
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("after_publication", (False, True))
+def test_directory_sync_failure_is_visible_with_documented_final_state(
+    tmp_path, monkeypatch, after_publication
+):
+    from inodefence import campaign_export
+
+    original = campaign_export._sync_directory
+    result = _campaign()
+    output = tmp_path / "output"
+
+    def fail_sync(path):
+        if (path == tmp_path) == after_publication:
+            raise OSError("controlled directory sync failure")
+        original(path)
+
+    monkeypatch.setattr(campaign_export, "_sync_directory", fail_sync)
+    with pytest.raises(OSError, match="directory sync"):
+        export_campaign(result, output)
+    if after_publication:
+        manifest = json.loads((output / "manifest.json").read_bytes())
+        assert manifest["steps_sha256"] == sha256((output / "steps.jsonl").read_bytes()).hexdigest()
+        assert list(tmp_path.iterdir()) == [output]
+    else:
+        assert list(tmp_path.iterdir()) == []
+
+
+def test_config_is_bound_checksummed_and_published_with_the_same_bundle(tmp_path):
+    config = '{"controlled_config":true}'
+    result = replace(_campaign(), experiment_config_id=sha256(config.encode("ascii")).hexdigest())
+    first, _ = export_campaign(result, tmp_path / "first", experiment_config_json=config)
+    second, _ = export_campaign(result, tmp_path / "second", experiment_config_json=config)
+    value = json.loads(first.read_bytes())
+    assert value["experiment_config_id"] == result.experiment_config_id
+    assert value["experiment_config_file"] == "experiment.json"
+    assert (first.parent / "experiment.json").read_bytes() == config.encode("ascii") + b"\n"
+    assert (
+        value["experiment_config_sha256"]
+        == sha256((first.parent / "experiment.json").read_bytes()).hexdigest()
+    )
+    assert {p.name: p.read_bytes() for p in first.parent.iterdir()} == {
+        p.name: p.read_bytes() for p in second.parent.iterdir()
+    }
+
+
+@pytest.mark.parametrize("stored_id", (None, "a" * 64))
+def test_config_mismatch_is_rejected_before_staging(tmp_path, stored_id):
+    result = replace(_campaign(), experiment_config_id=stored_id)
+    with pytest.raises(ValueError, match="stored experiment_config_id"):
+        export_campaign(result, tmp_path / "output", experiment_config_json='{"different":true}')
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("configured", (False, True))
+def test_ex004_export_durability_protocol_order(tmp_path, monkeypatch, configured):
+    """Check syscall/stream order, not proof of recovery after power loss.
+
+    Atomic visibility occurs at no-replace publication; parent fsync is a
+    separate durability step whose failure can leave a complete visible bundle.
+    """
+    from inodefence import campaign_export
+
+    result = _campaign()
+    config = '{"controlled_config":true}' if configured else None
+    if config is not None:
+        result = replace(result, experiment_config_id=sha256(config.encode("ascii")).hexdigest())
+    events = []
+    descriptors = {}
+    original_open = Path.open
+    original_fsync = os.fsync
+    original_publish = campaign_export._publish_directory
+    output = tmp_path / "output"
+
+    class TrackedStream:
+        def __init__(self, stream, path, mode):
+            self.stream, self.path, self.mode = stream, path, mode
+
+        def __getattr__(self, name):
+            return getattr(self.stream, name)
+
+        def write(self, data):
+            events.append((self.path.name, "write"))
+            return self.stream.write(data)
+
+        def flush(self):
+            events.append((self.path.name, "flush"))
+            return self.stream.flush()
+
+        def read(self, *args):
+            events.append((self.path.name, "readback"))
+            return self.stream.read(*args)
+
+        def readinto(self, *args):
+            events.append((self.path.name, "readback"))
+            return self.stream.readinto(*args)
+
+    @contextmanager
+    def track_open(path, mode="r", *args, **kwargs):
+        with original_open(path, mode, *args, **kwargs) as stream:
+            descriptors[stream.fileno()] = path.name
+            try:
+                yield TrackedStream(stream, path, mode)
+            finally:
+                del descriptors[stream.fileno()]
+
+    def track_fsync(descriptor):
+        if descriptor in descriptors:
+            events.append((descriptors[descriptor], "fsync"))
+        else:
+            # Observe the directory syscall itself: calling a sync helper whose
+            # fsync was removed must not satisfy this regression.
+            path = Path(os.readlink(f"/proc/self/fd/{descriptor}"))
+            events.append(("parent" if path == tmp_path else "staging", "sync"))
+        original_fsync(descriptor)
+
+    def track_publish(staged, destination):
+        assert destination == output and not destination.exists()
+        events.append(("bundle", "publish"))
+        original_publish(staged, destination)
+
+    monkeypatch.setattr(Path, "open", track_open)
+    monkeypatch.setattr(os, "fsync", track_fsync)
+    monkeypatch.setattr(campaign_export, "_publish_directory", track_publish)
+    export_campaign(result, output, experiment_config_json=config)
+    assert events[-3:] == [("staging", "sync"), ("bundle", "publish"), ("parent", "sync")]
+    names = (
+        ("steps.jsonl", "manifest.json", "experiment.json")
+        if configured
+        else ("steps.jsonl", "manifest.json")
+    )
+    for name in names:
+        file_events = [event for item, event in events if item == name]
+        assert file_events.count("fsync") == 1
+        assert file_events.index("write") < file_events.index("flush")
+        assert file_events.index("flush") < file_events.index("fsync")
+        assert file_events.index("fsync") < file_events.index("readback")
+        assert all(event == "write" for event in file_events[: file_events.index("flush")])
+        assert all(event == "readback" for event in file_events[file_events.index("readback") :])
+
+
+@pytest.mark.parametrize("failed_file", ("steps.jsonl", "manifest.json", "experiment.json"))
+def test_ex004_file_sync_failure_cannot_publish(tmp_path, monkeypatch, failed_file):
+    original_fsync = os.fsync
+    config = '{"controlled_config":true}'
+    result = replace(_campaign(), experiment_config_id=sha256(config.encode("ascii")).hexdigest())
+
+    def fail_fsync(descriptor):
+        if Path(os.readlink(f"/proc/self/fd/{descriptor}")).name == failed_file:
+            raise OSError("controlled file fsync failure")
+        original_fsync(descriptor)
+
+    monkeypatch.setattr(os, "fsync", fail_fsync)
+    with pytest.raises(OSError, match="file fsync"):
+        export_campaign(result, tmp_path / "output", experiment_config_json=config)
+    assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("corrupted_file", ("manifest.json", "experiment.json"))
+def test_ex004_readback_validates_manifest_and_config_before_publication(
+    tmp_path, monkeypatch, corrupted_file
+):
+    original = Path.open
+    config = '{"controlled_config":true}'
+    result = replace(_campaign(), experiment_config_id=sha256(config.encode("ascii")).hexdigest())
+
+    @contextmanager
+    def corrupt(path, mode="r", *args, **kwargs):
+        with original(path, mode, *args, **kwargs) as stream:
+            yield stream
+        if path.name == corrupted_file and mode == "xb":
+            with original(path, "ab") as stream:
+                stream.write(b"controlled corruption")
+
+    monkeypatch.setattr(Path, "open", corrupt)
+    with pytest.raises(OSError, match="staged (manifest|config) differs"):
+        export_campaign(result, tmp_path / "output", experiment_config_json=config)
+    assert list(tmp_path.iterdir()) == []

@@ -4,6 +4,7 @@ import math
 from dataclasses import dataclass
 from enum import StrEnum
 
+from ._validation import validate_sha256
 from .archive import ArchiveCase
 from .filesystem import (
     Region,
@@ -47,10 +48,16 @@ class ExecutionResult:
             raise ValueError("execution requires target identity and version")
         if not isinstance(self.stdout, str) or not isinstance(self.stderr, str):
             raise ValueError("stdout and stderr must be decoded text")
-        if not math.isfinite(self.duration_seconds) or self.duration_seconds < 0:
+        if (
+            type(self.duration_seconds) not in (int, float)
+            or not math.isfinite(self.duration_seconds)
+            or self.duration_seconds < 0
+        ):
             raise ValueError("duration_seconds must be finite and nonnegative")
         if self.timeout_seconds is not None and (
-            not math.isfinite(self.timeout_seconds) or self.timeout_seconds <= 0
+            type(self.timeout_seconds) not in (int, float)
+            or not math.isfinite(self.timeout_seconds)
+            or self.timeout_seconds <= 0
         ):
             raise ValueError("timeout must be finite and positive")
         if not isinstance(self.command, tuple) or not all(isinstance(s, str) for s in self.command):
@@ -126,7 +133,12 @@ class ViolationResult:
 
 @dataclass(frozen=True, slots=True)
 class RunResult:
-    """Self-contained raw run evidence that survives disposal of the sandbox."""
+    """Typed immutable raw run evidence that survives disposal of the sandbox.
+
+    Construction validates field types, not cross-record derivation. The pipeline
+    owns TAR correspondence, snapshot pairing, signature and oracle assembly.
+    This constructor is not a deserializer or an authenticity check.
+    """
 
     case: ArchiveCase
     archive_sha256: str
@@ -137,3 +149,24 @@ class RunResult:
     changes: tuple[StateChange, ...]
     signature: StateSignature
     violations: tuple[ViolationResult, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.case, ArchiveCase) or not isinstance(
+            self.execution, ExecutionResult
+        ):
+            raise ValueError("run requires ArchiveCase and ExecutionResult records")
+        validate_sha256(self.archive_sha256)
+        if not isinstance(self.archive_format, str) or not self.archive_format:
+            raise ValueError("archive format must be nonempty text")
+        if not isinstance(self.before, StateSnapshot) or not isinstance(self.after, StateSnapshot):
+            raise ValueError("run requires StateSnapshot records")
+        if not isinstance(self.signature, StateSignature):
+            raise ValueError("run requires a StateSignature record")
+        if not isinstance(self.changes, tuple) or not all(
+            isinstance(change, StateChange) for change in self.changes
+        ):
+            raise ValueError("run changes must be a tuple of StateChange records")
+        if not isinstance(self.violations, tuple) or not all(
+            isinstance(verdict, ViolationResult) for verdict in self.violations
+        ):
+            raise ValueError("run violations must be a tuple of ViolationResult records")

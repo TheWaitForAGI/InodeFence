@@ -21,12 +21,12 @@
 
 현재는 **개발 Layer 2, 최소 Layer 3, Layer 4 Generic Mutation v1과 Layer 5 Feedback / Corpus v1 구현** 단계다. Feature branch의 구현 상태 표시는 main merge를 의미하지 않는다.
 
-ArchiveCase → 결정적 USTAR → Python reference worker → pre/post snapshot → C0/C1/C2 evidence의 실제 API가 있다. Generic Mutation v1은 별도 ArchiveCase → ArchiveCase API다. Layer 5는 RunResult의 독립 state/violation novelty에 따른 in-memory retention과 uniform caller-RNG parent selection을 제공한다. Bounded campaign v1은 명시적 seed와 execution budget으로 API를 조합한다. Minimal seed generator는 기존 4종 정상 baseline을 명시적으로 제공한다. Node-tar adapter는 정상 fixture로 검증했다. Third-party campaign 격리, 추가 adapters, adaptive scheduler/persistence 및 evaluation은 후속 단계다.
+ArchiveCase → 결정적 USTAR → Python reference worker → pre/post snapshot → C0/C1/C2 evidence의 실제 API가 있다. Generic Mutation v1은 별도 ArchiveCase → ArchiveCase API다. Layer 5는 RunResult의 독립 state/violation novelty에 따른 in-memory retention과 uniform caller-RNG parent selection을 제공한다. Bounded campaign v1은 명시적 seed와 execution budget으로 API를 조합한다. Minimal seed generator는 기존 4종 정상 baseline을 명시적으로 제공한다. Node-tar는 별도 contained target으로 정상 fixture와 tiny benign configured campaign을 검증했다. 추가 adapters, adaptive scheduler/persistence 및 evaluation은 후속 단계다.
 
-현재 준비 분류는 ENGINEERING FOUNDATION이다. ExperimentConfig/실행 전 provenance/structured
-evidence 경로와 별도 container boundary는 구현됐지만 frozen isolation/config binding과
-Node campaign smoke가 없어 benchmark-ready는 아니다. Development
-tests와 reference repeat 검증은 evaluation 결과가 아니다. [현재 상태](../../STATUS.md)를 따른다.
+Audit Phases 1–2와 Global Findings Freeze v1을 완료했고 현재는 Phase-3 fix review 단계다. Container-backed target,
+frozen isolation/config/provenance와 benign Node full-path, lifecycle 및 staged export를 검증했다.
+EN-001–005의 engine fixes는 feature branch에서 review 대기 중이다. Development tests/smoke는
+evaluation 결과가 아니다. [현재 상태](../../STATUS.md)와 [실제 검증 기록](../../../experiments/summaries/pre-audit-readiness-v1.md)을 따른다.
 
 아래 개념 그림에는 lineage, tracing, corpus 등 미래 설계도 포함한다. 현재 확정된 field/API는 **7.8 현재 구현 경계**를 따른다. Python reference는 최종 benchmark target이 아니다.
 
@@ -404,7 +404,7 @@ signature 후보 축:
 - external-effect pattern
 - contract-relevant state class
 
-현재 normalized representation은 7.8의 StateSignature v2로 고정하며 Corpus v1은 이
+현재 normalized representation은 7.8의 StateSignature v3로 고정하며 Corpus v1은 이
 value equality를 사용한다. 후속 evaluation/ablation은 representation의 연구 가치를 검증한다.
 
 ---
@@ -453,15 +453,21 @@ st_ino = Y
 | ExecutionResult | target_id/version, command, status, exit_code, stdout/stderr, duration_seconds(actual), timeout_seconds(budget) |
 | ObjectSnapshot | canonical sandbox-relative path, ObjectType, dev/inode/nlink, permission/special mode bits/size, uid/gid, mtime/ctime ns, raw link text, regular content_digest(SHA-256 lowercase hex) |
 | StateSnapshot | full raw observation: absolute sandbox_root provenance, BEFORE/AFTER phase, harness 포함 sorted objects, protected_paths |
-| StateChange | path, before/after ObjectSnapshot 또는 None, ordered ChangeField tuple |
-| StateSignature | schema v2, EXTRACTION/EXTERNAL normalized objects, scoped same-object groups, external field-change labels, protected_paths |
+| StateChange | path, before/after ObjectSnapshot 또는 None, actual difference와 정확히 일치하는 ordered ChangeField tuple |
+| StateSignature | schema v3, EXTRACTION/EXTERNAL normalized objects, scoped same-object groups, external field-change labels, protected_paths |
 | ViolationResult | contract_id, violated, typed evidence, explanation, limitations |
 | RunResult | case, archive_sha256/format, execution, before/after, changes, signature, violations |
 | ExecutionProvenance | 실행 전 source(revision/dirty), environment(platform strings), declared target(ID/version/timeout/execution_safety), sorted sentinel(name/content SHA-256/mode) |
 
 Archive input은 `Path.resolve()`/normalization을 거치지 않는다. NUL, surrogate code point, 잘못된 entry field 조합은 model boundary에서 거부한다. regular content는 immutable bytes이며 directory는 content/target을 가지지 않는다. link는 nonempty target 필수다. Duplicate entry와 entry 순서는 그대로 유지한다. Long name은 model에 허용하지만 현재 builder가 표현할 수 없는 USTAR 값은 명시적으로 거부한다.
 
-ExecutionResult의 `timeout_seconds`는 configured execution budget이고 필수 `duration_seconds`는 실제 monotonic elapsed process execution evidence다. Duration은 float-compatible numeric 값으로 finite/0 이상이어야 하며 0.0과 numeric int 값도 허용한다. Python reference는 `perf_counter()`로 subprocess.run 직전부터 완료 또는 timeout exception 처리 진입 직후까지 측정한다. Process startup과 timeout kill/wait overhead를 포함하며 path validation, snapshot, oracle/signature 계산과 cleanup 시간은 제외한다. Timeout 설정값을 duration으로 복사하지 않는다. 모든 반환 status에 기록하고 RunResult의 execution을 통해 canonical JSON으로 보존한다. Observer/Oracle/Feedback은 duration을 security verdict로 사용하지 않으며 StateSignature v2와 case ID에도 포함하지 않는다.
+Public immutable evidence constructor는 scalar type와 nested tuple/member type를 검증한다.
+StateChange는 exact raw difference labels를 요구한다. RunResult의 cross-record TAR/snapshot/
+signature/verdict correspondence는 pipeline-owned trusted assembly다. CampaignStep/Result와
+CorpusStats도 runner/Corpus의 trusted derived output이며 임의 construction은 evidence ingest가
+아니다. [Model boundary](../../../src/inodefence/model/README.md)를 따른다.
+
+ExecutionResult의 `timeout_seconds`는 configured execution budget이고 필수 `duration_seconds`는 실제 monotonic elapsed process execution evidence다. Duration은 bool을 제외한 int/float 값으로 finite/0 이상이어야 하며 0.0과 numeric int 값도 허용한다. Python reference는 `perf_counter()`로 subprocess.run 직전부터 완료 또는 timeout exception 처리 진입 직후까지 측정한다. Process startup과 timeout kill/wait overhead를 포함하며 path validation, snapshot, oracle/signature 계산과 cleanup 시간은 제외한다. Timeout 설정값을 duration으로 복사하지 않는다. 모든 반환 status에 기록하고 RunResult의 execution을 통해 canonical JSON으로 보존한다. Observer/Oracle/Feedback은 duration을 security verdict로 사용하지 않으며 StateSignature v3와 case ID에도 포함하지 않는다.
 
 **Archive input path != Observed filesystem path.** `ArchiveEntry.path`/`link_target`은 `../` 및 absolute-looking spelling을 보존하는 untrusted raw logical input이며 normalization하지 않는다. `ObjectSnapshot.path`는 Observer가 만든 canonical sandbox-relative evidence다. Absolute path, 빈/`.`/`..` component는 거부한다(루트 자체의 `.`는 허용). StateSnapshot.objects는 canonical path 기준 unique/sorted이며 ArchiveCase의 duplicate/order semantics를 적용하지 않는다. Malformed TAR encoding fuzzing은 향후 Builder/encoding mutation layer의 책임이며 ObjectSnapshot/StateSnapshot invariant를 느슨하게 만들지 않는다.
 
@@ -479,13 +485,13 @@ Region은 model의 `path_region`에서 공통으로 정의하며 Observer/Oracle
 
 Region.HARNESS는 normalization role이며 security trust boundary나 creator attribution이 아니다. Model의 `is_extraction_path`는 `extract`/`extract/**` membership만 정의한다. Oracle의 `_is_c0_namespace_transition`은 그 밖의 모든 경로에서 EXISTENCE/IDENTITY/OBJECT_TYPE 전이를 검사한다. 따라서 HARNESS object는 signature에서 제외되어도 C0에서 면제되지 않는다. `archive/escaped.txt` 생성과 archive/input.tar 삭제·replacement도 evidence다. Content/metadata-only effect는 기존 C0/C2 separation을 유지한다.
 
-StateSnapshot은 세 region 전체와 TAR content digest를 보존한다. StateSignature v2는 HARNESS object를 제외하며 case ID/TAR SHA-256을 직접 포함하지 않는다. Path/type/mode, regular nlink/size/content digest, textual link target, same-object path group과 external change 종류를 담는다. Identity group은 signature object scope로 projection한 뒤 singleton을 제거하므로 제외된 harness path가 dangling relation을 만들지 않는다. Protected paths는 sentinel 삭제 뒤에도 유지한다.
+StateSnapshot은 세 region 전체와 TAR content digest를 보존한다. StateSignature v3는 HARNESS object를 제외하며 case ID/TAR SHA-256을 직접 포함하지 않는다. Path/type/mode, regular nlink/size/content digest, textual link target, same-object path group과 external change 종류를 담는다. Identity group은 signature object scope로 projection한 뒤 singleton을 제거하므로 제외된 harness path가 dangling relation을 만들지 않는다. Protected paths는 sentinel 삭제 뒤에도 유지한다.
 
-`SignatureObject.st_nlink`는 `int | None`이며 regular만 정수, directory/symlink/other는 None이다. Raw dev/inode, timestamp/ownership 값과 nonregular size도 제외한다. Raw nlink는 Observer와 C2에 그대로 남고 외부 metadata-change labels도 보존하므로 cross-filesystem effect equivalence까지 보장하지는 않는다. Raw identity는 run 안에서 group을 계산하거나 identity 변경을 감지할 때만 쓴다. Absolute link text의 literal sandbox prefix는 `$RUN`으로 치환하며 다른 철자와 `..`를 유지한다. Resolution/reachability는 추론하지 않는다. Extraction symlink가 harness를 가리키는 link text는 유지하되 harness referent digest/identity를 포함하지 않는다. 이 representation은 초기 후보이며 Layer 5의 baseline/ablation 정책을 미리 확정하지 않는다.
+`SignatureObject.st_nlink`는 `int | None`이며 regular만 정수, directory/symlink/other는 None이다. Raw dev/inode, timestamp/ownership 값과 nonregular size도 제외한다. Raw nlink는 Observer와 C2에 그대로 남고 외부 metadata-change labels도 보존하므로 cross-filesystem effect equivalence까지 보장하지는 않는다. Raw identity는 run 안에서 group을 계산하거나 identity 변경을 감지할 때만 쓴다. Symlink target은 absolute sandbox prefix가 일치하면 `run:<raw suffix>`, 그 외에는 `literal:<raw target>`으로 tag한다. Exact root의 suffix는 비어 있고 slash와 `..` 철자는 유지한다. Literal `$RUN/...` 또는 `run:...`은 absolute run anchor와 구분된다. Resolution/reachability는 추론하지 않는다. Extraction symlink가 harness를 가리키는 link text는 유지하되 harness referent digest/identity를 포함하지 않는다. 이 representation은 초기 후보이며 Layer 5의 baseline/ablation 정책을 미리 확정하지 않는다.
 
 실제 `run_case()` regression은 동일 content/mode의 독립 regular entry 두 개를 반대 순서로 추출한다. Case ID/TAR SHA-256은 다르지만 signature와 canonical representation은 같아야 한다. 다른 inode allocation/PYTHONHASHSEED의 기존 regression도 유지한다.
 
-`canonical_json(model)`의 envelope schema version 1과 model type, sorted JSON keys, ordered tuple 배열은 유지한다. Signature 내부 schema version은 2이며 이전 signature와 key 호환성을 주장하지 않는다. Bytes는 base64로 lossless export한다. Raw run evidence는 run-specific inode/times를 보존하고 cross-run key는 logical case 또는 normalized signature로 만든다. Deserialize/database layer는 아직 없다. Campaign은 실행 전 InodeFence commit/dirty와 process OS/kernel/platform 정보를 ExecutionProvenance에 고정한다. ExperimentConfig v1은 explicit 설정과 stable ID를 제공한다. Node tooling은 pin/lock이 있지만 전체 execution environment의 content attestation/dependency lock은 없다.
+`canonical_json(model)`의 기본 envelope schema version은 1이며 ExecutionProvenance/CampaignResult는 명시적으로 v2다. Model type, sorted JSON keys, ordered tuple 배열은 유지한다. Signature 내부 schema version은 3이며 이전 signature와 key 호환성을 주장하지 않는다. Bytes는 base64로 lossless export한다. Raw run evidence는 run-specific inode/times를 보존하고 cross-run key는 logical case 또는 normalized signature로 만든다. Deserialize/database layer는 아직 없다. Campaign은 실행 전 InodeFence commit/dirty와 process OS/kernel/platform 정보를 ExecutionProvenance에 고정한다. ExperimentConfig v1/v2는 explicit 설정과 stable ID를 제공한다. Contained Node는 immutable image ID와 실제 worker/lock digest를 기록한다. 전체 controller/Python executable/dirty patch contents attestation은 제공하지 않는다.
 
 현재 내부 API:
 
@@ -544,8 +550,8 @@ isolation-required target은 provenance capture/runtime/
 첫 run_case 이전에 거부한다. Caller의 supplied provenance가 requirement를 낮출 수 없다.
 선언은 OS containment 증명이 아니다. Contained campaign에는 enforced backend와 frozen
 policy/attestation이 필요하며 config가 있으면 actual policy와 exact binding을 검증한다.
-Low-level adapter.run/run_case는 controlled fixture caller 책임이며 third-party의 arbitrary generated
-archive 실행은 별도 OS boundary 검증 전까지 허용하지 않는다.
+Low-level contained adapter.run/run_case도 backend를 강제한다. Configured contained campaign은
+현재 승인된 tiny benign smoke로 검증했으며 security evaluation은 full audit 이후 별도 Task Contract다.
 
 Dev Container와 CI는 source/설정된 volume/동일 사용자 파일/network 접근을 포함하는 development
 환경이다. Runtime directory, subprocess, data filter, cleanup은 이를 privilege sandbox로 바꾸지
@@ -614,7 +620,7 @@ disposable_sandbox: layout / sentinel setup
 
 기존 harness-only 테스트는 setup 완료 후 BEFORE를 찍어 nonviolation을 유지하고, 같은 setup 변화를 잘못된 baseline으로 비교하면 C0 evidence가 생긴다고 명시한다. Controlled adapter E2E는 archive namespace 생성·삭제·identity/type 교체를 탐지하면서 HARNESS signature exclusion이 유지됨을 검증한다. 이는 actor attribution instrumentation이나 취약한 extractor의 재현을 구현했다는 뜻이 아니다.
 
-Disposable directory는 harness storage/cleanup 경계이며 임의 executable에 OS 접근 권한을 제한하지 않는다. 현재 검증은 Dev Container 안의 controlled baseline과 Python reference/data filter로 한다. Unsafe benchmark adapter는 process/filesystem isolation을 추가하고 종료 후 자식 process가 남지 않도록 해야 한다. Snapshot은 sandbox 밖의 접근을 관찰하지 않으며 완전한 containment를 입증하지 않는다.
+Disposable directory는 harness storage/cleanup 경계이며 임의 executable에 OS 접근 권한을 제한하지 않는다. 현재 검증은 Linux controller의 Python reference/data filter와 별도 contained Node target의 benign 입력으로 한다. Isolation-required invocation은 validated backend를 사용하며 종료 후 전체 PID context가 멈춘 상태를 확인한다. Snapshot은 sandbox 밖의 접근을 관찰하지 않으며 완전한 containment를 입증하지 않는다.
 
 ---
 
@@ -797,6 +803,10 @@ Mutation Policy ≠ TAR Encoding
 
 현재 builder는 [builder.py](../../../src/inodefence/builder.py)의 `build_tar`다. `ustar-utf8-v1` format, strict UTF-8, zero mtime/uid/gid와 empty uname/gname을 고정한다. Directory name의 trailing slash도 입력 철자를 보존한다. Fixture script가 같은 builder를 사용하며 기존 baseline bytes를 유지한다.
 
+USTAR의 실제 name/prefix header에서 복원한 raw UTF-8 bytes는 model input과 정확히 일치해야
+한다. Empty-prefix split처럼 spelling을 바꾸는 경우 indexed ValueError로 실패한다.
+이 rejection-only guard는 기존 valid encoding bytes와 format ID를 유지한다.
+
 표준 라이브러리로 충분한 초기 단계와, 향후 비정상 TAR encoding을 직접 다뤄야 하는 단계의 요구가 달라질 수 있으므로 실제 필요가 생길 때 경계를 고정한다.
 
 ---
@@ -974,11 +984,11 @@ Contract violation이 없더라도 처음 보는 identity/link/effect 관계라�
 
 현재 v1은 [corpus.py](../../../src/inodefence/feedback/corpus.py)의 in-memory Corpus와
 [fingerprint.py](../../../src/inodefence/feedback/fingerprint.py)의 pure semantic fingerprints다.
-StateSignature v2 equality와 violation novelty를 서로 독립적인 seen indexes로 관리한다.
+StateSignature v3 equality와 violation novelty를 서로 독립적인 seen indexes로 관리한다.
 
 ~~~mermaid
 flowchart TD
-    R["RunResult"] --> S["StateSignature v2 equality"]
+    R["RunResult"] --> S["StateSignature v3 equality"]
     R --> V["Semantic violation fingerprints"]
     S --> N{"New state OR new violation class?"}
     V --> N
@@ -1097,7 +1107,7 @@ checkpoint/resume, adaptive scheduling과 default seed 선택은 없다.
 
 ---
 
-## Explicit ExperimentConfig v1
+## Explicit ExperimentConfig v1/v2
 
 상위 experiment_config.py는 기존 CampaignConfig/TargetProvenance/SentinelSpec을 재사용해 필수
 JSON 설정과 stable config_id를 표현한다. Exact target/version/timeout/safety, ordered seed IDs/profile,
@@ -1380,13 +1390,13 @@ violation=C1
 실험 분석이 stdout 문자열 parsing에 의존하지 않게 한다.
 
 현재 [campaign_export.py](../../../src/inodefence/campaign_export.py)의
-`export_campaign(result: CampaignResult, destination: Path) -> tuple[Path, Path]`는 완료된 결과를
+`export_campaign(result, destination, *, experiment_config_json=None) -> tuple[Path, Path]`는 완료된 결과를
 새 directory의 manifest.json/steps.jsonl로 기록한다. 기존 destination은 거부하고 IO/encoding
 오류는 전달한다. Step별 existing canonical_json envelope/schema/bytes-base64 encoding을
 그대로 사용하며 result(raw evidence)와 feedback(decision)은 별도 field로 유지한다. Lineage,
 모든 execution status, snapshots, signature와 verdict/evidence를 보존한다.
 
-Manifest schema v3는 nullable isolation을 포함한 stored execution_provenance, format/classification, config, initial IDs, step count/final stats/retained
+Manifest schema v4는 optional experiment_config_file/experiment_config_sha256과 nullable isolation을 포함한 stored execution_provenance, format/classification, config, initial IDs, step count/final stats/retained
 order와 결과에서 얻은 target ID/version/builder format/timeout contexts를 기록한다. Context는
 first-occurrence order의 unique tuple이며 변동 provenance를 첫 step 값으로 숨기지 않는다.
 steps_file/steps_sha256으로 실제 JSONL을 연결한다. export_environment는 writer process의
@@ -1398,8 +1408,14 @@ environment는 harness process를 설명한다. Dirty state는 source patch를 �
 동일한 완료 result와 exporter environment는 destination과 무관하게 같은 sorted-key ASCII JSON,
 LF bytes를 만든다. 별도 campaign의 raw inode/timestamp/duration equality는 요구하지 않는다.
 한 step씩 encode하므로 full campaign encoding을 추가로 memory에 만들지 않는다. Manifest는
-마지막에 쓰지만 interrupted/failed export는 partial files를 남길 수 있다. Atomic transaction,
-reader/deserializer/validator, resume/checkpoint/database와 validated analysis는 제공하지 않는다.
+마지막에 쓴다. Optional pre-read config JSON은 stored experiment_config_id의 SHA-256과 일치해야
+하며 같은 bundle로 공개한다. 각 파일 flush/fsync, JSONL checksum/read-back, staging directory fsync
+후 같은 parent 안에서 Linux renameat2(RENAME_NOREPLACE)로 atomic no-overwrite publication하고
+parent를 fsync한다. 기존 destination 및 동시 생성된 empty directory도 덮어쓰지 않는다.
+공개 전 실패는 최종 destination absent/staging cleanup을 보장하고 예외를 전달한다. Parent
+생성은 rollback하지 않는다. Hard interruption은 staging을 남길 수 있고, 공개 후 parent fsync 실패는
+complete bundle을 남기고 오류를 전달한다. Unsupported OS/libc/kernel/filesystem에는 fallback이 없다.
+이 publication은 database transaction, reader/deserializer, resume/checkpoint 또는 validated analysis가 아니다.
 
 ---
 
@@ -1541,7 +1557,7 @@ Known TAR
 
 ## Milestone 5 — Feedback / Corpus v1
 
-기존 StateSignature v2와 독립 semantic violation novelty로 in-memory corpus evolution을 구현한다.
+기존 StateSignature v3와 독립 semantic violation novelty로 in-memory corpus evolution을 구현한다.
 Uniform caller-RNG selection은 baseline이다. Bounded campaign v1이 상위 caller로 실행 budget과
 lineage를 기록한다. 이 구현은 연구 효과 검증 완료를 뜻하지 않는다.
 
@@ -1696,8 +1712,38 @@ ExecutionProvenance. Only the exact IsolatedTarget composition satisfies require
 isolation; subclasses/declarations cannot substitute execution. Availability/mismatch
 fails before campaign runtime and first case; policy/artifact drift fails before next case.
 
-ExecutionProvenance/CampaignResult canonical envelopes are v2; manifest is v3 and
-serializes stored nullable isolation. ArchiveCase, RunResult, CampaignStep and signature
-encoding/novelty are unchanged. Runtime/PID/temp paths never enter config or feedback.
+ExecutionProvenance/CampaignResult canonical envelopes are v2; manifest is v4 and
+serializes stored nullable isolation. ArchiveCase, RunResult and CampaignStep canonical envelopes remain unchanged.
+StateSignature now uses internal v3 tagged target encoding; its novelty policy is unchanged. Runtime/PID/temp paths never enter config or feedback.
 No campaign-to-Docker implementation import exists: the campaign sees the enforced
 composition, while concrete runtime command construction stays in execution/container.
+
+Invocation artifact digests are **declarations/expectations**. `bind()` discovery does
+not authorize later constructed/replaced values. The wrapper executes the invocation's
+identity probe through the inspected backend image and verifies versions/digests before
+campaign freeze and before each standalone/prepared archive execution. Nonempty artifact
+declarations without an observation protocol are rejected. Node compares its fixed
+worker/package-lock probe output against every declared identity field; mismatches abort
+before extraction, including when ExperimentConfig matches the false declaration.
+
+`IsolationProvenance` v2 stores only those verified artifact observations, with
+`artifact_origin="image-identification-v1"` (or null with no artifacts). Policy image ID
+remains anchored to backend inspection and the prepared container's actual image.
+ExecutionProvenance/CampaignResult envelopes remain v2 and manifest remains v4; export
+preserves the stored origin and digests without a new backend query. Existing historical
+isolation v1 records are unchanged and do not retroactively gain verified-origin meaning.
+Image contents/probe implementation remain trusted; this is evidence integrity within
+that trust model, not independent verification of a malicious image or an isolation escape.
+
+
+### Pre-audit integration freeze
+
+Container/image/config/provenance/lifecycle and tiny benign full-path validation are complete.
+Completed manifest v4 publication is staged and atomic no-overwrite on supported Linux.
+The limited dependency review found no forbidden reverse imports; target-specific invocation
+remains separate from generic execution, Campaign, Observer/Oracle and feedback. Image ID
+and worker/lock digests anchor target contents; dirty patches and exact reference Python
+binary contents are not preserved. C0/C1/C2, signature/feedback and RNG/budget are unchanged.
+The [actual conditions, checksums, policy and limits](../../../experiments/summaries/pre-audit-readiness-v1.md)
+are engineering evidence. Architecture is READY FOR FULL CODE / ARCHITECTURE AUDIT, not
+evaluated research. Feature expansion stops until that full audit and a later Task Contract.

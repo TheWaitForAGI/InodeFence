@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Protocol, final
 
 from inodefence.execution.base import (
+    BackendError,
     ContainerOutcome,
     ContainerRequest,
     ExecutionBackend,
@@ -15,12 +16,18 @@ from inodefence.execution.base import (
 from inodefence.model import ExecutionResult
 from inodefence.model.isolation import ArtifactDigest, IsolationPolicy, IsolationProvenance
 from inodefence.model.provenance import ExecutionSafety, TargetProvenance
+from inodefence.runtime import disposable_sandbox
 
 from ._paths import validate_run_paths
 
 
 class TargetInvocation(Protocol):
-    """WHAT to execute and classify; no process/container lifecycle or Oracle."""
+    """Invocation declarations and an optional image identity probe.
+
+    artifacts are expectations, never observations. verify_identity must parse
+    backend-captured probe output and reject mismatched version/artifact claims.
+    The wrapper owns probe execution; descriptor construction cannot attest it.
+    """
 
     @property
     def image_id(self) -> str: ...
@@ -31,9 +38,29 @@ class TargetInvocation(Protocol):
     @property
     def artifacts(self) -> tuple[ArtifactDigest, ...]: ...
 
+    @property
+    def identity_command(self) -> tuple[str, ...] | None: ...
+
+    def verify_identity(self, stdout: bytes) -> tuple[ArtifactDigest, ...]: ...
+
     def command(self, archive_path: Path, extraction_root: Path) -> tuple[str, ...]: ...
 
     def classify(self, outcome: ContainerOutcome, command: tuple[str, ...]) -> ExecutionResult: ...
+
+
+def identify_image(backend: ExecutionBackend, image_id: str, command: tuple[str, ...]) -> bytes:
+    """Observe through the same inspected image/policy as archive execution.
+
+    Image contents and the identity probe implementation are trusted. This is an
+    image observation, not an independent verifier of arbitrary malicious code.
+    """
+    backend.validate_image(image_id)
+    with disposable_sandbox() as sandbox:
+        with backend.prepare(ContainerRequest(image_id, command, sandbox.root, 10)) as prepared:
+            outcome = prepared.execute()
+            if outcome.exit_code != 0 or outcome.output_truncated:
+                raise BackendError("target image identity observation failed")
+            return outcome.stdout
 
 
 @final
@@ -69,13 +96,32 @@ class IsolatedTarget:
         captured = self.backend.capture_isolation(self.invocation.image_id)
         if captured.policy != self.isolation_policy:
             raise ValueError("backend attestation differs from configured policy")
-        return replace(captured, artifacts=self.invocation.artifacts)
+        artifacts = self._observe_artifacts()
+        return replace(
+            captured,
+            artifacts=artifacts,
+            artifact_origin="image-identification-v1" if artifacts else None,
+        )
+
+    def _observe_artifacts(self) -> tuple[ArtifactDigest, ...]:
+        command = getattr(self.invocation, "identity_command", None)
+        if command is None:
+            if self.invocation.artifacts:
+                raise BackendError("artifact declarations require image identity observation")
+            return ()
+        stdout = identify_image(self.backend, self.invocation.image_id, command)
+        observed = self.invocation.verify_identity(stdout)
+        if observed != self.invocation.artifacts:
+            raise BackendError("target artifact identity changed after setup")
+        return observed
 
     @contextmanager
     def prepare(
         self, archive_path: Path, extraction_root: Path
     ) -> Iterator[Callable[[], ExecutionResult]]:
         validate_run_paths(archive_path, extraction_root)
+        # Standalone execution has the same admission rule as campaign freeze.
+        self._observe_artifacts()
         command = self.invocation.command(archive_path, extraction_root)
         timeout = self.provenance.timeout_seconds
         if timeout is None:

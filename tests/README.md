@@ -102,3 +102,14 @@ unsupported-platform 처리를 검사한다. Tool 설치만으로 지원을 주�
 증명이 아니다. `test_node_tar.py`의 실제 adapter 기반 regression은 두 campaign entry에서
 provenance freeze/runtime/첫 archive execution 이전 거부를 확인한다. Gate 생략과 거짓 positive
 진단을 주입한 local review에서 regression이 실패하는 것도 확인했다. Production isolation은 아직 없다.
+
+
+The explicit `benign-node-smoke` container suite runs one fixed eight-archive full-path
+campaign and preserves raw evidence outside target views. Portable benign-validation
+tests check input guards and stop/preserve on a controlled disposable sentinel effect.
+These do not replace the actual container checks or claim vulnerability rediscovery.
+
+Completed export durability regressions cover steps/manifest/config write failure, partial step
+encoding, corrupted checksum, destination kinds and concurrent empty-directory creation, unsupported
+publication, pre/post-publication fsync errors, identical successful bytes and config-ID binding.
+The real Node smoke and configured reference CLI publish all three files together on supported Linux.

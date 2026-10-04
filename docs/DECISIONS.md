@@ -371,3 +371,48 @@ version을 올린다. ArchiveCase/RunResult/CampaignStep encoding, C0/C1/C2, sig
 mutation/RNG/budget은 유지한다. Export는 stored facts만 serialize한다. Image ID는 compact
 content anchor이며 worker/lock digest를 함께 기록한다. Dirty patch 보존은 미구현이고
 container/kernel trust, snapshot-only 관찰 및 storage/CPU 제한은 계속 명시한다.
+
+## D026 — Completed evidence uses Linux staged no-overwrite publication
+
+A completed result writer stages a unique 0700 sibling directory. It flushes/fsyncs closed
+files, verifies generated JSONL/checksum/config/manifest, syncs staging, publishes through
+renameat2(RENAME_NOREPLACE), then syncs the parent. Ordinary rename is not a fallback because
+it can replace a concurrently created empty directory. Unsupported Linux/libc/filesystem fails
+visibly; this matches the supported Linux execution workflow, not a portability promise.
+Manifest v4 explicitly records optional config file/checksum; supplied config bytes must match
+the stored config ID and are published with evidence. Historical manifests remain historical.
+Pre-publication exceptions remove staging and leave final absent. Hard interruption may leave
+staging; after-publication sync error leaves complete evidence and propagates. Parent creation
+is not rolled back. No database/checkpoint/crash-proof storage claim is made.
+
+## D027 — Pre-audit infrastructure freeze after benign contained Node validation
+
+Container backend, pinned target, exact config/provenance binding, lifecycle validation and
+staged export establish ENGINE READY / BENCHMARK INFRASTRUCTURE READY for the approved
+benign path. Status becomes READY FOR FULL CODE / ARCHITECTURE AUDIT. This is a limited
+integration/dependency/attestation review, not the full code audit or evaluation readiness.
+Image ID plus worker/lock digests provide the compact content anchor; no extra tree hashing
+is justified before that audit. Dirty patch, exact Python binary, runtime/kernel portability,
+total storage/CPU limits and hard-interruption persistence remain explicit limitations.
+Feature expansion stops; next is the full repository-wide audit, then a separate research
+Task Contract before benchmark/CVE evaluation. Historical audit/smoke summaries keep their
+original revision and claims rather than being rewritten as current guarantees.
+
+## D028 — Frozen engine findings v1: exact serialization and typed evidence
+
+EN-001–005의 Phase-3 Task Contract는 audited main fae2954906fa1a95235cde5cddd4dcb73f334169에서
+시작한다. Audit artifacts는 pinned evidence이며 production ancestry가 아니다.
+
+USTAR builder는 실제 encoded name/prefix에서 복원한 raw path가 input과 정확히 같은지
+검증한다. Lossy split은 reject하며 existing valid bytes와 `ustar-utf8-v1` ID를 유지한다.
+Public immutable evidence/key constructor는 text/scalar와 nested tuple/member types를 검증한다.
+StateChange labels는 모든 실제 차이와 정확히 일치하며 creation/deletion은 EXISTENCE만 가진다.
+RunResult의 cross-record derivation은 pipeline-owned이고 campaign/Corpus counter assembly는
+trusted producer 경계다. 이 변경은 reader나 provenance authenticity 검증을 제공하지 않는다.
+
+StateSignature v3는 symlink target을 `run:<raw suffix>` 또는 `literal:<raw target>`으로 tag한다.
+Run-root allocation만 normalize하며 raw snapshots, repeated slash와 `..`를 보존하고 referent를
+resolve하지 않는다. V2 keys와 호환성/migration은 제공하지 않는다. Canonical envelope v1,
+ArchiveCase identity, fingerprint/novelty policy, RNG/budget 및 C0/C1/C2 predicates는 유지한다.
+Historical decisions/audit/smoke summaries는 이전 revision의 기록으로 남긴다.
+[Fix mapping과 frozen evidence](audits/engine-findings-fix-v1.md)를 따른다.

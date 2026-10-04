@@ -2,20 +2,20 @@
 
 ## 현재 입력과 출력
 
-`state_signature(before, after) -> StateSignature`는 기존 v2 normalization API다.
+`state_signature(before, after) -> StateSignature`는 v3 normalization API다.
 Layer 5는 `RunResult → Corpus.consider → FeedbackDecision`과
 `Corpus.select_case(rng) → ArchiveCase`를 추가한다. 한 번의 실행은 여전히
 `pipeline.run_case()`가 담당하며 Corpus는 실행이나 mutation을 호출하지 않는다.
 
 [초기 signature](signature.py)는 Oracle과 독립적으로 snapshot을 정규화한다. **StateSnapshot = full raw observation/evidence**, **StateSignature = normalized security-state representation for future feedback/corpus**다. Observer는 sandbox 전체를 기록하며 archive digest/harness metadata를 raw evidence에서 제거하지 않는다.
 
-Schema version 2는 공통 Region에서 EXTRACTION/EXTERNAL object만 선택한다. `.`과 `archive/**` HARNESS object/metadata는 제외하며 **ArchiveCase identity와 TAR artifact identity를 직접 포함하지 않는다.** EXTERNAL은 `outside/**`와 root-level `escape.txt` 등 모든 unreserved extraction 밖 경로를 포함한다. Sorted path/type/mode, regular nlink/size/content digest, textual symlink target, scoped same-object groups, external change field labels 및 protected_paths를 담는다. Identity group도 선택한 object scope로 projection하고 singleton을 제거하여 harness path가 dangling relation을 만들지 않는다. 삭제된 sentinel의 보호 설정과 내부↔sentinel relation은 유지한다.
+Schema version 3는 공통 Region에서 EXTRACTION/EXTERNAL object만 선택한다. `.`과 `archive/**` HARNESS object/metadata는 제외하며 **ArchiveCase identity와 TAR artifact identity를 직접 포함하지 않는다.** EXTERNAL은 `outside/**`와 root-level `escape.txt` 등 모든 unreserved extraction 밖 경로를 포함한다. Sorted path/type/mode, regular nlink/size/content digest, textual symlink target, scoped same-object groups, external change field labels 및 protected_paths를 담는다. Identity group도 선택한 object scope로 projection하고 singleton을 제거하여 harness path가 dangling relation을 만들지 않는다. 삭제된 sentinel의 보호 설정과 내부↔sentinel relation은 유지한다.
 
 **Region.HARNESS는 security trust boundary가 아니다.** 이 제외는 input/harness novelty 오염을 막는 normalization 정책이고 C0의 extraction-boundary policy는 Oracle이 별도로 소유한다. `archive/escaped.txt`가 실행 중 생겨도 signature는 같을 수 있지만 C0는 violation이다. Corpus는 signature와 violation novelty를 독립적으로 계산하여 이 후보를 보존한다. Snapshot actor attribution은 runner/adapter lifecycle에 의존하고 transient operation/direct use/sandbox 밖 접근의 한계는 유지한다.
 
-Raw st_dev/st_ino는 같은 run 안의 group 관계를 계산할 때만 사용한다. Signature에는 숫자 identity, timestamp/uid/gid 원값과 nonregular size가 없다. `SignatureObject.st_nlink`는 regular만 정수, directory/symlink/other는 None이다. Directory link count의 filesystem 차이를 key에 넣지 않지만 raw nlink/C2 metadata 비교와 external nlink-change labels는 보존한다. 이는 모든 filesystem의 effect pattern이 같다는 보장은 아니다. Absolute symlink text의 literal run prefix는 $RUN으로 바꾸며, 그 외 path spelling은 유지한다. Extraction symlink의 harness target text도 유지하며 referent digest를 추가하지 않는다. 이는 path resolution이나 symlink referent identity 추론이 아니다.
+Raw st_dev/st_ino는 같은 run 안의 group 관계를 계산할 때만 사용한다. Signature에는 숫자 identity, timestamp/uid/gid 원값과 nonregular size가 없다. `SignatureObject.st_nlink`는 regular만 정수, directory/symlink/other는 None이다. Directory link count의 filesystem 차이를 key에 넣지 않지만 raw nlink/C2 metadata 비교와 external nlink-change labels는 보존한다. 이는 모든 filesystem의 effect pattern이 같다는 보장은 아니다. 모든 symlink target은 tag한다. Absolute run prefix가 일치하면 `run:<raw suffix>`, 그 외에는 `literal:<raw target>`이다. Exact root는 `run:`이며 repeated slash와 `..`는 그대로 보존한다. 따라서 literal relative `$RUN/...`과 `run:...`은 absolute run anchor와 구분된다. Extraction symlink의 harness target text도 유지하며 referent digest를 추가하지 않는다. 이는 path resolution이나 symlink referent identity 추론이 아니다.
 
-정렬된 tuple과 [canonical JSON](../model/README.md)으로 cross-run key를 만들 수 있다. Envelope schema v1/case encoding과 signature 내부 v2는 별개다. 이전 signature와 key 호환성을 주장하지 않는다. [실제 E2E regression](../../../tests/test_pipeline.py)은 독립 regular entry의 순서를 바꿔 case ID/TAR SHA-256이 달라도 동일 semantic state의 signature/canonical JSON은 같음을 검증한다. 다른 inode allocation/PYTHONHASHSEED의 기존 테스트도 유지한다. Corpus v1은 v2 value equality를 그대로 사용하며 schema를 변경하지 않는다. 최종 representation의 연구 가치는 evaluation/ablation에서 검증해야 한다.
+정렬된 tuple과 [canonical JSON](../model/README.md)으로 cross-run key를 만들 수 있다. Envelope schema v1/case encoding과 signature 내부 v3는 별개다. 이전 signature와 key 호환성을 주장하지 않는다. [실제 E2E regression](../../../tests/test_pipeline.py)은 독립 regular entry의 순서를 바꿔 case ID/TAR SHA-256이 달라도 동일 semantic state의 signature/canonical JSON은 같음을 검증한다. 다른 inode allocation/PYTHONHASHSEED의 기존 테스트도 유지한다. Corpus v1은 현재 v3 value equality를 사용한다. V2의 untagged `$RUN` normalization과 key 호환성이나 migration을 제공하지 않는다. 최종 representation의 연구 가치는 evaluation/ablation에서 검증해야 한다.
 
 ## Public API
 
@@ -23,7 +23,7 @@ Raw st_dev/st_ino는 같은 run 안의 group 관계를 계산할 때만 사용�
 
 | API | 의미 |
 | --- | --- |
-| `state_signature(before, after)` | 기존 normalized StateSignature v2 |
+| `state_signature(before, after)` | 기존 normalized StateSignature v3 |
 | `violation_fingerprints(violations)` | violated 결과의 sorted unique semantic fingerprint tuple |
 | `ChangeFingerprint(path, fields)` | C0/C2의 observed path와 ChangeField labels |
 | `IdentityFingerprint(internal_path, sentinel_path)` | C1의 내부↔sentinel 관계 |
@@ -34,6 +34,13 @@ Raw st_dev/st_ino는 같은 run 안의 group 관계를 계산할 때만 사용�
 | `Corpus()` | in-memory evolving search state |
 
 모든 노출 record는 frozen/slots dataclass와 tuple collection이다. `Corpus`만 evolving mutable object다.
+
+Signature/effect, semantic fingerprint, FeedbackDecision와 CorpusEntry의 public constructor는
+text/enum/bool과 nested typed tuple을 runtime에서 검증한다. Fingerprint는 해당 contract의
+sorted unique evidence type을 요구한다. 이 검증은 evidence가 실제 Oracle에서 왔음을
+증명하지 않으며 novelty/admission의 cross-record 관계는 Corpus가 생성한다.
+CorpusStats는 Corpus-produced trusted counter snapshot이다. 임의 직접 construction의
+counter arithmetic을 검증하는 reader/ingest API는 제공하지 않는다.
 
 ## 독립 novelty channel
 
@@ -133,8 +140,11 @@ Corpus는 parent를 선택하고 Mutator는 case를 변형한다. Mutator → Fe
 Corpus는 dynamic command path를 hash하거나 false campaign ID를 만들지 않는다.
 Cross-target persistence safety를 주장하지 않으며 이번 v1에는 disk persistence가 없다.
 
-[Bounded campaign](../campaign.py)은 상위 caller에 구현됐으며 adaptive scheduler, persistence/checkpoint, 추가 adapters와 third-party campaign 격리,
-C3/C4, minimization/lineage DB와 effectiveness/ablation은 후속 작업이다. 계약 정의는
+[Bounded campaign](../campaign.py)은 상위 caller에 구현됐다. Third-party campaign은
+validated backend와 enforced IsolatedTarget composition을 요구하며 contained Node의
+tiny benign configured campaign을 검증했다. Snapshot 관찰 범위와 runtime/kernel trust 및
+portability 한계는 유지한다. Adaptive scheduler, persistence/checkpoint, 추가 adapters,
+C3/C4, minimization/lineage DB와 benchmark/security evaluation, effectiveness/ablation은 후속 작업이다. 계약 정의는
 [Oracle](../oracle/README.md)과 canonical contract 문서에 둔다.
 
 [단위 테스트](../../../tests/test_feedback_corpus.py)는 semantic fingerprint, 독립 novelty,

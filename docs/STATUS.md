@@ -20,33 +20,49 @@ Layer 6 — Baseline / Evaluation / Paper    ⬜
 
 ## 실행 준비 상태
 
-별도 disposable Linux container backend와 benign helper boundary 검증을 추가했다.
-Trusted Linux controller가 host-side stdio Docker broker를 명시적으로 사용하며 기존
-Dev Container 권한은 유지한다. [Enforced policy와 실행 명령](../src/inodefence/execution/README.md)을
-따른다. Node image와 production contained invocation, frozen policy/provenance 및
-ExperimentConfig v2 binding을 구현했다. Tiny benign full-path campaign은 다음 검증이다.
-아직 full audit readiness로 올리지 않는다.
+**AUDIT PHASES 1–2 COMPLETE — PHASE-3 FIX REVIEW PENDING.**
+Audited main은 `fae2954906fa1a95235cde5cddd4dcb73f334169`이며 Global Findings Freeze v1은
+0 Blocker / 2 Major / 7 Minor / 6 Note / 1 uncounted regression gap이다.
+이 branch는 EN-001–005의 engine fixes를 구현하며 review/merge를 기다린다.
+[Finding mapping과 frozen audit evidence](audits/engine-findings-fix-v1.md)를 따른다.
+나머지 fix lane과 Phase 4는 별도 범위다. Benchmark/security evaluation은 아직 수행하지 않았다.
 
-전체 분류는 **ENGINEERING FOUNDATION**이다.
+Trusted Linux controller → explicit host stdio Docker broker → disposable untrusted target
+container 경계를 구현·검증했다. 기존 Dev Container의 권한은 변경하지 않았다. Target에는
+현재 controlled run의 named-volume subpath만 노출하고 source/home/host bind/runtime socket을
+전달하지 않는다. Network none, read-only rootfs, non-root uid/gid, cap-drop ALL, NNP,
+private PID/IPC/cgroup, memory/PID/nofile/per-file FSIZE/tmpfs bounds를 적용한다.
+[정확한 policy와 실행 명령](../src/inodefence/execution/README.md)을 따른다.
 
-기존 in-Dev-Container namespace 설계는 PR #34에서 **환경 지원 차단**으로 기록됐다.
-2026-10-04 확인한 nonprivileged Dev Container에서 uid 1000의 namespace 생성 8개 probe는 모두
-EPERM으로 실패했고 cgroup v2는 read-only였다. `make isolation-support`가 사실과 실패를 JSON으로
-기록한다. 진단 성공도 validated execution boundary가 아니다. 새 Task Contract는 별도
-container backend를 선택했고 helper 검증까지 진행했다. Node configured campaign은 계속
-0 campaign executions이며 full-path smoke 완료 전 audit-ready로 표시하지 않는다.
-[Blocker 기록](../experiments/summaries/linux-isolation-support-v1.md)에 근거와 후속 조건이 있다.
+Pinned Node22.22.0/tar7.5.22 image, contained invocation, fail-closed gate, frozen isolation
+provenance와 ExperimentConfig v2 binding을 연결했다. Clean main에서 tiny benign configured
+campaign8회를 실행했다: SUCCESS8, Corpus observations8/interesting6/retained6/unique-states6,
+violation fingerprints0, observed C0/C1/C2 violated verdict0, container9/9 제거 및 runtime 정리.
+Actual seed content, prior retained-parent lineage, stored config/provenance와 checksum을 검증했다.
 
-| 기준 | 현재 상태 | 근거 / 남은 조건 |
+Focused lifecycle review와 static dependency 검사(40 modules/97 internal imports/forbidden edges0)를
+완료했다. Completed export는 manifest v4와 config/steps를 staged fsync/checksum 검증 후 Linux
+no-overwrite atomic publication한다. Full suite614와 별도 실제 container CI가 통과했다.
+[검증 기록·정확한 checksum·attestation assessment·한계](../experiments/summaries/pre-audit-readiness-v1.md)를 따른다.
+
+| 기준 | 현재 상태 | 범위 |
 | --- | --- | --- |
-| ENGINE READY | trusted Python reference 범위에서 준비 | bounded runner, explicit seeds, frozen provenance, config binding, raw export와 Linux regression |
-| BENCHMARK READY | 아직 아님 | Node image/fixtures/helper 및 config/provenance binding은 완료했지만 full-path smoke가 없음 |
-| EVALUATION READY | 아직 아님; EVALUATION NOT YET RUN | benchmark boundary 승인, 별도 연구 Task Contract, baseline/ablation/반복 계획이 필요 |
+| Engine fixes | review 대기 | 이 branch의 EN-001–005; main merge를 의미하지 않음 |
+| Contained benign infrastructure | 기존 검증 기록 | tiny benign full-path/lifecycle 범위; benchmark qualification 아님 |
+| Audit Phases 1–2 | 완료, findings frozen | pinned main과 두 audit revision; 후속 fixes review 필요 |
+| Evaluation | NOT YET RUN | 나머지 frozen findings disposition과 별도 연구 Task Contract 필요 |
 
-현재 실행 경로는 strict ExperimentConfig → explicit seeds/target binding → campaign safety gate
-→ backend availability/policy binding → frozen ExecutionProvenance (container facts 포함)
-→ bounded campaign → raw export다. Node-tar configured full-path smoke는 아직 수행하지 않았다. [인프라 검증 기록](../experiments/summaries/infrastructure-readiness-v1.md)은
-실제 설정/원본 checksum/반복 결과/한계와 audit 범위를 기록한다.
+Actual path: ExperimentConfig → target/policy binding → safety gate → backend attestation →
+frozen ExecutionProvenance → bounded Campaign/Corpus/mutation → run_case → target container →
+Observer → C0/C1/C2 + Signature → Feedback → CampaignResult → staged structured evidence export.
+Source/provenance, isolation policy와 config ID는 feedback novelty가 아니다.
+
+PR34의 in-Dev-Container namespace EPERM/cgroup read-only는 [역사적 환경 지원 기록](../experiments/summaries/linux-isolation-support-v1.md)이다.
+그 환경을 약화하지 않고 별도 container backend를 선택했다. Snapshot-only observation,
+runtime/kernel trust/portability, total storage/CPU bounds, dirty patch 미보존 및 persistence의
+hard-interruption 한계는 계속 명시한다. Pre-audit revision은 ENGINEERING FOUNDATION에서
+audit 준비 단계로 이동한 기록이며 현재는 frozen findings fix review 단계다. Feature expansion은 멈춘다. 위 benign 결과와 suite614는 pre-audit revision의
+검증 기록이며 이 fix branch의 새 validation 결과는 finding mapping에 별도로 기록한다.
 
 ## 완료된 것
 
@@ -95,7 +111,7 @@ Fixture generator는 core builder를 사용하며 기존 TAR bytes와 probe beha
 - Before/after 생성·삭제·identity·내용·metadata 변화 비교
 - C0 HARNESS 포함 extraction root 밖 persistent namespace 변화, C1 lstat identity 공유, C2 sentinel 변화 판정
 - `StateSnapshot`: archive/input.tar digest와 harness metadata를 포함한 sandbox 전체 raw evidence
-- `StateSignature` v2: EXTRACTION/EXTERNAL의 normalized security state; HARNESS(`.`, `archive/**`)와 case/TAR identity 제외
+- `StateSignature` v3: EXTRACTION/EXTERNAL의 normalized security state; HARNESS(`.`, `archive/**`)와 case/TAR identity 제외
 - scope 안의 identity group과 sentinel effect 보존, regular-only nlink(nonregular는 None), raw inode/timestamp 값 제외; 연구 효과와 최종 feedback 정책 평가는 후속 작업
 - versioned canonical JSON으로 case·실행·snapshot·판정 근거 export
 - 실제 Linux filesystem, reject/partial extraction/timeout, E2E와 기존 baseline regression 테스트
@@ -117,7 +133,7 @@ C0의 direct path use 전체와 transient state는 snapshot만으로 판정할 �
 
 ### Feedback / Corpus v1
 
-- 기존 StateSignature v2 equality와 stable semantic violation fingerprints의 독립 novelty channel
+- 기존 StateSignature v3 equality와 stable semantic violation fingerprints의 독립 novelty channel
 - C0/C2는 path/changed-field labels, C1은 internal/sentinel path 관계; raw dev/inode/timestamp/값/prose 제외
 - 같은 signature의 새 C0/HARNESS evidence도 interesting으로 보존하는 실제 run_case regression
 - inspectable FeedbackDecision: interesting observation과 새 retained entry를 구분
@@ -128,41 +144,25 @@ C0의 direct path use 전체와 transient state는 snapshot만으로 판정할 �
 - caller 수준의 Corpus.select_case → Mutator → 단일 run_case → Corpus.consider 조합 regression
 - 한 Corpus는 한 caller-controlled campaign context; complete campaign key/persistence를 제공하지 않음
 
-Bounded deterministic campaign v1과 node-tar adapter의 정상 fixture integration은 구현됐다. Adaptive scheduler/persistence는 후속 작업이며 Node-tar/ORAS generated-input campaign은 미구현/금지다. Known-vulnerability rediscovery, new vulnerability discovery, research effectiveness와 evaluation/ablation 결과는 아직 없다. C3/C4와 Layer 6도 후속 단계다. Corpus retention/stats는 연구 효과나 취약점 확정의 증거가 아니다.
+Bounded deterministic campaign v1과 node-tar adapter의 정상 fixture integration은 구현됐다. Adaptive scheduler/persistence는 후속 작업이며 Node-tar의 tiny benign configured campaign은 검증했으며 ORAS와 security evaluation campaign은 현재 범위 밖이다. Known-vulnerability rediscovery, new vulnerability discovery, research effectiveness와 evaluation/ablation 결과는 아직 없다. C3/C4와 Layer 6도 후속 단계다. Corpus retention/stats는 연구 효과나 취약점 확정의 증거가 아니다.
 
 ## 다음 작업
 
-Provenance/configuration 이후 [인프라 audit](../experiments/summaries/infrastructure-readiness-v1.md)을
-완료했다. 기존 [engineering audit](../experiments/summaries/final-engineering-audit-v1.md)은 이전 revision의 역사적 기록이다.
-Execution Provenance v1은 source revision/dirty, 실행 환경, explicit sentinel/adapter 설정을
-첫 실행 전에 고정하며 campaign 결과와 manifest v2에 보존한다. Target execution safety contract는
-explicit trusted reference campaign만 허용하며 isolation-required/미선언 target을 runtime 이전에
-거부한다. Disposable runtime/Dev Container는 OS 격리가 아니다. 별도 container helper 검증은
-완료했으며 아직 campaign binding은 없다.
-Node-tar fixture engineering은 contained execution으로 완료했다. Campaign은 explicit validated
-backend/policy binding이 필요하며 tiny benign smoke만 현재 Task Contract에 승인됐다.
-ExperimentConfig v1은 필수 JSON 설정/정규화된 config ID와 pre-execution seed/target binding을
-제공한다. Safe reference config CLI가 실행 전 config ID를 campaign/manifest에 보존한다.
-Pinned Node 22.22.0/tar 7.5.22 distroless target image와 실제 container metadata 검증을 추가했다.
-Worker/lock digest는 image 안에서 확인한다. Node production invocation은 backend만 사용하며 pipeline은 setup/BEFORE/execute/AFTER/cleanup을
-보존한다. Frozen isolation/config/provenance binding과 campaign gate를 연결했다. 다음은 tiny benign smoke다.
-Container helper의 filesystem/network/credential/resource/descendant 검증은 이미 수행했다.
-그 뒤에만 설정 기반의 아주 작은 benign Node campaign smoke를 수행한다. 이전 uncontained Node campaign은
-runtime/provenance capture/첫 run_case 이전에 거부됐으며 현재까지 실제 campaign 실행 수는 0이다. Requirement를 낮추지 않았다.
-Structured export v1은 완료된 campaign을 manifest.json/canonical steps.jsonl로 기록한다. Resume/reader/database는 없다.
-`generator.minimal_seed_corpus()`는 기존 정상 baseline 4종을 deterministic immutable tuple로
-반환한다. Fixture script도 이 API를 사용하며 campaign의 explicit-seed 계약은 유지한다.
-Safe Python reference의 7개 작은 campaign/400 executions 개발 pilot을 완료했다. Repeat의
-semantic lineage/feedback과 budget/cleanup을 검증했으며 효과 평가는 아니다.
-기록은 [개발 pilot 요약](../experiments/summaries/reference-campaign-pilot-v1.md)을 따른다.
-Campaign은 config/initial IDs/lineage/full RunResult를 memory에 보존한다. Structured writer는
-결과에 있는 observed target/version/builder/timeout과 exporter 환경을 별도 기록한다. 실행 전
-provenance는 stored 값이며 supplied source/environment 정확성은 caller 책임이다. Adaptive scheduler/persistence,
-추가 benchmark adapters와 evaluation/ablation은 이후 작업이다. Layer 5 구현과 단위/integration test
-통과를 feedback 효과의 증명으로 해석하지 않는다.
-Benchmark adapter 우선순위는 node-tar → oras-go → 선택 GNU tar를 유지한다. Unsafe target 연결 전에는 OS 수준 실행 격리와 target/version 설정을 함께 검토해야 한다.
-Known-vulnerability rediscovery/PoC/long security campaign은 격리·benchmark 설정에 대한 사람의 검토와
-별도 연구 Task Contract가 필요하다. 현재의 engineering smoke를 paper-ready evidence로 사용하지 않는다.
+**Phase-3 frozen findings fixes의 review와 CI 확인.** EN-001–005 외의 fix lane과
+Phase 4/PR #35 refresh는 각 owner의 별도 범위다. Benchmark/CVE evaluation은 후속
+disposition과 별도 연구 Task Contract 이후에만 진행한다.
+
+[Pre-audit freeze](../experiments/summaries/pre-audit-readiness-v1.md)는 제한된 integration review이며
+전체 code audit가 아니다. [이전 infrastructure review](../experiments/summaries/infrastructure-readiness-v1.md),
+[이전 engineering audit](../experiments/summaries/final-engineering-audit-v1.md)와
+[reference pilot](../experiments/summaries/reference-campaign-pilot-v1.md)은 해당 revision의 역사적 기록이다.
+
+Backend는 narrow execution contract를 제공한다. Future ORAS/GNU-tar는 target invocation/image를
+추가하는 위치가 명시돼 있으나 구현하지 않았다. C0/C1/C2, feedback policy와 RNG/budget semantics는
+유지한다. Signature v3는 symlink target을 tag해 literal/run anchor를 구분한다.
+Image ID/worker/lock digest를 content anchor로 사용하며 massive dependency hashing은
+추가하지 않았다. Dirty patch/exact Python binary/image availability의 한계는 frozen
+audit에 기록됐으며 이 engine fix 범위에서는 유지한다.
 
 ## 지금 하지 않을 것
 
@@ -205,3 +205,8 @@ Known-vulnerability rediscovery/PoC/long security campaign은 격리·benchmark 
 - Frozen config/step/result, zero-based index와 parent lineage, final CorpusStats/admission order
 - Full RunResult를 steps에 보존하므로 O(budget) memory; persistence/resume 없음
 - Unit contract와 Linux Python reference semantic-repeatability integration 검사
+
+
+[Contained benign Node smoke](../experiments/summaries/benign-node-container-smoke-v1.md)는
+실제 정책/versions/config/checksum/stats/cleanup과 제한을 기록한다. Unexpected evidence는
+보존 후 중단하며 security evaluation이나 effectiveness 결과로 해석하지 않는다.

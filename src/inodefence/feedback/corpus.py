@@ -22,6 +22,13 @@ class FeedbackDecision:
     new_violation_fingerprints: tuple[ViolationFingerprint, ...]
     already_retained: bool
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.case_id, str) or not self.case_id:
+            raise ValueError("case ID must be nonempty text")
+        if type(self.state_novel) is not bool or type(self.already_retained) is not bool:
+            raise ValueError("feedback flags must be bools")
+        _validate_fingerprints(self.new_violation_fingerprints)
+
     @property
     def interesting(self) -> bool:
         return self.state_novel or bool(self.new_violation_fingerprints)
@@ -45,10 +52,27 @@ class CorpusEntry:
     admission_signature: StateSignature
     admission_violation_fingerprints: tuple[ViolationFingerprint, ...]
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.case, ArchiveCase) or not isinstance(
+            self.admission_signature, StateSignature
+        ):
+            raise ValueError("corpus entry requires ArchiveCase and StateSignature records")
+        _validate_fingerprints(self.admission_violation_fingerprints)
+
+
+def _validate_fingerprints(fingerprints: tuple[ViolationFingerprint, ...]) -> None:
+    if not isinstance(fingerprints, tuple) or not all(
+        isinstance(fingerprint, ViolationFingerprint) for fingerprint in fingerprints
+    ):
+        raise ValueError("fingerprints must be a tuple of ViolationFingerprint records")
+
 
 @dataclass(frozen=True, slots=True)
 class CorpusStats:
-    """Immutable search/reporting counters; these are not research results."""
+    """Trusted Corpus-produced counters; these are not imported evidence.
+
+    Arbitrary direct construction does not validate counter arithmetic.
+    """
 
     observations: int
     interesting_observations: int

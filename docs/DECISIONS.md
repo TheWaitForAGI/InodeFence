@@ -293,3 +293,20 @@ Node 22.22.0/tar 7.5.22와 npm transitive lock은 benign validation baseline이�
 benchmark 선택이 아니다. Linux process group kill/direct-child wait는 timeout lifecycle이고
 OS sandbox/detached descendant containment/subreaper가 아니다. No credential env inheritance,
 no observation-window bookkeeping을 지킨다. Campaign의 isolation-required rejection은 유지한다.
+
+
+## D021 — Experiment config identity와 actual execution provenance를 분리
+
+**상태:** configuration v1 구현
+
+ExperimentConfig는 기존 CampaignConfig/TargetProvenance/SentinelSpec 의미를 재사용한다. 모든
+research-critical field를 요구하는 JSON schema v1, immutable value와 explicit seed/target binding을
+제공한다. 현재 구현한 seed/mutation/feedback policy만 허용한다. Canonical sorted-key compact
+ASCII JSON의 SHA-256이 config_id이며 sentinel order/timeout numeric spelling만 semantic normalize한다.
+Ordered initial IDs는 정렬하지 않는다. Source/kernel/runtime allocation/result는 config ID에 없다.
+Environment profile은 expected setup label이며 actual execution environment는 frozen provenance다.
+
+Campaign은 optional explicit experiment_config_id를 첫 실행 전에 받고 result/manifest에 그대로
+남긴다. None은 formal config 없이 실행한 API다. Config wrapper/CLI는 actual configuration binding을
+검증하며 low-level caller assertion과 구분한다. CLI는 safe Python reference 전용이고 immutable
+config를 experiment.json으로 raw evidence와 함께 보존한다. Node-tar campaign safety gate는 유지한다.

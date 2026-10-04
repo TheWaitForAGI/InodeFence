@@ -1079,6 +1079,20 @@ checkpoint/resume, adaptive scheduling과 default seed 선택은 없다.
 
 ---
 
+## Explicit ExperimentConfig v1
+
+상위 experiment_config.py는 기존 CampaignConfig/TargetProvenance/SentinelSpec을 재사용해 필수
+JSON 설정과 stable config_id를 표현한다. Exact target/version/timeout/safety, ordered seed IDs/profile,
+RNG seed/budget, mutation/feedback policy, sentinels와 expected environment profile을 요구한다.
+Config wrapper는 caller seeds/target binding을 실행 전에 검증하고 existing campaign API에 명시적인
+config ID를 전달한다. CampaignResult/manifest의 stored ID는 사후 reconstruction이 아니다.
+None은 formal config 없이 실행한 API를 뜻하며 low-level caller는 supplied reference 정확성에 책임이 있다.
+Canonical config에는 actual source/platform/runtime/result가 없고 frozen execution provenance에 따로
+있다. [Config semantics](../../../experiments/configs/README.md)를 따른다. Configured CLI는 safe Python
+reference만 지원하며 generic engine/StateSignature/novelty/oracle 정의를 바꾸지 않는다.
+
+---
+
 # 18. 한 testcase의 상세 Sequence
 
 ~~~mermaid

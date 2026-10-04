@@ -376,3 +376,15 @@ def test_campaign_requires_explicit_preexecution_target_declaration(
 
     with pytest.raises(ValueError, match="declare TargetProvenance"):
         run_campaign((_case("a"),), UndeclaredTarget(), CampaignConfig(1, 1))  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("config_id", ("main", "A" * 64, 123, True))
+def test_invalid_experiment_reference_rejected_before_execution(
+    executions: list[ArchiveCase],
+    config_id,
+) -> None:
+    with pytest.raises(ValueError, match="experiment_config_id"):
+        run_campaign(
+            (_case("a"),), UnusedTarget(), CampaignConfig(1, 1), experiment_config_id=config_id
+        )
+    assert executions == []

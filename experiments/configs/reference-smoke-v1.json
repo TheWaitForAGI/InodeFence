@@ -1,0 +1,30 @@
+{
+  "campaign": {
+    "execution_budget": 8,
+    "random_seed": 11
+  },
+  "environment_profile": "linux-development-v1",
+  "feedback_policy": "state-v2-or-violation-v1-uniform-parent-v1",
+  "initial_case_ids": [
+    "c56da02197b3e8959e46c08c476c7fb15a13763ce9d8d57ac5151f4b1d709fd8",
+    "cdcc8045e37293498ff2d8e69e6e5638ee470f1bd11b1d0b8f16f1f9e783208f",
+    "de8ddc5ca4c15fccb638257bbbe671c4fcc9c707962cb92de6589a09f6418620",
+    "842bdde9b083096d6f5f1c93c93efb3ff35d141b7311571dab281c771d83c0d1"
+  ],
+  "mutation_policy": "uniform-generic-v1",
+  "schema_version": 1,
+  "seed_profile": "minimal-generic-v1",
+  "sentinels": [
+    {
+      "content_base64": "aW5vZGVmZW5jZSBwcm90ZWN0ZWQgc2VudGluZWwK",
+      "mode": 384,
+      "name": "sentinel.txt"
+    }
+  ],
+  "target": {
+    "execution_safety": "trusted_reference",
+    "target_id": "python-tarfile-data",
+    "target_version": "3.12.3",
+    "timeout_seconds": 5.0
+  }
+}

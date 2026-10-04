@@ -35,6 +35,10 @@ summaries/에는 [safe reference 개발 pilot](summaries/reference-campaign-pilo
 engineering summary가 있다. Raw 결과는 로컬 experiments/raw/reference-pilot-v1/에 Git ignore로
 보관하며 재생성 명령과 checksum을 요약에 기록한다. Formal effectiveness 실험 결과는 없다.
 
+Strict JSON ExperimentConfig v1과 [reference config CLI](../scripts/run_configured_reference.py)가
+실행 전 binding을 검증하고 stored config ID/actual execution provenance를 raw export에 연결한다.
+Configuration identity는 result/source/kernel를 포함하지 않으며 평가 결과가 아니다.
+
 ## 파일 배치 규칙
 
 설정은 configs/, raw 기록은 raw/에 둔다. raw/*와 results/는 Git ignore 대상이므로 결과 보존·공유 경로를 명시한다. 설정에 seed, 환경, target 버전과 결과 식별자를 남긴다.

@@ -50,6 +50,7 @@ def export_campaign(result: CampaignResult, destination: Path) -> tuple[Path, Pa
         "schema_version": 2,
         "evidence_classification": "raw-campaign",
         "config": asdict(result.config),
+        "experiment_config_id": result.experiment_config_id,
         "execution_provenance": asdict(result.provenance),
         "initial_case_ids": result.initial_case_ids,
         "number_of_steps": len(result.steps),

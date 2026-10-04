@@ -85,7 +85,9 @@ Encoding compatibility: ExecutionProvenance and CampaignResult top-level canonic
  envelopes are explicitly schema v2; other evidence (ArchiveCase, RunResult,
 CampaignStep, snapshots/signatures) retains its envelope v1. ArchiveCase identity is
 unchanged; StateSignature's internal schema is v3 with tagged symlink targets.
-The contained policy/provenance payloads have independent schema v1. Manifest writers
+The contained policy payload remains schema v1. IsolationProvenance is independently
+schema v2 and records verified artifact observations with `artifact_origin=image-identification-v1`.
+Historical isolation v1 evidence gains no verified-origin meaning retroactively. Manifest writers
 now emit schema v4 with stored nullable isolation and optional config file/checksum;
 historical manifest v2 lacked isolation and v3 introduced it.
 No old-evidence reader or migration guarantee is supplied. ExperimentConfig v1 IDs

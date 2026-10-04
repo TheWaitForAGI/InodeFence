@@ -90,3 +90,39 @@ C0/C1/C2, BEFORE/AFTER, signature/fingerprint, budget/RNG, frozen provenance와 
 dirty-patch preservation, resource policy와 interrupted export 한계는 그대로 남는다.
 이번 결과는 해당 환경의 support 진단이며 다른 OS/kernel/container policy로 일반화하지 않는다.
 취약점 finding, evaluation 또는 paper-ready evidence가 아니다.
+
+
+## 보존된 원본과 최종 local validation
+
+[Support JSON 원본](linux-isolation-support-v1.json)은 clean diagnostic revision
+`04c418f881b7ce817579281901745c4197db77bc`에서 수집했다. Source dirty=false다.
+로컬 Git-ignored `experiments/raw/preaudit-isolation-20261004/isolation-support.json`과 byte-identical
+복사본이며 SHA-256은 `5a026225c30d25f171d52a25986d1cf8701a99e7328a55c0642e8ec5d1b354c7`다. JSON을 수동 수정하지 않았다.
+원본 실행의 engine은 기준 main과 같으며 diagnostic/script/tests/docs만 추가됐다.
+Util-linux (`unshare`, `setpriv`, `prlimit`) version은 2.39.3이었다.
+
+최종 local `make check`: **474 passed**, Ruff/format/Pyright/environment/docs PASS.
+`git diff --check` PASS. `make fixtures`와 regular-file/directory/hardlink/symlink 4 probes PASS,
+기존 fixture bytes 불변이다. 기존 test 삭제/skip/weakening과 production engine 변경은 없다.
+
+같은 clean diagnostic revision에서 reference config CLI를 실행했다:
+
+```bash
+python -m scripts.run_configured_reference experiments/configs/reference-smoke-v1.json --output experiments/raw/preaudit-isolation-20261004/reference
+```
+
+Config ID `5a24679b4a55f55fa20272e8817c9fd8f7d97fc994495c964d2b37f0967863a0`, seed 11/budget 8, Python 3.12.3/timeout 5초다.
+실제 8 SUCCESS, CorpusStats observations=8 / interesting_observations=5 / retained_cases=5 /
+unique_states=5 / unique_violation_fingerprints=0이었다. C0/C1/C2 위반 evidence는 없었다.
+Supported Linux 안에서 exact count/index, earlier retained parent lineage, canonical JSONL,
+stored source/config ID, checksum과 모든 run root cleanup을 확인했다. 이 결과는 plumbing 검사다.
+Node configured campaign은 실행하지 않았다.
+
+Raw reference는 로컬 Git-ignored `experiments/raw/preaudit-isolation-20261004/reference/`에 보존하고
+검증 기록은 그 상위 `reference-verification.json`에 있다. 공유 upload는 하지 않았다.
+
+| 원본 | SHA-256 |
+| --- | --- |
+| experiment.json | `4d99dfed6077c87f75f55d519256e1c3c1ea843fa275a7fc6706bd96aaf34527` |
+| manifest.json | `cf28d19d14615979cd3d91c1e91e804800b320c468f38282bd681f35d39b48b9` |
+| steps.jsonl | `c566115230c9ce398a66977989fba66274851b4f33fdc8e116910b3600ca7c37` |

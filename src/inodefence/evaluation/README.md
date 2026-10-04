@@ -133,3 +133,26 @@ profile is a declared setup label; observed harness/container runtime is checked
 separately. Reference Python binary contents and dirty patches are absent from
 the existing evidence. Compatibility covers recorded conditions, not authorship,
 qualification, statistical sufficiency or paper readiness.
+
+## Qualification reports
+
+`qualification_report(QualificationContext(...), observations)` fills the complete
+13-item generic checklist with PASS / FAIL / NOT_RUN. Unreported items stay
+NOT_RUN; a failure dominates the overall status. PASS requires at least one
+canonical relative artifact reference with SHA-256. Context binds exact requested
+target/image/artifacts, captured execution provenance, environment/sentinel
+profiles and protocol. No CVE, expected security outcome or target ranking appears.
+
+`write_qualification(path, report)` publishes an immutable checksummed report.
+`verify_qualification(path)` verifies report/schema and every linked artifact,
+rejecting missing/corrupt files, traversal or symlinks. An all-PASS report also
+requires captured clean source/runtime and matching verified image/isolation/
+artifact requirements. Only this verified all-PASS report is READY. A partially
+checked trusted reference is useful engineering evidence and remains NOT_RUN.
+CLI: `python -m inodefence.evaluation.qualification REPORT --format json|markdown`.
+
+The framework records trusted assessor observations linked to artifacts; it does
+not independently prove the assertions inside arbitrary assessor output or run
+target qualification. A file/digest is integrity evidence, not authorship. Actual
+benign/status/timeout/lifecycle probes must be supplied before declaring PASS.
+Existing smoke CI and planning catalog are not retroactively marked qualified.

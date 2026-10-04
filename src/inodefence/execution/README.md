@@ -107,3 +107,17 @@ content anchor when repository digests are absent. ExecutionProvenance stores th
 record; exporter never queries the backend. Drift in policy/artifacts stops before the
 next case. This is execution configuration, not C0/C1/C2 evidence or feedback novelty.
 A backend implementation is trusted controller code, not an untrusted plugin verifier.
+
+
+## Approved benign configured campaign
+
+`container_host ... --evidence /tmp/<new-controller-directory> benign-node-smoke`
+runs exactly seed11/budget8 with four ordinary minimal seeds and validation-only
+relative path/link guards. It exercises the actual configured runner, gate, frozen
+provenance, shared-volume observation and export. Unexpected C0/C1/C2 evidence is
+preserved with its stored provenance/config, then the validation stops. The evidence
+path is on the trusted controller, never mounted into a target; existing paths fail.
+CI copies/uploads produced raw evidence before destroying its controller. The
+[actual result](../../../experiments/summaries/benign-node-container-smoke-v1.md)
+records nine contexts removed, eight successes, six states and zero fingerprints.
+This entry is engineering validation only, not an unrestricted research campaign CLI.

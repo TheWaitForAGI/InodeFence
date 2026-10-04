@@ -68,7 +68,7 @@ InodeFence는 이런 **object identity와 external effect를 fuzzing feedback으
 
 별도 [disposable Linux container backend](../src/inodefence/execution/README.md)의 benign
 helper validation을 추가했다. 기존 Dev Container 권한은 유지하고 trusted host stdio
-broker로 sibling target을 실행한다. Node image/contained invocation/config/provenance binding을 구현했고 tiny benign campaign은 다음 검증이다.
+broker로 sibling target을 실행한다. Node image/contained invocation/config/provenance binding을 구현했고 tiny benign campaign8회 full-path를 검증했다. Lifecycle/export/freeze 검토가 남았다.
 
 항상 최신 상태는 [STATUS.md](STATUS.md)를 본다.
 
@@ -86,7 +86,7 @@ Layer 6  Experiment / Paper        미진행
 ```
 
 현재 준비 상태는 **ENGINEERING FOUNDATION**이다. Engine은 trusted reference 범위에서 준비됐고
-benchmark는 Node full-path smoke가 아직 없어 아직 준비되지 않았다.
+benchmark는 full-path smoke는 완료됐지만 최종 lifecycle/export/freeze 검토가 남았다.
 Evaluation은 실행하지 않았다. [인프라 검증 기록](../experiments/summaries/infrastructure-readiness-v1.md)을 따른다.
 
 Campaign은 explicit trusted reference 또는 enforced IsolatedTarget composition을 받는다.
@@ -120,7 +120,7 @@ Third-party target은 validated backend와 bound policy 없이는 실행 전에 
 
 ## 6. 파일을 어디에 만들까?
 
-폴더별 책임과 파일 배치 규칙은 [문서 지도](README.md)와 [엔진 모듈 지도](../src/inodefence/README.md)를 본다. 상세 pipeline과 데이터 흐름은 [architecture.md](research/design/architecture.md)가 기준이다. `pipeline.run_case`는 입력 하나를 실제 실행·관찰·판정한다. Generic Mutation v1은 별도 ArchiveCase 변형 API다. Feedback / Corpus v1은 독립 state/violation novelty로 parent를 보존하고 caller RNG로 균등 선택한다. Bounded campaign v1은 명시적 seed와 budget을 받아 API를 조합한다. Node-tar의 정상 fixture adapter는 있고 third-party campaign 격리, 추가 adapters, adaptive scheduler, persistence와 연구 효과 검증은 후속 작업이다.
+폴더별 책임과 파일 배치 규칙은 [문서 지도](README.md)와 [엔진 모듈 지도](../src/inodefence/README.md)를 본다. 상세 pipeline과 데이터 흐름은 [architecture.md](research/design/architecture.md)가 기준이다. `pipeline.run_case`는 입력 하나를 실제 실행·관찰·판정한다. Generic Mutation v1은 별도 ArchiveCase 변형 API다. Feedback / Corpus v1은 독립 state/violation novelty로 parent를 보존하고 caller RNG로 균등 선택한다. Bounded campaign v1은 명시적 seed와 budget을 받아 API를 조합한다. Node-tar의 contained adapter와 tiny benign configured campaign을 검증했다. 추가 adapters, adaptive scheduler, persistence와 연구 효과 검증은 후속 작업이다.
 
 ```text
 src/inodefence/model/       공통 데이터 표현과 canonical JSON

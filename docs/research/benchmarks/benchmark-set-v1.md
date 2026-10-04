@@ -19,6 +19,12 @@ PENDING requires independent verification, and BLOCKED names missing implementat
 READY requires every gate to pass with immutable evidence links; no ordinal score
 or famous CVE compensates for a failed gate.
 
+Integrated-main benign infrastructure/pre-audit freeze, Phase-1/2 audits and
+Phase-3 #45/#46 fixes are complete. The [final Engine/Research audit](engine-contract-audit.md)
+records passed functional checks and residual documentation/global closeout.
+G5 below concerns each candidate's exact artifacts/setup/full path, which remains
+absent. Engineering PASS does not promote G2/G3/G5/G7 or any candidate to READY.
+
 | Gate | Required evidence | N01 | N03 | N04 | O01 |
 | --- | --- | --- | --- | --- | --- |
 | G1 Source trust | Upstream advisory plus production fixing patch | PASS | PASS | PASS | PASS |

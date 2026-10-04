@@ -1,11 +1,18 @@
 # Benchmark and evaluation preparation v1
 
-**PLANNING ONLY — EVALUATION NOT RUN.** This is the parallel research track
-requested by the maintainer's Task Contract. No production engine changes, CVE
+**PLANNING ONLY — EVALUATION NOT RUN.** This retains the original research track
+and applies the maintainer's Phase-4B documentation refresh Task Contract. No production engine changes, CVE
 execution, exploit archives, target installation or generated-input campaigns
-belong to this branch. Keep the Draft PR unmerged while infrastructure moves.
+belong to this branch. Keep the existing Draft PR unmerged while global closeout
+and the remaining candidate-specific prerequisites are reviewed.
 
-The final audited source revision is recorded in the [engine audit](engine-contract-audit.md).
+The audited integrated main is `d1982e4cf3174e28d4eeb73af7b32829f6751b30`;
+the [engine audit](engine-contract-audit.md) and [final audit #47](https://github.com/TheWaitForAGI/InodeFence/pull/47)
+record functional closure, residual EN-005/current-package disposition and the
+NO-GO for unconditional global closeout on that main. This Draft proposes current
+planning/navigation corrections without asserting main or evaluation readiness.
+Pre-audit freeze, Phases 1–2 and Phase-3 #45/#46 fixes are completed. Tagged v3,
+artifact/invocation verification and export regressions are already implemented.
 Implemented repository behavior, upstream source facts, source-derived reachability
 predictions and future experiment results have separate evidence labels. No benchmark
 qualification, pilot, rediscovery, replay, baseline, ablation or evaluation has run.
@@ -40,5 +47,5 @@ qualification independent of execution; missing capability remains
 IMPLEMENTATION_BLOCKED and all current execution states remain NOT_RUN.
 
 The complete planning package is kept in one Draft PR. Final state and review
-evidence are recorded in the handoff; no implementation may begin until isolation,
-repository audit and audit fixes are complete under a new Task Contract.
+evidence are recorded in the handoff; P01–P11 implementation awaits accepted global
+Phase-4 closeout and a new Task Contract. All benchmark execution remains NOT_RUN.

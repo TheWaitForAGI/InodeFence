@@ -85,12 +85,12 @@ evidence_classification: N/A
 
 ## Baseline comparison
 
-| Benchmark | B0/B1/B3 | Budget / RNG set | Complete/invalid | Success fraction | Censored first-hit quantiles | Full-v2 states | Fingerprints | Seed/end corpus | Policy-interest rate | Paired B3 difference/discordant seeds |
+| Benchmark | B0/B1/B3 | Budget / RNG set | Complete/invalid | Success fraction | Censored first-hit quantiles | Full-v3 states | Fingerprints | Seed/end corpus | Policy-interest rate | Paired B3 difference/discordant seeds |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
 ## Ablation comparison
 
-| Benchmark/subset | A1/A2/A3 or control | Projection/policy ID | Budget / RNG set | Complete/invalid | Success fraction | Censored first-hit quantiles | Common full-v2 states | Policy-key diversity | Interpretation limits |
+| Benchmark/subset | A1/A2/A3 or control | Projection/policy ID | Budget / RNG set | Complete/invalid | Success fraction | Censored first-hit quantiles | Common full-v3 states | Policy-key diversity | Interpretation limits |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 
 ## Per-seed summary

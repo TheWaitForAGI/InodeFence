@@ -17,13 +17,16 @@ or several target versions alone is neither a feedback baseline nor an ablation.
 | --- | --- | --- | --- |
 | B3 | IMPLEMENTED NOW, trusted reference and exact contained wrapper | Existing `state-v2-or-violation-v1-uniform-parent-v1` with `uniform-generic-v1` | Combined retention control; no measured effectiveness |
 | B0 | NOT_IMPLEMENTED | Proposed `unretained-walk-v1`; rejected today | Guided evolving corpus versus unguided multi-step walk; success/censored first-hit; changes parent selection and retention together |
-| B1 | NOT_IMPLEMENTED | Proposed `state-v2-uniform-parent-v1`; rejected today | Marginal violation-novelty admission with uniform evolving parents constant; success/censored first-hit |
+| B1 | NOT_IMPLEMENTED | Proposed `state-v3-uniform-parent-v1`; rejected today | Marginal violation-novelty admission with uniform evolving parents constant; success/censored first-hit |
 | B2 | NOT_IMPLEMENTED; optional | Proposed `violation-v1-seed-bank-uniform-parent-v1`; seed-bank comparator revision required | Post-hit violation guidance; not a primary first-hit comparison |
-| A1 | NOT_IMPLEMENTED | Proposed `state-v2-no-groups-or-violation-v1-uniform-parent-v1` | Identity-group key contribution only; full evidence/other signals constant |
-| A2 | NOT_IMPLEMENTED | Proposed `state-v2-no-effects-or-violation-v1-uniform-parent-v1` | External changed-field key contribution only; object content/C2 constant |
+| A1 | NOT_IMPLEMENTED | Proposed `state-v3-no-groups-or-violation-v1-uniform-parent-v1` | Identity-group key contribution only; full evidence/other signals constant |
+| A2 | NOT_IMPLEMENTED | Proposed `state-v3-no-effects-or-violation-v1-uniform-parent-v1` | External changed-field key contribution only; object content/C2 constant |
 | A3 | NOT_IMPLEMENTED | Proposed mutation `uniform-generic-no-reorder-v1`, same B3 feedback | Swap contribution with its probability slot retained; append/duplicate remain |
 
-These are specification identifiers, not accepted JSON options. M1 grammar and
+B3's accepted `state-v2-or-violation-v1-uniform-parent-v1` is a legacy config
+identifier preserved for stable config IDs; its actual state keys are tagged v3.
+It promises no v2 key compatibility. Proposed B0/B1/ablation identifiers are not
+accepted JSON options. This refresh implements none of them. M1 grammar and
 dictionary binding is also NOT_IMPLEMENTED and must be constant in every arm.
 No general fresh-archive uniform generator exists beyond four minimal seeds;
 one-step-from-seed search would cap depth and is not substituted for B0. Adaptive
@@ -43,9 +46,9 @@ B3 is the implemented state OR violation policy. This set does not answer
 | Policy | Parent selection after seed phase | Retention and seen-index behavior | RNG and budget |
 | --- | --- | --- | --- |
 | B0 Unretained random walk | Initially uniformly select one of the four immutable initial seeds; then previous executed child is the next parent, irrespective of status/novelty | No growing corpus; hold only one active child and seed bank. Analysis records full state/fingerprint novelty, but never influences selection or acceptance | Same Random(seed), one initial selection then same uniform mutation API each step; no resets, retries or best-case filtering; 1,000 executions |
-| B1 StateSignature novelty only | Uniform over retained unique cases, insertion order and same caller RNG | Admit case iff full v2 signature unseen and case not retained. Update state and violation diagnostic seen indexes on every result; violation novelty never admits a parent | Same seed-phase order, same select→mutate schedule as B3, same budget/no-ops |
+| B1 StateSignature novelty only | Uniform over retained unique cases, insertion order and same caller RNG | Admit case iff full v3 signature unseen and case not retained. Update state and violation diagnostic seen indexes on every result; violation novelty never admits a parent | Same seed-phase order, same select→mutate schedule as B3, same budget/no-ops |
 | B2 Violation novelty only, optional diagnostic | Uniform over explicit immutable initial seed bank plus later violation-novel unique cases, deduplicated by case_id | Admit mutations only for new generic fingerprints; initial bank required because benign seeds provide no violation parents | Same source RNG and budget; seed bank rule must be explicit and applied to comparison control if B2 enters a formal experiment |
-| B3 Full InodeFence | Uniform over Corpus retained cases, insertion order | Admit new case for unseen full v2 state OR unseen fingerprint. Seen indexes always advance; repeated case outcomes can be interesting without adding entry | Existing shared Random(seed), seed-inclusive budget, one selection and mutation per step |
+| B3 Full InodeFence | Uniform over Corpus retained cases, insertion order | Admit new case for unseen full v3 state OR unseen fingerprint. Seen indexes always advance; repeated case outcomes can be interesting without adding entry | Existing shared Random(seed), seed-inclusive budget, one selection and mutation per step |
 
 B0 is a walk so multi-step structures can accumulate without feedback. A
 one-mutation-from-initial-seed-only search would impose an artificial depth cap;
@@ -91,7 +94,7 @@ match between versions. Full fixed B0/B1 cells remain an optional extension.
 ## Prioritized ablations
 
 All verdicts/raw observations remain unmodified. Project only the key used for
-retention. Keep common full v2/fingerprint analysis metrics so count definitions
+retention. Keep common full v3/fingerprint analysis metrics so count definitions
 do not change between arms. Each new key/policy has a new config/provenance ID.
 Do not remove evidence from the oracle to make an ablation look effective.
 
@@ -128,7 +131,7 @@ reject unsupported policy IDs rather than silently select full feedback.
 
 ## Policy seam revalidation after container admission
 
-Reviewed #39 Campaign still creates `Corpus()` once, calls `consider(result)`
+Reviewed integrated-main Campaign still creates `Corpus()` once, calls `consider(result)`
 for each completed seed/child, and calls `select_case(rng)` before mutation.
 Contained admission/frozen identity wraps that unchanged search. The smallest
 future seam is parent selection plus post-observation admission/diagnostics at

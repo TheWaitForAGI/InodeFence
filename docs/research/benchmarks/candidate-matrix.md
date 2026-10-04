@@ -25,10 +25,13 @@ means some benign types exist, not an attack-bearing seed. Reachability includes
 actual controlled setup; the taxonomy separately records structural reachability.
 Observability concerns a predicted persistent effect only.
 
-At efe1dbb (#39), low-level Node/backend composition, frozen policy/config/
-provenance and exact-wrapper campaign admission are implemented. Benign configured
-Node smoke is pending; EC-01 in the [engine audit](engine-contract-audit.md) limits
-artifact attestation. "Candidate campaign binding" below means exact historical
+At integrated main `d1982e4` (#45/#46 merged), low-level Node/backend composition,
+frozen policy/config/provenance, verified artifact origin and actual prepared
+invocation checks are implemented. Benign configured Node smoke/pre-audit freeze
+and Phase-1/2 audits are completed; EC-01/EC-02 are resolved and EC-03 remains resolved.
+The [final engine audit](engine-contract-audit.md) distinguishes passed functional
+checks from residual current-documentation/global closeout. State keys are v3.
+"Candidate campaign binding" below means exact historical
 images/locks/setup and independent qualification, all still pending.
 
 | Candidate | ArchiveCase represents semantics? | Minimal seeds start near them? | Mutation/setup reaches benchmark now? | Oracle observes selected effect? | Future isolated Linux route / qualification |

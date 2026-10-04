@@ -19,7 +19,10 @@ source files, not benchmark locks. npm SRI/go.sum h1 are not container digests.
 The catalog's `engine_revision` is the source-reviewed main SHA, not necessarily
 the engine checked out on the research branch. The
 [engine audit](../../docs/research/benchmarks/engine-contract-audit.md) records the
-current merged main and independent #36–#39 review. Generation,
+current integrated main `d1982e4`, the completed Phase-4B review and the explicitly
+superseded historical #39 record. The final audit still recommends NO-GO for
+unconditional global closeout pending documentation disposition; this Draft
+proposes those current-state corrections. Generation,
 observation and execution fields must be rechecked after relevant source changes.
 `candidate_id` (N/O/G series), descriptive `benchmark_id`, R root-cause ID and S
 semantic IDs are stable joins, not display names or CVE-based oracle rules.
@@ -57,7 +60,8 @@ pin/root gates. All 15 execution states are NOT_RUN, all candidate isolated
 campaign bindings NOT_IMPLEMENTED, and none is READY. `isolated_execution` refers
 to an exact candidate's frozen image/config/provenance and approved campaign
 path. The implemented benign Node/backend composition and passing helper/image/
-fixture CI and implemented admission at efe1dbb do not qualify historical benchmark versions or change
+fixture/configured-smoke CI and verified artifact/invocation admission at d1982e4
+do not qualify historical benchmark versions or change
 these fields. The planning-only validator rejects executed
 qualification/READY/evaluation assertions; future ingestion needs a reviewed
 schema/state transition and retained gate evidence.

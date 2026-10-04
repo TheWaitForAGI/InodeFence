@@ -31,6 +31,11 @@ mode, environment_profile. Missing/unknown/duplicate fields, bad types, nonfinit
 profile/policy는 거부한다. 현재 profile은 minimal-generic-v1, mutation은 uniform-generic-v1,
 feedback은 state-v2-or-violation-v1-uniform-parent-v1이다. Seed order는 archive/campaign 의미를 보존한다.
 
+이 feedback_policy 문자열의 `v2`는 config ID를 보존하기 위해 유지한 역사적 identifier다.
+현재 실행의 B3 state key는 tagged StateSignature **v3**이며 state OR violation novelty와
+uniform retained-parent 선택을 사용한다. 이 문자열이 v2 key 호환성이나 migration을
+의미하지 않는다. B0/B1과 projection policy는 아직 지원하지 않는다.
+
 config_id는 schema v1의 sorted-key compact ASCII JSON에 대한 SHA-256이다. Sentinel order는 name
 기준으로 정규화하고 timeout의 equivalent int/float는 float로 encode한다. JSON field order/whitespace는
 ID에 영향을 주지 않는다. Source commit, actual platform/kernel, runtime inode/time/result는 넣지

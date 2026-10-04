@@ -79,7 +79,7 @@ and frozen before experiments. No static engines check promotes G7.
 | npm package/source | Exact version, SRI, shasum, URL, peeled commit and upstream lock hash | Verify fetched bytes; freeze benchmark package-lock and all resolved production artifacts |
 | Node/base images | Existing benign [Dockerfile](../../../tools/node-tar/Dockerfile) pins Node 22.22.0 build-base and distroless digests | Reuse/verify platform-specific bases; retain build recipe and platform; no affected image built here |
 | Target execution | Immutable local image ID enforced by backend | Record built image ID and distribution/platform digest where available; no bit-identical rebuild claim |
-| Worker/dependency identity | Existing bind reports worker/lock SHA-256 | Freeze wrapper source/lock; resolve EC-01 attestation gap; match contents before execution |
+| Worker/dependency identity | #45 observes/verifies worker/lock SHA-256 before provenance freeze and each archive, with isolation v2 artifact origin | Freeze candidate-specific wrapper source/lock and verify contents through existing binding; EC-01 is resolved; no affected image built here |
 | ORAS dependency/source | Module/version and h1 checksums below | Freeze benchmark go.mod/go.sum closure, exact compiler/base/build flags/wrapper/image |
 
 ## O01 source and module chain

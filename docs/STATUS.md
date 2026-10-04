@@ -20,12 +20,19 @@ Layer 6 — Baseline / Evaluation / Paper    ⬜
 
 ## 실행 준비 상태
 
-**AUDIT PHASES 1–2 COMPLETE — PHASE-3 FIX REVIEW PENDING.**
-Audited main은 `fae2954906fa1a95235cde5cddd4dcb73f334169`이며 Global Findings Freeze v1은
+**AUDIT PHASES 1–3 COMPLETE — PHASE-4 GLOBAL CLOSEOUT PENDING.**
+현재 integrated main은 `d1982e4cf3174e28d4eeb73af7b32829f6751b30`이다.
+Pre-audit freeze와 Phase-1 audits / Phase-2 cross-review를 완료했다.
+역사적 frozen audited main은 `fae2954906fa1a95235cde5cddd4dcb73f334169`이며 Global Findings Freeze v1은
 0 Blocker / 2 Major / 7 Minor / 6 Note / 1 uncounted regression gap이다.
-이 branch는 EN-001–005의 engine fixes를 구현하며 review/merge를 기다린다.
-[Finding mapping과 frozen audit evidence](audits/engine-findings-fix-v1.md)를 따른다.
-나머지 fix lane과 Phase 4는 별도 범위다. Benchmark/security evaluation은 아직 수행하지 않았다.
+Phase-3 Runtime #45와 Engine #46은 병합됐다. USTAR raw-byte guard, immutable typed evidence,
+exact StateChange labels, tagged StateSignature v3, artifact identity attestation,
+actual invocation 검증, Docker CLI descendant lifecycle fix와 EX-004 export regression 강화가 있다.
+[Phase-3 finding mapping](audits/engine-findings-fix-v1.md)은 해당 fix branch의 역사적 기록이다.
+[Final Engine/Research audit #47](https://github.com/TheWaitForAGI/InodeFence/pull/47)은 EN-001–004
+functional closure와 integrated main의 잔여 EN-005 문서 drift를 구분한다. 이 PR #35는
+EN-005/006 문서·계획 correction을 제안하며 아직 병합되지 않았다. Runtime final audit와 global
+Phase-4 closeout의 완료를 주장하지 않는다. Benchmark qualification/evaluation은 모두 NOT_RUN이다.
 
 Trusted Linux controller → explicit host stdio Docker broker → disposable untrusted target
 container 경계를 구현·검증했다. 기존 Dev Container의 권한은 변경하지 않았다. Target에는
@@ -34,6 +41,7 @@ container 경계를 구현·검증했다. 기존 Dev Container의 권한은 변�
 private PID/IPC/cgroup, memory/PID/nofile/per-file FSIZE/tmpfs bounds를 적용한다.
 [정확한 policy와 실행 명령](../src/inodefence/execution/README.md)을 따른다.
 
+다음 수치는 pre-audit revision의 역사적 engineering 기록이다.
 Pinned Node22.22.0/tar7.5.22 image, contained invocation, fail-closed gate, frozen isolation
 provenance와 ExperimentConfig v2 binding을 연결했다. Clean main에서 tiny benign configured
 campaign8회를 실행했다: SUCCESS8, Corpus observations8/interesting6/retained6/unique-states6,
@@ -47,10 +55,17 @@ no-overwrite atomic publication한다. Full suite614와 별도 실제 container 
 
 | 기준 | 현재 상태 | 범위 |
 | --- | --- | --- |
-| Engine fixes | review 대기 | 이 branch의 EN-001–005; main merge를 의미하지 않음 |
-| Contained benign infrastructure | 기존 검증 기록 | tiny benign full-path/lifecycle 범위; benchmark qualification 아님 |
-| Audit Phases 1–2 | 완료, findings frozen | pinned main과 두 audit revision; 후속 fixes review 필요 |
-| Evaluation | NOT YET RUN | 나머지 frozen findings disposition과 별도 연구 Task Contract 필요 |
+| Phase-3 fixes | main merge 완료 | Runtime #45 / Engine #46; 현재 navigation correction은 PR #35 제안 |
+| Contained benign infrastructure | integrated-main CI PASS | boundary/image/Node/benign configured campaign; benchmark qualification 아님 |
+| Audit Phases 1–2 | 완료, findings frozen | 기존 freeze counts는 역사적 기록이며 final dispositions와 구분 |
+| Phase 4 | global closeout 대기 | #47 기능 검증 통과; residual EN-005/006 문서 disposition과 Runtime/global final verdict 필요 |
+| Evaluation | NOT_RUN | P01–P11은 future Task Contracts; benchmark pair도 아직 qualified가 아님 |
+
+[Integrated-main CI 37197933974](https://github.com/TheWaitForAGI/InodeFence/actions/runs/37197933974)는
+check와 container-integration 모두 PASS다. 실제 boundary6/image2/Node-target10/benign-campaign1
+checks를 통과했고 campaign은 archive8 + identity10의 context18/18을 제거했다.
+IsolationProvenance v2의 verified artifact origin을 export한다. Full local engine validation은
+803 tests PASS이며 이 CI/검증은 후보 버전의 runtime qualification이나 effectiveness 증거가 아니다.
 
 Actual path: ExperimentConfig → target/policy binding → safety gate → backend attestation →
 frozen ExecutionProvenance → bounded Campaign/Corpus/mutation → run_case → target container →
@@ -61,8 +76,9 @@ PR34의 in-Dev-Container namespace EPERM/cgroup read-only는 [역사적 환경 �
 그 환경을 약화하지 않고 별도 container backend를 선택했다. Snapshot-only observation,
 runtime/kernel trust/portability, total storage/CPU bounds, dirty patch 미보존 및 persistence의
 hard-interruption 한계는 계속 명시한다. Pre-audit revision은 ENGINEERING FOUNDATION에서
-audit 준비 단계로 이동한 기록이며 현재는 frozen findings fix review 단계다. Feature expansion은 멈춘다. 위 benign 결과와 suite614는 pre-audit revision의
-검증 기록이며 이 fix branch의 새 validation 결과는 finding mapping에 별도로 기록한다.
+audit 준비 단계로 이동한 역사적 기록이며 현재는 Phase-4 global closeout 대기 단계다.
+Feature expansion은 멈춘다. 위 benign 결과와 suite614는 pre-audit revision의 검증 기록이다.
+Merged fixes와 final validation은 각 Phase-3 PR 및 #47에 별도 기록한다.
 
 ## 완료된 것
 
@@ -148,9 +164,11 @@ Bounded deterministic campaign v1과 node-tar adapter의 정상 fixture integrat
 
 ## 다음 작업
 
-**Phase-3 frozen findings fixes의 review와 CI 확인.** EN-001–005 외의 fix lane과
-Phase 4/PR #35 refresh는 각 owner의 별도 범위다. Benchmark/CVE evaluation은 후속
-disposition과 별도 연구 Task Contract 이후에만 진행한다.
+**Phase-4 final audit / 문서 disposition / global closeout.** #45/#46 fixes를 재구현하지 않는다.
+이 PR #35는 current planning/navigation을 갱신하는 Draft이며 #47의 audited-main NO-GO를
+소급 변경하지 않는다. EN-005/006 correction review와 Runtime/global verdict 이후에만
+별도 Task Contract로 P01–P11의 필요한 구현을 시작한다. Benchmark/CVE qualification/evaluation은
+아직 NOT_RUN이며 이번 refresh가 실행을 승인하지 않는다.
 
 [Pre-audit freeze](../experiments/summaries/pre-audit-readiness-v1.md)는 제한된 integration review이며
 전체 code audit가 아니다. [이전 infrastructure review](../experiments/summaries/infrastructure-readiness-v1.md),
@@ -162,7 +180,7 @@ Backend는 narrow execution contract를 제공한다. Future ORAS/GNU-tar는 tar
 유지한다. Signature v3는 symlink target을 tag해 literal/run anchor를 구분한다.
 Image ID/worker/lock digest를 content anchor로 사용하며 massive dependency hashing은
 추가하지 않았다. Dirty patch/exact Python binary/image availability의 한계는 frozen
-audit에 기록됐으며 이 engine fix 범위에서는 유지한다.
+audit에 기록됐으며 현재도 유지한다.
 
 ## 지금 하지 않을 것
 

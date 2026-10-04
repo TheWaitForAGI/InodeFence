@@ -26,7 +26,9 @@ raw 결과를 검토 없이 논문 결론으로 승격하기, source mount에서
 
 ## 현재 상태
 
-Execution Provenance v1은 campaign 시작 전에 source/environment/adapter/sentinel 값을 고정한다.
+ExecutionProvenance envelope v2는 campaign 시작 전에 source/environment/adapter/sentinel과
+nullable isolation 값을 고정한다. Contained IsolationProvenance 내부 v2는 실제 image probe로
+검증한 worker/lock digest와 artifact origin을 기록한다. Policy schema는 v1이다.
 Manifest v4는 stored configuration과 실제 RunResult contexts/exporter 환경을 분리한다. Git 정보가
 없으면 None이며 dirty checkout의 commit은 patch 내용을 보존하지 않는다. Metadata만으로
 연구 결과의 재현성 또는 OS execution isolation을 보장하지 않는다.
@@ -42,7 +44,9 @@ Configuration identity는 result/source/kernel를 포함하지 않으며 평가 
 [인프라 검증 요약](summaries/infrastructure-readiness-v1.md)은 clean source의 작은 reference repeat,
 uncontained Node campaign 실행 전 거부와 local raw checksums를 연결하는 역사적 기록이다.
 현재는 [pre-audit readiness](summaries/pre-audit-readiness-v1.md)의 contained Node benign smoke,
-lifecycle, durable export와 dependency 검증까지 완료했다. 다음은 full audit이며 evaluation은 미실행이다.
+lifecycle, durable export와 dependency 검증을 완료한 역사적 기록을 따른다.
+그 이후 Audit Phases 1–2/findings freeze와 Phase-3 #45/#46 fixes를 완료했고 현재는 Phase-4
+global closeout 대기다. 이 PR #35는 current-state documentation correction 제안이며 evaluation은 NOT_RUN이다.
 
 ## 파일 배치 규칙
 
@@ -57,8 +61,9 @@ lifecycle, durable export와 dependency 검증까지 완료했다. 다음은 ful
 실행 설정 또는 실험 결과가 아니며 isolation, 전체 audit와 audit fixes 이후의 handoff다.
 
 Container-bound configurations use explicit ExperimentConfig v2 and frozen isolation
-policy/runtime/image/worker/lock provenance. Uncontained third-party campaigns fail
-before setup; this pre-audit contract authorizes only the tiny benign Node smoke.
+policy/runtime/image and verified worker/lock provenance with isolation schema v2 origin.
+Uncontained third-party campaigns fail before setup; approved execution evidence is limited
+to engineering/helper/benign Node checks and does not authorize candidate execution.
 Manifest v4 stores these facts; snapshot/security/novelty semantics are unchanged.
 No benchmark effectiveness or known-vulnerability result is implied.
 
@@ -66,7 +71,8 @@ No benchmark effectiveness or known-vulnerability result is implied.
 The [benign Node container smoke](summaries/benign-node-container-smoke-v1.md) records
 one tiny engineering campaign, exact stored conditions/checksums and observed stats.
 CI retains its raw bundle as an artifact. Lifecycle/export review and limited integration freeze
-are complete; next is the full repository audit. No effectiveness/security evaluation follows automatically.
+were completed before the Phase-1/2 audits and merged Phase-3 fixes. Phase-4 global
+closeout remains pending; no effectiveness/security evaluation follows automatically.
 
 ## Completed export publication
 
@@ -80,5 +86,8 @@ and propagates. Unexpected-evidence emergency preservation is separate and can s
 if its writes fail. This is atomic publication, not resume/database or crash-proof storage.
 
 Schemas1/2/3 are historical exports; the writer emits v4. Step JSONL/ArchiveCase/RunResult/signature
-encoding and provenance/config schemas are unchanged. The no-overwrite mechanism follows the
+envelopes remain v1, while signature keys intentionally changed from internal v2 to tagged v3.
+ExecutionProvenance/CampaignResult envelopes remain v2; IsolationProvenance changed to internal
+v2 with verified artifact origin. Config v1/v2 IDs are preserved and no v2 signature-key migration
+or historical-evidence attestation is provided. The no-overwrite mechanism follows the
 [Linux rename manual](https://man7.org/linux/man-pages/man2/rename.2.html).

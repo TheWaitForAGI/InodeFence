@@ -23,9 +23,9 @@
 
 ArchiveCase → 결정적 USTAR → Python reference worker → pre/post snapshot → C0/C1/C2 evidence의 실제 API가 있다. Generic Mutation v1은 별도 ArchiveCase → ArchiveCase API다. Layer 5는 RunResult의 독립 state/violation novelty에 따른 in-memory retention과 uniform caller-RNG parent selection을 제공한다. Bounded campaign v1은 명시적 seed와 execution budget으로 API를 조합한다. Minimal seed generator는 기존 4종 정상 baseline을 명시적으로 제공한다. Node-tar는 별도 contained target으로 정상 fixture와 tiny benign configured campaign을 검증했다. 추가 adapters, adaptive scheduler/persistence 및 evaluation은 후속 단계다.
 
-Audit Phases 1–2와 Global Findings Freeze v1을 완료했고 현재는 Phase-3 fix review 단계다. Container-backed target,
+Pre-audit freeze, Audit Phases 1–2와 Global Findings Freeze v1을 완료했고 Phase-3 Runtime #45 / Engine #46 fixes는 main `d1982e4`에 병합됐다. 현재는 Phase-4 global closeout 대기 단계다. Container-backed target,
 frozen isolation/config/provenance와 benign Node full-path, lifecycle 및 staged export를 검증했다.
-EN-001–005의 engine fixes는 feature branch에서 review 대기 중이다. Development tests/smoke는
+EN-001–004의 functional engine fixes는 최종 검증을 통과했다. Audited main의 잔여 EN-005 navigation drift는 [final audit #47](https://github.com/TheWaitForAGI/InodeFence/pull/47)에 기록했고 이 PR #35에서 문서 correction을 제안한다. Global verdict나 benchmark readiness를 앞당기지 않는다. Development tests/smoke는
 evaluation 결과가 아니다. [현재 상태](../../STATUS.md)와 [실제 검증 기록](../../../experiments/summaries/pre-audit-readiness-v1.md)을 따른다.
 
 아래 개념 그림에는 lineage, tracing, corpus 등 미래 설계도 포함한다. 현재 확정된 field/API는 **7.8 현재 구현 경계**를 따른다. Python reference는 최종 benchmark target이 아니다.

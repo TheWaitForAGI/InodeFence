@@ -1,3 +1,124 @@
+# Engine capabilities and research assumptions — Phase-4 refresh
+
+**Current implementation review and planning, not benchmark results.**
+Audited integrated main: `d1982e4cf3174e28d4eeb73af7b32829f6751b30` (2026-10-04).
+This existing PR #35 branch incorporates that main with a history-preserving merge
+from its actual published head `5b3745e40e5d43c3b79fa9fe7ca1872f1d2e1106`.
+The [Phase-4B final audit #47](https://github.com/TheWaitForAGI/InodeFence/pull/47)
+controls current Engine/Security Contract/Research dispositions. It completed before
+this refresh, found no new Blocker/Major/Minor, and closed EN-001–EN-004 in code.
+
+Audited main still has residual EN-005 navigation drift. The audit recommends
+**NO-GO for unconditional global Phase-4 closeout** pending documentation disposition.
+This Draft proposes those navigation corrections and closes EN-006 planning drift
+on its branch; it does not retroactively fix main or replace the Runtime/global
+final verdict. The code foundation permits this safe refresh. Neither benchmark
+implementation nor evaluation readiness is asserted.
+
+Pre-audit freeze (#40–#42), Phase-1 audits, Phase-2 cross-review/Global Findings
+Freeze v1 and Phase-3 Runtime #45 / Engine #46 fixes are completed. No item below
+asks to repeat those fixes. Global closeout and new P01–P11 Task Contracts remain
+future. All 15 candidate executions remain **NOT_RUN**; no candidate is READY.
+
+## Current disposition of historical review incidents
+
+| Historical ID | Canonical finding | Current disposition and direct evidence |
+| --- | --- | --- |
+| EC-01 | CR-001 / Runtime EX-001 | RESOLVED by #45: IsolatedTarget observes/verifies versions and worker/lock identity before freeze and each archive; false direct/replaced declarations fail; [Node tests](../../../tests/test_node_tar.py) and [isolation tests](../../../tests/test_isolation_provenance.py) |
+| EC-02 | CR-002 / Runtime EX-002 | RESOLVED by #45: actual prepared Entrypoint/Cmd/WorkingDir/Env checked before start; [backend mismatch/omission/order tests](../../../tests/test_container_backend.py) |
+| EC-03 | Earlier STATUS incident | RESOLVED by #42; not reopened by EN-005 residual current navigation |
+| EN-001 | Frozen Major | CLOSED in code by #46/final re-audit: raw path bytes preserved in actual USTAR header or entry-indexed failure before execution; [builder regressions](../../../tests/test_builder.py) |
+| EN-002/003 | Frozen Minors | CLOSED in code: public typed immutable evidence and exact difference labels; [evidence validation](../../../tests/test_evidence_validation.py), shared model/comparison helper |
+| EN-004 | Frozen Minor | CLOSED in code: disjoint tagged internal StateSignature v3, raw snapshots preserved, no referent resolution or v2 compatibility |
+| EN-005 | Frozen navigation Minor | Original three locations fixed; additional integrated-main remnants corrected by this unmerged planning/navigation proposal; final acceptance remains separate |
+| EN-006 | PR #35 drift Minor | This refresh supersedes #39 engine/capability/backlog claims; delivery and validation recorded in [handoff](post-audit-backlog.md) |
+| EX-003 / EX-004 | Runtime Minor / uncounted gap | CLI descendant lifecycle fixed; actual export fsync/order/readback regression coverage strengthened, respectively. Neither supplies a campaign failure ledger. |
+
+The historical #39 review and its synthetic incident record are retained below,
+with explicit superseding statuses. Its old counts, v2 keys and pending smoke/fix
+statements describe that old revision only. No benchmark NOT_RUN record is erased.
+
+## Implemented now, with bounded evidence
+
+Evidence A = implemented with source/regressions; B = narrower platform validation,
+not general benchmark qualification; C/D = planning or absent implementation.
+
+| Capability | Level / present evidence | Remaining distinction |
+| --- | --- | --- |
+| Raw ordered immutable ArchiveCase / deterministic strict UTF-8 USTAR | A; model, builder and fixture tests | Builder rejects lossy delegated splits even if another split might be possible; not a general archive encoding fuzzer |
+| Four benign seeds / eight uniform operator slots | A; generator/mutation tests | Finite affix/stem grammar still cannot spell outside/default sentinel; P02 remains needed |
+| Full raw lstat BEFORE/AFTER / exact StateChange / C0/C1/C2 | A; observer/state/pipeline tests | Persistent controlled-run effects only; actor/transient/referent/inode-reuse limits remain |
+| Tagged StateSignature v3 / whole-contract fingerprints / independent novelty Corpus | A; state and feedback tests | State OR violation retention; interesting and fingerprints are not vulnerabilities; B0/B1/projections absent |
+| Bounded seed-inclusive campaigns / uniform retained parents / lineage | A; campaign tests | No operator record, full-step clock, partial failure ledger, reader/replay/checkpoint/resume |
+| Strict ExperimentConfig v1/v2 / stored ExecutionProvenance envelope v2 | A; config/provenance tests | Config identity is not full runtime attestation; dirty patch/Python binary/full closure limits remain |
+| Container policy v1 / IsolationProvenance internal v2 / verified artifact origin | A; Node/backend/isolation regressions | Image/probe code, Docker/runtime/kernel and broker progress remain trusted |
+| Manifest v4 / optional same-bundle config / staged fsync/readback/no-replace export | A; export unit/integration tests, EX-004 strengthening | Complete results only; sync regressions do not prove power-loss recovery or persist aborted campaigns |
+| Real helper / pinned Node image / fixture and benign configured full path | B; [exact-main CI 37197933974](https://github.com/TheWaitForAGI/InodeFence/actions/runs/37197933974) | 6 boundary, 2 image, 10 Node-target and 1 benign campaign checks passed; this is not historical pair qualification |
+| Candidate images/locks/profiles and Linux effect/fixed qualification | D; all catalog execution states NOT_RUN | Static registry/source checks remain static; P01/P06+ future |
+| ORAS/GNU adapters, M1 dictionary, B0/B1 and projections, P04/P05 tooling, C3/C4 | C/D | Not implemented by this research refresh |
+
+## Signature/config/export compatibility
+
+StateSignature internal schema is **v3**, with `run:<raw suffix>` for exact current
+run root or textual descendants and `literal:<raw target>` otherwise. Exact root,
+repeated slash and `..` spelling remain meaningful text. Literal `$RUN/...`,
+`run:...` and sibling absolute paths do not collide with a run anchor. Raw snapshots
+remain unchanged and no referent lookup occurs. Equality is stable across allocation
+roots for equivalent run-anchored text. ArchiveCase IDs and basic canonical envelope
+v1 are unchanged; no v2 key reader, migration or compatibility is provided.
+
+ExperimentConfig's accepted B3 identifier remains
+`state-v2-or-violation-v1-uniform-parent-v1` to preserve its existing config IDs.
+That is a **legacy identifier**, not a claim that the actual signature remains v2.
+Current B3 compares v3 state OR generic violation novelty and selects uniformly over
+retained unique cases. B0/B1 and projection IDs below are future specifications.
+A future policy revision must explicitly bind the representation and decision model;
+no hidden parser fallback or renamed production ID is introduced here.
+
+IsolationPolicy stays v1; IsolationProvenance is internal v2 with
+`artifact_origin=image-identification-v1` for verified artifacts. ExecutionProvenance
+and CampaignResult envelopes stay v2, RunResult/step/basic envelopes v1, manifest v4.
+Historical isolation v1 evidence is not upgraded into verified facts retroactively.
+Config JSON can be exported as optional experiment.json in the same complete bundle,
+with stored ID/checksum validation. Unconfigured exports can still omit it. Original
+logical bytes/order and TAR hash/format remain in complete raw steps; no general
+reader/replay or P04 failure ledger exists.
+
+## Current research meaning and remaining backlog
+
+The real/reference pipeline remains case → mutate → lossless-or-reject build →
+target → BEFORE/AFTER → comparison → C0/C1/C2 and v3 state → fingerprints → Corpus
+→ uniform parent → next mutation. Mutator is target independent, Oracle contains
+no known-CVE/version predicates, and target status does not determine contract truth.
+Retention/stats are search evidence, not paper results. Whole-contract fingerprint
+classes are not root-cause or bug counts. Novel benign bytes/paths can dominate
+states. Snapshot coverage and runtime trust are unchanged (EN-007–EN-011 remain valid).
+
+P01 freezes candidate-specific pins/setup using existing binding and attestation;
+P02 supplies generic protected-component addressability; P03 adds alternative policy
+binding and truthful admission diagnostics; P04 adds full-step timing/infrastructure
+failure records; P05 adds hash-verified reader/replay/adjudication. P06+ qualification,
+pilot and formal evaluation remain NOT_RUN. No speculative replacement architecture,
+new oracle contract or CVE recipe is introduced. See the [ordered backlog](post-audit-backlog.md).
+
+## Validation scope
+
+Integrated-main final re-audit: engine selection 545 passed, runtime-seam selection
+242 passed, explicit acceptance witnesses 18 passed, make check 803 passed plus
+Ruff/format/Pyright/environment/docs. Canonical exact-main CI passed both jobs; real
+container logs record 18/18 removed benign-campaign contexts. The audit lane read
+CI evidence rather than claiming a local Docker rerun. Refresh-branch full validation
+is recorded separately in the handoff. None is benchmark evidence.
+
+<details>
+<summary>Historical #39 implementation review — superseded current-state claims</summary>
+
+This retained body refers to `efe1dbb5ec3787dee42eadb643646be2b326b489`.
+Old pending/OPEN/version statements below are historical, governed by the current
+disposition table above. For immutable original content and original code context,
+use the [published pre-refresh record](https://github.com/TheWaitForAGI/InodeFence/blob/5b3745e40e5d43c3b79fa9fe7ca1872f1d2e1106/docs/research/benchmarks/engine-contract-audit.md).
+Relative source links in the retained body now resolve to this branch's current tree.
+
 # Engine capabilities and research assumptions
 
 **Implementation audit, not an experiment result or full repository audit.**
@@ -313,7 +434,7 @@ suites and failure cases; fake Docker responses do not establish containment.
   worker/lock digests and stale artifacts after same-version image replacement,
   before the first campaign case. Existing tests validate normal bind and later
   drift, but do not challenge this pre-freeze composition.
-- **Status:** OPEN; escalated in [PR #35 comment](https://github.com/TheWaitForAGI/InodeFence/pull/35#issuecomment-5977145667).
+- **Historical status at #39:** OPEN; now RESOLVED by #45 (CR-001). Originally escalated in [PR #35 comment](https://github.com/TheWaitForAGI/InodeFence/pull/35#issuecomment-5977145667).
   No production patch contributed by this lane.
 
 ### EC-02 — command/default inspection coverage
@@ -331,7 +452,7 @@ suites and failure cases; fake Docker responses do not establish containment.
 - **Suggested direction:** negative Config mismatch tests plus explicit argv
   assertions; consider actual inspection before start. Real helper/Node behavior
   provides narrower current coverage, not a general arbitrary-CWD contract.
-- **Status:** OPEN audit test gap; no production changes.
+- **Historical status at #39:** OPEN; now RESOLVED by #45 (CR-002 actual invocation verification and regressions).
 
 ### EC-03 — contradictory primary status paragraph
 
@@ -345,7 +466,7 @@ suites and failure cases; fake Docker responses do not establish containment.
 - **Expected invariant:** implementation status is consistent within STATUS.
 - **Suggested direction:** primary's freeze documentation should reconcile the
   historical paragraph with #39; source/tests are unchanged by that correction.
-- **Status:** OPEN documentation drift; not edited from the research lane.
+- **Historical status at #39:** OPEN; RESOLVED by #42. The separate EN-005 navigation remnants are not this incident.
 
 ### Deliberate incorrect-variant reasoning
 
@@ -394,3 +515,5 @@ observer/oracle, signature, policy IDs, lifecycle and provenance claims can all
 become stale. Refresh the catalog's engine_revision and handoff alongside this
 document. External-source dates and release claims have their own evidence ledger.
 A future primary completion signal is not benchmark execution authorization.
+
+</details>

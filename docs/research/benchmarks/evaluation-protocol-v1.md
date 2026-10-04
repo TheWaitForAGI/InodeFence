@@ -1,8 +1,9 @@
 # Controlled rediscovery and evaluation protocol v1
 
 **PREDECLARED PLAN — NO EXPERIMENTAL RESULTS.** Implementation and execution
-require isolation → full repository audit → audit fixes → a new benchmark Task
-Contract. [Set v1](benchmark-set-v1.md) fixes the cases; [baselines/ablations](baseline-and-ablation-v1.md)
+require accepted global Phase-4 closeout → remaining P01–P05 implementation →
+a new benchmark Task Contract. Pre-audit freeze, Phase-1/2 audits and Phase-3 fixes
+are completed; this Draft does not assert global/evaluation readiness. [Set v1](benchmark-set-v1.md) fixes the cases; [baselines/ablations](baseline-and-ablation-v1.md)
 fix independent variables. Apply repository experiment-validation skill before
 promoting raw runs. This protocol does not authorize PoC execution in this lane.
 
@@ -164,7 +165,7 @@ adjudication completion or an explicit pending-data limitation.
 | Rediscovery success proportion | H/V complete campaigns; also H/K scheduled campaigns as conservative yield; percent and counts | Complete no-hit = 0; returned timeout/failure remains eligible if complete matching evidence; invalid runs excluded from H/V but shown in H/K and reason counts |
 | Executions to first confirmed class evidence | 1-based original campaign index of earliest subsequently validated matching case; denominator one campaign; executions | Complete no-hit right-censored at N, reported `>N`; never give it a fictitious hit at N. Invalid truncated campaign separate |
 | Time to first confirmed class evidence | Monotonic seconds from first seed pipeline setup through completed return/cleanup of earliest confirmed original step; one campaign | No-hit right-censored at completed campaign elapsed; target timeout costs included. Post-campaign replay/adjudication time excluded and reported separately. Current ExecutionResult.duration_seconds alone is insufficient |
-| Unique StateSignatures | Count of distinct full v2 signature values over E; states/campaign; auxiliary count/E states per execution | All returned statuses included; no novelty from missing snapshot. Raw count is not number of bugs and digest/path novelty can inflate it |
+| Unique StateSignatures | Count of distinct full v3 signature values over E; states/campaign; auxiliary count/E states per execution | All returned statuses included; no novelty from missing snapshot. Raw count is not number of bugs and digest/path novelty can inflate it |
 | Unique violation fingerprints | Distinct canonical generic fingerprints over E; classes/campaign; auxiliary count/E | No-hit can still have unrelated violations. Values omit effect direction; count is not vulnerability count |
 | Corpus growth | R_end − R_after_seed; parents/campaign; auxiliary growth/(E−4) | Report R_after_seed and R_end; fixed-seed policy has zero growing corpus; never compare raw size as effectiveness |
 | Interesting-observation rate | I/E; percent | Variant-specific denominator includes seed/no-op/reject/failed/timed-out complete steps; only descriptive across different keys |
@@ -178,7 +179,7 @@ original occurrences. Earliest confirmed occurrence determines hit index.
 If validation resources run out, mark unresolved cases and the campaign
 classification pending; never relabel them as no-hit or drop them from tables.
 
-Keep analysis representation counts based on full unablated v2/fingerprints for
+Keep analysis representation counts based on full unablated v3/fingerprints for
 all variants, independently of feedback eligibility. Distinguish these common
 analysis counts from each policy's own seen-key counts and I/E. Report diagnostic
 throughput E/full campaign seconds, useful bytes retained and malformed/rejected
@@ -296,14 +297,17 @@ benign doubles; no vulnerable target is required to validate the infrastructure.
 
 ## Post-audit replay/adjudication ticket precision
 
-Current manifest v3 supplies stored policy/image/runtime/target/sentinel facts,
-config ID, seed IDs, executed contexts and steps SHA-256. Each canonical step
-contains logical ArchiveCase/content, case ID, TAR SHA-256/builder format, command/
-status/duration, full BEFORE/AFTER, signature, violations, lineage and feedback.
-It supplies no reader, retained TAR byte file, full ExperimentConfig JSON, replay
-runner/record, original nomination timestamp or incremental failure history.
-The caller must retain the exact config artifact separately. EC-01 limits trust
-in recorded worker/lock facts until resolved; runtime UUID/inode/time need not match.
+Current manifest v4 supplies stored policy/image/runtime/target/sentinel facts,
+verified worker/lock origin (IsolationProvenance v2), config ID, seed IDs, executed
+contexts and steps SHA-256. Each canonical step contains logical ArchiveCase/content,
+case ID, TAR SHA-256/builder format, command/status/duration, full BEFORE/AFTER,
+tagged v3 signature, violations, lineage and feedback. Optional experiment.json
+and its checksum are published in the same complete bundle when supplied; an
+unconfigured export can omit it. A future qualified campaign must retain the exact
+config artifact. There is no reader, retained TAR byte file, replay runner/record,
+original nomination timestamp or incremental failure history. EC-01 was resolved
+by #45; runtime UUID/inode/time need not match across replays. Strengthened EX-004
+export sync regression coverage does not implement P04's infrastructure-failure ledger.
 
 P05 must verify manifest/steps checksums, schema/complete-record counts, original
 case ID and raw spelling/order/content, then rebuild with the pinned builder and

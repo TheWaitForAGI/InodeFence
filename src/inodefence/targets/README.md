@@ -60,7 +60,7 @@ frozen requirement를 보존한다. 이는 trust 선언이며 OS isolation 보�
 
 Low-level isolated adapter.run/run_case also enforces the backend; no direct Node fallback exists.
 The configured contained campaign path is bound and validated by the approved tiny benign smoke.
-현재 engineering Task Contract는 이 정상 입력 검증까지만 승인한다. Full audit 이후의
+현재 engineering Task Contract는 이 정상 입력 검증까지만 승인한다. Accepted global Phase-4 closeout 이후의
 security evaluation에는 별도 연구 Task Contract가 필요하다. Adapter는 안전성을 version이나 path에서 추론하거나
 TRUSTED_REFERENCE를 third-party에 붙여 이 gate를 우회하지 않는다.
 

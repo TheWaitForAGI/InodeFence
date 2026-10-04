@@ -34,6 +34,11 @@ Representation ≠ reachability ≠ observation ≠ confirmed vulnerability.
 
 Serializable semantic shapes remain subject to exact byte lengths and numeric
 field limits; model and builder failures are infrastructure exceptions today.
+Integrated #46 checks actual USTAR name/prefix reconstruction: a raw path is
+emitted byte-exactly or rejected explicitly before execution, including lossy
+delegated splits that could theoretically have another encoding. No raw spelling
+is normalized to improve reachability. Signature normalization uses tagged v3,
+and does not resolve symlink referents. These fixes do not add M1 address grammar.
 The builder creates archive operations; the target decides their filesystem
 meaning. The seed bank does not imply all seed structures coexist in one parent.
 

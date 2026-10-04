@@ -66,6 +66,10 @@ InodeFence는 이런 **object identity와 external effect를 fuzzing feedback으
 
 ## 4. 현재 어디까지 했는가?
 
+별도 [disposable Linux container backend](../src/inodefence/execution/README.md)의 benign
+helper validation을 추가했다. 기존 Dev Container 권한은 유지하고 trusted host stdio
+broker로 sibling target을 실행한다. Node campaign/config/provenance binding은 후속이다.
+
 항상 최신 상태는 [STATUS.md](STATUS.md)를 본다.
 
 현재 큰 단계:
@@ -82,7 +86,7 @@ Layer 6  Experiment / Paper        미진행
 ```
 
 현재 준비 상태는 **ENGINEERING FOUNDATION**이다. Engine은 trusted reference 범위에서 준비됐고
-benchmark는 validated OS isolation과 Node campaign smoke가 없어 아직 준비되지 않았다.
+benchmark는 Node container image/config/provenance binding과 full-path smoke가 없어 아직 준비되지 않았다.
 Evaluation은 실행하지 않았다. [인프라 검증 기록](../experiments/summaries/infrastructure-readiness-v1.md)을 따른다.
 
 Campaign은 explicit trusted Python reference만 실행한다. Third-party target의 isolation requirement는

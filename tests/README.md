@@ -1,5 +1,10 @@
 # 자동 검증
 
+Container transport/policy unit tests는 `make check`에 포함한다. 실제 namespace/resource/
+descendant 검증은 별도 `tests/container_integration/check_boundary.py`를 host broker로 실행한다.
+[실행 명령과 policy](../src/inodefence/execution/README.md)를 따른다. Runtime이 없으면
+integration command는 실패하며 PASS/skip으로 보고하지 않는다. CI는 별도 job에서 실행한다.
+
 ## 이 폴더는 무엇인가
 
 현재 코드의 동작을 검증하는 테스트를 둔다.

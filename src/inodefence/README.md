@@ -67,7 +67,8 @@ O(execution_budget)이며 개별 evidence 크기에도 비례한다. Semantic fe
 
 TargetProvenance의 execution_safety는 default ISOLATION_REQUIRED다. Campaign은 explicit
 TRUSTED_REFERENCE만 허용하고 그 밖의 target/미선언 adapter는 runtime 이전에 거부한다.
-현재 OS isolation helper가 없으며 low-level run_case는 controlled fixture caller 책임이다.
+별도 container backend/helper 검증은 있으나 campaign binding은 아직 없으며 low-level run_case는
+controlled fixture caller 책임이다.
 
 Writer는 model/campaign만 의존하고 target을 실행하거나 feedback을 재판정하지 않는다.
 Manifest schema v2는 stored execution_provenance, config/initial IDs, steps count/stats/retained order, 결과의 execution contexts와
@@ -83,5 +84,5 @@ Stored experiment_config_id는 manifest에 보존하며 actual source/platform p
 현재 config CLI는 safe reference만 실행한다. [설정 계약](../../experiments/configs/README.md)을 따른다.
 
 현재 준비 상태는 ENGINEERING FOUNDATION이다. Reference engine 경로의 구현/검증과
-third-party benchmark readiness를 구분한다. Node-tar 정상 fixture는 통과했지만 validated OS
-isolation과 Node campaign smoke는 없다. [준비 상태와 다음 작업](../../docs/STATUS.md)을 따른다.
+third-party benchmark readiness를 구분한다. Node-tar 정상 fixture와 별도 container helper는 통과했지만 Node image/config/provenance
+binding과 Node campaign smoke는 없다. [준비 상태와 다음 작업](../../docs/STATUS.md)을 따른다.

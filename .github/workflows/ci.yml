@@ -38,3 +38,36 @@ jobs:
         run: sudo install -d -o "$(id -u)" -g "$(id -g)" -m 0755 "$INODEFENCE_RUNTIME_ROOT"
       - name: Check
         run: make check
+
+  container-integration:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up host broker Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Build trusted controller and benign helper
+        run: |
+          docker build -f .devcontainer/Dockerfile -t inodefence-controller:ci .
+          docker build -f tools/container-helper/Dockerfile -t inodefence-helper:ci .
+      - name: Prepare independent trusted Linux controller
+        run: |
+          docker volume create inodefence-ci-runtime
+          docker run -d --name inodefence-ci-controller --user vscode --workdir /workspaces/InodeFence --env PYTHONPATH=/workspaces/InodeFence/src --mount "type=bind,src=$GITHUB_WORKSPACE,dst=/workspaces/InodeFence,readonly" --mount type=volume,src=inodefence-ci-runtime,dst=/var/lib/inodefence inodefence-controller:ci sleep infinity
+          docker exec --user root inodefence-ci-controller chown vscode:vscode /var/lib/inodefence
+          docker exec inodefence-ci-controller python -m pip install pytest
+          docker exec inodefence-ci-controller git config --global --add safe.directory /workspaces/InodeFence
+      - name: Real container boundary regressions
+        run: |
+          IF_HELPER_IMAGE=$(docker image inspect inodefence-helper:ci --format '{{.Id}}')
+          PYTHONPATH=src python -m scripts.container_host --context default --controller inodefence-ci-controller --volume inodefence-ci-runtime --image "$IF_HELPER_IMAGE" validate
+      - name: Remove only this job's trusted controller and volume
+        if: always()
+        run: |
+          docker rm -f inodefence-ci-controller
+          docker volume rm inodefence-ci-runtime

@@ -567,3 +567,445 @@ No isolation settings, CI gates, dependency versions or image builds were change
   fuzzing, benchmark implementation, production fix, PR #35 edit or merge performed.
 
 Only this report and clearly separated benign audit witness tests belong in the draft PR.
+
+## Phase 2 — Engine Cross-Review
+
+### P2.1 Review identity and disposition
+
+Task Contract: the maintainer's directly supplied **AUDIT PHASE 2 — CROSS-REVIEW**
+specification and subsequent instruction to continue. This section is appended;
+all Phase-1 text above remains historical evidence, including its original counts
+and provisional ID. No production fixes, test weakening, benchmark implementation,
+merge or auto-merge belong to this phase.
+
+- Frozen audited main: `fae2954906fa1a95235cde5cddd4dcb73f334169`.
+- Cross-reviewed Engine HEAD: `6a4d1e6aa94f3e30f51eb3cda6d8b89c9fb49bd1`,
+  fetched by exact SHA. Its entire
+  [report](https://github.com/TheWaitForAGI/InodeFence/blob/6a4d1e6aa94f3e30f51eb3cda6d8b89c9fb49bd1/docs/audits/engine-contract-audit-v1.md)
+  and
+  [reproduction module](https://github.com/TheWaitForAGI/InodeFence/blob/6a4d1e6aa94f3e30f51eb3cda6d8b89c9fb49bd1/docs/audits/engine_contract_reproductions_v1.py)
+  were read, followed by the source referenced by the findings.
+- Runtime Phase-1 HEAD: `04a55692845733318f5435d7c902a6c08aa0db08`;
+  work continues on `audit/runtime-execution-v1`, Draft PR #44 only.
+- Each Phase-1 head changes audit artifacts only against the identical frozen
+  main. The source inspected here is therefore the same implementation in both lanes.
+- PR #35 remains read-only input at `5b3745e40e5d43c3b79fa9fe7ca1872f1d2e1106`;
+  its reviewed implementation was #39, `efe1dbb5ec3787dee42eadb643646be2b326b489`.
+
+**Candidate combined counts: 0 Blocker / 2 Major / 8 Minor / 6 Note.** These count
+16 distinct candidate items once, including accepted limitations, rather than
+adding both lanes' tables. No severity changes are proposed. No additional
+cross-boundary defect or substantive disagreement was established. The important
+clarifications concern trusted constructor boundaries, byte identity versus
+logical identity, and completed-only failure semantics.
+
+This is a **proposed candidate frozen findings ledger**, pending PR #43's own
+Phase-2 cross-review and maintainer reconciliation. It is not the final global
+Findings Freeze, closure of findings, or evaluation readiness.
+
+### P2.2 EN-001: semantic mismatch across the complete evidence path
+
+**CONFIRMED; retain MAJOR, Engine/builder owner.** `model/archive.py::ArchiveCase.case_id`
+hashes the raw ordered logical model. `builder.py::_RawPathTarInfo.get_info/build_tar`
+delegates USTAR splitting to Python 3.12 tarfile. For the inert regular member
+`"/" + "a" * 100`, tarfile emits an empty prefix and a 100-byte relative name.
+The distinct logical member `"a" * 100` has a different case ID but identical
+TAR bytes. The Engine witnesses also reproduce one-slash loss for all four entry
+types, nested/multiple-slash and UTF-8 cases; adjacent supported paths preserve
+spelling and over-limit link targets reject explicitly.
+
+The new
+[cross-review witnesses](../../tests/audit/test_runtime_engine_cross_review_v1.py)
+independently connect the disputed serialization fact to actual pipeline,
+snapshot, campaign and export implementations. `HeaderReader` reads only inert
+headers and hashes `archive/input.tar`; it never extracts or launches a process.
+Its process result is explicitly synthetic. The two cases pass through real
+`run_campaign` → `run_case`, runtime setup, BEFORE/AFTER capture, comparison,
+Oracle, signature and manifest-v4 export. This proves evidence propagation, not
+extractor behavior or containment. The 30 original Engine observations were also
+run unchanged from the fetched blob outside this checkout.
+
+| Boundary | Actual recorded/executed meaning |
+| --- | --- |
+| ArchiveCase → case_id | Raw leading slash remains in the logical case; case ID correctly addresses that logical representation. |
+| build_tar | Leading slash disappears from accepted header bytes; the two different logical cases serialize identically. |
+| TAR SHA-256 → archive/input.tar | Pipeline writes the returned bytes unchanged; the header reader's independently computed digest and BEFORE input object's digest equal `RunResult.archive_sha256`. |
+| Target | Python worker opens that input TAR; Node invocation passes that input file to `tar.x`. Neither adapter reconstructs the raw ArchiveCase or repairs builder semantics. |
+| Filesystem snapshots → RunResult | Snapshots describe effects of the bytes supplied to the target. RunResult retains the original logical case, initial byte hash and separate full raw snapshots. A later target change to input.tar remains AFTER evidence; it does not replace the initial byte hash. |
+| CampaignStep → export | Full case and original archive hash survive in canonical JSONL; initial/feedback/parent IDs address logical cases. Export checksums protect stored bytes without reconciling logical paths against TAR headers. |
+
+| Requested question | Cross-review answer |
+| --- | --- |
+| Can distinct ArchiveCases yield identical TAR bytes? | **Yes**, independently reproduced. Non-injectivity alone is not the invariant; silently changing an accepted raw path is. |
+| Can case_id describe semantics different from executed bytes? | **Yes.** The ID is a correct logical hash, but the promised model-to-byte preservation is false. |
+| Does archive_sha256 still correctly record actual bytes? | **Yes**, for the initial artifact written/executed. It is not a hash of the intended path semantics. |
+| Can ArchiveCase replay regenerate the same wrong bytes? | **Yes**, deterministically on the pinned builder/Python environment. Matching replay hashes cannot detect this semantic mismatch. |
+| Would rediscovery/replay claims be misleading until fixed? | Claims that an accepted logical absolute member was tested faithfully, or that logical-path coverage proves rediscovery/negative reachability, would be misleading. A narrowly stated replay of the recorded byte artifact can remain true. Benchmark evaluation is still NOT_RUN. |
+| All targets or one adapter? | The defect precedes adapter selection and affects every target consuming this builder's output. Each extractor's reaction to those bytes remains target-specific. |
+| False C0/C1/C2 verdict? | No predicate consumes ArchiveCase path spelling or case_id. No false verdict for the actual observed byte execution was established. Expected logical-input behavior may go untested; that primarily invalidates input semantics and downstream coverage/rediscovery interpretation. |
+
+Severity remains Major because a current important raw-input invariant is false
+across the central execution/evidence boundary. This needs a separately reviewed
+fix before benchmark implementation. Lossless encoding or explicit rejection is
+the acceptance direction already recorded in Engine EN-001; no repair is added here.
+
+### P2.3 EN-002 and EN-003: public model validation versus producer trust
+
+**EN-002 CONFIRMED; retain MINOR, model/evidence owner.** `ObjectSnapshot.__post_init__`
+accepts a mutable list satisfying the digest character/length checks and similarly
+fails to require a string symlink target. Derived signature/result dataclasses do
+not validate their annotated tuple/member types. Frozen dataclasses block field
+assignment, not mutation of accepted members. Numeric bool acceptance is also a
+shape-validation gap; annotations do not enforce runtime types.
+
+The current trusted evidence producers are `capture_state`, `compare_states`,
+`state_signature`, `evaluate_contracts`, `run_case` and `run_campaign`. Observer
+uses `hexdigest()`/`readlink()` strings and integer stat values; signature and
+campaign assembly produce tuples. Current Node/reference classification produces
+decoded strings, fixed argv tuples and measured numeric duration. None of these
+normal paths was found to introduce the malformed mutable witnesses.
+
+Public constructors and `Corpus.consider`/`export_campaign` are callable API
+boundaries, but do not authenticate the caller or certify arbitrary evidence.
+The API's immutable typed-record description is nevertheless an actual current
+robustness claim, so this is not solely a future-reader request. The new EN-002
+witness shows a caller can mutate an accepted digest, encode it as a JSON array,
+and export a caller-built CampaignResult containing it. A list-bearing signature
+raises TypeError at Corpus membership before its observation counter advances.
+This demonstrates invalid key acceptance/abort, **not silently corrupted normal
+campaign hash sets**. No normal producer supplied a mutable key, and no changing
+hash of a valid production key was reproduced.
+
+`canonical_json` is an encoder; manifest checksums and staged publication do not
+validate model truth. Source search found a strict ExperimentConfig reader and
+Docker/Node metadata readers, but **no RunResult/StateSnapshot replay reader or
+generic evidence deserializer today**. Future ingestion must validate typed
+values and coherence before trust. Retain Minor for the public validation gap;
+do not claim an archive-controlled evidence injection or current Oracle false PASS.
+
+**EN-003 CONFIRMED; retain MINOR, model/comparison owner.** `StateChange.__post_init__`
+checks enum order, paths, absent sides and unequal objects, but not exact field
+membership. A digest-only change can carry `(MODE,)`. `compare_states` always
+computes labels by comparing every corresponding raw field in schema order;
+existence changes use the one absent side. It does not accept a caller's label list.
+
+The actual path is:
+
+```text
+capture_state → compare_states → coherent StateChange
+raw snapshot pair → evaluate_contracts → fresh compare_states → C0/C2
+raw snapshot pair → state_signature → fresh compare_states → EXTERNAL labels
+Oracle verdicts → fingerprints → Corpus
+RunResult / CampaignStep → canonical export
+```
+
+`evaluate_contracts(before, after)` has no changes parameter. Supplying a manual
+StateChange elsewhere cannot bypass its recomputation. The new EN-003 witness
+independently shows it reports CONTENT for the synthetic digest-only pair and
+the correct C0=false/C2=true result despite the accepted false MODE record.
+Manually replacing RunResult changes/verdict evidence can export the false label
+and change fingerprints; that is trusted-caller assembly, not this production
+Oracle path. A future reader trusting those labels could be misled. No current
+production campaign false verdict was established.
+
+Keep EN-002 and EN-003 distinct: runtime value type/immutability is one invariant;
+the meaning of field labels for otherwise typed raw objects is another. Their
+future fix contracts should coordinate validation without importing Observer or
+Oracle into the pure model layer.
+
+### P2.4 EN-004: collision affects feedback and parent retention
+
+**CONFIRMED; retain MINOR, signature/schema owner.** `feedback/signature.py::state_signature`
+maps the absolute text `<run>/outside/sentinel.txt` to `$RUN/outside/sentinel.txt`.
+The literal relative text `$RUN/outside/sentinel.txt` is left unchanged. The two
+meanings collide in the normalized target field.
+
+Raw `ObjectSnapshot.symlink_target`, size and StateSnapshots remain distinct.
+C0/C1/C2 still use raw observations, with no symlink-referent inference. Oracle
+does not lose a predicate distinction through signature normalization. For the
+two dangling/no-alias link states used in the new synthetic witness, all three
+verdicts correctly coincide and are nonviolated; other real effects can still
+produce distinct raw verdict evidence/fingerprints independently.
+
+The witness confirms execution relevance at Corpus: the first state is retained;
+the different case with the second raw link state has the same signature and no
+new violation fingerprint, so is not interesting and is not a second parent.
+Parent pool and subsequent uniform search can therefore differ from a lossless
+representation. Complete CampaignStep export still retains every returned run,
+even when it was not retained. Raw evidence truth remains available, while
+normalized diversity/search accounting collapses this distinction.
+
+The configured minimal grammar cannot emit the literal `$RUN` token today. Public
+cases can represent it; a future generic vocabulary can make it reachable. This
+limits present default-search exposure without removing the current normalization
+defect. No benchmark evidence false verdict or measured effectiveness loss is
+claimed. A later fix needs a tagged/escaped representation and explicit schema
+decision, preserving intended equality across different run-root allocations.
+
+### P2.5 EN-005/EX-005 and EN-006: two documentation dispositions
+
+**EN-005 + EX-005 → one canonical EN-005 MINOR.** Both cite exactly the same
+present-tense stale paragraph in `docs/research/design/README.md` (model/pipeline
+unimplemented). Engine additionally cites `src/inodefence/feedback/README.md`
+(third-party campaign isolation grouped as future); Runtime additionally cites
+`tools/node-tar/README.md` (full-path benign campaign follows next). Treat these
+three current-navigation documents as one status-drift root cause and one docs
+fix. No source correction, Layer advancement or historical-results rewrite is needed.
+
+**EN-006 remains a separate MINOR research-package drift item**, owned by PR #35.
+Its #39 engine reference, pending smoke/freeze, manifest v3/no bundled config,
+old publication assumptions and EC-03 OPEN lag the frozen main. Source/log and
+the pinned research paragraphs were compared against:
+
+- #40: configured benign Node smoke implemented and recorded; SUCCESS8, controlled
+  snapshot nonviolations and nine contexts removed are inherited engineering evidence.
+- #41: current writer is manifest v4, with optional hash-bound bundled config and
+  staged Linux atomic no-overwrite completed export. Config remains optional;
+  no generic failed-campaign persistence was added.
+- #42: pre-audit freeze complete and full-audit-next. The #39→main STATUS diff
+  removes EC-03's contradictory next-work paragraph; **EC-03 is resolved**.
+- The pinned catalog retains all 15 candidate execution fields as **NOT_RUN**;
+  benign infrastructure evidence does not qualify a historical benchmark pair.
+
+EN-006 is not a production-code finding. The historical #39 validation numbers,
+earlier benign smoke's v3 record and dated summaries remain valid for their stated
+revisions. Refreshing a current PR #35 handoff is distinct from correcting current
+module navigation. Neither PR #35 nor any of these production/navigation documents
+was edited in this phase.
+
+### P2.6 EN-007/008/009: runtime mapping and novelty controls
+
+**EN-007 remains NOTE, accepted search-language limitation.** `disposable_sandbox`
+creates a fresh empty `extract/`, `outside/sentinel.txt` with controlled bytes/mode,
+and `archive/input.tar`. Container command mounts the entire one-run volume subpath
+at the identical absolute root and sets workdir to `<run>/extract`; prepare checks
+image, mount/subpath/destination and isolation policy. The existing real helper
+checks target-visible sentinel dev/inode against the controller BEFORE identity,
+unchanged sentinel and extraction visibility, while excluding neighbor/source/home
+canaries. That is inherited validation on its recorded platform, not a rerun here.
+
+There is no missing runtime remap of the default sentinel. `generator/minimal.py`
+and all eight operators in `mutator/operators.py` cannot introduce the required
+`outside/sentinel.txt` text from their finite path alphabet. Runtime exposes the
+controlled names as promised; current mutation does not promise arbitrary-name
+reachability. No M1 implementation or new promised-capability failure is added.
+
+**EN-008 and EN-009 remain NOTE**, respectively unmeasured research risk and
+accepted fingerprint semantics. Execution-side source inspection confirms:
+
+| Runtime fact | StateSignature / fingerprint treatment |
+| --- | --- |
+| Allocated container ID/name, owner UUID, image ID/repository digest | No input field in these key functions; policy/provenance stay separate. |
+| Run root | Raw snapshot provenance is omitted; absolute symlink text at that exact root/prefix gets `$RUN`. Canonical observed paths are relative. EN-004 is the separate normalization ambiguity. |
+| Process status/exit code/duration/argv | Excluded; Corpus consumes signature and Oracle evidence. |
+| Raw st_dev/st_ino | Only identity relations/changed-field presence survive; allocation numbers do not enter keys. |
+| Raw mtime/ctime/uid/gid | Values omitted; EXTERNAL effect labels remain. |
+| HARNESS archive bytes/case/TAR IDs | Excluded from signature; case_id only deduplicates mutation parents. C0 HARNESS evidence has its independent fingerprint channel. |
+
+Observed content/path/link text, regular nlink and effect labels deliberately
+remain. Runtime does not insert container/provenance/process identities into
+novelty. Arbitrary absolute link text outside the run prefix is intentionally
+retained; this is not a universal scrub of any target-generated random string.
+No source evidence established artificial allocation novelty beyond the
+documented representation. Content/path usefulness and whole-contract classes
+versus unique behaviors require research evaluation; neither risk is upgraded
+into a current correctness defect.
+
+### P2.7 EN-010 and the historical runtime partial-failure candidate
+
+**One canonical EN-010 NOTE / future evidence contract.** It subsumes Phase-1
+section11's provisional runtime **CR-001: aborted-run/partial campaign evidence**.
+That local provisional ID is unrelated to the Engine's confirmed artifact
+CR-001. Preserve the Phase-1 text, but use EN-010 for partial failure in the
+candidate combined ledger and reserve canonical CR-001 for artifact authenticity.
+
+Source reviewed: `pipeline.run_case`, `PreparedContainer.execute`,
+`IsolatedTarget.prepare/NodeTarTarget.classify`, runtime/context exits,
+`campaign.run_campaign`, `export_campaign` and validation-only
+`guarded_run/preserve_unexpected`. “ExecutionResult returned” below means returned
+inside the current attempt to pipeline; “RunResult completed” means returned to
+the caller after successful context exits. Earlier steps may already exist locally
+on any later failure; they do not turn an aborted Campaign into a returned result.
+
+| Failure phase | ExecutionResult returned? | RunResult completed? | Current CampaignStep appended? | CampaignResult returned? | Persistent evidence exported automatically? |
+| --- | --- | --- | --- | --- | --- |
+| Builder failure | No; before runtime creation | No | No | No | No |
+| Runtime setup / prepare failure | No; start not requested by pipeline | No | No | No | No; ownership cleanup attempted for uncertain creation |
+| BEFORE observation failure | No; prepared context has not executed | No | No | No | No |
+| Target process nonzero exit | Yes, FAILED or REJECTED after verified stop | Yes if AFTER/cleanup succeed | Yes | Yes if remaining budget completes | Only when caller explicitly exports the completed campaign |
+| Unexpected target execution/backend/identity exception | No normal return; a stopped raw ContainerOutcome may already exist for identity error | No | No | No | No |
+| Target timeout, stop/absence verified | Yes, TIMED_OUT; not an infrastructure abort | Yes if diagnostics/AFTER/cleanup succeed | Yes | Yes if remaining budget completes | Only on explicit completed export |
+| Output overflow | No; raw bounded ContainerOutcome retained on OutputLimitError | No; AFTER skipped | No | No | No automatic snapshot/failure bundle |
+| Stop/wait/inspection/absence verification failure | No; termination unproven | No; AFTER skipped | No | No | No; removal attempted, possibly also fails |
+| AFTER observation failure | Yes if execution returned | No complete snapshot pair/result | No | No | No |
+| Container or sandbox cleanup failure | Usually yes on ordinary execution | No returned result; one may have been provisionally constructed | No | No | No |
+| Campaign exception (configuration drift, mutation, execute, feedback) | Depends on phase; feedback failure can follow a completed RunResult | A current completed run may exist locally | No for the failing execute/feedback; prior steps remain local | No | No general partial-campaign export |
+| Export failure before publication | Yes for existing completed steps | Yes, retained by caller | Already appended | Already returned | Exception; no final bundle on ordinary handled pre-publication failure; staging cleanup attempted |
+| Export parent fsync failure after publication | Same completed evidence | Yes | Already appended | Already returned | Complete final bundle remains, but export raises; durability success is not returned |
+
+A broker stall (EX-006) may prevent progress rather than return an outcome. A
+cleanup failure can replace the top-level error while chaining the original
+exception; it never returns a completed result. On unverified-stop failures,
+outer runtime deletion is still attempted and can erase partial filesystem
+evidence while a context remains live. That is an existing failed-run evidence
+limitation, not a surviving AFTER verdict or proof of cleanup success.
+
+The invariant **missing/aborted infrastructure evidence must not silently become
+a valid no-hit or PASS holds in the inspected current implementation**. There is
+no catch-and-synthesize-success path, no partially returned CampaignResult and
+no automatic export of a failed attempt as a completed campaign. Nonviolated
+snapshot verdicts themselves mean only absence of observed evidence within scope.
+Existing campaign exception, pipeline observer-error and backend stop-error
+regressions support the source trace.
+
+Missing full-step/campaign timing, mutation operator/parameters, replay reader and
+general invalid-attempt persistence remain future measurement requirements.
+Execution duration cannot provide full throughput or time-to-first-evidence.
+`preserve_unexpected` is confined to the approved smoke and an already returned
+violating RunResult; its ordinary writes can fail partially. It is not a generic
+abort ledger. Completed-only APIs explicitly claim neither partial persistence
+nor formal no-hit denominators. Therefore there is no basis here for a new Minor
+or stronger cross-boundary defect merely because additional retention is useful.
+
+### P2.8 EN-011 and cross-boundary attribution
+
+**Retain EN-011 NOTE: enforced lifecycle plus trusted stopped-tree assumptions.**
+The distinction between “observer sees effect” and “observer proves actor” remains
+essential; no actor provenance exists in StateSnapshot or the provenance record.
+
+| Assumption/invariant | Actively enforced current path | Remaining trust/limit |
+| --- | --- | --- |
+| Setup finishes before BEFORE | Runtime layout/sentinels/input write and contained prepare happen before capture; Node identify uses a separate earlier context. | Custom adapters/backends are trusted implementations of their interfaces. |
+| Target executes only in the observation window | Pipeline invokes execute between captures; supported backend creates without starting before BEFORE and starts once. | Truthful runtime, trusted image/defaults and controller. Current pinned Dockerfiles have no HEALTHCHECK; alternative-image defaults require qualification as noted in EX-002. |
+| Complete target context stops before AFTER | Running disconnect aborts; timeout kill/wait then final Running=false/Pid=0/exited checks; created-at-deadline path removes and verifies absence to exclude late start. | Private PID namespace/kernel/runtime teardown stops descendants. Existing synchronized real helper tests validate its recorded platform, not all kernels. |
+| Same runtime mount/device view | Controller volume binding, exact one-run subpath/same destination and nonsymlink runtime directories checked. Existing real helper compares sentinel dev/inode across views. | Docker mount/identity semantics trusted; no independent per-case target stat of every object or cross-platform equivalence proof. Both snapshots are taken in the same controller view. |
+| Cleanup after AFTER | Normal context exits remove target then sandbox after result construction; observer errors trigger cleanup after the attempted capture. | Created-state timeout intentionally removes before AFTER, with no run-path mutation. Failure cleanup can occur without AFTER; no result is returned. |
+| Unreadability/incomplete snapshot | OSError is ObservationError; digest open identity and final-stat changes raise; capture returns only after full traversal/StateSnapshot construction. | No completeness flag or partial return; recursion/capacity/model errors also abort. Dedicated guard negatives remain narrower than implementation. |
+| Symlink non-following | fd-relative lstat, O_NOFOLLOW directories/regular opens, readlink text; no referent traversal/hash. OTHER objects not opened. | No referent access, actor, transient or external-container-path coverage. |
+| Resource bounds | Memory/PID/nofile/per-file FSIZE/tmpfs/shm, per-stream captured output and ordinary execution deadline enforced. | No total file-count/storage/hash-byte/recursion/CPU bound; EX-006 broker-progress dependence. Capacity failure is not nonviolation. |
+
+No supported contained path was found to take AFTER with the target execution
+context still active or interpret an incomplete snapshot as PASS. EX-003's
+surviving **trusted CLI transport child** is separate from the target PID context;
+backend stop checks still apply. The Python reference waits/kills its one trusted,
+non-spawning worker; it is not general descendant containment. Low-level run_case
+accepts caller-supplied trusted adapters, and cannot independently certify a
+custom adapter that returns early or writes harness paths in the window.
+
+Pipeline, supported adapters and backend do not write observed-path logs or
+bookkeeping between BEFORE and AFTER. Diagnostics use pipes/in-memory values.
+Observer reads may affect atime, which is omitted. Normal harness setup is part
+of BEFORE; post-state comparison/signature/Oracle are pure. The early timeout
+removal exception changes runtime bookkeeping, not observed run files. On errors
+that violate a stopped/completed pair, AFTER is skipped or fails and no verdict
+is returned. Attribution remains a lifecycle-based inference under the declared
+trust model, not event-level proof of which actor caused an effect.
+
+### P2.9 Canonical cross-boundary root causes
+
+**CR-001 ← Runtime EX-001 + Engine CR-001 + historical EC-01: retain MAJOR.**
+One root cause: **supported public Node descriptor composition promotes
+shape-valid caller-declared worker/lock identities into an actual-artifact
+IsolationProvenance record without verifying those identities against the bound
+immutable image before campaign freeze; subsequent consistency/export checks
+only preserve the same declaration.**
+
+Engine's three metadata-only replacement variants match Runtime's direct,
+replacement and same-version other-image admission/export witnesses. The worker
+checks versions rather than artifact hashes. Ordinary bind identifies metadata
+inside its image; public pre-freeze replacement/reconstruction bypasses that
+observation while keeping supported exact-wrapper/backend admission. This is an
+important current provenance invariant, not a future reader-hardening issue.
+No archive-only isolation escape or false filesystem snapshot is inferred.
+Fix owner: Runtime target binding/admission/provenance, with Engine evidence/schema
+review. Resolve once, and update research claims without treating checksum export
+as authentication of the initial artifact assertion.
+
+**CR-002 ← Runtime EX-002 + Engine CR-002 + historical EC-02: retain MINOR.**
+One root cause: actual `Config.Entrypoint/Cmd/WorkingDir/Env` is not compared to the
+explicit invocation/default policy at prepare, and portable doubles/command tests
+do not cover that agreement fully. Current Node generated argv/workdir/environment
+is correct; no actual Node/Docker mismatch was established. The Runtime fake
+inspection mismatch is accepted without starting a target; Engine reasoning agrees.
+Fix owner: Runtime backend verification/tests with invocation-owner review.
+
+Future ORAS needs separately declared controlled external CWD, adapter transport
+and binding evidence. Backend currently intentionally uses extract/ CWD. No ORAS
+adapter exists and no current arbitrary-CWD promise is violated. Keep that future
+requirement outside the current severity rationale and do not implement it here.
+
+### P2.10 Proposed candidate frozen findings ledger
+
+Severity rules applied consistently: Blocker requires a fundamentally unsafe or
+untrustworthy architecture needing redesign; Major is a false current important
+correctness/research invariant needing fix before benchmarks; Minor is a real
+defect/test/doc robustness gap with substantially valid trusted evidence; Note is
+an accepted limit, unmeasured risk, portability concern or future capability.
+
+| Candidate canonical finding | Runtime source | Engine source | Duplicate? | Revised severity | Fix owner |
+| --- | --- | --- | --- | --- | --- |
+| CR-001 artifact authenticity | EX-001; historical EC-01 | CR-001; historical EC-01 | Yes, one root cause | MAJOR, unchanged | Runtime target binding/admission/provenance; Engine evidence review |
+| EN-001 raw member semantics | Cross-review confirms propagation; no Phase-1 EX duplicate | EN-001 | No, Engine unique | MAJOR, unchanged | Engine builder/model contract |
+| CR-002 actual invocation verification | EX-002; historical EC-02 | CR-002; historical EC-02 | Yes, one inspection/coverage gap | MINOR, unchanged | Runtime backend/tests |
+| EN-002 typed immutable evidence | Cross-review bounds trusted-producer impact | EN-002 | No, Engine unique | MINOR, unchanged | Model/evidence interfaces |
+| EN-003 coherent change labels | Cross-review confirms Oracle recomputation | EN-003 | No, Engine unique; coordinate with EN-002 | MINOR, unchanged | Model/comparison interfaces |
+| EN-004 signature token collision | Cross-review confirms Corpus retention impact | EN-004 | No, Engine unique | MINOR, unchanged | Engine feedback/schema |
+| EN-005 current navigation drift | EX-005 | EN-005 | Yes; shared design README plus feedback/Node READMEs | MINOR, unchanged; count once | Current documentation owners |
+| EN-006 research-package drift | Current-main comparison; no production EX duplicate | EN-006 | No, Engine unique; EC-03 resolved | MINOR, unchanged | PR #35 research-package owner |
+| EX-003 CLI descendant lifecycle | EX-003 | None | No, Runtime unique | MINOR, unchanged | Runtime DockerCLI transport |
+| EX-004 export durability test gap | EX-004 | None | No, Runtime unique | MINOR, unchanged | Evidence export test owner |
+| EN-007 mutation addressing limitation | Runtime filesystem mapping confirmed | EN-007 | No separate Runtime finding | NOTE, unchanged | Future generic grammar/setup contract |
+| EN-008 novelty usefulness | Runtime identity/process novelty excluded | EN-008 | No separate Runtime finding | NOTE, unchanged | Research evaluation owner |
+| EN-009 aggregate fingerprint semantics | Raw full-step evidence preserved | EN-009 | No separate Runtime finding | NOTE, unchanged | Research metric interpretation owner |
+| EN-010 timing/operator/abort evidence | Phase-1 §11 provisional partial-failure CR-001 | EN-010 | Yes, one future evidence requirement | NOTE, unchanged; provisional item incorporated | Future campaign/evidence/evaluation contract |
+| EN-011 observer scope/completeness | Phase-1 accepted lifecycle/view/capacity limits | EN-011 | Shared accepted assumptions; no extra defect | NOTE, unchanged | Observer tests; Runtime capacity qualification |
+| EX-006 broker progress | EX-006 | EN-010/011 dependency, no independent Engine duplicate | No, Runtime unique | NOTE, unchanged | Runtime controller/broker failure contract |
+
+There are **no severity changes**. Reasons for retaining the disputed levels:
+EN-001/CR-001 break current input/provenance invariants and remain Major;
+EN-002/003 are public model robustness defects with correct trusted producers;
+EN-004 is a real novelty collision with raw truth retained; CR-002/EX-004 are
+current inspection/regression gaps without demonstrated wrong Node execution or
+export data loss; EN-005/006 are current guidance drift. EN-007–011/EX-006 retain
+their explicit capability/trust/measurement scope and no false completed result
+was established. Duplicate consolidation changes counts, not severity.
+
+Engine-unique EN-001/002/003/004/006 and Runtime-unique EX-003/004/006 all remain
+in the proposed ledger. No new cross-boundary finding is added. No substantive
+finding/severity disagreement remains; terminology corrections above prevent
+misreading constructor acceptance as a production Oracle bypass, deterministic
+byte replay as logical-path fidelity, or missing partial persistence as false PASS.
+
+### P2.11 Validation and delivery record
+
+Validation uses the existing Ubuntu 24.04/Python 3.12.3 Dev Container, non-root
+uid/gid1000, `/opt/venv/bin/python`, source `/workspaces/InodeFence`, runtime
+`/var/lib/inodefence`, Linux7.0.14/OrbStack/aarch64. Runtime filesystem witnesses
+use only disposable controlled sentinels. Export uses temporary controller-owned
+test directories outside the target view. Production/source/config/fixture files
+are unchanged.
+
+- Original Engine reproduction module, copied byte-for-byte from the exact Git
+  blob to `/tmp/inodefence-engine-phase2-witnesses.py`: **30 observations PASS**.
+  No Engine artifacts were imported into PR #44 or modified.
+- Four new Phase-2 audit-only witnesses: **4 PASS**; combined focused command
+  `python -m pytest tests/audit/test_runtime_engine_cross_review_v1.py
+  /tmp/inodefence-engine-phase2-witnesses.py -q`: **34 passed**.
+- Existing focused pipeline/observer/campaign/container/Node/export/feedback/
+  isolation suite: **253 passed** (`tests/test_pipeline.py`, `test_observer.py`,
+  `test_campaign.py`, `test_container_backend.py`, `test_node_tar.py`,
+  `test_campaign_export.py`, `test_feedback_corpus_integration.py`,
+  `test_isolation_provenance.py`).
+- Dev Container `make check`: **PASS**; Ruff lint/format, Pyright zero errors/warnings,
+  **626 pytest tests passed**, Linux hardlink/symlink/shared-object environment
+  checks PASS, docs **63 Markdown files PASS**. Existing production tests unchanged.
+- Independent Pyright: **0 errors / 0 warnings**.
+- Phase-1 report prefix preservation, production-scope diff, LF and
+  `git diff --check`: **PASS**. Phase-2 changes only this appended report section
+  and one new audit witness file; Phase-1 audit witnesses are unchanged.
+
+Real Node/helper container suites were source-reviewed with their inherited
+engineering evidence; they were not rerun as Phase-2 experiments. No affected
+target, exploit extraction, vulnerable fuzzing, rediscovery, benchmark execution,
+production fix or PR #43/#35 edit occurred. PR #44 must remain Draft and unmerged,
+with no auto-merge. Global Findings Freeze awaits the other lane's Phase-2 review.

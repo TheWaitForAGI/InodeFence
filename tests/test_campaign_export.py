@@ -24,8 +24,11 @@ from inodefence.model import (
     StateSnapshot,
     canonical_json,
 )
+from inodefence.model.provenance import SourceProvenance, TargetProvenance
 from inodefence.observer import compare_states
 from inodefence.oracle import evaluate_contracts
+from inodefence.provenance import freeze_provenance
+from inodefence.runtime import SentinelSpec
 
 
 def _campaign() -> CampaignResult:
@@ -87,7 +90,16 @@ def _campaign() -> CampaignResult:
             )
         )
     return CampaignResult(
-        CampaignConfig(17, 4), (case.case_id,), tuple(steps), corpus.stats, (case.case_id,)
+        CampaignConfig(17, 4),
+        (case.case_id,),
+        tuple(steps),
+        corpus.stats,
+        (case.case_id,),
+        freeze_provenance(
+            TargetProvenance("controlled", "test", 5.0),
+            (SentinelSpec(),),
+            source=SourceProvenance("a" * 40, False),
+        ),
     )
 
 
@@ -102,12 +114,12 @@ def test_same_completed_result_exports_identical_bytes_to_different_paths(tmp_pa
         assert b"\r" not in path.read_bytes()
 
 
-def test_manifest_records_campaign_and_derived_execution_provenance(tmp_path: Path) -> None:
+def test_manifest_records_campaign_stored_provenance_and_observed_contexts(tmp_path: Path) -> None:
     result = _campaign()
     manifest_path, steps_path = export_campaign(result, tmp_path / "output")
     manifest = json.loads(manifest_path.read_bytes())
     assert manifest["format"] == "inodefence-bounded-campaign"
-    assert manifest["schema_version"] == 1
+    assert manifest["schema_version"] == 2
     assert manifest["evidence_classification"] == "raw-campaign"
     assert manifest["config"] == {"random_seed": 17, "execution_budget": 4}
     assert manifest["initial_case_ids"] == list(result.initial_case_ids)
@@ -133,6 +145,7 @@ def test_manifest_records_campaign_and_derived_execution_provenance(tmp_path: Pa
     assert "analysis" not in manifest and "source_revision" not in manifest
     assert "execution_environment" not in manifest
     assert manifest["export_environment"]["python_version"]
+    assert manifest["execution_provenance"]["source"] == {"revision": "a" * 40, "dirty": False}
 
 
 def test_every_step_and_raw_evidence_uses_existing_canonical_encoding(tmp_path: Path) -> None:
@@ -174,6 +187,21 @@ def test_manifest_preserves_context_variation_in_first_occurrence_order(tmp_path
     assert [context["target_version"] for context in contexts] == ["test", "other-version"]
     assert contexts[1]["builder_format"] == "other-builder"
     assert contexts[1]["timeout_seconds"] is None
+    # Observed variation never reconstructs or overwrites frozen configuration.
+    stored = json.loads(manifest_path.read_bytes())["execution_provenance"]["target"]
+    assert stored == {"target_id": "controlled", "target_version": "test", "timeout_seconds": 5.0}
+
+
+def test_export_does_not_capture_execution_environment_again(tmp_path: Path, monkeypatch) -> None:
+    result = _campaign()
+    monkeypatch.setattr("platform.release", lambda: "different-export-kernel")
+    manifest_path, _ = export_campaign(result, tmp_path / "output")
+    manifest = json.loads(manifest_path.read_bytes())
+    assert manifest["export_environment"]["release"] == "different-export-kernel"
+    assert (
+        manifest["execution_provenance"]["environment"]["release"]
+        == result.provenance.environment.release
+    )
 
 
 def test_existing_output_is_not_overwritten(tmp_path: Path) -> None:

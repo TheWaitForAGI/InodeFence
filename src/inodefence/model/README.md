@@ -9,6 +9,7 @@
 | [archive.py](archive.py) | ArchiveEntry, EntryType, ArchiveCase |
 | [filesystem.py](filesystem.py) | ObjectSnapshot, StateSnapshot, StateChange, StateSignature |
 | [results.py](results.py) | ExecutionResult, IdentityEvidence, ViolationResult, RunResult |
+| [provenance.py](provenance.py) | Source/Environment/Target/Sentinel/ExecutionProvenance configuration values |
 | [serialization.py](serialization.py) | canonical_json, schema version 1 |
 
 ArchiveEntry는 raw path/link text를 보존하고 NUL·잘못된 field 조합을 거부한다. regular는 bytes content, directory는 content/target 없음, hardlink/symlink는 target 필수다. USTAR 길이 제한은 builder의 책임이다. ArchiveCase는 order/duplicate를 보존하며 versioned canonical representation의 SHA-256을 `case_id`로 제공한다. Parent lineage는 상위 campaign step에 기록하며 ArchiveCase identity에 섞지 않는다.
@@ -46,7 +47,10 @@ RunResult는 case, TAR format/hash, 실행 provenance, before/after, 변화, sig
 ExecutionResult의 필수 `duration_seconds`는 finite/0 이상인 실제 monotonic elapsed execution evidence이며 0.0과 numeric int 값도 허용한다. `timeout_seconds`는 configured budget으로 별개다. Duration은 process startup과 timeout 종료·회수 overhead를 포함하고 RunResult.execution의 canonical JSON으로 보존한다. Security verdict, StateSignature v2와 case ID에는 사용하지 않는다.
 
 `canonical_json(model)`은 envelope schema v1/model type과 정렬된 JSON key를 기록하고 bytes를 base64로 보존한다. Signature 내부 schema v2와는 별개이며 case encoding은 유지한다. Raw snapshot에는 inode·timestamp 원값이 있지만 portable signature에는 없다. 이는 export 경계이며 database나 deserializer는 아니다. 상위 campaign exporter도 이 encoding을 그대로 사용한다. Config/seed/budget은 campaign result에
-있으며 source commit과 실제 execution OS/kernel provenance는 caller가 별도 기록해야 한다.
+있으며 실행 전 source/environment/target/sentinel provenance는 CampaignResult에 별도 보존한다.
+모델은 실행 logic이 없고 capture helper는 상위 provenance.py에 있다. Full Git ID 또는 None,
+dirty bool/None, platform 문자열, declared target/timeout, sorted unique sentinel name/digest/mode를
+검증한다. Raw inode/timestamp/process 결과는 이 configuration contract에 없다.
 
 ## 하지 않는 것
 

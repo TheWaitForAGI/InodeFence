@@ -26,6 +26,11 @@ raw 결과를 검토 없이 논문 결론으로 승격하기, source mount에서
 
 ## 현재 상태
 
+Execution Provenance v1은 campaign 시작 전에 source/environment/adapter/sentinel 값을 고정한다.
+Manifest v2는 stored configuration과 실제 RunResult contexts/exporter 환경을 분리한다. Git 정보가
+없으면 None이며 dirty checkout의 commit은 patch 내용을 보존하지 않는다. Metadata만으로
+연구 결과의 재현성 또는 OS execution isolation을 보장하지 않는다.
+
 summaries/에는 [safe reference 개발 pilot](summaries/reference-campaign-pilot-v1.md)의 작은
 engineering summary가 있다. Raw 결과는 로컬 experiments/raw/reference-pilot-v1/에 Git ignore로
 보관하며 재생성 명령과 checksum을 요약에 기록한다. Formal effectiveness 실험 결과는 없다.

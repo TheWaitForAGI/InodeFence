@@ -235,3 +235,26 @@ execution budget이며 target 반환 status/no-op도 실행 하나다. Seed는 s
 않고 이후 한 campaign RNG를 선택과 mutation에 공유한다. Infrastructure exception은 전달한다.
 Frozen steps에 parent lineage와 full RunResult를 남겨 O(budget) memory를 허용한다. Default
 seeds, persistence/resume와 adaptive scheduler는 추가하지 않는다. 효과 평가는 별도 연구다.
+
+## D018 — Execution provenance는 실행 전에 고정한 configuration
+
+**상태:** v1 구현
+
+CampaignTarget은 단일 실행 TargetAdapter에 pre-execution `TargetProvenance` property를
+추가한다. Python reference는 같은 선언에서 실행 결과의 ID/version을 기록한다. Campaign은
+첫 run_case 전에 source/environment/target/sentinel 값을 freeze하고 CampaignResult에 같은
+immutable 객체를 보존한다. Supplied provenance는 target/sentinel 설정 일치를 검증하며
+source/environment 정확성은 caller 책임이다. Adapter 설정 또는 result의 target/version/timeout
+불일치는 harness 오류로 중단한다. 실행 결과에서 configuration을 역으로 만들지 않는다.
+
+Source는 checkout root의 full Git object ID와 nonignored tracked/untracked dirty 여부다.
+Git unavailable/오류/installed distribution은 revision/dirty 모두 None이다. Dirty 여부는 patch나
+source-content hash가 아니므로 dirty 실행은 commit만으로 재현 가능하다고 주장하지 않는다.
+Environment는 실행하는 Python process의 platform system/release/machine/python_version이며
+release는 kernel/platform 문자열, unavailable platform field는 empty string이다. Host/user 식별자는
+없다. Sentinel은 outside/ 상대 name 순서로 정렬한 content SHA-256/mode다. 실제 snapshot evidence와
+구분하며 signature/novelty/oracle 입력에 넣지 않는다. Seed/budget은 CampaignConfig에만 둔다.
+
+Manifest v2는 stored execution_provenance와 observed execution_contexts/export_environment를
+분리한다. Step의 기존 canonical envelope schema v1은 유지한다. 이 metadata는 raw engineering
+provenance이며 scientific interpretation, OS isolation 보장이나 완전한 dependency lock이 아니다.

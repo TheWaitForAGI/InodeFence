@@ -24,6 +24,7 @@ builder.build_tar → disposable runtime → before snapshot
 | [pipeline.py](pipeline.py) | 입력 하나의 실행 순서 연결 |
 | [campaign.py](campaign.py) | 명시적 seed와 실행 budget으로 select → mutate → run → consider 연결 |
 | [campaign_export.py](campaign_export.py) | 완료된 결과의 manifest JSON / canonical step JSONL |
+| [provenance.py](provenance.py) | 실행 전 source/environment/target/sentinel configuration 고정 |
 | [generator](generator/README.md) | explicit deterministic minimal_seed_corpus |
 | [mutator](mutator/README.md) | Generic Mutation v1, 8개 독립 ArchiveCase 변형 operator |
 | [targets](targets/README.md) | 실제 extractor 실행 |
@@ -53,7 +54,10 @@ Snapshot의 `violated=False`는 관찰 범위에서 위반 증거가 없다는 �
 새 Corpus로 시작한다. Initial cases는 nonempty/unique case IDs이며 모두 budget에 포함한다.
 선언 순서의 seed 실행 후 한 campaign RNG로 parent 선택과 mutation을 순서대로 수행한다.
 No-op/rejected/failed/timed-out도 실행 하나로 기록하며 harness 오류는 전달한다.
-`CampaignResult`는 config/initial IDs, immutable steps, final stats와 admission-order retained IDs다.
+`CampaignResult`는 config/initial IDs, immutable steps, final stats와 admission-order retained IDs,
+실행 전 immutable provenance다. CampaignTarget은 stable target configuration property를 요구한다.
+첫 실행 전에 freeze하며 supplied provenance의 target/sentinel 일치를 확인한다. Adapter 선언 또는
+result의 target/version/timeout drift는 중단하고 configuration을 덮어쓰지 않는다.
 Zero-based step은 origin/parent ID/full RunResult/FeedbackDecision을 보존한다. 메모리는
 O(execution_budget)이며 개별 evidence 크기에도 비례한다. Semantic feedback이 같을 때 lineage가
 재현되며 raw inode/timestamp/duration은 재현을 요구하지 않는다. `campaign_export.export_campaign(result, destination)`은 별도 완료-result writer다. Resume는 없다.
@@ -61,9 +65,10 @@ O(execution_budget)이며 개별 evidence 크기에도 비례한다. Semantic fe
 ## Campaign export v1
 
 Writer는 model/campaign만 의존하고 target을 실행하거나 feedback을 재판정하지 않는다.
-Manifest schema v1은 config/initial IDs, steps count/stats/retained order, 결과의 execution contexts와
+Manifest schema v2는 stored execution_provenance, config/initial IDs, steps count/stats/retained order, 결과의 execution contexts와
 JSONL SHA-256을 담는다. `steps.jsonl`은 기존 `canonical_json(CampaignStep)`을 그대로 사용한다.
 Exporter environment는 writer process의 정보이며 execution environment/source revision을
-추정하지 않는다. 같은 result/exporter 환경은 동일 bytes를 만든다. 별도 run의 raw allocation/time은
+추정하지 않는다. Execution environment/source는 실행 전 stored provenance에 있다.
+같은 result/exporter 환경은 동일 bytes를 만든다. 별도 run의 raw allocation/time은
 보존하므로 byte equality를 요구하지 않는다. IO/encoding 오류는 전달하고 partial output이 남을
 수 있다. Writer/reader/resume는 별도 개념이며 현재는 writer만 제공한다.

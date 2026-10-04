@@ -4,6 +4,10 @@
 
 [TargetAdapter](base.py)의 `run(archive_path: Path, extraction_root: Path) -> ExecutionResult`는 target이 멈춘 뒤 반환한다. Adapter가 command/version/options와 success/rejection/failure/timeout 분류를 소유한다. Observer·Oracle·Feedback은 target command를 알지 않는다.
 
+CampaignTarget은 기존 단일 실행 Protocol에 `provenance: TargetProvenance` property를 추가한다.
+Campaign은 실행 전 target ID/version/timeout을 고정하며 result drift를 거부한다. Reference는
+같은 property의 ID/version과 configured timeout을 사용해 ExecutionResult를 반환한다.
+
 ## Reference target
 
 [PythonTarfileTarget](python_tarfile.py)은 별도 interpreter에서 [_python_worker](_python_worker.py)를 실행한다. Worker는 uncompressed TAR와 명시적인 `filter="data"`, `errorlevel=2`를 사용한다. FilterError는 REJECTED, parser/IO 오류는 FAILED로 반환한다. Timeout은 subprocess.run이 worker를 종료·회수한 뒤 반환한다. Unexpected harness 실패는 exception으로 올린다.

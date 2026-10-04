@@ -18,6 +18,8 @@ def export_campaign(result: CampaignResult, destination: Path) -> tuple[Path, Pa
     separate campaign runs need not have byte-identical exports. Execution
     contexts come from every RunResult in first-occurrence order. Environment
     information describes this exporter, not the earlier target execution.
+    Manifest v2 exports the stored pre-execution provenance unchanged. Observed
+    execution_contexts remain separate evidence, including any caller-built drift.
 
     Existing destinations are rejected. IO/encoding exceptions propagate and
     may leave partial files; the manifest is written last. This is no database,
@@ -45,9 +47,10 @@ def export_campaign(result: CampaignResult, destination: Path) -> tuple[Path, Pa
             digest.update(line)
     manifest = {
         "format": "inodefence-bounded-campaign",
-        "schema_version": 1,
+        "schema_version": 2,
         "evidence_classification": "raw-campaign",
         "config": asdict(result.config),
+        "execution_provenance": asdict(result.provenance),
         "initial_case_ids": result.initial_case_ids,
         "number_of_steps": len(result.steps),
         "final_corpus_stats": asdict(result.final_corpus_stats),

@@ -7,10 +7,12 @@ from enum import StrEnum
 
 from inodefence.feedback import Corpus, CorpusStats, FeedbackDecision
 from inodefence.model import ArchiveCase, RunResult
+from inodefence.model.provenance import ExecutionProvenance, TargetProvenance
 from inodefence.mutator import mutate
 from inodefence.pipeline import run_case
+from inodefence.provenance import freeze_provenance, sentinel_provenance
 from inodefence.runtime import SentinelSpec
-from inodefence.targets import TargetAdapter
+from inodefence.targets.base import CampaignTarget
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,14 +59,16 @@ class CampaignResult:
     steps: tuple[CampaignStep, ...]
     final_corpus_stats: CorpusStats
     retained_case_ids: tuple[str, ...]
+    provenance: ExecutionProvenance
 
 
 def run_campaign(
     initial_cases: Sequence[ArchiveCase],
-    target: TargetAdapter,
+    target: CampaignTarget,
     config: CampaignConfig,
     *,
     sentinels: tuple[SentinelSpec, ...] = (SentinelSpec(),),
+    provenance: ExecutionProvenance | None = None,
 ) -> CampaignResult:
     """Run explicit seeds in order, then select → mutate → execute → consider.
 
@@ -72,6 +76,10 @@ def run_campaign(
     Snapshot the collection before execution; never mutate the caller's cases.
     One campaign-owned RNG serves both uniform parent selection and mutation.
     Seeds consume no search RNG. A no-op child is executed once, without retry.
+    Freeze target/sentinel/source/environment provenance before run_case. Supplied
+    immutable provenance is preserved by identity after configuration validation;
+    callers own its source/environment accuracy. Result configuration drift is
+    a harness error, never a reason to rewrite the frozen configuration.
     Every returned target status counts. Infrastructure exceptions propagate;
     an aborted campaign does not return an invented completed result.
 
@@ -88,10 +96,31 @@ def run_campaign(
     if len(set(initial_ids)) != len(initial_ids):
         raise ValueError("initial cases contain duplicate case IDs")
 
+    declared_target = target.provenance
+    frozen = freeze_provenance(declared_target, sentinels) if provenance is None else provenance
+    if not isinstance(frozen, ExecutionProvenance):
+        raise ValueError("provenance must be ExecutionProvenance")
+    if frozen.target != declared_target or frozen.sentinels != sentinel_provenance(sentinels):
+        raise ValueError("provenance must match target and sentinel configuration")
+
+    def execute(case: ArchiveCase) -> RunResult:
+        if target.provenance != frozen.target:
+            raise ValueError("target configuration changed during campaign")
+        result = run_case(case, target, sentinels=sentinels)
+        execution = result.execution
+        if (
+            TargetProvenance(
+                execution.target_id, execution.target_version, execution.timeout_seconds
+            )
+            != frozen.target
+        ):
+            raise ValueError("execution result differs from frozen target provenance")
+        return result
+
     corpus = Corpus()
     steps: list[CampaignStep] = []
     for case in cases:
-        result = run_case(case, target, sentinels=sentinels)
+        result = execute(case)
         steps.append(
             CampaignStep(len(steps), CampaignOrigin.SEED, None, result, corpus.consider(result))
         )
@@ -100,7 +129,7 @@ def run_campaign(
     while len(steps) < config.execution_budget:
         parent = corpus.select_case(rng)
         child = mutate(parent, rng)
-        result = run_case(child, target, sentinels=sentinels)
+        result = execute(child)
         steps.append(
             CampaignStep(
                 len(steps), CampaignOrigin.MUTATION, parent.case_id, result, corpus.consider(result)
@@ -113,4 +142,5 @@ def run_campaign(
         tuple(steps),
         corpus.stats,
         tuple(entry.case.case_id for entry in corpus.entries),
+        frozen,
     )

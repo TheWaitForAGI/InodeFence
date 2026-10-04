@@ -43,6 +43,10 @@ attribute, supplied provenance, subclass override or fallback can replace this p
   `/dev/shm` 16 MiB. Values are explicit immutable `ResourcePolicy` settings.
 - Image environment values are cleared; only explicit PATH and LANG are supplied.
   Image entrypoint/workdir/user are replaced with the request/policy.
+  Before execution, inspection must contain Entrypoint, Cmd, WorkingDir and Env
+  matching the canonical request/policy. Env order is irrelevant, while duplicate,
+  extra, missing or altered values fail. Empty Cmd permits Docker's null/[] forms;
+  nonempty argv must match exactly. This verifies the actual prepared configuration.
 - Target runs as container PID 1. PID-namespace destruction stops detached
   descendants on primary exit or SIGKILL timeout. There is no additional init
   wrapper that could disguise an executable startup error as target failure.
@@ -52,6 +56,11 @@ attribute, supplied provenance, subclass override or fallback can replace this p
   IsolatedTarget aborts incomplete output with OutputLimitError retaining that prefix.
   Timeout retains the captured prefix; it need not contain final buffered bytes.
   CLI deadlines include pipe draining and waiting even after both pipes close.
+  A deadline kills the owned CLI group before reaping its direct primary, even if
+  that primary has exited while a descendant holds a pipe. The unreaped primary
+  pins the group ID; a successfully reaped primary is never signalled later.
+  Direct-child reaping is bounded; signal/wait failures remain infrastructure errors.
+  This transport cleanup does not establish target-container isolation.
 - Unique names and invocation UUID labels. Cleanup checks ownership, removes by
   full identity, verifies absence and never prunes other executions. The host
   broker repeats that same cleanup contract if the controller crashes/disconnects.
@@ -102,11 +111,19 @@ container IDs, volume names, paths, PIDs and time do not enter that identity.
 
 Before the first archive, backend attestation records Docker-compatible server version,
 API version, OS/architecture and actual image architecture/available repository digests.
-Node identification contributes worker/lock digests. Local image ID remains the mandatory
+Node descriptor worker/lock values are expectations. The wrapper reruns the identity
+probe in the inspected image before freeze and before each archive, rejecting mismatched
+versions/digests and declarations without an observation protocol. IsolationProvenance
+v2 stores verified probe digests with `artifact_origin="image-identification-v1"`;
+no-artifact records use null. Local image ID remains the mandatory
 content anchor when repository digests are absent. ExecutionProvenance stores the frozen
 record; exporter never queries the backend. Drift in policy/artifacts stops before the
 next case. This is execution configuration, not C0/C1/C2 evidence or feedback novelty.
 A backend implementation is trusted controller code, not an untrusted plugin verifier.
+Identity probe code and image contents retain the existing trust assumption. Config
+equality does not attest a descriptor, and export never promotes expectations to facts.
+Additional identity contexts use the existing synchronous broker. Its progress assumption
+(EX-006) is unchanged; CLI deadlines are not an independent broker-response watchdog.
 
 
 ## Approved benign configured campaign

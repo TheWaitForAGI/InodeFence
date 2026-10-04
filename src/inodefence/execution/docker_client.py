@@ -75,17 +75,17 @@ class DockerCLI:
         timed_out = False
         deadline = monotonic() + timeout
         try:
-            with (
-                subprocess.Popen(
-                    (self.executable, "--context", self.context, *args),
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    start_new_session=True,
-                ) as process,
-                selectors.DefaultSelector() as selector,
-            ):
+            process = subprocess.Popen(
+                (self.executable, "--context", self.context, *args),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                start_new_session=True,
+            )
+            # Popen.__exit__ waits without a deadline, including after a failed
+            # group signal. Own pipe closure and the bounded wait explicitly.
+            try:
                 assert process.stdout is not None and process.stderr is not None
-                try:
+                with selectors.DefaultSelector() as selector:
                     for index, pipe in enumerate((process.stdout, process.stderr)):
                         os.set_blocking(pipe.fileno(), False)
                         selector.register(pipe, selectors.EVENT_READ, index)
@@ -108,16 +108,26 @@ class DockerCLI:
                             process.wait(timeout=max(deadline - monotonic(), 1e-9))
                         except subprocess.TimeoutExpired:
                             timed_out = True
-                finally:
-                    if process.poll() is None:
+            finally:
+                try:
+                    # Do not poll/reap before this signal. An exited direct
+                    # child still pins its PID/group ID while descendants hold
+                    # pipes. After a successful wait, returncode is set and we
+                    # must not signal a possibly reused group ID.
+                    if process.returncode is None:
                         try:
                             os.killpg(process.pid, signal.SIGKILL)
                         except ProcessLookupError:
                             pass
-                    process.wait(timeout=5)
-                return CommandResult(
-                    process.returncode, bytes(buffers[0]), bytes(buffers[1]), timed_out, truncated
-                )
+                    returncode = process.wait(timeout=5)
+                finally:
+                    if process.stdout is not None:
+                        process.stdout.close()
+                    if process.stderr is not None:
+                        process.stderr.close()
+            return CommandResult(
+                returncode, bytes(buffers[0]), bytes(buffers[1]), timed_out, truncated
+            )
         except (OSError, subprocess.SubprocessError) as error:
             raise BackendError("Docker CLI unavailable or did not terminate") from error
 

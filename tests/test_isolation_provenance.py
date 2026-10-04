@@ -20,7 +20,12 @@ from inodefence.experiment_config import (
 )
 from inodefence.generator import minimal_seed_corpus
 from inodefence.model import ExecutionResult, ExecutionStatus, canonical_json
-from inodefence.model.isolation import IsolationPolicy, IsolationProvenance, ResourcePolicy
+from inodefence.model.isolation import (
+    ArtifactDigest,
+    IsolationPolicy,
+    IsolationProvenance,
+    ResourcePolicy,
+)
 from inodefence.model.provenance import TargetProvenance
 from inodefence.runtime import SentinelSpec
 from inodefence.targets.isolated import IsolatedTarget
@@ -33,6 +38,10 @@ class Invocation:
     artifacts: tuple = ()
     image_id: str = IMAGE
     provenance: TargetProvenance = TargetProvenance("controlled", "1.2.3", 5)
+    identity_command: tuple[str, ...] | None = None
+
+    def verify_identity(self, stdout: bytes) -> tuple[ArtifactDigest, ...]:
+        raise AssertionError("a descriptor without an identity probe cannot verify artifacts")
 
     def command(self, archive_path: Path, extraction_root: Path):
         return ("controlled-helper",)
@@ -365,3 +374,18 @@ def test_isolated_descriptor_timeout_must_be_bounded_before_runtime(timeout):
             ),
             ControlledBackend(),
         )
+
+
+def test_cr001_generic_wrapper_rejects_artifact_assertions_without_observation():
+    target = IsolatedTarget(
+        replace(Invocation(), artifacts=(ArtifactDigest("declared-helper", "a" * 64),)),
+        ControlledBackend(),
+    )
+    with pytest.raises(BackendError, match="require image identity observation"):
+        target.capture_isolation()
+
+
+def test_cr001_observation_origin_is_required_for_artifact_evidence():
+    actual = ControlledBackend().capture_isolation(IMAGE)
+    with pytest.raises(ValueError, match="origin"):
+        replace(actual, artifacts=(ArtifactDigest("declared-helper", "a" * 64),))

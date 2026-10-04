@@ -1708,6 +1708,23 @@ encoding/novelty are unchanged. Runtime/PID/temp paths never enter config or fee
 No campaign-to-Docker implementation import exists: the campaign sees the enforced
 composition, while concrete runtime command construction stays in execution/container.
 
+Invocation artifact digests are **declarations/expectations**. `bind()` discovery does
+not authorize later constructed/replaced values. The wrapper executes the invocation's
+identity probe through the inspected backend image and verifies versions/digests before
+campaign freeze and before each standalone/prepared archive execution. Nonempty artifact
+declarations without an observation protocol are rejected. Node compares its fixed
+worker/package-lock probe output against every declared identity field; mismatches abort
+before extraction, including when ExperimentConfig matches the false declaration.
+
+`IsolationProvenance` v2 stores only those verified artifact observations, with
+`artifact_origin="image-identification-v1"` (or null with no artifacts). Policy image ID
+remains anchored to backend inspection and the prepared container's actual image.
+ExecutionProvenance/CampaignResult envelopes remain v2 and manifest remains v4; export
+preserves the stored origin and digests without a new backend query. Existing historical
+isolation v1 records are unchanged and do not retroactively gain verified-origin meaning.
+Image contents/probe implementation remain trusted; this is evidence integrity within
+that trust model, not independent verification of a malicious image or an isolation escape.
+
 
 ### Pre-audit integration freeze
 

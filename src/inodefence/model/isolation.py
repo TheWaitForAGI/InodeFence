@@ -111,7 +111,11 @@ class IsolationPolicy:
 
 @dataclass(frozen=True, slots=True)
 class IsolationProvenance:
-    """Frozen actual runtime/image facts plus exact configured policy and artifacts."""
+    """Backend-inspected runtime/image facts and verified image probe digests.
+
+    artifacts are observations, never descriptor expectations. artifact_origin
+    records their method; image content/probe code remain trusted mechanisms.
+    """
 
     policy: IsolationPolicy
     runtime_name: str
@@ -122,7 +126,8 @@ class IsolationProvenance:
     image_architecture: str
     image_repo_digests: tuple[str, ...] = ()
     artifacts: tuple[ArtifactDigest, ...] = ()
-    schema_version: int = 1
+    schema_version: int = 2
+    artifact_origin: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.policy, IsolationPolicy):
@@ -140,9 +145,9 @@ class IsolationProvenance:
         if (
             self.runtime_os != "linux"
             or type(self.schema_version) is not int
-            or self.schema_version != 1
+            or self.schema_version != 2
         ):
-            raise ValueError("isolation provenance requires Linux/schema v1")
+            raise ValueError("isolation provenance requires Linux/schema v2")
         if (
             not isinstance(self.image_repo_digests, tuple)
             or not all(
@@ -159,3 +164,5 @@ class IsolationProvenance:
             != tuple(sorted({item.name for item in self.artifacts}))
         ):
             raise ValueError("artifacts require sorted unique typed digests")
+        if self.artifact_origin != ("image-identification-v1" if self.artifacts else None):
+            raise ValueError("observed artifacts require their image identification origin")

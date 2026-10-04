@@ -2,15 +2,23 @@
 
 import random
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import ClassVar
 
-from inodefence.feedback import Corpus, CorpusStats, FeedbackDecision
+from inodefence.feedback import (
+    Corpus,
+    CorpusStats,
+    FeedbackDecision,
+    FeedbackProjection,
+    SearchDecision,
+    SearchPolicy,
+    SearchState,
+)
 from inodefence.model import ArchiveCase, RunResult
 from inodefence.model.provenance import ExecutionProvenance, ExecutionSafety, TargetProvenance
-from inodefence.mutator import mutate
+from inodefence.mutator import MutationPolicy, mutate, mutate_with_policy
 from inodefence.pipeline import run_case
 from inodefence.provenance import freeze_provenance, sentinel_provenance
 from inodefence.runtime import SentinelSpec
@@ -73,7 +81,70 @@ class CampaignResult:
     experiment_config_id: str | None = None
 
 
-def run_campaign(
+@dataclass(frozen=True, slots=True)
+class SearchCampaignConfig:
+    """Explicit caller configuration for policy-aware, in-memory campaigns.
+
+    This is not an ExperimentConfig or a legacy evidence-export configuration.
+    Policy identifiers are enum values; unknown/untyped values fail immediately.
+    """
+
+    random_seed: int
+    execution_budget: int
+    search_policy: SearchPolicy
+    mutation_policy: MutationPolicy = MutationPolicy.LEGACY
+    feedback_projection: FeedbackProjection = FeedbackProjection.FULL
+
+    def __post_init__(self) -> None:
+        CampaignConfig(self.random_seed, self.execution_budget)
+        for name, expected in (
+            ("search_policy", SearchPolicy),
+            ("mutation_policy", MutationPolicy),
+            ("feedback_projection", FeedbackProjection),
+        ):
+            if not isinstance(getattr(self, name), expected):
+                raise ValueError(f"{name} must be a supported {expected.__name__}")
+
+
+@dataclass(frozen=True, slots=True)
+class SearchCampaignStep:
+    """Full raw evidence, logical lineage and explicit policy admission."""
+
+    index: int
+    origin: CampaignOrigin
+    parent_case_id: str | None
+    result: RunResult
+    feedback: SearchDecision
+
+
+@dataclass(frozen=True, slots=True)
+class SearchCampaignResult:
+    """Trusted bounded assembly with separately identified policy configuration.
+
+    Canonical model envelope v1 is distinct from legacy CampaignResult v2.
+    B0's seed bank/active case is separate from retained corpus accounting.
+    No manifest/journal reader, checkpointing or validated comparison is implied.
+    """
+
+    config: SearchCampaignConfig
+    initial_case_ids: tuple[str, ...]
+    steps: tuple[SearchCampaignStep, ...]
+    final_corpus_stats: CorpusStats
+    retained_case_ids: tuple[str, ...]
+    unique_feedback_keys: int
+    active_case_id: str | None
+    provenance: ExecutionProvenance
+
+
+@dataclass(frozen=True, slots=True)
+class _CampaignExecution:
+    cases: tuple[ArchiveCase, ...]
+    initial_case_ids: tuple[str, ...]
+    provenance: ExecutionProvenance
+    execute: Callable[[ArchiveCase], RunResult]
+
+
+def _prepare_campaign(
     initial_cases: Sequence[ArchiveCase],
     target: CampaignTarget,
     config: CampaignConfig,
@@ -81,27 +152,8 @@ def run_campaign(
     sentinels: tuple[SentinelSpec, ...] = (SentinelSpec(),),
     provenance: ExecutionProvenance | None = None,
     experiment_config_id: str | None = None,
-) -> CampaignResult:
-    """Run explicit seeds in order, then select → mutate → execute → consider.
-
-    Initial cases must be nonempty, fit the budget and have unique case IDs.
-    Snapshot the collection before execution; never mutate the caller's cases.
-    One campaign-owned RNG serves both uniform parent selection and mutation.
-    Seeds consume no search RNG. A no-op child is executed once, without retry.
-    Freeze target/sentinel/source/environment provenance before run_case. Supplied
-    immutable provenance is preserved by identity after configuration validation;
-    callers own its source/environment accuracy. Result configuration drift is
-    a harness error, never a reason to rewrite the frozen configuration.
-    Trusted references or the enforced IsolatedTarget composition can run campaigns.
-    Boundary availability/attestation is checked before capture/runtime/execution;
-    there is no bypass flag, subclass override or ordinary subprocess fallback.
-    Every returned target status counts. Infrastructure exceptions propagate;
-    an aborted campaign does not return an invented completed result.
-
-    Deterministic lineage requires the same semantic feedback outcomes as well
-    as the same initial cases, config and RNG implementation. Raw filesystem
-    allocation, timestamps and process durations need not repeat.
-    """
+) -> _CampaignExecution:
+    """Shared seed validation, fail-closed execution gate and frozen provenance."""
     if experiment_config_id is not None and (
         not isinstance(experiment_config_id, str)
         or re.fullmatch(r"[0-9a-f]{64}", experiment_config_id) is None
@@ -157,6 +209,8 @@ def run_campaign(
         if target.provenance != frozen.target:
             raise ValueError("target configuration changed during campaign")
         result = run_case(case, target, sentinels=sentinels)
+        if not isinstance(result, RunResult) or result.case != case:
+            raise ValueError("execution must return RunResult for the requested case")
         execution = result.execution
         if (
             TargetProvenance(
@@ -170,10 +224,50 @@ def run_campaign(
             raise ValueError("execution result differs from frozen target provenance")
         return result
 
+    return _CampaignExecution(cases, initial_ids, frozen, execute)
+
+
+def run_campaign(
+    initial_cases: Sequence[ArchiveCase],
+    target: CampaignTarget,
+    config: CampaignConfig,
+    *,
+    sentinels: tuple[SentinelSpec, ...] = (SentinelSpec(),),
+    provenance: ExecutionProvenance | None = None,
+    experiment_config_id: str | None = None,
+) -> CampaignResult:
+    """Run explicit seeds in order, then select → mutate → execute → consider.
+
+    Initial cases must be nonempty, fit the budget and have unique case IDs.
+    Snapshot the collection before execution; never mutate the caller's cases.
+    One campaign-owned RNG serves both uniform parent selection and mutation.
+    Seeds consume no search RNG. A no-op child is executed once, without retry.
+    Freeze target/sentinel/source/environment provenance before run_case. Supplied
+    immutable provenance is preserved by identity after configuration validation;
+    callers own its source/environment accuracy. Result configuration drift is
+    a harness error, never a reason to rewrite the frozen configuration.
+    Trusted references or the enforced IsolatedTarget composition can run campaigns.
+    Boundary availability/attestation is checked before capture/runtime/execution;
+    there is no bypass flag, subclass override or ordinary subprocess fallback.
+    Every returned target status counts. Infrastructure exceptions propagate;
+    an aborted campaign does not return an invented completed result.
+
+    Deterministic lineage requires the same semantic feedback outcomes as well
+    as the same initial cases, config and RNG implementation. Raw filesystem
+    allocation, timestamps and process durations need not repeat.
+    """
+    prepared = _prepare_campaign(
+        initial_cases,
+        target,
+        config,
+        sentinels=sentinels,
+        provenance=provenance,
+        experiment_config_id=experiment_config_id,
+    )
     corpus = Corpus()
     steps: list[CampaignStep] = []
-    for case in cases:
-        result = execute(case)
+    for case in prepared.cases:
+        result = prepared.execute(case)
         steps.append(
             CampaignStep(len(steps), CampaignOrigin.SEED, None, result, corpus.consider(result))
         )
@@ -182,7 +276,7 @@ def run_campaign(
     while len(steps) < config.execution_budget:
         parent = corpus.select_case(rng)
         child = mutate(parent, rng)
-        result = execute(child)
+        result = prepared.execute(child)
         steps.append(
             CampaignStep(
                 len(steps), CampaignOrigin.MUTATION, parent.case_id, result, corpus.consider(result)
@@ -191,10 +285,68 @@ def run_campaign(
 
     return CampaignResult(
         config,
-        initial_ids,
+        prepared.initial_case_ids,
         tuple(steps),
         corpus.stats,
         tuple(entry.case.case_id for entry in corpus.entries),
-        frozen,
+        prepared.provenance,
         experiment_config_id,
+    )
+
+
+def run_search_campaign(
+    initial_cases: Sequence[ArchiveCase],
+    target: CampaignTarget,
+    config: SearchCampaignConfig,
+    *,
+    sentinels: tuple[SentinelSpec, ...] = (SentinelSpec(),),
+    provenance: ExecutionProvenance | None = None,
+) -> SearchCampaignResult:
+    """Run declared search/mutation/projection policies under the campaign gate.
+
+    Seeds execute in order without search RNG draws. One owned RNG then serves
+    policy selection and versioned mutation; every child, including no-ops and
+    all returned statuses, executes once. Every policy receives full raw
+    observations/oracle results. B0 advances to the previous child with no
+    novelty admission; B1/B3 uniformly select retained cases. No adaptive
+    scheduling, exporter or ExperimentConfig binding is implemented here.
+    Determinism requires the same semantic outcomes, config and RNG version.
+    """
+    if not isinstance(config, SearchCampaignConfig):
+        raise ValueError("config must be a SearchCampaignConfig")
+    prepared = _prepare_campaign(
+        initial_cases,
+        target,
+        CampaignConfig(config.random_seed, config.execution_budget),
+        sentinels=sentinels,
+        provenance=provenance,
+    )
+    state = SearchState(prepared.cases, config.search_policy, projection=config.feedback_projection)
+    steps: list[SearchCampaignStep] = []
+    for case in prepared.cases:
+        result = prepared.execute(case)
+        steps.append(
+            SearchCampaignStep(
+                len(steps), CampaignOrigin.SEED, None, result, state.consider(result)
+            )
+        )
+    rng = random.Random(config.random_seed)
+    while len(steps) < config.execution_budget:
+        parent = state.select_case(rng)
+        child = mutate_with_policy(parent, rng, config.mutation_policy)
+        result = prepared.execute(child)
+        steps.append(
+            SearchCampaignStep(
+                len(steps), CampaignOrigin.MUTATION, parent.case_id, result, state.consider(result)
+            )
+        )
+    return SearchCampaignResult(
+        config,
+        prepared.initial_case_ids,
+        tuple(steps),
+        state.stats,
+        tuple(entry.case.case_id for entry in state.entries),
+        state.unique_feedback_keys,
+        state.active_case.case_id if state.active_case else None,
+        prepared.provenance,
     )

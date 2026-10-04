@@ -1751,7 +1751,9 @@ evaluated research. Feature expansion stops until that full audit and a later Ta
 ## Independent search-policy core
 
 Layer 5의 별도 SearchState API는 B0/B1/B3 policy admission과 full diagnostics를 분리한다.
-Legacy Corpus/campaign/evidence shape는 유지한다. [계약과 binding 요구사항](search-policy-core-v1.md)을 따른다.
+`run_search_campaign`은 explicit search/mutation/projection config로 기존 pipeline을 조합하고
+legacy runner의 execution safety/provenance gate를 공유한다. Legacy Corpus/campaign/evidence
+shape는 유지한다. [새 caller API와 Evaluation binding 요구사항](search-policy-core-v1.md)을 따른다.
 
 ## Generic archive reduction
 

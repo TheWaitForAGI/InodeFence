@@ -416,3 +416,17 @@ resolve하지 않는다. V2 keys와 호환성/migration은 제공하지 않는�
 ArchiveCase identity, fingerprint/novelty policy, RNG/budget 및 C0/C1/C2 predicates는 유지한다.
 Historical decisions/audit/smoke summaries는 이전 revision의 기록으로 남긴다.
 [Fix mapping과 frozen evidence](audits/engine-findings-fix-v1.md)를 따른다.
+
+## D029 — Policy-aware campaign caller shares the execution gate
+
+**상태:** independent caller API v1 구현
+
+`SearchCampaignConfig`와 `run_search_campaign`은 B0/B1/B3, versioned mutation과 feedback projection을
+bounded single-case pipeline에 연결한다. Legacy campaign과 실행 safety/provenance 검증을 공유하여
+alternative search가 isolation requirement를 우회하지 못하게 한다. 원래 runner/Corpus의 B3 동작과
+serialized model은 유지하며 새 caller output은 구분된 SearchCampaignResult/Step envelope v1이다.
+
+새 result는 full raw evidence, diagnostic novelty, explicit admission, policy IDs와 B0 working parent를
+보존한다. Full-state diagnostic count와 projected-key count를 분리한다. ExperimentConfig와 durable
+Evaluation reader/journal/export binding은 해당 ownership의 새 schema 지원까지 독립 dependency로
+남긴다. In-memory engineering validation은 정책의 연구상 효과나 benchmark readiness를 의미하지 않는다.

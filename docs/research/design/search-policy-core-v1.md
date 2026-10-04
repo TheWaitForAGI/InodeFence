@@ -2,7 +2,8 @@
 
 Layer 5의 독립 API는 `feedback.SearchState(initial_cases, SearchPolicy)`다.
 기존 `Corpus`, `FeedbackDecision`, bounded campaign과 manifest v4/step v1은 그대로다.
-B0/B1은 core에서 구현됐지만 ExperimentConfig / campaign binding은 아직 제공하지 않는다.
+B0/B1/B3는 `run_search_campaign`의 explicit caller configuration으로 실행 가능하다.
+Legacy ExperimentConfig / manifest / journal binding은 아직 제공하지 않는다.
 연구 효과를 검증한 결과가 아니다.
 
 | Policy ID | Admission | Seed phase 이후 parent |
@@ -36,7 +37,7 @@ Paired seeds는 동일 mutation stream을 보장하지 않는다.
 
 현재 `evaluation.verify`, `evaluation.journal`, `evaluation.dataset`은 manifest v4,
 CampaignStep v1과 B3-only Corpus replay / previously retained parent rule에 고정돼 있다.
-Search 담당은 이 파일들을 변경하지 않는다. Alternative campaign binding 전 필요한 계약:
+Search 담당은 이 파일들을 변경하지 않는다. Alternative ExperimentConfig/export binding 전 필요한 계약:
 
 1. Versioned step은 SearchDecision의 full diagnostics와 policy admission을 함께 보존한다.
 2. Versioned manifest/result에는 explicit feedback/mutation policy ID, retained IDs와 B0
@@ -49,7 +50,7 @@ Search 담당은 이 파일들을 변경하지 않는다. Alternative campaign b
    현재 B3 runner에 silent fallback하지 않는다.
 
 이 통합은 Evaluation 영역 변경 없이는 완료할 수 없으므로 skip한다. Core APIs는 독립
-검증할 수 있다. 새 campaign/export schema 지원 여부는 main에서 다시 확인한다.
+검증/실행할 수 있다. 새 campaign/export schema 지원 여부는 main에서 다시 확인한다.
 
 ## A1/A2 feedback projection
 
@@ -85,3 +86,37 @@ All execution statuses에서 semantic state가 같으면 novelty/admission이 �
 no-op child, violation novelty를 함께 검사한다. Raw dev/inode/timestamp를 바꿔도 같은 semantic
 outcomes이면 logical parent/child lineage, diagnostics, entries, stats와 final RNG state가 같다.
 이 unit composition은 configured baseline campaign/evaluation 실행 결과가 아니다.
+
+## Policy-aware bounded campaign caller
+
+`campaign.run_search_campaign(initial_cases, target, SearchCampaignConfig(...))`는 기존
+single-case pipeline과 SearchState/mutate_with_policy를 조합한다. Legacy runner와 seed validation,
+exact IsolatedTarget requirement, isolation availability/attestation, pre-execution provenance freeze,
+sentinel binding 및 매 trial의 target/case drift 검증을 공유한다. Wrapper subclass나 supplied
+provenance로 isolation requirement를 낮출 수 없다. Infrastructure exception은 전달한다.
+
+Frozen `SearchCampaignConfig`는 integer random_seed/execution_budget, explicit SearchPolicy,
+MutationPolicy와 FeedbackProjection을 가진다. Unknown/string 값은 fallback 없이 즉시 거부하며
+외부 문자열 ID는 해당 enum constructor로 명시적으로 검증해야 한다. B3/legacy mutation/FULL
+조합은 기존 campaign의 parent/child lineage, raw results, retention, counters와 RNG 동작을 유지한다.
+기존 CampaignConfig/ExperimentConfig serialization과 ID는 바꾸지 않는다.
+
+Seed phase는 선언 순서이며 RNG를 소비하지 않는다. Seed-inclusive execution budget에 no-op,
+duplicate case와 모든 returned status가 포함된다. 한 owned RNG로 selection 후 mutation을 수행한다.
+B0는 seed bank에서 한 번 뽑은 후 이전 child를 사용하고 corpus admission은 하지 않는다.
+B1/B3는 policy-admitted unique parents를 균등 선택한다. A1/A2는 projected key만 바꾸며 full
+snapshot/signature/verdict가 모든 step에 남는다. A3는 versioned mutation dispatch의 probability
+slot과 draw semantics를 그대로 사용한다. Adaptive scheduler나 effectiveness 판단은 없다.
+
+새 `SearchCampaignResult`/`SearchCampaignStep`는 각각 자기 model name의 canonical envelope v1이다.
+Result는 config의 세 policy ID, full steps, full-state CorpusStats, retained IDs,
+unique_feedback_keys, active_case_id와 frozen ExecutionProvenance를 보존한다. B0 retained count는
+zero이며 seed-only budget에서는 active_case_id도 None이다. Seed IDs와 active child는 retained
+corpus와 구분한다. Diagnostic indexes와 full step evidence는 budget에 비례한 메모리를 사용한다.
+
+이 API는 in-memory engineering evidence를 반환한다. Legacy exporter/journal/verified dataset에
+묵시적으로 넣지 않는다. 해당 readers가 새 model/declared policies/B0 lineage를 지원해야
+ExperimentConfig binding과 durable comparison이 가능하며 위 interface dependency는 남아 있다.
+Unit tests는 policy/projection/mutation 조합과 legacy B3 parity를 확인한다. Tiny Python reference
+integration은 기존 runtime에서 full pipeline/archive hash binding을 확인하며 benchmark 결과나
+정책 효과의 증거가 아니다.

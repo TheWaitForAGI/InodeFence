@@ -283,4 +283,12 @@ B2의 alternative configured campaign binding은 Evaluation reader/journal/manif
 모든 trial의 requested ArchiveCase / deterministic USTAR hash / format binding을 검증한다.
 Raw evidence와 rejected trials는 그대로 남으며 execution status를 evidence로 대체하지 않는다.
 Existing arbitrary-predicate minimizer는 유지한다. [Binding 의미와 한계](research/design/generic-minimizer-v1.md)를
-따른다. Long USTAR path의 simplification으로 unsupported spelling이 생기는 문제는 별도 policy 작업이다.
+따른다.
+
+### USTAR-compatible minimization
+
+`greedy-ustar-archive-reduction-v1`은 raw reduction 순서를 유지하고 builder-unrepresentable
+후보만 실행 전에 제외한다. Unsupported baseline은 실패하며 filtering은 fake target status나
+budget-consuming trial을 만들지 않는다. `minimize_violation`은 이 policy를 기본으로 기록한다.
+Existing generic v1은 `minimize_case` default 및 explicit enum으로 재현 가능하다.
+[ASCII/UTF-8 boundary와 policy 의미](research/design/generic-minimizer-v1.md)를 따른다.

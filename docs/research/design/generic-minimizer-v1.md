@@ -33,7 +33,8 @@ No-op와 동일 case ID 후보는 한 candidate round 안에서만 제외한다.
 RNG가 없으며 같은 evaluator/predicate outcomes에서 trial lineage가 재현된다.
 
 이 문자열 연산은 archive 의미를 보존하는 normalization이 아니다. Semantics가 바뀌면 caller
-predicate가 거부해야 한다. Builder 지원 여부와 runtime rejection도 caller evaluator의 책임이다.
+predicate가 거부해야 한다. Generic v1에서는 builder 지원 여부가 caller evaluator의 책임이다.
+Runtime rejection과 evidence condition은 모든 policy에서 evaluator/predicate의 책임이다.
 기본 M1-compatible case의 모든 reduction candidate에 대한 builder composition을 테스트한다.
 
 ## Result / limits
@@ -69,5 +70,25 @@ condition을 함께 보존한다. `final_result`는 마지막 accepted case의 r
 rejected trials와 구분한다. Stored ArchiveCase로 TAR를 재생성해 recorded hash와 비교할 수 있다.
 Evaluator isolation, target/config/source provenance와 evidence authenticity는 caller 책임이다.
 이 binding은 external replay infrastructure와 독립적이며 replay certification을 주장하지 않는다.
-Builder가 unsupported case/candidate를 만나면 현재는 exception을 전달한다; generic byte-length
-감소가 lossless USTAR representation을 항상 유지하지 않는 corner case는 별도 policy 작업이다.
+
+## USTAR-compatible reduction policy
+
+`ReductionPolicy.GENERIC`의 ID는 기존 `greedy-archive-reduction-v1`이며 `minimize_case`와
+`reduction_candidates`의 default candidate 순서/exception 동작을 유지한다.
+`ReductionPolicy.USTAR`는 `greedy-ustar-archive-reduction-v1`이다. Baseline을 현재 builder로
+검증하고, 같은 raw 후보 순서에서 lossless USTAR로 표현 불가능한 후보만 evaluator 호출 전에
+제외한다. 예를 들어 `.//` 뒤 100-byte name은 표현 가능하지만 leading `./`를 제거한 101-byte
+absolute spelling은 name/prefix split에서 raw spelling을 잃는다. Byte-length 감소만으로는
+builder compatibility를 보장하지 못한다. ASCII/UTF-8 field 경계에서 이를 검증한다.
+
+Unknown/string policy는 enum coercion이나 fallback 없이 거부한다. Unsupported baseline은
+실행 전에 실패한다. Builder의 representation ValueError만 candidate filter에서 처리하며
+evaluator/predicate의 모든 exception은 이전과 같이 전달한다. Filtering은 path normalization,
+dependency repair 또는 target rejection이 아니다. Skip한 후보에 RunResult나 fake status를
+만들지 않으며 execution budget은 baseline과 실제 evaluated trials만 센다. Full raw evidence와
+trial index는 실제 실행 순서대로 남는다. Candidate omissions는 선언한 policy와 stored case로
+재생성할 수 있으며 fixed point도 해당 policy의 후보 집합에 대한 의미다.
+
+`minimize_violation`의 default reduction policy는 USTAR다. Result의 `reduction.policy_id`에
+이를 명시하며, `reduction_policy=ReductionPolicy.GENERIC`으로 최초 raw candidate/exception
+동작을 재현할 수 있다. Preservation condition의 version과 기존 result record shape는 같다.

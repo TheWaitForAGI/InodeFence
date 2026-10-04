@@ -58,9 +58,10 @@ jobs:
       - name: Prepare independent trusted Linux controller
         run: |
           docker volume create inodefence-ci-runtime
-          docker run -d --name inodefence-ci-controller --user vscode --workdir /workspaces/InodeFence --mount "type=bind,src=$GITHUB_WORKSPACE,dst=/workspaces/InodeFence" --mount type=volume,src=inodefence-ci-runtime,dst=/var/lib/inodefence inodefence-controller:ci sleep infinity
+          docker run -d --name inodefence-ci-controller --user vscode --workdir /workspaces/InodeFence --env PYTHONPATH=/workspaces/InodeFence/src --mount "type=bind,src=$GITHUB_WORKSPACE,dst=/workspaces/InodeFence,readonly" --mount type=volume,src=inodefence-ci-runtime,dst=/var/lib/inodefence inodefence-controller:ci sleep infinity
           docker exec --user root inodefence-ci-controller chown vscode:vscode /var/lib/inodefence
-          docker exec inodefence-ci-controller python -m pip install -e '.[dev]'
+          docker exec inodefence-ci-controller python -m pip install pytest
+          docker exec inodefence-ci-controller git config --global --add safe.directory /workspaces/InodeFence
       - name: Real container boundary regressions
         run: |
           IF_HELPER_IMAGE=$(docker image inspect inodefence-helper:ci --format '{{.Id}}')

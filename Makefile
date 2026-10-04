@@ -2,7 +2,7 @@ PYTHON ?= python
 CASE ?= regular-file
 BASELINE_CASES := regular-file directory hardlink symlink
 
-.PHONY: install target-tools lint format-check typecheck test env-check docs-check check fixtures probe
+.PHONY: install target-tools lint format-check typecheck test env-check docs-check check fixtures probe isolation-support
 
 target-tools:
 	npm ci --prefix tools/node-tar --ignore-scripts --no-audit --no-fund
@@ -24,6 +24,9 @@ test:
 
 env-check:
 	$(PYTHON) scripts/check_dev_env.py
+
+isolation-support:
+	$(PYTHON) scripts/check_linux_isolation_support.py
 
 docs-check:
 	$(PYTHON) scripts/check_docs.py

@@ -10,7 +10,7 @@ from inodefence.generator import minimal_seed_corpus
 from inodefence.model import ExecutionStatus
 from inodefence.model.provenance import ExecutionSafety
 from inodefence.pipeline import run_case
-from inodefence.runtime import RuntimeSandbox
+from inodefence.runtime import RuntimeSandbox, SentinelSpec, runtime_root
 from inodefence.targets.node_tar import NodeTarTarget
 
 PACKAGE_ROOT = Path(__file__).resolve().parents[1] / "tools" / "node-tar"
@@ -27,6 +27,45 @@ def test_exact_discovered_versions_and_fixed_safety_requirement() -> None:
     assert target.provenance.execution_safety == ExecutionSafety.ISOLATION_REQUIRED
     with pytest.raises(ValueError, match="requires execution isolation"):
         run_campaign(minimal_seed_corpus(), target, CampaignConfig(1, 4))
+
+
+@pytest.mark.parametrize("configured", (False, True))
+def test_node_campaign_paths_reject_before_freeze_or_runtime(configured, monkeypatch) -> None:
+    from inodefence.experiment_config import (
+        FEEDBACK_POLICY,
+        MUTATION_POLICY,
+        SEED_PROFILE,
+        ExperimentConfig,
+        run_configured_campaign,
+    )
+
+    target = NodeTarTarget(PACKAGE_ROOT)
+    seeds = minimal_seed_corpus()
+    budget = CampaignConfig(11, 8)
+    existing = set(runtime_root().iterdir())
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Node campaign rejection must precede execution setup")
+
+    monkeypatch.setattr("inodefence.campaign.freeze_provenance", forbidden)
+    monkeypatch.setattr("inodefence.pipeline.disposable_sandbox", forbidden)
+    monkeypatch.setattr(NodeTarTarget, "run", forbidden)
+    with pytest.raises(ValueError, match="requires execution isolation"):
+        if configured:
+            config = ExperimentConfig(
+                target.provenance,
+                SEED_PROFILE,
+                tuple(case.case_id for case in seeds),
+                budget,
+                MUTATION_POLICY,
+                FEEDBACK_POLICY,
+                (SentinelSpec(),),
+                "linux-development-v1",
+            )
+            run_configured_campaign(config, seeds, target)
+        else:
+            run_campaign(seeds, target, budget)
+    assert set(runtime_root().iterdir()) == existing
 
 
 @pytest.mark.parametrize("index", range(4))

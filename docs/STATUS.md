@@ -22,6 +22,14 @@ Layer 6 — Baseline / Evaluation / Paper    ⬜
 
 전체 분류는 **ENGINEERING FOUNDATION**이다.
 
+Pre-audit infrastructure 작업은 **Work Package A의 실행 환경 지원에서 차단**됐다.
+2026-10-04 확인한 nonprivileged Dev Container에서 uid 1000의 namespace 생성 8개 probe는 모두
+EPERM으로 실패했고 cgroup v2는 read-only였다. `make isolation-support`가 사실과 실패를 JSON으로
+기록한다. 진단 성공도 validated execution boundary가 아니다. 환경 정책을 먼저 결정한 뒤 A의
+실제 격리 구현·검증을 재개한다. A/B merge 전 Node configured campaign은 계속 0 executions이며
+B–G 완료 또는 READY FOR FULL CODE / ARCHITECTURE AUDIT로 표시하지 않는다.
+[Blocker 기록](../experiments/summaries/linux-isolation-support-v1.md)에 근거와 후속 조건이 있다.
+
 | 기준 | 현재 상태 | 근거 / 남은 조건 |
 | --- | --- | --- |
 | ENGINE READY | trusted Python reference 범위에서 준비 | bounded runner, explicit seeds, frozen provenance, config binding, raw export와 Linux regression |

@@ -14,7 +14,8 @@ from inodefence.execution.base import (
     OutputLimitError,
 )
 from inodefence.generator import minimal_seed_corpus
-from inodefence.model import ExecutionStatus
+from inodefence.model import ExecutionResult, ExecutionStatus
+from inodefence.model.isolation import IsolationPolicy, IsolationProvenance, ResourcePolicy
 from inodefence.model.provenance import ExecutionSafety
 from inodefence.runtime import SentinelSpec, runtime_root
 from inodefence.targets.isolated import IsolatedTarget
@@ -33,6 +34,16 @@ class ControlledBackend(ExecutionBackend):
     """Test double, never evidence that a real runtime enforces containment."""
 
     outcome = ContainerOutcome(0, b"", b"", 0.5, False)
+
+    resources = ResourcePolicy()
+
+    def policy(self, image_id):
+        return IsolationPolicy(image_id, 1000, 1000, self.resources)
+
+    def capture_isolation(self, image_id):
+        return IsolationProvenance(
+            self.policy(image_id), "controlled-test-double", "test", "test", "linux", "test", "test"
+        )
 
     def validate_image(self, image_id):
         assert image_id == IMAGE
@@ -63,7 +74,7 @@ def test_exact_discovered_versions_and_fixed_safety_requirement():
     assert bound.provenance.timeout_seconds == 3.5
     assert bound.provenance.execution_safety == ExecutionSafety.ISOLATION_REQUIRED
     with pytest.raises(ValueError, match="requires execution isolation"):
-        run_campaign(minimal_seed_corpus(), bound, CampaignConfig(1, 4))
+        run_campaign(minimal_seed_corpus(), bound.invocation, CampaignConfig(1, 4))  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize("configured", (False, True))
@@ -87,6 +98,14 @@ def test_node_campaign_paths_reject_before_freeze_or_runtime(configured, monkeyp
     monkeypatch.setattr("inodefence.campaign.freeze_provenance", forbidden)
     monkeypatch.setattr("inodefence.pipeline.disposable_sandbox", forbidden)
     monkeypatch.setattr(IsolatedTarget, "run", forbidden)
+
+    class Uncontained:
+        provenance = bound.provenance
+
+        def run(self, archive_path, extraction_root) -> ExecutionResult:
+            raise AssertionError("uncontained target must never execute")
+
+    uncontained = Uncontained()
     with pytest.raises(ValueError, match="requires execution isolation"):
         if configured:
             config = ExperimentConfig(
@@ -99,9 +118,9 @@ def test_node_campaign_paths_reject_before_freeze_or_runtime(configured, monkeyp
                 (SentinelSpec(),),
                 "linux-development-v1",
             )
-            run_configured_campaign(config, seeds, bound)
+            run_configured_campaign(config, seeds, uncontained)
         else:
-            run_campaign(seeds, bound, budget)
+            run_campaign(seeds, uncontained, budget)
     assert set(runtime_root().iterdir()) == existing
 
 

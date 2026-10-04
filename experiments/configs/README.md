@@ -51,5 +51,23 @@ python -m scripts.run_configured_reference experiments/configs/reference-smoke-v
 ```
 
 CLI는 safe Python reference만 실행하고 experiment.json/manifest.json/steps.jsonl을 보존한다.
-Node-tar generated-input campaign은 isolation contract로 계속 거부된다. Config와 raw evidence는
+Uncontained Node-tar campaign은 계속 거부되고 contained configured execution에는 v2 policy가 필요하다. Config와 raw evidence는
 비교 실험 완료, research effectiveness 또는 validated isolation을 의미하지 않는다.
+
+
+## Container-bound config v2
+
+Schema v1 and its canonical IDs remain unchanged for configurations without isolation.
+Schema v2 requires the complete `isolation` object (`IsolationPolicy` schema v1), including
+immutable image ID, implementation/view/environment policies, network/rootfs/namespaces,
+nonzero uid/gid, cap-drop ALL/NNP, all resource limits and shared-memory/capture limits.
+Unknown/missing fields and unsupported weaker policies fail. v1 cannot smuggle an
+isolation object; v2 cannot omit it. Resource/image/policy changes affect config identity.
+
+The configured runner compares the actual composed target's policy with that immutable
+config before campaign setup. The campaign separately validates backend availability,
+freezes actual runtime/image/artifact facts and rejects supplied provenance mismatch or
+policy drift. No mutable tag, container ID/PID/temp path/timestamp enters config identity.
+Uncontained Node execution remains impossible; only the approved benign engineering smoke
+is authorized in this pre-audit contract. A schema v1 third-party config does not supply
+containment and cannot bind to an isolated target without a v2 policy.

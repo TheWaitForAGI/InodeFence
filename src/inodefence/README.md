@@ -85,4 +85,4 @@ Stored experiment_config_id는 manifest에 보존하며 actual source/platform p
 
 현재 준비 상태는 ENGINEERING FOUNDATION이다. Reference engine 경로의 구현/검증과
 third-party benchmark readiness를 구분한다. Node-tar 정상 fixture와 별도 container helper는 통과했지만 Pinned Node image/contained fixture 실행은 완료했지만 frozen config/provenance
-binding과 Node campaign smoke는 후속이다. [준비 상태와 다음 작업](../../docs/STATUS.md)을 따른다.
+binding을 추가했으며 Node full-path smoke는 다음 검증이다. [준비 상태와 다음 작업](../../docs/STATUS.md)을 따른다.

@@ -11,10 +11,12 @@ from hashlib import sha256
 from inodefence.campaign import CampaignConfig, CampaignResult, run_campaign
 from inodefence.generator import minimal_seed_corpus
 from inodefence.model import ArchiveCase
+from inodefence.model.isolation import IsolationPolicy
 from inodefence.model.provenance import ExecutionSafety, TargetProvenance
 from inodefence.provenance import sentinel_provenance
 from inodefence.runtime import SentinelSpec
 from inodefence.targets import CampaignTarget
+from inodefence.targets.isolated import IsolatedTarget
 
 SEED_PROFILE = "minimal-generic-v1"
 MUTATION_POLICY = "uniform-generic-v1"
@@ -56,12 +58,18 @@ class ExperimentConfig:
     feedback_policy: str
     sentinels: tuple[SentinelSpec, ...]
     environment_profile: str
+    isolation: IsolationPolicy | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.target, TargetProvenance) or not isinstance(
             self.campaign, CampaignConfig
         ):
             raise ValueError("target and campaign require canonical configuration types")
+        if self.isolation is not None and (
+            not isinstance(self.isolation, IsolationPolicy)
+            or self.target.execution_safety != ExecutionSafety.ISOLATION_REQUIRED
+        ):
+            raise ValueError("isolation policy requires an isolation-required target")
         if self.target.target_version.lower() in {"latest", "installed", "current"}:
             raise ValueError("target version must be explicit")
         if (self.seed_profile, self.mutation_policy, self.feedback_policy) != (
@@ -93,29 +101,33 @@ class ExperimentConfig:
         )
 
     def to_json(self) -> str:
-        """Sorted-key ASCII JSON schema v1; canonical configuration ID input."""
+        """Sorted-key ASCII JSON: v1 without isolation, v2 with explicit bound policy."""
         target = asdict(self.target)
         if self.target.timeout_seconds is not None:
             target["timeout_seconds"] = float(self.target.timeout_seconds)
+        payload = {
+            "schema_version": 1,
+            "target": target,
+            "seed_profile": self.seed_profile,
+            "initial_case_ids": self.initial_case_ids,
+            "campaign": asdict(self.campaign),
+            "mutation_policy": self.mutation_policy,
+            "feedback_policy": self.feedback_policy,
+            "sentinels": [
+                {
+                    "name": spec.name,
+                    "content_base64": base64.b64encode(spec.content).decode("ascii"),
+                    "mode": spec.mode,
+                }
+                for spec in self.sentinels
+            ],
+            "environment_profile": self.environment_profile,
+        }
+        if self.isolation is not None:
+            payload["schema_version"] = 2
+            payload["isolation"] = asdict(self.isolation)
         return json.dumps(
-            {
-                "schema_version": 1,
-                "target": target,
-                "seed_profile": self.seed_profile,
-                "initial_case_ids": self.initial_case_ids,
-                "campaign": asdict(self.campaign),
-                "mutation_policy": self.mutation_policy,
-                "feedback_policy": self.feedback_policy,
-                "sentinels": [
-                    {
-                        "name": spec.name,
-                        "content_base64": base64.b64encode(spec.content).decode("ascii"),
-                        "mode": spec.mode,
-                    }
-                    for spec in self.sentinels
-                ],
-                "environment_profile": self.environment_profile,
-            },
+            payload,
             sort_keys=True,
             separators=(",", ":"),
             ensure_ascii=True,
@@ -129,12 +141,15 @@ class ExperimentConfig:
     @classmethod
     def from_json(cls, text: str) -> "ExperimentConfig":
         """Reject missing/unknown/duplicate fields, nonfinite values and bad types."""
+        raw = json.loads(text, object_pairs_hook=_unique_object, parse_constant=_invalid_constant)
+        if (
+            not isinstance(raw, dict)
+            or type(raw.get("schema_version")) is not int
+            or raw["schema_version"] not in (1, 2)
+        ):
+            raise ValueError("unsupported experiment configuration schema")
         value = _object(
-            json.loads(
-                text,
-                object_pairs_hook=_unique_object,
-                parse_constant=_invalid_constant,
-            ),
+            raw,
             {
                 "schema_version",
                 "target",
@@ -145,10 +160,9 @@ class ExperimentConfig:
                 "feedback_policy",
                 "sentinels",
                 "environment_profile",
-            },
+            }
+            | ({"isolation"} if raw["schema_version"] == 2 else set()),
         )
-        if type(value["schema_version"]) is not int or value["schema_version"] != 1:
-            raise ValueError("unsupported experiment configuration schema")
         target = _object(
             value["target"], {"target_id", "target_version", "timeout_seconds", "execution_safety"}
         )
@@ -181,6 +195,7 @@ class ExperimentConfig:
             value["feedback_policy"],
             tuple(specs),
             value["environment_profile"],
+            IsolationPolicy.from_dict(value["isolation"]) if value["schema_version"] == 2 else None,
         )
 
 
@@ -200,6 +215,9 @@ def run_configured_campaign(
         case.case_id for case in minimal_seed_corpus()
     ):
         raise ValueError("seed cases/order do not match the configured profile and IDs")
+    isolation = target.isolation_policy if type(target) is IsolatedTarget else None
+    if isolation != config.isolation:
+        raise ValueError("isolation configuration does not match experiment configuration")
     if target.provenance != config.target:
         raise ValueError("target configuration does not match experiment configuration")
     return run_campaign(

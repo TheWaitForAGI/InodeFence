@@ -49,3 +49,10 @@ ENGINEERING FOUNDATION이다. Node-tar 정상 fixture integration과 third-party
 설정은 configs/, raw 기록은 raw/에 둔다. raw/*와 results/는 Git ignore 대상이므로 결과 보존·공유 경로를 명시한다. 설정에 seed, 환경, target 버전과 결과 식별자를 남긴다.
 
 작은 검증 요약은 [summaries/](summaries/README.md)에 config, commit, target/version, seed, budget, result와 원본 근거를 연결해 추적한다.
+
+
+Container-bound configurations use explicit ExperimentConfig v2 and frozen isolation
+policy/runtime/image/worker/lock provenance. Uncontained third-party campaigns fail
+before setup; this pre-audit contract authorizes only the tiny benign Node smoke.
+Manifest v3 stores these facts; snapshot/security/novelty semantics are unchanged.
+No benchmark effectiveness or known-vulnerability result is implied.

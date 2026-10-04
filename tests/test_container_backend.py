@@ -44,9 +44,18 @@ class FakeDocker:
         if args[:2] == self.failure:
             return CommandResult(1, b"", b"controlled runtime failure")
         if args[0] == "version":
-            return CommandResult(0, b'{"Os":"linux","Version":"test"}', b"")
+            return CommandResult(
+                0, b'{"Os":"linux","Version":"test","ApiVersion":"1.54","Arch":"arm64"}', b""
+            )
         if args[:2] == ("image", "inspect"):
-            return self.result({"Id": IMAGE, "Os": "linux", "Config": {"Env": ["SECRET=ignored"]}})
+            return self.result(
+                {
+                    "Id": IMAGE,
+                    "Os": "linux",
+                    "Architecture": "arm64",
+                    "Config": {"Env": ["SECRET=ignored"]},
+                }
+            )
         if args[:2] == ("container", "create"):
             self.name = args[args.index("--name") + 1]
             root = args[args.index("--workdir") + 1].removesuffix("/extract")
@@ -68,6 +77,7 @@ class FakeDocker:
                     "Memory": 512 * 1024 * 1024,
                     "MemorySwap": 512 * 1024 * 1024,
                     "LogConfig": {"Type": "none"},
+                    "ShmSize": 16 * 1024 * 1024,
                     "Ulimits": [
                         {"Name": "nofile", "Hard": 1024, "Soft": 1024},
                         {"Name": "fsize", "Hard": 64 * 1024 * 1024, "Soft": 64 * 1024 * 1024},

@@ -23,8 +23,9 @@ Layer 6 — Baseline / Evaluation / Paper    ⬜
 별도 disposable Linux container backend와 benign helper boundary 검증을 추가했다.
 Trusted Linux controller가 host-side stdio Docker broker를 명시적으로 사용하며 기존
 Dev Container 권한은 유지한다. [Enforced policy와 실행 명령](../src/inodefence/execution/README.md)을
-따른다. 현재 campaign safety gate는 unchanged이며 Node image/config/provenance/full-path
-smoke는 아직 후속 작업이다. Full audit readiness로 올리지 않는다.
+따른다. Node image와 production contained invocation, frozen policy/provenance 및
+ExperimentConfig v2 binding을 구현했다. Tiny benign full-path campaign은 다음 검증이다.
+아직 full audit readiness로 올리지 않는다.
 
 전체 분류는 **ENGINEERING FOUNDATION**이다.
 
@@ -33,18 +34,18 @@ smoke는 아직 후속 작업이다. Full audit readiness로 올리지 않는다
 EPERM으로 실패했고 cgroup v2는 read-only였다. `make isolation-support`가 사실과 실패를 JSON으로
 기록한다. 진단 성공도 validated execution boundary가 아니다. 새 Task Contract는 별도
 container backend를 선택했고 helper 검증까지 진행했다. Node configured campaign은 계속
-0 executions이며 image/config/provenance/full-path smoke 완료 전 audit-ready로 표시하지 않는다.
+0 campaign executions이며 full-path smoke 완료 전 audit-ready로 표시하지 않는다.
 [Blocker 기록](../experiments/summaries/linux-isolation-support-v1.md)에 근거와 후속 조건이 있다.
 
 | 기준 | 현재 상태 | 근거 / 남은 조건 |
 | --- | --- | --- |
 | ENGINE READY | trusted Python reference 범위에서 준비 | bounded runner, explicit seeds, frozen provenance, config binding, raw export와 Linux regression |
-| BENCHMARK READY | 아직 아님 | Node fixture와 container helper는 통과했지만 Node image/config/provenance binding과 full-path smoke가 없음 |
+| BENCHMARK READY | 아직 아님 | Node image/fixtures/helper 및 config/provenance binding은 완료했지만 full-path smoke가 없음 |
 | EVALUATION READY | 아직 아님; EVALUATION NOT YET RUN | benchmark boundary 승인, 별도 연구 Task Contract, baseline/ablation/반복 계획이 필요 |
 
 현재 실행 경로는 strict ExperimentConfig → explicit seeds/target binding → campaign safety gate
-→ frozen ExecutionProvenance → bounded reference campaign → raw export다. Node-tar는 별도의
-controlled fixture integration 경로만 사용한다. [인프라 검증 기록](../experiments/summaries/infrastructure-readiness-v1.md)은
+→ backend availability/policy binding → frozen ExecutionProvenance (container facts 포함)
+→ bounded campaign → raw export다. Node-tar configured full-path smoke는 아직 수행하지 않았다. [인프라 검증 기록](../experiments/summaries/infrastructure-readiness-v1.md)은
 실제 설정/원본 checksum/반복 결과/한계와 audit 범위를 기록한다.
 
 ## 완료된 것
@@ -138,15 +139,16 @@ Execution Provenance v1은 source revision/dirty, 실행 환경, explicit sentin
 explicit trusted reference campaign만 허용하며 isolation-required/미선언 target을 runtime 이전에
 거부한다. Disposable runtime/Dev Container는 OS 격리가 아니다. 별도 container helper 검증은
 완료했으며 아직 campaign binding은 없다.
-Node-tar adapter engineering은 정상 fixture 범위에서 완료됐으며 generated-input campaign은 금지한다.
+Node-tar fixture engineering은 contained execution으로 완료했다. Campaign은 explicit validated
+backend/policy binding이 필요하며 tiny benign smoke만 현재 Task Contract에 승인됐다.
 ExperimentConfig v1은 필수 JSON 설정/정규화된 config ID와 pre-execution seed/target binding을
 제공한다. Safe reference config CLI가 실행 전 config ID를 campaign/manifest에 보존한다.
 Pinned Node 22.22.0/tar 7.5.22 distroless target image와 실제 container metadata 검증을 추가했다.
 Worker/lock digest는 image 안에서 확인한다. Node production invocation은 backend만 사용하며 pipeline은 setup/BEFORE/execute/AFTER/cleanup을
-보존한다. 다음은 frozen isolation/config/provenance binding과 campaign gate 연결이다.
+보존한다. Frozen isolation/config/provenance binding과 campaign gate를 연결했다. 다음은 tiny benign smoke다.
 Container helper의 filesystem/network/credential/resource/descendant 검증은 이미 수행했다.
-그 뒤에만 설정 기반의 아주 작은 benign Node campaign smoke를 수행한다. 현재 Node campaign은
-runtime/provenance capture/첫 run_case 이전에 거부됐으며 실행 수는 0이다. Requirement를 낮추지 않았다.
+그 뒤에만 설정 기반의 아주 작은 benign Node campaign smoke를 수행한다. 이전 uncontained Node campaign은
+runtime/provenance capture/첫 run_case 이전에 거부됐으며 현재까지 실제 campaign 실행 수는 0이다. Requirement를 낮추지 않았다.
 Structured export v1은 완료된 campaign을 manifest.json/canonical steps.jsonl로 기록한다. Resume/reader/database는 없다.
 `generator.minimal_seed_corpus()`는 기존 정상 baseline 4종을 deterministic immutable tuple로
 반환한다. Fixture script도 이 API를 사용하며 campaign의 explicit-seed 계약은 유지한다.

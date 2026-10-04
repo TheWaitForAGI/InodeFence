@@ -98,7 +98,7 @@ C0의 direct path use 전체와 transient state는 snapshot만으로 판정할 �
 - caller 수준의 Corpus.select_case → Mutator → 단일 run_case → Corpus.consider 조합 regression
 - 한 Corpus는 한 caller-controlled campaign context; complete campaign key/persistence를 제공하지 않음
 
-Bounded deterministic campaign v1은 구현됐으며 adaptive scheduler, persistence, node-tar adapter의 정상 fixture integration이 있으며 Node-tar/ORAS generated-input campaign은 미구현/금지다. Known-vulnerability rediscovery, new vulnerability discovery, research effectiveness와 evaluation/ablation 결과는 아직 없다. C3/C4와 Layer 6도 후속 단계다. Corpus retention/stats는 연구 효과나 취약점 확정의 증거가 아니다.
+Bounded deterministic campaign v1과 node-tar adapter의 정상 fixture integration은 구현됐다. Adaptive scheduler/persistence는 후속 작업이며 Node-tar/ORAS generated-input campaign은 미구현/금지다. Known-vulnerability rediscovery, new vulnerability discovery, research effectiveness와 evaluation/ablation 결과는 아직 없다. C3/C4와 Layer 6도 후속 단계다. Corpus retention/stats는 연구 효과나 취약점 확정의 증거가 아니다.
 
 ## 다음 작업
 

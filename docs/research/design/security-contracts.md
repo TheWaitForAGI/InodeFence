@@ -2,7 +2,11 @@
 
 Security Contract는 안전한 archive extraction이 지켜야 할 일반화된 보안 규칙이다.
 
-특정 CVE 식별자와 독립적으로 정의한다.
+특정 CVE 식별자와 독립적으로 정의한다. [G0 Research Contract](research-contract-v1.md)의
+capability baseline은 main `8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`다.
+C0/C1/C2는 IMPLEMENTED / TESTED persistent-snapshot detectors이며,
+C3/C4는 DESIGNED 후속 계약이다. Historical qualification/rediscovery와 comparative effectiveness는
+EXPERIMENTALLY VALIDATED되지 않았다. 현재 취약점을 주장하지 않는다.
 
 ## 한눈에 보기
 
@@ -34,7 +38,7 @@ Archive extraction으로 생성되거나 직접 사용되는 path가 의도한 e
 
 InodeFence의 핵심은 object identity/effect지만, 가장 기본적인 path traversal을 먼저 잡지 못하면 observer/oracle 구현 자체를 신뢰하기 어렵다.
 
-또한 RQ2의 path-only feedback/baseline을 설명하는 기준점이 된다.
+C0는 oracle의 기본 boundary sanity 기준이다. RQ2 실행 비교는 B0/B1/B3이며 path-only feedback baseline은 구현되지 않았다. C0 contract와 feedback policy를 혼동하지 않는다.
 
 ### 주의
 
@@ -84,14 +88,12 @@ Extraction 영역 내부에 생성된 object가 보호된 외부 sentinel과 의
 
 Untrusted archive 처리 때문에 보호된 외부 sentinel object가 의도하지 않게 변경되면 안 된다.
 
-### 후보 관찰 정보
+### 현재 관찰 정보
 
-- existence
-- content hash
-- file size
-- mode
-- 선택 timestamp
-- 이후 필요 시 ownership
+- existence, object type, `(st_dev, st_ino)` identity
+- content digest, file size, mode, nlink
+- uid/gid, mtime/ctime nanoseconds
+- atime 제외: Observer의 read 자체가 바꿀 수 있음
 
 ### 예
 

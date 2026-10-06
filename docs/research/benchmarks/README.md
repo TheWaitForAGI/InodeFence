@@ -1,51 +1,43 @@
 # Benchmark and evaluation preparation v1
 
-**PLANNING ONLY — EVALUATION NOT RUN.** This retains the original research track
-and applies the maintainer's Phase-4B documentation refresh Task Contract. No production engine changes, CVE
-execution, exploit archives, target installation or generated-input campaigns
-belong to this branch. Keep the existing Draft PR unmerged while global closeout
-and the remaining candidate-specific prerequisites are reviewed.
+**SOURCE-DERIVED PLAN — HISTORICAL / FORMAL EVALUATION NOT_RUN.**
+Capability baseline is main **`8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`**.
+[G0 Research Contract](../design/research-contract-v1.md) fixes definitions,
+evidence levels and claim scope. Implemented search/evaluation APIs and benign
+Node checks are engineering evidence; no historical vulnerability has been
+rediscovered and no vulnerability is currently claimed.
 
-The audited integrated main is `d1982e4cf3174e28d4eeb73af7b32829f6751b30`;
-the [engine audit](engine-contract-audit.md) and [final audit #47](https://github.com/TheWaitForAGI/InodeFence/pull/47)
-record functional closure, residual EN-005/current-package disposition and the
-NO-GO for unconditional global closeout on that main. This Draft proposes current
-planning/navigation corrections without asserting main or evaluation readiness.
-Pre-audit freeze, Phases 1–2 and Phase-3 #45/#46 fixes are completed. Tagged v3,
-artifact/invocation verification and export regressions are already implemented.
-Implemented repository behavior, upstream source facts, source-derived reachability
-predictions and future experiment results have separate evidence labels. No benchmark
-qualification, pilot, rediscovery, replay, baseline, ablation or evaluation has run.
-Inherited engineering fixture/helper tests are not benchmark results.
+**N01 node-tar 7.5.2 / 7.5.3 is the first intended historical qualification pair.**
+Its exact artifacts, Linux/strict behavior, controlled-name reachability and
+matching affected/fixed effect remain unqualified. Other original selected
+candidates are conditional later scope, not permission to add adapters or run
+unqualified targets. Static catalog execution remains NOT_RUN for all 15 cases.
 
-Read in this order:
+Read current definitions in this order:
 
-1. [Engine contract audit](engine-contract-audit.md): capabilities and evidence limits.
-2. [Candidate matrix](candidate-matrix.md): sources, versions and semantic requirements;
-   [static artifact qualification](artifact-qualification-v1.md) gives pin/runtime/public-API evidence.
-3. [Taxonomy and reachability](taxonomy-and-reachability.md): why a structure can or cannot arise.
-4. [Benchmark Set v1](benchmark-set-v1.md): selected pairs and admission gates.
-5. [Evaluation protocol](evaluation-protocol-v1.md): success, budgets, repetitions and metrics.
-6. [Baselines and ablations](baseline-and-ablation-v1.md): exact comparisons.
-7. [Post-audit handoff](post-audit-backlog.md): evidence-driven gaps and ordered tasks.
-8. [Catalog](../../../experiments/benchmarks/README.md): static metadata and validation.
-9. [Empty result templates](../../../experiments/benchmarks/result-templates.md).
+1. [Research questions](../design/research-questions.md) and [STATUS](../../STATUS.md).
+2. [Candidate matrix](candidate-matrix.md) and [static artifact sources](artifact-qualification-v1.md).
+3. [Taxonomy/reachability](taxonomy-and-reachability.md): structural support versus actual protected setup.
+4. [Benchmark Set](benchmark-set-v1.md): selected pairs and admission gates.
+5. [Executable baselines/ablations](baseline-and-ablation-v1.md): B0/B1/B3 and A1/A2/A3 only.
+6. [Evaluation protocol](evaluation-protocol-v1.md): success, provisional budgets, censoring and metrics.
+7. [Static catalog](../../../experiments/benchmarks/README.md) and [empty result templates](../../../experiments/benchmarks/result-templates.md).
 
-These documents refine evaluation candidates in the [research questions](../design/research-questions.md).
-They do not change the [security contracts](../design/security-contracts.md),
-[architecture](../design/architecture.md), project Layer or engineering readiness.
-Unvalidated predictions are labeled as such; selected cases still require
-post-audit Linux qualification. A failed qualification is reported and does not
-silently become another benchmark.
+The [engine audit](engine-contract-audit.md) and [post-audit handoff](post-audit-backlog.md)
+are explicitly historical `d1982e4` records. Their counts, absent-policy/reader
+findings, task IDs and draft-PR instructions do not define present implementation
+status. They remain evidence of what was reviewed then, without rewriting raw
+validation history. Current interfaces and limitations are recorded in STATUS,
+[search policy contract](../design/search-policy-core-v1.md) and
+[evaluation API guide](../../../src/inodefence/evaluation/README.md).
 
-Admission follows the [Set v1 gates](benchmark-set-v1.md): verify sources and
-exact release pairs, describe semantics and generic reachability, finish approved
-isolated binding, independently qualify the effect and fixed comparator, then
-attach complete evidence before READY. Selection is prioritization only.
-The [catalog state definitions](../../../experiments/benchmarks/README.md) keep
-qualification independent of execution; missing capability remains
-IMPLEMENTATION_BLOCKED and all current execution states remain NOT_RUN.
+Selection is prioritization, not readiness. Independently verify exact source
+pins, runtime/options/setup, generation reachability, isolation/full path and
+persistent effect/fixed comparator before admission. Qualification report and
+matrix primitives exist but do not prove assessor assertions or classify known
+vulnerabilities. A failed gate stays failed and reduces the formal dataset with
+an explicit pre-freeze amendment, rather than a silent substitute benchmark.
 
-The complete planning package is kept in one Draft PR. Final state and review
-evidence are recorded in the handoff; P01–P11 implementation awaits accepted global
-Phase-4 closeout and a new Task Contract. All benchmark execution remains NOT_RUN.
+No PoC seeds, oracle CVE/version conditions, new contracts, operators or adapters
+are introduced here. Provisional schedules/subsets are not a main-experiment
+freeze. Preserve negative/invalid data and honor the research-stage order.

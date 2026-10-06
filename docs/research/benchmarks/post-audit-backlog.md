@@ -1,5 +1,14 @@
 # Research handoff and post-audit implementation backlog
 
+> **HISTORICAL RECORD — audited revision `d1982e4` (2026-10-04).**
+> Present-tense implementation/status language, test counts, P-task proposals and
+> PR #35/Phase-4 instructions below describe that review, not current main.
+> They are superseded for current capability/claim scope by
+> [Research Contract v1](../design/research-contract-v1.md) and [STATUS](../../STATUS.md),
+> anchored at `8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`.
+> Original validation records remain intact; no historical execution is inferred.
+
+
 **Planning only; benchmark execution NOT_RUN. Engineering validation is recorded separately.**
 Task Contracts: original maintainer-supplied parallel research preparation and the
 current Phase-4B Final Engine / Security Contracts / Research Semantics re-audit/refresh specification.
@@ -7,7 +16,7 @@ Owned lane: landscape, taxonomy, selection, observability/reachability,
 evaluation, catalog and handoff. No production path changed, no PoC executed,
 no exploit archive generated, no target installed or vulnerable fuzzing run.
 
-## Current integrated context and history-preserving refresh
+## Historical integrated context and history-preserving refresh
 
 Audited integrated main: `d1982e4cf3174e28d4eeb73af7b32829f6751b30` (2026-10-04).
 Existing Draft [PR #35](https://github.com/TheWaitForAGI/InodeFence/pull/35), branch

@@ -5,9 +5,16 @@
 InodeFence는 TAR archive entry를 생성·변형하고, 실제 extractor(압축 해제 프로그램)를 실행한 뒤, filesystem의 보안 관련 상태를 관찰해 archive extraction의 보안 경계 위반을 탐색하려는 프로젝트입니다.
 경로뿐 아니라 **파일 객체의 identity와 외부 상태 변화**를 다음 입력을 선택하는 feedback으로 활용할 가치가 있는지 연구합니다.
 
-현재는 **공통 데이터 모델, 최소 단일 실행 pipeline, Generic Mutation v1과 Layer 5 Feedback / Corpus v1**을 구현했습니다. Corpus는 normalized state와 violation novelty를 독립적으로 추적하고 mutation parent를 in-memory로 보존·균등 선택합니다. Python `tarfile`/`data` reference target으로 검증하며, bounded campaign·explicit seeds·실행 전 provenance·strict JSON config·structured export를 제공합니다.
+현재 capability baseline은 main **`8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`**입니다.
+Core C0/C1/C2 snapshot pipeline, legacy/M1 mutation, B0/B1/B3 search, A1/A2/A3,
+minimization과 evaluation evidence APIs가 구현돼 있습니다. Contained node-tar **7.5.22**는
+benign full-path smoke를 통과했습니다. [STATUS](docs/STATUS.md)는 구현과 test 범위를,
+[Research Contract v1](docs/research/design/research-contract-v1.md)은 G0 정의와 claim 범위를 관리합니다.
 
-현재는 **AUDIT PHASES 1–3 COMPLETE — PHASE-4 GLOBAL CLOSEOUT PENDING**입니다. Pre-audit freeze, 두 audit lane과 cross-review/findings freeze를 완료했고 Runtime #45와 Engine #46 수정이 main `d1982e4`에 병합됐습니다. 별도 [container backend](src/inodefence/execution/README.md), pinned Node-tar image, verified artifact/invocation evidence, frozen config/provenance와 tiny benign configured campaign을 검증했습니다. [최종 Engine/Research 감사 #47](https://github.com/TheWaitForAGI/InodeFence/pull/47)은 기능 검증 통과와 잔여 문서 drift를 구분합니다. 이 PR #35는 그 문서/계획 수정 제안이며 아직 병합되지 않았습니다. 비교 평가·benchmark qualification·취약점 재발견은 모두 NOT_RUN입니다. [과거 pre-audit 검증·checksum·한계](experiments/summaries/pre-audit-readiness-v1.md)는 해당 revision의 engineering 기록입니다.
+**DESIGNED / IMPLEMENTED / TESTED / EXPERIMENTALLY VALIDATED는 서로 다릅니다.**
+Historical qualification과 formal comparison은 **NOT_RUN**이며, 역사적 취약점을 재발견한 적이
+없고 현재 취약점을 주장하지 않습니다. 첫 intended qualification pair는 **N01 node-tar
+7.5.2 / 7.5.3**입니다. 과거 감사·요약은 자체 revision의 기록이며 현재 capability baseline이 아닙니다.
 
 [현재 상태](docs/STATUS.md) · [시작 안내](docs/START_HERE.md) · [아키텍처](docs/research/design/architecture.md) · [Security Contracts](docs/research/design/security-contracts.md) · [개발 가이드](CONTRIBUTING.md)
 
@@ -84,10 +91,10 @@ Corpus는 다음 변형의 출발점으로 남기는 입력 모음입니다.
 예를 들어 “inode 번호가 123이다”보다 “내부 파일과 외부 sentinel이 같은 객체다”, “외부 sentinel의 내용이 변했다”가 탐색에 의미 있는 정보입니다.
 
 `StateSnapshot = full raw observation/evidence`입니다. Sandbox 전체를 기록하므로 `archive/input.tar`의 SHA-256과 harness metadata도 그대로 보존합니다.
-`StateSignature = normalized security-state representation for future feedback/corpus`입니다. `extract/**` 결과와 external 상태·effect, 보호 sentinel 및 내부↔sentinel identity 관계를 사용합니다. `.`과 `archive/**`는 `Region.HARNESS`로 제외하며, 그 외 extraction 밖 경로는 EXTERNAL이므로 root-level `escape.txt`도 유지합니다.
+`StateSignature = normalized security-state representation for feedback/corpus`입니다. `extract/**` 결과와 external 상태·effect, 보호 sentinel 및 내부↔sentinel identity 관계를 사용합니다. `.`과 `archive/**`는 `Region.HARNESS`로 제외하며, 그 외 extraction 밖 경로는 EXTERNAL이므로 root-level `escape.txt`도 유지합니다.
 
 **StateSignature는 ArchiveCase identity나 TAR artifact identity를 직접 포함하지 않습니다.** 서로 다른 case/TAR가 같은 의미의 filesystem/security state를 만들면 같은 signature여야 합니다. 실제 Python reference extraction에서 독립 regular entry의 순서를 바꾸는 E2E regression으로 이 invariant를 확인합니다.
-Schema v3는 정렬된 path/type/mode, regular nlink/size/content digest, scope 안의 same-object group, link text와 외부 변경 종류를 담습니다. Symlink target은 `run:<raw suffix>` 또는 `literal:<raw target>`으로 tag하며 반복 slash와 `..` spelling을 보존하고 referent를 resolve하지 않습니다. V2 key 호환성이나 migration은 제공하지 않습니다. Directory를 포함한 nonregular nlink는 `None`이며 raw inode·timestamp·ownership 값과 nonregular size를 제외합니다. Raw nlink와 외부 metadata-change labels는 보존하며, 최종 feedback/ablation 정책은 후속 실험에서 정합니다.
+Schema v3는 정렬된 path/type/mode, regular nlink/size/content digest, scope 안의 same-object group, link text와 외부 변경 종류를 담습니다. Symlink target은 `run:<raw suffix>` 또는 `literal:<raw target>`으로 tag하며 반복 slash와 `..` spelling을 보존하고 referent를 resolve하지 않습니다. V2 key 호환성이나 migration은 제공하지 않습니다. Directory를 포함한 nonregular nlink는 `None`이며 raw inode·timestamp·ownership 값과 nonregular size를 제외합니다. Raw nlink와 외부 metadata-change labels는 보존하며, [B0/B1/B3와 A1/A2/A3](docs/research/benchmarks/baseline-and-ablation-v1.md)는 구현됐으며 효과는 후속 비교 실험에서 검증합니다.
 
 **Region.HARNESS는 security trust boundary가 아닙니다.** Signature에서 HARNESS를 제외하는 것은 input/harness novelty 오염을 막기 위한 normalization 정책입니다. C0는 별도로 extraction root 밖의 persistent namespace 생성·삭제·identity/type 교체를 검사하므로 `archive/escaped.txt` 생성이나 기존 `archive/input.tar` 삭제·교체도 evidence입니다. Content/metadata-only 변화는 기존 C0/C2 구분에 따라 C0 조건으로 삼지 않습니다.
 
@@ -105,13 +112,17 @@ Case/TAR identity와 execution status/duration은 novelty가 아닙니다. 같�
 Security Contract는 안전한 압축 해제가 지켜야 할 일반화된 보안 규칙입니다.
 아래는 이해를 돕는 요약이며, **정확한 정의와 우선순위는 [security-contracts.md](docs/research/design/security-contracts.md)가 기준**입니다.
 
-| ID | Contract | 쉽게 말하면 | 구현 계획 |
+| ID | Contract | 쉽게 말하면 | 현재 구현 / 설계 범위 |
 | --- | --- | --- | --- |
 | C0 | Path Boundary Confinement | 생성하거나 직접 사용하는 경로가 의도한 extraction boundary를 벗어나면 안 됨 | HARNESS 포함 extraction 밖 persistent namespace 변화; direct-use tracing은 이후 |
 | C1 | Object Identity Confinement | 내부 객체가 보호된 외부 sentinel과 의도치 않게 같은 객체를 공유하면 안 됨 | post-state lstat identity 공유 판정 |
 | C2 | External Effect Noninterference | 압축 해제로 외부 sentinel의 내용·metadata가 의도치 않게 변하면 안 됨 | sentinel 전후 변화 판정 |
-| C3 | Extraction Root Integrity | 목적지 자체가 교체·redirect되어 이후 추출이 경계 밖으로 향하면 안 됨 | 최소 pipeline 이후 |
+| C3 | Extraction Root Integrity | 목적지 자체가 교체·redirect되어 이후 추출이 경계 밖으로 향하면 안 됨 | DESIGNED, 미구현 |
 | C4 | Check/Use Coherence | 검증한 경로·객체와 실제 operation에서 사용한 대상의 의미가 일관되어야 함 | instrumentation이 필요한 후속 단계 |
+
+현재 C0/C1/C2는 **persistent snapshot** detector입니다. 두 capture 사이의 transient effect,
+sandbox 밖 접근, direct-use, symlink referent identity와 inode reuse를 완전히 판정하지 못합니다.
+`violated=False`는 관찰 범위 내 증거가 없다는 뜻이며 safety proof가 아닙니다.
 
 C0는 중요한 기본 검사이며 InodeFence의 신규 기여로 주장하지 않습니다.
 Oracle(계약 판정 모듈)은 특정 CVE 식별자나 알려진 PoC byte sequence를 조건으로 삼지 않고, 관찰 사실과 계약을 비교해야 합니다.
@@ -124,13 +135,13 @@ Oracle(계약 판정 모듈)은 특정 CVE 식별자나 알려진 PoC byte seque
 > **generic TAR-entry mutation + filesystem-security-state feedback**을 사용하면
 > archive extraction의 보안 경계 위반을 효과적으로 탐색할 수 있는가?
 
-**아직 검증 전인 연구 가설입니다.** 동일한 실행 수·시간 예산에서 더 약한 feedback이나 고정된 공격 전략보다 유용한지 비교해야 합니다.
+**아직 검증 전인 연구 가설입니다.** 실행 가능한 비교는 B0/B1/B3와 A1/A2/A3이며, path-only나 fixed-recipe baseline은 구현되지 않았고 이 비교의 claim 범위가 아닙니다.
 
 | 연구 질문 | 확인할 내용 |
 | --- | --- |
 | 알려진 취약점 재발견 | 해당 CVE PoC를 기본 seed로 주지 않고도 알려진 보안 위반에 도달하는가? |
-| Feedback 효과 | random mutation, path-only feedback, fixed attack strategy와 비교해 발견 효율이 달라지는가? |
-| Ablation | identity나 external-effect feedback을 제거했을 때 결과가 어떻게 달라지는가? |
+| Feedback 효과 | B3가 B0 unretained walk / B1 state-only admission과 비교해 발견 효율이 달라지는가? |
+| Ablation | A1 identity-group key / A2 effect-label key / A3 reorder slot의 좁은 기여는 무엇인가? |
 | 여러 구현에 대한 적용 | 같은 상태 표현과 generic oracle을 여러 extractor에 적용할 수 있는가? |
 | 미지 상태 탐색 | patched/current target에서도 기존에 정의하지 않은 위반 후보를 찾는가? |
 
@@ -210,35 +221,22 @@ Target-specific 실행 로직은 adapter에 두고, generic mutation·observer·
 
 ## 현재 구현 상태
 
-**Layer 2, Layer 3의 최소 관찰 pipeline, Layer 4 Generic Mutation v1과 Layer 5 Feedback / Corpus v1을 구현했습니다.** 최신 상태와 다음 작업은 [STATUS.md](docs/STATUS.md)에서 관리합니다. Feature branch의 구현 상태 표시는 main merge를 의미하지 않습니다.
-
-| 개발 Layer | 상태 |
+| 개발 Layer | 기준 main의 capability와 evidence |
 | --- | --- |
-| Layer 0 — 개발환경 | 완료 |
-| Layer 1 — 연구 기반 / 범위 / 아키텍처 | 완료 |
-| Layer 2 — 공통 Data Model | 완료: archive, execution, snapshot, signature, evidence/result |
-| Layer 3 — Minimal End-to-End Pipeline | 완료: Python reference target, C0 관찰 범위 제한 |
-| Layer 4 — Generic Mutation | v1 구현: 8개 독립 operator와 uniform baseline |
-| Layer 5 — Feedback / Corpus | v1 구현: 독립 novelty, in-memory retention, uniform caller-RNG 선택 |
-| Layer 6 — Baseline / Evaluation / Paper | 미진행 |
+| Layer 0–2 | Dev Container / 연구 정의 / 공통 model 구현, canonical checks |
+| Layer 3 | fresh Linux runtime, actual reference worker, snapshot C0/C1/C2, contained Node benign full path |
+| Layer 4 | legacy/M1 eight uniform slots와 A3 no-reorder versions 구현/테스트 |
+| Layer 5 | signature v3, independent novelty, B0/B1/B3, A1/A2 keys, deterministic bounded search 구현/테스트 |
+| Layer 6 | minimizer, verified export/replay/qualification/dataset/statistics infrastructure 구현/테스트; historical/formal experiments와 paper는 미검증 |
 
-현재 코드에 있는 기반은 다음과 같습니다.
-
-- Ubuntu 24.04 / Python 3.12 Dev Container, Linux runtime volume, hardlink/symlink 환경 검사
-- Codex CLI rolling latest 정책
-- `make check`: Ruff, Pyright, pytest, 환경 검사, 문서 integrity 검사
-- GitHub Actions CI, Issue Forms, scoped AGENTS와 PR 협업 규칙
-- regular file / directory / hardlink / symlink TAR baseline fixture 4종과 결정적 재생성 script
-- extraction 후 metadata와 객체 관계를 출력하는 수동 filesystem probe
-- finding disclosure 정책과 검증된 experiment summary 보관 규칙
-
-- 결정적 USTAR builder, disposable sandbox, 실제 reference worker, pre/post Observer
-- C0/C1/C2 structured evidence, portable signature, versioned canonical JSON export
-- 실제 Linux filesystem과 E2E semantics 테스트
-- caller-owned RNG와 canonical ArchiveCase를 사용하는 [Generic Mutation v1](src/inodefence/mutator/README.md); builder와 별도 모듈이며 adaptive scheduler는 이후 구현
-- inspectable FeedbackDecision, compact CorpusEntry와 immutable CorpusStats를 제공하는 [Feedback / Corpus v1](src/inodefence/feedback/README.md); full RunResult를 corpus에 저장하지 않음
-
-Python reference는 architecture 검증과 baseline용이며 **node-tar를 대체하는 최종 benchmark target이 아닙니다.** 실행 수로 제한한 [캠페인 API](src/inodefence/campaign.py)는 구현됐습니다. 평가 결과와 확인된 finding은 아직 없습니다.
+`run_search_campaign` / `SearchCampaignConfig`가 alternative policies를 실행합니다.
+Legacy `ExperimentConfig` v1/v2는 B3/legacy mutation만 지원하며 별도 `PolicyEvaluationConfig`는
+완료된 policy result의 binding/export/검증을 지원합니다. Automatic policy journal/repetition,
+interrupted evidence와 full-pipeline timing의 한계는 [STATUS](docs/STATUS.md)를 따릅니다.
+현재 verification/statistics는 관찰된 contract evidence이며 known-class rediscovery나 vulnerability를
+자동 판정하지 않습니다. Python reference는 architecture 검증용이고 최종 benchmark target이 아닙니다.
+GNU invocation은 benign fixture allowlist에 제한돼 있고 ORAS adapter는 없습니다.
+Canonical baseline 검증 근거는 [main CI](https://github.com/TheWaitForAGI/InodeFence/actions/runs/37248955432)입니다.
 
 ## 개발 환경과 현재 실행 가능한 명령
 
@@ -362,7 +360,7 @@ AI가 작성했거나 CI를 통과했다는 이유만으로 자동 merge하지 �
 ## 실험에서 논문 근거까지
 
 실험 설정과 실행 기록, 확인된 결과, 논문 주장을 구분해 보관합니다.
-계획한 evidence 흐름은 다음과 같습니다.
+설계한 evidence 흐름은 다음과 같습니다. 검증·요약 APIs는 구현됐지만 formal dataset과 figure/paper reproduction은 아직 검증되지 않았습니다.
 
 ```text
 Experiment Config → Raw Execution → Validated Summary
@@ -412,6 +410,7 @@ paper/             논문용 자료와 검토된 evidence
 | --- | --- |
 | 처음 프로젝트 이해하기 | [START_HERE](docs/START_HERE.md) |
 | 현재 단계와 다음 작업 확인 | [STATUS](docs/STATUS.md) |
+| G0 연구 계약과 evidence 수준 | [Research Contract v1](docs/research/design/research-contract-v1.md) |
 | 전체 시스템과 모듈 책임 | [architecture](docs/research/design/architecture.md) |
 | 보안 판정의 정확한 기준 | [security-contracts](docs/research/design/security-contracts.md) |
 | 연구 질문과 선행연구 관계 | [research-questions](docs/research/design/research-questions.md) · [related-work-positioning](docs/research/design/related-work-positioning.md) |

@@ -19,18 +19,22 @@ PENDING requires independent verification, and BLOCKED names missing implementat
 READY requires every gate to pass with immutable evidence links; no ordinal score
 or famous CVE compensates for a failed gate.
 
-Integrated-main benign infrastructure/pre-audit freeze, Phase-1/2 audits and
-Phase-3 #45/#46 fixes are complete. The [final Engine/Research audit](engine-contract-audit.md)
-records passed functional checks and residual documentation/global closeout.
-G5 below concerns each candidate's exact artifacts/setup/full path, which remains
-absent. Engineering PASS does not promote G2/G3/G5/G7 or any candidate to READY.
+Capability baseline is main `8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`.
+[Research Contract](../design/research-contract-v1.md) separates current
+engineering code/tests from historical/frozen comparative evidence. Node 7.5.22
+benign smoke does not qualify historical versions. **N01 7.5.2/7.5.3 is the first
+intended qualification pair; all expected effects/replays below remain NOT_RUN.**
+M1 supports composition/collisions but not default external-name addressing.
+G1–G8 in this section are **candidate admission checks**, not project research
+gates G0–G7. Passing one must not be interpreted as passing the similarly named
+project gate. These definitions and original conditional selection are retained.
 
 | Gate | Required evidence | N01 | N03 | N04 | O01 |
 | --- | --- | --- | --- | --- | --- |
 | G1 Source trust | Upstream advisory plus production fixing patch | PASS | PASS | PASS | PASS |
 | G2 Exact pin | Exact releases, artifact hashes/locks and runtime compatibility | Registry/source VERIFIED; image/runtime PENDING | Registry/source VERIFIED; image/runtime PENDING | Registry/source VERIFIED; image/runtime PENDING | Module/source VERIFIED; wrapper/compiler/image PENDING |
 | G3 Semantics | Selected arm matched to Linux/default safety settings | Relative arm PENDING | Linux PENDING | Strict/cache PENDING | Public route source VERIFIED; CWD/effect PENDING |
-| G4 Reachability | USTAR plus constructive generic reachability from benign seeds | BLOCKED M1 | BLOCKED M1 | BLOCKED M1 | BLOCKED CWD/adapter |
+| G4 Reachability | USTAR plus constructive generic reachability from benign seeds | BLOCKED default address; M1 exists | BLOCKED default address; chain unqualified | BLOCKED default destination; collision unqualified | BLOCKED CWD/adapter |
 | G5 Execution | Audited candidate image/config/provenance/full-path binding | BLOCKED | BLOCKED | BLOCKED | BLOCKED |
 | G6 Observation | Complete lifecycle-valid persistent C0/C1/C2 evidence | Predicted; PENDING | Predicted; PENDING | Predicted; PENDING | Predicted; PENDING |
 | G7 Expected outcome | Fresh same-input affected/fixed comparison and root-cause review | NOT EXECUTED | NOT EXECUTED | NOT EXECUTED | NOT EXECUTED |
@@ -43,7 +47,7 @@ dataset reduction and protocol amendment instead of substituting a case.
 
 ## Selection judgments
 
-Scores are ordinal prioritization judgments, not experimental results. 0 means
+Scores are retained source-selection prioritization judgments from 2026-10-04, not live implementation scores or experimental results. The admission table above records current blocking gaps. 0 means
 poor/unestablished, 1 conditional, 2 strong evidence. Columns: root-cause
 relevance (R), filesystem-state relevance (F), contract observability (O), current
 mutation readiness (M), exact pair/patch availability (V), Linux reproducibility
@@ -58,7 +62,7 @@ a language ecosystem. Hard gates and semantic overlap override scores.
 | N02 | 2 | 2 | 2 | 0 | 2 | 1 | 1 | 1 | Secondary replication of O01 class |
 | N03 | 2 | 2 | 2 | 0 | 2 | 1 | 1 | 2 | Primary composed-link identity arm, conditional Linux gate |
 | N04 | 2 | 2 | 2 | 0 | 2 | 1 | 1 | 2 | Primary cache transition/external effect |
-| N05 | 2 | 1 | 2 | 0 | 1 | 1 | 1 | 1 | Secondary path-only sanity; strict-mode gate |
+| N05 | 2 | 1 | 2 | 0 | 1 | 1 | 1 | 1 | Secondary path-confinement sanity (not a feedback policy); strict-mode gate |
 | N06 | 2 | 2 | 2 | 0 | 1 | 1 | 1 | 1 | Secondary cache variant, extra alphabet gap |
 | N07 | 1 | 2 | 1 | 0 | 1 | 0 | 1 | 1 | Excluded platform requirement |
 | N08 | 1 | 2 | 1 | 0 | 1 | 0 | 1 | 1 | Excluded platform/race requirement |
@@ -82,9 +86,9 @@ runtime between vulnerable and fixed members to manufacture a difference.
 
 | Benchmark ID | Known issue / pair vulnerable → fixed | Root class | Expected evidence / required operations | Current reachability / why selected |
 | --- | --- | --- | --- | --- |
-| node-link-sanitize | N01, CVE-2026-23745; tar 7.5.2 → 7.5.3 | R1 | C1 persistent internal/protected identity; C2 nlink/ctime expected; C0 not necessary. add_hardlink, mutate_link_target, generic component support M1 | NO for current default sentinel; simplest identity acquisition versus link-field fix |
-| node-link-compose | N03, CVE-2026-26960; tar 7.5.7 → 7.5.8 | R3 | C1 persistent alias; C2 link metadata; C0 not necessary. add_symlink, add_hardlink, mutate_path/link_target, reorder, duplicate, M1 | NO default sentinel, PARTIAL structural grammar; tests composition beyond simple text checks; Linux qualification required |
-| node-cache-transition | N04, CVE-2021-32803; tar 6.1.1 → 6.1.2 | R4 | C2 protected content/size/mode change, or C0 protected-path creation/replacement; C1 not required. directory seed, add_symlink, add_entry, mutate_path/link_target, reorder, duplicate, M1 | NO default protected destination, PARTIAL collision grammar; adds state/order and external-effect class |
+| node-link-sanitize | N01, CVE-2026-23745; tar 7.5.2 → 7.5.3 | R1 | C1 persistent internal/protected identity; C2 nlink/ctime expected; C0 not necessary. add_hardlink, mutate_link_target, implemented M1 plus qualified controlled-name addressing | NO for current default sentinel; simplest identity acquisition versus link-field fix |
+| node-link-compose | N03, CVE-2026-26960; tar 7.5.7 → 7.5.8 | R3 | C1 persistent alias; C2 link metadata; C0 not necessary. add_symlink, add_hardlink, mutate_path/link_target, reorder, duplicate, M1 | NO default sentinel, M1 composition implemented, exact chain unqualified; tests composition beyond simple text checks; Linux qualification required |
+| node-cache-transition | N04, CVE-2021-32803; tar 6.1.1 → 6.1.2 | R4 | C2 protected content/size/mode change, or C0 protected-path creation/replacement; C1 not required. directory seed, add_symlink, add_entry, mutate_path/link_target, reorder, duplicate, M1 | NO default protected destination, M1 collisions implemented, exact transition unqualified; adds state/order and external-effect class |
 | oras-cwd-hardlink | O01, CVE-2026-50163; oras-go 2.6.0 → 2.6.2 | R2 | C1 internal/protected CWD-file alias; C2 link metadata; C0 not required. add_hardlink, mutate_link_target/path; generic-name sentinel and explicit isolated CWD | PARTIAL setup; adds independent Go implementation and a different resolution base |
 
 N01/N03 share the alias effect but have different fixes and structural

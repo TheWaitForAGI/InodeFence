@@ -337,8 +337,8 @@ class TransitionTrace:
         if any(entry is None for entry in entries):
             raise ValueError("all post-BEFORE checkpoints must be entry boundaries")
         entry_indexes = tuple(entry.entry_index for entry in entries if entry is not None)
-        if entry_indexes != tuple(sorted(set(entry_indexes))):
-            raise ValueError("entry indexes must be strictly monotonic")
+        if entry_indexes != tuple(range(len(entry_indexes))):
+            raise ValueError("entry indexes must be a contiguous completed prefix")
         if len(self.transitions) != len(self.checkpoints) - 1:
             raise ValueError("every completed checkpoint edge requires one transition")
         for index, transition in enumerate(self.transitions):

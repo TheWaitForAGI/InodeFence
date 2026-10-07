@@ -240,10 +240,24 @@ def test_trace_enforces_order_transition_correspondence_and_reconciliation() -> 
 
     assert trace.reconciled
     assert transition_sequence_key(trace).keys == tuple(transition_sequence_key(trace).keys)
-    with pytest.raises(ValueError, match="strictly monotonic"):
+    with pytest.raises(ValueError, match="contiguous completed prefix"):
         replace(
             trace,
             checkpoints=(initial, first, replace(second, point=first.point)),
+        )
+    skipped = _checkpoint(
+        1,
+        (),
+        ArchiveEntryReference(1, "same", EntryType.REGULAR, None),
+    )
+    with pytest.raises(ValueError, match="contiguous completed prefix"):
+        TransitionTrace(
+            2,
+            (initial, skipped),
+            (derive_transition(initial, skipped, 0),),
+            _after(skipped),
+            TraceCompleteness.INCOMPLETE,
+            TraceTermination.ENTRY_CHECKPOINT_MISMATCH,
         )
     with pytest.raises(ValueError, match="labeled incomplete"):
         replace(trace, completeness=TraceCompleteness.INCOMPLETE)

@@ -126,16 +126,20 @@ integration은 기존 runtime에서 full pipeline/archive hash binding을 확인
 Entry-transition track은 기존 B0/B1/B3 enum, admission, evidence shape를 수정하지 않는다.
 `TransitionSearchPolicy`의 P0
 `final-state-v3-or-violation-v1-uniform-mutation-v1`과 P1
-`transition-v1-or-violation-v1-uniform-mutation-v1`을 별도 API로 제공한다.
+`transition-v1-or-violation-v1-uniform-mutation-v1`, P2
+`transition-v1-or-violation-v1-adaptive-mutation-v1`을 별도 API로 제공한다.
 
 P0는 FULL B3와 같은 StateSignature v3 OR violation admission 및 caller RNG uniform parent
 selection을 재현한다. P1은 final-state admission만 unique TransitionFeedbackKey admission으로
 대체하며 violation channel과 uniform parent/mutation은 유지한다. `TransitionSearchDecision`은
 full-state, violation, transition novelty와 trace completeness를 분리한다. Adaptive operator
-selection은 이 단계에 없다.
+selection은 P2에만 적용된다. P2 admission은 P1과 같고, 새 transition key가 하나 이상인
+attempt에만 bounded binary reward를 준다. P0/P1의 uniform scheduler는 outcome에 관계없이
+모든 operator weight를 1로 유지한다.
 
 Native node-tar completion boundary가 qualification에 실패했으므로 transition campaign은
 caller-owned `TransitionRunResult` producer를 조합하는 in-memory core다. Existing isolated
 target gate, ExperimentConfig, exporter/reader를 우회하거나 formal experiment readiness를
-주장하지 않는다. Synthetic sequence에서 P0/P1 실행 가능성과 P0/B3 admission/parent RNG
-parity를 테스트했다. Effectiveness는 **NOT_RUN**이다.
+주장하지 않는다. Synthetic sequence에서 P0/P1/P2 실행 가능성, P0/B3 admission/parent RNG
+parity, legacy uniform mutation RNG parity와 adaptive weight bound를 테스트했다.
+Effectiveness는 **NOT_RUN**이다.

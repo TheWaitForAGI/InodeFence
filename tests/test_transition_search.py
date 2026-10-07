@@ -221,9 +221,12 @@ def test_incomplete_trace_status_is_preserved_and_not_a_fake_empty_success() -> 
     (
         TransitionSearchPolicy.P0_FINAL_ONLY,
         TransitionSearchPolicy.P1_TRANSITION_RETENTION,
+        TransitionSearchPolicy.P2_TRANSITION_ADAPTIVE,
     ),
 )
-def test_transition_campaign_runs_final_and_transition_uniform_modes(policy) -> None:
+def test_transition_campaign_runs_separated_policy_modes(
+    policy: TransitionSearchPolicy,
+) -> None:
     seed = ArchiveCase((ArchiveEntry("a", EntryType.REGULAR, content=b"a"),))
     config = TransitionCampaignConfig(44, 6, policy, MutationPolicy.LEGACY)
 
@@ -236,6 +239,17 @@ def test_transition_campaign_runs_final_and_transition_uniform_modes(policy) -> 
     )
     assert result.final_search_stats.observations == 6
     assert result.config.search_policy == policy
+    assert result.steps[0].mutation_attempt is None
+    assert result.steps[0].scheduler_evidence is None
+    assert all(step.mutation_attempt is not None for step in result.steps[1:])
+    assert all(step.scheduler_evidence is not None for step in result.steps[1:])
+    if policy != TransitionSearchPolicy.P2_TRANSITION_ADAPTIVE:
+        assert all(
+            step.scheduler_evidence is not None
+            and step.scheduler_evidence.reward == 0
+            and all(weight == 1 for _, weight in step.scheduler_evidence.weights_after)
+            for step in result.steps[1:]
+        )
 
 
 def test_transition_campaign_rejects_mismatched_producer_result() -> None:

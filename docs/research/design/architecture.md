@@ -21,7 +21,7 @@
 
 현재는 **개발 Layer 2, 최소 Layer 3, Layer 4 Generic Mutation v1과 Layer 5 Feedback / Corpus v1 구현** 단계다. Feature branch의 구현 상태 표시는 main merge를 의미하지 않는다.
 
-ArchiveCase → 결정적 USTAR → Python reference worker → pre/post snapshot → C0/C1/C2 evidence의 실제 API가 있다. Generic Mutation v1은 별도 ArchiveCase → ArchiveCase API다. Layer 5는 RunResult의 독립 state/violation novelty에 따른 in-memory retention과 uniform caller-RNG parent selection을 제공한다. Bounded campaign v1은 명시적 seed와 execution budget으로 API를 조합한다. Minimal seed generator는 기존 4종 정상 baseline을 명시적으로 제공한다. Node-tar는 별도 contained target으로 정상 fixture와 tiny benign configured campaign을 검증했다. 추가 adapters, adaptive scheduler/persistence 및 evaluation은 후속 단계다.
+ArchiveCase → 결정적 USTAR → Python reference worker → pre/post snapshot → C0/C1/C2 evidence의 실제 API가 있다. Generic Mutation v1은 별도 ArchiveCase → ArchiveCase API다. Layer 5는 RunResult의 독립 state/violation novelty에 따른 in-memory retention과 uniform caller-RNG parent selection을 제공한다. Bounded campaign v1은 명시적 seed와 execution budget으로 API를 조합한다. Minimal seed generator는 기존 4종 정상 baseline을 명시적으로 제공한다. Node-tar는 별도 contained target으로 정상 fixture와 tiny benign configured campaign을 검증했다. Entry-transition track에는 독립 retention과 bounded adaptive scheduler core가 있으나 native completion adapter는 qualification 실패로 구현하지 않았다. 추가 adapters, persistence 및 formal evaluation은 후속 단계다.
 
 Pre-audit freeze, Audit Phases 1–2와 Global Findings Freeze v1을 완료했고 Phase-3 Runtime #45 / Engine #46 fixes는 main `d1982e4`에 병합됐다. 현재는 Phase-4 global closeout 대기 단계다. Container-backed target,
 frozen isolation/config/provenance와 benign Node full-path, lifecycle 및 staged export를 검증했다.
@@ -1784,3 +1784,10 @@ P0 final-state retention과 P1 transition retention은 같은 uniform parent/mut
 violation admission은 공통으로 유지한다. 모든 channel과 incomplete trace status는 evidence에
 남는다. Native target binding이 없으므로 현재 runner는 caller-owned transition result producer를
 조합하는 in-memory core이며 formal contained campaign/export가 아니다.
+
+P2는 P1의 admission과 uniform parent selection을 그대로 사용하고 mutation operator selection만
+bounded transition-adaptive scheduler로 바꾼다. Stable `MutationOperatorId`, `MutationAttempt`와
+per-step `MutationSchedulerEvidence`가 선택 전후 weight, reward, lineage를 보존한다. Scheduler는
+generic TransitionFeedbackKey만 보며 target/CVE knowledge나 violation reward를 사용하지 않는다.
+P0/P1/P2 경계는
+[transition-mutation-scheduler-v1.md](transition-mutation-scheduler-v1.md)를 따른다.

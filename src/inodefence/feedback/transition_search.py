@@ -23,6 +23,7 @@ from .transition_novelty import TransitionNoveltyIndex
 class TransitionSearchPolicy(StrEnum):
     P0_FINAL_ONLY = "final-state-v3-or-violation-v1-uniform-mutation-v1"
     P1_TRANSITION_RETENTION = "transition-v1-or-violation-v1-uniform-mutation-v1"
+    P2_TRANSITION_ADAPTIVE = "transition-v1-or-violation-v1-adaptive-mutation-v1"
 
 
 @dataclass(frozen=True, slots=True)

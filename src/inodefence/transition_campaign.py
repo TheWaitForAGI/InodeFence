@@ -13,7 +13,18 @@ from inodefence.feedback import (
     TransitionSearchStats,
 )
 from inodefence.model import ArchiveCase, TransitionRunResult
-from inodefence.mutator import MutationPolicy, mutate_with_policy
+from inodefence.mutation_scheduler import (
+    MutationSchedulerEvidence,
+    MutationSelection,
+    TransitionAdaptiveScheduler,
+    UniformMutationScheduler,
+)
+from inodefence.mutator import (
+    MutationAttempt,
+    MutationPolicy,
+    apply_operator,
+    operator_ids,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,18 +47,36 @@ class TransitionCampaignConfig:
 
 @dataclass(frozen=True, slots=True)
 class TransitionCampaignStep:
-    serialization_schema: ClassVar[int] = 1
+    serialization_schema: ClassVar[int] = 2
 
     index: int
     origin: CampaignOrigin
     parent_case_id: str | None
     result: TransitionRunResult
     feedback: TransitionSearchDecision
+    mutation_attempt: MutationAttempt | None
+    scheduler_evidence: MutationSchedulerEvidence | None
+
+    def __post_init__(self) -> None:
+        if (self.origin == CampaignOrigin.SEED) != (self.mutation_attempt is None):
+            raise ValueError("only mutation steps require a mutation attempt")
+        if (self.origin == CampaignOrigin.SEED) != (self.scheduler_evidence is None):
+            raise ValueError("only mutation steps require scheduler evidence")
+        if self.mutation_attempt is not None and (
+            self.mutation_attempt.child_case != self.result.base_result.case
+            or self.mutation_attempt.parent_case_id != self.parent_case_id
+        ):
+            raise ValueError("mutation attempt differs from step lineage/result")
+        if self.scheduler_evidence is not None and (
+            self.scheduler_evidence.parent_case_id != self.parent_case_id
+            or self.scheduler_evidence.child_case_id != self.result.base_result.case.case_id
+        ):
+            raise ValueError("scheduler evidence differs from step lineage/result")
 
 
 @dataclass(frozen=True, slots=True)
 class TransitionCampaignResult:
-    serialization_schema: ClassVar[int] = 1
+    serialization_schema: ClassVar[int] = 2
 
     config: TransitionCampaignConfig
     initial_case_ids: tuple[str, ...]
@@ -84,12 +113,44 @@ def run_transition_campaign(
     state = TransitionSearchState(cases, config.search_policy)
     steps: list[TransitionCampaignStep] = []
 
-    def observe(case: ArchiveCase, origin: CampaignOrigin, parent: str | None) -> None:
+    scheduler = (
+        TransitionAdaptiveScheduler()
+        if config.search_policy == TransitionSearchPolicy.P2_TRANSITION_ADAPTIVE
+        else UniformMutationScheduler()
+    )
+
+    def observe(
+        case: ArchiveCase,
+        origin: CampaignOrigin,
+        parent: str | None,
+        attempt: MutationAttempt | None = None,
+        selection: MutationSelection | None = None,
+    ) -> None:
         result = produce_result(case)
         if not isinstance(result, TransitionRunResult) or result.base_result.case != case:
             raise ValueError("producer must return TransitionRunResult for the requested case")
         decision = state.consider(result)
-        steps.append(TransitionCampaignStep(len(steps), origin, parent, result, decision))
+        if (attempt is None) != (selection is None):
+            raise ValueError("mutation attempt and scheduler selection must appear together")
+        scheduler_evidence = None
+        if attempt is not None and selection is not None:
+            scheduler_evidence = scheduler.observe_outcome(
+                selection,
+                attempt,
+                decision.new_transition_keys,
+                decision.new_violation_fingerprints,
+            )
+        steps.append(
+            TransitionCampaignStep(
+                len(steps),
+                origin,
+                parent,
+                result,
+                decision,
+                attempt,
+                scheduler_evidence,
+            )
+        )
 
     for case in cases:
         observe(case, CampaignOrigin.SEED, None)
@@ -97,8 +158,15 @@ def run_transition_campaign(
     rng = random.Random(config.random_seed)
     while len(steps) < config.execution_budget:
         parent = state.select_case(rng)
-        child = mutate_with_policy(parent, rng, config.mutation_policy)
-        observe(child, CampaignOrigin.MUTATION, parent.case_id)
+        selection = scheduler.choose_operator(operator_ids(config.mutation_policy), rng)
+        attempt = apply_operator(parent, rng, config.mutation_policy, selection.operator_id)
+        observe(
+            attempt.child_case,
+            CampaignOrigin.MUTATION,
+            parent.case_id,
+            attempt,
+            selection,
+        )
 
     return TransitionCampaignResult(
         config,

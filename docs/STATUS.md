@@ -301,3 +301,13 @@ evidence와 diagnostic/admission decision을 새 result/step model에 보존한�
 기존 schema/config ID는 유지한다. Unit composition과 tiny trusted Python reference 실행을 검증했다.
 ExperimentConfig, manifest/journal/readers와 validated comparison binding은 아직 별도 dependency다.
 [Caller API와 정확한 boundary](research/design/search-policy-core-v1.md)를 따른다.
+
+### Entry-transition generic model
+
+사용자가 확정한 Entry-Level Transition Task Contract의 PR-T1 범위로 target-independent
+checkpoint/transition/trace와 TransitionSignature v1을 구현했다. Synthetic file → hardlink →
+replacement sequence와 legacy final-state regression을 테스트했다. `RunResult`, `run_case()`,
+SnapshotPhase와 C0/C1/C2 의미는 유지하며 transition evidence는 별도 composition이다.
+Native node-tar entry completion observation, retention/adaptive scheduler, configured evidence와
+effectiveness/benchmark는 이 단계에서 **NOT_RUN**이다. Feature branch 표시는 main merge나
+qualification을 의미하지 않는다. [모델 계약](research/design/transition-feedback-v1.md)을 따른다.

@@ -14,6 +14,12 @@ from .filesystem import (
     path_region,
     validate_observed_path,
 )
+from .transition import (
+    ArchiveEntryReference,
+    ObservationKind,
+    TraceTermination,
+    TransitionTrace,
+)
 
 
 class ExecutionStatus(StrEnum):
@@ -170,3 +176,56 @@ class RunResult:
             isinstance(verdict, ViolationResult) for verdict in self.violations
         ):
             raise ValueError("run violations must be a tuple of ViolationResult records")
+
+
+@dataclass(frozen=True, slots=True)
+class TransitionRunResult:
+    """A legacy RunResult composed with independent entry-transition evidence."""
+
+    base_result: RunResult
+    trace: TransitionTrace
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.base_result, RunResult) or not isinstance(
+            self.trace, TransitionTrace
+        ):
+            raise ValueError("transition run requires RunResult and TransitionTrace")
+        if self.trace.expected_entry_count != len(self.base_result.case.entries):
+            raise ValueError("trace expected entry count differs from ArchiveCase")
+        first = self.trace.checkpoints[0]
+        before = self.base_result.before
+        if not (
+            first.point.kind == ObservationKind.BEFORE
+            and first.sandbox_root == before.sandbox_root
+            and first.objects == before.objects
+            and first.protected_paths == before.protected_paths
+        ):
+            raise ValueError("trace BEFORE checkpoint differs from base RunResult")
+        if self.trace.final_after != self.base_result.after:
+            raise ValueError("trace final AFTER differs from base RunResult")
+        for checkpoint in self.trace.checkpoints[1:]:
+            reference = checkpoint.point.entry
+            assert isinstance(reference, ArchiveEntryReference)
+            if reference.entry_index >= len(self.base_result.case.entries):
+                raise ValueError("checkpoint entry ordinal exceeds ArchiveCase")
+            entry = self.base_result.case.entries[reference.entry_index]
+            if reference != ArchiveEntryReference(
+                reference.entry_index, entry.path, entry.entry_type, entry.link_target
+            ):
+                raise ValueError("checkpoint entry identity differs from ArchiveCase")
+        expected_termination = {
+            ExecutionStatus.SUCCESS: TraceTermination.SUCCESS,
+            ExecutionStatus.REJECTED: TraceTermination.TARGET_REJECTED,
+            ExecutionStatus.FAILED: TraceTermination.TARGET_FAILED,
+            ExecutionStatus.TIMED_OUT: TraceTermination.TARGET_TIMEOUT,
+        }[self.base_result.execution.status]
+        target_terminations = {
+            TraceTermination.SUCCESS,
+            TraceTermination.TARGET_REJECTED,
+            TraceTermination.TARGET_FAILED,
+            TraceTermination.TARGET_TIMEOUT,
+        }
+        if self.trace.termination in target_terminations and (
+            self.trace.termination != expected_termination
+        ):
+            raise ValueError("trace termination differs from target execution status")

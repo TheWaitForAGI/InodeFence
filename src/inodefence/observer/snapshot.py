@@ -78,6 +78,11 @@ def capture_state(
     Missing sentinels remain in protected_paths. Permission/read failures raise;
     symlink referents (including dangling ones) are never stat'ed or hashed.
     """
+    return StateSnapshot(str(sandbox_root), phase, _capture_objects(sandbox_root), protected_paths)
+
+
+def _capture_objects(sandbox_root: Path) -> tuple[ObjectSnapshot, ...]:
+    """Capture raw objects once; lifecycle labeling belongs to the caller."""
     objects: list[ObjectSnapshot] = []
 
     def visit(descriptor: int, prefix: str) -> None:
@@ -105,6 +110,4 @@ def capture_state(
             visit(descriptor, "")
     except OSError as error:
         raise ObservationError(f"cannot open sandbox: {error}") from error
-    return StateSnapshot(
-        str(sandbox_root), phase, tuple(sorted(objects, key=lambda obj: obj.path)), protected_paths
-    )
+    return tuple(sorted(objects, key=lambda obj: obj.path))

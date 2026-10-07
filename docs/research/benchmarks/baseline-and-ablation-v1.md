@@ -1,11 +1,10 @@
 # Baselines and ablations v1
 
-**PROPOSED POLICIES, NOT IMPLEMENTED CONFIGURATION.** Current
-[Corpus](../../../src/inodefence/feedback/corpus.py) implements only B3;
-[ExperimentConfig](../../../src/inodefence/experiment_config.py) rejects alternative
-policy IDs. This branch changes neither. Post-audit implementation should expose
-one small explicit policy boundary, keeping execution, observation and oracle
-identical, rather than copying campaign engines or hiding flags in adapters.
+**POLICY CORES IMPLEMENTED; FORMAL BENCHMARKS NOT RUN.** B0/B1/B3, A1/A2/A3 and
+their separate policy-aware campaign/evaluation evidence APIs are implemented and
+tested. Legacy `ExperimentConfig` and legacy campaign serialization remain unchanged;
+the separate explicit policy binding owns the new IDs. No effectiveness result follows
+from implementation tests.
 
 A baseline is a complete alternative search policy. An ablation removes one
 specified component to test its marginal contribution. Comparing several CVEs
@@ -16,23 +15,42 @@ or several target versions alone is neither a feedback baseline nor an ablation.
 | ID | Implementation at audited main | Configuration representation | Comparison purpose / isolated measurement |
 | --- | --- | --- | --- |
 | B3 | IMPLEMENTED NOW, trusted reference and exact contained wrapper | Existing `state-v2-or-violation-v1-uniform-parent-v1` with `uniform-generic-v1` | Combined retention control; no measured effectiveness |
-| B0 | NOT_IMPLEMENTED | Proposed `unretained-walk-v1`; rejected today | Guided evolving corpus versus unguided multi-step walk; success/censored first-hit; changes parent selection and retention together |
-| B1 | NOT_IMPLEMENTED | Proposed `state-v3-uniform-parent-v1`; rejected today | Marginal violation-novelty admission with uniform evolving parents constant; success/censored first-hit |
+| B0 | IMPLEMENTED, TESTED policy core/evidence | `unretained-walk-v1` in separate policy configuration | Guided evolving corpus versus unguided multi-step walk; success/censored first-hit; changes parent selection and retention together |
+| B1 | IMPLEMENTED, TESTED policy core/evidence | `state-v3-uniform-parent-v1` in separate policy configuration | Marginal violation-novelty admission with uniform evolving parents constant; success/censored first-hit |
 | B2 | NOT_IMPLEMENTED; optional | Proposed `violation-v1-seed-bank-uniform-parent-v1`; seed-bank comparator revision required | Post-hit violation guidance; not a primary first-hit comparison |
-| A1 | NOT_IMPLEMENTED | Proposed `state-v3-no-groups-or-violation-v1-uniform-parent-v1` | Identity-group key contribution only; full evidence/other signals constant |
-| A2 | NOT_IMPLEMENTED | Proposed `state-v3-no-effects-or-violation-v1-uniform-parent-v1` | External changed-field key contribution only; object content/C2 constant |
-| A3 | NOT_IMPLEMENTED | Proposed mutation `uniform-generic-no-reorder-v1`, same B3 feedback | Swap contribution with its probability slot retained; append/duplicate remain |
+| A1 | IMPLEMENTED, TESTED projection | `state-v3-no-groups-or-violation-v1-uniform-parent-v1` | Identity-group key contribution only; full evidence/other signals constant |
+| A2 | IMPLEMENTED, TESTED projection | `state-v3-no-effects-or-violation-v1-uniform-parent-v1` | External changed-field key contribution only; object content/C2 constant |
+| A3 | IMPLEMENTED, TESTED mutation policy | `uniform-generic-no-reorder-v1`, same B3 feedback | Swap contribution with its probability slot retained; append/duplicate remain |
 
 B3's accepted `state-v2-or-violation-v1-uniform-parent-v1` is a legacy config
 identifier preserved for stable config IDs; its actual state keys are tagged v3.
-It promises no v2 key compatibility. Proposed B0/B1/ablation identifiers are not
-accepted JSON options. This refresh implements none of them. M1 grammar and
-dictionary binding is also NOT_IMPLEMENTED and must be constant in every arm.
+It promises no v2 key compatibility. B0/B1/ablation identifiers are not accepted
+by legacy ExperimentConfig; the explicit policy evaluation config rejects unknown
+IDs without fallback. M1 is implemented and must be constant in every arm.
 No general fresh-archive uniform generator exists beyond four minimal seeds;
-one-step-from-seed search would cap depth and is not substituted for B0. Adaptive
-scheduling and a path-only key are also absent. Existing `mutate()` is a uniform
-operator convenience API; it does not implement an unguided campaign mode.
+one-step-from-seed search would cap depth and is not substituted for B0. A path-only
+key is absent. Existing `mutate()` remains a uniform compatibility API; B0's search
+core implements the unguided walk semantics.
 B0 tests the complete search policy, not a retention-only causal change.
+
+## Entry-transition causal extension
+
+The following versioned policies are **IMPLEMENTED** and **TESTED** as generic,
+in-memory infrastructure. Native node-tar entry observation and formal benchmark
+execution remain **NOT_RUN**.
+
+| ID | Retention | Mutation scheduler | Causal comparison |
+| --- | --- | --- | --- |
+| P0 `final-state-v3-or-violation-v1-uniform-mutation-v1` | final state OR violation novelty | uniform eight-slot vocabulary | final-state control |
+| P1 `transition-v1-or-violation-v1-uniform-mutation-v1` | transition key OR violation novelty | same uniform vocabulary | P1−P0: intermediate transition retention |
+| P2 `transition-v1-or-violation-v1-adaptive-mutation-v1` | identical to P1 | bounded transition reward | P2−P1: scheduler adaptation |
+
+All three retain final C0/C1/C2 evidence and record full-state, transition and
+violation novelty separately. P2 starts weights at 1, caps them at 8 and rewards
+only whether an attempt produced at least one new transition key. It does not reward
+violations or contain target/CVE recipes. The evaluation reader replays parent and
+operator selection before accepting raw evidence. Transition counts are not
+vulnerability counts.
 
 ## Smallest useful baseline set
 

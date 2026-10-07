@@ -16,6 +16,7 @@ promoting raw runs. This protocol does not authorize PoC execution in this lane.
 | RQ3 Ablation | A1/A2/A3 versus B3 on declared subsets, common full-state counts | Redundant nlink/fingerprint signals remain; projections preserve security evidence |
 | RQ4 Generality | Qualified Node and ORAS evidence under the same oracle | Unevaluated with fewer than two families; not universal coverage |
 | RQ5 Unknown-state discovery | Preserve unrelated contract candidates separately | Exploratory; no new vulnerability or zero-day requirement |
+| RQ6 Entry-transition feedback | P0/P1/P2 transition keys, retention and operator-yield metrics | Requires a qualified native completion boundary; transition novelty is not a violation |
 
 State/fingerprint/corpus counts explain search behavior; **more state signatures
 != more vulnerabilities**. Throughput is an infrastructure feasibility metric
@@ -29,6 +30,30 @@ Only target package version changes in a vulnerable/fixed pair. Only declared
 search policy changes in a baseline comparison. No corpus is shared across
 conditions. Random seed equality does not imply identical evolved inputs:
 feedback changes parent pools. Record lineage and actual generated cases.
+
+### Entry-transition extension — NOT_RUN
+
+The generic P0/P1/P2 policy and checksummed evidence reader are **IMPLEMENTED** and
+synthetically **TESTED**, but no formal transition campaign is authorized. Pinned
+node-tar 7.5.22 `onReadEntry` and entry-stream `end` failed completion-boundary
+qualification, so `NATIVE_ENTRY_TRANSITION = NOT_IMPLEMENTED`. Prefix replay is not
+used. A future target adapter must prove that each checkpoint follows the completed
+filesystem effect before this extension can enter qualification or the schedule.
+
+When that gate is met, run P0 final-state+uniform, P1 transition+uniform and P2
+transition+adaptive with the same target/version, initial seed IDs/order, execution
+budget, timeout, sentinel, mutation policy/vocabulary, final C0/C1/C2 oracle,
+environment and protocol. P1−P0 estimates transition-retention effect; P2−P1
+estimates scheduler effect. The existing B0/B1/B3 experiment remains a separate
+question and its identifiers or historical results must not be relabeled P0/P1/P2.
+
+Transition evidence retains ordered checkpoints/transitions, final RunResult,
+trace completeness/termination, operator attempt, weights before/after, reward and
+lineage. Derived metrics include unique transition keys and sequences, novelty rate,
+censored executions to first novel transition, per-operator attempts/yield, reward
+distribution, scheduler selection entropy, checkpoint count/time and serialized
+checkpoint bytes. Peak memory is currently unavailable and recorded as such. These
+metrics explain search behavior; they do not count vulnerabilities.
 
 ## Budget, repetition and scheduling
 

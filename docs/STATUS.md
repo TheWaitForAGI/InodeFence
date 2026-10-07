@@ -324,8 +324,8 @@ PR-T3 범위로 독립 `TransitionNoveltyIndex`, P0 final-state retention, P1 tr
 retention과 uniform mutation in-memory campaign core를 구현·테스트했다. P0는 기존 B3 FULL의
 admission 및 parent RNG 의미를 재현하고, P1은 final-state admission만 transition key로
 대체한다. Full-state/transition/violation novelty와 incomplete trace status는 별도 evidence다.
-Native adapter, ExperimentConfig/export binding과 effectiveness는 아직
-**NOT_RUN**이며 이 구현은 benchmark readiness나 policy **RESULT**가 아니다.
+PR-T3 시점에는 native adapter, evaluation binding과 effectiveness가 **NOT_RUN**이었다.
+이 구현은 benchmark readiness나 policy **RESULT**가 아니다.
 
 PR-T4 범위로 stable `MutationOperatorId`, inspectable `MutationAttempt`, uniform scheduler와
 bounded `TransitionAdaptiveScheduler`를 구현·테스트했다. 기존 `mutate_with_policy()`는 원래
@@ -333,3 +333,9 @@ function table 선택을 유지해 legacy RNG semantics를 보존한다. P2는 P
 새 transition key 유무만 binary reward로 사용하고 weight를 1..8로 제한한다. Violation은
 diagnostic이며 reward가 아니다. Native transition campaign과 효과 검증은 계속 **NOT_RUN**이다.
 [scheduler 계약](research/design/transition-mutation-scheduler-v1.md)을 따른다.
+
+PR-T5 범위로 별도 `TransitionEvaluationConfig`, checksummed export/reader, pure decision replay
+verifier, per-campaign summary와 P0/P1/P2 arm statistics를 구현·테스트했다. Verifier는 final
+RunResult/provenance와 parent/operator/mutation/novelty/reward를 다시 계산한다. Legacy
+ExperimentConfig/result schema는 유지한다. Native node-tar adapter와 vulnerable benchmark는
+여전히 **NOT_RUN**이고 transition-feedback effectiveness는 **HYPOTHESIS**다.

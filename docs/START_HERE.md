@@ -64,6 +64,11 @@ InodeFence는 이런 **object identity와 external effect를 fuzzing feedback으
 
 > 고정된 공격 recipe 없이 generic TAR mutation을 수행하면서 filesystem security state를 feedback으로 쓰면 보안 경계 위반을 더 잘 탐색할 수 있는가?
 
+Entry-transition 확장은 extraction 전체가 끝난 뒤의 state뿐 아니라 검증된 entry completion
+경계 사이의 state transition이 같은 budget에서 추가 탐색 이득을 주는지 묻는다. 이는
+**HYPOTHESIS**이며 아직 **RESULT**가 아니다. Pinned node-tar 7.5.22의 공개 이벤트는 공통
+completion boundary qualification에 실패했으므로 native mode는 **NOT_IMPLEMENTED**다.
+
 ## 4. 현재 어디까지 했는가?
 
 별도 [disposable Linux container backend](../src/inodefence/execution/README.md)의 benign
@@ -82,6 +87,8 @@ Layer 3  Minimal Pipeline          ✅ Python reference, snapshot 관찰 범위
 Layer 4  Mutation                  ✅ Generic Mutation v1
 Layer 5  Feedback / Corpus         ✅ v1: 독립 novelty / in-memory / uniform 선택
          bounded campaign v1     ✅ 명시적 seed / execution budget / lineage
+         transition core         ✅ generic model / retention / adaptive scheduler / evidence
+                                  ⚠️ native node-tar completion adapter NOT_IMPLEMENTED
 Layer 6  Experiment / Paper        미진행
 ```
 
@@ -123,6 +130,9 @@ Third-party target은 validated backend와 bound policy 없이는 실행 전에 
 - [research/design/project-scope.md](research/design/project-scope.md)
 - [research/design/architecture.md](research/design/architecture.md)
 - [research/design/security-contracts.md](research/design/security-contracts.md)
+- [research/design/entry-transition-observation-v1.md](research/design/entry-transition-observation-v1.md)
+- [research/design/transition-feedback-v1.md](research/design/transition-feedback-v1.md)
+- [research/design/transition-mutation-scheduler-v1.md](research/design/transition-mutation-scheduler-v1.md)
 - [research/design/research-questions.md](research/design/research-questions.md)
 - [research/design/related-work-positioning.md](research/design/related-work-positioning.md)
 

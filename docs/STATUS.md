@@ -319,3 +319,10 @@ PR-T2 qualification에서 pinned node-tar 7.5.22의 public `onReadEntry`와 entr
 따라서 `NATIVE_ENTRY_TRANSITION = NOT_IMPLEMENTED`이며 event-aware backend나 prefix replay를
 추가하지 않았다. 이는 **BENIGN VALIDATED** boundary 조사이며 benchmark/effectiveness는
 **NOT_RUN**이다. [근거와 재현 방법](research/design/entry-transition-observation-v1.md)을 따른다.
+
+PR-T3 범위로 독립 `TransitionNoveltyIndex`, P0 final-state retention, P1 transition
+retention과 uniform mutation in-memory campaign core를 구현·테스트했다. P0는 기존 B3 FULL의
+admission 및 parent RNG 의미를 재현하고, P1은 final-state admission만 transition key로
+대체한다. Full-state/transition/violation novelty와 incomplete trace status는 별도 evidence다.
+Native adapter, ExperimentConfig/export binding, adaptive scheduler와 effectiveness는 아직
+**NOT_RUN**이며 이 구현은 benchmark readiness나 policy **RESULT**가 아니다.

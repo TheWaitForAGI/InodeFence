@@ -299,6 +299,11 @@ def _entropy(counts: Counter[MutationOperatorId]) -> float:
     return -sum((count / total) * math.log2(count / total) for count in counts.values() if count)
 
 
+def _weight_entropy(weights: tuple[tuple[MutationOperatorId, int], ...]) -> float:
+    total = sum(weight for _, weight in weights)
+    return -sum((weight / total) * math.log2(weight / total) for _, weight in weights if weight)
+
+
 def _summary(verified: VerifiedTransitionEvidence) -> dict:
     result = verified.result
     attempts: Counter[MutationOperatorId] = Counter()
@@ -311,6 +316,7 @@ def _summary(verified: VerifiedTransitionEvidence) -> dict:
     incomplete = 0
     first_novel = None
     final_weights = tuple((operator.value, 1) for operator in MutationOperatorId)
+    scheduler_weight_entropy = 0.0
     for step in result.steps:
         trace = step.result.trace
         sequences.add(transition_sequence_key(trace))
@@ -328,6 +334,7 @@ def _summary(verified: VerifiedTransitionEvidence) -> dict:
             attempts[operator] += 1
             yields[operator] += int(bool(evidence.new_transition_keys))
             rewards[evidence.reward] += 1
+            scheduler_weight_entropy += _weight_entropy(evidence.weights_before)
             final_weights = tuple((item.value, weight) for item, weight in evidence.weights_after)
     mutation_count = sum(attempts.values())
     operator_metrics = tuple(
@@ -380,7 +387,10 @@ def _summary(verified: VerifiedTransitionEvidence) -> dict:
         "mutation_attempt_count": mutation_count,
         "operator_metrics": operator_metrics,
         "reward_distribution": tuple(sorted(rewards.items())),
-        "scheduler_selection_entropy_bits": _entropy(attempts),
+        "mean_scheduler_weight_entropy_bits": (
+            scheduler_weight_entropy / mutation_count if mutation_count else None
+        ),
+        "empirical_operator_selection_entropy_bits": _entropy(attempts),
         "final_scheduler_weights": final_weights,
         "new_violation_observations": sum(
             bool(step.feedback.new_violation_fingerprints) for step in result.steps

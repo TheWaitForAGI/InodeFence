@@ -181,6 +181,9 @@ def test_transition_bundle_roundtrip_replays_policy_mutation_and_scheduler(campa
     assert summary["unique_transition_sequence_count"] >= 1
     assert sum(item["attempts"] for item in summary["operator_metrics"]) == 6
     assert summary["incomplete_trace_count"] == 0
+    assert 0.0 <= summary["mean_scheduler_weight_entropy_bits"] <= 3.0
+    if result.config.search_policy != TransitionSearchPolicy.P2_TRANSITION_ADAPTIVE:
+        assert summary["mean_scheduler_weight_entropy_bits"] == 3.0
 
 
 def test_scheduler_tamper_fails_even_when_record_checksums_are_rebound(tmp_path):
@@ -234,3 +237,21 @@ def test_policy_arm_statistics_require_equal_controls(tmp_path):
         summarize_transition_statistics(
             (*members, TransitionDatasetMember(directory)), allow_seed_variation=False
         )
+
+
+def test_seed_only_statistics_preserve_unavailable_scheduler_entropy(tmp_path):
+    full, declaration = _campaign(TransitionSearchPolicy.P0_FINAL_ONLY)
+    case = full.steps[0].result.base_result.case
+    campaign_config = replace(declaration.campaign, execution_budget=1)
+    result = run_transition_campaign((case,), _produce, campaign_config)
+    config = replace(
+        declaration,
+        campaign=campaign_config,
+        initial_case_ids=result.initial_case_ids,
+    )
+    directory = tmp_path / "seed-only"
+    digest = export_transition_result(result, config, directory)
+
+    summary = summarize_transition_statistics((TransitionDatasetMember(directory, digest),))
+
+    assert summary["arms"][0]["mean_scheduler_weight_entropy_bits"] is None

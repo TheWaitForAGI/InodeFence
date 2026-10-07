@@ -115,7 +115,8 @@ campaign gate or qualify an entry boundary. The synthetic producer tests causal
 policy composition and evidence ingest only.
 
 Derived summaries record unique keys/sequences, novelty rate, first-novel censoring,
-operator attempts/yield/reward, scheduler entropy and checkpoint cost. Serialized
+operator attempts/yield/reward, mean scheduler weight-distribution entropy, empirical
+operator-selection entropy and checkpoint cost. Serialized
 checkpoint bytes are an evidence-size measure; peak memory is explicitly unavailable.
 Cross-run statistics require identical controls and group only by explicit P0/P1/P2
 policy ID. A transition count remains distinct from a vulnerability count.

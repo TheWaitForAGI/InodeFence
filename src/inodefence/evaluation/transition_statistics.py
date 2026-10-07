@@ -65,6 +65,11 @@ def _mean(summaries: list[dict], field: str) -> float:
     return fmean(float(summary[field]) for summary in summaries)
 
 
+def _mean_optional(summaries: list[dict], field: str) -> float | None:
+    values = [summary[field] for summary in summaries if summary[field] is not None]
+    return fmean(float(value) for value in values) if values else None
+
+
 def summarize_transition_statistics(
     members: Sequence[TransitionDatasetMember], *, allow_seed_variation: bool = False
 ) -> dict:
@@ -145,8 +150,11 @@ def summarize_transition_statistics(
                 "mean_unique_violation_fingerprints": _mean(
                     summaries, "unique_violation_fingerprint_count"
                 ),
-                "mean_scheduler_selection_entropy_bits": _mean(
-                    summaries, "scheduler_selection_entropy_bits"
+                "mean_scheduler_weight_entropy_bits": _mean_optional(
+                    summaries, "mean_scheduler_weight_entropy_bits"
+                ),
+                "mean_empirical_operator_selection_entropy_bits": _mean(
+                    summaries, "empirical_operator_selection_entropy_bits"
                 ),
                 "operator_metrics": tuple(
                     {

@@ -51,7 +51,8 @@ Transition evidence retains ordered checkpoints/transitions, final RunResult,
 trace completeness/termination, operator attempt, weights before/after, reward and
 lineage. Derived metrics include unique transition keys and sequences, novelty rate,
 censored executions to first novel transition, per-operator attempts/yield, reward
-distribution, scheduler selection entropy, checkpoint count/time and serialized
+distribution, mean scheduler weight-distribution entropy, empirical operator-selection
+entropy, checkpoint count/time and serialized
 checkpoint bytes. Peak memory is currently unavailable and recorded as such. These
 metrics explain search behavior; they do not count vulnerabilities.
 

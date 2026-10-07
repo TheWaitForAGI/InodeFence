@@ -4,13 +4,17 @@
 
 - Generic checkpoint/transition model: **IMPLEMENTED**, **TESTED**
 - Synthetic file → hardlink → replacement sequence: **TESTED**
-- Native node-tar entry completion observation: **NOT_RUN** in this model PR
+- Native node-tar entry completion observation: **NOT_IMPLEMENTED** after qualification failure
 - Transition retention/adaptive scheduling: **NOT_RUN** in this model PR
 - Effectiveness or benchmark result: **NOT_RUN**, **HYPOTHESIS**
 
 This document defines target-independent evidence. It does not claim that an
 extractor exposes a usable entry-completion boundary or that transition feedback
 improves search.
+
+The pinned node-tar public events were separately investigated and rejected as
+completion boundaries. See
+[entry-transition-observation-v1.md](entry-transition-observation-v1.md).
 
 ## Evidence model
 

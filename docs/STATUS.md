@@ -308,6 +308,14 @@ ExperimentConfig, manifest/journal/readers와 validated comparison binding은 �
 checkpoint/transition/trace와 TransitionSignature v1을 구현했다. Synthetic file → hardlink →
 replacement sequence와 legacy final-state regression을 테스트했다. `RunResult`, `run_case()`,
 SnapshotPhase와 C0/C1/C2 의미는 유지하며 transition evidence는 별도 composition이다.
-Native node-tar entry completion observation, retention/adaptive scheduler, configured evidence와
-effectiveness/benchmark는 이 단계에서 **NOT_RUN**이다. Feature branch 표시는 main merge나
-qualification을 의미하지 않는다. [모델 계약](research/design/transition-feedback-v1.md)을 따른다.
+PR-T1 시점에는 native node-tar observation과 retention/adaptive scheduler가 **NOT_RUN**이었다.
+Configured evidence와 effectiveness/benchmark도 아직 **NOT_RUN**이다. Feature branch 표시는
+main merge나 qualification을 의미하지 않는다.
+[모델 계약](research/design/transition-feedback-v1.md)을 따른다.
+
+PR-T2 qualification에서 pinned node-tar 7.5.22의 public `onReadEntry`와 entry stream `end`가
+공통 filesystem completion boundary가 아님을 source와 benign probe로 확인했다. Regular entry
+`end`에서 object 부재/0-byte 중간 상태가 관찰됐고 duplicate replacement `end`도 0-byte였다.
+따라서 `NATIVE_ENTRY_TRANSITION = NOT_IMPLEMENTED`이며 event-aware backend나 prefix replay를
+추가하지 않았다. 이는 **BENIGN VALIDATED** boundary 조사이며 benchmark/effectiveness는
+**NOT_RUN**이다. [근거와 재현 방법](research/design/entry-transition-observation-v1.md)을 따른다.

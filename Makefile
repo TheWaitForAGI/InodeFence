@@ -2,7 +2,7 @@ PYTHON ?= python
 CASE ?= regular-file
 BASELINE_CASES := regular-file directory hardlink symlink
 
-.PHONY: install target-tools lint format-check typecheck test env-check docs-check check fixtures probe isolation-support
+.PHONY: install target-tools lint format-check typecheck test env-check docs-check check fixtures probe isolation-support node-entry-timing-probe
 
 target-tools:
 	npm ci --prefix tools/node-tar --ignore-scripts --no-audit --no-fund
@@ -44,3 +44,6 @@ else ifeq ($(filter $(BASELINE_CASES),$(CASE)),)
 else
 	$(PYTHON) scripts/manual_tar_probe.py tests/fixtures/tar/$(CASE)/fixture.tar
 endif
+
+node-entry-timing-probe:
+	PYTHONPATH=src $(PYTHON) scripts/probe_node_entry_timing.py

@@ -66,8 +66,10 @@ InodeFence는 이런 **object identity와 external effect를 fuzzing feedback으
 
 Entry-transition 확장은 extraction 전체가 끝난 뒤의 state뿐 아니라 검증된 entry completion
 경계 사이의 state transition이 같은 budget에서 추가 탐색 이득을 주는지 묻는다. 이는
-**HYPOTHESIS**이며 아직 **RESULT**가 아니다. Pinned node-tar 7.5.22의 공개 이벤트는 공통
-completion boundary qualification에 실패했으므로 native mode는 **NOT_IMPLEMENTED**다.
+**HYPOTHESIS**이며 아직 **RESULT**가 아니다. Pinned node-tar 7.5.22의 공개 async/sync event,
+Linux filesystem event, syscall trace와 prefix replay 후보는 controlled qualification에서
+공통 native completion boundary 조건을 충족하지 못했다. 현재 결정은 **QUALIFIED FAIL**이며
+native mode는 **NOT_IMPLEMENTED**다.
 
 ## 4. 현재 어디까지 했는가?
 
@@ -138,7 +140,7 @@ Third-party target은 validated backend와 bound policy 없이는 실행 전에 
 
 ## 6. 파일을 어디에 만들까?
 
-폴더별 책임과 파일 배치 규칙은 [문서 지도](README.md)와 [엔진 모듈 지도](../src/inodefence/README.md)를 본다. 상세 pipeline과 데이터 흐름은 [architecture.md](research/design/architecture.md)가 기준이다. `pipeline.run_case`는 입력 하나를 실제 실행·관찰·판정한다. Generic Mutation v1은 별도 ArchiveCase 변형 API다. Feedback / Corpus v1은 독립 state/violation novelty로 parent를 보존하고 caller RNG로 균등 선택한다. Bounded campaign v1은 명시적 seed와 budget을 받아 API를 조합한다. Node-tar의 contained adapter와 tiny benign configured campaign을 검증했다. 추가 adapters, adaptive scheduler, persistence와 연구 효과 검증은 후속 작업이다.
+폴더별 책임과 파일 배치 규칙은 [문서 지도](README.md)와 [엔진 모듈 지도](../src/inodefence/README.md)를 본다. 상세 pipeline과 데이터 흐름은 [architecture.md](research/design/architecture.md)가 기준이다. `pipeline.run_case`는 입력 하나를 실제 실행·관찰·판정한다. Generic Mutation v1은 별도 ArchiveCase 변형 API다. Feedback / Corpus v1은 독립 state/violation novelty로 parent를 보존하고 caller RNG로 균등 선택한다. Bounded campaign v1은 명시적 seed와 budget을 받아 API를 조합한다. Node-tar의 contained adapter와 tiny benign configured campaign을 검증했다. Transition retention/adaptive scheduler/evaluation evidence core도 구현됐다. 추가 target adapter, native transition producer, persistence와 연구 효과 검증은 후속 작업이다.
 
 ```text
 src/inodefence/model/       공통 데이터 표현과 canonical JSON

@@ -313,12 +313,15 @@ Configured evidence와 effectiveness/benchmark도 아직 **NOT_RUN**이다. Feat
 main merge나 qualification을 의미하지 않는다.
 [모델 계약](research/design/transition-feedback-v1.md)을 따른다.
 
-PR-T2 qualification에서 pinned node-tar 7.5.22의 public `onReadEntry`와 entry stream `end`가
-공통 filesystem completion boundary가 아님을 source와 benign probe로 확인했다. Regular entry
-`end`에서 object 부재/0-byte 중간 상태가 관찰됐고 duplicate replacement `end`도 0-byte였다.
-따라서 `NATIVE_ENTRY_TRANSITION = NOT_IMPLEMENTED`이며 event-aware backend나 prefix replay를
-추가하지 않았다. 이는 **BENIGN VALIDATED** boundary 조사이며 benchmark/effectiveness는
-**NOT_RUN**이다. [근거와 재현 방법](research/design/entry-transition-observation-v1.md)을 따른다.
+PR-T2와 후속 controlled qualification에서 pinned node-tar 7.5.22의 public async/sync event,
+Linux inotify, strace와 fresh-process prefix replay를 비교했다. Async regular entry `end`는
+부재/0-byte였고 sync `end`도 target metadata/FD close 전에 실행됐다. Inotify receipt snapshot은
+후속 entry effect를 포함하거나 일관성 capture에 실패했고 syscall trace는 archive order와
+effect-completion order가 고정적으로 같지 않음을 보였다. Prefix replay는 독립 실행의 최종
+상태이므로 native checkpoint가 아니다. 후보 집합의 결정은 **QUALIFIED FAIL**이며
+`NATIVE_ENTRY_TRANSITION = NOT_IMPLEMENTED`다. Native P0/P1/P2 benchmark/effectiveness는
+계속 **NOT_RUN**이다. [설계 판단](research/design/entry-transition-observation-v1.md)과
+[검증 요약](../experiments/summaries/node-transition-observation-qualification-v2.md)을 따른다.
 
 PR-T3 범위로 독립 `TransitionNoveltyIndex`, P0 final-state retention, P1 transition
 retention과 uniform mutation in-memory campaign core를 구현·테스트했다. P0는 기존 B3 FULL의

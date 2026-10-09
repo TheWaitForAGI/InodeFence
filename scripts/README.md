@@ -67,3 +67,10 @@ pinned Node 22.22.0/node-tar 7.5.22의 entry completion 관찰 후보를 정상 
 Public async/sync event, Linux inotify, strace, fresh-process prefix replay와 Python reference의
 per-member 호출을 기록하며 기존 output을 덮어쓰지 않는다. 결과는 raw qualification evidence이고
 native adapter, Security Contract verdict 또는 transition-feedback 효과 결과가 아니다.
+
+`PYTHONPATH=src python scripts/qualify_libarchive_entry_boundary.py --output <new-file>
+--image-id <sha256> --base-image-id <sha256>`는 별도 libarchive public write-disk reference
+target에서 `archive_write_finish_entry()`와 final writer close의 syscall 순서를 비교한다.
+정상 mixed-effect/directory-child fixture만 사용하고 marker 없는 baseline과 strace run의 최종
+semantic state를 함께 기록한다. [qualification tool](../tools/libarchive/README.md)의 exact
+package와 isolation 조건이 필요하며 결과는 raw boundary evidence다.

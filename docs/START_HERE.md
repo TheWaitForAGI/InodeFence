@@ -69,7 +69,8 @@ Entry-transition 확장은 extraction 전체가 끝난 뒤의 state뿐 아니라
 **HYPOTHESIS**이며 아직 **RESULT**가 아니다. Pinned node-tar 7.5.22의 공개 async/sync event,
 Linux filesystem event, syscall trace와 prefix replay 후보는 controlled qualification에서
 공통 native completion boundary 조건을 충족하지 못했다. 현재 결정은 **QUALIFIED FAIL**이며
-native mode는 **NOT_IMPLEMENTED**다.
+native mode는 **NOT_IMPLEMENTED**다. 별도 libarchive 3.7.2 public write-disk 후보도 directory
+metadata가 final close까지 지연되어 공통 completion boundary에 **QUALIFIED FAIL**했다.
 
 ## 4. 현재 어디까지 했는가?
 

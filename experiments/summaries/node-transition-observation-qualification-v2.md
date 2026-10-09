@@ -163,9 +163,11 @@ a separate reference target.
 
 GNU tar checkpoints are archive-record checkpoints rather than entry-effect
 completion boundaries, so they do not meet the association requirement. libarchive's
-public read/write-disk loop includes `archive_write_finish_entry()` and is the most
-concrete separate-target candidate. Neither extractor was executed in this run;
-their native entry-boundary qualification remains **NOT_RUN**.
+public read/write-disk loop includes `archive_write_finish_entry()` and was selected
+as the next separate-target candidate. It was not executed in this node-tar run. The
+subsequent
+[libarchive qualification](libarchive-entry-boundary-qualification-v1.md) found
+directory metadata deferred until writer close and also reached **QUALIFIED FAIL**.
 
 fanotify can report close-write events and process/thread identity under supported
 configurations. It still needs an archive-entry association strategy and coverage
@@ -243,16 +245,15 @@ remains **HYPOTHESIS**.
 
 The current blocker is the absence of a behavior-preserving producer for complete,
 entry-associated checkpoints. Repeating the rejected node-tar callbacks cannot clear
-it. To resume, first qualify a separately versioned target with a public post-entry
-boundary, then add the smallest target-specific producer and re-run the existing
-evaluation verifier before any P0/P1/P2 comparison. Observation completeness must be
-an explicit controlled factor in that comparison.
+it. The separate libarchive public-API candidate also failed because directory effects
+complete during global finalization. A future target must expose the actual
+post-filesystem effect with logical entry identity. Observation completeness must be
+an explicit controlled factor before any P0/P1/P2 comparison.
 
-The next independent technical task is a separate-target qualification of a public
-post-entry API, starting with libarchive `archive_write_finish_entry()`. A future
-node-tar release may be re-evaluated if it exposes a documented post-filesystem entry
-hook carrying logical entry identity. Either task must repeat the behavior-preservation
-and snapshot-consistency checks before integration.
+A future node-tar release may be re-evaluated if it adds such a documented hook.
+Supporting libarchive would first require a separately justified deferred/finalization
+event model; weakening `EntryCheckpoint` completion meaning would invalidate the
+current feedback contract.
 
 ## Primary references
 

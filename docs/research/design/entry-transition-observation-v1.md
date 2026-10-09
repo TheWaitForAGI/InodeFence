@@ -11,7 +11,8 @@
 - strace as a behavior-preserving entry-checkpoint producer: **QUALIFIED FAIL**
 - fresh-process prefix replay as native transition evidence: **QUALIFIED FAIL**
 - Python per-member extraction as an equivalent target invocation: **QUALIFIED FAIL**
-- fanotify and libarchive separate-target qualification: **NOT_RUN**
+- libarchive `archive_write_finish_entry()` as a complete boundary: **QUALIFIED FAIL**
+- fanotify qualification: **NOT_RUN**
 - Native entry-transition mode: **NOT_IMPLEMENTED**
 - Transition-feedback effectiveness: **NOT_RUN**, **HYPOTHESIS**
 
@@ -149,7 +150,16 @@ entries after the event that triggered it.
 fanotify can expose close-write and process information but still needs a complete
 logical-entry mapping and non-write effect strategy. It was not enabled in the
 capability-free target environment. GNU tar's documented checkpoints are archive
-record checkpoints rather than entry-effect completion callbacks. libarchive's public
-`archive_write_finish_entry()` is a concrete boundary worth qualifying as a separate
-target. These candidates remain **NOT_RUN** and cannot justify native node-tar
-integration.
+record checkpoints rather than entry-effect completion callbacks.
+
+The separate libarchive 3.7.2 public write-disk qualification is now complete.
+Ordinal/path markers after `archive_write_finish_entry()` were exact, but directory
+mtime and mode were applied only by `archive_write_close()` after all entry markers.
+Both directory fixtures reproduced this in 20/20 traced runs, so the candidate is
+**QUALIFIED FAIL** as a common complete boundary. See the
+[validated summary](../../../experiments/summaries/libarchive-entry-boundary-qualification-v1.md).
+
+The result exposes a generic model constraint: archive order, entry progress order and
+effect-completion order cannot always be one sequence when earlier directory effects
+complete during global finalization. An unordered/deferred event model would change
+the current transition contract and is **NOT_IMPLEMENTED**.

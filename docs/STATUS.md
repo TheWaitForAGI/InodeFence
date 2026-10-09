@@ -323,6 +323,14 @@ effect-completion order가 고정적으로 같지 않음을 보였다. Prefix re
 계속 **NOT_RUN**이다. [설계 판단](research/design/entry-transition-observation-v1.md)과
 [검증 요약](../experiments/summaries/node-transition-observation-qualification-v2.md)을 따른다.
 
+후속 별도 target qualification에서 libarchive 3.7.2 public write-disk
+`archive_write_finish_entry()`도 공통 completion boundary에 **QUALIFIED FAIL**했다. Ordinal/path
+marker는 20/20 정확했지만 두 directory fixture 모두 20/20에서 mtime/mode가 모든 entry marker
+뒤의 writer close에서 적용됐다. Archive order와 effect-completion order를 하나의 ordered
+checkpoint sequence로 취급할 수 없다는 추가 근거다. Generic deferred/finalization event model은
+**NOT_IMPLEMENTED**이며 native transition campaign은 계속 **NOT_RUN**이다.
+[libarchive 검증 요약](../experiments/summaries/libarchive-entry-boundary-qualification-v1.md)을 따른다.
+
 PR-T3 범위로 독립 `TransitionNoveltyIndex`, P0 final-state retention, P1 transition
 retention과 uniform mutation in-memory campaign core를 구현·테스트했다. P0는 기존 B3 FULL의
 admission 및 parent RNG 의미를 재현하고, P1은 final-state admission만 transition key로

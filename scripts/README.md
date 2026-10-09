@@ -61,3 +61,9 @@ Exit 0도 filesystem view/network 차단/credential 제한/child cleanup을 검�
 결과는 campaign gate의 입력이나 execution provenance가 아니며 target 실행을 허가하지 않는다.
 환경마다 재실행해야 하므로 canonical `make check`와 분리한다.
 [현재 환경 blocker](../experiments/summaries/linux-isolation-support-v1.md)를 따른다.
+
+`PYTHONPATH=src python scripts/qualify_node_transition_observation.py --output <new-file>`는
+pinned Node 22.22.0/node-tar 7.5.22의 entry completion 관찰 후보를 정상 fixture에서만 비교한다.
+Public async/sync event, Linux inotify, strace, fresh-process prefix replay와 Python reference의
+per-member 호출을 기록하며 기존 output을 덮어쓰지 않는다. 결과는 raw qualification evidence이고
+native adapter, Security Contract verdict 또는 transition-feedback 효과 결과가 아니다.

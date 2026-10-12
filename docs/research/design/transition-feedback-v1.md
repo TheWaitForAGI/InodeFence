@@ -7,6 +7,7 @@
 - Native node-tar entry completion observation: **NOT_IMPLEMENTED** after qualification failure
 - Transition novelty/retention core: **IMPLEMENTED**, **TESTED**
 - Adaptive scheduling core: **IMPLEMENTED**, **TESTED**
+- Checksummed evaluation config/export/reader/replay verifier/metrics: **IMPLEMENTED**, **TESTED**
 - Effectiveness or benchmark result: **NOT_RUN**, **HYPOTHESIS**
 
 This document defines target-independent evidence. It does not claim that an
@@ -106,9 +107,19 @@ does not change weights. Exact selection and evidence semantics are defined in
 [transition-mutation-scheduler-v1.md](transition-mutation-scheduler-v1.md).
 
 The campaign accepts a caller-owned `TransitionRunResult` producer because no native
-target adapter is qualified. It is in-memory engineering infrastructure, not an
-ExperimentConfig/export/formal runner and does not bypass the existing contained
-campaign gate. The synthetic producer is used to test causal policy composition.
+target adapter is qualified. The separate `TransitionEvaluationConfig` and evidence
+bundle preserve this boundary: they passively export a completed result, verify every
+final RunResult/provenance binding, and replay parent selection, mutation dispatch,
+novelty and scheduler evidence. They do not execute a target, bypass the contained
+campaign gate or qualify an entry boundary. The synthetic producer tests causal
+policy composition and evidence ingest only.
+
+Derived summaries record unique keys/sequences, novelty rate, first-novel censoring,
+operator attempts/yield/reward, mean scheduler weight-distribution entropy, empirical
+operator-selection entropy and checkpoint cost. Serialized
+checkpoint bytes are an evidence-size measure; peak memory is explicitly unavailable.
+Cross-run statistics require identical controls and group only by explicit P0/P1/P2
+policy ID. A transition count remains distinct from a vulnerability count.
 
 ## Security meaning
 

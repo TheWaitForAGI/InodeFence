@@ -187,3 +187,15 @@ Target attribution은 lifecycle 전제에 의존한다. Runner는 layout/sentine
 `StateSnapshot = full raw observation/evidence`와 `StateSignature = normalized security-state representation for future feedback/corpus`는 별도 책임이다. Signature v3는 HARNESS object/identity-group member와 ArchiveCase/TAR artifact identity를 제외하지만 protected paths, extraction↔sentinel relation 및 EXTERNAL effect를 유지한다. Nonregular nlink 값을 None으로 정규화해도 Observer의 raw nlink와 C2 metadata 비교 및 external change labels는 줄이지 않는다. Signature equality는 raw evidence equality나 모든 operation의 안전성을 뜻하지 않는다. HARNESS namespace 전이는 C0로 판정하지만 보호 sentinel이 아닌 object의 content/metadata-only integrity는 현재 별도 계약으로 판정하지 않는다. 이후 corpus는 signature와 verdict를 독립적으로 소비해야 하며 signature가 같다는 이유로 violation 후보를 버리면 안 된다.
 
 Snapshot은 두 시점 사이의 모든 변화를 복구하지 못한다. Inode 재사용으로 같은 숫자가 다시 할당되는 경우도 구분하지 못한다. IO/permission 실패는 ObservationError로 올리며 incomplete snapshot으로 nonviolation을 반환하지 않는다. C3/C4와 full tracing은 후속 단계다.
+
+## Entry-transition evidence와 현재 Oracle의 경계
+
+Entry checkpoint 사이의 `FilesystemTransition`과 `TransitionSignature v1`은 feedback/search
+evidence다. Raw checkpoint에는 object identity와 timestamp가 남지만 normalized key에는 raw
+inode/device/timestamp/runtime 값이 들어가지 않는다. Intermediate state가 security-relevant해
+보여도 현재 C0/C1/C2 confirmed verdict로 승격하지 않는다.
+
+현재 C0/C1/C2는 기존 final BEFORE→AFTER persistent evidence에만 적용한다. 따라서 P0/P1/P2는
+같은 final oracle을 공유하고 transition feedback만 독립 변수로 바꾼다. Incomplete trace는
+termination reason과 completed prefix를 보존하며 빈 transition이나 nonviolation으로 바꾸지 않는다.
+향후 transient contract가 필요하면 별도 versioned contract로 정의한다.

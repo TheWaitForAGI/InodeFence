@@ -69,6 +69,18 @@ G1–G4와 frozen evaluation을 통과한 후 latest supported stable target에�
 현재 discovery campaign이나 vulnerability claim은 없다. Candidate는 재현, 영향/문서화된 동작 검토,
 minimization, affected-version/root-cause 분석과 [private disclosure](../../../SECURITY.md)를 요구한다.
 
+## RQ6 — Entry-Transition Feedback
+
+동일 target/version, initial seeds, execution budget, timeout, sentinel, mutation vocabulary와
+final C0/C1/C2 oracle에서 entry 처리 후 filesystem transition을 retention feedback으로 쓰면
+final-state feedback보다 security-relevant state와 persistent contract candidate를 더 효율적으로
+탐색하는가? 같은 transition retention에서 bounded adaptive operator selection을 추가하면
+uniform operator selection보다 추가 이득이 있는가?
+
+P0 final-state+uniform, P1 transition+uniform, P2 transition+adaptive를 분리해 P1−P0와
+P2−P1을 각각 해석한다. Transition key 수는 vulnerability 수가 아니다. Native boundary가
+qualification되지 않은 target에는 이 RQ의 formal campaign을 실행하지 않는다.
+
 ## H1 — State-Guided Search
 
 고정된 조건과 budget에서 B3가 B0/B1보다 meaningful state 탐색 또는 confirmed known-class
@@ -81,6 +93,18 @@ A1/A2/A3는 명시한 component의 좁은 marginal contribution을 검증한다.
 CVE 문자열, version 또는 PoC bytes를 oracle에 넣지 않은 일반 C0/C1/C2가
 qualified extractor들의 유사한 persistent effect를 관찰할 수 있다는 가설이다.
 Snapshot limits 때문에 transient effect와 check/use coherence는 이 가설의 측정 범위가 아니다.
+
+## H3 — Transition Retention
+
+Entry 사이의 normalized filesystem transition novelty를 parent retention에 사용하면 같은
+budget의 final-state-only retention보다 추가 탐색 이득이 있을 것이다. 이는 **HYPOTHESIS**이며
+현재 infrastructure 구현이나 synthetic test는 효과 **RESULT**가 아니다.
+
+## H4 — Transition-Adaptive Mutation
+
+같은 transition retention에서 새 transition key를 만든 operator에 bounded online reward를
+주면 uniform operator 선택보다 추가 탐색 이득이 있을 것이다. 첫 policy는 violation을 reward에
+섞지 않으며 CVE/target-specific recipe를 사용하지 않는다. 이 역시 **HYPOTHESIS**다.
 
 ## Evaluation 원칙
 

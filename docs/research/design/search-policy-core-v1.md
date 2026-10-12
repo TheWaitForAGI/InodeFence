@@ -146,7 +146,8 @@ attempt에만 bounded binary reward를 준다. P0/P1의 uniform scheduler는 out
 
 Native node-tar completion boundary가 qualification에 실패했으므로 transition campaign은
 caller-owned `TransitionRunResult` producer를 조합하는 in-memory core다. Existing isolated
-target gate, ExperimentConfig, exporter/reader를 우회하거나 formal experiment readiness를
-주장하지 않는다. Synthetic sequence에서 P0/P1/P2 실행 가능성, P0/B3 admission/parent RNG
+target gate와 legacy ExperimentConfig를 우회하거나 formal experiment readiness를 주장하지
+않는다. 별도 transition evidence exporter/reader는 completed caller-owned result를 passive하게
+검증하며 target을 실행하지 않는다. Synthetic sequence에서 P0/P1/P2 실행 가능성, P0/B3 admission/parent RNG
 parity, legacy uniform mutation RNG parity와 adaptive weight bound를 테스트했다.
 Effectiveness는 **NOT_RUN**이다.

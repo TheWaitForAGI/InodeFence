@@ -61,9 +61,13 @@ def decode(kind: Any, value: object) -> Any:
                 pass
         raise ValueError("value matches no permitted union member")
     if origin is tuple:
-        if not isinstance(value, list) or len(args) != 2 or args[1] is not Ellipsis:
-            raise ValueError("expected a homogeneous tuple encoded as array")
-        return tuple(decode(args[0], item) for item in value)
+        if not isinstance(value, list) or not args:
+            raise ValueError("expected a typed tuple encoded as array")
+        if len(args) == 2 and args[1] is Ellipsis:
+            return tuple(decode(args[0], item) for item in value)
+        if len(value) != len(args):
+            raise ValueError("fixed tuple length mismatch")
+        return tuple(decode(item_kind, item) for item_kind, item in zip(args, value, strict=True))
     if kind is bytes:
         encoded = object_fields(value, {"encoding", "data"})
         if encoded["encoding"] != "base64" or not isinstance(encoded["data"], str):

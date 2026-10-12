@@ -58,6 +58,22 @@ class TransitionCampaignStep:
     scheduler_evidence: MutationSchedulerEvidence | None
 
     def __post_init__(self) -> None:
+        if type(self.index) is not int or self.index < 0:
+            raise ValueError("transition campaign step index must be nonnegative")
+        if not isinstance(self.origin, CampaignOrigin) or not isinstance(
+            self.result, TransitionRunResult
+        ):
+            raise ValueError("transition campaign step requires typed origin and result")
+        if not isinstance(self.feedback, TransitionSearchDecision):
+            raise ValueError("transition campaign step requires typed feedback")
+        if self.parent_case_id is not None and (
+            not isinstance(self.parent_case_id, str) or not self.parent_case_id
+        ):
+            raise ValueError("transition campaign parent ID must be nonempty or None")
+        if (self.origin == CampaignOrigin.SEED) != (self.parent_case_id is None):
+            raise ValueError("only mutation steps require a parent case ID")
+        if self.feedback.case_id != self.result.base_result.case.case_id:
+            raise ValueError("transition feedback differs from step result")
         if (self.origin == CampaignOrigin.SEED) != (self.mutation_attempt is None):
             raise ValueError("only mutation steps require a mutation attempt")
         if (self.origin == CampaignOrigin.SEED) != (self.scheduler_evidence is None):
@@ -83,6 +99,32 @@ class TransitionCampaignResult:
     steps: tuple[TransitionCampaignStep, ...]
     final_search_stats: TransitionSearchStats
     retained_case_ids: tuple[str, ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.config, TransitionCampaignConfig):
+            raise ValueError("transition campaign result requires typed config")
+        if (
+            not isinstance(self.initial_case_ids, tuple)
+            or not self.initial_case_ids
+            or len(set(self.initial_case_ids)) != len(self.initial_case_ids)
+        ):
+            raise ValueError("transition campaign result requires unique initial IDs")
+        if not isinstance(self.steps, tuple) or not all(
+            isinstance(step, TransitionCampaignStep) for step in self.steps
+        ):
+            raise ValueError("transition campaign result requires typed steps")
+        if len(self.steps) != self.config.execution_budget or len(self.initial_case_ids) > len(
+            self.steps
+        ):
+            raise ValueError("transition campaign steps must fill the execution budget")
+        if tuple(step.index for step in self.steps) != tuple(range(len(self.steps))):
+            raise ValueError("transition campaign step indexes must be contiguous")
+        if not isinstance(self.final_search_stats, TransitionSearchStats):
+            raise ValueError("transition campaign result requires final search stats")
+        if not isinstance(self.retained_case_ids, tuple) or not all(
+            isinstance(case_id, str) and case_id for case_id in self.retained_case_ids
+        ):
+            raise ValueError("transition campaign result requires retained case IDs")
 
 
 TransitionResultProducer = Callable[[ArchiveCase], TransitionRunResult]

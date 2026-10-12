@@ -1793,7 +1793,8 @@ P0 final-state retention과 P1 transition retention은 같은 uniform parent/mut
 사용하며 별도 versioned ID를 가진다. P1은 final-state admission 대신 transition key를 쓰고
 violation admission은 공통으로 유지한다. 모든 channel과 incomplete trace status는 evidence에
 남는다. Native target binding이 없으므로 현재 runner는 caller-owned transition result producer를
-조합하는 in-memory core이며 formal contained campaign/export가 아니다.
+조합하는 in-memory core이며 formal contained campaign이 아니다. Passive checksummed export는
+completed result를 보존할 뿐 target execution이나 boundary qualification을 추가하지 않는다.
 
 P2는 P1의 admission과 uniform parent selection을 그대로 사용하고 mutation operator selection만
 bounded transition-adaptive scheduler로 바꾼다. Stable `MutationOperatorId`, `MutationAttempt`와
@@ -1801,3 +1802,9 @@ per-step `MutationSchedulerEvidence`가 선택 전후 weight, reward, lineage를
 generic TransitionFeedbackKey만 보며 target/CVE knowledge나 violation reward를 사용하지 않는다.
 P0/P1/P2 경계는
 [transition-mutation-scheduler-v1.md](transition-mutation-scheduler-v1.md)를 따른다.
+
+Transition evaluation은 legacy `ExperimentConfig`/campaign schema를 수정하지 않는 별도
+`TransitionEvaluationConfig`와 checksummed config/result/manifest bundle을 사용한다. Reader는
+final RunResult와 provenance를 검증하고 동일 RNG seed로 parent/operator/mutation/feedback/reward를
+재생한다. Summary/statistics는 verified bundle만 입력으로 받고 P0/P1/P2 외 조건 차이를 거부한다.
+이 passive evidence 계층은 native adapter qualification이나 benchmark readiness를 만들지 않는다.

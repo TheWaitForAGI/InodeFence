@@ -42,6 +42,25 @@ qualified generation/setup profile is still required before benchmark execution.
 B2, adaptive scheduling, a general fresh-archive generator, a path-only key and
 fixed-recipe baseline are absent and excluded from this executable comparison.
 
+## Entry-transition causal extension
+
+The following versioned policies are **IMPLEMENTED** and **TESTED** as generic,
+in-memory infrastructure. Native node-tar entry observation and formal benchmark
+execution remain **NOT_RUN**.
+
+| ID | Retention | Mutation scheduler | Causal comparison |
+| --- | --- | --- | --- |
+| P0 `final-state-v3-or-violation-v1-uniform-mutation-v1` | final state OR violation novelty | uniform eight-slot vocabulary | final-state control |
+| P1 `transition-v1-or-violation-v1-uniform-mutation-v1` | transition key OR violation novelty | same uniform vocabulary | P1−P0: intermediate transition retention |
+| P2 `transition-v1-or-violation-v1-adaptive-mutation-v1` | identical to P1 | bounded transition reward | P2−P1: scheduler adaptation |
+
+All three retain final C0/C1/C2 evidence and record full-state, transition and
+violation novelty separately. P2 starts weights at 1, caps them at 8 and rewards
+only whether an attempt produced at least one new transition key. It does not reward
+violations or contain target/CVE recipes. The evaluation reader replays parent and
+operator selection before accepting raw evidence. Transition counts are not
+vulnerability counts.
+
 ## Smallest useful baseline set
 
 Use B0, B1 and B3 for the formal vulnerable-version feedback experiment.

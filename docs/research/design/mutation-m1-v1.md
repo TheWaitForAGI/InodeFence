@@ -36,10 +36,17 @@ Case identity는 기존 canonical ArchiveCase content address를 사용한다.
 
 ## Campaign binding dependency
 
-M1 core는 독립적으로 사용할 수 있다. 기존 ExperimentConfig/campaign/export에는 아직
-이 ID를 연결하지 않았다. Mutation policy를 manifest/result와 evaluation pooling/replay에
-정확하게 연결하는 변경이 필요하다. 현재 config는 unsupported ID를 명시적으로 거부하며
-legacy mutation으로 fallback하지 않는다. 이 API 검증은 baseline 비교 실험 결과가 아니다.
+Main `8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`의 `run_search_campaign` /
+`SearchCampaignConfig`는 M1/A3를 실행하고 completed policy export/reader와
+PolicyEvaluationConfig/dataset/statistics는 명시한 IDs를 보존/검증한다.
+Legacy ExperimentConfig는 여전히 B3/legacy mutation만 허용하며 M1로 silent fallback하지 않는다.
+Automatic policy journal/repetition과 aborted-prefix evidence는 연결 완료되지 않았다.
+이 API 검증은 baseline 비교 실험 결과나 historical rediscovery가 아니다.
+
+M1의 component tuple은 고정돼 있고 setup-derived dictionary API는 없다.
+Default `outside/sentinel.txt`는 이 finite vocabulary와 benign seeds로 생성하지 못한다.
+따라서 structural composition 구현과 selected benchmark reachability를 구분한다.
+[Research Contract](research-contract-v1.md)의 첫 N01 qualification도 아직 NOT_RUN이다.
 
 ## A3 reorder contribution ablation
 
@@ -51,4 +58,4 @@ legacy mutation으로 fallback하지 않는다. 이 API 검증은 baseline 비�
 동일 input/RNG state에서 full/A3는 같은 slot과 같은 RNG 소비를 보장한다. 이후 campaign은
 서로 다른 parent state 때문에 다른 draw stream을 가질 수 있으므로 campaign 전체의
 draw 동일성을 주장하지 않는다. MutationPolicy에 명시적인 versioned ID를 저장한다.
-ExperimentConfig/provenance/evaluation binding은 위의 기존 integration dependency다.
+M1/A3 ID는 SearchCampaignConfig와 completed policy evidence/config binding에 기록된다. Legacy ExperimentConfig 및 automatic policy journal/repetition 경계는 위와 같다.

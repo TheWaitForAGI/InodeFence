@@ -29,6 +29,7 @@ Benign smoke와 synthetic/unit tests는 이 문장의 예외가 아니다.
 | Linux execution | fresh runtime + container-required third-party boundary | backend / prepared invocation / verified artifact admission | [container integration](../tests/README.md); pinned Node benign smoke | historical pair 미검증 |
 | Mutation | legacy / M1 / A3 contracts | eight slots; M1 nested/reused names/dependencies; no-reorder versions | [mutator tests](../tests/test_mutator.py), [search composition](../tests/test_campaign_search.py) | reachable historical effects 미검증 |
 | Search / feedback | B0/B1/B3 and A1/A2 | `SearchState`, `run_search_campaign`, explicit policy config | [policy checks](../tests/test_feedback_search_contracts.py), [trusted reference integration](../tests/test_campaign_search_integration.py) | 비교 효과 미검증 |
+| Entry transitions | entry-associated checkpoint/transition evidence and normalized keys | target-independent `EntryCheckpoint`, `TransitionTrace`, `TransitionSignature` composition | [synthetic transition tests](../tests/test_transition_model.py) | native producer / target effectiveness NOT_RUN |
 | Minimization | bounded deterministic generic/USTAR reduction | core and exact-fingerprint evidence binding | [minimizer tests](../tests/test_minimizer.py), [USTAR checks](../tests/test_minimizer_ustar.py) | historical/unknown candidate 없음 |
 | Evaluation / reproduction | explicit provenance, immutable raw → verified derivation | reader, pair records, passive failure ledger/journal, qualification/matrix, benign replay, completed policy export/config/dataset/statistics | [evaluation tests](../tests/evaluation/), [benign replay tests](../tests/replay/) | formal dataset / known-class adjudication / artifact reproduction 없음 |
 | C3/C4 / generality | 후속 contracts / RQ4 | C3/C4와 ORAS adapter 없음; GNU route는 benign allowlist만 | broader scope의 실행 증거 없음 | 미검증 |
@@ -64,6 +65,14 @@ B3는 key OR violation novelty admission이다. A1/A2는 feedback key만 투영�
 A3는 reorder draw를 유지한 no-op이며 insertion/duplicate의 order variation은 남는다.
 [정확한 비교 범위](research/benchmarks/baseline-and-ablation-v1.md)를 따른다.
 Path-only와 fixed-recipe baseline은 없으며 RQ2/RQ3의 비교로 주장하지 않는다.
+
+The generic entry-transition model preserves exact archive ordinal/path/type/link-target
+association, complete raw checkpoints, derived filesystem deltas and normalized transition
+keys without changing `RunResult` or final C0/C1/C2 semantics. Its current evidence is a
+deterministic synthetic file → hardlink → replacement sequence. No native extractor
+completion producer, P0/P1/P2 retention policy, or transition effectiveness result is part
+of this model milestone. [The exact contract](research/design/transition-feedback-v1.md)
+keeps synthetic model correctness separate from native observation qualification.
 
 Legacy `ExperimentConfig` v1/v2는 여전히 B3/legacy mutation만 허용한다. 별도
 `PolicyEvaluationConfig`와 completed policy export/reader/config/dataset/statistics가 구현됐다.

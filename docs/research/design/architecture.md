@@ -1771,3 +1771,19 @@ Search 이후 caller-level `minimizer.minimize_case`는 ArchiveCase 후보를 �
 RunResult evidence predicate로 채택 여부를 판단한다. Mutation/observer/oracle responsibilities는
 유지하며 replay tooling이나 특정 target 규칙을 core에 넣지 않는다.
 [Versioned API, budget, evidence와 한계](generic-minimizer-v1.md)를 따른다.
+
+## Generic entry-transition model
+
+Layer 2/5의 독립 모델은 `ObservationPoint`와 archive ordinal을 포함한
+`ArchiveEntryReference`, complete `EntryCheckpoint`, consecutive
+`FilesystemTransition`, ordered `TransitionTrace`를 제공한다. Legacy
+`SnapshotPhase.BEFORE/AFTER`, `RunResult`, `run_case()`와 C0/C1/C2 의미는 바꾸지 않는다.
+`TransitionRunResult`는 기존 final evidence와 transition evidence를 composition한다.
+
+TransitionSignature v1은 raw inode/device/timestamp/runtime/target/CVE 값을 제외하고
+entry type/ordinal class, region별 object effect, identity relation delta와 external
+effect category를 보존한다. Individual `TransitionFeedbackKey`가 향후 primary novelty
+단위이며 ordered `TransitionSequenceKey`는 auxiliary evidence다. 이 generic 구현과
+synthetic sequence test는 실제 extractor의 entry completion boundary qualification이나
+feedback effectiveness 결과가 아니다. 정확한 계약은
+[transition-feedback-v1.md](transition-feedback-v1.md)를 따른다.

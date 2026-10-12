@@ -29,7 +29,7 @@ Benign smoke와 synthetic/unit tests는 이 문장의 예외가 아니다.
 | Linux execution | fresh runtime + container-required third-party boundary | backend / prepared invocation / verified artifact admission | [container integration](../tests/README.md); pinned Node benign smoke | historical pair 미검증 |
 | Mutation | legacy / M1 / A3 contracts | eight slots; M1 nested/reused names/dependencies; no-reorder versions | [mutator tests](../tests/test_mutator.py), [search composition](../tests/test_campaign_search.py) | reachable historical effects 미검증 |
 | Search / feedback | B0/B1/B3 and A1/A2 | `SearchState`, `run_search_campaign`, explicit policy config | [policy checks](../tests/test_feedback_search_contracts.py), [trusted reference integration](../tests/test_campaign_search_integration.py) | 비교 효과 미검증 |
-| Entry transitions | entry-associated checkpoints plus P0 final-state / P1 transition retention | target-independent model, novelty index and in-memory campaign core | [synthetic model/search tests](../tests/test_transition_search.py); node-tar 7.5.22 public-event qualification | public callbacks QUALIFIED FAIL; native producer / target effectiveness NOT_RUN |
+| Entry transitions | P0 final-state, P1 transition retention, P2 transition-adaptive mutation | target-independent model, novelty index, bounded scheduler and in-memory campaign core | [synthetic model/search/scheduler tests](../tests/test_mutation_scheduler.py); node-tar 7.5.22 public-event qualification | public callbacks QUALIFIED FAIL; native producer / target effectiveness NOT_RUN |
 | Minimization | bounded deterministic generic/USTAR reduction | core and exact-fingerprint evidence binding | [minimizer tests](../tests/test_minimizer.py), [USTAR checks](../tests/test_minimizer_ustar.py) | historical/unknown candidate 없음 |
 | Evaluation / reproduction | explicit provenance, immutable raw → verified derivation | reader, pair records, passive failure ledger/journal, qualification/matrix, benign replay, completed policy export/config/dataset/statistics | [evaluation tests](../tests/evaluation/), [benign replay tests](../tests/replay/) | formal dataset / known-class adjudication / artifact reproduction 없음 |
 | C3/C4 / generality | 후속 contracts / RQ4 | C3/C4와 ORAS adapter 없음; GNU route는 benign allowlist만 | broader scope의 실행 증거 없음 | 미검증 |
@@ -72,8 +72,10 @@ keys without changing `RunResult` or final C0/C1/C2 semantics. Its current evide
 deterministic synthetic file → hardlink → replacement sequence. The separate P0/P1
 campaign core keeps uniform parent/mutation behavior constant while replacing P0 final-state
 admission with P1 transition-key admission; full-state, transition, violation and incomplete
-trace diagnostics remain independent. P2 scheduling, a native extractor completion producer,
-and transition effectiveness are not implemented results at this milestone.
+trace diagnostics remain independent. P2 keeps P1 retention and uniform parent selection,
+then adapts explicit operator weights from 1 through 8 using only binary new-transition-key
+reward. Violations remain diagnostic and do not receive scheduler reward. A native extractor
+completion producer and transition effectiveness are still not implemented results.
 [The exact contract](research/design/transition-feedback-v1.md) keeps synthetic model/search
 correctness separate from native observation qualification.
 
@@ -82,7 +84,7 @@ regular/directory/hardlink/symlink/duplicate-path fixture. The public callback r
 before extraction work starts and regular-file `end` can occur before write/close and
 final metadata completion, so these events are **QUALIFIED FAIL** as a common entry
 completion boundary. No native producer or prefix-replay substitute is implemented;
-P0/P1 target effectiveness remains **NOT_RUN**. See the
+P0/P1/P2 target effectiveness remains **NOT_RUN**. See the
 [qualification decision](research/design/entry-transition-observation-v1.md).
 
 Legacy `ExperimentConfig` v1/v2는 여전히 B3/legacy mutation만 허용한다. 별도

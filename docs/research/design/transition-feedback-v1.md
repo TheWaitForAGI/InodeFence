@@ -6,7 +6,7 @@
 - Synthetic file → hardlink → replacement sequence: **TESTED**
 - Native node-tar entry completion observation: **NOT_IMPLEMENTED** after qualification failure
 - Transition novelty/retention core: **IMPLEMENTED**, **TESTED**
-- Adaptive scheduling: **NOT_RUN** in this model/retention stage
+- Adaptive scheduling core: **IMPLEMENTED**, **TESTED**
 - Effectiveness or benchmark result: **NOT_RUN**, **HYPOTHESIS**
 
 This document defines target-independent evidence. It does not claim that an
@@ -85,18 +85,25 @@ preserved in the search decision and never rewritten as success.
 Transition novelty means only a previously unseen normalized transition class. It
 is not a vulnerability, contract violation or finding.
 
-Two uniform-mutation policies are independently executable through the in-memory
+Three causally separated policies are independently executable through the in-memory
 `run_transition_campaign` core:
 
 | Policy ID | Parent admission | Parent/operator selection |
 | --- | --- | --- |
 | `final-state-v3-or-violation-v1-uniform-mutation-v1` (P0) | unseen final StateSignature v3 OR new violation fingerprint | retained parents uniform; existing uniform mutation policy |
 | `transition-v1-or-violation-v1-uniform-mutation-v1` (P1) | unseen TransitionFeedbackKey OR new violation fingerprint | retained parents uniform; same existing uniform mutation policy |
+| `transition-v1-or-violation-v1-adaptive-mutation-v1` (P2) | same transition/violation rule as P1 | retained parents uniform; bounded transition-reward scheduler |
 
 P0 mirrors existing B3 full-key admission and uniform parent RNG behavior without
 changing B3 or its ID. P1 replaces only the final-state admission channel with
 transition-key admission; the violation channel is common. Full final-state and
-violation diagnostics remain recorded under both policies.
+violation diagnostics remain recorded under all three policies.
+
+P2 keeps P1 admission unchanged. Its operator scheduler starts every stable
+operator at weight 1, gives one bounded reward when an attempt yields any new
+transition key and caps weights at 8. Violation novelty is diagnostic only and
+does not change weights. Exact selection and evidence semantics are defined in
+[transition-mutation-scheduler-v1.md](transition-mutation-scheduler-v1.md).
 
 The campaign accepts a caller-owned `TransitionRunResult` producer because no native
 target adapter is qualified. It is in-memory engineering infrastructure, not an

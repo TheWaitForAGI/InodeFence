@@ -1794,3 +1794,10 @@ P0 final-state retention과 P1 transition retention은 같은 uniform parent/mut
 violation admission은 공통으로 유지한다. 모든 channel과 incomplete trace status는 evidence에
 남는다. Native target binding이 없으므로 현재 runner는 caller-owned transition result producer를
 조합하는 in-memory core이며 formal contained campaign/export가 아니다.
+
+P2는 P1의 admission과 uniform parent selection을 그대로 사용하고 mutation operator selection만
+bounded transition-adaptive scheduler로 바꾼다. Stable `MutationOperatorId`, `MutationAttempt`와
+per-step `MutationSchedulerEvidence`가 선택 전후 weight, reward, lineage를 보존한다. Scheduler는
+generic TransitionFeedbackKey만 보며 target/CVE knowledge나 violation reward를 사용하지 않는다.
+P0/P1/P2 경계는
+[transition-mutation-scheduler-v1.md](transition-mutation-scheduler-v1.md)를 따른다.

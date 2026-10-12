@@ -7,7 +7,10 @@ Target/oracle/feedback를 입력이나 import로 사용하지 않는다.
 
 M1은 기존 8개 uniform operator slot을 유지한다. Add/remove/duplicate/reorder/path/
 hardlink/symlink/link-target 순서이며 적용 불가와 bounded miss는 한 번의 no-op다.
-재시도, weight 조정, adaptive scheduling은 없다.
+재시도는 없다. `MutationOperatorId`와 `MutationAttempt`가 이 선택을 inspectable하게
+기록한다. 기존 wrapper의 uniform 선택은 원래 function table을 `rng.choice()`에 전달해
+기존 RNG 의미를 유지한다. 별도 transition campaign의 scheduler만 explicit operator를
+선택하며 mutator 함수 자체는 weight나 feedback을 알지 못한다.
 
 - Fresh text: prefix `""`, `./`, `../`, `/`; depth 1–4; separator `/` 또는 `//`;
   component `a`, `b`, `dir`, `file`, `item`, `.`, `..`.
@@ -59,3 +62,11 @@ Default `outside/sentinel.txt`는 이 finite vocabulary와 benign seeds로 생�
 서로 다른 parent state 때문에 다른 draw stream을 가질 수 있으므로 campaign 전체의
 draw 동일성을 주장하지 않는다. MutationPolicy에 명시적인 versioned ID를 저장한다.
 M1/A3 ID는 SearchCampaignConfig와 completed policy evidence/config binding에 기록된다. Legacy ExperimentConfig 및 automatic policy journal/repetition 경계는 위와 같다.
+
+## Transition scheduler boundary
+
+P0/P1의 `UniformMutationScheduler`는 모든 operator weight를 1로 유지한다. P2의
+`TransitionAdaptiveScheduler`는 normalized transition novelty만 binary reward로 받아
+1..8 integer weight와 caller-owned `rng.randrange(total)`로 선택한다. Violation은 scheduler
+evidence에 남지만 reward가 아니다. 정확한 정책과 evidence는
+[transition-mutation-scheduler-v1.md](transition-mutation-scheduler-v1.md)를 따른다.

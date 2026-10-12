@@ -80,6 +80,9 @@ G0 documentation freeze의 capability baseline은 main
   deterministic seed-inclusive bounded campaign.
 - Layer 6 infrastructure: generic/USTAR minimization, readers, pair/benign replay,
   passive ledger/journal, qualification/matrix와 completed policy binding/dataset/statistics.
+- Entry-transition infrastructure: target-independent evidence model, P0/P1 retention,
+  P2 bounded scheduler and checksummed evaluation/replay APIs are TESTED synthetically;
+  native producer and effectiveness remain NOT_IMPLEMENTED / NOT_RUN.
 - Contained node-tar **7.5.22 benign smoke TESTED**. Helper/mock tests와 real extractor
   checks는 구분하며 어느 쪽도 historical qualification이나 effectiveness 결과가 아니다.
 
@@ -112,12 +115,15 @@ full-step timing과 known-class adjudication은 별도 검증 과제다. G0 문�
 - [research/design/architecture.md](research/design/architecture.md)
 - [research/design/security-contracts.md](research/design/security-contracts.md)
 - [research/design/research-contract-v1.md](research/design/research-contract-v1.md)
+- [research/design/entry-transition-observation-v1.md](research/design/entry-transition-observation-v1.md)
+- [research/design/transition-feedback-v1.md](research/design/transition-feedback-v1.md)
+- [research/design/transition-mutation-scheduler-v1.md](research/design/transition-mutation-scheduler-v1.md)
 - [research/design/research-questions.md](research/design/research-questions.md)
 - [research/design/related-work-positioning.md](research/design/related-work-positioning.md)
 
 ## 6. 파일을 어디에 만들까?
 
-폴더별 책임과 파일 배치 규칙은 [문서 지도](README.md)와 [엔진 모듈 지도](../src/inodefence/README.md)를 본다. 상세 pipeline과 데이터 흐름은 [architecture.md](research/design/architecture.md)가 기준이다. `pipeline.run_case`는 입력 하나를 실제 실행·관찰·판정한다. Generic Mutation v1은 별도 ArchiveCase 변형 API다. Feedback / Corpus v1은 독립 state/violation novelty로 parent를 보존하고 caller RNG로 균등 선택한다. Bounded campaign v1은 명시적 seed와 budget을 받아 API를 조합한다. Node-tar의 contained adapter와 tiny benign configured campaign을 검증했다. SearchCampaignConfig가 B0/B1/B3와 A1/A2/A3를 연결하고 evaluation APIs가 완료된 raw evidence를 검증한다. Automatic interrupted-run persistence, full-step timing과 연구 효과 검증은 후속 gate다.
+폴더별 책임과 파일 배치 규칙은 [문서 지도](README.md)와 [엔진 모듈 지도](../src/inodefence/README.md)를 본다. 상세 pipeline과 데이터 흐름은 [architecture.md](research/design/architecture.md)가 기준이다. `pipeline.run_case`는 입력 하나를 실제 실행·관찰·판정한다. Generic Mutation v1은 별도 ArchiveCase 변형 API다. Feedback / Corpus v1은 독립 state/violation novelty로 parent를 보존하고 caller RNG로 균등 선택한다. Bounded campaign v1은 명시적 seed와 budget을 받아 API를 조합한다. Node-tar의 contained adapter와 tiny benign configured campaign을 검증했다. SearchCampaignConfig가 B0/B1/B3와 A1/A2/A3를 연결하고 evaluation APIs가 완료된 raw evidence를 검증한다. Transition P0/P1/P2 core와 verified evidence APIs는 synthetic producer로 테스트됐지만 native target producer는 없다. Automatic interrupted-run persistence, full-step timing과 연구 효과 검증은 후속 gate다.
 
 ```text
 src/inodefence/model/       공통 데이터 표현과 canonical JSON
@@ -136,6 +142,7 @@ src/inodefence/oracle/      security contract 판정
 src/inodefence/feedback/    signature v3 / fingerprints / B0/B1/B3 / A1/A2
 src/inodefence/minimizer.py bounded generic / USTAR / evidence-bound minimization
 src/inodefence/evaluation/ completed raw validation / qualification / dataset / statistics
+src/inodefence/transition_campaign.py  P0/P1/P2 in-memory composition
 src/inodefence/replay/     allowlisted benign clean replay
 
 tests/                      코드 테스트

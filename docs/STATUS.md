@@ -29,7 +29,7 @@ Benign smoke와 synthetic/unit tests는 이 문장의 예외가 아니다.
 | Linux execution | fresh runtime + container-required third-party boundary | backend / prepared invocation / verified artifact admission | [container integration](../tests/README.md); pinned Node benign smoke | historical pair 미검증 |
 | Mutation | legacy / M1 / A3 contracts | eight slots; M1 nested/reused names/dependencies; no-reorder versions | [mutator tests](../tests/test_mutator.py), [search composition](../tests/test_campaign_search.py) | reachable historical effects 미검증 |
 | Search / feedback | B0/B1/B3 and A1/A2 | `SearchState`, `run_search_campaign`, explicit policy config | [policy checks](../tests/test_feedback_search_contracts.py), [trusted reference integration](../tests/test_campaign_search_integration.py) | 비교 효과 미검증 |
-| Entry transitions | P0 final-state, P1 transition retention, P2 transition-adaptive mutation | target-independent model, novelty index, bounded scheduler and in-memory campaign core | [synthetic model/search/scheduler tests](../tests/test_mutation_scheduler.py); node-tar 7.5.22 public-event qualification | public callbacks QUALIFIED FAIL; native producer / target effectiveness NOT_RUN |
+| Entry transitions | P0 final-state, P1 transition retention, P2 transition-adaptive mutation | model, novelty, scheduler, campaign, checksummed export/reader/replay/metrics | [synthetic transition evidence tests](../tests/evaluation/test_transition_evidence.py); node-tar 7.5.22 public-event qualification | public callbacks QUALIFIED FAIL; native producer / target effectiveness NOT_RUN |
 | Minimization | bounded deterministic generic/USTAR reduction | core and exact-fingerprint evidence binding | [minimizer tests](../tests/test_minimizer.py), [USTAR checks](../tests/test_minimizer_ustar.py) | historical/unknown candidate 없음 |
 | Evaluation / reproduction | explicit provenance, immutable raw → verified derivation | reader, pair records, passive failure ledger/journal, qualification/matrix, benign replay, completed policy export/config/dataset/statistics | [evaluation tests](../tests/evaluation/), [benign replay tests](../tests/replay/) | formal dataset / known-class adjudication / artifact reproduction 없음 |
 | C3/C4 / generality | 후속 contracts / RQ4 | C3/C4와 ORAS adapter 없음; GNU route는 benign allowlist만 | broader scope의 실행 증거 없음 | 미검증 |
@@ -78,6 +78,11 @@ reward. Violations remain diagnostic and do not receive scheduler reward. A nati
 completion producer and transition effectiveness are still not implemented results.
 [The exact contract](research/design/transition-feedback-v1.md) keeps synthetic model/search
 correctness separate from native observation qualification.
+
+`TransitionEvaluationConfig` binds the policy IDs and frozen provenance to a separate
+checksummed result bundle. Its reader replays parent/operator/mutation/admission/scheduler
+decisions before summaries or P0/P1/P2 arm statistics are accepted. This is TESTED with a
+deterministic synthetic producer; it does not make native target effectiveness a result.
 
 Pinned node-tar 7.5.22 `onReadEntry` and entry-stream `end` were tested with a benign
 regular/directory/hardlink/symlink/duplicate-path fixture. The public callback runs

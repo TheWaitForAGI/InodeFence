@@ -66,41 +66,24 @@ InodeFence는 이런 **object identity와 external effect를 fuzzing feedback으
 
 ## 4. 현재 어디까지 했는가?
 
-별도 [disposable Linux container backend](../src/inodefence/execution/README.md)의 benign
-helper validation을 추가했다. 기존 Dev Container 권한은 유지하고 trusted host stdio
-broker로 sibling target을 실행한다. Node image/contained invocation/config/provenance binding을 구현했고 tiny benign campaign8회 full-path를 검증했다. Pre-audit freeze, Audit Phases 1–2와 Global Findings Freeze v1을 완료했고 Phase-3 Runtime #45 / Engine #46 fixes가 main `d1982e4`에 병합됐다. 현재는 Phase-4 global closeout 대기 단계다.
+G0 documentation freeze의 capability baseline은 main
+**`8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`**다. 최신 상태는 [STATUS](STATUS.md),
+연구 정의와 claim boundary는 [Research Contract v1](research/design/research-contract-v1.md)를 따른다.
 
-항상 최신 상태는 [STATUS.md](STATUS.md)를 본다.
+- Layer 2–3: immutable models, USTAR, Linux runtime, actual reference worker와 snapshot C0/C1/C2.
+- Layer 4–5: legacy/M1 mutation, B0/B1/B3 search, A1/A2 feedback keys와 A3 no-reorder,
+  deterministic seed-inclusive bounded campaign.
+- Layer 6 infrastructure: generic/USTAR minimization, readers, pair/benign replay,
+  passive ledger/journal, qualification/matrix와 completed policy binding/dataset/statistics.
+- Contained node-tar **7.5.22 benign smoke TESTED**. Helper/mock tests와 real extractor
+  checks는 구분하며 어느 쪽도 historical qualification이나 effectiveness 결과가 아니다.
 
-현재 큰 단계:
-
-```text
-Layer 0  개발환경                  ✅
-Layer 1  연구 범위/규칙/아키텍처   ✅
-Layer 2  공통 Data Model           ✅
-Layer 3  Minimal Pipeline          ✅ Python reference, snapshot 관찰 범위
-Layer 4  Mutation                  ✅ Generic Mutation v1
-Layer 5  Feedback / Corpus         ✅ v1: 독립 novelty / in-memory / uniform 선택
-         bounded campaign v1     ✅ 명시적 seed / execution budget / lineage
-Layer 6  Experiment / Paper        미진행
-```
-
-현재 상태는 **AUDIT PHASES 1–3 COMPLETE — PHASE-4 GLOBAL CLOSEOUT PENDING**이다.
-Merged engine fixes는 lossless-or-reject USTAR, public evidence validation,
-exact StateChange labels와 signature v3를 제공한다. Runtime fixes는 artifact identity
-observation, actual invocation 검증과 Docker CLI descendant lifecycle을 강화했다.
-[Phase-3 frozen evidence와 fix mapping](audits/engine-findings-fix-v1.md)은 역사적 fix 기록이다.
-[Final Engine/Research 감사 #47](https://github.com/TheWaitForAGI/InodeFence/pull/47)은
-audited main의 잔여 EN-005 문서 drift를 기록하며 이 PR #35는 수정 제안이다.
-이 문서/연구 계획의 branch 갱신은 main merge나 global GO를 의미하지 않는다.
-Contained Node의 기존 benign infrastructure 검증은 benchmark qualification이 아니며
-benchmark/security evaluation은 아직 수행하지 않았다.
-[Pre-audit 검증 기록과 한계](../experiments/summaries/pre-audit-readiness-v1.md)를 따른다.
-
-Campaign은 explicit trusted reference 또는 enforced IsolatedTarget composition을 받는다.
-Third-party target은 validated backend와 bound policy 없이는 실행 전에 거부한다. Runtime directory/Dev Container는 검증된 OS execution isolation이 아니다.
-확인한 Dev Container의 namespace 생성은 EPERM으로 차단됐다. 그 환경을 약화하지 않고
-별도 container backend를 구현했다. [이전 blocker 기록](../experiments/summaries/linux-isolation-support-v1.md)은 이 선택의 근거다.
+**DESIGNED ≠ IMPLEMENTED ≠ TESTED ≠ EXPERIMENTALLY VALIDATED.**
+Historical qualification / rediscovery / formal comparison은 NOT_RUN이며 현재 취약점을 주장하지 않는다.
+첫 intended historical qualification은 **N01 node-tar 7.5.2 / 7.5.3**이고 아직 READY가 아니다.
+Snapshot은 persistent effect만 판정하며 transient/direct-use/symlink referent와 sandbox 밖 접근을
+증명하지 못한다. Alternative policy 실행 API와 completed export가 있어도 automatic journal attachment,
+full-step timing과 known-class adjudication은 별도 검증 과제다. G0 문서 동결은 후속 gate의 PASS가 아니다.
 
 ## 5. 코딩하기 전에 딱 이것만 읽기
 
@@ -123,12 +106,13 @@ Third-party target은 validated backend와 bound policy 없이는 실행 전에 
 - [research/design/project-scope.md](research/design/project-scope.md)
 - [research/design/architecture.md](research/design/architecture.md)
 - [research/design/security-contracts.md](research/design/security-contracts.md)
+- [research/design/research-contract-v1.md](research/design/research-contract-v1.md)
 - [research/design/research-questions.md](research/design/research-questions.md)
 - [research/design/related-work-positioning.md](research/design/related-work-positioning.md)
 
 ## 6. 파일을 어디에 만들까?
 
-폴더별 책임과 파일 배치 규칙은 [문서 지도](README.md)와 [엔진 모듈 지도](../src/inodefence/README.md)를 본다. 상세 pipeline과 데이터 흐름은 [architecture.md](research/design/architecture.md)가 기준이다. `pipeline.run_case`는 입력 하나를 실제 실행·관찰·판정한다. Generic Mutation v1은 별도 ArchiveCase 변형 API다. Feedback / Corpus v1은 독립 state/violation novelty로 parent를 보존하고 caller RNG로 균등 선택한다. Bounded campaign v1은 명시적 seed와 budget을 받아 API를 조합한다. Node-tar의 contained adapter와 tiny benign configured campaign을 검증했다. 추가 adapters, adaptive scheduler, persistence와 연구 효과 검증은 후속 작업이다.
+폴더별 책임과 파일 배치 규칙은 [문서 지도](README.md)와 [엔진 모듈 지도](../src/inodefence/README.md)를 본다. 상세 pipeline과 데이터 흐름은 [architecture.md](research/design/architecture.md)가 기준이다. `pipeline.run_case`는 입력 하나를 실제 실행·관찰·판정한다. Generic Mutation v1은 별도 ArchiveCase 변형 API다. Feedback / Corpus v1은 독립 state/violation novelty로 parent를 보존하고 caller RNG로 균등 선택한다. Bounded campaign v1은 명시적 seed와 budget을 받아 API를 조합한다. Node-tar의 contained adapter와 tiny benign configured campaign을 검증했다. SearchCampaignConfig가 B0/B1/B3와 A1/A2/A3를 연결하고 evaluation APIs가 완료된 raw evidence를 검증한다. Automatic interrupted-run persistence, full-step timing과 연구 효과 검증은 후속 gate다.
 
 ```text
 src/inodefence/model/       공통 데이터 표현과 canonical JSON
@@ -144,7 +128,10 @@ src/inodefence/mutator/     TAR entry 변형
 src/inodefence/targets/     공통 실행 경계 / Python reference / contained node-tar
 src/inodefence/observer/    filesystem 상태 관찰
 src/inodefence/oracle/      security contract 판정
-src/inodefence/feedback/    signature v3 / semantic fingerprints / in-memory Corpus v1
+src/inodefence/feedback/    signature v3 / fingerprints / B0/B1/B3 / A1/A2
+src/inodefence/minimizer.py bounded generic / USTAR / evidence-bound minimization
+src/inodefence/evaluation/ completed raw validation / qualification / dataset / statistics
+src/inodefence/replay/     allowlisted benign clean replay
 
 tests/                      코드 테스트
 scripts/                    개발/실험 보조 명령

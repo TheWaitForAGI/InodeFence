@@ -75,6 +75,9 @@ mixed/directory-child/independent-file fixture에서 비교하고 exact associat
 후속 entry effect 포함, snapshot failure, final semantic equivalence와 overhead를 기록한다.
 설치 package를 수정하지 않으며 결과가 current `TransitionTrace` producer qualification을
 통과하기 전까지 target adapter로 사용할 수 없다.
+`PYTHONPATH=src:. python scripts/analyze_node_internal_completion.py <raw.json>`은 고정 fixture
+identity를 확인하고 raw run에서 mechanical summary를 다시 계산해 저장된 summary와 byte-level
+동등성을 검증한다. `--output`은 기존 파일을 덮어쓰지 않는다.
 
 `PYTHONPATH=src python scripts/qualify_libarchive_entry_boundary.py --output <new-file>
 --image-id <sha256> --base-image-id <sha256>`는 별도 libarchive public write-disk reference

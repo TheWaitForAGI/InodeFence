@@ -2,7 +2,7 @@
   "schema_version": 1,
   "status": "planning_only",
   "evidence_accessed": "2026-10-04",
-  "engine_revision": "d1982e4cf3174e28d4eeb73af7b32829f6751b30",
+  "engine_revision": "8ad07b8e5f23f789d57ea50ba52c7acfcee951ea",
   "benchmarks": [
     {
       "benchmark_id": "node-link-sanitize",
@@ -52,7 +52,7 @@
         "Complete before/after sandbox snapshots; no harness writes between captures; observe configured protected objects."
       ],
       "uncertainties": [
-        "Linux qualification pending; symlink-only arm excluded from rediscovery; current grammar cannot spell selected sentinel address.",
+        "First intended historical qualification pair (7.5.2/7.5.3); NOT_RUN. M1 composition exists but its finite vocabulary cannot spell default outside/sentinel.txt. Linux qualification and hardlink-arm correspondence remain pending; symlink-only arm excluded from rediscovery.",
         "Relative hardlink sanitation arm inferred from inspected 7.5.2 source/fix; qualify correspondence; advisory describes absolute arm.",
         "Official package identities and upstream tag ancestry verified statically; benchmark dependency lock/images/worker pins and runtime/strict behavior remain unqualified."
       ],
@@ -190,7 +190,7 @@
         "Complete before/after sandbox snapshots; no harness writes between captures; observe configured protected objects."
       ],
       "uncertainties": [
-        "Selected pair pending qualification; semantic class overlaps ORAS CWD case."
+        "Selected pair NOT_RUN and pending qualification; M1 nested/reused-name composition exists but default sentinel addressing remains blocked. Semantic class overlaps ORAS CWD case."
       ],
       "sources": [
         {
@@ -278,7 +278,7 @@
         "Complete before/after sandbox snapshots; no harness writes between captures; observe configured protected objects."
       ],
       "uncertainties": [
-        "Published demonstration on macOS; Linux support inferred, not validated; composition grammar incomplete.",
+        "Published demonstration on macOS; Linux support inferred, not validated. M1 nested paths/reused names/link dependencies are implemented; constructive selected-case reachability and controlled external-name addressing remain unqualified.",
         "Official package identities and upstream tag ancestry verified statically; benchmark dependency lock/images/worker pins and runtime/strict behavior remain unqualified."
       ],
       "sources": [
@@ -420,7 +420,7 @@
         "Complete before/after sandbox snapshots; no harness writes between captures; observe configured protected objects."
       ],
       "uncertainties": [
-        "Node runtime compatibility and strict-mode class behavior pending; current collision names/destination vocabulary incomplete.",
+        "Node runtime compatibility and strict-mode class behavior pending. M1 same-name/type collision structures are implemented; default protected destination vocabulary and actual matching cache-transition effect remain unqualified.",
         "Official package identities and upstream tag ancestry verified statically; benchmark dependency lock/images/worker pins and runtime/strict behavior remain unqualified."
       ],
       "sources": [
@@ -1271,7 +1271,8 @@
       ],
       "uncertainties": [
         "Exact upstream source/fix unresolved; vendor backports not upstream versions; fixed extraction layout may miss nested boundary.",
-        "Upstream 1b91f5f66f8e6c490eef0fdee50f652cfe155844 changes CWD and hardlink target handling, but CVE/vendor-backport mapping unverified; no containing release tag at inspected upstream c17976eba549f44cbc34233cfaac4faddb3918c0. Pair remains UNKNOWN."
+        "Upstream 1b91f5f66f8e6c490eef0fdee50f652cfe155844 changes CWD and hardlink target handling, but CVE/vendor-backport mapping unverified; no containing release tag at inspected upstream c17976eba549f44cbc34233cfaac4faddb3918c0. Pair remains UNKNOWN.",
+        "Current GNU evaluation invocation is restricted to four allowlisted benign fixtures; it is not an arbitrary-input historical benchmark adapter. No candidate execution/qualification evidence exists."
       ],
       "sources": [
         {
@@ -1372,7 +1373,8 @@
         "Complete before/after sandbox snapshots; no harness writes between captures; observe configured protected objects."
       ],
       "uncertainties": [
-        "Advisory date is Ubuntu vendor notice; public report October 2016 and CNA publication December; 1.29.90 is development not fixed release."
+        "Advisory date is Ubuntu vendor notice; public report October 2016 and CNA publication December; 1.29.90 is development not fixed release.",
+        "Current GNU evaluation invocation is restricted to four allowlisted benign fixtures; it is not an arbitrary-input historical benchmark adapter. No candidate execution/qualification evidence exists."
       ],
       "sources": [
         {

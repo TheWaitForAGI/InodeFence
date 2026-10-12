@@ -1,11 +1,19 @@
 # Controlled rediscovery and evaluation protocol v1
 
-**PREDECLARED PLAN — NO EXPERIMENTAL RESULTS.** Implementation and execution
-require accepted global Phase-4 closeout → remaining P01–P05 implementation →
-a new benchmark Task Contract. Pre-audit freeze, Phase-1/2 audits and Phase-3 fixes
-are completed; this Draft does not assert global/evaluation readiness. [Set v1](benchmark-set-v1.md) fixes the cases; [baselines/ablations](baseline-and-ablation-v1.md)
-fix independent variables. Apply repository experiment-validation skill before
-promoting raw runs. This protocol does not authorize PoC execution in this lane.
+**PREDECLARED PLAN — NO HISTORICAL REDISCOVERY OR FORMAL COMPARATIVE RESULTS.**
+Capability baseline is main `8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`; definitions
+are frozen by the [G0 contract](../design/research-contract-v1.md), not an accepted
+main-experiment schedule. B0/B1/B3, A1/A2/A3 and completed policy evidence/analysis
+APIs are IMPLEMENTED and engineering TESTED. Historical qualification,
+full-pipeline timing, automatic policy interrupted-run preservation and known-class
+adjudication remain prerequisites. No vulnerability is claimed.
+
+**N01 node-tar 7.5.2 / 7.5.3 is the first intended historical qualification pair.**
+Other [Set v1](benchmark-set-v1.md) cells/subsets remain conditional. Follow
+oracle → harness → fuzzer → synthetic → historical validation → pilot →
+experiment freeze before formal runs. This documentation freeze does not execute
+PoCs, install historical versions or authorize discovery. [Baselines](baseline-and-ablation-v1.md)
+fix the exact executable comparison; apply experiment-validation before promoting raw evidence.
 
 ## Experimental unit and independent variables
 
@@ -14,7 +22,7 @@ promoting raw runs. This protocol does not authorize PoC execution in this lane.
 | RQ1 Rediscovery | Confirmed success, censored first-hit index and identical-input affected/fixed replay | Only admitted classes/releases and declared grammar |
 | RQ2 Feedback effectiveness | Paired B3 versus B0/B1 success and first-hit summaries | B0 changes overall search policy; B1 isolates violation admission; no path-only/fixed-recipe comparison |
 | RQ3 Ablation | A1/A2/A3 versus B3 on declared subsets, common full-state counts | Redundant nlink/fingerprint signals remain; projections preserve security evidence |
-| RQ4 Generality | Qualified Node and ORAS evidence under the same oracle | Unevaluated with fewer than two families; not universal coverage |
+| RQ4 Generality | Independently qualified extractor families under the same oracle | No second arbitrary-input family qualified; ORAS absent, GNU benign-only; no generality claim |
 | RQ5 Unknown-state discovery | Preserve unrelated contract candidates separately | Exploratory; no new vulnerability or zero-day requirement |
 | RQ6 Entry-transition feedback | P0/P1/P2 transition keys, retention and operator-yield metrics | Requires a qualified native completion boundary; transition novelty is not a violation |
 
@@ -60,9 +68,9 @@ metrics explain search behavior; they do not count vulnerabilities.
 
 Numeric values below are **proposed planning parameters, not frozen runnable
 configuration or measured results**. Freeze only after isolated full-path
-qualification, safe throughput/storage/memory evidence and policy implementation.
-Lock the protocol revision and complete schedule before formal runs. No value
-asserts that ExperimentConfig supports these policies now.
+qualification, safe throughput/storage/memory evidence and complete experiment binding.
+Lock the protocol revision and complete schedule before formal runs. SearchCampaignConfig
+supports these policies; legacy ExperimentConfig does not. Numeric values are not execution evidence.
 
 - Qualification pilot: 5 independent seeds 9001–9005, 200 executions per
   admitted condition. Pilot data is separate, never added to formal estimates.
@@ -174,8 +182,8 @@ escalation or automatic public disclosure is part of adjudication.
 
 Let N=1,000 configured executions, E=number of complete valid RunResults, K=20
 scheduled campaigns per cell, V=number of complete infrastructure-valid campaigns,
-H=number with a validated matching rediscovery, I=interesting observations under
-a variant's declared key, R=retained unique mutation parents. Seeds contribute
+H=number with a validated matching rediscovery, I=admission-eligible observations
+under a variant's declared key/policy, R=retained unique mutation parents. Seeds contribute
 to E, I and representation counts; rediscovery hits must be mutation-origin.
 Report scheduled/complete/invalid counts beside every aggregate. Let A be
 complete campaigns with unresolved/ambiguous candidate classification. Show
@@ -194,7 +202,7 @@ adjudication completion or an explicit pending-data limitation.
 | Unique StateSignatures | Count of distinct full v3 signature values over E; states/campaign; auxiliary count/E states per execution | All returned statuses included; no novelty from missing snapshot. Raw count is not number of bugs and digest/path novelty can inflate it |
 | Unique violation fingerprints | Distinct canonical generic fingerprints over E; classes/campaign; auxiliary count/E | No-hit can still have unrelated violations. Values omit effect direction; count is not vulnerability count |
 | Corpus growth | R_end − R_after_seed; parents/campaign; auxiliary growth/(E−4) | Report R_after_seed and R_end; fixed-seed policy has zero growing corpus; never compare raw size as effectiveness |
-| Interesting-observation rate | I/E; percent | Variant-specific denominator includes seed/no-op/reject/failed/timed-out complete steps; only descriptive across different keys |
+| Admission-eligible observation rate | I/E from SearchDecision.admission_eligible; percent | All seed/no-op/reject/failed/timed-out complete steps; B0 eligibility is zero. Diagnostic interesting is full-state OR fingerprint novelty and is reported separately; neither is effectiveness |
 | Repeatability | Successful fresh vulnerable replays / 3 per candidate; full semantic campaign repeats on pilot / scheduled pilot repeats | 3/3 required for confirmation; record each failure; do not demand equal raw inodes/timestamps |
 | Paired vulnerable/fixed discrimination | Count of identical candidate inputs with matching vulnerable 3/3 and fixed 0/3 / all deduplicated matching inputs nominated for review; percent | Replay failure or incomplete evidence = unresolved, reported in denominator and category count. Also report per-seed campaign hit/no-hit pairs, with invalid pairs separate |
 | Process and infrastructure outcomes | Each returned status count/E; infrastructure-invalid campaign count/K; percentages/counts | Failures/timeouts are not successes by themselves. Keep all statuses and exception reasons; no discounts |
@@ -207,7 +215,7 @@ classification pending; never relabel them as no-hit or drop them from tables.
 
 Keep analysis representation counts based on full unablated v3/fingerprints for
 all variants, independently of feedback eligibility. Distinguish these common
-analysis counts from each policy's own seen-key counts and I/E. Report diagnostic
+analysis counts from each policy's own seen-key counts and admission-eligible I/E; full diagnostic interesting is separate. Report diagnostic
 throughput E/full campaign seconds, useful bytes retained and malformed/rejected
 rate, without ranking effectiveness by archive rejection or raw novelty alone.
 
@@ -254,10 +262,11 @@ durations. Environment labels and config IDs alone are not this evidence.
 Retain immutable experiment configuration, manifest, all full canonical steps,
 inputs/regeneration information and TAR checksums, stdout/stderr, before/after
 snapshots, violations, feedback decisions, lineage and failure ledger. Logical
-case bytes are available in RunResult; future replay reader must rebuild the
-same TAR and verify its recorded hash. Current export retains completed campaigns
-only: incremental/exception-safe evidence is a documented gap, not an existing
-API. Pilot determines whether O(budget) memory and export volume fit the limits.
+case bytes are available in RunResult; existing legacy/policy readers rebuild the
+same TAR and verify its hash. Separate passive failure ledger and legacy journal
+APIs exist, but run_campaign/run_search_campaign expose no completed-step callback
+or failed-prefix result. Completed policy export retains only returned campaigns;
+automatic incremental/exception-safe attachment remains a documented gap. Pilot determines whether O(budget) memory and export volume fit the limits.
 Record immutable shared raw storage URI, SHA-256 manifest for every artifact and
 analysis script/source revision. Retain raw data through review and paper
 submission; no deletions before maintainer agrees an archival location.
@@ -272,84 +281,69 @@ With successful controlled evidence: representative Linux TAR extraction
 filesystem-state violations can be rediscovered from benign seeds; under these
 fixed policies, budgets and versions, feedback may improve rediscovery yield or
 latency over the specified unretained/state-only baselines; common contracts can
-express effects in qualified Node and Go targets. Declare any M1 extension when
+express effects in separately qualified extractor families (none beyond benign Node is established). Declare any M1 extension when
 stating these results; do not attribute them to untouched Generic Mutation v1.
 
 It cannot establish universal archive coverage, superiority over all fuzzers,
 a zero-day, guaranteed extractor safety, first-ever state fuzzing, actual secret
 exfiltration, general race detection, or causal proof of check/use coherence.
 No-hit fixed runs support only absence of observed matching evidence in this
-budget. B1 is full StateSignature novelty, **not path-only feedback**. Existing
-RQ2 fixed-recipe/path-only comparisons remain unevaluated unless a separately
-specified comparison is added; no misleading substitution is permitted.
+budget. B1 is full StateSignature novelty, **not path-only feedback**.
+RQ2/RQ3 are defined by B0/B1/B3 and A1/A2/A3. Path-only/fixed-recipe comparisons
+are absent and excluded; no superiority over them is claimed.
 
-## Post-audit timing and failure ticket precision
+## Implemented evidence infrastructure and remaining measurement gaps
 
-At reviewed #39, PreparedContainer.execute starts monotonic timing immediately
-before attached start and ends after stop/wait/inspect (or startup-race removal).
-It includes CLI start/attach/draining and verified termination, not TAR building,
-sentinel setup, container creation/inspection before BEFORE, snapshots, oracle/
-feedback, normal container removal, sandbox removal, corpus selection/mutation,
-admission/provenance capture, Node bind/identify or export. Snapshot phases are
-not timestamps. No complete campaign elapsed/first-evidence clock exists.
+[PreparedContainer.execute](../../../src/inodefence/execution/container.py) records
+target lifecycle duration, including attached start/draining/verified termination.
+That excludes TAR building, sentinel setup, container preparation, BEFORE/AFTER,
+oracle/feedback, normal cleanup and corpus selection/mutation. No policy step
+has the complete monotonic origin/evidence-ready/cleanup offsets required by this
+protocol's time-to-first-confirmed-evidence and throughput definitions. They are
+DESIGNED metrics, not measured outputs. Preserve UTC start/end and full-step
+monotonic costs at orchestration level before using them in formal analysis.
 
-Future P04 needs an orchestration monotonic origin, per-step start/evidence-ready/
-fully-completed offsets and campaign completion/failure offset, with start/end UTC
-for scheduling only. Full-step cost includes build/setup, container preparation,
-BEFORE, start/termination, AFTER/analysis and backend/runtime cleanup. Only a
-successful run_case return after both cleanup contexts is a completed step.
-Evidence computed before cleanup is provisional if cleanup subsequently fails.
-The time-to-first-confirmed-evidence metric uses that completed original step's
-offset; later replay/adjudication costs are separate. Report full campaign elapsed
-from admission through completion, search elapsed from first seed setup, and
-bind/identify/preflight/export costs separately; do not silently discard them in
-throughput or extrapolate container cost from target durations.
+[Failure ledger](../../../src/inodefence/evaluation/failure.py) and
+[legacy journal](../../../src/inodefence/evaluation/journal.py) preserve evidence
+explicitly supplied by a caller. They do not recover steps hidden by an aborted
+core call. [Repeated controller](../../../src/inodefence/evaluation/repeated.py)
+is bound to legacy ExperimentConfig, not alternative-policy orchestration.
+Both core runners propagate infrastructure errors without a partial result.
+Policy completed-only statistics cannot infer invalid-attempt/cleanup counts.
+Torn/uncertain evidence and infrastructure errors remain invalid attempts, not
+no-hit censoring or extractor nonviolations. Publish ledgers separately and
+verify their relationship to the scheduled attempts before formal aggregation.
 
-Infrastructure-invalid attempts include unavailable image/runtime, bad container
-policy/start, attached disconnect, uncertain stop/removal, output overflow,
-builder failure, incomplete BEFORE/AFTER, identity/config drift and export IO/
-encoding failure. Current exceptions abort without a partial CampaignResult;
-completed earlier steps stay only in memory, while partial export may lack a
-manifest. OutputLimitError preserves a bounded prefix in the exception but has
-no durable ledger. None is a target nonviolation or ordinary no-hit censor.
+[Policy export/reader](../../../src/inodefence/evaluation/policy_evidence.py),
+[configuration binding](../../../src/inodefence/evaluation/policy_binding.py),
+[dataset checks](../../../src/inodefence/evaluation/policy_dataset.py) and
+[statistics](../../../src/inodefence/evaluation/policy_statistics.py) preserve and
+verify completed full raw SearchCampaignResult evidence. They recompute case/TAR,
+state, oracle, key/admission/eligible-parent and counters; checksums do not prove
+authorship or RNG/proposal execution. Compatibility/clean-source checks precede
+pooling; differing policy/target/setup cells remain separate. First observed
+C0/C1/C2 indexes and generic hit/censor summaries are **not known-class rediscovery**.
 
-The post-audit ledger must preserve frozen config/source/artifacts, attempt/index,
-phase, exception, bounded output/available snapshot evidence, last fully complete
-step, cleanup outcome and incomplete-artifact checksums, even when no final result
-returns. Export failure is distinct from execution failure. Completed records
-need append/durability semantics and tamper checks; torn records/uncertain cleanup
-must remain invalid. Controlled clocks/exceptions/IO failures can test this with
-benign doubles; no vulnerable target is required to validate the infrastructure.
+## Replay, qualification and known-class adjudication boundary
 
-## Post-audit replay/adjudication ticket precision
+[Benign replay](../../../src/inodefence/replay/README.md) verifies exact input/TAR
+hashes and runs only the fixed four allowlisted benign cases in fresh runtimes,
+retaining real results and failed attempts. [Pair records](../../../src/inodefence/evaluation/pair.py)
+preserve caller-produced identical-input results; they do not execute six replays
+or classify CVEs. Generic qualification/matrix APIs check linked evidence and
+bindings, while assessor assertions require independent verification. Neither the
+static catalog nor a structurally valid report qualifies a historical effect.
 
-Current manifest v4 supplies stored policy/image/runtime/target/sentinel facts,
-verified worker/lock origin (IsolationProvenance v2), config ID, seed IDs, executed
-contexts and steps SHA-256. Each canonical step contains logical ArchiveCase/content,
-case ID, TAR SHA-256/builder format, command/status/duration, full BEFORE/AFTER,
-tagged v3 signature, violations, lineage and feedback. Optional experiment.json
-and its checksum are published in the same complete bundle when supplied; an
-unconfigured export can omit it. A future qualified campaign must retain the exact
-config artifact. There is no reader, retained TAR byte file, replay runner/record,
-original nomination timestamp or incremental failure history. EC-01 was resolved
-by #45; runtime UUID/inode/time need not match across replays. Strengthened EX-004
-export sync regression coverage does not implement P04's infrastructure-failure ledger.
+The planned matching-class nomination, three affected plus three fixed fresh
+replays and human root-cause review remain unexecuted. Candidates must be selected
+from all completed raw steps, irrespective of corpus admission, and tied to
+original step/index. Each replay must match its own frozen artifact/config/image,
+verify fresh lifecycle and retain negative/error results. Pair invariants are
+setup/options/runtime/policy, not equality of full config IDs across versions.
+No version/CVE match enters the oracle. Benign replay tests and synthetic
+verification do not supply historical classification evidence.
 
-P05 must verify manifest/steps checksums, schema/complete-record counts, original
-case ID and raw spelling/order/content, then rebuild with the pinned builder and
-reject a TAR hash mismatch before executing anything. Record any ORAS namespace/
-gzip transport hash separately and reproduce the same wrapper mapping. Select
-candidates deterministically from all completed raw steps, independently of
-whether search admitted them. Link each nomination to its original step/index.
-
-Replay the identical logical input/TAR in three fresh affected runs and three
-fresh fixed runs with complete raw evidence and verified teardown. Each member
-matches its own frozen version/config/image identity; affected and fixed configs
-necessarily differ in declared target artifacts. Compare a documented invariant
-setup/options/runtime/policy subset, not equality of their full config hashes.
-Record all six results, failed attempts and root-cause adjudication separately.
-Matching 3/3 affected versus 0/3 fixed satisfies the planned classification only
-with lifecycle-valid generic C0/C1/C2 evidence and source correspondence. Flaky,
-infrastructure-invalid or unadjudicated inputs remain separate/pending; no CVE
-number or version condition enters Oracle. Benign round-trip/tamper tests and
-mocked six-run adjudication must precede any separately authorized affected replay.
+All numeric budgets, subsets and confirmation criteria above retain the existing
+predeclared plan. This G0 correction reconciles metric terminology with actual
+SearchDecision fields; it does not supply results, approve conditional targets
+or change budgets after outcomes.

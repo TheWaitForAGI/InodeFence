@@ -79,6 +79,13 @@ mixed/directory-child/independent-file fixture에서 비교하고 exact associat
 identity를 확인하고 raw run에서 mechanical summary를 다시 계산해 저장된 summary와 byte-level
 동등성을 검증한다. `--output`은 기존 파일을 덮어쓰지 않는다.
 
+`scripts.container_host` / `scripts.container_controller`의 `qualify-node-n01` mode는 정확히
+두 immutable image ID와 새 absolute evidence path를 요구한다. Socket을 controller에 노출하지
+않는 기존 stdio broker와 `ContainerExecutionBackend` policy를 그대로 사용해 N01 benign
+compatibility, oracle control, M1 reachability와 affected/fixed known-class qualification만 실행한다.
+일반 benchmark 선택기나 formal campaign mode가 아니며 `.github/workflows/n01-qualification.yml`
+이 exact locks/build records/raw evidence를 하나의 artifact로 보존한다.
+
 `PYTHONPATH=src python scripts/qualify_libarchive_entry_boundary.py --output <new-file>
 --image-id <sha256> --base-image-id <sha256>`는 별도 libarchive public write-disk reference
 target에서 `archive_write_finish_entry()`와 final writer close의 syscall 순서를 비교한다.

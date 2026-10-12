@@ -1,0 +1,70 @@
+name: N01 Qualification
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [experiment/n01-node-historical-qualification]
+
+permissions:
+  contents: read
+
+jobs:
+  qualify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact qualification source
+        uses: actions/checkout@3d3c42e5aac5ba805825a76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up host broker Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - name: Prepare checksummed N01 build contexts
+        run: |
+          PYTHONPATH=src python -m inodefence.evaluation.node_packaging prepare experiments/benchmarks/locks/node-tar-7.5.2.package-lock.json "$RUNNER_TEMP/node-tar-7.5.2" --repository "$GITHUB_WORKSPACE"
+          PYTHONPATH=src python -m inodefence.evaluation.node_packaging prepare experiments/benchmarks/locks/node-tar-7.5.3.package-lock.json "$RUNNER_TEMP/node-tar-7.5.3" --repository "$GITHUB_WORKSPACE"
+      - name: Build and record immutable target images
+        run: |
+          PYTHONPATH=src python -m inodefence.evaluation.node_packaging build "$RUNNER_TEMP/node-tar-7.5.2" --docker-context default
+          PYTHONPATH=src python -m inodefence.evaluation.node_packaging build "$RUNNER_TEMP/node-tar-7.5.3" --docker-context default
+      - name: Build trusted controller
+        run: docker build -f .devcontainer/Dockerfile -t inodefence-controller:n01 .
+      - name: Prepare independent trusted Linux controller
+        run: |
+          docker volume create inodefence-n01-runtime
+          docker run -d --name inodefence-n01-controller --user vscode --workdir /workspaces/InodeFence --env PYTHONPATH=/workspaces/InodeFence/src --mount "type=bind,src=$GITHUB_WORKSPACE,dst=/workspaces/InodeFence,readonly" --mount type=volume,src=inodefence-n01-runtime,dst=/var/lib/inodefence inodefence-controller:n01 sleep infinity
+          docker exec --user root inodefence-n01-controller chown vscode:vscode /var/lib/inodefence
+          docker exec inodefence-n01-controller python -m pip install pytest
+          docker exec inodefence-n01-controller git config --global --add safe.directory /workspaces/InodeFence
+      - name: Run isolated oracle, reachability and affected-fixed qualification
+        run: |
+          IF_N01_AFFECTED=$(jq -r .image_id "$RUNNER_TEMP/node-tar-7.5.2/build.json")
+          IF_N01_FIXED=$(jq -r .image_id "$RUNNER_TEMP/node-tar-7.5.3/build.json")
+          PYTHONPATH=src python -m scripts.container_host --context default --controller inodefence-n01-controller --volume inodefence-n01-runtime --image "$IF_N01_AFFECTED" --image "$IF_N01_FIXED" --evidence /tmp/n01-qualification-raw.json qualify-node-n01
+      - name: Preserve raw evidence and exact build records
+        if: always()
+        run: |
+          mkdir -p n01-qualification-artifact/affected n01-qualification-artifact/fixed
+          cp experiments/benchmarks/locks/node-tar-7.5.2.package-lock.json n01-qualification-artifact/affected/package-lock.json
+          cp experiments/benchmarks/locks/node-tar-7.5.3.package-lock.json n01-qualification-artifact/fixed/package-lock.json
+          cp "$RUNNER_TEMP/node-tar-7.5.2/packaging.json" n01-qualification-artifact/affected/packaging.json
+          cp "$RUNNER_TEMP/node-tar-7.5.3/packaging.json" n01-qualification-artifact/fixed/packaging.json
+          if test -f "$RUNNER_TEMP/node-tar-7.5.2/build.json"; then cp "$RUNNER_TEMP/node-tar-7.5.2/build.json" n01-qualification-artifact/affected/build.json; fi
+          if test -f "$RUNNER_TEMP/node-tar-7.5.3/build.json"; then cp "$RUNNER_TEMP/node-tar-7.5.3/build.json" n01-qualification-artifact/fixed/build.json; fi
+          if docker exec inodefence-n01-controller test -f /tmp/n01-qualification-raw.json; then docker cp inodefence-n01-controller:/tmp/n01-qualification-raw.json n01-qualification-artifact/raw.json; fi
+          find n01-qualification-artifact -type f -print0 | sort -z | xargs -0 sha256sum >n01-qualification-artifact/checksums.txt
+      - name: Upload immutable qualification bundle
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: n01-node-tar-qualification
+          path: n01-qualification-artifact
+          if-no-files-found: error
+          retention-days: 30
+      - name: Remove only this job's controller and volume
+        if: always()
+        run: |
+          docker rm -f inodefence-n01-controller
+          docker volume rm inodefence-n01-runtime

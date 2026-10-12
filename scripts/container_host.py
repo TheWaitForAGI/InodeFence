@@ -22,17 +22,27 @@ def main() -> int:
     parser.add_argument("--context", required=True)
     parser.add_argument("--controller", required=True)
     parser.add_argument("--volume", required=True)
-    parser.add_argument("--image", required=True)
+    parser.add_argument("--image", required=True, action="append")
     parser.add_argument(
         "--evidence", type=Path, help="new absolute output path inside trusted Linux controller"
     )
     parser.add_argument(
         "mode",
-        choices=("validate", "validate-node-image", "validate-node-target", "benign-node-smoke"),
+        choices=(
+            "validate",
+            "validate-node-image",
+            "validate-node-target",
+            "benign-node-smoke",
+            "qualify-node-n01",
+        ),
     )
     args = parser.parse_args()
-    if (args.mode == "benign-node-smoke") != (args.evidence is not None):
-        parser.error("benign-node-smoke requires --evidence; validation modes do not export")
+    exports = args.mode in {"benign-node-smoke", "qualify-node-n01"}
+    if exports != (args.evidence is not None):
+        parser.error("selected execution mode and --evidence do not match")
+    expected_images = 2 if args.mode == "qualify-node-n01" else 1
+    if len(args.image) != expected_images:
+        parser.error(f"{args.mode} requires exactly {expected_images} image(s)")
     executable = shutil.which("docker")
     if executable is None:
         raise BackendError("host Docker CLI unavailable")
@@ -63,8 +73,7 @@ def main() -> int:
         args.volume,
         "--owner",
         owner,
-        "--image",
-        args.image,
+        *(argument for image in args.image for argument in ("--image", image)),
         *(("--evidence", str(args.evidence)) if args.evidence is not None else ()),
         args.mode,
     )

@@ -71,6 +71,9 @@ Linux filesystem event, syscall trace와 prefix replay 후보는 controlled qual
 공통 native completion boundary 조건을 충족하지 못했다. 현재 결정은 **QUALIFIED FAIL**이며
 native mode는 **NOT_IMPLEMENTED**다. 별도 libarchive 3.7.2 public write-disk 후보도 directory
 metadata가 final close까지 지연되어 공통 completion boundary에 **QUALIFIED FAIL**했다.
+Source-guarded node-tar private completion marker는 entry association에 성공했지만 mixed/
+independent 작업이 archive order 밖에서 완료되고 callback snapshot에 후속 effect가 포함됐으며
+한 consistency failure와 scheduling 변화가 관찰돼 역시 **QUALIFIED FAIL**했다.
 
 ## 4. 현재 어디까지 했는가?
 

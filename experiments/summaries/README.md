@@ -32,3 +32,8 @@ pinned node-tar의 public event, inotify, strace와 prefix replay 후보를 beni
 [libarchive entry-boundary qualification v1](libarchive-entry-boundary-qualification-v1.md)은
 별도 public write-disk reference target의 `archive_write_finish_entry()` 이후에도 directory
 metadata가 final close까지 지연됨을 검증한 **QUALIFIED FAIL** 기록이다.
+
+[node-tar internal completion qualification v3](node-internal-completion-qualification-v3.md)는
+source-guarded private completion callback의 entry association, effect-completion order,
+callback-time snapshot consistency와 stock 대비 overhead를 검증한 **QUALIFIED FAIL** 기록이다.
+정확한 marker association을 native archive-ordered transition producer로 승격하지 않는다.

@@ -12,6 +12,8 @@
 - fresh-process prefix replay as native transition evidence: **QUALIFIED FAIL**
 - Python per-member extraction as an equivalent target invocation: **QUALIFIED FAIL**
 - libarchive `archive_write_finish_entry()` as a complete boundary: **QUALIFIED FAIL**
+- private `checkFs2` marker association: **TESTED**, exact for the benign fixture
+- private callback-time archive-ordered snapshots: **QUALIFIED FAIL**
 - fanotify qualification: **NOT_RUN**
 - Native entry-transition mode: **NOT_IMPLEMENTED**
 - Transition-feedback effectiveness: **NOT_RUN**, **HYPOTHESIS**
@@ -28,6 +30,7 @@ The investigation used the repository pin Node `22.22.0`, node-tar `7.5.22`.
 | --- | --- |
 | `tar/dist/commonjs/unpack.js` | `03515ed98f5df6ec0f23177b7016274f8cdc91b038d0dcd036f438a70e614eed` |
 | `tar/dist/commonjs/parse.js` | `c90f3771fa6c839b81c1d24961786463a195dfb8a59a8f190da30d33e7e1f769` |
+| actual CommonJS package entrypoint `index.min.js` | `b9464172723801f6ad013a1a819b5f31838753559d56c879202d7fb3c1326167` |
 | `tools/node-tar/package-lock.json` | `28dc7696eda4a36462e927d5d42c1e764646631aed21d3e004999a7c24db8930` |
 | existing `_node_worker.cjs` | `feb13d7be5f5718769bebd4b0e375ea3f535abffd45223494dd518263593498b` |
 
@@ -52,10 +55,11 @@ Filesystem completion has a different lifecycle:
 - global finish/end is delayed until parser end and the internal pending count is zero.
 
 There is no public event that carries the logical entry identity at the common
-post-`UNPEND` point. The internal pending counter/path reservation callbacks are
-implementation details. Wrapping them would depend on private symbols and a
-pause/ack protocol would alter scheduling and possibly extraction semantics.
-That path is not qualified as observation-only instrumentation.
+post-effect point. The internal pending counter/path reservation callbacks are
+implementation details. Qualification v3 subsequently tested a source-guarded wrapper
+around the actual bundled `checkFs2` callback without a pause/ack protocol. It supplied
+exact identity markers, but its snapshots still failed the archive-ordered checkpoint
+contract and altered the observed scheduling distribution.
 
 ## Reproducible benign probe
 
@@ -108,6 +112,32 @@ Future work may re-evaluate a documented upstream completion hook or a separatel
 qualified observation-only mechanism. Any mechanism that serializes node-tar's
 normally overlapping work, pauses internal reservations, or changes cache/queue
 behavior must fail qualification unless semantic equivalence is demonstrated.
+
+## Private completion qualification v3
+
+The source-guarded internal experiment at clean commit `9ea306f7` compared stock,
+marker-only and callback-time snapshot profiles over 20 repetitions of three benign
+cases. The actual package entrypoint is bundled `index.min.js`, so the experiment guarded
+both its SHA-256 and the readable standalone `unpack.js`, then wrapped the exported class
+that `tar.x` constructs.
+
+All 440 marker/snapshot callbacks had exact ordinal/path/type/link-target association and
+all 180 processes completed. Exact identity did not imply an archive-prefix state:
+
+- mixed snapshot completion was `1,0,2,3,4` in 20/20 runs, and every ordinal-0 snapshot
+  already contained the ordinal-1 directory;
+- independent-files snapshot completion was `0,1,3,2` in 18/20 runs, while every one of
+  the 19 successful first snapshots contained all four archive paths;
+- one of 220 snapshot callbacks detected an object changing after capture and recorded an
+  observation failure; and
+- snapshot median target duration was 1.336×–1.660× stock across the three cases, while
+  the observed marker/snapshot completion-order distributions also differed.
+
+Final semantic states were stable and equal across profiles, but this does not establish
+intermediate scheduling equivalence. The candidate is **QUALIFIED FAIL** for current
+`TransitionTrace`. An unordered/deferred model cannot simply trust delivered-callback sets,
+because physical effects were visible before their callbacks. See the
+[validated summary](../../../experiments/summaries/node-internal-completion-qualification-v3.md).
 
 ## Controlled qualification v2
 

@@ -68,6 +68,17 @@ Public async/sync event, Linux inotify, strace, fresh-process prefix replay와 P
 per-member 호출을 기록하며 기존 output을 덮어쓰지 않는다. 결과는 raw qualification evidence이고
 native adapter, Security Contract verdict 또는 transition-feedback 효과 결과가 아니다.
 
+`PYTHONPATH=src python scripts/qualify_node_internal_completion.py --output <new-file>`는 같은
+pinned target의 실제 package entrypoint에 포함된 private `checkFs2` completion callback을
+source hash guard 아래 관찰한다. Stock, marker-only, callback-time snapshot profile을 benign
+mixed/directory-child/independent-file fixture에서 비교하고 exact association, completion order,
+후속 entry effect 포함, snapshot failure, final semantic equivalence와 overhead를 기록한다.
+설치 package를 수정하지 않으며 결과가 current `TransitionTrace` producer qualification을
+통과하기 전까지 target adapter로 사용할 수 없다.
+`PYTHONPATH=src:. python scripts/analyze_node_internal_completion.py <raw.json>`은 고정 fixture
+identity를 확인하고 raw run에서 mechanical summary를 다시 계산해 저장된 summary와 byte-level
+동등성을 검증한다. `--output`은 기존 파일을 덮어쓰지 않는다.
+
 `PYTHONPATH=src python scripts/qualify_libarchive_entry_boundary.py --output <new-file>
 --image-id <sha256> --base-image-id <sha256>`는 별도 libarchive public write-disk reference
 target에서 `archive_write_finish_entry()`와 final writer close의 syscall 순서를 비교한다.

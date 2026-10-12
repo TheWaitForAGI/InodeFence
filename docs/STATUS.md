@@ -1,15 +1,16 @@
 # 현재 프로젝트 상태
 
-상태 기준일: **2026-10-06**. Capability baseline은 main
+상태 갱신일: **2026-10-12**. G0 capability baseline은 main
 **`8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`**다. 이 SHA는 G0 문서 동결이
-검토한 구현 revision이며 향후 main 또는 문서 PR의 SHA를 뜻하지 않는다.
+검토한 구현 revision이며 최신 main을 뜻하지 않는다. #77–#84 연구 stack은 main에
+통합됐고, internal completion qualification v3의 clean harness revision은 `9ea306f7`이다.
 
 ## 현재 단계와 연구 판정
 
 Layer 2–5 core와 Layer 6 evaluation infrastructure가 구현돼 있다. Layer 6 전체나
-paper/effectiveness 검증이 완료된 것은 아니다. 현재 작업은
-[Research Contract v1](research/design/research-contract-v1.md)의 **G0 문서 동결**이다.
-G0 승인과 G1 이후 oracle/harness/fuzzer/qualification/experiment readiness는 별개다.
+paper/effectiveness 검증이 완료된 것은 아니다. [Research Contract
+v1](research/design/research-contract-v1.md)의 G0 문서 동결과 transition synthetic stack은
+통합됐지만, G1 이후 historical qualification/experiment readiness는 별개다.
 과거 Phase-4 global-closeout 대기 문구는 현재 구현 상태로 사용하지 않는다.
 [역사적 감사](research/benchmarks/engine-contract-audit.md)와
 [handoff](research/benchmarks/post-audit-backlog.md)는 해당 revision의 기록이다.
@@ -29,7 +30,7 @@ Benign smoke와 synthetic/unit tests는 이 문장의 예외가 아니다.
 | Linux execution | fresh runtime + container-required third-party boundary | backend / prepared invocation / verified artifact admission | [container integration](../tests/README.md); pinned Node benign smoke | historical pair 미검증 |
 | Mutation | legacy / M1 / A3 contracts | eight slots; M1 nested/reused names/dependencies; no-reorder versions | [mutator tests](../tests/test_mutator.py), [search composition](../tests/test_campaign_search.py) | reachable historical effects 미검증 |
 | Search / feedback | B0/B1/B3 and A1/A2 | `SearchState`, `run_search_campaign`, explicit policy config | [policy checks](../tests/test_feedback_search_contracts.py), [trusted reference integration](../tests/test_campaign_search_integration.py) | 비교 효과 미검증 |
-| Entry transitions | P0 final-state, P1 transition retention, P2 transition-adaptive mutation | model, novelty, scheduler, campaign, checksummed export/reader/replay/metrics | synthetic tests plus node-tar 7.5.22 and libarchive 3.7.2 controlled qualification | tested native candidates QUALIFIED FAIL; producer / target effectiveness NOT_RUN |
+| Entry transitions | P0 final-state, P1 transition retention, P2 transition-adaptive mutation | model, novelty, scheduler, campaign, checksummed export/reader/replay/metrics | synthetic tests plus node-tar 7.5.22 public/OS/private and libarchive 3.7.2 controlled qualification | tested native candidates QUALIFIED FAIL; producer / target effectiveness NOT_RUN |
 | Minimization | bounded deterministic generic/USTAR reduction | core and exact-fingerprint evidence binding | [minimizer tests](../tests/test_minimizer.py), [USTAR checks](../tests/test_minimizer_ustar.py) | historical/unknown candidate 없음 |
 | Evaluation / reproduction | explicit provenance, immutable raw → verified derivation | reader, pair records, passive failure ledger/journal, qualification/matrix, benign replay, completed policy export/config/dataset/statistics | [evaluation tests](../tests/evaluation/), [benign replay tests](../tests/replay/) | formal dataset / known-class adjudication / artifact reproduction 없음 |
 | C3/C4 / generality | 후속 contracts / RQ4 | C3/C4와 ORAS adapter 없음; GNU route는 benign allowlist만 | broader scope의 실행 증거 없음 | 미검증 |
@@ -90,12 +91,23 @@ fixtures. Public events precede common write/close/metadata completion; event re
 snapshots can include later effects or fail coherent capture; syscall completion order is
 not archive order; prefix replay is a separate counterfactual execution. A separate
 libarchive 3.7.2 public write-disk qualification associated all ordinal/path markers but
-applied directory metadata only during final writer close. Both controlled candidate sets
-are **QUALIFIED FAIL** for the current complete ordered-checkpoint contract. No native
-producer is implemented, and P0/P1/P2 target effectiveness remains **NOT_RUN**. See the
+applied directory metadata only during final writer close.
+
+A third source-guarded qualification wrapped node-tar's actual bundled private `checkFs2`
+callback. All 440 marker/snapshot callbacks had exact entry association, but mixed snapshot
+completion was out of archive order in 20/20 runs, independent-files was out of order in
+18/20, callback snapshots included later-entry effects, and one of 220 snapshot callbacks
+recorded a consistency failure. Snapshot median target time was 1.336×–1.660× stock in the
+three benign cases and marker/snapshot scheduling distributions differed. Final semantic
+states remained equal, which is insufficient to establish intermediate neutrality. All
+three controlled candidate sets are **QUALIFIED FAIL** for the current complete
+ordered-checkpoint contract. No native producer is implemented, and P0/P1/P2 target
+effectiveness remains **NOT_RUN**. See the
 [qualification decision](research/design/entry-transition-observation-v1.md) and retained
 [node-tar](../experiments/summaries/node-transition-observation-qualification-v2.md) /
-[libarchive](../experiments/summaries/libarchive-entry-boundary-qualification-v1.md) summaries.
+[libarchive](../experiments/summaries/libarchive-entry-boundary-qualification-v1.md) /
+[internal completion](../experiments/summaries/node-internal-completion-qualification-v3.md)
+summaries.
 
 Legacy `ExperimentConfig` v1/v2는 여전히 B3/legacy mutation만 허용한다. 별도
 `PolicyEvaluationConfig`와 completed policy export/reader/config/dataset/statistics가 구현됐다.
@@ -117,7 +129,8 @@ controlled setup을 검증하지 않은 상태에서 unknown-vulnerability campa
 
 순서를 유지한다: G0 정의 → oracle → harness → fuzzer correctness → synthetic →
 historical qualification → pilot → experiment freeze → main experiments → candidate triage →
-analysis → paper → independent reproduction. 현재 문서 PR은 이 중 G0만 다룬다.
+analysis → paper → independent reproduction. 현재 다음 독립 gate는 N01 historical
+qualification이다.
 
 [Evaluation protocol](research/benchmarks/evaluation-protocol-v1.md)의 budgets/subsets는
 pilot 이전의 제안이며 main-experiment freeze가 아니다. Negative result, qualification failure,

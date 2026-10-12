@@ -3,8 +3,11 @@
 Layer 5의 독립 API는 `feedback.SearchState(initial_cases, SearchPolicy)`다.
 기존 `Corpus`, `FeedbackDecision`, bounded campaign과 manifest v4/step v1은 그대로다.
 B0/B1/B3는 `run_search_campaign`의 explicit caller configuration으로 실행 가능하다.
-Legacy ExperimentConfig / manifest / journal binding은 아직 제공하지 않는다.
-연구 효과를 검증한 결과가 아니다.
+Capability baseline은 main `8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`다.
+별도 completed policy export/reader, PolicyEvaluationConfig, dataset/statistics binding이 구현됐다.
+Legacy ExperimentConfig / manifest v4 / journal binding은 이 policy 경로가 아니다.
+Automatic policy journal/repetition은 아직 연결되지 않았다. 연구 효과를 검증한 결과가 아니다.
+[Research Contract](research-contract-v1.md)와 [STATUS](../../STATUS.md)를 따른다.
 
 | Policy ID | Admission | Seed phase 이후 parent |
 | --- | --- | --- |
@@ -33,24 +36,28 @@ Corpus의 admission metadata, diagnostics, counters, uniform parent sequence와 
 테스트에서 비교한다. B0의 RNG는 초기 parent draw 후 mutation caller만 소비한다.
 Paired seeds는 동일 mutation stream을 보장하지 않는다.
 
-## Evaluation ownership에 전달할 interface 요구사항
+## Legacy evidence 경계와 구현된 separate policy binding
 
 현재 `evaluation.verify`, `evaluation.journal`, `evaluation.dataset`은 manifest v4,
 CampaignStep v1과 B3-only Corpus replay / previously retained parent rule에 고정돼 있다.
-Search 담당은 이 파일들을 변경하지 않는다. Alternative ExperimentConfig/export binding 전 필요한 계약:
+Search 담당은 이 파일들을 변경하지 않는다. 아래 계약은 separate policy export/reader에 구현됐으며 legacy journal/config에는 묵시적으로 적용되지 않는다:
 
 1. Versioned step은 SearchDecision의 full diagnostics와 policy admission을 함께 보존한다.
 2. Versioned manifest/result에는 explicit feedback/mutation policy ID, retained IDs와 B0
    working-set accounting을 넣는다. 기존 B3 config JSON/config ID를 보존한다.
-3. Reader/journal은 declared policy로 admission을 검증한다. B0 첫 parent는 declared seed
+3. Separate completed policy reader는 declared policy로 admission을 검증한다. Legacy journal의 policy 지원은 없다. B0 첫 parent는 declared seed
    bank, 이후 parent는 이전 child이며 status/novelty filtering은 없다.
 4. A1/A2는 feedback-only projected key를 쓰고 full signature/oracle evidence와 full
    diagnostic indexes를 보존한다. Projected-key count와 full-state count를 구분한다.
 5. Config parser는 implemented-and-bound ID만 허용한다. 알려진 core ID라는 이유로
    현재 B3 runner에 silent fallback하지 않는다.
 
-이 통합은 Evaluation 영역 변경 없이는 완료할 수 없으므로 skip한다. Core APIs는 독립
-검증/실행할 수 있다. 새 campaign/export schema 지원 여부는 main에서 다시 확인한다.
+현재 [policy_evidence](../../../src/inodefence/evaluation/policy_evidence.py)와
+[policy_binding](../../../src/inodefence/evaluation/policy_binding.py)이 completed result의
+model/policy/admission/raw derivations와 explicit config/provenance를 검증한다.
+[Policy dataset](../../../src/inodefence/evaluation/policy_dataset.py) 및
+[statistics](../../../src/inodefence/evaluation/policy_statistics.py)도 있다.
+이는 actual RNG/mutation execution, known-class qualification 또는 interrupted-run recovery의 증거가 아니다.
 
 ## A1/A2 feedback projection
 
@@ -69,15 +76,14 @@ B0는 두 novelty channel과 projection에 관계없이 이전 child로 진행�
 
 SearchDecision에 feedback_key_novel을 추가하여 core envelope를 v2로 올렸다.
 Legacy FeedbackDecision/Corpus/CampaignStep/manifest/config schema와 ID는 바꾸지 않았다.
-Projection ID는 core 설정 property에서 식별할 수 있지만 ExperimentConfig/provenance
-binding은 아직 Evaluation interface dependency다. Baseline 비교 실험은 실행하지 않았다.
+Projection ID는 SearchCampaignConfig와 separate completed policy evidence/config binding에 보존된다. Legacy ExperimentConfig는 여전히 대안 projection을 허용하지 않는다. Baseline 비교 실험은 실행하지 않았다.
 
 ## Bound config compatibility and composed baseline checks
 
 ExperimentConfig의 기존 B3/legacy mutation constants는 SearchPolicy.B3와 MutationPolicy.LEGACY의
 versioned ID를 사용한다. Serialized strings, JSON schema와 기존 config ID는 그대로다.
 Fixed target version의 golden config ID로 compatibility를 검사한다.
-Unknown ID와 현재 core-only B0/B1/M1/A3 ID는 모두 config에서 즉시 거부하며 실행되지 않는다.
+Unknown ID와 B0/B1/M1/A3 ID는 legacy ExperimentConfig에서 즉시 거부한다. 별도 SearchCampaignConfig / PolicyEvaluationConfig 경로는 지원한다.
 이 검사는 alternative policies가 ExperimentConfig에 연결됐다는 의미가 아니다.
 
 All execution statuses에서 semantic state가 같으면 novelty/admission이 생기지 않는다.
@@ -114,9 +120,34 @@ unique_feedback_keys, active_case_id와 frozen ExecutionProvenance를 보존한�
 zero이며 seed-only budget에서는 active_case_id도 None이다. Seed IDs와 active child는 retained
 corpus와 구분한다. Diagnostic indexes와 full step evidence는 budget에 비례한 메모리를 사용한다.
 
-이 API는 in-memory engineering evidence를 반환한다. Legacy exporter/journal/verified dataset에
-묵시적으로 넣지 않는다. 해당 readers가 새 model/declared policies/B0 lineage를 지원해야
-ExperimentConfig binding과 durable comparison이 가능하며 위 interface dependency는 남아 있다.
+이 API는 in-memory evidence를 반환하며 separate policy export/reader/config/dataset 경로가
+완료된 결과를 보존/검증한다. Legacy exporter/journal/dataset에 묵시적으로 넣지 않는다.
+Core callback/partial result가 없어 automatic incremental attachment는 여전히 불가하다.
+Compatibility/statistics 구현은 formal durable campaign orchestration이나 effectiveness proof가 아니다.
 Unit tests는 policy/projection/mutation 조합과 legacy B3 parity를 확인한다. Tiny Python reference
 integration은 기존 runtime에서 full pipeline/archive hash binding을 확인하며 benchmark 결과나
 정책 효과의 증거가 아니다.
+
+## Independent transition-retention core
+
+Entry-transition track은 기존 B0/B1/B3 enum, admission, evidence shape를 수정하지 않는다.
+`TransitionSearchPolicy`의 P0
+`final-state-v3-or-violation-v1-uniform-mutation-v1`과 P1
+`transition-v1-or-violation-v1-uniform-mutation-v1`, P2
+`transition-v1-or-violation-v1-adaptive-mutation-v1`을 별도 API로 제공한다.
+
+P0는 FULL B3와 같은 StateSignature v3 OR violation admission 및 caller RNG uniform parent
+selection을 재현한다. P1은 final-state admission만 unique TransitionFeedbackKey admission으로
+대체하며 violation channel과 uniform parent/mutation은 유지한다. `TransitionSearchDecision`은
+full-state, violation, transition novelty와 trace completeness를 분리한다. Adaptive operator
+selection은 P2에만 적용된다. P2 admission은 P1과 같고, 새 transition key가 하나 이상인
+attempt에만 bounded binary reward를 준다. P0/P1의 uniform scheduler는 outcome에 관계없이
+모든 operator weight를 1로 유지한다.
+
+Native node-tar completion boundary가 qualification에 실패했으므로 transition campaign은
+caller-owned `TransitionRunResult` producer를 조합하는 in-memory core다. Existing isolated
+target gate와 legacy ExperimentConfig를 우회하거나 formal experiment readiness를 주장하지
+않는다. 별도 transition evidence exporter/reader는 completed caller-owned result를 passive하게
+검증하며 target을 실행하지 않는다. Synthetic sequence에서 P0/P1/P2 실행 가능성, P0/B3 admission/parent RNG
+parity, legacy uniform mutation RNG parity와 adaptive weight bound를 테스트했다.
+Effectiveness는 **NOT_RUN**이다.

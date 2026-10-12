@@ -70,7 +70,13 @@ Crash, code coverage, output path만 feedback으로 쓰는 대신 다음과 같�
 - 초기 target: node-tar, oras-go
 - 선택 target: GNU tar
 - 초기 관찰 방식: extraction 전/후 filesystem snapshot
+- entry-transition 확장: proven native completion boundary가 있는 adapter의 entry별 snapshot
 - 핵심 보안 축: object identity, external effect
+
+Generic checkpoint/transition/feedback/scheduler/evidence infrastructure는 **IMPLEMENTED** 및
+synthetic target에서 **TESTED**다. Pinned node-tar public event는 completion boundary가 아니어서
+native node-tar transition observation은 **NOT_IMPLEMENTED**다. Prefix replay는 사용하지 않는다.
+따라서 transition feedback 효과와 benchmark 결과는 **NOT_RUN**, **HYPOTHESIS** 상태다.
 
 ## 명시적인 Non-Goal
 

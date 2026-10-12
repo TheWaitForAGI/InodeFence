@@ -1,6 +1,15 @@
 # Engine capabilities and research assumptions — Phase-4 refresh
 
-**Current implementation review and planning, not benchmark results.**
+> **HISTORICAL RECORD — audited revision `d1982e4` (2026-10-04).**
+> Present-tense implementation/status language, test counts, P-task proposals and
+> PR #35/Phase-4 instructions below describe that review, not current main.
+> They are superseded for current capability/claim scope by
+> [Research Contract v1](../design/research-contract-v1.md) and [STATUS](../../STATUS.md),
+> anchored at `8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`.
+> Original validation records remain intact; no historical execution is inferred.
+
+
+**Historical implementation review and planning, not benchmark results.**
 Audited integrated main: `d1982e4cf3174e28d4eeb73af7b32829f6751b30` (2026-10-04).
 This existing PR #35 branch incorporates that main with a history-preserving merge
 from its actual published head `5b3745e40e5d43c3b79fa9fe7ca1872f1d2e1106`.

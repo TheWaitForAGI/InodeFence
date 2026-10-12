@@ -30,6 +30,23 @@ The caller owns the directory's parents; bundle/file symlinks are rejected.
 This reader loads the complete bundle in memory, matching the core's bounded
 campaign representation. No partial record is returned as verified evidence.
 
+## Entry-transition evidence
+
+`export_transition_result` passively writes an explicit `TransitionEvaluationConfig`,
+the complete transition campaign result and a last-published checksummed manifest.
+`verify_transition_evidence` verifies each final RunResult/provenance binding and
+replays parent selection, stable operator dispatch, mutation, transition novelty,
+retention and scheduler outcome from the recorded RNG seed. Corrupt or coherently
+rehashed decision evidence fails closed.
+
+`summarize_transition_evidence` derives transition key/sequence, novelty, scheduler
+and checkpoint-cost observations only after fresh verification.
+`summarize_transition_statistics` requires equal controls, permits search policy as
+the P0/P1/P2 arm, optionally permits declared RNG-seed variation, and reports
+censored first-novel observations. These APIs neither execute a target nor qualify
+an entry boundary. Native node-tar transition observation and formal benchmarks are
+**NOT_RUN**; transition counts are not vulnerability counts.
+
 ## Pair records
 
 `compare_pair(case, PairArm(provenance_a, result_a), PairArm(provenance_b, result_b))`

@@ -15,7 +15,7 @@ result, such as an internal name sharing an external inode. Similar effects do
 not imply identical bugs; several identifiers for the same mistake do not imply
 independent semantic coverage.
 
-## Engine fit at the audited main
+## Engine fit at the capability baseline
 
 Machine fields are canonical in the catalog: `candidate_id` joins this index to
 stable `benchmark_id`; S IDs join the [semantic taxonomy](taxonomy-and-reachability.md).
@@ -25,21 +25,22 @@ means some benign types exist, not an attack-bearing seed. Reachability includes
 actual controlled setup; the taxonomy separately records structural reachability.
 Observability concerns a predicted persistent effect only.
 
-At integrated main `d1982e4` (#45/#46 merged), low-level Node/backend composition,
-frozen policy/config/provenance, verified artifact origin and actual prepared
-invocation checks are implemented. Benign configured Node smoke/pre-audit freeze
-and Phase-1/2 audits are completed; EC-01/EC-02 are resolved and EC-03 remains resolved.
-The [final engine audit](engine-contract-audit.md) distinguishes passed functional
-checks from residual current-documentation/global closeout. State keys are v3.
-"Candidate campaign binding" below means exact historical
-images/locks/setup and independent qualification, all still pending.
+At capability baseline main `8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`,
+contained Node invocation/artifact verification, M1, B0/B1/B3/A1/A2/A3, minimization,
+benign replay and completed policy analysis are implemented/tested engineering
+capabilities. The [G0 contract](../design/research-contract-v1.md) and
+[STATUS](../../STATUS.md) supersede historical audit implementation claims.
+"Candidate campaign binding" below still means exact historical locks/images,
+setup and independent expected-effect qualification, all pending.
+**N01 7.5.2/7.5.3 is the first intended qualification; no historical vulnerability
+has been rediscovered and no vulnerability is claimed.**
 
 | Candidate | ArchiveCase represents semantics? | Minimal seeds start near them? | Mutation/setup reaches benchmark now? | Oracle observes selected effect? | Future isolated Linux route / qualification |
 | --- | --- | --- | --- | --- | --- |
 | N01 | YES | PARTIAL internal hardlink | NO default sentinel address | YES hardlink arm; PARTIAL whole advisory | Exact candidate image/campaign binding pending; IMPLEMENTATION_BLOCKED |
-| N02 | YES | PARTIAL internal hardlink | NO addressing/composition | YES persistent alias | Exact candidate image/campaign binding pending; IMPLEMENTATION_BLOCKED |
-| N03 | YES | PARTIAL separate link seeds | NO addressing/chain composition | YES persistent alias | Candidate campaign binding plus Linux gate; IMPLEMENTATION_BLOCKED |
-| N04 | YES | PARTIAL directory seed | NO addressing/type-path alignment | YES protected write/C0 namespace | Candidate campaign binding plus runtime/strict qualification; IMPLEMENTATION_BLOCKED |
+| N02 | YES | PARTIAL internal hardlink | NO default addressing; M1 composition exists | YES persistent alias | Exact candidate image/campaign binding pending; IMPLEMENTATION_BLOCKED |
+| N03 | YES | PARTIAL separate link seeds | NO default addressing; M1 dependencies exist, selected chain unqualified | YES persistent alias | Candidate campaign binding plus Linux gate; IMPLEMENTATION_BLOCKED |
+| N04 | YES | PARTIAL directory seed | NO default addressing; M1 collisions exist, selected alignment unqualified | YES protected write/C0 namespace | Candidate campaign binding plus runtime/strict qualification; IMPLEMENTATION_BLOCKED |
 | N05 | YES | PARTIAL regular file | NO selected external address | YES controlled persistent effect | Candidate campaign binding plus absolute input/run binding; IMPLEMENTATION_BLOCKED |
 | N06 | YES POSIX arm | PARTIAL directory seed | NO backslash vocabulary/addressing | YES persistent POSIX effect | Candidate campaign binding/grammar missing; IMPLEMENTATION_BLOCKED |
 | N07 | YES raw names | NO equivalent-name class | NO alphabet/platform | PARTIAL on required platform | Linux v1 platform gate failed; SOURCE_VERIFIED, excluded |
@@ -48,8 +49,8 @@ images/locks/setup and independent qualification, all still pending.
 | O01 | YES | PARTIAL hardlink seed | PARTIAL generic-name sentinel possible; CWD/adapter absent | YES persistent alias | Public offline API verified; wrapper/transport/external CWD pending; IMPLEMENTATION_BLOCKED |
 | O02 | YES | PARTIAL link/file seeds | NO composition/addressing | YES persistent protected write | ORAS binding/exact fix unresolved; IMPLEMENTATION_BLOCKED |
 | O03 | NO non-TAR input/setup | NO | NO | PARTIAL with extra setup | Outside TAR v1; SOURCE_VERIFIED, excluded |
-| G01 | YES types; invocation UNKNOWN | PARTIAL link/file seeds | UNKNOWN pin/root semantics | PARTIAL narrower boundary | GNU adapter/pair/root gates pending; SOURCE_VERIFIED |
-| G02 | YES regular member | PARTIAL regular file | NO addressing; invocation UNKNOWN | YES persistent controlled effect | GNU adapter/member-selection pin pending; IMPLEMENTATION_BLOCKED |
+| G01 | YES types; invocation UNKNOWN | PARTIAL link/file seeds | UNKNOWN pin/root semantics | PARTIAL narrower boundary | Benign-only GNU adapter exists; historical pair/root gates pending; SOURCE_VERIFIED |
+| G02 | YES regular member | PARTIAL regular file | NO addressing; invocation UNKNOWN | YES persistent controlled effect | GNU benign allowlist cannot execute historical member-selection case; pin pending; IMPLEMENTATION_BLOCKED |
 | G03 | PARTIAL entries, no reused session | NO initial tree | NO fresh-empty setup | PARTIAL with reused setup | Existing-state scope gate failed; SOURCE_VERIFIED, excluded |
 
 Container helper/image/benign Node fixture validation is shared infrastructure
@@ -57,7 +58,7 @@ evidence, not candidate qualification. Every candidate `isolated_execution`
 (exact candidate campaign binding) is NOT_IMPLEMENTED and every
 execution state is NOT_RUN. Unknown platform/version/invocation facts remain
 UNKNOWN; no third-party target is TRUSTED_REFERENCE. These claims become stale
-when the [audited engine](engine-contract-audit.md) changes.
+when the [capability baseline](../design/research-contract-v1.md) changes.
 
 ## Candidates and version evidence
 

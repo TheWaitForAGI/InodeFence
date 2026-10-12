@@ -29,7 +29,7 @@ Benign smoke와 synthetic/unit tests는 이 문장의 예외가 아니다.
 | Linux execution | fresh runtime + container-required third-party boundary | backend / prepared invocation / verified artifact admission | [container integration](../tests/README.md); pinned Node benign smoke | historical pair 미검증 |
 | Mutation | legacy / M1 / A3 contracts | eight slots; M1 nested/reused names/dependencies; no-reorder versions | [mutator tests](../tests/test_mutator.py), [search composition](../tests/test_campaign_search.py) | reachable historical effects 미검증 |
 | Search / feedback | B0/B1/B3 and A1/A2 | `SearchState`, `run_search_campaign`, explicit policy config | [policy checks](../tests/test_feedback_search_contracts.py), [trusted reference integration](../tests/test_campaign_search_integration.py) | 비교 효과 미검증 |
-| Entry transitions | P0 final-state, P1 transition retention, P2 transition-adaptive mutation | model, novelty, scheduler, campaign, checksummed export/reader/replay/metrics | [synthetic transition evidence tests](../tests/evaluation/test_transition_evidence.py); node-tar 7.5.22 public-event qualification | public callbacks QUALIFIED FAIL; native producer / target effectiveness NOT_RUN |
+| Entry transitions | P0 final-state, P1 transition retention, P2 transition-adaptive mutation | model, novelty, scheduler, campaign, checksummed export/reader/replay/metrics | synthetic tests plus node-tar 7.5.22 and libarchive 3.7.2 controlled qualification | tested native candidates QUALIFIED FAIL; producer / target effectiveness NOT_RUN |
 | Minimization | bounded deterministic generic/USTAR reduction | core and exact-fingerprint evidence binding | [minimizer tests](../tests/test_minimizer.py), [USTAR checks](../tests/test_minimizer_ustar.py) | historical/unknown candidate 없음 |
 | Evaluation / reproduction | explicit provenance, immutable raw → verified derivation | reader, pair records, passive failure ledger/journal, qualification/matrix, benign replay, completed policy export/config/dataset/statistics | [evaluation tests](../tests/evaluation/), [benign replay tests](../tests/replay/) | formal dataset / known-class adjudication / artifact reproduction 없음 |
 | C3/C4 / generality | 후속 contracts / RQ4 | C3/C4와 ORAS adapter 없음; GNU route는 benign allowlist만 | broader scope의 실행 증거 없음 | 미검증 |
@@ -84,13 +84,18 @@ checksummed result bundle. Its reader replays parent/operator/mutation/admission
 decisions before summaries or P0/P1/P2 arm statistics are accepted. This is TESTED with a
 deterministic synthetic producer; it does not make native target effectiveness a result.
 
-Pinned node-tar 7.5.22 `onReadEntry` and entry-stream `end` were tested with a benign
-regular/directory/hardlink/symlink/duplicate-path fixture. The public callback runs
-before extraction work starts and regular-file `end` can occur before write/close and
-final metadata completion, so these events are **QUALIFIED FAIL** as a common entry
-completion boundary. No native producer or prefix-replay substitute is implemented;
-P0/P1/P2 target effectiveness remains **NOT_RUN**. See the
-[qualification decision](research/design/entry-transition-observation-v1.md).
+Pinned node-tar 7.5.22 public async/sync events, Linux inotify, strace and fresh-process
+prefix replay were tested with benign regular/directory/hardlink/symlink/duplicate-path
+fixtures. Public events precede common write/close/metadata completion; event receipt
+snapshots can include later effects or fail coherent capture; syscall completion order is
+not archive order; prefix replay is a separate counterfactual execution. A separate
+libarchive 3.7.2 public write-disk qualification associated all ordinal/path markers but
+applied directory metadata only during final writer close. Both controlled candidate sets
+are **QUALIFIED FAIL** for the current complete ordered-checkpoint contract. No native
+producer is implemented, and P0/P1/P2 target effectiveness remains **NOT_RUN**. See the
+[qualification decision](research/design/entry-transition-observation-v1.md) and retained
+[node-tar](../experiments/summaries/node-transition-observation-qualification-v2.md) /
+[libarchive](../experiments/summaries/libarchive-entry-boundary-qualification-v1.md) summaries.
 
 Legacy `ExperimentConfig` v1/v2는 여전히 B3/legacy mutation만 허용한다. 별도
 `PolicyEvaluationConfig`와 completed policy export/reader/config/dataset/statistics가 구현됐다.

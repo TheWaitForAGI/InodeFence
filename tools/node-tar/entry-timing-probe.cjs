@@ -5,9 +5,14 @@ const crypto = require('node:crypto')
 const fs = require('node:fs')
 const path = require('node:path')
 
-const [modulePath, archive, destination] = process.argv.slice(2)
+const [modulePath, archive, destination, executionMode = 'async'] = process.argv.slice(2)
 if (!modulePath || !archive || !destination) {
-  throw new Error('usage: entry-timing-probe.cjs MODULE ARCHIVE DESTINATION')
+  throw new Error(
+    'usage: entry-timing-probe.cjs MODULE ARCHIVE DESTINATION [async|sync]'
+  )
+}
+if (!['async', 'sync'].includes(executionMode)) {
+  throw new Error('execution mode must be async or sync')
 }
 
 const tar = require(modulePath)
@@ -37,7 +42,7 @@ const observe = relative => {
 }
 
 const main = async () => {
-  await tar.x({
+  const options = {
     file: archive,
     cwd: destination,
     strict: true,
@@ -55,10 +60,13 @@ const main = async () => {
         events.push({phase: 'entry_end', ...identity, observed: observe(entry.path)})
       })
     }
-  })
+  }
+  if (executionMode === 'sync') options.sync = true
+  await tar.x(options)
 
   events.push({
     phase: 'tar_x_resolved',
+    execution_mode: executionMode,
     observed: Object.fromEntries(
       ['regular', 'dir', 'hard', 'sym'].map(name => [name, observe(name)])
     )

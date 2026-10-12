@@ -1,13 +1,19 @@
-# node-tar entry-transition observation qualification v1
+# node-tar entry-transition observation qualification
 
 ## Status
 
 - Pinned source/API investigation: **IMPLEMENTED**, **TESTED**
-- Benign regular/directory/hardlink/symlink/duplicate timing probe: **BENIGN VALIDATED**
+- Benign regular/directory/hardlink/symlink/duplicate timing probes: **BENIGN VALIDATED**
 - `onReadEntry` / deprecated `onentry` as completion boundary: **QUALIFIED FAIL**
 - entry stream `end` as completion boundary: **QUALIFIED FAIL**
+- synchronous entry stream `end` as completion boundary: **QUALIFIED FAIL**
+- Linux inotify as a complete entry-checkpoint producer: **QUALIFIED FAIL**
+- strace as a behavior-preserving entry-checkpoint producer: **QUALIFIED FAIL**
+- fresh-process prefix replay as native transition evidence: **QUALIFIED FAIL**
+- Python per-member extraction as an equivalent target invocation: **QUALIFIED FAIL**
+- libarchive `archive_write_finish_entry()` as a complete boundary: **QUALIFIED FAIL**
+- fanotify qualification: **NOT_RUN**
 - Native entry-transition mode: **NOT_IMPLEMENTED**
-- Prefix replay: **NOT_IMPLEMENTED**
 - Transition-feedback effectiveness: **NOT_RUN**, **HYPOTHESIS**
 
 `QUALIFIED FAIL` here means that the candidate lifecycle event does not establish
@@ -102,3 +108,58 @@ Future work may re-evaluate a documented upstream completion hook or a separatel
 qualified observation-only mechanism. Any mechanism that serializes node-tar's
 normally overlapping work, pauses internal reservations, or changes cache/queue
 behavior must fail qualification unless semantic equivalence is demonstrated.
+
+## Controlled qualification v2
+
+The first probe established that node-tar's public async events fail the completion
+contract. A second clean-source Linux run at commit `06ace942` compared public async
+and sync events, inotify, strace, fresh-process prefix replay and Python's public
+per-member reference behavior over 20 repetitions. The fixture and target pin stayed
+the same. The full validated summary and raw checksum are in
+[node-transition-observation-qualification-v2.md](../../../experiments/summaries/node-transition-observation-qualification-v2.md).
+
+The additional decisive evidence is:
+
+- sync entry `end` read the regular content before target `utimensat` and target file
+  descriptor close; it also selects a different upstream execution mode;
+- inotify event ordering had three variants, 7/220 receipt snapshots failed coherent
+  capture, and 2/20 first-file close snapshots already included the later hardlink;
+- syscall evidence showed the directory completion proxy before the first-file close
+  in 19/20 runs and the reverse in 1/20, despite fixed archive order;
+- prefix replay was deterministic but represented independent prefix executions, not
+  states reached during the asynchronous full extraction;
+- Python's per-member loop and `extractall()` diverged on deferred directory mtime,
+  proving that the former cannot substitute for the latter without changing target
+  semantics.
+
+For this candidate set and pinned node-tar version, the qualification decision is
+**QUALIFIED FAIL**. This is a bounded method decision, not a universal impossibility
+claim. No native adapter or synthetic-to-native evidence promotion follows from it.
+
+## Ordering terminology
+
+**Archive order** is header ordinal order. **Effect-completion order** is the order in
+which the extractor completes the stated filesystem work for entries. **Observation
+order** is callback delivery or operating-system event consumption order. The second
+experiment directly observed differences among all three. A monitor timestamp cannot
+stand in for a security verdict, and a receipt-time tree walk may contain effects from
+entries after the event that triggered it.
+
+## Remaining independent candidates
+
+fanotify can expose close-write and process information but still needs a complete
+logical-entry mapping and non-write effect strategy. It was not enabled in the
+capability-free target environment. GNU tar's documented checkpoints are archive
+record checkpoints rather than entry-effect completion callbacks.
+
+The separate libarchive 3.7.2 public write-disk qualification is now complete.
+Ordinal/path markers after `archive_write_finish_entry()` were exact, but directory
+mtime and mode were applied only by `archive_write_close()` after all entry markers.
+Both directory fixtures reproduced this in 20/20 traced runs, so the candidate is
+**QUALIFIED FAIL** as a common complete boundary. See the
+[validated summary](../../../experiments/summaries/libarchive-entry-boundary-qualification-v1.md).
+
+The result exposes a generic model constraint: archive order, entry progress order and
+effect-completion order cannot always be one sequence when earlier directory effects
+complete during global finalization. An unordered/deferred event model would change
+the current transition contract and is **NOT_IMPLEMENTED**.

@@ -1,313 +1,105 @@
 # 현재 프로젝트 상태
 
-이 문서는 **현재 checkout에서 구현·검증한 범위와 다음 작업**을 기록한다. Feature branch의 완료 표시는 main merge를 의미하지 않으며, 사람의 review와 merge가 필요하다.
-
-설계 근거나 긴 설명은 다른 문서에 둔다.
-
-## 현재 단계
-
-**Layer 2 완료 + Layer 3 최소 pipeline 완료 + Layer 4 Generic Mutation v1 + Layer 5 Feedback / Corpus v1 구현**
-
-```text
-Layer 0 — 개발환경                         ✅ 완료
-Layer 1 — 연구 기반/범위/아키텍처          ✅ 완료
-Layer 2 — 공통 Data Model                  ✅ 완료
-Layer 3 — Minimal End-to-End Pipeline      ✅ Python reference / snapshot 범위
-Layer 4 — Generic Mutation                 ✅ v1: 독립 operator / uniform baseline
-Layer 5 — Feedback / Corpus                ✅ v1: 독립 novelty / in-memory / uniform 선택
-Layer 6 — Baseline / Evaluation / Paper    ⬜
-```
-
-## 실행 준비 상태
-
-**AUDIT PHASES 1–3 COMPLETE — PHASE-4 GLOBAL CLOSEOUT PENDING.**
-현재 integrated main은 `d1982e4cf3174e28d4eeb73af7b32829f6751b30`이다.
-Pre-audit freeze와 Phase-1 audits / Phase-2 cross-review를 완료했다.
-역사적 frozen audited main은 `fae2954906fa1a95235cde5cddd4dcb73f334169`이며 Global Findings Freeze v1은
-0 Blocker / 2 Major / 7 Minor / 6 Note / 1 uncounted regression gap이다.
-Phase-3 Runtime #45와 Engine #46은 병합됐다. USTAR raw-byte guard, immutable typed evidence,
-exact StateChange labels, tagged StateSignature v3, artifact identity attestation,
-actual invocation 검증, Docker CLI descendant lifecycle fix와 EX-004 export regression 강화가 있다.
-[Phase-3 finding mapping](audits/engine-findings-fix-v1.md)은 해당 fix branch의 역사적 기록이다.
-[Final Engine/Research audit #47](https://github.com/TheWaitForAGI/InodeFence/pull/47)은 EN-001–004
-functional closure와 integrated main의 잔여 EN-005 문서 drift를 구분한다. 이 PR #35는
-EN-005/006 문서·계획 correction을 제안하며 아직 병합되지 않았다. Runtime final audit와 global
-Phase-4 closeout의 완료를 주장하지 않는다. Benchmark qualification/evaluation은 모두 NOT_RUN이다.
-
-Trusted Linux controller → explicit host stdio Docker broker → disposable untrusted target
-container 경계를 구현·검증했다. 기존 Dev Container의 권한은 변경하지 않았다. Target에는
-현재 controlled run의 named-volume subpath만 노출하고 source/home/host bind/runtime socket을
-전달하지 않는다. Network none, read-only rootfs, non-root uid/gid, cap-drop ALL, NNP,
-private PID/IPC/cgroup, memory/PID/nofile/per-file FSIZE/tmpfs bounds를 적용한다.
-[정확한 policy와 실행 명령](../src/inodefence/execution/README.md)을 따른다.
-
-다음 수치는 pre-audit revision의 역사적 engineering 기록이다.
-Pinned Node22.22.0/tar7.5.22 image, contained invocation, fail-closed gate, frozen isolation
-provenance와 ExperimentConfig v2 binding을 연결했다. Clean main에서 tiny benign configured
-campaign8회를 실행했다: SUCCESS8, Corpus observations8/interesting6/retained6/unique-states6,
-violation fingerprints0, observed C0/C1/C2 violated verdict0, container9/9 제거 및 runtime 정리.
-Actual seed content, prior retained-parent lineage, stored config/provenance와 checksum을 검증했다.
-
-Focused lifecycle review와 static dependency 검사(40 modules/97 internal imports/forbidden edges0)를
-완료했다. Completed export는 manifest v4와 config/steps를 staged fsync/checksum 검증 후 Linux
-no-overwrite atomic publication한다. Full suite614와 별도 실제 container CI가 통과했다.
-[검증 기록·정확한 checksum·attestation assessment·한계](../experiments/summaries/pre-audit-readiness-v1.md)를 따른다.
-
-| 기준 | 현재 상태 | 범위 |
-| --- | --- | --- |
-| Phase-3 fixes | main merge 완료 | Runtime #45 / Engine #46; 현재 navigation correction은 PR #35 제안 |
-| Contained benign infrastructure | integrated-main CI PASS | boundary/image/Node/benign configured campaign; benchmark qualification 아님 |
-| Audit Phases 1–2 | 완료, findings frozen | 기존 freeze counts는 역사적 기록이며 final dispositions와 구분 |
-| Phase 4 | global closeout 대기 | #47 기능 검증 통과; residual EN-005/006 문서 disposition과 Runtime/global final verdict 필요 |
-| Evaluation | NOT_RUN | P01–P11은 future Task Contracts; benchmark pair도 아직 qualified가 아님 |
-
-[Integrated-main CI 37197933974](https://github.com/TheWaitForAGI/InodeFence/actions/runs/37197933974)는
-check와 container-integration 모두 PASS다. 실제 boundary6/image2/Node-target10/benign-campaign1
-checks를 통과했고 campaign은 archive8 + identity10의 context18/18을 제거했다.
-IsolationProvenance v2의 verified artifact origin을 export한다. Full local engine validation은
-803 tests PASS이며 이 CI/검증은 후보 버전의 runtime qualification이나 effectiveness 증거가 아니다.
-
-Actual path: ExperimentConfig → target/policy binding → safety gate → backend attestation →
-frozen ExecutionProvenance → bounded Campaign/Corpus/mutation → run_case → target container →
-Observer → C0/C1/C2 + Signature → Feedback → CampaignResult → staged structured evidence export.
-Source/provenance, isolation policy와 config ID는 feedback novelty가 아니다.
-
-PR34의 in-Dev-Container namespace EPERM/cgroup read-only는 [역사적 환경 지원 기록](../experiments/summaries/linux-isolation-support-v1.md)이다.
-그 환경을 약화하지 않고 별도 container backend를 선택했다. Snapshot-only observation,
-runtime/kernel trust/portability, total storage/CPU bounds, dirty patch 미보존 및 persistence의
-hard-interruption 한계는 계속 명시한다. Pre-audit revision은 ENGINEERING FOUNDATION에서
-audit 준비 단계로 이동한 역사적 기록이며 현재는 Phase-4 global closeout 대기 단계다.
-Feature expansion은 멈춘다. 위 benign 결과와 suite614는 pre-audit revision의 검증 기록이다.
-Merged fixes와 final validation은 각 Phase-3 PR 및 #47에 별도 기록한다.
-
-## 완료된 것
-
-### 개발환경
-
-- Ubuntu 24.04 Dev Container
-- Python 3.12
-- Mac/OrbStack 검증
-- WSL2/x86_64 검증
-- Linux runtime volume
-- hardlink/symlink self-check
-- LF line ending 통일
-- `make check`: Ruff / Pyright / pytest / 환경 검사 / 문서 integrity 검사
-- PR/main CI, Issue Forms와 scoped AGENTS 기반 협업 규칙
-- finding disclosure 정책과 검증된 experiment summary 보관 규칙
-
-### 연구 기반
-
-- 프로젝트 범위
-- 연구 질문 / 가설
-- 위협 모델
-- 선행연구 포지셔닝
-- Security Contract
-- 전체 architecture
-- 개발환경 정책
-- AGENTS 규칙
-
-### 기초 예제와 regression
-
-- regular file / directory / hardlink / symlink TAR fixture 4종과 결정적 재생성 script
-- Linux runtime sandbox에서 extraction 후 metadata를 출력하는 수동 probe
-- [TAR baseline 실행·관찰 안내](examples/tar-baseline.md)와 filesystem 의미론 테스트
-
-Fixture generator는 core builder를 사용하며 기존 TAR bytes와 probe behavior를 유지한다.
-
-### Core engine foundation
-
-- 순서·중복·raw path/link 의미를 보존하는 immutable ArchiveEntry/ArchiveCase
-- ExecutionResult, lstat ObjectSnapshot/StateSnapshot, StateSignature, typed ViolationResult/RunResult
-- PR #13/#16/#17/#18과 PR #15의 model contract reconciliation: E2E schema/frozen-slots invariant 유지, raw archive input과 canonical observed path의 경계 명시
-- ExecutionResult는 process evidence이며 security verdict가 아님; 네 status의 actual duration_seconds를 monotonic `perf_counter()`로 기록하고 configured timeout_seconds와 분리
-- ObjectSnapshot의 permission/special mode bits와 regular SHA-256 lowercase hex evidence 의미 및 current runtime-layout Region policy 명시
-- 고정 metadata, strict UTF-8, USTAR builder와 format provenance/SHA-256
-- TargetAdapter Protocol과 별도 process의 Python tarfile/data reference adapter
-- `/var/lib/inodefence` 내 disposable runtime, 보호 sentinel, symlink를 따라가지 않는 관찰·cleanup
-- Before/after 생성·삭제·identity·내용·metadata 변화 비교
-- C0 HARNESS 포함 extraction root 밖 persistent namespace 변화, C1 lstat identity 공유, C2 sentinel 변화 판정
-- `StateSnapshot`: archive/input.tar digest와 harness metadata를 포함한 sandbox 전체 raw evidence
-- `StateSignature` v3: EXTRACTION/EXTERNAL의 normalized security state; HARNESS(`.`, `archive/**`)와 case/TAR identity 제외
-- scope 안의 identity group과 sentinel effect 보존, regular-only nlink(nonregular는 None), raw inode/timestamp 값 제외; 연구 효과와 최종 feedback 정책 평가는 후속 작업
-- versioned canonical JSON으로 case·실행·snapshot·판정 근거 export
-- 실제 Linux filesystem, reject/partial extraction/timeout, E2E와 기존 baseline regression 테스트
-- 서로 다른 case/TAR SHA-256의 동일 semantic state가 같은 signature라는 실제 `run_case()` regression
-- harness-only 변화의 signature novelty 제외, 정상 setup baseline의 C0 nonviolation, root-level external 생성·삭제·교체 regression
-- archive namespace 생성 및 input.tar 삭제·identity/type 교체의 실제 `run_case()` C0 evidence와 signature isolation regression
-- C0의 namespace/content-effect 구분, identity-group projection과 directory nlink 정규화 유지
-- BEFORE는 setup 이후, AFTER는 target 종료 후 bookkeeping/cleanup 이전; adapter 관찰 구간 내 harness namespace write 금지
-
-Python reference는 architecture 검증과 integration baseline용이며 최종 연구 benchmark가 아니다.
-C0의 direct path use 전체와 transient state는 snapshot만으로 판정할 수 없다. Snapshot은 actor provenance가 없으며 target attribution은 runner/adapter lifecycle 계약에 의존한다. 관찰 실패를 PASS로 처리하지 않는다.
-
-### Generic Mutation v1
-
-- canonical ArchiveCase → ArchiveCase 변형: add/remove/duplicate/reorder/path/hardlink/symlink/link-target 8개 독립 operator
-- caller-owned `random.Random`만 사용하며 원본 불변성, raw spelling, 순서·중복과 적용 불가 시 deterministic no-op 유지
-- uniform `mutate()`는 baseline convenience API; 향후 scheduler가 개별 operator를 직접 선택 가능
-- constructor와 deterministic USTAR builder의 경계를 별도 integration test로 검증
-
-### Feedback / Corpus v1
-
-- 기존 StateSignature v3 equality와 stable semantic violation fingerprints의 독립 novelty channel
-- C0/C2는 path/changed-field labels, C1은 internal/sentinel path 관계; raw dev/inode/timestamp/값/prose 제외
-- 같은 signature의 새 C0/HARNESS evidence도 interesting으로 보존하는 실제 run_case regression
-- inspectable FeedbackDecision: interesting observation과 새 retained entry를 구분
-- in-memory Corpus: 같은 case_id는 한 번만 보존하되 이미 보존한 case의 새 outcome도 seen indexes에 반영
-- compact frozen CorpusEntry: ArchiveCase와 최초 admission signature/fingerprints; full RunResult/raw logs는 저장하지 않음
-- immutable CorpusStats/entries snapshot, insertion order와 caller-owned RNG를 사용하는 uniform baseline parent 선택
-- case/TAR/input digest, HARNESS metadata, execution status/exit code/duration과 raw inode allocation의 novelty 유출 방지
-- caller 수준의 Corpus.select_case → Mutator → 단일 run_case → Corpus.consider 조합 regression
-- 한 Corpus는 한 caller-controlled campaign context; complete campaign key/persistence를 제공하지 않음
-
-Bounded deterministic campaign v1과 node-tar adapter의 정상 fixture integration은 구현됐다. Adaptive scheduler/persistence는 후속 작업이며 Node-tar의 tiny benign configured campaign은 검증했으며 ORAS와 security evaluation campaign은 현재 범위 밖이다. Known-vulnerability rediscovery, new vulnerability discovery, research effectiveness와 evaluation/ablation 결과는 아직 없다. C3/C4와 Layer 6도 후속 단계다. Corpus retention/stats는 연구 효과나 취약점 확정의 증거가 아니다.
-
-## 다음 작업
-
-**Phase-4 final audit / 문서 disposition / global closeout.** #45/#46 fixes를 재구현하지 않는다.
-이 PR #35는 current planning/navigation을 갱신하는 Draft이며 #47의 audited-main NO-GO를
-소급 변경하지 않는다. EN-005/006 correction review와 Runtime/global verdict 이후에만
-별도 Task Contract로 P01–P11의 필요한 구현을 시작한다. Benchmark/CVE qualification/evaluation은
-아직 NOT_RUN이며 이번 refresh가 실행을 승인하지 않는다.
-
-[Pre-audit freeze](../experiments/summaries/pre-audit-readiness-v1.md)는 제한된 integration review이며
-전체 code audit가 아니다. [이전 infrastructure review](../experiments/summaries/infrastructure-readiness-v1.md),
-[이전 engineering audit](../experiments/summaries/final-engineering-audit-v1.md)와
-[reference pilot](../experiments/summaries/reference-campaign-pilot-v1.md)은 해당 revision의 역사적 기록이다.
-
-Backend는 narrow execution contract를 제공한다. Future ORAS/GNU-tar는 target invocation/image를
-추가하는 위치가 명시돼 있으나 구현하지 않았다. C0/C1/C2, feedback policy와 RNG/budget semantics는
-유지한다. Signature v3는 symlink target을 tag해 literal/run anchor를 구분한다.
-Image ID/worker/lock digest를 content anchor로 사용하며 massive dependency hashing은
-추가하지 않았다. Dirty patch/exact Python binary/image availability의 한계는 frozen
-audit에 기록됐으며 현재도 유지한다.
-
-## 지금 하지 않을 것
-
-- 대규모/parallel fuzzing campaign
-- CVE-specific payload generator
-- 복잡한 symlink chain generator
-- eBPF/fanotify instrumentation
-- coverage-guided fuzzing
-- multi-target 동시 지원
-- 성능 최적화
-
-## 현재 핵심 Research Contract
-
-초기 구현 우선순위:
-
-1. Path Boundary Confinement — baseline/sanity
-2. Object Identity Confinement
-3. External Effect Noninterference
-4. Extraction Root Integrity — 이후
-5. Check/Use Coherence — 이후
-
-## 이 문서를 언제 갱신하나?
-
-다음 변경을 담는 PR에서 구현 상태를 함께 갱신한다. main에서의 완료는 해당 PR merge 후 성립한다.
-
-- Layer가 넘어갈 때
-- 공통 interface가 확정될 때
-- 연구 범위가 바뀔 때
-- target 우선순위가 바뀔 때
-- 큰 blocker가 생길 때
-
-작은 refactor나 단순 버그 수정 때마다 갱신할 필요는 없다.
-
-## Bounded deterministic campaign v1
-
-- `campaign.run_campaign`: explicit seeds → select → mutate → one-case run → consider
-- Positive integer execution budget, nonempty initial cases, sufficient budget, duplicate initial ID 거부
-- Seed 실행부터 모두 budget에 포함; seed는 search RNG를 소비하지 않음
-- 한 campaign RNG, no-op 재시도 없음, 모든 target status 보존, harness exception 전달
-- Frozen config/step/result, zero-based index와 parent lineage, final CorpusStats/admission order
-- Full RunResult를 steps에 보존하므로 O(budget) memory; persistence/resume 없음
-- Unit contract와 Linux Python reference semantic-repeatability integration 검사
-
-
-[Contained benign Node smoke](../experiments/summaries/benign-node-container-smoke-v1.md)는
-실제 정책/versions/config/checksum/stats/cleanup과 제한을 기록한다. Unexpected evidence는
-보존 후 중단하며 security evaluation이나 effectiveness 결과로 해석하지 않는다.
-
-## Search-track core
-
-사용자가 확정한 Search/Mutation/Feedback Task Contract에 따라 Layer 4–5 독립 확장을
-진행한다. `SearchState` core에서 B0/B1/B3 admission과 parent selection을 구현하고 full
-analysis novelty와 policy admission을 분리했다. Legacy B3 campaign / config IDs / export
-schema는 유지한다. Alternative configured campaigns는 아직 지원하지 않는다.
-Evaluation reader/journal의 versioned policy 지원이 필요하여 해당 통합은 skip했으며
-[interface 요구사항](research/design/search-policy-core-v1.md)을 기록했다.
-
-### Generic M1 core
-
-`MutationPolicy` / `mutate_with_policy`로 legacy와 M1을 strict versioned ID로 구분한다.
-M1은 nested/raw spelling, repeated names, file/directory collision, link-to-link dependency와
-임의 삽입 위치를 지원하며 USTAR-compatible input의 multi-step buildability를 검증한다.
-Adaptive scheduling은 없다. [M1 계약과 campaign binding 의존성](research/design/mutation-m1-v1.md)을
-따른다. Baseline 비교 campaign/evaluation은 아직 실행하지 않았다.
-
-### A1/A2 feedback-key core
-
-Versioned FeedbackProjection A1/A2는 admission key에서 identity_groups 또는 external_effects만
-제외한다. Raw snapshots/oracle/full signature와 analysis novelty는 유지한다. Projected-key
-count를 full-state count와 구분하며 inode/timestamp/run-anchor 차이에 대한 regression을
-추가했다. SearchDecision core envelope는 v2이며 legacy campaign encoding은 그대로다.
-ExperimentConfig/provenance/evaluation binding은 [별도 의존성](research/design/search-policy-core-v1.md)이다.
-
-### A3 reorder core
-
-Legacy/M1에 각각 versioned no-reorder policy를 추가했다. Reorder slot의 uniform 확률과
-RNG 소비는 유지하며 output contribution만 제거한다. 다른 operator를 reweight하지 않는다.
-Full/A3의 동일 case/RNG 조건에서 slot, 나머지 결과와 RNG state를 비교 검증했다.
-Configured ablation campaign binding은 기존 Evaluation integration dependency다.
-
-### Generic minimizer core
-
-`minimize_case`는 caller evaluator/evidence predicate를 사용하는 deterministic bounded reduction이다.
-Entry/content/path/mode/link-target 후보를 고정 순서로 시도하며 rejected trial의 full RunResult도 보존한다.
-Policy ID, budget와 local-fixed-point/budget termination을 기록한다. 특정 target/CVE 규칙은 없다.
-[Core 계약](research/design/generic-minimizer-v1.md)을 따른다. Python reference의 benign content condition
-integration을 검증했으며 replay/export/finding workflow 연결은 별도 dependency다.
-
-### Search/config contract checks
-
-Legacy ExperimentConfig의 policy ID source를 core versioned enums에 연결했고 JSON/config ID를 유지했다.
-Unknown 및 core-only/unbound IDs의 immediate rejection, 모든 execution status의 novelty 독립성,
-B0/B1/B3 × FULL/A1/A2 × M1/A3 조합의 deterministic logical lineage를 검증했다.
-B2의 alternative configured campaign binding은 Evaluation reader/journal/manifest 지원이 필요한
-남은 의존성이다. [정확한 interface 요구사항](research/design/search-policy-core-v1.md)을 따른다.
-
-### Bound violation minimization
-
-`minimize_violation`는 baseline의 exact semantic fingerprint condition을 versioned record로 보존하고
-모든 trial의 requested ArchiveCase / deterministic USTAR hash / format binding을 검증한다.
-Raw evidence와 rejected trials는 그대로 남으며 execution status를 evidence로 대체하지 않는다.
-Existing arbitrary-predicate minimizer는 유지한다. [Binding 의미와 한계](research/design/generic-minimizer-v1.md)를
-따른다.
-
-### USTAR-compatible minimization
-
-`greedy-ustar-archive-reduction-v1`은 raw reduction 순서를 유지하고 builder-unrepresentable
-후보만 실행 전에 제외한다. Unsupported baseline은 실패하며 filtering은 fake target status나
-budget-consuming trial을 만들지 않는다. `minimize_violation`은 이 policy를 기본으로 기록한다.
-Existing generic v1은 `minimize_case` default 및 explicit enum으로 재현 가능하다.
-[ASCII/UTF-8 boundary와 policy 의미](research/design/generic-minimizer-v1.md)를 따른다.
-
-### Policy-aware bounded campaign
-
-`run_search_campaign`과 frozen `SearchCampaignConfig`로 B0/B1/B3 × FULL/A1/A2 × legacy/M1/A3를
-직접 실행할 수 있다. Existing campaign의 fail-closed isolation/provenance gate를 공유하며 raw
-evidence와 diagnostic/admission decision을 새 result/step model에 보존한다. Legacy B3 lineage와
-기존 schema/config ID는 유지한다. Unit composition과 tiny trusted Python reference 실행을 검증했다.
-ExperimentConfig, manifest/journal/readers와 validated comparison binding은 아직 별도 dependency다.
-[Caller API와 정확한 boundary](research/design/search-policy-core-v1.md)를 따른다.
-
-### Entry-transition generic model
-
-사용자가 확정한 Entry-Level Transition Task Contract의 PR-T1 범위로 target-independent
-checkpoint/transition/trace와 TransitionSignature v1을 구현했다. Synthetic file → hardlink →
-replacement sequence와 legacy final-state regression을 테스트했다. `RunResult`, `run_case()`,
-SnapshotPhase와 C0/C1/C2 의미는 유지하며 transition evidence는 별도 composition이다.
-Native node-tar entry completion observation, retention/adaptive scheduler, configured evidence와
-effectiveness/benchmark는 이 단계에서 **NOT_RUN**이다. Feature branch 표시는 main merge나
-qualification을 의미하지 않는다. [모델 계약](research/design/transition-feedback-v1.md)을 따른다.
+상태 기준일: **2026-10-06**. Capability baseline은 main
+**`8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`**다. 이 SHA는 G0 문서 동결이
+검토한 구현 revision이며 향후 main 또는 문서 PR의 SHA를 뜻하지 않는다.
+
+## 현재 단계와 연구 판정
+
+Layer 2–5 core와 Layer 6 evaluation infrastructure가 구현돼 있다. Layer 6 전체나
+paper/effectiveness 검증이 완료된 것은 아니다. 현재 작업은
+[Research Contract v1](research/design/research-contract-v1.md)의 **G0 문서 동결**이다.
+G0 승인과 G1 이후 oracle/harness/fuzzer/qualification/experiment readiness는 별개다.
+과거 Phase-4 global-closeout 대기 문구는 현재 구현 상태로 사용하지 않는다.
+[역사적 감사](research/benchmarks/engine-contract-audit.md)와
+[handoff](research/benchmarks/post-audit-backlog.md)는 해당 revision의 기록이다.
+
+**Historical qualification / rediscovery / formal comparison은 NOT_RUN이다.
+재발견한 역사적 취약점은 없으며 현재 취약점을 주장하지 않는다.**
+Benign smoke와 synthetic/unit tests는 이 문장의 예외가 아니다.
+
+## DESIGNED / IMPLEMENTED / TESTED / EXPERIMENTALLY VALIDATED
+
+[Evidence 용어](research/design/research-contract-v1.md)는 각 수준을 독립적으로 기록한다.
+아래 TESTED는 지정된 범위의 engineering evidence이며 research effectiveness를 뜻하지 않는다.
+
+| 영역 | DESIGNED | IMPLEMENTED at baseline | TESTED evidence / 범위 | EXPERIMENTALLY VALIDATED research claim |
+| --- | --- | --- | --- | --- |
+| C0/C1/C2 | [계약](research/design/security-contracts.md) | persistent BEFORE/AFTER namespace, identity, sentinel effects | [oracle tests](../tests/test_state_semantics.py), [observer](../tests/test_observer.py), [real pipeline](../tests/test_pipeline.py) | 미검증; historical qualification 없음 |
+| Linux execution | fresh runtime + container-required third-party boundary | backend / prepared invocation / verified artifact admission | [container integration](../tests/README.md); pinned Node benign smoke | historical pair 미검증 |
+| Mutation | legacy / M1 / A3 contracts | eight slots; M1 nested/reused names/dependencies; no-reorder versions | [mutator tests](../tests/test_mutator.py), [search composition](../tests/test_campaign_search.py) | reachable historical effects 미검증 |
+| Search / feedback | B0/B1/B3 and A1/A2 | `SearchState`, `run_search_campaign`, explicit policy config | [policy checks](../tests/test_feedback_search_contracts.py), [trusted reference integration](../tests/test_campaign_search_integration.py) | 비교 효과 미검증 |
+| Minimization | bounded deterministic generic/USTAR reduction | core and exact-fingerprint evidence binding | [minimizer tests](../tests/test_minimizer.py), [USTAR checks](../tests/test_minimizer_ustar.py) | historical/unknown candidate 없음 |
+| Evaluation / reproduction | explicit provenance, immutable raw → verified derivation | reader, pair records, passive failure ledger/journal, qualification/matrix, benign replay, completed policy export/config/dataset/statistics | [evaluation tests](../tests/evaluation/), [benign replay tests](../tests/replay/) | formal dataset / known-class adjudication / artifact reproduction 없음 |
+| C3/C4 / generality | 후속 contracts / RQ4 | C3/C4와 ORAS adapter 없음; GNU route는 benign allowlist만 | broader scope의 실행 증거 없음 | 미검증 |
+
+## 기준 main의 검증 근거
+
+[main CI run 37248955432](https://github.com/TheWaitForAGI/InodeFence/actions/runs/37248955432)
+은 `8ad07b8`에서 check와 container-integration을 통과했다. 해당 baseline의 canonical
+`make check`는 **1,304 tests PASS**, Ruff/Pyright/environment/docs 검사를 포함한다.
+이는 고정 revision의 검증 기록이지 이후 checkout에 적용되는 live test count가 아니다.
+Contained **node-tar 7.5.22 benign smoke PASS**는 실제 extractor를 실행한 engineering
+증거다. Historical 7.5.2/7.5.3 execution이나 rediscovery 증거로 승격하지 않는다.
+과거 [pre-audit](../experiments/summaries/pre-audit-readiness-v1.md) 및
+[benign Node 요약](../experiments/summaries/benign-node-container-smoke-v1.md)은 각자의
+revision/config/checksum을 유지한다. 그 수치를 현재 실험 결과로 옮기지 않는다.
+
+## 실제 실행 및 evidence 경계
+
+`pipeline.run_case`는 TAR/layout/sentinel과 target 준비 뒤 BEFORE를 찍고, target 종료 뒤
+bookkeeping/cleanup 전에 AFTER를 찍는다. 양쪽 cleanup이 끝나야 결과가 반환된다.
+Disposable directory는 OS sandbox가 아니다. Third-party target은 검증된 `IsolatedTarget`이
+필수이며 Linux runtime volume `/var/lib/inodefence`를 source bind mount와 분리한다.
+
+[Security Contract](research/design/security-contracts.md)의 C0는 HARNESS까지 포함한
+sandbox 내 extraction 밖 persistent namespace 변화다. C1은 post-state lstat identity,
+C2는 지정 sentinel의 전후 content/metadata 변화다. Transient effect, sandbox 밖 접근,
+symlink referent, inode reuse, direct-use/tracing은 판정하지 못한다. 관찰 실패는 오류이며
+nonviolation을 만들지 않는다. `violated=False`는 safety proof가 아니다.
+
+`run_search_campaign` / `SearchCampaignConfig`는 **B0/B1/B3 × FULL/A1/A2 ×
+legacy/M1/A3**를 명시적으로 실행한다. B0는 unretained walk, B1은 key novelty admission,
+B3는 key OR violation novelty admission이다. A1/A2는 feedback key만 투영한다.
+A3는 reorder draw를 유지한 no-op이며 insertion/duplicate의 order variation은 남는다.
+[정확한 비교 범위](research/benchmarks/baseline-and-ablation-v1.md)를 따른다.
+Path-only와 fixed-recipe baseline은 없으며 RQ2/RQ3의 비교로 주장하지 않는다.
+
+Legacy `ExperimentConfig` v1/v2는 여전히 B3/legacy mutation만 허용한다. 별도
+`PolicyEvaluationConfig`와 completed policy export/reader/config/dataset/statistics가 구현됐다.
+Reader는 raw derivations와 admission/parent binding을 검증하되 실제 RNG/mutation 실행을
+재구성하지 않는다. Provenance/lineage는 mutation operator trace나 authorship proof가 아니다.
+Full result는 O(budget) memory이며 core callback 없이 passive journal을 자동 연결할 수 없다.
+Policy repeat orchestration, interrupted-prefix preservation, full-step monotonic timing과
+known-class adjudication은 완성된 자동 pipeline이 아니다. Target duration으로 전체 latency나
+throughput을 대신하지 않는다. [실험 안내](../experiments/README.md)를 따른다.
+
+## 다음 연구 gate
+
+**첫 historical qualification은 N01 node-tar 7.5.2 / 7.5.3 hardlink arm을 의도한다.**
+정확한 locks/images/options/setup을 아직 qualify하지 않았다. M1은 composition을 지원하지만
+finite vocabulary가 default `outside/sentinel.txt`를 생성하지 못한다. Generation reachability와
+controlled setup을 검증하지 않은 상태에서 unknown-vulnerability campaign으로 넘어가지 않는다.
+[Benchmark Set](research/benchmarks/benchmark-set-v1.md)과
+[catalog](../experiments/benchmarks/README.md)의 15 execution은 모두 NOT_RUN이며 READY는 없다.
+
+순서를 유지한다: G0 정의 → oracle → harness → fuzzer correctness → synthetic →
+historical qualification → pilot → experiment freeze → main experiments → candidate triage →
+analysis → paper → independent reproduction. 현재 문서 PR은 이 중 G0만 다룬다.
+
+[Evaluation protocol](research/benchmarks/evaluation-protocol-v1.md)의 budgets/subsets는
+pilot 이전의 제안이며 main-experiment freeze가 아니다. Negative result, qualification failure,
+rejection/timeout와 infrastructure-invalid attempts를 모두 보존한다. Raw data는 수동 수정하지 않는다.
+11월 2일 발표는 working implementation과 검증된 pilot 범위를 구분해야 하며, 11월 9일
+experiment freeze와 11월 30일 최종 artifact는 별도 승인/증거가 필요하다.
+
+## 변경 범위와 문서 우선순위
+
+현재 범위는 Linux TAR/USTAR, C0/C1/C2, fresh extract와 controlled sentinels다.
+이 G0 freeze는 ORAS, C3/C4, PAX/GNU encoding, 새 mutation operators 또는 discovery를 추가하지 않는다.
+새 기능이나 methodology 변경에는 별도 Task Contract와 영향 문서 검토가 필요하다.
+
+현재 상태는 이 문서, G0 정의는 [Research Contract](research/design/research-contract-v1.md),
+C0/C1/C2 의미는 [Security Contracts](research/design/security-contracts.md), 비교/측정 정의는
+[연구 질문](research/design/research-questions.md)과 [프로토콜](research/benchmarks/evaluation-protocol-v1.md)을
+따른다. Historical audit/summary는 자체 날짜와 SHA의 기록으로만 읽는다.

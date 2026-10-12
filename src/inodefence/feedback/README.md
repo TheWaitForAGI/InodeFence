@@ -7,7 +7,7 @@ Layer 5는 `RunResult → Corpus.consider → FeedbackDecision`과
 `Corpus.select_case(rng) → ArchiveCase`를 추가한다. 한 번의 실행은 여전히
 `pipeline.run_case()`가 담당하며 Corpus는 실행이나 mutation을 호출하지 않는다.
 
-[초기 signature](signature.py)는 Oracle과 독립적으로 snapshot을 정규화한다. **StateSnapshot = full raw observation/evidence**, **StateSignature = normalized security-state representation for future feedback/corpus**다. Observer는 sandbox 전체를 기록하며 archive digest/harness metadata를 raw evidence에서 제거하지 않는다.
+[초기 signature](signature.py)는 Oracle과 독립적으로 snapshot을 정규화한다. **StateSnapshot = full raw observation/evidence**, **StateSignature = normalized security-state representation for feedback/corpus**다. Observer는 sandbox 전체를 기록하며 archive digest/harness metadata를 raw evidence에서 제거하지 않는다.
 
 Schema version 3는 공통 Region에서 EXTRACTION/EXTERNAL object만 선택한다. `.`과 `archive/**` HARNESS object/metadata는 제외하며 **ArchiveCase identity와 TAR artifact identity를 직접 포함하지 않는다.** EXTERNAL은 `outside/**`와 root-level `escape.txt` 등 모든 unreserved extraction 밖 경로를 포함한다. Sorted path/type/mode, regular nlink/size/content digest, textual symlink target, scoped same-object groups, external change field labels 및 protected_paths를 담는다. Identity group도 선택한 object scope로 projection하고 singleton을 제거하여 harness path가 dangling relation을 만들지 않는다. 삭제된 sentinel의 보호 설정과 내부↔sentinel relation은 유지한다.
 
@@ -144,7 +144,7 @@ Cross-target persistence safety를 주장하지 않으며 이번 v1에는 disk p
 validated backend와 enforced IsolatedTarget composition을 요구하며 contained Node의
 tiny benign configured campaign을 검증했다. Snapshot 관찰 범위와 runtime/kernel trust 및
 portability 한계는 유지한다. Adaptive scheduler, persistence/checkpoint, 추가 adapters,
-C3/C4, minimization/lineage DB와 benchmark/security evaluation, effectiveness/ablation은 후속 작업이다. 계약 정의는
+C3/C4, lineage DB와 historical/formal effectiveness 검증은 후속 작업이다. Generic minimizer와 evaluation infrastructure는 상위 모듈에 구현됐다. A1/A2/A3는 구현/테스트됐지만 효과는 미검증이다. 계약 정의는
 [Oracle](../oracle/README.md)과 canonical contract 문서에 둔다.
 
 [단위 테스트](../../../tests/test_feedback_corpus.py)는 semantic fingerprint, 독립 novelty,
@@ -159,7 +159,10 @@ caller 수준의 select → mutate → 단일 실행 조합을 검증한다.
 policy API다. Full diagnostic novelty와 explicit admission을 분리하고 B0는 이전 child로
 전진한다. Legacy Corpus/B3 campaign serialization은 유지한다.
 [Core 계약과 campaign/Evaluation 통합 요구사항](../../../docs/research/design/search-policy-core-v1.md)을
-따른다. Alternative IDs는 아직 ExperimentConfig에 연결되지 않았으며 silent fallback은 없다.
+따른다. `run_search_campaign` / `SearchCampaignConfig`는 이 IDs를 실행하며 separate completed
+policy export/reader/config/dataset binding도 구현됐다. Legacy ExperimentConfig는 여전히 B3/legacy만
+지원한다. Automatic policy journal/repetition은 연결 완료되지 않았으며 silent fallback은 없다.
+Capability baseline과 claim 범위는 [Research Contract](../../../docs/research/design/research-contract-v1.md)를 따른다.
 
 `FeedbackProjection` / `feedback_key`는 A1/A2 admission-key ablation을 제공한다.
 SearchDecision v2는 full-state novelty와 projected-key novelty를 구분한다.

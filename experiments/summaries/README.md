@@ -24,3 +24,16 @@ raw data 없이 summary 숫자를 수동으로 invent하지 않는다. 원본을
 
 [인프라 검증 v1](infrastructure-readiness-v1.md)은 실행 전 provenance/config 도입 이후의
 engineering audit와 reference semantic repeat를 기록한다. Node benchmark/evaluation 결과가 아니다.
+
+[Native entry-transition observation qualification v2](node-transition-observation-qualification-v2.md)는
+pinned node-tar의 public event, inotify, strace와 prefix replay 후보를 benign Linux fixture로
+검증한 **QUALIFIED FAIL** 기록이다. Native P0/P1/P2 효과 평가 결과가 아니다.
+
+[libarchive entry-boundary qualification v1](libarchive-entry-boundary-qualification-v1.md)은
+별도 public write-disk reference target의 `archive_write_finish_entry()` 이후에도 directory
+metadata가 final close까지 지연됨을 검증한 **QUALIFIED FAIL** 기록이다.
+
+[node-tar internal completion qualification v3](node-internal-completion-qualification-v3.md)는
+source-guarded private completion callback의 entry association, effect-completion order,
+callback-time snapshot consistency와 stock 대비 overhead를 검증한 **QUALIFIED FAIL** 기록이다.
+정확한 marker association을 native archive-ordered transition producer로 승격하지 않는다.

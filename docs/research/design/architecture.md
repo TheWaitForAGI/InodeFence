@@ -19,14 +19,24 @@
 
 ## 1. 현재 상태와 용어
 
-현재는 **개발 Layer 2, 최소 Layer 3, Layer 4 Generic Mutation v1과 Layer 5 Feedback / Corpus v1 구현** 단계다. Feature branch의 구현 상태 표시는 main merge를 의미하지 않는다.
+현재 capability baseline은 main **`8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`**다.
+[Research Contract v1](research-contract-v1.md)은 G0 정의/claim scope를,
+[STATUS](../../STATUS.md)는 DESIGNED / IMPLEMENTED / TESTED / EXPERIMENTALLY VALIDATED를 구분한다.
+Core Layer 2–5와 Layer 6 evidence infrastructure가 구현됐지만 historical/formal research 결과는 없다.
 
-ArchiveCase → 결정적 USTAR → Python reference worker → pre/post snapshot → C0/C1/C2 evidence의 실제 API가 있다. Generic Mutation v1은 별도 ArchiveCase → ArchiveCase API다. Layer 5는 RunResult의 독립 state/violation novelty에 따른 in-memory retention과 uniform caller-RNG parent selection을 제공한다. Bounded campaign v1은 명시적 seed와 execution budget으로 API를 조합한다. Minimal seed generator는 기존 4종 정상 baseline을 명시적으로 제공한다. Node-tar는 별도 contained target으로 정상 fixture와 tiny benign configured campaign을 검증했다. 추가 adapters, adaptive scheduler/persistence 및 evaluation은 후속 단계다.
+ArchiveCase → deterministic USTAR → fresh runtime/prepared target → BEFORE → target execution →
+AFTER → C0/C1/C2 → feedback pipeline과 minimal benign seeds가 구현됐다. `run_search_campaign`은 B0/B1/B3,
+A1/A2 key projection과 legacy/M1/A3 mutation을 명시적으로 조합한다. Generic/USTAR minimizer,
+verified readers, passive ledger/journal, pair/benign replay, qualification/matrix와 completed policy
+config/dataset/statistics도 있다. [Search 계약](search-policy-core-v1.md)과
+[evaluation API](../../../src/inodefence/evaluation/README.md)가 해당 구현의 상세 경계를 기록한다.
 
-Pre-audit freeze, Audit Phases 1–2와 Global Findings Freeze v1을 완료했고 Phase-3 Runtime #45 / Engine #46 fixes는 main `d1982e4`에 병합됐다. 현재는 Phase-4 global closeout 대기 단계다. Container-backed target,
-frozen isolation/config/provenance와 benign Node full-path, lifecycle 및 staged export를 검증했다.
-EN-001–004의 functional engine fixes는 최종 검증을 통과했다. Audited main의 잔여 EN-005 navigation drift는 [final audit #47](https://github.com/TheWaitForAGI/InodeFence/pull/47)에 기록했고 이 PR #35에서 문서 correction을 제안한다. Global verdict나 benchmark readiness를 앞당기지 않는다. Development tests/smoke는
-evaluation 결과가 아니다. [현재 상태](../../STATUS.md)와 [실제 검증 기록](../../../experiments/summaries/pre-audit-readiness-v1.md)을 따른다.
+Contained node-tar **7.5.22 benign smoke**는 engineering TESTED evidence다.
+Historical qualification과 known-case rediscovery는 NOT_RUN이며 현재 취약점을 주장하지 않는다.
+첫 intended qualification은 **N01 7.5.2/7.5.3**이고 generation/setup/artifacts/expected effects는
+미검증이다. GNU evaluation route는 benign allowlist만, ORAS/C3/C4는 미구현이다.
+Automatic policy journal/repetition, interrupted-prefix recovery와 complete-step timing은 통합 완료되지 않았다.
+과거 audits/summaries의 SHA/count는 역사적 evidence이며 현재 capability를 정의하지 않는다.
 
 아래 개념 그림에는 lineage, tracing, corpus 등 미래 설계도 포함한다. 현재 확정된 field/API는 **7.8 현재 구현 경계**를 따른다. Python reference는 최종 benchmark target이 아니다.
 
@@ -374,7 +384,7 @@ Post-State
 
 ## 7.6 StateSignature
 
-**StateSignature = normalized security-state representation for future feedback/corpus**다. Feedback을 위해 security-relevant filesystem state를 비교 가능한 형태로 정규화한다. Snapshot 전체를 그대로 key로 바꾸지 않는다.
+**StateSignature = normalized security-state representation for feedback/corpus**다. Feedback을 위해 security-relevant filesystem state를 비교 가능한 형태로 정규화한다. Snapshot 전체를 그대로 key로 바꾸지 않는다.
 
 ArchiveCase identity와 TAR artifact identity는 signature에 직접 포함하지 않는 invariant를 따른다. 입력 순서/bytes가 달라도 같은 semantic filesystem/security state와 effect를 만들면 signature는 같아야 한다. HARNESS object와 metadata는 제외하지만 raw evidence에서는 보존한다.
 
@@ -722,7 +732,7 @@ Mutator는 archive의 **구조적 의미**를 변화시킨다.
 
 현재 [Generic Mutation v1](../../../src/inodefence/mutator/README.md)은 add/remove/duplicate/reorder/path/hardlink/symlink/link-target 8개 함수를 독립적으로 export한다. 각 함수는 `(case: ArchiveCase, rng: random.Random) -> ArchiveCase`이며 caller-owned RNG만 사용한다. Uniform `mutate()`는 baseline convenience 함수다. 향후 adaptive scheduler는 개별 함수를 직접 선택할 수 있으며 mutator는 Observer/Oracle/Feedback/StateSignature/TargetAdapter/pipeline/corpus 또는 TAR encoding에 의존하지 않는다. Constructor와 builder의 조합 검사는 별도 integration test에 둔다.
 
-현재 v1과 후속 확장 후보를 포함한 mutation 축:
+아래는 설계 축이며 현재 구현은 [legacy/M1/A3 계약](mutation-m1-v1.md)을 따른다. 후속 후보를 구현됐다고 해석하지 않는다:
 
 - entry type
 - entry path
@@ -1761,3 +1771,40 @@ Search 이후 caller-level `minimizer.minimize_case`는 ArchiveCase 후보를 �
 RunResult evidence predicate로 채택 여부를 판단한다. Mutation/observer/oracle responsibilities는
 유지하며 replay tooling이나 특정 target 규칙을 core에 넣지 않는다.
 [Versioned API, budget, evidence와 한계](generic-minimizer-v1.md)를 따른다.
+
+## Generic entry-transition model
+
+Layer 2/5의 독립 모델은 `ObservationPoint`와 archive ordinal을 포함한
+`ArchiveEntryReference`, complete `EntryCheckpoint`, consecutive
+`FilesystemTransition`, ordered `TransitionTrace`를 제공한다. Legacy
+`SnapshotPhase.BEFORE/AFTER`, `RunResult`, `run_case()`와 C0/C1/C2 의미는 바꾸지 않는다.
+`TransitionRunResult`는 기존 final evidence와 transition evidence를 composition한다.
+
+TransitionSignature v1은 raw inode/device/timestamp/runtime/target/CVE 값을 제외하고
+entry type/ordinal class, region별 object effect, identity relation delta와 external
+effect category를 보존한다. Individual `TransitionFeedbackKey`가 향후 primary novelty
+단위이며 ordered `TransitionSequenceKey`는 auxiliary evidence다. 이 generic 구현과
+synthetic sequence test는 실제 extractor의 entry completion boundary qualification이나
+feedback effectiveness 결과가 아니다. 정확한 계약은
+[transition-feedback-v1.md](transition-feedback-v1.md)를 따른다.
+
+Transition novelty는 final StateSignature/violation novelty와 독립된 seen-key channel이다.
+P0 final-state retention과 P1 transition retention은 같은 uniform parent/mutation 경로를
+사용하며 별도 versioned ID를 가진다. P1은 final-state admission 대신 transition key를 쓰고
+violation admission은 공통으로 유지한다. 모든 channel과 incomplete trace status는 evidence에
+남는다. Native target binding이 없으므로 현재 runner는 caller-owned transition result producer를
+조합하는 in-memory core이며 formal contained campaign이 아니다. Passive checksummed export는
+completed result를 보존할 뿐 target execution이나 boundary qualification을 추가하지 않는다.
+
+P2는 P1의 admission과 uniform parent selection을 그대로 사용하고 mutation operator selection만
+bounded transition-adaptive scheduler로 바꾼다. Stable `MutationOperatorId`, `MutationAttempt`와
+per-step `MutationSchedulerEvidence`가 선택 전후 weight, reward, lineage를 보존한다. Scheduler는
+generic TransitionFeedbackKey만 보며 target/CVE knowledge나 violation reward를 사용하지 않는다.
+P0/P1/P2 경계는
+[transition-mutation-scheduler-v1.md](transition-mutation-scheduler-v1.md)를 따른다.
+
+Transition evaluation은 legacy `ExperimentConfig`/campaign schema를 수정하지 않는 별도
+`TransitionEvaluationConfig`와 checksummed config/result/manifest bundle을 사용한다. Reader는
+final RunResult와 provenance를 검증하고 동일 RNG seed로 parent/operator/mutation/feedback/reward를
+재생한다. Summary/statistics는 verified bundle만 입력으로 받고 P0/P1/P2 외 조건 차이를 거부한다.
+이 passive evidence 계층은 native adapter qualification이나 benchmark readiness를 만들지 않는다.

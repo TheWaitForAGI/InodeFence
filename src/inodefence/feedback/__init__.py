@@ -10,6 +10,20 @@ from .fingerprint import (
 from .projection import FeedbackKey, FeedbackProjection, feedback_key
 from .search import SearchDecision, SearchPolicy, SearchState
 from .signature import state_signature
+from .transition import (
+    transition_key,
+    transition_keys,
+    transition_sequence_key,
+    transition_signature,
+)
+from .transition_novelty import TransitionNoveltyDecision, TransitionNoveltyIndex
+from .transition_search import (
+    TransitionCorpusEntry,
+    TransitionSearchDecision,
+    TransitionSearchPolicy,
+    TransitionSearchState,
+    TransitionSearchStats,
+)
 
 __all__ = [
     "ChangeFingerprint",
@@ -26,5 +40,16 @@ __all__ = [
     "SearchState",
     "ViolationFingerprint",
     "state_signature",
+    "transition_key",
+    "transition_keys",
+    "transition_sequence_key",
+    "transition_signature",
+    "TransitionCorpusEntry",
+    "TransitionNoveltyDecision",
+    "TransitionNoveltyIndex",
+    "TransitionSearchDecision",
+    "TransitionSearchPolicy",
+    "TransitionSearchState",
+    "TransitionSearchStats",
     "violation_fingerprints",
 ]

@@ -1,0 +1,11 @@
+ARG BASE_IMAGE=vsc-inodefence-bc8d8c5f18eb139d6df3f1ebeba88e54793a9303c2661cec498ecaf6bad52f52:latest
+FROM ${BASE_IMAGE}
+
+ARG DEBIAN_FRONTEND=noninteractive
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        libarchive-dev=3.7.2-2ubuntu0.9 \
+        libarchive13t64=3.7.2-2ubuntu0.9 \
+    && rm -rf /var/lib/apt/lists/*
+USER vscode

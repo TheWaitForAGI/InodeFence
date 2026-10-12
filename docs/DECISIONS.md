@@ -6,6 +6,10 @@
 
 결정을 바꾸려면 PR에서 이유를 설명하고 이 문서도 함께 수정한다.
 
+각 decision의 상태/구현 문구는 기록 당시의 단계다. 현재 main capability는
+[STATUS](STATUS.md)와 [G0 Research Contract](research/design/research-contract-v1.md)를 따른다.
+후속 구현이 존재한다는 이유로 역사적 결정의 검증 수치나 원본 근거를 바꾸지 않는다.
+
 ## D001 — 1차 archive format은 TAR
 
 **상태:** 확정
@@ -430,3 +434,25 @@ serialized model은 유지하며 새 caller output은 구분된 SearchCampaignRe
 보존한다. Full-state diagnostic count와 projected-key count를 분리한다. ExperimentConfig와 durable
 Evaluation reader/journal/export binding은 해당 ownership의 새 schema 지원까지 독립 dependency로
 남긴다. In-memory engineering validation은 정책의 연구상 효과나 benchmark readiness를 의미하지 않는다.
+
+## D030 — G0 documentation freeze anchors claims to an immutable capability baseline
+
+**상태:** user Task Contract에 따른 documentation freeze; PR review/acceptance 대상
+
+Capability baseline은 main `8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`다.
+[Research Contract v1](research/design/research-contract-v1.md)은 G0 정의를 한 authority map에
+연결하고 DESIGNED / IMPLEMENTED / TESTED / EXPERIMENTALLY VALIDATED를 구분한다.
+현재 source가 실행하는 비교는 B0/B1/B3와 A1/A2/A3다. RQ2/RQ3의 오래된 path-only/fixed-recipe
+baseline 및 F0–F3 ladder를 이 실제 비교로 reconcile하며, 미구현 비교에 대한 우월성을 주장하지 않는다.
+
+`SearchDecision.interesting`은 full state OR fingerprint diagnostic novelty다.
+Protocol의 variant-specific admission rate는 `admission_eligible`을 사용하도록 용어를 정정한다.
+Budget/repetition/subset/confirmation criteria는 기존 provisional plan을 유지하며 later
+experiment freeze에서 qualification/pilot evidence로 확정한다. 이 변경은 formal methodology를
+결과에 맞추는 변경이 아니고 raw output, oracle predicates, config APIs 또는 search를 바꾸지 않는다.
+
+Historical qualification의 첫 intended pair는 N01 node-tar 7.5.2/7.5.3이다. M1 구조가 있어도
+finite vocabulary의 default sentinel addressing은 미해결이다. Catalog는 current baseline만
+갱신하고 original upstream access date/pins와 all-NOT_RUN states를 보존한다.
+역사적 audit/handoff는 명시적으로 superseded하며 원래 validation 기록을 유지한다.
+G0 정의 승인은 G1 이후 readiness나 benchmark/CVE evidence로 승격되지 않는다.

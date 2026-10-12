@@ -189,11 +189,11 @@ or incomplete snapshots into transitions.
 
 ## Evidence and reproducibility
 
-The local raw copy is
+The retained local raw copy is
 `experiments/raw/node-transition-observation-qualification-v2-06ace94.json`; repository
-rules intentionally ignore it. An additional copy remains in the disposable Docker
-volume at
-`/var/lib/inodefence/node-transition-observation-qualification-v2-06ace94.json`.
+rules intentionally ignore it. The formal run also wrote the same bytes to the disposable
+runtime path `/var/lib/inodefence/node-transition-observation-qualification-v2-06ace94.json`;
+that runtime copy is not an archival guarantee and may disappear with volume cleanup.
 
 | Raw property | Value |
 | --- | --- |

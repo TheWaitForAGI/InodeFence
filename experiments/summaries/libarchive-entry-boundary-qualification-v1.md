@@ -104,11 +104,11 @@ These tiny-process measurements are not extractor-performance benchmarks.
 
 ## Evidence and reproduction
 
-The local raw copy is
+The retained local raw copy is
 `experiments/raw/libarchive-entry-boundary-qualification-v1-99828fa.json`; repository
-rules intentionally ignore it. A second copy remains in the disposable runtime
-volume at
-`/var/lib/inodefence/libarchive-entry-boundary-qualification-v1-99828fa.json`.
+rules intentionally ignore it. The formal run also wrote the same bytes to the disposable
+runtime path `/var/lib/inodefence/libarchive-entry-boundary-qualification-v1-99828fa.json`;
+that runtime copy is not an archival guarantee and may disappear with volume cleanup.
 
 | Raw property | Value |
 | --- | --- |

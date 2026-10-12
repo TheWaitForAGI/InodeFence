@@ -1,8 +1,8 @@
 # Oracle / Security Model Focused Review v1
 
-> 담당: 주언 — Oracle / Security Model  
-> 기준 branch: `main`  
-> 기준 commit: `8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`  
+> 담당: 주언 — Oracle / Security Model<br>
+> 기준 branch: `main`<br>
+> 기준 commit: `8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`<br>
 > 범위: 현재 snapshot 기반 C0/C1/C2의 의미, evidence, 공격 시나리오, 관찰 한계 검토
 
 ## 1. 결론

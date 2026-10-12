@@ -62,3 +62,11 @@ Default `outside/sentinel.txt`는 이 finite vocabulary와 benign seeds로 생�
 서로 다른 parent state 때문에 다른 draw stream을 가질 수 있으므로 campaign 전체의
 draw 동일성을 주장하지 않는다. MutationPolicy에 명시적인 versioned ID를 저장한다.
 M1/A3 ID는 SearchCampaignConfig와 completed policy evidence/config binding에 기록된다. Legacy ExperimentConfig 및 automatic policy journal/repetition 경계는 위와 같다.
+
+## Transition scheduler boundary
+
+P0/P1의 `UniformMutationScheduler`는 모든 operator weight를 1로 유지한다. P2의
+`TransitionAdaptiveScheduler`는 normalized transition novelty만 binary reward로 받아
+1..8 integer weight와 caller-owned `rng.randrange(total)`로 선택한다. Violation은 scheduler
+evidence에 남지만 reward가 아니다. 정확한 정책과 evidence는
+[transition-mutation-scheduler-v1.md](transition-mutation-scheduler-v1.md)를 따른다.

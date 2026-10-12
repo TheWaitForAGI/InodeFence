@@ -2,92 +2,84 @@
 
 ## 이 폴더는 무엇인가
 
-재현 가능한 실험 설정과 가공 전 실행 기록을 보관한다.
+재현 가능한 설정과 가공 전 evidence를 보관하고, 검증된 요약을 findings/paper에 연결한다.
+G0 capability baseline은 main **`8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`**다.
+[Research Contract](../docs/research/design/research-contract-v1.md)의
+DESIGNED / IMPLEMENTED / TESTED / EXPERIMENTALLY VALIDATED를 구분한다.
 
-## 입력
+## 입력과 출력
 
-명시적 seed/config, exact target 버전, 실행 전 provenance와 엔진 실행 기록.
+입력은 explicit seed/config, exact target/version/artifact, 실행 전 source/runtime/isolation/
+sentinel provenance다. 출력은 immutable config, raw canonical records, checksum manifest와
+검증된 별도 summary다. **Historical qualification, rediscovery와 formal comparison은 NOT_RUN이며
+현재 취약점을 주장하지 않는다.** Engineering summaries와 synthetic statistics tests는 결과가 아니다.
 
-## 출력
+## 현재 구현과 evidence 범위
 
-Configuration JSON, campaign manifest와 raw steps JSONL. 비교 실험과 분석은 아직 없다.
+- `run_campaign`과 strict JSON ExperimentConfig v1/v2는 legacy B3/mutation 경로다.
+  Manifest v4 writer와 [verified reader](../src/inodefence/evaluation/README.md)가 있다.
+- `run_search_campaign` / `SearchCampaignConfig`는 B0/B1/B3 × FULL/A1/A2 × legacy/M1/A3를 실행한다.
+  별도 `PolicyEvaluationConfig`가 initial IDs, full provenance, profiles와 protocol를 completed
+  result에 binding한다. [Policy export/reader](../src/inodefence/evaluation/policy_evidence.py),
+  [summary](../src/inodefence/evaluation/policy_summary.py),
+  [dataset](../src/inodefence/evaluation/policy_dataset.py),
+  [statistics](../src/inodefence/evaluation/policy_statistics.py)가 구현/테스트됐다.
+- Generic failure ledger, passive legacy journal, legacy repeated controller, pair records,
+  qualification/matrix와 allowlisted benign replay가 있다. [Evaluation](../src/inodefence/evaluation/README.md)
+  및 [replay](../src/inodefence/replay/README.md)는 각 API의 소유권과 한계를 설명한다.
+- Reader는 checksums, case/TAR identity, raw derivations, config/provenance와 declared-policy
+  admission/eligible-parent consistency를 검증한다. Actual RNG/proposal execution, assessor
+  assertion의 truth, authorship, known-class rediscovery 또는 paper readiness를 증명하지 않는다.
+- Full results/readers는 O(budget) memory다. 두 core runner에 completed-step callback/aborted-prefix
+  return이 없어 journal/ledger가 internal lost steps를 자동 복구하지 못한다. Policy repetition,
+  automatic incremental attachment와 full-pipeline timing은 통합 완료되지 않았다.
+  Target duration은 complete-step latency가 아니며 completed-only policy stats는 invalid attempts를 추론하지 않는다.
 
-## 책임
+ExecutionProvenance v2는 실행 전 source/environment/adapter/sentinel과 nullable isolation을 고정한다.
+IsolationProvenance internal v2는 실제 image probe의 verified worker/lock digest와 origin을 기록한다.
+Legacy manifest v4는 stored configuration, actual execution contexts와 exporter environment를 분리한다.
+Policy evidence는 별도 versioned schemas며 legacy manifest에 묵시적으로 넣지 않는다.
+Config identity 자체는 결과나 OS isolation의 증거가 아니다. Dirty source SHA는 patch를 보존하지 않는다.
 
-예: baseline과 feedback 사용 실험이 어떤 설정으로 실행됐는지 기록한다.
+## 보존 규칙
 
-## 하지 않는 것
+설정은 configs/, raw는 ignored raw/ 또는 results/에 두되 **immutable shared storage URI와
+checksums를 별도로 기록**한다. Raw output은 수동 수정하지 않고 versioned analysis derivative를 만든다.
+실행 전에 engine SHA, target pin/locks/image, OS/kernel/runtime/architecture/filesystem, exact command/options,
+config, initial corpus, seed, all-status execution budget/timeout, oracle/feedback/mutation IDs, schedule/protocol,
+start/end timestamps와 raw path를 기록한다. 실패·timeout·negative result·qualification failure를 삭제하지 않는다.
+Missing/incomplete/infrastructure-invalid evidence는 no-hit으로 분류하지 않는다.
 
-raw 결과를 검토 없이 논문 결론으로 승격하기, source mount에서 filesystem 실험하기.
+[Summaries 규칙](summaries/README.md)에 따라 raw → verified summary → finding/measurement →
+analysis script → figure/table → paper claim을 추적한다. Formal dataset/figure reproduction은 아직 검증되지 않았다.
+민감한 candidate는 [SECURITY](../SECURITY.md)를 따르며 ignored path는 access control을 대체하지 않는다.
 
-## 다른 모듈과의 연결
+## 역사적 engineering 기록과 benchmark 계획
 
-[엔진](../src/inodefence/README.md)을 실행할 설정을 제공하며 확인한 증거는 [findings](../findings/README.md), 검토된 분석은 [paper](../paper/README.md)로 연결한다.
+[Reference 개발 pilot](summaries/reference-campaign-pilot-v1.md),
+[infrastructure](summaries/infrastructure-readiness-v1.md),
+[pre-audit](summaries/pre-audit-readiness-v1.md)와
+[benign Node smoke](summaries/benign-node-container-smoke-v1.md)는 각각 기록된 revision/config/checksum의
+engineering evidence다. Current main capability나 vulnerability rediscovery의 근거로 수치를 재사용하지 않는다.
+Baseline main의 canonical/container checks와 **node-tar 7.5.22 benign smoke PASS**는
+[STATUS](../docs/STATUS.md)의 pinned CI evidence를 따른다.
 
-## 현재 상태
-
-ExecutionProvenance envelope v2는 campaign 시작 전에 source/environment/adapter/sentinel과
-nullable isolation 값을 고정한다. Contained IsolationProvenance 내부 v2는 실제 image probe로
-검증한 worker/lock digest와 artifact origin을 기록한다. Policy schema는 v1이다.
-Manifest v4는 stored configuration과 실제 RunResult contexts/exporter 환경을 분리한다. Git 정보가
-없으면 None이며 dirty checkout의 commit은 patch 내용을 보존하지 않는다. Metadata만으로
-연구 결과의 재현성 또는 OS execution isolation을 보장하지 않는다.
-
-summaries/에는 [safe reference 개발 pilot](summaries/reference-campaign-pilot-v1.md)의 작은
-engineering summary가 있다. Raw 결과는 로컬 experiments/raw/reference-pilot-v1/에 Git ignore로
-보관하며 재생성 명령과 checksum을 요약에 기록한다. Formal effectiveness 실험 결과는 없다.
-
-Strict JSON ExperimentConfig v1/v2와 [reference config CLI](../scripts/run_configured_reference.py)가
-실행 전 binding을 검증하고 stored config ID/actual execution provenance를 raw export에 연결한다.
-Configuration identity는 result/source/kernel를 포함하지 않으며 평가 결과가 아니다.
-
-[인프라 검증 요약](summaries/infrastructure-readiness-v1.md)은 clean source의 작은 reference repeat,
-uncontained Node campaign 실행 전 거부와 local raw checksums를 연결하는 역사적 기록이다.
-현재는 [pre-audit readiness](summaries/pre-audit-readiness-v1.md)의 contained Node benign smoke,
-lifecycle, durable export와 dependency 검증을 완료한 역사적 기록을 따른다.
-그 이후 Audit Phases 1–2/findings freeze와 Phase-3 #45/#46 fixes를 완료했고 현재는 Phase-4
-global closeout 대기다. 이 PR #35는 current-state documentation correction 제안이며 evaluation은 NOT_RUN이다.
-
-## 파일 배치 규칙
-
-설정은 configs/, raw 기록은 raw/에 둔다. raw/*와 results/는 Git ignore 대상이므로 결과 보존·공유 경로를 명시한다. 설정에 seed, 환경, target 버전과 결과 식별자를 남긴다.
-
-작은 검증 요약은 [summaries/](summaries/README.md)에 config, commit, target/version, seed, budget, result와 원본 근거를 연결해 추적한다.
-
-## Benchmark/evaluation 준비
-
-[정적 benchmark catalog와 빈 표](benchmarks/README.md)는
-[연구 설계 v1](../docs/research/benchmarks/README.md)에 연결된다.
-실행 설정 또는 실험 결과가 아니며 isolation, 전체 audit와 audit fixes 이후의 handoff다.
-
-Container-bound configurations use explicit ExperimentConfig v2 and frozen isolation
-policy/runtime/image and verified worker/lock provenance with isolation schema v2 origin.
-Uncontained third-party campaigns fail before setup; approved execution evidence is limited
-to engineering/helper/benign Node checks and does not authorize candidate execution.
-Manifest v4 stores these facts; snapshot/security/novelty semantics are unchanged.
-No benchmark effectiveness or known-vulnerability result is implied.
-
-
-The [benign Node container smoke](summaries/benign-node-container-smoke-v1.md) records
-one tiny engineering campaign, exact stored conditions/checksums and observed stats.
-CI retains its raw bundle as an artifact. Lifecycle/export review and limited integration freeze
-were completed before the Phase-1/2 audits and merged Phase-3 fixes. Phase-4 global
-closeout remains pending; no effectiveness/security evaluation follows automatically.
+[Static catalog](benchmarks/README.md)는 source-derived planning metadata다.
+**N01 node-tar 7.5.2 / 7.5.3**가 첫 intended historical qualification이며 아직 READY가 아니다.
+All 15 executions remain NOT_RUN. Actual qualification/matrix evidence는 별도 evaluation API가 처리하며
+static catalog selection/source facts를 실행 결과로 자동 승격하지 않는다.
+[Protocol](../docs/research/benchmarks/evaluation-protocol-v1.md)의 B0/B1/B3, A1/A2/A3 budgets/subsets는
+pilot 후 experiment freeze 이전까지 provisional이다. Path-only/fixed-recipe baseline은 없다.
 
 ## Completed export publication
 
-Manifest v4 stages closed/flushed/fsynced files and verifies JSONL/checksum/read-back before
-Linux `renameat2(RENAME_NOREPLACE)` publication; supported libc/kernel/filesystem are required.
-An existing or concurrently created destination is never replaced. Optional immutable config JSON
-is checked against the stored config ID and published in the same bundle. Before-publication errors
-leave the final destination absent and staging cleaned. Parent directories may remain. Hard process
-interruption can leave staging; a post-publication parent-fsync error leaves the complete bundle
-and propagates. Unexpected-evidence emergency preservation is separate and can still be partial
-if its writes fail. This is atomic publication, not resume/database or crash-proof storage.
+Legacy manifest v4는 closed/flushed/fsynced staging, checksum/read-back 후 Linux
+`renameat2(RENAME_NOREPLACE)`로 공개한다. 기존/동시 destination을 덮어쓰지 않는다.
+Before-publication error는 final absent/staging cleanup이며 parent directories는 남을 수 있다.
+Hard interruption은 staging을 남길 수 있고 post-publication parent-fsync error는 complete bundle을
+남긴 채 전달한다. 이것은 atomic publication이며 resume/database/crash-proof storage가 아니다.
+Separate evaluation records/policy binding markers도 partial publication을 검증된 complete evidence로
+승격하지 않는다. [Storage/evidence API](../src/inodefence/evaluation/README.md)를 따른다.
 
-Schemas1/2/3 are historical exports; the writer emits v4. Step JSONL/ArchiveCase/RunResult/signature
-envelopes remain v1, while signature keys intentionally changed from internal v2 to tagged v3.
-ExecutionProvenance/CampaignResult envelopes remain v2; IsolationProvenance changed to internal
-v2 with verified artifact origin. Config v1/v2 IDs are preserved and no v2 signature-key migration
-or historical-evidence attestation is provided. The no-overwrite mechanism follows the
-[Linux rename manual](https://man7.org/linux/man-pages/man2/rename.2.html).
+Historical manifest schemas 1/2/3, signature v2와 legacy config IDs는 현재 schema 지원과 구분한다.
+State keys는 tagged v3이고 old key migration/attestation을 제공하지 않는다.

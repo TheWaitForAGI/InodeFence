@@ -127,3 +127,22 @@ Compatibility/statistics 구현은 formal durable campaign orchestration이나 e
 Unit tests는 policy/projection/mutation 조합과 legacy B3 parity를 확인한다. Tiny Python reference
 integration은 기존 runtime에서 full pipeline/archive hash binding을 확인하며 benchmark 결과나
 정책 효과의 증거가 아니다.
+
+## Independent transition-retention core
+
+Entry-transition track은 기존 B0/B1/B3 enum, admission, evidence shape를 수정하지 않는다.
+`TransitionSearchPolicy`의 P0
+`final-state-v3-or-violation-v1-uniform-mutation-v1`과 P1
+`transition-v1-or-violation-v1-uniform-mutation-v1`을 별도 API로 제공한다.
+
+P0는 FULL B3와 같은 StateSignature v3 OR violation admission 및 caller RNG uniform parent
+selection을 재현한다. P1은 final-state admission만 unique TransitionFeedbackKey admission으로
+대체하며 violation channel과 uniform parent/mutation은 유지한다. `TransitionSearchDecision`은
+full-state, violation, transition novelty와 trace completeness를 분리한다. Adaptive operator
+selection은 이 단계에 없다.
+
+Native node-tar completion boundary가 qualification에 실패했으므로 transition campaign은
+caller-owned `TransitionRunResult` producer를 조합하는 in-memory core다. Existing isolated
+target gate, ExperimentConfig, exporter/reader를 우회하거나 formal experiment readiness를
+주장하지 않는다. Synthetic sequence에서 P0/P1 실행 가능성과 P0/B3 admission/parent RNG
+parity를 테스트했다. Effectiveness는 **NOT_RUN**이다.

@@ -1787,3 +1787,10 @@ effect category를 보존한다. Individual `TransitionFeedbackKey`가 향후 pr
 synthetic sequence test는 실제 extractor의 entry completion boundary qualification이나
 feedback effectiveness 결과가 아니다. 정확한 계약은
 [transition-feedback-v1.md](transition-feedback-v1.md)를 따른다.
+
+Transition novelty는 final StateSignature/violation novelty와 독립된 seen-key channel이다.
+P0 final-state retention과 P1 transition retention은 같은 uniform parent/mutation 경로를
+사용하며 별도 versioned ID를 가진다. P1은 final-state admission 대신 transition key를 쓰고
+violation admission은 공통으로 유지한다. 모든 channel과 incomplete trace status는 evidence에
+남는다. Native target binding이 없으므로 현재 runner는 caller-owned transition result producer를
+조합하는 in-memory core이며 formal contained campaign/export가 아니다.

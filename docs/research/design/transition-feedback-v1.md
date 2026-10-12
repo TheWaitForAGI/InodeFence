@@ -5,7 +5,8 @@
 - Generic checkpoint/transition model: **IMPLEMENTED**, **TESTED**
 - Synthetic file → hardlink → replacement sequence: **TESTED**
 - Native node-tar entry completion observation: **NOT_IMPLEMENTED** after qualification failure
-- Transition retention/adaptive scheduling: **NOT_RUN** in this model PR
+- Transition novelty/retention core: **IMPLEMENTED**, **TESTED**
+- Adaptive scheduling: **NOT_RUN** in this model/retention stage
 - Effectiveness or benchmark result: **NOT_RUN**, **HYPOTHESIS**
 
 This document defines target-independent evidence. It does not claim that an
@@ -63,6 +64,44 @@ Repeated equal structural effects preserve multiplicity.
 `TransitionFeedbackKey` represents one transition. `TransitionSequenceKey` preserves
 the ordered full trace as auxiliary evidence only. V1 parent admission will use the
 bounded set of unique individual keys rather than every growing prefix sequence.
+
+## Independent novelty and retention
+
+`TransitionNoveltyIndex` owns a distinct seen set. One observation returns the
+ordered first occurrence of every previously unseen `TransitionFeedbackKey` and a
+separate `transition_novel` flag. It does not read final-state novelty or oracle
+verdicts. Repeated keys inside one trace count once. Completed transitions from an
+explicitly incomplete trace remain evidence; trace completeness and termination are
+preserved in the search decision and never rewritten as success.
+
+`TransitionSearchDecision` reports these channels independently:
+
+- `new_transition_keys` / `transition_novel`
+- `full_state_novel`
+- `new_violation_fingerprints`
+- policy admission and duplicate-case retention
+- trace completeness and termination
+
+Transition novelty means only a previously unseen normalized transition class. It
+is not a vulnerability, contract violation or finding.
+
+Two uniform-mutation policies are independently executable through the in-memory
+`run_transition_campaign` core:
+
+| Policy ID | Parent admission | Parent/operator selection |
+| --- | --- | --- |
+| `final-state-v3-or-violation-v1-uniform-mutation-v1` (P0) | unseen final StateSignature v3 OR new violation fingerprint | retained parents uniform; existing uniform mutation policy |
+| `transition-v1-or-violation-v1-uniform-mutation-v1` (P1) | unseen TransitionFeedbackKey OR new violation fingerprint | retained parents uniform; same existing uniform mutation policy |
+
+P0 mirrors existing B3 full-key admission and uniform parent RNG behavior without
+changing B3 or its ID. P1 replaces only the final-state admission channel with
+transition-key admission; the violation channel is common. Full final-state and
+violation diagnostics remain recorded under both policies.
+
+The campaign accepts a caller-owned `TransitionRunResult` producer because no native
+target adapter is qualified. It is in-memory engineering infrastructure, not an
+ExperimentConfig/export/formal runner and does not bypass the existing contained
+campaign gate. The synthetic producer is used to test causal policy composition.
 
 ## Security meaning
 

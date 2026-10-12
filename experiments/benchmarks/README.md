@@ -16,19 +16,28 @@ for the selected primary pair; `static_runtime` labels metadata compatibility
 separately from runtime qualification (NOT_RUN). Upstream lock hashes identify
 source files, not benchmark locks. npm SRI/go.sum h1 are not container digests.
 
-The catalog's `engine_revision` is the source-reviewed main SHA, not necessarily
-the engine checked out on the research branch. The
-[engine audit](../../docs/research/benchmarks/engine-contract-audit.md) records the
-current integrated main `d1982e4`, the completed Phase-4B review and the explicitly
-superseded historical #39 record. The final audit still recommends NO-GO for
-unconditional global closeout pending documentation disposition; this Draft
-proposes those current-state corrections. Generation,
-observation and execution fields must be rechecked after relevant source changes.
-`candidate_id` (N/O/G series), descriptive `benchmark_id`, R root-cause ID and S
-semantic IDs are stable joins, not display names or CVE-based oracle rules.
-`representation`, `seed_start`, `structure_reachability`, `current_reachability`
-and `isolated_execution` answer different questions. Seed proximity cannot
-establish complete benchmark reachability.
+The catalog's `engine_revision` is the capability baseline main SHA
+**`8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`** reviewed for the
+[G0 contract](../../docs/research/design/research-contract-v1.md), not a moving
+checkout revision. `evidence_accessed: 2026-10-04` preserves the original upstream
+source-access date; this documentation reconciliation does not assert new
+upstream inspection or target execution. The old [engine audit](../../docs/research/benchmarks/engine-contract-audit.md)
+is historical; [STATUS](../../docs/STATUS.md) records current code/test evidence.
+
+M1, B0/B1/B3, A1/A2/A3, minimization, replay and policy-result analysis are
+implemented. M1's finite components still cannot spell the default
+`outside/sentinel.txt`. Structural composition does not establish selected-case
+reachability or bounded rediscovery. Existing catalog
+`component_recombination_planned` is a legacy missing-address-vocabulary label,
+not a claim that the whole M1 mutator is absent. Generation, observation and
+execution fields must be rechecked after relevant source changes.
+
+**N01 node-tar 7.5.2 / 7.5.3 is the first intended historical qualification
+pair.** The validated benign Node pin is 7.5.22, not either member of N01.
+No historical vulnerability has been rediscovered and no vulnerability is claimed.
+`candidate_id` (N/O/G), `benchmark_id`, R and S IDs are stable joins, not CVE oracle
+rules. Representation, seed proximity, structural reachability, full setup
+reachability and isolated qualification are independent.
 
 ## Independent state fields
 
@@ -60,11 +69,11 @@ pin/root gates. All 15 execution states are NOT_RUN, all candidate isolated
 campaign bindings NOT_IMPLEMENTED, and none is READY. `isolated_execution` refers
 to an exact candidate's frozen image/config/provenance and approved campaign
 path. The implemented benign Node/backend composition and passing helper/image/
-fixture/configured-smoke CI and verified artifact/invocation admission at d1982e4
+fixture/configured-smoke CI and verified artifact/invocation admission at the baseline
 do not qualify historical benchmark versions or change
 these fields. The planning-only validator rejects executed
-qualification/READY/evaluation assertions; future ingestion needs a reviewed
-schema/state transition and retained gate evidence.
+qualification/READY/evaluation assertions; executed qualification belongs to the separate evaluation qualification/matrix API
+and requires retained gate evidence, not a metadata status edit.
 
 `selected_pending_qualification` means chosen for implementation planning, not
 ready to execute or validated. `secondary_pending` preserves optional candidates;

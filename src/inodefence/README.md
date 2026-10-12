@@ -31,7 +31,10 @@ builder.build_tar → disposable runtime → before snapshot
 | [targets](targets/README.md) | 실제 extractor 실행 |
 | [observer](observer/README.md) | filesystem 사실 관찰과 비교 |
 | [oracle](oracle/README.md) | Security Contract 판정 |
-| [feedback](feedback/README.md) | signature v3, 독립 violation novelty, in-memory Corpus v1과 uniform parent 선택 |
+| [feedback](feedback/README.md) | signature v3, independent novelty, B0/B1/B3 / A1/A2 |
+| [minimizer.py](minimizer.py) | bounded deterministic generic/USTAR reduction and evidence binding |
+| [evaluation](evaluation/README.md) | verified raw/config, passive ledger/journal, qualification/matrix, datasets/statistics |
+| [replay](replay/README.md) | allowlisted benign fresh-runtime reproduction |
 
 Observer는 사실만 기록하고 Oracle은 사실에 계약을 적용한다. Signature 계산은 계약 판정과 독립적이다. Pipeline은 각 알고리즘을 호출할 뿐 target 옵션이나 mutation 전략을 소유하지 않는다.
 
@@ -43,7 +46,18 @@ context 한계는 [feedback](feedback/README.md)를 따른다.
 
 ## 현재 상태와 한계
 
-Layer 2, 최소 Layer 3, Generic Mutation v1과 Layer 5 Feedback / Corpus v1이 구현됐다. Corpus는 in-memory이며 caller RNG 기반 uniform baseline 선택만 제공한다. Bounded deterministic campaign은 구현됐으며 adaptive scheduler, persistence와 연구 효과 검증은 후속 작업이다. Python tarfile/data target은 architecture/reference용이며 최종 benchmark target이 아니다. Node-tar는 pinned target image와 validated container backend로 정상 fixture 및 tiny benign configured campaign을 실행한다. Isolation-required target은 이 boundary 없이 campaign을 실행할 수 없다. Disposable runtime directory 자체는 OS sandbox가 아니다.
+Capability baseline은 main `8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`다.
+Layer 2–5와 Layer 6 infrastructure가 구현됐다. `run_search_campaign` / `SearchCampaignConfig`가
+B0/B1/B3 × FULL/A1/A2 × legacy/M1/A3를 실행하고 별도 PolicyEvaluationConfig/completed export가
+source/runtime/target/profile/protocol를 binding한다. Legacy ExperimentConfig는 B3/legacy만 허용한다.
+Reader/journal/replay/minimizer와 policy datasets/statistics가 존재하지만 automatic policy journal,
+interrupted-prefix return, full-pipeline timing과 known-class classification은 완성된 pipeline이 아니다.
+
+Python reference는 architecture용이다. Contained node-tar 7.5.22의 benign full path는 TESTED이나
+historical qualification/rediscovery/formal effectiveness는 NOT_RUN이고 취약점을 주장하지 않는다.
+첫 intended qualification은 N01 7.5.2/7.5.3이다. GNU는 benign allowlist에 제한되며 ORAS는 없다.
+[Research Contract](../../docs/research/design/research-contract-v1.md)와 [STATUS](../../docs/STATUS.md)를 따른다.
+Disposable runtime 자체는 OS isolation이 아니다.
 
 Snapshot의 `violated=False`는 관찰 범위에서 위반 증거가 없다는 뜻이다. Transient operation, sandbox 밖의 상태, symlink referent identity와 full C0 direct-use는 증명하지 못한다. 관찰 실패는 harness 오류로 올리며 passing result를 만들지 않는다.
 
@@ -79,13 +93,12 @@ Exporter environment는 writer process의 정보이며 execution environment/sou
 비교하고 experiment.json/checksum으로 같은 bundle에 기록한다. Linux staging/flush/fsync/checksum
 검증 후 renameat2(RENAME_NOREPLACE)로 공개하므로 기존/동시 destination을 덮어쓰지 않는다.
 공개 전 오류는 final absent/staging cleanup이며 공개 후 parent fsync 오류는 complete bundle을 남기고
-전달한다. Hard interruption은 staging을 남길 수 있다. 지원되지 않는 OS/libc/filesystem에는 fallback이 없다. Writer/reader/resume는 별도 개념이며 현재는 writer만 제공한다.
+전달한다. Hard interruption은 staging을 남길 수 있다. 지원되지 않는 OS/libc/filesystem에는 fallback이 없다. Writer/reader/resume는 별도 개념이다. Evaluation reader는 구현됐지만 resume는 제공하지 않는다.
 
 ExperimentConfig v1/v2는 seed/profile/policy/target/sentinel/environment-profile 조건을 실행 전에 검증한다.
 Stored experiment_config_id는 manifest에 보존하며 actual source/platform provenance와 분리한다.
 현재 config CLI는 safe reference만 실행한다. [설정 계약](../../experiments/configs/README.md)을 따른다.
 
-Pre-audit freeze, Audit Phases 1–2와 Global Findings Freeze v1을 완료했고 Phase-3 Runtime #45 / Engine #46 fixes는 main `d1982e4`에 병합됐다. Phase-4 global closeout과 문서 disposition은 아직 대기 중이다. Pinned Node image,
-contained fixtures, frozen config/provenance와 8회 benign full-path smoke, focused lifecycle,
-Linux staged export 및 dependency direction은 pre-audit revision에서 검증했다. Merged fixes의 functional re-audit는 통과했고 이 PR #35는 잔여 EN-005/006 문서·계획 correction을 제안한다.
-Benchmark qualification/security evaluation은 NOT_RUN이다. [준비 상태와 다음 작업](../../docs/STATUS.md)을 따른다.
+역사적 audit/smoke summaries는 자체 SHA와 checksums의 기록으로 보존한다. 현재 capabilities와
+remaining validation은 [STATUS](../../docs/STATUS.md)를 따른다. Engineering PASS는
+benchmark qualification이나 vulnerability claim으로 승격되지 않는다.

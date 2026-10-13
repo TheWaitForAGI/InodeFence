@@ -4,6 +4,8 @@
 
 - Architecture: **DESIGNED**
 - Design Gate 1: **GO for generic synthetic implementation**
+- Generic immutable evidence model and `EffectRunResult`: **IMPLEMENTED**, **TESTED**
+- Generic normalization/search/scheduler: **NOT_IMPLEMENTED** at this revision
 - Native producer and reader: **NOT_IMPLEMENTED / NOT_QUALIFIED**
 - Campaign integration and experiments: **BLOCKED by later gates**
 
@@ -57,8 +59,9 @@ does not mutate an in-flight TAR or serialize node-tar entry work.
 
 ## Generic evidence model
 
-The exact Python API may use immutable dataclasses/enums, but it must preserve the following
-semantic records under a new serialization schema.
+The implemented Python API uses immutable dataclasses/enums and preserves the following
+semantic records under serialization schema 2. Its tests are synthetic engineering evidence,
+not native observation qualification.
 
 ### `EntryLifecycleEvent`
 

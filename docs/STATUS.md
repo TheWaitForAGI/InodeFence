@@ -125,9 +125,11 @@ retains exact evidence. The separate
 [partial-order/effect-event v2 observation contract](research/design/entry-effect-observation-v2.md),
 [architecture](research/design/entry-effect-architecture-v2.md),
 [normalized feedback contract](research/design/entry-effect-feedback-v2.md) and
-[design review](research/design/entry-effect-design-review-v2.md) now pass Design Gate 1 for
-generic synthetic implementation only. The generic model, native producer, qualification and
-campaign remain NOT_IMPLEMENTED / NOT_RUN at this revision.
+[design review](research/design/entry-effect-design-review-v2.md) now pass Design Gate 1.
+The immutable generic lifecycle/effect/identity/causal trace model and separate
+`EffectRunResult` composition are IMPLEMENTED and TESTED synthetically. Normalized v2
+feedback/search/scheduler, native producer, qualification and campaign remain
+NOT_IMPLEMENTED / NOT_RUN at this revision.
 
 Legacy `ExperimentConfig` v1/v2는 여전히 B3/legacy mutation만 허용한다. 별도
 `PolicyEvaluationConfig`와 completed policy export/reader/config/dataset/statistics가 구현됐다.

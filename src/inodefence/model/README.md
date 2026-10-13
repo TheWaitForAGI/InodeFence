@@ -7,8 +7,9 @@
 | 파일 | 주요 모델 |
 | --- | --- |
 | [archive.py](archive.py) | ArchiveEntry, EntryType, ArchiveCase |
+| [effect.py](effect.py) | v2 lifecycle/effect events, evidence sufficiency, causal graph, trace integrity |
 | [filesystem.py](filesystem.py) | ObjectSnapshot, StateSnapshot, StateChange, StateSignature |
-| [results.py](results.py) | ExecutionResult, IdentityEvidence, ViolationResult, RunResult |
+| [results.py](results.py) | ExecutionResult, IdentityEvidence, ViolationResult, RunResult, separate v1/v2 compositions |
 | [provenance.py](provenance.py) | Source/Environment/Target/Sentinel/ExecutionProvenance configuration values |
 | [serialization.py](serialization.py) | canonical_json, default envelope v1 / provenance and campaign v2 |
 
@@ -43,6 +44,15 @@ Region.HARNESS는 normalization namespace role이며 security trust boundary나 
 Python reference는 `time.perf_counter()`로 subprocess 실행 직전부터 정상 완료 또는 timeout kill/wait 이후까지의 actual monotonic elapsed duration을 초 단위로 측정한다. Startup, output collection, timeout 시 kill/wait도 포함하며 setup·snapshot·전체 pipeline 시간은 아니다. 네 status 모두 duration을 기록하며 configured timeout보다 길 수 있다. `canonical_json`에 duration도 raw execution evidence로 남고 Oracle/StateSignature에는 입력하지 않는다.
 
 RunResult는 case, TAR format/hash, 실행 provenance, before/after, 변화, signature와 계약 evidence를 보존한다. 실제 run directory는 반환 전에 삭제된다.
+
+`EffectEventTrace` v2는 unchanged BEFORE/AFTER와 archive entry references에 lifecycle events,
+correlated operation start/completion records, typed identity/state evidence, explicit causal
+relations, bounded-stream provenance, flush state와 observation failures를 별도 composition한다.
+`effect_is_realized()`는 callback success만으로 state change를 만들지 않고 effect class별 evidence
+sufficiency만 검사한다. `EffectRunResult`는 existing `RunResult`와 case/snapshot/termination
+correspondence를 검증하며 v1 `TransitionTrace`나 legacy `RunResult` schema를 바꾸지 않는다.
+이 모델은 target producer, normalized feedback, Security Contract verdict 또는 native qualification이
+아니다.
 
 Public evidence constructor는 annotation만 신뢰하지 않는다. ObjectSnapshot의 digest와
 readlink target은 str, signature/effect/RunResult의 collection은 typed tuple이어야 한다.

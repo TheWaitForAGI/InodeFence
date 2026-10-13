@@ -3,7 +3,7 @@
 ## Status and authority
 
 - Design status: **GATE 1 REVIEWED TASK CONTRACT**
-- Generic v2 model: **NOT_IMPLEMENTED**
+- Generic v2 evidence model: **IMPLEMENTED**, **TESTED synthetically**
 - Native v2 producer: **NOT_IMPLEMENTED**
 - V2 feedback key, retention and scheduler policy: **DESIGNED / NOT_IMPLEMENTED**
 - Qualification and target campaign: **NOT_RUN**

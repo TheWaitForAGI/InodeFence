@@ -50,3 +50,25 @@ bookkeeping을 쓰지 않는다.
 이 probe의 effect event는 실제 callback 반환 전에 해당 filesystem operation이 완료됐다는
 evidence이지만 완전한 tree snapshot은 아니다. 특히 archive order, effect-completion order,
 observation order를 동일시하지 않으며 native `TransitionRunResult` producer로 사용하지 않는다.
+
+## Effect-event producer v2
+
+The runtime image also contains `/target/effect-producer.cjs`, a separate Gate 3 worker. It
+source-guards the lock, actual bundled entrypoint, readable unpack source and its own bytes,
+then runs the same complete asynchronous node-tar invocation. `minimal` records entry
+lifecycle/context; `full` additionally records bounded callback operation start/completion
+and stable before/after object evidence. Both emit one digest-bound terminal stdout frame and
+write no evidence files into the runtime namespace.
+
+Build a new immutable image after changing either worker. From the trusted host, run:
+
+```bash
+docker build -f tools/node-tar/Dockerfile -t inodefence-node-tar:v2 .
+IF_NODE_IMAGE=$(docker image inspect inodefence-node-tar:v2 --format '{{.Id}}')
+PYTHONPATH=src python3.12 -m scripts.container_host --context <context> \
+  --controller <running-dev-container-ID> --volume inodefence-runtime \
+  --image "$IF_NODE_IMAGE" validate-node-effect-producer
+```
+
+That command is Gate 3 contained engineering validation. It does not run the Gate 4 repeated
+profile matrix or qualify native feedback.

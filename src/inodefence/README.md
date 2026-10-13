@@ -22,6 +22,7 @@ builder.build_tar → disposable runtime → before snapshot
 | [builder.py](builder.py) | 결정적 USTAR 직렬화 |
 | [runtime.py](runtime.py) | Linux runtime와 sentinel lifecycle |
 | [pipeline.py](pipeline.py) | 입력 하나의 실행 순서 연결 |
+| [effect_pipeline.py](effect_pipeline.py) | contained node-tar v2 producer와 unchanged final-state 결과 조합 |
 | [campaign.py](campaign.py) | 명시적 seed와 실행 budget으로 select → mutate → run → consider 연결 |
 | [effect_campaign.py](effect_campaign.py) | caller-owned synthetic v2 producer로 effect policy closed loop 검증 |
 | [effect_scheduler.py](effect_scheduler.py) | v2 uniform/adaptive scheduler와 lineage/reward evidence |
@@ -46,10 +47,12 @@ state 또는 새 semantic violation class면 interesting이며, 같은 case_id�
 Corpus가 실행/변형하거나 full RunResult를 저장하지 않는다. 상세 public API와 campaign
 context 한계는 [feedback](feedback/README.md)를 따른다.
 
-Effect Gate 2는 별도 `EffectRunResult`와 v2 policy ID를 사용해 synthetic producer에서만
+Effect Gate 2는 별도 `EffectRunResult`와 v2 policy ID를 사용해 synthetic producer에서
 normalization → novelty → retention → parent/operator selection → next case 관계를 검증한다.
-Native node-tar producer와 campaign integration은 시작하지 않았으며 qualification 전에는 이
-경로를 native feedback으로 사용하지 않는다.
+Gate 3은 별도 contained node-tar worker/adapter, bounded terminal frame, class-specific evidence
+변환과 no-overwrite raw export를 구현했다. Portable tests만 통과했고 actual contained fixture와
+independent reader/qualification은 NOT_RUN/NOT_IMPLEMENTED이므로 이 경로를 native feedback이나
+campaign에 사용하지 않는다.
 
 ## 현재 상태와 한계
 

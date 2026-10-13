@@ -4,7 +4,8 @@
 
 - Design status: **GATE 1 REVIEWED TASK CONTRACT**
 - Generic v2 evidence model: **IMPLEMENTED**, **TESTED synthetically**
-- Native v2 producer: **NOT_IMPLEMENTED**
+- Native v2 producer: **IMPLEMENTED**, portable contract tests **PASS**; contained fixture
+  execution **NOT_RUN** at this revision
 - V2 feedback key, retention and scheduler policy: **IMPLEMENTED / TESTED synthetically**
 - Qualification and target campaign: **NOT_RUN**
 - Current v1 model: unchanged; it remains the synthetic tested contract
@@ -18,6 +19,20 @@ plan are in [entry-effect-design-review-v2.md](entry-effect-design-review-v2.md)
 document does not replace
 [TransitionTrace v1](transition-feedback-v1.md), qualify the v4 probe as a producer or
 authorize P0/P1/P2 effectiveness claims.
+
+The Gate 3 implementation uses a separate source-guarded node-tar worker. It records one
+bounded global sequence across entry lifecycle and filesystem-operation start/completion
+records, retains class-specific lstat/content evidence when stable, and emits one terminal
+stdout frame with a record digest and synchronous-write marker. The controller binds the
+producer, package lock, bundled entrypoint and readable unpack source, verifies the terminal
+frame after target termination, and records that result before capturing AFTER. The exact raw
+frame and the derived `EffectRunResult` can be exported with checksums and no overwrite.
+
+Portable tests exercise framing, evidence conversion and fail-closed errors. They do not
+qualify real node-tar coverage or perturbation. The mandatory contained fixture suite is
+`validate-node-effect-producer`; it remains NOT_RUN until executed through the host broker
+with a freshly built immutable target image. Independent reading and the 20-repeat profile
+matrix remain Gate 4.
 
 ## Why a separate model is required
 

@@ -41,7 +41,13 @@ def main() -> int:
     parser.add_argument("--evidence", type=Path)
     parser.add_argument(
         "mode",
-        choices=("validate", "validate-node-image", "validate-node-target", "benign-node-smoke"),
+        choices=(
+            "validate",
+            "validate-node-image",
+            "validate-node-target",
+            "validate-node-effect-producer",
+            "benign-node-smoke",
+        ),
     )
     args = parser.parse_args()
     if (args.mode == "benign-node-smoke") != (args.evidence is not None):
@@ -57,6 +63,7 @@ def main() -> int:
             "validate": "check_boundary.py",
             "validate-node-image": "check_node_image.py",
             "validate-node-target": "check_node_target.py",
+            "validate-node-effect-producer": "check_node_effect_producer.py",
             "benign-node-smoke": "check_node_campaign.py",
         }[args.mode]
         return pytest.main(

@@ -28,7 +28,13 @@ def main() -> int:
     )
     parser.add_argument(
         "mode",
-        choices=("validate", "validate-node-image", "validate-node-target", "benign-node-smoke"),
+        choices=(
+            "validate",
+            "validate-node-image",
+            "validate-node-target",
+            "validate-node-effect-producer",
+            "benign-node-smoke",
+        ),
     )
     args = parser.parse_args()
     if (args.mode == "benign-node-smoke") != (args.evidence is not None):

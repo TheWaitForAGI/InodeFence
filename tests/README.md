@@ -69,6 +69,13 @@ effect별 evidence sufficiency, explicit causal DAG, stream completeness/flush�
 bounded reward, deterministic synthetic lineage를 검증한다. 둘 다 native observation coverage나
 feedback 효과를 증명하지 않는다.
 
+`test_node_effect_producer.py`는 Gate 3의 source/digest/terminal framing, exact entry와
+operation association, realized-effect evidence, out-of-order completion, rejected prefix,
+gap/duplicate/overflow/unmatched/malformed/truncated/timeout fail-closed 동작과 immutable raw
+export를 controlled evidence로 검증한다. 실제 node-tar 실행은
+`check_node_effect_producer.py`의 `validate-node-effect-producer` container suite 책임이다.
+Portable PASS를 native coverage나 qualification으로 승격하지 않는다.
+
 4종 baseline TAR는 fixtures/tar/에 두며 [실행과 관찰 방법](../docs/examples/tar-baseline.md)을 따른다. Canonical validation은 Dev Container의 `make check`다. Filesystem test는 `/var/lib/inodefence` 내 disposable sandbox만 사용한다. 서로 다른 run의 inode normalization 검사는 두 sandbox를 동시에 유지해 inode 재사용을 피한다.
 
 ## 파일 배치 규칙

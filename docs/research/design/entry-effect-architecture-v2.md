@@ -7,12 +7,22 @@
 - Generic immutable evidence model and `EffectRunResult`: **IMPLEMENTED**, **TESTED**
 - Generic normalization/search/scheduler and synthetic closed loop: **IMPLEMENTED**, **TESTED**
 - Synthetic Gate 2: **PASS**
-- Native producer and reader: **NOT_IMPLEMENTED / NOT_QUALIFIED**
+- Native producer: **IMPLEMENTED**, portable contract tests **PASS**, contained fixture run
+  **NOT_RUN**
+- Independent reader and qualification: **NOT_IMPLEMENTED / NOT_RUN**
 - Campaign integration and experiments: **BLOCKED by later gates**
 
 This architecture composes the existing full-run pipeline with a separate effect-evidence
 plane. It does not insert archive-ordered checkpoints into asynchronous extraction and does
 not change the legacy pipeline result.
+
+Gate 3 is implemented by `targets/node_tar_effect.py`, its dedicated worker and
+`effect_pipeline.run_node_tar_effect_case()`. The legacy `pipeline.run_case()` and normal
+node-tar worker are unchanged. Producer stdout is the bounded transport, so evidence
+bookkeeping does not create sandbox namespace objects. The controller verifies source/digest/
+terminal framing before AFTER; conversion preserves inadequate state evidence as
+`OPERATION_OBSERVED`. A no-overwrite exporter retains exact raw bytes separately from the
+typed result. Native coverage and scheduling neutrality remain unqualified until Gate 4.
 
 ## End-to-end data flow
 

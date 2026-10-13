@@ -31,7 +31,7 @@ Benign smoke와 synthetic/unit tests는 이 문장의 예외가 아니다.
 | Linux execution | fresh runtime + container-required third-party boundary | backend / prepared invocation / verified artifact admission | [container integration](../tests/README.md); pinned Node benign smoke | historical pair 미검증 |
 | Mutation | legacy / M1 / A3 contracts | eight slots; M1 nested/reused names/dependencies; no-reorder versions | [mutator tests](../tests/test_mutator.py), [search composition](../tests/test_campaign_search.py) | reachable historical effects 미검증 |
 | Search / feedback | B0/B1/B3 and A1/A2 | `SearchState`, `run_search_campaign`, explicit policy config | [policy checks](../tests/test_feedback_search_contracts.py), [trusted reference integration](../tests/test_campaign_search_integration.py) | 비교 효과 미검증 |
-| Entry transitions | P0 final-state, P1 transition retention, P2 transition-adaptive mutation | v1 model/search/evaluation; v2 event model/feedback, bounded node-tar producer/raw export, independent reader and qualification runner | synthetic tests plus node-tar 7.5.22 public/OS/private/causal-effect and libarchive 3.7.2 controlled qualification; v2 portable producer/reader/decision tests | v1 `BLOCKED_NATIVE_OBSERVATION`; v2 contained producer suite/qualification/effectiveness NOT_RUN |
+| Entry transitions | P0 final-state, P1 transition retention, P2 transition-adaptive mutation | v1 model/search/evaluation; v2 event model/feedback, bounded node-tar producer/raw export, independent reader and qualification runner | synthetic tests plus node-tar/libarchive controlled qualification; v2 producer 10 checks PASS and 480-run matrix independently verified at `36ff7fd` | v1 `BLOCKED_NATIVE_OBSERVATION`; v2 `V2_NATIVE_EFFECT_OBSERVATION_NOT_QUALIFIED` (replacement coverage); effectiveness NOT_RUN |
 | Minimization | bounded deterministic generic/USTAR reduction | core and exact-fingerprint evidence binding | [minimizer tests](../tests/test_minimizer.py), [USTAR checks](../tests/test_minimizer_ustar.py) | historical/unknown candidate 없음 |
 | Evaluation / reproduction | explicit provenance, immutable raw → verified derivation | reader, pair records, passive failure ledger/journal, qualification/matrix, benign replay, completed policy export/config/dataset/statistics | [evaluation tests](../tests/evaluation/), [benign replay tests](../tests/replay/) | formal dataset / known-class adjudication / artifact reproduction 없음 |
 | C3/C4 / generality | 후속 contracts / RQ4 | C3/C4와 ORAS adapter 없음; GNU route는 benign allowlist만 | broader scope의 실행 증거 없음 | 미검증 |
@@ -131,12 +131,16 @@ The immutable generic lifecycle/effect/identity/causal trace model, separate
 scheduler and caller-owned closed loop are IMPLEMENTED and TESTED synthetically. Synthetic
 Gate 2 is PASS. Gate 3 now has a source-guarded bounded worker, contained adapter, controller
 flush verification before AFTER, class-specific evidence conversion and no-overwrite raw
-export. Portable contract/failure tests pass; the actual contained fixture suite is NOT_RUN
-in this revision's environment. Gate 4 now has an independent raw reconstruction reader, a
-fixed 480-run profile matrix, failure injection and exact acceptance decision logic. Portable
-reader/decision tests pass, but the contained matrix is NOT_RUN because this environment has
-no Docker CLI/socket. No Gate 4 decision token has been produced. Target campaign remains
-blocked and NOT_RUN.
+export. The WSL recovery task retained the Gate 4 base `5575169` and fixed two target-side
+integration defects on a separate branch. At clean revision `36ff7fd`, the contained Gate 3
+suite passed 10/10 checks and canonical `make check` passed 1,387 tests. Gate 4 completed all
+480 runs: 420 success and 60 expected rejection. Fresh controller and host readers each
+verified all 320 native bundles and 160 stock records. Thirteen of fourteen mandatory
+criteria passed; replacement coverage failed because duplicate-path reused the same inode
+and truncated it in 20/20 full runs. The exact decision is
+`V2_NATIVE_EFFECT_OBSERVATION_NOT_QUALIFIED`. Immutable raw evidence, checksums and audit
+reports are retained in the [v2 summary](../experiments/summaries/node-native-effect-observation-qualification-v2.md).
+Target campaign remains blocked and NOT_RUN.
 
 Legacy `ExperimentConfig` v1/v2는 여전히 B3/legacy mutation만 허용한다. 별도
 `PolicyEvaluationConfig`와 completed policy export/reader/config/dataset/statistics가 구현됐다.
@@ -153,7 +157,8 @@ Native entry-transition work cannot proceed to v1 Phase B/C/D. Reopening it requ
 separate v2 qualification Task Contract; v1 policy IDs and evidence cannot be silently reused.
 This blocker does not promote or invalidate the independent final-state historical plan.
 
-The v2 task now requires execution and review of the implemented contained qualification.
+The v2 contained qualification has completed with a retained negative decision. Replacement
+coverage must be established under a separate frozen Task Contract before another matrix.
 Native campaign integration remains blocked until the exact
 `V2_NATIVE_EFFECT_OBSERVATION_QUALIFIED` decision is retained. The initial v2 policy rejects
 incomplete/invalid streams and target-rejection prefixes for admission/reward.

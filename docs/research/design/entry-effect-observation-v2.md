@@ -4,11 +4,12 @@
 
 - Design status: **GATE 1 REVIEWED TASK CONTRACT**
 - Generic v2 evidence model: **IMPLEMENTED**, **TESTED synthetically**
-- Native v2 producer: **IMPLEMENTED**, portable contract tests **PASS**; contained fixture
-  execution **NOT_RUN** at this revision
+- Native v2 producer: **IMPLEMENTED**, portable contract tests **PASS**; contained Gate 3
+  fixture suite **10/10 PASS** at clean revision `36ff7fd`
 - V2 feedback key, retention and scheduler policy: **IMPLEMENTED / TESTED synthetically**
 - Independent reader and qualification runner: **IMPLEMENTED**, portable tests **PASS**
-- Contained qualification and target campaign: **NOT_RUN**
+- Contained Gate 4: **480/480 completed**, **`V2_NATIVE_EFFECT_OBSERVATION_NOT_QUALIFIED`**
+  because required replacement coverage failed; target campaign **BLOCKED / NOT_RUN**
 - Current v1 model: unchanged; it remains the synthetic tested contract
 
 This document is the native-observation qualification contract required after node-tar
@@ -32,9 +33,16 @@ frame and the derived `EffectRunResult` can be exported with checksums and no ov
 Portable tests exercise framing, evidence conversion, independent reconstruction and
 fail-closed errors. They do not qualify real node-tar coverage or perturbation. The mandatory
 contained producer suite is `validate-node-effect-producer`; the fixed 20-repeat Gate 4 matrix
-is `qualify-node-effect-v2`. Both remain NOT_RUN until executed through the host broker with a
-freshly built immutable target image. Therefore neither exact Gate 4 decision token applies to
-this revision.
+is `qualify-node-effect-v2`. Both executed through the existing WSL host broker at clean
+revision `36ff7fd` with a rebuilt immutable image. Independent controller/host readers
+verified the matrix. Duplicate-path reused and truncated the same inode in 20/20 full runs,
+so required replacement coverage failed and the exact negative token applies. See the
+[retained summary](../../../experiments/summaries/node-native-effect-observation-qualification-v2.md).
+
+The entry-effect channel excludes the pinned extractor's exact read-only input-archive open
+before any entry context exists. This is reader activity outside the declared entry-associated
+operation vocabulary; other unassociated sandbox path operations remain invalid. The shared
+isolation provenance model and every acceptance rule were preserved during recovery.
 
 ## Why a separate model is required
 
@@ -274,6 +282,6 @@ gate, not automatic P1/P2 reuse or an effectiveness claim.
 
 The v4 result supports the engineering conclusion that the tested node-tar execution and
 passive archive-ordered v1 checkpoint requirement are incompatible. Gate 1 now supplies a
-reviewed v2 proposal, not an implementation or qualification. Whether partial-order effect
-feedback is sound in the native producer, implementable without unacceptable perturbation,
-or more effective than final-state feedback is unverified.
+reviewed v2 design. Gate 3 is implemented and contained-tested; Gate 4's independent evidence
+validation passed but required replacement coverage failed. Native feedback remains
+unqualified, and effectiveness relative to final-state feedback is unverified.

@@ -7,10 +7,10 @@
 - Generic immutable evidence model and `EffectRunResult`: **IMPLEMENTED**, **TESTED**
 - Generic normalization/search/scheduler and synthetic closed loop: **IMPLEMENTED**, **TESTED**
 - Synthetic Gate 2: **PASS**
-- Native producer: **IMPLEMENTED**, portable contract tests **PASS**, contained fixture run
-  **NOT_RUN**
+- Native producer: **IMPLEMENTED**, portable contract tests **PASS**, contained Gate 3 suite
+  **10/10 PASS** at clean revision `36ff7fd`
 - Independent reader and fixed qualification runner: **IMPLEMENTED**, portable contract tests
-  **PASS**; contained qualification **NOT_RUN**
+  **PASS**; contained qualification **480/480 completed**, **NOT_QUALIFIED** for replacement coverage
 - Campaign integration and experiments: **BLOCKED by later gates**
 
 This architecture composes the existing full-run pipeline with a separate effect-evidence
@@ -29,8 +29,8 @@ Gate 4 now has an independent raw reader which rebinds archive bytes, execution 
 source hashes, coverage declaration, entry identity, sequence/correlation integrity,
 class-specific evidence, causal edges, terminal flush, final-state derivations and normalized
 keys. The fixed stock/minimal/full matrix and failure injections are executable through
-`qualify-node-effect-v2`. This revision has no Docker broker, so the matrix has not run and no
-qualification decision token has been produced.
+`qualify-node-effect-v2`. The WSL trusted broker completed the matrix at clean revision `36ff7fd`.
+Replacement coverage failed; the retained decision is `V2_NATIVE_EFFECT_OBSERVATION_NOT_QUALIFIED`.
 
 ## End-to-end data flow
 

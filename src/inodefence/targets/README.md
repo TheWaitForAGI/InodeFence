@@ -73,10 +73,12 @@ stays `OPERATION_OBSERVED`. `evaluation.native_effect_evidence` publishes the ex
 and typed result with checksums and no overwrite.
 
 Portable tests validate this contract. The actual eight-fixture container suite is
-`validate-node-effect-producer` and remains NOT_RUN until invoked through the host broker with
-a rebuilt immutable image. The separate `qualify-node-effect-v2` mode runs the independent
-Gate 4 matrix and is also NOT_RUN in this revision. This producer is not qualified and is not
-connected to a campaign.
+`validate-node-effect-producer` and passed all 10 checks through the existing WSL host broker
+at clean revision `36ff7fd`. The separate `qualify-node-effect-v2` mode completed all 480 runs.
+Required replacement coverage failed because duplicate-path reused/truncated the same inode;
+the exact decision is `V2_NATIVE_EFFECT_OBSERVATION_NOT_QUALIFIED`. The producer remains
+unqualified and is not connected to a campaign. Raw evidence and audits are linked from the
+[qualification summary](../../../experiments/summaries/node-native-effect-observation-qualification-v2.md).
 
 ## 공통 실행 경계
 

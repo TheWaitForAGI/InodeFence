@@ -81,7 +81,10 @@ producer 자기 선언 불신, sequence/identity/association/correlation/causal/
 검증한다. `test_node_effect_qualification.py`는 고정 acceptance matrix가 완전한 passing input만
 qualified로 판정하고 completion-order 변화가 key hash에 유출되면 실패하는지 검사한다. 실제
 480-run matrix는 `check_node_effect_qualification.py`의 `qualify-node-effect-v2` container suite
-책임이며 현재 NOT_RUN이다.
+책임이며 clean revision `36ff7fd`에서 480/480 실행됐다. Required replacement coverage가
+실패해 정확한 qualification 판정은 NOT_QUALIFIED이다. Gate 3 suite는 10/10 PASS이며,
+canonical `make check`는 1,387 tests PASS다. 증거는
+[qualification summary](../experiments/summaries/node-native-effect-observation-qualification-v2.md)를 따른다.
 
 4종 baseline TAR는 fixtures/tar/에 두며 [실행과 관찰 방법](../docs/examples/tar-baseline.md)을 따른다. Canonical validation은 Dev Container의 `make check`다. Filesystem test는 `/var/lib/inodefence` 내 disposable sandbox만 사용한다. 서로 다른 run의 inode normalization 검사는 두 sandbox를 동시에 유지해 inode 재사용을 피한다.
 

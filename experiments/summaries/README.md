@@ -44,6 +44,6 @@ work의 later-ordinal effect가 earlier completion보다 먼저 실제로 완료
 **QUALIFIED FAIL** 기록이다. Effect event는 complete checkpoint나 P0/P1/P2 결과가 아니다.
 
 [node-tar native effect observation qualification v2](node-native-effect-observation-qualification-v2.md)는
-Gate 3 producer와 Gate 4 independent reader/fixed matrix의 구현 및 재현 명령을 기록한다. 현재
-환경에는 Docker CLI/socket이 없어 matrix와 raw evidence가 **NOT_RUN**이며 qualification token은
-아직 없다.
+WSL trusted broker에서 Gate 3 10개 검사와 Gate 4 480회를 실행하고 raw evidence를 독립적으로
+재검증한 기록이다. Required replacement coverage가 실패해 정확한 판정은
+**`V2_NATIVE_EFFECT_OBSERVATION_NOT_QUALIFIED`**이며 native campaign은 계속 차단된다.

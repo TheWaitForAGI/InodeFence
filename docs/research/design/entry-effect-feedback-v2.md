@@ -7,9 +7,9 @@
 - Normalized feedback/search/scheduler and caller-owned campaign: **IMPLEMENTED**, **TESTED**
 - Synthetic Gate 2: **PASS**
 - Native node-tar producer: **IMPLEMENTED**, portable contract tests **PASS**;
-  contained qualification **NOT_RUN**
+  contained Gate 3 suite **10/10 PASS** at clean revision `36ff7fd`
 - Independent reader and fixed qualification runner: **IMPLEMENTED**, portable tests **PASS**;
-  contained matrix **NOT_RUN**
+  contained matrix **480/480 completed**, **NOT_QUALIFIED** for replacement coverage
 - P0-v2/P1-v2/P2-v2 native campaigns: **NOT_RUN**
 - H1/H2 effectiveness: **HYPOTHESIS**, not a result
 

@@ -51,8 +51,9 @@ Effect Gate 2는 별도 `EffectRunResult`와 v2 policy ID를 사용해 synthetic
 normalization → novelty → retention → parent/operator selection → next case 관계를 검증한다.
 Gate 3은 별도 contained node-tar worker/adapter, bounded terminal frame, class-specific evidence
 변환과 no-overwrite raw export를 구현했다. Gate 4 independent reader와 고정 qualification
-runner도 구현되어 portable tests를 통과했다. Actual contained producer fixture와 20-repeat
-qualification은 NOT_RUN이므로 이 경로를 native feedback이나 campaign에 사용하지 않는다.
+runner도 구현되어 portable tests를 통과했다. Clean revision `36ff7fd`에서 contained producer
+10개 검사와 480회 qualification을 실행하고 독립적으로 재검증했다. Replacement coverage가
+실패해 NOT_QUALIFIED이므로 이 경로를 native feedback이나 campaign에 사용하지 않는다.
 
 ## 현재 상태와 한계
 

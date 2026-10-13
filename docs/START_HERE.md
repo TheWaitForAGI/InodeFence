@@ -79,10 +79,11 @@ independent 작업이 archive order 밖에서 완료되고 callback snapshot에 
 later-ordinal operation을 기록해 **QUALIFIED FAIL**했다. 현재 native v1 판정은
 **BLOCKED_NATIVE_OBSERVATION**이다. Partial-order/effect-event v2는 Gate 1 설계와 Gate 2
 generic model/normalization/search/scheduler closed-loop synthetic tests를 통과했다. Gate 3
-bounded native producer와 raw export는 구현되어 portable contract tests를 통과했지만 실제
-contained fixture 실행은 NOT_RUN이다. Independent reader와 qualification runner는 구현되어
-portable tests를 통과했지만 480-run contained matrix는 Docker CLI/socket 부재로 NOT_RUN이며
-decision token이 없다. Native campaign도 아직 NOT_RUN이다.
+bounded native producer는 WSL의 기존 trusted broker에서 contained fixture 검증 10개를
+통과했다. Clean revision `36ff7fd`에서 480-run matrix를 완료했고 independent reader가
+320개 native bundle과 160개 stock record를 재검증했다. Duplicate-path가 동일 inode를
+truncate해 필수 replacement coverage를 충족하지 못했으므로 정확한 판정은
+**`V2_NATIVE_EFFECT_OBSERVATION_NOT_QUALIFIED`**다. Native campaign은 계속 NOT_RUN이다.
 
 ## 4. 현재 어디까지 했는가?
 
@@ -142,7 +143,7 @@ full-step timing과 known-class adjudication은 별도 검증 과제다. G0 문�
 
 ## 6. 파일을 어디에 만들까?
 
-폴더별 책임과 파일 배치 규칙은 [문서 지도](README.md)와 [엔진 모듈 지도](../src/inodefence/README.md)를 본다. 상세 pipeline과 데이터 흐름은 [architecture.md](research/design/architecture.md)가 기준이다. `pipeline.run_case`는 입력 하나를 실제 실행·관찰·판정한다. Generic Mutation v1은 별도 ArchiveCase 변형 API다. Feedback / Corpus v1은 독립 state/violation novelty로 parent를 보존하고 caller RNG로 균등 선택한다. Bounded campaign v1은 명시적 seed와 budget을 받아 API를 조합한다. Node-tar의 contained adapter와 tiny benign configured campaign을 검증했다. SearchCampaignConfig가 B0/B1/B3와 A1/A2/A3를 연결하고 evaluation APIs가 완료된 raw evidence를 검증한다. Transition P0/P1/P2 core와 verified evidence APIs는 synthetic producer로 테스트됐고 node-tar v1 native observation은 qualification failure로 blocked다. V2 Gate 2는 archive order, observed operation order와 evidence-supported causality를 분리하는 generic model, normalized feedback, fail-closed corpus와 bounded scheduler를 synthetic producer로 검증했다. Gate 3은 별도 worker/adapter, terminal transport 검증, v2 변환과 raw export를 구현했지만 contained fixture는 NOT_RUN이다. Gate 4 independent reader와 qualification runner도 구현됐지만 contained matrix는 NOT_RUN이다. Campaign과 효과 검증은 exact qualified token까지 blocked다. Automatic interrupted-run persistence와 full-step timing도 별도 과제다.
+폴더별 책임과 파일 배치 규칙은 [문서 지도](README.md)와 [엔진 모듈 지도](../src/inodefence/README.md)를 본다. 상세 pipeline과 데이터 흐름은 [architecture.md](research/design/architecture.md)가 기준이다. `pipeline.run_case`는 입력 하나를 실제 실행·관찰·판정한다. Generic Mutation v1은 별도 ArchiveCase 변형 API다. Feedback / Corpus v1은 독립 state/violation novelty로 parent를 보존하고 caller RNG로 균등 선택한다. Bounded campaign v1은 명시적 seed와 budget을 받아 API를 조합한다. Node-tar의 contained adapter와 tiny benign configured campaign을 검증했다. SearchCampaignConfig가 B0/B1/B3와 A1/A2/A3를 연결하고 evaluation APIs가 완료된 raw evidence를 검증한다. Transition P0/P1/P2 core와 verified evidence APIs는 synthetic producer로 테스트됐고 node-tar v1 native observation은 qualification failure로 blocked다. V2 Gate 2는 archive order, observed operation order와 evidence-supported causality를 분리하는 generic model, normalized feedback, fail-closed corpus와 bounded scheduler를 synthetic producer로 검증했다. Gate 3 contained fixture suite는 10/10 PASS다. Gate 4는 480회를 완료하고 independent reader로 재검증했지만 replacement coverage가 실패해 NOT_QUALIFIED다. Campaign과 효과 검증은 exact qualified token까지 blocked다. Automatic interrupted-run persistence와 full-step timing도 별도 과제다.
 
 ```text
 src/inodefence/model/       공통 데이터 표현과 canonical JSON

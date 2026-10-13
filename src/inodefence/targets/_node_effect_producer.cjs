@@ -187,6 +187,7 @@ const run = async args => {
         !normalized.startsWith(`${sandboxRoot}${path.sep}`))) return null
     return path.relative(sandboxRoot, normalized).split(path.sep).join('/') || '.'
   }
+  const inputArchivePath = sandboxRelative(archive)
 
   const operationSpecs = {
     open: {pathIndexes: [0], fdIndex: null},
@@ -281,6 +282,15 @@ const run = async args => {
           .filter(value => value !== null)
         const fd = spec.fdIndex === null ? null : callArgs[spec.fdIndex]
         const owner = typeof fd === 'number' ? fdOwners.get(fd) || null : null
+        // The pinned extractor opens its input stream before reading any entry.
+        // That exact read-only open has no entry owner and is outside the
+        // entry-effect channel. Unexpected unassociated operations still fail
+        // closed; do not exclude arbitrary archive paths or writable opens.
+        if (name === 'open' && context === null && owner === null &&
+            requestedPaths.length === 1 && requestedPaths[0] === inputArchivePath &&
+            (callArgs[1] === 'r' || callArgs[1] === fs.constants.O_RDONLY)) {
+          return original.apply(this, callArgs)
+        }
         const ownerPath = owner === null ? null : owner.path
         const paths = requestedPaths.length > 0
           ? requestedPaths

@@ -60,6 +60,13 @@ lifecycle/context; `full` additionally records bounded callback operation start/
 and stable before/after object evidence. Both emit one digest-bound terminal stdout frame and
 write no evidence files into the runtime namespace.
 
+The entry-effect channel excludes the pinned extractor's exact read-only input-archive
+open before any entry context exists. This reader operation cannot be associated with an
+archive entry; descriptor operations with no context or proven owner remain outside the
+declared channel. Writable opens and other unassociated sandbox path operations still
+produce invalid evidence. Failed Gate 3 fixture traces are exported to unique
+`/var/lib/inodefence/gate3-invalid-*` destinations with manifest digests before assertion.
+
 Build a new immutable image after changing either worker. From the trusted host, run:
 
 ```bash

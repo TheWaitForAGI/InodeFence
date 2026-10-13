@@ -1,11 +1,14 @@
 """Actual contained node-tar v2 producer fixtures; no campaign integration."""
 
+import json
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from scripts.qualify_node_causal_effects import REJECTION_CASE, qualification_cases
 
 from inodefence.effect_pipeline import run_node_tar_effect_case
+from inodefence.evaluation.native_effect_evidence import export_native_effect_run
 from inodefence.model import (
     EffectClass,
     EffectStreamCompleteness,
@@ -23,6 +26,10 @@ def test_actual_effect_producer_preserves_target_and_typed_evidence(
     target = NodeTarEffectTarget.bind(container_backend, container_image)
     run = run_node_tar_effect_case(case, target)
     trace = run.result.trace
+    if not trace.integrity_valid:
+        destination = Path(trace.before.sandbox_root).parent / f"gate3-invalid-{name}-{uuid4().hex}"
+        digest = export_native_effect_run(run, destination)
+        print(json.dumps({"invalid_evidence": str(destination), "manifest_sha256": digest}))
     expected_status = (
         ExecutionStatus.REJECTED if name == REJECTION_CASE else ExecutionStatus.SUCCESS
     )
@@ -38,6 +45,8 @@ def test_actual_effect_producer_preserves_target_and_typed_evidence(
     assert trace.integrity_valid
     assert trace.completeness == EffectStreamCompleteness.COMPLETE
     assert run.controller_flush_verified and run.transport_error is None
+    raw = json.loads(run.raw_stream)
+    assert all("archive/input.tar" not in record.get("paths", []) for record in raw["records"])
     assert trace.provenance.raw_stream_sha256
     assert [point.sequence for point in trace.observed_event_points()] == list(
         range(trace.last_produced_sequence + 1)

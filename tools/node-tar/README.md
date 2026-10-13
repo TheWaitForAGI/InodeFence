@@ -38,3 +38,15 @@ tiny benign configured campaign's full path have been validated; see the
 [recorded smoke scope and limits](../../experiments/summaries/benign-node-container-smoke-v1.md).
 Snapshot observation, runtime/kernel trust and portability limits remain. Benchmark/security
 evaluation and research effectiveness have not been evaluated.
+
+## Causal effect qualification probe
+
+`causal-effect-probe.cjs`는 production worker가 아니다. 고정된 package entrypoint와 readable
+`unpack.js`의 hash를 확인한 뒤, qualification profile에서만 entry async context와 callback 기반
+filesystem operation completion을 연결한다. Installed node-tar source, extraction options 또는
+archive processing을 serialize하지 않는다. stdout의 종료 후 JSON 외에는 관찰 namespace에
+bookkeeping을 쓰지 않는다.
+
+이 probe의 effect event는 실제 callback 반환 전에 해당 filesystem operation이 완료됐다는
+evidence이지만 완전한 tree snapshot은 아니다. 특히 archive order, effect-completion order,
+observation order를 동일시하지 않으며 native `TransitionRunResult` producer로 사용하지 않는다.

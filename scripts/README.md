@@ -79,6 +79,16 @@ mixed/directory-child/independent-file fixture에서 비교하고 exact associat
 identity를 확인하고 raw run에서 mechanical summary를 다시 계산해 저장된 summary와 byte-level
 동등성을 검증한다. `--output`은 기존 파일을 덮어쓰지 않는다.
 
+`PYTHONPATH=src python scripts/qualify_node_causal_effects.py --output <new-file>`는
+`AsyncLocalStorage`로 private entry identity의 비동기 문맥을 전파하고 Node `fs` callback API의
+완료를 entry ordinal에 귀속한다. Stock, context-only, effect-event profile을 8개 benign fixture에서
+비교하며 정상 완료뿐 아니라 첫 entry 완료 후 hardlink 실패로 거부되는 경우도 기록한다. 이
+mechanism은 callback-time tree snapshot을 checkpoint로 재사용하지 않는다. 더 늦은 ordinal의
+filesystem operation이 더 이른 entry completion marker 전에 완료되는지를 직접 판정하는 Phase A
+feasibility probe이며, event log 자체는 완전한 `EntryCheckpoint`나 native producer가 아니다.
+`PYTHONPATH=src:. python scripts/analyze_node_causal_effects.py <raw.json>`은 case/archive identity를
+확인하고 저장된 mechanical summary를 독립적으로 재계산한다.
+
 `PYTHONPATH=src python scripts/qualify_libarchive_entry_boundary.py --output <new-file>
 --image-id <sha256> --base-image-id <sha256>`는 별도 libarchive public write-disk reference
 target에서 `archive_write_finish_entry()`와 final writer close의 syscall 순서를 비교한다.

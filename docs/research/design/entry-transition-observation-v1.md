@@ -14,6 +14,7 @@
 - libarchive `archive_write_finish_entry()` as a complete boundary: **QUALIFIED FAIL**
 - private `checkFs2` marker association: **TESTED**, exact for the benign fixture
 - private callback-time archive-ordered snapshots: **QUALIFIED FAIL**
+- async-context causal filesystem-effect feasibility: **NOT_RUN**
 - fanotify qualification: **NOT_RUN**
 - Native entry-transition mode: **NOT_IMPLEMENTED**
 - Transition-feedback effectiveness: **NOT_RUN**, **HYPOTHESIS**
@@ -193,3 +194,31 @@ The result exposes a generic model constraint: archive order, entry progress ord
 effect-completion order cannot always be one sequence when earlier directory effects
 complete during global finalization. An unordered/deferred event model would change
 the current transition contract and is **NOT_IMPLEMENTED**.
+
+## Causal filesystem-effect qualification v4 plan
+
+The next and final node-tar v1 feasibility candidate is materially different from the
+callback-time snapshot candidate. It propagates exact entry identity through Node async
+resources and attributes callback-based `fs` operation completions to that entry. The
+private completion callback is retained only as an end marker; it is not treated as a
+checkpoint and no callback-time tree walk is used.
+
+The fixed profiles are stock, minimal async-context markers and attributed effect events.
+The fixed benign fixtures separately cover regular data, directory metadata, hardlink
+identity, symlink creation, duplicate-path replacement, directory plus child, independent
+overlapping files and rejection after one completed entry. Each profile/fixture combination
+will run 20 times with Node 22.22.0, node-tar 7.5.22, `strict=true`,
+`preservePaths=false` and the full original TAR invocation.
+
+The decision rule is fixed before execution. Every normal effects-profile run must preserve
+the stock outcome and final semantic state, associate every entry and filesystem operation
+exactly, complete in archive order without a later ordinal's successful operation preceding
+an earlier ordinal's completion marker, and report no observation failure. The rejection
+fixture must preserve the rejected outcome, exact events and an already completed ordinal.
+Only a feasibility PASS may justify implementing complete checkpoints. Effect events alone
+are not `EntryCheckpoint` values and cannot qualify a native producer.
+
+One decisive overlap is sufficient for `QUALIFIED FAIL`: once a later ordinal's effect has
+completed in the real namespace before the observer receives the earlier entry's completion,
+a passive checkpoint at that marker cannot represent the archive prefix. More repetitions
+or another receipt-time filesystem monitor cannot remove that already completed effect.

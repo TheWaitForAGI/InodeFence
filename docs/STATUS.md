@@ -121,8 +121,13 @@ median target duration was 1.152×–1.308× stock across fixtures. Partial reje
 preserved after ordinal 0 completion in 20/20 effects runs. The fixed rule therefore gives
 **QUALIFIED FAIL** and the native v1 gate is **BLOCKED_NATIVE_OBSERVATION**. No producer or
 target P0/P1/P2 run exists. The [v4 summary](../experiments/summaries/node-causal-effect-qualification-v4.md)
-retains exact evidence; [partial-order/effect-event v2](research/design/entry-effect-observation-v2.md)
-is a draft Task Contract, not an implementation.
+retains exact evidence. The separate
+[partial-order/effect-event v2 observation contract](research/design/entry-effect-observation-v2.md),
+[architecture](research/design/entry-effect-architecture-v2.md),
+[normalized feedback contract](research/design/entry-effect-feedback-v2.md) and
+[design review](research/design/entry-effect-design-review-v2.md) now pass Design Gate 1 for
+generic synthetic implementation only. The generic model, native producer, qualification and
+campaign remain NOT_IMPLEMENTED / NOT_RUN at this revision.
 
 Legacy `ExperimentConfig` v1/v2는 여전히 B3/legacy mutation만 허용한다. 별도
 `PolicyEvaluationConfig`와 completed policy export/reader/config/dataset/statistics가 구현됐다.
@@ -138,6 +143,12 @@ throughput을 대신하지 않는다. [실험 안내](../experiments/README.md)�
 Native entry-transition work cannot proceed to v1 Phase B/C/D. Reopening it requires the
 separate v2 qualification Task Contract; v1 policy IDs and evidence cannot be silently reused.
 This blocker does not promote or invalidate the independent final-state historical plan.
+
+The v2 task now proceeds gate by gate: immutable generic effect/causal types and synthetic
+normalization/search/scheduler tests first, then a separate bounded native producer, then
+qualification. Native campaign integration remains blocked until the exact
+`V2_NATIVE_EFFECT_OBSERVATION_QUALIFIED` decision is retained. The initial v2 policy rejects
+incomplete/invalid streams and target-rejection prefixes for admission/reward.
 
 **첫 historical qualification은 N01 node-tar 7.5.2 / 7.5.3 hardlink arm을 의도한다.**
 정확한 locks/images/options/setup을 아직 qualify하지 않았다. M1은 composition을 지원하지만

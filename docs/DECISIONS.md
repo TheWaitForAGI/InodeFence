@@ -459,7 +459,7 @@ G0 정의 승인은 G1 이후 readiness나 benchmark/CVE evidence로 승격되�
 
 ## D031 — Node-tar native archive-ordered transition v1은 qualification failure로 중단
 
-**상태:** `BLOCKED_NATIVE_OBSERVATION`; v2는 draft, 구현 아님
+**상태:** `BLOCKED_NATIVE_OBSERVATION`; v2 native 구현 아님
 
 Node 22.22.0/node-tar 7.5.22의 public events, Linux filesystem/syscall 관찰,
 fresh-process prefix replay, private completion callback snapshot과 async-context causal
@@ -476,6 +476,32 @@ overlap이다. Instrumented profile의 scheduling distribution과 bounded timing
 따라서 node-tar native producer를 v1 model에 추가하지 않고 실제 target P0/P1/P2를 실행하지
 않는다. Existing C0/C1/C2, `RunResult`, synthetic v1 model/scheduler/evaluation은 유지한다.
 대체 방향은 archive order, observed effect order와 supported causality를 분리하는 별도
-[partial-order/effect-event v2 draft](research/design/entry-effect-observation-v2.md)다. V2가
+[partial-order/effect-event v2 observation contract](research/design/entry-effect-observation-v2.md)다. V2가
 qualification을 통과하기 전에는 v1 `TransitionFeedbackKey` 또는 P1/P2 policy ID를 재사용하거나
 incomplete/lossy event를 reward로 승격하지 않는다.
+
+## D032 — Effect v2는 operation evidence, state claim과 causal relation을 분리한다
+
+**상태:** Design Gate 1 GO; synthetic implementation만 승인, native는 NOT_QUALIFIED
+
+V2는 archive order, global observed lifecycle/operation-boundary sequence와 supported causal DAG를
+서로 다른 relation으로 보존한다. Callback/operation success는 raw result이며 namespace/content/
+metadata/identity state change의 충분한 증거가 아니다. Generic effect claim은 class별 qualified
+before/after identity/state evidence를 요구하고, hardlink relation은 실제 `(st_dev, st_ino)` 관계
+증거를 요구한다. Exact path/inode/timestamp/sequence/count는 normalized key에서 제외한다.
+
+Feedback은 verified individual effect, unique per-entry effect set, one-edge causal motif의 finite
+key universe를 사용한다. Completion-order permutation, timestamp proximity, same path, archive
+ordinal과 unsupported overlap은 causal edge나 reward를 만들지 않는다. Observation failure,
+loss/overflow/conflict/invalid identity/incomplete flush는 novelty index를 갱신하지 않고 corpus와
+scheduler 모두에서 fail closed한다. Initial policy는 fully flushed rejection prefix도 admission/
+reward하지 않는다.
+
+P0-v2/P1-v2/P2-v2는 새 policy/evidence schema를 사용하고 동일한 full instrumentation cost를
+부담한다. P1-v2는 P0-v2 대비 retention만, P2-v2는 P1-v2 대비 bounded 1–8 operator scheduling만
+바꾼다. V1 TransitionTrace/keys/IDs, RunResult, legacy serialization과 C0/C1/C2는 변경하지 않는다.
+Native work는 별도 producer/reader qualification이
+`V2_NATIVE_EFFECT_OBSERVATION_QUALIFIED`를 기록하기 전까지 campaign으로 연결하지 않는다.
+세부 계약은 [architecture](research/design/entry-effect-architecture-v2.md),
+[feedback](research/design/entry-effect-feedback-v2.md),
+[review/plan](research/design/entry-effect-design-review-v2.md)을 따른다.

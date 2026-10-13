@@ -8,6 +8,7 @@
 | --- | --- |
 | [archive.py](archive.py) | ArchiveEntry, EntryType, ArchiveCase |
 | [effect.py](effect.py) | v2 lifecycle/effect events, evidence sufficiency, causal graph, trace integrity |
+| [effect_feedback.py](effect_feedback.py) | finite normalized v2 effect, entry-set, and causal-motif keys |
 | [filesystem.py](filesystem.py) | ObjectSnapshot, StateSnapshot, StateChange, StateSignature |
 | [results.py](results.py) | ExecutionResult, IdentityEvidence, ViolationResult, RunResult, separate v1/v2 compositions |
 | [provenance.py](provenance.py) | Source/Environment/Target/Sentinel/ExecutionProvenance configuration values |
@@ -53,6 +54,11 @@ sufficiency만 검사한다. `EffectRunResult`는 existing `RunResult`와 case/s
 correspondence를 검증하며 v1 `TransitionTrace`나 legacy `RunResult` schema를 바꾸지 않는다.
 이 모델은 target producer, normalized feedback, Security Contract verdict 또는 native qualification이
 아니다.
+
+`EffectFeedbackKey` v2는 realized effect evidence를 exact path/inode/time/source ID 없이 bounded
+ordinal class, path region, identity-relation class와 명시적 causal edge로 정규화한다. 개별 effect,
+entry별 unique effect set, evidence-supported cross-effect motif는 서로 다른 key kind다. 모델은 key를
+정의할 뿐 native evidence가 충분하거나 stream이 reward-eligible하다고 스스로 판정하지 않는다.
 
 Public evidence constructor는 annotation만 신뢰하지 않는다. ObjectSnapshot의 digest와
 readlink target은 str, signature/effect/RunResult의 collection은 typed tuple이어야 한다.

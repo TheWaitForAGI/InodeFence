@@ -1823,6 +1823,11 @@ unsupported overlap은 reward가 아니다. New P0-v2/P1-v2/P2-v2 IDs share iden
 instrumentation; incomplete/lossy/conflicting/unflushed evidence는 모든 admission/reward에서 fail
 closed한다. Existing C0/C1/C2와 v1 models/policies/serialization은 unchanged다.
 
+이 generic model/normalization/search/scheduler/caller-owned campaign은 synthetic Gate 2 tests를
+통과했다. Tests는 completion permutation stability, explicit-edge-only motif, invalid-stream novelty
+non-consumption, P0/P1 retention difference, P1/P2 retention equality와 deterministic bounded reward를
+검증한다. 이는 native producer 또는 research effectiveness evidence가 아니다.
+
 Gate 1은 generic synthetic work만 허용한다. Native integration은 bounded loss-detecting producer,
 independent reader와 mandatory qualification이 exact
 `V2_NATIVE_EFFECT_OBSERVATION_QUALIFIED` decision을 만들기 전까지 blocked다. Exact data flow,

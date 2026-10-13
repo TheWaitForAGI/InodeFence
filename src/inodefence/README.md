@@ -23,6 +23,8 @@ builder.build_tar → disposable runtime → before snapshot
 | [runtime.py](runtime.py) | Linux runtime와 sentinel lifecycle |
 | [pipeline.py](pipeline.py) | 입력 하나의 실행 순서 연결 |
 | [campaign.py](campaign.py) | 명시적 seed와 실행 budget으로 select → mutate → run → consider 연결 |
+| [effect_campaign.py](effect_campaign.py) | caller-owned synthetic v2 producer로 effect policy closed loop 검증 |
+| [effect_scheduler.py](effect_scheduler.py) | v2 uniform/adaptive scheduler와 lineage/reward evidence |
 | [campaign_export.py](campaign_export.py) | 완료된 결과의 manifest JSON / canonical step JSONL |
 | [provenance.py](provenance.py) | 실행 전 source/environment/target/sentinel configuration 고정 |
 | [experiment_config.py](experiment_config.py) | strict JSON config / SHA-256 ID / seed-target binding |
@@ -31,7 +33,7 @@ builder.build_tar → disposable runtime → before snapshot
 | [targets](targets/README.md) | 실제 extractor 실행 |
 | [observer](observer/README.md) | filesystem 사실 관찰과 비교 |
 | [oracle](oracle/README.md) | Security Contract 판정 |
-| [feedback](feedback/README.md) | signature v3, independent novelty, B0/B1/B3 / A1/A2 |
+| [feedback](feedback/README.md) | legacy state feedback와 별도 normalized effect-feedback v2 core |
 | [minimizer.py](minimizer.py) | bounded deterministic generic/USTAR reduction and evidence binding |
 | [evaluation](evaluation/README.md) | verified raw/config, passive ledger/journal, qualification/matrix, datasets/statistics |
 | [replay](replay/README.md) | allowlisted benign fresh-runtime reproduction |
@@ -43,6 +45,11 @@ state 또는 새 semantic violation class면 interesting이며, 같은 case_id�
 보존한다. `Corpus.select_case(rng)`의 결과를 Mutator에 전달하는 책임은 caller에게 있다.
 Corpus가 실행/변형하거나 full RunResult를 저장하지 않는다. 상세 public API와 campaign
 context 한계는 [feedback](feedback/README.md)를 따른다.
+
+Effect Gate 2는 별도 `EffectRunResult`와 v2 policy ID를 사용해 synthetic producer에서만
+normalization → novelty → retention → parent/operator selection → next case 관계를 검증한다.
+Native node-tar producer와 campaign integration은 시작하지 않았으며 qualification 전에는 이
+경로를 native feedback으로 사용하지 않는다.
 
 ## 현재 상태와 한계
 

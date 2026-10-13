@@ -126,9 +126,10 @@ retains exact evidence. The separate
 [architecture](research/design/entry-effect-architecture-v2.md),
 [normalized feedback contract](research/design/entry-effect-feedback-v2.md) and
 [design review](research/design/entry-effect-design-review-v2.md) now pass Design Gate 1.
-The immutable generic lifecycle/effect/identity/causal trace model and separate
-`EffectRunResult` composition are IMPLEMENTED and TESTED synthetically. Normalized v2
-feedback/search/scheduler, native producer, qualification and campaign remain
+The immutable generic lifecycle/effect/identity/causal trace model, separate
+`EffectRunResult`, finite normalized keys, fail-closed P0-v2/P1-v2/P2-v2 search, bounded
+scheduler and caller-owned closed loop are IMPLEMENTED and TESTED synthetically. Synthetic
+Gate 2 is PASS. Native producer, independent reader, qualification and target campaign remain
 NOT_IMPLEMENTED / NOT_RUN at this revision.
 
 Legacy `ExperimentConfig` v1/v2는 여전히 B3/legacy mutation만 허용한다. 별도
@@ -146,8 +147,7 @@ Native entry-transition work cannot proceed to v1 Phase B/C/D. Reopening it requ
 separate v2 qualification Task Contract; v1 policy IDs and evidence cannot be silently reused.
 This blocker does not promote or invalidate the independent final-state historical plan.
 
-The v2 task now proceeds gate by gate: immutable generic effect/causal types and synthetic
-normalization/search/scheduler tests first, then a separate bounded native producer, then
+The v2 task now proceeds to a separate bounded native producer, then independent reader and
 qualification. Native campaign integration remains blocked until the exact
 `V2_NATIVE_EFFECT_OBSERVATION_QUALIFIED` decision is retained. The initial v2 policy rejects
 incomplete/invalid streams and target-rejection prefixes for admission/reward.

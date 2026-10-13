@@ -1,6 +1,21 @@
 """Normalized state, semantic violation novelty and in-memory search retention."""
 
+from inodefence.model import EffectFeedbackKeyKind
+
 from .corpus import Corpus, CorpusEntry, CorpusStats, FeedbackDecision
+from .effect import (
+    effect_feedback_eligible,
+    effect_feedback_keys,
+    normalized_effect_signature,
+)
+from .effect_novelty import EffectNoveltyDecision, EffectNoveltyIndex
+from .effect_search import (
+    EffectCorpusEntry,
+    EffectSearchDecision,
+    EffectSearchPolicy,
+    EffectSearchState,
+    EffectSearchStats,
+)
 from .fingerprint import (
     ChangeFingerprint,
     IdentityFingerprint,
@@ -31,10 +46,21 @@ __all__ = [
     "CorpusEntry",
     "CorpusStats",
     "FeedbackDecision",
+    "EffectCorpusEntry",
+    "EffectFeedbackKeyKind",
+    "EffectNoveltyDecision",
+    "EffectNoveltyIndex",
+    "EffectSearchDecision",
+    "EffectSearchPolicy",
+    "EffectSearchState",
+    "EffectSearchStats",
+    "effect_feedback_eligible",
+    "effect_feedback_keys",
     "FeedbackKey",
     "FeedbackProjection",
     "feedback_key",
     "IdentityFingerprint",
+    "normalized_effect_signature",
     "SearchDecision",
     "SearchPolicy",
     "SearchState",

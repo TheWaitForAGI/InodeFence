@@ -482,7 +482,7 @@ incomplete/lossy event를 reward로 승격하지 않는다.
 
 ## D032 — Effect v2는 operation evidence, state claim과 causal relation을 분리한다
 
-**상태:** Design Gate 1 GO; synthetic implementation만 승인, native는 NOT_QUALIFIED
+**상태:** Design Gate 1 / Synthetic Gate 2 PASS; native는 NOT_QUALIFIED
 
 V2는 archive order, global observed lifecycle/operation-boundary sequence와 supported causal DAG를
 서로 다른 relation으로 보존한다. Callback/operation success는 raw result이며 namespace/content/

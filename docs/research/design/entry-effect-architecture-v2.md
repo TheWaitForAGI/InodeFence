@@ -5,7 +5,8 @@
 - Architecture: **DESIGNED**
 - Design Gate 1: **GO for generic synthetic implementation**
 - Generic immutable evidence model and `EffectRunResult`: **IMPLEMENTED**, **TESTED**
-- Generic normalization/search/scheduler: **NOT_IMPLEMENTED** at this revision
+- Generic normalization/search/scheduler and synthetic closed loop: **IMPLEMENTED**, **TESTED**
+- Synthetic Gate 2: **PASS**
 - Native producer and reader: **NOT_IMPLEMENTED / NOT_QUALIFIED**
 - Campaign integration and experiments: **BLOCKED by later gates**
 
@@ -287,7 +288,7 @@ bounded-loss and flush proofs.
 
 1. **Gate 1 — Design:** this contract, feedback contract and review report agree. GO only
    authorizes generic synthetic work.
-2. **Gate 2 — Synthetic:** test schema invariants, reordered independent completions,
+2. **Gate 2 — Synthetic:** **PASS** for schema invariants, reordered independent completions,
    supported/unsupported causal edges, identity sufficiency, stable normalization,
    fail-closed novelty/corpus and P0-v2/P1-v2/P2-v2 lineage/reward.
 3. **Gate 3 — Native observer:** implement bounded source-guarded transport in the existing

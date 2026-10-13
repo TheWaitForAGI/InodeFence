@@ -5,7 +5,7 @@
 - Design status: **GATE 1 REVIEWED TASK CONTRACT**
 - Generic v2 evidence model: **IMPLEMENTED**, **TESTED synthetically**
 - Native v2 producer: **NOT_IMPLEMENTED**
-- V2 feedback key, retention and scheduler policy: **DESIGNED / NOT_IMPLEMENTED**
+- V2 feedback key, retention and scheduler policy: **IMPLEMENTED / TESTED synthetically**
 - Qualification and target campaign: **NOT_RUN**
 - Current v1 model: unchanged; it remains the synthetic tested contract
 

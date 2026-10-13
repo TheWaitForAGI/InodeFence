@@ -62,6 +62,13 @@ inode/device/timestamp가 novelty로 유출되지 않음을 추가로 검증한�
 이 테스트들은 Layer 5 state retention contract를 검증하며 effectiveness, benchmark
 rediscovery 또는 paper 결과를 증명하지 않는다.
 
+`test_effect_model.py`는 EffectEventTrace v2의 immutable schema, operation correlation,
+effect별 evidence sufficiency, explicit causal DAG, stream completeness/flush와 legacy 결과 분리를
+검증한다. `test_effect_feedback.py`는 exact path/inode 및 독립 completion-order 변화가 key를
+늘리지 않는지, explicit edge만 motif가 되는지, invalid stream fail-closed, P0/P1/P2 retention과
+bounded reward, deterministic synthetic lineage를 검증한다. 둘 다 native observation coverage나
+feedback 효과를 증명하지 않는다.
+
 4종 baseline TAR는 fixtures/tar/에 두며 [실행과 관찰 방법](../docs/examples/tar-baseline.md)을 따른다. Canonical validation은 Dev Container의 `make check`다. Filesystem test는 `/var/lib/inodefence` 내 disposable sandbox만 사용한다. 서로 다른 run의 inode normalization 검사는 두 sandbox를 동시에 유지해 inode 재사용을 피한다.
 
 ## 파일 배치 규칙

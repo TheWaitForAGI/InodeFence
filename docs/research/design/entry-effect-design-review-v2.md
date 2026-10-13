@@ -198,10 +198,13 @@ earlier PR.
 
 ## Decision
 
-**GO — Gate 1 design; GO — Gate 2 synthetic implementation.** The model answers the required
-semantic questions without weakening v1 or claiming native coverage. Synthetic work may now
-implement and test the generic schema, partial order, normalization, corpus and scheduler.
+**PASS — Gate 1 design and Gate 2 synthetic implementation.** Immutable schema/partial-order
+tests and normalized feedback/search/scheduler/campaign tests cover state-evidence sufficiency,
+completion-order permutation stability, explicit-edge-only motifs, fail-closed invalid streams,
+P0-v2/P1-v2 retention separation, P1-v2/P2-v2 retention equality, deterministic lineage and
+binary bounded reward. This is engineering evidence only and does not claim native coverage.
 
-**BLOCKED — Gates 3–6 as completed results.** Native observation is not yet qualified; v4 is
-not a producer. Native campaign integration and any H1/H2 or vulnerability claim remain
-blocked until their predecessor gates pass with retained evidence.
+**NOT STARTED — Gate 3; BLOCKED — Gates 4–6 as completed results.** Gate 1 and Gate 2 provide
+the contract needed for a later, separate bounded native-producer PR, but native observation is
+not yet qualified and v4 is not a producer. Native campaign integration and any H1/H2 or
+vulnerability claim remain blocked until their predecessor gates pass with retained evidence.

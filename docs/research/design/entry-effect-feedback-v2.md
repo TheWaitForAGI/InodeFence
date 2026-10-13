@@ -4,7 +4,8 @@
 
 - Design Gate 1: **GO for synthetic implementation only**
 - Generic event evidence model: **IMPLEMENTED**, **TESTED**
-- Normalized feedback/search/scheduler: **DESIGNED**, **NOT_IMPLEMENTED** at this revision
+- Normalized feedback/search/scheduler and caller-owned campaign: **IMPLEMENTED**, **TESTED**
+- Synthetic Gate 2: **PASS**
 - Native node-tar producer: **NOT_IMPLEMENTED**, **NOT_QUALIFIED**
 - P0-v2/P1-v2/P2-v2 native campaigns: **NOT_RUN**
 - H1/H2 effectiveness: **HYPOTHESIS**, not a result

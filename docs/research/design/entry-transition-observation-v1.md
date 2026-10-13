@@ -14,9 +14,10 @@
 - libarchive `archive_write_finish_entry()` as a complete boundary: **QUALIFIED FAIL**
 - private `checkFs2` marker association: **TESTED**, exact for the benign fixture
 - private callback-time archive-ordered snapshots: **QUALIFIED FAIL**
-- async-context causal filesystem-effect feasibility: **NOT_RUN**
+- async-context causal filesystem-effect feasibility: **QUALIFIED FAIL**
 - fanotify qualification: **NOT_RUN**
 - Native entry-transition mode: **NOT_IMPLEMENTED**
+- Native v1 gate: **BLOCKED_NATIVE_OBSERVATION**
 - Transition-feedback effectiveness: **NOT_RUN**, **HYPOTHESIS**
 
 `QUALIFIED FAIL` here means that the candidate lifecycle event does not establish
@@ -183,6 +184,12 @@ logical-entry mapping and non-write effect strategy. It was not enabled in the
 capability-free target environment. GNU tar's documented checkpoints are archive
 record checkpoints rather than entry-effect completion callbacks.
 
+The v4 causal-effect result ends further passive v1 candidate work for this target:
+fanotify receipt cannot remove later-entry effects that have already completed before an
+earlier entry marker, and the qualification environment has no effective capability to
+enable it. Fanotify therefore remains **NOT_RUN**, rather than being reported as another
+failed execution.
+
 The separate libarchive 3.7.2 public write-disk qualification is now complete.
 Ordinal/path markers after `archive_write_finish_entry()` were exact, but directory
 mtime and mode were applied only by `archive_write_close()` after all entry markers.
@@ -195,9 +202,9 @@ effect-completion order cannot always be one sequence when earlier directory eff
 complete during global finalization. An unordered/deferred event model would change
 the current transition contract and is **NOT_IMPLEMENTED**.
 
-## Causal filesystem-effect qualification v4 plan
+## Causal filesystem-effect qualification v4
 
-The next and final node-tar v1 feasibility candidate is materially different from the
+The final node-tar v1 feasibility candidate was materially different from the
 callback-time snapshot candidate. It propagates exact entry identity through Node async
 resources and attributes callback-based `fs` operation completions to that entry. The
 private completion callback is retained only as an end marker; it is not treated as a
@@ -207,7 +214,7 @@ The fixed profiles are stock, minimal async-context markers and attributed effec
 The fixed benign fixtures separately cover regular data, directory metadata, hardlink
 identity, symlink creation, duplicate-path replacement, directory plus child, independent
 overlapping files and rejection after one completed entry. Each profile/fixture combination
-will run 20 times with Node 22.22.0, node-tar 7.5.22, `strict=true`,
+ran 20 times with Node 22.22.0, node-tar 7.5.22, `strict=true`,
 `preservePaths=false` and the full original TAR invocation.
 
 The decision rule is fixed before execution. Every normal effects-profile run must preserve
@@ -222,3 +229,21 @@ One decisive overlap is sufficient for `QUALIFIED FAIL`: once a later ordinal's 
 completed in the real namespace before the observer receives the earlier entry's completion,
 a passive checkpoint at that marker cannot represent the archive prefix. More repetitions
 or another receipt-time filesystem monitor cannot remove that already completed effect.
+
+The retained clean run executed 480 processes. Outcomes and final semantic states were
+equal across profiles, all 320 instrumented runs had exact entry association, all 1,020
+effects-profile operation events had exact entry association, and no observation failure
+occurred. The partial-rejection fixture recorded ordinal 0 completion before ordinal 1's
+hardlink error and preserved rejection in 20/20 effects runs.
+
+Independent-files failed the fixed rule. Context completion was `0,1,3,2` in 19/20 runs;
+effects completion was `0,1,3,2` in 20/20. The effects records contained 162 successful
+later-ordinal operations before an earlier entry completion. In every run at least three
+later operations preceded ordinal 0 completion. Effects-profile median target duration was
+1.152×–1.308× stock across the fixtures, and its independent-files order distribution
+differed from the minimal context profile.
+
+The candidate is **QUALIFIED FAIL**. No native producer or target P0/P1/P2 run follows.
+The repository decision for the requested gate is **BLOCKED_NATIVE_OBSERVATION**. See the
+[validated summary](../../../experiments/summaries/node-causal-effect-qualification-v4.md)
+and the separate [v2 draft](entry-effect-observation-v2.md).

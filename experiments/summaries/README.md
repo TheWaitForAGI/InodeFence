@@ -37,3 +37,8 @@ metadata가 final close까지 지연됨을 검증한 **QUALIFIED FAIL** 기록�
 source-guarded private completion callback의 entry association, effect-completion order,
 callback-time snapshot consistency와 stock 대비 overhead를 검증한 **QUALIFIED FAIL** 기록이다.
 정확한 marker association을 native archive-ordered transition producer로 승격하지 않는다.
+
+[node-tar causal filesystem-effect qualification v4](node-causal-effect-qualification-v4.md)는
+async-context와 Node `fs` completion을 사용해 operation을 exact entry에 귀속하고 independent
+work의 later-ordinal effect가 earlier completion보다 먼저 실제로 완료됨을 검증한
+**QUALIFIED FAIL** 기록이다. Effect event는 complete checkpoint나 P0/P1/P2 결과가 아니다.

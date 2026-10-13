@@ -22,8 +22,15 @@ class NativeEffectRun:
 
     result: EffectRunResult
     raw_stream: bytes
+    archive_sha256: str
     controller_flush_verified: bool
     transport_error: str | None
+
+    def __post_init__(self) -> None:
+        if self.result.base_result.archive_sha256 != self.archive_sha256:
+            raise ValueError("native effect raw archive binding differs from RunResult")
+        if self.result.trace.provenance.raw_stream_sha256 != sha256(self.raw_stream).hexdigest():
+            raise ValueError("native effect raw stream differs from trace provenance")
 
 
 def run_node_tar_effect_case(
@@ -62,6 +69,7 @@ def run_node_tar_effect_case(
             return NativeEffectRun(
                 EffectRunResult(base, trace),
                 capture.raw_stream,
+                capture.expected_archive_sha256,
                 capture.controller_flush_verified,
                 capture.transport_error,
             )

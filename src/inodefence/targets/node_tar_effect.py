@@ -78,6 +78,7 @@ class NativeEffectCapture:
     transport_truncated: bool
     controller_flush_verified: bool
     transport_error: str | None
+    expected_archive_sha256: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -267,6 +268,7 @@ class NodeTarEffectTarget:
     ) -> Iterator[Callable[[], NativeEffectCapture]]:
         validate_run_paths(archive_path, extraction_root)
         self._verify_identity()
+        expected_archive_sha256 = sha256(archive_path.read_bytes()).hexdigest()
         command = self.command(archive_path, extraction_root)
         request = ContainerRequest(
             self.image_id, command, extraction_root.parent, self.timeout_seconds
@@ -282,7 +284,10 @@ class NodeTarEffectTarget:
                 outcome = prepared.execute()
                 execution = self.classify(outcome, command)
                 flush_verified, transport_error = _verify_transport_frame(
-                    outcome.stdout, outcome.output_truncated, self
+                    outcome.stdout,
+                    outcome.output_truncated,
+                    self,
+                    expected_archive_sha256,
                 )
                 return NativeEffectCapture(
                     execution,
@@ -290,6 +295,7 @@ class NodeTarEffectTarget:
                     outcome.output_truncated,
                     flush_verified,
                     transport_error,
+                    expected_archive_sha256,
                 )
 
             yield execute
@@ -307,7 +313,10 @@ def _identify(backend: ExecutionBackend, image_id: str) -> dict[str, Any]:
 
 
 def _verify_transport_frame(
-    raw_stream: bytes, truncated: bool, target: NodeTarEffectTarget
+    raw_stream: bytes,
+    truncated: bool,
+    target: NodeTarEffectTarget,
+    expected_archive_sha256: str,
 ) -> tuple[bool, str | None]:
     """Verify terminal delivery before the caller is allowed to capture AFTER."""
     if truncated:
@@ -326,6 +335,7 @@ def _verify_transport_frame(
         ):
             raise ValueError("transport protocol/configuration mismatch")
         source = value.get("source")
+        input_record = value.get("input")
         terminal = value.get("terminal")
         records = value.get("records")
         if (
@@ -334,6 +344,8 @@ def _verify_transport_frame(
             or not isinstance(records, list)
         ):
             raise ValueError("transport source/records/terminal are malformed")
+        if input_record != {"archive_sha256": expected_archive_sha256}:
+            raise ValueError("transport archive identity mismatch")
         expected = {
             "source_id": SOURCE_ID,
             "protocol_id": PROTOCOL_ID,
@@ -776,6 +788,7 @@ def effect_trace_from_capture(
             "profile",
             "event_bound",
             "source",
+            "input",
             "coverage",
             "target",
             "records",
@@ -789,6 +802,8 @@ def effect_trace_from_capture(
             or envelope["event_bound"] != target.event_bound
         ):
             raise ValueError("raw transport protocol/configuration mismatch")
+        if envelope["input"] != {"archive_sha256": capture.expected_archive_sha256}:
+            raise ValueError("raw transport archive identity mismatch")
         source = envelope["source"]
         expected_source = {
             "source_id": SOURCE_ID,

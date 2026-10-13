@@ -226,6 +226,7 @@ def _frame(
             "package_entrypoint_sha256": target.package_entrypoint_sha256,
             "unpack_sha256": target.unpack_sha256,
         },
+        "input": {"archive_sha256": sha256(b"fixture-archive").hexdigest()},
         "coverage": {"fixture": True},
         "target": {"outcome": outcome, "error": None, "duration_ns": "10"},
         "records": records,
@@ -282,7 +283,8 @@ def _capture(
     status: ExecutionStatus = ExecutionStatus.SUCCESS,
     truncated: bool = False,
 ) -> NativeEffectCapture:
-    verified, error = _verify_transport_frame(raw, truncated, target)
+    archive_sha256 = sha256(b"fixture-archive").hexdigest()
+    verified, error = _verify_transport_frame(raw, truncated, target, archive_sha256)
     exit_code = (
         None
         if status == ExecutionStatus.TIMED_OUT
@@ -301,7 +303,7 @@ def _capture(
         0.1,
         10,
     )
-    return NativeEffectCapture(execution, raw, truncated, verified, error)
+    return NativeEffectCapture(execution, raw, truncated, verified, error, archive_sha256)
 
 
 def test_regular_content_effect_has_exact_entry_correlation_and_causality() -> None:
@@ -620,7 +622,7 @@ def test_raw_export_binds_exact_stream_and_refuses_overwrite(tmp_path) -> None:
     trace = effect_trace_from_capture(capture, target, case, before, after)
     base = RunResult(
         case,
-        sha256(b"archive").hexdigest(),
+        sha256(b"fixture-archive").hexdigest(),
         "ustar",
         capture.execution,
         before,
@@ -629,7 +631,9 @@ def test_raw_export_binds_exact_stream_and_refuses_overwrite(tmp_path) -> None:
         state_signature(before, after),
         evaluate_contracts(before, after),
     )
-    run = NativeEffectRun(EffectRunResult(base, trace), raw, True, None)
+    run = NativeEffectRun(
+        EffectRunResult(base, trace), raw, sha256(b"fixture-archive").hexdigest(), True, None
+    )
     destination = tmp_path / "native-effect"
 
     manifest_sha256 = export_native_effect_run(run, destination)

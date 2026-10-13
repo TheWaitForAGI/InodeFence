@@ -484,6 +484,7 @@ const run = async args => {
       profile,
       event_bound: eventBound,
       source,
+      input: {archive_sha256: digestFile(archive)},
       coverage,
       target: {
         outcome: targetOutcome,

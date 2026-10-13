@@ -52,6 +52,8 @@ def export_native_effect_run(run: NativeEffectRun, directory: Path) -> str:
     trace = run.result.trace
     if trace.provenance.raw_stream_sha256 != raw_digest:
         raise ValueError("typed trace raw-stream binding differs from producer bytes")
+    if run.archive_sha256 != run.result.base_result.archive_sha256:
+        raise ValueError("raw archive identity differs from RunResult")
     sources = trace.provenance.sources
     if len(sources) != 1:
         raise ValueError("native node-tar trace requires one producer source")

@@ -36,6 +36,7 @@ from inodefence.model import (
     SnapshotPhase,
     StateSnapshot,
 )
+from inodefence.model.isolation import IsolationPolicy, IsolationProvenance
 from inodefence.observer import ObservationError, compare_states
 from inodefence.oracle import evaluate_contracts
 from inodefence.targets.node_tar_effect import (
@@ -697,6 +698,44 @@ def test_bind_and_command_pin_worker_lock_entrypoint_and_unpack_hashes() -> None
     assert target.profile == NativeEffectProfile.MINIMAL and target.event_bound == 32
     with pytest.raises(ValueError, match="event bound"):
         replace(target, event_bound=257)
+
+
+def test_effect_image_provenance_conforms_to_shared_isolation_contract() -> None:
+    metadata = {
+        "node_version": "22.22.0",
+        "tar_version": "7.5.22",
+        "package_entrypoint": "/target/node_modules/tar/dist/commonjs/index.min.js",
+        **DIGESTS,
+    }
+
+    class ProvenanceBackend(ControlledBackend):
+        def capture_isolation(self, image_id):
+            return IsolationProvenance(
+                IsolationPolicy(image_id, 1000, 1000),
+                "test-double",
+                "test",
+                "test",
+                "linux",
+                "amd64",
+                "amd64",
+            )
+
+        @contextmanager
+        def prepare(self, request):
+            class Prepared:
+                def execute(self):
+                    return ContainerOutcome(0, json.dumps(metadata).encode(), b"", 0, False)
+
+            yield Prepared()
+
+    target = NodeTarEffectTarget.bind(ProvenanceBackend(), IMAGE)
+    frozen = target.capture_isolation()
+    assert frozen.policy.image_id == IMAGE
+    assert frozen.artifact_origin == "image-identification-v1"
+    assert {item.sha256 for item in frozen.artifacts} == set(DIGESTS.values())
+    assert tuple(item.name for item in frozen.artifacts) == tuple(
+        sorted(item.name for item in frozen.artifacts)
+    )
 
 
 def test_backend_failure_propagates_without_target_or_trace_classification() -> None:

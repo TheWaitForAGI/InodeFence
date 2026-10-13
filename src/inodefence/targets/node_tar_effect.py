@@ -187,8 +187,8 @@ class NodeTarEffectTarget:
     def artifacts(self) -> tuple[ArtifactDigest, ...]:
         return (
             ArtifactDigest("node-tar-effect-producer", self.producer_sha256),
-            ArtifactDigest("node-tar-package-lock", self.package_lock_sha256),
             ArtifactDigest("node-tar-package-entrypoint", self.package_entrypoint_sha256),
+            ArtifactDigest("node-tar-package-lock", self.package_lock_sha256),
             ArtifactDigest("node-tar-unpack-source", self.unpack_sha256),
         )
 
@@ -216,7 +216,7 @@ class NodeTarEffectTarget:
         return replace(
             captured,
             artifacts=self.artifacts,
-            artifact_origin="image-identification-effect-v2",
+            artifact_origin="image-identification-v1",
         )
 
     def command(self, archive_path: Path, extraction_root: Path) -> tuple[str, ...]:

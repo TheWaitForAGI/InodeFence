@@ -24,6 +24,10 @@ def test_actual_effect_producer_preserves_target_and_typed_evidence(
     name, case, container_backend, container_image
 ) -> None:
     target = NodeTarEffectTarget.bind(container_backend, container_image)
+    if name == "regular-file":
+        frozen = target.capture_isolation()
+        assert frozen.artifacts == target.artifacts
+        assert frozen.artifact_origin == "image-identification-v1"
     run = run_node_tar_effect_case(case, target)
     trace = run.result.trace
     if not trace.integrity_valid:

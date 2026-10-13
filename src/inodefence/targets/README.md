@@ -74,7 +74,9 @@ and typed result with checksums and no overwrite.
 
 Portable tests validate this contract. The actual eight-fixture container suite is
 `validate-node-effect-producer` and remains NOT_RUN until invoked through the host broker with
-a rebuilt immutable image. This producer is not qualified and is not connected to a campaign.
+a rebuilt immutable image. The separate `qualify-node-effect-v2` mode runs the independent
+Gate 4 matrix and is also NOT_RUN in this revision. This producer is not qualified and is not
+connected to a campaign.
 
 ## 공통 실행 경계
 

@@ -8,6 +8,8 @@
 - Synthetic Gate 2: **PASS**
 - Native node-tar producer: **IMPLEMENTED**, portable contract tests **PASS**;
   contained qualification **NOT_RUN**
+- Independent reader and fixed qualification runner: **IMPLEMENTED**, portable tests **PASS**;
+  contained matrix **NOT_RUN**
 - P0-v2/P1-v2/P2-v2 native campaigns: **NOT_RUN**
 - H1/H2 effectiveness: **HYPOTHESIS**, not a result
 

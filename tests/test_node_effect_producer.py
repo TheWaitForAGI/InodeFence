@@ -2,14 +2,23 @@
 
 import json
 from contextlib import contextmanager
+from copy import deepcopy
 from dataclasses import replace
 from hashlib import sha256
+from pathlib import Path
 
 import pytest
 
-from inodefence.effect_pipeline import NativeEffectRun
-from inodefence.evaluation.native_effect_evidence import export_native_effect_run
-from inodefence.execution.base import ContainerOutcome, ExecutionBackend
+import inodefence.effect_pipeline as effect_pipeline_module
+from inodefence.builder import BUILDER_FORMAT, build_tar
+from inodefence.effect_pipeline import NativeEffectRun, run_node_tar_effect_case
+from inodefence.evaluation.native_effect_evidence import (
+    export_native_effect_run,
+    reconstruct_native_effect_trace,
+    verify_native_effect_evidence,
+)
+from inodefence.evaluation.verify import VerificationError
+from inodefence.execution.base import BackendError, ContainerOutcome, ExecutionBackend
 from inodefence.feedback import state_signature
 from inodefence.model import (
     ArchiveCase,
@@ -27,7 +36,7 @@ from inodefence.model import (
     SnapshotPhase,
     StateSnapshot,
 )
-from inodefence.observer import compare_states
+from inodefence.observer import ObservationError, compare_states
 from inodefence.oracle import evaluate_contracts
 from inodefence.targets.node_tar_effect import (
     PROTOCOL_ID,
@@ -172,7 +181,10 @@ def _operation(
                 "finished_ns": str(start_sequence),
             },
             "object_observations": before,
-            "detail": {"symlink_target": None, "open_flags": None},
+            "detail": {
+                "symlink_target": identity["link_target"] if operation == "symlink" else None,
+                "open_flags": None,
+            },
         },
         {
             "sequence": completion_sequence,
@@ -205,6 +217,7 @@ def _frame(
     outcome: str = "success",
     overflow: bool = False,
     dropped: int = 0,
+    archive_sha256: str | None = None,
 ) -> bytes:
     record_bytes = json.dumps(
         records, sort_keys=True, separators=(",", ":"), ensure_ascii=False
@@ -226,9 +239,66 @@ def _frame(
             "package_entrypoint_sha256": target.package_entrypoint_sha256,
             "unpack_sha256": target.unpack_sha256,
         },
-        "input": {"archive_sha256": sha256(b"fixture-archive").hexdigest()},
-        "coverage": {"fixture": True},
-        "target": {"outcome": outcome, "error": None, "duration_ns": "10"},
+        "input": {"archive_sha256": archive_sha256 or sha256(b"fixture-archive").hexdigest()},
+        "coverage": {
+            "lifecycle_kinds": ["read", "effect_work_started", "effect_work_settled"],
+            "operation_callbacks": []
+            if target.profile == NativeEffectProfile.MINIMAL
+            else [
+                "open",
+                "write",
+                "writev",
+                "close",
+                "mkdir",
+                "chmod",
+                "chown",
+                "utimes",
+                "futimes",
+                "fchown",
+                "unlink",
+                "rmdir",
+                "link",
+                "symlink",
+                "rename",
+                "rm",
+            ],
+            "effect_classes": {
+                "namespace_creation": (
+                    "supported_when_one correlated operation proves absent-to-present"
+                ),
+                "namespace_removal": (
+                    "supported_when_one correlated operation proves present-to-absent"
+                ),
+                "namespace_replacement": (
+                    "supported_when one correlated operation changes identity or type"
+                ),
+                "regular_file_content_modification": (
+                    "supported by stable before/after content digests"
+                ),
+                "truncation": "supported by stable before/after regular-file sizes",
+                "metadata_modification": ("supported by stable before/after metadata fields"),
+                "symlink_creation": ("supported by absent-to-symlink evidence and raw link text"),
+                "hardlink_identity_relation_creation": (
+                    "supported by source/destination lstat identity evidence"
+                ),
+                "identity_relation_removal": (
+                    "unsupported: no counterpart provenance for single-path removal"
+                ),
+            },
+            "path_scope": ("sandbox-relative callback paths and proven descriptor-owner paths"),
+            "observation_perturbation": (
+                "synchronous lstat/content probes at callback request and completion boundaries"
+                if target.profile == NativeEffectProfile.FULL
+                else "entry lifecycle and async-context propagation only"
+            ),
+        },
+        "target": {
+            "outcome": outcome,
+            "error": None
+            if outcome == "success"
+            else {"name": "Error", "code": "TAR_BAD_ARCHIVE", "message": "rejected"},
+            "duration_ns": "10",
+        },
         "records": records,
         "terminal": {
             "record_count": len(records),
@@ -244,7 +314,9 @@ def _frame(
     return (json.dumps(envelope, separators=(",", ":")) + "\n").encode()
 
 
-def _snapshots() -> tuple[StateSnapshot, StateSnapshot]:
+def _snapshots(
+    archive_sha256: str = sha256(b"fixture-archive").hexdigest(),
+) -> tuple[StateSnapshot, StateSnapshot]:
     root = ObjectSnapshot(".", ObjectType.DIRECTORY, 1, 1, 1, 0o755, 0, 1000, 1000, 1, 1)
     sentinel = ObjectSnapshot(
         "outside/sentinel.txt",
@@ -260,17 +332,31 @@ def _snapshots() -> tuple[StateSnapshot, StateSnapshot]:
         1,
         content_digest=sha256(b"sentinel").hexdigest(),
     )
+    archive = ObjectSnapshot(
+        "archive/input.tar",
+        ObjectType.REGULAR,
+        1,
+        3,
+        1,
+        0o600,
+        len(b"fixture-archive"),
+        1000,
+        1000,
+        1,
+        1,
+        content_digest=archive_sha256,
+    )
     return (
         StateSnapshot(
             "/var/lib/inodefence/core-run-test",
             SnapshotPhase.BEFORE,
-            (root, sentinel),
+            (root, archive, sentinel),
             ("outside/sentinel.txt",),
         ),
         StateSnapshot(
             "/var/lib/inodefence/core-run-test",
             SnapshotPhase.AFTER,
-            (root, sentinel),
+            (root, archive, sentinel),
             ("outside/sentinel.txt",),
         ),
     )
@@ -283,7 +369,10 @@ def _capture(
     status: ExecutionStatus = ExecutionStatus.SUCCESS,
     truncated: bool = False,
 ) -> NativeEffectCapture:
-    archive_sha256 = sha256(b"fixture-archive").hexdigest()
+    try:
+        archive_sha256 = json.loads(raw)["input"]["archive_sha256"]
+    except (KeyError, TypeError, ValueError):
+        archive_sha256 = sha256(b"fixture-archive").hexdigest()
     verified, error = _verify_transport_frame(raw, truncated, target, archive_sha256)
     exit_code = (
         None
@@ -294,8 +383,11 @@ def _capture(
     )
     execution = ExecutionResult(
         "node-tar-strict-effect-v2",
-        "fixture",
-        ("node",),
+        target.provenance.target_version,
+        target.command(
+            Path("/var/lib/inodefence/core-run-test/archive/input.tar"),
+            Path("/var/lib/inodefence/core-run-test/extract"),
+        ),
         status,
         exit_code,
         raw.decode("utf-8", "surrogateescape"),
@@ -598,13 +690,75 @@ def test_bind_and_command_pin_worker_lock_entrypoint_and_unpack_hashes() -> None
         BindingBackend(), IMAGE, profile=NativeEffectProfile.MINIMAL, event_bound=32
     )
     command = target.command(
-        __import__("pathlib").Path("/var/lib/inodefence/core-run-test/archive/input.tar"),
-        __import__("pathlib").Path("/var/lib/inodefence/core-run-test/extract"),
+        Path("/var/lib/inodefence/core-run-test/archive/input.tar"),
+        Path("/var/lib/inodefence/core-run-test/extract"),
     )
     assert command[-4:] == tuple(DIGESTS.values())
     assert target.profile == NativeEffectProfile.MINIMAL and target.event_bound == 32
     with pytest.raises(ValueError, match="event bound"):
         replace(target, event_bound=257)
+
+
+def test_backend_failure_propagates_without_target_or_trace_classification() -> None:
+    metadata = {
+        "node_version": "22.22.0",
+        "tar_version": "7.5.22",
+        "package_entrypoint": "/target/node_modules/tar/dist/commonjs/index.min.js",
+        **DIGESTS,
+    }
+
+    class FailingBackend(ControlledBackend):
+        @contextmanager
+        def prepare(self, request):
+            class Prepared:
+                def execute(self):
+                    if "--identify" in request.command:
+                        return ContainerOutcome(0, json.dumps(metadata).encode(), b"", 0, False)
+                    raise BackendError("injected backend failure")
+
+            yield Prepared()
+
+    target = NodeTarEffectTarget.bind(FailingBackend(), IMAGE)
+    case = ArchiveCase((ArchiveEntry("file", EntryType.REGULAR, b"x"),))
+    with pytest.raises(BackendError, match="injected backend failure"):
+        run_node_tar_effect_case(case, target)
+
+
+def test_observer_failure_propagates_without_executing_or_inventing_a_trace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    metadata = {
+        "node_version": "22.22.0",
+        "tar_version": "7.5.22",
+        "package_entrypoint": "/target/node_modules/tar/dist/commonjs/index.min.js",
+        **DIGESTS,
+    }
+    target_executions: list[bool] = []
+
+    class Prepared:
+        def __init__(self, identify: bool) -> None:
+            self.identify = identify
+
+        def execute(self):
+            if self.identify:
+                return ContainerOutcome(0, json.dumps(metadata).encode(), b"", 0, False)
+            target_executions.append(True)
+            raise AssertionError("target must not execute after BEFORE observation failure")
+
+    class BindingBackend(ControlledBackend):
+        @contextmanager
+        def prepare(self, request):
+            yield Prepared("--identify" in request.command)
+
+    def fail_observation(*_args, **_kwargs):
+        raise ObservationError("injected observer failure")
+
+    target = NodeTarEffectTarget.bind(BindingBackend(), IMAGE)
+    case = ArchiveCase((ArchiveEntry("file", EntryType.REGULAR, b"x"),))
+    monkeypatch.setattr(effect_pipeline_module, "capture_state", fail_observation)
+    with pytest.raises(ObservationError, match="injected observer failure"):
+        run_node_tar_effect_case(case, target)
+    assert not target_executions
 
 
 def test_raw_export_binds_exact_stream_and_refuses_overwrite(tmp_path) -> None:
@@ -615,15 +769,16 @@ def test_raw_export_binds_exact_stream_and_refuses_overwrite(tmp_path) -> None:
         _lifecycle(1, identity, "effect_work_started"),
         _lifecycle(2, identity, "effect_work_settled"),
     ]
-    raw = _frame(target, records)
-    capture = _capture(target, raw)
     case = ArchiveCase((ArchiveEntry("file", EntryType.REGULAR, b"x"),))
-    before, after = _snapshots()
+    archive_sha256 = sha256(build_tar(case)).hexdigest()
+    raw = _frame(target, records, archive_sha256=archive_sha256)
+    capture = _capture(target, raw)
+    before, after = _snapshots(archive_sha256)
     trace = effect_trace_from_capture(capture, target, case, before, after)
     base = RunResult(
         case,
-        sha256(b"fixture-archive").hexdigest(),
-        "ustar",
+        archive_sha256,
+        BUILDER_FORMAT,
         capture.execution,
         before,
         after,
@@ -631,9 +786,7 @@ def test_raw_export_binds_exact_stream_and_refuses_overwrite(tmp_path) -> None:
         state_signature(before, after),
         evaluate_contracts(before, after),
     )
-    run = NativeEffectRun(
-        EffectRunResult(base, trace), raw, sha256(b"fixture-archive").hexdigest(), True, None
-    )
+    run = NativeEffectRun(EffectRunResult(base, trace), raw, archive_sha256, True, None)
     destination = tmp_path / "native-effect"
 
     manifest_sha256 = export_native_effect_run(run, destination)
@@ -645,5 +798,168 @@ def test_raw_export_binds_exact_stream_and_refuses_overwrite(tmp_path) -> None:
     }
     assert (destination / "raw-stream.json").read_bytes() == raw
     assert manifest_sha256 == sha256((destination / "manifest.json").read_bytes()).hexdigest()
+    verified = verify_native_effect_evidence(destination, expected_manifest_sha256=manifest_sha256)
+    assert verified.result == run.result and verified.feedback_keys == ()
     with pytest.raises(FileExistsError):
         export_native_effect_run(run, destination)
+
+
+def test_independent_reader_rejects_producer_trace_self_declaration(tmp_path) -> None:
+    target = _target(NativeEffectProfile.MINIMAL)
+    identity = _identity(0, "file")
+    case = ArchiveCase((ArchiveEntry("file", EntryType.REGULAR, b"x"),))
+    archive_sha256 = sha256(build_tar(case)).hexdigest()
+    raw = _frame(
+        target,
+        [
+            _lifecycle(0, identity, "read"),
+            _lifecycle(1, identity, "effect_work_started"),
+            _lifecycle(2, identity, "effect_work_settled"),
+        ],
+        archive_sha256=archive_sha256,
+    )
+    capture = _capture(target, raw)
+    before, after = _snapshots(archive_sha256)
+    trace = effect_trace_from_capture(capture, target, case, before, after)
+    trace = replace(trace, provenance=replace(trace.provenance, configuration_id="0" * 64))
+    base = RunResult(
+        case,
+        archive_sha256,
+        BUILDER_FORMAT,
+        capture.execution,
+        before,
+        after,
+        compare_states(before, after),
+        state_signature(before, after),
+        evaluate_contracts(before, after),
+    )
+    run = NativeEffectRun(EffectRunResult(base, trace), raw, archive_sha256, True, None)
+    destination = tmp_path / "self-declared"
+    export_native_effect_run(run, destination)
+    with pytest.raises(VerificationError, match="independent raw reconstruction"):
+        verify_native_effect_evidence(destination)
+
+
+@pytest.mark.parametrize(
+    "injection",
+    (
+        "missing_sequence",
+        "duplicate_sequence",
+        "overflow",
+        "malformed_identity",
+        "association_conflict",
+        "unmatched_operation",
+        "flush_mismatch",
+        "source_disagreement",
+    ),
+)
+def test_independent_reader_detects_failure_injections(injection: str) -> None:
+    target = _target(NativeEffectProfile.MINIMAL)
+    identity = _identity(0, "file")
+    case = ArchiveCase((ArchiveEntry("file", EntryType.REGULAR, b"x"),))
+    archive_sha256 = sha256(build_tar(case)).hexdigest()
+    raw = _frame(
+        target,
+        [
+            _lifecycle(0, identity, "read"),
+            _lifecycle(1, identity, "effect_work_started"),
+            _lifecycle(2, identity, "effect_work_settled"),
+        ],
+        archive_sha256=archive_sha256,
+    )
+    capture = _capture(target, raw)
+    before, after = _snapshots(archive_sha256)
+    trace = effect_trace_from_capture(capture, target, case, before, after)
+    base = RunResult(
+        case,
+        archive_sha256,
+        BUILDER_FORMAT,
+        capture.execution,
+        before,
+        after,
+        compare_states(before, after),
+        state_signature(before, after),
+        evaluate_contracts(before, after),
+    )
+    result = EffectRunResult(base, trace)
+    envelope = deepcopy(json.loads(raw))
+    records = envelope["records"]
+    if injection == "missing_sequence":
+        records[2]["sequence"] = 3
+    elif injection == "duplicate_sequence":
+        records[2]["sequence"] = 1
+    elif injection == "overflow":
+        envelope["terminal"]["overflow"] = True
+        envelope["terminal"]["dropped_records"] = 1
+    elif injection == "malformed_identity":
+        records[0]["entry"]["ordinal"] = "0"
+    elif injection == "association_conflict":
+        records[0]["entry"]["path"] = "other"
+    elif injection == "unmatched_operation":
+        records.append(
+            _operation(
+                3,
+                4,
+                identity,
+                "close",
+                ["extract/file"],
+                [_observed("extract/file", None)],
+                [_observed("extract/file", None)],
+            )[0]
+        )
+    elif injection == "flush_mismatch":
+        envelope["terminal"]["flush"] = "interrupted"
+    else:
+        envelope["source"]["producer_sha256"] = "f" * 64
+    envelope["terminal"]["record_count"] = len(records)
+    envelope["terminal"]["last_produced_sequence"] = records[-1]["sequence"]
+    envelope["terminal"]["last_attempted_sequence"] = records[-1]["sequence"]
+    record_bytes = json.dumps(
+        records, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode()
+    envelope["terminal"]["records_sha256"] = sha256(record_bytes).hexdigest()
+    injected = (json.dumps(envelope, separators=(",", ":")) + "\n").encode()
+
+    with pytest.raises(VerificationError):
+        reconstruct_native_effect_trace(injected, result)
+
+
+def test_independent_reader_rejects_invalid_handle_causal_edge() -> None:
+    target = _target(NativeEffectProfile.FULL)
+    identity = _identity(0, "file")
+    case = ArchiveCase((ArchiveEntry("file", EntryType.REGULAR, b""),))
+    archive_sha256 = sha256(build_tar(case)).hexdigest()
+    digest = sha256(b"").hexdigest()
+    records = [
+        _lifecycle(0, identity, "read"),
+        _lifecycle(1, identity, "effect_work_started"),
+        *_operation(
+            2,
+            3,
+            identity,
+            "close",
+            ["extract/file"],
+            [_observed("extract/file", _object("extract/file", inode=70, digest=digest))],
+            [_observed("extract/file", _object("extract/file", inode=70, digest=digest))],
+            handle_sequence=3,
+        ),
+        _lifecycle(4, identity, "effect_work_settled"),
+    ]
+    raw = _frame(target, records, archive_sha256=archive_sha256)
+    capture = _capture(target, raw)
+    before, after = _snapshots(archive_sha256)
+    producer_trace = effect_trace_from_capture(capture, target, case, before, after)
+    base = RunResult(
+        case,
+        archive_sha256,
+        BUILDER_FORMAT,
+        capture.execution,
+        before,
+        after,
+        compare_states(before, after),
+        state_signature(before, after),
+        evaluate_contracts(before, after),
+    )
+    result = EffectRunResult(base, producer_trace)
+    with pytest.raises(VerificationError, match="handle-provenance"):
+        reconstruct_native_effect_trace(raw, result)

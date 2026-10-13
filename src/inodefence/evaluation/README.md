@@ -199,3 +199,9 @@ frame, the canonical `EffectRunResult`, and a manifest last. All three files are
 checksummed and refuse overwrite. The manifest binds the case, raw stream and producer source
 digest. Gate 3 intentionally provides no reader here; independent reconstruction and
 qualification belong to the separate Gate 4 branch.
+
+Gate 4 adds `verify_native_effect_evidence()`. It ignores the producer's integrity declaration,
+reconstructs lifecycle/effect/causal evidence from the exact raw frame, verifies source,
+archive, command, sequence, correlation, flush and final-state bindings, and recomputes the
+normalized feedback keys. `scripts/verify_node_effect_evidence.py` exposes this reader for one
+bundle. Invalid or incomplete streams never return verified evidence.

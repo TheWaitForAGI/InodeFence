@@ -9,7 +9,8 @@
 - Synthetic Gate 2: **PASS**
 - Native producer: **IMPLEMENTED**, portable contract tests **PASS**, contained fixture run
   **NOT_RUN**
-- Independent reader and qualification: **NOT_IMPLEMENTED / NOT_RUN**
+- Independent reader and fixed qualification runner: **IMPLEMENTED**, portable contract tests
+  **PASS**; contained qualification **NOT_RUN**
 - Campaign integration and experiments: **BLOCKED by later gates**
 
 This architecture composes the existing full-run pipeline with a separate effect-evidence
@@ -23,6 +24,13 @@ bookkeeping does not create sandbox namespace objects. The controller verifies s
 terminal framing before AFTER; conversion preserves inadequate state evidence as
 `OPERATION_OBSERVED`. A no-overwrite exporter retains exact raw bytes separately from the
 typed result. Native coverage and scheduling neutrality remain unqualified until Gate 4.
+
+Gate 4 now has an independent raw reader which rebinds archive bytes, execution command,
+source hashes, coverage declaration, entry identity, sequence/correlation integrity,
+class-specific evidence, causal edges, terminal flush, final-state derivations and normalized
+keys. The fixed stock/minimal/full matrix and failure injections are executable through
+`qualify-node-effect-v2`. This revision has no Docker broker, so the matrix has not run and no
+qualification decision token has been produced.
 
 ## End-to-end data flow
 

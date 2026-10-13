@@ -204,10 +204,16 @@ completion-order permutation stability, explicit-edge-only motifs, fail-closed i
 P0-v2/P1-v2 retention separation, P1-v2/P2-v2 retention equality, deterministic lineage and
 binary bounded reward. This is engineering evidence only and does not claim native coverage.
 
-**IMPLEMENTED, CONTAINED RUN NOT_RUN — Gate 3; NOT STARTED — Gate 4; BLOCKED — Gates 5–6.**
+**IMPLEMENTED, CONTAINED RUN NOT_RUN — Gate 3; READER/RUNNER IMPLEMENTED, MATRIX NOT_RUN —
+Gate 4; BLOCKED — Gates 5–6.**
 The bounded source-guarded producer, controller-side terminal verification, typed conversion,
 raw export and portable failure tests are present on the Gate 3 branch. The actual contained
 eight-fixture suite remains NOT_RUN in the current environment, so this is not the exact
 `GATE3_NATIVE_PRODUCER_IMPLEMENTED` completion token and native observation is not qualified.
 V4 remains feasibility evidence rather than production evidence. Native campaign integration
 and any H1/H2 or vulnerability claim remain blocked until Gate 4 passes with retained evidence.
+The Gate 4 branch independently reconstructs the trace and normalized keys from immutable raw
+bytes and provides the fixed 480-run profile matrix plus required failure injections. Portable
+reader/decision tests pass, but the current environment has no Docker CLI/socket. No exact
+`V2_NATIVE_EFFECT_OBSERVATION_QUALIFIED` or
+`V2_NATIVE_EFFECT_OBSERVATION_NOT_QUALIFIED` token has therefore been produced.

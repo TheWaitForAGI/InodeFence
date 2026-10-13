@@ -42,3 +42,8 @@ callback-time snapshot consistency와 stock 대비 overhead를 검증한 **QUALI
 async-context와 Node `fs` completion을 사용해 operation을 exact entry에 귀속하고 independent
 work의 later-ordinal effect가 earlier completion보다 먼저 실제로 완료됨을 검증한
 **QUALIFIED FAIL** 기록이다. Effect event는 complete checkpoint나 P0/P1/P2 결과가 아니다.
+
+[node-tar native effect observation qualification v2](node-native-effect-observation-qualification-v2.md)는
+Gate 3 producer와 Gate 4 independent reader/fixed matrix의 구현 및 재현 명령을 기록한다. 현재
+환경에는 Docker CLI/socket이 없어 matrix와 raw evidence가 **NOT_RUN**이며 qualification token은
+아직 없다.

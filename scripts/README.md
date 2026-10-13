@@ -89,6 +89,14 @@ feasibility probe이며, event log 자체는 완전한 `EntryCheckpoint`나 nati
 `PYTHONPATH=src:. python scripts/analyze_node_causal_effects.py <raw.json>`은 case/archive identity를
 확인하고 저장된 mechanical summary를 독립적으로 재계산한다.
 
+`PYTHONPATH=src:. python scripts/verify_node_effect_evidence.py <bundle>
+--manifest-sha256 <sha256>`는 Gate 3 bundle의 raw frame에서 lifecycle/effect/causal trace와
+normalized keys를 독립적으로 재구성한다. `scripts.container_host ...
+qualify-node-effect-v2 --evidence <new-absolute-path>`는 pinned contained target에서 8 fixtures,
+stock/minimal/full 각 20회, timeout/overflow/backend failure와 required invalid-stream injection을
+실행한다. Output은 덮어쓰지 않으며, 모든 필수 criterion이 평가된 경우에만 정확한 Gate 4
+decision token을 기록한다.
+
 `PYTHONPATH=src python scripts/qualify_libarchive_entry_boundary.py --output <new-file>
 --image-id <sha256> --base-image-id <sha256>`는 별도 libarchive public write-disk reference
 target에서 `archive_write_finish_entry()`와 final writer close의 syscall 순서를 비교한다.

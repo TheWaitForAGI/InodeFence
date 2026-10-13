@@ -76,6 +76,13 @@ export를 controlled evidence로 검증한다. 실제 node-tar 실행은
 `check_node_effect_producer.py`의 `validate-node-effect-producer` container suite 책임이다.
 Portable PASS를 native coverage나 qualification으로 승격하지 않는다.
 
+같은 파일의 independent-reader tests는 raw source/archive/command binding, trace 재구성,
+producer 자기 선언 불신, sequence/identity/association/correlation/causal/flush 오류 거부를
+검증한다. `test_node_effect_qualification.py`는 고정 acceptance matrix가 완전한 passing input만
+qualified로 판정하고 completion-order 변화가 key hash에 유출되면 실패하는지 검사한다. 실제
+480-run matrix는 `check_node_effect_qualification.py`의 `qualify-node-effect-v2` container suite
+책임이며 현재 NOT_RUN이다.
+
 4종 baseline TAR는 fixtures/tar/에 두며 [실행과 관찰 방법](../docs/examples/tar-baseline.md)을 따른다. Canonical validation은 Dev Container의 `make check`다. Filesystem test는 `/var/lib/inodefence` 내 disposable sandbox만 사용한다. 서로 다른 run의 inode normalization 검사는 두 sandbox를 동시에 유지해 inode 재사용을 피한다.
 
 ## 파일 배치 규칙

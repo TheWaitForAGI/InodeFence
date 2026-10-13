@@ -7,7 +7,8 @@
 - Native v2 producer: **IMPLEMENTED**, portable contract tests **PASS**; contained fixture
   execution **NOT_RUN** at this revision
 - V2 feedback key, retention and scheduler policy: **IMPLEMENTED / TESTED synthetically**
-- Qualification and target campaign: **NOT_RUN**
+- Independent reader and qualification runner: **IMPLEMENTED**, portable tests **PASS**
+- Contained qualification and target campaign: **NOT_RUN**
 - Current v1 model: unchanged; it remains the synthetic tested contract
 
 This document is the native-observation qualification contract required after node-tar
@@ -28,11 +29,12 @@ producer, package lock, bundled entrypoint and readable unpack source, verifies 
 frame after target termination, and records that result before capturing AFTER. The exact raw
 frame and the derived `EffectRunResult` can be exported with checksums and no overwrite.
 
-Portable tests exercise framing, evidence conversion and fail-closed errors. They do not
-qualify real node-tar coverage or perturbation. The mandatory contained fixture suite is
-`validate-node-effect-producer`; it remains NOT_RUN until executed through the host broker
-with a freshly built immutable target image. Independent reading and the 20-repeat profile
-matrix remain Gate 4.
+Portable tests exercise framing, evidence conversion, independent reconstruction and
+fail-closed errors. They do not qualify real node-tar coverage or perturbation. The mandatory
+contained producer suite is `validate-node-effect-producer`; the fixed 20-repeat Gate 4 matrix
+is `qualify-node-effect-v2`. Both remain NOT_RUN until executed through the host broker with a
+freshly built immutable target image. Therefore neither exact Gate 4 decision token applies to
+this revision.
 
 ## Why a separate model is required
 

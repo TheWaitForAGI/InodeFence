@@ -37,6 +37,11 @@ pytest 결과.
 
 `test_mutator.py`는 8개 독립 operator와 uniform baseline의 원본 불변성, caller-owned RNG 재현성, raw spelling/순서/중복, 적용 불가 시 no-op와 canonical model invariant를 검증한다. `test_mutator_builder.py`는 별도 integration 경계에서 빈/regular/mixed case를 변형한 뒤 constructor 재검증과 deterministic USTAR의 raw path/link, type/mode/content/order 보존을 확인한다. USTAR 길이를 넘는 변형은 logical model에 남고 builder가 명시적으로 거부해야 한다. 이 검사는 mutator 구현에 builder 의존성을 추가하지 않으며 corpus scheduling, fuzzing 효과나 benchmark campaign의 검증이 아니다.
 
+`test_mutator_addressing.py`는 별도 protected-component policy가 original benign hardlink
+seed에서 default controlled sentinel의 상대 주소를 만드는 exact parent/child case ID와 TAR
+hash를 검증한다. Bounded determinism/builder compatibility와 finite target/CVE-independent
+vocabulary도 검사한다. 이는 logical generation evidence이며 target 실행 또는 rediscovery가 아니다.
+
 `test_pipeline_c0_harness_transitions_are_independent_of_signature`는 실제 run_case/Python reference extraction에 controlled execution effect를 추가한다. Archive namespace 생성, input.tar 삭제·inode/type 교체는 C0이며 content/mode-only effect는 C0가 아니다. Raw evidence는 보존되고 HARNESS signature exclusion은 유지되어 verdict와 novelty가 독립적임을 검증한다. Region.HARNESS는 security trust boundary가 아니다. 기존 서로 다른 case/TAR SHA-256의 semantic-equivalence, identity-group projection, directory nlink, live inode/PYTHONHASHSEED stability 및 C1/C2 regression을 유지한다.
 
 `test_harness_artifact_changes_remain_raw_evidence_without_state_novelty`의 이전 AFTER bookkeeping 생성 + 모든 verdict nonviolation 가정은 snapshot에 actor provenance가 있다고 가정한 오류였다. 정상 setup은 BEFORE 전에 완료하도록 test lifecycle을 정리하고 nonviolation assertion을 유지한다. 같은 setup을 잘못된 baseline으로 관찰 구간에 포함하면 C0 evidence가 생긴다는 assertion도 추가한다. C1/C2 test의 harness alias는 baseline에 만들며 root replacement test의 retained inode는 extraction 안에 두어 기존 assertion을 유지한다. Test 삭제/skip/xfail이나 보안 판정 assertion 약화로 통과시키지 않는다.

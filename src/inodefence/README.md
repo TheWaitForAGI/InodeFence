@@ -59,7 +59,7 @@ runner도 구현되어 portable tests를 통과했다. Clean revision `36ff7fd`�
 
 Capability baseline은 main `8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`다.
 Layer 2–5와 Layer 6 infrastructure가 구현됐다. `run_search_campaign` / `SearchCampaignConfig`가
-B0/B1/B3 × FULL/A1/A2 × legacy/M1/A3를 실행하고 별도 PolicyEvaluationConfig/completed export가
+B0/B1/B3 × FULL/A1/A2 × legacy/M1/protected-component/A3를 실행하고 별도 PolicyEvaluationConfig/completed export가
 source/runtime/target/profile/protocol를 binding한다. Legacy ExperimentConfig는 B3/legacy만 허용한다.
 Reader/journal/replay/minimizer와 policy datasets/statistics가 존재하지만 automatic policy journal,
 interrupted-prefix return, full-pipeline timing과 known-class classification은 완성된 pipeline이 아니다.

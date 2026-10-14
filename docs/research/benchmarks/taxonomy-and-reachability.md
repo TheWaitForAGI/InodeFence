@@ -11,27 +11,29 @@ can fail; effect labels describe what remains in the filesystem afterward.
 
 S IDs describe reusable archive semantics; R IDs below describe external root
 causes; E IDs describe effects. They are not vulnerability IDs. This table is
-source-derived analysis at that capability baseline, including [M1](../design/mutation-m1-v1.md).
+source-derived analysis at that capability baseline, including [M1](../design/mutation-m1-v1.md),
+plus the explicitly marked post-baseline
+[protected-component policy](../design/mutation-protected-components-v1.md).
 YES is ability within builder bounds, PARTIAL names a narrower ability, NO names
 an exclusion, and N/A means an input-only property has no direct snapshot verdict.
 Representation ≠ reachability ≠ observation ≠ confirmed vulnerability.
 
-| ID / semantic class | Model represents? | Builder serializes? | Minimal seed contains? | Legacy / M1 reaches? | Snapshot/oracle observes? | Current feedback use / blocking gap |
+| ID / semantic class | Model represents? | Builder serializes? | Minimal seed contains? | Legacy / M1 / protected-component reaches? | Snapshot/oracle observes? | Current feedback use / blocking gap |
 | --- | --- | --- | --- | --- | --- | --- |
 | S01 Regular file | YES, arbitrary bytes/mode | YES, fixed uid/gid/mtime | YES | YES add_entry; no existing content/mode edit | Persistent bytes/digest/size/mode; protected effects C2 | State object digest/size/mode; novelty is not a bug |
 | S02 Directory | YES, explicit ordered entry | YES, raw trailing spelling | YES one directory-bearing seed | Legacy PARTIAL; M1 add_entry can insert directories and reuse existing names | Persistent lstat type/mode; namespace C0 if external | State paths/type/mode; finite component vocabulary |
-| S03 Hardlink | YES unresolved text | YES within linkname limit | YES preceding internal source | YES add_hardlink, target affixes; external-name addressing blocked | lstat groups; persistent sentinel equality C1; link metadata C2 | Groups, regular nlink, fingerprints; symlink referents excluded |
+| S03 Hardlink | YES unresolved text | YES within linkname limit | YES preceding internal source | YES add_hardlink/target affixes; protected-component policy adds default external names | lstat groups; persistent sentinel equality C1; link metadata C2 | Groups, regular nlink, fingerprints; symlink referents excluded |
 | S04 Symlink | YES unresolved text | YES within linkname limit | YES preceding internal target | Legacy affixes; M1 nested/reused paths and link-to-link composition | Raw readlink/lstat, no referent walk; protected subsequent write C2 | Raw normalized text/type; outside link alone has no C1 verdict |
 | S05 Duplicate path | YES duplicates preserved | YES ordered duplicates | NO | YES duplicate_entry; M1 reused names allow same-name different-type entries | Only surviving type/effect, no overwrite event history | Final state/fingerprints; intermediate duplicates invisible |
 | S06 Entry ordering | YES ordered tuple | YES exact order | YES internal links follow file | YES swap unequal values; duplicate insertion also varies order | Consequences only, not executed operation sequence | Useful only when final state/effect differs |
-| S07 Parent-relative path | YES raw text | YES | NO | YES affixes/new prefixes | Persistent scoped effect C0/C2; spelling alone not violation | Observed path/effect keys; default sentinel components absent |
+| S07 Parent-relative path | YES raw text | YES | NO | YES affixes/new prefixes and protected components | Persistent scoped effect C0/C2; spelling alone not violation | Default sentinel relative spelling TESTED logically; target effect pending |
 | S08 Dot-relative path | YES raw text | YES | NO | YES affixes/new prefixes | Canonical observed paths merge equivalent outcomes | No novelty merely for different TAR spelling |
 | S09 Absolute-looking path | YES raw text | YES within USTAR fields | NO | YES slash prefixes, including repeated roots | Only actual controlled-run effects; no outside-sandbox observation | No absolute input novelty; random full run address is not generically available |
-| S10 Link-target mutation | YES nonempty text for links | YES ≤100 UTF-8 bytes | PARTIAL benign internal targets | Legacy copied target/affixes; M1 fresh/reused compound targets with fixed vocabulary | Link text and surviving relationship/effect | Text/groups/effects; default external-name addressing still absent |
+| S10 Link-target mutation | YES nonempty text for links | YES ≤100 UTF-8 bytes | PARTIAL benign internal targets | Legacy copied target/affixes; M1 fresh/reused targets; protected-component extension reaches default sentinel spelling | Link text and surviving relationship/effect | Text/groups/effects; contained setup still pending |
 | S11 Cross-entry relationship | YES ordered related entries | YES; no dependency solving | YES simple internal link pairs | M1 reuses entry occurrences including links, allows forward references; no dependency repair | Final identity groups, link text and effects | Generic groups/fingerprints; transient relationship absent |
 | S12 Pre-existing filesystem objects | NO setup in ArchiveCase | N/A archive-independent | N/A | NO arbitrary tree/session setup; external sentinels already supplied by runtime | Existing protected regular sentinels YES; other setup NOT_IMPLEMENTED | Protected paths/effects already present; reused extraction trees out of v1 |
 | S13 Replacement / type transition | YES distinct entries sharing path | YES | NO | M1 same-name type collisions via insertion/reuse; no direct conversion operator | Persistent replacement C0/C2; intermediate type history absent | Final objects/effect labels; no intermediate operation history |
-| S14 External object identity / effect | PARTIAL describes operations, not runtime object identities | YES for four supported entry types | NO external relationship | NO selected default sentinel effect; required names outside output language | C1 surviving alias, C2 protected changes, C0 persistent external namespace | State relations/effects plus independent violation novelty; no transient/all-object claim |
+| S14 External object identity / effect | PARTIAL describes operations, not runtime object identities | YES for four supported entry types | NO external relationship | YES logical default relative target under protected-component policy; actual effect unqualified | C1 surviving alias, C2 protected changes, C0 persistent external namespace | State relations/effects plus independent violation novelty; no transient/all-object claim |
 
 Serializable semantic shapes remain subject to exact byte lengths and numeric
 field limits; model and builder failures are infrastructure exceptions today.
@@ -39,7 +41,8 @@ Integrated #46 checks actual USTAR name/prefix reconstruction: a raw path is
 emitted byte-exactly or rejected explicitly before execution, including lossy
 delegated splits that could theoretically have another encoding. No raw spelling
 is normalized to improve reachability. Signature normalization uses tagged v3,
-and does not resolve symlink referents. M1 adds finite compound path generation; it does not add setup-derived address vocabulary.
+and does not resolve symlink referents. M1 adds finite compound path generation; the separate
+protected-component policy adds a versioned controlled setup vocabulary without changing M1.
 The builder creates archive operations; the target decides their filesystem
 meaning. The seed bank does not imply all seed structures coexist in one parent.
 
@@ -104,13 +107,15 @@ means some required semantics are representable but a named missing capability
 remains. NO means a demonstrated language/setup exclusion; UNKNOWN means the
 published condition is insufficiently specified.
 
-The declared four benign seeds, legacy affixes and M1 finite components
+The declared four benign seeds, legacy affixes and original M1 finite components
 `a`, `b`, `dir`, `file`, `item`, `.`, `..` cannot spell `outside` or default
 `sentinel.txt`. M1 can generate nested/reused names, collisions and link
 dependencies, but none introduces those missing controlled names. Thus selected
 sentinel alias/protected-byte rediscovery is not reachable under the **default**
-setup. This is a code-language/setup exclusion, not a failed search measurement
-or a claim that no other controlled setup could be qualified.
+M1 policy. The separately versioned protected-component policy adds only those
+controlled setup components and provides a constructive logical path; contained
+setup and target effects remain unqualified. This is not a failed search measurement
+or a historical execution result.
 
 ## Gap matrix
 
@@ -120,38 +125,40 @@ pre-existing object inside extraction; only the latter needs a new setup hook.
 
 | Candidates / class | Path | Hardlink | Symlink | Order | Existing FS | Structure / benchmark reachability now |
 | --- | --- | --- | --- | --- | --- | --- |
-| N01 / R1 link-field | ✓ | ✓ | – | – | External source | YES for simple link; NO for selected sentinel address |
-| N02 / R2 | ✓ | ✓ | – | – | External source | M1 nested/reused paths implemented; selected relation unqualified, NO default sentinel |
-| N03 / R3 | ✓ | ✓ | ✓ | ✓ | External source, nested parents | M1 dependency primitives implemented; exact chain unqualified, NO default sentinel |
-| N04 / R4 | ✓ | – | ✓ | ✓ | External directory/file | M1 collision/reuse primitives implemented; exact transition unqualified, NO default destination |
-| N05 / R1 member-root | ✓ | – | – | – | External writable directory | YES repeated-root spellings; NO for selected sentinel address |
+| N01 / R1 link-field | ✓ | ✓ | – | – | External source | YES constructive default-sentinel link target; contained effect unqualified |
+| N02 / R2 | ✓ | ✓ | – | – | External source | Default spelling reachable; selected relation/setup unqualified |
+| N03 / R3 | ✓ | ✓ | ✓ | ✓ | External source, nested parents | M1 dependency primitives/default spelling implemented; exact chain unqualified |
+| N04 / R4 | ✓ | – | ✓ | ✓ | External directory/file | M1 collision/reuse/default spelling implemented; exact transition unqualified |
+| N05 / R1 member-root | ✓ | – | – | – | External writable directory | Default components reachable; exact root/strict behavior unqualified |
 | N06 / R4 alternate spelling | ✓ | – | ✓ | ✓ | External directory/file | NO: POSIX backslash spelling absent from output alphabet |
 | N07/N08 / R5 | ✓ | – | ✓ | ✓ | Equivalent-name filesystem | NO: alphabet and supported filesystem prerequisites missing |
 | N09 / R6 | ✓ | ? | ? | ✓ | None | NO: PAX/GNU metadata not in model/builder |
 | O01 / R2 | ✓ | ✓ | – | – | External CWD source | YES relative link text; PARTIAL end-to-end: generic-name sentinel and isolated external CWD required |
-| O02 / R3 write | ✓ | – | ✓ | ✓ | External file | M1 chain/collision primitives implemented; exact selected class unqualified, NO default sentinel |
+| O02 / R3 write | ✓ | – | ✓ | ✓ | External file | M1 chain/collision/default spelling implemented; exact selected class unqualified |
 | O03 / R8 API sink | ✓ | – | ✓ | – | Existing internal symlink | NO: title input and setup absent, not TAR-mutation benchmark |
 | G01 / R7 | ✓ | ✓ | Possible | Possible | Source under wider CWD, optional internal symlink | UNKNOWN exact invocation/pin/root; PARTIAL types available |
-| G02 / R1 selection | ✓ | – | – | ? | CLI-selected name and destination | UNKNOWN selection details; NO for default sentinel address |
+| G02 / R1 selection | ✓ | – | – | ? | CLI-selected name and destination | Default components reachable; selection/invocation UNKNOWN |
 | G03 / R8 reused tree | ✓ | – | ✓ | ✓ across runs | Existing internal symlink | NO: campaign creates fresh empty extract for each input |
 
 ## Demonstrated remaining generation/setup gap
 
 M1 and A3 are IMPLEMENTED/TESTED, including deterministic RNG, bounded UTF-8 text,
 no-op accounting, collision/dependency primitives and campaign/config evidence.
-The remaining gap is **constructive reachability of the selected protected effect
-under a frozen controlled setup**, not absence of a generic mutator.
+The remaining gap is **contained reachability and selected protected effect under a
+frozen controlled setup**, not logical spelling: the protected-component policy now
+has deterministic case/TAR evidence for the default relative address.
 N01 7.5.2/7.5.3 is the first intended historical qualification and remains NOT_RUN.
-M1's default external-name exclusion must be resolved or explicitly limit the
-admitted experiment; do not declare rediscovery possible from composition alone.
+Original M1's external-name exclusion remains versioned history. Use the separate
+protected-component policy consistently across experiment arms; do not declare
+rediscovery possible from logical construction alone.
 
-This documentation freeze defines no new grammar/operators or configurable
-vocabulary. Any later resolution must have a separate Task Contract justified
-by that gap, use public controlled setup components equally across comparison
-arms, retain raw spelling/TAR hashes, stay within USTAR bounds and avoid CVE
-sequences or target-specific oracle conditions. No optional M2/M3 feature is
-part of the executable G0 comparison. Excluded backslash/platform/parser/reused
-state cases remain outside the admitted evaluation scope.
+The G0 documentation freeze defined no new grammar/operators or configurable
+vocabulary. The later protected-component contract is the separate Task Contract
+required by that gap: it uses public controlled setup components, retains raw
+spelling/TAR hashes, stays within USTAR bounds and contains no CVE sequence or
+target-specific oracle condition. It is not part of the original G0 capability
+baseline. Excluded backslash/platform/parser/reused-state cases remain outside
+the admitted evaluation scope.
 
 Relative-name and absolute per-run addressing must be distinguished. The existing
 container backend preserves the random absolute run path; a stable target mount

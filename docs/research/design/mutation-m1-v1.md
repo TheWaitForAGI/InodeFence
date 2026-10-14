@@ -51,6 +51,12 @@ Default `outside/sentinel.txt`는 이 finite vocabulary와 benign seeds로 생�
 따라서 structural composition 구현과 selected benchmark reachability를 구분한다.
 [Research Contract](research-contract-v1.md)의 첫 N01 qualification도 아직 NOT_RUN이다.
 
+이 제약은 M1의 과거 의미를 변경하지 않고 별도
+[`uniform-generic-m1-protected-components-v1`](mutation-protected-components-v1.md)
+policy로 해결한다. 새 policy는 existing controlled setup component만 추가하고 같은 여덟
+slot/draw/no-retry 계약을 유지한다. Constructive logical reachability는 TESTED지만 historical
+target execution, setup qualification과 rediscovery는 계속 NOT_RUN이다.
+
 ## A3 reorder contribution ablation
 
 `uniform-generic-no-reorder-v1`과 `uniform-generic-m1-no-reorder-v1`은 각각 legacy/M1의

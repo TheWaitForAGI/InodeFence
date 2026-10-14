@@ -8,7 +8,7 @@ from typing import ClassVar
 
 from inodefence.model import ArchiveCase
 
-from . import m1, operators
+from . import m1, m1_addressing, operators
 from .policy import MutationPolicy
 
 
@@ -58,7 +58,21 @@ def _operator_table(
 ) -> tuple[Callable[[ArchiveCase, random.Random], ArchiveCase], ...]:
     if policy in (MutationPolicy.LEGACY, MutationPolicy.LEGACY_NO_REORDER):
         return operators._OPERATORS
-    return m1.OPERATORS
+    if policy in (MutationPolicy.M1, MutationPolicy.M1_NO_REORDER):
+        return m1.OPERATORS
+    if policy in (
+        MutationPolicy.M1_PROTECTED_COMPONENTS,
+        MutationPolicy.M1_PROTECTED_COMPONENTS_NO_REORDER,
+    ):
+        return m1_addressing.OPERATORS
+    raise AssertionError(f"unhandled mutation policy: {policy}")
+
+
+_NO_REORDER_POLICIES = (
+    MutationPolicy.LEGACY_NO_REORDER,
+    MutationPolicy.M1_NO_REORDER,
+    MutationPolicy.M1_PROTECTED_COMPONENTS_NO_REORDER,
+)
 
 
 def apply_operator(
@@ -74,9 +88,7 @@ def apply_operator(
         raise ValueError("operator_id must be a MutationOperatorId")
     index = OPERATOR_ORDER.index(operator_id)
     child = _operator_table(policy)[index](case, rng)
-    if policy in (MutationPolicy.LEGACY_NO_REORDER, MutationPolicy.M1_NO_REORDER) and (
-        operator_id == MutationOperatorId.REORDER_ENTRIES
-    ):
+    if policy in _NO_REORDER_POLICIES and operator_id == MutationOperatorId.REORDER_ENTRIES:
         child = case
     return MutationAttempt(operator_id, policy, case.case_id, child, child != case)
 
@@ -95,8 +107,6 @@ def mutate_attempt_with_policy(
     operator = rng.choice(table)
     operator_id = OPERATOR_ORDER[table.index(operator)]
     child = operator(case, rng)
-    if policy in (MutationPolicy.LEGACY_NO_REORDER, MutationPolicy.M1_NO_REORDER) and (
-        operator_id == MutationOperatorId.REORDER_ENTRIES
-    ):
+    if policy in _NO_REORDER_POLICIES and operator_id == MutationOperatorId.REORDER_ENTRIES:
         child = case
     return MutationAttempt(operator_id, policy, case.case_id, child, child != case)

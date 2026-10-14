@@ -92,9 +92,18 @@ M1의 nested/raw path, controlled name reuse, insertion, type replacement와 lin
 [grammar와 RNG 계약](../../../docs/research/design/mutation-m1-v1.md)을 따른다.
 M1은 current USTAR의 conservative text bound를 지키며 multi-step builder 검사를 제공한다.
 `run_search_campaign` / `SearchCampaignConfig`와 separate completed policy export/config/dataset는
-M1/A3 IDs를 보존한다. Legacy ExperimentConfig와 automatic policy journal/repetition은 별도 경계다.
+M1/protected-component/A3 IDs를 보존한다. Legacy ExperimentConfig와 automatic policy journal/repetition은 별도 경계다.
 고정 component vocabulary는 default `outside/sentinel.txt`를 생성하지 못한다. [G0 계약](../../../docs/research/design/research-contract-v1.md)의
 capability baseline은 `8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`며 historical reachability/effectiveness는 미검증이다.
 
-A3 `LEGACY_NO_REORDER` / `M1_NO_REORDER`는 reorder slot과 RNG 소비를 유지하면서
+별도 `M1_PROTECTED_COMPONENTS` policy는 M1의 기존 의미를 바꾸지 않고 controlled default
+setup component `outside`, `sentinel.txt`를 finite tuple에 추가한다. Original benign hardlink
+seed에서 default sentinel relative address까지의 exact case/TAR lineage는
+[addressing contract](../../../docs/research/design/mutation-protected-components-v1.md)와
+[tests](../../../tests/test_mutator_addressing.py)에서 검증한다. 이는 logical generation
+evidence이며 historical target qualification/rediscovery가 아니다. 대응
+`M1_PROTECTED_COMPONENTS_NO_REORDER`는 같은 grammar의 draw-preserving A3 variant다.
+
+A3 `LEGACY_NO_REORDER` / `M1_NO_REORDER` /
+`M1_PROTECTED_COMPONENTS_NO_REORDER`는 reorder slot과 RNG 소비를 유지하면서
 reorder child만 버린다. 다른 operator 확률은 그대로이며 retry는 없다.

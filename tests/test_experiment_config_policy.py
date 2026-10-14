@@ -30,6 +30,8 @@ def test_legacy_bound_ids_and_frozen_config_identity_are_unchanged():
         ("mutation_policy", MutationPolicy.M1.value),
         ("mutation_policy", MutationPolicy.LEGACY_NO_REORDER.value),
         ("mutation_policy", MutationPolicy.M1_NO_REORDER.value),
+        ("mutation_policy", MutationPolicy.M1_PROTECTED_COMPONENTS.value),
+        ("mutation_policy", MutationPolicy.M1_PROTECTED_COMPONENTS_NO_REORDER.value),
         ("mutation_policy", "unknown-mutation-v1"),
     ),
 )

@@ -30,6 +30,9 @@ Layer 2 공통 데이터 모델, Layer 3 최소 pipeline, Layer 4 Generic Mutati
 Layer 5 Feedback / Corpus 및 bounded campaign이 구현됐다. Contained Node의 tiny benign
 configured campaign도 검증했다. Snapshot 관찰 범위와 runtime/kernel trust 한계는 유지하며,
 Layer 6 benchmark/security evaluation과 연구 효과 검증은 아직 수행하지 않았다.
+Native v2 replacement 실패 이후 확인된 multi-operation namespace rebinding은
+[별도 v3 제안](entry-effect-rebinding-v3-proposal.md)에만 정의돼 있으며
+**BLOCKED_FOR_REVIEW / NOT_IMPLEMENTED**다. 이는 현재 합의된 v2 계약이 아니다.
 
 ## 파일 배치 규칙
 

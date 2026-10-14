@@ -1,9 +1,11 @@
 # Proposed Task Contract: native replacement coverage
 
-Status: **PROPOSED / NOT APPLIED**. This is a review artifact from the
+Status: **DIAGNOSTIC BRANCH 2 OBSERVED / SUPERSEDED FOR NEXT ACTION**. This is a review artifact from the
 [engine audit](effect-coverage-engine-audit.md), not authorization for a new Gate 4,
 Gate 5 or campaign. The original observation/feedback contracts and historical result
-remain unchanged.
+remain unchanged. The later runtime investigation established multi-operation namespace
+rebinding for the exercised cases. The separately versioned
+[v3 proposal](../design/entry-effect-rebinding-v3-proposal.md) is **BLOCKED_FOR_REVIEW**.
 
 ## Problem and objective
 
@@ -59,10 +61,12 @@ No QUALIFIED decision is an output of this preparatory task.
    mechanism's unsupported coverage and keep integration/campaign blocked. A synthetic
    rename control cannot supply the missing native cell.
 
-Runtime reachability, probe sufficiency and which branch applies are all
-**PENDING_RUNTIME_EVIDENCE**. Regular→symlink, symlink→regular and hardlink-sharing
-inputs are hypotheses for investigation, not known-positive fixtures; several may
-produce removal followed by creation rather than one replacement operation.
+The retained [runtime diagnosis](../diagnostics/node-tar-replacement-report.md) resolves the
+exercised cases to branch 2: archive-only and precreated controls produced removal followed
+by creation/link, and 18/18 independently verified complete native bundles produced zero
+single-operation replacement events. This is not an exhaustive proof that branch 1 is
+unreachable for every accepted input. It is sufficient to show that a fixture-only change
+cannot turn the observed cases into v2 replacement coverage.
 
 ## Completion / review criteria
 

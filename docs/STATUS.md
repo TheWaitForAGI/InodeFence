@@ -1,9 +1,10 @@
 # 현재 프로젝트 상태
 
-상태 갱신일: **2026-10-12**. G0 capability baseline은 main
+상태 갱신일: **2026-10-13**. G0 capability baseline은 main
 **`8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`**다. 이 SHA는 G0 문서 동결이
 검토한 구현 revision이며 최신 main을 뜻하지 않는다. #77–#84 연구 stack은 main에
-통합됐고, internal completion qualification v3의 clean harness revision은 `9ea306f7`이다.
+통합됐다. Internal completion qualification v3의 clean harness revision은 `9ea306f7`이고,
+causal filesystem-effect qualification v4의 clean harness revision은 `72bccfa`다.
 
 ## 현재 단계와 연구 판정
 
@@ -30,7 +31,7 @@ Benign smoke와 synthetic/unit tests는 이 문장의 예외가 아니다.
 | Linux execution | fresh runtime + container-required third-party boundary | backend / prepared invocation / verified artifact admission | [container integration](../tests/README.md); pinned Node benign smoke | historical pair 미검증 |
 | Mutation | legacy / M1 / A3 contracts | eight slots; M1 nested/reused names/dependencies; no-reorder versions | [mutator tests](../tests/test_mutator.py), [search composition](../tests/test_campaign_search.py) | reachable historical effects 미검증 |
 | Search / feedback | B0/B1/B3 and A1/A2 | `SearchState`, `run_search_campaign`, explicit policy config | [policy checks](../tests/test_feedback_search_contracts.py), [trusted reference integration](../tests/test_campaign_search_integration.py) | 비교 효과 미검증 |
-| Entry transitions | P0 final-state, P1 transition retention, P2 transition-adaptive mutation | model, novelty, scheduler, campaign, checksummed export/reader/replay/metrics | synthetic tests plus node-tar 7.5.22 public/OS/private and libarchive 3.7.2 controlled qualification | tested native candidates QUALIFIED FAIL; producer / target effectiveness NOT_RUN |
+| Entry transitions | P0 final-state, P1 transition retention, P2 transition-adaptive mutation | model, novelty, scheduler, campaign, checksummed export/reader/replay/metrics | synthetic tests plus node-tar 7.5.22 public/OS/private/causal-effect and libarchive 3.7.2 controlled qualification | `BLOCKED_NATIVE_OBSERVATION`; producer / target effectiveness NOT_RUN |
 | Minimization | bounded deterministic generic/USTAR reduction | core and exact-fingerprint evidence binding | [minimizer tests](../tests/test_minimizer.py), [USTAR checks](../tests/test_minimizer_ustar.py) | historical/unknown candidate 없음 |
 | Evaluation / reproduction | explicit provenance, immutable raw → verified derivation | reader, pair records, passive failure ledger/journal, qualification/matrix, benign replay, completed policy export/config/dataset/statistics | [evaluation tests](../tests/evaluation/), [benign replay tests](../tests/replay/) | formal dataset / known-class adjudication / artifact reproduction 없음 |
 | C3/C4 / generality | 후속 contracts / RQ4 | C3/C4와 ORAS adapter 없음; GNU route는 benign allowlist만 | broader scope의 실행 증거 없음 | 미검증 |
@@ -109,6 +110,20 @@ effectiveness remains **NOT_RUN**. See the
 [internal completion](../experiments/summaries/node-internal-completion-qualification-v3.md)
 summaries.
 
+A fourth source-guarded candidate propagated entry identity through Node async resources
+and recorded callback-based filesystem operation completions instead of treating a callback
+snapshot as a checkpoint. Its clean 480-process run preserved all expected outcomes and
+final semantic states. All 1,020 operation events had exact entry association and there were
+no observation failures. Independent-files nevertheless completed `0,1,3,2` in 20/20
+effects runs and recorded 162 successful later-ordinal operations before earlier entry
+completion. The context-only and effects scheduling distributions differed, and effects
+median target duration was 1.152×–1.308× stock across fixtures. Partial rejection was
+preserved after ordinal 0 completion in 20/20 effects runs. The fixed rule therefore gives
+**QUALIFIED FAIL** and the native v1 gate is **BLOCKED_NATIVE_OBSERVATION**. No producer or
+target P0/P1/P2 run exists. The [v4 summary](../experiments/summaries/node-causal-effect-qualification-v4.md)
+retains exact evidence; [partial-order/effect-event v2](research/design/entry-effect-observation-v2.md)
+is a draft Task Contract, not an implementation.
+
 Legacy `ExperimentConfig` v1/v2는 여전히 B3/legacy mutation만 허용한다. 별도
 `PolicyEvaluationConfig`와 completed policy export/reader/config/dataset/statistics가 구현됐다.
 Reader는 raw derivations와 admission/parent binding을 검증하되 실제 RNG/mutation 실행을
@@ -119,6 +134,10 @@ known-class adjudication은 완성된 자동 pipeline이 아니다. Target durat
 throughput을 대신하지 않는다. [실험 안내](../experiments/README.md)를 따른다.
 
 ## 다음 연구 gate
+
+Native entry-transition work cannot proceed to v1 Phase B/C/D. Reopening it requires the
+separate v2 qualification Task Contract; v1 policy IDs and evidence cannot be silently reused.
+This blocker does not promote or invalidate the independent final-state historical plan.
 
 **첫 historical qualification은 N01 node-tar 7.5.2 / 7.5.3 hardlink arm을 의도한다.**
 정확한 locks/images/options/setup을 아직 qualify하지 않았다. M1은 composition을 지원하지만

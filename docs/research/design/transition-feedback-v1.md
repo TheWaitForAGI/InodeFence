@@ -4,7 +4,8 @@
 
 - Generic checkpoint/transition model: **IMPLEMENTED**, **TESTED**
 - Synthetic file → hardlink → replacement sequence: **TESTED**
-- Native node-tar entry completion observation: **NOT_IMPLEMENTED** after qualification failure
+- Native node-tar entry completion observation: **NOT_IMPLEMENTED** after public/OS/private
+  snapshot and causal-effect qualification failures
 - Transition novelty/retention core: **IMPLEMENTED**, **TESTED**
 - Adaptive scheduling core: **IMPLEMENTED**, **TESTED**
 - Checksummed evaluation config/export/reader/replay verifier/metrics: **IMPLEMENTED**, **TESTED**

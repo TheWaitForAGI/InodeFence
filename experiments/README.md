@@ -34,9 +34,10 @@ sentinel provenance다. 출력은 immutable config, raw canonical records, check
   return이 없어 journal/ledger가 internal lost steps를 자동 복구하지 못한다. Policy repetition,
   automatic incremental attachment와 full-pipeline timing은 통합 완료되지 않았다.
   Target duration은 complete-step latency가 아니며 completed-only policy stats는 invalid attempts를 추론하지 않는다.
-- Pinned node-tar의 public/OS/syscall/prefix, private completion callback과 별도 libarchive
-  entry-boundary qualification은 모두 current archive-ordered transition producer에
-  **QUALIFIED FAIL**했다. 정확한 private marker association도 native P0/P1/P2 결과가 아니다.
+- Pinned node-tar의 public/OS/syscall/prefix, private completion callback, causal filesystem-
+  effect와 별도 libarchive entry-boundary qualification은 모두 current archive-ordered
+  transition producer에 **QUALIFIED FAIL**했다. Exact marker/operation association도 native
+  P0/P1/P2 결과가 아니며 현재 v1 gate는 **BLOCKED_NATIVE_OBSERVATION**이다.
 
 ExecutionProvenance v2는 실행 전 source/environment/adapter/sentinel과 nullable isolation을 고정한다.
 IsolationProvenance internal v2는 실제 image probe의 verified worker/lock digest와 origin을 기록한다.

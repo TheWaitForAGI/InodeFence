@@ -74,6 +74,10 @@ metadata가 final close까지 지연되어 공통 completion boundary에 **QUALI
 Source-guarded node-tar private completion marker는 entry association에 성공했지만 mixed/
 independent 작업이 archive order 밖에서 완료되고 callback snapshot에 후속 effect가 포함됐으며
 한 consistency failure와 scheduling 변화가 관찰돼 역시 **QUALIFIED FAIL**했다.
+별도 async-context causal-effect qualification은 1,020개 filesystem operation을 정확한 entry에
+귀속했지만 independent-files 20/20에서 completion `0,1,3,2`와 earlier completion 전 162개
+later-ordinal operation을 기록해 **QUALIFIED FAIL**했다. 현재 native v1 판정은
+**BLOCKED_NATIVE_OBSERVATION**이며 partial-order/effect-event v2는 draft일 뿐이다.
 
 ## 4. 현재 어디까지 했는가?
 
@@ -88,7 +92,7 @@ G0 documentation freeze의 capability baseline은 main
   passive ledger/journal, qualification/matrix와 completed policy binding/dataset/statistics.
 - Entry-transition infrastructure: target-independent evidence model, P0/P1 retention,
   P2 bounded scheduler and checksummed evaluation/replay APIs are TESTED synthetically;
-  native producer and effectiveness remain NOT_IMPLEMENTED / NOT_RUN.
+  native v1은 qualification에서 BLOCKED이고 producer/effectiveness는 NOT_IMPLEMENTED / NOT_RUN.
 - Contained node-tar **7.5.22 benign smoke TESTED**. Helper/mock tests와 real extractor
   checks는 구분하며 어느 쪽도 historical qualification이나 effectiveness 결과가 아니다.
 
@@ -122,6 +126,7 @@ full-step timing과 known-class adjudication은 별도 검증 과제다. G0 문�
 - [research/design/security-contracts.md](research/design/security-contracts.md)
 - [research/design/research-contract-v1.md](research/design/research-contract-v1.md)
 - [research/design/entry-transition-observation-v1.md](research/design/entry-transition-observation-v1.md)
+- [research/design/entry-effect-observation-v2.md](research/design/entry-effect-observation-v2.md)
 - [research/design/transition-feedback-v1.md](research/design/transition-feedback-v1.md)
 - [research/design/transition-mutation-scheduler-v1.md](research/design/transition-mutation-scheduler-v1.md)
 - [research/design/research-questions.md](research/design/research-questions.md)
@@ -129,7 +134,7 @@ full-step timing과 known-class adjudication은 별도 검증 과제다. G0 문�
 
 ## 6. 파일을 어디에 만들까?
 
-폴더별 책임과 파일 배치 규칙은 [문서 지도](README.md)와 [엔진 모듈 지도](../src/inodefence/README.md)를 본다. 상세 pipeline과 데이터 흐름은 [architecture.md](research/design/architecture.md)가 기준이다. `pipeline.run_case`는 입력 하나를 실제 실행·관찰·판정한다. Generic Mutation v1은 별도 ArchiveCase 변형 API다. Feedback / Corpus v1은 독립 state/violation novelty로 parent를 보존하고 caller RNG로 균등 선택한다. Bounded campaign v1은 명시적 seed와 budget을 받아 API를 조합한다. Node-tar의 contained adapter와 tiny benign configured campaign을 검증했다. SearchCampaignConfig가 B0/B1/B3와 A1/A2/A3를 연결하고 evaluation APIs가 완료된 raw evidence를 검증한다. Transition P0/P1/P2 core와 verified evidence APIs는 synthetic producer로 테스트됐지만 native target producer는 없다. Automatic interrupted-run persistence, full-step timing과 연구 효과 검증은 후속 gate다.
+폴더별 책임과 파일 배치 규칙은 [문서 지도](README.md)와 [엔진 모듈 지도](../src/inodefence/README.md)를 본다. 상세 pipeline과 데이터 흐름은 [architecture.md](research/design/architecture.md)가 기준이다. `pipeline.run_case`는 입력 하나를 실제 실행·관찰·판정한다. Generic Mutation v1은 별도 ArchiveCase 변형 API다. Feedback / Corpus v1은 독립 state/violation novelty로 parent를 보존하고 caller RNG로 균등 선택한다. Bounded campaign v1은 명시적 seed와 budget을 받아 API를 조합한다. Node-tar의 contained adapter와 tiny benign configured campaign을 검증했다. SearchCampaignConfig가 B0/B1/B3와 A1/A2/A3를 연결하고 evaluation APIs가 완료된 raw evidence를 검증한다. Transition P0/P1/P2 core와 verified evidence APIs는 synthetic producer로 테스트됐지만 native target producer는 없다. Node-tar v1 native observation은 qualification failure로 blocked이며 v2 draft는 구현이 아니다. Automatic interrupted-run persistence, full-step timing과 연구 효과 검증은 후속 gate다.
 
 ```text
 src/inodefence/model/       공통 데이터 표현과 canonical JSON

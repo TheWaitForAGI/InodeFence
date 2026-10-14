@@ -1,0 +1,601 @@
+{
+  "cases": {
+    "directory-child": {
+      "final_semantics_equal_across_profiles": true,
+      "profiles": {
+        "context": {
+          "archive_order_completion_runs": 20,
+          "attempted": 20,
+          "completion_sequences": {
+            "0,1": 20
+          },
+          "distinct_final_semantic_snapshots": 1,
+          "exact_entry_association_runs": 20,
+          "exact_operation_association_runs": 20,
+          "feasible_runs": 0,
+          "later_effect_before_completion_count": 0,
+          "median_process_duration_ns": 38356894,
+          "median_target_duration_ns": 5591515,
+          "median_target_duration_ratio_to_stock": 1.1811096888122818,
+          "observation_failure_count": 0,
+          "operation_event_count": 0,
+          "outcome_match_runs": 20,
+          "process_returned": 20,
+          "rejection_handled_runs": 0,
+          "status_counts": {
+            "process_returned": 20
+          },
+          "target_outcome_counts": {
+            "success": 20
+          }
+        },
+        "effects": {
+          "archive_order_completion_runs": 20,
+          "attempted": 20,
+          "completion_sequences": {
+            "0,1": 20
+          },
+          "distinct_final_semantic_snapshots": 1,
+          "exact_entry_association_runs": 20,
+          "exact_operation_association_runs": 20,
+          "feasible_runs": 20,
+          "later_effect_before_completion_count": 0,
+          "median_process_duration_ns": 41141058,
+          "median_target_duration_ns": 6065263,
+          "median_target_duration_ratio_to_stock": 1.281180662932076,
+          "observation_failure_count": 0,
+          "operation_event_count": 140,
+          "outcome_match_runs": 20,
+          "process_returned": 20,
+          "rejection_handled_runs": 0,
+          "status_counts": {
+            "process_returned": 20
+          },
+          "target_outcome_counts": {
+            "success": 20
+          }
+        },
+        "stock": {
+          "attempted": 20,
+          "distinct_final_semantic_snapshots": 1,
+          "median_process_duration_ns": 37754978,
+          "median_target_duration_ns": 4734120,
+          "median_target_duration_ratio_to_stock": 1.0,
+          "observation_failure_count": 0,
+          "outcome_match_runs": 20,
+          "process_returned": 20,
+          "status_counts": {
+            "process_returned": 20
+          },
+          "target_outcome_counts": {
+            "success": 20
+          }
+        }
+      },
+      "target_outcomes_equal_across_profiles": true
+    },
+    "directory-metadata": {
+      "final_semantics_equal_across_profiles": true,
+      "profiles": {
+        "context": {
+          "archive_order_completion_runs": 20,
+          "attempted": 20,
+          "completion_sequences": {
+            "0": 20
+          },
+          "distinct_final_semantic_snapshots": 1,
+          "exact_entry_association_runs": 20,
+          "exact_operation_association_runs": 20,
+          "feasible_runs": 0,
+          "later_effect_before_completion_count": 0,
+          "median_process_duration_ns": 35747939,
+          "median_target_duration_ns": 4044079,
+          "median_target_duration_ratio_to_stock": 1.0495879072394196,
+          "observation_failure_count": 0,
+          "operation_event_count": 0,
+          "outcome_match_runs": 20,
+          "process_returned": 20,
+          "rejection_handled_runs": 0,
+          "status_counts": {
+            "process_returned": 20
+          },
+          "target_outcome_counts": {
+            "success": 20
+          }
+        },
+        "effects": {
+          "archive_order_completion_runs": 20,
+          "attempted": 20,
+          "completion_sequences": {
+            "0": 20
+          },
+          "distinct_final_semantic_snapshots": 1,
+          "exact_entry_association_runs": 20,
+          "exact_operation_association_runs": 20,
+          "feasible_runs": 20,
+          "later_effect_before_completion_count": 0,
+          "median_process_duration_ns": 37658520,
+          "median_target_duration_ns": 4437391,
+          "median_target_duration_ratio_to_stock": 1.151666901980163,
+          "observation_failure_count": 0,
+          "operation_event_count": 40,
+          "outcome_match_runs": 20,
+          "process_returned": 20,
+          "rejection_handled_runs": 0,
+          "status_counts": {
+            "process_returned": 20
+          },
+          "target_outcome_counts": {
+            "success": 20
+          }
+        },
+        "stock": {
+          "attempted": 20,
+          "distinct_final_semantic_snapshots": 1,
+          "median_process_duration_ns": 36152563,
+          "median_target_duration_ns": 3853016,
+          "median_target_duration_ratio_to_stock": 1.0,
+          "observation_failure_count": 0,
+          "outcome_match_runs": 20,
+          "process_returned": 20,
+          "status_counts": {
+            "process_returned": 20
+          },
+          "target_outcome_counts": {
+            "success": 20
+          }
+        }
+      },
+      "target_outcomes_equal_across_profiles": true
+    },
+    "duplicate-path": {
+      "final_semantics_equal_across_profiles": true,
+      "profiles": {
+        "context": {
+          "archive_order_completion_runs": 20,
+          "attempted": 20,
+          "completion_sequences": {
+            "0,1": 20
+          },
+          "distinct_final_semantic_snapshots": 1,
+          "exact_entry_association_runs": 20,
+          "exact_operation_association_runs": 20,
+          "feasible_runs": 0,
+          "later_effect_before_completion_count": 0,
+          "median_process_duration_ns": 37161187,
+          "median_target_duration_ns": 5206952,
+          "median_target_duration_ratio_to_stock": 1.1065930773007127,
+          "observation_failure_count": 0,
+          "operation_event_count": 0,
+          "outcome_match_runs": 20,
+          "process_returned": 20,
+          "rejection_handled_runs": 0,
+          "status_counts": {
+            "process_returned": 20
+          },
+          "target_outcome_counts": {
+            "success": 20
+          }
+        },
+        "effects": {
+          "archive_order_completion_runs": 20,
+          "attempted": 20,
+          "completion_sequences": {
+            "0,1": 20
+          },
+          "distinct_final_semantic_snapshots": 1,
+          "exact_entry_association_runs": 20,
+          "exact_operation_association_runs": 20,
+          "feasible_runs": 20,
+          "later_effect_before_completion_count": 0,
+          "median_process_duration_ns": 37795374,
+          "median_target_duration_ns": 6044514,
+          "median_target_duration_ratio_to_stock": 1.2845936256080792,
+          "observation_failure_count": 0,
+          "operation_event_count": 160,
+          "outcome_match_runs": 20,
+          "process_returned": 20,
+          "rejection_handled_runs": 0,
+          "status_counts": {
+            "process_returned": 20
+          },
+          "target_outcome_counts": {
+            "success": 20
+          }
+        },
+        "stock": {
+          "attempted": 20,
+          "distinct_final_semantic_snapshots": 1,
+          "median_process_duration_ns": 38227123,
+          "median_target_duration_ns": 4705390,
+          "median_target_duration_ratio_to_stock": 1.0,
+          "observation_failure_count": 0,
+          "outcome_match_runs": 20,
+          "process_returned": 20,
+          "status_counts": {
+            "process_returned": 20
+          },
+          "target_outcome_counts": {
+            "success": 20
+          }
+        }
+      },
+      "target_outcomes_equal_across_profiles": true
+    },
+    "hardlink-identity": {
+      "final_semantics_equal_across_profiles": true,
+      "profiles": {
+        "context": {
+          "archive_order_completion_runs": 20,
+          "attempted": 20,
+          "completion_sequences": {
+            "0,1": 20
+          },
+          "distinct_final_semantic_snapshots": 1,
+          "exact_entry_association_runs": 20,
+          "exact_operation_association_runs": 20,
+          "feasible_runs": 0,
+          "later_effect_before_completion_count": 0,
+          "median_process_duration_ns": 38222165,
+          "median_target_duration_ns": 4963849,
+          "median_target_duration_ratio_to_stock": 1.1018187888015047,
+          "observation_failure_count": 0,
+          "operation_event_count": 0,
+          "outcome_match_runs": 20,
+          "process_returned": 20,
+          "rejection_handled_runs": 0,
+          "status_counts": {
+            "process_returned": 20
+          },
+          "target_outcome_counts": {
+            "success": 20
+          }
+        },
+        "effects": {
+          "archive_order_completion_runs": 20,
+          "attempted": 20,
+          "completion_sequences": {
+            "0,1": 20
+          },
+          "distinct_final_semantic_snapshots": 1,
+          "exact_entry_association_runs": 20,
+          "exact_operation_association_runs": 20,
+          "feasible_runs": 20,
+          "later_effect_before_completion_count": 0,
+          "median_process_duration_ns": 38537873,
+          "median_target_duration_ns": 5745410,
+          "median_target_duration_ratio_to_stock": 1.2753008174438936,
+          "observation_failure_count": 0,
+          "operation_event_count": 100,
+          "outcome_match_runs": 20,
+          "process_returned": 20,
+          "rejection_handled_runs": 0,
+          "status_counts": {
+            "process_returned": 20
+          },
+          "target_outcome_counts": {
+            "success": 20
+          }
+        },
+        "stock": {
+          "attempted": 20,
+          "distinct_final_semantic_snapshots": 1,
+          "median_process_duration_ns": 37315249,
+          "median_target_duration_ns": 4505141,
+          "median_target_duration_ratio_to_stock": 1.0,
+          "observation_failure_count": 0,
+          "outcome_match_runs": 20,
+          "process_returned": 20,
+          "status_counts": {
+            "process_returned": 20
+          },
+          "target_outcome_counts": {
+            "success": 20
+          }
+        }
+      },
+      "target_outcomes_equal_across_profiles": true
+    },
+    "independent-files": {
+      "final_semantics_equal_across_profiles": true,
+      "profiles": {
+        "context": {
+          "archive_order_completion_runs": 1,
+          "attempted": 20,
+          "completion_sequences": {
+            "0,1,2,3": 1,
+            "0,1,3,2": 19
+          },
+          "distinct_final_semantic_snapshots": 1,
+          "exact_entry_association_runs": 20,
+          "exact_operation_association_runs": 20,
+          "feasible_runs": 0,
+          "later_effect_before_completion_count": 0,
+          "median_process_duration_ns": 37488687,
+          "median_target_duration_ns": 5949264,
+          "median_target_duration_ratio_to_stock": 1.0915884448316342,
+          "observation_failure_count": 0,
+          "operation_event_count": 0,
+          "outcome_match_runs": 20,
+          "process_returned": 20,
+          "rejection_handled_runs": 0,
+          "status_counts": {
+            "process_returned": 20
+          },
+          "target_outcome_counts": {
+            "success": 20
+          }
+        },
+        "effects": {
+          "archive_order_completion_runs": 0,
+          "attempted": 20,
+          "completion_sequences": {
+            "0,1,3,2": 20
+          },
+          "distinct_final_semantic_snapshots": 1,
+          "exact_entry_association_runs": 20,
+          "exact_operation_association_runs": 20,
+          "feasible_runs": 0,
+          "later_effect_before_completion_count": 162,
+          "median_process_duration_ns": 42261015,
+          "median_target_duration_ns": 6578180,
+          "median_target_duration_ratio_to_stock": 1.2069838010252292,
+          "observation_failure_count": 0,
+          "operation_event_count": 280,
+          "outcome_match_runs": 20,
+          "process_returned": 20,
+          "rejection_handled_runs": 0,
+          "status_counts": {
+            "process_returned": 20
+          },
+          "target_outcome_counts": {
+            "success": 20
+          }
+        },
+        "stock": {
+          "attempted": 20,
+          "distinct_final_semantic_snapshots": 1,
+          "median_process_duration_ns": 37670083,
+          "median_target_duration_ns": 5450098,
+          "median_target_duration_ratio_to_stock": 1.0,
+          "observation_failure_count": 0,
+          "outcome_match_runs": 20,
+          "process_returned": 20,
+          "status_counts": {
+            "process_returned": 20
+          },
+          "target_outcome_counts": {
+            "success": 20
+          }
+        }
+      },
+      "target_outcomes_equal_across_profiles": true
+    },
+    "partial-rejection": {
+      "final_semantics_equal_across_profiles": true,
+      "profiles": {
+        "context": {
+          "archive_order_completion_runs": 20,
+          "attempted": 20,
+          "completion_sequences": {
+            "0,1": 20
+          },
+          "distinct_final_semantic_snapshots": 1,
+          "exact_entry_association_runs": 20,
+          "exact_operation_association_runs": 20,
+          "feasible_runs": 0,
+          "later_effect_before_completion_count": 0,
+          "median_process_duration_ns": 37392458,
+          "median_target_duration_ns": 5229036,
+          "median_target_duration_ratio_to_stock": 1.116020038280355,
+          "observation_failure_count": 0,
+          "operation_event_count": 0,
+          "outcome_match_runs": 20,
+          "process_returned": 20,
+          "rejection_handled_runs": 20,
+          "status_counts": {
+            "process_returned": 20
+          },
+          "target_outcome_counts": {
+            "rejected": 20
+          }
+        },
+        "effects": {
+          "archive_order_completion_runs": 20,
+          "attempted": 20,
+          "completion_sequences": {
+            "0,1": 20
+          },
+          "distinct_final_semantic_snapshots": 1,
+          "exact_entry_association_runs": 20,
+          "exact_operation_association_runs": 20,
+          "feasible_runs": 0,
+          "later_effect_before_completion_count": 0,
+          "median_process_duration_ns": 38539831,
+          "median_target_duration_ns": 6128181,
+          "median_target_duration_ratio_to_stock": 1.3079223004410265,
+          "observation_failure_count": 0,
+          "operation_event_count": 120,
+          "outcome_match_runs": 20,
+          "process_returned": 20,
+          "rejection_handled_runs": 20,
+          "status_counts": {
+            "process_returned": 20
+          },
+          "target_outcome_counts": {
+            "rejected": 20
+          }
+        },
+        "stock": {
+          "attempted": 20,
+          "distinct_final_semantic_snapshots": 1,
+          "median_process_duration_ns": 35348647,
+          "median_target_duration_ns": 4685432,
+          "median_target_duration_ratio_to_stock": 1.0,
+          "observation_failure_count": 0,
+          "outcome_match_runs": 20,
+          "process_returned": 20,
+          "status_counts": {
+            "process_returned": 20
+          },
+          "target_outcome_counts": {
+            "rejected": 20
+          }
+        }
+      },
+      "target_outcomes_equal_across_profiles": true
+    },
+    "regular-file": {
+      "final_semantics_equal_across_profiles": true,
+      "profiles": {
+        "context": {
+          "archive_order_completion_runs": 20,
+          "attempted": 20,
+          "completion_sequences": {
+            "0": 20
+          },
+          "distinct_final_semantic_snapshots": 1,
+          "exact_entry_association_runs": 20,
+          "exact_operation_association_runs": 20,
+          "feasible_runs": 0,
+          "later_effect_before_completion_count": 0,
+          "median_process_duration_ns": 37309062,
+          "median_target_duration_ns": 4365203,
+          "median_target_duration_ratio_to_stock": 1.0795730777629913,
+          "observation_failure_count": 0,
+          "operation_event_count": 0,
+          "outcome_match_runs": 20,
+          "process_returned": 20,
+          "rejection_handled_runs": 0,
+          "status_counts": {
+            "process_returned": 20
+          },
+          "target_outcome_counts": {
+            "success": 20
+          }
+        },
+        "effects": {
+          "archive_order_completion_runs": 20,
+          "attempted": 20,
+          "completion_sequences": {
+            "0": 20
+          },
+          "distinct_final_semantic_snapshots": 1,
+          "exact_entry_association_runs": 20,
+          "exact_operation_association_runs": 20,
+          "feasible_runs": 20,
+          "later_effect_before_completion_count": 0,
+          "median_process_duration_ns": 37441354,
+          "median_target_duration_ns": 4797932,
+          "median_target_duration_ratio_to_stock": 1.1865927463482326,
+          "observation_failure_count": 0,
+          "operation_event_count": 80,
+          "outcome_match_runs": 20,
+          "process_returned": 20,
+          "rejection_handled_runs": 0,
+          "status_counts": {
+            "process_returned": 20
+          },
+          "target_outcome_counts": {
+            "success": 20
+          }
+        },
+        "stock": {
+          "attempted": 20,
+          "distinct_final_semantic_snapshots": 1,
+          "median_process_duration_ns": 36906896,
+          "median_target_duration_ns": 4043453,
+          "median_target_duration_ratio_to_stock": 1.0,
+          "observation_failure_count": 0,
+          "outcome_match_runs": 20,
+          "process_returned": 20,
+          "status_counts": {
+            "process_returned": 20
+          },
+          "target_outcome_counts": {
+            "success": 20
+          }
+        }
+      },
+      "target_outcomes_equal_across_profiles": true
+    },
+    "symlink": {
+      "final_semantics_equal_across_profiles": true,
+      "profiles": {
+        "context": {
+          "archive_order_completion_runs": 20,
+          "attempted": 20,
+          "completion_sequences": {
+            "0,1": 20
+          },
+          "distinct_final_semantic_snapshots": 1,
+          "exact_entry_association_runs": 20,
+          "exact_operation_association_runs": 20,
+          "feasible_runs": 0,
+          "later_effect_before_completion_count": 0,
+          "median_process_duration_ns": 38159478,
+          "median_target_duration_ns": 4933953,
+          "median_target_duration_ratio_to_stock": 1.0974004439910081,
+          "observation_failure_count": 0,
+          "operation_event_count": 0,
+          "outcome_match_runs": 20,
+          "process_returned": 20,
+          "rejection_handled_runs": 0,
+          "status_counts": {
+            "process_returned": 20
+          },
+          "target_outcome_counts": {
+            "success": 20
+          }
+        },
+        "effects": {
+          "archive_order_completion_runs": 20,
+          "attempted": 20,
+          "completion_sequences": {
+            "0,1": 20
+          },
+          "distinct_final_semantic_snapshots": 1,
+          "exact_entry_association_runs": 20,
+          "exact_operation_association_runs": 20,
+          "feasible_runs": 20,
+          "later_effect_before_completion_count": 0,
+          "median_process_duration_ns": 38304144,
+          "median_target_duration_ns": 5751035,
+          "median_target_duration_ratio_to_stock": 1.2791342686904044,
+          "observation_failure_count": 0,
+          "operation_event_count": 100,
+          "outcome_match_runs": 20,
+          "process_returned": 20,
+          "rejection_handled_runs": 0,
+          "status_counts": {
+            "process_returned": 20
+          },
+          "target_outcome_counts": {
+            "success": 20
+          }
+        },
+        "stock": {
+          "attempted": 20,
+          "distinct_final_semantic_snapshots": 1,
+          "median_process_duration_ns": 36186314,
+          "median_target_duration_ns": 4496037,
+          "median_target_duration_ratio_to_stock": 1.0,
+          "observation_failure_count": 0,
+          "outcome_match_runs": 20,
+          "process_returned": 20,
+          "status_counts": {
+            "process_returned": 20
+          },
+          "target_outcome_counts": {
+            "success": 20
+          }
+        }
+      },
+      "target_outcomes_equal_across_profiles": true
+    }
+  },
+  "causal_effect_feasibility_qualified": false,
+  "decision_rule": "all normal effects-profile runs must preserve stock outcome/final semantics, associate every entry and filesystem operation exactly, complete in archive order with no later-ordinal operation completed before an earlier entry marker, and report no observation failure; the rejection fixture must preserve an explicit rejected outcome and well-formed completed evidence",
+  "native_transition_producer_qualified": false,
+  "producer_boundary": "This experiment records causal effect events, not complete EntryCheckpoint snapshots. A native producer can only follow a feasibility PASS."
+}

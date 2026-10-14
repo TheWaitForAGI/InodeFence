@@ -456,3 +456,26 @@ finite vocabulary의 default sentinel addressing은 미해결이다. Catalog는 
 갱신하고 original upstream access date/pins와 all-NOT_RUN states를 보존한다.
 역사적 audit/handoff는 명시적으로 superseded하며 원래 validation 기록을 유지한다.
 G0 정의 승인은 G1 이후 readiness나 benchmark/CVE evidence로 승격되지 않는다.
+
+## D031 — Node-tar native archive-ordered transition v1은 qualification failure로 중단
+
+**상태:** `BLOCKED_NATIVE_OBSERVATION`; v2는 draft, 구현 아님
+
+Node 22.22.0/node-tar 7.5.22의 public events, Linux filesystem/syscall 관찰,
+fresh-process prefix replay, private completion callback snapshot과 async-context causal
+filesystem-effect 후보는 모두 current `TransitionTrace` v1의 complete archive-prefix
+checkpoint 의미를 통과하지 못했다. 별도 libarchive public boundary도 directory metadata
+finalization 때문에 실패했다.
+
+Causal-effect v4는 1,020개 operation을 exact entry에 귀속했지만 independent-files 20/20에서
+completion `0,1,3,2`와 earlier marker 전 162개 later-ordinal operation을 관찰했다. 이는
+callback receipt를 바꾸거나 snapshot을 다시 걷는 방식으로 제거할 수 없는 실제 namespace
+overlap이다. Instrumented profile의 scheduling distribution과 bounded timing도 minimal profile과
+달라 neutrality를 입증하지 못했다.
+
+따라서 node-tar native producer를 v1 model에 추가하지 않고 실제 target P0/P1/P2를 실행하지
+않는다. Existing C0/C1/C2, `RunResult`, synthetic v1 model/scheduler/evaluation은 유지한다.
+대체 방향은 archive order, observed effect order와 supported causality를 분리하는 별도
+[partial-order/effect-event v2 draft](research/design/entry-effect-observation-v2.md)다. V2가
+qualification을 통과하기 전에는 v1 `TransitionFeedbackKey` 또는 P1/P2 policy ID를 재사용하거나
+incomplete/lossy event를 reward로 승격하지 않는다.

@@ -542,6 +542,14 @@ def _object(value: object, expected_path: str) -> ObjectSnapshot:
     }
     if not isinstance(value, dict) or set(value) != fields or value["path"] != expected_path:
         raise ValueError("object evidence has invalid fields or path")
+    # The native worker emits BigInt stat fields as decimal text. Reject lossy
+    # coercion of JSON booleans/floats before they become identity/state evidence.
+    for field in ("st_dev", "st_ino", "st_nlink", "size", "uid", "gid", "mtime_ns", "ctime_ns"):
+        if (
+            not isinstance(value[field], str)
+            or re.fullmatch(r"0|-?[1-9][0-9]*", value[field]) is None
+        ):
+            raise ValueError(f"object evidence {field} must be decimal integer text")
     return ObjectSnapshot(
         value["path"],
         ObjectType(value["object_type"]),
@@ -702,6 +710,8 @@ def _effect_event(
         raise ValueError("operation start/completion entry identities differ")
     if start["operation"] != completion["operation"]:
         raise ValueError("operation start/completion names differ")
+    if start["association"] != completion["association"]:
+        raise ValueError("operation start/completion associations differ")
     operation = _OPERATION_TYPES[start["operation"]]
     paths = tuple(start["paths"])
     if tuple(completion["paths"]) != paths:

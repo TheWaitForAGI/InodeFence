@@ -12,6 +12,9 @@ Its exact artifacts, Linux/strict behavior, controlled-name reachability and
 matching affected/fixed effect remain unqualified. Other original selected
 candidates are conditional later scope, not permission to add adapters or run
 unqualified targets. Static catalog execution remains NOT_RUN for all 15 cases.
+The exact same-input [N01 pair qualification contract](n01-pair-qualification-contract-v1.md)
+is **PROPOSED / BLOCKED_FOR_REVIEW / BLOCKED_ENVIRONMENT / NOT_EXECUTED**; it does not
+authorize historical target execution or count its positive control as rediscovery.
 
 Read current definitions in this order:
 

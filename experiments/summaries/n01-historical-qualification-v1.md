@@ -44,7 +44,7 @@ artifact qualification 및 현재 adapter/runtime 코드. GitHub N01/historical 
 | Gate | 독립 판정 | 입증한 것 | 아직 필요한 것 |
 | --- | --- | --- | --- |
 | G1 Source trust | **PASS (documentary)** | Maintainer advisory와 production patch가 같은 GHSA를 명시하며 7.5.3 fix를 연결한다 | 실제 effect qualification은 G7에서 별도로 검증 |
-| G2 Exact pin | **PARTIAL / BLOCKED runtime** | Exact source commits, official registry metadata, 공통 Node 22.22.0 packaging path 존재 | Verified package-byte/production closure 기록, candidate wrapper locks, built image IDs, 실제 image의 Node/package/worker/lock identity |
+| G2 Exact pin | **STATIC BYTES VERIFIED / BLOCKED runtime** | Exact commits, 두 release와 5개 공통 production artifact의 SHA-512 integrity, 동일 production closure 확인 | Candidate wrapper locks, built image IDs, 실제 image의 Node/package/worker/lock identity |
 | G3 Semantics | **SOURCE-SUPPORTED / NOT_RUN** | Relative hardlink의 CWD resolution과 fixed linkpath parent-component reject를 production patch에서 확인 | Linux에서 strict=true, preservePaths=false의 affected/fixed 실제 동작 및 상태 분류 |
 | G4 Reachability | **BLOCKED default setup** | USTAR hardlink와 M1 generic composition은 존재 | 현재 grammar가 `outside/sentinel.txt`에 도달하지 못한다; reviewed address/setup binding과 constructive generation evidence |
 | G5 Execution | **BLOCKED** | Enforced contained adapter/backend는 현재 main에 존재 | 이 세션의 검증된 host broker, candidate images, full-path binding 및 boundary qualification 부재 |
@@ -68,6 +68,38 @@ Exact affected source는 `d9ea73a9b3fc0a2f9734fda65279f48c7cc99f28`, fixed sourc
 실험으로 표현하지 않는다. Production dependency closure를 공통 exact versions로 고정하고
 각 upstream lock과 실제 wrapper lock을 구분해야 한다.
 
+공식 registry/source를 이번 세션에서 다시 내려받아 다음 바이트를 검증했다.
+SRI와 SHA-1은 registry/lock의 값과 일치한다. Registry signature 자체는 검증하지 않았다.
+Metadata, package bytes, named package.json 및 CommonJS unpack.js만 읽었으며 npm install,
+package load, extractor 실행 또는 target image build는 하지 않았다.
+
+| Artifact | SHA-256 of downloaded bytes | 상태 |
+| --- | --- | --- |
+| [tar 7.5.2](https://registry.npmjs.org/tar/7.5.2) npm tarball | `22d8b674a68754ea909d03aa13958a7d2fd5e78af8a8f0cde6455babef7aaf1a` | Registry SHA-512 SRI 및 SHA-1 일치 |
+| [tar 7.5.3](https://registry.npmjs.org/tar/7.5.3) npm tarball | `9d95d0cf786786360f97c1e414caea8a14452dc337fda17ba256ae7762c2ec66` | Registry SHA-512 SRI 및 SHA-1 일치 |
+| [7.5.2 upstream lock](https://github.com/isaacs/node-tar/blob/d9ea73a9b3fc0a2f9734fda65279f48c7cc99f28/package-lock.json) | `7d88a2eee8bcfee0285e2d48f8e3a7ae3d03842c55db56ff42ea3b817d9bc744` | Source development lock; wrapper lock 아님 |
+| [7.5.3 upstream lock](https://github.com/isaacs/node-tar/blob/03138441b238f48070fb22824b2529c445bc70c7/package-lock.json) | `f8c16ee22830cd8384a542df56646e20dbc2b6b03ce8b1526c87443e989e6b85` | Source development lock; wrapper lock 아님 |
+
+두 upstream lock의 production closure는 version/resolved/integrity/engines/dependencies까지
+동일하다: `@isaacs/fs-minipass 4.0.1`, `chownr 3.0.0`, `minipass 7.1.2`, `minizlib 3.1.0`,
+`yallist 5.0.0`. 다섯 artifact도 실제 다운로드한 bytes가 lock SRI와 일치한다.
+각 identity와 원본 URL은 [machine evidence](n01-historical-qualification-v1.json)에 있다.
+
+배포된 CommonJS unpack.js에서도 7.5.2에는 linkpath sanitizer 호출이 없고 7.5.3에는
+있음을 확인했다. 두 배포의 hardlink CWD resolution은 유지돼 있어 상대 arm의 수정
+차이를 설명한다. 7.5.2 exports에는 `source` condition이 있고 7.5.3에서는 없어졌으므로
+기존 plain CommonJS worker를 그대로 쓰고 custom conditions/NODE_OPTIONS를 추가하지 않는다.
+
+| 동일 relative-arm control에서 검증할 항목 | 7.5.2 예상 | 7.5.3 예상 | 실제 관찰 |
+| --- | --- | --- | --- |
+| Persistent extraction↔sentinel identity | 공유; C1 candidate | linkpath 검사로 공유 없음 | 양쪽 NOT_RUN |
+| Sentinel nlink/ctime | Alias 생성으로 변화 가능; C2 corroboration | 동일 control의 변화 없음 | 양쪽 NOT_RUN |
+| Sentinel content digest | 변화 불필요 | 변화 없음 | 양쪽 NOT_RUN |
+| Process outcome | 정상 hardlink 생성이면 SUCCESS | strict warning/error이면 REJECTED, TAR_ENTRY_ERROR 예상 | 양쪽 NOT_RUN |
+
+Process outcome은 selected effect의 대체물이 아니다. 이 table은 source 기반 예상이며
+actual 3+3 동일-input replay 결과와 구분한다.
+
 선택한 relative arm은 source에서 도출한 **추론**이다. Published absolute-arm PoC의
 독립 실행 결과가 아니다. Public PoC는 seed로 사용하지 않았고 역사적 extractor는
 설치·load·실행하지 않았다. Post-extraction application write도 수행하지 않았다.
@@ -77,12 +109,15 @@ Persistent cross-boundary C1 alias가 qualification의 selected effect이며 con
 
 ## 정확한 재현 환경: 관찰과 요구사항
 
-관찰된 controller: Ubuntu 계열 glibc 2.39, Python 3.12.3, x86_64,
+관찰된 controller: Ubuntu 24.04.3 LTS, glibc 2.39, Python 3.12.3, x86_64,
 kernel `6.18.33.2-microsoft-standard-WSL2`, uid/gid `1000:1000`,
 `fs.protected_hardlinks=1`, runtime root `/var/lib/inodefence`.
 Source bind mount device `2128`, runtime device `2096`으로 분리돼 있다.
 `check_dev_env.py`가 disposable runtime 내 hardlink/symlink/shared-object checks를 통과했다.
 이는 filesystem 기능 검사이며 OS isolation certificate가 아니다.
+Runtime filesystem은 ext4 `rw,relatime`, 관찰한 controller umask는 `0022`다.
+CPU는 AMD Ryzen 7 250, logical CPU 16개, MemTotal 7,706,272 KiB다. Controller의
+cpu/memory/pids cgroup 값은 `max`다. 이 값은 historical target의 resource allocation이 아니다.
 
 현재 Docker/Podman/nerdctl/bwrap CLI, Docker/Podman socket, DOCKER_HOST 및 이 세션에
 전달된 trusted broker가 없다. 고정 `unshare ... true` 진단의 여덟 namespace probe는
@@ -113,6 +148,10 @@ engine을 구현할 이유는 발견하지 못했다. Candidate-specific supplie
    image, cap-drop ALL, no-new-privileges, non-root 동일 uid/gid, private IPC/cgroup,
    bounded pids/memory/tmpfs/output/file-size와 전체 descendant stop/cleanup을 검증한다.
    기존 backend에 없는 CPU/quota나 total filesystem quota가 enforced됐다고 기록하지 않는다.
+   현재 ResourcePolicy 기본값은 memory 536,870,912 bytes, pids 64, open files 1,024,
+   per-file size 67,108,864 bytes, tmpfs 33,554,432 bytes다. IsolationPolicy는 shm
+   16,777,216 bytes와 stream별 output 1,048,576 bytes를 선언한다. 다음 실행에서 이 값과
+   실제 enforcement를 freeze·검증해야 하며 이번 세션의 executed target 설정은 아니다.
 5. Pair는 동일 Node/closure/worker/options/setup/limits를 사용하고 tar version만 바뀐다.
    Proposed timeout은 각 5초다. Image build와 benign readiness는 측정 budget 밖이다.
 6. BEFORE와 AFTER 사이 harness namespace bookkeeping을 하지 않는다. Target 종료 및
@@ -209,9 +248,27 @@ campaign RNG/budget **N/A**, generated attack archives **0**.
 - `python scripts/check_linux_isolation_support.py`: exit 1, 8/8 namespace probes denied;
   expected infrastructure blocker이며 target verdict가 아니다.
 - Official static acquisition 첫 attempt: network read timeout으로 incomplete;
-  원본 파일을 유지하고 retry 결과와 구분한다.
-- `make check`: 이 보고서의 최초 조사 commit에서는 **NOT_RUN**; 후속 실제 결과만 추가한다.
+  원본 파일을 유지하고 retry 결과와 구분했다. Retry의 21개 download record는 complete이고
+  두 release와 공통 의존성 다섯 개의 artifact integrity가 일치한다.
+- `make check`: **PASS** at clean `3e40af4039034c97409640128afaaf73a8de7908`;
+  Ruff, format, Pyright, **1,437 tests**, environment와 docs checks 통과.
+- Final documentation/evidence update 후 `make docs-check`와 `git diff --check`: **PASS**.
+- Fresh Python process에서 45개 retained file, archive와 summary의 SHA-256 재검증:
+  **PASS**. Archive member는 extractfile로 읽었고 filesystem에 extraction하지 않았다.
 - N01 historical extraction / contained integration / affected-fixed replay: **NOT_RUN**.
+
+[작은 machine evidence](n01-historical-qualification-v1.json)는 원본에서 생성한 derived
+investigation record다. Current-session 환경 진단, official download URLs/hashes, production
+closure, shipped-source 검토, PR revisions와 actual validation 결과를 보존한다. JSON SHA-256:
+`49ed52c5ae5d23911a07aff707b9398e1806da320b9aab2050f67700f2f90411`.
+Raw bundle은 `experiments/raw/n01-historical-qualification-20261014.tar.gz`, SHA-256
+`be9657409b48f11223fb5b5fd0544e716f7a2dd1fec95558183a2cf39dc015ed`다. Bundle의
+45개 원본/조사 artifact 및 별도 checksum manifest는 local workspace에 보존했고 Git에는
+작은 보고서와 JSON만 올렸다. Ignored raw bundle은 PR로 배포된 artifact가 아니다.
+Derivation은 retained `derive_evidence.py`를 사용하며 기존 output을 overwrite하지 않는다.
+Fresh-reader 검증은 checksum/content integrity 범위이며 historical snapshot reader 또는
+actual extractor replay 검증이 아니다. 후속 변경은 documentation/evidence만 추가하므로
+위 canonical test 결과는 실행한 clean revision에 한정해 기록하고 final docs를 재검사했다.
 
 Skill evidence 분류: historical finding에 대해 **RAW ONLY / no execution evidence**.
 Source review/diagnostic evidence를 REPRODUCIBLE finding 또는 PAPER-READY로 승격하지 않는다.

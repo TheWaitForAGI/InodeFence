@@ -1,0 +1,1002 @@
+{
+  "acquisition_first_attempt": {
+    "collector": "acquire_static.py",
+    "error": "TimeoutError: The read operation timed out",
+    "exit_code": 1,
+    "incomplete": true,
+    "original_error_record_source": "tool returned traceback; this diagnostic is a transcription, not original stdout capture",
+    "original_files_retained": true,
+    "subsequent_collector": "acquire_static_retry.py"
+  },
+  "campaign_budget": null,
+  "classification": "BLOCKED",
+  "environment": {
+    "architecture": "x86_64",
+    "broker_connection": "not supplied to this session",
+    "docker_host_configured": false,
+    "filesystem_devices": {
+      "/var/lib/inodefence": 2096,
+      "/workspaces/InodeFence": 2128
+    },
+    "gid": 1000,
+    "historical_runs": 0,
+    "os": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+    "protected_hardlinks": "1",
+    "python": "3.12.3 (main, Aug 31 2026, 10:18:26) [GCC 13.3.0]",
+    "recorded_at": "2026-10-14T04:46:31.032972+00:00",
+    "runtime_image_ids": null,
+    "runtime_root": "/var/lib/inodefence",
+    "socket_exists": {
+      "/run/docker.sock": false,
+      "/run/podman/podman.sock": false,
+      "/var/run/docker.sock": false
+    },
+    "source_dirty": false,
+    "source_revision": "57f751992f60a534c5b07506e72124abe5d6b07d",
+    "target_invocations": 0,
+    "tools": {
+      "bwrap": null,
+      "docker": null,
+      "gh": null,
+      "nerdctl": null,
+      "node": "/usr/local/share/nvm/versions/node/v22.22.0/bin/node",
+      "npm": "/usr/local/share/nvm/versions/node/v22.22.0/bin/npm",
+      "podman": null,
+      "powershell.exe": null,
+      "unshare": "/usr/bin/unshare",
+      "wsl.exe": null
+    },
+    "uid": 1000
+  },
+  "environment_extra": {
+    "controller_cgroup": {
+      "cpu.max": "max 100000",
+      "memory.max": "max",
+      "pids.max": "max"
+    },
+    "controller_memory_total_kib": "MemTotal:        7706272 kB",
+    "cpu_count": 16,
+    "cpu_models": [
+      "AMD Ryzen 7 250 w/ Radeon 780M Graphics"
+    ],
+    "distribution": {
+      "BUG_REPORT_URL": "https://bugs.launchpad.net/ubuntu/",
+      "HOME_URL": "https://www.ubuntu.com/",
+      "ID": "ubuntu",
+      "ID_LIKE": "debian",
+      "LOGO": "ubuntu-logo",
+      "NAME": "Ubuntu",
+      "PRETTY_NAME": "Ubuntu 24.04.3 LTS",
+      "PRIVACY_POLICY_URL": "https://www.ubuntu.com/legal/terms-and-policies/privacy-policy",
+      "SUPPORT_URL": "https://help.ubuntu.com/",
+      "UBUNTU_CODENAME": "noble",
+      "VERSION": "24.04.3 LTS (Noble Numbat)",
+      "VERSION_CODENAME": "noble",
+      "VERSION_ID": "24.04"
+    },
+    "recorded_at": "2026-10-14T05:07:19.911909+00:00",
+    "runtime_mount": "ext4   rw,relatime",
+    "source_mount": "ext4   rw,relatime,discard,errors=remount-ro,data=ordered",
+    "umask": "0o22"
+  },
+  "evidence_scope": "source/static-package-byte verification + current-session environment diagnostics; not an ExperimentConfig, RunResult, or VerifiedQualification",
+  "filesystem_check": {
+    "argv": [
+      "python",
+      "scripts/check_dev_env.py"
+    ],
+    "exit_code": 0,
+    "recorded_at": "2026-10-14T04:46:31.123605+00:00",
+    "stderr": "",
+    "stdout": "=== InodeFence Environment Check ===\nOS: Linux 6.18.33.2-microsoft-standard-WSL2\nArchitecture: x86_64\nPython: 3.12.3\nInterpreter: /opt/venv/bin/python\nRuntime root: /var/lib/inodefence\nHardlink device: 2096\nHardlink inode: 322664\nLink count: 2\nHardlink semantics: PASS\nSymlink semantics: PASS\nShared-object effect: PASS\nEnvironment check: PASS\n"
+  },
+  "format": "inodefence-n01-independent-feasibility-investigation",
+  "g0_capability_baseline": "8ad07b8e5f23f789d57ea50ba52c7acfcee951ea",
+  "gate_assessment": {
+    "G1": "PASS_DOCUMENTARY",
+    "G2": "STATIC_BYTES_VERIFIED_RUNTIME_BLOCKED",
+    "G3": "SOURCE_SUPPORTED_NOT_RUN",
+    "G4": "BLOCKED_DEFAULT_ADDRESSING",
+    "G5": "BLOCKED_NO_VALIDATED_TRANSPORT_OR_CANDIDATE_IMAGES",
+    "G6": "IMPLEMENTED_HISTORICAL_NOT_RUN",
+    "G7": "NOT_RUN",
+    "G8": "PROPOSED_NOT_FROZEN"
+  },
+  "generated_attack_archives": 0,
+  "historical_comparison": "NOT_RUN",
+  "historical_target_invocations": 0,
+  "main_revision": "57f751992f60a534c5b07506e72124abe5d6b07d",
+  "namespace_diagnostics": {
+    "assessment_scope": "namespace-prerequisites-only",
+    "environment": {
+      "machine": "x86_64",
+      "python_version": "3.12.3",
+      "release": "6.18.33.2-microsoft-standard-WSL2",
+      "system": "Linux"
+    },
+    "linux_facts": {
+      "cgroup_membership": {
+        "error": null,
+        "value": "0::/"
+      },
+      "cgroup_mount": {
+        "error": null,
+        "read_only": true
+      },
+      "gid": 1000,
+      "max_user_namespaces": {
+        "error": null,
+        "value": "30059"
+      },
+      "observed_resource_limits": {
+        "address_space": [
+          -1,
+          -1
+        ],
+        "file_size": [
+          -1,
+          -1
+        ],
+        "open_files": [
+          1048576,
+          1048576
+        ],
+        "processes_per_real_uid": [
+          -1,
+          -1
+        ]
+      },
+      "process_status": {
+        "error": null,
+        "fields": {
+          "CapBnd": "00000000a80425fb",
+          "CapEff": "0000000000000000",
+          "NoNewPrivs": "0",
+          "Seccomp": "2",
+          "Seccomp_filters": "2"
+        }
+      },
+      "uid": 1000,
+      "unprivileged_userns_clone": {
+        "error": "FileNotFoundError: [Errno 2] No such file or directory: '/proc/sys/kernel/unprivileged_userns_clone'",
+        "value": null
+      }
+    },
+    "namespace_creation": "unavailable",
+    "namespace_probes": [
+      {
+        "command": [
+          "/usr/bin/unshare",
+          "--user",
+          "--map-root-user",
+          "/usr/bin/true"
+        ],
+        "error": null,
+        "name": "user",
+        "returncode": 1,
+        "status": "denied_or_failed",
+        "stderr": "unshare: unshare failed: Operation not permitted\n",
+        "stdout": ""
+      },
+      {
+        "command": [
+          "/usr/bin/unshare",
+          "--user",
+          "--map-root-user",
+          "--mount",
+          "--propagation",
+          "unchanged",
+          "/usr/bin/true"
+        ],
+        "error": null,
+        "name": "user_mount",
+        "returncode": 1,
+        "status": "denied_or_failed",
+        "stderr": "unshare: unshare failed: Operation not permitted\n",
+        "stdout": ""
+      },
+      {
+        "command": [
+          "/usr/bin/unshare",
+          "--user",
+          "--map-root-user",
+          "--net",
+          "/usr/bin/true"
+        ],
+        "error": null,
+        "name": "user_network",
+        "returncode": 1,
+        "status": "denied_or_failed",
+        "stderr": "unshare: unshare failed: Operation not permitted\n",
+        "stdout": ""
+      },
+      {
+        "command": [
+          "/usr/bin/unshare",
+          "--user",
+          "--map-root-user",
+          "--pid",
+          "/usr/bin/true"
+        ],
+        "error": null,
+        "name": "user_pid",
+        "returncode": 1,
+        "status": "denied_or_failed",
+        "stderr": "unshare: unshare failed: Operation not permitted\n",
+        "stdout": ""
+      },
+      {
+        "command": [
+          "/usr/bin/unshare",
+          "--user",
+          "--map-root-user",
+          "--mount",
+          "--net",
+          "--pid",
+          "--propagation",
+          "unchanged",
+          "/usr/bin/true"
+        ],
+        "error": null,
+        "name": "user_mount_network_pid",
+        "returncode": 1,
+        "status": "denied_or_failed",
+        "stderr": "unshare: unshare failed: Operation not permitted\n",
+        "stdout": ""
+      },
+      {
+        "command": [
+          "/usr/bin/unshare",
+          "--mount",
+          "--propagation",
+          "unchanged",
+          "/usr/bin/true"
+        ],
+        "error": null,
+        "name": "mount",
+        "returncode": 1,
+        "status": "denied_or_failed",
+        "stderr": "unshare: unshare failed: Operation not permitted\n",
+        "stdout": ""
+      },
+      {
+        "command": [
+          "/usr/bin/unshare",
+          "--net",
+          "/usr/bin/true"
+        ],
+        "error": null,
+        "name": "network",
+        "returncode": 1,
+        "status": "denied_or_failed",
+        "stderr": "unshare: unshare failed: Operation not permitted\n",
+        "stdout": ""
+      },
+      {
+        "command": [
+          "/usr/bin/unshare",
+          "--pid",
+          "/usr/bin/true"
+        ],
+        "error": null,
+        "name": "pid",
+        "returncode": 1,
+        "status": "denied_or_failed",
+        "stderr": "unshare: unshare failed: Operation not permitted\n",
+        "stdout": ""
+      }
+    ],
+    "schema_version": 1,
+    "source": {
+      "dirty": false,
+      "revision": "57f751992f60a534c5b07506e72124abe5d6b07d"
+    },
+    "tools": {
+      "bwrap": null,
+      "prlimit": "/usr/bin/prlimit",
+      "setpriv": "/usr/bin/setpriv",
+      "true": "/usr/bin/true",
+      "unshare": "/usr/bin/unshare"
+    }
+  },
+  "pr_review": {
+    "88": {
+      "base_sha": "931899209bc1de29f249d9e2f3d451438ddf1d22",
+      "head_sha": "dd8dd15b2b4a8ce697e3ef38567883f2602cfb15",
+      "merge_commit_sha": "58e69ae70953bf4e7b696abeea02d9dfe987d9b5",
+      "merged": true,
+      "merged_at": "2026-10-14T04:25:48Z",
+      "retrieved_at": "2026-10-14 04:47:45 UTC",
+      "revision_review": {
+        "diff_stat_from_original_base": " docs/DECISIONS.md                                  |  23 +\n docs/START_HERE.md                                 |   9 +-\n docs/STATUS.md                                     |  25 +-\n .../research/design/entry-effect-observation-v2.md | 244 ++++++++\n .../design/entry-transition-observation-v1.md      |  54 ++\n docs/research/design/transition-feedback-v1.md     |   3 +-\n experiments/README.md                              |   7 +-\n experiments/summaries/README.md                    |   5 +\n .../node-causal-effect-qualification-v4.json       | 601 +++++++++++++++++++\n .../node-causal-effect-qualification-v4.md         | 155 +++++\n scripts/README.md                                  |  10 +\n scripts/analyze_node_causal_effects.py             |  53 ++\n scripts/qualify_node_causal_effects.py             | 641 +++++++++++++++++++++\n tests/test_node_causal_effect_qualification.py     | 212 +++++++\n tools/node-tar/README.md                           |  12 +\n tools/node-tar/causal-effect-probe.cjs             | 393 +++++++++++++\n 16 files changed, 2438 insertions(+), 9 deletions(-)\n",
+        "merge_commit_is_main_ancestor": true,
+        "n01_final_state_files_changed_from_original_base": []
+      },
+      "state": "closed",
+      "url": "https://github.com/TheWaitForAGI/InodeFence/pull/88"
+    },
+    "89": {
+      "base_sha": "931899209bc1de29f249d9e2f3d451438ddf1d22",
+      "head_sha": "0eb527f88aa8a4015544d2f6b0eabfebe079bf18",
+      "merge_commit_sha": "ccc061bece3f3525ecf0b734777a6b39bac06b07",
+      "merged": true,
+      "merged_at": "2026-10-14T04:28:33Z",
+      "retrieved_at": "2026-10-14 04:47:45 UTC",
+      "revision_review": {
+        "diff_stat_from_original_base": " docs/DECISIONS.md                                  |   49 +\n docs/START_HERE.md                                 |   18 +-\n docs/STATUS.md                                     |   49 +-\n docs/research/design/architecture.md               |   26 +\n .../design/entry-effect-architecture-v2.md         |  322 ++++++\n .../design/entry-effect-design-review-v2.md        |  217 ++++\n docs/research/design/entry-effect-feedback-v2.md   |  284 +++++\n .../research/design/entry-effect-observation-v2.md |  287 +++++\n .../design/entry-transition-observation-v1.md      |   54 +\n docs/research/design/transition-feedback-v1.md     |    3 +-\n experiments/README.md                              |    7 +-\n experiments/summaries/README.md                    |   10 +\n .../node-causal-effect-qualification-v4.json       |  601 +++++++++++\n .../node-causal-effect-qualification-v4.md         |  155 +++\n ...e-native-effect-observation-qualification-v2.md |  152 +++\n scripts/README.md                                  |   18 +\n scripts/analyze_node_causal_effects.py             |   53 +\n scripts/container_controller.py                    |   16 +-\n scripts/container_host.py                          |   14 +-\n scripts/qualify_node_causal_effects.py             |  641 +++++++++++\n scripts/qualify_node_effect_observation.py         |  627 +++++++++++\n scripts/verify_node_effect_evidence.py             |   42 +\n src/inodefence/README.md                           |   13 +-\n src/inodefence/effect_campaign.py                  |  211 ++++\n src/inodefence/effect_pipeline.py                  |   75 ++\n src/inodefence/effect_scheduler.py                 |  166 +++\n src/inodefence/evaluation/README.md                |   14 +\n .../evaluation/native_effect_evidence.py           |  897 ++++++++++++++++\n src/inodefence/feedback/README.md                  |   18 +-\n src/inodefence/feedback/__init__.py                |   26 +\n src/inodefence/feedback/effect.py                  |  167 +++\n src/inodefence/feedback/effect_novelty.py          |   67 ++\n src/inodefence/feedback/effect_search.py           |  248 +++++\n src/inodefence/model/README.md                     |   18 +-\n src/inodefence/model/__init__.py                   |   78 ++\n src/inodefence/model/effect.py                     |  824 ++++++++++++++\n src/inodefence/model/effect_feedback.py            |  174 +++\n src/inodefence/model/results.py                    |   37 +\n src/inodefence/targets/README.md                   |   30 +\n src/inodefence/targets/__init__.py                 |   10 +-\n src/inodefence/targets/_node_effect_producer.cjs   |  546 ++++++++++\n src/inodefence/targets/node_tar_effect.py          | 1122 ++++++++++++++++++++\n tests/README.md                                    |   24 +\n .../check_node_effect_producer.py                  |   93 ++\n .../check_node_effect_qualification.py             |   35 +\n tests/test_effect_feedback.py                      |  537 ++++++++++\n tests/test_effect_model.py                         |  532 ++++++++++\n tests/test_node_causal_effect_qualification.py     |  212 ++++\n tests/test_node_effect_producer.py                 | 1004 ++++++++++++++++++\n tests/test_node_effect_qualification.py            |  115 ++\n tools/node-tar/Dockerfile                          |    1 +\n tools/node-tar/README.md                           |   41 +\n tools/node-tar/causal-effect-probe.cjs             |  393 +++++++\n 53 files changed, 11354 insertions(+), 19 deletions(-)\n",
+        "merge_commit_is_main_ancestor": true,
+        "n01_final_state_files_changed_from_original_base": []
+      },
+      "state": "closed",
+      "url": "https://github.com/TheWaitForAGI/InodeFence/pull/89"
+    }
+  },
+  "raw_retention": {
+    "archive": "experiments/raw/n01-historical-qualification-20261014.tar.gz",
+    "archive_bytes": 645887,
+    "archive_sha256": "be9657409b48f11223fb5b5fd0544e716f7a2dd1fec95558183a2cf39dc015ed",
+    "availability": "retained in this workspace; ignored raw bundle is not published through the PR",
+    "checksums_sha256": "4b3d61ce7848a4044f7c760f7b84ab0987ccab02eb10a07d91259ae927dc06de",
+    "derivation_command": "python experiments/raw/n01-historical-qualification-20261014/derive_evidence.py",
+    "directory": "experiments/raw/n01-historical-qualification-20261014",
+    "no_overwrite": true,
+    "raw_files": {
+      "@isaacs-fs-minipass-4.0.1-package.json": {
+        "bytes": 1675,
+        "sha256": "ab8c1c2bce664e4c76b1937fa1a28f00ca5231a70cf0c1f78dd473101a9d2a88"
+      },
+      "@isaacs-fs-minipass-4.0.1.tgz": {
+        "bytes": 12383,
+        "sha256": "7ac286e3cccc1ea8980e79e2039def6bb97d3182e17951cd9094f0400ed98236"
+      },
+      "acquire_static.py": {
+        "bytes": 4676,
+        "sha256": "cafbd6adb6a8f58bed07fb585610d77e7e348f281a705820e5a34748c57318cd"
+      },
+      "acquire_static_retry.py": {
+        "bytes": 5881,
+        "sha256": "0f54977b6df179f125370e6df6e7510a89dab8b03ea692e9311228beea6486a2"
+      },
+      "acquisition-retry.json": {
+        "bytes": 14816,
+        "sha256": "7d0681c87e02632ffea5de745dc61b83e41369fdb9bde157216d7b432c8d642c"
+      },
+      "advisory.json": {
+        "bytes": 6766,
+        "sha256": "23a0ad7d5d9a1021e2c0d5c3cbbb76e8199ac16fe2e2dfc4434cdcf51114c2aa"
+      },
+      "chownr-3.0.0-package.json": {
+        "bytes": 1621,
+        "sha256": "4300e90fdd91ec7035047473c60f880251a9801bd786302729d4277751d3b948"
+      },
+      "chownr-3.0.0.tgz": {
+        "bytes": 4405,
+        "sha256": "4c24f5daa630142252da89de655f7df090ea479450a8825897751d78321b1360"
+      },
+      "cve.json": {
+        "bytes": 51719,
+        "sha256": "29d1c261cd64ec334493280dd3522b95bee1642872e52649d70fc27640b7b2f7"
+      },
+      "derive_evidence.py": {
+        "bytes": 4582,
+        "sha256": "b01d4e51e71ae10f71092479bd9de6ef226b3dca0f6aea952c8d17e3873cff2d"
+      },
+      "dev-environment-check.json": {
+        "bytes": 525,
+        "sha256": "3d7b0e1fb9b26ea2bbf93b81fc1a1ca41d9b231a4b623e591546df5fc88d7d56"
+      },
+      "environment-extra.json": {
+        "bytes": 991,
+        "sha256": "48724520ca9829a7be1f6901b7162f0e5f8583770422a831918252da4c6c4868"
+      },
+      "environment.json": {
+        "bytes": 1142,
+        "sha256": "5e506f17437de010a441f898db0fb2d0fd971490a0fdff85f17308ad540bea52"
+      },
+      "fix-commit.json": {
+        "bytes": 9301,
+        "sha256": "08c3cd2825ba7b28f0cadc6bdd4f4f53e2380d8971f4b4a6e343e576c3286f17"
+      },
+      "isolation-support.json": {
+        "bytes": 4388,
+        "sha256": "5915d6a8b899f08f5c1e719e4e912358a0acb41fd93418b6a5a4f3cd1edb4d17"
+      },
+      "make-check.json": {
+        "bytes": 8202,
+        "sha256": "71ae82cca0a31b1514879b5e715cfe56161b0c567244939c16617ade387eaf8a"
+      },
+      "minipass-7.1.2-package.json": {
+        "bytes": 1933,
+        "sha256": "f6cfe184c40e1c08eac8f614d7ca6888fee9654259668ad0670bb6011f74a005"
+      },
+      "minipass-7.1.2.tgz": {
+        "bytes": 62112,
+        "sha256": "548f561a19434971254f09f21484c6bf9d1b9d037cdac62310616b351c44d516"
+      },
+      "minizlib-3.1.0-package.json": {
+        "bytes": 1842,
+        "sha256": "3e3b206f94f3bd444f18fed847d8caeacb84925c628ae3d87805bc1dd6c4c470"
+      },
+      "minizlib-3.1.0.tgz": {
+        "bytes": 18461,
+        "sha256": "99bf2e29618172dd71f0654737490c68f71bc7e2379d473e38f9fef2dbece2e3"
+      },
+      "pair-compare.json": {
+        "bytes": 45416,
+        "sha256": "586236d27c4d50b00a6da1f36c05ba439cf049fa907d4c5cca6866c314cdf583"
+      },
+      "pr-88.json": {
+        "bytes": 5995,
+        "sha256": "a46014e808c871bbe6c003554366b2a6f2e6f4bf95e9edb155d73a6d786a9d3c"
+      },
+      "pr-89.json": {
+        "bytes": 6928,
+        "sha256": "1b911e9b649d178484a90bf1ddc3942e9893ebc8108840ac2c8b4d1c899f14f3"
+      },
+      "pr-revision-review.json": {
+        "bytes": 4942,
+        "sha256": "8af5d2718a0f881351af11e1b848971a9a50328c13e10621188b10668d90f41f"
+      },
+      "registry-7.5.2.json": {
+        "bytes": 7564,
+        "sha256": "d7578e04d0b3d3c105ad3a214cb8bf851dd559d3af368a6fdbca21901587cbe0"
+      },
+      "registry-7.5.3.json": {
+        "bytes": 6272,
+        "sha256": "8a95badea12566147fa53f2d0c93f7f27aab24657ecb34a8968a1e958b62fb76"
+      },
+      "remote-refs.json": {
+        "bytes": 418,
+        "sha256": "8493e7ec456691b1d77f300dbd491a39784937c3ec07c64b1f7af060b0dd02c3"
+      },
+      "static-first-attempt-failure.json": {
+        "bytes": 350,
+        "sha256": "087143fe1faa02f434fb4fe28d529e19f1e5d66f98f43693ea8f22b2c0b69519"
+      },
+      "static-interpretation.json": {
+        "bytes": 6970,
+        "sha256": "a4ef5e169e6010b105b8a12a699fdf0f4333b91d88748a7b33bd9b70ab715f4a"
+      },
+      "tar-7.5.2-dist-commonjs-unpack.js": {
+        "bytes": 32869,
+        "sha256": "6d99259843eebfd4ad305c991b03579d1e616fbd8372e2775026858e78e9cafa"
+      },
+      "tar-7.5.2-package.json": {
+        "bytes": 8818,
+        "sha256": "2634612a653ecebc46d0b2970c5d8fccb8ffd3d9e21405a1f9af3a291c3db720"
+      },
+      "tar-7.5.2.tgz": {
+        "bytes": 191299,
+        "sha256": "22d8b674a68754ea909d03aa13958a7d2fd5e78af8a8f0cde6455babef7aaf1a"
+      },
+      "tar-7.5.3-dist-commonjs-unpack.js": {
+        "bytes": 33713,
+        "sha256": "b4d7c53d87c34910775dca2aa5349735486ae592a17fc84a0b50c06da9360ec0"
+      },
+      "tar-7.5.3-package.json": {
+        "bytes": 7054,
+        "sha256": "f71a45b9919e69c961e463be6974a5dd886bd4bb341ffd07027cff4eb7067d84"
+      },
+      "tar-7.5.3.tgz": {
+        "bytes": 192636,
+        "sha256": "9d95d0cf786786360f97c1e414caea8a14452dc337fda17ba256ae7762c2ec66"
+      },
+      "upstream-7.5.2-package-lock.json": {
+        "bytes": 171004,
+        "sha256": "7d88a2eee8bcfee0285e2d48f8e3a7ae3d03842c55db56ff42ea3b817d9bc744"
+      },
+      "upstream-7.5.2-package.json": {
+        "bytes": 8818,
+        "sha256": "2634612a653ecebc46d0b2970c5d8fccb8ffd3d9e21405a1f9af3a291c3db720"
+      },
+      "upstream-7.5.2-src-unpack.ts": {
+        "bytes": 27879,
+        "sha256": "0017b6d427c435b354c537f3b2179a940a31379e8bb05506f628443693e83096"
+      },
+      "upstream-7.5.2-src-warn-method.ts": {
+        "bytes": 1405,
+        "sha256": "7a7f65b1b5fb7ac278f473404200cc83f09951f8a172a02d390006007e6227f3"
+      },
+      "upstream-7.5.3-package-lock.json": {
+        "bytes": 174409,
+        "sha256": "f8c16ee22830cd8384a542df56646e20dbc2b6b03ce8b1526c87443e989e6b85"
+      },
+      "upstream-7.5.3-package.json": {
+        "bytes": 7054,
+        "sha256": "f71a45b9919e69c961e463be6974a5dd886bd4bb341ffd07027cff4eb7067d84"
+      },
+      "upstream-7.5.3-src-unpack.ts": {
+        "bytes": 28417,
+        "sha256": "d5034b9e53e8ecd5cef5e6e830e018a75a55852701e08277e6629ace22fd5a59"
+      },
+      "upstream-7.5.3-src-warn-method.ts": {
+        "bytes": 1405,
+        "sha256": "7a7f65b1b5fb7ac278f473404200cc83f09951f8a172a02d390006007e6227f3"
+      },
+      "yallist-5.0.0-package.json": {
+        "bytes": 1618,
+        "sha256": "1b9d47057ce39814531ff93f668823b4fa03e7d23945449c274a1ff6d4cc297f"
+      },
+      "yallist-5.0.0.tgz": {
+        "bytes": 9821,
+        "sha256": "7c9d43dbab7cab3b3133b0e6a5af14014482285316b39ec9f508efadd9ebce95"
+      }
+    }
+  },
+  "recorded_at": "2026-10-14T05:09:10.965330+00:00",
+  "rediscovery": "NOT_RUN",
+  "rng_seed": null,
+  "schema_version": 1,
+  "static_acquisition": {
+    "downloads": [
+      {
+        "attempts": [],
+        "bytes": 6766,
+        "file": "advisory.json",
+        "file_mtime_utc": "2026-10-14T04:47:20.992978+00:00",
+        "retrieval_note": "original successful files reused unchanged; original first-attempt URL mapping reconstructed from retained acquisition script",
+        "sha256": "23a0ad7d5d9a1021e2c0d5c3cbbb76e8199ac16fe2e2dfc4434cdcf51114c2aa",
+        "status": "ACQUIRED",
+        "url": "https://api.github.com/advisories/GHSA-8qq5-rm4j-mr97"
+      },
+      {
+        "attempts": [],
+        "bytes": 51719,
+        "file": "cve.json",
+        "file_mtime_utc": "2026-10-14T04:47:20.802991+00:00",
+        "retrieval_note": "original successful files reused unchanged; original first-attempt URL mapping reconstructed from retained acquisition script",
+        "sha256": "29d1c261cd64ec334493280dd3522b95bee1642872e52649d70fc27640b7b2f7",
+        "status": "ACQUIRED",
+        "url": "https://raw.githubusercontent.com/CVEProject/cvelistV5/main/cves/2026/23xxx/CVE-2026-23745.json"
+      },
+      {
+        "attempts": [],
+        "bytes": 9301,
+        "file": "fix-commit.json",
+        "file_mtime_utc": "2026-10-14T04:47:21.303889+00:00",
+        "retrieval_note": "original successful files reused unchanged; original first-attempt URL mapping reconstructed from retained acquisition script",
+        "sha256": "08c3cd2825ba7b28f0cadc6bdd4f4f53e2380d8971f4b4a6e343e576c3286f17",
+        "status": "ACQUIRED",
+        "url": "https://api.github.com/repos/isaacs/node-tar/commits/340eb285b6d986e91969a1170d7fe9b0face405e"
+      },
+      {
+        "attempts": [],
+        "bytes": 45416,
+        "file": "pair-compare.json",
+        "file_mtime_utc": "2026-10-14T04:47:21.353087+00:00",
+        "retrieval_note": "original successful files reused unchanged; original first-attempt URL mapping reconstructed from retained acquisition script",
+        "sha256": "586236d27c4d50b00a6da1f36c05ba439cf049fa907d4c5cca6866c314cdf583",
+        "status": "ACQUIRED",
+        "url": "https://api.github.com/repos/isaacs/node-tar/compare/d9ea73a9b3fc0a2f9734fda65279f48c7cc99f28...03138441b238f48070fb22824b2529c445bc70c7"
+      },
+      {
+        "attempts": [],
+        "bytes": 7564,
+        "file": "registry-7.5.2.json",
+        "file_mtime_utc": "2026-10-14T04:47:24.007498+00:00",
+        "retrieval_note": "original successful files reused unchanged; original first-attempt URL mapping reconstructed from retained acquisition script",
+        "sha256": "d7578e04d0b3d3c105ad3a214cb8bf851dd559d3af368a6fdbca21901587cbe0",
+        "status": "ACQUIRED",
+        "url": "https://registry.npmjs.org/tar/7.5.2"
+      },
+      {
+        "attempts": [],
+        "bytes": 8818,
+        "file": "upstream-7.5.2-package.json",
+        "file_mtime_utc": "2026-10-14T04:47:24.007498+00:00",
+        "retrieval_note": "original successful files reused unchanged; original first-attempt URL mapping reconstructed from retained acquisition script",
+        "sha256": "2634612a653ecebc46d0b2970c5d8fccb8ffd3d9e21405a1f9af3a291c3db720",
+        "status": "ACQUIRED",
+        "url": "https://raw.githubusercontent.com/isaacs/node-tar/d9ea73a9b3fc0a2f9734fda65279f48c7cc99f28/package.json"
+      },
+      {
+        "attempts": [],
+        "bytes": 171004,
+        "file": "upstream-7.5.2-package-lock.json",
+        "file_mtime_utc": "2026-10-14T05:04:42.125400+00:00",
+        "retrieval_note": "original successful files reused unchanged; original first-attempt URL mapping reconstructed from retained acquisition script",
+        "sha256": "7d88a2eee8bcfee0285e2d48f8e3a7ae3d03842c55db56ff42ea3b817d9bc744",
+        "status": "ACQUIRED",
+        "url": "https://raw.githubusercontent.com/isaacs/node-tar/d9ea73a9b3fc0a2f9734fda65279f48c7cc99f28/package-lock.json"
+      },
+      {
+        "attempts": [],
+        "bytes": 27879,
+        "file": "upstream-7.5.2-src-unpack.ts",
+        "file_mtime_utc": "2026-10-14T04:47:27.927813+00:00",
+        "retrieval_note": "original successful files reused unchanged; original first-attempt URL mapping reconstructed from retained acquisition script",
+        "sha256": "0017b6d427c435b354c537f3b2179a940a31379e8bb05506f628443693e83096",
+        "status": "ACQUIRED",
+        "url": "https://raw.githubusercontent.com/isaacs/node-tar/d9ea73a9b3fc0a2f9734fda65279f48c7cc99f28/src/unpack.ts"
+      },
+      {
+        "attempts": [],
+        "bytes": 1405,
+        "file": "upstream-7.5.2-src-warn-method.ts",
+        "file_mtime_utc": "2026-10-14T04:47:27.297564+00:00",
+        "retrieval_note": "original successful files reused unchanged; original first-attempt URL mapping reconstructed from retained acquisition script",
+        "sha256": "7a7f65b1b5fb7ac278f473404200cc83f09951f8a172a02d390006007e6227f3",
+        "status": "ACQUIRED",
+        "url": "https://raw.githubusercontent.com/isaacs/node-tar/d9ea73a9b3fc0a2f9734fda65279f48c7cc99f28/src/warn-method.ts"
+      },
+      {
+        "attempts": [],
+        "bytes": 6272,
+        "file": "registry-7.5.3.json",
+        "file_mtime_utc": "2026-10-14T04:47:27.300575+00:00",
+        "retrieval_note": "original successful files reused unchanged; original first-attempt URL mapping reconstructed from retained acquisition script",
+        "sha256": "8a95badea12566147fa53f2d0c93f7f27aab24657ecb34a8968a1e958b62fb76",
+        "status": "ACQUIRED",
+        "url": "https://registry.npmjs.org/tar/7.5.3"
+      },
+      {
+        "attempts": [],
+        "bytes": 7054,
+        "file": "upstream-7.5.3-package.json",
+        "file_mtime_utc": "2026-10-14T04:47:28.029401+00:00",
+        "retrieval_note": "original successful files reused unchanged; original first-attempt URL mapping reconstructed from retained acquisition script",
+        "sha256": "f71a45b9919e69c961e463be6974a5dd886bd4bb341ffd07027cff4eb7067d84",
+        "status": "ACQUIRED",
+        "url": "https://raw.githubusercontent.com/isaacs/node-tar/03138441b238f48070fb22824b2529c445bc70c7/package.json"
+      },
+      {
+        "attempts": [],
+        "bytes": 174409,
+        "file": "upstream-7.5.3-package-lock.json",
+        "file_mtime_utc": "2026-10-14T04:47:28.427197+00:00",
+        "retrieval_note": "original successful files reused unchanged; original first-attempt URL mapping reconstructed from retained acquisition script",
+        "sha256": "f8c16ee22830cd8384a542df56646e20dbc2b6b03ce8b1526c87443e989e6b85",
+        "status": "ACQUIRED",
+        "url": "https://raw.githubusercontent.com/isaacs/node-tar/03138441b238f48070fb22824b2529c445bc70c7/package-lock.json"
+      },
+      {
+        "attempts": [],
+        "bytes": 28417,
+        "file": "upstream-7.5.3-src-unpack.ts",
+        "file_mtime_utc": "2026-10-14T04:47:28.618091+00:00",
+        "retrieval_note": "original successful files reused unchanged; original first-attempt URL mapping reconstructed from retained acquisition script",
+        "sha256": "d5034b9e53e8ecd5cef5e6e830e018a75a55852701e08277e6629ace22fd5a59",
+        "status": "ACQUIRED",
+        "url": "https://raw.githubusercontent.com/isaacs/node-tar/03138441b238f48070fb22824b2529c445bc70c7/src/unpack.ts"
+      },
+      {
+        "attempts": [],
+        "bytes": 1405,
+        "file": "upstream-7.5.3-src-warn-method.ts",
+        "file_mtime_utc": "2026-10-14T04:47:28.592911+00:00",
+        "retrieval_note": "original successful files reused unchanged; original first-attempt URL mapping reconstructed from retained acquisition script",
+        "sha256": "7a7f65b1b5fb7ac278f473404200cc83f09951f8a172a02d390006007e6227f3",
+        "status": "ACQUIRED",
+        "url": "https://raw.githubusercontent.com/isaacs/node-tar/03138441b238f48070fb22824b2529c445bc70c7/src/warn-method.ts"
+      },
+      {
+        "attempts": [],
+        "bytes": 191299,
+        "file": "tar-7.5.2.tgz",
+        "file_mtime_utc": "2026-10-14T05:04:42.889779+00:00",
+        "retrieval_note": "original successful files reused unchanged; original first-attempt URL mapping reconstructed from retained acquisition script",
+        "sha256": "22d8b674a68754ea909d03aa13958a7d2fd5e78af8a8f0cde6455babef7aaf1a",
+        "status": "ACQUIRED",
+        "url": "https://registry.npmjs.org/tar/-/tar-7.5.2.tgz"
+      },
+      {
+        "attempts": [],
+        "bytes": 12383,
+        "file": "@isaacs-fs-minipass-4.0.1.tgz",
+        "file_mtime_utc": "2026-10-14T05:04:42.666324+00:00",
+        "retrieval_note": "original successful files reused unchanged; original first-attempt URL mapping reconstructed from retained acquisition script",
+        "sha256": "7ac286e3cccc1ea8980e79e2039def6bb97d3182e17951cd9094f0400ed98236",
+        "status": "ACQUIRED",
+        "url": "https://registry.npmjs.org/@isaacs/fs-minipass/-/fs-minipass-4.0.1.tgz"
+      },
+      {
+        "attempts": [],
+        "bytes": 4405,
+        "file": "chownr-3.0.0.tgz",
+        "file_mtime_utc": "2026-10-14T05:04:42.665250+00:00",
+        "retrieval_note": "original successful files reused unchanged; original first-attempt URL mapping reconstructed from retained acquisition script",
+        "sha256": "4c24f5daa630142252da89de655f7df090ea479450a8825897751d78321b1360",
+        "status": "ACQUIRED",
+        "url": "https://registry.npmjs.org/chownr/-/chownr-3.0.0.tgz"
+      },
+      {
+        "attempts": [],
+        "bytes": 62112,
+        "file": "minipass-7.1.2.tgz",
+        "file_mtime_utc": "2026-10-14T05:04:42.676267+00:00",
+        "retrieval_note": "original successful files reused unchanged; original first-attempt URL mapping reconstructed from retained acquisition script",
+        "sha256": "548f561a19434971254f09f21484c6bf9d1b9d037cdac62310616b351c44d516",
+        "status": "ACQUIRED",
+        "url": "https://registry.npmjs.org/minipass/-/minipass-7.1.2.tgz"
+      },
+      {
+        "attempts": [],
+        "bytes": 18461,
+        "file": "minizlib-3.1.0.tgz",
+        "file_mtime_utc": "2026-10-14T05:04:43.063186+00:00",
+        "retrieval_note": "original successful files reused unchanged; original first-attempt URL mapping reconstructed from retained acquisition script",
+        "sha256": "99bf2e29618172dd71f0654737490c68f71bc7e2379d473e38f9fef2dbece2e3",
+        "status": "ACQUIRED",
+        "url": "https://registry.npmjs.org/minizlib/-/minizlib-3.1.0.tgz"
+      },
+      {
+        "attempts": [],
+        "bytes": 9821,
+        "file": "yallist-5.0.0.tgz",
+        "file_mtime_utc": "2026-10-14T05:04:43.062935+00:00",
+        "retrieval_note": "original successful files reused unchanged; original first-attempt URL mapping reconstructed from retained acquisition script",
+        "sha256": "7c9d43dbab7cab3b3133b0e6a5af14014482285316b39ec9f508efadd9ebce95",
+        "status": "ACQUIRED",
+        "url": "https://registry.npmjs.org/yallist/-/yallist-5.0.0.tgz"
+      },
+      {
+        "attempts": [],
+        "bytes": 192636,
+        "file": "tar-7.5.3.tgz",
+        "file_mtime_utc": "2026-10-14T05:04:43.252168+00:00",
+        "retrieval_note": "original successful files reused unchanged; original first-attempt URL mapping reconstructed from retained acquisition script",
+        "sha256": "9d95d0cf786786360f97c1e414caea8a14452dc337fda17ba256ae7762c2ec66",
+        "status": "ACQUIRED",
+        "url": "https://registry.npmjs.org/tar/-/tar-7.5.3.tgz"
+      }
+    ],
+    "method": "bounded urllib download + hashlib + tarfile.extractfile for named regular members; no extractall/install/target loading",
+    "npm_signatures_verified": false,
+    "package_verification": {
+      "@isaacs-fs-minipass-4.0.1": {
+        "integrity": "sha512-wgm9Ehl2jpeqP3zw/7mo3kRHFp5MEDhqAdwy1fTGkHAwnkGOVsgpvQhL8B5n1qlb01jV3n/bI0ZfZp5lWA1k4w==",
+        "members": {
+          "package/package.json": {
+            "file": "@isaacs-fs-minipass-4.0.1-package.json",
+            "sha256": "ab8c1c2bce664e4c76b1937fa1a28f00ca5231a70cf0c1f78dd473101a9d2a88"
+          }
+        },
+        "sha256": "7ac286e3cccc1ea8980e79e2039def6bb97d3182e17951cd9094f0400ed98236",
+        "sri_match": true
+      },
+      "chownr-3.0.0": {
+        "integrity": "sha512-+IxzY9BZOQd/XuYPRmrvEVjF/nqj5kgT4kEq7VofrDoM1MxoRjEWkrCC3EtLi59TVawxTAn+orJwFQcrqEN1+g==",
+        "members": {
+          "package/package.json": {
+            "file": "chownr-3.0.0-package.json",
+            "sha256": "4300e90fdd91ec7035047473c60f880251a9801bd786302729d4277751d3b948"
+          }
+        },
+        "sha256": "4c24f5daa630142252da89de655f7df090ea479450a8825897751d78321b1360",
+        "sri_match": true
+      },
+      "minipass-7.1.2": {
+        "integrity": "sha512-qOOzS1cBTWYF4BH8fVePDBOO9iptMnGUEZwNc/cMWnTV2nVLZ7VoNWEPHkYczZA0pdoA7dl6e7FL659nX9S2aw==",
+        "members": {
+          "package/package.json": {
+            "file": "minipass-7.1.2-package.json",
+            "sha256": "f6cfe184c40e1c08eac8f614d7ca6888fee9654259668ad0670bb6011f74a005"
+          }
+        },
+        "sha256": "548f561a19434971254f09f21484c6bf9d1b9d037cdac62310616b351c44d516",
+        "sri_match": true
+      },
+      "minizlib-3.1.0": {
+        "integrity": "sha512-KZxYo1BUkWD2TVFLr0MQoM8vUUigWD3LlD83a/75BqC+4qE0Hb1Vo5v1FgcfaNXvfXzr+5EhQ6ing/CaBijTlw==",
+        "members": {
+          "package/package.json": {
+            "file": "minizlib-3.1.0-package.json",
+            "sha256": "3e3b206f94f3bd444f18fed847d8caeacb84925c628ae3d87805bc1dd6c4c470"
+          }
+        },
+        "sha256": "99bf2e29618172dd71f0654737490c68f71bc7e2379d473e38f9fef2dbece2e3",
+        "sri_match": true
+      },
+      "tar-7.5.2": {
+        "integrity": "sha512-7NyxrTE4Anh8km8iEy7o0QYPs+0JKBTj5ZaqHg6B39erLg0qYXN3BijtShwbsNSvQ+LN75+KV+C4QR/f6Gwnpg==",
+        "members": {
+          "package/dist/commonjs/unpack.js": {
+            "file": "tar-7.5.2-dist-commonjs-unpack.js",
+            "sha256": "6d99259843eebfd4ad305c991b03579d1e616fbd8372e2775026858e78e9cafa"
+          },
+          "package/package.json": {
+            "file": "tar-7.5.2-package.json",
+            "sha256": "2634612a653ecebc46d0b2970c5d8fccb8ffd3d9e21405a1f9af3a291c3db720"
+          }
+        },
+        "sha1_match": true,
+        "sha256": "22d8b674a68754ea909d03aa13958a7d2fd5e78af8a8f0cde6455babef7aaf1a",
+        "sri_match": true
+      },
+      "tar-7.5.3": {
+        "integrity": "sha512-ENg5JUHUm2rDD7IvKNFGzyElLXNjachNLp6RaGf4+JOgxXHkqA+gq81ZAMCUmtMtqBsoU62lcp6S27g1LCYGGQ==",
+        "members": {
+          "package/dist/commonjs/unpack.js": {
+            "file": "tar-7.5.3-dist-commonjs-unpack.js",
+            "sha256": "b4d7c53d87c34910775dca2aa5349735486ae592a17fc84a0b50c06da9360ec0"
+          },
+          "package/package.json": {
+            "file": "tar-7.5.3-package.json",
+            "sha256": "f71a45b9919e69c961e463be6974a5dd886bd4bb341ffd07027cff4eb7067d84"
+          }
+        },
+        "sha1_match": true,
+        "sha256": "9d95d0cf786786360f97c1e414caea8a14452dc337fda17ba256ae7762c2ec66",
+        "sri_match": true
+      },
+      "yallist-5.0.0": {
+        "integrity": "sha512-YgvUTfwqyc7UXVMrB+SImsVYSmTS8X/tSrtdNZMImM+n7+QTriRXyXim0mBrTXNeqzVF0KWGgHPeiyViFFrNDw==",
+        "members": {
+          "package/package.json": {
+            "file": "yallist-5.0.0-package.json",
+            "sha256": "1b9d47057ce39814531ff93f668823b4fa03e7d23945449c274a1ff6d4cc297f"
+          }
+        },
+        "sha256": "7c9d43dbab7cab3b3133b0e6a5af14014482285316b39ec9f508efadd9ebce95",
+        "sri_match": true
+      }
+    },
+    "target_executed": false
+  },
+  "static_interpretation": {
+    "npm_signatures_verified": false,
+    "package_distribution_review": {
+      "7.5.2": {
+        "commonjs_entrypoint": "./dist/commonjs/index.js",
+        "engines": {
+          "node": ">=18"
+        },
+        "hardlink_cwd_resolution_present": true,
+        "linkpath_sanitizer_in_checkpath": false,
+        "registry_git_head": "d9ea73a9b3fc0a2f9734fda65279f48c7cc99f28",
+        "source_conditions_export": "./src/index.ts",
+        "unpack_sha256": "6d99259843eebfd4ad305c991b03579d1e616fbd8372e2775026858e78e9cafa",
+        "version": "7.5.2"
+      },
+      "7.5.3": {
+        "commonjs_entrypoint": "./dist/commonjs/index.js",
+        "engines": {
+          "node": ">=18"
+        },
+        "hardlink_cwd_resolution_present": true,
+        "linkpath_sanitizer_in_checkpath": true,
+        "registry_git_head": "03138441b238f48070fb22824b2529c445bc70c7",
+        "source_conditions_export": null,
+        "unpack_sha256": "b4d7c53d87c34910775dca2aa5349735486ae592a17fc84a0b50c06da9360ec0",
+        "version": "7.5.3"
+      }
+    },
+    "production_closures": {
+      "7.5.2": {
+        "node_modules/@isaacs/fs-minipass": {
+          "dependencies": {
+            "minipass": "^7.0.4"
+          },
+          "engines": {
+            "node": ">=18.0.0"
+          },
+          "integrity": "sha512-wgm9Ehl2jpeqP3zw/7mo3kRHFp5MEDhqAdwy1fTGkHAwnkGOVsgpvQhL8B5n1qlb01jV3n/bI0ZfZp5lWA1k4w==",
+          "resolved": "https://registry.npmjs.org/@isaacs/fs-minipass/-/fs-minipass-4.0.1.tgz",
+          "version": "4.0.1"
+        },
+        "node_modules/chownr": {
+          "engines": {
+            "node": ">=18"
+          },
+          "integrity": "sha512-+IxzY9BZOQd/XuYPRmrvEVjF/nqj5kgT4kEq7VofrDoM1MxoRjEWkrCC3EtLi59TVawxTAn+orJwFQcrqEN1+g==",
+          "resolved": "https://registry.npmjs.org/chownr/-/chownr-3.0.0.tgz",
+          "version": "3.0.0"
+        },
+        "node_modules/minipass": {
+          "engines": {
+            "node": ">=16 || 14 >=14.17"
+          },
+          "integrity": "sha512-qOOzS1cBTWYF4BH8fVePDBOO9iptMnGUEZwNc/cMWnTV2nVLZ7VoNWEPHkYczZA0pdoA7dl6e7FL659nX9S2aw==",
+          "resolved": "https://registry.npmjs.org/minipass/-/minipass-7.1.2.tgz",
+          "version": "7.1.2"
+        },
+        "node_modules/minizlib": {
+          "dependencies": {
+            "minipass": "^7.1.2"
+          },
+          "engines": {
+            "node": ">= 18"
+          },
+          "integrity": "sha512-KZxYo1BUkWD2TVFLr0MQoM8vUUigWD3LlD83a/75BqC+4qE0Hb1Vo5v1FgcfaNXvfXzr+5EhQ6ing/CaBijTlw==",
+          "resolved": "https://registry.npmjs.org/minizlib/-/minizlib-3.1.0.tgz",
+          "version": "3.1.0"
+        },
+        "node_modules/yallist": {
+          "engines": {
+            "node": ">=18"
+          },
+          "integrity": "sha512-YgvUTfwqyc7UXVMrB+SImsVYSmTS8X/tSrtdNZMImM+n7+QTriRXyXim0mBrTXNeqzVF0KWGgHPeiyViFFrNDw==",
+          "resolved": "https://registry.npmjs.org/yallist/-/yallist-5.0.0.tgz",
+          "version": "5.0.0"
+        }
+      },
+      "7.5.3": {
+        "node_modules/@isaacs/fs-minipass": {
+          "dependencies": {
+            "minipass": "^7.0.4"
+          },
+          "engines": {
+            "node": ">=18.0.0"
+          },
+          "integrity": "sha512-wgm9Ehl2jpeqP3zw/7mo3kRHFp5MEDhqAdwy1fTGkHAwnkGOVsgpvQhL8B5n1qlb01jV3n/bI0ZfZp5lWA1k4w==",
+          "resolved": "https://registry.npmjs.org/@isaacs/fs-minipass/-/fs-minipass-4.0.1.tgz",
+          "version": "4.0.1"
+        },
+        "node_modules/chownr": {
+          "engines": {
+            "node": ">=18"
+          },
+          "integrity": "sha512-+IxzY9BZOQd/XuYPRmrvEVjF/nqj5kgT4kEq7VofrDoM1MxoRjEWkrCC3EtLi59TVawxTAn+orJwFQcrqEN1+g==",
+          "resolved": "https://registry.npmjs.org/chownr/-/chownr-3.0.0.tgz",
+          "version": "3.0.0"
+        },
+        "node_modules/minipass": {
+          "engines": {
+            "node": ">=16 || 14 >=14.17"
+          },
+          "integrity": "sha512-qOOzS1cBTWYF4BH8fVePDBOO9iptMnGUEZwNc/cMWnTV2nVLZ7VoNWEPHkYczZA0pdoA7dl6e7FL659nX9S2aw==",
+          "resolved": "https://registry.npmjs.org/minipass/-/minipass-7.1.2.tgz",
+          "version": "7.1.2"
+        },
+        "node_modules/minizlib": {
+          "dependencies": {
+            "minipass": "^7.1.2"
+          },
+          "engines": {
+            "node": ">= 18"
+          },
+          "integrity": "sha512-KZxYo1BUkWD2TVFLr0MQoM8vUUigWD3LlD83a/75BqC+4qE0Hb1Vo5v1FgcfaNXvfXzr+5EhQ6ing/CaBijTlw==",
+          "resolved": "https://registry.npmjs.org/minizlib/-/minizlib-3.1.0.tgz",
+          "version": "3.1.0"
+        },
+        "node_modules/yallist": {
+          "engines": {
+            "node": ">=18"
+          },
+          "integrity": "sha512-YgvUTfwqyc7UXVMrB+SImsVYSmTS8X/tSrtdNZMImM+n7+QTriRXyXim0mBrTXNeqzVF0KWGgHPeiyViFFrNDw==",
+          "resolved": "https://registry.npmjs.org/yallist/-/yallist-5.0.0.tgz",
+          "version": "5.0.0"
+        }
+      }
+    },
+    "production_closures_equal": true,
+    "recorded_at": "2026-10-14T05:07:19.904913+00:00",
+    "reviewed_file_sha256": {
+      "AGENTS.md": "b056c0e6787adcd92f721f4b0bd1769e78bf5f33adf773c69e7afa98dbeda725",
+      "docs/START_HERE.md": "dac45eb5edab5a1c2c33edd7646fdf289ecd11553ee6fad64318049f19819be9",
+      "docs/STATUS.md": "6f52846f85d8e462c3628d49e7e4b9af7bf7962f39bfa24f60c8aad62493e33a",
+      "docs/research/benchmarks/artifact-qualification-v1.md": "f921e419e44456785235d2f161a9398d2fcd4b25207286e9d42b5382ee173192",
+      "docs/research/benchmarks/benchmark-set-v1.md": "6bb60e3985e1f7ce5e2b13b6a1da72e32a0313d9c0656f493b3ee7872fc5ac12",
+      "docs/research/benchmarks/evaluation-protocol-v1.md": "684fd634bc65f10b1c2cc02cb6639c35c9cbfafae2f5d94ecbb6e620bc59e53a",
+      "docs/research/design/security-contracts.md": "a4aa7f22e62235f4bda601223c3fecc50d2b3fda26dbcb1b2e91bfc3554ffdb8",
+      "src/inodefence/builder.py": "5d7dbe53a64054c396ed335162a16f57f7dd62c0f00b0b9289bf5262513248ec",
+      "src/inodefence/evaluation/node_packaging.py": "ecf4b9efcb89fac672f511a01744b55b87f6c5e22e06dcb0c4eba623c188d3bf",
+      "src/inodefence/execution/container.py": "f064d66994e245efc9ead7c1fd07d27ae0b992e87485a43e655d5d600dc6b25e",
+      "src/inodefence/generator/minimal.py": "4d14de2ec2ad6d233e980ac58613b6e8a4759c185813c4c2f97f8a69c46f03f8",
+      "src/inodefence/mutator/m1.py": "0347fd9b6201c2b3665e15b3fb63ce01c6bf0c1fcbbe2ba3f0cac44df8ae1946",
+      "src/inodefence/mutator/operators.py": "0923dedb1b29eb35cdadce060c566b783766b1eb681c4797d1acd60ddbfeb867",
+      "src/inodefence/observer/snapshot.py": "4e54e49fcac6914ffce241c15e4b83dea63e3398aa912537f3f0988283064b56",
+      "src/inodefence/oracle/contracts.py": "3d5417a760184f52e7797a2181d3b9c6b13b75896cdb578d96177fb2b6bf4c90",
+      "src/inodefence/pipeline.py": "6e4bf58270af6a1a2b9a0fc0f058a459e73b1df3060b06712ab27b0a9e8b88a0",
+      "src/inodefence/runtime.py": "ea0df677d951c757f96a0a324b07b256140a68aee1355a22795dca4b7f3ad9b1",
+      "src/inodefence/targets/_node_worker.cjs": "feb13d7be5f5718769bebd4b0e375ea3f535abffd45223494dd518263593498b",
+      "src/inodefence/targets/isolated.py": "fb920001333715698c35e7aa58108b8c4c709affce89439f44784e6af5d01957",
+      "src/inodefence/targets/node_tar.py": "606de6a744216922d698a17657fa7f80553f24d61655425d1544abd969c29647"
+    }
+  },
+  "validation": {
+    "container_integration": "NOT_RUN",
+    "make_check": {
+      "argv": [
+        "make",
+        "check"
+      ],
+      "exit_code": 0,
+      "recorded_at": "2026-10-14T05:07:51.069801+00:00",
+      "source_dirty": false,
+      "source_revision": "3e40af4039034c97409640128afaaf73a8de7908"
+    },
+    "pytest_passed": 1437,
+    "source_report": "experiments/summaries/n01-historical-qualification-v1.md"
+  }
+}

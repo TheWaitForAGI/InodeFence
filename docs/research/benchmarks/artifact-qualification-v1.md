@@ -61,9 +61,10 @@ Source links: [v7.5.2 package.json](https://github.com/isaacs/node-tar/blob/v7.5
 
 Upstream lock SHA-256 values in the catalog were computed from exact raw file
 bytes and checked against the peeled commit's Git blob. These are historical
-upstream development locks, not the future benchmark wrapper's npm lock. Later
-freeze a wrapper lock containing the selected tar SRI and complete production
-closure. Within each pair, prefer identical transitive versions when ranges
+upstream development locks, not benchmark wrapper locks. The later
+[N01 wrapper-lock task](../../../experiments/benchmarks/locks/README.md) now freezes the selected
+7.5.2/7.5.3 tar SRI and their identical upstream production closure as exact build inputs.
+Other pairs still require this step. Within each pair, prefer identical transitive versions when ranges
 permit (the inspected upstream production versions match within all three pairs).
 Any required change becomes recorded pair configuration, not hidden build drift.
 
@@ -76,7 +77,7 @@ and frozen before experiments. No static engines check promotes G7.
 
 | Identity | Already available statically | Required after audit |
 | --- | --- | --- |
-| npm package/source | Exact version, SRI, shasum, URL, peeled commit and upstream lock hash | Verify fetched bytes; freeze benchmark package-lock and all resolved production artifacts |
+| npm package/source | Exact version, SRI, shasum, URL, peeled commit and upstream lock hash; N01 wrapper locks and fetched-byte SRI verification retained separately | Other pairs need wrapper locks; N01 still needs image/runtime qualification and registry signatures remain unverified |
 | Node/base images | Existing benign [Dockerfile](../../../tools/node-tar/Dockerfile) pins Node 22.22.0 build-base and distroless digests | Reuse/verify platform-specific bases; retain build recipe and platform; no affected image built here |
 | Target execution | Immutable local image ID enforced by backend | Record built image ID and distribution/platform digest where available; no bit-identical rebuild claim |
 | Worker/dependency identity | #45 observes/verifies worker/lock SHA-256 before provenance freeze and each archive, with isolation v2 artifact origin | Freeze candidate-specific wrapper source/lock and verify contents through existing binding; EC-01 is resolved; no affected image built here |

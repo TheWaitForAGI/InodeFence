@@ -14,7 +14,10 @@ qualification status, uncertainties and typed source references. Optional
 `artifact_metadata` stores official package/module identities and source commits
 for the selected primary pair; `static_runtime` labels metadata compatibility
 separately from runtime qualification (NOT_RUN). Upstream lock hashes identify
-source files, not benchmark locks. npm SRI/go.sum h1 are not container digests.
+source files, not benchmark locks. The separately prepared
+[N01 wrapper locks](locks/README.md) are exact future build inputs, not container images,
+runnable ExperimentConfig values or target qualification. npm SRI/go.sum h1 are not
+container digests.
 
 The catalog's `engine_revision` is the capability baseline main SHA
 **`8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`** reviewed for the

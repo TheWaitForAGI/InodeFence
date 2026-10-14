@@ -96,6 +96,7 @@ G0 documentation freeze의 capability baseline은 main
   deterministic seed-inclusive bounded campaign.
 - Layer 6 infrastructure: generic/USTAR minimization, readers, pair/benign replay,
   passive ledger/journal, qualification/matrix와 completed policy binding/dataset/statistics.
+  N01 `7.5.2/7.5.3` exact wrapper locks는 portable validation만 완료했고 images/runtime/pair는 NOT_RUN.
 - Entry-transition infrastructure: target-independent evidence model, P0/P1 retention,
   P2 bounded scheduler and checksummed evaluation/replay APIs are TESTED synthetically;
   native v1은 qualification에서 BLOCKED이고 producer/effectiveness는 NOT_IMPLEMENTED / NOT_RUN.

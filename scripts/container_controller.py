@@ -41,11 +41,19 @@ def main() -> int:
     parser.add_argument("--evidence", type=Path)
     parser.add_argument(
         "mode",
-        choices=("validate", "validate-node-image", "validate-node-target", "benign-node-smoke"),
+        choices=(
+            "validate",
+            "validate-node-image",
+            "validate-node-target",
+            "validate-node-effect-producer",
+            "qualify-node-effect-v2",
+            "benign-node-smoke",
+        ),
     )
     args = parser.parse_args()
-    if (args.mode == "benign-node-smoke") != (args.evidence is not None):
-        parser.error("benign-node-smoke requires --evidence; validation modes do not export")
+    evidence_modes = {"benign-node-smoke", "qualify-node-effect-v2"}
+    if (args.mode in evidence_modes) != (args.evidence is not None):
+        parser.error("evidence mode requires --evidence; validation modes do not export")
     if args.evidence is not None and (
         not args.evidence.is_absolute() or args.evidence.exists() or args.evidence.is_symlink()
     ):
@@ -57,6 +65,8 @@ def main() -> int:
             "validate": "check_boundary.py",
             "validate-node-image": "check_node_image.py",
             "validate-node-target": "check_node_target.py",
+            "validate-node-effect-producer": "check_node_effect_producer.py",
+            "qualify-node-effect-v2": "check_node_effect_qualification.py",
             "benign-node-smoke": "check_node_campaign.py",
         }[args.mode]
         return pytest.main(

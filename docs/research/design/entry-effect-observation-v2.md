@@ -1,18 +1,48 @@
-# Partial-order filesystem-effect observation v2 draft
+# Partial-order filesystem-effect observation v2
 
 ## Status and authority
 
-- Design status: **DRAFT TASK CONTRACT**
-- Generic v2 model: **NOT_IMPLEMENTED**
-- Native v2 producer: **NOT_IMPLEMENTED**
-- V2 feedback key, retention and scheduler policy: **NOT_DESIGNED / NOT_IMPLEMENTED**
-- Qualification and target campaign: **NOT_RUN**
+- Design status: **GATE 1 REVIEWED TASK CONTRACT**
+- Generic v2 evidence model: **IMPLEMENTED**, **TESTED synthetically**
+- Native v2 producer: **IMPLEMENTED**, portable contract tests **PASS**; contained Gate 3
+  fixture suite **10/10 PASS** at clean revision `36ff7fd`
+- V2 feedback key, retention and scheduler policy: **IMPLEMENTED / TESTED synthetically**
+- Independent reader and qualification runner: **IMPLEMENTED**, portable tests **PASS**
+- Contained Gate 4: **480/480 completed**, **`V2_NATIVE_EFFECT_OBSERVATION_NOT_QUALIFIED`**
+  because required replacement coverage failed; target campaign **BLOCKED / NOT_RUN**
 - Current v1 model: unchanged; it remains the synthetic tested contract
 
-This document is the minimum alternative design required after node-tar 7.5.22 failed
-the archive-ordered checkpoint feasibility gate. It does not replace
+This document is the native-observation qualification contract required after node-tar
+7.5.22 failed the archive-ordered checkpoint feasibility gate. The generic architecture and
+normalization semantics are defined separately in
+[entry-effect-architecture-v2.md](entry-effect-architecture-v2.md) and
+[entry-effect-feedback-v2.md](entry-effect-feedback-v2.md); their audit and executable work
+plan are in [entry-effect-design-review-v2.md](entry-effect-design-review-v2.md). This
+document does not replace
 [TransitionTrace v1](transition-feedback-v1.md), qualify the v4 probe as a producer or
 authorize P0/P1/P2 effectiveness claims.
+
+The Gate 3 implementation uses a separate source-guarded node-tar worker. It records one
+bounded global sequence across entry lifecycle and filesystem-operation start/completion
+records, retains class-specific lstat/content evidence when stable, and emits one terminal
+stdout frame with a record digest and synchronous-write marker. The controller binds the
+producer, package lock, bundled entrypoint and readable unpack source, verifies the terminal
+frame after target termination, and records that result before capturing AFTER. The exact raw
+frame and the derived `EffectRunResult` can be exported with checksums and no overwrite.
+
+Portable tests exercise framing, evidence conversion, independent reconstruction and
+fail-closed errors. They do not qualify real node-tar coverage or perturbation. The mandatory
+contained producer suite is `validate-node-effect-producer`; the fixed 20-repeat Gate 4 matrix
+is `qualify-node-effect-v2`. Both executed through the existing WSL host broker at clean
+revision `36ff7fd` with a rebuilt immutable image. Independent controller/host readers
+verified the matrix. Duplicate-path reused and truncated the same inode in 20/20 full runs,
+so required replacement coverage failed and the exact negative token applies. See the
+[retained summary](../../../experiments/summaries/node-native-effect-observation-qualification-v2.md).
+
+The entry-effect channel excludes the pinned extractor's exact read-only input-archive open
+before any entry context exists. This is reader activity outside the declared entry-associated
+operation vocabulary; other unassociated sandbox path operations remain invalid. The shared
+isolation provenance model and every acceptance rule were preserved during recovery.
 
 ## Why a separate model is required
 
@@ -65,9 +95,10 @@ tree checkpoint and does not imply that earlier ordinals settled first.
 
 ### Filesystem effect event
 
-A `FilesystemEffectEvent` records a completed, causally associated operation:
+A `FilesystemEffectEvent` records one start/completion-correlated, causally associated
+operation:
 
-- contiguous source event index and capture interval;
+- distinct global start/completion source indexes and monotonic observation intervals;
 - exact associated `ArchiveEntryReference`;
 - generic effect class: namespace create/remove/replace, data write/truncate, metadata
   change, symlink create or hardlink identity creation;
@@ -76,9 +107,11 @@ A `FilesystemEffectEvent` records a completed, causally associated operation:
 - available object identity evidence before/after the operation; and
 - target-specific raw record retained outside the normalized key.
 
-An adapter must not emit a generic effect class for an operation it cannot observe
-completely. Missing path, entry association or result is an observation failure, not an
-`unknown` success event.
+An adapter must not promote an operation callback to a realized generic effect class when it
+cannot establish that class's required identity/state evidence. Operation-only records may
+remain raw evidence but cannot produce successful effect feedback. Missing path, entry
+association, correlation or result is an observation failure, not an `unknown` success
+event. Exact evidence sufficiency is fixed in the feedback contract.
 
 ### Observation frontier
 
@@ -106,13 +139,15 @@ An `EffectEventTrace` contains:
 It preserves three orders separately:
 
 1. **Archive order**: header ordinal relation.
-2. **Observed event order**: contiguous records as delivered by the qualified source.
+2. **Observed event order**: the contiguous global source sequence across lifecycle records
+   and operation start/completion points.
 3. **Supported causality**: an operation was started within an entry's propagated context,
    or a file descriptor/object handle was created by such an operation and used later.
 
-Wall-clock proximity, callback receipt order and equal paths do not create extra causal
-edges. A target-specific reservation dependency may be retained as raw evidence but cannot
-enter the generic graph until separately qualified.
+Wall-clock proximity, callback receipt order, archive ordinal and equal paths do not create
+extra causal edges. A target-specific reservation dependency may be retained as raw evidence
+but cannot enter the generic graph until separately qualified. The finite initial edge
+vocabulary and evidence rules are defined in the architecture contract.
 
 ## Completeness and failure rules
 
@@ -126,9 +161,9 @@ AFTER snapshot; it is never rewritten as success. A timeout or forced terminatio
 which evidence was flushed and marks the stream incomplete.
 
 For the first v2 qualification, incomplete or invalid traces are never eligible for corpus
-admission or mutation reward. A later feedback Task Contract may decide whether a completely
-flushed prefix ending in target rejection is eligible. That policy must be fixed before any
-comparison run.
+admission or mutation reward. The initial feedback contract also makes a completely flushed
+prefix ending in target rejection ineligible. Any later change requires qualification and a
+pre-registered contract revision before a comparison run.
 
 Final reconciliation does not require replaying effect events into the terminal tree: the
 events may omit unqualified operation classes and concurrent effects need not form a serial
@@ -142,14 +177,15 @@ Existing C0/C1/C2 continue to use BEFORE/AFTER and are unchanged. Effect events 
 intermediate observation evidence, not persistent Security Contract verdicts.
 
 V1 `FilesystemTransition`, `TransitionFeedbackKey`, policy IDs P1/P2 and their evaluation
-schemas cannot consume v2 traces. A future normalized key needs a new schema and policy IDs.
-At minimum it would normalize effect classes, entry type/ordinal class, path region, identity
-relation and small partial-order motifs while excluding raw inode values, timestamps,
-target/version and exact paths. Its novelty and vulnerability channels must remain separate.
+schemas cannot consume v2 traces. `EffectFeedbackKey` v2 and the new P0-v2/P1-v2/P2-v2
+identifiers normalize effect classes, entry type/ordinal class, path region, identity
+relation and bounded evidence-supported causal motifs while excluding raw inode values,
+timestamps, target/version and exact paths. Novelty, violation and observation-failure
+channels remain separate.
 
-P0 final-state retention can be reused as a comparator only under a future v2 campaign
-contract. The existing P1/P2 results/export names must not be used for v2 because their
-retention and reward inputs are `TransitionFeedbackKey` v1.
+P0 final-state behavior is reused only behind the new P0-v2 policy ID and the same qualified
+v2 instrumentation. The existing P1/P2 results/export names must not be used for v2 because
+their retention and reward inputs are `TransitionFeedbackKey` v1.
 
 ## Native v2 qualification Task Contract
 
@@ -192,13 +228,15 @@ sentinel layout and explicit event bound. Output is a raw v2 trace plus the unch
 
 Use the v4 regular, directory-metadata, hardlink-identity, symlink, duplicate-path,
 directory-child, independent-files and partial-rejection fixtures. Add controlled timeout,
-event-buffer overflow, missing event, duplicate event, malformed identity, association
-conflict and evidence-flush interruption cases. Stock, minimal markers and full observation
-profiles need at least 20 repetitions for every normal fixture.
+event-buffer overflow, missing event, duplicate event, malformed identity, association and
+operation-correlation conflict, invalid causal edge and evidence-flush interruption cases.
+The fixed `stock`, `minimal` and `full` profiles need at least 20 repetitions for every
+normal fixture.
 
 ### Acceptance criteria
 
-All of the following must pass before feedback design or campaign integration:
+All of the following must pass before a native producer can supply feedback or campaign
+integration:
 
 1. The same complete TAR follows the existing contained target path with exact target and
    source hashes.
@@ -206,7 +244,8 @@ All of the following must pass before feedback design or campaign integration:
    association, including duplicate paths.
 3. Operation coverage for the declared effect vocabulary is demonstrated for regular data,
    link identity, symlink, replacement, directory metadata and failure cleanup.
-4. Event sequence is contiguous and loss/overflow/backpressure/flush failures are explicit.
+4. The global lifecycle/operation-boundary sequence is contiguous; operation starts and
+   completions correlate exactly; loss/overflow/backpressure/flush failures are explicit.
 5. Target outcome, observer failure and backend failure remain distinguishable.
 6. BEFORE and terminal AFTER have existing pipeline meaning and no harness bookkeeping
    enters their namespace window.
@@ -214,13 +253,16 @@ All of the following must pass before feedback design or campaign integration:
    repetition, while scheduling distributions and overhead are reported separately.
 8. Rejection, timeout and interrupted flush preserve available evidence without success or
    reward promotion.
-9. A reader independently recomputes associations, sequence integrity, partial-order edges
-   and final compatibility from immutable raw evidence.
+9. A reader independently recomputes associations, sequence/correlation integrity, effect
+   evidence sufficiency, partial-order edges, normalized keys and final compatibility from
+   immutable raw evidence.
 10. The result is called engineering qualification only; no transition-feedback advantage
     or vulnerability result is claimed.
 
-Failure of any required criterion leaves v2 **NOT_QUALIFIED**. Passing this Task Contract
-would authorize a separate normalized-feedback Task Contract, not automatic P1/P2 reuse.
+Failure of any required criterion records
+`V2_NATIVE_EFFECT_OBSERVATION_NOT_QUALIFIED`. Passing every criterion records
+`V2_NATIVE_EFFECT_OBSERVATION_QUALIFIED` and authorizes a separate campaign-integration
+gate, not automatic P1/P2 reuse or an effectiveness claim.
 
 ## Reusable v1 components
 
@@ -239,6 +281,7 @@ would authorize a separate normalized-feedback Task Contract, not automatic P1/P
 ## Claim boundary
 
 The v4 result supports the engineering conclusion that the tested node-tar execution and
-passive archive-ordered v1 checkpoint requirement are incompatible. The v2 model remains a
-proposal. Whether partial-order effect feedback is sound, implementable without unacceptable
-perturbation or more effective than final-state feedback is unverified.
+passive archive-ordered v1 checkpoint requirement are incompatible. Gate 1 now supplies a
+reviewed v2 design. Gate 3 is implemented and contained-tested; Gate 4's independent evidence
+validation passed but required replacement coverage failed. Native feedback remains
+unqualified, and effectiveness relative to final-state feedback is unverified.

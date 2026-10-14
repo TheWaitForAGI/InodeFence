@@ -3,9 +3,11 @@
 import math
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import ClassVar
 
 from ._validation import validate_sha256
 from .archive import ArchiveCase
+from .effect import EffectEventTrace, EffectTargetTermination
 from .filesystem import (
     Region,
     StateChange,
@@ -229,3 +231,38 @@ class TransitionRunResult:
             self.trace.termination != expected_termination
         ):
             raise ValueError("trace termination differs from target execution status")
+
+
+@dataclass(frozen=True, slots=True)
+class EffectRunResult:
+    """An unchanged RunResult composed with independent effect-event evidence."""
+
+    serialization_schema: ClassVar[int] = 2
+
+    base_result: RunResult
+    trace: EffectEventTrace
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.base_result, RunResult) or not isinstance(
+            self.trace, EffectEventTrace
+        ):
+            raise ValueError("effect run requires RunResult and EffectEventTrace")
+        expected_entries = tuple(
+            ArchiveEntryReference(index, entry.path, entry.entry_type, entry.link_target)
+            for index, entry in enumerate(self.base_result.case.entries)
+        )
+        if self.trace.archive_entries != expected_entries:
+            raise ValueError("effect trace entry identity differs from ArchiveCase")
+        if (
+            self.trace.before != self.base_result.before
+            or self.trace.after != self.base_result.after
+        ):
+            raise ValueError("effect trace snapshots differ from base RunResult")
+        expected_termination = {
+            ExecutionStatus.SUCCESS: EffectTargetTermination.SUCCESS,
+            ExecutionStatus.REJECTED: EffectTargetTermination.REJECTED,
+            ExecutionStatus.FAILED: EffectTargetTermination.FAILED,
+            ExecutionStatus.TIMED_OUT: EffectTargetTermination.TIMED_OUT,
+        }[self.base_result.execution.status]
+        if self.trace.termination != expected_termination:
+            raise ValueError("effect trace termination differs from target execution status")

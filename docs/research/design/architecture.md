@@ -1808,3 +1808,29 @@ Transition evaluation은 legacy `ExperimentConfig`/campaign schema를 수정하�
 final RunResult와 provenance를 검증하고 동일 RNG seed로 parent/operator/mutation/feedback/reward를
 재생한다. Summary/statistics는 verified bundle만 입력으로 받고 P0/P1/P2 외 조건 차이를 거부한다.
 이 passive evidence 계층은 native adapter qualification이나 benchmark readiness를 만들지 않는다.
+
+## Entry-associated filesystem-effect v2
+
+Node-tar의 asynchronous work가 archive ordinal 밖에서 완료될 수 있으므로 v2는
+`TransitionTrace` checkpoint를 완화하지 않는다. 대신 existing BEFORE/AFTER와 unchanged
+`RunResult`에 별도 `EffectEventTrace`를 composition하고 archive order, global observed
+operation/lifecycle sequence, validated causal DAG를 독립적으로 보존한다. Operation callback
+success와 verified filesystem state/identity effect도 별도 evidence level로 기록한다.
+
+V2 normalization은 exact path/inode/timestamp/sequence/count를 제외하고 verified effect,
+per-entry effect set, one-edge causal motif의 finite key set을 만든다. Completion-order permutation과
+unsupported overlap은 reward가 아니다. New P0-v2/P1-v2/P2-v2 IDs share identical full
+instrumentation; incomplete/lossy/conflicting/unflushed evidence는 모든 admission/reward에서 fail
+closed한다. Existing C0/C1/C2와 v1 models/policies/serialization은 unchanged다.
+
+이 generic model/normalization/search/scheduler/caller-owned campaign은 synthetic Gate 2 tests를
+통과했다. Tests는 completion permutation stability, explicit-edge-only motif, invalid-stream novelty
+non-consumption, P0/P1 retention difference, P1/P2 retention equality와 deterministic bounded reward를
+검증한다. 이는 native producer 또는 research effectiveness evidence가 아니다.
+
+Gate 1은 generic synthetic work만 허용한다. Native integration은 bounded loss-detecting producer,
+independent reader와 mandatory qualification이 exact
+`V2_NATIVE_EFFECT_OBSERVATION_QUALIFIED` decision을 만들기 전까지 blocked다. Exact data flow,
+generic/target boundaries와 serialization은
+[entry-effect-architecture-v2.md](entry-effect-architecture-v2.md), normalization/policies는
+[entry-effect-feedback-v2.md](entry-effect-feedback-v2.md)를 따른다.

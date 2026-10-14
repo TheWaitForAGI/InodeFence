@@ -42,3 +42,8 @@ callback-time snapshot consistency와 stock 대비 overhead를 검증한 **QUALI
 async-context와 Node `fs` completion을 사용해 operation을 exact entry에 귀속하고 independent
 work의 later-ordinal effect가 earlier completion보다 먼저 실제로 완료됨을 검증한
 **QUALIFIED FAIL** 기록이다. Effect event는 complete checkpoint나 P0/P1/P2 결과가 아니다.
+
+[node-tar native effect observation qualification v2](node-native-effect-observation-qualification-v2.md)는
+WSL trusted broker에서 Gate 3 10개 검사와 Gate 4 480회를 실행하고 raw evidence를 독립적으로
+재검증한 기록이다. Required replacement coverage가 실패해 정확한 판정은
+**`V2_NATIVE_EFFECT_OBSERVATION_NOT_QUALIFIED`**이며 native campaign은 계속 차단된다.

@@ -9,5 +9,6 @@ COPY --from=dependencies /usr/local/bin/node /usr/local/bin/node
 COPY --from=dependencies /target/node_modules /target/node_modules
 COPY --from=dependencies /target/package-lock.json /target/package-lock.json
 COPY src/inodefence/targets/_node_worker.cjs /target/worker.cjs
+COPY src/inodefence/targets/_node_effect_producer.cjs /target/effect-producer.cjs
 USER 1000:1000
 ENTRYPOINT ["/usr/local/bin/node", "/target/worker.cjs"]

@@ -1,4 +1,20 @@
-# Feedback / Corpus v1
+# Feedback / Corpus
+
+## Effect feedback v2 synthetic core
+
+`effect_feedback_keys(EffectEventTrace)`는 complete/integrity-valid/success trace의 realized effect만
+개별 effect, entry effect set, 명시적 causal motif로 정규화한다. Exact path, raw device/inode,
+timestamp, source/runtime ID, callback count와 delivery order는 novelty key가 아니다. Invalid,
+incomplete, overflow/loss/conflict 또는 non-success trace는 fail closed하며 novelty index를 소비하지
+않는다.
+
+`EffectSearchState`는 별도 v2 policy ID로 P0-v2 final-state retention과 P1/P2-v2 effect retention을
+구분한다. P1-v2와 P2-v2의 admission 조건은 같고 scheduler만 다르다. 이는 synthetic Gate 2
+engineering API이며 qualified native producer, campaign effectiveness 또는 vulnerability evidence가
+아니다. 계약은 [entry-effect-feedback-v2](../../../docs/research/design/entry-effect-feedback-v2.md)를
+따른다.
+
+## Legacy v1 입력과 출력
 
 ## 현재 입력과 출력
 

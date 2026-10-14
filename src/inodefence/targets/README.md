@@ -50,6 +50,36 @@ AFTER-error cleanup case is mandatory. Portable tests cover invocation/binding/
 status/safety rejection; they do not claim real containment. Campaign admits ISOLATION_REQUIRED only through this final composed wrapper, with
 backend attestation and matching policy frozen before the first archive.
 
+## Node-tar effect producer v2
+
+`NodeTarEffectTarget` is a separate contained adapter for Gate 3. It invokes the dedicated
+`effect-producer.cjs` worker while retaining the same complete asynchronous
+`tar.x({strict: true, preservePaths: false})` call. Binding fixes Node/tar, producer, package
+lock, bundled package entrypoint and readable `unpack.js` digests. It has no direct local
+subprocess fallback.
+
+The full profile propagates exact entry identity with `AsyncLocalStorage`, wraps the declared
+callback-based `fs` vocabulary, assigns one sequence to lifecycle/operation boundary records,
+and captures stable sandbox-relative lstat/content evidence. The minimal profile retains
+lifecycle/context/framing without operation wrappers. The finite record bound is checked
+before recording; overflow is explicit and no older record is overwritten. One stdout frame
+contains the raw records, digest, target outcome and terminal synchronous-write marker.
+
+The adapter verifies source binding, record digest and terminal sequence after the target
+stops and before `effect_pipeline` captures AFTER. Missing/malformed/truncated/overflowed
+evidence produces an incomplete or invalid trace; target rejection, timeout and backend/
+observer exceptions remain distinct. Operation success without class-specific state evidence
+stays `OPERATION_OBSERVED`. `evaluation.native_effect_evidence` publishes the exact raw frame
+and typed result with checksums and no overwrite.
+
+Portable tests validate this contract. The actual eight-fixture container suite is
+`validate-node-effect-producer` and passed all 10 checks through the existing WSL host broker
+at clean revision `36ff7fd`. The separate `qualify-node-effect-v2` mode completed all 480 runs.
+Required replacement coverage failed because duplicate-path reused/truncated the same inode;
+the exact decision is `V2_NATIVE_EFFECT_OBSERVATION_NOT_QUALIFIED`. The producer remains
+unqualified and is not connected to a campaign. Raw evidence and audits are linked from the
+[qualification summary](../../../experiments/summaries/node-native-effect-observation-qualification-v2.md).
+
 ## 공통 실행 경계
 
 TargetProvenance.execution_safety는 explicit ExecutionSafety enum이며 default ISOLATION_REQUIRED다.

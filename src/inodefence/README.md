@@ -22,7 +22,10 @@ builder.build_tar → disposable runtime → before snapshot
 | [builder.py](builder.py) | 결정적 USTAR 직렬화 |
 | [runtime.py](runtime.py) | Linux runtime와 sentinel lifecycle |
 | [pipeline.py](pipeline.py) | 입력 하나의 실행 순서 연결 |
+| [effect_pipeline.py](effect_pipeline.py) | contained node-tar v2 producer와 unchanged final-state 결과 조합 |
 | [campaign.py](campaign.py) | 명시적 seed와 실행 budget으로 select → mutate → run → consider 연결 |
+| [effect_campaign.py](effect_campaign.py) | caller-owned synthetic v2 producer로 effect policy closed loop 검증 |
+| [effect_scheduler.py](effect_scheduler.py) | v2 uniform/adaptive scheduler와 lineage/reward evidence |
 | [campaign_export.py](campaign_export.py) | 완료된 결과의 manifest JSON / canonical step JSONL |
 | [provenance.py](provenance.py) | 실행 전 source/environment/target/sentinel configuration 고정 |
 | [experiment_config.py](experiment_config.py) | strict JSON config / SHA-256 ID / seed-target binding |
@@ -31,7 +34,7 @@ builder.build_tar → disposable runtime → before snapshot
 | [targets](targets/README.md) | 실제 extractor 실행 |
 | [observer](observer/README.md) | filesystem 사실 관찰과 비교 |
 | [oracle](oracle/README.md) | Security Contract 판정 |
-| [feedback](feedback/README.md) | signature v3, independent novelty, B0/B1/B3 / A1/A2 |
+| [feedback](feedback/README.md) | legacy state feedback와 별도 normalized effect-feedback v2 core |
 | [minimizer.py](minimizer.py) | bounded deterministic generic/USTAR reduction and evidence binding |
 | [evaluation](evaluation/README.md) | verified raw/config, passive ledger/journal, qualification/matrix, datasets/statistics |
 | [replay](replay/README.md) | allowlisted benign fresh-runtime reproduction |
@@ -43,6 +46,14 @@ state 또는 새 semantic violation class면 interesting이며, 같은 case_id�
 보존한다. `Corpus.select_case(rng)`의 결과를 Mutator에 전달하는 책임은 caller에게 있다.
 Corpus가 실행/변형하거나 full RunResult를 저장하지 않는다. 상세 public API와 campaign
 context 한계는 [feedback](feedback/README.md)를 따른다.
+
+Effect Gate 2는 별도 `EffectRunResult`와 v2 policy ID를 사용해 synthetic producer에서
+normalization → novelty → retention → parent/operator selection → next case 관계를 검증한다.
+Gate 3은 별도 contained node-tar worker/adapter, bounded terminal frame, class-specific evidence
+변환과 no-overwrite raw export를 구현했다. Gate 4 independent reader와 고정 qualification
+runner도 구현되어 portable tests를 통과했다. Clean revision `36ff7fd`에서 contained producer
+10개 검사와 480회 qualification을 실행하고 독립적으로 재검증했다. Replacement coverage가
+실패해 NOT_QUALIFIED이므로 이 경로를 native feedback이나 campaign에 사용하지 않는다.
 
 ## 현재 상태와 한계
 

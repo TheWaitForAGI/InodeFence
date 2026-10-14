@@ -113,3 +113,30 @@ def test_qualification_rejects_missing_effect_coverage() -> None:
     summary = _decision(runs)
     assert summary["decision"] == NOT_QUALIFIED
     assert not summary["criteria"]["required_effect_coverage"]
+
+
+def test_duplicate_truncation_does_not_satisfy_replacement_coverage() -> None:
+    runs = _complete_matrix()
+    for item in runs:
+        if item["case"] == "duplicate-path" and item["profile"] == "full":
+            item["realized_effect_classes"] = [EffectClass.TRUNCATION.value]
+    summary = _decision(runs)
+    assert summary["decision"] == NOT_QUALIFIED
+    assert {name for name, passed in summary["criteria"].items() if not passed} == {
+        "required_effect_coverage"
+    }
+    assert not summary["coverage"]["required_realized_effect_checks"]["duplicate-path"]
+
+
+def test_replacement_outside_full_profile_cannot_satisfy_native_coverage() -> None:
+    runs = _complete_matrix()
+    for item in runs:
+        if item["case"] == "duplicate-path":
+            item["realized_effect_classes"] = (
+                [EffectClass.TRUNCATION.value]
+                if item["profile"] == "full"
+                else [EffectClass.NAMESPACE_REPLACEMENT.value]
+            )
+    summary = _decision(runs)
+    assert summary["decision"] == NOT_QUALIFIED
+    assert not summary["criteria"]["required_effect_coverage"]

@@ -223,6 +223,14 @@ def _raw_object(value: object, path: str) -> ObjectSnapshot:
     }
     if not isinstance(value, dict) or set(value) != fields or value["path"] != path:
         raise ValueError("invalid raw object evidence")
+    # Validate the worker's BigInt text encoding independently of the adapter.
+    # int() alone would silently turn a boolean/float into fabricated stat evidence.
+    for field in ("st_dev", "st_ino", "st_nlink", "size", "uid", "gid", "mtime_ns", "ctime_ns"):
+        if (
+            not isinstance(value[field], str)
+            or re.fullmatch(r"0|-?[1-9][0-9]*", value[field]) is None
+        ):
+            raise ValueError(f"raw object evidence {field} must be decimal integer text")
     return ObjectSnapshot(
         path,
         ObjectType(value["object_type"]),

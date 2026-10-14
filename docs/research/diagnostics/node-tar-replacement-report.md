@@ -255,6 +255,11 @@ The reference checkout is an explicit runtime dependency, not a hidden change
 to this PR's generic source. The inherited WIP handoff is preserved on its
 existing branch; this report supersedes its incomplete experimental status.
 
+Draft PR: [#91 — distinguish node-tar namespace changes from replacement
+effects](https://github.com/TheWaitForAGI/InodeFence/pull/91), OPEN / Draft,
+base main, head `diag/node-tar-replacement-report`. Human review and GitHub CI
+are separate from the completed local validation; this task does not merge it.
+
 
 ### Evidence closeout and validation
 

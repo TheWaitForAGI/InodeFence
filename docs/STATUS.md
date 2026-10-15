@@ -16,9 +16,12 @@ v1](research/design/research-contract-v1.md)의 G0 문서 동결과 transition s
 [역사적 감사](research/benchmarks/engine-contract-audit.md)와
 [handoff](research/benchmarks/post-audit-backlog.md)는 해당 revision의 기록이다.
 
-**Historical qualification / rediscovery / formal comparison은 NOT_RUN이다.
-재발견한 역사적 취약점은 없으며 현재 취약점을 주장하지 않는다.**
-Benign smoke와 synthetic/unit tests는 이 문장의 예외가 아니다.
+**N01 historical automated replay는 exact 7.5.2/7.5.3 image에서 8건 readiness와
+10건 pair를 완료했고 independent reader가 PASS했다. 최종 상태는
+`AWAITING_HUMAN_CORRESPONDENCE_REVIEW`다. Rediscovery와 formal comparison은 NOT_RUN이며,
+재발견한 역사적 취약점이나 현재 취약점을 주장하지 않는다.**
+상세 identity와 claim boundary는
+[N02 qualification report](research/diagnostics/n02-autonomous-integration-and-qualification.md)를 따른다.
 
 ## DESIGNED / IMPLEMENTED / TESTED / EXPERIMENTALLY VALIDATED
 
@@ -27,8 +30,8 @@ Benign smoke와 synthetic/unit tests는 이 문장의 예외가 아니다.
 
 | 영역 | DESIGNED | IMPLEMENTED in current source | TESTED evidence / 범위 | EXPERIMENTALLY VALIDATED research claim |
 | --- | --- | --- | --- | --- |
-| C0/C1/C2 | [계약](research/design/security-contracts.md) | persistent BEFORE/AFTER namespace, identity, sentinel effects | [oracle tests](../tests/test_state_semantics.py), [observer](../tests/test_observer.py), [real pipeline](../tests/test_pipeline.py) | 미검증; historical qualification 없음 |
-| Linux execution | fresh runtime + container-required third-party boundary | backend / prepared invocation / verified artifact admission; N01 exact wrapper locks and bounded pair orchestration | [container integration](../tests/README.md); pinned Node benign smoke; N01 portable lock/build-record/admission/readiness/pair/reader controlled tests | historical images/runtime/pair 미검증 |
+| C0/C1/C2 | [계약](research/design/security-contracts.md) | persistent BEFORE/AFTER namespace, identity, sentinel effects | [oracle tests](../tests/test_state_semantics.py), [observer](../tests/test_observer.py), [real pipeline](../tests/test_pipeline.py) | N01 exact pair에서 7.5.2 C1/C2 5/5, 7.5.3 0/5; final human disposition pending |
+| Linux execution | fresh runtime + container-required third-party boundary | backend / prepared invocation / verified artifact admission; N01 exact wrapper locks and bounded pair orchestration | [container integration](../tests/README.md); pinned Node benign smoke; N01 8+10 real historical runs와 independent reader PASS | N01 automated replay complete; final qualification pending |
 | Mutation | legacy / M1 / protected-component / A3 contracts | eight slots; M1 nested/reused names/dependencies; versioned default-sentinel component policy; no-reorder versions | [mutator tests](../tests/test_mutator.py), [constructive addressing](../tests/test_mutator_addressing.py), [search composition](../tests/test_campaign_search.py) | logical address generation만 TESTED; historical effect 미검증 |
 | Search / feedback | B0/B1/B3 and A1/A2 | `SearchState`, `run_search_campaign`, explicit policy config | [policy checks](../tests/test_feedback_search_contracts.py), [trusted reference integration](../tests/test_campaign_search_integration.py) | 비교 효과 미검증 |
 | Entry transitions | P0 final-state, P1 transition retention, P2 transition-adaptive mutation | v1 model/search/evaluation; v2 event model/feedback, bounded node-tar producer/raw export, independent reader and qualification runner | synthetic tests plus node-tar/libarchive controlled qualification; v2 producer 10 checks PASS and 480-run matrix independently verified at `36ff7fd` | v1 `BLOCKED_NATIVE_OBSERVATION`; v2 `V2_NATIVE_EFFECT_OBSERVATION_NOT_QUALIFIED` (replacement coverage); effectiveness NOT_RUN |
@@ -163,10 +166,11 @@ Native campaign integration remains blocked until the exact
 `V2_NATIVE_EFFECT_OBSERVATION_QUALIFIED` decision is retained. The initial v2 policy rejects
 incomplete/invalid streams and target-rejection prefixes for admission/reward.
 
-**첫 historical qualification은 N01 node-tar 7.5.2 / 7.5.3 hardlink arm을 의도한다.**
+**첫 historical qualification인 N01 node-tar 7.5.2 / 7.5.3 hardlink arm은 automated
+replay를 완료했고 final human correspondence review를 기다린다.**
 두 exact [wrapper locks](../experiments/benchmarks/locks/README.md)는 공통 historical production
-closure로 준비하고 portable validator를 통과했지만 image build/runtime/options/setup은 아직
-qualify하지 않았다. M1은 composition을 지원하지만 기존 finite vocabulary가 default
+closure로 준비하고 portable validator를 통과했으며, N02 attempt에서 image build/runtime/
+options/setup admission도 통과했다. M1은 composition을 지원하지만 기존 finite vocabulary가 default
 `outside/sentinel.txt`를 생성하지 못한다. 별도 versioned
 [protected-component policy](research/design/mutation-protected-components-v1.md)는 original benign
 seed에서 해당 상대 주소까지의 deterministic logical reachability를 TESTED했다. 이는 target-visible
@@ -177,11 +181,16 @@ pair qualification 전 unknown-vulnerability campaign으로 넘어가지 않는�
 기록한다. Human authorization은 2026-10-15에 기록됐다. N01 전용 구현은
 normal `7.5.22` validator와 분리된 metadata admission, 정확히 8건의 readiness,
 counterbalanced 10-run pair, result-first publication과 fresh-process independent reader를 포함한다.
-이 구현의 controlled-adapter tests는 historical target evidence가 아니다. 현재 환경은
-trusted-host Docker CLI를 제공하지 않아 historical image build/admission/extractions은
-계속 **NOT_RUN**이고 pilot도 **NOT_RUN**이다.
+이 구현의 controlled-adapter tests와 별개로 clean `e987c855` source와 trusted
+macOS/OrbStack controller에서 두 historical image를 immutable ID로 admission했고, 8건
+readiness와 10건 pair를 한 번 실행했다. Independent reader는
+`N01_PAIR_AUTOMATED_REPLAY_COMPLETE`를 재계산했다. 7.5.2는 C1/C2 5/5, 7.5.3은
+C1/C2 0/5와 strict rejection 5/5였다. Frozen contract의 human correspondence disposition이
+남아 final token은 없으며 pilot과 B0/B1/B3는 **NOT_RUN**이다. 전체 evidence는
+[N02 report](research/diagnostics/n02-autonomous-integration-and-qualification.md)에 기록한다.
 [Benchmark Set](research/benchmarks/benchmark-set-v1.md)과
-[catalog](../experiments/benchmarks/README.md)의 15 execution은 모두 NOT_RUN이며 READY는 없다.
+[catalog](../experiments/benchmarks/README.md)의 15개 G0 planning record는 여전히 정적
+`NOT_RUN` 값이며 READY는 없다. 이 값은 별도 N01 qualification evidence의 live 상태를 대신하지 않는다.
 
 순서를 유지한다: G0 정의 → oracle → harness → fuzzer correctness → synthetic →
 historical qualification → pilot → experiment freeze → main experiments → candidate triage →

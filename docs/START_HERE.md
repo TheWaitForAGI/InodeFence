@@ -98,9 +98,9 @@ G0 documentation freeze의 capability baseline은 main
   target/setup qualification은 NOT_RUN.
 - Layer 6 infrastructure: generic/USTAR minimization, readers, pair/benign replay,
   passive ledger/journal, qualification/matrix와 completed policy binding/dataset/statistics.
-  N01 `7.5.2/7.5.3`은 exact locks와 전용 admission/readiness/pair/fresh-process reader가
-  engineering TESTED 상태이다. Human authorization은 기록됐지만 historical
-  images/runtime/8+10 pair는 NOT_RUN이다.
+  N01 `7.5.2/7.5.3` exact images는 clean `e987c855` source와 trusted macOS/OrbStack
+  controller에서 admission됐다. 8건 readiness와 10건 pair가 실행됐고 fresh-process reader는
+  automated replay PASS를 재계산했다. Final human correspondence review는 pending이다.
 - Entry-transition infrastructure: target-independent evidence model, P0/P1 retention,
   P2 bounded scheduler and checksummed evaluation/replay APIs are TESTED synthetically;
   native v1은 qualification에서 BLOCKED이고 producer/effectiveness는 NOT_IMPLEMENTED / NOT_RUN.
@@ -108,8 +108,10 @@ G0 documentation freeze의 capability baseline은 main
   checks는 구분하며 어느 쪽도 historical qualification이나 effectiveness 결과가 아니다.
 
 **DESIGNED ≠ IMPLEMENTED ≠ TESTED ≠ EXPERIMENTALLY VALIDATED.**
-Historical qualification / rediscovery / formal comparison은 NOT_RUN이며 현재 취약점을 주장하지 않는다.
-첫 intended historical qualification은 **N01 node-tar 7.5.2 / 7.5.3**이고 아직 READY가 아니다.
+N01 historical automated replay는 완료됐지만 final qualification은
+**`AWAITING_HUMAN_CORRESPONDENCE_REVIEW`**다. Rediscovery / formal comparison은 NOT_RUN이며
+현재 취약점을 주장하지 않는다. 상세 결과와 identity는
+[N02 qualification report](research/diagnostics/n02-autonomous-integration-and-qualification.md)를 따른다.
 Snapshot은 persistent effect만 판정하며 transient/direct-use/symlink referent와 sandbox 밖 접근을
 증명하지 못한다. Alternative policy 실행 API와 completed export가 있어도 automatic journal attachment,
 full-step timing과 known-class adjudication은 별도 검증 과제다. G0 문서 동결은 후속 gate의 PASS가 아니다.

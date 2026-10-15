@@ -22,7 +22,14 @@ def main() -> int:
     parser.add_argument("--context", required=True)
     parser.add_argument("--controller", required=True)
     parser.add_argument("--volume", required=True)
-    parser.add_argument("--image", required=True)
+    parser.add_argument("--image", required=True, action="append")
+    parser.add_argument(
+        "--build-context",
+        type=Path,
+        action="append",
+        default=[],
+        help="affected then fixed prepared context; N01 qualification only",
+    )
     parser.add_argument(
         "--evidence", type=Path, help="new absolute output path inside trusted Linux controller"
     )
@@ -35,12 +42,20 @@ def main() -> int:
             "validate-node-effect-producer",
             "qualify-node-effect-v2",
             "benign-node-smoke",
+            "qualify-node-n01",
         ),
     )
     args = parser.parse_args()
-    evidence_modes = {"benign-node-smoke", "qualify-node-effect-v2"}
+    evidence_modes = {"benign-node-smoke", "qualify-node-effect-v2", "qualify-node-n01"}
     if (args.mode in evidence_modes) != (args.evidence is not None):
         parser.error("evidence mode requires --evidence; validation modes do not export")
+    expected_images = 2 if args.mode == "qualify-node-n01" else 1
+    if len(args.image) != expected_images:
+        parser.error(f"{args.mode} requires exactly {expected_images} immutable image ID(s)")
+    if (args.mode == "qualify-node-n01") != bool(args.build_context):
+        parser.error("--build-context is required only for N01 qualification")
+    if args.mode == "qualify-node-n01" and len(args.build_context) != 2:
+        parser.error("N01 qualification requires affected then fixed build contexts")
     executable = shutil.which("docker")
     if executable is None:
         raise BackendError("host Docker CLI unavailable")
@@ -71,8 +86,7 @@ def main() -> int:
         args.volume,
         "--owner",
         owner,
-        "--image",
-        args.image,
+        *(argument for image in args.image for argument in ("--image", image)),
         *(("--evidence", str(args.evidence)) if args.evidence is not None else ()),
         args.mode,
     )
@@ -81,6 +95,25 @@ def main() -> int:
             command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True
         ) as process:
             assert process.stdout is not None and process.stdin is not None
+            if args.mode == "qualify-node-n01":
+                from inodefence.evaluation.n01 import EXPECTED_BUILD_FILES, FROZEN_TARGETS
+                from inodefence.evaluation.node_packaging import validate_node_build
+
+                payload = []
+                for context, image, frozen in zip(
+                    args.build_context, args.image, FROZEN_TARGETS, strict=True
+                ):
+                    build = validate_node_build(context)
+                    if build["image_id"] != image or build["tar_version"] != frozen.tar_version:
+                        raise ValueError("N01 image/build-context order or identity mismatch")
+                    payload.append(
+                        {
+                            name: base64.b64encode((context / name).read_bytes()).decode("ascii")
+                            for name in EXPECTED_BUILD_FILES
+                        }
+                    )
+                process.stdin.write(json.dumps({"n01_build_contexts": payload}) + "\n")
+                process.stdin.flush()
             for line in process.stdout:
                 request = json.loads(line)
                 if set(request) != {"args", "timeout"} or not isinstance(request["args"], list):

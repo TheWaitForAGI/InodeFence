@@ -36,6 +36,18 @@ _FIELDS = {
     "source",
     "files_sha256",
 }
+_BUILD_FIELDS = {
+    "format",
+    "schema_version",
+    "image_id",
+    "image_architecture",
+    "packaging_sha256",
+    "tar_version",
+    "node_version",
+    "files_sha256",
+    "stdout",
+    "stderr",
+}
 
 
 def _version(value: object) -> str:
@@ -261,6 +273,37 @@ def build_node_release(directory: Path, *, docker_context: str) -> dict:
         "stderr": completed.stderr.decode("utf-8", "surrogateescape"),
     }
     _new_file(directory / "build.json", json_bytes(record) + b"\n")
+    return record
+
+
+def validate_node_build(directory: Path) -> dict:
+    """Verify a completed immutable-image record against its prepared context.
+
+    This is a portable record/context check. It does not query a container runtime,
+    prove that the image is still present or admit the image for archive execution.
+    """
+    manifest = validate_node_release(directory)
+    content = _read_file(directory / "build.json")
+    record = object_fields(read_json(content), _BUILD_FIELDS)
+    hashes = object_fields(record["files_sha256"], set(_FILES))
+    if (
+        content != json_bytes(record) + b"\n"
+        or record["format"] != "inodefence-node-image-build"
+        or type(record["schema_version"]) is not int
+        or record["schema_version"] != 1
+        or not isinstance(record["image_id"], str)
+        or re.fullmatch(r"sha256:[0-9a-f]{64}", record["image_id"]) is None
+        or not isinstance(record["image_architecture"], str)
+        or not record["image_architecture"]
+        or record["packaging_sha256"]
+        != sha256(_read_file(directory / "packaging.json")).hexdigest()
+        or record["tar_version"] != manifest["tar_version"]
+        or record["node_version"] != NODE_VERSION
+        or hashes != manifest["files_sha256"]
+        or not isinstance(record["stdout"], str)
+        or not isinstance(record["stderr"], str)
+    ):
+        raise ValueError("build record differs from the prepared immutable-image contract")
     return record
 
 

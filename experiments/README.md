@@ -72,6 +72,13 @@ Baseline main의 canonical/container checks와 **node-tar 7.5.22 benign smoke PA
 **N01 node-tar 7.5.2 / 7.5.3**가 첫 intended historical qualification이며 아직 READY가 아니다.
 All 15 executions remain NOT_RUN. Actual qualification/matrix evidence는 별도 evaluation API가 처리하며
 static catalog selection/source facts를 실행 결과로 자동 승격하지 않는다.
+
+N01 pair contract의 human authorization은 2026-10-15에 기록됐고, 별도 historical
+admission/readiness/pair/independent-reader 구현은 engineering test를 가진다. 현재 checkout
+환경에는 trusted-host Docker CLI가 없어 historical image build·8 benign·10 pair는
+계속 **NOT_RUN**이다. Controlled-adapter test 8+10을 historical evidence로 승격하지
+않는다. 실제 evidence는 `scripts.container_host ... qualify-node-n01`의 새 runtime-volume
+경로에서만 게시하고, fresh-process reader와 human correspondence review를 거쳐야 한다.
 [Protocol](../docs/research/benchmarks/evaluation-protocol-v1.md)의 B0/B1/B3, A1/A2/A3 budgets/subsets는
 pilot 후 experiment freeze 이전까지 provisional이다. Path-only/fixed-recipe baseline은 없다.
 

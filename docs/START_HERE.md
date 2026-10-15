@@ -98,7 +98,9 @@ G0 documentation freeze의 capability baseline은 main
   target/setup qualification은 NOT_RUN.
 - Layer 6 infrastructure: generic/USTAR minimization, readers, pair/benign replay,
   passive ledger/journal, qualification/matrix와 completed policy binding/dataset/statistics.
-  N01 `7.5.2/7.5.3` exact wrapper locks는 portable validation만 완료했고 images/runtime/pair는 NOT_RUN.
+  N01 `7.5.2/7.5.3`은 exact locks와 전용 admission/readiness/pair/fresh-process reader가
+  engineering TESTED 상태이다. Human authorization은 기록됐지만 historical
+  images/runtime/8+10 pair는 NOT_RUN이다.
 - Entry-transition infrastructure: target-independent evidence model, P0/P1 retention,
   P2 bounded scheduler and checksummed evaluation/replay APIs are TESTED synthetically;
   native v1은 qualification에서 BLOCKED이고 producer/effectiveness는 NOT_IMPLEMENTED / NOT_RUN.

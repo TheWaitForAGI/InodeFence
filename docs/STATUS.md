@@ -1,6 +1,6 @@
 # 현재 프로젝트 상태
 
-상태 갱신일: **2026-10-14**. G0 capability baseline은 main
+상태 갱신일: **2026-10-15**. G0 capability baseline은 main
 **`8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`**다. 이 SHA는 G0 문서 동결이
 검토한 구현 revision이며 최신 main을 뜻하지 않는다. #77–#84 연구 stack은 main에
 통합됐다. Internal completion qualification v3의 clean harness revision은 `9ea306f7`이고,
@@ -28,7 +28,7 @@ Benign smoke와 synthetic/unit tests는 이 문장의 예외가 아니다.
 | 영역 | DESIGNED | IMPLEMENTED in current source | TESTED evidence / 범위 | EXPERIMENTALLY VALIDATED research claim |
 | --- | --- | --- | --- | --- |
 | C0/C1/C2 | [계약](research/design/security-contracts.md) | persistent BEFORE/AFTER namespace, identity, sentinel effects | [oracle tests](../tests/test_state_semantics.py), [observer](../tests/test_observer.py), [real pipeline](../tests/test_pipeline.py) | 미검증; historical qualification 없음 |
-| Linux execution | fresh runtime + container-required third-party boundary | backend / prepared invocation / verified artifact admission; N01 exact wrapper locks | [container integration](../tests/README.md); pinned Node benign smoke; N01 portable lock/packaging checks | historical images/runtime/pair 미검증 |
+| Linux execution | fresh runtime + container-required third-party boundary | backend / prepared invocation / verified artifact admission; N01 exact wrapper locks and bounded pair orchestration | [container integration](../tests/README.md); pinned Node benign smoke; N01 portable lock/build-record/admission/readiness/pair/reader controlled tests | historical images/runtime/pair 미검증 |
 | Mutation | legacy / M1 / protected-component / A3 contracts | eight slots; M1 nested/reused names/dependencies; versioned default-sentinel component policy; no-reorder versions | [mutator tests](../tests/test_mutator.py), [constructive addressing](../tests/test_mutator_addressing.py), [search composition](../tests/test_campaign_search.py) | logical address generation만 TESTED; historical effect 미검증 |
 | Search / feedback | B0/B1/B3 and A1/A2 | `SearchState`, `run_search_campaign`, explicit policy config | [policy checks](../tests/test_feedback_search_contracts.py), [trusted reference integration](../tests/test_campaign_search_integration.py) | 비교 효과 미검증 |
 | Entry transitions | P0 final-state, P1 transition retention, P2 transition-adaptive mutation | v1 model/search/evaluation; v2 event model/feedback, bounded node-tar producer/raw export, independent reader and qualification runner | synthetic tests plus node-tar/libarchive controlled qualification; v2 producer 10 checks PASS and 480-run matrix independently verified at `36ff7fd` | v1 `BLOCKED_NATIVE_OBSERVATION`; v2 `V2_NATIVE_EFFECT_OBSERVATION_NOT_QUALIFIED` (replacement coverage); effectiveness NOT_RUN |
@@ -173,8 +173,13 @@ seed에서 해당 상대 주소까지의 deterministic logical reachability를 T
 setup, historical affected/fixed behavior 또는 rediscovery를 검증하지 않으므로 contained setup과
 pair qualification 전 unknown-vulnerability campaign으로 넘어가지 않는다.
 [2026-10-15 execution progress](research/diagnostics/n01-historical-execution-progress-2026-10-15.md)는
-두 변경의 tested integration revision과 N01 contract technical review를 기록한다. Human
-authorization은 아직 기록되지 않았고 historical images/extractions는 계속 NOT_RUN이다.
+두 변경의 tested integration revision, N01 contract technical review와 후속 implementation gate를
+기록한다. Human authorization은 2026-10-15에 기록됐다. N01 전용 구현은
+normal `7.5.22` validator와 분리된 metadata admission, 정확히 8건의 readiness,
+counterbalanced 10-run pair, result-first publication과 fresh-process independent reader를 포함한다.
+이 구현의 controlled-adapter tests는 historical target evidence가 아니다. 현재 환경은
+trusted-host Docker CLI를 제공하지 않아 historical image build/admission/extractions은
+계속 **NOT_RUN**이고 pilot도 **NOT_RUN**이다.
 [Benchmark Set](research/benchmarks/benchmark-set-v1.md)과
 [catalog](../experiments/benchmarks/README.md)의 15 execution은 모두 NOT_RUN이며 READY는 없다.
 

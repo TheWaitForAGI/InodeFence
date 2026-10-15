@@ -49,9 +49,10 @@ Validation:
 - `git diff --check`: PASS;
 - combined worktree after validation: clean.
 
-The branch was pushed. PR creation URL:
-<https://github.com/TheWaitForAGI/InodeFence/pull/new/integration/n01-historical-readiness-v1>.
-No PR was opened because authenticated GitHub API/CLI access was unavailable.
+The branch was pushed. Authenticated connector access later became available and the existing
+head was checked before opening
+[PR #93](https://github.com/TheWaitForAGI/InodeFence/pull/93). No duplicate branch or PR was
+created.
 
 ## Stage 2 — technical review, human decision pending
 
@@ -73,8 +74,8 @@ metadata as corroboration. Human authorization is **NOT_RECORDED**, so the execu
 Review-branch validation after the contract update: `make check` PASS with **1,467 tests**,
 environment/docs PASS, followed by `git diff --check` PASS.
 
-PR creation URL:
-<https://github.com/TheWaitForAGI/InodeFence/pull/new/review/n01-pair-qualification-v1>.
+Authenticated connector access later opened the reviewed stack as
+[PR #94](https://github.com/TheWaitForAGI/InodeFence/pull/94), based on the integration branch.
 
 ## Stage 3 implementation audit
 
@@ -100,11 +101,44 @@ requirements for the post-approval implementation:
 Historical image build, admission and benign readiness are **NOT_RUN**. Exact immutable image
 IDs do not exist yet. Stage 4 and Stage 5 remain gated.
 
+## Stage 4 — authorization and contained implementation
+
+The project owner recorded the exact approval statement **“N01 pair qualification contract
+v1을 승인한다.”** on 2026-10-15. Work continued on
+`experiment/n01-contained-qualification-v1` from the reviewed `d882789` stack.
+
+The additive implementation keeps generic builder/mutation/runtime/observer/oracle/feedback
+semantics unchanged. It adds strict completed build-record validation, N01-only immutable
+image admission, two oracle controls, exactly eight readiness runs, the frozen counterbalanced
+ten-run pair, result-first records, five `PairComparison` records and a fresh-process reader
+that recomputes artifact integrity, case/TAR/image identity, snapshots, inode relationships and
+C0/C1/C2. Controlled adapters exercise the complete 8+10 schedule and failure paths; these are
+engineering tests rather than historical execution evidence.
+
+The current Dev Container has the validated Linux runtime volume but no Docker CLI or direct
+daemon access. That is the intended trust boundary, so historical images were not built and
+the broker-backed N01 mode was not invoked from this environment. Historical admission,
+readiness, pair qualification and B0/B1/B3 pilot remain **NOT_RUN**.
+
+The project owner subsequently reported macOS/OrbStack boundary validation **6/6 PASS** with
+the existing `scripts.container_host` path and running Dev Container. This restores the
+intended trusted-host transport precondition without a Docker socket mount or privilege
+change inside the Dev Container. It is boundary engineering evidence only: the two historical
+images are still not built and the approved extraction count remains **0/18**.
+
+The contained implementation checkpoint is
+`0699099806dad1c8df12d8e9cc22dd35b334a4d0`. It is published for review in
+[PR #95](https://github.com/TheWaitForAGI/InodeFence/pull/95). The complete review handoff is
+recorded in [the autonomous execution final review](n01-autonomous-execution-final-review.md).
+That review also resolves the checkpoint test-count discrepancy: PR #95 CI collected and
+passed 1,476 tests, equal to the 1,467-test parent plus nine new tests. The earlier 1,475 entry
+is not reproducible at the checkpoint and accounts for only eight of those nine new tests.
+
 ## Next authorized transition
 
-A human reviewer must first record an unambiguous approval of the exact contract, for
-example: **“N01 pair qualification contract v1을 승인한다.”** After that decision is committed,
-the next implementation branch starts from the reviewed stacked revision and may add only
-the N01-specific admission/readiness/pair orchestration above. Historical build and archive
-execution remain separate host actions after that implementation passes review and canonical
-validation.
+After human code review and canonical validation of this branch, run the documented explicit
+macOS/OrbStack build and `scripts.container_host ... qualify-node-n01` command with two full
+immutable image IDs and a new runtime-volume evidence path. Admission failure must stop before
+archive execution. Only an independently verified `N01_PAIR_AUTOMATED_REPLAY_COMPLETE` may
+advance to human correspondence review; it is not itself the pair-qualified token or pilot
+authorization.

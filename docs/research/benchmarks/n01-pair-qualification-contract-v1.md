@@ -1,9 +1,10 @@
 # N01 contained affected/fixed pair qualification v1
 
-Status: **TECHNICALLY_REVIEWED / BLOCKED_FOR_HUMAN_APPROVAL /
+Status: **TECHNICALLY_REVIEWED / HUMAN_AUTHORIZATION_RECORDED /
 HISTORICAL_IMAGES_NOT_BUILT / NOT_EXECUTED**.
-No historical target invocation, image build, npm install, affected/fixed replay or fuzzing
-campaign is authorized by this document.
+The exact bounded qualification described here is authorized. Historical image build and
+execution still require every technical admission and containment precondition below; no
+fuzzing campaign or broader target/scope is authorized by this document.
 
 ## Research purpose and claim boundary
 
@@ -17,8 +18,9 @@ archive is not a fuzzing rediscovery, must never enter the initial fuzzing seed 
 cannot establish feedback effectiveness. A PASS would qualify this pair/arm and the existing
 snapshot detector only. It would not prove either release generally vulnerable or safe.
 
-Current Layer: Layer 6 historical-target qualification. The stop condition before execution
-is both a recorded human approval of this contract and restoration of the trusted host broker.
+Current Layer: Layer 6 historical-target qualification. Human approval is recorded below.
+The remaining stop condition before execution is restoration and successful validation of the
+trusted host broker together with all frozen build/admission prerequisites.
 
 ## Prerequisite ledger
 
@@ -239,8 +241,9 @@ Frozen execution summary for human decision:
 | Maximum claim | controlled historical behavior is observable by the existing persistent C1/C2 pipeline |
 | Excluded claims | fuzzing rediscovery, feedback effectiveness, native-effect qualification, general release safety and new vulnerability discovery |
 
-Human authorization state: **NOT_RECORDED**. The execution gate remains
-`BLOCKED_FOR_HUMAN_APPROVAL` until a human reviewer explicitly records
-“N01 pair qualification contract v1을 승인한다” (or an unambiguous equivalent) against these
-exact bindings, budget and decision rules. Technical review and the user's broker-baseline
-report do not constitute that authorization.
+Human authorization state: **RECORDED** on **2026-10-15 UTC**. The project owner supplied the
+exact statement “N01 pair qualification contract v1을 승인한다” in the direct Task Contract
+that started `experiment/n01-contained-qualification-v1`. The authorization binds the exact
+relative arm, five-repetition budget, decision rule and containment requirements above; it
+does not waive admission failures, expand the target set, authorize a fuzzing campaign or
+replace the required post-run human correspondence review.

@@ -172,7 +172,7 @@ Current stacked GitHub state verified on 2026-10-15:
 | --- | --- | --- | --- |
 | [#93](https://github.com/TheWaitForAGI/InodeFence/pull/93) | `ee6ce6501368ff8a5ab420e254790c3451b997ae` → `main` | 29 files, protected-component policy + exact locks | [run 38692252320 PASS](https://github.com/TheWaitForAGI/InodeFence/actions/runs/38692252320) |
 | [#94](https://github.com/TheWaitForAGI/InodeFence/pull/94) | `d8827893ed758ee0437820373964d13564727c6d` → `integration/n01-historical-readiness-v1` | 4 files, reviewed/authorized qualification contract | [run 38692405290 PASS](https://github.com/TheWaitForAGI/InodeFence/actions/runs/38692405290) |
-| [#95](https://github.com/TheWaitForAGI/InodeFence/pull/95) | checkpoint `0699099806dad1c8df12d8e9cc22dd35b334a4d0` → `review/n01-pair-qualification-v1` | 15 files at checkpoint, contained implementation | [run 38692409079 PASS](https://github.com/TheWaitForAGI/InodeFence/actions/runs/38692409079) |
+| [#95](https://github.com/TheWaitForAGI/InodeFence/pull/95) | current head `f1d93ddd5ecba6617484601944eae9717d22fc7a` → `review/n01-pair-qualification-v1` | 16 files, contained implementation and review follow-up | [run 38694353851 PASS](https://github.com/TheWaitForAGI/InodeFence/actions/runs/38694353851) |
 
 All three PRs were open, non-draft, unmerged, and reported mergeable when inspected. The
 stacked bases match the intended sequence; no PR was duplicated or retargeted.
@@ -216,9 +216,11 @@ join source/environment/sentinel bindings back to the manifest. The review follo
 both gaps in N01-only code and adds regressions. Reader tests also exercise the command-line
 entry point as a fresh process.
 
-GitHub PR tooling was not available through the local CLI. Authenticated connector access
-was verified, existing PRs were searched by head branch, and the three stacked PRs were then
-created without changing their reviewed bases.
+GitHub PR tooling was not available through the local CLI when the stack was created.
+Authenticated connector access was verified, existing PRs were searched by head branch, and
+the three stacked PRs were then created without changing their reviewed bases. During the
+later autonomous-resume audit, an authenticated `gh` CLI was available and independently
+confirmed all three current heads, bases, CI results and empty review lists.
 
 ## 8. Research facts established
 
@@ -275,10 +277,12 @@ An automated reader PASS must not be recorded as an independent human review.
 ## 11. Remaining risks and follow-up
 
 No immutable historical image IDs exist yet. The package locks pin npm SHA-512 integrity and
-the N01 constants retain the expected package-tarball SHA-256 values, but the actual package
-tarball bytes were not fetched or independently rehashed in this Dev Container. That check
-must occur as part of the trusted-host build/admission review. The runbook now gives the exact
-HTTPS URLs and expected SHA-256 values before either build context is prepared.
+the N01 constants retain the expected package-tarball SHA-256 values. During the later
+autonomous-resume audit, both official registry tarballs were fetched to an isolated `/tmp`
+directory and independently matched the frozen SHA-256 values. This supplemental container
+check does not replace the required trusted-host pre-build verification or create an admitted
+image. The runbook gives the exact HTTPS URLs and expected SHA-256 values before either host
+build context is prepared.
 
 The first real attempt must use two new build contexts outside the source tree, the
 `inodefence-runtime` volume, and a new evidence destination. An admission failure must stop
@@ -313,3 +317,51 @@ Stacked pull requests:
 The executable trusted-host procedure is in `scripts/README.md`. This review package and any
 subsequent review-only corrections belong to PR #95; no historical result should be added
 until it is backed by the immutable evidence directory from the approved execution path.
+
+## 13. Autonomous resume checkpoint — 2026-10-15 UTC
+
+The requested resume audit independently established the following current facts:
+
+- repository HEAD and remote PR #95 head are both
+  `f1d93ddd5ecba6617484601944eae9717d22fc7a`; remote `main` remains
+  `57f751992f60a534c5b07506e72124abe5d6b07d`;
+- commit ancestry is exactly `main` → PR #93 `ee6ce6501368ff8a5ab420e254790c3451b997ae`
+  → PR #94 `d8827893ed758ee0437820373964d13564727c6d` → PR #95 `f1d93ddd...`;
+- PRs #93, #94 and #95 are open, non-draft and mergeable with both CI checks successful;
+  GitHub reports no submitted reviews and no requested reviewers for any of the three;
+- branch-protection details could not be read because GitHub returned HTTP 403 for this
+  private repository/plan. PR #95 also explicitly states that it must not be auto-merged, so
+  no merge was attempted and no human review was recorded by inference;
+- CI run `38694353851` is complete/success at the exact current head; both `check` and
+  `container-integration` passed;
+- the active checkout contains an unrelated, pre-existing modification to
+  `.devcontainer/devcontainer.json`. It was preserved and excluded from this checkpoint;
+  the exact PR head was instead validated in a detached clean worktree;
+- the frozen lock, contract, worker, child case, generated TAR and sentinel hashes all match
+  the contract. Official registry tarballs matched
+  `22d8b674a68754ea909d03aa13958a7d2fd5e78af8a8f0cde6455babef7aaf1a`
+  for 7.5.2 and
+  `9d95d0cf786786360f97c1e414caea8a14452dc337fda17ba256ae7762c2ec66`
+  for 7.5.3;
+- clean, no-overwrite packaging preparation succeeded for both versions at source revision
+  `f1d93ddd...` with `dirty:false`. Temporary prepared contexts are
+  `/tmp/inodefence-n01-context-7.5.2-f1d93dd` and
+  `/tmp/inodefence-n01-context-7.5.3-f1d93dd`; they are pre-build engineering output, not
+  historical images or qualification evidence;
+- `/var/lib/inodefence` is the separate `inodefence-runtime` btrfs volume, device 42, owned by
+  UID/GID 1000. The environment checker passed hardlink, symlink and shared-object-effect
+  probes, and no existing `/var/lib/inodefence/evidence` directory was present;
+- the session is inside the Linux OrbStack Dev Container (`aarch64`, Python 3.12.3), not the
+  trusted macOS host. There is no Docker CLI in the controller, so controller full identity,
+  historical image builds, immutable image IDs, broker admission and archive execution could
+  not be performed without violating the approved trust boundary;
+- focused N01/mutation/packaging validation passed 71 tests. A clean-head `make check` passed
+  Ruff, format across 323 files, Pyright with zero errors/warnings, all 1,478 pytest tests,
+  runtime environment validation and documentation validation across 114 Markdown files;
+  diff whitespace checks also passed.
+
+Historical execution status remains exactly **0/18**: metadata admission is `NOT_RUN`, benign
+readiness is **0/8**, the historical pair is **0/10**, and real-artifact independent reading
+is `NOT_RUN`. Therefore no C0/C1/C2 historical evidence exists. B0/B1/B3 remain `NOT_RUN` and
+blocked by the qualification gate. The research hypothesis is **NOT_EVALUATED**; the verified
+facts support implementation and frozen-input readiness only.

@@ -139,12 +139,13 @@ tests check input guards and stop/preserve on a controlled disposable sentinel e
 These do not replace the actual container checks or claim vulnerability rediscovery.
 
 `evaluation/test_n01_qualification.py` uses Node-shaped controlled adapters, not historical
-packages. It checks the exact frozen case/TAR reconstruction, immutable admission stop-before-run,
-eight-readiness gating, counterbalanced ten-run result-first publication, fixed-arm status versus
-nonviolation separation, raw tamper detection and a reader that recomputes rather than trusts the
-runner verdict. `evaluation/test_node_packaging.py` also validates completed build records against
-their exact prepared contexts. These tests qualify the tooling only; the broker-backed historical
-8+10 run remains a separate explicit action.
+packages. Its ten tests check the exact frozen case/TAR reconstruction, immutable admission and
+resource-policy stop-before-run, eight-readiness gating, counterbalanced ten-run result-first
+publication, fixed-arm status versus nonviolation separation, raw/source-binding tamper detection
+and a reader that recomputes rather than trusts the runner verdict.
+`evaluation/test_node_packaging.py` also validates completed build records against their exact
+prepared contexts. These tests qualify the tooling only; the broker-backed historical 8+10 run
+remains a separate explicit action.
 
 Completed export durability regressions cover steps/manifest/config write failure, partial step
 encoding, corrupted checksum, destination kinds and concurrent empty-directory creation, unsupported

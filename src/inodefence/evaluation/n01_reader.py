@@ -21,6 +21,7 @@ from inodefence.evaluation.n01 import (
     CHILD_CASE_ID,
     EXPECTED_BUILD_FILES,
     EXPERIMENT_ID,
+    FROZEN_INPUT,
     FROZEN_TARGETS,
     INPUT_TAR_SHA256,
     PAIR_SCHEDULE,
@@ -195,16 +196,30 @@ def _benign_output_passes(result: RunResult, seed_index: int) -> bool:
     return True
 
 
-def _verify_target_binding(record: N01RunRecord, admission: N01AdmissionRecord) -> None:
+def _verify_target_binding(
+    record: N01RunRecord,
+    admission: N01AdmissionRecord,
+    manifest: N01RawManifest,
+) -> None:
     verify_run(record.arm.result)
     verify_binding(record.arm.result, record.arm.provenance)
+    provenance = record.arm.provenance
+    sentinel = provenance.sentinels
     if (
-        record.arm.provenance.target != admission.target
-        or record.arm.provenance.isolation != admission.isolation
+        provenance.source != manifest.source
+        or provenance.environment != manifest.environment
+        or len(sentinel) != 1
+        or sentinel[0].name != FROZEN_INPUT.sentinel_path.removeprefix("outside/")
+        or sentinel[0].content_sha256 != FROZEN_INPUT.sentinel_sha256
+        or sentinel[0].mode != FROZEN_INPUT.sentinel_mode
+        or provenance.target != admission.target
+        or provenance.isolation != admission.isolation
         or record.arm.result.execution.target_version != admission.target.target_version
         or not record.runtime_root_absent_after_return
     ):
-        raise VerificationError("run target, isolation or cleanup differs from admission")
+        raise VerificationError(
+            "run source, environment, sentinel, target, isolation or cleanup differs from admission"
+        )
 
 
 def _verify_builds(root: Path, manifest: N01RawManifest) -> dict[N01Role, dict]:
@@ -228,6 +243,9 @@ def _verify_builds(root: Path, manifest: N01RawManifest) -> dict[N01Role, dict]:
         if (
             packaging["tar_version"] != frozen.tar_version
             or packaging["files_sha256"]["package-lock.json"] != frozen.lock_sha256
+            or packaging["files_sha256"]["worker.cjs"] != FROZEN_INPUT.worker_sha256
+            or packaging["source"]
+            != {"revision": manifest.source.revision, "dirty": manifest.source.dirty}
             or build["tar_version"] != frozen.tar_version
         ):
             raise VerificationError("build records differ from the frozen target")
@@ -297,9 +315,20 @@ def _verify_complete(
         or manifest.extractions_started - manifest.extractions_completed > 1
     ):
         raise VerificationError("started/completed extraction counts are inconsistent")
+    if (
+        manifest.source.revision is None
+        or manifest.source.dirty is not False
+        or manifest.environment.system != "Linux"
+    ):
+        raise VerificationError("N01 evidence requires a clean source revision on Linux")
     builds = _verify_builds(root, manifest)
     for reference in manifest.failures:
         read_failure(_path(root, reference), expected_sha256=reference.sha256)
+    expected_failures = (
+        1 if manifest.attempt_status == N01AttemptStatus.INFRASTRUCTURE_INVALID else 0
+    )
+    if len(manifest.failures) != expected_failures:
+        raise VerificationError("infrastructure-invalid status requires exactly one failure record")
     admissions = tuple(
         _record(root, reference, N01AdmissionRecord) for reference in manifest.admissions
     )
@@ -313,6 +342,8 @@ def _verify_complete(
         if (
             admission.packaging not in build_reference_set
             or admission.build not in build_reference_set
+            or admission.packaging.path != f"build/{admission.role.value}/packaging.json"
+            or admission.build.path != f"build/{admission.role.value}/build.json"
         ):
             raise VerificationError("admission does not bind retained packaging/build records")
     if len(admissions) < 2:
@@ -345,6 +376,8 @@ def _verify_complete(
         raise VerificationError("readiness evidence requires both oracle controls")
     if any(item.violated for item in controls[0].violations):
         raise VerificationError("negative oracle control unexpectedly violated a contract")
+    if not all(item.runtime_root_absent_after_return for item in controls):
+        raise VerificationError("oracle-control runtime cleanup was not verified")
     positive = {item.contract_id: item.violated for item in controls[1].violations}
     controls_pass = positive == {
         ContractId.C0: False,
@@ -373,7 +406,7 @@ def _verify_complete(
             or record.seed_index != expected_seed
         ):
             raise VerificationError("readiness identity/order differs from the frozen schedule")
-        _verify_target_binding(record, admission_by_role[record.role])
+        _verify_target_binding(record, admission_by_role[record.role], manifest)
         readiness_passes.append(_benign_output_passes(record.arm.result, expected_seed))
     if len(readiness) != 8 or not all(readiness_passes):
         if manifest.attempt_status in (
@@ -407,7 +440,7 @@ def _verify_complete(
             or record.arm.result.case != reconstruct_n01_case()
         ):
             raise VerificationError("pair run differs from frozen input or schedule")
-        _verify_target_binding(record, admission_by_role[record.role])
+        _verify_target_binding(record, admission_by_role[record.role], manifest)
     comparisons = []
     run_by_path = {
         reference.path: record

@@ -100,28 +100,59 @@ decision token을 기록한다.
 ## N01 historical pair (explicit trusted-host action)
 
 N01 is a separate bounded mode, not part of the normal `7.5.22` image/target checks. On the
-trusted macOS/OrbStack host, first prepare and build two new exact-lock contexts outside the
-source tree:
+trusted macOS/OrbStack host, use a clean checkout of the reviewed PR #95 head and Python 3.12.
+The existing Dev Container remains the controller; do not mount its Docker socket or add
+privilege. Before building, independently fetch and verify the two package tarballs outside
+both the source tree and build contexts:
 
 ```bash
-PYTHONPATH=src python -m inodefence.evaluation.node_packaging prepare \
+mkdir /private/tmp/inodefence-n01-tarballs-20261015-review1
+curl --fail --location --proto '=https' --tlsv1.2 \
+  https://registry.npmjs.org/tar/-/tar-7.5.2.tgz \
+  --output /private/tmp/inodefence-n01-tarballs-20261015-review1/tar-7.5.2.tgz
+curl --fail --location --proto '=https' --tlsv1.2 \
+  https://registry.npmjs.org/tar/-/tar-7.5.3.tgz \
+  --output /private/tmp/inodefence-n01-tarballs-20261015-review1/tar-7.5.3.tgz
+shasum -a 256 /private/tmp/inodefence-n01-tarballs-20261015-review1/tar-7.5.2.tgz \
+  /private/tmp/inodefence-n01-tarballs-20261015-review1/tar-7.5.3.tgz
+```
+
+The output must be exactly `22d8b674a68754ea909d03aa13958a7d2fd5e78af8a8f0cde6455babef7aaf1a`
+for 7.5.2 and `9d95d0cf786786360f97c1e414caea8a14452dc337fda17ba256ae7762c2ec66`
+for 7.5.3. A mismatch stops the attempt. Then prepare and build two new exact-lock contexts
+outside the source tree; every destination below must be absent before the command:
+
+```bash
+PYTHONPATH=src python3.12 -m inodefence.evaluation.node_packaging prepare \
   experiments/benchmarks/locks/node-tar-7.5.2.package-lock.json \
   /private/tmp/inodefence-n01-7.5.2 --repository "$PWD"
-PYTHONPATH=src python -m inodefence.evaluation.node_packaging prepare \
+PYTHONPATH=src python3.12 -m inodefence.evaluation.node_packaging prepare \
   experiments/benchmarks/locks/node-tar-7.5.3.package-lock.json \
   /private/tmp/inodefence-n01-7.5.3 --repository "$PWD"
-PYTHONPATH=src python -m inodefence.evaluation.node_packaging build \
+PYTHONPATH=src python3.12 -m inodefence.evaluation.node_packaging build \
   /private/tmp/inodefence-n01-7.5.2 --docker-context orbstack
-PYTHONPATH=src python -m inodefence.evaluation.node_packaging build \
+PYTHONPATH=src python3.12 -m inodefence.evaluation.node_packaging build \
   /private/tmp/inodefence-n01-7.5.3 --docker-context orbstack
 ```
 
 Read the two full `sha256:...` values from their `build.json` files. With the existing trusted
-controller and `inodefence-runtime` volume, run the pair in affected/fixed argument order:
+controller and `inodefence-runtime` volume, resolve the controller to its full ID and print the
+two build records for review:
 
 ```bash
-PYTHONPATH=src python -m scripts.container_host \
-  --context orbstack --controller <controller-name-or-id> \
+docker --context orbstack inspect --format '{{.Id}}' <running-dev-container-name-or-id>
+python3.12 -c 'import json,sys; print(json.load(open(sys.argv[1]))["image_id"])' \
+  /private/tmp/inodefence-n01-7.5.2/build.json
+python3.12 -c 'import json,sys; print(json.load(open(sys.argv[1]))["image_id"])' \
+  /private/tmp/inodefence-n01-7.5.3/build.json
+```
+
+Use those exact three full IDs and a new evidence name in the following command. Arguments and
+build contexts are in affected/fixed order:
+
+```bash
+PYTHONPATH=src python3.12 -m scripts.container_host \
+  --context orbstack --controller <full-controller-id> \
   --volume inodefence-runtime \
   --image <affected-full-image-id> --image <fixed-full-image-id> \
   --build-context /private/tmp/inodefence-n01-7.5.2 \

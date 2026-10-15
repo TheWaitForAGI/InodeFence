@@ -41,7 +41,7 @@ from inodefence.model import (
     StateSnapshot,
     ViolationResult,
 )
-from inodefence.model.isolation import IsolationProvenance
+from inodefence.model.isolation import IsolationPolicy, IsolationProvenance
 from inodefence.model.provenance import (
     EnvironmentProvenance,
     ExecutionProvenance,
@@ -255,8 +255,7 @@ class N01AdmissionRecord:
             or self.target.target_id != "node-tar-strict"
             or self.target.target_version != f"node={NODE_VERSION};tar={expected.tar_version}"
             or self.target.timeout_seconds != TIMEOUT_SECONDS
-            or self.isolation.policy.uid != 1000
-            or self.isolation.policy.gid != 1000
+            or self.isolation.policy != IsolationPolicy(self.image_id, 1000, 1000)
         ):
             raise ValueError("historical target admission differs from the frozen identity")
         observed = {artifact.name: artifact.sha256 for artifact in self.isolation.artifacts}

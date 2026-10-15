@@ -5,8 +5,11 @@ import os
 import subprocess
 import sys
 import tarfile
+from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
+
+import pytest
 
 from inodefence.builder import build_tar
 from inodefence.evaluation.encoding import json_bytes, read_json
@@ -14,6 +17,8 @@ from inodefence.evaluation.n01 import (
     EXPECTED_BUILD_FILES,
     FROZEN_TARGETS,
     INPUT_TAR_SHA256,
+    N01AdmissionRecord,
+    N01ArtifactReference,
     N01AttemptStatus,
     N01BuildContext,
     N01BuildFile,
@@ -32,7 +37,7 @@ from inodefence.evaluation.n01_reader import (
 from inodefence.evaluation.node_packaging import prepare_node_release, validate_node_release
 from inodefence.evaluation.storage import read_record
 from inodefence.model import ExecutionResult, ExecutionStatus
-from inodefence.model.isolation import IsolationPolicy, IsolationProvenance
+from inodefence.model.isolation import IsolationPolicy, IsolationProvenance, ResourcePolicy
 from inodefence.model.provenance import EnvironmentProvenance, SourceProvenance
 from inodefence.targets.node_tar import NodeTarTarget
 
@@ -181,10 +186,46 @@ def _inputs(tmp_path: Path, **fixed_kwargs):
     return targets, contexts
 
 
+def _rewrite_record(path: Path, mutate) -> str:
+    record = read_json(path.read_bytes())
+    assert isinstance(record, dict)
+    mutate(record["payload"]["value"])
+    record["payload_sha256"] = sha256(json_bytes(record["payload"])).hexdigest()
+    content = json_bytes(record) + b"\n"
+    path.write_bytes(content)
+    return sha256(content).hexdigest()
+
+
 def test_frozen_case_is_reconstructed_through_versioned_mutation_api():
     case = reconstruct_n01_case()
     assert case.case_id == ("55b8b7eda4bf26ec1e877866a099dd49195754e00e1e6f20dd82b0bb09288a87")
     assert sha256(build_tar(case)).hexdigest() == INPUT_TAR_SHA256
+
+
+def test_admission_rejects_nonfrozen_resource_policy():
+    image_id = "sha256:" + "1" * 64
+    target = ControlledHistoricalTarget(N01Role.AFFECTED, image_id)
+    isolation = target.capture_isolation()
+    altered = replace(
+        isolation,
+        policy=replace(
+            isolation.policy,
+            resources=ResourcePolicy(memory_bytes=256 * 1024 * 1024),
+        ),
+    )
+    packaging = N01ArtifactReference("build/affected/packaging.json", "a" * 64)
+    build = N01ArtifactReference("build/affected/build.json", "b" * 64)
+
+    with pytest.raises(ValueError, match="frozen identity"):
+        N01AdmissionRecord(
+            N01Role.AFFECTED,
+            image_id,
+            target.provenance,
+            altered,
+            packaging,
+            build,
+            "2026-10-15T00:00:00+00:00",
+        )
 
 
 def test_complete_pair_is_published_then_independently_recomputed(tmp_path):
@@ -325,6 +366,33 @@ def test_independent_reader_rejects_tampered_run_even_if_runner_declared_pass(tm
     run_path.write_bytes(json_bytes(record) + b"\n")
 
     verified = verify_n01_evidence(evidence, expected_raw_manifest_sha256=outcome.manifest_sha256)
+
+    assert verified.verification.status == N01IndependentStatus.FAIL
+    assert verified.final_manifest.final_status == N01FinalStatus.INDEPENDENT_VERIFICATION_FAILED
+
+
+def test_independent_reader_rejects_reanchored_source_binding_drift(tmp_path):
+    targets, contexts = _inputs(tmp_path)
+    evidence = tmp_path / "source-binding-drift"
+    outcome = run_n01_qualification(
+        evidence,
+        targets,
+        contexts,
+        repository=ROOT,
+        source=SOURCE,
+        environment=ENVIRONMENT,
+    )
+    run_reference = outcome.manifest.readiness_runs[0]
+    run_digest = _rewrite_record(
+        evidence / run_reference.path,
+        lambda value: value["arm"]["provenance"]["source"].update({"revision": "b" * 40}),
+    )
+    manifest_digest = _rewrite_record(
+        evidence / "raw-manifest.json",
+        lambda value: value["readiness_runs"][0].update({"sha256": run_digest}),
+    )
+
+    verified = verify_n01_evidence(evidence, expected_raw_manifest_sha256=manifest_digest)
 
     assert verified.verification.status == N01IndependentStatus.FAIL
     assert verified.final_manifest.final_status == N01FinalStatus.INDEPENDENT_VERIFICATION_FAILED

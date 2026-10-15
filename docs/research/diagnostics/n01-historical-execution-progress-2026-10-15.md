@@ -49,9 +49,10 @@ Validation:
 - `git diff --check`: PASS;
 - combined worktree after validation: clean.
 
-The branch was pushed. PR creation URL:
-<https://github.com/TheWaitForAGI/InodeFence/pull/new/integration/n01-historical-readiness-v1>.
-No PR was opened because authenticated GitHub API/CLI access was unavailable.
+The branch was pushed. Authenticated connector access later became available and the existing
+head was checked before opening
+[PR #93](https://github.com/TheWaitForAGI/InodeFence/pull/93). No duplicate branch or PR was
+created.
 
 ## Stage 2 — technical review, human decision pending
 
@@ -73,8 +74,8 @@ metadata as corroboration. Human authorization is **NOT_RECORDED**, so the execu
 Review-branch validation after the contract update: `make check` PASS with **1,467 tests**,
 environment/docs PASS, followed by `git diff --check` PASS.
 
-PR creation URL:
-<https://github.com/TheWaitForAGI/InodeFence/pull/new/review/n01-pair-qualification-v1>.
+Authenticated connector access later opened the reviewed stack as
+[PR #94](https://github.com/TheWaitForAGI/InodeFence/pull/94), based on the integration branch.
 
 ## Stage 3 implementation audit
 
@@ -118,6 +119,20 @@ The current Dev Container has the validated Linux runtime volume but no Docker C
 daemon access. That is the intended trust boundary, so historical images were not built and
 the broker-backed N01 mode was not invoked from this environment. Historical admission,
 readiness, pair qualification and B0/B1/B3 pilot remain **NOT_RUN**.
+
+The project owner subsequently reported macOS/OrbStack boundary validation **6/6 PASS** with
+the existing `scripts.container_host` path and running Dev Container. This restores the
+intended trusted-host transport precondition without a Docker socket mount or privilege
+change inside the Dev Container. It is boundary engineering evidence only: the two historical
+images are still not built and the approved extraction count remains **0/18**.
+
+The contained implementation checkpoint is
+`0699099806dad1c8df12d8e9cc22dd35b334a4d0`. It is published for review in
+[PR #95](https://github.com/TheWaitForAGI/InodeFence/pull/95). The complete review handoff is
+recorded in [the autonomous execution final review](n01-autonomous-execution-final-review.md).
+That review also resolves the checkpoint test-count discrepancy: PR #95 CI collected and
+passed 1,476 tests, equal to the 1,467-test parent plus nine new tests. The earlier 1,475 entry
+is not reproducible at the checkpoint and accounts for only eight of those nine new tests.
 
 ## Next authorized transition
 

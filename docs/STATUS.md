@@ -6,6 +6,10 @@
 통합됐다. Internal completion qualification v3의 clean harness revision은 `9ea306f7`이고,
 causal filesystem-effect qualification v4의 clean harness revision은 `72bccfa`다.
 
+2026-10-15의 latest-main audit, pushed unmerged preparation branches, 실제 실행 수와
+remaining gates는 [dated overnight handoff](research/diagnostics/overnight-progress-2026-10-15.md)에
+분리해 기록한다. 그 문서는 미병합 branch capability를 current main으로 승격하지 않는다.
+
 ## 현재 단계와 연구 판정
 
 Layer 2–5 core와 Layer 6 evaluation infrastructure가 구현돼 있다. Layer 6 전체나

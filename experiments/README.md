@@ -30,10 +30,13 @@ sentinel provenance다. 출력은 immutable config, raw canonical records, check
 - Reader는 checksums, case/TAR identity, raw derivations, config/provenance와 declared-policy
   admission/eligible-parent consistency를 검증한다. Actual RNG/proposal execution, assessor
   assertion의 truth, authorship, known-class rediscovery 또는 paper readiness를 증명하지 않는다.
-- Full results/readers는 O(budget) memory다. 두 core runner에 completed-step callback/aborted-prefix
-  return이 없어 journal/ledger가 internal lost steps를 자동 복구하지 못한다. Policy repetition,
-  automatic incremental attachment와 full-pipeline timing은 통합 완료되지 않았다.
-  Target duration은 complete-step latency가 아니며 completed-only policy stats는 invalid attempts를 추론하지 않는다.
+- Full results/readers는 O(budget) memory다. Final-state policy runner의 optional completed-step
+  callback과 별도 versioned full-step timing evidence/reader는 cleanup/feedback까지의 monotonic
+  offsets를 보존한다. Legacy runner에는 callback이 없고 어느 runner도 aborted-prefix result를
+  반환하지 않으므로 journal/ledger가 internal lost steps를 자동 복구하지 못한다. Policy repetition,
+  automatic incremental attachment, publication/failure timing과 known-class adjudication은 통합
+  완료되지 않았다. Target duration은 complete-step latency가 아니며 completed-only policy stats는
+  invalid attempts를 추론하지 않는다.
 - Pinned node-tar의 public/OS/syscall/prefix, private completion callback, causal filesystem-
   effect와 별도 libarchive entry-boundary qualification은 모두 current archive-ordered
   transition producer에 **QUALIFIED FAIL**했다. Exact marker/operation association도 native

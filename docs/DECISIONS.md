@@ -505,3 +505,24 @@ Native work는 별도 producer/reader qualification이
 세부 계약은 [architecture](research/design/entry-effect-architecture-v2.md),
 [feedback](research/design/entry-effect-feedback-v2.md),
 [review/plan](research/design/entry-effect-design-review-v2.md)을 따른다.
+
+## D033 — Policy full-step timing은 기존 result와 분리된 evidence다
+
+**상태:** final-state policy engineering interface v1 구현; formal measurement NOT_RUN
+
+`run_search_campaign`은 optional completed-step sink를 각 `run_case` cleanup과 feedback/step
+assembly가 끝난 직후, 다음 execution 전에 호출한다. Sink exception은 전달하고 다음 step을
+시작하지 않는다. Existing SearchCampaignResult/Step schema, policy ID, RNG, mutation, feedback와
+target `duration_seconds` 의미는 바꾸지 않는다. Core는 여전히 failure 시 partial result를 반환하지
+않으며 sink가 보존한 incremental evidence의 소유권은 caller에게 있다.
+
+별도 `policy-full-step-monotonic-v1` wrapper는 campaign preflight 직전 monotonic origin에서
+각 completed-step callback observation point와 final result assembly까지의 contiguous nanosecond offset,
+그리고 descriptive UTC start/end를 기록한다. Step duration은 target process time의 합이나
+복사본이 아니며 setup, selection/mutation, full `run_case`/cleanup, feedback와 wrapper overhead를
+포함한다. Existing bound policy bundle과 timing bytes는 새 last-published manifest로 함께 bind하고
+independent reader가 config/result/count/offset/checksum을 검증한다.
+
+이 interface는 in-memory completed timing evidence만 제공한다. Disk publication latency,
+automatic journal attachment, exception-safe aborted prefix/failure ledger, known-class adjudication,
+timed dataset pooling과 formal throughput/time-to-hit 결과는 별도 dependency로 남는다.

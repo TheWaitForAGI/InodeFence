@@ -301,6 +301,7 @@ def run_search_campaign(
     *,
     sentinels: tuple[SentinelSpec, ...] = (SentinelSpec(),),
     provenance: ExecutionProvenance | None = None,
+    completed_step: Callable[[SearchCampaignStep], None] | None = None,
 ) -> SearchCampaignResult:
     """Run declared search/mutation/projection policies under the campaign gate.
 
@@ -311,9 +312,17 @@ def run_search_campaign(
     novelty admission; B1/B3 uniformly select retained cases. No adaptive
     scheduling, exporter or ExperimentConfig binding is implemented here.
     Determinism requires the same semantic outcomes, config and RNG version.
+
+    An optional completed_step sink receives each immutable step after run_case
+    has returned (including sandbox cleanup) and policy feedback is complete,
+    before the next step begins. Sink exceptions propagate and no subsequent
+    execution starts. The core still returns no partial result on failure; sinks
+    own any incremental evidence they preserve.
     """
     if not isinstance(config, SearchCampaignConfig):
         raise ValueError("config must be a SearchCampaignConfig")
+    if completed_step is not None and not callable(completed_step):
+        raise ValueError("completed_step must be callable or None")
     prepared = _prepare_campaign(
         initial_cases,
         target,
@@ -325,21 +334,27 @@ def run_search_campaign(
     steps: list[SearchCampaignStep] = []
     for case in prepared.cases:
         result = prepared.execute(case)
-        steps.append(
-            SearchCampaignStep(
-                len(steps), CampaignOrigin.SEED, None, result, state.consider(result)
-            )
+        step = SearchCampaignStep(
+            len(steps), CampaignOrigin.SEED, None, result, state.consider(result)
         )
+        steps.append(step)
+        if completed_step is not None:
+            completed_step(step)
     rng = random.Random(config.random_seed)
     while len(steps) < config.execution_budget:
         parent = state.select_case(rng)
         child = mutate_with_policy(parent, rng, config.mutation_policy)
         result = prepared.execute(child)
-        steps.append(
-            SearchCampaignStep(
-                len(steps), CampaignOrigin.MUTATION, parent.case_id, result, state.consider(result)
-            )
+        step = SearchCampaignStep(
+            len(steps),
+            CampaignOrigin.MUTATION,
+            parent.case_id,
+            result,
+            state.consider(result),
         )
+        steps.append(step)
+        if completed_step is not None:
+            completed_step(step)
     return SearchCampaignResult(
         config,
         prepared.initial_case_ids,

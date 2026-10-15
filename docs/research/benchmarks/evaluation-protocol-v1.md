@@ -298,10 +298,13 @@ are absent and excluded; no superiority over them is claimed.
 target lifecycle duration, including attached start/draining/verified termination.
 That excludes TAR building, sentinel setup, container preparation, BEFORE/AFTER,
 oracle/feedback, normal cleanup and corpus selection/mutation. No policy step
-has the complete monotonic origin/evidence-ready/cleanup offsets required by this
-protocol's time-to-first-confirmed-evidence and throughput definitions. They are
-DESIGNED metrics, not measured outputs. Preserve UTC start/end and full-step
-monotonic costs at orchestration level before using them in formal analysis.
+may substitute this target duration for the protocol's latency definition. The separate
+`policy-full-step-monotonic-v1` wrapper now records final-state policy campaign origin,
+contiguous cleanup/feedback-complete step offsets and final in-memory result completion,
+with UTC start/end. Its exporter/reader binds those bytes to the existing policy result and
+configuration. This closes the in-memory full-step engineering field only. Publication and
+failure-prefix time, known-class adjudication offsets, compatible timed-dataset aggregation
+and formal measurements remain NOT_RUN / unimplemented dependencies.
 
 [Failure ledger](../../../src/inodefence/evaluation/failure.py) and
 [legacy journal](../../../src/inodefence/evaluation/journal.py) preserve evidence

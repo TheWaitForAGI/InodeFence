@@ -31,11 +31,15 @@ verified readers, passive ledger/journal, pair/benign replay, qualification/matr
 config/dataset/statistics도 있다. [Search 계약](search-policy-core-v1.md)과
 [evaluation API](../../../src/inodefence/evaluation/README.md)가 해당 구현의 상세 경계를 기록한다.
 
-Contained node-tar **7.5.22 benign smoke**는 engineering TESTED evidence다.
-Historical qualification과 known-case rediscovery는 NOT_RUN이며 현재 취약점을 주장하지 않는다.
-첫 intended qualification은 **N01 7.5.2/7.5.3**이다. Protected-component policy의 logical
-generation은 TESTED지만 setup/artifacts/expected effects는 미검증이다. GNU evaluation route는 benign allowlist만, ORAS/C3/C4는 미구현이다.
-Automatic policy journal/repetition, interrupted-prefix recovery와 complete-step timing은 통합 완료되지 않았다.
+Contained node-tar **7.5.22 benign smoke**는 engineering TESTED evidence다. N01
+**7.5.2/7.5.3** pair의 automated replay는 완료됐지만 final human correspondence review가
+pending이고, known-case rediscovery/formal comparison은 NOT_RUN이며 현재 취약점을 주장하지 않는다.
+Protected-component policy의 logical generation은 TESTED이고 N01의 exact setup/artifacts/effect는
+automated evidence로 보존됐지만 fuzzing pilot authorization을 뜻하지 않는다. GNU evaluation
+route는 benign allowlist만, ORAS/C3/C4는 미구현이다. Final-state policy runner에는 optional
+completed-step callback과 별도 versioned full-step monotonic timing evidence/reader가 있다.
+Automatic policy journal/repetition, interrupted-prefix recovery, publication timing과 known-class
+adjudication은 통합 완료되지 않았다.
 과거 audits/summaries의 SHA/count는 역사적 evidence이며 현재 capability를 정의하지 않는다.
 
 아래 개념 그림에는 lineage, tracing, corpus 등 미래 설계도 포함한다. 현재 확정된 field/API는 **7.8 현재 구현 경계**를 따른다. Python reference는 최종 benchmark target이 아니다.

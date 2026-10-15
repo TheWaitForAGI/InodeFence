@@ -97,6 +97,48 @@ stock/minimal/full 각 20회, timeout/overflow/backend failure와 required inval
 실행한다. Output은 덮어쓰지 않으며, 모든 필수 criterion이 평가된 경우에만 정확한 Gate 4
 decision token을 기록한다.
 
+## N01 historical pair (explicit trusted-host action)
+
+N01 is a separate bounded mode, not part of the normal `7.5.22` image/target checks. On the
+trusted macOS/OrbStack host, first prepare and build two new exact-lock contexts outside the
+source tree:
+
+```bash
+PYTHONPATH=src python -m inodefence.evaluation.node_packaging prepare \
+  experiments/benchmarks/locks/node-tar-7.5.2.package-lock.json \
+  /private/tmp/inodefence-n01-7.5.2 --repository "$PWD"
+PYTHONPATH=src python -m inodefence.evaluation.node_packaging prepare \
+  experiments/benchmarks/locks/node-tar-7.5.3.package-lock.json \
+  /private/tmp/inodefence-n01-7.5.3 --repository "$PWD"
+PYTHONPATH=src python -m inodefence.evaluation.node_packaging build \
+  /private/tmp/inodefence-n01-7.5.2 --docker-context orbstack
+PYTHONPATH=src python -m inodefence.evaluation.node_packaging build \
+  /private/tmp/inodefence-n01-7.5.3 --docker-context orbstack
+```
+
+Read the two full `sha256:...` values from their `build.json` files. With the existing trusted
+controller and `inodefence-runtime` volume, run the pair in affected/fixed argument order:
+
+```bash
+PYTHONPATH=src python -m scripts.container_host \
+  --context orbstack --controller <controller-name-or-id> \
+  --volume inodefence-runtime \
+  --image <affected-full-image-id> --image <fixed-full-image-id> \
+  --build-context /private/tmp/inodefence-n01-7.5.2 \
+  --build-context /private/tmp/inodefence-n01-7.5.3 \
+  --evidence /var/lib/inodefence/evidence/<new-n01-attempt> \
+  qualify-node-n01
+```
+
+The host validates both completed build contexts before starting the controller. The
+controller repeats metadata-only admission before any archive, executes the fixed budget and
+launches the independent reader as a fresh Python process. Build context bytes, raw records,
+failure records, `raw-manifest.json`, `independent-verification.json` and the last-published
+`manifest.json` are stored at the new evidence path. Copy that directory out read-only for
+review; do not rerun a failed attempt into the same destination and do not replace an image ID
+with a mutable tag. A run that reaches the automated token still requires the contract's human
+correspondence review before `N01_RELATIVE_HARDLINK_PAIR_QUALIFIED` may be recorded.
+
 `PYTHONPATH=src python scripts/qualify_libarchive_entry_boundary.py --output <new-file>
 --image-id <sha256> --base-image-id <sha256>`는 별도 libarchive public write-disk reference
 target에서 `archive_write_finish_entry()`와 final writer close의 syscall 순서를 비교한다.

@@ -100,11 +100,30 @@ requirements for the post-approval implementation:
 Historical image build, admission and benign readiness are **NOT_RUN**. Exact immutable image
 IDs do not exist yet. Stage 4 and Stage 5 remain gated.
 
+## Stage 4 — authorization and contained implementation
+
+The project owner recorded the exact approval statement **“N01 pair qualification contract
+v1을 승인한다.”** on 2026-10-15. Work continued on
+`experiment/n01-contained-qualification-v1` from the reviewed `d882789` stack.
+
+The additive implementation keeps generic builder/mutation/runtime/observer/oracle/feedback
+semantics unchanged. It adds strict completed build-record validation, N01-only immutable
+image admission, two oracle controls, exactly eight readiness runs, the frozen counterbalanced
+ten-run pair, result-first records, five `PairComparison` records and a fresh-process reader
+that recomputes artifact integrity, case/TAR/image identity, snapshots, inode relationships and
+C0/C1/C2. Controlled adapters exercise the complete 8+10 schedule and failure paths; these are
+engineering tests rather than historical execution evidence.
+
+The current Dev Container has the validated Linux runtime volume but no Docker CLI or direct
+daemon access. That is the intended trust boundary, so historical images were not built and
+the broker-backed N01 mode was not invoked from this environment. Historical admission,
+readiness, pair qualification and B0/B1/B3 pilot remain **NOT_RUN**.
+
 ## Next authorized transition
 
-A human reviewer must first record an unambiguous approval of the exact contract, for
-example: **“N01 pair qualification contract v1을 승인한다.”** After that decision is committed,
-the next implementation branch starts from the reviewed stacked revision and may add only
-the N01-specific admission/readiness/pair orchestration above. Historical build and archive
-execution remain separate host actions after that implementation passes review and canonical
-validation.
+After human code review and canonical validation of this branch, run the documented explicit
+macOS/OrbStack build and `scripts.container_host ... qualify-node-n01` command with two full
+immutable image IDs and a new runtime-volume evidence path. Admission failure must stop before
+archive execution. Only an independently verified `N01_PAIR_AUTOMATED_REPLAY_COMPLETE` may
+advance to human correspondence review; it is not itself the pair-qualified token or pilot
+authorization.

@@ -10,6 +10,7 @@ from inodefence.evaluation.node_packaging import (
     RUNTIME_BASE,
     build_node_release,
     prepare_node_release,
+    validate_node_build,
     validate_node_release,
 )
 
@@ -82,3 +83,28 @@ def test_tampered_partial_or_extra_context_never_builds(tmp_path, monkeypatch):
     (context / "packaging.json").unlink()
     with pytest.raises(FileNotFoundError):
         build_node_release(context, docker_context="unit-unused")
+
+
+def test_completed_build_record_is_strictly_bound_to_prepared_context(tmp_path):
+    context = tmp_path / "context"
+    manifest = prepare_node_release(LOCK, context, repository=REPOSITORY)
+    record = {
+        "format": "inodefence-node-image-build",
+        "schema_version": 1,
+        "image_id": "sha256:" + "a" * 64,
+        "image_architecture": "arm64",
+        "packaging_sha256": sha256((context / "packaging.json").read_bytes()).hexdigest(),
+        "tar_version": manifest["tar_version"],
+        "node_version": NODE_VERSION,
+        "files_sha256": manifest["files_sha256"],
+        "stdout": "controlled build output",
+        "stderr": "",
+    }
+    (context / "build.json").write_bytes(json_bytes(record) + b"\n")
+
+    assert validate_node_build(context) == record
+
+    record["image_id"] = "mutable-tag"
+    (context / "build.json").write_bytes(json_bytes(record) + b"\n")
+    with pytest.raises(ValueError, match="immutable-image contract"):
+        validate_node_build(context)

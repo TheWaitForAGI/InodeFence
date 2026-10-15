@@ -57,6 +57,31 @@ closed on corruption or input/binding drift. Targets and outcomes may differ.
 No CVE, expected result, ranking or automatic target execution is encoded here.
 Execution remains caller-owned; this first pair API is the evidence boundary.
 
+## N01 contained historical qualification
+
+`inodefence.evaluation.n01` is the target-specific Layer 6 orchestration for the approved
+node-tar `7.5.2 / 7.5.3` relative-hardlink pair. It does not add a generic oracle or mutation
+rule. The runner reconstructs the one frozen case through
+`uniform-generic-m1-protected-components-v1`, verifies the full case/TAR/sentinel/worker/lock
+identities, admits only two immutable image IDs through the existing isolated Node metadata
+probe, runs two filesystem oracle controls, exactly eight benign readiness extractions and,
+only after readiness passes, the counterbalanced ten-run pair.
+
+Every valid extraction is published as a checksummed `N01RunRecord` before expected-outcome
+evaluation. Five existing `PairComparison` records bind the two arms without replacing either
+raw result. Infrastructure exceptions stop further extraction and are written to the failure
+ledger; readiness failures retain all eight completed outcomes and do not enter the pair phase.
+No arbitrary archive path/case is accepted by this API and the total archive budget cannot
+exceed 18.
+
+`python -m inodefence.evaluation.n01_reader EVIDENCE --raw-manifest-sha256 SHA256` is the
+fresh-process reader. It verifies every referenced byte, build/admission identity, benign
+output, source/environment/sentinel binding, snapshots and pair records, then independently
+recomputes inode equality and C0/C1/C2 from the raw evidence. It deliberately ignores the
+runner's declared verdict until comparing the independently derived result. Its final
+manifest always leaves human correspondence review pending; an automated PASS is only
+`N01_PAIR_AUTOMATED_REPLAY_COMPLETE`, never the final pair-qualified token.
+
 Evaluation records use a strict schema-v1 wrapper around existing canonical model
 encoding. Payload SHA-256 is declared in the wrapper; whole-file digest is returned
 for external anchoring. A synced temporary file is published with Linux atomic

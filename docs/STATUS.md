@@ -172,6 +172,9 @@ qualify하지 않았다. M1은 composition을 지원하지만 기존 finite voca
 seed에서 해당 상대 주소까지의 deterministic logical reachability를 TESTED했다. 이는 target-visible
 setup, historical affected/fixed behavior 또는 rediscovery를 검증하지 않으므로 contained setup과
 pair qualification 전 unknown-vulnerability campaign으로 넘어가지 않는다.
+[2026-10-15 execution progress](research/diagnostics/n01-historical-execution-progress-2026-10-15.md)는
+두 변경의 tested integration revision과 N01 contract technical review를 기록한다. Human
+authorization은 아직 기록되지 않았고 historical images/extractions는 계속 NOT_RUN이다.
 [Benchmark Set](research/benchmarks/benchmark-set-v1.md)과
 [catalog](../experiments/benchmarks/README.md)의 15 execution은 모두 NOT_RUN이며 READY는 없다.
 

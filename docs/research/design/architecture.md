@@ -35,7 +35,9 @@ Contained node-tar **7.5.22 benign smoke**는 engineering TESTED evidence다.
 Historical qualification과 known-case rediscovery는 NOT_RUN이며 현재 취약점을 주장하지 않는다.
 첫 intended qualification은 **N01 7.5.2/7.5.3**이고 generation/setup/artifacts/expected effects는
 미검증이다. GNU evaluation route는 benign allowlist만, ORAS/C3/C4는 미구현이다.
-Automatic policy journal/repetition, interrupted-prefix recovery와 complete-step timing은 통합 완료되지 않았다.
+Final-state policy runner에는 optional completed-step callback과 별도 versioned full-step monotonic
+timing evidence/reader가 있다. Automatic policy journal/repetition, interrupted-prefix recovery,
+publication timing과 known-class adjudication은 통합 완료되지 않았다.
 과거 audits/summaries의 SHA/count는 역사적 evidence이며 현재 capability를 정의하지 않는다.
 
 아래 개념 그림에는 lineage, tracing, corpus 등 미래 설계도 포함한다. 현재 확정된 field/API는 **7.8 현재 구현 경계**를 따른다. Python reference는 최종 benchmark target이 아니다.

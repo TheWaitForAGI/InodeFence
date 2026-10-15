@@ -122,8 +122,13 @@ corpus와 구분한다. Diagnostic indexes와 full step evidence는 budget에 �
 
 이 API는 in-memory evidence를 반환하며 separate policy export/reader/config/dataset 경로가
 완료된 결과를 보존/검증한다. Legacy exporter/journal/dataset에 묵시적으로 넣지 않는다.
-Core callback/partial result가 없어 automatic incremental attachment는 여전히 불가하다.
-Compatibility/statistics 구현은 formal durable campaign orchestration이나 effectiveness proof가 아니다.
+Optional completed-step callback은 `run_case` cleanup과 feedback/step assembly 뒤, 다음 execution
+전에 immutable step을 전달한다. Callback failure는 다음 실행 전에 전파되지만 core partial result는
+반환하지 않는다. 별도 `policy-full-step-monotonic-v1` evaluation wrapper는 campaign preflight부터
+각 callback과 final result assembly까지의 contiguous monotonic offsets를 기존 result schema와
+분리해 보존·검증한다. Automatic incremental attachment/failure ledger, publication timing,
+known-class adjudication과 timed dataset pooling은 여전히 미구현이다. Compatibility/statistics 구현과
+timing engineering test는 formal durable campaign orchestration이나 effectiveness proof가 아니다.
 Unit tests는 policy/projection/mutation 조합과 legacy B3 parity를 확인한다. Tiny Python reference
 integration은 기존 runtime에서 full pipeline/archive hash binding을 확인하며 benchmark 결과나
 정책 효과의 증거가 아니다.

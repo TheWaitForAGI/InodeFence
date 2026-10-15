@@ -229,6 +229,66 @@ def test_invalid_seeds_and_execution_errors_fail_without_completed_results(monke
     assert len(calls) == 1
 
 
+def test_completed_step_sink_observes_each_step_before_next_execution(monkeypatch):
+    calls = []
+    observed = []
+
+    def execute(case, target, **kwargs):
+        calls.append(case)
+        assert len(observed) == len(calls) - 1
+        return _result(case)
+
+    monkeypatch.setattr(campaign, "run_case", execute)
+    seeds = (_case("a"), _case("b"))
+    result = run_search_campaign(
+        seeds,
+        UnusedTarget(),
+        SearchCampaignConfig(3, 5, SearchPolicy.B3),
+        completed_step=observed.append,
+    )
+    assert tuple(observed) == result.steps
+    assert len(calls) == 5
+
+
+def test_completed_step_sink_failure_stops_before_another_execution(monkeypatch):
+    calls = []
+    observed = []
+
+    def execute(case, target, **kwargs):
+        calls.append(case)
+        return _result(case)
+
+    def stop(step):
+        observed.append(step)
+        if step.index == 1:
+            raise RuntimeError("controlled evidence sink failure")
+
+    monkeypatch.setattr(campaign, "run_case", execute)
+    with pytest.raises(RuntimeError, match="controlled evidence sink failure"):
+        run_search_campaign(
+            (_case("a"), _case("b")),
+            UnusedTarget(),
+            SearchCampaignConfig(3, 5, SearchPolicy.B3),
+            completed_step=stop,
+        )
+    assert [step.index for step in observed] == [0, 1]
+    assert len(calls) == 2
+
+
+def test_invalid_completed_step_sink_fails_before_campaign_preparation(monkeypatch):
+    def forbidden(*args, **kwargs):
+        raise AssertionError("invalid sink must fail before provenance or execution")
+
+    monkeypatch.setattr(campaign, "_prepare_campaign", forbidden)
+    with pytest.raises(ValueError, match="completed_step"):
+        run_search_campaign(
+            (_case("a"),),
+            UnusedTarget(),
+            SearchCampaignConfig(1, 1, SearchPolicy.B0),
+            completed_step=object(),  # type: ignore[arg-type]
+        )
+
+
 @pytest.mark.parametrize("runner", (run_campaign, run_search_campaign))
 def test_shared_execution_gate_rejects_case_and_provenance_drift(monkeypatch, runner):
     config = (

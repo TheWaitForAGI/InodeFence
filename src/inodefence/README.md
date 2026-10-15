@@ -62,7 +62,9 @@ Layer 2–5와 Layer 6 infrastructure가 구현됐다. `run_search_campaign` / `
 B0/B1/B3 × FULL/A1/A2 × legacy/M1/A3를 실행하고 별도 PolicyEvaluationConfig/completed export가
 source/runtime/target/profile/protocol를 binding한다. Legacy ExperimentConfig는 B3/legacy만 허용한다.
 Reader/journal/replay/minimizer와 policy datasets/statistics가 존재하지만 automatic policy journal,
-interrupted-prefix return, full-pipeline timing과 known-class classification은 완성된 pipeline이 아니다.
+interrupted-prefix return과 known-class classification은 완성된 pipeline이 아니다. Final-state policy
+runner의 optional completed-step callback과 별도 full-step monotonic timing evidence/reader는 구현됐지만
+publication/failure 시간을 포함하지 않고 formal timed dataset 또는 결과를 만들지 않는다.
 
 Python reference는 architecture용이다. Contained node-tar 7.5.22의 benign full path는 TESTED이나
 historical qualification/rediscovery/formal effectiveness는 NOT_RUN이고 취약점을 주장하지 않는다.

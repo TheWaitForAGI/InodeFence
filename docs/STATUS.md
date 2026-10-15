@@ -149,10 +149,14 @@ Legacy `ExperimentConfig` v1/v2는 여전히 B3/legacy mutation만 허용한다.
 `PolicyEvaluationConfig`와 completed policy export/reader/config/dataset/statistics가 구현됐다.
 Reader는 raw derivations와 admission/parent binding을 검증하되 실제 RNG/mutation 실행을
 재구성하지 않는다. Provenance/lineage는 mutation operator trace나 authorship proof가 아니다.
-Full result는 O(budget) memory이며 core callback 없이 passive journal을 자동 연결할 수 없다.
-Policy repeat orchestration, interrupted-prefix preservation, full-step monotonic timing과
-known-class adjudication은 완성된 자동 pipeline이 아니다. Target duration으로 전체 latency나
-throughput을 대신하지 않는다. [실험 안내](../experiments/README.md)를 따른다.
+Full result는 O(budget) memory다. Policy callback은 passive journal에 자동 연결되지 않았고
+legacy runner에는 completed-step callback이 없다.
+Final-state policy runner에는 cleanup/feedback 뒤 optional completed-step callback과 별도
+`policy-full-step-monotonic-v1` evidence/reader가 구현·테스트됐다. Existing result/policy schema와
+target duration은 변경하지 않는다. Policy repeat orchestration, automatic journal attachment,
+interrupted-prefix/failure preservation, publication timing, timed dataset pooling과 known-class
+adjudication은 완성된 자동 pipeline이 아니다. Target duration으로 전체 latency나 throughput을
+대신하지 않는다. [실험 안내](../experiments/README.md)를 따른다.
 
 ## 다음 연구 gate
 

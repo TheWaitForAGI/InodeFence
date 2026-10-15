@@ -35,6 +35,12 @@ pytest 결과.
 
 `test_execution_duration.py`는 finite/nonnegative duration validation, 모든 status의 monotonic elapsed 측정과 timeout budget 구분, JSON 보존과 signature/case identity isolation을 검증한다. 실제 E2E의 success/rejected/failed/timed_out에서도 finite/0 이상인 duration을 확인한다.
 
+`evaluation/test_policy_timing.py`는 final-state policy의 cleanup/feedback-complete callback에서
+campaign-origin monotonic full-step offsets를 기록하고, existing bound result/config와 별도 timing
+record를 no-overwrite manifest로 결합한 뒤 독립 reader가 재검증함을 확인한다. Clock/order/count/
+binding corruption과 torn marker를 거부한다. 이는 synthetic/reference engineering evidence이며
+formal throughput/time-to-hit 측정, failure-prefix persistence 또는 known-class adjudication이 아니다.
+
 `test_mutator.py`는 8개 독립 operator와 uniform baseline의 원본 불변성, caller-owned RNG 재현성, raw spelling/순서/중복, 적용 불가 시 no-op와 canonical model invariant를 검증한다. `test_mutator_builder.py`는 별도 integration 경계에서 빈/regular/mixed case를 변형한 뒤 constructor 재검증과 deterministic USTAR의 raw path/link, type/mode/content/order 보존을 확인한다. USTAR 길이를 넘는 변형은 logical model에 남고 builder가 명시적으로 거부해야 한다. 이 검사는 mutator 구현에 builder 의존성을 추가하지 않으며 corpus scheduling, fuzzing 효과나 benchmark campaign의 검증이 아니다.
 
 `test_mutator_addressing.py`는 별도 protected-component policy가 original benign hardlink

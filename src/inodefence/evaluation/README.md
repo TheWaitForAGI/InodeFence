@@ -152,6 +152,29 @@ has one validated target/config context; summaries preserve those identifiers.
 Multi-run/per-target grouping requires separate dataset compatibility validation.
 Infrastructure ledgers and incomplete journals are not execution inputs.
 
+## Policy full-step timing
+
+`run_search_campaign(..., completed_step=sink)` delivers each immutable policy step after
+`run_case` returned (including sandbox cleanup) and feedback/step assembly completed, before
+the next execution begins. A sink exception propagates and prevents the next execution; the
+core still does not return a partial result.
+
+`run_timed_search_campaign` uses that boundary without changing SearchCampaignResult/Step or
+policy identifiers. Profile `policy-full-step-monotonic-v1` records contiguous nanosecond
+offsets from immediately before campaign preflight to each completed-step callback and final
+result assembly, plus descriptive UTC start/end. These intervals are full orchestration-step
+evidence, not `ExecutionResult.duration_seconds`; the latter remains target lifecycle time.
+
+`export_timed_policy_result` publishes the existing bound policy bundle, a separate timing
+record and a last manifest. `verify_timed_policy_evidence` independently verifies both
+subtrees, checksums, evaluation config ID, step count/profile and contiguous offsets before
+returning either. The CLI is `python -m inodefence.evaluation.policy_timing DIRECTORY` with an
+optional trusted manifest digest.
+
+This v1 wrapper measures in-memory completion. It does not include later bundle publication,
+persist an aborted prefix, attach the generic failure ledger, adjudicate a known class or
+make timed datasets poolable. No formal latency, throughput or effectiveness result exists.
+
 ## Dataset compatibility
 
 `validate_dataset((DatasetMember(directory, protocol_version, manifest_digest), ...))`

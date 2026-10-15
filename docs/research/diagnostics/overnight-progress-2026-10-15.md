@@ -250,6 +250,27 @@ preflight before any historical artifact is loaded.
 5. P0-v2/P1-v2/P2-v2 effectiveness remains blocked until a mandatory native observation gate
    passes; a v3 gate cannot silently qualify v2.
 
+## Post-implementation adversarial review
+
+The six branch diffs were reviewed against current main for Task Contract compliance,
+pipeline/layer boundaries, research semantics, Linux identity assumptions, negative tests,
+documentation and claimed validation. No Blocker or Major finding was identified.
+
+The remaining review limitations are explicit rather than merge blockers:
+
+- protected-component names are intentionally tied to the versioned default controlled
+  layout, so a different sentinel layout requires a new reviewed policy rather than an
+  unrecorded runtime substitution;
+- exact lock tests do not establish installability, image compatibility or target behavior;
+- the v3 proposal and N01 contract require human scientific decisions and contain no implicit
+  implementation or execution authorization;
+- a completed-step sink failure preserves only caller-owned observations; the policy core
+  still returns no partial result, and the timing wrapper is final-state evidence only;
+- live CI, issue metadata and GitHub review comments remain unobserved; and
+- several branches update `docs/START_HERE.md` or `docs/STATUS.md`, so each must be rebased
+  after an earlier merge, conflicts reviewed semantically, and `make check` rerun. Passing
+  tests on parallel branches are not evidence that an arbitrary combined tree passes.
+
 ## Deadline assessment
 
 For the November 2 intermediate presentation, this session improves defensible engineering

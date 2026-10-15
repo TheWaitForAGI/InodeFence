@@ -172,7 +172,7 @@ Current stacked GitHub state verified on 2026-10-15:
 | --- | --- | --- | --- |
 | [#93](https://github.com/TheWaitForAGI/InodeFence/pull/93) | `ee6ce6501368ff8a5ab420e254790c3451b997ae` → `main` | 29 files, protected-component policy + exact locks | [run 38692252320 PASS](https://github.com/TheWaitForAGI/InodeFence/actions/runs/38692252320) |
 | [#94](https://github.com/TheWaitForAGI/InodeFence/pull/94) | `d8827893ed758ee0437820373964d13564727c6d` → `integration/n01-historical-readiness-v1` | 4 files, reviewed/authorized qualification contract | [run 38692405290 PASS](https://github.com/TheWaitForAGI/InodeFence/actions/runs/38692405290) |
-| [#95](https://github.com/TheWaitForAGI/InodeFence/pull/95) | current head `f1d93ddd5ecba6617484601944eae9717d22fc7a` → `review/n01-pair-qualification-v1` | 16 files, contained implementation and review follow-up | [run 38694353851 PASS](https://github.com/TheWaitForAGI/InodeFence/actions/runs/38694353851) |
+| [#95](https://github.com/TheWaitForAGI/InodeFence/pull/95) | inspected implementation/review head `f1d93ddd5ecba6617484601944eae9717d22fc7a` → `review/n01-pair-qualification-v1` | 16 files, contained implementation and review follow-up | [run 38694353851 PASS](https://github.com/TheWaitForAGI/InodeFence/actions/runs/38694353851) |
 
 All three PRs were open, non-draft, unmerged, and reported mergeable when inspected. The
 stacked bases match the intended sequence; no PR was duplicated or retargeted.
@@ -322,9 +322,11 @@ until it is backed by the immutable evidence directory from the approved executi
 
 The requested resume audit independently established the following current facts:
 
-- repository HEAD and remote PR #95 head are both
-  `f1d93ddd5ecba6617484601944eae9717d22fc7a`; remote `main` remains
-  `57f751992f60a534c5b07506e72124abe5d6b07d`;
+- the resume audit started with repository HEAD and remote PR #95 head both at
+  `f1d93ddd5ecba6617484601944eae9717d22fc7a`; remote `main` remained
+  `57f751992f60a534c5b07506e72124abe5d6b07d`. Additive documentation-only
+  checkpoints from this audit follow that implementation head; the PR branch ref is the
+  authoritative live tip;
 - commit ancestry is exactly `main` → PR #93 `ee6ce6501368ff8a5ab420e254790c3451b997ae`
   → PR #94 `d8827893ed758ee0437820373964d13564727c6d` → PR #95 `f1d93ddd...`;
 - PRs #93, #94 and #95 are open, non-draft and mergeable with both CI checks successful;
@@ -332,8 +334,10 @@ The requested resume audit independently established the following current facts
 - branch-protection details could not be read because GitHub returned HTTP 403 for this
   private repository/plan. PR #95 also explicitly states that it must not be auto-merged, so
   no merge was attempted and no human review was recorded by inference;
-- CI run `38694353851` is complete/success at the exact current head; both `check` and
-  `container-integration` passed;
+- CI run `38694353851` is complete/success at the inspected implementation head. After the
+  first documentation checkpoint, run
+  [38696442582](https://github.com/TheWaitForAGI/InodeFence/actions/runs/38696442582)
+  also completed successfully with both `check` and `container-integration` passing;
 - the active checkout contains an unrelated, pre-existing modification to
   `.devcontainer/devcontainer.json`. It was preserved and excluded from this checkpoint;
   the exact PR head was instead validated in a detached clean worktree;

@@ -1,6 +1,7 @@
 # N01 contained affected/fixed pair qualification v1
 
-Status: **PROPOSED / BLOCKED_FOR_REVIEW / BLOCKED_ENVIRONMENT / NOT_EXECUTED**.
+Status: **TECHNICALLY_REVIEWED / BLOCKED_FOR_HUMAN_APPROVAL /
+HISTORICAL_IMAGES_NOT_BUILT / NOT_EXECUTED**.
 No historical target invocation, image build, npm install, affected/fixed replay or fuzzing
 campaign is authorized by this document.
 
@@ -30,7 +31,7 @@ and are not silently treated as merged:
 | Static N01 investigation / PR #92 | `f8be20a37ea5ffdd64c2b56fbc7bfd14218ab595` | official package bytes, production closure and source-level affected/fixed expectation | retain as documentary/static evidence; do not count as runtime qualification |
 | Protected-component mutation policy | `a7aa735bfada38309984066202b1ceda5aa93e34` | versioned default-sentinel vocabulary and constructive case/TAR proof | review and merge, or pin an integration revision containing the byte-identical implementation |
 | Exact N01 wrapper locks | `12fe379` | common historical production closure and portable packaging tests | review and merge, or pin an integration revision containing the exact lock bytes |
-| Trusted host/controller broker | unavailable in the 2026-10-14 OrbStack Dev Container | required Docker boundary for untrusted historical targets | restore and validate transport, controller ID, context, volume and cleanup before any target load |
+| Trusted host/controller broker | user-reported macOS/OrbStack validation on 2026-10-15: boundary 6/6, current Node image 2/2, current Node target 10/10 | establishes the existing normal-target transport path, not historical image admission | rerun exact controller/context/volume identity and historical image admission on the frozen execution revision |
 
 The old unmerged `experiment/n01-node-historical-qualification` branch is not a prerequisite.
 Its root-level `a` sentinel, later-resolved minipass `7.1.3` locks and older host/controller
@@ -191,3 +192,55 @@ direct Node subprocess if broker validation fails.
 
 Until approval, prerequisite integration and broker validation all exist together, the
 historical execution remains **NOT_RUN**.
+
+## Technical review and human authorization record
+
+Technical review date: **2026-10-15 UTC**. Reviewed integration revision:
+`ee6ce6501368ff8a5ab420e254790c3451b997ae`. Review classification:
+**engineering contract consistency PASS; scientific authorization NOT RECORDED**.
+
+The review mechanically reproduced these frozen bindings from the integrated source:
+
+- affected/fixed packages: node-tar `7.5.2` / `7.5.3` with exact wrapper-lock SHA-256
+  `31792107e9442ab18b04661d10ca0a0053db1fb7c58ca3aa702f1abb9908e243` /
+  `a63d02f09d9a9fb2def77da84d5145984ff260fcedd19839ba96ec858fdfae24`;
+- worker SHA-256
+  `feb13d7be5f5718769bebd4b0e375ea3f535abffd45223494dd518263593498b`;
+- generated child case ID
+  `55b8b7eda4bf26ec1e877866a099dd49195754e00e1e6f20dd82b0bb09288a87`
+  and TAR SHA-256
+  `2af6de238713e83a630ad8c95f9385f2cf2e6127a9025bd71d7a2377a7e47ba6`;
+- default sentinel bytes SHA-256
+  `caed2ac112733b3f5e3f56d9372f7ce6ba88dfafd57eb58807bb29f16548e36b`
+  with mode `0600`; and
+- Node/base pins, `strict:true`, `preservePaths:false`, 10-second target timeout and the
+  existing `docker-volume-subpath-v1` resource/isolation policy stated above.
+
+Code review confirmed that each `run_case` constructs a fresh runtime sandbox, finishes
+setup before BEFORE, captures AFTER before cleanup, applies C1/C2 independently of process
+status and removes the runtime root. `PairComparison` requires equal case/TAR/builder
+identity while preserving both complete arm results; its storage reader verifies canonical
+bytes and checksums. The future N01 runner must still export each valid arm result before
+applying expected-outcome rules and must add a final manifest that binds all five pair
+records, schedule roles, cleanup and independent-reader output.
+
+Frozen execution summary for human decision:
+
+| Decision item | Frozen value |
+| --- | --- |
+| Input | one policy-generated known-class positive control; exact child/TAR hashes above |
+| Pair | affected 7.5.2 versus fixed 7.5.3; only selected `tar` bytes differ |
+| Budget | 8 benign extractions, then 5 fresh repetitions per release; no automatic retry |
+| Order | affected→fixed for repetitions 0/2/4; fixed→affected for 1/3 |
+| Required selected observation | affected 5/5 persistent C1 relation; fixed 0/5 C1/C2 |
+| Corroboration | affected C2 sentinel metadata change; content change is not required |
+| Failure handling | rejection, timeout, unexpected state and infrastructure failure retained without coercion or denominator removal |
+| Containment | existing trusted macOS broker, exact Linux volume/controller, immutable images, network none, non-root and frozen limits |
+| Maximum claim | controlled historical behavior is observable by the existing persistent C1/C2 pipeline |
+| Excluded claims | fuzzing rediscovery, feedback effectiveness, native-effect qualification, general release safety and new vulnerability discovery |
+
+Human authorization state: **NOT_RECORDED**. The execution gate remains
+`BLOCKED_FOR_HUMAN_APPROVAL` until a human reviewer explicitly records
+“N01 pair qualification contract v1을 승인한다” (or an unambiguous equivalent) against these
+exact bindings, budget and decision rules. Technical review and the user's broker-baseline
+report do not constitute that authorization.

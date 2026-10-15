@@ -26,15 +26,15 @@ Core Layer 2–5와 Layer 6 evidence infrastructure가 구현됐지만 historica
 
 ArchiveCase → deterministic USTAR → fresh runtime/prepared target → BEFORE → target execution →
 AFTER → C0/C1/C2 → feedback pipeline과 minimal benign seeds가 구현됐다. `run_search_campaign`은 B0/B1/B3,
-A1/A2 key projection과 legacy/M1/A3 mutation을 명시적으로 조합한다. Generic/USTAR minimizer,
+A1/A2 key projection과 legacy/M1/protected-component/A3 mutation을 명시적으로 조합한다. Generic/USTAR minimizer,
 verified readers, passive ledger/journal, pair/benign replay, qualification/matrix와 completed policy
 config/dataset/statistics도 있다. [Search 계약](search-policy-core-v1.md)과
 [evaluation API](../../../src/inodefence/evaluation/README.md)가 해당 구현의 상세 경계를 기록한다.
 
 Contained node-tar **7.5.22 benign smoke**는 engineering TESTED evidence다.
 Historical qualification과 known-case rediscovery는 NOT_RUN이며 현재 취약점을 주장하지 않는다.
-첫 intended qualification은 **N01 7.5.2/7.5.3**이고 generation/setup/artifacts/expected effects는
-미검증이다. GNU evaluation route는 benign allowlist만, ORAS/C3/C4는 미구현이다.
+첫 intended qualification은 **N01 7.5.2/7.5.3**이다. Protected-component policy의 logical
+generation은 TESTED지만 setup/artifacts/expected effects는 미검증이다. GNU evaluation route는 benign allowlist만, ORAS/C3/C4는 미구현이다.
 Automatic policy journal/repetition, interrupted-prefix recovery와 complete-step timing은 통합 완료되지 않았다.
 과거 audits/summaries의 SHA/count는 역사적 evidence이며 현재 capability를 정의하지 않는다.
 
@@ -732,7 +732,8 @@ Mutator는 archive의 **구조적 의미**를 변화시킨다.
 
 현재 [Generic Mutation v1](../../../src/inodefence/mutator/README.md)은 add/remove/duplicate/reorder/path/hardlink/symlink/link-target 8개 함수를 독립적으로 export한다. 각 함수는 `(case: ArchiveCase, rng: random.Random) -> ArchiveCase`이며 caller-owned RNG만 사용한다. Uniform `mutate()`는 baseline convenience 함수다. 향후 adaptive scheduler는 개별 함수를 직접 선택할 수 있으며 mutator는 Observer/Oracle/Feedback/StateSignature/TargetAdapter/pipeline/corpus 또는 TAR encoding에 의존하지 않는다. Constructor와 builder의 조합 검사는 별도 integration test에 둔다.
 
-아래는 설계 축이며 현재 구현은 [legacy/M1/A3 계약](mutation-m1-v1.md)을 따른다. 후속 후보를 구현됐다고 해석하지 않는다:
+아래는 설계 축이며 현재 구현은 [legacy/M1/A3 계약](mutation-m1-v1.md)과 별도
+[protected-component addressing](mutation-protected-components-v1.md)을 따른다. 후속 후보를 구현됐다고 해석하지 않는다:
 
 - entry type
 - entry path

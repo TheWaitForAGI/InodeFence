@@ -9,8 +9,10 @@ from inodefence.model.archive import ArchiveCase
 class MutationPolicy(StrEnum):
     LEGACY = "uniform-generic-v1"
     M1 = "uniform-generic-m1-v1"
+    M1_PROTECTED_COMPONENTS = "uniform-generic-m1-protected-components-v1"
     LEGACY_NO_REORDER = "uniform-generic-no-reorder-v1"
     M1_NO_REORDER = "uniform-generic-m1-no-reorder-v1"
+    M1_PROTECTED_COMPONENTS_NO_REORDER = "uniform-generic-m1-protected-components-no-reorder-v1"
 
 
 def mutate_with_policy(

@@ -1,6 +1,6 @@
 # 현재 프로젝트 상태
 
-상태 갱신일: **2026-10-13**. G0 capability baseline은 main
+상태 갱신일: **2026-10-14**. G0 capability baseline은 main
 **`8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`**다. 이 SHA는 G0 문서 동결이
 검토한 구현 revision이며 최신 main을 뜻하지 않는다. #77–#84 연구 stack은 main에
 통합됐다. Internal completion qualification v3의 clean harness revision은 `9ea306f7`이고,
@@ -25,11 +25,11 @@ Benign smoke와 synthetic/unit tests는 이 문장의 예외가 아니다.
 [Evidence 용어](research/design/research-contract-v1.md)는 각 수준을 독립적으로 기록한다.
 아래 TESTED는 지정된 범위의 engineering evidence이며 research effectiveness를 뜻하지 않는다.
 
-| 영역 | DESIGNED | IMPLEMENTED at baseline | TESTED evidence / 범위 | EXPERIMENTALLY VALIDATED research claim |
+| 영역 | DESIGNED | IMPLEMENTED in current source | TESTED evidence / 범위 | EXPERIMENTALLY VALIDATED research claim |
 | --- | --- | --- | --- | --- |
 | C0/C1/C2 | [계약](research/design/security-contracts.md) | persistent BEFORE/AFTER namespace, identity, sentinel effects | [oracle tests](../tests/test_state_semantics.py), [observer](../tests/test_observer.py), [real pipeline](../tests/test_pipeline.py) | 미검증; historical qualification 없음 |
-| Linux execution | fresh runtime + container-required third-party boundary | backend / prepared invocation / verified artifact admission | [container integration](../tests/README.md); pinned Node benign smoke | historical pair 미검증 |
-| Mutation | legacy / M1 / A3 contracts | eight slots; M1 nested/reused names/dependencies; no-reorder versions | [mutator tests](../tests/test_mutator.py), [search composition](../tests/test_campaign_search.py) | reachable historical effects 미검증 |
+| Linux execution | fresh runtime + container-required third-party boundary | backend / prepared invocation / verified artifact admission; N01 exact wrapper locks | [container integration](../tests/README.md); pinned Node benign smoke; N01 portable lock/packaging checks | historical images/runtime/pair 미검증 |
+| Mutation | legacy / M1 / protected-component / A3 contracts | eight slots; M1 nested/reused names/dependencies; versioned default-sentinel component policy; no-reorder versions | [mutator tests](../tests/test_mutator.py), [constructive addressing](../tests/test_mutator_addressing.py), [search composition](../tests/test_campaign_search.py) | logical address generation만 TESTED; historical effect 미검증 |
 | Search / feedback | B0/B1/B3 and A1/A2 | `SearchState`, `run_search_campaign`, explicit policy config | [policy checks](../tests/test_feedback_search_contracts.py), [trusted reference integration](../tests/test_campaign_search_integration.py) | 비교 효과 미검증 |
 | Entry transitions | P0 final-state, P1 transition retention, P2 transition-adaptive mutation | v1 model/search/evaluation; v2 event model/feedback, bounded node-tar producer/raw export, independent reader and qualification runner | synthetic tests plus node-tar/libarchive controlled qualification; v2 producer 10 checks PASS and 480-run matrix independently verified at `36ff7fd` | v1 `BLOCKED_NATIVE_OBSERVATION`; v2 `V2_NATIVE_EFFECT_OBSERVATION_NOT_QUALIFIED` (replacement coverage); effectiveness NOT_RUN |
 | Minimization | bounded deterministic generic/USTAR reduction | core and exact-fingerprint evidence binding | [minimizer tests](../tests/test_minimizer.py), [USTAR checks](../tests/test_minimizer_ustar.py) | historical/unknown candidate 없음 |
@@ -62,7 +62,7 @@ symlink referent, inode reuse, direct-use/tracing은 판정하지 못한다. 관
 nonviolation을 만들지 않는다. `violated=False`는 safety proof가 아니다.
 
 `run_search_campaign` / `SearchCampaignConfig`는 **B0/B1/B3 × FULL/A1/A2 ×
-legacy/M1/A3**를 명시적으로 실행한다. B0는 unretained walk, B1은 key novelty admission,
+legacy/M1/protected-component/A3**를 명시적으로 실행한다. B0는 unretained walk, B1은 key novelty admission,
 B3는 key OR violation novelty admission이다. A1/A2는 feedback key만 투영한다.
 A3는 reorder draw를 유지한 no-op이며 insertion/duplicate의 order variation은 남는다.
 [정확한 비교 범위](research/benchmarks/baseline-and-ablation-v1.md)를 따른다.
@@ -164,9 +164,14 @@ Native campaign integration remains blocked until the exact
 incomplete/invalid streams and target-rejection prefixes for admission/reward.
 
 **첫 historical qualification은 N01 node-tar 7.5.2 / 7.5.3 hardlink arm을 의도한다.**
-정확한 locks/images/options/setup을 아직 qualify하지 않았다. M1은 composition을 지원하지만
-finite vocabulary가 default `outside/sentinel.txt`를 생성하지 못한다. Generation reachability와
-controlled setup을 검증하지 않은 상태에서 unknown-vulnerability campaign으로 넘어가지 않는다.
+두 exact [wrapper locks](../experiments/benchmarks/locks/README.md)는 공통 historical production
+closure로 준비하고 portable validator를 통과했지만 image build/runtime/options/setup은 아직
+qualify하지 않았다. M1은 composition을 지원하지만 기존 finite vocabulary가 default
+`outside/sentinel.txt`를 생성하지 못한다. 별도 versioned
+[protected-component policy](research/design/mutation-protected-components-v1.md)는 original benign
+seed에서 해당 상대 주소까지의 deterministic logical reachability를 TESTED했다. 이는 target-visible
+setup, historical affected/fixed behavior 또는 rediscovery를 검증하지 않으므로 contained setup과
+pair qualification 전 unknown-vulnerability campaign으로 넘어가지 않는다.
 [Benchmark Set](research/benchmarks/benchmark-set-v1.md)과
 [catalog](../experiments/benchmarks/README.md)의 15 execution은 모두 NOT_RUN이며 READY는 없다.
 

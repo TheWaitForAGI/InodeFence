@@ -19,12 +19,14 @@ PENDING requires independent verification, and BLOCKED names missing implementat
 READY requires every gate to pass with immutable evidence links; no ordinal score
 or famous CVE compensates for a failed gate.
 
-Capability baseline is main `8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`.
+G0 capability baseline is main `8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`.
 [Research Contract](../design/research-contract-v1.md) separates current
 engineering code/tests from historical/frozen comparative evidence. Node 7.5.22
 benign smoke does not qualify historical versions. **N01 7.5.2/7.5.3 is the first
 intended qualification pair; all expected effects/replays below remain NOT_RUN.**
-M1 supports composition/collisions but not default external-name addressing.
+Original M1 supports composition/collisions but not default external-name addressing.
+The post-baseline separate protected-component policy has constructive logical address evidence only;
+contained setup and historical effects remain pending.
 G1–G8 in this section are **candidate admission checks**, not project research
 gates G0–G7. Passing one must not be interpreted as passing the similarly named
 project gate. These definitions and original conditional selection are retained.
@@ -34,7 +36,7 @@ project gate. These definitions and original conditional selection are retained.
 | G1 Source trust | Upstream advisory plus production fixing patch | PASS | PASS | PASS | PASS |
 | G2 Exact pin | Exact releases, artifact hashes/locks and runtime compatibility | Registry/source VERIFIED; image/runtime PENDING | Registry/source VERIFIED; image/runtime PENDING | Registry/source VERIFIED; image/runtime PENDING | Module/source VERIFIED; wrapper/compiler/image PENDING |
 | G3 Semantics | Selected arm matched to Linux/default safety settings | Relative arm PENDING | Linux PENDING | Strict/cache PENDING | Public route source VERIFIED; CWD/effect PENDING |
-| G4 Reachability | USTAR plus constructive generic reachability from benign seeds | BLOCKED default address; M1 exists | BLOCKED default address; chain unqualified | BLOCKED default destination; collision unqualified | BLOCKED CWD/adapter |
+| G4 Reachability | USTAR plus constructive generic reachability from benign seeds | PARTIAL logical construction; target mapping pending | PARTIAL default address; chain unqualified | PARTIAL default destination; transition unqualified | BLOCKED CWD/adapter |
 | G5 Execution | Audited candidate image/config/provenance/full-path binding | BLOCKED | BLOCKED | BLOCKED | BLOCKED |
 | G6 Observation | Complete lifecycle-valid persistent C0/C1/C2 evidence | Predicted; PENDING | Predicted; PENDING | Predicted; PENDING | Predicted; PENDING |
 | G7 Expected outcome | Fresh same-input affected/fixed comparison and root-cause review | NOT EXECUTED | NOT EXECUTED | NOT EXECUTED | NOT EXECUTED |
@@ -86,9 +88,9 @@ runtime between vulnerable and fixed members to manufacture a difference.
 
 | Benchmark ID | Known issue / pair vulnerable → fixed | Root class | Expected evidence / required operations | Current reachability / why selected |
 | --- | --- | --- | --- | --- |
-| node-link-sanitize | N01, CVE-2026-23745; tar 7.5.2 → 7.5.3 | R1 | C1 persistent internal/protected identity; C2 nlink/ctime expected; C0 not necessary. add_hardlink, mutate_link_target, implemented M1 plus qualified controlled-name addressing | NO for current default sentinel; simplest identity acquisition versus link-field fix |
-| node-link-compose | N03, CVE-2026-26960; tar 7.5.7 → 7.5.8 | R3 | C1 persistent alias; C2 link metadata; C0 not necessary. add_symlink, add_hardlink, mutate_path/link_target, reorder, duplicate, M1 | NO default sentinel, M1 composition implemented, exact chain unqualified; tests composition beyond simple text checks; Linux qualification required |
-| node-cache-transition | N04, CVE-2021-32803; tar 6.1.1 → 6.1.2 | R4 | C2 protected content/size/mode change, or C0 protected-path creation/replacement; C1 not required. directory seed, add_symlink, add_entry, mutate_path/link_target, reorder, duplicate, M1 | NO default protected destination, M1 collisions implemented, exact transition unqualified; adds state/order and external-effect class |
+| node-link-sanitize | N01, CVE-2026-23745; tar 7.5.2 → 7.5.3 | R1 | C1 persistent internal/protected identity; C2 nlink/ctime expected; C0 not necessary. add_hardlink, mutate_link_target, protected-component policy | Default sentinel relative target constructively TESTED; contained setup/effect pending |
+| node-link-compose | N03, CVE-2026-26960; tar 7.5.7 → 7.5.8 | R3 | C1 persistent alias; C2 link metadata; C0 not necessary. add_symlink, add_hardlink, mutate_path/link_target, reorder, duplicate, protected-component policy | Default spelling and M1 composition implemented; exact chain/Linux effect unqualified |
+| node-cache-transition | N04, CVE-2021-32803; tar 6.1.1 → 6.1.2 | R4 | C2 protected content/size/mode change, or C0 protected-path creation/replacement; C1 not required. directory seed, add_symlink, add_entry, mutate_path/link_target, reorder, duplicate, protected-component policy | Default destination spelling and M1 collisions implemented; exact transition unqualified |
 | oras-cwd-hardlink | O01, CVE-2026-50163; oras-go 2.6.0 → 2.6.2 | R2 | C1 internal/protected CWD-file alias; C2 link metadata; C0 not required. add_hardlink, mutate_link_target/path; generic-name sentinel and explicit isolated CWD | PARTIAL setup; adds independent Go implementation and a different resolution base |
 
 N01/N03 share the alias effect but have different fixes and structural
@@ -100,7 +102,7 @@ independent kinds of effect. No candidate-specific initial attack case is needed
 
 Common setup: fresh empty extract, at least one owned writable regular sentinel
 on the same device, explicit isolated relative names, no real secrets, default upstream
-safety controls enabled. Use the same benign initial seeds, M1 policy,
+safety controls enabled. Use the same benign initial seeds, protected-component policy,
 execution/timeout budgets, RNG sequence and isolation limits for each version
 pair. All controlled names/layouts are public test configuration available to
 every variant; none encodes a vulnerability sequence.

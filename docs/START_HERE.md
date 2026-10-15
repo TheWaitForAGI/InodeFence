@@ -92,10 +92,13 @@ G0 documentation freeze의 capability baseline은 main
 연구 정의와 claim boundary는 [Research Contract v1](research/design/research-contract-v1.md)를 따른다.
 
 - Layer 2–3: immutable models, USTAR, Linux runtime, actual reference worker와 snapshot C0/C1/C2.
-- Layer 4–5: legacy/M1 mutation, B0/B1/B3 search, A1/A2 feedback keys와 A3 no-reorder,
-  deterministic seed-inclusive bounded campaign.
+- Layer 4–5: legacy/M1 mutation, versioned protected-component addressing,
+  B0/B1/B3 search, A1/A2 feedback keys와 A3 no-reorder, deterministic seed-inclusive
+  bounded campaign. Default sentinel까지의 logical generation은 TESTED지만 historical
+  target/setup qualification은 NOT_RUN.
 - Layer 6 infrastructure: generic/USTAR minimization, readers, pair/benign replay,
   passive ledger/journal, qualification/matrix와 completed policy binding/dataset/statistics.
+  N01 `7.5.2/7.5.3` exact wrapper locks는 portable validation만 완료했고 images/runtime/pair는 NOT_RUN.
 - Entry-transition infrastructure: target-independent evidence model, P0/P1 retention,
   P2 bounded scheduler and checksummed evaluation/replay APIs are TESTED synthetically;
   native v1은 qualification에서 BLOCKED이고 producer/effectiveness는 NOT_IMPLEMENTED / NOT_RUN.

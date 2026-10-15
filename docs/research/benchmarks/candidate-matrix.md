@@ -25,10 +25,12 @@ means some benign types exist, not an attack-bearing seed. Reachability includes
 actual controlled setup; the taxonomy separately records structural reachability.
 Observability concerns a predicted persistent effect only.
 
-At capability baseline main `8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`,
+At G0 capability baseline main `8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`,
 contained Node invocation/artifact verification, M1, B0/B1/B3/A1/A2/A3, minimization,
 benign replay and completed policy analysis are implemented/tested engineering
-capabilities. The [G0 contract](../design/research-contract-v1.md) and
+capabilities. Current source additionally implements the post-baseline
+[protected-component policy](../design/mutation-protected-components-v1.md). The
+[G0 contract](../design/research-contract-v1.md) and
 [STATUS](../../STATUS.md) supersede historical audit implementation claims.
 "Candidate campaign binding" below still means exact historical locks/images,
 setup and independent expected-effect qualification, all pending.
@@ -37,20 +39,20 @@ has been rediscovered and no vulnerability is claimed.**
 
 | Candidate | ArchiveCase represents semantics? | Minimal seeds start near them? | Mutation/setup reaches benchmark now? | Oracle observes selected effect? | Future isolated Linux route / qualification |
 | --- | --- | --- | --- | --- | --- |
-| N01 | YES | PARTIAL internal hardlink | NO default sentinel address | YES hardlink arm; PARTIAL whole advisory | Exact candidate image/campaign binding pending; IMPLEMENTATION_BLOCKED |
-| N02 | YES | PARTIAL internal hardlink | NO default addressing; M1 composition exists | YES persistent alias | Exact candidate image/campaign binding pending; IMPLEMENTATION_BLOCKED |
-| N03 | YES | PARTIAL separate link seeds | NO default addressing; M1 dependencies exist, selected chain unqualified | YES persistent alias | Candidate campaign binding plus Linux gate; IMPLEMENTATION_BLOCKED |
-| N04 | YES | PARTIAL directory seed | NO default addressing; M1 collisions exist, selected alignment unqualified | YES protected write/C0 namespace | Candidate campaign binding plus runtime/strict qualification; IMPLEMENTATION_BLOCKED |
-| N05 | YES | PARTIAL regular file | NO selected external address | YES controlled persistent effect | Candidate campaign binding plus absolute input/run binding; IMPLEMENTATION_BLOCKED |
+| N01 | YES | PARTIAL internal hardlink | YES logical default address; contained effect pending | YES hardlink arm; PARTIAL whole advisory | Exact candidate image/campaign binding pending; IMPLEMENTATION_BLOCKED |
+| N02 | YES | PARTIAL internal hardlink | PARTIAL default address/composition; selected setup unqualified | YES persistent alias | Exact candidate image/campaign binding pending; IMPLEMENTATION_BLOCKED |
+| N03 | YES | PARTIAL separate link seeds | PARTIAL default address/dependencies; selected chain unqualified | YES persistent alias | Candidate campaign binding plus Linux gate; IMPLEMENTATION_BLOCKED |
+| N04 | YES | PARTIAL directory seed | PARTIAL default address/collisions; selected alignment unqualified | YES protected write/C0 namespace | Candidate campaign binding plus runtime/strict qualification; IMPLEMENTATION_BLOCKED |
+| N05 | YES | PARTIAL regular file | PARTIAL default components; exact root behavior unqualified | YES controlled persistent effect | Candidate campaign binding plus absolute input/run binding; IMPLEMENTATION_BLOCKED |
 | N06 | YES POSIX arm | PARTIAL directory seed | NO backslash vocabulary/addressing | YES persistent POSIX effect | Candidate campaign binding/grammar missing; IMPLEMENTATION_BLOCKED |
 | N07 | YES raw names | NO equivalent-name class | NO alphabet/platform | PARTIAL on required platform | Linux v1 platform gate failed; SOURCE_VERIFIED, excluded |
 | N08 | YES raw names/order | NO concurrency/equivalence | NO platform/race | PARTIAL persistent effect only | Linux v1 platform/race gate failed; SOURCE_VERIFIED, excluded |
 | N09 | NO PAX/GNU metadata | NO | NO encoding | NO parser-disagreement verdict | Encoding/measurement scope gate failed; SOURCE_VERIFIED, excluded |
 | O01 | YES | PARTIAL hardlink seed | PARTIAL generic-name sentinel possible; CWD/adapter absent | YES persistent alias | Public offline API verified; wrapper/transport/external CWD pending; IMPLEMENTATION_BLOCKED |
-| O02 | YES | PARTIAL link/file seeds | NO composition/addressing | YES persistent protected write | ORAS binding/exact fix unresolved; IMPLEMENTATION_BLOCKED |
+| O02 | YES | PARTIAL link/file seeds | PARTIAL composition/default address; exact chain unqualified | YES persistent protected write | ORAS binding/exact fix unresolved; IMPLEMENTATION_BLOCKED |
 | O03 | NO non-TAR input/setup | NO | NO | PARTIAL with extra setup | Outside TAR v1; SOURCE_VERIFIED, excluded |
 | G01 | YES types; invocation UNKNOWN | PARTIAL link/file seeds | UNKNOWN pin/root semantics | PARTIAL narrower boundary | Benign-only GNU adapter exists; historical pair/root gates pending; SOURCE_VERIFIED |
-| G02 | YES regular member | PARTIAL regular file | NO addressing; invocation UNKNOWN | YES persistent controlled effect | GNU benign allowlist cannot execute historical member-selection case; pin pending; IMPLEMENTATION_BLOCKED |
+| G02 | YES regular member | PARTIAL regular file | PARTIAL default components; invocation UNKNOWN | YES persistent controlled effect | GNU benign allowlist cannot execute historical member-selection case; pin pending; IMPLEMENTATION_BLOCKED |
 | G03 | PARTIAL entries, no reused session | NO initial tree | NO fresh-empty setup | PARTIAL with reused setup | Existing-state scope gate failed; SOURCE_VERIFIED, excluded |
 
 Container helper/image/benign Node fixture validation is shared infrastructure

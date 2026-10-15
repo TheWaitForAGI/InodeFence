@@ -27,6 +27,7 @@
 ## 현재 상태
 
 Layer 2 공통 데이터 모델, Layer 3 최소 pipeline, Layer 4 Generic Mutation v1과
+[protected-component addressing v1](mutation-protected-components-v1.md),
 Layer 5 Feedback / Corpus 및 bounded campaign이 구현됐다. Contained Node의 tiny benign
 configured campaign도 검증했다. Snapshot 관찰 범위와 runtime/kernel trust 한계는 유지하며,
 Layer 6 benchmark/security evaluation과 연구 효과 검증은 아직 수행하지 않았다.

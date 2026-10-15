@@ -14,6 +14,7 @@ from inodefence.evaluation.policy_binding import (
 )
 from inodefence.evaluation.verify import VerificationError
 from inodefence.feedback import SearchPolicy
+from inodefence.mutator import MutationPolicy
 from inodefence.replay.benign import benign_replay_cases
 from inodefence.targets.python_tarfile import PythonTarfileTarget
 
@@ -46,6 +47,35 @@ def test_declaration_and_every_raw_field_roundtrip(declared, tmp_path):
     assert verified.binding_sha256 == digest
     assert verified.config.config_id == config.config_id
     assert verified.config.campaign.search_policy == SearchPolicy.B0
+
+
+def test_protected_component_policy_id_roundtrips_in_bound_evidence(tmp_path):
+    cases = benign_replay_cases()
+    result = run_search_campaign(
+        cases,
+        PythonTarfileTarget(),
+        SearchCampaignConfig(
+            17,
+            len(cases),
+            SearchPolicy.B0,
+            MutationPolicy.M1_PROTECTED_COMPONENTS,
+        ),
+    )
+    config = PolicyEvaluationConfig(
+        result.config,
+        result.initial_case_ids,
+        result.provenance,
+        "fixed-benign-fixtures-v1",
+        "unit-linux-reference-v1",
+        "default-sentinel-v1",
+        "protected-components-binding-v1",
+    )
+
+    digest = export_bound_policy_result(result, config, tmp_path / "bound")
+    verified = verify_bound_policy_evidence(tmp_path / "bound", expected_binding_sha256=digest)
+
+    assert verified.config.campaign.mutation_policy == MutationPolicy.M1_PROTECTED_COMPONENTS
+    assert verified.campaign.result.config == result.config
 
 
 @pytest.mark.parametrize(

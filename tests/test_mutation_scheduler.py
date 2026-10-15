@@ -23,6 +23,7 @@ from inodefence.mutator import (
     MutationPolicy,
     apply_operator,
     m1,
+    m1_addressing,
     mutate_attempt_with_policy,
     mutate_with_policy,
     operator_ids,
@@ -42,11 +43,23 @@ def _case() -> ArchiveCase:
 def _legacy_reference(case: ArchiveCase, rng: random.Random, policy: MutationPolicy) -> ArchiveCase:
     if policy == MutationPolicy.LEGACY:
         return operators.mutate(case, rng)
-    table = operators._OPERATORS if policy == MutationPolicy.LEGACY_NO_REORDER else m1.OPERATORS
+    table = {
+        MutationPolicy.LEGACY_NO_REORDER: operators._OPERATORS,
+        MutationPolicy.M1: m1.OPERATORS,
+        MutationPolicy.M1_NO_REORDER: m1.OPERATORS,
+        MutationPolicy.M1_PROTECTED_COMPONENTS: m1_addressing.OPERATORS,
+        MutationPolicy.M1_PROTECTED_COMPONENTS_NO_REORDER: m1_addressing.OPERATORS,
+    }[policy]
     operator = rng.choice(table)
     child = operator(case, rng)
-    if policy in (MutationPolicy.LEGACY_NO_REORDER, MutationPolicy.M1_NO_REORDER) and (
-        operator is operators.reorder_entries
+    if (
+        policy
+        in (
+            MutationPolicy.LEGACY_NO_REORDER,
+            MutationPolicy.M1_NO_REORDER,
+            MutationPolicy.M1_PROTECTED_COMPONENTS_NO_REORDER,
+        )
+        and operator is operators.reorder_entries
     ):
         return case
     return child

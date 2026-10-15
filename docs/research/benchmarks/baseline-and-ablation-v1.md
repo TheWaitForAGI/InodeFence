@@ -36,9 +36,10 @@ not confirmed known-class rediscovery or vulnerability counts.
 
 B3's legacy identifier preserves old config IDs; actual state keys are tagged
 v3 with no v2 compatibility. [M1](../design/mutation-m1-v1.md) and its no-reorder
-version are implemented, but the finite grammar has no configurable component
-dictionary and cannot address the default `outside/sentinel.txt`. A shared,
-qualified generation/setup profile is still required before benchmark execution.
+version are implemented and retain their original finite grammar. The separate
+[protected-component policy](../design/mutation-protected-components-v1.md) can constructively
+address default `outside/sentinel.txt`, but a shared qualified setup/profile binding is still
+required before benchmark execution.
 B2, adaptive scheduling, a general fresh-archive generator, a path-only key and
 fixed-recipe baseline are absent and excluded from this executable comparison.
 
@@ -95,7 +96,8 @@ Do not inject known attack inputs or candidate-specific mutated seed cases.
 
 ## Constants and randomness
 
-All baseline cells share engine revision, seed IDs/order, declared M1 finite grammar/setup vocabulary,
+All baseline cells share engine revision, seed IDs/order, one exact versioned mutation policy and
+its finite grammar/setup vocabulary,
 operator weights, sentinel contents/names/mode, runtime/image options, target
 version, observer/oracle, budget, timeout and hardware block. Count no-ops,
 rejections, failure and timeout equally, and retain all raw evidence independent

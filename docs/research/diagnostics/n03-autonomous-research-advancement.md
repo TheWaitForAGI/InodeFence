@@ -19,8 +19,9 @@ The starting main revision was
 `919d723b7eb3bf13b060d3ae34b083499590b4fc` (N02 report merge). The report publication merged
 as `21e05a8e5749f22c9f3b92b7c8bdf00ffa6c0d04` (PR #101). The subsequent candidate-replay
 engineering merged as `2f84b56cd9edf979d564c58215c97cec400f7d3d` (PR #102). Later machine-matcher
-implementation was evaluated at repaired functional head
-`016d8957951526ea41d8ac29e25fbae36d83a46a` (PR #103). These are publication/engineering
+implementation merged as `444c66cc49c808c36fd61f3213e7e60d78f017c3` (PR #103). Controller-memory
+engineering was evaluated at functional head
+`ccc61ed8e19c7c4842203d398f04702202339aa6` (PR #104). These are publication/engineering
 facts, not retroactive historical or pilot execution revisions.
 
 The original developer checkout remained on its local `main` and retained its pre-existing
@@ -37,7 +38,8 @@ stashed, reset or discarded. All N03 changes used clean isolated worktrees.
 | [#100](https://github.com/TheWaitForAGI/InodeFence/pull/100) | `3e0ef26d89a1a1f93867a6641822c37d5b9ee5ce` | separately versioned v3 namespace-rebinding proposal | `da42c805b391ca842543dcf0db77f6edbce96b1e` | **MERGED / PROPOSED, NOT IMPLEMENTED** |
 | [#101](https://github.com/TheWaitForAGI/InodeFence/pull/101) | `99ad171cd90e1f632e8f5e47e901ee544d54be09` | N03 report, machine audit and pilot proposal | `21e05a8e5749f22c9f3b92b7c8bdf00ffa6c0d04` | **MERGED / AUDITED** |
 | [#102](https://github.com/TheWaitForAGI/InodeFence/pull/102) | `e53289752c0e82e989245208b72b5a8787f2a535` | exact policy-candidate 3+3 raw replay and independent reader | `2f84b56cd9edf979d564c58215c97cec400f7d3d` | **MERGED / TESTED** |
-| [#103](https://github.com/TheWaitForAGI/InodeFence/pull/103) | `016d8957951526ea41d8ac29e25fbae36d83a46a` | N01 mutation-origin relation matcher and 3/3 versus 0/3 reader | containing PR | **REVIEWED / TESTED, HISTORICAL USE NOT_RUN** |
+| [#103](https://github.com/TheWaitForAGI/InodeFence/pull/103) | `016d8957951526ea41d8ac29e25fbae36d83a46a` | N01 mutation-origin relation matcher and 3/3 versus 0/3 reader | `444c66cc49c808c36fd61f3213e7e60d78f017c3` | **MERGED / TESTED, HISTORICAL USE NOT_RUN** |
+| [#104](https://github.com/TheWaitForAGI/InodeFence/pull/104) | `ccc61ed8e19c7c4842203d398f04702202339aa6` | Linux controller process-lifetime peak-memory evidence and reader | containing PR | **REVIEWED / TESTED, PILOT USE NOT_RUN** |
 
 Each diff received an adversarial review for schema/version drift, hidden retry or missing
 denominators, C0/C1/C2 changes, timing-boundary misstatement, target-specific leakage and
@@ -54,12 +56,13 @@ PR #103 review found that accepting a caller-selected case ID left pre-replay ca
 enumeration outside the runnable path. The repair scans all verified mutation steps in original
 order, deduplicates replay work by exact case ID and independently reconstructs the selected
 relation during assessment. The reviewed functional head above includes this repair; its
-follow-up commit only records review and reproduction identity because a PR cannot embed its own
-future merge commit.
+follow-up commit recorded review and reproduction identity before the PR merged.
+PR #104 review added an independent duplicate-process-identity rejection regression and a live
+Linux `execute_measured` path, rather than relying only on mocked procfs/controller binding.
 
 ## 3. Canonical validation
 
-PRs #97 through #102 passed GitHub `check` and `container-integration` jobs. Local canonical
+PRs #97 through #103 passed GitHub `check` and `container-integration` jobs. Local canonical
 Linux validation passed on the exact branch content:
 
 | Milestone | Ruff lint/format | Pyright | pytest | env/docs |
@@ -71,6 +74,7 @@ Linux validation passed on the exact branch content:
 | PR #101 initial publication content | PASS | 0 errors | 1,504 PASS | PASS |
 | PR #102 repaired reviewed head | PASS | 0 errors | 1,509 PASS | PASS |
 | PR #103 repaired functional head (tree `eb9d5eddb4b1491f4836860c847d44fc546aeaf6`) | PASS | 0 errors | 1,513 PASS | PASS |
+| PR #104 functional reviewed head (tree `d6fa0977234a3938d185ed204b4a36a4d769bca4`) | PASS | 0 errors | 1,522 PASS | PASS |
 
 One PR #98 Linux run initially encountered a transient unrelated process-reaping failure.
 The isolated check passed and a complete clean rerun passed; no assertion or contract was
@@ -129,6 +133,8 @@ The real path now has tested interfaces for:
 - per-completed-step journal publication before the next execution;
 - independent RNG parent/operator/mutation/feedback replay;
 - full-step monotonic timing through cleanup, feedback and synchronous journal write;
+- Linux process-lifetime peak RSS bound to each terminal slot, with one measured campaign per
+  controller process and an independent required-record mode;
 - immutable complete/failed/invalid/STARTED repetition slots without automatic retry; and
 - completed evidence, dataset and summary readers;
 - exact policy-case nomination plus counterbalanced three-affected/three-fixed raw replay with
@@ -156,7 +162,8 @@ Status: **PROPOSED / NOT_AUTHORIZED / NOT_RUN**. Exact blockers are:
 3. no human has frozen the pilot plan/revision/digest/output root;
 4. generic candidate replay and the N01-specific mechanical matcher are implemented, but
    historical matcher use and human root-cause adjudication remain NOT_RUN; and
-5. controller peak-memory measurement for pilot feasibility is not yet frozen.
+5. the implemented/tested `linux-proc-self-vmhwm-v1` method is not yet accepted in an
+   authorized pilot revision and has produced no historical pilot value.
 
 No pilot target was executed. The N02 positive-control archive never entered an initial
 corpus. B0, B1 and B3 results remain **NOT_RUN**.
@@ -297,7 +304,7 @@ Reproduce engineering validation from a clean worktree at the evaluated revision
 
 ```bash
 git worktree add --detach /tmp/inodefence-n03-review \
-  016d8957951526ea41d8ac29e25fbae36d83a46a
+  ccc61ed8e19c7c4842203d398f04702202339aa6
 cd /tmp/inodefence-n03-review
 make check
 ```
@@ -315,7 +322,8 @@ Verify completed policy/repetition artifacts when they exist:
 
 ```bash
 PYTHONPATH=src python -m inodefence.evaluation.policy_repeated \
-  <repetition-root> --plan-sha256 <trusted-plan-sha256>
+  <repetition-root> --plan-sha256 <trusted-plan-sha256> \
+  --require-controller-memory
 PYTHONPATH=src python -m inodefence.evaluation.policy_journal \
   <repetition-root>/run-00000000/evidence
 PYTHONPATH=src python -m inodefence.evaluation.candidate_replay \
@@ -333,8 +341,8 @@ hashes. Do not launch another matrix without a new frozen execution Task Contrac
 
 1. Human N01 source/input/runtime correspondence disposition.
 2. Pilot timeout decision and exact historical target re-admission at that setting.
-3. Pilot plan authorization, peak-memory measurement, historical N01 matcher execution and
-   human known-class adjudication.
+3. Pilot plan authorization and execution using the frozen controller-memory method, plus
+   historical N01 matcher execution and human known-class adjudication.
 4. Human scientific decision on the v3 rebinding proposal, followed by a separate
    implementation contract if approved.
 5. New finite qualification fixtures/rule and authorization before any native matrix.

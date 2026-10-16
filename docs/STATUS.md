@@ -40,7 +40,7 @@ schedule과 5초/10초 mismatch를 기록하며 **PROPOSED / NOT_AUTHORIZED / NO
 | Search / feedback | B0/B1/B3 and A1/A2 | `SearchState`, `run_search_campaign`, explicit policy config | [policy checks](../tests/test_feedback_search_contracts.py), [trusted reference integration](../tests/test_campaign_search_integration.py) | 비교 효과 미검증 |
 | Entry transitions | P0 final-state, P1 transition retention, P2 transition-adaptive mutation | v1 model/search/evaluation; v2 event model/feedback, bounded node-tar producer/raw export, independent reader and qualification runner | synthetic tests plus node-tar/libarchive controlled qualification; v2 producer 10 checks PASS and 480-run matrix independently verified at `36ff7fd` | v1 `BLOCKED_NATIVE_OBSERVATION`; v2 `V2_NATIVE_EFFECT_OBSERVATION_NOT_QUALIFIED` (replacement coverage); effectiveness NOT_RUN |
 | Minimization | bounded deterministic generic/USTAR reduction | core and exact-fingerprint evidence binding | [minimizer tests](../tests/test_minimizer.py), [USTAR checks](../tests/test_minimizer_ustar.py) | historical/unknown candidate 없음 |
-| Evaluation / reproduction | explicit provenance, immutable raw → verified derivation | reader, pair records, failure ledger/legacy journal, policy journal/timing/repetition, qualification/matrix, benign replay, completed policy export/config/dataset/statistics | [evaluation tests](../tests/evaluation/), [benign replay tests](../tests/replay/) | formal dataset / known-class adjudication / artifact reproduction 없음 |
+| Evaluation / reproduction | explicit provenance, immutable raw → verified derivation | reader, pair records, failure ledger/legacy journal, policy journal/timing/repetition, candidate 3+3 raw replay, qualification/matrix, benign replay, completed policy export/config/dataset/statistics | [evaluation tests](../tests/evaluation/), [benign replay tests](../tests/replay/) | formal dataset / known-class judgment / artifact reproduction 없음 |
 | C3/C4 / generality | 후속 contracts / RQ4 | C3/C4와 ORAS adapter 없음; GNU route는 benign allowlist만 | broader scope의 실행 증거 없음 | 미검증 |
 
 ## 기준 main의 검증 근거
@@ -168,6 +168,9 @@ Final-state policy runner의 `policy-full-step-monotonic-v1` evidence/reader는 
 publication까지 포함한 step offsets를 보존한다. Existing result/policy schema와 target duration은
 변경하지 않는다. Final publication timing, timed dataset pooling과 known-class adjudication은
 완성된 자동 pipeline이 아니다. Target duration으로 전체 latency나 throughput을 대신하지 않는다.
+[Candidate pair replay](research/design/candidate-pair-replay-v1.md)는 verified policy evidence의
+exact case를 counterbalanced affected/fixed 3+3 raw execution에 binding하고 complete/failed/interrupted
+prefix를 보존한다. 이는 N01 class match나 human root-cause 판정이 아니다.
 [실험 안내](../experiments/README.md)를 따른다.
 
 ## 다음 연구 gate

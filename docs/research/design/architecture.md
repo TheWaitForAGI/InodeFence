@@ -42,7 +42,10 @@ RNG/parent/operator/mutation/feedback을 replay하는 incremental policy journal
 중단 prefix와 infrastructure-invalid terminal record를 보존하며 completion marker 없는 기록을
 완료/no-hit으로 취급하지 않는다. 별도 policy repetition schedule은 exact config slot의 claim과
 complete/failed terminal digest를 보존하고 STARTED slot을 retry하지 않는다. Known-class
-adjudication과 formal pilot authorization은 통합 완료되지 않았다.
+judgment와 formal pilot authorization은 통합 완료되지 않았다. 별도 candidate replay는 completed
+policy bundle에서 exact case/occurrence를 재검증하고 affected/fixed 3+3 raw run, pair,
+complete/failed/interrupted prefix를 보존한다. 이 계층은 CVE/class match나 human root-cause
+판정을 만들지 않는다.
 과거 audits/summaries의 SHA/count는 역사적 evidence이며 현재 capability를 정의하지 않는다.
 
 아래 개념 그림에는 lineage, tracing, corpus 등 미래 설계도 포함한다. 현재 확정된 field/API는 **7.8 현재 구현 경계**를 따른다. Python reference는 최종 benchmark target이 아니다.

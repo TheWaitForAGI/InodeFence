@@ -101,7 +101,8 @@ G0 documentation freeze의 capability baseline은 main
   bounded campaign. Default sentinel까지의 logical generation은 TESTED지만 historical
   target/setup qualification은 NOT_RUN.
 - Layer 6 infrastructure: generic/USTAR minimization, readers, pair/benign replay,
-  passive ledger/journal, qualification/matrix와 completed policy binding/dataset/statistics.
+  passive ledger/journal, policy candidate affected/fixed 3+3 raw replay,
+  qualification/matrix와 completed policy binding/dataset/statistics.
   N01 `7.5.2/7.5.3` exact images는 clean `e987c855` source와 trusted macOS/OrbStack
   controller에서 admission됐다. 8건 readiness와 10건 pair가 실행됐고 fresh-process reader는
   automated replay PASS를 재계산했다. Final human correspondence review는 pending이다.
@@ -118,8 +119,9 @@ N01 historical automated replay는 완료됐지만 final qualification은
 [N02 qualification report](research/diagnostics/n02-autonomous-integration-and-qualification.md)를 따른다.
 Snapshot은 persistent effect만 판정하며 transient/direct-use/symlink referent와 sandbox 밖 접근을
 증명하지 못한다. Alternative policy 실행 API, incremental journal과 repetition ledger는 completed
-record, accessible failure prefix와 terminal state를 보존한다. Known-class adjudication은 여전히 별도
-검증 과제다. Final-state policy의 별도 full-step monotonic timing evidence/reader는 TESTED engineering
+record, accessible failure prefix와 terminal state를 보존한다. Generic candidate replay는 exact case의
+3+3 raw evidence를 보존하지만 known-class match/human adjudication은 여전히 별도 검증 과제다.
+Final-state policy의 별도 full-step monotonic timing evidence/reader는 TESTED engineering
 infrastructure이지만 formal timing 결과나 final publication/adjudication timing은 아니다.
 G0 문서 동결은 후속 gate의 PASS가 아니다.
 

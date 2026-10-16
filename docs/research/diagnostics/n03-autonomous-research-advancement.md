@@ -117,7 +117,9 @@ The real path now has tested interfaces for:
 - independent RNG parent/operator/mutation/feedback replay;
 - full-step monotonic timing through cleanup, feedback and synchronous journal write;
 - immutable complete/failed/invalid/STARTED repetition slots without automatic retry; and
-- completed evidence, dataset and summary readers.
+- completed evidence, dataset and summary readers; and
+- exact policy-case nomination plus counterbalanced three-affected/three-fixed raw replay with
+  complete, infrastructure-invalid and hard-interrupted evidence states.
 
 The exact four benign seeds are unchanged. The protected vocabulary can construct the
 controlled relative target without a PoC seed or frozen positive-control injection. This is
@@ -133,11 +135,11 @@ seed 4242. Total candidate workload is 4,000 search executions.
 Status: **PROPOSED / NOT_AUTHORIZED / NOT_RUN**. Exact blockers are:
 
 1. the N01 human correspondence token remains pending;
-2. the protocol's proposed 5-second target timeout differs from the qualified N01 10-second
+2. the protocol's proposed 5-second target timeout differs from the N01 admitted/replayed 10-second
    setting and needs fresh admission/readiness or a pre-run versioned amendment;
 3. no human has frozen the pilot plan/revision/digest/output root;
-4. integrated candidate nomination and counterbalanced 3 affected + 3 fixed known-class
-   adjudication are not implemented; and
+4. generic candidate nomination and counterbalanced 3+3 raw replay are implemented, but the
+   N01-specific mechanical class matcher and human root-cause adjudication remain; and
 5. controller peak-memory measurement for pilot feasibility is not yet frozen.
 
 No pilot target was executed. The N02 positive-control archive never entered an initial
@@ -298,6 +300,9 @@ PYTHONPATH=src python -m inodefence.evaluation.policy_repeated \
   <repetition-root> --plan-sha256 <trusted-plan-sha256>
 PYTHONPATH=src python -m inodefence.evaluation.policy_journal \
   <repetition-root>/run-00000000/evidence
+PYTHONPATH=src python -m inodefence.evaluation.candidate_replay \
+  <candidate-replay-root> <source-policy-evidence> \
+  --completion-sha256 <trusted-completion-sha256>
 ```
 
 The native v2 report contains its original WSL/controller reproduction commands and raw
@@ -307,8 +312,8 @@ hashes. Do not launch another matrix without a new frozen execution Task Contrac
 
 1. Human N01 source/input/runtime correspondence disposition.
 2. Pilot timeout decision and exact historical target re-admission at that setting.
-3. Pilot plan authorization, peak-memory measurement and end-to-end known-class
-   adjudication.
+3. Pilot plan authorization, peak-memory measurement, N01-specific matching and human
+   known-class adjudication.
 4. Human scientific decision on the v3 rebinding proposal, followed by a separate
    implementation contract if approved.
 5. New finite qualification fixtures/rule and authorization before any native matrix.
@@ -321,7 +326,8 @@ experiments.
 
 The next independent decision is human review of the v3 rebinding proposal and the N01
 correspondence record. If N01 qualifies, first freeze the 5-second versus 10-second pilot
-choice and complete the passive 3+3 adjudication path before running the 20 proposed cells.
+choice and review a benchmark-specific N01 matcher for the implemented generic 3+3 raw replay
+before running the 20 proposed cells.
 If v3 is approved, implement its composite in a new versioned contract and perform the
 smallest bounded fixture/reader checks before proposing any qualification matrix. If either
 decision is rejected, retain the negative result and revise the research scope explicitly;

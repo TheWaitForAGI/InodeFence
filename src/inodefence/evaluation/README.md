@@ -213,6 +213,26 @@ adjudication, fairness approval, statistical pooling or recovery/resume.
 CLI: `python -m inodefence.evaluation.policy_repeated ROOT
 [--plan-sha256 TRUSTED_DIGEST]` reports every verified slot state.
 
+## Candidate affected/fixed replay
+
+`nominate_policy_candidate` selects one exact case only after reopening completed bound policy
+evidence. The nomination retains the source binding/config/manifest digests, full case, TAR
+identity and every original occurrence. `run_candidate_replays` then executes the unchanged
+case in the fixed affected/fixed, fixed/affected, affected/fixed order and publishes each raw
+result before continuing. Three generic `PairComparison` records and one final completion
+marker bind the exact six-run budget.
+
+`read_candidate_replay` re-verifies the source policy bundle, nomination, target/setup
+provenance, run schedule and pair derivation. Ordinary exceptions retain an
+infrastructure-invalid prefix; hard interruption leaves an incomplete readable prefix.
+Existing roots are never retried or resumed. Missing completion never means complete/no-hit.
+CLI: `python -m inodefence.evaluation.candidate_replay EVIDENCE SOURCE_POLICY_EVIDENCE
+[--completion-sha256 TRUSTED_DIGEST]`.
+
+This API retains exact-input replay evidence; it does not nominate by CVE, classify a matching
+known class, decide affected/fixed expectations or perform human root-cause review. See the
+[versioned contract](../../../docs/research/design/candidate-pair-replay-v1.md).
+
 ## Dataset compatibility
 
 `validate_dataset((DatasetMember(directory, protocol_version, manifest_digest), ...))`

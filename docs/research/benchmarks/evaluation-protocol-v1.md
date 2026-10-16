@@ -341,13 +341,15 @@ or classify CVEs. Generic qualification/matrix APIs check linked evidence and
 bindings, while assessor assertions require independent verification. Neither the
 static catalog nor a structurally valid report qualifies a historical effect.
 
-The planned matching-class nomination, three affected plus three fixed fresh
-replays and human root-cause review remain unexecuted. Candidates must be selected
-from all completed raw steps, irrespective of corpus admission, and tied to
-original step/index. Each replay must match its own frozen artifact/config/image,
-verify fresh lifecycle and retain negative/error results. Pair invariants are
-setup/options/runtime/policy, not equality of full config IDs across versions.
-No version/CVE match enters the oracle. Benign replay tests and synthetic
+The generic candidate replay layer can now bind a selected case to verified policy
+occurrences and retain the fixed three affected plus three fixed fresh schedule with
+complete/failed/interrupted evidence. It has not run against the historical pair.
+Benchmark-specific matching-class nomination, the N01 mechanical match decision and human
+root-cause review remain unexecuted. Candidates must be selected from all completed raw
+steps, irrespective of corpus admission, and tied to original step/index. Each replay must
+match its own frozen artifact/config/image, verify fresh lifecycle and retain negative/error
+results. Pair invariants are setup/options/runtime/policy, not equality of full config IDs
+across versions. No version/CVE match enters the oracle. Benign replay tests and synthetic
 verification do not supply historical classification evidence.
 
 All numeric budgets, subsets and confirmation criteria above retain the existing

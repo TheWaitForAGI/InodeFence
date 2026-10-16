@@ -156,8 +156,9 @@ Infrastructure ledgers and incomplete journals are not execution inputs.
 
 `run_search_campaign(..., completed_step=sink)` delivers each immutable policy step after
 `run_case` returned (including sandbox cleanup) and feedback/step assembly completed, before
-the next execution begins. A sink exception propagates and prevents the next execution; the
-core still does not return a partial result.
+the next execution begins. `completed_record` additionally includes the exact generic mutation
+attempt (operator, policy, parent, child and applied flag), or `None` for seeds. A sink exception
+propagates and prevents the next execution; the core still does not return a partial result.
 
 `run_timed_search_campaign` uses that boundary without changing SearchCampaignResult/Step or
 policy identifiers. Profile `policy-full-step-monotonic-v1` records contiguous nanosecond
@@ -171,9 +172,27 @@ subtrees, checksums, evaluation config ID, step count/profile and contiguous off
 returning either. The CLI is `python -m inodefence.evaluation.policy_timing DIRECTORY` with an
 optional trusted manifest digest.
 
-This v1 wrapper measures in-memory completion. It does not include later bundle publication,
-persist an aborted prefix, attach the generic failure ledger, adjudicate a known class or
-make timed datasets poolable. No formal latency, throughput or effectiveness result exists.
+By default this v1 wrapper measures in-memory completion. An optional synchronous completed-record
+sink runs before the step timestamp, so its latency is included. It does not include later final
+bundle publication, adjudicate a known class or make timed datasets poolable. No formal latency,
+throughput or effectiveness result exists.
+
+## Incremental policy journal
+
+`run_journaled_timed_search_campaign` creates `PolicyJournalHeader` before execution and sends every
+completed record to `PolicyEvidenceJournal`. Each record is atomic/no-overwrite. The independent
+reader verifies RunResult/provenance and deterministically replays declared B0/B1/B3 parent selection,
+operator dispatch, mutation and feedback from the recorded seed/config. Mutation provenance is kept
+outside the unchanged `SearchCampaignResult`/`SearchCampaignStep` schemas.
+
+At exact budget, `finish` binds all record digests to the complete timed policy evidence with a last
+completion marker. A missing marker is always incomplete, even if every step or a timed subtree exists.
+Ordinary execution exceptions publish a terminal generic failure record whose artifacts bind the
+available prefix; they remain infrastructure-invalid and never enter target/no-hit denominators. A hard
+process interruption can leave a readable prefix without a failure record. The journal does not resume,
+retry, localize opaque target lifecycle failures, adjudicate the known class or prove qualification.
+CLI: `python -m inodefence.evaluation.policy_journal DIRECTORY
+[--completion-sha256 TRUSTED_DIGEST]`.
 
 ## Dataset compatibility
 

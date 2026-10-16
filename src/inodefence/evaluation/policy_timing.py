@@ -2,7 +2,7 @@
 
 import argparse
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
@@ -11,9 +11,9 @@ from time import monotonic_ns
 from typing import ClassVar
 
 from inodefence.campaign import (
+    SearchCampaignCompletedStep,
     SearchCampaignConfig,
     SearchCampaignResult,
-    SearchCampaignStep,
     run_search_campaign,
 )
 from inodefence.model import ArchiveCase
@@ -148,14 +148,17 @@ def run_timed_search_campaign(
     *,
     sentinels: tuple[SentinelSpec, ...] = (SentinelSpec(),),
     provenance: ExecutionProvenance | None = None,
+    completed_record: Callable[[SearchCampaignCompletedStep], None] | None = None,
 ) -> TimedPolicyCampaign:
     """Run the unchanged policy core and record sequential orchestration offsets.
 
     The origin precedes campaign preflight/provenance work. Each completed offset
     is sampled only after run_case returned (including sandbox cleanup), feedback
-    was derived and the immutable step was assembled. The final offset follows
-    complete SearchCampaignResult assembly. This is not process duration, disk
-    publication time, interrupted-run recovery or known-class adjudication time.
+    was derived and the immutable record was assembled. If a synchronous record
+    sink is supplied, it runs before that sample, so its latency is part of the
+    full step. The final offset follows complete SearchCampaignResult assembly.
+    This is not process duration, final bundle publication, interrupted-run
+    recovery or known-class adjudication time.
     """
     started_at = _utc_now().isoformat()
     origin = monotonic_ns()
@@ -164,9 +167,11 @@ def run_timed_search_campaign(
     timings: list[PolicyStepTiming] = []
     previous = 0
 
-    def completed(step: SearchCampaignStep) -> None:
+    def completed(record: SearchCampaignCompletedStep) -> None:
         nonlocal previous
-        timing = PolicyStepTiming(step.index, previous, _offset(origin))
+        if completed_record is not None:
+            completed_record(record)
+        timing = PolicyStepTiming(record.step.index, previous, _offset(origin))
         timings.append(timing)
         previous = timing.completed_offset_ns
 
@@ -176,7 +181,7 @@ def run_timed_search_campaign(
         config,
         sentinels=sentinels,
         provenance=provenance,
-        completed_step=completed,
+        completed_record=completed,
     )
     campaign_completed = _offset(origin)
     completed_at = _utc_now().isoformat()

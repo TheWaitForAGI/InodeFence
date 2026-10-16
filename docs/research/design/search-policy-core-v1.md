@@ -6,7 +6,8 @@ B0/B1/B3는 `run_search_campaign`의 explicit caller configuration으로 실행 
 Capability baseline은 main `8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`다.
 별도 completed policy export/reader, PolicyEvaluationConfig, dataset/statistics binding이 구현됐다.
 Legacy ExperimentConfig / manifest v4 / journal binding은 이 policy 경로가 아니다.
-Automatic policy journal/repetition은 아직 연결되지 않았다. 연구 효과를 검증한 결과가 아니다.
+Incremental policy journal은 연결됐지만 automatic repetition/known-class adjudication은 아직
+연결되지 않았다. 연구 효과를 검증한 결과가 아니다.
 [Research Contract](research-contract-v1.md)와 [STATUS](../../STATUS.md)를 따른다.
 
 | Policy ID | Admission | Seed phase 이후 parent |
@@ -57,7 +58,9 @@ Search 담당은 이 파일들을 변경하지 않는다. 아래 계약은 separ
 model/policy/admission/raw derivations와 explicit config/provenance를 검증한다.
 [Policy dataset](../../../src/inodefence/evaluation/policy_dataset.py) 및
 [statistics](../../../src/inodefence/evaluation/policy_statistics.py)도 있다.
-이는 actual RNG/mutation execution, known-class qualification 또는 interrupted-run recovery의 증거가 아니다.
+Completed-only bundle 자체는 actual RNG/mutation execution, known-class qualification 또는
+interrupted-run recovery의 증거가 아니다. 별도 policy journal이 exact RNG/mutation trace와
+interrupted prefix를 보존·재검증한다.
 
 ## A1/A2 feedback projection
 
@@ -123,12 +126,21 @@ corpus와 구분한다. Diagnostic indexes와 full step evidence는 budget에 �
 이 API는 in-memory evidence를 반환하며 separate policy export/reader/config/dataset 경로가
 완료된 결과를 보존/검증한다. Legacy exporter/journal/dataset에 묵시적으로 넣지 않는다.
 Optional completed-step callback은 `run_case` cleanup과 feedback/step assembly 뒤, 다음 execution
-전에 immutable step을 전달한다. Callback failure는 다음 실행 전에 전파되지만 core partial result는
-반환하지 않는다. 별도 `policy-full-step-monotonic-v1` evaluation wrapper는 campaign preflight부터
-각 callback과 final result assembly까지의 contiguous monotonic offsets를 기존 result schema와
-분리해 보존·검증한다. Automatic incremental attachment/failure ledger, publication timing,
-known-class adjudication과 timed dataset pooling은 여전히 미구현이다. Compatibility/statistics 구현과
-timing engineering test는 formal durable campaign orchestration이나 effectiveness proof가 아니다.
+전에 immutable step을 전달한다. 별도 completed-record callback은 같은 boundary에서 seed에는
+`None`, mutation에는 stable operator/policy/parent/child/applied record를 전달한다. Callback failure는
+다음 실행 전에 전파되지만 core partial result는 반환하지 않는다. 별도
+`policy-full-step-monotonic-v1` evaluation wrapper는 campaign preflight부터 각 callback과 final result
+assembly까지의 contiguous monotonic offsets를 기존 result schema와 분리해 보존·검증한다.
+Synchronous record sink를 지정하면 그 publication latency도 해당 full-step interval에 포함한다.
+
+`evaluation.policy_journal`은 frozen `PolicyEvaluationConfig`/attempt ID를 먼저 기록한 뒤 completed
+record를 atomic no-overwrite로 한 개씩 보존한다. Reader는 declared RNG로 B0/B1/B3 parent selection과
+stable operator dispatch/mutation을 다시 실행하고 RunResult/provenance/feedback을 검증한다. 성공은
+exact budget journal과 completed timed bundle을 마지막 marker로 결합한다. 일반 `Exception`은
+available prefix와 generic failure ledger를 infrastructure-invalid로 남긴다. Hard stop으로 marker가
+없으면 prefix는 명시적 incomplete이며 no-hit denominator가 아니다. Resume/retry, automatic repeated
+orchestration, known-class adjudication과 timed dataset pooling은 여전히 미구현이다. Compatibility,
+statistics, timing/journal engineering tests는 effectiveness proof가 아니다.
 Unit tests는 policy/projection/mutation 조합과 legacy B3 parity를 확인한다. Tiny Python reference
 integration은 기존 runtime에서 full pipeline/archive hash binding을 확인하며 benchmark 결과나
 정책 효과의 증거가 아니다.

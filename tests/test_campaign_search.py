@@ -10,6 +10,7 @@ import inodefence.campaign as campaign
 from inodefence.campaign import (
     CampaignConfig,
     CampaignOrigin,
+    SearchCampaignCompletedStep,
     SearchCampaignConfig,
     run_campaign,
     run_search_campaign,
@@ -17,7 +18,12 @@ from inodefence.campaign import (
 from inodefence.feedback import FeedbackProjection, SearchPolicy, SearchState
 from inodefence.model import ExecutionStatus, canonical_json
 from inodefence.model.provenance import ExecutionSafety, TargetProvenance
-from inodefence.mutator import MutationPolicy, mutate_with_policy
+from inodefence.mutator import (
+    MutationAttempt,
+    MutationOperatorId,
+    MutationPolicy,
+    mutate_with_policy,
+)
 from inodefence.runtime import SentinelSpec
 from inodefence.targets.isolated import IsolatedTarget
 from test_campaign import UnusedTarget
@@ -30,6 +36,16 @@ from test_isolation_provenance import ControlledBackend, Invocation
 def _outcome(case, index):
     result = _result(case, str(index // 3).encode())
     return replace(result, violations=(_creation(),) if index % 3 == 2 else ())
+
+
+def _attempt(parent, child, policy):
+    return MutationAttempt(
+        MutationOperatorId.MUTATE_PATH,
+        policy,
+        parent.case_id,
+        child,
+        child != parent,
+    )
 
 
 @pytest.mark.parametrize("policy", tuple(SearchPolicy))
@@ -112,7 +128,11 @@ def test_b3_full_legacy_mutation_preserves_existing_campaign_behavior(monkeypatc
 @pytest.mark.parametrize("policy", tuple(SearchPolicy))
 def test_violation_only_child_admission_is_independent_of_diagnostic_evidence(monkeypatch, policy):
     seed, child = _case("seed"), _case("child")
-    monkeypatch.setattr(campaign, "mutate_with_policy", lambda parent, rng, mutation: child)
+    monkeypatch.setattr(
+        campaign,
+        "mutate_attempt_with_policy",
+        lambda parent, rng, mutation: _attempt(parent, child, mutation),
+    )
 
     def execute(case, target, *, sentinels):
         return replace(_result(case), violations=(_creation(),) if case == child else ())
@@ -133,7 +153,11 @@ def test_campaign_projection_changes_admission_key_and_keeps_full_oracle_evidenc
 ):
     first, second = _pair(projection)
     raw = canonical_json(second)
-    monkeypatch.setattr(campaign, "mutate_with_policy", lambda parent, rng, mutation: second.case)
+    monkeypatch.setattr(
+        campaign,
+        "mutate_attempt_with_policy",
+        lambda parent, rng, mutation: _attempt(parent, second.case, mutation),
+    )
     monkeypatch.setattr(
         campaign, "run_case", lambda case, target, **kwargs: first if case == first.case else second
     )
@@ -182,7 +206,11 @@ def test_noop_and_all_statuses_execute_once_and_keep_raw_results(monkeypatch, po
         return _empty_result(case, status)
 
     monkeypatch.setattr(campaign, "run_case", execute)
-    monkeypatch.setattr(campaign, "mutate_with_policy", lambda case, rng, policy: case)
+    monkeypatch.setattr(
+        campaign,
+        "mutate_attempt_with_policy",
+        lambda case, rng, policy: _attempt(case, case, policy),
+    )
     seed = _case("a")
     result = run_search_campaign((seed,), UnusedTarget(), SearchCampaignConfig(1, 6, policy))
     assert calls == [seed] * 6
@@ -250,6 +278,25 @@ def test_completed_step_sink_observes_each_step_before_next_execution(monkeypatc
     assert len(calls) == 5
 
 
+def test_completed_record_preserves_exact_mutation_attempts(monkeypatch):
+    records = []
+    monkeypatch.setattr(campaign, "run_case", lambda case, target, **kwargs: _result(case))
+    seeds = (_case("a"), _case("b"))
+    result = run_search_campaign(
+        seeds,
+        UnusedTarget(),
+        SearchCampaignConfig(3, 5, SearchPolicy.B3, MutationPolicy.M1),
+        completed_record=records.append,
+    )
+    assert all(isinstance(record, SearchCampaignCompletedStep) for record in records)
+    assert tuple(record.step for record in records) == result.steps
+    assert all(record.mutation_attempt is None for record in records[:2])
+    assert all(record.mutation_attempt is not None for record in records[2:])
+    for record in records[2:]:
+        assert record.mutation_attempt.child_case == record.step.result.case
+        assert record.mutation_attempt.parent_case_id == record.step.parent_case_id
+
+
 def test_completed_step_sink_failure_stops_before_another_execution(monkeypatch):
     calls = []
     observed = []
@@ -286,6 +333,13 @@ def test_invalid_completed_step_sink_fails_before_campaign_preparation(monkeypat
             UnusedTarget(),
             SearchCampaignConfig(1, 1, SearchPolicy.B0),
             completed_step=object(),  # type: ignore[arg-type]
+        )
+    with pytest.raises(ValueError, match="completed_record"):
+        run_search_campaign(
+            (_case("a"),),
+            UnusedTarget(),
+            SearchCampaignConfig(1, 1, SearchPolicy.B0),
+            completed_record=object(),  # type: ignore[arg-type]
         )
 
 

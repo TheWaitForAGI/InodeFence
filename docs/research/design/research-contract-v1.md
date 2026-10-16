@@ -113,8 +113,10 @@ neither is part of the frozen RQ2/RQ3 claim. B2 is unimplemented and excluded.
 [Baselines and ablations](../benchmarks/baseline-and-ablation-v1.md) define policy
 IDs and interpretation. Legacy `ExperimentConfig` v1/v2 still supports only
 B3/legacy mutation; the separate `PolicyEvaluationConfig` binds completed policy
-results. Reader integrity/admission checks do not prove actual RNG execution,
-mutation provenance, qualification or rediscovery.
+results. Completed-only reader integrity/admission checks do not prove actual RNG
+execution or mutation provenance; the separate journal does replay both and the
+repetition ledger accounts for interrupted/failed slots. Neither establishes
+qualification, known-class rediscovery or effectiveness.
 
 Follow the required order without compensating for missing validation by longer
 campaigns:
@@ -137,9 +139,10 @@ index, status counts, corpus growth and throughput with explicit denominators.
 Confirmed known-class rediscovery additionally needs 3/3 fresh affected replays,
 0/3 matching fixed replays and human root-cause correspondence. First contract
 observation is not first confirmed rediscovery. No-hit is right-censored, never a
-fictitious hit at budget end. Full-pipeline timing and automatic interrupted-run
-preservation are not supplied by the current policy runner; target duration and
-completed-only statistics must not be substituted for those measurements.
+fictitious hit at budget end. The separate journal/repetition path supplies
+full-step timing and interrupted-run accounting, including its declared synchronous
+publication overhead. Target duration and completed-only statistics must not be
+substituted for those measurements or for schedule failure counts.
 
 ## Reproducibility and disclosure
 
@@ -180,7 +183,8 @@ potentially unpatched candidates in public issues, branches or CI logs.
 
 G0 fixes definitions and claim scope, not research outcomes. Remaining uncertainty
 is historical reachability/qualification, repeated-policy effectiveness, generality,
-measurable full-pipeline costs, interrupted-run evidence and final artifact
-reproduction. Those are later validation gates, not reasons to claim them PASS.
+measured campaign costs, real interrupted-run incidence and final artifact reproduction.
+The implemented journal/repetition tests are infrastructure evidence only. Those are
+later validation gates, not reasons to claim them PASS.
 No benchmark is promoted. Numeric plans and confirmation criteria remain provisional
 and unchanged; RQ2/RQ3 claim scope is explicitly reconciled to the executable comparison.

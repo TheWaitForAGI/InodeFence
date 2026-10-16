@@ -43,7 +43,7 @@ Main `8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`의 `run_search_campaign` /
 `SearchCampaignConfig`는 M1/A3를 실행하고 completed policy export/reader와
 PolicyEvaluationConfig/dataset/statistics는 명시한 IDs를 보존/검증한다.
 Legacy ExperimentConfig는 여전히 B3/legacy mutation만 허용하며 M1로 silent fallback하지 않는다.
-Automatic policy journal/repetition과 aborted-prefix evidence는 연결 완료되지 않았다.
+별도 policy journal/repetition 경로는 M1 ID/operator attempt와 aborted prefix를 보존한다.
 이 API 검증은 baseline 비교 실험 결과나 historical rediscovery가 아니다.
 
 M1의 component tuple은 고정돼 있고 setup-derived dictionary API는 없다.
@@ -67,7 +67,8 @@ target execution, setup qualification과 rediscovery는 계속 NOT_RUN이다.
 동일 input/RNG state에서 full/A3는 같은 slot과 같은 RNG 소비를 보장한다. 이후 campaign은
 서로 다른 parent state 때문에 다른 draw stream을 가질 수 있으므로 campaign 전체의
 draw 동일성을 주장하지 않는다. MutationPolicy에 명시적인 versioned ID를 저장한다.
-M1/A3 ID는 SearchCampaignConfig와 completed policy evidence/config binding에 기록된다. Legacy ExperimentConfig 및 automatic policy journal/repetition 경계는 위와 같다.
+M1/A3 ID는 SearchCampaignConfig, completed policy evidence/config와 별도
+journal/repetition schedule에 기록된다. Legacy ExperimentConfig 경계는 위와 같다.
 
 ## Transition scheduler boundary
 

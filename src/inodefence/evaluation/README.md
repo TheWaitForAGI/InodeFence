@@ -194,6 +194,25 @@ retry, localize opaque target lifecycle failures, adjudicate the known class or 
 CLI: `python -m inodefence.evaluation.policy_journal DIRECTORY
 [--completion-sha256 TRUSTED_DIGEST]`.
 
+## Repeated policy schedule
+
+`PolicyRepetitionPlan` stores an ordered set of unique `PolicyScheduledRun` records. Each run
+has an explicit run/arm ID and complete `PolicyEvaluationConfig`; the plan does not infer
+comparison fairness. `PolicyRepetitionController.execute` durably claims one slot, executes
+the journaled/timed campaign exactly once, and publishes a terminal record bound to either
+`evidence/completion.json` or `evidence/failure.json`. Ordinary infrastructure exceptions are
+acknowledged as FAILED and re-raised. A hard interruption remains STARTED with its verified
+prefix and cannot be automatically retried.
+
+`read_policy_repetitions` verifies the plan, claims, unique attempt IDs, every journal/config
+binding and terminal digest. A complete or failed journal without terminal acknowledgement
+still remains STARTED. A directory reserved without a durable claim is INVALID. None of these
+states is silently excluded or converted to no-hit. This controller provides schedule and
+failure accounting, not target construction, authorization, qualification, known-class
+adjudication, fairness approval, statistical pooling or recovery/resume.
+CLI: `python -m inodefence.evaluation.policy_repeated ROOT
+[--plan-sha256 TRUSTED_DIGEST]` reports every verified slot state.
+
 ## Dataset compatibility
 
 `validate_dataset((DatasetMember(directory, protocol_version, manifest_digest), ...))`

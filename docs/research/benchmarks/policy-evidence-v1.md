@@ -33,8 +33,9 @@ An external trusted manifest digest is optional. This format is completed raw
 engineering evidence, not qualification, rediscovery or paper readiness. It
 does not invent an ExperimentConfig ID, environment/protocol binding or missing
 timing. Legacy dataset/journal/repetition APIs refuse this distinct format;
-comparison binding and incremental integration remain separate work.
-Core still exposes no completed-step callback or failed partial result.
+the separate policy journal/repetition path composes it without changing legacy
+formats. Core exposes completed-step/record callbacks but still returns no failed
+partial result; durable prefixes belong to the evaluation journal.
 
 Tests execute only the four fixed benign fixtures with budget equal to their
 count (zero mutations). Parent-chain tests use explicitly synthetic assembly of

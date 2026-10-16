@@ -20,9 +20,11 @@ The starting main revision was
 as `21e05a8e5749f22c9f3b92b7c8bdf00ffa6c0d04` (PR #101). The subsequent candidate-replay
 engineering merged as `2f84b56cd9edf979d564c58215c97cec400f7d3d` (PR #102). Later machine-matcher
 implementation merged as `444c66cc49c808c36fd61f3213e7e60d78f017c3` (PR #103). Controller-memory
-engineering was evaluated at functional head
-`ccc61ed8e19c7c4842203d398f04702202339aa6` (PR #104). These are publication/engineering
-facts, not retroactive historical or pilot execution revisions.
+engineering merged as `ef712d58c494cb9bbae3bac546c1eda3e5455a84` (PR #104), from reviewed
+functional head `ccc61ed8e19c7c4842203d398f04702202339aa6`. This is the final N03
+engineering main revision before report-close publication. Report-close content was reviewed
+at `e1b5bba62d930d5190814e1b537877c6c33c1023` (PR #105). These are
+publication/engineering facts, not retroactive historical or pilot execution revisions.
 
 The original developer checkout remained on its local `main` and retained its pre-existing
 unstaged `.devcontainer/devcontainer.json` modification. It was never staged, overwritten,
@@ -39,7 +41,8 @@ stashed, reset or discarded. All N03 changes used clean isolated worktrees.
 | [#101](https://github.com/TheWaitForAGI/InodeFence/pull/101) | `99ad171cd90e1f632e8f5e47e901ee544d54be09` | N03 report, machine audit and pilot proposal | `21e05a8e5749f22c9f3b92b7c8bdf00ffa6c0d04` | **MERGED / AUDITED** |
 | [#102](https://github.com/TheWaitForAGI/InodeFence/pull/102) | `e53289752c0e82e989245208b72b5a8787f2a535` | exact policy-candidate 3+3 raw replay and independent reader | `2f84b56cd9edf979d564c58215c97cec400f7d3d` | **MERGED / TESTED** |
 | [#103](https://github.com/TheWaitForAGI/InodeFence/pull/103) | `016d8957951526ea41d8ac29e25fbae36d83a46a` | N01 mutation-origin relation matcher and 3/3 versus 0/3 reader | `444c66cc49c808c36fd61f3213e7e60d78f017c3` | **MERGED / TESTED, HISTORICAL USE NOT_RUN** |
-| [#104](https://github.com/TheWaitForAGI/InodeFence/pull/104) | `ccc61ed8e19c7c4842203d398f04702202339aa6` | Linux controller process-lifetime peak-memory evidence and reader | containing PR | **REVIEWED / TESTED, PILOT USE NOT_RUN** |
+| [#104](https://github.com/TheWaitForAGI/InodeFence/pull/104) | `ccc61ed8e19c7c4842203d398f04702202339aa6` | Linux controller process-lifetime peak-memory evidence and reader | `ef712d58c494cb9bbae3bac546c1eda3e5455a84` | **MERGED / TESTED, PILOT USE NOT_RUN** |
+| [#105](https://github.com/TheWaitForAGI/InodeFence/pull/105) | `e1b5bba62d930d5190814e1b537877c6c33c1023` | report-close revision and final gate accounting | containing PR | **REVIEWED / DOCS TESTED** |
 
 Each diff received an adversarial review for schema/version drift, hidden retry or missing
 denominators, C0/C1/C2 changes, timing-boundary misstatement, target-specific leakage and
@@ -59,10 +62,12 @@ relation during assessment. The reviewed functional head above includes this rep
 follow-up commit recorded review and reproduction identity before the PR merged.
 PR #104 review added an independent duplicate-process-identity rejection regression and a live
 Linux `execute_measured` path, rather than relying only on mocked procfs/controller binding.
+PR #105's follow-up commit only embeds its PR and reviewed-content identity; a PR cannot record
+its own future merge commit.
 
 ## 3. Canonical validation
 
-PRs #97 through #103 passed GitHub `check` and `container-integration` jobs. Local canonical
+PRs #97 through #104 passed GitHub `check` and `container-integration` jobs. Local canonical
 Linux validation passed on the exact branch content:
 
 | Milestone | Ruff lint/format | Pyright | pytest | env/docs |
@@ -360,3 +365,9 @@ If v3 is approved, implement its composite in a new versioned contract and perfo
 smallest bounded fixture/reader checks before proposing any qualification matrix. If either
 decision is rejected, retain the negative result and revise the research scope explicitly;
 do not weaken the existing gates.
+
+At report close, the independent engineering gaps identified for candidate enumeration,
+affected/fixed replay, terminal accounting, full-step timing and controller peak-memory
+evidence are implemented and tested. The remaining steps require the human/scientific choices
+or execution authorization listed above. N03 therefore stops without launching a pilot,
+reclassifying v2, implementing unapproved v3 semantics or fabricating a qualification token.

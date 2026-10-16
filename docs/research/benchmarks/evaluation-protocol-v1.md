@@ -263,10 +263,12 @@ Retain immutable experiment configuration, manifest, all full canonical steps,
 inputs/regeneration information and TAR checksums, stdout/stderr, before/after
 snapshots, violations, feedback decisions, lineage and failure ledger. Logical
 case bytes are available in RunResult; existing legacy/policy readers rebuild the
-same TAR and verify its hash. Separate passive failure ledger and legacy journal
-APIs exist, but run_campaign/run_search_campaign expose no completed-step callback
-or failed-prefix result. Completed policy export retains only returned campaigns;
-automatic incremental/exception-safe attachment remains a documented gap. Pilot determines whether O(budget) memory and export volume fit the limits.
+same TAR and verify its hash. The final-state policy runner exposes a completed-record
+boundary; its separate journal durably publishes accessible steps, mutation provenance
+and ordinary infrastructure failures, while a hard interruption leaves a verified
+non-resumable prefix. The repetition ledger preserves complete, failed, invalid and
+STARTED slots without automatic retry. Completed full results remain O(budget); pilot
+determines whether memory and export volume fit the limits.
 Record immutable shared raw storage URI, SHA-256 manifest for every artifact and
 analysis script/source revision. Retain raw data through review and paper
 submission; no deletions before maintainer agrees an archival location.

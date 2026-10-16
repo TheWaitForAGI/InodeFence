@@ -22,6 +22,10 @@ v1](research/design/research-contract-v1.md)의 G0 문서 동결과 transition s
 재발견한 역사적 취약점이나 현재 취약점을 주장하지 않는다.**
 상세 identity와 claim boundary는
 [N02 qualification report](research/diagnostics/n02-autonomous-integration-and-qualification.md)를 따른다.
+N03의 별도 [machine correspondence audit](research/diagnostics/n03-n01-machine-correspondence-audit.md)는
+retained evidence와 automated token의 consistency를 PASS로 재확인했지만 human review를 대체하지 않는다.
+[B0/B1/B3 pilot proposal](research/benchmarks/n03-b0-b1-b3-pilot-task-proposal.md)은 exact candidate
+schedule과 5초/10초 mismatch를 기록하며 **PROPOSED / NOT_AUTHORIZED / NOT_RUN**이다.
 
 ## DESIGNED / IMPLEMENTED / TESTED / EXPERIMENTALLY VALIDATED
 
@@ -180,6 +184,11 @@ incomplete/invalid streams and target-rejection prefixes for admission/reward.
 The runtime diagnosis selected the multi-operation branch for the exercised node-tar cases.
 The review choice is now explicit: approve a separately versioned v3 rebinding method, or
 retain v2 and establish a genuine one-operation positive. Neither choice is made implicitly.
+
+N03 independent closeout은 [structured report](research/diagnostics/n03-autonomous-research-advancement.md)에
+기록한다. Final-state journal/timing/repetition infrastructure는 IMPLEMENTED / TESTED지만 pilot과
+known-class adjudication은 완료되지 않았다. Native v3 rebinding은 proposal일 뿐이고 v2 negative
+decision이나 P0-v2/P1-v2/P2-v2 gate를 변경하지 않는다.
 
 **첫 historical qualification인 N01 node-tar 7.5.2 / 7.5.3 hardlink arm은 automated
 replay를 완료했고 final human correspondence review를 기다린다.**

@@ -117,10 +117,11 @@ N01 historical automated replay는 완료됐지만 final qualification은
 현재 취약점을 주장하지 않는다. 상세 결과와 identity는
 [N02 qualification report](research/diagnostics/n02-autonomous-integration-and-qualification.md)를 따른다.
 Snapshot은 persistent effect만 판정하며 transient/direct-use/symlink referent와 sandbox 밖 접근을
-증명하지 못한다. Alternative policy 실행 API와 completed export가 있어도 automatic journal attachment,
-failure-prefix 보존과 known-class adjudication은 별도 검증 과제다. Final-state policy의 별도
-full-step monotonic timing evidence/reader는 TESTED engineering infrastructure이지만 formal timing
-결과나 publication/failure timing은 아니다. G0 문서 동결은 후속 gate의 PASS가 아니다.
+증명하지 못한다. Alternative policy 실행 API, incremental journal과 repetition ledger는 completed
+record, accessible failure prefix와 terminal state를 보존한다. Known-class adjudication은 여전히 별도
+검증 과제다. Final-state policy의 별도 full-step monotonic timing evidence/reader는 TESTED engineering
+infrastructure이지만 formal timing 결과나 final publication/adjudication timing은 아니다.
+G0 문서 동결은 후속 gate의 PASS가 아니다.
 
 ## 5. 코딩하기 전에 딱 이것만 읽기
 

@@ -16,6 +16,7 @@ from inodefence.evaluation.controller_memory import (
 )
 from inodefence.evaluation.policy_binding import PolicyEvaluationConfig
 from inodefence.evaluation.policy_repeated import (
+    PolicyControllerMemory,
     PolicyRepetitionController,
     PolicyRepetitionPlan,
     PolicyScheduledRun,
@@ -23,6 +24,7 @@ from inodefence.evaluation.policy_repeated import (
     read_policy_repetitions,
 )
 from inodefence.evaluation.repeated import RunState
+from inodefence.evaluation.storage import read_record, write_record
 from inodefence.evaluation.verify import VerificationError
 from inodefence.feedback import SearchPolicy
 from inodefence.mutator import MutationPolicy
@@ -34,9 +36,13 @@ from inodefence.targets.python_tarfile import PythonTarfileTarget
 _BOOT_ID = "12345678-1234-5678-9234-567812345678"
 
 
-def _patch_memory_observer(monkeypatch):
-    started_sample = LinuxProcessMemorySample(123, _BOOT_ID, 42, 100, 10_240, 20_480)
-    completed_sample = LinuxProcessMemorySample(123, _BOOT_ID, 42, 100, 12_288, 24_576)
+def _patch_memory_observer(monkeypatch, *, process_id=123, process_start_ticks=42):
+    started_sample = LinuxProcessMemorySample(
+        process_id, _BOOT_ID, process_start_ticks, 100, 10_240, 20_480
+    )
+    completed_sample = LinuxProcessMemorySample(
+        process_id, _BOOT_ID, process_start_ticks, 100, 12_288, 24_576
+    )
     started = ControllerMemoryObservationStart("2026-10-16T00:00:00+00:00", 100, started_sample)
     observation = ControllerMemoryObservation(
         started.started_at_utc,
@@ -158,6 +164,25 @@ def test_controller_memory_tamper_fails_closed(scheduled, monkeypatch, tmp_path)
     memory.write_bytes(memory.read_bytes()[:-4])
 
     with pytest.raises(VerificationError):
+        read_policy_repetitions(controller.root)
+
+
+def test_reader_rejects_reused_process_identity_across_measured_slots(
+    scheduled, monkeypatch, tmp_path
+):
+    cases, target, plan = scheduled
+    first_observation = _patch_memory_observer(monkeypatch)
+    controller = PolicyRepetitionController.create(tmp_path / "runs", plan)
+    controller.execute_measured(0, cases, target, attempt_id="first-process")
+    _patch_memory_observer(monkeypatch, process_id=124, process_start_ticks=43)
+    controller.execute_measured(1, cases, target, attempt_id="second-process")
+
+    memory = controller.root / "run-00000001" / "controller-memory.json"
+    second = read_record(memory, PolicyControllerMemory)
+    memory.unlink()
+    write_record(memory, replace(second, observation=first_observation))
+
+    with pytest.raises(VerificationError, match="process identity reused"):
         read_policy_repetitions(controller.root)
 
 

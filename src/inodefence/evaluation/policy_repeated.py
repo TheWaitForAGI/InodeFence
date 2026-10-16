@@ -169,7 +169,11 @@ class PolicyControllerMemory:
         _digest(self.config_id)
         _text(self.attempt_id)
         _digest(self.plan_sha256)
-        if self.state not in {RunState.COMPLETED, RunState.FAILED, RunState.INVALID}:
+        if not isinstance(self.state, RunState) or self.state not in {
+            RunState.COMPLETED,
+            RunState.FAILED,
+            RunState.INVALID,
+        }:
             raise ValueError("controller memory requires a terminal run state")
         if (
             not isinstance(self.claim, ArtifactReference)

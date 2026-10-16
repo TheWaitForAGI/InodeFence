@@ -19,8 +19,9 @@ The starting main revision was
 `919d723b7eb3bf13b060d3ae34b083499590b4fc` (N02 report merge). The report publication merged
 as `21e05a8e5749f22c9f3b92b7c8bdf00ffa6c0d04` (PR #101). The subsequent candidate-replay
 engineering merged as `2f84b56cd9edf979d564c58215c97cec400f7d3d` (PR #102). Later machine-matcher
-implementation revisions are publication/engineering facts, not retroactive historical or
-pilot execution revisions.
+implementation was evaluated at functional head
+`f3e48dcf7523cf94b2eda7a01c3732f37a07ed78` (PR #103). These are publication/engineering
+facts, not retroactive historical or pilot execution revisions.
 
 The original developer checkout remained on its local `main` and retained its pre-existing
 unstaged `.devcontainer/devcontainer.json` modification. It was never staged, overwritten,
@@ -36,6 +37,7 @@ stashed, reset or discarded. All N03 changes used clean isolated worktrees.
 | [#100](https://github.com/TheWaitForAGI/InodeFence/pull/100) | `3e0ef26d89a1a1f93867a6641822c37d5b9ee5ce` | separately versioned v3 namespace-rebinding proposal | `da42c805b391ca842543dcf0db77f6edbce96b1e` | **MERGED / PROPOSED, NOT IMPLEMENTED** |
 | [#101](https://github.com/TheWaitForAGI/InodeFence/pull/101) | `99ad171cd90e1f632e8f5e47e901ee544d54be09` | N03 report, machine audit and pilot proposal | `21e05a8e5749f22c9f3b92b7c8bdf00ffa6c0d04` | **MERGED / AUDITED** |
 | [#102](https://github.com/TheWaitForAGI/InodeFence/pull/102) | `e53289752c0e82e989245208b72b5a8787f2a535` | exact policy-candidate 3+3 raw replay and independent reader | `2f84b56cd9edf979d564c58215c97cec400f7d3d` | **MERGED / TESTED** |
+| [#103](https://github.com/TheWaitForAGI/InodeFence/pull/103) | `f3e48dcf7523cf94b2eda7a01c3732f37a07ed78` | N01 mutation-origin relation matcher and 3/3 versus 0/3 reader | containing PR | **REVIEWED / TESTED, HISTORICAL USE NOT_RUN** |
 
 Each diff received an adversarial review for schema/version drift, hidden retry or missing
 denominators, C0/C1/C2 changes, timing-boundary misstatement, target-specific leakage and
@@ -48,6 +50,8 @@ PR #102 was adversarially repaired after review found that a run linked before a
 directory-sync error could be omitted from failure-prefix accounting. The repaired reader
 derives the available run prefix and verifies failure source, target, configuration, phase and
 cleanup fields. PR #102 subsequently passed both required jobs and merged cleanly.
+PR #103 records its functional reviewed head above; the follow-up commit only records PR and
+reproduction identity, because a PR cannot embed its own future merge commit.
 
 ## 3. Canonical validation
 
@@ -62,6 +66,7 @@ Linux validation passed on the exact branch content:
 | PR #100 | PASS | 0 errors | 1,504 PASS | PASS |
 | PR #101 initial publication content | PASS | 0 errors | 1,504 PASS | PASS |
 | PR #102 repaired reviewed head | PASS | 0 errors | 1,509 PASS | PASS |
+| PR #103 functional reviewed head | PASS | 0 errors | 1,513 PASS | PASS |
 
 One PR #98 Linux run initially encountered a transient unrelated process-reaping failure.
 The isolated check passed and a complete clean rerun passed; no assertion or contract was
@@ -287,7 +292,7 @@ Reproduce engineering validation from a clean worktree at the evaluated revision
 
 ```bash
 git worktree add --detach /tmp/inodefence-n03-review \
-  da42c805b391ca842543dcf0db77f6edbce96b1e
+  f3e48dcf7523cf94b2eda7a01c3732f37a07ed78
 cd /tmp/inodefence-n03-review
 make check
 ```

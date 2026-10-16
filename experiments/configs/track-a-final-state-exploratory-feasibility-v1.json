@@ -1,0 +1,116 @@
+{
+  "analysis": {
+    "candidate_rule": "n01-policy-candidate-machine-match-v1",
+    "full_step_timing": "policy-full-step-monotonic-v1",
+    "meaningful_observation": "first-1-based-execution-with-generic-C0-C1-or-C2-violation",
+    "p95": "nearest-rank",
+    "reader": "python -m inodefence.evaluation.track_a_exploratory analyze",
+    "state_novelty_is_not_vulnerability": true
+  },
+  "authorization": {
+    "pilot": "required-not-recorded",
+    "preflight": "required-not-recorded",
+    "prompt_is_not_authorization": true
+  },
+  "evidence": {
+    "controller_memory": "linux-proc-self-vmhwm-v1",
+    "failure_policy": "preserve-stop-no-retry",
+    "final_manifest": "track-a-final-manifest-v1",
+    "independent_reader_required": true,
+    "output_root": "/var/lib/inodefence/evidence/track-a-final-state-exploratory-feasibility-v1",
+    "raw_policy_journal": "policy-journal-v1",
+    "repetition_ledger": "policy-repeated-v1"
+  },
+  "execution": {
+    "campaign_execution_budget": 200,
+    "campaign_rng_seeds": [9001, 9002, 9003, 9004, 9005],
+    "campaign_watchdog_seconds": 7200,
+    "fresh_controller_process_per_campaign": true,
+    "initial_seed_count": 4,
+    "scheduling_rng_seed": 4242,
+    "sequential": true,
+    "target_timeout_seconds": 5.0,
+    "total_campaigns": 20,
+    "total_executions": 4000
+  },
+  "initial_case_ids": [
+    "c56da02197b3e8959e46c08c476c7fb15a13763ce9d8d57ac5151f4b1d709fd8",
+    "cdcc8045e37293498ff2d8e69e6e5638ee470f1bd11b1d0b8f16f1f9e783208f",
+    "de8ddc5ca4c15fccb638257bbbe671c4fcc9c707962cb92de6589a09f6418620",
+    "842bdde9b083096d6f5f1c93c93efb3ff35d141b7311571dab281c771d83c0d1"
+  ],
+  "policies": {
+    "affected-b0": "unretained-walk-v1",
+    "affected-b1": "state-v3-uniform-parent-v1",
+    "affected-b3": "state-v2-or-violation-v1-uniform-parent-v1",
+    "feedback_projection": "state-signature-v3-full",
+    "fixed-b3": "state-v2-or-violation-v1-uniform-parent-v1",
+    "mutation": "uniform-generic-m1-protected-components-v1",
+    "tar_builder": "ustar-v1"
+  },
+  "protocol_version": "track-a-final-state-exploratory-feasibility-v1",
+  "resource_limits": {
+    "capture_bytes_per_stream": 1048576,
+    "file_size_bytes": 67108864,
+    "memory_bytes": 536870912,
+    "open_files": 1024,
+    "pids": 64,
+    "shm_bytes": 16777216,
+    "tmpfs_bytes": 33554432
+  },
+  "schedule": [
+    {"arm_id": "affected-b3", "random_seed": 9002, "run_id": "n01-affected-b3-9002"},
+    {"arm_id": "fixed-b3", "random_seed": 9003, "run_id": "n01-fixed-b3-9003"},
+    {"arm_id": "affected-b3", "random_seed": 9004, "run_id": "n01-affected-b3-9004"},
+    {"arm_id": "affected-b1", "random_seed": 9003, "run_id": "n01-affected-b1-9003"},
+    {"arm_id": "fixed-b3", "random_seed": 9001, "run_id": "n01-fixed-b3-9001"},
+    {"arm_id": "fixed-b3", "random_seed": 9005, "run_id": "n01-fixed-b3-9005"},
+    {"arm_id": "affected-b1", "random_seed": 9001, "run_id": "n01-affected-b1-9001"},
+    {"arm_id": "fixed-b3", "random_seed": 9004, "run_id": "n01-fixed-b3-9004"},
+    {"arm_id": "affected-b3", "random_seed": 9003, "run_id": "n01-affected-b3-9003"},
+    {"arm_id": "affected-b1", "random_seed": 9005, "run_id": "n01-affected-b1-9005"},
+    {"arm_id": "fixed-b3", "random_seed": 9002, "run_id": "n01-fixed-b3-9002"},
+    {"arm_id": "affected-b0", "random_seed": 9003, "run_id": "n01-affected-b0-9003"},
+    {"arm_id": "affected-b3", "random_seed": 9001, "run_id": "n01-affected-b3-9001"},
+    {"arm_id": "affected-b3", "random_seed": 9005, "run_id": "n01-affected-b3-9005"},
+    {"arm_id": "affected-b1", "random_seed": 9002, "run_id": "n01-affected-b1-9002"},
+    {"arm_id": "affected-b0", "random_seed": 9005, "run_id": "n01-affected-b0-9005"},
+    {"arm_id": "affected-b0", "random_seed": 9004, "run_id": "n01-affected-b0-9004"},
+    {"arm_id": "affected-b0", "random_seed": 9001, "run_id": "n01-affected-b0-9001"},
+    {"arm_id": "affected-b0", "random_seed": 9002, "run_id": "n01-affected-b0-9002"},
+    {"arm_id": "affected-b1", "random_seed": 9004, "run_id": "n01-affected-b1-9004"}
+  ],
+  "schema_version": 1,
+  "scientific_scope": {
+    "central_hypothesis": "not_evaluated",
+    "comparison": "final-state-feedback-only",
+    "known_class_rediscovery": "not_confirmed-by-machine-match",
+    "purpose": "bounded-exploratory-feasibility",
+    "transition_policies": "out-of-scope"
+  },
+  "source": {
+    "execution_revision": "freeze-clean-full-sha-in-execution-manifest",
+    "preparation_base_revision": "21e317281a2d2a7faf6198f66302f3912b429011"
+  },
+  "targets": [
+    {
+      "image_id": "sha256:8b44887734511dbe9462f9b82f1c3128a8b445ebab2fa9b8db3fadcbc659c520",
+      "lock_sha256": "31792107e9442ab18b04661d10ca0a0053db1fb7c58ca3aa702f1abb9908e243",
+      "node_version": "22.22.0",
+      "package_tarball_sha256": "22d8b674a68754ea909d03aa13958a7d2fd5e78af8a8f0cde6455babef7aaf1a",
+      "platform_manifest_sha256": "b5ae7f5d2f85f12fa417ecece3e9089001266cc6bf4a997724c225a40ce8b542",
+      "role": "affected",
+      "tar_version": "7.5.2"
+    },
+    {
+      "image_id": "sha256:ed428826dd4b561f5b23035539137f0e7fe86c03c92eb5c7cae54a684fc7880f",
+      "lock_sha256": "a63d02f09d9a9fb2def77da84d5145984ff260fcedd19839ba96ec858fdfae24",
+      "node_version": "22.22.0",
+      "package_tarball_sha256": "9d95d0cf786786360f97c1e414caea8a14452dc337fda17ba256ae7762c2ec66",
+      "platform_manifest_sha256": "3a1bcf4dffcd21ddc4fa6645980bebd96dceda4ceee0ddfe033abd0d50dd6ee0",
+      "role": "fixed",
+      "tar_version": "7.5.3"
+    }
+  ],
+  "worker_sha256": "feb13d7be5f5718769bebd4b0e375ea3f535abffd45223494dd518263593498b"
+}

@@ -330,3 +330,18 @@ reconstructs lifecycle/effect/causal evidence from the exact raw frame, verifies
 archive, command, sequence, correlation, flush and final-state bindings, and recomputes the
 normalized feedback keys. `scripts/verify_node_effect_evidence.py` exposes this reader for one
 bundle. Invalid or incomplete streams never return verified evidence.
+
+## Track A exploratory final-state pilot
+
+`track_a_exploratory`는 N03의 20-cell affected-B0/B1/B3 + fixed-B3 순서와 5초/200회 조건을
+별도 versioned feasibility protocol로 고정한다. 승인된 Preflight와 별도 pilot authorization의
+SHA-256이 없으면 plan을 만들지 않는다. 각 cell은 fresh controller process에서 순서대로 한 번만
+실행하며 기존 policy journal, full-step timing, repetition ledger, controller VmHWM 및 N01
+nomination reader를 재사용한다. STOP 뒤 자동 재시도는 없다.
+
+`finalize`는 complete/failed/invalid/STARTED/PENDING 상태와 모든 raw file digest를 마지막
+manifest에 봉인한다. `verify`와 `analyze`는 이를 새로 읽어 arm별 실행/상태/위반/시간/메모리/
+저장량 및 탐색적 비교를 계산한다. 이 결과는 final-state feasibility이며 P0/P1/P2, confirmed
+rediscovery 또는 통계적 우월성을 뜻하지 않는다. 정확한 계약은
+[Track A protocol](../../../docs/research/benchmarks/track-a-final-state-exploratory-feasibility-v1.md)을
+따른다.

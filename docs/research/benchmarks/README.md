@@ -7,14 +7,15 @@ evidence levels and claim scope. Implemented search/evaluation APIs and benign
 Node checks are engineering evidence; no historical vulnerability has been
 rediscovered and no vulnerability is currently claimed.
 
-**N01 node-tar 7.5.2 / 7.5.3 is the first intended historical qualification pair.**
-Its exact artifacts, Linux/strict behavior, controlled-name reachability and
-matching affected/fixed effect remain unqualified. Other original selected
+**N01 node-tar 7.5.2 / 7.5.3 is the first historical qualification pair.**
+Its exact artifacts were admitted and its automated 8-run readiness plus 10-run
+same-input replay completed; final human correspondence remains pending. Other original selected
 candidates are conditional later scope, not permission to add adapters or run
 unqualified targets. Static catalog execution remains NOT_RUN for all 15 cases.
 The exact same-input [N01 pair qualification contract](n01-pair-qualification-contract-v1.md)
-is **PROPOSED / BLOCKED_FOR_REVIEW / BLOCKED_ENVIRONMENT / NOT_EXECUTED**; it does not
-authorize historical target execution or count its positive control as rediscovery.
+governs that retained evidence; the [N02 report](../diagnostics/n02-autonomous-integration-and-qualification.md)
+and [N03 machine audit](../diagnostics/n03-n01-machine-correspondence-audit.md) do not
+replace its pending human disposition or count its positive control as rediscovery.
 
 Read current definitions in this order:
 
@@ -24,7 +25,8 @@ Read current definitions in this order:
 4. [Benchmark Set](benchmark-set-v1.md): selected pairs and admission gates.
 5. [Executable baselines/ablations](baseline-and-ablation-v1.md): B0/B1/B3 and A1/A2/A3 only.
 6. [Evaluation protocol](evaluation-protocol-v1.md): success, provisional budgets, censoring and metrics.
-7. [Static catalog](../../../experiments/benchmarks/README.md) and [empty result templates](../../../experiments/benchmarks/result-templates.md).
+7. [N03 pilot proposal](n03-b0-b1-b3-pilot-task-proposal.md): exact candidate cells and unresolved execution gates.
+8. [Static catalog](../../../experiments/benchmarks/README.md) and [empty result templates](../../../experiments/benchmarks/result-templates.md).
 
 The [engine audit](engine-contract-audit.md) and [post-audit handoff](post-audit-backlog.md)
 are explicitly historical `d1982e4` records. Their counts, absent-policy/reader

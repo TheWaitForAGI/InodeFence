@@ -223,9 +223,13 @@ The 200-step result and journal are O(budget), and target containers retain the 
 
 Actual median/p95 full-step time, rejection/timeout rates, final evidence bytes and controller
 peak memory are unavailable because the pilot is NOT_RUN. Per-step timing and exact byte
-counts are implemented. A reviewed controller peak-memory measurement method is still needed;
-target lifecycle duration cannot substitute for full-step time. These measurements decide
-whether the larger formal plan is feasible and cannot be invented from N02's ten pair runs.
+counts are implemented. The separately versioned
+[controller peak-memory method](../design/controller-peak-memory-v1.md) is IMPLEMENTED and
+engineering TESTED: every campaign must use a fresh dedicated controller process, and the
+reader binds its Linux process-lifetime `VmHWM` to the exact terminal slot. No historical
+memory value has been collected. Target lifecycle duration cannot substitute for full-step
+time. These measurements decide whether the larger formal plan is feasible and cannot be
+invented from N02's ten pair runs.
 
 ## Authorization and stop gates
 
@@ -239,7 +243,8 @@ Execution remains **BLOCKED / NOT_RUN** until all of the following are recorded:
 4. this candidate schedule/budget is accepted in an explicitly authorized revision with its
    exact plan SHA-256 and new immutable evidence root;
 5. fresh benign readiness and oracle controls pass at that exact setup;
-6. peak-memory measurement and independent reader commands are frozen; and
+6. the `linux-proc-self-vmhwm-v1` method and independent reader command are accepted in the
+   authorized revision, with one fresh controller process per campaign; and
 7. the intended claim is chosen: generic feasibility only, or confirmed rediscovery after
    historical matcher execution and the human adjudication gate pass.
 

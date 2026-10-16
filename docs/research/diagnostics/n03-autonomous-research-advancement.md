@@ -9,18 +9,18 @@ P0-v2/P1-v2/P2-v2 EFFECTIVENESS: NOT_RUN / NOT_EVALUATED
 CENTRAL RESEARCH HYPOTHESIS: NOT_EVALUATED
 ```
 
-This report closes the independent work possible under N03 without inventing scientific
+This report records the independent work completed under N03 without inventing scientific
 approval. It keeps historical persistent-state evidence, final-state policy experiments and
 intermediate effect-feedback experiments as three separate tracks.
 
 ## 1. Initial and final revisions
 
 The starting main revision was
-`919d723b7eb3bf13b060d3ae34b083499590b4fc` (N02 report merge). The final integrated
-engineering revision evaluated before this report publication is
-`da42c805b391ca842543dcf0db77f6edbce96b1e` (PR #100 merge). This report and its linked pilot
-proposal are publication artifacts layered on that revision; the containing Git commit/PR is
-the publication identity, not a retroactive execution revision.
+`919d723b7eb3bf13b060d3ae34b083499590b4fc` (N02 report merge). The report publication merged
+as `21e05a8e5749f22c9f3b92b7c8bdf00ffa6c0d04` (PR #101). The subsequent candidate-replay
+engineering was evaluated at reviewed branch head
+`c56deae98d8703082cc4e8276588846fe38fe71c` (PR #102); its future merge commit is a publication
+fact in Git history, not a retroactive historical/pilot execution revision.
 
 The original developer checkout remained on its local `main` and retained its pre-existing
 unstaged `.devcontainer/devcontainer.json` modification. It was never staged, overwritten,
@@ -34,6 +34,8 @@ stashed, reset or discarded. All N03 changes used clean isolated worktrees.
 | [#98](https://github.com/TheWaitForAGI/InodeFence/pull/98) | `c7fde5edc128327423c16eaae41ae6f4fcf7c80c` | incremental mutation/policy journal and reader | `cac9286b17fdc54b5355e157632685aa9fadddaf` | **MERGED / TESTED** |
 | [#99](https://github.com/TheWaitForAGI/InodeFence/pull/99) | `817bd2d1ebb27ae18ca1cc41197511b8bbcf2555` | exact repeated policy schedule and terminal accounting | `1bd387e86be44b034307fa4886409acde9524928` | **MERGED / TESTED** |
 | [#100](https://github.com/TheWaitForAGI/InodeFence/pull/100) | `3e0ef26d89a1a1f93867a6641822c37d5b9ee5ce` | separately versioned v3 namespace-rebinding proposal | `da42c805b391ca842543dcf0db77f6edbce96b1e` | **MERGED / PROPOSED, NOT IMPLEMENTED** |
+| [#101](https://github.com/TheWaitForAGI/InodeFence/pull/101) | `99ad171cd90e1f632e8f5e47e901ee544d54be09` | N03 report, machine audit and pilot proposal | `21e05a8e5749f22c9f3b92b7c8bdf00ffa6c0d04` | **MERGED / AUDITED** |
+| [#102](https://github.com/TheWaitForAGI/InodeFence/pull/102) | `c56deae98d8703082cc4e8276588846fe38fe71c` | exact policy-candidate 3+3 raw replay and independent reader | containing PR | **REVIEWED / TESTED** |
 
 Each diff received an adversarial review for schema/version drift, hidden retry or missing
 denominators, C0/C1/C2 changes, timing-boundary misstatement, target-specific leakage and
@@ -42,16 +44,16 @@ validation. GitHub ancestry, required checks and mergeability were rechecked imm
 before each autonomous merge. No branch protection was bypassed and nothing was pushed
 directly to main. The unrelated pre-existing PR #92 was not modified or merged.
 
-[PR #101](https://github.com/TheWaitForAGI/InodeFence/pull/101) publishes this closeout,
-machine audit, pilot proposal and status corrections. Its initial reviewed content head is
-`f0de279e104784d92a5308acb0a8f2513903c1bc`; the follow-up commit only records this PR
-identity. A PR cannot embed its own future merge commit, so final publication merge metadata
-is intentionally left to Git history and the external handoff.
+PR #102 was adversarially repaired after review found that a run linked before a later
+directory-sync error could be omitted from failure-prefix accounting. The repaired reader
+derives the available run prefix and verifies failure source, target, configuration, phase and
+cleanup fields. A PR cannot embed its own future merge commit, so that merge identity remains
+in Git history and the external handoff.
 
 ## 3. Canonical validation
 
-All four PRs passed GitHub `check` and `container-integration` jobs. Local canonical Linux
-validation passed on the exact branch content:
+PRs #97 through #101 passed GitHub `check` and `container-integration` jobs. Local canonical
+Linux validation passed on the exact branch content:
 
 | Milestone | Ruff lint/format | Pyright | pytest | env/docs |
 | --- | --- | --- | ---: | --- |
@@ -60,10 +62,13 @@ validation passed on the exact branch content:
 | PR #99 | PASS | 0 errors | 1,504 PASS | PASS |
 | PR #100 | PASS | 0 errors | 1,504 PASS | PASS |
 | PR #101 initial publication content | PASS | 0 errors | 1,504 PASS | PASS |
+| PR #102 repaired reviewed head | PASS | 0 errors | 1,509 PASS | PASS |
 
 One PR #98 Linux run initially encountered a transient unrelated process-reaping failure.
 The isolated check passed and a complete clean rerun passed; no assertion or contract was
-weakened. These are engineering tests, not fuzzing or native qualification results.
+weakened. The first PR #102 canonical run observed the same existing timeout/reaping race;
+the isolated test passed 5/5 and the complete clean rerun passed. These are engineering tests,
+not fuzzing or native qualification results.
 
 ## 4. N01 independent machine correspondence audit
 

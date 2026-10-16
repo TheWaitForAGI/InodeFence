@@ -3,10 +3,12 @@
 import json
 import shutil
 import sys
+from dataclasses import replace
 
 import pytest
 
 import inodefence.campaign as campaign_module
+import inodefence.evaluation.candidate_replay as candidate_module
 from inodefence.campaign import SearchCampaignConfig, run_search_campaign
 from inodefence.evaluation.candidate_replay import (
     CandidateReplayRole,
@@ -15,6 +17,7 @@ from inodefence.evaluation.candidate_replay import (
     read_candidate_replay,
     run_candidate_replays,
 )
+from inodefence.evaluation.failure import write_failure
 from inodefence.evaluation.policy_binding import (
     PolicyEvaluationConfig,
     export_bound_policy_result,
@@ -153,6 +156,53 @@ def test_ordinary_exception_retains_invalid_prefix(tmp_path, monkeypatch):
     assert len(snapshot.runs) == 1
     assert not snapshot.pairs
     assert snapshot.failure is not None
+    assert snapshot.failure.context.last_fully_completed_step == 0
+
+    tampered = tmp_path / "failed-tampered"
+    shutil.copytree(evidence, tampered)
+    (tampered / "failure.json").unlink()
+    write_failure(
+        tampered / "failure.json",
+        replace(
+            snapshot.failure,
+            context=replace(snapshot.failure.context, config_id="0" * 64),
+        ),
+    )
+    with pytest.raises(VerificationError, match="failure record differs"):
+        read_candidate_replay(tampered, source)
+
+
+def test_publication_error_after_link_retains_readable_run_prefix(tmp_path, monkeypatch):
+    cases, source, binding = _source(tmp_path)
+    original = candidate_module.write_record
+    failed = False
+
+    def fail_after_first_run_link(path, value):
+        nonlocal failed
+        digest = original(path, value)
+        if not failed and path.parent.name == "runs":
+            failed = True
+            raise OSError("controlled directory fsync failure after run link")
+        return digest
+
+    monkeypatch.setattr(candidate_module, "write_record", fail_after_first_run_link)
+    evidence = tmp_path / "publication-failed"
+    with pytest.raises(OSError, match="after run link"):
+        run_candidate_replays(
+            source,
+            cases[0].case_id,
+            evidence,
+            PythonTarfileTarget(),
+            PythonTarfileTarget(),
+            attempt_id="candidate-test-publication-failed",
+            expected_source_binding_sha256=binding,
+        )
+    snapshot = read_candidate_replay(evidence, source)
+    assert snapshot.infrastructure_invalid
+    assert len(snapshot.runs) == 1
+    assert snapshot.failure is not None
+    assert snapshot.failure.context.phase.value == "publication"
+    assert snapshot.failure.context.step_index == 0
     assert snapshot.failure.context.last_fully_completed_step == 0
 
 

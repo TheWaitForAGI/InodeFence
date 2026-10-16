@@ -85,6 +85,11 @@ caught: it leaves a readable unclassified prefix with no completion/failure clai
 failed or interrupted root is never resumed or reused; a new authorized attempt requires a
 new path and remains a separate denominator.
 
+If atomic publication linked a complete run before a later directory-sync error, that readable
+run remains part of the failed prefix and `last_fully_completed_step` reflects it. The reader
+also reconstructs the attempted run's scheduled role/target and verifies failure source,
+configuration, phase and cleanup accounting instead of trusting the ledger fields alone.
+
 Missing completion is incomplete even when all six runs are present. Missing/noncontiguous
 runs, unexpected files, checksum mismatch, source mismatch, forged pairing and simultaneous
 completion/failure fail closed. Atomic no-overwrite publication has the same trusted-parent,

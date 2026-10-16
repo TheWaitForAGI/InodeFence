@@ -344,6 +344,66 @@ def _available_references(root: Path) -> tuple[ArtifactReference, ...]:
     return tuple(_reference(root, name) for name in names)
 
 
+def _verify_failure_context(
+    failure: FailureRecord,
+    request: CandidateReplayRequest,
+    header: CandidateReplayHeader | None,
+    runs: tuple[CandidateReplayRun, ...],
+    artifacts: tuple[ArtifactReference, ...],
+) -> None:
+    context = failure.context
+    expected_last = len(runs) - 1 if runs else None
+    expected_cleanup = (
+        CleanupStatus.FAILED if context.phase == FailurePhase.CLEANUP else CleanupStatus.UNKNOWN
+    )
+    if (
+        context.attempt_id != request.attempt_id
+        or context.experiment_id != request.protocol_version
+        or context.config_id != request.nomination.source_evaluation_config_id
+        or context.last_fully_completed_step != expected_last
+        or context.artifacts != artifacts
+        or context.cleanup_status != expected_cleanup
+        or (header is not None and context.source != header.affected_provenance.source)
+    ):
+        raise ValueError("candidate failure record differs from available prefix")
+
+    if context.step_index is None:
+        if context.target is not None or context.phase not in {
+            FailurePhase.SETUP,
+            FailurePhase.PUBLICATION,
+        }:
+            raise ValueError("candidate failure lacks a consistent attempted run")
+        return
+    if header is None or not 0 <= context.step_index < REPETITIONS * 2:
+        raise ValueError("candidate failure attempted run lacks frozen provenance")
+    repetition, position = divmod(context.step_index, 2)
+    role = request.schedule[repetition].order[position]
+    expected_provenance = (
+        header.affected_provenance
+        if role == CandidateReplayRole.AFFECTED
+        else header.fixed_provenance
+    )
+    possible_steps = {len(runs)} if len(runs) < REPETITIONS * 2 else set()
+    if runs:
+        possible_steps.add(len(runs) - 1)
+    if (
+        context.target != expected_provenance.target
+        or context.phase
+        not in {FailurePhase.EXECUTION, FailurePhase.PUBLICATION, FailurePhase.CLEANUP}
+        or context.step_index not in possible_steps
+        or (context.phase == FailurePhase.EXECUTION and context.step_index != len(runs))
+        or (
+            context.phase == FailurePhase.CLEANUP
+            and (
+                not runs
+                or context.step_index != len(runs) - 1
+                or runs[-1].runtime_root_absent_after_return
+            )
+        )
+    ):
+        raise ValueError("candidate failure attempted-run accounting mismatch")
+
+
 def _expected_run(
     request: CandidateReplayRequest,
     header: CandidateReplayHeader,
@@ -499,13 +559,13 @@ def read_candidate_replay(
         if (root / "failure.json").is_file():
             failure_sha = sha256(_read_file(root / "failure.json")).hexdigest()
             failure = read_failure(root / "failure.json", expected_sha256=failure_sha)
-            if (
-                failure.context.attempt_id != request.attempt_id
-                or failure.context.experiment_id != request.protocol_version
-                or failure.context.last_fully_completed_step != (len(runs) - 1 if runs else None)
-                or failure.context.artifacts != _available_references(root)
-            ):
-                raise ValueError("candidate failure record differs from available prefix")
+            _verify_failure_context(
+                failure,
+                request,
+                header,
+                tuple(runs),
+                _available_references(root),
+            )
 
         completion = None
         completion_sha = None
@@ -679,6 +739,8 @@ def run_candidate_replays(
         completion_sha = write_record(evidence_root / "completion.json", completion)
     except Exception as error:
         source = header.affected_provenance.source if header is not None else capture_source()
+        artifacts = _available_references(evidence_root)
+        available_runs = sum(item.name.startswith("runs/") for item in artifacts)
         context = FailureContext(
             request.attempt_id,
             request.protocol_version,
@@ -688,10 +750,12 @@ def run_candidate_replays(
             if phase in {FailurePhase.EXECUTION, FailurePhase.PUBLICATION, FailurePhase.CLEANUP}
             else None,
             phase,
-            len(run_references) - 1 if run_references else None,
+            available_runs - 1 if available_runs else None,
             nomination.source_evaluation_config_id,
-            cleanup_status=CleanupStatus.UNKNOWN,
-            artifacts=_available_references(evidence_root),
+            cleanup_status=(
+                CleanupStatus.FAILED if phase == FailurePhase.CLEANUP else CleanupStatus.UNKNOWN
+            ),
+            artifacts=artifacts,
         )
         try:
             write_failure(evidence_root / "failure.json", failure_record(error, context))

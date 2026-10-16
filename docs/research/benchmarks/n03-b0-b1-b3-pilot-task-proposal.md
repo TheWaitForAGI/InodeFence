@@ -193,8 +193,8 @@ The generic [candidate replay layer](../design/candidate-pair-replay-v1.md) bind
 case to verified campaign occurrences, executes the counterbalanced 3+3 schedule and preserves
 complete/failed/interrupted raw evidence plus three `PairComparison` records. The separate
 [N01 machine matcher](n01-candidate-machine-match-v1.md) now implements deterministic
-mutation-origin C1 relation nomination, exact N01 target/setup checks and affected 3/3 versus
-fixed 0/3 reconstruction. It remains TESTED only with controlled adapters. Human root-cause
+all-step mutation-origin C1 candidate enumeration, exact N01 target/setup checks and affected
+3/3 versus fixed 0/3 reconstruction. It remains TESTED only with controlled adapters. Human root-cause
 disposition is unperformed, so neither layer can report confirmed known-class rediscovery.
 
 ## Failure, censoring and evidence rules

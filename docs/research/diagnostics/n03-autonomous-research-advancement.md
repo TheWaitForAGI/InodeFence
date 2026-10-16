@@ -130,7 +130,8 @@ The real path now has tested interfaces for:
 - exact policy-case nomination plus counterbalanced three-affected/three-fixed raw replay with
   complete, infrastructure-invalid and hard-interrupted evidence states; and
 - a separate N01 machine matcher that deterministically selects a mutation-origin source C1
-  relation and reconstructs affected 3/3 versus fixed 0/3 while leaving human review pending.
+  relation, enumerates/deduplicates candidates from every raw mutation step and reconstructs
+  affected 3/3 versus fixed 0/3 while leaving human review pending.
 
 The exact four benign seeds are unchanged. The protected vocabulary can construct the
 controlled relative target without a PoC seed or frozen positive-control injection. This is

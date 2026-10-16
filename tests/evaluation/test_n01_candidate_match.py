@@ -23,6 +23,7 @@ from inodefence.evaluation.n01_candidate_match import (
     N01Relation,
     assess_n01_candidate_replay,
     main,
+    nominate_n01_policy_candidates,
 )
 from inodefence.evaluation.policy_binding import (
     PolicyEvaluationConfig,
@@ -202,6 +203,15 @@ def _evidence(
 
 def test_n01_machine_contrast_is_separate_from_human_disposition(tmp_path, monkeypatch, capsys):
     source, replay, snapshot = _evidence(tmp_path, monkeypatch)
+    candidates = nominate_n01_policy_candidates(
+        source,
+        expected_binding_sha256=snapshot.request.nomination.source_binding_sha256,
+    )
+    assert len(candidates) == 1
+    assert candidates[0].nomination == snapshot.request.nomination
+    assert candidates[0].selected_relation == N01Relation("extract/b.txt", "outside/sentinel.txt")
+    assert candidates[0].source_matching_steps == (4,)
+
     assessment = assess_n01_candidate_replay(
         replay,
         source,
@@ -284,3 +294,4 @@ def test_mutation_without_source_c1_relation_is_not_nominated(tmp_path, monkeypa
     assert assessment.selected_relation is None
     assert assessment.source_matching_steps == ()
     assert assessment.affected_matching_runs == assessment.fixed_matching_runs == 0
+    assert nominate_n01_policy_candidates(source) == ()

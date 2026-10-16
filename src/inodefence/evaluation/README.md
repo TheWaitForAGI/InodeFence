@@ -240,7 +240,9 @@ mutation-origin persistent relation from source evidence, checks the exact froze
 bindings and computes affected 3/3 versus fixed 0/3. It preserves C0/C2/status observations but
 does not use them as the selected C1 relation. Its strongest status remains
 `machine_contrast_pass_pending_human`; it cannot confirm rediscovery or issue a qualification
-token. No historical candidate replay has been run.
+token. `nominate_n01_policy_candidates` first scans all raw mutation steps, deduplicates exact
+case IDs for replay and retains every source occurrence in the nested generic nomination. No
+historical candidate replay has been run.
 
 ## Dataset compatibility
 

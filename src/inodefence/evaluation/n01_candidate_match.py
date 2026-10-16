@@ -22,12 +22,15 @@ from inodefence.model.filesystem import path_region, validate_observed_path
 from inodefence.model.isolation import IsolationPolicy
 from inodefence.model.provenance import ExecutionProvenance, ExecutionSafety
 from inodefence.mutator import MutationPolicy
+from inodefence.provenance import sentinel_provenance
 from inodefence.runtime import SentinelSpec
 
 from .candidate_replay import (
     CandidateReplayRole,
     CandidateReplayRun,
     CandidateReplaySnapshot,
+    PolicyCandidateNomination,
+    nominate_policy_candidate,
     read_candidate_replay,
 )
 from .n01 import NODE_VERSION, WORKER_SHA256, N01Role, frozen_target
@@ -86,6 +89,28 @@ class N01ReplayObservation:
             or any(type(value) is not bool for value in (self.c0, self.c1, self.c2))
         ):
             raise ValueError("invalid N01 replay observation")
+
+
+@dataclass(frozen=True, slots=True)
+class N01PolicyCandidate:
+    """One pre-replay relation selected from all verified source occurrences."""
+
+    serialization_schema: ClassVar[int] = 1
+
+    nomination: PolicyCandidateNomination
+    selected_relation: N01Relation
+    source_matching_steps: tuple[int, ...]
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.nomination, PolicyCandidateNomination)
+            or not isinstance(self.selected_relation, N01Relation)
+            or not isinstance(self.source_matching_steps, tuple)
+            or not self.source_matching_steps
+            or self.source_matching_steps != tuple(sorted(set(self.source_matching_steps)))
+            or not all(type(item) is int and item >= 0 for item in self.source_matching_steps)
+        ):
+            raise ValueError("invalid N01 source candidate nomination")
 
 
 @dataclass(frozen=True, slots=True)
@@ -251,16 +276,78 @@ def _source_matches_replay(
 ) -> bool:
     if snapshot.header is None:
         return False
+    return (
+        _source_candidate_context(source)
+        and source.config.provenance == snapshot.header.affected_provenance
+        and snapshot.request.sentinels == (SentinelSpec(),)
+    )
+
+
+def _source_candidate_context(source: VerifiedBoundPolicyEvidence) -> bool:
     provenance = source.config.provenance
     return (
-        provenance == snapshot.header.affected_provenance
-        and provenance.source.revision is not None
+        provenance.source.revision is not None
         and provenance.source.dirty is False
         and provenance.environment.system == "Linux"
+        and provenance.sentinels == sentinel_provenance((SentinelSpec(),))
+        and _target_binding(provenance, N01Role.AFFECTED)
         and source.config.initial_case_ids == tuple(case.case_id for case in minimal_seed_corpus())
         and source.config.campaign.mutation_policy == MutationPolicy.M1_PROTECTED_COMPONENTS
         and source.config.campaign.feedback_projection == FeedbackProjection.FULL
-        and snapshot.request.sentinels == (SentinelSpec(),)
+    )
+
+
+def nominate_n01_policy_candidates(
+    source_policy_directory: Path,
+    *,
+    expected_binding_sha256: str | None = None,
+) -> tuple[N01PolicyCandidate, ...]:
+    """Scan every raw mutation step and freeze candidates before any pair replay."""
+    source = verify_bound_policy_evidence(
+        source_policy_directory,
+        expected_binding_sha256=expected_binding_sha256,
+    )
+    if not _source_candidate_context(source):
+        raise VerificationError("policy evidence lacks the frozen N01 source/setup context")
+    initial_ids = set(source.config.initial_case_ids)
+    grouped: dict[str, dict[N01Relation, list[int]]] = {}
+    for step in source.campaign.result.steps:
+        result = step.result
+        if (
+            step.origin != CampaignOrigin.MUTATION
+            or result.case.case_id in initial_ids
+            or not _archive_unchanged(result)
+        ):
+            continue
+        relations = _relations(result)
+        if not relations:
+            continue
+        by_relation = grouped.setdefault(result.case.case_id, {})
+        for relation in relations:
+            by_relation.setdefault(relation, []).append(step.index)
+
+    candidates = []
+    for case_id, by_relation in grouped.items():
+        selected = min(by_relation)
+        candidates.append(
+            N01PolicyCandidate(
+                nominate_policy_candidate(
+                    source_policy_directory,
+                    case_id,
+                    expected_binding_sha256=source.binding_sha256,
+                ),
+                selected,
+                tuple(sorted(set(by_relation[selected]))),
+            )
+        )
+    return tuple(
+        sorted(
+            candidates,
+            key=lambda candidate: (
+                candidate.source_matching_steps[0],
+                candidate.nomination.case.case_id,
+            ),
+        )
     )
 
 

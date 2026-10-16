@@ -39,6 +39,10 @@ and qualified before execution; the matcher cannot authorize it after results ex
 
 ## Pre-replay nomination rule
 
+`nominate_n01_policy_candidates` scans every completed raw step in original order rather than
+only retained-corpus members. It deduplicates replay work by exact case ID while the generic
+nomination nested in each result preserves every occurrence and parent/index record.
+
 The candidate case ID must not be one of the four seed IDs. Only source occurrences marked
 `MUTATION` are eligible. An eligible occurrence must retain an unchanged input archive and a
 recomputed persistent C1 `IdentityEvidence` relation between an extraction path and the
@@ -79,6 +83,10 @@ Incomplete or infrastructure-invalid evidence is never a no-hit. Seed-phase evid
 credited. The output always fixes `human_disposition=pending_human_root_cause_review`,
 `confirmed_rediscovery=false` and `qualification_token=null`. No automated path can issue
 `N01_RELATIVE_HARDLINK_PAIR_QUALIFIED`.
+
+The nomination API runs before replay and returns the complete ordered candidate set. The
+assessment API independently reconstructs the same source relation from its generic nomination;
+callers cannot replace it with a replay-favorable path.
 
 ## Reproduction
 

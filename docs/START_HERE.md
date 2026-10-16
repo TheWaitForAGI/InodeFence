@@ -84,6 +84,10 @@ bounded native producer는 WSL의 기존 trusted broker에서 contained fixture 
 320개 native bundle과 160개 stock record를 재검증했다. Duplicate-path가 동일 inode를
 truncate해 필수 replacement coverage를 충족하지 못했으므로 정확한 판정은
 **`V2_NATIVE_EFFECT_OBSERVATION_NOT_QUALIFIED`**다. Native campaign은 계속 NOT_RUN이다.
+후속 진단은 실제 namespace rebinding이 여러 operation의 removal→creation/link로 나타남을
+확인했지만 이를 v2 replacement로 재분류하지 않았다. 별도
+[v3 rebinding 제안](research/design/entry-effect-rebinding-v3-proposal.md)은
+**BLOCKED_FOR_REVIEW / NOT_IMPLEMENTED**다.
 
 ## 4. 현재 어디까지 했는가?
 
@@ -145,6 +149,7 @@ full-step monotonic timing evidence/reader는 TESTED engineering infrastructure�
 - [research/design/entry-effect-architecture-v2.md](research/design/entry-effect-architecture-v2.md)
 - [research/design/entry-effect-feedback-v2.md](research/design/entry-effect-feedback-v2.md)
 - [research/design/entry-effect-design-review-v2.md](research/design/entry-effect-design-review-v2.md)
+- [research/design/entry-effect-rebinding-v3-proposal.md](research/design/entry-effect-rebinding-v3-proposal.md)
 - [research/design/transition-feedback-v1.md](research/design/transition-feedback-v1.md)
 - [research/design/transition-mutation-scheduler-v1.md](research/design/transition-mutation-scheduler-v1.md)
 - [research/design/research-questions.md](research/design/research-questions.md)

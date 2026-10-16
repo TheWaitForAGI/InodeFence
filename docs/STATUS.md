@@ -145,6 +145,14 @@ and truncated it in 20/20 full runs. The exact decision is
 reports are retained in the [v2 summary](../experiments/summaries/node-native-effect-observation-qualification-v2.md).
 Target campaign remains blocked and NOT_RUN.
 
+후속 node-tar 진단은 exercised archive-only/precreated cases의 실제 namespace rebinding이
+단일 operation이 아니라 `unlink -> create/link/symlink`로 구성됨을 확인했다. 18/18 complete
+native diagnostic bundle에서 v2 `namespace_replacement`는 0건이었으며, 이는 reader가 frozen
+계약을 잘못 분류했다는 근거가 아니다. v2 판정은 그대로다. 별도
+[v3 rebinding semantics 제안](research/design/entry-effect-rebinding-v3-proposal.md)은 composite
+dependency/evidence 조건을 검토하도록 준비됐지만 **BLOCKED_FOR_REVIEW / NOT_IMPLEMENTED**이고
+어떤 native effectiveness campaign도 허가하지 않는다.
+
 Legacy `ExperimentConfig` v1/v2는 여전히 B3/legacy mutation만 허용한다. 별도
 `PolicyEvaluationConfig`와 completed policy export/reader/config/dataset/statistics가 구현됐다.
 Reader는 raw derivations와 admission/parent binding을 검증하되 실제 RNG/mutation 실행을
@@ -169,6 +177,9 @@ coverage must be established under a separate frozen Task Contract before anothe
 Native campaign integration remains blocked until the exact
 `V2_NATIVE_EFFECT_OBSERVATION_QUALIFIED` decision is retained. The initial v2 policy rejects
 incomplete/invalid streams and target-rejection prefixes for admission/reward.
+The runtime diagnosis selected the multi-operation branch for the exercised node-tar cases.
+The review choice is now explicit: approve a separately versioned v3 rebinding method, or
+retain v2 and establish a genuine one-operation positive. Neither choice is made implicitly.
 
 **첫 historical qualification인 N01 node-tar 7.5.2 / 7.5.3 hardlink arm은 automated
 replay를 완료했고 final human correspondence review를 기다린다.**

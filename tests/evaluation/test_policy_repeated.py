@@ -1,6 +1,7 @@
 """Repeated policy schedules retain every terminal and interrupted attempt."""
 
 import json
+import os
 import sys
 from dataclasses import replace
 
@@ -153,6 +154,24 @@ def test_measured_run_binds_peak_and_prohibits_process_reuse(scheduled, monkeypa
     with pytest.raises(ValueError, match="already published a measured policy run"):
         controller.execute_measured(1, cases, target, attempt_id="same-process")
     assert controller.snapshot().slots[1].state == RunState.PENDING
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="live controller HWM is Linux-only")
+def test_live_linux_measured_run_binds_terminal_to_current_process(scheduled, tmp_path):
+    cases, target, plan = scheduled
+    controller = PolicyRepetitionController.create(tmp_path / "runs", plan)
+
+    controller.execute_measured(0, cases, target, attempt_id="live-measured")
+    slot = read_policy_repetitions(
+        controller.root,
+        require_controller_memory=True,
+    ).slots[0]
+
+    assert slot.controller_memory is not None
+    assert slot.terminal is not None
+    assert slot.controller_memory.observation.started.process_id == os.getpid()
+    assert slot.controller_memory.observation.lifetime_peak_resident_bytes > 0
+    assert slot.controller_memory.evidence_terminal == slot.terminal.artifact
 
 
 def test_controller_memory_tamper_fails_closed(scheduled, monkeypatch, tmp_path):

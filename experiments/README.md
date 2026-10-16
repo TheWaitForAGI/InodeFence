@@ -36,7 +36,9 @@ sentinel provenance다. 출력은 immutable config, raw canonical records, check
   journal과 versioned timing evidence는 cleanup/feedback/동기 record publication까지의 monotonic
   offsets와 accessible aborted prefix를 보존한다. Policy repetition schedule은 claimed slot을
   complete/failed/STARTED로 보존하고 자동 retry하지 않는다. Final bulk publication timing,
-  timed dataset pooling과 known-class adjudication은 통합 완료되지 않았다. Target duration은
+  timed dataset pooling과 benchmark-specific known-class judgment는 통합 완료되지 않았다.
+  Generic candidate replay는 verified policy case의 counterbalanced 3+3 raw result와
+  complete/failed/interrupted prefix를 보존하지만 human/class 판정을 만들지 않는다. Target duration은
   complete-step latency가 아니며 completed-only policy stats는 invalid attempts를 추론하지 않는다.
 - Pinned node-tar의 public/OS/syscall/prefix, private completion callback, causal filesystem-
   effect와 별도 libarchive entry-boundary qualification은 모두 current archive-ordered

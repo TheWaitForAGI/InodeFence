@@ -189,11 +189,13 @@ Each nominated case requires, under a separately recorded validation budget:
 4. preservation of every negative, rejected, failed, timed-out or incomplete replay; and
 5. a human root-cause disposition connecting archive semantics and source behavior.
 
-Generic `PairComparison` can preserve already executed identical-input arms, but the complete
-nomination -> counterbalanced 3+3 executor -> N01 class reader -> human disposition workflow is
-not integrated. Therefore a pilot could preserve generic observations after authorization,
-but it cannot report a confirmed known-class rediscovery until this gap is implemented,
-reviewed and independently verified.
+The generic [candidate replay layer](../design/candidate-pair-replay-v1.md) now binds a selected
+case to verified campaign occurrences, executes the counterbalanced 3+3 schedule and preserves
+complete/failed/interrupted raw evidence plus three `PairComparison` records. It deliberately
+does not decide that C1/C2 matches N01. The benchmark-specific N01 mechanical matcher and human
+root-cause disposition remain unimplemented/unperformed. Therefore a pilot can preserve
+generic replay evidence after authorization, but cannot report a confirmed known-class
+rediscovery until those remaining gates pass.
 
 ## Failure, censoring and evidence rules
 
@@ -239,7 +241,7 @@ Execution remains **BLOCKED / NOT_RUN** until all of the following are recorded:
 5. fresh benign readiness and oracle controls pass at that exact setup;
 6. peak-memory measurement and independent reader commands are frozen; and
 7. the intended claim is chosen: generic feasibility only, or confirmed rediscovery after the
-   separate adjudication implementation qualifies.
+   separate N01 matcher and human adjudication gates pass.
 
 If any gate fails, preserve its evidence and do not begin or continue the 20 policy cells.
 Current execution verdict: **NOT_RUN**. Current Track B hypothesis verdict:

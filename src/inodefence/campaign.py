@@ -18,7 +18,7 @@ from inodefence.feedback import (
 )
 from inodefence.model import ArchiveCase, RunResult
 from inodefence.model.provenance import ExecutionProvenance, ExecutionSafety, TargetProvenance
-from inodefence.mutator import MutationPolicy, mutate, mutate_with_policy
+from inodefence.mutator import MutationAttempt, MutationPolicy, mutate, mutate_attempt_with_policy
 from inodefence.pipeline import run_case
 from inodefence.provenance import freeze_provenance, sentinel_provenance
 from inodefence.runtime import SentinelSpec
@@ -115,6 +115,38 @@ class SearchCampaignStep:
     parent_case_id: str | None
     result: RunResult
     feedback: SearchDecision
+
+
+@dataclass(frozen=True, slots=True)
+class SearchCampaignCompletedStep:
+    """Completed step plus the exact mutation attempt that produced its case.
+
+    This callback-only record does not change SearchCampaignResult or its step
+    schema. Seed executions have no mutation attempt. Mutation records preserve
+    generic operator provenance for evaluation readers without putting search
+    feedback into the mutator.
+    """
+
+    serialization_schema: ClassVar[int] = 1
+
+    step: SearchCampaignStep
+    mutation_attempt: MutationAttempt | None
+
+    def __post_init__(self) -> None:
+        if type(self.step) is not SearchCampaignStep:
+            raise ValueError("completed policy record requires a SearchCampaignStep")
+        if self.step.origin == CampaignOrigin.SEED:
+            if self.mutation_attempt is not None:
+                raise ValueError("seed completion cannot have a mutation attempt")
+            return
+        attempt = self.mutation_attempt
+        if (
+            self.step.origin != CampaignOrigin.MUTATION
+            or type(attempt) is not MutationAttempt
+            or attempt.parent_case_id != self.step.parent_case_id
+            or attempt.child_case != self.step.result.case
+        ):
+            raise ValueError("mutation completion differs from its mutation attempt")
 
 
 @dataclass(frozen=True, slots=True)
@@ -302,6 +334,7 @@ def run_search_campaign(
     sentinels: tuple[SentinelSpec, ...] = (SentinelSpec(),),
     provenance: ExecutionProvenance | None = None,
     completed_step: Callable[[SearchCampaignStep], None] | None = None,
+    completed_record: Callable[[SearchCampaignCompletedStep], None] | None = None,
 ) -> SearchCampaignResult:
     """Run declared search/mutation/projection policies under the campaign gate.
 
@@ -313,9 +346,11 @@ def run_search_campaign(
     scheduling, exporter or ExperimentConfig binding is implemented here.
     Determinism requires the same semantic outcomes, config and RNG version.
 
-    An optional completed_step sink receives each immutable step after run_case
-    has returned (including sandbox cleanup) and policy feedback is complete,
-    before the next step begins. Sink exceptions propagate and no subsequent
+    Optional sinks run after run_case has returned (including sandbox cleanup)
+    and policy feedback is complete, before the next step begins. completed_step
+    preserves the original step-only interface. completed_record additionally
+    receives the exact generic mutation attempt (or None for a seed). Step sink
+    runs first when both are supplied. Sink exceptions propagate and no later
     execution starts. The core still returns no partial result on failure; sinks
     own any incremental evidence they preserve.
     """
@@ -323,6 +358,8 @@ def run_search_campaign(
         raise ValueError("config must be a SearchCampaignConfig")
     if completed_step is not None and not callable(completed_step):
         raise ValueError("completed_step must be callable or None")
+    if completed_record is not None and not callable(completed_record):
+        raise ValueError("completed_record must be callable or None")
     prepared = _prepare_campaign(
         initial_cases,
         target,
@@ -340,11 +377,13 @@ def run_search_campaign(
         steps.append(step)
         if completed_step is not None:
             completed_step(step)
+        if completed_record is not None:
+            completed_record(SearchCampaignCompletedStep(step, None))
     rng = random.Random(config.random_seed)
     while len(steps) < config.execution_budget:
         parent = state.select_case(rng)
-        child = mutate_with_policy(parent, rng, config.mutation_policy)
-        result = prepared.execute(child)
+        attempt = mutate_attempt_with_policy(parent, rng, config.mutation_policy)
+        result = prepared.execute(attempt.child_case)
         step = SearchCampaignStep(
             len(steps),
             CampaignOrigin.MUTATION,
@@ -355,6 +394,8 @@ def run_search_campaign(
         steps.append(step)
         if completed_step is not None:
             completed_step(step)
+        if completed_record is not None:
+            completed_record(SearchCampaignCompletedStep(step, attempt))
     return SearchCampaignResult(
         config,
         prepared.initial_case_ids,

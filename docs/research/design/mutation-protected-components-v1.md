@@ -90,9 +90,9 @@ Seed-phase C1/C2 cleanliness와 실제 hit probability도 아직 측정하지 �
 
 `SearchCampaignConfig`는 모든 B0/B1/B3 arm에서 같은 새 policy를 선택할 수 있고 completed
 policy evidence는 exact enum ID를 직렬화한다. P0/P1/P2 synthetic callers도 같은 dispatch
-table을 사용할 수 있다. 이 API 연결은 policy availability를 보일 뿐 formal campaign
-configuration freeze, automatic interrupted-run journal, full-step timing 또는 effectiveness를
-완성하지 않는다.
+table을 사용할 수 있다. 별도 final-state journal/repetition 경로는 exact policy/operator와
+full-step timing/interrupted prefix를 보존한다. 이 연결은 formal campaign configuration freeze,
+historical reachability 또는 effectiveness를 완성하지 않는다.
 
 기존 M1은 capability baseline과 과거 evidence 재현을 위해 계속 default-addressing 불가
 상태로 남는다. 새 결과를 untouched M1의 성과로 표현하지 않는다.

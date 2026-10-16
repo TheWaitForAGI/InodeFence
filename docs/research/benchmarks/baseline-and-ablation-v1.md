@@ -30,9 +30,10 @@ policy exports. [Policy evidence](../../../src/inodefence/evaluation/policy_evid
 [statistics](../../../src/inodefence/evaluation/policy_statistics.py) readers exist.
 Legacy `ExperimentConfig` v1/v2 still rejects alternative policies and M1; this
 is a separate API path, not a missing search implementation or silent fallback.
-The policy journal/repeated controller/full-step timing are not automatically
-integrated with this path. Completed statistics are contract observations,
-not confirmed known-class rediscovery or vulnerability counts.
+The separate policy journal, full-step timing and repetition controller are
+integrated with this path. Their engineering readers preserve mutation/schedule/failure
+evidence; completed statistics remain contract observations, not confirmed known-class
+rediscovery or vulnerability counts.
 
 B3's legacy identifier preserves old config IDs; actual state keys are tagged
 v3 with no v2 compatibility. [M1](../design/mutation-m1-v1.md) and its no-reorder
@@ -155,11 +156,12 @@ these distinctions, parent eligibility, all statuses/no-ops and legacy parity.
 Reference integration executes a real safe Python worker. These tests do not
 run historical node-tar or establish comparison effectiveness.
 
-The verifier reconstructs raw derivations, keys, admission and valid parent
-membership; it does not prove actual RNG/mutator execution. Exact proposal/operator
-provenance is not a stored step trace. Completed policy bundles cannot supply
-interrupted-attempt counts. Passive legacy journals and repetition/ledger primitives
-exist, but automatic policy attachment and full-pipeline timing remain gaps.
+The completed-only verifier reconstructs raw derivations, keys, admission and valid
+parent membership but does not prove actual RNG/mutator execution. The separate policy
+journal records and replays exact proposal/operator provenance, preserves interrupted
+prefixes and full-step timing, and the policy repetition controller accounts for every
+claimed terminal or STARTED slot. Completed-only bundles/statistics still cannot supply
+invalid-attempt counts, and the repetition ledger is not known-class adjudication.
 
 The provisional subsets/budgets above retain the existing protocol plan. N01
 7.5.2/7.5.3 is the first intended historical qualification; no listed subset is

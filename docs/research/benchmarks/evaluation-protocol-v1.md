@@ -3,10 +3,10 @@
 **PREDECLARED PLAN — NO HISTORICAL REDISCOVERY OR FORMAL COMPARATIVE RESULTS.**
 Capability baseline is main `8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`; definitions
 are frozen by the [G0 contract](../design/research-contract-v1.md), not an accepted
-main-experiment schedule. B0/B1/B3, A1/A2/A3 and completed policy evidence/analysis
-APIs are IMPLEMENTED and engineering TESTED. Historical qualification,
-full-pipeline timing, automatic policy interrupted-run preservation and known-class
-adjudication remain prerequisites. No vulnerability is claimed.
+main-experiment schedule. B0/B1/B3, A1/A2/A3, journaled full-step timing, explicit
+repetition accounting and completed policy evidence/analysis APIs are IMPLEMENTED
+and engineering TESTED. Human historical disposition, formal pilot authorization
+and known-class adjudication remain prerequisites. No vulnerability is claimed.
 
 **N01 node-tar 7.5.2 / 7.5.3 is the first intended historical qualification pair.**
 Other [Set v1](benchmark-set-v1.md) cells/subsets remain conditional. Follow
@@ -299,23 +299,25 @@ target lifecycle duration, including attached start/draining/verified terminatio
 That excludes TAR building, sentinel setup, container preparation, BEFORE/AFTER,
 oracle/feedback, normal cleanup and corpus selection/mutation. No policy step
 may substitute this target duration for the protocol's latency definition. The separate
-`policy-full-step-monotonic-v1` wrapper now records final-state policy campaign origin,
+`policy-full-step-monotonic-v1` wrapper records final-state policy campaign origin,
 contiguous cleanup/feedback-complete step offsets and final in-memory result completion,
-with UTC start/end. Its exporter/reader binds those bytes to the existing policy result and
-configuration. This closes the in-memory full-step engineering field only. Publication and
-failure-prefix time, known-class adjudication offsets, compatible timed-dataset aggregation
-and formal measurements remain NOT_RUN / unimplemented dependencies.
+with UTC start/end. When attached to the policy journal, each offset includes synchronous
+record verification/publication; final bundle publication remains outside the interval.
+Its exporter/reader binds those bytes to the existing policy result/configuration.
+Known-class adjudication offsets, compatible timed-dataset aggregation and formal
+measurements remain NOT_RUN / unimplemented dependencies.
 
-[Failure ledger](../../../src/inodefence/evaluation/failure.py) and
-[legacy journal](../../../src/inodefence/evaluation/journal.py) preserve evidence
-explicitly supplied by a caller. They do not recover steps hidden by an aborted
-core call. [Repeated controller](../../../src/inodefence/evaluation/repeated.py)
-is bound to legacy ExperimentConfig, not alternative-policy orchestration.
-Both core runners propagate infrastructure errors without a partial result.
-Policy completed-only statistics cannot infer invalid-attempt/cleanup counts.
-Torn/uncertain evidence and infrastructure errors remain invalid attempts, not
-no-hit censoring or extractor nonviolations. Publish ledgers separately and
-verify their relationship to the scheduled attempts before formal aggregation.
+[Policy journal](../../../src/inodefence/evaluation/policy_journal.py) receives the
+completed-record boundary before the next execution, durably preserves each accessible
+step and independently replays RNG parent/operator/mutation/feedback. Ordinary exceptions
+become infrastructure-invalid journals; hard interruptions leave explicit incomplete
+prefixes. [Policy repetition](../../../src/inodefence/evaluation/policy_repeated.py)
+binds exact `PolicyEvaluationConfig` cells to durable claims and complete/failed terminal
+digests without retrying STARTED slots. The legacy ledger/journal/controller remain separate.
+Policy completed-only statistics still cannot infer repetition invalid/STARTED counts;
+formal aggregation must join the verified repetition ledger rather than dropping them.
+Torn/uncertain evidence and infrastructure errors remain invalid attempts, not no-hit
+censoring or extractor nonviolations.
 
 [Policy export/reader](../../../src/inodefence/evaluation/policy_evidence.py),
 [configuration binding](../../../src/inodefence/evaluation/policy_binding.py),

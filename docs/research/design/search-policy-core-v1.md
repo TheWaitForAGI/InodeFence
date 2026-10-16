@@ -138,9 +138,12 @@ record를 atomic no-overwrite로 한 개씩 보존한다. Reader는 declared RNG
 stable operator dispatch/mutation을 다시 실행하고 RunResult/provenance/feedback을 검증한다. 성공은
 exact budget journal과 completed timed bundle을 마지막 marker로 결합한다. 일반 `Exception`은
 available prefix와 generic failure ledger를 infrastructure-invalid로 남긴다. Hard stop으로 marker가
-없으면 prefix는 명시적 incomplete이며 no-hit denominator가 아니다. Resume/retry, automatic repeated
-orchestration, known-class adjudication과 timed dataset pooling은 여전히 미구현이다. Compatibility,
-statistics, timing/journal engineering tests는 effectiveness proof가 아니다.
+없으면 prefix는 명시적 incomplete이며 no-hit denominator가 아니다. 별도
+`evaluation.policy_repeated` schedule은 exact `PolicyEvaluationConfig` slot을 먼저 claim하고
+complete/failure journal digest를 terminal record로 결합한다. Hard-interrupted STARTED slot은
+retry하지 않는다. Resume/retry, known-class adjudication과 timed dataset pooling은 여전히
+미구현이다. Compatibility, statistics, timing/journal/repetition engineering tests는
+effectiveness proof가 아니다.
 Unit tests는 policy/projection/mutation 조합과 legacy B3 parity를 확인한다. Tiny Python reference
 integration은 기존 runtime에서 full pipeline/archive hash binding을 확인하며 benchmark 결과나
 정책 효과의 증거가 아니다.

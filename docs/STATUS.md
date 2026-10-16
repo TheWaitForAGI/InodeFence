@@ -1,6 +1,6 @@
 # 현재 프로젝트 상태
 
-상태 갱신일: **2026-10-15**. G0 capability baseline은 main
+상태 갱신일: **2026-10-16**. G0 capability baseline은 main
 **`8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`**다. 이 SHA는 G0 문서 동결이
 검토한 구현 revision이며 최신 main을 뜻하지 않는다. #77–#84 연구 stack은 main에
 통합됐다. Internal completion qualification v3의 clean harness revision은 `9ea306f7`이고,
@@ -36,7 +36,7 @@ v1](research/design/research-contract-v1.md)의 G0 문서 동결과 transition s
 | Search / feedback | B0/B1/B3 and A1/A2 | `SearchState`, `run_search_campaign`, explicit policy config | [policy checks](../tests/test_feedback_search_contracts.py), [trusted reference integration](../tests/test_campaign_search_integration.py) | 비교 효과 미검증 |
 | Entry transitions | P0 final-state, P1 transition retention, P2 transition-adaptive mutation | v1 model/search/evaluation; v2 event model/feedback, bounded node-tar producer/raw export, independent reader and qualification runner | synthetic tests plus node-tar/libarchive controlled qualification; v2 producer 10 checks PASS and 480-run matrix independently verified at `36ff7fd` | v1 `BLOCKED_NATIVE_OBSERVATION`; v2 `V2_NATIVE_EFFECT_OBSERVATION_NOT_QUALIFIED` (replacement coverage); effectiveness NOT_RUN |
 | Minimization | bounded deterministic generic/USTAR reduction | core and exact-fingerprint evidence binding | [minimizer tests](../tests/test_minimizer.py), [USTAR checks](../tests/test_minimizer_ustar.py) | historical/unknown candidate 없음 |
-| Evaluation / reproduction | explicit provenance, immutable raw → verified derivation | reader, pair records, passive failure ledger/journal, qualification/matrix, benign replay, completed policy export/config/dataset/statistics | [evaluation tests](../tests/evaluation/), [benign replay tests](../tests/replay/) | formal dataset / known-class adjudication / artifact reproduction 없음 |
+| Evaluation / reproduction | explicit provenance, immutable raw → verified derivation | reader, pair records, failure ledger/legacy journal, policy journal/timing/repetition, qualification/matrix, benign replay, completed policy export/config/dataset/statistics | [evaluation tests](../tests/evaluation/), [benign replay tests](../tests/replay/) | formal dataset / known-class adjudication / artifact reproduction 없음 |
 | C3/C4 / generality | 후속 contracts / RQ4 | C3/C4와 ORAS adapter 없음; GNU route는 benign allowlist만 | broader scope의 실행 증거 없음 | 미검증 |
 
 ## 기준 main의 검증 근거
@@ -148,15 +148,15 @@ Target campaign remains blocked and NOT_RUN.
 Legacy `ExperimentConfig` v1/v2는 여전히 B3/legacy mutation만 허용한다. 별도
 `PolicyEvaluationConfig`와 completed policy export/reader/config/dataset/statistics가 구현됐다.
 Reader는 raw derivations와 admission/parent binding을 검증하되 실제 RNG/mutation 실행을
-재구성하지 않는다. Provenance/lineage는 mutation operator trace나 authorship proof가 아니다.
-Full result는 O(budget) memory다. Policy callback은 passive journal에 자동 연결되지 않았고
-legacy runner에는 completed-step callback이 없다.
-Final-state policy runner에는 cleanup/feedback 뒤 optional completed-step callback과 별도
-`policy-full-step-monotonic-v1` evidence/reader가 구현·테스트됐다. Existing result/policy schema와
-target duration은 변경하지 않는다. Policy repeat orchestration, automatic journal attachment,
-interrupted-prefix/failure preservation, publication timing, timed dataset pooling과 known-class
-adjudication은 완성된 자동 pipeline이 아니다. Target duration으로 전체 latency나 throughput을
-대신하지 않는다. [실험 안내](../experiments/README.md)를 따른다.
+재구성하지 않는다. 별도 policy journal은 exact RNG parent/operator/mutation/feedback을 replay하고
+중단 prefix/failure를 보존한다. Policy repetition schedule은 exact config slot을 claim하고
+complete/failed terminal digest를 결합하며 STARTED slot을 retry하지 않는다. Full result는
+O(budget) memory다. Legacy runner에는 completed-step callback이 없다.
+Final-state policy runner의 `policy-full-step-monotonic-v1` evidence/reader는 동기 journal
+publication까지 포함한 step offsets를 보존한다. Existing result/policy schema와 target duration은
+변경하지 않는다. Final publication timing, timed dataset pooling과 known-class adjudication은
+완성된 자동 pipeline이 아니다. Target duration으로 전체 latency나 throughput을 대신하지 않는다.
+[실험 안내](../experiments/README.md)를 따른다.
 
 ## 다음 연구 gate
 

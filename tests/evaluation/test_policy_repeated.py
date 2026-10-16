@@ -1,15 +1,23 @@
 """Repeated policy schedules retain every terminal and interrupted attempt."""
 
 import json
+import os
 import sys
 from dataclasses import replace
 
 import pytest
 
 import inodefence.campaign as campaign_module
+import inodefence.evaluation.policy_repeated as policy_repeated_module
 from inodefence.campaign import SearchCampaignConfig
+from inodefence.evaluation.controller_memory import (
+    ControllerMemoryObservation,
+    ControllerMemoryObservationStart,
+    LinuxProcessMemorySample,
+)
 from inodefence.evaluation.policy_binding import PolicyEvaluationConfig
 from inodefence.evaluation.policy_repeated import (
+    PolicyControllerMemory,
     PolicyRepetitionController,
     PolicyRepetitionPlan,
     PolicyScheduledRun,
@@ -17,6 +25,7 @@ from inodefence.evaluation.policy_repeated import (
     read_policy_repetitions,
 )
 from inodefence.evaluation.repeated import RunState
+from inodefence.evaluation.storage import read_record, write_record
 from inodefence.evaluation.verify import VerificationError
 from inodefence.feedback import SearchPolicy
 from inodefence.mutator import MutationPolicy
@@ -24,6 +33,36 @@ from inodefence.provenance import freeze_provenance
 from inodefence.replay.benign import benign_replay_cases
 from inodefence.runtime import SentinelSpec
 from inodefence.targets.python_tarfile import PythonTarfileTarget
+
+_BOOT_ID = "12345678-1234-5678-9234-567812345678"
+
+
+def _patch_memory_observer(monkeypatch, *, process_id=123, process_start_ticks=42):
+    started_sample = LinuxProcessMemorySample(
+        process_id, _BOOT_ID, process_start_ticks, 100, 10_240, 20_480
+    )
+    completed_sample = LinuxProcessMemorySample(
+        process_id, _BOOT_ID, process_start_ticks, 100, 12_288, 24_576
+    )
+    started = ControllerMemoryObservationStart("2026-10-16T00:00:00+00:00", 100, started_sample)
+    observation = ControllerMemoryObservation(
+        started.started_at_utc,
+        "2026-10-16T00:00:01+00:00",
+        1,
+        started_sample,
+        completed_sample,
+    )
+    monkeypatch.setattr(
+        policy_repeated_module,
+        "start_controller_memory_observation",
+        lambda: started,
+    )
+    monkeypatch.setattr(
+        policy_repeated_module,
+        "finish_controller_memory_observation",
+        lambda value: observation if value == started else None,
+    )
+    return observation
 
 
 def _config(target, cases, policy, seed):
@@ -84,8 +123,86 @@ def test_schedule_executes_independent_slots_and_reopens(scheduled, tmp_path):
         read_policy_repetitions(controller.root, expected_plan_sha256=snapshot.plan_sha256)
         == snapshot
     )
+    with pytest.raises(VerificationError, match="lacks required controller memory"):
+        read_policy_repetitions(controller.root, require_controller_memory=True)
     with pytest.raises(ValueError, match="duplicate execution"):
         controller.claim(0, attempt_id="another")
+
+
+def test_measured_run_binds_peak_and_prohibits_process_reuse(scheduled, monkeypatch, tmp_path):
+    cases, target, plan = scheduled
+    observation = _patch_memory_observer(monkeypatch)
+    controller = PolicyRepetitionController.create(tmp_path / "runs", plan)
+
+    controller.execute_measured(0, cases, target, attempt_id="measured")
+    slot = controller.snapshot().slots[0]
+
+    assert slot.state == RunState.COMPLETED
+    assert slot.controller_memory is not None
+    assert slot.controller_memory.observation == observation
+    assert slot.controller_memory.observation.lifetime_peak_resident_bytes == 24_576
+    assert slot.controller_memory_sha256 is not None
+    assert (
+        read_policy_repetitions(
+            controller.root,
+            require_controller_memory=True,
+        )
+        .slots[0]
+        .controller_memory
+        == slot.controller_memory
+    )
+    with pytest.raises(ValueError, match="already published a measured policy run"):
+        controller.execute_measured(1, cases, target, attempt_id="same-process")
+    assert controller.snapshot().slots[1].state == RunState.PENDING
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="live controller HWM is Linux-only")
+def test_live_linux_measured_run_binds_terminal_to_current_process(scheduled, tmp_path):
+    cases, target, plan = scheduled
+    controller = PolicyRepetitionController.create(tmp_path / "runs", plan)
+
+    controller.execute_measured(0, cases, target, attempt_id="live-measured")
+    slot = read_policy_repetitions(
+        controller.root,
+        require_controller_memory=True,
+    ).slots[0]
+
+    assert slot.controller_memory is not None
+    assert slot.terminal is not None
+    assert slot.controller_memory.observation.started.process_id == os.getpid()
+    assert slot.controller_memory.observation.lifetime_peak_resident_bytes > 0
+    assert slot.controller_memory.evidence_terminal == slot.terminal.artifact
+
+
+def test_controller_memory_tamper_fails_closed(scheduled, monkeypatch, tmp_path):
+    cases, target, plan = scheduled
+    _patch_memory_observer(monkeypatch)
+    controller = PolicyRepetitionController.create(tmp_path / "runs", plan)
+    controller.execute_measured(0, cases, target, attempt_id="measured")
+    memory = controller.root / "run-00000000" / "controller-memory.json"
+    memory.write_bytes(memory.read_bytes()[:-4])
+
+    with pytest.raises(VerificationError):
+        read_policy_repetitions(controller.root)
+
+
+def test_reader_rejects_reused_process_identity_across_measured_slots(
+    scheduled, monkeypatch, tmp_path
+):
+    cases, target, plan = scheduled
+    first_observation = _patch_memory_observer(monkeypatch)
+    controller = PolicyRepetitionController.create(tmp_path / "runs", plan)
+    controller.execute_measured(0, cases, target, attempt_id="first-process")
+    _patch_memory_observer(monkeypatch, process_id=124, process_start_ticks=43)
+    controller.execute_measured(1, cases, target, attempt_id="second-process")
+
+    memory = controller.root / "run-00000001" / "controller-memory.json"
+    second = read_record(memory, PolicyControllerMemory)
+    memory.unlink()
+    write_record(memory, replace(second, observation=first_observation))
+
+    with pytest.raises(VerificationError, match="process identity reused"):
+        read_policy_repetitions(controller.root)
 
 
 def test_ordinary_exception_is_terminal_failed_not_a_no_hit(scheduled, monkeypatch, tmp_path):
@@ -110,6 +227,26 @@ def test_ordinary_exception_is_terminal_failed_not_a_no_hit(scheduled, monkeypat
     assert slot.terminal is not None
     assert slot.terminal.artifact.name == "evidence/failure.json"
     assert controller.snapshot().slots[1].state == RunState.PENDING
+
+
+def test_measured_ordinary_failure_retains_peak_with_failure_terminal(
+    scheduled, monkeypatch, tmp_path
+):
+    cases, target, plan = scheduled
+    _patch_memory_observer(monkeypatch)
+    controller = PolicyRepetitionController.create(tmp_path / "runs", plan)
+
+    def fail(*args, **kwargs):
+        raise RuntimeError("controlled measured failure")
+
+    monkeypatch.setattr(campaign_module, "run_case", fail)
+    with pytest.raises(RuntimeError, match="controlled measured failure"):
+        controller.execute_measured(0, cases, target, attempt_id="failed-measured")
+
+    slot = controller.snapshot().slots[0]
+    assert slot.state == RunState.FAILED
+    assert slot.controller_memory is not None
+    assert slot.controller_memory.evidence_terminal.name == "evidence/failure.json"
 
 
 def test_hard_interruption_remains_started_with_verified_prefix(scheduled, monkeypatch, tmp_path):

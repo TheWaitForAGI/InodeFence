@@ -13,6 +13,12 @@ from inodefence.model import ArchiveCase
 from inodefence.runtime import SentinelSpec
 from inodefence.targets.base import CampaignTarget
 
+from .controller_memory import (
+    ControllerMemoryObservation,
+    ControllerMemoryObservationStart,
+    finish_controller_memory_observation,
+    start_controller_memory_observation,
+)
 from .encoding import json_bytes
 from .failure import ArtifactReference, _text
 from .policy_binding import PolicyEvaluationConfig
@@ -140,6 +146,56 @@ class PolicyRunTerminal:
 
 
 @dataclass(frozen=True, slots=True)
+class PolicyControllerMemory:
+    """A terminal run bound to current-process lifetime peak RSS evidence."""
+
+    serialization_schema: ClassVar[int] = 1
+
+    run_index: int
+    run_id: str
+    config_id: str
+    attempt_id: str
+    plan_sha256: str
+    state: RunState
+    claim: ArtifactReference
+    terminal: ArtifactReference
+    evidence_terminal: ArtifactReference
+    observation: ControllerMemoryObservation
+
+    def __post_init__(self) -> None:
+        if type(self.run_index) is not int or self.run_index < 0:
+            raise ValueError("controller memory requires a nonnegative run index")
+        _label(self.run_id)
+        _digest(self.config_id)
+        _text(self.attempt_id)
+        _digest(self.plan_sha256)
+        if not isinstance(self.state, RunState) or self.state not in {
+            RunState.COMPLETED,
+            RunState.FAILED,
+            RunState.INVALID,
+        }:
+            raise ValueError("controller memory requires a terminal run state")
+        if (
+            not isinstance(self.claim, ArtifactReference)
+            or self.claim.name != "claim.json"
+            or not isinstance(self.terminal, ArtifactReference)
+            or self.terminal.name != "terminal.json"
+            or not isinstance(self.evidence_terminal, ArtifactReference)
+            or self.evidence_terminal.name
+            not in {"evidence/completion.json", "evidence/failure.json"}
+            or not isinstance(self.observation, ControllerMemoryObservation)
+        ):
+            raise ValueError("invalid controller memory evidence binding")
+        expected = (
+            "evidence/completion.json"
+            if self.state == RunState.COMPLETED
+            else "evidence/failure.json"
+        )
+        if self.evidence_terminal.name != expected:
+            raise ValueError("controller memory state/artifact mismatch")
+
+
+@dataclass(frozen=True, slots=True)
 class PolicyRunSlot:
     run_index: int
     run_id: str
@@ -152,6 +208,8 @@ class PolicyRunSlot:
     claim: PolicyRunClaim | None
     terminal: PolicyRunTerminal | None
     diagnostics: tuple[str, ...] = ()
+    controller_memory: PolicyControllerMemory | None = None
+    controller_memory_sha256: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -204,8 +262,36 @@ def _terminal_snapshot(
     return snapshot
 
 
+def _matches_controller_memory(
+    record: PolicyControllerMemory,
+    *,
+    index: int,
+    scheduled: PolicyScheduledRun,
+    claim: PolicyRunClaim,
+    claim_digest: str,
+    terminal: PolicyRunTerminal,
+    terminal_digest: str,
+    plan_sha256: str,
+) -> None:
+    if (
+        record.run_index != index
+        or record.run_id != scheduled.run_id
+        or record.config_id != scheduled.evaluation_config.config_id
+        or record.attempt_id != claim.attempt_id
+        or record.plan_sha256 != plan_sha256
+        or record.state != terminal.state
+        or record.claim != ArtifactReference("claim.json", claim_digest)
+        or record.terminal != ArtifactReference("terminal.json", terminal_digest)
+        or record.evidence_terminal != terminal.artifact
+    ):
+        raise ValueError("controller memory record differs from terminal policy slot")
+
+
 def read_policy_repetitions(
-    root: Path, *, expected_plan_sha256: str | None = None
+    root: Path,
+    *,
+    expected_plan_sha256: str | None = None,
+    require_controller_memory: bool = False,
 ) -> PolicyRepetitionSnapshot:
     """Verify all scheduled slots; started/incomplete attempts are never retried."""
     try:
@@ -225,6 +311,7 @@ def read_policy_repetitions(
 
         slots: list[PolicyRunSlot] = []
         attempt_ids: set[str] = set()
+        measured_processes: set[tuple[str, int, int]] = set()
         for index, scheduled in enumerate(plan.runs):
             directory = root / _run_directory(index)
             state = RunState.PENDING
@@ -232,15 +319,19 @@ def read_policy_repetitions(
             terminal = None
             completed_steps = 0
             diagnostics: tuple[str, ...] = ()
+            controller_memory = None
+            controller_memory_digest = None
             if directory.is_symlink():
                 raise ValueError("policy run directory cannot be a symlink")
             if directory.exists():
                 if not directory.is_dir():
                     raise ValueError("policy run slot must be a directory")
-                allowed = {"claim.json", "terminal.json", "evidence"}
+                allowed = {"claim.json", "terminal.json", "evidence", "controller-memory.json"}
                 if any(path.name not in allowed for path in directory.iterdir()):
                     raise ValueError("unexpected policy run artifact")
                 if not (directory / "claim.json").is_file():
+                    if (directory / "controller-memory.json").exists():
+                        raise ValueError("controller memory exists without a durable claim")
                     state = RunState.INVALID
                     diagnostics = ("reserved without durable claim; no automatic retry",)
                 else:
@@ -271,7 +362,12 @@ def read_policy_repetitions(
                         )
                     if (directory / "terminal.json").exists():
                         terminal_path = directory / "terminal.json"
-                        terminal = read_record(terminal_path, PolicyRunTerminal)
+                        terminal_digest = sha256(_read_file(terminal_path)).hexdigest()
+                        terminal = read_record(
+                            terminal_path,
+                            PolicyRunTerminal,
+                            expected_sha256=terminal_digest,
+                        )
                         if terminal.claim_sha256 != claim_digest:
                             raise ValueError("policy terminal claim checksum mismatch")
                         journal_snapshot = _terminal_snapshot(
@@ -280,6 +376,38 @@ def read_policy_repetitions(
                         completed_steps = len(journal_snapshot.records)
                         state = terminal.state
                         diagnostics = ()
+                    memory_path = directory / "controller-memory.json"
+                    if memory_path.exists():
+                        if terminal is None:
+                            raise ValueError("controller memory exists without a terminal slot")
+                        controller_memory_digest = sha256(_read_file(memory_path)).hexdigest()
+                        controller_memory = read_record(
+                            memory_path,
+                            PolicyControllerMemory,
+                            expected_sha256=controller_memory_digest,
+                        )
+                        _matches_controller_memory(
+                            controller_memory,
+                            index=index,
+                            scheduled=scheduled,
+                            claim=claim,
+                            claim_digest=claim_digest,
+                            terminal=terminal,
+                            terminal_digest=terminal_digest,
+                            plan_sha256=plan_sha,
+                        )
+                        identity = controller_memory.observation.process_identity
+                        if identity in measured_processes:
+                            raise ValueError(
+                                "controller process identity reused across measured policy runs"
+                            )
+                        measured_processes.add(identity)
+                    if (
+                        require_controller_memory
+                        and terminal is not None
+                        and controller_memory is None
+                    ):
+                        raise ValueError("terminal policy slot lacks required controller memory")
             slots.append(
                 PolicyRunSlot(
                     index,
@@ -293,6 +421,8 @@ def read_policy_repetitions(
                     claim,
                     terminal,
                     diagnostics,
+                    controller_memory,
+                    controller_memory_digest,
                 )
             )
         return PolicyRepetitionSnapshot(plan, plan_sha, tuple(slots))
@@ -433,6 +563,84 @@ class PolicyRepetitionController:
         self.complete(index)
         return verified
 
+    def _publish_controller_memory(
+        self,
+        index: int,
+        started: ControllerMemoryObservationStart,
+    ) -> str:
+        snapshot = self.snapshot()
+        if type(index) is not int or not 0 <= index < len(snapshot.slots):
+            raise ValueError("run index outside policy schedule")
+        slot = snapshot.slots[index]
+        if slot.claim is None or slot.terminal is None:
+            raise ValueError("controller memory requires a terminal policy slot")
+        if slot.controller_memory is not None:
+            raise ValueError("controller memory is already published")
+        directory = self.root / slot.result_directory
+        claim_digest = sha256(_read_file(directory / "claim.json")).hexdigest()
+        terminal_digest = sha256(_read_file(directory / "terminal.json")).hexdigest()
+        observation = finish_controller_memory_observation(started)
+        record = PolicyControllerMemory(
+            index,
+            slot.run_id,
+            slot.config_id,
+            slot.claim.attempt_id,
+            snapshot.plan_sha256,
+            slot.terminal.state,
+            ArtifactReference("claim.json", claim_digest),
+            ArtifactReference("terminal.json", terminal_digest),
+            slot.terminal.artifact,
+            observation,
+        )
+        return write_record(directory / "controller-memory.json", record)
+
+    def execute_measured(
+        self,
+        index: int,
+        initial_cases: Sequence[ArchiveCase],
+        target: CampaignTarget,
+        *,
+        attempt_id: str,
+        sentinels: tuple[SentinelSpec, ...] = (SentinelSpec(),),
+    ) -> VerifiedTimedPolicyEvidence:
+        """Execute one run and bind Linux process-lifetime HWM to its terminal.
+
+        One OS process may publish at most one measured slot. A pilot launcher must
+        therefore start a fresh dedicated controller process for every campaign.
+        The value is not a campaign-attributable delta and excludes target containers.
+        """
+        started = start_controller_memory_observation()
+        snapshot = self.snapshot()
+        if any(
+            slot.controller_memory is not None
+            and slot.controller_memory.observation.process_identity
+            == started.sample.process_identity
+            for slot in snapshot.slots
+        ):
+            raise ValueError("controller process already published a measured policy run")
+        try:
+            verified = self.execute(
+                index,
+                initial_cases,
+                target,
+                attempt_id=attempt_id,
+                sentinels=sentinels,
+            )
+        except BaseException as error:
+            try:
+                slot = self.snapshot().slots[index]
+                if slot.terminal is not None:
+                    self._publish_controller_memory(index, started)
+            except Exception as memory_error:
+                error.add_note(
+                    "controller memory publication also failed: "
+                    f"{type(memory_error).__module__}.{type(memory_error).__qualname__}: "
+                    f"{memory_error}"
+                )
+            raise
+        self._publish_controller_memory(index, started)
+        return verified
+
     def _terminal(self, directory: Path, state: RunState, artifact: ArtifactReference) -> str:
         terminal = PolicyRunTerminal(
             state,
@@ -447,9 +655,14 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("root", type=Path)
     parser.add_argument("--plan-sha256")
+    parser.add_argument("--require-controller-memory", action="store_true")
     args = parser.parse_args()
     try:
-        snapshot = read_policy_repetitions(args.root, expected_plan_sha256=args.plan_sha256)
+        snapshot = read_policy_repetitions(
+            args.root,
+            expected_plan_sha256=args.plan_sha256,
+            require_controller_memory=args.require_controller_memory,
+        )
     except VerificationError as error:
         print(str(error), file=sys.stderr)
         return 1
@@ -473,6 +686,10 @@ def main() -> int:
                         "config_id": slot.config_id,
                         "state": slot.state.value,
                         "completed_steps": slot.completed_steps,
+                        "controller_memory_sha256": slot.controller_memory_sha256,
+                        "controller_process_lifetime_peak_bytes": None
+                        if slot.controller_memory is None
+                        else slot.controller_memory.observation.lifetime_peak_resident_bytes,
                         "diagnostics": list(slot.diagnostics),
                     }
                     for slot in snapshot.slots

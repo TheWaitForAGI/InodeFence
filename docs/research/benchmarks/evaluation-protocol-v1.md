@@ -268,7 +268,9 @@ boundary; its separate journal durably publishes accessible steps, mutation prov
 and ordinary infrastructure failures, while a hard interruption leaves a verified
 non-resumable prefix. The repetition ledger preserves complete, failed, invalid and
 STARTED slots without automatic retry. Completed full results remain O(budget); pilot
-determines whether memory and export volume fit the limits.
+determines whether memory and export volume fit the limits. The final-state pilot can use the
+separate `linux-proc-self-vmhwm-v1` dedicated-controller method; it reports process-lifetime
+HWM, not a campaign delta or target-container memory. No pilot value exists yet.
 Record immutable shared raw storage URI, SHA-256 manifest for every artifact and
 analysis script/source revision. Retain raw data through review and paper
 submission; no deletions before maintainer agrees an archival location.

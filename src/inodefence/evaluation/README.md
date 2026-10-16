@@ -213,6 +213,14 @@ adjudication, fairness approval, statistical pooling or recovery/resume.
 CLI: `python -m inodefence.evaluation.policy_repeated ROOT
 [--plan-sha256 TRUSTED_DIGEST]` reports every verified slot state.
 
+`PolicyRepetitionController.execute_measured` adds the Linux-only
+`linux-proc-self-vmhwm-v1` process-lifetime HWM record after a terminal. One OS process can
+publish at most one measured slot. The independent reader rejects process identity reuse and
+`--require-controller-memory` rejects terminal slots without the bound record. This is a
+conservative dedicated controller-process peak, not a campaign delta or target-container
+measurement; see the
+[measurement contract](../../../docs/research/design/controller-peak-memory-v1.md).
+
 ## Candidate affected/fixed replay
 
 `nominate_policy_candidate` selects one exact case only after reopening completed bound policy

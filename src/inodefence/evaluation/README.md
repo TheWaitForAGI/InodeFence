@@ -233,6 +233,17 @@ This API retains exact-input replay evidence; it does not nominate by CVE, class
 known class, decide affected/fixed expectations or perform human root-cause review. See the
 [versioned contract](../../../docs/research/design/candidate-pair-replay-v1.md).
 
+The separate N01-specific
+[`n01_candidate_match`](../../../docs/research/benchmarks/n01-candidate-machine-match-v1.md)
+reader reopens both the source policy bundle and generic replay, deterministically selects a
+mutation-origin persistent relation from source evidence, checks the exact frozen N01 target
+bindings and computes affected 3/3 versus fixed 0/3. It preserves C0/C2/status observations but
+does not use them as the selected C1 relation. Its strongest status remains
+`machine_contrast_pass_pending_human`; it cannot confirm rediscovery or issue a qualification
+token. `nominate_n01_policy_candidates` first scans all raw mutation steps, deduplicates exact
+case IDs for replay and retains every source occurrence in the nested generic nomination. No
+historical candidate replay has been run.
+
 ## Dataset compatibility
 
 `validate_dataset((DatasetMember(directory, protocol_version, manifest_digest), ...))`

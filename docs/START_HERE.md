@@ -101,7 +101,7 @@ G0 documentation freeze의 capability baseline은 main
   bounded campaign. Default sentinel까지의 logical generation은 TESTED지만 historical
   target/setup qualification은 NOT_RUN.
 - Layer 6 infrastructure: generic/USTAR minimization, readers, pair/benign replay,
-  passive ledger/journal, policy candidate affected/fixed 3+3 raw replay,
+  passive ledger/journal, policy candidate affected/fixed 3+3 raw replay와 별도 N01 machine matcher,
   qualification/matrix와 completed policy binding/dataset/statistics.
   N01 `7.5.2/7.5.3` exact images는 clean `e987c855` source와 trusted macOS/OrbStack
   controller에서 admission됐다. 8건 readiness와 10건 pair가 실행됐고 fresh-process reader는

@@ -108,9 +108,10 @@ python -m inodefence.evaluation.candidate_replay \
 This layer answers only: “were these exact six raw extractions retained and linked to the
 actual policy-generated input?” It does not answer whether affected evidence matches N01,
 whether fixed evidence excludes the matching class, whether 3/3 plus 0/3 passed, or whether
-source/patch semantics correspond to the historical class. Those decisions require a
-separately reviewed benchmark-specific mechanical matcher followed by the protocol's human
-root-cause disposition.
+source/patch semantics correspond to the historical class. The separate versioned
+[N01 machine matcher](../benchmarks/n01-candidate-machine-match-v1.md) implements the first
+three benchmark-specific mechanical decisions; historical use and the protocol's human
+root-cause disposition remain NOT_RUN.
 
 Tests use benign cases and the trusted Python reference target. They establish engineering
 behavior, failure accounting and independent reconstruction, not historical rediscovery or

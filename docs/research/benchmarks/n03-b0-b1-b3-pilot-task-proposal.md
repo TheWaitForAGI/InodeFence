@@ -189,13 +189,13 @@ Each nominated case requires, under a separately recorded validation budget:
 4. preservation of every negative, rejected, failed, timed-out or incomplete replay; and
 5. a human root-cause disposition connecting archive semantics and source behavior.
 
-The generic [candidate replay layer](../design/candidate-pair-replay-v1.md) now binds a selected
+The generic [candidate replay layer](../design/candidate-pair-replay-v1.md) binds a selected
 case to verified campaign occurrences, executes the counterbalanced 3+3 schedule and preserves
-complete/failed/interrupted raw evidence plus three `PairComparison` records. It deliberately
-does not decide that C1/C2 matches N01. The benchmark-specific N01 mechanical matcher and human
-root-cause disposition remain unimplemented/unperformed. Therefore a pilot can preserve
-generic replay evidence after authorization, but cannot report a confirmed known-class
-rediscovery until those remaining gates pass.
+complete/failed/interrupted raw evidence plus three `PairComparison` records. The separate
+[N01 machine matcher](n01-candidate-machine-match-v1.md) now implements deterministic
+mutation-origin C1 relation nomination, exact N01 target/setup checks and affected 3/3 versus
+fixed 0/3 reconstruction. It remains TESTED only with controlled adapters. Human root-cause
+disposition is unperformed, so neither layer can report confirmed known-class rediscovery.
 
 ## Failure, censoring and evidence rules
 
@@ -240,8 +240,8 @@ Execution remains **BLOCKED / NOT_RUN** until all of the following are recorded:
    exact plan SHA-256 and new immutable evidence root;
 5. fresh benign readiness and oracle controls pass at that exact setup;
 6. peak-memory measurement and independent reader commands are frozen; and
-7. the intended claim is chosen: generic feasibility only, or confirmed rediscovery after the
-   separate N01 matcher and human adjudication gates pass.
+7. the intended claim is chosen: generic feasibility only, or confirmed rediscovery after
+   historical matcher execution and the human adjudication gate pass.
 
 If any gate fails, preserve its evidence and do not begin or continue the 20 policy cells.
 Current execution verdict: **NOT_RUN**. Current Track B hypothesis verdict:

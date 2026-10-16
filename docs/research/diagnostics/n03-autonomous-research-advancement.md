@@ -18,9 +18,9 @@ intermediate effect-feedback experiments as three separate tracks.
 The starting main revision was
 `919d723b7eb3bf13b060d3ae34b083499590b4fc` (N02 report merge). The report publication merged
 as `21e05a8e5749f22c9f3b92b7c8bdf00ffa6c0d04` (PR #101). The subsequent candidate-replay
-engineering was evaluated at reviewed branch head
-`c56deae98d8703082cc4e8276588846fe38fe71c` (PR #102); its future merge commit is a publication
-fact in Git history, not a retroactive historical/pilot execution revision.
+engineering merged as `2f84b56cd9edf979d564c58215c97cec400f7d3d` (PR #102). Later machine-matcher
+implementation revisions are publication/engineering facts, not retroactive historical or
+pilot execution revisions.
 
 The original developer checkout remained on its local `main` and retained its pre-existing
 unstaged `.devcontainer/devcontainer.json` modification. It was never staged, overwritten,
@@ -35,7 +35,7 @@ stashed, reset or discarded. All N03 changes used clean isolated worktrees.
 | [#99](https://github.com/TheWaitForAGI/InodeFence/pull/99) | `817bd2d1ebb27ae18ca1cc41197511b8bbcf2555` | exact repeated policy schedule and terminal accounting | `1bd387e86be44b034307fa4886409acde9524928` | **MERGED / TESTED** |
 | [#100](https://github.com/TheWaitForAGI/InodeFence/pull/100) | `3e0ef26d89a1a1f93867a6641822c37d5b9ee5ce` | separately versioned v3 namespace-rebinding proposal | `da42c805b391ca842543dcf0db77f6edbce96b1e` | **MERGED / PROPOSED, NOT IMPLEMENTED** |
 | [#101](https://github.com/TheWaitForAGI/InodeFence/pull/101) | `99ad171cd90e1f632e8f5e47e901ee544d54be09` | N03 report, machine audit and pilot proposal | `21e05a8e5749f22c9f3b92b7c8bdf00ffa6c0d04` | **MERGED / AUDITED** |
-| [#102](https://github.com/TheWaitForAGI/InodeFence/pull/102) | `c56deae98d8703082cc4e8276588846fe38fe71c` | exact policy-candidate 3+3 raw replay and independent reader | containing PR | **REVIEWED / TESTED** |
+| [#102](https://github.com/TheWaitForAGI/InodeFence/pull/102) | `e53289752c0e82e989245208b72b5a8787f2a535` | exact policy-candidate 3+3 raw replay and independent reader | `2f84b56cd9edf979d564c58215c97cec400f7d3d` | **MERGED / TESTED** |
 
 Each diff received an adversarial review for schema/version drift, hidden retry or missing
 denominators, C0/C1/C2 changes, timing-boundary misstatement, target-specific leakage and
@@ -47,12 +47,11 @@ directly to main. The unrelated pre-existing PR #92 was not modified or merged.
 PR #102 was adversarially repaired after review found that a run linked before a later
 directory-sync error could be omitted from failure-prefix accounting. The repaired reader
 derives the available run prefix and verifies failure source, target, configuration, phase and
-cleanup fields. A PR cannot embed its own future merge commit, so that merge identity remains
-in Git history and the external handoff.
+cleanup fields. PR #102 subsequently passed both required jobs and merged cleanly.
 
 ## 3. Canonical validation
 
-PRs #97 through #101 passed GitHub `check` and `container-integration` jobs. Local canonical
+PRs #97 through #102 passed GitHub `check` and `container-integration` jobs. Local canonical
 Linux validation passed on the exact branch content:
 
 | Milestone | Ruff lint/format | Pyright | pytest | env/docs |
@@ -122,9 +121,11 @@ The real path now has tested interfaces for:
 - independent RNG parent/operator/mutation/feedback replay;
 - full-step monotonic timing through cleanup, feedback and synchronous journal write;
 - immutable complete/failed/invalid/STARTED repetition slots without automatic retry; and
-- completed evidence, dataset and summary readers; and
+- completed evidence, dataset and summary readers;
 - exact policy-case nomination plus counterbalanced three-affected/three-fixed raw replay with
-  complete, infrastructure-invalid and hard-interrupted evidence states.
+  complete, infrastructure-invalid and hard-interrupted evidence states; and
+- a separate N01 machine matcher that deterministically selects a mutation-origin source C1
+  relation and reconstructs affected 3/3 versus fixed 0/3 while leaving human review pending.
 
 The exact four benign seeds are unchanged. The protected vocabulary can construct the
 controlled relative target without a PoC seed or frozen positive-control injection. This is
@@ -143,8 +144,8 @@ Status: **PROPOSED / NOT_AUTHORIZED / NOT_RUN**. Exact blockers are:
 2. the protocol's proposed 5-second target timeout differs from the N01 admitted/replayed 10-second
    setting and needs fresh admission/readiness or a pre-run versioned amendment;
 3. no human has frozen the pilot plan/revision/digest/output root;
-4. generic candidate nomination and counterbalanced 3+3 raw replay are implemented, but the
-   N01-specific mechanical class matcher and human root-cause adjudication remain; and
+4. generic candidate replay and the N01-specific mechanical matcher are implemented, but
+   historical matcher use and human root-cause adjudication remain NOT_RUN; and
 5. controller peak-memory measurement for pilot feasibility is not yet frozen.
 
 No pilot target was executed. The N02 positive-control archive never entered an initial
@@ -265,7 +266,9 @@ Supported:
 - the exercised genuine namespace changes are multi-operation rebinding sequences that v2
   deliberately does not aggregate.
 - the final-state campaign runner can preserve deterministic mutation/search provenance,
-  per-step elapsed time and incomplete/failed repetition accounting in engineering tests.
+  per-step elapsed time and incomplete/failed repetition accounting in engineering tests; and
+- the N01 offline reader can reconstruct deterministic source relation nomination and the
+  3/3 versus 0/3 mechanical rule with controlled adapters, without a human token.
 
 Unsupported:
 
@@ -308,6 +311,9 @@ PYTHONPATH=src python -m inodefence.evaluation.policy_journal \
 PYTHONPATH=src python -m inodefence.evaluation.candidate_replay \
   <candidate-replay-root> <source-policy-evidence> \
   --completion-sha256 <trusted-completion-sha256>
+PYTHONPATH=src python -m inodefence.evaluation.n01_candidate_match \
+  <candidate-replay-root> <source-policy-evidence> \
+  --completion-sha256 <trusted-completion-sha256>
 ```
 
 The native v2 report contains its original WSL/controller reproduction commands and raw
@@ -317,8 +323,8 @@ hashes. Do not launch another matrix without a new frozen execution Task Contrac
 
 1. Human N01 source/input/runtime correspondence disposition.
 2. Pilot timeout decision and exact historical target re-admission at that setting.
-3. Pilot plan authorization, peak-memory measurement, N01-specific matching and human
-   known-class adjudication.
+3. Pilot plan authorization, peak-memory measurement, historical N01 matcher execution and
+   human known-class adjudication.
 4. Human scientific decision on the v3 rebinding proposal, followed by a separate
    implementation contract if approved.
 5. New finite qualification fixtures/rule and authorization before any native matrix.
@@ -331,8 +337,7 @@ experiments.
 
 The next independent decision is human review of the v3 rebinding proposal and the N01
 correspondence record. If N01 qualifies, first freeze the 5-second versus 10-second pilot
-choice and review a benchmark-specific N01 matcher for the implemented generic 3+3 raw replay
-before running the 20 proposed cells.
+choice and review the versioned N01 machine-matcher rule before running the 20 proposed cells.
 If v3 is approved, implement its composite in a new versioned contract and perform the
 smallest bounded fixture/reader checks before proposing any qualification matrix. If either
 decision is rejected, retain the negative result and revise the research scope explicitly;

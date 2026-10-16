@@ -343,9 +343,12 @@ static catalog nor a structurally valid report qualifies a historical effect.
 
 The generic candidate replay layer can now bind a selected case to verified policy
 occurrences and retain the fixed three affected plus three fixed fresh schedule with
-complete/failed/interrupted evidence. It has not run against the historical pair.
-Benchmark-specific matching-class nomination, the N01 mechanical match decision and human
-root-cause review remain unexecuted. Candidates must be selected from all completed raw
+complete/failed/interrupted evidence. It has not run against the historical pair. The
+versioned [N01 machine reader](n01-candidate-machine-match-v1.md) implements deterministic
+mutation-origin relation nomination and the mechanical 3/3 versus 0/3 decision with exact
+target/setup checks. Controlled-adapter tests are not historical matching evidence; actual
+N01 candidate assessment and human root-cause review remain unexecuted. Candidates must be
+selected from all completed raw
 steps, irrespective of corpus admission, and tied to original step/index. Each replay must
 match its own frozen artifact/config/image, verify fresh lifecycle and retain negative/error
 results. Pair invariants are setup/options/runtime/policy, not equality of full config IDs

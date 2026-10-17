@@ -174,6 +174,7 @@ def _inputs(tmp_path: Path, monkeypatch, *, failed_call: int | None = None):
     )
     monkeypatch.setattr(preflight, "FROZEN_TARGETS", patched)
     monkeypatch.setattr(preflight, "EVIDENCE_ROOT", tmp_path / "evidence")
+    monkeypatch.setattr(preflight, "CONTROLLER_IMAGE_ID", "sha256:" + "3" * 64)
     packages = (
         N04PackageTarball(N04PreflightRole.AFFECTED, package_contents[0]),
         N04PackageTarball(N04PreflightRole.FIXED, package_contents[1]),
@@ -204,13 +205,23 @@ def _inputs(tmp_path: Path, monkeypatch, *, failed_call: int | None = None):
         ("ALL",),
         ("no-new-privileges",),
         0,
+        0,
+        0,
+        "",
+        "private",
+        "private",
         1024 * 1024 * 1024,
         1024 * 1024 * 1024,
         256,
-        (("/tmp", "rw,nosuid,nodev,size=268435456"),),
+        (("/tmp", "rw,nosuid,nodev,size=256m"),),
         (
             N04ControllerMount("volume", "inodefence-runtime", "/var/lib/inodefence", True),
-            N04ControllerMount("bind", "/controlled/source", "/workspaces/InodeFence", False),
+            N04ControllerMount(
+                "bind",
+                "/Users/choijiwng/Projects/InodeFence-n04-preflight-execution-source",
+                "/workspaces/InodeFence",
+                False,
+            ),
         ),
         "inodefence-runtime",
         "/var/lib/docker/volumes/inodefence-runtime/_data",
@@ -257,6 +268,7 @@ def test_complete_preflight_is_independently_recomputed(tmp_path, monkeypatch):
     assert verified.verification.recomputed_verdict == N04PreflightVerdict.PASS
     assert verified.final_manifest.final_status == N04FinalStatus.PREFLIGHT_PASS
     assert verified.final_manifest.pilot_authorized is False
+    assert verified.final_manifest.host_cleanup_pending is True
     assert (
         verified.verification.verified_admissions,
         verified.verification.verified_oracle_controls,
@@ -518,6 +530,11 @@ def test_broker_attestation_rejects_docker_socket(tmp_path, monkeypatch):
         ("controller_network_mode", "bridge"),
         ("controller_readonly_rootfs", False),
         ("controller_cap_drop", ()),
+        ("controller_device_request_count", 1),
+        ("controller_device_cgroup_rule_count", 1),
+        ("controller_pid_mode", "host"),
+        ("controller_ipc_mode", "host"),
+        ("controller_cgroupns_mode", "host"),
         ("controller_memory_bytes", 0),
         ("controller_pids_limit", 0),
         ("controller_label", "unexpected"),
@@ -589,3 +606,4 @@ def test_final_manifest_round_trip_has_no_pilot_authorization(tmp_path, monkeypa
     final = read_record(evidence / "manifest.json", N04FinalManifest)
     assert verification.status == N04IndependentStatus.PASS
     assert final.pilot_authorized is False
+    assert final.host_cleanup_pending is True

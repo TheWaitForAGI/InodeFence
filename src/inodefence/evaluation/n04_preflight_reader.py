@@ -87,6 +87,7 @@ class N04FinalManifest:
     independent_verification: N04ArtifactReference
     final_status: N04FinalStatus
     pilot_authorized: bool
+    host_cleanup_pending: bool
     published_at: str
 
     def __post_init__(self) -> None:
@@ -96,6 +97,7 @@ class N04FinalManifest:
             or not isinstance(self.independent_verification, N04ArtifactReference)
             or not isinstance(self.final_status, N04FinalStatus)
             or self.pilot_authorized is not False
+            or self.host_cleanup_pending is not True
             or datetime.fromisoformat(self.published_at).utcoffset() is None
         ):
             raise ValueError("invalid final preflight manifest")
@@ -505,6 +507,7 @@ def verify_n04_preflight(root: Path, *, expected_raw_manifest_sha256: str) -> Ve
         verification_ref,
         final_status,
         False,
+        True,
         datetime.now(UTC).isoformat(),
     )
     final_path = root / "manifest.json"
@@ -527,6 +530,7 @@ def main() -> int:
                 "preflight_verdict": result.verification.recomputed_verdict,
                 "final_status": result.final_manifest.final_status,
                 "pilot_authorized": result.final_manifest.pilot_authorized,
+                "host_cleanup_pending": result.final_manifest.host_cleanup_pending,
                 "final_manifest_sha256": result.final_manifest_sha256,
             },
             sort_keys=True,

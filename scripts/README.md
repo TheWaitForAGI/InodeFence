@@ -183,10 +183,10 @@ PYTHONPATH=src python3.12 -m scripts.container_host \
   --context orbstack --controller <full-controller-id> \
   --volume inodefence-runtime \
   --image <frozen-7.5.2-image-id> --image <frozen-7.5.3-image-id> \
-  --build-context <retained-affected-context> \
-  --build-context <retained-fixed-context> \
-  --package-tarball <verified-tar-7.5.2.tgz> \
-  --package-tarball <verified-tar-7.5.3.tgz> \
+  --build-context /Users/choijiwng/Projects/InodeFence-n02-evidence-20261015T122200Z/build/affected \
+  --build-context /Users/choijiwng/Projects/InodeFence-n02-evidence-20261015T122200Z/build/fixed \
+  --package-tarball /Users/choijiwng/Projects/InodeFence-n04-package-inputs-20261017/tar-7.5.2.tgz \
+  --package-tarball /Users/choijiwng/Projects/InodeFence-n04-package-inputs-20261017/tar-7.5.3.tgz \
   --evidence /var/lib/inodefence/evidence/n04-five-second-preflight-20261016T130000Z \
   --host-ledger /Users/choijiwng/Projects/InodeFence-n04-5s-preflight-20261016T130000Z-host-ledger \
   preflight-node-n04-5s
@@ -199,7 +199,11 @@ Contract for the exact identities, single destination and stop conditions. The t
 npm tarball bytes are retained in the evidence root and must match the predeclared SHA-256
 values; an alternate evidence or host-ledger path is rejected rather than treated as another
 attempt. The exact host ledger is created before Docker inspection, so it retains early admission,
-deadline and target-cleanup outcomes even when the Linux evidence root cannot be completed.
+deadline and target-cleanup outcomes even when the Linux evidence root cannot be completed. The Linux
+reader status remains host-cleanup-pending. After copying the Linux evidence read-only,
+`verify_n04_host_ledger(HOST_LEDGER, LINUX_EVIDENCE_COPY)` independently rehashes both manifests and
+derives the overall status; a missing terminal summary or failed fallback cleanup is
+`PREFLIGHT_INCONCLUSIVE`, never `PREFLIGHT_PASS`.
 
 `PYTHONPATH=src python scripts/qualify_libarchive_entry_boundary.py --output <new-file>
 --image-id <sha256> --base-image-id <sha256>`는 별도 libarchive public write-disk reference

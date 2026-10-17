@@ -98,7 +98,9 @@ failure ledger for ordinary infrastructure errors. Its manifest cannot authorize
 `python -m inodefence.evaluation.n04_preflight_reader EVIDENCE
 --raw-manifest-sha256 SHA256` checks every available publication prefix, independently
 reconstructs complete readiness and emits only `PREFLIGHT_PASS`, `PREFLIGHT_FAIL`,
-`PREFLIGHT_INCONCLUSIVE` or `INDEPENDENT_VERIFICATION_FAILED`. A preflight pass does not
+`PREFLIGHT_INCONCLUSIVE` or `INDEPENDENT_VERIFICATION_FAILED`. This Linux manifest has
+`host_cleanup_pending=true`. Only the separately checksummed host ledger can bind its raw/final
+digests to the host fallback-cleanup outcome and resolve the overall status. A preflight pass does not
 alter the N01 human gate and does not authorize B0/B1/B3 or a native effectiveness campaign.
 
 Evaluation records use a strict schema-v1 wrapper around existing canonical model

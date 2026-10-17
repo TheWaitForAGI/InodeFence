@@ -186,6 +186,15 @@ def main() -> int:
             )
             print(verified.stdout, end="")
             print(verified.stderr, end="", file=sys.stderr)
+            terminal = json.loads(verified.stdout)
+            if not isinstance(terminal, dict):
+                raise ValueError("N04 reader did not emit a terminal object")
+            terminal.update(
+                raw_manifest_sha256=outcome.manifest_sha256,
+                reader_returncode=verified.returncode,
+            )
+            client.writer.write(json.dumps({"terminal": terminal}, sort_keys=True) + "\n")
+            client.writer.flush()
             return verified.returncode
         if args.mode == "qualify-node-n01":
             from inodefence.evaluation.n01 import (

@@ -59,8 +59,20 @@ EVIDENCE_ROOT = Path("/var/lib/inodefence/evidence/n04-five-second-preflight-202
 CONTRACT_PATH = "docs/research/benchmarks/n04-five-second-preflight-task-contract-v1.md"
 TIMEOUT_SECONDS = 5.0
 MAX_WALL_SECONDS = 30 * 60
+HOST_CLEANUP_RESERVE_SECONDS = 5 * 60
+CONTROLLER_FINALIZATION_RESERVE_SECONDS = 130
 HOST_LEDGER_ROOT = Path(
     "/Users/choijiwng/Projects/InodeFence-n04-5s-preflight-20261016T130000Z-host-ledger"
+)
+HOST_SOURCE_WORKTREE = "/Users/choijiwng/Projects/InodeFence-n04-preflight-execution-source"
+CONTROLLER_IMAGE_ID = "sha256:8ea6aad0328af475f0060809bf9bf642399edecee818cb9b771eb19ac635ac09"
+HOST_BUILD_CONTEXTS = (
+    Path("/Users/choijiwng/Projects/InodeFence-n02-evidence-20261015T122200Z/build/affected"),
+    Path("/Users/choijiwng/Projects/InodeFence-n02-evidence-20261015T122200Z/build/fixed"),
+)
+HOST_PACKAGE_TARBALLS = (
+    Path("/Users/choijiwng/Projects/InodeFence-n04-package-inputs-20261017/tar-7.5.2.tgz"),
+    Path("/Users/choijiwng/Projects/InodeFence-n04-package-inputs-20261017/tar-7.5.3.tgz"),
 )
 WORKER_SHA256 = "feb13d7be5f5718769bebd4b0e375ea3f535abffd45223494dd518263593498b"
 SENTINEL_SHA256 = "caed2ac112733b3f5e3f56d9372f7ce6ba88dfafd57eb58807bb29f16548e36b"
@@ -263,6 +275,11 @@ class N04BrokerAttestation:
     controller_cap_drop: tuple[str, ...]
     controller_security_opt: tuple[str, ...]
     controller_device_count: int
+    controller_device_request_count: int
+    controller_device_cgroup_rule_count: int
+    controller_pid_mode: str
+    controller_ipc_mode: str
+    controller_cgroupns_mode: str
     controller_memory_bytes: int
     controller_memory_swap_bytes: int
     controller_pids_limit: int
@@ -286,18 +303,34 @@ class N04BrokerAttestation:
             "controller_created_at",
             "controller_label",
             "controller_network_mode",
+            "controller_ipc_mode",
+            "controller_cgroupns_mode",
             "runtime_volume_name",
             "runtime_volume_mountpoint",
         ):
             _text(getattr(self, label), label)
         _digest(self.controller_id)
         _digest(self.controller_image_id, prefix=True)
+        if any(
+            type(value) is not int
+            for value in (
+                self.controller_device_count,
+                self.controller_device_request_count,
+                self.controller_device_cgroup_rule_count,
+                self.controller_memory_bytes,
+                self.controller_memory_swap_bytes,
+                self.controller_pids_limit,
+                self.max_wall_seconds,
+            )
+        ):
+            raise ValueError("controller resource facts require integers")
         if (
             self.context_name != "orbstack"
             or self.daemon_os != "linux"
             or self.daemon_architecture != "arm64"
             or self.controller_running is not True
             or self.controller_privileged is not False
+            or self.controller_image_id != CONTROLLER_IMAGE_ID
             or self.controller_label != "v1"
             or self.controller_network_mode != "none"
             or self.controller_readonly_rootfs is not True
@@ -305,10 +338,15 @@ class N04BrokerAttestation:
             or self.controller_cap_drop != ("ALL",)
             or self.controller_security_opt != ("no-new-privileges",)
             or self.controller_device_count != 0
+            or self.controller_device_request_count != 0
+            or self.controller_device_cgroup_rule_count != 0
+            or self.controller_pid_mode != ""
+            or self.controller_ipc_mode != "private"
+            or self.controller_cgroupns_mode != "private"
             or self.controller_memory_bytes != 1024 * 1024 * 1024
             or self.controller_memory_swap_bytes != 1024 * 1024 * 1024
             or self.controller_pids_limit != 256
-            or self.controller_tmpfs != (("/tmp", "rw,nosuid,nodev,size=268435456"),)
+            or self.controller_tmpfs != (("/tmp", "rw,nosuid,nodev,size=256m"),)
             or self.runtime_volume_name != "inodefence-runtime"
             or self.max_wall_seconds != MAX_WALL_SECONDS
             or tuple(item.image_id for item in self.target_images)
@@ -339,6 +377,7 @@ class N04BrokerAttestation:
         if (
             source is None
             or source.mount_type != "bind"
+            or source.source != HOST_SOURCE_WORKTREE
             or source.read_write
             or runtime is None
             or runtime.mount_type != "volume"

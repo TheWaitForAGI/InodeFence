@@ -66,12 +66,22 @@ SHA-256 values with the table before build admission. The independent reader reh
 retained bytes. A missing or mismatched tarball stops before target execution and is
 `INCONCLUSIVE`.
 
+The host accepts those bytes only at the frozen nonsymlink paths
+`/Users/choijiwng/Projects/InodeFence-n04-package-inputs-20261017/tar-7.5.2.tgz` and
+`tar-7.5.3.tgz` beneath the same directory. Historical build inputs are likewise restricted to
+the nonsymlink `build/affected` and `build/fixed` directories beneath the retained N02 evidence
+root. This prevents the broker from reading arbitrary host files as an admission input.
+
 ## Frozen environment and containment predicates
 
 The trusted route is host macOS/OrbStack Docker context `orbstack` to one newly created,
 unprivileged Linux arm64 controller with:
 
-- a read-only source bind at `/workspaces/InodeFence`, separate from runtime;
+- immutable controller image
+  `sha256:8ea6aad0328af475f0060809bf9bf642399edecee818cb9b771eb19ac635ac09`;
+- exact full Git execution clone
+  `/Users/choijiwng/Projects/InodeFence-n04-preflight-execution-source` read-only at
+  `/workspaces/InodeFence`, separate from runtime;
 - named volume `inodefence-runtime` at `/var/lib/inodefence`;
 - no Docker socket mount and no direct target subprocess fallback; and
 - broker requests restricted to the existing owner-labelled container backend.
@@ -79,11 +89,13 @@ unprivileged Linux arm64 controller with:
 The controller additionally requires the dedicated `org.inodefence.n04-preflight-controller=v1`
 label, network `none`, read-only rootfs, cap-drop `ALL`, no-new-privileges, no devices, a 1 GiB
 memory/swap cap, 256 PID cap and a 256 MiB `nosuid,nodev` tmpfs. Its inspected creation time must
-be no more than 15 minutes before this broker invocation. The host clock starts before
+be no more than 15 minutes before this broker invocation. Host PID/IPC/cgroup namespaces,
+device requests and device cgroup rules are also rejected. The host clock starts before
 controller/daemon/image inspection and bounds every Docker request, the controller, fresh reader and
-target cleanup to 30 minutes. A cooperative controller deadline reserves reader/finalization time;
-the host hard deadline is only a fallback. The no-overwrite host ledger records early failure,
-deadline state, the controller return code, invocation-owned target names and cleanup outcome.
+target cleanup to 30 minutes. A cooperative controller deadline reserves 130 seconds for the fresh
+reader/finalization, and the host cutoff reserves a further 300 seconds for fallback cleanup; the
+cutoff is only a fallback. The no-overwrite host ledger records early failure, deadline state, the
+controller return code, invocation-owned target names and cleanup outcome.
 
 The broker attestation records the Docker executable, context, daemon ID/version/API,
 controller full ID/image/mounts/privilege state, volume identity and both inspected images.
@@ -123,8 +135,11 @@ Readiness passes only if all eight records:
 - bind exact source, target, sentinel, environment and isolation provenance; and
 - prove their runtime root absent after return.
 
-`PREFLIGHT_PASS` requires two admissions, two passing controls, eight passing readiness
-records, no failure record and independent-reader agreement. A complete but unexpected target
+The Linux reader manifest always records `host_cleanup_pending=true`; its status is not the overall
+preflight result. The checksummed host finalizer binds that raw-manifest digest and Linux final-manifest
+digest to the controller return code and verified host cleanup. Overall `PREFLIGHT_PASS` requires two
+admissions, two passing controls, eight passing readiness records, no failure record,
+independent-reader agreement and successful/no-op host fallback cleanup. A complete but unexpected target
 result is `PREFLIGHT_FAIL`. Missing/corrupt evidence, broker/identity/containment mismatch,
 observer error, failed cleanup or interruption is `INCONCLUSIVE` / infrastructure invalid.
 No result automatically selects 10 seconds or authorizes the pilot.

@@ -108,14 +108,19 @@ def _validate_linux_terminal(value: object) -> dict:
 
 
 def _validate_n04_host_inputs(
-    build_contexts: tuple[Path, ...], package_tarballs: tuple[Path, ...]
+    build_contexts: tuple[Path, ...], package_tarballs: tuple[Path, ...], volume: str
 ) -> None:
     from inodefence.evaluation.n04_preflight import (
         HOST_BUILD_CONTEXTS,
         HOST_PACKAGE_TARBALLS,
+        RUNTIME_VOLUME_NAME,
     )
 
-    if build_contexts != HOST_BUILD_CONTEXTS or package_tarballs != HOST_PACKAGE_TARBALLS:
+    if (
+        build_contexts != HOST_BUILD_CONTEXTS
+        or package_tarballs != HOST_PACKAGE_TARBALLS
+        or volume != RUNTIME_VOLUME_NAME
+    ):
         raise ValueError("N04 preflight requires its frozen host input paths")
     for path in (*HOST_BUILD_CONTEXTS, *HOST_PACKAGE_TARBALLS):
         if path.is_symlink() or path.resolve() != path:
@@ -410,7 +415,9 @@ def main() -> int:
         if args.host_ledger is None:
             parser.error("N04 preflight requires --host-ledger")
         try:
-            _validate_n04_host_inputs(tuple(args.build_context), tuple(args.package_tarball))
+            _validate_n04_host_inputs(
+                tuple(args.build_context), tuple(args.package_tarball), args.volume
+            )
         except ValueError as error:
             parser.error(str(error))
     elif args.package_tarball:
@@ -616,6 +623,13 @@ def main() -> int:
                             ),
                             "controller_mounts": mounts,
                             "runtime_volume_name": volume["Name"],
+                            "runtime_volume_created_at": volume["CreatedAt"],
+                            "runtime_volume_driver": volume["Driver"],
+                            "runtime_volume_scope": volume["Scope"],
+                            "runtime_volume_label": (volume.get("Labels") or {}).get(
+                                "org.inodefence.n04-preflight-volume"
+                            ),
+                            "runtime_volume_options": sorted((volume.get("Options") or {}).items()),
                             "runtime_volume_mountpoint": volume["Mountpoint"],
                             "target_images": inspected_images,
                             "max_wall_seconds": MAX_WALL_SECONDS,

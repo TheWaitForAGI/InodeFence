@@ -82,7 +82,8 @@ unprivileged Linux arm64 controller with:
 - exact full Git execution clone
   `/Users/choijiwng/Projects/InodeFence-n04-preflight-execution-source` read-only at
   `/workspaces/InodeFence`, separate from runtime;
-- named volume `inodefence-runtime` at `/var/lib/inodefence`;
+- newly created, labelled, local-only named volume
+  `inodefence-n04-preflight-runtime-20261016T130000Z` at `/var/lib/inodefence`;
 - no Docker socket mount and no direct target subprocess fallback; and
 - broker requests restricted to the existing owner-labelled container backend.
 
@@ -96,6 +97,10 @@ target cleanup to 30 minutes. A cooperative controller deadline reserves 130 sec
 reader/finalization, and the host cutoff reserves a further 300 seconds for fallback cleanup; the
 cutoff is only a fallback. The no-overwrite host ledger records early failure, deadline state, the
 controller return code, invocation-owned target names and cleanup outcome.
+
+The runtime volume must carry `org.inodefence.n04-preflight-volume=v1`, use the local driver and
+scope with no options, and be no more than 15 minutes old at broker start. No retained controller may
+co-mount it. The older shared `inodefence-runtime` volume is not an authorized N04 input.
 
 The broker attestation records the Docker executable, context, daemon ID/version/API,
 controller full ID/image/mounts/privilege state, volume identity and both inspected images.

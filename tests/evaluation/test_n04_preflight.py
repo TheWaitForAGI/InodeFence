@@ -215,7 +215,9 @@ def _inputs(tmp_path: Path, monkeypatch, *, failed_call: int | None = None):
         256,
         (("/tmp", "rw,nosuid,nodev,size=256m"),),
         (
-            N04ControllerMount("volume", "inodefence-runtime", "/var/lib/inodefence", True),
+            N04ControllerMount(
+                "volume", preflight.RUNTIME_VOLUME_NAME, "/var/lib/inodefence", True
+            ),
             N04ControllerMount(
                 "bind",
                 "/Users/choijiwng/Projects/InodeFence-n04-preflight-execution-source",
@@ -223,8 +225,13 @@ def _inputs(tmp_path: Path, monkeypatch, *, failed_call: int | None = None):
                 False,
             ),
         ),
-        "inodefence-runtime",
-        "/var/lib/docker/volumes/inodefence-runtime/_data",
+        preflight.RUNTIME_VOLUME_NAME,
+        "2026-10-16T12:00:00+00:00",
+        "local",
+        "local",
+        "v1",
+        (),
+        f"/var/lib/docker/volumes/{preflight.RUNTIME_VOLUME_NAME}/_data",
         (
             N04BrokerImage(images[0], "linux", "arm64", ()),
             N04BrokerImage(images[1], "linux", "arm64", ()),
@@ -538,6 +545,10 @@ def test_broker_attestation_rejects_docker_socket(tmp_path, monkeypatch):
         ("controller_memory_bytes", 0),
         ("controller_pids_limit", 0),
         ("controller_label", "unexpected"),
+        ("runtime_volume_driver", "unexpected"),
+        ("runtime_volume_scope", "global"),
+        ("runtime_volume_label", "unexpected"),
+        ("runtime_volume_options", (("unexpected", "1"),)),
     ),
 )
 def test_broker_attestation_rejects_weakened_controller(tmp_path, monkeypatch, field, value):
@@ -558,6 +569,8 @@ def test_broker_attestation_rejects_writable_source_and_stale_controller(tmp_pat
         replace(broker, controller_mounts=writable_mounts)
     with pytest.raises(ValueError, match="not fresh"):
         replace(broker, broker_started_at="2026-10-16T13:00:01+00:00")
+    with pytest.raises(ValueError, match="not fresh"):
+        replace(broker, runtime_volume_created_at="2026-10-16T11:00:00+00:00")
 
 
 def test_invalid_broker_attestation_is_retained_before_target_admission(tmp_path, monkeypatch):

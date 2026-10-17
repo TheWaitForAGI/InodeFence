@@ -74,6 +74,7 @@ HOST_PACKAGE_TARBALLS = (
     Path("/Users/choijiwng/Projects/InodeFence-n04-package-inputs-20261017/tar-7.5.2.tgz"),
     Path("/Users/choijiwng/Projects/InodeFence-n04-package-inputs-20261017/tar-7.5.3.tgz"),
 )
+RUNTIME_VOLUME_NAME = "inodefence-n04-preflight-runtime-20261016T130000Z"
 WORKER_SHA256 = "feb13d7be5f5718769bebd4b0e375ea3f535abffd45223494dd518263593498b"
 SENTINEL_SHA256 = "caed2ac112733b3f5e3f56d9372f7ce6ba88dfafd57eb58807bb29f16548e36b"
 EXPECTED_BUILD_FILES = (
@@ -286,6 +287,11 @@ class N04BrokerAttestation:
     controller_tmpfs: tuple[tuple[str, str], ...]
     controller_mounts: tuple[N04ControllerMount, ...]
     runtime_volume_name: str
+    runtime_volume_created_at: str
+    runtime_volume_driver: str
+    runtime_volume_scope: str
+    runtime_volume_label: str
+    runtime_volume_options: tuple[tuple[str, str], ...]
     runtime_volume_mountpoint: str
     target_images: tuple[N04BrokerImage, N04BrokerImage]
     max_wall_seconds: int
@@ -306,6 +312,10 @@ class N04BrokerAttestation:
             "controller_ipc_mode",
             "controller_cgroupns_mode",
             "runtime_volume_name",
+            "runtime_volume_created_at",
+            "runtime_volume_driver",
+            "runtime_volume_scope",
+            "runtime_volume_label",
             "runtime_volume_mountpoint",
         ):
             _text(getattr(self, label), label)
@@ -347,7 +357,11 @@ class N04BrokerAttestation:
             or self.controller_memory_swap_bytes != 1024 * 1024 * 1024
             or self.controller_pids_limit != 256
             or self.controller_tmpfs != (("/tmp", "rw,nosuid,nodev,size=256m"),)
-            or self.runtime_volume_name != "inodefence-runtime"
+            or self.runtime_volume_name != RUNTIME_VOLUME_NAME
+            or self.runtime_volume_driver != "local"
+            or self.runtime_volume_scope != "local"
+            or self.runtime_volume_label != "v1"
+            or self.runtime_volume_options
             or self.max_wall_seconds != MAX_WALL_SECONDS
             or tuple(item.image_id for item in self.target_images)
             != tuple(item.image_id for item in FROZEN_TARGETS)
@@ -355,16 +369,23 @@ class N04BrokerAttestation:
             raise ValueError("broker identity differs from the authorized preflight")
         controller_created = datetime.fromisoformat(self.controller_created_at)
         broker_started = datetime.fromisoformat(self.broker_started_at)
-        if controller_created.utcoffset() is None or broker_started.utcoffset() is None:
+        volume_created = datetime.fromisoformat(self.runtime_volume_created_at)
+        if (
+            controller_created.utcoffset() is None
+            or broker_started.utcoffset() is None
+            or volume_created.utcoffset() is None
+        ):
             raise ValueError("broker/controller timestamps require timezone")
         controller_age = (broker_started - controller_created).total_seconds()
-        if not 0 <= controller_age <= 15 * 60:
-            raise ValueError("controller is not fresh for this preflight broker invocation")
+        volume_age = (broker_started - volume_created).total_seconds()
+        if not 0 <= controller_age <= 15 * 60 or not 0 <= volume_age <= 15 * 60:
+            raise ValueError("controller/volume is not fresh for this preflight broker invocation")
         if (
             self.controller_cap_add != tuple(sorted(set(self.controller_cap_add)))
             or self.controller_cap_drop != tuple(sorted(set(self.controller_cap_drop)))
             or self.controller_security_opt != tuple(sorted(set(self.controller_security_opt)))
             or self.controller_tmpfs != tuple(sorted(set(self.controller_tmpfs)))
+            or self.runtime_volume_options != tuple(sorted(set(self.runtime_volume_options)))
         ):
             raise ValueError("controller containment facts must be canonical")
         if self.controller_mounts != tuple(

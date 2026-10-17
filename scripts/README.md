@@ -181,7 +181,7 @@ commit and the evidence path must not exist.
 ```bash
 PYTHONPATH=src python3.12 -m scripts.container_host \
   --context orbstack --controller <full-controller-id> \
-  --volume inodefence-runtime \
+  --volume inodefence-n04-preflight-runtime-20261016T130000Z \
   --image <frozen-7.5.2-image-id> --image <frozen-7.5.3-image-id> \
   --build-context /Users/choijiwng/Projects/InodeFence-n02-evidence-20261015T122200Z/build/affected \
   --build-context /Users/choijiwng/Projects/InodeFence-n02-evidence-20261015T122200Z/build/fixed \

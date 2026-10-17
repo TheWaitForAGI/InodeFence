@@ -20,7 +20,7 @@ def _args(evidence, packages):
         image=["sha256:" + "1" * 64, "sha256:" + "2" * 64],
         mode="preflight-node-n04-5s",
         package_tarball=packages,
-        volume="inodefence-runtime",
+        volume=n04_preflight.RUNTIME_VOLUME_NAME,
     )
 
 
@@ -107,13 +107,16 @@ def test_host_inputs_require_exact_nonsymlink_paths(tmp_path, monkeypatch):
         path.write_bytes(b"controlled package")
     monkeypatch.setattr(n04_preflight, "HOST_BUILD_CONTEXTS", builds)
     monkeypatch.setattr(n04_preflight, "HOST_PACKAGE_TARBALLS", packages)
+    monkeypatch.setattr(n04_preflight, "RUNTIME_VOLUME_NAME", "controlled-volume")
 
-    _validate_n04_host_inputs(builds, packages)
+    _validate_n04_host_inputs(builds, packages, "controlled-volume")
     with pytest.raises(ValueError, match="frozen host input paths"):
-        _validate_n04_host_inputs(builds, (packages[1], packages[0]))
+        _validate_n04_host_inputs(builds, (packages[1], packages[0]), "controlled-volume")
+    with pytest.raises(ValueError, match="frozen host input paths"):
+        _validate_n04_host_inputs(builds, packages, "wrong-volume")
 
     linked = tmp_path / "linked-package.tgz"
     linked.symlink_to(packages[0])
     monkeypatch.setattr(n04_preflight, "HOST_PACKAGE_TARBALLS", (linked, packages[1]))
     with pytest.raises(ValueError, match="symlinks"):
-        _validate_n04_host_inputs(builds, (linked, packages[1]))
+        _validate_n04_host_inputs(builds, (linked, packages[1]), "controlled-volume")

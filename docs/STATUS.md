@@ -26,7 +26,9 @@ N03의 별도 [machine correspondence audit](research/diagnostics/n03-n01-machin
 retained evidence와 automated token의 consistency를 PASS로 재확인했지만 human review를 대체하지 않는다.
 [N04 독립 retained-evidence 감사](research/diagnostics/n04-n01-independent-evidence-audit.md)는
 원본 checksum을 다시 확인하고 별도 Linux 사본에서 current-main reader를 재실행해 같은 automated
-PASS를 재구성했다. 이 결과도 machine evidence이며 human qualification token을 발급하지 않는다.
+PASS를 재구성했다. 단, 원 N02 root에는 npm tarball bytes가 없어 선언된 package digest의 직접
+재해시는 **NOT_VERIFIABLE**이다. 이 결과도 machine evidence이며 human qualification token을
+발급하지 않는다.
 [B0/B1/B3 pilot proposal](research/benchmarks/n03-b0-b1-b3-pilot-task-proposal.md)은 exact candidate
 schedule과 5초/10초 mismatch를 기록하며 **PROPOSED / NOT_AUTHORIZED / NOT_RUN**이다.
 

@@ -129,6 +129,23 @@ def _record[T](root: Path, reference: N04ArtifactReference, kind: type[T]) -> T:
     return read_record(_path(root, reference), kind, expected_sha256=reference.sha256)
 
 
+def _verify_packages(root: Path, manifest: N04RawManifest) -> bool:
+    expected = tuple(
+        f"packages/{role.value}/tar-{frozen_target(role).tar_version}.tgz"
+        for role in N04PreflightRole
+    )
+    actual = tuple(item.path for item in manifest.package_tarballs)
+    if actual != expected[: len(actual)]:
+        raise VerificationError("package evidence is not an authorized publication prefix")
+    valid = True
+    for role, reference in zip(N04PreflightRole, manifest.package_tarballs, strict=False):
+        _bytes(root, reference)
+        valid &= reference.sha256 == frozen_target(role).package_tarball_sha256
+    if not valid and manifest.attempt_status != N04PreflightStatus.INFRASTRUCTURE_INVALID:
+        raise VerificationError("package tarball differs from the frozen SHA-256 identity")
+    return len(actual) == len(expected) and valid
+
+
 def _verify_builds(
     root: Path, manifest: N04RawManifest
 ) -> tuple[dict[N04PreflightRole, dict], bool]:
@@ -174,6 +191,8 @@ def _verify_admission(
     build: dict,
     build_references: set[N04ArtifactReference],
 ) -> None:
+    if manifest.broker is None:
+        raise VerificationError("admission exists without a broker attestation")
     if (
         admission.image_id != build["image_id"]
         or admission.packaging not in build_references
@@ -184,11 +203,20 @@ def _verify_admission(
         or admission.isolation.runtime_os != "linux"
         or admission.isolation.runtime_architecture != "arm64"
         or admission.isolation.image_architecture != "arm64"
+        or admission.isolation.runtime_version != manifest.broker.daemon_version
+        or admission.isolation.runtime_api_version != manifest.broker.daemon_api_version
+        or admission.isolation.runtime_os != manifest.broker.daemon_os
+        or admission.isolation.runtime_architecture != manifest.broker.daemon_architecture
     ):
         raise VerificationError("admission does not bind the retained five-second target")
     broker = manifest.broker.target_images[tuple(N04PreflightRole).index(admission.role)]
     if broker.image_id != admission.image_id:
         raise VerificationError("controller admission differs from host broker image inspection")
+    if (
+        admission.isolation.image_architecture != broker.architecture
+        or admission.isolation.image_repo_digests != broker.repo_digests
+    ):
+        raise VerificationError("controller image facts differ from host broker inspection")
 
 
 def _verify_controls(controls: tuple[N04OracleControlRecord, ...]) -> bool:
@@ -198,7 +226,7 @@ def _verify_controls(controls: tuple[N04OracleControlRecord, ...]) -> bool:
     ):
         raise VerificationError("oracle controls differ from the frozen order")
     if not all(item.runtime_root_absent_after_return for item in controls):
-        raise VerificationError("oracle control cleanup was not verified")
+        return False
     if any(item.violated for item in controls[0].violations):
         return False
     positive = {item.contract_id: item.violated for item in controls[1].violations}
@@ -240,6 +268,9 @@ def _verify_readiness(
         verify_run(result)
         verify_binding(result, provenance)
         passes.append(benign_output_passes(result, seed_index))
+    roots = tuple(record.arm.result.before.sandbox_root for record in records)
+    if len(roots) != len(set(roots)):
+        raise VerificationError("readiness reused a sandbox root")
     return len(records) == 8 and all(passes)
 
 
@@ -248,11 +279,17 @@ def _verify_raw(
 ) -> tuple[N04PreflightVerdict, tuple[int, int, int, int], tuple[str, ...]]:
     if not _bytes(root, manifest.contract):
         raise VerificationError("preflight contract is empty")
+    environment_valid = (
+        manifest.source.revision is not None
+        and manifest.source.dirty is False
+        and manifest.environment.system == "Linux"
+        and manifest.environment.machine == "aarch64"
+    )
     if (
-        manifest.source.revision is None
-        or manifest.source.dirty is not False
-        or manifest.environment.system != "Linux"
-        or manifest.environment.machine != "aarch64"
+        (
+            not environment_valid
+            and manifest.attempt_status != N04PreflightStatus.INFRASTRUCTURE_INVALID
+        )
         or manifest.extractions_started < manifest.extractions_completed
         or manifest.extractions_started - manifest.extractions_completed > 1
         or manifest.extractions_completed < len(manifest.readiness_runs)
@@ -273,9 +310,51 @@ def _verify_raw(
             or failure.context.experiment_id != manifest.experiment_id
             or failure.context.source != manifest.source
             or {(item.name, item.sha256) for item in failure.context.artifacts}
-            != {(item.path, item.sha256) for item in (*manifest.build_files, *manifest.admissions)}
+            != {
+                (item.path, item.sha256)
+                for item in (
+                    manifest.contract,
+                    *manifest.package_tarballs,
+                    *manifest.build_files,
+                    *manifest.admissions,
+                    *manifest.oracle_controls,
+                    *manifest.readiness_runs,
+                )
+            }
         ):
             raise VerificationError("failure ledger does not bind the available raw evidence")
+    if manifest.broker is None:
+        if (
+            manifest.attempt_status != N04PreflightStatus.INFRASTRUCTURE_INVALID
+            or manifest.package_tarballs
+            or manifest.build_files
+            or manifest.admissions
+            or manifest.oracle_controls
+            or manifest.readiness_runs
+            or manifest.extractions_started
+        ):
+            raise VerificationError("missing broker attestation has impossible downstream records")
+        return (
+            N04PreflightVerdict.INCONCLUSIVE,
+            (0, 0, 0, len(failures)),
+            ("broker attestation failed before target admission",),
+        )
+    packages_complete = _verify_packages(root, manifest)
+    if not packages_complete:
+        if (
+            manifest.attempt_status != N04PreflightStatus.INFRASTRUCTURE_INVALID
+            or manifest.build_files
+            or manifest.admissions
+            or manifest.oracle_controls
+            or manifest.readiness_runs
+            or manifest.extractions_started
+        ):
+            raise VerificationError("partial package evidence has impossible downstream records")
+        return (
+            N04PreflightVerdict.INCONCLUSIVE,
+            (0, 0, 0, len(failures)),
+            ("partial or mismatched package evidence was independently reconstructed",),
+        )
     builds, builds_complete = _verify_builds(root, manifest)
     if not builds_complete:
         if (
@@ -319,17 +398,35 @@ def _verify_raw(
     if len(controls) < 2:
         if manifest.attempt_status != N04PreflightStatus.INFRASTRUCTURE_INVALID:
             raise VerificationError("readiness requires two complete oracle controls")
+        if controls and (
+            any(item.violated for item in controls[0].violations)
+            or not controls[0].runtime_root_absent_after_return
+        ):
+            raise VerificationError("retained negative oracle control did not pass")
         return (
             N04PreflightVerdict.INCONCLUSIVE,
             (len(admissions), len(controls), 0, len(failures)),
             ("oracle control execution was infrastructure-invalid",),
         )
-    if not _verify_controls(controls):
+    controls_pass = _verify_controls(controls)
+    control_roots = tuple(item.before.sandbox_root for item in controls)
+    if len(control_roots) != len(set(control_roots)):
+        raise VerificationError("oracle controls reused a sandbox root")
+    if not controls_pass:
+        if manifest.attempt_status == N04PreflightStatus.INFRASTRUCTURE_INVALID:
+            return (
+                N04PreflightVerdict.INCONCLUSIVE,
+                (len(admissions), len(controls), 0, len(failures)),
+                ("complete oracle controls failed their frozen predicates",),
+            )
         raise VerificationError("oracle controls failed their frozen C0/C1/C2 predicates")
     readiness = tuple(_record(root, item, N04ReadinessRecord) for item in manifest.readiness_runs)
     readiness_pass = _verify_readiness(
         readiness, manifest, {item.role: item for item in admissions}
     )
+    all_roots = (*control_roots, *(item.arm.result.before.sandbox_root for item in readiness))
+    if len(all_roots) != len(set(all_roots)):
+        raise VerificationError("preflight reused a runtime sandbox root")
     counts = (len(admissions), len(controls), len(readiness), len(failures))
     if manifest.attempt_status == N04PreflightStatus.INFRASTRUCTURE_INVALID:
         return (

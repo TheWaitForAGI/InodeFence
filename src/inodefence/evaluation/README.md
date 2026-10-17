@@ -87,9 +87,11 @@ manifest always leaves human correspondence review pending; an automated PASS is
 `inodefence.evaluation.n04_preflight` is a separately versioned, one-attempt readiness
 orchestrator for the exact retained node-tar 7.5.2/7.5.3 images. It binds the historical
 build bytes and exported platform-manifest digest, current clean source locks/worker,
-host-broker containment attestation, two harness oracle controls and the four existing
+the two exact package tarball byte streams, host-broker containment attestation, two harness
+oracle controls and the four existing
 benign seeds on each target. Every target execution is fixed at five seconds and the archive
-budget is eight. It performs no mutation, known-class replay, corpus evolution or pilot run.
+budget is eight. The single frozen evidence path prevents a second authorized attempt. It
+performs no mutation, known-class replay, corpus evolution or pilot run.
 
 The runner retains completed target outcomes even when readiness fails and writes a terminal
 failure ledger for ordinary infrastructure errors. Its manifest cannot authorize a pilot.

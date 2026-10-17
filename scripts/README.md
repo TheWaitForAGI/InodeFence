@@ -185,14 +185,21 @@ PYTHONPATH=src python3.12 -m scripts.container_host \
   --image <frozen-7.5.2-image-id> --image <frozen-7.5.3-image-id> \
   --build-context <retained-affected-context> \
   --build-context <retained-fixed-context> \
-  --evidence /var/lib/inodefence/evidence/<new-n04-preflight-attempt> \
+  --package-tarball <verified-tar-7.5.2.tgz> \
+  --package-tarball <verified-tar-7.5.3.tgz> \
+  --evidence /var/lib/inodefence/evidence/n04-five-second-preflight-20261016T130000Z \
+  --host-ledger /Users/choijiwng/Projects/InodeFence-n04-5s-preflight-20261016T130000Z-host-ledger \
   preflight-node-n04-5s
 ```
 
 The mode runs two harness-only controls and at most eight benign target extractions at an
 exact five-second timeout, then launches the independent reader in a fresh process. It does
 not run the 4,000-execution pilot, a known-class pair or P0/P1/P2. Follow the frozen N04 Task
-Contract for the exact identities, destination and stop conditions.
+Contract for the exact identities, single destination and stop conditions. The two official
+npm tarball bytes are retained in the evidence root and must match the predeclared SHA-256
+values; an alternate evidence or host-ledger path is rejected rather than treated as another
+attempt. The exact host ledger is created before Docker inspection, so it retains early admission,
+deadline and target-cleanup outcomes even when the Linux evidence root cannot be completed.
 
 `PYTHONPATH=src python scripts/qualify_libarchive_entry_boundary.py --output <new-file>
 --image-id <sha256> --base-image-id <sha256>`는 별도 libarchive public write-disk reference

@@ -55,9 +55,13 @@ from inodefence.targets.node_tar import NodeTarTarget
 
 EXPERIMENT_ID = "n04-node-tar-five-second-preflight-v1"
 ATTEMPT_ID = "n04-five-second-preflight-20261016T130000Z"
+EVIDENCE_ROOT = Path("/var/lib/inodefence/evidence/n04-five-second-preflight-20261016T130000Z")
 CONTRACT_PATH = "docs/research/benchmarks/n04-five-second-preflight-task-contract-v1.md"
 TIMEOUT_SECONDS = 5.0
 MAX_WALL_SECONDS = 30 * 60
+HOST_LEDGER_ROOT = Path(
+    "/Users/choijiwng/Projects/InodeFence-n04-5s-preflight-20261016T130000Z-host-ledger"
+)
 WORKER_SHA256 = "feb13d7be5f5718769bebd4b0e375ea3f535abffd45223494dd518263593498b"
 SENTINEL_SHA256 = "caed2ac112733b3f5e3f56d9372f7ce6ba88dfafd57eb58807bb29f16548e36b"
 EXPECTED_BUILD_FILES = (
@@ -191,6 +195,16 @@ class N04BuildContext:
 
 
 @dataclass(frozen=True, slots=True)
+class N04PackageTarball:
+    role: N04PreflightRole
+    content: bytes
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.role, N04PreflightRole) or not isinstance(self.content, bytes):
+            raise ValueError("preflight package input requires exact tarball bytes")
+
+
+@dataclass(frozen=True, slots=True)
 class N04ControllerMount:
     mount_type: str
     source: str
@@ -230,6 +244,7 @@ class N04BrokerImage:
 class N04BrokerAttestation:
     docker_executable: str
     context_name: str
+    broker_started_at: str
     daemon_id: str
     daemon_name: str
     daemon_version: str
@@ -238,8 +253,20 @@ class N04BrokerAttestation:
     daemon_architecture: str
     controller_id: str
     controller_image_id: str
+    controller_created_at: str
     controller_running: bool
     controller_privileged: bool
+    controller_label: str
+    controller_network_mode: str
+    controller_readonly_rootfs: bool
+    controller_cap_add: tuple[str, ...]
+    controller_cap_drop: tuple[str, ...]
+    controller_security_opt: tuple[str, ...]
+    controller_device_count: int
+    controller_memory_bytes: int
+    controller_memory_swap_bytes: int
+    controller_pids_limit: int
+    controller_tmpfs: tuple[tuple[str, str], ...]
     controller_mounts: tuple[N04ControllerMount, ...]
     runtime_volume_name: str
     runtime_volume_mountpoint: str
@@ -250,11 +277,15 @@ class N04BrokerAttestation:
         for label in (
             "docker_executable",
             "context_name",
+            "broker_started_at",
             "daemon_id",
             "daemon_name",
             "daemon_version",
             "daemon_api_version",
             "controller_id",
+            "controller_created_at",
+            "controller_label",
+            "controller_network_mode",
             "runtime_volume_name",
             "runtime_volume_mountpoint",
         ):
@@ -267,12 +298,37 @@ class N04BrokerAttestation:
             or self.daemon_architecture != "arm64"
             or self.controller_running is not True
             or self.controller_privileged is not False
+            or self.controller_label != "v1"
+            or self.controller_network_mode != "none"
+            or self.controller_readonly_rootfs is not True
+            or self.controller_cap_add
+            or self.controller_cap_drop != ("ALL",)
+            or self.controller_security_opt != ("no-new-privileges",)
+            or self.controller_device_count != 0
+            or self.controller_memory_bytes != 1024 * 1024 * 1024
+            or self.controller_memory_swap_bytes != 1024 * 1024 * 1024
+            or self.controller_pids_limit != 256
+            or self.controller_tmpfs != (("/tmp", "rw,nosuid,nodev,size=268435456"),)
             or self.runtime_volume_name != "inodefence-runtime"
             or self.max_wall_seconds != MAX_WALL_SECONDS
             or tuple(item.image_id for item in self.target_images)
             != tuple(item.image_id for item in FROZEN_TARGETS)
         ):
             raise ValueError("broker identity differs from the authorized preflight")
+        controller_created = datetime.fromisoformat(self.controller_created_at)
+        broker_started = datetime.fromisoformat(self.broker_started_at)
+        if controller_created.utcoffset() is None or broker_started.utcoffset() is None:
+            raise ValueError("broker/controller timestamps require timezone")
+        controller_age = (broker_started - controller_created).total_seconds()
+        if not 0 <= controller_age <= 15 * 60:
+            raise ValueError("controller is not fresh for this preflight broker invocation")
+        if (
+            self.controller_cap_add != tuple(sorted(set(self.controller_cap_add)))
+            or self.controller_cap_drop != tuple(sorted(set(self.controller_cap_drop)))
+            or self.controller_security_opt != tuple(sorted(set(self.controller_security_opt)))
+            or self.controller_tmpfs != tuple(sorted(set(self.controller_tmpfs)))
+        ):
+            raise ValueError("controller containment facts must be canonical")
         if self.controller_mounts != tuple(
             sorted(self.controller_mounts, key=lambda item: item.destination)
         ):
@@ -283,6 +339,7 @@ class N04BrokerAttestation:
         if (
             source is None
             or source.mount_type != "bind"
+            or source.read_write
             or runtime is None
             or runtime.mount_type != "volume"
             or runtime.source != self.runtime_volume_name
@@ -399,9 +456,10 @@ class N04RawManifest:
     contract: N04ArtifactReference
     source: SourceProvenance
     environment: EnvironmentProvenance
-    broker: N04BrokerAttestation
+    broker: N04BrokerAttestation | None
     frozen_targets: tuple[N04FrozenTarget, N04FrozenTarget]
     seeds: tuple[N04SeedBinding, N04SeedBinding, N04SeedBinding, N04SeedBinding]
+    package_tarballs: tuple[N04ArtifactReference, ...]
     build_files: tuple[N04ArtifactReference, ...]
     admissions: tuple[N04ArtifactReference, ...]
     oracle_controls: tuple[N04ArtifactReference, ...]
@@ -424,7 +482,13 @@ class N04RawManifest:
             or self.seeds != seed_bindings()
             or not isinstance(self.source, SourceProvenance)
             or not isinstance(self.environment, EnvironmentProvenance)
-            or not isinstance(self.broker, N04BrokerAttestation)
+            or (
+                not isinstance(self.broker, N04BrokerAttestation)
+                and not (
+                    self.broker is None
+                    and self.attempt_status == N04PreflightStatus.INFRASTRUCTURE_INVALID
+                )
+            )
             or not isinstance(self.attempt_status, N04PreflightStatus)
             or not isinstance(self.declared_verdict, N04PreflightVerdict)
         ):
@@ -442,6 +506,7 @@ class N04RawManifest:
             raise ValueError("preflight exceeded its controller wall-clock bound")
         paths = [
             self.contract.path,
+            *(item.path for item in self.package_tarballs),
             *(item.path for item in self.build_files),
             *(item.path for item in self.admissions),
             *(item.path for item in self.oracle_controls),
@@ -526,12 +591,22 @@ def _publish_build_context(
     return packaging, build
 
 
+def _publish_package_tarball(
+    root: Path,
+    package: N04PackageTarball,
+) -> N04ArtifactReference:
+    frozen = frozen_target(package.role)
+    path = root / "packages" / package.role.value / f"tar-{frozen.tar_version}.tgz"
+    return _reference(root, path, publish_bytes(path, package.content))
+
+
 def _admit(
     role: N04PreflightRole,
     target: HistoricalTarget,
     packaging_ref: N04ArtifactReference,
     build_ref: N04ArtifactReference,
     build: dict,
+    broker: N04BrokerAttestation | Callable[[], N04BrokerAttestation],
 ) -> N04AdmissionRecord:
     invocation = target.invocation
     frozen = frozen_target(role)
@@ -547,8 +622,17 @@ def _admit(
     ):
         raise ValueError("target metadata differs from the five-second preflight")
     isolation = target.capture_isolation()
-    if isolation.image_architecture != build["image_architecture"]:
-        raise ValueError("target image architecture differs from the build record")
+    broker_image = broker.target_images[tuple(N04PreflightRole).index(role)]
+    if (
+        isolation.image_architecture != build["image_architecture"]
+        or isolation.runtime_version != broker.daemon_version
+        or isolation.runtime_api_version != broker.daemon_api_version
+        or isolation.runtime_os != broker.daemon_os
+        or isolation.runtime_architecture != broker.daemon_architecture
+        or isolation.image_architecture != broker_image.architecture
+        or isolation.image_repo_digests != broker_image.repo_digests
+    ):
+        raise ValueError("target runtime/image inspection differs from the host broker")
     return N04AdmissionRecord(
         role,
         invocation.image_id,
@@ -630,16 +714,18 @@ def run_n04_preflight(
     targets: tuple[HistoricalTarget, HistoricalTarget]
     | Callable[[], tuple[HistoricalTarget, HistoricalTarget]],
     build_contexts: tuple[N04BuildContext, N04BuildContext],
-    broker: N04BrokerAttestation,
+    package_tarballs: tuple[N04PackageTarball, N04PackageTarball],
+    broker: N04BrokerAttestation | Callable[[], N04BrokerAttestation],
     *,
     repository: Path,
     source: SourceProvenance | None = None,
     environment: EnvironmentProvenance | None = None,
     execute_case: Callable[..., RunResult] = run_case,
+    create_control: Callable[[bool], N04OracleControlRecord] = _oracle_control,
 ) -> N04PreflightOutcome:
     """Run the one authorized preflight and publish a terminal raw manifest."""
     if (
-        not evidence_root.is_absolute()
+        evidence_root != EVIDENCE_ROOT
         or evidence_root.is_relative_to(repository)
         or evidence_root.exists()
         or evidence_root.is_symlink()
@@ -647,12 +733,15 @@ def run_n04_preflight(
         raise ValueError("evidence root must be a new absolute path outside source")
     if tuple(item.role for item in build_contexts) != tuple(N04PreflightRole):
         raise ValueError("build contexts must be affected then fixed")
+    if tuple(item.role for item in package_tarballs) != tuple(N04PreflightRole):
+        raise ValueError("package tarballs must be affected then fixed")
     evidence_root.mkdir(parents=True, exist_ok=False)
     started_monotonic = monotonic()
     started_at = datetime.now(UTC).isoformat()
     captured_source = capture_source(repository) if source is None else source
     captured_environment = capture_environment() if environment is None else environment
     references: dict[str, list[N04ArtifactReference]] = {
+        "package": [],
         "build": [],
         "admission": [],
         "controls": [],
@@ -664,16 +753,27 @@ def run_n04_preflight(
     extractions_completed = 0
     current_phase = FailurePhase.SETUP
     current_target: TargetProvenance | None = None
+    resolved_broker: N04BrokerAttestation | None = None
     status = N04PreflightStatus.INFRASTRUCTURE_INVALID
     verdict = N04PreflightVerdict.INCONCLUSIVE
     contract_ref = _publish_contract(evidence_root, repository)
     try:
+        resolved_broker = broker() if callable(broker) else broker
+        if not isinstance(resolved_broker, N04BrokerAttestation):
+            raise ValueError("preflight broker attestation is unavailable")
         if (
             captured_source.revision is None
             or captured_source.dirty is not False
             or captured_environment.system != "Linux"
+            or captured_environment.machine != "aarch64"
         ):
-            raise ValueError("preflight requires a clean available Linux source revision")
+            raise ValueError("preflight requires a clean available Linux aarch64 source revision")
+        for package in package_tarballs:
+            current_phase = FailurePhase.QUALIFICATION
+            reference = _publish_package_tarball(evidence_root, package)
+            references["package"].append(reference)
+            if reference.sha256 != frozen_target(package.role).package_tarball_sha256:
+                raise ValueError("package tarball differs from the frozen SHA-256 identity")
         build_records: dict[N04PreflightRole, dict] = {}
         build_refs: dict[N04PreflightRole, tuple[N04ArtifactReference, N04ArtifactReference]] = {}
         for context in build_contexts:
@@ -695,18 +795,28 @@ def run_n04_preflight(
         for role, target in zip(N04PreflightRole, resolved_targets, strict=True):
             current_phase = FailurePhase.QUALIFICATION
             current_target = target.provenance
-            admission = _admit(role, target, *build_refs[role], build_records[role])
+            admission = _admit(
+                role,
+                target,
+                *build_refs[role],
+                build_records[role],
+                resolved_broker,
+            )
             path = evidence_root / "admission" / f"{role.value}.json"
             references["admission"].append(
                 _reference(evidence_root, path, write_record(path, admission))
             )
             admissions[role] = admission
-        controls = (_oracle_control(False), _oracle_control(True))
-        for control in controls:
+        controls = []
+        current_target = None
+        current_phase = FailurePhase.SETUP
+        for create_alias in (False, True):
+            control = create_control(create_alias)
             path = evidence_root / "oracle" / f"{control.control_id}.json"
             references["controls"].append(
                 _reference(evidence_root, path, write_record(path, control))
             )
+            controls.append(control)
         if not _controls_pass(controls):
             raise ValueError("oracle controls did not reproduce the frozen negative/positive")
         provenance = {
@@ -769,7 +879,14 @@ def run_n04_preflight(
             cleanup_status=CleanupStatus.UNKNOWN,
             artifacts=tuple(
                 ArtifactReference(item.path, item.sha256)
-                for item in references["build"] + references["admission"]
+                for item in (
+                    [contract_ref]
+                    + references["package"]
+                    + references["build"]
+                    + references["admission"]
+                    + references["controls"]
+                    + references["readiness"]
+                )
             ),
         )
         path = evidence_root / "failures" / "infrastructure-invalid.json"
@@ -787,9 +904,10 @@ def run_n04_preflight(
         contract_ref,
         captured_source,
         captured_environment,
-        broker,
+        resolved_broker,
         FROZEN_TARGETS,
         seed_bindings(),
+        tuple(references["package"]),
         tuple(references["build"]),
         tuple(references["admission"]),
         tuple(references["controls"]),

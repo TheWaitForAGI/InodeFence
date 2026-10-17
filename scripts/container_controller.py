@@ -3,6 +3,8 @@
 import argparse
 import base64
 import json
+import math
+import signal
 import subprocess
 import sys
 from contextlib import redirect_stdout
@@ -72,27 +74,31 @@ def main() -> int:
         not args.evidence.is_absolute() or args.evidence.exists() or args.evidence.is_symlink()
     ):
         raise ValueError("evidence requires a new absolute controller destination")
-    n01_initial_value = None
+    pair_initial_value = None
     if pair_mode:
         line = sys.stdin.readline(16 * 1024 * 1024)
-        n01_initial_value = json.loads(line)
+        pair_initial_value = json.loads(line)
     client = StdioDockerClient(sys.stdin, sys.stdout)
     with redirect_stdout(sys.stderr):
         if args.mode == "preflight-node-n04-5s":
             from inodefence.evaluation.encoding import decode
             from inodefence.evaluation.n04_preflight import (
+                EVIDENCE_ROOT,
                 EXPECTED_BUILD_FILES,
                 N04BrokerAttestation,
                 N04BuildContext,
                 N04BuildFile,
+                N04PackageTarball,
                 N04PreflightRole,
                 bind_targets,
                 run_n04_preflight,
             )
 
-            value = n01_initial_value
+            value = pair_initial_value
             if not isinstance(value, dict) or set(value) != {
                 "n04_build_contexts",
+                "n04_package_tarballs",
+                "controller_deadline_seconds",
                 "broker_attestation",
             }:
                 raise ValueError("missing N04 preflight initialization")
@@ -112,16 +118,58 @@ def main() -> int:
                         ),
                     )
                 )
-            broker = decode(N04BrokerAttestation, value["broker_attestation"])
-            backend = ContainerExecutionBackend(client, args.controller, args.volume, args.owner)
-            assert args.evidence is not None
-            outcome = run_n04_preflight(
-                args.evidence,
-                lambda: bind_targets(backend, tuple(args.image)),
-                tuple(contexts),
-                broker,
-                repository=Path.cwd(),
+            raw_broker = value["broker_attestation"]
+            raw_packages = value["n04_package_tarballs"]
+            if not isinstance(raw_packages, list) or len(raw_packages) != 2:
+                raise ValueError("N04 preflight requires two package tarballs")
+            packages = (
+                N04PackageTarball(
+                    N04PreflightRole.AFFECTED,
+                    base64.b64decode(raw_packages[0], validate=True),
+                ),
+                N04PackageTarball(
+                    N04PreflightRole.FIXED,
+                    base64.b64decode(raw_packages[1], validate=True),
+                ),
             )
+            controller_deadline_seconds = value["controller_deadline_seconds"]
+            if (
+                not isinstance(controller_deadline_seconds, (int, float))
+                or isinstance(controller_deadline_seconds, bool)
+                or not math.isfinite(controller_deadline_seconds)
+                or not 1 <= controller_deadline_seconds < 30 * 60
+            ):
+                raise ValueError("invalid N04 cooperative controller deadline")
+            assert args.evidence is not None
+            if args.evidence != EVIDENCE_ROOT:
+                raise ValueError("N04 preflight requires its one frozen evidence destination")
+
+            def broker():
+                return decode(N04BrokerAttestation, raw_broker)
+
+            def targets():
+                backend = ContainerExecutionBackend(
+                    client, args.controller, args.volume, args.owner
+                )
+                return bind_targets(backend, tuple(args.image))
+
+            def deadline_expired(_signum, _frame):
+                raise TimeoutError("N04 controller cooperative deadline expired")
+
+            previous_handler = signal.signal(signal.SIGALRM, deadline_expired)
+            signal.setitimer(signal.ITIMER_REAL, controller_deadline_seconds)
+            try:
+                outcome = run_n04_preflight(
+                    args.evidence,
+                    targets,
+                    tuple(contexts),
+                    packages,
+                    broker,
+                    repository=Path.cwd(),
+                )
+            finally:
+                signal.setitimer(signal.ITIMER_REAL, 0)
+                signal.signal(signal.SIGALRM, previous_handler)
             verified = subprocess.run(
                 (
                     sys.executable,
@@ -149,7 +197,7 @@ def main() -> int:
             )
             from inodefence.targets.node_tar import NodeTarTarget
 
-            value = n01_initial_value
+            value = pair_initial_value
             if not isinstance(value, dict) or set(value) != {"n01_build_contexts"}:
                 raise ValueError("missing N01 build-context initialization")
             raw_contexts = value["n01_build_contexts"]

@@ -19,6 +19,7 @@ from inodefence.evaluation.n04_preflight import (
     N04BuildContext,
     N04BuildFile,
     N04ControllerMount,
+    N04PackageTarball,
     N04PreflightRole,
     N04PreflightStatus,
     N04PreflightVerdict,
@@ -75,7 +76,7 @@ class ControlledTarget:
         return IsolationProvenance(
             IsolationPolicy(self.invocation.image_id, 1000, 1000),
             "docker-compatible",
-            "controlled",
+            "29.8.2",
             "1.56",
             "linux",
             "arm64",
@@ -155,6 +156,7 @@ def _context(tmp_path: Path, role: N04PreflightRole, image_id: str) -> N04BuildC
 
 def _inputs(tmp_path: Path, monkeypatch, *, failed_call: int | None = None):
     images = ("sha256:" + "1" * 64, "sha256:" + "2" * 64)
+    package_contents = (b"controlled tar 7.5.2\n", b"controlled tar 7.5.3\n")
     contexts = (
         _context(tmp_path, N04PreflightRole.AFFECTED, images[0]),
         _context(tmp_path, N04PreflightRole.FIXED, images[1]),
@@ -163,6 +165,7 @@ def _inputs(tmp_path: Path, monkeypatch, *, failed_call: int | None = None):
         replace(
             target,
             image_id=images[index],
+            package_tarball_sha256=sha256(package_contents[index]).hexdigest(),
             build_sha256=sha256(
                 next(item.content for item in contexts[index].files if item.name == "build.json")
             ).hexdigest(),
@@ -170,6 +173,11 @@ def _inputs(tmp_path: Path, monkeypatch, *, failed_call: int | None = None):
         for index, target in enumerate(preflight.FROZEN_TARGETS)
     )
     monkeypatch.setattr(preflight, "FROZEN_TARGETS", patched)
+    monkeypatch.setattr(preflight, "EVIDENCE_ROOT", tmp_path / "evidence")
+    packages = (
+        N04PackageTarball(N04PreflightRole.AFFECTED, package_contents[0]),
+        N04PackageTarball(N04PreflightRole.FIXED, package_contents[1]),
+    )
     targets = (
         ControlledTarget(N04PreflightRole.AFFECTED),
         ControlledTarget(N04PreflightRole.FIXED, failed_call=failed_call),
@@ -177,6 +185,7 @@ def _inputs(tmp_path: Path, monkeypatch, *, failed_call: int | None = None):
     broker = N04BrokerAttestation(
         "/usr/local/bin/docker",
         "orbstack",
+        "2026-10-16T12:05:00+00:00",
         "controlled-daemon",
         "orbstack",
         "29.8.2",
@@ -185,11 +194,23 @@ def _inputs(tmp_path: Path, monkeypatch, *, failed_call: int | None = None):
         "arm64",
         "a" * 64,
         "sha256:" + "3" * 64,
+        "2026-10-16T12:00:00+00:00",
         True,
         False,
+        "v1",
+        "none",
+        True,
+        (),
+        ("ALL",),
+        ("no-new-privileges",),
+        0,
+        1024 * 1024 * 1024,
+        1024 * 1024 * 1024,
+        256,
+        (("/tmp", "rw,nosuid,nodev,size=268435456"),),
         (
             N04ControllerMount("volume", "inodefence-runtime", "/var/lib/inodefence", True),
-            N04ControllerMount("bind", "/controlled/source", "/workspaces/InodeFence", True),
+            N04ControllerMount("bind", "/controlled/source", "/workspaces/InodeFence", False),
         ),
         "inodefence-runtime",
         "/var/lib/docker/volumes/inodefence-runtime/_data",
@@ -199,16 +220,17 @@ def _inputs(tmp_path: Path, monkeypatch, *, failed_call: int | None = None):
         ),
         1800,
     )
-    return targets, contexts, broker
+    return targets, contexts, packages, broker
 
 
 def test_complete_preflight_is_independently_recomputed(tmp_path, monkeypatch):
-    targets, contexts, broker = _inputs(tmp_path, monkeypatch)
+    targets, contexts, packages, broker = _inputs(tmp_path, monkeypatch)
     evidence = tmp_path / "evidence"
     outcome = run_n04_preflight(
         evidence,
         targets,
         contexts,
+        packages,
         broker,
         repository=ROOT,
         source=SOURCE,
@@ -244,12 +266,13 @@ def test_complete_preflight_is_independently_recomputed(tmp_path, monkeypatch):
 
 
 def test_complete_timeout_is_retained_as_preflight_fail(tmp_path, monkeypatch):
-    targets, contexts, broker = _inputs(tmp_path, monkeypatch, failed_call=2)
-    evidence = tmp_path / "readiness-fail"
+    targets, contexts, packages, broker = _inputs(tmp_path, monkeypatch, failed_call=2)
+    evidence = tmp_path / "evidence"
     outcome = run_n04_preflight(
         evidence,
         targets,
         contexts,
+        packages,
         broker,
         repository=ROOT,
         source=SOURCE,
@@ -266,16 +289,17 @@ def test_complete_timeout_is_retained_as_preflight_fail(tmp_path, monkeypatch):
 
 
 def test_wrong_timeout_stops_before_archive_and_is_inconclusive(tmp_path, monkeypatch):
-    _, contexts, broker = _inputs(tmp_path, monkeypatch)
+    _, contexts, packages, broker = _inputs(tmp_path, monkeypatch)
     targets = (
         ControlledTarget(N04PreflightRole.AFFECTED, timeout_seconds=10),
         ControlledTarget(N04PreflightRole.FIXED),
     )
-    evidence = tmp_path / "bad-timeout"
+    evidence = tmp_path / "evidence"
     outcome = run_n04_preflight(
         evidence,
         targets,
         contexts,
+        packages,
         broker,
         repository=ROOT,
         source=SOURCE,
@@ -291,16 +315,40 @@ def test_wrong_timeout_stops_before_archive_and_is_inconclusive(tmp_path, monkey
     assert verified.final_manifest.final_status == N04FinalStatus.PREFLIGHT_INCONCLUSIVE
 
 
+def test_broker_runtime_mismatch_stops_before_archive(tmp_path, monkeypatch):
+    targets, contexts, packages, broker = _inputs(tmp_path, monkeypatch)
+    evidence = tmp_path / "evidence"
+
+    outcome = run_n04_preflight(
+        evidence,
+        targets,
+        contexts,
+        packages,
+        replace(broker, daemon_version="29.9.0"),
+        repository=ROOT,
+        source=SOURCE,
+        environment=ENVIRONMENT,
+    )
+
+    assert outcome.manifest.attempt_status == N04PreflightStatus.INFRASTRUCTURE_INVALID
+    assert outcome.manifest.extractions_started == 0
+    assert not outcome.manifest.admissions
+    verified = verify_n04_preflight(evidence, expected_raw_manifest_sha256=outcome.manifest_sha256)
+    assert verified.verification.status == N04IndependentStatus.PASS
+    assert verified.verification.recomputed_verdict == N04PreflightVerdict.INCONCLUSIVE
+
+
 def test_partial_build_failure_is_retained_and_independently_reconstructed(tmp_path, monkeypatch):
-    targets, contexts, broker = _inputs(tmp_path, monkeypatch)
+    targets, contexts, packages, broker = _inputs(tmp_path, monkeypatch)
     bad_file = replace(contexts[0].files[0], content=b"invalid controlled Dockerfile\n")
     bad_context = replace(contexts[0], files=(bad_file, *contexts[0].files[1:]))
-    evidence = tmp_path / "bad-build"
+    evidence = tmp_path / "evidence"
 
     outcome = run_n04_preflight(
         evidence,
         targets,
         (bad_context, contexts[1]),
+        packages,
         broker,
         repository=ROOT,
         source=SOURCE,
@@ -316,13 +364,117 @@ def test_partial_build_failure_is_retained_and_independently_reconstructed(tmp_p
     assert verified.final_manifest.final_status == N04FinalStatus.PREFLIGHT_INCONCLUSIVE
 
 
-def test_reader_rejects_tampered_readiness_record(tmp_path, monkeypatch):
-    targets, contexts, broker = _inputs(tmp_path, monkeypatch)
-    evidence = tmp_path / "tampered"
+def test_package_digest_mismatch_stops_before_build_and_is_reconstructed(tmp_path, monkeypatch):
+    targets, contexts, packages, broker = _inputs(tmp_path, monkeypatch)
+    packages = (replace(packages[0], content=b"wrong package bytes\n"), packages[1])
+    evidence = tmp_path / "evidence"
+
     outcome = run_n04_preflight(
         evidence,
         targets,
         contexts,
+        packages,
+        broker,
+        repository=ROOT,
+        source=SOURCE,
+        environment=ENVIRONMENT,
+    )
+
+    assert outcome.manifest.attempt_status == N04PreflightStatus.INFRASTRUCTURE_INVALID
+    assert outcome.manifest.extractions_started == 0
+    assert len(outcome.manifest.package_tarballs) == 1
+    assert not outcome.manifest.build_files
+    verified = verify_n04_preflight(evidence, expected_raw_manifest_sha256=outcome.manifest_sha256)
+    assert verified.verification.status == N04IndependentStatus.PASS
+    assert verified.verification.recomputed_verdict == N04PreflightVerdict.INCONCLUSIVE
+
+
+def test_wrong_environment_architecture_stops_before_package_and_is_reconstructed(
+    tmp_path, monkeypatch
+):
+    targets, contexts, packages, broker = _inputs(tmp_path, monkeypatch)
+    evidence = tmp_path / "evidence"
+
+    outcome = run_n04_preflight(
+        evidence,
+        targets,
+        contexts,
+        packages,
+        broker,
+        repository=ROOT,
+        source=SOURCE,
+        environment=replace(ENVIRONMENT, machine="x86_64"),
+    )
+
+    assert outcome.manifest.extractions_started == 0
+    assert not outcome.manifest.package_tarballs
+    verified = verify_n04_preflight(evidence, expected_raw_manifest_sha256=outcome.manifest_sha256)
+    assert verified.verification.status == N04IndependentStatus.PASS
+    assert verified.verification.recomputed_verdict == N04PreflightVerdict.INCONCLUSIVE
+
+
+def test_alternate_evidence_root_is_rejected_before_creation(tmp_path, monkeypatch):
+    targets, contexts, packages, broker = _inputs(tmp_path, monkeypatch)
+    alternate = tmp_path / "alternate"
+
+    with pytest.raises(ValueError, match="evidence root"):
+        run_n04_preflight(
+            alternate,
+            targets,
+            contexts,
+            packages,
+            broker,
+            repository=ROOT,
+            source=SOURCE,
+            environment=ENVIRONMENT,
+        )
+
+    assert not alternate.exists()
+    assert all(target.calls == 0 for target in targets)
+
+
+def test_completed_control_is_published_before_later_control_failure(tmp_path, monkeypatch):
+    targets, contexts, packages, broker = _inputs(tmp_path, monkeypatch)
+
+    def fail_positive_control(create_alias: bool):
+        if create_alias:
+            raise RuntimeError("controlled positive-control failure")
+        return preflight._oracle_control(False)
+
+    evidence = tmp_path / "evidence"
+    outcome = run_n04_preflight(
+        evidence,
+        targets,
+        contexts,
+        packages,
+        broker,
+        repository=ROOT,
+        source=SOURCE,
+        environment=ENVIRONMENT,
+        create_control=fail_positive_control,
+    )
+
+    assert outcome.manifest.attempt_status == N04PreflightStatus.INFRASTRUCTURE_INVALID
+    assert outcome.manifest.extractions_started == 0
+    assert len(outcome.manifest.oracle_controls) == 1
+    failure = read_failure(evidence / outcome.manifest.failures[0].path)
+    assert {item.name for item in failure.context.artifacts} >= {
+        outcome.manifest.contract.path,
+        outcome.manifest.oracle_controls[0].path,
+    }
+    verified = verify_n04_preflight(evidence, expected_raw_manifest_sha256=outcome.manifest_sha256)
+    assert verified.verification.status == N04IndependentStatus.PASS
+    assert verified.verification.recomputed_verdict == N04PreflightVerdict.INCONCLUSIVE
+
+
+def test_reader_rejects_tampered_readiness_record(tmp_path, monkeypatch):
+    targets, contexts, packages, broker = _inputs(tmp_path, monkeypatch)
+    evidence = tmp_path / "evidence"
+    outcome = run_n04_preflight(
+        evidence,
+        targets,
+        contexts,
+        packages,
         broker,
         repository=ROOT,
         source=SOURCE,
@@ -339,7 +491,7 @@ def test_reader_rejects_tampered_readiness_record(tmp_path, monkeypatch):
 
 
 def test_broker_attestation_rejects_docker_socket(tmp_path, monkeypatch):
-    _, _, broker = _inputs(tmp_path, monkeypatch)
+    _, _, _, broker = _inputs(tmp_path, monkeypatch)
     with pytest.raises(ValueError, match="boundary"):
         replace(
             broker,
@@ -360,13 +512,71 @@ def test_broker_attestation_rejects_docker_socket(tmp_path, monkeypatch):
         )
 
 
-def test_final_manifest_round_trip_has_no_pilot_authorization(tmp_path, monkeypatch):
-    targets, contexts, broker = _inputs(tmp_path, monkeypatch)
-    evidence = tmp_path / "round-trip"
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("controller_network_mode", "bridge"),
+        ("controller_readonly_rootfs", False),
+        ("controller_cap_drop", ()),
+        ("controller_memory_bytes", 0),
+        ("controller_pids_limit", 0),
+        ("controller_label", "unexpected"),
+    ),
+)
+def test_broker_attestation_rejects_weakened_controller(tmp_path, monkeypatch, field, value):
+    _, _, _, broker = _inputs(tmp_path, monkeypatch)
+
+    with pytest.raises(ValueError, match="authorized preflight"):
+        replace(broker, **{field: value})
+
+
+def test_broker_attestation_rejects_writable_source_and_stale_controller(tmp_path, monkeypatch):
+    _, _, _, broker = _inputs(tmp_path, monkeypatch)
+    writable_mounts = tuple(
+        replace(item, read_write=True) if item.destination == "/workspaces/InodeFence" else item
+        for item in broker.controller_mounts
+    )
+
+    with pytest.raises(ValueError, match="boundary"):
+        replace(broker, controller_mounts=writable_mounts)
+    with pytest.raises(ValueError, match="not fresh"):
+        replace(broker, broker_started_at="2026-10-16T13:00:01+00:00")
+
+
+def test_invalid_broker_attestation_is_retained_before_target_admission(tmp_path, monkeypatch):
+    targets, contexts, packages, _ = _inputs(tmp_path, monkeypatch)
+    evidence = tmp_path / "evidence"
+
+    def invalid_broker():
+        raise ValueError("controlled broker boundary mismatch")
+
     outcome = run_n04_preflight(
         evidence,
         targets,
         contexts,
+        packages,
+        invalid_broker,
+        repository=ROOT,
+        source=SOURCE,
+        environment=ENVIRONMENT,
+    )
+
+    assert outcome.manifest.broker is None
+    assert outcome.manifest.extractions_started == 0
+    assert all(target.calls == 0 for target in targets)
+    verified = verify_n04_preflight(evidence, expected_raw_manifest_sha256=outcome.manifest_sha256)
+    assert verified.verification.status == N04IndependentStatus.PASS
+    assert verified.verification.recomputed_verdict == N04PreflightVerdict.INCONCLUSIVE
+
+
+def test_final_manifest_round_trip_has_no_pilot_authorization(tmp_path, monkeypatch):
+    targets, contexts, packages, broker = _inputs(tmp_path, monkeypatch)
+    evidence = tmp_path / "evidence"
+    outcome = run_n04_preflight(
+        evidence,
+        targets,
+        contexts,
+        packages,
         broker,
         repository=ROOT,
         source=SOURCE,

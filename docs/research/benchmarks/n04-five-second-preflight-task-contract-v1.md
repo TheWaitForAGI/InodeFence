@@ -32,8 +32,12 @@ an infrastructure or containment failure stops further execution and is retained
 
 The exact Linux evidence destination is
 `/var/lib/inodefence/evidence/n04-five-second-preflight-20261016T130000Z`. It must be absent
-before execution and is never reused. A read-only host copy may be created at
-`/Users/choijiwng/Projects/InodeFence-n04-5s-preflight-20261016T130000Z` after completion.
+before execution, is enforced by the runner rather than caller convention and is never
+reused. The host must first create the exact no-overwrite attempt/cleanup ledger
+`/Users/choijiwng/Projects/InodeFence-n04-5s-preflight-20261016T130000Z-host-ledger`;
+its existence consumes the single attempt even if containment admission fails before Linux evidence
+publication. An alternate path is not another authorized attempt. A read-only host copy may be
+created at `/Users/choijiwng/Projects/InodeFence-n04-5s-preflight-20261016T130000Z` after completion.
 
 ## Frozen target candidates
 
@@ -56,15 +60,30 @@ The target image IDs, architecture, package/lock/worker bytes, exported repo/man
 identities when available and current runtime inspection must agree before an archive runs.
 A mutable tag cannot replace an image ID.
 
+The exact official `tar-7.5.2.tgz` and `tar-7.5.3.tgz` byte streams are admission inputs,
+not Docker build inputs. The runner publishes both under `packages/` and compares their
+SHA-256 values with the table before build admission. The independent reader rehashes the
+retained bytes. A missing or mismatched tarball stops before target execution and is
+`INCONCLUSIVE`.
+
 ## Frozen environment and containment predicates
 
 The trusted route is host macOS/OrbStack Docker context `orbstack` to one newly created,
 unprivileged Linux arm64 controller with:
 
-- a read-only or ordinary source bind at `/workspaces/InodeFence`, separate from runtime;
+- a read-only source bind at `/workspaces/InodeFence`, separate from runtime;
 - named volume `inodefence-runtime` at `/var/lib/inodefence`;
 - no Docker socket mount and no direct target subprocess fallback; and
 - broker requests restricted to the existing owner-labelled container backend.
+
+The controller additionally requires the dedicated `org.inodefence.n04-preflight-controller=v1`
+label, network `none`, read-only rootfs, cap-drop `ALL`, no-new-privileges, no devices, a 1 GiB
+memory/swap cap, 256 PID cap and a 256 MiB `nosuid,nodev` tmpfs. Its inspected creation time must
+be no more than 15 minutes before this broker invocation. The host clock starts before
+controller/daemon/image inspection and bounds every Docker request, the controller, fresh reader and
+target cleanup to 30 minutes. A cooperative controller deadline reserves reader/finalization time;
+the host hard deadline is only a fallback. The no-overwrite host ledger records early failure,
+deadline state, the controller return code, invocation-owned target names and cleanup outcome.
 
 The broker attestation records the Docker executable, context, daemon ID/version/API,
 controller full ID/image/mounts/privilege state, volume identity and both inspected images.

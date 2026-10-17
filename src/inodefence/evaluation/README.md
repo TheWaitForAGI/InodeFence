@@ -82,6 +82,23 @@ runner's declared verdict until comparing the independently derived result. Its 
 manifest always leaves human correspondence review pending; an automated PASS is only
 `N01_PAIR_AUTOMATED_REPLAY_COMPLETE`, never the final pair-qualified token.
 
+## N04 five-second historical-target preflight
+
+`inodefence.evaluation.n04_preflight` is a separately versioned, one-attempt readiness
+orchestrator for the exact retained node-tar 7.5.2/7.5.3 images. It binds the historical
+build bytes and exported platform-manifest digest, current clean source locks/worker,
+host-broker containment attestation, two harness oracle controls and the four existing
+benign seeds on each target. Every target execution is fixed at five seconds and the archive
+budget is eight. It performs no mutation, known-class replay, corpus evolution or pilot run.
+
+The runner retains completed target outcomes even when readiness fails and writes a terminal
+failure ledger for ordinary infrastructure errors. Its manifest cannot authorize a pilot.
+`python -m inodefence.evaluation.n04_preflight_reader EVIDENCE
+--raw-manifest-sha256 SHA256` checks every available publication prefix, independently
+reconstructs complete readiness and emits only `PREFLIGHT_PASS`, `PREFLIGHT_FAIL`,
+`PREFLIGHT_INCONCLUSIVE` or `INDEPENDENT_VERIFICATION_FAILED`. A preflight pass does not
+alter the N01 human gate and does not authorize B0/B1/B3 or a native effectiveness campaign.
+
 Evaluation records use a strict schema-v1 wrapper around existing canonical model
 encoding. Payload SHA-256 is declared in the wrapper; whole-file digest is returned
 for external anchoring. A synced temporary file is published with Linux atomic

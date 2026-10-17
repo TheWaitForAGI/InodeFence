@@ -10,7 +10,9 @@ import base64
 import json
 import shutil
 import subprocess
+import threading
 from pathlib import Path
+from time import monotonic
 from uuid import uuid4
 
 from inodefence.execution.container import OWNER_LABEL, checked, remove_owned
@@ -43,19 +45,27 @@ def main() -> int:
             "qualify-node-effect-v2",
             "benign-node-smoke",
             "qualify-node-n01",
+            "preflight-node-n04-5s",
         ),
     )
     args = parser.parse_args()
-    evidence_modes = {"benign-node-smoke", "qualify-node-effect-v2", "qualify-node-n01"}
+    evidence_modes = {
+        "benign-node-smoke",
+        "qualify-node-effect-v2",
+        "qualify-node-n01",
+        "preflight-node-n04-5s",
+    }
     if (args.mode in evidence_modes) != (args.evidence is not None):
         parser.error("evidence mode requires --evidence; validation modes do not export")
-    expected_images = 2 if args.mode == "qualify-node-n01" else 1
+    pair_mode = args.mode in {"qualify-node-n01", "preflight-node-n04-5s"}
+    preflight_started = monotonic() if args.mode == "preflight-node-n04-5s" else None
+    expected_images = 2 if pair_mode else 1
     if len(args.image) != expected_images:
         parser.error(f"{args.mode} requires exactly {expected_images} immutable image ID(s)")
-    if (args.mode == "qualify-node-n01") != bool(args.build_context):
-        parser.error("--build-context is required only for N01 qualification")
-    if args.mode == "qualify-node-n01" and len(args.build_context) != 2:
-        parser.error("N01 qualification requires affected then fixed build contexts")
+    if pair_mode != bool(args.build_context):
+        parser.error("--build-context is required only for historical pair modes")
+    if pair_mode and len(args.build_context) != 2:
+        parser.error("historical pair mode requires affected then fixed build contexts")
     executable = shutil.which("docker")
     if executable is None:
         raise BackendError("host Docker CLI unavailable")
@@ -95,45 +105,142 @@ def main() -> int:
             command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True
         ) as process:
             assert process.stdout is not None and process.stdin is not None
-            if args.mode == "qualify-node-n01":
-                from inodefence.evaluation.n01 import EXPECTED_BUILD_FILES, FROZEN_TARGETS
+            if pair_mode:
+                if args.mode == "qualify-node-n01":
+                    from inodefence.evaluation.n01 import EXPECTED_BUILD_FILES, FROZEN_TARGETS
+                else:
+                    from inodefence.evaluation.n04_preflight import (
+                        EXPECTED_BUILD_FILES,
+                        FROZEN_TARGETS,
+                        MAX_WALL_SECONDS,
+                    )
                 from inodefence.evaluation.node_packaging import validate_node_build
 
-                payload = []
+                contexts = []
                 for context, image, frozen in zip(
                     args.build_context, args.image, FROZEN_TARGETS, strict=True
                 ):
                     build = validate_node_build(context)
                     if build["image_id"] != image or build["tar_version"] != frozen.tar_version:
-                        raise ValueError("N01 image/build-context order or identity mismatch")
-                    payload.append(
+                        raise ValueError(
+                            "historical image/build-context order or identity mismatch"
+                        )
+                    contexts.append(
                         {
                             name: base64.b64encode((context / name).read_bytes()).decode("ascii")
                             for name in EXPECTED_BUILD_FILES
                         }
                     )
-                process.stdin.write(json.dumps({"n01_build_contexts": payload}) + "\n")
+                if args.mode == "qualify-node-n01":
+                    initial = {"n01_build_contexts": contexts}
+                else:
+                    info = json.loads(
+                        checked(client.run(("info", "--format", "{{json .}}"), 10), "daemon info")
+                    )
+                    version = json.loads(
+                        checked(
+                            client.run(("version", "--format", "{{json .}}"), 10),
+                            "daemon version",
+                        )
+                    )
+                    volume = json.loads(
+                        checked(
+                            client.run(("volume", "inspect", args.volume), 10), "volume inspect"
+                        )
+                    )[0]
+                    inspected_images = []
+                    for image in args.image:
+                        inspected = json.loads(
+                            checked(client.run(("image", "inspect", image), 10), "image inspect")
+                        )[0]
+                        if inspected["Id"] != image:
+                            raise BackendError("target image inspection differs from requested ID")
+                        inspected_images.append(
+                            {
+                                "image_id": inspected["Id"],
+                                "operating_system": inspected["Os"],
+                                "architecture": inspected["Architecture"],
+                                "repo_digests": sorted(inspected.get("RepoDigests") or []),
+                            }
+                        )
+                    mounts = [
+                        {
+                            "mount_type": item["Type"],
+                            "source": item.get("Name")
+                            if item["Type"] == "volume"
+                            else item["Source"],
+                            "destination": item["Destination"],
+                            "read_write": item["RW"],
+                        }
+                        for item in sorted(
+                            controller["Mounts"], key=lambda item: item["Destination"]
+                        )
+                    ]
+                    initial = {
+                        "n04_build_contexts": contexts,
+                        "broker_attestation": {
+                            "docker_executable": executable,
+                            "context_name": args.context,
+                            "daemon_id": info["ID"],
+                            "daemon_name": info["Name"],
+                            "daemon_version": version["Server"]["Version"],
+                            "daemon_api_version": version["Server"]["ApiVersion"],
+                            "daemon_os": version["Server"]["Os"],
+                            "daemon_architecture": version["Server"]["Arch"],
+                            "controller_id": identity,
+                            "controller_image_id": controller["Image"],
+                            "controller_running": controller["State"]["Running"],
+                            "controller_privileged": controller["HostConfig"]["Privileged"],
+                            "controller_mounts": mounts,
+                            "runtime_volume_name": volume["Name"],
+                            "runtime_volume_mountpoint": volume["Mountpoint"],
+                            "target_images": inspected_images,
+                            "max_wall_seconds": MAX_WALL_SECONDS,
+                        },
+                    }
+                process.stdin.write(json.dumps(initial) + "\n")
                 process.stdin.flush()
-            for line in process.stdout:
-                request = json.loads(line)
-                if set(request) != {"args", "timeout"} or not isinstance(request["args"], list):
-                    raise BackendError("malformed trusted controller request")
-                argv = tuple(request["args"])
-                if argv[:2] == ("container", "create"):
-                    if f"{OWNER_LABEL}={owner}" not in argv:
-                        raise BackendError("container request lacks invocation ownership")
-                    names.add(argv[argv.index("--name") + 1])
-                outcome = client.run(argv, request["timeout"])
-                response = {
-                    "returncode": outcome.returncode,
-                    "stdout": base64.b64encode(outcome.stdout).decode("ascii"),
-                    "stderr": base64.b64encode(outcome.stderr).decode("ascii"),
-                    "timed_out": outcome.timed_out,
-                    "truncated": outcome.truncated,
-                }
-                process.stdin.write(json.dumps(response) + "\n")
-                process.stdin.flush()
-            return process.wait()
+            expired = threading.Event()
+            timer = None
+            if args.mode == "preflight-node-n04-5s":
+
+                def stop_at_deadline() -> None:
+                    expired.set()
+                    process.kill()
+
+                assert preflight_started is not None
+                remaining = MAX_WALL_SECONDS - (monotonic() - preflight_started)
+                if remaining <= 0:
+                    raise TimeoutError("N04 preflight exceeded the 30-minute wall-clock limit")
+                timer = threading.Timer(remaining, stop_at_deadline)
+                timer.start()
+            try:
+                for line in process.stdout:
+                    request = json.loads(line)
+                    if set(request) != {"args", "timeout"} or not isinstance(request["args"], list):
+                        raise BackendError("malformed trusted controller request")
+                    argv = tuple(request["args"])
+                    if argv[:2] == ("container", "create"):
+                        if f"{OWNER_LABEL}={owner}" not in argv:
+                            raise BackendError("container request lacks invocation ownership")
+                        names.add(argv[argv.index("--name") + 1])
+                    outcome = client.run(argv, request["timeout"])
+                    response = {
+                        "returncode": outcome.returncode,
+                        "stdout": base64.b64encode(outcome.stdout).decode("ascii"),
+                        "stderr": base64.b64encode(outcome.stderr).decode("ascii"),
+                        "timed_out": outcome.timed_out,
+                        "truncated": outcome.truncated,
+                    }
+                    process.stdin.write(json.dumps(response) + "\n")
+                    process.stdin.flush()
+                returncode = process.wait()
+                if expired.is_set():
+                    raise TimeoutError("N04 preflight exceeded the 30-minute wall-clock limit")
+                return returncode
+            finally:
+                if timer is not None:
+                    timer.cancel()
     finally:
         # Covers controller interruption/crash and uncertain create responses.
         # Inspect only names created by this invocation, and verify ownership.

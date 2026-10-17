@@ -52,13 +52,20 @@ def main() -> int:
             "qualify-node-effect-v2",
             "benign-node-smoke",
             "qualify-node-n01",
+            "preflight-node-n04-5s",
         ),
     )
     args = parser.parse_args()
-    evidence_modes = {"benign-node-smoke", "qualify-node-effect-v2", "qualify-node-n01"}
+    evidence_modes = {
+        "benign-node-smoke",
+        "qualify-node-effect-v2",
+        "qualify-node-n01",
+        "preflight-node-n04-5s",
+    }
     if (args.mode in evidence_modes) != (args.evidence is not None):
         parser.error("evidence mode requires --evidence; validation modes do not export")
-    expected_images = 2 if args.mode == "qualify-node-n01" else 1
+    pair_mode = args.mode in {"qualify-node-n01", "preflight-node-n04-5s"}
+    expected_images = 2 if pair_mode else 1
     if len(args.image) != expected_images:
         parser.error(f"{args.mode} requires exactly {expected_images} immutable image ID(s)")
     if args.evidence is not None and (
@@ -66,11 +73,72 @@ def main() -> int:
     ):
         raise ValueError("evidence requires a new absolute controller destination")
     n01_initial_value = None
-    if args.mode == "qualify-node-n01":
+    if pair_mode:
         line = sys.stdin.readline(16 * 1024 * 1024)
         n01_initial_value = json.loads(line)
     client = StdioDockerClient(sys.stdin, sys.stdout)
     with redirect_stdout(sys.stderr):
+        if args.mode == "preflight-node-n04-5s":
+            from inodefence.evaluation.encoding import decode
+            from inodefence.evaluation.n04_preflight import (
+                EXPECTED_BUILD_FILES,
+                N04BrokerAttestation,
+                N04BuildContext,
+                N04BuildFile,
+                N04PreflightRole,
+                bind_targets,
+                run_n04_preflight,
+            )
+
+            value = n01_initial_value
+            if not isinstance(value, dict) or set(value) != {
+                "n04_build_contexts",
+                "broker_attestation",
+            }:
+                raise ValueError("missing N04 preflight initialization")
+            raw_contexts = value["n04_build_contexts"]
+            if not isinstance(raw_contexts, list) or len(raw_contexts) != 2:
+                raise ValueError("N04 preflight requires two build contexts")
+            contexts = []
+            for role, raw in zip(N04PreflightRole, raw_contexts, strict=True):
+                if not isinstance(raw, dict) or set(raw) != set(EXPECTED_BUILD_FILES):
+                    raise ValueError("N04 build-context initialization has unexpected files")
+                contexts.append(
+                    N04BuildContext(
+                        role,
+                        tuple(
+                            N04BuildFile(name, base64.b64decode(raw[name], validate=True))
+                            for name in EXPECTED_BUILD_FILES
+                        ),
+                    )
+                )
+            broker = decode(N04BrokerAttestation, value["broker_attestation"])
+            backend = ContainerExecutionBackend(client, args.controller, args.volume, args.owner)
+            assert args.evidence is not None
+            outcome = run_n04_preflight(
+                args.evidence,
+                lambda: bind_targets(backend, tuple(args.image)),
+                tuple(contexts),
+                broker,
+                repository=Path.cwd(),
+            )
+            verified = subprocess.run(
+                (
+                    sys.executable,
+                    "-m",
+                    "inodefence.evaluation.n04_preflight_reader",
+                    str(args.evidence),
+                    "--raw-manifest-sha256",
+                    outcome.manifest_sha256,
+                ),
+                check=False,
+                text=True,
+                capture_output=True,
+                timeout=120,
+            )
+            print(verified.stdout, end="")
+            print(verified.stderr, end="", file=sys.stderr)
+            return verified.returncode
         if args.mode == "qualify-node-n01":
             from inodefence.evaluation.n01 import (
                 EXPECTED_BUILD_FILES,

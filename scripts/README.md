@@ -170,6 +170,30 @@ review; do not rerun a failed attempt into the same destination and do not repla
 with a mutable tag. A run that reaches the automated token still requires the contract's human
 correspondence review before `N01_RELATIVE_HARDLINK_PAIR_QUALIFIED` may be recorded.
 
+## N04 five-second preflight (explicit trusted-host action)
+
+`preflight-node-n04-5s` is distinct from N01 qualification. It accepts only the frozen
+7.5.2/7.5.3 image IDs and retained affected/fixed build contexts in that order, attests a
+new unprivileged controller with exactly the source bind and `inodefence-runtime` volume,
+and enforces one 30-minute broker/controller deadline. The source must be a clean reviewed
+commit and the evidence path must not exist.
+
+```bash
+PYTHONPATH=src python3.12 -m scripts.container_host \
+  --context orbstack --controller <full-controller-id> \
+  --volume inodefence-runtime \
+  --image <frozen-7.5.2-image-id> --image <frozen-7.5.3-image-id> \
+  --build-context <retained-affected-context> \
+  --build-context <retained-fixed-context> \
+  --evidence /var/lib/inodefence/evidence/<new-n04-preflight-attempt> \
+  preflight-node-n04-5s
+```
+
+The mode runs two harness-only controls and at most eight benign target extractions at an
+exact five-second timeout, then launches the independent reader in a fresh process. It does
+not run the 4,000-execution pilot, a known-class pair or P0/P1/P2. Follow the frozen N04 Task
+Contract for the exact identities, destination and stop conditions.
+
 `PYTHONPATH=src python scripts/qualify_libarchive_entry_boundary.py --output <new-file>
 --image-id <sha256> --base-image-id <sha256>`는 별도 libarchive public write-disk reference
 target에서 `archive_write_finish_entry()`와 final writer close의 syscall 순서를 비교한다.

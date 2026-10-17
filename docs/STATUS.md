@@ -27,6 +27,12 @@ retained evidence와 automated token의 consistency를 PASS로 재확인했지�
 [B0/B1/B3 pilot proposal](research/benchmarks/n03-b0-b1-b3-pilot-task-proposal.md)은 exact candidate
 schedule과 5초/10초 mismatch를 기록하며 **PROPOSED / NOT_AUTHORIZED / NOT_RUN**이다.
 
+N04의 별도 [5초 preflight Task Contract](research/benchmarks/n04-five-second-preflight-task-contract-v1.md)는
+사용자가 직접 승인한 최대 8건의 benign readiness 범위다. exact image/build/lock/worker,
+broker containment, oracle controls와 독립 reader를 결합한 구현과 controlled synthetic 검증은
+이 브랜치에서 진행 중이며 실제 historical target preflight는 아직 **NOT_RUN**이다. 이 승인은
+4,000회 B0/B1/B3 pilot이나 native P0/P1/P2 campaign 승인으로 확장되지 않는다.
+
 ## DESIGNED / IMPLEMENTED / TESTED / EXPERIMENTALLY VALIDATED
 
 [Evidence 용어](research/design/research-contract-v1.md)는 각 수준을 독립적으로 기록한다.

@@ -74,6 +74,13 @@ def main() -> int:
         not args.evidence.is_absolute() or args.evidence.exists() or args.evidence.is_symlink()
     ):
         raise ValueError("evidence requires a new absolute controller destination")
+    if args.mode == "preflight-node-n04-5s":
+        from inodefence.evaluation.n04_preflight import ATTEMPT_CONSUMED
+
+        if ATTEMPT_CONSUMED:
+            raise RuntimeError(
+                "N04 five-second preflight v1 attempt is consumed; a new Task Contract is required"
+            )
     pair_initial_value = None
     if pair_mode:
         line = sys.stdin.readline(16 * 1024 * 1024)

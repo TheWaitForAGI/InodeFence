@@ -207,8 +207,10 @@ values; an alternate evidence or host-ledger path is rejected rather than treate
 attempt. The exact host ledger is created before Docker inspection, so it retains early admission,
 deadline and target-cleanup outcomes even when the Linux evidence root cannot be completed. The Linux
 reader status remains host-cleanup-pending. After copying the Linux evidence read-only,
-`verify_n04_host_ledger(HOST_LEDGER, LINUX_EVIDENCE_COPY)` independently rehashes both manifests and
-derives the overall status; a missing terminal summary or failed fallback cleanup is
+`verify_n04_host_ledger(HOST_LEDGER, LINUX_EVIDENCE_COPY,
+expected_manifest_sha256=TRUSTED_HOST_MANIFEST_SHA256)` independently rehashes both manifests,
+validates the frozen invocation fields and derives the overall status; a missing terminal summary or
+failed fallback cleanup is
 `PREFLIGHT_INCONCLUSIVE`, never `PREFLIGHT_PASS`.
 
 `PYTHONPATH=src python scripts/qualify_libarchive_entry_boundary.py --output <new-file>

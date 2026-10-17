@@ -55,6 +55,7 @@ from inodefence.targets.node_tar import NodeTarTarget
 
 EXPERIMENT_ID = "n04-node-tar-five-second-preflight-v1"
 ATTEMPT_ID = "n04-five-second-preflight-20261016T130000Z"
+ATTEMPT_CONSUMED = True
 EVIDENCE_ROOT = Path("/var/lib/inodefence/evidence/n04-five-second-preflight-20261016T130000Z")
 CONTRACT_PATH = "docs/research/benchmarks/n04-five-second-preflight-task-contract-v1.md"
 TIMEOUT_SECONDS = 5.0
@@ -788,6 +789,10 @@ def run_n04_preflight(
     create_control: Callable[[bool], N04OracleControlRecord] = _oracle_control,
 ) -> N04PreflightOutcome:
     """Run the one authorized preflight and publish a terminal raw manifest."""
+    if ATTEMPT_CONSUMED:
+        raise RuntimeError(
+            "N04 five-second preflight v1 attempt is consumed; a new Task Contract is required"
+        )
     if (
         evidence_root != EVIDENCE_ROOT
         or evidence_root.is_relative_to(repository)

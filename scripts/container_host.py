@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
 from time import monotonic
+from typing import Protocol
 from uuid import uuid4
 
 from inodefence.execution.container import OWNER_LABEL, checked, remove_owned
@@ -223,13 +224,23 @@ class N04HostLedger:
         )
 
 
-def verify_n04_host_ledger(root: Path, linux_evidence: Path) -> dict:
+def verify_n04_host_ledger(
+    root: Path, linux_evidence: Path, *, expected_manifest_sha256: str
+) -> dict:
     """Verify the host finalizer and its binding to copied Linux evidence."""
-    from inodefence.evaluation.n04_preflight import MAX_WALL_SECONDS
+    from inodefence.evaluation.n04_preflight import (
+        ATTEMPT_ID,
+        EVIDENCE_ROOT,
+        FROZEN_TARGETS,
+        HOST_LEDGER_ROOT,
+        HOST_PACKAGE_TARBALLS,
+        MAX_WALL_SECONDS,
+        RUNTIME_VOLUME_NAME,
+    )
 
     started, started_sha256 = _read_canonical_json(root / "started.json")
     terminal, terminal_sha256 = _read_canonical_json(root / "terminal.json")
-    manifest, _ = _read_canonical_json(root / "manifest.json")
+    manifest, manifest_sha256 = _read_canonical_json(root / "manifest.json")
     started_fields = {
         "attempt_id",
         "controller",
@@ -258,15 +269,29 @@ def verify_n04_host_ledger(root: Path, linux_evidence: Path) -> dict:
         "target_names",
     }
     if (
-        set(started) != started_fields
+        re.fullmatch(r"[0-9a-f]{64}", expected_manifest_sha256) is None
+        or manifest_sha256 != expected_manifest_sha256
+        or set(started) != started_fields
         or set(terminal) != terminal_fields
         or set(manifest) != {"attempt_id", "files", "format", "overall_status"}
         or manifest["format"] != "inodefence-n04-host-ledger-v1"
-        or manifest["attempt_id"] != "n04-five-second-preflight-20261016T130000Z"
+        or manifest["attempt_id"] != ATTEMPT_ID
         or manifest["files"] != {"started.json": started_sha256, "terminal.json": terminal_sha256}
         or terminal.get("attempt_id") != manifest["attempt_id"]
         or started.get("attempt_id") != manifest["attempt_id"]
         or terminal.get("overall_status") != manifest["overall_status"]
+        or started.get("evidence_root") != str(EVIDENCE_ROOT)
+        or started.get("host_ledger_root") != str(HOST_LEDGER_ROOT)
+        or started.get("images") != [item.image_id for item in FROZEN_TARGETS]
+        or started.get("mode") != "preflight-node-n04-5s"
+        or started.get("package_tarballs") != [str(path) for path in HOST_PACKAGE_TARBALLS]
+        or started.get("runtime_volume") != RUNTIME_VOLUME_NAME
+        or not isinstance(started.get("controller"), str)
+        or re.fullmatch(r"[0-9a-f]{64}", started["controller"]) is None
+        or terminal.get("controller_id") != started["controller"]
+        or terminal.get("started_at") != started.get("started_at")
+        or not isinstance(terminal.get("owner"), str)
+        or re.fullmatch(r"[0-9a-f]{32}", terminal["owner"]) is None
         or terminal.get("cleanup_status") not in {"not_needed", "complete", "failed"}
         or not isinstance(terminal.get("cleanup_errors"), list)
         or not all(isinstance(item, str) for item in terminal["cleanup_errors"])
@@ -288,6 +313,15 @@ def verify_n04_host_ledger(root: Path, linux_evidence: Path) -> dict:
         or terminal["target_names"] != sorted(set(terminal["target_names"]))
     ):
         raise ValueError("N04 host ledger manifest binding is invalid")
+    started_at = datetime.fromisoformat(started["started_at"])
+    ended_at = datetime.fromisoformat(terminal["ended_at"])
+    if (
+        started_at.utcoffset() is None
+        or ended_at.utcoffset() is None
+        or ended_at < started_at
+        or abs((ended_at - started_at).total_seconds() - terminal["elapsed_seconds"]) > 5
+    ):
+        raise ValueError("N04 host ledger timestamps are inconsistent")
     if terminal.get("linux_terminal") is None:
         if manifest["overall_status"] != "PREFLIGHT_INCONCLUSIVE":
             raise ValueError("missing Linux terminal cannot produce an overall verdict")
@@ -330,6 +364,46 @@ class _DeadlineDockerClient:
 
     def run(self, args: tuple[str, ...], timeout: float) -> CommandResult:
         return self.client.run(args, self.bound(timeout))
+
+
+class _HostInspectionClient(Protocol):
+    def run_host_inspection(self, args: tuple[str, ...], timeout: float) -> CommandResult: ...
+
+
+def _inspect_n04_host_metadata(
+    client: _HostInspectionClient, volume: str, bound: Callable[[float], float]
+) -> tuple[dict, tuple[str, ...]]:
+    info = json.loads(
+        checked(
+            client.run_host_inspection(("info", "--format", "{{json .}}"), bound(10)),
+            "daemon info",
+        )
+    )
+    consumers = tuple(
+        sorted(
+            item
+            for item in checked(
+                client.run_host_inspection(
+                    (
+                        "container",
+                        "ls",
+                        "--all",
+                        "--no-trunc",
+                        "--filter",
+                        f"volume={volume}",
+                        "--format",
+                        "{{.ID}}",
+                    ),
+                    bound(10),
+                ),
+                "runtime volume consumer inspection",
+            )
+            .decode("utf-8")
+            .splitlines()
+            if item
+        )
+    )
+    return info, consumers
 
 
 def main() -> int:
@@ -410,6 +484,12 @@ def main() -> int:
     if pair_mode and len(args.build_context) != 2:
         parser.error("historical pair mode requires affected then fixed build contexts")
     if args.mode == "preflight-node-n04-5s":
+        from inodefence.evaluation.n04_preflight import ATTEMPT_CONSUMED
+
+        if ATTEMPT_CONSUMED:
+            raise BackendError(
+                "N04 five-second preflight v1 attempt is consumed; a new Task Contract is required"
+            )
         if len(args.package_tarball) != 2:
             parser.error("N04 preflight requires affected then fixed package tarballs")
         if args.host_ledger is None:
@@ -509,13 +589,8 @@ def main() -> int:
                     initial = {"n01_build_contexts": contexts}
                 else:
                     assert _ACTIVE_N04_LEDGER is not None
-                    info = json.loads(
-                        checked(
-                            client.run_host_inspection(
-                                ("info", "--format", "{{json .}}"), bounded_timeout(10)
-                            ),
-                            "daemon info",
-                        )
+                    info, volume_consumers = _inspect_n04_host_metadata(
+                        client, args.volume, bounded_timeout
                     )
                     version = json.loads(
                         checked(
@@ -529,30 +604,6 @@ def main() -> int:
                             "volume inspect",
                         )
                     )[0]
-                    volume_consumers = tuple(
-                        sorted(
-                            item
-                            for item in checked(
-                                client.run_host_inspection(
-                                    (
-                                        "container",
-                                        "ls",
-                                        "--all",
-                                        "--no-trunc",
-                                        "--filter",
-                                        f"volume={args.volume}",
-                                        "--format",
-                                        "{{.ID}}",
-                                    ),
-                                    bounded_timeout(10),
-                                ),
-                                "runtime volume consumer inspection",
-                            )
-                            .decode("utf-8")
-                            .splitlines()
-                            if item
-                        )
-                    )
                     inspected_images = []
                     for image in args.image:
                         inspected = json.loads(

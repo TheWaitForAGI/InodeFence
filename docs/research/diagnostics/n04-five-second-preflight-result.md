@@ -29,7 +29,7 @@ be used to infer containment admission or a readiness PASS.
 
 ## Retained evidence and reconstruction
 
-The immutable host evidence is:
+The retained read-only host evidence, bound by the digests below, is:
 
 `/Users/choijiwng/Projects/InodeFence-n04-5s-preflight-20261016T130000Z-host-ledger`
 
@@ -41,7 +41,10 @@ The directory is mode `0500`; its three files are mode `0400`.
 | `terminal.json` | `39a3e8e2e7e85be9bcc756b8f5c5dfcb690f7dd3385ff8c425c21907f5dc18fc` |
 | `manifest.json` | `a59901f3938c105717f437faf05853f3f5698b65e6e57b955fd2a34d713136b0` |
 
-`verify_n04_host_ledger(...)` successfully reconstructed the bound host records and returned:
+`verify_n04_host_ledger(...,
+expected_manifest_sha256="a59901f3938c105717f437faf05853f3f5698b65e6e57b955fd2a34d713136b0")`
+successfully reconstructed the frozen invocation fields, cross-record bindings and internal file
+digests, and returned:
 
 ```text
 overall_status=PREFLIGHT_INCONCLUSIVE
@@ -67,8 +70,11 @@ then confirmed absent. The host ledger was retained.
 The host broker attempted `docker info --format {{json .}}` through `DockerCLI.run()`. The generic
 transport allowlist intentionally permits target lifecycle operations but not daemon-wide `info` or
 container-list requests. It therefore rejected the first broker metadata request before initial
-JSON reached the controller. The controller's JSON decode traceback is a consequence of the broker
-closing that stream, not a target result.
+JSON reached the controller. A controller JSON decode traceback was observed on the interactive
+console, but controller stderr was not captured in the checksummed ledger. Its exact bytes are
+therefore **NOT_VERIFIABLE** from retained raw evidence. The retained host exception is sufficient
+to locate the fail-closed broker phase, but the unretained traceback is not used as a scientific
+predicate. A future version must digest-bind bounded controller stderr and its truncation state.
 
 This is an orchestration defect, not evidence that either node-tar target passes or fails a
 five-second readiness bound. The correct scientific decision is therefore:
@@ -79,7 +85,7 @@ five-second readiness bound. The correct scientific decision is therefore:
 - central feedback-effectiveness hypothesis: **NOT_EVALUATED** by this attempt.
 
 The post-attempt implementation separates two exact host-only, read-only inspections from the
-controller-visible stdio command allowlist and adds a regression test. That correction was not used
-to produce experimental evidence. Because the no-overwrite host ledger consumed the sole authorized
-attempt, another historical-target run requires a new explicit Task Contract, attempt ID and evidence
-destinations. It must not overwrite or reinterpret this result.
+controller-visible stdio command allowlist and tests the actual host caller. That correction was not
+used to produce experimental evidence. The v1 host mode is now source-gated as consumed before ledger
+creation or Docker inspection. Another historical-target run requires a new explicit Task Contract,
+attempt ID, mode and evidence destinations. It must not overwrite or reinterpret this result.

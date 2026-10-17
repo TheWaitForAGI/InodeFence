@@ -126,6 +126,22 @@ class ControlledTarget:
         )
 
 
+def test_consumed_runner_rejects_before_evidence_creation(tmp_path, monkeypatch):
+    evidence = tmp_path / "evidence"
+    monkeypatch.setattr(preflight, "EVIDENCE_ROOT", evidence)
+
+    with pytest.raises(RuntimeError, match="attempt is consumed"):
+        run_n04_preflight(
+            evidence,
+            (),  # type: ignore[arg-type]
+            (),  # type: ignore[arg-type]
+            (),  # type: ignore[arg-type]
+            None,  # type: ignore[arg-type]
+            repository=ROOT,
+        )
+    assert not evidence.exists()
+
+
 def _context(tmp_path: Path, role: N04PreflightRole, image_id: str) -> N04BuildContext:
     frozen = preflight.frozen_target(role)
     directory = tmp_path / f"context-{role.value}"
@@ -155,6 +171,7 @@ def _context(tmp_path: Path, role: N04PreflightRole, image_id: str) -> N04BuildC
 
 
 def _inputs(tmp_path: Path, monkeypatch, *, failed_call: int | None = None):
+    monkeypatch.setattr(preflight, "ATTEMPT_CONSUMED", False)
     images = ("sha256:" + "1" * 64, "sha256:" + "2" * 64)
     package_contents = (b"controlled tar 7.5.2\n", b"controlled tar 7.5.3\n")
     contexts = (

@@ -3,6 +3,8 @@
 import argparse
 import base64
 import json
+import math
+import signal
 import subprocess
 import sys
 from contextlib import redirect_stdout
@@ -52,25 +54,155 @@ def main() -> int:
             "qualify-node-effect-v2",
             "benign-node-smoke",
             "qualify-node-n01",
+            "preflight-node-n04-5s",
         ),
     )
     args = parser.parse_args()
-    evidence_modes = {"benign-node-smoke", "qualify-node-effect-v2", "qualify-node-n01"}
+    evidence_modes = {
+        "benign-node-smoke",
+        "qualify-node-effect-v2",
+        "qualify-node-n01",
+        "preflight-node-n04-5s",
+    }
     if (args.mode in evidence_modes) != (args.evidence is not None):
         parser.error("evidence mode requires --evidence; validation modes do not export")
-    expected_images = 2 if args.mode == "qualify-node-n01" else 1
+    pair_mode = args.mode in {"qualify-node-n01", "preflight-node-n04-5s"}
+    expected_images = 2 if pair_mode else 1
     if len(args.image) != expected_images:
         parser.error(f"{args.mode} requires exactly {expected_images} immutable image ID(s)")
     if args.evidence is not None and (
         not args.evidence.is_absolute() or args.evidence.exists() or args.evidence.is_symlink()
     ):
         raise ValueError("evidence requires a new absolute controller destination")
-    n01_initial_value = None
-    if args.mode == "qualify-node-n01":
+    if args.mode == "preflight-node-n04-5s":
+        from inodefence.evaluation.n04_preflight import ATTEMPT_CONSUMED
+
+        if ATTEMPT_CONSUMED:
+            raise RuntimeError(
+                "N04 five-second preflight v1 attempt is consumed; a new Task Contract is required"
+            )
+    pair_initial_value = None
+    if pair_mode:
         line = sys.stdin.readline(16 * 1024 * 1024)
-        n01_initial_value = json.loads(line)
+        pair_initial_value = json.loads(line)
     client = StdioDockerClient(sys.stdin, sys.stdout)
     with redirect_stdout(sys.stderr):
+        if args.mode == "preflight-node-n04-5s":
+            from inodefence.evaluation.encoding import decode
+            from inodefence.evaluation.n04_preflight import (
+                EVIDENCE_ROOT,
+                EXPECTED_BUILD_FILES,
+                N04BrokerAttestation,
+                N04BuildContext,
+                N04BuildFile,
+                N04PackageTarball,
+                N04PreflightRole,
+                bind_targets,
+                run_n04_preflight,
+            )
+
+            value = pair_initial_value
+            if not isinstance(value, dict) or set(value) != {
+                "n04_build_contexts",
+                "n04_package_tarballs",
+                "controller_deadline_seconds",
+                "broker_attestation",
+            }:
+                raise ValueError("missing N04 preflight initialization")
+            raw_contexts = value["n04_build_contexts"]
+            if not isinstance(raw_contexts, list) or len(raw_contexts) != 2:
+                raise ValueError("N04 preflight requires two build contexts")
+            contexts = []
+            for role, raw in zip(N04PreflightRole, raw_contexts, strict=True):
+                if not isinstance(raw, dict) or set(raw) != set(EXPECTED_BUILD_FILES):
+                    raise ValueError("N04 build-context initialization has unexpected files")
+                contexts.append(
+                    N04BuildContext(
+                        role,
+                        tuple(
+                            N04BuildFile(name, base64.b64decode(raw[name], validate=True))
+                            for name in EXPECTED_BUILD_FILES
+                        ),
+                    )
+                )
+            raw_broker = value["broker_attestation"]
+            raw_packages = value["n04_package_tarballs"]
+            if not isinstance(raw_packages, list) or len(raw_packages) != 2:
+                raise ValueError("N04 preflight requires two package tarballs")
+            packages = (
+                N04PackageTarball(
+                    N04PreflightRole.AFFECTED,
+                    base64.b64decode(raw_packages[0], validate=True),
+                ),
+                N04PackageTarball(
+                    N04PreflightRole.FIXED,
+                    base64.b64decode(raw_packages[1], validate=True),
+                ),
+            )
+            controller_deadline_seconds = value["controller_deadline_seconds"]
+            if (
+                not isinstance(controller_deadline_seconds, (int, float))
+                or isinstance(controller_deadline_seconds, bool)
+                or not math.isfinite(controller_deadline_seconds)
+                or not 1 <= controller_deadline_seconds < 30 * 60
+            ):
+                raise ValueError("invalid N04 cooperative controller deadline")
+            assert args.evidence is not None
+            if args.evidence != EVIDENCE_ROOT:
+                raise ValueError("N04 preflight requires its one frozen evidence destination")
+
+            def broker():
+                return decode(N04BrokerAttestation, raw_broker)
+
+            def targets():
+                backend = ContainerExecutionBackend(
+                    client, args.controller, args.volume, args.owner
+                )
+                return bind_targets(backend, tuple(args.image))
+
+            def deadline_expired(_signum, _frame):
+                raise TimeoutError("N04 controller cooperative deadline expired")
+
+            previous_handler = signal.signal(signal.SIGALRM, deadline_expired)
+            signal.setitimer(signal.ITIMER_REAL, controller_deadline_seconds)
+            try:
+                outcome = run_n04_preflight(
+                    args.evidence,
+                    targets,
+                    tuple(contexts),
+                    packages,
+                    broker,
+                    repository=Path.cwd(),
+                )
+            finally:
+                signal.setitimer(signal.ITIMER_REAL, 0)
+                signal.signal(signal.SIGALRM, previous_handler)
+            verified = subprocess.run(
+                (
+                    sys.executable,
+                    "-m",
+                    "inodefence.evaluation.n04_preflight_reader",
+                    str(args.evidence),
+                    "--raw-manifest-sha256",
+                    outcome.manifest_sha256,
+                ),
+                check=False,
+                text=True,
+                capture_output=True,
+                timeout=120,
+            )
+            print(verified.stdout, end="")
+            print(verified.stderr, end="", file=sys.stderr)
+            terminal = json.loads(verified.stdout)
+            if not isinstance(terminal, dict):
+                raise ValueError("N04 reader did not emit a terminal object")
+            terminal.update(
+                raw_manifest_sha256=outcome.manifest_sha256,
+                reader_returncode=verified.returncode,
+            )
+            client.writer.write(json.dumps({"terminal": terminal}, sort_keys=True) + "\n")
+            client.writer.flush()
+            return verified.returncode
         if args.mode == "qualify-node-n01":
             from inodefence.evaluation.n01 import (
                 EXPECTED_BUILD_FILES,
@@ -81,7 +213,7 @@ def main() -> int:
             )
             from inodefence.targets.node_tar import NodeTarTarget
 
-            value = n01_initial_value
+            value = pair_initial_value
             if not isinstance(value, dict) or set(value) != {"n01_build_contexts"}:
                 raise ValueError("missing N01 build-context initialization")
             raw_contexts = value["n01_build_contexts"]

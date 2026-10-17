@@ -170,6 +170,49 @@ review; do not rerun a failed attempt into the same destination and do not repla
 with a mutable tag. A run that reaches the automated token still requires the contract's human
 correspondence review before `N01_RELATIVE_HARDLINK_PAIR_QUALIFIED` may be recorded.
 
+## N04 five-second preflight (explicit trusted-host action)
+
+The v1 single attempt is **consumed** and its result is `PREFLIGHT_INCONCLUSIVE`; the command below
+documents the executed invocation and must not be rerun. See the
+[result record](../docs/research/diagnostics/n04-five-second-preflight-result.md). A new execution
+requires a new explicit Task Contract, attempt ID and evidence destinations.
+
+`preflight-node-n04-5s` is distinct from N01 qualification. It accepts only the frozen
+7.5.2/7.5.3 image IDs and retained affected/fixed build contexts in that order, attests a
+new unprivileged controller with exactly the source bind and the dedicated
+`inodefence-n04-preflight-runtime-20261016T130000Z` volume,
+and enforces one 30-minute broker/controller deadline. The source must be a clean reviewed
+commit and the evidence path must not exist.
+
+```bash
+PYTHONPATH=src python3.12 -m scripts.container_host \
+  --context orbstack --controller <full-controller-id> \
+  --volume inodefence-n04-preflight-runtime-20261016T130000Z \
+  --image <frozen-7.5.2-image-id> --image <frozen-7.5.3-image-id> \
+  --build-context /Users/choijiwng/Projects/InodeFence-n02-evidence-20261015T122200Z/build/affected \
+  --build-context /Users/choijiwng/Projects/InodeFence-n02-evidence-20261015T122200Z/build/fixed \
+  --package-tarball /Users/choijiwng/Projects/InodeFence-n04-package-inputs-20261017/tar-7.5.2.tgz \
+  --package-tarball /Users/choijiwng/Projects/InodeFence-n04-package-inputs-20261017/tar-7.5.3.tgz \
+  --evidence /var/lib/inodefence/evidence/n04-five-second-preflight-20261016T130000Z \
+  --host-ledger /Users/choijiwng/Projects/InodeFence-n04-5s-preflight-20261016T130000Z-host-ledger \
+  preflight-node-n04-5s
+```
+
+The mode runs two harness-only controls and at most eight benign target extractions at an
+exact five-second timeout, then launches the independent reader in a fresh process. It does
+not run the 4,000-execution pilot, a known-class pair or P0/P1/P2. Follow the frozen N04 Task
+Contract for the exact identities, single destination and stop conditions. The two official
+npm tarball bytes are retained in the evidence root and must match the predeclared SHA-256
+values; an alternate evidence or host-ledger path is rejected rather than treated as another
+attempt. The exact host ledger is created before Docker inspection, so it retains early admission,
+deadline and target-cleanup outcomes even when the Linux evidence root cannot be completed. The Linux
+reader status remains host-cleanup-pending. After copying the Linux evidence read-only,
+`verify_n04_host_ledger(HOST_LEDGER, LINUX_EVIDENCE_COPY,
+expected_manifest_sha256=TRUSTED_HOST_MANIFEST_SHA256)` independently rehashes both manifests,
+validates the frozen invocation fields and derives the overall status; a missing terminal summary or
+failed fallback cleanup is
+`PREFLIGHT_INCONCLUSIVE`, never `PREFLIGHT_PASS`.
+
 `PYTHONPATH=src python scripts/qualify_libarchive_entry_boundary.py --output <new-file>
 --image-id <sha256> --base-image-id <sha256>`는 별도 libarchive public write-disk reference
 target에서 `archive_write_finish_entry()`와 final writer close의 syscall 순서를 비교한다.

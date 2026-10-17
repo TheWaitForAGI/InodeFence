@@ -23,6 +23,7 @@ from inodefence.execution.docker_client import (
     DockerCLI,
     StdioDockerClient,
     validate_command,
+    validate_host_inspection_command,
 )
 
 IMAGE = "sha256:" + "a" * 64
@@ -554,6 +555,31 @@ def test_cli_deadline_still_applies_after_pipes_close(tmp_path):
 def test_broker_rejects_invalid_command(args, timeout):
     with pytest.raises(BackendError):
         validate_command(args, timeout)
+
+
+def test_host_inspection_allowlist_is_separate_and_exact():
+    volume_consumers = (
+        "container",
+        "ls",
+        "--all",
+        "--no-trunc",
+        "--filter",
+        "volume=inodefence-n04-preflight-runtime-20261016T130000Z",
+        "--format",
+        "{{.ID}}",
+    )
+    validate_host_inspection_command(("info", "--format", "{{json .}}"), 10)
+    validate_host_inspection_command(volume_consumers, 10)
+
+    for rejected in (
+        ("info",),
+        ("container", "ls", "--all"),
+        (*volume_consumers[:5], "volume=../../host", *volume_consumers[6:]),
+    ):
+        with pytest.raises(BackendError, match="host-only"):
+            validate_host_inspection_command(rejected, 10)
+        with pytest.raises(BackendError, match="trusted Docker"):
+            validate_command(rejected, 10)
 
 
 def test_start_deadline_before_launch_destroys_context_before_return(fake_backend, sandbox):

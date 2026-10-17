@@ -527,6 +527,30 @@ def main() -> int:
                             "volume inspect",
                         )
                     )[0]
+                    volume_consumers = tuple(
+                        sorted(
+                            item
+                            for item in checked(
+                                client.run(
+                                    (
+                                        "container",
+                                        "ls",
+                                        "--all",
+                                        "--no-trunc",
+                                        "--filter",
+                                        f"volume={args.volume}",
+                                        "--format",
+                                        "{{.ID}}",
+                                    ),
+                                    bounded_timeout(10),
+                                ),
+                                "runtime volume consumer inspection",
+                            )
+                            .decode("utf-8")
+                            .splitlines()
+                            if item
+                        )
+                    )
                     inspected_images = []
                     for image in args.image:
                         inspected = json.loads(
@@ -631,6 +655,7 @@ def main() -> int:
                             ),
                             "runtime_volume_options": sorted((volume.get("Options") or {}).items()),
                             "runtime_volume_mountpoint": volume["Mountpoint"],
+                            "runtime_volume_container_ids": volume_consumers,
                             "target_images": inspected_images,
                             "max_wall_seconds": MAX_WALL_SECONDS,
                         },

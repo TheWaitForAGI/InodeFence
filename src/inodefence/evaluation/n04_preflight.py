@@ -293,6 +293,7 @@ class N04BrokerAttestation:
     runtime_volume_label: str
     runtime_volume_options: tuple[tuple[str, str], ...]
     runtime_volume_mountpoint: str
+    runtime_volume_container_ids: tuple[str, ...]
     target_images: tuple[N04BrokerImage, N04BrokerImage]
     max_wall_seconds: int
 
@@ -362,6 +363,7 @@ class N04BrokerAttestation:
             or self.runtime_volume_scope != "local"
             or self.runtime_volume_label != "v1"
             or self.runtime_volume_options
+            or self.runtime_volume_container_ids != (self.controller_id,)
             or self.max_wall_seconds != MAX_WALL_SECONDS
             or tuple(item.image_id for item in self.target_images)
             != tuple(item.image_id for item in FROZEN_TARGETS)
@@ -386,6 +388,8 @@ class N04BrokerAttestation:
             or self.controller_security_opt != tuple(sorted(set(self.controller_security_opt)))
             or self.controller_tmpfs != tuple(sorted(set(self.controller_tmpfs)))
             or self.runtime_volume_options != tuple(sorted(set(self.runtime_volume_options)))
+            or self.runtime_volume_container_ids
+            != tuple(sorted(set(self.runtime_volume_container_ids)))
         ):
             raise ValueError("controller containment facts must be canonical")
         if self.controller_mounts != tuple(

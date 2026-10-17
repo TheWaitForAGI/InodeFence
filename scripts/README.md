@@ -174,7 +174,8 @@ correspondence review before `N01_RELATIVE_HARDLINK_PAIR_QUALIFIED` may be recor
 
 `preflight-node-n04-5s` is distinct from N01 qualification. It accepts only the frozen
 7.5.2/7.5.3 image IDs and retained affected/fixed build contexts in that order, attests a
-new unprivileged controller with exactly the source bind and `inodefence-runtime` volume,
+new unprivileged controller with exactly the source bind and the dedicated
+`inodefence-n04-preflight-runtime-20261016T130000Z` volume,
 and enforces one 30-minute broker/controller deadline. The source must be a clean reviewed
 commit and the evidence path must not exist.
 

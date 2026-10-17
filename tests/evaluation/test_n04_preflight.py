@@ -232,6 +232,7 @@ def _inputs(tmp_path: Path, monkeypatch, *, failed_call: int | None = None):
         "v1",
         (),
         f"/var/lib/docker/volumes/{preflight.RUNTIME_VOLUME_NAME}/_data",
+        ("a" * 64,),
         (
             N04BrokerImage(images[0], "linux", "arm64", ()),
             N04BrokerImage(images[1], "linux", "arm64", ()),
@@ -549,6 +550,7 @@ def test_broker_attestation_rejects_docker_socket(tmp_path, monkeypatch):
         ("runtime_volume_scope", "global"),
         ("runtime_volume_label", "unexpected"),
         ("runtime_volume_options", (("unexpected", "1"),)),
+        ("runtime_volume_container_ids", ("b" * 64,)),
     ),
 )
 def test_broker_attestation_rejects_weakened_controller(tmp_path, monkeypatch, field, value):

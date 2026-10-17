@@ -100,7 +100,9 @@ controller return code, invocation-owned target names and cleanup outcome.
 
 The runtime volume must carry `org.inodefence.n04-preflight-volume=v1`, use the local driver and
 scope with no options, and be no more than 15 minutes old at broker start. No retained controller may
-co-mount it. The older shared `inodefence-runtime` volume is not an authorized N04 input.
+co-mount it. The broker records the complete container-consumer list at admission and requires it to
+contain only the selected controller's full immutable ID. The older shared `inodefence-runtime` volume
+is not an authorized N04 input.
 
 The broker attestation records the Docker executable, context, daemon ID/version/API,
 controller full ID/image/mounts/privilege state, volume identity and both inspected images.

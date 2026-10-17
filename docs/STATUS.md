@@ -31,10 +31,13 @@ PASS를 재구성했다. 이 결과도 machine evidence이며 human qualificatio
 schedule과 5초/10초 mismatch를 기록하며 **PROPOSED / NOT_AUTHORIZED / NOT_RUN**이다.
 
 N04의 별도 [5초 preflight Task Contract](research/benchmarks/n04-five-second-preflight-task-contract-v1.md)는
-사용자가 직접 승인한 최대 8건의 benign readiness 범위다. exact image/build/lock/worker,
-broker containment, oracle controls와 독립 reader를 결합한 구현과 controlled synthetic 검증은
-이 브랜치에서 진행 중이며 실제 historical target preflight는 아직 **NOT_RUN**이다. 이 승인은
-4,000회 B0/B1/B3 pilot이나 native P0/P1/P2 campaign 승인으로 확장되지 않는다.
+사용자가 직접 승인한 최대 8건의 benign readiness 범위였다. 2026-10-18 KST 단일 attempt는
+target 실행 전 host-only Docker metadata 요청이 transport allowlist에서 거부되어
+**PREFLIGHT_INCONCLUSIVE / ATTEMPT CONSUMED**로 종료됐다. target extraction과 oracle control은
+각각 0건이며 5초 readiness는 **NOT_EVALUATED**이다. 원본 host ledger와 판정은
+[N04 preflight result](research/diagnostics/n04-five-second-preflight-result.md)에 고정했다.
+후속 transport 수정은 구현·synthetic 검증 대상일 뿐 재실행 승인이 아니다. 4,000회 B0/B1/B3
+pilot과 native P0/P1/P2 campaign은 계속 **NOT_AUTHORIZED / NOT_RUN**이다.
 
 ## DESIGNED / IMPLEMENTED / TESTED / EXPERIMENTALLY VALIDATED
 

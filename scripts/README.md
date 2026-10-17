@@ -172,6 +172,11 @@ correspondence review before `N01_RELATIVE_HARDLINK_PAIR_QUALIFIED` may be recor
 
 ## N04 five-second preflight (explicit trusted-host action)
 
+The v1 single attempt is **consumed** and its result is `PREFLIGHT_INCONCLUSIVE`; the command below
+documents the executed invocation and must not be rerun. See the
+[result record](../docs/research/diagnostics/n04-five-second-preflight-result.md). A new execution
+requires a new explicit Task Contract, attempt ID and evidence destinations.
+
 `preflight-node-n04-5s` is distinct from N01 qualification. It accepts only the frozen
 7.5.2/7.5.3 image IDs and retained affected/fixed build contexts in that order, attests a
 new unprivileged controller with exactly the source bind and the dedicated

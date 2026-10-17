@@ -4,6 +4,7 @@ import base64
 import json
 import math
 import os
+import re
 import selectors
 import signal
 import subprocess
@@ -56,6 +57,27 @@ def validate_command(args: tuple[str, ...], timeout: float) -> None:
         raise BackendError("invalid trusted Docker command request")
 
 
+def validate_host_inspection_command(args: tuple[str, ...], timeout: float) -> None:
+    """Allow only N04 broker metadata reads that never cross the stdio channel."""
+    valid_volume_consumers = (
+        isinstance(args, tuple)
+        and len(args) == 8
+        and args[:5] == ("container", "ls", "--all", "--no-trunc", "--filter")
+        and isinstance(args[5], str)
+        and re.fullmatch(r"volume=[A-Za-z0-9][A-Za-z0-9_.-]*", args[5]) is not None
+        and args[6:] == ("--format", "{{.ID}}")
+    )
+    if (
+        not isinstance(args, tuple)
+        or not all(isinstance(arg, str) and arg and "\0" not in arg for arg in args)
+        or not (args == ("info", "--format", "{{json .}}") or valid_volume_consumers)
+        or type(timeout) not in (int, float)
+        or not math.isfinite(timeout)
+        or not 0 < timeout <= 120
+    ):
+        raise BackendError("invalid host-only Docker inspection request")
+
+
 @dataclass(frozen=True, slots=True)
 class DockerCLI:
     """Explicit executable/context. Controller credentials never reach the target.
@@ -70,6 +92,14 @@ class DockerCLI:
 
     def run(self, args: tuple[str, ...], timeout: float) -> CommandResult:
         validate_command(args, timeout)
+        return self._run_validated(args, timeout)
+
+    def run_host_inspection(self, args: tuple[str, ...], timeout: float) -> CommandResult:
+        """Run an exact host metadata inspection unavailable to controllers."""
+        validate_host_inspection_command(args, timeout)
+        return self._run_validated(args, timeout)
+
+    def _run_validated(self, args: tuple[str, ...], timeout: float) -> CommandResult:
         buffers = [bytearray(), bytearray()]
         truncated = False
         timed_out = False

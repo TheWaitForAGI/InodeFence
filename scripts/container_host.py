@@ -511,7 +511,9 @@ def main() -> int:
                     assert _ACTIVE_N04_LEDGER is not None
                     info = json.loads(
                         checked(
-                            client.run(("info", "--format", "{{json .}}"), bounded_timeout(10)),
+                            client.run_host_inspection(
+                                ("info", "--format", "{{json .}}"), bounded_timeout(10)
+                            ),
                             "daemon info",
                         )
                     )
@@ -531,7 +533,7 @@ def main() -> int:
                         sorted(
                             item
                             for item in checked(
-                                client.run(
+                                client.run_host_inspection(
                                     (
                                         "container",
                                         "ls",

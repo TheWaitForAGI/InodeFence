@@ -1,8 +1,15 @@
 # N04 node-tar five-second preflight Task Contract v1
 
-Status: **AUTHORIZED BY DIRECT USER TASK CONTRACT / IMPLEMENTATION PENDING / NOT_RUN**.
+Status: **AUTHORIZED BY DIRECT USER TASK CONTRACT / EXECUTED ONCE / INCONCLUSIVE /
+ATTEMPT CONSUMED**.
 Authorization date: **2026-10-16**. This contract is narrower than the proposed B0/B1/B3
 pilot and does not amend the frozen N01 qualification contract.
+
+The single attempt ran on 2026-10-18 KST and stopped before broker admission because an exact
+host-only Docker metadata request was rejected by the transport allowlist. There were zero target
+extractions. The retained result is documented in
+[`n04-five-second-preflight-result.md`](../diagnostics/n04-five-second-preflight-result.md); this
+contract does not authorize a retry.
 
 ## Objective and Layer
 

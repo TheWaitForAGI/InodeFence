@@ -7,6 +7,7 @@ Audit date: **2026-10-16**. Source revision:
 RETAINED RAW EVIDENCE ACCESS: PASS
 CHECKSUM / INTEGRITY RECONSTRUCTION: PASS
 EXACT-INPUT AFFECTED/FIXED CORRESPONDENCE: PASS (MACHINE)
+TARGET PACKAGE TARBALL BYTE REHASH: NOT_VERIFIABLE (BYTES NOT RETAINED)
 FROZEN HUMAN QUALIFICATION: PENDING / NOT ISSUED
 B0/B1/B3 REDISCOVERY OR EFFECTIVENESS: NOT_RUN / NOT_EVALUATED
 ```
@@ -28,9 +29,25 @@ nonsymlink, read-only directory containing 43 files (452 KiB). No symlinks were 
 | retained final `manifest.json` | `0665f739f5aa37ab13953c043f321edb409e821ecb65c303d40db93f6c58bf59` | PASS |
 
 The raw manifest binds clean source `e987c855eee522008443002ee7da5bb6919d64f9`, Linux
-aarch64, Python 3.12.3, kernel `7.2.9-orbstack-00391-g2b298d05fbd4`, exact target package,
-lock, worker and image identities, and a 10-second target timeout. This audit used the current
-main reader without changing the frozen evidence or its declared configuration.
+aarch64, Python 3.12.3, kernel `7.2.9-orbstack-00391-g2b298d05fbd4`, retained lock, worker,
+build and image identities, declared target package-tarball digests, and a 10-second target
+timeout. This audit used the current main reader without changing the frozen evidence or its
+declared configuration.
+
+### Retained package-byte limitation
+
+The 43-file N02 evidence root contains the build contexts and records listed above but no npm
+`.tgz` artifact. The manifest declares SHA-256
+`22d8b674a68754ea909d03aa13958a7d2fd5e78af8a8f0cde6455babef7aaf1a` for 7.5.2 and
+`9d95d0cf786786360f97c1e414caea8a14452dc337fda17ba256ae7762c2ec66` for 7.5.3, but the
+original tarball byte streams cannot be rehashed from this retained root. Direct correspondence
+between those declared digests and the package bytes used during the historical Docker builds is
+therefore **NOT_VERIFIABLE** in this audit.
+
+This limitation does not change the retained image IDs, the lock/worker/build record checks, the
+runtime target-version metadata or the exact generated archive correspondence reconstructed below.
+It does narrow “checksum / integrity reconstruction” to files actually retained in the evidence
+root and prevents treating the declared package-tarball digest as independently rehashed evidence.
 
 ## Independent reader execution
 
@@ -110,9 +127,10 @@ evidence, but this audit did not mutate the retained root to repeat those destru
 ## Technical disposition and claim boundary
 
 Observed facts and the independent reader support **PASS (machine evidence correspondence)**
-for this exact input, target pair, 10-second configuration and retained run set. The evidence
-stage is **REPRODUCIBLE retained machine evidence**, not paper-ready feedback-effectiveness
-evidence.
+for the exact generated TAR input, retained target image pair, 10-second configuration and retained
+run set. The package-tarball byte correspondence limitation above remains **NOT_VERIFIABLE**. The
+evidence stage is **REPRODUCIBLE retained machine evidence** for the retained artifacts, not
+paper-ready feedback-effectiveness evidence.
 
 The source/input/runtime explanation is technically consistent with persistent hardlink
 identity on 7.5.2 and linkpath rejection on 7.5.3. This is an AI-assisted interpretation.

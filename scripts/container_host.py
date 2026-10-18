@@ -19,11 +19,11 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
 from time import monotonic
-from typing import Protocol
+from typing import BinaryIO, Protocol
 from uuid import uuid4
 
 from inodefence.execution.container import OWNER_LABEL, checked, remove_owned
-from inodefence.execution.docker_client import BackendError, CommandResult, DockerCLI
+from inodefence.execution.docker_client import OUTPUT_LIMIT, BackendError, CommandResult, DockerCLI
 
 _ACTIVE_N04_LEDGER: "N04HostLedger | None" = None
 
@@ -48,6 +48,45 @@ def _exclusive_json(path: Path, value: object) -> str:
     finally:
         os.close(descriptor)
     return sha256(content).hexdigest()
+
+
+def _exclusive_bytes(path: Path, content: bytes) -> str:
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC, 0o600)
+    try:
+        with os.fdopen(descriptor, "wb", closefd=False) as stream:
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+    finally:
+        os.close(descriptor)
+    return sha256(content).hexdigest()
+
+
+class _BoundedControllerStderr:
+    """Drain controller stderr without blocking and retain its exact bounded prefix."""
+
+    def __init__(self, limit: int = OUTPUT_LIMIT) -> None:
+        if type(limit) is not int or limit < 1:
+            raise ValueError("controller stderr limit must be a positive integer")
+        self.limit = limit
+        self.buffer = bytearray()
+        self.truncated = False
+        self.error: BaseException | None = None
+
+    def drain(self, stream: BinaryIO) -> None:
+        try:
+            while chunk := stream.read(65536):
+                available = self.limit - len(self.buffer)
+                self.buffer.extend(chunk[:available])
+                self.truncated |= len(chunk) > available
+        except BaseException as error:
+            self.error = error
+
+    def finish(self, thread: threading.Thread) -> tuple[bytes, bool]:
+        thread.join(timeout=5)
+        if thread.is_alive() or self.error is not None:
+            raise BackendError("controller stderr could not be drained completely") from self.error
+        return bytes(self.buffer), self.truncated
 
 
 def _read_canonical_json(path: Path) -> tuple[dict, str]:
@@ -156,6 +195,8 @@ class N04HostLedger:
         self.cleanup_status = "not_needed"
         self.cleanup_errors: list[str] = []
         self.linux_terminal: dict | None = None
+        self.controller_stderr: bytes | None = None
+        self.controller_stderr_truncated: bool | None = None
         self._finished = False
         self.started_sha256 = _exclusive_json(
             root / "started.json",
@@ -209,16 +250,33 @@ class N04HostLedger:
             "started_at": self.started_at,
             "target_names": sorted(self.target_names),
         }
+        manifest_format = "inodefence-n04-host-ledger-v1"
+        manifest_files = {"started.json": self.started_sha256}
+        if self.controller_stderr is not None:
+            if (
+                type(self.controller_stderr_truncated) is not bool
+                or len(self.controller_stderr) > OUTPUT_LIMIT
+            ):
+                raise ValueError("controller stderr requires a bounded explicit capture state")
+            stderr_sha256 = _exclusive_bytes(
+                self.root / "controller-stderr.bin", self.controller_stderr
+            )
+            terminal["controller_stderr"] = {
+                "path": "controller-stderr.bin",
+                "sha256": stderr_sha256,
+                "size": len(self.controller_stderr),
+                "truncated": self.controller_stderr_truncated,
+            }
+            manifest_format = "inodefence-n04-host-ledger-v2"
+            manifest_files["controller-stderr.bin"] = stderr_sha256
         terminal_sha256 = _exclusive_json(self.root / "terminal.json", terminal)
+        manifest_files["terminal.json"] = terminal_sha256
         _exclusive_json(
             self.root / "manifest.json",
             {
                 "attempt_id": terminal["attempt_id"],
-                "files": {
-                    "started.json": self.started_sha256,
-                    "terminal.json": terminal_sha256,
-                },
-                "format": "inodefence-n04-host-ledger-v1",
+                "files": manifest_files,
+                "format": manifest_format,
                 "overall_status": overall_status,
             },
         )
@@ -268,15 +326,48 @@ def verify_n04_host_ledger(
         "started_at",
         "target_names",
     }
+    manifest_format = manifest.get("format")
+    if manifest_format == "inodefence-n04-host-ledger-v1":
+        expected_terminal_fields = terminal_fields
+        expected_files = {"started.json": started_sha256, "terminal.json": terminal_sha256}
+    elif manifest_format == "inodefence-n04-host-ledger-v2":
+        expected_terminal_fields = terminal_fields | {"controller_stderr"}
+        stderr_record = terminal.get("controller_stderr")
+        stderr_path = root / "controller-stderr.bin"
+        if (
+            not isinstance(stderr_record, dict)
+            or set(stderr_record) != {"path", "sha256", "size", "truncated"}
+            or stderr_record.get("path") != "controller-stderr.bin"
+            or not isinstance(stderr_record.get("sha256"), str)
+            or re.fullmatch(r"[0-9a-f]{64}", stderr_record["sha256"]) is None
+            or type(stderr_record.get("size")) is not int
+            or not 0 <= stderr_record["size"] <= OUTPUT_LIMIT
+            or type(stderr_record.get("truncated")) is not bool
+            or stderr_path.is_symlink()
+            or not stderr_path.is_file()
+        ):
+            raise ValueError("N04 controller stderr binding is invalid")
+        stderr_bytes = stderr_path.read_bytes()
+        if (
+            len(stderr_bytes) != stderr_record["size"]
+            or sha256(stderr_bytes).hexdigest() != stderr_record["sha256"]
+        ):
+            raise ValueError("N04 controller stderr binding is invalid")
+        expected_files = {
+            "controller-stderr.bin": stderr_record["sha256"],
+            "started.json": started_sha256,
+            "terminal.json": terminal_sha256,
+        }
+    else:
+        raise ValueError("N04 host ledger manifest binding is invalid")
     if (
         re.fullmatch(r"[0-9a-f]{64}", expected_manifest_sha256) is None
         or manifest_sha256 != expected_manifest_sha256
         or set(started) != started_fields
-        or set(terminal) != terminal_fields
+        or set(terminal) != expected_terminal_fields
         or set(manifest) != {"attempt_id", "files", "format", "overall_status"}
-        or manifest["format"] != "inodefence-n04-host-ledger-v1"
         or manifest["attempt_id"] != ATTEMPT_ID
-        or manifest["files"] != {"started.json": started_sha256, "terminal.json": terminal_sha256}
+        or manifest["files"] != expected_files
         or terminal.get("attempt_id") != manifest["attempt_id"]
         or started.get("attempt_id") != manifest["attempt_id"]
         or terminal.get("overall_status") != manifest["overall_status"]
@@ -551,9 +642,24 @@ def main() -> int:
     )
     try:
         with subprocess.Popen(
-            command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True
+            command,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE if args.mode == "preflight-node-n04-5s" else None,
         ) as process:
             assert process.stdout is not None and process.stdin is not None
+            stderr_capture = None
+            stderr_thread = None
+            if args.mode == "preflight-node-n04-5s":
+                assert process.stderr is not None
+                stderr_capture = _BoundedControllerStderr()
+                stderr_thread = threading.Thread(
+                    target=stderr_capture.drain,
+                    args=(process.stderr,),
+                    name="inodefence-controller-stderr",
+                    daemon=True,
+                )
+                stderr_thread.start()
             if pair_mode:
                 if args.mode == "qualify-node-n01":
                     from inodefence.evaluation.n01 import EXPECTED_BUILD_FILES, FROZEN_TARGETS
@@ -713,7 +819,7 @@ def main() -> int:
                             "max_wall_seconds": MAX_WALL_SECONDS,
                         },
                     }
-                process.stdin.write(json.dumps(initial) + "\n")
+                process.stdin.write((json.dumps(initial) + "\n").encode("utf-8"))
                 process.stdin.flush()
             expired = threading.Event()
             timer = None
@@ -765,7 +871,7 @@ def main() -> int:
                         "timed_out": outcome.timed_out,
                         "truncated": outcome.truncated,
                     }
-                    process.stdin.write(json.dumps(response) + "\n")
+                    process.stdin.write((json.dumps(response) + "\n").encode("utf-8"))
                     process.stdin.flush()
                 returncode = process.wait()
                 if expired.is_set():
@@ -778,6 +884,16 @@ def main() -> int:
             finally:
                 if timer is not None:
                     timer.cancel()
+                if process.poll() is None:
+                    process.kill()
+                    process.wait(timeout=5)
+                if stderr_capture is not None and stderr_thread is not None:
+                    controller_stderr, controller_stderr_truncated = stderr_capture.finish(
+                        stderr_thread
+                    )
+                    assert _ACTIVE_N04_LEDGER is not None
+                    _ACTIVE_N04_LEDGER.controller_stderr = controller_stderr
+                    _ACTIVE_N04_LEDGER.controller_stderr_truncated = controller_stderr_truncated
     finally:
         # Covers controller interruption/crash and uncertain create responses.
         # Inspect only names created by this invocation, and verify ownership.

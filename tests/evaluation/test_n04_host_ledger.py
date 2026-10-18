@@ -1,6 +1,8 @@
 import argparse
 import json
+import subprocess
 import sys
+import threading
 from hashlib import sha256
 
 import pytest
@@ -8,6 +10,7 @@ import scripts.container_controller as container_controller
 import scripts.container_host as container_host
 from scripts.container_host import (
     N04HostLedger,
+    _BoundedControllerStderr,
     _inspect_n04_host_metadata,
     _validate_n04_host_inputs,
     verify_n04_host_ledger,
@@ -185,6 +188,60 @@ def test_early_failure_ledger_rejects_rebound_frozen_fields(tmp_path, monkeypatc
             evidence,
             expected_manifest_sha256=trusted_digest,
         )
+
+
+def test_early_failure_digest_binds_bounded_controller_stderr(tmp_path, monkeypatch):
+    evidence = tmp_path / "linux-evidence"
+    ledger_root = tmp_path / "host-ledger"
+    packages = [tmp_path / "tar-7.5.2.tgz", tmp_path / "tar-7.5.3.tgz"]
+    _freeze_paths(monkeypatch, evidence, ledger_root, packages)
+    ledger = N04HostLedger(ledger_root, _args(evidence, packages))
+    ledger.owner = "a" * 32
+    ledger.controller_id = "c" * 64
+    ledger.controller_stderr = b"controlled controller traceback\n"
+    ledger.controller_stderr_truncated = False
+    ledger.finish(None, BackendError("controlled early failure"))
+
+    manifest = json.loads((ledger_root / "manifest.json").read_text())
+    terminal = json.loads((ledger_root / "terminal.json").read_text())
+    assert manifest["format"] == "inodefence-n04-host-ledger-v2"
+    assert terminal["controller_stderr"] == {
+        "path": "controller-stderr.bin",
+        "sha256": sha256(ledger.controller_stderr).hexdigest(),
+        "size": len(ledger.controller_stderr),
+        "truncated": False,
+    }
+    assert (
+        verify_n04_host_ledger(
+            ledger_root,
+            evidence,
+            expected_manifest_sha256=_manifest_digest(ledger_root),
+        )["overall_status"]
+        == "PREFLIGHT_INCONCLUSIVE"
+    )
+
+    (ledger_root / "controller-stderr.bin").write_bytes(b"tampered\n")
+    with pytest.raises(ValueError, match="stderr binding"):
+        verify_n04_host_ledger(
+            ledger_root,
+            evidence,
+            expected_manifest_sha256=_manifest_digest(ledger_root),
+        )
+
+
+def test_controller_stderr_capture_drains_and_marks_truncated(tmp_path):
+    writer = tmp_path / "stderr-writer.py"
+    writer.write_text("import os\nos.write(2, b'e' * 4096)\n")
+    with subprocess.Popen([sys.executable, str(writer)], stderr=subprocess.PIPE) as process:
+        assert process.stderr is not None
+        capture = _BoundedControllerStderr(limit=1024)
+        thread = threading.Thread(target=capture.drain, args=(process.stderr,))
+        thread.start()
+        assert process.wait(timeout=5) == 0
+        content, truncated = capture.finish(thread)
+
+    assert content == b"e" * 1024
+    assert truncated is True
 
 
 def test_consumed_mode_rejects_before_ledger_or_docker(tmp_path, monkeypatch):

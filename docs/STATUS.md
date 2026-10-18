@@ -41,6 +41,21 @@ target 실행 전 host-only Docker metadata 요청이 transport allowlist에서 
 후속 transport 수정은 구현·synthetic 검증 대상일 뿐 재실행 승인이 아니다. 4,000회 B0/B1/B3
 pilot과 native P0/P1/P2 campaign은 계속 **NOT_AUTHORIZED / NOT_RUN**이다.
 
+N05의 [독립 critical-path 검토](research/diagnostics/n05-native-qualification-critical-path.md)는
+retained N04 host ledger를 재해시해 같은 `PREFLIGHT_INCONCLUSIVE`를 재구성했고, host-only
+metadata transport correction의 실제 caller/allowlist를 bounded Linux tests로 확인했다. 별도
+draft PR #112는 controller stderr의 1 MiB bounded prefix와 truncation을 checksummed host ledger에
+결합하지만 새 attempt/mode를 만들지 않는다. 따라서 [새 5초 preflight 계약 초안](research/benchmarks/n05-five-second-preflight-task-contract-draft.md)은
+exact target/attempt/path/containment을 제안하면서도 runnable source identity 부재로
+**PROPOSED / NOT_AUTHORIZED / SOURCE ADMISSION BLOCKED**다. Historical target은 실행되지 않았다.
+
+같은 검토는 node-tar 7.5.22의 실제 `CHECKFS2` unlink callback → `MAKEFS` branch를 exact
+package bytes에서 식별했다. 이는 native-v3 feasibility 근거지만 dependency producer evidence는
+아니다. [native-v3 qualification 계약 초안](research/benchmarks/n05-native-rebinding-v3-qualification-task-contract-draft.md)은
+positive/negative fixture와 perturbation gate를 제안하며 **NOT_AUTHORIZED / NOT_RUN**이다.
+Native producer/image는 여전히 **NOT_IMPLEMENTED / NOT_FROZEN**이고 기존 v2 판정과 policy ID는
+변하지 않는다.
+
 ## DESIGNED / IMPLEMENTED / TESTED / EXPERIMENTALLY VALIDATED
 
 [Evidence 용어](research/design/research-contract-v1.md)는 각 수준을 독립적으로 기록한다.

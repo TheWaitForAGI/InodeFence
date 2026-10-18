@@ -23,6 +23,11 @@ from .fingerprint import (
     violation_fingerprints,
 )
 from .projection import FeedbackKey, FeedbackProjection, feedback_key
+from .rebinding import (
+    derive_namespace_rebinding_sequences,
+    effect_feedback_projection_v3,
+    namespace_rebinding_signature,
+)
 from .search import SearchDecision, SearchPolicy, SearchState
 from .signature import state_signature
 from .transition import (
@@ -56,11 +61,13 @@ __all__ = [
     "EffectSearchStats",
     "effect_feedback_eligible",
     "effect_feedback_keys",
+    "effect_feedback_projection_v3",
     "FeedbackKey",
     "FeedbackProjection",
     "feedback_key",
     "IdentityFingerprint",
     "normalized_effect_signature",
+    "namespace_rebinding_signature",
     "SearchDecision",
     "SearchPolicy",
     "SearchState",
@@ -78,4 +85,5 @@ __all__ = [
     "TransitionSearchState",
     "TransitionSearchStats",
     "violation_fingerprints",
+    "derive_namespace_rebinding_sequences",
 ]

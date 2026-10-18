@@ -405,7 +405,8 @@ def _raw_evidence(trace: EffectEventTrace) -> bytes:
 
 
 def _verified(trace: EffectEventTrace):
-    return reconstruct_rebinding_evidence(_raw_evidence(trace), trace, V3_SOURCE)
+    raw = _raw_evidence(trace)
+    return reconstruct_rebinding_evidence(raw, sha256(raw).hexdigest(), trace, V3_SOURCE)
 
 
 def test_positive_raw_fixture_reconstructs_additive_sequence_and_key() -> None:
@@ -526,13 +527,31 @@ def test_incomplete_trace_and_same_inode_truncation_do_not_form_rebinding() -> N
     )
     dependencies = _verified(valid).dependencies
     rejected = replace(valid, termination=EffectTargetTermination.REJECTED)
+    timed_out = replace(valid, termination=EffectTargetTermination.TIMED_OUT)
+    invalid = replace(incomplete, completeness=EffectStreamCompleteness.INVALID)
     assert derive_namespace_rebinding_sequences(incomplete, dependencies) == ()
+    assert derive_namespace_rebinding_sequences(invalid, dependencies) == ()
     assert derive_namespace_rebinding_sequences(rejected, dependencies) == ()
+    assert derive_namespace_rebinding_sequences(timed_out, dependencies) == ()
     assert derive_namespace_rebinding_sequences(valid, ()) == ()
-    with pytest.raises(ValueError, match="complete valid successful v2 trace"):
-        reconstruct_rebinding_evidence(_raw_evidence(incomplete), incomplete, V3_SOURCE)
-    with pytest.raises(ValueError, match="complete valid successful v2 trace"):
-        reconstruct_rebinding_evidence(_raw_evidence(rejected), rejected, V3_SOURCE)
+    for trace in (incomplete, invalid, rejected, timed_out):
+        raw = _raw_evidence(trace)
+        with pytest.raises(ValueError, match="complete valid successful v2 trace"):
+            reconstruct_rebinding_evidence(raw, sha256(raw).hexdigest(), trace, V3_SOURCE)
+
+    removal = valid.effect_events[0]
+    removal_only = replace(
+        valid,
+        effect_events=(removal,),
+        causal_relations=(valid.causal_relations[0],),
+        last_produced_sequence=removal.completion_sequence,
+        last_flushed_sequence=removal.completion_sequence,
+        flush_acknowledged_sequence=removal.completion_sequence,
+    )
+    assert removal_only.integrity_valid
+    assert derive_namespace_rebinding_sequences(removal_only, ()) == ()
+    with pytest.raises(ValueError, match="unknown operation"):
+        derive_namespace_rebinding_sequences(removal_only, dependencies)
 
     entry = valid.archive_entries[0]
     before = _object("extract/p", 11)
@@ -581,6 +600,10 @@ def test_incomplete_trace_and_same_inode_truncation_do_not_form_rebinding() -> N
             lambda value: value["source"].__setitem__("source_sha256", "f" * 64),
             "differs from the pinned expected source",
         ),
+        (
+            lambda value: value["records"][1].__setitem__("completion_sequence", 5),
+            "differs from the validated v2 event",
+        ),
     ),
 )
 def test_reader_rejects_tampered_raw_provenance_and_endpoint_evidence(mutate, message) -> None:
@@ -596,7 +619,24 @@ def test_reader_rejects_tampered_raw_provenance_and_endpoint_evidence(mutate, me
     ).encode()
 
     with pytest.raises(ValueError, match=message):
-        reconstruct_rebinding_evidence(raw, trace, V3_SOURCE)
+        reconstruct_rebinding_evidence(raw, sha256(raw).hexdigest(), trace, V3_SOURCE)
+
+
+def test_reader_rejects_rehashed_dependency_forgery_against_trusted_manifest() -> None:
+    trace = _trace()
+    original = _raw_evidence(trace)
+    value = json.loads(original)
+    value["records"][2]["evidence_token"] = "forged-branch-token"
+    records_bytes = json.dumps(
+        value["records"], sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode()
+    value["terminal"]["records_sha256"] = sha256(records_bytes).hexdigest()
+    forged = (
+        json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n"
+    ).encode()
+
+    with pytest.raises(ValueError, match="differs from the trusted manifest"):
+        reconstruct_rebinding_evidence(forged, sha256(original).hexdigest(), trace, V3_SOURCE)
 
 
 def test_reader_rejects_record_digest_tampering_before_derivation() -> None:
@@ -608,4 +648,22 @@ def test_reader_rejects_record_digest_tampering_before_derivation() -> None:
     ).encode()
 
     with pytest.raises(ValueError, match="count/digest/completeness"):
-        reconstruct_rebinding_evidence(raw, trace, V3_SOURCE)
+        reconstruct_rebinding_evidence(raw, sha256(raw).hexdigest(), trace, V3_SOURCE)
+
+
+def test_reader_rejects_noninteger_terminal_count() -> None:
+    trace = _trace()
+    value = json.loads(_raw_evidence(trace))
+    value["terminal"]["record_count"] = 3.0
+    raw = (
+        json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n"
+    ).encode()
+
+    with pytest.raises(ValueError, match="terminal record count must be an integer"):
+        reconstruct_rebinding_evidence(raw, sha256(raw).hexdigest(), trace, V3_SOURCE)
+
+
+def test_composite_constructor_rejects_creation_kind_drift() -> None:
+    sequence = _verified(_trace()).sequences[0]
+    with pytest.raises(ValueError, match="creation kind must match"):
+        replace(sequence, creation_kind=RebindingCreationKind.SYMLINK)

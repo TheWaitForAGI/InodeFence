@@ -52,8 +52,8 @@ A composite exists only when all predicates pass:
 6. No other successful realized namespace-binding event for the destination overlaps the open
    interval from removal completion to creation start.
 7. The v2 trace is complete, integrity-valid and successfully terminated. The v3 raw envelope is
-   strict, digest-bound to that trace's raw stream, and the independent reconstruction agrees
-   with every endpoint field.
+   strict, digest-bound to that trace's raw stream and to an externally frozen manifest's expected
+   v3 raw SHA-256, and the independent reconstruction agrees with every endpoint field.
 
 Separated endpoint inode equality neither proves nor disproves a composite. Successful removal,
 two explicit absence observations and qualified creation establish the continuity break.

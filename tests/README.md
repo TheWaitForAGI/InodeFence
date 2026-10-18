@@ -87,6 +87,10 @@ entry/path mismatch, failed endpoint, intervening binding, incomplete/rejected t
 provenance/state tampering을 거부한다. Equal v2 key sets 중 same-path chain에만 v3 key가 생기는
 nonredundancy fixture도 포함한다. 이는 generic synthetic engineering evidence이며 native
 producer qualification이나 feedback effectiveness 결과가 아니다.
+Dependency causality는 envelope 내부 digest를 신뢰하지 않고 외부 frozen manifest의 expected
+raw SHA-256과 먼저 비교한다. Token과 내부 digest를 함께 재계산한 self-consistent 위조,
+noninteger terminal count와 endpoint/dependency sequence drift도 fail closed regression으로
+고정한다.
 
 `test_node_effect_producer.py`는 Gate 3의 source/digest/terminal framing, exact entry와
 operation association, realized-effect evidence, out-of-order completion, rejected prefix,

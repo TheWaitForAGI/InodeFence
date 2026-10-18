@@ -239,6 +239,7 @@ _DEPENDENCY_FIELDS = {
 
 def reconstruct_rebinding_evidence(
     raw: bytes,
+    expected_raw_sha256: str,
     trace: EffectEventTrace,
     expected_source: EvidenceSourceIdentity,
 ) -> VerifiedRebindingEvidence:
@@ -253,6 +254,12 @@ def reconstruct_rebinding_evidence(
         or trace.termination != EffectTargetTermination.SUCCESS
     ):
         raise ValueError("v3 reconstruction requires a complete valid successful v2 trace")
+    if not isinstance(raw, bytes):
+        raise ValueError("v3 raw evidence must be bytes")
+    validate_sha256(expected_raw_sha256)
+    raw_digest = sha256(raw).hexdigest()
+    if raw_digest != expected_raw_sha256:
+        raise ValueError("v3 raw evidence digest differs from the trusted manifest")
     envelope = _strict_json(raw)
     fields = {
         "format",
@@ -303,13 +310,12 @@ def reconstruct_rebinding_evidence(
         records, sort_keys=True, separators=(",", ":"), ensure_ascii=False
     ).encode()
     if (
-        terminal["record_count"] != len(records)
+        _integer(terminal["record_count"], "terminal record count") != len(records)
         or terminal["records_sha256"] != sha256(canonical_records).hexdigest()
         or terminal["complete"] is not True
     ):
         raise ValueError("v3 raw count/digest/completeness verification failed")
 
-    raw_digest = sha256(raw).hexdigest()
     endpoints: dict[str, dict[str, FilesystemEffectEvent]] = {}
     dependency_records: dict[str, dict[str, object]] = {}
     record_ids: set[str] = set()

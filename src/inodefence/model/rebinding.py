@@ -7,9 +7,11 @@ from typing import ClassVar
 from ._validation import validate_sha256
 from .archive import EntryType
 from .effect import (
+    EffectClass,
     EffectPathEvidence,
     FilesystemEffectEvent,
     RawEvidenceReference,
+    effect_is_realized,
 )
 from .effect_feedback import EffectFeedbackKey, EffectOrdinalClass
 from .filesystem import ObjectType, Region, validate_observed_path
@@ -107,6 +109,23 @@ class NamespaceRebindingSequence:
             raise ValueError("rebinding sequence requires two v2 effect events")
         if self.removal.entry != self.entry or self.creation.entry != self.entry:
             raise ValueError("rebinding sequence endpoints must share the archive entry")
+        if self.removal.effect_class != EffectClass.NAMESPACE_REMOVAL or not effect_is_realized(
+            self.removal
+        ):
+            raise ValueError("rebinding removal must be a realized namespace removal")
+        creation_classes = {
+            RebindingCreationKind.OBJECT: EffectClass.NAMESPACE_CREATION,
+            RebindingCreationKind.SYMLINK: EffectClass.SYMLINK_CREATION,
+            RebindingCreationKind.HARDLINK_RELATION: (
+                EffectClass.HARDLINK_IDENTITY_RELATION_CREATION
+            ),
+        }
+        if (
+            not isinstance(self.creation_kind, RebindingCreationKind)
+            or self.creation.effect_class != creation_classes[self.creation_kind]
+            or not effect_is_realized(self.creation)
+        ):
+            raise ValueError("rebinding creation kind must match a realized creation event")
         if (
             not isinstance(self.removal_destination_evidence, EffectPathEvidence)
             or not isinstance(self.creation_destination_evidence, EffectPathEvidence)
@@ -123,6 +142,8 @@ class NamespaceRebindingSequence:
             or creation_evidence.after.object is None
         ):
             raise ValueError("rebinding requires present-to-absent then absent-to-present")
+        if self.removal.object_evidence != (self.removal_destination_evidence,):
+            raise ValueError("rebinding removal evidence must be its exact v2 endpoint evidence")
         if not isinstance(self.dependency, RebindingOperationDependency) or (
             self.dependency.predecessor_correlation_id != self.removal.correlation_id
             or self.dependency.successor_correlation_id != self.creation.correlation_id
@@ -130,16 +151,22 @@ class NamespaceRebindingSequence:
             or self.dependency.successor_start_sequence != self.creation.start_sequence
         ):
             raise ValueError("rebinding dependency must bind the exact endpoint operations")
-        if not isinstance(self.creation_kind, RebindingCreationKind):
-            raise ValueError("rebinding sequence requires a creation kind")
         if self.creation_kind == RebindingCreationKind.HARDLINK_RELATION:
             if self.hardlink_source_path is None:
                 raise ValueError("hardlink rebinding requires its source path")
             validate_observed_path(self.hardlink_source_path)
             if self.hardlink_source_path == self.destination_path:
                 raise ValueError("hardlink source and destination must differ")
+            if (
+                len(self.creation.object_evidence) != 2
+                or self.creation.object_evidence[0].path != self.hardlink_source_path
+                or self.creation.object_evidence[1] != self.creation_destination_evidence
+            ):
+                raise ValueError("hardlink rebinding must use exact source/destination roles")
         elif self.hardlink_source_path is not None:
             raise ValueError("only hardlink rebinding carries a source path")
+        elif self.creation.object_evidence != (self.creation_destination_evidence,):
+            raise ValueError("rebinding creation evidence must be its exact v2 endpoint evidence")
 
     @property
     def before_object_type(self) -> ObjectType:

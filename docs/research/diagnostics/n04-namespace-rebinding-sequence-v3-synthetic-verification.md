@@ -23,7 +23,8 @@ raw evidence and never enter the finite key.
 
 - Schema 3 immutable types retain both v2 endpoint events and one separate dependency record.
 - The strict protocol `inodefence-namespace-rebinding-sequence` version `3.0.0` binds the v3
-  envelope to a pinned source and the validated v2 raw-stream digest.
+  envelope to a pinned source, an externally frozen manifest's expected v3 raw SHA-256 and the
+  validated v2 raw-stream digest. The internal records digest is not treated as a trust root.
 - The independent reader rejects duplicate/unknown fields and records, incomplete terminal
   metadata, invalid/rejected/failed/timed-out v2 traces, endpoint drift, provenance/digest/state
   tampering and unsupported endpoint roles. It derives the composite instead of trusting a
@@ -34,21 +35,23 @@ raw evidence and never enter the finite key.
 - The feedback projection returns the exact v2 key tuple plus deduplicated finite tagged v3
   keys. No v2 type, enum, protocol, policy ID or C0/C1/C2 meaning changed.
 
-The producer-issued dependency record is sufficient v3 provenance; temporal adjacency and a v2
-context edge are neither required nor accepted as substitutes. A future native producer must
-prove that the record is emitted from the actual target branch continuation. Synthetic source
-identity and digest binding do not establish that native fact.
+The externally digest-bound producer dependency record is sufficient input to this synthetic v3
+reader; temporal adjacency and a v2 context edge are neither required nor accepted as substitutes.
+A future native producer must prove that the record is emitted from the actual target branch
+continuation. Synthetic source identity and digest binding do not establish that native fact.
 
 ## Synthetic checks
 
-`tests/test_rebinding_v3.py` contains **18 PASS** checks covering:
+`tests/test_rebinding_v3.py` contains **22 PASS** checks covering:
 
 - object, symlink and hardlink-destination positive chains;
 - equal and unequal separated endpoint inode values;
 - truncation without removal, absent dependency, different entry/path, failed operations,
   missing absence and intervening same-path binding negatives;
-- incomplete and rejected v2 traces failing closed;
-- raw source, v2 digest, correlation, sequence, state, record digest and endpoint tampering; and
+- incomplete, invalid, rejected and timed-out v2 traces plus removal-only evidence failing closed;
+- raw source, v2 digest, correlation, sequence, state, record digest and endpoint tampering;
+- dependency-token plus internal-digest recomputation rejected against the trusted external raw
+  digest, strict terminal integer validation and composite creation-kind drift; and
 - nonredundancy: two traces with equal v2 key sets, where only the qualified same-path trace
   receives a v3 key.
 
@@ -64,12 +67,12 @@ Python 3.12.3, Node 22.22.0, user `vscode` UID/GID 1000 and a disposable executa
 metadata and target-tool dependencies were read-only; filesystem-semantic tests used only the
 separate runtime tmpfs.
 
-Final pre-PR result:
+Final corrected-head local result:
 
 - Ruff check: **PASS**
 - Ruff format check: **PASS** (357 files)
 - Pyright: **PASS** (0 errors)
-- pytest: **PASS** (1,580 tests, including 18 v3 checks)
+- pytest: **PASS** (1,584 tests, including 22 v3 checks)
 - environment validation: **PASS** (hardlink, symlink and shared-object effect)
 - documentation validation: **PASS** (128 Markdown files)
 
@@ -82,6 +85,19 @@ run passed all 1,580 tests but documentation validation could not resolve the co
 host `.git` pointer. The final bind-mounted worktree run above resolved only that validation
 harness issue and passed the complete `make check` command. The two dedicated temporary Docker
 volumes were then removed.
+
+## Adversarial review correction
+
+Independent AI review of PR #111 head `5acd9a09f510f062b7fc049d45bdf5657c278c66`
+returned **REQUEST_CHANGES**. It reproduced a Major provenance defect: changing the dependency
+token and recomputing the envelope's internal records digest still produced one composite because
+the reader had no trusted expected digest for the v3 bytes. It also identified missing explicit
+removal-only, invalid, timed-out and sequence-tamper regressions.
+
+The reader now requires an expected v3 raw SHA-256 supplied by the external frozen manifest and
+compares it before parsing or derivation. The rehashed-token forgery and all missing acceptance
+cases are regression tested. This correction is an AI technical review outcome, not human expert
+approval or a native qualification token.
 
 ## Scientific result and exclusions
 

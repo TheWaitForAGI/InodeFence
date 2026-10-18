@@ -61,10 +61,15 @@ continuous identity, a Security Contract violation or exploitability.
 ## Independent reconstruction
 
 The reader accepts bytes plus an already integrity-valid v2 trace. It strictly validates the
-v3 protocol/version, source identity, record count, unique record IDs, trace raw digest and the
-two complete endpoint records. Each endpoint's entry, path role, operation, outcome, sequences,
-correlation ID and object observations must equal the matching v2 event. The dependency record
-must then bind those exact endpoints. Unknown or extra fields fail closed.
+v3 bytes against a required expected SHA-256 from the frozen external manifest before parsing,
+then validates protocol/version, source identity, record count, unique record IDs, trace raw
+digest and the two complete endpoint records. Each endpoint's entry, path role, operation,
+outcome, sequences, correlation ID and object observations must equal the matching v2 event. The
+dependency record must then bind those exact endpoints. Unknown or extra fields fail closed.
+
+The envelope's internal records digest is only a framing/integrity check and is not a provenance
+trust root. A caller cannot replace a dependency token and recompute that internal digest unless
+the independently frozen expected raw digest changes too.
 
 The reader derives the composite; it does not trust a producer-supplied composite label. This
 synthetic gate verifies reconstruction mechanics only. A native implementation must later prove

@@ -541,8 +541,10 @@ removal/creation(link 포함), removal 이후와 creation 이전의 두 explicit
 잇는 producer branch-continuation dependency, complete/valid/successful v2 trace와 conflict-free
 same-path gap을 모두 요구한다. 시간적 인접성, 같은 path/ordinal, inode equality/inequality 또는
 기존 v2 context edge만으로 dependency를 추론하지 않는다. Strict reader는 raw v3 envelope를
-source/digest로 v2 stream에 묶고 endpoint 전체를 v2 event와 다시 비교한 뒤 composite를 직접
-파생한다.
+source/digest로 v2 stream에 묶고, 외부 frozen manifest의 expected v3 raw SHA-256과 실제 bytes를
+parsing 전에 비교하며, endpoint 전체를 v2 event와 다시 비교한 뒤 composite를 직접 파생한다.
+Envelope 내부 records digest는 trust root가 아니므로 dependency token과 함께 재계산해도 외부
+digest 검사를 우회할 수 없다.
 
 Feedback은 기존 `effect_feedback_keys(trace)` tuple을 그대로 보존하고 finite tagged v3 key만
 추가한다. Synthetic nonredundancy fixture는 같은 v2 key set을 가진 same-path와 cross-path trace 중

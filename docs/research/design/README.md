@@ -32,8 +32,10 @@ Layer 5 Feedback / Corpus 및 bounded campaign이 구현됐다. Contained Node�
 configured campaign도 검증했다. Snapshot 관찰 범위와 runtime/kernel trust 한계는 유지하며,
 Layer 6 benchmark/security evaluation과 연구 효과 검증은 아직 수행하지 않았다.
 Native v2 replacement 실패 이후 확인된 multi-operation namespace rebinding은
-[별도 v3 제안](entry-effect-rebinding-v3-proposal.md)에만 정의돼 있으며
-**BLOCKED_FOR_REVIEW / NOT_IMPLEMENTED**다. 이는 현재 합의된 v2 계약이 아니다.
+[별도 v3 제안](entry-effect-rebinding-v3-proposal.md)에서 versioned generic composite,
+strict reader와 additive feedback으로 **IMPLEMENTED / SYNTHETIC TESTED**다. Native dependency
+producer/image/qualification은 **NOT_IMPLEMENTED / NOT_FROZEN / NOT_RUN**이며, 이는 현재 v2
+negative decision이나 frozen policy identifier를 변경하지 않는다.
 
 ## 파일 배치 규칙
 

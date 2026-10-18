@@ -87,7 +87,9 @@ truncate해 필수 replacement coverage를 충족하지 못했으므로 정확�
 후속 진단은 실제 namespace rebinding이 여러 operation의 removal→creation/link로 나타남을
 확인했지만 이를 v2 replacement로 재분류하지 않았다. 별도
 [v3 rebinding 제안](research/design/entry-effect-rebinding-v3-proposal.md)은
-**BLOCKED_FOR_REVIEW / NOT_IMPLEMENTED**다.
+기술 검토를 거쳐 generic composite model, strict independent reader와 additive finite feedback을
+**IMPLEMENTED / SYNTHETIC TESTED**했다. Native dependency producer와 qualification/effectiveness는
+각각 **NOT_IMPLEMENTED / NOT_RUN**이며 v2 negative decision은 그대로다.
 
 ## 4. 현재 어디까지 했는가?
 
@@ -155,6 +157,8 @@ G0 문서 동결은 후속 gate의 PASS가 아니다.
 - [research/design/entry-effect-feedback-v2.md](research/design/entry-effect-feedback-v2.md)
 - [research/design/entry-effect-design-review-v2.md](research/design/entry-effect-design-review-v2.md)
 - [research/design/entry-effect-rebinding-v3-proposal.md](research/design/entry-effect-rebinding-v3-proposal.md)
+- [research/design/namespace-rebinding-sequence-v3.md](research/design/namespace-rebinding-sequence-v3.md)
+- [research/diagnostics/n04-namespace-rebinding-sequence-v3-synthetic-verification.md](research/diagnostics/n04-namespace-rebinding-sequence-v3-synthetic-verification.md)
 - [research/design/transition-feedback-v1.md](research/design/transition-feedback-v1.md)
 - [research/design/transition-mutation-scheduler-v1.md](research/design/transition-mutation-scheduler-v1.md)
 - [research/design/research-questions.md](research/design/research-questions.md)

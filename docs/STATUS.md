@@ -1,6 +1,6 @@
 # 현재 프로젝트 상태
 
-상태 갱신일: **2026-10-16**. G0 capability baseline은 main
+상태 갱신일: **2026-10-18**. G0 capability baseline은 main
 **`8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`**다. 이 SHA는 G0 문서 동결이
 검토한 구현 revision이며 최신 main을 뜻하지 않는다. #77–#84 연구 stack은 main에
 통합됐다. Internal completion qualification v3의 clean harness revision은 `9ea306f7`이고,
@@ -52,7 +52,7 @@ pilot과 native P0/P1/P2 campaign은 계속 **NOT_AUTHORIZED / NOT_RUN**이다.
 | Linux execution | fresh runtime + container-required third-party boundary | backend / prepared invocation / verified artifact admission; N01 exact wrapper locks and bounded pair orchestration | [container integration](../tests/README.md); pinned Node benign smoke; N01 8+10 real historical runs와 independent reader PASS | N01 automated replay complete; final qualification pending |
 | Mutation | legacy / M1 / protected-component / A3 contracts | eight slots; M1 nested/reused names/dependencies; versioned default-sentinel component policy; no-reorder versions | [mutator tests](../tests/test_mutator.py), [constructive addressing](../tests/test_mutator_addressing.py), [search composition](../tests/test_campaign_search.py) | logical address generation만 TESTED; historical effect 미검증 |
 | Search / feedback | B0/B1/B3 and A1/A2 | `SearchState`, `run_search_campaign`, explicit policy config | [policy checks](../tests/test_feedback_search_contracts.py), [trusted reference integration](../tests/test_campaign_search_integration.py) | 비교 효과 미검증 |
-| Entry transitions | P0 final-state, P1 transition retention, P2 transition-adaptive mutation | v1 model/search/evaluation; v2 event model/feedback, bounded node-tar producer/raw export, independent reader and qualification runner | synthetic tests plus node-tar/libarchive controlled qualification; v2 producer 10 checks PASS and 480-run matrix independently verified at `36ff7fd` | v1 `BLOCKED_NATIVE_OBSERVATION`; v2 `V2_NATIVE_EFFECT_OBSERVATION_NOT_QUALIFIED` (replacement coverage); effectiveness NOT_RUN |
+| Entry transitions | P0 final-state, P1 transition retention, P2 transition-adaptive mutation; separately versioned v3 rebinding composite | v1 model/search/evaluation; v2 event model/feedback, bounded node-tar producer/raw export, independent reader and qualification runner; additive v3 composite model/strict reader/finite feedback | synthetic tests plus node-tar/libarchive controlled qualification; v2 producer 10 checks PASS and 480-run matrix independently verified at `36ff7fd`; v3 22 synthetic checks and canonical 1,584-test suite PASS | v1 `BLOCKED_NATIVE_OBSERVATION`; v2 `V2_NATIVE_EFFECT_OBSERVATION_NOT_QUALIFIED` (replacement coverage); v3 native producer NOT_IMPLEMENTED and qualification/effectiveness NOT_RUN |
 | Minimization | bounded deterministic generic/USTAR reduction | core and exact-fingerprint evidence binding | [minimizer tests](../tests/test_minimizer.py), [USTAR checks](../tests/test_minimizer_ustar.py) | historical/unknown candidate 없음 |
 | Evaluation / reproduction | explicit provenance, immutable raw → verified derivation | reader, pair records, failure ledger/legacy journal, policy journal/timing/repetition/controller HWM, candidate 3+3 raw replay, N01 machine matcher, qualification/matrix, benign replay, completed policy export/config/dataset/statistics | [evaluation tests](../tests/evaluation/), [benign replay tests](../tests/replay/) | HWM/matcher는 controlled TESTED; historical pilot memory/candidate assessment / human known-class judgment / formal dataset 없음 |
 | C3/C4 / generality | 후속 contracts / RQ4 | C3/C4와 ORAS adapter 없음; GNU route는 benign allowlist만 | broader scope의 실행 증거 없음 | 미검증 |
@@ -168,8 +168,13 @@ Target campaign remains blocked and NOT_RUN.
 native diagnostic bundle에서 v2 `namespace_replacement`는 0건이었으며, 이는 reader가 frozen
 계약을 잘못 분류했다는 근거가 아니다. v2 판정은 그대로다. 별도
 [v3 rebinding semantics 제안](research/design/entry-effect-rebinding-v3-proposal.md)은 composite
-dependency/evidence 조건을 검토하도록 준비됐지만 **BLOCKED_FOR_REVIEW / NOT_IMPLEMENTED**이고
-어떤 native effectiveness campaign도 허가하지 않는다.
+dependency/evidence 조건에 대해 기술 검토됐고, 별도
+[Task Contract](research/benchmarks/n04-namespace-rebinding-sequence-v3-task-contract.md)에 따라
+generic model, strict independent reader와 additive finite feedback이 **IMPLEMENTED / SYNTHETIC
+TESTED**됐다. Same-path/explicit-absence/conflict-free dependency gap이 v2 normalized keys에 없는
+구분을 추가함을 synthetic nonredundancy fixture로 확인했다. Native dependency producer는
+**NOT_IMPLEMENTED**, qualification/effectiveness는 **NOT_RUN**이며 어떤 native campaign도
+허가하지 않는다. 상세 결과는 [N04 v3 synthetic verification](research/diagnostics/n04-namespace-rebinding-sequence-v3-synthetic-verification.md)에 고정한다.
 
 Legacy `ExperimentConfig` v1/v2는 여전히 B3/legacy mutation만 허용한다. 별도
 `PolicyEvaluationConfig`와 completed policy export/reader/config/dataset/statistics가 구현됐다.
@@ -202,13 +207,15 @@ Native campaign integration remains blocked until the exact
 `V2_NATIVE_EFFECT_OBSERVATION_QUALIFIED` decision is retained. The initial v2 policy rejects
 incomplete/invalid streams and target-rejection prefixes for admission/reward.
 The runtime diagnosis selected the multi-operation branch for the exercised node-tar cases.
-The review choice is now explicit: approve a separately versioned v3 rebinding method, or
-retain v2 and establish a genuine one-operation positive. Neither choice is made implicitly.
+The separately versioned v3 generic representation passed its synthetic engineering gate.
+The next v3 step is not an implicit campaign: a native dependency producer and qualification
+matrix require a new frozen contract and explicit authorization. Alternatively, v2 can only
+reopen with a genuine one-operation positive under its own contract.
 
 N03 independent closeout은 [structured report](research/diagnostics/n03-autonomous-research-advancement.md)에
 기록한다. Final-state journal/timing/repetition infrastructure는 IMPLEMENTED / TESTED지만 pilot과
-known-class adjudication은 완료되지 않았다. Native v3 rebinding은 proposal일 뿐이고 v2 negative
-decision이나 P0-v2/P1-v2/P2-v2 gate를 변경하지 않는다.
+known-class adjudication은 완료되지 않았다. Generic v3 rebinding은 synthetic engineering
+검증만 완료했으며 v2 negative decision이나 P0-v2/P1-v2/P2-v2 gate를 변경하지 않는다.
 
 **첫 historical qualification인 N01 node-tar 7.5.2 / 7.5.3 hardlink arm은 automated
 replay를 완료했고 final human correspondence review를 기다린다.**

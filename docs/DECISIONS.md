@@ -526,3 +526,28 @@ independent reader가 config/result/count/offset/checksum을 검증한다.
 이 interface는 in-memory completed timing evidence만 제공한다. Disk publication latency,
 automatic journal attachment, exception-safe aborted prefix/failure ledger, known-class adjudication,
 timed dataset pooling과 formal throughput/time-to-hit 결과는 별도 dependency로 남는다.
+
+## D034 — Namespace rebinding v3는 v2 replacement를 바꾸지 않는 composite다
+
+**상태:** generic model/reader/feedback IMPLEMENTED / SYNTHETIC TESTED; native NOT_IMPLEMENTED
+
+V2 `namespace_replacement`는 계속 단일 correlated operation의 present-before/present-after
+identity 또는 type change만 뜻한다. 여러 operation으로 이루어진 rebinding은 별도 schema 3
+`NamespaceRebindingSequence`로만 표현하며 과거 v2 raw bundle이나 qualification 판정을
+재분류하지 않는다.
+
+Composite는 같은 immutable archive entry와 canonical destination path, 성공한 realized
+removal/creation(link 포함), removal 이후와 creation 이전의 두 explicit absence, exact endpoint를
+잇는 producer branch-continuation dependency, complete/valid/successful v2 trace와 conflict-free
+same-path gap을 모두 요구한다. 시간적 인접성, 같은 path/ordinal, inode equality/inequality 또는
+기존 v2 context edge만으로 dependency를 추론하지 않는다. Strict reader는 raw v3 envelope를
+source/digest로 v2 stream에 묶고, 외부 frozen manifest의 expected v3 raw SHA-256과 실제 bytes를
+parsing 전에 비교하며, endpoint 전체를 v2 event와 다시 비교한 뒤 composite를 직접 파생한다.
+Envelope 내부 records digest는 trust root가 아니므로 dependency token과 함께 재계산해도 외부
+digest 검사를 우회할 수 없다.
+
+Feedback은 기존 `effect_feedback_keys(trace)` tuple을 그대로 보존하고 finite tagged v3 key만
+추가한다. Synthetic nonredundancy fixture는 같은 v2 key set을 가진 same-path와 cross-path trace 중
+전자에만 v3 key가 생김을 확인했다. 이 결정은 C0/C1/C2, v2 policy ID, native qualification 또는
+효과 검증을 변경하지 않는다. Native dependency producer와 matrix는 새 Task Contract와 명시적
+승인 전까지 NOT_IMPLEMENTED / NOT_RUN이다.

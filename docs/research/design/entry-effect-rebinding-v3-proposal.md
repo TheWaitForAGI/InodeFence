@@ -1,8 +1,16 @@
 # Entry-associated namespace rebinding v3 proposal
 
-Status: **BLOCKED_FOR_REVIEW / PROPOSED / NOT_IMPLEMENTED / NOT_QUALIFIED**.
-This document requests a scientific-method decision. It does not amend the v2 contracts,
-authorize implementation or permit a native campaign.
+Status: **REVIEWED / GENERIC SYNTHETIC IMPLEMENTATION COMPLETE / NATIVE NOT_IMPLEMENTED /
+NOT_QUALIFIED**. This document records the original scientific-method proposal. The N04
+[implementation Task Contract](../benchmarks/n04-namespace-rebinding-sequence-v3-task-contract.md)
+approved only the separate generic model, strict reader and synthetic suite. It did not amend
+the v2 contracts or permit a native campaign.
+
+The recorded technical decision is **GO for generic synthetic implementation**. The bounded
+additional distinction is a producer-dependent, conflict-free same-path absence gap that the
+normalized v2 key set does not encode. The implementation and synthetic result are documented
+in the [v3 design](namespace-rebinding-sequence-v3.md) and
+[verification report](../diagnostics/n04-namespace-rebinding-sequence-v3-synthetic-verification.md).
 
 ## Decision requested
 
@@ -169,5 +177,5 @@ are separately approved.
   one-operation native positive or accept that this target cannot qualify the mandatory v2
   replacement cell. The native campaign remains blocked.
 
-Until one outcome is recorded, this proposal is **BLOCKED_FOR_REVIEW** and no implementation
-or new qualification matrix is authorized.
+The generic implementation outcome is recorded; a native producer, new qualification matrix
+and every effectiveness campaign remain separately unauthorized and **NOT_RUN**.

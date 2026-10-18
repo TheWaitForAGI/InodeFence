@@ -582,6 +582,33 @@ def test_host_inspection_allowlist_is_separate_and_exact():
             validate_command(rejected, 10)
 
 
+def test_host_inspection_executes_only_on_the_host_client(tmp_path):
+    executable = tmp_path / "docker"
+    executable.write_text(
+        "#!/usr/bin/python3\n"
+        "import json, os, sys\n"
+        "os.write(1, json.dumps(sys.argv[1:]).encode())\n"
+        "os.write(2, b'controlled host diagnostic')\n"
+    )
+    executable.chmod(0o755)
+    host = DockerCLI(str(executable), "controlled-context")
+    controller = StdioDockerClient(io.StringIO(), io.StringIO())
+
+    result = host.run_host_inspection(("info", "--format", "{{json .}}"), 5)
+
+    assert json.loads(result.stdout) == [
+        "--context",
+        "controlled-context",
+        "info",
+        "--format",
+        "{{json .}}",
+    ]
+    assert result.stderr == b"controlled host diagnostic"
+    assert not hasattr(controller, "run_host_inspection")
+    with pytest.raises(BackendError, match="trusted Docker"):
+        host.run(("info", "--format", "{{json .}}"), 5)
+
+
 def test_start_deadline_before_launch_destroys_context_before_return(fake_backend, sandbox):
     docker, backend = fake_backend
     original = docker.run

@@ -1,8 +1,8 @@
 # N04 namespace rebinding sequence v3 implementation Task Contract
 
-Status: **AUTHORIZED FOR GENERIC SYNTHETIC IMPLEMENTATION ONLY**.  
-Contract version: **v1**.  
-Frozen base: `4b8453f905cc8a5442e1c77fb8e175b16ce7a116`.  
+Status: **GENERIC SYNTHETIC IMPLEMENTATION COMPLETE / NATIVE NOT AUTHORIZED**.
+Contract version: **v1**.
+Frozen base: `4b8453f905cc8a5442e1c77fb8e175b16ce7a116`.
 Authorization source: the N04 research-owner request. This is an AI-assisted technical
 decision, not human expert approval and not authorization for target execution.
 

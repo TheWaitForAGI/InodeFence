@@ -80,6 +80,14 @@ effect별 evidence sufficiency, explicit causal DAG, stream completeness/flush�
 bounded reward, deterministic synthetic lineage를 검증한다. 둘 다 native observation coverage나
 feedback 효과를 증명하지 않는다.
 
+`test_rebinding_v3.py`는 v2 event/key를 변경하지 않는 별도 namespace-rebinding composite를
+검증한다. Positive object/symlink/hardlink destination, equal/unequal endpoint inode,
+same-path explicit absence와 producer dependency를 확인하고, truncation, missing dependency,
+entry/path mismatch, failed endpoint, intervening binding, incomplete/rejected trace와 raw
+provenance/state tampering을 거부한다. Equal v2 key sets 중 same-path chain에만 v3 key가 생기는
+nonredundancy fixture도 포함한다. 이는 generic synthetic engineering evidence이며 native
+producer qualification이나 feedback effectiveness 결과가 아니다.
+
 `test_node_effect_producer.py`는 Gate 3의 source/digest/terminal framing, exact entry와
 operation association, realized-effect evidence, out-of-order completion, rejected prefix,
 gap/duplicate/overflow/unmatched/malformed/truncated/timeout fail-closed 동작과 immutable raw

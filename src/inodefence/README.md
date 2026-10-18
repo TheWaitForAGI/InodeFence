@@ -54,6 +54,10 @@ Gate 3은 별도 contained node-tar worker/adapter, bounded terminal frame, clas
 runner도 구현되어 portable tests를 통과했다. Clean revision `36ff7fd`에서 contained producer
 10개 검사와 480회 qualification을 실행하고 독립적으로 재검증했다. Replacement coverage가
 실패해 NOT_QUALIFIED이므로 이 경로를 native feedback이나 campaign에 사용하지 않는다.
+별도 v3 모듈은 complete/successful v2 trace와 strict raw dependency envelope를 교차 검증해
+same-entry/same-path removal→creation rebinding composite를 만들고, unchanged v2 keys 옆에 finite
+tagged key를 추가한다. Synthetic reader/nonredundancy tests만 통과했으며 native producer나
+qualification/campaign에 연결되지 않았다.
 
 ## 현재 상태와 한계
 

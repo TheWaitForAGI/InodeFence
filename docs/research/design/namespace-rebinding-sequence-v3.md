@@ -3,6 +3,7 @@
 ## Status and claim boundary
 
 - Design review: **GO for generic synthetic implementation**
+- Generic model, strict reader and finite feedback: **IMPLEMENTED / SYNTHETIC TESTED**
 - Native dependency producer: **NOT_IMPLEMENTED**
 - Native qualification and effectiveness: **NOT_RUN / NOT_EVALUATED**
 
@@ -10,6 +11,8 @@ This design is an additive observation layer over entry-effect v2. It does not c
 `namespace_replacement`, C0/C1/C2 or any security verdict. The implementation scope and stop
 conditions are frozen by the
 [N04 Task Contract](../benchmarks/n04-namespace-rebinding-sequence-v3-task-contract.md).
+The exact implementation checks and claim boundary are retained in the
+[N04 synthetic verification report](../diagnostics/n04-namespace-rebinding-sequence-v3-synthetic-verification.md).
 
 ## Layering
 

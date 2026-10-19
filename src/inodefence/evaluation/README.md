@@ -110,7 +110,10 @@ single-attempt mode. Its schedule and oracle semantics are unchanged: two harnes
 by four benign seeds on affected and fixed, for exactly eight possible target extractions at five
 seconds each. The new admission additionally requires the complete canonical human authorization
 record, clean source revision and per-file hashes, fresh host-attested controller/volume facts and
-the frozen target identities before target construction.
+the frozen target identities before target construction. Host admission binds the active entry and
+loaded approved project modules to canonical nonsymlink files in that authorized worktree and checks
+their actual origin-file digests before creating the attempt ledger or accessing Docker. This guard
+does not change the evidence schema or attest the Python interpreter and external libraries.
 
 `inodefence.evaluation.n05_preflight_reader` reopens the authorization and retained source bytes,
 all completed evidence prefixes and the raw manifest. `read_n05_preflight` performs the same raw

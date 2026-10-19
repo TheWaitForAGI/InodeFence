@@ -234,7 +234,10 @@ not only a caller-supplied digest. It rehashes and parses those bytes before led
 them into the no-overwrite ledger, and sends the same digest-bound bytes to the controller. Source
 revision and executable-file hashes, controller/target identities, containment, host-only Docker
 metadata, bounded stderr, cleanup and Linux reader results are all rechecked before the host reader
-can return `PREFLIGHT_PASS`.
+can return `PREFLIGHT_PASS`. Before ledger creation or Docker access, the broker additionally
+requires the active host entry and loaded approved host modules to have canonical nonsymlink origins
+at those authorized worktree paths with the authorized digests. Alternate checkout/install paths,
+unknown origins and symlinks fail without consuming the attempt.
 
 There is intentionally no executable command here yet. Review must first freeze one clean combined
 source commit and an immutable controller image, then a human must separately create the exact N05

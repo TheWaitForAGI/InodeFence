@@ -48,7 +48,9 @@ draft PR #112는 controller stderr의 1 MiB bounded prefix와 truncation을 chec
 결합하지만 새 attempt/mode를 만들지 않는다. 그 위의 독립 N05 구현 후보는
 `preflight-node-n05-5s-v2`, 새 attempt/path, 실제 authorization JSON의 반복 검증,
 source/controller/target admission, 최대 8건의 benign schedule, 독립 reader와 fail-closed host
-ledger를 추가했다. 합성 Linux 회귀만 수행했으며 historical target은 실행되지 않았다.
+ledger를 추가했다. Host entry와 현재 로드된 승인 대상 host module은 ledger 생성과 Docker 접근
+전에 authorized worktree의 canonical nonsymlink path 및 digest에 결합된다. 합성 Linux 회귀만
+수행했으며 historical target은 실행되지 않았다.
 [새 5초 preflight 계약 초안](research/benchmarks/n05-five-second-preflight-task-contract-draft.md)의
 상태는 **IMPLEMENTED CANDIDATE / SYNTHETIC TESTED / NOT_AUTHORIZED / NOT_RUN / AWAITING
 EXECUTION-SOURCE AND CONTROLLER FREEZE**다. PR #108은 아직 실제 preflight/authorization

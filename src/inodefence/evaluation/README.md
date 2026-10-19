@@ -103,6 +103,25 @@ reconstructs complete readiness and emits only `PREFLIGHT_PASS`, `PREFLIGHT_FAIL
 digests to the host fallback-cleanup outcome and resolve the overall status. A preflight pass does not
 alter the N01 human gate and does not authorize B0/B1/B3 or a native effectiveness campaign.
 
+## N05 five-second historical-target preflight v2
+
+`inodefence.evaluation.n05_preflight` keeps the N04 attempt consumed and introduces a distinct
+single-attempt mode. Its schedule and oracle semantics are unchanged: two harness controls followed
+by four benign seeds on affected and fixed, for exactly eight possible target extractions at five
+seconds each. The new admission additionally requires the complete canonical human authorization
+record, clean source revision and per-file hashes, fresh host-attested controller/volume facts and
+the frozen target identities before target construction.
+
+`inodefence.evaluation.n05_preflight_reader` reopens the authorization and retained source bytes,
+all completed evidence prefixes and the raw manifest. `read_n05_preflight` performs the same raw
+reconstruction without writing, so the host ledger reader can bind Linux evidence to bounded
+controller stderr and cleanup. A missing terminal, changed authorization/source/image/timeout/
+isolation field, interrupted prefix or uncertain cleanup cannot become `PREFLIGHT_PASS`.
+
+This implementation is synthetic-tested but not authorized or run. It emits no pilot authorization.
+The existing Track A preparation code must be changed to call the host reader on actual records and
+to validate the separate pilot authorization content; storing their digest strings is insufficient.
+
 Evaluation records use a strict schema-v1 wrapper around existing canonical model
 encoding. Payload SHA-256 is declared in the wrapper; whole-file digest is returned
 for external anchoring. A synced temporary file is published with Linux atomic

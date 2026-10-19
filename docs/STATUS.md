@@ -45,9 +45,14 @@ N05의 [독립 critical-path 검토](research/diagnostics/n05-native-qualificati
 retained N04 host ledger를 재해시해 같은 `PREFLIGHT_INCONCLUSIVE`를 재구성했고, host-only
 metadata transport correction의 실제 caller/allowlist를 bounded Linux tests로 확인했다. 별도
 draft PR #112는 controller stderr의 1 MiB bounded prefix와 truncation을 checksummed host ledger에
-결합하지만 새 attempt/mode를 만들지 않는다. 따라서 [새 5초 preflight 계약 초안](research/benchmarks/n05-five-second-preflight-task-contract-draft.md)은
-exact target/attempt/path/containment을 제안하면서도 runnable source identity 부재로
-**PROPOSED / NOT_AUTHORIZED / SOURCE ADMISSION BLOCKED**다. Historical target은 실행되지 않았다.
+결합하지만 새 attempt/mode를 만들지 않는다. 그 위의 독립 N05 구현 후보는
+`preflight-node-n05-5s-v2`, 새 attempt/path, 실제 authorization JSON의 반복 검증,
+source/controller/target admission, 최대 8건의 benign schedule, 독립 reader와 fail-closed host
+ledger를 추가했다. 합성 Linux 회귀만 수행했으며 historical target은 실행되지 않았다.
+[새 5초 preflight 계약 초안](research/benchmarks/n05-five-second-preflight-task-contract-draft.md)의
+상태는 **IMPLEMENTED CANDIDATE / SYNTHETIC TESTED / NOT_AUTHORIZED / NOT_RUN / AWAITING
+EXECUTION-SOURCE AND CONTROLLER FREEZE**다. PR #108은 아직 실제 preflight/authorization
+record를 읽지 않고 digest 문자열만 기록하므로 verified N05 evidence의 소비자는 아니다.
 
 같은 검토는 node-tar 7.5.22의 실제 `CHECKFS2` unlink callback → `MAKEFS` branch를 exact
 package bytes에서 식별했다. 이는 native-v3 feasibility 근거지만 dependency producer evidence는

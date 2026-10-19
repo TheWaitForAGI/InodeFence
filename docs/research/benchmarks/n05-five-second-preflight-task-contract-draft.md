@@ -1,6 +1,7 @@
 # Proposed Task Contract: N05 five-second final-state preflight v2
 
-Status: **PROPOSED / NOT_AUTHORIZED / NOT_RUN / SOURCE ADMISSION BLOCKED**.
+Status: **IMPLEMENTED CANDIDATE / SYNTHETIC TESTED / NOT_AUTHORIZED / NOT_RUN /
+AWAITING EXECUTION-SOURCE AND CONTROLLER FREEZE**.
 
 This is a new attempt proposal. It does not amend or reopen the consumed N04 attempt, and it
 does not authorize a historical target invocation. The exact attempt identifier and destinations
@@ -42,11 +43,13 @@ The audited repository baseline is main
 transport/stderr correction candidate is draft PR #112 at
 `0eca90f44a249d3ab1e66966b7ab3cfe80f79055`.
 
-**There is no admissible execution-source SHA in this draft.** `0eca90f` deliberately leaves
-the N04 mode consumed and does not implement `preflight-node-n05-5s-v2` or the destinations
-above. Therefore an invocation must stop before host-ledger creation. A later implementation
-cannot be silently inserted into this document: its exact clean commit, executable file digests
-and controller image must be frozen by a reviewed contract revision before authorization.
+Draft PR #112 at `0eca90f` deliberately leaves the N04 mode consumed. The dependent N05
+implementation candidate adds `preflight-node-n05-5s-v2`, its independent reader, actual
+authorization-record admission and the destinations above. **There is still no authorized
+execution-source SHA in this draft.** Review must first finish on one clean integration commit.
+The separate authorization record then freezes that full commit, every executable file named by
+the implementation and the controller image before the host ledger may be created. A branch name,
+mutable tag or digest-only claim is not an admitted source or authorization.
 
 The target candidates remain exact and do not depend on that missing execution source:
 
@@ -79,7 +82,8 @@ tarball bytes, so package identity must come from the two newly retained exact t
 
 ## Trust boundary and command policy
 
-The trusted route is macOS/OrbStack host Docker context `orbstack` to one fresh unprivileged
+The trusted route is `/usr/local/bin/docker` on the macOS/OrbStack host, Docker context `orbstack`,
+to one fresh unprivileged
 Linux arm64 controller. Host-only metadata may use only these exact read-only forms through
 `DockerCLI.run_host_inspection()`:
 
@@ -98,6 +102,18 @@ pipe. It records byte count, SHA-256 and a required truncation boolean in the te
 and host manifest. Missing stderr capture after controller launch, an undrained pipe, malformed
 UTF-8-independent byte handling or a digest mismatch is infrastructure-invalid and
 `PREFLIGHT_INCONCLUSIVE`.
+
+The host reads the canonical authorization JSON from the one frozen nonsymlink host path before
+creating the attempt ledger. It verifies the caller-supplied checksum against those bytes, parses
+and validates the complete record, copies the bytes into the host ledger and transports the same
+checksum-bound bytes to the controller. The controller publishes them into Linux evidence and the
+independent reader parses them again. The record binds the attempt/mode, human decision text,
+clean source revision and executable-file digests, exact fresh controller ID, controller and target
+image identities, Docker daemon ID/version/API and context, source/evidence/ledger/volume paths,
+five-second timeout, eight-extraction budget,
+wall-clock bound and both isolation profiles. `pilot_authorized` is always false. The human name
+field records attribution but is not a cryptographic signature; its trust remains an external
+review responsibility.
 
 The controller has no Docker socket/CLI, uses network `none`, read-only rootfs, UID/GID 1000,
 cap-drop `ALL`, no-new-privileges, no devices, private PID/IPC/cgroup namespaces, 1 GiB memory
@@ -146,13 +162,13 @@ mismatch, uncertain removal or any cleanup error is retained and downgrades the 
 
 ## Fail-closed conditions and authorization gate
 
-Stop before host-ledger creation because the exact N05 execution source/mode is currently absent.
-After implementation, stop before target execution on any dirty/unreviewed source, missing exact
+Stop before host-ledger creation until a reviewed clean N05 integration source and controller image
+are frozen in the separate authorization record. Stop before target execution on any dirty/unreviewed source, missing exact
 authorization record, wrong package/image/controller/platform identity, mutable reference,
 unexpected host command, controller-visible host inspection, privilege/mount/resource drift,
 evidence-path existence, reader unavailability or containment mismatch.
 
-Authorization requires all of the following in a later contract revision:
+Authorization requires all of the following:
 
 - an exact clean implementation commit and executable file digests;
 - a reviewed immutable controller image bound to that source;
@@ -163,3 +179,11 @@ Authorization requires all of the following in a later contract revision:
 This contract cannot emit a human N01 token or a pilot token. It does not authorize the
 4,000-execution B0/B1/B3 pilot, a historical positive-control replay, native-v3 qualification,
 P0/P1/P2 effectiveness, a ten-second fallback or reuse of the N04 attempt.
+
+The current PR #108 Track A preparation path is not yet a consumer of this evidence: it accepts
+caller-supplied SHA-256 strings without opening either the preflight host/Linux records or the
+pilot authorization record, and it names the N04 environment profile. Before Track A preparation,
+that path must call the N05 host verifier on the actual retained records, require an overall
+`PREFLIGHT_PASS`, parse and retain the complete separate pilot authorization, bind the same clean
+source/target/timeout/isolation identities, and admit the pilot controller/volume conditions. This
+is an integration gate, not permission to change B0/B1/B3, C0/C1/C2, A1/A2/A3 or P0/P1/P2.

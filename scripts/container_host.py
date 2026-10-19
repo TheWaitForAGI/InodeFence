@@ -19,13 +19,22 @@ from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
 from time import monotonic
-from typing import BinaryIO, Protocol
+from typing import Any, BinaryIO, Protocol
 from uuid import uuid4
 
 from inodefence.execution.container import OWNER_LABEL, checked, remove_owned
 from inodefence.execution.docker_client import OUTPUT_LIMIT, BackendError, CommandResult, DockerCLI
 
 _ACTIVE_N04_LEDGER: "N04HostLedger | None" = None
+_ACTIVE_N05_LEDGER: "N05HostLedger | None" = None
+
+
+def _sync_directory(path: Path) -> None:
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | os.O_CLOEXEC)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
 
 
 def _exclusive_json(path: Path, value: object) -> str:
@@ -47,6 +56,7 @@ def _exclusive_json(path: Path, value: object) -> str:
             os.fsync(stream.fileno())
     finally:
         os.close(descriptor)
+    _sync_directory(path.parent)
     return sha256(content).hexdigest()
 
 
@@ -59,6 +69,7 @@ def _exclusive_bytes(path: Path, content: bytes) -> str:
             os.fsync(stream.fileno())
     finally:
         os.close(descriptor)
+    _sync_directory(path.parent)
     return sha256(content).hexdigest()
 
 
@@ -95,7 +106,7 @@ def _read_canonical_json(path: Path) -> tuple[dict, str]:
     if not isinstance(value, dict) or content != (
         json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True) + "\n"
     ).encode("ascii"):
-        raise ValueError(f"noncanonical N04 host ledger file: {path.name}")
+        raise ValueError(f"noncanonical preflight host ledger file: {path.name}")
     return value, sha256(content).hexdigest()
 
 
@@ -111,7 +122,7 @@ def _validate_linux_terminal(value: object) -> dict:
         "reader_returncode",
     }
     if not isinstance(value, dict) or set(value) != fields:
-        raise BackendError("malformed N04 controller terminal summary")
+        raise BackendError("malformed preflight controller terminal summary")
     if (
         not all(
             isinstance(value[name], str) and re.fullmatch(r"[0-9a-f]{64}", value[name])
@@ -125,14 +136,19 @@ def _validate_linux_terminal(value: object) -> dict:
             "INDEPENDENT_VERIFICATION_FAILED",
         }
         or value["independent_status"] not in {"PASS", "FAIL"}
-        or value["preflight_verdict"] not in {"PASS", "FAIL", "INCONCLUSIVE"}
+        or value["preflight_verdict"]
+        not in {"PASS", "FAIL", "INCONCLUSIVE", "PREFLIGHT_PASS", "PREFLIGHT_FAIL"}
         or value["pilot_authorized"] is not False
         or value["host_cleanup_pending"] is not True
         or type(value["reader_returncode"]) is not int
         or value["reader_returncode"] not in {0, 1}
         or value["reader_returncode"] != (0 if value["independent_status"] == "PASS" else 1)
     ):
-        raise BackendError("invalid N04 controller terminal summary")
+        raise BackendError("invalid preflight controller terminal summary")
+    normalized_verdict = {
+        "PREFLIGHT_PASS": "PASS",
+        "PREFLIGHT_FAIL": "FAIL",
+    }.get(value["preflight_verdict"], value["preflight_verdict"])
     expected_final = (
         "INDEPENDENT_VERIFICATION_FAILED"
         if value["independent_status"] == "FAIL"
@@ -140,10 +156,10 @@ def _validate_linux_terminal(value: object) -> dict:
             "PASS": "PREFLIGHT_PASS",
             "FAIL": "PREFLIGHT_FAIL",
             "INCONCLUSIVE": "PREFLIGHT_INCONCLUSIVE",
-        }[value["preflight_verdict"]]
+        }[str(normalized_verdict)]
     )
     if value["final_status"] != expected_final:
-        raise BackendError("inconsistent N04 controller terminal summary")
+        raise BackendError("inconsistent preflight controller terminal summary")
     return value
 
 
@@ -171,6 +187,65 @@ def _validate_n04_host_inputs(
         raise ValueError("N04 preflight frozen host inputs are unavailable")
 
 
+def _read_n05_authorization(path: Path, expected_sha256: str) -> tuple[bytes, Any]:
+    from inodefence.evaluation.n05_preflight import (
+        HOST_AUTHORIZATION_RECORD,
+        authorization_from_bytes,
+    )
+
+    if (
+        path != HOST_AUTHORIZATION_RECORD
+        or path.is_symlink()
+        or path.resolve() != path
+        or not path.is_file()
+        or re.fullmatch(r"[0-9a-f]{64}", expected_sha256) is None
+    ):
+        raise ValueError("N05 preflight requires its exact nonsymlink authorization record")
+    content = path.read_bytes()
+    if sha256(content).hexdigest() != expected_sha256:
+        raise ValueError("N05 authorization record checksum mismatch")
+    return content, authorization_from_bytes(content)
+
+
+def _validate_n05_host_inputs(
+    build_contexts: tuple[Path, ...], package_tarballs: tuple[Path, ...], volume: str
+) -> None:
+    from inodefence.evaluation.n05_preflight import (
+        HOST_BUILD_CONTEXTS,
+        HOST_PACKAGE_TARBALLS,
+        RUNTIME_VOLUME_NAME,
+    )
+
+    if (
+        build_contexts != HOST_BUILD_CONTEXTS
+        or package_tarballs != HOST_PACKAGE_TARBALLS
+        or volume != RUNTIME_VOLUME_NAME
+    ):
+        raise ValueError("N05 preflight requires its frozen host input paths")
+    for path in (*HOST_BUILD_CONTEXTS, *HOST_PACKAGE_TARBALLS):
+        if path.is_symlink() or path.resolve() != path:
+            raise ValueError("N05 preflight host inputs must not use symlinks")
+    if not all(path.is_dir() for path in HOST_BUILD_CONTEXTS) or not all(
+        path.is_file() for path in HOST_PACKAGE_TARBALLS
+    ):
+        raise ValueError("N05 preflight frozen host inputs are unavailable")
+
+
+def _validate_n05_authorized_invocation(args: argparse.Namespace, authorization: Any) -> None:
+    """Bind caller-supplied host identities to the inspected authorization content."""
+    if (
+        args.context != authorization.host_docker_context
+        or not isinstance(args.controller, str)
+        or re.fullmatch(r"[0-9a-f]{64}", args.controller) is None
+        or args.controller != authorization.controller_id
+        or args.image != [item.image_id for item in authorization.frozen_targets]
+        or str(args.evidence) != authorization.evidence_root
+        or str(args.host_ledger) != authorization.host_ledger_root
+        or args.volume != authorization.runtime_volume_name
+    ):
+        raise ValueError("N05 invocation differs from the inspected human authorization")
+
+
 class N04HostLedger:
     """Host-side one-attempt and terminal-cleanup ledger outside Docker."""
 
@@ -184,6 +259,7 @@ class N04HostLedger:
         if root != HOST_LEDGER_ROOT or args.evidence != EVIDENCE_ROOT:
             raise ValueError("N04 preflight requires its frozen host/evidence destinations")
         root.mkdir(parents=False, exist_ok=False, mode=0o700)
+        _sync_directory(root.parent)
         self.root = root
         self.max_wall_seconds = MAX_WALL_SECONDS
         self.started_monotonic = monotonic()
@@ -448,6 +524,382 @@ def verify_n04_host_ledger(
     }
 
 
+class N05HostLedger:
+    """No-overwrite N05 attempt ledger with authorization and stderr evidence."""
+
+    def __init__(
+        self,
+        root: Path,
+        args: argparse.Namespace,
+        authorization_content: bytes,
+        authorization,
+    ) -> None:
+        from inodefence.evaluation.n05_preflight import (
+            ATTEMPT_ID,
+            EVIDENCE_ROOT,
+            HOST_LEDGER_ROOT,
+            MAX_WALL_SECONDS,
+            MODE_ID,
+        )
+
+        if root != HOST_LEDGER_ROOT or args.evidence != EVIDENCE_ROOT:
+            raise ValueError("N05 preflight requires its frozen host/evidence destinations")
+        root.mkdir(parents=False, exist_ok=False, mode=0o700)
+        _sync_directory(root.parent)
+        self.root = root
+        self.max_wall_seconds = MAX_WALL_SECONDS
+        self.started_monotonic = monotonic()
+        self.started_at = datetime.now(UTC).isoformat()
+        self.owner: str | None = None
+        self.controller_id: str | None = None
+        self.target_names: set[str] = set()
+        self.deadline_expired = False
+        self.cleanup_status = "not_needed"
+        self.cleanup_errors: list[str] = []
+        self.linux_terminal: dict | None = None
+        self.controller_launched = False
+        self.controller_stderr_capture_complete = False
+        self.controller_stderr = b""
+        self.controller_stderr_truncated = False
+        self._finished = False
+        self.authorization_sha256 = sha256(authorization_content).hexdigest()
+        self.started_sha256 = _exclusive_json(
+            root / "started.json",
+            {
+                "attempt_id": ATTEMPT_ID,
+                "authorization_path": str(args.authorization_record),
+                "authorization_sha256": self.authorization_sha256,
+                "authorized_source_revision": authorization.execution_source_revision,
+                "controller": args.controller,
+                "evidence_root": str(args.evidence),
+                "host_ledger_root": str(root),
+                "images": args.image,
+                "mode": MODE_ID,
+                "package_tarballs": [str(path.resolve()) for path in args.package_tarball],
+                "runtime_volume": args.volume,
+                "started_at": self.started_at,
+            },
+        )
+        if (
+            _exclusive_bytes(root / "authorization.json", authorization_content)
+            != self.authorization_sha256
+        ):
+            raise ValueError("N05 authorization copy changed during ledger publication")
+
+    def finish(self, returncode: int | None, error: BaseException | None) -> None:
+        if self._finished:
+            return
+        self._finished = True
+        elapsed_seconds = monotonic() - self.started_monotonic
+        terminal_consistent = (
+            self.linux_terminal is not None
+            and returncode == self.linux_terminal["reader_returncode"]
+        )
+        capture_valid = not self.controller_launched or self.controller_stderr_capture_complete
+        if (
+            error is None
+            and elapsed_seconds <= self.max_wall_seconds
+            and self.cleanup_status in {"complete", "not_needed"}
+            and terminal_consistent
+            and capture_valid
+        ):
+            assert self.linux_terminal is not None
+            overall_status = self.linux_terminal["final_status"]
+        else:
+            overall_status = "PREFLIGHT_INCONCLUSIVE"
+        stderr_sha256 = _exclusive_bytes(
+            self.root / "controller-stderr.bin", self.controller_stderr
+        )
+        terminal = {
+            "attempt_id": "n05-five-second-preflight-v2-attempt-001",
+            "authorization_sha256": self.authorization_sha256,
+            "cleanup_status": self.cleanup_status,
+            "cleanup_errors": self.cleanup_errors,
+            "controller_id": self.controller_id,
+            "controller_launched": self.controller_launched,
+            "controller_returncode": returncode,
+            "controller_stderr": {
+                "path": "controller-stderr.bin",
+                "sha256": stderr_sha256,
+                "size": len(self.controller_stderr),
+                "truncated": self.controller_stderr_truncated,
+                "capture_complete": self.controller_stderr_capture_complete,
+            },
+            "deadline_expired": self.deadline_expired,
+            "elapsed_seconds": elapsed_seconds,
+            "ended_at": datetime.now(UTC).isoformat(),
+            "exception": None
+            if error is None
+            else f"{type(error).__module__}.{type(error).__qualname__}: {error}",
+            "owner": self.owner,
+            "linux_terminal": self.linux_terminal,
+            "overall_status": overall_status,
+            "started_at": self.started_at,
+            "target_names": sorted(self.target_names),
+        }
+        terminal_sha256 = _exclusive_json(self.root / "terminal.json", terminal)
+        _exclusive_json(
+            self.root / "manifest.json",
+            {
+                "attempt_id": terminal["attempt_id"],
+                "files": {
+                    "authorization.json": self.authorization_sha256,
+                    "controller-stderr.bin": stderr_sha256,
+                    "started.json": self.started_sha256,
+                    "terminal.json": terminal_sha256,
+                },
+                "format": "inodefence-n05-host-ledger-v1",
+                "overall_status": overall_status,
+            },
+        )
+
+
+def verify_n05_host_ledger(
+    root: Path, linux_evidence: Path, *, expected_manifest_sha256: str
+) -> dict:
+    """Recompute N05 host, authorization, Linux evidence and cleanup bindings."""
+    from inodefence.evaluation.n05_preflight import (
+        ATTEMPT_ID,
+        EVIDENCE_ROOT,
+        FROZEN_TARGETS,
+        HOST_AUTHORIZATION_RECORD,
+        HOST_LEDGER_ROOT,
+        HOST_PACKAGE_TARBALLS,
+        MAX_WALL_SECONDS,
+        MODE_ID,
+        RUNTIME_VOLUME_NAME,
+        authorization_from_bytes,
+    )
+    from inodefence.evaluation.n05_preflight_reader import (
+        N05FinalStatus,
+        N05IndependentStatus,
+        read_n05_preflight,
+    )
+
+    if (
+        root.is_symlink()
+        or not root.is_dir()
+        or any(
+            (root / name).is_symlink()
+            for name in (
+                "authorization.json",
+                "controller-stderr.bin",
+                "started.json",
+                "terminal.json",
+                "manifest.json",
+            )
+        )
+    ):
+        raise ValueError("N05 host ledger must be a nonsymlink evidence directory")
+    authorization_bytes = (root / "authorization.json").read_bytes()
+    authorization = authorization_from_bytes(authorization_bytes)
+    authorization_sha256 = sha256(authorization_bytes).hexdigest()
+    started, started_sha256 = _read_canonical_json(root / "started.json")
+    terminal, terminal_sha256 = _read_canonical_json(root / "terminal.json")
+    manifest, manifest_sha256 = _read_canonical_json(root / "manifest.json")
+    stderr_path = root / "controller-stderr.bin"
+    stderr_bytes = stderr_path.read_bytes()
+    stderr_sha256 = sha256(stderr_bytes).hexdigest()
+    stderr_record = terminal.get("controller_stderr")
+    if (
+        root != HOST_LEDGER_ROOT
+        or root.is_symlink()
+        or re.fullmatch(r"[0-9a-f]{64}", expected_manifest_sha256) is None
+        or manifest_sha256 != expected_manifest_sha256
+        or set(manifest) != {"attempt_id", "files", "format", "overall_status"}
+        or manifest.get("format") != "inodefence-n05-host-ledger-v1"
+        or manifest.get("attempt_id") != ATTEMPT_ID
+        or manifest.get("files")
+        != {
+            "authorization.json": authorization_sha256,
+            "controller-stderr.bin": stderr_sha256,
+            "started.json": started_sha256,
+            "terminal.json": terminal_sha256,
+        }
+        or not isinstance(stderr_record, dict)
+        or set(stderr_record) != {"path", "sha256", "size", "truncated", "capture_complete"}
+        or stderr_record.get("path") != "controller-stderr.bin"
+        or stderr_record.get("sha256") != stderr_sha256
+        or stderr_record.get("size") != len(stderr_bytes)
+        or not 0 <= len(stderr_bytes) <= OUTPUT_LIMIT
+        or type(stderr_record.get("truncated")) is not bool
+        or type(stderr_record.get("capture_complete")) is not bool
+        or (stderr_record.get("truncated") is True and len(stderr_bytes) != OUTPUT_LIMIT)
+    ):
+        raise ValueError("N05 host ledger file binding is invalid")
+    expected_started_fields = {
+        "attempt_id",
+        "authorization_path",
+        "authorization_sha256",
+        "authorized_source_revision",
+        "controller",
+        "evidence_root",
+        "host_ledger_root",
+        "images",
+        "mode",
+        "package_tarballs",
+        "runtime_volume",
+        "started_at",
+    }
+    expected_terminal_fields = {
+        "attempt_id",
+        "authorization_sha256",
+        "cleanup_errors",
+        "cleanup_status",
+        "controller_id",
+        "controller_launched",
+        "controller_returncode",
+        "controller_stderr",
+        "deadline_expired",
+        "elapsed_seconds",
+        "ended_at",
+        "exception",
+        "linux_terminal",
+        "overall_status",
+        "owner",
+        "started_at",
+        "target_names",
+    }
+    if (
+        set(started) != expected_started_fields
+        or set(terminal) != expected_terminal_fields
+        or started.get("attempt_id") != ATTEMPT_ID
+        or terminal.get("attempt_id") != ATTEMPT_ID
+        or started.get("authorization_path") != str(HOST_AUTHORIZATION_RECORD)
+        or started.get("authorization_sha256") != authorization_sha256
+        or terminal.get("authorization_sha256") != authorization_sha256
+        or started.get("authorized_source_revision") != authorization.execution_source_revision
+        or not isinstance(started.get("controller"), str)
+        or re.fullmatch(r"[0-9a-f]{64}", started["controller"]) is None
+        or (
+            terminal.get("controller_id") is not None
+            and terminal.get("controller_id") != started.get("controller")
+        )
+        or (
+            terminal.get("controller_id") is not None
+            and (
+                not isinstance(terminal["controller_id"], str)
+                or re.fullmatch(r"[0-9a-f]{64}", terminal["controller_id"]) is None
+            )
+        )
+        or started.get("evidence_root") != str(EVIDENCE_ROOT)
+        or started.get("host_ledger_root") != str(HOST_LEDGER_ROOT)
+        or started.get("images") != [item.image_id for item in FROZEN_TARGETS]
+        or started.get("mode") != MODE_ID
+        or started.get("package_tarballs") != [str(path) for path in HOST_PACKAGE_TARBALLS]
+        or started.get("runtime_volume") != RUNTIME_VOLUME_NAME
+        or terminal.get("started_at") != started.get("started_at")
+        or terminal.get("cleanup_status") not in {"not_needed", "complete", "failed"}
+        or not isinstance(terminal.get("cleanup_errors"), list)
+        or not all(isinstance(item, str) for item in terminal["cleanup_errors"])
+        or (terminal["cleanup_status"] == "failed") != bool(terminal["cleanup_errors"])
+        or type(terminal.get("controller_launched")) is not bool
+        or (
+            terminal.get("controller_launched") is False
+            and (
+                stderr_record["capture_complete"] is True
+                or stderr_record["truncated"] is True
+                or stderr_bytes
+                or terminal.get("linux_terminal") is not None
+            )
+        )
+        or (
+            terminal.get("controller_launched") is True
+            and (terminal.get("controller_id") is None or terminal.get("owner") is None)
+        )
+        or (
+            terminal.get("owner") is not None
+            and (
+                not isinstance(terminal["owner"], str)
+                or re.fullmatch(r"[0-9a-f]{32}", terminal["owner"]) is None
+            )
+        )
+        or type(terminal.get("deadline_expired")) is not bool
+        or (
+            terminal.get("exception") is not None
+            and (not isinstance(terminal["exception"], str) or not terminal["exception"])
+        )
+        or (
+            terminal.get("controller_returncode") is not None
+            and type(terminal["controller_returncode"]) is not int
+        )
+        or not isinstance(terminal.get("elapsed_seconds"), (int, float))
+        or isinstance(terminal.get("elapsed_seconds"), bool)
+        or not math.isfinite(terminal["elapsed_seconds"])
+        or terminal["elapsed_seconds"] < 0
+        or not isinstance(terminal.get("target_names"), list)
+        or terminal["target_names"] != sorted(set(terminal["target_names"]))
+        or not all(isinstance(item, str) for item in terminal["target_names"])
+        or (
+            bool(terminal["target_names"]) != (terminal["cleanup_status"] in {"complete", "failed"})
+        )
+        or terminal.get("overall_status") != manifest.get("overall_status")
+        or manifest.get("overall_status")
+        not in {
+            "PREFLIGHT_PASS",
+            "PREFLIGHT_FAIL",
+            "PREFLIGHT_INCONCLUSIVE",
+            "INDEPENDENT_VERIFICATION_FAILED",
+        }
+    ):
+        raise ValueError("N05 host ledger semantic binding is invalid")
+    started_at = datetime.fromisoformat(started["started_at"])
+    ended_at = datetime.fromisoformat(terminal["ended_at"])
+    if (
+        started_at.utcoffset() is None
+        or ended_at.utcoffset() is None
+        or ended_at < started_at
+        or abs((ended_at - started_at).total_seconds() - terminal["elapsed_seconds"]) > 5
+    ):
+        raise ValueError("N05 host ledger timestamps are inconsistent")
+    linux_terminal_value = terminal.get("linux_terminal")
+    if linux_terminal_value is None:
+        if manifest["overall_status"] != "PREFLIGHT_INCONCLUSIVE":
+            raise ValueError("missing Linux terminal cannot produce an overall verdict")
+        return {
+            "authorization_sha256": authorization_sha256,
+            "final_manifest_sha256": None,
+            "overall_status": "PREFLIGHT_INCONCLUSIVE",
+            "raw_manifest_sha256": None,
+            "source_revision": authorization.execution_source_revision,
+        }
+    linux_terminal = _validate_linux_terminal(linux_terminal_value)
+    verified = read_n05_preflight(
+        linux_evidence,
+        expected_final_manifest_sha256=linux_terminal["final_manifest_sha256"],
+    )
+    if (
+        verified.final_manifest.raw_manifest.sha256 != linux_terminal["raw_manifest_sha256"]
+        or verified.verification.status.value != linux_terminal["independent_status"]
+        or verified.verification.recomputed_verdict.value != linux_terminal["preflight_verdict"]
+        or verified.final_manifest.final_status.value != linux_terminal["final_status"]
+    ):
+        raise ValueError("N05 controller terminal differs from independently read evidence")
+    cleanup_valid = (
+        terminal.get("exception") is None
+        and terminal["deadline_expired"] is False
+        and terminal["elapsed_seconds"] <= MAX_WALL_SECONDS
+        and terminal.get("cleanup_status") in {"complete", "not_needed"}
+        and terminal.get("controller_returncode") == linux_terminal["reader_returncode"]
+        and (not terminal["controller_launched"] or stderr_record["capture_complete"] is True)
+    )
+    expected = linux_terminal["final_status"] if cleanup_valid else "PREFLIGHT_INCONCLUSIVE"
+    if manifest["overall_status"] != expected:
+        raise ValueError("N05 host overall status is inconsistent")
+    if expected == "PREFLIGHT_PASS" and (
+        verified.verification.status != N05IndependentStatus.PASS
+        or verified.final_manifest.final_status != N05FinalStatus.PREFLIGHT_PASS
+    ):
+        raise ValueError("N05 PASS lacks an independently verified PASS record")
+    return {
+        "authorization_sha256": authorization_sha256,
+        "final_manifest_sha256": linux_terminal["final_manifest_sha256"],
+        "overall_status": expected,
+        "raw_manifest_sha256": linux_terminal["raw_manifest_sha256"],
+        "source_revision": authorization.execution_source_revision,
+    }
+
+
 class _DeadlineDockerClient:
     def __init__(self, client: DockerCLI, bound: Callable[[float], float]) -> None:
         self.client = client
@@ -515,7 +967,7 @@ def main() -> int:
         type=Path,
         action="append",
         default=[],
-        help="exact affected then fixed npm tarballs; N04 preflight only",
+        help="exact affected then fixed npm tarballs; bounded preflight modes only",
     )
     parser.add_argument(
         "--evidence", type=Path, help="new absolute output path inside trusted Linux controller"
@@ -523,7 +975,16 @@ def main() -> int:
     parser.add_argument(
         "--host-ledger",
         type=Path,
-        help="new exact host-side attempt ledger; N04 preflight only",
+        help="new exact host-side attempt ledger; bounded preflight modes only",
+    )
+    parser.add_argument(
+        "--authorization-record",
+        type=Path,
+        help="exact separately recorded human authorization; N05 preflight only",
+    )
+    parser.add_argument(
+        "--authorization-sha256",
+        help="expected checksum of the inspected N05 authorization record",
     )
     parser.add_argument(
         "mode",
@@ -536,6 +997,7 @@ def main() -> int:
             "benign-node-smoke",
             "qualify-node-n01",
             "preflight-node-n04-5s",
+            "preflight-node-n05-5s-v2",
         ),
     )
     args = parser.parse_args()
@@ -544,18 +1006,27 @@ def main() -> int:
         "qualify-node-effect-v2",
         "qualify-node-n01",
         "preflight-node-n04-5s",
+        "preflight-node-n05-5s-v2",
     }
     if (args.mode in evidence_modes) != (args.evidence is not None):
         parser.error("evidence mode requires --evidence; validation modes do not export")
-    pair_mode = args.mode in {"qualify-node-n01", "preflight-node-n04-5s"}
-    preflight_started = monotonic() if args.mode == "preflight-node-n04-5s" else None
+    preflight_modes = {"preflight-node-n04-5s", "preflight-node-n05-5s-v2"}
+    pair_mode = args.mode in {"qualify-node-n01", *preflight_modes}
+    preflight_started = monotonic() if args.mode in preflight_modes else None
     preflight_deadline = None
     if preflight_started is not None:
-        from inodefence.evaluation.n04_preflight import (
-            CONTROLLER_FINALIZATION_RESERVE_SECONDS,
-            HOST_CLEANUP_RESERVE_SECONDS,
-            MAX_WALL_SECONDS,
-        )
+        if args.mode == "preflight-node-n04-5s":
+            from inodefence.evaluation.n04_preflight import (
+                CONTROLLER_FINALIZATION_RESERVE_SECONDS,
+                HOST_CLEANUP_RESERVE_SECONDS,
+                MAX_WALL_SECONDS,
+            )
+        else:
+            from inodefence.evaluation.n05_preflight import (
+                CONTROLLER_FINALIZATION_RESERVE_SECONDS,
+                HOST_CLEANUP_RESERVE_SECONDS,
+                MAX_WALL_SECONDS,
+            )
 
         preflight_deadline = preflight_started + MAX_WALL_SECONDS
 
@@ -564,7 +1035,7 @@ def main() -> int:
             return requested
         remaining = preflight_deadline - monotonic()
         if remaining <= 0:
-            raise TimeoutError("N04 preflight exceeded the 30-minute wall-clock limit")
+            raise TimeoutError("preflight exceeded the 30-minute wall-clock limit")
         return min(requested, remaining)
 
     expected_images = 2 if pair_mode else 1
@@ -591,21 +1062,69 @@ def main() -> int:
             )
         except ValueError as error:
             parser.error(str(error))
-    elif args.package_tarball:
-        parser.error("--package-tarball is restricted to the N04 preflight")
-    elif args.host_ledger is not None:
-        parser.error("--host-ledger is restricted to the N04 preflight")
-    global _ACTIVE_N04_LEDGER
+        if args.authorization_record is not None or args.authorization_sha256 is not None:
+            parser.error("authorization records are restricted to the N05 preflight")
+    n05_authorization_content = None
+    n05_authorization = None
+    if args.mode == "preflight-node-n05-5s-v2":
+        if len(args.package_tarball) != 2:
+            parser.error("N05 preflight requires affected then fixed package tarballs")
+        if args.host_ledger is None:
+            parser.error("N05 preflight requires --host-ledger")
+        if args.authorization_record is None or args.authorization_sha256 is None:
+            parser.error("N05 preflight requires an inspected authorization record and checksum")
+        try:
+            _validate_n05_host_inputs(
+                tuple(args.build_context), tuple(args.package_tarball), args.volume
+            )
+            n05_authorization_content, n05_authorization = _read_n05_authorization(
+                args.authorization_record, args.authorization_sha256
+            )
+        except ValueError as error:
+            parser.error(str(error))
+    elif args.mode != "preflight-node-n04-5s" and args.package_tarball:
+        parser.error("--package-tarball is restricted to bounded preflight modes")
+    elif args.mode not in preflight_modes and args.host_ledger is not None:
+        parser.error("--host-ledger is restricted to bounded preflight modes")
+    if args.mode != "preflight-node-n05-5s-v2" and (
+        args.authorization_record is not None or args.authorization_sha256 is not None
+    ):
+        parser.error("authorization records are restricted to the N05 preflight")
+    global _ACTIVE_N04_LEDGER, _ACTIVE_N05_LEDGER
     if args.mode == "preflight-node-n04-5s":
         assert args.host_ledger is not None
         _ACTIVE_N04_LEDGER = N04HostLedger(args.host_ledger, args)
+    elif args.mode == "preflight-node-n05-5s-v2":
+        assert args.host_ledger is not None
+        assert n05_authorization_content is not None and n05_authorization is not None
+        _ACTIVE_N05_LEDGER = N05HostLedger(
+            args.host_ledger,
+            args,
+            n05_authorization_content,
+            n05_authorization,
+        )
+    active_ledger = _ACTIVE_N05_LEDGER or _ACTIVE_N04_LEDGER
+    if args.mode == "preflight-node-n05-5s-v2":
+        from inodefence.evaluation.n05_preflight import (
+            HOST_SOURCE_WORKTREE,
+            verify_authorized_source,
+        )
+
+        assert n05_authorization is not None
+        _validate_n05_authorized_invocation(args, n05_authorization)
+        verify_authorized_source(Path(HOST_SOURCE_WORKTREE), n05_authorization)
     executable = shutil.which("docker")
     if executable is None:
         raise BackendError("host Docker CLI unavailable")
+    if args.mode == "preflight-node-n05-5s-v2":
+        from inodefence.evaluation.n05_preflight import HOST_DOCKER_EXECUTABLE
+
+        if executable != HOST_DOCKER_EXECUTABLE:
+            raise BackendError("N05 host Docker executable differs from the frozen path")
     client = DockerCLI(executable, args.context)
     owner = uuid4().hex
-    if _ACTIVE_N04_LEDGER is not None:
-        _ACTIVE_N04_LEDGER.owner = owner
+    if active_ledger is not None:
+        active_ledger.owner = owner
     controller = json.loads(
         checked(
             client.run(("container", "inspect", args.controller), bounded_timeout(10)),
@@ -613,8 +1132,10 @@ def main() -> int:
         )
     )[0]
     identity = controller["Id"]
-    if _ACTIVE_N04_LEDGER is not None:
-        _ACTIVE_N04_LEDGER.controller_id = identity
+    if active_ledger is not None:
+        active_ledger.controller_id = identity
+    if args.mode == "preflight-node-n05-5s-v2" and identity != args.controller:
+        raise BackendError("N05 controller inspection differs from its immutable requested ID")
     names: set[str] = set()
     command = (
         executable,
@@ -645,12 +1166,14 @@ def main() -> int:
             command,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE if args.mode == "preflight-node-n04-5s" else None,
+            stderr=subprocess.PIPE if args.mode in preflight_modes else None,
         ) as process:
+            if _ACTIVE_N05_LEDGER is not None:
+                _ACTIVE_N05_LEDGER.controller_launched = True
             assert process.stdout is not None and process.stdin is not None
             stderr_capture = None
             stderr_thread = None
-            if args.mode == "preflight-node-n04-5s":
+            if args.mode in preflight_modes:
                 assert process.stderr is not None
                 stderr_capture = _BoundedControllerStderr()
                 stderr_thread = threading.Thread(
@@ -664,22 +1187,28 @@ def main() -> int:
                 if args.mode == "qualify-node-n01":
                     from inodefence.evaluation.n01 import EXPECTED_BUILD_FILES, FROZEN_TARGETS
                 else:
-                    from inodefence.evaluation.n04_preflight import (
-                        EXPECTED_BUILD_FILES,
-                        FROZEN_TARGETS,
-                    )
+                    if args.mode == "preflight-node-n04-5s":
+                        from inodefence.evaluation.n04_preflight import (
+                            EXPECTED_BUILD_FILES,
+                            FROZEN_TARGETS,
+                        )
+                    else:
+                        from inodefence.evaluation.n05_preflight import (
+                            EXPECTED_BUILD_FILES,
+                            FROZEN_TARGETS,
+                        )
                 from inodefence.evaluation.node_packaging import validate_node_build
 
                 contexts = []
                 for context, image, frozen in zip(
                     args.build_context, args.image, FROZEN_TARGETS, strict=True
                 ):
-                    if args.mode == "preflight-node-n04-5s" and any(
+                    if args.mode in preflight_modes and any(
                         (context / name).is_symlink()
                         or (context / name).resolve().parent != context
                         for name in EXPECTED_BUILD_FILES
                     ):
-                        raise ValueError("N04 build context contains a symlinked input")
+                        raise ValueError("preflight build context contains a symlinked input")
                     build = validate_node_build(context)
                     if build["image_id"] != image or build["tar_version"] != frozen.tar_version:
                         raise ValueError(
@@ -694,7 +1223,7 @@ def main() -> int:
                 if args.mode == "qualify-node-n01":
                     initial = {"n01_build_contexts": contexts}
                 else:
-                    assert _ACTIVE_N04_LEDGER is not None
+                    assert active_ledger is not None
                     info, volume_consumers = _inspect_n04_host_metadata(
                         client, args.volume, bounded_timeout
                     )
@@ -747,10 +1276,18 @@ def main() -> int:
                         - CONTROLLER_FINALIZATION_RESERVE_SECONDS
                     )
                     if controller_deadline_seconds <= 0:
-                        raise TimeoutError("N04 preflight lacks finalization/cleanup reserve")
+                        raise TimeoutError("preflight lacks finalization/cleanup reserve")
                     initial = {
-                        "n04_build_contexts": contexts,
-                        "n04_package_tarballs": [
+                        (
+                            "n04_build_contexts"
+                            if args.mode == "preflight-node-n04-5s"
+                            else "n05_build_contexts"
+                        ): contexts,
+                        (
+                            "n04_package_tarballs"
+                            if args.mode == "preflight-node-n04-5s"
+                            else "n05_package_tarballs"
+                        ): [
                             base64.b64encode(path.read_bytes()).decode("ascii")
                             for path in args.package_tarball
                         ],
@@ -758,7 +1295,7 @@ def main() -> int:
                         "broker_attestation": {
                             "docker_executable": executable,
                             "context_name": args.context,
-                            "broker_started_at": _ACTIVE_N04_LEDGER.started_at,
+                            "broker_started_at": active_ledger.started_at,
                             "daemon_id": info["ID"],
                             "daemon_name": info["Name"],
                             "daemon_version": version["Server"]["Version"],
@@ -772,6 +1309,8 @@ def main() -> int:
                             "controller_privileged": controller["HostConfig"]["Privileged"],
                             "controller_label": (controller["Config"].get("Labels") or {}).get(
                                 "org.inodefence.n04-preflight-controller"
+                                if args.mode == "preflight-node-n04-5s"
+                                else "org.inodefence.n05-preflight-controller"
                             ),
                             "controller_network_mode": controller["HostConfig"]["NetworkMode"],
                             "controller_readonly_rootfs": controller["HostConfig"][
@@ -811,6 +1350,8 @@ def main() -> int:
                             "runtime_volume_scope": volume["Scope"],
                             "runtime_volume_label": (volume.get("Labels") or {}).get(
                                 "org.inodefence.n04-preflight-volume"
+                                if args.mode == "preflight-node-n04-5s"
+                                else "org.inodefence.n05-preflight-volume"
                             ),
                             "runtime_volume_options": sorted((volume.get("Options") or {}).items()),
                             "runtime_volume_mountpoint": volume["Mountpoint"],
@@ -819,11 +1360,18 @@ def main() -> int:
                             "max_wall_seconds": MAX_WALL_SECONDS,
                         },
                     }
+                    if args.mode == "preflight-node-n05-5s-v2":
+                        assert n05_authorization_content is not None
+                        assert args.authorization_sha256 is not None
+                        initial["n05_authorization"] = base64.b64encode(
+                            n05_authorization_content
+                        ).decode("ascii")
+                        initial["n05_authorization_sha256"] = args.authorization_sha256
                 process.stdin.write((json.dumps(initial) + "\n").encode("utf-8"))
                 process.stdin.flush()
             expired = threading.Event()
             timer = None
-            if args.mode == "preflight-node-n04-5s":
+            if args.mode in preflight_modes:
 
                 def stop_at_deadline() -> None:
                     expired.set()
@@ -832,7 +1380,7 @@ def main() -> int:
                 assert preflight_deadline is not None
                 remaining = preflight_deadline - monotonic() - HOST_CLEANUP_RESERVE_SECONDS
                 if remaining <= 0:
-                    raise TimeoutError("N04 preflight exhausted its controller time budget")
+                    raise TimeoutError("preflight exhausted its controller time budget")
                 timer = threading.Timer(remaining, stop_at_deadline)
                 timer.start()
             try:
@@ -841,14 +1389,12 @@ def main() -> int:
                     request = json.loads(line)
                     if set(request) == {"terminal"}:
                         if (
-                            args.mode != "preflight-node-n04-5s"
+                            args.mode not in preflight_modes
                             or terminal_seen
-                            or _ACTIVE_N04_LEDGER is None
+                            or active_ledger is None
                         ):
                             raise BackendError("unexpected controller terminal summary")
-                        _ACTIVE_N04_LEDGER.linux_terminal = _validate_linux_terminal(
-                            request["terminal"]
-                        )
+                        active_ledger.linux_terminal = _validate_linux_terminal(request["terminal"])
                         terminal_seen = True
                         continue
                     if terminal_seen:
@@ -860,9 +1406,9 @@ def main() -> int:
                         if f"{OWNER_LABEL}={owner}" not in argv:
                             raise BackendError("container request lacks invocation ownership")
                         names.add(argv[argv.index("--name") + 1])
-                        if _ACTIVE_N04_LEDGER is not None:
-                            _ACTIVE_N04_LEDGER.target_names.update(names)
-                            _ACTIVE_N04_LEDGER.cleanup_status = "pending"
+                        if active_ledger is not None:
+                            active_ledger.target_names.update(names)
+                            active_ledger.cleanup_status = "pending"
                     outcome = client.run(argv, bounded_timeout(request["timeout"]))
                     response = {
                         "returncode": outcome.returncode,
@@ -875,11 +1421,11 @@ def main() -> int:
                     process.stdin.flush()
                 returncode = process.wait()
                 if expired.is_set():
-                    if _ACTIVE_N04_LEDGER is not None:
-                        _ACTIVE_N04_LEDGER.deadline_expired = True
-                    raise TimeoutError("N04 preflight exceeded the 30-minute wall-clock limit")
-                if args.mode == "preflight-node-n04-5s" and not terminal_seen:
-                    raise BackendError("N04 controller ended without a terminal summary")
+                    if active_ledger is not None:
+                        active_ledger.deadline_expired = True
+                    raise TimeoutError("preflight exceeded the 30-minute wall-clock limit")
+                if args.mode in preflight_modes and not terminal_seen:
+                    raise BackendError("preflight controller ended without a terminal summary")
                 return returncode
             finally:
                 if timer is not None:
@@ -891,9 +1437,11 @@ def main() -> int:
                     controller_stderr, controller_stderr_truncated = stderr_capture.finish(
                         stderr_thread
                     )
-                    assert _ACTIVE_N04_LEDGER is not None
-                    _ACTIVE_N04_LEDGER.controller_stderr = controller_stderr
-                    _ACTIVE_N04_LEDGER.controller_stderr_truncated = controller_stderr_truncated
+                    assert active_ledger is not None
+                    active_ledger.controller_stderr = controller_stderr
+                    active_ledger.controller_stderr_truncated = controller_stderr_truncated
+                    if _ACTIVE_N05_LEDGER is not None:
+                        _ACTIVE_N05_LEDGER.controller_stderr_capture_complete = True
     finally:
         # Covers controller interruption/crash and uncertain create responses.
         # Inspect only names created by this invocation, and verify ownership.
@@ -903,12 +1451,12 @@ def main() -> int:
                 remove_owned(_DeadlineDockerClient(client, bounded_timeout), name, owner)
             except Exception as error:
                 errors.append(error)
-                if _ACTIVE_N04_LEDGER is not None:
-                    _ACTIVE_N04_LEDGER.cleanup_errors.append(
+                if active_ledger is not None:
+                    active_ledger.cleanup_errors.append(
                         f"{type(error).__module__}.{type(error).__qualname__}: {error}"
                     )
-        if _ACTIVE_N04_LEDGER is not None:
-            _ACTIVE_N04_LEDGER.cleanup_status = (
+        if active_ledger is not None:
+            active_ledger.cleanup_status = (
                 "failed" if errors else "complete" if names else "not_needed"
             )
         if errors:
@@ -919,12 +1467,14 @@ if __name__ == "__main__":
     try:
         exit_code = main()
     except BaseException as error:
-        if _ACTIVE_N04_LEDGER is not None:
+        active = _ACTIVE_N05_LEDGER or _ACTIVE_N04_LEDGER
+        if active is not None:
             if isinstance(error, TimeoutError):
-                _ACTIVE_N04_LEDGER.deadline_expired = True
-            _ACTIVE_N04_LEDGER.finish(None, error)
+                active.deadline_expired = True
+            active.finish(None, error)
         raise
     else:
-        if _ACTIVE_N04_LEDGER is not None:
-            _ACTIVE_N04_LEDGER.finish(exit_code, None)
+        active = _ACTIVE_N05_LEDGER or _ACTIVE_N04_LEDGER
+        if active is not None:
+            active.finish(exit_code, None)
         raise SystemExit(exit_code)

@@ -27,6 +27,7 @@ Read current definitions in this order:
 6. [Evaluation protocol](evaluation-protocol-v1.md): success, provisional budgets, censoring and metrics.
 7. [N03 pilot proposal](n03-b0-b1-b3-pilot-task-proposal.md): exact candidate cells and unresolved execution gates.
 8. [Static catalog](../../../experiments/benchmarks/README.md) and [empty result templates](../../../experiments/benchmarks/result-templates.md).
+9. [MID-03 current audit](../diagnostics/mid03-feedback-evaluation-audit-2026-10-21.md): current-main/PR dependency checks, engineering validation and explicit pilot `NOT_RUN` decision.
 
 The [engine audit](engine-contract-audit.md) and [post-audit handoff](post-audit-backlog.md)
 are explicitly historical `d1982e4` records. Their counts, absent-policy/reader

@@ -375,6 +375,26 @@ def test_valid_synthetic_admission_reopens_every_binding_without_side_effects(
     assert verified.n05_preflight.final_manifest.final_status.value == "PREFLIGHT_PASS"
     assert verified.repetition_plan_sha256 == fixture.authorization.repetition_plan_sha256
     assert len(verified.repetition_plan.runs) == 20
+    assert verified.pilot_authorization.resource_limits.controller_tmpfs_bytes == 256 * 1024 * 1024
+    _assert_unchanged(fixture, host_before, linux_before, calls)
+
+
+def test_controller_tmpfs_sub_mib_byte_mismatch_is_rejected(tmp_path, monkeypatch):
+    fixture = _synthetic_admission(tmp_path, monkeypatch)
+    changed = replace(
+        fixture.authorization,
+        resource_limits=replace(
+            fixture.authorization.resource_limits,
+            controller_tmpfs_bytes=(256 * 1024 * 1024) + 1,
+        ),
+    )
+    digest = _write_authorization(fixture, changed)
+    fixture = replace(fixture, authorization=changed, authorization_sha256=digest)
+    calls = _forbidden_spies(monkeypatch)
+    host_before, linux_before = _tree_bytes(fixture.host_root), _tree_bytes(fixture.linux_root)
+
+    with pytest.raises(ValueError, match="exact MiB"):
+        _validate(fixture)
     _assert_unchanged(fixture, host_before, linux_before, calls)
 
 

@@ -527,13 +527,17 @@ def _verify_protocol_and_resources(
             or policy.capture_bytes_per_stream != resources.target_capture_bytes_per_stream
         ):
             raise ValueError("pilot target resources differ from N05 admissions")
+    controller_tmpfs_mib, controller_tmpfs_remainder = divmod(
+        resources.controller_tmpfs_bytes, 1024 * 1024
+    )
+    if controller_tmpfs_remainder:
+        raise ValueError("pilot controller tmpfs bytes must be an exact MiB value")
     broker = raw.broker
     if broker is None or (
         broker.controller_memory_bytes != resources.controller_memory_bytes
         or broker.controller_memory_swap_bytes != resources.controller_memory_swap_bytes
         or broker.controller_pids_limit != resources.controller_pids
-        or broker.controller_tmpfs
-        != (("/tmp", f"rw,nosuid,nodev,size={resources.controller_tmpfs_bytes // (1024 * 1024)}m"),)
+        or broker.controller_tmpfs != (("/tmp", f"rw,nosuid,nodev,size={controller_tmpfs_mib}m"),)
     ):
         raise ValueError("pilot controller resources differ from N05 evidence")
 

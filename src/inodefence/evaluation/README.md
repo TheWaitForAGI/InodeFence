@@ -149,14 +149,23 @@ publishes the host-generated attempt ID before controller launch; `execute_track
 only that typed start and passes its ID unchanged to `PolicyRepetitionController`. `finish` retains
 bounded stderr, campaign prefix, cleanup outcome and terminal/manifest cross-references. A start is
 consumed without retry. Failure before campaign claim is explicit PENDING/zero executions; failure
-after claim retains the campaign's STARTED/FAILED/INVALID prefix. Missing or incomplete cleanup,
-stderr capture, terminal or manifest can never read as host success.
+after claim retains the campaign's STARTED/FAILED/INVALID prefix. A failed campaign reread records
+`campaign_observation_status=failed` with no asserted state, references or execution count instead
+of copying the pre-launch PENDING snapshot. Completed campaigns and any nonzero target prefix
+require cleanup `COMPLETE`; `NOT_NEEDED` is only a failed pre-target outcome. Missing or incomplete
+cleanup, stderr capture, terminal or manifest can never read as host success. The controller start
+reader accepts a directory containing only `started.json`, so a terminalled or partially
+terminalled attempt cannot be replayed through the backend.
 
 The actual host/controller filesystem mapping remains an integration precondition: the controller
 must reopen the authorized host ledger, Track A root, original pilot record, authoritative N05
 host/Linux roots and protocol bytes at their recorded paths. Unit 3 does not copy large evidence
 trees or turn typed references into approval tokens. Real N05 and pilot execution remain `NOT_RUN`.
 Any later approval must bind the final integrated clean source SHA exactly.
+
+A process hard kill can prevent terminal publication, and a kill between `started.json` publication
+and the first controller instruction leaves only the consumed start. Unit 3 deliberately provides
+no automatic retry for that residual; it cannot infer a safe replay from incomplete durable state.
 
 Evaluation records use a strict schema-v1 wrapper around existing canonical model
 encoding. Payload SHA-256 is declared in the wrapper; whole-file digest is returned

@@ -59,7 +59,10 @@ MID-03의 Track A consumer Units 1–3 구현 후보는 합성 N05 evidence에�
 host-attempt ledger를 연결한다. Host가 controller launch 전에 attempt ID와 `started.json`을
 no-overwrite로 발행하고, controller/campaign claim은 같은 ID만 사용한다. 발행된 host attempt는
 spawn/출력/exit/watchdog/cleanup 실패에도 소비되며 terminal/manifest가 없거나 cleanup이 불완전하면
-성공으로 읽지 않는다. 이 상태는 target-free engineering evidence일 뿐이며, controller에서
+성공으로 읽지 않는다. Terminal 또는 일부 terminal artifact가 생긴 attempt의 controller 재진입은
+backend 전에 거부하고, campaign 재관찰 실패는 stale PENDING/0이 아니라 명시적 unknown으로
+기록한다. Campaign이 완료됐거나 target execution이 있으면 cleanup `COMPLETE`만 허용한다. 이
+상태는 target-free engineering evidence일 뿐이며, controller에서
 authoritative host/Track A/pilot/N05/protocol 경로를 실제로 다시 열 수 있게 하는 배치 연결과 Unit 4
 final-manifest/analysis 결합은 남아 있다. N05와 4,000회 Track A pilot은 **NOT_RUN**이다.
 

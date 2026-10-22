@@ -24,6 +24,7 @@ from inodefence.evaluation.track_a_exploratory import (
 from inodefence.evaluation.track_a_host_ledger import (
     ClaimedTrackAHostAttempt,
     TrackAControllerTerminal,
+    TrackAHostAttemptStatus,
     TrackAHostCleanupStatus,
     TrackAHostLedger,
     validate_track_a_host_admission,
@@ -401,7 +402,8 @@ def _run_cell(args: argparse.Namespace) -> int:
         _launch_controller(args, claimed, state)
     except BaseException as caught:
         error = caught
-    execution = admission.execution
+    execution = None
+    campaign_observation_error: BaseException | None = None
     try:
         execution = read_track_a_execution(
             args.evidence,
@@ -409,14 +411,16 @@ def _run_cell(args: argparse.Namespace) -> int:
             protocol_config_path=args.protocol_config,
         )
     except BaseException as observation_error:
+        campaign_observation_error = observation_error
         if error is None:
             error = observation_error
         else:
             error.add_note(f"campaign prefix reread also failed: {observation_error}")
     try:
-        ledger.finish(
+        verified_attempt = ledger.finish(
             claimed,
             execution,
+            campaign_observation_error=campaign_observation_error,
             controller_stderr=state.controller_stderr,
             controller_stderr_truncated=state.controller_stderr_truncated,
             controller_stderr_capture_complete=state.controller_stderr_capture_complete,
@@ -428,6 +432,8 @@ def _run_cell(args: argparse.Namespace) -> int:
             cleanup_errors=state.cleanup_errors,
             error=error,
         )
+        if error is None and verified_attempt.terminal.status != TrackAHostAttemptStatus.COMPLETE:
+            error = BackendError("Track A host attempt did not complete")
     except BaseException as terminal_error:
         if error is None:
             raise

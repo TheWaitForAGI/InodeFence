@@ -614,6 +614,16 @@ provided. Pre-campaign-claim failure is recorded as PENDING with zero target exe
 failure retains the verified STARTED/FAILED/INVALID campaign prefix. Incomplete stderr capture,
 cleanup, terminal or manifest cannot verify as success.
 
+The Unit 3 host-terminal schema records campaign observation separately from campaign state. Only a
+fresh successful reread may assert PENDING/STARTED/FAILED/INVALID, claim/terminal references and an
+execution count. A failed reread retains its exception and leaves those facts unknown; it never
+copies the pre-launch PENDING/zero snapshot. A completed or nonzero-execution campaign requires
+cleanup `COMPLETE` for host success. Controller entry accepts only an attempt directory containing
+the canonical `started.json`, so terminalled and partially terminalled attempts fail before backend
+construction. A process hard kill or publication failure can still leave only `started.json` (or a
+partial terminal prefix); that is residual incomplete evidence, not an automatic retry/resume
+authorization.
+
 The process-local `VerifiedTrackAAdmission` is not serialized across the host/controller boundary.
 The host receives the original pilot path plus the externally trusted digest/reference and mints a
 fresh live validation result locally. The controller reads host-published typed references and

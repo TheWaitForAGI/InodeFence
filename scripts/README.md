@@ -280,7 +280,16 @@ the campaign slot. It never generates or substitutes an attempt ID. Stored admis
 digests are retained integrity evidence, not proof of the named human's identity. A published host
 start consumes the cell even when spawn, output parsing, exit, watchdog or cleanup fails; no retry
 or resume path exists. A pre-campaign-claim failure records PENDING with zero target executions,
-while later failure preserves the existing STARTED/FAILED/INVALID campaign prefix.
+while later failure preserves the existing STARTED/FAILED/INVALID campaign prefix. Controller
+entry accepts only a start-only attempt directory; any terminal, manifest or stderr artifact blocks
+replay before backend construction. If the post-controller campaign reread fails, the host terminal
+records an explicit failed observation and does not substitute the pre-launch PENDING snapshot.
+Completed or nonzero-execution campaigns require cleanup `COMPLETE`; `NOT_NEEDED` is limited to
+failed attempts for which no cleanup target was created.
+
+A hard process kill or evidence-filesystem failure can still prevent terminal publication. In
+particular, a kill after durable start but before a later artifact leaves a consumed start-only
+attempt; that residual is not a supported retry signal.
 
 Actual host/controller deployment is not qualified by Unit 3. The controller namespace must have
 read-only access at the recorded absolute paths to the authorized host ledger, Track A evidence,

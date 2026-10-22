@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 
 
 HOST_ADMISSION_NAME = "admission/verified-admission.json"
-HOST_ATTEMPT_FORMAT = "track-a-host-attempt-v1"
+HOST_ATTEMPT_FORMAT = "track-a-host-attempt-v2"
 
 
 def _timestamp(value: str) -> None:
@@ -66,6 +66,19 @@ class TrackAHostCleanupStatus(StrEnum):
     NOT_NEEDED = "not_needed"
     COMPLETE = "complete"
     FAILED = "failed"
+
+
+class TrackACampaignObservationStatus(StrEnum):
+    VERIFIED = "verified"
+    FAILED = "failed"
+
+
+def _exception_text(error: BaseException) -> str:
+    summary = f"{type(error).__module__}.{type(error).__qualname__}: {error}"
+    notes = getattr(error, "__notes__", ())
+    if notes:
+        summary += "\n" + "\n".join(f"note: {note}" for note in notes)
+    return summary
 
 
 @dataclass(frozen=True, slots=True)
@@ -188,7 +201,7 @@ class TrackAControllerTerminal:
 
 @dataclass(frozen=True, slots=True)
 class TrackAHostAttemptTerminal:
-    serialization_schema: ClassVar[int] = 1
+    serialization_schema: ClassVar[int] = 2
 
     attempt_id: str
     run_index: int
@@ -207,10 +220,12 @@ class TrackAHostAttemptTerminal:
     deadline_expired: bool
     cleanup_status: TrackAHostCleanupStatus
     cleanup_errors: tuple[str, ...]
-    campaign_state: RunState
+    campaign_observation_status: TrackACampaignObservationStatus
+    campaign_observation_error: str | None
+    campaign_state: RunState | None
     campaign_claim: ArtifactReference | None
     campaign_terminal: ArtifactReference | None
-    target_executions: int
+    target_executions: int | None
     exception: str | None
     started_at: str
     ended_at: str
@@ -248,9 +263,7 @@ class TrackAHostAttemptTerminal:
             or not isinstance(self.cleanup_errors, tuple)
             or not all(isinstance(item, str) and item for item in self.cleanup_errors)
             or (self.cleanup_status == TrackAHostCleanupStatus.FAILED) != bool(self.cleanup_errors)
-            or not isinstance(self.campaign_state, RunState)
-            or type(self.target_executions) is not int
-            or self.target_executions < 0
+            or not isinstance(self.campaign_observation_status, TrackACampaignObservationStatus)
             or (
                 self.exception is not None
                 and (not isinstance(self.exception, str) or not self.exception)
@@ -269,20 +282,51 @@ class TrackAHostAttemptTerminal:
             raise ValueError("unlaunched controller cannot have process or cleanup results")
         if self.controller_terminal is not None and self.controller_returncode != 0:
             raise ValueError("controller terminal requires a zero controller exit")
-        if self.campaign_state == RunState.PENDING and (
-            self.campaign_claim is not None
+        if self.campaign_observation_status == TrackACampaignObservationStatus.VERIFIED:
+            if (
+                self.campaign_observation_error is not None
+                or not isinstance(self.campaign_state, RunState)
+                or type(self.target_executions) is not int
+                or self.target_executions < 0
+            ):
+                raise ValueError("verified campaign observation requires exact campaign facts")
+            if self.campaign_state == RunState.PENDING and (
+                self.campaign_claim is not None
+                or self.campaign_terminal is not None
+                or self.target_executions != 0
+            ):
+                raise ValueError("pending campaign must retain zero target executions and no claim")
+            if self.campaign_claim is None and self.campaign_terminal is not None:
+                raise ValueError("campaign terminal cannot exist without a claim")
+            if self.campaign_claim is not None and not self.campaign_claim.name.endswith(
+                "/claim.json"
+            ):
+                raise ValueError("invalid campaign claim reference")
+            if self.campaign_terminal is not None and not self.campaign_terminal.name.endswith(
+                "/terminal.json"
+            ):
+                raise ValueError("invalid campaign terminal reference")
+        elif (
+            not isinstance(self.campaign_observation_error, str)
+            or not self.campaign_observation_error
+            or self.campaign_state is not None
+            or self.campaign_claim is not None
             or self.campaign_terminal is not None
-            or self.target_executions != 0
+            or self.target_executions is not None
         ):
-            raise ValueError("pending campaign must retain zero target executions and no claim")
-        if self.campaign_claim is None and self.campaign_terminal is not None:
-            raise ValueError("campaign terminal cannot exist without a claim")
-        if self.campaign_claim is not None and not self.campaign_claim.name.endswith("/claim.json"):
-            raise ValueError("invalid campaign claim reference")
-        if self.campaign_terminal is not None and not self.campaign_terminal.name.endswith(
-            "/terminal.json"
+            raise ValueError("failed campaign observation cannot claim campaign facts")
+        if self.status == TrackAHostAttemptStatus.COMPLETE and (
+            self.exception is not None
+            or not self.controller_launched
+            or self.controller_returncode != 0
+            or self.controller_terminal is None
+            or self.deadline_expired
+            or self.cleanup_status != TrackAHostCleanupStatus.COMPLETE
+            or not self.controller_stderr_capture_complete
+            or self.campaign_observation_status != TrackACampaignObservationStatus.VERIFIED
+            or self.campaign_state != RunState.COMPLETED
         ):
-            raise ValueError("invalid campaign terminal reference")
+            raise ValueError("complete host attempt requires verified completion and cleanup")
         _timestamp(self.started_at)
         _timestamp(self.ended_at)
         if datetime.fromisoformat(self.ended_at) < datetime.fromisoformat(self.started_at):
@@ -579,8 +623,9 @@ class TrackAHostLedger:
     def finish(
         self,
         claimed: ClaimedTrackAHostAttempt,
-        execution: VerifiedTrackAExecution,
+        execution: VerifiedTrackAExecution | None,
         *,
+        campaign_observation_error: BaseException | None,
         controller_stderr: bytes,
         controller_stderr_truncated: bool,
         controller_stderr_capture_complete: bool,
@@ -607,49 +652,66 @@ class TrackAHostLedger:
         )
         if retained_started != started:
             raise ValueError("claimed host attempt differs from its durable start")
-        if execution.execution_sha256 != started.execution_sha256:
-            raise ValueError("terminal execution differs from the host attempt")
-        _validate_track_a_host_attempt_identity(execution, started.run_index, started)
-        slot = execution.repetitions.slots[started.run_index]
-        scheduled = execution.repetitions.plan.runs[started.run_index]
-        if (
-            slot.run_id != started.run_id
-            or scheduled.evaluation_config.config_id != started.config_id
-        ):
-            raise ValueError("terminal campaign slot differs from the host attempt")
+        if (execution is None) == (campaign_observation_error is None):
+            raise ValueError("terminal requires exactly one campaign observation result")
+        slot = None
         campaign_claim = None
         campaign_terminal = None
-        if slot.claim is not None:
-            claim_path = (
-                Path(execution.manifest.output_root)
-                / "repetitions"
-                / slot.result_directory
-                / "claim.json"
+        if execution is not None:
+            if execution.execution_sha256 != started.execution_sha256:
+                raise ValueError("terminal execution differs from the host attempt")
+            _validate_track_a_host_attempt_identity(execution, started.run_index, started)
+            slot = execution.repetitions.slots[started.run_index]
+            scheduled = execution.repetitions.plan.runs[started.run_index]
+            if (
+                slot.run_id != started.run_id
+                or scheduled.evaluation_config.config_id != started.config_id
+            ):
+                raise ValueError("terminal campaign slot differs from the host attempt")
+            if slot.claim is not None:
+                claim_path = (
+                    Path(execution.manifest.output_root)
+                    / "repetitions"
+                    / slot.result_directory
+                    / "claim.json"
+                )
+                campaign_claim = _campaign_artifact(
+                    slot, "claim.json", sha256(_read_file(claim_path)).hexdigest()
+                )
+            if slot.terminal is not None:
+                terminal_path = (
+                    Path(execution.manifest.output_root)
+                    / "repetitions"
+                    / slot.result_directory
+                    / "terminal.json"
+                )
+                campaign_terminal = _campaign_artifact(
+                    slot, "terminal.json", sha256(_read_file(terminal_path)).hexdigest()
+                )
+        elif controller_terminal is not None:
+            unavailable = ValueError(
+                "controller terminal cannot be verified after campaign observation failed"
             )
-            campaign_claim = _campaign_artifact(
-                slot, "claim.json", sha256(_read_file(claim_path)).hexdigest()
+            if error is None:
+                error = unavailable
+            else:
+                error.add_note(str(unavailable))
+            controller_terminal = None
+        controller_terminal_mismatch = (
+            controller_terminal is not None
+            and slot is not None
+            and (
+                controller_terminal.attempt_id != started.attempt_id
+                or controller_terminal.run_index != started.run_index
+                or controller_terminal.run_id != started.run_id
+                or controller_terminal.execution_sha256 != started.execution_sha256
+                or controller_terminal.plan_sha256 != started.plan_sha256
+                or controller_terminal.state != slot.state
+                or controller_terminal.completed_steps != slot.completed_steps
+                or controller_terminal.campaign_claim != campaign_claim
+                or controller_terminal.campaign_terminal != campaign_terminal
+                or controller_terminal.controller_memory_sha256 != slot.controller_memory_sha256
             )
-        if slot.terminal is not None:
-            terminal_path = (
-                Path(execution.manifest.output_root)
-                / "repetitions"
-                / slot.result_directory
-                / "terminal.json"
-            )
-            campaign_terminal = _campaign_artifact(
-                slot, "terminal.json", sha256(_read_file(terminal_path)).hexdigest()
-            )
-        controller_terminal_mismatch = controller_terminal is not None and (
-            controller_terminal.attempt_id != started.attempt_id
-            or controller_terminal.run_index != started.run_index
-            or controller_terminal.run_id != started.run_id
-            or controller_terminal.execution_sha256 != started.execution_sha256
-            or controller_terminal.plan_sha256 != started.plan_sha256
-            or controller_terminal.state != slot.state
-            or controller_terminal.completed_steps != slot.completed_steps
-            or controller_terminal.campaign_claim != campaign_claim
-            or controller_terminal.campaign_terminal != campaign_terminal
-            or controller_terminal.controller_memory_sha256 != slot.controller_memory_sha256
         )
         if controller_terminal_mismatch:
             mismatch_error = ValueError("controller terminal differs from the campaign claim")
@@ -658,14 +720,24 @@ class TrackAHostLedger:
             else:
                 error.add_note(str(mismatch_error))
             controller_terminal = None
+        if (
+            slot is not None
+            and (slot.state == RunState.COMPLETED or slot.completed_steps > 0)
+            and cleanup_status != TrackAHostCleanupStatus.COMPLETE
+        ):
+            cleanup_error = ValueError("campaign target execution requires complete cleanup")
+            if error is None:
+                error = cleanup_error
+            else:
+                error.add_note(str(cleanup_error))
         successful = (
             error is None
+            and slot is not None
             and controller_launched
             and controller_returncode == 0
             and controller_terminal is not None
             and not deadline_expired
-            and cleanup_status
-            in {TrackAHostCleanupStatus.COMPLETE, TrackAHostCleanupStatus.NOT_NEEDED}
+            and cleanup_status == TrackAHostCleanupStatus.COMPLETE
             and controller_stderr_capture_complete
             and slot.state == RunState.COMPLETED
         )
@@ -691,13 +763,17 @@ class TrackAHostLedger:
             deadline_expired,
             cleanup_status,
             cleanup_errors,
-            slot.state,
+            TrackACampaignObservationStatus.VERIFIED
+            if slot is not None
+            else TrackACampaignObservationStatus.FAILED,
+            None
+            if campaign_observation_error is None
+            else _exception_text(campaign_observation_error),
+            None if slot is None else slot.state,
             campaign_claim,
             campaign_terminal,
-            slot.completed_steps,
-            None
-            if error is None
-            else f"{type(error).__module__}.{type(error).__qualname__}: {error}",
+            None if slot is None else slot.completed_steps,
+            None if error is None else _exception_text(error),
             started.started_at,
             datetime.now(UTC).isoformat(),
             status,
@@ -766,9 +842,11 @@ def read_track_a_host_attempt_started(
         directory = root / "attempts" / _attempt_directory(index, run_id)
         if directory.is_symlink() or not directory.is_dir():
             raise ValueError("missing Track A host attempt directory")
-        allowed = {"started.json", "controller-stderr.bin", "terminal.json", "manifest.json"}
-        if any(path.name not in allowed or path.is_symlink() for path in directory.iterdir()):
-            raise ValueError("unexpected Track A host attempt artifact")
+        contents = tuple(directory.iterdir())
+        if {path.name for path in contents} != {"started.json"} or any(
+            path.is_symlink() or not path.is_file() for path in contents
+        ):
+            raise ValueError("Track A host attempt is already terminal or partially terminal")
         started = read_record(
             directory / "started.json",
             TrackAHostAttemptStarted,
@@ -794,9 +872,9 @@ def _expected_host_status(terminal: TrackAHostAttemptTerminal) -> TrackAHostAtte
         and terminal.controller_returncode == 0
         and terminal.controller_terminal is not None
         and not terminal.deadline_expired
-        and terminal.cleanup_status
-        in {TrackAHostCleanupStatus.COMPLETE, TrackAHostCleanupStatus.NOT_NEEDED}
+        and terminal.cleanup_status == TrackAHostCleanupStatus.COMPLETE
         and terminal.controller_stderr_capture_complete
+        and terminal.campaign_observation_status == TrackACampaignObservationStatus.VERIFIED
         and terminal.campaign_state == RunState.COMPLETED
     )
     return TrackAHostAttemptStatus.COMPLETE if successful else TrackAHostAttemptStatus.FAILED
@@ -895,32 +973,36 @@ def read_track_a_host_attempt(
         slot = execution.repetitions.slots[index]
         claim = None
         campaign_terminal = None
-        if slot.claim is not None:
-            claim_path = (
-                Path(admission.output_root) / "repetitions" / slot.result_directory / "claim.json"
-            )
-            claim = _campaign_artifact(
-                slot, "claim.json", sha256(_read_file(claim_path)).hexdigest()
-            )
-        if slot.terminal is not None:
-            campaign_terminal_path = (
-                Path(admission.output_root)
-                / "repetitions"
-                / slot.result_directory
-                / "terminal.json"
-            )
-            campaign_terminal = _campaign_artifact(
-                slot,
-                "terminal.json",
-                sha256(_read_file(campaign_terminal_path)).hexdigest(),
-            )
-        if (
-            terminal.campaign_state != slot.state
-            or terminal.campaign_claim != claim
-            or terminal.campaign_terminal != campaign_terminal
-            or terminal.target_executions != slot.completed_steps
-        ):
-            raise ValueError("host terminal differs from the campaign prefix")
+        if terminal.campaign_observation_status == TrackACampaignObservationStatus.VERIFIED:
+            if slot.claim is not None:
+                claim_path = (
+                    Path(admission.output_root)
+                    / "repetitions"
+                    / slot.result_directory
+                    / "claim.json"
+                )
+                claim = _campaign_artifact(
+                    slot, "claim.json", sha256(_read_file(claim_path)).hexdigest()
+                )
+            if slot.terminal is not None:
+                campaign_terminal_path = (
+                    Path(admission.output_root)
+                    / "repetitions"
+                    / slot.result_directory
+                    / "terminal.json"
+                )
+                campaign_terminal = _campaign_artifact(
+                    slot,
+                    "terminal.json",
+                    sha256(_read_file(campaign_terminal_path)).hexdigest(),
+                )
+            if (
+                terminal.campaign_state != slot.state
+                or terminal.campaign_claim != claim
+                or terminal.campaign_terminal != campaign_terminal
+                or terminal.target_executions != slot.completed_steps
+            ):
+                raise ValueError("host terminal differs from the campaign prefix")
         if slot.claim is not None and slot.claim.attempt_id != started.attempt_id:
             raise ValueError("host and campaign attempt identifiers differ")
         if terminal.controller_terminal is not None and (

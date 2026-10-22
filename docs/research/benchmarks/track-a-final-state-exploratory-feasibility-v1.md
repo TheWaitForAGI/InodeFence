@@ -13,6 +13,11 @@ This is the separately versioned exploratory path allowed by the prospective N04
 PR #106. It does not amend the N03 historical pilot, satisfy the N01 human correspondence
 gate, authorize target execution, or classify a machine match as confirmed rediscovery.
 
+The target-free Unit 2 implementation preserves a separately validated pilot authorization and
+N05 v2 references under the Track A root, but does not connect the host/controller prepare path.
+The old digest-only prepare arguments are explicitly rejected. This is engineering evidence only;
+N05 and the pilot remain **NOT_RUN**.
+
 ## 1. Objective and claim boundary
 
 The protocol asks whether the existing final-state B0/B1/B3 path can complete a bounded,
@@ -35,15 +40,17 @@ and v3 entry-effect observation are out of scope.
 This prompt is not resource authorization. Before any target launch, the project owner must
 record a bounded **5-second Preflight authorization**. Before plan creation or any campaign,
 the owner must separately record a **4,000-execution pilot authorization**. Each authorization
-record is an external immutable artifact; its SHA-256 is caller-supplied and the pilot digest
-is bound into `execution.json`. A digest field is evidence of the supplied record identity,
-not proof that an AI issued or interpreted human authorization.
+record is an external immutable artifact. The initial admission receives the expected pilot digest
+and approval reference from a human-controlled route, then reopens the exact pilot and authoritative
+N05 host/Linux evidence. Freeze copies the exact pilot bytes and binds the local admission records
+into `execution.json`. Retained digests preserve the selected evidence graph; they do not by
+themselves authenticate the named human.
 
 The exact clean execution Git SHA cannot be self-embedded in a Git-tracked file. After the
-implementation PR is reviewed and before the first campaign, the Track A `prepare` command captures the
-clean full Git SHA into immutable `execution.json`. It also binds the approved 5-second
-Preflight manifest SHA-256, authorization SHA-256, protocol JSON SHA-256 and repetition-plan
-SHA-256. No campaign can run from a different or dirty checkout.
+implementation stack is reviewed and before the first campaign, the admission and eventual Track A
+`prepare` path must bind the clean full Git SHA into immutable evidence. Unit 2 binds the exact
+pilot authorization, N05 reference, protocol JSON and repetition plan; the unconnected prepare path
+remains disabled. No campaign may run from a different or dirty checkout.
 
 ## 3. Phase R read-only audit
 
@@ -72,7 +79,8 @@ The current audit result is recorded in
 
 Both images must report worker SHA-256
 `feb13d7be5f5718769bebd4b0e375ea3f535abffd45223494dd518263593498b`.
-The trusted controller and target runtime must be Linux arm64/aarch64, non-root UID/GID 1000,
+The exact environment profile is `n05-arm64-orbstack-five-second-v2`. The trusted controller and
+target runtime must be Linux arm64/aarch64, non-root UID/GID 1000,
 network `none`, read-only rootfs, all capabilities dropped, no-new-privileges, private
 PID/IPC/cgroup namespaces and one fresh volume subpath per input. Source and runtime volume
 must remain distinct.
@@ -89,8 +97,8 @@ timeout mismatch is a STOP, not a reason to rebuild silently or switch to 10 sec
 
 ## 5. Authorized 5-second Preflight prerequisite
 
-The pilot requires a fresh, independently read Preflight manifest from the parallel N04
-workstream. It must bind the same clean source SHA, both exact images/artifacts, current
+The pilot requires a fresh, independently read N05 v2 Preflight manifest and complete host ledger.
+They must bind the same clean source SHA, both exact images/artifacts, current
 controller/runtime/volume, all isolation/resource fields above, unchanged negative and harness
 positive oracle controls, all four benign seeds on both targets at 5 seconds, cleanup and an
 independent reader result. The known positive-control TAR is not a Preflight seed.
@@ -125,45 +133,19 @@ seeds are 9001–9005. Scheduling seed 4242 has already produced this immutable 
 | 8 | `n01-affected-b3-9003` | 18 | `n01-affected-b0-9002` |
 | 9 | `n01-affected-b1-9005` | 19 | `n01-affected-b1-9004` |
 
-The only raw root is
+The only Track A raw root is
 `/var/lib/inodefence/evidence/track-a-final-state-exploratory-feasibility-v1`.
-It must not exist before plan freeze and is never overwritten. N02/N03 evidence is neither
-copied into nor pooled with it.
+It must not exist before plan freeze and is never overwritten. Exact pilot authorization bytes are
+copied locally; the authoritative N05 host/Linux roots are referenced and must remain reopenable.
+Large N05 raw evidence is neither copied into nor pooled with Track A evidence.
 
 ## 7. Execution and STOP semantics
 
-The isolated `scripts.track_a_container_host prepare` command performs image identity/isolation
-observations and freezes `execution.json`
-plus `repetitions/plan.json`; it is allowed only after authorized Preflight. Each
-`scripts.track_a_container_host run-cell` invocation is one fresh Linux controller Python process and may execute only
-the next PENDING index. Every earlier slot must be COMPLETED. No slot is resumed or retried.
-
-The approved host substitutes only the reviewed controller ID, clean separate Track A
-worktree, and the two trusted digest arguments below; all research parameters are fixed. The
-primary `/workspaces/InodeFence` checkout is rejected:
-
-```bash
-PYTHONPATH=src python3.12 -m scripts.track_a_container_host \
-  --context orbstack --controller <full-controller-id> \
-  --controller-worktree /workspaces/InodeFence-track-a-exploratory-pilot \
-  --volume inodefence-runtime \
-  --image sha256:8b44887734511dbe9462f9b82f1c3128a8b445ebab2fa9b8db3fadcbc659c520 \
-  --image sha256:ed428826dd4b561f5b23035539137f0e7fe86c03c92eb5c7cae54a684fc7880f \
-  --evidence /var/lib/inodefence/evidence/track-a-final-state-exploratory-feasibility-v1 \
-  --preflight-manifest-sha256 <trusted-preflight-sha256> \
-  --resource-authorization-sha256 <trusted-authorization-sha256> \
-  prepare
-
-PYTHONPATH=src python3.12 -m scripts.track_a_container_host \
-  --context orbstack --controller <full-controller-id> \
-  --controller-worktree /workspaces/InodeFence-track-a-exploratory-pilot \
-  --volume inodefence-runtime \
-  --image sha256:8b44887734511dbe9462f9b82f1c3128a8b445ebab2fa9b8db3fadcbc659c520 \
-  --image sha256:ed428826dd4b561f5b23035539137f0e7fe86c03c92eb5c7cae54a684fc7880f \
-  --evidence /var/lib/inodefence/evidence/track-a-final-state-exploratory-feasibility-v1 \
-  --run-index <next-index-0-through-19> --execution-sha256 <trusted-execution-sha256> \
-  run-cell
-```
+Unit 2 provides only the target-free library freeze/reader boundary. The host/controller `prepare`
+entry points reject both preparation and the legacy preflight/resource digest arguments before
+Docker inspection or controller launch. No replacement host command is enabled in this unit.
+Host-attempt durability and admission transport are Unit 3 work; until then, `prepare` and
+`run-cell` must not be invoked for a real campaign.
 
 The existing runner executes all 200 cases after target returns, including seed, no-op,
 duplicate, rejection, failure and timeout results. A generic observation never stops a
@@ -201,8 +183,9 @@ PYTHONPATH=src python -m inodefence.evaluation.track_a_exploratory analyze \
   --final-manifest-sha256 <trusted-final-manifest-sha256>
 ```
 
-The reader reopens protocol/config/plan/journal/timing/memory evidence, verifies the complete
-file inventory, reconstructs mutation/search decisions and enumerates N01 nominations from
+The reader reopens the exact local pilot bytes, retained admission record, N05 reference,
+authoritative N05 host/Linux roots, protocol/config/plan/journal/timing/memory evidence, verifies
+the complete file inventory, reconstructs mutation/search decisions and enumerates N01 nominations from
 every completed raw mutation step of completed affected campaigns. A failed/interrupted prefix
 still reports generic N01-like C1 occurrences but is not promoted to a completed matcher
 nomination. Candidate 3+3 replay remains a separately authorized validation budget.

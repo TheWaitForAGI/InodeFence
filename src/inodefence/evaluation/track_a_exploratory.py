@@ -5,6 +5,8 @@ change mutation, observer, C0/C1/C2, feedback, or N01 matching semantics and it
 cannot manufacture resource authorization or a historical qualification token.
 """
 
+from __future__ import annotations
+
 import argparse
 import math
 import sys
@@ -16,7 +18,7 @@ from enum import StrEnum
 from hashlib import sha256
 from pathlib import Path
 from statistics import median
-from typing import ClassVar
+from typing import TYPE_CHECKING, ClassVar
 
 from inodefence.campaign import CampaignOrigin, SearchCampaignCompletedStep, SearchCampaignConfig
 from inodefence.feedback import FeedbackProjection, SearchPolicy, violation_fingerprints
@@ -44,8 +46,11 @@ from .policy_repeated import (
 )
 from .policy_timing import PolicyCampaignTiming, VerifiedTimedPolicyEvidence
 from .repeated import RunState
-from .storage import read_record, sync_directory, write_record
+from .storage import publish_bytes, read_record, sync_directory, write_record
 from .verify import VerificationError, _digest, _read_file
+
+if TYPE_CHECKING:
+    from .track_a_admission import VerifiedTrackAAdmission
 
 PROTOCOL_VERSION = "track-a-final-state-exploratory-feasibility-v1"
 EXPERIMENT_ID = PROTOCOL_VERSION
@@ -56,7 +61,7 @@ PROTOCOL_CONFIG_RELATIVE = Path(
 EXECUTION_BUDGET = 200
 TARGET_TIMEOUT_SECONDS = 5.0
 SEED_PROFILE = "minimal-generic-v1"
-ENVIRONMENT_PROFILE = "n04-arm64-orbstack-five-second-v1"
+ENVIRONMENT_PROFILE = "n05-arm64-orbstack-five-second-v2"
 SENTINEL_PROFILE = "default-outside-sentinel-v1"
 FINAL_MANIFEST_NAME = "final-manifest.json"
 
@@ -451,14 +456,15 @@ def validate_track_a_plan(plan: PolicyRepetitionPlan) -> None:
 
 @dataclass(frozen=True, slots=True)
 class TrackAExecutionManifest:
-    """Pre-execution marker binding approval/preflight/config/plan and exact source."""
+    """Pre-execution marker binding retained admission/config/plan and source."""
 
-    serialization_schema: ClassVar[int] = 1
+    serialization_schema: ClassVar[int] = 2
 
     protocol_version: str
     protocol_config: ArtifactReference
-    preflight_manifest_sha256: str
-    resource_authorization_sha256: str
+    pilot_authorization: ArtifactReference
+    admission_record: ArtifactReference
+    n05_evidence: ArtifactReference
     source_revision: str
     output_root: str
     repetition_plan: ArtifactReference
@@ -470,13 +476,17 @@ class TrackAExecutionManifest:
             self.protocol_version != PROTOCOL_VERSION
             or not isinstance(self.protocol_config, ArtifactReference)
             or self.protocol_config.name != PROTOCOL_CONFIG_RELATIVE.as_posix()
+            or not isinstance(self.pilot_authorization, ArtifactReference)
+            or self.pilot_authorization.name != "admission/pilot-authorization.json"
+            or not isinstance(self.admission_record, ArtifactReference)
+            or self.admission_record.name != "admission/verified-admission.json"
+            or not isinstance(self.n05_evidence, ArtifactReference)
+            or self.n05_evidence.name != "admission/n05-evidence-reference.json"
             or not isinstance(self.repetition_plan, ArtifactReference)
             or self.repetition_plan.name != "repetitions/plan.json"
             or self.state != "frozen-pre-execution"
         ):
             raise ValueError("invalid Track A execution binding")
-        for value in (self.preflight_manifest_sha256, self.resource_authorization_sha256):
-            _digest(value)
         SourceProvenance(self.source_revision, False)
         if not isinstance(self.output_root, str) or not self.output_root:
             raise ValueError("Track A output root must be explicit")
@@ -491,6 +501,7 @@ class VerifiedTrackAExecution:
     execution_sha256: str
     repetitions: PolicyRepetitionSnapshot
     protocol_config_sha256: str
+    admission: VerifiedTrackAAdmission
 
 
 def freeze_track_a_execution(
@@ -498,33 +509,72 @@ def freeze_track_a_execution(
     affected_provenance: ExecutionProvenance,
     fixed_provenance: ExecutionProvenance,
     *,
-    preflight_manifest_sha256: str,
-    resource_authorization_sha256: str,
+    admission: VerifiedTrackAAdmission,
     protocol_config_path: Path | None = None,
 ) -> VerifiedTrackAExecution:
-    """Freeze a new output root before any campaign; never infer authorization."""
+    """Freeze a live, externally anchored admission before any campaign."""
+    from .track_a_admission import (
+        TrackAAdmissionRecord,
+        revalidate_track_a_admission_for_freeze,
+        track_a_plan_sha256,
+    )
+
+    verified_admission = revalidate_track_a_admission_for_freeze(
+        admission, protocol_config_path=protocol_config_path
+    )
+    authorization = verified_admission.pilot_authorization
     protocol, protocol_digest = load_track_a_protocol(protocol_config_path)
     if (
         not root.is_absolute()
+        or root != Path(authorization.track_a_output_root)
         or root != Path(protocol["evidence"]["output_root"])
         or root.exists()
         or root.is_symlink()
+        or root.resolve() != root
     ):
         raise ValueError("Track A requires its exact new absolute output root")
-    _digest(preflight_manifest_sha256)
-    _digest(resource_authorization_sha256)
     plan = make_track_a_plan(affected_provenance, fixed_provenance)
+    if (
+        plan != verified_admission.repetition_plan
+        or track_a_plan_sha256(plan) != verified_admission.repetition_plan_sha256
+        or protocol_digest != verified_admission.protocol_config_sha256
+    ):
+        raise ValueError("Track A execution plan/protocol differs from the verified admission")
     root.mkdir(parents=True, exist_ok=False)
     sync_directory(root.parent)
+    admission_root = root / "admission"
+    admission_root.mkdir(exist_ok=False)
+    sync_directory(root)
+    pilot_path = admission_root / "pilot-authorization.json"
+    pilot_sha256 = publish_bytes(pilot_path, verified_admission.pilot_authorization_bytes)
+    if pilot_sha256 != verified_admission.pilot_authorization_sha256:
+        raise ValueError("published pilot authorization differs from the verified bytes")
+    n05_path = admission_root / "n05-evidence-reference.json"
+    n05_sha256 = write_record(n05_path, authorization.n05)
+    admission_record = TrackAAdmissionRecord(
+        authorization.authorization_id,
+        verified_admission.trusted_approval_reference,
+        ArtifactReference("admission/pilot-authorization.json", pilot_sha256),
+        ArtifactReference("admission/n05-evidence-reference.json", n05_sha256),
+        ArtifactReference(PROTOCOL_CONFIG_RELATIVE.as_posix(), protocol_digest),
+        ArtifactReference("repetitions/plan.json", verified_admission.repetition_plan_sha256),
+        authorization.source_revision,
+        authorization.track_a_output_root,
+        authorization.track_a_host_ledger_root,
+    )
+    admission_sha256 = write_record(admission_root / "verified-admission.json", admission_record)
     controller = PolicyRepetitionController.create(root / "repetitions", plan)
     plan_sha256 = controller.snapshot().plan_sha256
+    if plan_sha256 != verified_admission.repetition_plan_sha256:
+        raise ValueError("published Track A plan differs from the verified admission")
     source_revision = affected_provenance.source.revision
     assert source_revision is not None
     manifest = TrackAExecutionManifest(
         PROTOCOL_VERSION,
         ArtifactReference(PROTOCOL_CONFIG_RELATIVE.as_posix(), protocol_digest),
-        preflight_manifest_sha256,
-        resource_authorization_sha256,
+        ArtifactReference("admission/pilot-authorization.json", pilot_sha256),
+        ArtifactReference("admission/verified-admission.json", admission_sha256),
+        ArtifactReference("admission/n05-evidence-reference.json", n05_sha256),
         source_revision,
         str(root),
         ArtifactReference("repetitions/plan.json", plan_sha256),
@@ -544,13 +594,38 @@ def read_track_a_execution(
     expected_execution_sha256: str,
     protocol_config_path: Path | None = None,
 ) -> VerifiedTrackAExecution:
-    """Verify the frozen execution declaration and current repetition prefix."""
+    """Reopen local admission bytes and authoritative N05 evidence read-only."""
     try:
-        if root.is_symlink() or not root.is_dir():
+        from .track_a_admission import (
+            N05EvidenceBinding,
+            TrackAAdmissionRecord,
+            revalidate_retained_track_a_admission,
+        )
+
+        if (
+            not root.is_absolute()
+            or root.is_symlink()
+            or root.resolve() != root
+            or not root.is_dir()
+        ):
             raise ValueError("expected Track A evidence directory")
-        permitted = {"execution.json", "repetitions", FINAL_MANIFEST_NAME}
+        permitted = {"admission", "execution.json", "repetitions", FINAL_MANIFEST_NAME}
         if any(path.name not in permitted for path in root.iterdir()):
             raise ValueError("unexpected Track A top-level artifact")
+        admission_root = root / "admission"
+        if (
+            admission_root.is_symlink()
+            or admission_root.resolve() != admission_root
+            or not admission_root.is_dir()
+            or {path.name for path in admission_root.iterdir()}
+            != {
+                "n05-evidence-reference.json",
+                "pilot-authorization.json",
+                "verified-admission.json",
+            }
+            or any(path.is_symlink() or not path.is_file() for path in admission_root.iterdir())
+        ):
+            raise ValueError("invalid Track A admission evidence directory")
         execution_path = root / "execution.json"
         digest = sha256(_read_file(execution_path)).hexdigest()
         if digest != _digest(expected_execution_sha256):
@@ -561,18 +636,60 @@ def read_track_a_execution(
         )
         if manifest.output_root != str(root):
             raise ValueError("Track A output root differs from execution binding")
+        admission_record = read_record(
+            root / manifest.admission_record.name,
+            TrackAAdmissionRecord,
+            expected_sha256=manifest.admission_record.sha256,
+        )
+        n05_binding = read_record(
+            root / manifest.n05_evidence.name,
+            N05EvidenceBinding,
+            expected_sha256=manifest.n05_evidence.sha256,
+        )
+        if (
+            admission_record.pilot_authorization != manifest.pilot_authorization
+            or admission_record.n05_evidence != manifest.n05_evidence
+            or admission_record.protocol_config != manifest.protocol_config
+            or admission_record.repetition_plan != manifest.repetition_plan
+            or admission_record.source_revision != manifest.source_revision
+            or admission_record.output_root != manifest.output_root
+        ):
+            raise ValueError("Track A execution and admission records disagree")
+        reverified_admission = revalidate_retained_track_a_admission(
+            pilot_authorization_path=root / manifest.pilot_authorization.name,
+            expected_pilot_authorization_sha256=manifest.pilot_authorization.sha256,
+            retained_approval_reference=admission_record.approval_reference,
+            expected_n05_binding=n05_binding,
+            expected_output_root=root,
+            protocol_config_path=protocol_config_path,
+        )
+        authorization = reverified_admission.pilot_authorization
+        if (
+            admission_record.authorization_id != authorization.authorization_id
+            or admission_record.approval_reference != authorization.approval_reference
+            or admission_record.host_ledger_root != authorization.track_a_host_ledger_root
+            or reverified_admission.protocol_config_sha256 != protocol_digest
+        ):
+            raise ValueError("retained admission identity differs from its verified originals")
         repetitions = read_policy_repetitions(
             root / "repetitions",
             expected_plan_sha256=manifest.repetition_plan.sha256,
             require_controller_memory=True,
         )
         validate_track_a_plan(repetitions.plan)
+        if (
+            repetitions.plan != reverified_admission.repetition_plan
+            or repetitions.plan_sha256 != reverified_admission.repetition_plan_sha256
+        ):
+            raise ValueError("Track A plan differs from the retained admission")
         sources = {
             run.evaluation_config.provenance.source.revision for run in repetitions.plan.runs
         }
         if sources != {manifest.source_revision}:
             raise ValueError("Track A plan source differs from execution binding")
-        return VerifiedTrackAExecution(manifest, digest, repetitions, protocol_digest)
+        return VerifiedTrackAExecution(
+            manifest, digest, repetitions, protocol_digest, reverified_admission
+        )
     except (OSError, ValueError, TypeError, KeyError, OverflowError) as error:
         if isinstance(error, VerificationError):
             raise

@@ -10,11 +10,13 @@ or execute targets.
 
 import re
 from collections import Counter
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field, fields, is_dataclass, replace
 from datetime import datetime
 from enum import StrEnum
 from hashlib import sha256
 from pathlib import Path
+from typing import ClassVar
+from weakref import ReferenceType, ref
 
 import inodefence.evaluation.track_a_exploratory as track_a
 from inodefence.evaluation.encoding import decode, json_bytes, read_json
@@ -63,7 +65,7 @@ PILOT_HUMAN_REVIEW_STATEMENT = (
     "I separately authorize exactly the Track A 20-campaign, 4000-execution pilot; "
     "the N05 authorization does not authorize this pilot."
 )
-TRACK_A_N05_ENVIRONMENT_PROFILE = "n05-arm64-orbstack-five-second-v2"
+TRACK_A_N05_ENVIRONMENT_PROFILE = track_a.ENVIRONMENT_PROFILE
 PILOT_RESUME_POLICY = "NONE_NEW_AUTHORIZATION_REQUIRED"
 PILOT_STOP_CONDITIONS = (
     "prior-campaign-non-complete",
@@ -370,10 +372,63 @@ class VerifiedN05HostSummary:
 
 
 @dataclass(frozen=True, slots=True)
+class TrackAAdmissionRecord:
+    """Retained integrity binding created from an externally anchored admission.
+
+    This record preserves the digest and approval reference selected by the
+    caller.  Reading it verifies the retained evidence graph; the record does
+    not authenticate the named human or create its own trusted approval anchor.
+    """
+
+    serialization_schema: ClassVar[int] = 1
+
+    authorization_id: str
+    approval_reference: str
+    pilot_authorization: ArtifactReference
+    n05_evidence: ArtifactReference
+    protocol_config: ArtifactReference
+    repetition_plan: ArtifactReference
+    source_revision: str
+    output_root: str
+    host_ledger_root: str
+    evidence_role: str = "retained-integrity-binding-not-human-authentication"
+
+    def __post_init__(self) -> None:
+        _text(self.authorization_id, "pilot authorization ID")
+        _text(self.approval_reference, "retained approval reference")
+        if (
+            not isinstance(self.pilot_authorization, ArtifactReference)
+            or self.pilot_authorization.name != "admission/pilot-authorization.json"
+            or not isinstance(self.n05_evidence, ArtifactReference)
+            or self.n05_evidence.name != "admission/n05-evidence-reference.json"
+            or not isinstance(self.protocol_config, ArtifactReference)
+            or self.protocol_config.name != track_a.PROTOCOL_CONFIG_RELATIVE.as_posix()
+            or not isinstance(self.repetition_plan, ArtifactReference)
+            or self.repetition_plan.name != "repetitions/plan.json"
+            or self.evidence_role != "retained-integrity-binding-not-human-authentication"
+        ):
+            raise ValueError("invalid retained Track A admission references")
+        SourceProvenance(self.source_revision, False)
+        output_root = _absolute_path(self.output_root, "retained Track A output root")
+        host_root = _absolute_path(self.host_ledger_root, "retained Track A host ledger root")
+        if output_root == host_root:
+            raise ValueError("retained Track A output and host roots must differ")
+
+
+_FREEZE_ADMISSION_SEAL = object()
+
+
+@dataclass(frozen=True, slots=True, weakref_slot=True)
 class VerifiedTrackAAdmission:
-    """Typed result returned only after every pilot/N05/plan binding passes."""
+    """Typed result returned after every pilot/N05/plan binding passes.
+
+    Only objects minted by :func:`validate_track_a_admission` carry the
+    process-local freeze capability.  Retained readers can reconstruct the
+    same evidence values, but cannot manufacture that capability.
+    """
 
     pilot_authorization: TrackAPilotAuthorization
+    pilot_authorization_path: Path
     pilot_authorization_bytes: bytes
     pilot_authorization_sha256: str
     trusted_approval_reference: str
@@ -384,6 +439,67 @@ class VerifiedTrackAAdmission:
     repetition_plan: PolicyRepetitionPlan
     repetition_plan_sha256: str
     protocol_config_sha256: str
+    _freeze_admission_seal: object = field(init=False, repr=False, compare=False, default=None)
+
+
+_LIVE_FREEZE_ADMISSIONS: dict[int, tuple[ReferenceType[VerifiedTrackAAdmission], str]] = {}
+
+
+@dataclass(frozen=True, slots=True)
+class _FreezeAdmissionFingerprint:
+    components: tuple[str, ...]
+
+
+def _fingerprint_component(value: object) -> str:
+    if is_dataclass(value) and not isinstance(value, type):
+        return canonical_json(value)
+    if isinstance(value, bytes):
+        return sha256(value).hexdigest()
+    if isinstance(value, Path):
+        return str(value)
+    if isinstance(value, str):
+        return value
+    raise TypeError(f"unsupported freeze admission component: {type(value).__name__}")
+
+
+def _freeze_admission_fingerprint(value: VerifiedTrackAAdmission) -> str:
+    encoded = _FreezeAdmissionFingerprint(
+        tuple(
+            f"{item.name}={_fingerprint_component(getattr(value, item.name))}"
+            for item in fields(VerifiedTrackAAdmission)
+            if item.name != "_freeze_admission_seal"
+        )
+    )
+    return sha256(canonical_json(encoded).encode("ascii")).hexdigest()
+
+
+def _register_freeze_admission(value: VerifiedTrackAAdmission) -> VerifiedTrackAAdmission:
+    object.__setattr__(value, "_freeze_admission_seal", _FREEZE_ADMISSION_SEAL)
+    identity = id(value)
+
+    def discard(reference: ReferenceType[VerifiedTrackAAdmission]) -> None:
+        current = _LIVE_FREEZE_ADMISSIONS.get(identity)
+        if current is not None and current[0] is reference:
+            _LIVE_FREEZE_ADMISSIONS.pop(identity, None)
+
+    reference = ref(value, discard)
+    _LIVE_FREEZE_ADMISSIONS[identity] = (
+        reference,
+        _freeze_admission_fingerprint(value),
+    )
+    return value
+
+
+def _has_live_freeze_capability(value: object) -> bool:
+    if type(value) is not VerifiedTrackAAdmission:
+        return False
+    registration = _LIVE_FREEZE_ADMISSIONS.get(id(value))
+    return (
+        value._freeze_admission_seal is _FREEZE_ADMISSION_SEAL
+        and registration is not None
+        and registration[0]() is value
+        and registration[1] == _freeze_admission_fingerprint(value)
+    )
 
 
 def pilot_authorization_from_bytes(content: bytes) -> TrackAPilotAuthorization:
@@ -564,38 +680,64 @@ def _prospective_plan(
     )
 
 
-def _validate_track_a_admission(
+def _track_a_roots(authorization: TrackAPilotAuthorization) -> tuple[Path, Path]:
+    return (
+        _absolute_path(authorization.track_a_output_root, "Track A output root"),
+        _absolute_path(authorization.track_a_host_ledger_root, "Track A host ledger root"),
+    )
+
+
+def _validate_new_track_a_roots(authorization: TrackAPilotAuthorization) -> None:
+    """Protect first admission with a strict no-existing-root rule."""
+    output_root, host_root = _track_a_roots(authorization)
+    if any(
+        path.exists() or path.is_symlink() or path.resolve() != path
+        for path in (output_root, host_root)
+    ):
+        raise ValueError("Track A authorization requires new output and host ledger roots")
+
+
+def _validate_retained_track_a_roots(
+    authorization: TrackAPilotAuthorization, *, expected_output_root: Path
+) -> None:
+    """Validate a stored execution without weakening first-admission checks."""
+    output_root, host_root = _track_a_roots(authorization)
+    if (
+        expected_output_root != output_root
+        or not expected_output_root.is_absolute()
+        or expected_output_root.is_symlink()
+        or expected_output_root.resolve() != expected_output_root
+        or not expected_output_root.is_dir()
+    ):
+        raise ValueError("retained Track A output root differs from the authorization")
+    if host_root.exists():
+        if host_root.is_symlink() or host_root.resolve() != host_root or not host_root.is_dir():
+            raise ValueError("retained Track A host ledger root is not a nonsymlink directory")
+    elif host_root.is_symlink() or host_root.resolve() != host_root:
+        raise ValueError("retained Track A host ledger path is not canonical")
+
+
+def _verify_track_a_admission_evidence(
     *,
     pilot_authorization_path: Path,
-    expected_pilot_authorization_sha256: str,
+    pilot_authorization_bytes: bytes,
+    pilot_authorization_sha256: str,
+    authorization: TrackAPilotAuthorization,
     trusted_approval_reference: str,
     protocol_config_path: Path | None,
 ) -> VerifiedTrackAAdmission:
-    expected_digest = _digest(expected_pilot_authorization_sha256)
+    expected_digest = _digest(pilot_authorization_sha256)
     _text(trusted_approval_reference, "trusted approval reference")
-    if not pilot_authorization_path.is_absolute():
-        raise ValueError("pilot authorization path must be absolute")
-    content = _existing_nonsymlink_file(pilot_authorization_path, "pilot authorization")
+    content = pilot_authorization_bytes
     content_digest = sha256(content).hexdigest()
     if content_digest != expected_digest:
         raise ValueError("Track A pilot authorization checksum mismatch")
-    authorization = pilot_authorization_from_bytes(content)
+    if pilot_authorization_from_bytes(content) != authorization:
+        raise ValueError("Track A pilot authorization object differs from its exact bytes")
     if authorization.approval_reference != trusted_approval_reference:
         raise ValueError("pilot approval reference differs from the trusted launch input")
 
-    output_root = _absolute_path(authorization.track_a_output_root, "Track A output root")
-    track_a_host_root = _absolute_path(
-        authorization.track_a_host_ledger_root, "Track A host ledger root"
-    )
-    if (
-        output_root.exists()
-        or output_root.is_symlink()
-        or output_root.resolve() != output_root
-        or track_a_host_root.exists()
-        or track_a_host_root.is_symlink()
-        or track_a_host_root.resolve() != track_a_host_root
-    ):
-        raise ValueError("Track A authorization requires new output and host ledger roots")
+    output_root, track_a_host_root = _track_a_roots(authorization)
 
     binding = authorization.n05
     if binding.attempt_id != N05_ATTEMPT_ID or binding.mode_id != N05_MODE_ID:
@@ -766,6 +908,7 @@ def _validate_track_a_admission(
         raise ValueError("pilot repetition plan checksum differs from the N05-bound plan")
     return VerifiedTrackAAdmission(
         authorization,
+        pilot_authorization_path,
         content,
         content_digest,
         trusted_approval_reference,
@@ -792,15 +935,97 @@ def validate_track_a_admission(
     approval/launch route, not copied from the candidate authorization file.
     """
     try:
-        return _validate_track_a_admission(
+        expected_digest = _digest(expected_pilot_authorization_sha256)
+        _text(trusted_approval_reference, "trusted approval reference")
+        if not pilot_authorization_path.is_absolute():
+            raise ValueError("pilot authorization path must be absolute")
+        content = _existing_nonsymlink_file(pilot_authorization_path, "pilot authorization")
+        if sha256(content).hexdigest() != expected_digest:
+            raise ValueError("Track A pilot authorization checksum mismatch")
+        authorization = pilot_authorization_from_bytes(content)
+        _validate_new_track_a_roots(authorization)
+        verified = _verify_track_a_admission_evidence(
             pilot_authorization_path=pilot_authorization_path,
-            expected_pilot_authorization_sha256=expected_pilot_authorization_sha256,
+            pilot_authorization_bytes=content,
+            pilot_authorization_sha256=expected_digest,
+            authorization=authorization,
             trusted_approval_reference=trusted_approval_reference,
             protocol_config_path=protocol_config_path,
         )
+        return _register_freeze_admission(verified)
     except Exception as error:
         if isinstance(error, VerificationError) and str(error).startswith(
             "invalid Track A admission:"
         ):
             raise
         raise VerificationError(f"invalid Track A admission: {error}") from error
+
+
+def revalidate_track_a_admission_for_freeze(
+    admission: VerifiedTrackAAdmission,
+    *,
+    protocol_config_path: Path | None = None,
+) -> VerifiedTrackAAdmission:
+    """Reopen a live, externally anchored admission immediately before freeze.
+
+    Type identity is insufficient: only the exact object minted by the public
+    validator is accepted, and all original pilot/N05/protocol bytes are read
+    again.  Manual construction, copying and ``dataclasses.replace`` do not
+    inherit the process-local capability.
+    """
+    if not _has_live_freeze_capability(admission):
+        raise VerificationError(
+            "invalid Track A admission: freeze requires the exact live validator result"
+        )
+    current = validate_track_a_admission(
+        pilot_authorization_path=admission.pilot_authorization_path,
+        expected_pilot_authorization_sha256=admission.pilot_authorization_sha256,
+        trusted_approval_reference=admission.trusted_approval_reference,
+        protocol_config_path=protocol_config_path,
+    )
+    if current != admission:
+        raise VerificationError("invalid Track A admission: validator result changed before freeze")
+    return current
+
+
+def revalidate_retained_track_a_admission(
+    *,
+    pilot_authorization_path: Path,
+    expected_pilot_authorization_sha256: str,
+    retained_approval_reference: str,
+    expected_n05_binding: N05EvidenceBinding,
+    expected_output_root: Path,
+    protocol_config_path: Path | None = None,
+) -> VerifiedTrackAAdmission:
+    """Reopen stored bytes and authoritative N05 roots without minting a freeze capability.
+
+    The digest/reference arguments are retained integrity bindings anchored by
+    the caller's expected execution manifest.  They preserve, but do not by
+    themselves authenticate, the original human approval.
+    """
+    try:
+        expected_digest = _digest(expected_pilot_authorization_sha256)
+        _text(retained_approval_reference, "retained approval reference")
+        content = _existing_nonsymlink_file(
+            pilot_authorization_path, "retained pilot authorization"
+        )
+        if sha256(content).hexdigest() != expected_digest:
+            raise ValueError("retained pilot authorization checksum mismatch")
+        authorization = pilot_authorization_from_bytes(content)
+        if authorization.n05 != expected_n05_binding:
+            raise ValueError("retained N05 binding differs from the pilot authorization")
+        _validate_retained_track_a_roots(authorization, expected_output_root=expected_output_root)
+        return _verify_track_a_admission_evidence(
+            pilot_authorization_path=pilot_authorization_path,
+            pilot_authorization_bytes=content,
+            pilot_authorization_sha256=expected_digest,
+            authorization=authorization,
+            trusted_approval_reference=retained_approval_reference,
+            protocol_config_path=protocol_config_path,
+        )
+    except Exception as error:
+        if isinstance(error, VerificationError) and str(error).startswith(
+            "invalid retained Track A admission:"
+        ):
+            raise
+        raise VerificationError(f"invalid retained Track A admission: {error}") from error

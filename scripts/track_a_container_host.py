@@ -40,16 +40,17 @@ def _arguments() -> argparse.Namespace:
     if args.image != [AFFECTED_IMAGE_ID, FIXED_IMAGE_ID]:
         parser.error("Track A requires the frozen affected/fixed image IDs in order")
     prepare = args.mode == "prepare"
-    run = args.mode == "run-cell"
-    if prepare != bool(args.preflight_manifest_sha256 and args.resource_authorization_sha256):
-        parser.error("prepare requires preflight and resource-authorization SHA-256 values")
-    if run != (args.run_index is not None and args.execution_sha256 is not None):
-        parser.error("run-cell requires --run-index and --execution-sha256")
-    if not prepare and (args.preflight_manifest_sha256 or args.resource_authorization_sha256):
-        parser.error("approval bindings are accepted only while preparing Track A")
-    if not run and (args.run_index is not None or args.execution_sha256 is not None):
-        parser.error("run identity is accepted only while executing one Track A cell")
-    return args
+    if prepare:
+        parser.error(
+            "Track A prepare is disabled until verified admission transport is connected; "
+            "digest-only preparation is forbidden"
+        )
+    if args.preflight_manifest_sha256 or args.resource_authorization_sha256:
+        parser.error("digest-only approval bindings are no longer accepted")
+    parser.error(
+        "Track A run-cell is disabled until admission transport and the host attempt ledger "
+        "are connected"
+    )
 
 
 def main() -> int:
@@ -90,16 +91,6 @@ def main() -> int:
         str(args.evidence),
         *(("--run-index", str(args.run_index)) if args.run_index is not None else ()),
         *(("--execution-sha256", args.execution_sha256) if args.execution_sha256 else ()),
-        *(
-            ("--preflight-manifest-sha256", args.preflight_manifest_sha256)
-            if args.preflight_manifest_sha256
-            else ()
-        ),
-        *(
-            ("--resource-authorization-sha256", args.resource_authorization_sha256)
-            if args.resource_authorization_sha256
-            else ()
-        ),
         args.mode,
     )
     names: set[str] = set()

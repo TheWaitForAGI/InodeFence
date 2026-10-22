@@ -571,6 +571,22 @@ created, and N05/pilot execution remain `NOT_RUN`.
 - **Completion:** final Track A reader can reconstruct every approval/N05 edge from actual bytes;
   no opaque digest-only path remains.
 
+Implementation-candidate note: Unit 2 now changes the execution manifest to reference the exact
+copied pilot bytes, a canonical retained-admission record and a canonical N05 binding record.
+`freeze_track_a_execution` accepts only the exact live object minted by Unit 1, reopens the original
+pilot/N05/protocol evidence, and compares the supplied execution provenance and plan before creating
+the root. A process-local capability bound to an immutable value fingerprint plus fresh comparison
+rejects manual construction,
+copying, `dataclasses.replace` and post-validation mutation; type identity alone is not trusted.
+`read_track_a_execution` follows a separate stored-evidence path that requires the already-created
+authorized output root, reopens all three local records and the authoritative external N05 roots,
+and never weakens the initial no-existing-root check. Retained checksums preserve the externally
+selected approval binding but do not authenticate the named human without the original trusted
+channel. The environment profile is now `n05-arm64-orbstack-five-second-v2`. Legacy digest-only
+host/controller preparation and the unconnected `run-cell` path are explicitly disabled pending
+Unit 3 admission transport and host attempt durability. This implementation is synthetic
+engineering evidence only; N05 and pilot are `NOT_RUN`.
+
 ### Unit 3 — Host attempt ledger and attempt-ID propagation
 
 - **Candidate files/functions:** add a small typed Track A host-ledger module under

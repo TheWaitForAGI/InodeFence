@@ -122,6 +122,24 @@ This implementation is synthetic-tested but not authorized or run. It emits no p
 The existing Track A preparation code must be changed to call the host reader on actual records and
 to validate the separate pilot authorization content; storing their digest strings is insufficient.
 
+## Track A target-free admission reader
+
+`inodefence.evaluation.track_a_admission` is the read-only Unit 1 consumer for the exact
+20-campaign, 4,000-execution Track A pilot. `pilot_authorization_from_bytes` accepts only the
+canonical typed pilot record. `validate_track_a_admission` additionally requires a caller-supplied
+trusted authorization digest and approval reference, calls the existing N05 host verifier, reopens
+the N05 authorization/Linux final/raw/admission records, and binds source, targets, controller,
+daemon, environment, timeout, isolation, resources, protocol, output locations and the exact
+seed-inclusive plan before returning `VerifiedTrackAAdmission`.
+
+The trusted digest and approval reference must come from the human-controlled approval/launch
+route. A digest and `authorized_by` text do not authenticate a person. The reader does not write an
+admission record, create either Track A root, claim a campaign, launch a controller or execute a
+target. Its tests use only synthetic N05 PASS-shaped engineering fixtures. Unit 2 must make
+`freeze_track_a_execution` consume this typed result and preserve/reopen its source records; the
+existing digest-only prepare/run path remains unresolved. Any later real N05 and pilot approval
+must bind the final integrated clean source SHA exactly.
+
 Evaluation records use a strict schema-v1 wrapper around existing canonical model
 encoding. Payload SHA-256 is declared in the wrapper; whole-file digest is returned
 for external anchoring. A synced temporary file is published with Linux atomic

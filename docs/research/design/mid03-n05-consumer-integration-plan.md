@@ -1,6 +1,7 @@
 # MID-03 N05 consumer integration plan
 
-Status: **DESIGN PROPOSAL / NOT IMPLEMENTED / NOT AUTHORIZATION**.
+Status: **DESIGN PROPOSAL / UNIT 1 IMPLEMENTATION CANDIDATE + SYNTHETIC TESTED /
+UNITS 2–4 NOT IMPLEMENTED / NOT AUTHORIZATION**.
 
 Date: **2026-10-21 UTC**. Owner scope: **MID-03 / Search, Mutation, Feedback and
 Evaluation**.
@@ -8,6 +9,11 @@ Evaluation**.
 This document specifies the smallest fail-closed integration needed for the Track A
 B0/B1/B3 pilot to consume a completed process-gate N05 preflight. It is not an execution
 record, approval token or finding.
+
+The original sequencing below placed Unit 1 after a retained N05 result. A later explicit Unit 1
+Task Contract permits the typed reader and its target-free regressions to be implemented first with
+synthetic evidence only. This exception does not authorize, run or manufacture an N05 result or a
+pilot approval, and it does not change the exact-source rule.
 
 ## 1. Reviewed revisions and current gate
 
@@ -516,7 +522,7 @@ These units are intentionally small and do not create a second runner.
 - **Completion:** a written rule states whether the N05 evidence can bind the eventual consumer
   source. Under the current contract the answer is no when SHAs differ.
 
-### Unit 1 — Typed read-only admission (first code unit after N05)
+### Unit 1 — Typed read-only admission (synthetic implementation permitted before N05)
 
 - **Candidate files/functions:** add
   `src/inodefence/evaluation/track_a_admission.py` with proposed
@@ -527,8 +533,9 @@ These units are intentionally small and do not create a second runner.
   `verify_n05_host_ledger`, `authorization_from_bytes` and `read_n05_preflight`, then produce one
   typed result. Do not accept standalone preflight/resource digest strings.
 - **Tests:** cases 1–11 and 15 above, entirely synthetic and target-free.
-- **Preconditions:** reviewed PR #108/#114 integration base and Unit 0 decision recorded. N05 PASS
-  bytes may be used as read-only fixture input, but this unit does not authorize a campaign.
+- **Preconditions for implementation/tests:** reviewed PR #108/#114 integration base and only
+  synthetic PASS-shaped fixture bytes. **Preconditions for real admission:** Unit 0 decision plus
+  retained N05 PASS evidence for the exact final source. This unit does not authorize a campaign.
 - **HUMAN DECISION:** exact pilot record schema/statement, trusted approval channel and source
   applicability.
 - **Completion:** all identity mismatches fail before side effects; happy admission reopens and
@@ -537,6 +544,15 @@ These units are intentionally small and do not create a second runner.
 Because Unit 1 changes the repository SHA, completion reopens the exact-source gate. Under the
 current rule, the N05 source must then be re-reviewed/re-frozen and, if required, a newly authorized
 preflight must be run before Unit 1's result can admit Track A.
+
+Implementation-candidate note: `track_a_admission.py` now provides the typed parser and read-only
+validator under the explicit synthetic-evidence scope exception above. The validator requires the
+trusted expected pilot digest and approval reference as separate caller inputs, delegates to the
+existing N05 host/Linux readers, and returns `VerifiedTrackAAdmission` only after the complete
+identity, resource, output and exact prospective-plan binding succeeds. Regression tests exercise
+synthetic PASS and rejection paths without Docker, subprocess, historical targets, execution-root
+creation or campaign claims. No runner calls this API yet, no real authorization/PASS record was
+created, and N05/pilot execution remain `NOT_RUN`.
 
 ### Unit 2 — Freeze verified admission into Track A evidence
 
@@ -587,15 +603,15 @@ preflight must be run before Unit 1's result can admit Track A.
 
 ## 10. Required order after implementation
 
-The gate order is:
+The revised engineering/execution gate order is:
 
 ```text
-retained N05 result
-  -> Unit 0 source-applicability decision
-  -> consumer implementation on a branch
+consumer Unit 1 implementation with synthetic evidence on a branch
   -> target-free regressions + canonical make check
   -> independent code/research review
-  -> re-freeze/re-authorize/re-run N05 if exact source no longer matches
+  -> freeze the final integrated source
+  -> Unit 0 exact-source applicability decision
+  -> separately authorize and run N05 for that exact source
   -> separate canonical pilot authorization for exact integrated SHA and evidence
   -> admission-only synthetic check
   -> sequential pilot execution, if still explicitly authorized

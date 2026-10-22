@@ -213,6 +213,35 @@ validates the frozen invocation fields and derives the overall status; a missing
 failed fallback cleanup is
 `PREFLIGHT_INCONCLUSIVE`, never `PREFLIGHT_PASS`.
 
+The consumed v1 ledger remains readable as `inodefence-n04-host-ledger-v1`. The host
+orchestration now also has a fail-closed `inodefence-n04-host-ledger-v2` publication path for
+future separately versioned preflights: once a controller process is launched, it drains at most
+the first 1 MiB of exact controller stderr bytes while continuing to drain the pipe, records the
+truncation bit, and digest-binds the bytes through the terminal record and host manifest. This
+engineering support does not create a new attempt ID, execution mode or authorization; the
+`preflight-node-n04-5s` source gate remains consumed.
+
+## N05 five-second preflight v2 (implemented, not authorized)
+
+`preflight-node-n05-5s-v2` is the separately versioned successor described by the
+[N05 Task Contract draft](../docs/research/benchmarks/n05-five-second-preflight-task-contract-draft.md).
+It does not reopen N04. The mode has its own fixed attempt ID, evidence/ledger/volume paths and an
+eight-extraction ceiling. It preserves the two C0/C1/C2 harness controls and the exact five-second
+target timeout.
+
+The host requires the actual canonical authorization JSON at the contract's exact nonsymlink path,
+not only a caller-supplied digest. It rehashes and parses those bytes before ledger creation, copies
+them into the no-overwrite ledger, and sends the same digest-bound bytes to the controller. Source
+revision and executable-file hashes, controller/target identities, containment, host-only Docker
+metadata, bounded stderr, cleanup and Linux reader results are all rechecked before the host reader
+can return `PREFLIGHT_PASS`.
+
+There is intentionally no executable command here yet. Review must first freeze one clean combined
+source commit and an immutable controller image, then a human must separately create the exact N05
+authorization record. The mode and its synthetic tests do not authorize the eight benign historical
+executions or the Track A pilot. PR #108 also needs a separate integration change: its preparation
+path currently records preflight/authorization digest strings without reading these records.
+
 `PYTHONPATH=src python scripts/qualify_libarchive_entry_boundary.py --output <new-file>
 --image-id <sha256> --base-image-id <sha256>`는 별도 libarchive public write-disk reference
 target에서 `archive_write_finish_entry()`와 final writer close의 syscall 순서를 비교한다.

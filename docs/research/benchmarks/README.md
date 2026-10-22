@@ -26,8 +26,12 @@ Read current definitions in this order:
 5. [Executable baselines/ablations](baseline-and-ablation-v1.md): B0/B1/B3 and A1/A2/A3 only.
 6. [Evaluation protocol](evaluation-protocol-v1.md): success, provisional budgets, censoring and metrics.
 7. [N03 pilot proposal](n03-b0-b1-b3-pilot-task-proposal.md): exact candidate cells and unresolved execution gates.
-8. [Static catalog](../../../experiments/benchmarks/README.md) and [empty result templates](../../../experiments/benchmarks/result-templates.md).
-9. [MID-03 current audit](../diagnostics/mid03-feedback-evaluation-audit-2026-10-21.md): current-main/PR dependency checks, engineering validation and explicit pilot `NOT_RUN` decision.
+8. [N05 five-second preflight draft](n05-five-second-preflight-task-contract-draft.md): new
+   exact attempt proposal, currently blocked before authorization by the missing runnable source.
+9. [N05 native-v3 qualification draft](n05-native-rebinding-v3-qualification-task-contract-draft.md):
+   producer-issued dependency and perturbation gates; native producer/image not frozen.
+10. [Static catalog](../../../experiments/benchmarks/README.md) and [empty result templates](../../../experiments/benchmarks/result-templates.md).
+11. [MID-03 current audit](../diagnostics/mid03-feedback-evaluation-audit-2026-10-21.md): current-main/PR dependency checks, engineering validation and explicit pilot `NOT_RUN` decision.
 
 The [engine audit](engine-contract-audit.md) and [post-audit handoff](post-audit-backlog.md)
 are explicitly historical `d1982e4` records. Their counts, absent-policy/reader

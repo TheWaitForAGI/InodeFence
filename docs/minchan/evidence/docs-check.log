@@ -1,0 +1,4 @@
+Initial post-write docs check: FAILED: experiment-results.md missing link target evidence/make-check.log
+Correction: copied completed /tmp/minchan-make-check.log to evidence/make-check.log
+Recheck: PASS (134 Markdown files; canonical documents present)
+git diff --check: PASS

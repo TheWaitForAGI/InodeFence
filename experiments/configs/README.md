@@ -22,6 +22,12 @@ caller가 frozen 값을 제공하며 target/sentinel 불일치는 실행 전에 
 
 같은 이름의 실험이라도 조건이 달라졌다면 결과를 덮어쓰지 말고 구분 가능한 config로 남긴다.
 
+[`track-a-final-state-exploratory-feasibility-v1.json`](track-a-final-state-exploratory-feasibility-v1.json)은
+N03의 B0/B1/B3 후보 순서를 그대로 고정한 별도 exploratory protocol이다. 이는 legacy
+`ExperimentConfig` 입력이 아니며, 자원 승인·5초 Preflight·실제 실행을 뜻하지 않는다.
+승인 후 전용 reader가 파일 SHA-256과 exact constants를 검증하고, clean execution SHA와
+Preflight/authorization/plan digest를 별도 immutable `execution.json`에 고정해야 한다.
+
 
 ## ExperimentConfig v1
 

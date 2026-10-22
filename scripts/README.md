@@ -219,3 +219,21 @@ target에서 `archive_write_finish_entry()`와 final writer close의 syscall 순
 정상 mixed-effect/directory-child fixture만 사용하고 marker 없는 baseline과 strace run의 최종
 semantic state를 함께 기록한다. [qualification tool](../tools/libarchive/README.md)의 exact
 package와 isolation 조건이 필요하며 결과는 raw boundary evidence다.
+
+## Track A exploratory B0/B1/B3 pilot (authorization required)
+
+The exact workflow is frozen in the
+[Track A protocol](../docs/research/benchmarks/track-a-final-state-exploratory-feasibility-v1.md).
+Do not run these modes until the separate five-second Preflight and 4,000-execution resource
+authorizations exist. The Track A `prepare` mode requires their two trusted SHA-256 values and the
+affected/fixed immutable image IDs in that order. The isolated
+`scripts.track_a_container_host prepare` entry point freezes a new exact output root and does
+not run a search campaign. `scripts.track_a_container_host run-cell` runs one next-in-order
+index in a fresh controller process; its host broker enforces the 7,200-second watchdog.
+Failure/STARTED evidence stops the remaining schedule and is never retried. The shared N01/N02
+container entry points remain unchanged. `--controller-worktree` is mandatory and must name a
+clean separate Track A checkout; the primary `/workspaces/InodeFence` checkout is rejected.
+
+After normal completion or STOP, run the Track A `finalize`, `verify` and `analyze` commands
+documented in the protocol. Machine nominations are not confirmed known-class rediscovery,
+and candidate 3+3 replay requires a separate validation budget.

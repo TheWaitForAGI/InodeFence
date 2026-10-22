@@ -603,6 +603,28 @@ engineering evidence only; N05 and pilot are `NOT_RUN`.
 - **Completion:** every controller launch after admission has a durable terminal host record, and
   a pre-claim failure can no longer look like an untouched PENDING cell.
 
+Implementation-candidate note: Unit 3 now adds `track_a_host_ledger` with canonical no-overwrite
+admission, start, bounded controller-stderr, terminal and last-published manifest records. The host
+freshly validates the original pilot/N05/protocol graph against launch-channel anchors, generates
+one attempt ID, publishes `started.json`, and only then may launch the controller. The controller
+reopens that start and uses its ID unchanged for the existing campaign claim; missing, changed or
+locally generated IDs are rejected. Once the start is published the cell is consumed, including
+spawn, malformed-output, nonzero-exit, watchdog and cleanup failures, and no retry/resume path is
+provided. Pre-campaign-claim failure is recorded as PENDING with zero target executions; later
+failure retains the verified STARTED/FAILED/INVALID campaign prefix. Incomplete stderr capture,
+cleanup, terminal or manifest cannot verify as success.
+
+The process-local `VerifiedTrackAAdmission` is not serialized across the host/controller boundary.
+The host receives the original pilot path plus the externally trusted digest/reference and mints a
+fresh live validation result locally. The controller reads host-published typed references and
+rechecks the retained original evidence for integrity; those stored references do not authenticate
+the named person or mint another live capability. Real deployment therefore requires the
+controller namespace to expose the authorized host ledger, Track A root, original pilot record,
+authoritative N05 host/Linux roots and protocol bytes at their recorded absolute paths. Unit 3
+does not provide a digest-only fallback or copy a large N05 tree when that mapping is absent. Unit
+4 must select the publication authority and connect all host attempts to final-manifest/analysis
+reporting. This implementation evidence is target-free and synthetic; N05 and pilot are `NOT_RUN`.
+
 ### Unit 4 — Final reader integration and protocol documentation
 
 - **Candidate files/functions:** extend `finalize_track_a_execution`,

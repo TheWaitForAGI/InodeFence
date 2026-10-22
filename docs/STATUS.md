@@ -1,6 +1,6 @@
 # 현재 프로젝트 상태
 
-상태 갱신일: **2026-10-18**. G0 capability baseline은 main
+상태 갱신일: **2026-10-22**. G0 capability baseline은 main
 **`8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`**다. 이 SHA는 G0 문서 동결이
 검토한 구현 revision이며 최신 main을 뜻하지 않는다. #77–#84 연구 stack은 main에
 통합됐다. Internal completion qualification v3의 clean harness revision은 `9ea306f7`이고,
@@ -53,6 +53,15 @@ ledger를 추가했다. 합성 Linux 회귀만 수행했으며 historical target
 상태는 **IMPLEMENTED CANDIDATE / SYNTHETIC TESTED / NOT_AUTHORIZED / NOT_RUN / AWAITING
 EXECUTION-SOURCE AND CONTROLLER FREEZE**다. PR #108은 아직 실제 preflight/authorization
 record를 읽지 않고 digest 문자열만 기록하므로 verified N05 evidence의 소비자는 아니다.
+
+MID-03의 Track A consumer Units 1–3 구현 후보는 합성 N05 evidence에서 original pilot/N05
+재검증, process-local admission capability를 요구하는 freeze, retained-evidence reader와
+host-attempt ledger를 연결한다. Host가 controller launch 전에 attempt ID와 `started.json`을
+no-overwrite로 발행하고, controller/campaign claim은 같은 ID만 사용한다. 발행된 host attempt는
+spawn/출력/exit/watchdog/cleanup 실패에도 소비되며 terminal/manifest가 없거나 cleanup이 불완전하면
+성공으로 읽지 않는다. 이 상태는 target-free engineering evidence일 뿐이며, controller에서
+authoritative host/Track A/pilot/N05/protocol 경로를 실제로 다시 열 수 있게 하는 배치 연결과 Unit 4
+final-manifest/analysis 결합은 남아 있다. N05와 4,000회 Track A pilot은 **NOT_RUN**이다.
 
 같은 검토는 node-tar 7.5.22의 실제 `CHECKFS2` unlink callback → `MAKEFS` branch를 exact
 package bytes에서 식별했다. 이는 native-v3 feasibility 근거지만 dependency producer evidence는

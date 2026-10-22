@@ -51,6 +51,7 @@ from .verify import VerificationError, _digest, _read_file
 
 if TYPE_CHECKING:
     from .track_a_admission import VerifiedTrackAAdmission
+    from .track_a_host_ledger import TrackAHostAttemptStarted
 
 PROTOCOL_VERSION = "track-a-final-state-exploratory-feasibility-v1"
 EXPERIMENT_ID = PROTOCOL_VERSION
@@ -701,7 +702,7 @@ def execute_track_a_slot(
     index: int,
     target: IsolatedTarget,
     *,
-    attempt_id: str,
+    host_attempt: TrackAHostAttemptStarted,
     expected_execution_sha256: str,
     repository: Path,
     protocol_config_path: Path | None = None,
@@ -716,15 +717,9 @@ def execute_track_a_slot(
         expected_execution_sha256=expected_execution_sha256,
         protocol_config_path=protocol_config_path,
     )
-    slots = verified.repetitions.slots
-    if type(index) is not int or not 0 <= index < len(slots):
-        raise ValueError("Track A run index is outside the frozen schedule")
-    if any(slot.state != RunState.COMPLETED for slot in slots[:index]):
-        raise ValueError("Track A execution must stop after a prior non-complete slot")
-    if slots[index].state != RunState.PENDING or any(
-        slot.state != RunState.PENDING for slot in slots[index:]
-    ):
-        raise ValueError("Track A executes the next pending cell exactly once in order")
+    from .track_a_host_ledger import validate_track_a_host_attempt_binding
+
+    validate_track_a_host_attempt_binding(verified, index, host_attempt)
     scheduled = verified.repetitions.plan.runs[index]
     source = capture_source(repository)
     if source.revision != verified.manifest.source_revision or source.dirty is not False:
@@ -746,7 +741,7 @@ def execute_track_a_slot(
         index,
         minimal_seed_corpus(),
         target,
-        attempt_id=attempt_id,
+        attempt_id=host_attempt.attempt_id,
         sentinels=(SentinelSpec(),),
     )
 

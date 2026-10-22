@@ -122,7 +122,7 @@ This implementation is synthetic-tested but not authorized or run. It emits no p
 The existing Track A preparation code must be changed to call the host reader on actual records and
 to validate the separate pilot authorization content; storing their digest strings is insufficient.
 
-## Track A target-free admission reader
+## Track A target-free admission and host-attempt evidence
 
 `inodefence.evaluation.track_a_admission` is the read-only Unit 1 consumer for the exact
 20-campaign, 4,000-execution Track A pilot. `pilot_authorization_from_bytes` accepts only the
@@ -135,10 +135,28 @@ seed-inclusive plan before returning `VerifiedTrackAAdmission`.
 The trusted digest and approval reference must come from the human-controlled approval/launch
 route. A digest and `authorized_by` text do not authenticate a person. The reader does not write an
 admission record, create either Track A root, claim a campaign, launch a controller or execute a
-target. Its tests use only synthetic N05 PASS-shaped engineering fixtures. Unit 2 must make
-`freeze_track_a_execution` consume this typed result and preserve/reopen its source records; the
-existing digest-only prepare/run path remains unresolved. Any later real N05 and pilot approval
-must bind the final integrated clean source SHA exactly.
+target. Its tests use only synthetic N05 PASS-shaped engineering fixtures.
+
+`freeze_track_a_execution` consumes that exact live capability in the validator process and stores
+canonical copied pilot bytes, admission and N05 references. `read_track_a_execution` is the
+separate retained-evidence reader: it reopens the authoritative originals but does not recreate a
+live capability or authenticate the named reviewer from stored text or digests.
+
+`track_a_host_ledger` adds the authorized host root, one no-overwrite directory per schedule cell,
+and read-only canonical readers. `validate_track_a_host_admission` requires the original pilot path
+plus trusted digest and approval reference again before host claim. `TrackAHostLedger.claim`
+publishes the host-generated attempt ID before controller launch; `execute_track_a_slot` accepts
+only that typed start and passes its ID unchanged to `PolicyRepetitionController`. `finish` retains
+bounded stderr, campaign prefix, cleanup outcome and terminal/manifest cross-references. A start is
+consumed without retry. Failure before campaign claim is explicit PENDING/zero executions; failure
+after claim retains the campaign's STARTED/FAILED/INVALID prefix. Missing or incomplete cleanup,
+stderr capture, terminal or manifest can never read as host success.
+
+The actual host/controller filesystem mapping remains an integration precondition: the controller
+must reopen the authorized host ledger, Track A root, original pilot record, authoritative N05
+host/Linux roots and protocol bytes at their recorded paths. Unit 3 does not copy large evidence
+trees or turn typed references into approval tokens. Real N05 and pilot execution remain `NOT_RUN`.
+Any later approval must bind the final integrated clean source SHA exactly.
 
 Evaluation records use a strict schema-v1 wrapper around existing canonical model
 encoding. Payload SHA-256 is declared in the wrapper; whole-file digest is returned

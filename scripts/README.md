@@ -254,14 +254,41 @@ package와 isolation 조건이 필요하며 결과는 raw boundary evidence다.
 The exact workflow is frozen in the
 [Track A protocol](../docs/research/benchmarks/track-a-final-state-exploratory-feasibility-v1.md).
 Do not run these modes until the separate five-second Preflight and 4,000-execution resource
-authorizations exist. The Track A `prepare` mode requires their two trusted SHA-256 values and the
-affected/fixed immutable image IDs in that order. The isolated
-`scripts.track_a_container_host prepare` entry point freezes a new exact output root and does
-not run a search campaign. `scripts.track_a_container_host run-cell` runs one next-in-order
-index in a fresh controller process; its host broker enforces the 7,200-second watchdog.
-Failure/STARTED evidence stops the remaining schedule and is never retried. The shared N01/N02
-container entry points remain unchanged. `--controller-worktree` is mandatory and must name a
-clean separate Track A checkout; the primary `/workspaces/InodeFence` checkout is rejected.
+authorizations exist. `VerifiedTrackAAdmission` is a process-local live capability: only the
+validator process may pass it to `freeze_track_a_execution`. Both host and controller `prepare`
+modes reject digest-only input rather than serializing that object or its private seal.
+
+The target-free Unit 3 interface gives `run-cell` the original pilot authorization path, its
+trusted externally supplied SHA-256, the trusted approval reference, the frozen execution digest
+and protocol path. Before consuming an attempt, the host reopens the original pilot/N05/protocol
+graph and compares it with the retained Track A admission. It then publishes one no-overwrite
+`started.json`, passes that host-owned attempt ID and start checksum to the controller, and writes
+bounded `controller-stderr.bin`, `terminal.json` and last-published `manifest.json` under:
+
+```text
+<authorized-host-ledger-root>/
+  admission/verified-admission.json
+  attempts/00-<run-id>/
+    started.json
+    controller-stderr.bin
+    terminal.json
+    manifest.json
+```
+
+The controller reopens those canonical records and the retained original evidence before claiming
+the campaign slot. It never generates or substitutes an attempt ID. Stored admission records and
+digests are retained integrity evidence, not proof of the named human's identity. A published host
+start consumes the cell even when spawn, output parsing, exit, watchdog or cleanup fails; no retry
+or resume path exists. A pre-campaign-claim failure records PENDING with zero target executions,
+while later failure preserves the existing STARTED/FAILED/INVALID campaign prefix.
+
+Actual host/controller deployment is not qualified by Unit 3. The controller namespace must have
+read-only access at the recorded absolute paths to the authorized host ledger, Track A evidence,
+original pilot authorization, authoritative N05 host/Linux roots and exact protocol bytes. If that
+mapping is unavailable, the canonical readers fail closed; copying a digest or treating a stored
+reference as a new approval is not an alternative. `--controller-worktree` remains mandatory and
+must name a clean separate Track A checkout; the primary `/workspaces/InodeFence` checkout is
+rejected. N05 and the Track A pilot remain `NOT_RUN`.
 
 After normal completion or STOP, run the Track A `finalize`, `verify` and `analyze` commands
 documented in the protocol. Machine nominations are not confirmed known-class rediscovery,

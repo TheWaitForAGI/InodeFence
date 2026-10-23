@@ -1,0 +1,23 @@
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "Action completed."
+    }
+  ],
+  "structuredContent": {
+    "workflow_runs": [
+      {
+        "id": 39844885615,
+        "name": "CI",
+        "status": "completed",
+        "conclusion": "success",
+        "run_number": 274,
+        "jobs_url": "https://api.github.com/repos/TheWaitForAGI/InodeFence/actions/runs/39844885615/jobs",
+        "logs_url": "https://api.github.com/repos/TheWaitForAGI/InodeFence/actions/runs/39844885615/logs",
+        "workflow_id": 373797293
+      }
+    ]
+  },
+  "isError": false
+}

@@ -1,0 +1,1653 @@
+{
+  "audit_kind": "READ_ONLY_N05_INTEGRATION_AUDIT",
+  "captured_at_utc": "2026-10-23T00:39:17.115946+00:00",
+  "repository": "TheWaitForAGI/InodeFence",
+  "remote_main_sha": "8d29982c26cebfcce7a413b3ba9177fcd28078de",
+  "local_head_sha_preserved": "919d723b7eb3bf13b060d3ae34b083499590b4fc",
+  "local_modification_preserved": ".devcontainer/devcontainer.json",
+  "prs": [
+    {
+      "author": {
+        "id": "U_kgDODIUOJw",
+        "is_bot": false,
+        "login": "jiwoongchoi-norun",
+        "name": "Choi ji-woong"
+      },
+      "baseRefName": "main",
+      "baseRefOid": "21e317281a2d2a7faf6198f66302f3912b429011",
+      "commits": [
+        {
+          "authoredDate": "2026-10-16T14:27:15Z",
+          "authors": [
+            {
+              "email": "ljee2933@gmail.com",
+              "id": "U_kgDOCt5MlQ",
+              "login": "JooREC0",
+              "name": "JooREC0"
+            }
+          ],
+          "committedDate": "2026-10-16T14:27:15Z",
+          "messageBody": "",
+          "messageHeadline": "experiment: freeze Track A exploratory pilot protocol",
+          "oid": "64a7a1645c03512d50ff5e0246108d297d1e6aa8"
+        }
+      ],
+      "files": [
+        {
+          "path": "docs/research/benchmarks/track-a-final-state-exploratory-feasibility-v1.md",
+          "additions": 236,
+          "deletions": 0,
+          "changeType": "ADDED"
+        },
+        {
+          "path": "docs/research/diagnostics/track-a-read-only-audit-2026-10-16.md",
+          "additions": 81,
+          "deletions": 0,
+          "changeType": "ADDED"
+        },
+        {
+          "path": "experiments/configs/README.md",
+          "additions": 6,
+          "deletions": 0,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "experiments/configs/track-a-final-state-exploratory-feasibility-v1.json",
+          "additions": 116,
+          "deletions": 0,
+          "changeType": "ADDED"
+        },
+        {
+          "path": "scripts/README.md",
+          "additions": 18,
+          "deletions": 0,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "scripts/track_a_container_controller.py",
+          "additions": 131,
+          "deletions": 0,
+          "changeType": "ADDED"
+        },
+        {
+          "path": "scripts/track_a_container_host.py",
+          "additions": 162,
+          "deletions": 0,
+          "changeType": "ADDED"
+        },
+        {
+          "path": "src/inodefence/evaluation/README.md",
+          "additions": 15,
+          "deletions": 0,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "src/inodefence/evaluation/track_a_exploratory.py",
+          "additions": 1189,
+          "deletions": 0,
+          "changeType": "ADDED"
+        },
+        {
+          "path": "tests/evaluation/test_track_a_exploratory.py",
+          "additions": 206,
+          "deletions": 0,
+          "changeType": "ADDED"
+        }
+      ],
+      "headRefName": "experiment/track-a-exploratory-pilot",
+      "headRefOid": "64a7a1645c03512d50ff5e0246108d297d1e6aa8",
+      "isDraft": true,
+      "mergeStateStatus": "CLEAN",
+      "mergeable": "MERGEABLE",
+      "number": 108,
+      "reviewDecision": "",
+      "reviews": [],
+      "state": "OPEN",
+      "statusCheckRollup": [
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-16T14:38:46Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/TheWaitForAGI/InodeFence/actions/runs/38917004417/job/117026936407",
+          "name": "check",
+          "startedAt": "2026-10-16T14:35:36Z",
+          "status": "COMPLETED",
+          "workflowName": "CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-16T14:37:07Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/TheWaitForAGI/InodeFence/actions/runs/38917004417/job/117026936566",
+          "name": "container-integration",
+          "startedAt": "2026-10-16T14:35:36Z",
+          "status": "COMPLETED",
+          "workflowName": "CI"
+        }
+      ],
+      "title": "feat: prepare bounded Track A B0/B1/B3 exploratory pilot",
+      "comments": [
+        {
+          "url": "https://api.github.com/repos/TheWaitForAGI/InodeFence/issues/comments/6217856988",
+          "html_url": "https://github.com/TheWaitForAGI/InodeFence/pull/108#issuecomment-6217856988",
+          "issue_url": "https://api.github.com/repos/TheWaitForAGI/InodeFence/issues/108",
+          "id": 6217856988,
+          "node_id": "IC_kwDOU5yDMc8AAAABcpz33A",
+          "user": {
+            "login": "jiwoongchoi-norun",
+            "id": 210046503,
+            "node_id": "U_kgDODIUOJw",
+            "avatar_url": "https://avatars.githubusercontent.com/u/210046503?v=4",
+            "gravatar_id": "",
+            "url": "https://api.github.com/users/jiwoongchoi-norun",
+            "html_url": "https://github.com/jiwoongchoi-norun",
+            "followers_url": "https://api.github.com/users/jiwoongchoi-norun/followers",
+            "following_url": "https://api.github.com/users/jiwoongchoi-norun/following{/other_user}",
+            "gists_url": "https://api.github.com/users/jiwoongchoi-norun/gists{/gist_id}",
+            "starred_url": "https://api.github.com/users/jiwoongchoi-norun/starred{/owner}{/repo}",
+            "subscriptions_url": "https://api.github.com/users/jiwoongchoi-norun/subscriptions",
+            "organizations_url": "https://api.github.com/users/jiwoongchoi-norun/orgs",
+            "repos_url": "https://api.github.com/users/jiwoongchoi-norun/repos",
+            "events_url": "https://api.github.com/users/jiwoongchoi-norun/events{/privacy}",
+            "received_events_url": "https://api.github.com/users/jiwoongchoi-norun/received_events",
+            "type": "User",
+            "user_view_type": "public",
+            "site_admin": false
+          },
+          "created_at": "2026-10-16T14:37:25Z",
+          "updated_at": "2026-10-16T14:37:25Z",
+          "body": "Independent review checkpoint (2026-10-16; based on PR #108 source inspection, NOT an execution approval):\n\n1. **Prioritize real macOS/OrbStack arm64 integration before campaign launch.** The new `scripts/track_a_container_host.py` ↔ `scripts/track_a_container_controller.py` execution path was not live-tested in the contributing WSL2/x86_64 host without Docker. Synthetic tests and reported `make check` cannot establish that this actual broker/controller/image/volume composition succeeds. Exercise only the authorized bounded preflight and a separately authorized tiny integration smoke before a 20-cell run; any changed experiment budget must remain explicitly exploratory and not be misrepresented as the frozen 20-cell output.\n2. **Approval/preflight SHA fields are references, not verification.** `freeze_track_a_execution` validates 64-hex digests and stores them in `execution.json`, but by itself does not reopen the external authorization record or the 5-second preflight manifest, verify content, check that preflight PASS binds the same clean SHA/images/controller/volume, or prove an owner actually authorized execution. Those checks must be performed by an independent, evidence-preserving pre-run gate before invoking `prepare`. Otherwise the host CLI can be supplied arbitrary syntactically valid hex strings.\n3. Confirm required CI `check` and `container-integration`, independently review the 1,189-line orchestration/analysis module, and validate no extra main/N04 changes or stale-source binding.\n4. Keep Track A **READY_FOR_REVIEW / PREFLIGHT NOT_RUN / PILOT NOT_RUN**. Original N01 human disposition still pending, and 10-second PR #107 evidence cannot be counted as a 5-second admission.\n\nThis is a prospective risk review, not a claim that a vulnerability or test failure was observed. No raw target evidence has been produced by this review.",
+          "author_association": "MEMBER",
+          "reactions": {
+            "url": "https://api.github.com/repos/TheWaitForAGI/InodeFence/issues/comments/6217856988/reactions",
+            "total_count": 0,
+            "+1": 0,
+            "-1": 0,
+            "laugh": 0,
+            "hooray": 0,
+            "confused": 0,
+            "heart": 0,
+            "rocket": 0,
+            "eyes": 0
+          },
+          "performed_via_github_app": {
+            "id": 1144995,
+            "client_id": "Iv23liVemv8A9if9v0F2",
+            "slug": "chatgpt-codex-connector",
+            "node_id": "A_kwHOAOQ6Gs4AEXij",
+            "owner": {
+              "login": "openai",
+              "id": 14957082,
+              "node_id": "MDEyOk9yZ2FuaXphdGlvbjE0OTU3MDgy",
+              "avatar_url": "https://avatars.githubusercontent.com/u/14957082?v=4",
+              "gravatar_id": "",
+              "url": "https://api.github.com/users/openai",
+              "html_url": "https://github.com/openai",
+              "followers_url": "https://api.github.com/users/openai/followers",
+              "following_url": "https://api.github.com/users/openai/following{/other_user}",
+              "gists_url": "https://api.github.com/users/openai/gists{/gist_id}",
+              "starred_url": "https://api.github.com/users/openai/starred{/owner}{/repo}",
+              "subscriptions_url": "https://api.github.com/users/openai/subscriptions",
+              "organizations_url": "https://api.github.com/users/openai/orgs",
+              "repos_url": "https://api.github.com/users/openai/repos",
+              "events_url": "https://api.github.com/users/openai/events{/privacy}",
+              "received_events_url": "https://api.github.com/users/openai/received_events",
+              "type": "Organization",
+              "user_view_type": "public",
+              "site_admin": false
+            },
+            "name": "ChatGPT Codex Connector",
+            "description": "Bring ChatGPT and Codex to your GitHub repositories.",
+            "external_url": "https://www.chatgpt.com",
+            "html_url": "https://github.com/apps/chatgpt-codex-connector",
+            "created_at": "2025-02-14T01:37:05Z",
+            "updated_at": "2026-09-23T18:52:59Z",
+            "permissions": {
+              "actions": "write",
+              "checks": "read",
+              "contents": "write",
+              "emails": "read",
+              "issues": "write",
+              "metadata": "read",
+              "pull_requests": "write",
+              "statuses": "read",
+              "workflows": "write"
+            },
+            "events": [
+              "check_run",
+              "check_suite",
+              "commit_comment",
+              "issues",
+              "issue_comment",
+              "pull_request",
+              "pull_request_review",
+              "pull_request_review_comment",
+              "pull_request_review_thread",
+              "repository",
+              "status",
+              "sub_issues"
+            ]
+          },
+          "minimized": null
+        },
+        {
+          "url": "https://api.github.com/repos/TheWaitForAGI/InodeFence/issues/comments/6318148213",
+          "html_url": "https://github.com/TheWaitForAGI/InodeFence/pull/108#issuecomment-6318148213",
+          "issue_url": "https://api.github.com/repos/TheWaitForAGI/InodeFence/issues/108",
+          "id": 6318148213,
+          "node_id": "IC_kwDOU5yDMc8AAAABeJdKdQ",
+          "user": {
+            "login": "JooREC0",
+            "id": 182340757,
+            "node_id": "U_kgDOCt5MlQ",
+            "avatar_url": "https://avatars.githubusercontent.com/u/182340757?v=4",
+            "gravatar_id": "",
+            "url": "https://api.github.com/users/JooREC0",
+            "html_url": "https://github.com/JooREC0",
+            "followers_url": "https://api.github.com/users/JooREC0/followers",
+            "following_url": "https://api.github.com/users/JooREC0/following{/other_user}",
+            "gists_url": "https://api.github.com/users/JooREC0/gists{/gist_id}",
+            "starred_url": "https://api.github.com/users/JooREC0/starred{/owner}{/repo}",
+            "subscriptions_url": "https://api.github.com/users/JooREC0/subscriptions",
+            "organizations_url": "https://api.github.com/users/JooREC0/orgs",
+            "repos_url": "https://api.github.com/users/JooREC0/repos",
+            "events_url": "https://api.github.com/users/JooREC0/events{/privacy}",
+            "received_events_url": "https://api.github.com/users/JooREC0/received_events",
+            "type": "User",
+            "user_view_type": "public",
+            "site_admin": false
+          },
+          "created_at": "2026-10-21T14:09:23Z",
+          "updated_at": "2026-10-21T14:09:23Z",
+          "body": "## MID-03 실행 전 정적 검토 — COMMENT only\n\n검토 대상: head `64a7a1645c03512d50ff5e0246108d297d1e6aa8`. 이 댓글은 PR 승인, draft 해제, N05/파일럿 실행 승인이 아닙니다. 기존 [digest-only 사전 지적](https://github.com/TheWaitForAGI/InodeFence/pull/108#issuecomment-6217856988)을 중복 결론으로만 반복하지 않고, 현재 head의 호출 경로와 PR #114의 reader를 대조했습니다.\n\n### 확인된 protocol / budget\n\n정적 JSON·SHA-256 검산 결과:\n\n- protocol SHA-256: `88ed4fde6e3f926099a9e28d978b583c5eedcb4b4074b37a4b1e7bca1c26f19c`\n- 20개 unique run ID, arm별 5개, 각 arm의 RNG seed `9001..9005`\n- seed-major cell 목록을 `random.Random(4242).shuffle`한 순서와 JSON 순서가 일치\n- affected B0/B1/B3와 fixed B3 각각 `5 × 200 = 1,000`; 전체 **20 × 200 = 총 4,000회**\n- [protocol JSON L24–L34 및 L61–L81](https://github.com/TheWaitForAGI/InodeFence/blob/64a7a1645c03512d50ff5e0246108d297d1e6aa8/experiments/configs/track-a-final-state-exploratory-feasibility-v1.json#L24-L34), [schedule 상수 L80–L111](https://github.com/TheWaitForAGI/InodeFence/blob/64a7a1645c03512d50ff5e0246108d297d1e6aa8/src/inodefence/evaluation/track_a_exploratory.py#L80-L111), [plan 생성 L390–L438](https://github.com/TheWaitForAGI/InodeFence/blob/64a7a1645c03512d50ff5e0246108d297d1e6aa8/src/inodefence/evaluation/track_a_exploratory.py#L390-L438)이 서로 일치합니다.\n\n200회에는 순서가 고정된 초기 네 seed가 포함됩니다. Core는 seed를 먼저 실행하고 `len(steps) == execution_budget`까지 mutation을 수행합니다. no-op도 한 번 실행되고, 반환된 `SUCCESS/REJECTED/FAILED/TIMED_OUT` 모두 step 하나로 budget을 소비합니다([campaign.py L329–L408](https://github.com/TheWaitForAGI/InodeFence/blob/64a7a1645c03512d50ff5e0246108d297d1e6aa8/src/inodefence/campaign.py#L329-L408)). 중복 case는 실행·raw 관찰에는 남지만 동일 case ID를 중복 parent로 retain하지 않습니다([search.py L104–L143](https://github.com/TheWaitForAGI/InodeFence/blob/64a7a1645c03512d50ff5e0246108d297d1e6aa8/src/inodefence/feedback/search.py#L104-L143)).\n\n### 공통 조건과 의도적 차이\n\n모든 cell은 동일한 네 seed/order, `M1_PROTECTED_COMPONENTS`, FULL StateSignature v3 projection, default sentinel, persistent C0/C1/C2, 5초 timeout, budget 200 및 default isolation/resource policy를 사용합니다([track_a_exploratory.py L364–L438](https://github.com/TheWaitForAGI/InodeFence/blob/64a7a1645c03512d50ff5e0246108d297d1e6aa8/src/inodefence/evaluation/track_a_exploratory.py#L364-L438)). affected/fixed B3는 target identity만 다르고, affected B0/B1/B3는 parent selection/admission policy만 의도적으로 다릅니다. 정책에 따라 corpus와 실제 RNG 소비가 달라지는 것은 실험 변수의 결과이므로 강제로 맞추면 안 됩니다.\n\n### Raw evidence / incomplete accounting\n\n확인된 경계:\n\n- 새 exact output root와 immutable execution/plan: [L496–L538](https://github.com/TheWaitForAGI/InodeFence/blob/64a7a1645c03512d50ff5e0246108d297d1e6aa8/src/inodefence/evaluation/track_a_exploratory.py#L496-L538)\n- per-step full `RunResult` journal과 RNG/mutation/feedback replay: [policy_journal.py L138–L188](https://github.com/TheWaitForAGI/InodeFence/blob/64a7a1645c03512d50ff5e0246108d297d1e6aa8/src/inodefence/evaluation/policy_journal.py#L138-L188), [L252–L330](https://github.com/TheWaitForAGI/InodeFence/blob/64a7a1645c03512d50ff5e0246108d297d1e6aa8/src/inodefence/evaluation/policy_journal.py#L252-L330)\n- no-overwrite atomic publication: [storage.py L23–L61](https://github.com/TheWaitForAGI/InodeFence/blob/64a7a1645c03512d50ff5e0246108d297d1e6aa8/src/inodefence/evaluation/storage.py#L23-L61)\n- `PENDING`, durable `STARTED`, terminal state, unique attempt/config 및 no automatic retry: [policy_repeated.py L290–L430](https://github.com/TheWaitForAGI/InodeFence/blob/64a7a1645c03512d50ff5e0246108d297d1e6aa8/src/inodefence/evaluation/policy_repeated.py#L290-L430), [L433–L564](https://github.com/TheWaitForAGI/InodeFence/blob/64a7a1645c03512d50ff5e0246108d297d1e6aa8/src/inodefence/evaluation/policy_repeated.py#L433-L564)\n- campaign timing/controller HWM과 complete/failed evidence 분리: [policy_repeated.py L566–L651](https://github.com/TheWaitForAGI/InodeFence/blob/64a7a1645c03512d50ff5e0246108d297d1e6aa8/src/inodefence/evaluation/policy_repeated.py#L566-L651)\n- final manifest가 전체 파일 inventory/checksum과 slot accounting을 다시 비교: [track_a_exploratory.py L724–L825](https://github.com/TheWaitForAGI/InodeFence/blob/64a7a1645c03512d50ff5e0246108d297d1e6aa8/src/inodefence/evaluation/track_a_exploratory.py#L724-L825)\n- derived analysis는 actual/planned executions 및 infrastructure noncomplete를 별도 집계하고 `RAW ONLY`로 고정: [L999–L1072](https://github.com/TheWaitForAGI/InodeFence/blob/64a7a1645c03512d50ff5e0246108d297d1e6aa8/src/inodefence/evaluation/track_a_exploratory.py#L999-L1072), [L1075–L1138](https://github.com/TheWaitForAGI/InodeFence/blob/64a7a1645c03512d50ff5e0246108d297d1e6aa8/src/inodefence/evaluation/track_a_exploratory.py#L1075-L1138)\n\n따라서 completed target `FAILED/TIMED_OUT`과 campaign infrastructure failure는 구분되고, 미완료 campaign은 일반 no-hit으로 승격되지 않습니다.\n\n### 실행 전 blocker\n\n1. **N05/파일럿 digest는 현재 증거 검증이 아니라 형식·보존만 합니다.**  \n   `TrackAExecutionManifest`는 두 64-hex 문자열을 받고([L452–L480](https://github.com/TheWaitForAGI/InodeFence/blob/64a7a1645c03512d50ff5e0246108d297d1e6aa8/src/inodefence/evaluation/track_a_exploratory.py#L452-L480)), `freeze_track_a_execution`은 `_digest()` 후 그대로 기록합니다([L496–L533](https://github.com/TheWaitForAGI/InodeFence/blob/64a7a1645c03512d50ff5e0246108d297d1e6aa8/src/inodefence/evaluation/track_a_exploratory.py#L496-L533)). Host/controller도 값을 pass-through할 뿐 원본을 열지 않습니다([host L20–L51](https://github.com/TheWaitForAGI/InodeFence/blob/64a7a1645c03512d50ff5e0246108d297d1e6aa8/scripts/track_a_container_host.py#L20-L51), [controller L43–L90](https://github.com/TheWaitForAGI/InodeFence/blob/64a7a1645c03512d50ff5e0246108d297d1e6aa8/scripts/track_a_container_controller.py#L43-L90)).  \n   따라서 현재는 N05 host/Linux evidence, independent `PREFLIGHT_PASS`, cleanup, N05 authorization 내용, 별도 pilot authorization 내용을 검증하지 않습니다.\n\n2. **환경 profile이 소비된 N04 이름으로 남아 있습니다.**  \n   `ENVIRONMENT_PROFILE = \"n04-arm64-orbstack-five-second-v1\"`([L50–L60](https://github.com/TheWaitForAGI/InodeFence/blob/64a7a1645c03512d50ff5e0246108d297d1e6aa8/src/inodefence/evaluation/track_a_exploratory.py#L50-L60))는 process-gate N05 결과와 연동할 때 별도 versioned profile로 교체·검증해야 합니다.\n\n3. **controller durable claim 이전의 host 시도는 evidence에 남지 않습니다.**  \n   Host는 Docker exec/JSON relay/watchdog/cleanup을 수행하지만 host-side attempt ledger를 쓰지 않습니다([track_a_container_host.py L105–L158](https://github.com/TheWaitForAGI/InodeFence/blob/64a7a1645c03512d50ff5e0246108d297d1e6aa8/scripts/track_a_container_host.py#L105-L158)). Controller가 `execute_track_a_slot`에 도달한 뒤에야 repetition claim이 생성됩니다([controller L96–L113](https://github.com/TheWaitForAGI/InodeFence/blob/64a7a1645c03512d50ff5e0246108d297d1e6aa8/scripts/track_a_container_controller.py#L96-L113)). 그 전 Docker exec/transport/controller failure는 slot을 `PENDING`으로 남기고 같은 index의 재호출을 기술적으로 허용합니다. 파일럿 승인에서 host launch를 attempt로 볼지 명시하고, attempt라면 fail-closed host ledger와 소비/no-retry 회귀가 필요합니다.\n\n### N05 PASS 뒤 최소 연동 범위\n\nPR #114 head `f7aaa33050e247e0718d4ceb1ba01485802e269d`의 실제 reader인 [`read_n05_preflight` L580–L624](https://github.com/TheWaitForAGI/InodeFence/blob/f7aaa33050e247e0718d4ceb1ba01485802e269d/src/inodefence/evaluation/n05_preflight_reader.py#L580-L624)와 host/Linux/cleanup 결합 verifier인 [`verify_n05_host_ledger` L657–L900](https://github.com/TheWaitForAGI/InodeFence/blob/f7aaa33050e247e0718d4ceb1ba01485802e269d/scripts/container_host.py#L657-L900)를 Track A prepare 전 gate에서 호출해야 합니다. digest만 받지 말고 실제 retained roots/manifests를 열어 overall `PREFLIGHT_PASS`와 다음 동일성을 fail closed로 확인해야 합니다.\n\n- clean source revision\n- affected/fixed package, image 및 controller identity\n- trusted host/daemon/environment/runtime volume\n- 5초 timeout, isolation/resource profile\n- N05 승인과 **별도** pilot 승인\n\n별도 pilot authorization은 canonical typed record로 parsing/retention하고 총 4,000회, 20개 exact order, seed/RNG/timeout/budget/repetitions, stop/no-retry, raw root를 고정해야 합니다. 임의 valid hex, missing/symlink/corrupt evidence, non-PASS, cleanup failure, N04 reuse, source/image/controller/daemon/timeout/isolation mismatch, 누락·변조된 pilot authorization, 잘못된 20-cell order/budget, claim 전후 host failure를 각각 거부하는 회귀 테스트가 필요합니다.\n\n현재 판정: **engineering path reviewed; N05 consumer integration BLOCKED; pilot authorization absent; pilot NOT_RUN**.",
+          "author_association": "MEMBER",
+          "reactions": {
+            "url": "https://api.github.com/repos/TheWaitForAGI/InodeFence/issues/comments/6318148213/reactions",
+            "total_count": 0,
+            "+1": 0,
+            "-1": 0,
+            "laugh": 0,
+            "hooray": 0,
+            "confused": 0,
+            "heart": 0,
+            "rocket": 0,
+            "eyes": 0
+          },
+          "performed_via_github_app": {
+            "id": 1144995,
+            "client_id": "Iv23liVemv8A9if9v0F2",
+            "slug": "chatgpt-codex-connector",
+            "node_id": "A_kwHOAOQ6Gs4AEXij",
+            "owner": {
+              "login": "openai",
+              "id": 14957082,
+              "node_id": "MDEyOk9yZ2FuaXphdGlvbjE0OTU3MDgy",
+              "avatar_url": "https://avatars.githubusercontent.com/u/14957082?v=4",
+              "gravatar_id": "",
+              "url": "https://api.github.com/users/openai",
+              "html_url": "https://github.com/openai",
+              "followers_url": "https://api.github.com/users/openai/followers",
+              "following_url": "https://api.github.com/users/openai/following{/other_user}",
+              "gists_url": "https://api.github.com/users/openai/gists{/gist_id}",
+              "starred_url": "https://api.github.com/users/openai/starred{/owner}{/repo}",
+              "subscriptions_url": "https://api.github.com/users/openai/subscriptions",
+              "organizations_url": "https://api.github.com/users/openai/orgs",
+              "repos_url": "https://api.github.com/users/openai/repos",
+              "events_url": "https://api.github.com/users/openai/events{/privacy}",
+              "received_events_url": "https://api.github.com/users/openai/received_events",
+              "type": "Organization",
+              "user_view_type": "public",
+              "site_admin": false
+            },
+            "name": "ChatGPT Codex Connector",
+            "description": "Bring ChatGPT and Codex to your GitHub repositories.",
+            "external_url": "https://www.chatgpt.com",
+            "html_url": "https://github.com/apps/chatgpt-codex-connector",
+            "created_at": "2025-02-14T01:37:05Z",
+            "updated_at": "2026-09-23T18:52:59Z",
+            "permissions": {
+              "actions": "write",
+              "checks": "read",
+              "contents": "write",
+              "emails": "read",
+              "issues": "write",
+              "metadata": "read",
+              "pull_requests": "write",
+              "statuses": "read",
+              "workflows": "write"
+            },
+            "events": [
+              "check_run",
+              "check_suite",
+              "commit_comment",
+              "issues",
+              "issue_comment",
+              "pull_request",
+              "pull_request_review",
+              "pull_request_review_comment",
+              "pull_request_review_thread",
+              "repository",
+              "status",
+              "sub_issues"
+            ]
+          },
+          "minimized": null
+        }
+      ],
+      "inline-comments": []
+    },
+    {
+      "author": {
+        "id": "U_kgDODIUOJw",
+        "is_bot": false,
+        "login": "jiwoongchoi-norun",
+        "name": "Choi ji-woong"
+      },
+      "baseRefName": "main",
+      "baseRefOid": "8d29982c26cebfcce7a413b3ba9177fcd28078de",
+      "commits": [
+        {
+          "authoredDate": "2026-10-18T13:40:27Z",
+          "authors": [
+            {
+              "email": "jiwoong729@gmail.com",
+              "id": "U_kgDODIUOJw",
+              "login": "jiwoongchoi-norun",
+              "name": "choijiwng"
+            }
+          ],
+          "committedDate": "2026-10-18T13:40:27Z",
+          "messageBody": "",
+          "messageHeadline": "fix: retain bounded preflight controller stderr",
+          "oid": "0eca90f44a249d3ab1e66966b7ab3cfe80f79055"
+        }
+      ],
+      "files": [
+        {
+          "path": "scripts/README.md",
+          "additions": 8,
+          "deletions": 0,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "scripts/container_host.py",
+          "additions": 129,
+          "deletions": 13,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "tests/evaluation/test_n04_host_ledger.py",
+          "additions": 57,
+          "deletions": 0,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "tests/test_container_backend.py",
+          "additions": 27,
+          "deletions": 0,
+          "changeType": "MODIFIED"
+        }
+      ],
+      "headRefName": "fix/n05-preflight-host-evidence",
+      "headRefOid": "0eca90f44a249d3ab1e66966b7ab3cfe80f79055",
+      "isDraft": true,
+      "mergeStateStatus": "CLEAN",
+      "mergeable": "MERGEABLE",
+      "number": 112,
+      "reviewDecision": "",
+      "reviews": [],
+      "state": "OPEN",
+      "statusCheckRollup": [
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-18T13:44:03Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/TheWaitForAGI/InodeFence/actions/runs/39132600453/job/117690644208",
+          "name": "check",
+          "startedAt": "2026-10-18T13:40:49Z",
+          "status": "COMPLETED",
+          "workflowName": "CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-18T13:42:12Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/TheWaitForAGI/InodeFence/actions/runs/39132600453/job/117690644434",
+          "name": "container-integration",
+          "startedAt": "2026-10-18T13:40:49Z",
+          "status": "COMPLETED",
+          "workflowName": "CI"
+        }
+      ],
+      "title": "fix: retain bounded preflight controller stderr",
+      "comments": [],
+      "inline-comments": []
+    },
+    {
+      "author": {
+        "id": "U_kgDODIUOJw",
+        "is_bot": false,
+        "login": "jiwoongchoi-norun",
+        "name": "Choi ji-woong"
+      },
+      "baseRefName": "main",
+      "baseRefOid": "8d29982c26cebfcce7a413b3ba9177fcd28078de",
+      "commits": [
+        {
+          "authoredDate": "2026-10-18T13:45:09Z",
+          "authors": [
+            {
+              "email": "jiwoong729@gmail.com",
+              "id": "U_kgDODIUOJw",
+              "login": "jiwoongchoi-norun",
+              "name": "choijiwng"
+            }
+          ],
+          "committedDate": "2026-10-18T13:45:09Z",
+          "messageBody": "",
+          "messageHeadline": "docs(research): freeze N05 qualification blockers",
+          "oid": "00356e43f5e6bc1623cc7b36cba0479b755b1118"
+        }
+      ],
+      "files": [
+        {
+          "path": "docs/STATUS.md",
+          "additions": 15,
+          "deletions": 0,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "docs/research/benchmarks/README.md",
+          "additions": 5,
+          "deletions": 1,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "docs/research/benchmarks/n05-five-second-preflight-task-contract-draft.md",
+          "additions": 165,
+          "deletions": 0,
+          "changeType": "ADDED"
+        },
+        {
+          "path": "docs/research/benchmarks/n05-native-rebinding-v3-qualification-task-contract-draft.md",
+          "additions": 192,
+          "deletions": 0,
+          "changeType": "ADDED"
+        },
+        {
+          "path": "docs/research/design/README.md",
+          "additions": 4,
+          "deletions": 2,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "docs/research/diagnostics/n05-native-qualification-critical-path.md",
+          "additions": 195,
+          "deletions": 0,
+          "changeType": "ADDED"
+        }
+      ],
+      "headRefName": "docs/n05-native-qualification-critical-path",
+      "headRefOid": "00356e43f5e6bc1623cc7b36cba0479b755b1118",
+      "isDraft": true,
+      "mergeStateStatus": "CLEAN",
+      "mergeable": "MERGEABLE",
+      "number": 113,
+      "reviewDecision": "",
+      "reviews": [],
+      "state": "OPEN",
+      "statusCheckRollup": [
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-18T13:48:03Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/TheWaitForAGI/InodeFence/actions/runs/39132948385/job/117691657615",
+          "name": "check",
+          "startedAt": "2026-10-18T13:45:35Z",
+          "status": "COMPLETED",
+          "workflowName": "CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-18T13:46:51Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/TheWaitForAGI/InodeFence/actions/runs/39132948385/job/117691657337",
+          "name": "container-integration",
+          "startedAt": "2026-10-18T13:45:34Z",
+          "status": "COMPLETED",
+          "workflowName": "CI"
+        }
+      ],
+      "title": "docs(research): freeze N05 qualification blockers",
+      "comments": [],
+      "inline-comments": []
+    },
+    {
+      "author": {
+        "id": "U_kgDODIUOJw",
+        "is_bot": false,
+        "login": "jiwoongchoi-norun",
+        "name": "Choi ji-woong"
+      },
+      "baseRefName": "main",
+      "baseRefOid": "8d29982c26cebfcce7a413b3ba9177fcd28078de",
+      "commits": [
+        {
+          "authoredDate": "2026-10-18T13:40:27Z",
+          "authors": [
+            {
+              "email": "jiwoong729@gmail.com",
+              "id": "U_kgDODIUOJw",
+              "login": "jiwoongchoi-norun",
+              "name": "choijiwng"
+            }
+          ],
+          "committedDate": "2026-10-18T13:40:27Z",
+          "messageBody": "",
+          "messageHeadline": "fix: retain bounded preflight controller stderr",
+          "oid": "0eca90f44a249d3ab1e66966b7ab3cfe80f79055"
+        },
+        {
+          "authoredDate": "2026-10-18T13:45:09Z",
+          "authors": [
+            {
+              "email": "jiwoong729@gmail.com",
+              "id": "U_kgDODIUOJw",
+              "login": "jiwoongchoi-norun",
+              "name": "choijiwng"
+            }
+          ],
+          "committedDate": "2026-10-18T13:45:09Z",
+          "messageBody": "",
+          "messageHeadline": "docs(research): freeze N05 qualification blockers",
+          "oid": "00356e43f5e6bc1623cc7b36cba0479b755b1118"
+        },
+        {
+          "authoredDate": "2026-10-18T15:32:28Z",
+          "authors": [
+            {
+              "email": "jiwoong729@gmail.com",
+              "id": "U_kgDODIUOJw",
+              "login": "jiwoongchoi-norun",
+              "name": "choijiwng"
+            }
+          ],
+          "committedDate": "2026-10-18T15:32:28Z",
+          "messageBody": "…readiness-v2",
+          "messageHeadline": "Merge remote-tracking branch 'origin/pr/113' into feat/n05-preflight-…",
+          "oid": "0932ba77703457dbe172d7eb08e2cd229a17886b"
+        },
+        {
+          "authoredDate": "2026-10-19T00:05:12Z",
+          "authors": [
+            {
+              "email": "jiwoong729@gmail.com",
+              "id": "U_kgDODIUOJw",
+              "login": "jiwoongchoi-norun",
+              "name": "choijiwng"
+            }
+          ],
+          "committedDate": "2026-10-19T00:05:12Z",
+          "messageBody": "",
+          "messageHeadline": "feat: add authorized N05 preflight readiness",
+          "oid": "f7aaa33050e247e0718d4ceb1ba01485802e269d"
+        }
+      ],
+      "files": [
+        {
+          "path": "docs/STATUS.md",
+          "additions": 20,
+          "deletions": 0,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "docs/research/benchmarks/README.md",
+          "additions": 5,
+          "deletions": 1,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "docs/research/benchmarks/n05-five-second-preflight-task-contract-draft.md",
+          "additions": 189,
+          "deletions": 0,
+          "changeType": "ADDED"
+        },
+        {
+          "path": "docs/research/benchmarks/n05-native-rebinding-v3-qualification-task-contract-draft.md",
+          "additions": 192,
+          "deletions": 0,
+          "changeType": "ADDED"
+        },
+        {
+          "path": "docs/research/design/README.md",
+          "additions": 4,
+          "deletions": 2,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "docs/research/diagnostics/n05-native-qualification-critical-path.md",
+          "additions": 195,
+          "deletions": 0,
+          "changeType": "ADDED"
+        },
+        {
+          "path": "scripts/README.md",
+          "additions": 29,
+          "deletions": 0,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "scripts/container_controller.py",
+          "additions": 135,
+          "deletions": 1,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "scripts/container_host.py",
+          "additions": 739,
+          "deletions": 73,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "src/inodefence/evaluation/README.md",
+          "additions": 19,
+          "deletions": 0,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "src/inodefence/evaluation/n05_preflight.py",
+          "additions": 1200,
+          "deletions": 0,
+          "changeType": "ADDED"
+        },
+        {
+          "path": "src/inodefence/evaluation/n05_preflight_reader.py",
+          "additions": 652,
+          "deletions": 0,
+          "changeType": "ADDED"
+        },
+        {
+          "path": "tests/evaluation/test_n04_host_ledger.py",
+          "additions": 57,
+          "deletions": 0,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "tests/evaluation/test_n05_preflight.py",
+          "additions": 916,
+          "deletions": 0,
+          "changeType": "ADDED"
+        },
+        {
+          "path": "tests/test_container_backend.py",
+          "additions": 27,
+          "deletions": 0,
+          "changeType": "MODIFIED"
+        }
+      ],
+      "headRefName": "feat/n05-preflight-readiness-v2",
+      "headRefOid": "f7aaa33050e247e0718d4ceb1ba01485802e269d",
+      "isDraft": true,
+      "mergeStateStatus": "CLEAN",
+      "mergeable": "MERGEABLE",
+      "number": 114,
+      "reviewDecision": "",
+      "reviews": [],
+      "state": "OPEN",
+      "statusCheckRollup": [
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-19T00:09:45Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/TheWaitForAGI/InodeFence/actions/runs/39179299461/job/117828442640",
+          "name": "check",
+          "startedAt": "2026-10-19T00:06:57Z",
+          "status": "COMPLETED",
+          "workflowName": "CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-19T00:08:18Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/TheWaitForAGI/InodeFence/actions/runs/39179299461/job/117828442871",
+          "name": "container-integration",
+          "startedAt": "2026-10-19T00:06:56Z",
+          "status": "COMPLETED",
+          "workflowName": "CI"
+        }
+      ],
+      "title": "feat: add authorized N05 five-second preflight",
+      "comments": [],
+      "inline-comments": []
+    },
+    {
+      "author": {
+        "id": "U_kgDODVox8Q",
+        "is_bot": false,
+        "login": "dudooomchit",
+        "name": ""
+      },
+      "baseRefName": "feat/n05-preflight-readiness-v2",
+      "baseRefOid": "f7aaa33050e247e0718d4ceb1ba01485802e269d",
+      "commits": [
+        {
+          "authoredDate": "2026-10-19T16:36:40Z",
+          "authors": [
+            {
+              "email": "kevin0814ok@gmail.com",
+              "id": "U_kgDODVox8Q",
+              "login": "dudooomchit",
+              "name": "dudooomchit"
+            }
+          ],
+          "committedDate": "2026-10-19T16:36:40Z",
+          "messageBody": "",
+          "messageHeadline": "fix: bind N05 host runtime to authorized source",
+          "oid": "e83349ed1592d536e3ec0fce3c7cb204cb5c6ec9"
+        }
+      ],
+      "files": [
+        {
+          "path": "docs/STATUS.md",
+          "additions": 3,
+          "deletions": 1,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "docs/research/benchmarks/n05-five-second-preflight-task-contract-draft.md",
+          "additions": 21,
+          "deletions": 6,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "scripts/README.md",
+          "additions": 4,
+          "deletions": 1,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "scripts/container_host.py",
+          "additions": 41,
+          "deletions": 9,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "src/inodefence/evaluation/README.md",
+          "additions": 4,
+          "deletions": 1,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "src/inodefence/evaluation/n05_preflight.py",
+          "additions": 75,
+          "deletions": 5,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "tests/evaluation/test_n05_preflight.py",
+          "additions": 129,
+          "deletions": 0,
+          "changeType": "MODIFIED"
+        }
+      ],
+      "headRefName": "codex/n05-host-source-binding",
+      "headRefOid": "e83349ed1592d536e3ec0fce3c7cb204cb5c6ec9",
+      "isDraft": false,
+      "mergeStateStatus": "CLEAN",
+      "mergeable": "MERGEABLE",
+      "number": 115,
+      "reviewDecision": "",
+      "reviews": [],
+      "state": "OPEN",
+      "statusCheckRollup": [
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-19T16:40:09Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/TheWaitForAGI/InodeFence/actions/runs/39286894752/job/118176044791",
+          "name": "check",
+          "startedAt": "2026-10-19T16:37:05Z",
+          "status": "COMPLETED",
+          "workflowName": "CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-19T16:38:34Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/TheWaitForAGI/InodeFence/actions/runs/39286894752/job/118176044845",
+          "name": "container-integration",
+          "startedAt": "2026-10-19T16:37:05Z",
+          "status": "COMPLETED",
+          "workflowName": "CI"
+        }
+      ],
+      "title": "fix: bind N05 host runtime to authorized source",
+      "comments": [],
+      "inline-comments": []
+    },
+    {
+      "author": {
+        "id": "U_kgDOCt5MlQ",
+        "is_bot": false,
+        "login": "JooREC0",
+        "name": ""
+      },
+      "baseRefName": "main",
+      "baseRefOid": "8d29982c26cebfcce7a413b3ba9177fcd28078de",
+      "commits": [
+        {
+          "authoredDate": "2026-10-21T12:09:43Z",
+          "authors": [
+            {
+              "email": "ljee2933@gmail.com",
+              "id": "U_kgDOCt5MlQ",
+              "login": "JooREC0",
+              "name": "JooREC0"
+            }
+          ],
+          "committedDate": "2026-10-21T12:09:43Z",
+          "messageBody": "",
+          "messageHeadline": "docs: record MID-03 evaluation audit",
+          "oid": "7d42799e895eba0f490fbdeaad110fe1407fd664"
+        }
+      ],
+      "files": [
+        {
+          "path": "docs/research/benchmarks/README.md",
+          "additions": 1,
+          "deletions": 0,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "docs/research/diagnostics/mid03-feedback-evaluation-audit-2026-10-21.md",
+          "additions": 278,
+          "deletions": 0,
+          "changeType": "ADDED"
+        }
+      ],
+      "headRefName": "docs/mid03-feedback-evaluation-audit",
+      "headRefOid": "7d42799e895eba0f490fbdeaad110fe1407fd664",
+      "isDraft": false,
+      "mergeStateStatus": "CLEAN",
+      "mergeable": "MERGEABLE",
+      "number": 116,
+      "reviewDecision": "",
+      "reviews": [],
+      "state": "OPEN",
+      "statusCheckRollup": [
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-21T13:56:58Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/TheWaitForAGI/InodeFence/actions/runs/39612069275/job/119263221343",
+          "name": "check",
+          "startedAt": "2026-10-21T13:54:15Z",
+          "status": "COMPLETED",
+          "workflowName": "CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-21T13:55:34Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/TheWaitForAGI/InodeFence/actions/runs/39612069275/job/119263220715",
+          "name": "container-integration",
+          "startedAt": "2026-10-21T13:54:15Z",
+          "status": "COMPLETED",
+          "workflowName": "CI"
+        }
+      ],
+      "title": "docs: record MID-03 feedback evaluation audit",
+      "comments": [
+        {
+          "url": "https://api.github.com/repos/TheWaitForAGI/InodeFence/issues/comments/6318130395",
+          "html_url": "https://github.com/TheWaitForAGI/InodeFence/pull/116#issuecomment-6318130395",
+          "issue_url": "https://api.github.com/repos/TheWaitForAGI/InodeFence/issues/116",
+          "id": 6318130395,
+          "node_id": "IC_kwDOU5yDMc8AAAABeJcE2w",
+          "user": {
+            "login": "JooREC0",
+            "id": 182340757,
+            "node_id": "U_kgDOCt5MlQ",
+            "avatar_url": "https://avatars.githubusercontent.com/u/182340757?v=4",
+            "gravatar_id": "",
+            "url": "https://api.github.com/users/JooREC0",
+            "html_url": "https://github.com/JooREC0",
+            "followers_url": "https://api.github.com/users/JooREC0/followers",
+            "following_url": "https://api.github.com/users/JooREC0/following{/other_user}",
+            "gists_url": "https://api.github.com/users/JooREC0/gists{/gist_id}",
+            "starred_url": "https://api.github.com/users/JooREC0/starred{/owner}{/repo}",
+            "subscriptions_url": "https://api.github.com/users/JooREC0/subscriptions",
+            "organizations_url": "https://api.github.com/users/JooREC0/orgs",
+            "repos_url": "https://api.github.com/users/JooREC0/repos",
+            "events_url": "https://api.github.com/users/JooREC0/events{/privacy}",
+            "received_events_url": "https://api.github.com/users/JooREC0/received_events",
+            "type": "User",
+            "user_view_type": "public",
+            "site_admin": false
+          },
+          "created_at": "2026-10-21T14:08:33Z",
+          "updated_at": "2026-10-21T14:08:33Z",
+          "body": "## MID-03 독립 사람 리뷰 및 N05 인계 요청\n\n리뷰 대상은 정확히 head `7d42799e895eba0f490fbdeaad110fe1407fd664`입니다.\n\n### 지웅 — Research / Presentation review\n\n@jiwoongchoi-norun 님께 독립 리뷰를 요청했습니다. 다음을 확인해 주세요.\n\n- FACT / ENGINEERING TEST / EXPERIMENT / FUTURE WORK 구분\n- 실제 target campaign 없이 효과·우위·재발견을 주장하지 않는지\n- A1/A2/A3 구현·engineering test와 target effect `NOT_RUN`을 구분하는지\n- 발표 문구가 현재 증거 단계에 맞는지\n- 20 campaigns × 200 seed-inclusive executions = **총 4,000회** 및 `NOT_RUN` 표현이 정확한지\n\n### 규민 — Runtime / N05 review 및 인계 요청\n\n규민 담당자의 GitHub 계정은 저장소의 명시적 기록에서 확인하지 못해 현재 reviewer로 추정 지정하지 않았습니다. 계정이 확인되면 중복 여부를 확인한 뒤 별도 reviewer request가 필요합니다. 검토 범위는 다음과 같습니다.\n\n- N01 human correspondence 현재 상태\n- process-gate N05와 benchmark catalog N05의 구분\n- N05 source/controller/image/environment 동결 조건\n- exact attempt ID와 정확히 1회인 사람 preflight 승인\n- N05 원본 기록, 독립 reader 및 `PREFLIGHT_PASS`\n- 파일럿 별도 승인과 실행 게이트의 정확성\n\n관련 구현 후보: [PR #114](https://github.com/TheWaitForAGI/InodeFence/pull/114), head `f7aaa33050e247e0718d4ceb1ba01485802e269d`.\n\n규민 담당자에게 다음 인계 자료를 요청합니다. 아직 없다면 각 항목의 **현재 상태, 담당자, 제공 예정 시점**을 답변해 주세요.\n\n1. **N01 human correspondence**\n   - 최종 사람 판정\n   - 판정자, 대상 evidence/revision, 근거 링크\n   - automated reader PASS만 존재한다면 human 판정 대기로 명시\n2. **N05 실행 source**\n   - 리뷰·동결된 정확한 clean source commit\n   - 관련 integration PR과 리뷰 상태\n3. **실행 identity**\n   - controller image immutable ID\n   - affected/fixed target image immutable ID\n   - package/artifact digest\n   - trusted arm64/OrbStack host, Linux daemon, runtime volume 식별 정보\n4. **단일 preflight 승인**\n   - exact attempt ID\n   - 위 source/image/environment에 대한 정확히 1회인 사람 승인 기록\n   - 5초 timeout과 실행 상한\n   - 중단·실패 시 attempt 소비 및 재승인 규칙\n   - 소비된 N04 승인을 재사용하지 않는다는 확인\n5. **실행 후 인계**\n   - host ledger와 Linux raw evidence 위치\n   - manifest/checksum\n   - independent reader 결과와 `PREFLIGHT_PASS`\n   - cleanup 결과 및 미완료 항목\n\n### 이번에 직접 확인한 GitHub 상태\n\n- PR #116: open, non-draft, base `main@8d29982c`, head `7d42799e`\n- legacy commit statuses: 0개\n- GitHub Actions run [#268](https://github.com/TheWaitForAGI/InodeFence/actions/runs/39612069275): completed / success\n  - [check](https://github.com/TheWaitForAGI/InodeFence/actions/runs/39612069275/job/119263221343): success\n  - [container-integration](https://github.com/TheWaitForAGI/InodeFence/actions/runs/39612069275/job/119263220715): success\n- 이 댓글 전 제출된 사람 리뷰와 review thread: 0개\n\n이 reviewer request와 댓글은 **N01 사람 판정, N05 실행 승인·실행 지시, 파일럿 승인 또는 PR 승인**이 아닙니다. 두 사람의 검토가 끝나기 전 이 작업에서는 PR을 승인하거나 병합하지 않습니다.",
+          "author_association": "MEMBER",
+          "reactions": {
+            "url": "https://api.github.com/repos/TheWaitForAGI/InodeFence/issues/comments/6318130395/reactions",
+            "total_count": 0,
+            "+1": 0,
+            "-1": 0,
+            "laugh": 0,
+            "hooray": 0,
+            "confused": 0,
+            "heart": 0,
+            "rocket": 0,
+            "eyes": 0
+          },
+          "performed_via_github_app": {
+            "id": 1144995,
+            "client_id": "Iv23liVemv8A9if9v0F2",
+            "slug": "chatgpt-codex-connector",
+            "node_id": "A_kwHOAOQ6Gs4AEXij",
+            "owner": {
+              "login": "openai",
+              "id": 14957082,
+              "node_id": "MDEyOk9yZ2FuaXphdGlvbjE0OTU3MDgy",
+              "avatar_url": "https://avatars.githubusercontent.com/u/14957082?v=4",
+              "gravatar_id": "",
+              "url": "https://api.github.com/users/openai",
+              "html_url": "https://github.com/openai",
+              "followers_url": "https://api.github.com/users/openai/followers",
+              "following_url": "https://api.github.com/users/openai/following{/other_user}",
+              "gists_url": "https://api.github.com/users/openai/gists{/gist_id}",
+              "starred_url": "https://api.github.com/users/openai/starred{/owner}{/repo}",
+              "subscriptions_url": "https://api.github.com/users/openai/subscriptions",
+              "organizations_url": "https://api.github.com/users/openai/orgs",
+              "repos_url": "https://api.github.com/users/openai/repos",
+              "events_url": "https://api.github.com/users/openai/events{/privacy}",
+              "received_events_url": "https://api.github.com/users/openai/received_events",
+              "type": "Organization",
+              "user_view_type": "public",
+              "site_admin": false
+            },
+            "name": "ChatGPT Codex Connector",
+            "description": "Bring ChatGPT and Codex to your GitHub repositories.",
+            "external_url": "https://www.chatgpt.com",
+            "html_url": "https://github.com/apps/chatgpt-codex-connector",
+            "created_at": "2025-02-14T01:37:05Z",
+            "updated_at": "2026-09-23T18:52:59Z",
+            "permissions": {
+              "actions": "write",
+              "checks": "read",
+              "contents": "write",
+              "emails": "read",
+              "issues": "write",
+              "metadata": "read",
+              "pull_requests": "write",
+              "statuses": "read",
+              "workflows": "write"
+            },
+            "events": [
+              "check_run",
+              "check_suite",
+              "commit_comment",
+              "issues",
+              "issue_comment",
+              "pull_request",
+              "pull_request_review",
+              "pull_request_review_comment",
+              "pull_request_review_thread",
+              "repository",
+              "status",
+              "sub_issues"
+            ]
+          },
+          "minimized": null
+        }
+      ],
+      "inline-comments": []
+    },
+    {
+      "author": {
+        "id": "U_kgDOCt5MlQ",
+        "is_bot": false,
+        "login": "JooREC0",
+        "name": ""
+      },
+      "baseRefName": "docs/mid03-feedback-evaluation-audit",
+      "baseRefOid": "7d42799e895eba0f490fbdeaad110fe1407fd664",
+      "commits": [
+        {
+          "authoredDate": "2026-10-21T14:30:47Z",
+          "authors": [
+            {
+              "email": "ljee2933@gmail.com",
+              "id": "U_kgDOCt5MlQ",
+              "login": "JooREC0",
+              "name": "JooREC0"
+            }
+          ],
+          "committedDate": "2026-10-21T14:30:47Z",
+          "messageBody": "",
+          "messageHeadline": "docs: design MID-03 N05 consumer integration",
+          "oid": "1d3ba474428ecd29e38f26945e7079a2328c06fd"
+        }
+      ],
+      "files": [
+        {
+          "path": "docs/research/design/mid03-n05-consumer-integration-plan.md",
+          "additions": 645,
+          "deletions": 0,
+          "changeType": "ADDED"
+        }
+      ],
+      "headRefName": "docs/mid03-n05-consumer-integration-plan",
+      "headRefOid": "1d3ba474428ecd29e38f26945e7079a2328c06fd",
+      "isDraft": false,
+      "mergeStateStatus": "CLEAN",
+      "mergeable": "MERGEABLE",
+      "number": 117,
+      "reviewDecision": "",
+      "reviews": [],
+      "state": "OPEN",
+      "statusCheckRollup": [
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-21T14:34:40Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/TheWaitForAGI/InodeFence/actions/runs/39617515135/job/119282264394",
+          "name": "check",
+          "startedAt": "2026-10-21T14:31:22Z",
+          "status": "COMPLETED",
+          "workflowName": "CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-21T14:33:07Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/TheWaitForAGI/InodeFence/actions/runs/39617515135/job/119282263988",
+          "name": "container-integration",
+          "startedAt": "2026-10-21T14:31:22Z",
+          "status": "COMPLETED",
+          "workflowName": "CI"
+        }
+      ],
+      "title": "docs: design MID-03 N05 consumer integration",
+      "comments": [],
+      "inline-comments": []
+    },
+    {
+      "author": {
+        "id": "U_kgDOCt5MlQ",
+        "is_bot": false,
+        "login": "JooREC0",
+        "name": ""
+      },
+      "baseRefName": "docs/mid03-n05-consumer-integration-plan",
+      "baseRefOid": "1d3ba474428ecd29e38f26945e7079a2328c06fd",
+      "commits": [
+        {
+          "authoredDate": "2026-10-16T14:27:15Z",
+          "authors": [
+            {
+              "email": "ljee2933@gmail.com",
+              "id": "U_kgDOCt5MlQ",
+              "login": "JooREC0",
+              "name": "JooREC0"
+            }
+          ],
+          "committedDate": "2026-10-16T14:27:15Z",
+          "messageBody": "",
+          "messageHeadline": "experiment: freeze Track A exploratory pilot protocol",
+          "oid": "64a7a1645c03512d50ff5e0246108d297d1e6aa8"
+        },
+        {
+          "authoredDate": "2026-10-18T13:40:27Z",
+          "authors": [
+            {
+              "email": "jiwoong729@gmail.com",
+              "id": "U_kgDODIUOJw",
+              "login": "jiwoongchoi-norun",
+              "name": "choijiwng"
+            }
+          ],
+          "committedDate": "2026-10-18T13:40:27Z",
+          "messageBody": "",
+          "messageHeadline": "fix: retain bounded preflight controller stderr",
+          "oid": "0eca90f44a249d3ab1e66966b7ab3cfe80f79055"
+        },
+        {
+          "authoredDate": "2026-10-18T13:45:09Z",
+          "authors": [
+            {
+              "email": "jiwoong729@gmail.com",
+              "id": "U_kgDODIUOJw",
+              "login": "jiwoongchoi-norun",
+              "name": "choijiwng"
+            }
+          ],
+          "committedDate": "2026-10-18T13:45:09Z",
+          "messageBody": "",
+          "messageHeadline": "docs(research): freeze N05 qualification blockers",
+          "oid": "00356e43f5e6bc1623cc7b36cba0479b755b1118"
+        },
+        {
+          "authoredDate": "2026-10-18T15:32:28Z",
+          "authors": [
+            {
+              "email": "jiwoong729@gmail.com",
+              "id": "U_kgDODIUOJw",
+              "login": "jiwoongchoi-norun",
+              "name": "choijiwng"
+            }
+          ],
+          "committedDate": "2026-10-18T15:32:28Z",
+          "messageBody": "…readiness-v2",
+          "messageHeadline": "Merge remote-tracking branch 'origin/pr/113' into feat/n05-preflight-…",
+          "oid": "0932ba77703457dbe172d7eb08e2cd229a17886b"
+        },
+        {
+          "authoredDate": "2026-10-19T00:05:12Z",
+          "authors": [
+            {
+              "email": "jiwoong729@gmail.com",
+              "id": "U_kgDODIUOJw",
+              "login": "jiwoongchoi-norun",
+              "name": "choijiwng"
+            }
+          ],
+          "committedDate": "2026-10-19T00:05:12Z",
+          "messageBody": "",
+          "messageHeadline": "feat: add authorized N05 preflight readiness",
+          "oid": "f7aaa33050e247e0718d4ceb1ba01485802e269d"
+        },
+        {
+          "authoredDate": "2026-10-22T03:19:01Z",
+          "authors": [
+            {
+              "email": "ljee2933@gmail.com",
+              "id": "U_kgDOCt5MlQ",
+              "login": "JooREC0",
+              "name": "JooREC0"
+            }
+          ],
+          "committedDate": "2026-10-22T03:19:01Z",
+          "messageBody": "",
+          "messageHeadline": "Merge PR #108 Track A dependency at 64a7a164",
+          "oid": "3ebb0f989e38025154b0f9ac41d3b45464fa0e32"
+        },
+        {
+          "authoredDate": "2026-10-22T03:19:13Z",
+          "authors": [
+            {
+              "email": "ljee2933@gmail.com",
+              "id": "U_kgDOCt5MlQ",
+              "login": "JooREC0",
+              "name": "JooREC0"
+            }
+          ],
+          "committedDate": "2026-10-22T03:19:13Z",
+          "messageBody": "# Conflicts:\n#\tdocs/research/benchmarks/README.md",
+          "messageHeadline": "Merge PR #114 N05 dependency at f7aaa330",
+          "oid": "f19f3875b66f9ef41c94b2492651d7d6b4f0898e"
+        },
+        {
+          "authoredDate": "2026-10-22T03:42:04Z",
+          "authors": [
+            {
+              "email": "ljee2933@gmail.com",
+              "id": "U_kgDOCt5MlQ",
+              "login": "JooREC0",
+              "name": "JooREC0"
+            }
+          ],
+          "committedDate": "2026-10-22T03:42:04Z",
+          "messageBody": "",
+          "messageHeadline": "feat: add target-free Track A admission reader",
+          "oid": "e7c9f9a62144b3443d85eb1691e8c31c9fbc75f5"
+        },
+        {
+          "authoredDate": "2026-10-22T04:24:39Z",
+          "authors": [
+            {
+              "email": "ljee2933@gmail.com",
+              "id": "U_kgDOCt5MlQ",
+              "login": "JooREC0",
+              "name": "JooREC0"
+            }
+          ],
+          "committedDate": "2026-10-22T04:24:39Z",
+          "messageBody": "",
+          "messageHeadline": "fix: require exact controller tmpfs binding",
+          "oid": "7f8696f9ea701c8438585843d5f78d0248de8933"
+        }
+      ],
+      "files": [
+        {
+          "path": "docs/STATUS.md",
+          "additions": 20,
+          "deletions": 0,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "docs/research/benchmarks/README.md",
+          "additions": 6,
+          "deletions": 2,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "docs/research/benchmarks/n05-five-second-preflight-task-contract-draft.md",
+          "additions": 189,
+          "deletions": 0,
+          "changeType": "ADDED"
+        },
+        {
+          "path": "docs/research/benchmarks/n05-native-rebinding-v3-qualification-task-contract-draft.md",
+          "additions": 192,
+          "deletions": 0,
+          "changeType": "ADDED"
+        },
+        {
+          "path": "docs/research/benchmarks/track-a-final-state-exploratory-feasibility-v1.md",
+          "additions": 236,
+          "deletions": 0,
+          "changeType": "ADDED"
+        },
+        {
+          "path": "docs/research/design/README.md",
+          "additions": 4,
+          "deletions": 2,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "docs/research/design/mid03-n05-consumer-integration-plan.md",
+          "additions": 25,
+          "deletions": 9,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "docs/research/diagnostics/n05-native-qualification-critical-path.md",
+          "additions": 195,
+          "deletions": 0,
+          "changeType": "ADDED"
+        },
+        {
+          "path": "docs/research/diagnostics/track-a-read-only-audit-2026-10-16.md",
+          "additions": 81,
+          "deletions": 0,
+          "changeType": "ADDED"
+        },
+        {
+          "path": "experiments/configs/README.md",
+          "additions": 6,
+          "deletions": 0,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "experiments/configs/track-a-final-state-exploratory-feasibility-v1.json",
+          "additions": 116,
+          "deletions": 0,
+          "changeType": "ADDED"
+        },
+        {
+          "path": "scripts/README.md",
+          "additions": 47,
+          "deletions": 0,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "scripts/container_controller.py",
+          "additions": 135,
+          "deletions": 1,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "scripts/container_host.py",
+          "additions": 739,
+          "deletions": 73,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "scripts/track_a_container_controller.py",
+          "additions": 131,
+          "deletions": 0,
+          "changeType": "ADDED"
+        },
+        {
+          "path": "scripts/track_a_container_host.py",
+          "additions": 162,
+          "deletions": 0,
+          "changeType": "ADDED"
+        },
+        {
+          "path": "src/inodefence/evaluation/README.md",
+          "additions": 52,
+          "deletions": 0,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "src/inodefence/evaluation/n05_preflight.py",
+          "additions": 1200,
+          "deletions": 0,
+          "changeType": "ADDED"
+        },
+        {
+          "path": "src/inodefence/evaluation/n05_preflight_reader.py",
+          "additions": 652,
+          "deletions": 0,
+          "changeType": "ADDED"
+        },
+        {
+          "path": "src/inodefence/evaluation/track_a_admission.py",
+          "additions": 806,
+          "deletions": 0,
+          "changeType": "ADDED"
+        },
+        {
+          "path": "src/inodefence/evaluation/track_a_exploratory.py",
+          "additions": 1189,
+          "deletions": 0,
+          "changeType": "ADDED"
+        },
+        {
+          "path": "tests/evaluation/test_n04_host_ledger.py",
+          "additions": 57,
+          "deletions": 0,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "tests/evaluation/test_n05_preflight.py",
+          "additions": 916,
+          "deletions": 0,
+          "changeType": "ADDED"
+        },
+        {
+          "path": "tests/evaluation/test_track_a_admission.py",
+          "additions": 689,
+          "deletions": 0,
+          "changeType": "ADDED"
+        },
+        {
+          "path": "tests/evaluation/test_track_a_exploratory.py",
+          "additions": 206,
+          "deletions": 0,
+          "changeType": "ADDED"
+        },
+        {
+          "path": "tests/test_container_backend.py",
+          "additions": 27,
+          "deletions": 0,
+          "changeType": "MODIFIED"
+        }
+      ],
+      "headRefName": "feat/track-a-admission-reader",
+      "headRefOid": "7f8696f9ea701c8438585843d5f78d0248de8933",
+      "isDraft": true,
+      "mergeStateStatus": "CLEAN",
+      "mergeable": "MERGEABLE",
+      "number": 118,
+      "reviewDecision": "",
+      "reviews": [],
+      "state": "OPEN",
+      "statusCheckRollup": [
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T04:28:22Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/TheWaitForAGI/InodeFence/actions/runs/39722232443/job/119638090814",
+          "name": "check",
+          "startedAt": "2026-10-22T04:24:52Z",
+          "status": "COMPLETED",
+          "workflowName": "CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T04:26:14Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/TheWaitForAGI/InodeFence/actions/runs/39722232443/job/119638090541",
+          "name": "container-integration",
+          "startedAt": "2026-10-22T04:24:52Z",
+          "status": "COMPLETED",
+          "workflowName": "CI"
+        }
+      ],
+      "title": "feat: add target-free Track A admission reader",
+      "comments": [],
+      "inline-comments": []
+    },
+    {
+      "author": {
+        "id": "U_kgDOCt5MlQ",
+        "is_bot": false,
+        "login": "JooREC0",
+        "name": ""
+      },
+      "baseRefName": "feat/track-a-admission-reader",
+      "baseRefOid": "7f8696f9ea701c8438585843d5f78d0248de8933",
+      "commits": [
+        {
+          "authoredDate": "2026-10-22T10:17:36Z",
+          "authors": [
+            {
+              "email": "ljee2933@gmail.com",
+              "id": "U_kgDOCt5MlQ",
+              "login": "JooREC0",
+              "name": "JooREC0"
+            }
+          ],
+          "committedDate": "2026-10-22T10:17:36Z",
+          "messageBody": "",
+          "messageHeadline": "feat: preserve and reverify Track A admission evidence",
+          "oid": "348e809fc37b1c03fcbfad55393c2425e84c969c"
+        }
+      ],
+      "files": [
+        {
+          "path": "docs/research/benchmarks/track-a-final-state-exploratory-feasibility-v1.md",
+          "additions": 30,
+          "deletions": 47,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "docs/research/design/mid03-n05-consumer-integration-plan.md",
+          "additions": 16,
+          "deletions": 0,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "scripts/track_a_container_controller.py",
+          "additions": 9,
+          "deletions": 48,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "scripts/track_a_container_host.py",
+          "additions": 11,
+          "deletions": 20,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "src/inodefence/evaluation/track_a_admission.py",
+          "additions": 250,
+          "deletions": 25,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "src/inodefence/evaluation/track_a_exploratory.py",
+          "additions": 137,
+          "deletions": 20,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "tests/evaluation/test_track_a_exploratory.py",
+          "additions": 447,
+          "deletions": 16,
+          "changeType": "MODIFIED"
+        }
+      ],
+      "headRefName": "feat/preserve-track-a-admission-evidence",
+      "headRefOid": "348e809fc37b1c03fcbfad55393c2425e84c969c",
+      "isDraft": true,
+      "mergeStateStatus": "CLEAN",
+      "mergeable": "MERGEABLE",
+      "number": 119,
+      "reviewDecision": "",
+      "reviews": [],
+      "state": "OPEN",
+      "statusCheckRollup": [
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T10:22:16Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/TheWaitForAGI/InodeFence/actions/runs/39762092856/job/119768490089",
+          "name": "check",
+          "startedAt": "2026-10-22T10:18:23Z",
+          "status": "COMPLETED",
+          "workflowName": "CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T10:20:14Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/TheWaitForAGI/InodeFence/actions/runs/39762092856/job/119768489758",
+          "name": "container-integration",
+          "startedAt": "2026-10-22T10:18:22Z",
+          "status": "COMPLETED",
+          "workflowName": "CI"
+        }
+      ],
+      "title": "feat: preserve and reverify Track A admission evidence",
+      "comments": [],
+      "inline-comments": []
+    },
+    {
+      "author": {
+        "id": "U_kgDOCt5MlQ",
+        "is_bot": false,
+        "login": "JooREC0",
+        "name": ""
+      },
+      "baseRefName": "feat/preserve-track-a-admission-evidence",
+      "baseRefOid": "348e809fc37b1c03fcbfad55393c2425e84c969c",
+      "commits": [
+        {
+          "authoredDate": "2026-10-22T15:37:38Z",
+          "authors": [
+            {
+              "email": "ljee2933@gmail.com",
+              "id": "U_kgDOCt5MlQ",
+              "login": "JooREC0",
+              "name": "JooREC0"
+            }
+          ],
+          "committedDate": "2026-10-22T15:37:38Z",
+          "messageBody": "",
+          "messageHeadline": "feat: add Track A host attempt ledger",
+          "oid": "7683edc9def088a307cb6cdb858430cb17643cd7"
+        },
+        {
+          "authoredDate": "2026-10-22T19:59:09Z",
+          "authors": [
+            {
+              "email": "ljee2933@gmail.com",
+              "id": "U_kgDOCt5MlQ",
+              "login": "JooREC0",
+              "name": "JooREC0"
+            }
+          ],
+          "committedDate": "2026-10-22T19:59:09Z",
+          "messageBody": "",
+          "messageHeadline": "fix: close Track A host attempt failure paths",
+          "oid": "02072c95537d76d1b213b9c858d96c97fff653cc"
+        }
+      ],
+      "files": [
+        {
+          "path": "docs/STATUS.md",
+          "additions": 13,
+          "deletions": 1,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "docs/research/design/mid03-n05-consumer-integration-plan.md",
+          "additions": 32,
+          "deletions": 0,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "scripts/README.md",
+          "additions": 44,
+          "deletions": 8,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "scripts/track_a_container_controller.py",
+          "additions": 96,
+          "deletions": 44,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "scripts/track_a_container_host.py",
+          "additions": 384,
+          "deletions": 86,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "src/inodefence/evaluation/README.md",
+          "additions": 32,
+          "deletions": 5,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "src/inodefence/evaluation/track_a_exploratory.py",
+          "additions": 6,
+          "deletions": 11,
+          "changeType": "MODIFIED"
+        },
+        {
+          "path": "src/inodefence/evaluation/track_a_host_ledger.py",
+          "additions": 1085,
+          "deletions": 0,
+          "changeType": "ADDED"
+        },
+        {
+          "path": "tests/evaluation/test_track_a_host_ledger.py",
+          "additions": 1341,
+          "deletions": 0,
+          "changeType": "ADDED"
+        }
+      ],
+      "headRefName": "feat/track-a-host-attempt-ledger",
+      "headRefOid": "02072c95537d76d1b213b9c858d96c97fff653cc",
+      "isDraft": true,
+      "mergeStateStatus": "CLEAN",
+      "mergeable": "MERGEABLE",
+      "number": 120,
+      "reviewDecision": "",
+      "reviews": [],
+      "state": "OPEN",
+      "statusCheckRollup": [
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T20:05:49Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/TheWaitForAGI/InodeFence/actions/runs/39844885615/job/120055453243",
+          "name": "check",
+          "startedAt": "2026-10-22T19:59:24Z",
+          "status": "COMPLETED",
+          "workflowName": "CI"
+        },
+        {
+          "__typename": "CheckRun",
+          "completedAt": "2026-10-22T20:00:45Z",
+          "conclusion": "SUCCESS",
+          "detailsUrl": "https://github.com/TheWaitForAGI/InodeFence/actions/runs/39844885615/job/120055452828",
+          "name": "container-integration",
+          "startedAt": "2026-10-22T19:59:24Z",
+          "status": "COMPLETED",
+          "workflowName": "CI"
+        }
+      ],
+      "title": "feat: add Track A host attempt ledger",
+      "comments": [],
+      "inline-comments": []
+    }
+  ]
+}

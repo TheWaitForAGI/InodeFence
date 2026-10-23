@@ -1,0 +1,108 @@
+{
+  "rationale": "Explicit target-free host allowlist, no Linux runtime fixtures; DockerCLI process tests use temporary Python fake executable, never real Docker",
+  "selection": {
+    "tests/evaluation/test_n05_preflight.py": [
+      "test_consumed_runner_rejects_before_evidence_creation",
+      "test_authorization_record_is_content_validated_before_evidence_creation",
+      "test_broker_attestation_rejects_docker_socket",
+      "test_broker_attestation_rejects_weakened_controller",
+      "test_broker_attestation_rejects_writable_source_and_stale_controller",
+      "test_host_authorization_rejects_digest_only_claim",
+      "test_authorized_runtime_files_bind_loaded_host_code_to_source",
+      "test_host_runtime_source_mismatch_stops_before_attempt_and_docker",
+      "test_host_invocation_rejects_unapproved_identity",
+      "test_host_ledger_downgrades_interruption_and_cleanup_uncertainty"
+    ],
+    "tests/evaluation/test_n04_preflight.py": [
+      "test_consumed_runner_rejects_before_evidence_creation",
+      "test_broker_attestation_rejects_docker_socket",
+      "test_broker_attestation_rejects_weakened_controller",
+      "test_broker_attestation_rejects_writable_source_and_stale_controller"
+    ],
+    "tests/evaluation/test_track_a_host_ledger.py": [
+      "test_bounded_stderr_capture_retains_prefix_and_truncation",
+      "test_bounded_stderr_capture_failure_is_not_complete",
+      "test_malformed_controller_terminal_output_is_rejected",
+      "test_legacy_digest_only_prepare_and_admissionless_run_cell_remain_rejected"
+    ],
+    "tests/evaluation/test_track_a_exploratory.py": [
+      "test_static_protocol_and_exact_schedule_are_frozen",
+      "test_plan_reproduces_n03_order_and_exact_policy_cells",
+      "test_plan_rejects_timeout_isolation_or_clean_source_drift",
+      "test_nearest_rank_p95_is_explicit_and_deterministic",
+      "test_digest_only_prepare_entrypoints_fail_before_launch",
+      "test_unconnected_run_cell_entrypoints_fail_before_launch"
+    ],
+    "tests/test_container_backend.py": [
+      "test_invalid_resources_rejected",
+      "test_invalid_execution_request_rejected",
+      "test_missing_backend_fails_before_runtime",
+      "test_missing_runtime_socket_is_not_proof_of_container_absence",
+      "test_runtime_missing_container_empty_array_response_is_absence",
+      "test_broker_malformed_response_fails_closed",
+      "test_broker_transport_preserves_undecodable_bytes",
+      "test_cli_drains_large_output_and_reports_truncation",
+      "test_cli_deadline_still_applies_after_pipes_close",
+      "test_broker_rejects_invalid_command",
+      "test_host_inspection_allowlist_is_separate_and_exact",
+      "test_host_inspection_executes_only_on_the_host_client"
+    ],
+    "tests/evaluation/test_failure.py": [
+      "test_missing_evidence_stays_explicitly_unavailable"
+    ]
+  },
+  "command": [
+    "/opt/homebrew/bin/python3.12",
+    "-m",
+    "pytest",
+    "-q",
+    "-p",
+    "no:cacheprovider",
+    "--basetemp",
+    "/private/tmp/inodefence-overnight-20261023-goy0npqw/test-tmp-host",
+    "--junitxml",
+    "/private/tmp/inodefence-overnight-20261023-goy0npqw/evidence/host-safe.xml",
+    "tests/evaluation/test_n05_preflight.py::test_consumed_runner_rejects_before_evidence_creation",
+    "tests/evaluation/test_n05_preflight.py::test_authorization_record_is_content_validated_before_evidence_creation",
+    "tests/evaluation/test_n05_preflight.py::test_broker_attestation_rejects_docker_socket",
+    "tests/evaluation/test_n05_preflight.py::test_broker_attestation_rejects_weakened_controller",
+    "tests/evaluation/test_n05_preflight.py::test_broker_attestation_rejects_writable_source_and_stale_controller",
+    "tests/evaluation/test_n05_preflight.py::test_host_authorization_rejects_digest_only_claim",
+    "tests/evaluation/test_n05_preflight.py::test_authorized_runtime_files_bind_loaded_host_code_to_source",
+    "tests/evaluation/test_n05_preflight.py::test_host_runtime_source_mismatch_stops_before_attempt_and_docker",
+    "tests/evaluation/test_n05_preflight.py::test_host_invocation_rejects_unapproved_identity",
+    "tests/evaluation/test_n05_preflight.py::test_host_ledger_downgrades_interruption_and_cleanup_uncertainty",
+    "tests/evaluation/test_n04_preflight.py::test_consumed_runner_rejects_before_evidence_creation",
+    "tests/evaluation/test_n04_preflight.py::test_broker_attestation_rejects_docker_socket",
+    "tests/evaluation/test_n04_preflight.py::test_broker_attestation_rejects_weakened_controller",
+    "tests/evaluation/test_n04_preflight.py::test_broker_attestation_rejects_writable_source_and_stale_controller",
+    "tests/evaluation/test_track_a_host_ledger.py::test_bounded_stderr_capture_retains_prefix_and_truncation",
+    "tests/evaluation/test_track_a_host_ledger.py::test_bounded_stderr_capture_failure_is_not_complete",
+    "tests/evaluation/test_track_a_host_ledger.py::test_malformed_controller_terminal_output_is_rejected",
+    "tests/evaluation/test_track_a_host_ledger.py::test_legacy_digest_only_prepare_and_admissionless_run_cell_remain_rejected",
+    "tests/evaluation/test_track_a_exploratory.py::test_static_protocol_and_exact_schedule_are_frozen",
+    "tests/evaluation/test_track_a_exploratory.py::test_plan_reproduces_n03_order_and_exact_policy_cells",
+    "tests/evaluation/test_track_a_exploratory.py::test_plan_rejects_timeout_isolation_or_clean_source_drift",
+    "tests/evaluation/test_track_a_exploratory.py::test_nearest_rank_p95_is_explicit_and_deterministic",
+    "tests/evaluation/test_track_a_exploratory.py::test_digest_only_prepare_entrypoints_fail_before_launch",
+    "tests/evaluation/test_track_a_exploratory.py::test_unconnected_run_cell_entrypoints_fail_before_launch",
+    "tests/test_container_backend.py::test_invalid_resources_rejected",
+    "tests/test_container_backend.py::test_invalid_execution_request_rejected",
+    "tests/test_container_backend.py::test_missing_backend_fails_before_runtime",
+    "tests/test_container_backend.py::test_missing_runtime_socket_is_not_proof_of_container_absence",
+    "tests/test_container_backend.py::test_runtime_missing_container_empty_array_response_is_absence",
+    "tests/test_container_backend.py::test_broker_malformed_response_fails_closed",
+    "tests/test_container_backend.py::test_broker_transport_preserves_undecodable_bytes",
+    "tests/test_container_backend.py::test_cli_drains_large_output_and_reports_truncation",
+    "tests/test_container_backend.py::test_cli_deadline_still_applies_after_pipes_close",
+    "tests/test_container_backend.py::test_broker_rejects_invalid_command",
+    "tests/test_container_backend.py::test_host_inspection_allowlist_is_separate_and_exact",
+    "tests/test_container_backend.py::test_host_inspection_executes_only_on_the_host_client",
+    "tests/evaluation/test_failure.py::test_missing_evidence_stays_explicitly_unavailable"
+  ],
+  "env_overrides": {
+    "PYTHONPATH": "/Users/choijiwng/.cache/uv/archive-v0/BaUYuznAsk0-mdFY:/Users/choijiwng/.cache/uv/archive-v0/2FlQFGp6hDr1rJPK:/Users/choijiwng/.cache/uv/archive-v0/9oerW0WXoM2EMUul:/Users/choijiwng/.cache/uv/archive-v0/Gsb4fZrIhqcULbtM:/Users/choijiwng/.cache/uv/archive-v0/U5ZZ9trtqC7N2gWy:/private/tmp/inodefence-overnight-20261023-goy0npqw/candidate/src:/private/tmp/inodefence-overnight-20261023-goy0npqw/candidate",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"
+  }
+}

@@ -1,0 +1,7 @@
+docs/STATUS.md
+docs/research/benchmarks/n05-five-second-preflight-task-contract-draft.md
+scripts/README.md
+scripts/container_host.py
+src/inodefence/evaluation/README.md
+src/inodefence/evaluation/n05_preflight.py
+tests/evaluation/test_n05_preflight.py

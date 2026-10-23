@@ -1,0 +1,71 @@
+........................................................................ [ 62%]
+..........................F...............F                              [100%]
+=================================== FAILURES ===================================
+__________________ test_missing_backend_fails_before_runtime ___________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x107b513d0>
+
+    def test_missing_backend_fails_before_runtime(monkeypatch):
+        class Missing:
+            def run(self, args, timeout):
+                raise BackendError("unavailable")
+
+        with pytest.raises(BackendError, match="unavailable"):
+>           ContainerExecutionBackend(Missing(), CONTROLLER, "inodefence-runtime", OWNER)
+
+tests/test_container_backend.py:354:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+<string>:8: in __init__
+    ???
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = ContainerExecutionBackend(client=<test_container_backend.test_missing_backend_fails_before_runtime.<locals>.Missing ob...urces=ResourcePolicy(memory_bytes=536870912, pids=64, open_files=1024, file_size_bytes=67108864, tmpfs_bytes=33554432))
+
+    def __post_init__(self) -> None:
+        if sys.platform != "linux" or os.getuid() == 0 or os.getgid() == 0:
+>           raise ValueError("container controller requires supported non-root Linux")
+E           ValueError: container controller requires supported non-root Linux
+
+src/inodefence/execution/container.py:86: ValueError
+______________ test_missing_evidence_stays_explicitly_unavailable ______________
+
+tmp_path = PosixPath('/private/tmp/inodefence-overnight-20261023-goy0npqw/test-tmp-host/test_missing_evidence_stays_ex0')
+
+    def test_missing_evidence_stays_explicitly_unavailable(tmp_path):
+        context = FailureContext(
+            "attempt", "experiment", SourceProvenance(), None, None, FailurePhase.SETUP
+        )
+        record = failure_record(ValueError("setup unavailable"), context)
+        path = tmp_path / "failure.json"
+>       write_failure(path, record)
+
+tests/evaluation/test_failure.py:54:
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src/inodefence/evaluation/failure.py:175: in write_failure
+    return write_record(path, record)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+src/inodefence/evaluation/storage.py:61: in write_record
+    return publish_bytes(path, json_bytes(record) + b"\n")
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+path = PosixPath('/private/tmp/inodefence-overnight-20261023-goy0npqw/test-tmp-host/test_missing_evidence_stays_ex0/failure.json')
+content = b'{"format":"inodefence-evaluation-record","payload":{"model":"FailureRecord","schema_version":1,"value":{"classificat...819+00:00"}},"payload_sha256":"60eb6741e290f26db83f4befded0f21b5476a5bb025ac9b2521116940531a49a","schema_version":1}\n'
+
+    def publish_bytes(path: Path, content: bytes) -> str:
+        """Publish a fully synced file by atomic hardlink, never overwrite evidence.
+
+        Requires Linux and a trusted parent on one filesystem. Errors before link
+        leave no destination; errors after link (including parent fsync) may leave
+        the complete destination and propagate. A hard interruption can leave a
+        temporary file. The final name never refers to a partly written file.
+        """
+        if sys.platform != "linux":
+>           raise NotImplementedError("evidence publication requires Linux")
+E           NotImplementedError: evidence publication requires Linux
+
+src/inodefence/evaluation/storage.py:32: NotImplementedError
+=========================== short test summary info ============================
+FAILED tests/test_container_backend.py::test_missing_backend_fails_before_runtime
+FAILED tests/evaluation/test_failure.py::test_missing_evidence_stays_explicitly_unavailable
+2 failed, 113 passed in 2.52s

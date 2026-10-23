@@ -1,0 +1,10 @@
+Handoff additions only; production source remains merge SHA 7861a7c5e0f9ca288eb36fae40b926ed60a4ca20.
+Actual commands executed before this log was transcribed:
+/opt/homebrew/bin/python3.12 scripts/check_docs.py
+Docs check: PASS (136 Markdown files; canonical documents present)
+/Users/choijiwng/.cache/uv/archive-v0/77EJWTY_HU7Za1_j/ruff-0.17.1.data/scripts/ruff check .
+All checks passed!
+/Users/choijiwng/.cache/uv/archive-v0/77EJWTY_HU7Za1_j/ruff-0.17.1.data/scripts/ruff format --check .
+376 files already formatted
+git diff --check
+(no errors)

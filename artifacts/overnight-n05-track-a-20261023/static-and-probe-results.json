@@ -1,0 +1,37 @@
+[
+  {
+    "name": "pyright",
+    "command": [
+      "node",
+      "/Users/choijiwng/.cache/uv/archive-v0/K0X7eqtp_zpDVAjy/pyright/dist/index.js",
+      "--pythonpath",
+      "/opt/homebrew/bin/python3.12"
+    ],
+    "returncode": 0
+  },
+  {
+    "name": "docs",
+    "command": [
+      "/opt/homebrew/bin/python3.12",
+      "scripts/check_docs.py"
+    ],
+    "returncode": 0
+  },
+  {
+    "name": "path-accounting-probes",
+    "command": [
+      "/opt/homebrew/bin/python3.12",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "--basetemp",
+      "/private/tmp/inodefence-overnight-20261023-goy0npqw/test-tmp-probes",
+      "--junitxml",
+      "/private/tmp/inodefence-overnight-20261023-goy0npqw/evidence/path-accounting-probes.xml",
+      "/private/tmp/inodefence-overnight-20261023-goy0npqw/evidence/test_path_accounting_contracts.py"
+    ],
+    "returncode": 0
+  }
+]

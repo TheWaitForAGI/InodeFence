@@ -1,0 +1,6 @@
+Source tree e0be20c2b03aea57d52731590c2d9ce581a581e8 (identical merge commit tree).
+Command: /Users/choijiwng/.cache/uv/archive-v0/77EJWTY_HU7Za1_j/ruff-0.17.1.data/scripts/ruff check .
+All checks passed!
+Command: /Users/choijiwng/.cache/uv/archive-v0/77EJWTY_HU7Za1_j/ruff-0.17.1.data/scripts/ruff format --check .
+375 files already formatted
+Copied from actual tool stdout; no additional invocation.

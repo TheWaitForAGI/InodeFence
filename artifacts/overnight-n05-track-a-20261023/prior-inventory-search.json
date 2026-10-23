@@ -1,0 +1,15 @@
+{
+  "root": "/private/tmp",
+  "matches": [],
+  "excluded_dirs": [
+    ".git",
+    "node_modules",
+    ".venv",
+    "venv",
+    "site-packages"
+  ],
+  "additional_root": "/var/folders/66/qxq5htsj06jdfksnsbks9c7m0000gn/T",
+  "additional_matches": [
+    "/var/folders/66/qxq5htsj06jdfksnsbks9c7m0000gn/T/inodefence-n05-readonly-audit-i1ddk14g/audit-inventory.json"
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "observed_at": "2026-10-23T01:18:17.629138+00:00",
+  "paths": {
+    "/Users/choijiwng/Projects/InodeFence-n05-preflight-execution-source-v2-attempt-001": {
+      "exists": false,
+      "symlink": false
+    },
+    "/Users/choijiwng/Projects/InodeFence-n05-five-second-preflight-v2-attempt-001-host-ledger": {
+      "exists": false,
+      "symlink": false
+    },
+    "/Users/choijiwng/Projects/InodeFence-n05-five-second-preflight-v2-attempt-001-authorization.json": {
+      "exists": false,
+      "symlink": false
+    },
+    "/Users/choijiwng/Projects/InodeFence-n05-package-inputs-v2-attempt-001/tar-7.5.2.tgz": {
+      "exists": false,
+      "symlink": false
+    },
+    "/Users/choijiwng/Projects/InodeFence-n05-package-inputs-v2-attempt-001/tar-7.5.3.tgz": {
+      "exists": false,
+      "symlink": false
+    }
+  },
+  "controller_volume": "NOT_INSPECTED; no real Docker command issued"
+}

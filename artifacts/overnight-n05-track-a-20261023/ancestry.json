@@ -1,0 +1,29 @@
+{
+  "ancestry": [
+    {
+      "test": "112 in 114",
+      "ancestor": "0eca90f44a249d3ab1e66966b7ab3cfe80f79055",
+      "descendant": "f7aaa33050e247e0718d4ceb1ba01485802e269d",
+      "exit": 0
+    },
+    {
+      "test": "113 in 114",
+      "ancestor": "00356e43f5e6bc1623cc7b36cba0479b755b1118",
+      "descendant": "f7aaa33050e247e0718d4ceb1ba01485802e269d",
+      "exit": 0
+    },
+    {
+      "test": "114 in 120",
+      "ancestor": "f7aaa33050e247e0718d4ceb1ba01485802e269d",
+      "descendant": "02072c95537d76d1b213b9c858d96c97fff653cc",
+      "exit": 0
+    },
+    {
+      "test": "115 in 120",
+      "ancestor": "e83349ed1592d536e3ec0fce3c7cb204cb5c6ec9",
+      "descendant": "02072c95537d76d1b213b9c858d96c97fff653cc",
+      "exit": 1
+    }
+  ],
+  "merge_base_115_120": "f7aaa33050e247e0718d4ceb1ba01485802e269d"
+}

@@ -1,0 +1,16 @@
+[
+  {
+    "raw_file": "host-safe.log.gz",
+    "raw_uncompressed_sha256": "403d6385965ccf6ab0162eb87f20dcaefc0bda1f42f0d87e7aab495eb2c9371a",
+    "derived_file": "host-safe.log",
+    "derived_sha256": "2bb011185e946270bbb6822263f459b836fe137d0c938b9fbffa305cd771d684",
+    "transform": "Strip trailing whitespace per line and ensure final LF for Git review. Raw bytes retained verbatim in gzip and original session/evidence file. No test outcome or count changed."
+  },
+  {
+    "raw_file": "host-safe.xml.gz",
+    "raw_uncompressed_sha256": "3441cc1ff27b50def84bbf9106f6d52bf1e91c060488b895ee01512ce1c990ae",
+    "derived_file": "host-safe.xml",
+    "derived_sha256": "6e9ef5d2d3b75d232b9d12e3649315e9f2f7a9465ae68b202d03f9bff28d9f47",
+    "transform": "Strip trailing whitespace per line and ensure final LF for Git review. Raw bytes retained verbatim in gzip and original session/evidence file. No test outcome or count changed."
+  }
+]

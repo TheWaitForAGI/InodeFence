@@ -1,0 +1,7 @@
+{
+  "original_path": "/var/folders/66/qxq5htsj06jdfksnsbks9c7m0000gn/T/inodefence-n05-readonly-audit-i1ddk14g/audit-inventory.json",
+  "sha256": "8d626d60108660246084bffba0eba181a1c5e8edb741eafcce03d05a97dfa891",
+  "copy": "prior-audit-inventory.json",
+  "unchanged_pr_heads": true,
+  "previous_28_passed": "user-provided prior audit; raw console log not present in inventory"
+}

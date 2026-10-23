@@ -1,0 +1,14 @@
+{
+  "checked_at": "2026-10-23T01:18:58.309788+00:00",
+  "head": "919d723b7eb3bf13b060d3ae34b083499590b4fc",
+  "status": " M .devcontainer/devcontainer.json\n",
+  "devcontainer_sha256": "af1b308868338c81cc727094c1bfab5dce679b546ef4eb79c97915c8cdf233c9",
+  "all_match_initial": true,
+  "existing_worktrees": "not moved, removed, pruned or cleaned",
+  "remote_writes": false,
+  "real_docker_commands": 0,
+  "new_worktrees": 1,
+  "new_local_branches": [
+    "integration/n05-track-a-20261023-overnight"
+  ]
+}

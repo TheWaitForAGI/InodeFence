@@ -1,4 +1,5 @@
 import argparse
+from dataclasses import replace
 
 import pytest
 from scripts.compare_effect_policies import synthetic_policy_comparison
@@ -12,8 +13,21 @@ from scripts.run_effect_demo import (
     synthetic_demo_report,
 )
 
-from inodefence.effect_demo import compare_effect_campaign_reports, render_effect_campaign_report
+from inodefence.effect_demo import (
+    TRACE_LEGEND,
+    compare_effect_campaign_reports,
+    render_effect_campaign_report,
+    render_effect_trace,
+)
+from inodefence.effect_synthetic import synthetic_effect_result
 from inodefence.feedback import EffectSearchPolicy
+from inodefence.generator import minimal_seed_corpus
+from inodefence.model import (
+    EffectClass,
+    EffectEvidenceStrength,
+    EffectObjectObservation,
+    EffectObservationStatus,
+)
 from inodefence.mutator import MutationPolicy
 
 
@@ -223,3 +237,75 @@ def test_divergence_after_admission_difference_is_attributed_to_corpus(
     assert divergence["immediate_difference"] == immediate
     assert divergence["source"] == "corpus_admission"
     assert divergence["first_corpus_difference_step"] == 2
+
+
+def _synthetic_hardlink_result():
+    return synthetic_effect_result(minimal_seed_corpus()[2])
+
+
+def test_effect_trace_marks_synthetic_and_labels_each_value_origin() -> None:
+    result = _synthetic_hardlink_result()
+    lines = render_effect_trace(result).splitlines()
+
+    assert lines[0].startswith("SYNTHETIC — 관찰값 아님")
+    assert lines[1].startswith("extractor: synthetic 1")
+    for label, _ in TRACE_LEGEND:
+        assert sum(line.startswith(f"  [{label}] ") for line in lines) == 1
+    entries = [line for line in lines if line.startswith("entry ")]
+    assert entries == [
+        "entry 0 [archive] path=a.txt type=regular",
+        "entry 1 [archive] path=b.txt type=hardlink link=a.txt",
+    ]
+    assert "  [*·SYNTHETIC] synthetic producer가 만든 값. 실제 관찰·분류 아님." in lines
+    assert (
+        "    path extract/object-1 before [observed·SYNTHETIC] absent "
+        "-> after [observed·SYNTHETIC] present regular dev:ino 7:101"
+    ) in lines
+    assert (
+        "    [derived·SYNTHETIC] class=hardlink_identity_relation_creation "
+        "strength=identity_verified"
+    ) in lines
+    assert "  effect seq 6-7 [observed·SYNTHETIC] op=link outcome=succeeded" in lines
+    # Outside the legend, no producer-made value carries an unmarked label.
+    body = lines[lines.index("legend:") + len(TRACE_LEGEND) + 2 :]
+    assert not any(
+        f"[{name}]" in line for line in body for name in ("observed", "not_observed", "derived")
+    )
+
+
+def test_effect_trace_prints_not_observed_and_operation_result_without_values() -> None:
+    result = _synthetic_hardlink_result()
+    event = result.trace.effect_events[0]
+    (evidence,) = event.object_evidence
+    unobserved = replace(
+        event,
+        effect_class=EffectClass.OPERATION_OBSERVED,
+        evidence_strength=EffectEvidenceStrength.OPERATION_RESULT,
+        object_evidence=(
+            replace(
+                evidence,
+                after=EffectObjectObservation(EffectObservationStatus.NOT_OBSERVED, None),
+            ),
+        ),
+    )
+    trace = replace(result.trace, effect_events=(unobserved, *result.trace.effect_events[1:]))
+    rendered = render_effect_trace(replace(result, trace=trace))
+
+    assert "    [derived·SYNTHETIC] class=operation_observed strength=operation_result" in rendered
+    assert (
+        "    path extract/object-0 before [observed·SYNTHETIC] absent "
+        "-> after [not_observed·SYNTHETIC]\n"
+    ) in rendered
+
+
+def test_effect_trace_has_no_synthetic_header_for_other_sources() -> None:
+    result = _synthetic_hardlink_result()
+    source = replace(result.trace.provenance.sources[0], mechanism="other-test")
+    provenance = replace(result.trace.provenance, sources=(source,))
+    trace = replace(result.trace, provenance=provenance)
+    rendered = render_effect_trace(replace(result, trace=trace))
+
+    assert "SYNTHETIC" not in rendered
+    assert rendered.startswith("extractor: synthetic 1")
+    assert "  effect seq 6-7 [observed] op=link outcome=succeeded\n" in rendered
+    assert "    [derived] class=hardlink_identity_relation_creation" in rendered

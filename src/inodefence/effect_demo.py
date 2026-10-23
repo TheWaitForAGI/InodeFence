@@ -6,11 +6,17 @@ no timestamps or host paths: identical campaigns render byte-identical JSON.
 """
 
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from inodefence.effect_campaign import EffectCampaignResult, EffectCampaignStep
-from inodefence.model import canonical_json
+from inodefence.effect_synthetic import SYNTHETIC_MECHANISM
+from inodefence.model import (
+    EffectObjectObservation,
+    EffectObservationStatus,
+    EffectRunResult,
+    canonical_json,
+)
 from inodefence.mutation_scheduler import WeightSnapshot
 
 DEMO_REPORT_SCHEMA = 1
@@ -283,3 +289,114 @@ def _operator_sequence(report: Mapping[str, Any]) -> list[str | None]:
         else step["scheduler_evidence"]["selected_operator_id"]
         for step in report["steps"]
     ]
+
+
+# Value-origin labels; each maps to an existing model field, none is a new evidence kind.
+TRACE_LEGEND = (
+    ("archive", "TAR가 선언한 값(ArchiveEntryReference). 파일시스템 관찰 아님."),
+    (
+        "observed",
+        "evidence source가 실행 중 기록한 값: operation·outcome, 작업 전/후 lstat 결과 "
+        "(EffectObservationStatus present/absent, present일 때 dev:ino).",
+    ),
+    ("not_observed", "source가 그 시점 lstat을 기록하지 못함(status not_observed). 값 없음."),
+    (
+        "derived",
+        "InodeFence가 observed 값에서 분류한 effect_class. evidence_strength 원문 병기; "
+        "operation_result는 상태 변화가 확인되지 않았다는 뜻.",
+    ),
+)
+
+
+SYNTHETIC_LABEL_SUFFIX = "·SYNTHETIC"
+
+
+def _observation_text(
+    phase: str, observation: EffectObjectObservation, label: Callable[[str], str]
+) -> str:
+    if observation.status == EffectObservationStatus.NOT_OBSERVED:
+        return f"{phase} {label('not_observed')}"
+    if observation.object is None:
+        return f"{phase} {label('observed')} absent"
+    obj = observation.object
+    return (
+        f"{phase} {label('observed')} present {obj.object_type.value} "
+        f"dev:ino {obj.st_dev}:{obj.st_ino}"
+    )
+
+
+def render_effect_trace(result: EffectRunResult) -> str:
+    """Human-readable entry-order trace with each value's origin label.
+
+    Only fields already in EffectRunResult are printed; the label states where a
+    value came from (TAR, source observation, or InodeFence classification).
+    Synthetic traces get a header, and every producer-made value's label carries
+    ·SYNTHETIC, so no line reads as a real observation. archive labels stay
+    unmarked: entries come from the actual ArchiveCase.
+    """
+    if not isinstance(result, EffectRunResult):
+        raise ValueError("trace rendering requires an EffectRunResult")
+    trace = result.trace
+    execution = result.base_result.execution
+    sources = trace.provenance.sources
+    synthetic = any(source.mechanism == SYNTHETIC_MECHANISM for source in sources)
+
+    def label(name: str) -> str:
+        return f"[{name}{SYNTHETIC_LABEL_SUFFIX if synthetic else ''}]"
+
+    lines = []
+    if synthetic:
+        lines.append(
+            "SYNTHETIC — 관찰값 아님: synthetic producer가 만든 값이며 node-tar 실행 증거가 아니다"
+        )
+    lines.append(
+        f"extractor: {execution.target_id} {execution.target_version} "
+        f"| status {execution.status.value} | completeness {trace.completeness.value} "
+        f"| termination {trace.termination.value}"
+    )
+    lines.append(
+        "sources: " + ", ".join(f"{s.source_id} ({s.mechanism} {s.version})" for s in sources)
+    )
+    failures = trace.observation_failures
+    lines.append(
+        "observation_failures: "
+        + (", ".join(f"{f.kind.value}: {f.message}" for f in failures) if failures else "none")
+    )
+    lines.append("legend:")
+    lines.extend(f"  [{name}] {meaning}" for name, meaning in TRACE_LEGEND)
+    if synthetic:
+        lines.append(
+            f"  [*{SYNTHETIC_LABEL_SUFFIX}] synthetic producer가 만든 값. 실제 관찰·분류 아님."
+        )
+    for entry in trace.archive_entries:
+        link = f" link={entry.link_target}" if entry.link_target is not None else ""
+        lines.append(
+            f"entry {entry.entry_index} [archive] path={entry.path} "
+            f"type={entry.entry_type.value}{link}"
+        )
+        events = sorted(
+            (event for event in trace.effect_events if event.entry == entry),
+            key=lambda event: event.start_sequence,
+        )
+        if not events:
+            lines.append("  (no effect event recorded)")
+        for event in events:
+            lines.append(
+                f"  effect seq {event.start_sequence}-{event.completion_sequence} "
+                f"{label('observed')} op={event.operation.value} outcome={event.outcome.value}"
+            )
+            lines.append(
+                f"    {label('derived')} class={event.effect_class.value} "
+                f"strength={event.evidence_strength.value}"
+            )
+            evidence = {item.path: item for item in event.object_evidence}
+            for path in event.affected_paths:
+                item = evidence.get(path)
+                if item is None:
+                    lines.append(f"    path {path} {label('not_observed')} no object evidence")
+                    continue
+                lines.append(
+                    f"    path {path} {_observation_text('before', item.before, label)} "
+                    f"-> {_observation_text('after', item.after, label)}"
+                )
+    return "\n".join(lines) + "\n"

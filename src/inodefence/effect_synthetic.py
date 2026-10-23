@@ -45,6 +45,8 @@ from inodefence.model import (
 from inodefence.observer import compare_states
 from inodefence.oracle import evaluate_contracts
 
+SYNTHETIC_MECHANISM = "synthetic-test"
+
 
 def _digest(value: bytes) -> str:
     return sha256(value).hexdigest()
@@ -87,7 +89,7 @@ def _raw(record: str, source: str = "synthetic") -> RawEvidenceReference:
 
 
 def _source(source: str = "synthetic") -> EvidenceSourceIdentity:
-    return EvidenceSourceIdentity(source, "synthetic-test", "1", _digest(source.encode()))
+    return EvidenceSourceIdentity(source, SYNTHETIC_MECHANISM, "1", _digest(source.encode()))
 
 
 def _snapshots() -> tuple[StateSnapshot, StateSnapshot]:

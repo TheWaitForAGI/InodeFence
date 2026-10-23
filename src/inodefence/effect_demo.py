@@ -6,12 +6,15 @@ no timestamps or host paths: identical campaigns render byte-identical JSON.
 """
 
 import json
+from collections.abc import Mapping
+from typing import Any
 
 from inodefence.effect_campaign import EffectCampaignResult, EffectCampaignStep
 from inodefence.model import canonical_json
 from inodefence.mutation_scheduler import WeightSnapshot
 
 DEMO_REPORT_SCHEMA = 1
+POLICY_COMPARISON_SCHEMA = 1
 
 
 def _model(value: object) -> object:
@@ -95,3 +98,188 @@ def effect_campaign_report(result: EffectCampaignResult, producer: str) -> dict[
 def render_effect_campaign_report(report: dict[str, object]) -> str:
     """Stable text encoding used for byte-identical reproduction checks."""
     return json.dumps(report, sort_keys=True, indent=2, ensure_ascii=True, allow_nan=False) + "\n"
+
+
+# Conditions that must match for two demo reports to differ only by search policy.
+_SHARED_CONFIG = ("random_seed", "execution_budget", "mutation_policy")
+
+
+def _require_comparable(left: Mapping[str, Any], right: Mapping[str, Any]) -> None:
+    for field in ("demo_report_schema", "producer", "initial_case_ids"):
+        if left[field] != right[field]:
+            raise ValueError(f"reports differ in {field}; only search_policy may differ")
+    for field in _SHARED_CONFIG:
+        if left["config"][field] != right["config"][field]:
+            raise ValueError(f"reports differ in config.{field}; only search_policy may differ")
+    if len(left["steps"]) != len(right["steps"]):
+        raise ValueError("reports differ in step count")
+
+
+def _corpus_before_steps(report: Mapping[str, Any]) -> list[list[str]]:
+    """Retained case IDs before each step, rebuilt from the recorded `retained` flags."""
+    corpus: list[str] = []
+    before: list[list[str]] = []
+    for step in report["steps"]:
+        before.append(list(corpus))
+        if step["feedback"]["retained"]:
+            corpus.append(step["case_id"])
+    return before
+
+
+def _selection(step: Mapping[str, Any], corpus_before: list[str]) -> dict[str, object]:
+    evidence = step["scheduler_evidence"]
+    return {
+        "index": step["index"],
+        "corpus_size_before": len(corpus_before),
+        "parent_case_id": step["parent_case_id"],
+        "selected_operator_id": evidence["selected_operator_id"],
+        "case_id": step["case_id"],
+        "weights_before": evidence["weights_before"],
+        "selected_weight": evidence["selected_weight"],
+        "new_effect_keys": step["feedback"]["new_effect_keys"],
+        "reward": evidence["reward"],
+        "weights_after": evidence["weights_after"],
+    }
+
+
+def _feedback_events(report: Mapping[str, Any]) -> list[dict[str, object]]:
+    """Mutation steps that produced new effect keys, and what the scheduler did with them."""
+    events: list[dict[str, object]] = []
+    for step in report["steps"]:
+        evidence = step["scheduler_evidence"]
+        if evidence is None or not step["feedback"]["new_effect_keys"]:
+            continue
+        operator = evidence["selected_operator_id"]
+        events.append(
+            {
+                "index": step["index"],
+                "selected_operator_id": operator,
+                "new_effect_key_count": len(step["feedback"]["new_effect_keys"]),
+                "reward": evidence["reward"],
+                "selected_weight_before": evidence["weights_before"][operator],
+                "selected_weight_after": evidence["weights_after"][operator],
+            }
+        )
+    return events
+
+
+def _divergence_source(corpus_step: int | None, weights_step: int | None) -> str:
+    """Upstream difference that existed at or before the first divergent step.
+
+    weights_feedback: corpora were identical, so only scheduler weights differed.
+    corpus_admission: weights were identical, so the parent pool (and the RNG draws
+    over it) differed. Both differing at once cannot be separated.
+    """
+    if corpus_step is None and weights_step is None:
+        return "unexplained"
+    if corpus_step is None:
+        return "weights_feedback"
+    if weights_step is None:
+        return "corpus_admission"
+    return "corpus_admission_and_weights_feedback"
+
+
+def _immediate_difference(left: Mapping[str, Any], right: Mapping[str, Any]) -> str:
+    """Which recorded input of the divergent step itself differed."""
+    if left["parent_case_id"] != right["parent_case_id"]:
+        return "parent"
+    if left["weights_before"] != right["weights_before"]:
+        return "weights"
+    # Same parent and weights, different operator/child: the shared RNG was already shifted.
+    return "rng_desync"
+
+
+def compare_effect_campaign_reports(
+    left: Mapping[str, Any], right: Mapping[str, Any]
+) -> dict[str, object]:
+    """Align two demo reports by step and locate where mutation selection first diverges.
+
+    Both reports must share producer, seed, budget, mutation policy and initial
+    cases, so the search policy is the only configured difference. A selection is
+    (parent, operator, child); steps are compared by index, so match ratios after
+    the first divergence compare unrelated lineages. The corpus/weights difference
+    steps name the first mutation step whose parent pool (retained cases so far) or
+    weights_before differed.
+    """
+    _require_comparable(left, right)
+    left_corpus = _corpus_before_steps(left)
+    right_corpus = _corpus_before_steps(right)
+    mutation_steps = operator_matches = selection_matches = 0
+    corpus_step: int | None = None
+    weights_step: int | None = None
+    operator_step: int | None = None
+    divergence: dict[str, object] | None = None
+    for position, (left_step, right_step) in enumerate(
+        zip(left["steps"], right["steps"], strict=True)
+    ):
+        if (left_step["scheduler_evidence"] is None) != (right_step["scheduler_evidence"] is None):
+            raise ValueError(f"step {position} is a seed step in only one report")
+        if left_step["scheduler_evidence"] is None:
+            if left_step["case_id"] != right_step["case_id"]:
+                raise ValueError(f"seed step {position} differs between reports")
+            continue
+        mutation_steps += 1
+        left_selection = _selection(left_step, left_corpus[position])
+        right_selection = _selection(right_step, right_corpus[position])
+        if corpus_step is None and left_corpus[position] != right_corpus[position]:
+            corpus_step = position
+        if weights_step is None and (
+            left_selection["weights_before"] != right_selection["weights_before"]
+        ):
+            weights_step = position
+        same_operator = (
+            left_selection["selected_operator_id"] == right_selection["selected_operator_id"]
+        )
+        same_selection = same_operator and all(
+            left_selection[field] == right_selection[field]
+            for field in ("parent_case_id", "case_id")
+        )
+        operator_matches += same_operator
+        selection_matches += same_selection
+        if operator_step is None and not same_operator:
+            operator_step = position
+        if divergence is None and not same_selection:
+            divergence = {
+                "step": position,
+                "immediate_difference": _immediate_difference(left_selection, right_selection),
+                "source": _divergence_source(corpus_step, weights_step),
+                "first_corpus_difference_step": corpus_step,
+                "first_weights_difference_step": weights_step,
+                "left": left_selection,
+                "right": right_selection,
+            }
+    return {
+        "policy_comparison_schema": POLICY_COMPARISON_SCHEMA,
+        "producer": left["producer"],
+        "shared_config": {field: left["config"][field] for field in _SHARED_CONFIG},
+        "left_policy": left["config"]["search_policy"],
+        "right_policy": right["config"]["search_policy"],
+        "seed_steps": len(left["steps"]) - mutation_steps,
+        "mutation_steps": mutation_steps,
+        "operator_match_steps": operator_matches,
+        "selection_match_steps": selection_matches,
+        "operator_match_ratio": _ratio(operator_matches, mutation_steps),
+        "selection_match_ratio": _ratio(selection_matches, mutation_steps),
+        "first_divergence": divergence,
+        "first_operator_divergence_step": operator_step,
+        "first_corpus_difference_step": corpus_step,
+        "first_weights_difference_step": weights_step,
+        "operator_sequences": {
+            "left": _operator_sequence(left),
+            "right": _operator_sequence(right),
+        },
+        "feedback_events": {"left": _feedback_events(left), "right": _feedback_events(right)},
+    }
+
+
+def _ratio(matches: int, total: int) -> float | None:
+    return None if total == 0 else round(matches / total, 4)
+
+
+def _operator_sequence(report: Mapping[str, Any]) -> list[str | None]:
+    return [
+        None
+        if step["scheduler_evidence"] is None
+        else step["scheduler_evidence"]["selected_operator_id"]
+        for step in report["steps"]
+    ]

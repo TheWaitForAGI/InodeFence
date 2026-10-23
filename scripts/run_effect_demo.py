@@ -65,12 +65,12 @@ class NativeDemoAborted(RuntimeError):
         self.observed = observed
 
 
-def synthetic_demo_json(
+def synthetic_demo_report(
     seed: int,
     budget: int,
     policy: EffectSearchPolicy,
     mutation_policy: MutationPolicy,
-) -> str:
+) -> dict[str, object]:
     config = EffectCampaignConfig(
         random_seed=seed,
         execution_budget=budget,
@@ -78,7 +78,18 @@ def synthetic_demo_json(
         mutation_policy=mutation_policy,
     )
     result = run_effect_campaign(minimal_seed_corpus(), synthetic_effect_result, config)
-    return render_effect_campaign_report(effect_campaign_report(result, "synthetic"))
+    return effect_campaign_report(result, "synthetic")
+
+
+def synthetic_demo_json(
+    seed: int,
+    budget: int,
+    policy: EffectSearchPolicy,
+    mutation_policy: MutationPolicy,
+) -> str:
+    return render_effect_campaign_report(
+        synthetic_demo_report(seed, budget, policy, mutation_policy)
+    )
 
 
 DEMO_ARGUMENTS = ("seed", "budget", "policy", "mutation_policy")

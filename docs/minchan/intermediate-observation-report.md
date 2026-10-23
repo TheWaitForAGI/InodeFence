@@ -1,5 +1,9 @@
 # 민찬 — 중간 파일시스템 상태 관찰 연구 보고서
 
+> 2026-10-23 보완: 아래 기존 본문은 10월 22일 조사 기록으로 보존했다. 새 결과는 문서 끝의
+> “10월 23일 후속 결과”와 [가설/증거 조건](research-hypotheses.md),
+> [비판 검토](novelty-and-threats.md), [26일 확정표](result-freeze-checklist.md)를 따른다.
+
 작성일: 2026-10-22 KST. 전달 대상: 지웅. 연구·구현 확정 10월 26일, 발표 제출 10월 27일.
 분석 checkout: `8d29982c26cebfcce7a413b3ba9177fcd28078de` (PR #111 merge).
 작업 branch: `docs/minchan-intermediate-observation`. 시작 시 tracked/untracked 변경 없음.
@@ -168,3 +172,85 @@ v3 normalized key는 type/ordinal bucket/region/creation kind 등 유한한 특�
 이번에는 기존 최소 v2 collector와 v3 synthetic reader가 이미 있어 이를 중복 구현하지 않았다. native v3는 실제 branch token 의미와 qualification 기준을 새로 고정해야 하므로 연결 분석까지 제공하고 합성 검증을 재실행했다. 기존 negative gate를 pass로 바꾸는 수정·matrix 재실행·campaign은 수행하지 않았다. 이는 문서 산출물을 완성하는 데 필요한 조건이 아니다.
 
 10월 26일까지: (1) 지웅과 v1/v2/v3 명칭 및 발표 claim을 확정, (2) 과거 raw archive·checksums를 확보해 14조건 reader를 fresh process에서 재계산, (3) native v3를 추진하면 source-guarded branch token Task Contract와 stock/minimal/full 허용 기준을 먼저 확정, (4) 미완료면 발표에는 연결 제안·합성 결과·negative qualification만 남긴다. 10월 27일은 [6장 발표 구성](presentation-outline.md)을 사용한다. 이 일정은 사용자가 지정한 중간 발표 일정이며 STATUS의 별도 11월 연구 일정과 혼동하지 않는다.
+
+## 10월 23일 후속 결과
+
+시작 HEAD는 기존 문서 커밋 `3c2487b659a24d2f4b7bc38b5ca9928ffb959723`다.
+`docs/minchan-intermediate-observation`과 `minchan/intermediate-observation`은 모두 같은 SHA로
+tree/commit 차이가 0이었다. clean tree에서 docs branch로 이동했다. 다른 branch를 삭제·reset·merge하지
+않았다. engine은 여전히 `8d29982c…`이며 새 변경은 로컬 dirty diff다. 커밋/push/외부 게시 없음.
+
+### 기존 산출물 점검과 이번 추가
+
+| 영역 | 시작 시 완료/부족 | 이번 결과 |
+| --- | --- | --- |
+| PR 이력·P0/P1/P2·node-tar 순서 | 설명/표 완료 | #81/#82/#89/#90/#100/#111 metadata 재확인; head/merge SHA 유지 |
+| PR 리뷰 상태 | 수집 snapshot의 빈 discussion | #111 discussion 재조회도 빈 배열. 최종 adversarial review 원문·인간 승인 미확인 |
+| 76 focused / 1,584 canonical | 10월22일 로그 보존 | 이번 로그는 별도 날짜 파일; 과거 결과를 재사용한 pass 아님 |
+| 중간 관찰 인정 조건 | 항목별 인정표 부족 | research-hypotheses 증거표 완료 |
+| 비교 가설 | 정책 차이는 있으나 반박·지표 부족 | H-REP/H10/H21, 비교 프로토콜·반박·미동결 항목 명시 |
+| v3 native | generic만 구현, native branch token 없음 | target-free bounded capture prototype 추가; native 미구현 유지 |
+| 신규성·교란·oracle | 비교표 존재 | 예상 반박 14항목, 남은 약점/추가 검증 정리 |
+| 결과 확정/인계 | 22일 시점 | 23일 증거 기준 26일 사용 가능한 상태표 추가 |
+
+### 제한 구현의 Task Contract
+
+현재 Layer는 target observation의 engineering prototype다. 목표는 interleaved operation bookkeeping과
+기존 v3 reader wire compatibility를 합성 입력으로 점검하는 것이다. 수정 영역은
+`scripts/minchan_rebinding_capture.py`, `tests/test_minchan_rebinding_capture.py`, `docs/minchan/`이다.
+generic core·C0/C1/C2·기존 policy/reader·target worker·N05/Track A 구현은 수정하지 않는다.
+입력은 typed v2 event와 caller가 명시한 synthetic continuation token이고 출력은 terminal 상태와
+검증된 v3 형식 bytes다. 보안 oracle을 추가하지 않는다. 완료 조건은 실패/누락/중복/종료/역순에 대한
+합성 검사, existing reader 호환과 canonical validation, native 미검증 표시다.
+
+prototype은 unique correlation과 entry/start sequence를 묶고 완료 event를 대조한다. 실패 error code,
+pending IDs, overflow invalid를 남긴다. operation 수는 1..256으로 제한한다. caller 소유 string/object가
+있으므로 constant-byte-memory producer는 아니며 export에 기존 reader의 1MiB cap을 적용한다.
+same entry/path/time만 보고 dependency를 만들지 않는다. explicit predecessor+token은 성공 완료 뒤
+다음 begin에만 허용한다. envelope는 unchanged v3 reader로 재검증한다. 외부 manifest를 발행하거나
+token의 native 진실성을 보증하지 않는다. 실제 node-tar에 이 Python prototype을 연결하지 않았다.
+
+### bounded native producer 타당성 판정
+
+| 항목 | 근거/후보 | 판정·남은 한계 |
+| --- | --- | --- |
+| entry association | onReadEntry WeakMap + checkFs2 ALS + fdOwners | 구현 가능한 기존 v2 경로; unsupported/sync/native API는 별도 감사 |
+| start/complete/error | producer line 315 operation_start, 342 completion, 369 callback, 396 onError | 직접 API callback 경계 관측 가능; kernel effect 시각·durability 아님 |
+| 실제 branch hook | CHECKFS2의 unlink callback→MAKEFS; producer wrapper completion 후 original callback 호출 직전 | source별로 특정 가능한 후보. 같은 context의 첫 matching operation만으로 true branch라 단정 금지 |
+| nested/concurrent work | entry/operation IDs, callback별 context, one-shot branch token | 순서 역전 보존 가능. context 오염·token 이중 소비·source branch drift 음성 검사 필요 |
+| 상태 evidence | v2 before/after lstat·hash와 path role | 국소 interval 관측. 원자 전체 snapshot·완전 gap 부재 보장 불가 |
+| bounded/termination | event/byte bounds, terminal flush, pending/fault | overflow/kill/drop은 incomplete/invalid. 이번 prototype에 durable prefix/실제 flush 없음 |
+| perturbation | 동기 probe/ALS/token/serialization 추가 비용 | native profile 비교 전 중립성 미검증; 기존 profile scheduling 변화는 위험 근거 |
+| 실제 실행 | pinned image/source/worker/lock·Linux runtime volume·trusted broker·한정 fixtures·명시 승인 | 현재 task는 실행 승인 없이 가능한 합성 작업만 허용. native 미실행 |
+
+구체적인 차단은 (1) 실제 branch token hook 미구현, (2) v3 source/image/protocol 및 acceptance 계약의
+독립 검토·실행 승인 미확보, (3) 과거 raw 미확보다. 단순히 Docker가 동작하는지 시험하거나 consumed
+preflight를 재시도하지 않았다. host namespace 문제를 우회한 shell 실행은 target isolation 승인과 다르다.
+
+### 실행 게이트와 다른 담당의 의존성
+
+현재 checkout의 STATUS와 N04 synthetic v3 Task Contract는 native 실행을 허용하지 않는다.
+추가로 remote ref `origin/docs/n05-native-qualification-critical-path`의 `00356e4` 보고서와 draft를
+읽었다. 이는 source-only read이며 checkout에 merge하지 않았다. 그 보고서는 native v3 branch hook과
+별도 600-slot qualification **제안**을 설명하지만 승인이 아니다. 해당 문서가 기록한 source tarball
+hash·compiled line 번호는 그 보고서의 자료 주장(R)으로만 취급한다.
+
+2026-10-23 GitHub #115 head `e83349ed…`는 closed이고 본문상 N05 NOT_AUTHORIZED/NOT_RUN이다.
+#122 head `20f190b0373db851e1c5b0ea343eb889dddaa451`은 open engineering candidate이며 N05/pilot
+NOT_RUN, source/mount 계약과 clean integrated SHA가 남았다고 명시한다. merge/CI만으로 승인하지 않는다.
+이것이 규민·주언의 개인 작업 전체 상태를 증명하지는 않는다. 접근 가능한 PR 자료 범위의 의존성 확인이다.
+N05 실행과 B0/B1/B3는 이번 범위 밖이며 native v3 또는 H10/H21의 증거로 대체할 수 없다.
+
+### 대안과 후속 최소 조건
+
+| 대안 | 장점 | 단점/인정 경계 |
+| --- | --- | --- |
+| source-guarded callback continuation 계측 | 기존 v2 reuse, native scheduling 유지 시도 | private/bundled source 취약, 교란/branch truth qualification 필요 |
+| target source에 명시적 hook patch | branch 지점이 명확하고 검토 쉬움 | 수정 target임을 명시해야 함, stock equivalence와 patch 관리 비용 |
+| syscall/inotify corroboration | 별도 관찰 채널로 효과 순서 점검 | entry/branch dependency를 직접 제공하지 않음, v3 대체 producer 아님 |
+| target-free prototype + generic v3 확정 | 지금 재현 가능하고 과장 없는 engineering 산출물 | 실제 관찰·성능·native feasibility 확정 못 함 |
+
+다음 최소 조건은 frozen exact bundled source와 branch specification, pinned contained image·독립 검토,
+explicit bounded 실행 승인, raw/manifest publication trust, stock/minimal/v2-full/v3-full qualification,
+failure injection과 fresh-process reader다. 이 조건이 없으면 26일 결과는 generic/synthetic 및 negative
+qualification 분석으로 확정한다. [확정표](result-freeze-checklist.md)에 상태를 분리했다.

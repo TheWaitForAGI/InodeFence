@@ -12,3 +12,8 @@
 | 6. 검증·선행연구·남은 과제 | engineering 검증과 연구 효과 주장을 분리한다 | ZIPDiff/Wormholes/LinkZard 비교 4행 + 완료/미검증 | evidence-index, focused 76 tests, experiment-results | 기존 연구도 feedback/link/order를 다룸. raw 확보·native token qualification·동일 budget 효과 비교가 후속 |
 
 발표 수치는 [실험 결과](experiment-results.md)의 최종 실행 기록만 사용한다. 과거 PR의 테스트 수를 현재 통과 수로 쓰지 않는다. canonical 검증의 환경 차단이 있으면 숨기지 않는다. native 성과가 10월 26일까지 확보되지 않아도 구조·실패 분석·합성 검증을 결과로 제출할 수 있다.
+
+10월 23일 보완: 2장에는 [H10/H21와 반박 조건](research-hypotheses.md)을 넣고, 5장은
+“generic v3 + target-free capture prototype / native hook 없음”으로 업데이트한다. 6장에는
+[예상 반박](novelty-and-threats.md)의 계측 교란·누락·오라클 한계와 [26일 확정표](result-freeze-checklist.md)를
+사용한다. 76/1,584는 22일 기록이며 23일 검증 수치는 experiment-results의 별도 절로 교체한다.

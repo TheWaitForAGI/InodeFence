@@ -1,5 +1,7 @@
 # 주장별 근거 색인
 
+> 10월 22일 색인을 보존하며, 이번 보완의 source·PR·로그 근거는 끝의 10월 23일 절에 추가했다.
+
 확인일 2026-10-22 KST. F=직접 파일/API/실행 확인, R=자료의 기록, I=분석, U=미검증.
 현재 코드 SHA는 모두 `8d29982c26cebfcce7a413b3ba9177fcd28078de`다. 아래 line은 이 SHA 기준이다.
 PR 당시 head/base/merge SHA와 본문은 [JSON snapshot](evidence/pr-snapshots.json)의 각 `number` record를 따른다.
@@ -61,3 +63,39 @@ PR 당시 head/base/merge SHA와 본문은 [JSON snapshot](evidence/pr-snapshots
 | #91 | `0fa8bda5349de78541efb7f1622c469c6abf2d51` | `57f751992f60a534c5b07506e72124abe5d6b07d` |
 | #100 | `3e0ef26d89a1a1f93867a6641822c37d5b9ee5ce` | `da42c805b391ca842543dcf0db77f6edbce96b1e` |
 | #111 | `44e115b177d8b3aed7b06141c0523f567e0772c9` | `8d29982c26cebfcce7a413b3ba9177fcd28078de` |
+
+## 10월 23일 추가 근거
+
+기존 문서 base SHA는 `3c2487b659a24d2f4b7bc38b5ca9928ffb959723`다. 이 커밋은 engine 변경 없이
+기존 docs/minchan을 추가했다. 두 minchan branch의 시작 ref가 같고 diff가 0임을 로컬 Git으로 확인했다(F).
+현재 core/reader source는 `8d29982c26cebfcce7a413b3ba9177fcd28078de`에서 바뀌지 않았다.
+새 prototype/test는 **uncommitted working diff**이며 정확한 파일 hash·환경·branch는
+[이번 provenance](evidence/provenance-20261023.json)에 보존한다. 과거 code SHA로 새 코드를 식별하지 않는다.
+
+| 추가 주장 | 구분 | 근거/위치 | 남은 한계 |
+| --- | --- | --- | --- |
+| #81/#82 정책과 #89/#90 판정, #100/#111 상태 유지 | API 자료 확인 | [PR 재조회 snapshot](evidence/pr-recheck-20261023.json) | 이번 metadata/body 조회; 옛 diff 전체 재감사 아님 |
+| #111 리뷰 원문 미확보 | API 반환 사실 | [dependency/review snapshot](evidence/dependencies-20261023.json) | discussion endpoint 재반환 빈 배열; 최종 인간 승인 추론 금지 |
+| 민찬 PR 검색 반환 없음 | API 반환 사실 | 같은 snapshot | query 범위 결과이며 PR이 없다는 일반적 증명 아님 |
+| 실행 gate는 별도 | 코드/자료 확인 | 현재 STATUS·N04 v3 Task Contract; remote `00356e4` 문서 사본은 아래 snapshot 참조 | code merge/CI가 승인 아님 |
+| N05/Track A 실행 안 함이라는 PR 기록 | 자료 주장 | #115 head `e83349ed1592d536e3ec0fce3c7cb204cb5c6ec9`, #122 head `20f190b0373db851e1c5b0ea343eb889dddaa451` | native v3 승인·개인 작업 전체 상태를 뜻하지 않음 |
+| interleaved operation correlation·errors·pending·overflow | 합성 검증 | [prototype](../../scripts/minchan_rebinding_capture.py), [tests](../../tests/test_minchan_rebinding_capture.py), [이번 focused 로그](evidence/focused-tests-20261023.log) | 실제 API wrapper/ALS/hook 아님 |
+| v3 wire compatibility | 합성 검증 | prototype `envelope`→unchanged `reconstruct_rebinding_evidence`; positive test | synthetic expected digest 계산은 external manifest publication이 아님 |
+| sequence gap 전체 검출 불가 | 명시적 한계 검증 | test_sequence_gap_is_not_misrepresented_as_full_transport_validation | lifecycle 포함 v2 global channel과 native API audit 필요 |
+| P1−P0/P2−P1의 이득 | 미검증 가설 | [H10/H21](research-hypotheses.md) | 실제 비교 없음; evaluator·budget·effect threshold 미동결 |
+| 전체 snapshot·durability·native token truth 없음 | 코드/자료 확인 | research-hypotheses 증거표, native design scope | 더 많은 이벤트만으로 보장되지 않음 |
+| 선행연구도 state/order/adaptation을 다룸 | 원문 확인 | [novelty-and-threats](novelty-and-threats.md) 관련 절/링크 | 공식 코드의 새 비교 주장은 없음 |
+
+remote 제안 문서는 `git show 00356e4:docs/research/diagnostics/n05-native-qualification-critical-path.md`로
+읽었다. [읽은 사본](evidence/n05-critical-path-at-00356e4.txt)을 보존한다. source-package 직접 재해시나
+그 문서의 native branch 계측을 이번 수행한 것으로 쓰지 않는다. 첫 guessed benchmark 경로는 존재하지
+않아 ls-tree로 실제 diagnostic 경로를 확인한 뒤 읽었다.
+
+변경 재현은 base `3c2487b`와 현재 로컬 파일·diff를 함께 사용한다. [26일 확정표](result-freeze-checklist.md)는
+2026-10-23의 증거 상태이며 미래 완료 사실을 기록하지 않는다.
+
+새 working-source 위치: `SyntheticRebindingCapture.begin` line 72, `complete` line 108,
+`finish` line 123, `envelope` line 136. 실패/중복/pending/overflow와 same-entry nested/다른-entry concurrent
+schedule은 새 test 파일 line 36/62/77/96/107을 따른다. line은 이번 provenance hash의 파일 기준이다.
+보존 [synthetic raw](evidence/synthetic-v3-envelope-20261023.jsonl)와
+[reader verification](evidence/synthetic-v3-verification-20261023.json)은 합성 입력의 원본/파생을 구분한다.

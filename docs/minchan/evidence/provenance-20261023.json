@@ -1,0 +1,23 @@
+{
+  "date_kst": "2026-10-23",
+  "document_base": "3c2487b659a24d2f4b7bc38b5ca9928ffb959723",
+  "engine_base": "8d29982c26cebfcce7a413b3ba9177fcd28078de",
+  "branch": "docs/minchan-intermediate-observation",
+  "working_tree_dirty": true,
+  "initial_tree_clean": true,
+  "os": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "python": "3.12.3",
+  "node": "v22.22.0",
+  "uid": 1000,
+  "cwd": "/workspaces/InodeFence",
+  "runtime_root": "/var/lib/inodefence",
+  "source_sha256": {
+    "scripts/minchan_rebinding_capture.py": "dfc003b669b3cd434b52a2ec74c28a570817d9f5365b090e49b84e87644c4c73",
+    "tests/test_minchan_rebinding_capture.py": "d6478def783c584c3576be76fee8d861e3c59301a96497c959e83c314d9212a5"
+  },
+  "native_v3_executed": false,
+  "old_raw_paths": {
+    "/var/lib/inodefence/node-native-effect-observation-qualification-v2-20261013-36ff7fd-AA8cvq": false,
+    "experiments/raw/node-effect-gates-20261013-AA8cvq/qualification": false
+  }
+}

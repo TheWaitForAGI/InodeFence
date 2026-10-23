@@ -103,3 +103,36 @@ flowchart TD
 ```
 
 이 그림은 분류이며 성능 순위가 아니다. 원문·한계·확인되지 않은 항목은 보고서 비교표를 따른다.
+
+## 10월 23일: 관찰과 정책 효과의 비교 논리
+
+```mermaid
+flowchart TD
+  Q[Qualified same producer/profile: future prerequisite] --> R[Common raw evidence]
+  R --> P0[P0 final admission / uniform operator]
+  R --> P1[P1 transition admission / uniform operator]
+  R --> P2[P2 same transition admission / adaptive operator]
+  P0 --> H10[P1 minus P0: retention hypothesis NOT_TESTED]
+  P1 --> H10
+  P1 --> H21[P2 minus P1: scheduler hypothesis NOT_TESTED]
+  P2 --> H21
+  H10 --> E[Common independent evaluator / raw reader]
+  H21 --> E
+  E --> N[More keys alone do not prove detection gain]
+```
+
+## 10월 23일: 합성 구현과 native 제안의 경계
+
+```mermaid
+flowchart LR
+  S[Synthetic typed v2 events / explicit tokens] --> L[Bounded operation ledger IMPLEMENTED]
+  L --> T[Pending / errors / invalid terminal]
+  L --> W[Complete successful envelope]
+  W --> R[Unchanged v3 strict reader]
+  R --> C[Composite / finite feedback]
+  H[Actual node-tar callback branch] -. NOT_IMPLEMENTED .-> D[Native token and endpoint capture]
+  D -. future qualification only .-> W
+```
+
+prototype이 제공하는 token은 합성 입력이다. arrow 순서나 시간으로 native dependency를 만들어내지 않는다.
+실제 전체 filesystem snapshot은 이 그림에 없으며 event endpoint 관찰을 전체 tree로 합성하지 않는다.

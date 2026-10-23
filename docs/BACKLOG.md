@@ -12,7 +12,7 @@ P0 작업이 새로 생기면 이 표 맨 위에 끼워 넣는다.
 | 순서 | ID | 상태 | 게이트 |
 | --- | --- | --- | --- |
 | 1 | P2-a C1 일반화 영향 조사 | 대기 | 없음 |
-| 2 | P2-b C1 일반화 + `add_hardlink` 외부 타깃 확장 | 대기 | P2-a = "안전", P2-a 브랜치 머지 |
+| 2 | P2-b C1 일반화 + `add_hardlink` 외부 타깃 확장 | 막힘(2026-10-24, 호스트에서 make check 불가 — Dev Container 필요) | P2-a = "안전", P2-a 브랜치 머지 |
 | 3 | P2-c N01 rediscovery 재실행 | 대기 | P2-b 머지 + 사람이 승인한 실행 범위 |
 | 4 | P3 A/B/C 비교 실험 | 대기 | P2-c rediscovery 성공 |
 
@@ -44,6 +44,7 @@ P0 작업이 새로 생기면 이 표 맨 위에 끼워 넣는다.
   - 새 operator가 effect campaign 스케줄러에서 선택 가능하도록 연결하고, `make demo`(synthetic)로 선택·피드백 경로가 동작하는지 확인한다.
 - 완료 조건: `make check` 통과, 기존 oracle fixture 4/4 유지, 새 fixture에서 일반화된 C1이 기대대로 판정, `make demo` 두 번 실행 결과 바이트 동일. 기존 테스트를 깨면 `BREAKING`.
 - 실행/검증하게 되는 것: 외부 대상 hardlink를 생성하는 mutation과, 그 결과를 잡는 일반화된 C1 판정을 synthetic 루프에서 실행할 수 있다.
+- 막힘(2026-10-24, `jiwoong/p2-b-c1-generalize-hardlink`): macOS 호스트 세션에서 `make check`를 돌릴 수 없어 미검증 → 구현 미착수(소스 변경 0). `make check`의 `env-check`가 Python 3.12와 `/var/lib/inodefence` 존재를 단언하고, pipeline 테스트는 `sys.platform=="linux"` runtime을 요구한다(호스트는 Python 3.14·Darwin·runtime root 부재). 런타임 루트 생성·패키지 설치·강제 통과·환경 변경은 금지. **Dev Container 세션에서 재개하면 바로 구현 가능.** 설계 메모(구현 지침): (1) C1 일반화는 `evaluate_contracts`를 건드리지 말고 별도 함수 + 새 evidence dataclass(EXTRACTION↔비-EXTRACTION 공유, HARNESS 포함)로 추가하고 `RunResult.violations` 3-tuple·`ContractId`·`ViolationResult`는 불변 유지(oracle_fixture_check가 `strict=True` zip으로 정확히 3개를 요구). 경계 fixture 후보: extract/ 객체가 HARNESS `archive/input.tar`와 inode 공유(C0/C1/C2 3-tuple은 전부 False, 일반화 판정만 True). (2) add_hardlink 외부 타깃은 새 MutationOperatorId를 추가하지 말고(8-slot 분포·seed 재현성 깨짐) 새 `MutationPolicy`(옵션)로 ADD_HARDLINK slot만 외부-escape 타깃 생성 함수로 교체; `test_mutator_ablation.py`의 `len(...)==6` 단언과 `test_mutation_scheduler.py` `_legacy_reference` dict는 새 policy에 맞게 확장 필요. 기존 policy 테이블은 불변.
 
 ## P2-c. N01 rediscovery 재실행
 

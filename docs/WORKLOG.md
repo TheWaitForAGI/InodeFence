@@ -10,3 +10,4 @@
 | 날짜 | 브랜치명 | P0/Phase | 한 줄 요약 | main 대비 핵심 변경 | 상태 |
 | --- | --- | --- | --- | --- | --- |
 | 2026-10-23 | jiwoong/autonomous-setup | 도구 세팅(P0 아님) | 자율 루프용 PreToolUse 가드 훅(R1–R8), 역할 4종(전부 claude-opus-4-8), autoloop 규칙, BACKLOG/WORKLOG | `.claude/settings.json`, `.claude/hooks/guard.py`, `.claude/agents/{orchestrator,builder,runtime,verifier}.md`, `.claude/skills/autoloop/SKILL.md`, `docs/BACKLOG.md`, `docs/WORKLOG.md`, `tests/test_claude_guard.py` | 검토대기 |
+| 2026-10-23 | jiwoong/p2-a-c1-impact | P2-a | C1 일반화(EXTERNAL object 전체 비교) 영향 조사 — 임시 패치로 Dev Container 실행·되돌림, 판정 안전(additive) | docs만: `docs/LOG.md`, `docs/WORKLOG.md`, `docs/STATUS.md` (소스 변경 0, 패치 미커밋) | 검토대기 |

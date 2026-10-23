@@ -1,0 +1,25 @@
+{
+  "kind": "ENGINEERING_VALIDATION_NOT_EXPERIMENT_AUTHORIZATION",
+  "argv": [
+    "docker",
+    "exec",
+    "--user",
+    "vscode",
+    "d3daf9a52d2e2567420ab02708c13c925141da2b198abaa56cd98a8aa9f909b0",
+    "git",
+    "clone",
+    "--no-checkout",
+    "/home/vscode/inodefence-integration-linux-20261023/source.bundle",
+    "/home/vscode/inodefence-integration-linux-20261023/source"
+  ],
+  "host_cwd": "/Users/choijiwng/Projects/InodeFence-integration-linux-validation-20261023",
+  "started_utc": "2026-10-23T01:53:32.782623+00:00",
+  "finished_utc": "2026-10-23T01:53:32.878123+00:00",
+  "exit_code": 0,
+  "stdin_file": null,
+  "stdin_sha256": null,
+  "stdout": "linux-clone.stdout.log",
+  "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stderr": "linux-clone.stderr.log",
+  "stderr_sha256": "b7bd6728e874181efbc7f0108d678ff5af857872b332e614d68ef6cc3e2004b2"
+}

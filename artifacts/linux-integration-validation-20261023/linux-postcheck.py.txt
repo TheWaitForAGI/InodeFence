@@ -1,0 +1,21 @@
+from pathlib import Path
+import hashlib,json,subprocess
+from scripts import container_host,track_a_container_host
+from inodefence.evaluation import n05_preflight,track_a_host_ledger,n04_preflight
+src=Path.cwd()
+def git(*args):return subprocess.check_output(['git',*args],text=True).strip()
+assert git('rev-parse','HEAD')=='7861a7c5e0f9ca288eb36fae40b926ed60a4ca20'
+assert not git('status','--porcelain=v1','--untracked-files=all')
+subprocess.run(['git','diff','--check'],check=True)
+subprocess.run(['git','diff','--exit-code','HEAD'],check=True)
+assert not git('ls-files','--others','--exclude-standard')
+before=json.loads(Path('/home/vscode/inodefence-integration-linux-20261023/logs/environment-before.json').read_text())['runtime_top_level_before']
+after={p.name:{'inode':p.stat().st_ino,'mtime_ns':p.stat().st_mtime_ns,'mode':p.stat().st_mode} for p in Path('/var/lib/inodefence').iterdir() if p.name!='integration-validation-20261023'}
+assert before==after,(before,after)
+assert n04_preflight.ATTEMPT_CONSUMED is True
+origins={m.__name__:m.__file__ for m in [container_host,track_a_container_host,n05_preflight,track_a_host_ledger]}
+assert all(Path(f).is_relative_to(src) for f in origins.values())
+probe=Path('/home/vscode/inodefence-integration-linux-20261023/path-probes/test_path_accounting_contracts.py')
+assert hashlib.sha256(probe.read_bytes()).hexdigest()=='da4aab6f8cee3f4a9d2d49efc93747bd6a940d97a30cd0e28573cea1240b500c'
+result={'status':'PASS','source_sha':git('rev-parse','HEAD'),'source_tree':git('rev-parse','HEAD^{tree}'),'source_status':git('status','--porcelain=v1','--untracked-files=all'),'diff_check':'PASS','diff_exit_code_HEAD':'PASS','nonignored_untracked':[],'module_origins':origins,'preexisting_runtime_top_level_unchanged':before==after,'runtime_top_level_after':after,'n04_consumed':n04_preflight.ATTEMPT_CONSUMED,'probe_sha256':hashlib.sha256(probe.read_bytes()).hexdigest()}
+print(json.dumps(result,indent=2))

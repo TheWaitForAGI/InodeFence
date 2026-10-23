@@ -1,0 +1,21 @@
+{
+  "task": "Integration Candidate Linux Validation",
+  "source_sha": "7861a7c5e0f9ca288eb36fae40b926ed60a4ca20",
+  "phase0": "PASS",
+  "phase1": "PASS",
+  "phase2": "PASS: existing non-root Linux Dev Container reused, no build/install",
+  "phase3": "PASS at canonical default runtime: 1757 tests; first nondefault run retained with 10 fixture/config failures",
+  "phase4": "COMPLETE: fixture subpath assumption and configuration control documented; production/test files unchanged",
+  "phase5": "COMPLETE: remaining path/cwd/Unit4/authorization gates documented",
+  "overall": "CONDITIONALLY_READY",
+  "engineering": "READY at documented canonical runtime",
+  "next_development": "GO subject to authority/path Task Contract decisions",
+  "actual_N05_and_TrackA": "BLOCKED / STOP",
+  "N05": "NOT_AUTHORIZED / NOT_RUN",
+  "Track_A": "NOT_AUTHORIZED / NOT_RUN",
+  "historical_target": "NOT_RUN",
+  "N04_real_attempt_replay": "NOT_RUN",
+  "unit4_implementation": "NOT_RUN",
+  "native_observation_implementation": "NOT_RUN",
+  "real_approval_PASS_qualification_tokens_created": 0
+}

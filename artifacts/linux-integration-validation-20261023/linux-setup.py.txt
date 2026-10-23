@@ -1,0 +1,11 @@
+from pathlib import Path
+import json,os,sys,platform,subprocess
+base=Path('/home/vscode/inodefence-integration-linux-20261023')
+assert not base.exists()
+base.mkdir()
+(base/'logs').mkdir()
+runtime=Path('/var/lib/inodefence/integration-validation-20261023')
+assert not runtime.exists()
+runtime.mkdir()
+(runtime/'tmp').mkdir()
+print(json.dumps({'base':str(base),'runtime':str(runtime),'uid':os.getuid(),'system':platform.platform(),'python':sys.version,'runtime_dev':runtime.stat().st_dev,'source_mount_dev':Path('/workspaces/InodeFence').stat().st_dev},indent=2))

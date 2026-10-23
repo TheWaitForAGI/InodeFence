@@ -1,0 +1,77 @@
+{
+  "status": "PASS",
+  "code_sha": "7861a7c5e0f9ca288eb36fae40b926ed60a4ca20",
+  "code_tree": "e0be20c2b03aea57d52731590c2d9ce581a581e8",
+  "parents": [
+    "02072c95537d76d1b213b9c858d96c97fff653cc",
+    "e83349ed1592d536e3ec0fce3c7cb204cb5c6ec9"
+  ],
+  "report_commit": "c914da00e74556c3598c477a9325d02a7732e56a",
+  "report_parent": "7861a7c5e0f9ca288eb36fae40b926ed60a4ca20",
+  "report_tree": "edca7e88c34636008c4dd5cf28ba43aee6f07fc0",
+  "report_changes_only_handoff": true,
+  "prior_artifact_hashes_verified": 38,
+  "preserved_source_files": [
+    {
+      "path": "scripts/container_host.py",
+      "parent": "e83349ed1592d536e3ec0fce3c7cb204cb5c6ec9",
+      "sha256": "b41f12aa769a770f5507ef36c3a52202a1129a067a87f105baadc299362873ac",
+      "byte_identical": true
+    },
+    {
+      "path": "src/inodefence/evaluation/n05_preflight.py",
+      "parent": "e83349ed1592d536e3ec0fce3c7cb204cb5c6ec9",
+      "sha256": "1a3cf7b34f3f2a10d02ebefc37b7c3af6fe52b487e6affd9084ba7079d533b82",
+      "byte_identical": true
+    },
+    {
+      "path": "tests/evaluation/test_n05_preflight.py",
+      "parent": "e83349ed1592d536e3ec0fce3c7cb204cb5c6ec9",
+      "sha256": "4089398971a2a17b8789539d2c4ae183d70b4381d54afbf983b651b3ddb24429",
+      "byte_identical": true
+    },
+    {
+      "path": "scripts/track_a_container_host.py",
+      "parent": "02072c95537d76d1b213b9c858d96c97fff653cc",
+      "sha256": "3f4a4308e8ae238b0a7c117373c786b23be9b2587e613a9c276eaf904be8441b",
+      "byte_identical": true
+    },
+    {
+      "path": "scripts/track_a_container_controller.py",
+      "parent": "02072c95537d76d1b213b9c858d96c97fff653cc",
+      "sha256": "ac96afc8edd68f63746d0223fecbf0e5796942d2aa4db3b3fd81e7cf1cfa9fa8",
+      "byte_identical": true
+    },
+    {
+      "path": "src/inodefence/evaluation/track_a_host_ledger.py",
+      "parent": "02072c95537d76d1b213b9c858d96c97fff653cc",
+      "sha256": "d316ef5113c4745c9a5a0196d08236568745b93caa6597ffc07cebbeaa2595ba",
+      "byte_identical": true
+    },
+    {
+      "path": "src/inodefence/evaluation/track_a_admission.py",
+      "parent": "02072c95537d76d1b213b9c858d96c97fff653cc",
+      "sha256": "5f029eb4a36a88f07ed1cbdcfe4ddb4866d16a56c1f3040eda788d5c23fc8261",
+      "byte_identical": true
+    },
+    {
+      "path": "src/inodefence/evaluation/track_a_exploratory.py",
+      "parent": "02072c95537d76d1b213b9c858d96c97fff653cc",
+      "sha256": "a502d3592f0c273d9e182686e72cbebd8542496c988ec023e87242f0d3fdece0",
+      "byte_identical": true
+    },
+    {
+      "path": "src/inodefence/evaluation/n05_preflight_reader.py",
+      "parent": "02072c95537d76d1b213b9c858d96c97fff653cc",
+      "sha256": "20423a2750cb7c4901f64bcda20165eace3ada88bb8cd672cab8d6a939245da0",
+      "byte_identical": true
+    },
+    {
+      "path": "src/inodefence/evaluation/n04_preflight.py",
+      "parent": "02072c95537d76d1b213b9c858d96c97fff653cc",
+      "sha256": "6df012d316d064ad82b91ffa5c00e33ae9e3dca1b824b13eaad30902607e589c",
+      "byte_identical": true
+    }
+  ],
+  "production_model_schema_guard_changes_this_task": []
+}

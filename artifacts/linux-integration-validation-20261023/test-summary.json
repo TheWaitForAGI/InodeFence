@@ -1,0 +1,106 @@
+{
+  "canonical-initial": {
+    "tests": 1757,
+    "passed": 1747,
+    "failures": 10,
+    "errors": 0,
+    "skipped": 0,
+    "suites": [
+      {
+        "name": "pytest",
+        "errors": "0",
+        "failures": "10",
+        "skipped": "0",
+        "tests": "1757",
+        "time": "125.765",
+        "timestamp": "2026-10-23T01:54:43.697694+00:00",
+        "hostname": "d3daf9a52d2e"
+      }
+    ]
+  },
+  "canonical-default": {
+    "tests": 1757,
+    "passed": 1757,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "suites": [
+      {
+        "name": "pytest",
+        "errors": "0",
+        "failures": "0",
+        "skipped": "0",
+        "tests": "1757",
+        "time": "126.003",
+        "timestamp": "2026-10-23T01:58:14.123645+00:00",
+        "hostname": "d3daf9a52d2e"
+      }
+    ]
+  },
+  "backend-default": {
+    "tests": 83,
+    "passed": 83,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "suites": [
+      {
+        "name": "pytest",
+        "errors": "0",
+        "failures": "0",
+        "skipped": "0",
+        "tests": "83",
+        "time": "0.133",
+        "timestamp": "2026-10-23T01:57:46.888939+00:00",
+        "hostname": "d3daf9a52d2e"
+      }
+    ]
+  },
+  "focused": {
+    "tests": 211,
+    "passed": 211,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "suites": [
+      {
+        "name": "pytest",
+        "errors": "0",
+        "failures": "0",
+        "skipped": "0",
+        "tests": "211",
+        "time": "64.850",
+        "timestamp": "2026-10-23T02:00:20.496753+00:00",
+        "hostname": "d3daf9a52d2e"
+      }
+    ]
+  },
+  "path-probes": {
+    "tests": 4,
+    "passed": 4,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "suites": [
+      {
+        "name": "pytest",
+        "errors": "0",
+        "failures": "0",
+        "skipped": "0",
+        "tests": "4",
+        "time": "0.156",
+        "timestamp": "2026-10-23T02:02:05.505075+00:00",
+        "hostname": "d3daf9a52d2e"
+      }
+    ]
+  },
+  "focused_by_file": {
+    "tests.evaluation.test_n04_preflight": 31,
+    "tests.evaluation.test_n04_host_ledger": 10,
+    "tests.evaluation.test_n05_preflight": 47,
+    "tests.evaluation.test_track_a_admission": 34,
+    "tests.evaluation.test_track_a_exploratory": 38,
+    "tests.evaluation.test_track_a_host_ledger": 51
+  },
+  "counts_not_additive": true
+}

@@ -1,0 +1,61 @@
+{
+  "read_order": [
+    "docs/START_HERE.md",
+    "docs/STATUS.md",
+    "AGENTS.md"
+  ],
+  "scoped_instructions": [
+    "docs/research/AGENTS.md",
+    "src/inodefence/AGENTS.md",
+    "experiments/AGENTS.md"
+  ],
+  "task_contract": "Integration Candidate Linux Validation, user-provided 2026-10-23",
+  "safety_review": {
+    "make_check": [
+      "lint",
+      "format-check",
+      "typecheck",
+      "test",
+      "env-check",
+      "docs-check"
+    ],
+    "excluded_make_targets": [
+      "install",
+      "target-tools",
+      "fixtures",
+      "probe",
+      "node-entry-timing-probe"
+    ],
+    "pytest_collection": "tests/test_*.py and tests/**/test_*.py; explicit container_integration/check_*.py not collected",
+    "third_party_boundaries": "Controlled/Fake backends in canonical suite; no real Docker executable or socket inside reused Dev Container",
+    "filesystem_effects": "pytest tmp_path, temporary fake CLI executables, reference extraction/sentinels/hardlinks/symlinks, fsync/no-overwrite failure injection; all new temporary files restricted to task-owned runtime subtree",
+    "process_effects": "Python reference workers, Git provenance subprocesses, synthetic CLI doubles and bounded process-group lifecycle tests; no actual historical node-tar invocation",
+    "canonical_source": "7861a7c5e0f9ca288eb36fae40b926ed60a4ca20",
+    "guard_overrides": false,
+    "network_install_or_image_build": false
+  },
+  "initial_commands": [
+    "pwd",
+    "cat docs/START_HERE.md",
+    "cat docs/STATUS.md",
+    "cat AGENTS.md",
+    "git status --porcelain=v1 --untracked-files=all",
+    "git branch --show-current",
+    "git rev-parse HEAD",
+    "git worktree list --porcelain",
+    "git show --no-patch --format=fuller 7861a7c5e0f9ca288eb36fae40b926ed60a4ca20 c914da00e74556c3598c477a9325d02a7732e56a",
+    "git show-ref --verify refs/heads/integration/n05-track-a-20261023-overnight",
+    "git -C /private/tmp/inodefence-overnight-20261023-goy0npqw/candidate status --porcelain=v1 --untracked-files=all",
+    "git diff -- .devcontainer/devcontainer.json",
+    "docker context show",
+    "docker version --format {{json .}}",
+    "docker ps -a --no-trunc --format {{json .}}",
+    "orb version"
+  ],
+  "read_probe_error": {
+    "command": "rg -n ... tests/test_native_node_effect_v2.py ... tests/test_storage.py ...",
+    "exit_code": 2,
+    "reason": "two guessed filenames absent; corrected with rg --files tests, no tests or source altered",
+    "classification": "READ_ONLY_DISCOVERY_NO_TEST_FAILURE"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "kind": "ENGINEERING_VALIDATION_NOT_EXPERIMENT_AUTHORIZATION",
+  "argv": [
+    "git",
+    "bundle",
+    "create",
+    "/Users/choijiwng/Projects/InodeFence-integration-linux-validation-20261023/artifacts/linux-integration-validation-20261023/preserved-source.bundle",
+    "integration/n05-track-a-20261023-overnight"
+  ],
+  "host_cwd": "/Users/choijiwng/Projects/InodeFence-integration-linux-validation-20261023",
+  "started_utc": "2026-10-23T01:52:54.843757+00:00",
+  "finished_utc": "2026-10-23T01:52:54.924395+00:00",
+  "exit_code": 0,
+  "stdin_file": null,
+  "stdin_sha256": null,
+  "stdout": "source-bundle.stdout.log",
+  "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stderr": "source-bundle.stderr.log",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

@@ -1,0 +1,18 @@
+{
+  "status": "PASS",
+  "checked_utc": "2026-10-23T02:07:57.135818+00:00",
+  "primary_head": "919d723b7eb3bf13b060d3ae34b083499590b4fc",
+  "primary_branch": "main",
+  "primary_status": " M .devcontainer/devcontainer.json\n",
+  "primary_devcontainer_sha256": "af1b308868338c81cc727094c1bfab5dce679b546ef4eb79c97915c8cdf233c9",
+  "primary_diff_identical": true,
+  "old_integration_worktree_head": "c914da00e74556c3598c477a9325d02a7732e56a",
+  "old_integration_worktree_status": "",
+  "old_report_sha256": "7e46ed08f7a43ebd69f47c45324188a9cc54b2de38b21a7bc72956c35a43d81b",
+  "prior_artifact_hashes_verified": 38,
+  "existing_worktree_registrations_unchanged": true,
+  "worktree_snapshot_note": "initial-state prior_worktrees was taken immediately AFTER this task added the single new host worktree; no registrations changed afterward.",
+  "linux_source_postcheck": "linux-source-postcheck.json",
+  "runtime_check_scope": "pre-existing top-level inode/mtime/mode only; not recursive evidence content hashing",
+  "production_and_test_source_changes": []
+}

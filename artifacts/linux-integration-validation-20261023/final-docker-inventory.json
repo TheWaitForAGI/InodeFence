@@ -1,0 +1,21 @@
+{
+  "kind": "ENGINEERING_VALIDATION_NOT_EXPERIMENT_AUTHORIZATION",
+  "argv": [
+    "docker",
+    "ps",
+    "-a",
+    "--no-trunc",
+    "--format",
+    "{{json .}}"
+  ],
+  "host_cwd": "/Users/choijiwng/Projects/InodeFence-integration-linux-validation-20261023",
+  "started_utc": "2026-10-23T02:02:34.731309+00:00",
+  "finished_utc": "2026-10-23T02:02:34.978333+00:00",
+  "exit_code": 0,
+  "stdin_file": null,
+  "stdin_sha256": null,
+  "stdout": "final-docker-inventory.stdout.log",
+  "stdout_sha256": "63fa6beeb4a7448604182c8dfcdbef9cdbe3be8d73aea63ad223df53b1759a06",
+  "stderr": "final-docker-inventory.stderr.log",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

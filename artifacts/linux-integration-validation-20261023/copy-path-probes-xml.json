@@ -1,0 +1,19 @@
+{
+  "kind": "ENGINEERING_VALIDATION_NOT_EXPERIMENT_AUTHORIZATION",
+  "argv": [
+    "docker",
+    "cp",
+    "d3daf9a52d2e2567420ab02708c13c925141da2b198abaa56cd98a8aa9f909b0:/home/vscode/inodefence-integration-linux-20261023/logs/path-probes.xml",
+    "/Users/choijiwng/Projects/InodeFence-integration-linux-validation-20261023/artifacts/linux-integration-validation-20261023/path-probes.xml"
+  ],
+  "host_cwd": "/Users/choijiwng/Projects/InodeFence-integration-linux-validation-20261023",
+  "started_utc": "2026-10-23T02:02:05.799239+00:00",
+  "finished_utc": "2026-10-23T02:02:05.816650+00:00",
+  "exit_code": 0,
+  "stdin_file": null,
+  "stdin_sha256": null,
+  "stdout": "copy-path-probes-xml.stdout.log",
+  "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stderr": "copy-path-probes-xml.stderr.log",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

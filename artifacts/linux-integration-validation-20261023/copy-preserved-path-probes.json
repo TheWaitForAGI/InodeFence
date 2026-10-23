@@ -1,0 +1,19 @@
+{
+  "kind": "ENGINEERING_VALIDATION_NOT_EXPERIMENT_AUTHORIZATION",
+  "argv": [
+    "docker",
+    "cp",
+    "/Users/choijiwng/Projects/InodeFence-integration-linux-validation-20261023/artifacts/overnight-n05-track-a-20261023/test_path_accounting_contracts.py",
+    "d3daf9a52d2e2567420ab02708c13c925141da2b198abaa56cd98a8aa9f909b0:/home/vscode/inodefence-integration-linux-20261023/path-probes/test_path_accounting_contracts.py"
+  ],
+  "host_cwd": "/Users/choijiwng/Projects/InodeFence-integration-linux-validation-20261023",
+  "started_utc": "2026-10-23T01:59:18.198384+00:00",
+  "finished_utc": "2026-10-23T01:59:18.229267+00:00",
+  "exit_code": 0,
+  "stdin_file": null,
+  "stdin_sha256": null,
+  "stdout": "copy-preserved-path-probes.stdout.log",
+  "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stderr": "copy-preserved-path-probes.stderr.log",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

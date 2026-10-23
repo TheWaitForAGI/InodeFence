@@ -1,0 +1,37 @@
+{
+  "container_id": "d3daf9a52d2e2567420ab02708c13c925141da2b198abaa56cd98a8aa9f909b0",
+  "source": "/home/vscode/inodefence-integration-linux-20261023/source",
+  "runtime": "/var/lib/inodefence/integration-validation-20261023",
+  "env": {
+    "PYTHONPATH": "/home/vscode/inodefence-integration-linux-20261023/source/src:/home/vscode/inodefence-integration-linux-20261023/source",
+    "PYTHONDONTWRITEBYTECODE": "1",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1",
+    "TMPDIR": "/var/lib/inodefence/integration-validation-20261023/tmp",
+    "INODEFENCE_RUNTIME_ROOT": "/var/lib/inodefence/integration-validation-20261023",
+    "RUFF_CACHE_DIR": "/var/lib/inodefence/integration-validation-20261023/ruff-cache",
+    "PYTEST_ADDOPTS": "--basetemp=/var/lib/inodefence/integration-validation-20261023/pytest-canonical --junitxml=/home/vscode/inodefence-integration-linux-20261023/logs/canonical.xml"
+  },
+  "command_prefix": [
+    "docker",
+    "exec",
+    "--user",
+    "vscode",
+    "--workdir",
+    "/home/vscode/inodefence-integration-linux-20261023/source",
+    "--env",
+    "PYTHONPATH=/home/vscode/inodefence-integration-linux-20261023/source/src:/home/vscode/inodefence-integration-linux-20261023/source",
+    "--env",
+    "PYTHONDONTWRITEBYTECODE=1",
+    "--env",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD=1",
+    "--env",
+    "TMPDIR=/var/lib/inodefence/integration-validation-20261023/tmp",
+    "--env",
+    "INODEFENCE_RUNTIME_ROOT=/var/lib/inodefence/integration-validation-20261023",
+    "--env",
+    "RUFF_CACHE_DIR=/var/lib/inodefence/integration-validation-20261023/ruff-cache",
+    "--env",
+    "PYTEST_ADDOPTS=--basetemp=/var/lib/inodefence/integration-validation-20261023/pytest-canonical --junitxml=/home/vscode/inodefence-integration-linux-20261023/logs/canonical.xml",
+    "d3daf9a52d2e2567420ab02708c13c925141da2b198abaa56cd98a8aa9f909b0"
+  ]
+}

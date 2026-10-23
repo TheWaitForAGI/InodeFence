@@ -1,0 +1,79 @@
+{
+  "devcontainer_id": "d3daf9a52d2e2567420ab02708c13c925141da2b198abaa56cd98a8aa9f909b0",
+  "devcontainer_image_id": "sha256:470e82d0541507e58ad8daf4f4371a44a99f7e8cafa2001138cbb41c00b44a1a",
+  "devcontainer_created": "2026-10-14T15:19:59.493463848Z",
+  "config_user": "root",
+  "exec_user": "vscode, UID=GID=1000",
+  "image_is_not_n05_controller": true,
+  "os": "Linux-7.2.9-orbstack-00391-g2b298d05fbd4-aarch64-with-glibc2.39",
+  "python": "3.12.3 (main, Aug 31 2026, 10:18:26) [GCC 13.3.0]",
+  "packages": {
+    "Pygments": "2.21.0",
+    "iniconfig": "2.3.1",
+    "inodefence": "0.1.0",
+    "nodeenv": "1.11.0",
+    "packaging": "26.3",
+    "pip": "26.2.1",
+    "pluggy": "1.6.0",
+    "pyright": "1.1.414",
+    "pytest": "9.1.1",
+    "ruff": "0.17.0",
+    "setuptools": "84.0.0",
+    "typing_extensions": "4.16.0",
+    "wheel": "0.48.0"
+  },
+  "package_manifest_sha256": "bab3f3285aa082b9b9194fca7dd74033005c401eab013c504b4b8e69abf1564c",
+  "docker_context": "orbstack",
+  "docker_client": "29.8.2",
+  "docker_server": "29.8.2",
+  "kernel": "7.2.9-orbstack-00391-g2b298d05fbd4",
+  "orbstack_version": "Version: 2.2.4 (2020400)\nCommit: 1c4c8267f3256f8df9e4d80a2e50ac8f1136956c (v2.2.4)",
+  "mounts": [
+    {
+      "Type": "volume",
+      "Name": "vscode",
+      "Source": "/var/lib/docker/volumes/vscode/_data",
+      "Destination": "/vscode",
+      "Driver": "local",
+      "Mode": "z",
+      "RW": true,
+      "Propagation": ""
+    },
+    {
+      "Type": "bind",
+      "Source": "/Users/choijiwng/Projects/InodeFence",
+      "Destination": "/workspaces/InodeFence",
+      "Mode": "",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "volume",
+      "Name": "inodefence-codex",
+      "Source": "/var/lib/docker/volumes/inodefence-codex/_data",
+      "Destination": "/home/vscode/.codex",
+      "Driver": "local",
+      "Mode": "z",
+      "RW": true,
+      "Propagation": ""
+    },
+    {
+      "Type": "volume",
+      "Name": "inodefence-runtime",
+      "Source": "/var/lib/docker/volumes/inodefence-runtime/_data",
+      "Destination": "/var/lib/inodefence",
+      "Driver": "local",
+      "Mode": "z",
+      "RW": true,
+      "Propagation": ""
+    }
+  ],
+  "initial_runtime": "/var/lib/inodefence/integration-validation-20261023",
+  "canonical_runtime": "/var/lib/inodefence",
+  "source_mount_primary_head": "919d723b7eb3bf13b060d3ae34b083499590b4fc",
+  "tested_source_path": "/home/vscode/inodefence-integration-linux-20261023/source",
+  "tested_source_sha": "7861a7c5e0f9ca288eb36fae40b926ed60a4ca20",
+  "tested_source_tree": "e0be20c2b03aea57d52731590c2d9ce581a581e8",
+  "no_package_installs_or_image_builds": true,
+  "environment_summary_sha256": "55e40e142465b4716f8057448933cec72408d4f35ca03e0907f8660cad21b66b"
+}

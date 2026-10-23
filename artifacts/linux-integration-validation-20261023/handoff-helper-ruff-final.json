@@ -1,0 +1,30 @@
+{
+  "kind": "ENGINEERING_VALIDATION_NOT_EXPERIMENT_AUTHORIZATION",
+  "argv": [
+    "docker",
+    "exec",
+    "-i",
+    "--user",
+    "vscode",
+    "--workdir",
+    "/home/vscode/inodefence-integration-linux-20261023/source",
+    "d3daf9a52d2e2567420ab02708c13c925141da2b198abaa56cd98a8aa9f909b0",
+    "/opt/venv/bin/python",
+    "-m",
+    "ruff",
+    "check",
+    "--stdin-filename",
+    "run_logged.py",
+    "-"
+  ],
+  "host_cwd": "/Users/choijiwng/Projects/InodeFence-integration-linux-validation-20261023",
+  "started_utc": "2026-10-23T02:09:35.087095+00:00",
+  "finished_utc": "2026-10-23T02:09:35.173915+00:00",
+  "exit_code": 0,
+  "stdin_file": "/Users/choijiwng/Projects/InodeFence-integration-linux-validation-20261023/artifacts/linux-integration-validation-20261023/run_logged.py",
+  "stdin_sha256": "8f88d0aa36fe5d900280081f46fa5d32896b29d50726f9cc57288d7a9f22fb17",
+  "stdout": "handoff-helper-ruff-final.stdout.log",
+  "stdout_sha256": "82b3e6a6c090a57601d22943bd23fca9218d1031dbe5a7b754092f9a156b4f18",
+  "stderr": "handoff-helper-ruff-final.stderr.log",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

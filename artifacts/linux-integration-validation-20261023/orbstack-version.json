@@ -1,0 +1,17 @@
+{
+  "kind": "ENGINEERING_VALIDATION_NOT_EXPERIMENT_AUTHORIZATION",
+  "argv": [
+    "orb",
+    "version"
+  ],
+  "host_cwd": "/Users/choijiwng/Projects/InodeFence-integration-linux-validation-20261023",
+  "started_utc": "2026-10-23T01:52:55.073634+00:00",
+  "finished_utc": "2026-10-23T01:52:55.097790+00:00",
+  "exit_code": 0,
+  "stdin_file": null,
+  "stdin_sha256": null,
+  "stdout": "orbstack-version.stdout.log",
+  "stdout_sha256": "fa0854df11b7ba500cb149b416bd7b1fb0e122f719dd773ee8a0911d6b0f464a",
+  "stderr": "orbstack-version.stderr.log",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

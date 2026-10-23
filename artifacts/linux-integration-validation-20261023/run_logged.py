@@ -1,0 +1,42 @@
+"""Record engineering commands and unmodified output; never execute experiments."""
+
+import datetime
+import hashlib
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+root = Path(__file__).parent
+label = sys.argv[1]
+argv = json.loads(sys.argv[2])
+assert label.replace("-", "").replace("_", "").isalnum()
+meta_path = root / (label + ".json")
+assert not meta_path.exists(), meta_path
+start = datetime.datetime.now(datetime.UTC).isoformat()
+stdin = Path(sys.argv[3]).read_bytes() if len(sys.argv) > 3 else None
+result = subprocess.run(argv, input=stdin, capture_output=True, check=False)
+out = root / (label + ".stdout.log")
+err = root / (label + ".stderr.log")
+out.write_bytes(result.stdout)
+err.write_bytes(result.stderr)
+record = {
+    "kind": "ENGINEERING_VALIDATION_NOT_EXPERIMENT_AUTHORIZATION",
+    "argv": argv,
+    "host_cwd": str(Path.cwd()),
+    "started_utc": start,
+    "finished_utc": datetime.datetime.now(datetime.UTC).isoformat(),
+    "exit_code": result.returncode,
+    "stdin_file": sys.argv[3] if stdin is not None else None,
+    "stdin_sha256": hashlib.sha256(stdin).hexdigest() if stdin is not None else None,
+    "stdout": out.name,
+    "stdout_sha256": hashlib.sha256(result.stdout).hexdigest(),
+    "stderr": err.name,
+    "stderr_sha256": hashlib.sha256(result.stderr).hexdigest(),
+}
+meta_path.write_text(json.dumps(record, indent=2) + "\n")
+print(json.dumps(record, indent=2))
+sys.stdout.flush()
+sys.stdout.buffer.write(result.stdout)
+sys.stderr.buffer.write(result.stderr)
+sys.exit(result.returncode)

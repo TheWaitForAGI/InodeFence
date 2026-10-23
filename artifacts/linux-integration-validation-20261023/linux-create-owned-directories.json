@@ -1,0 +1,23 @@
+{
+  "kind": "ENGINEERING_VALIDATION_NOT_EXPERIMENT_AUTHORIZATION",
+  "argv": [
+    "docker",
+    "exec",
+    "--user",
+    "vscode",
+    "-i",
+    "d3daf9a52d2e2567420ab02708c13c925141da2b198abaa56cd98a8aa9f909b0",
+    "/opt/venv/bin/python",
+    "-"
+  ],
+  "host_cwd": "/Users/choijiwng/Projects/InodeFence-integration-linux-validation-20261023",
+  "started_utc": "2026-10-23T01:53:32.566526+00:00",
+  "finished_utc": "2026-10-23T01:53:32.693986+00:00",
+  "exit_code": 0,
+  "stdin_file": "/Users/choijiwng/Projects/InodeFence-integration-linux-validation-20261023/artifacts/linux-integration-validation-20261023/linux-setup.py.txt",
+  "stdin_sha256": "5b22d5e407895cfcc463c521ec8da7907842d0264a73a0bc8c7687578ce68c36",
+  "stdout": "linux-create-owned-directories.stdout.log",
+  "stdout_sha256": "35d1f7c3c71d568e80206b4c4900e11147e84d254300eda93b2e3799f2ba1212",
+  "stderr": "linux-create-owned-directories.stderr.log",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

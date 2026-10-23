@@ -1,0 +1,18 @@
+{
+  "scope": "new engineering log helper only; outside tested source clone",
+  "initial_check": "handoff-helper-ruff.json",
+  "initial_failure": "4 static findings: UP017 twice, UP022, PLW1510; first helper check inherited default container workdir configuration",
+  "before": "run_logged-before-polish.py.txt",
+  "changes": [
+    "datetime.UTC alias",
+    "capture_output=True",
+    "explicit check=False"
+  ],
+  "after": "run_logged.py",
+  "verification": [
+    "handoff-helper-ruff-final.json",
+    "handoff-helper-format.json"
+  ],
+  "production_or_test_changes": false,
+  "semantic_result": "same subprocess outputs/exit status, no log rewrites"
+}

@@ -1,0 +1,17 @@
+{
+  "kind": "ENGINEERING_VALIDATION_NOT_EXPERIMENT_AUTHORIZATION",
+  "argv": [
+    "/opt/homebrew/bin/python3.12",
+    "scripts/check_docs.py"
+  ],
+  "host_cwd": "/Users/choijiwng/Projects/InodeFence-integration-linux-validation-20261023",
+  "started_utc": "2026-10-23T02:10:16.468458+00:00",
+  "finished_utc": "2026-10-23T02:10:16.570176+00:00",
+  "exit_code": 0,
+  "stdin_file": null,
+  "stdin_sha256": null,
+  "stdout": "handoff-docs-host.stdout.log",
+  "stdout_sha256": "d2ba6842447ec73d0d008a32c402661735f8e17e34bae6d6cd0ffe53d82277c6",
+  "stderr": "handoff-docs-host.stderr.log",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

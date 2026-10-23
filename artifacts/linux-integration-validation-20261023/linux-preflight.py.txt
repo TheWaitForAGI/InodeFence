@@ -1,0 +1,16 @@
+import sys,os,platform,json,subprocess,importlib.metadata,hashlib,shutil
+from pathlib import Path
+import inodefence
+from scripts import container_host, track_a_container_host
+from inodefence.evaluation import n05_preflight,track_a_host_ledger
+src=Path.cwd()
+def git(*args): return subprocess.check_output(['git',*args],text=True).strip()
+assert git('rev-parse','HEAD')=='7861a7c5e0f9ca288eb36fae40b926ed60a4ca20'
+assert git('rev-parse','HEAD^{tree}')=='e0be20c2b03aea57d52731590c2d9ce581a581e8'
+assert not git('status','--porcelain=v1','--untracked-files=all')
+modules={x.__name__:x.__file__ for x in [inodefence,container_host,track_a_container_host,n05_preflight,track_a_host_ledger]}
+assert all(Path(f).is_relative_to(src) for f in modules.values())
+packages={p.metadata['Name']:p.version for p in importlib.metadata.distributions()}
+environment={'os':platform.platform(),'python':sys.version,'interpreter':sys.executable,'uid':os.getuid(),'source_sha':git('rev-parse','HEAD'),'source_tree':git('rev-parse','HEAD^{tree}'),'source_status':git('status','--porcelain=v1','--untracked-files=all'),'module_origins':modules,'packages':dict(sorted(packages.items())),'package_manifest_sha256':hashlib.sha256(json.dumps(packages,sort_keys=True).encode()).hexdigest(),'runtime_root':os.environ['INODEFENCE_RUNTIME_ROOT'],'docker_executable_in_container':shutil.which('docker'),'docker_socket_exists':Path('/var/run/docker.sock').exists(),'runtime_top_level_before':{p.name:{'inode':p.stat().st_ino,'mtime_ns':p.stat().st_mtime_ns,'mode':p.stat().st_mode} for p in Path('/var/lib/inodefence').iterdir() if p.name!='integration-validation-20261023'}}
+print(json.dumps(environment,indent=2))
+Path('/home/vscode/inodefence-integration-linux-20261023/logs/environment-before.json').write_text(json.dumps(environment,indent=2)+'\n')

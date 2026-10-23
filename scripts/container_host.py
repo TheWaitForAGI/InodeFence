@@ -7,6 +7,7 @@ is installed in the Dev Container. Requires Python 3.12 with the project install
 
 import argparse
 import base64
+import inspect
 import json
 import math
 import os
@@ -244,6 +245,32 @@ def _validate_n05_authorized_invocation(args: argparse.Namespace, authorization:
         or args.volume != authorization.runtime_volume_name
     ):
         raise ValueError("N05 invocation differs from the inspected human authorization")
+
+
+def _common_source_file(*objects: Any) -> Path | None:
+    """Return one common source origin for the exact runtime objects, or fail closed."""
+    origins = []
+    for value in objects:
+        try:
+            origin = inspect.getsourcefile(value)
+        except TypeError:
+            return None
+        if origin is None:
+            return None
+        origins.append(Path(origin))
+    if not origins or any(origin != origins[0] for origin in origins[1:]):
+        return None
+    return origins[0]
+
+
+def _n05_loaded_authorized_files(verify_authorized_source: Any) -> dict[str, Path | None]:
+    """Identify the approved project files whose code is active in the host process."""
+    return {
+        "scripts/container_host.py": Path(__file__),
+        "src/inodefence/evaluation/n05_preflight.py": _common_source_file(verify_authorized_source),
+        "src/inodefence/execution/container.py": _common_source_file(checked, remove_owned),
+        "src/inodefence/execution/docker_client.py": _common_source_file(CommandResult, DockerCLI),
+    }
 
 
 class N04HostLedger:
@@ -1090,6 +1117,20 @@ def main() -> int:
         args.authorization_record is not None or args.authorization_sha256 is not None
     ):
         parser.error("authorization records are restricted to the N05 preflight")
+    if args.mode == "preflight-node-n05-5s-v2":
+        from inodefence.evaluation.n05_preflight import (
+            HOST_SOURCE_WORKTREE,
+            verify_authorized_runtime_files,
+            verify_authorized_source,
+        )
+
+        assert n05_authorization is not None
+        _validate_n05_authorized_invocation(args, n05_authorization)
+        verify_authorized_runtime_files(
+            Path(HOST_SOURCE_WORKTREE),
+            n05_authorization,
+            _n05_loaded_authorized_files(verify_authorized_source),
+        )
     global _ACTIVE_N04_LEDGER, _ACTIVE_N05_LEDGER
     if args.mode == "preflight-node-n04-5s":
         assert args.host_ledger is not None
@@ -1104,15 +1145,6 @@ def main() -> int:
             n05_authorization,
         )
     active_ledger = _ACTIVE_N05_LEDGER or _ACTIVE_N04_LEDGER
-    if args.mode == "preflight-node-n05-5s-v2":
-        from inodefence.evaluation.n05_preflight import (
-            HOST_SOURCE_WORKTREE,
-            verify_authorized_source,
-        )
-
-        assert n05_authorization is not None
-        _validate_n05_authorized_invocation(args, n05_authorization)
-        verify_authorized_source(Path(HOST_SOURCE_WORKTREE), n05_authorization)
     executable = shutil.which("docker")
     if executable is None:
         raise BackendError("host Docker CLI unavailable")

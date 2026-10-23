@@ -604,11 +604,16 @@ engineering evidence only; N05 and pilot are `NOT_RUN`.
   a pre-claim failure can no longer look like an untouched PENDING cell.
 
 Implementation-candidate note: Unit 3 now adds `track_a_host_ledger` with canonical no-overwrite
-admission, start, bounded controller-stderr, terminal and last-published manifest records. The host
-freshly validates the original pilot/N05/protocol graph against launch-channel anchors, generates
-one attempt ID, publishes `started.json`, and only then may launch the controller. The controller
-reopens that start and uses its ID unchanged for the existing campaign claim; missing, changed or
-locally generated IDs are rejected. Once the start is published the cell is consumed, including
+admission, start, controller-launch, controller-entry, bounded controller-stderr, terminal and
+last-published manifest records. The host freshly validates the original pilot/N05/protocol graph
+against launch-channel anchors, generates one attempt ID and publishes `started.json`. For the
+current spawn it persists only the digest of a fresh ephemeral secret in `controller-launch.json`
+and transmits the plaintext solely as the first stdin frame. The controller must validate that live
+binding and atomically publish `controller-entry.json` before backend construction. Exactly one
+sequential or concurrent entry can win. The secret is launch liveness, not human approval or a new
+admission capability, and is absent from CLI arguments and retained evidence. The controller uses
+the host attempt ID unchanged for the existing campaign claim; missing, changed or locally
+generated IDs are rejected. Once the start is published the cell is consumed, including
 spawn, malformed-output, nonzero-exit, watchdog and cleanup failures, and no retry/resume path is
 provided. Pre-campaign-claim failure is recorded as PENDING with zero target executions; later
 failure retains the verified STARTED/FAILED/INVALID campaign prefix. Incomplete stderr capture,
@@ -618,11 +623,11 @@ The Unit 3 host-terminal schema records campaign observation separately from cam
 fresh successful reread may assert PENDING/STARTED/FAILED/INVALID, claim/terminal references and an
 execution count. A failed reread retains its exception and leaves those facts unknown; it never
 copies the pre-launch PENDING/zero snapshot. A completed or nonzero-execution campaign requires
-cleanup `COMPLETE` for host success. Controller entry accepts only an attempt directory containing
-the canonical `started.json`, so terminalled and partially terminalled attempts fail before backend
-construction. A process hard kill or publication failure can still leave only `started.json` (or a
-partial terminal prefix); that is residual incomplete evidence, not an automatic retry/resume
-authorization.
+cleanup `COMPLETE` for host success. Controller entry requires the exact canonical start+launch
+prefix, live launch secret and no prior entry, so repeated/concurrent losers and terminalled or
+partially terminalled attempts fail before backend construction. A process hard kill or publication
+failure can leave a start-only, launch-only, entered-without-terminal or partial-terminal prefix;
+all are residual incomplete evidence, not automatic retry/resume authorization.
 
 The process-local `VerifiedTrackAAdmission` is not serialized across the host/controller boundary.
 The host receives the original pilot path plus the externally trusted digest/reference and mints a

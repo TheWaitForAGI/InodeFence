@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import sys
 import tarfile
 from dataclasses import asdict, replace
 from hashlib import sha256
@@ -848,6 +849,134 @@ def test_host_authorization_rejects_digest_only_claim(tmp_path, monkeypatch):
         container_host._read_n05_authorization(
             authorization_path, sha256(authorization_path.read_bytes()).hexdigest()
         )
+
+
+def test_authorized_runtime_files_bind_loaded_host_code_to_source(tmp_path, monkeypatch):
+    _inputs(tmp_path, monkeypatch)
+    authorization = preflight.authorization_from_bytes(_AUTHORIZATION_CONTENT)
+
+    preflight.verify_authorized_runtime_files(
+        ROOT,
+        authorization,
+        container_host._n05_loaded_authorized_files(preflight.verify_authorized_source),
+        source=SOURCE,
+    )
+
+
+@pytest.mark.parametrize(
+    "failure_kind",
+    ("host-entry", "other-checkout-module", "digest", "unknown-origin", "symlink-origin"),
+)
+def test_host_runtime_source_mismatch_stops_before_attempt_and_docker(
+    tmp_path, monkeypatch, failure_kind
+):
+    source_root = ROOT
+    ledger_root = tmp_path / "host-ledger"
+    evidence_root = tmp_path / "evidence"
+    monkeypatch.setattr(preflight, "HOST_SOURCE_WORKTREE", str(source_root))
+    monkeypatch.setattr(preflight, "HOST_LEDGER_ROOT", ledger_root)
+    monkeypatch.setattr(preflight, "EVIDENCE_ROOT", evidence_root)
+    _inputs(tmp_path, monkeypatch)
+    authorization = preflight.authorization_from_bytes(_AUTHORIZATION_CONTENT)
+
+    alternate = tmp_path / "other-checkout"
+    alternate.mkdir()
+    if failure_kind == "host-entry":
+        alternate_entry = alternate / "container_host.py"
+        alternate_entry.write_bytes((ROOT / "scripts/container_host.py").read_bytes())
+        monkeypatch.setattr(container_host, "__file__", str(alternate_entry))
+    elif failure_kind in {"other-checkout-module", "symlink-origin"}:
+        alternate_module = alternate / "container.py"
+        if failure_kind == "symlink-origin":
+            alternate_module.symlink_to(ROOT / "src/inodefence/execution/container.py")
+        else:
+            alternate_module.write_bytes(
+                (ROOT / "src/inodefence/execution/container.py").read_bytes()
+            )
+        namespace = {}
+        exec(
+            compile(
+                (
+                    "def checked(result, operation):\n    return result.stdout\n"
+                    "def remove_owned(client, name, owner):\n    return None\n"
+                ),
+                str(alternate_module),
+                "exec",
+            ),
+            namespace,
+        )
+        monkeypatch.setattr(container_host, "checked", namespace["checked"])
+        monkeypatch.setattr(container_host, "remove_owned", namespace["remove_owned"])
+    elif failure_kind == "unknown-origin":
+        monkeypatch.setattr(container_host, "checked", len)
+    else:
+        files = list(authorization.executable_files)
+        index = next(
+            index for index, item in enumerate(files) if item.path == "scripts/container_host.py"
+        )
+        files[index] = replace(files[index], sha256="0" * 64)
+        authorization = replace(authorization, executable_files=tuple(files))
+
+    calls = {"ledger": 0, "docker": 0}
+
+    def ledger_forbidden(*args, **kwargs):
+        calls["ledger"] += 1
+        pytest.fail("runtime-source rejection created the N05 attempt ledger")
+
+    def docker_forbidden(*args, **kwargs):
+        calls["docker"] += 1
+        pytest.fail("runtime-source rejection attempted Docker access")
+
+    monkeypatch.setattr(container_host, "N05HostLedger", ledger_forbidden)
+    monkeypatch.setattr(container_host.shutil, "which", docker_forbidden)
+    monkeypatch.setattr(container_host, "_validate_n05_host_inputs", lambda *args: None)
+    monkeypatch.setattr(
+        container_host,
+        "_read_n05_authorization",
+        lambda *args: (_AUTHORIZATION_CONTENT, authorization),
+    )
+    monkeypatch.setattr(preflight, "capture_source", lambda repository: SOURCE)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "container_host.py",
+            "--context",
+            authorization.host_docker_context,
+            "--controller",
+            authorization.controller_id,
+            "--volume",
+            authorization.runtime_volume_name,
+            *(
+                argument
+                for image in authorization.frozen_targets
+                for argument in ("--image", image.image_id)
+            ),
+            "--build-context",
+            str(tmp_path / "affected"),
+            "--build-context",
+            str(tmp_path / "fixed"),
+            "--package-tarball",
+            str(tmp_path / "affected.tgz"),
+            "--package-tarball",
+            str(tmp_path / "fixed.tgz"),
+            "--evidence",
+            str(evidence_root),
+            "--host-ledger",
+            str(ledger_root),
+            "--authorization-record",
+            str(tmp_path / "authorization.json"),
+            "--authorization-sha256",
+            sha256(_AUTHORIZATION_CONTENT).hexdigest(),
+            preflight.MODE_ID,
+        ],
+    )
+
+    with pytest.raises(ValueError, match="runtime|source|digest|origin|symlink"):
+        container_host.main()
+
+    assert calls == {"ledger": 0, "docker": 0}
+    assert not ledger_root.exists()
 
 
 @pytest.mark.parametrize(

@@ -1,6 +1,8 @@
 """Linux controller entry for one Track A plan freeze or campaign cell."""
 
 import argparse
+import base64
+import json
 import sys
 from contextlib import redirect_stdout
 from dataclasses import asdict
@@ -17,7 +19,7 @@ from inodefence.evaluation.track_a_exploratory import (
 )
 from inodefence.evaluation.track_a_host_ledger import (
     TrackAControllerTerminal,
-    read_track_a_host_attempt_started,
+    claim_track_a_controller_entry,
 )
 from inodefence.execution import ContainerExecutionBackend, StdioDockerClient
 from inodefence.targets.node_tar import NodeTarTarget
@@ -32,6 +34,7 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--evidence", required=True, type=Path)
     parser.add_argument("--host-ledger", type=Path)
     parser.add_argument("--host-started-sha256")
+    parser.add_argument("--host-launch-sha256")
     parser.add_argument("--attempt-id")
     parser.add_argument("--run-index", type=int)
     parser.add_argument("--execution-sha256")
@@ -54,6 +57,7 @@ def _arguments() -> argparse.Namespace:
         or args.execution_sha256 is None
         or args.host_ledger is None
         or args.host_started_sha256 is None
+        or args.host_launch_sha256 is None
         or args.attempt_id is None
         or args.protocol_config is None
     ):
@@ -67,6 +71,25 @@ def _arguments() -> argparse.Namespace:
     return args
 
 
+def _controller_launch_secret() -> bytes:
+    line = sys.stdin.readline(1025)
+    try:
+        if not line.endswith("\n") or len(line) > 1024:
+            raise ValueError("bounded launch frame required")
+        value = json.loads(line)
+        if not isinstance(value, dict) or set(value) != {"controller_launch_secret"}:
+            raise ValueError("unexpected launch frame")
+        encoded = value["controller_launch_secret"]
+        if not isinstance(encoded, str):
+            raise ValueError("launch secret must be encoded text")
+        secret = base64.b64decode(encoded, validate=True)
+        if len(secret) != 32:
+            raise ValueError("launch secret must have exact entropy length")
+        return secret
+    except (ValueError, TypeError) as error:
+        raise ValueError("invalid Track A live controller launch handshake") from error
+
+
 def main() -> int:
     args = _arguments()
     broker_stdout = sys.stdout
@@ -75,26 +98,24 @@ def main() -> int:
         assert args.execution_sha256 is not None
         assert args.host_ledger is not None
         assert args.host_started_sha256 is not None
+        assert args.host_launch_sha256 is not None
         assert args.attempt_id is not None
         assert args.protocol_config is not None
-        host_attempt, snapshot = read_track_a_host_attempt_started(
+        launch_secret = _controller_launch_secret()
+        host_attempt, _, snapshot = claim_track_a_controller_entry(
             args.host_ledger,
             args.run_index,
             expected_started_sha256=args.host_started_sha256,
+            expected_launch_sha256=args.host_launch_sha256,
+            expected_attempt_id=args.attempt_id,
+            expected_execution_sha256=args.execution_sha256,
+            controller_id=args.controller,
+            runtime_volume_name=args.volume,
+            image_ids=tuple(args.image),
+            evidence_root=args.evidence,
+            launch_secret=launch_secret,
             protocol_config_path=args.protocol_config,
         )
-        if host_attempt.attempt_id != args.attempt_id:
-            raise ValueError("controller attempt ID differs from the host-published attempt")
-        if host_attempt.execution_sha256 != args.execution_sha256:
-            raise ValueError("controller execution digest differs from the host attempt")
-        authorization = snapshot.admission.pilot_authorization
-        if (
-            args.controller != authorization.controller_id
-            or args.volume != authorization.runtime_volume_name
-            or args.image != [item.image_id for item in authorization.targets]
-            or args.evidence != Path(host_attempt.output_root)
-        ):
-            raise ValueError("controller launch inputs differ from the admitted host attempt")
         client = StdioDockerClient(sys.stdin, broker_stdout)
         backend = ContainerExecutionBackend(client, args.controller, args.volume, args.owner)
         scheduled = snapshot.repetitions.plan.runs[args.run_index]

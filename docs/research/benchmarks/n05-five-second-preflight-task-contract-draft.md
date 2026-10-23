@@ -32,8 +32,10 @@ human-correspondence result.
 | Attempt wall ceiling | 30 minutes, including inspection, readers and cleanup |
 | Target archive budget | 8 benign extractions; no retry |
 
-All four destinations must be absent at admission. Creation of the host ledger consumes the
-one attempt even if source, identity, containment or metadata admission fails. The consumed N04
+All four destinations must be absent at admission. Authorization, invocation, clean-source and
+loaded host-code origin checks run before host-ledger creation and Docker access; rejection there
+does not consume the attempt. Once those checks pass, creation of the host ledger consumes the one
+attempt even if later Docker identity, containment or metadata admission fails. The consumed N04
 ledger/evidence paths and attempt ID are forbidden inputs and must remain unchanged.
 
 ## Exact source and image identities
@@ -115,6 +117,16 @@ wall-clock bound and both isolation profiles. `pilot_authorized` is always false
 field records attribution but is not a cryptographic signature; its trust remains an external
 review responsibility.
 
+Before creating that ledger, the host also binds the active `scripts/container_host.py` entry and
+the loaded N05 host-side project modules (`n05_preflight`, container backend and Docker client) to
+their exact canonical nonsymlink paths under the authorized worktree and rehashes those actual
+origin files against the authorization. This applies equally to `python -m` and imported-module
+test execution. An unknown origin, source-less loader, alternate checkout/install, editable-install
+path drift or symlink is rejected. The controller entry and independent reader are not imported
+merely for host attestation; their bytes remain frozen by the complete executable-file list and are
+executed later from the same read-only source mount. This is project-file provenance, not Python
+interpreter or third-party-library attestation. No evidence schema changes result from this guard.
+
 The controller has no Docker socket/CLI, uses network `none`, read-only rootfs, UID/GID 1000,
 cap-drop `ALL`, no-new-privileges, no devices, private PID/IPC/cgroup namespaces, 1 GiB memory
 and swap, 256 PIDs and a 256 MiB `nosuid,nodev` tmpfs. Its only source mount is the eventual
@@ -163,10 +175,13 @@ mismatch, uncertain removal or any cleanup error is retained and downgrades the 
 ## Fail-closed conditions and authorization gate
 
 Stop before host-ledger creation until a reviewed clean N05 integration source and controller image
-are frozen in the separate authorization record. Stop before target execution on any dirty/unreviewed source, missing exact
-authorization record, wrong package/image/controller/platform identity, mutable reference,
-unexpected host command, controller-visible host inspection, privilege/mount/resource drift,
-evidence-path existence, reader unavailability or containment mismatch.
+are frozen in the separate authorization record. Also stop before ledger creation and without
+consuming the attempt when the running host entry or loaded approved host module cannot be tied to
+that source by canonical path and digest. Stop before target execution on any dirty/unreviewed
+source, missing exact authorization record, wrong package/image/controller/platform identity,
+mutable reference, unexpected host command, controller-visible host inspection,
+privilege/mount/resource drift, evidence-path existence, reader unavailability or containment
+mismatch.
 
 Authorization requires all of the following:
 

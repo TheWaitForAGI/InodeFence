@@ -3,7 +3,7 @@
 import math
 import os
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -104,6 +104,12 @@ AUTHORIZED_EXECUTABLE_PATHS = (
     "src/inodefence/execution/container.py",
     "src/inodefence/execution/docker_client.py",
     "src/inodefence/targets/_node_worker.cjs",
+)
+HOST_RUNTIME_EXECUTABLE_PATHS = (
+    "scripts/container_host.py",
+    "src/inodefence/evaluation/n05_preflight.py",
+    "src/inodefence/execution/container.py",
+    "src/inodefence/execution/docker_client.py",
 )
 CONTROLLER_ISOLATION_PROFILE = "n05-controller-isolation-v2"
 TARGET_ISOLATION_PROFILE = "docker-volume-subpath-v1"
@@ -310,14 +316,78 @@ def verify_authorized_source(
     assert captured is not None
     if captured != SourceProvenance(authorization.execution_source_revision, False):
         raise ValueError("execution source revision/cleanliness differs from authorization")
-    observed = tuple(
-        N05AuthorizedFile(path, sha256((repository / path).read_bytes()).hexdigest())
-        for path in sorted(AUTHORIZED_EXECUTABLE_PATHS)
-    )
+    observed_files = []
+    for path in sorted(AUTHORIZED_EXECUTABLE_PATHS):
+        source_path = repository / path
+        try:
+            resolved = source_path.resolve(strict=True)
+        except (OSError, RuntimeError) as error:
+            raise ValueError(f"authorized source file is unavailable: {path}") from error
+        if source_path.is_symlink() or resolved != source_path or not source_path.is_file():
+            raise ValueError(f"authorized source file must be a canonical nonsymlink file: {path}")
+        observed_files.append(N05AuthorizedFile(path, sha256(source_path.read_bytes()).hexdigest()))
+    observed = tuple(observed_files)
     if observed != authorization.executable_files:
         raise ValueError("execution source file digests differ from authorization")
     if recapture and capture_source(repository) != captured:
         raise ValueError("execution source changed during authorization admission")
+    return captured
+
+
+def verify_authorized_runtime_files(
+    repository: Path,
+    authorization: N05PreflightAuthorization,
+    loaded_files: Mapping[str, Path | None],
+    *,
+    source: SourceProvenance | None = None,
+) -> SourceProvenance:
+    """Bind the running host entry and N05 host modules to authorized source files."""
+    try:
+        resolved_repository = repository.resolve(strict=True)
+    except (OSError, RuntimeError) as error:
+        raise ValueError("N05 authorized source worktree is unavailable") from error
+    if (
+        not repository.is_absolute()
+        or repository.is_symlink()
+        or resolved_repository != repository
+        or not repository.is_dir()
+    ):
+        raise ValueError("N05 authorized source worktree must be a canonical nonsymlink directory")
+    if set(loaded_files) != set(HOST_RUNTIME_EXECUTABLE_PATHS):
+        raise ValueError("N05 runtime source binding has an unexpected executable set")
+
+    captured = verify_authorized_source(repository, authorization, source=source)
+    authorized = {item.path: item.sha256 for item in authorization.executable_files}
+    for relative_path in HOST_RUNTIME_EXECUTABLE_PATHS:
+        origin = loaded_files[relative_path]
+        if origin is None:
+            raise ValueError(f"N05 runtime source origin is unavailable: {relative_path}")
+        expected = repository / relative_path
+        try:
+            resolved_origin = origin.resolve(strict=True)
+        except (OSError, RuntimeError) as error:
+            raise ValueError(
+                f"N05 runtime source origin is unavailable: {relative_path}"
+            ) from error
+        if (
+            not origin.is_absolute()
+            or origin.is_symlink()
+            or resolved_origin != origin
+            or not origin.is_file()
+        ):
+            raise ValueError(
+                f"N05 runtime source origin must be a canonical nonsymlink file: {relative_path}"
+            )
+        if origin != expected:
+            raise ValueError(
+                f"N05 runtime source origin differs from authorized worktree: {relative_path}"
+            )
+        if sha256(origin.read_bytes()).hexdigest() != authorized[relative_path]:
+            raise ValueError(
+                f"N05 runtime source digest differs from authorization: {relative_path}"
+            )
+    if source is None and capture_source(repository) != captured:
+        raise ValueError("execution source changed during runtime-source admission")
     return captured
 
 

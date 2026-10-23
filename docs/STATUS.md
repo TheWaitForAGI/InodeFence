@@ -6,7 +6,7 @@
 
 | P0 | 담당 | 상태 (10/23) | 다음 할 일 |
 | --- | --- | --- | --- |
-| P0-1 실제 node-tar 실행 | 규민 | 부분: v2 qualification 경로에서 실제 실행 이력 있음, N05 host 경로 실패 | 재현 가능한 실행 명령 1개 |
+| P0-1 실제 node-tar 실행 | 규민 | 통과: make node-tar-smoke (macOS/OrbStack, 10/23) | — |
 | P0-2 중간 상태 관찰 | 민찬 | 동작: v2 producer 필수 기준 14개 중 13개 통과, replacement coverage 1개 미달 | 한계 표현 결정, trace 출력 포맷 |
 | P0-3 Oracle 검증 | 민찬 | C0/C1/C2 fixture TESTED | 데모용 fixture 세트 |
 | P0-4 Feedback 기반 Mutation | 주언 | `run_effect_campaign` 구현, synthetic producer로만 실행 | 실제 producer 연결, 선택 근거 출력 |

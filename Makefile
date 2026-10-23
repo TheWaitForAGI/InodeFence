@@ -2,7 +2,7 @@ PYTHON ?= python
 CASE ?= regular-file
 BASELINE_CASES := regular-file directory hardlink symlink
 
-.PHONY: install target-tools lint format-check typecheck test env-check docs-check check fixtures probe isolation-support node-entry-timing-probe
+.PHONY: install target-tools lint format-check typecheck test env-check docs-check check fixtures probe isolation-support node-entry-timing-probe node-tar-smoke node-tar-effect-check
 
 target-tools:
 	npm ci --prefix tools/node-tar --ignore-scripts --no-audit --no-fund
@@ -47,3 +47,9 @@ endif
 
 node-entry-timing-probe:
 	PYTHONPATH=src $(PYTHON) scripts/probe_node_entry_timing.py
+
+node-tar-smoke:
+	bash scripts/local_node_tar_smoke.sh smoke
+
+node-tar-effect-check:
+	bash scripts/local_node_tar_smoke.sh effect

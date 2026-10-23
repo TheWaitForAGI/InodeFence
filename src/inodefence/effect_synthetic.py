@@ -324,3 +324,8 @@ def _result(case: ArchiveCase, *, source: str = "synthetic") -> EffectRunResult:
         evaluate_contracts(trace.before, trace.after),
     )
     return EffectRunResult(base, trace)
+
+
+def synthetic_effect_result(case: ArchiveCase) -> EffectRunResult:
+    """Public EffectResultProducer for demos; output is synthetic, never native evidence."""
+    return _result(case)

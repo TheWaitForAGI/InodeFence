@@ -22,6 +22,8 @@ from time import monotonic
 from typing import Protocol
 from uuid import uuid4
 
+from scripts.run_effect_demo import DEMO_ARGUMENTS, add_demo_arguments, check_demo_arguments
+
 from inodefence.execution.container import OWNER_LABEL, checked, remove_owned
 from inodefence.execution.docker_client import BackendError, CommandResult, DockerCLI
 
@@ -434,6 +436,7 @@ def main() -> int:
         type=Path,
         help="new exact host-side attempt ledger; N04 preflight only",
     )
+    add_demo_arguments(parser)
     parser.add_argument(
         "mode",
         choices=(
@@ -445,6 +448,7 @@ def main() -> int:
             "benign-node-smoke",
             "qualify-node-n01",
             "preflight-node-n04-5s",
+            "effect-demo",
         ),
     )
     args = parser.parse_args()
@@ -453,9 +457,11 @@ def main() -> int:
         "qualify-node-effect-v2",
         "qualify-node-n01",
         "preflight-node-n04-5s",
+        "effect-demo",
     }
     if (args.mode in evidence_modes) != (args.evidence is not None):
         parser.error("evidence mode requires --evidence; validation modes do not export")
+    check_demo_arguments(parser, args)
     pair_mode = args.mode in {"qualify-node-n01", "preflight-node-n04-5s"}
     preflight_started = monotonic() if args.mode == "preflight-node-n04-5s" else None
     preflight_deadline = None
@@ -547,6 +553,12 @@ def main() -> int:
         owner,
         *(argument for image in args.image for argument in ("--image", image)),
         *(("--evidence", str(args.evidence)) if args.evidence is not None else ()),
+        *(
+            argument
+            for name in DEMO_ARGUMENTS
+            if getattr(args, name) is not None
+            for argument in (f"--{name.replace('_', '-')}", str(getattr(args, name)))
+        ),
         args.mode,
     )
     try:

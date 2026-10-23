@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Local replay of the CI container-integration job (.github/workflows/ci.yml).
 #
-# Usage: scripts/local_node_tar_smoke.sh [smoke|effect]
+# Usage: scripts/local_node_tar_smoke.sh [smoke|effect|demo]
 #   smoke  (default) validate, validate-node-image, validate-node-target, benign-node-smoke
 #   effect           validate-node-effect-producer
+#   demo             effect-demo: feedback loop on real node-tar, JSON copied to the host
 #
 # The real target runs only inside the trusted non-root Linux controller; this host
 # script only builds images, prepares that controller and delegates through
@@ -11,13 +12,15 @@
 #
 # Overrides: INODEFENCE_DOCKER_CONTEXT (default: `docker context show`),
 # PYTHON (default: python3.12), INODEFENCE_EVIDENCE_DIR (default: ~/inodefence-evidence).
+# demo only: DEMO_POLICY, DEMO_MUTATION_POLICY, DEMO_SEED, DEMO_BUDGET (controller defaults
+# P2 adaptive, M1, 123, 20; budget is capped at 100 in code).
 set -euo pipefail
 
 MODE="${1:-smoke}"
 case "$MODE" in
-  smoke | effect) ;;
+  smoke | effect | demo) ;;
   *)
-    echo "usage: $0 [smoke|effect]" >&2
+    echo "usage: $0 [smoke|effect|demo]" >&2
     exit 2
     ;;
 esac
@@ -34,8 +37,13 @@ CONTROLLER=inodefence-local-controller
 VOLUME=inodefence-local-runtime
 
 STAMP="$(date +%Y%m%d-%H%M%S)"
-CONTROLLER_EVIDENCE="/tmp/inodefence-node-smoke-$STAMP"
-HOST_EVIDENCE="$EVIDENCE_DIR/inodefence-node-smoke-$STAMP"
+if [ "$MODE" = demo ]; then
+  CONTROLLER_EVIDENCE="/tmp/inodefence-effect-demo-native-$STAMP.json"
+  HOST_EVIDENCE="$EVIDENCE_DIR/inodefence-effect-demo-native-$STAMP.json"
+else
+  CONTROLLER_EVIDENCE="/tmp/inodefence-node-smoke-$STAMP"
+  HOST_EVIDENCE="$EVIDENCE_DIR/inodefence-node-smoke-$STAMP"
+fi
 
 STEP="setup"
 CREATED_VOLUME=0
@@ -61,8 +69,8 @@ cleanup() {
   if [ "$status" -ne 0 ]; then
     echo "FAILED at step: $STEP (exit $status)" >&2
   fi
-  if [ "$CREATED_CONTROLLER" -eq 1 ] && [ "$MODE" = smoke ] &&
-    dk exec "$CONTROLLER" test -d "$CONTROLLER_EVIDENCE"; then
+  if [ "$CREATED_CONTROLLER" -eq 1 ] && [ "$MODE" != effect ] &&
+    dk exec "$CONTROLLER" test -e "$CONTROLLER_EVIDENCE"; then
     mkdir -p "$EVIDENCE_DIR"
     if dk cp "$CONTROLLER:$CONTROLLER_EVIDENCE" "$HOST_EVIDENCE"; then
       echo "evidence: $HOST_EVIDENCE"
@@ -117,6 +125,17 @@ dk exec "$CONTROLLER" git config --global --add safe.directory /workspaces/Inode
 
 IF_HELPER_IMAGE="$(dk image inspect "$HELPER_IMAGE" --format '{{.Id}}')"
 IF_NODE_IMAGE="$(dk image inspect "$NODE_IMAGE" --format '{{.Id}}')"
+
+if [ "$MODE" = demo ]; then
+  step "effect-demo"
+  DEMO_ARGS=()
+  [ -n "${DEMO_POLICY:-}" ] && DEMO_ARGS+=(--policy "$DEMO_POLICY")
+  [ -n "${DEMO_MUTATION_POLICY:-}" ] && DEMO_ARGS+=(--mutation-policy "$DEMO_MUTATION_POLICY")
+  [ -n "${DEMO_SEED:-}" ] && DEMO_ARGS+=(--seed "$DEMO_SEED")
+  [ -n "${DEMO_BUDGET:-}" ] && DEMO_ARGS+=(--budget "$DEMO_BUDGET")
+  host --image "$IF_NODE_IMAGE" --evidence "$CONTROLLER_EVIDENCE" ${DEMO_ARGS[@]+"${DEMO_ARGS[@]}"} effect-demo
+  exit 0
+fi
 
 if [ "$MODE" = effect ]; then
   step "validate-node-effect-producer"

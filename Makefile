@@ -8,7 +8,7 @@ DEMO_SEED ?= 123
 DEMO_BUDGET ?= 20
 DEMO_OUT ?= $(or $(INODEFENCE_RUNTIME_ROOT),/var/lib/inodefence)/demo/effect-demo-$(DEMO_PRODUCER).json
 
-.PHONY: install target-tools lint format-check typecheck test env-check docs-check check fixtures probe isolation-support node-entry-timing-probe node-tar-smoke node-tar-effect-check demo
+.PHONY: install target-tools lint format-check typecheck test env-check docs-check check fixtures probe isolation-support node-entry-timing-probe node-tar-smoke node-tar-effect-check demo demo-native
 
 target-tools:
 	npm ci --prefix tools/node-tar --ignore-scripts --no-audit --no-fund
@@ -62,3 +62,6 @@ node-tar-effect-check:
 
 demo:
 	PYTHONPATH=src $(PYTHON) -m scripts.run_effect_demo --producer $(DEMO_PRODUCER) --policy $(DEMO_POLICY) --mutation-policy $(DEMO_MUTATION_POLICY) --seed $(DEMO_SEED) --budget $(DEMO_BUDGET) --out $(DEMO_OUT)
+
+demo-native:
+	DEMO_POLICY=$(DEMO_POLICY) DEMO_MUTATION_POLICY=$(DEMO_MUTATION_POLICY) DEMO_SEED=$(DEMO_SEED) DEMO_BUDGET=$(DEMO_BUDGET) bash scripts/local_node_tar_smoke.sh demo

@@ -11,8 +11,42 @@ from contextlib import redirect_stdout
 from pathlib import Path
 
 import pytest
+from scripts.run_effect_demo import (
+    NativeDemoAborted,
+    add_demo_arguments,
+    check_demo_arguments,
+    demo_options,
+    native_demo_report,
+)
 
+from inodefence.effect_demo import render_effect_campaign_report
 from inodefence.execution import ContainerExecutionBackend, StdioDockerClient
+
+
+def run_native_effect_demo(
+    backend: ContainerExecutionBackend, image: str, evidence: Path, args: argparse.Namespace
+) -> int:
+    """Feedback loop on real node-tar; an infrastructure abort still leaves evidence."""
+    try:
+        report = native_demo_report(backend, image, **demo_options(args))
+        returncode = 0
+    except NativeDemoAborted as error:
+        report = {
+            "label": "demo run",
+            "producer": "native",
+            "aborted": {
+                "step_index": error.step_index,
+                "case_id": error.case_id,
+                "reason": error.reason,
+                "observed": error.observed,
+            },
+        }
+        print(f"effect-demo aborted: {error}", file=sys.stderr)
+        returncode = 1
+    with evidence.open("x", encoding="ascii") as stream:
+        stream.write(render_effect_campaign_report(report))
+    print(f"effect demo report: {evidence}", file=sys.stderr)
+    return returncode
 
 
 class IntegrationFixtures:
@@ -44,6 +78,7 @@ def main() -> int:
     parser.add_argument("--owner", required=True)
     parser.add_argument("--image", required=True, action="append")
     parser.add_argument("--evidence", type=Path)
+    add_demo_arguments(parser)
     parser.add_argument(
         "mode",
         choices=(
@@ -55,6 +90,7 @@ def main() -> int:
             "benign-node-smoke",
             "qualify-node-n01",
             "preflight-node-n04-5s",
+            "effect-demo",
         ),
     )
     args = parser.parse_args()
@@ -63,9 +99,11 @@ def main() -> int:
         "qualify-node-effect-v2",
         "qualify-node-n01",
         "preflight-node-n04-5s",
+        "effect-demo",
     }
     if (args.mode in evidence_modes) != (args.evidence is not None):
         parser.error("evidence mode requires --evidence; validation modes do not export")
+    check_demo_arguments(parser, args)
     pair_mode = args.mode in {"qualify-node-n01", "preflight-node-n04-5s"}
     expected_images = 2 if pair_mode else 1
     if len(args.image) != expected_images:
@@ -263,6 +301,9 @@ def main() -> int:
             print(verified.stderr, end="", file=sys.stderr)
             return verified.returncode
         backend = ContainerExecutionBackend(client, args.controller, args.volume, args.owner)
+        if args.mode == "effect-demo":
+            assert args.evidence is not None
+            return run_native_effect_demo(backend, args.image[0], args.evidence, args)
         suite = {
             "validate": "check_boundary.py",
             "validate-node-image": "check_node_image.py",

@@ -107,3 +107,11 @@ evidence이며 historical target qualification/rediscovery가 아니다. 대응
 A3 `LEGACY_NO_REORDER` / `M1_NO_REORDER` /
 `M1_PROTECTED_COMPONENTS_NO_REORDER`는 reorder slot과 RNG 소비를 유지하면서
 reorder child만 버린다. 다른 operator 확률은 그대로이며 retry는 없다.
+
+별도 `M1_PROTECTED_COMPONENTS_ESCAPE_HARDLINK` policy는
+`M1_PROTECTED_COMPONENTS`와 slot 순서·확률·RNG 소비가 같고 ADD_HARDLINK slot만
+`add_escaping_hardlink`로 교체한다. 이 slot은 기존 entry path를 재사용하는 대신
+parent-traversal(`..`)과 controlled component vocabulary로 extraction root 밖을
+가리키는 target을 generic하게 생성한다. 특정 CVE/PoC/target/version 경로를
+하드코딩하지 않으며, 외부 object 도달 여부는 vocabulary와 RNG의 generic 결과다.
+새 `MutationOperatorId`를 추가하지 않아 8-slot 분포와 seed 재현성은 불변이다.

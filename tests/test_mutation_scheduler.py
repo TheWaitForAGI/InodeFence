@@ -49,6 +49,7 @@ def _legacy_reference(case: ArchiveCase, rng: random.Random, policy: MutationPol
         MutationPolicy.M1_NO_REORDER: m1.OPERATORS,
         MutationPolicy.M1_PROTECTED_COMPONENTS: m1_addressing.OPERATORS,
         MutationPolicy.M1_PROTECTED_COMPONENTS_NO_REORDER: m1_addressing.OPERATORS,
+        MutationPolicy.M1_PROTECTED_COMPONENTS_ESCAPE_HARDLINK: m1_addressing.ESCAPE_OPERATORS,
     }[policy]
     operator = rng.choice(table)
     child = operator(case, rng)

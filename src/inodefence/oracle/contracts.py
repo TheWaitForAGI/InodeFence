@@ -1,6 +1,7 @@
 """Snapshot-supported C0/C1/C2 candidates; no input-pattern or exit-code gates."""
 
 from inodefence.model import (
+    BoundaryIdentityEvidence,
     ChangeField,
     ContractId,
     IdentityEvidence,
@@ -93,3 +94,31 @@ def evaluate_contracts(before: StateSnapshot, after: StateSnapshot) -> tuple[Vio
             _SNAPSHOT_LIMITS + ("atime is excluded because observation may itself read files.",),
         ),
     )
+
+
+def generalized_identity_confinement(
+    after: StateSnapshot,
+) -> tuple[BoundaryIdentityEvidence, ...]:
+    """Additive C1 generalization: extraction objects aliasing any outside object.
+
+    The initial C1 in evaluate_contracts compares extraction objects only with
+    the protected external sentinels. This detector reports every extraction
+    object whose post-state (st_dev, st_ino) is shared with any non-extraction
+    object, including harness objects such as archive/input.tar and non-sentinel
+    external objects. It is strictly additive: it does not call or modify
+    evaluate_contracts and never changes the C0/C1/C2 ViolationResult tuple, so
+    callers consume this evidence independently of the existing verdict.
+
+    Same-region (extraction/extraction) aliasing is intentionally excluded: that
+    is benign internal sharing, not a boundary escape. Device/inode equality is
+    an observation-time proxy and does not distinguish inode reuse, matching the
+    C1 limitation. Symlinks compare their own lstat identity, not a referent.
+    """
+    evidence = [
+        BoundaryIdentityEvidence(internal.path, external.path, *internal.identity)
+        for internal in after.objects
+        if internal.region == Region.EXTRACTION
+        for external in after.objects
+        if external.region != Region.EXTRACTION and internal.identity == external.identity
+    ]
+    return tuple(sorted(evidence, key=lambda item: (item.internal_path, item.external_path)))

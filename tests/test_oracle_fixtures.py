@@ -15,11 +15,14 @@ from inodefence.builder import build_tar
 from inodefence.model import (
     ArchiveCase,
     ArchiveEntry,
+    BoundaryIdentityEvidence,
     ChangeField,
     EntryType,
     IdentityEvidence,
+    Region,
     StateChange,
 )
+from inodefence.oracle import generalized_identity_confinement
 from inodefence.pipeline import run_case
 
 FIXTURES = {fixture.name: fixture for fixture in ORACLE_FIXTURES}
@@ -68,6 +71,39 @@ def test_c2_fixture_changes_sentinel_content_without_identity_sharing() -> None:
     assert isinstance(change, StateChange) and change.path == "outside/sentinel.txt"
     assert ChangeField.CONTENT in change.fields
     assert ChangeField.IDENTITY not in change.fields
+
+
+def test_generalized_identity_confinement_flags_harness_alias_outside_c0_c1_c2() -> None:
+    """A boundary case the 3-tuple misses: extract/ aliasing the harness input TAR.
+
+    The controlled extractor hardlinks extract/shared onto archive/input.tar, so
+    the extraction object shares the harness input's inode. No sentinel is
+    touched, no namespace object outside extract/ is created/deleted/retyped, and
+    the alias is not the external sentinel, so C0/C1/C2 all stay False. The
+    additive generalized detector reports the extraction<->harness identity pair.
+    """
+    case = ArchiveCase(
+        (ArchiveEntry("shared", EntryType.HARDLINK, link_target="../archive/input.tar"),)
+    )
+    result = run_case(case, UncheckedControlledExtractor())
+    assert tuple(verdict.violated for verdict in result.violations) == (False, False, False)
+
+    evidence = generalized_identity_confinement(result.after)
+    assert len(evidence) == 1
+    (shared,) = evidence
+    assert isinstance(shared, BoundaryIdentityEvidence)
+    assert (shared.internal_path, shared.external_path) == ("extract/shared", "archive/input.tar")
+    assert shared.external_region == Region.HARNESS
+    harness_input = result.after.get("archive/input.tar")
+    assert harness_input is not None
+    assert (shared.st_dev, shared.st_ino) == harness_input.identity
+
+
+def test_generalized_identity_confinement_ignores_benign_internal_aliasing() -> None:
+    """Two extract/ objects sharing an inode is benign and must not be reported."""
+    result = run_oracle_fixture(FIXTURES["normal"])
+    assert tuple(verdict.violated for verdict in result.violations) == (False, False, False)
+    assert generalized_identity_confinement(result.after) == ()
 
 
 def test_controlled_extractor_refuses_to_leave_the_sandbox() -> None:

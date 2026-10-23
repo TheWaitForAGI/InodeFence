@@ -13,6 +13,11 @@ class MutationPolicy(StrEnum):
     LEGACY_NO_REORDER = "uniform-generic-no-reorder-v1"
     M1_NO_REORDER = "uniform-generic-m1-no-reorder-v1"
     M1_PROTECTED_COMPONENTS_NO_REORDER = "uniform-generic-m1-protected-components-no-reorder-v1"
+    # Additive: same slots/draws as M1_PROTECTED_COMPONENTS, but the hardlink slot
+    # addresses an extraction-root-escaping target instead of an in-archive path.
+    M1_PROTECTED_COMPONENTS_ESCAPE_HARDLINK = (
+        "uniform-generic-m1-protected-components-escape-hardlink-v1"
+    )
 
 
 def mutate_with_policy(

@@ -265,34 +265,42 @@ The target-free Unit 3 interface gives `run-cell` the original pilot authorizati
 trusted externally supplied SHA-256, the trusted approval reference, the frozen execution digest
 and protocol path. Before consuming an attempt, the host reopens the original pilot/N05/protocol
 graph and compares it with the retained Track A admission. It then publishes one no-overwrite
-`started.json`, passes that host-owned attempt ID and start checksum to the controller, and writes
-bounded `controller-stderr.bin`, `terminal.json` and last-published `manifest.json` under:
+`started.json`. For the current spawn only, it publishes a launch record containing a digest of a
+fresh ephemeral secret and sends the secret as the first controller stdin frame. The controller
+must atomically publish the one-shot entry record before constructing its backend. It then uses
+the host-owned attempt ID unchanged and the host writes bounded `controller-stderr.bin`,
+`terminal.json` and last-published `manifest.json` under:
 
 ```text
 <authorized-host-ledger-root>/
   admission/verified-admission.json
   attempts/00-<run-id>/
     started.json
+    controller-launch.json
+    controller-entry.json
     controller-stderr.bin
     terminal.json
     manifest.json
 ```
 
 The controller reopens those canonical records and the retained original evidence before claiming
-the campaign slot. It never generates or substitutes an attempt ID. Stored admission records and
-digests are retained integrity evidence, not proof of the named human's identity. A published host
-start consumes the cell even when spawn, output parsing, exit, watchdog or cleanup fails; no retry
-or resume path exists. A pre-campaign-claim failure records PENDING with zero target executions,
+the campaign slot. It never generates or substitutes an attempt ID. The ephemeral launch secret is
+not a human approval or live admission capability; only its digest is durable, and the plaintext is
+absent from CLI arguments and evidence files. Atomic no-overwrite entry publication admits exactly
+one controller before backend construction. Stored admission records and digests are retained
+integrity evidence, not proof of the named human's identity. A published host start consumes the
+cell even when spawn, output parsing, exit, watchdog or cleanup fails; no retry or resume path
+exists. A pre-campaign-claim failure records PENDING with zero target executions,
 while later failure preserves the existing STARTED/FAILED/INVALID campaign prefix. Controller
-entry accepts only a start-only attempt directory; any terminal, manifest or stderr artifact blocks
-replay before backend construction. If the post-controller campaign reread fails, the host terminal
+entry requires the exact launch binding and live secret; an existing entry or any terminal,
+manifest or stderr artifact blocks replay before backend construction. If the post-controller campaign reread fails, the host terminal
 records an explicit failed observation and does not substitute the pre-launch PENDING snapshot.
 Completed or nonzero-execution campaigns require cleanup `COMPLETE`; `NOT_NEEDED` is limited to
 failed attempts for which no cleanup target was created.
 
 A hard process kill or evidence-filesystem failure can still prevent terminal publication. In
-particular, a kill after durable start but before a later artifact leaves a consumed start-only
-attempt; that residual is not a supported retry signal.
+particular, start-only, launch-only and entry-without-terminal prefixes are all consumed residuals,
+not supported retry signals. A lost live secret cannot be reconstructed from its retained digest.
 
 Actual host/controller deployment is not qualified by Unit 3. The controller namespace must have
 read-only access at the recorded absolute paths to the authorized host ledger, Track A evidence,

@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from hashlib import sha256
+from hmac import compare_digest
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
@@ -29,7 +30,9 @@ if TYPE_CHECKING:
 
 
 HOST_ADMISSION_NAME = "admission/verified-admission.json"
-HOST_ATTEMPT_FORMAT = "track-a-host-attempt-v2"
+CONTROLLER_LAUNCH_NAME = "controller-launch.json"
+CONTROLLER_ENTRY_NAME = "controller-entry.json"
+HOST_ATTEMPT_FORMAT = "track-a-host-attempt-v3"
 
 
 def _timestamp(value: str) -> None:
@@ -161,6 +164,93 @@ class TrackAHostAttemptStarted:
 
 
 @dataclass(frozen=True, slots=True)
+class TrackAControllerLaunch:
+    """Durable intent for one live host-spawned controller process.
+
+    The secret digest binds the live stdin handshake. It is not human approval,
+    an admission capability, or a value a controller may replace.
+    """
+
+    serialization_schema: ClassVar[int] = 1
+
+    attempt_id: str
+    run_index: int
+    run_id: str
+    config_id: str
+    execution_sha256: str
+    plan_sha256: str
+    host_admission: ArtifactReference
+    started: ArtifactReference
+    controller_id: str
+    launch_secret_sha256: str
+    authorized_at: str
+    state: str = "controller_launch_authorized"
+
+    def __post_init__(self) -> None:
+        _text(self.attempt_id)
+        if type(self.run_index) is not int or self.run_index < 0:
+            raise ValueError("controller launch requires a nonnegative run index")
+        _text(self.run_id)
+        _digest(self.config_id)
+        _digest(self.execution_sha256)
+        _digest(self.plan_sha256)
+        if (
+            not isinstance(self.host_admission, ArtifactReference)
+            or self.host_admission.name != HOST_ADMISSION_NAME
+            or not isinstance(self.started, ArtifactReference)
+            or self.started.name != "started.json"
+        ):
+            raise ValueError("invalid controller launch evidence binding")
+        _text(self.controller_id)
+        _digest(self.launch_secret_sha256)
+        _timestamp(self.authorized_at)
+        if self.state != "controller_launch_authorized":
+            raise ValueError("invalid controller launch state")
+
+
+@dataclass(frozen=True, slots=True)
+class TrackAControllerEntry:
+    """Atomic one-shot controller consumption of a live host launch."""
+
+    serialization_schema: ClassVar[int] = 1
+
+    attempt_id: str
+    run_index: int
+    run_id: str
+    config_id: str
+    execution_sha256: str
+    plan_sha256: str
+    host_admission: ArtifactReference
+    started: ArtifactReference
+    controller_launch: ArtifactReference
+    controller_id: str
+    entered_at: str
+    state: str = "controller_entry_consumed"
+
+    def __post_init__(self) -> None:
+        _text(self.attempt_id)
+        if type(self.run_index) is not int or self.run_index < 0:
+            raise ValueError("controller entry requires a nonnegative run index")
+        _text(self.run_id)
+        _digest(self.config_id)
+        _digest(self.execution_sha256)
+        _digest(self.plan_sha256)
+        if (
+            not isinstance(self.host_admission, ArtifactReference)
+            or self.host_admission.name != HOST_ADMISSION_NAME
+            or not isinstance(self.started, ArtifactReference)
+            or self.started.name != "started.json"
+            or not isinstance(self.controller_launch, ArtifactReference)
+            or self.controller_launch.name != CONTROLLER_LAUNCH_NAME
+        ):
+            raise ValueError("invalid controller entry evidence binding")
+        _text(self.controller_id)
+        _timestamp(self.entered_at)
+        if self.state != "controller_entry_consumed":
+            raise ValueError("invalid controller entry state")
+
+
+@dataclass(frozen=True, slots=True)
 class TrackAControllerTerminal:
     """Successful controller acknowledgement sent over the broker channel."""
 
@@ -201,7 +291,7 @@ class TrackAControllerTerminal:
 
 @dataclass(frozen=True, slots=True)
 class TrackAHostAttemptTerminal:
-    serialization_schema: ClassVar[int] = 2
+    serialization_schema: ClassVar[int] = 3
 
     attempt_id: str
     run_index: int
@@ -210,6 +300,8 @@ class TrackAHostAttemptTerminal:
     plan_sha256: str
     host_admission: ArtifactReference
     started: ArtifactReference
+    controller_launch: ArtifactReference | None
+    controller_entry: ArtifactReference | None
     controller_stderr: ArtifactReference
     controller_stderr_size: int
     controller_stderr_truncated: bool
@@ -243,6 +335,20 @@ class TrackAHostAttemptTerminal:
             or self.host_admission.name != HOST_ADMISSION_NAME
             or not isinstance(self.started, ArtifactReference)
             or self.started.name != "started.json"
+            or (
+                self.controller_launch is not None
+                and (
+                    not isinstance(self.controller_launch, ArtifactReference)
+                    or self.controller_launch.name != CONTROLLER_LAUNCH_NAME
+                )
+            )
+            or (
+                self.controller_entry is not None
+                and (
+                    not isinstance(self.controller_entry, ArtifactReference)
+                    or self.controller_entry.name != CONTROLLER_ENTRY_NAME
+                )
+            )
             or not isinstance(self.controller_stderr, ArtifactReference)
             or self.controller_stderr.name != "controller-stderr.bin"
             or type(self.controller_stderr_size) is not int
@@ -273,6 +379,12 @@ class TrackAHostAttemptTerminal:
             raise ValueError("invalid Track A host terminal")
         if self.controller_stderr_truncated and self.controller_stderr_size != OUTPUT_LIMIT:
             raise ValueError("truncated controller stderr must fill the retained bound")
+        if self.controller_entry is not None and self.controller_launch is None:
+            raise ValueError("controller entry requires its exact launch evidence")
+        if self.controller_launched and self.controller_launch is None:
+            raise ValueError("launched controller requires durable launch evidence")
+        if self.controller_entry is not None and not self.controller_launched:
+            raise ValueError("controller entry requires a launched controller process")
         if not self.controller_launched and (
             self.controller_returncode is not None
             or self.controller_terminal is not None
@@ -298,6 +410,8 @@ class TrackAHostAttemptTerminal:
                 raise ValueError("pending campaign must retain zero target executions and no claim")
             if self.campaign_claim is None and self.campaign_terminal is not None:
                 raise ValueError("campaign terminal cannot exist without a claim")
+            if self.campaign_claim is not None and self.controller_entry is None:
+                raise ValueError("campaign claim requires controller entry evidence")
             if self.campaign_claim is not None and not self.campaign_claim.name.endswith(
                 "/claim.json"
             ):
@@ -319,6 +433,7 @@ class TrackAHostAttemptTerminal:
             self.exception is not None
             or not self.controller_launched
             or self.controller_returncode != 0
+            or self.controller_entry is None
             or self.controller_terminal is None
             or self.deadline_expired
             or self.cleanup_status != TrackAHostCleanupStatus.COMPLETE
@@ -335,7 +450,7 @@ class TrackAHostAttemptTerminal:
 
 @dataclass(frozen=True, slots=True)
 class TrackAHostAttemptManifest:
-    serialization_schema: ClassVar[int] = 1
+    serialization_schema: ClassVar[int] = 2
 
     format: str
     attempt_id: str
@@ -345,6 +460,8 @@ class TrackAHostAttemptManifest:
     plan_sha256: str
     host_admission: ArtifactReference
     started: ArtifactReference
+    controller_launch: ArtifactReference | None
+    controller_entry: ArtifactReference | None
     controller_stderr: ArtifactReference
     terminal: ArtifactReference
     status: TrackAHostAttemptStatus
@@ -363,6 +480,20 @@ class TrackAHostAttemptManifest:
             or self.host_admission.name != HOST_ADMISSION_NAME
             or not isinstance(self.started, ArtifactReference)
             or self.started.name != "started.json"
+            or (
+                self.controller_launch is not None
+                and (
+                    not isinstance(self.controller_launch, ArtifactReference)
+                    or self.controller_launch.name != CONTROLLER_LAUNCH_NAME
+                )
+            )
+            or (
+                self.controller_entry is not None
+                and (
+                    not isinstance(self.controller_entry, ArtifactReference)
+                    or self.controller_entry.name != CONTROLLER_ENTRY_NAME
+                )
+            )
             or not isinstance(self.controller_stderr, ArtifactReference)
             or self.controller_stderr.name != "controller-stderr.bin"
             or not isinstance(self.terminal, ArtifactReference)
@@ -370,6 +501,8 @@ class TrackAHostAttemptManifest:
             or not isinstance(self.status, TrackAHostAttemptStatus)
         ):
             raise ValueError("invalid Track A host attempt manifest")
+        if self.controller_entry is not None and self.controller_launch is None:
+            raise ValueError("controller entry manifest requires launch evidence")
 
 
 @dataclass(frozen=True, slots=True)
@@ -389,11 +522,22 @@ class ClaimedTrackAHostAttempt:
 
 
 @dataclass(frozen=True, slots=True)
+class ClaimedTrackAControllerLaunch:
+    launch: TrackAControllerLaunch
+    launch_sha256: str
+    directory: Path
+
+
+@dataclass(frozen=True, slots=True)
 class VerifiedTrackAHostAttempt:
     admission: TrackAHostAdmissionRecord
     admission_sha256: str
     started: TrackAHostAttemptStarted
     started_sha256: str
+    controller_launch: TrackAControllerLaunch | None
+    controller_launch_sha256: str | None
+    controller_entry: TrackAControllerEntry | None
+    controller_entry_sha256: str | None
     terminal: TrackAHostAttemptTerminal
     terminal_sha256: str
     manifest: TrackAHostAttemptManifest
@@ -559,6 +703,120 @@ def _validate_track_a_host_attempt_identity(
         raise ValueError("host attempt differs from the frozen Track A schedule")
 
 
+def _validate_controller_launch_identity(
+    started: TrackAHostAttemptStarted,
+    started_sha256: str,
+    launch: TrackAControllerLaunch,
+) -> None:
+    shared = (
+        started.attempt_id,
+        started.run_index,
+        started.run_id,
+        started.config_id,
+        started.execution_sha256,
+        started.plan_sha256,
+        started.host_admission,
+    )
+    if shared != (
+        launch.attempt_id,
+        launch.run_index,
+        launch.run_id,
+        launch.config_id,
+        launch.execution_sha256,
+        launch.plan_sha256,
+        launch.host_admission,
+    ) or launch.started != ArtifactReference("started.json", started_sha256):
+        raise ValueError("controller launch differs from the durable host attempt")
+
+
+def _validate_controller_entry_identity(
+    started: TrackAHostAttemptStarted,
+    started_sha256: str,
+    launch: TrackAControllerLaunch,
+    launch_sha256: str,
+    entry: TrackAControllerEntry,
+) -> None:
+    shared = (
+        launch.attempt_id,
+        launch.run_index,
+        launch.run_id,
+        launch.config_id,
+        launch.execution_sha256,
+        launch.plan_sha256,
+        launch.host_admission,
+        launch.controller_id,
+    )
+    if (
+        shared
+        != (
+            entry.attempt_id,
+            entry.run_index,
+            entry.run_id,
+            entry.config_id,
+            entry.execution_sha256,
+            entry.plan_sha256,
+            entry.host_admission,
+            entry.controller_id,
+        )
+        or entry.started != ArtifactReference("started.json", started_sha256)
+        or entry.controller_launch != ArtifactReference(CONTROLLER_LAUNCH_NAME, launch_sha256)
+    ):
+        raise ValueError("controller entry differs from the authorized host launch")
+    _validate_controller_launch_identity(started, started_sha256, launch)
+
+
+def _read_controller_attempt_prefix(
+    directory: Path,
+    started: TrackAHostAttemptStarted,
+    started_sha256: str,
+) -> tuple[
+    TrackAControllerLaunch | None,
+    str | None,
+    TrackAControllerEntry | None,
+    str | None,
+]:
+    names = {path.name for path in directory.iterdir()}
+    allowed = (
+        {"started.json"},
+        {"started.json", CONTROLLER_LAUNCH_NAME},
+        {"started.json", CONTROLLER_LAUNCH_NAME, CONTROLLER_ENTRY_NAME},
+    )
+    if names not in allowed or any(
+        path.is_symlink() or not path.is_file() for path in directory.iterdir()
+    ):
+        raise ValueError("Track A controller launch prefix is incomplete or unexpected")
+    launch = None
+    launch_sha256 = None
+    entry = None
+    entry_sha256 = None
+    if CONTROLLER_LAUNCH_NAME in names:
+        launch_path = directory / CONTROLLER_LAUNCH_NAME
+        launch_sha256 = sha256(_read_file(launch_path)).hexdigest()
+        launch = read_record(
+            launch_path,
+            TrackAControllerLaunch,
+            expected_sha256=launch_sha256,
+        )
+        _validate_controller_launch_identity(started, started_sha256, launch)
+    if CONTROLLER_ENTRY_NAME in names:
+        assert launch is not None and launch_sha256 is not None
+        entry_path = directory / CONTROLLER_ENTRY_NAME
+        entry_sha256 = sha256(_read_file(entry_path)).hexdigest()
+        entry = read_record(
+            entry_path,
+            TrackAControllerEntry,
+            expected_sha256=entry_sha256,
+        )
+        _validate_controller_entry_identity(
+            started,
+            started_sha256,
+            launch,
+            launch_sha256,
+            entry,
+        )
+    return launch, launch_sha256, entry, entry_sha256
+
+
 class TrackAHostLedger:
     """Single-writer host ledger; a started cell is consumed and never retried."""
 
@@ -620,6 +878,54 @@ class TrackAHostLedger:
         digest = write_record(directory / "started.json", started)
         return ClaimedTrackAHostAttempt(started, digest, directory)
 
+    def authorize_controller_launch(
+        self,
+        claimed: ClaimedTrackAHostAttempt,
+        *,
+        controller_id: str,
+        launch_secret_sha256: str,
+    ) -> ClaimedTrackAControllerLaunch:
+        """Publish one launch intent; the live secret itself is never retained."""
+        if type(claimed) is not ClaimedTrackAHostAttempt:
+            raise ValueError("controller launch requires a claimed host attempt")
+        started = claimed.started
+        expected_directory = (
+            self.root / "attempts" / _attempt_directory(started.run_index, started.run_id)
+        )
+        if claimed.directory != expected_directory:
+            raise ValueError("controller launch directory differs from the ledger")
+        contents = tuple(expected_directory.iterdir())
+        if {path.name for path in contents} != {"started.json"} or any(
+            path.is_symlink() or not path.is_file() for path in contents
+        ):
+            raise ValueError("controller launch attempt is already consumed or incomplete")
+        retained_started = read_record(
+            expected_directory / "started.json",
+            TrackAHostAttemptStarted,
+            expected_sha256=claimed.started_sha256,
+        )
+        if retained_started != started:
+            raise ValueError("controller launch differs from its durable host start")
+        authorization = self.admission.original_admission.pilot_authorization
+        if controller_id != authorization.controller_id:
+            raise ValueError("controller launch identity differs from admission")
+        _digest(launch_secret_sha256)
+        launch = TrackAControllerLaunch(
+            started.attempt_id,
+            started.run_index,
+            started.run_id,
+            started.config_id,
+            started.execution_sha256,
+            started.plan_sha256,
+            started.host_admission,
+            ArtifactReference("started.json", claimed.started_sha256),
+            controller_id,
+            launch_secret_sha256,
+            datetime.now(UTC).isoformat(),
+        )
+        digest = write_record(expected_directory / CONTROLLER_LAUNCH_NAME, launch)
+        return ClaimedTrackAControllerLaunch(launch, digest, expected_directory)
+
     def finish(
         self,
         claimed: ClaimedTrackAHostAttempt,
@@ -652,6 +958,15 @@ class TrackAHostLedger:
         )
         if retained_started != started:
             raise ValueError("claimed host attempt differs from its durable start")
+        launch, launch_sha256, entry, entry_sha256 = _read_controller_attempt_prefix(
+            expected_directory,
+            started,
+            claimed.started_sha256,
+        )
+        if controller_launched and launch is None:
+            raise ValueError("launched controller lacks durable launch evidence")
+        if entry is not None and not controller_launched:
+            raise ValueError("controller entry exists without a launched process")
         if (execution is None) == (campaign_observation_error is None):
             raise ValueError("terminal requires exactly one campaign observation result")
         slot = None
@@ -720,6 +1035,19 @@ class TrackAHostLedger:
             else:
                 error.add_note(str(mismatch_error))
             controller_terminal = None
+        if slot is not None and slot.claim is not None and entry is None:
+            entry_error = ValueError("campaign claim exists without controller entry evidence")
+            if error is None:
+                error = entry_error
+            else:
+                error.add_note(str(entry_error))
+        if controller_terminal is not None and entry is None:
+            entry_error = ValueError("controller terminal exists without controller entry evidence")
+            if error is None:
+                error = entry_error
+            else:
+                error.add_note(str(entry_error))
+            controller_terminal = None
         if (
             slot is not None
             and (slot.state == RunState.COMPLETED or slot.completed_steps > 0)
@@ -735,6 +1063,7 @@ class TrackAHostLedger:
             and slot is not None
             and controller_launched
             and controller_returncode == 0
+            and entry is not None
             and controller_terminal is not None
             and not deadline_expired
             and cleanup_status == TrackAHostCleanupStatus.COMPLETE
@@ -753,6 +1082,12 @@ class TrackAHostLedger:
             started.plan_sha256,
             started.host_admission,
             ArtifactReference("started.json", claimed.started_sha256),
+            None
+            if launch_sha256 is None
+            else ArtifactReference(CONTROLLER_LAUNCH_NAME, launch_sha256),
+            None
+            if entry_sha256 is None
+            else ArtifactReference(CONTROLLER_ENTRY_NAME, entry_sha256),
             ArtifactReference("controller-stderr.bin", stderr_sha256),
             len(controller_stderr),
             controller_stderr_truncated,
@@ -788,6 +1123,12 @@ class TrackAHostLedger:
             started.plan_sha256,
             started.host_admission,
             ArtifactReference("started.json", claimed.started_sha256),
+            None
+            if launch_sha256 is None
+            else ArtifactReference(CONTROLLER_LAUNCH_NAME, launch_sha256),
+            None
+            if entry_sha256 is None
+            else ArtifactReference(CONTROLLER_ENTRY_NAME, entry_sha256),
             ArtifactReference("controller-stderr.bin", stderr_sha256),
             ArtifactReference("terminal.json", terminal_sha256),
             status,
@@ -865,11 +1206,107 @@ def read_track_a_host_attempt_started(
         raise VerificationError(f"invalid Track A host attempt start: {error}") from error
 
 
+def claim_track_a_controller_entry(
+    root: Path,
+    index: int,
+    *,
+    expected_started_sha256: str,
+    expected_launch_sha256: str,
+    expected_attempt_id: str,
+    expected_execution_sha256: str,
+    controller_id: str,
+    runtime_volume_name: str,
+    image_ids: tuple[str, ...],
+    evidence_root: Path,
+    launch_secret: bytes,
+    protocol_config_path: Path | None = None,
+) -> tuple[TrackAHostAttemptStarted, TrackAControllerEntry, VerifiedTrackAExecution]:
+    """Atomically consume one live host-authorized controller launch."""
+    try:
+        _validate_host_root(root)
+        admission, admission_sha256, execution = _read_host_admission(
+            root, protocol_config_path=protocol_config_path
+        )
+        if type(index) is not int or not 0 <= index < len(execution.repetitions.slots):
+            raise ValueError("Track A run index is outside the frozen schedule")
+        run_id = execution.repetitions.plan.runs[index].run_id
+        directory = root / "attempts" / _attempt_directory(index, run_id)
+        if directory.is_symlink() or not directory.is_dir():
+            raise ValueError("missing Track A host attempt directory")
+        contents = tuple(directory.iterdir())
+        names = {path.name for path in contents}
+        if CONTROLLER_ENTRY_NAME in names:
+            raise ValueError("Track A controller entry is already consumed")
+        if names & {"controller-stderr.bin", "terminal.json", "manifest.json"}:
+            raise ValueError("Track A host attempt is already terminal or partially terminal")
+        if names != {"started.json", CONTROLLER_LAUNCH_NAME} or any(
+            path.is_symlink() or not path.is_file() for path in contents
+        ):
+            raise ValueError("Track A controller launch evidence is missing or incomplete")
+        started = read_record(
+            directory / "started.json",
+            TrackAHostAttemptStarted,
+            expected_sha256=expected_started_sha256,
+        )
+        if (
+            started.host_admission != ArtifactReference(HOST_ADMISSION_NAME, admission_sha256)
+            or admission.execution.sha256 != started.execution_sha256
+        ):
+            raise ValueError("host attempt and admission records disagree")
+        validate_track_a_host_attempt_binding(execution, index, started)
+        launch = read_record(
+            directory / CONTROLLER_LAUNCH_NAME,
+            TrackAControllerLaunch,
+            expected_sha256=expected_launch_sha256,
+        )
+        _validate_controller_launch_identity(started, expected_started_sha256, launch)
+        authorization = execution.admission.pilot_authorization
+        if expected_attempt_id != started.attempt_id:
+            raise ValueError("controller attempt ID differs from the host-published attempt")
+        if expected_execution_sha256 != started.execution_sha256:
+            raise ValueError("controller execution digest differs from the host attempt")
+        if (
+            controller_id != launch.controller_id
+            or controller_id != authorization.controller_id
+            or runtime_volume_name != authorization.runtime_volume_name
+            or image_ids != tuple(item.image_id for item in authorization.targets)
+            or evidence_root != Path(started.output_root)
+        ):
+            raise ValueError("controller launch inputs differ from the admitted host attempt")
+        if type(launch_secret) is not bytes or len(launch_secret) != 32:
+            raise ValueError("controller launch handshake is invalid")
+        if not compare_digest(sha256(launch_secret).hexdigest(), launch.launch_secret_sha256):
+            raise ValueError("controller launch handshake is invalid")
+        entry = TrackAControllerEntry(
+            started.attempt_id,
+            started.run_index,
+            started.run_id,
+            started.config_id,
+            started.execution_sha256,
+            started.plan_sha256,
+            started.host_admission,
+            ArtifactReference("started.json", expected_started_sha256),
+            ArtifactReference(CONTROLLER_LAUNCH_NAME, expected_launch_sha256),
+            launch.controller_id,
+            datetime.now(UTC).isoformat(),
+        )
+        try:
+            write_record(directory / CONTROLLER_ENTRY_NAME, entry)
+        except FileExistsError as error:
+            raise ValueError("Track A controller entry is already consumed") from error
+        return started, entry, execution
+    except (OSError, ValueError, TypeError, KeyError, OverflowError) as error:
+        if isinstance(error, VerificationError):
+            raise
+        raise VerificationError(f"invalid Track A controller launch: {error}") from error
+
+
 def _expected_host_status(terminal: TrackAHostAttemptTerminal) -> TrackAHostAttemptStatus:
     successful = (
         terminal.exception is None
         and terminal.controller_launched
         and terminal.controller_returncode == 0
+        and terminal.controller_entry is not None
         and terminal.controller_terminal is not None
         and not terminal.deadline_expired
         and terminal.cleanup_status == TrackAHostCleanupStatus.COMPLETE
@@ -897,16 +1334,23 @@ def read_track_a_host_attempt(
             raise ValueError("Track A run index is outside the frozen schedule")
         run_id = execution.repetitions.plan.runs[index].run_id
         directory = root / "attempts" / _attempt_directory(index, run_id)
-        expected_names = {
+        required_names = {
             "started.json",
             "controller-stderr.bin",
             "terminal.json",
             "manifest.json",
         }
+        actual_names = {path.name for path in directory.iterdir()} if directory.is_dir() else set()
         if (
             directory.is_symlink()
             or not directory.is_dir()
-            or {path.name for path in directory.iterdir()} != expected_names
+            or not required_names.issubset(actual_names)
+            or not actual_names.issubset(
+                required_names | {CONTROLLER_LAUNCH_NAME, CONTROLLER_ENTRY_NAME}
+            )
+            or (
+                CONTROLLER_ENTRY_NAME in actual_names and CONTROLLER_LAUNCH_NAME not in actual_names
+            )
             or any(path.is_symlink() or not path.is_file() for path in directory.iterdir())
         ):
             raise ValueError("terminal Track A host attempt is incomplete")
@@ -925,6 +1369,39 @@ def read_track_a_host_attempt(
             expected_sha256=manifest.started.sha256,
         )
         _validate_track_a_host_attempt_identity(execution, index, started)
+        expected_names = set(required_names)
+        launch = None
+        launch_sha256 = None
+        entry = None
+        entry_sha256 = None
+        if manifest.controller_launch is not None:
+            expected_names.add(CONTROLLER_LAUNCH_NAME)
+            launch_sha256 = manifest.controller_launch.sha256
+            launch = read_record(
+                directory / CONTROLLER_LAUNCH_NAME,
+                TrackAControllerLaunch,
+                expected_sha256=launch_sha256,
+            )
+            _validate_controller_launch_identity(started, manifest.started.sha256, launch)
+        if manifest.controller_entry is not None:
+            expected_names.add(CONTROLLER_ENTRY_NAME)
+            if launch is None or launch_sha256 is None:
+                raise ValueError("controller entry manifest lacks launch evidence")
+            entry_sha256 = manifest.controller_entry.sha256
+            entry = read_record(
+                directory / CONTROLLER_ENTRY_NAME,
+                TrackAControllerEntry,
+                expected_sha256=entry_sha256,
+            )
+            _validate_controller_entry_identity(
+                started,
+                manifest.started.sha256,
+                launch,
+                launch_sha256,
+                entry,
+            )
+        if actual_names != expected_names:
+            raise ValueError("terminal Track A host attempt evidence set differs from manifest")
         terminal = read_record(
             directory / manifest.terminal.name,
             TrackAHostAttemptTerminal,
@@ -961,6 +1438,8 @@ def read_track_a_host_attempt(
                 terminal.host_admission,
             )
             or manifest.started.sha256 != terminal.started.sha256
+            or manifest.controller_launch != terminal.controller_launch
+            or manifest.controller_entry != terminal.controller_entry
             or manifest.controller_stderr != terminal.controller_stderr
             or len(stderr) != terminal.controller_stderr_size
             or len(stderr) > OUTPUT_LIMIT
@@ -1005,8 +1484,11 @@ def read_track_a_host_attempt(
                 raise ValueError("host terminal differs from the campaign prefix")
         if slot.claim is not None and slot.claim.attempt_id != started.attempt_id:
             raise ValueError("host and campaign attempt identifiers differ")
+        if slot.claim is not None and entry is None:
+            raise ValueError("campaign claim lacks controller entry evidence")
         if terminal.controller_terminal is not None and (
-            terminal.controller_terminal.attempt_id != started.attempt_id
+            entry is None
+            or terminal.controller_terminal.attempt_id != started.attempt_id
             or terminal.controller_terminal.run_index != index
             or terminal.controller_terminal.run_id != run_id
             or terminal.controller_terminal.execution_sha256 != execution.execution_sha256
@@ -1024,6 +1506,10 @@ def read_track_a_host_attempt(
             admission_sha256,
             started,
             manifest.started.sha256,
+            launch,
+            launch_sha256,
+            entry,
+            entry_sha256,
             terminal,
             manifest.terminal.sha256,
             manifest,

@@ -9,7 +9,9 @@ import shutil
 import subprocess
 import threading
 from dataclasses import dataclass, fields
+from hashlib import sha256
 from pathlib import Path, PurePosixPath
+from secrets import token_bytes
 from time import monotonic
 from typing import BinaryIO
 from uuid import uuid4
@@ -158,6 +160,7 @@ def _validate_launch_binding(args: argparse.Namespace, admission) -> None:
 
 def _launch_controller(
     args: argparse.Namespace,
+    ledger: TrackAHostLedger,
     claimed: ClaimedTrackAHostAttempt,
     state: _LaunchState,
 ) -> None:
@@ -178,6 +181,12 @@ def _launch_controller(
         identity = controller["Id"]
         if identity != args.controller:
             raise BackendError("controller inspect identity differs from admission")
+        launch_secret = token_bytes(32)
+        launch = ledger.authorize_controller_launch(
+            claimed,
+            controller_id=identity,
+            launch_secret_sha256=sha256(launch_secret).hexdigest(),
+        )
         controller_protocol = args.controller_worktree / PROTOCOL_CONFIG_RELATIVE
         command = (
             executable,
@@ -208,6 +217,8 @@ def _launch_controller(
             str(claimed.directory.parents[1]),
             "--host-started-sha256",
             claimed.started_sha256,
+            "--host-launch-sha256",
+            launch.launch_sha256,
             "--attempt-id",
             claimed.started.attempt_id,
             "--run-index",
@@ -228,6 +239,15 @@ def _launch_controller(
         assert (
             process.stdin is not None and process.stdout is not None and process.stderr is not None
         )
+        process.stdin.write(
+            (
+                json.dumps(
+                    {"controller_launch_secret": base64.b64encode(launch_secret).decode("ascii")}
+                )
+                + "\n"
+            ).encode("ascii")
+        )
+        process.stdin.flush()
         stderr_capture = _BoundedControllerStderr()
         stderr_thread = threading.Thread(
             target=stderr_capture.drain,
@@ -399,7 +419,7 @@ def _run_cell(args: argparse.Namespace) -> int:
     state = _LaunchState()
     error: BaseException | None = None
     try:
-        _launch_controller(args, claimed, state)
+        _launch_controller(args, ledger, claimed, state)
     except BaseException as caught:
         error = caught
     execution = None

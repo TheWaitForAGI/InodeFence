@@ -1,6 +1,7 @@
 """Track A host-attempt accounting tests use only synthetic retained evidence."""
 
 import argparse
+import base64
 import io
 import json
 import sys
@@ -35,6 +36,7 @@ from inodefence.evaluation.track_a_host_ledger import (
     TrackAHostAttemptStatus,
     TrackAHostCleanupStatus,
     TrackAHostLedger,
+    claim_track_a_controller_entry,
     read_track_a_host_attempt,
     read_track_a_host_attempt_started,
     read_track_a_host_ledger,
@@ -171,7 +173,14 @@ def _args(fixture, frozen) -> argparse.Namespace:
     )
 
 
-def _controller_argv(fixture, frozen, claimed, *, attempt_id: str | None = None) -> list[str]:
+def _controller_argv(
+    fixture,
+    frozen,
+    claimed,
+    *,
+    attempt_id: str | None = None,
+    launch_sha256: str = "f" * 64,
+) -> list[str]:
     return [
         "track-a-controller",
         "--controller",
@@ -191,6 +200,8 @@ def _controller_argv(fixture, frozen, claimed, *, attempt_id: str | None = None)
         str(fixture.track_a_host_root),
         "--host-started-sha256",
         claimed.started_sha256,
+        "--host-launch-sha256",
+        launch_sha256,
         "--attempt-id",
         claimed.started.attempt_id if attempt_id is None else attempt_id,
         "--run-index",
@@ -201,6 +212,43 @@ def _controller_argv(fixture, frozen, claimed, *, attempt_id: str | None = None)
         str(fixture.protocol_path),
         "run-cell",
     ]
+
+
+_CONTROLLER_LAUNCH_SECRET = b"s" * 32
+
+
+def _launch_input(secret: bytes = _CONTROLLER_LAUNCH_SECRET) -> io.StringIO:
+    return io.StringIO(
+        json.dumps(
+            {
+                "controller_launch_secret": base64.b64encode(secret).decode("ascii"),
+            }
+        )
+        + "\n"
+    )
+
+
+def _authorize_and_enter(fixture, ledger, claimed):
+    launch = ledger.authorize_controller_launch(
+        claimed,
+        controller_id=fixture.authorization.controller_id,
+        launch_secret_sha256=sha256(_CONTROLLER_LAUNCH_SECRET).hexdigest(),
+    )
+    result = claim_track_a_controller_entry(
+        fixture.track_a_host_root,
+        claimed.started.run_index,
+        expected_started_sha256=claimed.started_sha256,
+        expected_launch_sha256=launch.launch_sha256,
+        expected_attempt_id=claimed.started.attempt_id,
+        expected_execution_sha256=claimed.started.execution_sha256,
+        controller_id=fixture.authorization.controller_id,
+        runtime_volume_name=fixture.authorization.runtime_volume_name,
+        image_ids=tuple(item.image_id for item in fixture.authorization.targets),
+        evidence_root=fixture.output_root,
+        launch_secret=_CONTROLLER_LAUNCH_SECRET,
+        protocol_config_path=fixture.protocol_path,
+    )
+    return launch, result
 
 
 def _manifest_digest(attempt_directory: Path) -> str:
@@ -214,8 +262,21 @@ class _FakeControllerProcess:
         *,
         stderr: object = b"",
         returncode: int = 0,
+        stdin_callback=None,
     ) -> None:
-        self.stdin = io.BytesIO()
+        class CallbackInput(io.BytesIO):
+            def __init__(self, callback) -> None:
+                super().__init__()
+                self.callback = callback
+                self.called = False
+
+            def flush(self) -> None:
+                super().flush()
+                if not self.called:
+                    self.called = True
+                    self.callback(self.getvalue())
+
+        self.stdin = CallbackInput(stdin_callback or (lambda content: None))
         self.stdout = io.BytesIO(stdout)
         self.stderr = io.BytesIO(stderr) if isinstance(stderr, bytes) else stderr
         self.returncode = returncode
@@ -311,14 +372,38 @@ def _install_launch_boundaries(
             raise spawn_error
         attempt_id = command[command.index("--attempt-id") + 1]
         observed_attempt_ids.append(attempt_id)
-        if claim_campaign:
-            controller = PolicyRepetitionController(fixture.output_root / "repetitions")
-            controller.claim(0, attempt_id=attempt_id)
-        if on_spawn is not None:
-            on_spawn(command)
         process_stdout = stdout(command) if callable(stdout) else stdout
         assert isinstance(process_stdout, bytes)
-        process = _FakeControllerProcess(process_stdout, stderr=stderr, returncode=returncode)
+
+        def enter_controller(content: bytes) -> None:
+            frame = json.loads(content.decode("ascii").splitlines()[0])
+            secret = base64.b64decode(frame["controller_launch_secret"], validate=True)
+            started, _, _ = claim_track_a_controller_entry(
+                fixture.track_a_host_root,
+                0,
+                expected_started_sha256=command[command.index("--host-started-sha256") + 1],
+                expected_launch_sha256=command[command.index("--host-launch-sha256") + 1],
+                expected_attempt_id=attempt_id,
+                expected_execution_sha256=command[command.index("--execution-sha256") + 1],
+                controller_id=fixture.authorization.controller_id,
+                runtime_volume_name=fixture.authorization.runtime_volume_name,
+                image_ids=tuple(item.image_id for item in fixture.authorization.targets),
+                evidence_root=fixture.output_root,
+                launch_secret=secret,
+                protocol_config_path=fixture.protocol_path,
+            )
+            if claim_campaign:
+                controller = PolicyRepetitionController(fixture.output_root / "repetitions")
+                controller.claim(0, attempt_id=attempt_id)
+            if on_spawn is not None:
+                on_spawn(command, started)
+
+        process = _FakeControllerProcess(
+            process_stdout,
+            stderr=stderr,
+            returncode=returncode,
+            stdin_callback=enter_controller,
+        )
         processes.append(process)
         return process
 
@@ -327,6 +412,7 @@ def _install_launch_boundaries(
             raise BackendError("controlled cleanup failure")
 
     monkeypatch.setattr(host_script.shutil, "which", lambda executable: "/usr/bin/docker")
+    monkeypatch.setattr(host_script, "token_bytes", lambda size: _CONTROLLER_LAUNCH_SECRET)
     monkeypatch.setattr(host_script, "DockerCLI", lambda executable, context: client)
     monkeypatch.setattr(host_script.subprocess, "Popen", popen)
     monkeypatch.setattr(
@@ -426,6 +512,7 @@ def test_admission_started_preclaim_terminal_roundtrip_is_consumed(tmp_path, mon
 def test_completed_campaign_requires_complete_cleanup_for_terminal_roundtrip(tmp_path, monkeypatch):
     fixture, frozen, _, ledger = _ledger(tmp_path, monkeypatch)
     claimed = ledger.claim(0, attempt_id="host-complete-attempt")
+    _authorize_and_enter(fixture, ledger, claimed)
     scheduled = frozen.repetitions.plan.runs[0]
     provenance = scheduled.evaluation_config.provenance
     assert provenance.isolation is not None
@@ -506,12 +593,14 @@ def test_completed_campaign_requires_complete_cleanup_for_terminal_roundtrip(tmp
 
 def test_host_generated_attempt_id_reaches_campaign_claim_and_host_terminal(tmp_path, monkeypatch):
     fixture, frozen, _ = _frozen(tmp_path, monkeypatch)
+    commands: list[tuple[str, ...]] = []
     _, _, observed = _install_launch_boundaries(
         monkeypatch,
         fixture,
         returncode=9,
         stderr=b"controlled nonzero exit\n",
         claim_campaign=True,
+        on_spawn=lambda command, started: commands.append(command),
     )
     with pytest.raises(BackendError, match="status 9"):
         host_script._run_cell(_args(fixture, frozen))
@@ -526,6 +615,9 @@ def test_host_generated_attempt_id_reaches_campaign_claim_and_host_terminal(tmp_
     assert claim.attempt_id == attempt.started.attempt_id
     assert attempt.terminal.campaign_state == RunState.STARTED
     assert attempt.terminal.target_executions == 0
+    command_bytes = "\0".join(commands[0]).encode("utf-8")
+    assert _CONTROLLER_LAUNCH_SECRET not in command_bytes
+    assert base64.b64encode(_CONTROLLER_LAUNCH_SECRET) not in command_bytes
 
 
 @pytest.mark.parametrize(
@@ -615,6 +707,8 @@ def test_terminalled_preclaim_attempt_rejects_controller_replay_before_backend(
     )
     monkeypatch.setattr(controller_script, "ContainerExecutionBackend", forbidden)
     monkeypatch.setattr(IsolatedTarget, "run", forbidden)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "stdin", _launch_input())
     monkeypatch.setattr(sys, "argv", _controller_argv(fixture, frozen, claimed))
 
     with pytest.raises(VerificationError, match="already terminal or partially terminal"):
@@ -651,6 +745,8 @@ def test_partial_terminal_attempt_rejects_controller_before_backend(
     )
     monkeypatch.setattr(controller_script, "ContainerExecutionBackend", forbidden)
     monkeypatch.setattr(IsolatedTarget, "run", forbidden)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "stdin", _launch_input())
     monkeypatch.setattr(sys, "argv", _controller_argv(fixture, frozen, claimed))
 
     with pytest.raises(VerificationError, match="already terminal or partially terminal"):
@@ -658,6 +754,313 @@ def test_partial_terminal_attempt_rejects_controller_before_backend(
 
     assert calls == []
     assert not list(fixture.output_root.rglob("claim.json"))
+
+
+def test_start_only_attempt_cannot_enter_controller_without_live_host_launch(tmp_path, monkeypatch):
+    fixture, frozen, _, ledger = _ledger(tmp_path, monkeypatch)
+    claimed = ledger.claim(0, attempt_id="start-only-attempt")
+    calls: list[str] = []
+
+    def forbidden(*args, **kwargs):
+        calls.append("backend")
+        raise AssertionError("start-only attempt crossed the backend boundary")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        controller_script, "AFFECTED_IMAGE_ID", fixture.authorization.targets[0].image_id
+    )
+    monkeypatch.setattr(
+        controller_script, "FIXED_IMAGE_ID", fixture.authorization.targets[1].image_id
+    )
+    monkeypatch.setattr(controller_script, "ContainerExecutionBackend", forbidden)
+    monkeypatch.setattr(sys, "stdin", _launch_input())
+    monkeypatch.setattr(sys, "argv", _controller_argv(fixture, frozen, claimed))
+
+    with pytest.raises(VerificationError, match="controller launch"):
+        controller_script.main()
+
+    assert calls == []
+    assert {path.name for path in claimed.directory.iterdir()} == {"started.json"}
+    assert not list(fixture.output_root.rglob("claim.json"))
+
+
+def test_controller_entry_is_atomic_across_concurrent_claims(tmp_path, monkeypatch):
+    fixture, _, _, ledger = _ledger(tmp_path, monkeypatch)
+    claimed = ledger.claim(0, attempt_id="concurrent-entry-attempt")
+    launch = ledger.authorize_controller_launch(
+        claimed,
+        controller_id=fixture.authorization.controller_id,
+        launch_secret_sha256=sha256(_CONTROLLER_LAUNCH_SECRET).hexdigest(),
+    )
+    barrier = threading.Barrier(3)
+    successes = []
+    failures: list[BaseException] = []
+    backend_calls: list[str] = []
+
+    def enter() -> None:
+        barrier.wait()
+        try:
+            successes.append(
+                claim_track_a_controller_entry(
+                    fixture.track_a_host_root,
+                    0,
+                    expected_started_sha256=claimed.started_sha256,
+                    expected_launch_sha256=launch.launch_sha256,
+                    expected_attempt_id=claimed.started.attempt_id,
+                    expected_execution_sha256=claimed.started.execution_sha256,
+                    controller_id=fixture.authorization.controller_id,
+                    runtime_volume_name=fixture.authorization.runtime_volume_name,
+                    image_ids=tuple(item.image_id for item in fixture.authorization.targets),
+                    evidence_root=fixture.output_root,
+                    launch_secret=_CONTROLLER_LAUNCH_SECRET,
+                    protocol_config_path=fixture.protocol_path,
+                )
+            )
+            backend_calls.append("backend")
+        except BaseException as error:
+            failures.append(error)
+
+    threads = [threading.Thread(target=enter), threading.Thread(target=enter)]
+    for thread in threads:
+        thread.start()
+    barrier.wait()
+    for thread in threads:
+        thread.join()
+
+    assert len(successes) == 1
+    assert len(failures) == 1
+    assert isinstance(failures[0], VerificationError)
+    assert backend_calls == ["backend"]
+    assert {path.name for path in claimed.directory.iterdir()} == {
+        "started.json",
+        "controller-launch.json",
+        "controller-entry.json",
+    }
+
+
+def test_first_controller_entry_consumes_launch_and_replay_stops_before_backend(
+    tmp_path, monkeypatch
+):
+    fixture, frozen, _, ledger = _ledger(tmp_path, monkeypatch)
+    claimed = ledger.claim(0, attempt_id="one-shot-controller-attempt")
+    launch = ledger.authorize_controller_launch(
+        claimed,
+        controller_id=fixture.authorization.controller_id,
+        launch_secret_sha256=sha256(_CONTROLLER_LAUNCH_SECRET).hexdigest(),
+    )
+    backend_calls: list[str] = []
+
+    def controlled_backend(*args, **kwargs):
+        backend_calls.append("backend")
+        raise BackendError("controlled backend boundary")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        controller_script, "AFFECTED_IMAGE_ID", fixture.authorization.targets[0].image_id
+    )
+    monkeypatch.setattr(
+        controller_script, "FIXED_IMAGE_ID", fixture.authorization.targets[1].image_id
+    )
+    monkeypatch.setattr(controller_script, "ContainerExecutionBackend", controlled_backend)
+    monkeypatch.setattr(sys, "stdout", io.StringIO())
+    monkeypatch.setattr(sys, "stderr", io.StringIO())
+    arguments = _controller_argv(
+        fixture,
+        frozen,
+        claimed,
+        launch_sha256=launch.launch_sha256,
+    )
+
+    monkeypatch.setattr(sys, "stdin", _launch_input())
+    monkeypatch.setattr(sys, "argv", arguments)
+    with pytest.raises(BackendError, match="controlled backend"):
+        controller_script.main()
+
+    assert backend_calls == ["backend"]
+    assert (claimed.directory / "controller-entry.json").is_file()
+    retained = b"".join(path.read_bytes() for path in claimed.directory.iterdir())
+    assert _CONTROLLER_LAUNCH_SECRET not in retained
+    assert base64.b64encode(_CONTROLLER_LAUNCH_SECRET) not in retained
+
+    monkeypatch.setattr(sys, "stdin", _launch_input())
+    monkeypatch.setattr(sys, "argv", arguments)
+    with pytest.raises(VerificationError, match="already consumed"):
+        controller_script.main()
+
+    assert backend_calls == ["backend"]
+    assert not list(fixture.output_root.rglob("claim.json"))
+
+
+@pytest.mark.parametrize(
+    "live_input",
+    (
+        io.StringIO(""),
+        io.StringIO("{malformed}\n"),
+        _launch_input(b"w" * 32),
+    ),
+)
+def test_launch_only_attempt_rejects_missing_or_wrong_live_secret_before_backend(
+    tmp_path, monkeypatch, live_input
+):
+    fixture, frozen, _, ledger = _ledger(tmp_path, monkeypatch)
+    claimed = ledger.claim(0, attempt_id="launch-only-attempt")
+    launch = ledger.authorize_controller_launch(
+        claimed,
+        controller_id=fixture.authorization.controller_id,
+        launch_secret_sha256=sha256(_CONTROLLER_LAUNCH_SECRET).hexdigest(),
+    )
+    calls: list[str] = []
+
+    def forbidden(*args, **kwargs):
+        calls.append("backend")
+        raise AssertionError("invalid live launch crossed the backend boundary")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        controller_script, "AFFECTED_IMAGE_ID", fixture.authorization.targets[0].image_id
+    )
+    monkeypatch.setattr(
+        controller_script, "FIXED_IMAGE_ID", fixture.authorization.targets[1].image_id
+    )
+    monkeypatch.setattr(controller_script, "ContainerExecutionBackend", forbidden)
+    monkeypatch.setattr(sys, "stdin", live_input)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        _controller_argv(
+            fixture,
+            frozen,
+            claimed,
+            launch_sha256=launch.launch_sha256,
+        ),
+    )
+
+    with pytest.raises((ValueError, VerificationError), match="launch handshake"):
+        controller_script.main()
+
+    assert calls == []
+    assert {path.name for path in claimed.directory.iterdir()} == {
+        "started.json",
+        "controller-launch.json",
+    }
+    assert not list(fixture.output_root.rglob("claim.json"))
+
+
+@pytest.mark.parametrize("artifact", ("controller-launch.json", "controller-entry.json"))
+def test_partial_controller_prefix_rejects_entry_before_backend(tmp_path, monkeypatch, artifact):
+    fixture, frozen, _, ledger = _ledger(tmp_path, monkeypatch)
+    claimed = ledger.claim(0, attempt_id="partial-controller-prefix-attempt")
+    if artifact == "controller-entry.json":
+        launch = ledger.authorize_controller_launch(
+            claimed,
+            controller_id=fixture.authorization.controller_id,
+            launch_secret_sha256=sha256(_CONTROLLER_LAUNCH_SECRET).hexdigest(),
+        )
+        launch_sha256 = launch.launch_sha256
+        publish_bytes(claimed.directory / artifact, b"partial controller entry\n")
+    else:
+        partial_launch = b"partial controller launch\n"
+        publish_bytes(claimed.directory / artifact, partial_launch)
+        launch_sha256 = sha256(partial_launch).hexdigest()
+    backend_calls: list[str] = []
+
+    def forbidden(*args, **kwargs):
+        backend_calls.append("backend")
+        raise AssertionError("partial controller prefix crossed the backend boundary")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        controller_script, "AFFECTED_IMAGE_ID", fixture.authorization.targets[0].image_id
+    )
+    monkeypatch.setattr(
+        controller_script, "FIXED_IMAGE_ID", fixture.authorization.targets[1].image_id
+    )
+    monkeypatch.setattr(controller_script, "ContainerExecutionBackend", forbidden)
+    monkeypatch.setattr(sys, "stdin", _launch_input())
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        _controller_argv(fixture, frozen, claimed, launch_sha256=launch_sha256),
+    )
+
+    with pytest.raises(VerificationError):
+        controller_script.main()
+
+    assert backend_calls == []
+    assert not list(fixture.output_root.rglob("claim.json"))
+
+
+@pytest.mark.parametrize(
+    "change",
+    (
+        lambda value: replace(value, attempt_id="different-attempt"),
+        lambda value: replace(value, run_index=1),
+        lambda value: replace(value, run_id="different-run"),
+        lambda value: replace(value, config_id="c" * 64),
+        lambda value: replace(value, execution_sha256="e" * 64),
+        lambda value: replace(value, plan_sha256="d" * 64),
+        lambda value: replace(
+            value,
+            host_admission=ArtifactReference(HOST_ADMISSION_NAME, "a" * 64),
+        ),
+        lambda value: replace(
+            value,
+            started=ArtifactReference("started.json", "b" * 64),
+        ),
+        lambda value: replace(value, controller_id="different-controller"),
+    ),
+)
+def test_controller_launch_binding_mismatch_is_rejected_before_entry(tmp_path, monkeypatch, change):
+    fixture, _, _, ledger = _ledger(tmp_path, monkeypatch)
+    claimed = ledger.claim(0, attempt_id="launch-binding-attempt")
+    launch = ledger.authorize_controller_launch(
+        claimed,
+        controller_id=fixture.authorization.controller_id,
+        launch_secret_sha256=sha256(_CONTROLLER_LAUNCH_SECRET).hexdigest(),
+    )
+    launch_path = claimed.directory / "controller-launch.json"
+    launch_path.unlink()
+    changed_sha256 = write_record(launch_path, change(launch.launch))
+
+    with pytest.raises(VerificationError):
+        claim_track_a_controller_entry(
+            fixture.track_a_host_root,
+            0,
+            expected_started_sha256=claimed.started_sha256,
+            expected_launch_sha256=changed_sha256,
+            expected_attempt_id=claimed.started.attempt_id,
+            expected_execution_sha256=claimed.started.execution_sha256,
+            controller_id=fixture.authorization.controller_id,
+            runtime_volume_name=fixture.authorization.runtime_volume_name,
+            image_ids=tuple(item.image_id for item in fixture.authorization.targets),
+            evidence_root=fixture.output_root,
+            launch_secret=_CONTROLLER_LAUNCH_SECRET,
+            protocol_config_path=fixture.protocol_path,
+        )
+
+    assert not (claimed.directory / "controller-entry.json").exists()
+    assert not list(fixture.output_root.rglob("claim.json"))
+
+
+def test_duplicate_controller_launch_is_no_overwrite(tmp_path, monkeypatch):
+    fixture, _, _, ledger = _ledger(tmp_path, monkeypatch)
+    claimed = ledger.claim(0, attempt_id="duplicate-launch-attempt")
+    first = ledger.authorize_controller_launch(
+        claimed,
+        controller_id=fixture.authorization.controller_id,
+        launch_secret_sha256=sha256(_CONTROLLER_LAUNCH_SECRET).hexdigest(),
+    )
+    before = (claimed.directory / "controller-launch.json").read_bytes()
+
+    with pytest.raises(ValueError, match="already consumed"):
+        ledger.authorize_controller_launch(
+            claimed,
+            controller_id=fixture.authorization.controller_id,
+            launch_secret_sha256=sha256(b"x" * 32).hexdigest(),
+        )
+
+    assert (claimed.directory / "controller-launch.json").read_bytes() == before
+    assert first.launch.launch_secret_sha256 == sha256(_CONTROLLER_LAUNCH_SECRET).hexdigest()
 
 
 @pytest.mark.parametrize(
@@ -731,12 +1134,25 @@ def test_real_launch_orchestration_failures_publish_terminal_pending_zero_target
     assert verified.controller_stderr == expected_stderr
     assert verified.manifest.controller_stderr.sha256 == sha256(expected_stderr).hexdigest()
     assert verified.terminal.deadline_expired is (case == "watchdog")
+    assert verified.controller_launch is not None
+    assert verified.terminal.controller_launch == verified.manifest.controller_launch
+    if case == "spawn":
+        assert verified.controller_entry is None
+        assert verified.terminal.controller_entry is None
+    else:
+        assert verified.controller_entry is not None
+        assert verified.terminal.controller_entry == verified.manifest.controller_entry
+        assert verified.controller_entry.attempt_id == verified.started.attempt_id
     if case == "watchdog":
         assert processes[0].killed is True
         assert verified.terminal.controller_returncode == -9
     assert verified.terminal.cleanup_status == (
         TrackAHostCleanupStatus.FAILED if case == "cleanup" else TrackAHostCleanupStatus.NOT_NEEDED
     )
+    attempt_directory = next((fixture.track_a_host_root / "attempts").iterdir())
+    retained = b"".join(path.read_bytes() for path in attempt_directory.iterdir())
+    assert _CONTROLLER_LAUNCH_SECRET not in retained
+    assert base64.b64encode(_CONTROLLER_LAUNCH_SECRET) not in retained
 
 
 def test_real_launch_bounded_stderr_prefix_truncation_and_checksum(tmp_path, monkeypatch):
@@ -846,7 +1262,7 @@ def test_claimed_campaign_reread_failure_records_unknown_not_stale_pending(tmp_p
         fixture,
         returncode=7,
         claim_campaign=True,
-        on_spawn=lambda command: arm_reread_failure(),
+        on_spawn=lambda command, started: arm_reread_failure(),
     )
     with pytest.raises(BackendError, match="status 7") as raised:
         host_script._run_cell(_args(fixture, frozen))
@@ -878,13 +1294,7 @@ def test_terminal_campaign_reread_failure_records_unknown_and_preserves_campaign
     monkeypatch.setattr(track_a, "capture_environment", lambda: provenance.environment)
     arm_reread_failure = _transient_execution_read_failure(monkeypatch, fixture)
 
-    def fail_campaign(command):
-        started, _ = read_track_a_host_attempt_started(
-            fixture.track_a_host_root,
-            0,
-            expected_started_sha256=command[command.index("--host-started-sha256") + 1],
-            protocol_config_path=fixture.protocol_path,
-        )
+    def fail_campaign(command, started):
         target = IsolatedTarget(
             _SyntheticSuccessfulInvocation(provenance.target, provenance.isolation),
             _SyntheticFailingBackend(provenance.isolation),
@@ -933,7 +1343,7 @@ def test_real_launch_preserves_claimed_failed_or_invalid_campaign_prefix(
     provenance = scheduled.evaluation_config.provenance
     assert provenance.isolation is not None
 
-    def terminal_campaign(command):
+    def terminal_campaign(command, started):
         attempt_id = command[command.index("--attempt-id") + 1]
         memory_start = start_controller_memory_observation()
         controller = PolicyRepetitionController(
@@ -1015,7 +1425,7 @@ def test_controller_terminal_and_campaign_reread_failures_are_both_retained(tmp_
         monkeypatch,
         fixture,
         stdout=_terminal_line(_mismatched_terminal()),
-        on_spawn=lambda command: arm_reread_failure(),
+        on_spawn=lambda command, started: arm_reread_failure(),
     )
     with pytest.raises(VerificationError, match="controlled campaign evidence read failure"):
         host_script._run_cell(_args(fixture, frozen))
@@ -1108,6 +1518,33 @@ def test_reader_rejects_tampered_attempt_records(tmp_path, monkeypatch, artifact
         )
 
 
+@pytest.mark.parametrize("artifact", ("controller-launch.json", "controller-entry.json"))
+@pytest.mark.parametrize("change", ("missing", "tampered"))
+def test_reader_rejects_missing_or_tampered_controller_launch_evidence(
+    tmp_path, monkeypatch, artifact, change
+):
+    fixture, frozen, _ = _frozen(tmp_path, monkeypatch)
+    _install_launch_boundaries(monkeypatch, fixture, returncode=7)
+    with pytest.raises(BackendError, match="status 7"):
+        host_script._run_cell(_args(fixture, frozen))
+
+    attempt_directory = next((fixture.track_a_host_root / "attempts").iterdir())
+    manifest_sha256 = _manifest_digest(attempt_directory)
+    path = attempt_directory / artifact
+    if change == "missing":
+        path.unlink()
+    else:
+        path.write_bytes(path.read_bytes() + b" ")
+
+    with pytest.raises(VerificationError):
+        read_track_a_host_attempt(
+            fixture.track_a_host_root,
+            0,
+            expected_manifest_sha256=manifest_sha256,
+            protocol_config_path=fixture.protocol_path,
+        )
+
+
 def test_reader_does_not_modify_host_track_a_or_n05_evidence(tmp_path, monkeypatch):
     fixture, frozen, _, ledger = _ledger(tmp_path, monkeypatch)
     claimed = ledger.claim(0, attempt_id="readonly-attempt")
@@ -1194,6 +1631,12 @@ def test_controller_rejects_changed_or_missing_host_attempt_id_before_target(tmp
         controller_script, "FIXED_IMAGE_ID", fixture.authorization.targets[1].image_id
     )
     claimed = ledger.claim(0, attempt_id="host-owned-attempt")
+    launch = ledger.authorize_controller_launch(
+        claimed,
+        controller_id=fixture.authorization.controller_id,
+        launch_secret_sha256=sha256(_CONTROLLER_LAUNCH_SECRET).hexdigest(),
+    )
+    monkeypatch.chdir(tmp_path)
     common = [
         "track-a-controller",
         "--controller",
@@ -1213,6 +1656,8 @@ def test_controller_rejects_changed_or_missing_host_attempt_id_before_target(tmp
         str(fixture.track_a_host_root),
         "--host-started-sha256",
         claimed.started_sha256,
+        "--host-launch-sha256",
+        launch.launch_sha256,
         "--run-index",
         "0",
         "--execution-sha256",
@@ -1232,6 +1677,7 @@ def test_controller_rejects_changed_or_missing_host_attempt_id_before_target(tmp
         "argv",
         [*common, "--attempt-id", "changed-attempt", "run-cell"],
     )
+    monkeypatch.setattr(sys, "stdin", _launch_input())
     with pytest.raises(ValueError, match="differs from the host-published"):
         controller_script.main()
     assert calls == []
@@ -1243,11 +1689,13 @@ def test_controller_rejects_changed_or_missing_host_attempt_id_before_target(tmp
         "argv",
         [*changed_launch, "--attempt-id", claimed.started.attempt_id, "run-cell"],
     )
+    monkeypatch.setattr(sys, "stdin", _launch_input())
     with pytest.raises(ValueError, match="launch inputs differ"):
         controller_script.main()
     assert calls == []
 
     monkeypatch.setattr(sys, "argv", [*common, "run-cell"])
+    monkeypatch.setattr(sys, "stdin", _launch_input())
     with pytest.raises(SystemExit):
         controller_script.main()
     assert calls == []
@@ -1261,7 +1709,7 @@ def test_controller_rejects_changed_or_missing_host_attempt_id_before_target(tmp
         raise BackendError("controlled backend boundary")
 
     monkeypatch.setattr(controller_script, "ContainerExecutionBackend", controlled_backend)
-    monkeypatch.setattr(sys, "stdin", io.StringIO())
+    monkeypatch.setattr(sys, "stdin", _launch_input())
     monkeypatch.setattr(sys, "stdout", broker_output)
     monkeypatch.setattr(sys, "stderr", diagnostic_output)
     monkeypatch.setattr(

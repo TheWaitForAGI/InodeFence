@@ -59,11 +59,15 @@ record를 읽지 않고 digest 문자열만 기록하므로 verified N05 evidenc
 MID-03의 Track A consumer Units 1–3 구현 후보는 합성 N05 evidence에서 original pilot/N05
 재검증, process-local admission capability를 요구하는 freeze, retained-evidence reader와
 host-attempt ledger를 연결한다. Host가 controller launch 전에 attempt ID와 `started.json`을
-no-overwrite로 발행하고, controller/campaign claim은 같은 ID만 사용한다. 발행된 host attempt는
-spawn/출력/exit/watchdog/cleanup 실패에도 소비되며 terminal/manifest가 없거나 cleanup이 불완전하면
-성공으로 읽지 않는다. Terminal 또는 일부 terminal artifact가 생긴 attempt의 controller 재진입은
-backend 전에 거부하고, campaign 재관찰 실패는 stale PENDING/0이 아니라 명시적 unknown으로
-기록한다. Campaign이 완료됐거나 target execution이 있으면 cleanup `COMPLETE`만 허용한다. 이
+no-overwrite로 발행하고, host가 현재 spawn에만 전달하는 ephemeral secret의 digest를
+`controller-launch.json`에 보존한다. Controller는 live stdin handshake를 검증한 뒤
+`controller-entry.json`을 atomic no-overwrite로 획득해야만 backend에 진입하며, campaign claim까지
+같은 attempt ID만 사용한다. Secret 평문은 CLI나 ledger에 저장하지 않으며 이 handshake는 사람 승인이나
+새 admission capability가 아니다. 발행된 host attempt는 spawn/출력/exit/watchdog/cleanup 실패에도
+소비되며 terminal/manifest가 없거나 cleanup이 불완전하면 성공으로 읽지 않는다. Start-only,
+launch-only, entry 이후 hard-kill prefix와 terminal/partial-terminal attempt는 모두 retry 권한이 아니고
+controller 재진입을 backend 전에 거부한다. Campaign 재관찰 실패는 stale PENDING/0이 아니라 명시적
+unknown으로 기록한다. Campaign이 완료됐거나 target execution이 있으면 cleanup `COMPLETE`만 허용한다. 이
 상태는 target-free engineering evidence일 뿐이며, controller에서
 authoritative host/Track A/pilot/N05/protocol 경로를 실제로 다시 열 수 있게 하는 배치 연결과 Unit 4
 final-manifest/analysis 결합은 남아 있다. N05와 4,000회 Track A pilot은 **NOT_RUN**이다.

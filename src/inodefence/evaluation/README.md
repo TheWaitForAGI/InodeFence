@@ -148,17 +148,22 @@ live capability or authenticate the named reviewer from stored text or digests.
 `track_a_host_ledger` adds the authorized host root, one no-overwrite directory per schedule cell,
 and read-only canonical readers. `validate_track_a_host_admission` requires the original pilot path
 plus trusted digest and approval reference again before host claim. `TrackAHostLedger.claim`
-publishes the host-generated attempt ID before controller launch; `execute_track_a_slot` accepts
-only that typed start and passes its ID unchanged to `PolicyRepetitionController`. `finish` retains
-bounded stderr, campaign prefix, cleanup outcome and terminal/manifest cross-references. A start is
+publishes the host-generated attempt ID before controller launch. `authorize_controller_launch`
+retains only the SHA-256 of a fresh per-spawn secret, and `claim_track_a_controller_entry` validates
+that live stdin handshake before atomically publishing `controller-entry.json`. The secret is not
+persisted or placed on the CLI and is launch liveness, not approval or an admission capability.
+`execute_track_a_slot` accepts only that typed start and passes its ID unchanged to
+`PolicyRepetitionController`. `finish` retains the exact launch/entry references, bounded stderr,
+campaign prefix, cleanup outcome and terminal/manifest cross-references. A start is
 consumed without retry. Failure before campaign claim is explicit PENDING/zero executions; failure
 after claim retains the campaign's STARTED/FAILED/INVALID prefix. A failed campaign reread records
 `campaign_observation_status=failed` with no asserted state, references or execution count instead
 of copying the pre-launch PENDING snapshot. Completed campaigns and any nonzero target prefix
 require cleanup `COMPLETE`; `NOT_NEEDED` is only a failed pre-target outcome. Missing or incomplete
-cleanup, stderr capture, terminal or manifest can never read as host success. The controller start
-reader accepts a directory containing only `started.json`, so a terminalled or partially
-terminalled attempt cannot be replayed through the backend.
+cleanup, stderr capture, terminal or manifest can never read as host success. A controller requires
+the exact start+launch prefix and wins one no-overwrite entry publication; start-only, launch-only,
+already-entered, terminalled and partially terminalled attempts cannot be replayed through the
+backend.
 
 The actual host/controller filesystem mapping remains an integration precondition: the controller
 must reopen the authorized host ledger, Track A root, original pilot record, authoritative N05
@@ -166,9 +171,9 @@ host/Linux roots and protocol bytes at their recorded paths. Unit 3 does not cop
 trees or turn typed references into approval tokens. Real N05 and pilot execution remain `NOT_RUN`.
 Any later approval must bind the final integrated clean source SHA exactly.
 
-A process hard kill can prevent terminal publication, and a kill between `started.json` publication
-and the first controller instruction leaves only the consumed start. Unit 3 deliberately provides
-no automatic retry for that residual; it cannot infer a safe replay from incomplete durable state.
+A process hard kill can prevent terminal publication. A kill may leave a consumed start-only,
+launch-only or entered-without-terminal prefix; none authorizes replay. Unit 3 deliberately provides
+no automatic retry and cannot reconstruct live launch material from durable evidence.
 
 Evaluation records use a strict schema-v1 wrapper around existing canonical model
 encoding. Payload SHA-256 is declared in the wrapper; whole-file digest is returned

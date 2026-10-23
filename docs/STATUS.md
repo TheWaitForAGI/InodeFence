@@ -1,5 +1,19 @@
 # 현재 프로젝트 상태
 
+## 중간발표 P0 현황 (11/2) — 담당자가 직접 갱신
+
+기준: [MIDTERM_GOALS](MIDTERM_GOALS.md) · 실행 기록: [LOG](LOG.md) · 갱신: 2026-10-23
+
+| P0 | 담당 | 상태 (10/23) | 다음 할 일 |
+| --- | --- | --- | --- |
+| P0-1 실제 node-tar 실행 | 규민 | 부분: v2 qualification 경로에서 실제 실행 이력 있음, N05 host 경로 실패 | 재현 가능한 실행 명령 1개 |
+| P0-2 중간 상태 관찰 | 민찬 | 동작: v2 producer 필수 기준 14개 중 13개 통과, replacement coverage 1개 미달 | 한계 표현 결정, trace 출력 포맷 |
+| P0-3 Oracle 검증 | 민찬 | C0/C1/C2 fixture TESTED | 데모용 fixture 세트 |
+| P0-4 Feedback 기반 Mutation | 주언 | `run_effect_campaign` 구현, synthetic producer로만 실행 | 실제 producer 연결, 선택 근거 출력 |
+| P0-5 End-to-end 데모 | 지웅 | 미구현 | `scripts/run_effect_demo.py` + `make demo` |
+
+아래는 2026-10-18 기준 상세 기록이다.
+
 상태 갱신일: **2026-10-18**. G0 capability baseline은 main
 **`8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`**다. 이 SHA는 G0 문서 동결이
 검토한 구현 revision이며 최신 main을 뜻하지 않는다. #77–#84 연구 stack은 main에

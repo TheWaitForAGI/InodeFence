@@ -1,3 +1,16 @@
+## 이 PR을 병합하면 실제로 실행/검증할 수 있게 되는 것
+
+_필수 1~2줄. 답이 "~에 대한 문서/감사"뿐이면 PR이 아니라 docs/STATUS.md 갱신으로 처리한다._
+
+## 해당 P0 (docs/MIDTERM_GOALS.md)
+
+- [ ] P0-1 실제 node-tar 실행
+- [ ] P0-2 중간 상태 관찰
+- [ ] P0-3 Oracle 검증
+- [ ] P0-4 Feedback 기반 Mutation
+- [ ] P0-5 End-to-end 데모
+- [ ] 해당 없음 — 리더 확인 받음
+
 ## Related Issue
 
 Closes #

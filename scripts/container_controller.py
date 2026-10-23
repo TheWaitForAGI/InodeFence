@@ -12,10 +12,13 @@ from pathlib import Path
 
 import pytest
 from scripts.run_effect_demo import (
+    HISTORICAL_DEMO_MODE,
+    HISTORICAL_LABEL,
     NativeDemoAborted,
     add_demo_arguments,
     check_demo_arguments,
     demo_options,
+    historical_demo_report,
     native_demo_report,
 )
 
@@ -42,6 +45,34 @@ def run_native_effect_demo(
             },
         }
         print(f"effect-demo aborted: {error}", file=sys.stderr)
+        returncode = 1
+    with evidence.open("x", encoding="ascii") as stream:
+        stream.write(render_effect_campaign_report(report))
+    print(f"effect demo report: {evidence}", file=sys.stderr)
+    return returncode
+
+
+def run_native_historical_demo(
+    backend: ContainerExecutionBackend, image: str, evidence: Path, args: argparse.Namespace
+) -> int:
+    """State-aware feedback loop on a frozen historical node-tar; abort still leaves evidence."""
+    try:
+        report = historical_demo_report(backend, image, args.tar_version, **demo_options(args))
+        returncode = 0
+    except NativeDemoAborted as error:
+        report = {
+            "label": HISTORICAL_LABEL,
+            "producer": "native",
+            "mode": "historical",
+            "requested_tar_version": args.tar_version,
+            "aborted": {
+                "step_index": error.step_index,
+                "case_id": error.case_id,
+                "reason": error.reason,
+                "observed": error.observed,
+            },
+        }
+        print(f"effect-demo-historical aborted: {error}", file=sys.stderr)
         returncode = 1
     with evidence.open("x", encoding="ascii") as stream:
         stream.write(render_effect_campaign_report(report))
@@ -91,6 +122,7 @@ def main() -> int:
             "qualify-node-n01",
             "preflight-node-n04-5s",
             "effect-demo",
+            HISTORICAL_DEMO_MODE,
         ),
     )
     args = parser.parse_args()
@@ -100,6 +132,7 @@ def main() -> int:
         "qualify-node-n01",
         "preflight-node-n04-5s",
         "effect-demo",
+        HISTORICAL_DEMO_MODE,
     }
     if (args.mode in evidence_modes) != (args.evidence is not None):
         parser.error("evidence mode requires --evidence; validation modes do not export")
@@ -304,6 +337,9 @@ def main() -> int:
         if args.mode == "effect-demo":
             assert args.evidence is not None
             return run_native_effect_demo(backend, args.image[0], args.evidence, args)
+        if args.mode == HISTORICAL_DEMO_MODE:
+            assert args.evidence is not None
+            return run_native_historical_demo(backend, args.image[0], args.evidence, args)
         suite = {
             "validate": "check_boundary.py",
             "validate-node-image": "check_node_image.py",

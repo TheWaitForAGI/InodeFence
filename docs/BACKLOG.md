@@ -13,7 +13,7 @@ P0 작업이 새로 생기면 이 표 맨 위에 끼워 넣는다.
 | --- | --- | --- | --- |
 | 1 | P2-a C1 일반화 영향 조사 | 대기 | 없음 |
 | 2 | P2-b C1 일반화 + `add_hardlink` 외부 타깃 확장 | 완료(jiwoong/p2-b-c1-generalize-hardlink) | P2-a = "안전", P2-a 브랜치 머지 |
-| 3 | P2-c N01 rediscovery 재실행 | 대기 | P2-b 머지 + 사람이 승인한 실행 범위 |
+| 3 | P2-c N01 rediscovery 재실행 | 진행(엔트리포인트 추가됨, native 실행 대기)(jiwoong/p2-c-n01-rediscovery) | P2-b 머지 + 사람이 승인한 실행 범위 |
 | 4 | P3 A/B/C 비교 실험 | 대기 | P2-c rediscovery 성공 |
 
 ---
@@ -54,6 +54,7 @@ P0 작업이 새로 생기면 이 표 맨 위에 끼워 넣는다.
 - 할 일: 승인된 범위에서 effect campaign을 실제 node-tar historical 타깃에 돌려, 알려진 PoC를 seed로 쓰지 않고(연구 규칙 2) 일반화된 C1/C2 위반이 나오는지 본다.
 - 완료 조건: 실행 산출물(JSON, raw evidence 경로)이 남고, 결과가 `발견` / `미발견` / `중단(원인)` 중 하나로 LOG에 기록된다. Oracle 탐지를 취약점 재현 성공으로 기록하지 않는다. 결과는 `demo run` 또는 승인 문서가 정한 라벨로 적는다(qualification 아님).
 - 실행/검증하게 되는 것: feedback 기반 탐색이 실제 node-tar historical 타깃에서 C1/C2 위반을 찾는지 확인할 수 있다.
+- 진행(2026-10-24, `jiwoong/p2-c-n01-rediscovery`, base=`jiwoong/p2-b-c1-generalize-hardlink`, 스택 2/3): **엔트리포인트 code만 추가(additive), native 실행은 runtime 대기.** runtime Step A가 기록한 '엔트리포인트 부재'(LOG 2026-10-24 01:20)를 메움. 새 scoped 엔트리포인트 `effect-demo-historical`(`scripts.container_host … effect-demo-historical --image <frozen effect image> --tar-version 7.5.2|7.5.3 --seed … --budget … --evidence …` → `container_controller.run_native_historical_demo` → `run_effect_demo.historical_demo_report`). 타깃 버전 allowlist는 catalog(`node-link-sanitize` selected_pair)+wrapper locks+frozen `n01.FROZEN_TARGETS`(읽기전용) 교차검증으로 7.5.2/7.5.3만 허용(lock sha256 일치 확인), 임의 이미지·버전 거부. arm=P2 adaptive·mutation=escape-hardlink 기본, seed·budget 지정 가능(budget 1..100, >100 거부). 결과 라벨 'demo run'+oracle hit 'oracle-detected Cx event'(rediscovery/취약점 문자열 없음). 안전 제약 불변: benign `make demo-native`의 7.5.22 핀(`native_demo_report`)·기존 격리(`NodeTarEffectTarget`/disposable sandbox+sentinel; `--privileged`/`--cap-add`/`--security-opt` 추가 없음)·`MAX_NATIVE_BUDGET=100`·FROZEN(`n01.py`/locks/guard/settings)·oracle(`evaluate_contracts` C0/C1/C2 3-tuple) 전부 미변경. 검증: docker Dev Container `make check` 1750 pass/1 fail(pre-existing env, 새실패 0)·oracle 4/4·`make demo` 2회 바이트 동일. **게이트 미충족(P2-b 미머지 + 사람 승인 실행 범위는 LOG 2026-10-24 01:05에 있으나 native는 runtime 소관)이므로 native pilot은 실행하지 않음.** 상세는 [LOG](LOG.md).
 
 ## P3. A/B/C 비교 실험
 

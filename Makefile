@@ -8,7 +8,10 @@ DEMO_SEED ?= 123
 DEMO_BUDGET ?= 20
 DEMO_OUT ?= $(or $(INODEFENCE_RUNTIME_ROOT),/var/lib/inodefence)/demo/effect-demo-$(DEMO_PRODUCER).json
 
-.PHONY: install target-tools lint format-check typecheck test env-check docs-check check fixtures probe isolation-support node-entry-timing-probe node-tar-smoke node-tar-effect-check demo demo-native
+TAR_VERSION ?= 7.5.2
+HISTORICAL_IMAGE ?= inodefence-node-tar-effect:$(TAR_VERSION)
+
+.PHONY: install target-tools lint format-check typecheck test env-check docs-check check fixtures probe isolation-support node-entry-timing-probe node-tar-smoke node-tar-effect-check demo demo-native demo-native-historical
 
 target-tools:
 	npm ci --prefix tools/node-tar --ignore-scripts --no-audit --no-fund
@@ -65,3 +68,10 @@ demo:
 
 demo-native:
 	DEMO_POLICY=$(DEMO_POLICY) DEMO_MUTATION_POLICY=$(DEMO_MUTATION_POLICY) DEMO_SEED=$(DEMO_SEED) DEMO_BUDGET=$(DEMO_BUDGET) bash scripts/local_node_tar_smoke.sh demo
+
+# P2-c: state-aware effect loop on a prebuilt frozen historical node-tar effect image.
+# Runtime provides the image (default tag inodefence-node-tar-effect:$(TAR_VERSION)); the
+# P2 adaptive arm and escape-hardlink mutation policy are the in-code defaults. Budget stays
+# capped at 100 in code. Not run by `make check`.
+demo-native-historical:
+	TAR_VERSION=$(TAR_VERSION) HISTORICAL_IMAGE=$(HISTORICAL_IMAGE) DEMO_SEED=$(DEMO_SEED) DEMO_BUDGET=$(DEMO_BUDGET) bash scripts/local_node_tar_smoke.sh demo-historical

@@ -13,6 +13,7 @@ from inodefence.effect_demo import effect_campaign_report, render_effect_campaig
 from inodefence.effect_synthetic import synthetic_effect_result
 from inodefence.feedback import EffectSearchPolicy
 from inodefence.generator import minimal_seed_corpus
+from inodefence.mutator import MutationPolicy
 
 NATIVE_UNAVAILABLE = (
     "native producer is not runnable from this entrypoint: "
@@ -20,8 +21,18 @@ NATIVE_UNAVAILABLE = (
 )
 
 
-def synthetic_demo_json(seed: int, budget: int, policy: EffectSearchPolicy) -> str:
-    config = EffectCampaignConfig(random_seed=seed, execution_budget=budget, search_policy=policy)
+def synthetic_demo_json(
+    seed: int,
+    budget: int,
+    policy: EffectSearchPolicy,
+    mutation_policy: MutationPolicy,
+) -> str:
+    config = EffectCampaignConfig(
+        random_seed=seed,
+        execution_budget=budget,
+        search_policy=policy,
+        mutation_policy=mutation_policy,
+    )
     result = run_effect_campaign(minimal_seed_corpus(), synthetic_effect_result, config)
     return render_effect_campaign_report(effect_campaign_report(result, "synthetic"))
 
@@ -34,6 +45,11 @@ def main(argv: list[str] | None = None) -> int:
         choices=tuple(policy.value for policy in EffectSearchPolicy),
         default=EffectSearchPolicy.P2_EFFECT_ADAPTIVE.value,
     )
+    parser.add_argument(
+        "--mutation-policy",
+        choices=tuple(policy.value for policy in MutationPolicy),
+        default=MutationPolicy.M1.value,
+    )
     parser.add_argument("--seed", type=int, default=123)
     parser.add_argument("--budget", type=int, default=20)
     parser.add_argument("--out", type=Path, help="write JSON here instead of stdout")
@@ -41,13 +57,18 @@ def main(argv: list[str] | None = None) -> int:
     if args.producer == "native":
         print(NATIVE_UNAVAILABLE, file=sys.stderr)
         return 2
-    text = synthetic_demo_json(args.seed, args.budget, EffectSearchPolicy(args.policy))
+    text = synthetic_demo_json(
+        args.seed,
+        args.budget,
+        EffectSearchPolicy(args.policy),
+        MutationPolicy(args.mutation_policy),
+    )
     if args.out is None:
         sys.stdout.write(text)
     else:
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(text, encoding="ascii")
-        print(f"producer=synthetic steps={args.budget} report={args.out}", file=sys.stderr)
+        print(f"effect demo report: {args.out}")
     return 0
 
 

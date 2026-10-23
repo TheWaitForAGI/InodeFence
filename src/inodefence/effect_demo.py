@@ -78,6 +78,7 @@ def effect_campaign_report(result: EffectCampaignResult, producer: str) -> dict[
     return {
         "demo_report_schema": DEMO_REPORT_SCHEMA,
         "producer": producer,
+        "mutation_policy": config.mutation_policy.value,
         "config": {
             "random_seed": config.random_seed,
             "execution_budget": config.execution_budget,

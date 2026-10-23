@@ -97,6 +97,19 @@ stock/minimal/full 각 20회, timeout/overflow/backend failure와 required inval
 실행한다. Output은 덮어쓰지 않으며, 모든 필수 criterion이 평가된 경우에만 정확한 Gate 4
 decision token을 기록한다.
 
+## 로컬 node-tar smoke (`make node-tar-smoke`, `make node-tar-effect-check`)
+
+`scripts/local_node_tar_smoke.sh`는 CI `container-integration` job을 로컬 이름
+(`inodefence-*:local` image, `inodefence-local-controller`, `inodefence-local-runtime`)으로 재현한다.
+image 빌드 → non-root controller 준비 → `scripts.container_host`로 `validate`,
+`validate-node-image`, `validate-node-target`, `benign-node-smoke`를 실행하고 evidence를
+`~/inodefence-evidence/inodefence-node-smoke-<timestamp>`로 복사한다. `effect` 모드
+(`make node-tar-effect-check`)는 `validate-node-effect-producer`만 실행한다. 성공·실패와 무관하게
+이번 실행이 만든 controller와 volume만 제거하며, 같은 이름의 자원이 이미 있으면 지우지 않고
+종료한다. Context는 `docker context show` 값이고 `INODEFENCE_DOCKER_CONTEXT`, `PYTHON`
+(기본 `python3.12`), `INODEFENCE_EVIDENCE_DIR`로 바꿀 수 있다. 실패하면 `FAILED at step: <단계>`를
+출력한다. 결과는 demo/engineering run이며 qualification이 아니다.
+
 ## N01 historical pair (explicit trusted-host action)
 
 N01 is a separate bounded mode, not part of the normal `7.5.22` image/target checks. On the

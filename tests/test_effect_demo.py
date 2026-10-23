@@ -256,12 +256,20 @@ def test_effect_trace_marks_synthetic_and_labels_each_value_origin() -> None:
         "entry 0 [archive] path=a.txt type=regular",
         "entry 1 [archive] path=b.txt type=hardlink link=a.txt",
     ]
+    assert "  [*·SYNTHETIC] synthetic producer가 만든 값. 실제 관찰·분류 아님." in lines
     assert (
-        "    path extract/object-1 before [observed] absent "
-        "-> after [observed] present regular dev:ino 7:101"
+        "    path extract/object-1 before [observed·SYNTHETIC] absent "
+        "-> after [observed·SYNTHETIC] present regular dev:ino 7:101"
     ) in lines
-    assert "    [derived] class=hardlink_identity_relation_creation strength=identity_verified" in (
-        lines
+    assert (
+        "    [derived·SYNTHETIC] class=hardlink_identity_relation_creation "
+        "strength=identity_verified"
+    ) in lines
+    assert "  effect seq 6-7 [observed·SYNTHETIC] op=link outcome=succeeded" in lines
+    # Outside the legend, no producer-made value carries an unmarked label.
+    body = lines[lines.index("legend:") + len(TRACE_LEGEND) + 2 :]
+    assert not any(
+        f"[{name}]" in line for line in body for name in ("observed", "not_observed", "derived")
     )
 
 
@@ -283,10 +291,11 @@ def test_effect_trace_prints_not_observed_and_operation_result_without_values() 
     trace = replace(result.trace, effect_events=(unobserved, *result.trace.effect_events[1:]))
     rendered = render_effect_trace(replace(result, trace=trace))
 
-    assert "    [derived] class=operation_observed strength=operation_result" in rendered
+    assert "    [derived·SYNTHETIC] class=operation_observed strength=operation_result" in rendered
     assert (
-        "    path extract/object-0 before [observed] absent -> after [not_observed]\n" in rendered
-    )
+        "    path extract/object-0 before [observed·SYNTHETIC] absent "
+        "-> after [not_observed·SYNTHETIC]\n"
+    ) in rendered
 
 
 def test_effect_trace_has_no_synthetic_header_for_other_sources() -> None:
@@ -298,3 +307,5 @@ def test_effect_trace_has_no_synthetic_header_for_other_sources() -> None:
 
     assert "SYNTHETIC" not in rendered
     assert rendered.startswith("extractor: synthetic 1")
+    assert "  effect seq 6-7 [observed] op=link outcome=succeeded\n" in rendered
+    assert "    [derived] class=hardlink_identity_relation_creation" in rendered

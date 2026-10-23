@@ -6,7 +6,7 @@ no timestamps or host paths: identical campaigns render byte-identical JSON.
 """
 
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from typing import Any
 
 from inodefence.effect_campaign import EffectCampaignResult, EffectCampaignStep
@@ -308,13 +308,21 @@ TRACE_LEGEND = (
 )
 
 
-def _observation_text(phase: str, observation: EffectObjectObservation) -> str:
+SYNTHETIC_LABEL_SUFFIX = "·SYNTHETIC"
+
+
+def _observation_text(
+    phase: str, observation: EffectObjectObservation, label: Callable[[str], str]
+) -> str:
     if observation.status == EffectObservationStatus.NOT_OBSERVED:
-        return f"{phase} [not_observed]"
+        return f"{phase} {label('not_observed')}"
     if observation.object is None:
-        return f"{phase} [observed] absent"
+        return f"{phase} {label('observed')} absent"
     obj = observation.object
-    return f"{phase} [observed] present {obj.object_type.value} dev:ino {obj.st_dev}:{obj.st_ino}"
+    return (
+        f"{phase} {label('observed')} present {obj.object_type.value} "
+        f"dev:ino {obj.st_dev}:{obj.st_ino}"
+    )
 
 
 def render_effect_trace(result: EffectRunResult) -> str:
@@ -322,15 +330,22 @@ def render_effect_trace(result: EffectRunResult) -> str:
 
     Only fields already in EffectRunResult are printed; the label states where a
     value came from (TAR, source observation, or InodeFence classification).
-    Synthetic traces get a header saying their values are not observations.
+    Synthetic traces get a header, and every producer-made value's label carries
+    ·SYNTHETIC, so no line reads as a real observation. archive labels stay
+    unmarked: entries come from the actual ArchiveCase.
     """
     if not isinstance(result, EffectRunResult):
         raise ValueError("trace rendering requires an EffectRunResult")
     trace = result.trace
     execution = result.base_result.execution
     sources = trace.provenance.sources
+    synthetic = any(source.mechanism == SYNTHETIC_MECHANISM for source in sources)
+
+    def label(name: str) -> str:
+        return f"[{name}{SYNTHETIC_LABEL_SUFFIX if synthetic else ''}]"
+
     lines = []
-    if any(source.mechanism == SYNTHETIC_MECHANISM for source in sources):
+    if synthetic:
         lines.append(
             "SYNTHETIC — 관찰값 아님: synthetic producer가 만든 값이며 node-tar 실행 증거가 아니다"
         )
@@ -348,7 +363,11 @@ def render_effect_trace(result: EffectRunResult) -> str:
         + (", ".join(f"{f.kind.value}: {f.message}" for f in failures) if failures else "none")
     )
     lines.append("legend:")
-    lines.extend(f"  [{label}] {meaning}" for label, meaning in TRACE_LEGEND)
+    lines.extend(f"  [{name}] {meaning}" for name, meaning in TRACE_LEGEND)
+    if synthetic:
+        lines.append(
+            f"  [*{SYNTHETIC_LABEL_SUFFIX}] synthetic producer가 만든 값. 실제 관찰·분류 아님."
+        )
     for entry in trace.archive_entries:
         link = f" link={entry.link_target}" if entry.link_target is not None else ""
         lines.append(
@@ -364,20 +383,20 @@ def render_effect_trace(result: EffectRunResult) -> str:
         for event in events:
             lines.append(
                 f"  effect seq {event.start_sequence}-{event.completion_sequence} "
-                f"[observed] op={event.operation.value} outcome={event.outcome.value}"
+                f"{label('observed')} op={event.operation.value} outcome={event.outcome.value}"
             )
             lines.append(
-                f"    [derived] class={event.effect_class.value} "
+                f"    {label('derived')} class={event.effect_class.value} "
                 f"strength={event.evidence_strength.value}"
             )
             evidence = {item.path: item for item in event.object_evidence}
             for path in event.affected_paths:
                 item = evidence.get(path)
                 if item is None:
-                    lines.append(f"    path {path} [not_observed] no object evidence")
+                    lines.append(f"    path {path} {label('not_observed')} no object evidence")
                     continue
                 lines.append(
-                    f"    path {path} {_observation_text('before', item.before)} "
-                    f"-> {_observation_text('after', item.after)}"
+                    f"    path {path} {_observation_text('before', item.before, label)} "
+                    f"-> {_observation_text('after', item.after, label)}"
                 )
     return "\n".join(lines) + "\n"

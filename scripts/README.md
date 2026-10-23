@@ -18,7 +18,7 @@ check_dev_env.py는 임시 sandbox에서 hardlink identity, symlink, 공유 obje
 
 check_docs.py는 Git-visible Markdown의 상대경로 링크와 canonical 문서 존재를 검사한다. fenced/indented/inline code와 외부 URL, anchor-only 링크는 제외한다. 완전한 Markdown parser나 anchor 검사는 아니다.
 
-generate_tar_fixtures.py는 4종 TAR baseline을 재생성한다. manual_tar_probe.py는 Linux runtime sandbox에 TAR를 풀고 lstat/readlink 결과를 출력한 뒤 sandbox를 삭제한다.
+generate_tar_fixtures.py는 4종 TAR baseline과 C0/C1/C2 oracle-check fixture 3종을 재생성한다. oracle_fixture_check.py는 정상 1·C0/C1/C2 각 1 fixture를 경계 검사 없는 통제 extractor로 실행해 실제 Observer/Oracle 판정을 출력한다(controlled oracle check, node-tar 결과 아님). manual_tar_probe.py는 Linux runtime sandbox에 TAR를 풀고 lstat/readlink 결과를 출력한 뒤 sandbox를 삭제한다.
 
 ## 하지 않는 것
 

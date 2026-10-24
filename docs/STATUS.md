@@ -1,5 +1,19 @@
 # 현재 프로젝트 상태
 
+## 중간발표 P0 현황 (11/2) — 담당자가 직접 갱신
+
+기준: [MIDTERM_GOALS](MIDTERM_GOALS.md) · 실행 기록: [LOG](LOG.md) · 갱신: 2026-10-24
+
+| P0 | 담당 | 상태 (10/23) | 다음 할 일 |
+| --- | --- | --- | --- |
+| P0-1 실제 node-tar 실행 | 규민 | 통과: make node-tar-smoke (macOS/OrbStack, 10/23) | — |
+| P0-2 중간 상태 관찰 | 민찬 | 동작: v2 producer 필수 기준 14개 중 13개 통과, replacement coverage 1개 미달. `effect_demo.render_effect_trace`로 entry별 trace 출력(archive/observed/not_observed/derived 라벨, synthetic이면 라벨에 ·SYNTHETIC; synthetic으로만 확인). demo report(schema 2) step마다 같은 정보를 `trace`로 출력(entry·operation·association, 작업 전후 status와 present일 때 dev:ino·nlink·size, observation_failures, step당 event 64개 상한). native 확인: `make demo-native` 2회(10/24, demo run) 20/20 step trace 출력, link 작업에서 extract/a.txt·b.txt st_nlink 2 관찰, step 8·18은 event 0 + operation_correlation_conflict | 한계 표현 결정(거부 입력의 operation_correlation_conflict 포함) |
+| P0-3 Oracle 검증 | 민찬 | C0/C1/C2 fixture TESTED. 데모 fixture 4종(정상·C0·C1+C2·C2) 판정 일치: `python -m scripts.oracle_fixture_check` (controlled oracle check, node-tar 아님) | — |
+| P0-4 Feedback 기반 Mutation | 주언 | `run_effect_campaign` 구현, `make demo-native`로 실제 node-tar 루프 실행. demo report step마다 선택 근거 `selection` 출력(채널 ① corpus_admission: 선택 전 corpus 크기·편입 여부, ② operator_weights: weights_before·reward·weights_after). native 확인: `make demo-native` 2회(10/24, demo run) 같은 선택, reward 1·편입 step 5·12·19(새 key 각 2개, 선택 전 corpus 4·5·6), step 5 add_entry 가중치 1→2 | — |
+| P0-5 End-to-end 데모 | 지웅 | 동작: `make demo-native` (실제 node-tar 7.5.22, FULL profile, P2·M1·seed 123·budget 20) 2회 동일 루프, demo run | 거부 중 미완료 operation trace 한계 표현, 이미지 ID 재현성(provenance attestation) |
+
+아래는 2026-10-18 기준 상세 기록이다.
+
 상태 갱신일: **2026-10-18**. G0 capability baseline은 main
 **`8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`**다. 이 SHA는 G0 문서 동결이
 검토한 구현 revision이며 최신 main을 뜻하지 않는다. #77–#84 연구 stack은 main에

@@ -18,7 +18,7 @@ check_dev_env.py는 임시 sandbox에서 hardlink identity, symlink, 공유 obje
 
 check_docs.py는 Git-visible Markdown의 상대경로 링크와 canonical 문서 존재를 검사한다. fenced/indented/inline code와 외부 URL, anchor-only 링크는 제외한다. 완전한 Markdown parser나 anchor 검사는 아니다.
 
-generate_tar_fixtures.py는 4종 TAR baseline을 재생성한다. manual_tar_probe.py는 Linux runtime sandbox에 TAR를 풀고 lstat/readlink 결과를 출력한 뒤 sandbox를 삭제한다.
+generate_tar_fixtures.py는 4종 TAR baseline과 C0/C1/C2 oracle-check fixture 3종을 재생성한다. oracle_fixture_check.py는 정상 1·C0/C1/C2 각 1 fixture를 경계 검사 없는 통제 extractor로 실행해 실제 Observer/Oracle 판정을 출력한다(controlled oracle check, node-tar 결과 아님). manual_tar_probe.py는 Linux runtime sandbox에 TAR를 풀고 lstat/readlink 결과를 출력한 뒤 sandbox를 삭제한다.
 
 ## 하지 않는 것
 
@@ -96,6 +96,19 @@ qualify-node-effect-v2 --evidence <new-absolute-path>`는 pinned contained targe
 stock/minimal/full 각 20회, timeout/overflow/backend failure와 required invalid-stream injection을
 실행한다. Output은 덮어쓰지 않으며, 모든 필수 criterion이 평가된 경우에만 정확한 Gate 4
 decision token을 기록한다.
+
+## 로컬 node-tar smoke (`make node-tar-smoke`, `make node-tar-effect-check`)
+
+`scripts/local_node_tar_smoke.sh`는 CI `container-integration` job을 로컬 이름
+(`inodefence-*:local` image, `inodefence-local-controller`, `inodefence-local-runtime`)으로 재현한다.
+image 빌드 → non-root controller 준비 → `scripts.container_host`로 `validate`,
+`validate-node-image`, `validate-node-target`, `benign-node-smoke`를 실행하고 evidence를
+`~/inodefence-evidence/inodefence-node-smoke-<timestamp>`로 복사한다. `effect` 모드
+(`make node-tar-effect-check`)는 `validate-node-effect-producer`만 실행한다. 성공·실패와 무관하게
+이번 실행이 만든 controller와 volume만 제거하며, 같은 이름의 자원이 이미 있으면 지우지 않고
+종료한다. Context는 `docker context show` 값이고 `INODEFENCE_DOCKER_CONTEXT`, `PYTHON`
+(기본 `python3.12`), `INODEFENCE_EVIDENCE_DIR`로 바꿀 수 있다. 실패하면 `FAILED at step: <단계>`를
+출력한다. 결과는 demo/engineering run이며 qualification이 아니다.
 
 ## N01 historical pair (explicit trusted-host action)
 

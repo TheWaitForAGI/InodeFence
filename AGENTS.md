@@ -2,6 +2,59 @@
 
 이 문서는 InodeFence 저장소에서 사람과 코딩 에이전트가 공통으로 따라야 할 규칙을 정의한다.
 
+## 현재 최우선 (~2026-11-02 중간발표)
+
+이 기간에는 아래 규칙이 다른 모든 작업 지침보다 우선한다.
+기준 문서: `docs/MIDTERM_GOALS.md`
+
+### 목표
+
+실제 node-tar에서 다음 루프가 하나의 명령(`make demo`)으로 재현 가능하게 돌아가는 것:
+
+입력 생성 → node-tar 실행 → 중간 상태 관찰 → Oracle 평가 → Feedback 생성 → 다음 Mutation 선택
+
+(P0-1~P0-5. 성능 우위와 N01 rediscovery는 중간발표 필수 조건이 아니다.)
+
+### 우선순위
+
+실제 동작 → 재현 가능성 → 기능 정확성 → 실험적 검증 → 문서화
+
+### 작업 시작 전
+
+1. 이 작업이 P0-1~P0-5 중 무엇에 해당하는지 먼저 밝힌다. 해당하지 않으면 진행하기 전에 사람에게 확인한다.
+2. 이미 있는 코드를 먼저 찾는다. 루프의 부품은 대부분 존재한다:
+   `effect_campaign.run_effect_campaign`, `effect_pipeline.run_node_tar_effect_case`,
+   `effect_scheduler`, `feedback/effect.py`, `oracle`, `observer`.
+   새로 만들기보다 연결을 우선한다.
+
+### 금지
+
+- 새 audit / readiness / handoff / qualification / "preserve" 문서 파일을 만들지 않는다.
+  기록은 `docs/STATUS.md` 갱신 또는 `docs/LOG.md`에 한 줄 추가로 한다.
+- 스택 PR(다른 미머지 PR 위에 PR 쌓기)을 만들지 않는다.
+- 발표 데모만을 위한 임시 구현으로 기존 기능 안정성을 해치지 않는다.
+- 실제로 적용되지 않은 feedback/결과를 적용된 것처럼 기록하지 않는다.
+  관찰한 상태와 추론·재구성한 상태를 구분한다.
+
+### PR
+
+- 설명 첫 항목은 "이 PR을 병합하면 어떤 기능을 실제로 실행하거나 검증할 수 있게 되는가?"에 대한 답이다.
+  답이 "~에 대한 문서/감사"뿐이면 PR이 아니라 STATUS 갱신이다.
+- 브랜치 이름: `<이름>/p0-<번호>-<요약>`. 한 PR에 한 목적.
+
+### 레인 (우선 책임자)
+
+- 지웅: Core / Architecture / Integration (머지 게이트)
+- 주언: Feedback / Evaluation (P0-4, P1 조건)
+- 규민: Runtime / Target Execution (P0-1, N05)
+- 민찬: Observation / Oracle / Demo (P0-2, P0-3, 시연)
+
+### 안전 경계 (변경 없음)
+
+아래 `## 안전 규칙`과 isolation contract를 그대로 따른다.
+실제 node-tar 데모 캠페인은 팀이 승인한 범위(고정 버전, 실행 예산 상한,
+disposable sandbox + sentinel)에서만 실행하고, 결과는 `demo run`으로 라벨링한다(qualification 아님).
+
 ## 가장 먼저 할 일
 
 코딩 에이전트는 작업을 시작하기 전에 다음 순서로 문맥을 확인한다.

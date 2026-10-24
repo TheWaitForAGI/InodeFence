@@ -226,6 +226,14 @@ validates the frozen invocation fields and derives the overall status; a missing
 failed fallback cleanup is
 `PREFLIGHT_INCONCLUSIVE`, never `PREFLIGHT_PASS`.
 
+The consumed v1 ledger remains readable as `inodefence-n04-host-ledger-v1`. The host
+orchestration now also has a fail-closed `inodefence-n04-host-ledger-v2` publication path for
+future separately versioned preflights: once a controller process is launched, it drains at most
+the first 1 MiB of exact controller stderr bytes while continuing to drain the pipe, records the
+truncation bit, and digest-binds the bytes through the terminal record and host manifest. This
+engineering support does not create a new attempt ID, execution mode or authorization; the
+`preflight-node-n04-5s` source gate remains consumed.
+
 `PYTHONPATH=src python scripts/qualify_libarchive_entry_boundary.py --output <new-file>
 --image-id <sha256> --base-image-id <sha256>`는 별도 libarchive public write-disk reference
 target에서 `archive_write_finish_entry()`와 final writer close의 syscall 순서를 비교한다.

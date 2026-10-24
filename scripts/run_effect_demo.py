@@ -8,11 +8,16 @@ evidence. `native_demo_report` runs inside the trusted Linux controller
 import argparse
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from time import perf_counter
 
 from inodefence.effect_campaign import EffectCampaignConfig, run_effect_campaign
-from inodefence.effect_demo import effect_campaign_report, render_effect_campaign_report
+from inodefence.effect_demo import (
+    EffectStepReporter,
+    effect_campaign_report,
+    render_effect_campaign_report,
+)
 from inodefence.effect_pipeline import run_node_tar_effect_case
 from inodefence.effect_synthetic import synthetic_effect_result
 from inodefence.execution.base import ExecutionBackend
@@ -169,11 +174,15 @@ def native_demo_report(
     budget: int = DEFAULT_NATIVE_BUDGET,
     policy: EffectSearchPolicy = EffectSearchPolicy.P2_EFFECT_ADAPTIVE,
     mutation_policy: MutationPolicy = MutationPolicy.M1,
+    step_sink: Callable[[dict[str, object]], None] | None = None,
 ) -> dict[str, object]:
     """Run the effect loop on real node-tar (FULL profile); label the result a demo run.
 
     Must run inside the controller: `backend` creates disposable target containers
     over sandboxes with sentinels. Mutated cases may carry `../` or `/` paths.
+    `step_sink` gets each finished step's report record (identical to `steps[i]`
+    of the returned report) before the next case runs, so a NativeDemoAborted
+    later still leaves the completed loop record with the caller.
     """
     if type(budget) is not int or not 1 <= budget <= MAX_NATIVE_BUDGET:
         raise ValueError(f"native demo budget must be in 1..{MAX_NATIVE_BUDGET}")
@@ -228,8 +237,15 @@ def native_demo_report(
             )
         return run.result
 
+    reporter = EffectStepReporter()
+
+    def record_step(step) -> None:
+        record = reporter.add(step)
+        if step_sink is not None:
+            step_sink(record)
+
     started = perf_counter()
-    result = run_effect_campaign(minimal_seed_corpus(), produce, config)
+    result = run_effect_campaign(minimal_seed_corpus(), produce, config, on_step=record_step)
     total = perf_counter() - started
     report = effect_campaign_report(result, "native")
     report.update(

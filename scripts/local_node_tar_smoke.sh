@@ -5,6 +5,7 @@
 #   smoke  (default) validate, validate-node-image, validate-node-target, benign-node-smoke
 #   effect           validate-node-effect-producer
 #   demo             effect-demo: feedback loop on real node-tar, JSON copied to the host
+#                    (plus <name>.steps.jsonl: steps finished so far, kept even on abort)
 #
 # The real target runs only inside the trusted non-root Linux controller; this host
 # script only builds images, prepares that controller and delegates through
@@ -85,6 +86,16 @@ cleanup() {
       echo "evidence: $HOST_EVIDENCE"
     else
       echo "evidence copy failed: $CONTROLLER_EVIDENCE" >&2
+    fi
+  fi
+  # demo: the per-step JSONL written before each next case (scripts/container_controller.py).
+  if [ "$CREATED_CONTROLLER" -eq 1 ] && [ "$MODE" = demo ] &&
+    dk exec "$CONTROLLER" test -e "${CONTROLLER_EVIDENCE%.json}.steps.jsonl"; then
+    mkdir -p "$EVIDENCE_DIR"
+    if dk cp "$CONTROLLER:${CONTROLLER_EVIDENCE%.json}.steps.jsonl" "${HOST_EVIDENCE%.json}.steps.jsonl"; then
+      echo "completed steps: ${HOST_EVIDENCE%.json}.steps.jsonl"
+    else
+      echo "steps copy failed: ${CONTROLLER_EVIDENCE%.json}.steps.jsonl" >&2
     fi
   fi
   if [ "$CREATED_CONTROLLER" -eq 1 ]; then

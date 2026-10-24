@@ -76,12 +76,26 @@ jobs:
         run: |
           IF_NODE_IMAGE=$(docker image inspect inodefence-node-tar:ci --format '{{.Id}}')
           PYTHONPATH=src python -m scripts.container_host --context default --controller inodefence-ci-controller --volume inodefence-ci-runtime --image "$IF_NODE_IMAGE" --evidence /tmp/inodefence-node-smoke-evidence benign-node-smoke
+      - name: Effect producer smoke on the pinned Node image (make node-tar-effect-check)
+        run: |
+          IF_NODE_IMAGE=$(docker image inspect inodefence-node-tar:ci --format '{{.Id}}')
+          PYTHONPATH=src python -m scripts.container_host --context default --controller inodefence-ci-controller --volume inodefence-ci-runtime --image "$IF_NODE_IMAGE" validate-node-effect-producer
+      - name: Tiny real node-tar effect demo (make demo path, 4 seeds + 2 mutations)
+        run: |
+          IF_NODE_IMAGE=$(docker image inspect inodefence-node-tar:ci --format '{{.Id}}')
+          PYTHONPATH=src python -m scripts.container_host --context default --controller inodefence-ci-controller --volume inodefence-ci-runtime --image "$IF_NODE_IMAGE" --evidence /tmp/inodefence-effect-demo-ci.json --budget 6 effect-demo
       - name: Preserve produced smoke evidence, including unexpected contract evidence
         if: always()
         run: |
           if docker exec inodefence-ci-controller test -d /tmp/inodefence-node-smoke-evidence; then
             docker cp inodefence-ci-controller:/tmp/inodefence-node-smoke-evidence ./container-smoke-evidence
           fi
+          mkdir -p ./container-smoke-evidence
+          for name in inodefence-effect-demo-ci.json inodefence-effect-demo-ci.steps.jsonl; do
+            if docker exec inodefence-ci-controller test -e "/tmp/$name"; then
+              docker cp "inodefence-ci-controller:/tmp/$name" "./container-smoke-evidence/$name"
+            fi
+          done
       - name: Upload produced raw engineering evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

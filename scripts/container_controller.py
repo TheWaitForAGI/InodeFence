@@ -4,6 +4,7 @@ import argparse
 import base64
 import json
 import math
+import os
 import signal
 import subprocess
 import sys
@@ -19,33 +20,54 @@ from scripts.run_effect_demo import (
     native_demo_report,
 )
 
-from inodefence.effect_demo import render_effect_campaign_report
+from inodefence.effect_demo import render_effect_campaign_report, render_effect_step_line
 from inodefence.execution import ContainerExecutionBackend, StdioDockerClient
+
+
+def demo_steps_path(evidence: Path) -> Path:
+    """Sibling JSONL of the final report: `<name>.steps.jsonl` next to `<name>.json`."""
+    return evidence.with_suffix(".steps.jsonl")
 
 
 def run_native_effect_demo(
     backend: ContainerExecutionBackend, image: str, evidence: Path, args: argparse.Namespace
 ) -> int:
-    """Feedback loop on real node-tar; an infrastructure abort still leaves evidence."""
-    try:
-        report = native_demo_report(backend, image, **demo_options(args))
-        returncode = 0
-    except NativeDemoAborted as error:
-        report = {
-            "label": "demo run",
-            "producer": "native",
-            "aborted": {
-                "step_index": error.step_index,
-                "case_id": error.case_id,
-                "reason": error.reason,
-                "observed": error.observed,
-            },
-        }
-        print(f"effect-demo aborted: {error}", file=sys.stderr)
-        returncode = 1
+    """Feedback loop on real node-tar; an infrastructure abort still leaves evidence.
+
+    Each finished step is appended to the sibling steps JSONL and synced before the
+    next case runs, so an abort keeps every completed step's loop record. The final
+    report keeps its existing shape (its `steps` array equals the JSONL lines).
+    """
+    steps_path = demo_steps_path(evidence)
+    with steps_path.open("x", encoding="ascii") as steps_stream:
+
+        def persist_step(record: dict[str, object]) -> None:
+            steps_stream.write(render_effect_step_line(record))
+            steps_stream.flush()
+            os.fsync(steps_stream.fileno())
+
+        try:
+            report = native_demo_report(
+                backend, image, step_sink=persist_step, **demo_options(args)
+            )
+            returncode = 0
+        except NativeDemoAborted as error:
+            report = {
+                "label": "demo run",
+                "producer": "native",
+                "aborted": {
+                    "step_index": error.step_index,
+                    "case_id": error.case_id,
+                    "reason": error.reason,
+                    "observed": error.observed,
+                },
+            }
+            print(f"effect-demo aborted: {error}", file=sys.stderr)
+            returncode = 1
     with evidence.open("x", encoding="ascii") as stream:
         stream.write(render_effect_campaign_report(report))
     print(f"effect demo report: {evidence}", file=sys.stderr)
+    print(f"effect demo completed steps: {steps_path}", file=sys.stderr)
     return returncode
 
 

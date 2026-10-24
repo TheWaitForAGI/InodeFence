@@ -126,16 +126,26 @@ class EffectCampaignResult:
 
 
 EffectResultProducer = Callable[[ArchiveCase], EffectRunResult]
+EffectStepObserver = Callable[[EffectCampaignStep], None]
 
 
 def run_effect_campaign(
     initial_cases: Sequence[ArchiveCase],
     produce_result: EffectResultProducer,
     config: EffectCampaignConfig,
+    on_step: EffectStepObserver | None = None,
 ) -> EffectCampaignResult:
-    """Exercise v2 policy causality without claiming a qualified native producer."""
+    """Exercise v2 policy causality without claiming a qualified native producer.
+
+    `on_step` receives each completed step right after feedback and scheduler
+    bookkeeping, so a caller can persist the loop record incrementally; an
+    aborting producer then leaves every finished step behind. It cannot change
+    the loop: the step is already appended and the result is unaffected.
+    """
     if not callable(produce_result) or not isinstance(config, EffectCampaignConfig):
         raise ValueError("effect campaign requires a producer and typed config")
+    if on_step is not None and not callable(on_step):
+        raise ValueError("on_step must be callable when given")
     cases = tuple(initial_cases)
     if not cases or not all(isinstance(case, ArchiveCase) for case in cases):
         raise ValueError("initial cases must be nonempty ArchiveCase records")
@@ -174,17 +184,18 @@ def run_effect_campaign(
                 decision.new_effect_keys,
                 decision.new_violation_fingerprints,
             )
-        steps.append(
-            EffectCampaignStep(
-                len(steps),
-                origin,
-                parent,
-                result,
-                decision,
-                attempt,
-                scheduler_evidence,
-            )
+        step = EffectCampaignStep(
+            len(steps),
+            origin,
+            parent,
+            result,
+            decision,
+            attempt,
+            scheduler_evidence,
         )
+        steps.append(step)
+        if on_step is not None:
+            on_step(step)
 
     for case in cases:
         observe(case, CampaignOrigin.SEED, None)

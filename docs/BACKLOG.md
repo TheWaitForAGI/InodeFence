@@ -16,7 +16,7 @@
 | --- | --- | --- | --- |
 | 1 | P0-2/P0-4 native 연결: 중간 상태 렌더링 + 선택 근거를 demo-native JSON에 | 완료(jiwoong/p0-2-native-trace) | 없음 |
 | 2 | P0-5 `make demo` = native, `make demo-synthetic` 분리 + SYNTHETIC 라벨 | 완료(jiwoong/p0-5-demo-native-default) | 1 머지 |
-| 3 | P0-5 JSONL 부분 저장 + CI에 effect producer/effect-demo 추가 | 대기 | 2 머지 |
+| 3 | P0-5 JSONL 부분 저장 + CI에 effect producer/effect-demo 추가 | 완료(jiwoong/p0-5-jsonl-partial-ci, PR #143 머지 10/24) | 2 머지 |
 | 4 | P0-1 N01 native 무결성 결함 원인 조사 | 완료(조사: LOG 10-24 18:00; 수정: jiwoong/p0-1-producer-settle-skip, 사람 리뷰 대기) | 없음 |
 | 5 | P2-b(#129), P2-c(#130) 머지 | 대기(머지 필요: 사람 — 10/24 main과 충돌 해소·CI 통과, #129 → #130 순) | 사람 |
 | 6 | P2-c N01 rediscovery 실행 | 완료(10/24 LOG 18:27: 7.5.2/7.5.3 × 3 seed × budget 100 전부 완료, oracle 0건 — 재발견 없음; #130 머지 후 공식 재실행 여부는 사람) | 사람 |

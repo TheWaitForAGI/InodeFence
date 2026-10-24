@@ -189,6 +189,40 @@ def _step_report(step: EffectCampaignStep) -> dict[str, object]:
     }
 
 
+class EffectStepReporter:
+    """Build the per-step records of a demo report one step at a time.
+
+    `selection.corpus_admission.corpus_size_before` depends on earlier steps'
+    `retained` flags, so the reporter tracks the retained corpus itself. Feeding
+    the steps of a finished campaign in order yields exactly the `steps` array of
+    `effect_campaign_report`; feeding them as they complete lets a caller write
+    each record before the next target run, so an abort keeps the finished ones.
+    """
+
+    def __init__(self) -> None:
+        self._corpus: list[str] = []
+        self._next_index = 0
+
+    def add(self, step: EffectCampaignStep) -> dict[str, object]:
+        if not isinstance(step, EffectCampaignStep):
+            raise ValueError("step reporter requires an EffectCampaignStep")
+        if step.index != self._next_index:
+            raise ValueError(
+                f"step reporter expected step {self._next_index}, got step {step.index}"
+            )
+        record = _step_report(step)
+        record["selection"] = _selection_report(record, self._corpus)
+        if step.feedback.retained:
+            self._corpus.append(step.result.base_result.case.case_id)
+        self._next_index += 1
+        return record
+
+
+def render_effect_step_line(record: Mapping[str, object]) -> str:
+    """One JSONL line per step record: the same content as `steps[i]` of the report."""
+    return json.dumps(record, sort_keys=True, ensure_ascii=True, allow_nan=False) + "\n"
+
+
 def effect_campaign_report(result: EffectCampaignResult, producer: str) -> dict[str, object]:
     """Summarize each loop step: trace, oracle, feedback keys, chosen operator and why.
 
@@ -198,9 +232,8 @@ def effect_campaign_report(result: EffectCampaignResult, producer: str) -> dict[
     if not isinstance(producer, str) or not producer:
         raise ValueError("demo report requires a producer label")
     config = result.config
-    steps = [_step_report(step) for step in result.steps]
-    for step, corpus_before in zip(steps, _corpus_before_steps({"steps": steps}), strict=True):
-        step["selection"] = _selection_report(step, corpus_before)
+    reporter = EffectStepReporter()
+    steps = [reporter.add(step) for step in result.steps]
     return {
         "demo_report_schema": DEMO_REPORT_SCHEMA,
         "producer": producer,

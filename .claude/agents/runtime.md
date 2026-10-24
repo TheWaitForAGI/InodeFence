@@ -13,7 +13,7 @@ model: claude-opus-4-8
 
 1. 환경 확인: `echo $DEVCONTAINER; command -v docker; docker context show`. docker가 없으면 실행하지 말고 `막힘(호스트 실행 필요)`으로 보고한다.
 2. 실행할 수 있는 것:
-   - `make node-tar-smoke`, `make node-tar-effect-check`, `make demo-native`, `make probe CASE=<baseline>`, `PYTHONPATH=src python -m scripts.oracle_fixture_check`
+   - `make node-tar-smoke`, `make node-tar-effect-check`, `make demo`(별칭 `make demo-native`), `make probe CASE=<baseline>`, `PYTHONPATH=src python -m scripts.oracle_fixture_check`
    - BACKLOG 항목이 지정하고 STATUS/LOG에 사람이 승인한 범위(고정 버전, 예산 상한, seed)가 적힌 캠페인 명령
    - 그 밖의 실행은 하지 않는다. 승인 범위가 없으면 `막힘(승인 범위 없음)`.
 3. 격리를 완화하지 않는다(`--privileged`, `--cap-add`, `--security-opt`, host namespace, allowlist 수정 금지). 실패하면 재시도로 우회하지 말고 원인·에러 첫 줄·증거 경로를 기록한다.

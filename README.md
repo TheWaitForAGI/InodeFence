@@ -5,11 +5,14 @@
 InodeFence는 TAR archive entry를 생성·변형하고, 실제 extractor(압축 해제 프로그램)를 실행한 뒤, filesystem의 보안 관련 상태를 관찰해 archive extraction의 보안 경계 위반을 탐색하려는 프로젝트입니다.
 경로뿐 아니라 **파일 객체의 identity와 외부 상태 변화**를 다음 입력을 선택하는 feedback으로 활용할 가치가 있는지 연구합니다.
 
-현재 capability baseline은 main **`8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`**입니다.
-Core C0/C1/C2 snapshot pipeline, legacy/M1 mutation, B0/B1/B3 search, A1/A2/A3,
-minimization과 evaluation evidence APIs가 구현돼 있습니다. Contained node-tar **7.5.22**는
-benign full-path smoke를 통과했습니다. [STATUS](docs/STATUS.md)는 구현과 test 범위를,
-[Research Contract v1](docs/research/design/research-contract-v1.md)은 G0 정의와 claim 범위를 관리합니다.
+**지금 돌아가는 것 (2026-10-24):** `make demo` 한 명령으로 실제 node-tar **7.5.22**를 격리
+컨테이너에서 실행하며 "입력 생성 → 실행 → entry별 중간 상태 관찰 → C0/C1/C2 판정 → feedback →
+다음 mutation 선택" 루프를 돌립니다. 같은 seed·budget이면 같은 루프가 재현됩니다.
+11/2 중간발표 목표별 상태는 [STATUS](docs/STATUS.md) 맨 위 표, 목표 정의는
+[MIDTERM_GOALS](docs/MIDTERM_GOALS.md)를 봅니다.
+
+연구 정의와 claim 범위는 [Research Contract v1](docs/research/design/research-contract-v1.md)이
+관리합니다. 2026-10-18 이전 Layer별 이력(capability baseline `8ad07b8`)은 STATUS 하단에 있습니다.
 
 **DESIGNED / IMPLEMENTED / TESTED / EXPERIMENTALLY VALIDATED는 서로 다릅니다.**
 Historical qualification과 formal comparison은 **NOT_RUN**이며, 역사적 취약점을 재발견한 적이
@@ -221,6 +224,14 @@ Target-specific 실행 로직은 adapter에 두고, generic mutation·observer·
 
 ## 현재 구현 상태
 
+실제 node-tar 루프는 `make demo`(호스트, docker 필요)로, node-tar 없는 synthetic 루프는
+`make demo-synthetic`(Dev Container)으로 돌립니다. 결과 JSON은 step마다 entry별 중간 상태(`trace`),
+C0/C1/C2 판정(`oracle`), 다음 mutation 선택 근거(`selection`)를 담습니다. 정상 입력에서 위반은
+0건이며, 취약점 발견이나 재발견을 주장하지 않습니다. P0-1~P0-5 상태는 [STATUS](docs/STATUS.md)
+맨 위 표가 기준입니다.
+
+아래 표는 2026-10-18 기준 Layer별 이력입니다.
+
 | 개발 Layer | 기준 main의 capability와 evidence |
 | --- | --- |
 | Layer 0–2 | Dev Container / 연구 정의 / 공통 model 구현, canonical checks |
@@ -409,7 +420,9 @@ paper/             논문용 자료와 검토된 evidence
 | 읽는 목적 | 문서 |
 | --- | --- |
 | 처음 프로젝트 이해하기 | [START_HERE](docs/START_HERE.md) |
-| 현재 단계와 다음 작업 확인 | [STATUS](docs/STATUS.md) |
+| 현재 단계와 다음 작업 확인 | [STATUS](docs/STATUS.md) · [BACKLOG](docs/BACKLOG.md) |
+| 11/2 중간발표 목표와 완료 기준 | [MIDTERM_GOALS](docs/MIDTERM_GOALS.md) |
+| 실제 실행 기록 (무엇을 언제 돌려 어떤 결과였나) | [LOG](docs/LOG.md) |
 | G0 연구 계약과 evidence 수준 | [Research Contract v1](docs/research/design/research-contract-v1.md) |
 | 전체 시스템과 모듈 책임 | [architecture](docs/research/design/architecture.md) |
 | 보안 판정의 정확한 기준 | [security-contracts](docs/research/design/security-contracts.md) |

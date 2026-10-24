@@ -2,7 +2,7 @@
 
 The CLI runs only the synthetic producer; its results are fixtures, not node-tar
 evidence. `native_demo_report` runs inside the trusted Linux controller
-(container_host effect-demo, `make demo-native`) against the real node-tar image.
+(container_host effect-demo, `make demo`) against the real node-tar image.
 """
 
 import argparse
@@ -39,8 +39,10 @@ from inodefence.targets.node_tar_effect import (
 
 NATIVE_UNAVAILABLE = (
     "native producer is not runnable from this entrypoint: "
-    "실제 실행은 controller 안에서 container_host effect-demo 모드로 (make demo-native)"
+    "실제 실행은 controller 안에서 container_host effect-demo 모드로 (make demo)"
 )
+# Top-level report label; native reports carry "demo run" instead.
+SYNTHETIC_LABEL = "SYNTHETIC (not node-tar)"
 DEFAULT_NATIVE_BUDGET = 20
 MAX_NATIVE_BUDGET = 100
 NODE_TAR_PIN = Path(__file__).resolve().parents[1] / "tools" / "node-tar" / "package.json"
@@ -100,7 +102,9 @@ def synthetic_demo_report(
         mutation_policy=mutation_policy,
     )
     result = run_effect_campaign(minimal_seed_corpus(), synthetic_effect_result, config)
-    return effect_campaign_report(result, "synthetic")
+    report = effect_campaign_report(result, "synthetic")
+    report.update(label=SYNTHETIC_LABEL)
+    return report
 
 
 def synthetic_demo_json(
@@ -467,7 +471,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.write_text(text, encoding="ascii")
-        print(f"effect demo report: {args.out}")
+        print(f"effect demo report [{SYNTHETIC_LABEL}]: {args.out}")
     return 0
 
 

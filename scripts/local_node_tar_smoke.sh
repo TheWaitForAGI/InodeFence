@@ -30,6 +30,15 @@ case "$MODE" in
     ;;
 esac
 
+# Builtins only up to here, so the Dev Container gets guidance instead of a setup failure.
+if ! command -v docker >/dev/null 2>&1; then
+  echo "docker not found: real node-tar runs only from the host terminal (macOS + OrbStack, WSL2)." >&2
+  if [ "$MODE" = demo ]; then
+    echo "inside the Dev Container run the synthetic demo (not node-tar): make demo-synthetic" >&2
+  fi
+  exit 2
+fi
+
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PYTHON="${PYTHON:-python3.12}"
 CONTEXT="${INODEFENCE_DOCKER_CONTEXT:-$(docker context show)}"
@@ -132,7 +141,9 @@ dk run -d --name "$CONTROLLER" --user vscode --workdir /workspaces/InodeFence \
 CREATED_CONTROLLER=1
 dk exec --user root "$CONTROLLER" chown vscode:vscode /var/lib/inodefence
 dk exec "$CONTROLLER" python -m pip install pytest
-dk exec "$CONTROLLER" git config --global --add safe.directory /workspaces/InodeFence
+# --workdir /: a git worktree checkout has a .git file pointing outside the mount,
+# and git dies on repository discovery even for --global config.
+dk exec --workdir / "$CONTROLLER" git config --global --add safe.directory /workspaces/InodeFence
 
 IF_HELPER_IMAGE="$(dk image inspect "$HELPER_IMAGE" --format '{{.Id}}')"
 if [ "$MODE" != demo-historical ]; then

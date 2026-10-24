@@ -52,6 +52,7 @@ ALLOWED = [
     bash("make check"),
     bash("make demo"),
     bash("make demo-native"),
+    bash("make demo-synthetic"),
     bash("make probe CASE=hardlink"),
     bash("make node-tar-smoke"),
     bash("DEMO_BUDGET=20 make demo-native 2>&1 | tail -20"),

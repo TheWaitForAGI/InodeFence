@@ -60,8 +60,8 @@ BACKLOG 맨 위의 "대기" 항목 1개 선택
 
 | 필요한 것 | 환경 | 근거 |
 | --- | --- | --- |
-| docker: `make demo-native`, `make node-tar-smoke`, `make node-tar-effect-check`, node-tar 실제 실행, native 캠페인 | **호스트 터미널** (macOS + OrbStack) | Dev Container에는 `docker`가 없다(`DEVCONTAINER=true`, `which docker` 없음). LOG의 native 실행은 모두 `context=orbstack` |
-| `make check`, `make demo`(synthetic), `make probe`, `python -m scripts.oracle_fixture_check`, 코드 작업, pytest | **Dev Container** | 기준 환경 Ubuntu 24.04 + Python 3.12, `$INODEFENCE_RUNTIME_ROOT=/var/lib/inodefence` |
+| docker: `make demo`(별칭 `make demo-native`), `make node-tar-smoke`, `make node-tar-effect-check`, node-tar 실제 실행, native 캠페인 | **호스트 터미널** (macOS + OrbStack) | Dev Container에는 `docker`가 없다(`DEVCONTAINER=true`, `which docker` 없음). LOG의 native 실행은 모두 `context=orbstack` |
+| `make check`, `make demo-synthetic`(synthetic, node-tar 아님), `make probe`, `python -m scripts.oracle_fixture_check`, 코드 작업, pytest | **Dev Container** | 기준 환경 Ubuntu 24.04 + Python 3.12, `$INODEFENCE_RUNTIME_ROOT=/var/lib/inodefence` |
 
 - 지금 세션이 어느 쪽인지 먼저 확인한다: `echo $DEVCONTAINER; command -v docker`.
 - 필요한 환경이 아니면 실행을 흉내 내지 않는다. "호스트 실행 필요 — 미실행"으로 LOG에 남기고, 그 실행이 필요 없는 부분만 진행하거나 다음 항목으로 간다.

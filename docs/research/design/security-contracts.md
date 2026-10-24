@@ -1,5 +1,31 @@
 # Security Contract
 
+## 한국어 요약
+
+### 무엇을 하는가
+
+Security Contract는 안전한 archive extraction이 지켜야 할 일반화된 보안 규칙이며, 특정 CVE 식별자와 독립적으로 정의한다. C0/C1/C2는 IMPLEMENTED / TESTED인 persistent-snapshot detector이고, C3(Extraction Root Integrity)/C4(Check/Use Coherence)는 DESIGNED 단계의 후속 계약이다. Oracle의 `violated=True`는 contract violation **후보**이며, confirmed vulnerability로 보려면 재현과 root-cause 검토가 따로 필요하다.
+
+### C0/C1/C2가 각각 무엇을 위반으로 보는가
+
+- **C0 Path Boundary Confinement:** extraction root(`extract/**`) 밖의 모든 sandbox-relative path에서 BEFORE→AFTER 사이에 persistent namespace 생성·삭제·identity/type 교체가 생기면 위반 후보. HARNESS 영역(`archive/**`)도 면제하지 않는다. 기본 sanity/baseline이며 InodeFence의 신규 기여로 주장하지 않는다.
+- **C1 Object Identity Confinement:** extraction 내부 object와 보호된 외부 sentinel이 post-state에서 같은 `(st_dev, st_ino)`를 공유하면 위반 후보. Symlink는 lstat object 자체만 비교하고 referent identity는 추론하지 않는다.
+- **C2 External Effect Noninterference:** 지정 sentinel의 existence, object type, dev/inode, content digest, size, mode, nlink, uid/gid, mtime/ctime이 바뀌면 위반 후보. atime은 Observer 자신의 read로 바뀔 수 있어 제외한다.
+
+### 무엇을 판정하지 못하는가 (한계)
+
+- `violated=False`는 "관찰 범위 안에서 위반 증거가 없다"는 뜻이지 모든 operation이 안전했다는 증명이 아니다. 각 ViolationResult는 이 한계를 `limitations`에 기록한다.
+- Snapshot은 두 시점 사이의 중간 변화, transient 생성 후 삭제, inode 번호 재사용, sandbox 밖 접근, 외부 path의 direct-use를 복구하지 못한다. operation tracing이나 추가 격리 없이는 판정할 수 없다.
+- Snapshot은 actor를 식별하지 못한다. 관찰 구간에 harness가 namespace write를 하면 C0 false positive가 생길 수 있고, 이를 경로 면제로 풀면 실제 HARNESS escape를 놓친다.
+- Entry checkpoint 사이의 `FilesystemTransition`/`TransitionSignature`는 feedback evidence일 뿐이다. 중간 상태가 위험해 보여도 현재 C0/C1/C2 confirmed verdict로 승격하지 않으며, C0/C1/C2는 final BEFORE→AFTER persistent evidence에만 적용한다.
+- 보호 sentinel이 아닌 object의 content/metadata-only 변화는 현재 별도 계약으로 판정하지 않는다. C3/C4와 full tracing은 후속 단계다.
+
+### 코드 위치
+
+`src/inodefence/oracle/contracts.py`(`evaluate_contracts`, C0/C1/C2 판정), `src/inodefence/observer/`(snapshot 캡처·비교), `src/inodefence/model/filesystem.py`(`path_region` Region 분류).
+
+이 요약은 아래 원문을 간추린 것이며 정의의 기준은 원문이다.
+
 Security Contract는 안전한 archive extraction이 지켜야 할 일반화된 보안 규칙이다.
 
 특정 CVE 식별자와 독립적으로 정의한다. [G0 Research Contract](research-contract-v1.md)의

@@ -2,29 +2,29 @@
 
 ## 중간발표 P0 현황 (11/2) — 담당자가 직접 갱신
 
-기준: [MIDTERM_GOALS](MIDTERM_GOALS.md) · 실행 기록: [LOG](LOG.md) · 갱신: 2026-10-23
+기준: [MIDTERM_GOALS](MIDTERM_GOALS.md) · 실행 기록: [LOG](LOG.md) · 갱신: 2026-10-24
 
 | P0 | 담당 | 상태 (10/23) | 다음 할 일 |
 | --- | --- | --- | --- |
 | P0-1 실제 node-tar 실행 | 규민 | 통과: make node-tar-smoke (macOS/OrbStack, 10/23) | — |
-| P0-2 중간 상태 관찰 | 민찬 | 동작: v2 producer 필수 기준 14개 중 13개 통과, replacement coverage 1개 미달. `effect_demo.render_effect_trace`로 entry별 trace 출력(archive/observed/not_observed/derived 라벨, synthetic이면 라벨에 ·SYNTHETIC; synthetic으로만 확인) | 한계 표현 결정, native 결과에 trace 출력 연결 |
+| P0-2 중간 상태 관찰 | 민찬 | 동작: v2 producer 필수 기준 14개 중 13개 통과, replacement coverage 1개 미달. `effect_demo.render_effect_trace`로 entry별 trace 출력(archive/observed/not_observed/derived 라벨, synthetic이면 라벨에 ·SYNTHETIC; synthetic으로만 확인). demo report(schema 2) step마다 같은 정보를 `trace`로 출력(entry·operation·association, 작업 전후 status와 present일 때 dev:ino·nlink·size, observation_failures, step당 event 64개 상한). native 확인: `make demo-native` 2회(10/24, demo run) 20/20 step trace 출력, link 작업에서 extract/a.txt·b.txt st_nlink 2 관찰, step 8·18은 event 0 + operation_correlation_conflict | 한계 표현 결정(거부 입력의 operation_correlation_conflict 포함) |
 | P0-3 Oracle 검증 | 민찬 | C0/C1/C2 fixture TESTED. 데모 fixture 4종(정상·C0·C1+C2·C2) 판정 일치: `python -m scripts.oracle_fixture_check` (controlled oracle check, node-tar 아님) | — |
-| P0-4 Feedback 기반 Mutation | 주언 | `run_effect_campaign` 구현, synthetic producer로만 실행 | 실제 producer 연결, 선택 근거 출력 |
-| P0-5 End-to-end 데모 | 지웅 | 동작: `make demo-native` (실제 node-tar 7.5.22, FULL profile, P2·M1·seed 123·budget 20) 2회 동일 루프, demo run | 거부 중 미완료 operation trace 한계 표현, 이미지 ID 재현성(provenance attestation) |
+| P0-4 Feedback 기반 Mutation | 주언 | `run_effect_campaign` 구현, `make demo`(별칭 `make demo-native`)로 실제 node-tar 루프 실행. demo report step마다 선택 근거 `selection` 출력(채널 ① corpus_admission: 선택 전 corpus 크기·편입 여부, ② operator_weights: weights_before·reward·weights_after). native 확인: `make demo-native` 2회(10/24, demo run) 같은 선택, reward 1·편입 step 5·12·19(새 key 각 2개, 선택 전 corpus 4·5·6), step 5 add_entry 가중치 1→2 | — |
+| P0-5 End-to-end 데모 | 지웅 | `make demo` = 실제 node-tar 루프(호스트, 별칭 `make demo-native`), synthetic은 `make demo-synthetic`(JSON `label`: `SYNTHETIC (not node-tar)`). 동작: `make demo-native` (실제 node-tar 7.5.22, FULL profile, P2·M1·seed 123·budget 20) 2회 동일 루프, demo run(10/24). `make demo` 1회 (호스트, 10/24 14:42, demo run): label `demo run`, producer native, node-tar 7.5.22, 20 steps, SYNTHETIC 0건 | 거부 중 미완료 operation trace 한계 표현, 이미지 ID 재현성(provenance attestation) |
 
-## Phase 2 조사 기록
+### 한눈에 보기 (2026-10-24)
 
-- **P2-a C1 일반화 영향 조사 (2026-10-23, `jiwoong/p2-a-c1-impact`) — 판정: 안전(additive).**
-  C1을 "extraction object ↔ 지정 sentinel" 대신 "extraction object ↔ EXTERNAL object 전체"와
-  비교하도록 일반화하는 변경안을 **임시 패치(미커밋, 되돌림)**로 Dev Container에서 실행해 영향만 확인했다.
-  기존 C0/C1/C2 판정·oracle fixture 4/4·N01 경로·전체 pytest가 모두 불변이고(전체 1722 passed,
-  1 failed는 C1과 무관한 기존 container-backend 환경 실패), extraction↔비-sentinel EXTERNAL identity
-  공유 탐지만 **추가**된다. `archive/input.tar`(HARNESS)는 일반화 후에도 C1이 되지 않으며(의도),
-  HARNESS까지 포함하는 확장은 `IdentityEvidence`의 EXTERNAL 제약 때문에 additive가 아니다(별도 모델
-  변경 필요, P2-b 범위). 코드 판정은 바꾸지 않았다(소스 변경 0). 상세는 [LOG](LOG.md)와
-  [BACKLOG](BACKLOG.md) P2-a.
+- `make demo`(호스트) = 실제 node-tar 7.5.22 루프, 20 step, 반복 실행해도 같은 루프(SAME_LOOP_x4). 결과 JSON은 `~/inodefence-evidence/`.
+- 결과 JSON의 step마다 `trace`(entry별 중간 상태, observed/derived 구분), `oracle`(C0/C1/C2), `selection`(corpus 편입 여부·operator 가중치 변화)이 있다.
+- 정상 입력 20개에서 위반 0건. 취약점 발견·재발견 주장 없음.
+- 남은 P0 과제: 거부 입력에서 중간 상태 event가 0개인 한계의 표현 방식, 이미지 ID 재현성.
+- N01 재발견 실행과 A/B/C 비교는 사람 승인 뒤([BACKLOG](BACKLOG.md) 5~7번).
 
-아래는 2026-10-18 기준 상세 기록이다.
+---
+
+아래는 2026-10-18 기준 상세 기록이다. Layer별 구현 이력, 중간 상태 관찰 v1이 실패한 경위,
+N01 자동 replay 결과, 각 evidence API의 한계를 담고 있다. 영어 용어가 많고 날짜가 오래된
+기록이므로 **현재 상태는 위 P0 표를 기준으로 읽고, 아래는 "왜 이렇게 됐는가"를 찾을 때만 본다.**
 
 상태 갱신일: **2026-10-18**. G0 capability baseline은 main
 **`8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`**다. 이 SHA는 G0 문서 동결이
@@ -290,3 +290,23 @@ experiment freeze와 11월 30일 최종 artifact는 별도 승인/증거가 필�
 C0/C1/C2 의미는 [Security Contracts](research/design/security-contracts.md), 비교/측정 정의는
 [연구 질문](research/design/research-questions.md)과 [프로토콜](research/benchmarks/evaluation-protocol-v1.md)을
 따른다. Historical audit/summary는 자체 날짜와 SHA의 기록으로만 읽는다.
+
+## Phase 2 조사 기록
+
+- **P2-a C1 일반화 영향 조사 (2026-10-23, `jiwoong/p2-a-c1-impact`) — 판정: 안전(additive).**
+  C1을 "extraction object ↔ 지정 sentinel" 대신 "extraction object ↔ EXTERNAL object 전체"와
+  비교하도록 일반화하는 변경안을 **임시 패치(미커밋, 되돌림)**로 Dev Container에서 실행해 영향만 확인했다.
+  기존 C0/C1/C2 판정·oracle fixture 4/4·N01 경로·전체 pytest가 모두 불변이고(전체 1722 passed,
+  1 failed는 C1과 무관한 기존 container-backend 환경 실패), extraction↔비-sentinel EXTERNAL identity
+  공유 탐지만 **추가**된다. `archive/input.tar`(HARNESS)는 일반화 후에도 C1이 되지 않으며(의도),
+  HARNESS까지 포함하는 확장은 `IdentityEvidence`의 EXTERNAL 제약 때문에 additive가 아니다(별도 모델
+  변경 필요, P2-b 범위). 코드 판정은 바꾸지 않았다(소스 변경 0). 상세는 [LOG](LOG.md)와
+  [BACKLOG](BACKLOG.md) P2-a.
+
+아래는 2026-10-18 기준 상세 기록이다.
+
+상태 갱신일: **2026-10-18**. G0 capability baseline은 main
+**`8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`**다. 이 SHA는 G0 문서 동결이
+검토한 구현 revision이며 최신 main을 뜻하지 않는다. #77–#84 연구 stack은 main에
+통합됐다. Internal completion qualification v3의 clean harness revision은 `9ea306f7`이고,
+causal filesystem-effect qualification v4의 clean harness revision은 `72bccfa`다.

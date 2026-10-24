@@ -1,10 +1,12 @@
 import argparse
 from dataclasses import replace
+from typing import Any
 
 import pytest
 from scripts.compare_effect_policies import synthetic_policy_comparison
 from scripts.run_effect_demo import (
     MAX_NATIVE_BUDGET,
+    SYNTHETIC_LABEL,
     add_demo_arguments,
     check_demo_arguments,
     native_demo_report,
@@ -13,8 +15,11 @@ from scripts.run_effect_demo import (
     synthetic_demo_report,
 )
 
+from inodefence import effect_demo
 from inodefence.effect_demo import (
     TRACE_LEGEND,
+    _stderr_record,
+    _trace_report,
     compare_effect_campaign_reports,
     render_effect_campaign_report,
     render_effect_trace,
@@ -36,6 +41,15 @@ def test_synthetic_demo_json_is_byte_identical_for_same_seed() -> None:
     second = synthetic_demo_json(123, 20, EffectSearchPolicy.P2_EFFECT_ADAPTIVE, MutationPolicy.M1)
 
     assert first == second
+
+
+def test_synthetic_demo_report_is_labeled_not_node_tar() -> None:
+    report = synthetic_demo_report(
+        123, 20, EffectSearchPolicy.P2_EFFECT_ADAPTIVE, MutationPolicy.M1
+    )
+
+    assert report["label"] == SYNTHETIC_LABEL == "SYNTHETIC (not node-tar)"
+    assert report["producer"] == "synthetic"
 
 
 @pytest.mark.parametrize("budget", (0, MAX_NATIVE_BUDGET + 1, -1))
@@ -309,3 +323,148 @@ def test_effect_trace_has_no_synthetic_header_for_other_sources() -> None:
     assert rendered.startswith("extractor: synthetic 1")
     assert "  effect seq 6-7 [observed] op=link outcome=succeeded\n" in rendered
     assert "    [derived] class=hardlink_identity_relation_creation" in rendered
+
+
+def _p2_steps() -> list[dict[str, Any]]:
+    report: dict[str, Any] = synthetic_demo_report(
+        123, 20, EffectSearchPolicy.P2_EFFECT_ADAPTIVE, MutationPolicy.M1
+    )
+    assert report["demo_report_schema"] == 2
+    return report["steps"]
+
+
+def test_demo_report_step_carries_synthetic_trace_and_stderr() -> None:
+    steps = _p2_steps()
+
+    for step in steps:
+        trace = step["trace"]
+        assert trace["synthetic"] is True
+        assert trace["sources"] == [
+            {"source_id": "synthetic", "mechanism": "synthetic-test", "version": "1"}
+        ]
+        assert trace["effect_events_truncated"] is False
+        assert len(trace["effect_events"]) == trace["effect_events_total"]
+        assert (
+            sum(entry["effect_event_count"] for entry in trace["entries"])
+            == (trace["effect_events_total"])
+        )
+        assert step["target_stderr"] == {"text": "", "chars": 0, "truncated": False}
+    hardlink = steps[2]["trace"]
+    assert [(entry["path"], entry["type"]) for entry in hardlink["entries"]] == [
+        ("a.txt", "regular"),
+        ("b.txt", "hardlink"),
+    ]
+    link = hardlink["effect_events"][1]
+    assert {key: link[key] for key in ("entry_index", "operation", "outcome", "association")} == {
+        "entry_index": 1,
+        "operation": "link",
+        "outcome": "succeeded",
+        "association": "async_context",
+    }
+    assert link["paths"][1] == {
+        "path": "extract/object-1",
+        "before": {"status": "absent"},
+        "after": {
+            "status": "present",
+            "object_type": "regular",
+            "st_dev": 7,
+            "st_ino": 101,
+            "st_nlink": 1,
+            "size": 1,
+        },
+    }
+
+
+def test_demo_report_selection_splits_admission_and_weight_channels() -> None:
+    steps = _p2_steps()
+    corpus: list[str] = []
+    rewarded = admitted = 0
+
+    for step in steps:
+        selection = step["selection"]
+        evidence = step["scheduler_evidence"]
+        if evidence is None:
+            assert selection is None
+        else:
+            assert selection["parent_case_id"] == step["parent_case_id"] in corpus
+            assert selection["selected_operator_id"] == evidence["selected_operator_id"]
+            assert selection["selected_weight"] == evidence["selected_weight"]
+            assert selection["new_effect_key_count"] == len(step["feedback"]["new_effect_keys"])
+            assert selection["corpus_admission"] == {
+                "corpus_size_before": len(corpus),
+                "retained": step["feedback"]["retained"],
+            }
+            weights = selection["operator_weights"]
+            assert weights == {
+                "weights_before": evidence["weights_before"],
+                "reward": evidence["reward"],
+                "weights_after": evidence["weights_after"],
+            }
+            rewarded += weights["reward"]
+            admitted += step["feedback"]["retained"]
+        if step["feedback"]["retained"]:
+            corpus.append(step["case_id"])
+
+    assert rewarded and admitted
+
+
+def test_trace_report_keeps_not_observed_apart_from_missing_evidence() -> None:
+    result = _synthetic_hardlink_result()
+    first, second = result.trace.effect_events
+    (evidence,) = first.object_evidence
+    unobserved = replace(
+        first,
+        object_evidence=(
+            replace(
+                evidence,
+                after=EffectObjectObservation(EffectObservationStatus.NOT_OBSERVED, None),
+            ),
+        ),
+    )
+    trace = replace(result.trace, effect_events=(unobserved, replace(second, object_evidence=())))
+    report: dict[str, Any] = _trace_report(replace(result, trace=trace))
+    events = report["effect_events"]
+
+    assert events[0]["paths"] == [
+        {
+            "path": "extract/object-0",
+            "before": {"status": "absent"},
+            "after": {"status": "not_observed"},
+        }
+    ]
+    assert [path["before"] for path in events[1]["paths"]] == [None, None]
+    assert [path["after"] for path in events[1]["paths"]] == [None, None]
+
+
+def test_trace_report_is_not_synthetic_for_other_sources() -> None:
+    result = _synthetic_hardlink_result()
+    source = replace(result.trace.provenance.sources[0], mechanism="other-test")
+    provenance = replace(result.trace.provenance, sources=(source,))
+    trace = replace(result.trace, provenance=provenance)
+
+    assert _trace_report(replace(result, trace=trace))["synthetic"] is False
+
+
+def test_trace_report_caps_effect_events_and_states_the_cut(monkeypatch) -> None:
+    monkeypatch.setattr(effect_demo, "MAX_TRACE_EFFECT_EVENTS", 1)
+    report: dict[str, Any] = _trace_report(_synthetic_hardlink_result())
+
+    assert [event["operation"] for event in report["effect_events"]] == ["open"]
+    assert report["effect_events_total"] == 2
+    assert report["effect_events_truncated"] is True
+    assert [entry["effect_event_count"] for entry in report["entries"]] == [1, 1]
+
+
+def test_stderr_record_keeps_head_and_tail_with_omission_marker() -> None:
+    edge = effect_demo.STDERR_EDGE_CHARS
+    whole = "h" * edge + "m" * 500 + "t" * edge
+    record = _stderr_record(whole)
+
+    assert record["chars"] == len(whole)
+    assert record["truncated"] is True
+    assert record["text"] == "h" * edge + "\n[... 500 chars omitted ...]\n" + "t" * edge
+    assert _stderr_record("x" * 2 * edge) == {
+        "text": "x" * 2 * edge,
+        "chars": 2 * edge,
+        "truncated": False,
+    }

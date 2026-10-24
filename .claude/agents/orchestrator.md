@@ -19,7 +19,7 @@ model: claude-opus-4-8
 1. `docs/BACKLOG.md` 맨 위부터 상태가 `대기`이고 게이트가 열린 항목 1개를 고른다. 게이트가 닫힌 항목은 건너뛴 이유를 기억해 두었다가 작업자에게 LOG 기록을 시킨다.
 2. 분류(P0-N / Phase N)와 완료 조건을 BACKLOG에서 그대로 가져온다. 바꾸지 않는다.
 3. 환경 판단: `echo $DEVCONTAINER`와 `which docker`.
-   - docker 필요(native node-tar 실행, `make demo-native`, `make node-tar-smoke`) + docker 없음 → 실행하지 않는다. builder에게 "막힘(호스트 실행 필요)" 기록만 시키고 다음 항목으로 간다.
+   - docker 필요(native node-tar 실행, `make demo`, `make node-tar-smoke`) + docker 없음 → 실행하지 않는다. builder에게 "막힘(호스트 실행 필요)" 기록만 시키고 다음 항목으로 간다.
    - 세션 하나는 한 환경에서만 돈다. 작업자도 같은 환경에서 실행된다.
 4. 위임:
    - 코드·문서 변경, `make check`, 커밋, LOG/WORKLOG/BACKLOG 기록 → `builder`

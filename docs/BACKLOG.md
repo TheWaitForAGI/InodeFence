@@ -15,7 +15,7 @@
 | 순서 | ID | 상태 | 게이트 |
 | --- | --- | --- | --- |
 | 1 | P0-2/P0-4 native 연결: 중간 상태 렌더링 + 선택 근거를 demo-native JSON에 | 완료(jiwoong/p0-2-native-trace) | 없음 |
-| 2 | P0-5 `make demo` = native, `make demo-synthetic` 분리 + SYNTHETIC 라벨 | 대기 | 1 머지 |
+| 2 | P0-5 `make demo` = native, `make demo-synthetic` 분리 + SYNTHETIC 라벨 | 진행 | 1 머지 |
 | 3 | P0-5 JSONL 부분 저장 + CI에 effect producer/effect-demo 추가 | 대기 | 2 머지 |
 | 4 | P0-1 N01 native 무결성 결함 원인 조사 | 대기 | 없음 (조사만; 수정·재현 실행은 사람 승인 후) |
 | 5 | P2-b(#129), P2-c(#130) 머지 | 10/27 사람 리뷰 후 머지 예정 (중간발표 N01 추가 성과용) | 사람 |

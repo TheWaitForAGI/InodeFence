@@ -25,6 +25,15 @@ case "$MODE" in
     ;;
 esac
 
+# Builtins only up to here, so the Dev Container gets guidance instead of a setup failure.
+if ! command -v docker >/dev/null 2>&1; then
+  echo "docker not found: real node-tar runs only from the host terminal (macOS + OrbStack, WSL2)." >&2
+  if [ "$MODE" = demo ]; then
+    echo "inside the Dev Container run the synthetic demo (not node-tar): make demo-synthetic" >&2
+  fi
+  exit 2
+fi
+
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PYTHON="${PYTHON:-python3.12}"
 CONTEXT="${INODEFENCE_DOCKER_CONTEXT:-$(docker context show)}"

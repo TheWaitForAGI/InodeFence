@@ -65,6 +65,8 @@ def _operator_table(
         MutationPolicy.M1_PROTECTED_COMPONENTS_NO_REORDER,
     ):
         return m1_addressing.OPERATORS
+    if policy == MutationPolicy.M1_PROTECTED_COMPONENTS_ESCAPE_HARDLINK:
+        return m1_addressing.ESCAPE_OPERATORS
     raise AssertionError(f"unhandled mutation policy: {policy}")
 
 

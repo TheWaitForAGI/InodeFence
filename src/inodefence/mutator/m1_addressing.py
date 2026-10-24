@@ -23,6 +23,10 @@ def add_hardlink(case: ArchiveCase, rng: random.Random) -> ArchiveCase:
     return m1.add_hardlink(case, rng, components=COMPONENTS)
 
 
+def add_escaping_hardlink(case: ArchiveCase, rng: random.Random) -> ArchiveCase:
+    return m1.add_escaping_hardlink(case, rng, components=COMPONENTS)
+
+
 def add_symlink(case: ArchiveCase, rng: random.Random) -> ArchiveCase:
     return m1.add_symlink(case, rng, components=COMPONENTS)
 
@@ -38,6 +42,22 @@ OPERATORS = (
     m1.reorder_entries,
     mutate_path,
     add_hardlink,
+    add_symlink,
+    mutate_link_target,
+)
+
+# Identical to OPERATORS except the ADD_HARDLINK slot (index 5) generates an
+# extraction-root-escaping target instead of reusing an in-archive entry path.
+# The slot order, every other slot, and the uniform draw are unchanged, so seed
+# reproducibility and the operator distribution are preserved; only the target
+# addressing of the hardlink slot differs.
+ESCAPE_OPERATORS = (
+    add_entry,
+    m1.remove_entry,
+    m1.duplicate_entry,
+    m1.reorder_entries,
+    mutate_path,
+    add_escaping_hardlink,
     add_symlink,
     mutate_link_target,
 )

@@ -65,6 +65,7 @@ from .rebinding import (
     RebindingOperationDependency,
 )
 from .results import (
+    BoundaryIdentityEvidence,
     ContractId,
     EffectRunResult,
     ExecutionResult,
@@ -100,6 +101,7 @@ __all__ = [
     "ArchiveCase",
     "ArchiveEntry",
     "ArchiveEntryReference",
+    "BoundaryIdentityEvidence",
     "ChangeField",
     "CausalArchiveRelation",
     "CausalMotifSignature",

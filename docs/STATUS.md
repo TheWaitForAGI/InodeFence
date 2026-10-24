@@ -2,15 +2,25 @@
 
 ## 중간발표 P0 현황 (11/2) — 담당자가 직접 갱신
 
-기준: [MIDTERM_GOALS](MIDTERM_GOALS.md) · 실행 기록: [LOG](LOG.md) · 갱신: 2026-10-23
+기준: [MIDTERM_GOALS](MIDTERM_GOALS.md) · 실행 기록: [LOG](LOG.md) · 갱신: 2026-10-24
 
-| P0 | 담당 | 상태 (10/23) | 다음 할 일 |
+| P0 | 담당 | 상태 (10/24) | 다음 할 일 |
 | --- | --- | --- | --- |
-| P0-1 실제 node-tar 실행 | 규민 | 통과: make node-tar-smoke (macOS/OrbStack, 10/23) | — |
+| P0-1 실제 node-tar 실행 | 규민 | macOS/OrbStack 팀 smoke·demo 기록 통과; N05 후보의 승인 전 경계 검사는 130개 통과했으나 N05 자체는 NOT_AUTHORIZED / NOT_RUN (10/24) | 리드가 main 기반 clean N05 source/controller를 동결한 뒤 Mac 담당자가 실제 identity를 채우고 사람이 1회 실행 승인 |
 | P0-2 중간 상태 관찰 | 민찬 | 동작: v2 producer 필수 기준 14개 중 13개 통과, replacement coverage 1개 미달. `effect_demo.render_effect_trace`로 entry별 trace 출력(archive/observed/not_observed/derived 라벨, synthetic이면 라벨에 ·SYNTHETIC; synthetic으로만 확인) | 한계 표현 결정, native 결과에 trace 출력 연결 |
 | P0-3 Oracle 검증 | 민찬 | C0/C1/C2 fixture TESTED. 데모 fixture 4종(정상·C0·C1+C2·C2) 판정 일치: `python -m scripts.oracle_fixture_check` (controlled oracle check, node-tar 아님) | — |
 | P0-4 Feedback 기반 Mutation | 주언 | `run_effect_campaign` 구현, synthetic producer로만 실행 | 실제 producer 연결, 선택 근거 출력 |
 | P0-5 End-to-end 데모 | 지웅 | 동작: `make demo-native` (실제 node-tar 7.5.22, FULL profile, P2·M1·seed 123·budget 20) 2회 동일 루프, demo run | 거부 중 미완료 operation trace 한계 표현, 이미지 ID 재현성(provenance attestation) |
+
+### 규민 Runtime / N05 확인 (2026-10-24 04:45 UTC)
+
+1. **구현·source:** 확인 시점 main `656736730d5baf85c78280eea179abc2885e93be`에는 N05 module이 없고, #114와 #115는 closed/unmerged, #122는 `20f190b`의 open stacked draft다. #115와 #122의 N05 승인 대상 8개 파일 바이트는 같지만 승인 가능한 clean main 기반 source가 아니므로, 지웅이 비-stacked 통합 revision과 controller image를 검토·동결해야 한다.
+2. **설정값:** attempt/mode, 5초×8건, 30분, no-retry, evidence/ledger/package/source/volume 경로와 7.5.2·7.5.3 target digest를 기존 계약/코드에서 추출했고, WSL에서 Node 22.22.0, 두 lock·worker와 공식 npm tarball SHA-256 일치를 확인했다. Mac의 실제 daemon/controller/image/build/package 경로는 이 세션에서 접근할 수 없어 규민 또는 Mac operator가 읽기 전용 점검 결과로 채워야 한다.
+3. **격리·경로:** 현재 `/workspaces/InodeFence`는 `/dev/sdd`의 WSL host source이고 `/var/lib/inodefence`는 별도 `/dev/sdf` volume이며 환경 검사는 통과했다. 그러나 현재 환경은 Linux x86_64이고 Docker CLI/socket이 없어 계약의 macOS arm64·OrbStack controller/source mount를 검증한 것으로 보지 않는다.
+4. **승인 전 검사:** #115 `e83349e`에서 N05와 container boundary 130 tests가 7.72초에 통과해 source/invocation mismatch의 ledger·Docker 이전 거부, no-overwrite·실패 보존, owned cleanup과 독립 reader 재검증을 확인했다. 이는 controlled test이며 실제 N05 PASS나 execution-source 승인이 아니다.
+5. **실행 판정:** 별도 사람 승인 기록과 Mac identity를 확인하지 못해 **NOT_AUTHORIZED / NOT_RUN**이고, 예약된 Linux evidence root는 만들지 않아 attempt·target extraction 모두 0건이다. source/controller/daemon/package/build/image identity가 한 승인서에 묶인 뒤에만 규민/Mac operator가 affected 4건+fixed 4건을 정확히 한 번 실행한다.
+
+Track A Unit 4와 pilot 승인은 N05 benign preflight의 선행조건으로 추가하지 않았고, `pilot_authorized=false`를 유지한다. 별도 규민 `report`/`validation-log`/handoff 문서는 만들지 않고 이 STATUS와 LOG만 갱신한다.
 
 아래는 2026-10-18 기준 상세 기록이다.
 

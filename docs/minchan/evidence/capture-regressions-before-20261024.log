@@ -1,0 +1,123 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.7.0 -- /opt/venv/bin/python
+cachedir: .pytest_cache
+rootdir: /workspaces/InodeFence
+configfile: pyproject.toml
+collecting ... collected 22 items / 18 deselected / 4 selected
+
+tests/test_minchan_rebinding_capture.py::test_export_rejects_whole_operation_pairs_missing_from_capture[False] FAILED [ 25%]
+tests/test_minchan_rebinding_capture.py::test_export_rejects_whole_operation_pairs_missing_from_capture[True] FAILED [ 50%]
+tests/test_minchan_rebinding_capture.py::test_continuation_is_consumed_once_per_predecessor_and_token[predecessor] FAILED [ 75%]
+tests/test_minchan_rebinding_capture.py::test_continuation_is_consumed_once_per_predecessor_and_token[token] FAILED [100%]
+
+=================================== FAILURES ===================================
+____ test_export_rejects_whole_operation_pairs_missing_from_capture[False] _____
+
+record_removal = False
+
+    @pytest.mark.parametrize("record_removal", [False, True])
+    def test_export_rejects_whole_operation_pairs_missing_from_capture(record_removal):
+        trace = _trace()
+        capture = SyntheticRebindingCapture()
+        if record_removal:
+            event = trace.effect_events[0]
+            capture.begin(event.correlation_id, event.entry, event.start_sequence)
+            capture.complete(event)
+        assert capture.finish(target_succeeded=True).complete
+        # Local settlement cannot replace a complete-v2-trace coverage cross-check.
+>       with pytest.raises(ValueError, match="captured operation set differs"):
+E       Failed: DID NOT RAISE ValueError
+
+tests/test_minchan_rebinding_capture.py:190: Failed
+_____ test_export_rejects_whole_operation_pairs_missing_from_capture[True] _____
+
+record_removal = True
+
+    @pytest.mark.parametrize("record_removal", [False, True])
+    def test_export_rejects_whole_operation_pairs_missing_from_capture(record_removal):
+        trace = _trace()
+        capture = SyntheticRebindingCapture()
+        if record_removal:
+            event = trace.effect_events[0]
+            capture.begin(event.correlation_id, event.entry, event.start_sequence)
+            capture.complete(event)
+        assert capture.finish(target_succeeded=True).complete
+        # Local settlement cannot replace a complete-v2-trace coverage cross-check.
+>       with pytest.raises(ValueError, match="captured operation set differs"):
+E       Failed: DID NOT RAISE ValueError
+
+tests/test_minchan_rebinding_capture.py:190: Failed
+__ test_continuation_is_consumed_once_per_predecessor_and_token[predecessor] ___
+
+reuse = 'predecessor'
+
+    @pytest.mark.parametrize("reuse", ["predecessor", "token"])
+    def test_continuation_is_consumed_once_per_predecessor_and_token(reuse):
+        removal, creation = _trace().effect_events
+        capture = SyntheticRebindingCapture()
+        capture.begin(removal.correlation_id, removal.entry, removal.start_sequence)
+        capture.complete(removal)
+        capture.begin(
+            creation.correlation_id,
+            creation.entry,
+            creation.start_sequence,
+            predecessor=removal.correlation_id,
+            token="branch-token",
+        )
+        predecessor = removal.correlation_id
+        sequence = creation.start_sequence + 1
+        token = "new-token"
+        if reuse == "token":
+            other = replace(
+                removal,
+                correlation_id="other-removal",
+                start_sequence=sequence,
+                completion_sequence=sequence + 1,
+            )
+            capture.begin(other.correlation_id, other.entry, other.start_sequence)
+            capture.complete(other)
+            predecessor, sequence, token = other.correlation_id, sequence + 2, "branch-token"
+>       with pytest.raises(ValueError, match="continuation already consumed"):
+E       Failed: DID NOT RAISE ValueError
+
+tests/test_minchan_rebinding_capture.py:220: Failed
+_____ test_continuation_is_consumed_once_per_predecessor_and_token[token] ______
+
+reuse = 'token'
+
+    @pytest.mark.parametrize("reuse", ["predecessor", "token"])
+    def test_continuation_is_consumed_once_per_predecessor_and_token(reuse):
+        removal, creation = _trace().effect_events
+        capture = SyntheticRebindingCapture()
+        capture.begin(removal.correlation_id, removal.entry, removal.start_sequence)
+        capture.complete(removal)
+        capture.begin(
+            creation.correlation_id,
+            creation.entry,
+            creation.start_sequence,
+            predecessor=removal.correlation_id,
+            token="branch-token",
+        )
+        predecessor = removal.correlation_id
+        sequence = creation.start_sequence + 1
+        token = "new-token"
+        if reuse == "token":
+            other = replace(
+                removal,
+                correlation_id="other-removal",
+                start_sequence=sequence,
+                completion_sequence=sequence + 1,
+            )
+            capture.begin(other.correlation_id, other.entry, other.start_sequence)
+            capture.complete(other)
+            predecessor, sequence, token = other.correlation_id, sequence + 2, "branch-token"
+>       with pytest.raises(ValueError, match="continuation already consumed"):
+E       Failed: DID NOT RAISE ValueError
+
+tests/test_minchan_rebinding_capture.py:220: Failed
+=========================== short test summary info ============================
+FAILED tests/test_minchan_rebinding_capture.py::test_export_rejects_whole_operation_pairs_missing_from_capture[False]
+FAILED tests/test_minchan_rebinding_capture.py::test_export_rejects_whole_operation_pairs_missing_from_capture[True]
+FAILED tests/test_minchan_rebinding_capture.py::test_continuation_is_consumed_once_per_predecessor_and_token[predecessor]
+FAILED tests/test_minchan_rebinding_capture.py::test_continuation_is_consumed_once_per_predecessor_and_token[token]
+======================= 4 failed, 18 deselected in 0.06s =======================

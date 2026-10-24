@@ -1,0 +1,136 @@
+python -m ruff check .
+All checks passed!
+python -m ruff format --check .
+388 files already formatted
+python -m pyright
+0 errors, 0 warnings, 0 informations
+python -m pytest
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.7.0
+rootdir: /workspaces/InodeFence
+configfile: pyproject.toml
+testpaths: tests
+collected 1761 items
+
+tests/audit/test_final_runtime_integration_v1.py ....................... [  1%]
+.........................                                                [  2%]
+tests/evaluation/test_candidate_replay.py .....                          [  3%]
+tests/evaluation/test_catalog.py ....                                    [  3%]
+tests/evaluation/test_controller_memory.py ....                          [  3%]
+tests/evaluation/test_dataset.py ........                                [  3%]
+tests/evaluation/test_failure.py .........                               [  4%]
+tests/evaluation/test_gnu_packaging.py .....                             [  4%]
+tests/evaluation/test_gnu_runner.py ...                                  [  4%]
+tests/evaluation/test_gnu_tar.py ............                            [  5%]
+tests/evaluation/test_journal.py ......                                  [  5%]
+tests/evaluation/test_n01_candidate_match.py ....                        [  6%]
+tests/evaluation/test_n01_qualification.py ..........                    [  6%]
+tests/evaluation/test_n04_host_ledger.py ........                        [  7%]
+tests/evaluation/test_n04_preflight.py ...............................   [  8%]
+tests/evaluation/test_node_historical_locks.py ..                        [  9%]
+tests/evaluation/test_node_packaging.py ...........                      [  9%]
+tests/evaluation/test_pair.py .......                                    [ 10%]
+tests/evaluation/test_policy_binding.py .................                [ 11%]
+tests/evaluation/test_policy_dataset.py ................                 [ 11%]
+tests/evaluation/test_policy_evidence.py ............................... [ 13%]
+................................                                         [ 15%]
+tests/evaluation/test_policy_journal.py ......                           [ 15%]
+tests/evaluation/test_policy_repeated.py ............                    [ 16%]
+tests/evaluation/test_policy_statistics.py ....                          [ 16%]
+tests/evaluation/test_policy_summary.py ............                     [ 17%]
+tests/evaluation/test_policy_timing.py .........                         [ 17%]
+tests/evaluation/test_qualification.py .........                         [ 18%]
+tests/evaluation/test_repeated.py ............                           [ 19%]
+tests/evaluation/test_statistics.py .....                                [ 19%]
+tests/evaluation/test_summary.py ...                                     [ 19%]
+tests/evaluation/test_transition_evidence.py .......                     [ 19%]
+tests/evaluation/test_verify.py ...........................              [ 21%]
+tests/replay/test_execution.py ............                              [ 22%]
+tests/test_benign_validation.py .............                            [ 22%]
+tests/test_builder.py .................................................. [ 25%]
+.........................................                                [ 28%]
+tests/test_campaign.py ......................................            [ 30%]
+tests/test_campaign_export.py ...............................            [ 32%]
+tests/test_campaign_export_integration.py .                              [ 32%]
+tests/test_campaign_integration.py .                                     [ 32%]
+tests/test_campaign_search.py .......................................... [ 34%]
+................................................                         [ 37%]
+tests/test_campaign_search_integration.py ...                            [ 37%]
+tests/test_check_docs.py ....                                            [ 37%]
+tests/test_claude_guard.py ............................................. [ 40%]
+........................................................                 [ 43%]
+tests/test_container_backend.py ........................................ [ 45%]
+..........................................                               [ 48%]
+tests/test_core_model.py .....................                           [ 49%]
+tests/test_docker_cli_lifecycle.py ........                              [ 49%]
+tests/test_effect_coverage_audit.py .................................... [ 51%]
+.........                                                                [ 52%]
+tests/test_effect_demo.py ...................................            [ 54%]
+tests/test_effect_feedback.py ......                                     [ 54%]
+tests/test_effect_feedback_sensitivity.py ..........                     [ 55%]
+tests/test_effect_model.py ......                                        [ 55%]
+tests/test_evidence_validation.py ...................................... [ 57%]
+........................                                                 [ 59%]
+tests/test_execution_duration.py ..............                          [ 59%]
+tests/test_experiment_config.py ...............................          [ 61%]
+tests/test_experiment_config_policy.py ..........                        [ 62%]
+tests/test_feedback_corpus.py ...............................            [ 63%]
+tests/test_feedback_corpus_integration.py ...........                    [ 64%]
+tests/test_feedback_projection.py ............                           [ 65%]
+tests/test_feedback_search.py ................                           [ 66%]
+tests/test_feedback_search_contracts.py ..............................   [ 67%]
+tests/test_generator.py ....                                             [ 68%]
+tests/test_generator_integration.py .....                                [ 68%]
+tests/test_internal_completion_analysis.py ..                            [ 68%]
+tests/test_internal_completion_qualification.py ..                       [ 68%]
+tests/test_isolation_provenance.py ..................................... [ 70%]
+...............                                                          [ 71%]
+tests/test_linux_isolation_support.py ..........                         [ 72%]
+tests/test_minchan_rebinding_capture.py ......................           [ 73%]
+tests/test_minimizer.py ............                                     [ 73%]
+tests/test_minimizer_evidence.py ..........                              [ 74%]
+tests/test_minimizer_integration.py .                                    [ 74%]
+tests/test_minimizer_ustar.py ...........                                [ 75%]
+tests/test_mutation_scheduler.py ...........                             [ 75%]
+tests/test_mutator.py .................................................. [ 78%]
+.......................                                                  [ 80%]
+tests/test_mutator_ablation.py .......                                   [ 80%]
+tests/test_mutator_addressing.py ...                                     [ 80%]
+tests/test_mutator_builder.py ...........                                [ 81%]
+tests/test_mutator_m1.py .....................                           [ 82%]
+tests/test_node_causal_effect_qualification.py .....                     [ 82%]
+tests/test_node_effect_producer.py ...........................           [ 84%]
+tests/test_node_effect_qualification.py .....                            [ 84%]
+tests/test_node_replacement_diagnostics.py ...                           [ 84%]
+tests/test_node_tar.py ...............................                   [ 86%]
+tests/test_observer.py .................                                 [ 87%]
+tests/test_oracle_fixtures.py .........                                  [ 87%]
+tests/test_pipeline.py .......................................           [ 90%]
+tests/test_provenance.py .....................                           [ 91%]
+tests/test_rebinding_v3.py ......................                        [ 92%]
+tests/test_runtime.py ................                                   [ 93%]
+tests/test_smoke.py ..                                                   [ 93%]
+tests/test_state_semantics.py .......................................... [ 95%]
+...................................                                      [ 97%]
+tests/test_tar_fixtures.py ..............                                [ 98%]
+tests/test_target_process.py ......                                      [ 99%]
+tests/test_transition_model.py ........                                  [ 99%]
+tests/test_transition_search.py ........                                 [100%]
+
+======================= 1761 passed in 90.96s (0:01:30) ========================
+python scripts/check_dev_env.py
+=== InodeFence Environment Check ===
+OS: Linux 6.18.33.2-microsoft-standard-WSL2
+Architecture: x86_64
+Python: 3.12.3
+Interpreter: /opt/venv/bin/python
+Runtime root: /var/lib/inodefence
+Hardlink device: 2096
+Hardlink inode: 436588
+Link count: 2
+Hardlink semantics: PASS
+Symlink semantics: PASS
+Shared-object effect: PASS
+Environment check: PASS
+python scripts/check_docs.py
+Docs check: PASS (147 Markdown files; canonical documents present)

@@ -1,0 +1,271 @@
+{
+  "date_kst": "2026-10-24",
+  "prs": [
+    {
+      "number": 81,
+      "response": {
+        "content": [
+          {
+            "type": "text",
+            "text": "Action completed."
+          }
+        ],
+        "structuredContent": {
+          "url": "https://github.com/TheWaitForAGI/InodeFence/pull/81",
+          "number": 81,
+          "state": "closed",
+          "merged": true,
+          "mergeable": false,
+          "draft": false,
+          "body": "Adds an independent TransitionNoveltyIndex, P0 final-state retention control, P1 transition retention, uniform parent selection, and an in-memory transition campaign composed with a caller-owned result producer. Final-state, transition, violation, and incomplete-trace evidence remain distinct.\n\nValidation: `make check` (1,319 tests). Effectiveness and native node-tar campaigns remain `NOT_RUN`.\n",
+          "title": "Add transition retention search policy",
+          "base": "main",
+          "base_sha": "de3a8ece8719ce556b9d6f4d0c8c3bfbbab758d6",
+          "head": "feat/transition-feedback-search-t3",
+          "head_sha": "59f5fc3c9ccfd37e3260ae814a01a4ff71ce6649",
+          "head_repo_id": 1402766129,
+          "head_repo_full_name": "TheWaitForAGI/InodeFence",
+          "merge_commit_sha": "9977c5b60a9411728ad2b56cd7ca6545fb990e97",
+          "user": {
+            "login": "jiwoongchoi-norun",
+            "name": "jiwoongchoi-norun",
+            "email": null,
+            "avatar_url": "https://avatars.githubusercontent.com/u/210046503?v=4",
+            "id": 210046503
+          },
+          "requested_reviewers": null,
+          "requested_team_reviewers": null,
+          "diff": null,
+          "comments": null,
+          "created_at": "2026-10-07T10:37:27Z",
+          "updated_at": "2026-10-14T04:57:28Z",
+          "closed_at": "2026-10-12T00:22:34Z",
+          "merged_at": "2026-10-12T00:22:34Z",
+          "commits": 3,
+          "changed_files": 9,
+          "additions": 733,
+          "deletions": 7,
+          "display_url": "https://github.com/TheWaitForAGI/InodeFence/pull/81",
+          "display_title": "Add transition retention search policy"
+        },
+        "isError": false
+      }
+    },
+    {
+      "number": 82,
+      "response": {
+        "content": [
+          {
+            "type": "text",
+            "text": "Action completed."
+          }
+        ],
+        "structuredContent": {
+          "url": "https://github.com/TheWaitForAGI/InodeFence/pull/82",
+          "number": 82,
+          "state": "closed",
+          "merged": true,
+          "mergeable": false,
+          "draft": false,
+          "body": "Adds stable mutation operator IDs, inspectable mutation attempts, a uniform scheduler that preserves legacy RNG behavior, and P2 bounded integer adaptation. P2 rewards only whether an attempt yields any new transition key, caps weights at 8, and records violations as diagnostics without rewarding them.\n\nValidation: `make check` (1,329 tests). No target/version/CVE-specific scheduling logic is present.\n",
+          "title": "Add transition-adaptive mutation scheduler",
+          "base": "main",
+          "base_sha": "9977c5b60a9411728ad2b56cd7ca6545fb990e97",
+          "head": "feat/transition-adaptive-scheduler-t4",
+          "head_sha": "e07d7bc5f12d48324663cc625aed5479785a6ab2",
+          "head_repo_id": 1402766129,
+          "head_repo_full_name": "TheWaitForAGI/InodeFence",
+          "merge_commit_sha": "bd94dfb050bae2a108ed348f567e35b342fb0d91",
+          "user": {
+            "login": "jiwoongchoi-norun",
+            "name": "jiwoongchoi-norun",
+            "email": null,
+            "avatar_url": "https://avatars.githubusercontent.com/u/210046503?v=4",
+            "id": 210046503
+          },
+          "requested_reviewers": null,
+          "requested_team_reviewers": null,
+          "diff": null,
+          "comments": null,
+          "created_at": "2026-10-07T10:37:29Z",
+          "updated_at": "2026-10-14T04:57:17Z",
+          "closed_at": "2026-10-12T00:22:39Z",
+          "merged_at": "2026-10-12T00:22:39Z",
+          "commits": 3,
+          "changed_files": 14,
+          "additions": 709,
+          "deletions": 34,
+          "display_url": "https://github.com/TheWaitForAGI/InodeFence/pull/82",
+          "display_title": "Add transition-adaptive mutation scheduler"
+        },
+        "isError": false
+      }
+    },
+    {
+      "number": 89,
+      "response": {
+        "content": [
+          {
+            "type": "text",
+            "text": "Action completed."
+          }
+        ],
+        "structuredContent": {
+          "url": "https://github.com/TheWaitForAGI/InodeFence/pull/89",
+          "number": 89,
+          "state": "closed",
+          "merged": true,
+          "mergeable": false,
+          "draft": false,
+          "body": "The native effect producer failed every normal contained fixture because it recorded the\nextractor's read-only input-archive open without an entry owner. Gate 4 then stopped before\nits first matrix run because the adapter's artifact ordering/origin violated the shared\nisolation provenance contract. Two scoped target fixes allow the existing trusted WSL\nhost/controller broker to complete the fixed qualification without changing acceptance rules.\n\nThe completed 480-run matrix records `V2_NATIVE_EFFECT_OBSERVATION_NOT_QUALIFIED`: 420 success,\n60 expected rejection, and 13/14 mandatory criteria passing. Required replacement coverage\nfails because duplicate-path truncates the same inode in 20/20 full runs. Gate 5 remains\nblocked. Immutable raw evidence, both failed attempts, independent controller/host reader\nreports and SHA-256 identities are retained in the updated experiment summary.\n\nTask Contract: the user's Gate 3/4 WSL environment recovery and automatic qualification request.\nStarting revision: `55751696a59e8ee4e278625d24fe320973395399`.\nClean executed revision: `36ff7fdb0e31db72b3e581fd1c089b712b4a7b4e`.\nThe scoped task delta consists of commits `66cd9f6`, `36ff7fd` and the evidence/status commit.\nThis draft targets main per repository workflow and also contains the existing unmerged v2\nstack; it requires review with those prerequisites, including open PR #88. Original main and\nstacked branch heads were preserved.\n\nValidation:\n\n- Existing image verification: 2 checks passed; rebuilt target uses the existing pinned Dockerfile.\n- Gate 3 contained suite on the fixed revision: 10 checks passed, including timeout/overflow.\n- Related portable tests: 30 passed; the new provenance regression failed before the fix.\n- Dev Container `make check`: Ruff, format, Pyright, 1,387 tests, environment and docs passed.\n- Fixed Gate 4: 480 runs plus required failure injections; runner test passed while its\n  qualification decision is NOT_QUALIFIED.\n- Fresh controller and host processes each verified 320 native bundles and 160 stock records,\n  regenerated the mechanical summary and reproduced the negative decision.\n- All 1,180 retained session files passed checksum verification. Final docs/link and diff checks passed.\n\nQualification SHA-256: `ca2dae9150813c6df14df10e16de65b1139550a7ecd761a30122c717e4575a90`.\nSession archive SHA-256: `6b0a5b31d52d00347259342683941692181e93515d7f82384df86d9fb1cab1e5`.\nRaw artifacts are retained locally in the named runtime volume and the ignored WSL\n`experiments/raw/node-effect-gates-20261013-AA8cvq` mirror/archive; they are not Git blobs.\n\nScope of the recovery delta from the starting Gate 4 revision: target worker/adapter,\nregression/integration checks and evidence/status documentation.\nGeneric model/observer/oracle/feedback, C0-C4 contracts, extractor options, fixtures and\nacceptance logic are unchanged. No native campaign, Gate 5, vulnerability or effectiveness\nclaim is introduced.\n",
+          "title": "experiment: complete WSL native effect v2 qualification",
+          "base": "main",
+          "base_sha": "931899209bc1de29f249d9e2f3d451438ddf1d22",
+          "head": "fix/native-effect-qualification-wsl",
+          "head_sha": "0eb527f88aa8a4015544d2f6b0eabfebe079bf18",
+          "head_repo_id": 1402766129,
+          "head_repo_full_name": "TheWaitForAGI/InodeFence",
+          "merge_commit_sha": "ccc061bece3f3525ecf0b734777a6b39bac06b07",
+          "user": {
+            "login": "JooREC0",
+            "name": "JooREC0",
+            "email": null,
+            "avatar_url": "https://avatars.githubusercontent.com/u/182340757?v=4",
+            "id": 182340757
+          },
+          "requested_reviewers": null,
+          "requested_team_reviewers": null,
+          "diff": null,
+          "comments": null,
+          "created_at": "2026-10-13T06:23:44Z",
+          "updated_at": "2026-10-14T04:57:33Z",
+          "closed_at": "2026-10-14T04:28:33Z",
+          "merged_at": "2026-10-14T04:28:33Z",
+          "commits": 11,
+          "changed_files": 53,
+          "additions": 11354,
+          "deletions": 19,
+          "display_url": "https://github.com/TheWaitForAGI/InodeFence/pull/89",
+          "display_title": "experiment: complete WSL native effect v2 qualification"
+        },
+        "isError": false
+      }
+    },
+    {
+      "number": 111,
+      "response": {
+        "content": [
+          {
+            "type": "text",
+            "text": "Action completed."
+          }
+        ],
+        "structuredContent": {
+          "url": "https://github.com/TheWaitForAGI/InodeFence/pull/111",
+          "number": 111,
+          "state": "closed",
+          "merged": true,
+          "mergeable": false,
+          "draft": false,
+          "body": "## Scope\n\nImplements the N04 generic synthetic-only Task Contract for a separately versioned `namespace_rebinding_sequence`. This does not change v2 `namespace_replacement`, C0/C1/C2, old policy IDs, or historical evidence.\n\n## Included\n\n- schema 3 dependency/composite/finite feedback types\n- strict v3 raw reader bound to an external manifest digest and a complete, valid, successful v2 trace\n- same-entry/path, explicit-absence, producer-dependency, conflict-free derivation\n- unchanged v2 key tuple plus tagged finite v3 keys\n- 22 synthetic positive/negative/tamper/nonredundancy checks\n- Task Contract, D034, routing/status and verification report\n\n## Validation\n\n- `make check` in isolated Linux check image as `vscode` UID/GID 1000\n- Ruff check: PASS\n- Ruff format: PASS (357 files)\n- Pyright: PASS (0 errors)\n- pytest: PASS (1,584)\n- environment validation: PASS\n- docs validation: PASS (128 Markdown files)\n\n## Adversarial correction\n\nIndependent AI review of head `5acd9a0` returned REQUEST_CHANGES after reproducing a self-consistent dependency-token forgery. Head `44e115b` requires the frozen external manifest expected raw SHA-256 before parsing/derivation and adds the missing removal-only, invalid, timed-out and sequence-tamper regressions. A fresh independent review is required.\n\n## Claim boundary\n\nGeneric implementation is IMPLEMENTED / SYNTHETIC TESTED. Native dependency producer is NOT_IMPLEMENTED. Native qualification, P0/P1/P2 effectiveness, B0/B1/B3 pilot, and historical rediscovery are NOT_RUN and not authorized by this PR. No human expert approval is claimed.\n\nIndependent adversarial re-review and both GitHub CI jobs are required before merge.",
+          "title": "feat: add verified namespace rebinding sequence v3",
+          "base": "main",
+          "base_sha": "4b8453f905cc8a5442e1c77fb8e175b16ce7a116",
+          "head": "feat/n04-namespace-rebinding-sequence-v3",
+          "head_sha": "44e115b177d8b3aed7b06141c0523f567e0772c9",
+          "head_repo_id": 1402766129,
+          "head_repo_full_name": "TheWaitForAGI/InodeFence",
+          "merge_commit_sha": "8d29982c26cebfcce7a413b3ba9177fcd28078de",
+          "user": {
+            "login": "jiwoongchoi-norun",
+            "name": "jiwoongchoi-norun",
+            "email": null,
+            "avatar_url": "https://avatars.githubusercontent.com/u/210046503?v=4",
+            "id": 210046503
+          },
+          "requested_reviewers": null,
+          "requested_team_reviewers": null,
+          "diff": null,
+          "comments": null,
+          "created_at": "2026-10-18T01:58:48Z",
+          "updated_at": "2026-10-18T02:11:46Z",
+          "closed_at": "2026-10-18T02:11:46Z",
+          "merged_at": "2026-10-18T02:11:46Z",
+          "commits": 4,
+          "changed_files": 15,
+          "additions": 2013,
+          "deletions": 14,
+          "display_url": "https://github.com/TheWaitForAGI/InodeFence/pull/111",
+          "display_title": "feat: add verified namespace rebinding sequence v3"
+        },
+        "isError": false
+      }
+    },
+    {
+      "number": 133,
+      "response": {
+        "content": [
+          {
+            "type": "text",
+            "text": "Action completed."
+          }
+        ],
+        "structuredContent": {
+          "url": "https://github.com/TheWaitForAGI/InodeFence/pull/133",
+          "number": 133,
+          "state": "closed",
+          "merged": true,
+          "mergeable": false,
+          "draft": false,
+          "body": "이 PR을 병합하면 make demo-native 결과에서 step마다 실제 node-tar 중간 관찰과 피드백 선택 근거를 확인할 수 있다.\n\n## 분류\nP0-2(중간 상태 관찰 출력), P0-4(선택 근거 기록). BACKLOG 1번.\n\n## 변경 (보고 코드만)\n`src/inodefence/effect_demo.py`의 `effect_campaign_report`(synthetic·native 공용)에서 `DEMO_REPORT_SCHEMA`를 1에서 2로 올리고, step마다 아래 필드를 추가했다. 기존 필드와 그 의미는 그대로다.\n\n- `trace`: `render_effect_trace`가 쓰는 값을 구조화한 것\n  - 항목: `entries`(entry_index·path·type·link_target·effect_event_count), `effect_events`(entry_index, start/completion_sequence, operation, outcome, association, effect_class, evidence_strength, `paths[].before/after`), `observation_failures`, `sources`, `synthetic`\n  - before/after는 모델의 `EffectObservationStatus`(present/absent/not_observed)를 그대로 쓴다. lstat 값(object_type, st_dev, st_ino, st_nlink, size)은 present일 때만 들어간다. event에 `EffectPathEvidence` 기록 자체가 없는 path는 `null`이다.\n  - 상한: step당 event 64개. 잘리면 `effect_events_truncated: true`로 표시하고, `effect_events_total`과 entry별 `effect_event_count`에는 잘리기 전 전체 개수가 남는다.\n- `selection`: mutation step의 선택 근거. seed step은 `null`이다. PR #131의 두 채널로 나눴다.\n  - ① `corpus_admission`: `corpus_size_before`(parent를 뽑은 corpus 크기)와 `retained`(이 child가 이후 parent 후보에 들어가는지)\n  - ② `operator_weights`: `weights_before`, `reward`, `weights_after`\n  - 그 밖에 parent_case_id, selected_operator_id, selected_weight, new_effect_key_count\n  - `corpus_size_before`는 기존 helper `_corpus_before_steps`로 앞 step들의 기록된 `retained` 플래그를 세어 얻는다. `EffectSearchState.consider`에서 corpus append는 `retained`일 때만 일어난다.\n- `target_stderr`: `{text, chars, truncated}`. 2000자를 넘으면 앞 1000자와 뒤 1000자만 남기고 사이에 `[... N chars omitted ...]` 표시를 넣는다. `chars`는 원래 총 길이다.\n\n`scripts/run_effect_demo.py`는 바꾸지 않았다. `native_demo_report`가 같은 함수를 부르므로 native JSON에도 같은 필드가 들어간다.\n\n## 바꾸지 않은 것\noracle, scheduler, producer, 격리 설정, 정책 비교 결과(`compare_effect_campaign_reports`는 기존 필드만 읽는다). lifecycle event와 frontier는 이 PR 범위 밖이다.\n\n## 검증\n- Dev Container `make check` 통과(1739 passed, pyright 0 errors).\n- synthetic seed 123, budget 20 CLI를 2회 실행해 바이트 동일함을 확인했다. 기존 byte-identical 테스트도 유지된다. JSON 크기는 41 KB에서 117 KB로 늘었다.\n- 새 테스트(`tests/test_effect_demo.py`)가 확인하는 것:\n  - trace·stderr 필드 내용\n  - selection이 scheduler_evidence 및 다시 센 corpus와 일치하는지(parent가 그 corpus 안에 있는지 포함), reward와 편입이 각각 한 번 이상 나오는지\n  - not_observed와 기록 없음(null)의 구분\n  - synthetic이 아닌 source에서 `synthetic: false`\n  - event 상한과 잘림 기록\n  - stderr의 앞/뒤 보존과 생략 표시\n- **native(호스트, 사람 실행·보고)**: `make demo-native` 2회 실행, demo run. 기본값은 P2·M1·seed 123·budget 20이다. 증거 파일은 `~/inodefence-evidence/inodefence-effect-demo-native-20261024-134737.json`(2회차).\n  - 상단: schema 2, producer native, label demo run, node-tar 7.5.22, 20 steps\n  - 20/20 step에서 `trace.synthetic`이 false다.\n  - link 작업에서 extract/a.txt와 extract/b.txt 모두 `st_nlink` 2가 관찰됐다.\n  - step 8·18은 effect event 0개이고 `operation_correlation_conflict`가 기록됐으며 `target_stderr`가 있다. step 8의 stderr는 `TAR_ENTRY_ERROR path contains '..'`(거부 입력)이다.\n  - `selection`: reward 1이면서 retained true인 step은 5·12·19다(새 effect key 각 2개, `corpus_size_before` 4·5·6). step 5에서 add_entry 가중치가 1→2로 올랐다.\n  - 두 실행의 step별 case_id·parent_case_id·selection이 동일했다(SAME_LOOP). st_ino와 timing은 비교에서 뺐다.\n  - LOG에 demo run으로 기록했고, BACKLOG 1번은 `완료`로 바꿨다.\n\n## 참고\nsynthetic fixture는 hardlink 뒤에도 `st_nlink`를 1로 기록한다. report는 이 fixture 값을 고치지 않고 그대로 옮긴다.\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\n",
+          "title": "feat: P0-2/P0-4 demo report에 step별 중간 관찰 trace·선택 근거·stderr",
+          "base": "main",
+          "base_sha": "656736730d5baf85c78280eea179abc2885e93be",
+          "head": "jiwoong/p0-2-native-trace",
+          "head_sha": "6b78324b864c561917ebd7ef6bbd8f1d89993bb8",
+          "head_repo_id": 1402766129,
+          "head_repo_full_name": "TheWaitForAGI/InodeFence",
+          "merge_commit_sha": "ff43fe4457ca7adf0fa523572c6d11bc195b31af",
+          "user": {
+            "login": "jiwoongchoi-norun",
+            "name": "jiwoongchoi-norun",
+            "email": null,
+            "avatar_url": "https://avatars.githubusercontent.com/u/210046503?v=4",
+            "id": 210046503
+          },
+          "requested_reviewers": null,
+          "requested_team_reviewers": null,
+          "diff": null,
+          "comments": null,
+          "created_at": "2026-10-24T04:46:01Z",
+          "updated_at": "2026-10-24T04:59:06Z",
+          "closed_at": "2026-10-24T04:59:06Z",
+          "merged_at": "2026-10-24T04:59:06Z",
+          "commits": 5,
+          "changed_files": 5,
+          "additions": 308,
+          "deletions": 8,
+          "display_url": "https://github.com/TheWaitForAGI/InodeFence/pull/133",
+          "display_title": "feat: P0-2/P0-4 demo report에 step별 중간 관찰 trace·선택 근거·stderr"
+        },
+        "isError": false
+      }
+    }
+  ],
+  "pr133_comments": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Action completed."
+      }
+    ],
+    "structuredContent": {
+      "comments": [],
+      "url": "https://github.com/TheWaitForAGI/InodeFence/pull/133",
+      "title": "TheWaitForAGI/InodeFence PR #133 comments",
+      "display_url": "https://github.com/TheWaitForAGI/InodeFence/pull/133",
+      "display_title": "TheWaitForAGI/InodeFence PR #133 comments"
+    },
+    "isError": false
+  }
+}

@@ -1,0 +1,8 @@
+$ python scripts/check_docs.py
+Docs check: PASS (147 Markdown files; canonical documents present)
+exit=0
+$ git diff --check
+exit=0
+LF and working source hash verification: PASS
+Archived synthetic raw independent reconstruction: PASS (1 sequence)
+Branch preserved; no commit/push/PR/native execution performed

@@ -1,0 +1,133 @@
+{
+  "checked_date_kst": "2026-10-23",
+  "pr115": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Action completed."
+      }
+    ],
+    "structuredContent": {
+      "url": "https://github.com/TheWaitForAGI/InodeFence/pull/115",
+      "number": 115,
+      "state": "closed",
+      "merged": false,
+      "mergeable": true,
+      "draft": false,
+      "body": "The N05 host previously verified the authorized worktree bytes after creating the attempt ledger, but did not bind the running host entry or loaded host-side project modules to that worktree. A different checkout or installed copy could therefore execute while a clean clone was inspected, and a source-origin rejection could consume the attempt.\n\nThis change verifies the active `scripts/container_host.py`, `n05_preflight`, container backend, and Docker client origins against canonical nonsymlink paths and authorization digests before ledger creation or Docker access. Alternate checkout/install paths, unknown origins, symlinks, and digest mismatches fail with zero ledger and Docker calls. N04 remains consumed, N05 evidence schemas and reader semantics are unchanged, and N05 remains NOT_AUTHORIZED / NOT_RUN.\n\nValidation:\n- regression demonstrated before the fix: 1 missing binding helper and 5 mismatch cases entering ledger creation\n- focused N04/N05 suite: 57 passed\n- container backend suite: 83 passed\n- `make check`: PASS (Ruff, format, Pyright 0 errors, 1,634 pytest, environment and docs checks)\n- final strengthened source-origin regressions: 6 passed\n- `git diff --check`: PASS\n\nNo Docker build/run, historical node-tar execution, N05 preflight, pilot, campaign, authorization record, qualification token, or real attempt evidence was created.",
+      "title": "fix: bind N05 host runtime to authorized source",
+      "base": "feat/n05-preflight-readiness-v2",
+      "base_sha": "f7aaa33050e247e0718d4ceb1ba01485802e269d",
+      "head": "codex/n05-host-source-binding",
+      "head_sha": "e83349ed1592d536e3ec0fce3c7cb204cb5c6ec9",
+      "head_repo_id": 1402766129,
+      "head_repo_full_name": "TheWaitForAGI/InodeFence",
+      "merge_commit_sha": "ca8619268acad1f68d359b95d3f1dae83b2cf19b",
+      "user": {
+        "login": "dudooomchit",
+        "name": "dudooomchit",
+        "email": null,
+        "avatar_url": "https://avatars.githubusercontent.com/u/224014833?v=4",
+        "id": 224014833
+      },
+      "requested_reviewers": null,
+      "requested_team_reviewers": null,
+      "diff": null,
+      "comments": null,
+      "created_at": "2026-10-19T16:36:59Z",
+      "updated_at": "2026-10-23T06:30:26Z",
+      "closed_at": "2026-10-23T06:30:26Z",
+      "merged_at": null,
+      "commits": 1,
+      "changed_files": 7,
+      "additions": 277,
+      "deletions": 23,
+      "display_url": "https://github.com/TheWaitForAGI/InodeFence/pull/115",
+      "display_title": "fix: bind N05 host runtime to authorized source"
+    },
+    "isError": false
+  },
+  "pr122": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Action completed."
+      }
+    ],
+    "structuredContent": {
+      "url": "https://github.com/TheWaitForAGI/InodeFence/pull/122",
+      "number": 122,
+      "state": "open",
+      "merged": false,
+      "mergeable": true,
+      "draft": true,
+      "body": "## Purpose\n\nCarry PR #115's fail-closed N05 loaded-runtime source binding onto the Track A Unit 3 stack and fix the independently reviewed controller-entry replay/concurrency defect.\n\nThis remains a stacked engineering candidate on the closed, unmerged PR #120. It is not an execution-source freeze, N05 authorization, or Track A pilot authorization.\n\n## Exact revision and dependencies\n\n- Base branch: `feat/track-a-host-attempt-ledger`\n- Exact base / reviewed PR #120 head: `02072c95537d76d1b213b9c858d96c97fff653cc`\n- Previous PR #122 head: `62e7dc885b4e604a5fab806e21a0404173981b5f`\n- Current head: `20f190b0373db851e1c5b0ea343eb889dddaa451`\n- Stack: #108 / #112 / #113 / #114 / #118 / #119 / #120, with #115's source-origin correction integrated here\n- #115 and #120 behavior is reused, not independently reimplemented.\n\n## Changes\n\n### N05 source-origin integration retained\n\n- Preserve #115's loaded host-entry/module canonical-path and SHA-256 checks before host-ledger creation or Docker access.\n- Preserve alternate-checkout, missing/symlinked-origin and digest-drift regression coverage with zero ledger/Docker calls.\n\n### Atomic one-shot Track A controller entry\n\nThe host/controller ordering is now:\n\n```text\ntrusted admission and exact schedule/source binding\n  -> started.json (host attempt consumed)\n  -> controller inspect\n  -> controller-launch.json (ephemeral launch-secret SHA-256 only)\n  -> Popen\n  -> live secret as first stdin frame\n  -> controller reopens canonical admission/start/launch graph\n  -> controller-entry.json atomic no-overwrite claim\n  -> backend / Docker broker / target binding\n  -> same-ID campaign claim and execution\n  -> stderr / cleanup / terminal.json / manifest.json\n```\n\n- The host creates one 32-byte ephemeral launch secret for the current spawn.\n- Plaintext live launch material is not present in CLI arguments, JSON evidence, terminal records or stderr. Only its SHA-256 is retained.\n- The launch handshake proves current host-spawn liveness only. It is not human approval, an admission token, or a serialized `VerifiedTrackAAdmission`.\n- `claim_track_a_controller_entry` revalidates the canonical Unit 1–3 graph and atomically publishes `controller-entry.json` before constructing `StdioDockerClient`, `ContainerExecutionBackend`, target bindings, or making a campaign claim.\n- Sequential and concurrent replay losers stop before backend/Docker/campaign/target work.\n- The original host-generated attempt ID is unchanged through start, launch, entry, controller CLI/channel, `execute_track_a_slot`, `PolicyRepetitionController.claim`, controller terminal and host terminal/manifest. The pre-existing owner UUID remains cleanup-only.\n\n## Evidence layout and consumption semantics\n\n```text\n<authorized-track-a-host-ledger-root>/\n  admission/verified-admission.json\n  attempts/00-<run-id>/\n    started.json\n    controller-launch.json\n    controller-entry.json\n    controller-stderr.bin\n    terminal.json\n    manifest.json\n```\n\nHost-attempt format is v3; terminal schema is v3 and manifest schema is v2. Terminal and manifest bind the exact optional launch/entry record digests.\n\nA published start consumes the attempt. Start-only, launch-only, entered-without-terminal, and partial-terminal prefixes are not retry/resume authority. Spawn failure is terminalled with launch evidence and no entry. Entry acquisition consumes the one-shot controller opportunity even if the process is hard-killed or later publication fails. Missing, duplicate, partial, mismatched or tampered launch/entry evidence fails closed.\n\nExisting Unit 3 campaign-observation-v2 unknown handling and cleanup rules are preserved: failed reread never asserts stale PENDING/0, and completed/nonzero campaigns require cleanup `COMPLETE`.\n\n## Boundary\n\nThis PR does **not**:\n\n- change C0/C1/C2, mutation, search or oracle semantics;\n- implement Unit 4 final-manifest/analysis;\n- issue N01/N05/pilot authorization or `PREFLIGHT_PASS`;\n- run Docker, an actual controller subprocess, historical targets, N05, prepare/run-cell/smoke, or the Track A pilot;\n- claim synthetic/CI checks as experiment results.\n\nN01 remains `AWAITING_HUMAN_CORRESPONDENCE_REVIEW`.\nN05: `NOT_RUN`.\nPilot: `NOT_RUN`.\n\n## Local target-free validation on current head\n\n- Unit 3 focused synthetic suite: `73 passed in 163.99s`\n- Unit 1–3 plus #115/#122 source-origin focused regression: `299 passed in 192.36s`\n- Final launch/entry handshake selection after cleanup: `7 passed, 66 deselected`\n- Ruff: PASS\n- Ruff format: PASS, 380 files\n- Pyright: 0 errors / 0 warnings\n- docs check: PASS, 140 Markdown files\n- `git diff --check`: PASS\n- Exact-head `make check`: Ruff PASS, format PASS, Pyright PASS, `1779 passed in 322.69s`, environment PASS, docs PASS\n\nAll process/Docker/target interactions in these tests are boundary fakes. Canonical admission, host-attempt and campaign serialization/readers are exercised rather than replaced.\n\n## GitHub Actions versus local validation\n\nThe previous head's automatic GitHub Actions run passed. The automatic check and benign container-integration for current head `20f190b0373db851e1c5b0ea343eb889dddaa451` are tracked separately from the local target-free results above; they are not N05 or pilot evidence.\n\n## Remaining blockers / follow-up\n\n- Actual controller deployment still needs a reviewed read-only absolute-path mapping for the authorized host ledger, Track A evidence, original pilot authorization, authoritative N05 host/Linux roots and protocol bytes.\n- The primary `/workspaces/InodeFence` controller checkout remains forbidden while the N05 mount-destination/path contract is unresolved.\n- Unit 4 must select publication authority and inventory/reopen all 20 host terminal/manifests in final-manifest and analysis reporting.\n- A final clean integrated SHA must be frozen before any later N05 authorization; a distinct pilot authorization is still required after N05 PASS.\n",
+      "title": "fix: bind N05 runtime source in Track A stack",
+      "base": "feat/track-a-host-attempt-ledger",
+      "base_sha": "02072c95537d76d1b213b9c858d96c97fff653cc",
+      "head": "codex/gyumin-runtime-followup-20261023",
+      "head_sha": "20f190b0373db851e1c5b0ea343eb889dddaa451",
+      "head_repo_id": 1402766129,
+      "head_repo_full_name": "TheWaitForAGI/InodeFence",
+      "merge_commit_sha": "82348ba1f009553656e206c04a713e46eec04657",
+      "user": {
+        "login": "dudooomchit",
+        "name": "dudooomchit",
+        "email": null,
+        "avatar_url": "https://avatars.githubusercontent.com/u/224014833?v=4",
+        "id": 224014833
+      },
+      "requested_reviewers": [
+        {
+          "login": "jiwoongchoi-norun",
+          "name": "jiwoongchoi-norun",
+          "email": null,
+          "avatar_url": "https://avatars.githubusercontent.com/u/210046503?v=4",
+          "id": 210046503
+        }
+      ],
+      "requested_team_reviewers": null,
+      "diff": null,
+      "comments": null,
+      "created_at": "2026-10-23T01:51:39Z",
+      "updated_at": "2026-10-23T07:21:54Z",
+      "closed_at": null,
+      "merged_at": null,
+      "commits": 3,
+      "changed_files": 17,
+      "additions": 1942,
+      "deletions": 97,
+      "display_url": "https://github.com/TheWaitForAGI/InodeFence/pull/122",
+      "display_title": "fix: bind N05 runtime source in Track A stack"
+    },
+    "isError": false
+  },
+  "pr111_discussion": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Action completed."
+      }
+    ],
+    "structuredContent": {
+      "comments": [],
+      "url": "https://github.com/TheWaitForAGI/InodeFence/pull/111",
+      "title": "TheWaitForAGI/InodeFence PR #111 comments",
+      "display_url": "https://github.com/TheWaitForAGI/InodeFence/pull/111",
+      "display_title": "TheWaitForAGI/InodeFence PR #111 comments"
+    },
+    "isError": false
+  },
+  "minchan_search": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Action completed."
+      }
+    ],
+    "structuredContent": {
+      "issues": []
+    },
+    "isError": false
+  }
+}

@@ -1,0 +1,10 @@
+$ python scripts/check_docs.py
+Docs check: PASS (137 Markdown files; canonical documents present)
+exit=0
+
+$ git diff --check
+exit=0
+
+LF checks and working-source SHA-256: PASS
+Saved synthetic raw independent reconstruction: PASS (1 sequence)
+exit=0

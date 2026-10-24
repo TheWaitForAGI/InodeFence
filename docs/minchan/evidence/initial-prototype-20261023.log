@@ -1,0 +1,111 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.7.0 -- /opt/venv/bin/python
+cachedir: .pytest_cache
+rootdir: /workspaces/InodeFence
+configfile: pyproject.toml
+collecting ... collected 13 items
+
+tests/test_minchan_rebinding_capture.py::test_explicit_continuation_exports_existing_v3_reader_compatible_bytes FAILED [  7%]
+tests/test_minchan_rebinding_capture.py::test_overlapping_operations_keep_identity_with_either_completion_order[completion_order0] PASSED [ 15%]
+tests/test_minchan_rebinding_capture.py::test_overlapping_operations_keep_identity_with_either_completion_order[completion_order1] PASSED [ 23%]
+tests/test_minchan_rebinding_capture.py::test_failed_callback_preserves_error_and_refuses_success_export FAILED [ 30%]
+tests/test_minchan_rebinding_capture.py::test_missing_duplicate_or_mismatched_events_poison_capture[duplicate_start] PASSED [ 38%]
+tests/test_minchan_rebinding_capture.py::test_missing_duplicate_or_mismatched_events_poison_capture[duplicate_completion] PASSED [ 46%]
+tests/test_minchan_rebinding_capture.py::test_missing_duplicate_or_mismatched_events_poison_capture[unmatched] PASSED [ 53%]
+tests/test_minchan_rebinding_capture.py::test_missing_duplicate_or_mismatched_events_poison_capture[entry] PASSED [ 61%]
+tests/test_minchan_rebinding_capture.py::test_exit_keeps_pending_operations_and_rejects_late_callbacks PASSED [ 69%]
+tests/test_minchan_rebinding_capture.py::test_overflow_is_invalid_and_bound_is_not_silently_extended PASSED [ 76%]
+tests/test_minchan_rebinding_capture.py::test_no_token_means_no_dependency_even_with_same_entry_path_and_order PASSED [ 84%]
+tests/test_minchan_rebinding_capture.py::test_continuation_cannot_start_before_predecessor_completes PASSED [ 92%]
+tests/test_minchan_rebinding_capture.py::test_failed_callback_without_error_is_invalid FAILED [100%]
+
+=================================== FAILURES ===================================
+____ test_explicit_continuation_exports_existing_v3_reader_compatible_bytes ____
+
+    def test_explicit_continuation_exports_existing_v3_reader_compatible_bytes():
+        trace = _trace()
+        removal, creation = trace.effect_events
+        capture = SyntheticRebindingCapture()
+        capture.begin(removal.correlation_id, removal.entry, removal.start_sequence)
+        capture.complete(removal)
+        capture.begin(
+            creation.correlation_id,
+            creation.entry,
+            creation.start_sequence,
+            predecessor=removal.correlation_id,
+            token="synthetic-callback-continuation",
+        )
+        capture.complete(creation)
+        assert capture.finish(target_succeeded=True).complete
+>       raw = capture.envelope(trace, V3_SOURCE)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_minchan_rebinding_capture.py:29: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+scripts/minchan_rebinding_capture.py:148: in envelope
+    _endpoint(removal, "removal", dependency_id),
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+event = FilesystemEffectEvent(start_sequence=1, completion_sequence=2, entry=ArchiveEntryReference(entry_index=0, path='p', en...ion_id='remove-p', raw_evidence=RawEvidenceReference(source_id='synthetic-v2-source', record_id='remove-p-completion'))
+role = 'removal', dependency_id = 'synthetic-dependency-0'
+
+    def _endpoint(event: FilesystemEffectEvent, role: str, dependency_id: str) -> dict[str, object]:
+        # Explicit wire projection: canonical model JSON is not the v3 envelope schema.
+        value = json.loads(canonical_json(event))
+        return {
+            "record_type": "operation_endpoint",
+            "record_id": f"{dependency_id}-{role}",
+            "dependency_id": dependency_id,
+            "role": role,
+            "entry": {
+                "ordinal": event.entry.entry_index,
+                "path": event.entry.path,
+                "type": event.entry.entry_type.value,
+                "link_target": event.entry.link_target,
+            },
+            **{
+>               field: value[field]
+                       ^^^^^^^^^^^^
+                for field in (
+                    "association",
+                    "effect_class",
+                    "evidence_strength",
+                    "affected_paths",
+                    "operation",
+                    "start_sequence",
+                    "completion_sequence",
+                    "start_observation",
+                    "completion_observation",
+                    "outcome",
+                    "object_evidence",
+                    "correlation_id",
+                )
+            },
+            "v2_source_id": event.source_id,
+            "v2_raw_record_id": event.raw_evidence.record_id,
+        }
+E       KeyError: 'association'
+
+scripts/minchan_rebinding_capture.py:207: KeyError
+_______ test_failed_callback_preserves_error_and_refuses_success_export ________
+
+    def test_failed_callback_preserves_error_and_refuses_success_export():
+>       event = replace(_trace().effect_events[0], outcome=OperationOutcome.FAILED)
+                                                           ^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: type object 'OperationOutcome' has no attribute 'FAILED'
+
+tests/test_minchan_rebinding_capture.py:58: AttributeError
+________________ test_failed_callback_without_error_is_invalid _________________
+
+    def test_failed_callback_without_error_is_invalid():
+>       event = replace(_trace().effect_events[0], outcome=OperationOutcome.FAILED)
+                                                           ^^^^^^^^^^^^^^^^^^^^^^^
+E       AttributeError: type object 'OperationOutcome' has no attribute 'FAILED'
+
+tests/test_minchan_rebinding_capture.py:130: AttributeError
+=========================== short test summary info ============================
+FAILED tests/test_minchan_rebinding_capture.py::test_explicit_continuation_exports_existing_v3_reader_compatible_bytes
+FAILED tests/test_minchan_rebinding_capture.py::test_failed_callback_preserves_error_and_refuses_success_export
+FAILED tests/test_minchan_rebinding_capture.py::test_failed_callback_without_error_is_invalid
+========================= 3 failed, 10 passed in 0.06s =========================

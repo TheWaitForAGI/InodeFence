@@ -12,6 +12,11 @@
 | P0-4 Feedback 기반 Mutation | 주언 | `run_effect_campaign` 구현, `make demo`(별칭 `make demo-native`)로 실제 node-tar 루프 실행. demo report step마다 선택 근거 `selection` 출력(채널 ① corpus_admission: 선택 전 corpus 크기·편입 여부, ② operator_weights: weights_before·reward·weights_after). native 확인: `make demo-native` 2회(10/24, demo run) 같은 선택, reward 1·편입 step 5·12·19(새 key 각 2개, 선택 전 corpus 4·5·6), step 5 add_entry 가중치 1→2 | — |
 | P0-5 End-to-end 데모 | 지웅 | `make demo` = 실제 node-tar 루프(호스트, 별칭 `make demo-native`), synthetic은 `make demo-synthetic`(JSON `label`: `SYNTHETIC (not node-tar)`). 동작: `make demo-native` (실제 node-tar 7.5.22, FULL profile, P2·M1·seed 123·budget 20) 2회 동일 루프, demo run(10/24). `make demo` 1회 (호스트, 10/24 14:42, demo run): label `demo run`, producer native, node-tar 7.5.22, 20 steps, SYNTHETIC 0건 | 거부 중 미완료 operation trace 한계 표현, 이미지 ID 재현성(provenance attestation) |
 
+민찬 P0-2 보완(2026-10-24): [관찰 연구 자료](minchan/intermediate-observation-report.md)의 최신 절에
+schema2 demo의 팀 관측 보고와 원본 미확보를 구분했다. Synthetic capture의 v2 operation 집합 대조와
+predecessor/token one-shot을 보강해 focused133·canonical1,761개 통과. Native v3 dependency producer는
+미구현이며 이번 native 실행·효과 비교는 없다. 기존 v2 NOT_QUALIFIED 판정을 바꾸지 않는다.
+
 ### 한눈에 보기 (2026-10-24)
 
 - `make demo`(호스트) = 실제 node-tar 7.5.22 루프, 20 step, 반복 실행해도 같은 루프(SAME_LOOP_x4). 결과 JSON은 `~/inodefence-evidence/`.

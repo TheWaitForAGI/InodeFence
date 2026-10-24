@@ -1,0 +1,22 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.3, pytest-9.1.1, pluggy-1.7.0 -- /opt/venv/bin/python
+cachedir: .pytest_cache
+rootdir: /workspaces/InodeFence
+configfile: pyproject.toml
+collecting ... collected 13 items
+
+tests/test_minchan_rebinding_capture.py::test_explicit_continuation_exports_existing_v3_reader_compatible_bytes PASSED [  7%]
+tests/test_minchan_rebinding_capture.py::test_overlapping_operations_keep_identity_with_either_completion_order[completion_order0] PASSED [ 15%]
+tests/test_minchan_rebinding_capture.py::test_overlapping_operations_keep_identity_with_either_completion_order[completion_order1] PASSED [ 23%]
+tests/test_minchan_rebinding_capture.py::test_failed_callback_preserves_error_and_refuses_success_export PASSED [ 30%]
+tests/test_minchan_rebinding_capture.py::test_missing_duplicate_or_mismatched_events_poison_capture[duplicate_start] PASSED [ 38%]
+tests/test_minchan_rebinding_capture.py::test_missing_duplicate_or_mismatched_events_poison_capture[duplicate_completion] PASSED [ 46%]
+tests/test_minchan_rebinding_capture.py::test_missing_duplicate_or_mismatched_events_poison_capture[unmatched] PASSED [ 53%]
+tests/test_minchan_rebinding_capture.py::test_missing_duplicate_or_mismatched_events_poison_capture[entry] PASSED [ 61%]
+tests/test_minchan_rebinding_capture.py::test_exit_keeps_pending_operations_and_rejects_late_callbacks PASSED [ 69%]
+tests/test_minchan_rebinding_capture.py::test_overflow_is_invalid_and_bound_is_not_silently_extended PASSED [ 76%]
+tests/test_minchan_rebinding_capture.py::test_no_token_means_no_dependency_even_with_same_entry_path_and_order PASSED [ 84%]
+tests/test_minchan_rebinding_capture.py::test_continuation_cannot_start_before_predecessor_completes PASSED [ 92%]
+tests/test_minchan_rebinding_capture.py::test_failed_callback_without_error_is_invalid PASSED [100%]
+
+============================== 13 passed in 0.05s ==============================

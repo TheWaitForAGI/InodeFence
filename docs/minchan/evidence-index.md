@@ -1,0 +1,127 @@
+# 주장별 근거 색인
+
+> 현재 재검토 HEAD는 `9e36e1208b163308f744a7208fbfa56c4584b5c9`다. 아래 22·23일 source SHA는
+> 역사적 범위다. 10/24 추가 근거·이번 테스트는 끝의 최신 절을 따른다.
+
+> 10월 22일 색인을 보존하며, 이번 보완의 source·PR·로그 근거는 끝의 10월 23일 절에 추가했다.
+
+확인일 2026-10-22 KST. F=직접 파일/API/실행 확인, R=자료의 기록, I=분석, U=미검증.
+현재 코드 SHA는 모두 `8d29982c26cebfcce7a413b3ba9177fcd28078de`다. 아래 line은 이 SHA 기준이다.
+PR 당시 head/base/merge SHA와 본문은 [JSON snapshot](evidence/pr-snapshots.json)의 각 `number` record를 따른다.
+요청 15개 PR을 fetch했고 discussion API는 각 빈 배열을 반환했다. 리뷰 원문을 별도로 확보했다고 주장하지 않는다.
+
+| 주장 / 종류 | 근거 | 범위·해석 제한 |
+| --- | --- | --- |
+| P0/P1 admission 차이 F | [계약](../research/design/transition-feedback-v1.md), [#81](https://github.com/TheWaitForAGI/InodeFence/pull/81), src/inodefence/feedback/transition_search.py | native effectiveness 아님 |
+| P2 operator weights F | [scheduler](../../src/inodefence/mutation_scheduler.py), `TransitionAdaptiveScheduler` line 125, [#82](https://github.com/TheWaitForAGI/InodeFence/pull/82) | 새 transition binary reward, parent는 uniform |
+| v1 checkpoint/trace F | [model](../../src/inodefence/model/transition.py), [#79](https://github.com/TheWaitForAGI/InodeFence/pull/79) head `b2b936eeee5d7db271d10c192ef30a836f7aebb2` | synthetic와 native 분리 |
+| v2 14조건 F | [qualification runner](../../scripts/qualify_node_effect_observation.py), `_summarize` line 277 이후, criteria line 331 | all(criteria.values()); overhead 항목 상수 True |
+| 13/14·480회·실패 cell R | [보존 요약](../../experiments/summaries/node-native-effect-observation-qualification-v2.md), #89/#90 snapshot | clean 실행 SHA `36ff7fdb0e31db72b3e581fd1c089b712b4a7b4e`; 이번 raw 부재 |
+| duplicate reuse 코드 F/I | [upstream unpack](https://github.com/isaacs/node-tar/blob/v7.5.22/src/unpack.ts#L670), ISREUSABLE와 CHECKFS2 | tag source 검토. 실제 package hash는 v1 qualification 문서; upstream tag SHA 미해석 |
+| entry/body와 fs 순서 분리 F/I | [parse](https://github.com/isaacs/node-tar/blob/v7.5.22/src/parse.ts), [reservations](https://github.com/isaacs/node-tar/blob/v7.5.22/src/path-reservations.ts), unpack CHECKFS line 680 | tag 기반 source reading, 현재 native run 아님 |
+| private completion 역순·consistency failure R | [#87](https://github.com/TheWaitForAGI/InodeFence/pull/87), [요약](../../experiments/summaries/node-internal-completion-qualification-v3.md) | clean `9ea306f7ad20b8f479126360baf21192e0e86fdb`; raw SHA `ecb40154776e2f09883ecad6edb8f63abb57edc7becb3cd062863eb7e2a60cf0` |
+| 1,020 attribution·162 overlap R | [#88](https://github.com/TheWaitForAGI/InodeFence/pull/88), [요약](../../experiments/summaries/node-causal-effect-qualification-v4.md) | clean `72bccfa`의 전체 SHA/환경은 요약 참조; 재실행 아님 |
+| v2 실제 collector 구현 F | [producer](../../src/inodefence/targets/_node_effect_producer.cjs), `installEffectWrappers` line 272, operation start 315/completion 342, checkFs2 wrapper 403 | 이것을 v3 producer라고 부르지 않음 |
+| multi-operation 진단 R | [#91](https://github.com/TheWaitForAGI/InodeFence/pull/91), tools/node-tar/diagnostics/ | clean `2e31ea9`; raw archive SHA `eae2eb45925c560c7821997ff8b42a6ccae9634c26ea7462d34685f4b6679355` |
+| v3 당시 proposal R | [#100](https://github.com/TheWaitForAGI/InodeFence/pull/100) head `3e0ef26d89a1a1f93867a6641822c37d5b9ee5ce` | 당시 NOT_IMPLEMENTED; 현재 구현과 다름 |
+| v3 composite 조건 F | [derivation](../../src/inodefence/feedback/rebinding.py), `derive_namespace_rebinding_sequences` line 93, `effect_feedback_projection_v3` line 225 | same-entry/path, explicit absence, direct dependency, no conflict |
+| v3 external manifest digest F | [reader](../../src/inodefence/evaluation/rebinding_evidence.py), `reconstruct_rebinding_evidence` line 240 | external expected hash는 integrity trust root; native semantic truth 보증 아님 |
+| token forgery correction R/F | [#111](https://github.com/TheWaitForAGI/InodeFence/pull/111), [test](../../tests/test_rebinding_v3.py) line 625 | 본문은 adversarial review 기록; 이번에는 regression 직접 통과 |
+| 합성 역순/실패/누락·중복 F | [producer tests](../../tests/test_node_effect_producer.py) line 531/580/612/895, [실행 로그](evidence/focused-tests.log) | synthetic frames, delay/native 실행 아님 |
+| v3 합성 nonredundancy F | tests/test_rebinding_v3.py line 431, focused 로그 | v2 keys 동일 fixture에 composite 차이. search 향상 미검증 |
+| native v3/효과 U | [v3 canonical design](../research/design/namespace-rebinding-sequence-v3.md), STATUS | producer NOT_IMPLEMENTED, qualification/effectiveness NOT_RUN |
+
+## 1차 문헌
+
+| 자료 | 직접 확인한 구간 | 사용한 주장 / 미확인 |
+| --- | --- | --- |
+| You et al. 2025 [ZIPDiff 원문](https://www.usenix.org/system/files/usenixsecurity25-you.pdf), [코드](https://github.com/ouuan/ZipDiff) | §4 workflow, §7.3 limitations | output feedback/UCB, final disk output와 internal result 차이. inode/native completion 모델 확인되지 않음 |
+| Liu et al. 2026 [Wormholes 원문](https://www.usenix.org/system/files/usenixsecurity26-liu-yongheng.pdf), [공식 발표 페이지](https://www.usenix.org/conference/usenixsecurity26/presentation/liu-yongheng) | §4–5, §5.6 | symlink composition/order, 85-project 평가와 ZIPDiff 비교는 저자의 결과. 공식 구현 저장소는 이번 확인되지 않음 |
+| Xiang et al. 2025 [LinkZard 저자 원문](https://lfysec.github.io/paper/linkzard-security25.pdf) | introduction/approach, Appendix C | state-query/type/count feedback, graph, hardlink/link-count. Windows 대상; native node-tar 비교 없음. 공식 코드 checkout 미확보 |
+
+논문 전체를 재현하거나 모든 reference를 감사하지 않았다. 문헌의 “미확인”은 부재 증명이 아니다.
+
+## 보존 자료와 직접 검증의 경계
+
+이번 snapshot은 GitHub metadata/본문·discussion 반환의 수집본이다. diff는 API로 가져와 관련 부분을 검토했지만 전체 diff 원문은 이 산출물에 복제하지 않았다. 과거 head의 모든 파일·CI artifact를 checkout해 실행한 것도 아니다. 과거 테스트 수치는 PR 주장(R)으로만 사용했다. 현재 코드의 테스트는 별도 로그(F)로 남긴다.
+
+과거 raw 경로와 SHA는 [실험 결과](experiment-results.md)에 있다. 현재 `experiments/raw`에는 안내 파일만 확인됐고 해당 raw archive는 없었다. 따라서 자료 수준은 **보고된 negative qualification에 대한 근거 연결**이며 이번 독립 재현이나 PAPER-READY effectiveness evidence가 아니다.
+
+## PR revision 전체 식별자
+
+| PR | head SHA | merge SHA |
+| --- | --- | --- |
+| #79 | `b2b936eeee5d7db271d10c192ef30a836f7aebb2` | `f90a361307bbd44e8035c23774928d530902ceb9` |
+| #80 | `7d61a6345db139a429eb8875c5210203360c95a0` | `de3a8ece8719ce556b9d6f4d0c8c3bfbbab758d6` |
+| #81 | `59f5fc3c9ccfd37e3260ae814a01a4ff71ce6649` | `9977c5b60a9411728ad2b56cd7ca6545fb990e97` |
+| #82 | `e07d7bc5f12d48324663cc625aed5479785a6ab2` | `bd94dfb050bae2a108ed348f567e35b342fb0d91` |
+| #83 | `0935ccfe523dc41e61ee514fc573e7f789f57be4` | `ffb687425eec6219dcf1c6bec18593b75ee2b453` |
+| #84 | `e2284ef36bf774fc346e66c1bb635862b2e7153c` | `0b856e771f8c5a20faacc9706eb1933f5ed7ec89` |
+| #85 | `02b7db2eb77df44497da3b4adcbfecb6a268d00d` | `931899209bc1de29f249d9e2f3d451438ddf1d22` |
+| #86 | `1ca7ccee2838e7d27afcdba93a89d5471f405f52` | `269b1e1d74609e52c222320235e8faf51864998b` |
+| #87 | `104c6d73f68b12beb49756b0cd4955b84a4e9eef` | `b31470a51db93e63d4911f061ba424e59a90fa73` |
+| #88 | `dd8dd15b2b4a8ce697e3ef38567883f2602cfb15` | `58e69ae70953bf4e7b696abeea02d9dfe987d9b5` |
+| #89 | `0eb527f88aa8a4015544d2f6b0eabfebe079bf18` | `ccc061bece3f3525ecf0b734777a6b39bac06b07` |
+| #90 | `c46f3724134d58283daa713774923e73aa9a0994` | `3db15e486957a38fcc381ef093e09c223df8faa5` |
+| #91 | `0fa8bda5349de78541efb7f1622c469c6abf2d51` | `57f751992f60a534c5b07506e72124abe5d6b07d` |
+| #100 | `3e0ef26d89a1a1f93867a6641822c37d5b9ee5ce` | `da42c805b391ca842543dcf0db77f6edbce96b1e` |
+| #111 | `44e115b177d8b3aed7b06141c0523f567e0772c9` | `8d29982c26cebfcce7a413b3ba9177fcd28078de` |
+
+## 10월 23일 추가 근거
+
+기존 문서 base SHA는 `3c2487b659a24d2f4b7bc38b5ca9928ffb959723`다. 이 커밋은 engine 변경 없이
+기존 docs/minchan을 추가했다. 두 minchan branch의 시작 ref가 같고 diff가 0임을 로컬 Git으로 확인했다(F).
+현재 core/reader source는 `8d29982c26cebfcce7a413b3ba9177fcd28078de`에서 바뀌지 않았다.
+새 prototype/test는 **uncommitted working diff**이며 정확한 파일 hash·환경·branch는
+[이번 provenance](evidence/provenance-20261023.json)에 보존한다. 과거 code SHA로 새 코드를 식별하지 않는다.
+
+| 추가 주장 | 구분 | 근거/위치 | 남은 한계 |
+| --- | --- | --- | --- |
+| #81/#82 정책과 #89/#90 판정, #100/#111 상태 유지 | API 자료 확인 | [PR 재조회 snapshot](evidence/pr-recheck-20261023.json) | 이번 metadata/body 조회; 옛 diff 전체 재감사 아님 |
+| #111 리뷰 원문 미확보 | API 반환 사실 | [dependency/review snapshot](evidence/dependencies-20261023.json) | discussion endpoint 재반환 빈 배열; 최종 인간 승인 추론 금지 |
+| 민찬 PR 검색 반환 없음 | API 반환 사실 | 같은 snapshot | query 범위 결과이며 PR이 없다는 일반적 증명 아님 |
+| 실행 gate는 별도 | 코드/자료 확인 | 현재 STATUS·N04 v3 Task Contract; remote `00356e4` 문서 사본은 아래 snapshot 참조 | code merge/CI가 승인 아님 |
+| N05/Track A 실행 안 함이라는 PR 기록 | 자료 주장 | #115 head `e83349ed1592d536e3ec0fce3c7cb204cb5c6ec9`, #122 head `20f190b0373db851e1c5b0ea343eb889dddaa451` | native v3 승인·개인 작업 전체 상태를 뜻하지 않음 |
+| interleaved operation correlation·errors·pending·overflow | 합성 검증 | [prototype](../../scripts/minchan_rebinding_capture.py), [tests](../../tests/test_minchan_rebinding_capture.py), [이번 focused 로그](evidence/focused-tests-20261023.log) | 실제 API wrapper/ALS/hook 아님 |
+| v3 wire compatibility | 합성 검증 | prototype `envelope`→unchanged `reconstruct_rebinding_evidence`; positive test | synthetic expected digest 계산은 external manifest publication이 아님 |
+| sequence gap 전체 검출 불가 | 명시적 한계 검증 | test_sequence_gap_is_not_misrepresented_as_full_transport_validation | lifecycle 포함 v2 global channel과 native API audit 필요 |
+| P1−P0/P2−P1의 이득 | 미검증 가설 | [H10/H21](research-hypotheses.md) | 실제 비교 없음; evaluator·budget·effect threshold 미동결 |
+| 전체 snapshot·durability·native token truth 없음 | 코드/자료 확인 | research-hypotheses 증거표, native design scope | 더 많은 이벤트만으로 보장되지 않음 |
+| 선행연구도 state/order/adaptation을 다룸 | 원문 확인 | [novelty-and-threats](novelty-and-threats.md) 관련 절/링크 | 공식 코드의 새 비교 주장은 없음 |
+
+remote 제안 문서는 `git show 00356e4:docs/research/diagnostics/n05-native-qualification-critical-path.md`로
+읽었다. [읽은 사본](evidence/n05-critical-path-at-00356e4.txt)을 보존한다. source-package 직접 재해시나
+그 문서의 native branch 계측을 이번 수행한 것으로 쓰지 않는다. 첫 guessed benchmark 경로는 존재하지
+않아 ls-tree로 실제 diagnostic 경로를 확인한 뒤 읽었다.
+
+변경 재현은 base `3c2487b`와 현재 로컬 파일·diff를 함께 사용한다. [26일 확정표](result-freeze-checklist.md)는
+2026-10-23의 증거 상태이며 미래 완료 사실을 기록하지 않는다.
+
+새 working-source 위치: `SyntheticRebindingCapture.begin` line 72, `complete` line 108,
+`finish` line 123, `envelope` line 136. 실패/중복/pending/overflow와 same-entry nested/다른-entry concurrent
+schedule은 새 test 파일 line 36/62/77/96/107을 따른다. line은 이번 provenance hash의 파일 기준이다.
+보존 [synthetic raw](evidence/synthetic-v3-envelope-20261023.jsonl)와
+[reader verification](evidence/synthetic-v3-verification-20261023.json)은 합성 입력의 원본/파생을 구분한다.
+
+## 10/24 최신 근거와 검토 범위
+
+| 주장 | 종류 | 근거 | 검증 경계 |
+| --- | --- | --- | --- |
+| branch가 더 이상 동일하지 않음 | F Git 확인 | docs `9e36e12`, 다른 branch `3c2487b`, prior work `f90f342c8189b84ff0af7f685ac492d803313d95` | branch를 강제 변경하지 않음 |
+| 정책/기존 negative 판정 유지 | PR 재조회 | [snapshot](evidence/pr-recheck-20261024.json): #81/#82/#89/#111 | 본문/metadata 조회; 전체 옛 diff 재감사 아님 |
+| #133 merged와 native demo 수치 | R PR/LOG 기록 | 같은 snapshot; merge `ff43fe4457ca7adf0fa523572c6d11bc195b31af` | discussion API 빈 배열. 인간 리뷰 원문 미확인 |
+| schema2는 entry/start 정렬·cap64·status 유지 | F code 확인 | src/inodefence/effect_demo.py::_trace_report/_effect_event_record | raw 전체·lifecycle/frontier·atomic snapshot 아님 |
+| rejected invalid trace도 데모 처리 가능 | F code 확인 | scripts/run_effect_demo.py::native_demo_report, success일 때 integrity stop | 완전 중간 관찰 성공 아님 |
+| raw 로컬 부재·현재 source 식별 | F filesystem/hash | [provenance](evidence/provenance-20261024.json) | 호스트의 ~/ 경로는 실행자 기준; 이번 홈의 부재가 호스트 파일 부재를 뜻하지 않음 |
+| whole-pair 누락·token 재소비 결함 | 합성 재현 | [수정 전 실패4개](evidence/capture-regressions-before-20261024.log) | 기존 prototype 검증 공백; native flaw 주장 아님 |
+| export set equality·one-shot 수정 | 합성 검증 | scripts/minchan_rebinding_capture.py begin/envelope, [focused133](evidence/focused-tests-20261024.log) | generic v3/producer를 수정하지 않음 |
+| canonical 및 사후 확인 | 이번 실행 | [canonical log](evidence/make-check-20261024.log) | 과거 1602/PR133의1739와 구분 |
+
+현재 working code는 위 HEAD와 로컬 diff·provenance의 hash로 식별한다. 기존 10/23 raw/manifest·로그는
+덮어쓰지 않았다. production v2 worker SHA `6c9a05a8420e800281e2e8662c17b176648fef13dc2182332ce063bb117aa5f4`와
+v3 reader는 `8d29982c` 이후 diff 없음도 확인했다. source 전체가 그대로라는 뜻은 아니다.
+문헌 재조회와 timeout은 novelty-and-threats의 10/24 절을 따른다. 신규성/효과 우위 주장을 추가하지 않았다.
+
+기존 10/23 provenance의 prototype/test SHA-256을 `git show f90f342:<path>`의 bytes와 대조해
+두 파일 모두 일치함을 확인했다. 따라서 10/23의 18/94/1602는 그 역사적 코드·환경의 기록이며
+이번 HEAD의 실행 결과가 아니다. 이번 관찰에 해당하는 exact hash는 10/24 provenance를 따른다.

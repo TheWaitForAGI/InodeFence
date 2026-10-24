@@ -1,0 +1,9 @@
+{
+  "synthetic_only": true,
+  "native_target_executed": false,
+  "fixture": "tests/test_rebinding_v3.py::_trace",
+  "raw_sha256": "d1c57ef6e8af1f8b3c03a73520e2d4759050ffa94a9a9b2ea4311c6215d1497d",
+  "manifest_trust": "synthetic self-check only; no production external manifest issued",
+  "sequence_count": 1,
+  "complete": true
+}

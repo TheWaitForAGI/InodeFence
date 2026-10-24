@@ -40,7 +40,7 @@ inferred(추론)를 구분하고, synthetic은 native 증거로 승격하지 않
 | 중단 내성(끝난 step이 `.steps.jsonl`에 보존) | TESTED | PR #143; 강제 중단 테스트 |
 | producer 견고성(조용한 exit 0 → failed 프레임/lifecycle 기록) | TESTED | PR #144; 호스트 budget 100 100/100 |
 | **실제 경계위반을 통제 재현 + affected/fixed 구분**(node-tar 7.5.2 하드링크→외부 sentinel = C1+C2, 7.5.3 거부) | TESTED | 2026-10-24 capability probe(LOG): 7.5.2 추출객체 inode==sentinel·nlink 1→2 observed, 7.5.3 `linkpath contains '..'` 거부. **퍼징 자력 발견은 아님** |
-| 퍼저가 **자력으로** 경계위반을 발견(rediscovery) | HYPOTHESIS(미달) | historical 7.5.2/7.5.3 × 3 seed × budget 100 oracle 0건(LOG). 정답이 한 점(~1/729)인데 feedback에 gradient 없음 → 탐색 효율 문제. Ledger M3 |
+| 퍼저가 **자력으로** 경계위반을 발견(rediscovery) | HYPOTHESIS(미달·진행) | historical 7.5.2/7.5.3 × 3 seed × budget 100 oracle 0건(LOG). 정답이 한 점(~1/729). **M3.1 gradient 구현**(PR `jiwoong/m3-boundary-attempt-gradient`): 거부된 외부-하드링크 시도를 valid trace로 관찰(producer abort-drain) + target-agnostic boundary-attempt 키가 escape-hardlink operator를 보상(opt-in P3 arm; 7.5.2 native 실발화, LOG 2026-10-25 01:01). 자력 C1/gradient-vs-무작위 측정은 진행. Ledger M3 |
 | feedback effectiveness(B0/B1/B3, A1/A2/A3) | IMPLEMENTED, 미VALIDATED | 정책 매트릭스 9/9 완주하나 비교 결론 없음(LOG 18:44) |
 | entry-transition native 관찰 | DESIGNED / SYNTHETIC TESTED | native completion boundary 미확보 → NOT_IMPLEMENTED |
 | cross-implementation(oras-go 등 2번째 extractor) | DESIGNED | adapter 없음. Ledger M4 |

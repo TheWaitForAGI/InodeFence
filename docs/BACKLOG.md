@@ -38,7 +38,7 @@ gradient가 없다. historical 7.5.2/7.5.3 × 3 seed × budget 100에서 oracle 
 
 | 순서 | 태스크 | 상태 | 게이트 |
 | --- | --- | --- | --- |
-| M3.1 | generic security-state gradient 설계·구현(additive): "extraction root 밖에 새 네임스페이스 객체/identity 관계가 생겼다" 같은 **target-agnostic** 부분진척 신호를 effect key에 추가. 기존 C0/C1/C2 판정·fixture·N01 경로 불변(autoloop 5.4). sentinel 경로/CVE를 feedback에 심지 않는다 | 대기 | verifier 검토 |
+| M3.1 | generic security-state gradient 설계·구현(additive): "extraction root 밖에 새 네임스페이스 객체/identity 관계가 생겼다" 같은 **target-agnostic** 부분진척 신호를 effect key에 추가. 기존 C0/C1/C2 판정·fixture·N01 경로 불변(autoloop 5.4). sentinel 경로/CVE를 feedback에 심지 않는다. **구현됨**: 거부된 외부-하드링크 시도를 valid trace로 보는 producer abort-drain + boundary-attempt 키 + opt-in P3 arm(게이트를 깨끗한 REJECTED까지 완화; **연구-정직성 판단점, PR 플래그**). 7.5.2 native에서 키 실발화 확인(LOG 2026-10-25 01:01) | 대기(머지 필요: jiwoong/m3-boundary-attempt-gradient) | 사람 |
 | M3.2 | 그 gradient로 B0/B1/B3 비교: "state feedback이 random보다 먼저 위반을 찾는가". 지표는 executions-to-first-violation, unique states, 유효입력비 — 돌리기 전에 고정. negative/no-hit도 그대로 보고(right-censored) | 대기 | M3.1, 주언(feedback/eval) 협의 |
 | M3.3 | (보조·대조군) escape 정책에서 budget을 크게 올려 자력 발견을 무작위로 확인 — "feedback 덕"이 아니라 대조 데이터로만 | 대기 | 없음 (호스트 docker) |
 

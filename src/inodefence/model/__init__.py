@@ -31,6 +31,8 @@ from .effect import (
     effect_is_realized,
 )
 from .effect_feedback import (
+    BoundaryAttemptShape,
+    BoundaryAttemptSignature,
     CausalArchiveRelation,
     CausalMotifSignature,
     EffectFeedbackKey,
@@ -101,6 +103,8 @@ __all__ = [
     "ArchiveCase",
     "ArchiveEntry",
     "ArchiveEntryReference",
+    "BoundaryAttemptShape",
+    "BoundaryAttemptSignature",
     "BoundaryIdentityEvidence",
     "ChangeField",
     "CausalArchiveRelation",

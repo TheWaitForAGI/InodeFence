@@ -76,6 +76,12 @@ demo-synthetic:
 # P2-c: state-aware effect loop on a prebuilt frozen historical node-tar effect image.
 # Runtime provides the image (default tag inodefence-node-tar-effect:$(TAR_VERSION)); the
 # P2 adaptive arm and escape-hardlink mutation policy are the in-code defaults. Budget stays
-# capped at 100 in code. Not run by `make check`.
+# capped at 100 in code. Not run by `make check`. Override the arm/mutation from the command
+# line to pick another arm, e.g. the M3 boundary-attempt gradient:
+#   make demo-native-historical DEMO_POLICY=effect-feedback-v2-or-violation-v1-boundary-attempt-v1-adaptive-mutation-v1 \
+#     DEMO_MUTATION_POLICY=uniform-generic-m1-protected-components-escape-hardlink-v1
+# A bare `make demo-native-historical` leaves both empty, so the in-code defaults stand.
+demo-native-historical: DEMO_POLICY :=
+demo-native-historical: DEMO_MUTATION_POLICY :=
 demo-native-historical:
-	TAR_VERSION=$(TAR_VERSION) HISTORICAL_IMAGE=$(HISTORICAL_IMAGE) DEMO_SEED=$(DEMO_SEED) DEMO_BUDGET=$(DEMO_BUDGET) bash scripts/local_node_tar_smoke.sh demo-historical
+	TAR_VERSION=$(TAR_VERSION) HISTORICAL_IMAGE=$(HISTORICAL_IMAGE) DEMO_POLICY=$(DEMO_POLICY) DEMO_MUTATION_POLICY=$(DEMO_MUTATION_POLICY) DEMO_SEED=$(DEMO_SEED) DEMO_BUDGET=$(DEMO_BUDGET) bash scripts/local_node_tar_smoke.sh demo-historical

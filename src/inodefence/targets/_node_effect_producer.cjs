@@ -261,6 +261,11 @@ const run = async args => {
   const entryIdentity = new WeakMap()
   const entryErrors = new WeakMap()
   const fdOwners = new Map()
+  // Operation completions that have not fired yet. When the target aborts mid
+  // extraction, earlier entries' async operations may still be in flight; we
+  // settle them so the stream stays correlation-complete instead of orphaning a
+  // start (which the reader would otherwise treat as an integrity conflict).
+  const pendingCompletes = new Set()
   let ordinal = 0
   let operationOrdinal = 0
   let recording = false
@@ -338,6 +343,7 @@ const run = async args => {
         const complete = (error, callbackArgs) => {
           if (completed) return null
           completed = true
+          pendingCompletes.delete(complete)
           const after = observePaths(paths)
           const completionSequence = emit({
             record_type: 'operation_completion',
@@ -366,6 +372,7 @@ const run = async args => {
           if (name === 'close' && typeof fd === 'number') fdOwners.delete(fd)
           return completionSequence
         }
+        pendingCompletes.add(complete)
         callArgs[callbackIndex] = function (...callbackArgs) {
           complete(callbackArgs[0] || null, callbackArgs)
           return callback.apply(this, callbackArgs)
@@ -543,8 +550,23 @@ const run = async args => {
         : 'failed'
     if (targetError !== null) process.stderr.write(JSON.stringify(targetError) + '\n')
 
+    // Settle operations still in flight at an aborted termination. Each becomes an
+    // observed-but-unrealized completion (success:false, TARGET_ABORTED): we do not
+    // claim the operation finished, only that its observation window closed with the
+    // target; the after-snapshot is a real lstat and a non-SUCCEEDED outcome is never
+    // a realized effect. On a clean success nothing is pending, so this is a no-op.
+    if (targetError !== null && pendingCompletes.size > 0) {
+      const aborted = {
+        code: 'TARGET_ABORTED',
+        message: 'operation in flight when the target terminated'
+      }
+      for (const settle of Array.from(pendingCompletes)) settle(aborted, [aborted])
+    }
+
     const producerFailures = []
-    if (fdOwners.size !== 0) producerFailures.push({
+    // An open descriptor is expected when the target aborts mid-write, so it is a
+    // producer failure only on a clean success, never on an aborted/rejected run.
+    if (targetOutcome === 'success' && fdOwners.size !== 0) producerFailures.push({
       kind: 'unclosed_handle_provenance', count: fdOwners.size
     })
     const source = {

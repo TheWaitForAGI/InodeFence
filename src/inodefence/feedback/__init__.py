@@ -4,6 +4,7 @@ from inodefence.model import EffectFeedbackKeyKind
 
 from .corpus import Corpus, CorpusEntry, CorpusStats, FeedbackDecision
 from .effect import (
+    boundary_attempt_keys,
     effect_feedback_eligible,
     effect_feedback_keys,
     normalized_effect_signature,
@@ -59,6 +60,7 @@ __all__ = [
     "EffectSearchPolicy",
     "EffectSearchState",
     "EffectSearchStats",
+    "boundary_attempt_keys",
     "effect_feedback_eligible",
     "effect_feedback_keys",
     "effect_feedback_projection_v3",

@@ -1,74 +1,57 @@
 # 작업 큐 (BACKLOG)
 
-자율 루프(`.claude/skills/autoloop/SKILL.md`)가 읽는 할 일 목록이다. **맨 위부터 순서대로** 진행한다.
+할 일을 **마일스톤(M)** 아래 태스크로 둔다. 마일스톤은 [STATUS의 Capability Ledger](STATUS.md)의
+M1~M4와 같고, 날짜가 아니라 "증거가 모이면 찍는" 지점이다. 자율 루프
+(`.claude/skills/autoloop/SKILL.md`)는 **맨 위부터** `대기`이고 게이트가 열린 태스크를 집는다.
 완료 기록은 [WORKLOG](WORKLOG.md), 실행 기록은 [LOG](LOG.md)에 남긴다.
-
-분류: 1–4는 11/2 중간발표 P0 작업이다([MIDTERM_GOALS](MIDTERM_GOALS.md)). 목표는 `make demo` 하나로
-실제 node-tar에서 입력 생성 → 실행 → 중간 상태 관찰 → Oracle → Feedback → 다음 Mutation 선택이
-재현되는 것이다. P0 작업이 새로 생기면 이 표의 `대기` 항목 사이에 끼워 넣는다.
 
 상태 값: `대기` / `진행` / `완료(<브랜치>)` / `막힘(<날짜>, <이유>)` / `BREAKING(<브랜치>)` / `대기(머지 필요: <브랜치>)`
 
-상태 칸에 위 값 대신 사람이 적은 일정·승인 조건이 있는 항목은 autoloop가 집지 않는다.
-사람이 상태를 `대기`로 바꿀 때만 진행한다.
+- 게이트 `사람`은 바깥에 영향을 주는 결정(머지, 외부 공개 등)에만 쓴다. 그 외는 안전경계 안에서 자율 진행한다.
+- 안전경계(변경 없음): disposable sandbox + sentinel만, 고정 node-tar 버전, 격리 완화 플래그 금지,
+  가드 훅 우회 금지, 실제 민감 파일 대상 금지. 이건 느슨하게 하지 않는다.
+- 연구 불변식(변경 없음): CVE-specific oracle 금지(D005), 알려진 PoC를 fuzzing seed로 안 씀(D006),
+  observed/inferred 구분, synthetic을 native로 승격하지 않음, 비교 없이 effectiveness 주장 안 함.
 
-| 순서 | ID | 상태 | 게이트 |
-| --- | --- | --- | --- |
-| 1 | P0-2/P0-4 native 연결: 중간 상태 렌더링 + 선택 근거를 demo-native JSON에 | 완료(jiwoong/p0-2-native-trace) | 없음 |
-| 2 | P0-5 `make demo` = native, `make demo-synthetic` 분리 + SYNTHETIC 라벨 | 완료(jiwoong/p0-5-demo-native-default) | 1 머지 |
-| 3 | P0-5 JSONL 부분 저장 + CI에 effect producer/effect-demo 추가 | 완료(jiwoong/p0-5-jsonl-partial-ci, PR #143 머지 10/24) | 2 머지 |
-| 4 | P0-1 N01 native 무결성 결함 원인 조사 | 완료(조사: LOG 10-24 18:00; 수정: jiwoong/p0-1-producer-settle-skip, 사람 리뷰 대기) | 없음 |
-| 5 | P2-b(#129), P2-c(#130) 머지 | 완료(10/24 #129 → #130 머지) | 사람 |
-| 6 | P2-c N01 rediscovery 실행 | 완료(10/24 LOG 18:27: 7.5.2/7.5.3 × 3 seed × budget 100 전부 완료, oracle 0건 — 재발견 없음; #130 머지 후 공식 재실행 여부는 사람) | 사람 |
-| 7 | P3 A/B/C 비교 실험 | 부분 완료(10/24 LOG 18:44: 수정 producer로 P0/P1/P2 × 3 seed × budget 100 9/9 완료, 위반 0·정책 간 일관된 차이 없음). 남은 것: A/B/C 정의·지표 확정(주언) 후 정식 실험 | 사람 |
+## 완료 (이력은 WORKLOG/LOG)
+
+**M1 — 루프가 실제 node-tar에서 돈다: 완료.** 과거 P0-1~P0-5 큐(중간 상태 trace, `make demo`=native,
+JSONL 부분 저장+CI, producer 견고성)와 P2-b/P2-c 머지가 main에 있다. 세부는 Ledger 1~6행과 WORKLOG.
 
 ---
 
-## 1. P0-2/P0-4 native 연결
+## M2 — 실제 경계위반 통제 재현 + 버전 구분 (실증됨 → 박제)
 
-- 분류: P0-2(중간 상태 관찰 출력), P0-4(선택 근거 기록)
-- 환경: 구현·테스트는 Dev Container, native 확인은 **호스트 터미널**(`make demo-native`, docker 필요)
-- 현재: `scripts/run_effect_demo.py`의 `native_demo_report`는 `effect_campaign_report`의 steps(feedback, scheduler_evidence)와 `native_checks`, `timing`만 남긴다. `src/inodefence/effect_demo.py`의 `render_effect_trace`(값마다 archive/observed/not_observed/derived 출처 라벨)는 native JSON에 들어가지 않는다. 선택 근거 helper(`_selection`, `_feedback_events`)는 정책 비교(`compare_effect_campaign_reports`)에서만 쓰인다.
-- 할 일:
-  - native report의 각 step에 `render_effect_trace` 결과와 선택 근거(parent, 선택 전 corpus 크기, weights_before, 선택 operator와 weight, 새 effect key 수, reward, weights_after)를 **추가**한다. 기존 필드와 의미는 바꾸지 않는다. 새로 계산하지 말고 기존 helper를 재사용한다.
-  - synthetic report에 같은 필드가 생기면 `·SYNTHETIC` 라벨을 유지한다.
-- 완료 조건: `make check` 통과. synthetic report로 새 필드를 확인하는 테스트 추가. 호스트에서 `make demo-native` 1회 실행해 JSON에 새 필드가 있는지 확인하고 LOG 한 줄(`demo run` 라벨). 호스트 실행을 못 하면 그 부분만 `막힘(호스트 실행 필요)`.
-- 실행/검증하게 되는 것: 실제 node-tar 실행의 entry별 중간 상태와 "피드백 때문에 이 mutation이 선택됐다"는 근거를 demo-native JSON 하나로 확인할 수 있다.
+2026-10-24 capability probe로 node-tar 7.5.2가 외부 sentinel로 하드링크를 만들어 C1+C2가 성립하고
+7.5.3은 거부함을 observed(LOG). 남은 일은 이걸 **재현 가능한 형태로 박제**하는 것이다. 재발견(자력 발견)과는
+구분한다.
 
-## 2. P0-5 `make demo` = native
+| 순서 | 태스크 | 상태 | 게이트 |
+| --- | --- | --- | --- |
+| M2.1 | capability probe를 repo 안 재현 스크립트/테스트로 고정: 손으로 만든 하드링크 fixture(외부 sentinel 대상)를 실제 7.5.2/7.5.3에 돌려 7.5.2=C1+C2·7.5.3=거부를 확인. generic C1/C2만 쓰고 CVE 식별자/PoC 하드코딩 없음. LOG 한 줄 + Ledger M2 증거 갱신 | 대기 | 없음 (호스트 docker) |
+| M2.2 | 같은 fixture를 우리 Observer/Oracle 경로(effect pipeline)로도 통과시켜 "손 probe == oracle 판정" 일치 확인 | 대기 | M2.1 |
 
-- 분류: P0-5
-- 환경: Dev Container(synthetic, `make check`) + **호스트 터미널**(native)
-- 게이트: 1 머지(같은 report 코드를 고친다. 스택 금지)
-- 현재: `Makefile`의 `demo`는 `DEMO_PRODUCER ?= synthetic`로 synthetic을 돌리고, native는 `demo-native`(`scripts/local_node_tar_smoke.sh demo`)다. AGENTS.md 목표는 `make demo`가 실제 node-tar 루프다.
-- 할 일:
-  - `make demo`가 native 경로(지금 `demo-native`와 같은 명령)를 돌리게 하고, synthetic은 `make demo-synthetic`으로 분리한다. `demo-native`는 호환용으로 남길지 정해 이유를 커밋 메시지에 적는다.
-  - synthetic 산출물은 파일명과 report label 모두에 SYNTHETIC을 드러낸다. native 산출물에 SYNTHETIC이 섞이지 않게 한다.
-  - `make demo`를 언급하는 문서(START_HERE, STATUS, README 등)를 함께 고친다.
-- 완료 조건: `make check` 통과. Dev Container에서 `make demo-synthetic` 2회 결과 바이트 동일. 호스트에서 `make demo` 1회 성공과 LOG 한 줄(`demo run`). 호스트 실행을 못 하면 그 부분만 `막힘(호스트 실행 필요)`.
-- 실행/검증하게 되는 것: `make demo` 하나로 실제 node-tar 루프를 재현하고, synthetic 결과를 native로 착각할 수 없다.
+## M3 — 퍼저가 자력으로 위반을 찾는다 (H1 본체)
 
-## 3. P0-5 JSONL 부분 저장 + CI
+지금 막힌 진짜 지점. 정답 입력이 한 점(~1/729)인데 C1/C2 oracle이 all-or-nothing이라 adaptive 탐색에
+gradient가 없다. historical 7.5.2/7.5.3 × 3 seed × budget 100에서 oracle 0건(LOG).
 
-- 분류: P0-5(재현성), P0-1(실패 증거)
-- 환경: Dev Container, CI
-- 게이트: 2 머지(같은 demo 경로를 고친다. 스택 금지)
-- 현재: native demo가 중단되면(`NativeDemoAborted`) `scripts/container_controller.py`는 `aborted` 블록(step index, case ID, reason, raw frame·stderr)만 쓴다. 그 전에 완료된 step의 루프 기록은 남지 않는다. CI의 container job(`.github/workflows/ci.yml`)은 `benign-node-smoke`만 돌리고 effect producer와 effect demo는 돌리지 않는다.
-- 할 일:
-  - step이 끝날 때마다 루프 기록을 JSONL로 append해서, 중단돼도 완료된 step이 남게 한다. 기존 `src/inodefence/campaign_export.py`의 `steps.jsonl` 형식을 먼저 재사용할 수 있는지 본다. 최종 JSON 형식은 바꾸지 않는다.
-  - CI container job에 effect producer smoke와 작은 budget의 effect demo를 추가한다. 격리 완화 플래그를 쓰지 않는다(가드 R3/R5).
-- 완료 조건: `make check` 통과. 강제 중단 테스트에서 완료된 step이 JSONL에 남는 것을 확인. PR CI 통과.
-- 실행/검증하게 되는 것: native 실행이 중간에 멈춰도 그때까지의 관찰·feedback·선택 기록을 잃지 않고, effect 경로 회귀를 CI가 잡는다.
+| 순서 | 태스크 | 상태 | 게이트 |
+| --- | --- | --- | --- |
+| M3.1 | generic security-state gradient 설계·구현(additive): "extraction root 밖에 새 네임스페이스 객체/identity 관계가 생겼다" 같은 **target-agnostic** 부분진척 신호를 effect key에 추가. 기존 C0/C1/C2 판정·fixture·N01 경로 불변(autoloop 5.4). sentinel 경로/CVE를 feedback에 심지 않는다 | 대기 | verifier 검토 |
+| M3.2 | 그 gradient로 B0/B1/B3 비교: "state feedback이 random보다 먼저 위반을 찾는가". 지표는 executions-to-first-violation, unique states, 유효입력비 — 돌리기 전에 고정. negative/no-hit도 그대로 보고(right-censored) | 대기 | M3.1, 주언(feedback/eval) 협의 |
+| M3.3 | (보조·대조군) escape 정책에서 budget을 크게 올려 자력 발견을 무작위로 확인 — "feedback 덕"이 아니라 대조 데이터로만 | 대기 | 없음 (호스트 docker) |
 
-## 4. P0-1 N01 native 무결성 결함 원인 조사
+## M4 — 일반성 (2번째 extractor)
 
-- 분류: P0-1(native 실행 실패 원인과 증거). demo-native와 같은 producer/reader 경로(`src/inodefence/targets/node_tar_effect.py`)를 쓴다.
-- 환경: **호스트 터미널**(증거 파일이 호스트에 있다). 읽기만 한다.
-- 근거(관찰 기록): #130 브랜치(`jiwoong/p2-c-n01-rediscovery`) LOG 2026-10-24 01:58. node-tar 7.5.2, seed 456, step 72 ABORT. target은 success(exit 0)인데 trace invalid: integrity_valid False, completeness invalid, controller_flush False, `transport is not one LF-terminated frame`, observation_failures `source_reader_disagreement` + `incomplete_flush`. 증거: `~/inodefence-evidence/p2c-native-matrix/`의 `…-015543.json`(raw frame·stderr 보존).
-- 할 일:
-  - 증거 JSON의 에러 메시지, raw frame, stderr부터 읽는다.
-  - `node_tar_effect.py`의 framing/flush 검사(`transport is not one LF-terminated frame`, `INCOMPLETE_FLUSH`, `SOURCE_READER_DISAGREEMENT` 발생 지점)와 대조해 원인을 producer 출력 / controller flush / transport / reader 중 하나로 분류한다.
-  - 관찰한 사실(observed)과 추론(inferred)을 구분해 적는다.
-- 금지: 코드 수정, 재현 실행(7.5.2/7.5.3 historical 재실행 포함)은 사람 승인 후에만 한다. 새 audit 문서를 만들지 않는다.
-- 완료 조건: LOG 한 줄(원인 분류, 근거 위치, observed/inferred 구분). 수정이 필요하면 수정안 요약을 WORKLOG 요약에 적고 상태를 `막힘(<날짜>, 사람 승인 필요)`로 둔다.
-- 실행/검증하게 되는 것: native 관찰 무결성 중단이 어디서 생기는지 증거로 판단할 수 있고, `make demo`가 반복 성공하는 데 필요한 수정 범위를 정할 수 있다.
+| 순서 | 태스크 | 상태 | 게이트 |
+| --- | --- | --- | --- |
+| M4.1 | oras-go adapter 설계(isolated CWD 포함), 동일 generic 모델·oracle로 연결. CVE/target-specific 로직을 generic 모듈에 섞지 않는다 | 대기 | 규민·민찬 협의 |
+
+## 상시 (레인 담당)
+
+| 태스크 | 상태 | 게이트 |
+| --- | --- | --- |
+| A/B/C(random / structure-aware / state-aware) **정의와 공통 지표** 확정 — M3.2가 쓸 측정의 기준 | 대기 | 주언 |
+| 거부 입력에서 중간 상태 event 0개인 한계의 표현 방식 | 대기 | 민찬 |
+| demo 이미지 ID 재현성(provenance attestation) | 대기 | 규민 |

@@ -2,10 +2,11 @@
 
 이 문서는 InodeFence 저장소에서 사람과 코딩 에이전트가 공통으로 따라야 할 규칙을 정의한다.
 
-## 현재 최우선 (~2026-11-02 중간발표)
+## 현재 집중 (Capability Ledger 기준)
 
-이 기간에는 아래 규칙이 다른 모든 작업 지침보다 우선한다.
-기준 문서: `docs/MIDTERM_GOALS.md`
+현재 능력과 다음 할 일의 **단일 기준은 [STATUS의 Capability Ledger](docs/STATUS.md)**다.
+날짜가 아니라 마일스톤(M1~M4)으로 관리한다. 기한은 팀 일정으로 두고 문서에 박제하지 않는다.
+(`docs/MIDTERM_GOALS.md`는 배경 문서로 남긴다.)
 
 ### 목표
 
@@ -13,7 +14,8 @@
 
 입력 생성 → node-tar 실행 → 중간 상태 관찰 → Oracle 평가 → Feedback 생성 → 다음 Mutation 선택
 
-(P0-1~P0-5. 성능 우위와 N01 rediscovery는 중간발표 필수 조건이 아니다.)
+이 루프(M1)는 돈다. 지금 집중은 M2(실제 경계위반 통제 재현, 실증됨) → M3(퍼저 자력 발견, H1 본체)
+→ M4(2번째 extractor 일반성)다.
 
 ### 우선순위
 
@@ -21,7 +23,8 @@
 
 ### 작업 시작 전
 
-1. 이 작업이 P0-1~P0-5 중 무엇에 해당하는지 먼저 밝힌다. 해당하지 않으면 진행하기 전에 사람에게 확인한다.
+1. 이 작업이 Ledger의 어느 마일스톤(M2~M4)·상시 태스크에 해당하는지 밝힌다. 어디에도 안 맞으면
+   무엇을 하려는지 LOG에 적고 진행한다(안전경계·연구 불변식은 항상 유지).
 2. 이미 있는 코드를 먼저 찾는다. 루프의 부품은 대부분 존재한다:
    `effect_campaign.run_effect_campaign`, `effect_pipeline.run_node_tar_effect_case`,
    `effect_scheduler`, `feedback/effect.py`, `oracle`, `observer`.

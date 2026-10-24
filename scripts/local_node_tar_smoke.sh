@@ -130,7 +130,9 @@ dk run -d --name "$CONTROLLER" --user vscode --workdir /workspaces/InodeFence \
 CREATED_CONTROLLER=1
 dk exec --user root "$CONTROLLER" chown vscode:vscode /var/lib/inodefence
 dk exec "$CONTROLLER" python -m pip install pytest
-dk exec "$CONTROLLER" git config --global --add safe.directory /workspaces/InodeFence
+# --workdir /: a git worktree checkout has a .git file pointing outside the mount,
+# and git dies on repository discovery even for --global config.
+dk exec --workdir / "$CONTROLLER" git config --global --add safe.directory /workspaces/InodeFence
 
 IF_HELPER_IMAGE="$(dk image inspect "$HELPER_IMAGE" --format '{{.Id}}')"
 IF_NODE_IMAGE="$(dk image inspect "$NODE_IMAGE" --format '{{.Id}}')"

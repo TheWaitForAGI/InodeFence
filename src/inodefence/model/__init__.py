@@ -31,6 +31,7 @@ from .effect import (
     effect_is_realized,
 )
 from .effect_feedback import (
+    BoundaryEscapeShape,
     CausalArchiveRelation,
     CausalMotifSignature,
     EffectFeedbackKey,
@@ -40,6 +41,7 @@ from .effect_feedback import (
     EntryEffectSetSignature,
     IdentityRelationType,
     NormalizedEffectSignature,
+    ObservedBoundaryEscapeSignature,
 )
 from .filesystem import (
     ChangeField,
@@ -113,7 +115,9 @@ __all__ = [
     "EffectEventTrace",
     "EffectEvidenceStrength",
     "EffectFeedbackKey",
+    "BoundaryEscapeShape",
     "EffectFeedbackKeyKind",
+    "ObservedBoundaryEscapeSignature",
     "EffectFeedbackProjectionV3",
     "EffectFeedbackSignature",
     "EffectObjectObservation",

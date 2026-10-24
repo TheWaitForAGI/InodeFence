@@ -4,7 +4,11 @@ from dataclasses import dataclass
 
 from inodefence.model import EffectEventTrace, EffectFeedbackKey
 
-from .effect import effect_feedback_eligible, effect_feedback_keys
+from .effect import (
+    effect_feedback_eligible,
+    effect_feedback_keys,
+    observed_boundary_escape_keys,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,7 +33,10 @@ class EffectNoveltyDecision:
 
 
 class EffectNoveltyIndex:
-    def __init__(self) -> None:
+    def __init__(self, *, include_boundary_escape: bool = False) -> None:
+        # include_boundary_escape adds the M3 observed boundary-approach keys to the
+        # same eligibility-gated channel. Off by default so P0/P1/P2 are unchanged.
+        self._include_boundary_escape = bool(include_boundary_escape)
         self._keys: set[EffectFeedbackKey] = set()
         self._observations = 0
         self._eligible_observations = 0
@@ -59,7 +66,9 @@ class EffectNoveltyIndex:
         if not eligible:
             return EffectNoveltyDecision((), False, False)
         self._eligible_observations += 1
-        keys = effect_feedback_keys(trace)
+        keys: tuple[EffectFeedbackKey, ...] = effect_feedback_keys(trace)
+        if self._include_boundary_escape:
+            keys = tuple(dict.fromkeys(keys + observed_boundary_escape_keys(trace)))
         new = tuple(key for key in keys if key not in self._keys)
         self._keys.update(keys)
         if new:

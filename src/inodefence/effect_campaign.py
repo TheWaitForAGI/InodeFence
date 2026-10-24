@@ -159,7 +159,11 @@ def run_effect_campaign(
     steps: list[EffectCampaignStep] = []
     scheduler = (
         EffectAdaptiveMutationScheduler()
-        if config.search_policy == EffectSearchPolicy.P2_EFFECT_ADAPTIVE
+        if config.search_policy
+        in (
+            EffectSearchPolicy.P2_EFFECT_ADAPTIVE,
+            EffectSearchPolicy.P3_BOUNDARY_GRADIENT,
+        )
         else EffectUniformMutationScheduler()
     )
 

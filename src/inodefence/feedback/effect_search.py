@@ -23,6 +23,11 @@ class EffectSearchPolicy(StrEnum):
     P0_FINAL_STATE = "final-state-v3-or-violation-v1-effect-observation-v2-uniform-mutation-v1"
     P1_EFFECT_RETENTION = "effect-feedback-v2-or-violation-v1-uniform-mutation-v1"
     P2_EFFECT_ADAPTIVE = "effect-feedback-v2-or-violation-v1-adaptive-mutation-v1"
+    # M3: P2 plus the observed boundary-approach key channel (opt-in). Same admission
+    # rule as P2 (effect novelty OR new violation); only the key set is a superset.
+    P3_BOUNDARY_GRADIENT = (
+        "effect-feedback-v2-or-violation-v1-boundary-approach-v1-adaptive-mutation-v1"
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -152,7 +157,9 @@ class EffectSearchState:
             raise ValueError("initial cases contain duplicate case IDs")
         self._initial_cases = cases
         self._policy = policy
-        self._effect_novelty = EffectNoveltyIndex()
+        self._effect_novelty = EffectNoveltyIndex(
+            include_boundary_escape=(policy == EffectSearchPolicy.P3_BOUNDARY_GRADIENT)
+        )
         self._states: set[StateSignature] = set()
         self._violations: set[ViolationFingerprint] = set()
         self._entries: list[EffectCorpusEntry] = []

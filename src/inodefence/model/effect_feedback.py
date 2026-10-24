@@ -11,7 +11,7 @@ from .effect import (
     EffectEvidenceStrength,
     OperationOutcome,
 )
-from .filesystem import Region
+from .filesystem import ObjectType, Region
 
 
 class EffectOrdinalClass(StrEnum):
@@ -30,6 +30,18 @@ class EffectFeedbackKeyKind(StrEnum):
     INDIVIDUAL_EFFECT = "individual_effect"
     ENTRY_EFFECT_SET = "entry_effect_set"
     CAUSAL_MOTIF = "causal_motif"
+    # M3: observed boundary-approach state (an extracted object whose raw link text
+    # escapes the extraction root). Additive; derived only under the opt-in P3 arm.
+    OBSERVED_BOUNDARY_ESCAPE = "observed_boundary_escape"
+
+
+class BoundaryEscapeShape(StrEnum):
+    """Target-agnostic shape of an escaping link target (no path, no sentinel, no CVE)."""
+
+    ABSOLUTE = "absolute"
+    PARENT_1 = "parent_1"
+    PARENT_2 = "parent_2"
+    PARENT_3_PLUS = "parent_3_plus"
 
 
 class CausalArchiveRelation(StrEnum):
@@ -152,7 +164,41 @@ class CausalMotifSignature:
             raise ValueError("causal motif requires an archive relation class")
 
 
-EffectFeedbackSignature = NormalizedEffectSignature | EntryEffectSetSignature | CausalMotifSignature
+@dataclass(frozen=True, slots=True)
+class ObservedBoundaryEscapeSignature:
+    """One observed extracted object whose raw link text escapes the extraction root.
+
+    Derived from observed filesystem state (an object's own canonical region and its
+    raw symlink text), never from the archive input we sent. It names no concrete
+    path, protected object or CVE: only the object kind, its region, and a bounded
+    escape shape. This is the dense, boundary-approaching security state that the
+    all-or-nothing C0/C1/C2 verdicts miss.
+    """
+
+    serialization_schema: ClassVar[int] = 1
+
+    object_type: ObjectType
+    object_region: Region
+    escape_shape: BoundaryEscapeShape
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.object_type, ObjectType) or not isinstance(
+            self.object_region, Region
+        ):
+            raise ValueError("observed boundary escape requires object kind and region")
+        if not isinstance(self.escape_shape, BoundaryEscapeShape):
+            raise ValueError("observed boundary escape requires a bounded escape shape")
+
+    def sort_key(self) -> tuple[object, ...]:
+        return (self.object_type.value, self.object_region.value, self.escape_shape.value)
+
+
+EffectFeedbackSignature = (
+    NormalizedEffectSignature
+    | EntryEffectSetSignature
+    | CausalMotifSignature
+    | ObservedBoundaryEscapeSignature
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,6 +213,7 @@ class EffectFeedbackKey:
             EffectFeedbackKeyKind.INDIVIDUAL_EFFECT: NormalizedEffectSignature,
             EffectFeedbackKeyKind.ENTRY_EFFECT_SET: EntryEffectSetSignature,
             EffectFeedbackKeyKind.CAUSAL_MOTIF: CausalMotifSignature,
+            EffectFeedbackKeyKind.OBSERVED_BOUNDARY_ESCAPE: ObservedBoundaryEscapeSignature,
         }
         if not isinstance(self.kind, EffectFeedbackKeyKind) or not isinstance(
             self.signature, expected.get(self.kind, object)

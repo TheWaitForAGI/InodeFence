@@ -7,6 +7,7 @@ from .effect import (
     effect_feedback_eligible,
     effect_feedback_keys,
     normalized_effect_signature,
+    observed_boundary_escape_keys,
 )
 from .effect_novelty import EffectNoveltyDecision, EffectNoveltyIndex
 from .effect_search import (
@@ -61,6 +62,7 @@ __all__ = [
     "EffectSearchStats",
     "effect_feedback_eligible",
     "effect_feedback_keys",
+    "observed_boundary_escape_keys",
     "effect_feedback_projection_v3",
     "FeedbackKey",
     "FeedbackProjection",

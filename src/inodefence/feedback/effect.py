@@ -1,8 +1,10 @@
 """Finite effect feedback derivation; raw event order is never a novelty key."""
 
 from collections import defaultdict
+from pathlib import PurePosixPath
 
 from inodefence.model import (
+    BoundaryEscapeShape,
     CausalArchiveRelation,
     CausalMotifSignature,
     CausalRelationKind,
@@ -17,6 +19,8 @@ from inodefence.model import (
     FilesystemEffectEvent,
     IdentityRelationType,
     NormalizedEffectSignature,
+    ObjectType,
+    ObservedBoundaryEscapeSignature,
     Region,
     effect_is_realized,
 )
@@ -99,6 +103,8 @@ def _feedback_key_sort_key(key: EffectFeedbackKey) -> tuple[object, ...]:
         value = (signature.sort_key(),)
     elif isinstance(signature, EntryEffectSetSignature):
         value = (tuple(effect.sort_key() for effect in signature.effects),)
+    elif isinstance(signature, ObservedBoundaryEscapeSignature):
+        value = (signature.sort_key(),)
     else:
         assert isinstance(signature, CausalMotifSignature)
         value = (
@@ -164,4 +170,79 @@ def effect_feedback_keys(trace: EffectEventTrace) -> tuple[EffectFeedbackKey, ..
         )
         keys.add(EffectFeedbackKey(EffectFeedbackKeyKind.CAUSAL_MOTIF, motif))
 
+    return tuple(sorted(keys, key=_feedback_key_sort_key))
+
+
+def _boundary_escape_shape(object_path: str, symlink_target: str) -> BoundaryEscapeShape | None:
+    """Classify an observed symlink's raw target by how it escapes the extraction root.
+
+    Resolves the raw text against the symlink's own observed directory (both are
+    observed state, never the archive input). Returns None when it stays inside
+    `extract/`. Absolute targets are ABSOLUTE; otherwise the leading `..` depth is
+    bucketed. No concrete path, protected object or CVE is referenced.
+    """
+    if not symlink_target:
+        return None
+    if symlink_target.startswith("/"):
+        return BoundaryEscapeShape.ABSOLUTE
+    resolved: list[str] = [part for part in PurePosixPath(object_path).parent.parts]
+    for segment in symlink_target.split("/"):
+        if segment in ("", "."):
+            continue
+        if segment == "..":
+            if resolved and resolved[-1] != "..":
+                resolved.pop()
+            else:
+                resolved.append("..")
+        else:
+            resolved.append(segment)
+    if resolved and resolved[0] == "extract":
+        return None
+    depth = 0
+    for segment in symlink_target.split("/"):
+        if segment == "..":
+            depth += 1
+        elif segment in ("", "."):
+            continue
+        else:
+            break
+    if depth <= 1:
+        return BoundaryEscapeShape.PARENT_1
+    if depth == 2:
+        return BoundaryEscapeShape.PARENT_2
+    return BoundaryEscapeShape.PARENT_3_PLUS
+
+
+def observed_boundary_escape_keys(trace: EffectEventTrace) -> tuple[EffectFeedbackKey, ...]:
+    """Observed boundary-approach keys: extraction symlinks whose target escapes root.
+
+    Derived only from eligible (complete, valid, successful) traces and from observed
+    objects (`ObjectSnapshot.symlink_target`), so it respects the same fail-closed gate
+    as the other effect keys and never rewards an uncleanly-observed or rejected run.
+    Target-agnostic: object kind, region and a bounded escape shape only.
+    """
+    if not isinstance(trace, EffectEventTrace):
+        raise ValueError("observed boundary escape keys require an EffectEventTrace")
+    if not effect_feedback_eligible(trace):
+        return ()
+    keys: set[EffectFeedbackKey] = set()
+    for event in trace.effect_events:
+        if not effect_is_realized(event) or event.effect_class != EffectClass.SYMLINK_CREATION:
+            continue
+        for item in event.object_evidence:
+            obj = item.after.object
+            if obj is None or obj.object_type != ObjectType.SYMLINK or obj.symlink_target is None:
+                continue
+            region = path_region(obj.path)
+            if region != Region.EXTRACTION:
+                continue
+            shape = _boundary_escape_shape(obj.path, obj.symlink_target)
+            if shape is None:
+                continue
+            keys.add(
+                EffectFeedbackKey(
+                    EffectFeedbackKeyKind.OBSERVED_BOUNDARY_ESCAPE,
+                    ObservedBoundaryEscapeSignature(ObjectType.SYMLINK, region, shape),
+                )
+            )
     return tuple(sorted(keys, key=_feedback_key_sort_key))

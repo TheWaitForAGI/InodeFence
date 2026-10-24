@@ -8,11 +8,16 @@ evidence. `native_demo_report` runs inside the trusted Linux controller
 import argparse
 import json
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
+from hashlib import sha256
 from pathlib import Path
 from time import perf_counter
 
-from inodefence.effect_campaign import EffectCampaignConfig, run_effect_campaign
+from inodefence.effect_campaign import (
+    EffectCampaignConfig,
+    EffectCampaignResult,
+    run_effect_campaign,
+)
 from inodefence.effect_demo import (
     EffectStepReporter,
     effect_campaign_report,
@@ -45,6 +50,22 @@ SYNTHETIC_LABEL = "SYNTHETIC (not node-tar)"
 DEFAULT_NATIVE_BUDGET = 20
 MAX_NATIVE_BUDGET = 100
 NODE_TAR_PIN = Path(__file__).resolve().parents[1] / "tools" / "node-tar" / "package.json"
+
+# P2-c historical state-aware campaign. This is a separate path from the benign
+# demo: native_demo_report stays pinned to the repository node-tar (7.5.22), and
+# this path admits only the catalog-registered historical pair (7.5.2/7.5.3),
+# cross-checked against the retained wrapper locks. Arbitrary images/versions are
+# rejected; seeds are RNG integers only; results are labeled "demo run", never
+# rediscovery or vulnerability.
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+CATALOG_PATH = _REPO_ROOT / "experiments" / "benchmarks" / "catalog-v1.json"
+HISTORICAL_LOCKS_DIR = _REPO_ROOT / "experiments" / "benchmarks" / "locks"
+HISTORICAL_BENCHMARK_ID = "node-link-sanitize"
+HISTORICAL_DEMO_MODE = "effect-demo-historical"
+DEMO_MODES = ("effect-demo", HISTORICAL_DEMO_MODE)
+HISTORICAL_LABEL = "demo run"
+HISTORICAL_SEARCH_POLICY = EffectSearchPolicy.P2_EFFECT_ADAPTIVE
+HISTORICAL_MUTATION_POLICY = MutationPolicy.M1_PROTECTED_COMPONENTS_ESCAPE_HARDLINK
 
 
 class NativeDemoAborted(RuntimeError):
@@ -102,24 +123,36 @@ def synthetic_demo_json(
 
 
 DEMO_ARGUMENTS = ("seed", "budget", "policy", "mutation_policy")
+# Arguments the host broker forwards verbatim to the controller. tar_version is
+# historical-only; the other four are shared by both effect demos.
+DEMO_FORWARDED_ARGUMENTS = (*DEMO_ARGUMENTS, "tar_version")
 
 
 def add_demo_arguments(parser: argparse.ArgumentParser) -> None:
-    """effect-demo only; defaults apply inside native_demo_report (P2, 123, 20, M1)."""
+    """effect-demo(s) only; defaults apply inside the reports (P2, 123, 20, policy)."""
     parser.add_argument("--seed", type=int)
     parser.add_argument("--budget", type=int)
     parser.add_argument("--policy", choices=tuple(policy.value for policy in EffectSearchPolicy))
     parser.add_argument(
         "--mutation-policy", choices=tuple(policy.value for policy in MutationPolicy)
     )
+    parser.add_argument(
+        "--tar-version",
+        help="catalog-registered historical node-tar version; effect-demo-historical only",
+    )
 
 
 def check_demo_arguments(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
     given = [name for name in DEMO_ARGUMENTS if getattr(args, name) is not None]
-    if given and args.mode != "effect-demo":
-        parser.error("--seed/--budget/--policy/--mutation-policy are restricted to effect-demo")
+    if given and args.mode not in DEMO_MODES:
+        parser.error("--seed/--budget/--policy/--mutation-policy are restricted to effect demos")
     if args.budget is not None and not 1 <= args.budget <= MAX_NATIVE_BUDGET:
-        parser.error(f"effect-demo budget must be in 1..{MAX_NATIVE_BUDGET}")
+        parser.error(f"effect demo budget must be in 1..{MAX_NATIVE_BUDGET}")
+    tar_version = getattr(args, "tar_version", None)
+    if tar_version is not None and args.mode != HISTORICAL_DEMO_MODE:
+        parser.error("--tar-version is restricted to effect-demo-historical")
+    if args.mode == HISTORICAL_DEMO_MODE and tar_version is None:
+        parser.error("effect-demo-historical requires --tar-version")
 
 
 def demo_options(args: argparse.Namespace) -> dict:
@@ -254,6 +287,168 @@ def native_demo_report(
         node_version=target.node_version,
         image_id=image_id,
         native_checks=checks,
+        # Wall-clock values differ per run; keep them apart from the loop record.
+        timing={"total_seconds": total, "per_case": timing},
+    )
+    return report
+
+
+def historical_target_versions() -> dict[str, str]:
+    """Catalog-registered historical node-tar versions mapped to wrapper-lock SHA-256.
+
+    The allowlist is derived only from frozen sources that must agree: the
+    benchmark catalog's selected historical pair and the retained wrapper locks
+    whose hashes equal the frozen n01 lock identities. This is read-only reuse of
+    the existing lock verification and does not modify any frozen input. A version
+    or image outside this set cannot enter the historical loop.
+    """
+    # Read-only import of the frozen identities; n01.py is never modified here.
+    from inodefence.evaluation.n01 import FROZEN_TARGETS
+
+    catalog = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
+    record = next(
+        item for item in catalog["benchmarks"] if item["benchmark_id"] == HISTORICAL_BENCHMARK_ID
+    )
+    pair = record["selected_pair"]
+    catalog_versions = {pair["vulnerable"], pair["fixed"]}
+    allowed: dict[str, str] = {}
+    for frozen in FROZEN_TARGETS:
+        if frozen.tar_version not in catalog_versions:
+            raise ValueError("frozen historical target is not in the catalog selected pair")
+        lock_path = HISTORICAL_LOCKS_DIR / f"node-tar-{frozen.tar_version}.package-lock.json"
+        if sha256(lock_path.read_bytes()).hexdigest() != frozen.lock_sha256:
+            raise ValueError(f"wrapper lock for {frozen.tar_version} drifted from frozen identity")
+        allowed[frozen.tar_version] = frozen.lock_sha256
+    if set(allowed) != catalog_versions:
+        raise ValueError("catalog historical pair differs from the frozen targets")
+    return allowed
+
+
+def _require_historical_request(tar_version: str, budget: int, allowed: Mapping[str, str]) -> None:
+    """Reject out-of-range budgets and versions outside the catalog pair (pre-bind)."""
+    if type(budget) is not int or not 1 <= budget <= MAX_NATIVE_BUDGET:
+        raise ValueError(f"historical demo budget must be in 1..{MAX_NATIVE_BUDGET}")
+    if tar_version not in allowed:
+        raise ValueError(
+            f"historical demo version {tar_version!r} is not a catalog-registered "
+            f"historical target {sorted(allowed)}"
+        )
+
+
+def _require_historical_image(
+    observed_version: str, requested: str, allowed: Mapping[str, str]
+) -> None:
+    """Reject a bound image whose node-tar is not the requested catalog pair member (post-bind)."""
+    if observed_version != requested or observed_version not in allowed:
+        raise NativeDemoAborted(
+            0,
+            None,
+            f"image node-tar {observed_version} is not the requested catalog-registered "
+            f"historical target {requested}",
+        )
+
+
+def _historical_oracle_events(result: EffectCampaignResult) -> list[dict[str, object]]:
+    """Label each oracle contract violation an 'oracle-detected Cx event' (not rediscovery)."""
+    events: list[dict[str, object]] = []
+    for step in result.steps:
+        base = step.result.base_result
+        for verdict in base.violations:
+            if verdict.violated:
+                events.append(
+                    {
+                        "index": step.index,
+                        "case_id": base.case.case_id,
+                        "contract_id": verdict.contract_id.value,
+                        "label": f"oracle-detected {verdict.contract_id.value} event",
+                    }
+                )
+    return events
+
+
+def historical_demo_report(
+    backend: ExecutionBackend,
+    image_id: str,
+    tar_version: str,
+    *,
+    seed: int = 123,
+    budget: int = DEFAULT_NATIVE_BUDGET,
+    policy: EffectSearchPolicy = HISTORICAL_SEARCH_POLICY,
+    mutation_policy: MutationPolicy = HISTORICAL_MUTATION_POLICY,
+) -> dict[str, object]:
+    """Run the state-aware effect loop on a frozen historical node-tar; label it a demo run.
+
+    Parallel to native_demo_report but scoped to the catalog-registered historical
+    pair (7.5.2/7.5.3) instead of the repository benign pin, which is left
+    unchanged. Defaults are the P2 adaptive arm and the escape-hardlink mutation
+    policy. Must run inside the controller: `backend` creates disposable target
+    containers over sandboxes with sentinels. Mutated cases may carry escaping
+    link targets. Seeds are RNG integers only; no PoC input is accepted. The
+    result is labeled "demo run" with oracle hits labeled "oracle-detected Cx
+    event"; it is never labeled rediscovery or vulnerability.
+    """
+    allowed = historical_target_versions()
+    _require_historical_request(tar_version, budget, allowed)
+    config = EffectCampaignConfig(
+        random_seed=seed,
+        execution_budget=budget,
+        search_policy=policy,
+        mutation_policy=mutation_policy,
+    )
+    target = NodeTarEffectTarget.bind(backend, image_id, profile=NativeEffectProfile.FULL)
+    _require_historical_image(target.tar_version, tar_version, allowed)
+    checks: list[dict[str, object]] = []
+    timing: list[dict[str, object]] = []
+
+    def produce(case: ArchiveCase) -> EffectRunResult:
+        index = len(checks)
+        started = perf_counter()
+        try:
+            run = run_node_tar_effect_case(case, target)
+        except Exception as error:
+            reason = f"{type(error).__module__}.{type(error).__qualname__}: {error}"
+            raise NativeDemoAborted(index, case.case_id, reason) from error
+        check = _native_check(case, run.result, run.controller_flush_verified, run.transport_error)
+        checks.append(check)
+        timing.append(
+            {
+                "case_id": case.case_id,
+                "wall_seconds": perf_counter() - started,
+                "target_seconds": run.result.base_result.execution.duration_seconds,
+            }
+        )
+        if run.result.base_result.execution.status == ExecutionStatus.SUCCESS and not (
+            check["integrity_valid"]
+            and run.result.trace.completeness == EffectStreamCompleteness.COMPLETE
+            and run.controller_flush_verified
+            and run.transport_error is None
+            and check["archive_entries_match"]
+        ):
+            execution = run.result.base_result.execution
+            raise NativeDemoAborted(
+                index,
+                case.case_id,
+                f"evidence integrity failed after target success: {check}",
+                {
+                    "raw_stream": run.raw_stream.decode("utf-8", "surrogateescape"),
+                    "target_stderr": execution.stderr,
+                },
+            )
+        return run.result
+
+    started = perf_counter()
+    result = run_effect_campaign(minimal_seed_corpus(), produce, config)
+    total = perf_counter() - started
+    report = effect_campaign_report(result, "native")
+    report.update(
+        label=HISTORICAL_LABEL,
+        mode="historical",
+        node_tar_version=target.tar_version,
+        requested_tar_version=tar_version,
+        node_version=target.node_version,
+        image_id=image_id,
+        native_checks=checks,
+        oracle_detected_events=_historical_oracle_events(result),
         # Wall-clock values differ per run; keep them apart from the loop record.
         timing={"total_seconds": total, "per_case": timing},
     )

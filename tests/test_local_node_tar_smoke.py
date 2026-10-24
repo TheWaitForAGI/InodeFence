@@ -1,0 +1,39 @@
+"""Host-only guard of scripts/local_node_tar_smoke.sh (make demo, node-tar-smoke)."""
+
+from __future__ import annotations
+
+import subprocess
+from pathlib import Path
+
+import pytest
+
+SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "local_node_tar_smoke.sh"
+
+
+def run_without_docker(mode: str, tmp_path: Path) -> subprocess.CompletedProcess[str]:
+    # An empty PATH hides docker even on CI runners that have it installed.
+    return subprocess.run(
+        ["/bin/bash", str(SCRIPT), mode],
+        capture_output=True,
+        text=True,
+        env={"PATH": str(tmp_path)},
+        check=False,
+    )
+
+
+def test_demo_without_docker_points_to_host_and_synthetic_demo(tmp_path: Path) -> None:
+    result = run_without_docker("demo", tmp_path)
+
+    assert result.returncode == 2
+    assert "host terminal" in result.stderr
+    assert "make demo-synthetic" in result.stderr
+    assert "FAILED at step" not in result.stderr
+
+
+@pytest.mark.parametrize("mode", ("smoke", "effect"))
+def test_other_modes_without_docker_point_to_host_only(mode: str, tmp_path: Path) -> None:
+    result = run_without_docker(mode, tmp_path)
+
+    assert result.returncode == 2
+    assert "host terminal" in result.stderr
+    assert "demo-synthetic" not in result.stderr

@@ -6,6 +6,7 @@ import pytest
 from scripts.compare_effect_policies import synthetic_policy_comparison
 from scripts.run_effect_demo import (
     MAX_NATIVE_BUDGET,
+    SYNTHETIC_LABEL,
     add_demo_arguments,
     check_demo_arguments,
     native_demo_report,
@@ -40,6 +41,15 @@ def test_synthetic_demo_json_is_byte_identical_for_same_seed() -> None:
     second = synthetic_demo_json(123, 20, EffectSearchPolicy.P2_EFFECT_ADAPTIVE, MutationPolicy.M1)
 
     assert first == second
+
+
+def test_synthetic_demo_report_is_labeled_not_node_tar() -> None:
+    report = synthetic_demo_report(
+        123, 20, EffectSearchPolicy.P2_EFFECT_ADAPTIVE, MutationPolicy.M1
+    )
+
+    assert report["label"] == SYNTHETIC_LABEL == "SYNTHETIC (not node-tar)"
+    assert report["producer"] == "synthetic"
 
 
 @pytest.mark.parametrize("budget", (0, MAX_NATIVE_BUDGET + 1, -1))

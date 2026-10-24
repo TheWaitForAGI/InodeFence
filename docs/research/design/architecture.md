@@ -1,5 +1,45 @@
 # 시스템 아키텍처
 
+## 한국어 요약
+
+### 전체 pipeline (Runtime Stage A~G)
+
+testcase 하나는 다음 책임 순서로 흐른다. 개발 진척도를 나타내는 Layer 0~6과는 다른 축이다.
+
+```text
+Stage A  Seed Generator     작고 정상적인 ArchiveCase 생성            src/inodefence/generator/
+Stage B  Structure Mutator  generic rule로 archive 구조 변형          src/inodefence/mutator/
+Stage C  TAR Builder        ArchiveCase → deterministic USTAR bytes   src/inodefence/builder.py
+Stage D  Target Adapter     격리 환경에서 실제 extractor 실행          src/inodefence/targets/, execution/
+Stage E  State Observer     BEFORE/AFTER StateSnapshot 캡처·비교       src/inodefence/observer/
+Stage F  Security Oracle    snapshot을 C0/C1/C2 Contract와 비교        src/inodefence/oracle/
+Stage G  Feedback / Corpus  새 state/violation이면 다음 parent로 보존  src/inodefence/feedback/
+```
+
+단일 실행 runner는 `pipeline.py`(`run_case`), sandbox lifecycle은 `runtime.py`, 공통 data model은 `model/`에 있다. `StateSnapshot`에서 결과가 둘로 갈라진다: `StateSignature`("이전과 어떻게 다른가" → Feedback)와 `ViolationResult`("Contract를 위반했는가" → Oracle). **Interesting ≠ Vulnerable**이 전체 설계의 핵심 구분이다.
+
+### 각 모듈의 책임과 하지 않는 일 (27절 Invariant)
+
+- Generator: 작은 ArchiveCase를 만들되 extractor 실행·security 판정·CVE recipe 생성은 하지 않는다.
+- Mutator: 8개 generic operator(add/remove/duplicate/reorder/path/hardlink/symlink/link-target)로 구조를 바꾸되 target-specific vulnerability recipe를 소유하지 않는다. caller-owned RNG만 사용한다.
+- Builder: 논리 구조를 TAR encoding으로 바꾸되 mutation을 선택하지 않는다(Mutation Policy ≠ TAR Encoding).
+- Target Adapter: extractor를 실행하되 filesystem security 의미를 판정하지 않는다.
+- Observer: `(st_dev, st_ino)`, nlink, mode, size, content digest, link text 등 사실만 기록하고 취약 여부를 판단하지 않는다.
+- Oracle: Contract를 적용하되 filesystem에 접근하거나 target을 실행하지 않는다.
+- Feedback: 탐색 가치를 판단하되 "interesting"을 "confirmed vulnerability"와 동일시하지 않는다.
+
+### 어디가 generic이고 어디가 target-specific인가
+
+- **Generic**: `model/`, `generator/`, `mutator/`, `builder.py`, `observer/`, `oracle/`, `feedback/`, `pipeline.py`. 의존 방향은 `model ← mutator / targets / observer / oracle / feedback`이며 `model`은 실행·관찰·판정 모듈을 import하지 않는다. 순환 의존은 책임 경계가 무너진 신호로 본다.
+- **Target-specific**: `targets/`(node-tar worker, Python tarfile reference adapter)와 `execution/`(container backend). 실행 command, runtime, version, option, stdout/stderr, exit code, timeout만 target-specific으로 허용한다. node-tar/version/CVE 조건을 generic Mutator·Observer·Oracle·Feedback에 넣지 않는다.
+- Region 분류(`EXTRACTION`=`extract/**`, `HARNESS`=`.`/`archive/**`, `EXTERNAL`=나머지)는 model의 `path_region`에서 공통 정의하며 모듈별 path 예외를 두지 않는다. HARNESS는 normalization 역할이지 security trust boundary가 아니다.
+
+### 세 Plane과 증거 규칙
+
+Research Plane(무엇을 위험으로 볼지 정의) → Runtime Engine(생성·변형·실행·관찰·판정·선택) → Evidence Plane(raw 결과 → 재현·최소화 → finding → paper). **raw 결과가 곧 논문 주장은 아니다.** 문서 뒷부분(Entry transitions, Entry-associated effect v2)은 기존 BEFORE/AFTER·C0/C1/C2를 바꾸지 않고 별도 evidence를 composition하는 확장이며, native 효과 검증은 문서 기준 미완이다.
+
+이 요약은 아래 원문을 간추린 것이며 정의의 기준은 원문이다.
+
 이 문서는 InodeFence의 **상세 시스템 아키텍처에 대한 canonical source**다.
 
 하위 README는 자기 폴더의 책임과 탐색 경로만 설명한다. Security Contract의 정확한 정의는 [security-contracts.md](security-contracts.md), 큰 설계 결정의 이유는 [../../DECISIONS.md](../../DECISIONS.md), 현재 구현 단계는 [../../STATUS.md](../../STATUS.md)를 따른다.

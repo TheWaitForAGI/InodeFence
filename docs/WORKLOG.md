@@ -10,3 +10,6 @@
 | 날짜 | 브랜치명 | P0/Phase | 한 줄 요약 | main 대비 핵심 변경 | 상태 |
 | --- | --- | --- | --- | --- | --- |
 | 2026-10-23 | jiwoong/p0-0-autoloop-setup | 도구 세팅(P0 아님) | 자율 루프용 PreToolUse 가드 훅(R1–R8), 역할 4종(전부 claude-opus-4-8), autoloop 규칙, BACKLOG/WORKLOG; 10-24 BACKLOG를 11/2 P0 큐(1–4)로 재정렬, N01·P3는 사람 일정·승인으로 막음 | `.claude/settings.json`, `.claude/hooks/guard.py`, `.claude/agents/{orchestrator,builder,runtime,verifier}.md`, `.claude/skills/autoloop/SKILL.md`, `docs/BACKLOG.md`, `docs/WORKLOG.md`, `tests/test_claude_guard.py` | 검토대기 |
+| 2026-10-24 | jiwoong/p0-1-producer-settle-skip | P0-1 (BACKLOG 4 후속 수정) | native producer의 '조용한 exit 0' 두 형태(tar.x 미settle, checkPath 드롭)를 failed 프레임/lifecycle 기록으로 바꿔 demo abort를 결과로 전환; 호스트 make demo budget 100에서 abort 0 확인 | `src/inodefence/targets/_node_effect_producer.cjs`, `tests/test_node_effect_producer_local.py`, LOG/WORKLOG/BACKLOG/STATUS | 검토대기 |
+| 2026-10-24 | (PR #129·#130 브랜치에 머지 커밋 push) | BACKLOG 5 | #129/#130을 main과 머지(충돌 8/10파일 해소: main의 demo=native 유지), 머지 트리 make check 통과, GitHub MERGEABLE·CI SUCCESS. 남은 것: 사람이 #129 → #130 순으로 머지 | 코드 변경 없음(머지 커밋만) | 검토대기 |
+| 2026-10-24 | (코드 변경 없음, 실행만) | BACKLOG 7 1차 | 7.5.22 P0/P1/P2 × 3 seed × budget 100 매트릭스 9회: 완료 4·중단 5(producer 결함), .steps.jsonl로 부분 보존. 비교 결론 없음 — 수정 producer로 재실행 필요 | ~/inodefence-evidence/p3-policy-matrix-7522/ | 막힘 → 재실행 예정 |

@@ -6,21 +6,27 @@ no timestamps or host paths: identical campaigns render byte-identical JSON.
 """
 
 import json
+from collections import Counter
 from collections.abc import Callable, Mapping
 from typing import Any
 
 from inodefence.effect_campaign import EffectCampaignResult, EffectCampaignStep
 from inodefence.effect_synthetic import SYNTHETIC_MECHANISM
 from inodefence.model import (
+    EffectEventTrace,
     EffectObjectObservation,
     EffectObservationStatus,
     EffectRunResult,
+    FilesystemEffectEvent,
     canonical_json,
 )
 from inodefence.mutation_scheduler import WeightSnapshot
 
-DEMO_REPORT_SCHEMA = 1
+DEMO_REPORT_SCHEMA = 2
 POLICY_COMPARISON_SCHEMA = 1
+# Per-step bounds on the trace and stderr copies; the report states when they cut.
+MAX_TRACE_EFFECT_EVENTS = 64
+STDERR_EDGE_CHARS = 1000
 
 
 def _model(value: object) -> object:
@@ -31,12 +37,120 @@ def _weights(weights: WeightSnapshot) -> dict[str, int]:
     return {operator.value: weight for operator, weight in weights}
 
 
+def _is_synthetic(trace: EffectEventTrace) -> bool:
+    return any(source.mechanism == SYNTHETIC_MECHANISM for source in trace.provenance.sources)
+
+
+def _observation_record(observation: EffectObjectObservation) -> dict[str, object]:
+    """lstat values only when present; absent and not_observed carry the status alone."""
+    if observation.object is None:
+        return {"status": observation.status.value}
+    obj = observation.object
+    return {
+        "status": observation.status.value,
+        "object_type": obj.object_type.value,
+        "st_dev": obj.st_dev,
+        "st_ino": obj.st_ino,
+        "st_nlink": obj.st_nlink,
+        "size": obj.size,
+    }
+
+
+def _effect_event_record(event: FilesystemEffectEvent) -> dict[str, object]:
+    evidence = {item.path: item for item in event.object_evidence}
+    paths = []
+    for path in event.affected_paths:
+        item = evidence.get(path)
+        # None: the event holds no EffectPathEvidence for this path (not a status value).
+        paths.append(
+            {
+                "path": path,
+                "before": None if item is None else _observation_record(item.before),
+                "after": None if item is None else _observation_record(item.after),
+            }
+        )
+    return {
+        "entry_index": event.entry.entry_index,
+        "start_sequence": event.start_sequence,
+        "completion_sequence": event.completion_sequence,
+        "operation": event.operation.value,
+        "outcome": event.outcome.value,
+        "association": event.association.value,
+        "effect_class": event.effect_class.value,
+        "evidence_strength": event.evidence_strength.value,
+        "paths": paths,
+    }
+
+
+def _trace_report(result: EffectRunResult) -> dict[str, object]:
+    """The values render_effect_trace prints, as data, plus each event's association.
+
+    Everything is copied from EffectRunResult. before/after keep the recorded
+    EffectObservationStatus; effect_class and evidence_strength are InodeFence
+    classifications ("derived" in TRACE_LEGEND). synthetic marks producer-made
+    values exactly as the ·SYNTHETIC label does. Events follow entry order, then
+    start sequence; only the first MAX_TRACE_EFFECT_EVENTS are kept, and
+    effect_events_total plus each entry's effect_event_count cover all of them.
+    """
+    trace = result.trace
+    events = sorted(
+        trace.effect_events, key=lambda event: (event.entry.entry_index, event.start_sequence)
+    )
+    per_entry = Counter(event.entry.entry_index for event in events)
+    return {
+        "synthetic": _is_synthetic(trace),
+        "sources": [
+            {
+                "source_id": source.source_id,
+                "mechanism": source.mechanism,
+                "version": source.version,
+            }
+            for source in trace.provenance.sources
+        ],
+        "observation_failures": [
+            {"kind": item.kind.value, "message": item.message, "sequence": item.sequence}
+            for item in trace.observation_failures
+        ],
+        "entries": [
+            {
+                "entry_index": entry.entry_index,
+                "path": entry.path,
+                "type": entry.entry_type.value,
+                "link_target": entry.link_target,
+                "effect_event_count": per_entry[entry.entry_index],
+            }
+            for entry in trace.archive_entries
+        ],
+        "effect_events": [
+            _effect_event_record(event) for event in events[:MAX_TRACE_EFFECT_EVENTS]
+        ],
+        "effect_events_total": len(events),
+        "effect_events_truncated": len(events) > MAX_TRACE_EFFECT_EVENTS,
+    }
+
+
+def _stderr_record(stderr: str) -> dict[str, object]:
+    """Target stderr kept whole up to 2*STDERR_EDGE_CHARS, else its head and tail."""
+    total = len(stderr)
+    if total <= 2 * STDERR_EDGE_CHARS:
+        return {"text": stderr, "chars": total, "truncated": False}
+    omitted = total - 2 * STDERR_EDGE_CHARS
+    text = (
+        stderr[:STDERR_EDGE_CHARS]
+        + f"\n[... {omitted} chars omitted ...]\n"
+        + stderr[-STDERR_EDGE_CHARS:]
+    )
+    return {"text": text, "chars": total, "truncated": True}
+
+
 def _step_report(step: EffectCampaignStep) -> dict[str, object]:
     base = step.result.base_result
     feedback = step.feedback
     attempt = step.mutation_attempt
     evidence = step.scheduler_evidence
     return {
+        "trace": _trace_report(step.result),
+        "target_stderr": _stderr_record(base.execution.stderr),
         "index": step.index,
         "origin": step.origin.value,
         "case_id": base.case.case_id,
@@ -76,7 +190,7 @@ def _step_report(step: EffectCampaignStep) -> dict[str, object]:
 
 
 def effect_campaign_report(result: EffectCampaignResult, producer: str) -> dict[str, object]:
-    """Summarize each loop step: oracle, feedback keys, chosen operator and why.
+    """Summarize each loop step: trace, oracle, feedback keys, chosen operator and why.
 
     `producer` labels where EffectRunResults came from (e.g. "synthetic"); the
     report never upgrades synthetic results to native evidence.
@@ -84,6 +198,9 @@ def effect_campaign_report(result: EffectCampaignResult, producer: str) -> dict[
     if not isinstance(producer, str) or not producer:
         raise ValueError("demo report requires a producer label")
     config = result.config
+    steps = [_step_report(step) for step in result.steps]
+    for step, corpus_before in zip(steps, _corpus_before_steps({"steps": steps}), strict=True):
+        step["selection"] = _selection_report(step, corpus_before)
     return {
         "demo_report_schema": DEMO_REPORT_SCHEMA,
         "producer": producer,
@@ -95,7 +212,7 @@ def effect_campaign_report(result: EffectCampaignResult, producer: str) -> dict[
             "mutation_policy": config.mutation_policy.value,
         },
         "initial_case_ids": list(result.initial_case_ids),
-        "steps": [_step_report(step) for step in result.steps],
+        "steps": steps,
         "final_search_stats": _model(result.final_search_stats),
         "retained_case_ids": list(result.retained_case_ids),
     }
@@ -145,6 +262,37 @@ def _selection(step: Mapping[str, Any], corpus_before: list[str]) -> dict[str, o
         "new_effect_keys": step["feedback"]["new_effect_keys"],
         "reward": evidence["reward"],
         "weights_after": evidence["weights_after"],
+    }
+
+
+def _selection_report(
+    step: Mapping[str, Any], corpus_before: list[str]
+) -> dict[str, object] | None:
+    """Why this mutation step chose its parent and operator, split by feedback channel.
+
+    corpus_admission: the parent was drawn from corpus_size_before retained cases
+    (counted from earlier steps' recorded retained flags); retained says whether
+    this child joins that pool for later draws. operator_weights: the weights the
+    scheduler drew from, the reward this outcome gave, and the weights for the
+    next draw. Seed steps select nothing and get None.
+    """
+    if step["scheduler_evidence"] is None:
+        return None
+    selection = _selection(step, corpus_before)
+    return {
+        "parent_case_id": selection["parent_case_id"],
+        "selected_operator_id": selection["selected_operator_id"],
+        "selected_weight": selection["selected_weight"],
+        "new_effect_key_count": len(step["feedback"]["new_effect_keys"]),
+        "corpus_admission": {
+            "corpus_size_before": selection["corpus_size_before"],
+            "retained": step["feedback"]["retained"],
+        },
+        "operator_weights": {
+            "weights_before": selection["weights_before"],
+            "reward": selection["reward"],
+            "weights_after": selection["weights_after"],
+        },
     }
 
 
@@ -339,7 +487,7 @@ def render_effect_trace(result: EffectRunResult) -> str:
     trace = result.trace
     execution = result.base_result.execution
     sources = trace.provenance.sources
-    synthetic = any(source.mechanism == SYNTHETIC_MECHANISM for source in sources)
+    synthetic = _is_synthetic(trace)
 
     def label(name: str) -> str:
         return f"[{name}{SYNTHETIC_LABEL_SUFFIX if synthetic else ''}]"

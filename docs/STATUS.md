@@ -12,7 +12,19 @@
 | P0-4 Feedback 기반 Mutation | 주언 | `run_effect_campaign` 구현, `make demo`(별칭 `make demo-native`)로 실제 node-tar 루프 실행. demo report step마다 선택 근거 `selection` 출력(채널 ① corpus_admission: 선택 전 corpus 크기·편입 여부, ② operator_weights: weights_before·reward·weights_after). native 확인: `make demo-native` 2회(10/24, demo run) 같은 선택, reward 1·편입 step 5·12·19(새 key 각 2개, 선택 전 corpus 4·5·6), step 5 add_entry 가중치 1→2 | — |
 | P0-5 End-to-end 데모 | 지웅 | `make demo` = 실제 node-tar 루프(호스트, 별칭 `make demo-native`), synthetic은 `make demo-synthetic`(JSON `label`: `SYNTHETIC (not node-tar)`). 동작: `make demo-native` (실제 node-tar 7.5.22, FULL profile, P2·M1·seed 123·budget 20) 2회 동일 루프, demo run(10/24). `make demo` 1회 (호스트, 10/24 14:42, demo run): label `demo run`, producer native, node-tar 7.5.22, 20 steps, SYNTHETIC 0건 | 거부 중 미완료 operation trace 한계 표현, 이미지 ID 재현성(provenance attestation) |
 
-아래는 2026-10-18 기준 상세 기록이다.
+### 한눈에 보기 (2026-10-24)
+
+- `make demo`(호스트) = 실제 node-tar 7.5.22 루프, 20 step, 반복 실행해도 같은 루프(SAME_LOOP_x4). 결과 JSON은 `~/inodefence-evidence/`.
+- 결과 JSON의 step마다 `trace`(entry별 중간 상태, observed/derived 구분), `oracle`(C0/C1/C2), `selection`(corpus 편입 여부·operator 가중치 변화)이 있다.
+- 정상 입력 20개에서 위반 0건. 취약점 발견·재발견 주장 없음.
+- 남은 P0 과제: 거부 입력에서 중간 상태 event가 0개인 한계의 표현 방식, 이미지 ID 재현성.
+- N01 재발견 실행과 A/B/C 비교는 사람 승인 뒤([BACKLOG](BACKLOG.md) 5~7번).
+
+---
+
+아래는 2026-10-18 기준 상세 기록이다. Layer별 구현 이력, 중간 상태 관찰 v1이 실패한 경위,
+N01 자동 replay 결과, 각 evidence API의 한계를 담고 있다. 영어 용어가 많고 날짜가 오래된
+기록이므로 **현재 상태는 위 P0 표를 기준으로 읽고, 아래는 "왜 이렇게 됐는가"를 찾을 때만 본다.**
 
 상태 갱신일: **2026-10-18**. G0 capability baseline은 main
 **`8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`**다. 이 SHA는 G0 문서 동결이

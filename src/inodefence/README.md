@@ -26,6 +26,10 @@ builder.build_tar → disposable runtime → before snapshot
 | [campaign.py](campaign.py) | 명시적 seed와 실행 budget으로 select → mutate → run → consider 연결 |
 | [effect_campaign.py](effect_campaign.py) | caller-owned synthetic v2 producer로 effect policy closed loop 검증 |
 | [effect_scheduler.py](effect_scheduler.py) | v2 uniform/adaptive scheduler와 lineage/reward evidence |
+| [effect_demo.py](effect_demo.py) | demo report(P0-5): step별 trace 라벨(archive/observed/not_observed/derived)과 선택 근거 렌더링 |
+| [effect_synthetic.py](effect_synthetic.py) | node-tar 없이 루프를 돌리는 synthetic fixture producer (native 증거 아님) |
+| [mutation_scheduler.py](mutation_scheduler.py) | 재현 가능한 mutation operator 선택 (mutation 함수와 분리) |
+| [transition_campaign.py](transition_campaign.py) | transition v1 P0/P1/P2 in-memory composition (현재 demo 경로 아님) |
 | [campaign_export.py](campaign_export.py) | 완료된 결과의 manifest JSON / canonical step JSONL |
 | [provenance.py](provenance.py) | 실행 전 source/environment/target/sentinel configuration 고정 |
 | [experiment_config.py](experiment_config.py) | strict JSON config / SHA-256 ID / seed-target binding |

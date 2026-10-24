@@ -1,5 +1,38 @@
 # Entry-associated filesystem-effect feedback v2
 
+## 한국어 요약
+
+### 무엇을 하는가
+
+qualified된 entry별 filesystem-effect evidence(`EffectEventTrace` + 변경 없는 `RunResult`)가 어떻게 **bounded fuzzing feedback**이 되는지 정의한다. 연구 질문 RQ-v2는 "같은 seed·mutation vocabulary·target·예산에서 entry-associated effect feedback이 final-state feedback보다 더 다양한 security-relevant 상태와 violation 후보를 탐색하는가"이며, H1(effect novelty로 corpus 편입)과 H2(effect reward로 operator 가중치)로 나눈다. 두 가설은 모두 **HYPOTHESIS**이고 결과가 아니다.
+
+### 관찰된 효과가 feedback key가 되는 과정
+
+1. **적격성(eligibility)**: target 종료 + AFTER snapshot 존재, event stream 완전·무결성 검증, 모든 effect에 정확한 entry association, start/completion 상관 검증, flush 확인, loss/overflow/conflict 없음, target 성공. 하나라도 빠지면 corpus/scheduler를 바꾸지 못하고 novelty index도 소비하지 않는다(fail closed). timeout과 rejection은 적격이 아니다.
+2. **realized effect 판정**: 9개 effect class(namespace creation/removal/replacement, content modification, truncation, metadata modification, symlink creation, hardlink identity relation creation/removal)마다 최소 evidence 기준이 있다. `open`/`write`/`link` callback 성공만으로는 effect로 인정하지 않는다.
+3. **finite normalization**: entry type, ordinal class(`first`/`early`/`late`), effect class, path-role region(EXTRACTION/HARNESS/EXTERNAL), protected marker, identity relation, outcome, evidence strength, causal edge kind만 사용한다. exact path, raw inode/device, timestamp, sequence 번호, target version, CVE 식별자는 key에서 제외한다(trace에는 남는다).
+4. **EffectFeedbackKey v2**의 세 variant: ① individual realized effect, ② per-entry effect set(한 entry가 만든 effect의 sorted unique set), ③ bounded causal motif(검증된 causal edge 1개로 이어진 두 endpoint). 완료 순서 permutation과 근거 없는 overlap은 key가 되지 않는다.
+
+### P0-v2 / P1-v2 / P2-v2의 차이
+
+| Arm | corpus 편입 기준 | operator 선택 |
+| --- | --- | --- |
+| P0-v2 | 새 final `StateSignature` v3 OR 새 violation fingerprint | uniform |
+| P1-v2 | 새 eligible `EffectFeedbackKey` v2 OR 새 violation fingerprint | uniform |
+| P2-v2 | P1-v2와 동일 | bounded effect reward |
+
+세 arm은 같은 full instrumentation을 실행하고 같은 비용을 낸다(P0-v2도 effect key를 계산·기록하되 편입에는 쓰지 않는다). P2-v2 scheduler는 기존 8개 operator ID를 쓰고, 가중치는 1에서 시작해 최대 8, 새 effect key가 1개 이상 나오면 reward 1(개수로 증폭하지 않음), 없으면 0이다. violation novelty·final-state novelty·속도·callback 수는 가중치를 바꾸지 않는다. 매 step의 parent 선택·weights 전후·operator draw·child case ID를 immutable evidence로 묶어 "새 effect가 나타났다"와 "그 novelty가 다음 선택에 영향을 줬다"를 별개 주장으로 다룬다.
+
+### 세 결과 채널과 한계
+
+`interesting`(novelty 채널 발화), `contract_violation`(기존 C0/C1/C2 fingerprint), `observation_failure`(trace 무결성 실패)는 서로 바꿔 쓸 수 없다. `interesting`은 violation을 뜻하지 않고, violation 후보는 자동으로 vulnerability가 아니다. native P0-v2/P1-v2/P2-v2 campaign은 문서 기준 NOT_RUN이며, H1/H2 분석은 반복된 frozen run이 있어야 가능하다.
+
+### 코드 위치
+
+`src/inodefence/feedback/effect.py`·`effect_novelty.py`·`effect_search.py`(key 생성/novelty/admission), `src/inodefence/effect_scheduler.py`(P2-v2 scheduler), `src/inodefence/effect_campaign.py`(campaign loop), `src/inodefence/model/effect_feedback.py`(key model).
+
+이 요약은 아래 원문(영어)을 간추린 것이며 정의의 기준은 원문이다.
+
 ## Status and claim boundary
 
 - Design Gate 1: **GO for synthetic implementation only**

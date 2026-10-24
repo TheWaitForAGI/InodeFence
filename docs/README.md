@@ -31,3 +31,12 @@
 ## 파일 배치 규칙
 
 빠른 이해는 START_HERE, 진행 상태는 STATUS, 용어는 [GLOSSARY](GLOSSARY.md), 큰 결정은 [DECISIONS](DECISIONS.md)에 둔다.
+
+중간발표 기간의 작업 기록은 세 파일로 나눈다. 새 감사·계획·handoff 문서는 만들지 않는다.
+
+| 파일 | 무엇을 적는가 |
+| --- | --- |
+| [MIDTERM_GOALS](MIDTERM_GOALS.md) | 11/2 목표(P0-1~P0-5)와 완료 판정 기준. 자주 바뀌지 않는다 |
+| [BACKLOG](BACKLOG.md) | 할 일 순서와 상태(대기/진행/완료/막힘). 맨 위부터 집는다 |
+| [LOG](LOG.md) | 실제로 무엇을 언제 돌려 어떤 결과였는지 한 줄씩. 관찰과 추론을 구분한다 |
+| [WORKLOG](WORKLOG.md) | 자율 루프가 끝낸 브랜치 목록. 사람이 머지 여부를 정한다 |

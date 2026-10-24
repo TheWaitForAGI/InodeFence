@@ -1,5 +1,35 @@
 # Partial-order filesystem-effect observation v2
 
+## 한국어 요약
+
+### 무엇을 하는가
+
+node-tar 7.5.22는 archive 순서대로 checkpoint를 찍는 v1 모델(`TransitionTrace`: BEFORE → entry 0 → entry 1 → … → AFTER)의 feasibility gate를 통과하지 못했다. 이 문서는 그 뒤에 만든 **native 관찰 qualification contract**다. entry마다 "완전한 상태 전이 하나"를 소유한다고 가정하는 대신, 실제로 관찰된 filesystem effect와 근거가 있는 순서 관계만 기록하는 partial-order 모델을 정의한다. 기존 BEFORE/AFTER snapshot과 C0/C1/C2 판정은 바꾸지 않고 그대로 재사용한다.
+
+### 핵심 개념: operation / state / causal의 분리
+
+- **EntryLifecycleEvent**: adapter가 관찰한 entry 수명 사건(`READ`, `EFFECT_WORK_STARTED`, `EFFECT_WORK_SETTLED` 등). `EFFECT_WORK_SETTLED`는 target hook의 work-set 의미일 뿐 tree checkpoint가 아니며, 앞 ordinal이 먼저 끝났음을 뜻하지 않는다.
+- **FilesystemEffectEvent**: start/completion이 상관된 operation 하나. generic effect class(namespace create/remove/replace, data write/truncate, metadata change, symlink/hardlink 생성), sandbox-relative path, 성공/실패, 가능한 경우 전후 object identity evidence를 담는다. 필요한 identity/state 증거가 없는 operation callback은 realized effect class로 승격하지 않는다.
+- **ObservationFrontier**: 선택적 전체 sandbox snapshot. 특정 entry에 귀속되지 않으며, 캡처 중 작업이 겹치면 incomplete로 표시하고 state-delta key를 만들지 않는다.
+- **EffectEventTrace**는 세 순서를 따로 보존한다: (1) archive order(header ordinal), (2) observed event order(global source sequence), (3) supported causality(entry context 전파 또는 descriptor/handle 제공으로 뒷받침된 edge만). wall-clock 근접, callback 수신 순서, 같은 path 문자열은 causal edge를 만들지 않는다.
+
+### 관찰과 추론의 구분
+
+- 관찰된 사실(retained qualification 기준): entry는 header 순서로 읽히지만 독립 filesystem 작업은 겹치고, effect 완료와 callback은 archive 순서를 벗어날 수 있으며, 작업 중 tree walk는 일관되지 않을 수 있다.
+- 따라서 out-of-order callback을 archive-ordered checkpoint로 relabel하거나, 실행 후 event를 정렬해 "일어나지 않은 상태"를 만들어내는 것을 금지한다.
+- Sequence gap, 중복, overflow, association conflict, flush 전 target 종료 등은 trace를 invalid로 만든다. incomplete/invalid trace는 corpus 편입·mutation reward 대상이 아니다. effect 뒤에 target rejection이 와도 success로 다시 쓰지 않는다.
+- Effect event는 중간 관찰 evidence이며 persistent Security Contract verdict가 아니다.
+
+### 문서 기준 현재 상태와 한계
+
+Gate 3 native producer는 contained fixture 10/10 PASS, Gate 4 매트릭스 480/480 완료. 그러나 duplicate-path fixture에서 20/20 run이 같은 inode를 재사용·truncate해 required **replacement coverage**를 충족하지 못했고, 결과 토큰은 `V2_NATIVE_EFFECT_OBSERVATION_NOT_QUALIFIED`다. native feedback 효과(P0/P1/P2 비교)는 검증되지 않았다. 이후 진행 상태는 `docs/STATUS.md`를 따른다.
+
+### 코드 위치
+
+`src/inodefence/model/effect.py`(evidence model), `src/inodefence/targets/node_tar_effect.py`·`_node_effect_producer.cjs`(native producer), `src/inodefence/evaluation/native_effect_evidence.py`(independent reader), `src/inodefence/effect_pipeline.py`(단일 case 실행).
+
+이 요약은 아래 원문(영어)을 간추린 것이며 정의의 기준은 원문이다.
+
 ## Status and authority
 
 - Design status: **GATE 1 REVIEWED TASK CONTRACT**

@@ -16,11 +16,11 @@
 | --- | --- | --- | --- |
 | 1 | P0-2/P0-4 native 연결: 중간 상태 렌더링 + 선택 근거를 demo-native JSON에 | 완료(jiwoong/p0-2-native-trace) | 없음 |
 | 2 | P0-5 `make demo` = native, `make demo-synthetic` 분리 + SYNTHETIC 라벨 | 완료(jiwoong/p0-5-demo-native-default) | 1 머지 |
-| 3 | P0-5 JSONL 부분 저장 + CI에 effect producer/effect-demo 추가 | 진행(jiwoong/p0-5-jsonl-partial-ci, make check 통과, PR CI 대기) | 2 머지 |
-| 4 | P0-1 N01 native 무결성 결함 원인 조사 | 막힘(2026-10-24, 조사 완료·원인 producer 출력; 재현 실험과 producer 수정은 사람 승인 필요) | 없음 (조사만; 수정·재현 실행은 사람 승인 후) |
-| 5 | P2-b(#129), P2-c(#130) 머지 | 10/27 사람 리뷰 후 머지 예정 (중간발표 N01 추가 성과용) | 사람 |
-| 6 | P2-c N01 rediscovery 실행 | 10/27~28 사람 승인 후 실행 예정, 마감 10/30. 그 전 autoloop 실행 금지 | 사람 |
-| 7 | P3 A/B/C 비교 실험 | 중간발표 이후, 사람 승인 필요 | 사람 |
+| 3 | P0-5 JSONL 부분 저장 + CI에 effect producer/effect-demo 추가 | 완료(jiwoong/p0-5-jsonl-partial-ci, PR #143 머지 10/24) | 2 머지 |
+| 4 | P0-1 N01 native 무결성 결함 원인 조사 | 완료(조사: LOG 10-24 18:00; 수정: jiwoong/p0-1-producer-settle-skip, 사람 리뷰 대기) | 없음 |
+| 5 | P2-b(#129), P2-c(#130) 머지 | 완료(10/24 #129 → #130 머지) | 사람 |
+| 6 | P2-c N01 rediscovery 실행 | 완료(10/24 LOG 18:27: 7.5.2/7.5.3 × 3 seed × budget 100 전부 완료, oracle 0건 — 재발견 없음; #130 머지 후 공식 재실행 여부는 사람) | 사람 |
+| 7 | P3 A/B/C 비교 실험 | 부분 완료(10/24 LOG 18:44: 수정 producer로 P0/P1/P2 × 3 seed × budget 100 9/9 완료, 위반 0·정책 간 일관된 차이 없음). 남은 것: A/B/C 정의·지표 확정(주언) 후 정식 실험 | 사람 |
 
 ---
 

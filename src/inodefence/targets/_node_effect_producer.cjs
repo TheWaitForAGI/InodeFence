@@ -388,10 +388,16 @@ const run = async args => {
   if (checkFs2Symbols.length !== 1 || onErrorSymbols.length !== 1) {
     throw new Error('expected exactly one checkFs2 and onError private symbol')
   }
+  const checkPathSymbols = symbolsByDescription(Unpack.prototype, 'checkPath')
+  if (checkPathSymbols.length !== 1) {
+    throw new Error('expected exactly one checkPath private symbol')
+  }
   const checkFs2 = checkFs2Symbols[0]
   const onError = onErrorSymbols[0]
+  const checkPath = checkPathSymbols[0]
   const originalCheckFs2 = Unpack.prototype[checkFs2]
   const originalOnError = Unpack.prototype[onError]
+  const originalCheckPath = Unpack.prototype[checkPath]
 
   Unpack.prototype[onError] = function (error, entry) {
     entryErrors.set(entry, {
@@ -429,6 +435,50 @@ const run = async args => {
     }))
   }
 
+  // node-tar drops an entry without any filesystem work when checkPath returns
+  // false. In strict mode that usually follows an emitted error, but some drops
+  // are silent (a non-directory entry whose path resolves to the extraction
+  // root). Record the drop as that entry's work start/settle, so a successful
+  // run still carries one lifecycle record of each kind per entry.
+  Unpack.prototype[checkPath] = function (entry) {
+    const errors = []
+    const onCheckPathError = error => errors.push(error)
+    this.on('error', onCheckPathError)
+    let accepted
+    try {
+      accepted = originalCheckPath.call(this, entry)
+    } finally {
+      this.removeListener('error', onCheckPathError)
+    }
+    if (accepted === false && recording) {
+      const identityValue = entryIdentity.get(entry) || null
+      const ordinalText = identityValue === null ? 'missing' : identityValue.ordinal
+      const dropError = errors.length > 0
+        ? {
+            code: errors[0].tarCode || errors[0].code || 'ERROR',
+            message: String(errors[0].message || errors[0])
+          }
+        : {
+            code: 'TAR_ENTRY_SKIPPED',
+            message: 'node-tar dropped the entry before any filesystem work (checkPath false, no error)'
+          }
+      for (const [kind, suffix] of [
+        ['effect_work_started', 'work-start'], ['effect_work_settled', 'work-settled']
+      ]) {
+        emit({
+          record_type: 'lifecycle',
+          record_id: `entry-${ordinalText}-${suffix}`,
+          entry: identityValue,
+          kind,
+          observation: instant(),
+          success: false,
+          error: identityValue === null ? 'entry was not observed by onReadEntry' : dropError
+        })
+      }
+    }
+    return accepted
+  }
+
   const options = {
     file: archive,
     cwd: destination,
@@ -454,82 +504,111 @@ const run = async args => {
     }
   }
 
-  let targetError = null
+  let finished = false
   const startedNs = process.hrtime.bigint()
+  // tar.x() can stay pending forever (node-tar's path reservation never releases
+  // an entry whose link target is an ancestor of its own path); Node then exits
+  // with code 0 after the event loop drains, with no frame on stdout. Treat that
+  // as a failed target outcome and still write the one terminal frame.
+  process.once('beforeExit', () => {
+    if (finished) return
+    finish({
+      name: 'Error',
+      code: 'TARGET_NEVER_SETTLED',
+      message: 'tar.x() did not settle before the event loop drained'
+    })
+  })
   recording = true
+  let settledError = null
   try {
     await tar.x(options)
   } catch (error) {
-    targetError = {
+    settledError = {
       name: error.name || 'Error',
       code: error.tarCode || error.code || 'WORKER_ERROR',
       message: String(error.message || error)
     }
-  } finally {
-    recording = false
   }
-  const completedNs = process.hrtime.bigint()
-  const targetOutcome = targetError === null
-    ? 'success'
-    : typeof targetError.code === 'string' && targetError.code.startsWith('TAR_')
-      ? 'rejected'
-      : 'failed'
-  if (targetError !== null) process.stderr.write(JSON.stringify(targetError) + '\n')
+  finish(settledError)
 
-  const producerFailures = []
-  if (fdOwners.size !== 0) producerFailures.push({
-    kind: 'unclosed_handle_provenance', count: fdOwners.size
-  })
-  const source = {
-    source_id: SOURCE_ID,
-    protocol_id: PROTOCOL_ID,
-    protocol_version: PROTOCOL_VERSION,
-    ...identity
-  }
-  const makeEnvelope = (framedRecords, extraDropped, frameOverflow) => {
-    const recordsCanonical = stableStringify(framedRecords)
-    return {
-      format: PROTOCOL_ID,
-      schema_version: 1,
-      profile,
-      event_bound: eventBound,
-      source,
-      input: {archive_sha256: digestFile(archive)},
-      coverage,
-      target: {
-        outcome: targetOutcome,
-        error: targetError,
-        duration_ns: (completedNs - startedNs).toString()
-      },
-      records: framedRecords,
-      terminal: {
-        record_count: framedRecords.length,
-        last_produced_sequence: framedRecords.length === 0
-          ? -1
-          : framedRecords[framedRecords.length - 1].sequence,
-        last_attempted_sequence: nextSequence - 1,
-        records_sha256: sha256(Buffer.from(recordsCanonical, 'utf8')),
-        overflow: overflow || frameOverflow,
-        dropped_records: droppedRecords + extraDropped,
-        producer_failures: producerFailures,
-        flush: 'synchronous_stdout_write'
+  function finish (targetError) {
+    if (finished) return
+    finished = true
+    recording = false
+    const completedNs = process.hrtime.bigint()
+    const targetOutcome = targetError === null
+      ? 'success'
+      : typeof targetError.code === 'string' && targetError.code.startsWith('TAR_')
+        ? 'rejected'
+        : 'failed'
+    if (targetError !== null) process.stderr.write(JSON.stringify(targetError) + '\n')
+
+    const producerFailures = []
+    if (fdOwners.size !== 0) producerFailures.push({
+      kind: 'unclosed_handle_provenance', count: fdOwners.size
+    })
+    const source = {
+      source_id: SOURCE_ID,
+      protocol_id: PROTOCOL_ID,
+      protocol_version: PROTOCOL_VERSION,
+      ...identity
+    }
+    const makeEnvelope = (framedRecords, extraDropped, frameOverflow) => {
+      const recordsCanonical = stableStringify(framedRecords)
+      return {
+        format: PROTOCOL_ID,
+        schema_version: 1,
+        profile,
+        event_bound: eventBound,
+        source,
+        input: {archive_sha256: digestFile(archive)},
+        coverage,
+        target: {
+          outcome: targetOutcome,
+          error: targetError,
+          duration_ns: (completedNs - startedNs).toString()
+        },
+        records: framedRecords,
+        terminal: {
+          record_count: framedRecords.length,
+          last_produced_sequence: framedRecords.length === 0
+            ? -1
+            : framedRecords[framedRecords.length - 1].sequence,
+          last_attempted_sequence: nextSequence - 1,
+          records_sha256: sha256(Buffer.from(recordsCanonical, 'utf8')),
+          overflow: overflow || frameOverflow,
+          dropped_records: droppedRecords + extraDropped,
+          producer_failures: producerFailures,
+          flush: 'synchronous_stdout_write'
+        }
       }
     }
+    let framedRecords = records
+    let extraDropped = 0
+    let envelope = makeEnvelope(framedRecords, extraDropped, false)
+    let encoded = Buffer.from(JSON.stringify(envelope) + '\n', 'utf8')
+    while (encoded.length > MAX_FRAME_BYTES && framedRecords.length > 0) {
+      framedRecords = framedRecords.slice(0, -1)
+      extraDropped += 1
+      envelope = makeEnvelope(framedRecords, extraDropped, true)
+      encoded = Buffer.from(JSON.stringify(envelope) + '\n', 'utf8')
+    }
+    if (encoded.length > MAX_FRAME_BYTES) throw new Error('terminal effect frame exceeds bound')
+    // stdout may be a non-blocking pipe (a plain subprocess pipe is); a full pipe
+    // then raises EAGAIN instead of blocking. Wait for the reader and resume at
+    // the same offset so the frame is still written exactly once, in order.
+    const pause = new Int32Array(new SharedArrayBuffer(4))
+    let written = 0
+    while (written < encoded.length) {
+      try {
+        written += fs.writeSync(1, encoded, written)
+      } catch (error) {
+        if (error.code !== 'EAGAIN') throw error
+        Atomics.wait(pause, 0, 0, 5)
+      }
+    }
+    process.exitCode = targetOutcome === 'success' ? 0 : targetOutcome === 'rejected' ? 2 : 1
   }
-  let framedRecords = records
-  let extraDropped = 0
-  let envelope = makeEnvelope(framedRecords, extraDropped, false)
-  let encoded = Buffer.from(JSON.stringify(envelope) + '\n', 'utf8')
-  while (encoded.length > MAX_FRAME_BYTES && framedRecords.length > 0) {
-    framedRecords = framedRecords.slice(0, -1)
-    extraDropped += 1
-    envelope = makeEnvelope(framedRecords, extraDropped, true)
-    encoded = Buffer.from(JSON.stringify(envelope) + '\n', 'utf8')
-  }
-  if (encoded.length > MAX_FRAME_BYTES) throw new Error('terminal effect frame exceeds bound')
-  let written = 0
-  while (written < encoded.length) written += fs.writeSync(1, encoded, written)
-  process.exitCode = targetOutcome === 'success' ? 0 : targetOutcome === 'rejected' ? 2 : 1
 }
 
 const main = async () => {

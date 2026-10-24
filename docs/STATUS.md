@@ -6,7 +6,7 @@
 
 | P0 | 담당 | 상태 (10/23) | 다음 할 일 |
 | --- | --- | --- | --- |
-| P0-1 실제 node-tar 실행 | 규민 | 통과: make node-tar-smoke (macOS/OrbStack, 10/23) | — |
+| P0-1 실제 node-tar 실행 | 규민 | 통과: make node-tar-smoke (macOS/OrbStack, 10/23). 10/24: budget 100에서 producer가 '조용한 exit 0'(tar.x 미settle, checkPath 드롭)을 내 demo가 중단되던 결함 원인 확인(LOG 18:00) → `jiwoong/p0-1-producer-settle-skip`에서 failed 프레임/lifecycle 기록으로 수정, 호스트 budget 100 100/100 확인(LOG 18:21) | 수정 PR 리뷰·머지 |
 | P0-2 중간 상태 관찰 | 민찬 | 동작: v2 producer 필수 기준 14개 중 13개 통과, replacement coverage 1개 미달. `effect_demo.render_effect_trace`로 entry별 trace 출력(archive/observed/not_observed/derived 라벨, synthetic이면 라벨에 ·SYNTHETIC; synthetic으로만 확인). demo report(schema 2) step마다 같은 정보를 `trace`로 출력(entry·operation·association, 작업 전후 status와 present일 때 dev:ino·nlink·size, observation_failures, step당 event 64개 상한). native 확인: `make demo-native` 2회(10/24, demo run) 20/20 step trace 출력, link 작업에서 extract/a.txt·b.txt st_nlink 2 관찰, step 8·18은 event 0 + operation_correlation_conflict | 한계 표현 결정(거부 입력의 operation_correlation_conflict 포함) |
 | P0-3 Oracle 검증 | 민찬 | C0/C1/C2 fixture TESTED. 데모 fixture 4종(정상·C0·C1+C2·C2) 판정 일치: `python -m scripts.oracle_fixture_check` (controlled oracle check, node-tar 아님) | — |
 | P0-4 Feedback 기반 Mutation | 주언 | `run_effect_campaign` 구현, `make demo`(별칭 `make demo-native`)로 실제 node-tar 루프 실행. demo report step마다 선택 근거 `selection` 출력(채널 ① corpus_admission: 선택 전 corpus 크기·편입 여부, ② operator_weights: weights_before·reward·weights_after). native 확인: `make demo-native` 2회(10/24, demo run) 같은 선택, reward 1·편입 step 5·12·19(새 key 각 2개, 선택 전 corpus 4·5·6), step 5 add_entry 가중치 1→2 | — |
@@ -18,7 +18,9 @@
 - 결과 JSON의 step마다 `trace`(entry별 중간 상태, observed/derived 구분), `oracle`(C0/C1/C2), `selection`(corpus 편입 여부·operator 가중치 변화)이 있다.
 - 정상 입력 20개에서 위반 0건. 취약점 발견·재발견 주장 없음.
 - 남은 P0 과제: 거부 입력에서 중간 상태 event가 0개인 한계의 표현 방식, 이미지 ID 재현성.
-- N01 재발견 실행과 A/B/C 비교는 사람 승인 뒤([BACKLOG](BACKLOG.md) 5~7번).
+- 주의(10/24): budget 20은 반복 성공했지만 budget 100에서는 9회 중 5회가 producer 결함으로 중단됐다(LOG 18:16).
+  수정 브랜치(`jiwoong/p0-1-producer-settle-skip`)가 머지되기 전까지 큰 budget 데모는 중단될 수 있다.
+- N01 재발견 실행과 A/B/C 비교는 사람 승인 뒤([BACKLOG](BACKLOG.md) 5~7번). 10/24 사용자 지시로 historical 7.5.2/7.5.3 × 3 seed × budget 100을 수정 producer로 돌렸고 6/6 완료·oracle 0건이다(LOG 18:27, demo run, 재발견 아님).
 
 ---
 

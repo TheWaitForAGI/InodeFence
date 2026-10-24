@@ -20,13 +20,50 @@
 - 남은 P0 과제: 거부 입력에서 중간 상태 event가 0개인 한계의 표현 방식, 이미지 ID 재현성.
 - 주의(10/24): budget 20은 반복 성공했지만 budget 100에서는 9회 중 5회가 producer 결함으로 중단됐다(LOG 18:16).
   수정 브랜치(`jiwoong/p0-1-producer-settle-skip`)가 머지되기 전까지 큰 budget 데모는 중단될 수 있다.
-- N01 재발견 실행과 A/B/C 비교는 사람 승인 뒤([BACKLOG](BACKLOG.md) 5~7번). 10/24 사용자 지시로 historical 7.5.2/7.5.3 × 3 seed × budget 100을 수정 producer로 돌렸고 6/6 완료·oracle 0건이다(LOG 18:27, demo run, 재발견 아님).
+- A/B/C(정책 간) 비교는 돌려봤지만 비교 결론은 없다(LOG 18:44). 재발견은 아직 자력으로 안 됐다(아래 Ledger M3).
+
+## Capability Ledger (살아있는 증거 원장)
+
+이 표가 **현재 능력의 단일 기준**이다. 각 줄은 "능력 → 증거 수준 → 증거 포인터"이고,
+현실이 바뀌면 바로 갱신한다(죽은 커밋에 고정하지 않는다). 증거 수준은
+[Research Contract](research/design/research-contract-v1.md)의 어휘를 그대로 쓴다:
+**DESIGNED**(정의/가설만) · **IMPLEMENTED**(실행 경로 존재) · **TESTED**(명시된 한계 안에서 테스트/검증) ·
+**VALIDATED**(고정 조건·반복·raw 증거로 연구 주장 뒷받침). observed(실행 출력로 확인)와
+inferred(추론)를 구분하고, synthetic은 native 증거로 승격하지 않는다.
+
+| 능력 | 수준 | 증거 포인터 |
+| --- | --- | --- |
+| 실제 node-tar 루프(입력→실행→entry별 관찰→C0/C1/C2→feedback→다음 mutation) | TESTED | `make demo` 호스트, LOG 2026-10-24; budget 20/100 완주 |
+| entry별 중간 FS 상태 관찰(trace, observed/derived 구분) | TESTED | demo report schema 2 `trace`; native 20/20 step |
+| C0/C1/C2 oracle 판정이 fixture와 일치 | TESTED | `scripts.oracle_fixture_check` 4/4 |
+| feedback→mutation 연결(corpus admission + operator 가중치) | TESTED | demo `selection`; `test_effect_feedback_sensitivity` |
+| 중단 내성(끝난 step이 `.steps.jsonl`에 보존) | TESTED | PR #143; 강제 중단 테스트 |
+| producer 견고성(조용한 exit 0 → failed 프레임/lifecycle 기록) | TESTED | PR #144; 호스트 budget 100 100/100 |
+| **실제 경계위반을 통제 재현 + affected/fixed 구분**(node-tar 7.5.2 하드링크→외부 sentinel = C1+C2, 7.5.3 거부) | TESTED | 2026-10-24 capability probe(LOG): 7.5.2 추출객체 inode==sentinel·nlink 1→2 observed, 7.5.3 `linkpath contains '..'` 거부. **퍼징 자력 발견은 아님** |
+| 퍼저가 **자력으로** 경계위반을 발견(rediscovery) | HYPOTHESIS(미달) | historical 7.5.2/7.5.3 × 3 seed × budget 100 oracle 0건(LOG). 정답이 한 점(~1/729)인데 feedback에 gradient 없음 → 탐색 효율 문제. Ledger M3 |
+| feedback effectiveness(B0/B1/B3, A1/A2/A3) | IMPLEMENTED, 미VALIDATED | 정책 매트릭스 9/9 완주하나 비교 결론 없음(LOG 18:44) |
+| entry-transition native 관찰 | DESIGNED / SYNTHETIC TESTED | native completion boundary 미확보 → NOT_IMPLEMENTED |
+| cross-implementation(oras-go 등 2번째 extractor) | DESIGNED | adapter 없음. Ledger M4 |
+
+### 마일스톤 (날짜 아님 — 증거가 모이면 찍는다)
+
+- **M1 — 루프가 실제 node-tar에서 돈다.** 상태: **완료**(위 Ledger 1~6행).
+- **M2 — 실제 경계위반 통제 재현 + 버전 구분.** 상태: **실증됨**(2026-10-24 probe). 재현 가능한 fixture/스크립트로 박제 중.
+- **M3 — 퍼저가 자력으로 그 위반을 찾는다.** 태스크: generic security-state gradient(additive) → B0/B1/B3·A1/A2/A3 비교. H1 본체. 상태: 진행.
+- **M4 — 일반성.** 태스크: 2번째 extractor(oras-go) 동일 모델 적용. 상태: 설계.
+
+중간발표는 이 척추에서 **지금 와 있는 지점을 증거 수준과 함께 정직하게** 보여주는 것이다.
+특정 날짜를 문서에 박제하지 않는다. 기한은 팀 일정으로 관리하고 이 문서는 능력만 추적한다.
 
 ---
 
-아래는 2026-10-18 기준 상세 기록이다. Layer별 구현 이력, 중간 상태 관찰 v1이 실패한 경위,
-N01 자동 replay 결과, 각 evidence API의 한계를 담고 있다. 영어 용어가 많고 날짜가 오래된
-기록이므로 **현재 상태는 위 P0 표를 기준으로 읽고, 아래는 "왜 이렇게 됐는가"를 찾을 때만 본다.**
+### 역사적 기록 (현재 제약 아님 — provenance용)
+
+아래부터는 **과거 특정 리비전의 기록**이다. 현재 능력은 위 Capability Ledger가 기준이고,
+아래는 "왜 이렇게 됐는가"를 찾을 때만 본다. 이 절과 `docs/audits/`, `docs/research/diagnostics/`,
+`docs/research/benchmarks/`의 감사·자격·task-proposal 문서는
+[archive 안내](archive/README.md)가 정리한 **동결 기록**이며, 새 작업의 게이트가 아니다.
+G0 capability baseline SHA `8ad07b8…`도 그 동결 리뷰가 본 리비전일 뿐 최신 main이 아니다.
 
 상태 갱신일: **2026-10-18**. G0 capability baseline은 main
 **`8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`**다. 이 SHA는 G0 문서 동결이

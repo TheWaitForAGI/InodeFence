@@ -26,17 +26,20 @@
 
 ## 현재 상태
 
-입구 문서와 연구 설계가 있다. 구현 단계는 STATUS를 기준으로 한다.
+현재 능력의 단일 기준은 [STATUS](STATUS.md)의 **Capability Ledger**다(능력 → 증거 수준 → 증거 포인터).
+할 일은 [BACKLOG](BACKLOG.md)의 마일스톤 M1~M4로 관리한다. 날짜는 문서에 박제하지 않는다.
 
 ## 파일 배치 규칙
 
-빠른 이해는 START_HERE, 진행 상태는 STATUS, 용어는 [GLOSSARY](GLOSSARY.md), 큰 결정은 [DECISIONS](DECISIONS.md)에 둔다.
-
-중간발표 기간의 작업 기록은 세 파일로 나눈다. 새 감사·계획·handoff 문서는 만들지 않는다.
+빠른 이해는 START_HERE, 현재 능력은 STATUS의 Capability Ledger, 용어는 [GLOSSARY](GLOSSARY.md),
+큰 결정은 [DECISIONS](DECISIONS.md)에 둔다. 과거 감사·자격 기록은 [archive 안내](archive/README.md)가
+"동결 기록(현재 제약 아님)"으로 정리한다. 새 감사·계획·handoff 문서는 만들지 않는다.
 
 | 파일 | 무엇을 적는가 |
 | --- | --- |
-| [MIDTERM_GOALS](MIDTERM_GOALS.md) | 11/2 목표(P0-1~P0-5)와 완료 판정 기준. 자주 바뀌지 않는다 |
-| [BACKLOG](BACKLOG.md) | 할 일 순서와 상태(대기/진행/완료/막힘). 맨 위부터 집는다 |
+| [STATUS](STATUS.md) | **Capability Ledger**(현재 능력·증거)와 마일스톤. 단일 기준 |
+| [BACKLOG](BACKLOG.md) | 마일스톤 아래 할 일과 상태(대기/진행/완료/막힘). 맨 위부터 집는다 |
 | [LOG](LOG.md) | 실제로 무엇을 언제 돌려 어떤 결과였는지 한 줄씩. 관찰과 추론을 구분한다 |
 | [WORKLOG](WORKLOG.md) | 자율 루프가 끝낸 브랜치 목록. 사람이 머지 여부를 정한다 |
+| [MIDTERM_GOALS](MIDTERM_GOALS.md) | 중간발표 배경 문서. 현재 기준은 STATUS Ledger |
+| [archive](archive/README.md) | 과거 리비전의 감사·자격 기록이 동결 기록임을 선언 |

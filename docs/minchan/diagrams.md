@@ -1,5 +1,9 @@
 # 중간 상태 관찰 구조도
 
+> 10/24 현재: 기존 그림의 qualification blocked 표기는 연구 qualification에 해당한다.
+> bounded **v2 demo 연결은 현재 코드에 존재**하고 팀 실행 보고가 있다. v3 native 연결은 없다.
+> MIDTERM 우선순위 P0와 비교 정책 P0/P1/P2는 다른 용어다.
+
 기준 revision과 근거는 [보고서](intermediate-observation-report.md), [색인](evidence-index.md)에 있다.
 실선은 현재 구현 관계, 점선은 제안 연결이다. 그림은 새 실행 로그가 아니다.
 
@@ -136,3 +140,23 @@ flowchart LR
 
 prototype이 제공하는 token은 합성 입력이다. arrow 순서나 시간으로 native dependency를 만들어내지 않는다.
 실제 전체 filesystem snapshot은 이 그림에 없으며 event endpoint 관찰을 전체 tree로 합성하지 않는다.
+
+## 10/24 현재 연결과 증거 경계
+
+```mermaid
+flowchart TD
+  N[Contained node-tar v2 worker: existing] --> V[v2 operation endpoint trace]
+  V --> D[Demo report schema 2: implemented]
+  D --> L[Team native demo report: PR133 / LOG]
+  L --> U[Original native JSON not available here]
+  V --> S[Supported endpoint evidence, not atomic tree state]
+  C[Synthetic capture prototype] --> X[Exact v2 event-set cross-check]
+  C --> T[One-shot predecessor / token]
+  X --> R[Unchanged strict v3 reader]
+  T --> R
+  H[Actual v3 branch hook: NOT_IMPLEMENTED] -. needs qualification .-> R
+  R -. no effectiveness result .-> E[H10 / H21 future comparison]
+```
+
+schema2 event 배열은 entry/start 순이며 completion sequence는 별도 값이다. event0·not_observed·null·
+explicit absent를 구분한다. cap64 잘림은 total/truncated 표시와 함께 보여야 한다.

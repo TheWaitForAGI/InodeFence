@@ -1,5 +1,8 @@
 # 주장별 근거 색인
 
+> 현재 재검토 HEAD는 `9e36e1208b163308f744a7208fbfa56c4584b5c9`다. 아래 22·23일 source SHA는
+> 역사적 범위다. 10/24 추가 근거·이번 테스트는 끝의 최신 절을 따른다.
+
 > 10월 22일 색인을 보존하며, 이번 보완의 source·PR·로그 근거는 끝의 10월 23일 절에 추가했다.
 
 확인일 2026-10-22 KST. F=직접 파일/API/실행 확인, R=자료의 기록, I=분석, U=미검증.
@@ -99,3 +102,26 @@ remote 제안 문서는 `git show 00356e4:docs/research/diagnostics/n05-native-q
 schedule은 새 test 파일 line 36/62/77/96/107을 따른다. line은 이번 provenance hash의 파일 기준이다.
 보존 [synthetic raw](evidence/synthetic-v3-envelope-20261023.jsonl)와
 [reader verification](evidence/synthetic-v3-verification-20261023.json)은 합성 입력의 원본/파생을 구분한다.
+
+## 10/24 최신 근거와 검토 범위
+
+| 주장 | 종류 | 근거 | 검증 경계 |
+| --- | --- | --- | --- |
+| branch가 더 이상 동일하지 않음 | F Git 확인 | docs `9e36e12`, 다른 branch `3c2487b`, prior work `f90f342c8189b84ff0af7f685ac492d803313d95` | branch를 강제 변경하지 않음 |
+| 정책/기존 negative 판정 유지 | PR 재조회 | [snapshot](evidence/pr-recheck-20261024.json): #81/#82/#89/#111 | 본문/metadata 조회; 전체 옛 diff 재감사 아님 |
+| #133 merged와 native demo 수치 | R PR/LOG 기록 | 같은 snapshot; merge `ff43fe4457ca7adf0fa523572c6d11bc195b31af` | discussion API 빈 배열. 인간 리뷰 원문 미확인 |
+| schema2는 entry/start 정렬·cap64·status 유지 | F code 확인 | src/inodefence/effect_demo.py::_trace_report/_effect_event_record | raw 전체·lifecycle/frontier·atomic snapshot 아님 |
+| rejected invalid trace도 데모 처리 가능 | F code 확인 | scripts/run_effect_demo.py::native_demo_report, success일 때 integrity stop | 완전 중간 관찰 성공 아님 |
+| raw 로컬 부재·현재 source 식별 | F filesystem/hash | [provenance](evidence/provenance-20261024.json) | 호스트의 ~/ 경로는 실행자 기준; 이번 홈의 부재가 호스트 파일 부재를 뜻하지 않음 |
+| whole-pair 누락·token 재소비 결함 | 합성 재현 | [수정 전 실패4개](evidence/capture-regressions-before-20261024.log) | 기존 prototype 검증 공백; native flaw 주장 아님 |
+| export set equality·one-shot 수정 | 합성 검증 | scripts/minchan_rebinding_capture.py begin/envelope, [focused133](evidence/focused-tests-20261024.log) | generic v3/producer를 수정하지 않음 |
+| canonical 및 사후 확인 | 이번 실행 | [canonical log](evidence/make-check-20261024.log) | 과거 1602/PR133의1739와 구분 |
+
+현재 working code는 위 HEAD와 로컬 diff·provenance의 hash로 식별한다. 기존 10/23 raw/manifest·로그는
+덮어쓰지 않았다. production v2 worker SHA `6c9a05a8420e800281e2e8662c17b176648fef13dc2182332ce063bb117aa5f4`와
+v3 reader는 `8d29982c` 이후 diff 없음도 확인했다. source 전체가 그대로라는 뜻은 아니다.
+문헌 재조회와 timeout은 novelty-and-threats의 10/24 절을 따른다. 신규성/효과 우위 주장을 추가하지 않았다.
+
+기존 10/23 provenance의 prototype/test SHA-256을 `git show f90f342:<path>`의 bytes와 대조해
+두 파일 모두 일치함을 확인했다. 따라서 10/23의 18/94/1602는 그 역사적 코드·환경의 기록이며
+이번 HEAD의 실행 결과가 아니다. 이번 관찰에 해당하는 exact hash는 10/24 provenance를 따른다.

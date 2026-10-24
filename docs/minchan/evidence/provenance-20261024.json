@@ -1,0 +1,54 @@
+{
+  "date_kst": "2026-10-24",
+  "head": "9e36e1208b163308f744a7208fbfa56c4584b5c9",
+  "branch": "docs/minchan-intermediate-observation",
+  "initial_tree_clean": true,
+  "other_branch_sha": "3c2487b659a24d2f4b7bc38b5ca9928ffb959723",
+  "prior_work_commit": "f90f342c8189b84ff0af7f685ac492d803313d95",
+  "main_sha": "ff43fe4457ca7adf0fa523572c6d11bc195b31af",
+  "python": "3.12.3",
+  "node": "v22.22.0",
+  "os": "Linux-6.18.33.2-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+  "uid": 1000,
+  "runtime_root": "/var/lib/inodefence",
+  "native_executed_this_task": false,
+  "source_sha256": {
+    "scripts/minchan_rebinding_capture.py": "f4d6174b6f26a3f5e02121bc18ef6bac39e52c5f0b0f406b6d55ae224cd4e201",
+    "tests/test_minchan_rebinding_capture.py": "139b9a3c7acc72eebc4fdc2b9c631dd49801731b7815c6364a873aff82753484",
+    "src/inodefence/effect_demo.py": "b40661d512bbcbb4b227550241df185f0ce9de223401fcfb1a796196f6c31391",
+    "src/inodefence/targets/_node_effect_producer.cjs": "6c9a05a8420e800281e2e8662c17b176648fef13dc2182332ce063bb117aa5f4",
+    "src/inodefence/evaluation/rebinding_evidence.py": "e904dfcac4cd01ad60924010b6f6be40dfc37c0d2a9ecb0f4e7c6c9391f5d344"
+  },
+  "raw_availability": {
+    "/var/lib/inodefence/node-native-effect-observation-qualification-v2-20261013-36ff7fd-AA8cvq": false,
+    "experiments/raw/node-effect-gates-20261013-AA8cvq/qualification": false,
+    "/home/vscode/inodefence-evidence/inodefence-effect-demo-native-20261024-134737.json": false
+  },
+  "prior_20261023_source_hash_matches_f90f342": {
+    "scripts/minchan_rebinding_capture.py": true,
+    "tests/test_minchan_rebinding_capture.py": true
+  },
+  "evidence_scope": "current task synthetic verification only; native v2 demo counts are PR/LOG reports",
+  "initial_document_sha256": {
+    "docs/STATUS.md": "b7b4d014c40e41c04580fb44ad428bacb756b7bf432acd4688a6ff6656f217eb",
+    "docs/LOG.md": "c980838d7080fbee28c2ade012511aa284975e0491cd6f213b1ebb33df8e9086"
+  },
+  "validation": {
+    "focused_passed": 133,
+    "prototype_cases": 22,
+    "regressions_red": 4,
+    "canonical_passed": 1761,
+    "native_executed_this_task": false
+  },
+  "final_document_sha256": {
+    "docs/minchan/research-hypotheses.md": "2f95d2a290c4a754d16a97ce2043b81429a9f9ad33d4b72f74af0e65c87bb7ff",
+    "docs/minchan/intermediate-observation-report.md": "376eec7e2b422c4f7a9a71d00b7c09a7d2867e161303209bd1274adc3017181a",
+    "docs/minchan/handoff-to-jiwoong.md": "7b264e9405c4a15e6393fecd9479b34ffa5dc4d0061e31d53636c11ecd813b07",
+    "docs/minchan/diagrams.md": "cb70b6f553de4d5bb97ba196ada33b25ec17c8a21f94195c506c05dafeb69889",
+    "docs/minchan/presentation-outline.md": "3f835e08f1dd76f2a9cbfccde172957cf57fa6cbc1da7b368038c0edba5e32a5",
+    "docs/minchan/novelty-and-threats.md": "067f1b735570848111d206603b8cdafec704d1793ec6b5501b1155d58fc1939a",
+    "docs/minchan/result-freeze-checklist.md": "40e1fdd75dcbc21a946c62f50e91f4a5d8fa4c0c99ac6480a66385c78ae92530",
+    "docs/minchan/experiment-results.md": "5e88e187e14ef6fba42bd58df60093b2b726c7ef3c9a6b594712413b0227f1a1",
+    "docs/minchan/evidence-index.md": "7e216ef25295ed64638d2be3797f1069702082d089fcb5a7c37f46a62f563fe9"
+  }
+}

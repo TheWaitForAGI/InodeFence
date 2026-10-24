@@ -1,5 +1,10 @@
 # 민찬 — 중간 파일시스템 상태 관찰 연구 보고서
 
+> **최신 확인: 2026-10-24 KST, HEAD `9e36e1208b163308f744a7208fbfa56c4584b5c9`.**
+> 10/22·10/23 본문은 당시 기록이다. 현재 상태는 끝의 “10월 24일 재검토”와
+> [결과 확정표](result-freeze-checklist.md)를 먼저 읽는다. v2 native 데모의 팀 실행 보고가
+> 추가됐지만 v3 native dependency/qualification과 정책 효과 비교는 여전히 미검증이다.
+
 > 2026-10-23 보완: 아래 기존 본문은 10월 22일 조사 기록으로 보존했다. 새 결과는 문서 끝의
 > “10월 23일 후속 결과”와 [가설/증거 조건](research-hypotheses.md),
 > [비판 검토](novelty-and-threats.md), [26일 확정표](result-freeze-checklist.md)를 따른다.
@@ -254,3 +259,64 @@ N05 실행과 B0/B1/B3는 이번 범위 밖이며 native v3 또는 H10/H21의 �
 explicit bounded 실행 승인, raw/manifest publication trust, stock/minimal/v2-full/v3-full qualification,
 failure injection과 fresh-process reader다. 이 조건이 없으면 26일 결과는 generic/synthetic 및 negative
 qualification 분석으로 확정한다. [확정표](result-freeze-checklist.md)에 상태를 분리했다.
+
+## 10월 24일 재검토: 현재 코드·팀 데모·연구 판정 분리
+
+작업 시작 HEAD `9e36e1208b163308f744a7208fbfa56c4584b5c9`는 기존 작업
+`f90f342`와 main의 #133까지 포함한 merge다. 다른 minchan branch는 여전히 `3c2487b`다.
+따라서 두 branch가 같다는 10/23 기록은 과거 사실이며 현재에는 해당하지 않는다.
+시작 tree는 clean이었다. 현재 docs branch에서 이어갔으며 branch 삭제/강제 이동/merge/commit/push를
+하지 않았다. engine 전체가 `8d29982c` 그대로라는 과거 표현도 현재에는 적용하지 않는다.
+단, native v2 worker와 v3 strict reader는 그 SHA와 diff가 없음을 확인했다.
+
+| 항목 | 재검토 결과 | 근거 수준/남은 부분 |
+| --- | --- | --- |
+| 인정 조건·H10/H21·반박 표 | 기존 완성본 유지, 최신 scope 보완 | 코드·자료 확인; 효과는 미검증 가설 |
+| v2 native 데모 | #133 본문/STATUS/LOG에 실제 실행 보고 추가 | 팀의 실제 관측 보고; 이번 원본 미확보·독립 미검증 |
+| v3 generic 모델/reader | 기존 구현 유지 | 합성 검증; native dependency hook 없음 |
+| bounded prototype | operation coverage와 token one-shot 검증 보완 | 합성 회귀 검증; native producer 아님 |
+| 승인 게이트 | 기존 qualified research gate와 새 bounded demo 경로 분리 | 팀 데모 경로 존재가 v3 실행/qualification 승인 아님 |
+| 과거 qualification raw | 로컬 primary/mirror 없음 | 독립 재계산 차단 |
+
+### 최신 데모에서 주장할 수 있는 범위
+
+[PR #133](https://github.com/TheWaitForAGI/InodeFence/pull/133)은 report schema 2에 entry별
+operation·association·before/after status·present일 때 dev/ino/nlink/size, observation failures,
+64-event 잘림 표시와 selection을 추가했다. `src/inodefence/effect_demo.py`를 직접 읽었다.
+이 출력은 entry/start 순으로 정렬하므로 출력 배열을 실제 completion 순서로 해석하지 않는다.
+원본의 completion_sequence가 별도로 존재한다. report는 모든 lifecycle/frontier를 복제하지 않고
+hash·전체 operation별 raw reference도 담지 않으므로 qualification raw bundle을 대체하지 않는다.
+
+PR 본문과 LOG의 사람 실행 보고는 2회 native 데모, 20 steps, link의 nlink 2, step 8/18의 event 0 및
+operation_correlation_conflict를 기록한다. 이 원본 JSON은 현재 checkout에서 찾지 못했다.
+따라서 이번에 20-step 결과를 재계산하거나 직접 node-tar를 관찰했다고 쓰지 않는다.
+또한 LOG는 step18 stderr를 관측값, strict INFO→rejection 설명을 사람 해석으로 나누므로 그대로 구분한다.
+
+`scripts/run_effect_demo.py::native_demo_report`는 성공 target의 invalid trace에서는 중단하지만,
+rejected target은 invalid trace를 남기고 loop를 계속할 수 있다. 이는 데모 처리이며 해당 prefix의
+완전한 중간 관찰 성공은 아니다. event 0을 filesystem effect 부재로 해석하지 않는다.
+이 bounded demo와 v2 negative qualification, native v3 미구현은 함께 성립한다.
+
+### 이번 최소 수정과 검증 경계
+
+이번 Task Contract는 P0-2 관찰 evidence bookkeeping 검증이다. `scripts/minchan_rebinding_capture.py`,
+그 테스트와 기존 docs/minchan을 보완한다. production producer/reader·oracle·scheduler·N05·B0/B1/B3를
+수정하지 않는다. 새 실행 게이트를 만들지 않으며 native demo도 이번에는 실행하지 않는다.
+
+먼저 4개 회귀 case를 추가해 모두 실패함을 재현했다. 첫 결함은 empty/partial capture가 완전한 v2
+trace를 전달받고도 operation 누락을 거부하지 않는 것이었다. 이제 export에서 correlation 집합을
+정확히 대조한다. 둘째는 predecessor/token 재사용이었다. 이제 capture 안에서 둘 다 one-shot이다.
+이는 prototype의 보수적인 지원 범위이며 generic v3 계약을 바꾸지 않는다. 실제 native continuation
+발급과 token 진실성은 구현하지 않았다.
+
+`CaptureTerminal.complete`는 알려진 start들의 local settlement만 뜻한다. export 시 v2 전체 event와
+대조해야 한다. v2와 capture 양쪽에 모두 빠진 작업, 지원 밖 API, fsync/durability, atomic tree snapshot은
+여전히 보장하지 않는다. 신규/기존 합성·보고 테스트와 canonical 결과는
+[이번 실행 기록](experiment-results.md)의 10/24 절을 따른다.
+
+### 26일 확정 기준
+
+데모 출력 기능, synthetic bookkeeping/reader 호환, 기존 negative qualification 분석은 설명할 수 있다.
+팀 native 데모 수치는 “PR/LOG의 실행 보고, 원본 독립 검증 전”으로 인용한다.
+native v3 성공·전체 snapshot·H10/H21 효과 향상은 주장하지 않는다. 남은 최소 의존성은 데모 원본과
+그 source/image identity, native v3 branch hook·계약·명시 승인·qualification, 별도 공정 비교 동결이다.

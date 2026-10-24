@@ -1,5 +1,8 @@
 # 신규성·관찰 교란·오라클에 대한 비판 검토
 
+> 10/24 재검토: 아래 10/23 비교·반박은 유지한다. 현재 HEAD `9e36e12`의 native v2 demo 보고는
+> v3 qualification이나 효율 증거로 승격하지 않는다. 최신 변경과 추가 반박은 끝에 있다.
+
 2026-10-23 KST. 기존 [선행연구 비교표](intermediate-observation-report.md)의 범위를 유지하며
 아래 1차 문헌의 관련 구간을 재확인했다. 성능을 직접 비교하거나 artifact를 실행하지 않았다.
 
@@ -42,3 +45,21 @@ timeout이었다. `main/README.md` 경로도 404여서 branch를 추측해 코�
 
 재현 지연·자원 비용은 instrumented profile별 측정 대상이다. v2 historical ratio를 새 prototype의
 overhead로 옮기지 않는다. 조건을 통과하지 못한 실행을 버리고 성공 run만 골라 발표하지 않는다.
+
+## 10/24 추가 검토
+
+ZIPDiff 원문의 §4.4 UCB/softmax와 LinkZard Appendix C의 hardlink/query 정보를 재확인했다.
+Wormholes PDF 재조회는 timeout이었고 공식 발표 페이지의 연구 설명만 이번 확인됐다.
+따라서 창작한 코드 비교나 “선행연구에 기능이 없다”는 주장을 추가하지 않는다. 이전 원문 검토와
+이번 접근 실패를 구분하며 기존 비교표의 미확인 표기를 유지한다.
+
+| 추가 질문 | 현재 답변 | 근거 | 남은 약점 | 추가 검증 |
+| --- | --- | --- | --- | --- |
+| 팀 native demo가 있으니 중간 관찰은 모두 완료 아닌가? | v2 local endpoint 출력의 팀 실행 보고는 존재한다. 모든 entry의 complete trace·원자 전체 상태·v3 dependency 검증은 별개다 | #133/LOG·native_demo_report | 원본 JSON 미확보, 거부 step event0/conflict | 원본/worker/image/source 대조, 오류 prefix 보존 |
+| event0이면 effect가 없나? | 아니다. 미완료 operation이 event로 구성되지 않았을 수 있다 | LOG의 start-only open 보고, current worker 종료 코드 | 이번 실제 callback 동작 재현 없음 | pending 원본·terminal·stderr 검토; no-effect로 판정 금지 |
+| 데모의 배열 순서가 실제 작업 순서인가? | 아니다. 보고서는 entry/start 순 정렬이다 | effect_demo._trace_report | ordered 그림이 총순서를 암시할 수 있음 | completion_sequence 명시, 표에 정렬 기준 표기 |
+| prototype complete가 coverage 증거인가? | local settlement만 확인한다. 이번에는 제공된 v2 전체 event 집합과 export 대조를 보강했다 | 4개 red→green 회귀 | 두 채널 공통 누락은 여전히 모름 | token hook/지원 API별 native qualification |
+| 같은 token을 두 번 쓰면? | 이번 synthetic prototype은 predecessor/token을 한 번만 소비하도록 제한한다 | begin 회귀 검사 | 실제 source branch token 발급 없음 | source-bound one-shot native callback 음성 검사 |
+
+관찰 자료를 보고용으로 복사하는 기능과 피드백이 **효율을 높이는 연구 기여**는 다르다.
+팀 데모가 연결 동작을 보여줬다는 기록과 H10/H21 미검증은 동시에 성립한다.

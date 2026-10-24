@@ -1,5 +1,7 @@
 # 검증 결과와 재현 안내
 
+> **최신 실행은 끝의 2026-10-24 절**이다. 이전 결과와 source SHA·native 보고를 섞지 않는다.
+
 > 기존 본문은 2026-10-22 실행 기록이다. 10월 23일의 새 코드·검증은 아래 별도 절에 기록한다.
 
 실행일 2026-10-22 KST. source `8d29982c26cebfcce7a413b3ba9177fcd28078de`, branch `docs/minchan-intermediate-observation`.
@@ -158,3 +160,56 @@ PY
 - 사후 보완 문서·diff·LF·source hash·보존 synthetic raw 검증: [validation-20261023.log](evidence/validation-20261023.log).
 - 현재 실제 native v3 연결/관측/qualification: **미실행 / 미검증**.
 - H10/H21: **미검증 가설**. 과거 raw 재검산: **raw 미확보로 차단 / 미실행**.
+
+## 2026-10-24 재검토 실행
+
+시작 HEAD `9e36e1208b163308f744a7208fbfa56c4584b5c9`, prior minchan work `f90f342`.
+clean tree에서 시작했고 현재 docs branch에서 작업했다. base·환경·정확한 파일 hash·raw 가용성은
+[provenance](evidence/provenance-20261024.json), PR 상태는 [snapshot](evidence/pr-recheck-20261024.json)에 있다.
+이전 branch와 로그는 보존했다. 현재 production worker/reader를 바꾸지 않고 합성 prototype만 수정했다.
+
+| 이번 항목 | 테스트 결과 | 작업/근거 수준 |
+| --- | --- | --- |
+| whole-pair 누락/continuation 재소비 회귀 | **수정 전 실패4개**, 기존18 deselected | 합성 검증 공백 직접 재현 |
+| 수정 후 focused + 기존 report suite | **통과133개** | 합성 bookkeeping·모델·보고 검증; native 아님 |
+| Ruff 최초 검사 | 긴 테스트 호출 line으로 실패, format 수정 | 검증 과정 오류 보존 설명 |
+| canonical make check | **통과1,761개**, Ruff/format/Pyright/environment/docs 통과 | engineering 검사, native v3 증거 아님 |
+| team native v2 demo | 이번 미실행 | #133/LOG의 사람 실행 보고. 원본 독립 미검증 |
+| 실제 native v3 / H10/H21 | **미실행** | hook/qualification·공정 비교 없음 |
+| 과거 qualification raw 재계산 | **미실행** | primary/mirror 미확보로 차단 |
+
+회귀의 실패 원인은 새 테스트가 기대한 거부가 기존 prototype에 없었기 때문이다. 이제 export 때
+capture의 operation correlation 집합과 제공된 v2 trace 집합을 동일하게 요구하며, begin 때 같은
+predecessor나 token의 두 번째 소비를 거부한다. 이 one-shot 제약은 prototype 지원 범위이며 generic
+v3 reader/token 정의를 바꾸지 않는다. v2 자체에 없는 작업, 미지원 API, kernel effect의 정확한 시점,
+atomic tree snapshot과 disk durability는 여전히 보장하지 않는다.
+
+```bash
+python -m pytest tests/test_minchan_rebinding_capture.py tests/test_rebinding_v3.py \
+  tests/test_node_effect_producer.py tests/test_transition_model.py \
+  tests/test_transition_search.py tests/test_mutation_scheduler.py tests/test_effect_demo.py -v
+make check
+python scripts/check_docs.py
+git diff --check
+```
+
+focused133은 10/23 focused94 + 이번 회귀4 + 기존 report test35다. current prototype test 수는22다.
+deterministic 합성 schedule을 사용했고 sleep 지연이나 실제 node-tar 실행으로 순서를 만든 것이 아니다.
+canonical에는 기존 reference/runtime 검사가 포함된다. native demo·N05·B0/B1/B3를 이번 실행하지 않았다.
+
+### 팀 native 보고와 승인 범위
+
+#133은 10/24 호스트의 native v2 demo20 step 2회, link nlink2, 거부 step8/18의 event0/conflict를
+기록한다. 이 데이터는 [LOG](../LOG.md)의 팀 보고다. 당시 source/image·원본 JSON이 이번 환경에 없어
+수치를 재계산하지 않았다. current demo code의 실행 경로가 있다는 사실과 옛 research qualification은
+다른 gate다. bounded demo 완료를 v2 qualification pass나 native v3 승인으로 바꾸지 않는다.
+원본 없이 새 run을 임의 실행해 과거 로그를 대체하지 않았다.
+
+### 10/24 최종 완료 기록
+
+- 신규 회귀4개는 수정 전 **실패**, 수정 후 prototype 전체22개를 포함한 focused **133개 통과**.
+- `make check`: **1,761 passed in 90.96s**, Ruff·format388 files·Pyright0 errors·환경·문서147개 통과.
+- 위 focused 명령과 canonical을 각각1회 실행했다. 먼저 실행한 red 회귀는 별도 실패 로그로 보존했다.
+- 새 source가 아닌 과거 원본 synthetic envelope도 이번 reader로 재확인했다. 이는 synthetic 호환성 확인이다.
+- [사후 검사](evidence/validation-20261024.log)는 docs/diff/LF·source hash·기존 synthetic raw를 확인한다.
+- 실제 target 실행·native v3 연결·N05·B0/B1/B3·H10/H21 비교는 이번 **미실행**이다.

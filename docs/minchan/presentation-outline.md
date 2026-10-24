@@ -1,5 +1,7 @@
 # 10월 27일 발표용 6장 구성
 
+> 10/24 갱신: 분석 HEAD `9e36e12`. 기존 6장 구성은 유지하고 아래 보완 사항을 적용한다.
+
 담당 민찬, 전달 지웅. 연구 확정 기준일 10월 26일. 각 슬라이드에 source SHA `8d29982c`와 synthetic/native 구분을 유지한다.
 
 | 장 | 핵심 메시지 | 사용할 그림·표 | 근거 | 발표 메모 |
@@ -17,3 +19,8 @@
 “generic v3 + target-free capture prototype / native hook 없음”으로 업데이트한다. 6장에는
 [예상 반박](novelty-and-threats.md)의 계측 교란·누락·오라클 한계와 [26일 확정표](result-freeze-checklist.md)를
 사용한다. 76/1,584는 22일 기록이며 23일 검증 수치는 experiment-results의 별도 절로 교체한다.
+
+10/24 보완: 3·5장에 현재 schema2 출력의 entry/start 정렬·cap64·거부 step의 관찰 오류를 설명한다.
+팀 native demo 보고와 이번 합성 검증을 분리한다. 팀 수치는 #133/LOG 인용이며 원본 독립 검증 전이다.
+P0-2(발표 우선순위)와 P0/P1/P2(연구 정책)를 구분한다. H10/H21은 여전히 미검증이다.
+이번 수정은 v2 trace 대조 시 누락 operation 거부와 prototype token one-shot 검증이며 native hook이 아니다.

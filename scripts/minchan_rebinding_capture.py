@@ -102,6 +102,11 @@ class SyntheticRebindingCapture:
                 or len(token) > 256
             ):
                 self._reject("continuation requires successful same-entry predecessor and token")
+            if any(
+                previous == predecessor or previous_token == token
+                for previous, previous_token in self._continuations.values()
+            ):
+                self._reject("continuation already consumed")
             self._continuations[correlation] = (predecessor, token)
         self._started[correlation] = (entry, sequence)
 
@@ -142,6 +147,8 @@ class SyntheticRebindingCapture:
         if self._terminal is None or not self._terminal.complete:
             raise ValueError("only closed complete successful capture can export")
         by_id = {event.correlation_id: event for event in trace.effect_events}
+        if set(self._completed) != set(by_id):
+            raise ValueError("captured operation set differs from v2 trace")
         if any(by_id.get(key) != event for key, event in self._completed.items()):
             raise ValueError("captured operation differs from v2 trace")
         records: list[dict[str, object]] = []

@@ -1,5 +1,30 @@
 # 10월 26일 연구·구현 결과 확정표
 
+## 최신 상태 — 2026-10-24 KST
+
+현재 HEAD `9e36e12`에서 아래 상태를 확인했다. 26일의 미래 실행을 완료했다고 기록하지 않는다.
+이번 변경은 현재 docs branch의 로컬 미커밋 변경이며 다른 branch는 보존했다.
+
+| 항목 | 작업 상태 | 테스트 결과 | 근거 수준 | 확정 경계/의존성 |
+| --- | --- | --- | --- | --- |
+| 기존 산출물/branch 보존 | 완료 | diff/문서 검사 대상 | 코드·자료 확인 | docs branch는 main+f90f342, 다른 branch는3c2487b |
+| 증거 인정표·가설·반박·발표 갱신 | 완료 | 문서 검사 대상 | 코드·자료 확인 / 미검증 가설 | H10/H21 evaluator/budget/반복 동결은 미착수 |
+| bounded capture의 whole-pair 누락·token 재사용 검증 | 완료 | 수정 전4실패, 수정 후 focused133통과 | 합성 검증 | capture와 v2 양쪽에 없는 작업은 모름 |
+| 현재 schema2 trace 출력 기능 | 완료(코드 확인) | focused suite에 기존 report tests 포함 | 합성 검증 / 코드·자료 확인 | entry/start 정렬·cap64·not_observed/null 구분 |
+| 팀 native v2 demo | 부분 완료(근거 연결) | 이번 미실행 | PR/LOG의 실제 관측 보고; 원본 독립 미검증 | 원본 JSON·source/image·실패 prefix 필요 |
+| native v3 dependency producer/qualification | 차단 | 미실행 | 미검증 | 실제 branch hook·frozen source/image·검토·명시 승인 |
+| 과거 v1/v2 qualification | 완료(기록 유지) | 과거 실패 | 코드·자료 확인 | v1 blocked, v2 NOT_QUALIFIED 유지 |
+| 과거 raw 재계산 | 차단 | 미실행 | 미검증 | primary/mirror 없음 |
+| H10/H21 실제 효과 비교 | 미착수 | 미실행 | 미검증 가설 | team demo·synthetic 선택 차이가 효과 증거 아님 |
+| N05·B0/B1/B3 | 범위 밖 의존성 | 이번 미실행 | 기존 기록/현재 경계 확인 | 새 구현·승인·실행 없음 |
+| 이번 canonical 및 focused 검증 | 완료 | 1,761 / 133 통과 | 합성·기존 engineering 검증 | native v3 관측 증거 아님 |
+
+이번 canonical 결과와 사후 검사는 [실험 결과의 10/24 절](experiment-results.md)을 따른다.
+지웅에게 전달할 결론은 **bounded v2 demo의 팀 보고가 추가됐으나, native v3 성공·전체 상태·효과 우위는
+검증되지 않았다**다. 원본이 없으면 그 조건을 명시한 채 26일 자료를 확정한다.
+
+## 이전 상태 — 2026-10-23 기록 보존
+
 **2026-10-23 KST 현재 확정 가능한 상태**다. 미래 10월 26일에 실행/승인된 것처럼 쓰지 않는다.
 예약·백그라운드 연구·자동 재실행은 설정하지 않았다. 후속 증거가 없으면 아래 범위 그대로 26일에 사용한다.
 

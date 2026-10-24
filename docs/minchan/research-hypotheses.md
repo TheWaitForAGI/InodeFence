@@ -4,6 +4,10 @@
 engine base `8d29982c26cebfcce7a413b3ba9177fcd28078de`.
 이 문서는 검토용 프로토콜이다. native 실행 승인·정책 ID 동결·비교실험 결과가 아니다.
 
+**10/24 보완:** 현재 분석 HEAD는 `9e36e12`다. MIDTERM_GOALS의 우선순위 **P0-1~P0-5/P1**과
+여기서 비교하는 연구 정책 **P0/P1/P2**는 별개다. H10/H21은 후자를 뜻한다. 팀의 native v2 demo
+실행 보고가 추가됐지만, 그것은 qualified v3 producer나 H10/H21의 비교실험을 대신하지 않는다.
+
 ## 관찰 수준의 정의
 
 P0는 BEFORE/terminal AFTER의 final signature/violation을 admission에 사용한다.
@@ -47,6 +51,22 @@ object 관측을 합쳐 특정 한 시점의 전체 filesystem 상태라고 인�
 콜백 기록 순서는 observer order다. operation interval은 호출 경계→callback 경계이며 kernel effect의
 정확한 발생 순간이 아니다. close는 fsync가 아니다. absence observation은 gap 전체의 부재 증명이 아니다.
 “gap conflict 없음”은 complete하다고 검증한 지원 event channel에 한정한다.
+
+### 10/24 증거 상태 변경과 추가 조건
+
+위 인정표는 10/23 당시 확보 상태다. 현재의 변경분은 다음과 같으며 나머지 부족한 증거는 유지된다.
+
+| 조건 | 필요한 증거 | 현재 확보 여부 | 근거 위치 | 부족한 부분 | 검증 방법 |
+| --- | --- | --- | --- | --- | --- |
+| v2 demo local observation | schema2 native JSON·source/image·per-step integrity | #133/LOG의 실행 보고; code 직접 확인 | effect_demo.py, run_effect_demo.py | 원본 JSON 로컬 미확보 | raw와 source/image identity를 받아 independent reconstruction |
+| 실패 entry의 관찰 | rejected termination·start만 남은 작업·관찰 오류 | 팀 보고 event0/conflict; native code 확인 | LOG 10/24, native_demo_report | 원본·callback 종료 경로 직접 검증 | rejected case는 incomplete/invalid로 남기고 effect 부재로 해석하지 않음 |
+| 보고 배열의 순서 | 실제 start/completion sequence | schema2 코드 확인 | effect_demo._trace_report | 출력은 entry/start 정렬이며 completion 정렬 아님 | 명시 sequence를 대조, 시간/배열 인접성으로 causal edge 만들지 않음 |
+| report completeness | total/truncated와 raw 연결 | report cap64·잘림 표시 코드 확인 | effect_demo.py | lifecycle/frontier·원본 hash/reference 전체 없음 | 보고서를 원본 bundle 대신 사용하지 않음 |
+| local ledger와 v2 event 집합 대응 | correlation 집합 exact equality | 이번 회귀 검사·수정 | SyntheticRebindingCapture.envelope | v2에도 통째로 빠진 작업은 검출 불가 | empty/partial capture 주입; 별도 API completeness qualification |
+| branch token one-shot | predecessor/token 재소비 금지 | 합성 prototype에서 보강 | SyntheticRebindingCapture.begin | native branch hook 없음 | 같은 predecessor·같은 token을 각각 재사용해 invalid 확인 |
+
+local terminal의 `complete`만으로 native나 전체 transport가 complete하다고 쓰지 않는다.
+한정된 observed endpoint, 전체 raw integrity, native qualification, 탐색 효과는 독립 층위다.
 
 ## P1−P0: transition retention의 가치
 

@@ -175,3 +175,50 @@ def test_close_is_one_shot_and_target_failure_cannot_export():
         capture.finish(target_succeeded=True)
     with pytest.raises(ValueError, match="complete successful"):
         capture.envelope(trace, V3_SOURCE)
+
+
+@pytest.mark.parametrize("record_removal", [False, True])
+def test_export_rejects_whole_operation_pairs_missing_from_capture(record_removal):
+    trace = _trace()
+    capture = SyntheticRebindingCapture()
+    if record_removal:
+        event = trace.effect_events[0]
+        capture.begin(event.correlation_id, event.entry, event.start_sequence)
+        capture.complete(event)
+    assert capture.finish(target_succeeded=True).complete
+    # Local settlement cannot replace a complete-v2-trace coverage cross-check.
+    with pytest.raises(ValueError, match="captured operation set differs"):
+        capture.envelope(trace, V3_SOURCE)
+
+
+@pytest.mark.parametrize("reuse", ["predecessor", "token"])
+def test_continuation_is_consumed_once_per_predecessor_and_token(reuse):
+    removal, creation = _trace().effect_events
+    capture = SyntheticRebindingCapture()
+    capture.begin(removal.correlation_id, removal.entry, removal.start_sequence)
+    capture.complete(removal)
+    capture.begin(
+        creation.correlation_id,
+        creation.entry,
+        creation.start_sequence,
+        predecessor=removal.correlation_id,
+        token="branch-token",
+    )
+    predecessor = removal.correlation_id
+    sequence = creation.start_sequence + 1
+    token = "new-token"
+    if reuse == "token":
+        other = replace(
+            removal,
+            correlation_id="other-removal",
+            start_sequence=sequence,
+            completion_sequence=sequence + 1,
+        )
+        capture.begin(other.correlation_id, other.entry, other.start_sequence)
+        capture.complete(other)
+        predecessor, sequence, token = other.correlation_id, sequence + 2, "branch-token"
+    with pytest.raises(ValueError, match="continuation already consumed"):
+        capture.begin(
+            "second-creation", creation.entry, sequence, predecessor=predecessor, token=token
+        )
+    assert capture.finish(target_succeeded=False).invalid

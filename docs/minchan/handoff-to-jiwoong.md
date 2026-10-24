@@ -1,5 +1,27 @@
 # 지웅 전달용 — 민찬 중간 관찰 연구
 
+## 최신 전달 요약 — 10월 24일
+
+현재 HEAD `9e36e12`에서 기존 자료를 재검토했다. docs branch와 다른 minchan branch는 이제 같지 않다.
+main의 schema2 native demo 출력은 구현돼 있고 #133/LOG에 실제 실행 보고가 있다. 원본 JSON은
+현재 로컬에 없어 민찬의 이번 독립 native 관측 성공으로 기록하지 않았다.
+
+추가 완료: prototype의 missing-whole-operation 대조와 predecessor/token one-shot, 수정 전 실패4개
+재현과 수정 후 focused133 통과. canonical1,761개 및 lint/type/env/docs 검사 통과.
+기존 v3 reader·worker·oracle·scheduler는 바꾸지 않았다.
+
+발표 가능: “팀의 v2 native demo 보고와 bounded local observation 출력이 존재하며, 민찬은 근거
+인정 기준·가설·반박과 synthetic 수집 검증을 보완했다.”
+
+발표 불가: 모든 entry의 중간 상태 complete, event0이면 effect 없음, array순서=completion순서,
+native v3 성공·전체 snapshot·효과 우위. rejected step8/18의 conflict는 숨기지 않는다.
+
+26일까지 필요한 전달 의존성: native demo 원본 JSON와 source/image identity·실패 raw,
+과거 qualification archive. native v3는 별도 실제 branch producer·검토·승인·qualification이 필요하다.
+규민 N05·주언 B0/B1/B3는 대신 구현/실행하지 않았고 외부 메시지·commit/push/PR도 하지 않았다.
+
+아래는 22·23일 인계 이력이다. 최신 상태는 위 요약과 [확정표](result-freeze-checklist.md)를 사용한다.
+
 작성 2026-10-22 KST. 제출 자료를 저장소에 준비했으며 외부 메시지·PR·댓글은 게시하지 않았다.
 
 > 10월 23일 보완 결과는 아래 추가 인계와 [26일 결과 확정표](result-freeze-checklist.md)를 따른다.

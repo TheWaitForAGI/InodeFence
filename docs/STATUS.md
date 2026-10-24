@@ -290,3 +290,23 @@ experiment freeze와 11월 30일 최종 artifact는 별도 승인/증거가 필�
 C0/C1/C2 의미는 [Security Contracts](research/design/security-contracts.md), 비교/측정 정의는
 [연구 질문](research/design/research-questions.md)과 [프로토콜](research/benchmarks/evaluation-protocol-v1.md)을
 따른다. Historical audit/summary는 자체 날짜와 SHA의 기록으로만 읽는다.
+
+## Phase 2 조사 기록
+
+- **P2-a C1 일반화 영향 조사 (2026-10-23, `jiwoong/p2-a-c1-impact`) — 판정: 안전(additive).**
+  C1을 "extraction object ↔ 지정 sentinel" 대신 "extraction object ↔ EXTERNAL object 전체"와
+  비교하도록 일반화하는 변경안을 **임시 패치(미커밋, 되돌림)**로 Dev Container에서 실행해 영향만 확인했다.
+  기존 C0/C1/C2 판정·oracle fixture 4/4·N01 경로·전체 pytest가 모두 불변이고(전체 1722 passed,
+  1 failed는 C1과 무관한 기존 container-backend 환경 실패), extraction↔비-sentinel EXTERNAL identity
+  공유 탐지만 **추가**된다. `archive/input.tar`(HARNESS)는 일반화 후에도 C1이 되지 않으며(의도),
+  HARNESS까지 포함하는 확장은 `IdentityEvidence`의 EXTERNAL 제약 때문에 additive가 아니다(별도 모델
+  변경 필요, P2-b 범위). 코드 판정은 바꾸지 않았다(소스 변경 0). 상세는 [LOG](LOG.md)와
+  [BACKLOG](BACKLOG.md) P2-a.
+
+아래는 2026-10-18 기준 상세 기록이다.
+
+상태 갱신일: **2026-10-18**. G0 capability baseline은 main
+**`8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`**다. 이 SHA는 G0 문서 동결이
+검토한 구현 revision이며 최신 main을 뜻하지 않는다. #77–#84 연구 stack은 main에
+통합됐다. Internal completion qualification v3의 clean harness revision은 `9ea306f7`이고,
+causal filesystem-effect qualification v4의 clean harness revision은 `72bccfa`다.

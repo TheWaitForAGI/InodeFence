@@ -74,6 +74,43 @@ def test_addressing_policy_is_bounded_deterministic_and_builder_compatible():
             build_tar(first)
 
 
+def test_escape_hardlink_slot_targets_outside_root_and_reaches_sentinel_name_generically():
+    """The escape hardlink slot always escapes extract/ and can reach controlled names.
+
+    Every generated hardlink target begins with a parent-traversal step, so it
+    leaves the extraction root. Across seeds the target is assembled from the
+    finite controlled vocabulary, so the default sentinel name becomes reachable
+    without hardcoding the exact `../outside/sentinel.txt` PoC string.
+    """
+    parent = minimal_seed_corpus()[2]
+    existing_hardlink_targets = {
+        entry.link_target for entry in parent.entries if entry.entry_type == EntryType.HARDLINK
+    }
+    reached_sentinel_name = False
+    for seed in range(256):
+        attempt = apply_operator(
+            parent,
+            random.Random(seed),
+            MutationPolicy.M1_PROTECTED_COMPONENTS_ESCAPE_HARDLINK,
+            MutationOperatorId.ADD_HARDLINK,
+        )
+        assert attempt.applied
+        added = tuple(
+            entry
+            for entry in attempt.child_case.entries
+            if entry.entry_type == EntryType.HARDLINK
+            and entry.link_target not in existing_hardlink_targets
+        )
+        assert added, "the escape slot must insert a new hardlink"
+        for entry in added:
+            target = entry.link_target
+            assert target is not None
+            assert target.startswith(".."), "escape target must leave extract/"
+            if "sentinel.txt" in target.split("/"):
+                reached_sentinel_name = True
+    assert reached_sentinel_name
+
+
 def test_addressing_vocabulary_is_finite_cve_and_target_independent():
     assert m1_addressing.COMPONENTS == (
         "a",

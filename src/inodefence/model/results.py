@@ -112,6 +112,38 @@ class IdentityEvidence:
 
 
 @dataclass(frozen=True, slots=True)
+class BoundaryIdentityEvidence:
+    """An extraction object sharing lstat identity with a non-extraction object.
+
+    Additive generalization of IdentityEvidence: the shared object may be any
+    non-extraction path, including harness objects (e.g. archive/input.tar) and
+    non-sentinel external objects, not only a protected external sentinel. Both
+    lstat observations establish the actual same-object relation. This evidence
+    is consumed by the generalized identity-confinement detector and never enters
+    the C0/C1/C2 ViolationResult tuple, so existing oracle verdicts are unchanged.
+    """
+
+    internal_path: str
+    external_path: str
+    st_dev: int
+    st_ino: int
+
+    def __post_init__(self) -> None:
+        validate_observed_path(self.internal_path)
+        validate_observed_path(self.external_path)
+        if path_region(self.internal_path) != Region.EXTRACTION:
+            raise ValueError("boundary identity evidence requires an extraction internal path")
+        if path_region(self.external_path) == Region.EXTRACTION:
+            raise ValueError("boundary identity evidence requires a non-extraction shared path")
+        if any(type(number) is not int or number < 0 for number in (self.st_dev, self.st_ino)):
+            raise ValueError("boundary identity evidence requires nonnegative device/inode numbers")
+
+    @property
+    def external_region(self) -> Region:
+        return path_region(self.external_path)
+
+
+@dataclass(frozen=True, slots=True)
 class ViolationResult:
     """A contract candidate within snapshot coverage, not a vulnerability claim."""
 

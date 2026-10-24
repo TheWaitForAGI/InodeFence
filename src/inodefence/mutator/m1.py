@@ -10,6 +10,10 @@ from .operators import duplicate_entry, remove_entry, reorder_entries
 # Conservative single-field UTF-8 bound supported by the current USTAR builder.
 MAX_TEXT_BYTES = 100
 COMPONENTS = ("a", "b", "dir", "file", "item", ".", "..")
+# Parent-traversal depth bound for an escaping hardlink target. Independent of
+# any target, version, CVE, or PoC path: whether a generated target reaches a
+# controlled external object is a generic consequence of the caller's vocabulary.
+MAX_ESCAPE_DEPTH = 3
 _PREFIXES = ("", "./", "../", "/")
 _SEPARATORS = ("/", "//")
 _AFFIXES = (("../", ""), ("./", ""), ("/", ""), ("", "/.."), ("", "/"))
@@ -71,6 +75,28 @@ def add_hardlink(
         return case
     target = rng.choice(paths)
     path = _raw_path(case, rng, components=components)
+    return _insert(case, ArchiveEntry(path, EntryType.HARDLINK, link_target=target), rng)
+
+
+def add_escaping_hardlink(
+    case: ArchiveCase, rng: random.Random, *, components: tuple[str, ...] = COMPONENTS
+) -> ArchiveCase:
+    """Insert a hardlink whose raw target escapes the extraction root.
+
+    Unlike add_hardlink, the target is generated independently of existing entry
+    paths: one or more parent-traversal (`..`) steps followed by drawn component
+    tokens, so it points outside extract/ toward the surrounding sandbox layout.
+    No fixed sentinel, CVE, PoC, version, or target path is hardcoded; reaching
+    any external object is a generic consequence of the component vocabulary and
+    RNG, exactly like every other slot. A target over the USTAR text bound is one
+    no-op (the entry is dropped) with no retry or replacement draw.
+    """
+    depth = rng.randrange(1, MAX_ESCAPE_DEPTH + 1)
+    tail = tuple(rng.choice(components) for _ in range(rng.randrange(1, MAX_ESCAPE_DEPTH + 1)))
+    target = "/".join(("..",) * depth + tail)
+    path = _raw_path(case, rng, components=components)
+    if len(target.encode("utf-8")) > MAX_TEXT_BYTES:
+        return case
     return _insert(case, ArchiveEntry(path, EntryType.HARDLINK, link_target=target), rng)
 
 

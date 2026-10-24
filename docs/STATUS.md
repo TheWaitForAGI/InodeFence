@@ -20,7 +20,7 @@
 - 남은 P0 과제: 거부 입력에서 중간 상태 event가 0개인 한계의 표현 방식, 이미지 ID 재현성.
 - 주의(10/24): budget 20은 반복 성공했지만 budget 100에서는 9회 중 5회가 producer 결함으로 중단됐다(LOG 18:16).
   수정 브랜치(`jiwoong/p0-1-producer-settle-skip`)가 머지되기 전까지 큰 budget 데모는 중단될 수 있다.
-- N01 재발견 실행과 A/B/C 비교는 사람 승인 뒤([BACKLOG](BACKLOG.md) 5~7번).
+- N01 재발견 실행과 A/B/C 비교는 사람 승인 뒤([BACKLOG](BACKLOG.md) 5~7번). 10/24 사용자 지시로 historical 7.5.2/7.5.3 × 3 seed × budget 100을 수정 producer로 돌렸고 6/6 완료·oracle 0건이다(LOG 18:27, demo run, 재발견 아님).
 
 ---
 

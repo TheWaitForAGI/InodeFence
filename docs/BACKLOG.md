@@ -19,7 +19,7 @@
 | 3 | P0-5 JSONL 부분 저장 + CI에 effect producer/effect-demo 추가 | 대기 | 2 머지 |
 | 4 | P0-1 N01 native 무결성 결함 원인 조사 | 완료(조사: LOG 10-24 18:00; 수정: jiwoong/p0-1-producer-settle-skip, 사람 리뷰 대기) | 없음 |
 | 5 | P2-b(#129), P2-c(#130) 머지 | 대기(머지 필요: 사람 — 10/24 main과 충돌 해소·CI 통과, #129 → #130 순) | 사람 |
-| 6 | P2-c N01 rediscovery 실행 | 진행(10/24 사용자 지시로 실행: 수정 producer로 7.5.2/7.5.3 이미지 재빌드 후 seed 3개 × budget 100; 결과는 LOG) | 사람 |
+| 6 | P2-c N01 rediscovery 실행 | 완료(10/24 LOG 18:27: 7.5.2/7.5.3 × 3 seed × budget 100 전부 완료, oracle 0건 — 재발견 없음; #130 머지 후 공식 재실행 여부는 사람) | 사람 |
 | 7 | P3 A/B/C 비교 실험 | 진행(10/24 사용자 지시: 1차 P0/P1/P2 매트릭스 중단 5/9 → producer 수정 후 재실행 예정; A/B/C 정의와 지표 확정 필요) | 사람 |
 
 ---

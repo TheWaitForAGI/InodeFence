@@ -84,7 +84,7 @@ C0/C1/C2 판정 → feedback → 다음 mutation 선택" 루프가 `make demo` �
 
 | 명령 | 어디서 | 무엇을 하는가 |
 | --- | --- | --- |
-| `make demo` | 호스트 터미널 (docker 필요) | 격리 컨테이너에서 node-tar를 실제로 실행하는 루프. 결과 JSON은 `~/inodefence-evidence/`에 남는다 |
+| `make demo` | 호스트 터미널 (docker 필요) | 격리 컨테이너에서 node-tar를 실제로 실행하는 루프. 결과 JSON은 `~/inodefence-evidence/`에 남는다. 같은 이름의 `.steps.jsonl`에는 step이 끝날 때마다 그 step 기록이 바로 추가되므로, 중간에 중단돼도 끝난 step은 남는다 |
 | `make demo-synthetic` | Dev Container | node-tar 없이 synthetic producer로 같은 루프. 결과에 `SYNTHETIC (not node-tar)` 라벨이 붙는다 |
 | `make node-tar-smoke` | 호스트 터미널 | node-tar 실행 환경이 되는지 확인 |
 | `python -m scripts.oracle_fixture_check` | Dev Container | C0/C1/C2 판정이 의도한 fixture에서 맞게 나오는지 확인 (통제 extractor, node-tar 아님) |
@@ -142,7 +142,7 @@ C0/C1/C2 판정 → feedback → 다음 mutation 선택" 루프가 `make demo` �
 ```text
 scripts/local_node_tar_smoke.sh demo          호스트에서 컨테이너를 띄우고 아래를 실행
   scripts/container_controller.py             컨테이너 안 진입점 (effect-demo)
-    scripts/run_effect_demo.py                demo report JSON 작성 (step별 trace·selection)
+    scripts/run_effect_demo.py                demo report JSON 작성 (step별 trace·selection; step마다 .steps.jsonl에 먼저 기록)
       effect_campaign.run_effect_campaign     루프: parent 선택 → mutate → 실행 → 관찰 → 판정 → feedback
         effect_pipeline                       node-tar 1회 실행 + entry별 effect trace 수집
         oracle/                               C0/C1/C2 판정

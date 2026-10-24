@@ -22,7 +22,12 @@ from time import monotonic
 from typing import Protocol
 from uuid import uuid4
 
-from scripts.run_effect_demo import DEMO_ARGUMENTS, add_demo_arguments, check_demo_arguments
+from scripts.run_effect_demo import (
+    DEMO_FORWARDED_ARGUMENTS,
+    HISTORICAL_DEMO_MODE,
+    add_demo_arguments,
+    check_demo_arguments,
+)
 
 from inodefence.execution.container import OWNER_LABEL, checked, remove_owned
 from inodefence.execution.docker_client import BackendError, CommandResult, DockerCLI
@@ -449,6 +454,7 @@ def main() -> int:
             "qualify-node-n01",
             "preflight-node-n04-5s",
             "effect-demo",
+            HISTORICAL_DEMO_MODE,
         ),
     )
     args = parser.parse_args()
@@ -458,6 +464,7 @@ def main() -> int:
         "qualify-node-n01",
         "preflight-node-n04-5s",
         "effect-demo",
+        HISTORICAL_DEMO_MODE,
     }
     if (args.mode in evidence_modes) != (args.evidence is not None):
         parser.error("evidence mode requires --evidence; validation modes do not export")
@@ -555,7 +562,7 @@ def main() -> int:
         *(("--evidence", str(args.evidence)) if args.evidence is not None else ()),
         *(
             argument
-            for name in DEMO_ARGUMENTS
+            for name in DEMO_FORWARDED_ARGUMENTS
             if getattr(args, name) is not None
             for argument in (f"--{name.replace('_', '-')}", str(getattr(args, name)))
         ),

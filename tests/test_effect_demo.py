@@ -1,14 +1,24 @@
 import argparse
 from dataclasses import replace
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from scripts import run_effect_demo
 from scripts.compare_effect_policies import synthetic_policy_comparison
 from scripts.run_effect_demo import (
+    HISTORICAL_DEMO_MODE,
+    HISTORICAL_MUTATION_POLICY,
+    HISTORICAL_SEARCH_POLICY,
     MAX_NATIVE_BUDGET,
     SYNTHETIC_LABEL,
+    NativeDemoAborted,
+    _historical_oracle_events,
+    _require_historical_image,
     add_demo_arguments,
     check_demo_arguments,
+    historical_demo_report,
+    historical_target_versions,
     native_demo_report,
     pinned_node_tar_version,
     synthetic_demo_json,
@@ -25,6 +35,7 @@ from inodefence.effect_demo import (
     render_effect_trace,
 )
 from inodefence.effect_synthetic import synthetic_effect_result
+from inodefence.evaluation.n01 import FROZEN_TARGETS
 from inodefence.feedback import EffectSearchPolicy
 from inodefence.generator import minimal_seed_corpus
 from inodefence.model import (
@@ -83,6 +94,108 @@ def test_demo_argument_budget_cap(budget) -> None:
 
 def test_pinned_node_tar_version_reads_the_repository_pin() -> None:
     assert pinned_node_tar_version() == "7.5.22"
+
+
+# --- P2-c historical state-aware entrypoint (contained; no native execution) ---
+
+
+def test_historical_target_versions_match_frozen_catalog_and_locks() -> None:
+    allowed = historical_target_versions()
+
+    assert allowed == {target.tar_version: target.lock_sha256 for target in FROZEN_TARGETS}
+    assert set(allowed) == {"7.5.2", "7.5.3"}
+
+
+@pytest.mark.parametrize("budget", (0, MAX_NATIVE_BUDGET + 1, -1))
+def test_historical_demo_budget_cap_is_enforced_before_any_target_binding(budget) -> None:
+    with pytest.raises(ValueError, match="budget"):
+        historical_demo_report(object(), "sha256:" + "0" * 64, "7.5.2", budget=budget)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("version", ("7.5.22", "9.9.9", "7.5.4"))
+def test_historical_demo_rejects_unregistered_version_before_binding(version) -> None:
+    with pytest.raises(ValueError, match="catalog-registered"):
+        historical_demo_report(object(), "sha256:" + "0" * 64, version, budget=5)  # type: ignore[arg-type]
+
+
+def test_historical_demo_rejects_an_image_outside_the_catalog_pair(monkeypatch) -> None:
+    class _StubTarget:
+        tar_version = "7.5.22"  # benign repository pin, not a historical pair member
+
+    class _StubBind:
+        @staticmethod
+        def bind(backend, image_id, *, profile):
+            return _StubTarget()
+
+    monkeypatch.setattr(run_effect_demo, "NodeTarEffectTarget", _StubBind)
+    with pytest.raises(NativeDemoAborted, match="historical target"):
+        historical_demo_report(object(), "sha256:" + "0" * 64, "7.5.2", budget=5)  # type: ignore[arg-type]
+
+
+def test_require_historical_image_accepts_the_requested_catalog_member() -> None:
+    allowed = historical_target_versions()
+    # No raise when the bound image is exactly the requested registered version.
+    _require_historical_image("7.5.2", "7.5.2", allowed)
+
+
+def test_historical_demo_defaults_are_the_state_aware_escape_arm() -> None:
+    assert HISTORICAL_SEARCH_POLICY is EffectSearchPolicy.P2_EFFECT_ADAPTIVE
+    assert HISTORICAL_MUTATION_POLICY is MutationPolicy.M1_PROTECTED_COMPONENTS_ESCAPE_HARDLINK
+
+
+def _oracle_step(index: int, case_id: str, violated: dict[str, bool]) -> SimpleNamespace:
+    violations = tuple(
+        SimpleNamespace(contract_id=SimpleNamespace(value=name), violated=flag)
+        for name, flag in violated.items()
+    )
+    base = SimpleNamespace(case=SimpleNamespace(case_id=case_id), violations=violations)
+    return SimpleNamespace(index=index, result=SimpleNamespace(base_result=base))
+
+
+def test_historical_oracle_events_label_each_violation_without_rediscovery_wording() -> None:
+    result = SimpleNamespace(
+        steps=(
+            _oracle_step(0, "seed", {"C0": False, "C1": False, "C2": False}),
+            _oracle_step(1, "child", {"C0": False, "C1": True, "C2": True}),
+        )
+    )
+
+    events = _historical_oracle_events(result)  # type: ignore[arg-type]
+
+    assert events == [
+        {
+            "index": 1,
+            "case_id": "child",
+            "contract_id": "C1",
+            "label": "oracle-detected C1 event",
+        },
+        {
+            "index": 1,
+            "case_id": "child",
+            "contract_id": "C2",
+            "label": "oracle-detected C2 event",
+        },
+    ]
+    assert all("rediscovery" not in str(event["label"]) for event in events)
+
+
+def test_tar_version_argument_is_restricted_to_the_historical_demo() -> None:
+    parser = _demo_parser()
+    ok = parser.parse_args(["--tar-version", "7.5.2", HISTORICAL_DEMO_MODE])
+    check_demo_arguments(parser, ok)
+    with pytest.raises(SystemExit):
+        check_demo_arguments(parser, parser.parse_args(["--tar-version", "7.5.2", "effect-demo"]))
+    with pytest.raises(SystemExit):
+        check_demo_arguments(parser, parser.parse_args([HISTORICAL_DEMO_MODE]))
+
+
+def test_demo_arguments_are_accepted_in_both_effect_demos() -> None:
+    parser = _demo_parser()
+    check_demo_arguments(parser, parser.parse_args(["--seed", "7", "effect-demo"]))
+    check_demo_arguments(
+        parser,
+        parser.parse_args(["--seed", "7", "--tar-version", "7.5.3", HISTORICAL_DEMO_MODE]),
+    )
 
 
 @pytest.mark.parametrize(

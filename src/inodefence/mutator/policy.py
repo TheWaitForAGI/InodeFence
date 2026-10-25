@@ -18,6 +18,19 @@ class MutationPolicy(StrEnum):
     M1_PROTECTED_COMPONENTS_ESCAPE_HARDLINK = (
         "uniform-generic-m1-protected-components-escape-hardlink-v1"
     )
+    # Additive, token-clean: the escaping-hardlink slot over the *generic* M1
+    # vocabulary only (a,b,dir,file,item,.,..). It carries no target-specific
+    # components, so an escaping target can never spell a name the generic
+    # alphabet does not contain. Used as the reachability floor arm.
+    M1_GENERIC_ESCAPE_HARDLINK = "uniform-generic-m1-escape-hardlink-v1"
+    # Additive, state-aware: the generic escaping-hardlink slot whose link-target
+    # segment pool is the generic vocabulary PLUS the names of objects the run has
+    # actually observed (ObjectSnapshot paths from the general filesystem tree, not
+    # the protected-path list). The caller (campaign) supplies the observed names;
+    # with none supplied it behaves exactly like M1_GENERIC_ESCAPE_HARDLINK. This
+    # lets a run reach an external reference target by observing its name, without
+    # any target-specific token being hardcoded (target-agnostic).
+    M1_STATE_AWARE_ESCAPE_HARDLINK = "uniform-generic-m1-state-aware-escape-hardlink-v1"
 
 
 def mutate_with_policy(

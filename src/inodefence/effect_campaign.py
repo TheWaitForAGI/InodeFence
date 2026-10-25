@@ -129,6 +129,25 @@ EffectResultProducer = Callable[[ArchiveCase], EffectRunResult]
 EffectStepObserver = Callable[[EffectCampaignStep], None]
 
 
+def _observed_name_segments(result: EffectRunResult) -> set[str]:
+    """Segment names of objects observed in the general filesystem tree.
+
+    Sourced from `ObjectSnapshot` paths in the run's before/after snapshots — the
+    general observed tree, never `protected_paths` (reading the protected list would
+    be reading the answer). Harness/extraction segments are kept: they are generic
+    observed names, not a target annotation. This is the only input the state-aware
+    escape policy adds to its generic vocabulary, and it is target-agnostic (the same
+    mechanism yields whatever names the run happens to observe).
+    """
+    names: set[str] = set()
+    for snapshot in (result.trace.before, result.trace.after):
+        for obj in snapshot.objects:
+            for segment in obj.path.split("/"):
+                if segment and segment not in (".", ".."):
+                    names.add(segment)
+    return names
+
+
 def run_effect_campaign(
     initial_cases: Sequence[ArchiveCase],
     produce_result: EffectResultProducer,
@@ -157,6 +176,12 @@ def run_effect_campaign(
 
     state = EffectSearchState(cases, config.search_policy)
     steps: list[EffectCampaignStep] = []
+    # The state-aware escape policy composes link targets from names the run has
+    # observed in the general filesystem tree (not the protected list). We
+    # accumulate them here and feed them to the mutator; every other policy leaves
+    # this empty and is unaffected.
+    state_aware = config.mutation_policy == MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK
+    observed_names: set[str] = set()
     scheduler = (
         EffectAdaptiveMutationScheduler()
         if config.search_policy
@@ -177,6 +202,8 @@ def run_effect_campaign(
         result = produce_result(case)
         if not isinstance(result, EffectRunResult) or result.base_result.case != case:
             raise ValueError("producer must return EffectRunResult for the requested case")
+        if state_aware:
+            observed_names.update(_observed_name_segments(result))
         decision = state.consider(result)
         if (attempt is None) != (selection is None):
             raise ValueError("mutation attempt and scheduler selection must appear together")
@@ -208,7 +235,13 @@ def run_effect_campaign(
     while len(steps) < config.execution_budget:
         parent = state.select_case(rng)
         selection = scheduler.choose_operator(operator_ids(config.mutation_policy), rng)
-        attempt = apply_operator(parent, rng, config.mutation_policy, selection.operator_id)
+        attempt = apply_operator(
+            parent,
+            rng,
+            config.mutation_policy,
+            selection.operator_id,
+            extra_components=tuple(sorted(observed_names)) if state_aware else (),
+        )
         observe(
             attempt.child_case,
             CampaignOrigin.MUTATION,

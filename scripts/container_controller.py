@@ -77,28 +77,45 @@ def run_native_effect_demo(
 def run_native_historical_demo(
     backend: ContainerExecutionBackend, image: str, evidence: Path, args: argparse.Namespace
 ) -> int:
-    """State-aware feedback loop on a frozen historical node-tar; abort still leaves evidence."""
-    try:
-        report = historical_demo_report(backend, image, args.tar_version, **demo_options(args))
-        returncode = 0
-    except NativeDemoAborted as error:
-        report = {
-            "label": HISTORICAL_LABEL,
-            "producer": "native",
-            "mode": "historical",
-            "requested_tar_version": args.tar_version,
-            "aborted": {
-                "step_index": error.step_index,
-                "case_id": error.case_id,
-                "reason": error.reason,
-                "observed": error.observed,
-            },
-        }
-        print(f"effect-demo-historical aborted: {error}", file=sys.stderr)
-        returncode = 1
+    """State-aware feedback loop on a frozen historical node-tar; abort still leaves evidence.
+
+    Each finished step is appended to the sibling steps JSONL and synced before the next
+    case runs, so an abort mid-campaign keeps every completed step's loop record (including
+    any oracle event). Large-budget runs abort more often, so this preserves pre-abort
+    discoveries. The final report keeps its shape (its `steps` array equals the JSONL lines).
+    """
+    steps_path = demo_steps_path(evidence)
+    with steps_path.open("x", encoding="ascii") as steps_stream:
+
+        def persist_step(record: dict[str, object]) -> None:
+            steps_stream.write(render_effect_step_line(record))
+            steps_stream.flush()
+            os.fsync(steps_stream.fileno())
+
+        try:
+            report = historical_demo_report(
+                backend, image, args.tar_version, step_sink=persist_step, **demo_options(args)
+            )
+            returncode = 0
+        except NativeDemoAborted as error:
+            report = {
+                "label": HISTORICAL_LABEL,
+                "producer": "native",
+                "mode": "historical",
+                "requested_tar_version": args.tar_version,
+                "aborted": {
+                    "step_index": error.step_index,
+                    "case_id": error.case_id,
+                    "reason": error.reason,
+                    "observed": error.observed,
+                },
+            }
+            print(f"effect-demo-historical aborted: {error}", file=sys.stderr)
+            returncode = 1
     with evidence.open("x", encoding="ascii") as stream:
         stream.write(render_effect_campaign_report(report))
     print(f"effect demo report: {evidence}", file=sys.stderr)
+    print(f"effect demo completed steps: {steps_path}", file=sys.stderr)
     return returncode
 
 

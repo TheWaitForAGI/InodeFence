@@ -49,7 +49,7 @@ inferred(추론)를 구분하고, synthetic은 native 증거로 승격하지 않
 
 - **M1 — 루프가 실제 node-tar에서 돈다.** 상태: **완료**(위 Ledger 1~6행).
 - **M2 — 실제 경계위반 통제 재현 + 버전 구분.** 상태: **실증됨**(2026-10-24 probe). 재현 가능한 fixture/스크립트로 박제 중.
-- **M3 — 퍼저가 자력으로 그 위반을 찾는다.** 태스크: generic security-state gradient(additive) → B0/B1/B3·A1/A2/A3 비교. H1 본체. 상태: 진행.
+- **M3 — 퍼저가 자력으로 그 위반을 찾는다.** 메커니즘 구현 + 엄밀한 study 완료(PR #151): 거부된 외부-하드링크 시도를 valid trace로 관찰(producer abort-drain) + boundary-attempt gradient + 어휘 토큰 제거·state-aware 관찰이름 조합 + external-resolve rung + 재현 study 하너스/분석. 상태-인지 도달은 **target-agnostic·이름독립 입증**(A1 floor 0 vs A3 reach), gradient는 외부 접근 시도 증가 측정(A3 3.27 vs A1 2.30). 그러나 **budget 100·~60 seed(A1 0/57·A3 0/59)에서 clean 자율 위반 전 arm 0 = honest negative** — feedback>random의 위반 유발 우위 미입증, 자율 위반은 미해결(더 큰 budget 또는 open-ended 조합 필요). 방법론 주석: 이전 토큰-오염 설정의 자율 위반은 어휘에 대상 경로 토큰이 있었기 때문이며 제거함. 상태: **honest negative(메커니즘 완료·결판 study 완료, PR 사람 머지 대기)**.
 - **M4 — 일반성.** 태스크: 2번째 extractor(oras-go) 동일 모델 적용. 상태: 설계.
 
 중간발표는 이 척추에서 **지금 와 있는 지점을 증거 수준과 함께 정직하게** 보여주는 것이다.

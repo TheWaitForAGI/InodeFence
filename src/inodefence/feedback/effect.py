@@ -17,6 +17,7 @@ from inodefence.model import (
     EffectTargetTermination,
     EntryEffectSetSignature,
     EntryType,
+    ExternalResolveSignature,
     FilesystemEffectEvent,
     IdentityRelationType,
     NormalizedEffectSignature,
@@ -104,6 +105,8 @@ def _feedback_key_sort_key(key: EffectFeedbackKey) -> tuple[object, ...]:
     elif isinstance(signature, EntryEffectSetSignature):
         value = (tuple(effect.sort_key() for effect in signature.effects),)
     elif isinstance(signature, BoundaryAttemptSignature):
+        value = (signature.sort_key(),)
+    elif isinstance(signature, ExternalResolveSignature):
         value = (signature.sort_key(),)
     else:
         assert isinstance(signature, CausalMotifSignature)
@@ -243,4 +246,33 @@ def boundary_attempt_keys(trace: EffectEventTrace) -> tuple[EffectFeedbackKey, .
                 ),
             )
         )
+    return tuple(sorted(keys, key=_feedback_key_sort_key))
+
+
+def external_resolve_keys(trace: EffectEventTrace) -> tuple[EffectFeedbackKey, ...]:
+    """Observed external-resolution keys: a link operation whose resolved path is EXTERNAL.
+
+    The refinement rung over `boundary_attempt_keys`: it credits an observed link
+    operation whose observed resolved path lies in the EXTERNAL region, taken purely
+    from `path_region` of the operation's affected paths — regardless of the raw link
+    text, the escape shape, or the operation outcome (a refused/ENOENT attempt that was
+    still resolved outside the root counts). It therefore also credits an external
+    resolution reached through other means (e.g. an observed symlink) that the lexical
+    attempt key misses. Region-based and target-agnostic: operation kind and region
+    only, never a path, protected object, sentinel or outcome. Like the attempt key it
+    assumes nothing about termination; the caller gates on a clean, valid, complete trace.
+    """
+    if not isinstance(trace, EffectEventTrace):
+        raise ValueError("external resolve keys require an EffectEventTrace")
+    keys: set[EffectFeedbackKey] = set()
+    for event in trace.effect_events:
+        if event.operation != ObservedOperationType.LINK:
+            continue
+        if any(path_region(path) == Region.EXTERNAL for path in event.affected_paths):
+            keys.add(
+                EffectFeedbackKey(
+                    EffectFeedbackKeyKind.OBSERVED_EXTERNAL_RESOLVE,
+                    ExternalResolveSignature(event.operation, Region.EXTERNAL),
+                )
+            )
     return tuple(sorted(keys, key=_feedback_key_sort_key))

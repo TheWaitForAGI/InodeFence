@@ -31,6 +31,12 @@ class EffectSearchPolicy(StrEnum):
     P3_BOUNDARY_ATTEMPT_GRADIENT = (
         "effect-feedback-v2-or-violation-v1-boundary-attempt-v1-adaptive-mutation-v1"
     )
+    # M3 refinement: P3 plus the observed external-resolve rung (the full ladder —
+    # lexical escape attempt + observed external resolution). Same admission rule and
+    # the same opt-in relaxed gate; the key set is a further superset.
+    P3_EXTERNAL_RESOLVE_GRADIENT = (
+        "effect-feedback-v2-or-violation-v1-external-resolve-v1-adaptive-mutation-v1"
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -161,7 +167,12 @@ class EffectSearchState:
         self._initial_cases = cases
         self._policy = policy
         self._effect_novelty = EffectNoveltyIndex(
-            include_boundary_attempt=(policy == EffectSearchPolicy.P3_BOUNDARY_ATTEMPT_GRADIENT)
+            include_boundary_attempt=policy
+            in (
+                EffectSearchPolicy.P3_BOUNDARY_ATTEMPT_GRADIENT,
+                EffectSearchPolicy.P3_EXTERNAL_RESOLVE_GRADIENT,
+            ),
+            include_external_resolve=(policy == EffectSearchPolicy.P3_EXTERNAL_RESOLVE_GRADIENT),
         )
         self._states: set[StateSignature] = set()
         self._violations: set[ViolationFingerprint] = set()

@@ -40,6 +40,7 @@ from .effect_feedback import (
     EffectFeedbackSignature,
     EffectOrdinalClass,
     EntryEffectSetSignature,
+    ExternalResolveSignature,
     IdentityRelationType,
     NormalizedEffectSignature,
 )
@@ -120,6 +121,7 @@ __all__ = [
     "EffectFeedbackKeyKind",
     "EffectFeedbackProjectionV3",
     "EffectFeedbackSignature",
+    "ExternalResolveSignature",
     "EffectObjectObservation",
     "EffectObservationStatus",
     "EffectOrdinalClass",

@@ -9,6 +9,7 @@ from .effect import (
     CausalRelationKind,
     EffectClass,
     EffectEvidenceStrength,
+    ObservedOperationType,
     OperationOutcome,
 )
 from .filesystem import Region
@@ -35,6 +36,13 @@ class EffectFeedbackKeyKind(StrEnum):
     # the only effect key that may come from a non-SUCCESS (cleanly rejected) trace,
     # and only under the opt-in boundary-attempt arm. Additive; see effect.py.
     BOUNDARY_ESCAPE_ATTEMPT = "boundary_escape_attempt"
+    # M3 refinement: a purely observed region signal — an observed operation whose
+    # *resolved* path lies in the EXTERNAL region, regardless of the raw link text or
+    # the operation outcome. Unlike BOUNDARY_ESCAPE_ATTEMPT it does not read the input
+    # link target at all, so it also credits an external resolution reached by other
+    # means (e.g. through an observed symlink). The intermediate rung between a lexical
+    # escape attempt and an external success. Additive; opt-in; see effect.py.
+    OBSERVED_EXTERNAL_RESOLVE = "observed_external_resolve"
 
 
 class BoundaryAttemptShape(StrEnum):
@@ -211,11 +219,42 @@ class BoundaryAttemptSignature:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class ExternalResolveSignature:
+    """One observed operation whose resolved path lies in the EXTERNAL region.
+
+    Purely observed and region-based: the operation kind and the resolved region, taken
+    from the observed affected path via the generic `path_region`. It reads no raw link
+    text, no outcome, no concrete path, no protected object, no sentinel and no CVE — so
+    it is target-agnostic and fires for any external resolution however it was reached.
+    This is the intermediate rung between a lexical escape attempt and an external
+    success; it can be derived from a cleanly recorded rejected trace (ENOENT included).
+    """
+
+    serialization_schema: ClassVar[int] = 1
+
+    operation: ObservedOperationType
+    resolved_region: Region
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.operation, ObservedOperationType):
+            raise ValueError("external resolve requires an observed operation type")
+        if (
+            not isinstance(self.resolved_region, Region)
+            or self.resolved_region == Region.EXTRACTION
+        ):
+            raise ValueError("external resolve region must be outside the extraction root")
+
+    def sort_key(self) -> tuple[object, ...]:
+        return (self.operation.value, self.resolved_region.value)
+
+
 EffectFeedbackSignature = (
     NormalizedEffectSignature
     | EntryEffectSetSignature
     | CausalMotifSignature
     | BoundaryAttemptSignature
+    | ExternalResolveSignature
 )
 
 
@@ -232,6 +271,7 @@ class EffectFeedbackKey:
             EffectFeedbackKeyKind.ENTRY_EFFECT_SET: EntryEffectSetSignature,
             EffectFeedbackKeyKind.CAUSAL_MOTIF: CausalMotifSignature,
             EffectFeedbackKeyKind.BOUNDARY_ESCAPE_ATTEMPT: BoundaryAttemptSignature,
+            EffectFeedbackKeyKind.OBSERVED_EXTERNAL_RESOLVE: ExternalResolveSignature,
         }
         if not isinstance(self.kind, EffectFeedbackKeyKind) or not isinstance(
             self.signature, expected.get(self.kind, object)

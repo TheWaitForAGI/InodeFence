@@ -188,6 +188,7 @@ def run_effect_campaign(
         in (
             EffectSearchPolicy.P2_EFFECT_ADAPTIVE,
             EffectSearchPolicy.P3_BOUNDARY_ATTEMPT_GRADIENT,
+            EffectSearchPolicy.P3_EXTERNAL_RESOLVE_GRADIENT,
         )
         else EffectUniformMutationScheduler()
     )

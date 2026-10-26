@@ -1,6 +1,8 @@
 """M1 operator slots with a versioned controlled protected-path vocabulary."""
 
+import functools
 import random
+from collections.abc import Callable
 
 from inodefence.model.archive import ArchiveCase
 
@@ -61,6 +63,48 @@ ESCAPE_OPERATORS = (
     add_symlink,
     mutate_link_target,
 )
+
+# Token-clean escaping-hardlink set: identical slot order to m1.OPERATORS but slot 5
+# (ADD_HARDLINK) is the extraction-root-escaping variant, and every vocabulary-taking
+# slot draws from the GENERIC m1 vocabulary only (no `outside`/`sentinel.txt` or any
+# other target-specific token). A generated escaping target therefore cannot spell a
+# name the generic alphabet does not contain — the reachability floor arm.
+GENERIC_ESCAPE_OPERATORS = (
+    m1.add_entry,
+    m1.remove_entry,
+    m1.duplicate_entry,
+    m1.reorder_entries,
+    m1.mutate_path,
+    m1.add_escaping_hardlink,
+    m1.add_symlink,
+    m1.mutate_link_target,
+)
+
+
+def state_aware_escape_operators(
+    observed_components: tuple[str, ...],
+) -> tuple[Callable[[ArchiveCase, random.Random], ArchiveCase], ...]:
+    """GENERIC_ESCAPE_OPERATORS whose vocabulary-taking slots also draw observed names.
+
+    `observed_components` are segment names the run has observed in the general
+    filesystem tree (`ObjectSnapshot` paths), supplied by the caller — never the
+    protected-path list. They are appended to the generic M1 vocabulary so a
+    generated path can compose an observed name (e.g. reach an external object by a
+    name the run saw), with no target-specific token hardcoded (target-agnostic). The
+    slot order and each slot's RNG draw sequence are unchanged; only the component
+    pool differs. An empty pool reproduces GENERIC_ESCAPE_OPERATORS exactly.
+    """
+    pool = m1.COMPONENTS + tuple(observed_components)
+    return (
+        functools.partial(m1.add_entry, components=pool),
+        m1.remove_entry,
+        m1.duplicate_entry,
+        m1.reorder_entries,
+        functools.partial(m1.mutate_path, components=pool),
+        functools.partial(m1.add_escaping_hardlink, components=pool),
+        functools.partial(m1.add_symlink, components=pool),
+        functools.partial(m1.mutate_link_target, components=pool),
+    )
 
 
 def mutate(case: ArchiveCase, rng: random.Random) -> ArchiveCase:

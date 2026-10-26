@@ -3,6 +3,8 @@
 from collections import defaultdict
 
 from inodefence.model import (
+    BoundaryAttemptShape,
+    BoundaryAttemptSignature,
     CausalArchiveRelation,
     CausalMotifSignature,
     CausalRelationKind,
@@ -14,9 +16,12 @@ from inodefence.model import (
     EffectStreamCompleteness,
     EffectTargetTermination,
     EntryEffectSetSignature,
+    EntryType,
+    ExternalResolveSignature,
     FilesystemEffectEvent,
     IdentityRelationType,
     NormalizedEffectSignature,
+    ObservedOperationType,
     Region,
     effect_is_realized,
 )
@@ -99,6 +104,10 @@ def _feedback_key_sort_key(key: EffectFeedbackKey) -> tuple[object, ...]:
         value = (signature.sort_key(),)
     elif isinstance(signature, EntryEffectSetSignature):
         value = (tuple(effect.sort_key() for effect in signature.effects),)
+    elif isinstance(signature, BoundaryAttemptSignature):
+        value = (signature.sort_key(),)
+    elif isinstance(signature, ExternalResolveSignature):
+        value = (signature.sort_key(),)
     else:
         assert isinstance(signature, CausalMotifSignature)
         value = (
@@ -164,4 +173,106 @@ def effect_feedback_keys(trace: EffectEventTrace) -> tuple[EffectFeedbackKey, ..
         )
         keys.add(EffectFeedbackKey(EffectFeedbackKeyKind.CAUSAL_MOTIF, motif))
 
+    return tuple(sorted(keys, key=_feedback_key_sort_key))
+
+
+def _escape_shape(link_target: str) -> BoundaryAttemptShape | None:
+    """Bucket a raw link target by how it steps out of the extraction root.
+
+    Absolute targets are ABSOLUTE; otherwise the leading parent-traversal (`..`)
+    depth is bucketed. Returns None when the target neither is absolute nor leads
+    with `..` (it does not escape by traversal). No concrete path, tail, sentinel,
+    CVE or PoC is referenced — only the bounded escape shape.
+    """
+    if not link_target:
+        return None
+    if link_target.startswith("/"):
+        return BoundaryAttemptShape.ABSOLUTE
+    depth = 0
+    for segment in link_target.split("/"):
+        if segment == "..":
+            depth += 1
+        elif segment in ("", "."):
+            continue
+        else:
+            break
+    if depth == 0:
+        return None
+    if depth == 1:
+        return BoundaryAttemptShape.PARENT_1
+    if depth == 2:
+        return BoundaryAttemptShape.PARENT_2
+    return BoundaryAttemptShape.PARENT_3_PLUS
+
+
+def boundary_attempt_keys(trace: EffectEventTrace) -> tuple[EffectFeedbackKey, ...]:
+    """Boundary-approach *attempt* keys: observed link ops whose target escapes root.
+
+    Derived from observed link operations (`ObservedOperationType.LINK`) whose
+    observed target path lies outside the extraction root, whether or not the link
+    was realized. The target region and operation outcome are observed from the
+    operation itself; the bounded escape shape comes from the trigger entry's raw
+    link text. Target-agnostic: trigger entry kind, target region, outcome and
+    escape shape only — never a concrete path, sentinel, tail, CVE or PoC.
+
+    Unlike the other derivations this reads the effect events directly and does NOT
+    require a feedback-eligible (successful) trace, so the opt-in boundary-attempt
+    arm can derive it from a cleanly recorded *rejected* run. The caller
+    (`EffectNoveltyIndex`) still gates on a clean, valid, complete trace; this
+    function assumes nothing about termination.
+    """
+    if not isinstance(trace, EffectEventTrace):
+        raise ValueError("boundary attempt keys require an EffectEventTrace")
+    keys: set[EffectFeedbackKey] = set()
+    for event in trace.effect_events:
+        if event.operation != ObservedOperationType.LINK:
+            continue
+        entry = event.entry
+        if entry.entry_type != EntryType.HARDLINK or entry.link_target is None:
+            continue
+        external = tuple(
+            path for path in event.affected_paths if path_region(path) != Region.EXTRACTION
+        )
+        if not external:
+            continue
+        shape = _escape_shape(entry.link_target)
+        if shape is None:
+            continue
+        keys.add(
+            EffectFeedbackKey(
+                EffectFeedbackKeyKind.BOUNDARY_ESCAPE_ATTEMPT,
+                BoundaryAttemptSignature(
+                    entry.entry_type, path_region(external[0]), event.outcome, shape
+                ),
+            )
+        )
+    return tuple(sorted(keys, key=_feedback_key_sort_key))
+
+
+def external_resolve_keys(trace: EffectEventTrace) -> tuple[EffectFeedbackKey, ...]:
+    """Observed external-resolution keys: a link operation whose resolved path is EXTERNAL.
+
+    The refinement rung over `boundary_attempt_keys`: it credits an observed link
+    operation whose observed resolved path lies in the EXTERNAL region, taken purely
+    from `path_region` of the operation's affected paths — regardless of the raw link
+    text, the escape shape, or the operation outcome (a refused/ENOENT attempt that was
+    still resolved outside the root counts). It therefore also credits an external
+    resolution reached through other means (e.g. an observed symlink) that the lexical
+    attempt key misses. Region-based and target-agnostic: operation kind and region
+    only, never a path, protected object, sentinel or outcome. Like the attempt key it
+    assumes nothing about termination; the caller gates on a clean, valid, complete trace.
+    """
+    if not isinstance(trace, EffectEventTrace):
+        raise ValueError("external resolve keys require an EffectEventTrace")
+    keys: set[EffectFeedbackKey] = set()
+    for event in trace.effect_events:
+        if event.operation != ObservedOperationType.LINK:
+            continue
+        if any(path_region(path) == Region.EXTERNAL for path in event.affected_paths):
+            keys.add(
+                EffectFeedbackKey(
+                    EffectFeedbackKeyKind.OBSERVED_EXTERNAL_RESOLVE,
+                    ExternalResolveSignature(event.operation, Region.EXTERNAL),
+                )
+            )
     return tuple(sorted(keys, key=_feedback_key_sort_key))

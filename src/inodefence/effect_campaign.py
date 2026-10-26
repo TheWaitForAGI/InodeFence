@@ -18,6 +18,7 @@ from inodefence.feedback import (
     EffectSearchStats,
 )
 from inodefence.model import ArchiveCase, EffectRunResult
+from inodefence.model.filesystem import Region, path_region
 from inodefence.mutation_scheduler import MutationSelection
 from inodefence.mutator import MutationAttempt, MutationPolicy, apply_operator, operator_ids
 
@@ -129,6 +130,32 @@ EffectResultProducer = Callable[[ArchiveCase], EffectRunResult]
 EffectStepObserver = Callable[[EffectCampaignStep], None]
 
 
+def _observed_name_segments(result: EffectRunResult, *, exclude_external: bool = False) -> set[str]:
+    """Segment names of objects observed in the general filesystem tree.
+
+    Sourced from `ObjectSnapshot` paths in the run's before/after snapshots — the
+    general observed tree, never `protected_paths` (reading the protected list would
+    be reading the answer). This is the only input the state-aware escape policies add
+    to their generic vocabulary, and it is target-agnostic (the same mechanism yields
+    whatever names the run happens to observe).
+
+    With `exclude_external` set (the blind control arm), any object whose path lies in
+    the EXTERNAL region is skipped, so a name that exists only outside the extraction
+    boundary — the identity of a pre-existing external object — never enters the pool.
+    EXTRACTION/HARNESS names the run itself produced are still kept. The filter is by
+    common Region, not by any specific name, so it stays target-agnostic.
+    """
+    names: set[str] = set()
+    for snapshot in (result.trace.before, result.trace.after):
+        for obj in snapshot.objects:
+            if exclude_external and path_region(obj.path) == Region.EXTERNAL:
+                continue
+            for segment in obj.path.split("/"):
+                if segment and segment not in (".", ".."):
+                    names.add(segment)
+    return names
+
+
 def run_effect_campaign(
     initial_cases: Sequence[ArchiveCase],
     produce_result: EffectResultProducer,
@@ -157,9 +184,28 @@ def run_effect_campaign(
 
     state = EffectSearchState(cases, config.search_policy)
     steps: list[EffectCampaignStep] = []
+    # The state-aware escape policy composes link targets from names the run has
+    # observed in the general filesystem tree (not the protected list). We
+    # accumulate them here and feed them to the mutator; every other policy leaves
+    # this empty and is unaffected.
+    state_aware = config.mutation_policy in (
+        MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK,
+        MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_BLIND,
+    )
+    # The blind control observes the same tree but drops EXTERNAL-region names, so it
+    # cannot learn the identity (name) of a pre-existing external object.
+    blind_observation = (
+        config.mutation_policy == MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_BLIND
+    )
+    observed_names: set[str] = set()
     scheduler = (
         EffectAdaptiveMutationScheduler()
-        if config.search_policy == EffectSearchPolicy.P2_EFFECT_ADAPTIVE
+        if config.search_policy
+        in (
+            EffectSearchPolicy.P2_EFFECT_ADAPTIVE,
+            EffectSearchPolicy.P3_BOUNDARY_ATTEMPT_GRADIENT,
+            EffectSearchPolicy.P3_EXTERNAL_RESOLVE_GRADIENT,
+        )
         else EffectUniformMutationScheduler()
     )
 
@@ -173,6 +219,10 @@ def run_effect_campaign(
         result = produce_result(case)
         if not isinstance(result, EffectRunResult) or result.base_result.case != case:
             raise ValueError("producer must return EffectRunResult for the requested case")
+        if state_aware:
+            observed_names.update(
+                _observed_name_segments(result, exclude_external=blind_observation)
+            )
         decision = state.consider(result)
         if (attempt is None) != (selection is None):
             raise ValueError("mutation attempt and scheduler selection must appear together")
@@ -204,7 +254,13 @@ def run_effect_campaign(
     while len(steps) < config.execution_budget:
         parent = state.select_case(rng)
         selection = scheduler.choose_operator(operator_ids(config.mutation_policy), rng)
-        attempt = apply_operator(parent, rng, config.mutation_policy, selection.operator_id)
+        attempt = apply_operator(
+            parent,
+            rng,
+            config.mutation_policy,
+            selection.operator_id,
+            extra_components=tuple(sorted(observed_names)) if state_aware else (),
+        )
         observe(
             attempt.child_case,
             CampaignOrigin.MUTATION,

@@ -31,6 +31,8 @@ from .effect import (
     effect_is_realized,
 )
 from .effect_feedback import (
+    BoundaryAttemptShape,
+    BoundaryAttemptSignature,
     CausalArchiveRelation,
     CausalMotifSignature,
     EffectFeedbackKey,
@@ -38,6 +40,7 @@ from .effect_feedback import (
     EffectFeedbackSignature,
     EffectOrdinalClass,
     EntryEffectSetSignature,
+    ExternalResolveSignature,
     IdentityRelationType,
     NormalizedEffectSignature,
 )
@@ -101,6 +104,8 @@ __all__ = [
     "ArchiveCase",
     "ArchiveEntry",
     "ArchiveEntryReference",
+    "BoundaryAttemptShape",
+    "BoundaryAttemptSignature",
     "BoundaryIdentityEvidence",
     "ChangeField",
     "CausalArchiveRelation",
@@ -116,6 +121,7 @@ __all__ = [
     "EffectFeedbackKeyKind",
     "EffectFeedbackProjectionV3",
     "EffectFeedbackSignature",
+    "ExternalResolveSignature",
     "EffectObjectObservation",
     "EffectObservationStatus",
     "EffectOrdinalClass",

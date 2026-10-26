@@ -129,6 +129,48 @@ def test_entry_dropped_by_check_path_is_recorded_not_missing(identity, tmp_path:
     )
 
 
+def test_rejected_escaping_link_leaves_a_clean_correlated_frame(identity, tmp_path: Path) -> None:
+    """A later entry node-tar rejects (an escaping link) aborts extraction while an
+    earlier file's async operation is still in flight. The abort-drain must settle the
+    in-flight operation so the frame stays correlation-complete (no orphan start) with
+    no producer failure — exactly what lets the reader admit a rejected run as a valid,
+    complete trace instead of an integrity conflict (the pre-fix behavior, LOG 2026-10-24).
+    """
+    case = ArchiveCase(
+        (
+            ArchiveEntry("a.txt", EntryType.REGULAR, content=b"hello world payload"),
+            ArchiveEntry("link", EntryType.HARDLINK, link_target="../outside/ghost"),
+        )
+    )
+
+    returncode, frame, _ = run_producer(case, identity, tmp_path / "sandbox")
+
+    assert returncode == 2
+    assert frame["target"]["outcome"] == "rejected"
+    assert frame["terminal"]["producer_failures"] == []
+    assert frame["terminal"]["overflow"] is False and frame["terminal"]["dropped_records"] == 0
+    starts = {
+        record["correlation_id"]
+        for record in frame["records"]
+        if record["record_type"] == "operation_start"
+    }
+    completions = {
+        record["correlation_id"]
+        for record in frame["records"]
+        if record["record_type"] == "operation_completion"
+    }
+    # Every started operation has a matching completion: no orphaned correlation.
+    assert starts == completions
+    # The earlier file's in-flight operation was drained, not fabricated as a success.
+    aborted = [
+        record
+        for record in frame["records"]
+        if record["record_type"] == "operation_completion"
+        and record.get("error_code") == "TARGET_ABORTED"
+    ]
+    assert all(record["success"] is False for record in aborted)
+
+
 def test_never_settling_extraction_ends_as_failed_frame(identity, tmp_path: Path) -> None:
     """A symlink whose target is an ancestor of its own path: tar.x() never settles."""
     case = ArchiveCase(

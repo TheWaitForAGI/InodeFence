@@ -1,0 +1,252 @@
+{
+  "entries": [
+    {
+      "name": "sub/",
+      "type": "dir"
+    },
+    {
+      "linkname": "../ext/reference.bin",
+      "name": "sub/link",
+      "type": "link"
+    }
+  ],
+  "fixed_pair": [
+    "7.5.6",
+    "7.5.7"
+  ],
+  "fixture": "nested_hardlink",
+  "releases": {
+    "7.5.2": {
+      "raw": {
+        "declined": null,
+        "extract_tree": {
+          "sub": {
+            "dev": "100",
+            "ino": "5979075",
+            "nlink": 1,
+            "size": 8,
+            "target": null,
+            "type": "dir"
+          },
+          "sub/link": {
+            "dev": "100",
+            "ino": "5979073",
+            "nlink": 2,
+            "size": 48,
+            "target": null,
+            "type": "reg"
+          }
+        },
+        "nlink_after": 2,
+        "nlink_before": 1,
+        "reference_after": {
+          "dev": "100",
+          "ino": "5979073",
+          "nlink": 2,
+          "size": 48,
+          "target": null,
+          "type": "reg"
+        },
+        "reference_before": {
+          "dev": "100",
+          "ino": "5979073",
+          "nlink": 1,
+          "size": 48,
+          "target": null,
+          "type": "reg"
+        },
+        "shared_identity": [
+          "extract/sub/link"
+        ]
+      },
+      "verdict": {
+        "c1_identity_shared": true,
+        "nlink_after": 2,
+        "nlink_before": 1,
+        "outcome": "resolved",
+        "shared_objects": [
+          "extract/sub/link"
+        ]
+      }
+    },
+    "7.5.3": {
+      "raw": {
+        "declined": {
+          "code": "TAR_ENTRY_ERROR",
+          "message": "TAR_ENTRY_ERROR: linkpath contains '..'"
+        },
+        "extract_tree": {
+          "sub": {
+            "dev": "100",
+            "ino": "5979200",
+            "nlink": 1,
+            "size": 0,
+            "target": null,
+            "type": "dir"
+          }
+        },
+        "nlink_after": 1,
+        "nlink_before": 1,
+        "reference_after": {
+          "dev": "100",
+          "ino": "5979198",
+          "nlink": 1,
+          "size": 48,
+          "target": null,
+          "type": "reg"
+        },
+        "reference_before": {
+          "dev": "100",
+          "ino": "5979198",
+          "nlink": 1,
+          "size": 48,
+          "target": null,
+          "type": "reg"
+        },
+        "shared_identity": []
+      },
+      "verdict": {
+        "c1_identity_shared": false,
+        "outcome": "declined",
+        "reason": "TAR_ENTRY_ERROR: linkpath contains '..'"
+      }
+    },
+    "7.5.6": {
+      "raw": {
+        "declined": null,
+        "extract_tree": {
+          "sub": {
+            "dev": "100",
+            "ino": "5979284",
+            "nlink": 1,
+            "size": 8,
+            "target": null,
+            "type": "dir"
+          },
+          "sub/link": {
+            "dev": "100",
+            "ino": "5979282",
+            "nlink": 2,
+            "size": 48,
+            "target": null,
+            "type": "reg"
+          }
+        },
+        "nlink_after": 2,
+        "nlink_before": 1,
+        "reference_after": {
+          "dev": "100",
+          "ino": "5979282",
+          "nlink": 2,
+          "size": 48,
+          "target": null,
+          "type": "reg"
+        },
+        "reference_before": {
+          "dev": "100",
+          "ino": "5979282",
+          "nlink": 1,
+          "size": 48,
+          "target": null,
+          "type": "reg"
+        },
+        "shared_identity": [
+          "extract/sub/link"
+        ]
+      },
+      "verdict": {
+        "c1_identity_shared": true,
+        "nlink_after": 2,
+        "nlink_before": 1,
+        "outcome": "resolved",
+        "shared_objects": [
+          "extract/sub/link"
+        ]
+      }
+    },
+    "7.5.7": {
+      "raw": {
+        "declined": {
+          "code": "TAR_ENTRY_ERROR",
+          "message": "TAR_ENTRY_ERROR: linkpath contains '..'"
+        },
+        "extract_tree": {
+          "sub": {
+            "dev": "100",
+            "ino": "5979397",
+            "nlink": 1,
+            "size": 0,
+            "target": null,
+            "type": "dir"
+          }
+        },
+        "nlink_after": 1,
+        "nlink_before": 1,
+        "reference_after": {
+          "dev": "100",
+          "ino": "5979395",
+          "nlink": 1,
+          "size": 48,
+          "target": null,
+          "type": "reg"
+        },
+        "reference_before": {
+          "dev": "100",
+          "ino": "5979395",
+          "nlink": 1,
+          "size": 48,
+          "target": null,
+          "type": "reg"
+        },
+        "shared_identity": []
+      },
+      "verdict": {
+        "c1_identity_shared": false,
+        "outcome": "declined",
+        "reason": "TAR_ENTRY_ERROR: linkpath contains '..'"
+      }
+    },
+    "7.5.8": {
+      "raw": {
+        "declined": {
+          "code": "TAR_ENTRY_ERROR",
+          "message": "TAR_ENTRY_ERROR: linkpath contains '..'"
+        },
+        "extract_tree": {
+          "sub": {
+            "dev": "100",
+            "ino": "5979487",
+            "nlink": 1,
+            "size": 0,
+            "target": null,
+            "type": "dir"
+          }
+        },
+        "nlink_after": 1,
+        "nlink_before": 1,
+        "reference_after": {
+          "dev": "100",
+          "ino": "5979485",
+          "nlink": 1,
+          "size": 48,
+          "target": null,
+          "type": "reg"
+        },
+        "reference_before": {
+          "dev": "100",
+          "ino": "5979485",
+          "nlink": 1,
+          "size": 48,
+          "target": null,
+          "type": "reg"
+        },
+        "shared_identity": []
+      },
+      "verdict": {
+        "c1_identity_shared": false,
+        "outcome": "declined",
+        "reason": "TAR_ENTRY_ERROR: linkpath contains '..'"
+      }
+    }
+  }
+}

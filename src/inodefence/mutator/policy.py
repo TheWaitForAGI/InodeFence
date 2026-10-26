@@ -31,6 +31,15 @@ class MutationPolicy(StrEnum):
     # lets a run reach an external reference target by observing its name, without
     # any target-specific token being hardcoded (target-agnostic).
     M1_STATE_AWARE_ESCAPE_HARDLINK = "uniform-generic-m1-state-aware-escape-hardlink-v1"
+    # Additive blind control for M1_STATE_AWARE_ESCAPE_HARDLINK: identical slots,
+    # draws and observed-name mechanism, except the observed-name pool DROPS any
+    # segment whose object lies in the EXTERNAL region (kept: EXTRACTION/HARNESS
+    # names the extraction itself produced). The filter is by common Region, not by
+    # any specific name, so it stays target-agnostic. This removes the run's ability
+    # to observe the identity (name) of a pre-existing external object, isolating
+    # object-identity observation as the causal input: with it (full) a run can
+    # compose a reference to an external object, without it (this arm) it cannot.
+    M1_STATE_AWARE_ESCAPE_HARDLINK_BLIND = "uniform-generic-m1-state-aware-escape-hardlink-blind-v1"
 
 
 def mutate_with_policy(

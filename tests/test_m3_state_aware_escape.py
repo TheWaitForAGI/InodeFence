@@ -119,3 +119,56 @@ def test_state_aware_campaign_is_deterministic() -> None:
     assert first == second
     mutations = first.steps[len(first.initial_case_ids) :]
     assert mutations and all(step.scheduler_evidence is not None for step in mutations)
+
+
+def test_blind_observed_names_drop_external_region_only() -> None:
+    # The blind control observes the same tree but excludes EXTERNAL-region objects,
+    # so a name that exists only outside the extraction boundary (here the external
+    # "outside/sentinel") never enters the pool, while EXTRACTION/HARNESS names the
+    # run produced are kept. The filter is by common Region, not by a specific name.
+    from inodefence.model.filesystem import Region, path_region
+
+    result = _result(BASE)
+    full = _observed_name_segments(result)
+    blind = _observed_name_segments(result, exclude_external=True)
+    # "outside"/"sentinel" exist only in the EXTERNAL object, so the blind pool drops them.
+    assert "outside" in full and "sentinel" in full
+    assert "outside" not in blind and "sentinel" not in blind
+    assert blind < full
+    # Exact characterization: the blind pool is precisely the non-EXTERNAL segments.
+    non_external = {
+        seg
+        for snapshot in (result.trace.before, result.trace.after)
+        for obj in snapshot.objects
+        if path_region(obj.path) != Region.EXTERNAL
+        for seg in obj.path.split("/")
+        if seg and seg not in (".", "..")
+    }
+    assert blind == non_external
+
+
+def test_blind_policy_accepts_extra_components() -> None:
+    # The blind control is a state-aware policy, so apply_operator accepts its
+    # (externally filtered) observed-name pool just like the full policy.
+    attempt = apply_operator(
+        BASE,
+        random.Random(0),
+        MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_BLIND,
+        MutationOperatorId.ADD_HARDLINK,
+        extra_components=("dir", "item"),
+    )
+    assert attempt.mutation_policy == MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_BLIND
+
+
+def test_blind_state_aware_campaign_is_deterministic() -> None:
+    config = EffectCampaignConfig(
+        random_seed=123,
+        execution_budget=12,
+        search_policy=EffectSearchPolicy.P3_BOUNDARY_ATTEMPT_GRADIENT,
+        mutation_policy=MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_BLIND,
+    )
+    first = run_effect_campaign(minimal_seed_corpus(), synthetic_effect_result, config)
+    second = run_effect_campaign(minimal_seed_corpus(), synthetic_effect_result, config)
+    assert first == second
+    mutations = first.steps[len(first.initial_case_ids) :]
+    assert mutations and all(step.scheduler_evidence is not None for step in mutations)

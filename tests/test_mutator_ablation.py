@@ -72,7 +72,7 @@ def test_reorder_slot_is_noop_for_inapplicable_case_without_resampling(policy):
 
 
 def test_ablations_have_distinct_versioned_ids_and_do_not_change_legacy_default():
-    assert len({policy.value for policy in MutationPolicy}) == 9
+    assert len({policy.value for policy in MutationPolicy}) == 10
     assert MutationPolicy.LEGACY.value == "uniform-generic-v1"
     assert MutationPolicy.M1.value == "uniform-generic-m1-v1"
     assert (
@@ -86,6 +86,9 @@ def test_ablations_have_distinct_versioned_ids_and_do_not_change_legacy_default(
     )
     assert MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK.value == (
         "uniform-generic-m1-state-aware-escape-hardlink-v1"
+    )
+    assert MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_BLIND.value == (
+        "uniform-generic-m1-state-aware-escape-hardlink-blind-v1"
     )
 
 

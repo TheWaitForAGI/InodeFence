@@ -54,6 +54,7 @@ def _legacy_reference(case: ArchiveCase, rng: random.Random, policy: MutationPol
         # here; the state-aware observed-name pool is applied only via apply_operator.
         MutationPolicy.M1_GENERIC_ESCAPE_HARDLINK: m1_addressing.GENERIC_ESCAPE_OPERATORS,
         MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK: m1_addressing.GENERIC_ESCAPE_OPERATORS,
+        MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_BLIND: m1_addressing.GENERIC_ESCAPE_OPERATORS,
     }[policy]
     operator = rng.choice(table)
     child = operator(case, rng)

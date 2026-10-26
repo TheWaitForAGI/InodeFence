@@ -47,6 +47,7 @@ gradient가 없다. historical 7.5.2/7.5.3 × 3 seed × budget 100에서 oracle 
 | 순서 | 태스크 | 상태 | 게이트 |
 | --- | --- | --- | --- |
 | M4.1 | oras-go adapter 설계(isolated CWD 포함), 동일 generic 모델·oracle로 연결. CVE/target-specific 로직을 generic 모듈에 섞지 않는다 | 대기 | 규민·민찬 협의 |
+| M4.2 | (감사 제안) decompress(JS; CVE-2026-39243/39246 = symlink + absolute hardlink, CWE-59) 또는 2026 CWE-59 군집(adm-zip·Archive::Tar·HF datasets·borg) 중 1개를 2번째 target으로 — 동일 generic oracle 재사용. **중간발표 포함 여부 확인필요**(앞선 기능) | 대기 | 규민·민찬 협의 |
 
 ## 상시 (레인 담당)
 
@@ -55,3 +56,4 @@ gradient가 없다. historical 7.5.2/7.5.3 × 3 seed × budget 100에서 oracle 
 | A/B/C(random / structure-aware / state-aware) **정의와 공통 지표** 확정 — M3.2가 쓸 측정의 기준 | 대기 | 주언 |
 | 거부 입력에서 중간 상태 event 0개인 한계의 표현 방식 | 대기 | 민찬 |
 | demo 이미지 ID 재현성(provenance attestation) | 대기 | 규민 |
+| (감사 제안) coverage-guided baseline(D) + A/B/C/D 공통지표 — 'identity feedback 특정 효과'를 'feedback 일반'과 분리(H1 판정용). **중간발표 포함 여부 확인필요** | 대기 | 주언 |

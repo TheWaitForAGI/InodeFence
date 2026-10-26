@@ -212,6 +212,12 @@ Observer는 extraction 전후 sentinel state를 기록한다.
 
 이 detector는 **순수 additive**다. `evaluate_contracts`를 호출하거나 수정하지 않으며 `RunResult.violations`의 C0/C1/C2 3-tuple·`ContractId`·`ViolationResult` 의미를 바꾸지 않는다. 따라서 기존 fixture 판정과 N01 경로(`n01_candidate_match._relations`는 sentinel 경로의 C1 `IdentityEvidence`만 소비)는 그대로다. 한계는 기본 C1과 같다: dev/inode equality는 observation-time proxy이며 inode 재사용을 구분하지 못하고, symlink는 자기 lstat identity만 비교한다. 아직 confirmed verdict로 승격하거나 campaign 피드백에 연결하지 않는다.
 
+### C1 referent 보강 (additive, 2026-10-27)
+
+기본 C1과 `generalized_identity_confinement`는 symlink의 **자기 lstat identity**만 비교하고 referent는 따라가지 않는다(위 한계). `oracle.symlink_referent_confinement(after)`는 이를 보강해, extraction 안 symlink의 raw readlink 텍스트를 **lexical로만** 해석(파일시스템 traversal 없음)해 referent가 non-extraction region(HARNESS 또는 EXTERNAL; 절대경로와 sandbox 루트 위 `..` escape는 EXTERNAL로 분류)에 떨어지는 경우를 `SymlinkReferentEvidence`로 보고한다. Extraction 내부를 가리키는 symlink는 제외한다.
+
+이 detector도 **순수 additive**다: `evaluate_contracts`를 호출·수정하지 않고 C0/C1/C2 3-tuple을 바꾸지 않으므로 기존 fixture 판정과 N01 경로는 그대로다(전체 committed fixture의 3-tuple 불변을 테스트가 단언). lexical 해석은 observation-time proxy이며 referent 존재·sentinel 일치·후속 write 여부를 증명하지 않는다. 아직 confirmed verdict로 승격하거나 campaign 피드백에 연결하지 않는다.
+
 StateChange는 양쪽 ObjectSnapshot과 changed-field enum을 보존한다. C1 evidence는 internal/sentinel path와 실제 identity pair다. Safe rejection이나 nonzero exit라도 같은 Oracle을 적용한다. 판정은 contract violation 후보이며 confirmed vulnerability에는 재현·root-cause 검토가 추가로 필요하다.
 
 Target attribution은 lifecycle 전제에 의존한다. Runner는 layout/sentinel/input TAR를 모두 준비한 뒤 BEFORE를 찍고 target.run 종료 직후 bookkeeping/cleanup 이전에 AFTER를 찍는다. 정상 setup은 BEFORE baseline에 이미 있어 C0가 아니다. 관찰 구간에는 harness namespace write를 하지 않아야 한다. Snapshot 자체는 actor를 식별하지 못하므로 adapter가 이 구간에 log/bookkeeping을 생성·삭제·교체하면 C0 false positive가 생길 수 있다. 이를 경로 면제로 해결하면 실제 HARNESS escape를 놓친다. 이 전제와 한계를 C0 limitations에도 기록한다.

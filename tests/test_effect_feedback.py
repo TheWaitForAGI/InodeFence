@@ -16,6 +16,8 @@ from inodefence.feedback import (
     EffectFeedbackKeyKind,
     EffectSearchPolicy,
     EffectSearchState,
+    IdentityFingerprint,
+    ViolationFingerprint,
     effect_feedback_keys,
 )
 from inodefence.model import (
@@ -23,6 +25,7 @@ from inodefence.model import (
     ArchiveEntry,
     ArchiveEntryReference,
     CausalRelationKind,
+    ContractId,
     EffectEventTrace,
     EffectRunResult,
     EffectStreamCompleteness,
@@ -208,6 +211,29 @@ def test_effect_adaptive_scheduler_uses_binary_bounded_effect_reward() -> None:
     assert evidence.reward == 0 and evidence.weights_after == before
 
 
+def test_effect_adaptive_scheduler_rewards_a_new_violation_without_effect_key() -> None:
+    """A child that only yields a new violation fingerprint still rewards its operator.
+
+    Corpus admission already retains such a child (`effect_novel or new_violations`);
+    the operator-weight signal must match, or feedback stays blind to violation-only
+    discoveries — exactly the search signal the rediscovery milestone needs.
+    """
+    case = ArchiveCase((ArchiveEntry("a", EntryType.REGULAR, b"a"),))
+    scheduler = EffectAdaptiveMutationScheduler(maximum_weight=8)
+    operator = MutationOperatorId.ADD_HARDLINK
+    violation = ViolationFingerprint(
+        ContractId.C1, (IdentityFingerprint("extract/a", "outside/sentinel.txt"),)
+    )
+    before = scheduler.weights
+    selection = MutationSelection(operator, before, dict(before)[operator])
+    attempt = apply_operator(case, random.Random(11), MutationPolicy.LEGACY, operator)
+
+    evidence = scheduler.observe_outcome(selection, attempt, (), (violation,))
+
+    assert evidence.reward == 1
+    assert dict(evidence.weights_after)[operator] == dict(before)[operator] + 1
+
+
 def test_policy_ids_and_closed_loop_campaign_are_deterministic() -> None:
     assert EffectSearchPolicy.P0_FINAL_STATE.value == (
         "final-state-v3-or-violation-v1-effect-observation-v2-uniform-mutation-v1"
@@ -236,4 +262,6 @@ def test_policy_ids_and_closed_loop_campaign_are_deterministic() -> None:
         assert step.scheduler_evidence.parent_case_id == step.parent_case_id
         assert step.scheduler_evidence.child_case_id == step.result.base_result.case.case_id
         assert step.scheduler_evidence.selected_operator_id == step.mutation_attempt.operator_id
-        assert step.scheduler_evidence.reward == int(bool(step.feedback.new_effect_keys))
+        assert step.scheduler_evidence.reward == int(
+            bool(step.feedback.new_effect_keys) or bool(step.feedback.new_violation_fingerprints)
+        )

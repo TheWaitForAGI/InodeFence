@@ -102,7 +102,14 @@ class EffectUniformMutationScheduler:
 
 
 class EffectAdaptiveMutationScheduler:
-    """The existing bounded 1..8 mechanism with binary eligible effect reward."""
+    """Bounded 1..8 mechanism; binary reward on new effect key OR new violation.
+
+    The reward channel matches corpus admission (`effect_novel or new_violations`):
+    a new boundary-violation fingerprint is the strongest security-state signal,
+    so the operator that produced it gains weight too, not only effect novelty.
+    Benign runs (no violations) are unaffected, so a 0-violation campaign keeps the
+    exact same operator-weight trajectory as before.
+    """
 
     def __init__(self, *, maximum_weight: int = 8) -> None:
         if type(maximum_weight) is not int or maximum_weight < 1:
@@ -142,7 +149,7 @@ class EffectAdaptiveMutationScheduler:
         _validate_outcome(selection, attempt)
         if self.weights != selection.weights_before:
             raise ValueError("scheduler weights changed between selection and outcome")
-        reward = int(bool(new_effect_keys))
+        reward = int(bool(new_effect_keys) or bool(new_violation_fingerprints))
         if reward:
             current = self._weights[selection.operator_id]
             self._weights[selection.operator_id] = min(current + 1, self.maximum_weight)

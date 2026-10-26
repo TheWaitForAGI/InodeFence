@@ -23,12 +23,14 @@ JSONL 부분 저장+CI, producer 견고성)와 P2-b/P2-c 머지가 main에 있�
 ## M2 — 실제 경계위반 통제 재현 + 버전 구분 (실증됨 → 박제)
 
 2026-10-24 capability probe로 node-tar 7.5.2가 외부 sentinel로 하드링크를 만들어 C1+C2가 성립하고
-7.5.3은 거부함을 observed(LOG). 남은 일은 이걸 **재현 가능한 형태로 박제**하는 것이다. 재발견(자력 발견)과는
-구분한다.
+7.5.3은 거부함을 observed(LOG). 재현 스크립트+증거는 `experiments/repro/`에 박제됐고(5 릴리스 sweep),
+이는 **2개 CVE의 차분 경계**다: 최상위 7.5.2/7.5.3 = CVE-2026-23745(catalog N01·R1), 중첩 7.5.6/7.5.7 =
+CVE-2026-24842(CVE-2026-23745 수정이 도입한 check/use 회귀; catalog N02·R2). 두 CVE 모두 catalog에 이미
+등록됨. 동일 generic identity oracle이 두 root-cause를 outcome으로 포착한다. 재발견(자력 발견)과는 구분한다.
 
 | 순서 | 태스크 | 상태 | 게이트 |
 | --- | --- | --- | --- |
-| M2.1 | capability probe를 repo 안 재현 스크립트/테스트로 고정: 손으로 만든 하드링크 fixture(외부 sentinel 대상)를 실제 7.5.2/7.5.3에 돌려 7.5.2=C1+C2·7.5.3=거부를 확인. generic C1/C2만 쓰고 CVE 식별자/PoC 하드코딩 없음. LOG 한 줄 + Ledger M2 증거 갱신 | 대기 | 없음 (호스트 docker) |
+| M2.1 | capability probe를 repo 안 재현 스크립트/테스트로 고정: 손으로 만든 하드링크 fixture(외부 sentinel 대상)를 실제 7.5.2/7.5.3에 돌려 7.5.2=C1+C2·7.5.3=거부를 확인. generic C1/C2만 쓰고 CVE 식별자/PoC 하드코딩 없음. LOG 한 줄 + Ledger M2 증거 갱신 | 완료(experiments/repro/cross_release_identity.py) | 없음 (호스트 docker) |
 | M2.2 | 같은 fixture를 우리 Observer/Oracle 경로(effect pipeline)로도 통과시켜 "손 probe == oracle 판정" 일치 확인 | 대기 | M2.1 |
 
 ## M3 — 퍼저가 자력으로 위반을 찾는다 (H1 본체)

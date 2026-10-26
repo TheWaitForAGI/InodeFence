@@ -20,6 +20,14 @@
 # demo-historical only: TAR_VERSION (required, 7.5.2|7.5.3), HISTORICAL_IMAGE (default
 # inodefence-node-tar-effect:$TAR_VERSION; must already exist), DEMO_SEED, DEMO_BUDGET
 # (defaults P2 adaptive + escape-hardlink in code; budget capped at 100 in code).
+#
+# Parallel runs on one host: set RUN_ID to a unique token (e.g. <version>-<arm>-<seed>)
+# and the controller, volume and evidence filename all carry that suffix, so independent
+# campaigns never collide and each still removes only the controller/volume it created.
+# Empty RUN_ID keeps the original single-run names. SKIP_BUILD=1 reuses already-built
+# images; BUILD_ONLY=1 builds the shared images and exits without creating a controller.
+# scripts/run_parallel_native.py drives a version/arm/seed matrix this way under a
+# concurrency cap (it builds once with BUILD_ONLY, then fans out with SKIP_BUILD).
 set -euo pipefail
 
 MODE="${1:-smoke}"
@@ -30,6 +38,20 @@ case "$MODE" in
     exit 2
     ;;
 esac
+
+RUN_ID="${RUN_ID:-}"
+SKIP_BUILD="${SKIP_BUILD:-}"
+BUILD_ONLY="${BUILD_ONLY:-}"
+# RUN_ID keeps concurrent campaigns from colliding; validate it before it reaches a
+# container/volume name. The pattern matches Docker's own name grammar.
+if [ -n "$RUN_ID" ] && ! [[ "$RUN_ID" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]; then
+  echo "RUN_ID must match [A-Za-z0-9][A-Za-z0-9_.-]* (got: $RUN_ID)" >&2
+  exit 2
+fi
+if [ "$SKIP_BUILD" = 1 ] && [ "$BUILD_ONLY" = 1 ]; then
+  echo "SKIP_BUILD=1 and BUILD_ONLY=1 are mutually exclusive" >&2
+  exit 2
+fi
 
 # Builtins only up to here, so the Dev Container gets guidance instead of a setup failure.
 if ! command -v docker >/dev/null 2>&1; then
@@ -48,19 +70,24 @@ EVIDENCE_DIR="${INODEFENCE_EVIDENCE_DIR:-$HOME/inodefence-evidence}"
 CONTROLLER_IMAGE=inodefence-controller:local
 HELPER_IMAGE=inodefence-helper:local
 NODE_IMAGE=inodefence-node-tar:local
-CONTROLLER=inodefence-local-controller
-VOLUME=inodefence-local-runtime
+# A non-empty RUN_ID suffixes the per-run resources so parallel campaigns never
+# share a controller or volume; empty keeps the original single-run names.
+CONTROLLER="inodefence-local-controller${RUN_ID:+-$RUN_ID}"
+VOLUME="inodefence-local-runtime${RUN_ID:+-$RUN_ID}"
 
 STAMP="$(date +%Y%m%d-%H%M%S)"
+# Evidence filename label: RUN_ID is deterministic and parallel-safe; without it the
+# timestamp keeps the original single-run filenames unchanged.
+LABEL="${RUN_ID:-$STAMP}"
 if [ "$MODE" = demo ]; then
-  CONTROLLER_EVIDENCE="/tmp/inodefence-effect-demo-native-$STAMP.json"
-  HOST_EVIDENCE="$EVIDENCE_DIR/inodefence-effect-demo-native-$STAMP.json"
+  CONTROLLER_EVIDENCE="/tmp/inodefence-effect-demo-native-$LABEL.json"
+  HOST_EVIDENCE="$EVIDENCE_DIR/inodefence-effect-demo-native-$LABEL.json"
 elif [ "$MODE" = demo-historical ]; then
-  CONTROLLER_EVIDENCE="/tmp/inodefence-effect-demo-historical-$STAMP.json"
-  HOST_EVIDENCE="$EVIDENCE_DIR/inodefence-effect-demo-historical-$STAMP.json"
+  CONTROLLER_EVIDENCE="/tmp/inodefence-effect-demo-historical-$LABEL.json"
+  HOST_EVIDENCE="$EVIDENCE_DIR/inodefence-effect-demo-historical-$LABEL.json"
 else
-  CONTROLLER_EVIDENCE="/tmp/inodefence-node-smoke-$STAMP"
-  HOST_EVIDENCE="$EVIDENCE_DIR/inodefence-node-smoke-$STAMP"
+  CONTROLLER_EVIDENCE="/tmp/inodefence-node-smoke-$LABEL"
+  HOST_EVIDENCE="$EVIDENCE_DIR/inodefence-node-smoke-$LABEL"
 fi
 
 STEP="setup"
@@ -126,19 +153,30 @@ command -v "$PYTHON" >/dev/null || {
   exit 1
 }
 # Never remove resources this run did not create; ask the operator instead.
-if dk container inspect "$CONTROLLER" >/dev/null 2>&1 ||
-  dk volume inspect "$VOLUME" >/dev/null 2>&1; then
+# BUILD_ONLY only builds shared images (no controller), so it skips this guard.
+if [ "$BUILD_ONLY" != 1 ] && { dk container inspect "$CONTROLLER" >/dev/null 2>&1 ||
+  dk volume inspect "$VOLUME" >/dev/null 2>&1; }; then
   echo "stale $CONTROLLER or $VOLUME exists; inspect and remove it manually:" >&2
   echo "  docker --context $CONTEXT rm -f $CONTROLLER; docker --context $CONTEXT volume rm $VOLUME" >&2
   exit 1
 fi
 
-step "build images"
-dk build -f "$REPO_ROOT/.devcontainer/Dockerfile" -t "$CONTROLLER_IMAGE" "$REPO_ROOT"
-dk build -f "$REPO_ROOT/tools/container-helper/Dockerfile" -t "$HELPER_IMAGE" "$REPO_ROOT"
-# The historical effect image is prebuilt and frozen out of band; never build it here.
-if [ "$MODE" != demo-historical ]; then
-  dk build -f "$REPO_ROOT/tools/node-tar/Dockerfile" -t "$NODE_IMAGE" "$REPO_ROOT"
+if [ "$SKIP_BUILD" = 1 ]; then
+  step "reuse prebuilt images"
+  echo "SKIP_BUILD=1: reusing $CONTROLLER_IMAGE / $HELPER_IMAGE (+ $NODE_IMAGE for non-historical)"
+else
+  step "build images"
+  dk build -f "$REPO_ROOT/.devcontainer/Dockerfile" -t "$CONTROLLER_IMAGE" "$REPO_ROOT"
+  dk build -f "$REPO_ROOT/tools/container-helper/Dockerfile" -t "$HELPER_IMAGE" "$REPO_ROOT"
+  # The historical effect image is prebuilt and frozen out of band; never build it here.
+  if [ "$MODE" != demo-historical ]; then
+    dk build -f "$REPO_ROOT/tools/node-tar/Dockerfile" -t "$NODE_IMAGE" "$REPO_ROOT"
+  fi
+fi
+
+if [ "$BUILD_ONLY" = 1 ]; then
+  echo "BUILD_ONLY=1: shared images ready (context=$CONTEXT mode=$MODE); no controller created"
+  exit 0
 fi
 
 step "prepare controller"

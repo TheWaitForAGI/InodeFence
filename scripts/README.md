@@ -110,6 +110,31 @@ image 빌드 → non-root controller 준비 → `scripts.container_host`로 `val
 (기본 `python3.12`), `INODEFENCE_EVIDENCE_DIR`로 바꿀 수 있다. 실패하면 `FAILED at step: <단계>`를
 출력한다. 결과는 demo/engineering run이며 qualification이 아니다.
 
+## 여러 native 캠페인 병렬 실행 (`scripts/run_parallel_native.py`)
+
+한 호스트에서 `version × arm × seed` 매트릭스를 병렬로 돌린다. 각 셀은 `local_node_tar_smoke.sh`를
+고유한 `RUN_ID`로 실행해 컨트롤러·볼륨·evidence 파일이 서로 충돌하지 않게 하고(`RUN_ID`가 비어
+있으면 기존 단일 실행 이름 그대로), 동시 실행 수는 `--jobs` 세마포어로 제한한다(노트북 호스트는
+3~4 권장). 공용 이미지는 `BUILD_ONLY`로 한 번만 빌드하고 각 셀은 `SKIP_BUILD`로 재사용하므로 콜드
+빌드가 N번 겹치지 않는다. **격리는 그대로**다 — 모든 셀이 단일 `make demo` /
+`make demo-native-historical`와 동일한 trusted non-root 컨트롤러와 contained-target 정책을 쓴다.
+매트릭스가 바꾸는 것은 자원 이름과 캠페인 파라미터(seed·budget·policy arm)뿐이다. docker가 있는
+호스트 터미널에서만 실행된다.
+
+```bash
+PYTHONPATH=src python3.12 -m scripts.run_parallel_native \
+  --mode demo-historical --versions 7.5.2,7.5.3 --seeds 123,456,789 \
+  --arm default --budget 100 --jobs 3 \
+  --output ~/inodefence-evidence/<new-dir>
+```
+
+`--arm`은 `default`(스크립트 in-code 기본 정책) 또는 `LABEL=SEARCH/MUTATION`이며 SEARCH/MUTATION은
+`EffectSearchPolicy`/`MutationPolicy` 멤버 이름(또는 `-`로 해당 쪽 기본 유지)이다. 반복 지정으로 여러
+arm을 비교한다. 결과는 `<output>/<run-id>.json`(demo 모드는 `.steps.jsonl`도), 셀별 콘솔 로그는
+`<output>/<run-id>.log`, 요약 manifest는 `<output>/matrix.json`에 남는다. 모든 셀이 성공해야 exit 0이다.
+`--dry-run`은 docker 없이 계획된 매트릭스만 출력한다. 결과는 demo/engineering run이며 qualification이
+아니다. (격리 완화 플래그는 추가하지 않는다 — 가드 R3/R5.)
+
 ## N01 historical pair (explicit trusted-host action)
 
 N01 is a separate bounded mode, not part of the normal `7.5.22` image/target checks. On the

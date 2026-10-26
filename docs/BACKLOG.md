@@ -57,3 +57,4 @@ gradient가 없다. historical 7.5.2/7.5.3 × 3 seed × budget 100에서 oracle 
 | A/B/C(random / structure-aware / state-aware) **정의와 공통 지표** 확정 — M3.2가 쓸 측정의 기준 | 대기 | 주언 |
 | 거부 입력에서 중간 상태 event 0개인 한계의 표현 방식 | 대기 | 민찬 |
 | demo 이미지 ID 재현성(provenance attestation) | 대기 | 규민 |
+| 선행연구 서지 정합성(related-work-positioning.md에 저자·venue·연도·아티팩트) | 완료(jiwoong/p-audit-prior-work-citations) | 없음 |

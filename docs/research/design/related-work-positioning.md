@@ -4,9 +4,13 @@
 
 이미 알려진 아이디어를 실수로 신규 기여처럼 표현하지 않기 위한 기준 문서다.
 
+각 절의 **서지**는 저자·venue·연도·아티팩트를 2026-10-26 독립 확인한 것으로, 심사자가 원문을 찾을 수 있게 한다.
+
 ## Jana & Shmatikov — 2012
 
 **Abusing File Processing in Malware Detectors for Fun and Profit**
+
+서지: Suman Jana, Vitaly Shmatikov (UT Austin). IEEE S&P 2012, pp. 80–94. DOI [10.1109/SP.2012.15](https://doi.org/10.1109/SP.2012.15) · [dblp](https://dblp.org/rec/conf/sp/JanaS12.html)
 
 확인된 관련 내용:
 
@@ -28,6 +32,8 @@
 ## ZIPDiff — 2025
 
 **My ZIP isn't your ZIP: Identifying and Exploiting Semantic Gaps Between ZIP Parsers**
+
+서지: Yufan You, Jianjun Chen, Qi Wang, Haixin Duan (Tsinghua). USENIX Security 2025, Distinguished Paper. 50 parser / 19개 언어 differential, 공개 아티팩트. [USENIX](https://www.usenix.org/conference/usenixsecurity25/presentation/you) · [artifact](https://github.com/ouuan/ZipDiff)
 
 확인된 관련 내용:
 
@@ -52,6 +58,8 @@ InodeFence 관점의 중요한 한계:
 
 **Pig in a Poke: Automatically Detecting and Exploiting Link Following Vulnerabilities in Windows File Operations**
 
+서지: Bocheng Xiang, Yuan Zhang, Fengyu Liu, Hao Huang, Zihan Lin, Min Yang (Fudan). USENIX Security 2025 (Honorable Mention). 도구명 LinkZard; 120개 상용 프로그램에서 55 zero-day, 15 CVE. [USENIX](https://www.usenix.org/conference/usenixsecurity25/presentation/xiang-bocheng) · [artifact (Zenodo)](https://zenodo.org/records/15479538)
+
 확인된 관련 내용:
 
 - feedback-driven file-state fuzzing
@@ -73,6 +81,8 @@ InodeFence 관점의 중요한 한계:
 ## Wormholes — 2026
 
 **Wormholes in the File System: Understanding the Misunderstanding of Symlinks**
+
+서지: Yongheng Liu, Lei Zhang, Yuhang Zhao, Yuzhou He (Fudan). USENIX Security 2026. 85개 프로젝트에서 16 arbitrary file write, 2 high-severity CVE. 아티팩트 Zenodo DOI [10.5281/zenodo.20325582](https://doi.org/10.5281/zenodo.20325582)
 
 현재 InodeFence와 가장 직접적으로 가까운 선행연구다.
 

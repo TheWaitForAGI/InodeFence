@@ -9,6 +9,7 @@ from .effect import (
     CausalRelationKind,
     EffectClass,
     EffectEvidenceStrength,
+    ObservedOperationType,
     OperationOutcome,
 )
 from .filesystem import Region
@@ -30,6 +31,33 @@ class EffectFeedbackKeyKind(StrEnum):
     INDIVIDUAL_EFFECT = "individual_effect"
     ENTRY_EFFECT_SET = "entry_effect_set"
     CAUSAL_MOTIF = "causal_motif"
+    # M3: a boundary-approach *attempt* — the target issued (or refused) a link
+    # operation whose observed target path lies outside the extraction root. It is
+    # the only effect key that may come from a non-SUCCESS (cleanly rejected) trace,
+    # and only under the opt-in boundary-attempt arm. Additive; see effect.py.
+    BOUNDARY_ESCAPE_ATTEMPT = "boundary_escape_attempt"
+    # M3 refinement: a purely observed region signal — an observed operation whose
+    # *resolved* path lies in the EXTERNAL region, regardless of the raw link text or
+    # the operation outcome. Unlike BOUNDARY_ESCAPE_ATTEMPT it does not read the input
+    # link target at all, so it also credits an external resolution reached by other
+    # means (e.g. through an observed symlink). The intermediate rung between a lexical
+    # escape attempt and an external success. Additive; opt-in; see effect.py.
+    OBSERVED_EXTERNAL_RESOLVE = "observed_external_resolve"
+
+
+class BoundaryAttemptShape(StrEnum):
+    """Target-agnostic shape of an attempted escaping link target.
+
+    Bucketed from the raw link text's leading parent-traversal depth (or absolute
+    prefix). It names no concrete path, protected object, sentinel, tail, CVE or
+    PoC: only how the attempt steps out of the extraction root. Tail proximity to
+    any specific external object is never encoded.
+    """
+
+    ABSOLUTE = "absolute"
+    PARENT_1 = "parent_1"
+    PARENT_2 = "parent_2"
+    PARENT_3_PLUS = "parent_3_plus"
 
 
 class CausalArchiveRelation(StrEnum):
@@ -152,7 +180,82 @@ class CausalMotifSignature:
             raise ValueError("causal motif requires an archive relation class")
 
 
-EffectFeedbackSignature = NormalizedEffectSignature | EntryEffectSetSignature | CausalMotifSignature
+@dataclass(frozen=True, slots=True)
+class BoundaryAttemptSignature:
+    """One attempted hardlink whose observed target path escapes the extraction root.
+
+    Unlike NormalizedEffectSignature this does not require a *realized* success: it
+    describes the attempt itself (the target issued or refused a link to an object
+    outside the root), so it can be derived from a cleanly recorded rejected trace.
+    It names no concrete path, protected object, sentinel, tail, CVE or PoC: only
+    the trigger entry kind, the observed target region, the operation outcome, and a
+    bounded escape shape. This is the dense boundary-approach signal that the
+    all-or-nothing C0/C1/C2 verdicts miss while the escaping attempt is refused.
+    """
+
+    serialization_schema: ClassVar[int] = 1
+
+    trigger_entry_type: EntryType
+    target_region: Region
+    operation_outcome: OperationOutcome
+    escape_shape: BoundaryAttemptShape
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.trigger_entry_type, EntryType):
+            raise ValueError("boundary attempt requires a trigger entry type")
+        if not isinstance(self.target_region, Region) or self.target_region == Region.EXTRACTION:
+            raise ValueError("boundary attempt target region must be outside the extraction root")
+        if not isinstance(self.operation_outcome, OperationOutcome):
+            raise ValueError("boundary attempt requires an operation outcome")
+        if not isinstance(self.escape_shape, BoundaryAttemptShape):
+            raise ValueError("boundary attempt requires a bounded escape shape")
+
+    def sort_key(self) -> tuple[object, ...]:
+        return (
+            self.trigger_entry_type.value,
+            self.target_region.value,
+            self.operation_outcome.value,
+            self.escape_shape.value,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class ExternalResolveSignature:
+    """One observed operation whose resolved path lies in the EXTERNAL region.
+
+    Purely observed and region-based: the operation kind and the resolved region, taken
+    from the observed affected path via the generic `path_region`. It reads no raw link
+    text, no outcome, no concrete path, no protected object, no sentinel and no CVE — so
+    it is target-agnostic and fires for any external resolution however it was reached.
+    This is the intermediate rung between a lexical escape attempt and an external
+    success; it can be derived from a cleanly recorded rejected trace (ENOENT included).
+    """
+
+    serialization_schema: ClassVar[int] = 1
+
+    operation: ObservedOperationType
+    resolved_region: Region
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.operation, ObservedOperationType):
+            raise ValueError("external resolve requires an observed operation type")
+        if (
+            not isinstance(self.resolved_region, Region)
+            or self.resolved_region == Region.EXTRACTION
+        ):
+            raise ValueError("external resolve region must be outside the extraction root")
+
+    def sort_key(self) -> tuple[object, ...]:
+        return (self.operation.value, self.resolved_region.value)
+
+
+EffectFeedbackSignature = (
+    NormalizedEffectSignature
+    | EntryEffectSetSignature
+    | CausalMotifSignature
+    | BoundaryAttemptSignature
+    | ExternalResolveSignature
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,6 +270,8 @@ class EffectFeedbackKey:
             EffectFeedbackKeyKind.INDIVIDUAL_EFFECT: NormalizedEffectSignature,
             EffectFeedbackKeyKind.ENTRY_EFFECT_SET: EntryEffectSetSignature,
             EffectFeedbackKeyKind.CAUSAL_MOTIF: CausalMotifSignature,
+            EffectFeedbackKeyKind.BOUNDARY_ESCAPE_ATTEMPT: BoundaryAttemptSignature,
+            EffectFeedbackKeyKind.OBSERVED_EXTERNAL_RESOLVE: ExternalResolveSignature,
         }
         if not isinstance(self.kind, EffectFeedbackKeyKind) or not isinstance(
             self.signature, expected.get(self.kind, object)

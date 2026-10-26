@@ -67,6 +67,15 @@ def _operator_table(
         return m1_addressing.OPERATORS
     if policy == MutationPolicy.M1_PROTECTED_COMPONENTS_ESCAPE_HARDLINK:
         return m1_addressing.ESCAPE_OPERATORS
+    if policy in (
+        MutationPolicy.M1_GENERIC_ESCAPE_HARDLINK,
+        MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK,
+        MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_BLIND,
+    ):
+        # Static default pool; the state-aware policies' observed-name pool is applied
+        # per-call in apply_operator when the caller provides extra_components. The
+        # blind control differs only in which observed names the caller accumulates.
+        return m1_addressing.GENERIC_ESCAPE_OPERATORS
     raise AssertionError(f"unhandled mutation policy: {policy}")
 
 
@@ -76,20 +85,41 @@ _NO_REORDER_POLICIES = (
     MutationPolicy.M1_PROTECTED_COMPONENTS_NO_REORDER,
 )
 
+# The state-aware escape policies accept a caller-supplied observed-name pool
+# (full and its blind control); every other policy ignores extra_components.
+_STATE_AWARE_POLICIES = (
+    MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK,
+    MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_BLIND,
+)
+
 
 def apply_operator(
     case: ArchiveCase,
     rng: random.Random,
     policy: MutationPolicy,
     operator_id: MutationOperatorId,
+    *,
+    extra_components: tuple[str, ...] = (),
 ) -> MutationAttempt:
-    """Apply one selected slot; A3 still executes then discards reorder output."""
+    """Apply one selected slot; A3 still executes then discards reorder output.
+
+    `extra_components` are observed object names the caller may supply only for the
+    state-aware escaping-hardlink policies (full and its blind control); they extend
+    those policies' generic vocabulary (never the protected-path list). Other
+    policies ignore them, so the existing arms are byte-for-byte unchanged.
+    """
     if not isinstance(case, ArchiveCase) or not isinstance(policy, MutationPolicy):
         raise ValueError("operator application requires ArchiveCase and MutationPolicy")
     if not isinstance(operator_id, MutationOperatorId):
         raise ValueError("operator_id must be a MutationOperatorId")
+    if extra_components and policy not in _STATE_AWARE_POLICIES:
+        raise ValueError("extra_components apply only to the state-aware escape policies")
     index = OPERATOR_ORDER.index(operator_id)
-    child = _operator_table(policy)[index](case, rng)
+    if policy in _STATE_AWARE_POLICIES and extra_components:
+        table = m1_addressing.state_aware_escape_operators(tuple(extra_components))
+    else:
+        table = _operator_table(policy)
+    child = table[index](case, rng)
     if policy in _NO_REORDER_POLICIES and operator_id == MutationOperatorId.REORDER_ENTRIES:
         child = case
     return MutationAttempt(operator_id, policy, case.case_id, child, child != case)

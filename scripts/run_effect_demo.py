@@ -48,7 +48,12 @@ NATIVE_UNAVAILABLE = (
 # Top-level report label; native reports carry "demo run" instead.
 SYNTHETIC_LABEL = "SYNTHETIC (not node-tar)"
 DEFAULT_NATIVE_BUDGET = 20
-MAX_NATIVE_BUDGET = 100
+# Per-campaign execution ceiling (number of cases/steps). Raised from 100 to allow
+# real-scale autonomous-discovery studies that need many thousands of executions across
+# seeds; 100 was a toy ceiling. This is only the step-count ceiling — the safety
+# boundary, container isolation, disposable sandbox + sentinel, pinned/frozen target
+# versions and the oracle are all unchanged.
+MAX_NATIVE_BUDGET = 2000
 NODE_TAR_PIN = Path(__file__).resolve().parents[1] / "tools" / "node-tar" / "package.json"
 
 # P2-c historical state-aware campaign. This is a separate path from the benign
@@ -375,6 +380,7 @@ def historical_demo_report(
     budget: int = DEFAULT_NATIVE_BUDGET,
     policy: EffectSearchPolicy = HISTORICAL_SEARCH_POLICY,
     mutation_policy: MutationPolicy = HISTORICAL_MUTATION_POLICY,
+    step_sink: Callable[[dict[str, object]], None] | None = None,
 ) -> dict[str, object]:
     """Run the state-aware effect loop on a frozen historical node-tar; label it a demo run.
 
@@ -436,8 +442,17 @@ def historical_demo_report(
             )
         return run.result
 
+    reporter = EffectStepReporter()
+
+    def record_step(step) -> None:
+        # Persist each finished step so an abort mid-campaign still leaves the completed
+        # loop record (including any oracle event); large-budget runs abort more often.
+        record = reporter.add(step)
+        if step_sink is not None:
+            step_sink(record)
+
     started = perf_counter()
-    result = run_effect_campaign(minimal_seed_corpus(), produce, config)
+    result = run_effect_campaign(minimal_seed_corpus(), produce, config, on_step=record_step)
     total = perf_counter() - started
     report = effect_campaign_report(result, "native")
     report.update(

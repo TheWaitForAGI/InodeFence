@@ -50,6 +50,11 @@ def _legacy_reference(case: ArchiveCase, rng: random.Random, policy: MutationPol
         MutationPolicy.M1_PROTECTED_COMPONENTS: m1_addressing.OPERATORS,
         MutationPolicy.M1_PROTECTED_COMPONENTS_NO_REORDER: m1_addressing.OPERATORS,
         MutationPolicy.M1_PROTECTED_COMPONENTS_ESCAPE_HARDLINK: m1_addressing.ESCAPE_OPERATORS,
+        # The generic/state-aware escape policies dispatch over the generic escape set
+        # here; the state-aware observed-name pool is applied only via apply_operator.
+        MutationPolicy.M1_GENERIC_ESCAPE_HARDLINK: m1_addressing.GENERIC_ESCAPE_OPERATORS,
+        MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK: m1_addressing.GENERIC_ESCAPE_OPERATORS,
+        MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_BLIND: m1_addressing.GENERIC_ESCAPE_OPERATORS,
     }[policy]
     operator = rng.choice(table)
     child = operator(case, rng)

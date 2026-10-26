@@ -315,3 +315,32 @@ Native feedback work is authorized only after the separate qualification reports
 
 The first value authorizes campaign integration, not an effectiveness claim. The second
 blocks native P0-v2/P1-v2/P2-v2 execution while preserving synthetic engineering tests.
+
+## M3 boundary-attempt key and the P3 arm (additive)
+
+The keys above are derived only from feedback-eligible traces: complete, valid and
+*successfully* terminated. That fails closed for the one input that reaches a boundary
+violation — an escaping hardlink. On an affected target the escaping attempt may be
+refused with `ENOENT` (the referent is absent) and on a fixed target it is refused at the
+path check; either way the target *rejects*, so a success-only gate sees nothing and the
+search has no gradient toward the boundary.
+
+`BoundaryAttemptSignature` adds one target-agnostic key for an *attempt*, not a realized
+effect: `(trigger_entry_type, target_region, operation_outcome, escape_shape)`, derived
+from an observed `link` operation whose observed target path lies outside the extraction
+root. The escape shape is a bounded parent-depth/absolute bucket taken from the trigger
+entry's raw link text. It never encodes a concrete path, a protected object, a sentinel,
+a tail, or a CVE, so it rewards *approaching* the boundary, not the specific answer. The
+scheduler reward is unchanged (binary on any new effect key), so the operator that issues
+the escaping attempt gains weight through the ordinary channel.
+
+This key is produced only under the opt-in `P3_BOUNDARY_ATTEMPT_GRADIENT` arm, and that arm
+is the single exception to the success-only gate: it also derives boundary-attempt keys
+from a **cleanly recorded rejected** trace (complete, valid, `integrity_valid`, termination
+`SUCCESS` or `REJECTED`). Every other eligibility rule is unchanged — invalid, incomplete,
+failed or timed-out streams still fail closed — and P0/P1/P2 and all success-only keys are
+untouched. Recording a rejected trace cleanly requires the producer to settle operations
+that were still in flight when the target aborted; those are recorded as observed-but-
+unrealized completions (non-`SUCCEEDED`), never fabricated successes, so they form no
+realized effect and no key. Relaxing the gate for one arm is a research-honesty decision
+and is flagged for human review wherever it ships.

@@ -1,8 +1,9 @@
 # 현재 프로젝트 상태
 
-## 중간발표 P0 현황 (11/2) — 담당자가 직접 갱신
+## 중간발표 P0 현황 (M1 세부 이력 — 현재 단일 기준은 아래 Capability Ledger)
 
-기준: [MIDTERM_GOALS](MIDTERM_GOALS.md) · 실행 기록: [LOG](LOG.md) · 갱신: 2026-10-24
+기준: 현재 능력은 아래 **Capability Ledger**가 단일 기준이다. 이 P0 표는 M1(루프 동작)의 세부
+이력이며 날짜·게이트를 현재 제약으로 읽지 않는다. 배경 [MIDTERM_GOALS](MIDTERM_GOALS.md) · 실행 기록: [LOG](LOG.md)
 
 | P0 | 담당 | 상태 (10/23) | 다음 할 일 |
 | --- | --- | --- | --- |
@@ -39,7 +40,7 @@ inferred(추론)를 구분하고, synthetic은 native 증거로 승격하지 않
 | feedback→mutation 연결(corpus admission + operator 가중치) | TESTED | demo `selection`; `test_effect_feedback_sensitivity` |
 | 중단 내성(끝난 step이 `.steps.jsonl`에 보존) | TESTED | PR #143; 강제 중단 테스트 |
 | producer 견고성(조용한 exit 0 → failed 프레임/lifecycle 기록) | TESTED | PR #144; 호스트 budget 100 100/100 |
-| **실제 경계위반을 통제 재현 + affected/fixed 구분**(node-tar 7.5.2 하드링크→외부 sentinel = C1+C2, 7.5.3 거부) | TESTED | 2026-10-24 capability probe(LOG): 7.5.2 추출객체 inode==sentinel·nlink 1→2 observed, 7.5.3 `linkpath contains '..'` 거부. **퍼징 자력 발견은 아님** |
+| **실제 경계위반을 통제 재현 + affected/fixed 구분**(node-tar 하드링크→외부 참조파일 = C1 identity 공유 + nlink 증가, 이후 릴리스 거부) | TESTED | 재현 스크립트+raw 증거 `experiments/repro/`(5 릴리스 sweep): 최상위 하드링크 7.5.2 공유(nlink 1→2)·7.5.3 거부, 중첩 하드링크 7.5.6 공유·7.5.7 거부(7.5.8도 거부). 판정 균일(추출객체가 외부 참조파일 inode 공유 여부), 릴리스 id/정답경로 하드코딩 없음. **퍼징 자력 발견은 아님** |
 | 퍼저가 **자력으로** 경계위반을 발견 | 입증(인과): state-identity 관찰 구동 자율 C1 (A3 21 vs A1 0 vs identity-blind 0) | ① **어휘판 자율 C1 관찰**: native 7.5.2 budget 100에서 퍼저 생성 `../outside/sentinel.txt` 하드링크가 extract 객체↔외부 sentinel 동일 inode(C1+C2; P1 s789 2케이스, LOG 01:40). **단 변이 어휘에 대상 토큰(outside/sentinel.txt)이 들어 있어 blind 아님.** ② **de-contaminated(토큰 제거 + 관찰-이름 조합, LOG 11:00)**: A1(토큰 없음) 대상 segment 조합 0/6=도달 바닥, A2/A3는 관찰 이름으로 대상 segment 도달(5/6·6/6, target-agnostic·이름-독립성 단위테스트 증명), 그러나 **정확 대상=exact C1은 전 arm 0/6**(budget 100 우측센서). ③ **gradient 기작 측정됨**: 외부 접근 시도 A3 3.83 vs A2 1.67, escape operator 가중·거부-trace 키 편입↑. ④ **큰 seed study(결판, LOG 15:02)**: A1/A3 × seed 1~60 × budget 100(7.5.2, +7.5.3 대조)에서 clean exact C1 **A1 0/57·A3 0/59·대조 0/3**(C0/C2도 0; A3 접근시도 3.27>A1 2.30이나 exact 미전환; 4건 native abort). → budget 100·~60 seed에서 **H1(상태-인지 피드백 > 무작위) C1-rate 우위 미입증(정직한 negative)**. 도달은 target-agnostic 입증, gradient는 접근 시도 증가 측정됨. ⑤ **실제 규모 + blind 대조(결판, LOG 10-26)**: budget 1500에서 A3(identity 관찰 O) seed 11이 `../outside/sentinel.txt` 하드링크로 C1+C2 **21건 자율 트리거**, random floor A1=0(33k 실행), **identity-blind 대조 A3blind=0**(관찰 이름에서 EXTERNAL region 제외; blind-s11은 1475 실행에도 0). → 발견의 **인과적 원인 = filesystem-state의 object-identity 관찰**(가설이 명시한 feedback)임을 blind 대조로 확정. 단 **blind 발견은 아님**(기존 외부 객체 하드링크엔 그 이름이 필요, 퍼저는 관찰로 얻음; 어휘·oracle에 대상 경로/식별자/정답 seed/근접 보상 하드코딩 없음, EXTERNAL 필터는 region 기준 target-agnostic). 의미: **'피드백(identity 관찰)이 발견을 가능케 함 — 없으면 도달 불가'**(rate 우위 주장 아님). ⑥ **재현성(LOG 10-26)**: A3full을 새 seed 36~65(30개)에 budget 1500로 재실행 → **0/30 hit**. 기존 1~35과 합쳐 **65 seed 중 자율 C1은 s11 1개뿐**. s11은 동일 seed에서 결정론적으로 재현(21건)되고 관찰-이름 경유이나, **교차-seed로는 seed-rare**(이 예산에서 다른 seed로 일반화 안 됨). Ledger M3 |
 | feedback effectiveness(B0/B1/B3, A1/A2/A3) | IMPLEMENTED, 미VALIDATED | 정책 매트릭스 9/9 완주하나 비교 결론 없음(LOG 18:44) |
 | entry-transition native 관찰 | DESIGNED / SYNTHETIC TESTED | native completion boundary 미확보 → NOT_IMPLEMENTED |
@@ -48,7 +49,7 @@ inferred(추론)를 구분하고, synthetic은 native 증거로 승격하지 않
 ### 마일스톤 (날짜 아님 — 증거가 모이면 찍는다)
 
 - **M1 — 루프가 실제 node-tar에서 돈다.** 상태: **완료**(위 Ledger 1~6행).
-- **M2 — 실제 경계위반 통제 재현 + 버전 구분.** 상태: **실증됨**(2026-10-24 probe). 재현 가능한 fixture/스크립트로 박제 중.
+- **M2 — 실제 경계위반 통제 재현 + 버전 구분.** 상태: **실증됨 + 박제 완료**. 재현 스크립트+raw 증거 2쌍(`experiments/repro/`): 7.5.2/7.5.3 최상위 하드링크, 7.5.6/7.5.7 중첩 하드링크.
 - **M3 — 퍼저가 자력으로 그 위반을 찾는다.** 상태: **입증(인과적) — 메커니즘·실제규모·blind 대조 완료(PR #151)**. **state-aware 퍼징(filesystem-state의 object-identity를 feedback으로 사용)이 영향 릴리스 7.5.2에서 경계위반을 자율 트리거**: A3(identity 관찰 O) seed 11이 budget 1500에서 `../outside/sentinel.txt` 하드링크로 C1+C2 21건. random floor **A1=0**(33k 실행), **identity-blind 대조 A3blind=0**(관찰에서 EXTERNAL region 이름 제외; blind-s11은 1475 실행에도 0) → **관찰이 인과적 원인**임을 blind 대조로 확정. 메커니즘: 거부된 외부-하드링크 시도를 valid trace로 관찰(producer abort-drain) + boundary-attempt gradient + 어휘 대상 토큰 제거·state-aware 관찰이름 조합 + external-resolve rung + 재현 study 하너스. **정직 경계(필수 명시)**: 이는 blind 발견이 아니다 — 기존 외부 객체에 하드링크하려면 그 이름이 필요하고 퍼저는 그것을 **관찰**로 얻는다(가설이 명시한 object-identity feedback). 어휘·oracle에 대상 경로/식별자/정답 seed/근접 보상 하드코딩 없음(EXTERNAL-이름 필터는 region 기준 target-agnostic). 가설 입증 형태는 '상태-인지 피드백이 무작위보다 빠르다(rate)'가 아니라 **'피드백(identity 관찰)이 발견을 가능케 한다 — 없으면 도달 불가'**. (이전 budget 100·~60 seed study는 clean exact 0였고, 실제 규모 budget 1500에서 자율 트리거가 관찰됨 — s11.) **재현성 주석(정직)**: 새 seed 36~65(30개) 재실행 = 0/30 → budget 1500·65 seed 중 자율 트리거는 **s11 1개(seed-rare)**. s11은 동일 seed에서 결정론적으로 재현되고 관찰-이름 경유임이 확실하나(인과·메커니즘 입증), 이 예산에서 교차-seed 일반화는 미입증. 상태: **입증(인과·메커니즘; 자율 트리거는 seed-rare), PR 사람 머지 대기**.
 - **M4 — 일반성.** 태스크: 2번째 extractor(oras-go) 동일 모델 적용. 상태: 설계.
 
@@ -64,6 +65,12 @@ inferred(추론)를 구분하고, synthetic은 native 증거로 승격하지 않
 `docs/research/benchmarks/`의 감사·자격·task-proposal 문서는
 [archive 안내](archive/README.md)가 정리한 **동결 기록**이며, 새 작업의 게이트가 아니다.
 G0 capability baseline SHA `8ad07b8…`도 그 동결 리뷰가 본 리비전일 뿐 최신 main이 아니다.
+
+특히 아래 문장들은 **Ledger/BACKLOG로 대체됐다. 문구 그대로 현재 범위·게이트로 읽지 않는다**:
+"현재 다음 독립 gate는 N01 historical qualification", 11월 2일·11월 9일·11월 30일 날짜,
+"이 G0 freeze는 ORAS·C3/C4·새 mutation operators·discovery를 추가하지 않는다 … 별도 Task Contract 필요".
+현재 작업은 BACKLOG의 M2(통제 재현 박제)·M3(generic security-state gradient = 새 feedback 신호,
+자력 발견)·M4(oras-go 일반성)이며, 이는 승인된 안전경계·연구 불변식 안에서 자율로 진행한다.
 
 상태 갱신일: **2026-10-18**. G0 capability baseline은 main
 **`8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`**다. 이 SHA는 G0 문서 동결이

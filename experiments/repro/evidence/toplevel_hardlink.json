@@ -1,0 +1,193 @@
+{
+  "entries": [
+    {
+      "linkname": "../ext/reference.bin",
+      "name": "link",
+      "type": "link"
+    }
+  ],
+  "fixed_pair": [
+    "7.5.2",
+    "7.5.3"
+  ],
+  "fixture": "toplevel_hardlink",
+  "releases": {
+    "7.5.2": {
+      "raw": {
+        "declined": null,
+        "extract_tree": {
+          "link": {
+            "dev": "100",
+            "ino": "5978543",
+            "nlink": 2,
+            "size": 48,
+            "target": null,
+            "type": "reg"
+          }
+        },
+        "nlink_after": 2,
+        "nlink_before": 1,
+        "reference_after": {
+          "dev": "100",
+          "ino": "5978543",
+          "nlink": 2,
+          "size": 48,
+          "target": null,
+          "type": "reg"
+        },
+        "reference_before": {
+          "dev": "100",
+          "ino": "5978543",
+          "nlink": 1,
+          "size": 48,
+          "target": null,
+          "type": "reg"
+        },
+        "shared_identity": [
+          "extract/link"
+        ]
+      },
+      "verdict": {
+        "c1_identity_shared": true,
+        "nlink_after": 2,
+        "nlink_before": 1,
+        "outcome": "resolved",
+        "shared_objects": [
+          "extract/link"
+        ]
+      }
+    },
+    "7.5.3": {
+      "raw": {
+        "declined": {
+          "code": "TAR_ENTRY_ERROR",
+          "message": "TAR_ENTRY_ERROR: linkpath contains '..'"
+        },
+        "extract_tree": {},
+        "nlink_after": 1,
+        "nlink_before": 1,
+        "reference_after": {
+          "dev": "108",
+          "ino": "5978671",
+          "nlink": 1,
+          "size": 48,
+          "target": null,
+          "type": "reg"
+        },
+        "reference_before": {
+          "dev": "108",
+          "ino": "5978671",
+          "nlink": 1,
+          "size": 48,
+          "target": null,
+          "type": "reg"
+        },
+        "shared_identity": []
+      },
+      "verdict": {
+        "c1_identity_shared": false,
+        "outcome": "declined",
+        "reason": "TAR_ENTRY_ERROR: linkpath contains '..'"
+      }
+    },
+    "7.5.6": {
+      "raw": {
+        "declined": {
+          "code": "TAR_ENTRY_ERROR",
+          "message": "TAR_ENTRY_ERROR: linkpath escapes extraction directory"
+        },
+        "extract_tree": {},
+        "nlink_after": 1,
+        "nlink_before": 1,
+        "reference_after": {
+          "dev": "100",
+          "ino": "5978749",
+          "nlink": 1,
+          "size": 48,
+          "target": null,
+          "type": "reg"
+        },
+        "reference_before": {
+          "dev": "100",
+          "ino": "5978749",
+          "nlink": 1,
+          "size": 48,
+          "target": null,
+          "type": "reg"
+        },
+        "shared_identity": []
+      },
+      "verdict": {
+        "c1_identity_shared": false,
+        "outcome": "declined",
+        "reason": "TAR_ENTRY_ERROR: linkpath escapes extraction directory"
+      }
+    },
+    "7.5.7": {
+      "raw": {
+        "declined": {
+          "code": "TAR_ENTRY_ERROR",
+          "message": "TAR_ENTRY_ERROR: linkpath contains '..'"
+        },
+        "extract_tree": {},
+        "nlink_after": 1,
+        "nlink_before": 1,
+        "reference_after": {
+          "dev": "108",
+          "ino": "5978876",
+          "nlink": 1,
+          "size": 48,
+          "target": null,
+          "type": "reg"
+        },
+        "reference_before": {
+          "dev": "108",
+          "ino": "5978876",
+          "nlink": 1,
+          "size": 48,
+          "target": null,
+          "type": "reg"
+        },
+        "shared_identity": []
+      },
+      "verdict": {
+        "c1_identity_shared": false,
+        "outcome": "declined",
+        "reason": "TAR_ENTRY_ERROR: linkpath contains '..'"
+      }
+    },
+    "7.5.8": {
+      "raw": {
+        "declined": {
+          "code": "TAR_ENTRY_ERROR",
+          "message": "TAR_ENTRY_ERROR: linkpath contains '..'"
+        },
+        "extract_tree": {},
+        "nlink_after": 1,
+        "nlink_before": 1,
+        "reference_after": {
+          "dev": "100",
+          "ino": "5978960",
+          "nlink": 1,
+          "size": 48,
+          "target": null,
+          "type": "reg"
+        },
+        "reference_before": {
+          "dev": "100",
+          "ino": "5978960",
+          "nlink": 1,
+          "size": 48,
+          "target": null,
+          "type": "reg"
+        },
+        "shared_identity": []
+      },
+      "verdict": {
+        "c1_identity_shared": false,
+        "outcome": "declined",
+        "reason": "TAR_ENTRY_ERROR: linkpath contains '..'"
+      }
+    }
+  }
+}

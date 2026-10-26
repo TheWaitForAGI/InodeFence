@@ -47,6 +47,7 @@ gradient가 없다. historical 7.5.2/7.5.3 × 3 seed × budget 100에서 oracle 
 | 순서 | 태스크 | 상태 | 게이트 |
 | --- | --- | --- | --- |
 | M4.1 | oras-go adapter 설계(isolated CWD 포함), 동일 generic 모델·oracle로 연결. CVE/target-specific 로직을 generic 모듈에 섞지 않는다 | 대기 | 규민·민찬 협의 |
+| M4.1b | (감사 전진, 완료) generic oracle 2번째 extractor 일반성: Python stdlib tarfile 통제 차분(fully_trusted=C1+C2, data=거부). `tests/test_python_tarfile_generality.py`. oracle 코드 불변·target-agnostic. **중간발표 포함 여부 확인필요** | 완료(jiwoong/p-generality-python-tarfile) | 없음 |
 
 ## 상시 (레인 담당)
 

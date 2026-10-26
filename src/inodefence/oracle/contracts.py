@@ -1,16 +1,20 @@
 """Snapshot-supported C0/C1/C2 candidates; no input-pattern or exit-code gates."""
 
+import posixpath
+
 from inodefence.model import (
     BoundaryIdentityEvidence,
     ChangeField,
     ContractId,
     IdentityEvidence,
+    ObjectType,
     Region,
     StateChange,
     StateSnapshot,
+    SymlinkReferentEvidence,
     ViolationResult,
 )
-from inodefence.model.filesystem import is_extraction_path
+from inodefence.model.filesystem import is_extraction_path, path_region
 from inodefence.observer import compare_states
 
 _SNAPSHOT_LIMITS = (
@@ -122,3 +126,39 @@ def generalized_identity_confinement(
         if external.region != Region.EXTRACTION and internal.identity == external.identity
     ]
     return tuple(sorted(evidence, key=lambda item: (item.internal_path, item.external_path)))
+
+
+def _referent_region(symlink_path: str, raw_target: str) -> Region:
+    """Lexically classify a symlink referent's region; absolute or escaping targets are EXTERNAL."""
+    if posixpath.isabs(raw_target):
+        return Region.EXTERNAL
+    resolved = posixpath.normpath(posixpath.join(posixpath.dirname(symlink_path), raw_target))
+    if resolved == ".." or resolved.startswith("../"):
+        return Region.EXTERNAL
+    return path_region(resolved)
+
+
+def symlink_referent_confinement(
+    after: StateSnapshot,
+) -> tuple[SymlinkReferentEvidence, ...]:
+    """Additive referent check: extraction symlinks whose referent leaves the extraction root.
+
+    C1 in evaluate_contracts compares a symlink's own lstat identity and never follows its
+    referent (a documented limitation). This detector resolves each extraction symlink's raw
+    readlink text LEXICALLY against the symlink's own directory and reports those whose referent
+    lands in a non-extraction region (HARNESS or EXTERNAL), including absolute targets and ".."
+    escapes above the sandbox root. It is strictly additive: it does not call or modify
+    evaluate_contracts and never changes the C0/C1/C2 ViolationResult tuple, so callers consume
+    this evidence independently of the existing verdict. Lexical resolution is an observation-time
+    proxy -- it does not prove the referent exists, that it is the protected sentinel, or that any
+    write followed the link.
+    """
+    evidence: list[SymlinkReferentEvidence] = []
+    for obj in after.objects:
+        target = obj.symlink_target
+        if obj.object_type != ObjectType.SYMLINK or obj.region != Region.EXTRACTION or not target:
+            continue
+        region = _referent_region(obj.path, target)
+        if region != Region.EXTRACTION:
+            evidence.append(SymlinkReferentEvidence(obj.path, target, region))
+    return tuple(sorted(evidence, key=lambda item: (item.internal_path, item.referent_target)))

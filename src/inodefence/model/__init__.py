@@ -75,6 +75,7 @@ from .results import (
     ExecutionStatus,
     IdentityEvidence,
     RunResult,
+    SymlinkReferentEvidence,
     TransitionRunResult,
     ViolationResult,
 )
@@ -175,6 +176,7 @@ __all__ = [
     "StateChange",
     "StateSignature",
     "StateSnapshot",
+    "SymlinkReferentEvidence",
     "TraceCompleteness",
     "TraceTermination",
     "TransitionFeedbackKey",

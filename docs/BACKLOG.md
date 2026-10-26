@@ -61,3 +61,4 @@ gradient가 없다. historical 7.5.2/7.5.3 × 3 seed × budget 100에서 oracle 
 | demo 이미지 ID 재현성(provenance attestation) | 대기 | 규민 |
 | 선행연구 서지 정합성(related-work-positioning.md에 저자·venue·연도·아티팩트) | 완료(jiwoong/p-audit-prior-work-citations) | 없음 |
 | (감사 제안) coverage-guided baseline(D) + A/B/C/D 공통지표 — 'identity feedback 특정 효과'를 'feedback 일반'과 분리(H1 판정용). **중간발표 포함 여부 확인필요** | 대기 | 주언 |
+| (감사 전진, 완료) C1 symlink-referent 보강: additive `symlink_referent_confinement` detector(referent가 extract/ 밖이면 보고, 3-tuple 불변). **중간발표 포함 여부 확인필요** | 완료(jiwoong/p-oracle-symlink-referent) | 없음 |

@@ -144,6 +144,36 @@ class BoundaryIdentityEvidence:
 
 
 @dataclass(frozen=True, slots=True)
+class SymlinkReferentEvidence:
+    """An extraction symlink whose raw referent resolves outside the extraction root.
+
+    Complements C1/IdentityEvidence, which compare a symlink's OWN lstat identity and never
+    follow its referent (a documented C1 limitation). referent_target is the raw readlink text,
+    resolved LEXICALLY (no filesystem traversal) to a region; absolute targets and ".." escapes
+    above the sandbox root are treated as EXTERNAL. Consumed by the additive symlink-referent
+    detector and never entered into the C0/C1/C2 ViolationResult tuple, so existing oracle
+    verdicts are unchanged. Lexical resolution does not prove the referent exists, that it is
+    the protected sentinel, or that a later write followed it.
+    """
+
+    internal_path: str
+    referent_target: str
+    referent_region: Region
+
+    def __post_init__(self) -> None:
+        validate_observed_path(self.internal_path)
+        if path_region(self.internal_path) != Region.EXTRACTION:
+            raise ValueError("symlink referent evidence requires an extraction symlink path")
+        if not isinstance(self.referent_target, str) or not self.referent_target:
+            raise ValueError("symlink referent evidence requires a nonempty raw readlink target")
+        if (
+            not isinstance(self.referent_region, Region)
+            or self.referent_region == Region.EXTRACTION
+        ):
+            raise ValueError("symlink referent evidence requires a non-extraction referent region")
+
+
+@dataclass(frozen=True, slots=True)
 class ViolationResult:
     """A contract candidate within snapshot coverage, not a vulnerability claim."""
 

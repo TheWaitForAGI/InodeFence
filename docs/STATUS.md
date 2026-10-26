@@ -1,8 +1,9 @@
 # 현재 프로젝트 상태
 
-## 중간발표 P0 현황 (11/2) — 담당자가 직접 갱신
+## 중간발표 P0 현황 (M1 세부 이력 — 현재 단일 기준은 아래 Capability Ledger)
 
-기준: [MIDTERM_GOALS](MIDTERM_GOALS.md) · 실행 기록: [LOG](LOG.md) · 갱신: 2026-10-24
+기준: 현재 능력은 아래 **Capability Ledger**가 단일 기준이다. 이 P0 표는 M1(루프 동작)의 세부
+이력이며 날짜·게이트를 현재 제약으로 읽지 않는다. 배경 [MIDTERM_GOALS](MIDTERM_GOALS.md) · 실행 기록: [LOG](LOG.md)
 
 | P0 | 담당 | 상태 (10/23) | 다음 할 일 |
 | --- | --- | --- | --- |
@@ -64,6 +65,12 @@ inferred(추론)를 구분하고, synthetic은 native 증거로 승격하지 않
 `docs/research/benchmarks/`의 감사·자격·task-proposal 문서는
 [archive 안내](archive/README.md)가 정리한 **동결 기록**이며, 새 작업의 게이트가 아니다.
 G0 capability baseline SHA `8ad07b8…`도 그 동결 리뷰가 본 리비전일 뿐 최신 main이 아니다.
+
+특히 아래 문장들은 **Ledger/BACKLOG로 대체됐다. 문구 그대로 현재 범위·게이트로 읽지 않는다**:
+"현재 다음 독립 gate는 N01 historical qualification", 11월 2일·11월 9일·11월 30일 날짜,
+"이 G0 freeze는 ORAS·C3/C4·새 mutation operators·discovery를 추가하지 않는다 … 별도 Task Contract 필요".
+현재 작업은 BACKLOG의 M2(통제 재현 박제)·M3(generic security-state gradient = 새 feedback 신호,
+자력 발견)·M4(oras-go 일반성)이며, 이는 승인된 안전경계·연구 불변식 안에서 자율로 진행한다.
 
 상태 갱신일: **2026-10-18**. G0 capability baseline은 main
 **`8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`**다. 이 SHA는 G0 문서 동결이

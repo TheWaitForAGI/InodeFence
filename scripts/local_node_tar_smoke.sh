@@ -117,7 +117,8 @@ cleanup() {
   if [ "$CREATED_CONTROLLER" -eq 1 ] && [ "$MODE" != effect ] &&
     dk exec "$CONTROLLER" test -e "$CONTROLLER_EVIDENCE"; then
     mkdir -p "$EVIDENCE_DIR"
-    if dk cp "$CONTROLLER:$CONTROLLER_EVIDENCE" "$HOST_EVIDENCE"; then
+    # docker cp prints "Successfully copied" only on a TTY; the evidence line below says it.
+    if dk cp "$CONTROLLER:$CONTROLLER_EVIDENCE" "$HOST_EVIDENCE" >/dev/null; then
       echo "evidence: $HOST_EVIDENCE"
     else
       echo "evidence copy failed: $CONTROLLER_EVIDENCE" >&2
@@ -127,7 +128,7 @@ cleanup() {
   if [ "$CREATED_CONTROLLER" -eq 1 ] && [ "$MODE" = demo ] &&
     dk exec "$CONTROLLER" test -e "${CONTROLLER_EVIDENCE%.json}.steps.jsonl"; then
     mkdir -p "$EVIDENCE_DIR"
-    if dk cp "$CONTROLLER:${CONTROLLER_EVIDENCE%.json}.steps.jsonl" "${HOST_EVIDENCE%.json}.steps.jsonl"; then
+    if dk cp "$CONTROLLER:${CONTROLLER_EVIDENCE%.json}.steps.jsonl" "${HOST_EVIDENCE%.json}.steps.jsonl" >/dev/null; then
       echo "completed steps: ${HOST_EVIDENCE%.json}.steps.jsonl"
     else
       echo "steps copy failed: ${CONTROLLER_EVIDENCE%.json}.steps.jsonl" >&2

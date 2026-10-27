@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 from scripts.run_effect_demo import (
+    DEFAULT_NATIVE_BUDGET,
     HISTORICAL_DEMO_MODE,
     HISTORICAL_LABEL,
     NativeDemoAborted,
@@ -23,13 +24,28 @@ from scripts.run_effect_demo import (
     native_demo_report,
 )
 
-from inodefence.effect_demo import render_effect_campaign_report, render_effect_step_line
+from inodefence.effect_demo import (
+    render_effect_campaign_report,
+    render_effect_campaign_summary,
+    render_effect_step_line,
+    render_effect_step_summary,
+)
 from inodefence.execution import ContainerExecutionBackend, StdioDockerClient
 
 
 def demo_steps_path(evidence: Path) -> Path:
     """Sibling JSONL of the final report: `<name>.steps.jsonl` next to `<name>.json`."""
     return evidence.with_suffix(".steps.jsonl")
+
+
+def _announce(text: str) -> None:
+    """Terminal progress for the operator; stdout stays the host protocol channel."""
+    print(text, file=sys.stderr, flush=True)
+
+
+def _announce_demo_start(mode: str, options: dict) -> None:
+    shown = " ".join(f"{key}={getattr(value, 'value', value)}" for key, value in options.items())
+    _announce(f"{mode}: {shown or 'in-code defaults'}")
 
 
 def run_native_effect_demo(
@@ -42,17 +58,20 @@ def run_native_effect_demo(
     report keeps its existing shape (its `steps` array equals the JSONL lines).
     """
     steps_path = demo_steps_path(evidence)
+    options = demo_options(args)
+    budget = int(options.get("budget", DEFAULT_NATIVE_BUDGET))
+    _announce_demo_start("effect-demo", options)
     with steps_path.open("x", encoding="ascii") as steps_stream:
 
         def persist_step(record: dict[str, object]) -> None:
             steps_stream.write(render_effect_step_line(record))
             steps_stream.flush()
             os.fsync(steps_stream.fileno())
+            _announce(render_effect_step_summary(record, budget))
 
         try:
-            report = native_demo_report(
-                backend, image, step_sink=persist_step, **demo_options(args)
-            )
+            report = native_demo_report(backend, image, step_sink=persist_step, **options)
+            _announce(render_effect_campaign_summary(report))
             returncode = 0
         except NativeDemoAborted as error:
             report = {
@@ -85,17 +104,22 @@ def run_native_historical_demo(
     discoveries. The final report keeps its shape (its `steps` array equals the JSONL lines).
     """
     steps_path = demo_steps_path(evidence)
+    options = demo_options(args)
+    budget = int(options.get("budget", DEFAULT_NATIVE_BUDGET))
+    _announce_demo_start(f"effect-demo-historical tar-version={args.tar_version}", options)
     with steps_path.open("x", encoding="ascii") as steps_stream:
 
         def persist_step(record: dict[str, object]) -> None:
             steps_stream.write(render_effect_step_line(record))
             steps_stream.flush()
             os.fsync(steps_stream.fileno())
+            _announce(render_effect_step_summary(record, budget))
 
         try:
             report = historical_demo_report(
-                backend, image, args.tar_version, step_sink=persist_step, **demo_options(args)
+                backend, image, args.tar_version, step_sink=persist_step, **options
             )
+            _announce(render_effect_campaign_summary(report))
             returncode = 0
         except NativeDemoAborted as error:
             report = {

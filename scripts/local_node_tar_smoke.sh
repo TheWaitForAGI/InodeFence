@@ -166,11 +166,14 @@ if [ "$SKIP_BUILD" = 1 ]; then
   echo "SKIP_BUILD=1: reusing $CONTROLLER_IMAGE / $HELPER_IMAGE (+ $NODE_IMAGE for non-historical)"
 else
   step "build images"
-  dk build -f "$REPO_ROOT/.devcontainer/Dockerfile" -t "$CONTROLLER_IMAGE" "$REPO_ROOT"
-  dk build -f "$REPO_ROOT/tools/container-helper/Dockerfile" -t "$HELPER_IMAGE" "$REPO_ROOT"
+  # Build logs are noise on a demo screen; VERBOSE=1 restores docker's full progress.
+  BUILD_FLAGS=(--quiet)
+  [ "${VERBOSE:-0}" = 1 ] && BUILD_FLAGS=()
+  dk build "${BUILD_FLAGS[@]}" -f "$REPO_ROOT/.devcontainer/Dockerfile" -t "$CONTROLLER_IMAGE" "$REPO_ROOT"
+  dk build "${BUILD_FLAGS[@]}" -f "$REPO_ROOT/tools/container-helper/Dockerfile" -t "$HELPER_IMAGE" "$REPO_ROOT"
   # The historical effect image is prebuilt and frozen out of band; never build it here.
   if [ "$MODE" != demo-historical ]; then
-    dk build -f "$REPO_ROOT/tools/node-tar/Dockerfile" -t "$NODE_IMAGE" "$REPO_ROOT"
+    dk build "${BUILD_FLAGS[@]}" -f "$REPO_ROOT/tools/node-tar/Dockerfile" -t "$NODE_IMAGE" "$REPO_ROOT"
   fi
 fi
 
@@ -189,7 +192,7 @@ dk run -d --name "$CONTROLLER" --user vscode --workdir /workspaces/InodeFence \
   "$CONTROLLER_IMAGE" sleep infinity >/dev/null
 CREATED_CONTROLLER=1
 dk exec --user root "$CONTROLLER" chown vscode:vscode /var/lib/inodefence
-dk exec "$CONTROLLER" python -m pip install pytest
+dk exec "$CONTROLLER" python -m pip install --quiet --disable-pip-version-check pytest
 # --workdir /: a git worktree checkout has a .git file pointing outside the mount,
 # and git dies on repository discovery even for --global config.
 dk exec --workdir / "$CONTROLLER" git config --global --add safe.directory /workspaces/InodeFence

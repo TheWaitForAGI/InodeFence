@@ -18,7 +18,10 @@
 - `make demo`(호스트) = 실제 node-tar 7.5.22 루프, 20 step, 반복 실행해도 같은 루프(SAME_LOOP_x4). 결과 JSON은 `~/inodefence-evidence/`.
 - 결과 JSON의 step마다 `trace`(entry별 중간 상태, observed/derived 구분), `oracle`(C0/C1/C2), `selection`(corpus 편입 여부·operator 가중치 변화)이 있다.
 - 정상 입력 20개에서 위반 0건. 취약점 발견·재발견 주장 없음.
-- 남은 P0 과제: 거부 입력에서 중간 상태 event가 0개인 한계의 표현 방식, 이미지 ID 재현성.
+- 남은 P0 과제: 거부 입력에서 중간 상태 event가 0개인 한계의 표현 방식. 이미지 ID 재현성은 처리됨(10/27):
+  원인은 BuildKit 기본 provenance/SBOM attestation(빌드 시각 포함)이라 캐시된 재빌드도 매번 새 image ID가 됐고,
+  `local_node_tar_smoke.sh`가 `BUILDX_NO_DEFAULT_ATTESTATIONS=1`로 빌드해 같은 체크아웃·같은 호스트에서는 같은 ID가 나온다
+  (same-host 결정론, 플랫폼 간 bit-for-bit 주장 아님; LOG 10/27).
 - 주의(10/24): budget 20은 반복 성공했지만 budget 100에서는 9회 중 5회가 producer 결함으로 중단됐다(LOG 18:16).
   수정 브랜치(`jiwoong/p0-1-producer-settle-skip`)가 머지되기 전까지 큰 budget 데모는 중단될 수 있다.
 - A/B/C(정책 간) rate 비교 결론은 없다(LOG 18:44). 단 자율 경계위반은 **state-identity 관찰이 인과적으로 가능케 함**이 blind 대조로 입증됐다(A3 21건 vs A1·blind 0, 아래 Ledger M3).

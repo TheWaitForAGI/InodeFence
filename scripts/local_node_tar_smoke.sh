@@ -13,6 +13,12 @@
 # script only builds images, prepares that controller and delegates through
 # scripts.container_host. It removes only the controller/volume it created itself.
 #
+# Image IDs: BuildKit's default provenance/SBOM attestations carry build timestamps, so
+# every rebuild (even fully cached) produced a new image ID and the demo report's image_id
+# differed per run. Attestations are disabled here (BUILDX_NO_DEFAULT_ATTESTATIONS=1), so a
+# rebuild from the same checkout on the same host/builder gives the same image ID. This is
+# same-host determinism only, not a cross-platform bit-for-bit claim.
+#
 # Overrides: INODEFENCE_DOCKER_CONTEXT (default: `docker context show`),
 # PYTHON (default: python3.12), INODEFENCE_EVIDENCE_DIR (default: ~/inodefence-evidence).
 # demo only: DEMO_POLICY, DEMO_MUTATION_POLICY, DEMO_SEED, DEMO_BUDGET (controller defaults
@@ -168,6 +174,8 @@ if [ "$SKIP_BUILD" = 1 ]; then
 else
   step "build images"
   # Build logs are noise on a demo screen; VERBOSE=1 restores docker's full progress.
+  # No provenance/SBOM attestation manifests: same checkout + same builder => same image ID.
+  export BUILDX_NO_DEFAULT_ATTESTATIONS=1
   BUILD_FLAGS=(--quiet)
   [ "${VERBOSE:-0}" = 1 ] && BUILD_FLAGS=()
   dk build "${BUILD_FLAGS[@]}" -f "$REPO_ROOT/.devcontainer/Dockerfile" -t "$CONTROLLER_IMAGE" "$REPO_ROOT"

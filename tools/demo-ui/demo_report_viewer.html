@@ -1,0 +1,822 @@
+<!doctype html>
+<html lang="ko" data-theme="auto">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>InodeFence Effect Loop</title>
+<meta name="description" content="InodeFence effect-loop demo report viewer: seed to node-tar to observe to oracle to feedback to next mutation." />
+<style>
+  :root {
+    color-scheme: light;
+    --plane:          #f9f9f7;
+    --surface-1:      #fcfcfb;
+    --surface-2:      #f2f2ef;
+    --text-primary:   #0b0b0b;
+    --text-secondary: #52514e;
+    --muted:          #898781;
+    --grid:           #e1e0d9;
+    --baseline:       #c3c2b7;
+    --border:         rgba(11,11,11,0.10);
+    --border-strong:  rgba(11,11,11,0.18);
+    /* sequential blue (magnitude) */
+    --seq-100: #cde2fb; --seq-250: #86b6ef; --seq-400: #3987e5;
+    --seq-500: #256abf; --seq-600: #184f95;
+    /* status (fixed, never themed) */
+    --good:     #0ca30c;
+    --warning:  #fab219;
+    --serious:  #ec835a;
+    --critical: #d03b3b;
+    --good-ink: #006300;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) {
+      color-scheme: dark;
+      --plane:          #0d0d0d;
+      --surface-1:      #1a1a19;
+      --surface-2:      #232321;
+      --text-primary:   #f0efec;
+      --text-secondary: #c3c2b7;
+      --muted:          #898781;
+      --grid:           #2c2c2a;
+      --baseline:       #383835;
+      --border:         rgba(255,255,255,0.10);
+      --border-strong:  rgba(255,255,255,0.18);
+      --seq-100: #104281; --seq-250: #184f95; --seq-400: #256abf;
+      --seq-500: #3987e5; --seq-600: #86b6ef;
+      --good-ink: #0ca30c;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --plane:          #0d0d0d;
+    --surface-1:      #1a1a19;
+    --surface-2:      #232321;
+    --text-primary:   #f0efec;
+    --text-secondary: #c3c2b7;
+    --muted:          #898781;
+    --grid:           #2c2c2a;
+    --baseline:       #383835;
+    --border:         rgba(255,255,255,0.10);
+    --border-strong:  rgba(255,255,255,0.18);
+    --seq-100: #104281; --seq-250: #184f95; --seq-400: #256abf;
+    --seq-500: #3987e5; --seq-600: #86b6ef;
+    --good-ink: #0ca30c;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--plane);
+    color: var(--text-primary);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--seq-400); }
+  h1, h2, h3 { margin: 0; font-weight: 650; letter-spacing: -0.01em; }
+  .mono { font-family: ui-monospace, "SF Mono", "Cascadia Code", Menlo, monospace; }
+  .tnum { font-variant-numeric: tabular-nums; }
+
+  /* ---------- header ---------- */
+  header {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 12px 16px;
+    background: color-mix(in srgb, var(--plane) 88%, transparent);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+  }
+  header .brand { display: flex; flex-direction: column; gap: 1px; margin-right: auto; }
+  header .brand h1 { font-size: 15px; }
+  header .brand .sub { font-size: 12px; color: var(--muted); }
+  .spacer { flex: 1; }
+
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 999px;
+    font-size: 12px; font-weight: 600; white-space: nowrap;
+    border: 1px solid var(--border-strong);
+  }
+  .badge .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+  .badge.producer-synthetic { background: color-mix(in srgb, var(--warning) 16%, var(--surface-1)); }
+  .badge.producer-synthetic .dot { background: var(--warning); }
+  .badge.producer-native { background: color-mix(in srgb, var(--good) 16%, var(--surface-1)); }
+  .badge.producer-native .dot { background: var(--good); }
+
+  .btn {
+    font: inherit; font-size: 13px; font-weight: 550;
+    color: var(--text-primary);
+    background: var(--surface-1);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px; padding: 6px 11px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .btn:hover { background: var(--surface-2); }
+  .btn:focus-visible { outline: 2px solid var(--seq-400); outline-offset: 2px; }
+
+  /* ---------- layout ---------- */
+  main { max-width: 1280px; margin: 0 auto; padding: 16px; }
+  .card {
+    background: var(--surface-1);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px 16px;
+  }
+  .card > .card-title {
+    font-size: 12px; font-weight: 650; text-transform: uppercase;
+    letter-spacing: 0.06em; color: var(--muted); margin-bottom: 10px;
+  }
+  .stack { display: flex; flex-direction: column; gap: 14px; }
+
+  /* loop ribbon */
+  .ribbon { display: flex; align-items: stretch; gap: 0; flex-wrap: wrap; }
+  .ribbon .stage {
+    flex: 1 1 140px; min-width: 120px;
+    display: flex; flex-direction: column; gap: 3px;
+    padding: 10px 12px; border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    position: relative;
+  }
+  .ribbon .stage .n { font-size: 11px; color: var(--muted); font-weight: 650; }
+  .ribbon .stage .t { font-size: 13px; font-weight: 600; }
+  .ribbon .stage .d { font-size: 11px; color: var(--text-secondary); }
+  .ribbon .arrow { align-self: center; color: var(--muted); padding: 0 4px; font-size: 14px; }
+  .ribbon .stage.active { border-color: var(--seq-400); box-shadow: inset 0 0 0 1px var(--seq-400); }
+  .ribbon .stage.inactive { opacity: 0.45; }
+
+  /* tile rows */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(118px, 1fr)); gap: 10px; }
+  .tile {
+    background: var(--surface-2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 10px 12px;
+    display: flex; flex-direction: column; gap: 2px;
+  }
+  .tile .label { font-size: 11px; color: var(--muted); font-weight: 600; }
+  .tile .value { font-size: 22px; font-weight: 680; letter-spacing: -0.02em; }
+  .tile .value small { font-size: 12px; font-weight: 550; color: var(--text-secondary); }
+  .tile.flag-hot { border-color: var(--critical); background: color-mix(in srgb, var(--critical) 10%, var(--surface-2)); }
+  .tile.flag-hot .value { color: var(--critical); }
+  .tile .cfg { font-size: 13px; font-weight: 600; word-break: break-word; }
+
+  /* two columns */
+  .columns { display: grid; grid-template-columns: minmax(280px, 360px) 1fr; gap: 14px; align-items: start; }
+  @media (max-width: 860px) { .columns { grid-template-columns: 1fr; } }
+
+  /* timeline */
+  .timeline { max-height: 72vh; overflow: auto; padding: 6px; }
+  .timeline-head { display:flex; justify-content: space-between; align-items:center; padding: 4px 8px 10px; }
+  .timeline-head .hint { font-size: 11px; color: var(--muted); }
+  .step-row {
+    width: 100%; text-align: left; font: inherit; cursor: pointer;
+    display: grid; grid-template-columns: 34px 1fr auto; gap: 8px; align-items: center;
+    padding: 8px 10px; border-radius: 9px; border: 1px solid transparent;
+    background: transparent; color: inherit;
+  }
+  .step-row:hover { background: var(--surface-2); }
+  .step-row.sel { background: color-mix(in srgb, var(--seq-400) 14%, var(--surface-1)); border-color: var(--seq-400); }
+  .step-row .idx { font-weight: 680; color: var(--text-secondary); font-size: 13px; text-align:right; }
+  .step-row .mid { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .step-row .op { font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .step-row .op .origin {
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;
+    padding: 1px 5px; border-radius: 5px; margin-right: 6px; vertical-align: middle;
+  }
+  .origin-seed { background: color-mix(in srgb, var(--muted) 22%, var(--surface-1)); color: var(--text-secondary); }
+  .origin-mutation { background: color-mix(in srgb, var(--seq-400) 22%, var(--surface-1)); color: var(--seq-400); }
+  .step-row .meta { display: flex; gap: 6px; align-items: center; }
+  .ora-dots { display: inline-flex; gap: 3px; }
+  .ora-dots .od { width: 9px; height: 9px; border-radius: 2px; border: 1px solid var(--border-strong); }
+  .od.clean { background: color-mix(in srgb, var(--good) 30%, var(--surface-1)); }
+  .od.viol  { background: var(--critical); border-color: var(--critical); }
+  .chips { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; }
+  .chip {
+    font-size: 11px; font-weight: 600; padding: 1px 7px; border-radius: 999px;
+    border: 1px solid var(--border-strong); white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .chip.ok   { background: color-mix(in srgb, var(--good) 14%, var(--surface-1)); color: var(--good-ink); }
+  .chip.warn { background: color-mix(in srgb, var(--warning) 18%, var(--surface-1)); }
+  .chip.hot  { background: color-mix(in srgb, var(--critical) 14%, var(--surface-1)); color: var(--critical); }
+  .chip.neutral { color: var(--text-secondary); }
+  .chip .reward { font-variant-numeric: tabular-nums; }
+
+  /* detail */
+  .detail { min-width: 0; }
+  .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 1080px) { .detail-grid { grid-template-columns: 1fr; } }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; font-size: 13px; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; text-align: right; font-weight: 550; word-break: break-all; }
+
+  /* weight bars */
+  .wbar-row { display: grid; grid-template-columns: 150px 1fr 54px; gap: 10px; align-items: center; margin-bottom: 7px; }
+  .wbar-row .wname { font-size: 12px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .wbar-track { height: 16px; background: var(--surface-2); border-radius: 0 4px 4px 0; position: relative; }
+  .wbar-fill { height: 100%; background: var(--seq-250); border-radius: 0 4px 4px 0; min-width: 2px; transition: width .18s ease; }
+  .wbar-row.sel .wbar-fill { background: var(--seq-400); }
+  .wbar-row.sel .wname { color: var(--text-primary); font-weight: 650; }
+  .wbar-val { font-size: 12px; text-align: right; color: var(--text-secondary); }
+  .wbar-val .delta { color: var(--good-ink); font-weight: 650; }
+
+  table.trace { width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.trace th, table.trace td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+  table.trace th { color: var(--muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+  table.trace td.num { font-variant-numeric: tabular-nums; }
+  .type-tag { font-size: 11px; font-weight: 650; padding: 0 6px; border-radius: 5px; background: var(--surface-2); border: 1px solid var(--border); }
+
+  .event { border: 1px solid var(--border); border-radius: 9px; padding: 9px 11px; margin-bottom: 8px; background: var(--surface-2); }
+  .event.identity { border-color: var(--serious); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--serious) 40%, transparent); }
+  .event .ehead { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+  .event .eop { font-weight: 650; }
+  .inode { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; align-items: center; font-size: 11.5px; }
+  .inode .side { background: var(--surface-1); border: 1px solid var(--border); border-radius: 7px; padding: 6px 8px; }
+  .inode .side .ph { color: var(--muted); font-size: 10.5px; margin-bottom: 2px; word-break: break-all; }
+  .inode .arrow2 { color: var(--muted); font-size: 14px; }
+  .inode .ident { font-variant-numeric: tabular-nums; }
+  .inode .ident b { color: var(--text-primary); }
+
+  details.raw { margin-top: 6px; }
+  details.raw summary { cursor: pointer; font-size: 12px; color: var(--muted); }
+  details.raw pre {
+    margin: 8px 0 0; padding: 10px; background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: 8px;
+    overflow: auto; font-size: 11.5px; max-height: 320px;
+  }
+
+  footer { max-width: 1280px; margin: 10px auto 40px; padding: 0 16px; color: var(--muted); font-size: 12px; }
+
+  .empty { color: var(--muted); font-size: 13px; padding: 8px 0; }
+  .note { font-size: 12px; color: var(--text-secondary); }
+
+  /* drag overlay */
+  #drop { position: fixed; inset: 0; z-index: 50; display: none; align-items: center; justify-content: center;
+          background: color-mix(in srgb, var(--plane) 70%, transparent); backdrop-filter: blur(3px); }
+  #drop.show { display: flex; }
+  #drop .box { border: 2px dashed var(--seq-400); border-radius: 16px; padding: 40px 60px; background: var(--surface-1); font-weight: 600; }
+</style>
+</head>
+<body>
+<script type="application/json" id="embedded-report">{"config":{"execution_budget":20,"mutation_policy":"uniform-generic-m1-v1","random_seed":123,"search_policy":"effect-feedback-v2-or-violation-v1-adaptive-mutation-v1"},"demo_report_schema":2,"final_search_stats":{"model":"EffectSearchStats","schema_version":1,"value":{"feedback_eligible_observations":20,"interesting_observations":6,"observation_failures":0,"observations":20,"retained_cases":6,"unique_effect_keys":14,"unique_full_states":1,"unique_violation_fingerprints":0}},"initial_case_ids":["c56da02197b3e8959e46c08c476c7fb15a13763ce9d8d57ac5151f4b1d709fd8","cdcc8045e37293498ff2d8e69e6e5638ee470f1bd11b1d0b8f16f1f9e783208f","de8ddc5ca4c15fccb638257bbbe671c4fcc9c707962cb92de6589a09f6418620","842bdde9b083096d6f5f1c93c93efb3ff35d141b7311571dab281c771d83c0d1"],"label":"SYNTHETIC (not node-tar)","mutation_policy":"uniform-generic-m1-v1","producer":"synthetic","retained_case_ids":["c56da02197b3e8959e46c08c476c7fb15a13763ce9d8d57ac5151f4b1d709fd8","cdcc8045e37293498ff2d8e69e6e5638ee470f1bd11b1d0b8f16f1f9e783208f","de8ddc5ca4c15fccb638257bbbe671c4fcc9c707962cb92de6589a09f6418620","842bdde9b083096d6f5f1c93c93efb3ff35d141b7311571dab281c771d83c0d1","35ca2196f8c9657b93203b55fa8ce6fb7ebe89826ce50a93140cd9a1e5960d30","2a5ec7e6db31e574ed5282ed45a53d53b889e83904ae6677f958fa30eea847a3"],"steps":[{"case_id":"c56da02197b3e8959e46c08c476c7fb15a13763ce9d8d57ac5151f4b1d709fd8","feedback":{"admission_eligible":true,"contract_violated":false,"effect_novel":true,"feedback_eligible":true,"full_state_novel":true,"new_effect_keys":[{"model":"EffectFeedbackKey","schema_version":2,"value":{"kind":"entry_effect_set","signature":{"effects":[{"affected_regions":["extraction"],"effect_class":"namespace_creation","evidence_strength":"state_change_verified","identity_member_regions":[],"identity_relation":"none","operation_outcome":"succeeded","protected_external":false,"trigger_entry_type":"regular","trigger_ordinal_class":"first"}],"trigger_entry_type":"regular","trigger_ordinal_class":"first"}}},{"model":"EffectFeedbackKey","schema_version":2,"value":{"kind":"individual_effect","signature":{"affected_regions":["extraction"],"effect_class":"namespace_creation","evidence_strength":"state_change_verified","identity_member_regions":[],"identity_relation":"none","operation_outcome":"succeeded","protected_external":false,"trigger_entry_type":"regular","trigger_ordinal_class":"first"}}}],"new_violation_fingerprints":[],"retained":true,"trace_completeness":"complete","trace_termination":"success"},"index":0,"mutation_attempt":null,"oracle":{"C0":false,"C1":false,"C2":false},"origin":"seed","parent_case_id":null,"scheduler_evidence":null,"selection":null,"target_stderr":{"chars":0,"text":"","truncated":false},"trace":{"effect_events":[{"association":"async_context","completion_sequence":3,"effect_class":"namespace_creation","entry_index":0,"evidence_strength":"state_change_verified","operation":"open","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":1,"st_ino":100,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-0"}],"start_sequence":2}],"effect_events_total":1,"effect_events_truncated":false,"entries":[{"effect_event_count":1,"entry_index":0,"link_target":null,"path":"a.txt","type":"regular"}],"observation_failures":[],"sources":[{"mechanism":"synthetic-test","source_id":"synthetic","version":"1"}],"synthetic":true}},{"case_id":"cdcc8045e37293498ff2d8e69e6e5638ee470f1bd11b1d0b8f16f1f9e783208f","feedback":{"admission_eligible":true,"contract_violated":false,"effect_novel":true,"feedback_eligible":true,"full_state_novel":false,"new_effect_keys":[{"model":"EffectFeedbackKey","schema_version":2,"value":{"kind":"entry_effect_set","signature":{"effects":[{"affected_regions":["extraction"],"effect_class":"namespace_creation","evidence_strength":"state_change_verified","identity_member_regions":[],"identity_relation":"none","operation_outcome":"succeeded","protected_external":false,"trigger_entry_type":"directory","trigger_ordinal_class":"first"}],"trigger_entry_type":"directory","trigger_ordinal_class":"first"}}},{"model":"EffectFeedbackKey","schema_version":2,"value":{"kind":"entry_effect_set","signature":{"effects":[{"affected_regions":["extraction"],"effect_class":"namespace_creation","evidence_strength":"state_change_verified","identity_member_regions":[],"identity_relation":"none","operation_outcome":"succeeded","protected_external":false,"trigger_entry_type":"regular","trigger_ordinal_class":"early"}],"trigger_entry_type":"regular","trigger_ordinal_class":"early"}}},{"model":"EffectFeedbackKey","schema_version":2,"value":{"kind":"individual_effect","signature":{"affected_regions":["extraction"],"effect_class":"namespace_creation","evidence_strength":"state_change_verified","identity_member_regions":[],"identity_relation":"none","operation_outcome":"succeeded","protected_external":false,"trigger_entry_type":"directory","trigger_ordinal_class":"first"}}},{"model":"EffectFeedbackKey","schema_version":2,"value":{"kind":"individual_effect","signature":{"affected_regions":["extraction"],"effect_class":"namespace_creation","evidence_strength":"state_change_verified","identity_member_regions":[],"identity_relation":"none","operation_outcome":"succeeded","protected_external":false,"trigger_entry_type":"regular","trigger_ordinal_class":"early"}}}],"new_violation_fingerprints":[],"retained":true,"trace_completeness":"complete","trace_termination":"success"},"index":1,"mutation_attempt":null,"oracle":{"C0":false,"C1":false,"C2":false},"origin":"seed","parent_case_id":null,"scheduler_evidence":null,"selection":null,"target_stderr":{"chars":0,"text":"","truncated":false},"trace":{"effect_events":[{"association":"async_context","completion_sequence":3,"effect_class":"namespace_creation","entry_index":0,"evidence_strength":"state_change_verified","operation":"open","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":1,"st_ino":100,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-0"}],"start_sequence":2},{"association":"async_context","completion_sequence":7,"effect_class":"namespace_creation","entry_index":1,"evidence_strength":"state_change_verified","operation":"open","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":1,"st_ino":101,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-1"}],"start_sequence":6}],"effect_events_total":2,"effect_events_truncated":false,"entries":[{"effect_event_count":1,"entry_index":0,"link_target":null,"path":"dir/","type":"directory"},{"effect_event_count":1,"entry_index":1,"link_target":null,"path":"dir/a.txt","type":"regular"}],"observation_failures":[],"sources":[{"mechanism":"synthetic-test","source_id":"synthetic","version":"1"}],"synthetic":true}},{"case_id":"de8ddc5ca4c15fccb638257bbbe671c4fcc9c707962cb92de6589a09f6418620","feedback":{"admission_eligible":true,"contract_violated":false,"effect_novel":true,"feedback_eligible":true,"full_state_novel":false,"new_effect_keys":[{"model":"EffectFeedbackKey","schema_version":2,"value":{"kind":"entry_effect_set","signature":{"effects":[{"affected_regions":["extraction","extraction"],"effect_class":"hardlink_identity_relation_creation","evidence_strength":"identity_verified","identity_member_regions":["extraction","extraction"],"identity_relation":"same_object_created","operation_outcome":"succeeded","protected_external":false,"trigger_entry_type":"hardlink","trigger_ordinal_class":"early"}],"trigger_entry_type":"hardlink","trigger_ordinal_class":"early"}}},{"model":"EffectFeedbackKey","schema_version":2,"value":{"kind":"individual_effect","signature":{"affected_regions":["extraction","extraction"],"effect_class":"hardlink_identity_relation_creation","evidence_strength":"identity_verified","identity_member_regions":["extraction","extraction"],"identity_relation":"same_object_created","operation_outcome":"succeeded","protected_external":false,"trigger_entry_type":"hardlink","trigger_ordinal_class":"early"}}}],"new_violation_fingerprints":[],"retained":true,"trace_completeness":"complete","trace_termination":"success"},"index":2,"mutation_attempt":null,"oracle":{"C0":false,"C1":false,"C2":false},"origin":"seed","parent_case_id":null,"scheduler_evidence":null,"selection":null,"target_stderr":{"chars":0,"text":"","truncated":false},"trace":{"effect_events":[{"association":"async_context","completion_sequence":3,"effect_class":"namespace_creation","entry_index":0,"evidence_strength":"state_change_verified","operation":"open","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":1,"st_ino":100,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-0"}],"start_sequence":2},{"association":"async_context","completion_sequence":7,"effect_class":"hardlink_identity_relation_creation","entry_index":1,"evidence_strength":"identity_verified","operation":"link","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":7,"st_ino":101,"st_nlink":1,"status":"present"},"before":{"object_type":"regular","size":1,"st_dev":7,"st_ino":101,"st_nlink":1,"status":"present"},"path":"extract/source-1"},{"after":{"object_type":"regular","size":1,"st_dev":7,"st_ino":101,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-1"}],"start_sequence":6}],"effect_events_total":2,"effect_events_truncated":false,"entries":[{"effect_event_count":1,"entry_index":0,"link_target":null,"path":"a.txt","type":"regular"},{"effect_event_count":1,"entry_index":1,"link_target":"a.txt","path":"b.txt","type":"hardlink"}],"observation_failures":[],"sources":[{"mechanism":"synthetic-test","source_id":"synthetic","version":"1"}],"synthetic":true}},{"case_id":"842bdde9b083096d6f5f1c93c93efb3ff35d141b7311571dab281c771d83c0d1","feedback":{"admission_eligible":true,"contract_violated":false,"effect_novel":true,"feedback_eligible":true,"full_state_novel":false,"new_effect_keys":[{"model":"EffectFeedbackKey","schema_version":2,"value":{"kind":"entry_effect_set","signature":{"effects":[{"affected_regions":["extraction"],"effect_class":"symlink_creation","evidence_strength":"state_change_verified","identity_member_regions":[],"identity_relation":"none","operation_outcome":"succeeded","protected_external":false,"trigger_entry_type":"symlink","trigger_ordinal_class":"early"}],"trigger_entry_type":"symlink","trigger_ordinal_class":"early"}}},{"model":"EffectFeedbackKey","schema_version":2,"value":{"kind":"individual_effect","signature":{"affected_regions":["extraction"],"effect_class":"symlink_creation","evidence_strength":"state_change_verified","identity_member_regions":[],"identity_relation":"none","operation_outcome":"succeeded","protected_external":false,"trigger_entry_type":"symlink","trigger_ordinal_class":"early"}}}],"new_violation_fingerprints":[],"retained":true,"trace_completeness":"complete","trace_termination":"success"},"index":3,"mutation_attempt":null,"oracle":{"C0":false,"C1":false,"C2":false},"origin":"seed","parent_case_id":null,"scheduler_evidence":null,"selection":null,"target_stderr":{"chars":0,"text":"","truncated":false},"trace":{"effect_events":[{"association":"async_context","completion_sequence":3,"effect_class":"namespace_creation","entry_index":0,"evidence_strength":"state_change_verified","operation":"open","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":1,"st_ino":100,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-0"}],"start_sequence":2},{"association":"async_context","completion_sequence":7,"effect_class":"symlink_creation","entry_index":1,"evidence_strength":"state_change_verified","operation":"symlink","outcome":"succeeded","paths":[{"after":{"object_type":"symlink","size":1,"st_dev":1,"st_ino":101,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-1"}],"start_sequence":6}],"effect_events_total":2,"effect_events_truncated":false,"entries":[{"effect_event_count":1,"entry_index":0,"link_target":null,"path":"a.txt","type":"regular"},{"effect_event_count":1,"entry_index":1,"link_target":"a.txt","path":"b.txt","type":"symlink"}],"observation_failures":[],"sources":[{"mechanism":"synthetic-test","source_id":"synthetic","version":"1"}],"synthetic":true}},{"case_id":"c56da02197b3e8959e46c08c476c7fb15a13763ce9d8d57ac5151f4b1d709fd8","feedback":{"admission_eligible":false,"contract_violated":false,"effect_novel":false,"feedback_eligible":true,"full_state_novel":false,"new_effect_keys":[],"new_violation_fingerprints":[],"retained":false,"trace_completeness":"complete","trace_termination":"success"},"index":4,"mutation_attempt":{"applied":false,"mutation_policy":"uniform-generic-m1-v1","operator_id":"mutate_path"},"oracle":{"C0":false,"C1":false,"C2":false},"origin":"mutation","parent_case_id":"c56da02197b3e8959e46c08c476c7fb15a13763ce9d8d57ac5151f4b1d709fd8","scheduler_evidence":{"reward":0,"selected_operator_id":"mutate_path","selected_weight":1,"weights_after":{"add_entry":1,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":1},"weights_before":{"add_entry":1,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":1}},"selection":{"corpus_admission":{"corpus_size_before":4,"retained":false},"new_effect_key_count":0,"operator_weights":{"reward":0,"weights_after":{"add_entry":1,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":1},"weights_before":{"add_entry":1,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":1}},"parent_case_id":"c56da02197b3e8959e46c08c476c7fb15a13763ce9d8d57ac5151f4b1d709fd8","selected_operator_id":"mutate_path","selected_weight":1},"target_stderr":{"chars":0,"text":"","truncated":false},"trace":{"effect_events":[{"association":"async_context","completion_sequence":3,"effect_class":"namespace_creation","entry_index":0,"evidence_strength":"state_change_verified","operation":"open","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":1,"st_ino":100,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-0"}],"start_sequence":2}],"effect_events_total":1,"effect_events_truncated":false,"entries":[{"effect_event_count":1,"entry_index":0,"link_target":null,"path":"a.txt","type":"regular"}],"observation_failures":[],"sources":[{"mechanism":"synthetic-test","source_id":"synthetic","version":"1"}],"synthetic":true}},{"case_id":"7c7ee22a89d105da1cdbf9f01ca44512a3cec702a9cbdd4c4266fff22d389d7e","feedback":{"admission_eligible":false,"contract_violated":false,"effect_novel":false,"feedback_eligible":true,"full_state_novel":false,"new_effect_keys":[],"new_violation_fingerprints":[],"retained":false,"trace_completeness":"complete","trace_termination":"success"},"index":5,"mutation_attempt":{"applied":true,"mutation_policy":"uniform-generic-m1-v1","operator_id":"add_entry"},"oracle":{"C0":false,"C1":false,"C2":false},"origin":"mutation","parent_case_id":"c56da02197b3e8959e46c08c476c7fb15a13763ce9d8d57ac5151f4b1d709fd8","scheduler_evidence":{"reward":0,"selected_operator_id":"add_entry","selected_weight":1,"weights_after":{"add_entry":1,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":1},"weights_before":{"add_entry":1,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":1}},"selection":{"corpus_admission":{"corpus_size_before":4,"retained":false},"new_effect_key_count":0,"operator_weights":{"reward":0,"weights_after":{"add_entry":1,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":1},"weights_before":{"add_entry":1,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":1}},"parent_case_id":"c56da02197b3e8959e46c08c476c7fb15a13763ce9d8d57ac5151f4b1d709fd8","selected_operator_id":"add_entry","selected_weight":1},"target_stderr":{"chars":0,"text":"","truncated":false},"trace":{"effect_events":[{"association":"async_context","completion_sequence":3,"effect_class":"namespace_creation","entry_index":0,"evidence_strength":"state_change_verified","operation":"open","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":1,"st_ino":100,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-0"}],"start_sequence":2},{"association":"async_context","completion_sequence":7,"effect_class":"namespace_creation","entry_index":1,"evidence_strength":"state_change_verified","operation":"open","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":1,"st_ino":101,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-1"}],"start_sequence":6}],"effect_events_total":2,"effect_events_truncated":false,"entries":[{"effect_event_count":1,"entry_index":0,"link_target":null,"path":"a.txt","type":"directory"},{"effect_event_count":1,"entry_index":1,"link_target":null,"path":"a.txt","type":"regular"}],"observation_failures":[],"sources":[{"mechanism":"synthetic-test","source_id":"synthetic","version":"1"}],"synthetic":true}},{"case_id":"f6a13b9b730769e4215bfdcc80697a6a52cbc72ccfa598dac0c9e89f9f0dac1f","feedback":{"admission_eligible":false,"contract_violated":false,"effect_novel":false,"feedback_eligible":true,"full_state_novel":false,"new_effect_keys":[],"new_violation_fingerprints":[],"retained":false,"trace_completeness":"complete","trace_termination":"success"},"index":6,"mutation_attempt":{"applied":true,"mutation_policy":"uniform-generic-m1-v1","operator_id":"duplicate_entry"},"oracle":{"C0":false,"C1":false,"C2":false},"origin":"mutation","parent_case_id":"cdcc8045e37293498ff2d8e69e6e5638ee470f1bd11b1d0b8f16f1f9e783208f","scheduler_evidence":{"reward":0,"selected_operator_id":"duplicate_entry","selected_weight":1,"weights_after":{"add_entry":1,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":1},"weights_before":{"add_entry":1,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":1}},"selection":{"corpus_admission":{"corpus_size_before":4,"retained":false},"new_effect_key_count":0,"operator_weights":{"reward":0,"weights_after":{"add_entry":1,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":1},"weights_before":{"add_entry":1,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":1}},"parent_case_id":"cdcc8045e37293498ff2d8e69e6e5638ee470f1bd11b1d0b8f16f1f9e783208f","selected_operator_id":"duplicate_entry","selected_weight":1},"target_stderr":{"chars":0,"text":"","truncated":false},"trace":{"effect_events":[{"association":"async_context","completion_sequence":3,"effect_class":"namespace_creation","entry_index":0,"evidence_strength":"state_change_verified","operation":"open","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":1,"st_ino":100,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-0"}],"start_sequence":2},{"association":"async_context","completion_sequence":7,"effect_class":"namespace_creation","entry_index":1,"evidence_strength":"state_change_verified","operation":"open","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":1,"st_ino":101,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-1"}],"start_sequence":6},{"association":"async_context","completion_sequence":11,"effect_class":"namespace_creation","entry_index":2,"evidence_strength":"state_change_verified","operation":"open","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":1,"st_ino":102,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-2"}],"start_sequence":10}],"effect_events_total":3,"effect_events_truncated":false,"entries":[{"effect_event_count":1,"entry_index":0,"link_target":null,"path":"dir/","type":"directory"},{"effect_event_count":1,"entry_index":1,"link_target":null,"path":"dir/a.txt","type":"regular"},{"effect_event_count":1,"entry_index":2,"link_target":null,"path":"dir/a.txt","type":"regular"}],"observation_failures":[],"sources":[{"mechanism":"synthetic-test","source_id":"synthetic","version":"1"}],"synthetic":true}},{"case_id":"35ca2196f8c9657b93203b55fa8ce6fb7ebe89826ce50a93140cd9a1e5960d30","feedback":{"admission_eligible":true,"contract_violated":false,"effect_novel":true,"feedback_eligible":true,"full_state_novel":false,"new_effect_keys":[{"model":"EffectFeedbackKey","schema_version":2,"value":{"kind":"entry_effect_set","signature":{"effects":[{"affected_regions":["extraction","extraction"],"effect_class":"hardlink_identity_relation_creation","evidence_strength":"identity_verified","identity_member_regions":["extraction","extraction"],"identity_relation":"same_object_created","operation_outcome":"succeeded","protected_external":false,"trigger_entry_type":"hardlink","trigger_ordinal_class":"first"}],"trigger_entry_type":"hardlink","trigger_ordinal_class":"first"}}},{"model":"EffectFeedbackKey","schema_version":2,"value":{"kind":"individual_effect","signature":{"affected_regions":["extraction","extraction"],"effect_class":"hardlink_identity_relation_creation","evidence_strength":"identity_verified","identity_member_regions":["extraction","extraction"],"identity_relation":"same_object_created","operation_outcome":"succeeded","protected_external":false,"trigger_entry_type":"hardlink","trigger_ordinal_class":"first"}}}],"new_violation_fingerprints":[],"retained":true,"trace_completeness":"complete","trace_termination":"success"},"index":7,"mutation_attempt":{"applied":true,"mutation_policy":"uniform-generic-m1-v1","operator_id":"reorder_entries"},"oracle":{"C0":false,"C1":false,"C2":false},"origin":"mutation","parent_case_id":"de8ddc5ca4c15fccb638257bbbe671c4fcc9c707962cb92de6589a09f6418620","scheduler_evidence":{"reward":1,"selected_operator_id":"reorder_entries","selected_weight":1,"weights_after":{"add_entry":1,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2},"weights_before":{"add_entry":1,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":1}},"selection":{"corpus_admission":{"corpus_size_before":4,"retained":true},"new_effect_key_count":2,"operator_weights":{"reward":1,"weights_after":{"add_entry":1,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2},"weights_before":{"add_entry":1,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":1}},"parent_case_id":"de8ddc5ca4c15fccb638257bbbe671c4fcc9c707962cb92de6589a09f6418620","selected_operator_id":"reorder_entries","selected_weight":1},"target_stderr":{"chars":0,"text":"","truncated":false},"trace":{"effect_events":[{"association":"async_context","completion_sequence":3,"effect_class":"hardlink_identity_relation_creation","entry_index":0,"evidence_strength":"identity_verified","operation":"link","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":7,"st_ino":100,"st_nlink":1,"status":"present"},"before":{"object_type":"regular","size":1,"st_dev":7,"st_ino":100,"st_nlink":1,"status":"present"},"path":"extract/source-0"},{"after":{"object_type":"regular","size":1,"st_dev":7,"st_ino":100,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-0"}],"start_sequence":2},{"association":"async_context","completion_sequence":7,"effect_class":"namespace_creation","entry_index":1,"evidence_strength":"state_change_verified","operation":"open","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":1,"st_ino":101,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-1"}],"start_sequence":6}],"effect_events_total":2,"effect_events_truncated":false,"entries":[{"effect_event_count":1,"entry_index":0,"link_target":"a.txt","path":"b.txt","type":"hardlink"},{"effect_event_count":1,"entry_index":1,"link_target":null,"path":"a.txt","type":"regular"}],"observation_failures":[],"sources":[{"mechanism":"synthetic-test","source_id":"synthetic","version":"1"}],"synthetic":true}},{"case_id":"c56da02197b3e8959e46c08c476c7fb15a13763ce9d8d57ac5151f4b1d709fd8","feedback":{"admission_eligible":false,"contract_violated":false,"effect_novel":false,"feedback_eligible":true,"full_state_novel":false,"new_effect_keys":[],"new_violation_fingerprints":[],"retained":false,"trace_completeness":"complete","trace_termination":"success"},"index":8,"mutation_attempt":{"applied":true,"mutation_policy":"uniform-generic-m1-v1","operator_id":"remove_entry"},"oracle":{"C0":false,"C1":false,"C2":false},"origin":"mutation","parent_case_id":"842bdde9b083096d6f5f1c93c93efb3ff35d141b7311571dab281c771d83c0d1","scheduler_evidence":{"reward":0,"selected_operator_id":"remove_entry","selected_weight":1,"weights_after":{"add_entry":1,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2},"weights_before":{"add_entry":1,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2}},"selection":{"corpus_admission":{"corpus_size_before":5,"retained":false},"new_effect_key_count":0,"operator_weights":{"reward":0,"weights_after":{"add_entry":1,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2},"weights_before":{"add_entry":1,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2}},"parent_case_id":"842bdde9b083096d6f5f1c93c93efb3ff35d141b7311571dab281c771d83c0d1","selected_operator_id":"remove_entry","selected_weight":1},"target_stderr":{"chars":0,"text":"","truncated":false},"trace":{"effect_events":[{"association":"async_context","completion_sequence":3,"effect_class":"namespace_creation","entry_index":0,"evidence_strength":"state_change_verified","operation":"open","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":1,"st_ino":100,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-0"}],"start_sequence":2}],"effect_events_total":1,"effect_events_truncated":false,"entries":[{"effect_event_count":1,"entry_index":0,"link_target":null,"path":"a.txt","type":"regular"}],"observation_failures":[],"sources":[{"mechanism":"synthetic-test","source_id":"synthetic","version":"1"}],"synthetic":true}},{"case_id":"18524318d14e2e4c2805dadd27c3e51347517dbb0b3caea40fa145037b810884","feedback":{"admission_eligible":false,"contract_violated":false,"effect_novel":false,"feedback_eligible":true,"full_state_novel":false,"new_effect_keys":[],"new_violation_fingerprints":[],"retained":false,"trace_completeness":"complete","trace_termination":"success"},"index":9,"mutation_attempt":{"applied":true,"mutation_policy":"uniform-generic-m1-v1","operator_id":"add_entry"},"oracle":{"C0":false,"C1":false,"C2":false},"origin":"mutation","parent_case_id":"c56da02197b3e8959e46c08c476c7fb15a13763ce9d8d57ac5151f4b1d709fd8","scheduler_evidence":{"reward":0,"selected_operator_id":"add_entry","selected_weight":1,"weights_after":{"add_entry":1,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2},"weights_before":{"add_entry":1,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2}},"selection":{"corpus_admission":{"corpus_size_before":5,"retained":false},"new_effect_key_count":0,"operator_weights":{"reward":0,"weights_after":{"add_entry":1,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2},"weights_before":{"add_entry":1,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2}},"parent_case_id":"c56da02197b3e8959e46c08c476c7fb15a13763ce9d8d57ac5151f4b1d709fd8","selected_operator_id":"add_entry","selected_weight":1},"target_stderr":{"chars":0,"text":"","truncated":false},"trace":{"effect_events":[{"association":"async_context","completion_sequence":3,"effect_class":"namespace_creation","entry_index":0,"evidence_strength":"state_change_verified","operation":"open","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":1,"st_ino":100,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-0"}],"start_sequence":2},{"association":"async_context","completion_sequence":7,"effect_class":"namespace_creation","entry_index":1,"evidence_strength":"state_change_verified","operation":"open","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":1,"st_ino":101,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-1"}],"start_sequence":6}],"effect_events_total":2,"effect_events_truncated":false,"entries":[{"effect_event_count":1,"entry_index":0,"link_target":null,"path":"a.txt","type":"regular"},{"effect_event_count":1,"entry_index":1,"link_target":null,"path":"a.txt","type":"regular"}],"observation_failures":[],"sources":[{"mechanism":"synthetic-test","source_id":"synthetic","version":"1"}],"synthetic":true}},{"case_id":"2a5ec7e6db31e574ed5282ed45a53d53b889e83904ae6677f958fa30eea847a3","feedback":{"admission_eligible":true,"contract_violated":false,"effect_novel":true,"feedback_eligible":true,"full_state_novel":false,"new_effect_keys":[{"model":"EffectFeedbackKey","schema_version":2,"value":{"kind":"entry_effect_set","signature":{"effects":[{"affected_regions":["extraction"],"effect_class":"namespace_creation","evidence_strength":"state_change_verified","identity_member_regions":[],"identity_relation":"none","operation_outcome":"succeeded","protected_external":false,"trigger_entry_type":"directory","trigger_ordinal_class":"early"}],"trigger_entry_type":"directory","trigger_ordinal_class":"early"}}},{"model":"EffectFeedbackKey","schema_version":2,"value":{"kind":"individual_effect","signature":{"affected_regions":["extraction"],"effect_class":"namespace_creation","evidence_strength":"state_change_verified","identity_member_regions":[],"identity_relation":"none","operation_outcome":"succeeded","protected_external":false,"trigger_entry_type":"directory","trigger_ordinal_class":"early"}}}],"new_violation_fingerprints":[],"retained":true,"trace_completeness":"complete","trace_termination":"success"},"index":10,"mutation_attempt":{"applied":true,"mutation_policy":"uniform-generic-m1-v1","operator_id":"add_entry"},"oracle":{"C0":false,"C1":false,"C2":false},"origin":"mutation","parent_case_id":"cdcc8045e37293498ff2d8e69e6e5638ee470f1bd11b1d0b8f16f1f9e783208f","scheduler_evidence":{"reward":1,"selected_operator_id":"add_entry","selected_weight":1,"weights_after":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2},"weights_before":{"add_entry":1,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2}},"selection":{"corpus_admission":{"corpus_size_before":5,"retained":true},"new_effect_key_count":2,"operator_weights":{"reward":1,"weights_after":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2},"weights_before":{"add_entry":1,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2}},"parent_case_id":"cdcc8045e37293498ff2d8e69e6e5638ee470f1bd11b1d0b8f16f1f9e783208f","selected_operator_id":"add_entry","selected_weight":1},"target_stderr":{"chars":0,"text":"","truncated":false},"trace":{"effect_events":[{"association":"async_context","completion_sequence":3,"effect_class":"namespace_creation","entry_index":0,"evidence_strength":"state_change_verified","operation":"open","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":1,"st_ino":100,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-0"}],"start_sequence":2},{"association":"async_context","completion_sequence":7,"effect_class":"namespace_creation","entry_index":1,"evidence_strength":"state_change_verified","operation":"open","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":1,"st_ino":101,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-1"}],"start_sequence":6},{"association":"async_context","completion_sequence":11,"effect_class":"namespace_creation","entry_index":2,"evidence_strength":"state_change_verified","operation":"open","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":1,"st_ino":102,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-2"}],"start_sequence":10}],"effect_events_total":3,"effect_events_truncated":false,"entries":[{"effect_event_count":1,"entry_index":0,"link_target":null,"path":"dir/","type":"directory"},{"effect_event_count":1,"entry_index":1,"link_target":null,"path":"dir/a.txt","type":"directory"},{"effect_event_count":1,"entry_index":2,"link_target":null,"path":"dir/a.txt","type":"regular"}],"observation_failures":[],"sources":[{"mechanism":"synthetic-test","source_id":"synthetic","version":"1"}],"synthetic":true}},{"case_id":"448f1093e484f982281acaa6f60e39a1abe33221f27745b5f16aa3005d71e5c8","feedback":{"admission_eligible":false,"contract_violated":false,"effect_novel":false,"feedback_eligible":true,"full_state_novel":false,"new_effect_keys":[],"new_violation_fingerprints":[],"retained":false,"trace_completeness":"complete","trace_termination":"success"},"index":11,"mutation_attempt":{"applied":true,"mutation_policy":"uniform-generic-m1-v1","operator_id":"add_entry"},"oracle":{"C0":false,"C1":false,"C2":false},"origin":"mutation","parent_case_id":"842bdde9b083096d6f5f1c93c93efb3ff35d141b7311571dab281c771d83c0d1","scheduler_evidence":{"reward":0,"selected_operator_id":"add_entry","selected_weight":2,"weights_after":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2},"weights_before":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2}},"selection":{"corpus_admission":{"corpus_size_before":6,"retained":false},"new_effect_key_count":0,"operator_weights":{"reward":0,"weights_after":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2},"weights_before":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2}},"parent_case_id":"842bdde9b083096d6f5f1c93c93efb3ff35d141b7311571dab281c771d83c0d1","selected_operator_id":"add_entry","selected_weight":2},"target_stderr":{"chars":0,"text":"","truncated":false},"trace":{"effect_events":[{"association":"async_context","completion_sequence":3,"effect_class":"namespace_creation","entry_index":0,"evidence_strength":"state_change_verified","operation":"open","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":1,"st_ino":100,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-0"}],"start_sequence":2},{"association":"async_context","completion_sequence":7,"effect_class":"namespace_creation","entry_index":1,"evidence_strength":"state_change_verified","operation":"open","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":1,"st_ino":101,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-1"}],"start_sequence":6},{"association":"async_context","completion_sequence":11,"effect_class":"symlink_creation","entry_index":2,"evidence_strength":"state_change_verified","operation":"symlink","outcome":"succeeded","paths":[{"after":{"object_type":"symlink","size":1,"st_dev":1,"st_ino":102,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-2"}],"start_sequence":10}],"effect_events_total":3,"effect_events_truncated":false,"entries":[{"effect_event_count":1,"entry_index":0,"link_target":null,"path":"b.txt","type":"directory"},{"effect_event_count":1,"entry_index":1,"link_target":null,"path":"a.txt","type":"regular"},{"effect_event_count":1,"entry_index":2,"link_target":"a.txt","path":"b.txt","type":"symlink"}],"observation_failures":[],"sources":[{"mechanism":"synthetic-test","source_id":"synthetic","version":"1"}],"synthetic":true}},{"case_id":"478cd0540e810aa5d38411cd4ebcbe989191f7a5a431aa5aa59be59774d09741","feedback":{"admission_eligible":false,"contract_violated":false,"effect_novel":false,"feedback_eligible":true,"full_state_novel":false,"new_effect_keys":[],"new_violation_fingerprints":[],"retained":false,"trace_completeness":"complete","trace_termination":"success"},"index":12,"mutation_attempt":{"applied":true,"mutation_policy":"uniform-generic-m1-v1","operator_id":"add_symlink"},"oracle":{"C0":false,"C1":false,"C2":false},"origin":"mutation","parent_case_id":"35ca2196f8c9657b93203b55fa8ce6fb7ebe89826ce50a93140cd9a1e5960d30","scheduler_evidence":{"reward":0,"selected_operator_id":"add_symlink","selected_weight":1,"weights_after":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2},"weights_before":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2}},"selection":{"corpus_admission":{"corpus_size_before":6,"retained":false},"new_effect_key_count":0,"operator_weights":{"reward":0,"weights_after":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2},"weights_before":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2}},"parent_case_id":"35ca2196f8c9657b93203b55fa8ce6fb7ebe89826ce50a93140cd9a1e5960d30","selected_operator_id":"add_symlink","selected_weight":1},"target_stderr":{"chars":0,"text":"","truncated":false},"trace":{"effect_events":[{"association":"async_context","completion_sequence":3,"effect_class":"hardlink_identity_relation_creation","entry_index":0,"evidence_strength":"identity_verified","operation":"link","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":7,"st_ino":100,"st_nlink":1,"status":"present"},"before":{"object_type":"regular","size":1,"st_dev":7,"st_ino":100,"st_nlink":1,"status":"present"},"path":"extract/source-0"},{"after":{"object_type":"regular","size":1,"st_dev":7,"st_ino":100,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-0"}],"start_sequence":2},{"association":"async_context","completion_sequence":7,"effect_class":"namespace_creation","entry_index":1,"evidence_strength":"state_change_verified","operation":"open","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":1,"st_ino":101,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-1"}],"start_sequence":6},{"association":"async_context","completion_sequence":11,"effect_class":"symlink_creation","entry_index":2,"evidence_strength":"state_change_verified","operation":"symlink","outcome":"succeeded","paths":[{"after":{"object_type":"symlink","size":1,"st_dev":1,"st_ino":102,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-2"}],"start_sequence":10}],"effect_events_total":3,"effect_events_truncated":false,"entries":[{"effect_event_count":1,"entry_index":0,"link_target":"a.txt","path":"b.txt","type":"hardlink"},{"effect_event_count":1,"entry_index":1,"link_target":null,"path":"a.txt","type":"regular"},{"effect_event_count":1,"entry_index":2,"link_target":"b.txt","path":"a.txt","type":"symlink"}],"observation_failures":[],"sources":[{"mechanism":"synthetic-test","source_id":"synthetic","version":"1"}],"synthetic":true}},{"case_id":"f74d75c62bddee593e7b2e287c194de655810af79d5a3c6381c05a9bab789cbb","feedback":{"admission_eligible":false,"contract_violated":false,"effect_novel":false,"feedback_eligible":true,"full_state_novel":false,"new_effect_keys":[],"new_violation_fingerprints":[],"retained":false,"trace_completeness":"complete","trace_termination":"success"},"index":13,"mutation_attempt":{"applied":true,"mutation_policy":"uniform-generic-m1-v1","operator_id":"mutate_link_target"},"oracle":{"C0":false,"C1":false,"C2":false},"origin":"mutation","parent_case_id":"35ca2196f8c9657b93203b55fa8ce6fb7ebe89826ce50a93140cd9a1e5960d30","scheduler_evidence":{"reward":0,"selected_operator_id":"mutate_link_target","selected_weight":1,"weights_after":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2},"weights_before":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2}},"selection":{"corpus_admission":{"corpus_size_before":6,"retained":false},"new_effect_key_count":0,"operator_weights":{"reward":0,"weights_after":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2},"weights_before":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2}},"parent_case_id":"35ca2196f8c9657b93203b55fa8ce6fb7ebe89826ce50a93140cd9a1e5960d30","selected_operator_id":"mutate_link_target","selected_weight":1},"target_stderr":{"chars":0,"text":"","truncated":false},"trace":{"effect_events":[{"association":"async_context","completion_sequence":3,"effect_class":"hardlink_identity_relation_creation","entry_index":0,"evidence_strength":"identity_verified","operation":"link","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":7,"st_ino":100,"st_nlink":1,"status":"present"},"before":{"object_type":"regular","size":1,"st_dev":7,"st_ino":100,"st_nlink":1,"status":"present"},"path":"extract/source-0"},{"after":{"object_type":"regular","size":1,"st_dev":7,"st_ino":100,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-0"}],"start_sequence":2},{"association":"async_context","completion_sequence":7,"effect_class":"namespace_creation","entry_index":1,"evidence_strength":"state_change_verified","operation":"open","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":1,"st_ino":101,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-1"}],"start_sequence":6}],"effect_events_total":2,"effect_events_truncated":false,"entries":[{"effect_event_count":1,"entry_index":0,"link_target":"/a.txt","path":"b.txt","type":"hardlink"},{"effect_event_count":1,"entry_index":1,"link_target":null,"path":"a.txt","type":"regular"}],"observation_failures":[],"sources":[{"mechanism":"synthetic-test","source_id":"synthetic","version":"1"}],"synthetic":true}},{"case_id":"9870f7d1e7cd2fc3fada743a1ed09ba914bdc3ac06c0a682c2d6a1a5a782cc60","feedback":{"admission_eligible":false,"contract_violated":false,"effect_novel":false,"feedback_eligible":true,"full_state_novel":false,"new_effect_keys":[],"new_violation_fingerprints":[],"retained":false,"trace_completeness":"complete","trace_termination":"success"},"index":14,"mutation_attempt":{"applied":true,"mutation_policy":"uniform-generic-m1-v1","operator_id":"add_entry"},"oracle":{"C0":false,"C1":false,"C2":false},"origin":"mutation","parent_case_id":"35ca2196f8c9657b93203b55fa8ce6fb7ebe89826ce50a93140cd9a1e5960d30","scheduler_evidence":{"reward":0,"selected_operator_id":"add_entry","selected_weight":2,"weights_after":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2},"weights_before":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2}},"selection":{"corpus_admission":{"corpus_size_before":6,"retained":false},"new_effect_key_count":0,"operator_weights":{"reward":0,"weights_after":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2},"weights_before":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2}},"parent_case_id":"35ca2196f8c9657b93203b55fa8ce6fb7ebe89826ce50a93140cd9a1e5960d30","selected_operator_id":"add_entry","selected_weight":2},"target_stderr":{"chars":0,"text":"","truncated":false},"trace":{"effect_events":[{"association":"async_context","completion_sequence":3,"effect_class":"namespace_creation","entry_index":0,"evidence_strength":"state_change_verified","operation":"open","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":1,"st_ino":100,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-0"}],"start_sequence":2},{"association":"async_context","completion_sequence":7,"effect_class":"hardlink_identity_relation_creation","entry_index":1,"evidence_strength":"identity_verified","operation":"link","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":7,"st_ino":101,"st_nlink":1,"status":"present"},"before":{"object_type":"regular","size":1,"st_dev":7,"st_ino":101,"st_nlink":1,"status":"present"},"path":"extract/source-1"},{"after":{"object_type":"regular","size":1,"st_dev":7,"st_ino":101,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-1"}],"start_sequence":6},{"association":"async_context","completion_sequence":11,"effect_class":"namespace_creation","entry_index":2,"evidence_strength":"state_change_verified","operation":"open","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":1,"st_ino":102,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-2"}],"start_sequence":10}],"effect_events_total":3,"effect_events_truncated":false,"entries":[{"effect_event_count":1,"entry_index":0,"link_target":null,"path":"b//dir//dir//item","type":"directory"},{"effect_event_count":1,"entry_index":1,"link_target":"a.txt","path":"b.txt","type":"hardlink"},{"effect_event_count":1,"entry_index":2,"link_target":null,"path":"a.txt","type":"regular"}],"observation_failures":[],"sources":[{"mechanism":"synthetic-test","source_id":"synthetic","version":"1"}],"synthetic":true}},{"case_id":"ec4da691baaad4c6cb38a7fc623693ac628a86a5c4fbace6156381d0cb18e929","feedback":{"admission_eligible":false,"contract_violated":false,"effect_novel":false,"feedback_eligible":true,"full_state_novel":false,"new_effect_keys":[],"new_violation_fingerprints":[],"retained":false,"trace_completeness":"complete","trace_termination":"success"},"index":15,"mutation_attempt":{"applied":true,"mutation_policy":"uniform-generic-m1-v1","operator_id":"add_hardlink"},"oracle":{"C0":false,"C1":false,"C2":false},"origin":"mutation","parent_case_id":"2a5ec7e6db31e574ed5282ed45a53d53b889e83904ae6677f958fa30eea847a3","scheduler_evidence":{"reward":0,"selected_operator_id":"add_hardlink","selected_weight":1,"weights_after":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2},"weights_before":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2}},"selection":{"corpus_admission":{"corpus_size_before":6,"retained":false},"new_effect_key_count":0,"operator_weights":{"reward":0,"weights_after":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2},"weights_before":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2}},"parent_case_id":"2a5ec7e6db31e574ed5282ed45a53d53b889e83904ae6677f958fa30eea847a3","selected_operator_id":"add_hardlink","selected_weight":1},"target_stderr":{"chars":0,"text":"","truncated":false},"trace":{"effect_events":[{"association":"async_context","completion_sequence":3,"effect_class":"namespace_creation","entry_index":0,"evidence_strength":"state_change_verified","operation":"open","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":1,"st_ino":100,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-0"}],"start_sequence":2},{"association":"async_context","completion_sequence":7,"effect_class":"hardlink_identity_relation_creation","entry_index":1,"evidence_strength":"identity_verified","operation":"link","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":7,"st_ino":101,"st_nlink":1,"status":"present"},"before":{"object_type":"regular","size":1,"st_dev":7,"st_ino":101,"st_nlink":1,"status":"present"},"path":"extract/source-1"},{"after":{"object_type":"regular","size":1,"st_dev":7,"st_ino":101,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-1"}],"start_sequence":6},{"association":"async_context","completion_sequence":11,"effect_class":"namespace_creation","entry_index":2,"evidence_strength":"state_change_verified","operation":"open","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":1,"st_ino":102,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-2"}],"start_sequence":10},{"association":"async_context","completion_sequence":15,"effect_class":"namespace_creation","entry_index":3,"evidence_strength":"state_change_verified","operation":"open","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":1,"st_ino":103,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-3"}],"start_sequence":14}],"effect_events_total":4,"effect_events_truncated":false,"entries":[{"effect_event_count":1,"entry_index":0,"link_target":null,"path":"dir/","type":"directory"},{"effect_event_count":1,"entry_index":1,"link_target":"dir/a.txt","path":"dir/","type":"hardlink"},{"effect_event_count":1,"entry_index":2,"link_target":null,"path":"dir/a.txt","type":"directory"},{"effect_event_count":1,"entry_index":3,"link_target":null,"path":"dir/a.txt","type":"regular"}],"observation_failures":[],"sources":[{"mechanism":"synthetic-test","source_id":"synthetic","version":"1"}],"synthetic":true}},{"case_id":"a3bc0be3c2d4384037329600b5bb63b1aaaba9d65724d3659103f5cd830bc0b5","feedback":{"admission_eligible":false,"contract_violated":false,"effect_novel":false,"feedback_eligible":true,"full_state_novel":false,"new_effect_keys":[],"new_violation_fingerprints":[],"retained":false,"trace_completeness":"complete","trace_termination":"success"},"index":16,"mutation_attempt":{"applied":true,"mutation_policy":"uniform-generic-m1-v1","operator_id":"add_entry"},"oracle":{"C0":false,"C1":false,"C2":false},"origin":"mutation","parent_case_id":"35ca2196f8c9657b93203b55fa8ce6fb7ebe89826ce50a93140cd9a1e5960d30","scheduler_evidence":{"reward":0,"selected_operator_id":"add_entry","selected_weight":2,"weights_after":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2},"weights_before":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2}},"selection":{"corpus_admission":{"corpus_size_before":6,"retained":false},"new_effect_key_count":0,"operator_weights":{"reward":0,"weights_after":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2},"weights_before":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2}},"parent_case_id":"35ca2196f8c9657b93203b55fa8ce6fb7ebe89826ce50a93140cd9a1e5960d30","selected_operator_id":"add_entry","selected_weight":2},"target_stderr":{"chars":0,"text":"","truncated":false},"trace":{"effect_events":[{"association":"async_context","completion_sequence":3,"effect_class":"namespace_creation","entry_index":0,"evidence_strength":"state_change_verified","operation":"open","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":1,"st_ino":100,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-0"}],"start_sequence":2},{"association":"async_context","completion_sequence":7,"effect_class":"hardlink_identity_relation_creation","entry_index":1,"evidence_strength":"identity_verified","operation":"link","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":7,"st_ino":101,"st_nlink":1,"status":"present"},"before":{"object_type":"regular","size":1,"st_dev":7,"st_ino":101,"st_nlink":1,"status":"present"},"path":"extract/source-1"},{"after":{"object_type":"regular","size":1,"st_dev":7,"st_ino":101,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-1"}],"start_sequence":6},{"association":"async_context","completion_sequence":11,"effect_class":"namespace_creation","entry_index":2,"evidence_strength":"state_change_verified","operation":"open","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":1,"st_ino":102,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-2"}],"start_sequence":10}],"effect_events_total":3,"effect_events_truncated":false,"entries":[{"effect_event_count":1,"entry_index":0,"link_target":null,"path":"b.txt","type":"directory"},{"effect_event_count":1,"entry_index":1,"link_target":"a.txt","path":"b.txt","type":"hardlink"},{"effect_event_count":1,"entry_index":2,"link_target":null,"path":"a.txt","type":"regular"}],"observation_failures":[],"sources":[{"mechanism":"synthetic-test","source_id":"synthetic","version":"1"}],"synthetic":true}},{"case_id":"09470de4e9211d813fedd66a90210b53f0f080f27fec1632df793fd539b4f953","feedback":{"admission_eligible":false,"contract_violated":false,"effect_novel":false,"feedback_eligible":true,"full_state_novel":false,"new_effect_keys":[],"new_violation_fingerprints":[],"retained":false,"trace_completeness":"complete","trace_termination":"success"},"index":17,"mutation_attempt":{"applied":true,"mutation_policy":"uniform-generic-m1-v1","operator_id":"add_symlink"},"oracle":{"C0":false,"C1":false,"C2":false},"origin":"mutation","parent_case_id":"842bdde9b083096d6f5f1c93c93efb3ff35d141b7311571dab281c771d83c0d1","scheduler_evidence":{"reward":0,"selected_operator_id":"add_symlink","selected_weight":1,"weights_after":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2},"weights_before":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2}},"selection":{"corpus_admission":{"corpus_size_before":6,"retained":false},"new_effect_key_count":0,"operator_weights":{"reward":0,"weights_after":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2},"weights_before":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2}},"parent_case_id":"842bdde9b083096d6f5f1c93c93efb3ff35d141b7311571dab281c771d83c0d1","selected_operator_id":"add_symlink","selected_weight":1},"target_stderr":{"chars":0,"text":"","truncated":false},"trace":{"effect_events":[{"association":"async_context","completion_sequence":3,"effect_class":"namespace_creation","entry_index":0,"evidence_strength":"state_change_verified","operation":"open","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":1,"st_ino":100,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-0"}],"start_sequence":2},{"association":"async_context","completion_sequence":7,"effect_class":"symlink_creation","entry_index":1,"evidence_strength":"state_change_verified","operation":"symlink","outcome":"succeeded","paths":[{"after":{"object_type":"symlink","size":1,"st_dev":1,"st_ino":101,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-1"}],"start_sequence":6},{"association":"async_context","completion_sequence":11,"effect_class":"symlink_creation","entry_index":2,"evidence_strength":"state_change_verified","operation":"symlink","outcome":"succeeded","paths":[{"after":{"object_type":"symlink","size":1,"st_dev":1,"st_ino":102,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-2"}],"start_sequence":10}],"effect_events_total":3,"effect_events_truncated":false,"entries":[{"effect_event_count":1,"entry_index":0,"link_target":null,"path":"a.txt","type":"regular"},{"effect_event_count":1,"entry_index":1,"link_target":"../item/file/b/b","path":"b.txt","type":"symlink"},{"effect_event_count":1,"entry_index":2,"link_target":"a.txt","path":"b.txt","type":"symlink"}],"observation_failures":[],"sources":[{"mechanism":"synthetic-test","source_id":"synthetic","version":"1"}],"synthetic":true}},{"case_id":"f2f63f6b6f8825c95580ab79427d1baa4e12e9d8a2d7a22922bb4a40a642cd71","feedback":{"admission_eligible":false,"contract_violated":false,"effect_novel":false,"feedback_eligible":true,"full_state_novel":false,"new_effect_keys":[],"new_violation_fingerprints":[],"retained":false,"trace_completeness":"complete","trace_termination":"success"},"index":18,"mutation_attempt":{"applied":true,"mutation_policy":"uniform-generic-m1-v1","operator_id":"add_entry"},"oracle":{"C0":false,"C1":false,"C2":false},"origin":"mutation","parent_case_id":"c56da02197b3e8959e46c08c476c7fb15a13763ce9d8d57ac5151f4b1d709fd8","scheduler_evidence":{"reward":0,"selected_operator_id":"add_entry","selected_weight":2,"weights_after":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2},"weights_before":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2}},"selection":{"corpus_admission":{"corpus_size_before":6,"retained":false},"new_effect_key_count":0,"operator_weights":{"reward":0,"weights_after":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2},"weights_before":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2}},"parent_case_id":"c56da02197b3e8959e46c08c476c7fb15a13763ce9d8d57ac5151f4b1d709fd8","selected_operator_id":"add_entry","selected_weight":2},"target_stderr":{"chars":0,"text":"","truncated":false},"trace":{"effect_events":[{"association":"async_context","completion_sequence":3,"effect_class":"namespace_creation","entry_index":0,"evidence_strength":"state_change_verified","operation":"open","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":1,"st_ino":100,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-0"}],"start_sequence":2},{"association":"async_context","completion_sequence":7,"effect_class":"namespace_creation","entry_index":1,"evidence_strength":"state_change_verified","operation":"open","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":1,"st_ino":101,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-1"}],"start_sequence":6}],"effect_events_total":2,"effect_events_truncated":false,"entries":[{"effect_event_count":1,"entry_index":0,"link_target":null,"path":"a.txt","type":"regular"},{"effect_event_count":1,"entry_index":1,"link_target":null,"path":"/dir/..","type":"directory"}],"observation_failures":[],"sources":[{"mechanism":"synthetic-test","source_id":"synthetic","version":"1"}],"synthetic":true}},{"case_id":"33b4ea64fd3fd3fb862743886b8508a0a6d6f15435dc15dff383066ad6116d56","feedback":{"admission_eligible":false,"contract_violated":false,"effect_novel":false,"feedback_eligible":true,"full_state_novel":false,"new_effect_keys":[],"new_violation_fingerprints":[],"retained":false,"trace_completeness":"complete","trace_termination":"success"},"index":19,"mutation_attempt":{"applied":true,"mutation_policy":"uniform-generic-m1-v1","operator_id":"mutate_path"},"oracle":{"C0":false,"C1":false,"C2":false},"origin":"mutation","parent_case_id":"842bdde9b083096d6f5f1c93c93efb3ff35d141b7311571dab281c771d83c0d1","scheduler_evidence":{"reward":0,"selected_operator_id":"mutate_path","selected_weight":1,"weights_after":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2},"weights_before":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2}},"selection":{"corpus_admission":{"corpus_size_before":6,"retained":false},"new_effect_key_count":0,"operator_weights":{"reward":0,"weights_after":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2},"weights_before":{"add_entry":2,"add_hardlink":1,"add_symlink":1,"duplicate_entry":1,"mutate_link_target":1,"mutate_path":1,"remove_entry":1,"reorder_entries":2}},"parent_case_id":"842bdde9b083096d6f5f1c93c93efb3ff35d141b7311571dab281c771d83c0d1","selected_operator_id":"mutate_path","selected_weight":1},"target_stderr":{"chars":0,"text":"","truncated":false},"trace":{"effect_events":[{"association":"async_context","completion_sequence":3,"effect_class":"namespace_creation","entry_index":0,"evidence_strength":"state_change_verified","operation":"open","outcome":"succeeded","paths":[{"after":{"object_type":"regular","size":1,"st_dev":1,"st_ino":100,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-0"}],"start_sequence":2},{"association":"async_context","completion_sequence":7,"effect_class":"symlink_creation","entry_index":1,"evidence_strength":"state_change_verified","operation":"symlink","outcome":"succeeded","paths":[{"after":{"object_type":"symlink","size":1,"st_dev":1,"st_ino":101,"st_nlink":1,"status":"present"},"before":{"status":"absent"},"path":"extract/object-1"}],"start_sequence":6}],"effect_events_total":2,"effect_events_truncated":false,"entries":[{"effect_event_count":1,"entry_index":0,"link_target":null,"path":"a/file/a","type":"regular"},{"effect_event_count":1,"entry_index":1,"link_target":"a.txt","path":"b.txt","type":"symlink"}],"observation_failures":[],"sources":[{"mechanism":"synthetic-test","source_id":"synthetic","version":"1"}],"synthetic":true}}]}</script>
+
+<header>
+  <div class="brand">
+    <h1>InodeFence · Effect Loop Demo</h1>
+    <span class="sub">seed → node-tar → 중간 상태 관찰 → Oracle → Feedback → 다음 mutation</span>
+  </div>
+  <span id="producer-badge" class="badge producer-synthetic"><span class="dot"></span><span class="txt">—</span></span>
+  <input id="file" type="file" accept=".json,.jsonl,application/json" hidden />
+  <button class="btn" id="load-btn" title="make demo / run_effect_demo 가 만든 JSON·JSONL 리포트를 불러옵니다">리포트 불러오기…</button>
+  <button class="btn" id="sample-btn" title="내장된 예시 리포트로 되돌립니다">예시로</button>
+  <button class="btn" id="theme-btn" title="라이트/다크 전환" aria-label="테마 전환">◐</button>
+</header>
+
+<main class="stack">
+  <section class="card">
+    <div class="card-title">퍼징 루프 (P0-5)</div>
+    <div class="ribbon" id="ribbon"></div>
+  </section>
+
+  <section class="card">
+    <div class="card-title">실행 구성 &amp; 요약 <span id="schema-note" class="note"></span></div>
+    <div class="tiles" id="config-tiles" style="margin-bottom:10px"></div>
+    <div class="tiles" id="kpi-tiles"></div>
+  </section>
+
+  <div class="columns">
+    <aside class="card timeline" id="timeline-card">
+      <div class="timeline-head">
+        <h2 style="font-size:13px">스텝 <span id="step-count" class="tnum"></span></h2>
+        <span class="hint">← → 키로 이동</span>
+      </div>
+      <div id="timeline"></div>
+    </aside>
+
+    <section class="detail stack" id="detail"></section>
+  </div>
+</main>
+
+<footer id="footer"></footer>
+
+<div id="drop"><div class="box">리포트 JSON / JSONL 을 여기에 놓으세요</div></div>
+
+<script>
+(function () {
+  "use strict";
+
+  var OPERATORS_HINT = {
+    add_entry: "엔트리 추가", add_hardlink: "하드링크 추가", add_symlink: "심링크 추가",
+    duplicate_entry: "엔트리 복제", mutate_link_target: "링크 대상 변경",
+    mutate_path: "경로 변경", remove_entry: "엔트리 제거", reorder_entries: "순서 변경"
+  };
+  var CONTRACTS = {
+    C0: "Path Boundary Confinement",
+    C1: "Object Identity Confinement",
+    C2: "External Effect Noninterference",
+    C3: "Extraction Root Integrity",
+    C4: "Check/Use Coherence"
+  };
+  var LOOP_STAGES = [
+    { t: "입력 생성", d: "seed / mutation", test: function (s) { return true; } },
+    { t: "node-tar 실행", d: "producer", test: function (s) { return true; } },
+    { t: "중간 상태 관찰", d: "effect trace", test: function (s) { return eventsOf(s).length > 0 || entriesOf(s).length > 0; } },
+    { t: "Oracle 평가", d: "C0 / C1 / C2", test: function (s) { return !!s.oracle; } },
+    { t: "Feedback 생성", d: "effect keys · novelty", test: function (s) { return !!s.feedback; } },
+    { t: "다음 mutation 선택", d: "operator weights", test: function (s) { return !!s.scheduler_evidence; } }
+  ];
+
+  var state = { report: null, steps: [], sel: 0, maxWeight: 1, opOrder: [] };
+
+  // ---- helpers ----
+  function $(id) { return document.getElementById(id); }
+  function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function short(h) { return (typeof h === "string" && h.length > 12) ? h.slice(0, 10) + "…" : (h == null ? "—" : String(h)); }
+  function statsValue(fs) { return (fs && fs.value) ? fs.value : (fs || {}); }
+  function eventsOf(s) { return (s.trace && s.trace.effect_events) || []; }
+  function entriesOf(s) { return (s.trace && s.trace.entries) || []; }
+  function operatorName(id) { return OPERATORS_HINT[id] ? (id + " · " + OPERATORS_HINT[id]) : id; }
+
+  // weights as of step i: weights_after of the most recent mutation step <= i, else uniform(1)
+  function weightsAsOf(i) {
+    for (var j = i; j >= 0; j--) {
+      var ev = state.steps[j].scheduler_evidence;
+      if (ev && ev.weights_after) return { w: ev.weights_after, uniform: false };
+    }
+    var w = {};
+    state.opOrder.forEach(function (op) { w[op] = 1; });
+    return { w: w, uniform: true };
+  }
+
+  function computeDerived() {
+    var ops = {};
+    var maxW = 1;
+    state.steps.forEach(function (s) {
+      var ev = s.scheduler_evidence;
+      [ev && ev.weights_before, ev && ev.weights_after].forEach(function (w) {
+        if (!w) return;
+        Object.keys(w).forEach(function (k) { ops[k] = true; if (w[k] > maxW) maxW = w[k]; });
+      });
+    });
+    state.opOrder = Object.keys(ops).sort();
+    state.maxWeight = maxW;
+  }
+
+  // ---- renderers ----
+  function renderHeader() {
+    var r = state.report;
+    var badge = $("producer-badge");
+    var native = (r.producer && r.producer !== "synthetic") || (r.label && /demo run/i.test(r.label));
+    badge.className = "badge " + (native ? "producer-native" : "producer-synthetic");
+    badge.querySelector(".txt").textContent = r.label || (native ? "demo run (node-tar)" : "SYNTHETIC (not node-tar)");
+    var sv = (r.demo_report_schema != null) ? ("· schema v" + r.demo_report_schema) : "";
+    $("schema-note").textContent = sv;
+  }
+
+  function renderRibbon() {
+    var wrap = $("ribbon"); wrap.textContent = "";
+    var s = state.steps[state.sel];
+    LOOP_STAGES.forEach(function (stage, i) {
+      if (i > 0) { var a = el("span", "arrow", "→"); wrap.appendChild(a); }
+      var active = s ? stage.test(s) : true;
+      var d = el("div", "stage " + (active ? "active" : "inactive"));
+      d.appendChild(el("span", "n", "0" + (i + 1)));
+      d.appendChild(el("span", "t", stage.t));
+      d.appendChild(el("span", "d", stage.d));
+      wrap.appendChild(d);
+    });
+  }
+
+  function renderConfig() {
+    var r = state.report, c = r.config || {};
+    var wrap = $("config-tiles"); wrap.textContent = "";
+    var items = [
+      ["search policy", c.search_policy],
+      ["mutation policy", c.mutation_policy || r.mutation_policy],
+      ["random seed", c.random_seed],
+      ["execution budget", c.execution_budget]
+    ];
+    items.forEach(function (it) {
+      var t = el("div", "tile");
+      t.appendChild(el("div", "label", it[0]));
+      t.appendChild(el("div", "cfg mono", it[1] == null ? "—" : String(it[1])));
+      wrap.appendChild(t);
+    });
+  }
+
+  function kpiTile(label, value, sub, hot) {
+    var t = el("div", "tile" + (hot ? " flag-hot" : ""));
+    t.appendChild(el("div", "label", label));
+    var v = el("div", "value tnum"); v.textContent = value;
+    if (sub) { var sm = el("small"); sm.textContent = " " + sub; v.appendChild(sm); }
+    t.appendChild(v);
+    return t;
+  }
+
+  function renderKpis() {
+    var v = statsValue(state.report.final_search_stats);
+    var wrap = $("kpi-tiles"); wrap.textContent = "";
+    var seed = 0, mut = 0;
+    state.steps.forEach(function (s) { if (s.origin === "seed") seed++; else mut++; });
+    wrap.appendChild(kpiTile("실행 스텝", state.steps.length, seed + " seed · " + mut + " mut"));
+    wrap.appendChild(kpiTile("retained cases", num(v.retained_cases)));
+    wrap.appendChild(kpiTile("unique effect keys", num(v.unique_effect_keys)));
+    wrap.appendChild(kpiTile("interesting obs", num(v.interesting_observations)));
+    wrap.appendChild(kpiTile("unique full states", num(v.unique_full_states)));
+    var viol = num(v.unique_violation_fingerprints);
+    wrap.appendChild(kpiTile("위반 지문 (후보)", viol, null, viol > 0));
+    wrap.appendChild(kpiTile("관찰 실패", num(v.observation_failures), null, num(v.observation_failures) > 0));
+  }
+  function num(x) { return (x == null) ? "—" : x; }
+
+  function oracleDots(oracle) {
+    var wrap = el("span", "ora-dots");
+    ["C0", "C1", "C2"].forEach(function (c) {
+      var viol = oracle && oracle[c] === true;
+      var d = el("span", "od " + (viol ? "viol" : "clean"));
+      d.title = c + " " + (CONTRACTS[c] || "") + " — " + (viol ? "위반 후보" : "위반 증거 없음");
+      wrap.appendChild(d);
+    });
+    return wrap;
+  }
+
+  function renderTimeline() {
+    $("step-count").textContent = state.steps.length;
+    var wrap = $("timeline"); wrap.textContent = "";
+    state.steps.forEach(function (s, i) {
+      var row = el("button", "step-row" + (i === state.sel ? " sel" : ""));
+      row.setAttribute("aria-pressed", i === state.sel ? "true" : "false");
+
+      row.appendChild(el("span", "idx tnum", s.index != null ? s.index : i));
+
+      var mid = el("div", "mid");
+      var op = el("div", "op");
+      var origin = el("span", "origin " + (s.origin === "seed" ? "origin-seed" : "origin-mutation"), s.origin || "?");
+      op.appendChild(origin);
+      var opid = (s.mutation_attempt && s.mutation_attempt.operator_id) ||
+                 (s.scheduler_evidence && s.scheduler_evidence.selected_operator_id);
+      op.appendChild(document.createTextNode(opid ? opid : "seed 입력"));
+      mid.appendChild(op);
+
+      var chips = el("div", "chips");
+      if (s.feedback && s.feedback.effect_novel) chips.appendChild(chipEl("ok", "★ novel"));
+      if (s.feedback && s.feedback.retained) chips.appendChild(chipEl("neutral", "✓ retained"));
+      var nk = s.feedback && s.feedback.new_effect_keys ? s.feedback.new_effect_keys.length : 0;
+      if (nk) chips.appendChild(chipEl("neutral", "+" + nk + " keys"));
+      if (s.scheduler_evidence && s.scheduler_evidence.reward != null)
+        chips.appendChild(chipEl("neutral", "reward " + s.scheduler_evidence.reward));
+      mid.appendChild(chips);
+      row.appendChild(mid);
+
+      var meta = el("div", "meta");
+      meta.appendChild(oracleDots(s.oracle));
+      row.appendChild(meta);
+
+      row.addEventListener("click", function () { select(i); });
+      wrap.appendChild(row);
+    });
+  }
+  function chipEl(kind, text) { return el("span", "chip " + kind, text); }
+
+  function renderDetail() {
+    var host = $("detail"); host.textContent = "";
+    var s = state.steps[state.sel];
+    if (!s) { host.appendChild(el("div", "empty", "스텝이 없습니다.")); return; }
+
+    // --- header card ---
+    var head = el("section", "card");
+    head.appendChild(titleRow(
+      "스텝 " + (s.index != null ? s.index : state.sel) + " · " + (s.origin || "?"),
+      s.oracle ? oracleSummary(s.oracle) : null
+    ));
+    var kv = el("dl", "kv");
+    addKv(kv, "case id", short(s.case_id), s.case_id);
+    addKv(kv, "parent", short(s.parent_case_id), s.parent_case_id);
+    if (s.mutation_attempt) {
+      addKv(kv, "operator", operatorName(s.mutation_attempt.operator_id));
+      addKv(kv, "applied", s.mutation_attempt.applied ? "yes" : "no");
+    }
+    head.appendChild(kv);
+    host.appendChild(head);
+
+    var grid = el("div", "detail-grid");
+
+    // --- selection / feedback-to-mutation card ---
+    grid.appendChild(renderSelectionCard(s));
+    // --- feedback card ---
+    grid.appendChild(renderFeedbackCard(s));
+    host.appendChild(grid);
+
+    // --- trace card (full width) ---
+    host.appendChild(renderTraceCard(s));
+  }
+
+  function titleRow(text, right) {
+    var r = el("div"); r.style.display = "flex"; r.style.justifyContent = "space-between";
+    r.style.alignItems = "center"; r.style.marginBottom = "10px"; r.style.gap = "10px";
+    var h = el("h2", null, text); h.style.fontSize = "14px";
+    r.appendChild(h);
+    if (right) r.appendChild(right);
+    return r;
+  }
+
+  function oracleSummary(oracle) {
+    var any = oracle && (oracle.C0 || oracle.C1 || oracle.C2);
+    var c = el("span", "chip " + (any ? "hot" : "ok"), any ? "⚠ 위반 후보" : "✓ 위반 증거 없음");
+    return c;
+  }
+
+  function addKv(dl, k, v, title) {
+    dl.appendChild(el("dt", null, k));
+    var dd = el("dd", "mono", v);
+    if (title) dd.title = title;
+    dl.appendChild(dd);
+  }
+
+  function renderSelectionCard(s) {
+    var card = el("section", "card");
+    card.appendChild(el("div", "card-title", "피드백 → 다음 mutation 선택"));
+    var ev = s.scheduler_evidence;
+    if (!ev) {
+      card.appendChild(el("div", "empty", "seed 입력 — scheduler 가 아무 것도 선택하지 않았습니다."));
+      // still show the standing weight distribution
+      card.appendChild(weightBars(s, null));
+      return card;
+    }
+    var kv = el("dl", "kv");
+    addKv(kv, "선택 operator", ev.selected_operator_id);
+    addKv(kv, "선택 가중치", String(ev.selected_weight));
+    addKv(kv, "reward", String(ev.reward));
+    if (s.selection && s.selection.corpus_admission) {
+      addKv(kv, "corpus (before)", String(s.selection.corpus_admission.corpus_size_before));
+      addKv(kv, "corpus 편입", s.selection.corpus_admission.retained ? "편입됨" : "미편입");
+    }
+    card.appendChild(kv);
+    card.appendChild(el("div", "note", "막대 = 이 스텝 draw에 쓰인 가중치 분포. 보상이 선택 operator 가중치를 올려 다음 draw 확률을 바꿉니다."));
+    card.appendChild(weightBars(s, ev));
+    return card;
+  }
+
+  function weightBars(s, ev) {
+    var wrap = el("div"); wrap.style.marginTop = "10px";
+    var base, selectedOp = ev ? ev.selected_operator_id : null;
+    var after = ev ? ev.weights_after : null;
+    if (ev && ev.weights_before) { base = ev.weights_before; }
+    else { var wa = weightsAsOf(state.sel); base = wa.w; if (wa.uniform) wrap.appendChild(el("div", "note", "초기 uniform 가중치 (아직 보상 없음).")); }
+
+    state.opOrder.forEach(function (op) {
+      var val = base[op] != null ? base[op] : 0;
+      var row = el("div", "wbar-row" + (op === selectedOp ? " sel" : ""));
+      var name = el("div", "wname", op); name.title = operatorName(op);
+      var track = el("div", "wbar-track");
+      var fill = el("div", "wbar-fill"); fill.style.width = Math.max(2, (val / state.maxWeight) * 100) + "%";
+      track.appendChild(fill);
+      var valEl = el("div", "wbar-val tnum", String(val));
+      if (after && op === selectedOp && after[op] != null && after[op] !== val) {
+        var dl = el("span", "delta", " → " + after[op]); valEl.appendChild(dl);
+      }
+      row.appendChild(name); row.appendChild(track); row.appendChild(valEl);
+      wrap.appendChild(row);
+    });
+    return wrap;
+  }
+
+  function renderFeedbackCard(s) {
+    var card = el("section", "card");
+    card.appendChild(el("div", "card-title", "Feedback"));
+    var f = s.feedback || {};
+    var flags = el("div", "chips"); flags.style.marginBottom = "10px";
+    flagChip(flags, "effect novel", f.effect_novel);
+    flagChip(flags, "full-state novel", f.full_state_novel);
+    flagChip(flags, "contract violated", f.contract_violated, true);
+    flagChip(flags, "feedback eligible", f.feedback_eligible);
+    flagChip(flags, "admission eligible", f.admission_eligible);
+    flagChip(flags, "retained", f.retained);
+    card.appendChild(flags);
+
+    var kv = el("dl", "kv");
+    addKv(kv, "trace completeness", f.trace_completeness || "—");
+    addKv(kv, "trace termination", f.trace_termination || "—");
+    var keys = f.new_effect_keys || [];
+    addKv(kv, "new effect keys", String(keys.length));
+    var fps = f.new_violation_fingerprints || [];
+    addKv(kv, "new violation fp", String(fps.length));
+    card.appendChild(kv);
+
+    if (keys.length) {
+      var list = el("div"); list.style.marginTop = "8px";
+      keys.slice(0, 6).forEach(function (k) { list.appendChild(effectKeyRow(k)); });
+      if (keys.length > 6) list.appendChild(el("div", "note", "그 외 " + (keys.length - 6) + "개…"));
+      card.appendChild(list);
+    }
+    return card;
+  }
+
+  function flagChip(host, label, on, hotWhenOn) {
+    var kind = on ? (hotWhenOn ? "hot" : "ok") : "neutral";
+    var mark = on ? "● " : "○ ";
+    host.appendChild(el("span", "chip " + kind, mark + label));
+  }
+
+  function effectKeyRow(k) {
+    var v = (k && k.value) ? k.value : k;
+    var effects = (v && v.signature && v.signature.effects) || [];
+    var box = el("div", "event");
+    var head = el("div", "ehead");
+    head.appendChild(el("span", "eop", v && v.kind ? v.kind : "effect key"));
+    effects.slice(0, 3).forEach(function (e) {
+      head.appendChild(el("span", "chip neutral", e.effect_class || "?"));
+      if (e.protected_external) head.appendChild(el("span", "chip hot", "protected_external"));
+      if (e.identity_relation) head.appendChild(el("span", "chip warn", e.identity_relation));
+    });
+    box.appendChild(head);
+    return box;
+  }
+
+  function renderTraceCard(s) {
+    var card = el("section", "card");
+    var t = s.trace || {};
+    var title = "중간 상태 관찰 (effect trace)";
+    card.appendChild(el("div", "card-title", title));
+
+    var src = (t.sources || []).map(function (x) { return x.mechanism + " v" + x.version; }).join(", ");
+    if (src) card.appendChild(el("div", "note", "source: " + src + (t.synthetic ? " · synthetic 값" : "")));
+
+    // entries table
+    var entries = entriesOf(s);
+    if (entries.length) {
+      var tbl = el("table", "trace");
+      var thead = el("tr");
+      ["#", "path", "type", "link target", "events"].forEach(function (h) { thead.appendChild(el("th", null, h)); });
+      tbl.appendChild(thead);
+      entries.slice(0, 30).forEach(function (e) {
+        var tr = el("tr");
+        tr.appendChild(td(e.entry_index, "num"));
+        tr.appendChild(td(e.path));
+        var ty = el("td"); ty.appendChild(el("span", "type-tag", e.entry_type || e.type || "?")); tr.appendChild(ty);
+        tr.appendChild(td(e.link_target || "—"));
+        tr.appendChild(td(e.effect_event_count != null ? e.effect_event_count : "—", "num"));
+        tbl.appendChild(tr);
+      });
+      card.appendChild(tbl);
+    } else {
+      card.appendChild(el("div", "empty", "관찰된 archive entry 가 없습니다."));
+    }
+
+    // effect events with inode identity
+    var events = eventsOf(s);
+    if (events.length) {
+      var evWrap = el("div"); evWrap.style.marginTop = "12px";
+      evWrap.appendChild(el("div", "card-title", "effect events · inode identity (before → after)"));
+      events.slice(0, 8).forEach(function (e) { evWrap.appendChild(eventBox(e)); });
+      if (t.effect_events_total && t.effect_events_total > events.length)
+        evWrap.appendChild(el("div", "note", "표시 " + events.length + " / 전체 " + t.effect_events_total + " events"));
+      card.appendChild(evWrap);
+    }
+
+    // raw json
+    var raw = el("details", "raw");
+    raw.appendChild(el("summary", null, "원본 스텝 JSON 보기"));
+    var pre = el("pre", "mono"); pre.textContent = JSON.stringify(s, null, 2);
+    raw.appendChild(pre);
+    card.appendChild(raw);
+    return card;
+  }
+  function td(text, cls) { return el("td", (cls ? cls : "") , text == null ? "—" : String(text)); }
+
+  function eventBox(e) {
+    var identity = e.effect_class && /identity/i.test(e.effect_class);
+    var box = el("div", "event" + (identity ? " identity" : ""));
+    var head = el("div", "ehead");
+    head.appendChild(el("span", "eop", (e.operation || "?") + " · " + (e.outcome || "?")));
+    if (e.effect_class) head.appendChild(el("span", "chip " + (identity ? "warn" : "neutral"), e.effect_class));
+    if (e.evidence_strength) head.appendChild(el("span", "chip neutral", e.evidence_strength));
+    if (e.association) head.appendChild(el("span", "chip neutral", e.association));
+    box.appendChild(head);
+
+    var paths = e.paths || [];
+    paths.forEach(function (p) {
+      var row = el("div", "inode"); row.style.marginTop = "5px";
+      row.appendChild(inodeSide(p.path, p.before));
+      row.appendChild(el("div", "arrow2", "→"));
+      row.appendChild(inodeSide(p.path, p.after));
+      box.appendChild(row);
+    });
+    return box;
+  }
+
+  function inodeSide(path, st) {
+    var side = el("div", "side");
+    side.appendChild(el("div", "ph mono", path || ""));
+    if (!st || st.status === "absent") { side.appendChild(el("div", "ident", "absent")); return side; }
+    var ident = el("div", "ident");
+    var dev = st.st_dev, ino = st.st_ino, nlink = st.st_nlink;
+    ident.innerHTML = "";
+    ident.appendChild(document.createTextNode((st.object_type || "?") + " · "));
+    var b = el("b"); b.textContent = (dev != null ? dev : "?") + ":" + (ino != null ? ino : "?");
+    ident.appendChild(b);
+    ident.appendChild(document.createTextNode(" · nlink " + (nlink != null ? nlink : "?") + (st.size != null ? " · " + st.size + "B" : "")));
+    side.appendChild(ident);
+    return side;
+  }
+
+  // ---- interactions ----
+  function select(i) {
+    if (i < 0) i = 0; if (i > state.steps.length - 1) i = state.steps.length - 1;
+    state.sel = i;
+    renderRibbon(); renderTimeline(); renderDetail();
+    var sel = document.querySelector(".step-row.sel");
+    if (sel && sel.scrollIntoView) sel.scrollIntoView({ block: "nearest" });
+  }
+
+  function loadReport(obj) {
+    state.report = obj || {};
+    state.steps = Array.isArray(obj.steps) ? obj.steps : [];
+    state.sel = 0;
+    computeDerived();
+    renderHeader(); renderRibbon(); renderConfig(); renderKpis();
+    renderTimeline(); renderDetail(); renderFooter();
+  }
+
+  function renderFooter() {
+    var r = state.report;
+    var native = (r.producer && r.producer !== "synthetic");
+    $("footer").innerHTML = "";
+    var txt = "라벨: " + (r.label || (native ? "demo run" : "SYNTHETIC")) +
+      " · producer: " + (r.producer || "?") +
+      " · Oracle `violated=True` 는 위반 후보이며 confirmed vulnerability 가 아닙니다. " +
+      "C0 Path Boundary · C1 Object Identity · C2 External Effect Noninterference.";
+    $("footer").appendChild(el("div", null, txt));
+  }
+
+  function parseReportText(text) {
+    text = text.replace(/^﻿/, "").trim();
+    try { return JSON.parse(text); }
+    catch (e) {
+      // JSONL: one step record per line
+      var steps = [];
+      text.split(/\r?\n/).forEach(function (line) {
+        line = line.trim(); if (!line) return;
+        try { steps.push(JSON.parse(line)); } catch (e2) { /* skip */ }
+      });
+      if (steps.length) return { producer: "unknown", label: "JSONL (steps only)", steps: steps };
+      throw new Error("리포트를 파싱할 수 없습니다 (JSON/JSONL 아님).");
+    }
+  }
+
+  function handleFile(file) {
+    var reader = new FileReader();
+    reader.onload = function () {
+      try { loadReport(parseReportText(String(reader.result))); }
+      catch (err) { alert(String(err && err.message || err)); }
+    };
+    reader.readAsText(file);
+  }
+
+  function loadEmbedded() {
+    var node = $("embedded-report");
+    try { loadReport(JSON.parse(node.textContent)); }
+    catch (e) { loadReport({ producer: "none", label: "no report", steps: [] }); }
+  }
+
+  // theme
+  function applyTheme(mode) {
+    document.documentElement.setAttribute("data-theme", mode);
+    try { localStorage.setItem("if-demo-theme", mode); } catch (e) {}
+  }
+  function initTheme() {
+    var m = "auto";
+    try { m = localStorage.getItem("if-demo-theme") || "auto"; } catch (e) {}
+    document.documentElement.setAttribute("data-theme", m);
+  }
+  function cycleTheme() {
+    var cur = document.documentElement.getAttribute("data-theme");
+    var next = cur === "dark" ? "light" : (cur === "light" ? "auto" : "dark");
+    applyTheme(next);
+  }
+
+  // wire up
+  $("load-btn").addEventListener("click", function () { $("file").click(); });
+  $("file").addEventListener("change", function (e) { if (e.target.files && e.target.files[0]) handleFile(e.target.files[0]); });
+  $("sample-btn").addEventListener("click", loadEmbedded);
+  $("theme-btn").addEventListener("click", cycleTheme);
+  document.addEventListener("keydown", function (e) {
+    if (e.target && /input|textarea|select/i.test(e.target.tagName)) return;
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") { select(state.sel + 1); e.preventDefault(); }
+    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") { select(state.sel - 1); e.preventDefault(); }
+  });
+  var drop = $("drop"), dragN = 0;
+  window.addEventListener("dragenter", function (e) { e.preventDefault(); dragN++; drop.classList.add("show"); });
+  window.addEventListener("dragover", function (e) { e.preventDefault(); });
+  window.addEventListener("dragleave", function (e) { dragN--; if (dragN <= 0) drop.classList.remove("show"); });
+  window.addEventListener("drop", function (e) {
+    e.preventDefault(); dragN = 0; drop.classList.remove("show");
+    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+  });
+
+  initTheme();
+  loadEmbedded();
+})();
+</script>
+</body>
+</html>

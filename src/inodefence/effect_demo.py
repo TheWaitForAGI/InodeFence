@@ -256,6 +256,146 @@ def render_effect_campaign_report(report: dict[str, object]) -> str:
     return json.dumps(report, sort_keys=True, indent=2, ensure_ascii=True, allow_nan=False) + "\n"
 
 
+# Terminal view of the loop while it runs (P0-5 demo). Both renderers read only the
+# report records, so the JSON evidence stays the single source and no new data is made.
+# Widest value: `mutate_link_target (no-op)` (26 chars).
+_OPERATOR_COLUMN = 26
+
+
+def _weight_changes(evidence: Mapping[str, Any] | None) -> list[str]:
+    """Operators whose scheduler weight moved at this step, as `name before->after`."""
+    if evidence is None:
+        return []
+    before = evidence["weights_before"]
+    after = evidence["weights_after"]
+    return [
+        f"{operator} {before[operator]}->{after[operator]}"
+        for operator in sorted(after)
+        if before.get(operator) != after[operator]
+    ]
+
+
+def _shared_identity_paths(trace: Mapping[str, Any]) -> int:
+    """Paths whose after-lstat shows st_nlink > 1: one object identity under two names."""
+    count = 0
+    for event in trace["effect_events"]:
+        for item in event["paths"]:
+            after = item.get("after")
+            if after and after.get("status") == "present" and int(after.get("st_nlink", 0)) > 1:
+                count += 1
+    return count
+
+
+def render_effect_step_summary(record: Mapping[str, Any], budget: int | None = None) -> str:
+    """One terminal line per finished step, read off the same record as its JSONL line.
+
+    The line states what the loop chose and observed at this step: the operator (or
+    `seed` for an initial case), the target's termination, how many effect events were
+    observed and how many paths ended with st_nlink > 1, the C0/C1/C2 verdicts, the
+    feedback outcome (new effect keys, reward, corpus admission) and any scheduler
+    weight that moved. Synthetic records end with SYNTHETIC so the line never reads as
+    a node-tar observation. `budget` only adds the `/total` to the step counter.
+    """
+    index = int(record["index"]) + 1
+    counter = f"step {index:02d}" + (f"/{budget}" if budget else "")
+    attempt = record.get("mutation_attempt")
+    if attempt is None:
+        chosen = "seed"
+    else:
+        chosen = str(attempt["operator_id"]) + ("" if attempt["applied"] else " (no-op)")
+    trace = record["trace"]
+    oracle = record["oracle"]
+    verdicts = " ".join(
+        f"{contract} {'VIOLATED' if oracle[contract] else 'ok'}" for contract in sorted(oracle)
+    )
+    feedback = record["feedback"]
+    selection = record.get("selection")
+    if selection is None:
+        # Initial cases carry no selection channel; only their admission is known.
+        corpus = "retained" if feedback["retained"] else "not retained"
+    else:
+        before = int(selection["corpus_admission"]["corpus_size_before"])
+        corpus = (
+            f"corpus {before}->{before + (1 if selection['corpus_admission']['retained'] else 0)}"
+        )
+    evidence = record.get("scheduler_evidence")
+    reward = "-" if evidence is None else str(evidence["reward"])
+    parts = [
+        counter,
+        f"{chosen:<{_OPERATOR_COLUMN}}",
+        f"{str(feedback['trace_termination']):<8}",
+        f"events {int(trace['effect_events_total']):>2}",
+        f"nlink>1 {_shared_identity_paths(trace)}",
+        verdicts,
+        f"new-keys {len(feedback['new_effect_keys'])}",
+        f"reward {reward}",
+        corpus,
+    ]
+    changes = _weight_changes(evidence)
+    if changes:
+        parts.append("weight " + ", ".join(changes))
+    failures = trace["observation_failures"]
+    if failures:
+        parts.append(f"obs-fail {len(failures)}")
+    if trace["synthetic"]:
+        parts.append("SYNTHETIC")
+    return "  ".join(parts)
+
+
+def render_effect_campaign_summary(report: Mapping[str, Any]) -> str:
+    """Closing terminal lines for a finished demo report: what the whole loop did.
+
+    Counts come from the report's own steps and final_search_stats. An aborted report
+    has no steps and is rejected: the abort message already says what happened.
+    """
+    steps = report.get("steps")
+    if not isinstance(steps, list):
+        raise ValueError("campaign summary requires a finished report with steps")
+    terminations = Counter(str(step["feedback"]["trace_termination"]) for step in steps)
+    contracts = sorted({contract for step in steps for contract in step["oracle"]})
+    violated = Counter(
+        contract for step in steps for contract, flag in step["oracle"].items() if flag
+    )
+    reward_steps = [
+        str(int(step["index"]) + 1)
+        for step in steps
+        if step.get("scheduler_evidence") and step["scheduler_evidence"]["reward"]
+    ]
+    stats = report["final_search_stats"]["value"]
+    final_weights = next(
+        (
+            step["scheduler_evidence"]["weights_after"]
+            for step in reversed(steps)
+            if step.get("scheduler_evidence")
+        ),
+        {},
+    )
+    moved = [
+        f"{operator} {weight}" for operator, weight in sorted(final_weights.items()) if weight != 1
+    ]
+    head = f"demo summary: producer={report['producer']} steps={len(steps)}"
+    if report.get("label"):
+        head += f" label={report['label']!r}"
+    if report.get("node_tar_version"):
+        head += f" node-tar={report['node_tar_version']}"
+    if report["producer"] == "synthetic":
+        head += " SYNTHETIC (not node-tar)"
+    lines = [
+        head,
+        "  termination: "
+        + ", ".join(f"{name} {count}" for name, count in sorted(terminations.items())),
+        f"  oracle violations: {sum(violated.values())} ("
+        + ", ".join(f"{contract} {violated[contract]}" for contract in contracts)
+        + ")",
+        f"  feedback: unique effect keys {stats['unique_effect_keys']}, "
+        f"reward steps {','.join(reward_steps) or 'none'}, "
+        f"retained corpus {len(report['retained_case_ids'])} "
+        f"(initial {len(report['initial_case_ids'])})",
+        "  final weights: " + (", ".join(moved) + " (others 1)" if moved else "all 1 (no reward)"),
+    ]
+    return "\n".join(lines)
+
+
 # Conditions that must match for two demo reports to differ only by search policy.
 _SHARED_CONFIG = ("random_seed", "execution_budget", "mutation_policy")
 

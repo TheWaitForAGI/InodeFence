@@ -33,6 +33,7 @@ def policy_result(request):
         SearchPolicy.B0: (FeedbackProjection.FULL, MutationPolicy.LEGACY),
         SearchPolicy.B1: (FeedbackProjection.A1, MutationPolicy.M1),
         SearchPolicy.B3: (FeedbackProjection.A2, MutationPolicy.M1_NO_REORDER),
+        SearchPolicy.D: (FeedbackProjection.FULL, MutationPolicy.M1),
     }[request.param]
     return run_search_campaign(
         cases,

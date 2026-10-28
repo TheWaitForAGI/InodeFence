@@ -219,6 +219,48 @@ analysis counts from each policy's own seen-key counts and admission-eligible I/
 throughput E/full campaign seconds, useful bytes retained and malformed/rejected
 rate, without ranking effectiveness by archive rejection or raw novelty alone.
 
+## Coverage baseline D and the A/B/C/D common metric set
+
+These labels are the experiment-arm vocabulary of [BACKLOG](../../BACKLOG.md)
+M3.5: **A random**, **B structure-aware**, **C state-aware (identity/external-effect,
+InodeFence)** and **D coverage-guided**. The point of adding D is to separate the
+*specific* contribution of identity-state feedback (C) from the *general*
+contribution of any feedback-guided retention, so a coverage-feedback comparator
+of the kind ZIPDiff/LinkZard would ask for is on the table for the H1 judgment.
+
+Realization (observed; honest cross-path caveat). In this final-state
+`run_search_campaign` path, D is `SearchPolicy.D`
+([baselines](baseline-and-ablation-v1.md)); A is the unretained walk `SearchPolicy.B0`;
+C is the state-aware key of `SearchPolicy.B1`/`B3` (identity/external-effect
+retained in the key); B is a structure-aware input-mutation policy (M1 grammar).
+The earlier A/B/C comparison in the STATUS ledger (M3) was exercised in the
+separate effect-campaign path, not this one. A single unified-path A/B/C/D
+campaign is **NOT_RUN**; the shared metrics below exist so the arms are measured
+identically whichever path realizes them, not to assert they have already been
+run together.
+
+Common metrics (reused, not new). Every arm is scored only with metrics already
+defined in **Exact metrics** above, computed the same way, so any difference
+reflects the policy and not the metric:
+
+- Executions to first confirmed class evidence (right-censored at N) and its
+  time-to-hit companion.
+- Unique StateSignatures and unique violation fingerprints over E (common
+  full-v3 analysis counts, independent of each arm's own key).
+- Admission-eligible observation rate I/E and corpus growth R_end − R_after_seed
+  (A/B0 contributes zero growing corpus; report its working-set separately).
+- Valid-input rate and the per-status process/infrastructure outcome counts.
+- Repeatability and paired vulnerable/fixed discrimination.
+
+D is deliberately **not** scored by its own coverage-feature count: a larger
+structure-coverage set is search behavior, not effectiveness (audit EN-008), and
+D's admission excludes `StateSignature.identity_groups` and `external_effects` by
+construction ([coverage.py](../../../src/inodefence/feedback/coverage.py)). D is an
+output-structure coverage PROXY, not instrumented extractor code coverage
+(observed/inferred limitation). No effectiveness ranking of A/B/C/D is claimed
+here; this section fixes the shared measurement, and promoting any rate claim
+still requires the M3.4 pilot power and a frozen protocol.
+
 ## Censoring and summaries
 
 A right-censored no-hit means only “later than the observed budget,” not a

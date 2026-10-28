@@ -30,9 +30,11 @@ def test_same_signature_new_c0_distinguishes_admission_from_analysis(policy) -> 
     assert state.stats.observations == 3
     assert state.stats.interesting_observations == 2
     assert state.stats.unique_states == state.stats.unique_violation_fingerprints == 1
+    # D admits only the structurally novel seed; the same-structure child and
+    # repeat add no new coverage feature, so its retained count matches B1 here.
     assert (
         state.stats.retained_cases
-        == {SearchPolicy.B0: 0, SearchPolicy.B1: 1, SearchPolicy.B3: 2}[policy]
+        == {SearchPolicy.B0: 0, SearchPolicy.B1: 1, SearchPolicy.B3: 2, SearchPolicy.D: 1}[policy]
     )
 
 

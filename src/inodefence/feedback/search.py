@@ -10,6 +10,7 @@ from inodefence.model import ArchiveCase, RunResult
 
 from ._novelty import NoveltyIndex
 from .corpus import CorpusEntry, CorpusStats, FeedbackDecision
+from .coverage import StructureCoverageFeature, structure_coverage_features
 from .fingerprint import ViolationFingerprint
 from .projection import FeedbackKey, FeedbackProjection, feedback_key
 
@@ -18,6 +19,9 @@ class SearchPolicy(StrEnum):
     B0 = "unretained-walk-v1"
     B1 = "state-v3-uniform-parent-v1"
     B3 = "state-v2-or-violation-v1-uniform-parent-v1"
+    # Baseline D: coverage-guided retention on target-agnostic extraction
+    # structure, excluding identity/external-effect labels (see coverage.py).
+    D = "structure-coverage-v1-uniform-parent-v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +86,7 @@ class SearchState:
         self._policy = policy
         self._projection = projection
         self._keys: set[FeedbackKey] = set()
+        self._coverage: set[StructureCoverageFeature] = set()
         self._seeds = cases
         self._novelty = NoveltyIndex()
         self._entries: list[CorpusEntry] = []
@@ -110,16 +115,24 @@ class SearchState:
         key_novel = key not in self._keys
         state_novel, new, fingerprints = self._novelty.observe(result)
         self._keys.add(key)
+        coverage_novel = False
+        if self.policy == SearchPolicy.D:
+            features = structure_coverage_features(result.signature)
+            # Initial seeds are the base corpus (coverage-guided convention); a
+            # mutation is admitted only when it exercises a new structure feature.
+            coverage_novel = is_seed or not features <= self._coverage
+            self._coverage |= features
         diagnostic = FeedbackDecision(
             result.case.case_id, state_novel, new, result.case.case_id in self._retained_ids
         )
-        eligible = (
-            False
-            if self.policy == SearchPolicy.B0
-            else key_novel
-            if self.policy == SearchPolicy.B1
-            else key_novel or bool(new)
-        )
+        if self.policy == SearchPolicy.B0:
+            eligible = False
+        elif self.policy == SearchPolicy.B1:
+            eligible = key_novel
+        elif self.policy == SearchPolicy.D:
+            eligible = coverage_novel
+        else:  # B3
+            eligible = key_novel or bool(new)
         decision = SearchDecision(
             diagnostic.case_id, state_novel, new, diagnostic.already_retained, eligible, key_novel
         )
@@ -131,7 +144,7 @@ class SearchState:
         return decision
 
     def select_case(self, rng: random.Random) -> ArchiveCase:
-        """B0 draws once from seeds; B1/B3 draw uniformly from retained parents."""
+        """B0 draws once from seeds; B1/B3/D draw uniformly from retained parents."""
         if self._novelty.observations < len(self._seeds):
             raise ValueError("parent selection requires a completed seed phase")
         if self.policy == SearchPolicy.B0:

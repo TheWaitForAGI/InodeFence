@@ -1,9 +1,9 @@
 # Baselines and ablations v1
 
 Capability baseline: main **`8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`**.
-The executable comparison is **B0/B1/B3 and A1/A2/A3**. APIs and engineering tests
-exist; **effectiveness is not EXPERIMENTALLY VALIDATED**. No historical case has
-been rediscovered and no vulnerability is claimed. See [G0 contract](../design/research-contract-v1.md)
+The executable comparison is **B0/B1/B3, coverage-guided D and A1/A2/A3**. APIs and
+engineering tests exist; **effectiveness is not EXPERIMENTALLY VALIDATED**. No historical
+case has been rediscovered and no vulnerability is claimed. See [G0 contract](../design/research-contract-v1.md)
 for evidence levels, scope and qualification order.
 
 A baseline is a complete alternative search policy. An ablation removes one
@@ -17,6 +17,7 @@ or target versions alone is neither a feedback baseline nor an ablation.
 | B0 | `SearchPolicy.B0`: `unretained-walk-v1` | [search tests](../../../tests/test_campaign_search.py), [reference integration](../../../tests/test_campaign_search_integration.py) | Unguided multi-step walk; changes retention and parent distribution together |
 | B1 | `SearchPolicy.B1`: `state-v3-uniform-parent-v1` | Same policy/composition and reference tests | Marginal violation-novelty admission versus B3, uniform evolving parents constant |
 | B3 | `SearchPolicy.B3`: `state-v2-or-violation-v1-uniform-parent-v1` | Legacy parity plus policy/reference checks | State key OR violation novelty admission; no measured effectiveness |
+| D | `SearchPolicy.D`: `structure-coverage-v1-uniform-parent-v1` | [coverage tests](../../../tests/test_feedback_coverage.py), campaign/reference composition | Coverage-guided retention on target-agnostic extraction structure; excludes identity/external-effect labels to isolate general feedback from identity-state feedback (H1) |
 | A1 | `FeedbackProjection.A1`: `state-v3-no-identity-groups-key-v1` | [projection tests](../../../tests/test_feedback_projection.py), campaign composition | Identity-group key contribution only; regular nlink/C1 fingerprints remain |
 | A2 | `FeedbackProjection.A2`: `state-v3-no-external-effects-key-v1` | Same projection/composition checks | Effect-label key contribution only; object content/C2 fingerprints remain |
 | A3 | `uniform-generic-no-reorder-v1` / `uniform-generic-m1-no-reorder-v1` | [mutation ablation tests](../../../tests/test_mutator_ablation.py), campaign composition | Swap contribution; draw-preserving executed no-op, insertion/duplicate remain |
@@ -43,6 +44,41 @@ address default `outside/sentinel.txt`, but a shared qualified setup/profile bin
 required before benchmark execution.
 B2, adaptive scheduling, a general fresh-archive generator, a path-only key and
 fixed-recipe baseline are absent and excluded from this executable comparison.
+
+## Coverage-guided baseline D
+
+`SearchPolicy.D` (`structure-coverage-v1-uniform-parent-v1`) is a coverage-guided
+baseline in the sense of ZIPDiff/LinkZard-style feedback. It keeps the initial
+seed corpus as its base population and admits a mutation parent only when the
+extraction exercises a generic structural feature not yet seen in the campaign
+(new feature -> keep input). The feature set is the target-agnostic projection in
+[coverage.py](../../../src/inodefence/feedback/coverage.py): for each observed
+object, `(object_type, region, path_depth, symlink_anchor_class)`. Parent
+selection after the seed phase is uniform over retained entries, identical to
+B1/B3.
+
+D deliberately never reads `StateSignature.identity_groups` or
+`StateSignature.external_effects` — the object-identity and external-effect labels
+that encode InodeFence's own hypothesis — and also ignores content digests, sizes,
+permission modes and raw inode/timestamp values. This is the separation point from
+B3: a run that differs from a retained one only in an identity relation (A1-style)
+or an external-effect label (A2-style) adds no new coverage feature, so D does not
+admit it, while B3 does. Comparing a state-aware policy against D therefore isolates
+the specific contribution of identity/external-effect feedback from the general
+contribution of any feedback-guided retention (H1; audit EN-008: a larger
+state/feature count is not effectiveness, and D is not scored by its coverage count).
+
+`region` (extraction vs external) is a fixed runtime-layout fact (`path_region`),
+not an identity or effect label; including it lets D credibly cover the generic
+path-boundary dimension, which this project positions as baseline rather than
+novelty, while still excluding the two hypothesis labels. **Limitation
+(observed/inferred):** D is an output-structure coverage PROXY derived from the
+final-state signature, not instrumented code coverage of the extractor process,
+which the contained-execution boundary does not expose. A more conservative variant
+that also excludes `region` is possible; the stronger region-aware form is chosen
+so that D is a credible, non-strawman coverage baseline. D changes only parent
+admission; it preserves full raw observations and C0/C1/C2 oracle evidence like the
+other policies.
 
 ## Entry-transition causal extension
 

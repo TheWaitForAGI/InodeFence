@@ -3,6 +3,7 @@
 from inodefence.model import EffectFeedbackKeyKind
 
 from .corpus import Corpus, CorpusEntry, CorpusStats, FeedbackDecision
+from .coverage import StructureCoverageFeature, structure_coverage_features
 from .effect import (
     boundary_attempt_keys,
     effect_feedback_eligible,
@@ -75,8 +76,10 @@ __all__ = [
     "SearchDecision",
     "SearchPolicy",
     "SearchState",
+    "StructureCoverageFeature",
     "ViolationFingerprint",
     "state_signature",
+    "structure_coverage_features",
     "transition_key",
     "transition_keys",
     "transition_sequence_key",

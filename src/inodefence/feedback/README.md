@@ -171,9 +171,13 @@ caller 수준의 select → mutate → 단일 실행 조합을 검증한다.
 
 ## Versioned search-policy core
 
-`SearchPolicy`, `SearchState(initial_cases, policy)`, `SearchDecision`은 독립 B0/B1/B3
+`SearchPolicy`, `SearchState(initial_cases, policy)`, `SearchDecision`은 독립 B0/B1/B3/D
 policy API다. Full diagnostic novelty와 explicit admission을 분리하고 B0는 이전 child로
-전진한다. Legacy Corpus/B3 campaign serialization은 유지한다.
+전진한다. D(coverage-guided)는 초기 seed corpus를 base로 유지하고 mutation은 새
+target-agnostic structure-coverage feature(`coverage.py`: object type·region·depth·
+symlink anchor)에서만 admit하며 `identity_groups`/`external_effects`를 보지 않는다 —
+'피드백 일반'과 'identity-state 피드백'을 분리하기 위함(H1). Legacy Corpus/B3 campaign
+serialization은 유지한다.
 [Core 계약과 campaign/Evaluation 통합 요구사항](../../../docs/research/design/search-policy-core-v1.md)을
 따른다. `run_search_campaign` / `SearchCampaignConfig`는 이 IDs를 실행하며 separate completed
 policy export/reader/config/dataset binding도 구현됐다. Legacy ExperimentConfig는 여전히 B3/legacy만

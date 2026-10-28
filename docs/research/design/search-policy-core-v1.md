@@ -15,10 +15,15 @@ Incremental policy journal은 연결됐지만 automatic repetition/known-class a
 | `unretained-walk-v1` (B0) | 없음 | 첫 선택은 seed bank에서 균등, 이후 이전 observed child |
 | `state-v3-uniform-parent-v1` (B1) | unseen feedback key (default: full StateSignature) | retained unique cases에서 균등 |
 | `state-v2-or-violation-v1-uniform-parent-v1` (B3 legacy ID) | unseen feedback key OR violation fingerprint | retained unique cases에서 균등 |
+| `structure-coverage-v1-uniform-parent-v1` (D) | seed는 base corpus, mutation은 unseen structure-coverage feature (identity/external-effect 제외) | retained unique cases에서 균등 |
 
 선언한 immutable initial cases는 nonempty / unique case ID여야 한다. `consider`는
 먼저 seed results를 선언 순서로 요구한다. Seed phase가 끝나기 전 selection은 RNG를
 소비하지 않고 거부한다. B1/B3 seed admission도 선택한 projection의 key novelty 규칙을 사용한다.
+D(coverage-guided)는 초기 seed corpus를 base population으로 유지하고 mutation은 새
+structure-coverage feature에서만 admit하며, `identity_groups`/`external_effects`를
+보지 않는다([coverage.py](../../../src/inodefence/feedback/coverage.py)). 이는 '피드백
+일반'과 'identity-state 피드백'을 분리하기 위한 target-agnostic coverage 프록시다.
 B0는 seed bank와 active case 한 개만 parent로 사용하며 retained entries는 항상 없다.
 Diagnostic state/fingerprint indexes는 B0에서도 누적되므로 전체 메모리가 O(1)은 아니다.
 모든 status와 no-op child를 동등하게 관찰한다. Oracle/target 정보를 selection에 넣지 않는다.

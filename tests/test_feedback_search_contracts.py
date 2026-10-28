@@ -32,7 +32,9 @@ def test_status_changes_do_not_admit_cases_but_semantic_state_changes_do(policy,
     assert not same.interesting and not same.admission_eligible and not same.retained
     changed = state.consider(_status(_result(_case("changed"), b"new semantic output"), status))
     assert changed.state_novel and changed.feedback_key_novel
-    assert changed.retained == (policy != SearchPolicy.B0)
+    # D keys on extraction structure, not content: a content-only state change
+    # adds no new coverage feature, so D (unlike B1/B3) does not admit it.
+    assert changed.retained == (policy in (SearchPolicy.B1, SearchPolicy.B3))
     assert state.stats.observations == 3 and state.stats.unique_states == 2
 
 

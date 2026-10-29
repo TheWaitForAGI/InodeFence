@@ -10,7 +10,10 @@
 - Adaptive scheduling core: **IMPLEMENTED**, **TESTED**
 - Boundary-approach gradient (`TransitionBoundaryProximity`,
   `feedback.transition_gradient`): **IMPLEMENTED**, synthetic **TESTED**; not wired into
-  any campaign (gated on a native entry-completion boundary)
+  any campaign (gated on a native entry-completion boundary) — ordered native boundary
+  confirmed **not observable** on the current second-extractor family (generality-m4
+  feasibility, observed), so this ordered gradient stays unrealized; the set-based
+  effect-path rung generalizes instead (M3.7, see below)
 - Checksummed evaluation config/export/reader/replay verifier/metrics: **IMPLEMENTED**, **TESTED**
 - Effectiveness or benchmark result: **NOT_RUN**, **HYPOTHESIS**
 
@@ -182,10 +185,13 @@ transition evidence, never a C0/C1/C2 verdict and never a vulnerability.
 
 The derivation consumes only the generic `FilesystemTransition` / `TransitionTrace`,
 which is exactly what a qualified entry-completion boundary already produces through the
-generic observer. No target-specific code is involved, so the same signal applies to a
-second extractor that exposes per-entry checkpoints (the generality lane's adapter).
-The wiring, when that boundary is qualified, is additive and leaves every existing
-channel unchanged:
+generic observer. No target-specific code is involved, so the same signal *would* apply to a
+second extractor that exposes per-entry checkpoints. **Observed negative (generality-m4
+feasibility, 2026-10-30):** the current second-extractor family does *not* expose such a
+boundary — decompress records entries concurrently and reordered and propagates no entry
+context, the same class of limit node-tar hits — so the ordered transition gradient stays
+unrealized there (see the honest-scope note below). The wiring, when such a boundary is
+qualified on some future extractor, is additive and leaves every existing channel unchanged:
 
 ```text
 adapter entry-completion boundary (target-agnostic EntryCheckpoint producer)
@@ -210,3 +216,17 @@ Until a native entry-completion boundary is qualified, this module is dormant: n
 in any live campaign consumes it, and admission/reward behavior is byte-for-byte
 unchanged. Enabling the reward channel is a pre-registered scheduler amendment under the
 same gate as the rest of this contract, flagged for human review wherever it ships.
+
+**Honest scope (what lives, given the feasibility negative).** The generality-m4
+entry-completion feasibility probe confirmed (observed, 2026-10-30) that the current
+second-extractor family exposes no ordered, entry-correlated completion boundary, so this
+ordered-transition gradient remains **dormant and unrealized** — a target-fundamental
+observation negative, not a security result and not a statement about effectiveness. The
+*set-based* boundary-approach signal survives that limit on a weaker contract: the
+effect-path region rung (`OBSERVED_EXTERNAL_RESOLVE`) needs no ordering, so a second
+extractor that can only observe a *set* of boundary crossings feeds it through
+`feedback.boundary_observation` (M3.7, branch `jiwoong/m3-set-external-resolve-mapping`;
+`entry-effect-feedback-v2.md`). This transition module and its `TransitionBoundaryProximity`
+rungs stay as the pre-wired design for a future extractor that *does* expose the ordered
+boundary; the generalizing signal that is live-reachable today is that effect-path set rung,
+not this one.

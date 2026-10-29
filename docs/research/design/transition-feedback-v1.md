@@ -8,6 +8,9 @@
   snapshot and causal-effect qualification failures
 - Transition novelty/retention core: **IMPLEMENTED**, **TESTED**
 - Adaptive scheduling core: **IMPLEMENTED**, **TESTED**
+- Boundary-approach gradient (`TransitionBoundaryProximity`,
+  `feedback.transition_gradient`): **IMPLEMENTED**, synthetic **TESTED**; not wired into
+  any campaign (gated on a native entry-completion boundary)
 - Checksummed evaluation config/export/reader/replay verifier/metrics: **IMPLEMENTED**, **TESTED**
 - Effectiveness or benchmark result: **NOT_RUN**, **HYPOTHESIS**
 
@@ -134,3 +137,70 @@ The model and normalization import no node-tar code. A target adapter may report
 proven completion boundary, while the generic observer captures filesystem state and
 the generic feedback layer derives keys. Future observers may replace full snapshots
 without changing the target event or normalized feedback contracts.
+
+## Boundary-approach gradient (additive, pre-wired for a native boundary)
+
+`TransitionSignature` records three *unordered* structural flags, so transition
+novelty admission answers only "is this transition class new?". It cannot order two
+intermediate sequences by how close each came to a boundary violation, and the final
+BEFORE/AFTER C0/C1/C2 oracle is likewise all-or-nothing. That missing ordering is the
+documented ceiling on adaptive search: a refused escaping attempt that never realizes a
+violation is indistinguishable from an input that never approached the boundary.
+
+`feedback.transition_gradient` adds one comparable rung per transition and the closest
+rung a whole trace ever reached. It is the transition-path analogue of the effect-path
+`boundary_attempt_keys`/`external_resolve_keys` rungs, derived from the richer per-entry
+transition signal rather than a single final/rejected effect trace.
+
+`TransitionBoundaryProximity` (ascending severity):
+
+| Rung | Meaning (the realized-violation shape it matches) |
+| --- | --- |
+| `none` | only extraction-region effects, or no change |
+| `external_namespace` | a namespace field changed on a path outside `extract/` (the C0 shape) |
+| `cross_boundary_identity` | a newly created identity group spans EXTRACTION and EXTERNAL (the C1 shape against any external object) |
+| `protected_effect` | a declared protected external path changed (the realized C2 shape) |
+
+`transition_proximity(transition)` returns the maximum rung whose condition holds;
+`transition_proximities(trace)` returns the ordered per-transition rungs (diagnostic);
+`trace_proximity(trace)` returns the max over transitions — the single comparable
+gradient value for a trace. Each rung reuses the exact region/field classification
+already proven in `transition_signature`, so no new judgment semantics are introduced.
+
+The rung is target-agnostic: it is derived only from `Region` classes, `ChangeField`
+categories and the declared-protected marker in the generic model — never a concrete
+path, raw device/inode value, timestamp, sentinel, CVE or PoC. It is transition
+evidence, never a C0/C1/C2 verdict and never a vulnerability.
+
+### Integration path when a native entry-completion boundary arrives
+
+The derivation consumes only the generic `FilesystemTransition` / `TransitionTrace`,
+which is exactly what a qualified entry-completion boundary already produces through the
+generic observer. No target-specific code is involved, so the same signal applies to a
+second extractor that exposes per-entry checkpoints (the generality lane's adapter).
+The wiring, when that boundary is qualified, is additive and leaves every existing
+channel unchanged:
+
+```text
+adapter entry-completion boundary (target-agnostic EntryCheckpoint producer)
+  -> generic observer per-entry checkpoints
+  -> derive_transition -> FilesystemTransition sequence (unchanged)
+  -> transition_signature / TransitionFeedbackKey  (admission, UNCHANGED)
+  -> trace_proximity -> TransitionBoundaryProximity (NEW: ordered reward signal)
+```
+
+- **Admission** stays the existing unseen-`TransitionFeedbackKey`-or-violation rule. The
+  gradient does not change what is retained, so H1 (retention) stays about the key.
+- **Reward** gains the gradient: the P2 bounded scheduler may reward a child whose
+  `trace_proximity` rank is strictly greater than its retained parent's, i.e. its
+  intermediate sequence got closer to the boundary. Reward stays bounded and binary
+  (one step reaching a strictly higher max rung), never scaled by rung count, so the
+  existing cap/weight mechanism is unchanged. This is the first monotone gradient the
+  adaptive search receives; it is a search signal, not a verdict.
+- The `trace_proximity` scalar is finite (four rungs) and introduces no unbounded key
+  dimension, so the fair-comparison and finite-normalization guarantees hold.
+
+Until a native entry-completion boundary is qualified, this module is dormant: nothing
+in any live campaign consumes it, and admission/reward behavior is byte-for-byte
+unchanged. Enabling the reward channel is a pre-registered scheduler amendment under the
+same gate as the rest of this contract, flagged for human review wherever it ships.

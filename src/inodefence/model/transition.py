@@ -379,6 +379,34 @@ class RelationDeltaKind(StrEnum):
     REMOVED = "removed"
 
 
+class TransitionBoundaryProximity(StrEnum):
+    """Ordered boundary-approach rung reached by one intermediate transition.
+
+    Unlike the unordered structural flags on `TransitionSignature`, this is a
+    single comparable label so adaptive search sees a *gradient*: a transition
+    whose intermediate state reached a higher rung got closer to the realized
+    C0/C1/C2 boundary shape than one that reached a lower rung, even when neither
+    produced a final violation. The rung is the maximum-severity boundary
+    observation present in the transition; the rungs are not a strict nesting, so
+    a rung is derived by taking the highest condition that holds, never by
+    assuming the lower ones also hold.
+
+    It is transition evidence, never a C0/C1/C2 verdict and never a vulnerability
+    (the same boundary that the existing `transition_signature` flags record).
+    Target-agnostic: derived only from `Region` classes, `ChangeField` categories
+    and the declared-protected marker already in the generic model -- never a
+    concrete path, raw device/inode value, timestamp, sentinel, CVE or PoC.
+
+    Members are declared in ascending severity order; `feedback.transition_gradient`
+    owns the canonical rank derived from that order.
+    """
+
+    NONE = "none"
+    EXTERNAL_NAMESPACE = "external_namespace"
+    CROSS_BOUNDARY_IDENTITY = "cross_boundary_identity"
+    PROTECTED_EFFECT = "protected_effect"
+
+
 @dataclass(frozen=True, slots=True)
 class TransitionObjectEffect:
     """Path-region structural effect with no raw identity or timestamp value."""

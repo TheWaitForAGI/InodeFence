@@ -7,23 +7,27 @@ C1) and produces the EVALUATION-lane statistical roll-up via
 raw traces -- that is the runtime lane's call; this is the stats layer over its facts.
 
 This is a SINGLE-ARM control, so it makes no rate or effectiveness claim (audit
-EN-008): 0/3 complete campaigns over a wide small-sample Wilson interval is not a
-rate, and the research argument is the causal CONTRAST with the identity-feedback arm
-(the effect-path, recorded in STATUS M3), not this arm's rate. It is incremental:
-re-run as later batches seal; a partial/growing set is reported as such, never
-concluded as if complete.
+EN-008): a few complete campaigns with 0 hits over a wide small-sample Wilson interval
+is not a rate, and the research argument is the causal CONTRAST with the
+identity-feedback arm (the effect-path, recorded in STATUS M3), not this arm's rate. It
+is incremental: pass several ``--summary`` files to pool consecutive batches as they
+seal (``merge_summaries``); a partial/growing set is reported as such, never concluded
+as if complete.
 
 Terminology: the runtime summary labels its fail-closed aborts
-``right_censored_abort_seeds``. This roll-up instead classifies them as
-infrastructure-incomplete and excludes them from the complete-campaign rate
-denominator, per ``evaluation-protocol-v1`` (an infrastructure abort is not ordinary
-no-hit censoring); each is reported separately and observed 0 before its abort.
+``right_censored_abort_seeds`` (survival-sense censoring at the abort step). This
+roll-up instead classifies them as infrastructure-incomplete and excludes them from the
+complete-campaign rate denominator, per ``evaluation-protocol-v1`` (an infrastructure
+abort is not ordinary within-budget no-hit censoring); each is reported separately and
+observed 0 before its abort. The complete no-hit campaigns are the ones this roll-up
+reports as right-censored at the budget horizon N.
 
-  uv run python -m scripts.analyze_m3_3_control --summary <dir>/summary.json [--output <file>]
+  uv run python -m scripts.analyze_m3_3_control --summary <dir>/summary.json [...] [--output <file>]
 """
 
 import argparse
 import json
+from collections.abc import Sequence
 from pathlib import Path
 
 from inodefence.evaluation.right_censored import SeedOutcome, right_censored_summary
@@ -52,7 +56,66 @@ _RUNTIME_KEYS = (
     "config_nonconformant_seeds",
     "hit_criterion",
     "note",
+    "pooled_batches",
 )
+_POOL_INVARIANT_KEYS = ("budget", "version", "arm", "hit_criterion")
+
+
+def merge_summaries(summaries: Sequence[dict]) -> dict:
+    """Pool consecutive, DISJOINT per-batch runtime summaries into one summary dict.
+
+    The batches are consecutive-seed slices of one control arm, so they must share the
+    arm/target/budget and cover non-overlapping seeds. Overlapping seeds would
+    double-count and a differing arm/budget would pool unlike runs, so either raises
+    rather than silently combining. The result has the same shape build_outcomes/analyze
+    consume -- concatenated seed-indexed fields, summed totals -- plus a pooled_batches
+    provenance list recording each batch's seeds, execution count, and timestamp.
+    """
+    if not summaries:
+        raise ValueError("merge_summaries needs at least one summary")
+    base = summaries[0]
+    for other in summaries[1:]:
+        for key in _POOL_INVARIANT_KEYS:
+            if other.get(key) != base.get(key):
+                raise ValueError(f"cannot pool batches that differ in {key!r}")
+    seeds: list[int] = []
+    seen: set[int] = set()
+    for summary in summaries:
+        for raw_seed in summary["seeds"]:
+            seed = int(raw_seed)
+            if seed in seen:
+                raise ValueError(f"cannot pool batches with overlapping seed {seed}")
+            seen.add(seed)
+            seeds.append(seed)
+
+    def _concat(key: str) -> list:
+        pooled: list = []
+        for summary in summaries:
+            pooled.extend(summary.get(key, []))
+        return pooled
+
+    merged = dict(base)
+    merged["seeds"] = seeds
+    merged["completed_full_budget"] = _concat("completed_full_budget")
+    merged["right_censored_abort_seeds"] = _concat("right_censored_abort_seeds")
+    merged["seeds_with_clean_exact_c1"] = _concat("seeds_with_clean_exact_c1")
+    merged["config_nonconformant_seeds"] = _concat("config_nonconformant_seeds")
+    merged["cells"] = _concat("cells")
+    merged["observed_executions"] = sum(
+        int(summary.get("observed_executions", 0)) for summary in summaries
+    )
+    merged["clean_exact_c1_total"] = sum(
+        int(summary.get("clean_exact_c1_total", 0)) for summary in summaries
+    )
+    merged["pooled_batches"] = [
+        {
+            "created_at": summary.get("created_at"),
+            "seeds": [int(raw_seed) for raw_seed in summary["seeds"]],
+            "observed_executions": int(summary.get("observed_executions", 0)),
+        }
+        for summary in summaries
+    ]
+    return merged
 
 
 def build_outcomes(summary: dict) -> list[SeedOutcome]:
@@ -103,10 +166,11 @@ def analyze(summary: dict) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--summary", required=True, type=Path)
+    parser.add_argument("--summary", required=True, nargs="+", type=Path)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
-    summary = json.loads(args.summary.read_text())
+    summaries = [json.loads(path.read_text()) for path in args.summary]
+    summary = summaries[0] if len(summaries) == 1 else merge_summaries(summaries)
     result = analyze(summary)
     rendered = json.dumps(result, indent=2, sort_keys=True) + "\n"
     if args.output is not None:

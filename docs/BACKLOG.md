@@ -31,7 +31,7 @@ CVE-2026-24842(CVE-2026-23745 수정이 도입한 check/use 회귀; catalog N02�
 | 순서 | 태스크 | 상태 | 게이트 |
 | --- | --- | --- | --- |
 | M2.1 | capability probe를 repo 안 재현 스크립트/테스트로 고정: 손으로 만든 하드링크 fixture(외부 sentinel 대상)를 실제 7.5.2/7.5.3에 돌려 7.5.2=C1+C2·7.5.3=거부를 확인. generic C1/C2만 쓰고 CVE 식별자/PoC 하드코딩 없음. LOG 한 줄 + Ledger M2 증거 갱신 | 완료(experiments/repro/cross_release_identity.py) | 없음 (호스트 docker) |
-| M2.2 | 같은 fixture를 우리 Observer/Oracle 경로(effect pipeline)로도 통과시켜 "손 probe == oracle 판정" 일치 확인 | 대기 | M2.1 |
+| M2.2 | 같은 fixture를 우리 Observer/Oracle 경로(effect pipeline)로도 통과시켜 "손 probe == oracle 판정" 일치 확인 | 완료(claude/m2-2-oracle-path-7d09f3) | M2.1 |
 
 ## M3 — 퍼저가 자력으로 위반을 찾는다 (H1 본체)
 
@@ -72,7 +72,7 @@ NOT_IMPLEMENTED이라([transition-feedback-v1](research/design/transition-feedba
 | 태스크 | 상태 | 게이트 |
 | --- | --- | --- |
 | A/B/C/D(random / structure-aware / state-aware / coverage-guided) **정의와 공통 지표** 확정 — M3.2·M3.4·M3.5가 쓸 측정의 기준(D는 M3.5) | 진행(D·공통지표 정의 완료: claude/m3-5-baseline-d-65d6ae; A/B/C 단일경로 통합은 M3.2/M3.4) | 주언 |
-| 거부 입력에서 중간 상태 event 0개인 한계의 표현 방식 | 대기 | 민찬 |
+| 거부 입력에서 중간 상태 event 0개인 한계의 표현 방식 | 완료(claude/m3-reject-trace-limit-1b064d) | 민찬 |
 | demo 이미지 ID 재현성(provenance attestation) | 완료(gyumin/p0-1-image-id-reproducible) | 규민 |
 | 선행연구 서지 정합성(related-work-positioning.md에 저자·venue·연도·아티팩트) | 완료(jiwoong/p-audit-prior-work-citations) | 없음 |
 | (감사 제안 → **M3.5로 승격**) coverage-guided baseline(D) + A/B/C/D 공통지표 — 'identity feedback 특정 효과'를 'feedback 일반'과 분리(H1 판정용). **중간발표 포함 여부 확인필요** | 완료(M3.5: claude/m3-5-baseline-d-65d6ae) | 주언 |

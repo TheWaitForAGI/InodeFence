@@ -31,7 +31,7 @@ CVE-2026-24842(CVE-2026-23745 수정이 도입한 check/use 회귀; catalog N02�
 | 순서 | 태스크 | 상태 | 게이트 |
 | --- | --- | --- | --- |
 | M2.1 | capability probe를 repo 안 재현 스크립트/테스트로 고정: 손으로 만든 하드링크 fixture(외부 sentinel 대상)를 실제 7.5.2/7.5.3에 돌려 7.5.2=C1+C2·7.5.3=거부를 확인. generic C1/C2만 쓰고 CVE 식별자/PoC 하드코딩 없음. LOG 한 줄 + Ledger M2 증거 갱신 | 완료(experiments/repro/cross_release_identity.py) | 없음 (호스트 docker) |
-| M2.2 | 같은 fixture를 우리 Observer/Oracle 경로(effect pipeline)로도 통과시켜 "손 probe == oracle 판정" 일치 확인 | 대기 | M2.1 |
+| M2.2 | 같은 fixture를 우리 Observer/Oracle 경로(effect pipeline)로도 통과시켜 "손 probe == oracle 판정" 일치 확인 | 완료(claude/m2-2-oracle-path-7d09f3) | M2.1 |
 
 ## M3 — 퍼저가 자력으로 위반을 찾는다 (H1 본체)
 

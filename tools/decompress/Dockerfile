@@ -12,7 +12,9 @@
 # checksum-verified module graph via the committed package-lock.json (npm ci).
 ARG ROLE=affected
 
-FROM node:22-bookworm-slim@sha256:4b150b48b4116e2a22f2c39cc27025fbf4f153e2078fd3b14d159fdb5c7279da
+# Node base pinned by both the patched tag (22.23.4 fixes CVE-2026-111497, the Brotli decoder
+# out-of-bounds write) and the immutable digest; the two resolve to the same image.
+FROM node:22.23.4-bookworm-slim@sha256:4b150b48b4116e2a22f2c39cc27025fbf4f153e2078fd3b14d159fdb5c7279da
 ARG ROLE
 WORKDIR /target
 COPY tools/decompress/${ROLE}/package.json tools/decompress/${ROLE}/package-lock.json ./

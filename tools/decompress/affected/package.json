@@ -1,0 +1,8 @@
+{
+  "name": "inodefence-decompress-affected",
+  "version": "0.0.0",
+  "private": true,
+  "dependencies": {
+    "decompress": "4.2.1"
+  }
+}

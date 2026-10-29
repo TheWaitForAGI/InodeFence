@@ -1,0 +1,8 @@
+{
+  "name": "inodefence-decompress-fixed",
+  "version": "0.0.0",
+  "private": true,
+  "dependencies": {
+    "@xhmikosr/decompress": "11.1.4"
+  }
+}

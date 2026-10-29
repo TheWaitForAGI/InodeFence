@@ -317,6 +317,16 @@
     C3: "Extraction Root Integrity",
     C4: "Check/Use Coherence"
   };
+  // Why an empty/short effect stream is (or is not) a real observation. Mirrors the
+  // engine's EffectObservability; older reports omit the field and default to observed.
+  var OBSERVABILITY_HINT = {
+    "observed": "대상 정상 종료 — 기록된 effect(없음 포함)는 실제 관찰",
+    "not_observed:rejected-before-effect": "대상이 입력을 거부함 — effect event 부재는 관찰 아님, '위반 없음'이 아님",
+    "not_observed:target-failed": "대상 실패 종료 — effect 관찰 불완전, '위반 없음'이 아님",
+    "not_observed:target-timed-out": "대상 시간초과 — effect 관찰 불완전, '위반 없음'이 아님",
+    "not_observed:target-not-started": "대상 미시작 — effect 관찰 없음, '위반 없음'이 아님",
+    "not_observed:stream-incomplete": "effect 스트림 불완전(관찰 실패) — 일부 effect 누락 가능"
+  };
   var LOOP_STAGES = [
     { t: "입력 생성", d: "seed / mutation", test: function (s) { return true; } },
     { t: "node-tar 실행", d: "producer", test: function (s) { return true; } },
@@ -642,6 +652,17 @@
     var src = (t.sources || []).map(function (x) { return x.mechanism + " v" + x.version; }).join(", ");
     if (src) card.appendChild(el("div", "note", "source: " + src + (t.synthetic ? " · synthetic 값" : "")));
 
+    // effect observation status (additive; older reports omit it → observed)
+    var obs = t.effect_observation || "observed";
+    if (obs !== "observed") {
+      var obsBox = el("div", "note", "effect observation: " + obs + " — " + (OBSERVABILITY_HINT[obs] || "관찰 아님 — '위반 없음'이 아님"));
+      obsBox.style.marginTop = "6px";
+      obsBox.style.padding = "6px 8px";
+      obsBox.style.borderLeft = "3px solid var(--warning)";
+      obsBox.style.background = "color-mix(in srgb, var(--warning) 12%, transparent)";
+      card.appendChild(obsBox);
+    }
+
     // entries table
     var entries = entriesOf(s);
     if (entries.length) {
@@ -672,6 +693,12 @@
       if (t.effect_events_total && t.effect_events_total > events.length)
         evWrap.appendChild(el("div", "note", "표시 " + events.length + " / 전체 " + t.effect_events_total + " events"));
       card.appendChild(evWrap);
+    } else {
+      var emptyEv = el("div", "empty", (obs === "observed")
+        ? "관찰된 effect event 없음 — 대상 정상 종료, 이 입력에서 기록된 effect 없음"
+        : "관찰된 effect event 없음 — " + obs + ": 관찰 아님, '위반 없음'이 아님");
+      emptyEv.style.marginTop = "12px";
+      card.appendChild(emptyEv);
     }
 
     // raw json

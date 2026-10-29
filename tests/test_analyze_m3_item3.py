@@ -8,7 +8,10 @@ external_resolve_keys}``. If the projection ever dropped a field the predicates 
 the re-derivation drifted, this fails.
 """
 
+import json
+
 from scripts.analyze_m3_item3 import (
+    _load_step_records,
     analyze_cell,
     boundary_attempt_keys_from_record,
     external_resolve_keys_from_record,
@@ -197,3 +200,15 @@ def test_analyze_cell_rate_first_and_terminal_c1() -> None:
     assert result["boundary_attempt"]["executions_to_first"] == 2
     assert result["external_resolve"]["executions_with_key"] == 1
     assert result["terminal_c1_steps"] == [3]
+
+
+def test_load_step_records_json_and_jsonl(tmp_path) -> None:
+    # pass 2 reads full cells from a .json steps[] array and degraded heads from a
+    # .steps.jsonl file (one step record per line); both must yield the same records.
+    steps = [{"index": 0, "trace": {}}, {"index": 1, "trace": {}}]
+    full = tmp_path / "cell.json"
+    full.write_text(json.dumps({"steps": steps, "mode": "demo-historical"}))
+    head = tmp_path / "cell.steps.jsonl"
+    head.write_text("\n".join(json.dumps(step) for step in steps[:1]) + "\n")
+    assert _load_step_records(full) == steps
+    assert _load_step_records(head) == steps[:1]

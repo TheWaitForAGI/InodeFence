@@ -323,16 +323,285 @@ def _informative_censoring(arm_summaries: Mapping[str, dict]) -> dict:
     }
 
 
+def _load_step_records(path: Path) -> list[dict]:
+    """Ordered step records from a full .json (steps[]) or a .steps.jsonl head file."""
+    if path.name.endswith(".jsonl"):
+        return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+    return json.loads(path.read_text())["steps"]
+
+
+def _full_cell(steps: Sequence[Mapping]) -> tuple[dict, list[frozenset], list[frozenset]]:
+    """analyze_cell split into (JSON-safe metrics, boundary key sets, external key sets)."""
+    metrics = analyze_cell(steps)
+    boundary_sets = metrics.pop("boundary_sets")
+    external_sets = [external_resolve_keys_from_record(step.get("trace") or {}) for step in steps]
+    return metrics, boundary_sets, external_sets
+
+
+def analyze_decensor(evidence_dir: Path, decensor_dir: Path) -> dict:
+    """PASS 2: pool 18 original full + 3 de-censor newly-full (= 21) plus the 11 degraded
+    pre-abort heads, widen the within-seed paired comparison, and correct the informative-
+    censoring reading with the observed abort non-determinism."""
+    orig = json.loads((evidence_dir / "summary.json").read_text())
+    decensor = json.loads((decensor_dir / "summary.json").read_text())
+    budget = int(orig["budget"])
+
+    full_metrics: dict[tuple[str, int], dict] = {}
+    full_boundary: dict[tuple[str, int], list[frozenset]] = {}
+    full_case_ids: dict[tuple[str, int], list] = {}
+    sources: dict[tuple[str, int], str] = {}
+    for cell in orig["cells"]:
+        if cell["status"] != "full":
+            continue
+        key = (cell["arm"], int(cell["seed"]))
+        steps = _load_step_records(evidence_dir / cell["evidence"])
+        metrics, boundary, _ = _full_cell(steps)
+        full_metrics[key], full_boundary[key] = metrics, boundary
+        full_case_ids[key] = [step.get("case_id") for step in steps]
+        sources[key] = "original"
+
+    heads: dict[tuple[str, int], dict] = {}
+    for cell in decensor["cells"]:
+        key = (cell["arm"], int(cell["seed"]))
+        if cell["new_status"] == "completed_full":
+            steps = _load_step_records(decensor_dir / cell["evidence"])
+            metrics, boundary, _ = _full_cell(steps)
+            full_metrics[key], full_boundary[key] = metrics, boundary
+            full_case_ids[key] = [step.get("case_id") for step in steps]
+            sources[key] = "decensor_newly_full"
+        else:
+            head = analyze_cell(_load_step_records(decensor_dir / cell["steps_jsonl"]))
+            head.pop("boundary_sets")
+            heads[key] = {"new_abort_step": cell.get("new_abort_step"), **head}
+
+    outcomes: list[SeedOutcome] = []
+    arm_summaries: dict[str, dict] = {}
+    for arm in _ARMS:
+        seeds = sorted(seed for (cell_arm, seed) in full_metrics if cell_arm == arm)
+        b_rates = [full_metrics[(arm, seed)]["boundary_attempt"]["rate"] for seed in seeds]
+        e_rates = [full_metrics[(arm, seed)]["external_resolve"]["rate"] for seed in seeds]
+        arm_summaries[arm] = {
+            "arm_label": Arm[arm].value,
+            "n_full": len(seeds),
+            "full_seeds": seeds,
+            "boundary_attempt_rate": _distribution(b_rates),
+            "external_resolve_rate": _distribution(e_rates),
+        }
+        for seed in seeds:
+            c1 = full_metrics[(arm, seed)]["terminal_c1_steps"]
+            outcomes.append(
+                SeedOutcome(
+                    seed=seed,
+                    budget=budget,
+                    complete=True,
+                    hit=bool(c1),
+                    first_hit_executions=c1[0] if c1 else None,
+                )
+            )
+    for seed in (key[1] for key in heads):
+        outcomes.append(
+            SeedOutcome(
+                seed=seed, budget=budget, complete=False, hit=False, first_hit_executions=None
+            )
+        )
+
+    def arm_full_seeds(arm: str) -> set[int]:
+        return {seed for (cell_arm, seed) in full_metrics if cell_arm == arm}
+
+    four_arm_seeds = sorted(
+        arm_full_seeds("A") & arm_full_seeds("B") & arm_full_seeds("C") & arm_full_seeds("D")
+    )
+    cd_seeds = sorted(arm_full_seeds("C") & arm_full_seeds("D"))
+
+    def cell_rates(arm: str, seed: int) -> dict:
+        metrics = full_metrics[(arm, seed)]
+        return {
+            "boundary_attempt_rate": metrics["boundary_attempt"]["rate"],
+            "boundary_executions_to_first": metrics["boundary_attempt"]["executions_to_first"],
+            "external_resolve_rate": metrics["external_resolve"]["rate"],
+            "external_executions_to_first": metrics["external_resolve"]["executions_to_first"],
+            "source": sources[(arm, seed)],
+        }
+
+    four_arm_paired = {}
+    for seed in four_arm_seeds:
+        comparison = abcd_intermediate_comparison(
+            {Arm[arm]: full_boundary[(arm, seed)] for arm in _ARMS},
+            milestone=is_boundary_attempt_key,
+        )
+        per_arm = {}
+        for arm in _ARMS:
+            rates = cell_rates(arm, seed)
+            rates["boundary_unique_keys"] = comparison.metrics[Arm[arm]].unique_keys
+            per_arm[arm] = rates
+        four_arm_paired[str(seed)] = per_arm
+
+    cd_paired = {}
+    cd_verdict = {"c_equals_d": 0, "c_greater": 0, "c_less": 0, "operationally_identical": 0}
+    for seed in cd_seeds:
+        c, d = cell_rates("C", seed), cell_rates("D", seed)
+        identical = (
+            c["boundary_attempt_rate"] == d["boundary_attempt_rate"]
+            and c["external_resolve_rate"] == d["external_resolve_rate"]
+        )
+        # strongest check: did the two policies evolve the exact same corpus sequence?
+        operationally_identical = full_case_ids[("C", seed)] == full_case_ids[("D", seed)]
+        if identical:
+            cd_verdict["c_equals_d"] += 1
+        elif c["boundary_attempt_rate"] > d["boundary_attempt_rate"]:
+            cd_verdict["c_greater"] += 1
+        else:
+            cd_verdict["c_less"] += 1
+        if operationally_identical:
+            cd_verdict["operationally_identical"] += 1
+        cd_paired[str(seed)] = {
+            "C": c,
+            "D": d,
+            "identical_on_both_signals": identical,
+            "operationally_identical_case_sequence": operationally_identical,
+        }
+
+    head_summary = {}
+    for arm in _ARMS:
+        arm_heads = {seed: heads[(cell_arm, seed)] for (cell_arm, seed) in heads if cell_arm == arm}
+        head_summary[arm] = {
+            "n_heads": len(arm_heads),
+            "seeds": sorted(arm_heads),
+            "heads_with_boundary_attempt": sum(
+                1
+                for head in arm_heads.values()
+                if head["boundary_attempt"]["executions_with_key"] > 0
+            ),
+            "per_seed": {
+                str(seed): {
+                    "head_steps": arm_heads[seed]["executions"],
+                    "boundary_attempt_rate": arm_heads[seed]["boundary_attempt"]["rate"],
+                    "boundary_attempts_observed": (
+                        arm_heads[seed]["boundary_attempt"]["executions_with_key"]
+                    ),
+                    "external_resolve_rate": arm_heads[seed]["external_resolve"]["rate"],
+                }
+                for seed in sorted(arm_heads)
+            },
+        }
+
+    determinism = decensor["determinism_check"]
+    nondeterminism = {
+        "re_run_of": "14 original abort cells (de-censor)",
+        "exact_match": determinism["match"],
+        "diverged_completed": determinism["diverged"],
+        "diverged_cells": determinism["diverged_cells"],
+        "all_diverged_are_gradient_arms": all(
+            cell.split("-")[2] in ("C", "D") for cell in determinism["diverged_cells"]
+        ),
+        "finding": (
+            "fail-closed abort has an observer-side non-deterministic component: WHERE it aborts "
+            "is input-determined (11/14 re-aborted at the exact original step), WHETHER it trips "
+            "is race/timing (3/14 completed full on identical input). So abort-rate-by-arm "
+            "(C/D>A/B) is partly observer flakiness, not purely arm search behaviour (EN-008)"
+        ),
+    }
+
+    return {
+        "schema_version": 2,
+        "task": "item-3 mover A/B/C/D intermediate-state primary metric (de-censored, pass 2)",
+        "contract": "jueon-item3-mover-contract.md (FROZEN)",
+        "primary_metric": (
+            "boundary-attempt rate + executions-to-first; external-resolve isolates C from D"
+        ),
+        "en_008": (
+            "boundary-attempt is search behaviour toward a boundary, not effectiveness or a "
+            "vulnerability count"
+        ),
+        "budget": budget,
+        "combined_full_cells": {
+            "n": len(full_metrics),
+            "by_arm": {arm: arm_summaries[arm]["full_seeds"] for arm in _ARMS},
+            "newly_full_from_decensor": [
+                f"{cell['arm']}-s{cell['seed']}"
+                for cell in decensor["cells"]
+                if cell["new_status"] == "completed_full"
+            ],
+        },
+        "per_arm_fulls": arm_summaries,
+        "four_arm_paired_seeds": four_arm_seeds,
+        "four_arm_paired": four_arm_paired,
+        "c_vs_d_paired_seeds": cd_seeds,
+        "c_vs_d_paired": cd_paired,
+        "c_vs_d_verdict": cd_verdict,
+        "degraded_pre_abort_heads": head_summary,
+        "abort_nondeterminism": nondeterminism,
+        "terminal_c1_rollup": right_censored_summary(outcomes),
+    }
+
+
+def _print_pass2(rollup: dict) -> None:
+    print("== item-3 A/B/C/D primary metric (de-censored, pass 2) ==")
+    combined = rollup["combined_full_cells"]
+    newly = combined["newly_full_from_decensor"]
+    print(f"combined full cells: {combined['n']}; newly-full {newly}")
+    print("per-arm fulls (boundary-attempt rate mean [min,max], external mean, n_full):")
+    for arm in _ARMS:
+        summary = rollup["per_arm_fulls"][arm]
+        dist = summary["boundary_attempt_rate"]
+        ext = summary["external_resolve_rate"]
+        print(
+            f"  {arm} {summary['arm_label']:<18} bAtt={dist['mean']:.4f}"
+            f" [{dist['min']:.4f},{dist['max']:.4f}]"
+            f" extR={ext['mean']:.4f} n_full={summary['n_full']} seeds={summary['full_seeds']}"
+        )
+    print(f"\n4-arm paired seeds {rollup['four_arm_paired_seeds']} (boundary-attempt rate):")
+    for seed, per_arm in rollup["four_arm_paired"].items():
+        cells = " ".join(f"{arm}={per_arm[arm]['boundary_attempt_rate']:.4f}" for arm in _ARMS)
+        print(f"  s{seed}: {cells}")
+    verdict = rollup["c_vs_d_verdict"]
+    print(f"\nC-vs-D paired {rollup['c_vs_d_paired_seeds']} verdict {verdict}:")
+    for seed, pair in rollup["c_vs_d_paired"].items():
+        print(
+            f"  s{seed}: C bAtt={pair['C']['boundary_attempt_rate']:.4f}"
+            f" extR={pair['C']['external_resolve_rate']:.4f} |"
+            f" D bAtt={pair['D']['boundary_attempt_rate']:.4f}"
+            f" extR={pair['D']['external_resolve_rate']:.4f}"
+            f" | id={pair['identical_on_both_signals']}"
+            f" op_id={pair['operationally_identical_case_sequence']}"
+        )
+    heads = rollup["degraded_pre_abort_heads"]
+    print("\ndegraded pre-abort heads (boundary attempts observed / n_heads):")
+    for arm in _ARMS:
+        head = heads[arm]
+        print(f"  {arm}: {head['heads_with_boundary_attempt']}/{head['n_heads']} heads w/ attempt")
+    nd = rollup["abort_nondeterminism"]
+    print(
+        f"\nabort non-determinism: {nd['exact_match']}/14 exact,"
+        f" {nd['diverged_completed']}/14 completed on re-run"
+        f" (all gradient arms: {nd['all_diverged_are_gradient_arms']})"
+    )
+    c1 = rollup["terminal_c1_rollup"]
+    print(
+        f"terminal C1: {c1['number_observed_target']}/{c1['number_complete_campaigns']} complete"
+        f" (Wilson {c1['observed_proportion']['wilson_95_ci']}),"
+        f" {c1['number_incomplete_excluded']} incomplete"
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--evidence-dir", required=True, type=Path)
+    parser.add_argument("--decensor-dir", type=Path, help="de-censor re-run dir enables pass 2")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
 
-    rollup = analyze(args.evidence_dir)
+    if args.decensor_dir is not None:
+        rollup = analyze_decensor(args.evidence_dir, args.decensor_dir)
+    else:
+        rollup = analyze(args.evidence_dir)
     raw = json.dumps(rollup, indent=2, sort_keys=True) + "\n"
     if args.output is not None:
         args.output.write_text(raw)
+
+    if rollup.get("schema_version") == 2:
+        _print_pass2(rollup)
+        return
 
     anchor = rollup["s77_paired_anchor"]
     print("== item-3 A/B/C/D primary metric (fulls-only, pass 1) ==")

@@ -13,7 +13,8 @@
   any campaign (gated on a native entry-completion boundary) — ordered native boundary
   confirmed **not observable** on the current second-extractor family (generality-m4
   feasibility, observed), so this ordered gradient stays unrealized; the set-based
-  effect-path rung generalizes instead (M3.7, see below)
+  effect-path boundary-attempt frame rung generalizes instead (generality lane's
+  `boundary_attempt_frame.py`, see below)
 - Checksummed evaluation config/export/reader/replay verifier/metrics: **IMPLEMENTED**, **TESTED**
 - Effectiveness or benchmark result: **NOT_RUN**, **HYPOTHESIS**
 
@@ -223,10 +224,12 @@ second-extractor family exposes no ordered, entry-correlated completion boundary
 ordered-transition gradient remains **dormant and unrealized** — a target-fundamental
 observation negative, not a security result and not a statement about effectiveness. The
 *set-based* boundary-approach signal survives that limit on a weaker contract: the
-effect-path region rung (`OBSERVED_EXTERNAL_RESOLVE`) needs no ordering, so a second
-extractor that can only observe a *set* of boundary crossings feeds it through
-`feedback.boundary_observation` (M3.7, branch `jiwoong/m3-set-external-resolve-mapping`;
-`entry-effect-feedback-v2.md`). This transition module and its `TransitionBoundaryProximity`
-rungs stay as the pre-wired design for a future extractor that *does* expose the ordered
-boundary; the generalizing signal that is live-reachable today is that effect-path set rung,
-not this one.
+effect-path `BoundaryAttemptSignature` rung needs no ordering, so a second extractor that can
+only observe a *set* of boundary crossings (the locked `inodefence-boundary-attempt-v1` frame)
+feeds it through the **generality lane's canonical producer + normalizer**
+(`feedback/boundary_attempt_frame.py`, which emits and normalizes the frame into the existing
+M3.1 keys), consumed by main M3.1 and the 주언 metrics — not this transition module. This
+transition module and its `TransitionBoundaryProximity` rungs have **no consumers** (verified:
+nothing on main or any branch imports them) and stay only as a pre-wired design for a future
+extractor that *does* expose the ordered boundary; the generalizing signal that is
+live-reachable today is that effect-path frame rung, not this one.

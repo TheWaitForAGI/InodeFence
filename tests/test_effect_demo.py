@@ -28,23 +28,41 @@ from scripts.run_effect_demo import (
 from inodefence import effect_demo
 from inodefence.effect_demo import (
     TRACE_LEGEND,
+    EffectObservability,
     _stderr_record,
     _trace_report,
     compare_effect_campaign_reports,
+    effect_observability,
     render_effect_campaign_report,
     render_effect_trace,
 )
-from inodefence.effect_synthetic import synthetic_effect_result
+from inodefence.effect_synthetic import _provenance, _snapshots, synthetic_effect_result
 from inodefence.evaluation.n01 import FROZEN_TARGETS
 from inodefence.feedback import EffectSearchPolicy
+from inodefence.feedback.signature import state_signature
 from inodefence.generator import minimal_seed_corpus
 from inodefence.model import (
+    ArchiveCase,
+    ArchiveEntry,
+    ArchiveEntryReference,
     EffectClass,
+    EffectEventTrace,
     EffectEvidenceStrength,
     EffectObjectObservation,
     EffectObservationStatus,
+    EffectRunResult,
+    EffectStreamCompleteness,
+    EffectTargetTermination,
+    EntryType,
+    ExecutionResult,
+    ExecutionStatus,
+    ObservationFailure,
+    ObservationFailureKind,
+    RunResult,
 )
 from inodefence.mutator import MutationPolicy
+from inodefence.observer import compare_states
+from inodefence.oracle import evaluate_contracts
 
 
 def test_synthetic_demo_json_is_byte_identical_for_same_seed() -> None:
@@ -436,6 +454,125 @@ def test_effect_trace_has_no_synthetic_header_for_other_sources() -> None:
     assert rendered.startswith("extractor: synthetic 1")
     assert "  effect seq 6-7 [observed] op=link outcome=succeeded\n" in rendered
     assert "    [derived] class=hardlink_identity_relation_creation" in rendered
+
+
+def _zero_event_trace(
+    termination: EffectTargetTermination,
+    completeness: EffectStreamCompleteness = EffectStreamCompleteness.INCOMPLETE,
+) -> EffectEventTrace:
+    """A valid trace carrying one archive entry but no recorded effect event.
+
+    This is the shape a rejected/aborted node-tar run leaves behind: the archive
+    declared an entry, but the target produced no observable filesystem effect.
+    Non-complete streams that did not simply time out or fail to start must carry
+    explicit failure evidence, so a correlation-conflict failure is attached then.
+    """
+    reference = ArchiveEntryReference(0, "link", EntryType.HARDLINK, "../outside/sentinel")
+    before, after = _snapshots()
+    quiet = termination in (
+        EffectTargetTermination.TIMED_OUT,
+        EffectTargetTermination.NOT_STARTED,
+    )
+    failures = (
+        ()
+        if quiet
+        else (
+            ObservationFailure(
+                ObservationFailureKind.OPERATION_CORRELATION_CONFLICT,
+                "target ended before any effect was observed",
+                "synthetic",
+            ),
+        )
+    )
+    return EffectEventTrace(
+        before,
+        (reference,),
+        (),
+        (),
+        (),
+        (),
+        after,
+        completeness,
+        termination,
+        _provenance(),
+        -1,
+        -1,
+        -1,
+        failures,
+    )
+
+
+def _rejected_zero_event_result() -> EffectRunResult:
+    """One EffectRunResult whose target rejected the input, leaving zero effect events."""
+    entry = ArchiveEntry("link", EntryType.HARDLINK, link_target="../outside/sentinel")
+    case = ArchiveCase((entry,))
+    trace = _zero_event_trace(EffectTargetTermination.REJECTED)
+    before, after = trace.before, trace.after
+    base = RunResult(
+        case,
+        "0" * 64,
+        "ustar",
+        ExecutionResult(
+            "synthetic", "1", ("synthetic",), ExecutionStatus.REJECTED, 2, "", "", 0.01
+        ),
+        before,
+        after,
+        compare_states(before, after),
+        state_signature(before, after),
+        evaluate_contracts(before, after),
+    )
+    return EffectRunResult(base, trace)
+
+
+@pytest.mark.parametrize(
+    "termination, expected",
+    [
+        (EffectTargetTermination.REJECTED, "not_observed:rejected-before-effect"),
+        (EffectTargetTermination.FAILED, "not_observed:target-failed"),
+        (EffectTargetTermination.TIMED_OUT, "not_observed:target-timed-out"),
+        (EffectTargetTermination.NOT_STARTED, "not_observed:target-not-started"),
+    ],
+)
+def test_effect_observability_marks_non_success_zero_event_runs_not_observed(
+    termination, expected
+) -> None:
+    # A run that did not finish normally cannot have observed "no effect"; its empty
+    # stream is non-observation, never a no-violation result.
+    assert effect_observability(_zero_event_trace(termination)).value == expected
+
+
+def test_effect_observability_marks_incomplete_success_stream_not_observed() -> None:
+    trace = _zero_event_trace(EffectTargetTermination.SUCCESS, EffectStreamCompleteness.INVALID)
+    assert effect_observability(trace) is EffectObservability.STREAM_INCOMPLETE
+
+
+def test_effect_observability_marks_complete_success_run_observed() -> None:
+    # The stock synthetic trace completed successfully with full lifecycle coverage.
+    assert effect_observability(_synthetic_hardlink_result().trace) is EffectObservability.OBSERVED
+
+
+def test_rejected_trace_render_labels_zero_events_as_not_observed() -> None:
+    rendered = render_effect_trace(_rejected_zero_event_result())
+
+    # The run-level status line states the effect stream is non-observation.
+    assert "effect observation: not_observed:rejected-before-effect" in rendered
+    # The empty-entry line carries the reason, not a bare "(no effect event recorded)".
+    assert "no effect event recorded — not_observed:rejected-before-effect" in rendered
+    assert "위반 없음" in rendered  # the gloss says this is not a no-violation result
+
+
+def test_successful_trace_render_labels_effect_observation_observed() -> None:
+    rendered = render_effect_trace(_synthetic_hardlink_result())
+
+    assert "effect observation: observed" in rendered
+
+
+def test_trace_report_carries_effect_observation_field() -> None:
+    rejected = _trace_report(_rejected_zero_event_result())
+    assert rejected["effect_observation"] == "not_observed:rejected-before-effect"
+
+    observed = _trace_report(_synthetic_hardlink_result())
+    assert observed["effect_observation"] == "observed"
 
 
 def _p2_steps() -> list[dict[str, Any]]:

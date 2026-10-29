@@ -32,8 +32,11 @@ SHA-256 image ID. The metadata-only check uses the enforced container backend,
 records exact Node/tar versions and verifies worker/lock SHA-256 against source.
 That mode does not execute an archive or enable campaign execution.
 `validate-node-target` separately executes eight mandatory ordinary fixture/lifecycle cases. Image packaging is
-not a bit-for-bit reproducibility claim: platform, builder and attestation metadata
-can change the resulting image identity. Isolation/config/provenance binding and the
+not a cross-platform bit-for-bit reproducibility claim: platform and builder can change the
+resulting image identity. `scripts/local_node_tar_smoke.sh` builds with
+`BUILDX_NO_DEFAULT_ATTESTATIONS=1`, because BuildKit's default provenance/SBOM attestation
+manifests carry build timestamps and gave every rebuild a new image ID; without them a rebuild
+from the same checkout on the same host/builder yields the same image ID (same-host determinism). Isolation/config/provenance binding and the
 tiny benign configured campaign's full path have been validated; see the
 [recorded smoke scope and limits](../../experiments/summaries/benign-node-container-smoke-v1.md).
 Snapshot observation, runtime/kernel trust and portability limits remain. Benchmark/security

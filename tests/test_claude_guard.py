@@ -58,7 +58,6 @@ ALLOWED = [
     bash("DEMO_BUDGET=20 make demo-native 2>&1 | tail -20"),
     bash("bash scripts/local_node_tar_smoke.sh demo"),
     bash("git push -u origin jiwoong/autonomous-setup"),
-    bash("git push origin HEAD"),
     bash("git push --force-with-lease origin jiwoong/x:jiwoong/x"),
     bash("git fetch origin main && git log origin/main..HEAD --oneline"),
     bash("git checkout -b jiwoong/p2-c1-impact main"),
@@ -181,6 +180,59 @@ def test_guard_blocks_with_reason(payload: dict) -> None:
     result = run_guard(payload)
     assert result.returncode == 2
     assert "BLOCKED" in result.stderr
+
+
+def _git(repo: Path, *args: str) -> None:
+    subprocess.run(
+        ["git", *args],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        env={"PATH": "/usr/bin:/bin", "HOME": str(repo), "GIT_CONFIG_NOSYSTEM": "1"},
+    )
+
+
+def _repo_on_branch(tmp_path: Path, branch: str) -> Path:
+    """A throwaway git repo whose checked-out branch is ``branch`` (one empty commit)."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q", "-b", branch)
+    _git(
+        repo,
+        "-c",
+        "user.name=guard-test",
+        "-c",
+        "user.email=guard-test@example.invalid",
+        "commit",
+        "-q",
+        "--allow-empty",
+        "-m",
+        "init",
+    )
+    return repo
+
+
+@pytest.mark.parametrize(
+    ("branch", "allowed"),
+    [("jiwoong/p0-some-work", True), ("main", False)],
+    ids=["work-branch:allowed", "main:blocked-R2"],
+)
+def test_guard_resolves_push_head_against_current_branch(
+    tmp_path: Path, branch: str, allowed: bool
+) -> None:
+    """``git push origin HEAD`` pushes main only when HEAD *is* main.
+
+    The verdict must follow the checked-out branch of the payload's ``cwd``, not the
+    branch this test suite happens to run on (main CI checks out main; PR CI does not).
+    """
+    repo = _repo_on_branch(tmp_path, branch)
+    result = run_guard({**bash("git push origin HEAD"), "cwd": str(repo)})
+    if allowed:
+        assert result.returncode == 0, result.stderr
+    else:
+        assert result.returncode == 2
+        assert "R2" in result.stderr
+        assert "BLOCKED" in result.stderr
 
 
 def test_guard_blocks_new_banned_doc_but_not_existing_one() -> None:

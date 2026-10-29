@@ -154,12 +154,11 @@ transition signal rather than a single final/rejected effect trace.
 
 `TransitionBoundaryProximity` (ascending severity):
 
-| Rung | Meaning (the realized-violation shape it matches) |
+| Rung | Meaning (the boundary-approach shape it matches) |
 | --- | --- |
 | `none` | only extraction-region effects, or no change |
 | `external_namespace` | a namespace field changed on a path outside `extract/` (the C0 shape) |
 | `cross_boundary_identity` | a newly created identity group spans EXTRACTION and EXTERNAL (the C1 shape against any external object) |
-| `protected_effect` | a declared protected external path changed (the realized C2 shape) |
 
 `transition_proximity(transition)` returns the maximum rung whose condition holds;
 `transition_proximities(trace)` returns the ordered per-transition rungs (diagnostic);
@@ -167,10 +166,17 @@ transition signal rather than a single final/rejected effect trace.
 gradient value for a trace. Each rung reuses the exact region/field classification
 already proven in `transition_signature`, so no new judgment semantics are introduced.
 
-The rung is target-agnostic: it is derived only from `Region` classes, `ChangeField`
-categories and the declared-protected marker in the generic model — never a concrete
-path, raw device/inode value, timestamp, sentinel, CVE or PoC. It is transition
-evidence, never a C0/C1/C2 verdict and never a vulnerability.
+The rung is target-agnostic **and answer-agnostic**: it is derived only from `Region`
+classes and `ChangeField` categories — never a concrete path, raw device/inode value,
+timestamp, the declared-protected marker, a sentinel, a CVE or a PoC. Exactly as the
+effect-path `BoundaryAttemptSignature` deliberately omits the protected object, the
+gradient rewards *leaving the root* and then *aliasing some external object*, never
+reaching the specific protected answer. A protected-object-proximity reward would be a
+forbidden sentinel-proximity signal (D005/D006); whether a touched object is the
+protected sentinel stays a C2 oracle judgment and is never fed back. There is no
+`protected_effect` rung for this reason: a content/metadata effect on an external
+object, protected or not, is a C2 concern that does not raise the rung. The rung is
+transition evidence, never a C0/C1/C2 verdict and never a vulnerability.
 
 ### Integration path when a native entry-completion boundary arrives
 

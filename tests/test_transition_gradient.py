@@ -2,8 +2,9 @@
 
 These tests exercise the pure derivation only. The gradient is transition evidence,
 never a C0/C1/C2 verdict; it reuses the same region/field classification as
-`transition_signature` and is strictly additive (no oracle, fixture or N01 path is
-touched). Synthetic checkpoints follow the builders in `test_transition_model.py`.
+`transition_signature`, is strictly additive (no oracle, fixture or N01 path is
+touched) and is answer-agnostic (a protected/sentinel object never raises a rung).
+Synthetic checkpoints follow the builders in `test_transition_model.py`.
 """
 
 from dataclasses import replace
@@ -122,21 +123,20 @@ def test_proximity_order_covers_every_member_once_ascending() -> None:
         _P.NONE,
         _P.EXTERNAL_NAMESPACE,
         _P.CROSS_BOUNDARY_IDENTITY,
-        _P.PROTECTED_EFFECT,
     )
 
 
 def test_rank_is_monotone_and_bounded() -> None:
     ranks = [proximity_rank(member) for member in _PROXIMITY_ORDER]
-    assert ranks == [0, 1, 2, 3]
-    assert proximity_rank(_P.PROTECTED_EFFECT) > proximity_rank(_P.CROSS_BOUNDARY_IDENTITY)
+    assert ranks == [0, 1, 2]
+    assert proximity_rank(_P.CROSS_BOUNDARY_IDENTITY) > proximity_rank(_P.EXTERNAL_NAMESPACE)
     with pytest.raises(ValueError, match="TransitionBoundaryProximity"):
-        proximity_rank("protected_effect")  # type: ignore[arg-type]
+        proximity_rank("cross_boundary_identity")  # type: ignore[arg-type]
 
 
 def test_max_proximity_picks_highest_rank_and_defaults_to_none() -> None:
-    mixed = (_P.EXTERNAL_NAMESPACE, _P.PROTECTED_EFFECT, _P.NONE)
-    assert max_proximity(mixed) == _P.PROTECTED_EFFECT
+    mixed = (_P.EXTERNAL_NAMESPACE, _P.CROSS_BOUNDARY_IDENTITY, _P.NONE)
+    assert max_proximity(mixed) == _P.CROSS_BOUNDARY_IDENTITY
     assert max_proximity(()) == _P.NONE
 
 
@@ -151,7 +151,7 @@ def test_extraction_only_transition_is_none() -> None:
 
 
 def test_external_namespace_rung_for_object_created_outside_root() -> None:
-    # A new EXTERNAL object appears: existence change outside extract/, no identity, no protected.
+    # A new EXTERNAL object appears: existence change outside extract/, no identity.
     before = (_SENTINEL, _object("extract/a", ino=10))
     after = (_SENTINEL, _object("extract/a", ino=10), _object("outside/newfile", ino=50))
     assert transition_proximity(_transition(before, after)) == _P.EXTERNAL_NAMESPACE
@@ -170,21 +170,6 @@ def test_cross_boundary_identity_outranks_external_namespace() -> None:
     assert transition_proximity(transition) == _P.CROSS_BOUNDARY_IDENTITY
 
 
-def test_protected_effect_is_the_maximum_rung() -> None:
-    # The declared protected sentinel's content changes, with a cross-boundary alias too.
-    before = (_object("outside/sentinel", ino=90, content=b"old"), _object("extract/a", ino=10))
-    after = (
-        _object("outside/sentinel", ino=90, content=b"new", nlink=2),
-        _object("extract/a", ino=90, nlink=2),
-    )
-    transition = _transition(before, after)
-    # Both the protected effect and a cross-boundary identity relation are present;
-    # the rung is the maximum.
-    assert transition.protected_external_effects
-    assert transition.identity_groups_created == (("extract/a", "outside/sentinel"),)
-    assert transition_proximity(transition) == _P.PROTECTED_EFFECT
-
-
 def test_rung_is_target_agnostic_across_concrete_paths_and_inodes() -> None:
     # The same rung is reached regardless of the exact external path or inode value.
     def cross(external_path: str, ino: int):
@@ -198,6 +183,28 @@ def test_rung_is_target_agnostic_across_concrete_paths_and_inodes() -> None:
 
     assert cross("outside/alpha", 50) == _P.CROSS_BOUNDARY_IDENTITY
     assert cross("outside/beta/deep", 77) == _P.CROSS_BOUNDARY_IDENTITY
+
+
+def test_rung_is_answer_agnostic_protectedness_never_raises_it() -> None:
+    # A content-only effect on the DECLARED PROTECTED sentinel, via an internal alias,
+    # with no identity relation and no namespace change -> the gradient stays NONE. The
+    # gradient must not reward touching the protected object (C2 is the oracle's job).
+    before = (_object("outside/sentinel", ino=90, content=b"old"), _object("extract/a", ino=10))
+    after = (_object("outside/sentinel", ino=90, content=b"new"), _object("extract/a", ino=10))
+    content_only = _transition(before, after)
+    assert content_only.protected_external_effects  # the oracle would see C2 here
+    assert transition_proximity(content_only) == _P.NONE
+
+    # And when the external member of a cross-boundary alias happens to be the protected
+    # sentinel, the rung is still CROSS_BOUNDARY_IDENTITY -- not elevated by protectedness.
+    before2 = (_object("outside/sentinel", ino=90), _object("extract/a", ino=10))
+    after2 = (
+        _object("outside/sentinel", ino=90, nlink=2),
+        _object("extract/a", ino=90, nlink=2),
+    )
+    aliased = _transition(before2, after2)
+    assert aliased.identity_groups_created == (("extract/a", "outside/sentinel"),)
+    assert transition_proximity(aliased) == _P.CROSS_BOUNDARY_IDENTITY
 
 
 def test_transition_proximity_rejects_non_transition() -> None:

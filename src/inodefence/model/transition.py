@@ -384,18 +384,22 @@ class TransitionBoundaryProximity(StrEnum):
 
     Unlike the unordered structural flags on `TransitionSignature`, this is a
     single comparable label so adaptive search sees a *gradient*: a transition
-    whose intermediate state reached a higher rung got closer to the realized
-    C0/C1/C2 boundary shape than one that reached a lower rung, even when neither
-    produced a final violation. The rung is the maximum-severity boundary
-    observation present in the transition; the rungs are not a strict nesting, so
-    a rung is derived by taking the highest condition that holds, never by
-    assuming the lower ones also hold.
+    whose intermediate state reached a higher rung got closer to the extraction
+    boundary than one that reached a lower rung, even when neither produced a
+    final C0/C1/C2 violation. The rung is the highest condition that holds; the
+    rungs are not a strict nesting, so it is derived by taking the greatest rung
+    present, never by assuming the lower ones also hold.
 
-    It is transition evidence, never a C0/C1/C2 verdict and never a vulnerability
-    (the same boundary that the existing `transition_signature` flags record).
-    Target-agnostic: derived only from `Region` classes, `ChangeField` categories
-    and the declared-protected marker already in the generic model -- never a
-    concrete path, raw device/inode value, timestamp, sentinel, CVE or PoC.
+    It is transition evidence, never a C0/C1/C2 verdict and never a vulnerability.
+    Target-agnostic AND answer-agnostic: every rung is derived only from `Region`
+    classes and `ChangeField` categories -- never a concrete path, raw
+    device/inode value, timestamp, the declared-protected marker, a sentinel, a
+    CVE or a PoC. Like the effect-path `BoundaryAttemptSignature`, it deliberately
+    rewards *approaching the boundary* (leaving the extraction root, then aliasing
+    some external object), not reaching the specific protected answer -- rewarding
+    protected-object proximity would be a forbidden sentinel-proximity reward
+    (D005/D006). Whether a touched object is the protected sentinel stays a C2
+    oracle judgment, never a feedback signal.
 
     Members are declared in ascending severity order; `feedback.transition_gradient`
     owns the canonical rank derived from that order.
@@ -404,7 +408,6 @@ class TransitionBoundaryProximity(StrEnum):
     NONE = "none"
     EXTERNAL_NAMESPACE = "external_namespace"
     CROSS_BOUNDARY_IDENTITY = "cross_boundary_identity"
-    PROTECTED_EFFECT = "protected_effect"
 
 
 @dataclass(frozen=True, slots=True)

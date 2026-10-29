@@ -72,7 +72,7 @@ NOT_IMPLEMENTED이라([transition-feedback-v1](research/design/transition-feedba
 | 태스크 | 상태 | 게이트 |
 | --- | --- | --- |
 | A/B/C/D(random / structure-aware / state-aware / coverage-guided) **정의와 공통 지표** 확정 — M3.2·M3.4·M3.5가 쓸 측정의 기준(D는 M3.5) | 진행(D·공통지표 정의 완료: claude/m3-5-baseline-d-65d6ae; A/B/C 단일경로 통합은 M3.2/M3.4) | 주언 |
-| 거부 입력에서 중간 상태 event 0개인 한계의 표현 방식 | 대기 | 민찬 |
+| 거부 입력에서 중간 상태 event 0개인 한계의 표현 방식 | 완료(claude/m3-reject-trace-limit-1b064d) | 민찬 |
 | demo 이미지 ID 재현성(provenance attestation) | 대기 | 규민 |
 | 선행연구 서지 정합성(related-work-positioning.md에 저자·venue·연도·아티팩트) | 완료(jiwoong/p-audit-prior-work-citations) | 없음 |
 | (감사 제안 → **M3.5로 승격**) coverage-guided baseline(D) + A/B/C/D 공통지표 — 'identity feedback 특정 효과'를 'feedback 일반'과 분리(H1 판정용). **중간발표 포함 여부 확인필요** | 완료(M3.5: claude/m3-5-baseline-d-65d6ae) | 주언 |

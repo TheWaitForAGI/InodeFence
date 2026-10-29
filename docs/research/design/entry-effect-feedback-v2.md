@@ -344,3 +344,44 @@ that were still in flight when the target aborted; those are recorded as observe
 unrealized completions (non-`SUCCEEDED`), never fabricated successes, so they form no
 realized effect and no key. Relaxing the gate for one arm is a research-honesty decision
 and is flagged for human review wherever it ships.
+
+### Set-based boundary observation for a second extractor (additive)
+
+The derivations above read a `FilesystemEffectEvent` inside an ordered `EffectEventTrace`:
+each operation carries start/completion ordinals, intervals, correlation ids and causal
+edges. A *second* extractor need not expose that structure. The decompress(JS)
+entry-completion feasibility probe **observed** that decompress records entries concurrently
+and reordered — archive order is not call order, and it varies run to run — and propagates no
+entry context to the filesystem operation, so a faithful ordered `EffectEventTrace` cannot be
+reconstructed from it. That is the same class of observation limit node-tar's own
+entry-completion boundary hits (`entry-transition-observation-v1.md`), and it means the
+**ordered** transition gradient (`transition-feedback-v1.md`) stays **unrealized** on this
+extractor family — a target-fundamental observation negative, not a security result and not a
+statement about effectiveness.
+
+What such an adapter **can** observe is a *set* of boundary-relevant operations. The
+region-based external-resolve rung needs none of the ordered structure — only the operation
+kind and the region its target resolved to — so it survives this limit. `feedback/
+boundary_observation.py` makes this additive and explicit:
+
+- `ObservedBoundaryOperation(operation, entry_dest, target_region, aliases_external)` — the
+  honest weaker unit. It carries no ordinal, interval, correlation id or causal edge, because
+  those encode an ordering the adapter did not observe; fabricating them would manufacture
+  evidence the probe says is absent.
+- `external_resolve_keys_from_observations(...)` — maps each observation whose target resolved
+  to EXTERNAL into the **same** `OBSERVED_EXTERNAL_RESOLVE` key the trace path produces, so
+  both extractors draw from one key space and the existing P3 consumption is unchanged.
+
+It deliberately targets `ExternalResolveSignature`, not the lexical `BoundaryAttemptSignature`:
+the latter requires the raw link text (for `escape_shape`) and the operation outcome, neither
+of which a set observation carries. It is answer-agnostic — the key reads only the operation
+kind and the EXTERNAL region, never the entry path, the realized-alias marker, a sentinel, a
+CVE or a PoC. Ranking by which external object was reached, or by whether an alias was
+realized, would drift the reward toward the protected sentinel (D005/D006); those stay C1/C2
+oracle judgments, never feedback.
+
+Status: the mapping is **IMPLEMENTED and unit-TESTED** (`tests/test_boundary_observation_mapping.py`);
+a **live** second-extractor campaign is **NOT_RUN** — it activates when the decompress adapter
+emits these observations (generality-m4, M4.2), human-gated. observed (the feasibility probe,
+the mapping unit tests) is kept separate from inferred (that a live decompress campaign will
+raise the same keys).

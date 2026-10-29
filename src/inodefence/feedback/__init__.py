@@ -2,6 +2,10 @@
 
 from inodefence.model import EffectFeedbackKeyKind
 
+from .boundary_observation import (
+    ObservedBoundaryOperation,
+    external_resolve_keys_from_observations,
+)
 from .corpus import Corpus, CorpusEntry, CorpusStats, FeedbackDecision
 from .coverage import StructureCoverageFeature, structure_coverage_features
 from .effect import (
@@ -64,6 +68,8 @@ __all__ = [
     "EffectSearchStats",
     "boundary_attempt_keys",
     "external_resolve_keys",
+    "external_resolve_keys_from_observations",
+    "ObservedBoundaryOperation",
     "effect_feedback_eligible",
     "effect_feedback_keys",
     "effect_feedback_projection_v3",

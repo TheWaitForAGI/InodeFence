@@ -34,11 +34,17 @@ Findings (see the recorded evidence JSON):
      boundary-attempt / transition gradient consumes -- it does not need the ordered,
      entry-correlated checkpoint that is infeasible above.
 
-Interface proposal (to align with the Observation lane before any adapter integration): emit,
-per observed operation, ``{operation, entry_dest, target_region, aliases_external}`` and map it
-to the existing M3.1 ``BoundaryAttemptSignature`` (entry_type, target_region, outcome,
-escape_shape). Integration into the decompress adapter is deferred until the M3.1 boundary-attempt
-interface is merged and the format is agreed, so this file only demonstrates observability.
+Interface (realized here as ``inodefence-boundary-attempt-v1``; see
+``decompress_effect_probe/fswrap_probe.cjs``): the producer emits one stdout frame holding an
+unordered SET of ``attempts``, each ``{operation, created_path, created_region, target_raw,
+target_resolved_absolute, target_region, aliases_external_object, outcome}``.
+``aliases_external_object`` is region-based (post-op inode shared with any non-extraction object),
+never sentinel-specific (D005). Each attempt maps to the M3.1 ``BoundaryAttemptSignature``
+(entry_type, target_region, outcome, escape_shape). Adapter integration (decompress/node-tar
+emitting this frame natively) is deferred until the M3.1 interface is merged and the mapping is
+agreed with the Observation lane; oras-go cannot emit it within the safety boundary (Go bypasses
+libc, so fs-wrap and LD_PRELOAD miss its syscalls, and ptrace needs CAP_SYS_PTRACE -- an
+isolation-relaxing capability the guard forbids).
 
 Honesty: observed = what this probe recorded running real decompress; inferred = the oras-go
 reasoning (not run here). This is a feasibility demonstrator, not a qualified observer, and makes
@@ -127,40 +133,34 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=True)
 
     image_id = build_image()
-    raw = run_probe(
+    frame = run_probe(
         base64.b64encode(build_tar()).decode(),
         base64.b64encode(SENTINEL_CONTENT).decode(),
     )
-    records = raw.get("records", [])
-
-    call_order_ops = [r["op"] for r in sorted(records, key=lambda r: r["call_order"])]
+    attempts = frame.get("attempts", [])
+    call_order = frame.get("diagnostic_observed_call_order", [])
     boundary_attempts = [
-        {
-            "op": r["op"],
-            "dest": r["dest"],
-            "target_region": r.get("target_region"),
-            "aliases_external_sentinel": r.get("aliases_external_sentinel"),
-        }
-        for r in records
-        if r.get("boundary_attempt")
+        a
+        for a in attempts
+        if a.get("target_region") not in (None, "extraction")
+        or a.get("created_region") != "extraction"
+        or a.get("aliases_external_object")
     ]
     record = {
-        "fixture": "decompress_entry_effect_feasibility",
-        "extractor": "decompress@4.2.1",
+        "probe": "decompress_boundary_attempt_v1",
         "image_id": image_id,
-        "raw_error": raw.get("error"),
-        "records": records,
+        "frame": frame,
         "assessment": {
             # OBSERVED (decompress run):
-            "per_operation_effect_observable": len(records) > 0,
-            "call_order_ops": call_order_ops,
-            # archive order is a.txt (writeFile), evil (link), slink (symlink):
-            "preserves_archive_order": call_order_ops == ["writeFile", "link", "symlink"],
-            "entry_context_propagated": any(r.get("entry_context") is not None for r in records),
+            "per_operation_effect_observable": len(attempts) > 0,
+            "observed_call_order": call_order,
+            # archive order was regular (a.txt), hardlink (evil), symlink (slink):
+            "preserves_archive_order": call_order == ["regular", "hardlink", "symlink"],
             "boundary_attempts_observed": boundary_attempts,
             # CONCLUSION (observed for decompress; oras-go inferred -- see module docstring):
             "ordered_entry_completion_boundary_feasible": False,
             "set_based_boundary_attempt_signal_feasible": len(boundary_attempts) > 0,
+            "oras_go_feasible_within_safety_boundary": False,
         },
     }
     (out / "decompress_entry_effect_feasibility.json").write_text(

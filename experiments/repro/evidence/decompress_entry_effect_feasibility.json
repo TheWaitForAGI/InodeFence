@@ -2,84 +2,90 @@
   "assessment": {
     "boundary_attempts_observed": [
       {
-        "aliases_external_sentinel": true,
-        "dest": "/work/extract/evil",
-        "op": "link",
-        "target_region": "external"
+        "aliases_external_object": true,
+        "created_path": "/work/extract/evil",
+        "created_region": "extraction",
+        "operation": "hardlink",
+        "outcome": "created",
+        "target_raw": "outside/sentinel.txt",
+        "target_region": "external",
+        "target_resolved_absolute": "/work/outside/sentinel.txt"
       },
       {
-        "aliases_external_sentinel": false,
-        "dest": "/work/extract/slink",
-        "op": "symlink",
-        "target_region": "external"
+        "aliases_external_object": false,
+        "created_path": "/work/extract/slink",
+        "created_region": "extraction",
+        "operation": "symlink",
+        "outcome": "created",
+        "target_raw": "../outside/sentinel.txt",
+        "target_region": "external",
+        "target_resolved_absolute": "/work/outside/sentinel.txt"
+      },
+      {
+        "aliases_external_object": false,
+        "created_path": "/work/extract/a.txt",
+        "created_region": "extraction",
+        "operation": "regular",
+        "outcome": "created",
+        "target_raw": null,
+        "target_region": "n/a",
+        "target_resolved_absolute": null
       }
     ],
-    "call_order_ops": [
-      "link",
-      "writeFile",
-      "symlink"
+    "observed_call_order": [
+      "hardlink",
+      "symlink",
+      "regular"
     ],
-    "entry_context_propagated": false,
+    "oras_go_feasible_within_safety_boundary": false,
     "ordered_entry_completion_boundary_feasible": false,
     "per_operation_effect_observable": true,
     "preserves_archive_order": false,
     "set_based_boundary_attempt_signal_feasible": true
   },
-  "extractor": "decompress@4.2.1",
-  "fixture": "decompress_entry_effect_feasibility",
-  "image_id": "sha256:39cf3704bc3dcd5357c60597e97bb6f9e193e1b6112b37bcaf89ff7bd1d662a4",
-  "raw_error": null,
-  "records": [
-    {
-      "aliases_external_sentinel": true,
-      "boundary_attempt": true,
-      "call_order": 0,
-      "completion_order": 3,
-      "dest": "/work/extract/evil",
-      "entry_context": null,
-      "error": null,
-      "op": "link",
-      "result": {
-        "ino": "4",
-        "nlink": 2
+  "frame": {
+    "attempts": [
+      {
+        "aliases_external_object": true,
+        "created_path": "/work/extract/evil",
+        "created_region": "extraction",
+        "operation": "hardlink",
+        "outcome": "created",
+        "target_raw": "outside/sentinel.txt",
+        "target_region": "external",
+        "target_resolved_absolute": "/work/outside/sentinel.txt"
       },
-      "src": "outside/sentinel.txt",
-      "target_region": "external",
-      "target_resolved": "/work/outside/sentinel.txt"
-    },
-    {
-      "aliases_external_sentinel": false,
-      "boundary_attempt": true,
-      "call_order": 2,
-      "completion_order": 4,
-      "dest": "/work/extract/slink",
-      "entry_context": null,
-      "error": null,
-      "op": "symlink",
-      "result": {
-        "ino": "6",
-        "nlink": 1
+      {
+        "aliases_external_object": false,
+        "created_path": "/work/extract/slink",
+        "created_region": "extraction",
+        "operation": "symlink",
+        "outcome": "created",
+        "target_raw": "../outside/sentinel.txt",
+        "target_region": "external",
+        "target_resolved_absolute": "/work/outside/sentinel.txt"
       },
-      "src": "../outside/sentinel.txt",
-      "target_region": "external",
-      "target_resolved": "/work/outside/sentinel.txt"
-    },
-    {
-      "aliases_external_sentinel": false,
-      "boundary_attempt": false,
-      "call_order": 1,
-      "completion_order": 5,
-      "dest": "/work/extract/a.txt",
-      "entry_context": null,
-      "error": null,
-      "op": "writeFile",
-      "result": {
-        "ino": "5",
-        "nlink": 1
-      },
-      "src": "/work/extract/a.txt",
-      "target_region": "n/a",
-      "target_resolved": null
-    }
-  ]
+      {
+        "aliases_external_object": false,
+        "created_path": "/work/extract/a.txt",
+        "created_region": "extraction",
+        "operation": "regular",
+        "outcome": "created",
+        "target_raw": null,
+        "target_region": "n/a",
+        "target_resolved_absolute": null
+      }
+    ],
+    "diagnostic_observed_call_order": [
+      "hardlink",
+      "symlink",
+      "regular"
+    ],
+    "extraction_root_absolute": "/work/extract",
+    "extractor": "decompress@4.2.1",
+    "format": "inodefence-boundary-attempt-v1",
+    "schema_version": 1
+  },
+  "image_id": "sha256:86ce3c7b52773a23d9cae99e03b0a9a4d9963a1e506780f07ca98e5b4d79be53",
+  "probe": "decompress_boundary_attempt_v1"
 }

@@ -8,6 +8,7 @@ no timestamps or host paths: identical campaigns render byte-identical JSON.
 import json
 from collections import Counter
 from collections.abc import Callable, Mapping
+from enum import StrEnum
 from typing import Any
 
 from inodefence.effect_campaign import EffectCampaignResult, EffectCampaignStep
@@ -17,6 +18,8 @@ from inodefence.model import (
     EffectObjectObservation,
     EffectObservationStatus,
     EffectRunResult,
+    EffectStreamCompleteness,
+    EffectTargetTermination,
     FilesystemEffectEvent,
     canonical_json,
 )
@@ -82,6 +85,76 @@ def _effect_event_record(event: FilesystemEffectEvent) -> dict[str, object]:
     }
 
 
+class EffectObservability(StrEnum):
+    """Whether a step's effect stream is a trustworthy observation of the run.
+
+    Reporting-only classification derived from the trace's recorded termination
+    and completeness. It adds no evidence and changes no C0/C1/C2 verdict. It
+    exists so a step with zero (or few) effect events is not misread as
+    "observed, nothing happened, therefore safe" when the target actually
+    rejected, failed, timed out, never started, or lost part of the stream — in
+    those cases the absence of effects is NON-observation, not a no-violation
+    result. It stays separate from the per-path lstat ``EffectObservationStatus``:
+    that marks one missing lstat value; this marks why the whole stream is empty.
+    The ``observed``/``not_observed`` vocabulary matches the TRACE_LEGEND labels,
+    one granularity up (the run, not a single path value).
+    """
+
+    OBSERVED = "observed"
+    REJECTED_BEFORE_EFFECT = "not_observed:rejected-before-effect"
+    TARGET_FAILED = "not_observed:target-failed"
+    TARGET_TIMED_OUT = "not_observed:target-timed-out"
+    TARGET_NOT_STARTED = "not_observed:target-not-started"
+    STREAM_INCOMPLETE = "not_observed:stream-incomplete"
+
+
+_TERMINATION_OBSERVABILITY = {
+    EffectTargetTermination.REJECTED: EffectObservability.REJECTED_BEFORE_EFFECT,
+    EffectTargetTermination.FAILED: EffectObservability.TARGET_FAILED,
+    EffectTargetTermination.TIMED_OUT: EffectObservability.TARGET_TIMED_OUT,
+    EffectTargetTermination.NOT_STARTED: EffectObservability.TARGET_NOT_STARTED,
+}
+
+
+# Short gloss per status, printed beside it so a reader never needs the enum itself.
+EFFECT_OBSERVABILITY_GLOSS = {
+    EffectObservability.OBSERVED: "대상이 정상 종료함. 기록된 effect(없음 포함)는 실제 관찰이다.",
+    EffectObservability.REJECTED_BEFORE_EFFECT: (
+        "대상이 입력을 거부함. effect event 부재는 관찰 아님 — '위반 없음'의 증거가 아니다."
+    ),
+    EffectObservability.TARGET_FAILED: (
+        "대상이 실패로 종료함. effect 관찰이 불완전 — '위반 없음'의 증거가 아니다."
+    ),
+    EffectObservability.TARGET_TIMED_OUT: (
+        "대상이 시간초과로 종료함. effect 관찰이 불완전 — '위반 없음'의 증거가 아니다."
+    ),
+    EffectObservability.TARGET_NOT_STARTED: (
+        "대상이 시작되지 않음. effect 관찰 없음 — '위반 없음'의 증거가 아니다."
+    ),
+    EffectObservability.STREAM_INCOMPLETE: (
+        "effect 스트림이 불완전함(관찰 실패 기록). 일부 effect가 누락됐을 수 있다."
+    ),
+}
+
+
+def effect_observability(trace: EffectEventTrace) -> EffectObservability:
+    """Classify whether this trace's effect stream is a trustworthy observation.
+
+    Keyed first on the target's termination: anything other than a normal,
+    complete success means an empty or short effect stream is non-observation,
+    not a no-violation result. A successful but non-complete stream (recorded
+    observation failures) is likewise only partially observed.
+    """
+    if not isinstance(trace, EffectEventTrace):
+        raise ValueError("effect observability requires an EffectEventTrace")
+    mapped = _TERMINATION_OBSERVABILITY.get(trace.termination)
+    if mapped is not None:
+        return mapped
+    if trace.completeness != EffectStreamCompleteness.COMPLETE:
+        return EffectObservability.STREAM_INCOMPLETE
+    return EffectObservability.OBSERVED
+
+
 def _trace_report(result: EffectRunResult) -> dict[str, object]:
     """The values render_effect_trace prints, as data, plus each event's association.
 
@@ -99,6 +172,9 @@ def _trace_report(result: EffectRunResult) -> dict[str, object]:
     per_entry = Counter(event.entry.entry_index for event in events)
     return {
         "synthetic": _is_synthetic(trace),
+        # Why an empty/short effect stream is (or is not) a real observation; keeps
+        # a rejected run's zero events from reading as "no violation". Additive.
+        "effect_observation": effect_observability(trace).value,
         "sources": [
             {
                 "source_id": source.source_id,
@@ -675,6 +751,10 @@ def render_effect_trace(result: EffectRunResult) -> str:
         f"| status {execution.status.value} | completeness {trace.completeness.value} "
         f"| termination {trace.termination.value}"
     )
+    observability = effect_observability(trace)
+    lines.append(
+        f"effect observation: {observability.value} — {EFFECT_OBSERVABILITY_GLOSS[observability]}"
+    )
     lines.append(
         "sources: " + ", ".join(f"{s.source_id} ({s.mechanism} {s.version})" for s in sources)
     )
@@ -700,7 +780,13 @@ def render_effect_trace(result: EffectRunResult) -> str:
             key=lambda event: event.start_sequence,
         )
         if not events:
-            lines.append("  (no effect event recorded)")
+            if observability is EffectObservability.OBSERVED:
+                lines.append("  (no effect event recorded — observed: 이 entry에 effect 없음)")
+            else:
+                lines.append(
+                    f"  (no effect event recorded — {observability.value}: "
+                    "관찰 아님 — '위반 없음'이 아님)"
+                )
         for event in events:
             lines.append(
                 f"  effect seq {event.start_sequence}-{event.completion_sequence} "

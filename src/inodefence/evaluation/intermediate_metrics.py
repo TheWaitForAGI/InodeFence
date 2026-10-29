@@ -6,7 +6,10 @@ scores the DENSE intermediate-state signal -- the per-execution set of target-ag
 intermediate-state keys (entry-transition signatures, boundary-attempt / external-
 resolve effect keys) that accrue on nearly every execution. On that signal the
 A/B/C/D arms separate without a terminal hit, so an arm differential is measurable
-even when terminal violations are censored.
+even when terminal violations are censored. Two consumption forms are provided: a
+per-execution key SET (exploration breadth / novelty) and a per-execution monotone
+PROXIMITY rank (directed climb toward the boundary, e.g. the transition gradient's
+``none < external_namespace < cross_boundary_identity`` rungs).
 
 Honest boundaries (audit EN-008): a larger intermediate-state key set is SEARCH
 BEHAVIOUR, not a vulnerability count and not effectiveness. This module characterizes
@@ -47,6 +50,10 @@ _INTERMEDIATE_NOTE = (
 _MILESTONE_NOTE = (
     "a milestone first-hit (e.g. first boundary-attempt key) is a directed-gradient "
     "proxy for progress toward a boundary, not a confirmed contract violation"
+)
+_PROXIMITY_NOTE = (
+    "boundary proximity is a monotone directed-gradient search signal; a higher rung "
+    "is closer to the boundary, not a confirmed violation, and no arm ranking is claimed"
 )
 
 
@@ -160,6 +167,112 @@ def abcd_intermediate_comparison(
         for arm in arms
     }
     return AbcdIntermediateComparison(arms, MappingProxyType(metrics))
+
+
+@dataclass(frozen=True, slots=True)
+class ProximityGradientMetrics:
+    """Per-arm metrics over one ordered run of monotone boundary-PROXIMITY ranks.
+
+    Consumes a scalar per-execution proximity rank (higher = closer to the boundary;
+    e.g. the transition gradient's ``none < external_namespace < cross_boundary_identity``
+    rungs mapped to 0, 1, 2). Unlike a terminal violation this directed signal is
+    monotone and usually reaches its low rungs early, so ``executions_to_rank`` for a
+    low rung is typically NOT right-censored and the arms separate on how far/fast they
+    climb. ``rank_trajectory`` is the (fraction, running-max-rank) climb at checkpoints.
+    """
+
+    total_steps: int
+    max_rank: int
+    mean_rank: float
+    steps_per_rank: Mapping[int, int]
+    executions_to_rank: Mapping[int, int | None]
+    rank_censored: Mapping[int, bool]
+    rank_trajectory: tuple[tuple[float, int], ...]
+
+
+def proximity_gradient_metrics(
+    ranks: Sequence[int],
+    *,
+    milestone_ranks: Sequence[int] = (1, 2),
+    checkpoints: Sequence[float] = _DEFAULT_CHECKPOINTS,
+) -> ProximityGradientMetrics:
+    """Score one ordered run of monotone boundary-proximity ranks.
+
+    ``ranks[i]`` is the proximity rung reached on execution ``i`` (a non-negative int,
+    higher = closer to the boundary). ``milestone_ranks`` are the rungs whose first
+    reach (``>= rung``) is reported, 1-based, with a censored flag when never reached.
+    No producer or rung enum is imported: the caller maps its gradient to ints, so the
+    transition gradient and any other monotone proximity signal plug in unchanged.
+    """
+    values = list(ranks)
+    if any(type(value) is not int or value < 0 for value in values):
+        raise ValueError("proximity ranks must be non-negative integers")
+    milestones = tuple(milestone_ranks)
+    if not milestones or any(type(rung) is not int or rung < 1 for rung in milestones):
+        raise ValueError("milestone_ranks must be positive integers")
+    checks = tuple(checkpoints)
+    if not checks or any(not (0 < frac <= 1) for frac in checks):
+        raise ValueError("checkpoints must be fractions in (0, 1]")
+
+    total = len(values)
+    first_reach: dict[int, int | None] = {}
+    censored: dict[int, bool] = {}
+    for rung in milestones:
+        index = next((pos + 1 for pos, value in enumerate(values) if value >= rung), None)
+        first_reach[rung] = index
+        censored[rung] = index is None
+    running_max: list[int] = []
+    current = 0
+    for value in values:
+        current = max(current, value)
+        running_max.append(current)
+    trajectory = tuple(
+        (float(frac), running_max[min(total, max(1, math.ceil(frac * total))) - 1] if total else 0)
+        for frac in checks
+    )
+    histogram: dict[int, int] = {}
+    for value in values:
+        histogram[value] = histogram.get(value, 0) + 1
+    return ProximityGradientMetrics(
+        total_steps=total,
+        max_rank=max(values) if values else 0,
+        mean_rank=sum(values) / total if total else 0.0,
+        steps_per_rank=dict(sorted(histogram.items())),
+        executions_to_rank=first_reach,
+        rank_censored=censored,
+        rank_trajectory=trajectory,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class AbcdProximityComparison:
+    """Per-arm boundary-proximity-gradient metrics from one run, plus honest caveats."""
+
+    arms: tuple[Arm, ...]
+    metrics: Mapping[Arm, ProximityGradientMetrics]
+    note: str = _INTERMEDIATE_NOTE
+    proximity_note: str = _PROXIMITY_NOTE
+
+
+def abcd_proximity_comparison(
+    arm_to_ranks: Mapping[Arm, Sequence[int]],
+    *,
+    milestone_ranks: Sequence[int] = (1, 2),
+    checkpoints: Sequence[float] = _DEFAULT_CHECKPOINTS,
+) -> AbcdProximityComparison:
+    """Score each arm's proximity-rank run identically; attach honest caveats."""
+    arms = tuple(arm_to_ranks)
+    if not arms:
+        raise ValueError("at least one arm is required")
+    if any(not isinstance(arm, Arm) for arm in arms):
+        raise ValueError("arm keys must be Arm members")
+    metrics = {
+        arm: proximity_gradient_metrics(
+            arm_to_ranks[arm], milestone_ranks=milestone_ranks, checkpoints=checkpoints
+        )
+        for arm in arms
+    }
+    return AbcdProximityComparison(arms, MappingProxyType(metrics))
 
 
 # --- Adapters: extract an intermediate-state key set from the signals on main. ---

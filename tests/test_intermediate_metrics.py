@@ -11,12 +11,15 @@ from inodefence.effect_synthetic import synthetic_effect_result
 from inodefence.evaluation.arm_comparison import Arm
 from inodefence.evaluation.intermediate_metrics import (
     AbcdIntermediateComparison,
+    AbcdProximityComparison,
     abcd_intermediate_comparison,
+    abcd_proximity_comparison,
     boundary_attempt_trace_keys,
     effect_trace_keys,
     intermediate_state_metrics,
     is_boundary_attempt_key,
     is_external_resolve_key,
+    proximity_gradient_metrics,
 )
 from inodefence.model import ArchiveCase, ArchiveEntry, EntryType, OperationOutcome
 from test_m3_boundary_attempt_gradient import _external_link_attempt_result
@@ -99,3 +102,40 @@ def test_boundary_attempt_adapter_and_milestone_on_real_signal():
     # The directed-gradient milestone fires on the execution carrying these keys.
     metrics = intermediate_state_metrics([boundary], milestone=is_boundary_attempt_key)
     assert metrics.milestone_executions == 1 and metrics.milestone_censored is False
+
+
+def test_proximity_gradient_hit_and_censored():
+    hit = proximity_gradient_metrics([0, 0, 1, 2, 1])
+    assert hit.total_steps == 5 and hit.max_rank == 2 and hit.mean_rank == 0.8
+    assert hit.executions_to_rank == {1: 3, 2: 4}
+    assert hit.rank_censored == {1: False, 2: False}
+    assert hit.steps_per_rank == {0: 2, 1: 2, 2: 1}
+    # running-max climb trajectory at 25/50/75/100%
+    assert hit.rank_trajectory == ((0.25, 0), (0.5, 1), (0.75, 2), (1.0, 2))
+    censored = proximity_gradient_metrics([0, 0, 1])
+    assert censored.max_rank == 1
+    assert censored.executions_to_rank == {1: 3, 2: None}
+    assert censored.rank_censored == {1: False, 2: True}
+
+
+def test_proximity_arm_differential():
+    comparison = abcd_proximity_comparison({Arm.A: [0] * 6, Arm.C: [0, 1, 1, 2, 2, 2]})
+    assert isinstance(comparison, AbcdProximityComparison)
+    a_metrics, c_metrics = comparison.metrics[Arm.A], comparison.metrics[Arm.C]
+    assert a_metrics.max_rank == 0 and a_metrics.rank_censored == {1: True, 2: True}
+    assert c_metrics.max_rank == 2 and c_metrics.rank_censored == {1: False, 2: False}
+    assert c_metrics.executions_to_rank == {1: 2, 2: 4}
+    assert "EN-008" in comparison.note and "not a confirmed" in comparison.proximity_note
+
+
+def test_proximity_validation():
+    with pytest.raises(ValueError):
+        proximity_gradient_metrics([-1])
+    with pytest.raises(ValueError):
+        proximity_gradient_metrics([0], milestone_ranks=(0,))
+    with pytest.raises(ValueError):
+        proximity_gradient_metrics([0], checkpoints=())
+    with pytest.raises(ValueError):
+        abcd_proximity_comparison({})
+    with pytest.raises(ValueError):
+        abcd_proximity_comparison({"A": [0]})  # type: ignore[arg-type]

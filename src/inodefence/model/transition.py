@@ -379,37 +379,6 @@ class RelationDeltaKind(StrEnum):
     REMOVED = "removed"
 
 
-class TransitionBoundaryProximity(StrEnum):
-    """Ordered boundary-approach rung reached by one intermediate transition.
-
-    Unlike the unordered structural flags on `TransitionSignature`, this is a
-    single comparable label so adaptive search sees a *gradient*: a transition
-    whose intermediate state reached a higher rung got closer to the extraction
-    boundary than one that reached a lower rung, even when neither produced a
-    final C0/C1/C2 violation. The rung is the highest condition that holds; the
-    rungs are not a strict nesting, so it is derived by taking the greatest rung
-    present, never by assuming the lower ones also hold.
-
-    It is transition evidence, never a C0/C1/C2 verdict and never a vulnerability.
-    Target-agnostic AND answer-agnostic: every rung is derived only from `Region`
-    classes and `ChangeField` categories -- never a concrete path, raw
-    device/inode value, timestamp, the declared-protected marker, a sentinel, a
-    CVE or a PoC. Like the effect-path `BoundaryAttemptSignature`, it deliberately
-    rewards *approaching the boundary* (leaving the extraction root, then aliasing
-    some external object), not reaching the specific protected answer -- rewarding
-    protected-object proximity would be a forbidden sentinel-proximity reward
-    (D005/D006). Whether a touched object is the protected sentinel stays a C2
-    oracle judgment, never a feedback signal.
-
-    Members are declared in ascending severity order; `feedback.transition_gradient`
-    owns the canonical rank derived from that order.
-    """
-
-    NONE = "none"
-    EXTERNAL_NAMESPACE = "external_namespace"
-    CROSS_BOUNDARY_IDENTITY = "cross_boundary_identity"
-
-
 @dataclass(frozen=True, slots=True)
 class TransitionObjectEffect:
     """Path-region structural effect with no raw identity or timestamp value."""

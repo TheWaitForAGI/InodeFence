@@ -1,6 +1,6 @@
 """Normalized state, semantic violation novelty and in-memory search retention."""
 
-from inodefence.model import EffectFeedbackKeyKind, TransitionBoundaryProximity
+from inodefence.model import EffectFeedbackKeyKind
 
 from .corpus import Corpus, CorpusEntry, CorpusStats, FeedbackDecision
 from .coverage import StructureCoverageFeature, structure_coverage_features
@@ -38,13 +38,6 @@ from .transition import (
     transition_keys,
     transition_sequence_key,
     transition_signature,
-)
-from .transition_gradient import (
-    max_proximity,
-    proximity_rank,
-    trace_proximity,
-    transition_proximities,
-    transition_proximity,
 )
 from .transition_novelty import TransitionNoveltyDecision, TransitionNoveltyIndex
 from .transition_search import (
@@ -91,12 +84,6 @@ __all__ = [
     "transition_keys",
     "transition_sequence_key",
     "transition_signature",
-    "transition_proximity",
-    "transition_proximities",
-    "trace_proximity",
-    "proximity_rank",
-    "max_proximity",
-    "TransitionBoundaryProximity",
     "TransitionCorpusEntry",
     "TransitionNoveltyDecision",
     "TransitionNoveltyIndex",

@@ -3,8 +3,10 @@
 from inodefence.model import EffectFeedbackKeyKind
 
 from .boundary_observation import (
-    ObservedBoundaryOperation,
-    external_resolve_keys_from_observations,
+    BoundaryAttemptObservation,
+    FrameBoundaryNoveltyIndex,
+    boundary_attempt_keys_from_observations,
+    boundary_attempt_observation_from_frame,
 )
 from .corpus import Corpus, CorpusEntry, CorpusStats, FeedbackDecision
 from .coverage import StructureCoverageFeature, structure_coverage_features
@@ -68,8 +70,10 @@ __all__ = [
     "EffectSearchStats",
     "boundary_attempt_keys",
     "external_resolve_keys",
-    "external_resolve_keys_from_observations",
-    "ObservedBoundaryOperation",
+    "boundary_attempt_keys_from_observations",
+    "boundary_attempt_observation_from_frame",
+    "BoundaryAttemptObservation",
+    "FrameBoundaryNoveltyIndex",
     "effect_feedback_eligible",
     "effect_feedback_keys",
     "effect_feedback_projection_v3",

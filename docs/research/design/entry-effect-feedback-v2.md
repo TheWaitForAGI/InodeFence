@@ -359,29 +359,44 @@ entry-completion boundary hits (`entry-transition-observation-v1.md`), and it me
 extractor family — a target-fundamental observation negative, not a security result and not a
 statement about effectiveness.
 
-What such an adapter **can** observe is a *set* of boundary-relevant operations. The
-region-based external-resolve rung needs none of the ordered structure — only the operation
-kind and the region its target resolved to — so it survives this limit. `feedback/
-boundary_observation.py` makes this additive and explicit:
+What such an extractor **can** emit is the locked `inodefence-boundary-attempt-v1` frame: one
+JSON per extraction whose `attempts` is an **unordered SET**. Each attempt is one
+boundary-relevant operation the producer observed through fs-level interposition — the
+operation, the raw and resolved target, the regions, whether it aliased an external object,
+and the realized outcome — with no ordering or entry correlation. A per-attempt `target_raw`
+and `outcome` *are* observable (interposition sees the syscall argument and return); only their
+ordering is not. `feedback/boundary_observation.py` maps that SET into the existing M3.1
+`BoundaryAttemptSignature` keys, additive and standalone:
 
-- `ObservedBoundaryOperation(operation, entry_dest, target_region, aliases_external)` — the
-  honest weaker unit. It carries no ordinal, interval, correlation id or causal edge, because
-  those encode an ordering the adapter did not observe; fabricating them would manufacture
-  evidence the probe says is absent.
-- `external_resolve_keys_from_observations(...)` — maps each observation whose target resolved
-  to EXTERNAL into the **same** `OBSERVED_EXTERNAL_RESOLVE` key the trace path produces, so
-  both extractors draw from one key space and the existing P3 consumption is unchanged.
+- `BoundaryAttemptObservation(operation, target_raw, target_region, outcome)` and
+  `boundary_attempt_observation_from_frame(...)` — the signature-ready unit and the single place
+  the locked v1 vocabulary is parsed. It carries no ordinal/interval/correlation/causal edge
+  (those encode an ordering the producer did not observe; fabricating them would manufacture
+  evidence) and no concrete path.
+- `boundary_attempt_keys_from_observations(...)` — each attempt whose target resolved outside the
+  root and whose raw target lexically escapes yields one `BoundaryAttemptSignature(operation,
+  target_region, outcome, escape_shape=f(target_raw))` under the existing `BOUNDARY_ESCAPE_ATTEMPT`
+  kind, reusing the exact `_escape_shape` bucketing the trace path uses — so a frame attempt and
+  the equivalent trace event land on one key.
+- `FrameBoundaryNoveltyIndex` — the frame-driven novelty admission, mirroring `EffectNoveltyIndex`'s
+  key-level admission without importing or changing it.
 
-It deliberately targets `ExternalResolveSignature`, not the lexical `BoundaryAttemptSignature`:
-the latter requires the raw link text (for `escape_shape`) and the operation outcome, neither
-of which a set observation carries. It is answer-agnostic — the key reads only the operation
-kind and the EXTERNAL region, never the entry path, the realized-alias marker, a sentinel, a
-CVE or a PoC. Ranking by which external object was reached, or by whether an alias was
-realized, would drift the reward toward the protected sentinel (D005/D006); those stay C1/C2
-oracle judgments, never feedback.
+The frame is common to node-tar (native emission) and decompress, so the wiring is **uniform**:
+the frame SET is the only input, with no per-target branch. It is answer-agnostic — a key encodes
+the operation kind, the resolved region, the coarse outcome, and the bounded escape *shape* of
+`target_raw` (never the raw path, tail, the realized-alias marker, a sentinel, a CVE or a PoC).
+Whether a reached object is the protected sentinel, and whether an alias was realized, stay C1/C2
+oracle judgments, never feedback. The frame's three-valued outcome (created/refused/io_error) maps
+to one distinct `OperationOutcome` each, so the outcome stays a key dimension while the raw errno
+is intentionally dropped.
 
-Status: the mapping is **IMPLEMENTED and unit-TESTED** (`tests/test_boundary_observation_mapping.py`);
-a **live** second-extractor campaign is **NOT_RUN** — it activates when the decompress adapter
-emits these observations (generality-m4, M4.2), human-gated. observed (the feasibility probe,
-the mapping unit tests) is kept separate from inferred (that a live decompress campaign will
-raise the same keys).
+(An earlier cut mapped the set to the region-only `ExternalResolveSignature` on the assumption that
+a set observation could not carry the raw link text or the outcome. The locked frame, fixed by the
+generality lane's reference producer, carries both per attempt — only their *ordering* is
+unobservable — so the full lexical `BoundaryAttemptSignature` is the faithful target.)
+
+Status: the wiring is **IMPLEMENTED and unit-TESTED** (`tests/test_boundary_observation_mapping.py`);
+a **live** campaign is **NOT_RUN** — it activates when an extractor's adapter emits the frame
+(node-tar native emission is in progress; decompress is post-#177), human-gated. observed (the
+feasibility probe, the locked reference producer, the unit tests) is kept separate from inferred
+(that a live campaign will raise the same keys).

@@ -75,7 +75,11 @@ HISTORICAL_DEMO_MODE = "effect-demo-historical"
 # (D, coverage) admits only the boundary-attempt rung, and the P1 floor (A) admits neither. When
 # --policy is absent the loop's default admits both rungs, unchanged from before the arm split.
 DECOMPRESS_CAMPAIGN_MODE = "decompress-effect-campaign"
-DEMO_MODES = ("effect-demo", HISTORICAL_DEMO_MODE, DECOMPRESS_CAMPAIGN_MODE)
+# M4 self-discovery over a THIRD extractor (oras-go). Shares the --seed/--budget/--mutation-policy
+# demo arguments; --policy (EffectSearchPolicy) does not apply (its own novelty channels) and is
+# ignored for this mode, exactly like the decompress campaign.
+ORAS_GO_CAMPAIGN_MODE = "oras-go-effect-campaign"
+DEMO_MODES = ("effect-demo", HISTORICAL_DEMO_MODE, DECOMPRESS_CAMPAIGN_MODE, ORAS_GO_CAMPAIGN_MODE)
 HISTORICAL_LABEL = "demo run"
 HISTORICAL_SEARCH_POLICY = EffectSearchPolicy.P2_EFFECT_ADAPTIVE
 HISTORICAL_MUTATION_POLICY = MutationPolicy.M1_PROTECTED_COMPONENTS_ESCAPE_HARDLINK

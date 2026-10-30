@@ -45,7 +45,11 @@ from inodefence.evaluation.intermediate_metrics import (
     is_boundary_attempt_key,
     is_external_resolve_key,
 )
-from inodefence.evaluation.right_censored import SeedOutcome, right_censored_summary
+from inodefence.evaluation.right_censored import (
+    SeedOutcome,
+    right_censored_summary,
+    wilson_interval,
+)
 from inodefence.feedback.effect import _escape_shape
 from inodefence.model import (
     BoundaryAttemptSignature,
@@ -265,6 +269,20 @@ def _distribution(values: Sequence[float]) -> dict:
     }
 
 
+def _pooled_rate(hits: int, trials: int) -> dict:
+    """Pooled boundary-attempt proportion with a Wilson 95% CI (executions as trials).
+
+    NOTE: executions within a campaign are correlated, so this execution-pooled CI is
+    anti-conservative; the campaign count (n_full) is the real precision limiter.
+    """
+    return {
+        "hits": hits,
+        "trials": trials,
+        "rate": hits / trials if trials else 0.0,
+        "wilson_95_ci": list(wilson_interval(hits, trials)) if trials else None,
+    }
+
+
 def _anchor_comparison(
     anchor_boundary: Mapping[Arm, Sequence[frozenset]],
     anchor_external: Mapping[Arm, Sequence[frozenset]],
@@ -380,12 +398,31 @@ def analyze_decensor(evidence_dir: Path, decensor_dir: Path) -> dict:
         seeds = sorted(seed for (cell_arm, seed) in full_metrics if cell_arm == arm)
         b_rates = [full_metrics[(arm, seed)]["boundary_attempt"]["rate"] for seed in seeds]
         e_rates = [full_metrics[(arm, seed)]["external_resolve"]["rate"] for seed in seeds]
+        firsts = [
+            full_metrics[(arm, seed)]["boundary_attempt"]["executions_to_first"]
+            for seed in seeds
+            if full_metrics[(arm, seed)]["boundary_attempt"]["executions_to_first"] is not None
+        ]
+        hits = sum(
+            full_metrics[(arm, seed)]["boundary_attempt"]["executions_with_key"] for seed in seeds
+        )
+        trials = sum(full_metrics[(arm, seed)]["executions"] for seed in seeds)
+        head_seeds = [seed for (cell_arm, seed) in heads if cell_arm == arm]
+        head_hits = sum(
+            heads[(arm, seed)]["boundary_attempt"]["executions_with_key"] for seed in head_seeds
+        )
+        head_trials = sum(heads[(arm, seed)]["executions"] for seed in head_seeds)
         arm_summaries[arm] = {
             "arm_label": Arm[arm].value,
             "n_full": len(seeds),
             "full_seeds": seeds,
             "boundary_attempt_rate": _distribution(b_rates),
             "external_resolve_rate": _distribution(e_rates),
+            "boundary_executions_to_first": _distribution(firsts),
+            "boundary_attempt_pooled": _pooled_rate(hits, trials),
+            "boundary_attempt_pooled_with_heads": _pooled_rate(
+                hits + head_hits, trials + head_trials
+            ),
         }
         for seed in seeds:
             c1 = full_metrics[(arm, seed)]["terminal_c1_steps"]
@@ -502,6 +539,63 @@ def analyze_decensor(evidence_dir: Path, decensor_dir: Path) -> dict:
         ),
     }
 
+    # Lower-bound test (deliverable: measure, don't assume): PASS 1 inferred that fulls-only
+    # UNDER-estimates C/D because the aborted C/D runs were more boundary-oriented. The
+    # de-censor recovers 3 C/D cells, so we can check directly whether they rate higher.
+    recovered = {key for key in full_metrics if sources[key] == "decensor_newly_full"}
+
+    def _rate_stats(keys: Sequence[tuple[str, int]]) -> dict:
+        rates = sorted(full_metrics[key]["boundary_attempt"]["rate"] for key in keys)
+        return {
+            "n": len(rates),
+            "cells": sorted(f"{arm}-s{seed}" for (arm, seed) in keys),
+            "rates": rates,
+            "mean": sum(rates) / len(rates) if rates else None,
+            "min": rates[0] if rates else None,
+            "max": rates[-1] if rates else None,
+        }
+
+    cd_keys = [key for key in full_metrics if key[0] in ("C", "D")]
+    recovered_stats = _rate_stats([key for key in cd_keys if key in recovered])
+    original_stats = _rate_stats([key for key in cd_keys if key not in recovered])
+    recovered_higher = (
+        recovered_stats["mean"] is not None
+        and original_stats["mean"] is not None
+        and recovered_stats["mean"] > original_stats["mean"]
+    )
+    lower_bound_test = {
+        "pass1_claim": "fulls-only is a lower bound for C/D (aborted runs more boundary-oriented)",
+        "recovered_cd": recovered_stats,
+        "original_full_cd": original_stats,
+        "recovered_mean_higher_than_original": recovered_higher,
+        "finding": (
+            "recovered (previously-aborted) C/D cells rate higher than the already-full C/D "
+            "cells: the lower-bound claim IS supported"
+            if recovered_higher
+            else "recovered (previously-aborted) C/D cells rate WITHIN the already-full C/D range, "
+            "not higher: the PASS 1 lower-bound (downward-censoring-bias) claim is NOT supported "
+            "and is retracted. C/D>A/B still stands on its own (EN-008)"
+        ),
+    }
+
+    def _gradient_over_nongradient(rates: dict) -> bool:
+        return min(rates["C"], rates["D"]) > max(rates["A"], rates["B"])
+
+    fulls_only = {arm: arm_summaries[arm]["boundary_attempt_pooled"]["rate"] for arm in _ARMS}
+    with_heads = {
+        arm: arm_summaries[arm]["boundary_attempt_pooled_with_heads"]["rate"] for arm in _ARMS
+    }
+    head_sensitivity = {
+        "note": "heads are partial/right-censored; include & exclude both reported",
+        "fulls_only_pooled_rate": fulls_only,
+        "fulls_plus_heads_pooled_rate": with_heads,
+        "gradient_over_nongradient_fulls_only": _gradient_over_nongradient(fulls_only),
+        "gradient_over_nongradient_with_heads": _gradient_over_nongradient(with_heads),
+        "ordering_robust_to_head_inclusion": (
+            _gradient_over_nongradient(fulls_only) and _gradient_over_nongradient(with_heads)
+        ),
+    }
+
     return {
         "schema_version": 2,
         "task": "item-3 mover A/B/C/D intermediate-state primary metric (de-censored, pass 2)",
@@ -530,6 +624,8 @@ def analyze_decensor(evidence_dir: Path, decensor_dir: Path) -> dict:
         "c_vs_d_paired": cd_paired,
         "c_vs_d_verdict": cd_verdict,
         "degraded_pre_abort_heads": head_summary,
+        "lower_bound_test": lower_bound_test,
+        "head_sensitivity": head_sensitivity,
         "abort_nondeterminism": nondeterminism,
         "terminal_c1_rollup": right_censored_summary(outcomes),
     }
@@ -545,10 +641,12 @@ def _print_pass2(rollup: dict) -> None:
         summary = rollup["per_arm_fulls"][arm]
         dist = summary["boundary_attempt_rate"]
         ext = summary["external_resolve_rate"]
+        pooled = summary["boundary_attempt_pooled"]
+        ci = [round(x, 4) for x in pooled["wilson_95_ci"]] if pooled["wilson_95_ci"] else None
         print(
             f"  {arm} {summary['arm_label']:<18} bAtt={dist['mean']:.4f}"
             f" [{dist['min']:.4f},{dist['max']:.4f}]"
-            f" extR={ext['mean']:.4f} n_full={summary['n_full']} seeds={summary['full_seeds']}"
+            f" extR={ext['mean']:.4f} n_full={summary['n_full']} pooledCI={ci}"
         )
     print(f"\n4-arm paired seeds {rollup['four_arm_paired_seeds']} (boundary-attempt rate):")
     for seed, per_arm in rollup["four_arm_paired"].items():
@@ -570,6 +668,20 @@ def _print_pass2(rollup: dict) -> None:
     for arm in _ARMS:
         head = heads[arm]
         print(f"  {arm}: {head['heads_with_boundary_attempt']}/{head['n_heads']} heads w/ attempt")
+    lb = rollup["lower_bound_test"]
+    print("\nlower-bound test (recovered C/D vs original-full C/D boundary-attempt rate):")
+    print(
+        f"  recovered {lb['recovered_cd']['cells']} mean={lb['recovered_cd']['mean']:.4f}"
+        f" vs original mean={lb['original_full_cd']['mean']:.4f}"
+        f" -> recovered_higher={lb['recovered_mean_higher_than_original']}"
+    )
+    hs = rollup["head_sensitivity"]
+    print(
+        f"head sensitivity: grad>nongrad"
+        f" fulls_only={hs['gradient_over_nongradient_fulls_only']}"
+        f" with_heads={hs['gradient_over_nongradient_with_heads']}"
+        f" robust={hs['ordering_robust_to_head_inclusion']}"
+    )
     nd = rollup["abort_nondeterminism"]
     print(
         f"\nabort non-determinism: {nd['exact_match']}/14 exact,"

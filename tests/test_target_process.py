@@ -16,7 +16,10 @@ def _assert_child_stopped(pid: int) -> None:
         state = Path(f"/proc/{pid}/stat").read_text()
     except (FileNotFoundError, ProcessLookupError):
         return
-    assert state.split()[2] == "Z"
+    # Post-SIGKILL the child is terminal: Z (zombie awaiting reap) or X/x
+    # (dead/exiting). Which we observe is a reaping-timing race, so accept
+    # either terminal state (still fails for R/S/D = genuinely still alive).
+    assert state.split()[2] in {"Z", "X", "x"}
 
 
 def test_output_and_nonzero_exit_are_evidence(sandbox: RuntimeSandbox) -> None:

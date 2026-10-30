@@ -8,6 +8,13 @@
   snapshot and causal-effect qualification failures
 - Transition novelty/retention core: **IMPLEMENTED**, **TESTED**
 - Adaptive scheduling core: **IMPLEMENTED**, **TESTED**
+- Ordered-transition boundary-approach gradient: **DESIGNED**, **NOT_IMPLEMENTABLE** on the
+  current extractor family — the ordered entry-completion boundary it needs is fundamentally
+  not observable (generality-m4 feasibility, observed). The implementation
+  (`feedback/transition_gradient.py`, `TransitionBoundaryProximity`) was **removed as dead
+  code** (0 consumers); the design and the negative finding are preserved below. The set-based
+  effect-path boundary-attempt frame rung generalizes instead (generality lane's
+  `boundary_attempt_frame.py`)
 - Checksummed evaluation config/export/reader/replay verifier/metrics: **IMPLEMENTED**, **TESTED**
 - Effectiveness or benchmark result: **NOT_RUN**, **HYPOTHESIS**
 
@@ -134,3 +141,51 @@ The model and normalization import no node-tar code. A target adapter may report
 proven completion boundary, while the generic observer captures filesystem state and
 the generic feedback layer derives keys. Future observers may replace full snapshots
 without changing the target event or normalized feedback contracts.
+
+## Ordered-transition boundary-approach gradient: designed, not implementable (honest negative)
+
+`TransitionSignature` records three *unordered* structural flags, so transition novelty
+admission answers only "is this transition class new?". It cannot order two intermediate
+sequences by how close each came to a boundary violation, and the final BEFORE/AFTER C0/C1/C2
+oracle is likewise all-or-nothing. That missing ordering is the documented ceiling on adaptive
+search: a refused escaping attempt that never realizes a violation is indistinguishable from an
+input that never approached the boundary.
+
+The intended fill was an **ordered-transition boundary-approach gradient**: one comparable rung
+per intermediate transition, derived only from `Region` classes and `ChangeField` categories
+(target-agnostic and answer-agnostic — rewarding *leaving the root and aliasing some external
+object*, never reaching the specific protected answer; a protected-object-proximity reward would
+be a forbidden sentinel-proximity signal, D005/D006). The ascending rungs were `none` <
+`external_namespace` (a namespace field changed outside `extract/`, the C0 shape) <
+`cross_boundary_identity` (a created identity group spanning EXTRACTION and EXTERNAL, the C1
+shape against any external object), with the closest rung a whole trace reached as the single
+comparable scalar.
+
+**This gradient is not implementable on the current extractor family — a target-fundamental
+observation negative (observed, generality-m4 feasibility, 2026-10-30).** The rungs require an
+ordered, entry-correlated intermediate `TransitionTrace`, which needs a per-entry completion
+boundary. node-tar does not expose one (public/OS/private snapshot and causal-effect
+qualification all failed; see `entry-transition-observation-v1.md`), and the second-extractor
+feasibility probe found decompress is the same class of limit: it records entries concurrently
+and reordered — archive order is not call order, and it varies run to run — and propagates no
+entry context to the filesystem operation, so a faithful ordered trace cannot be reconstructed.
+oras-go is harder still (Go raw syscalls, no fs-wrap/LD_PRELOAD; ptrace would relax isolation).
+The ordered boundary is therefore not an engineering TODO but an observation limit of this
+extractor family.
+
+Consequently the gradient's implementation (`feedback/transition_gradient.py` and the
+`TransitionBoundaryProximity` enum) was **removed as dead code** — it had no consumers, and
+carrying a dormant module for a capability that cannot be observed is the unrealized-signal
+scaffolding this project avoids (EN-008). This section preserves the design and the negative
+finding; the code does not.
+
+**What generalizes instead (set-based, live-reachable).** The *set* of boundary-relevant
+operations an extractor can observe — without any ordering — still feeds the effect-path
+boundary-attempt gradient. The locked `inodefence-boundary-attempt-v1` frame (an unordered SET of
+attempts) is emitted and normalized into the existing M3.1 `BoundaryAttemptSignature` keys by the
+**generality lane's canonical producer + normalizer** (`feedback/boundary_attempt_frame.py`),
+consumed by main M3.1 and the 주언 metrics. That region-and-shape rung needs no ordering, so it is
+the boundary-approach signal that actually generalizes to a second extractor. The transition-model
+sections above (checkpoints, transitions, novelty, retention) are unaffected and remain the
+generic representation for any future extractor that *does* expose an ordered entry-completion
+boundary.

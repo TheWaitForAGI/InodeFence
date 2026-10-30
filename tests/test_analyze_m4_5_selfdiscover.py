@@ -140,3 +140,63 @@ def test_wrong_schema_raises(tmp_path):
     path = _write(tmp_path, "bad.json", bad)
     with pytest.raises(ValueError, match="decompress_campaign_schema"):
         load_campaign(path)
+
+
+_ABORT_STUB = {
+    "aborted": {"reason": "container runtime cleanup inspect failed"},
+    "decompress_campaign_schema": 1,
+    "label": "demo run",
+    "producer": "native-decompress[decompress=decompress@4.2.1;node=22.23.4]",
+}
+
+
+def test_abort_stub_is_incomplete_seed_and_arm_from_filename(tmp_path):
+    # The backend writes this stub on a fail-closed abort; it has no config/steps, so seed
+    # and arm must come from the -m45-<arm>-s<seed> filename.
+    path = _write(
+        tmp_path,
+        "inodefence-decompress-selfdiscover-m45-sa-s500.json",
+        _ABORT_STUB,
+    )
+    campaign = load_campaign(path)
+    assert campaign.aborted is True
+    assert campaign.complete is False
+    assert campaign.seed == 500
+    assert campaign.arm == "A3-state-aware"
+    assert campaign.abort_reason == "container runtime cleanup inspect failed"
+    assert campaign.seed_outcome().hit is False
+
+
+def test_roll_up_counts_aborts_separately_from_denominator(tmp_path):
+    complete = load_campaign(
+        _write(
+            tmp_path,
+            "inodefence-decompress-selfdiscover-m45-a1-s500.json",
+            _evidence(seed=500, budget=10, policy=A1P),
+        )
+    )
+    aborted = load_campaign(
+        _write(
+            tmp_path,
+            "inodefence-decompress-selfdiscover-m45-a1-s501.json",
+            _ABORT_STUB,
+        )
+    )
+    report = roll_up([complete, aborted])
+    arm = report["arms"]["A1-random"]
+    # The abort leaves the hit denominator (complete only) and is reported separately.
+    assert arm["right_censored"]["number_complete_campaigns"] == 1
+    assert arm["right_censored"]["number_incomplete_excluded"] == 1
+    assert arm["fail_closed_aborts"]["count"] == 1
+    assert arm["fail_closed_aborts"]["seeds"] == [501]
+
+
+def test_filename_seed_mismatch_raises(tmp_path):
+    # A complete evidence whose filename seed disagrees with its config seed is an integrity error.
+    path = _write(
+        tmp_path,
+        "inodefence-decompress-selfdiscover-m45-a1-s999.json",
+        _evidence(seed=500, budget=10, policy=A1P),
+    )
+    with pytest.raises(ValueError, match="filename seed"):
+        load_campaign(path)

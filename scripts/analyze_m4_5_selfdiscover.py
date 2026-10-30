@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -72,10 +73,19 @@ class Campaign:
     terminations: dict[str, int]
     discovered_violation: bool
     first_hit_index_one_based: int | None
+    aborted: bool = False
+    abort_reason: str | None = None
 
     @property
     def complete(self) -> bool:
-        """A complete campaign ran its full budget with every observation eligible."""
+        """A complete campaign ran its full budget with every observation eligible.
+
+        A fail-closed infrastructure abort (``aborted``) is never complete: the backend
+        writes a stub with no steps, so it is infrastructure-incomplete and excluded from
+        the hit denominator (reported separately), per evaluation-protocol-v1.
+        """
+        if self.aborted:
+            return False
         return self.eligible_observations == self.budget and self.observations == self.budget
 
     def seed_outcome(self) -> SeedOutcome:
@@ -93,11 +103,60 @@ def _arm_for(policy: str) -> str:
     return _ARM_LABELS.get(policy, policy)
 
 
-def load_campaign(path: str | Path) -> Campaign:
-    """Parse one evidence JSON into a ``Campaign``; raise on an unexpected schema."""
+# RUN_ID token (from the evidence filename) -> arm label, used when an abort stub carries
+# no config. The filename is the authoritative source of seed+arm for a stub.
+_RUN_ID_ARM = {"sa": "A3-state-aware", "a1": "A1-random"}
+_RUN_ID_RE = re.compile(r"-m45-(sa|a1)-s(\d+)\.json$")
+
+
+def _parse_run_id(path: str | Path) -> tuple[str, int] | None:
+    """Return (arm_label, seed) parsed from an ``...-m45-<arm>-s<seed>.json`` name, or None."""
+    match = _RUN_ID_RE.search(Path(path).name)
+    if match is None:
+        return None
+    return _RUN_ID_ARM[match.group(1)], int(match.group(2))
+
+
+def load_campaign(path: str | Path, *, aborted_budget: int = 1500) -> Campaign:
+    """Parse one evidence JSON into a ``Campaign``; raise on an unexpected schema.
+
+    A fail-closed abort stub (``{"aborted": {...}}`` with no config/steps) is returned as an
+    ``aborted`` Campaign whose seed/arm come from the ``-m45-<arm>-s<seed>`` filename, since
+    the stub carries neither. ``aborted_budget`` is the registered budget used to record it
+    (it is excluded from the hit denominator, so the value only labels the censored entry).
+    """
     data = json.loads(Path(path).read_text())
     if data.get("decompress_campaign_schema") != _SCHEMA:
         raise ValueError(f"{path}: not decompress_campaign_schema {_SCHEMA}")
+
+    if "aborted" in data or "config" not in data:
+        run = _parse_run_id(path)
+        if run is None:
+            raise ValueError(f"{path}: aborted stub with no config and unparseable RUN_ID")
+        arm, seed = run
+        reason = ""
+        if isinstance(data.get("aborted"), dict):
+            reason = str(data["aborted"].get("reason", ""))
+        return Campaign(
+            path=str(path),
+            seed=seed,
+            budget=aborted_budget,
+            policy="",
+            arm=arm,
+            producer=str(data.get("producer", "")),
+            observations=0,
+            eligible_observations=0,
+            retained_cases=0,
+            unique_attempt_keys=0,
+            unique_violation_fingerprints=0,
+            unique_full_states=0,
+            terminations={},
+            discovered_violation=False,
+            first_hit_index_one_based=None,
+            aborted=True,
+            abort_reason=reason,
+        )
+
     config = data["config"]
     stats = data["final_stats"]
     steps = data["steps"]
@@ -112,9 +171,13 @@ def load_campaign(path: str | Path) -> Campaign:
             first_hit = int(step["index"]) + 1
     budget = int(config["execution_budget"])
     policy = str(config["mutation_policy"])
+    seed = int(config["random_seed"])
+    run = _parse_run_id(path)
+    if run is not None and run[1] != seed:
+        raise ValueError(f"{path}: filename seed {run[1]} != config seed {seed}")
     return Campaign(
         path=str(path),
-        seed=int(config["random_seed"]),
+        seed=seed,
         budget=budget,
         policy=policy,
         arm=_arm_for(policy),
@@ -167,10 +230,21 @@ def roll_up(campaigns: Sequence[Campaign], *, external_seed_sets: dict | None = 
     for arm, arm_campaigns in sorted(arms.items()):
         outcomes = [c.seed_outcome() for c in arm_campaigns]
         summary = right_censored_summary(outcomes)
+        aborted = [c for c in arm_campaigns if c.aborted]
+        non_aborted = [c for c in arm_campaigns if not c.aborted]
         arm_reports[arm] = {
             "is_state_aware_not_blind": arm in _STATE_AWARE_ARMS,
             "right_censored": summary,
-            "mechanism": _mechanism_tally(arm_campaigns),
+            "mechanism": _mechanism_tally(non_aborted),
+            "fail_closed_aborts": {
+                "count": len(aborted),
+                "seeds": sorted(c.seed for c in aborted),
+                "reasons": sorted({c.abort_reason or "" for c in aborted}),
+                "note": (
+                    "infrastructure-incomplete (observation-integrity STOP), excluded from the "
+                    "complete-campaign denominator and reported separately (evaluation-protocol-v1)"
+                ),
+            },
         }
 
     win_seeds = sorted({c.seed for c in campaigns})
@@ -263,6 +337,10 @@ def render_markdown(report: dict) -> str:
             f"{prop['denominator']}  Wilson95 {ci_text}"
         )
         lines.append(f"- right-censored (no-hit within budget): {rc['number_right_censored']}")
+        aborts = arm_report["fail_closed_aborts"]
+        lines.append(
+            f"- fail-closed aborts (excluded from denominator): {aborts['count']} {aborts['seeds']}"
+        )
         if rc["first_hit_executions_observed_only"]["values"]:
             lines.append(
                 f"- first-hit executions (observed only): "

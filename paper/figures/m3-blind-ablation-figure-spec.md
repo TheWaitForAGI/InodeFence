@@ -1,6 +1,10 @@
-# 그림 사양 — M3 blind-ablation 대조 (렌더 전 사양)
+# 그림 사양 — M3 blind-ablation 대조 (사양 + 렌더됨)
 
-이 파일은 **렌더된 이미지가 아니라 그림 사양**이다. 아래 데이터는 전부 [표 M3](../tables/m3-blind-ablation.md)·
+**렌더됨:** 이 사양으로 실제 그림을 렌더했다 — PNG [`m3-blind-ablation.png`](m3-blind-ablation.png),
+생성 소스 [`render_m3_blind_ablation.py`](render_m3_blind_ablation.py). 결과 그림은 Results
+[§5.3](../sections/06-results.md)에 삽입돼 있다. 아래는 그 그림의 사양·데이터 근거다(observed 수치 그대로).
+
+이 파일의 데이터는 전부 [표 M3](../tables/m3-blind-ablation.md)·
 [자력발견 요약](../../experiments/summaries/node-self-discovery-mechanism-v1.md)의 observed 수치이며,
 그림을 그릴 때 이 수치 그대로 써야 한다(figures 규칙: Figure → analysis input → experiment result →
 experiment config → commit 추적 가능).

@@ -28,6 +28,11 @@ C0/C1/C2 oracle → feedback → 다음 mutation 루프를 한 바퀴 20 step �
 raw는 [`../../experiments/repro/evidence/summary.json`](../../experiments/repro/evidence/summary.json),
 검증 요약은 [cross-release-identity-repro-v1](../../experiments/summaries/cross-release-identity-repro-v1.md)다.
 
+![node-tar 릴리스별 하드링크 identity verdict 그리드: top-level와 nested fixture × 7.5.2–7.5.8, 비단조 분포와 R1·R2 고정 쌍](../figures/m2-cross-release-evidence.png)
+
+*그림 1 — 릴리스별 verdict(observed). 데이터 [표 M2](../tables/m2-cross-release-evidence.md),
+생성 소스 [`../figures/render_m2_cross_release.py`](../figures/render_m2_cross_release.py).*
+
 **Finding (observed).** 하나의 generic identity oracle(추출 객체↔외부 참조파일 inode 공유 = C1,
 참조파일 전후 metadata 변화 = C2)이 서로 다른 **두 root-cause**를 포착한다.
 
@@ -59,6 +64,11 @@ raw는 [`../../experiments/repro/evidence/summary.json`](../../experiments/repro
 그림 사양은 [m3-blind-ablation-figure-spec](../figures/m3-blind-ablation-figure-spec.md), 검증 요약은
 [node-self-discovery-mechanism-v1](../../experiments/summaries/node-self-discovery-mechanism-v1.md)다
 (Ledger M3 / PR #151, merge d44d903).
+
+![M3 blind-ablation 막대그래프: A3full s11 21 hits vs A3blind s11 0 vs A1 random floor 0, identity 관찰 on/off 인과 대조](../figures/m3-blind-ablation.png)
+
+*그림 2 — blind-ablation 대조(observed; 인과이지 rate 아님). 데이터 [표 M3](../tables/m3-blind-ablation.md),
+생성 소스 [`../figures/render_m3_blind_ablation.py`](../figures/render_m3_blind_ablation.py).*
 
 ### 5.3.1 관찰된 수치 (observed, raw step 로그 재집계)
 

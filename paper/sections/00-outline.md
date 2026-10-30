@@ -37,7 +37,7 @@ Capability Ledger)로 추적 가능하다.
 - 표: [`../tables/m2-cross-release-evidence.md`](../tables/m2-cross-release-evidence.md),
   [`../tables/m3-blind-ablation.md`](../tables/m3-blind-ablation.md),
   [`../tables/capability-ledger-summary.md`](../tables/capability-ledger-summary.md)
-- 그림 사양: [`../figures/m3-blind-ablation-figure-spec.md`](../figures/m3-blind-ablation-figure-spec.md)
+- 그림(렌더됨, observed): [M2 verdict](../figures/m2-cross-release-evidence.png) · [M3 blind-ablation](../figures/m3-blind-ablation.png) — 사양 [m3-blind-ablation-figure-spec](../figures/m3-blind-ablation-figure-spec.md), 생성 소스 `../figures/render_*.py`
 - 주장↔증거 매핑: [`claims-evidence-status-v1.md`](claims-evidence-status-v1.md)
 
 ## 상태 범례

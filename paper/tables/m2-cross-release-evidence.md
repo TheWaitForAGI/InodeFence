@@ -1,5 +1,7 @@
 # 표 M2 — Cross-release identity 통제 재현 증거표
 
+> 렌더된 그림: [m2-cross-release-evidence.png](../figures/m2-cross-release-evidence.png) (생성 소스 [`render_m2_cross_release.py`](../figures/render_m2_cross_release.py))
+
 M2(§5.2)의 근거표다. verdict = "추출된 객체가 외부 참조파일의 `(st_dev, st_ino)` identity를
 공유하는가" — 이것이 C1 oracle이 평가하는 바로 그 관찰이며, 릴리스 id나 정답 경로를 판정 조건에
 넣지 않는다. 두 fixture 모두 링크 타깃은 동일한 상대 경로(추출 디렉터리를 벗어남)이고, top-level에

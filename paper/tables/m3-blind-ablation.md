@@ -1,5 +1,7 @@
 # 표 M3 — 자력 발견 blind-ablation 대조표
 
+> 렌더된 그림: [m3-blind-ablation.png](../figures/m3-blind-ablation.png) (생성 소스 [`render_m3_blind_ablation.py`](../figures/render_m3_blind_ablation.py))
+
 M3(§5.3)의 근거표다. hit = **step에서 `oracle.C1` AND `feedback.contract_violated`가 모두 참.**
 모든 수치는 raw step 로그(`*.steps.jsonl`)를 재현 가능한 변환으로 다시 세어 얻은 것이다(수동으로
 지어내지 않음).

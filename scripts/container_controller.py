@@ -17,6 +17,7 @@ from scripts.run_effect_demo import (
     DEFAULT_NATIVE_BUDGET,
     HISTORICAL_DEMO_MODE,
     HISTORICAL_LABEL,
+    ORAS_GO_CAMPAIGN_MODE,
     NativeDemoAborted,
     add_demo_arguments,
     check_demo_arguments,
@@ -214,6 +215,77 @@ def run_native_decompress_campaign(
     return returncode
 
 
+def run_native_oras_go_campaign(
+    backend: ContainerExecutionBackend, image: str, evidence: Path, args: argparse.Namespace
+) -> int:
+    """M4 self-discovery: the effect campaign loop over REAL oras-go (3rd extractor); report as-is.
+
+    Binds the pinned oras-go image through the production backend and drives
+    ``run_oras_go_effect_campaign`` (generic mutator → real oras-go frame worker → generic C0/C1/C2
+    oracle → set-based boundary-attempt / violation feedback). A C0/C1/C2 verdict on any step is the
+    hit (self-discovered by mutation, not a planted PoC — the seeds are the benign generic
+    baselines); a run with none is an honest right-censored negative, not a failure. The generic
+    oracle is unchanged. The whole report (incl. ``discovered_violation`` and per-step
+    oracle/feedback) is written to evidence; on an infrastructure abort a stub is written so the run
+    is still recorded.
+    """
+    from inodefence.effect_pipeline_oras_go import run_oras_go_frame_case
+    from inodefence.generator.minimal import minimal_seed_corpus
+    from inodefence.model import ArchiveCase
+    from inodefence.mutator import MutationPolicy
+    from inodefence.oras_go_effect_campaign import (
+        OrasGoEffectCampaignConfig,
+        oras_go_effect_campaign_report,
+        run_oras_go_effect_campaign,
+    )
+    from inodefence.targets.oras_go_effect import OrasGoFrameTarget
+
+    seed = args.seed if args.seed is not None else 123
+    budget = args.budget if args.budget is not None else DEFAULT_NATIVE_BUDGET
+    policy = (
+        MutationPolicy(args.mutation_policy)
+        if args.mutation_policy is not None
+        else MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK
+    )
+    target = OrasGoFrameTarget.bind(backend, image)
+    producer = f"native-oras-go[{target.provenance.target_version}]"
+    config = OrasGoEffectCampaignConfig(
+        random_seed=seed, execution_budget=budget, mutation_policy=policy
+    )
+    _announce(
+        f"{ORAS_GO_CAMPAIGN_MODE}: seed={seed} budget={budget} "
+        f"policy={policy.value} extractor={target.provenance.target_version}"
+    )
+
+    def produce(case: ArchiveCase):
+        return run_oras_go_frame_case(case, target)
+
+    try:
+        result = run_oras_go_effect_campaign(minimal_seed_corpus(), produce, config)
+        report = oras_go_effect_campaign_report(result, producer=producer, label="demo run")
+        stats = result.final_stats
+        _announce(
+            f"oras-go self-discovery: discovered_violation={result.discovered_violation} "
+            f"unique_attempt_keys={stats.unique_attempt_keys} "
+            f"unique_violation_fingerprints={stats.unique_violation_fingerprints} "
+            f"retained={stats.retained_cases}/{stats.observations}"
+        )
+        returncode = 0
+    except Exception as error:  # infrastructure/backend failure: record the abort, do not invent
+        report = {
+            "oras_go_campaign_schema": 1,
+            "producer": producer,
+            "label": "demo run",
+            "aborted": {"reason": str(error)},
+        }
+        _announce(f"{ORAS_GO_CAMPAIGN_MODE} aborted: {error}")
+        returncode = 1
+    with evidence.open("x", encoding="ascii") as stream:
+        stream.write(json.dumps(report, indent=2, sort_keys=True, ensure_ascii=True) + "\n")
+    _announce(f"oras-go campaign report: {evidence}")
+    return returncode
+
+
 class IntegrationFixtures:
     def __init__(
         self, backend: ContainerExecutionBackend, image: str, evidence: Path | None
@@ -258,6 +330,7 @@ def main() -> int:
             "effect-demo",
             HISTORICAL_DEMO_MODE,
             DECOMPRESS_CAMPAIGN_MODE,
+            ORAS_GO_CAMPAIGN_MODE,
         ),
     )
     args = parser.parse_args()
@@ -269,6 +342,7 @@ def main() -> int:
         "effect-demo",
         HISTORICAL_DEMO_MODE,
         DECOMPRESS_CAMPAIGN_MODE,
+        ORAS_GO_CAMPAIGN_MODE,
     }
     if (args.mode in evidence_modes) != (args.evidence is not None):
         parser.error("evidence mode requires --evidence; validation modes do not export")
@@ -479,6 +553,9 @@ def main() -> int:
         if args.mode == DECOMPRESS_CAMPAIGN_MODE:
             assert args.evidence is not None
             return run_native_decompress_campaign(backend, args.image[0], args.evidence, args)
+        if args.mode == ORAS_GO_CAMPAIGN_MODE:
+            assert args.evidence is not None
+            return run_native_oras_go_campaign(backend, args.image[0], args.evidence, args)
         suite = {
             "validate": "check_boundary.py",
             "validate-node-image": "check_node_image.py",

@@ -23,11 +23,12 @@ from inodefence.effect_pipeline_decompress import (
     run_decompress_frame_case,
 )
 from inodefence.execution.base import ContainerOutcome, ExecutionBackend
-from inodefence.feedback import state_signature
+from inodefence.feedback import EffectSearchPolicy, state_signature
 from inodefence.feedback.boundary_attempt_frame import FRAME_FORMAT
 from inodefence.model import (
     ArchiveCase,
     ArchiveEntry,
+    EffectFeedbackKeyKind,
     EntryType,
     ExecutionResult,
     ExecutionStatus,
@@ -78,12 +79,32 @@ def _frame(attempts: tuple[dict, ...]) -> dict:
 
 
 def _external_hardlink_attempt() -> dict:
+    # The decompress escape: a SHAPELESS relative hardlink target (`outside/sentinel.txt`,
+    # no leading `..`, not absolute) that `os.link` resolves against the sandbox-root CWD into
+    # the external region. `_escape_shape` is None, so this fires ONLY the region-based
+    # external-resolve rung (C), never the lexical boundary-attempt rung (D).
     return {
         "operation": "hardlink",
         "created_path": "extract/evil",
         "created_region": "extraction",
         "target_raw": "outside/sentinel.txt",
         "target_resolved_absolute": "outside/sentinel.txt",
+        "target_region": "external",
+        "aliases_external_object": True,
+        "outcome": "created",
+    }
+
+
+def _dotdot_external_hardlink_attempt() -> dict:
+    # A `..`-shaped escaping hardlink: the lexical boundary-attempt rung (shape is not None)
+    # AND the region-based external-resolve rung both fire, so the two rungs coincide here --
+    # exactly as every node-tar escape does. Only the shapeless reach above separates C from D.
+    return {
+        "operation": "hardlink",
+        "created_path": "extract/evil",
+        "created_region": "extraction",
+        "target_raw": "../a",
+        "target_resolved_absolute": "a",
         "target_region": "external",
         "aliases_external_object": True,
         "outcome": "created",
@@ -230,6 +251,115 @@ def test_missing_frame_contributes_no_attempt_key_but_oracle_still_stands() -> N
     assert decision.contract_violated is True  # the oracle is independent of the frame
 
 
+# --- A/C/D search-arm wiring: the identity-state (C) rung vs the coverage (D) rung -----------
+#
+# The decompress campaign is the second-extractor twin of the node-tar effect campaign, so it
+# takes the same EffectSearchPolicy ladder (C = P3_EXTERNAL_RESOLVE_GRADIENT, D =
+# P3_BOUNDARY_ATTEMPT_GRADIENT, the floor = P1_EFFECT_RETENTION). The decisive,
+# extractor-specific fact these tests pin: the decompress escape (a relative hardlink resolved
+# against the sandbox-root CWD) is a SHAPELESS external reach, so it fires the external-resolve
+# rung (C) but NOT the lexical boundary-attempt rung (D) -- the opposite of node-tar, whose
+# escapes are `..`-shaped and make the two rungs coincide. The arm wiring must let C see that
+# reach while D is blind to it, and the floor (A) must ignore both gradient rungs.
+
+
+def test_boundary_attempt_arm_is_blind_to_the_shapeless_decompress_escape() -> None:
+    state = DecompressEffectSearchState(
+        (_ESCAPE_CASE,), search_policy=EffectSearchPolicy.P3_BOUNDARY_ATTEMPT_GRADIENT
+    )
+    decision = state.consider(
+        _run(
+            _ESCAPE_CASE,
+            before=_SENTINEL_ONLY,
+            after=_SENTINEL_ONLY,
+            frame=_frame((_external_hardlink_attempt(),)),
+        )
+    )
+    # The shapeless relative escape yields only an external-resolve key, which the
+    # boundary-attempt arm does not admit -> no gradient key, no gradient reward.
+    assert decision.new_attempt_keys == ()
+    assert decision.reward == 0
+
+
+def test_external_resolve_arm_sees_the_shapeless_decompress_escape() -> None:
+    state = DecompressEffectSearchState(
+        (_ESCAPE_CASE,), search_policy=EffectSearchPolicy.P3_EXTERNAL_RESOLVE_GRADIENT
+    )
+    decision = state.consider(
+        _run(
+            _ESCAPE_CASE,
+            before=_SENTINEL_ONLY,
+            after=_SENTINEL_ONLY,
+            frame=_frame((_external_hardlink_attempt(),)),
+        )
+    )
+    assert [key.kind for key in decision.new_attempt_keys] == [
+        EffectFeedbackKeyKind.OBSERVED_EXTERNAL_RESOLVE
+    ]
+    assert decision.reward == 1
+
+
+def test_both_gradient_arms_see_a_dotdot_shaped_escape() -> None:
+    # A `..`-shaped escape fires the boundary-attempt rung, so both C and D admit a key here --
+    # the arms coincide exactly as they do for node-tar; only the shapeless reach separates them.
+    for policy in (
+        EffectSearchPolicy.P3_BOUNDARY_ATTEMPT_GRADIENT,
+        EffectSearchPolicy.P3_EXTERNAL_RESOLVE_GRADIENT,
+    ):
+        state = DecompressEffectSearchState((_ESCAPE_CASE,), search_policy=policy)
+        decision = state.consider(
+            _run(
+                _ESCAPE_CASE,
+                before=_SENTINEL_ONLY,
+                after=_SENTINEL_ONLY,
+                frame=_frame((_dotdot_external_hardlink_attempt(),)),
+            )
+        )
+        assert any(
+            key.kind == EffectFeedbackKeyKind.BOUNDARY_ESCAPE_ATTEMPT
+            for key in decision.new_attempt_keys
+        )
+
+
+def test_random_floor_arm_ignores_gradient_rungs_but_retains_novel_state() -> None:
+    state = DecompressEffectSearchState(
+        (_ESCAPE_CASE,), search_policy=EffectSearchPolicy.P1_EFFECT_RETENTION
+    )
+    decision = state.consider(
+        _run(
+            _ESCAPE_CASE,
+            before=_SENTINEL_ONLY,
+            after=_SENTINEL_ONLY,
+            frame=_frame((_dotdot_external_hardlink_attempt(),)),
+        )
+    )
+    # The floor admits neither gradient rung, so it earns no gradient reward; it still retains
+    # the case on full-state novelty (coverage), exactly as the node-tar P1 floor does.
+    assert decision.new_attempt_keys == ()
+    assert decision.reward == 0
+    assert decision.full_state_novel is True
+    assert decision.retained is True
+
+
+def test_default_search_policy_keeps_both_rungs() -> None:
+    assert (
+        DecompressEffectCampaignConfig(random_seed=0, execution_budget=1).search_policy
+        == EffectSearchPolicy.P3_EXTERNAL_RESOLVE_GRADIENT
+    )
+    # The default state (no policy given) still admits the shapeless external-resolve reach, so
+    # existing behaviour is unchanged (the current single-channel campaign == the C arm).
+    state = DecompressEffectSearchState((_ESCAPE_CASE,))
+    decision = state.consider(
+        _run(
+            _ESCAPE_CASE,
+            before=_SENTINEL_ONLY,
+            after=_SENTINEL_ONLY,
+            frame=_frame((_external_hardlink_attempt(),)),
+        )
+    )
+    assert decision.new_attempt_keys
+
+
 # --- loop mechanics, determinism, discovery --------------------------------------------------
 
 
@@ -295,6 +425,32 @@ def test_campaign_report_is_json_serializable_and_records_the_outcome() -> None:
     stats = report["final_stats"]
     assert isinstance(steps, list) and len(steps) == 5
     assert isinstance(stats, dict) and stats["observations"] == 5
+
+
+def test_report_records_frame_observed_rung_presence() -> None:
+    # The report records, per step, which rungs the FRAME exhibited (arm-independent), so the
+    # A/C/D analysis can read boundary-attempt vs external-resolve rates off any arm's evidence.
+    def produce(case: ArchiveCase) -> DecompressFrameRun:
+        if case == _ESCAPE_CASE:
+            return _run(
+                case,
+                before=_SENTINEL_ONLY,
+                after=_SENTINEL_ONLY,
+                frame=_frame((_external_hardlink_attempt(),)),
+            )
+        return _benign_run(case)
+
+    config = DecompressEffectCampaignConfig(random_seed=1, execution_budget=len(_seeds()))
+    result = run_decompress_effect_campaign(_seeds(), produce, config)
+    report = decompress_effect_campaign_report(result, producer="unit-test")
+    steps = report["steps"]
+    assert isinstance(steps, list)
+    escape_steps = [step for step in steps if step["case_id"] == _ESCAPE_CASE.case_id]
+    assert escape_steps
+    for step in escape_steps:
+        # The shapeless escape fires only the external-resolve rung in the observed frame.
+        assert step["external_resolve_present"] is True
+        assert step["boundary_attempt_present"] is False
 
 
 # --- frame parsing ---------------------------------------------------------------------------

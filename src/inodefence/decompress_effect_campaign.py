@@ -43,9 +43,15 @@ from inodefence.effect_scheduler import (
     EffectMutationSchedulerEvidence,
     EffectUniformMutationScheduler,
 )
-from inodefence.feedback import ViolationFingerprint, violation_fingerprints
+from inodefence.feedback import EffectSearchPolicy, ViolationFingerprint, violation_fingerprints
 from inodefence.feedback.boundary_attempt_frame import frame_boundary_attempt_keys
-from inodefence.model import ArchiveCase, EffectFeedbackKey, ExecutionStatus, StateSignature
+from inodefence.model import (
+    ArchiveCase,
+    EffectFeedbackKey,
+    EffectFeedbackKeyKind,
+    ExecutionStatus,
+    StateSignature,
+)
 from inodefence.model.filesystem import Region, path_region
 from inodefence.mutation_scheduler import MutationSelection
 from inodefence.mutator import MutationAttempt, MutationPolicy, apply_operator, operator_ids
@@ -62,6 +68,10 @@ class DecompressEffectCampaignConfig:
     random_seed: int
     execution_budget: int
     mutation_policy: MutationPolicy = MutationPolicy.M1_GENERIC_ESCAPE_HARDLINK
+    # Which boundary-gradient rungs steer the search, mirroring the node-tar effect campaign's
+    # EffectSearchPolicy ladder (see DecompressEffectSearchState). The default admits both rungs
+    # (= the C arm), which is the single-channel behaviour this campaign had before the arm split.
+    search_policy: EffectSearchPolicy = EffectSearchPolicy.P3_EXTERNAL_RESOLVE_GRADIENT
     adaptive_scheduler: bool = True
 
     def __post_init__(self) -> None:
@@ -71,6 +81,8 @@ class DecompressEffectCampaignConfig:
             raise ValueError("execution_budget must be a positive integer")
         if not isinstance(self.mutation_policy, MutationPolicy):
             raise ValueError("mutation_policy must be a supported MutationPolicy")
+        if not isinstance(self.search_policy, EffectSearchPolicy):
+            raise ValueError("search_policy must be a supported EffectSearchPolicy")
         if type(self.adaptive_scheduler) is not bool:
             raise ValueError("adaptive_scheduler must be a bool")
 
@@ -85,6 +97,13 @@ class DecompressEffectDecision:
     full_state_novel: bool
     contract_violated: bool
     frame_observed: bool
+    # Arm-INDEPENDENT observation of which boundary-gradient rungs the frame exhibited this step
+    # (whatever the active search policy admits). The decompress escape -- a shapeless relative
+    # hardlink resolved against the sandbox-root CWD -- is external-resolve-present but NOT
+    # boundary-attempt-present, so these two booleans are how the A/C/D analysis reads each rung's
+    # rate off any arm's evidence. Both False on an ineligible run or a missing/absent frame.
+    frame_boundary_attempt_present: bool
+    frame_external_resolve_present: bool
     eligible: bool
     already_retained: bool
     admission_eligible: bool
@@ -104,6 +123,8 @@ class DecompressEffectDecision:
             self.full_state_novel,
             self.contract_violated,
             self.frame_observed,
+            self.frame_boundary_attempt_present,
+            self.frame_external_resolve_present,
             self.eligible,
             self.already_retained,
             self.admission_eligible,
@@ -155,13 +176,31 @@ class DecompressEffectStats:
 class DecompressEffectSearchState:
     """Boundary-attempt / violation / full-state novelty channels, fail-closed on eligibility."""
 
-    def __init__(self, initial_cases: Sequence[ArchiveCase]) -> None:
+    def __init__(
+        self,
+        initial_cases: Sequence[ArchiveCase],
+        search_policy: EffectSearchPolicy = EffectSearchPolicy.P3_EXTERNAL_RESOLVE_GRADIENT,
+    ) -> None:
+        if not isinstance(search_policy, EffectSearchPolicy):
+            raise ValueError("search_policy must be a supported EffectSearchPolicy")
         cases = tuple(initial_cases)
         if not cases or not all(isinstance(case, ArchiveCase) for case in cases):
             raise ValueError("initial cases must be nonempty ArchiveCase records")
         if len({case.case_id for case in cases}) != len(cases):
             raise ValueError("initial cases contain duplicate case IDs")
         self._initial_cases = cases
+        self._policy = search_policy
+        # Same rung ladder as the node-tar EffectNoveltyIndex: the lexical boundary-attempt rung
+        # is on for both P3 arms, and the region-based external-resolve rung is the refinement
+        # that only P3_EXTERNAL_RESOLVE adds. Any non-P3 policy (the P1 random floor) admits
+        # neither gradient rung and steers by full-state novelty + violations alone -- the floor.
+        self._include_boundary_attempt = search_policy in (
+            EffectSearchPolicy.P3_BOUNDARY_ATTEMPT_GRADIENT,
+            EffectSearchPolicy.P3_EXTERNAL_RESOLVE_GRADIENT,
+        )
+        self._include_external_resolve = (
+            search_policy == EffectSearchPolicy.P3_EXTERNAL_RESOLVE_GRADIENT
+        )
         self._keys: set[EffectFeedbackKey] = set()
         self._violations: set[ViolationFingerprint] = set()
         self._states: set[StateSignature] = set()
@@ -169,6 +208,18 @@ class DecompressEffectSearchState:
         self._retained_ids: set[str] = set()
         self._observations = 0
         self._eligible_observations = 0
+
+    @property
+    def policy(self) -> EffectSearchPolicy:
+        return self._policy
+
+    def _admits(self, kind: EffectFeedbackKeyKind) -> bool:
+        """Whether this arm steers on a frame key of the given rung kind."""
+        if kind == EffectFeedbackKeyKind.BOUNDARY_ESCAPE_ATTEMPT:
+            return self._include_boundary_attempt
+        if kind == EffectFeedbackKeyKind.OBSERVED_EXTERNAL_RESOLVE:
+            return self._include_external_resolve
+        return False
 
     def consider(self, run: DecompressFrameRun) -> DecompressEffectDecision:
         if not isinstance(run, DecompressFrameRun):
@@ -182,7 +233,16 @@ class DecompressEffectSearchState:
         frame_observed = run.frame is not None
         if eligible:
             self._eligible_observations += 1
-            attempt_keys = frame_boundary_attempt_keys(run.frame) if frame_observed else ()
+            # Derive every rung the frame exhibits from the UNCHANGED generic normalizer, record
+            # each rung's arm-independent presence, then admit only the kinds this arm steers on.
+            frame_keys = frame_boundary_attempt_keys(run.frame) if frame_observed else ()
+            boundary_present = any(
+                key.kind == EffectFeedbackKeyKind.BOUNDARY_ESCAPE_ATTEMPT for key in frame_keys
+            )
+            external_present = any(
+                key.kind == EffectFeedbackKeyKind.OBSERVED_EXTERNAL_RESOLVE for key in frame_keys
+            )
+            attempt_keys = tuple(key for key in frame_keys if self._admits(key.kind))
             all_violations = violation_fingerprints(run.base_result.violations)
             new_keys = tuple(key for key in attempt_keys if key not in self._keys)
             new_violations = tuple(v for v in all_violations if v not in self._violations)
@@ -195,6 +255,8 @@ class DecompressEffectSearchState:
             new_keys = ()
             new_violations = ()
             state_novel = False
+            boundary_present = False
+            external_present = False
             contract_violated = bool(violation_fingerprints(run.base_result.violations))
         already_retained = case_id in self._retained_ids
         admission_eligible = eligible and (bool(new_keys) or bool(new_violations) or state_novel)
@@ -205,6 +267,8 @@ class DecompressEffectSearchState:
             state_novel,
             contract_violated if eligible else False,
             frame_observed,
+            boundary_present,
+            external_present,
             eligible,
             already_retained,
             admission_eligible,
@@ -369,7 +433,7 @@ def run_decompress_effect_campaign(
     if len(set(initial_ids)) != len(initial_ids):
         raise ValueError("initial cases contain duplicate case IDs")
 
-    state = DecompressEffectSearchState(cases)
+    state = DecompressEffectSearchState(cases, config.search_policy)
     steps: list[DecompressEffectStep] = []
     state_aware = config.mutation_policy in _STATE_AWARE_POLICIES
     blind_observation = (
@@ -466,6 +530,10 @@ def decompress_effect_campaign_report(
                 "frame_observed": decision.frame_observed,
                 "frame_attempts": len(step.run.frame["attempts"]) if step.run.frame else 0,
                 "frame_error": step.run.frame_error,
+                # Arm-independent frame observation of each boundary-gradient rung, so an A/C/D
+                # roll-up reads boundary-attempt vs external-resolve rate off any arm's evidence.
+                "boundary_attempt_present": decision.frame_boundary_attempt_present,
+                "external_resolve_present": decision.frame_external_resolve_present,
                 "new_attempt_keys": len(decision.new_attempt_keys),
                 "new_violation_fingerprints": len(decision.new_violation_fingerprints),
                 "full_state_novel": decision.full_state_novel,
@@ -485,6 +553,7 @@ def decompress_effect_campaign_report(
             "random_seed": result.config.random_seed,
             "execution_budget": result.config.execution_budget,
             "mutation_policy": result.config.mutation_policy.value,
+            "search_policy": result.config.search_policy.value,
             "adaptive_scheduler": result.config.adaptive_scheduler,
         },
         "initial_case_ids": list(result.initial_case_ids),

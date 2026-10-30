@@ -8,6 +8,7 @@
 #                    (plus <name>.steps.jsonl: steps finished so far, kept even on abort)
 #   demo-historical  effect-demo-historical: state-aware loop on a prebuilt frozen historical
 #                    node-tar effect image (catalog pair 7.5.2/7.5.3), JSON copied to the host
+#                    (plus <name>.steps.jsonl: steps finished so far, kept even on abort)
 #
 # The real target runs only inside the trusted non-root Linux controller; this host
 # script only builds images, prepares that controller and delegates through
@@ -130,8 +131,9 @@ cleanup() {
       echo "evidence copy failed: $CONTROLLER_EVIDENCE" >&2
     fi
   fi
-  # demo: the per-step JSONL written before each next case (scripts/container_controller.py).
-  if [ "$CREATED_CONTROLLER" -eq 1 ] && [ "$MODE" = demo ] &&
+  # demo / demo-historical: the per-step JSONL written before each next case
+  # (scripts/container_controller.py), kept even when the campaign aborts.
+  if [ "$CREATED_CONTROLLER" -eq 1 ] && { [ "$MODE" = demo ] || [ "$MODE" = demo-historical ]; } &&
     dk exec "$CONTROLLER" test -e "${CONTROLLER_EVIDENCE%.json}.steps.jsonl"; then
     mkdir -p "$EVIDENCE_DIR"
     if dk cp "$CONTROLLER:${CONTROLLER_EVIDENCE%.json}.steps.jsonl" "${HOST_EVIDENCE%.json}.steps.jsonl" >/dev/null; then

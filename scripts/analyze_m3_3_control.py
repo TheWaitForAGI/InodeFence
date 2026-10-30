@@ -30,7 +30,11 @@ import json
 from collections.abc import Sequence
 from pathlib import Path
 
-from inodefence.evaluation.right_censored import SeedOutcome, right_censored_summary
+from inodefence.evaluation.right_censored import (
+    SeedOutcome,
+    right_censored_summary,
+    wilson_interval,
+)
 
 _FRAMING = (
     "single-arm random control: 0 clean exact C1 observed. The Wilson interval on "
@@ -164,14 +168,157 @@ def analyze(summary: dict) -> dict:
     }
 
 
+_CONTRAST_FRAMING = (
+    "matched two-arm causal contrast on shared seeds at one budget -- the comparison the "
+    "single-arm roll-up explicitly defers to (audit EN-008). Each arm's rate is the committed "
+    "right-censored complete-campaign roll-up (right_censored_summary, same engine as the "
+    "single-arm path); a rate-superiority claim needs the two arms' Wilson intervals to "
+    "SEPARATE, which 'complete_hit_wilson_intervals_separate' reports -- a difference in point "
+    "counts alone is not one. A clean exact C1 observed before a fail-closed infrastructure "
+    "abort is reported as an 'observed trigger', kept separate from the complete-campaign hit "
+    "rate because a hit requires a complete campaign (the right_censored contract); it is an "
+    "observed mechanism fact, not a rate."
+)
+_CONTRAST_INVARIANT_KEYS = ("budget", "version", "hit_criterion")
+
+
+def _seed_cells(summary: dict) -> dict[int, dict]:
+    """Index a summary's per-seed cells by seed (skips cells without a seed)."""
+    return {int(cell["seed"]): cell for cell in summary.get("cells", []) if "seed" in cell}
+
+
+def _arm_shared_aggregate(
+    cells: dict[int, dict], complete: set[int], hit: set[int], shared: Sequence[int]
+) -> dict:
+    """One arm's complete-campaign rate and observed-trigger tally over the shared seeds.
+
+    ``complete``/``hit`` are the summary's completed_full_budget / seeds_with_clean_exact_c1
+    sets (a hit is already complete-only there, matching build_outcomes). The observed-trigger
+    tally counts seeds whose cell recorded any clean exact C1, INCLUDING ones that later
+    fail-closed-aborted -- those are observed mechanism facts, not complete-campaign hits.
+    """
+    complete_seeds = [seed for seed in shared if seed in complete]
+    complete_hits = [seed for seed in shared if seed in hit]
+    observed_trigger_seeds = [
+        seed for seed in shared if int(cells.get(seed, {}).get("clean_exact_c1", 0)) > 0
+    ]
+    total_observed = sum(int(cells.get(seed, {}).get("clean_exact_c1", 0)) for seed in shared)
+    if complete_seeds:
+        low, high = wilson_interval(len(complete_hits), len(complete_seeds))
+    else:
+        low, high = None, None
+    return {
+        "shared_seeds": len(shared),
+        "complete_campaigns": len(complete_seeds),
+        "complete_campaign_hits": len(complete_hits),
+        "complete_campaign_hit_seeds": complete_hits,
+        "complete_hit_rate": len(complete_hits) / len(complete_seeds) if complete_seeds else None,
+        "complete_hit_wilson_95_ci": [low, high],
+        "observed_trigger_seeds": observed_trigger_seeds,
+        "number_observed_trigger_seeds": len(observed_trigger_seeds),
+        "total_observed_clean_exact_c1": total_observed,
+    }
+
+
+def matched_contrast(summary_a: dict, summary_b: dict) -> dict:
+    """Contrast two arms' right-censored roll-ups on their shared seeds (the EN-008 contrast).
+
+    Each arm is rolled up with the same committed ``right_censored`` engine the single-arm path
+    uses. The per-seed matched table pairs the arms on the seeds both ran, separating a complete-
+    campaign hit (which enters the rate) from a clean exact C1 observed before a fail-closed abort
+    (an observed trigger, reported but not a complete hit). Raises if the arms differ in
+    budget/version/hit-criterion (unlike runs, not a matched contrast) or carry the same arm label
+    (not two arms).
+    """
+    for key in _CONTRAST_INVARIANT_KEYS:
+        if summary_a.get(key) != summary_b.get(key):
+            raise ValueError(f"cannot contrast arms that differ in {key!r}")
+    label_a = (summary_a.get("arm") or {}).get("label")
+    label_b = (summary_b.get("arm") or {}).get("label")
+    if label_a is not None and label_a == label_b:
+        raise ValueError("matched contrast needs two different arms, got the same label twice")
+
+    cells_a, cells_b = _seed_cells(summary_a), _seed_cells(summary_b)
+    complete_a = {int(seed) for seed in summary_a.get("completed_full_budget", [])}
+    complete_b = {int(seed) for seed in summary_b.get("completed_full_budget", [])}
+    hit_a = {int(seed) for seed in summary_a.get("seeds_with_clean_exact_c1", [])}
+    hit_b = {int(seed) for seed in summary_b.get("seeds_with_clean_exact_c1", [])}
+    shared = sorted(set(cells_a) & set(cells_b))
+
+    def _row(seed: int, cells: dict[int, dict], complete: set[int], hit: set[int]) -> dict:
+        cell = cells.get(seed, {})
+        return {
+            "complete": seed in complete,
+            "complete_hit": seed in hit,
+            "observed_clean_exact_c1": int(cell.get("clean_exact_c1", 0)),
+            "status": cell.get("status"),
+        }
+
+    per_seed = [
+        {
+            "seed": seed,
+            "arm_a": _row(seed, cells_a, complete_a, hit_a),
+            "arm_b": _row(seed, cells_b, complete_b, hit_b),
+        }
+        for seed in shared
+    ]
+    agg_a = _arm_shared_aggregate(cells_a, complete_a, hit_a, shared)
+    agg_b = _arm_shared_aggregate(cells_b, complete_b, hit_b, shared)
+    ci_a = agg_a["complete_hit_wilson_95_ci"]
+    ci_b = agg_b["complete_hit_wilson_95_ci"]
+    separated = None not in ci_a and None not in ci_b and (ci_a[1] < ci_b[0] or ci_b[1] < ci_a[0])
+    a_set = set(agg_a["observed_trigger_seeds"])
+    b_set = set(agg_b["observed_trigger_seeds"])
+    return {
+        "classification": "m3.3-matched-two-arm-contrast",
+        "arms": {"arm_a": label_a, "arm_b": label_b},
+        "budget": summary_a.get("budget"),
+        "version": summary_a.get("version"),
+        "hit_criterion": summary_a.get("hit_criterion"),
+        "arm_a_rollup": right_censored_summary(build_outcomes(summary_a)),
+        "arm_b_rollup": right_censored_summary(build_outcomes(summary_b)),
+        "shared_seeds": shared,
+        "number_shared_seeds": len(shared),
+        "per_seed": per_seed,
+        "arm_a_shared": agg_a,
+        "arm_b_shared": agg_b,
+        "matched_discordant": {
+            "arm_b_only_observed_trigger_seeds": sorted(b_set - a_set),
+            "arm_a_only_observed_trigger_seeds": sorted(a_set - b_set),
+            "both_observed_trigger_seeds": sorted(a_set & b_set),
+        },
+        "complete_hit_wilson_intervals_separate": separated,
+        "framing": _CONTRAST_FRAMING,
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--summary", required=True, nargs="+", type=Path)
+    parser.add_argument(
+        "--summary",
+        nargs="+",
+        type=Path,
+        help="single-arm roll-up: one or more disjoint batch summaries of ONE arm (pooled)",
+    )
+    parser.add_argument(
+        "--contrast",
+        nargs=2,
+        type=Path,
+        metavar=("ARM_A_SUMMARY", "ARM_B_SUMMARY"),
+        help="matched two-arm causal contrast between two per-arm summaries",
+    )
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
-    summaries = [json.loads(path.read_text()) for path in args.summary]
-    summary = summaries[0] if len(summaries) == 1 else merge_summaries(summaries)
-    result = analyze(summary)
+    if bool(args.summary) == bool(args.contrast):
+        parser.error("pass exactly one of --summary (single-arm) or --contrast (two-arm)")
+    if args.contrast is not None:
+        summary_a = json.loads(args.contrast[0].read_text())
+        summary_b = json.loads(args.contrast[1].read_text())
+        result = matched_contrast(summary_a, summary_b)
+    else:
+        summaries = [json.loads(path.read_text()) for path in args.summary]
+        summary = summaries[0] if len(summaries) == 1 else merge_summaries(summaries)
+        result = analyze(summary)
     rendered = json.dumps(result, indent=2, sort_keys=True) + "\n"
     if args.output is not None:
         args.output.write_text(rendered)

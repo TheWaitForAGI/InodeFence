@@ -285,6 +285,16 @@ def main() -> None:
             "question": "In the CWD-relative hardlink regime, does arm C reach boundary attempts "
             "(the depth-0 C-without-D class) that arm D's lexical channel misses? Measure only; "
             "no C>D assumption; results scoped to this escape class.",
+            "equivalence_margin_delta": 0.05,
+            "tost": "To claim C==D equivalence (not merely 'no C-advantage'), a two one-sided test "
+            "against a pre-registered negligible margin delta=0.05 (5pp, small vs the ~40pp "
+            "gradient-over-floor gap) must reject non-equivalence on the primary metric. Otherwise "
+            "the claim is only the negative 'no C-advantage'. Statistics/CI/TOST are computed by "
+            "independent verification (this build lane emits raw only).",
+            "disclosed_prior": "The 4-seed run (decompress-cvd-campaign-20261030-030752) showed a "
+            "borderline boundary-attempt D-lean of ~3.1pp (|D-C| on boundary rate; CI barely "
+            "excludes 0, external-resolve sign-reversed). It is NOT claimed as strict C=D; this "
+            "8-seed re-run (true unit = seed, df 7) addresses that underpowering.",
         },
         "target": {"extractor": "decompress", "version": "4.2.1", "image_id": img},
         "isolation": (

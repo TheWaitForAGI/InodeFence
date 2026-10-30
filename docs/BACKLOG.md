@@ -70,6 +70,7 @@ NOT_IMPLEMENTED이라([transition-feedback-v1](research/design/transition-feedba
 | M4.1 | oras-go adapter 설계(isolated CWD 포함), 동일 generic 모델·oracle로 연결. CVE/target-specific 로직을 generic 모듈에 섞지 않는다 | 완료(jiwoong/m4-1-oras-go-adapter) | 규민·민찬 협의 |
 | M4.2 | (감사 제안) decompress(JS; CVE-2026-39243/39246 = symlink + absolute hardlink, CWE-59) 또는 2026 CWE-59 군집(adm-zip·Archive::Tar·HF datasets·borg) 중 1개를 2번째 target으로 — 동일 generic oracle 재사용. **중간발표 포함 여부 확인필요**(앞선 기능) | 완료(jiwoong/m4-2-decompress) | 규민·민찬 협의 |
 | M4.1b | (감사 전진, 완료) generic oracle 2번째 extractor 일반성: Python stdlib tarfile 통제 차분(fully_trusted=C1+C2, data=거부). `tests/test_python_tarfile_generality.py`. oracle 코드 불변·target-agnostic. **중간발표 포함 여부 확인필요** | 완료(jiwoong/p-generality-python-tarfile) | 없음 |
+| M4.3 | (지휘관 stage-4, 보충 캠페인) decompress C-vs-D boundary-channel 캠페인(A random floor / C external-resolve / D boundary): CWD-상대 하드링크 문법에서 identity-state(C)가 coverage(D)를 넘는지 **측정만**(C>D 가정 0, 결과 scoped). frame-native loop(canonical `frame_boundary_attempt_keys` #179 재사용) + token-clean M1_GENERIC_ESCAPE_HARDLINK. observed(4 seed): **C≈D≫A** — gradient 일반성 positive, 'identity>coverage' negative(C≡D가 CWD-하드링크 문법으로 일반화). 8-seed 재런(seeds 94-101, budget 500, equivalence margin δ=0.05+TOST 사전등록; 통계/CI=독립검증, borderline boundary D-lean ~3.1pp disclose)으로 검정력 보강. oracle/arms/item-3 FROZEN/민찬 canonical 불변(additive 실험 스크립트), D005/D006 clean grammar | 진행(jiwoong/m4-decompress-cvd-infra; 8-seed 재런 실행 중) | 없음(머지는 루프PR정리 단일 드라이버) |
 
 ## 상시 (레인 담당)
 

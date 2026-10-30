@@ -163,6 +163,7 @@ def run_native_decompress_campaign(
         run_decompress_effect_campaign,
     )
     from inodefence.effect_pipeline_decompress import run_decompress_frame_case
+    from inodefence.feedback import EffectSearchPolicy
     from inodefence.generator.minimal import minimal_seed_corpus
     from inodefence.model import ArchiveCase
     from inodefence.mutator import MutationPolicy
@@ -175,14 +176,25 @@ def run_native_decompress_campaign(
         if args.mutation_policy is not None
         else MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK
     )
+    # --policy now selects the decompress search arm (A/C/D on the same EffectSearchPolicy ladder
+    # as node-tar); when absent the default admits both gradient rungs (the C arm), unchanged.
+    search_policy = (
+        EffectSearchPolicy(args.policy)
+        if args.policy is not None
+        else EffectSearchPolicy.P3_EXTERNAL_RESOLVE_GRADIENT
+    )
     target = DecompressFrameTarget.bind(backend, image)
     producer = f"native-decompress[{target.provenance.target_version}]"
     config = DecompressEffectCampaignConfig(
-        random_seed=seed, execution_budget=budget, mutation_policy=policy
+        random_seed=seed,
+        execution_budget=budget,
+        mutation_policy=policy,
+        search_policy=search_policy,
     )
     _announce(
         f"{DECOMPRESS_CAMPAIGN_MODE}: seed={seed} budget={budget} "
-        f"policy={policy.value} extractor={target.provenance.target_version}"
+        f"mutation={policy.value} search={config.search_policy.value} "
+        f"extractor={target.provenance.target_version}"
     )
 
     def produce(case: ArchiveCase):

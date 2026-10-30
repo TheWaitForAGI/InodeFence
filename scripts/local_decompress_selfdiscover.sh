@@ -15,8 +15,10 @@
 #
 # Overrides: INODEFENCE_DOCKER_CONTEXT, PYTHON (default python3.12),
 # INODEFENCE_EVIDENCE_DIR (default ~/inodefence-evidence), DECOMPRESS_ROLE (default affected),
-# DEMO_SEED, DEMO_BUDGET, DEMO_MUTATION_POLICY (campaign arm; e.g. the state-aware identity arm
-# uniform-generic-m1-state-aware-escape-hardlink-v1, or the random control uniform-generic-v1).
+# DEMO_SEED, DEMO_BUDGET, DEMO_MUTATION_POLICY (mutation grammar; e.g. the token-clean generic
+# escape grammar uniform-generic-m1-escape-hardlink-v1), DEMO_POLICY (search arm on the node-tar
+# EffectSearchPolicy ladder: C=external-resolve-v1... identity, D=boundary-attempt-v1... coverage,
+# A/floor=effect-feedback-v2... retention; absent = both rungs).
 # Parallel-safe: set RUN_ID to a unique token (e.g. m4sd-<arm>-<seed>); the controller, volume and
 # evidence filename all carry that suffix, so concurrent arms never collide and each removes only
 # what it created. SKIP_BUILD=1 reuses prebuilt images; BUILD_ONLY=1 builds and exits.
@@ -143,5 +145,6 @@ DEMO_ARGS=()
 [ -n "${DEMO_SEED:-}" ] && DEMO_ARGS+=(--seed "$DEMO_SEED")
 [ -n "${DEMO_BUDGET:-}" ] && DEMO_ARGS+=(--budget "$DEMO_BUDGET")
 [ -n "${DEMO_MUTATION_POLICY:-}" ] && DEMO_ARGS+=(--mutation-policy "$DEMO_MUTATION_POLICY")
+[ -n "${DEMO_POLICY:-}" ] && DEMO_ARGS+=(--policy "$DEMO_POLICY")
 host --image "$IF_DECOMPRESS_IMAGE" --evidence "$CONTROLLER_EVIDENCE" \
   ${DEMO_ARGS[@]+"${DEMO_ARGS[@]}"} decompress-effect-campaign

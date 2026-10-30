@@ -69,8 +69,11 @@ HISTORICAL_LOCKS_DIR = _REPO_ROOT / "experiments" / "benchmarks" / "locks"
 HISTORICAL_BENCHMARK_ID = "node-link-sanitize"
 HISTORICAL_DEMO_MODE = "effect-demo-historical"
 # M4 self-discovery: the effect campaign over a second extractor (decompress). Shares the
-# --seed/--budget/--mutation-policy demo arguments; --policy (EffectSearchPolicy) does not apply
-# to the decompress loop (it has its own novelty channels) and is ignored for this mode.
+# --seed/--budget/--mutation-policy demo arguments. --policy (EffectSearchPolicy) now selects the
+# decompress search arm on the same gradient-rung ladder node-tar uses: P3_EXTERNAL_RESOLVE (C,
+# identity-state) admits both the boundary-attempt and external-resolve rungs, P3_BOUNDARY_ATTEMPT
+# (D, coverage) admits only the boundary-attempt rung, and the P1 floor (A) admits neither. When
+# --policy is absent the loop's default admits both rungs, unchanged from before the arm split.
 DECOMPRESS_CAMPAIGN_MODE = "decompress-effect-campaign"
 DEMO_MODES = ("effect-demo", HISTORICAL_DEMO_MODE, DECOMPRESS_CAMPAIGN_MODE)
 HISTORICAL_LABEL = "demo run"

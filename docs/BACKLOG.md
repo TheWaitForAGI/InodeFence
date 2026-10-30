@@ -70,6 +70,8 @@ NOT_IMPLEMENTED이라([transition-feedback-v1](research/design/transition-feedba
 | M4.1 | oras-go adapter 설계(isolated CWD 포함), 동일 generic 모델·oracle로 연결. CVE/target-specific 로직을 generic 모듈에 섞지 않는다 | 완료(jiwoong/m4-1-oras-go-adapter) | 규민·민찬 협의 |
 | M4.2 | (감사 제안) decompress(JS; CVE-2026-39243/39246 = symlink + absolute hardlink, CWE-59) 또는 2026 CWE-59 군집(adm-zip·Archive::Tar·HF datasets·borg) 중 1개를 2번째 target으로 — 동일 generic oracle 재사용. **중간발표 포함 여부 확인필요**(앞선 기능) | 완료(jiwoong/m4-2-decompress) | 규민·민찬 협의 |
 | M4.1b | (감사 전진, 완료) generic oracle 2번째 extractor 일반성: Python stdlib tarfile 통제 차분(fully_trusted=C1+C2, data=거부). `tests/test_python_tarfile_generality.py`. oracle 코드 불변·target-agnostic. **중간발표 포함 여부 확인필요** | 완료(jiwoong/p-generality-python-tarfile) | 없음 |
+| M4.3 | **2번째 extractor 자력발견 루프**: decompress를 effect 캠페인 퍼즈 타깃으로 연결 — sanctioned `inodefence-boundary-attempt-v1` frame(#179) + generic C0/C1/C2 oracle(코드 불변)로 구동. 완료조건: worker `frame` 서브커맨드 + `DecompressFrameTarget` + `run_decompress_frame_case` + `run_decompress_effect_campaign`(+report), make check 통과, generic 모듈 불변. 이 머지로 decompress가 generic 루프의 퍼즈 타깃이 되어 mutation→실행→oracle→feedback→next로 **자력발견을 시도**할 수 있게 됨(HIT=generic C1/C2). native run은 M4.4 | 완료(claude/m4-decompress-self-discovery-006cc1) | #179 머지(완료) |
+| M4.4 | decompress **native 자력발견 캠페인 실행**: 커밋된 `tests/container_integration/check_decompress_effect_campaign.py`를 controller harness로 돌려 양성/음성 right-censored 박제(affected 4.2.1, 사전등록 seed/budget, --jobs 2 양보, 격리계약·완화 플래그 0). 완료조건: 사전등록 후 실행, hit=generic C1/C2, 결과 그대로 보고 | 대기 | M4.3; 호스트 controller mode(`container_host`/`container_controller`에 decompress-effect-campaign 모드 추가 — 격리 harness 변경이라 신중). autoloop 3절로 이번 세션 미실행 |
 
 ## 상시 (레인 담당)
 

@@ -5,7 +5,7 @@ M1~M4와 같고, 날짜가 아니라 "증거가 모이면 찍는" 지점이다. 
 (`.claude/skills/autoloop/SKILL.md`)는 **맨 위부터** `대기`이고 게이트가 열린 태스크를 집는다.
 완료 기록은 [WORKLOG](WORKLOG.md), 실행 기록은 [LOG](LOG.md)에 남긴다.
 
-상태 값: `대기` / `진행` / `완료(<브랜치>)` / `막힘(<날짜>, <이유>)` / `BREAKING(<브랜치>)` / `대기(머지 필요: <브랜치>)`
+상태 값: `대기` / `진행` / `완료(<브랜치>)` / `완료(머지됨 #<PR>, main)` / `막힘(<날짜>, <이유>)` / `BREAKING(<브랜치>)` / `대기(머지 필요: <브랜치>)`
 
 - 루프의 끝은 BACKLOG 소진이 아니라 **프로젝트 완료**(가설 검증·M1~M4; autoloop 7.1, D036)다. 큐가 비면 루프가
   STATUS Ledger의 빈 칸(증거 수준이 가장 낮은 미완 마일스톤의 다음 gate)에서 항목을 보충한다(autoloop 7.2).
@@ -56,7 +56,7 @@ NOT_IMPLEMENTED이라([transition-feedback-v1](research/design/transition-feedba
 
 | 순서 | 태스크 | 상태 | 게이트 |
 | --- | --- | --- | --- |
-| M3.1 | generic security-state gradient 설계·구현(additive): "extraction root 밖에 새 네임스페이스 객체/identity 관계가 생겼다" 같은 **target-agnostic** 부분진척 신호를 effect key에 추가. 기존 C0/C1/C2 판정·fixture·N01 경로 불변(autoloop 5.4). sentinel 경로/CVE를 feedback에 심지 않는다. **구현됨**: 거부된 외부-하드링크 시도를 valid trace로 보는 producer abort-drain + boundary-attempt 키 + opt-in P3 arm(게이트를 깨끗한 REJECTED까지 완화; **연구-정직성 판단점, PR 플래그**). 7.5.2 native에서 키 실발화 확인(LOG 2026-10-25 01:01) | 대기(머지 필요: jiwoong/m3-boundary-attempt-gradient) | 사람 |
+| M3.1 | generic security-state gradient 설계·구현(additive): "extraction root 밖에 새 네임스페이스 객체/identity 관계가 생겼다" 같은 **target-agnostic** 부분진척 신호를 effect key에 추가. 기존 C0/C1/C2 판정·fixture·N01 경로 불변(autoloop 5.4). sentinel 경로/CVE를 feedback에 심지 않는다. **구현됨**: 거부된 외부-하드링크 시도를 valid trace로 보는 producer abort-drain + boundary-attempt 키 + opt-in P3 arm(게이트를 깨끗한 REJECTED까지 완화; **연구-정직성 판단점, PR 플래그**). 7.5.2 native에서 키 실발화 확인(LOG 2026-10-25 01:01) | 완료(머지됨 #151, main) | 사람 |
 | M3.2 | 그 gradient로 B0/B1/B3 비교: "state feedback이 random보다 먼저 위반을 찾는가". 지표는 executions-to-first-violation, unique states, 유효입력비 — 돌리기 전에 고정. negative/no-hit도 그대로 보고(right-censored). **1차 매트릭스 완료**(PR #151, P1/P2/P3 × 6 seed × budget 100): gradient 기작은 측정됨(P3 외부시도 4.6×) 그러나 **C1 rate 우위 미입증**(C1 P1 1/6·P3 0/6, budget 100 우측센서). **contamination 제거 후속**(어휘에서 대상 토큰 제거 + 관찰-이름 조합, A1/A2/A3 × 6 seed, LOG 11:00): A1 도달 바닥(0/6), A2/A3 관찰 이름으로 대상 segment 도달(target-agnostic), gradient 접근 시도↑ — 단 **clean exact C1은 전 arm 0/6**(어휘판 자율 C1은 contamination 덕이었음). powered 비교·clean exact C1은 더 많은 campaign/큰 budget 필요(M3.3) | 진행 | M3.1, 주언(feedback/eval) 협의 |
 | M3.3 | (보조·대조군) escape 정책에서 budget을 크게 올려 자력 발견을 무작위로 확인 — "feedback 덕"이 아니라 대조 데이터로만 | 대기 | 없음 (호스트 docker) |
 | M3.4 | (실측 pilot) 설계의 formal 420k executions를 눈감고 약속하지 말고, 먼저 **기존 N03 B0/B1/B3 feasibility pilot 제안**([n03-b0-b1-b3-pilot-task-proposal](research/benchmarks/n03-b0-b1-b3-pilot-task-proposal.md): seeds 9001–9005·budget 200·20 campaigns·4000 exec·~5.56h)을 실행 가능한 계약으로 확정·실행. 목적은 p95 full-step time·rejection/timeout율·evidence bytes·peak memory 실측으로 formal budget을 right-size(감사 EN-010 측정 갭 메움). **실행 전 고정 필요**: (a) N01 human qualification 토큰, (b) 5s/10s timeout 경로 1개 동결, (c) clean source/image/runtime provenance freeze. **contamination 재조정 필수**: 제안의 공유 grammar(`uniform-generic-m1-protected-components-v1`)는 `outside`·`sentinel.txt`를 어휘에 포함 → M3.2의 관찰-이름(contamination-free) 경로로 교체해야 blind 입증과 정합. no-hit pilot은 가설에 INCONCLUSIVE(별도 보관, formal과 분리) | 대기 | 사람(N01 토큰·timeout 동결), 주언(feedback/eval) |

@@ -23,6 +23,7 @@ from typing import BinaryIO, Protocol
 from uuid import uuid4
 
 from scripts.run_effect_demo import (
+    DECOMPRESS_CAMPAIGN_MODE,
     DEMO_FORWARDED_ARGUMENTS,
     HISTORICAL_DEMO_MODE,
     add_demo_arguments,
@@ -546,6 +547,7 @@ def main() -> int:
             "preflight-node-n04-5s",
             "effect-demo",
             HISTORICAL_DEMO_MODE,
+            DECOMPRESS_CAMPAIGN_MODE,
         ),
     )
     args = parser.parse_args()
@@ -556,6 +558,7 @@ def main() -> int:
         "preflight-node-n04-5s",
         "effect-demo",
         HISTORICAL_DEMO_MODE,
+        DECOMPRESS_CAMPAIGN_MODE,
     }
     if (args.mode in evidence_modes) != (args.evidence is not None):
         parser.error("evidence mode requires --evidence; validation modes do not export")

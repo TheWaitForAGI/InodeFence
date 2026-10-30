@@ -13,6 +13,7 @@ from pathlib import Path
 
 import pytest
 from scripts.run_effect_demo import (
+    DECOMPRESS_CAMPAIGN_MODE,
     DEFAULT_NATIVE_BUDGET,
     HISTORICAL_DEMO_MODE,
     HISTORICAL_LABEL,
@@ -143,6 +144,76 @@ def run_native_historical_demo(
     return returncode
 
 
+def run_native_decompress_campaign(
+    backend: ContainerExecutionBackend, image: str, evidence: Path, args: argparse.Namespace
+) -> int:
+    """M4 self-discovery: the effect campaign loop over REAL decompress; report as-is.
+
+    Binds the pinned decompress image through the production backend and drives
+    ``run_decompress_effect_campaign`` (generic mutator → real decompress → generic C0/C1/C2 oracle
+    → set-based boundary-attempt / violation feedback). A C0/C1/C2 verdict on any step is the hit
+    (self-discovered by mutation, not a planted PoC — the seeds are the benign generic baselines);
+    a run with none is an honest right-censored negative, not a failure. The generic oracle is
+    unchanged. The whole report (incl. ``discovered_violation`` and per-step oracle/feedback) is
+    written to evidence; on an infrastructure abort a stub is written so the run is still recorded.
+    """
+    from inodefence.decompress_effect_campaign import (
+        DecompressEffectCampaignConfig,
+        decompress_effect_campaign_report,
+        run_decompress_effect_campaign,
+    )
+    from inodefence.effect_pipeline_decompress import run_decompress_frame_case
+    from inodefence.generator.minimal import minimal_seed_corpus
+    from inodefence.model import ArchiveCase
+    from inodefence.mutator import MutationPolicy
+    from inodefence.targets.decompress_effect import DecompressFrameTarget
+
+    seed = args.seed if args.seed is not None else 123
+    budget = args.budget if args.budget is not None else DEFAULT_NATIVE_BUDGET
+    policy = (
+        MutationPolicy(args.mutation_policy)
+        if args.mutation_policy is not None
+        else MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK
+    )
+    target = DecompressFrameTarget.bind(backend, image)
+    producer = f"native-decompress[{target.provenance.target_version}]"
+    config = DecompressEffectCampaignConfig(
+        random_seed=seed, execution_budget=budget, mutation_policy=policy
+    )
+    _announce(
+        f"{DECOMPRESS_CAMPAIGN_MODE}: seed={seed} budget={budget} "
+        f"policy={policy.value} extractor={target.provenance.target_version}"
+    )
+
+    def produce(case: ArchiveCase):
+        return run_decompress_frame_case(case, target)
+
+    try:
+        result = run_decompress_effect_campaign(minimal_seed_corpus(), produce, config)
+        report = decompress_effect_campaign_report(result, producer=producer, label="demo run")
+        stats = result.final_stats
+        _announce(
+            f"decompress self-discovery: discovered_violation={result.discovered_violation} "
+            f"unique_attempt_keys={stats.unique_attempt_keys} "
+            f"unique_violation_fingerprints={stats.unique_violation_fingerprints} "
+            f"retained={stats.retained_cases}/{stats.observations}"
+        )
+        returncode = 0
+    except Exception as error:  # infrastructure/backend failure: record the abort, do not invent
+        report = {
+            "decompress_campaign_schema": 1,
+            "producer": producer,
+            "label": "demo run",
+            "aborted": {"reason": str(error)},
+        }
+        _announce(f"{DECOMPRESS_CAMPAIGN_MODE} aborted: {error}")
+        returncode = 1
+    with evidence.open("x", encoding="ascii") as stream:
+        stream.write(json.dumps(report, indent=2, sort_keys=True, ensure_ascii=True) + "\n")
+    _announce(f"decompress campaign report: {evidence}")
+    return returncode
+
+
 class IntegrationFixtures:
     def __init__(
         self, backend: ContainerExecutionBackend, image: str, evidence: Path | None
@@ -186,6 +257,7 @@ def main() -> int:
             "preflight-node-n04-5s",
             "effect-demo",
             HISTORICAL_DEMO_MODE,
+            DECOMPRESS_CAMPAIGN_MODE,
         ),
     )
     args = parser.parse_args()
@@ -196,6 +268,7 @@ def main() -> int:
         "preflight-node-n04-5s",
         "effect-demo",
         HISTORICAL_DEMO_MODE,
+        DECOMPRESS_CAMPAIGN_MODE,
     }
     if (args.mode in evidence_modes) != (args.evidence is not None):
         parser.error("evidence mode requires --evidence; validation modes do not export")
@@ -403,6 +476,9 @@ def main() -> int:
         if args.mode == HISTORICAL_DEMO_MODE:
             assert args.evidence is not None
             return run_native_historical_demo(backend, args.image[0], args.evidence, args)
+        if args.mode == DECOMPRESS_CAMPAIGN_MODE:
+            assert args.evidence is not None
+            return run_native_decompress_campaign(backend, args.image[0], args.evidence, args)
         suite = {
             "validate": "check_boundary.py",
             "validate-node-image": "check_node_image.py",

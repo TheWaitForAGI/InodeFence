@@ -11,8 +11,9 @@ Honest framing, fixed before running (evaluation-protocol-v1 / audit EN-008):
 * ``hit`` = ``discovered_violation`` = any step with ``contract_violated`` true (the
   generic C0/C1/C2 oracle fired on the before/after snapshots; oracle logic unchanged).
   ``first_hit_executions`` is the 1-based index of that first step.
-* ``complete`` = ``eligible_observations == execution_budget``: every step produced an
-  eligible SUCCESS/REJECTED observation. A campaign with any ineligible observation is
+* ``complete`` = ``observations == eligible_observations == execution_budget``: the campaign
+  filled its budget and every step produced an eligible SUCCESS/REJECTED observation. A
+  campaign with any ineligible observation, or a fail-closed abort stub, is
   infrastructure-incomplete, excluded from the hit denominator, and reported separately
   (it is not a within-budget no-hit; it never silently grows the denominator).
 * A3 (state-aware identity) composes mutation targets from observed snapshot names
@@ -305,8 +306,9 @@ def roll_up(campaigns: Sequence[Campaign], *, external_seed_sets: dict | None = 
             "that carry the novelty). A C0 path escape is not an identity/effect discovery."
         ),
         "complete_definition": (
-            "eligible_observations == execution_budget (every step an eligible "
-            "SUCCESS/REJECTED observation); otherwise infrastructure-incomplete and excluded"
+            "observations == eligible_observations == execution_budget (budget filled and every "
+            "step an eligible SUCCESS/REJECTED observation); otherwise infrastructure-incomplete "
+            "and excluded"
         ),
         "windows_host_seeds": win_seeds,
         "arms": arm_reports,

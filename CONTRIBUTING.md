@@ -24,7 +24,7 @@ Task Contract로 사용할 수 있으며 PR에 출처를 남긴다.
 
 ```text
 Issue → Task Contract 확정 → branch → AI / 사람 구현 → make check
-      → PR → GitHub Actions CI → 사람 review → merge
+      → PR → GitHub Actions CI → review(verifier 에이전트 또는 사람) → squash merge
 ```
 
 GitHub Project를 운영한다면 Backlog → Ready → In Progress → PR → Done의
@@ -106,8 +106,9 @@ CI도 Ubuntu Linux / Python 3.12와 `/var/lib/inodefence`에서 같은 명령을
 (기본 CASE는 regular-file; 기존 네 baseline case만 허용).
 
 PR에는 관련 Issue, 실제 검증 결과, 사람이 이해하고 확인한 AI 설계 판단을 적는다.
-CI 통과 후 사람이 architecture와 연구 규칙을 검토한다. Squash merge와 merge 후
-branch 삭제를 권장하며 repository UI 설정 여부는 maintainer가 별도로 확인한다.
+CI 통과 후 architecture와 연구 규칙을 검토한다(autoloop의 verifier 에이전트 또는 사람). 통과한 PR은
+작성자(사람 또는 에이전트)가 squash merge하고 branch를 삭제한다. 머지는 사람 게이트가 아니다(D035).
+사람 승인이 필요한 예외: BREAKING(oracle 판정 변경), 가드·격리·allowlist 설정, FROZEN 변경, 외부 공개.
 
 실험은 [summaries 규칙](experiments/summaries/README.md)에 따라 raw → validated summary
 → finding / paper evidence를 연결한다. 미공개 finding은 [SECURITY.md](SECURITY.md)를 따른다.

@@ -7,7 +7,7 @@ interpreter also blocks (fail closed).
 
 Rules for every session (see .claude/skills/autoloop/SKILL.md):
   R1  no new docs/ file whose path contains audit|readiness|handoff|qualification|preserve
-  R2  no git push that targets main (branch pushes are allowed); no gh pr merge
+  R2  no git push that targets main (branch pushes are allowed); PR merges via gh are allowed (D035)
   R3  no docker/podman isolation weakening (--privileged, --cap-add, --security-opt, host ns)
   R4  no edits to the isolation allowlist or to the agent's own guard configuration
   R5  no new isolation-weakening flags written into code/config files
@@ -201,7 +201,7 @@ def check_git_push(args: list[str], payload: dict) -> None:
             dest = "main"
         if is_main_ref(dest):
             block(
-                "R2", "git push to main is not allowed; push a work branch and let a human merge."
+                "R2", "git push to main is not allowed; push a work branch and merge it via a PR."
             )
 
 
@@ -229,10 +229,8 @@ def check_bash(command: str, payload: dict) -> None:
                     "shell command may create/modify " + match.group(0) + " (banned doc name).",
                 )
 
-    # R2: git push to main / gh pr merge.
+    # R2: git push to main. PR merges (gh pr merge) are allowed since D035.
     for words in simple_commands(command):
-        if words[:3] == ["gh", "pr", "merge"]:
-            block("R2", "merging PRs is a human action.")
         sub = git_subcommand(words)
         if sub is not None and sub[0] == "push":
             check_git_push(sub[1:], payload)

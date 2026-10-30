@@ -1,11 +1,12 @@
 ---
 name: autoloop
-description: InodeFence 자율 작업 루프 규칙. docs/BACKLOG.md 맨 위부터 작업 1개씩 브랜치에서 진행하고, make check 통과 후 커밋·LOG·WORKLOG 기록까지 한 뒤 다음 작업으로 간다. 사람의 개입은 머지뿐이다. "자율로 진행", "backlog 이어서", "autoloop" 요청 시 사용.
+description: InodeFence 자율 작업 루프 규칙. docs/BACKLOG.md 맨 위부터 작업 1개씩 브랜치에서 진행하고, make check 통과 후 커밋·LOG·WORKLOG 기록까지 하고, PR·CI·verifier 통과 후 스스로 squash 머지한 뒤 다음 작업으로 간다. 큐가 비면 Ledger 빈 칸에서 다음 항목을 보충하며, 끝은 BACKLOG 소진이 아니라 프로젝트 완료(가설 검증·M1~M4)다. "자율로 진행", "backlog 이어서", "autoloop" 요청 시 사용.
 ---
 
 # autoloop — 자율 루프 규칙서
 
-사람은 **머지만** 한다. 나머지(작업 선택·구현·검증·기록)는 이 규칙대로 자율로 진행한다.
+작업 선택·구현·검증·기록·PR·**머지까지** 이 규칙대로 자율로 진행한다(D035). 사람에게 돌리는 것은
+안전경계·연구 불변식에 걸리는 결정만이다: `BREAKING`(5절 4항), 가드·격리·allowlist 설정, FROZEN 변경, 외부 공개.
 `AGENTS.md`, `docs/MIDTERM_GOALS.md`의 규칙이 이 문서보다 우선한다. 이 문서는 그 위에 자율 실행 절차를 더한다.
 
 기계적 안전장치: `.claude/hooks/guard.py` (`.claude/settings.json` PreToolUse, 서브에이전트 포함).
@@ -16,7 +17,7 @@ description: InodeFence 자율 작업 루프 규칙. docs/BACKLOG.md 맨 위부�
 | 역할 | 정의 | 모델 | 하는 일 | 가드 |
 | --- | --- | --- | --- | --- |
 | 지휘관 | `.claude/agents/orchestrator.md` | claude-opus-4-8 | BACKLOG에서 작업 선택, 환경 판단, 위임, 보고 수신 | R6: 메타데이터 문서·`git status/branch/log/diff --stat`만. 소스·diff·실행 출력 접근 차단, 작업자 3종 외 위임·모델 override 차단 |
-| builder | `.claude/agents/builder.md` | claude-opus-4-8 | 코드 작성·수정, `make check`, 커밋, 기록 | R1–R5 |
+| builder | `.claude/agents/builder.md` | claude-opus-4-8 | 코드 작성·수정, `make check`, 커밋, 기록, PR 생성·머지 | R1–R5 |
 | runtime | `.claude/agents/runtime.md` | claude-opus-4-8 | docker 실제 실행(호스트) | R1–R5, R7: 기록 문서만 쓰기 |
 | verifier | `.claude/agents/verifier.md` | claude-opus-4-8 | 브랜치 검토, PASS/ISSUES | R1–R5, R8: 읽기 전용 |
 
@@ -36,14 +37,20 @@ BACKLOG 맨 위의 "대기" 항목 1개 선택
   → 검증 (make check 등)
   → 브랜치에 커밋 (+ 브랜치 push)
   → docs/LOG.md 한 줄 + docs/WORKLOG.md 한 행 + BACKLOG 항목 상태 갱신
+  → PR 생성 → CI 통과 + verifier PASS 확인 → squash 머지 (BREAKING·가드·FROZEN·외부 공개는 사람)
   → 다음 항목
 ```
 
 - **한 번에 작업 1개. 브랜치 1개 = 작업 1개.** 다른 미머지 작업 브랜치 위에 브랜치를 쌓지 않는다(스택 금지). 항상 최신 `main`에서 분기한다.
 - 앞 항목의 결과가 필요한데 그 브랜치가 아직 머지되지 않았으면, 그 위에 쌓지 말고 해당 항목을 "대기(머지 필요)"로 두고 다음 항목으로 간다.
 - **순서대로 진행한다.** BACKLOG 맨 위부터. 게이트가 막힌 항목은 건너뛰되 건너뛴 이유를 LOG에 남긴다.
-- 진행할 수 있는 안전한 항목이 더 없으면 **대기**한다. 일을 만들어 내지 않는다(새 감사 문서, 범위 밖 refactor 금지).
-- **PR은 만들지 않는다.** 사람이 WORKLOG를 보고 main 대비 비교한 뒤 지시할 때만 만든다. 머지(`gh pr merge`, main push)는 하지 않는다.
+- 진행할 수 있는 안전한 항목이 더 없으면 **7절 보충 규칙**으로 다음 항목을 뽑는다. 루프의 끝은 BACKLOG 소진이 아니라
+  프로젝트 완료다(7.1). Ledger 빈 칸에 닿지 않는 일은 만들지 않는다(새 감사 문서, 범위 밖 refactor 금지; 7.2).
+- **PR을 만들고 스스로 머지한다.** 기록 커밋까지 끝난 브랜치로 `gh pr create --base main`(본문은 `--body-file`;
+  첫 항목은 AGENTS.md PR 규칙의 질문에 대한 답) → CI 두 job 통과(`gh pr checks <n> --watch`) + verifier `PASS`
+  → `gh pr merge <n> --squash --delete-branch`. **main 직접 push는 여전히 하지 않는다**(가드 R2).
+  머지하지 않고 PR만 열어 두는 것: `BREAKING`(5절 4항), 가드·격리·allowlist 설정 변경, FROZEN 변경, 외부 공개가
+  걸린 변경. 이건 WORKLOG `NEXT`/요약에 "사람 결정"으로 적고 다음 항목으로 간다.
 
 ## 2. 작업 시작 시 밝힐 것
 
@@ -76,6 +83,9 @@ BACKLOG 맨 위의 "대기" 항목 1개 선택
 4. `docs/WORKLOG.md` 표에 한 행 추가(양식은 그 파일 참고). 상태는 `검토대기` / `BREAKING` / `막힘` 중 하나.
 5. `docs/BACKLOG.md`에서 해당 항목 상태를 갱신한다(`완료(브랜치명)` / `막힘` / `BREAKING`).
 6. P0 현황이 바뀌었으면 `docs/STATUS.md` 표를 갱신한다.
+7. PR을 만들고 머지한다(1절). CI가 실패하면 같은 브랜치에서 고쳐 다시 push한다. 테스트를 지우거나 약화해서
+   통과시키지 않는다. 못 고치면 PR을 draft로 돌리고 "막힘 처리". 머지 여부의 기준은 PR 상태다
+   (`gh pr view <n> --json state,mergedAt`); WORKLOG 행은 머지 뒤에 고치지 않는다(main 직접 push 금지).
 
 LOG·WORKLOG·BACKLOG 기록은 작업 브랜치의 커밋에 함께 넣는다.
 
@@ -102,3 +112,49 @@ BACKLOG: 항목 상태 = 막힘(<날짜>, <한 줄 이유>)
 ```
 
 같은 항목을 다른 방법으로 우회해서 다시 시도하지 않는다. 다음 항목으로 넘어간다.
+
+## 7. 끝과 지속 — 루프는 프로젝트 완료까지 돈다
+
+루프의 끝은 **BACKLOG 소진이 아니라 프로젝트 완료**다(D036). 설계(`docs/STATUS.md` Capability Ledger,
+`docs/research/design/research-questions.md` H1~H4, `docs/research/benchmarks/evaluation-protocol-v1.md`)가
+정한 목적 — 가설 검증과 M1~M4 완료 — 에 안전경계·연구 불변식 안에서 **최대치의 노력**을 들인다.
+
+### 7.1 완료 기준 (이 셋이 모두 참일 때만 루프를 끝낸다)
+
+1. **마일스톤**: STATUS의 M1~M4가 모두 `완료`다. M3은 H1 판정이 **사전 고정된 지표·예산·반복**으로 기록된 것을
+   뜻한다 — 양성이든 정직한 음성이든. 단, **검정력이 없는 음성은 판정이 아니다**(seed-rare·우측센서만 남은 상태는
+   "미판정"이고 다음 항목은 더 큰 사전고정 예산의 독립 반복이다). M4는 2번째 extractor에서 동일 generic oracle
+   적용 + 자력 발견 시도 결과(양성/음성)가 기록된 것을 뜻한다.
+2. **증거 사슬**: 주장할 결론마다 raw → validated summary → finding(`experiments/summaries/README.md` 규칙)이
+   이어지고 `paper/`가 Ledger 행을 가리킨다. 논문에 쓸 수 없는 결론은 완료가 아니다.
+3. **큐**: BACKLOG의 모든 항목이 `완료` 또는 `막힘(사람 결정: …)`이고, 7.2의 보충 규칙으로 더 뽑을 항목이 없다.
+
+### 7.2 BACKLOG 보충 — 큐가 비면 Ledger 빈 칸에서 다음 항목을 뽑는다
+
+진행할 안전한 `대기` 항목이 없으면 멈추지 않고 다음 순서로 **항목 1개**를 보충한다.
+
+1. `막힘` 항목 중 막힌 이유가 해소된 것(의존 브랜치 머지됨, 호스트 환경으로 바뀜 등) → 상태를 `대기`로 되돌려 재개.
+2. STATUS Ledger에서 **증거 수준이 가장 낮은 미완 마일스톤**(M3 → M4 순)의 다음 gate. 근거는 STATUS "다음 연구
+   gate"의 순서(G0 → oracle → harness → fuzzer correctness → synthetic → historical qualification → pilot →
+   experiment freeze → main experiments → candidate triage → analysis → paper → independent reproduction)와
+   H1~H4다. DESIGNED/IMPLEMENTED인데 TESTED/VALIDATED가 아닌 행, `NOT_RUN`인 실험이 후보다.
+3. 상시(레인) 표의 미완 항목.
+
+보충 항목은 BACKLOG 해당 마일스톤 표에 **한 행**으로 적는다: 태스크(무엇을 실행/검증할 수 있게 되는가 한 줄 포함),
+완료 조건, 게이트. 그 행은 **그 항목을 수행하는 작업 브랜치의 커밋에 함께** 넣는다(BACKLOG만 바꾸는 PR은 만들지
+않는다). 사람 게이트(안전경계·연구 불변식: 외부 공개, 가드·격리·allowlist, FROZEN, BREAKING, 승인 범위 밖 예산)가
+걸리면 `막힘(사람 결정: <무엇>)`으로 적고 다음 후보로 간다 — 멈추지 않는다.
+
+**만들지 않는 일**(1절의 "일을 만들어 내지 않는다"의 정확한 뜻): Ledger 빈 칸에 닿지 않는 일. 새 감사·readiness류
+문서, 범위 밖 refactor, 결과를 본 뒤 지표·예산을 바꾸는 일, 발표용 임시 구현, 가설과 무관한 기능. 반대로 가설에
+닿는 일(독립 반복, 사전고정 예산 확대, 대조군, 2번째 extractor, 증거 사슬 보강)은 만든다.
+
+### 7.3 끊김 없이 돌리기
+
+- **턴을 끝내는 조건은 둘뿐**: 7.1 완료 기준 충족, 또는 안전한 `대기` 항목이 없고 7.2 보충도 전부 사람 게이트에 걸림.
+  그 외(막힘, ISSUES, BREAKING, 훅 차단, CI 실패)는 모두 "기록 후 다음 항목"이다.
+- CI는 턴 안에서 기다린다(`gh pr checks <n> --watch`; 최근 run 약 3~4분). 기다리는 동안 다른 항목을 시작하지 않는다
+  (브랜치 1개 = 작업 1개).
+- 연속 실행은 `/loop autoloop`으로 한다. wakeup마다 1절부터 재진입해 BACKLOG 맨 위에서 재개하고, 7.1이 참일 때만
+  루프를 `stop`한다. 사람 게이트에 걸린 결정은 모아서 WORKLOG `NEXT`에 적어 두고 사람이 풀어 주면 7.2-1로 재개한다.
+- 컨텍스트가 길어져 요약되더라도 상태의 단일 기준은 BACKLOG·WORKLOG·LOG·PR 상태다. 기억이 아니라 파일에서 재개한다.

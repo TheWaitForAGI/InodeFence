@@ -60,6 +60,11 @@ ALLOWED = [
     bash("git push -u origin jiwoong/autonomous-setup"),
     bash("git push --force-with-lease origin jiwoong/x:jiwoong/x"),
     bash("git fetch origin main && git log origin/main..HEAD --oneline"),
+    # D035: merging through a PR is part of the loop (main push stays blocked below)
+    bash("gh pr create --base main --head jiwoong/x --title t --body-file /tmp/body.md"),
+    bash("gh pr checks 130 --watch"),
+    bash("gh pr merge 130 --squash --delete-branch"),
+    bash("gh pr merge 130 --squash", **WORKER),
     bash("git checkout -b jiwoong/p2-c1-impact main"),
     bash("grep -rn -- --security-opt src/"),
     bash("cat src/inodefence/execution/docker_client.py"),
@@ -112,7 +117,6 @@ BLOCKED = [
     bash("git -C /workspaces/InodeFence push origin main"),
     bash("git add . && git commit -m x && git push origin main"),
     bash("git push origin main", **WORKER),
-    bash("gh pr merge 130 --squash"),
     # R3 isolation weakening
     bash("docker run --privileged alpine true"),
     bash("docker run --cap-add SYS_ADMIN alpine"),

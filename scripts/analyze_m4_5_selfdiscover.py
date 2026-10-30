@@ -32,7 +32,7 @@ import argparse
 import json
 import re
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from inodefence.evaluation.right_censored import (
@@ -73,6 +73,8 @@ class Campaign:
     terminations: dict[str, int]
     discovered_violation: bool
     first_hit_index_one_based: int | None
+    contract_counts: dict[str, int] = field(default_factory=dict)
+    contract_first_hit: dict[str, int | None] = field(default_factory=dict)
     aborted: bool = False
     abort_reason: str | None = None
 
@@ -89,6 +91,7 @@ class Campaign:
         return self.eligible_observations == self.budget and self.observations == self.budget
 
     def seed_outcome(self) -> SeedOutcome:
+        """Registered hit = discovered_violation (ANY contract C0/C1/C2)."""
         hit = self.discovered_violation and self.complete
         return SeedOutcome(
             seed=self.seed,
@@ -96,6 +99,23 @@ class Campaign:
             complete=self.complete,
             hit=hit,
             first_hit_executions=self.first_hit_index_one_based if hit else None,
+        )
+
+    def contract_outcome(self, contract: str) -> SeedOutcome:
+        """Per-contract hit = a step whose oracle flagged exactly this contract (C0/C1/C2).
+
+        C0 is the baseline path-boundary contract; C1 (object identity) and C2 (external
+        effect) are the identity/effect targets that carry InodeFence's novelty. Splitting
+        the registered any-contract hit this way keeps a C0 path escape from being read as
+        an identity/effect discovery.
+        """
+        hit = self.complete and self.contract_counts.get(contract, 0) > 0
+        return SeedOutcome(
+            seed=self.seed,
+            budget=self.budget,
+            complete=self.complete,
+            hit=hit,
+            first_hit_executions=self.contract_first_hit.get(contract) if hit else None,
         )
 
 
@@ -162,13 +182,22 @@ def load_campaign(path: str | Path, *, aborted_budget: int = 1500) -> Campaign:
     steps = data["steps"]
     terminations: dict[str, int] = {}
     first_hit: int | None = None
+    contract_counts: dict[str, int] = {"C0": 0, "C1": 0, "C2": 0}
+    contract_first_hit: dict[str, int | None] = {"C0": None, "C1": None, "C2": None}
     for step in steps:
         term = step.get("termination")
         if term is not None:
             terminations[term] = terminations.get(term, 0) + 1
+        one_based = int(step["index"]) + 1
         if first_hit is None and step.get("contract_violated"):
             # 1-based execution index of the first contract violation.
-            first_hit = int(step["index"]) + 1
+            first_hit = one_based
+        oracle = step.get("oracle", {})
+        for contract in ("C0", "C1", "C2"):
+            if oracle.get(contract):
+                contract_counts[contract] += 1
+                if contract_first_hit[contract] is None:
+                    contract_first_hit[contract] = one_based
     budget = int(config["execution_budget"])
     policy = str(config["mutation_policy"])
     seed = int(config["random_seed"])
@@ -191,6 +220,8 @@ def load_campaign(path: str | Path, *, aborted_budget: int = 1500) -> Campaign:
         terminations=terminations,
         discovered_violation=bool(data["discovered_violation"]),
         first_hit_index_one_based=first_hit,
+        contract_counts=contract_counts,
+        contract_first_hit=contract_first_hit,
     )
 
 
@@ -230,11 +261,17 @@ def roll_up(campaigns: Sequence[Campaign], *, external_seed_sets: dict | None = 
     for arm, arm_campaigns in sorted(arms.items()):
         outcomes = [c.seed_outcome() for c in arm_campaigns]
         summary = right_censored_summary(outcomes)
+        by_contract = {
+            contract: right_censored_summary([c.contract_outcome(contract) for c in arm_campaigns])
+            for contract in ("C0", "C1", "C2")
+        }
         aborted = [c for c in arm_campaigns if c.aborted]
         non_aborted = [c for c in arm_campaigns if not c.aborted]
         arm_reports[arm] = {
             "is_state_aware_not_blind": arm in _STATE_AWARE_ARMS,
+            "right_censored_any_contract": summary,
             "right_censored": summary,
+            "by_contract": by_contract,
             "mechanism": _mechanism_tally(non_aborted),
             "fail_closed_aborts": {
                 "count": len(aborted),
@@ -258,8 +295,14 @@ def roll_up(campaigns: Sequence[Campaign], *, external_seed_sets: dict | None = 
             "byte-identity is NOT claimed -- arch is a disclosed variable."
         ),
         "hit_definition": (
-            "discovered_violation == any step contract_violated (generic C0/C1/C2 on "
-            "before/after; oracle logic unchanged)"
+            "registered hit = discovered_violation == any step contract_violated (generic "
+            "C0/C1/C2 on before/after; oracle logic unchanged)"
+        ),
+        "contract_semantics": (
+            "by_contract splits the registered any-contract hit: C0 = path-boundary confinement "
+            "(the baseline contract, explicitly NOT InodeFence's novelty); C1 = object-identity "
+            "confinement and C2 = external-effect noninterference (the identity/effect targets "
+            "that carry the novelty). A C0 path escape is not an identity/effect discovery."
         ),
         "complete_definition": (
             "eligible_observations == execution_budget (every step an eligible "
@@ -333,9 +376,23 @@ def render_markdown(report: dict) -> str:
             f"{rc['incomplete_seeds']})"
         )
         lines.append(
-            f"- clean exact hits: {rc['number_observed_target']} / "
+            f"- any-contract hits (registered): {rc['number_observed_target']} / "
             f"{prop['denominator']}  Wilson95 {ci_text}"
         )
+        for contract, label in (
+            ("C0", "C0 path-boundary (baseline)"),
+            ("C1", "C1 object-identity (novel)"),
+            ("C2", "C2 external-effect (novel)"),
+        ):
+            crc = arm_report["by_contract"][contract]
+            cprop = crc["observed_proportion"]
+            cci = cprop["wilson_95_ci"]
+            cci_text = f"[{cci[0]:.3f}, {cci[1]:.3f}]" if cci[0] is not None else "[n/a]"
+            fh = crc["first_hit_executions_observed_only"]["values"]
+            lines.append(
+                f"  - {label}: {crc['number_observed_target']} / {cprop['denominator']} "
+                f"Wilson95 {cci_text}" + (f"  first-hit {fh}" if fh else "")
+            )
         lines.append(f"- right-censored (no-hit within budget): {rc['number_right_censored']}")
         aborts = arm_report["fail_closed_aborts"]
         lines.append(

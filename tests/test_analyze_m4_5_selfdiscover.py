@@ -20,24 +20,28 @@ def _evidence(
     policy: str,
     eligible: int | None = None,
     hit_index: int | None = None,
+    hit_contract: str = "C1",
     terminations: tuple[str, ...] | None = None,
 ) -> dict:
     """A minimal valid decompress_campaign_schema-1 evidence dict.
 
-    ``hit_index`` is a 0-based step index whose ``contract_violated`` is true (its oracle
-    C1 fires). ``eligible`` defaults to a complete campaign (== budget).
+    ``hit_index`` is a 0-based step index whose ``contract_violated`` is true; ``hit_contract``
+    (C0/C1/C2) is the oracle flag that fires there. ``eligible`` defaults to complete (== budget).
     """
     eligible = budget if eligible is None else eligible
     terms = terminations or (("success",) * budget)
     steps = []
     for index in range(budget):
         violated = hit_index is not None and index == hit_index
+        oracle = {"C0": False, "C1": False, "C2": False}
+        if violated:
+            oracle[hit_contract] = True
         steps.append(
             {
                 "index": index,
                 "termination": terms[index] if index < len(terms) else "success",
                 "contract_violated": violated,
-                "oracle": {"C0": False, "C1": violated, "C2": False},
+                "oracle": oracle,
             }
         )
     return {
@@ -189,6 +193,27 @@ def test_roll_up_counts_aborts_separately_from_denominator(tmp_path):
     assert arm["right_censored"]["number_incomplete_excluded"] == 1
     assert arm["fail_closed_aborts"]["count"] == 1
     assert arm["fail_closed_aborts"]["seeds"] == [501]
+
+
+def test_by_contract_splits_c0_from_c1_c2(tmp_path):
+    # A C0-only path-boundary hit must NOT count as a C1/C2 identity/effect discovery.
+    c0 = load_campaign(
+        _write(
+            tmp_path,
+            "inodefence-decompress-selfdiscover-m45-a1-s500.json",
+            _evidence(seed=500, budget=10, policy=A1P, hit_index=2, hit_contract="C0"),
+        )
+    )
+    assert c0.contract_counts == {"C0": 1, "C1": 0, "C2": 0}
+    assert c0.contract_first_hit["C0"] == 3
+    assert c0.contract_outcome("C0").hit is True
+    assert c0.contract_outcome("C1").hit is False
+    report = roll_up([c0])
+    arm = report["arms"]["A1-random"]
+    assert arm["right_censored_any_contract"]["number_observed_target"] == 1
+    assert arm["by_contract"]["C0"]["number_observed_target"] == 1
+    assert arm["by_contract"]["C1"]["number_observed_target"] == 0
+    assert arm["by_contract"]["C2"]["number_observed_target"] == 0
 
 
 def test_filename_seed_mismatch_raises(tmp_path):

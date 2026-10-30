@@ -1,0 +1,544 @@
+{
+  "arm_a_rollup": {
+    "censored": [
+      {
+        "budget": 2000,
+        "seed": 101
+      },
+      {
+        "budget": 2000,
+        "seed": 102
+      },
+      {
+        "budget": 2000,
+        "seed": 103
+      },
+      {
+        "budget": 2000,
+        "seed": 106
+      },
+      {
+        "budget": 2000,
+        "seed": 107
+      },
+      {
+        "budget": 2000,
+        "seed": 108
+      },
+      {
+        "budget": 2000,
+        "seed": 109
+      },
+      {
+        "budget": 2000,
+        "seed": 111
+      },
+      {
+        "budget": 2000,
+        "seed": 112
+      },
+      {
+        "budget": 2000,
+        "seed": 117
+      },
+      {
+        "budget": 2000,
+        "seed": 118
+      },
+      {
+        "budget": 2000,
+        "seed": 119
+      }
+    ],
+    "censoring": "no-hit right-censored at recorded budget (> N); no imputed hit index",
+    "classification": "single-arm-right-censored-control",
+    "comparison": "single-arm control; no baseline comparison here, so no effectiveness or superiority claim (audit EN-008)",
+    "first_hit_executions_observed_only": {
+      "max": null,
+      "min": null,
+      "population": "runs_with_observation_only",
+      "unit": "one_based_execution_count",
+      "values": []
+    },
+    "incomplete_seeds": [
+      100,
+      104,
+      105,
+      110,
+      113,
+      114,
+      115,
+      116
+    ],
+    "interpretation": "states only whether this arm reached the target under the budget; a no-hit is not proof the target is unreachable, only that it was not observed within budget",
+    "number_complete_campaigns": 12,
+    "number_incomplete_excluded": 8,
+    "number_observed_target": 0,
+    "number_right_censored": 12,
+    "observed_proportion": {
+      "denominator": 12,
+      "numerator": 0,
+      "value": 0.0,
+      "wilson_95_ci": [
+        1.3877787807814457e-17,
+        0.24249400665524085
+      ]
+    },
+    "schema_version": 1
+  },
+  "arm_a_shared": {
+    "complete_campaign_hit_seeds": [],
+    "complete_campaign_hits": 0,
+    "complete_campaigns": 12,
+    "complete_hit_rate": 0.0,
+    "complete_hit_wilson_95_ci": [
+      1.3877787807814457e-17,
+      0.24249400665524085
+    ],
+    "number_observed_trigger_seeds": 0,
+    "observed_trigger_seeds": [],
+    "shared_seeds": 20,
+    "total_observed_clean_exact_c1": 0
+  },
+  "arm_b_rollup": {
+    "censored": [
+      {
+        "budget": 2000,
+        "seed": 100
+      },
+      {
+        "budget": 2000,
+        "seed": 103
+      },
+      {
+        "budget": 2000,
+        "seed": 105
+      },
+      {
+        "budget": 2000,
+        "seed": 108
+      },
+      {
+        "budget": 2000,
+        "seed": 109
+      },
+      {
+        "budget": 2000,
+        "seed": 110
+      },
+      {
+        "budget": 2000,
+        "seed": 111
+      },
+      {
+        "budget": 2000,
+        "seed": 114
+      },
+      {
+        "budget": 2000,
+        "seed": 116
+      }
+    ],
+    "censoring": "no-hit right-censored at recorded budget (> N); no imputed hit index",
+    "classification": "single-arm-right-censored-control",
+    "comparison": "single-arm control; no baseline comparison here, so no effectiveness or superiority claim (audit EN-008)",
+    "first_hit_executions_observed_only": {
+      "max": 1720,
+      "min": 1720,
+      "population": "runs_with_observation_only",
+      "unit": "one_based_execution_count",
+      "values": [
+        1720
+      ]
+    },
+    "incomplete_seeds": [
+      102,
+      104,
+      106,
+      107,
+      112,
+      113,
+      115,
+      117,
+      118,
+      119
+    ],
+    "interpretation": "states only whether this arm reached the target under the budget; a no-hit is not proof the target is unreachable, only that it was not observed within budget",
+    "number_complete_campaigns": 10,
+    "number_incomplete_excluded": 10,
+    "number_observed_target": 1,
+    "number_right_censored": 9,
+    "observed_proportion": {
+      "denominator": 10,
+      "numerator": 1,
+      "value": 0.1,
+      "wilson_95_ci": [
+        0.017876213095072896,
+        0.4041500267952385
+      ]
+    },
+    "schema_version": 1
+  },
+  "arm_b_shared": {
+    "complete_campaign_hit_seeds": [
+      101
+    ],
+    "complete_campaign_hits": 1,
+    "complete_campaigns": 10,
+    "complete_hit_rate": 0.1,
+    "complete_hit_wilson_95_ci": [
+      0.017876213095072896,
+      0.4041500267952385
+    ],
+    "number_observed_trigger_seeds": 2,
+    "observed_trigger_seeds": [
+      101,
+      118
+    ],
+    "shared_seeds": 20,
+    "total_observed_clean_exact_c1": 66
+  },
+  "arms": {
+    "arm_a": "A1",
+    "arm_b": "A3full"
+  },
+  "budget": 2000,
+  "classification": "m3.3-matched-two-arm-contrast",
+  "complete_hit_wilson_intervals_separate": false,
+  "framing": "matched two-arm causal contrast on shared seeds at one budget -- the comparison the single-arm roll-up explicitly defers to (audit EN-008). Each arm's rate is the committed right-censored complete-campaign roll-up (right_censored_summary, same engine as the single-arm path); a rate-superiority claim needs the two arms' Wilson intervals to SEPARATE, which 'complete_hit_wilson_intervals_separate' reports -- a difference in point counts alone is not one. A clean exact C1 observed before a fail-closed infrastructure abort is reported as an 'observed trigger', kept separate from the complete-campaign hit rate because a hit requires a complete campaign (the right_censored contract); it is an observed mechanism fact, not a rate.",
+  "hit_criterion": "step rendered 'C1 VIOLATED' == oracle.C1 && contract_violated",
+  "matched_discordant": {
+    "arm_a_only_observed_trigger_seeds": [],
+    "arm_b_only_observed_trigger_seeds": [
+      101,
+      118
+    ],
+    "both_observed_trigger_seeds": []
+  },
+  "number_shared_seeds": 20,
+  "per_seed": [
+    {
+      "arm_a": {
+        "complete": false,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "aborted_fail_closed_obs_integrity (right-censored)"
+      },
+      "arm_b": {
+        "complete": true,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "completed"
+      },
+      "seed": 100
+    },
+    {
+      "arm_a": {
+        "complete": true,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "completed"
+      },
+      "arm_b": {
+        "complete": true,
+        "complete_hit": true,
+        "observed_clean_exact_c1": 1,
+        "status": "completed"
+      },
+      "seed": 101
+    },
+    {
+      "arm_a": {
+        "complete": true,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "completed"
+      },
+      "arm_b": {
+        "complete": false,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "aborted_fail_closed_obs_integrity (right-censored)"
+      },
+      "seed": 102
+    },
+    {
+      "arm_a": {
+        "complete": true,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "completed"
+      },
+      "arm_b": {
+        "complete": true,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "completed"
+      },
+      "seed": 103
+    },
+    {
+      "arm_a": {
+        "complete": false,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "aborted_fail_closed_obs_integrity (right-censored)"
+      },
+      "arm_b": {
+        "complete": false,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "aborted_fail_closed_obs_integrity (right-censored)"
+      },
+      "seed": 104
+    },
+    {
+      "arm_a": {
+        "complete": false,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "aborted_fail_closed_obs_integrity (right-censored)"
+      },
+      "arm_b": {
+        "complete": true,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "completed"
+      },
+      "seed": 105
+    },
+    {
+      "arm_a": {
+        "complete": true,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "completed"
+      },
+      "arm_b": {
+        "complete": false,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "aborted_fail_closed_obs_integrity (right-censored)"
+      },
+      "seed": 106
+    },
+    {
+      "arm_a": {
+        "complete": true,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "completed"
+      },
+      "arm_b": {
+        "complete": false,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "aborted_fail_closed_obs_integrity (right-censored)"
+      },
+      "seed": 107
+    },
+    {
+      "arm_a": {
+        "complete": true,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "completed"
+      },
+      "arm_b": {
+        "complete": true,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "completed"
+      },
+      "seed": 108
+    },
+    {
+      "arm_a": {
+        "complete": true,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "completed"
+      },
+      "arm_b": {
+        "complete": true,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "completed"
+      },
+      "seed": 109
+    },
+    {
+      "arm_a": {
+        "complete": false,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "aborted_fail_closed_obs_integrity (right-censored)"
+      },
+      "arm_b": {
+        "complete": true,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "completed"
+      },
+      "seed": 110
+    },
+    {
+      "arm_a": {
+        "complete": true,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "completed"
+      },
+      "arm_b": {
+        "complete": true,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "completed"
+      },
+      "seed": 111
+    },
+    {
+      "arm_a": {
+        "complete": true,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "completed"
+      },
+      "arm_b": {
+        "complete": false,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "aborted_fail_closed_obs_integrity (right-censored)"
+      },
+      "seed": 112
+    },
+    {
+      "arm_a": {
+        "complete": false,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "aborted_fail_closed_obs_integrity (right-censored)"
+      },
+      "arm_b": {
+        "complete": false,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "aborted_fail_closed_obs_integrity (right-censored)"
+      },
+      "seed": 113
+    },
+    {
+      "arm_a": {
+        "complete": false,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "aborted_backend_error (right-censored)"
+      },
+      "arm_b": {
+        "complete": true,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "completed"
+      },
+      "seed": 114
+    },
+    {
+      "arm_a": {
+        "complete": false,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "aborted_backend_error (right-censored)"
+      },
+      "arm_b": {
+        "complete": false,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "aborted_fail_closed_obs_integrity (right-censored)"
+      },
+      "seed": 115
+    },
+    {
+      "arm_a": {
+        "complete": false,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "aborted_backend_error (right-censored)"
+      },
+      "arm_b": {
+        "complete": true,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "completed"
+      },
+      "seed": 116
+    },
+    {
+      "arm_a": {
+        "complete": true,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "completed"
+      },
+      "arm_b": {
+        "complete": false,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "aborted_fail_closed_obs_integrity (right-censored)"
+      },
+      "seed": 117
+    },
+    {
+      "arm_a": {
+        "complete": true,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "completed"
+      },
+      "arm_b": {
+        "complete": false,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 65,
+        "status": "aborted_backend_error (right-censored)"
+      },
+      "seed": 118
+    },
+    {
+      "arm_a": {
+        "complete": true,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "completed"
+      },
+      "arm_b": {
+        "complete": false,
+        "complete_hit": false,
+        "observed_clean_exact_c1": 0,
+        "status": "aborted_fail_closed_obs_integrity (right-censored)"
+      },
+      "seed": 119
+    }
+  ],
+  "shared_seeds": [
+    100,
+    101,
+    102,
+    103,
+    104,
+    105,
+    106,
+    107,
+    108,
+    109,
+    110,
+    111,
+    112,
+    113,
+    114,
+    115,
+    116,
+    117,
+    118,
+    119
+  ],
+  "version": "7.5.2"
+}

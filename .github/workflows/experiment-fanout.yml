@@ -1,0 +1,130 @@
+name: experiment-fanout
+
+# Manually dispatched cloud fan-out of native node-tar effect campaigns.
+#
+# Each matrix cell is a fresh ubuntu-24.04 runner (a cloud Docker host) that
+# builds the SAME locked images and runs the SAME trusted non-root controller
+# path as the CI `container-integration` job and `make demo` -- no isolation
+# change. This turns GitHub's runner fleet into parallel Docker hosts so
+# experiment campaigns stop serializing on one developer machine.
+#
+# It only runs when a human dispatches it; doing so spends the repository's
+# Actions minutes and runs real campaigns inside the team-approved scope: fixed
+# node-tar versions, budget capped at 100 in code, a disposable non-root
+# controller + runtime volume + sentinel, no isolation-relaxation flags.
+#
+# Historical (affected/fixed) effect images are built per-runner from the
+# committed, hash-pinned recipe (tools/node-tar/effect/Dockerfile +
+# tools/node-tar/versions/<version>/); nothing vulnerable is published anywhere,
+# the image lives only on its runner and is discarded with it.
+#
+# The planned cells come from scripts/run_parallel_native (--emit-github-matrix),
+# the same planner the single-host runner uses, so a cloud run and a laptop run
+# name and parameterize cells identically.
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: demo (pinned repo node-tar) or demo-historical (catalog versions)
+        type: choice
+        options:
+          - demo
+          - demo-historical
+        default: demo
+      versions:
+        description: "demo-historical only: comma list of catalog versions, e.g. 7.5.2,7.5.3"
+        type: string
+        default: ""
+      seeds:
+        description: comma list of RNG seeds, e.g. 123,456,789
+        type: string
+        default: "123,456,789"
+      arm:
+        description: "'default' or LABEL=SEARCH/MUTATION (EffectSearchPolicy/MutationPolicy names)"
+        type: string
+        default: default
+      budget:
+        description: executions per campaign (1..100; code caps at 100)
+        type: string
+        default: "20"
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Python 3.12
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Install the package (for the matrix planner)
+        run: make install
+      - name: Plan the campaign matrix
+        id: plan
+        env:
+          MODE: ${{ inputs.mode }}
+          VERSIONS: ${{ inputs.versions }}
+          SEEDS: ${{ inputs.seeds }}
+          ARM: ${{ inputs.arm }}
+          BUDGET: ${{ inputs.budget }}
+        run: |
+          ARGS=(--mode "$MODE" --seeds "$SEEDS" --arm "$ARM" --budget "$BUDGET" --emit-github-matrix)
+          if [ "$MODE" = demo-historical ]; then ARGS+=(--versions "$VERSIONS"); fi
+          MATRIX="$(PYTHONPATH=src python -m scripts.run_parallel_native "${ARGS[@]}")"
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+          echo "planned cells:"
+          echo "$MATRIX" | python -m json.tool
+
+  fanout:
+    needs: plan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      max-parallel: 6
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up host broker Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Build the historical effect image from the committed recipe
+        if: ${{ matrix.mode == 'demo-historical' }}
+        env:
+          TAR_VERSION: ${{ matrix.version }}
+        run: |
+          docker build -f tools/node-tar/effect/Dockerfile \
+            --build-arg "TAR_VERSION=$TAR_VERSION" \
+            -t "inodefence-node-tar-effect:$TAR_VERSION" .
+      - name: Run one campaign cell through the locked harness
+        env:
+          MODE: ${{ matrix.mode }}
+          RUN_ID: ${{ matrix.run_id }}
+          DEMO_SEED: ${{ matrix.seed }}
+          DEMO_BUDGET: ${{ matrix.budget }}
+          DEMO_POLICY: ${{ matrix.search }}
+          DEMO_MUTATION_POLICY: ${{ matrix.mutation }}
+          TAR_VERSION: ${{ matrix.version }}
+          INODEFENCE_EVIDENCE_DIR: ${{ github.workspace }}/evidence
+        run: bash scripts/local_node_tar_smoke.sh "$MODE"
+      - name: Upload campaign evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: campaign-${{ matrix.run_id }}
+          path: evidence
+          if-no-files-found: warn

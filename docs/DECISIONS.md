@@ -551,3 +551,23 @@ Feedback은 기존 `effect_feedback_keys(trace)` tuple을 그대로 보존하고
 전자에만 v3 key가 생김을 확인했다. 이 결정은 C0/C1/C2, v2 policy ID, native qualification 또는
 효과 검증을 변경하지 않는다. Native dependency producer와 matrix는 새 Task Contract와 명시적
 승인 전까지 NOT_IMPLEMENTED / NOT_RUN이다.
+
+## D035 — 머지는 사람 게이트가 아니다: 자율 루프가 PR·CI·verifier 통과 후 스스로 머지한다
+
+**상태:** 적용 (2026-10-30, 지웅 결정)
+
+이전 규칙은 "사람의 개입은 머지뿐이다"였다. autoloop·builder·orchestrator 정의, WORKLOG/BACKLOG/CONTRIBUTING/README의
+문장, 그리고 가드 훅 R2의 `gh pr merge` 차단이 이를 강제했다. 이 결정으로 머지는 루프의 마지막 단계가 된다:
+기록 커밋이 끝난 작업 브랜치로 PR을 열고(`--body-file`, 첫 항목은 AGENTS.md PR 규칙의 질문에 대한 답), CI 두 job 통과와
+verifier `PASS`를 확인한 뒤 작성자(사람 또는 에이전트)가 `gh pr merge --squash --delete-branch`로 머지한다. 머지 여부의
+기준은 PR 상태다. WORKLOG 상태 `검토대기`의 뜻은 "검증 통과, PR·CI·verifier 검토 후 자율 머지 대상"으로 바뀐다.
+
+바뀌지 않는 것: `main` 직접 push 금지(가드 R2는 push 차단만 남긴다), 스택 PR 금지, 가드·격리·allowlist 설정은 사람만
+수정(R4), FROZEN 불변, 새 audit/readiness류 문서 금지. 사람 승인이 남는 결정은 안전경계·연구 불변식에 걸리는 것만이다:
+`BREAKING`(oracle 판정 변경, autoloop 5절 4항), 가드·격리·allowlist 설정 변경, FROZEN 변경, 외부 공개. 이런 PR은 열어
+두되 머지하지 않고 "사람 결정"으로 기록한다.
+
+근거: 루프의 검증 게이트(`make check`, CI, verifier의 범위·oracle 의미·FROZEN·기록 검토)가 머지 전에 이미 돈다. 사람
+머지 대기는 작업 간 의존("대기(머지 필요)")을 쌓아 루프를 멈추게 했을 뿐 검증을 더하지 않았다. GitHub `main`에는
+branch protection·ruleset이 없다(observed 2026-10-30, `gh api .../branches/main/protection` 404, rulesets `[]`).
+가드 훅 파일 자체는 R4 보호 대상이라 에이전트가 고치지 않고 사람이 패치를 적용했다.

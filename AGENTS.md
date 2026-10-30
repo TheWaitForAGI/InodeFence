@@ -44,10 +44,11 @@
 - 설명 첫 항목은 "이 PR을 병합하면 어떤 기능을 실제로 실행하거나 검증할 수 있게 되는가?"에 대한 답이다.
   답이 "~에 대한 문서/감사"뿐이면 PR이 아니라 STATUS 갱신이다.
 - 브랜치 이름: `<이름>/p0-<번호>-<요약>`. 한 PR에 한 목적.
+- 머지는 PR·CI·검토(verifier 또는 사람) 통과 후 작성자가 squash 머지한다. 사람 승인은 BREAKING·가드·격리·FROZEN·외부 공개에만 둔다(D035).
 
 ### 레인 (우선 책임자)
 
-- 지웅: Core / Architecture / Integration (머지 게이트)
+- 지웅: Core / Architecture / Integration (통합 책임; 머지는 사람 게이트가 아니다, D035)
 - 주언: Feedback / Evaluation (P0-4, P1 조건)
 - 규민: Runtime / Target Execution (P0-1, N05)
 - 민찬: Observation / Oracle / Demo (P0-2, P0-3, 시연)

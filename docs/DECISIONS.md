@@ -551,3 +551,44 @@ Feedback은 기존 `effect_feedback_keys(trace)` tuple을 그대로 보존하고
 전자에만 v3 key가 생김을 확인했다. 이 결정은 C0/C1/C2, v2 policy ID, native qualification 또는
 효과 검증을 변경하지 않는다. Native dependency producer와 matrix는 새 Task Contract와 명시적
 승인 전까지 NOT_IMPLEMENTED / NOT_RUN이다.
+
+## D035 — 머지는 사람 게이트가 아니다: 자율 루프가 PR·CI·verifier 통과 후 스스로 머지한다
+
+**상태:** 적용 (2026-10-30, 지웅 결정)
+
+이전 규칙은 "사람의 개입은 머지뿐이다"였다. autoloop·builder·orchestrator 정의, WORKLOG/BACKLOG/CONTRIBUTING/README의
+문장, 그리고 가드 훅 R2의 `gh pr merge` 차단이 이를 강제했다. 이 결정으로 머지는 루프의 마지막 단계가 된다:
+기록 커밋이 끝난 작업 브랜치로 PR을 열고(`--body-file`, 첫 항목은 AGENTS.md PR 규칙의 질문에 대한 답), CI 두 job 통과와
+verifier `PASS`를 확인한 뒤 작성자(사람 또는 에이전트)가 `gh pr merge --squash --delete-branch`로 머지한다. 머지 여부의
+기준은 PR 상태다. WORKLOG 상태 `검토대기`의 뜻은 "검증 통과, PR·CI·verifier 검토 후 자율 머지 대상"으로 바뀐다.
+
+바뀌지 않는 것: `main` 직접 push 금지(가드 R2는 push 차단만 남긴다), 스택 PR 금지, 가드·격리·allowlist 설정은 사람만
+수정(R4), FROZEN 불변, 새 audit/readiness류 문서 금지. 사람 승인이 남는 결정은 안전경계·연구 불변식에 걸리는 것만이다:
+`BREAKING`(oracle 판정 변경, autoloop 5절 4항), 가드·격리·allowlist 설정 변경, FROZEN 변경, 외부 공개. 이런 PR은 열어
+두되 머지하지 않고 "사람 결정"으로 기록한다.
+
+근거: 루프의 검증 게이트(`make check`, CI, verifier의 범위·oracle 의미·FROZEN·기록 검토)가 머지 전에 이미 돈다. 사람
+머지 대기는 작업 간 의존("대기(머지 필요)")을 쌓아 루프를 멈추게 했을 뿐 검증을 더하지 않았다. GitHub `main`에는
+branch protection·ruleset이 없다(observed 2026-10-30, `gh api .../branches/main/protection` 404, rulesets `[]`).
+가드 훅 파일 자체는 R4 보호 대상이라 에이전트가 고치지 않고 사람이 패치를 적용했다.
+
+## D036 — 자율 루프의 끝은 BACKLOG 소진이 아니라 프로젝트 완료다
+
+**상태:** 적용 (2026-10-30, 지웅 결정)
+
+이전 autoloop 규칙은 "진행할 안전한 항목이 없으면 대기한다. 일을 만들어 내지 않는다"였다. D035로 머지 대기가
+사라지자 남은 정지 조건은 큐 소진 하나였고, 이는 설계가 정한 목적(가설 검증, M1~M4 완료)과 무관한 지점에서
+루프를 멈추게 했다. 이 결정으로 루프의 종료 조건은 세 가지가 모두 참일 때로 바뀐다(autoloop 7.1): M1~M4 완료
+(M3은 사전 고정 지표·예산·반복으로 기록된 H1 판정 — 검정력 없는 음성은 판정이 아니다), raw → summary →
+finding → `paper/`의 증거 사슬, 그리고 더 뽑을 항목이 없는 큐.
+
+큐가 비면 루프는 멈추지 않고 항목 1개를 보충한다(7.2): 해소된 `막힘` 재개 → STATUS Ledger에서 증거 수준이 가장
+낮은 미완 마일스톤의 다음 gate(STATUS "다음 연구 gate" 순서와 H1~H4 기준) → 상시 표. 보충 행은 그 항목을
+수행하는 작업 브랜치에 함께 커밋한다. "일을 만들어 내지 않는다"의 뜻은 "Ledger 빈 칸에 닿지 않는 일을 만들지
+않는다"로 좁힌다: 감사·readiness류 문서, 범위 밖 refactor, 결과를 본 뒤 지표·예산을 바꾸는 일, 발표용 임시
+구현은 여전히 금지이고, 독립 반복·사전고정 예산 확대·대조군·2번째 extractor·증거 사슬 보강은 만든다.
+
+바뀌지 않는 것: 안전경계(sandbox+sentinel, 고정 버전, 격리 완화 금지, 훅 우회 금지), 연구 불변식(D005·D006,
+observed/inferred, synthetic 비승격, 비교 없는 effectiveness 주장 금지), evaluation 원칙(결과를 보고 방법을
+바꾸지 않음), 사람 게이트(외부 공개, 가드·격리·allowlist, FROZEN, BREAKING, 승인 범위 밖 예산). 연속 실행은
+`/loop autoloop`으로 하며 턴 종료는 7.1 충족 또는 전부 사람 게이트일 때만이다(7.3).

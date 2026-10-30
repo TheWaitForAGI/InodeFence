@@ -1,0 +1,111 @@
+{
+  "affected_shared": true,
+  "boundary_ok": true,
+  "cve": "CVE-2026-50163",
+  "entries": [
+    {
+      "linkname": "outside/sentinel.txt",
+      "name": "d/evil",
+      "type": "link"
+    }
+  ],
+  "fixed_shared": false,
+  "fixture": "oras_go_cwd_hardlink",
+  "per_role": {
+    "affected": {
+      "image_id": "sha256:ad41cd239748ad0a732e532dd4e361f4c7187a314a86ee7a63186403ba55f673",
+      "oras_go_version": "v2.6.1",
+      "raw": {
+        "declined": null,
+        "extract_tree": {
+          "d": {
+            "dev": "137",
+            "ino": "5",
+            "nlink": 2,
+            "size": 60,
+            "type": "dir"
+          },
+          "d/evil": {
+            "dev": "137",
+            "ino": "4",
+            "nlink": 2,
+            "size": 30,
+            "type": "reg"
+          }
+        },
+        "nlink_after": 2,
+        "nlink_before": 1,
+        "reference_after": {
+          "dev": "137",
+          "ino": "4",
+          "nlink": 2,
+          "size": 30,
+          "type": "reg"
+        },
+        "reference_before": {
+          "dev": "137",
+          "ino": "4",
+          "nlink": 1,
+          "size": 30,
+          "type": "reg"
+        },
+        "shared_identity": [
+          "extract/d/evil"
+        ]
+      },
+      "verdict": {
+        "c1_identity_shared": true,
+        "nlink_after": 2,
+        "nlink_before": 1,
+        "outcome": "resolved",
+        "shared_objects": [
+          "extract/d/evil"
+        ]
+      }
+    },
+    "fixed": {
+      "image_id": "sha256:5ad3a36bf6bb417351320cf2f17601dc1106aca5e49ec030772edd5a915b1b91",
+      "oras_go_version": "v2.6.2",
+      "raw": {
+        "declined": {
+          "message": "failed to extract tar to /work/extract/d: link /work/extract/d/outside/sentinel.txt /work/extract/d/evil: no such file or directory"
+        },
+        "extract_tree": {
+          "d": {
+            "dev": "137",
+            "ino": "5",
+            "nlink": 2,
+            "size": 40,
+            "type": "dir"
+          }
+        },
+        "nlink_after": 1,
+        "nlink_before": 1,
+        "reference_after": {
+          "dev": "137",
+          "ino": "4",
+          "nlink": 1,
+          "size": 30,
+          "type": "reg"
+        },
+        "reference_before": {
+          "dev": "137",
+          "ino": "4",
+          "nlink": 1,
+          "size": 30,
+          "type": "reg"
+        },
+        "shared_identity": []
+      },
+      "verdict": {
+        "c1_identity_shared": false,
+        "outcome": "declined",
+        "reason": "failed to extract tar to /work/extract/d: link /work/extract/d/outside/sentinel.txt /work/extract/d/evil: no such file or directory"
+      }
+    }
+  },
+  "roles": {
+    "affected": "2.6.1",
+    "fixed": "2.6.2"
+  }
+}

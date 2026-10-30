@@ -360,11 +360,12 @@ InodeFence는 coding agents를 적극 활용하는 **AI-assisted development** �
 
 ```text
 Issue → Task Contract → Branch → Human / Coding Agent implementation
-→ make check → PR → CI → Human Review → Merge
+→ make check → PR → CI → Review (verifier agent or human) → Squash Merge
 ```
 
-AI가 작성했거나 CI를 통과했다는 이유만으로 자동 merge하지 않습니다.
-사람이 architecture 판단, 모듈 책임과 연구 가정을 이해하고 리뷰해야 합니다.
+CI 통과만으로 merge하지 않습니다. architecture 경계·모듈 책임·연구 규칙 검토(autoloop verifier 또는 사람)를
+통과한 PR은 작성자가 직접 squash merge합니다. 머지는 사람 게이트가 아닙니다(D035).
+oracle 판정을 바꾸는 BREAKING 변경, 가드·격리 설정, FROZEN 변경, 외부 공개만 사람이 결정합니다.
 코딩 에이전트는 `START_HERE → STATUS → AGENTS` 순서로 문맥을 확인하고 현재 Layer 범위에서 작업합니다.
 협업 규칙은 [CONTRIBUTING.md](CONTRIBUTING.md)와 [AGENTS.md](AGENTS.md)를 따릅니다.
 

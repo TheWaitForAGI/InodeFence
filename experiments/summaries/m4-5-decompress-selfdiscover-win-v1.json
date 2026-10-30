@@ -1,0 +1,724 @@
+{
+  "arch_disclosure": "x86_64 (this host); the paired mac control runs arm64. decompress cross-arch byte-identity is NOT claimed -- arch is a disclosed variable.",
+  "architecture": "x86_64",
+  "arm_contrast_note": "A3-vs-A1 is a mechanism contrast over a small sample, not a rate or superiority claim; generality != self-discovery != effectiveness (EN-008)",
+  "arms": {
+    "A1-random": {
+      "by_contract": {
+        "C0": {
+          "censored": [
+            {
+              "budget": 1500,
+              "seed": 504
+            },
+            {
+              "budget": 1500,
+              "seed": 505
+            }
+          ],
+          "censoring": "no-hit right-censored at recorded budget (> N); no imputed hit index",
+          "classification": "single-arm-right-censored-control",
+          "comparison": "single-arm control; no baseline comparison here, so no effectiveness or superiority claim (audit EN-008)",
+          "first_hit_executions_observed_only": {
+            "max": 786,
+            "min": 74,
+            "population": "runs_with_observation_only",
+            "unit": "one_based_execution_count",
+            "values": [
+              74,
+              104,
+              109,
+              327,
+              389,
+              464,
+              625,
+              786
+            ]
+          },
+          "incomplete_seeds": [],
+          "interpretation": "states only whether this arm reached the target under the budget; a no-hit is not proof the target is unreachable, only that it was not observed within budget",
+          "number_complete_campaigns": 10,
+          "number_incomplete_excluded": 0,
+          "number_observed_target": 8,
+          "number_right_censored": 2,
+          "observed_proportion": {
+            "denominator": 10,
+            "numerator": 8,
+            "value": 0.8,
+            "wilson_95_ci": [
+              0.4901624715366418,
+              0.9433178485456248
+            ]
+          },
+          "schema_version": 1
+        },
+        "C1": {
+          "censored": [
+            {
+              "budget": 1500,
+              "seed": 500
+            },
+            {
+              "budget": 1500,
+              "seed": 501
+            },
+            {
+              "budget": 1500,
+              "seed": 502
+            },
+            {
+              "budget": 1500,
+              "seed": 503
+            },
+            {
+              "budget": 1500,
+              "seed": 504
+            },
+            {
+              "budget": 1500,
+              "seed": 505
+            },
+            {
+              "budget": 1500,
+              "seed": 506
+            },
+            {
+              "budget": 1500,
+              "seed": 507
+            },
+            {
+              "budget": 1500,
+              "seed": 508
+            },
+            {
+              "budget": 1500,
+              "seed": 509
+            }
+          ],
+          "censoring": "no-hit right-censored at recorded budget (> N); no imputed hit index",
+          "classification": "single-arm-right-censored-control",
+          "comparison": "single-arm control; no baseline comparison here, so no effectiveness or superiority claim (audit EN-008)",
+          "first_hit_executions_observed_only": {
+            "max": null,
+            "min": null,
+            "population": "runs_with_observation_only",
+            "unit": "one_based_execution_count",
+            "values": []
+          },
+          "incomplete_seeds": [],
+          "interpretation": "states only whether this arm reached the target under the budget; a no-hit is not proof the target is unreachable, only that it was not observed within budget",
+          "number_complete_campaigns": 10,
+          "number_incomplete_excluded": 0,
+          "number_observed_target": 0,
+          "number_right_censored": 10,
+          "observed_proportion": {
+            "denominator": 10,
+            "numerator": 0,
+            "value": 0.0,
+            "wilson_95_ci": [
+              0.0,
+              0.27753279986288926
+            ]
+          },
+          "schema_version": 1
+        },
+        "C2": {
+          "censored": [
+            {
+              "budget": 1500,
+              "seed": 500
+            },
+            {
+              "budget": 1500,
+              "seed": 501
+            },
+            {
+              "budget": 1500,
+              "seed": 502
+            },
+            {
+              "budget": 1500,
+              "seed": 503
+            },
+            {
+              "budget": 1500,
+              "seed": 504
+            },
+            {
+              "budget": 1500,
+              "seed": 505
+            },
+            {
+              "budget": 1500,
+              "seed": 506
+            },
+            {
+              "budget": 1500,
+              "seed": 507
+            },
+            {
+              "budget": 1500,
+              "seed": 508
+            },
+            {
+              "budget": 1500,
+              "seed": 509
+            }
+          ],
+          "censoring": "no-hit right-censored at recorded budget (> N); no imputed hit index",
+          "classification": "single-arm-right-censored-control",
+          "comparison": "single-arm control; no baseline comparison here, so no effectiveness or superiority claim (audit EN-008)",
+          "first_hit_executions_observed_only": {
+            "max": null,
+            "min": null,
+            "population": "runs_with_observation_only",
+            "unit": "one_based_execution_count",
+            "values": []
+          },
+          "incomplete_seeds": [],
+          "interpretation": "states only whether this arm reached the target under the budget; a no-hit is not proof the target is unreachable, only that it was not observed within budget",
+          "number_complete_campaigns": 10,
+          "number_incomplete_excluded": 0,
+          "number_observed_target": 0,
+          "number_right_censored": 10,
+          "observed_proportion": {
+            "denominator": 10,
+            "numerator": 0,
+            "value": 0.0,
+            "wilson_95_ci": [
+              0.0,
+              0.27753279986288926
+            ]
+          },
+          "schema_version": 1
+        }
+      },
+      "fail_closed_aborts": {
+        "count": 0,
+        "note": "infrastructure-incomplete (observation-integrity STOP), excluded from the complete-campaign denominator and reported separately (evaluation-protocol-v1)",
+        "reasons": [],
+        "seeds": []
+      },
+      "is_state_aware_not_blind": false,
+      "mechanism": {
+        "campaigns": 10,
+        "eligible_observations_total": 15000,
+        "note": "mechanism tally over a small sample; not a rate or effectiveness claim (EN-008)",
+        "retained_cases_by_seed": {
+          "500": 690,
+          "501": 777,
+          "502": 784,
+          "503": 740,
+          "504": 840,
+          "505": 630,
+          "506": 805,
+          "507": 662,
+          "508": 873,
+          "509": 782
+        },
+        "seeds": [
+          500,
+          501,
+          502,
+          503,
+          504,
+          505,
+          506,
+          507,
+          508,
+          509
+        ],
+        "terminations_total": {
+          "rejected": 8625,
+          "success": 6375
+        },
+        "unique_attempt_keys_by_seed": {
+          "500": 10,
+          "501": 12,
+          "502": 11,
+          "503": 11,
+          "504": 12,
+          "505": 13,
+          "506": 10,
+          "507": 10,
+          "508": 12,
+          "509": 11
+        },
+        "unique_attempt_keys_total": 112,
+        "unique_violation_fingerprints_total": 23
+      },
+      "right_censored": {
+        "censored": [
+          {
+            "budget": 1500,
+            "seed": 504
+          },
+          {
+            "budget": 1500,
+            "seed": 505
+          }
+        ],
+        "censoring": "no-hit right-censored at recorded budget (> N); no imputed hit index",
+        "classification": "single-arm-right-censored-control",
+        "comparison": "single-arm control; no baseline comparison here, so no effectiveness or superiority claim (audit EN-008)",
+        "first_hit_executions_observed_only": {
+          "max": 786,
+          "min": 74,
+          "population": "runs_with_observation_only",
+          "unit": "one_based_execution_count",
+          "values": [
+            74,
+            104,
+            109,
+            327,
+            389,
+            464,
+            625,
+            786
+          ]
+        },
+        "incomplete_seeds": [],
+        "interpretation": "states only whether this arm reached the target under the budget; a no-hit is not proof the target is unreachable, only that it was not observed within budget",
+        "number_complete_campaigns": 10,
+        "number_incomplete_excluded": 0,
+        "number_observed_target": 8,
+        "number_right_censored": 2,
+        "observed_proportion": {
+          "denominator": 10,
+          "numerator": 8,
+          "value": 0.8,
+          "wilson_95_ci": [
+            0.4901624715366418,
+            0.9433178485456248
+          ]
+        },
+        "schema_version": 1
+      },
+      "right_censored_any_contract": {
+        "censored": [
+          {
+            "budget": 1500,
+            "seed": 504
+          },
+          {
+            "budget": 1500,
+            "seed": 505
+          }
+        ],
+        "censoring": "no-hit right-censored at recorded budget (> N); no imputed hit index",
+        "classification": "single-arm-right-censored-control",
+        "comparison": "single-arm control; no baseline comparison here, so no effectiveness or superiority claim (audit EN-008)",
+        "first_hit_executions_observed_only": {
+          "max": 786,
+          "min": 74,
+          "population": "runs_with_observation_only",
+          "unit": "one_based_execution_count",
+          "values": [
+            74,
+            104,
+            109,
+            327,
+            389,
+            464,
+            625,
+            786
+          ]
+        },
+        "incomplete_seeds": [],
+        "interpretation": "states only whether this arm reached the target under the budget; a no-hit is not proof the target is unreachable, only that it was not observed within budget",
+        "number_complete_campaigns": 10,
+        "number_incomplete_excluded": 0,
+        "number_observed_target": 8,
+        "number_right_censored": 2,
+        "observed_proportion": {
+          "denominator": 10,
+          "numerator": 8,
+          "value": 0.8,
+          "wilson_95_ci": [
+            0.4901624715366418,
+            0.9433178485456248
+          ]
+        },
+        "schema_version": 1
+      }
+    },
+    "A3-state-aware": {
+      "by_contract": {
+        "C0": {
+          "censored": [
+            {
+              "budget": 1500,
+              "seed": 509
+            }
+          ],
+          "censoring": "no-hit right-censored at recorded budget (> N); no imputed hit index",
+          "classification": "single-arm-right-censored-control",
+          "comparison": "single-arm control; no baseline comparison here, so no effectiveness or superiority claim (audit EN-008)",
+          "first_hit_executions_observed_only": {
+            "max": 724,
+            "min": 78,
+            "population": "runs_with_observation_only",
+            "unit": "one_based_execution_count",
+            "values": [
+              78,
+              123,
+              190,
+              259,
+              273,
+              398,
+              407,
+              724
+            ]
+          },
+          "incomplete_seeds": [
+            504
+          ],
+          "interpretation": "states only whether this arm reached the target under the budget; a no-hit is not proof the target is unreachable, only that it was not observed within budget",
+          "number_complete_campaigns": 9,
+          "number_incomplete_excluded": 1,
+          "number_observed_target": 8,
+          "number_right_censored": 1,
+          "observed_proportion": {
+            "denominator": 9,
+            "numerator": 8,
+            "value": 0.8888888888888888,
+            "wilson_95_ci": [
+              0.565000294423344,
+              0.980109112361455
+            ]
+          },
+          "schema_version": 1
+        },
+        "C1": {
+          "censored": [
+            {
+              "budget": 1500,
+              "seed": 500
+            },
+            {
+              "budget": 1500,
+              "seed": 501
+            },
+            {
+              "budget": 1500,
+              "seed": 502
+            },
+            {
+              "budget": 1500,
+              "seed": 503
+            },
+            {
+              "budget": 1500,
+              "seed": 505
+            },
+            {
+              "budget": 1500,
+              "seed": 506
+            },
+            {
+              "budget": 1500,
+              "seed": 507
+            },
+            {
+              "budget": 1500,
+              "seed": 508
+            },
+            {
+              "budget": 1500,
+              "seed": 509
+            }
+          ],
+          "censoring": "no-hit right-censored at recorded budget (> N); no imputed hit index",
+          "classification": "single-arm-right-censored-control",
+          "comparison": "single-arm control; no baseline comparison here, so no effectiveness or superiority claim (audit EN-008)",
+          "first_hit_executions_observed_only": {
+            "max": null,
+            "min": null,
+            "population": "runs_with_observation_only",
+            "unit": "one_based_execution_count",
+            "values": []
+          },
+          "incomplete_seeds": [
+            504
+          ],
+          "interpretation": "states only whether this arm reached the target under the budget; a no-hit is not proof the target is unreachable, only that it was not observed within budget",
+          "number_complete_campaigns": 9,
+          "number_incomplete_excluded": 1,
+          "number_observed_target": 0,
+          "number_right_censored": 9,
+          "observed_proportion": {
+            "denominator": 9,
+            "numerator": 0,
+            "value": 0.0,
+            "wilson_95_ci": [
+              2.7755575615628914e-17,
+              0.29914504841954404
+            ]
+          },
+          "schema_version": 1
+        },
+        "C2": {
+          "censored": [
+            {
+              "budget": 1500,
+              "seed": 500
+            },
+            {
+              "budget": 1500,
+              "seed": 501
+            },
+            {
+              "budget": 1500,
+              "seed": 502
+            },
+            {
+              "budget": 1500,
+              "seed": 503
+            },
+            {
+              "budget": 1500,
+              "seed": 505
+            },
+            {
+              "budget": 1500,
+              "seed": 506
+            },
+            {
+              "budget": 1500,
+              "seed": 507
+            },
+            {
+              "budget": 1500,
+              "seed": 508
+            },
+            {
+              "budget": 1500,
+              "seed": 509
+            }
+          ],
+          "censoring": "no-hit right-censored at recorded budget (> N); no imputed hit index",
+          "classification": "single-arm-right-censored-control",
+          "comparison": "single-arm control; no baseline comparison here, so no effectiveness or superiority claim (audit EN-008)",
+          "first_hit_executions_observed_only": {
+            "max": null,
+            "min": null,
+            "population": "runs_with_observation_only",
+            "unit": "one_based_execution_count",
+            "values": []
+          },
+          "incomplete_seeds": [
+            504
+          ],
+          "interpretation": "states only whether this arm reached the target under the budget; a no-hit is not proof the target is unreachable, only that it was not observed within budget",
+          "number_complete_campaigns": 9,
+          "number_incomplete_excluded": 1,
+          "number_observed_target": 0,
+          "number_right_censored": 9,
+          "observed_proportion": {
+            "denominator": 9,
+            "numerator": 0,
+            "value": 0.0,
+            "wilson_95_ci": [
+              2.7755575615628914e-17,
+              0.29914504841954404
+            ]
+          },
+          "schema_version": 1
+        }
+      },
+      "fail_closed_aborts": {
+        "count": 1,
+        "note": "infrastructure-incomplete (observation-integrity STOP), excluded from the complete-campaign denominator and reported separately (evaluation-protocol-v1)",
+        "reasons": [
+          "container runtime cleanup inspect failed: "
+        ],
+        "seeds": [
+          504
+        ]
+      },
+      "is_state_aware_not_blind": true,
+      "mechanism": {
+        "campaigns": 9,
+        "eligible_observations_total": 13500,
+        "note": "mechanism tally over a small sample; not a rate or effectiveness claim (EN-008)",
+        "retained_cases_by_seed": {
+          "500": 629,
+          "501": 718,
+          "502": 702,
+          "503": 710,
+          "505": 691,
+          "506": 616,
+          "507": 629,
+          "508": 547,
+          "509": 650
+        },
+        "seeds": [
+          500,
+          501,
+          502,
+          503,
+          505,
+          506,
+          507,
+          508,
+          509
+        ],
+        "terminations_total": {
+          "rejected": 11110,
+          "success": 2390
+        },
+        "unique_attempt_keys_by_seed": {
+          "500": 11,
+          "501": 15,
+          "502": 15,
+          "503": 14,
+          "505": 16,
+          "506": 13,
+          "507": 14,
+          "508": 12,
+          "509": 14
+        },
+        "unique_attempt_keys_total": 124,
+        "unique_violation_fingerprints_total": 20
+      },
+      "right_censored": {
+        "censored": [
+          {
+            "budget": 1500,
+            "seed": 509
+          }
+        ],
+        "censoring": "no-hit right-censored at recorded budget (> N); no imputed hit index",
+        "classification": "single-arm-right-censored-control",
+        "comparison": "single-arm control; no baseline comparison here, so no effectiveness or superiority claim (audit EN-008)",
+        "first_hit_executions_observed_only": {
+          "max": 724,
+          "min": 78,
+          "population": "runs_with_observation_only",
+          "unit": "one_based_execution_count",
+          "values": [
+            78,
+            123,
+            190,
+            259,
+            273,
+            398,
+            407,
+            724
+          ]
+        },
+        "incomplete_seeds": [
+          504
+        ],
+        "interpretation": "states only whether this arm reached the target under the budget; a no-hit is not proof the target is unreachable, only that it was not observed within budget",
+        "number_complete_campaigns": 9,
+        "number_incomplete_excluded": 1,
+        "number_observed_target": 8,
+        "number_right_censored": 1,
+        "observed_proportion": {
+          "denominator": 9,
+          "numerator": 8,
+          "value": 0.8888888888888888,
+          "wilson_95_ci": [
+            0.565000294423344,
+            0.980109112361455
+          ]
+        },
+        "schema_version": 1
+      },
+      "right_censored_any_contract": {
+        "censored": [
+          {
+            "budget": 1500,
+            "seed": 509
+          }
+        ],
+        "censoring": "no-hit right-censored at recorded budget (> N); no imputed hit index",
+        "classification": "single-arm-right-censored-control",
+        "comparison": "single-arm control; no baseline comparison here, so no effectiveness or superiority claim (audit EN-008)",
+        "first_hit_executions_observed_only": {
+          "max": 724,
+          "min": 78,
+          "population": "runs_with_observation_only",
+          "unit": "one_based_execution_count",
+          "values": [
+            78,
+            123,
+            190,
+            259,
+            273,
+            398,
+            407,
+            724
+          ]
+        },
+        "incomplete_seeds": [
+          504
+        ],
+        "interpretation": "states only whether this arm reached the target under the budget; a no-hit is not proof the target is unreachable, only that it was not observed within budget",
+        "number_complete_campaigns": 9,
+        "number_incomplete_excluded": 1,
+        "number_observed_target": 8,
+        "number_right_censored": 1,
+        "observed_proportion": {
+          "denominator": 9,
+          "numerator": 8,
+          "value": 0.8888888888888888,
+          "wilson_95_ci": [
+            0.565000294423344,
+            0.980109112361455
+          ]
+        },
+        "schema_version": 1
+      }
+    }
+  },
+  "classification": "m4-5-decompress-self-discovery-right-censored",
+  "combined_denominator": {
+    "combined_seed_count": 16,
+    "disjoint": true,
+    "external_seed_sets": {
+      "mac_m4_5_reserved": [
+        11,
+        85,
+        163,
+        211,
+        307,
+        401
+      ]
+    },
+    "note": "final M4.5 judgment unions mac (arm64) and windows (x86_64) seeds; this only states the denominator and checks overlap -- it does not sum the mac numbers",
+    "overlap_with_external": {
+      "mac_m4_5_reserved": []
+    },
+    "windows_seeds": [
+      500,
+      501,
+      502,
+      503,
+      504,
+      505,
+      506,
+      507,
+      508,
+      509
+    ]
+  },
+  "complete_definition": "observations == eligible_observations == execution_budget (budget filled and every step an eligible SUCCESS/REJECTED observation); otherwise infrastructure-incomplete and excluded",
+  "contract_semantics": "by_contract splits the registered any-contract hit: C0 = path-boundary confinement (the baseline contract, explicitly NOT InodeFence's novelty); C1 = object-identity confinement and C2 = external-effect noninterference (the identity/effect targets that carry the novelty). A C0 path escape is not an identity/effect discovery.",
+  "hit_definition": "registered hit = discovered_violation == any step contract_violated (generic C0/C1/C2 on before/after; oracle logic unchanged)",
+  "schema_version": 1,
+  "target": "decompress@4.2.1 AFFECTED",
+  "windows_host_seeds": [
+    500,
+    501,
+    502,
+    503,
+    504,
+    505,
+    506,
+    507,
+    508,
+    509
+  ]
+}

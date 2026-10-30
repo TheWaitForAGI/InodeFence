@@ -95,3 +95,26 @@ success 케이스(exit 0)에서 발생한 native 관찰 무결성 결함(malform
 - BACKLOG P2-c가 "엔트리포인트 존재"를 전제했으나 실제로는 없었음(벤치 데모 7.5.22 하드핀, historical은 FROZEN qualification 전용) → 엔트리포인트 전제 항목은 사전 확인 필요. 이번엔 builder가 additive로 추가해 메웠음.
 - 참고(minor): P2-b `mutator/README.md`의 escape slot RNG 소비 서술이 부정확(기능·재현성 문제 아님) — 아침 정리 시 수정 권장.
 - 남은 자원: dev container `inodefence-envprobe`가 살아있음(필요 시 `docker rm -f inodefence-envprobe`).
+
+## M4.5 decompress 자력발견 대예산 독립반복 — 윈도우 WSL2 x86_64 노드 (2026-10-31)
+
+2번째 실험 호스트(Windows + WSL2 + Docker Desktop x86_64)에서 M4.5를 실행했다. 맥 arm64 세션과 disjoint seed로 병렬.
+
+### 한 일
+- 환경: `/var/lib/inodefence`를 sudo 없이 컨테이너로 생성(RUNTIME_BASE 하드코딩), venv 활성화로 pyright 해결 → `make check` green(2146 passed).
+- 사전등록 후 실행(사후 변경 0): decompress 4.2.1 AFFECTED, A3(state-aware)/A1(random), budget 1500 × seeds{500..509} × 2 arm.
+- additive 분석도구 `scripts/analyze_m4_5_selfdiscover.py`(+테스트 11) — `evaluation/right_censored.py` Wilson 엔진 재사용, arm별 by_contract(C0/C1/C2) split, abort 스텁 infra-incomplete 처리. verifier PASS.
+
+### 결과
+- A1 random 10 complete: C0 8/10 [0.490,0.943], C1 0/10 [0,0.278], C2 0/10 [0,0.278].
+- A3 state-aware 9 complete(1 abort s504): C0 8/9 [0.565,0.980], C1 0/9 [0,0.299], C2 0/9 [0,0.299].
+- **C1/C2 양 arm 0 = 검정력 있는 정직 음성.** C0 양 arm 동률 = arm 우위 없음(C0은 identity 관찰 불요). 3-way 교차일치(#4·맥 M4.5).
+
+### 처리량 교훈 (중요)
+- 이 워크로드는 step마다 타깃 컨테이너를 새로 생성 → Docker Desktop WSL2 단일 데몬에서 직렬화. 실측 동시성 이득 conc4 2.18x·conc8 2.73x, conc10↑ 붕괴. 처음 conc16은 과구독이었고(모든 캠페인이 느리게 기어감), 노이즈 측정을 stall로 오판해 kill → conc6 재실행으로 정정.
+- "CPU 35% idle"은 Ubuntu 배포판만 잰 착시. 실작업은 `docker-desktop` VM에서 돌아 윈도우 작업관리자 호스트 CPU ~92%가 진짜. 즉 머신은 conc6에서 거의 포화 — 같은 머신 세션/데몬 추가는 무의미, 용량은 물리 호스트 수로만 증가.
+
+### 기록/통합
+- roll-up `experiments/summaries/m4-5-decompress-selfdiscover-win-v1.{json,md}` 브랜치 반입(cross-host 수거용), raw는 호스트 로컬.
+- 통합 M4.5 verdict는 C1/C2 기준 맥{11,85,163,211,307,401}+윈도우{500..509} right-censored 합산(disjoint ∅ 확인) — 맥 세션이 합산·Ledger/논문 §5.4.5 반영.
+- 미실행(deferred): 등록 {510..529}는 처리량 한계로 이번 세션 미실행; sa-s504는 2회 연속 infra abort로 영구 incomplete.

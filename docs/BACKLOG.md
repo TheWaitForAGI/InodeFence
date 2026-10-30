@@ -68,7 +68,7 @@ NOT_IMPLEMENTED이라([transition-feedback-v1](research/design/transition-feedba
 | 순서 | 태스크 | 상태 | 게이트 |
 | --- | --- | --- | --- |
 | M4.1 | oras-go adapter 설계(isolated CWD 포함), 동일 generic 모델·oracle로 연결. CVE/target-specific 로직을 generic 모듈에 섞지 않는다 | 완료(jiwoong/m4-1-oras-go-adapter) | 규민·민찬 협의 |
-| M4.2 | (감사 제안) decompress(JS; CVE-2026-39243/39246 = symlink + absolute hardlink, CWE-59) 또는 2026 CWE-59 군집(adm-zip·Archive::Tar·HF datasets·borg) 중 1개를 2번째 target으로 — 동일 generic oracle 재사용. **중간발표 포함 여부 확인필요**(앞선 기능) | 대기 | 규민·민찬 협의 |
+| M4.2 | (감사 제안) decompress(JS; CVE-2026-39243/39246 = symlink + absolute hardlink, CWE-59) 또는 2026 CWE-59 군집(adm-zip·Archive::Tar·HF datasets·borg) 중 1개를 2번째 target으로 — 동일 generic oracle 재사용. **중간발표 포함 여부 확인필요**(앞선 기능) | 완료(jiwoong/m4-2-decompress) | 규민·민찬 협의 |
 | M4.1b | (감사 전진, 완료) generic oracle 2번째 extractor 일반성: Python stdlib tarfile 통제 차분(fully_trusted=C1+C2, data=거부). `tests/test_python_tarfile_generality.py`. oracle 코드 불변·target-agnostic. **중간발표 포함 여부 확인필요** | 완료(jiwoong/p-generality-python-tarfile) | 없음 |
 
 ## 상시 (레인 담당)

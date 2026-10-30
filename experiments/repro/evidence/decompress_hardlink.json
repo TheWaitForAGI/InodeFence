@@ -1,0 +1,100 @@
+{
+  "affected_shared": true,
+  "boundary_ok": true,
+  "cve": "CVE-2026-39243",
+  "entries": [
+    {
+      "linkname": "outside/sentinel.txt",
+      "name": "evil",
+      "type": "link"
+    }
+  ],
+  "fixed_shared": false,
+  "fixture": "decompress_hardlink",
+  "per_role": {
+    "affected": {
+      "decompress_module": "decompress",
+      "decompress_version": "4.2.1",
+      "image_id": "sha256:bcb8d0b0e7f1963bbd9cf0f83dddc7d37503d2142f0116787791d80e7ba22315",
+      "raw": {
+        "declined": null,
+        "decompress_module": "decompress",
+        "extract_tree": {
+          "evil": {
+            "dev": "127",
+            "ino": "4",
+            "nlink": 2,
+            "size": 30,
+            "type": "reg"
+          }
+        },
+        "nlink_after": 2,
+        "nlink_before": 1,
+        "reference_after": {
+          "dev": "127",
+          "ino": "4",
+          "nlink": 2,
+          "size": 30,
+          "type": "reg"
+        },
+        "reference_before": {
+          "dev": "127",
+          "ino": "4",
+          "nlink": 1,
+          "size": 30,
+          "type": "reg"
+        },
+        "shared_identity": [
+          "extract/evil"
+        ]
+      },
+      "verdict": {
+        "c1_identity_shared": true,
+        "nlink_after": 2,
+        "nlink_before": 1,
+        "outcome": "resolved",
+        "shared_objects": [
+          "extract/evil"
+        ]
+      }
+    },
+    "fixed": {
+      "decompress_module": "@xhmikosr/decompress",
+      "decompress_version": "11.1.4",
+      "image_id": "sha256:4797e022eb6bb0ae2c8c70921917eef69ed6cf88090437556560ff9ecbade033",
+      "raw": {
+        "declined": {
+          "message": "ENOENT: no such file or directory, link '/work/extract/outside/sentinel.txt' -> '/work/extract/evil'"
+        },
+        "decompress_module": "@xhmikosr/decompress",
+        "extract_tree": {},
+        "nlink_after": 1,
+        "nlink_before": 1,
+        "reference_after": {
+          "dev": "127",
+          "ino": "4",
+          "nlink": 1,
+          "size": 30,
+          "type": "reg"
+        },
+        "reference_before": {
+          "dev": "127",
+          "ino": "4",
+          "nlink": 1,
+          "size": 30,
+          "type": "reg"
+        },
+        "shared_identity": []
+      },
+      "verdict": {
+        "c1_identity_shared": false,
+        "outcome": "declined",
+        "reason": "ENOENT: no such file or directory, link '/work/extract/outside/sentinel.txt' -> '/work/extract/evil'"
+      }
+    }
+  },
+  "roles": {
+    "affected": "4.2.1",
+    "fixed": "11.1.4"
+  }
+}

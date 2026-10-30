@@ -8,10 +8,17 @@
 #                    (plus <name>.steps.jsonl: steps finished so far, kept even on abort)
 #   demo-historical  effect-demo-historical: state-aware loop on a prebuilt frozen historical
 #                    node-tar effect image (catalog pair 7.5.2/7.5.3), JSON copied to the host
+#                    (plus <name>.steps.jsonl: steps finished so far, kept even on abort)
 #
 # The real target runs only inside the trusted non-root Linux controller; this host
 # script only builds images, prepares that controller and delegates through
 # scripts.container_host. It removes only the controller/volume it created itself.
+#
+# Image IDs: BuildKit's default provenance/SBOM attestations carry build timestamps, so
+# every rebuild (even fully cached) produced a new image ID and the demo report's image_id
+# differed per run. Attestations are disabled here (BUILDX_NO_DEFAULT_ATTESTATIONS=1), so a
+# rebuild from the same checkout on the same host/builder gives the same image ID. This is
+# same-host determinism only, not a cross-platform bit-for-bit claim.
 #
 # Overrides: INODEFENCE_DOCKER_CONTEXT (default: `docker context show`),
 # PYTHON (default: python3.12), INODEFENCE_EVIDENCE_DIR (default: ~/inodefence-evidence).
@@ -124,8 +131,9 @@ cleanup() {
       echo "evidence copy failed: $CONTROLLER_EVIDENCE" >&2
     fi
   fi
-  # demo: the per-step JSONL written before each next case (scripts/container_controller.py).
-  if [ "$CREATED_CONTROLLER" -eq 1 ] && [ "$MODE" = demo ] &&
+  # demo / demo-historical: the per-step JSONL written before each next case
+  # (scripts/container_controller.py), kept even when the campaign aborts.
+  if [ "$CREATED_CONTROLLER" -eq 1 ] && { [ "$MODE" = demo ] || [ "$MODE" = demo-historical ]; } &&
     dk exec "$CONTROLLER" test -e "${CONTROLLER_EVIDENCE%.json}.steps.jsonl"; then
     mkdir -p "$EVIDENCE_DIR"
     if dk cp "$CONTROLLER:${CONTROLLER_EVIDENCE%.json}.steps.jsonl" "${HOST_EVIDENCE%.json}.steps.jsonl" >/dev/null; then
@@ -168,6 +176,8 @@ if [ "$SKIP_BUILD" = 1 ]; then
 else
   step "build images"
   # Build logs are noise on a demo screen; VERBOSE=1 restores docker's full progress.
+  # No provenance/SBOM attestation manifests: same checkout + same builder => same image ID.
+  export BUILDX_NO_DEFAULT_ATTESTATIONS=1
   BUILD_FLAGS=(--quiet)
   [ "${VERBOSE:-0}" = 1 ] && BUILD_FLAGS=()
   dk build "${BUILD_FLAGS[@]}" -f "$REPO_ROOT/.devcontainer/Dockerfile" -t "$CONTROLLER_IMAGE" "$REPO_ROOT"

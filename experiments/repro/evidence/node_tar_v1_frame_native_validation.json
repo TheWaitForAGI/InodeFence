@@ -1,0 +1,42 @@
+{
+  "experiment": "node-tar v1-frame projection native end-to-end validation",
+  "purpose": "Confirm, on a REAL node-tar run (not a reference/synthetic trace), that the pipeline producer -> inodefence-boundary-attempt-v1 frame -> normalizer -> M3.1 feedback keys emits and normalizes consistently, i.e. the projection yields exactly the keys node-tar's direct M3.1 trace derivation produces.",
+  "reproduction": "make node-tar-effect-check  (host docker; runs tests/container_integration/check_node_effect_producer.py inside the N04 controller)",
+  "target": {
+    "extractor": "node-tar",
+    "producer_image": "inodefence-node-tar:local",
+    "producer_image_id": "sha256:b1600a09544f763328e7481eec746895617281bb4d29223e476f7ca1911e8d22",
+    "tar_version": "7.5.22",
+    "note": "7.5.22 is a fixed release; its containment rejects an escaping hardlink. The :7.5.x M2 images are vulnerable but carry no effect producer, so no vulnerable+producer image exists on this host."
+  },
+  "isolation": "N04 controller + disposable sandbox + sentinel; --network none, --read-only, --cap-drop ALL, non-root, tmpfs. No isolation relaxation.",
+  "observed": {
+    "checks_passed": 11,
+    "pipeline_consistency": "For every real qualification trace (regular-file, directory-metadata, hardlink-identity, symlink, duplicate-path, directory-child, independent-files, partial-rejection), boundary_attempt_frame_from_effect_trace(trace) -> frame_boundary_attempt_keys(frame) equals the direct boundary_attempt_keys(trace) | external_resolve_keys(trace), up to the frame's documented outcome coarsening (exact for SUCCEEDED link ops). Asserted inside the real-producer check; passed.",
+    "escaping_hardlink_real_trace": {
+      "case": "ArchiveCase[regular 'source'; hardlink 'hard' -> link_target '../outside/sentinel.txt']",
+      "termination": "rejected",
+      "integrity_valid": true,
+      "link_operations": [],
+      "frame_attempts": [
+        {
+          "operation": "regular",
+          "created_path": "extract/source",
+          "created_region": "extraction",
+          "target_raw": null,
+          "target_resolved_absolute": null,
+          "target_region": "n/a",
+          "aliases_external_object": false,
+          "outcome": "io_error"
+        }
+      ],
+      "boundary_feedback_keys": []
+    }
+  },
+  "finding": {
+    "pipeline_validated_observed": "The real node-tar producer -> v1 frame -> normalizer -> M3.1 key pipeline runs end-to-end on real traces, and the projection is observationally equivalent to node-tar's direct M3.1 derivation on every real trace (both empty where there is no boundary attempt).",
+    "fixed_version_rejects_pre_link_observed": "node-tar 7.5.22 rejected the escaping hardlink before any link syscall, so the producer recorded no LINK operation and no external affected path; the projection correctly yields no boundary key, consistent with the direct derivation. A recorded boundary-attempt therefore requires a version that reaches fs.link.",
+    "boundary_positive_key_not_observed_here": "A gradient-driving boundary-attempt key from a real node-tar run was NOT observed in this plumbing-consistency gate, because the only producer-carrying image is the fixed 7.5.22. It is established by composition: M2 (experiments/repro/cross_release_identity.py) shows 7.5.2 creates the escaping hardlink aliasing the external sentinel inode, and the synthetic equivalence proof (tests/test_boundary_attempt_frame_projection.py) shows the projection of such a trace yields the boundary-attempt + external-resolve keys. The observed positive key is the domain of the A/B/C/D boundary-attempt differential run on a vulnerable arm.",
+    "classification": "demo run (validation); observed vs composition-inferred distinguished above. Not a fuzzer-discovery or effectiveness claim."
+  }
+}

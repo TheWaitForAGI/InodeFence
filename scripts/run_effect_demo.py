@@ -40,6 +40,7 @@ from inodefence.targets.node_tar_effect import (
     NodeTarEffectTarget,
     archive_references,
 )
+from inodefence.targets.node_tar_recipe import demo_image_recipe
 
 NATIVE_UNAVAILABLE = (
     "native producer is not runnable from this entrypoint: "
@@ -291,6 +292,10 @@ def native_demo_report(
         node_tar_version=target.tar_version,
         node_version=target.node_version,
         image_id=image_id,
+        # Content-addressed provenance of the committed recipe this image is built
+        # from: binds the observed image_id to a reproducible "same recipe -> same
+        # build context" fingerprint (additive; no existing field changes).
+        image_recipe=demo_image_recipe(),
         native_checks=checks,
         # Wall-clock values differ per run; keep them apart from the loop record.
         timing={"total_seconds": total, "per_case": timing},

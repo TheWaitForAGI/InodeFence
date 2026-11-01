@@ -1,0 +1,142 @@
+{
+  "classification": "m3.3-powered-matched-verdict-v2-pooled",
+  "created_at": "2026-11-02",
+  "task": "M3.3 powered matched run verdict v2 — POOLED matched seeds 100-129 (v1 {100-119} + pre-registered deterministic extension {120-129}), A1 random floor vs A3full identity-feedback, node-tar 7.5.2, budget 2000; recompute Wilson CI separation at raised power.",
+  "supersedes_note": "v1 (experiments/summaries/m3-powered-matched-verdict-v1.{md,json}) reports the {100-119} slice and is PRESERVED UNCHANGED. v2 pools the pre-declared extension {120-129} onto it to raise power on the rate verdict; it does not replace v1's slice numbers.",
+  "pre_registration": {
+    "log": "docs/LOG.md 2026-10-30 12:34 (M3.3 powered matched pre-registration, incl. clause '처리량 되면 사전선언 연장 {120..129} (결정론적 다음 연속 seed, 사후선택 아님)')",
+    "tool_pr": "#187 (matched two-arm causal contrast + powered-run pre-registration)",
+    "extension_wave": "ext120-wave1 launcher ALL_DONE 2026-11-02 00:50 — complete 14/20, 6 permanent right-censored aborts (A1 s122/s124/s128, A3full s124/s126/s128); idempotent completion-wave, 3 rounds (observer-side nondeterminism, EN-008).",
+    "fixed_before_run": "arms, budget 2000, seeds 100-129 (extension pre-declared), hit = oracle.C1 && contract_violated, Wilson CI separation required for a rate claim."
+  },
+  "raw_pointers": {
+    "evidence_dir": "~/inodefence-evidence/m3-powered-matched-20261030/ (host-local; 60 cells = 2 arms x 30 seeds, .json + .steps.jsonl; {100-119} from #196 waves, {120-129} from ext120-wave1).",
+    "per_arm_pooled_summary": [
+      "A1-pooled-summary.json",
+      "A3full-pooled-summary.json"
+    ],
+    "matched_contrast_pooled": "matched-contrast-pooled.json",
+    "determiner": "scripts/determine_m3_powered_cells.py (runtime-lane clean-C1 determination; code unchanged)",
+    "analyzer": "scripts/analyze_m3_3_control.py --contrast (eval-lane Wilson roll-up; code unchanged)",
+    "v1": "experiments/summaries/m3-powered-matched-verdict-v1.{md,json} ({100-119} slice, preserved)"
+  },
+  "extension_slice_120_129": {
+    "A1": {
+      "complete_seeds": [
+        120,
+        121,
+        123,
+        125,
+        126,
+        127,
+        129
+      ],
+      "aborted_seeds": [
+        122,
+        124,
+        128
+      ],
+      "complete_campaigns": 7,
+      "right_censored_aborts": 3,
+      "complete_campaign_hits": 0,
+      "observed_trigger_seeds_in_slice": 0
+    },
+    "A3full": {
+      "complete_seeds": [
+        120,
+        121,
+        122,
+        123,
+        125,
+        127,
+        129
+      ],
+      "aborted_seeds": [
+        124,
+        126,
+        128
+      ],
+      "complete_campaigns": 7,
+      "right_censored_aborts": 3,
+      "complete_campaign_hits": 0,
+      "observed_trigger_seeds_in_slice": 0
+    },
+    "note": "7 complete null campaigns added per arm; NO new complete-campaign hit and NO new observed trigger in the extension slice — pure power addition on top of v1."
+  },
+  "slice_comparison": {
+    "v1_100_119": {
+      "shared_seeds": 20,
+      "A1": "0/12 CI[0.0, 0.2425]",
+      "A3full": "1/10 CI[0.0179, 0.4042]",
+      "ci_separated": false
+    },
+    "v2_100_129_pooled": {
+      "shared_seeds": 30,
+      "A1": "0/19 CI[0.0, 0.1682]",
+      "A3full": "1/17 CI[0.0105, 0.2698]",
+      "ci_separated": false
+    }
+  },
+  "pooled_matched_contrast_100_129": {
+    "number_shared_seeds": 30,
+    "complete_hit_wilson_intervals_separate": false,
+    "arm_a_shared": {
+      "complete_campaign_hit_seeds": [],
+      "complete_campaign_hits": 0,
+      "complete_campaigns": 19,
+      "complete_hit_rate": 0.0,
+      "complete_hit_wilson_95_ci": [
+        1.3877787807814457e-17,
+        0.16817922405261626
+      ],
+      "number_observed_trigger_seeds": 0,
+      "observed_trigger_seeds": [],
+      "shared_seeds": 30,
+      "total_observed_clean_exact_c1": 0
+    },
+    "arm_b_shared": {
+      "complete_campaign_hit_seeds": [
+        101
+      ],
+      "complete_campaign_hits": 1,
+      "complete_campaigns": 17,
+      "complete_hit_rate": 0.058823529411764705,
+      "complete_hit_wilson_95_ci": [
+        0.010460400984997592,
+        0.26982030637575405
+      ],
+      "number_observed_trigger_seeds": 2,
+      "observed_trigger_seeds": [
+        101,
+        118
+      ],
+      "shared_seeds": 30,
+      "total_observed_clean_exact_c1": 66
+    },
+    "matched_discordant": {
+      "arm_a_only_observed_trigger_seeds": [],
+      "arm_b_only_observed_trigger_seeds": [
+        101,
+        118
+      ],
+      "both_observed_trigger_seeds": []
+    },
+    "A1_observed_executions": 46353,
+    "A3full_observed_executions": 47263
+  },
+  "verdict": {
+    "rate_superiority_ci_separated": false,
+    "A1_complete_hit": "0/19 (Wilson95 [0.0, 0.1682])",
+    "A3full_complete_hit": "1/17 at seed s101, first clean exact C1 at 1-based execution 1720/2000 (Wilson95 [0.0105, 0.2698])",
+    "A3full_observed_triggers": "s101 (complete hit) and s118 (65 clean exact C1 pre-abort = observed trigger, not a complete hit); both fall in the {100-119} slice, NONE new in the {120-129} extension",
+    "power_change_from_v1": "the pre-declared extension {120-129} added 7 complete null campaigns to EACH arm (A1 12->19, A3full 10->17 complete campaigns), tightening both Wilson intervals (A3full upper 0.404->0.27, A1 upper 0.242->0.168) and lowering the A3full point estimate (0.1->0.059); the intervals remain OVERLAPPING, so rate superiority is still NOT CI-separated. Adding null campaigns cannot by itself separate the intervals.",
+    "mechanism_generalization": "unchanged from v1 — identity feedback produced autonomous clean exact C1 at disjoint seeds s101 (complete) and s118 (pre-abort), beyond the single historical seed s11; matched random floor A1 produced 0 clean exact C1 over 19 complete campaigns. Matched discordant observed-triggers 2-0 for A3full (s101, s118; 0 for A1).",
+    "rate_statement": "complete-campaign clean-C1 rate point estimate still favors identity feedback (0.059 vs 0.0) but the matched Wilson 95% intervals OVERLAP at n=30 matched seeds; rate superiority NOT CI-separated. Honest pre-registered negative (audit EN-008: a point-count/point-estimate difference is not a rate claim).",
+    "claim_mapping": {
+      "C-M3a": "unchanged — STRENGTHENED: the causal mechanism reproduces at multiple disjoint seeds under a pre-registered matched contrast (not a single-seed artifact); blind-aware, not blind discovery.",
+      "C-M3b": "pre-registered verdict at RAISED power (n=30 matched): rate superiority still NOT CI-separated (underpowered for a ~0.06 effect). Remains exploratory / not a main claim; main claims stay C-M2 + C-M3a."
+    },
+    "recommendation": "CI still overlap at n=30 -> still underpowered. Pre-registered next step is the deterministic continuous extension {130..149} (not post-hoc selected). HOWEVER a power note: separating a ~0.06 rate from 0 at 95% Wilson needs roughly n>=100 complete matched campaigns per arm with hits accumulating near 0.06 in A3full and 0 in A1; a single +20-seed extension (~+14 completes/arm) will not separate them unless A3full picks up several new complete-campaign hits. Recommended: record this as the honest pre-registered rate negative and keep the main claims C-M2 + C-M3a; pursue {130..149} only if the team wants to keep chipping at power with that cost understood.",
+    "research_invariants": "observed (s101 complete C1, s118 pre-abort C1, A1 0 across all complete campaigns) vs inferred (causal direction favors identity feedback) kept strictly separate; no CVE/answer-path/sentinel hardcoding; EN-008 respected; arm definitions byte-identical to v1 / m3-scale-full / m3-ablation / m3-3-control; extension seeds {120-129} pre-declared deterministic (LOG 2026-10-30 12:34), not post-hoc selected."
+  }
+}

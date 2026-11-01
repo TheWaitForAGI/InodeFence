@@ -39,5 +39,6 @@ s11 run은 step 416에서 evidence-integrity 검사로 abort(returncode 1)하지
 
 세 바닥(A3blind s11 = 0 · A1 random floor = 0) 대비 A3full s11 = 21이 보이는 것은 **"object-identity
 관찰(feedback)이 없으면 도달 불가, 있으면 도달"**이라는 **인과**다. 이는 **rate 우위가 아니다**
-(§5.3.3은 PENDING). 자율 트리거는 seed-rare이고 **blind 발견이 아니다**(퍼저는 외부 객체 이름을
-관찰로 얻는다; 하드코딩 없음, §5.3.2).
+(§5.3.3 powered 판정: 매칭 Wilson CI 미분리). 자율 트리거는 이 그림의 budget 1500·seed 1–65에선
+s11 하나(seed-rare)이나 powered 런에서 신규 disjoint seed s101로 재현돼 멀티-seed로 강화됐고,
+**blind 발견이 아니다**(퍼저는 외부 객체 이름을 관찰로 얻는다; 하드코딩 없음, §5.3.2).

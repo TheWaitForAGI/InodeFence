@@ -105,20 +105,28 @@ state-aware A3full s11만 21. 즉 **"feedback(identity 관찰)이 발견을 가�
 - **rate 우위가 아니다.** 이 소절의 주장은 **인과**("feedback이 발견을 가능케 함")이지 "상태-인지
   feedback이 무작위보다 빠르다/많이 찾는다"가 아니다(§5.3.3).
 
-### 5.3.3 rate 우위 판정 — PENDING
+### 5.3.3 rate 우위 판정 — 사전등록 판정: CI 미분리(검정력 부족)
 
-동일 budget·seed 매칭 대조로 **rate 우위**(상태-인지 feedback이 무작위보다 더 빨리/많이 C1을
-찾는가)를 판정하는 작업이 진행 중이다.
+동일 budget·신규 disjoint seed 매칭 대조로 **rate 우위**(상태-인지 feedback이 무작위보다 더
+빨리/많이 C1을 찾는가)를 사전등록 후 판정했다([powered verdict](../../experiments/summaries/m3-powered-matched-verdict-v1.md)).
 
-- **지금까지 observed (인과 대조, rate 아님):** A1 random control은 budget 2000에서 clean exact C1
-  **0/12 seed**(완주 7 seed 0/7, Wilson 95% CI [0, 0.354]; 5 seed는 fail-closed abort로 denominator
-  제외, 각 abort 전 0 observed; 총 ~20,163 exec). effect-path A3full은 budget 1500에서 s11=21.
-  이 둘은 **random floor=0 vs feedback s11=21의 인과 대조**일 뿐이며, **budget이 다르고(2000 vs
-  1500) CI가 넓어 rate 판정이 아니다.**
-- **PENDING — powered run 진행 중, 결과 후속 PR에서 채움.** 동일 budget(2000)에서 **powered matched
-  A1 vs A3full** 독립 반복(네이티브 런)이 아직 끝나지 않았다. 들어갈 지표 자리: matched seed별
-  executions-to-first-C1(right-censored), clean exact C1 hit 수/denominator, arm별 Wilson 95% CI,
-  A3full vs A1 대조의 effect size. **네이티브 런이 끝나지 않았으므로 이 수치를 추측해 적지 않는다.**
+- **설정(사전등록, 실행 전 고정):** A1 random floor vs A3full state-aware, node-tar 7.5.2 frozen
+  overlay, **동일 budget 2000**, 기존 전부와 disjoint한 seed {100..119}(20개). hit = 한 step에서
+  `oracle.C1 && feedback.contract_violated`(clean exact C1). rate 주장은 Wilson 95% CI 분리를
+  요구한다(점추정 차이는 rate 아님, EN-008).
+- **결과(observed):** A3full은 완주 10 campaign 중 **1 complete hit** — 신규 disjoint seed **s101**에서
+  clean exact C1(1-based 실행 1720/2000) + s118이 abort 전 65건 관찰(observed-trigger, complete hit
+  아님). A1은 완주 12 campaign 중 **0 complete hit**. 매칭 대조 Wilson 95% CI: A3full 1/10
+  **[0.018, 0.404]** vs A1 0/12 **[0, 0.242]** → **겹침**(`complete_hit_wilson_intervals_separate=False`).
+- **판정:** 완주 clean-C1 rate 점추정은 identity feedback 쪽(0.10 vs 0.00)이나 **매칭 Wilson 구간이
+  겹쳐 rate 우위는 CI로 분리되지 않는다** — ~0.1 효과에 대해 이 예산·seed 수로는 검정력이 부족하다.
+  rate 우위는 여전히 **미입증**이며 이 논문의 주 주장이 아니다.
+- **단, 메커니즘은 멀티-seed로 강화된다(§5.3.2 보강).** §5.3.2의 자율 트리거는 budget 1500·seed
+  1–65에서 s11 하나였으나, 이 powered 런은 **기존과 disjoint한 새 seed s101**(완주 C1)과 s118
+  (observed-trigger)에서 identity feedback 경유 자율 C1을 재현했다. 즉 "object-identity 관찰이 발견을
+  가능케 한다"는 인과 명제는 단일 seed 아티팩트가 아니라 **여러 disjoint seed에서 성립**한다. CI
+  분리된 rate 주장은 사람-게이트 대예산 pilot(M3.4: N01 qualification 토큰·timeout 동결 선행)이
+  필요하다.
 
 ### 5.3.4 (보조·탐색적) item-3 단일경로 A/B/C/D 중간상태 거동
 
@@ -165,14 +173,38 @@ feasible set-based frame 채널을 쓴다(node-tar의 ordered per-op보다 좁�
   feedback 조향) 그러나 exact 경계위반에 미도달.
 - **inferred:** exact 자력발견은 budget/seed-rare(node-tar M3와 정합 — budget 100=0, 자율 트리거는
   budget 1500+특정 seed). arm 차분(A3 11 > A1 8)은 1-seed라 검정력이 없다(EN-008, rate/effectiveness
-  아님) → autoloop 7.1상 **미판정**.
+  아님) → autoloop 7.1상 당시 **미판정**이었고, §5.4.3의 powered 통합 반복에서 검정력 있게 판정한다.
 
-### 5.4.3 decompress powered 판정 — PENDING
+### 5.4.3 decompress powered 판정 — 검정력 있는 정직 음성
 
-- **PENDING — powered run 진행 중, 결과 후속 PR에서 채움.** M4.4가 검정력 없는 음성이므로, 더
-  큰 사전고정 예산·복수 seed로 독립 반복해 양성/정직 음성을 검정력 있게 판정하는 run(M4.5)이
-  진행 중이다. 들어갈 지표 자리: 사전등록 예산·seed, right-censored roll-up(Wilson 95% CI),
-  A3 vs A1 대조, hit = generic C1/C2. **런이 끝나지 않았으므로 이 수치를 추측해 적지 않는다.**
+M4.4의 검정력 없는 음성을 더 큰 사전고정 예산·복수 seed로 독립 반복해 판정했다. 맥(arm64)과
+윈도우(x86_64) 두 아키텍처에서 각각 실행한 결과를 right-censored로 합산한
+[통합 verdict](../../experiments/summaries/m4-5-decompress-selfdiscover-unified-v1.md)다.
+
+- **설정(사전등록):** 실제 decompress 4.2.1 AFFECTED, production backend(격리계약·완화 플래그 0),
+  A1 random vs A3 state-aware. 윈도우 seed {500..509}, 맥 seed {11,85,163,211,307,401}(교집합 ∅).
+- **결과(observed):** 양 arm **C1/C2 0/14**(Wilson 95% CI [0, 0.215]), 맥+윈도우 pooled
+  **0/28 (Wilson 95% CI ≤ 0.121) = 검정력 있는 정직 음성**. C0(path-boundary)는 **12/14** 자력도달
+  하나 arm 우위는 없다(C0은 identity 관찰 불요). 교차-arch 바이트동일은 주장하지 않는다.
+- **판정:** 2번째 extractor에서 자력발견 루프는 **기능 작동**하고 path-boundary(C0)를 자력도달하나,
+  identity/effect 경계위반(C1/C2)은 이 예산에서 미도달이다(node-tar M3 seed-rare와 정합). 이는
+  **generality(oracle/adapter)≠self-discovery(루프 작동)≠effectiveness(발견)**의 구분을 지킨 음성
+  결과이며 effectiveness 주장이 아니다.
+
+### 5.4.4 3번째 extractor (oras-go) 자력발견 native run — right-censored 음성 (observed)
+
+oras-go(Go, compiled 3rd-party)를 effect 캠페인 퍼즈 타깃으로 연결해 native run을 실행했다
+([M4.7 요약](../../experiments/summaries/m4-7-oras-go-selfdiscover-v1.md)). compiled 바이너리라
+link call interpose가 불가해 post-extraction 상태 SET 채널에서 `inodefence-boundary-attempt-v1`
+frame을 파생한다(decompress의 fs-wrap보다 좁다).
+
+- **설정(사전등록):** 실제 oras-go v2.6.1 AFFECTED, production backend(격리 완화 0), budget 200 ×
+  seed 11 × 2 arm(A3/A1).
+- **결과(observed):** 양 arm **C0/C1/C2 0/1**(Wilson 95% CI [0, 0.793]) = right-censored 음성.
+  compiled 채널이라 attempt-key가 양 arm 0이고 arm 우위도 없다. budget 200·1 seed라 **검정력이
+  약한** 음성이다(과대주장 없음).
+- **판정:** 3번째 독립 extractor에서도 자력발견 effectiveness는 음성이다. generality=oracle/adapter
+  수준(§5.4.1)이며 self-discovery 루프는 작동하나 발견은 미도달.
 
 ## 5.5 Capability Ledger 요약
 

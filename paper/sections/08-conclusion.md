@@ -8,8 +8,9 @@ identity oracle이 릴리스 id·정답 경로 하드코딩 없이 두 root-caus
 발견에 도달하지 못하고 **있으면** 도달한다는 인과를 blind 대조로 보이고, (M4) 동일 generic oracle이
 3개 독립 extractor에 oracle/adapter 수준으로 target-agnostic하게 적용된다.
 
-열려 있는 것도 분명히 한다: 상태-인지 feedback의 **rate 우위**(§5.3.3)와 2번째 extractor의 **powered
-자력발견 판정**(§5.4.3)은 독립 반복이 끝나야 판정 가능하며 현재 **PENDING**이다. 자율 트리거는
-seed-rare이고 blind 발견이 아니며, 참신성은 검증 대상 가설로 둔다. 이 드래프트는 가설의 메커니즘이
-실제로 발견을 구동함을 보이는 지점까지의 정직한 보고이고, 효율·일반성의 정량 판정은 후속 PR에서
-채운다.
+판정한 것도 분명히 한다: 상태-인지 feedback의 **rate 우위**(§5.3.3)와 2·3번째 extractor의 **powered
+자력발견**(§5.4.3–5.4.4)은 사전등록 후 판정했고 **모두 효과 우위를 보이지 않았다** — rate는 매칭
+Wilson CI가 겹쳐 미분리(단 신규 seed s101로 메커니즘이 멀티-seed로 강화), decompress·oras-go
+자력발견은 검정력 있는/약한 음성이다. blind 발견이 아니며, 참신성은 검증 대상 가설로 둔다. 이
+드래프트는 가설의 메커니즘이 실제로 발견을 구동함을 보이되 효율·발견 effectiveness는 이 예산에서는
+입증되지 않았다는 정직한 보고다.

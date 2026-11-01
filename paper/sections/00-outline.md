@@ -16,7 +16,8 @@ Capability Ledger)로 추적 가능하다.
 이 드래프트의 **주 주장은 두 개**다: (M2) 하나의 generic identity oracle이 릴리스 id·정답 경로
 하드코딩 없이 두 root-cause를 통제 차분으로 포착한다(observed), (M3) 영향 릴리스에서 object-identity
 관찰이 자율 경계위반 발견을 **인과적으로 가능케 한다**(blind 대조; 없으면 도달 불가). **rate 우위
-(상태-인지 feedback이 무작위보다 빠르다/많이 찾는다)는 주 주장이 아니라 보조이며 현재 미판정이다.**
+(상태-인지 feedback이 무작위보다 빠르다/많이 찾는다)는 주 주장이 아니라 보조이며, powered 매칭 판정
+결과 Wilson CI가 겹쳐 미분리다(검정력 부족; 단 신규 seed s101로 메커니즘은 멀티-seed로 강화).**
 참신성은 확정 사실이 아니라 검증 대상 가설로 두고, "최초/새로운/기존연구에 없음" 류 표현은 쓰지 않는다.
 
 ## 읽는 순서
@@ -43,13 +44,16 @@ Capability Ledger)로 추적 가능하다.
 ## 상태 범례
 
 - **paper-ready**: 증거 사슬이 raw까지 끊김 없이 닿는 확정 주장.
-- **PENDING**: powered 독립 반복이 아직 진행 중이라 수치를 비워 둔 소절. 해당 수치를 추측해 적지
-  않으며, 결과가 사슬에 닿은 뒤 후속 PR에서 채운다.
+- **판정 완료(음성/미분리)**: 아래 소절은 powered 독립 반복으로 사전등록 후 판정됐고, 결과는
+  음성 또는 CI 미분리다. 효과 우위 주장이 아니며, 음성도 그대로 보고한다.
 
-### 현재 PENDING 소절
+### powered 판정 결과 소절
 
-- [Results §5.3.3 rate 판정](06-results.md) — M3 powered matched A1 vs A3full (동일 budget 2000) rate 판정.
-- [Results §5.4.3 decompress powered 판정](06-results.md) — M4.5 decompress 자력발견 대예산 독립 반복 판정.
+- [Results §5.3.3 rate 판정](06-results.md) — M3 powered matched A1 vs A3full(동일 budget 2000,
+  disjoint seed {100..119}): **CI 미분리(검정력 부족)**, 단 s101 신규 seed로 메커니즘 멀티-seed 강화.
+- [Results §5.4.3 decompress powered 판정](06-results.md) — M4.5 decompress 맥+윈도우 통합:
+  **0/28 검정력 있는 음성**(Wilson ≤0.121).
+- [Results §5.4.4 oras-go native](06-results.md) — M4.7: **0/1 약한 음성**(Wilson [0,0.793]).
 
 ## 형식 메모
 

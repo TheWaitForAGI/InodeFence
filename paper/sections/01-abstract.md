@@ -26,7 +26,9 @@ InodeFence는 TAR archive extraction의 보안 경계위반 탐색에서, 고정
 트리거는 이 예산(budget 1500)에서 65 seed 중 1개로 **seed-rare**이며, 이것은 **blind 발견이 아니다**
 (기존 외부 객체에 하드링크하려면 그 이름이 필요하고 퍼저는 그것을 관찰로 얻는다; 어휘·oracle에
 대상 경로·식별자·정답 seed·근접 보상을 하드코딩하지 않았고 EXTERNAL 필터는 region 기준
-target-agnostic이다). rate 우위 판정(동일 budget powered matched A1 vs A3full)과 2번째 extractor의
-powered 자력발견 판정은 **PENDING**(독립 반복 진행 중)이며, 이 드래프트는 그 수치를 추측해 적지
-않는다. 관련 선행연구(Jana & Shmatikov, ZIPDiff, LinkZard, Wormholes)와의 중첩을 명시하고
+target-agnostic이다). rate 우위 판정(동일 budget powered matched A1 vs A3full)과 2·3번째 extractor의
+powered 자력발견 판정은 사전등록 후 수행했고 **모두 효과 우위를 보이지 않았다**: rate는 매칭 Wilson
+CI가 겹쳐 **미분리**(검정력 부족)이나 신규 disjoint seed s101에서 메커니즘이 재현돼 멀티-seed로
+강화됐고, 2번째(decompress 통합 0/28)·3번째(oras-go 0/1) extractor 자력발견은 **검정력 있는/약한
+음성**이다. 관련 선행연구(Jana & Shmatikov, ZIPDiff, LinkZard, Wormholes)와의 중첩을 명시하고
 "최초 / 기존연구에 없음" 류 주장은 하지 않는다.

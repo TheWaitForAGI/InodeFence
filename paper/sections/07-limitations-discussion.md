@@ -2,11 +2,13 @@
 
 이 절은 §5의 결과가 **무엇을 주장하지 않는지**를 명시한다. 한계를 숨기면 증거 사슬이 끊긴다.
 
-## 6.1 M3 rate 우위는 미판정
+## 6.1 M3 rate 우위는 CI 미분리(사전등록 판정)
 
-- **rate 우위 열림.** 이 드래프트의 M3 주장은 **인과**("object-identity 관찰이 발견을 가능케 함")이고,
-  "상태-인지 feedback이 무작위보다 빠르다/많이 찾는다"는 **rate 우위는 아직 판정하지 않았다**(§5.3.3).
-  동일 budget powered matched A1 vs A3full 독립 반복이 끝나야 판정 가능하다(PENDING).
+- **rate 우위 CI 미분리.** 이 드래프트의 M3 주장은 **인과**("object-identity 관찰이 발견을 가능케 함")이고,
+  "상태-인지 feedback이 무작위보다 빠르다/많이 찾는다"는 **rate 우위는 CI로 분리되지 않았다**(§5.3.3).
+  동일 budget powered matched A1 vs A3full(disjoint seed {100..119})을 사전등록 후 판정한 결과 A3full
+  1/10 vs A1 0/12로 매칭 Wilson CI가 겹친다(~0.1 효과 검정력 부족). CI 분리는 사람-게이트 대예산
+  pilot(M3.4)이 필요하다.
 - **seed-rare.** 자율 C1 트리거는 budget 1500·65 seed 중 s11 하나뿐이다(재현 0/30). 정답이 사실상
   한 점(좁은 구성)이고 final-state C1/C2 oracle이 all-or-nothing이라 adaptive 탐색에 gradient가 거의
   없기 때문이다. 따라서 정책 간 rate 차이를 검출할 **검정력이 현재 없다.**
@@ -19,9 +21,10 @@
 
 - **oracle/adapter 일반성 ≠ 자력발견 일반성.** §5.4.1의 3-extractor 적용은 oracle/adapter 수준의
   target-agnostic성 증거이지, 2번째 extractor에서 fuzzer가 스스로 위반을 찾는다는 주장이 아니다.
-- **decompress 자력발견 음성.** M4.4 native run은 양 arm 0 C1/C2(right-censored 음성)다. 루프는
-  기능 작동하나 exact 위반에 미도달했고, 1-seed 검정력 없는 음성이라 **미판정**이다(powered 반복은
-  §5.4.3 PENDING).
+- **자력발견 음성(2·3번째 extractor).** decompress 통합 판정(§5.4.3)은 맥+윈도우 pooled C1/C2 0/28
+  (Wilson≤0.121)로 **검정력 있는 음성**, oras-go(§5.4.4)는 0/1로 **약한 음성**이다. 루프는 기능
+  작동하고 path-boundary(C0)는 자력도달하나 identity/effect 위반은 이 예산에서 미도달이다. 이는
+  generality≠self-discovery≠effectiveness 구분을 지킨 음성이다.
 
 ## 6.3 blind 발견 아님 (반드시 disclose)
 
@@ -58,5 +61,6 @@ M3의 자율 발견은 **blind 발견이 아니다.** 기존 외부 객체에 �
 통제 차분으로 포착하고(M2), 그 oracle이 평가하는 바로 그 object-identity 관찰이 **없으면** 자율
 경계위반 발견에 도달하지 못한다(M3 blind 대조). 이는 "filesystem-security-state를 feedback으로
 쓴다"는 가설의 **메커니즘이 실제로 발견을 구동함**을 보이는 데까지는 왔다는 뜻이며, 그 feedback이
-무작위보다 **얼마나 효율적인가**(rate)와 2번째 extractor로 **얼마나 일반화되는가**(자력발견
-effectiveness)는 powered 독립 반복(PENDING)으로 열려 있다.
+무작위보다 **얼마나 효율적인가**(rate)와 여러 extractor로 **얼마나 일반화되는가**(자력발견
+effectiveness)는 powered 독립 반복으로 판정했고 **모두 효과 우위를 보이지 않았다**(rate CI 미분리·
+decompress·oras-go 자력발견 음성). 음성·미분리도 정직한 결과로 보고한다.

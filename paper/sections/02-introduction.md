@@ -24,8 +24,8 @@ write **자체가 새롭다고 주장하지 않는다.** 이들은 선행연구�
 
 ## 1.3 정직 프레이밍 — 이 드래프트가 방어하는 것과 열어 두는 것
 
-중간 지점의 솔직한 보고로서, 이 드래프트는 **두 개의 방어 가능한 주 주장**과 **하나의 미판정
-보조 질문**을 분리한다.
+중간 지점의 솔직한 보고로서, 이 드래프트는 **두 개의 방어 가능한 주 주장**과 **하나의 보조 질문
+(사전등록 판정: rate CI 미분리)**을 분리한다.
 
 - **주 주장 A (M2, observed):** 하나의 generic identity oracle이 릴리스 id·정답 경로 하드코딩 없이
   두 root-cause를 통제 차분으로 포착한다. 이것은 "CVE 식별자를 oracle에 심지 않는다"는 연구
@@ -33,9 +33,11 @@ write **자체가 새롭다고 주장하지 않는다.** 이들은 선행연구�
 - **주 주장 B (M3, 인과):** object-identity 관찰(= 가설이 지목한 feedback)이 없으면 이 자율 경계위반
   발견에 도달하지 못하고, 있으면 도달한다. 이는 blind 대조로 입증한 **인과 명제**이지 rate 우위가
   아니다.
-- **보조 질문 (H1 effectiveness, 미판정):** 상태-인지 feedback이 무작위보다 **더 빨리/더 많이**
-  경계위반을 찾는가(rate 우위). 이 질문은 아직 검정력 있는 판정에 이르지 못했고 powered 독립
-  반복이 진행 중이라 **열어 둔다**(§5.3.3, §6).
+- **보조 질문 (H1 effectiveness, 사전등록 판정: CI 미분리):** 상태-인지 feedback이 무작위보다 **더
+  빨리/더 많이** 경계위반을 찾는가(rate 우위). powered matched 독립 반복(budget 2000, disjoint seed
+  {100..119})으로 판정한 결과 매칭 Wilson CI가 겹쳐 **rate 우위는 미입증**이다(~0.1 효과 검정력 부족;
+  단 신규 seed s101로 메커니즘은 멀티-seed로 강화). 주 주장이 아니며 CI 분리는 사람-게이트 대예산
+  pilot이 필요하다(§5.3.3, §6).
 
 ## 1.4 기여 (좁은 명제로 기술)
 
@@ -68,5 +70,5 @@ write **자체가 새롭다고 주장하지 않는다.** 이들은 선행연구�
 
 §2는 Linux filesystem semantics·TAR extraction·Security Contract(C0/C1/C2)와 threat model을 정리한다.
 §3은 선행연구와의 정직한 중첩/차별을 서술한다. §4는 루프 구조와 generic/target-specific 분리,
-object-identity feedback을 기술한다. §5는 M1–M4의 방어 가능한 결과와 PENDING 소절을 보고한다.
+object-identity feedback을 기술한다. §5는 M1–M4의 방어 가능한 결과와 powered 판정(음성·미분리) 소절을 보고한다.
 §6은 한계와 논의, §7은 결론이다.

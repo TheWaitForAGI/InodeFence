@@ -860,7 +860,7 @@
     "rate_superiority_ci_separated": false,
     "A1_complete_hit": "0/12 (Wilson95 [0, 0.242])",
     "A3full_complete_hit": "1/10 at disjoint seed s101, first clean exact C1 at 1-based execution 1720/2000 (Wilson95 [0.018, 0.404])",
-    "A3full_observed_triggers": "s101 (complete hit) and s118 (65 clean exact C1 from execution 229, campaign later fail-closed aborted = observed trigger, not a complete hit)",
+    "A3full_observed_triggers": "s101 (complete hit) and s118 (65 clean exact C1 from execution 230, campaign later fail-closed aborted = observed trigger, not a complete hit)",
     "mechanism_generalization": "identity-feedback produced autonomous clean exact C1 at NEW disjoint seeds (s101 complete, s118 pre-abort), beyond the single historical seed s11; matched random floor (A1) produced 0 clean exact C1 over 12 complete campaigns",
     "rate_statement": "complete-campaign clean-C1 rate point estimate favors identity feedback (0.10 vs 0.00) but the matched Wilson 95% intervals OVERLAP, so rate superiority is NOT CI-separated at this power; honest pre-registered outcome (audit EN-008: point-count difference is not a rate)",
     "claim_mapping": {

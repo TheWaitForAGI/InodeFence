@@ -41,7 +41,7 @@ complete-campaign hit으로 승격하지 않는다(hit은 complete 캠페인 필
 | A3full identity | 10 | 10 | **1 (s101)** | [0.018, 0.404] | s101, s118 | 66 |
 
 - **A3full s101**(완주): 첫 clean exact C1이 1-based 실행 1720/2000에서 발생. 완주 캠페인 내 자력 발견.
-- **A3full s118**(abort): 실행 229부터 clean exact C1 65건 관찰 후 실행 1020에서 fail-closed abort
+- **A3full s118**(abort): 실행 230부터 clean exact C1 65건 관찰 후 실행 1020에서 fail-closed abort
   → observed-trigger(complete hit 아님).
 - **A1**: 완주 12셀 전부 clean exact C1 0, observed-trigger 0.
 - C0(path-boundary) step은 양 arm·전 셀 0 (escape-hardlink 문법은 C1/C2 외부 identity 겨냥, C0 아님).

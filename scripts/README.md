@@ -135,6 +135,28 @@ arm을 비교한다. 결과는 `<output>/<run-id>.json`(demo 모드는 `.steps.j
 `--dry-run`은 docker 없이 계획된 매트릭스만 출력한다. 결과는 demo/engineering run이며 qualification이
 아니다. (격리 완화 플래그는 추가하지 않는다 — 가드 R3/R5.)
 
+## 클라우드 러너 플릿으로 팬아웃 (`.github/workflows/experiment-fanout.yml`)
+
+단일 호스트의 `--jobs` 상한을 넘겨 처리량을 늘리려면 GitHub Actions 러너 플릿으로 캠페인을
+팬아웃한다. `workflow_dispatch`로 수동 실행하며(`mode`·`versions`·`seeds`·`arm`·`budget` 입력),
+`plan` job이 `run_parallel_native --emit-github-matrix`로 셀 매트릭스를 만들고 `fanout` job이 셀마다
+**독립 러너**에서 CI `container-integration`과 동일한 경로로 한 캠페인을 돌린 뒤 evidence를 artifact로
+올린다. 러너는 docker가 있는 Ubuntu 24.04라(이미 CI가 매 실행 이 하너스를 돈다) **잠긴 하너스가
+그대로 돈다** — 이미지 빌드·trusted non-root 컨트롤러·contained-target 정책·budget 상한 100은 전부
+단일 호스트 실행과 동일하고, 격리 완화 플래그는 없다. `demo-historical`의 affected/fixed effect
+이미지는 러너에서 committed 레시피(`tools/node-tar/effect/Dockerfile` +
+`tools/node-tar/versions/<버전>/`)로 빌드하며, 취약 이미지를 외부에 publish하지 않는다(러너 안에서만
+쓰고 폐기한다).
+
+셀 식별자(run_id)·evidence 파일명·arm 파라미터는 `run_parallel_native`의 `build_cells`가 단일 소스라
+클라우드 팬아웃과 노트북 실행이 동일하게 이름 붙고 파라미터가 매겨진다. 디스패치는 저장소의 Actions
+분(minutes)을 쓰고 실제 캠페인을 돌리므로 승인된 안전 범위(고정 버전, disposable sandbox + sentinel)
+안에서만 사용한다. 결과는 demo/engineering run이며 qualification이 아니다.
+
+참고로 Claude 클라우드 에이전트 환경은 Dev Container와 동일하게 docker-in-docker가 없어 이 하너스를
+돌릴 수 없다 — 그런 환경에는 코드·분석만 보내고 docker 실험은 호스트 터미널이나 이 GHA 팬아웃으로
+돌린다.
+
 ## N01 historical pair (explicit trusted-host action)
 
 N01 is a separate bounded mode, not part of the normal `7.5.22` image/target checks. On the

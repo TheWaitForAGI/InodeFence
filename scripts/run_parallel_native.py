@@ -147,6 +147,34 @@ def build_cells(
     return cells
 
 
+def github_matrix(cells: Sequence[Cell]) -> dict[str, list[dict[str, str]]]:
+    """A GitHub Actions ``strategy.matrix`` (a dict with ``include``) of the planned cells.
+
+    Each entry carries the cell identity and campaign parameters as strings so a
+    workflow can set the inner ``local_node_tar_smoke.sh`` env (``RUN_ID``, ``DEMO_*``,
+    ``TAR_VERSION``) and name uploaded evidence by ``evidence_basename``. Empty strings
+    mean "keep the script's in-code default" (the script tests ``-n`` before using them).
+    This is the same ``build_cells`` planning the single-host runner uses, so a cloud
+    fan-out and a laptop run name and parameterize cells identically.
+    """
+    return {
+        "include": [
+            {
+                "run_id": cell.run_id,
+                "mode": cell.mode,
+                "version": cell.version or "",
+                "seed": str(cell.seed),
+                "budget": str(cell.budget),
+                "search": cell.arm.search or "",
+                "mutation": cell.arm.mutation or "",
+                "arm": cell.arm.label,
+                "evidence_basename": cell.evidence_basename,
+            }
+            for cell in cells
+        ]
+    }
+
+
 def cell_env(cell: Cell, output_dir: Path, base_env: dict[str, str]) -> dict[str, str]:
     """Environment for one cell: unique names, reused images, campaign parameters."""
     env = dict(base_env)
@@ -286,13 +314,23 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--budget", type=int, default=20, help=f"1..{MAX_BUDGET} (default 20)")
     parser.add_argument("--jobs", type=int, default=3, help="max concurrent campaigns (default 3)")
-    parser.add_argument("--output", type=Path, required=True, help="new/empty evidence directory")
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="new/empty evidence directory (required unless --emit-github-matrix)",
+    )
     parser.add_argument("--python", default=None, help="host Python for the inner script (PYTHON)")
     parser.add_argument(
         "--context", default=None, help="Docker context (INODEFENCE_DOCKER_CONTEXT)"
     )
     parser.add_argument(
         "--dry-run", action="store_true", help="print the planned matrix and exit (no Docker)"
+    )
+    parser.add_argument(
+        "--emit-github-matrix",
+        action="store_true",
+        help="print a GitHub Actions matrix (fromJSON) of the planned cells and exit; no Docker",
     )
     args = parser.parse_args(argv)
 
@@ -326,6 +364,12 @@ def main(argv: list[str] | None = None) -> int:
         cells = build_cells(args.mode, versions, arms, seeds, args.budget)
     except ValueError as error:
         parser.error(str(error))
+
+    if args.emit_github_matrix:
+        print(json.dumps(github_matrix(cells)))
+        return 0
+    if args.output is None:
+        parser.error("--output is required (except with --emit-github-matrix)")
 
     if args.jobs > 4:
         print(

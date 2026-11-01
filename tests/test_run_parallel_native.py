@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
@@ -11,6 +12,7 @@ from scripts.run_parallel_native import (
     Cell,
     build_cells,
     cell_env,
+    github_matrix,
     main,
     parse_arm,
 )
@@ -158,3 +160,45 @@ def test_main_demo_rejects_versions(tmp_path: Path) -> None:
 def test_main_historical_requires_versions(tmp_path: Path) -> None:
     with pytest.raises(SystemExit):
         main(["--mode", "demo-historical", "--output", str(tmp_path), "--dry-run"])
+
+
+def test_github_matrix_demo_default_arm() -> None:
+    cells = build_cells("demo", [None], [Arm("default", None, None)], [123, 456], 20)
+    matrix = github_matrix(cells)
+    assert set(matrix) == {"include"}
+    assert len(matrix["include"]) == 2
+    first = matrix["include"][0]
+    assert first["run_id"] == "native-default-s123"
+    assert first["mode"] == "demo"
+    assert first["version"] == ""  # demo runs the pinned repository node-tar, no version
+    assert first["seed"] == "123" and first["budget"] == "20"  # strings for the workflow env
+    assert first["search"] == "" and first["mutation"] == ""  # empty => keep script default
+    assert first["evidence_basename"] == "inodefence-effect-demo-native-native-default-s123"
+
+
+def test_github_matrix_historical_named_arm_carries_policy_values() -> None:
+    arm = parse_arm("p2=P2_EFFECT_ADAPTIVE/M1")
+    cells = build_cells("demo-historical", ["7.5.2"], [arm], [123], 100)
+    entry = github_matrix(cells)["include"][0]
+    assert entry["version"] == "7.5.2"
+    assert entry["run_id"] == "7.5.2-p2-s123"
+    assert entry["search"] == EffectSearchPolicy.P2_EFFECT_ADAPTIVE.value
+    assert entry["mutation"] == MutationPolicy.M1.value
+    assert entry["evidence_basename"] == "inodefence-effect-demo-historical-7.5.2-p2-s123"
+
+
+def test_main_emit_github_matrix_prints_json_and_skips_output(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rc = main(["--mode", "demo", "--seeds", "123,456", "--arm", "default", "--emit-github-matrix"])
+    assert rc == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert [entry["run_id"] for entry in payload["include"]] == [
+        "native-default-s123",
+        "native-default-s456",
+    ]
+
+
+def test_main_requires_output_without_emit_or_dry_run() -> None:
+    with pytest.raises(SystemExit):  # no --output, no --dry-run, no --emit-github-matrix
+        main(["--mode", "demo", "--seeds", "123"])

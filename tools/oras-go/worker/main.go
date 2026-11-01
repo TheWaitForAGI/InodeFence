@@ -10,9 +10,12 @@
 //
 //	identify                  print JSON {oras_go_version, go_version, worker_sha256}
 //	extract <archive> <dest>  unpack <archive> into the oras-go file.Store at <dest>
+//	frame <archive> <dest>    unpack, then emit one inodefence-boundary-attempt-v1 stdout
+//	                          frame (a post-state SET of per-operation boundary attempts) for
+//	                          M4 self-discovery feedback
 //	probe                     self-contained capability probe (see runProbe)
 //
-// Exit codes for `extract`: 0 success, 2 extraction refused/failed (REJECTED),
+// Exit codes for `extract`/`frame`: 0 success, 2 extraction refused/failed (REJECTED),
 // 3 harness/IO failure. The security verdict is never decided here.
 package main
 
@@ -28,6 +31,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/debug"
+	"sort"
+	"strings"
 	"syscall"
 
 	digest "github.com/opencontainers/go-digest"
@@ -45,7 +50,7 @@ const orasGoModule = "oras.land/oras-go/v2"
 
 func main() {
 	if len(os.Args) < 2 {
-		die(3, "usage: oras-worker identify|extract <archive> <dest>|probe")
+		die(3, "usage: oras-worker identify|extract <archive> <dest>|frame <archive> <dest>|probe")
 	}
 	switch os.Args[1] {
 	case "identify":
@@ -55,6 +60,11 @@ func main() {
 			die(3, "usage: oras-worker extract <archive> <dest>")
 		}
 		runExtract(os.Args[2], os.Args[3])
+	case "frame":
+		if len(os.Args) != 4 {
+			die(3, "usage: oras-worker frame <archive> <dest>")
+		}
+		runFrame(os.Args[2], os.Args[3])
 	case "probe":
 		runProbe()
 	default:
@@ -113,15 +123,24 @@ func runExtract(archive, dest string) {
 	}
 }
 
-func identify() {
-	meta := map[string]string{"oras_go_version": "", "go_version": "", "worker_sha256": ""}
+// orasGoVersion reports the pinned oras-go module version observed in this build's
+// embedded dependency graph (empty only if the build info is unavailable). It is an
+// evidence label, never a verdict condition (D005/D006).
+func orasGoVersion() string {
 	if info, ok := debug.ReadBuildInfo(); ok {
-		meta["go_version"] = info.GoVersion
 		for _, dep := range info.Deps {
 			if dep.Path == orasGoModule {
-				meta["oras_go_version"] = dep.Version
+				return dep.Version
 			}
 		}
+	}
+	return ""
+}
+
+func identify() {
+	meta := map[string]string{"oras_go_version": orasGoVersion(), "go_version": "", "worker_sha256": ""}
+	if info, ok := debug.ReadBuildInfo(); ok {
+		meta["go_version"] = info.GoVersion
 	}
 	if self, err := os.Executable(); err == nil {
 		if data, err := os.ReadFile(self); err == nil {
@@ -131,6 +150,184 @@ func identify() {
 	}
 	out, _ := json.Marshal(meta)
 	os.Stdout.Write(out)
+}
+
+// runFrame is the M4 self-discovery observation for oras-go. It runs the SAME real
+// extraction as `extract` (isolated CWD at the sandbox root, same doExtract path), then
+// derives one inodefence-boundary-attempt-v1 frame from the OBSERVED post-extraction
+// filesystem state and prints it as the last stdout line.
+//
+// Why post-state, not call interposition: oras-go is a compiled third-party extractor
+// whose os.Link / os.Symlink calls cannot be wrapped from this worker without forking
+// oras-go (decompress could wrap its JS callback fs, per that target's feasibility probe;
+// oras-go cannot). So the feasible channel here is the post-state SET: each created object
+// inside the extraction root becomes one attempt, with region-based target resolution. This
+// is NARROWER than decompress's fs-wrap set -- a refused/errored link leaves no object, so
+// a cleanly refused attempt is NOT observed here (it still shows up in the independent
+// Observer/Oracle before/after verdict, which this frame never replaces).
+//
+// Region-based, no sentinel/CVE hardcoding (D005): an attempt reports only the created and
+// resolved REGIONS (extraction/harness/external) and whether the created inode aliases any
+// object outside the extraction root -- never a sentinel name or release string. The frame
+// is emitted whether extraction succeeded or failed (exit 2 on failure), mirroring the
+// decompress frame worker; a hardlink that escaped to an external inode yields the same
+// OBSERVED_EXTERNAL_RESOLVE key the decompress frame does.
+func runFrame(archive, dest string) {
+	root := filepath.Dir(filepath.Clean(dest))
+	extractAbs := filepath.Clean(dest)
+	if err := os.Chdir(root); err != nil {
+		die(3, "chdir sandbox root: %v", err)
+	}
+	rawTar, err := os.ReadFile(archive)
+	if err != nil {
+		die(3, "read archive: %v", err)
+	}
+	threw := false
+	if err := doExtract(dest, rawTar); err != nil {
+		threw = true
+		fmt.Fprintf(os.Stderr, "%v\n", err)
+	}
+
+	// Inodes of every object OUTSIDE the extraction root, so aliasing is judged by region
+	// (any non-extraction object), never by a sentinel name (D005).
+	external := collectExternalInodes(root, extractAbs)
+	attempts := []map[string]any{}
+	walkExtractionAttempts(root, extractAbs, extractAbs, external, &attempts)
+	// Deterministic order so two frames over the same post-state are byte-identical; the
+	// consumer treats `attempts` as an unordered set regardless.
+	sort.Slice(attempts, func(i, j int) bool {
+		return attempts[i]["created_path"].(string) < attempts[j]["created_path"].(string)
+	})
+
+	report := map[string]any{
+		"format":                   "inodefence-boundary-attempt-v1",
+		"schema_version":           1,
+		"extractor":                orasGoModule + "@" + orasGoVersion(),
+		"extraction_root_absolute": extractAbs,
+		"attempts":                 attempts,
+	}
+	out, _ := json.Marshal(report)
+	fmt.Println(string(out))
+	if threw {
+		os.Exit(2)
+	}
+}
+
+// frameRegion classifies an absolute path exactly as the Python path_region does over the
+// sandbox-relative path: under the extraction root => extraction; the run root or the
+// reserved archive/ subtree => harness; anything else => external.
+func frameRegion(root, extractAbs, abs string) string {
+	r := filepath.Clean(abs)
+	if r == extractAbs || strings.HasPrefix(r, extractAbs+string(os.PathSeparator)) {
+		return "extraction"
+	}
+	rel, err := filepath.Rel(root, r)
+	if err == nil && (rel == "." || rel == "archive" || strings.HasPrefix(rel, "archive"+string(os.PathSeparator))) {
+		return "harness"
+	}
+	return "external"
+}
+
+func sandboxRel(root, abs string) string {
+	if rel, err := filepath.Rel(root, filepath.Clean(abs)); err == nil {
+		return rel
+	}
+	return filepath.Clean(abs)
+}
+
+// collectExternalInodes maps dev:ino -> sandbox-relative path for every object strictly
+// outside the extraction root (the sentinel, the archive, the run root). The extraction
+// subtree is skipped, so an external inode observed on a created extraction object means the
+// extractor aliased an object outside its root.
+func collectExternalInodes(root, extractAbs string) map[string]string {
+	out := map[string]string{}
+	var rec func(dir string)
+	rec = func(dir string) {
+		ents, err := os.ReadDir(dir)
+		if err != nil {
+			return
+		}
+		for _, e := range ents {
+			full := filepath.Join(dir, e.Name())
+			if filepath.Clean(full) == extractAbs {
+				continue
+			}
+			var st syscall.Stat_t
+			if err := syscall.Lstat(full, &st); err == nil {
+				key := fmt.Sprintf("%d:%d", uint64(st.Dev), uint64(st.Ino))
+				if _, ok := out[key]; !ok {
+					out[key] = sandboxRel(root, full)
+				}
+			}
+			if e.IsDir() {
+				rec(full)
+			}
+		}
+	}
+	rec(root)
+	return out
+}
+
+// walkExtractionAttempts projects every created object under the extraction root to one v1
+// attempt. A symlink reports its readlink target region; a regular file whose inode matches
+// an external object is an escaping hardlink (operation=hardlink, target_region=that
+// object's region); any other regular file is a plain write. Directories carry no attempt.
+func walkExtractionAttempts(
+	root, extractAbs, dir string, external map[string]string, attempts *[]map[string]any,
+) {
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range ents {
+		full := filepath.Join(dir, e.Name())
+		var st syscall.Stat_t
+		if err := syscall.Lstat(full, &st); err != nil {
+			continue
+		}
+		mode := st.Mode & syscall.S_IFMT
+		if mode == syscall.S_IFDIR {
+			walkExtractionAttempts(root, extractAbs, full, external, attempts)
+			continue
+		}
+		key := fmt.Sprintf("%d:%d", uint64(st.Dev), uint64(st.Ino))
+		att := map[string]any{
+			"created_path":             sandboxRel(root, full),
+			"created_region":           "extraction",
+			"target_raw":               nil,
+			"target_resolved_absolute": nil,
+			"target_region":            "n/a",
+			"aliases_external_object":  false,
+			"outcome":                  "created",
+		}
+		switch mode {
+		case syscall.S_IFLNK:
+			raw, _ := os.Readlink(full)
+			var targetAbs string
+			if filepath.IsAbs(raw) {
+				targetAbs = filepath.Clean(raw)
+			} else {
+				targetAbs = filepath.Clean(filepath.Join(filepath.Dir(full), raw))
+			}
+			att["operation"] = "symlink"
+			att["target_raw"] = raw
+			att["target_resolved_absolute"] = sandboxRel(root, targetAbs)
+			att["target_region"] = frameRegion(root, extractAbs, targetAbs)
+			if _, ok := external[key]; ok {
+				att["aliases_external_object"] = true
+			}
+		default:
+			if extPath, ok := external[key]; ok {
+				att["operation"] = "hardlink"
+				att["aliases_external_object"] = true
+				att["target_resolved_absolute"] = extPath
+				att["target_region"] = frameRegion(root, extractAbs, filepath.Join(root, extPath))
+			} else {
+				att["operation"] = "regular"
+			}
+		}
+		*attempts = append(*attempts, att)
+	}
 }
 
 // statInfo is a JSON-friendly lstat snapshot; dev/ino are strings to avoid any

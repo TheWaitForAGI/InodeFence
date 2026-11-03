@@ -12,10 +12,13 @@
 - **seed-rare.** 자율 C1 트리거는 budget 1500·65 seed 중 s11 하나뿐이다(재현 0/30). 정답이 사실상
   한 점(좁은 구성)이고 final-state C1/C2 oracle이 all-or-nothing이라 adaptive 탐색에 gradient가 거의
   없기 때문이다. 따라서 정책 간 rate 차이를 검출할 **검정력이 현재 없다.**
-- **abort로 줄어든 denominator.** A1 random control(budget 2000)은 12 seed 중 5개가 fail-closed
-  abort로 denominator에서 제외돼 clean exact C1이 **0/7 complete**로 집계됐다(Wilson 95% CI
-  [0, 0.354]). abort를 no-hit로 세지 않는 프로토콜 때문에 denominator가 줄고 CI가 넓어진다 — 이는
-  정직한 right-censored 보고이며 "위반 없음의 증명"이 아니다.
+- **abort로 줄어든 denominator.** powered v2 {100..129}에서 A1 random floor는 30 seed 중 abort 11
+  (완주 19), A3full은 abort 13(완주 17)으로, fail-closed abort를 no-hit로 세지 않는 프로토콜 때문에
+  denominator가 줄고 CI가 넓어진다(A1 0/19 [0, 0.1682], A3full 1/17 [0.0105, 0.2698]). abort 사유는
+  observer "evidence integrity failed(malformed_identity)"가 대부분(100–149 92셀 기준 A1 19/A3full 18)이고
+  docker broker disconnected·container runtime cleanup inspect failed·remove failed가 나머지다. 이는 정직한
+  right-censored 보고이며 "위반 없음의 증명"이 아니다. 이 드래프트 v1이 여기 적었던 "12 seed 중 5 abort,
+  0/7 complete [0, 0.354]"는 powered run이 아니라 M3.3 A1 단독 대조 배치(seeds 11, 66–70 등)의 수치였다.
 
 ## 6.2 M4 자력발견은 right-censored 음성
 

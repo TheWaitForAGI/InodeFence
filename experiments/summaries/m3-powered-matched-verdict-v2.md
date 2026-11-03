@@ -75,3 +75,36 @@ keep chipping at power with that cost understood.
 Observed (s101 complete C1, s118 pre-abort C1, A1 0 across all complete campaigns) vs inferred (causal direction
 favors identity feedback) kept strictly separate; no CVE / answer-path / sentinel hardcoding; EN-008 respected;
 arm definitions byte-identical across runs; extension seeds `{120–129}` pre-declared deterministic, not post-hoc.
+
+## 등록 외 관찰 (2026-11-03 감사 확인, verdict 불변)
+
+**이 절은 사전등록 밖 관찰이며 위 verdict 수치({100..129} A1 0/19 · A3full 1/17, CI 미분리)를 바꾸지 않는다.**
+2026-11-03 독립 감사에서 raw(`~/inodefence-evidence/m3-powered-matched-20261030/`)를 재집계해 확인한 사실만 적는다
+(observed).
+
+### 미등록 연장 {130..149} (ext130)
+
+- `_launcher.log` 기준 2026-11-02 01:18:24 시작 — 이 v2 verdict 커밋(bb3fd7c, 01:23:16)보다 5분 전이며 LOG에
+  사전등록 항목이 없다. launcher는 2026-11-02 08:43 종료.
+- A1: 20셀 = 완주 8 / abort 12, 29,180 step, hit 0.
+- A3full: 12셀 실행(130–141) = 완주 3 / abort 9, 13,057 step, hit 0. s138은 1872 step에서 중단(stub 없음).
+  142–149 미실행.
+- 포함 시 {100..149}: A1 0/27 Wilson [0, 0.1246], A3full 1/20 [0.0089, 0.2361] — **방향 불변, CI 여전히 겹침**.
+  사전등록이 없으므로 이 수치는 verdict에 넣지 않고 여기 기록만 한다.
+
+### abort 사유 (seeds 100–149, 92셀)
+
+| 사유 | A1 | A3full |
+|---|---|---|
+| observer "evidence integrity failed(malformed_identity)" | 19 | 18 |
+| docker broker disconnected | 3 | 1 |
+| container runtime cleanup inspect failed (s118 포함) | 1 | 2 |
+| remove failed | 0 | 1 |
+
+### s101 trace 상태
+
+s101의 유일한 완주 hit(1-based exec 1720)는 `trace_termination=rejected`, `trace_completeness=invalid`,
+`feedback_eligible=False`, `observation_failures=4`인 run이다. hit는 **post-state** oracle의 C1+C2다 — 하드링크
+`/a/dir`→`../outside/sentinel.txt`가 뒤 entry가 거부되기 전에 생성돼 잔존했다. `unique_violation_fingerprints`는 0.
+위에서 쓴 "clean exact C1"의 "clean"은 hit 술어(`oracle.C1 && feedback.contract_violated`)가 참이라는 뜻이며
+clean trace를 뜻하지 않는다.

@@ -82,6 +82,14 @@ hit의 정의는 **step에서 `oracle.C1` AND `feedback.contract_violated`가 �
 | A3full scale study | 1–35 (35개) | 41,494 | **s11만 21** (그 외 전 seed 0) |
 | A3full 재현 | 36–65 (30개) | 34,585 | **0/30** |
 
+**분모·lineage 주석(2026-11-03 감사 raw 재집계, observed).** 위 표의 분모는 abort된 campaign을 포함한다:
+A1 random floor seed 35 = 완주 19/abort 16, A3full scale study seed 35 = 완주 24/abort 11, A3full 재현 30 =
+완주 18/abort 12이며, A3blind 대조는 6셀 7,983 step이다. s11의 21 hit는 21개 distinct case_id이지만
+**1 lineage**(독립 루트 0-based idx 263 + 자손 20, 부모 7)이고, 고유 C1 fingerprint는 2개
+(`extract/archive/sentinel.txt/b/b`, `extract/dir/a.txt` ↔ `outside/sentinel.txt`) + C2 1개로 모두 링크 타깃
+`../outside/sentinel.txt`다. 또한 `m3-repro` A3full-s60에는 C2=True·C1=False·contract_violated=True인 step
+14개(rejected run, sentinel ctime 변화·nlink 불변)가 있으나 hit 정의(C1 ∧ contract_violated) 밖이라 표에 없다.
+
 s11 run은 step 416에서 evidence-integrity 검사로 abort(returncode 1)하지만, 21건의 hit는 **abort
 이전**에 기록된 step이다(producer abort-drain이 거부된 외부-하드링크 시도를 valid trace로 관찰).
 따라서 process returncode 1을 "발견 없음"으로 읽지 않는다.
@@ -118,6 +126,17 @@ state-aware A3full s11만 21. 즉 **"feedback(identity 관찰)이 발견을 가�
   clean exact C1(1-based 실행 1720/2000) + s118이 abort 전 65건 관찰(observed-trigger, complete hit
   아님). A1은 완주 12 campaign 중 **0 complete hit**. 매칭 대조 Wilson 95% CI: A3full 1/10
   **[0.018, 0.404]** vs A1 0/12 **[0, 0.242]** → **겹침**(`complete_hit_wilson_intervals_separate=False`).
+- **v2 pooled 판정(canonical, #200; observed):** 사전선언 연장 {120..129}를 풀링한 {100..129}(30 매칭 seed)가
+  현재 canonical 수치다 — A1 0/19 Wilson **[0, 0.1682]**, A3full 1/17 **[0.0105, 0.2698]**, 여전히 겹침
+  ([verdict v2](../../experiments/summaries/m3-powered-matched-verdict-v2.md)). 연장분은 양 arm 완주 7/abort 3에
+  hit·observed-trigger 0으로 전부 null이었다. **미등록 연장 {130..149}**(launcher 2026-11-02 01:18 시작, LOG
+  사전등록 없음)는 A1 20셀 완주 8/abort 12·29,180 step·hit 0, A3full 12셀(130–141) 완주 3/abort 9·13,057 step·
+  hit 0(142–149 미실행, s138은 1872에서 중단)으로 관찰됐고 verdict에 **미포함**이다. 포함해도 {100..149}
+  A1 0/27 [0, 0.1246]·A3full 1/20 [0.0089, 0.2361]로 방향은 불변이다. s101의 유일한 완주 hit는
+  trace_termination=rejected·trace_completeness=invalid·feedback_eligible=False·observation_failures 4인 run의
+  **post-state** C1+C2(하드링크 `/a/dir`→`../outside/sentinel.txt`가 뒤 entry 거부 전에 생성·잔존,
+  unique_violation_fingerprints 0)다 — 여기서 "clean"은 hit 술어(`oracle.C1 && contract_violated`)를 뜻하며
+  clean trace가 아니다.
 - **판정:** 완주 clean-C1 rate 점추정은 identity feedback 쪽(0.10 vs 0.00)이나 **매칭 Wilson 구간이
   겹쳐 rate 우위는 CI로 분리되지 않는다** — ~0.1 효과에 대해 이 예산·seed 수로는 검정력이 부족하다.
   rate 우위는 여전히 **미입증**이며 이 논문의 주 주장이 아니다.

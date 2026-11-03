@@ -66,10 +66,11 @@ object-identity feedback이 실제로 발견을 구동함을 blind 대조로 확
   보상을 하드코딩하지 않았고, EXTERNAL 필터는 region 기준 target-agnostic이다. 다만 state-aware
   mutation 어휘 계열(`m1_addressing`)이 `outside`/`sentinel.txt` 토큰을 포함할 수 있으므로, 어떤
   rediscovery 프레이밍에서도 **"blind 아님"을 명시**해야 한다(연구 정직성).
-- **rate 우위(H1 effectiveness)는 미판정 / 진행 중.** 이 요약의 주장은 **인과**("피드백이 발견을
-  가능케 함")이지 **"상태-인지 피드백이 무작위보다 빠르다(rate)"가 아니다.** 동일 seed·budget 매칭
-  대조(A1 vs A3full, budget 2000, seed 100–119)의 **powered 독립 반복이 별도 세션에서 실행 중**이며,
-  그 결과가 나오기 전까지 rate 결론은 **열어 둔다**. budget 100·~60 seed study는 clean exact C1 0였다.
+- **rate 우위(H1 effectiveness)는 사전등록 판정 결과 CI 미분리.** 이 요약의 주장은 **인과**("피드백이
+  발견을 가능케 함")이지 **"상태-인지 피드백이 무작위보다 빠르다(rate)"가 아니다.** 동일 budget 2000 매칭
+  대조(A1 vs A3full, seeds {100..129})의 powered 판정은 A1 0/19 Wilson [0, 0.1682] vs A3full 1/17
+  [0.0105, 0.2698]로 **겹침**([verdict v2](m3-powered-matched-verdict-v2.md)) — rate 우위는 미입증이며
+  주 주장이 아니다. budget 100·~60 seed study는 clean exact C1 0였다.
 - **seed-rare.** s11은 동일 seed에서 결정론적으로 재현(21건)되지만, 교차-seed로는 budget 1500에서
   65개 중 1개뿐이라 **이 예산에서 다른 seed로 일반화되지 않는다**(재현 0/30).
 - observed(위 표의 재집계 숫자)와 inferred(메커니즘 서술·CVE 대응)를 구분한다.
@@ -86,3 +87,19 @@ state-guided archive fuzzer", "기존 연구는 inode를 안 썼다" 류 주장�
 
 M2([cross-release 재현 요약](cross-release-identity-repro-v1.md))는 손 fixture의 통제 재현이고,
 여기 M3는 퍼저 자력 발견이다. 두 결론을 섞지 않는다.
+
+## 추가 관찰 (2026-11-03)
+
+2026-11-03 독립 감사가 raw를 재집계해 확인한 사실이다(observed). 위 표의 수치는 바뀌지 않는다.
+
+- **21 hit = 1 lineage.** s11의 21 hit는 21개 distinct case_id이나 계보상 **하나의 lineage**다: 독립 루트
+  0-based idx 263 + 자손 20(부모 7). 고유 C1 fingerprint는 2개(`extract/archive/sentinel.txt/b/b`,
+  `extract/dir/a.txt` ↔ `outside/sentinel.txt`) + C2 1개, 모두 링크 타깃 `../outside/sentinel.txt`다.
+  step 416 abort 사유는 malformed_identity(중복 경로 `dir/`가 regular와 directory로 동시 존재).
+- **s60 C2-only 14 step.** `m3-repro` A3full-s60에 C2=True·C1=False·contract_violated=True인 step이 14개
+  있다(rejected run, sentinel ctime 변화·nlink 불변). M3 hit 정의(C1 ∧ contract_violated)에 걸리지 않아 위 표와
+  논문 어디에도 보고되지 않았다.
+- **분모는 abort 포함.** 위 표의 seed 수는 abort된 campaign을 포함한다: A1 35 = 완주 19/abort 16, A3full 35 =
+  완주 24/abort 11, 재현 30 = 완주 18/abort 12, A3blind 6셀 7,983 step.
+- **사전등록 부재.** 10/26 M3 scale·ablation·repro run은 LOG에 공식 사전등록이 없다(첫 공식 사전등록은
+  10/30 00:31). 따라서 이 요약은 메커니즘 관찰 기록이지 사전등록 판정이 아니다.

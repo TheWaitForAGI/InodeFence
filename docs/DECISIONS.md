@@ -619,8 +619,10 @@ observed/inferred, synthetic 비승격, 비교 없는 effectiveness 주장 금�
   security state 피드백 탐색이 무작위·구조 커버리지 탐색보다 첫 경계위반까지 빠르고 고유 위반을 더 찾는가.
   H-B: generic oracle이 ≥3 extractor 취약/수정 쌍을 구분(재확인). H-C(보조): 어휘에 이름이 없으면 전 arm C1
   미도달(음성 통제).
-- **비교군 R/D/S, 동일 어휘.** R 무작위(retention 없음·uniform), D 구조 커버리지 retention(`SearchPolicy.D`)·uniform,
-  S identity/effect/boundary-attempt retention + adaptive. 관찰 이름 포함 여부는 세 arm에 동일 적용. 기존 기호
+- **비교군 R/D/S-u, 동일 어휘·동일 스케줄러.** R 무작위(retention 없음·uniform), D 구조 커버리지 retention
+  (`SearchPolicy.D`)·uniform, **S-u** identity/effect/boundary-attempt retention·**uniform**(주 비교; D와 operator
+  정책을 동일하게 통제해 retention 효과만 분리). adaptive 스케줄러를 얹은 S-a는 **탐색적 ablation(선택)**이며
+  S-a − S-u는 스케줄러 효과로 따로 해석한다. 관찰 이름 포함 여부는 세 arm에 동일 적용. 기존 기호
   **A1(random floor)/A3full은 폐기**한다(v1 ablation 기호와 충돌).
 - **1차 지표 = T_first·U_viol, 생존분석.** T_first는 첫 C1∨C2까지 실행 수(우측중도절단: 완주 무hit=N, abort=abort
   시점), U_viol은 정규화 서명 기준 고유 위반 입력 수. Kaplan–Meier·로그랭크·A12. 새 state key 수는 설명용(EN-008).

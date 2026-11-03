@@ -101,6 +101,16 @@ EXTERNAL region 제외)의 A3blind s11은 1475 step에도 0, 무작위 바닥 A1
 state-aware A3full s11만 21. 즉 **"feedback(identity 관찰)이 발견을 가능케 한다 — 없으면 도달
 불가."** 이것은 가설이 명시한 feedback이 실제로 발견을 구동함을 blind 대조로 확정한 것이다.
 
+**2026-11-03 정정(해석; 위 수치·서술은 보존).** 위 blind 대조는 **피드백이 아니라 어휘**를 통제한 실험이다.
+A3full은 BEFORE snapshot에서 관찰한 EXTERNAL 이름을 mutation 어휘에 넣고, A3blind는 그 이름을 빼며, A1은
+generic 어휘 7토큰(`src/inodefence/mutator/m1.py`의 `COMPONENTS`, `m1_addressing.py` 주석)이라 대상 이름을
+철자할 수 없다. 따라서 21/0/0이 보인 것은 **"외부 객체 이름의 관찰(어휘 획득)이 자율 C1의 필요조건"**이지,
+(st_dev, st_ino) 기반 retention·스케줄링 피드백이 발견에 기여했다는 것이 아니다. 그 기여는 어휘를 맞춘 비교
+(R/D/S, [research-questions v2](../../docs/research/design/research-questions.md) H-A)로 아직 분리되지 않았고,
+어휘를 맞춘 기존 비교(§5.3.4 item-3 A/B/C/D, M4.8)는 C≡D·위반 0이다. 이 소절 제목의 "인과 입증"과 위
+"주 주장"은 이 한정으로 읽으며, §5.3.3의 "메커니즘 멀티-seed 강화"도 같은 한정을 받는다(s101·s118 역시 관찰
+이름을 어휘에 넣은 A3full이다).
+
 **정직 경계(엄수, inferred/열린 항목):**
 
 - **blind 발견이 아니다.** 기존 외부 객체에 하드링크하려면 그 이름이 필요하고 퍼저는 그것을

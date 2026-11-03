@@ -285,6 +285,8 @@ prefix를 보존한다. 이는 N01 class match나 human root-cause 판정이 아
 이 문서와 STATUS·BACKLOG가 다르면 문서가 맞고 STATUS는 그에 맞춰 갱신 중이다. 실험 실행 기준은 Git에
 동결된 사전등록 파일(`experiments/preregistration/`), 증거 기준은 raw + SHA-256 목록
 (`experiments/summaries/raw-manifest-mac-20261103.sha256`; 기준선 태그 `audit-baseline-20261103` = `bb3fd7c`)이다.
+**원본 백업 상태(2026-11-03): 미완료** — 맥 raw는 체크섬 목록만 저장소에 있고 raw 자체는 호스트 로컬, 윈도우 raw
+미반입, 외부/공유 저장소 백업 없음.
 연구 질문·가설은 [research-questions v2](research/design/research-questions.md), 결정은 [D038](DECISIONS.md),
 작업 큐는 [BACKLOG 수술 절](BACKLOG.md)을 따른다. 이 절의 이전 본문(v1/v2/v3 entry-transition 재개 조건,
 N01 human correspondence, N03/N04 NOT_AUTHORIZED 서술)은 LOG·diagnostics에 남고 더 이상 다음 gate가 아니다.
@@ -294,12 +296,16 @@ N01 human correspondence, N03/N04 NOT_AUTHORIZED 서술)은 LOG·diagnostics에 
 - **타깃:** node-tar 7.5.2/7.5.3·7.5.6/7.5.7(취약/수정 쌍 2개) + Python tarfile `fully_trusted`/`data`.
 - **자력발견(H-A) 타깃은 node-tar 하나.** decompress는 확장, oras-go는 oracle 일반성(H-B) 증거로만 쓴다.
 - **범위 밖:** entry-transition 계열(v1/v2/v3·P0/P1/P2, BACKLOG M3.6 폐기), GNU tar, Windows.
+- **비교군(H-A):** R(무작위·uniform) / D(구조 커버리지 retention·uniform) / **S-u**(identity·effect·boundary-attempt
+  retention·**uniform**) — operator 정책을 uniform으로 통제해 retention 효과만 분리한다. adaptive 스케줄러 S-a는
+  탐색적 ablation(선택)이며 주 비교가 아니다.
 
 ### 실험 순서
 
 1. **EXP-0 파일럿** — 5 seed × budget 200 × R/D/S, 인프라 측정(abort율·p95·처리량·hazard proxy). 가설 검증 아님,
-   formal 추정에 합산 금지. 사전등록 [exp0-pilot-v1](../experiments/preregistration/exp0-pilot-v1.md)
-   (엔진 SHA·이미지 digest·policy ID는 G1 동결 시 v1.1).
+   formal 추정에 합산 금지. zero-hit이 기본 결과이며 hazard는 hit로 추정하지 않는다. 사전등록
+   [exp0-pilot-v2](../experiments/preregistration/exp0-pilot-v2.md)(v1 대체; 엔진 SHA·이미지 digest·policy ID는
+   G1 동결 시 v2.1).
 2. **11/18 사전등록 고정** — EXP-3 본실험 + EXP-2 GO/NO-GO 규칙(x·n은 EXP-0 숫자로 11/14 확정).
 3. **EXP-3** — 20 seed × budget 2000 × R/D/S, 다수 sentinel. 1차 지표 T_first(우측중도절단)·U_viol.
 4. **11/20 규칙 기계 적용** — EXP-3 결과에 사전등록된 GO/NO-GO 규칙을 그대로 적용.

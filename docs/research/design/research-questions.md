@@ -30,14 +30,18 @@ SHA-256 목록이다. DESIGNED / IMPLEMENTED / TESTED / EXPERIMENTALLY VALIDATED
 
 ## H-A (주 가설) — 피드백 정책
 
-**독립변수: 피드백 정책 3 arm.** 세 arm은 어휘(관찰 이름 포함 여부를 세 arm에 동일 적용)·seed·예산·
-이미지·oracle이 모두 같고 피드백 정책만 다르다.
+**독립변수: retention 피드백 정책 3 arm.** 세 arm은 어휘(관찰 이름 포함 여부를 세 arm에 동일 적용)·seed·
+예산·이미지·oracle·**operator 선택(uniform)**이 모두 같고 retention 정책만 다르다. 주 비교의 S는
+**S-u(uniform 스케줄러)**다 — D와 operator 정책을 동일하게 통제해 retention 효과만 분리한다. adaptive
+스케줄러(기존 P3)를 얹은 **S-a**는 주 비교가 아니라 **탐색적 ablation(선택)**이며, S-a − S-u는 스케줄러
+효과로 따로 해석한다(retention 효과와 섞지 않는다).
 
 | arm | retention | operator 선택 | 뜻 |
 | --- | --- | --- | --- |
 | **R** | 없음 | uniform | 무작위 탐색(바닥) |
 | **D** | 구조 커버리지(`SearchPolicy.D` = target-agnostic extraction 구조 키) | uniform | 커버리지 피드백 대조 |
-| **S** | identity/effect/boundary-attempt 상태 키 | adaptive | InodeFence 피드백 |
+| **S-u** (주) | identity/effect/boundary-attempt 상태 키 | uniform | InodeFence retention 피드백 |
+| S-a (선택, ablation) | S-u와 동일 | adaptive | 스케줄러 효과 분리용, 주 비교 아님 |
 
 **종속변수.**
 
@@ -45,9 +49,9 @@ SHA-256 목록이다. DESIGNED / IMPLEMENTED / TESTED / EXPERIMENTALLY VALIDATED
   시점에서 절단. 생존분석(Kaplan–Meier, 로그랭크, Vargha–Delaney A12)으로 비교한다.
 - **U_viol** — 고유 위반 입력 수(정규화 서명 기준; 같은 lineage·같은 fingerprint는 1).
 
-**예측.** S가 R보다 T_first 중앙값이 **2배 이상 빠르고**(로그랭크 p < 0.05, A12 ≥ 0.64) **S ≠ D**다.
+**예측.** S-u가 R보다 T_first 중앙값이 **2배 이상 빠르고**(로그랭크 p < 0.05, A12 ≥ 0.64) **S-u ≠ D**다.
 
-**반증.** S와 R의 생존곡선이 분리되지 않는다.
+**반증.** S-u와 R의 생존곡선이 분리되지 않는다.
 
 ## H-B — generic oracle 일반성
 
@@ -58,11 +62,15 @@ CVE 문자열·버전·PoC 바이트를 넣지 않은 generic C0/C1/C2가 **≥ 
 
 ## H-C (보조) — 어휘 음성 통제
 
-어휘에 피해 경로 이름이 **없으면** S도 R도 C1에 도달하지 못한다. 기존 A1 random floor 0/19(powered v2)와
-A3blind 0으로 이미 확인됐다. 이는 위협 모델 전제(이름을 알아야 도달)를 확인하는 **음성 통제**이지
+현재 generic 어휘로는 기본 sentinel 이름을 철자할 수 없고(코드상 사실: `src/inodefence/mutator/m1.py`의
+`COMPONENTS` 7토큰, `m1_addressing.py` 주석), 실험상 A1 0/19 완주·A3blind 6셀 7,983 step에서 C1이 관찰되지
+않았다(음성 통제, observed). 외부 객체 이름이 어휘 토큰과 일치하는 설정에서는 도달할 수 있으므로 일반적
+"구조적 불가"로 단정하지 않는다. 이는 위협 모델 전제(이름을 알아야 도달)를 지지하는 **미관찰** 결과이지
 effectiveness 주장이 아니다.
 
 ## 판정 시나리오
+
+아래 S는 주 비교의 **S-u**다(S-a는 ablation으로 별도 보고).
 
 | # | 관찰 | 판정 |
 | --- | --- | --- |
@@ -77,7 +85,7 @@ effectiveness 주장이 아니다.
 
 ## 평가 원칙
 
-- 동일 어휘·seed·이미지(digest)·oracle. 세 arm은 피드백 정책 외 어떤 것도 다르지 않다.
+- 동일 어휘·seed·이미지(digest)·oracle·operator 선택(uniform). 세 arm은 retention 정책 외 어떤 것도 다르지 않다.
 - **사전등록 뒤 변경 금지.** 지표·예산·hit 정의·분모 규칙은 `experiments/preregistration/`에 커밋된 뒤 바꾸지
   않는다. 수정은 새 버전 파일로만.
 - 검정력은 EXP-0 파일럿 **실측**(abort율·hazard proxy)에서 산출하고 그 값으로 EXP-3 규모를 고정한다.

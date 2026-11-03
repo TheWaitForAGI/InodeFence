@@ -24,10 +24,10 @@ M1~M4와 같고, 날짜가 아니라 "증거가 모이면 찍는" 지점이다. 
 
 | 단계 | 늦어도 | 핵심 작업 | 게이트 | 상태 |
 | --- | --- | --- | --- | --- |
-| 1 보존·통제 | 11/5 | 태그 `audit-baseline-20261103`(=bb3fd7c), 맥 raw SHA-256 목록(1,614파일), 윈도우 raw 미반입 기록, 보고 누락 4건 LOG 기록, 논문 06/07 정정, 덱 8장 stale 기록 | 없음 | 이 PR에서 완료 |
+| 1 보존·통제 | 11/5 | 태그 `audit-baseline-20261103`(=bb3fd7c), 맥 raw SHA-256 목록(1,614파일), 윈도우 raw 미반입 기록, 보고 누락 4건 LOG 기록, 논문 06/07 정정, 덱 8장 stale 기록 | 없음 | 이 PR에서 저장소 반영; **원본 백업 미완료**(맥 raw 체크섬 목록만, 윈도우 raw 미반입, 외부/공유 백업 없음) |
 | 2 방향 재정립 | 11/7 | research-questions v2(핵심 RQ·H-A/H-B/H-C·R/D/S), D038, EXP-0 사전등록 v1, STATUS 수술 기준·모순 표, 이 큐 | D037(병합 정책)은 지웅 결정 대기 | 이 PR에서 완료(D037 제외) |
 | 3 구현 수리 | 11/10 (G1 늦어도 11/13) | **Runtime:** abort 수정(observer malformed_identity·broker·cleanup)·워커풀 + per-case parity. **Evaluation:** 어휘 동등 R/D/S 러너·KM/logrank/A12·사전등록 실행기. **Oracle:** 다수 sentinel·oracle FP/FN 점검. **Evidence:** replay 연결 | G1: R/D/S×budget 50 완주, 어휘 동등 테스트, 10캠페인 smoke abort≤1, 워커풀 parity | 대기 |
-| 4a EXP-0 | 11/14 | 파일럿 5 seed×200×R/D/S 실행(사전등록 v1.1 커밋 후), GO/NO-GO x·n 확정 | G1 | 대기 |
+| 4a EXP-0 | 11/14 | 파일럿 5 seed×200×R/D/S-u 실행(사전등록 v2.1 커밋 후), zero-hit 기본·dense 신호로 EXP-3 설계 입력·x·n 확정 | G1 | 대기 |
 | 4b 사전등록 | 11/18 | EXP-3 + EXP-2 GO/NO-GO 규칙 사전등록 커밋(SHA·digest·policy ID) | 4a | 대기 |
 | 4c EXP-3 | ≈11/20 | 20 seed×2000×R/D/S, 다수 sentinel; 11/20 규칙 기계 적용 | 4b | 대기 |
 | 4d EXP-2 조건부 | ≈11/25 | GO일 때만 실행 | 4c 규칙 | 대기 |

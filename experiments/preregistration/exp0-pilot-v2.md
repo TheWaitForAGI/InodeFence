@@ -12,6 +12,8 @@
 3. **백업 상태.** 원본 백업은 **미완료**다: 맥 raw는 체크섬 목록(`experiments/summaries/raw-manifest-mac-20261103.sha256`)만
    저장소에 있고 raw 자체는 호스트 로컬, 윈도우 raw 미반입, 외부/공유 저장소 백업 없음. EXP-0 raw도 같은 상태로
    시작하므로 실행 후 체크섬 목록을 저장소에 커밋하는 것을 완료 조건에 넣는다.
+4. **rule-of-three 독립성 단위.** zero-hit 상한의 분모를 실행 수가 아니라 캠페인 수로 한다(실행 step은 캠페인 내
+   비독립); 실행 단위 상한은 탐색적으로만 병기하고, 단위·계산 방식은 11/18 사전등록 전에 확정한다.
 
 > **구속력.** 이 v2는 엔진 SHA·이미지 digest·policy ID가 비어 있는 **설계 등록**이다. G1(구현 수리) 동결 시 그 값을
 > 채운 **v2.1을 실행 전에 커밋**해야 실행이 유효하다. **v2.1 커밋 이전의 실행은 EXP-0이 아니다.** v2.1은 아래 내용을
@@ -55,7 +57,10 @@ policy ID는 Evaluation 세션이 어휘 동등 R/D/S 러너를 구현한 뒤 v2
 
 3,000 실행 × hazard ~2e-5 → 기대 hit ≈ 0.06. **zero-hit이 기본 결과**이며 다음을 미리 정한다.
 
-- **(a)** EXP-0은 C1/C2 hit으로 hazard를 **추정하지 않는다**. zero-hit이면 rule-of-three 상한(3/n, n = 실행 수)만 보고한다.
+- **(a)** EXP-0은 C1/C2 hit으로 hazard를 **추정하지 않는다**. zero-hit이면 rule-of-three 상한만 보고하되, 실행 step은
+  같은 캠페인 안에서 독립이 아니므로(corpus 계보·retention) 분모는 실행 수가 아니라 **캠페인 수**(3/n, n = 캠페인 수)로
+  계산한다. 실행 단위 3/n(n = 실행 수)은 **탐색적 상한**으로만 병기한다. 독립성 단위(캠페인 vs 실행)와 상한 계산
+  방식은 11/18 본실험 사전등록 전에 확정한다.
 - **(b)** EXP-3 설계 입력은 **dense 신호**로 정한다: boundary-attempt 키 수, C0 도달(인덱스·비율), rejected 비율,
   처리량(exec/h), abort 사유별 수.
 - **(c)** EXP-2 GO/NO-GO는 EXP-0이 아니라 **EXP-3 결과**에 11/18 사전등록된 규칙을 적용해 결정한다.
@@ -70,7 +75,7 @@ policy ID는 Evaluation 세션이 어휘 동등 R/D/S 러너를 구현한 뒤 v2
 4. **per-case 컨테이너 vs 워커 풀** 처리량을 나란히(parity 확인; G1 조건).
 5. arm별 첫 C0 / C1 / C2 인덱스(우측중도절단; 무hit=200, abort=abort 시점).
 6. dense 신호 — boundary-attempt 키 수, rejected 비율(arm별).
-7. hazard proxy = (C1 ∨ C2 step 수) / (실행 수) — zero면 rule-of-three 상한만 보고(위 (a)).
+7. hazard proxy = (C1 ∨ C2 step 수) / (실행 수) — zero면 캠페인 단위 rule-of-three 상한만 보고하고 실행 단위는 탐색적 상한으로 병기(위 (a)).
 8. EXP-0 raw의 SHA-256 체크섬 목록(실행 후 저장소 커밋; 완료 조건).
 
 ## 파생 결정 (4a에서 작성)

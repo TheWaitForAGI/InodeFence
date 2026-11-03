@@ -23,7 +23,8 @@ raw experiment output → validated summary → finding → 이 매핑 → Capab
 | --- | --- | --- | --- |
 | C-M1 | 실제 node-tar에서 입력→실행→entry별 관찰→C0/C1/C2→feedback→다음 mutation 루프가 돈다 | **paper-ready**(TESTED, 엔지니어링 능력) | Ledger M1 행 1–6 + 마일스톤 M1; `make demo`(호스트) |
 | C-M2 | **generic identity oracle 하나**가 릴리스/정답경로 하드코딩 없이 두 root-cause(R1=CVE-2026-23745, R2=CVE-2026-24842)를 통제 재현으로 포착 | **paper-ready**(방어 가능) | raw [`../../experiments/repro/evidence/summary.json`](../../experiments/repro/evidence/summary.json) → [M2 validated summary](../../experiments/summaries/cross-release-identity-repro-v1.md) → Ledger M2 행/마일스톤 M2 |
-| C-M3a | 영향 릴리스 7.5.2에서 **object-identity 관찰이 자율 경계위반 발견을 인과적으로 가능케 한다**(2026-11-03 정정: blind 대조는 어휘를 통제하므로 입증된 것은 '외부 객체 이름의 관찰(어휘 획득)이 필요조건'이며 retention·스케줄링 피드백 기여는 R/D/S로 미분리; A3full s11=21 vs identity-blind 0 vs random 0; **멀티-seed**: powered 매칭 런에서 신규 disjoint seed s101 완주 C1 + s118 observed-trigger로 재현, 단일 s11 아님) | **paper-ready**(인과·메커니즘; 단 "blind 발견 아님" 명시 필수) | raw `~/inodefence-evidence/{m3-scale-full,m3-ablation,m3-repro}` → [M3 validated summary](../../experiments/summaries/node-self-discovery-mechanism-v1.md) + powered 매칭 [verdict](../../experiments/summaries/m3-powered-matched-verdict-v1.md)(#196) → Ledger M3 행/마일스톤 M3(PR #151) |
+| C-M3a-1 | 영향 릴리스 7.5.2에서 **외부 객체 이름을 mutation 어휘에 획득한 조건(A3full)에서 자율 경계위반이 관찰됐다**(s11=21 vs 이름을 뺀 A3blind 0 vs 철자 불가 A1 0; **멀티-seed**: powered 매칭 런의 신규 disjoint seed s101 완주 C1 + s118 observed-trigger로 반복) | **paper-ready**(observed; "blind 발견 아님"·"동일 어휘 통제 없음" 명시 필수) | raw `~/inodefence-evidence/{m3-scale-full,m3-ablation,m3-repro}` → [M3 validated summary](../../experiments/summaries/node-self-discovery-mechanism-v1.md) + powered 매칭 [verdict v2](../../experiments/summaries/m3-powered-matched-verdict-v2.md)(#200) → Ledger M3 행/마일스톤 M3(PR #151) |
+| C-M3a-2 | **inode/effect retention 피드백 자체의 인과 기여**(동일 어휘 아래 S-u가 R·D보다 위반에 먼저·더 많이 도달) | **미검증** — 기존 blind 대조는 어휘를 통제해 분리 불가; 어휘 동등 R/D/S 비교(EXP-3, 2026-11-18 사전등록) 이후 판정 | [research-questions v2](../../docs/research/design/research-questions.md) H-A · [exp0-pilot-v2](../../experiments/preregistration/exp0-pilot-v2.md) |
 | C-M3b | **상태-인지 피드백이 무작위보다 C1을 더 빨리/많이 찾는다(rate 우위, H1 effectiveness)** | **사전등록 판정: rate CI 미분리(검정력 부족)** — 주 주장 아님 | powered 매칭 런 완료(A1 vs A3full, budget 2000, disjoint seed 100–119): 완주 clean C1 A3full 1/10 vs A1 0/12, 매칭 Wilson CI 겹침(`complete_hit_wilson_intervals_separate=False`) → rate 우위 미입증(~0.1 효과 검정력 부족). raw `~/inodefence-evidence/m3-powered-matched-20261030` → [powered verdict](../../experiments/summaries/m3-powered-matched-verdict-v1.md)(#196). 논문 본문 확정 rate 주장 금지(보조·탐색적) |
 | C-M4a | 동일 generic C0/C1/C2 oracle이 **3개 독립 extractor**(python-tarfile·oras-go·decompress)에서 adapter로 경계위반을 포착 | **paper-ready**(단 **oracle/adapter 수준 일반성에 한정**) | Ledger M4 행/마일스톤 M4(통제 reference 차분 + container-integration; `tests/test_python_tarfile_generality.py` 등) |
 | C-M4b | 2·3번째 extractor에서 **퍼저 자력 발견** 일반성 | **완료 아님(루프 작동·실행, 발견은 음성)** | 자력발견 루프가 decompress(2번째)·oras-go(3번째)에서 실제 실행됨 — decompress 통합 C1/C2 **0/28 Wilson≤0.121(검정력 있는 음성, #198)**, oras-go **0/1 Wilson[0,0.793](약한 음성, #197)**; C0(path-boundary)는 자력도달하나 identity/effect 미도달. [M4.5 통합 verdict](../../experiments/summaries/m4-5-decompress-selfdiscover-unified-v1.md)·[M4.7 oras-go](../../experiments/summaries/m4-7-oras-go-selfdiscover-v1.md). generality(oracle/adapter=C-M4a)≠self-discovery(루프 작동)≠effectiveness(발견). 발견 effectiveness 주장 아님 |
@@ -33,7 +34,7 @@ raw experiment output → validated summary → finding → 이 매핑 → Capab
 
 - **C-M3b (rate 우위)**: powered 매칭 런으로 **사전등록 판정 완료 — rate CI 미분리(검정력 부족)**.
   논문 본문에서 effectiveness 우위를 **주 주장으로 쓰지 않는다**. 주 주장은 C-M2(통제 재현)와
-  C-M3a(메커니즘 인과, 이번에 멀티-seed로 강화)다. CI 분리된 rate 주장은 사람-게이트 대예산
+  C-M3a-1(이름 획득 조건 관찰, 멀티-seed 반복; 피드백 인과 C-M3a-2는 미검증)다. CI 분리된 rate 주장은 사람-게이트 대예산
   pilot(M3.4: N01 토큰·timeout 동결 선행) 뒤에만 보조로 승격한다.
 - **C-M4b (2·3번째 extractor 자력 발견)**: "일반성"을 말할 때 **oracle/adapter 수준**임을 반드시
   한정한다(C-M4a). 자력발견 루프는 decompress·oras-go에서 실제 실행됐으나 발견은 검정력 있는/약한
@@ -53,5 +54,6 @@ Wormholes(archive-extraction symlink/hardlink composition·creation order)가 �
 - "제안 방법이 fixed strategy보다 우수하다 / 여러 extractor에 일반화된다."
 
 논문이 방어하는 것은 좁은 명제뿐이다: (C-M2) outcome 기반 identity oracle 하나가 2개 root-cause를
-하드코딩 없이 관통한다, (C-M3a) object-identity 관찰이 이 자율 경계위반 발견을 가능케 한다(없으면
-도달 불가; blind 발견 아님).
+하드코딩 없이 관통한다, (C-M3a-1) 기존 실험은 외부 객체 이름을 mutation 어휘에 획득한 조건에서 경계위반이
+관찰되었음을 보여준다 — 동일 어휘로 통제하지 않았으므로 inode/effect retention 피드백 자체의 인과적 기여는
+아직 입증되지 않았다(C-M3a-2 미검증; blind 발견 아님).

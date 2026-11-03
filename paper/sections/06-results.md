@@ -57,17 +57,17 @@ raw는 [`../../experiments/repro/evidence/summary.json`](../../experiments/repro
 손으로 만든 generic 하드링크 엔트리이고, 하드링크·링크 상태 관찰·버전 차분 자체는 선행연구
 (§3)가 다루므로 신규 기여로 표현하지 않는다.
 
-## 5.3 M3 — 퍼저가 자력으로 위반을 찾는다: 메커니즘 인과 입증
+## 5.3 M3 — 퍼저가 자력으로 위반을 찾는다: 이름 획득 조건의 관찰(피드백 인과는 미입증)
 
-영향 릴리스 node-tar 7.5.2(budget 1500)에서 **object-identity 관찰을 feedback으로 쓰는 state-aware
-퍼징이 경계위반을 자율 트리거**한다. 전체 대조표는 [M3 blind-ablation 표](../tables/m3-blind-ablation.md),
+영향 릴리스 node-tar 7.5.2(budget 1500)에서 **외부 객체 이름을 mutation 어휘에 획득한 arm(A3full)에서
+경계위반의 자율 트리거가 관찰됐다**. 전체 대조표는 [M3 blind-ablation 표](../tables/m3-blind-ablation.md),
 그림 사양은 [m3-blind-ablation-figure-spec](../figures/m3-blind-ablation-figure-spec.md), 검증 요약은
 [node-self-discovery-mechanism-v1](../../experiments/summaries/node-self-discovery-mechanism-v1.md)다
 (Ledger M3 / PR #151, merge d44d903).
 
-![M3 blind-ablation 막대그래프: A3full s11 21 hits vs A3blind s11 0 vs A1 random floor 0, identity 관찰 on/off 인과 대조](../figures/m3-blind-ablation.png)
+![M3 blind-ablation 막대그래프: A3full s11 21 hits vs A3blind s11 0 vs A1 random floor 0, EXTERNAL 이름 어휘 포함 on/off 대조](../figures/m3-blind-ablation.png)
 
-*그림 2 — blind-ablation 대조(observed; 인과이지 rate 아님). 데이터 [표 M3](../tables/m3-blind-ablation.md),
+*그림 2 — blind-ablation 대조(observed; 이름 획득 조건 대조이지 피드백 인과·rate 아님). 데이터 [표 M3](../tables/m3-blind-ablation.md),
 생성 소스 [`../figures/render_m3_blind_ablation.py`](../figures/render_m3_blind_ablation.py).*
 
 ### 5.3.1 관찰된 수치 (observed, raw step 로그 재집계)
@@ -94,12 +94,13 @@ s11 run은 step 416에서 evidence-integrity 검사로 abort(returncode 1)하지
 이전**에 기록된 step이다(producer abort-drain이 거부된 외부-하드링크 시도를 valid trace로 관찰).
 따라서 process returncode 1을 "발견 없음"으로 읽지 않는다.
 
-### 5.3.2 인과 해석과 정직 경계
+### 5.3.2 관찰된 조건 차이와 정직 경계
 
-**인과(주 주장, observed):** 발견의 원인은 **object-identity 관찰**이다 — blind 대조(관찰 이름에서
-EXTERNAL region 제외)의 A3blind s11은 1475 step에도 0, 무작위 바닥 A1은 33,005 step에도 0,
-state-aware A3full s11만 21. 즉 **"feedback(identity 관찰)이 발견을 가능케 한다 — 없으면 도달
-불가."** 이것은 가설이 명시한 feedback이 실제로 발견을 구동함을 blind 대조로 확정한 것이다.
+**관찰된 조건 차이(observed):** 자율 C1은 **BEFORE snapshot의 EXTERNAL 이름을 mutation 어휘에 넣은
+A3full s11에서만** 관찰됐고(21), 그 이름을 뺀 A3blind s11은 1475 step에도 0, generic 어휘로 이름을 철자할 수
+없는 무작위 바닥 A1은 33,005 step에도 0이었다. 즉 **EXTERNAL 이름을 어휘에 넣은 A3full에서만 관찰됐고,
+이름을 뺀 A3blind·철자 불가 A1에서는 미관찰**이다. (이 드래프트 v1은 이를 "feedback(identity 관찰)이 발견을
+가능케 한다 — 없으면 도달 불가"라는 인과 확정으로 적었으나, 아래 2026-11-03 정정대로 그 해석은 철회한다.)
 
 **2026-11-03 정정(해석; 위 수치·서술은 보존).** 위 blind 대조는 **피드백이 아니라 어휘**를 통제한 실험이다.
 A3full은 BEFORE snapshot에서 관찰한 EXTERNAL 이름을 mutation 어휘에 넣고, A3blind는 그 이름을 빼며, A1은
@@ -107,12 +108,12 @@ generic 어휘 7토큰(`src/inodefence/mutator/m1.py`의 `COMPONENTS`, `m1_addre
 철자할 수 없다. 따라서 21/0/0이 보인 것은 **"외부 객체 이름의 관찰(어휘 획득)이 자율 C1의 필요조건"**이지,
 (st_dev, st_ino) 기반 retention·스케줄링 피드백이 발견에 기여했다는 것이 아니다. 그 기여는 어휘를 맞춘 비교
 (R/D/S, [research-questions v2](../../docs/research/design/research-questions.md) H-A)로 아직 분리되지 않았고,
-어휘를 맞춘 기존 비교(§5.3.4 item-3 A/B/C/D, M4.8)는 C≡D·위반 0이다. 이 소절 제목의 "인과 입증"과 위
-"주 주장"은 이 한정으로 읽으며, §5.3.3의 "메커니즘 멀티-seed 강화"도 같은 한정을 받는다(s101·s118 역시 관찰
-이름을 어휘에 넣은 A3full이다).
+어휘를 맞춘 기존 비교(§5.3.4 item-3 A/B/C/D, M4.8)는 C≡D·위반 0이다. §5.3 제목·§5.3.2·§5.3.3의 결론 문장은
+이 기준으로 통일했다(s101·s118 역시 관찰 이름을 어휘에 넣은 A3full이다).
 
 **정직 경계(엄수, inferred/열린 항목):**
 
+- **현재 결론(통일 문장).** 기존 실험은 외부 객체 이름을 mutation 어휘에 획득한 조건에서 경계위반이 관찰되었음을 보여준다. 동일 어휘로 통제하지 않았으므로 inode/effect retention 피드백 자체의 인과적 기여는 아직 입증되지 않았다.
 - **blind 발견이 아니다.** 기존 외부 객체에 하드링크하려면 그 이름이 필요하고 퍼저는 그것을
   **관찰**로 얻는다. 어휘·oracle에 대상 경로·식별자·정답 seed·근접 보상을 하드코딩하지 않았고
   EXTERNAL 필터는 region 기준 target-agnostic이다. 다만 state-aware mutation 어휘 계열이
@@ -120,8 +121,8 @@ generic 어휘 7토큰(`src/inodefence/mutator/m1.py`의 `COMPONENTS`, `m1_addre
   명시한다.
 - **seed-rare.** s11은 동일 seed에서 결정론적으로 재현(21건)되지만, budget 1500·65 seed 중 자율
   C1을 내는 seed는 s11 하나뿐이다(재현 0/30). 이 예산에서 다른 seed로 일반화되지 않는다.
-- **rate 우위가 아니다.** 이 소절의 주장은 **인과**("feedback이 발견을 가능케 함")이지 "상태-인지
-  feedback이 무작위보다 빠르다/많이 찾는다"가 아니다(§5.3.3).
+- **rate 우위가 아니다.** 이 소절의 주장은 **이름 획득 조건에서의 관찰**이지 "상태-인지 feedback이
+  무작위보다 빠르다/많이 찾는다"가 아니다(§5.3.3).
 
 ### 5.3.3 rate 우위 판정 — 사전등록 판정: CI 미분리(검정력 부족)
 
@@ -150,12 +151,11 @@ generic 어휘 7토큰(`src/inodefence/mutator/m1.py`의 `COMPONENTS`, `m1_addre
 - **판정:** 완주 clean-C1 rate 점추정은 identity feedback 쪽(0.10 vs 0.00)이나 **매칭 Wilson 구간이
   겹쳐 rate 우위는 CI로 분리되지 않는다** — ~0.1 효과에 대해 이 예산·seed 수로는 검정력이 부족하다.
   rate 우위는 여전히 **미입증**이며 이 논문의 주 주장이 아니다.
-- **단, 메커니즘은 멀티-seed로 강화된다(§5.3.2 보강).** §5.3.2의 자율 트리거는 budget 1500·seed
-  1–65에서 s11 하나였으나, 이 powered 런은 **기존과 disjoint한 새 seed s101**(완주 C1)과 s118
-  (observed-trigger)에서 identity feedback 경유 자율 C1을 재현했다. 즉 "object-identity 관찰이 발견을
-  가능케 한다"는 인과 명제는 단일 seed 아티팩트가 아니라 **여러 disjoint seed에서 성립**한다. CI
-  분리된 rate 주장은 사람-게이트 대예산 pilot(M3.4: N01 qualification 토큰·timeout 동결 선행)이
-  필요하다.
+- **이름 획득 조건에서의 자율 트리거가 신규 seed(s101·s118)에서도 관찰됐다(인과 강화 아님).** §5.3.2의 자율
+  트리거는 budget 1500·seed 1–65에서 s11 하나였으나, 이 powered 런은 **기존과 disjoint한 새 seed s101**(완주
+  C1)과 s118(observed-trigger)에서 같은 조건(EXTERNAL 이름을 어휘에 넣은 A3full)의 자율 C1을 재현했다. 즉
+  관찰은 단일 seed 아티팩트가 아니라 **여러 disjoint seed에서 반복**되지만, 동일 어휘 통제가 없으므로 피드백
+  인과의 강화는 아니다. CI 분리된 rate 주장은 어휘 동등 R/D/S 비교(EXP-3)가 필요하다.
 
 ### 5.3.4 (보조·탐색적) item-3 단일경로 A/B/C/D 중간상태 거동
 

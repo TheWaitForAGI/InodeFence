@@ -8,6 +8,12 @@
 날짜가 아니라 마일스톤(M1~M4)으로 관리한다. 기한은 팀 일정으로 두고 문서에 박제하지 않는다.
 (`docs/MIDTERM_GOALS.md`는 배경 문서로 남긴다.)
 
+**수술 기간(2026-11-03~11-30)의 계획 기준은 Claude Doc 「InodeFence 독립 연구 감사 및 실험 설계 재정립」
+(https://claude.ai/artifact/JJtsK3VowEGuBFN3YXZDFq)이다.** 이 문서와 STATUS·BACKLOG가 다르면 문서가 맞고 STATUS는 그에
+맞춰 갱신 중이다. 실험 실행 기준은 Git에 동결된 사전등록 파일(`experiments/preregistration/`), 증거 기준은
+raw + SHA-256 목록(`experiments/summaries/raw-manifest-*.sha256`)이다. 저장소에 문서 복사본을 두지 않고
+포인터만 둔다.
+
 ### 목표
 
 실제 node-tar에서 다음 루프가 하나의 명령(`make demo`)으로 재현 가능하게 돌아가는 것:

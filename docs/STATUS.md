@@ -137,7 +137,7 @@ pilot과 native P0/P1/P2 campaign은 계속 **NOT_AUTHORIZED / NOT_RUN**이다.
 | Entry transitions | P0 final-state, P1 transition retention, P2 transition-adaptive mutation; separately versioned v3 rebinding composite | v1 model/search/evaluation; v2 event model/feedback, bounded node-tar producer/raw export, independent reader and qualification runner; additive v3 composite model/strict reader/finite feedback | synthetic tests plus node-tar/libarchive controlled qualification; v2 producer 10 checks PASS and 480-run matrix independently verified at `36ff7fd`; v3 22 synthetic checks and canonical 1,584-test suite PASS | v1 `BLOCKED_NATIVE_OBSERVATION`; v2 `V2_NATIVE_EFFECT_OBSERVATION_NOT_QUALIFIED` (replacement coverage); v3 native producer NOT_IMPLEMENTED and qualification/effectiveness NOT_RUN |
 | Minimization | bounded deterministic generic/USTAR reduction | core and exact-fingerprint evidence binding | [minimizer tests](../tests/test_minimizer.py), [USTAR checks](../tests/test_minimizer_ustar.py) | historical/unknown candidate 없음 |
 | Evaluation / reproduction | explicit provenance, immutable raw → verified derivation | reader, pair records, failure ledger/legacy journal, policy journal/timing/repetition/controller HWM, candidate 3+3 raw replay, N01 machine matcher, qualification/matrix, benign replay, completed policy export/config/dataset/statistics | [evaluation tests](../tests/evaluation/), [benign replay tests](../tests/replay/) | HWM/matcher는 controlled TESTED; historical pilot memory/candidate assessment / human known-class judgment / formal dataset 없음 |
-| C3/C4 / generality | 후속 contracts / RQ4 | C3/C4와 ORAS adapter 없음; GNU route는 benign allowlist만 | broader scope의 실행 증거 없음 | 미검증 |
+| C3/C4 / generality | 후속 contracts / RQ4 | C3/C4 없음; oras-go adapter 구현됨(#176, `targets/oras_go*.py`, Ledger M4); GNU route는 benign allowlist만 | oras-go·decompress·python-tarfile은 Ledger M4 행 참조 | C3/C4 미검증 |
 
 ## 기준 main의 검증 근거
 
@@ -279,62 +279,58 @@ prefix를 보존한다. 이는 N01 class match나 human root-cause 판정이 아
 
 ## 다음 연구 gate
 
-Native entry-transition work cannot proceed to v1 Phase B/C/D. Reopening it requires the
-separate v2 qualification Task Contract; v1 policy IDs and evidence cannot be silently reused.
-This blocker does not promote or invalidate the independent final-state historical plan.
+### 수술 기준 (2026-11-03 ~ 11-30)
 
-The v2 contained qualification has completed with a retained negative decision. Replacement
-coverage must be established under a separate frozen Task Contract before another matrix.
-Native campaign integration remains blocked until the exact
-`V2_NATIVE_EFFECT_OBSERVATION_QUALIFIED` decision is retained. The initial v2 policy rejects
-incomplete/invalid streams and target-rejection prefixes for admission/reward.
-The runtime diagnosis selected the multi-operation branch for the exercised node-tar cases.
-The separately versioned v3 generic representation passed its synthetic engineering gate.
-The next v3 step is not an implicit campaign: a native dependency producer and qualification
-matrix require a new frozen contract and explicit authorization. Alternatively, v2 can only
-reopen with a genuine one-operation positive under its own contract.
+**수술 기간의 계획 기준은 Claude Doc 「InodeFence 독립 연구 감사 및 실험 설계 재정립」(https://claude.ai/artifact/JJtsK3VowEGuBFN3YXZDFq)이다.**
+이 문서와 STATUS·BACKLOG가 다르면 문서가 맞고 STATUS는 그에 맞춰 갱신 중이다. 실험 실행 기준은 Git에
+동결된 사전등록 파일(`experiments/preregistration/`), 증거 기준은 raw + SHA-256 목록
+(`experiments/summaries/raw-manifest-mac-20261103.sha256`; 기준선 태그 `audit-baseline-20261103` = `bb3fd7c`)이다.
+연구 질문·가설은 [research-questions v2](research/design/research-questions.md), 결정은 [D038](DECISIONS.md),
+작업 큐는 [BACKLOG 수술 절](BACKLOG.md)을 따른다. 이 절의 이전 본문(v1/v2/v3 entry-transition 재개 조건,
+N01 human correspondence, N03/N04 NOT_AUTHORIZED 서술)은 LOG·diagnostics에 남고 더 이상 다음 gate가 아니다.
 
-N03 independent closeout은 [structured report](research/diagnostics/n03-autonomous-research-advancement.md)에
-기록한다. Final-state journal/timing/repetition infrastructure는 IMPLEMENTED / TESTED지만 pilot과
-known-class adjudication은 완료되지 않았다. Generic v3 rebinding은 synthetic engineering
-검증만 완료했으며 v2 negative decision이나 P0-v2/P1-v2/P2-v2 gate를 변경하지 않는다.
+### MVP 범위
 
-**첫 historical qualification인 N01 node-tar 7.5.2 / 7.5.3 hardlink arm은 automated
-replay를 완료했고 final human correspondence review를 기다린다.**
-두 exact [wrapper locks](../experiments/benchmarks/locks/README.md)는 공통 historical production
-closure로 준비하고 portable validator를 통과했으며, N02 attempt에서 image build/runtime/
-options/setup admission도 통과했다. M1은 composition을 지원하지만 기존 finite vocabulary가 default
-`outside/sentinel.txt`를 생성하지 못한다. 별도 versioned
-[protected-component policy](research/design/mutation-protected-components-v1.md)는 original benign
-seed에서 해당 상대 주소까지의 deterministic logical reachability를 TESTED했다. 이는 target-visible
-setup, historical affected/fixed behavior 또는 rediscovery를 검증하지 않으므로 contained setup과
-pair qualification 전 unknown-vulnerability campaign으로 넘어가지 않는다.
-[2026-10-15 execution progress](research/diagnostics/n01-historical-execution-progress-2026-10-15.md)는
-두 변경의 tested integration revision, N01 contract technical review와 후속 implementation gate를
-기록한다. Human authorization은 2026-10-15에 기록됐다. N01 전용 구현은
-normal `7.5.22` validator와 분리된 metadata admission, 정확히 8건의 readiness,
-counterbalanced 10-run pair, result-first publication과 fresh-process independent reader를 포함한다.
-이 구현의 controlled-adapter tests와 별개로 clean `e987c855` source와 trusted
-macOS/OrbStack controller에서 두 historical image를 immutable ID로 admission했고, 8건
-readiness와 10건 pair를 한 번 실행했다. Independent reader는
-`N01_PAIR_AUTOMATED_REPLAY_COMPLETE`를 재계산했다. 7.5.2는 C1/C2 5/5, 7.5.3은
-C1/C2 0/5와 strict rejection 5/5였다. Frozen contract의 human correspondence disposition이
-남아 final token은 없으며 pilot과 B0/B1/B3는 **NOT_RUN**이다. 전체 evidence는
-[N02 report](research/diagnostics/n02-autonomous-integration-and-qualification.md)에 기록한다.
-[Benchmark Set](research/benchmarks/benchmark-set-v1.md)과
-[catalog](../experiments/benchmarks/README.md)의 15개 G0 planning record는 여전히 정적
-`NOT_RUN` 값이며 READY는 없다. 이 값은 별도 N01 qualification evidence의 live 상태를 대신하지 않는다.
+- **타깃:** node-tar 7.5.2/7.5.3·7.5.6/7.5.7(취약/수정 쌍 2개) + Python tarfile `fully_trusted`/`data`.
+- **자력발견(H-A) 타깃은 node-tar 하나.** decompress는 확장, oras-go는 oracle 일반성(H-B) 증거로만 쓴다.
+- **범위 밖:** entry-transition 계열(v1/v2/v3·P0/P1/P2, BACKLOG M3.6 폐기), GNU tar, Windows.
 
-순서를 유지한다: G0 정의 → oracle → harness → fuzzer correctness → synthetic →
-historical qualification → pilot → experiment freeze → main experiments → candidate triage →
-analysis → paper → independent reproduction. 현재 다음 독립 gate는 N01 historical
-qualification이다.
+### 실험 순서
 
-[Evaluation protocol](research/benchmarks/evaluation-protocol-v1.md)의 budgets/subsets는
-pilot 이전의 제안이며 main-experiment freeze가 아니다. Negative result, qualification failure,
-rejection/timeout와 infrastructure-invalid attempts를 모두 보존한다. Raw data는 수동 수정하지 않는다.
-11월 2일 발표는 working implementation과 검증된 pilot 범위를 구분해야 하며, 11월 9일
-experiment freeze와 11월 30일 최종 artifact는 별도 승인/증거가 필요하다.
+1. **EXP-0 파일럿** — 5 seed × budget 200 × R/D/S, 인프라 측정(abort율·p95·처리량·hazard proxy). 가설 검증 아님,
+   formal 추정에 합산 금지. 사전등록 [exp0-pilot-v1](../experiments/preregistration/exp0-pilot-v1.md)
+   (엔진 SHA·이미지 digest·policy ID는 G1 동결 시 v1.1).
+2. **11/18 사전등록 고정** — EXP-3 본실험 + EXP-2 GO/NO-GO 규칙(x·n은 EXP-0 숫자로 11/14 확정).
+3. **EXP-3** — 20 seed × budget 2000 × R/D/S, 다수 sentinel. 1차 지표 T_first(우측중도절단)·U_viol.
+4. **11/20 규칙 기계 적용** — EXP-3 결과에 사전등록된 GO/NO-GO 규칙을 그대로 적용.
+5. **EXP-2 조건부** — GO일 때만(≈11/25).
+
+### 게이트
+
+| 게이트 | 늦어도 | 조건 |
+| --- | --- | --- |
+| G1 구현 수리 | 11/10 (늦어도 11/13) | R/D/S × budget 50 완주, 어휘 동등 테스트(세 arm 동일 어휘), 10캠페인 smoke abort ≤ 1, 워커풀 ↔ per-case 컨테이너 parity |
+| EXP-0 | 11/14 | 파일럿 완료, GO/NO-GO x·n 확정 |
+| 사전등록 고정 | 11/18 | EXP-3 + EXP-2 규칙 커밋(SHA·digest·policy ID 채움) |
+| G2 | 11/26 | EXP-3(및 조건부 EXP-2) 완료·분석·논문 반영 |
+| 제출 | 11/30 | 최종 artifact |
+
+### 문서 모순 (감사 확인 12건)
+
+| # | 문서 주장 | 코드·증거 | 상태 |
+| --- | --- | --- | --- |
+| 1 | README·`src/README.md`·STATUS Ledger(C3/C4 행)·architecture.md "ORAS adapter 없음" | `targets/oras_go*.py` 존재, Ledger M4 구현 완료(#176) | 이 PR에서 STATUS 행만 정정, 나머지 5단계 |
+| 2 | Makefile·smoke 스크립트·experiment-fanout.yml "budget 상한 100" | `scripts/run_effect_demo.py` `MAX_NATIVE_BUDGET=2000` | 5단계 |
+| 3 | START_HERE §4·README "A/B/C 비교 안 함·formal NOT_RUN", STATUS 위 "NOT_AUTHORIZED" 서술 | Ledger M3·M4 실행됨 | 5단계 |
+| 4 | `src/README.md` "native producer NOT_QUALIFIED라 캠페인에 안 씀" | `make demo`가 native producer로 돈다 | 5단계 |
+| 5 | baseline-and-ablation-v1의 A1/A3(projection·reorder) | M3 요약의 A1/A3full(무작위·state-aware) | research-questions v2에 기호 폐기 명시(이 PR) |
+| 6 | STATUS "다음 연구 gate" entry-transition 재개 조건 | BACKLOG M3.6 폐기(honest negative) | 이 PR에서 해소(이 절 교체) |
+| 7 | 논문 06 §5.3.3 A1 수치(v1 0/12) vs 07 §6.1 A1 수치(0/7 [0,0.354]) | 07의 수치는 M3.3 A1 단독 배치, powered run 아님 | 이 PR(07 교체·06 v2 bullet) |
+| 8 | 발표 덱 8장 v1(1/10 vs 0/12) | v2 {100..129} 1/17 vs 0/19 | 덱 미수정(발표 종료), LOG 기록 |
+| 9 | 논문 §5.3.1 표 분모가 abort 포함임을 미명시 | A1 35=완주 19/abort 16 등 | 이 PR(주석 문단) |
+| 10 | M4.5 사전등록 hit 정의(`discovered_violation`, C0 포함) | 분석은 by_contract(2af0a03 사후) | 이 PR(unified-v1 '정의 변경 기록') |
+| 11 | `src/README.md` "Node campaign CLI 없음" | `container_host` 컨트롤러 모드로 실행됨 | 5단계 |
+| 12 | `evaluation/n04_preflight.py` L68–76 호스트 절대경로 하드코딩 | 이식 불가 | 5단계 |
 
 ## 변경 범위와 문서 우선순위
 

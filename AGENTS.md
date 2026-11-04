@@ -89,7 +89,16 @@ InodeFence는 TAR 압축 해제 보안을 연구하기 위한 프로토타입이
 
 핵심 연구 질문:
 
-> 특정 CVE PoC나 고정된 공격 패턴을 하드코딩하지 않고, filesystem security state(특히 object identity와 external effect)를 feedback으로 사용하면 archive extraction의 보안 경계 위반을 더 효과적으로 탐색할 수 있는가?
+> 피해 경로 이름을 아는 **동일 어휘·동일 예산** 아래서, filesystem security state(C1 identity·C2 effect)를
+> retention·스케줄링 피드백으로 쓰는 탐색이 **무작위 탐색**과 **구조 커버리지 탐색**보다 첫 경계위반까지의
+> 실행 수를 줄이고 고유 위반 입력을 더 많이 찾는가?
+> (핵심 RQ, [research-questions v2](docs/research/design/research-questions.md). 위협 모델 전제: 공격자는
+> 피해 경로 이름 — 보호 대상 외부 객체의 추출 루트 기준 상대 경로 — 을 알며 세 arm 어휘에 동일하게 포함한다.
+> blind 발견을 주장하지 않는다. CVE PoC·고정 공격 패턴·대상 경로·sentinel 이름은 oracle·feedback에 넣지 않는다.)
+
+(2026-11-03 정정: 이전 v1 질문 — "특정 CVE PoC나 고정된 공격 패턴을 하드코딩하지 않고, filesystem security
+state(특히 object identity와 external effect)를 feedback으로 사용하면 archive extraction의 보안 경계 위반을 더
+효과적으로 탐색할 수 있는가?" — 는 폐기, v2 참조.)
 
 이 프로젝트는 TAR fuzzing, hardlink, symlink, entry order, filesystem-state fuzzing, outside-root write 자체가 새롭다고 주장하지 않는다.
 

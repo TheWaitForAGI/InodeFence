@@ -47,17 +47,25 @@ def hash_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def iter_regular_files(root: Path) -> Iterator[Path]:
-    """Yield every regular file under ``root`` (no symlinks), sorted by path."""
+def iter_regular_files(root: Path, exclude_suffixes: tuple[str, ...] = ()) -> Iterator[Path]:
+    """Yield every regular file under ``root`` (no symlinks), sorted by path.
+
+    ``exclude_suffixes`` drops files whose name ends with any given suffix (e.g.
+    ``.sha256``), so an evidence manifest does not checksum other manifests left in
+    the tree. The default excludes nothing, preserving prior behavior.
+    """
     for path in sorted(root.rglob("*"), key=lambda item: item.as_posix()):
-        if path.is_file() and not path.is_symlink():
-            yield path
+        if not path.is_file() or path.is_symlink():
+            continue
+        if exclude_suffixes and path.name.endswith(exclude_suffixes):
+            continue
+        yield path
 
 
-def manifest_lines(root: Path) -> list[str]:
+def manifest_lines(root: Path, exclude_suffixes: tuple[str, ...] = ()) -> list[str]:
     """Build the sorted ``sha256sum``-format manifest lines for ``root``."""
     lines: list[str] = []
-    for path in iter_regular_files(root):
+    for path in iter_regular_files(root, exclude_suffixes):
         relative = path.relative_to(root).as_posix()
         lines.append(f"{hash_file(path)}  ./{relative}\n")
     return lines
@@ -95,8 +103,14 @@ class VerifyResult:
         return bool(self.mismatched or self.missing)
 
 
-def verify_manifest(manifest_path: Path, root: Path) -> VerifyResult:
-    """Re-hash ``root`` against ``manifest_path`` and report every discrepancy."""
+def verify_manifest(
+    manifest_path: Path, root: Path, exclude_suffixes: tuple[str, ...] = ()
+) -> VerifyResult:
+    """Re-hash ``root`` against ``manifest_path`` and report every discrepancy.
+
+    ``exclude_suffixes`` is applied to the extra-file scan so files the manifest was
+    built to skip (e.g. ``.sha256``) are not reported as extra.
+    """
     entries = parse_manifest(manifest_path.read_text(encoding="utf-8"))
     result = VerifyResult()
     listed = {name for _, name in entries}
@@ -108,7 +122,7 @@ def verify_manifest(manifest_path: Path, root: Path) -> VerifyResult:
             result.ok += 1
         else:
             result.mismatched.append(name)
-    for path in iter_regular_files(root):
+    for path in iter_regular_files(root, exclude_suffixes):
         name = path.relative_to(root).as_posix()
         if name not in listed:
             result.extra.append(name)
@@ -126,7 +140,7 @@ def _generate(args: argparse.Namespace) -> int:
         print(f"root is not a directory: {root}", file=sys.stderr)
         return 2
     out = args.out or default_output(args.host, args.date)
-    lines = manifest_lines(root)
+    lines = manifest_lines(root, tuple(args.exclude_suffix))
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text("".join(lines), encoding="utf-8")
     print(f"wrote {len(lines)} entries to {out} (root {root})")
@@ -142,7 +156,7 @@ def _verify(args: argparse.Namespace) -> int:
     if not root.is_dir():
         print(f"root is not a directory: {root}", file=sys.stderr)
         return 2
-    result = verify_manifest(manifest_path, root)
+    result = verify_manifest(manifest_path, root, tuple(args.exclude_suffix))
     for name in result.mismatched:
         print(f"MISMATCH {name}", file=sys.stderr)
     for name in result.missing:
@@ -169,6 +183,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--host", help="short host label for the generated file name (e.g. win)")
     parser.add_argument("--date", help="YYYYMMDD for the generated file name")
     parser.add_argument("--out", type=Path, help="override the generated manifest path")
+    parser.add_argument(
+        "--exclude-suffix",
+        action="append",
+        default=[],
+        metavar="SUFFIX",
+        help="skip files ending with SUFFIX (repeatable), e.g. --exclude-suffix .sha256",
+    )
     args = parser.parse_args(argv)
 
     if args.verify is not None:

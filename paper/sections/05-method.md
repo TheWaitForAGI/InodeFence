@@ -145,7 +145,7 @@ retention 효과만 분리). adaptive 스케줄러를 얹은 **S-a**는 주 비�
 | ② | S > R이나 S ≈ D | 피드백 **일반** 효과만(identity 특정 효과 미입증) |
 | ③ | 탐색 지표(새 state key 등)는 다르나 위반은 동등 | 보안 이득 미입증(EN-008) |
 | ④ | 알려진 클래스만 발견 | 정상(D007: zero-day는 성공 조건 아님) |
-| ⑤ | 전 arm 위반 0 | 미관찰로 보고·분모 명시·rule of three 상한(캠페인 단위 참고 상한, 판정 입력 아님) |
+| ⑤ | 전 arm 위반 0 | 미관찰로 보고·분모 명시·rule of three 상한(캠페인 단위 참고 상한일 뿐, 판정 입력 아님) |
 | ⑥ | extractor 간 불일치 | oracle 일반성(H-B)과 피드백 일반성(H-A)을 분리해 보고 |
 | ⑦ | S의 비용 과다 | 실행 수 외에 시간 정규화 지표 병기 |
 | ⑧ | S ≤ R | **반증** |
@@ -168,9 +168,11 @@ retention 효과만 분리). adaptive 스케줄러를 얹은 **S-a**는 주 비�
 - **검토 게이트.** 모든 코드 변경은 브랜치 → PR → CI → 검토(verifier 또는 사람) → squash 머지 경로를 거친다.
   안전경계와 연구 불변식(disposable sandbox + sentinel, 격리 완화 0, D005 CVE-specific oracle 금지, D006 known
   PoC seed 금지, D007 zero-day는 성공 조건 아님, oracle C0/C1/C2 정의 불변)은 에이전트가 바꾸지 못한다.
-- **정량 지표(2026-11-04, `main` 기준).** 전체 413개 커밋 중 **95개**가 Claude를 co-author로 명시한다. 지정 집계
-  명령 `git log --format=%b | grep -c "Co-Authored-By: Claude"`는 trailer **라인 140**을 반환하는데, 이는 squash
-  머지가 여러 커밋의 co-author trailer를 하나의 커밋 본문에 합치기 때문이다(라인 수 ≥ 커밋 수). 두 수치 모두
-  재현 가능한 명령으로 센 값이다.
+- **정량 지표(기준 SHA `24867be` = main #204 머지, 2026-11-04 핀).** 이 커밋 기준 전체 **414개** 커밋 중
+  **96개**가 Claude를 co-author로 명시한다(`git log 24867be --grep='Co-Authored-By: Claude' --format=%H | wc -l`
+  = 96; `git rev-list --count 24867be` = 414). 지정 집계 명령 `git log 24867be --format=%b | grep -c
+  "Co-Authored-By: Claude"`는 trailer **라인 143**을 반환하는데, 이는 squash 머지가 여러 커밋의 co-author
+  trailer를 하나의 커밋 본문에 합치기 때문이다(라인 수 ≥ 커밋 수). 기준 SHA를 핀했으므로 main이 진행해도
+  같은 값으로 재현된다.
 - **증거 규율.** 에이전트 산출물과 사람 검증을 구분하며, raw 결과 → validated summary → finding → 이 드래프트의
   증거 사슬(§4.5)과 observed/inferred 구분을 유지한다. 에이전트가 생성한 수치가 자동으로 논문 주장이 되지 않는다.

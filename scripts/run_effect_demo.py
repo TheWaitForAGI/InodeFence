@@ -35,6 +35,7 @@ from inodefence.model import (
     ExecutionStatus,
 )
 from inodefence.mutator import MutationPolicy
+from inodefence.runtime import SentinelSpec
 from inodefence.targets.node_tar_effect import (
     NativeEffectProfile,
     NodeTarEffectTarget,
@@ -546,6 +547,108 @@ def historical_demo_report(
         # Wall-clock values differ per run; keep them apart from the loop record.
         timing={"total_seconds": total, "per_case": timing},
     )
+    return report
+
+
+# ---- in-process python-tarfile demo (EXP-3 multi-target; host subprocess, no docker) ----
+
+PYTHON_TARFILE_MODE = "python-tarfile"
+PYTHON_TARFILE_EXECUTION_MODE = "per-case-subprocess"
+
+
+def _python_sentinel_set(seed: int | None, count: int | None):
+    """Lane 7's seed-fixed sentinel generator when declared and importable, else None."""
+    if seed is None:
+        return None
+    try:
+        from inodefence.sentinel_set import generate_sentinel_set  # pyright: ignore[reportMissingImports]
+    except ImportError:
+        return None
+    return generate_sentinel_set(seed, count) if count is not None else generate_sentinel_set(seed)
+
+
+def python_tarfile_demo_report(
+    *,
+    seed: int = 123,
+    budget: int = DEFAULT_NATIVE_BUDGET,
+    policy: EffectSearchPolicy = HISTORICAL_SEARCH_POLICY,
+    mutation_policy: MutationPolicy = HISTORICAL_MUTATION_POLICY,
+    step_sink: Callable[[dict[str, object]], None] | None = None,
+    sentinel_count: int | None = None,
+    sentinel_seed: int | None = None,
+    observer_integrity_policy: str | None = None,
+) -> dict[str, object]:
+    """Run the effect loop on Python ``tarfile`` in-process (host subprocess per case).
+
+    The in-process reference extractor of EXP-3: ``PythonTarfileEffectTarget("data")``
+    only — the producer refuses ``fully_trusted`` for fuzzed input (no container
+    boundary; the data filter confines extraction). Each case gets a fresh disposable
+    sandbox and a fresh subprocess, so the execution mode is ``per-case-subprocess``
+    and no reset verification applies. The report mirrors the historical demo report
+    (same loop records, so ``summarize_report_records`` and the memory/report parity
+    hold) and pins the interpreter with the top-level ``lock_digest`` (plus the raw
+    ``lock_material``) that the registration gate compares instead of ``image_id``.
+    Observer-integrity policies are recorded but not applicable: there is no
+    transport frame; an invalid trace comes only from an extraction failure.
+    """
+    from inodefence.evaluation.lock_digest import lock_record
+    from inodefence.targets.python_tarfile_effect import (
+        PYTHON_TARFILE_MECHANISM,
+        PythonTarfileEffectTarget,
+        run_python_tarfile_effect_case,
+    )
+
+    if budget <= 0:
+        raise ValueError("budget must be positive")
+    config = EffectCampaignConfig(
+        random_seed=seed,
+        execution_budget=budget,
+        search_policy=policy,
+        mutation_policy=mutation_policy,
+    )
+    target = PythonTarfileEffectTarget("data")
+    sentinel_set = _python_sentinel_set(sentinel_seed, sentinel_count)
+    sentinels = sentinel_set.specs if sentinel_set is not None else (SentinelSpec(),)
+    lock = lock_record(target.lock)  # bound once; every case must run on the same lock
+    timing: list[dict[str, object]] = []
+
+    def produce(case: ArchiveCase) -> EffectRunResult:
+        started = perf_counter()
+        run = run_python_tarfile_effect_case(case, target, sentinels=sentinels)
+        timing.append({"case_id": case.case_id, "seconds": perf_counter() - started})
+        if lock_record(run.lock) != lock:
+            raise RuntimeError(
+                f"lock material changed during the campaign at {case.case_id}: "
+                f"{lock_record(run.lock).material()} != {lock.material()}"
+            )
+        return run.result
+
+    reporter = EffectStepReporter()
+
+    def record_step(step) -> None:
+        record = reporter.add(step)
+        if step_sink is not None:
+            step_sink(record)
+
+    started = perf_counter()
+    result = run_effect_campaign(minimal_seed_corpus(), produce, config, on_step=record_step)
+    total = perf_counter() - started
+    report = effect_campaign_report(result, "native")
+    report.update(
+        label=HISTORICAL_LABEL,
+        mode=PYTHON_TARFILE_MODE,
+        extractor=PYTHON_TARFILE_MODE,
+        execution_mode=PYTHON_TARFILE_EXECUTION_MODE,
+        mechanism=PYTHON_TARFILE_MECHANISM,
+        python_tarfile_policy=target.policy,
+        lock_digest=lock.lock_digest,
+        lock_material=lock.material(),
+        observer_integrity_policy=observer_integrity_policy,
+        oracle_detected_events=_historical_oracle_events(result),
+        timing={"total_seconds": total, "per_case": timing},
+    )
+    if sentinel_set is not None:
+        report["sentinel_set"] = sentinel_set.describe()
     return report
 
 

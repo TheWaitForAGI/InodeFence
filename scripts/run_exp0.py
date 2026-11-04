@@ -138,6 +138,12 @@ WATCHDOG_RETURNCODE = -15
 SENTINEL_ENV = ("DEMO_SENTINEL_SEED", "DEMO_SENTINEL_COUNT")
 OBSERVER_ENV = "DEMO_OBSERVER_INTEGRITY_POLICY"
 EXECUTION_MODE_ENV = "DEMO_EXECUTION_MODE"
+EXTRACTOR_ENV = "DEMO_EXTRACTOR"
+PYTHON_TARFILE_EXTRACTOR = "python-tarfile"
+SUBPROCESS_MODE = "per-case-subprocess"
+# Host-side controller for in-process targets (no docker): reads the same DEMO_* cell
+# environment as the smoke script and writes the same report / steps files.
+PYTHON_SCRIPT = Path(__file__).resolve().parent / "run_python_tarfile_effect_demo.py"
 
 
 def _script_has(variable: str) -> bool:
@@ -171,6 +177,10 @@ class TargetCell(Cell):
     digest: str = ""
     digest_kind: str = "image"
     subdir: str | None = None
+
+    @property
+    def in_process(self) -> bool:
+        return self.extractor == PYTHON_TARFILE_EXTRACTOR
 
     @property
     def run_id(self) -> str:
@@ -283,9 +293,14 @@ class Exp0Plan:
             budget = target.budget if target.budget is not None else prereg.budget
             for arm in arms:
                 for seed in prereg.seeds:
+                    mode = (
+                        "demo-python-tarfile"
+                        if target.extractor == PYTHON_TARFILE_EXTRACTOR
+                        else "demo-historical"
+                    )
                     cells.append(
                         TargetCell(
-                            "demo-historical",
+                            mode,
                             target.version,
                             arm,
                             seed,
@@ -655,6 +670,11 @@ def exp0_cell_env(
         env["DEMO_SENTINEL_COUNT"] = str(prereg.sentinel_count)
     if prereg.observer_integrity_policy is not None:
         env[OBSERVER_ENV] = prereg.observer_integrity_policy
+    if isinstance(cell, TargetCell):
+        env[EXTRACTOR_ENV] = cell.extractor
+        if cell.in_process:
+            env[EXECUTION_MODE_ENV] = SUBPROCESS_MODE
+            return env
     if plan.execution_mode == WORKER_POOL_MODE:
         env[EXECUTION_MODE_ENV] = WORKER_POOL_MODE
         module = _worker_pool_module()
@@ -667,7 +687,27 @@ def exp0_cell_env(
 def wiring_problems(plan: Exp0Plan) -> tuple[str, ...]:
     prereg = plan.preregistration
     problems: list[str] = []
+    python_script_text = (
+        PYTHON_SCRIPT.read_text(encoding="utf-8") if PYTHON_SCRIPT.is_file() else ""
+    )
     for target in plan.targets():
+        if target.extractor == PYTHON_TARFILE_EXTRACTOR:
+            if not python_script_text:
+                problems.append(
+                    f"target {target.target_id}: {PYTHON_SCRIPT.name} (in-process controller) "
+                    "is missing"
+                )
+            elif target.digest_kind == "lock" and "lock_digest" not in python_script_text:
+                problems.append(
+                    f"target {target.target_id}: {PYTHON_SCRIPT.name} does not record "
+                    "lock_digest in the report"
+                )
+            elif target.digest_kind != "lock":
+                problems.append(
+                    f"target {target.target_id}: an in-process target is pinned by lock_digest, "
+                    "not image_digest"
+                )
+            continue
         if target.extractor != "node-tar":
             problems.append(
                 f"target {target.target_id}: extractor {target.extractor!r} has no controller "
@@ -675,8 +715,8 @@ def wiring_problems(plan: Exp0Plan) -> tuple[str, ...]:
             )
         if target.digest_kind == "lock":
             problems.append(
-                f"target {target.target_id}: lock_digest targets need the controller to record "
-                "lock_digest in the report (in-process wiring pending)"
+                f"target {target.target_id}: a container target is pinned by image_digest, "
+                "not lock_digest"
             )
     if prereg.sentinel_generator_seed is not None and not all(_script_has(v) for v in SENTINEL_ENV):
         problems.append(
@@ -852,7 +892,7 @@ def run_cell_with_watchdog(
     started = monotonic()
     with log.open("w", encoding="utf-8") as stream:
         process = popen(
-            [bash, str(SCRIPT), cell.mode],
+            cell_command(cell, bash, env.get("PYTHON", sys.executable)),
             env=env,
             stdout=stream,
             stderr=subprocess.STDOUT,
@@ -930,6 +970,21 @@ def _print_dry_run(
         print(f"  {cell.run_id} [{state}]: bash {SCRIPT} demo-historical")
         print(f"    env: {json.dumps(shown, sort_keys=True)}")
         print(f"    report={paths['report']} summary={paths['summary']}")
+
+
+def cell_execution_mode(plan: Exp0Plan, cell: Cell) -> str:
+    """In-process cells always run per-case-subprocess; container cells use the plan's."""
+    if isinstance(cell, TargetCell) and cell.in_process:
+        return SUBPROCESS_MODE
+    return plan.execution_mode
+
+
+def cell_command(cell: Cell, bash: str, python: str) -> list[str]:
+    """The controller command for a cell: the docker smoke script, or the host-side
+    python-tarfile demo for in-process cells (same DEMO_* environment)."""
+    if isinstance(cell, TargetCell) and cell.in_process:
+        return [python, str(PYTHON_SCRIPT)]
+    return [bash, str(SCRIPT), cell.mode]
 
 
 def _pending_cells(plan: Exp0Plan, output: Path) -> tuple[list[Cell], list[str], list[str]]:
@@ -1079,10 +1134,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run:
         print("gate: PASS" if not mismatches else "gate: FAIL", f"({plan.gate_text()})")
         for target in plan.targets():
+            in_process = target.extractor == PYTHON_TARFILE_EXTRACTOR
+            mode = SUBPROCESS_MODE if in_process else plan.execution_mode
             print(
                 f"target {target.target_id}: {target.extractor} {target.version} "
                 f"role={target.role} hypothesis={target.hypothesis} exposure={target.exposure} "
-                f"{target.digest_kind}_digest={target.digest[:19]}…"
+                f"{target.digest_kind}_digest={target.digest[:19]}… mode={mode}"
             )
         for line in _refusal_preview(mismatches, wiring):
             print(line)
@@ -1264,7 +1321,8 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("bash not found: the native launcher runs only on the host terminal")
     pending, skipped, skipped_final = _pending_cells(plan, output)
     archived = {cell.run_id: archive_attempt(cell, output) for cell in pending}
-    if pending and not args.skip_build:
+    container_pending = [c for c in pending if not (isinstance(c, TargetCell) and c.in_process)]
+    if container_pending and not args.skip_build:
         code = _warmup("demo-historical", output, base_env, bash)
         if code != 0:
             print(
@@ -1313,6 +1371,7 @@ def main(argv: list[str] | None = None) -> int:
                     {
                         "run_id": r.cell.run_id,
                         "target_id": getattr(r.cell, "target_id", r.cell.version),
+                        "execution_mode": cell_execution_mode(plan, r.cell),
                         "arm": r.cell.arm.label,
                         "seed": r.cell.seed,
                         "budget": r.cell.budget,

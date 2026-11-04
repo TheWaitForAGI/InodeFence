@@ -89,7 +89,8 @@ class Cell:
 
     @property
     def evidence_basename(self) -> str:
-        stem = "effect-demo-native" if self.mode == "demo" else "effect-demo-historical"
+        stems = {"demo": "effect-demo-native", "demo-python-tarfile": "effect-demo-python-tarfile"}
+        stem = stems.get(self.mode, "effect-demo-historical")
         return f"inodefence-{stem}-{self.run_id}"
 
 

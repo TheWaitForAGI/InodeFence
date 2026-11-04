@@ -104,7 +104,10 @@ Security Contract 기본값은 불변(선택지 B). 이 실험의 sentinel은 �
 고정 상수면 단일 집합이 모든 arm·모든 seed에 공통이다. 권장값 `20261104`는 사전등록일 기반(투명·비 p-hacking).
 
 동결 시 `sentinel_set`은 다음 `describe()`(seed 20261104, count 3; mode 384 = 0o600)와 **바이트 동일**해야
-하며, 실행 report의 `sentinel_set`에 그대로 재현된다(주입: 셀 env `DEMO_SENTINEL_COUNT=3
+한다. 레인 7 결정성 검증(PASS): 이 describe()의 canonical JSON(`json.dumps(sort_keys=True,
+ensure_ascii=False, separators=(",",":"))`) sha256 = **`9d9fe82dbab6f72303614c0bc2f6e7279c0f874cb1b4f8f01a95baf93b8dbc2e`**
+(PYTHONHASHSEED 0/1/2/random·Python 3.11–3.13 전부 동일 바이트; 엔트로피·시간 의존 0). 재검증 지문으로 쓴다.
+실행 report의 `sentinel_set`에 그대로 재현된다(주입: 셀 env `DEMO_SENTINEL_COUNT=3
 DEMO_SENTINEL_SEED=20261104` → `run_parallel_native.cell_env` → `local_node_tar_smoke.sh --sentinel-count 3
 --sentinel-seed 20261104` → `run_effect_demo`):
 

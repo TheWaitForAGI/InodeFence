@@ -92,6 +92,40 @@ interim_analysis = forbidden
   `sentinel_count=3`, `sentinel_generator_id`는 레인 7 #205 확정 문자열(`sentinel-names/seed-random-v1`),
   `sentinel_generator_seed`는 `TBD-FREEZE`(레인 7 권장 seed 수신 후 동결 PR에서 채움).
 
+## sentinel 집합 (동결 확정값 — 레인 7 #205/#214, 2026-11-04)
+
+Security Contract 기본값은 불변(선택지 B). 이 실험의 sentinel은 아래로 **사전등록 동결**한다. 기계판독
+블록의 `sentinel_generator_seed`는 여전히 `TBD-FREEZE`이며, **동결 PR이 이 값(20261104)으로 채운다** —
+그 전엔 게이트가 비실행본으로 거부한다.
+
+**선정 규칙(필수 명시):** `sentinel_generator_seed`는 **고정 상수**여야 하고 **캠페인 seed에서 파생 금지**다.
+`generate_sentinel_set(seed, count=3)`이 seed로 이름을 결정하므로, 캠페인 seed 파생 시 seed마다 집합이 달라져
+세 arm(R/D/S-u)·전 campaign seed의 "동일 sentinel 집합·동일 타깃" 전제를 위반한다(T_first/U_viol 교락).
+고정 상수면 단일 집합이 모든 arm·모든 seed에 공통이다. 권장값 `20261104`는 사전등록일 기반(투명·비 p-hacking).
+
+동결 시 `sentinel_set`은 다음 `describe()`(seed 20261104, count 3; mode 384 = 0o600)와 **바이트 동일**해야
+하며, 실행 report의 `sentinel_set`에 그대로 재현된다(주입: 셀 env `DEMO_SENTINEL_COUNT=3
+DEMO_SENTINEL_SEED=20261104` → `run_parallel_native.cell_env` → `local_node_tar_smoke.sh --sentinel-count 3
+--sentinel-seed 20261104` → `run_effect_demo`):
+
+```json
+{
+  "generator_id": "sentinel-names/seed-random-v1",
+  "generator_seed": 20261104,
+  "count": 3,
+  "names": ["nux5boya8e3y.dat", "b2k94phssnhu.dat", "96575y82ul0n.dat"],
+  "protected_paths": ["outside/96575y82ul0n.dat", "outside/b2k94phssnhu.dat", "outside/nux5boya8e3y.dat"],
+  "sentinels": [
+    {"name": "96575y82ul0n.dat", "content_sha256": "ed13f98527a83c9cf0467b0f42de558a2a57981a29bb72946a6ad2fb87a43686", "mode": 384},
+    {"name": "b2k94phssnhu.dat", "content_sha256": "c21de362e397bde6444d0d079407449d97bdecc124208784c2180ac04ac39f36", "mode": 384},
+    {"name": "nux5boya8e3y.dat", "content_sha256": "986430e9d3319331649b7832f9f1e8d96b0c9ead7c9c81d5f419a37da5c5e69b", "mode": 384}
+  ]
+}
+```
+
+k(=sentinel 수)-vs-reach 설계 입력(공식 실험 아님)은 `sentinel-k-reach-20261104/`(다음 manifest) 참조:
+in-process reach k=3 ~2.0×·k=5 ~2.6×(k=1 대비) 포화. v2.1엔 count=3만 반영하고 k=5·파일럿은 사람 승인 항목이다.
+
 ## 실행 전제 (의존성; 머지 전 실행 불가)
 
 EXP-0 실행은 다음이 **main에 머지된 뒤에만** 유효하다. 가장 핵심 의존성은 **#208의

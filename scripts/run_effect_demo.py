@@ -35,6 +35,12 @@ from inodefence.model import (
     ExecutionStatus,
 )
 from inodefence.mutator import MutationPolicy
+from inodefence.runtime import SentinelSpec
+from inodefence.sentinel_set import (
+    MAX_SENTINEL_COUNT,
+    GeneratedSentinelSet,
+    generate_sentinel_set,
+)
 from inodefence.targets.node_tar_effect import (
     NativeEffectProfile,
     NodeTarEffectTarget,
@@ -140,9 +146,20 @@ def synthetic_demo_json(
 
 
 DEMO_ARGUMENTS = ("seed", "budget", "policy", "mutation_policy")
+# The opt-in multi-sentinel flags are restricted to the node-tar effect demos
+# (both go through run_node_tar_effect_case over a disposable sandbox).
+SENTINEL_DEMO_MODES = ("effect-demo", HISTORICAL_DEMO_MODE)
 # Arguments the host broker forwards verbatim to the controller. tar_version is
 # historical-only; the other four are shared by both effect demos.
-DEMO_FORWARDED_ARGUMENTS = (*DEMO_ARGUMENTS, "tar_version")
+# historical-only; the four DEMO_ARGUMENTS are shared by both effect demos; the
+# two sentinel flags are the opt-in multi-sentinel set (default: single sentinel).
+DEMO_FORWARDED_ARGUMENTS = (
+    *DEMO_ARGUMENTS,
+    "tar_version",
+    "observer_integrity_policy",
+    "sentinel_count",
+    "sentinel_seed",
+)
 
 
 def add_demo_arguments(parser: argparse.ArgumentParser) -> None:
@@ -157,6 +174,26 @@ def add_demo_arguments(parser: argparse.ArgumentParser) -> None:
         "--tar-version",
         help="catalog-registered historical node-tar version; effect-demo-historical only",
     )
+    parser.add_argument(
+        "--observer-integrity-policy",
+        choices=("stop", "invalid-continue"),
+        help=(
+            "observer-integrity STOP policy; effect-demo and effect-demo-historical only. "
+            "'stop' (default) aborts the campaign on a successful run with an untrustworthy "
+            "trace; 'invalid-continue' keeps the step as validity=invalid and continues"
+        ),
+    )
+    parser.add_argument(
+        "--sentinel-count",
+        type=int,
+        help=f"opt-in: number of randomly named external sentinels (1..{MAX_SENTINEL_COUNT}); "
+        "node-tar effect demos only; requires --sentinel-seed (default: one sentinel)",
+    )
+    parser.add_argument(
+        "--sentinel-seed",
+        type=int,
+        help="opt-in: PRNG seed for generated sentinel names; requires --sentinel-count",
+    )
 
 
 def check_demo_arguments(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
@@ -170,6 +207,20 @@ def check_demo_arguments(parser: argparse.ArgumentParser, args: argparse.Namespa
         parser.error("--tar-version is restricted to effect-demo-historical")
     if args.mode == HISTORICAL_DEMO_MODE and tar_version is None:
         parser.error("effect-demo-historical requires --tar-version")
+    if getattr(args, "observer_integrity_policy", None) is not None and args.mode not in (
+        "effect-demo",
+        HISTORICAL_DEMO_MODE,
+    ):
+        parser.error("--observer-integrity-policy is restricted to the effect demos")
+    count = getattr(args, "sentinel_count", None)
+    seed = getattr(args, "sentinel_seed", None)
+    if (count is None) != (seed is None):
+        parser.error("--sentinel-count and --sentinel-seed must be given together")
+    if count is not None:
+        if args.mode not in SENTINEL_DEMO_MODES:
+            parser.error("--sentinel-count/--sentinel-seed are restricted to node-tar effect demos")
+        if not 1 <= count <= MAX_SENTINEL_COUNT:
+            parser.error(f"--sentinel-count must be in 1..{MAX_SENTINEL_COUNT}")
 
 
 def demo_options(args: argparse.Namespace) -> dict:
@@ -182,7 +233,35 @@ def demo_options(args: argparse.Namespace) -> dict:
         options["policy"] = EffectSearchPolicy(args.policy)
     if args.mutation_policy is not None:
         options["mutation_policy"] = MutationPolicy(args.mutation_policy)
+    if getattr(args, "observer_integrity_policy", None) == "invalid-continue":
+        options["observer_integrity_continue"] = True
     return options
+
+
+def sentinel_set_from_args(args: argparse.Namespace) -> GeneratedSentinelSet | None:
+    """Build the opt-in generated sentinel set, or None for the default single sentinel.
+
+    Returns None unless both --sentinel-count and --sentinel-seed are set, so a demo
+    run with neither flag keeps the unchanged single-sentinel sandbox byte-for-byte.
+    """
+    count = getattr(args, "sentinel_count", None)
+    seed = getattr(args, "sentinel_seed", None)
+    if count is None or seed is None:
+        return None
+    return generate_sentinel_set(seed, count)
+
+
+def apply_sentinel_set_record(
+    report: dict[str, object], sentinel_set: GeneratedSentinelSet | None
+) -> dict[str, object]:
+    """Record the generated sentinel set (generator seed/count/names) in a report.
+
+    No-op when ``sentinel_set`` is None, so default single-sentinel reports gain no
+    ``sentinel_set`` key and stay identical to before. Mutates and returns ``report``.
+    """
+    if sentinel_set is not None:
+        report["sentinel_set"] = sentinel_set.describe()
+    return report
 
 
 def pinned_node_tar_version(package_json: Path = NODE_TAR_PIN) -> str:
@@ -225,6 +304,8 @@ def native_demo_report(
     policy: EffectSearchPolicy = EffectSearchPolicy.P2_EFFECT_ADAPTIVE,
     mutation_policy: MutationPolicy = MutationPolicy.M1,
     step_sink: Callable[[dict[str, object]], None] | None = None,
+    observer_integrity_continue: bool = False,
+    sentinel_set: GeneratedSentinelSet | None = None,
 ) -> dict[str, object]:
     """Run the effect loop on real node-tar (FULL profile); label the result a demo run.
 
@@ -233,9 +314,22 @@ def native_demo_report(
     `step_sink` gets each finished step's report record (identical to `steps[i]`
     of the returned report) before the next case runs, so a NativeDemoAborted
     later still leaves the completed loop record with the caller.
+
+    `observer_integrity_continue` selects the observer-integrity STOP policy. When
+    False (default, the frozen behavior) a target that succeeds with an
+    untrustworthy effect trace aborts the campaign. When True the step is kept
+    instead: the reader already keeps it feedback-ineligible and off the retained
+    corpus, so it consumes one budget unit, is marked `validity=invalid`
+    (`invalid_reason=observer_integrity`) in the report, and the loop continues.
+    The snapshot C0/C1/C2 oracle verdict is independent of the trace and is
+    recorded either way, so the preregistration hit count is unchanged.
+    `sentinel_set` is the opt-in multi-sentinel set (generator seed, count and
+    randomly generated names); None keeps the unchanged single default sentinel.
+    When set, its specs feed every sandbox and the report records describe().
     """
     if type(budget) is not int or not 1 <= budget <= MAX_NATIVE_BUDGET:
         raise ValueError(f"native demo budget must be in 1..{MAX_NATIVE_BUDGET}")
+    sentinels = sentinel_set.specs if sentinel_set is not None else (SentinelSpec(),)
     config = EffectCampaignConfig(
         random_seed=seed,
         execution_budget=budget,
@@ -255,7 +349,7 @@ def native_demo_report(
         index = len(checks)
         started = perf_counter()
         try:
-            run = run_node_tar_effect_case(case, target)
+            run = run_node_tar_effect_case(case, target, sentinels=sentinels)
         except Exception as error:
             reason = f"{type(error).__module__}.{type(error).__qualname__}: {error}"
             raise NativeDemoAborted(index, case.case_id, reason) from error
@@ -275,16 +369,31 @@ def native_demo_report(
             and run.transport_error is None
             and check["archive_entries_match"]
         ):
-            execution = run.result.base_result.execution
-            raise NativeDemoAborted(
-                index,
-                case.case_id,
-                f"evidence integrity failed after target success: {check}",
-                {
-                    "raw_stream": run.raw_stream.decode("utf-8", "surrogateescape"),
-                    "target_stderr": execution.stderr,
-                },
+            # Only a pure observer-integrity failure is eligible for the
+            # continue policy: the trace itself is not integrity_valid while the
+            # host/transport trust signals are all good. Flush/transport/
+            # archive-identity failures are infrastructure trust failures the
+            # runtime lane classifies, so they keep aborting regardless of policy
+            # and are never recorded as observer_integrity or fed back.
+            observer_integrity_only = (
+                not check["integrity_valid"]
+                and run.controller_flush_verified
+                and run.transport_error is None
+                and check["archive_entries_match"]
             )
+            if not (observer_integrity_continue and observer_integrity_only):
+                execution = run.result.base_result.execution
+                raise NativeDemoAborted(
+                    index,
+                    case.case_id,
+                    f"evidence integrity failed after target success: {check}",
+                    {
+                        "raw_stream": run.raw_stream.decode("utf-8", "surrogateescape"),
+                        "target_stderr": execution.stderr,
+                    },
+                )
+            # Kept as an observer-integrity invalid step; the trace is not
+            # integrity_valid, so feedback and corpus admission already exclude it.
         return run.result
 
     reporter = EffectStepReporter()
@@ -311,6 +420,7 @@ def native_demo_report(
         # Wall-clock values differ per run; keep them apart from the loop record.
         timing={"total_seconds": total, "per_case": timing},
     )
+    apply_sentinel_set_record(report, sentinel_set)
     return report
 
 
@@ -397,6 +507,8 @@ def historical_demo_report(
     policy: EffectSearchPolicy = HISTORICAL_SEARCH_POLICY,
     mutation_policy: MutationPolicy = HISTORICAL_MUTATION_POLICY,
     step_sink: Callable[[dict[str, object]], None] | None = None,
+    observer_integrity_continue: bool = False,
+    sentinel_set: GeneratedSentinelSet | None = None,
 ) -> dict[str, object]:
     """Run the state-aware effect loop on a frozen historical node-tar; label it a demo run.
 
@@ -408,9 +520,16 @@ def historical_demo_report(
     link targets. Seeds are RNG integers only; no PoC input is accepted. The
     result is labeled "demo run" with oracle hits labeled "oracle-detected Cx
     event"; it is never labeled rediscovery or vulnerability.
+
+    `observer_integrity_continue` selects the same observer-integrity STOP policy
+    as native_demo_report (default False = the frozen abort). The powered matched
+    campaigns run on this path, so the step-level policy is wired here too: a
+    successful target run with an untrustworthy trace is kept as an
+    observer-integrity invalid step and the loop continues.
     """
     allowed = historical_target_versions()
     _require_historical_request(tar_version, budget, allowed)
+    sentinels = sentinel_set.specs if sentinel_set is not None else (SentinelSpec(),)
     config = EffectCampaignConfig(
         random_seed=seed,
         execution_budget=budget,
@@ -426,7 +545,7 @@ def historical_demo_report(
         index = len(checks)
         started = perf_counter()
         try:
-            run = run_node_tar_effect_case(case, target)
+            run = run_node_tar_effect_case(case, target, sentinels=sentinels)
         except Exception as error:
             reason = f"{type(error).__module__}.{type(error).__qualname__}: {error}"
             raise NativeDemoAborted(index, case.case_id, reason) from error
@@ -446,16 +565,31 @@ def historical_demo_report(
             and run.transport_error is None
             and check["archive_entries_match"]
         ):
-            execution = run.result.base_result.execution
-            raise NativeDemoAborted(
-                index,
-                case.case_id,
-                f"evidence integrity failed after target success: {check}",
-                {
-                    "raw_stream": run.raw_stream.decode("utf-8", "surrogateescape"),
-                    "target_stderr": execution.stderr,
-                },
+            # Only a pure observer-integrity failure is eligible for the
+            # continue policy: the trace itself is not integrity_valid while the
+            # host/transport trust signals are all good. Flush/transport/
+            # archive-identity failures are infrastructure trust failures the
+            # runtime lane classifies, so they keep aborting regardless of policy
+            # and are never recorded as observer_integrity or fed back.
+            observer_integrity_only = (
+                not check["integrity_valid"]
+                and run.controller_flush_verified
+                and run.transport_error is None
+                and check["archive_entries_match"]
             )
+            if not (observer_integrity_continue and observer_integrity_only):
+                execution = run.result.base_result.execution
+                raise NativeDemoAborted(
+                    index,
+                    case.case_id,
+                    f"evidence integrity failed after target success: {check}",
+                    {
+                        "raw_stream": run.raw_stream.decode("utf-8", "surrogateescape"),
+                        "target_stderr": execution.stderr,
+                    },
+                )
+            # Kept as an observer-integrity invalid step; the trace is not
+            # integrity_valid, so feedback and corpus admission already exclude it.
         return run.result
 
     reporter = EffectStepReporter()
@@ -483,6 +617,7 @@ def historical_demo_report(
         # Wall-clock values differ per run; keep them apart from the loop record.
         timing={"total_seconds": total, "per_case": timing},
     )
+    apply_sentinel_set_record(report, sentinel_set)
     return report
 
 

@@ -102,6 +102,9 @@ retention 효과만 분리). adaptive 스케줄러를 얹은 **S-a**는 주 비�
 | **S-u** (주) | identity/effect/boundary-attempt 상태 키 | uniform | InodeFence retention 피드백 | TBD (v2.1 동결 시 기록) |
 | S-a (선택, ablation) | S-u와 동일 | adaptive | 스케줄러 효과 분리용, 주 비교 아님 | TBD (v2.1) |
 
+> policy ID 각주: 구현 후보 ID는 PR #206의 `EffectSearchPolicy`/`MutationPolicy`를 참조하며, 최종 문자열은
+> 사전등록 v2.1 동결 시 기록한다.
+
 **sentinel.** ≥ 3개를 쓰고, 이름은 **seed 고정 무작위 생성기**로 만들며 생성기 seed를 결과에 기록한다(손으로 정한
 이름 없음). 어휘에 피해 경로 이름을 넣는 것은 위협 모델(research-questions v2)의 일부이며 세 arm에 동일하게
 적용한다 — 따라서 blind 발견을 주장하지 않는다.

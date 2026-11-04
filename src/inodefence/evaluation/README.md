@@ -377,3 +377,23 @@ block of a committed preregistration file (`engine_sha`, `image_digest`, `seeds`
 produce a cell config when the engine HEAD (clean), image digest, seed, budget, arm or
 sentinel binding differ. `scripts/run_rds_cell.py` is the synthetic-producer entry
 point; the native producer is bound by the runtime lane with the same gate.
+
+`rds_report.py` builds the same per-cell summary from a controller-path demo report
+(`effect_campaign_report` JSON and/or its `.steps.jsonl`): hits read the per-step
+`oracle` verdicts, `u_viol` the recorded `new_violation_fingerprints` (hit steps whose
+trace was not feedback-eligible carry no fingerprint and are counted separately as
+`unfingerprinted_hit_steps`), and the vocabulary pools are reconstructed from the
+additive per-step `name_segments` record. `scripts/run_g1_smoke.py` plans the G1 cells
+(R/D/S-u × seeds × budget 50) through `scripts/local_node_tar_smoke.sh demo-historical`
+with the existing `--policy`/`--mutation-policy` selection, writes
+`<output>/summaries/<run_id>.summary.json` + `index.json`, asserts
+`vocabulary_equal_across_arms` per seed from the recorded pools, and labels everything
+`demo run` / `unregistered G1 smoke` (preregistration gate off). `--dry-run` prints the
+commands and paths without Docker; `--summarize-only` rebuilds the summaries. Each summary file also carries
+`timing` (wall-clock, per-step full-step seconds, p50/p95/max, exec/h, declared
+`execution_mode`), `environment` (host, docker server version from the cell log, image id
+passthrough; unknown values are `null`) and the `config_nonconformant` invalid bucket.
+The preregistration gate compares, when declared, `observer_integrity_policy` and the
+rule keys (`hit_definition`, `c0_counts_as_hit`, `denominator`, `abort_reporting`,
+`rule_of_three_unit`) against the rules this engine implements; unknown keys are only
+warned about.

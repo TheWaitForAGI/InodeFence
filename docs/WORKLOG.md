@@ -125,3 +125,12 @@ success 케이스(exit 0)에서 발생한 native 관찰 무결성 결함(malform
 - 통합 M4.5 verdict는 C1/C2 기준 맥{11,85,163,211,307,401}+윈도우{500..509} right-censored 합산(disjoint ∅ 확인) — 맥 세션이 합산·Ledger/논문 §5.4.5 반영.
 - 미실행(deferred): 등록 {510..529}는 처리량 한계로 이번 세션 미실행; sa-s504는 2회 연속 infra abort로 영구 incomplete.
 - 2026-11-02 M3.3 powered 매칭 **사전등록 연장 {120..129}**×{A1,A3full} 실행(#196 byte-exact: frozen overlay 7.5.2 sha256:21d8a0e3a5c5·동일 컨트롤러·동일 arm 정책·budget 2000·코드 불변; idempotent completion-wave 3라운드, 완주 14/20, 영구 right-censored abort 6) → 풀 {100..129}(30 매칭 seed) 재판정: **A1 0/19 Wilson[0,0.168]·A3full 1/17 Wilson[0.0105,0.270]**(s101 유일 완주 hit, observed-trigger 2-0), `complete_hit_wilson_intervals_separate=False` — 연장분 7완주/arm 전부 null이라 CI 좁혔으나 미분리 유지(rate 미입증, 정직한 사전등록 음성·EN-008). verdict-v2 반입, v1 {100..119} 보존.
+
+## 레인4 워커풀 측정 툴킷 — parity 비교기 + 처리량 (2026-11-04)
+
+- 브랜치 `claude/s3-worker-pool-parity`(base main). 상태: **검토대기**(verifier inodefence-19). docker 미실행(설계·코드·단위테스트만, 수술 3단계 Runtime).
+- **step 2** `src/inodefence/evaluation/execution_parity.py`(+테스트 19): per-case 컨테이너 방식 vs 워커풀 방식의 캠페인 증거를 G1 4차원으로 비교하는 순수 Python 비교기 — case_id 시퀀스·oracle+feedback 키·snapshot(st_dev/st_ino/mtime_ns/ctime_ns·절대 root 제외 + inode 공유 분할)·isolation+reset. 기본 판정은 재시도 0인 두 실행의 clean step, 인프라 재시도 step은 분리 판정(재시도 후 결과가 재시도 없는 실행과 동일한가).
+- **step 3** `src/inodefence/evaluation/throughput.py` + `scripts/measure_worker_pool_throughput.py`(+테스트 16): 같은 매트릭스를 두 방식으로 돌려 wall·cases/sec·startup 상각·abort/retry·speedup를 나란히 + 셀별 parity. CLI는 `run_parallel_native.build_cells` 재사용, `--plan` 플랜은 docker 불필요, 러너 주입형. 실제 docker 러너는 step 4 워커풀 모듈에서 주입(현재 지연 import 가드).
+- `ResetVerification` 필드명·극성은 레인3 `evaluation/abort_classification`의 ResetFailureDetail(reset_residual, reset_other_path_change; True=실패)과 일치 → step 4가 레코드 1:1 매핑. 그 모듈은 #203이라 step 4(스택)에서 import.
+- 격리·단일경로·synthetic sha256 전부 불변. R4 실행 백엔드(컨테이너 백엔드·브로커 전송·isolation 정책 모델) 편집 0건 — 변경 없이 조합만.
+- make check(기본 루트 `/var/lib/inodefence`): ruff/format/pyright 0, pytest 2227 passed/4 skip, env-check·docs-check PASS. (per-worktree 루트는 하드코딩 때문에 백엔드 테스트 10건 결정론 실패라 기본 루트 사용.)

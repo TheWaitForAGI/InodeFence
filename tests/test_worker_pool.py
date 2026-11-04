@@ -243,3 +243,33 @@ def test_record_validation_rejects_bad_values() -> None:
         InfraRetry(-1, InvalidReason.BROKER, None, "w0")
     with pytest.raises(ValueError):
         InvalidCase("cid", 0, InvalidReason.BROKER, None, 0, "w0")
+
+
+# ---- reset observation recording (both paths) --------------------------------
+
+
+def test_resetting_producer_records_clean_reset_observations() -> None:
+    worker = FakeWorker()
+    producer = _producer(FlakyInner(), worker, _clean_observer())
+    producer(CASE)
+    assert len(producer.reset_observations) == 1
+    assert producer.reset_observations[0].clean is True
+
+
+def test_reset_observing_producer_records_and_reraises() -> None:
+    from inodefence.execution.worker_pool import NoRecycleWorker, ResetObservingProducer
+
+    observer = _clean_observer()
+    good = ResetObservingProducer(FlakyInner(), observer)
+    good(CASE)
+    assert len(good.reset_observations) == 1
+
+    # Baseline wrapper never retries: an infra failure propagates unchanged.
+    bad = ResetObservingProducer(FlakyInner(BackendError(BROKER_MSG)), observer)
+    with pytest.raises(BackendError):
+        bad(CASE)
+    assert len(bad.reset_observations) == 0
+
+    worker = NoRecycleWorker()
+    assert worker.worker_id == "in-controller"
+    assert worker.recycle() is None

@@ -397,3 +397,31 @@ The preregistration gate compares, when declared, `observer_integrity_policy` an
 rule keys (`hit_definition`, `c0_counts_as_hit`, `denominator`, `abort_reporting`,
 `rule_of_three_unit`) against the rules this engine implements; unknown keys are only
 warned about.
+
+`scripts/run_exp0.py` is the registered-run launcher: it takes one committed
+preregistration file, passes every planned cell through the gate (engine HEAD clean,
+image digest, seeds, budget, arm policy IDs, observer-integrity policy, sentinel
+generator and the rule keys), runs seeds × R/D/S-u (+ declared S-a) × budget through the
+same controller path as the G1 driver, labels outputs `registered run` with the file
+name, its SHA-256 and the engine SHA, skips cells already complete and conformant on
+a rerun (earlier attempts go to `attempts/`), marks reports whose image id or sentinel
+set differ from the registration as invalid, and calls `make_raw_manifest` afterwards.
+The launcher reads the experiment-scale keys when the file declares them
+(`experiment_id`, `execution_mode` per-case-container or worker-pool via lane 4's
+`inodefence.execution.worker_pool` imported lazily, `jobs_max`,
+`campaign_watchdog_seconds`, `disk_pause_fraction`, `interim_analysis`): a cell past the
+watchdog is terminated and reruns later, new cells wait while the output filesystem is
+at least the pause fraction full, and with `interim_analysis = forbidden` the index
+carries completion state only (no hit/T_first fields, no summary files) until every
+planned cell has a final terminal state (complete, or an abort record marked final with
+`--finalize-abort RUN_ID[=NOTE]` — the manual classification step until #203's reason
+classifier automates it) and the evidence passed the integrity checks (report/steps
+files present, steps file a prefix of the report steps, raw manifest generated and
+re-verified via the manifest script's `--verify`; `manifest-verification.json`). Then the
+outcomes are published with aborted cells right-censored at their abort point and kept
+in the denominator (the preregistered abort rule); a final abort is never re-run, and
+an unattempted or in-progress cell, a pending abort, an integrity problem or a failed
+manifest verification keep the outcomes redacted with the reasons listed in
+`index.json` (`interim.reasons`). `--preregistration-commit` records (never compares)
+the commit that registered the file next to the engine SHA and the file's SHA-256.
+`--dry-run` lists what a live run would refuse (gate and wiring).

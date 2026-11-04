@@ -43,6 +43,7 @@ raw: ~/inodefence-evidence/inodefence-decompress-selfdiscover-m45-{sa,a1}-s5{00.
 
 - 기작 집계(rate 아님, EN-008): A3 rejected 11110·attempt_keys 124 vs A1 rejected 8625·attempt_keys 112. state-aware가 경계접근 변이를 더 밀지만 C1/C2 전환 0.
 - 첫 C0 도달 step(observed-only): A1 [74..786], A3 [78..724]. 전부 `mutate_link_target`·`add_symlink` 계열(symlink/link-target가 추출 루트 이탈 = C0).
+  - **정정(2026-11-04, raw step 재확인):** "전부 `mutate_link_target`·`add_symlink`"는 부정확하다. A3의 8개 hit 중 3개는 다른 연산자다 — s500 `remove_entry`(724), s506 `add_hardlink`(78), s507 `reorder_entries`(273). 나머지 A3(s501/s505 `add_symlink`, s502/s503/s508 `mutate_link_target`)와 A1 8개는 원문대로다. 집계 수치(hit/censored/Wilson/first-hit)는 이 서술과 무관하게 불변이다. 근거: `~/inodefence-evidence/…-m45-sa-s{500,506,507}.json`의 첫 `oracle.C0==true` step `operator_id`.
 - 통합 분모 체크: 윈도우{500..509} ∩ 맥{11,85,163,211,307,401} = ∅ (disjoint 확인). 통합 M4.5 verdict는 C1/C2 기준으로 맥(arm64)+윈도우(x86_64) right-censored 합산(by_contract C1/C2 split 사용). 아키텍처는 변수로 disclose(교차-arch 바이트동일 미주장).
 
 ## Finding

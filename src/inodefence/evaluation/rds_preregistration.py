@@ -238,29 +238,46 @@ class Preregistration:
                 return item
         return None
 
-    def confirmatory_contrasts(self) -> tuple[dict[str, object], ...]:
-        """``confirmatory_family`` as the ordered, machine-readable Holm family.
+    def confirmatory_targets(self) -> tuple[str, ...]:
+        """Members of the confirmatory family: holdout targets with hypothesis H-A.
 
-        ``holdout:S-u-vs-R,S-u-vs-D`` → one record per contrast in Holm order; the
-        family covers holdout targets with hypothesis H-A only (H-B holdouts are
-        reported as generality, outside the family). Empty when undeclared.
+        Derived from the frozen target tags (no separate key): H-B generality targets
+        and every train / fix-verification target are outside the family.
+        """
+        return tuple(
+            target.target_id
+            for target in self.targets
+            if target.role == "holdout" and target.hypothesis == "H-A"
+        )
+
+    def confirmatory_contrasts(self) -> tuple[dict[str, object], ...]:
+        """The Holm family as ordered, machine-readable records (frozen at parse time).
+
+        One record per (confirmatory target, contrast) in target-major, contrast-minor
+        order; ``contrast_order`` is the registered rank of the contrast (1 = primary).
+        The analysis tools consume and echo this list instead of deriving membership.
+        Empty when ``confirmatory_family`` is undeclared.
         """
         if self.confirmatory_family is None:
             return ()
         role, _, contrasts = self.confirmatory_family.partition(":")
         records: list[dict[str, object]] = []
-        for order, contrast in enumerate(contrasts.split(","), 1):
-            arm_a, _, arm_b = contrast.partition("-vs-")
-            records.append(
-                {
-                    "order": order,
-                    "role": role,
-                    "hypothesis": "H-A",
-                    "arm_a": arm_a,
-                    "arm_b": arm_b,
-                    "contrast": contrast,
-                }
-            )
+        for target_order, target_id in enumerate(self.confirmatory_targets(), 1):
+            for contrast_order, contrast in enumerate(contrasts.split(","), 1):
+                arm_a, _, arm_b = contrast.partition("-vs-")
+                records.append(
+                    {
+                        "order": len(records) + 1,
+                        "target_id": target_id,
+                        "target_order": target_order,
+                        "contrast_order": contrast_order,
+                        "role": role,
+                        "hypothesis": "H-A",
+                        "arm_a": arm_a,
+                        "arm_b": arm_b,
+                        "contrast": contrast,
+                    }
+                )
         return tuple(records)
 
 
@@ -384,6 +401,13 @@ def parse_preregistration(text: str) -> Preregistration:
         raise PreregistrationFormatError(
             f"{_CONFIRMATORY_FAMILY} must be holdout:<contrast>[,<contrast>] with contrasts "
             "S-u-vs-R / S-u-vs-D"
+        )
+    if family is not None and not any(
+        target.role == "holdout" and target.hypothesis == "H-A" for target in targets
+    ):
+        raise PreregistrationFormatError(
+            f"{_CONFIRMATORY_FAMILY} requires at least one holdout target with hypothesis H-A "
+            "(the family is arm superiority on unseen targets)"
         )
     for key, allowed in (
         (_CONFIRMATORY_TEST, CONFIRMATORY_TESTS),

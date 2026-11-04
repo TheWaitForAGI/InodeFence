@@ -1,11 +1,11 @@
-# EXP-3 본실험 사전등록 v1 (초안 — 11/18 동결 전)
+# EXP-3 본실험 사전등록 v1 (11/18 동결 전 최종 검토본 — 결정 6·7 반영)
 
-> **상태(2026-11-04):** 11/18 사전등록 **동결 전 초안**이다. **실행 유효본이 아니다.** 아래
-> 기계판독 블록에 `TBD-*` 토큰이 남아 있는 한 레인 5 파서(`src/inodefence/evaluation/rds_preregistration.py`,
-> 브랜치 `claude/s3-rds-runner`)가 `engine_sha`(40-hex)·`image_digest`(`sha256:`) 포맷 위반으로 **실행을
-> 거부**한다(코드로 보장되는 비실행본). 값 책임 표기: `TBD-G1`=G1(구현 수리) 동결 시, `TBD-LANE6`=레인 6
-> 검정력 보고 반영 후, `TBD-DECISION(지웅)`=지웅/레인 10 판정 후 a4가 값 후보 전달. **이 초안은 결정을
-> 선취하지 않는다** — 선택지만 나열한다.
+> **상태(2026-11-05):** 지웅 **결정 6·7 반영**된 11/18 사전등록 **동결 전 최종 검토본**이다. **아직 실행
+> 유효본이 아니다** — 남은 `TBD-FREEZE` 토큰(engine_sha · 각 target image_digest/lock_digest · holdout 정체 ·
+> seed 수 · sentinel_generator_seed · exposure_ledger_sha256 · jobs_max · watchdog)이 있는 한 레인 5 파서
+> (`rds_preregistration.py`, #244)가 포맷 위반으로 **실행을 거부**한다(코드로 보장되는 비실행본). 이 값들은 G1
+> 동결 시 #245 `freeze_preregistration.py`가 **한 번에** 치환하고 실행 전에 커밋해야 유효하다. 설계·판정 규칙
+> (arm · 확증 검정 · 종단점 · hold-out 규칙)은 **확정**이며 결과를 보기 전 변경하지 않는다.
 >
 > **기준:** [research-questions v2](../../docs/research/design/research-questions.md) · [D038](../../docs/DECISIONS.md) ·
 > 공통 키는 [exp0-pilot-v2](exp0-pilot-v2.md)와 레인 5 `rds_preregistration.py`(KNOWN_KEYS, #223/#230);
@@ -70,27 +70,31 @@ M2.2에서 7.5.6 거동에 일치하도록 검증됐다(FACT ②) — 약한 평
 1. 후보 선정 과정에서 얻은 결과로 **유리한 대상을 사후 선택하지 않는다**.
 2. **이미 노출된 타깃은 독립 hold-out으로 재사용하지 않는다** — node-tar 7.5.2/7.5.3/7.5.6/7.5.7/7.5.8 ·
    decompress 4.2.1 · oras-go v2.6.1 · Python tarfile(M4.1b 노출분).
-3. 후보는 **hazard·결과를 보기 전에 등록**한다. 기노출 목록은 레인 8 소유 `exposure-ledger.md`(제안)로 커밋하고,
-   레인 5 게이트가 `role=holdout` 타깃의 (extractor, version)이 그 목록에 있으면 **거부**한다(레인 5 설계안;
-   `role=holdout ∧ exposure=pre-exposed`는 파서 레벨 포맷 오류).
+3. 후보는 **hazard·결과를 보기 전에 등록**한다. 기노출 목록은 레인 8 `exposure-ledger.md`(#249, sha256 핀)로
+   커밋하고, 레인 5 게이트가 `role=holdout` 타깃의 (extractor, version)이 그 목록에 있으면 **거부**한다(#244;
+   `role=holdout ∧ exposure=pre-exposed`는 파서 레벨 포맷 오류). 선정된 holdout 정체는 **engine_sha-pinned 동결**
+   (train 결과를 본 뒤 교체 불가)이다.
+4. 후보의 **상태 확인(노출 여부·패치 상태)은 고정 회귀 fixture(`make regression TAR_VERSION=<x>`, 연구 규칙 3의
+   ground truth)로만** 수행하고 결과를 **`exposure-ledger.md`에 status-check 항목으로 기록**한다. 후보에 대한
+   **퍼징 캠페인은 금지**한다 — 캠페인 실행 자체가 노출이 되어 hold-out 자격을 잃기 때문이다. (지웅 결정 7)
 
 ---
 
 ## (b) 기계판독 등록 블록 (레인 5 파서 · #223/#230 게이트 스키마)
 
-아래 펜스 블록이 실행기 파서 입력이다. 키 스키마는 레인 8 exp0-pilot-v2.1 초안(미커밋)의 `preregistration`
-블록(레인 5 `rds_preregistration.py` KNOWN_KEYS, #223/#230)과 동일하며, EXP-3 값으로 바꾸고 `TBD-*`를 11/18 전에 채운다. **주의:** 현 레인 5 스키마는 **단일
-`image_digest`**다. EXP-3 다중 타깃(train 7.5.2 + hold-out 쌍 + Python tarfile) 표현은 스키마 확장이 필요하며
-레인 5 조율 사항이다(11/18 전) — 초안에서는 `image_digest`=train 타깃(7.5.2)으로 두고 hold-out은 (a)의 산문 +
-`TBD-FREEZE` + 아래 '다중 타깃' 절로 관리한다 — 다중 타깃은 레인 5 targets[] 설계안(`targets.<id>.*`: role·exposure 키)으로 확장 예정이며 스키마 키를 임의로 발명하지 않는다.
+아래 펜스 블록이 실행기 파서 입력이다(레인 5 `rds_preregistration.py`, **#244 다중 타깃 `targets.<id>.*` 스키마**).
+EXP-3 타깃(train node-tar 7.5.2 · fix-verification 7.5.6/7.5.7 · 독립 holdout · Python tarfile H-B)을
+`targets.<id>.*`로 선언하고, 확증 검정 키(`confirmatory_test`·`confirmatory_family`·`multiplicity`·
+`primary_endpoint`·`event_threshold`)와 기노출 원장(`exposure_ledger`·`exposure_ledger_sha256`)을 포함한다. 남은
+값은 **`TBD-FREEZE` 한 종류**로 #245 `freeze_preregistration.py`가 한 번에 치환한다 — 동결·커밋 전까지 파서가
+거부하는 **비실행본**이다. 단일 `image_digest`와 `targets.*` 혼용은 포맷 오류다.
 
 ```preregistration
-# EXP-3 본실험 v1 (초안, 11/18 동결 전). TBD-* 를 채우고 실행 전에 커밋해야 유효하다.
+# EXP-3 본실험 v1 (11/18 동결 전 최종 검토본). 남은 TBD-FREEZE를 #245로 채우고 커밋해야 실행 유효.
 experiment_id = exp3
-engine_sha = TBD-G1
-image_digest = TBD-G1
-# seeds: EXP-0(9001-9005)·M3(100-129)·pre-exposed(9001-9004)와 disjoint한 20개. (a) hold-out 결정 후 확정.
-seeds = TBD-DECISION
+engine_sha = TBD-FREEZE
+# seeds: EXP-0(9001-9005)·M3(100-129)·pre-exposed(9001-9004)와 disjoint. 수·값은 동결 시 확정.
+seeds = TBD-FREEZE
 budget = 2000
 vocabulary = observed-names
 arm.R = unretained-walk-v1-uniform-mutation-v1
@@ -98,22 +102,67 @@ arm.D = structure-coverage-v1-uniform-mutation-v1
 arm.S-u = effect-feedback-v2-or-violation-v1-boundary-attempt-v1-uniform-mutation-v1
 # 선택: 탐색적 ablation(주 비교 아님)
 arm.S-a = effect-feedback-v2-or-violation-v1-boundary-attempt-v1-adaptive-mutation-v1
+# --- 다중 타깃(#244 targets[] 스키마). role/exposure는 파서 열거검증; confirmatory_family 멤버십은 role∧hypothesis에서 유도. ---
+targets.node-tar-7.5.2.extractor = node-tar
+targets.node-tar-7.5.2.version = 7.5.2
+targets.node-tar-7.5.2.image_digest = TBD-FREEZE
+targets.node-tar-7.5.2.role = train
+targets.node-tar-7.5.2.hypothesis = H-A
+targets.node-tar-7.5.2.exposure = none
+targets.node-tar-7.5.6.extractor = node-tar
+targets.node-tar-7.5.6.version = 7.5.6
+targets.node-tar-7.5.6.image_digest = TBD-FREEZE
+targets.node-tar-7.5.6.role = fix-verification
+targets.node-tar-7.5.6.hypothesis = H-A
+targets.node-tar-7.5.6.exposure = pre-exposed
+targets.node-tar-7.5.6.exposure_ref = experiments/summaries/cross-release-identity-repro-v1.md
+targets.node-tar-7.5.7.extractor = node-tar
+targets.node-tar-7.5.7.version = 7.5.7
+targets.node-tar-7.5.7.image_digest = TBD-FREEZE
+targets.node-tar-7.5.7.role = fix-verification
+targets.node-tar-7.5.7.hypothesis = H-A
+targets.node-tar-7.5.7.exposure = pre-exposed
+targets.node-tar-7.5.7.exposure_ref = experiments/summaries/cross-release-identity-repro-v1.md
+# 독립 holdout(결정 7): sweep 밖 node-tar(예: 7.9.x) 또는 타 extractor. 정체·버전·digest는 engine_sha-pinned 동결(train 결과 후 교체 불가).
+# arms 생략 = 선언 arm 전체(R/D/S-u) → confirmatory_family S-u-vs-R·S-u-vs-D 둘 다 동결 가능.
+targets.node-tar-holdout.extractor = node-tar
+targets.node-tar-holdout.version = TBD-FREEZE
+targets.node-tar-holdout.image_digest = TBD-FREEZE
+targets.node-tar-holdout.role = holdout
+targets.node-tar-holdout.hypothesis = H-A
+targets.node-tar-holdout.exposure = none
+# H-B 탐색적 일반성(확증 아님). 기노출(M4.1b): docs/STATUS.md:57·docs/BACKLOG.md:93·docs/STATUS.md:55. live 배선 전 dry-run 거부.
+targets.py-tarfile-3.12.extractor = python-tarfile
+targets.py-tarfile-3.12.lock_digest = TBD-FREEZE
+targets.py-tarfile-3.12.role = train
+targets.py-tarfile-3.12.hypothesis = H-B
+targets.py-tarfile-3.12.exposure = pre-exposed
+targets.py-tarfile-3.12.exposure_ref = docs/STATUS.md:57
+# 기노출 원장(레인 8 #249) + 동결 직전 sha256sum. role=holdout∧exposure=pre-exposed·등재 버전 holdout = 포맷 오류.
+exposure_ledger = experiments/preregistration/exposure-ledger.md
+exposure_ledger_sha256 = TBD-FREEZE
 sentinel_generator_id = sentinel-names/seed-random-v1
-sentinel_generator_seed = TBD-G1
-sentinel_count = 3   # 지웅 결정(결정 B: hazard 상향 입력). >=3 다수 sentinel.
-# rule 5키: v2 본문 규칙(제공 시 대조). EXP-3도 동일 규칙 사용.
+sentinel_generator_seed = TBD-FREEZE
+sentinel_count = 3   # 지웅 결정 B: hazard 상향 입력. >=3 다수 sentinel.
+# rule 5키: v2 본문 규칙(제공 시 대조). EXP-3 동일.
 hit_definition = c1-or-c2-and-contract-violated
 c0_counts_as_hit = false
 denominator = all-cells-including-abort
 abort_reporting = right-censored
 rule_of_three_unit = campaign
 observer_integrity_policy = invalid-continue
+# --- 확증 검정(지웅 결정 6): 1차 = 모든 n 유효 seed-block exact 순열 로그랭크 + Holm(holdout 패밀리). ---
+primary_endpoint = t_first
+confirmatory_test = exact-logrank-permutation-v1
+confirmatory_family = holdout:S-u-vs-R,S-u-vs-D
+multiplicity = holm-fwer-v1
+event_threshold = 5   # event<5 = underpowered 플래그(검정 교체 아님); rule-of-three 서술·비검정, 시나리오 ⑤.
 # #230 런처 키(제공 시 대조; 열거/범위 위반은 포맷 오류).
 execution_mode = per-case-container
-jobs_max = TBD-LANE6             # EXP-0 처리량 실측 + 레인6 규모로 상향
-campaign_watchdog_seconds = TBD-G1   # budget 2000 >> 200 → EXP-0 p95 full-step에서 상향
+jobs_max = TBD-FREEZE             # EXP-0 처리량(레인4)·레인6 규모 실측, 동결 시 채움
+campaign_watchdog_seconds = TBD-FREEZE   # budget 2000: EXP-0 p95 full-step에서 상향
 disk_pause_fraction = 0.9
-interim_analysis = forbidden     # 중간분석 가림(peeking 금지) — 사전등록 무결성
+interim_analysis = forbidden     # peeking 금지 — 사전등록 무결성
 ```
 
 ---
@@ -134,12 +183,12 @@ research-questions v2의 "정규화 서명 기준; 같은 lineage · 같은 fing
 
 ---
 
-## (d) 검정력·규모 — `TBD-LANE6` 보고 반영
+## (d) 검정력·규모 — 레인 6 보고 반영
 
 > 출처: 레인 6 보고(#209 `src/inodefence/evaluation/power.py` 산출, a4 독립 재대조 완료). hazard 2e-5는
 > 사전등록 v2 **참고 proxy**이며 검정력 입력이 아니다(민감도용, v2 (a)·(b)). **결정은 지웅.**
 
-**지웅 결정(조건부 A): T_first를 1차 지표로 보존**하되 통계적 한계를 명시하고, **EXP-0 실측으로 EXP-3
+**지웅 결정 6: T_first를 1차 지표로 확정**(확증 검정은 '다중 타깃' 절)하되 통계적 한계를 명시하고, **EXP-0 실측으로 EXP-3
 타당성을 동결(11/18) 전에 재평가**한다. 규모를 좌우하는 입력은 **둘**이다 — (1) seed 수, (2) **hazard 상향**
 (sentinel count = **3**, 지웅 결정 B). 한쪽만으로 판단하지 않는다.
 
@@ -161,26 +210,29 @@ research-questions v2의 "정규화 서명 기준; 같은 lineage · 같은 fing
   기대사건을 올리는 입력은 (1) **seed↑**(선형, 느림)과 (2) **hazard↑**(sentinel count = 3, (d) hazard 상향 —
   별개 지렛대)다. **영구 불가가 아니라** 두 지렛대로 해소하며 둘 다 11/18 재평가한다.
 - **compute는 1차 구속 제약이 아님(이벤트 수가 제약).** 처리량은 **host-state 경합에 민감**하다(syscall/IO
-  바운드, CPU 코어 수 아님, 레인4 실측). 단일스트림: **0.845 c/s(전용·한산 상한, ≈73k/일) ↔ 0.23~0.29 c/s
-  (공유·바쁜 호스트, ≈20~25k/일, 3.09× 느림)**. EXP-3 120k 실행 = **~1.6일(상한, 24/7) ~ ~5~6일(바쁜 단일스트림)**;
-  jobs>1 병렬로 회복한다(레인4 jobs=2 실측 Phase B 예정). 11/18~11/28(10일) 내 feasible하나 margin은 상한 가정보다
-  빡빡하다. ~830 seed/arm은 c/s와 무관(이벤트 바운드).
+  바운드, CPU 코어 수 아님, 레인4 실측). 단일스트림 ↔ **jobs=2(레인4 Phase B, par_eff 0.87 · ×1.75)**: 전용/한산
+  0.845 c/s → **1.48 c/s(≈128k/일) → 120k ≈ 0.94일**; 공유/바쁜 0.23~0.29 c/s → **0.40~0.51 c/s(≈35~44k/일) →
+  120k ≈ 2.7~3.9일**. 11/18~11/28(10일) feasible, margin 회복(jobs 3~4 여지는 **미측정 · 주장 안 함**). **다중
+  타깃이면 실행 수 = 타깃 수 배수**(각 타깃 120k). ~830 seed/arm은 c/s와 무관(이벤트 바운드). 증거
+  `~/inodefence-evidence/wp-throughput-20261104/`(MANIFEST `9ebdc43768265b4c…`).
 - **zero-hit(시나리오 ⑤)이 기본 결과.** rule-of-three 95% 상한(캠페인 단위) — arm당 n20 → 0.15, 2 arm n40 →
   0.075, 3 arm n60 → 0.05. 실행 단위(120k → 2.5e-5)는 탐색적 병기만. hazard proxy · rule-of-three는 **참고값,
   판정 입력 아님**.
 
-**레인 6 제안 (제안일 뿐 — 결정 지웅):** ① KM + rule-of-three + MDE를 1차와 함께 명시 ② paired dense-지표 보조
-검정(permutation/Wilcoxon) — 단 EN-008상 "탐색" 주장으로 분리 선언(effectiveness 아님), **검정력 수치는
-`TBD-LANE6(검증 중)`**(독립 검증 전이라 확정값으로 쓰지 않음 — Wilcoxon 검정력은 tie_frac=중도절단 비율에 강하게 의존해 EXP-0 분포·a4 독립 재현 전 수치 미기재) ③ seed 층화 로그랭크 + MDE 기재 ④ rule-of-three
-단위 = 캠페인 ⑤ dense 종단점 효과 · α · 검정 · powered n을 11/18 등록.
+**결정 6으로 확정(상세는 '다중 타깃' 절):** 1차 확증 = **seed-block paired exact 순열 로그랭크 + Holm**(holdout
+패밀리) · `primary_endpoint = t_first`(U_viol 2차·비확증) · `event_threshold = 5` underpowered 플래그 ·
+rule-of-three는 캠페인 단위 서술. → 레인 6 당초 제안의 ①(KM+R-o-3+MDE 병기)·③(seed 층화)·④(R-o-3 캠페인 단위)·
+⑤(종단점·α·검정 등록)이 **등록됨**.
 
-**빠진 부분 (레인 6 — 11/18 등록 필요):** (ⅰ) powered 보조 종단점의 가설검정 미등록, (ⅱ) **powered 신호 vs
-비-effectiveness 신호 모순** — zero-hit엔 U_viol도 0이고 0이 아닌 dense 신호는 EN-008상 effectiveness 척도가
-아니므로 powered effectiveness 주장 경로가 부재, (ⅲ) paired 층화 미지정, (ⅳ) rule-of-three 단위 확정(위 ④),
-(ⅴ) MDE 등록.
+**남은 보조·탐색 분석:** paired dense-지표 보조검정(permutation/Wilcoxon)은 EN-008상 **"탐색"으로 분리 선언**
+(effectiveness 아님), 검정력 수치는 `TBD-LANE6(검증 중)`(Wilcoxon 검정력은 tie_frac=중도절단 비율에 의존 →
+EXP-0 분포·a4 독립 재현 전 미기재).
 
-규모(seeds 수 · arm당 캠페인 · budget 최종)는 EXP-0 처리량 · abort · dense 신호 실측 + 위 결정으로 **11/18
-확정**(`TBD-LANE6`). 1차 지표는 T_first로 보존하되(조건부 A) 한계를 명시한다. 결정을 선취하지 않는다.
+**남은 설계 한계(결과와 무관·불변):** powered 신호 vs 비-effectiveness 신호 모순 — zero-hit엔 U_viol도 0이고
+0이 아닌 dense 신호는 EN-008상 effectiveness 척도가 아니므로 powered effectiveness 주장 경로가 부재(근본 한계).
+
+1차 지표 T_first · 확증 검정은 **결정 6으로 확정**('다중 타깃' 절). 남은 것은 **최종 규모**(seeds 수 · arm당
+캠페인 · budget)뿐으로, EXP-0 처리량 · abort · dense 신호 실측 + 결정으로 **11/18 확정**(`TBD-FREEZE`)한다.
 
 ---
 
@@ -219,29 +271,49 @@ research-questions v2 "판정 시나리오"(①~⑧)를 **그대로 포인터로
 미관찰 보고·분모 명시·rule-of-three 상한(참고 상한일 뿐 판정 입력 아님) / ⑥ extractor 간 불일치 → oracle 일반성과
 피드백 일반성 분리 / ⑦ 비용 과다 → 시간 정규화 지표 병기 / ⑧ **S ≤ R → 반증**.
 
-성공·실패 판정(감사 14 꼭지)의 "**검정력 산출된 n에서 분리 실패 = 반증(연장 금지)**"는 1차 지표 **T_first에
-적용**하되(조건부 A), (d)의 통계적 한계((a) 사건 상한 · (b) 예상 사건 부족)를 함께 명시한다. EXP-0 실측으로
-동결 전 EXP-3 타당성을 재평가하며, 보조 종단점 · 검정력 n은 11/18 등록한다.
+성공·실패 판정(감사 14 꼭지)의 "**검정력 산출된 n에서 분리 실패 = 반증(연장 금지)**"는 1차 지표 **T_first의
+확증 검정**(결정 6: seed-block exact 순열 로그랭크 + Holm, holdout 패밀리)에 적용하되, (d)의 통계적 한계
+((a) 사건 상한 · (b) 예상 사건 부족 · event<5 underpowered 플래그)를 함께 명시한다. EXP-0 실측으로 동결 전
+EXP-3 **최종 규모**를 확정하고, dense 보조 종단점 검정력은 11/18 등록한다. 가속(①) vs 반증(⑧) 구분은 양측 p
+기각 + 방향 부호로 하며 '다중 타깃' 절의 `faster_arm` 규칙을 따른다(#257).
 
 ---
 
-## 다중 타깃 분석 단위 · 층화 · 다중검정 — 레인 6 확정안 (레인 10 검토 중, 11/18 최종)
+## 다중 타깃 분석 단위 · 층화 · 다중검정 — 지웅 결정 6 (확정)
 
 EXP-3는 여러 타깃을 포함한다(`role`: train 7.5.2 · fix-verification 7.5.6/7.5.7 · 독립 holdout `TBD-FREEZE` ·
 Python tarfile). 레인 5 targets[] 설계안과 연계한다 —
 `targets.<id>.{extractor, version, image_digest|lock_digest, role, exposure, exposure_ref}`, 셀 = target × arm ×
-seed(run_id = `<target_id>-<arm>-s<seed>`). 아래는 **레인 6 확정안**(레인 10 검토 후 11/18 최종):
+seed(run_id = `<target_id>-<arm>-s<seed>`). 아래는 **지웅 결정 6 확정**이다:
 
-- **1차 추론 = `role=train` 타깃에서의 탐색.** `fix-verification`(7.5.6/7.5.7)은 수정 확인(hit 기대 0) **별도 표**.
-  **`holdout`은 유일한 확증(confirmatory) 검정**이다.
-- **다중검정 보정 = Holm FWER** — 블록 키 `holdout_test = holm-fwer-v1`.
-- **rule-of-three는 타깃별**(캠페인 단위)로 보고하고 **타깃 간 풀링은 금지**한다. 층화(타깃별 hazard 이질성)는
-  index/summaries의 `target_id` · `role` 필드로 처리.
-- **holdout은 underpower임을 명시**한다((d)의 사건 상한 · 예상 사건 한계가 holdout에도 적용).
+- **1차 추론 = `role=train`(node-tar 7.5.2) 타깃의 탐색**(R/D/S-u T_first 비교). `fix-verification`(7.5.6/7.5.7)은
+  수정 확인(hit 기대 0) **별도 표**(H-A 효과 추론 제외). **`holdout`(sweep 밖)이 유일한 확증(confirmatory) 검정**이다.
+- **1차 확증 검정 `confirmatory_test = exact-logrank-permutation-v1`** — **seed-block paired exact 순열 로그랭크**
+  (모든 n 유효; 독립 점근 로그랭크 필드 없음, `contrasts[].permutation.p_value`). **`primary_endpoint = t_first`**
+  (U_viol은 2차 · `supplementary.u_viol_a12`, 비확증; 종단점 간 보정 없음).
+- **다중검정 `multiplicity = holm-fwer-v1`**, 패밀리 = **`confirmatory_family = holdout:S-u-vs-R,S-u-vs-D`에 한정**
+  (파서가 `role=holdout ∧ hypothesis=H-A`에서 멤버십 유도·동결). **확증은 holdout 패밀리의 `reject_at_alpha`뿐**
+  (`confirmatory.confirmatory_scope`).
+- **방향 · 판정 규칙 (양측 p + 부호, #257).** `exact-logrank-permutation-v1`의 순열 p는 **양측**(chi² 기반)이라
+  기각만으로 가속(①)·반증(⑧)을 구분하지 못한다. `contrasts[]`의 **`observed_minus_expected`(부호) · `faster_arm` ·
+  `direction_note`**로 방향을 읽는다: **확증 가속 주장 = `holm_adjusted_p` ≤ α 그리고 `faster_arm == S-u`**
+  (S-u의 T_first가 더 짧음) → 시나리오 ①; **기각 ∧ `faster_arm ∈ {R, D}` → 시나리오 ⑧ 반증**; **무기각 →
+  시나리오 ⑤(미검정)**.
+- **`event_threshold = 5`는 유효성 플래그**다 — event<5면 로그랭크 점근이 무효이므로 **underpowered 플래그 +
+  시나리오 ⑤(미검정) 보고 + `campaign_unit_rule_of_three_upper95` 서술적 상한**(확증·판정 입력 **아님**; R-o-3은
+  CI 상한이지 arm 대조 검정이 아니다)으로 처리한다. **검정 교체가 아니다**(exact 순열이 모든 n에서 1차).
+- **rule-of-three는 타깃별**(캠페인 단위, `campaign_unit_rule_of_three_upper95`)로 보고하고 **타깃 간 풀링 금지**.
+  층화(타깃별 hazard 이질성)는 index/summaries의 `target_id` · `role` 필드로 처리.
+- **holdout은 underpower임을 명시**한다((d)의 사건 상한 · 예상 사건 한계가 holdout에도 적용; 통계량 유효성 포함).
+- 산출원 `report["confirmatory"]`(#248; 레인 6 #252 필드명): `{confirmatory_test, multiplicity, primary_endpoint,
+  event_threshold, alpha, confirmatory_scope, contrasts:[{order, contrast, number_seed_blocks, total_events,
+  permutation{p_value, observed_chi_square, exact, number_blocks}, observed_minus_expected, faster_arm,
+  direction_note, holm_adjusted_p, reject_at_alpha, underpowered, campaign_unit_rule_of_three_upper95(underpowered 시)}]}`
+  (방향 필드 `observed_minus_expected`·`faster_arm`·`direction_note`는 #257).
 - `interim_analysis = forbidden`은 전 타깃 공통(파일 1개 = 실험 1개).
 
-구현(파서 · 런처 · 게이트 · index 필드)은 레인 5 PR을 포인터로 둔다 — 승인·머지 후 그 파서를 포함한 engine_sha로
-동결한다(그 전엔 `targets.*`가 현 파서에서 '미지 키 경고'로만 통과하므로 동결 금지).
+구현은 레인 5 **#244**(targets[] 스키마) · **#246**(분석 단위 · no-pooling) · **#248**(confirmatory 산출) ·
+**#252**(필드명)에 있다 — 그 파서를 포함한 engine_sha로 11/18 동결한다.
 
 ## 측정 · 바뀌지 않는 것
 

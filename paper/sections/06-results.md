@@ -256,8 +256,11 @@ M1–M4의 능력과 증거 수준을 한눈에 보는 요약은 [Capability Led
 
 - **표(TBD).** EXP-0 인프라·dense 신호 요약 — `analyze_exp0` report.json **item1~7 전부**(전부 분모 병기):
   item1 abort(사유 × arm) · item2 p95 full-step · item3 처리량(exec/h) · item4 per-case vs 워커풀 parity ·
-  item5 첫 C0/C1/C2 및 T_first(우측중도절단) · item6 dense 신호 · item7 hazard proxy. **item2·item3·item4·item7은
-  '참고값' 라벨**(effectiveness·판정 입력 아님). 생성 경로: `scripts/analyze_exp0.py` → `report.json` →
+  item5 첫 C0/C1/C2 · T_first(우측중도절단; abort 민감도 **3정책** `item5.sensitivity` — exclude · censor-at-budget, #243) ·
+  item6 dense 신호 · item7 hazard proxy. **item2·item3·item4·item7은 '참고값' 라벨**(effectiveness·판정 입력 아님).
+  arm×abort 독립성(꼭지 13 validity, 레인 3 optional)은 번호 없는 `arm_abort_independence` 키(#242)로 보고 —
+  사전등록 **측정 item8 = raw SHA-256 체크섬 목록**과 번호 충돌을 피한다(체크섬은 report.json 밖 manifest).
+  생성 경로: `scripts/analyze_exp0.py` → `report.json` →
   `paper/figures/render_exp0_survival.py` → `paper/tables/exp0-summary.md`(레인 6 생성기; EXP-0 미실행 시
   "TBD — EXP-0 미실행" 플레이스홀더). — **현재 TBD.**
 - **그림(TBD).** arm별 결합 T_first(C1 ∨ C2) Kaplan–Meier 생존곡선(중도절단 tick). 생성 경로:

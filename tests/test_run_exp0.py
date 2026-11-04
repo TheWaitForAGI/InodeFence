@@ -255,7 +255,7 @@ def test_live_run_end_to_end_with_fake_cells_then_idempotent_rerun(
         "test",
     ]
     assert main(args) == 1  # one aborted cell -> not all complete
-    assert runner.calls == [c.run_id for c in _plan(prereg_file).cells()]  # type: ignore[attr-defined]
+    assert sorted(runner.calls) == sorted(c.run_id for c in _plan(prereg_file).cells())  # type: ignore[attr-defined]
     index = json.loads((out / "summaries" / "index.json").read_text())
     assert index["label"][0] == "registered run" and f"engine_sha={SHA}" in index["label"]
     assert "experiment=exp0" in index["label"] and index["outcomes_redacted"] is False

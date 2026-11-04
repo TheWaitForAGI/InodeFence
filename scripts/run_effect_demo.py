@@ -179,18 +179,30 @@ DEMO_FORWARDED_FLAGS = ("emit_parity", "worker_pool")
 
 
 def _parity_campaign_producer(
-    produce: Callable[[ArchiveCase], EffectRunResult], *, worker_pool: bool, seed: int
+    produce: Callable[[ArchiveCase], EffectRunResult],
+    *,
+    worker_pool: bool,
+    seed: int,
+    completed_step_count: Callable[[], int],
 ):
     """Wrap the per-case producer for ParitySubject emission (runs inside the controller).
 
     Both paths observe the reused runtime volume after each case; the worker-pool path
     additionally retries recoverable infrastructure failures (``ResettingProducer``). The
     worker-local backoff RNG is seeded from the campaign seed but is a separate stream, so
-    the campaign RNG — and therefore the step trajectory — is untouched.
+    the campaign RNG — and therefore the step trajectory — is untouched. ``completed_step_count``
+    lets an abandoned case record how many valid steps preceded it (its ``step_index``) instead
+    of a fixed zero.
     """
     observer = ResetObserver(lambda: frozenset(os.listdir(runtime_root())))
     if worker_pool:
-        return ResettingProducer(produce, NoRecycleWorker(), observer, rng=random.Random(seed))
+        return ResettingProducer(
+            produce,
+            NoRecycleWorker(),
+            observer,
+            completed_step_count=completed_step_count,
+            rng=random.Random(seed),
+        )
     return ResetObservingProducer(produce, observer)
 
 
@@ -692,16 +704,23 @@ def historical_demo_report(
         return run.result
 
     reporter = EffectStepReporter()
+    completed_steps = [0]
 
     def record_step(step) -> None:
         # Persist each finished step so an abort mid-campaign still leaves the completed
         # loop record (including any oracle event); large-budget runs abort more often.
         record = reporter.add(step)
+        completed_steps[0] += 1
         if step_sink is not None:
             step_sink(record)
 
     campaign_producer = (
-        _parity_campaign_producer(produce, worker_pool=worker_pool, seed=seed)
+        _parity_campaign_producer(
+            produce,
+            worker_pool=worker_pool,
+            seed=seed,
+            completed_step_count=lambda: completed_steps[0],
+        )
         if emit_parity
         else produce
     )

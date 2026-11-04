@@ -7,7 +7,7 @@ no timestamps or host paths: identical campaigns render byte-identical JSON.
 
 import json
 from collections import Counter
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from enum import StrEnum
 from typing import Any
 
@@ -18,19 +18,26 @@ from inodefence.effect_campaign import (
 )
 from inodefence.effect_synthetic import SYNTHETIC_MECHANISM
 from inodefence.model import (
+    ContractId,
     EffectEventTrace,
     EffectObjectObservation,
     EffectObservationStatus,
     EffectRunResult,
     EffectStreamCompleteness,
     EffectTargetTermination,
+    ExecutionStatus,
     FilesystemEffectEvent,
     canonical_json,
 )
 from inodefence.mutation_scheduler import WeightSnapshot
 
-DEMO_REPORT_SCHEMA = 2
+DEMO_REPORT_SCHEMA = 3
 POLICY_COMPARISON_SCHEMA = 1
+
+# Reasons a recorded step's effect-trace observation is not trustworthy. Only
+# `observer_integrity` is classified here (observer lane); infrastructure reasons
+# (broker, cleanup_*) are classified by the runtime lane under the same field.
+OBSERVER_INTEGRITY_REASON = "observer_integrity"
 # Per-step bounds on the trace and stderr copies; the report states when they cut.
 MAX_TRACE_EFFECT_EVENTS = 64
 STDERR_EDGE_CHARS = 1000
@@ -223,6 +230,72 @@ def _stderr_record(stderr: str) -> dict[str, object]:
     return {"text": text, "chars": total, "truncated": True}
 
 
+def observer_integrity_validity(result: EffectRunResult) -> dict[str, object]:
+    """Classify one step's observation as valid or observer-integrity invalid.
+
+    A step is ``invalid`` (reason ``observer_integrity``) when the target run
+    SUCCEEDED but the reader could not produce a trustworthy effect trace
+    (``not integrity_valid``): the per-entry identity attribution is unreliable
+    (e.g. a ``malformed_identity`` failure from a duplicate-path/different-type
+    archive), so the effect trace must not seed feedback or corpus admission.
+    This is exactly the condition the native demo historically aborted on; under
+    the step-level policy the step is kept and marked instead.
+
+    Other target outcomes (rejected/failed/timed_out) are results, not invalid
+    steps: node-tar can reject while an fs operation is still in flight, so those
+    traces are expected to be incomplete and stay ``valid`` here.
+
+    The snapshot-based C0/C1/C2 oracle verdict lives on ``base_result`` and is
+    independent of the trace, so marking the trace invalid never changes a
+    verdict (the preregistration hit definition is preserved).
+    """
+    if not isinstance(result, EffectRunResult):
+        raise ValueError("observer integrity validity requires an EffectRunResult")
+    trace = result.trace
+    invalid = (
+        result.base_result.execution.status == ExecutionStatus.SUCCESS and not trace.integrity_valid
+    )
+    if not invalid:
+        return {"validity": "valid", "invalid_reason": None, "observation_failure_kinds": []}
+    return {
+        "validity": "invalid",
+        "invalid_reason": OBSERVER_INTEGRITY_REASON,
+        "observation_failure_kinds": sorted(
+            {failure.kind.value for failure in trace.observation_failures}
+        ),
+    }
+
+
+def _step_is_prereg_hit(record: Mapping[str, Any]) -> bool:
+    """Preregistration hit: a contract-violated step whose post-state oracle flags C1 or C2.
+
+    Reads only the snapshot-based oracle verdict and the feedback's
+    ``contract_violated`` flag, so it is unaffected by effect-trace validity.
+    """
+    oracle = record["oracle"]
+    return bool(record["feedback"]["contract_violated"]) and bool(
+        oracle.get(ContractId.C1.value) or oracle.get(ContractId.C2.value)
+    )
+
+
+def observer_integrity_summary(steps: Sequence[Mapping[str, Any]]) -> dict[str, object]:
+    """Counts of invalid-observation steps, by reason, plus the (a1) sensitivity count.
+
+    ``hit_with_invalid_trace`` is the number of preregistration hits that occurred
+    on a step whose effect trace was observer-integrity invalid. The primary
+    (a2) analysis counts these hits (snapshot verdict is trusted); a sensitivity
+    (a1) analysis excludes them, so the statistics lanes can recompute either from
+    this single field without re-reading every step.
+    """
+    invalid = [record for record in steps if record.get("validity") == "invalid"]
+    by_reason = Counter(str(record.get("invalid_reason")) for record in invalid)
+    return {
+        "invalid_steps": len(invalid),
+        "invalid_by_reason": dict(sorted(by_reason.items())),
+        "hit_with_invalid_trace": sum(1 for record in invalid if _step_is_prereg_hit(record)),
+    }
+
+
 def _step_report(step: EffectCampaignStep) -> dict[str, object]:
     base = step.result.base_result
     feedback = step.feedback
@@ -246,6 +319,10 @@ def _step_report(step: EffectCampaignStep) -> dict[str, object]:
         "origin": step.origin.value,
         "case_id": base.case.case_id,
         "parent_case_id": step.parent_case_id,
+        # Observation validity of this step's effect trace (additive, schema 3).
+        # "valid" unless the target succeeded with an untrustworthy trace; the
+        # snapshot oracle verdict below is independent and always recorded.
+        **observer_integrity_validity(step.result),
         "oracle": {verdict.contract_id.value: verdict.violated for verdict in base.violations},
         "feedback": {
             "new_effect_keys": [_model(key) for key in feedback.new_effect_keys],
@@ -337,6 +414,7 @@ def effect_campaign_report(result: EffectCampaignResult, producer: str) -> dict[
         },
         "initial_case_ids": list(result.initial_case_ids),
         "steps": steps,
+        "observer_integrity_summary": observer_integrity_summary(steps),
         "final_search_stats": _model(result.final_search_stats),
         "retained_case_ids": list(result.retained_case_ids),
     }

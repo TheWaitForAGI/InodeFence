@@ -10,11 +10,16 @@ controller path needs no controller change.
 What the report cannot give (and the summary says so through its wrapper
 ``notes``):
 
-* ``u_viol`` counts the recorded ``new_violation_fingerprints`` (C1/C2). The loop
-  records fingerprints only for feedback-eligible observations (fail-closed), so a
-  hit on an ineligible trace has no fingerprint in the report; such steps are
-  counted in ``unfingerprinted_hit_steps`` and are NOT folded into ``u_viol``.
-  ``hit``/``t_first`` read the per-step ``oracle`` verdicts and are unaffected.
+* ``u_viol`` reads the per-step ``oracle_fingerprints`` (the oracle's normalized
+  C1/C2 classes of every step, eligibility-independent; report schema 4), exactly
+  the set the in-memory summary builds from the verdicts (``u_viol_source =
+  "oracle"``). Records that predate ``oracle_fingerprints`` fall back to the
+  recorded ``new_violation_fingerprints`` (``u_viol_source = "feedback-fallback"``);
+  the loop records those only for feedback-eligible observations, so under the
+  fallback a hit on an ineligible trace is not in ``u_viol`` (it is counted in
+  ``unfingerprinted_hit_steps``). ``u_viol_feedback`` always counts the recorded
+  feedback fingerprints (a search-behaviour descriptor). ``hit``/``t_first`` read
+  the per-step ``oracle`` verdicts in every case.
 * vocabulary pools and the BEFORE snapshot's protected paths are reconstructed
   from the per-step ``name_segments`` / ``before_protected_paths`` records (reports
   written by this engine version); older records lack them and report empty.
@@ -34,6 +39,8 @@ from inodefence.mutator.m1_addressing import COMPONENTS as PROTECTED_COMPONENTS
 
 from .rds import (
     HIT_CONTRACTS,
+    U_VIOL_SOURCE_FEEDBACK_FALLBACK,
+    U_VIOL_SOURCE_ORACLE,
     RdsArm,
     RdsCellConfig,
     RdsCellSummary,
@@ -42,9 +49,11 @@ from .rds import (
 )
 
 NOTES = (
-    "u_viol counts recorded new_violation_fingerprints (C1/C2) only; hit steps whose "
-    "trace was not feedback-eligible carry no fingerprint and are counted in "
-    "unfingerprinted_hit_steps",
+    "u_viol reads oracle_fingerprints (every step's oracle C1/C2 classes, "
+    "eligibility-independent; u_viol_source=oracle); records without them fall back to "
+    "recorded new_violation_fingerprints (u_viol_source=feedback-fallback), where hit "
+    "steps whose trace was not feedback-eligible carry no fingerprint and are only "
+    "counted in unfingerprinted_hit_steps",
     "vocabulary pools are reconstructed from per-step name_segments exactly as the "
     "mutator saw them (fixed-baseline: step 0 before; accumulated: union of observed); "
     "empty when the records predate name_segments",
@@ -156,8 +165,11 @@ def summarize_report_records(
 
     hit_indexes: list[int] = []
     per_contract: dict[ContractId, list[int]] = {contract: [] for contract in ContractId}
-    hit_fingerprints: set[tuple[ContractId, str]] = set()
-    c0_fingerprints: set[tuple[ContractId, str]] = set()
+    oracle_hit: set[tuple[ContractId, str]] = set()
+    oracle_c0: set[tuple[ContractId, str]] = set()
+    feedback_hit: set[tuple[ContractId, str]] = set()
+    feedback_c0: set[tuple[ContractId, str]] = set()
+    oracle_records = 0
     unfingerprinted = 0
     boundary_keys = 0
     unique_keys = 0
@@ -176,12 +188,14 @@ def summarize_report_records(
         hit = bool(contracts & HIT_CONTRACTS)
         if hit:
             hit_indexes.append(step["index"])
-        fingerprints = feedback.get("new_violation_fingerprints", ())
-        for item in fingerprints:
+        if "oracle_fingerprints" in step:
+            oracle_records += 1
+            for item in step["oracle_fingerprints"]:
+                contract, key = _fingerprint_key(item)
+                (oracle_hit if contract in HIT_CONTRACTS else oracle_c0).add((contract, key))
+        for item in feedback.get("new_violation_fingerprints", ()):
             contract, key = _fingerprint_key(item)
-            (hit_fingerprints if contract in HIT_CONTRACTS else c0_fingerprints).add(
-                (contract, key)
-            )
+            (feedback_hit if contract in HIT_CONTRACTS else feedback_c0).add((contract, key))
         if hit and not feedback.get("feedback_eligible", False):
             unfingerprinted += 1
         keys = feedback.get("new_effect_keys", ())
@@ -200,6 +214,13 @@ def summarize_report_records(
             initial += 1
 
     first_hit = hit_indexes[0] + 1 if hit_indexes else None
+    if oracle_records == len(steps):
+        u_viol, u_viol_c0, u_viol_source = len(oracle_hit), len(oracle_c0), U_VIOL_SOURCE_ORACLE
+    else:
+        # Older records (or a mixed report) lack the oracle classes on some step: fall
+        # back to what the loop fed back and say so; never mix the two sources.
+        u_viol, u_viol_c0 = len(feedback_hit), len(feedback_c0)
+        u_viol_source = U_VIOL_SOURCE_FEEDBACK_FALLBACK
     after_seed, final = vocabulary_pools_from_records(config.vocabulary_mode, steps, initial)
     protected = steps[0].get("before_protected_paths", ()) if steps else ()
 
@@ -226,8 +247,10 @@ def summarize_report_records(
         t_first_censored=first_hit is None,
         first_hit_step_index=hit_indexes[0] if hit_indexes else None,
         hit_steps=len(hit_indexes),
-        u_viol=len(hit_fingerprints),
-        u_viol_c0=len(c0_fingerprints),
+        u_viol=u_viol,
+        u_viol_c0=u_viol_c0,
+        u_viol_source=u_viol_source,
+        u_viol_feedback=len(feedback_hit),
         first_c0=first(ContractId.C0),
         first_c1=first(ContractId.C1),
         first_c2=first(ContractId.C2),

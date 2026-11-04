@@ -370,6 +370,19 @@ differs. `RdsCellSummary` (`summary_record` for JSON) carries `t_first`/`t_first
 C1/C2 fingerprints), per-contract first indexes, dense signals and the reconstructed
 vocabulary pools. Historical A1/A3full policy IDs are untouched.
 
+U_viol follows the oracle-evidence design (module docstring of `rds.py`): the
+signature is one `ViolationFingerprint` per violated contract — `contract_id` plus the
+sorted evidence (C1 internal/sentinel path pairs; C0/C2 path + changed-field labels),
+with device/inode numbers, timestamps, values, text, step and case identity excluded;
+deduplication is within a cell across steps (pooling across cells belongs to the
+analysis tools); lineage is not a signature component, so "same lineage, same
+fingerprint" is one class by equality; the classes are read from the post-state oracle
+of **every** step regardless of feedback eligibility, while `u_viol_feedback` reports
+separately how many classes the loop recorded as new feedback on eligible steps (raw
+search-behaviour diversity, not the metric). `hit`, `t_first` and `u_viol` share one
+event (a step whose oracle reports C1 ∨ C2 violated) across arms and across the
+in-memory and report paths; `u_viol_source` says which record the report path read.
+
 `rds_preregistration.py` reads the fenced ```` ```preregistration ```` `key = value`
 block of a committed preregistration file (`engine_sha`, `image_digest`, `seeds`,
 `budget`, `vocabulary`, `arm.R`/`arm.D`/`arm.S-u`, optional `arm.S-a`,
@@ -380,10 +393,15 @@ point; the native producer is bound by the runtime lane with the same gate.
 
 `rds_report.py` builds the same per-cell summary from a controller-path demo report
 (`effect_campaign_report` JSON and/or its `.steps.jsonl`): hits read the per-step
-`oracle` verdicts, `u_viol` the recorded `new_violation_fingerprints` (hit steps whose
-trace was not feedback-eligible carry no fingerprint and are counted separately as
-`unfingerprinted_hit_steps`), and the vocabulary pools are reconstructed from the
-additive per-step `name_segments` record. `scripts/run_g1_smoke.py` plans the G1 cells
+`oracle` verdicts, `u_viol` the per-step `oracle_fingerprints` (report schema 4; the
+oracle's classes of every step, `u_viol_source = "oracle"`), and the vocabulary pools
+are reconstructed from the additive per-step `name_segments` record. Records that
+predate `oracle_fingerprints` (the G1 2026-11-04 runs) fall back to the recorded
+`new_violation_fingerprints` with `u_viol_source = "feedback-fallback"`; under the
+fallback a hit on a non-eligible trace carries no fingerprint and is only visible as
+`unfingerprinted_hit_steps`. `tests/fixtures/g1-20261104/` holds reduced copies of two
+G1 raw reports (source sha256 recorded) and the frozen 15-cell values so the fallback
+keeps reproducing the pre-fix summaries. `scripts/run_g1_smoke.py` plans the G1 cells
 (R/D/S-u × seeds × budget 50) through `scripts/local_node_tar_smoke.sh demo-historical`
 with the existing `--policy`/`--mutation-policy` selection, writes
 `<output>/summaries/<run_id>.summary.json` + `index.json`, asserts

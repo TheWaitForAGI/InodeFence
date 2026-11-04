@@ -134,6 +134,18 @@ retention 효과만 분리). adaptive 스케줄러를 얹은 **S-a**는 주 비�
    바꾸지 않는다).
 5. **EXP-2 조건부** — GO일 때만 수행한다.
 
+**계획 단계 검정력 한계(사전 명시).** 위 EXP-3 규모(20 seed × budget 2000)는 **계획**이다 — 과거 수행된
+M3.3 powered 결과(§5.3.3, 동일 budget 2000이되 **수행·음성**: 매칭 Wilson CI 미분리)와 혼동하지 않는다. 1차
+지표 T_first의 검출력에는 사전 고지할 한계가 있다(레인 6 산출 #209 `power.py`, a4 독립 재대조). 두 사실을
+**구분**한다 — **(a) 사건 상한:** T_first는 캠페인당 ≤ 1 event라 20 seed × 2 arm = 40 캠페인이면 event 상한 40인데
+로그랭크 HR 0.5의 Schoenfeld 필요 event ≈ 65.3 > 40이다(단 상한은 seed에 **선형**이라 33 seed/arm이면 상한 ≥
+65.3). **(b) 예상 사건 부족:** 참고 proxy hazard 2e-5 · budget 2000에서 기대 event ≈ 2.3(informative 쌍 ≈ 1.5).
+MDE는 극소 사건 수의 **형식적 역산값**일 뿐으로 40 사건 낙관 상한에서 HR ≈ 2.43, 현실 예상 사건에서 HR ≈ 40이며
+**점근 근사는 event < 5에서 무효**다(hazard는 참고 proxy, 다수 sentinel 조건에서 미측정). 따라서 현 hazard에서는
+시나리오 ⑤(미관찰)가 기본 결과다. 규모는 **seed 수**와 **hazard 상향(다수 sentinel)** 두 입력으로 조정하며,
+1차 지표는 T_first로 보존하되(한계 명시) **1차/2차 종단점 조정은 EXP-0 실측 반영 후 11/18 사전등록에서 결정한다
+(TBD)** — 결과를 보기 전에 선취하지 않는다.
+
 ### 4.6.4 판정 시나리오
 
 아래 표는 [research-questions v2 '판정 시나리오'](../../docs/research/design/research-questions.md)를 그대로 인용한다

@@ -651,7 +651,7 @@ def test_confirmatory_permutation_and_holm():
     assert all(c["reject_at_alpha"] is False for c in cr)
     # events 3 < threshold 5 -> underpowered + descriptive rule-of-three (6 cells in the contrast)
     assert all(c["underpowered"] is True for c in cr)
-    assert cr[0]["rule_of_three_upper95"] == pytest.approx(0.5)  # 3 / 6
+    assert cr[0]["campaign_unit_rule_of_three_upper95"] == pytest.approx(0.5)  # 3 / 6
 
 
 def test_build_multitarget_confirmatory_is_none_without_plan():
@@ -760,4 +760,33 @@ def test_confirmatory_degenerate_contrast_rule_of_three_is_none():
     )
     c = report["confirmatory"]["contrasts"][0]
     assert c["number_seed_blocks"] == 0 and c["underpowered"] is True
-    assert c["rule_of_three_upper95"] is None
+    assert c["campaign_unit_rule_of_three_upper95"] is None
+
+
+def test_confirmatory_supplementary_u_viol_a12():
+    # S-u finds 2 unique violations per seed, R finds 0 -> A12 = 1.0 (>0.5 favors arm_a = S-u).
+    cells = []
+    for s in (1, 2, 3):
+        cells += [
+            _mt_cell("S-u", s, "h", "holdout", u_viol=2, **_SU_HIT),
+            _mt_cell("R", s, "h", "holdout", u_viol=0),
+        ]
+    plan = {
+        "confirmatory_contrasts": [
+            {"order": 1, "target_id": "h", "arm_a": "S-u", "arm_b": "R", "contrast": "S-u-vs-R"},
+        ],
+        "event_threshold": 5,
+        "multiplicity": "holm-fwer-v1",
+        "primary_endpoint": "t_first",
+        "confirmatory_test": "exact-logrank-permutation-v1",
+        "confirmatory_targets": ["h"],
+    }
+    report = build_multitarget_report(
+        cells, analysis_plan=plan, field_map=DEFAULT_MAP, sources=["t"]
+    )
+    conf = report["confirmatory"]
+    sup = conf["contrasts"][0]["supplementary"]
+    assert sup["u_viol_a12"] == pytest.approx(1.0)  # S-u(2) > R(0) every seed
+    assert "NOT a confirmatory test" in sup["u_viol_a12_note"]
+    # confirmatory-scope one-liner present, marks only reject_at_alpha as confirmatory
+    assert "reject_at_alpha" in conf["confirmatory_scope"]

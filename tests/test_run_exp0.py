@@ -11,9 +11,11 @@ from scripts import run_exp0
 from scripts.run_effect_demo import synthetic_demo_report
 from scripts.run_exp0 import (
     WATCHDOG_RETURNCODE,
+    DiskUsageUnavailable,
     Exp0Plan,
     archive_attempt,
     cell_is_complete,
+    disk_usage_fraction,
     exp0_cell_env,
     gate_mismatches,
     main,
@@ -552,3 +554,16 @@ def test_disk_pause_waits_until_below_threshold(tmp_path: Path) -> None:
     assert taken == 2 and pauses == [5.0, 5.0]
     assert logs[0].startswith("disk usage at/above 90%") and "resuming" in logs[-1]
     assert wait_for_disk(tmp_path, 0.9, usage=lambda p: 0.1, pause=pauses.append) == 0
+
+
+def test_unmeasurable_disk_usage_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import shutil
+
+    monkeypatch.setattr(shutil, "disk_usage", lambda path: shutil._ntuple_diskusage(0, 0, 0))
+    with pytest.raises(DiskUsageUnavailable, match="total=0"):
+        disk_usage_fraction(tmp_path)
+    # The pause loop propagates it: no silent skip of the disk guard.
+    with pytest.raises(DiskUsageUnavailable):
+        wait_for_disk(tmp_path, 0.9)

@@ -447,9 +447,21 @@ def write_raw_manifest(
 # ---- scale controls: watchdog and disk pause ------------------------------------
 
 
+class DiskUsageUnavailable(RuntimeError):
+    """The output filesystem's usage cannot be measured; the launcher must not guess."""
+
+
 def disk_usage_fraction(path: Path) -> float:
+    """Used fraction of the filesystem holding ``path``; fail closed when unmeasurable.
+
+    A zero-sized total means the measurement is meaningless (not "empty disk"), so
+    this raises instead of returning 0.0 — returning a low number would silently
+    skip the pause that protects the host. ``shutil.disk_usage`` errors propagate.
+    """
     usage = shutil.disk_usage(path)
-    return (usage.total - usage.free) / usage.total if usage.total else 0.0
+    if usage.total <= 0:
+        raise DiskUsageUnavailable(f"disk usage of {path} reports total={usage.total}")
+    return (usage.total - usage.free) / usage.total
 
 
 def should_pause_for_disk(fraction: float, threshold: float) -> bool:

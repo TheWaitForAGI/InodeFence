@@ -32,6 +32,9 @@
 미분리·자력발견 음성으로 효과 우위 미입증). 능력
 판정의 단일 기준은 [Capability Ledger](../docs/STATUS.md)이고, 주장↔증거 매핑은
 [sections/claims-evidence-status-v1.md](sections/claims-evidence-status-v1.md)다.
+(2026-11-03 정정: 위 "M3 메커니즘 인과"는 "이름 획득 조건의 관찰"로 읽는다 — 입증된 것은 "외부 객체
+이름의 관찰(어휘 획득)이 자율 C1의 필요조건"이고 retention·스케줄링 피드백 기여는 R/D/S-u로 미분리.
+상세 sections/06-results.md §5.3.2 정정.)
 
 ## 파일 배치 규칙
 

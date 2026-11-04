@@ -9,6 +9,7 @@
   동일 budget powered matched A1 vs A3full(disjoint seed {100..119})을 사전등록 후 판정한 결과 A3full
   1/10 vs A1 0/12로 매칭 Wilson CI가 겹친다(~0.1 효과 검정력 부족). CI 분리는 사람-게이트 대예산
   pilot(M3.4)이 필요하다.
+  (2026-11-03 정정: 이 blind 대조는 피드백이 아니라 **어휘**를 통제한 실험이다. 입증된 것은 "외부 객체 이름의 관찰(어휘 획득)이 자율 C1의 필요조건"이지 (st_dev, st_ino) retention·스케줄링 피드백의 기여가 아니며, 그 기여는 어휘를 맞춘 R/D/S-u 비교(research-questions v2 H-A)로 미분리다. 수치·서술은 보존한다. 상세: §5.3.2 정정.)
 - **seed-rare.** 자율 C1 트리거는 budget 1500·65 seed 중 s11 하나뿐이다(재현 0/30). 정답이 사실상
   한 점(좁은 구성)이고 final-state C1/C2 oracle이 all-or-nothing이라 adaptive 탐색에 gradient가 거의
   없기 때문이다. 따라서 정책 간 rate 차이를 검출할 **검정력이 현재 없다.**
@@ -67,3 +68,6 @@ M3의 자율 발견은 **blind 발견이 아니다.** 기존 외부 객체에 �
 무작위보다 **얼마나 효율적인가**(rate)와 여러 extractor로 **얼마나 일반화되는가**(자력발견
 effectiveness)는 powered 독립 반복으로 판정했고 **모두 효과 우위를 보이지 않았다**(rate CI 미분리·
 decompress·oras-go 자력발견 음성). 음성·미분리도 정직한 결과로 보고한다.
+
+(2026-11-03 정정: 이 blind 대조는 피드백이 아니라 **어휘**를 통제한 실험이다. 입증된 것은 "외부 객체 이름의 관찰(어휘 획득)이 자율 C1의 필요조건"이지 (st_dev, st_ino) retention·스케줄링 피드백의 기여가 아니며, 그 기여는 어휘를 맞춘 R/D/S-u 비교(research-questions v2 H-A)로 미분리다. 수치·서술은 보존한다. 상세: §5.3.2 정정.) 따라서 위 "메커니즘이 실제로 발견을 구동함"은 "이름 획득 조건에서 자율 트리거가
+관찰됨"으로 읽는다.

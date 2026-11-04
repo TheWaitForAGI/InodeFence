@@ -105,3 +105,25 @@ def test_step_xy_starts_at_one_and_flattens_to_horizon():
     assert ys == [1.0, 0.5, 0.5]
     assert render._survival_at([{"time": 150, "survival": 0.5}], 149) == 1.0
     assert render._survival_at([{"time": 150, "survival": 0.5}], 150) == 0.5
+
+
+def test_dense_u_viol_c0_and_timing_distribution_in_table():
+    from scripts.analyze_exp0 import _DEFAULT_FIELD_MAP, build_report, cell_from_row
+
+    wrapper = {
+        "summary": _rec(arm="S-u", random_seed=9001, u_viol=2, u_viol_c0=5),
+        "config_nonconformant": False,
+        "timing": {
+            "wall_seconds": 100.0,
+            "step_wall_seconds": [1.0, 2.0, 3.0, 4.0],
+            "execution_mode": "per-case-container",
+            "full_step_seconds_p50": 2.0,
+            "full_step_seconds_max": 4.0,
+        },
+    }
+    cell = cell_from_row(wrapper, _DEFAULT_FIELD_MAP)
+    table = render.render_summary_table(
+        build_report([cell], field_map=_DEFAULT_FIELD_MAP, sources=["t"])
+    )
+    assert "u_viol_c0" in table
+    assert "Full-step time distribution" in table and "p50" in table and "max" in table

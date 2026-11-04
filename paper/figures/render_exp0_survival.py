@@ -131,6 +131,7 @@ def render_summary_table(report: dict | None) -> str:
             "executions",
             "rejected_ratio",
             "u_viol",
+            "u_viol_c0",
             "obs_fail",
         ],
         [
@@ -142,11 +143,23 @@ def render_summary_table(report: dict | None) -> str:
                 s["rejected_ratio"]["denominator_executions"],
                 s["rejected_ratio"]["value"],
                 s["u_viol"]["total_unique_c1_c2_fingerprints"],
+                s["u_viol_c0"]["total_unique_c0_fingerprints"],
                 s["observation_failures_total"],
             ]
             for arm, s in report["item6_dense_signals"]["by_arm"].items()
         ],
     )
+
+    p95 = report["item2_p95_full_step"]
+    if p95.get("available"):
+        pooled = p95["pooled"]
+        lines += [
+            "",
+            "## Full-step time distribution (pooled, seconds; nearest-rank)",
+            "",
+            f"p50 {pooled['p50_seconds']} | p95 {pooled['p95_seconds']} | "
+            f"max {pooled['max_seconds']} over {pooled['number_steps']} steps.",
+        ]
 
     hazard = report["item7_hazard_proxy"]
     lines += ["", "## Hazard proxy (reference value only, not a verdict)", ""]

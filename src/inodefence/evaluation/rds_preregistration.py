@@ -21,6 +21,13 @@ fence and the closing ```` ``` ````::
     sentinel_generator_seed = 9001
     sentinel_count = 3
     observer_integrity_policy = invalid-continue
+    # optional, experiment scale (EXP-3): compared when the launcher is given a value
+    experiment_id = exp3
+    execution_mode = per-case-container
+    jobs_max = 4
+    campaign_watchdog_seconds = 7200
+    disk_pause_fraction = 0.9
+    interim_analysis = forbidden
     hit_definition = c1-or-c2-and-contract-violated
     c0_counts_as_hit = false
     denominator = all-cells-including-abort
@@ -39,7 +46,10 @@ present they must spell exactly the rule this engine implements (``RULE_CONSTANT
 a different value is a format error, because the file would then preregister a rule
 the runner does not compute. ``observer_integrity_policy`` (``stop`` or
 ``invalid-continue``, the controller's ``--observer-integrity-policy`` values) must
-equal the value the run is launched with. Keys this module does not know are kept in
+equal the value the run is launched with. The experiment-scale keys (``experiment_id``,
+``execution_mode``, ``jobs_max``, ``campaign_watchdog_seconds``, ``disk_pause_fraction``,
+``interim_analysis``) are read by the launcher and compared against its own settings
+when both sides give a value. Keys this module does not know are kept in
 ``unknown_keys`` and only warned about.
 """
 
@@ -64,6 +74,14 @@ _SENTINEL_SEED = "sentinel_generator_seed"
 _SENTINEL_COUNT = "sentinel_count"
 _OBSERVER_POLICY = "observer_integrity_policy"
 OBSERVER_INTEGRITY_POLICIES = ("stop", "invalid-continue")
+_EXPERIMENT_ID = "experiment_id"
+_EXECUTION_MODE = "execution_mode"
+_JOBS_MAX = "jobs_max"
+_WATCHDOG = "campaign_watchdog_seconds"
+_DISK_PAUSE = "disk_pause_fraction"
+_INTERIM = "interim_analysis"
+EXECUTION_MODES = ("per-case-container", "worker-pool")
+INTERIM_ANALYSIS_VALUES = ("forbidden", "allowed")
 # The measurement rules this engine implements (rds.py); a block may restate them
 # with exactly these strings and nothing else.
 RULE_CONSTANTS: Mapping[str, str] = MappingProxyType(
@@ -82,6 +100,12 @@ KNOWN_KEYS = frozenset(
         _SENTINEL_SEED,
         _SENTINEL_COUNT,
         _OBSERVER_POLICY,
+        _EXPERIMENT_ID,
+        _EXECUTION_MODE,
+        _JOBS_MAX,
+        _WATCHDOG,
+        _DISK_PAUSE,
+        _INTERIM,
         *RULE_CONSTANTS,
     )
 )
@@ -114,6 +138,12 @@ class Preregistration:
     observer_integrity_policy: str | None
     unknown_keys: tuple[str, ...]
     raw: Mapping[str, str]
+    experiment_id: str | None = None
+    execution_mode: str | None = None
+    jobs_max: int | None = None
+    campaign_watchdog_seconds: float | None = None
+    disk_pause_fraction: float | None = None
+    interim_analysis: str | None = None
 
 
 def parse_preregistration_block(text: str) -> Mapping[str, str]:
@@ -145,6 +175,13 @@ def _int(values: Mapping[str, str], key: str) -> int:
         return int(values[key])
     except ValueError:
         raise PreregistrationFormatError(f"{key} must be an integer") from None
+
+
+def _float(values: Mapping[str, str], key: str) -> float:
+    try:
+        return float(values[key])
+    except ValueError:
+        raise PreregistrationFormatError(f"{key} must be a number") from None
 
 
 def parse_preregistration(text: str) -> Preregistration:
@@ -203,6 +240,21 @@ def parse_preregistration(text: str) -> Preregistration:
             f"{_OBSERVER_POLICY} must be one of {OBSERVER_INTEGRITY_POLICIES}"
         )
     unknown = tuple(key for key in values if key not in KNOWN_KEYS and not key.startswith(_ARM_KEY))
+    execution_mode = values.get(_EXECUTION_MODE)
+    if execution_mode is not None and execution_mode not in EXECUTION_MODES:
+        raise PreregistrationFormatError(f"{_EXECUTION_MODE} must be one of {EXECUTION_MODES}")
+    jobs_max = _int(values, _JOBS_MAX) if _JOBS_MAX in values else None
+    if jobs_max is not None and jobs_max < 1:
+        raise PreregistrationFormatError(f"{_JOBS_MAX} must be >= 1")
+    watchdog = _float(values, _WATCHDOG) if _WATCHDOG in values else None
+    if watchdog is not None and watchdog <= 0:
+        raise PreregistrationFormatError(f"{_WATCHDOG} must be positive")
+    disk_pause = _float(values, _DISK_PAUSE) if _DISK_PAUSE in values else None
+    if disk_pause is not None and not 0 < disk_pause <= 1:
+        raise PreregistrationFormatError(f"{_DISK_PAUSE} must be in (0, 1]")
+    interim = values.get(_INTERIM)
+    if interim is not None and interim not in INTERIM_ANALYSIS_VALUES:
+        raise PreregistrationFormatError(f"{_INTERIM} must be one of {INTERIM_ANALYSIS_VALUES}")
     return Preregistration(
         values["engine_sha"],
         values["image_digest"],
@@ -217,6 +269,12 @@ def parse_preregistration(text: str) -> Preregistration:
         observer_policy,
         unknown,
         values,
+        values.get(_EXPERIMENT_ID),
+        execution_mode,
+        jobs_max,
+        watchdog,
+        disk_pause,
+        interim,
     )
 
 
@@ -236,6 +294,9 @@ class CellRequest:
     image_digest: str | None
     sentinel_set: Mapping[str, object] | None = None
     observer_integrity_policy: str | None = None
+    experiment_id: str | None = None
+    execution_mode: str | None = None
+    jobs: int | None = None
 
 
 def preregistration_mismatches(
@@ -292,6 +353,18 @@ def preregistration_mismatches(
                 f"observer_integrity_policy {request.observer_integrity_policy!r} != "
                 f"preregistered {preregistration.observer_integrity_policy!r}"
             )
+    for label, declared, given in (
+        ("experiment_id", preregistration.experiment_id, request.experiment_id),
+        ("execution_mode", preregistration.execution_mode, request.execution_mode),
+    ):
+        if declared is not None and given is not None and given != declared:
+            problems.append(f"{label} {given!r} != preregistered {declared!r}")
+    if (
+        preregistration.jobs_max is not None
+        and request.jobs is not None
+        and request.jobs > preregistration.jobs_max
+    ):
+        problems.append(f"jobs {request.jobs} > preregistered jobs_max {preregistration.jobs_max}")
     return tuple(problems)
 
 

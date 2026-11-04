@@ -1,16 +1,17 @@
-"""EXP-0 launcher: run the preregistered R/D/S-u pilot through the controller path.
+"""Registered-experiment launcher (EXP-0 pilot, EXP-3 scale): one preregistration file in.
 
 Input is ONE committed preregistration file (``experiments/preregistration/*.md``
-with the fenced ``preregistration`` block, e.g. EXP-0 v2.1). Nothing runs unless the
-gate passes for every planned cell: engine HEAD SHA (clean checkout), image digest,
-seeds, budget, arm policy IDs, ``observer_integrity_policy``, ``sentinel_*`` and the
-five rule keys are all compared (``inodefence.evaluation.rds_preregistration``).
+with the fenced ``preregistration`` block). Nothing runs unless the gate passes for
+every planned cell: engine HEAD SHA (clean checkout), image digest, seeds, budget,
+arm policy IDs, ``observer_integrity_policy``, ``sentinel_*``, the five rule keys and
+— when declared — ``experiment_id``, ``execution_mode`` and ``jobs_max``
+(``inodefence.evaluation.rds_preregistration``).
 
-Cells = preregistered seeds × R/D/S-u (+ S-a with ``--include-s-a`` when the file
-declares it) × preregistered budget, each run as a ``local_node_tar_smoke.sh
-demo-historical`` campaign with a unique ``RUN_ID`` — the same path and summaries
-as ``scripts/run_g1_smoke.py``. Outputs are labelled ``registered run`` with the
-preregistration file name, its SHA-256 and the engine SHA, and go to::
+Cells = preregistered seeds × R/D/S-u (+ S-a with ``--include-s-a`` when declared) ×
+preregistered budget, each run as a ``local_node_tar_smoke.sh demo-historical``
+campaign with a unique ``RUN_ID`` — the same path and summaries as
+``scripts/run_g1_smoke.py``. Outputs are labelled ``registered run`` with the
+experiment id, the preregistration file name, its SHA-256 and the engine SHA::
 
     <output>/registration.json                  what this directory was launched under
     <output>/matrix.json                        last invocation's cell results
@@ -19,11 +20,27 @@ preregistration file name, its SHA-256 and the engine SHA, and go to::
     <output>/summaries/<run_id>.summary.json + index.json   analyze_exp0 input
     <manifest>                                  raw SHA-256 manifest (make_raw_manifest)
 
+Scale controls (all from the file; the launcher only enforces them):
+
+* ``execution_mode``: ``per-case-container`` (the controller demo path) or
+  ``worker-pool`` (lane 4 ``inodefence.execution.worker_pool``: the cell gets the
+  ``s3wp-`` worker run id and bring-up plan, and ``DEMO_EXECUTION_MODE=worker-pool``
+  must be consumed by the smoke script; the module is imported lazily and a live run
+  is refused when it or the wiring is absent).
+* ``jobs_max``: upper bound on ``--jobs``.
+* ``campaign_watchdog_seconds``: a cell running longer is terminated and counted as
+  an abort (``watchdog``); its completed steps stay on disk and it reruns next time.
+* ``disk_pause_fraction``: a new cell waits while the output filesystem is at least
+  this full (lane 4 ``should_pause_for_disk``), logged in ``matrix.json``.
+* ``interim_analysis = forbidden``: until every cell is complete the index carries
+  completion state only (no hit/T_first fields, no summary files).
+
 Idempotent: a rerun skips cells whose report is complete and conformant (budget
 reached, no abort, planned config, preregistered image id and sentinel set) and
 re-runs only the rest, moving their earlier files to ``attempts/``. ``--dry-run``
-prints the gate verdict and every cell's command/env/paths without Docker;
-``--summarize-only`` rebuilds the summaries and manifest from existing files.
+prints the gate verdict, the items a live run would refuse, and every cell's
+command/env/paths without Docker; ``--summarize-only`` rebuilds the summaries and
+manifest from existing files.
 
 Post-run conformance (per cell, third bucket ``config_nonconformant`` when it
 fails): the report's ``image_id`` must equal the preregistered digest and, when the
@@ -38,12 +55,13 @@ import os
 import shutil
 import subprocess
 import sys
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
+from time import monotonic, sleep
 from typing import Any
 
 from scripts.run_g1_smoke import (
@@ -58,7 +76,6 @@ from scripts.run_parallel_native import (
     Arm,
     Cell,
     CellResult,
-    _run_cell,
     _warmup,
     build_cells,
     cell_env,
@@ -75,22 +92,38 @@ from inodefence.evaluation.rds_preregistration import (
 from inodefence.evaluation.rds_report import ReportFormatError, load_cell_files
 from inodefence.provenance import capture_source
 
-PLAN = "exp0"
+DEFAULT_EXPERIMENT_ID = "exp0"
 REGISTERED_LABEL = "registered run"
 DEFAULT_VERSION = "7.5.2"
 DEFAULT_JOBS = 2
 DEFAULT_MANIFEST_SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "make_raw_manifest.py"
 REGISTRATION_FILE = "registration.json"
+WORKER_POOL_MODE = "worker-pool"
+# Fallbacks when lane 4's module is not importable (its constants are preferred).
+DEFAULT_WATCHDOG_SECONDS = 2 * 60 * 60.0
+DEFAULT_DISK_PAUSE_FRACTION = 0.9
+DISK_POLL_SECONDS = 60.0
+WATCHDOG_RETURNCODE = -15
 # Env names the smoke script must consume for the declared options to reach the
 # controller; probed in the script text so a declared-but-unwired option never
 # silently runs with the default.
 SENTINEL_ENV = ("DEMO_SENTINEL_SEED", "DEMO_SENTINEL_COUNT")
 OBSERVER_ENV = "DEMO_OBSERVER_INTEGRITY_POLICY"
+EXECUTION_MODE_ENV = "DEMO_EXECUTION_MODE"
 
 
 def _script_has(variable: str) -> bool:
     """Whether the smoke script references an env variable (wiring probe)."""
     return SCRIPT.is_file() and variable in SCRIPT.read_text(encoding="utf-8")
+
+
+def _worker_pool_module() -> Any | None:
+    """Lane 4's worker-pool module, or None when its PR is not on this base."""
+    try:
+        import inodefence.execution.worker_pool as module  # pyright: ignore[reportMissingImports]
+    except ImportError:
+        return None
+    return module
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,7 +139,27 @@ class Exp0Plan:
 
     @property
     def plan(self) -> str:
-        return PLAN
+        return self.preregistration.experiment_id or DEFAULT_EXPERIMENT_ID
+
+    @property
+    def watchdog_seconds(self) -> float:
+        declared = self.preregistration.campaign_watchdog_seconds
+        if declared is not None:
+            return declared
+        module = _worker_pool_module()
+        return float(getattr(module, "CAMPAIGN_WATCHDOG_SECONDS", DEFAULT_WATCHDOG_SECONDS))
+
+    @property
+    def disk_pause_fraction(self) -> float:
+        declared = self.preregistration.disk_pause_fraction
+        if declared is not None:
+            return declared
+        module = _worker_pool_module()
+        return float(getattr(module, "DISK_PAUSE_FRACTION", DEFAULT_DISK_PAUSE_FRACTION))
+
+    @property
+    def interim_forbidden(self) -> bool:
+        return self.preregistration.interim_analysis == "forbidden"
 
     def arm_list(self) -> tuple[RdsArm, ...]:
         arms = [RdsArm.R, RdsArm.D, RdsArm.S_U]
@@ -150,6 +203,7 @@ class Exp0Plan:
     def labels(self, engine_sha: str | None) -> list[str]:
         return [
             REGISTERED_LABEL,
+            f"experiment={self.plan}",
             f"preregistration={self.preregistration_path.name}",
             f"preregistration_sha256={self.preregistration_sha256}",
             f"engine_sha={engine_sha}",
@@ -169,6 +223,7 @@ def gate_mismatches(
     engine_dirty: bool | None,
     image_digest: str | None,
     observer_integrity_policy: str | None,
+    jobs: int | None = None,
 ) -> tuple[str, ...]:
     """Union of every cell's mismatches (cells differ only in arm/seed)."""
     problems: list[str] = []
@@ -182,6 +237,9 @@ def gate_mismatches(
             image_digest,
             plan.sentinel_request(),
             observer_integrity_policy,
+            experiment_id=plan.plan,
+            execution_mode=plan.execution_mode,
+            jobs=jobs,
         )
         for item in preregistration_mismatches(plan.preregistration, request):
             if item not in problems:
@@ -280,6 +338,12 @@ def exp0_cell_env(
         env["DEMO_SENTINEL_COUNT"] = str(prereg.sentinel_count)
     if prereg.observer_integrity_policy is not None:
         env[OBSERVER_ENV] = prereg.observer_integrity_policy
+    if plan.execution_mode == WORKER_POOL_MODE:
+        env[EXECUTION_MODE_ENV] = WORKER_POOL_MODE
+        module = _worker_pool_module()
+        if module is not None:
+            # Lane 4's bring-up plan: dedicated s3wp- worker id (controller + volume).
+            env.update(dict(module.plan_worker_bringup(cell.run_id, env).env))
     return env
 
 
@@ -294,9 +358,19 @@ def wiring_problems(plan: Exp0Plan) -> tuple[str, ...]:
     if prereg.observer_integrity_policy is not None and not _script_has(OBSERVER_ENV):
         problems.append(
             f"preregistration declares observer_integrity_policy but {SCRIPT.name} does not "
-            f"consume {OBSERVER_ENV} (controller wiring pending; #207 also restricts the "
-            "option to effect-demo, not demo-historical)"
+            f"consume {OBSERVER_ENV} (controller wiring pending)"
         )
+    if plan.execution_mode == WORKER_POOL_MODE:
+        if _worker_pool_module() is None:
+            problems.append(
+                "execution_mode worker-pool needs inodefence.execution.worker_pool "
+                "(lane 4 PR #224 base) — not importable here"
+            )
+        if not _script_has(EXECUTION_MODE_ENV):
+            problems.append(
+                f"execution_mode worker-pool but {SCRIPT.name} does not consume "
+                f"{EXECUTION_MODE_ENV} (controller worker-campaign wiring pending)"
+            )
     return tuple(problems)
 
 
@@ -307,6 +381,7 @@ def write_registration(
     path = output / REGISTRATION_FILE
     record = {
         "label": plan.labels(engine_sha),
+        "experiment_id": plan.plan,
         "preregistration_file": plan.preregistration_path.name,
         "preregistration_sha256": plan.preregistration_sha256,
         "engine_sha": engine_sha,
@@ -314,6 +389,9 @@ def write_registration(
         "version": plan.version,
         "include_s_a": plan.include_s_a,
         "execution_mode": plan.execution_mode,
+        "campaign_watchdog_seconds": plan.watchdog_seconds,
+        "disk_pause_fraction": plan.disk_pause_fraction,
+        "interim_analysis": plan.preregistration.interim_analysis,
         "cells": [cell.run_id for cell in plan.cells()],
     }
     if path.is_file():
@@ -366,15 +444,125 @@ def write_raw_manifest(
     }
 
 
+# ---- scale controls: watchdog and disk pause ------------------------------------
+
+
+class DiskUsageUnavailable(RuntimeError):
+    """The output filesystem's usage cannot be measured; the launcher must not guess."""
+
+
+def disk_usage_fraction(path: Path) -> float:
+    """Used fraction of the filesystem holding ``path``; fail closed when unmeasurable.
+
+    A zero-sized total means the measurement is meaningless (not "empty disk"), so
+    this raises instead of returning 0.0 — returning a low number would silently
+    skip the pause that protects the host. ``shutil.disk_usage`` errors propagate.
+    """
+    usage = shutil.disk_usage(path)
+    if usage.total <= 0:
+        raise DiskUsageUnavailable(f"disk usage of {path} reports total={usage.total}")
+    return (usage.total - usage.free) / usage.total
+
+
+def should_pause_for_disk(fraction: float, threshold: float) -> bool:
+    module = _worker_pool_module()
+    if module is not None:
+        return bool(module.should_pause_for_disk(fraction, threshold))
+    return fraction >= threshold
+
+
+def wait_for_disk(
+    output: Path,
+    threshold: float,
+    *,
+    usage: Callable[[Path], float] = disk_usage_fraction,
+    pause: Callable[[float], None] = sleep,
+    poll_seconds: float = DISK_POLL_SECONDS,
+    log: Callable[[str], None] = print,
+) -> int:
+    """Block while the output filesystem is at/above ``threshold``; returns pauses taken."""
+    pauses = 0
+    while should_pause_for_disk(usage(output), threshold):
+        if pauses == 0:
+            log(f"disk usage at/above {threshold:.0%}; pausing new cells")
+        pauses += 1
+        pause(poll_seconds)
+    if pauses:
+        log(f"disk usage below {threshold:.0%} after {pauses} pause(s); resuming")
+    return pauses
+
+
+def run_cell_with_watchdog(
+    cell: Cell,
+    output: Path,
+    env: dict[str, str],
+    bash: str,
+    *,
+    limit_seconds: float,
+    popen: Callable[..., Any] = subprocess.Popen,
+) -> CellResult:
+    """``run_parallel_native._run_cell`` plus a wall-clock limit.
+
+    Past the limit the smoke script is terminated (then killed); the cell's files so
+    far stay on disk (``.steps.jsonl`` keeps completed steps) and the result carries
+    ``WATCHDOG_RETURNCODE`` so the manifest records the kill. Such a cell is not
+    complete and reruns on the next invocation.
+    """
+    evidence = output / f"{cell.evidence_basename}.json"
+    log = output / f"{cell.run_id}.log"
+    started = monotonic()
+    with log.open("w", encoding="utf-8") as stream:
+        process = popen(
+            [bash, str(SCRIPT), cell.mode],
+            env=env,
+            stdout=stream,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+        try:
+            returncode = process.wait(timeout=limit_seconds)
+        except subprocess.TimeoutExpired:
+            process.terminate()
+            try:
+                process.wait(timeout=30)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+            returncode = WATCHDOG_RETURNCODE
+            stream.write(f"\n[watchdog] terminated after {limit_seconds:.0f} s\n")
+    return CellResult(
+        cell=cell,
+        returncode=returncode,
+        wall_seconds=monotonic() - started,
+        evidence=evidence,
+        evidence_exists=evidence.is_file(),
+        log=log,
+    )
+
+
+def _refusal_preview(mismatches: Sequence[str], wiring: Sequence[str]) -> list[str]:
+    lines = ["would be refused at live run:"]
+    if not mismatches and not wiring:
+        lines.append("  (nothing)")
+    for item in mismatches:
+        lines.append(f"  - gate: {item}")
+    for item in wiring:
+        lines.append(f"  - wiring: {item}")
+    return lines
+
+
 def _print_dry_run(
     plan: Exp0Plan, output: Path, base_env: dict[str, str], pending: list[Cell]
 ) -> None:
     cells = plan.cells()
     prereg = plan.preregistration
     print(
-        f"plan={PLAN} cells={len(cells)} pending={len(pending)} seeds={list(prereg.seeds)} "
+        f"plan={plan.plan} cells={len(cells)} pending={len(pending)} seeds={list(prereg.seeds)} "
         f"budget={prereg.budget} arms={[a.label for a in plan.arms()]} "
-        f"vocabulary={prereg.vocabulary_mode.value} execution_mode={plan.execution_mode}"
+        f"vocabulary={prereg.vocabulary_mode.value} execution_mode={plan.execution_mode} "
+        f"watchdog_seconds={plan.watchdog_seconds:.0f} "
+        f"disk_pause_fraction={plan.disk_pause_fraction} "
+        f"interim_analysis={prereg.interim_analysis or 'unspecified'}"
     )
     print(f"warmup: BUILD_ONLY=1 bash {SCRIPT} demo-historical")
     pending_ids = {cell.run_id for cell in pending}
@@ -393,6 +581,7 @@ def _print_dry_run(
                 "DEMO_SENTINEL_SEED",
                 "DEMO_SENTINEL_COUNT",
                 OBSERVER_ENV,
+                EXECUTION_MODE_ENV,
                 "INODEFENCE_EVIDENCE_DIR",
             )
             if key in env
@@ -416,8 +605,13 @@ def main(argv: list[str] | None = None) -> int:
         "--include-s-a", action="store_true", help="also run the declared S-a ablation"
     )
     parser.add_argument("--observer-integrity-policy", choices=("stop", "invalid-continue"))
-    parser.add_argument("--execution-mode", choices=EXECUTION_MODES, default=DEFAULT_EXECUTION_MODE)
-    parser.add_argument("--jobs", type=int, default=DEFAULT_JOBS)
+    parser.add_argument(
+        "--execution-mode",
+        choices=EXECUTION_MODES,
+        default=None,
+        help="defaults to the file's execution_mode (else per-case-container); must match it",
+    )
+    parser.add_argument("--jobs", type=int, default=DEFAULT_JOBS, help="<= the file's jobs_max")
     parser.add_argument("--skip-build", action="store_true")
     parser.add_argument("--python", default=None)
     parser.add_argument("--context", default=None)
@@ -440,9 +634,10 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     if args.include_s_a and RdsArm.S_A not in prereg.arm_policies:
         parser.error("--include-s-a requested but the preregistration declares no arm.S-a")
+    execution_mode = args.execution_mode or prereg.execution_mode or DEFAULT_EXECUTION_MODE
     file_sha = sha256(args.preregistration.read_bytes()).hexdigest()
     plan = Exp0Plan(
-        prereg, args.preregistration, file_sha, args.version, args.include_s_a, args.execution_mode
+        prereg, args.preregistration, file_sha, args.version, args.include_s_a, execution_mode
     )
     source = capture_source()
     mismatches = gate_mismatches(
@@ -451,6 +646,7 @@ def main(argv: list[str] | None = None) -> int:
         engine_dirty=source.dirty,
         image_digest=args.image_digest,
         observer_integrity_policy=args.observer_integrity_policy,
+        jobs=args.jobs,
     )
     if prereg.unknown_keys:
         print(
@@ -464,16 +660,12 @@ def main(argv: list[str] | None = None) -> int:
         base_env["PYTHON"] = args.python
     if args.context:
         base_env["INODEFENCE_DOCKER_CONTEXT"] = args.context
+    wiring = wiring_problems(plan)
 
     if args.dry_run:
-        if mismatches:
-            print("gate: FAIL (a live run would be refused)")
-            for item in mismatches:
-                print(f"  - {item}")
-        else:
-            print(f"gate: PASS ({plan.gate_text()})")
-        for item in wiring_problems(plan):
-            print(f"wiring: {item}")
+        print("gate: PASS" if not mismatches else "gate: FAIL", f"({plan.gate_text()})")
+        for line in _refusal_preview(mismatches, wiring):
+            print(line)
         pending = [cell for cell in plan.cells() if not cell_is_complete(plan, cell, output)]
         _print_dry_run(plan, output, base_env, pending)
         return 0 if not mismatches else 2
@@ -484,6 +676,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     def finish(results: list[CellResult] | None) -> int:
+        pending_now = [cell for cell in plan.cells() if not cell_is_complete(plan, cell, output)]
+        redact = plan.interim_forbidden and bool(pending_now)
         document = summarize_output(
             plan,
             output,
@@ -497,8 +691,15 @@ def main(argv: list[str] | None = None) -> int:
                     "sha256": plan.preregistration_sha256,
                     "engine_sha": source.revision,
                     "image_digest": args.image_digest,
-                }
+                    "experiment_id": plan.plan,
+                },
+                "interim": {
+                    "analysis": prereg.interim_analysis,
+                    "redacted": redact,
+                    "pending_cells": len(pending_now),
+                },
             },
+            redact_outcomes=redact,
         )
         status = document["g1_verdict"]
         manifest: dict[str, Any] = {"generated": False, "reason": "--no-manifest", "path": None}
@@ -518,7 +719,12 @@ def main(argv: list[str] | None = None) -> int:
         (output / REGISTRATION_FILE).write_text(
             json.dumps(registration, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
-        print(json.dumps({"status": status, "raw_manifest": manifest}, sort_keys=True))
+        print(
+            json.dumps(
+                {"status": status, "raw_manifest": manifest, "outcomes_redacted": redact},
+                sort_keys=True,
+            )
+        )
         if not manifest["generated"] and not args.no_manifest:
             print("raw manifest NOT generated (completion condition 8 unmet)", file=sys.stderr)
         return 0 if status["pass"] and (manifest["generated"] or args.no_manifest) else 1
@@ -528,10 +734,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.summarize_only:
         return finish(None)
 
-    problems = wiring_problems(plan)
-    if problems:
+    if wiring:
         print("refusing to run (controller wiring):", file=sys.stderr)
-        for item in problems:
+        for item in wiring:
             print(f"  - {item}", file=sys.stderr)
         return 2
     bash = shutil.which("bash")
@@ -547,25 +752,36 @@ def main(argv: list[str] | None = None) -> int:
                 f"image warmup failed (exit {code}); see {output / 'warmup.log'}", file=sys.stderr
             )
             return code
+    disk_pauses: dict[str, int] = {}
+
+    def run_one(cell: Cell) -> CellResult:
+        pauses = wait_for_disk(output, plan.disk_pause_fraction)
+        if pauses:
+            disk_pauses[cell.run_id] = pauses
+        return run_cell_with_watchdog(
+            cell,
+            output,
+            exp0_cell_env(plan, cell, output, base_env),
+            bash,
+            limit_seconds=plan.watchdog_seconds,
+        )
+
     results: list[CellResult] = []
     if pending:
         with ThreadPoolExecutor(max_workers=args.jobs) as pool:
-            results = list(
-                pool.map(
-                    lambda cell: _run_cell(
-                        cell, output, exp0_cell_env(plan, cell, output, base_env), bash
-                    ),
-                    pending,
-                )
-            )
+            results = list(pool.map(run_one, pending))
     (output / "matrix.json").write_text(
         json.dumps(
             {
                 "created_at": datetime.now(UTC).isoformat(),
                 "label": plan.labels(source.revision),
-                "plan": PLAN,
+                "plan": plan.plan,
                 "mode": "demo-historical",
                 "execution_mode": plan.execution_mode,
+                "jobs": args.jobs,
+                "campaign_watchdog_seconds": plan.watchdog_seconds,
+                "disk_pause_fraction": plan.disk_pause_fraction,
+                "disk_pauses": disk_pauses,
                 "host": {
                     "machine": os.uname().machine,
                     "system": os.uname().sysname,
@@ -580,6 +796,7 @@ def main(argv: list[str] | None = None) -> int:
                         "seed": r.cell.seed,
                         "budget": r.cell.budget,
                         "returncode": r.returncode,
+                        "watchdog_killed": r.returncode == WATCHDOG_RETURNCODE,
                         "wall_seconds": round(r.wall_seconds, 3),
                         "evidence": r.evidence.name,
                         "evidence_exists": r.evidence_exists,

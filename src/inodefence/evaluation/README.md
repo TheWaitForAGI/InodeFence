@@ -406,3 +406,11 @@ same controller path as the G1 driver, labels outputs `registered run` with the 
 name, its SHA-256 and the engine SHA, skips cells already complete and conformant on
 a rerun (earlier attempts go to `attempts/`), marks reports whose image id or sentinel
 set differ from the registration as invalid, and calls `make_raw_manifest` afterwards.
+The launcher reads the experiment-scale keys when the file declares them
+(`experiment_id`, `execution_mode` per-case-container or worker-pool via lane 4's
+`inodefence.execution.worker_pool` imported lazily, `jobs_max`,
+`campaign_watchdog_seconds`, `disk_pause_fraction`, `interim_analysis`): a cell past the
+watchdog is terminated and reruns later, new cells wait while the output filesystem is
+at least the pause fraction full, and with `interim_analysis = forbidden` the index
+carries completion state only (no hit/T_first fields, no summary files) until every
+cell is complete. `--dry-run` lists what a live run would refuse (gate and wiring).

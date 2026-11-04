@@ -112,3 +112,37 @@ def test_report_records_pass_summarize_report_records() -> None:
     assert isinstance(steps, list) and len(steps) == 8
     summary = summarize_report_records(steps, config)
     assert summary.summary is not None
+
+
+def _entry_identity(case):
+    return tuple((index, entry.path) for index, entry in enumerate(case.entries))
+
+
+def test_data_multi_entry_duplicate_path_early_reject_does_not_crash() -> None:
+    # Regression (lanes 5/10): c2 has TWO entries at the SAME path 'link' (symlink
+    # escape at ordinal 0, then a regular at ordinal 1). Under ``data`` the first entry
+    # is rejected and extraction stops early, but the trace's archive_entries must still
+    # be the FULL declared case (both ordinals, duplicate path, order preserved) -- not
+    # the partial processed subset -- so EffectRunResult's ArchiveCase-identity invariant
+    # holds and a rejected multi-entry archive yields a clean trace instead of a crash.
+    case = _FIX["c2"].case
+    assert _entry_identity(case) == ((0, "link"), (1, "link"))  # duplicate path
+    run = run_python_tarfile_effect_case(case, PythonTarfileEffectTarget("data"))
+    base = run.result.base_result
+    assert base.execution.status == ExecutionStatus.REJECTED
+    trace = run.result.trace
+    assert tuple((r.entry_index, r.path) for r in trace.archive_entries) == _entry_identity(case)
+    assert trace.termination == EffectTargetTermination.REJECTED
+    assert not trace.integrity_valid  # early rejection -> feedback-ineligible, not a crash
+
+
+def test_multi_entry_full_archive_entries_preserved_on_success() -> None:
+    # The full ordinal+path structure (incl. the duplicate 'link') is preserved for a
+    # completed run too; c2 under the controlled fully_trusted fixture exercises the
+    # multi-entry success/overwrite path without crashing.
+    case = _FIX["c2"].case
+    run = run_python_tarfile_effect_case(
+        case, PythonTarfileEffectTarget("fully_trusted"), trusted_fixture=True
+    )
+    trace = run.result.trace
+    assert tuple((r.entry_index, r.path) for r in trace.archive_entries) == _entry_identity(case)

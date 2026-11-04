@@ -238,6 +238,31 @@ class Preregistration:
                 return item
         return None
 
+    def confirmatory_contrasts(self) -> tuple[dict[str, object], ...]:
+        """``confirmatory_family`` as the ordered, machine-readable Holm family.
+
+        ``holdout:S-u-vs-R,S-u-vs-D`` → one record per contrast in Holm order; the
+        family covers holdout targets with hypothesis H-A only (H-B holdouts are
+        reported as generality, outside the family). Empty when undeclared.
+        """
+        if self.confirmatory_family is None:
+            return ()
+        role, _, contrasts = self.confirmatory_family.partition(":")
+        records: list[dict[str, object]] = []
+        for order, contrast in enumerate(contrasts.split(","), 1):
+            arm_a, _, arm_b = contrast.partition("-vs-")
+            records.append(
+                {
+                    "order": order,
+                    "role": role,
+                    "hypothesis": "H-A",
+                    "arm_a": arm_a,
+                    "arm_b": arm_b,
+                    "contrast": contrast,
+                }
+            )
+        return tuple(records)
+
 
 def parse_preregistration_block(text: str) -> Mapping[str, str]:
     """The first fenced ``preregistration`` block as an ordered key→value mapping."""

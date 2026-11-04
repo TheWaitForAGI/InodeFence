@@ -32,6 +32,7 @@ from inodefence.model import (
     ExecutionStatus,
     ObjectSnapshot,
     ObjectType,
+    ObservationFailureKind,
     RunResult,
     SnapshotPhase,
     StateSnapshot,
@@ -1002,3 +1003,46 @@ def test_independent_reader_rejects_invalid_handle_causal_edge() -> None:
     result = EffectRunResult(base, producer_trace)
     with pytest.raises(VerificationError, match="handle-provenance"):
         reconstruct_native_effect_trace(raw, result)
+
+
+def test_duplicate_path_distinct_types_fails_closed_as_malformed_identity() -> None:
+    """A same-path/different-type archive drives the reader to a fail-closed STOP.
+
+    This is the synthetic reproduction of the ``malformed_identity`` observation
+    failure that aborts powered native campaigns: node-tar processes an archive
+    whose declared ordinals ``n`` and ``n+1`` share one path but differ in type,
+    and the producer's per-ordinal identity no longer lines up with the
+    ``ArchiveCase`` the reader expects. The reader cannot trust which archive
+    entry an observed effect belongs to, so it refuses to emit a trusted trace
+    (``integrity_valid`` is False) instead of silently attributing the effect to
+    the wrong entry. The native trigger is confirmed separately; here the
+    producer frame carries the divergent identity deterministically, no docker.
+    """
+    target = _target()
+    case = ArchiveCase(
+        (
+            ArchiveEntry("dup", EntryType.REGULAR, b"x"),
+            ArchiveEntry("dup", EntryType.SYMLINK, link_target="t"),
+        )
+    )
+    # Expected ordinal 0 is ("dup", REGULAR, None); the producer reports ordinal 0
+    # carrying the second entry's symlink identity (read/type divergence on the
+    # duplicate path), so reference != expected[0].
+    diverged = _identity(0, "dup", "SymbolicLink", "t")
+    records = [_lifecycle(0, diverged, "read")]
+    before, after = _snapshots()
+
+    trace = effect_trace_from_capture(
+        _capture(target, _frame(target, records)), target, case, before, after
+    )
+
+    assert [failure.kind for failure in trace.observation_failures] == [
+        ObservationFailureKind.MALFORMED_IDENTITY
+    ]
+    assert "entry identity differs from ArchiveCase" in trace.observation_failures[0].message
+    assert trace.completeness == EffectStreamCompleteness.INVALID
+    assert not trace.integrity_valid
+    assert trace.lifecycle_events == ()
+    # The abort predicate the native demo applies: target succeeded, evidence did
+    # not. A duplicate-path input therefore STOPs the campaign fail-closed.
+    assert trace.termination == EffectTargetTermination.SUCCESS

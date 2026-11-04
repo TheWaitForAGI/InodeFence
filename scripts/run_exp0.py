@@ -65,6 +65,7 @@ file declares a sentinel generator, the report's ``sentinel_set`` must match it.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import shutil
@@ -88,11 +89,11 @@ from scripts.run_g1_smoke import (
 )
 from scripts.run_parallel_native import (
     SCRIPT,
+    TOKEN,
     Arm,
     Cell,
     CellResult,
     _warmup,
-    build_cells,
     cell_env,
 )
 
@@ -101,6 +102,8 @@ from inodefence.evaluation.rds_preregistration import (
     CellRequest,
     Preregistration,
     PreregistrationFormatError,
+    TargetSpec,
+    ledger_problems,
     load_preregistration,
     preregistration_mismatches,
 )
@@ -152,6 +155,49 @@ def _worker_pool_module() -> Any | None:
 
 
 @dataclass(frozen=True, slots=True)
+class TargetCell(Cell):
+    """A planned cell bound to one registration target.
+
+    ``run_id`` is ``<target_id>-<arm>-s<seed>``; for the single-target (EXP-0) form
+    the target id is the node-tar version, so run ids and evidence paths are the
+    ones G1/EXP-0 already use. Multi-target plans keep each target's evidence in
+    ``<output>/<target_id>/`` (``subdir``) so per-target manifests cannot collide.
+    """
+
+    target_id: str = ""
+    extractor: str = "node-tar"
+    role: str = "train"
+    hypothesis: str = "H-A"
+    digest: str = ""
+    digest_kind: str = "image"
+    subdir: str | None = None
+
+    @property
+    def run_id(self) -> str:
+        token = f"{self.target_id}-{self.arm.label}-s{self.seed}"
+        if not TOKEN.fullmatch(token):
+            raise ValueError(f"run id is not a valid resource name: {token!r}")
+        return token
+
+
+def target_record(target: TargetSpec) -> dict[str, Any]:
+    return {
+        "target_id": target.target_id,
+        "extractor": target.extractor,
+        "version": target.version,
+        "digest": target.digest,
+        "digest_kind": target.digest_kind,
+        "role": target.role,
+        "hypothesis": target.hypothesis,
+        "exposure": target.exposure,
+        "exposure_ref": target.exposure_ref,
+        "exclusion_ref": target.exclusion_ref,
+        "arms": None if target.arms is None else [arm.value for arm in target.arms],
+        "budget": target.budget,
+    }
+
+
+@dataclass(frozen=True, slots=True)
 class Exp0Plan:
     """The preregistered cells; every parameter comes from the file, none from flags."""
 
@@ -199,11 +245,73 @@ class Exp0Plan:
             Arm(arm.value, prereg.arm_policies[arm].value, mutation) for arm in self.arm_list()
         )
 
+    @property
+    def multi_target(self) -> bool:
+        return bool(self.preregistration.targets)
+
+    def targets(self) -> tuple[TargetSpec, ...]:
+        """Declared targets, or the single node-tar target the one-key form stands for."""
+        prereg = self.preregistration
+        if prereg.targets:
+            return prereg.targets
+        return (
+            TargetSpec(
+                self.version,
+                "node-tar",
+                self.version,
+                prereg.image_digest or "",
+                "image",
+                "train",
+                "H-A",
+                "none",
+                None,
+                None,
+                None,
+                None,
+            ),
+        )
+
     def cells(self) -> list[Cell]:
         prereg = self.preregistration
-        return build_cells(
-            "demo-historical", [self.version], self.arms(), prereg.seeds, prereg.budget
-        )
+        cells: list[Cell] = []
+        for target in self.targets():
+            arms = [
+                arm
+                for arm in self.arms()
+                if target.arms is None or RdsArm(arm.label) in target.arms
+            ]
+            budget = target.budget if target.budget is not None else prereg.budget
+            for arm in arms:
+                for seed in prereg.seeds:
+                    cells.append(
+                        TargetCell(
+                            "demo-historical",
+                            target.version,
+                            arm,
+                            seed,
+                            budget,
+                            target_id=target.target_id,
+                            extractor=target.extractor,
+                            role=target.role,
+                            hypothesis=target.hypothesis,
+                            digest=target.digest,
+                            digest_kind=target.digest_kind,
+                            subdir=target.target_id if self.multi_target else None,
+                        )
+                    )
+        return cells
+
+    def analysis_plan(self) -> dict[str, Any]:
+        prereg = self.preregistration
+        return {
+            "confirmatory_family": prereg.confirmatory_family,
+            "confirmatory_test": prereg.confirmatory_test,
+            "multiplicity": prereg.multiplicity,
+            "primary_endpoint": prereg.primary_endpoint,
+            "event_threshold": prereg.event_threshold,
+            "exposure_ledger": prereg.exposure_ledger,
+            "exposure_ledger_sha256": prereg.exposure_ledger_sha256,
+        }
 
     def cell_config(self, cell: Cell) -> RdsCellConfig:
         prereg = self.preregistration
@@ -249,27 +357,52 @@ def gate_mismatches(
     image_digest: str | None,
     observer_integrity_policy: str | None,
     jobs: int | None = None,
+    target_digests: Mapping[str, str] | None = None,
+    ledger: tuple[str | None, str | None] | None = None,
 ) -> tuple[str, ...]:
-    """Union of every cell's mismatches (cells differ only in arm/seed)."""
+    """Union of every cell's mismatches (cells differ in target/arm/seed).
+
+    Multi-target plans compare each cell against the digest supplied for its target
+    (``--target-digest``); the one-key form compares ``image_digest``. ``ledger`` is
+    the (text, sha256) of the exposure ledger, checked when a holdout is declared.
+    """
     problems: list[str] = []
     for cell in plan.cells():
+        target_id = cell.target_id if isinstance(cell, TargetCell) else None
+        digest = image_digest
+        if plan.multi_target and target_id is not None:
+            digest = (target_digests or {}).get(target_id)
         request = CellRequest(
             RdsArm(cell.arm.label),
             cell.seed,
             cell.budget,
             engine_sha,
             engine_dirty,
-            image_digest,
+            digest,
             plan.sentinel_request(),
             observer_integrity_policy,
             experiment_id=plan.plan,
             execution_mode=plan.execution_mode,
             jobs=jobs,
+            target_id=target_id if plan.multi_target else None,
         )
         for item in preregistration_mismatches(plan.preregistration, request):
             if item not in problems:
                 problems.append(item)
+    if plan.multi_target:
+        text, sha = ledger if ledger is not None else (None, None)
+        for item in ledger_problems(plan.preregistration, text, sha):
+            if item not in problems:
+                problems.append(item)
     return tuple(problems)
+
+
+def read_ledger(path: Path | None) -> tuple[str | None, str | None]:
+    """(text, sha256) of the exposure ledger file, or (None, None) when unreadable."""
+    if path is None or not path.is_file():
+        return None, None
+    data = path.read_bytes()
+    return data.decode("utf-8"), hashlib.sha256(data).hexdigest()
 
 
 def post_check(plan: Exp0Plan) -> Any:
@@ -279,9 +412,12 @@ def post_check(plan: Exp0Plan) -> Any:
     def check(report: Mapping[str, Any] | None, cell: Cell) -> str | None:
         if report is None or "aborted" in report:
             return None
-        image = report.get("image_id")
-        if image != prereg.image_digest:
-            return f"report image_id {image!r} != preregistered {prereg.image_digest}"
+        expected = cell.digest if isinstance(cell, TargetCell) else prereg.image_digest
+        kind = cell.digest_kind if isinstance(cell, TargetCell) else "image"
+        field = "image_id" if kind == "image" else "lock_digest"
+        recorded = report.get(field)
+        if recorded != expected:
+            return f"report {field} {recorded!r} != preregistered {expected}"
         if prereg.sentinel_generator_seed is not None:
             recorded = report.get("sentinel_set")
             if not isinstance(recorded, Mapping):
@@ -507,7 +643,8 @@ def archive_attempt(cell: Cell, output: Path) -> int | None:
 def exp0_cell_env(
     plan: Exp0Plan, cell: Cell, output: Path, base_env: dict[str, str]
 ) -> dict[str, str]:
-    env = cell_env(cell, output, base_env)
+    subdir = getattr(cell, "subdir", None)
+    env = cell_env(cell, output / subdir if subdir else output, base_env)
     prereg = plan.preregistration
     if prereg.sentinel_generator_seed is not None:
         env["DEMO_SENTINEL_SEED"] = str(prereg.sentinel_generator_seed)
@@ -526,6 +663,17 @@ def exp0_cell_env(
 def wiring_problems(plan: Exp0Plan) -> tuple[str, ...]:
     prereg = plan.preregistration
     problems: list[str] = []
+    for target in plan.targets():
+        if target.extractor != "node-tar":
+            problems.append(
+                f"target {target.target_id}: extractor {target.extractor!r} has no controller "
+                f"wiring in {SCRIPT.name} (demo-historical runs node-tar only)"
+            )
+        if target.digest_kind == "lock":
+            problems.append(
+                f"target {target.target_id}: lock_digest targets need the controller to record "
+                "lock_digest in the report (in-process wiring pending)"
+            )
     if prereg.sentinel_generator_seed is not None and not all(_script_has(v) for v in SENTINEL_ENV):
         problems.append(
             f"preregistration declares a sentinel set but {SCRIPT.name} does not consume "
@@ -577,6 +725,8 @@ def write_registration(
         "campaign_watchdog_seconds": plan.watchdog_seconds,
         "disk_pause_fraction": plan.disk_pause_fraction,
         "interim_analysis": plan.preregistration.interim_analysis,
+        "targets": [target_record(target) for target in plan.targets()],
+        "analysis_plan": plan.analysis_plan(),
         "cells": [cell.run_id for cell in plan.cells()],
     }
     if path.is_file():
@@ -802,7 +952,25 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--preregistration", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--image-digest", help="sha256:<64 hex> of the image the cells will run")
+    parser.add_argument(
+        "--image-digest",
+        help="sha256:<64 hex> of the image the cells will run (one-key registrations)",
+    )
+    parser.add_argument(
+        "--target-digest",
+        action="append",
+        default=[],
+        metavar="ID=sha256:…",
+        help="digest resolved for a declared target (multi-target registrations; "
+        "repeat once per target)",
+    )
+    parser.add_argument(
+        "--exposure-ledger",
+        type=Path,
+        default=None,
+        help="override the exposure ledger path (default: the file's exposure_ledger, "
+        "relative to the current directory)",
+    )
     parser.add_argument("--version", default=DEFAULT_VERSION)
     parser.add_argument(
         "--include-s-a", action="store_true", help="also run the declared S-a ablation"
@@ -857,6 +1025,29 @@ def main(argv: list[str] | None = None) -> int:
         prereg, args.preregistration, file_sha, args.version, args.include_s_a, execution_mode
     )
     source = capture_source()
+    target_digests: dict[str, str] = {}
+    for item in args.target_digest:
+        target_id, sep, digest = item.partition("=")
+        if not sep or not target_id.strip() or not digest.strip():
+            print(f"--target-digest expects ID=sha256:…, got {item!r}", file=sys.stderr)
+            return 2
+        target_digests[target_id.strip()] = digest.strip()
+    if plan.multi_target and args.image_digest is not None:
+        print(
+            "this registration declares targets; supply --target-digest ID=… per target "
+            "instead of --image-digest",
+            file=sys.stderr,
+        )
+        return 2
+    if not plan.multi_target and target_digests:
+        print(
+            "this registration has the single image_digest; --target-digest does not apply",
+            file=sys.stderr,
+        )
+        return 2
+    ledger_path = args.exposure_ledger
+    if ledger_path is None and prereg.exposure_ledger is not None:
+        ledger_path = Path(prereg.exposure_ledger)
     mismatches = gate_mismatches(
         plan,
         engine_sha=source.revision,
@@ -864,6 +1055,8 @@ def main(argv: list[str] | None = None) -> int:
         image_digest=args.image_digest,
         observer_integrity_policy=args.observer_integrity_policy,
         jobs=args.jobs,
+        target_digests=target_digests,
+        ledger=read_ledger(ledger_path),
     )
     if prereg.unknown_keys:
         print(
@@ -881,6 +1074,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.dry_run:
         print("gate: PASS" if not mismatches else "gate: FAIL", f"({plan.gate_text()})")
+        for target in plan.targets():
+            print(
+                f"target {target.target_id}: {target.extractor} {target.version} "
+                f"role={target.role} hypothesis={target.hypothesis} exposure={target.exposure} "
+                f"{target.digest_kind}_digest={target.digest[:19]}…"
+            )
         for line in _refusal_preview(mismatches, wiring):
             print(line)
         pending = _pending_cells(plan, output)[0]
@@ -933,6 +1132,8 @@ def main(argv: list[str] | None = None) -> int:
                         "experiment_id": plan.plan,
                         "commit": args.preregistration_commit,
                     },
+                    "targets": [target_record(target) for target in plan.targets()],
+                    "analysis_plan": plan.analysis_plan(),
                     "interim": {
                         "analysis": prereg.interim_analysis,
                         "redacted": redact,
@@ -1032,6 +1233,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if status["pass"] and evidence_ok else 1
 
     output.mkdir(parents=True, exist_ok=True)
+    for cell in plan.cells():
+        subdir = getattr(cell, "subdir", None)
+        if subdir:
+            (output / subdir).mkdir(parents=True, exist_ok=True)
     write_registration(
         plan,
         output,
@@ -1103,6 +1308,7 @@ def main(argv: list[str] | None = None) -> int:
                 "cells": [
                     {
                         "run_id": r.cell.run_id,
+                        "target_id": getattr(r.cell, "target_id", r.cell.version),
                         "arm": r.cell.arm.label,
                         "seed": r.cell.seed,
                         "budget": r.cell.budget,

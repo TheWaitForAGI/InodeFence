@@ -54,7 +54,7 @@ when both sides give a value. Keys this module does not know are kept in
 """
 
 import re
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from types import MappingProxyType
@@ -67,7 +67,53 @@ FENCE_OPEN = "```preregistration"
 FENCE_CLOSE = "```"
 _ENGINE_SHA = re.compile(r"[0-9a-f]{40}")
 _IMAGE_DIGEST = re.compile(r"sha256:[0-9a-f]{64}")
-_REQUIRED_KEYS = ("engine_sha", "image_digest", "seeds", "budget", "vocabulary")
+_REQUIRED_KEYS = ("engine_sha", "seeds", "budget", "vocabulary")
+_IMAGE_DIGEST_KEY = "image_digest"
+# Multi-target (EXP-3) extension: dotted group keys ``targets.<id>.<field>``. A file
+# declares EITHER the single ``image_digest`` (one node-tar target, the EXP-0 form)
+# OR one or more ``targets.<id>.*`` groups — never both.
+_TARGET_KEY = "targets."
+_TARGET_ID = re.compile(r"[a-z0-9][a-z0-9.-]*")
+TARGET_FIELDS = frozenset(
+    (
+        "extractor",
+        "version",
+        "image_digest",
+        "lock_digest",
+        "role",
+        "hypothesis",
+        "exposure",
+        "exposure_ref",
+        "exclusion_ref",
+        "arms",
+        "budget",
+    )
+)
+_TARGET_REQUIRED = ("extractor", "version", "role", "hypothesis", "exposure")
+TARGET_ROLES = ("train", "fix-verification", "holdout")
+TARGET_HYPOTHESES = ("H-A", "H-B")
+TARGET_EXPOSURES = ("none", "pre-exposed")
+_EXPOSURE_LEDGER = "exposure_ledger"
+_EXPOSURE_LEDGER_SHA = "exposure_ledger_sha256"
+_SHA256_HEX = re.compile(r"[0-9a-f]{64}")
+_CONFIRMATORY_FAMILY = "confirmatory_family"
+_CONFIRMATORY_TEST = "confirmatory_test"
+_MULTIPLICITY = "multiplicity"
+_PRIMARY_ENDPOINT = "primary_endpoint"
+_EVENT_THRESHOLD = "event_threshold"
+_CONTRAST = re.compile(r"holdout:(S-u-vs-R|S-u-vs-D)(,(S-u-vs-R|S-u-vs-D))*")
+# exact-logrank-permutation-v1 is the confirmatory test at every n (seed-block,
+# target-stratified permutation; a sparse-event family gives p ~ 1, a correct
+# non-rejection). event_threshold is an underpowered FLAG, not a switch; the
+# rule-of-three bound is descriptive. The other enum values are accepted by the
+# parser for drafts but are not the engine's recommendation.
+CONFIRMATORY_TESTS = (
+    "exact-logrank-permutation-v1",
+    "rule-of-three-bound-v1",
+    "threshold-v1",
+)
+MULTIPLICITY_RULES = ("holm-fwer-v1",)
+PRIMARY_ENDPOINTS = ("t_first", "u_viol")
 _ARM_KEY = "arm."
 _SENTINEL_ID = "sentinel_generator_id"
 _SENTINEL_SEED = "sentinel_generator_seed"
@@ -96,6 +142,14 @@ RULE_CONSTANTS: Mapping[str, str] = MappingProxyType(
 KNOWN_KEYS = frozenset(
     (
         *_REQUIRED_KEYS,
+        _IMAGE_DIGEST_KEY,
+        _EXPOSURE_LEDGER,
+        _EXPOSURE_LEDGER_SHA,
+        _CONFIRMATORY_FAMILY,
+        _CONFIRMATORY_TEST,
+        _MULTIPLICITY,
+        _PRIMARY_ENDPOINT,
+        _EVENT_THRESHOLD,
         _SENTINEL_ID,
         _SENTINEL_SEED,
         _SENTINEL_COUNT,
@@ -124,9 +178,34 @@ class PreregistrationMismatch(ValueError):
 
 
 @dataclass(frozen=True, slots=True)
+class TargetSpec:
+    """One extraction target of a multi-target registration (``targets.<id>.*``).
+
+    ``digest`` is the image digest (container targets) or the lock digest
+    (in-process targets: sha256 of ``python -VV`` + the tarfile.py file hash +
+    ``uname -sr``; filesystem semantics are host-fixed and shared by every arm).
+    ``role``: train (design input, exploratory), fix-verification (negative control,
+    hit expected 0) or holdout (the only confirmatory test; must not be pre-exposed).
+    """
+
+    target_id: str
+    extractor: str
+    version: str
+    digest: str
+    digest_kind: str  # "image" | "lock"
+    role: str
+    hypothesis: str
+    exposure: str
+    exposure_ref: str | None
+    exclusion_ref: str | None
+    arms: tuple[RdsArm, ...] | None
+    budget: int | None
+
+
+@dataclass(frozen=True, slots=True)
 class Preregistration:
     engine_sha: str
-    image_digest: str
+    image_digest: str | None
     seeds: tuple[int, ...]
     budget: int
     vocabulary_mode: VocabularyMode
@@ -144,6 +223,20 @@ class Preregistration:
     campaign_watchdog_seconds: float | None = None
     disk_pause_fraction: float | None = None
     interim_analysis: str | None = None
+    targets: tuple[TargetSpec, ...] = ()
+    exposure_ledger: str | None = None
+    exposure_ledger_sha256: str | None = None
+    confirmatory_family: str | None = None
+    confirmatory_test: str | None = None
+    multiplicity: str | None = None
+    primary_endpoint: str | None = None
+    event_threshold: int | None = None
+
+    def target(self, target_id: str) -> TargetSpec | None:
+        for item in self.targets:
+            if item.target_id == target_id:
+                return item
+        return None
 
 
 def parse_preregistration_block(text: str) -> Mapping[str, str]:
@@ -192,7 +285,16 @@ def parse_preregistration(text: str) -> Preregistration:
         raise PreregistrationFormatError(f"missing keys: {missing or ['arm.*']}")
     if _ENGINE_SHA.fullmatch(values["engine_sha"]) is None:
         raise PreregistrationFormatError("engine_sha must be a 40-hex git commit")
-    if _IMAGE_DIGEST.fullmatch(values["image_digest"]) is None:
+    image_digest = values.get(_IMAGE_DIGEST_KEY)
+    target_keys = [key for key in values if key.startswith(_TARGET_KEY)]
+    if image_digest is None and not target_keys:
+        raise PreregistrationFormatError("missing keys: ['image_digest' or 'targets.<id>.*']")
+    if image_digest is not None and target_keys:
+        raise PreregistrationFormatError(
+            "image_digest and targets.<id>.* are mutually exclusive (the single key is the "
+            "one-target shorthand)"
+        )
+    if image_digest is not None and _IMAGE_DIGEST.fullmatch(image_digest) is None:
         raise PreregistrationFormatError("image_digest must be sha256:<64 hex>")
     try:
         seeds = tuple(int(item.strip()) for item in values["seeds"].split(","))
@@ -239,7 +341,42 @@ def parse_preregistration(text: str) -> Preregistration:
         raise PreregistrationFormatError(
             f"{_OBSERVER_POLICY} must be one of {OBSERVER_INTEGRITY_POLICIES}"
         )
-    unknown = tuple(key for key in values if key not in KNOWN_KEYS and not key.startswith(_ARM_KEY))
+    targets = _parse_targets(values, target_keys, tuple(arm_policies))
+    ledger = values.get(_EXPOSURE_LEDGER)
+    ledger_sha = values.get(_EXPOSURE_LEDGER_SHA)
+    if ledger_sha is not None and _SHA256_HEX.fullmatch(ledger_sha) is None:
+        raise PreregistrationFormatError(f"{_EXPOSURE_LEDGER_SHA} must be 64 hex")
+    if (ledger is None) != (ledger_sha is None):
+        raise PreregistrationFormatError(
+            f"{_EXPOSURE_LEDGER} and {_EXPOSURE_LEDGER_SHA} must be declared together"
+        )
+    if any(target.role == "holdout" for target in targets) and ledger is None:
+        raise PreregistrationFormatError(
+            f"a holdout target requires {_EXPOSURE_LEDGER} and {_EXPOSURE_LEDGER_SHA}"
+        )
+    family = values.get(_CONFIRMATORY_FAMILY)
+    if family is not None and _CONTRAST.fullmatch(family) is None:
+        raise PreregistrationFormatError(
+            f"{_CONFIRMATORY_FAMILY} must be holdout:<contrast>[,<contrast>] with contrasts "
+            "S-u-vs-R / S-u-vs-D"
+        )
+    for key, allowed in (
+        (_CONFIRMATORY_TEST, CONFIRMATORY_TESTS),
+        (_MULTIPLICITY, MULTIPLICITY_RULES),
+        (_PRIMARY_ENDPOINT, PRIMARY_ENDPOINTS),
+    ):
+        if key in values and values[key] not in allowed:
+            raise PreregistrationFormatError(f"{key} must be one of {allowed}")
+    event_threshold = _int(values, _EVENT_THRESHOLD) if _EVENT_THRESHOLD in values else None
+    if event_threshold is not None and event_threshold < 1:
+        raise PreregistrationFormatError(f"{_EVENT_THRESHOLD} must be >= 1")
+    unknown = tuple(
+        key
+        for key in values
+        if key not in KNOWN_KEYS
+        and not key.startswith(_ARM_KEY)
+        and not key.startswith(_TARGET_KEY)
+    )
     execution_mode = values.get(_EXECUTION_MODE)
     if execution_mode is not None and execution_mode not in EXECUTION_MODES:
         raise PreregistrationFormatError(f"{_EXECUTION_MODE} must be one of {EXECUTION_MODES}")
@@ -257,7 +394,7 @@ def parse_preregistration(text: str) -> Preregistration:
         raise PreregistrationFormatError(f"{_INTERIM} must be one of {INTERIM_ANALYSIS_VALUES}")
     return Preregistration(
         values["engine_sha"],
-        values["image_digest"],
+        image_digest,
         seeds,
         budget,
         vocabulary,
@@ -275,6 +412,146 @@ def parse_preregistration(text: str) -> Preregistration:
         watchdog,
         disk_pause,
         interim,
+        targets=targets,
+        exposure_ledger=ledger,
+        exposure_ledger_sha256=ledger_sha,
+        confirmatory_family=family,
+        confirmatory_test=values.get(_CONFIRMATORY_TEST),
+        multiplicity=values.get(_MULTIPLICITY),
+        primary_endpoint=values.get(_PRIMARY_ENDPOINT),
+        event_threshold=event_threshold,
+    )
+
+
+def _parse_targets(
+    values: Mapping[str, str], target_keys: Sequence[str], declared_arms: Sequence[RdsArm]
+) -> tuple[TargetSpec, ...]:
+    """``targets.<id>.<field>`` groups; an unknown field is a format error (fail-closed)."""
+    groups: dict[str, dict[str, str]] = {}
+    for key in target_keys:
+        rest = key[len(_TARGET_KEY) :]
+        target_id, dot, field = rest.rpartition(".")  # ids may contain dots (7.5.2)
+        if not dot or _TARGET_ID.fullmatch(target_id) is None:
+            raise PreregistrationFormatError(f"{key}: expected targets.<id>.<field>")
+        if field not in TARGET_FIELDS:
+            raise PreregistrationFormatError(f"{key}: unknown target field {field!r}")
+        groups.setdefault(target_id, {})[field] = values[key]
+    targets: list[TargetSpec] = []
+    for target_id, fields in groups.items():
+        missing = [name for name in _TARGET_REQUIRED if name not in fields]
+        if missing:
+            raise PreregistrationFormatError(f"targets.{target_id}: missing {missing}")
+        has_image, has_lock = "image_digest" in fields, "lock_digest" in fields
+        if has_image == has_lock:
+            raise PreregistrationFormatError(
+                f"targets.{target_id}: exactly one of image_digest / lock_digest is required"
+            )
+        digest = fields["image_digest"] if has_image else fields["lock_digest"]
+        if _IMAGE_DIGEST.fullmatch(digest) is None:
+            raise PreregistrationFormatError(f"targets.{target_id}: digest must be sha256:<64 hex>")
+        for name, allowed in (
+            ("role", TARGET_ROLES),
+            ("hypothesis", TARGET_HYPOTHESES),
+            ("exposure", TARGET_EXPOSURES),
+        ):
+            if fields[name] not in allowed:
+                raise PreregistrationFormatError(
+                    f"targets.{target_id}.{name} must be one of {allowed}"
+                )
+        if fields["exposure"] == "pre-exposed" and not fields.get("exposure_ref"):
+            raise PreregistrationFormatError(
+                f"targets.{target_id}: exposure = pre-exposed requires exposure_ref"
+            )
+        if fields["role"] == "holdout" and fields["exposure"] == "pre-exposed":
+            raise PreregistrationFormatError(
+                f"targets.{target_id}: a holdout target cannot be pre-exposed"
+            )
+        arms: tuple[RdsArm, ...] | None = None
+        if "arms" in fields:
+            try:
+                arms = tuple(RdsArm(item.strip()) for item in fields["arms"].split(","))
+            except ValueError:
+                raise PreregistrationFormatError(
+                    f"targets.{target_id}.arms has an unknown arm label"
+                ) from None
+            undeclared = [arm.value for arm in arms if arm not in declared_arms]
+            if undeclared or len(set(arms)) != len(arms):
+                raise PreregistrationFormatError(
+                    f"targets.{target_id}.arms must be unique declared arms (bad: {undeclared})"
+                )
+        budget: int | None = None
+        if "budget" in fields:
+            budget = _int(fields, "budget")
+            if budget <= 0:
+                raise PreregistrationFormatError(f"targets.{target_id}.budget must be positive")
+        targets.append(
+            TargetSpec(
+                target_id,
+                fields["extractor"],
+                fields["version"],
+                digest,
+                "image" if has_image else "lock",
+                fields["role"],
+                fields["hypothesis"],
+                fields["exposure"],
+                fields.get("exposure_ref"),
+                fields.get("exclusion_ref"),
+                arms,
+                budget,
+            )
+        )
+    return tuple(targets)
+
+
+def parse_exposure_ledger(text: str) -> frozenset[tuple[str, str]]:
+    """(extractor, version) pairs listed in an exposure ledger (markdown pipe tables).
+
+    Every pipe table whose header has ``extractor`` and ``version`` columns
+    (case-insensitive) contributes its rows; prose and other tables are ignored.
+    """
+    listed: set[tuple[str, str]] = set()
+    columns: dict[str, int] | None = None
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line.startswith("|"):
+            columns = None
+            continue
+        cells = [cell.strip() for cell in line.strip("|").split("|")]
+        lowered = [cell.lower() for cell in cells]
+        if "extractor" in lowered and "version" in lowered:
+            columns = {"extractor": lowered.index("extractor"), "version": lowered.index("version")}
+            continue
+        if columns is None or all(set(cell) <= set("-: ") for cell in cells):
+            continue
+        if max(columns.values()) < len(cells):
+            listed.add((cells[columns["extractor"]], cells[columns["version"]]))
+    return frozenset(listed)
+
+
+def ledger_problems(
+    preregistration: Preregistration, ledger_text: str | None, ledger_sha256: str | None
+) -> tuple[str, ...]:
+    """Holdout guard against the committed exposure ledger (the single source of truth).
+
+    The ledger must exist and hash to the registered sha256; a holdout target whose
+    (extractor, version) the ledger lists is refused.
+    """
+    holdouts = [target for target in preregistration.targets if target.role == "holdout"]
+    if not holdouts:
+        return ()
+    if ledger_text is None:
+        return (f"exposure ledger {preregistration.exposure_ledger} not readable",)
+    if ledger_sha256 != preregistration.exposure_ledger_sha256:
+        return (
+            f"exposure ledger sha256 {ledger_sha256} != preregistered "
+            f"{preregistration.exposure_ledger_sha256}",
+        )
+    listed = parse_exposure_ledger(ledger_text)
+    return tuple(
+        f"holdout target {target.target_id} ({target.extractor} {target.version}) is in the "
+        "exposure ledger"
+        for target in holdouts
+        if (target.extractor, target.version) in listed
     )
 
 
@@ -297,6 +574,7 @@ class CellRequest:
     experiment_id: str | None = None
     execution_mode: str | None = None
     jobs: int | None = None
+    target_id: str | None = None
 
 
 def preregistration_mismatches(
@@ -314,18 +592,36 @@ def preregistration_mismatches(
         problems.append("engine checkout dirty state unknown")
     elif request.engine_dirty:
         problems.append("engine checkout is dirty (uncommitted or untracked changes)")
-    if request.image_digest is None:
-        problems.append("image digest not supplied")
-    elif request.image_digest != preregistration.image_digest:
-        problems.append(
-            f"image digest {request.image_digest} != preregistered {preregistration.image_digest}"
+    expected_digest = preregistration.image_digest
+    expected_budget = preregistration.budget
+    digest_label = "image digest"
+    if preregistration.targets:
+        target = (
+            preregistration.target(request.target_id) if request.target_id is not None else None
         )
+        if request.target_id is None:
+            problems.append("target not supplied (the preregistration declares targets)")
+        elif target is None:
+            problems.append(f"target {request.target_id!r} is not preregistered")
+        if target is not None:
+            expected_digest = target.digest
+            digest_label = f"target {target.target_id} {target.digest_kind} digest"
+            if target.budget is not None:
+                expected_budget = target.budget
+            if target.arms is not None and request.arm not in target.arms:
+                problems.append(
+                    f"arm {request.arm.value} is not preregistered for target {target.target_id}"
+                )
+    elif request.target_id is not None:
+        problems.append("target supplied but the preregistration declares no targets")
+    if request.image_digest is None:
+        problems.append(f"{digest_label} not supplied")
+    elif expected_digest is not None and request.image_digest != expected_digest:
+        problems.append(f"{digest_label} {request.image_digest} != preregistered {expected_digest}")
     if request.random_seed not in preregistration.seeds:
         problems.append(f"seed {request.random_seed} not in preregistered {preregistration.seeds}")
-    if request.execution_budget != preregistration.budget:
-        problems.append(
-            f"budget {request.execution_budget} != preregistered {preregistration.budget}"
-        )
+    if request.execution_budget != expected_budget:
+        problems.append(f"budget {request.execution_budget} != preregistered {expected_budget}")
     if request.arm not in preregistration.arm_policies:
         problems.append(f"arm {request.arm.value} is not preregistered")
     declared = {

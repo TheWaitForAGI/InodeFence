@@ -126,3 +126,13 @@ success 케이스(exit 0)에서 발생한 native 관찰 무결성 결함(malform
 - 통합 M4.5 verdict는 C1/C2 기준 맥{11,85,163,211,307,401}+윈도우{500..509} right-censored 합산(disjoint ∅ 확인) — 맥 세션이 합산·Ledger/논문 §5.4.5 반영.
 - 미실행(deferred): 등록 {510..529}는 처리량 한계로 이번 세션 미실행; sa-s504는 2회 연속 infra abort로 영구 incomplete.
 - 2026-11-02 M3.3 powered 매칭 **사전등록 연장 {120..129}**×{A1,A3full} 실행(#196 byte-exact: frozen overlay 7.5.2 sha256:21d8a0e3a5c5·동일 컨트롤러·동일 arm 정책·budget 2000·코드 불변; idempotent completion-wave 3라운드, 완주 14/20, 영구 right-censored abort 6) → 풀 {100..129}(30 매칭 seed) 재판정: **A1 0/19 Wilson[0,0.168]·A3full 1/17 Wilson[0.0105,0.270]**(s101 유일 완주 hit, observed-trigger 2-0), `complete_hit_wilson_intervals_separate=False` — 연장분 7완주/arm 전부 null이라 CI 좁혔으나 미분리 유지(rate 미입증, 정직한 사전등록 음성·EN-008). verdict-v2 반입, v1 {100..119} 보존.
+
+## 레인4 워커풀 코어 — per-case 리셋 + 인프라 retry/recycle (2026-11-04)
+
+- 브랜치 `claude/s3-worker-pool-impl`(base `claude/s3-broker-cleanup`, #203 스택). 상태: **검토대기**(verifier inodefence-19). docker 미실행(설계·코드·단위테스트만, 수술 3단계 Runtime).
+- `src/inodefence/execution/worker_pool.py`(+테스트 15): `ResettingProducer`가 캠페인 per-case producer를 감싸 **한 produce_result 호출 안에서** 리셋 검증 + 인프라(broker/cleanup_inspect/cleanup_remove/cleanup_reset) 재시도·워커 recycle(≤`MAX_INFRA_RETRIES`). `observer_integrity`·`other`는 재시도·은폐 없이 그대로 전파(레인2 소유 정책 보존). K회 소진 시 `CaseAbandoned(InvalidCase)` → 캠페인 right-censored(완료 step 보존).
+- 성공 step엔 `infra_retries`, 포기 case엔 `invalid_cases` 레코드 — 레인3 `evaluation/abort_classification`(InvalidReason·ResetFailureDetail·INFRASTRUCTURE_REASONS·재시도 상수)를 import, 문자열 재철자 0.
+- backoff는 **워커-로컬 `random.Random`만** 사용 — 캠페인 `random.Random` 미접촉 → 재시도 유무와 무관하게 mutation 궤적 byte-identical(parity 핵심). 테스트가 bound·결정론·캠페인 RNG 비접촉을 검증.
+- 리셋 검증 `verify_reset`/`ResetObserver`는 마운트된 볼륨 top-level listing(순수 Python 주입)으로 `core-run-*` 잔여·baseline 외 변화 탐지 — 새 docker 명령·R4 변경 0.
+- **R4 diff: 불필요(없음)** — 실행 백엔드·브로커 전송·isolation 정책 모델 변경 0, 변경 없이 조합만. 격리·단일경로 불변.
+- 후속(통합, docker 호스트 필요): 실제 docker WorkerHandle.recycle(기존 컨트롤러·볼륨 bring-up 재사용)·N-워커 fan-out(`run_parallel_native` 재사용)·`measurement_runners`(#213 `execution_parity`/`throughput` 필요)·heartbeat/watchdog/disk-pause.

@@ -4,3 +4,11 @@
 - 커밋된 파일은 **사후 변경 금지**다(지표·예산·hit 정의·분모 규칙·seed·arm 정의 전부).
 - 수정은 새 버전 파일(`*-v1.1.md`, `*-v2.md`)로만 하고, 이전 버전은 그대로 둔다.
 - `exp0-pilot-v1.md`는 `exp0-pilot-v2.md`로 **대체됨**(v1은 보존). G1 동결 시 엔진 SHA·이미지 digest·policy ID를 채운 **v2.1**이 실행 유효본이다.
+
+## 버전 상태
+
+| 버전 | 상태 | 비고 |
+| --- | --- | --- |
+| [exp0-pilot-v1](exp0-pilot-v1.md) | 대체됨(보존) | v2로 대체 |
+| [exp0-pilot-v2](exp0-pilot-v2.md) | 설계 등록 | 엔진 SHA·image digest·policy ID 비어 있음 |
+| [exp0-pilot-v2.1](exp0-pilot-v2.1.md) | **초안 PR (동결 전)** | 기계판독 블록 추가. `engine_sha`·`image_digest`·`sentinel_generator_seed`는 `TBD-FREEZE`; 동결 PR에서 채우면 그 커밋이 등록 SHA. 그 전엔 run_exp0 게이트가 포맷 오류로 거부(비실행본) |

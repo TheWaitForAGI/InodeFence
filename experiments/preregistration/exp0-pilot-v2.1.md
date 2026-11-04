@@ -160,6 +160,10 @@ EXP-0 실행은 다음이 **main에 머지된 뒤에만** 유효하다. 가장 �
 - **결과:** 12런 완주 12/12·abort 0. smoke `7.5.2-D-s9002`의 1-based step 42에서 **C2 사건 1건**
   (raw 재확인: `oracle.C2=true` + `feedback.contract_violated=true`; 12런 통틀어 유일한 contract_violated step).
   나머지 11런은 contract_violated 0.
+- **추가 노출(측정 타이밍, 2026-11-04):** 레인 4 처리량 4× 분해용 타이밍 대조로 **seed 9001이 1회 더
+  재실행**됐다(`ctl-pc-b50-s9001-nosamp`, budget 50, 격리 디렉터리, **비등록**, 기존 raw 미오염). 새 seed 노출은
+  아니고 9001의 사전 노출 이력에 더해지는 사실이다. raw `~/inodefence-evidence/wp-throughput-20261104/`
+  (MANIFEST digest `9ebdc437…`). exposure-ledger.md node-tar@7.5.2 행에도 기록.
 - **왜 공개하나 / 영향:** v2는 seed를 동결했으므로 **v2.1에서 seed를 바꾸지 않는다**(동결 규칙 유지). EXP-0은
   가설(H-A) 검정이 아니라 **인프라 측정**이므로(위 "목적") 이 사전 노출은 EXP-0의 측정 타당성에 영향이 없다.
   다만 본실험(EXP-3, 11/18 사전등록)에서 hazard/효과를 **추정**할 때는 이 seed들이 pre-exposed라는 사실을

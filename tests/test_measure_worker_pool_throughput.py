@@ -87,8 +87,10 @@ def test_demo_historical_requires_versions() -> None:
         main(["--mode", "demo-historical", "--seeds", "123", "--plan"])
 
 
-def test_build_runners_absent_raises_system_exit() -> None:
-    # The worker pool module (step 4) is not present yet; the loader must say so clearly.
+def test_build_runners_unavailable_raises_system_exit() -> None:
+    # The worker pool runners are unavailable until the integration base: the module is
+    # absent here (ImportError), or present-but-unwired on the stack (NotImplementedError).
+    # Either way the loader must refuse clearly rather than crash.
     with pytest.raises(SystemExit) as excinfo:
         _build_runners(3)
     assert "worker pool" in str(excinfo.value)

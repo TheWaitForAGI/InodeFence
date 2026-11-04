@@ -45,12 +45,12 @@ import platform
 import re
 import shutil
 import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from scripts.run_parallel_native import (
     SCRIPT,
@@ -145,6 +145,27 @@ class G1Plan:
         }
 
 
+class CellPlan(Protocol):
+    """What a summarizable plan exposes (G1 smoke and the EXP-0 launcher share it)."""
+
+    @property
+    def plan(self) -> str: ...
+
+    @property
+    def execution_mode(self) -> str: ...
+
+    def cells(self) -> list[Cell]: ...
+
+    def cell_config(self, cell: Cell) -> RdsCellConfig: ...
+
+    def sentinel_request(self) -> dict[str, object] | None: ...
+
+
+# A post-load check on a cell's report: returns an invalid reason or None.
+PostCheck = Callable[[Mapping[str, Any] | None, Cell], str | None]
+VerdictFn = Callable[[str, Sequence[Mapping[str, Any]], bool], dict[str, Any]]
+
+
 def cell_paths(cell: Cell, output: Path) -> dict[str, Path]:
     # Not Path.with_suffix: the version token ("7.5.2") contains dots.
     return {
@@ -236,13 +257,25 @@ def _manifest_host(output: Path) -> dict[str, Any] | None:
     return dict(host) if isinstance(host, dict) else None
 
 
-def summarize_output(plan: G1Plan, output: Path) -> dict[str, Any]:
+def summarize_output(
+    plan: CellPlan,
+    output: Path,
+    *,
+    labels: Sequence[str] = LABELS,
+    gate: str = GATE,
+    verdict_fn: VerdictFn | None = None,
+    post_check: PostCheck | None = None,
+    extra: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     """(Re)build ``summaries/`` from the cell files in ``output``; returns the index.
 
-    A cell whose report records a different config than planned is not folded into
-    complete/abort: it is the third bucket, ``config_nonconformant`` (invalid), with
-    no summary and its reason recorded; it fails the G1 verdict.
+    A cell whose report records a different config than planned (or fails
+    ``post_check``) is not folded into complete/abort: it is the third bucket,
+    ``config_nonconformant`` (invalid), with no summary and its reason recorded; it
+    fails the verdict. ``extra`` is merged into the index document (e.g. the
+    registration a launcher ran under).
     """
+    verdict_fn = g1_verdict if verdict_fn is None else verdict_fn
     summaries_dir = output / "summaries"
     summaries_dir.mkdir(parents=True, exist_ok=True)
     manifest_host = _manifest_host(output)
@@ -254,9 +287,9 @@ def summarize_output(plan: G1Plan, output: Path) -> dict[str, Any]:
         host["docker_server_version"] = _docker_version_from_log(paths["log"])
         record: dict[str, Any] = {
             "schema_version": 1,
-            "label": list(LABELS),
+            "label": list(labels),
             "producer": "native",
-            "gate": GATE,
+            "gate": gate,
             "run_id": cell.run_id,
             "source": {
                 "report": paths["report"].name,
@@ -278,6 +311,10 @@ def summarize_output(plan: G1Plan, output: Path) -> dict[str, Any]:
             loaded = load_cell_files(paths["report"], paths["steps_jsonl"])
             if loaded.report is not None:
                 check_report_config(loaded.report, config)
+            if post_check is not None:
+                problem = post_check(loaded.report, cell)
+                if problem is not None:
+                    raise ReportFormatError(problem)
             aborted_at, reason = loaded.aborted_at_step, loaded.abort_reason
             if aborted_at is None and len(loaded.records) < config.execution_budget:
                 aborted_at = len(loaded.records)
@@ -323,11 +360,12 @@ def summarize_output(plan: G1Plan, output: Path) -> dict[str, Any]:
         )
         index.append(entry)
     equality = vocabulary_equality(index)
-    verdict = g1_verdict(plan.plan, index, equality["equal"])
+    verdict = verdict_fn(plan.plan, index, equality["equal"])
     document = {
         "schema_version": 1,
-        "label": list(LABELS),
-        "gate": GATE,
+        "label": list(labels),
+        "gate": gate,
+        **dict(extra or {}),
         "plan": plan.plan,
         "execution_mode": plan.execution_mode,
         "cells": index,

@@ -397,3 +397,12 @@ The preregistration gate compares, when declared, `observer_integrity_policy` an
 rule keys (`hit_definition`, `c0_counts_as_hit`, `denominator`, `abort_reporting`,
 `rule_of_three_unit`) against the rules this engine implements; unknown keys are only
 warned about.
+
+`scripts/run_exp0.py` is the registered-run launcher: it takes one committed
+preregistration file, passes every planned cell through the gate (engine HEAD clean,
+image digest, seeds, budget, arm policy IDs, observer-integrity policy, sentinel
+generator and the rule keys), runs seeds × R/D/S-u (+ declared S-a) × budget through the
+same controller path as the G1 driver, labels outputs `registered run` with the file
+name, its SHA-256 and the engine SHA, skips cells already complete and conformant on
+a rerun (earlier attempts go to `attempts/`), marks reports whose image id or sentinel
+set differ from the registration as invalid, and calls `make_raw_manifest` afterwards.

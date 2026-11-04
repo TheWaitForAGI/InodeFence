@@ -17,6 +17,7 @@ from inodefence.effect_campaign import (
     _observed_name_segments,
 )
 from inodefence.effect_synthetic import SYNTHETIC_MECHANISM
+from inodefence.feedback import violation_fingerprints
 from inodefence.model import (
     EffectEventTrace,
     EffectObjectObservation,
@@ -29,7 +30,9 @@ from inodefence.model import (
 )
 from inodefence.mutation_scheduler import WeightSnapshot
 
-DEMO_REPORT_SCHEMA = 2
+# 2: name_segments/before_protected_paths; 3: step validity (observer-integrity policy,
+# #207); 4: oracle_fingerprints. Every bump is additive.
+DEMO_REPORT_SCHEMA = 4
 POLICY_COMPARISON_SCHEMA = 1
 # Per-step bounds on the trace and stderr copies; the report states when they cut.
 MAX_TRACE_EFFECT_EVENTS = 64
@@ -247,6 +250,12 @@ def _step_report(step: EffectCampaignStep) -> dict[str, object]:
         "case_id": base.case.case_id,
         "parent_case_id": step.parent_case_id,
         "oracle": {verdict.contract_id.value: verdict.violated for verdict in base.violations},
+        # Additive (schema 4): the oracle's normalized violation classes for this step,
+        # independent of feedback eligibility, so a report reader counts U_viol exactly
+        # as the in-memory summary does (rds.summarize_rds_steps reads the same
+        # verdicts). feedback.new_violation_fingerprints below stays the search-
+        # behaviour record (what the loop fed back, eligible steps only).
+        "oracle_fingerprints": [_model(item) for item in violation_fingerprints(base.violations)],
         "feedback": {
             "new_effect_keys": [_model(key) for key in feedback.new_effect_keys],
             "new_violation_fingerprints": [

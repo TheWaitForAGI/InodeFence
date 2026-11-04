@@ -174,6 +174,8 @@ DEMO_FORWARDED_ARGUMENTS = (
     "sentinel_count",
     "sentinel_seed",
 )
+# store_true flags the host forwards to the controller as bare flags (no value).
+DEMO_FORWARDED_FLAGS = ("emit_parity", "worker_pool")
 
 
 def _parity_campaign_producer(

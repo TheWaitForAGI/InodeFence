@@ -266,6 +266,7 @@ def summarize_output(
     verdict_fn: VerdictFn | None = None,
     post_check: PostCheck | None = None,
     extra: Mapping[str, Any] | None = None,
+    redact_outcomes: bool = False,
 ) -> dict[str, Any]:
     """(Re)build ``summaries/`` from the cell files in ``output``; returns the index.
 
@@ -273,7 +274,10 @@ def summarize_output(
     ``post_check``) is not folded into complete/abort: it is the third bucket,
     ``config_nonconformant`` (invalid), with no summary and its reason recorded; it
     fails the verdict. ``extra`` is merged into the index document (e.g. the
-    registration a launcher ran under).
+    registration a launcher ran under). With ``redact_outcomes`` (a registered
+    experiment that forbids interim analysis, while cells are still pending) the
+    index carries completion state only — no hit/T_first fields, no summary files —
+    so nothing outcome-bearing exists to look at before the run is complete.
     """
     verdict_fn = g1_verdict if verdict_fn is None else verdict_fn
     summaries_dir = output / "summaries"
@@ -354,10 +358,16 @@ def summarize_output(
                 t_first_event=summary.t_first_event,
                 vocabulary_pool_final=list(summary.vocabulary_pool_final),
             )
-        paths["summary"].write_text(
-            json.dumps(record, indent=2, sort_keys=True, ensure_ascii=True) + "\n",
-            encoding="ascii",
-        )
+        if redact_outcomes:
+            for key in ("hit", "t_first", "t_first_event"):
+                entry.pop(key, None)
+            entry["summary"] = None
+            entry["outcomes_redacted"] = True
+        else:
+            paths["summary"].write_text(
+                json.dumps(record, indent=2, sort_keys=True, ensure_ascii=True) + "\n",
+                encoding="ascii",
+            )
         index.append(entry)
     equality = vocabulary_equality(index)
     verdict = verdict_fn(plan.plan, index, equality["equal"])
@@ -371,6 +381,7 @@ def summarize_output(
         "cells": index,
         "abort_count": verdict["aborts"],
         "invalid_count": verdict["invalid"],
+        "outcomes_redacted": redact_outcomes,
         "vocabulary_equal_across_arms": equality["equal"],
         "vocabulary_equality": equality,
         "g1_verdict": verdict,

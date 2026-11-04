@@ -10,6 +10,7 @@ import pytest
 from scripts import run_exp0
 from scripts.run_effect_demo import synthetic_demo_report
 from scripts.run_exp0 import (
+    WATCHDOG_RETURNCODE,
     Exp0Plan,
     archive_attempt,
     cell_is_complete,
@@ -17,6 +18,8 @@ from scripts.run_exp0 import (
     gate_mismatches,
     main,
     post_check,
+    run_cell_with_watchdog,
+    wait_for_disk,
 )
 from scripts.run_g1_smoke import cell_paths
 
@@ -132,6 +135,7 @@ def test_dry_run_prints_gate_and_all_cells_without_touching_output(
     assert main([*_base_args(prereg_file, out), "--dry-run"]) == 0
     text = capsys.readouterr().out
     assert "gate: PASS" in text and "cells=6 pending=6" in text
+    assert "would be refused at live run:\n  (nothing)" in text
     assert text.count("[pending]") == 6 and '"DEMO_SENTINEL_SEED": "9001"' in text
     assert '"DEMO_OBSERVER_INTEGRITY_POLICY": "invalid-continue"' in text
     assert not out.exists()
@@ -180,7 +184,7 @@ def _fake_runner(behaviour: dict[str, Any]):
 
     calls: list[str] = []
 
-    def run(cell, output: Path, env: dict[str, str], bash: str) -> CellResult:
+    def run(cell, output: Path, env: dict[str, str], bash: str, **_limits: Any) -> CellResult:
         calls.append(cell.run_id)
         paths = cell_paths(cell, output)
         search = env["DEMO_POLICY"]
@@ -223,7 +227,7 @@ def test_live_run_end_to_end_with_fake_cells_then_idempotent_rerun(
 ) -> None:
     out = tmp_path / "exp0"
     runner = _fake_runner({"abort": {"7.5.2-D-s9002"}})
-    monkeypatch.setattr(run_exp0, "_run_cell", runner)
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", runner)
     monkeypatch.setattr(run_exp0, "_warmup", lambda *a, **k: 0)
     manifest_script = tmp_path / "fake_manifest.py"
     manifest_script.write_text(
@@ -252,6 +256,7 @@ def test_live_run_end_to_end_with_fake_cells_then_idempotent_rerun(
     assert runner.calls == [c.run_id for c in _plan(prereg_file).cells()]  # type: ignore[attr-defined]
     index = json.loads((out / "summaries" / "index.json").read_text())
     assert index["label"][0] == "registered run" and f"engine_sha={SHA}" in index["label"]
+    assert "experiment=exp0" in index["label"] and index["outcomes_redacted"] is False
     assert index["preregistration"]["sha256"] == _plan(prereg_file).preregistration_sha256
     assert index["g1_verdict"]["complete"] == 5 and index["g1_verdict"]["aborts"] == 1
     assert index["vocabulary_equal_across_arms"] is True
@@ -267,7 +272,7 @@ def test_live_run_end_to_end_with_fake_cells_then_idempotent_rerun(
 
     # Rerun: only the aborted cell runs again; its first attempt is archived.
     runner2 = _fake_runner({})
-    monkeypatch.setattr(run_exp0, "_run_cell", runner2)
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", runner2)
     assert main(args) == 0
     assert runner2.calls == ["7.5.2-D-s9002"]  # type: ignore[attr-defined]
     assert list((out / "attempts").glob("7.5.2-D-s9002.attempt1.*"))
@@ -280,7 +285,7 @@ def test_live_run_end_to_end_with_fake_cells_then_idempotent_rerun(
     assert json.loads((out / "registration.json").read_text())["invocations"] == 2
     # A third run has nothing to do.
     runner3 = _fake_runner({})
-    monkeypatch.setattr(run_exp0, "_run_cell", runner3)
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", runner3)
     assert main(args) == 0 and runner3.calls == []  # type: ignore[attr-defined]
 
 
@@ -289,7 +294,7 @@ def test_nonconformant_image_or_sentinel_set_is_invalid_not_complete(
 ) -> None:
     out = tmp_path / "exp0"
     runner = _fake_runner({"image_id": "sha256:" + "cd" * 32})
-    monkeypatch.setattr(run_exp0, "_run_cell", runner)
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", runner)
     monkeypatch.setattr(run_exp0, "_warmup", lambda *a, **k: 0)
     assert main(_base_args(prereg_file, out)) == 1
     index = json.loads((out / "summaries" / "index.json").read_text())
@@ -312,7 +317,7 @@ def test_registration_refuses_a_directory_from_another_registration(
     prereg_file: Path, tmp_path: Path, clean_engine: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     out = tmp_path / "exp0"
-    monkeypatch.setattr(run_exp0, "_run_cell", _fake_runner({}))
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", _fake_runner({}))
     monkeypatch.setattr(run_exp0, "_warmup", lambda *a, **k: 0)
     assert main(_base_args(prereg_file, out)) == 0
     other = tmp_path / "other.md"
@@ -351,3 +356,199 @@ def test_include_s_a_requires_declaration(
     with pytest.raises(SystemExit):
         main([*_base_args(stripped, tmp_path / "x"), "--include-s-a", "--dry-run"])
     assert RdsArm.S_A not in load_preregistration(stripped).arm_policies
+
+
+EXP3_EXTRA = """experiment_id = exp3
+execution_mode = per-case-container
+jobs_max = 2
+campaign_watchdog_seconds = 7200
+disk_pause_fraction = 0.9
+interim_analysis = forbidden
+"""
+
+
+@pytest.fixture
+def exp3_file(tmp_path: Path) -> Path:
+    path = tmp_path / "exp3-main-v1.md"
+    path.write_text(
+        BLOCK.replace(
+            "rule_of_three_unit = campaign\n", "rule_of_three_unit = campaign\n" + EXP3_EXTRA
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_scale_keys_are_parsed_and_label_the_plan(exp3_file: Path) -> None:
+    prereg = load_preregistration(exp3_file)
+    assert prereg.experiment_id == "exp3" and prereg.execution_mode == "per-case-container"
+    assert (prereg.jobs_max, prereg.campaign_watchdog_seconds) == (2, 7200.0)
+    assert (prereg.disk_pause_fraction, prereg.interim_analysis) == (0.9, "forbidden")
+    plan = _plan(exp3_file)
+    assert plan.plan == "exp3" and plan.interim_forbidden
+    assert plan.watchdog_seconds == 7200.0 and plan.disk_pause_fraction == 0.9
+    assert "experiment=exp3" in plan.labels(SHA)
+
+
+@pytest.mark.parametrize(
+    ("line", "wrong", "fragment"),
+    (
+        ("execution_mode = per-case-container", "execution_mode = cloud", "execution_mode"),
+        ("jobs_max = 2", "jobs_max = 0", "jobs_max"),
+        ("campaign_watchdog_seconds = 7200", "campaign_watchdog_seconds = -1", "positive"),
+        ("disk_pause_fraction = 0.9", "disk_pause_fraction = 1.5", "disk_pause_fraction"),
+        ("interim_analysis = forbidden", "interim_analysis = maybe", "interim_analysis"),
+    ),
+)
+def test_scale_keys_fail_closed(exp3_file: Path, line: str, wrong: str, fragment: str) -> None:
+    from inodefence.evaluation.rds_preregistration import (
+        PreregistrationFormatError,
+        parse_preregistration,
+    )
+
+    with pytest.raises(PreregistrationFormatError, match=fragment):
+        parse_preregistration(exp3_file.read_text().replace(line, wrong))
+
+
+def test_scale_gate_jobs_cap_and_execution_mode(
+    exp3_file: Path, tmp_path: Path, clean_engine: None, capsys
+) -> None:
+    plan = _plan(exp3_file)
+    ok: dict[str, Any] = dict(
+        engine_sha=SHA,
+        engine_dirty=False,
+        image_digest=DIGEST,
+        observer_integrity_policy="invalid-continue",
+    )
+    assert gate_mismatches(plan, **ok, jobs=2) == ()
+    assert any(
+        "jobs 3 > preregistered jobs_max 2" in m for m in gate_mismatches(plan, **ok, jobs=3)
+    )
+    args = [*_base_args(exp3_file, tmp_path / "x"), "--jobs", "3", "--dry-run"]
+    assert main(args) == 2
+    out = capsys.readouterr().out
+    assert "gate: FAIL" in out and "- gate: jobs 3 > preregistered jobs_max 2" in out
+    # Execution mode from the flag must match the file; worker-pool is refused when unwired.
+    args = [*_base_args(exp3_file, tmp_path / "y"), "--execution-mode", "worker-pool", "--dry-run"]
+    assert main(args) == 2
+    out = capsys.readouterr().out
+    assert "execution_mode 'worker-pool' != preregistered 'per-case-container'" in out
+
+
+def test_worker_pool_mode_requires_module_and_wiring(
+    exp3_file: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    text = exp3_file.read_text().replace(
+        "execution_mode = per-case-container", "execution_mode = worker-pool"
+    )
+    exp3_file.write_text(text, encoding="utf-8")
+    monkeypatch.setattr(run_exp0, "capture_source", lambda: SourceProvenance(SHA, False))
+    monkeypatch.setattr(run_exp0, "_script_has", lambda variable: variable != "DEMO_EXECUTION_MODE")
+    monkeypatch.setattr(run_exp0, "_worker_pool_module", lambda: None)
+    out = tmp_path / "wp"
+    assert main([*_base_args(exp3_file, out), "--dry-run"]) == 0  # gate passes; wiring is previewed
+    text = capsys.readouterr().out
+    assert "wiring: execution_mode worker-pool needs inodefence.execution.worker_pool" in text
+    assert "DEMO_EXECUTION_MODE" in text and '"DEMO_EXECUTION_MODE": "worker-pool"' in text
+    assert main(_base_args(exp3_file, out)) == 2
+    assert "controller wiring" in capsys.readouterr().err
+
+    class FakePool:
+        CAMPAIGN_WATCHDOG_SECONDS = 123.0
+        DISK_PAUSE_FRACTION = 0.5
+
+        @staticmethod
+        def plan_worker_bringup(run_id: str, env: dict[str, str]):
+            class Plan:
+                pass
+
+            plan = Plan()
+            plan.env = (("RUN_ID", f"s3wp-{run_id}"),)  # type: ignore[attr-defined]
+            return plan
+
+        @staticmethod
+        def should_pause_for_disk(fraction: float, threshold: float) -> bool:
+            return fraction >= threshold
+
+    monkeypatch.setattr(run_exp0, "_worker_pool_module", lambda: FakePool)
+    plan = _plan(exp3_file)
+    plan = Exp0Plan(
+        plan.preregistration,
+        plan.preregistration_path,
+        plan.preregistration_sha256,
+        "7.5.2",
+        False,
+        "worker-pool",
+    )
+    env = exp0_cell_env(plan, plan.cells()[0], out, {})
+    assert env["RUN_ID"] == "s3wp-7.5.2-R-s9001" and env["DEMO_EXECUTION_MODE"] == "worker-pool"
+
+
+def test_interim_forbidden_redacts_index_until_every_cell_is_complete(
+    exp3_file: Path, tmp_path: Path, clean_engine: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    out = tmp_path / "exp3"
+    monkeypatch.setattr(
+        run_exp0, "run_cell_with_watchdog", _fake_runner({"abort": {"7.5.2-S-u-s9002"}})
+    )
+    monkeypatch.setattr(run_exp0, "_warmup", lambda *a, **k: 0)
+    args = [*_base_args(exp3_file, out), "--jobs", "2"]
+    assert main(args) == 1
+    index = json.loads((out / "summaries" / "index.json").read_text())
+    assert index["outcomes_redacted"] is True and index["interim"]["pending_cells"] == 1
+    assert all(
+        "hit" not in c and "t_first" not in c and c["summary"] is None for c in index["cells"]
+    )
+    assert not list((out / "summaries").glob("*.summary.json"))
+    assert index["g1_verdict"]["complete"] == 5  # completion state is still visible
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", _fake_runner({}))
+    assert main(args) == 0
+    index = json.loads((out / "summaries" / "index.json").read_text())
+    assert index["outcomes_redacted"] is False and all("t_first" in c for c in index["cells"])
+    assert len(list((out / "summaries").glob("*.summary.json"))) == 6
+
+
+def test_watchdog_terminates_an_overrunning_cell(tmp_path: Path, prereg_file: Path) -> None:
+    import subprocess
+
+    plan = _plan(prereg_file)
+    cell = plan.cells()[0]
+    events: list[str] = []
+
+    class Hung:
+        def wait(self, timeout=None):
+            if timeout is not None and timeout < 30:
+                events.append(f"wait:{timeout}")
+                raise subprocess.TimeoutExpired("bash", timeout)
+            events.append("wait")
+            return 0
+
+        def terminate(self):
+            events.append("terminate")
+
+        def kill(self):
+            events.append("kill")
+
+    result = run_cell_with_watchdog(
+        cell, tmp_path, {}, "bash", limit_seconds=1.5, popen=lambda *a, **k: Hung()
+    )
+    assert result.returncode == WATCHDOG_RETURNCODE and events[:2] == ["wait:1.5", "terminate"]
+    assert "[watchdog] terminated after 2 s" in (tmp_path / f"{cell.run_id}.log").read_text()
+    assert not result.evidence_exists
+
+
+def test_disk_pause_waits_until_below_threshold(tmp_path: Path) -> None:
+    readings = iter([0.95, 0.93, 0.80])
+    pauses: list[float] = []
+    logs: list[str] = []
+    taken = wait_for_disk(
+        tmp_path,
+        0.9,
+        usage=lambda p: next(readings),
+        pause=pauses.append,
+        poll_seconds=5.0,
+        log=logs.append,
+    )
+    assert taken == 2 and pauses == [5.0, 5.0]
+    assert logs[0].startswith("disk usage at/above 90%") and "resuming" in logs[-1]
+    assert wait_for_disk(tmp_path, 0.9, usage=lambda p: 0.1, pause=pauses.append) == 0

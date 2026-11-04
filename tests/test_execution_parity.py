@@ -12,6 +12,7 @@ from inodefence.effect_campaign import (
 )
 from inodefence.effect_synthetic import synthetic_effect_result
 from inodefence.evaluation.execution_parity import (
+    EXCLUDED_OBJECT_FIELDS,
     CanonicalSnapshot,
     ParityStep,
     ParitySubject,
@@ -113,6 +114,18 @@ def test_canonical_object_drops_identity_and_time_fields() -> None:
     b = _object("extract/f", dev=9, ino=9)  # same structure, different raw identity
     b = replace(b, mtime_ns=999, ctime_ns=999)
     assert canonical_object(a) == canonical_object(b)
+
+
+def test_excluded_object_fields_are_exactly_the_dropped_fields() -> None:
+    from dataclasses import fields as dc_fields
+
+    all_fields = {field.name for field in dc_fields(ObjectSnapshot)}
+    # Every excluded name is a real ObjectSnapshot field, and the canonical tuple keeps
+    # exactly the rest, so adding a field to ObjectSnapshot cannot silently escape parity.
+    assert EXCLUDED_OBJECT_FIELDS <= all_fields
+    assert len(canonical_object(_object("extract/f"))) == len(all_fields) - len(
+        EXCLUDED_OBJECT_FIELDS
+    )
 
 
 def test_canonical_snapshot_excludes_sandbox_root() -> None:

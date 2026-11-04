@@ -29,7 +29,8 @@ format is owned by the runtime abort classifier in another lane. This module
 only reads how many retries a step carried, never why.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
+from enum import Enum
 
 from inodefence.effect_campaign import EffectCampaignResult
 from inodefence.model import canonical_json
@@ -39,6 +40,14 @@ from inodefence.model.isolation import IsolationProvenance
 # Raw per-run object fields that two correct executions are allowed to differ on.
 # Identity numbers are excluded as raw values but retained as a sharing partition.
 EXCLUDED_OBJECT_FIELDS: frozenset[str] = frozenset({"st_dev", "st_ino", "mtime_ns", "ctime_ns"})
+
+# The object fields the parity tuple keeps, in declaration order: everything except
+# the run-specific fields above. Deriving this from the dataclass makes
+# EXCLUDED_OBJECT_FIELDS the single source of what is dropped, so adding a field to
+# ObjectSnapshot shows up in the parity tuple unless it is explicitly excluded here.
+_CANONICAL_OBJECT_FIELDS: tuple[str, ...] = tuple(
+    field.name for field in fields(ObjectSnapshot) if field.name not in EXCLUDED_OBJECT_FIELDS
+)
 
 # Bound on how many per-item differences a dimension spells out, so a wildly
 # divergent pair still produces a readable report instead of an unbounded dump.
@@ -141,18 +150,17 @@ class ParitySubject:
 
 
 def canonical_object(obj: ObjectSnapshot) -> tuple[object, ...]:
-    """A single object's parity tuple: structural fields, no raw identity or time."""
-    return (
-        obj.path,
-        obj.object_type.value,
-        obj.st_nlink,
-        obj.mode,
-        obj.size,
-        obj.uid,
-        obj.gid,
-        obj.symlink_target,
-        obj.content_digest,
-    )
+    """A single object's parity tuple: structural fields, no raw identity or time.
+
+    Built from ``_CANONICAL_OBJECT_FIELDS`` (every ObjectSnapshot field except
+    ``EXCLUDED_OBJECT_FIELDS``). Enum values are reduced to their stable string so
+    the tuple is comparable and JSON-able.
+    """
+    values: list[object] = []
+    for name in _CANONICAL_OBJECT_FIELDS:
+        value = getattr(obj, name)
+        values.append(value.value if isinstance(value, Enum) else value)
+    return tuple(values)
 
 
 def canonical_snapshot(snapshot: StateSnapshot) -> CanonicalSnapshot:

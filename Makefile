@@ -10,7 +10,7 @@ DEMO_OUT ?= $(or $(INODEFENCE_RUNTIME_ROOT),/var/lib/inodefence)/demo/effect-dem
 TAR_VERSION ?= 7.5.2
 HISTORICAL_IMAGE ?= inodefence-node-tar-effect:$(TAR_VERSION)
 
-.PHONY: install target-tools lint format-check typecheck test env-check docs-check check fixtures probe isolation-support node-entry-timing-probe node-tar-smoke node-tar-effect-check demo demo-native demo-synthetic demo-native-historical regression
+.PHONY: install target-tools lint format-check typecheck test env-check docs-check check fixtures probe isolation-support node-entry-timing-probe node-tar-smoke node-tar-effect-check demo demo-native demo-synthetic demo-native-historical regression replay
 
 target-tools:
 	npm ci --prefix tools/node-tar --ignore-scripts --no-audit --no-fund
@@ -94,3 +94,12 @@ demo-native-historical:
 #   make regression TAR_VERSION=7.5.2 REGRESSION_ARGS=--dry-run
 regression:
 	PYTHONPATH=src:. $(PYTHON) scripts/regression_check.py --tar-version $(TAR_VERSION) $(REGRESSION_ARGS)
+
+# Offline replay planner: read a demo report (REPORT=<path>) and reproduce its run
+# command, binding the recorded image recipe to the committed one and checking the
+# recorded case_id sequence. Runs no docker; native re-execution is the Runtime lane.
+replay:
+ifndef REPORT
+	$(error REPORT=<demo-report.json> is required)
+endif
+	PYTHONPATH=src $(PYTHON) -m scripts.replay_report --report $(REPORT)

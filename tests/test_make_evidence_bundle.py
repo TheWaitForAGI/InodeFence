@@ -114,3 +114,16 @@ def test_main_generate_and_verify(tmp_path: Path) -> None:
     out = tmp_path / "m.tar.gz"
     assert main(["--root", str(root), "--host", "t", "--out", str(out)]) == 0
     assert main(["--verify", str(out)]) == 0
+
+
+def test_bundle_self_consistent_after_source_changes(tmp_path: Path) -> None:
+    # Single-pass: the embedded manifest describes the exact archived bytes, so a bundle
+    # stays internally consistent even if the source tree is written after creation
+    # (the live-tree concurrency race that stage-4 of the preservation proof caught).
+    root = _tree(tmp_path)
+    out = tmp_path / "b.tar.gz"
+    create_bundle(root, out, "gz")
+    (root / "a.json").write_text("CHANGED AFTER BUNDLING", encoding="utf-8")
+    (root / "new-during-run.json").write_text("appeared later", encoding="utf-8")
+    result = verify_bundle(out)
+    assert not result.failed and result.mismatched == [] and result.missing == []

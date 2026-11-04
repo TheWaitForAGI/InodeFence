@@ -215,9 +215,12 @@ def _fake_runner(behaviour: dict[str, Any]):
             MutationPolicy(env["DEMO_MUTATION_POLICY"]),
         )
         by_target = behaviour.get("image_id_by_target", {})
-        report["image_id"] = by_target.get(
-            getattr(cell, "target_id", None), behaviour.get("image_id", DIGEST)
-        )
+        if "lock_digest" in behaviour:
+            report["lock_digest"] = behaviour["lock_digest"]
+        else:
+            report["image_id"] = by_target.get(
+                getattr(cell, "target_id", None), behaviour.get("image_id", DIGEST)
+            )
         report["sentinel_set"] = behaviour.get(
             "sentinel_set", {**SENTINEL_SET, "names": ["a", "b", "c"]}
         )

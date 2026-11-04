@@ -415,7 +415,19 @@ is the single source of truth: the launcher refuses the run when the file is mis
 hashes differently, or lists a holdout target. Cells are target × arm × seed with run
 ids `<target_id>-<arm>-s<seed>` and per-target evidence directories; the gate compares
 each cell against the digest supplied for its target (`run_exp0 --target-digest
-ID=sha256:…`, `run_rds_cell --target ID`). Analysis-plan keys are recorded, not
+ID=sha256:…`, `run_rds_cell --target ID`). In-process targets (`extractor =
+python-tarfile`, pinned by `lock_digest`; `inodefence.evaluation.lock_digest` composes
+`sha256:` over `python -VV` + the tarfile.py hash + `uname -sr`, verbatim) run as
+`per-case-subprocess` cells: the launcher runs the host-side
+`scripts/run_python_tarfile_effect_demo.py` with the same `DEMO_*` cell environment
+(`DEMO_EXTRACTOR=python-tarfile`), which binds `PythonTarfileEffectTarget("data")` (the
+producer refuses `fully_trusted` for fuzzed input), writes the same report / steps files
+under `<output>/<target_id>/` and records the top-level `lock_digest` + `lock_material`
+that the post-check compares; a fresh sandbox and subprocess per case means no reset
+verification and no broker/cleanup abort reasons. The wiring probe refuses the live run
+when that script is missing or does not record `lock_digest`, and when an in-process
+target is pinned by `image_digest` (or a container target by `lock_digest`).
+Analysis-plan keys are recorded, not
 compared: `confirmatory_family` (`holdout:S-u-vs-R,S-u-vs-D`; membership is derived from the
 frozen target tags — holdout targets with hypothesis H-A only, at least one required, and
 every registered contrast must use arms that each confirmatory target actually runs — and

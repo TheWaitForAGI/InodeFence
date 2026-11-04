@@ -214,7 +214,10 @@ def _fake_runner(behaviour: dict[str, Any]):
             EffectSearchPolicy(search),
             MutationPolicy(env["DEMO_MUTATION_POLICY"]),
         )
-        report["image_id"] = behaviour.get("image_id", DIGEST)
+        by_target = behaviour.get("image_id_by_target", {})
+        report["image_id"] = by_target.get(
+            getattr(cell, "target_id", None), behaviour.get("image_id", DIGEST)
+        )
         report["sentinel_set"] = behaviour.get(
             "sentinel_set", {**SENTINEL_SET, "names": ["a", "b", "c"]}
         )
@@ -794,3 +797,262 @@ def test_unmeasurable_disk_usage_fails_closed(
     # The pause loop propagates it: no silent skip of the disk guard.
     with pytest.raises(DiskUsageUnavailable):
         wait_for_disk(tmp_path, 0.9)
+
+
+# ---- multi-target registrations (EXP-3 schema + gate) ---------------------------------
+
+DIGEST_B = "sha256:" + "cd" * 32
+LEDGER_TEXT = (
+    "# exposure ledger (fixture)\n\n| extractor | version | exposure_kind |\n| --- | --- | --- |\n"
+    "| node-tar | 7.5.2 | design-input |\n"
+)
+
+
+def _targets_file(tmp_path: Path, *, ledger_sha: str, holdout_version: str = "7.9.9") -> Path:
+    block = BLOCK.replace(f"image_digest = {DIGEST}\n", "").replace(
+        "```preregistration\n",
+        "```preregistration\n"
+        "targets.node-tar-7.5.2.extractor = node-tar\n"
+        "targets.node-tar-7.5.2.version = 7.5.2\n"
+        f"targets.node-tar-7.5.2.image_digest = {DIGEST}\n"
+        "targets.node-tar-7.5.2.role = train\n"
+        "targets.node-tar-7.5.2.hypothesis = H-A\n"
+        "targets.node-tar-7.5.2.exposure = pre-exposed\n"
+        "targets.node-tar-7.5.2.exposure_ref = node-tar@7.5.2\n"
+        f"targets.node-tar-{holdout_version}.extractor = node-tar\n"
+        f"targets.node-tar-{holdout_version}.version = {holdout_version}\n"
+        f"targets.node-tar-{holdout_version}.image_digest = {DIGEST_B}\n"
+        f"targets.node-tar-{holdout_version}.role = holdout\n"
+        f"targets.node-tar-{holdout_version}.hypothesis = H-A\n"
+        f"targets.node-tar-{holdout_version}.exposure = none\n"
+        f"targets.node-tar-{holdout_version}.arms = R, S-u\n"
+        f"targets.node-tar-{holdout_version}.budget = 4\n"
+        "exposure_ledger = exposure-ledger.md\n"
+        f"exposure_ledger_sha256 = {ledger_sha}\n"
+        "confirmatory_family = holdout:S-u-vs-R,S-u-vs-D\n"
+        "confirmatory_test = exact-logrank-permutation-v1\n"
+        "multiplicity = holm-fwer-v1\n"
+        "primary_endpoint = t_first\n"
+        "event_threshold = 5\n",
+    )
+    path = tmp_path / "exp3-targets.md"
+    path.write_text(block, encoding="utf-8")
+    return path
+
+
+def _ledger(tmp_path: Path, text: str = LEDGER_TEXT) -> tuple[Path, str]:
+    import hashlib
+
+    path = tmp_path / "exposure-ledger.md"
+    path.write_text(text, encoding="utf-8")
+    return path, hashlib.sha256(text.encode()).hexdigest()
+
+
+def _target_args(file: Path, out: Path, ledger: Path) -> list[str]:
+    return [
+        "--preregistration",
+        str(file),
+        "--output",
+        str(out),
+        "--target-digest",
+        f"node-tar-7.5.2={DIGEST}",
+        "--target-digest",
+        f"node-tar-7.9.9={DIGEST_B}",
+        "--exposure-ledger",
+        str(ledger),
+        "--observer-integrity-policy",
+        "invalid-continue",
+        "--no-manifest",
+    ]
+
+
+def test_single_key_registration_plans_the_same_cells_as_before(prereg_file: Path) -> None:
+    """EXP-0 v2.1 compatibility: the one-key form is one train target named by its
+    version; run ids, evidence paths and the gate are unchanged."""
+    plan = _plan(prereg_file)
+    assert plan.multi_target is False
+    (target,) = plan.targets()
+    assert (target.target_id, target.extractor, target.version) == ("7.5.2", "node-tar", "7.5.2")
+    assert (target.role, target.hypothesis, target.exposure, target.digest) == (
+        "train",
+        "H-A",
+        "none",
+        DIGEST,
+    )
+    cells = plan.cells()
+    assert [c.run_id for c in cells] == [
+        f"7.5.2-{arm}-s{seed}" for arm in ("R", "D", "S-u") for seed in (9001, 9002)
+    ]
+    assert all(c.subdir is None for c in cells)  # type: ignore[attr-defined]
+    assert cell_paths(cells[0], Path("/out"))["report"].parent == Path("/out")
+    assert (
+        gate_mismatches(
+            plan,
+            engine_sha=SHA,
+            engine_dirty=False,
+            image_digest=DIGEST,
+            observer_integrity_policy="invalid-continue",
+        )
+        == ()
+    )
+    assert plan.analysis_plan()["confirmatory_test"] is None
+
+
+def test_multi_target_plan_cells_gate_and_per_target_evidence_dirs(
+    tmp_path: Path, clean_engine: None
+) -> None:
+    ledger, sha = _ledger(tmp_path)
+    plan = _plan(_targets_file(tmp_path, ledger_sha=sha))
+    assert plan.multi_target
+    assert [t.target_id for t in plan.targets()] == ["node-tar-7.5.2", "node-tar-7.9.9"]
+    cells = plan.cells()
+    ids = [c.run_id for c in cells]
+    assert ids[:6] == [f"node-tar-7.5.2-{a}-s{s}" for a in ("R", "D", "S-u") for s in (9001, 9002)]
+    assert ids[6:] == [f"node-tar-7.9.9-{a}-s{s}" for a in ("R", "S-u") for s in (9001, 9002)]
+    holdout = cells[-1]
+    assert holdout.budget == 4 and holdout.version == "7.9.9"
+    assert holdout.subdir == "node-tar-7.9.9"  # type: ignore[attr-defined]
+    paths = cell_paths(holdout, tmp_path / "out")
+    assert paths["report"].parent == tmp_path / "out" / "node-tar-7.9.9"
+    assert paths["summary"].parent == tmp_path / "out" / "summaries"
+    env = exp0_cell_env(plan, holdout, tmp_path / "out", {})
+    assert env["INODEFENCE_EVIDENCE_DIR"] == str(tmp_path / "out" / "node-tar-7.9.9")
+    assert env["TAR_VERSION"] == "7.9.9" and env["DEMO_BUDGET"] == "4"
+    ledger_state = run_exp0.read_ledger(ledger)
+    ok = gate_mismatches(
+        plan,
+        engine_sha=SHA,
+        engine_dirty=False,
+        image_digest=None,
+        observer_integrity_policy="invalid-continue",
+        target_digests={"node-tar-7.5.2": DIGEST, "node-tar-7.9.9": DIGEST_B},
+        ledger=ledger_state,
+    )
+    assert ok == ()
+    missing = gate_mismatches(
+        plan,
+        engine_sha=SHA,
+        engine_dirty=False,
+        image_digest=None,
+        observer_integrity_policy="invalid-continue",
+        target_digests={"node-tar-7.5.2": DIGEST},
+        ledger=ledger_state,
+    )
+    assert missing == ("target node-tar-7.9.9 image digest not supplied",)
+    wrong = gate_mismatches(
+        plan,
+        engine_sha=SHA,
+        engine_dirty=False,
+        image_digest=None,
+        observer_integrity_policy="invalid-continue",
+        target_digests={"node-tar-7.5.2": DIGEST, "node-tar-7.9.9": DIGEST},
+        ledger=ledger_state,
+    )
+    assert any("target node-tar-7.9.9 image digest" in item for item in wrong)
+    no_ledger = gate_mismatches(
+        plan,
+        engine_sha=SHA,
+        engine_dirty=False,
+        image_digest=None,
+        observer_integrity_policy="invalid-continue",
+        target_digests={"node-tar-7.5.2": DIGEST, "node-tar-7.9.9": DIGEST_B},
+        ledger=(None, None),
+    )
+    assert no_ledger == ("exposure ledger exposure-ledger.md not readable",)
+    assert plan.analysis_plan()["confirmatory_test"] == "exact-logrank-permutation-v1"
+    assert wiring_problems_for(plan) == ()
+
+
+def wiring_problems_for(plan):
+    from scripts.run_exp0 import wiring_problems
+
+    return wiring_problems(plan)
+
+
+def test_holdout_listed_in_the_ledger_is_refused_at_the_gate(tmp_path: Path) -> None:
+    exposed = LEDGER_TEXT + "| node-tar | 7.9.9 | pre-exposed-seed |\n"
+    ledger, sha = _ledger(tmp_path, exposed)
+    plan = _plan(_targets_file(tmp_path, ledger_sha=sha))
+    problems = gate_mismatches(
+        plan,
+        engine_sha=SHA,
+        engine_dirty=False,
+        image_digest=None,
+        observer_integrity_policy="invalid-continue",
+        target_digests={"node-tar-7.5.2": DIGEST, "node-tar-7.9.9": DIGEST_B},
+        ledger=run_exp0.read_ledger(ledger),
+    )
+    assert problems == ("holdout target node-tar-7.9.9 (node-tar 7.9.9) is in the exposure ledger",)
+    stale = gate_mismatches(
+        plan,
+        engine_sha=SHA,
+        engine_dirty=False,
+        image_digest=None,
+        observer_integrity_policy="invalid-continue",
+        target_digests={"node-tar-7.5.2": DIGEST, "node-tar-7.9.9": DIGEST_B},
+        ledger=(LEDGER_TEXT, "0" * 64),
+    )
+    assert stale[0].startswith("exposure ledger sha256 0000")
+
+
+def test_multi_target_dry_run_and_live_run_with_fake_cells(
+    tmp_path: Path, clean_engine: None, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    ledger, sha = _ledger(tmp_path)
+    file = _targets_file(tmp_path, ledger_sha=sha)
+    out = tmp_path / "exp3"
+    args = _target_args(file, out, ledger)
+    assert main([*args, "--dry-run"]) == 0
+    text = capsys.readouterr().out
+    assert "gate: PASS" in text and "target node-tar-7.9.9: node-tar 7.9.9 role=holdout" in text
+    # --image-digest does not apply to a multi-target registration (and vice versa).
+    assert main([*args, "--image-digest", DIGEST, "--dry-run"]) == 2
+    assert main([*args[:4], "--target-digest", "garbage", "--dry-run"]) == 2
+    runner = _fake_runner(
+        {"image_id_by_target": {"node-tar-7.5.2": DIGEST, "node-tar-7.9.9": DIGEST_B}}
+    )
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", runner)
+    monkeypatch.setattr(run_exp0, "_warmup", lambda *a, **k: 0)
+    assert main([*args, "--jobs", "2"]) == 0
+    assert sorted(runner.calls) == sorted(  # type: ignore[attr-defined]
+        c.run_id for c in _plan(file).cells()
+    )
+    assert (out / "node-tar-7.9.9").is_dir() and (out / "node-tar-7.5.2").is_dir()
+    assert list((out / "node-tar-7.9.9").glob("*.json"))
+    index = json.loads((out / "summaries" / "index.json").read_text())
+    assert [t["target_id"] for t in index["targets"]] == ["node-tar-7.5.2", "node-tar-7.9.9"]
+    assert index["targets"][1]["role"] == "holdout" and index["targets"][1]["budget"] == 4
+    assert index["analysis_plan"]["multiplicity"] == "holm-fwer-v1"
+    assert index["analysis_plan"]["event_threshold"] == 5
+    holdout_cells = [c for c in index["cells"] if c["target_id"] == "node-tar-7.9.9"]
+    assert len(holdout_cells) == 4 and all(c["role"] == "holdout" for c in holdout_cells)
+    assert all(c["hypothesis"] == "H-A" and c["budget"] == 4 for c in holdout_cells)
+    assert index["g1_verdict"]["complete"] == 10
+    record = json.loads((out / "summaries" / "node-tar-7.9.9-R-s9001.summary.json").read_text())
+    assert record["target"] == {
+        "target_id": "node-tar-7.9.9",
+        "role": "holdout",
+        "hypothesis": "H-A",
+    }
+    registration = json.loads((out / "registration.json").read_text())
+    assert registration["image_digest"] is None and len(registration["targets"]) == 2
+    matrix = json.loads((out / "matrix.json").read_text())
+    assert {c["target_id"] for c in matrix["cells"]} == {"node-tar-7.5.2", "node-tar-7.9.9"}
+
+
+def test_single_key_index_entries_gain_only_default_target_fields(
+    prereg_file: Path, tmp_path: Path, clean_engine: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    out = tmp_path / "exp0"
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", _fake_runner({}))
+    monkeypatch.setattr(run_exp0, "_warmup", lambda *a, **k: 0)
+    assert main([*_base_args(prereg_file, out), "--jobs", "2"]) == 0
+    index = json.loads((out / "summaries" / "index.json").read_text())
+    assert all(
+        (c["target_id"], c["role"], c["hypothesis"]) == ("7.5.2", "train", "H-A")
+        for c in index["cells"]
+    )
+    assert index["targets"][0]["target_id"] == "7.5.2" and len(index["targets"]) == 1
+    assert not any(
+        p.is_dir() and p.name != "summaries" and p.name != "attempts" for p in out.iterdir()
+    )

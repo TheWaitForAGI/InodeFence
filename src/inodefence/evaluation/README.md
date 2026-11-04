@@ -391,6 +391,28 @@ produce a cell config when the engine HEAD (clean), image digest, seed, budget, 
 sentinel binding differ. `scripts/run_rds_cell.py` is the synthetic-producer entry
 point; the native producer is bound by the runtime lane with the same gate.
 
+Multi-target registrations (EXP-3) declare `targets.<id>.<field>` groups instead of the
+single `image_digest` (the single key is the one-target shorthand: a node-tar train
+target named by its version; declaring both is a format error). Fields: `extractor`,
+`version`, exactly one of `image_digest` (container) / `lock_digest` (in-process:
+sha256 of `python -VV` + the tarfile.py file hash + `uname -sr`; filesystem semantics
+are host-fixed and shared by every arm), `role` train | fix-verification | holdout,
+`hypothesis` H-A | H-B, `exposure` none | pre-exposed (+ `exposure_ref` pointing at a
+ledger row), optional `exclusion_ref`, `arms` (subset of the declared arms) and
+`budget`. An unknown target field is a format error; a holdout target cannot be
+pre-exposed (format error) and requires `exposure_ledger` + `exposure_ledger_sha256`
+— the Evidence-owned ledger (markdown pipe tables with `extractor`/`version` columns)
+is the single source of truth: the launcher refuses the run when the file is missing,
+hashes differently, or lists a holdout target. Cells are target × arm × seed with run
+ids `<target_id>-<arm>-s<seed>` and per-target evidence directories; the gate compares
+each cell against the digest supplied for its target (`run_exp0 --target-digest
+ID=sha256:…`, `run_rds_cell --target ID`). Analysis-plan keys are recorded, not
+compared: `confirmatory_family` (`holdout:S-u-vs-R,S-u-vs-D`), `confirmatory_test`
+(`exact-logrank-permutation-v1` is the confirmatory test at every n — a sparse-event
+family gives p ≈ 1, a correct non-rejection), `multiplicity` (`holm-fwer-v1`),
+`primary_endpoint` (`t_first`; U_viol secondary) and `event_threshold` (an
+underpowered flag, not a switch; the rule-of-three bound is descriptive).
+
 `rds_report.py` builds the same per-cell summary from a controller-path demo report
 (`effect_campaign_report` JSON and/or its `.steps.jsonl`): hits read the per-step
 `oracle` verdicts, `u_viol` the per-step `oracle_fingerprints` (report schema 4; the

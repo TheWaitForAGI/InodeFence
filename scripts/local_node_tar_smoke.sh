@@ -225,6 +225,8 @@ if [ "$MODE" = demo-historical ]; then
   [ -n "${DEMO_BUDGET:-}" ] && DEMO_ARGS+=(--budget "$DEMO_BUDGET")
   [ -n "${DEMO_OBSERVER_INTEGRITY_POLICY:-}" ] &&
     DEMO_ARGS+=(--observer-integrity-policy "$DEMO_OBSERVER_INTEGRITY_POLICY")
+  [ -n "${DEMO_SENTINEL_COUNT:-}" ] && DEMO_ARGS+=(--sentinel-count "$DEMO_SENTINEL_COUNT")
+  [ -n "${DEMO_SENTINEL_SEED:-}" ] && DEMO_ARGS+=(--sentinel-seed "$DEMO_SENTINEL_SEED")
   host --image "$IF_HISTORICAL_IMAGE" --tar-version "$TAR_VERSION" \
     --evidence "$CONTROLLER_EVIDENCE" ${DEMO_ARGS[@]+"${DEMO_ARGS[@]}"} effect-demo-historical
   exit 0
@@ -239,6 +241,8 @@ if [ "$MODE" = demo ]; then
   [ -n "${DEMO_BUDGET:-}" ] && DEMO_ARGS+=(--budget "$DEMO_BUDGET")
   [ -n "${DEMO_OBSERVER_INTEGRITY_POLICY:-}" ] &&
     DEMO_ARGS+=(--observer-integrity-policy "$DEMO_OBSERVER_INTEGRITY_POLICY")
+  [ -n "${DEMO_SENTINEL_COUNT:-}" ] && DEMO_ARGS+=(--sentinel-count "$DEMO_SENTINEL_COUNT")
+  [ -n "${DEMO_SENTINEL_SEED:-}" ] && DEMO_ARGS+=(--sentinel-seed "$DEMO_SENTINEL_SEED")
   host --image "$IF_NODE_IMAGE" --evidence "$CONTROLLER_EVIDENCE" ${DEMO_ARGS[@]+"${DEMO_ARGS[@]}"} effect-demo
   exit 0
 fi

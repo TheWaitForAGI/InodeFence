@@ -29,7 +29,8 @@ _DEFAULT_NAME_LENGTH = 12
 _DEFAULT_SUFFIX = ".dat"
 _DEFAULT_MODE = 0o600
 _CONTENT_PREFIX = b"inodefence generated sentinel "
-_MAX_COUNT = 64
+MAX_SENTINEL_COUNT = 64
+_MAX_COUNT = MAX_SENTINEL_COUNT
 
 
 @dataclass(frozen=True, slots=True)

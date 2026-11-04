@@ -35,6 +35,12 @@ from inodefence.model import (
     ExecutionStatus,
 )
 from inodefence.mutator import MutationPolicy
+from inodefence.runtime import SentinelSpec
+from inodefence.sentinel_set import (
+    MAX_SENTINEL_COUNT,
+    GeneratedSentinelSet,
+    generate_sentinel_set,
+)
 from inodefence.targets.node_tar_effect import (
     NativeEffectProfile,
     NodeTarEffectTarget,
@@ -140,9 +146,20 @@ def synthetic_demo_json(
 
 
 DEMO_ARGUMENTS = ("seed", "budget", "policy", "mutation_policy")
+# The opt-in multi-sentinel flags are restricted to the node-tar effect demos
+# (both go through run_node_tar_effect_case over a disposable sandbox).
+SENTINEL_DEMO_MODES = ("effect-demo", HISTORICAL_DEMO_MODE)
 # Arguments the host broker forwards verbatim to the controller. tar_version is
 # historical-only; the other four are shared by both effect demos.
-DEMO_FORWARDED_ARGUMENTS = (*DEMO_ARGUMENTS, "tar_version", "observer_integrity_policy")
+# historical-only; the four DEMO_ARGUMENTS are shared by both effect demos; the
+# two sentinel flags are the opt-in multi-sentinel set (default: single sentinel).
+DEMO_FORWARDED_ARGUMENTS = (
+    *DEMO_ARGUMENTS,
+    "tar_version",
+    "observer_integrity_policy",
+    "sentinel_count",
+    "sentinel_seed",
+)
 
 
 def add_demo_arguments(parser: argparse.ArgumentParser) -> None:
@@ -165,6 +182,15 @@ def add_demo_arguments(parser: argparse.ArgumentParser) -> None:
             "'stop' (default) aborts the campaign on a successful run with an untrustworthy "
             "trace; 'invalid-continue' keeps the step as validity=invalid and continues"
         ),
+        "--sentinel-count",
+        type=int,
+        help=f"opt-in: number of randomly named external sentinels (1..{MAX_SENTINEL_COUNT}); "
+        "node-tar effect demos only; requires --sentinel-seed (default: one sentinel)",
+    )
+    parser.add_argument(
+        "--sentinel-seed",
+        type=int,
+        help="opt-in: PRNG seed for generated sentinel names; requires --sentinel-count",
     )
 
 
@@ -184,6 +210,15 @@ def check_demo_arguments(parser: argparse.ArgumentParser, args: argparse.Namespa
         HISTORICAL_DEMO_MODE,
     ):
         parser.error("--observer-integrity-policy is restricted to the effect demos")
+    count = getattr(args, "sentinel_count", None)
+    seed = getattr(args, "sentinel_seed", None)
+    if (count is None) != (seed is None):
+        parser.error("--sentinel-count and --sentinel-seed must be given together")
+    if count is not None:
+        if args.mode not in SENTINEL_DEMO_MODES:
+            parser.error("--sentinel-count/--sentinel-seed are restricted to node-tar effect demos")
+        if not 1 <= count <= MAX_SENTINEL_COUNT:
+            parser.error(f"--sentinel-count must be in 1..{MAX_SENTINEL_COUNT}")
 
 
 def demo_options(args: argparse.Namespace) -> dict:
@@ -199,6 +234,32 @@ def demo_options(args: argparse.Namespace) -> dict:
     if getattr(args, "observer_integrity_policy", None) == "invalid-continue":
         options["observer_integrity_continue"] = True
     return options
+
+
+def sentinel_set_from_args(args: argparse.Namespace) -> GeneratedSentinelSet | None:
+    """Build the opt-in generated sentinel set, or None for the default single sentinel.
+
+    Returns None unless both --sentinel-count and --sentinel-seed are set, so a demo
+    run with neither flag keeps the unchanged single-sentinel sandbox byte-for-byte.
+    """
+    count = getattr(args, "sentinel_count", None)
+    seed = getattr(args, "sentinel_seed", None)
+    if count is None or seed is None:
+        return None
+    return generate_sentinel_set(seed, count)
+
+
+def apply_sentinel_set_record(
+    report: dict[str, object], sentinel_set: GeneratedSentinelSet | None
+) -> dict[str, object]:
+    """Record the generated sentinel set (generator seed/count/names) in a report.
+
+    No-op when ``sentinel_set`` is None, so default single-sentinel reports gain no
+    ``sentinel_set`` key and stay identical to before. Mutates and returns ``report``.
+    """
+    if sentinel_set is not None:
+        report["sentinel_set"] = sentinel_set.describe()
+    return report
 
 
 def pinned_node_tar_version(package_json: Path = NODE_TAR_PIN) -> str:
@@ -242,6 +303,7 @@ def native_demo_report(
     mutation_policy: MutationPolicy = MutationPolicy.M1,
     step_sink: Callable[[dict[str, object]], None] | None = None,
     observer_integrity_continue: bool = False,
+    sentinel_set: GeneratedSentinelSet | None = None,
 ) -> dict[str, object]:
     """Run the effect loop on real node-tar (FULL profile); label the result a demo run.
 
@@ -259,9 +321,13 @@ def native_demo_report(
     (`invalid_reason=observer_integrity`) in the report, and the loop continues.
     The snapshot C0/C1/C2 oracle verdict is independent of the trace and is
     recorded either way, so the preregistration hit count is unchanged.
+    `sentinel_set` is the opt-in multi-sentinel set (generator seed, count and
+    randomly generated names); None keeps the unchanged single default sentinel.
+    When set, its specs feed every sandbox and the report records describe().
     """
     if type(budget) is not int or not 1 <= budget <= MAX_NATIVE_BUDGET:
         raise ValueError(f"native demo budget must be in 1..{MAX_NATIVE_BUDGET}")
+    sentinels = sentinel_set.specs if sentinel_set is not None else (SentinelSpec(),)
     config = EffectCampaignConfig(
         random_seed=seed,
         execution_budget=budget,
@@ -281,7 +347,7 @@ def native_demo_report(
         index = len(checks)
         started = perf_counter()
         try:
-            run = run_node_tar_effect_case(case, target)
+            run = run_node_tar_effect_case(case, target, sentinels=sentinels)
         except Exception as error:
             reason = f"{type(error).__module__}.{type(error).__qualname__}: {error}"
             raise NativeDemoAborted(index, case.case_id, reason) from error
@@ -352,6 +418,7 @@ def native_demo_report(
         # Wall-clock values differ per run; keep them apart from the loop record.
         timing={"total_seconds": total, "per_case": timing},
     )
+    apply_sentinel_set_record(report, sentinel_set)
     return report
 
 
@@ -439,6 +506,7 @@ def historical_demo_report(
     mutation_policy: MutationPolicy = HISTORICAL_MUTATION_POLICY,
     step_sink: Callable[[dict[str, object]], None] | None = None,
     observer_integrity_continue: bool = False,
+    sentinel_set: GeneratedSentinelSet | None = None,
 ) -> dict[str, object]:
     """Run the state-aware effect loop on a frozen historical node-tar; label it a demo run.
 
@@ -459,6 +527,7 @@ def historical_demo_report(
     """
     allowed = historical_target_versions()
     _require_historical_request(tar_version, budget, allowed)
+    sentinels = sentinel_set.specs if sentinel_set is not None else (SentinelSpec(),)
     config = EffectCampaignConfig(
         random_seed=seed,
         execution_budget=budget,
@@ -474,7 +543,7 @@ def historical_demo_report(
         index = len(checks)
         started = perf_counter()
         try:
-            run = run_node_tar_effect_case(case, target)
+            run = run_node_tar_effect_case(case, target, sentinels=sentinels)
         except Exception as error:
             reason = f"{type(error).__module__}.{type(error).__qualname__}: {error}"
             raise NativeDemoAborted(index, case.case_id, reason) from error
@@ -546,6 +615,7 @@ def historical_demo_report(
         # Wall-clock values differ per run; keep them apart from the loop record.
         timing={"total_seconds": total, "per_case": timing},
     )
+    apply_sentinel_set_record(report, sentinel_set)
     return report
 
 

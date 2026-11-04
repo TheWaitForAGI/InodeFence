@@ -351,3 +351,77 @@ reconstructs lifecycle/effect/causal evidence from the exact raw frame, verifies
 archive, command, sequence, correlation, flush and final-state bindings, and recomputes the
 normalized feedback keys. `scripts/verify_node_effect_evidence.py` exposes this reader for one
 bundle. Invalid or incomplete streams never return verified evidence.
+
+## R/D/S-u equal-vocabulary cells (H-A, EXP-0)
+
+`rds.py` realizes the research-questions v2 H-A arms on the effect-campaign path
+(`run_effect_campaign`): R (`unretained-walk-v1-uniform-mutation-v1`, variant
+`unretained-seed-restart-v1-uniform-mutation-v1`), D
+(`structure-coverage-v1-uniform-mutation-v1`), S-u
+(`effect-feedback-v2-or-violation-v1-boundary-attempt-v1-uniform-mutation-v1`) and the
+optional S-a ablation (the existing `P3_BOUNDARY_ATTEMPT_GRADIENT`). One
+`VocabularyMode` fixes one `MutationPolicy` for every arm of a cell; the EXP-0 default
+`observed-names` uses `uniform-generic-m1-state-aware-escape-hardlink-fixed-baseline-v1`,
+whose observed-name pool is read once from the seed baseline run's BEFORE snapshot and
+never grows, so the pool cannot depend on the retention policy. All main arms use the
+uniform scheduler and share the P3 boundary-attempt diagnostic channel; only admission
+differs. `RdsCellSummary` (`summary_record` for JSON) carries `t_first`/`t_first_event`
+(first C1 ∨ C2, right-censored at the budget or at the abort point), `u_viol` (unique
+C1/C2 fingerprints), per-contract first indexes, dense signals and the reconstructed
+vocabulary pools. Historical A1/A3full policy IDs are untouched.
+
+`rds_preregistration.py` reads the fenced ```` ```preregistration ```` `key = value`
+block of a committed preregistration file (`engine_sha`, `image_digest`, `seeds`,
+`budget`, `vocabulary`, `arm.R`/`arm.D`/`arm.S-u`, optional `arm.S-a`,
+`sentinel_generator_id`/`sentinel_generator_seed`/`sentinel_count`) and refuses to
+produce a cell config when the engine HEAD (clean), image digest, seed, budget, arm or
+sentinel binding differ. `scripts/run_rds_cell.py` is the synthetic-producer entry
+point; the native producer is bound by the runtime lane with the same gate.
+
+`rds_report.py` builds the same per-cell summary from a controller-path demo report
+(`effect_campaign_report` JSON and/or its `.steps.jsonl`): hits read the per-step
+`oracle` verdicts, `u_viol` the recorded `new_violation_fingerprints` (hit steps whose
+trace was not feedback-eligible carry no fingerprint and are counted separately as
+`unfingerprinted_hit_steps`), and the vocabulary pools are reconstructed from the
+additive per-step `name_segments` record. `scripts/run_g1_smoke.py` plans the G1 cells
+(R/D/S-u × seeds × budget 50) through `scripts/local_node_tar_smoke.sh demo-historical`
+with the existing `--policy`/`--mutation-policy` selection, writes
+`<output>/summaries/<run_id>.summary.json` + `index.json`, asserts
+`vocabulary_equal_across_arms` per seed from the recorded pools, and labels everything
+`demo run` / `unregistered G1 smoke` (preregistration gate off). `--dry-run` prints the
+commands and paths without Docker; `--summarize-only` rebuilds the summaries. Each summary file also carries
+`timing` (wall-clock, per-step full-step seconds, p50/p95/max, exec/h, declared
+`execution_mode`), `environment` (host, docker server version from the cell log, image id
+passthrough; unknown values are `null`) and the `config_nonconformant` invalid bucket.
+The preregistration gate compares, when declared, `observer_integrity_policy` and the
+rule keys (`hit_definition`, `c0_counts_as_hit`, `denominator`, `abort_reporting`,
+`rule_of_three_unit`) against the rules this engine implements; unknown keys are only
+warned about.
+
+`scripts/run_exp0.py` is the registered-run launcher: it takes one committed
+preregistration file, passes every planned cell through the gate (engine HEAD clean,
+image digest, seeds, budget, arm policy IDs, observer-integrity policy, sentinel
+generator and the rule keys), runs seeds × R/D/S-u (+ declared S-a) × budget through the
+same controller path as the G1 driver, labels outputs `registered run` with the file
+name, its SHA-256 and the engine SHA, skips cells already complete and conformant on
+a rerun (earlier attempts go to `attempts/`), marks reports whose image id or sentinel
+set differ from the registration as invalid, and calls `make_raw_manifest` afterwards.
+The launcher reads the experiment-scale keys when the file declares them
+(`experiment_id`, `execution_mode` per-case-container or worker-pool via lane 4's
+`inodefence.execution.worker_pool` imported lazily, `jobs_max`,
+`campaign_watchdog_seconds`, `disk_pause_fraction`, `interim_analysis`): a cell past the
+watchdog is terminated and reruns later, new cells wait while the output filesystem is
+at least the pause fraction full, and with `interim_analysis = forbidden` the index
+carries completion state only (no hit/T_first fields, no summary files) until every
+planned cell has a final terminal state (complete, or an abort record marked final with
+`--finalize-abort RUN_ID[=NOTE]` — the manual classification step until #203's reason
+classifier automates it) and the evidence passed the integrity checks (report/steps
+files present, steps file a prefix of the report steps, raw manifest generated and
+re-verified via the manifest script's `--verify`; `manifest-verification.json`). Then the
+outcomes are published with aborted cells right-censored at their abort point and kept
+in the denominator (the preregistered abort rule); a final abort is never re-run, and
+an unattempted or in-progress cell, a pending abort, an integrity problem or a failed
+manifest verification keep the outcomes redacted with the reasons listed in
+`index.json` (`interim.reasons`). `--preregistration-commit` records (never compares)
+the commit that registered the file next to the engine SHA and the file's SHA-256.
+`--dry-run` lists what a live run would refuse (gate and wiring).

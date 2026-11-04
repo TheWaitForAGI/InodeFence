@@ -279,3 +279,52 @@ def test_seed_records_from_rows_default_and_custom_field_map():
         },
     )
     assert custom[0] == SeedRecord(9, 100, "complete", 10)
+
+
+def test_holm_adjust_reference():
+    from inodefence.evaluation.survival import holm_adjust
+
+    # [0.01, 0.04], m=2: [2*0.01, max(0.02, 1*0.04)] = [0.02, 0.04]
+    assert holm_adjust([0.01, 0.04]) == pytest.approx([0.02, 0.04])
+    assert holm_adjust([0.04, 0.01]) == pytest.approx([0.04, 0.02])  # input order preserved
+    assert holm_adjust([0.5, 0.6]) == pytest.approx([1.0, 1.0])  # monotone + capped
+    assert holm_adjust([0.03]) == pytest.approx([0.03])
+    assert holm_adjust([]) == []
+
+
+def test_seed_block_logrank_permutation_no_events_is_p1():
+    from inodefence.evaluation.survival import seed_block_logrank_permutation
+
+    blocks = [(Observation(100, False), Observation(100, False)) for _ in range(3)]
+    r = seed_block_logrank_permutation(blocks)
+    assert r["exact"] is True and r["total_events"] == 0
+    assert r["observed_chi_square"] == 0.0 and r["p_value"] == 1.0
+
+
+def test_seed_block_logrank_permutation_exact_separated():
+    from inodefence.evaluation.survival import seed_block_logrank_permutation
+
+    # 4 seeds, arm_a hits@10 / arm_b censored@100: observed is max separation; only the all-a
+    # and all-b label assignments tie it -> p = 2/16 = 0.125.
+    blocks = [(Observation(10, True), Observation(100, False)) for _ in range(4)]
+    r = seed_block_logrank_permutation(blocks)
+    assert r["exact"] is True and r["number_permutations"] == 16
+    assert r["total_events"] == 4 and r["observed_chi_square"] > 0
+    assert r["p_value"] == pytest.approx(0.125)
+
+
+def test_seed_block_logrank_permutation_mc_seed_reproducible():
+    from inodefence.evaluation.survival import seed_block_logrank_permutation
+
+    blocks = [(Observation(10, True), Observation(100, False)) for _ in range(5)]
+    a = seed_block_logrank_permutation(blocks, seed=7, max_exact_blocks=3, resamples=4000)
+    b = seed_block_logrank_permutation(blocks, seed=7, max_exact_blocks=3, resamples=4000)
+    assert a["exact"] is False and "p_value_mc_ci95" in a
+    assert a["p_value"] == b["p_value"]  # seed-fixed: reproducible
+
+
+def test_seed_block_logrank_permutation_empty():
+    from inodefence.evaluation.survival import seed_block_logrank_permutation
+
+    r = seed_block_logrank_permutation([])
+    assert r["p_value"] is None and r["number_blocks"] == 0

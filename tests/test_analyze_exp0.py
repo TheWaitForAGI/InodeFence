@@ -7,6 +7,7 @@ from scripts.analyze_exp0 import (
     _DEFAULT_FIELD_MAP,
     CellSummary,
     InvalidCell,
+    build_multitarget_report,
     build_report,
     cell_from_row,
     main,
@@ -604,3 +605,89 @@ def test_index_entries_skips_targets_metadata_list(tmp_path, capsys):
     assert main(["--index", str(index), "--format", "json"]) == 0
     report = json.loads(capsys.readouterr().out)
     assert report["number_cells"] == 4  # resolved the 4-cell list, not the 2-entry targets[]
+
+
+_SU_HIT = {"t_first": 20, "t_first_event": 1, "first_c1": 20, "hit_steps": 1}
+
+
+def _mt_cell(arm, seed, target_id, role, **over):
+    """A CellSummary tagged with target_id/role via the index entry (as cell_from_row reads it)."""
+    rec = _rec(arm=arm, random_seed=seed, **over)
+    entry = {"target_id": target_id, "role": role, "hypothesis": "H-A", "summary": "x"}
+    return cell_from_row({"summary": rec}, DEFAULT_MAP, entry=entry)
+
+
+def test_confirmatory_permutation_and_holm():
+    # holdout target h, R/D/S-u x 3 seeds, S-u hits@20 each; R/D censored. Perfect separation
+    # at n=3 still gives permutation p=2/8=0.25 (underpowered), Holm on [.25,.25]=[.5,.5].
+    cells = []
+    for s in (1, 2, 3):
+        cells += [
+            _mt_cell("S-u", s, "h", "holdout", **_SU_HIT),
+            _mt_cell("R", s, "h", "holdout"),
+            _mt_cell("D", s, "h", "holdout"),
+        ]
+    plan = {
+        "confirmatory_contrasts": [
+            {"order": 1, "target_id": "h", "arm_a": "S-u", "arm_b": "R", "contrast": "S-u-vs-R"},
+            {"order": 2, "target_id": "h", "arm_a": "S-u", "arm_b": "D", "contrast": "S-u-vs-D"},
+        ],
+        "event_threshold": 5,
+        "multiplicity": "holm-fwer-v1",
+        "primary_endpoint": "t_first",
+        "confirmatory_test": "exact-logrank-permutation-v1",
+        "confirmatory_targets": ["h"],
+    }
+    report = build_multitarget_report(
+        cells, analysis_plan=plan, field_map=DEFAULT_MAP, sources=["t"]
+    )
+    conf = report["confirmatory"]
+    assert conf["classification"] == "confirmatory-holm-fwer"
+    cr = conf["contrasts"]
+    assert [c["contrast"] for c in cr] == ["S-u-vs-R", "S-u-vs-D"]
+    assert all(c["number_seed_blocks"] == 3 and c["total_events"] == 3 for c in cr)
+    assert all(c["permutation"]["p_value"] == pytest.approx(0.25) for c in cr)
+    assert all(c["holm_adjusted_p"] == pytest.approx(0.5) for c in cr)
+    assert all(c["reject_at_alpha"] is False for c in cr)
+    # events 3 < threshold 5 -> underpowered + descriptive rule-of-three (6 cells in the contrast)
+    assert all(c["underpowered"] is True for c in cr)
+    assert cr[0]["rule_of_three_upper95"] == pytest.approx(0.5)  # 3 / 6
+
+
+def test_build_multitarget_confirmatory_is_none_without_plan():
+    cells = [
+        _mt_cell("R", 1, "a", "train"),
+        _mt_cell("S-u", 1, "a", "train"),
+        _mt_cell("R", 1, "b", "holdout"),
+        _mt_cell("S-u", 1, "b", "holdout"),
+    ]
+    report = build_multitarget_report(
+        cells, analysis_plan=None, field_map=DEFAULT_MAP, sources=["t"]
+    )
+    assert report["confirmatory"] is None
+
+
+def test_confirmatory_renders_in_markdown():
+    cells = []
+    for s in (1, 2, 3):
+        cells += [
+            _mt_cell("S-u", s, "h", "holdout", **_SU_HIT),
+            _mt_cell("R", s, "h", "holdout"),
+        ]
+    plan = {
+        "confirmatory_contrasts": [
+            {"order": 1, "target_id": "h", "arm_a": "S-u", "arm_b": "R", "contrast": "S-u-vs-R"},
+        ],
+        "event_threshold": 5,
+        "multiplicity": "holm-fwer-v1",
+        "primary_endpoint": "t_first",
+        "confirmatory_test": "exact-logrank-permutation-v1",
+        "confirmatory_targets": ["h"],
+    }
+    report = build_multitarget_report(
+        cells, analysis_plan=plan, field_map=DEFAULT_MAP, sources=["t"]
+    )
+    from scripts.analyze_exp0 import report_markdown
+
+    md = report_markdown(report)
+    assert "Confirmatory result" in md and "S-u-vs-R" in md

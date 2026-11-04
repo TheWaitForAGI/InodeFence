@@ -58,6 +58,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--preregistration", type=Path)
     parser.add_argument("--image-digest", help="sha256:<64 hex>; required with --preregistration")
     parser.add_argument(
+        "--target",
+        default=None,
+        help="target id of a multi-target registration (its digest goes in --image-digest)",
+    )
+    parser.add_argument(
         "--observer-integrity-policy",
         choices=("stop", "invalid-continue"),
         help="the controller policy the run is launched with; compared when preregistered",
@@ -89,6 +94,7 @@ def main(argv: list[str] | None = None) -> int:
                     source.dirty,
                     args.image_digest,
                     observer_integrity_policy=args.observer_integrity_policy,
+                    target_id=args.target,
                 ),
             )
             if preregistration.unknown_keys:

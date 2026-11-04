@@ -391,6 +391,15 @@ produce a cell config when the engine HEAD (clean), image digest, seed, budget, 
 sentinel binding differ. `scripts/run_rds_cell.py` is the synthetic-producer entry
 point; the native producer is bound by the runtime lane with the same gate.
 
+`scripts/freeze_preregistration.py` turns a draft into the frozen file with no hand
+editing: it replaces exactly the `key = TBD-FREEZE` lines inside the block
+(`--engine-sha HEAD|<sha>`, `--image-digest docker:<image>|sha256:…`,
+`--sentinel-generator-seed`, `--set KEY=VALUE` for any other token), proves every
+other byte unchanged, refuses when a token is left or a non-token line is named,
+parses the result and prints the gate preview (format, engine SHA vs HEAD, clean
+checkout, plan), the unified diff and the SHA-256 of the frozen bytes; `--check`
+only inspects. It never commits (the Evidence lane opens the freeze PR).
+
 Multi-target registrations (EXP-3) declare `targets.<id>.<field>` groups instead of the
 single `image_digest` (the single key is the one-target shorthand: a node-tar train
 target named by its version; declaring both is a format error). Fields: `extractor`,

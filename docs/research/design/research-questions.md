@@ -78,7 +78,7 @@ effectiveness 주장이 아니다.
 | ② | S > R이나 S ≈ D | 피드백 **일반** 효과만(identity 특정 효과 미입증) |
 | ③ | 탐색 지표(새 state key 등)는 다르나 위반은 동등 | 보안 이득 미입증(EN-008) |
 | ④ | 알려진 클래스만 발견 | 정상(D007: zero-day는 성공 조건 아님) |
-| ⑤ | 전 arm 위반 0 | 미관찰로 보고·분모 명시·rule of three 상한 |
+| ⑤ | 전 arm 위반 0 | 미관찰로 보고·분모 명시·rule of three 상한(캠페인 단위 참고 상한일 뿐, 판정 입력 아님) |
 | ⑥ | extractor 간 불일치 | oracle 일반성(H-B)과 피드백 일반성(H-A)을 분리해 보고 |
 | ⑦ | S의 비용 과다 | 실행 수 외에 시간 정규화 지표 병기 |
 | ⑧ | S ≤ R | **반증** |
@@ -88,7 +88,8 @@ effectiveness 주장이 아니다.
 - 동일 어휘·seed·이미지(digest)·oracle·operator 선택(uniform). 세 arm은 retention 정책 외 어떤 것도 다르지 않다.
 - **사전등록 뒤 변경 금지.** 지표·예산·hit 정의·분모 규칙은 `experiments/preregistration/`에 커밋된 뒤 바꾸지
   않는다. 수정은 새 버전 파일로만.
-- 검정력은 EXP-0 파일럿 **실측**(abort율·hazard proxy)에서 산출하고 그 값으로 EXP-3 규모를 고정한다.
+- 검정력은 EXP-0 파일럿 **실측**(검정력 입력은 dense 중간상태 신호·처리량·abort율)에서 산출하고 그 값으로
+  EXP-3 규모를 고정한다. hazard proxy는 **참고값으로만 기록하며 검정력·판정 입력이 아니다**(사전등록 v2 (a)·(b)).
 - 새 state key 수·fingerprint 수는 **탐색 거동 설명용**일 뿐 effectiveness 척도가 아니다(EN-008).
 - 분모는 항상 abort 포함 여부를 명시하고, abort는 우측중도절단으로 보고한다.
 - Paired seed, 독립 반복, negative/invalid 결과를 보존한다. 결과를 본 뒤 방법을 바꾸지 않는다.

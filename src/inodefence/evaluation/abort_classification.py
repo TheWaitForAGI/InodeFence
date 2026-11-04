@@ -25,8 +25,11 @@ Category boundaries (disjoint by design; agreed with the observer and worker-poo
 ----------------------------------------------------------------------------------------
 The decisive split: a *trustworthy run happened* (target executed SUCCESS and a
 transport frame was captured) but the observation evidence failed integrity ->
-``observer_integrity`` (observer lane owns it, never retried). Otherwise the failure
-is on the harness/runtime side -> broker / cleanup_* (worker-pool lane may retry).
+``observer_integrity`` (observer lane owns it, never retried). A state-observer
+``ObservationError`` during before/after capture also classifies as
+``observer_integrity`` (its observation_capture sub-reason), not as an infra abort.
+Otherwise the failure is on the harness/runtime side -> broker / cleanup_* (the
+worker-pool lane may retry).
 ``rejected`` / ``failed`` / ``timed_out`` target outcomes are *results*, not aborts,
 and are never recorded as invalid.
 
@@ -121,6 +124,11 @@ _SIGNATURES: tuple[tuple[str, InvalidReason], ...] = (
     ("container removal could not be verified", InvalidReason.CLEANUP_REMOVE),
     ("refusing to remove a container owned by another invocation", InvalidReason.CLEANUP_REMOVE),
     ("evidence integrity failed", InvalidReason.OBSERVER_INTEGRITY),
+    # A state-observer ObservationError during before/after capture: the target ran
+    # but the observer (not the reader) failed, so the evidence is untrustworthy. The
+    # producer wraps it as "<module>.ObservationError: <msg>", so the type name is
+    # present. The observer lane records the observation_capture sub-reason.
+    ("ObservationError", InvalidReason.OBSERVER_INTEGRITY),
 )
 
 

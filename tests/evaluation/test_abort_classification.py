@@ -52,6 +52,11 @@ _WRAP = "inodefence.execution.base.BackendError: "
             InvalidReason.OBSERVER_INTEGRITY,
         ),
         ("evidence integrity failed(malformed_identity)", InvalidReason.OBSERVER_INTEGRITY),
+        # state-observer ObservationError (wrapped form): observer-side, not infra
+        (
+            "inodefence.observer.snapshot.ObservationError: cannot observe outside/x",
+            InvalidReason.OBSERVER_INTEGRITY,
+        ),
         # other (named by code but not an infra-recoverable class)
         ("image node-tar 7.5.2 differs from repository pin 7.5.22", InvalidReason.OTHER),
         ("node-tar execution identity changed after setup", InvalidReason.OTHER),
@@ -116,6 +121,10 @@ def test_is_infrastructure_abort() -> None:
     # observer_integrity is explicitly NOT an infrastructure (retry-eligible) abort.
     assert not is_infrastructure_abort("evidence integrity failed after target success: {}")
     assert not is_infrastructure_abort("node-tar execution identity changed after setup")
+    # state-observer ObservationError is observer-side, never retried.
+    assert not is_infrastructure_abort(
+        "inodefence.observer.snapshot.ObservationError: cannot open sandbox: x"
+    )
     assert not is_infrastructure_abort("")
 
 

@@ -73,6 +73,7 @@ _DEFAULT_FIELD_MAP = {
     "rejected_executions": "rejected_executions",
     "observation_failures": "observation_failures",
     "u_viol": "u_viol",
+    "u_viol_c0": "u_viol_c0",
 }
 
 # Wrapper top-level keys (outside the inner "summary" object), from lane 5's schema.
@@ -87,7 +88,9 @@ _TIMING_WALL = "wall_seconds"
 _TIMING_STEPS = "step_wall_seconds"
 _TIMING_MODE = "execution_mode"
 _TIMING_EXEC_PER_HOUR = "exec_per_hour"
+_TIMING_RUNNER_P50 = "full_step_seconds_p50"
 _TIMING_RUNNER_P95 = "full_step_seconds_p95"
+_TIMING_RUNNER_MAX = "full_step_seconds_max"
 
 
 @dataclass(frozen=True, slots=True)
@@ -126,12 +129,15 @@ class CellSummary:
     rejected_executions: int
     observation_failures: int
     u_viol: int
+    u_viol_c0: int
     unfingerprinted_hit_steps: int
     wall_clock_seconds: float | None
     full_step_durations: tuple[float, ...] | None
     execution_mode: str | None
     runner_exec_per_hour: float | None
+    runner_p50_seconds: float | None
     runner_p95_seconds: float | None
+    runner_max_seconds: float | None
     environment: Mapping[str, object] | None
 
     def __post_init__(self) -> None:
@@ -236,7 +242,9 @@ def cell_from_row(
     wall = _timing_value(timing, _TIMING_WALL)
     mode = _timing_value(timing, _TIMING_MODE)
     runner_eph = _timing_value(timing, _TIMING_EXEC_PER_HOUR)
+    runner_p50 = _timing_value(timing, _TIMING_RUNNER_P50)
     runner_p95 = _timing_value(timing, _TIMING_RUNNER_P95)
+    runner_max = _timing_value(timing, _TIMING_RUNNER_MAX)
     environment = row.get(_ENVIRONMENT_KEY) if has_wrapper else None
     abort_reason = _get(inner, field_map, "abort_reason")
 
@@ -260,12 +268,15 @@ def cell_from_row(
         rejected_executions=int(_get(inner, field_map, "rejected_executions")),  # type: ignore[arg-type]
         observation_failures=int(_get(inner, field_map, "observation_failures") or 0),  # type: ignore[arg-type]
         u_viol=int(_get(inner, field_map, "u_viol") or 0),  # type: ignore[arg-type]
+        u_viol_c0=int(_get(inner, field_map, "u_viol_c0") or 0),  # type: ignore[arg-type]
         unfingerprinted_hit_steps=int(row.get(_UNFINGERPRINTED_KEY) or 0) if has_wrapper else 0,  # type: ignore[arg-type]
         wall_clock_seconds=None if wall is None else float(wall),  # type: ignore[arg-type]
         full_step_durations=None if durations is None else tuple(float(v) for v in durations),
         execution_mode=None if mode is None else str(mode),
         runner_exec_per_hour=None if runner_eph is None else float(runner_eph),  # type: ignore[arg-type]
+        runner_p50_seconds=None if runner_p50 is None else float(runner_p50),  # type: ignore[arg-type]
         runner_p95_seconds=None if runner_p95 is None else float(runner_p95),  # type: ignore[arg-type]
+        runner_max_seconds=None if runner_max is None else float(runner_max),  # type: ignore[arg-type]
         environment=environment if isinstance(environment, dict) else None,
     )
 
@@ -335,8 +346,12 @@ def _p95_full_step(cells: Sequence[CellSummary]) -> dict:
                 "seed": cell.seed,
                 "arm": cell.arm,
                 "number_steps": len(durations),
+                "p50_seconds": _percentile(durations, 0.50),
                 "p95_seconds": _percentile(durations, 0.95),
+                "max_seconds": max(durations) if durations else None,
+                "runner_p50_seconds": cell.runner_p50_seconds,
                 "runner_p95_seconds": cell.runner_p95_seconds,
+                "runner_max_seconds": cell.runner_max_seconds,
             }
         )
     return {
@@ -344,7 +359,12 @@ def _p95_full_step(cells: Sequence[CellSummary]) -> dict:
         "unit": "seconds",
         "method": "nearest-rank percentile",
         "per_cell": per_cell,
-        "pooled": {"number_steps": len(pooled), "p95_seconds": _percentile(pooled, 0.95)},
+        "pooled": {
+            "number_steps": len(pooled),
+            "p50_seconds": _percentile(pooled, 0.50),
+            "p95_seconds": _percentile(pooled, 0.95),
+            "max_seconds": max(pooled) if pooled else None,
+        },
     }
 
 
@@ -462,6 +482,7 @@ def _dense_signals(cells: Sequence[CellSummary]) -> dict:
         boundary_total = sum(c.boundary_attempt_keys for c in valid)
         rejected = sum(c.rejected_executions for c in valid)
         u_viol_total = sum(c.u_viol for c in valid)
+        u_viol_c0_total = sum(c.u_viol_c0 for c in valid)
         per_arm[arm] = {
             "number_cells_in_denominator": len(valid),
             "boundary_attempt_keys": {
@@ -477,6 +498,10 @@ def _dense_signals(cells: Sequence[CellSummary]) -> dict:
             "u_viol": {
                 "total_unique_c1_c2_fingerprints": u_viol_total,
                 "mean_per_cell": u_viol_total / len(valid) if valid else None,
+            },
+            "u_viol_c0": {
+                "total_unique_c0_fingerprints": u_viol_c0_total,
+                "mean_per_cell": u_viol_c0_total / len(valid) if valid else None,
             },
             "unfingerprinted_hit_steps_total": sum(c.unfingerprinted_hit_steps for c in valid),
         }

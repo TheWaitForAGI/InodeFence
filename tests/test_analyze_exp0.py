@@ -358,3 +358,45 @@ def test_build_report_counts_valid_and_invalid():
     assert report["number_valid_cells"] == 1 and report["number_invalid_cells"] == 1
     assert report["item1_aborts"]["by_arm"]["R"]["number_invalid_nonconformant"] == 1
     assert report["item1_aborts"]["by_arm"]["R"]["number_cells"] == 2
+
+
+# --- lane 5 additive fields: u_viol_c0 + full_step p50/max ------------------------
+
+
+def test_p50_max_and_runner_passthrough_in_item2():
+    cell = cell_from_row(
+        _wrap(
+            _rec(arm="R", random_seed=9001),
+            timing={
+                "wall_seconds": 3600.0,
+                "step_wall_seconds": [1.0, 2.0, 3.0, 4.0],
+                "execution_mode": "per-case-container",
+                "full_step_seconds_p50": 2.0,
+                "full_step_seconds_p95": 4.0,
+                "full_step_seconds_max": 4.0,
+            },
+        ),
+        DEFAULT_MAP,
+    )
+    report = build_report([cell], field_map=DEFAULT_MAP, sources=["t"])
+    pc = report["item2_p95_full_step"]["per_cell"][0]
+    # nearest-rank p50 of [1,2,3,4] = ceil(0.5*4)=2 -> ordered[1] = 2.0
+    assert pc["p50_seconds"] == 2.0 and pc["p95_seconds"] == 4.0 and pc["max_seconds"] == 4.0
+    assert pc["runner_p50_seconds"] == 2.0 and pc["runner_max_seconds"] == 4.0
+    pooled = report["item2_p95_full_step"]["pooled"]
+    assert pooled["p50_seconds"] == 2.0 and pooled["max_seconds"] == 4.0
+
+
+def test_u_viol_c0_in_dense_signals():
+    rows = [
+        _rec(arm="S-u", random_seed=9001, u_viol=2, u_viol_c0=5),
+        _rec(arm="S-u", random_seed=9002, u_viol=0, u_viol_c0=3),
+    ]
+    cells = [cell_from_row(r, DEFAULT_MAP) for r in rows]
+    dense = build_report(cells, field_map=DEFAULT_MAP, sources=["t"])["item6_dense_signals"][
+        "by_arm"
+    ]["S-u"]
+    assert dense["u_viol_c0"]["total_unique_c0_fingerprints"] == 8
+    assert dense["u_viol_c0"]["mean_per_cell"] == 4.0
+    # the existing C1/C2 u_viol is unchanged
+    assert dense["u_viol"]["total_unique_c1_c2_fingerprints"] == 2

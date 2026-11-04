@@ -245,10 +245,16 @@ class ResettingProducer:
     sleep: Callable[[float], None] = time.sleep
     rng: random.Random = field(default_factory=random.Random)
     _retry_log: dict[str, tuple[InfraRetry, ...]] = field(default_factory=dict, init=False)
+    _reset_observations: list[ResetObservation] = field(default_factory=list, init=False)
 
     def retries_for(self, case_id: str) -> tuple[InfraRetry, ...]:
         """The infra retries that preceded the successful run of ``case_id`` (else ())."""
         return self._retry_log.get(case_id, ())
+
+    @property
+    def reset_observations(self) -> tuple[ResetObservation, ...]:
+        """The clean post-run reset observation of each completed case, in order."""
+        return tuple(self._reset_observations)
 
     def __call__(self, case: ArchiveCase) -> EffectRunResult:
         retries: list[InfraRetry] = []
@@ -290,6 +296,7 @@ class ResettingProducer:
             return (reason, None)
         observation = self.reset_observer.observe()
         if observation.clean:
+            self._reset_observations.append(observation)
             return result
         return (InvalidReason.CLEANUP_RESET, observation.detail)
 
@@ -297,3 +304,44 @@ class ResettingProducer:
         """Full-jitter wait in ``[0, min(cap, base * 2**attempt)]`` from the worker RNG."""
         ceiling = min(self.backoff_cap, self.backoff_base * (2**attempt))
         self.sleep(self.rng.uniform(0.0, ceiling))
+
+
+@dataclass(frozen=True, slots=True)
+class NoRecycleWorker(WorkerHandle):
+    """In-controller worker handle: the campaign loop runs inside this controller, so a
+    recoverable infra retry (cleanup_*) re-runs the case on a fresh per-case sandbox and
+    the controller is never torn down from within. ``recycle`` is therefore a no-op.
+    """
+
+    name: str = "in-controller"
+
+    @property
+    def worker_id(self) -> str:
+        return self.name
+
+    def recycle(self) -> None:
+        return None
+
+
+@dataclass(slots=True)
+class ResetObservingProducer:
+    """Baseline per-case wrapper: record the post-run reset observation, never retry.
+
+    The existing per-case path aborts (right-censors) on any failure; this keeps that
+    exactly (an exception from ``inner`` propagates unchanged) and only observes the
+    reset after each successful case, so the baseline emits the same reset evidence as
+    the worker-pool path for an even-handed parity comparison.
+    """
+
+    inner: Callable[[ArchiveCase], EffectRunResult]
+    reset_observer: ResetObserver
+    _reset_observations: list[ResetObservation] = field(default_factory=list, init=False)
+
+    @property
+    def reset_observations(self) -> tuple[ResetObservation, ...]:
+        return tuple(self._reset_observations)
+
+    def __call__(self, case: ArchiveCase) -> EffectRunResult:
+        result = self.inner(case)
+        self._reset_observations.append(self.reset_observer.observe())
+        return result

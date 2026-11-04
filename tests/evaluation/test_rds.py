@@ -32,10 +32,14 @@ from inodefence.model import (
     ArchiveEntry,
     ContractId,
     EffectRunResult,
+    EffectStreamCompleteness,
+    EffectTargetTermination,
     EntryType,
     ExecutionResult,
     ExecutionStatus,
     ObjectSnapshot,
+    ObservationFailure,
+    ObservationFailureKind,
     RunResult,
     SnapshotPhase,
     StateSnapshot,
@@ -355,6 +359,7 @@ def test_summary_first_hit_is_one_based_execution_count_and_u_viol_dedups() -> N
     assert (summary.t_first, summary.t_first_event, summary.t_first_censored) == (8, 1, False)
     assert summary.hit_steps == 3
     assert summary.u_viol == 2  # one C2 class (seen twice) + one C1 class
+    assert summary.u_viol_feedback == 2 and summary.u_viol_source == "oracle"
     assert summary.first_c2 == 8 and summary.first_c1 == 13 and summary.first_c0 is None
     assert summary.complete
 
@@ -423,3 +428,48 @@ def test_observed_names_mode_dispatches_fixed_baseline_policy_in_campaign_loop()
         extra_components=("outside", "k3v9.dat"),
     )
     assert attempt.mutation_policy == MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_FIXED_BASELINE
+
+
+def _ineligible(producer: _Producer, *, how: str) -> _Producer:
+    """Wrap a producer so its trace is feedback-ineligible: FAILURE termination or an
+    observation failure (integrity invalid). The oracle verdicts are untouched."""
+
+    def make(case: ArchiveCase) -> EffectRunResult:
+        result = producer(case)
+        base = result.base_result
+        if how == "failure":
+            # The target failed: execution status and trace termination move together.
+            execution = dataclasses.replace(
+                base.execution, status=ExecutionStatus.FAILED, exit_code=1
+            )
+            base = dataclasses.replace(base, execution=execution)
+            trace = dataclasses.replace(result.trace, termination=EffectTargetTermination.FAILED)
+        else:
+            source_id = result.trace.provenance.sources[0].source_id
+            failure = ObservationFailure(
+                ObservationFailureKind.OBSERVER_FAILURE, "injected", source_id
+            )
+            # An invalid stream: completeness INVALID with the failure that explains it
+            # (a COMPLETE stream may not carry observation failures).
+            trace = dataclasses.replace(
+                result.trace,
+                completeness=EffectStreamCompleteness.INVALID,
+                observation_failures=(failure,),
+            )
+        return EffectRunResult(base, trace)
+
+    return make
+
+
+@pytest.mark.parametrize("how", ["failure", "integrity"])
+def test_summary_counts_an_ineligible_hit_in_hit_t_first_and_u_viol_alike(how: str) -> None:
+    """Regression: a C1 violation on an ineligible step is one event for hit, t_first
+    and u_viol (oracle classes); only u_viol_feedback (what the loop fed back) is 0."""
+    cell = _cell(RdsArm.S_U, _Script({7: _ineligible(_c1_hit, how=how)}), budget=16)
+    summary = cell.summary
+    assert summary.hit and (summary.t_first, summary.t_first_event) == (8, 1)
+    assert summary.u_viol == 1 and summary.u_viol_source == "oracle"
+    assert summary.u_viol_feedback == 0  # ineligible: nothing was fed back
+    step = cell.campaign.steps[7]
+    assert not step.feedback.feedback_eligible and step.feedback.contract_violated
+    assert not step.feedback.new_violation_fingerprints

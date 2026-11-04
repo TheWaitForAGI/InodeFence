@@ -26,13 +26,29 @@ M1~M4와 같고, 날짜가 아니라 "증거가 모이면 찍는" 지점이다. 
 | --- | --- | --- | --- | --- |
 | 1 보존·통제 | 11/5 | 태그 `audit-baseline-20261103`(=bb3fd7c), 맥 raw SHA-256 목록(1,614파일), 윈도우 raw 미반입 기록, 보고 누락 4건 LOG 기록, 논문 06/07 정정, 덱 8장 stale 기록 | 없음 | 이 PR에서 저장소 반영; **원본 백업 미완료**(맥 raw 체크섬 목록만, 윈도우 raw 미반입, 외부/공유 백업 없음) |
 | 2 방향 재정립 | 11/7 | research-questions v2(핵심 RQ·H-A/H-B/H-C·R/D/S), D038, EXP-0 사전등록 v1, STATUS 수술 기준·모순 표, 이 큐 | D037(병합 정책)은 지웅 결정 대기 | 이 PR에서 완료(D037 제외) |
-| 3 구현 수리 | 11/10 (G1 늦어도 11/13) | **Runtime:** abort 수정(observer malformed_identity·broker·cleanup)·워커풀 + per-case parity. **Evaluation:** 어휘 동등 R/D/S 러너·KM/logrank/A12·사전등록 실행기. **Oracle:** 다수 sentinel·oracle FP/FN 점검. **Evidence:** replay 연결 | G1: R/D/S×budget 50 완주, 어휘 동등 테스트, 10캠페인 smoke abort≤1, 워커풀 parity | 대기 |
+| 3 구현 수리 | 11/10 (G1 늦어도 11/13) | **Runtime:** abort 수정(observer malformed_identity·broker·cleanup)·워커풀 + per-case parity. **Evaluation:** 어휘 동등 R/D/S 러너·KM/logrank/A12·사전등록 실행기. **Oracle:** 다수 sentinel·oracle FP/FN 점검. **Evidence:** replay 연결 | G1: R/D/S×budget 50 완주, 어휘 동등 테스트, 10캠페인 smoke abort≤1, 워커풀 parity | 진행(2026-11-04: PR #202~#233 31건 CI green·verifier PASS, 머지 대기 — D037 임시 정책; G1 4조건 native PASS(레인 10 독립 재현, g1-20261104·wp-parity-20261104); HEAD가 바뀐 PR은 최신 SHA로 delta 재검증) |
 | 4a EXP-0 | 11/14 | 파일럿 5 seed×200×R/D/S-u 실행(사전등록 v2.1 커밋 후), zero-hit 기본·dense 신호로 EXP-3 설계 입력·x·n 확정 | G1 | 대기 |
 | 4b 사전등록 | 11/18 | EXP-3 + EXP-2 GO/NO-GO 규칙 사전등록 커밋(SHA·digest·policy ID) | 4a | 대기 |
 | 4c EXP-3 | ≈11/20 | 20 seed×2000×R/D/S, 다수 sentinel; 11/20 규칙 기계 적용 | 4b | 대기 |
 | 4d EXP-2 조건부 | ≈11/25 | GO일 때만 실행 | 4c 규칙 | 대기 |
 | 5 저장소 정리 | 실험 중 (11/24 중단) | 모순 표 #1–#4·#11·#12 정정(README·src/README·architecture·Makefile/fanout 상한·n04_preflight 경로), 죽은 문서 정리 | 3단계 이후, 실험과 병행, 실험 코드 불변 | 대기 |
 | 6 최종 | 11/30 | 논문·Ledger·증거 사슬 최종, 제출 | G2 11/26 | 대기 |
+
+### 수술 보강 큐 (2026-11-04, 연속 운영 지시 — 머지 대기는 작업 중단 사유가 아님)
+
+감사 15개 꼭지 대응표(Report 2 확정 조건 ↔ 구현·PR·증거)에서 드러난 결함과 사람 결정 항목. 상태 구분:
+**구현 완료**(코드·문서가 PR에 있음) / **검증 완료**(독립 verifier가 최신 SHA에서 확인) / **실험 입증 완료**(사전등록된 native 실험 결과) — 세 가지를 섞어 쓰지 않는다.
+
+| 항목 | 감사 기준 | 담당 | 상태 | 게이트 |
+| --- | --- | --- | --- | --- |
+| S-08 **7.5.6 hold-out 규칙 사전등록** — 훈련(7.5.2/7.5.3)·평가(7.5.6/7.5.7) 쌍, "훈련 노출"의 정의, 기존 7.5.6 실행 이력 공개(있으면 '수정 검증 쌍'으로 재분류 선택지). 결과를 본 뒤 규칙을 정하지 않는다 | 08 실험 대상 | 레인 9 | 진행(EXP-3 사전등록 초안 `claude/s3-exp3-prereg-skeleton`, 11/18 동결 전) | 지웅(규칙 확정) |
+| S-11 **m3-powered 30 seed raw KM·로그랭크·A12 예비 재계산** — #202 survival.py로 재계산, 사전등록 문서에 "탐색적 예비치"로 첨부(formal 추정 불사용). raw가 이 호스트에 없으면 불가로 기록 | 11 평가 지표 | 레인 6 | 대기(검정력 보고 뒤) | 없음 |
+| S-UV **U_viol 정의 확정** — Git 동결 EXP-0 v2/v2.1은 U_viol을 등록하지 않음(research-questions v2 L50만 정의). native 보고서 경로(rds_report)는 feedback-eligible이 아닌 step의 oracle 위반을 fingerprint에서 제외(unfingerprinted_hit_steps로 분리 집계), 메모리 경로(rds.py)는 포함 → 서명 단위·lineage·eligibility·invalid step 처리·arm 공통 규칙을 EXP-3 사전등록에 명시해야 함. 정의를 구현에 맞춰 조용히 바꾸지 않는다 | 11·14 | 레인 10 판정 → 레인 5 수정 | 진행(독립 판정 중) | 지웅(정의 선택) |
+| S-V21 **EXP-0 사전등록 v2.1 PR** — `TBD-FREEZE`(engine_sha·image_digest·sentinel_generator_seed) 토큰, 사전 노출 공개(G1 smoke가 seed 9001~9004 사용, D-s9002 step 42 C2 1건), 동결 PR에서 값 채움 | 06·12 | 레인 8 | 진행 | 지웅(머지·동결 승인) |
+| S-BK **외부 raw 백업 위치** — 번들 생성·로컬 복원 검증(①manifest ②raw 존재 ③SHA 일치 ④복원)까지 진행, 외부 업로드는 승인 뒤 | 13·15⑦ | 레인 8 | 진행 | 지웅(위치 선택) |
+| S-C2 **C2 sentinel 대상 집합 확장**(1개 → ≥3 무작위 이름 → 외부 영역 전체) — FP/FN 영향·v2.1 키 연결 브리프 | 01 | 레인 7 | 브리프 작성 중 | 지웅 |
+| S-D37 **D037 결정안** — 선택지·권장안·영향 | 07 | 오케스트레이터 | 작성 중 | 지웅 |
+| S-15 **STATUS 산출물 체크리스트 12항목**(확인 명령·경로 부착) + 15개 꼭지 충족도(구현/검증/실험 구분) | 15 | 오케스트레이터 | 대기(#221 머지 뒤 STATUS 갱신) | 없음 |
 
 ## 완료 (이력은 WORKLOG/LOG)
 

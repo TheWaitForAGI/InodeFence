@@ -57,9 +57,17 @@ def _add_bytes(tar: tarfile.TarFile, name: str, data: bytes) -> None:
 
 
 def _write_tar(tar: tarfile.TarFile, root: Path) -> None:
+    # Single pass: hash the exact bytes we archive and build the embedded manifest from
+    # them. This keeps the bundle internally consistent even if the source tree is being
+    # written concurrently -- the manifest always describes the archived bytes, not a
+    # re-read that may have changed between passes.
+    lines: list[str] = []
     for path in iter_regular_files(root):
-        _add_bytes(tar, path.relative_to(root).as_posix(), path.read_bytes())
-    _add_bytes(tar, MANIFEST_MEMBER, manifest_bytes(root))
+        data = path.read_bytes()
+        relative = path.relative_to(root).as_posix()
+        _add_bytes(tar, relative, data)
+        lines.append(f"{sha256(data).hexdigest()}  ./{relative}\n")
+    _add_bytes(tar, MANIFEST_MEMBER, "".join(lines).encode("utf-8"))
 
 
 @dataclass(frozen=True, slots=True)

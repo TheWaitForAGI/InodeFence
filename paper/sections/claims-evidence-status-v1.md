@@ -30,6 +30,27 @@ raw experiment output → validated summary → finding → 이 매핑 → Capab
 | C-M4b | 2·3번째 extractor에서 **퍼저 자력 발견** 일반성 | **완료 아님(루프 작동·실행, 발견은 음성)** | 자력발견 루프가 decompress(2번째)·oras-go(3번째)에서 실제 실행됨 — decompress 통합 C1/C2 **0/28 Wilson≤0.121(검정력 있는 음성, #198)**, oras-go **0/1 Wilson[0,0.793](약한 음성, #197)**; C0(path-boundary)는 자력도달하나 identity/effect 미도달. [M4.5 통합 verdict](../../experiments/summaries/m4-5-decompress-selfdiscover-unified-v1.md)·[M4.7 oras-go](../../experiments/summaries/m4-7-oras-go-selfdiscover-v1.md). generality(oracle/adapter=C-M4a)≠self-discovery(루프 작동)≠effectiveness(발견). 발견 effectiveness 주장 아님 |
 | C-ABCD | item-3 A/B/C/D 중간상태 gradient: gradient(C/D)>random(A)>structure(B); **identity-state(C)≡coverage(D)** | **보조/탐색적만**(effectiveness 랭킹 아님) | Ledger "feedback effectiveness" 행 PASS 2. terminal C1 0/21 Wilson[0,0.155]. escape-hardlink 문법 한정 negative(C≡D 중복), 범위 밖 일반화 금지. EN-008(새 state 수 ≠ effectiveness) |
 
+## 증거 파일 매핑 (실험 ID·raw manifest·통계 파일·결과 버전)
+
+위 현황표의 각 C-ID를 그 증거 파일로 잇는 열 확장이다(C-ID는 위와 동일). raw manifest는 raw 바이트의
+보존 체크섬 목록([보존 상태](../../experiments/summaries/README.md) 참조), 통계 파일은 수치를 만든
+분석 스크립트/요약, 결과 버전은 해당 요약·verdict 버전이다. 경로는 코드 span으로 둔다.
+
+| C-ID | 실험 ID | raw manifest 파일 | 통계 파일(분석·요약) | 결과 버전 |
+| --- | --- | --- | --- | --- |
+| C-M1 | M1 effect-demo-native (`make demo`) | `raw-manifest-win-20261104.sha256`(2026-11-01 demo)·`raw-manifest-mac-20261103.sha256`(demo/historical) | 엔지니어링 능력(통계 없음); 재현 검증 `scripts/replay_report.py`(`make replay`) | `make demo`/`make replay`(호스트) |
+| C-M2 | M2 cross-release identity repro (R1·R2) | 해당 없음 — in-repo raw `experiments/repro/evidence/summary.json` | `cross-release-identity-repro-v1.md` | v1 |
+| C-M3a-1 | M3 `m3-scale-full`·`m3-ablation`·`m3-repro`·`m3-powered-matched-20261030` | `raw-manifest-mac-20261103.sha256` | `node-self-discovery-mechanism-v1.md`·`m3-powered-matched-verdict-v2.{json,md}`; `scripts/determine_m3_powered_cells.py`·`scripts/analyze_m3_3_control.py` | self-discovery v1 + powered-matched v2 |
+| C-M3a-2 | EXP-3 어휘 동등 R/D/S (사전등록 예정) | 해당 없음 — 미실행 | `experiments/preregistration/exp0-pilot-v2.md` | 미검증 |
+| C-M3b | `m3-powered-matched-20261030` (A1 vs A3full, budget 2000, seed 100–119) | `raw-manifest-mac-20261103.sha256` | `m3-powered-matched-verdict-v1.md`; `scripts/determine_m3_powered_cells.py`·`scripts/analyze_m3_3_control.py` | v1 (rate CI 미분리) |
+| C-M4a | M4 adapter generality (python-tarfile·oras-go·decompress) | 해당 없음 — 테스트 기반 | `tests/test_python_tarfile_generality.py` 등 generality 테스트 | 해당 없음(TESTED) |
+| C-M4b | M4.5 decompress selfdiscover (win `{500..509}`·mac `{11,85,163,211,307,401}`); M4.7 oras-go (seed 11) | `raw-manifest-win-20261104.sha256`(win decompress)·`raw-manifest-mac-20261103.sha256`(mac decompress·oras-go) | `scripts/analyze_m4_5_unified.py`→`m4-5-decompress-selfdiscover-unified-v1.md`; `scripts/analyze_m4_7_oras_go_selfdiscover.py`→`m4-7-oras-go-selfdiscover-v1.md`; win 단독 `scripts/analyze_m4_5_selfdiscover.py`→`m4-5-decompress-selfdiscover-win-v1.md` | unified v1(음성)·oras-go v1(음성) |
+| C-ABCD | `m3-item3-abcd-20261030` | `raw-manifest-mac-20261103.sha256` | `scripts/analyze_m3_item3.py` | 보조·탐색적(버전 미할당) |
+
+raw manifest가 "해당 없음"인 행은 raw가 저장소 안(C-M2)이거나 테스트/사전등록(C-M4a·C-M3a-2)이라 host-local
+raw manifest 대상이 아니다. win manifest의 생성·검증은 `scripts/make_raw_manifest.py`, 각 요약의 raw
+포인터가 manifest/저장소에 닿는지는 `scripts/check_evidence_chain.py`로 점검한다.
+
 ## 완료 아님 항목의 취급(명시)
 
 - **C-M3b (rate 우위)**: powered 매칭 런으로 **사전등록 판정 완료 — rate CI 미분리(검정력 부족)**.

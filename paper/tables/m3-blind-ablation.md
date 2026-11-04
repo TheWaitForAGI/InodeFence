@@ -42,3 +42,5 @@ s11 run은 step 416에서 evidence-integrity 검사로 abort(returncode 1)하지
 (§5.3.3 powered 판정: 매칭 Wilson CI 미분리). 자율 트리거는 이 그림의 budget 1500·seed 1–65에선
 s11 하나(seed-rare)이나 powered 런에서 신규 disjoint seed s101로 재현돼 멀티-seed로 강화됐고,
 **blind 발견이 아니다**(퍼저는 외부 객체 이름을 관찰로 얻는다; 하드코딩 없음, §5.3.2).
+
+(2026-11-03 정정: 이 blind 대조는 피드백이 아니라 **어휘**를 통제한 실험이다. 입증된 것은 "외부 객체 이름의 관찰(어휘 획득)이 자율 C1의 필요조건"이지 (st_dev, st_ino) retention·스케줄링 피드백의 기여가 아니며, 그 기여는 어휘를 맞춘 R/D/S-u 비교(research-questions v2 H-A)로 미분리다. 수치·서술은 보존한다. 상세: §5.3.2 정정.) 이 표의 세 셀은 어휘(이름 포함 여부)가 다른 셀이므로, 읽는 법은 "이름 획득 조건의 대조"다.

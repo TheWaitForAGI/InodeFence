@@ -114,6 +114,8 @@ Extraction 영역 내부에 생성된 object가 보호된 외부 sentinel과 의
 
 Untrusted archive 처리 때문에 보호된 외부 sentinel object가 의도하지 않게 변경되면 안 된다.
 
+C2 대상(sentinel 집합) 확장은 D038에 따라 Oracle 레인의 **별도 사람 승인 대상**이다(현재 미변경).
+
 ### 현재 관찰 정보
 
 - existence, object type, `(st_dev, st_ino)` identity

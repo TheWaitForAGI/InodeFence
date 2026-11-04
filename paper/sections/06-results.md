@@ -204,7 +204,7 @@ feasible set-based frame 채널을 쓴다(node-tar의 ordered per-op보다 좁�
   budget 1500+특정 seed). arm 차분(A3 11 > A1 8)은 1-seed라 검정력이 없다(EN-008, rate/effectiveness
   아님) → autoloop 7.1상 당시 **미판정**이었고, §5.4.3의 powered 통합 반복에서 검정력 있게 판정한다.
 
-### 5.4.3 decompress powered 판정 — 검정력 있는 정직 음성
+### 5.4.3 decompress powered 판정 — 사후 분석 기준 음성(사전등록 판정 아님)
 
 M4.4의 검정력 없는 음성을 더 큰 사전고정 예산·복수 seed로 독립 반복해 판정했다. 맥(arm64)과
 윈도우(x86_64) 두 아키텍처에서 각각 실행한 결과를 right-censored로 합산한
@@ -212,9 +212,13 @@ M4.4의 검정력 없는 음성을 더 큰 사전고정 예산·복수 seed로 �
 
 - **설정(사전등록):** 실제 decompress 4.2.1 AFFECTED, production backend(격리계약·완화 플래그 0),
   A1 random vs A3 state-aware. 윈도우 seed {500..509}, 맥 seed {11,85,163,211,307,401}(교집합 ∅).
+  **등록된 hit 정의는 `discovered_violation`(any step `contract_violated`, C0 포함)이다. C1/C2 by_contract
+  분리와 pooled 0/28 합산은 결과가 들어온 뒤 도입된 사후 분석(post-hoc) 축으로, 사전등록에 없다**
+  (근거: [통합 verdict](../../experiments/summaries/m4-5-decompress-selfdiscover-unified-v1.md) 「정의 변경 기록」).
 - **결과(observed):** 양 arm **C1/C2 0/14**(Wilson 95% CI [0, 0.215]), 맥+윈도우 pooled
-  **0/28 (Wilson 95% CI ≤ 0.121) = 검정력 있는 정직 음성**. C0(path-boundary)는 **12/14** 자력도달
-  하나 arm 우위는 없다(C0은 identity 관찰 불요). 교차-arch 바이트동일은 주장하지 않는다.
+  **0/28 (Wilson 95% CI ≤ 0.121)**. 이는 **사후 분석(post-hoc by_contract) 기준 음성이며 사전등록 판정이 아니다**
+  (등록 정의로 세면 완주 19 중 16이 C0 자력도달으로 hit; 수치·oracle 로직은 불변). C0(path-boundary)는
+  **12/14** 자력도달하나 arm 우위는 없다(C0은 identity 관찰 불요). 교차-arch 바이트동일은 주장하지 않는다.
 - **판정:** 2번째 extractor에서 자력발견 루프는 **기능 작동**하고 path-boundary(C0)를 자력도달하나,
   identity/effect 경계위반(C1/C2)은 이 예산에서 미도달이다(node-tar M3 seed-rare와 정합). 이는
   **generality(oracle/adapter)≠self-discovery(루프 작동)≠effectiveness(발견)**의 구분을 지킨 음성

@@ -57,5 +57,4 @@ creation, arbitrary file read/write effect를 다룬다. 현재 InodeFence와 �
 - "제안 방법이 fixed strategy보다 우수하다 / 여러 extractor에 (effectiveness 수준으로) 일반화된다."
 
 일부는 선행연구와 충돌하고, 일부는 추가 문헌조사·실험이 필요하다. 이 드래프트가 방어하는 것은
-§5의 좁은 명제들(M1 동작, M2 통제 재현, M3 인과 입증, M4 oracle/adapter 일반성)뿐이다.
-(2026-11-03 정정: "M3 인과 입증"은 "M3 이름 획득 조건의 관찰"로 읽는다 — 상세 §5.3.2 정정.)
+§5의 좁은 명제들(M1 동작, M2 통제 재현, M3 이름 획득 조건의 관찰(피드백 인과 미입증), M4 oracle/adapter 일반성)뿐이다 *(구: "M3 인과 입증", 2026-11-03 정정 — 상세 §5.3.2)*.

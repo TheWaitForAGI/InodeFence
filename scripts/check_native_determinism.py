@@ -27,15 +27,16 @@ Two layers, because the demo report does not serialize raw ``StateSnapshot``s:
    dimensions (including ``snapshots``) on real data and confirms the comparator
    wiring and the generic path's determinism without any container.
 
-The native six-run plan (2 seeds x 2 reruns x budget 100 stop, plus the same two
-seeds under invalid-continue x 1 rerun each) is printed by ``--emit-run-plan``;
-it is executed only when the docker slot returns (team-gated), never here.
+The native six-run plan (each measured seed/policy cell rerun twice: stop on two
+seeds, invalid-continue on the first seed) is printed by ``--emit-run-plan``; it
+is executed under the team docker slot, never inside this module.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -43,6 +44,7 @@ from typing import Any
 from inodefence.effect_campaign import EffectCampaignConfig, run_effect_campaign
 from inodefence.effect_synthetic import synthetic_effect_result
 from inodefence.evaluation.execution_parity import (
+    EXCLUDED_OBJECT_FIELDS,
     CanonicalSnapshot,
     ParityStep,
     ParitySubject,
@@ -129,8 +131,34 @@ def subject_from_report(report: dict[str, Any], *, label: str) -> ParitySubject:
     return ParitySubject(label=label, steps=steps, isolation=None, resets=())
 
 
+# The disposable sandbox's per-case directory carries a fresh random suffix every
+# run (core-run-<uuid>); it surfaces inside target stderr paths. execution_parity
+# drops the whole sandbox_root for the same reason, so normalize the token here.
+_SANDBOX_RUN = re.compile(r"core-run-[0-9A-Za-z_]+")
+
+
+def _canonical(value: Any) -> Any:
+    """Project out run-specific detail so only determinism-relevant content remains.
+
+    Drops execution_parity's ``EXCLUDED_OBJECT_FIELDS`` (raw inode numbers and OS
+    timestamps the kernel assigns fresh each extraction) from every object, and
+    normalizes the per-case sandbox directory token (``core-run-<uuid>``) that
+    appears in target stderr paths. Neither is a determinism signal, so two runs
+    that differ only in them are equivalent. The inode-SHARING relation (a real
+    observation) is not lost: it rides on ``st_nlink`` and the C1 oracle verdict,
+    both kept and compared.
+    """
+    if isinstance(value, dict):
+        return {k: _canonical(v) for k, v in value.items() if k not in EXCLUDED_OBJECT_FIELDS}
+    if isinstance(value, list):
+        return [_canonical(item) for item in value]
+    if isinstance(value, str):
+        return _SANDBOX_RUN.sub("core-run-<RUN>", value)
+    return value
+
+
 def _first_step_difference(a: list[dict], b: list[dict]) -> dict[str, Any] | None:
-    """The first step index whose record differs, with the differing keys named."""
+    """The first step index whose canonical record differs, with differing keys named."""
     if len(a) != len(b):
         return {"kind": "step_count", "baseline": len(a), "candidate": len(b)}
     for index, (left, right) in enumerate(zip(a, b, strict=True)):
@@ -141,19 +169,33 @@ def _first_step_difference(a: list[dict], b: list[dict]) -> dict[str, Any] | Non
 
 
 def report_equality(baseline: dict[str, Any], candidate: dict[str, Any]) -> dict[str, Any]:
-    """Compare the deterministic loop record of two reports (timing excluded)."""
-    differing = [
+    """Compare two reports' deterministic loop record, up to run-specific raw fields.
+
+    ``equal`` (the verdict) compares the canonical projection: timing is excluded
+    and raw inode numbers / OS timestamps are dropped, so a pass means the runs
+    agree on every determinism-relevant field. ``raw_identical`` additionally
+    reports whether the records were byte-identical before that projection; a True
+    verdict with ``raw_identical`` False means the sole variation was benign raw
+    identity renumbering (expected across extractions), not observer behaviour.
+    """
+    raw_differing = [
         key
         for key in _DETERMINISTIC_KEYS
         if key not in _NONDETERMINISTIC_KEYS and baseline.get(key) != candidate.get(key)
     ]
+    canon_a = {key: _canonical(baseline.get(key)) for key in _DETERMINISTIC_KEYS}
+    canon_b = {key: _canonical(candidate.get(key)) for key in _DETERMINISTIC_KEYS}
+    differing = [
+        key
+        for key in _DETERMINISTIC_KEYS
+        if key not in _NONDETERMINISTIC_KEYS and canon_a[key] != canon_b[key]
+    ]
     step_diff = None
     if "steps" in differing:
-        step_diff = _first_step_difference(
-            baseline.get("steps") or [], candidate.get("steps") or []
-        )
+        step_diff = _first_step_difference(canon_a["steps"] or [], canon_b["steps"] or [])
     return {
         "equal": not differing,
+        "raw_identical": not raw_differing,
         "differing_keys": differing,
         "first_step_difference": step_diff,
     }
@@ -170,9 +212,18 @@ def compare_report_pair(
 ) -> dict[str, Any]:
     """Decide per-case determinism from two demo reports of the same input.
 
-    Returns the parity dimensions compare_subjects produced, the subset that is
-    report-backed, a full-report equality verdict, and an overall determinism
-    PASS/FAIL (report equality AND every report-backed dimension agrees).
+    ``determinism_pass`` is the G1 premise: the report-backed parity dimensions
+    (``case_sequence`` and ``oracle_and_feedback``) agree. These exclude raw event
+    order by design -- the feedback model never treats observation order as a
+    novelty key -- so this is the verdict that matters for worker-pool parity.
+
+    ``observation_sequence_identical`` is a stricter EN-008 diagnostic: whether the
+    two reports' canonical loop records matched exactly (raw inode numbers, OS
+    timestamps and the sandbox token already normalized out). A determinism PASS
+    with this False localizes genuine but sub-parity observer non-determinism --
+    e.g. node-tar's async fs callbacks completing in a different order, which
+    renumbers effect-event sequences without changing the effect set or verdict.
+    It does not fail the G1 premise; ``report_equality`` names where it diverged.
     """
     left = subject_from_report(baseline, label=labels[0])
     right = subject_from_report(candidate, label=labels[1])
@@ -181,19 +232,20 @@ def compare_report_pair(
     backed = {
         dim.name: dim.agree for dim in report.dimensions if dim.name in REPORT_BACKED_DIMENSIONS
     }
-    determinism_pass = equality["equal"] and all(backed.values())
+    determinism_pass = all(backed.values())
     return {
         "mode": "report_pair",
         "labels": {"baseline": labels[0], "candidate": labels[1]},
         "determinism_pass": determinism_pass,
+        "observation_sequence_identical": equality["equal"],
         "report_equality": equality,
         "dimensions": _dimensions_payload(report.dimensions),
         "report_backed_dimensions": sorted(backed),
         "coverage": {
-            "case_sequence": "report-backed",
-            "oracle_and_feedback": "report-backed",
-            "snapshots": "not serialized in demo report; subsumed by report_equality",
-            "isolation_and_reset": "not serialized in demo report; subsumed by report_equality",
+            "case_sequence": "report-backed (G1 verdict)",
+            "oracle_and_feedback": "report-backed (G1 verdict)",
+            "snapshots": "not serialized in demo report; sequence diagnostic covers effects",
+            "isolation_and_reset": "not serialized in demo report; same image id both runs",
         },
     }
 

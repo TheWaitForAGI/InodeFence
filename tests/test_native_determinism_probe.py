@@ -32,10 +32,70 @@ def test_identical_reports_pass_every_report_backed_dimension() -> None:
     result = compare_report_pair(copy.deepcopy(report), copy.deepcopy(report))
 
     assert result["determinism_pass"] is True
+    assert result["observation_sequence_identical"] is True
     assert result["report_equality"]["equal"] is True
+    assert result["report_equality"]["raw_identical"] is True
     assert set(result["report_backed_dimensions"]) == set(REPORT_BACKED_DIMENSIONS)
     agree = {dim["name"]: dim["agree"] for dim in result["dimensions"]}
     assert agree["case_sequence"] and agree["oracle_and_feedback"]
+
+
+def _first_step_with_effect_event(report: dict[str, Any]) -> int:
+    for step in report["steps"]:
+        if step["trace"].get("effect_events"):
+            return int(step["index"])
+    raise AssertionError("no step with an effect event in the synthetic report")
+
+
+def test_sequence_renumbering_passes_g1_but_flags_the_sequence_diagnostic() -> None:
+    # Async fs-callback completion order renumbers effect-event sequences without
+    # changing the effect set, oracle or feedback: G1 premise holds, but the
+    # stricter observation-sequence diagnostic must flag it (this is EN-008).
+    baseline = _report()
+    candidate = copy.deepcopy(baseline)
+    index = _first_step_with_effect_event(candidate)
+    event = candidate["steps"][index]["trace"]["effect_events"][0]
+    event["start_sequence"] = event["start_sequence"] + 100
+    result = compare_report_pair(baseline, candidate)
+
+    assert result["determinism_pass"] is True  # parity dimensions unaffected
+    assert result["observation_sequence_identical"] is False
+    agree = {dim["name"]: dim["agree"] for dim in result["dimensions"]}
+    assert agree["case_sequence"] and agree["oracle_and_feedback"]
+
+
+def test_raw_inode_renumbering_is_canonicalized_away() -> None:
+    baseline = _report()
+    candidate = copy.deepcopy(baseline)
+    index = _first_step_with_effect_event(candidate)
+    after = candidate["steps"][index]["trace"]["effect_events"][0]["paths"][0]["after"]
+    after["st_ino"] = int(after["st_ino"]) + 1  # fresh inode number next run
+    result = compare_report_pair(baseline, candidate)
+
+    # Raw bytes differ, but the canonical determinism verdict is unaffected.
+    assert result["report_equality"]["raw_identical"] is False
+    assert result["observation_sequence_identical"] is True
+    assert result["determinism_pass"] is True
+
+
+def test_sandbox_run_token_is_normalized() -> None:
+    baseline = _report()
+    candidate = copy.deepcopy(baseline)
+    baseline["steps"][0]["target_stderr"] = {
+        "text": "link '/var/lib/inodefence/core-run-AAAA/extract/x'",
+        "chars": 1,
+        "truncated": False,
+    }
+    candidate["steps"][0]["target_stderr"] = {
+        "text": "link '/var/lib/inodefence/core-run-ZZZZ/extract/x'",
+        "chars": 1,
+        "truncated": False,
+    }
+    result = compare_report_pair(baseline, candidate)
+
+    assert result["report_equality"]["raw_identical"] is False
+    assert result["observation_sequence_identical"] is True
+    assert result["determinism_pass"] is True
 
 
 def test_timing_difference_alone_still_passes() -> None:

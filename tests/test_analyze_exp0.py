@@ -691,3 +691,73 @@ def test_confirmatory_renders_in_markdown():
 
     md = report_markdown(report)
     assert "Confirmatory result" in md and "S-u-vs-R" in md
+
+
+def test_cells_dir_reads_wrapper_target_object(tmp_path, capsys):
+    # --cells-dir alone (no index): target_id/role come from the wrapper top-level `target`.
+    summaries = tmp_path / "summaries"
+    summaries.mkdir()
+    for tid, role in (("nt-a", "train"), ("nt-b", "holdout")):
+        for arm in ("R", "S-u"):
+            wrapped = {
+                "summary": _rec(arm=arm, random_seed=1),
+                "target": {"target_id": tid, "role": role, "hypothesis": "H-A"},
+            }
+            (summaries / f"{tid}-{arm}-s1.summary.json").write_text(json.dumps(wrapped))
+    assert main(["--cells-dir", str(summaries), "--format", "json"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["schema_version"] == 2  # per-target from wrapper objects, not 'unspecified'
+    assert set(report["by_target"]) == {"nt-a", "nt-b"}
+    assert report["by_target"]["nt-b"]["role"] == "holdout"
+
+
+def test_index_and_cells_dir_do_not_double_count(tmp_path, capsys):
+    summaries = tmp_path / "summaries"
+    summaries.mkdir()
+    entries = []
+    for tid, role in (("nt-a", "train"), ("nt-b", "holdout")):
+        for arm in ("R", "S-u"):
+            run_id = f"{tid}-{arm}-s1"
+            wrapped = {
+                "summary": _rec(arm=arm, random_seed=1),
+                "target": {"target_id": tid, "role": role, "hypothesis": "H-A"},
+            }
+            (summaries / f"{run_id}.summary.json").write_text(json.dumps(wrapped))
+            entries.append({
+                "run_id": run_id, "arm": arm, "seed": 1, "budget": 200,
+                "summary": f"summaries/{run_id}.summary.json",
+                "target_id": tid, "role": role, "hypothesis": "H-A",
+            })
+    (summaries / "index.json").write_text(json.dumps({"cells": entries}))
+    exit_code = main(
+        [
+            "--index", str(summaries / "index.json"),
+            "--cells-dir", str(summaries), "--format", "json",
+        ]
+    )
+    assert exit_code == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["number_cells"] == 4  # deduped by path, not 8
+    assert set(report["by_target"]) == {"nt-a", "nt-b"}  # per-target, not 'unspecified'
+
+
+def test_confirmatory_degenerate_contrast_rule_of_three_is_none():
+    # contrast names arm R but the holdout has only S-u -> 0 paired blocks: R-o-3 must be None
+    # (not 3/2 = 1.5, a nonsensical >1 probability bound).
+    cells = [_mt_cell("S-u", s, "h", "holdout", **_SU_HIT) for s in (1, 2)]
+    plan = {
+        "confirmatory_contrasts": [
+            {"order": 1, "target_id": "h", "arm_a": "S-u", "arm_b": "R", "contrast": "S-u-vs-R"},
+        ],
+        "event_threshold": 5,
+        "multiplicity": "holm-fwer-v1",
+        "primary_endpoint": "t_first",
+        "confirmatory_test": "exact-logrank-permutation-v1",
+        "confirmatory_targets": ["h"],
+    }
+    report = build_multitarget_report(
+        cells, analysis_plan=plan, field_map=DEFAULT_MAP, sources=["t"]
+    )
+    c = report["confirmatory"]["contrasts"][0]
+    assert c["number_seed_blocks"] == 0 and c["underpowered"] is True
+    assert c["rule_of_three_upper95"] is None

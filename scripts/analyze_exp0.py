@@ -292,10 +292,21 @@ def cell_from_row(
     environment = row.get(_ENVIRONMENT_KEY) if has_wrapper else None
     abort_reason = _get(inner, field_map, "abort_reason")
     target = str(_get(inner, field_map, "target") or "unspecified")
+    # target_id/role/hypothesis come from the index entry, else the wrapper's top-level
+    # ``target`` object (so --cells-dir alone is per-target too), else defaults.
     meta = entry if isinstance(entry, Mapping) else None
-    target_id = str(meta["target_id"]) if meta and meta.get("target_id") else target
-    role = str(meta["role"]) if meta and meta.get("role") else "train"
-    hypothesis = str(meta["hypothesis"]) if meta and meta.get("hypothesis") else "H-A"
+    wrapper_target = row.get("target") if has_wrapper else None
+    wmeta = wrapper_target if isinstance(wrapper_target, Mapping) else None
+
+    def _target_meta(key: str, default: str) -> str:
+        for source in (meta, wmeta):
+            if source is not None and source.get(key) is not None:
+                return str(source[key])
+        return default
+
+    target_id = _target_meta("target_id", target)
+    role = _target_meta("role", "train")
+    hypothesis = _target_meta("hypothesis", "H-A")
 
     return CellSummary(
         seed=int(_get(inner, field_map, "seed")),  # type: ignore[arg-type]
@@ -796,12 +807,26 @@ def _confirmatory_section(
             "underpowered": underpowered,
         }
         if underpowered:
-            entry["rule_of_three_upper95"] = rule_of_three(len(cells_t)) if cells_t else None
-            entry["underpowered_note"] = (
-                "events below event_threshold: the permutation test is valid but near-powerless "
-                "(verdict is scenario-5, unobserved at achieved power); the rule-of-three is a "
-                "descriptive campaign-unit upper bound, NOT a confirmation (EN-008)"
-            )
+            n_campaigns = len(cells_t)
+            if perm["number_blocks"] == 0 or n_campaigns < 3:
+                # A degenerate contrast (an arm has no campaigns on this target, so no pairs) or
+                # fewer than 3 campaigns has no meaningful 3/n bound (3/n > 1). It is undefined,
+                # not merely underpowered. (A valid registration cannot reach this -- #244's
+                # parser rejects a contrast arm absent from the target -- but defend old indexes.)
+                entry["rule_of_three_upper95"] = None
+                entry["underpowered_note"] = (
+                    "no paired seed blocks (an arm has no campaigns on this target) or fewer than "
+                    "3 campaigns: the contrast is undefined/uninformative, not merely "
+                    "underpowered; rule-of-three is not applicable"
+                )
+            else:
+                entry["rule_of_three_upper95"] = rule_of_three(n_campaigns)
+                entry["underpowered_note"] = (
+                    "events below event_threshold: the permutation test is valid but near-"
+                    "powerless (verdict is scenario-5, unobserved at achieved power); the rule-"
+                    "of-three is a descriptive campaign-unit upper bound, NOT a confirmation "
+                    "(EN-008)"
+                )
         raw_ps.append(float(perm["p_value"]) if perm["p_value"] is not None else 1.0)
         results.append(entry)
     for entry, adjusted in zip(results, holm_adjust(raw_ps), strict=True):
@@ -1230,6 +1255,20 @@ def main(argv: Sequence[str] | None = None) -> int:
             items.extend(_index_entries(args.index))
         except (ValueError, KeyError, OSError) as error:
             parser.error(f"--index: {error}")
+    # An operator may pass --index and --cells-dir resolving to the same files; dedupe by
+    # resolved path so a cell is not double-counted, preferring the index entry (it carries the
+    # target_id/role identity).
+    deduped: list[tuple[Path, Mapping[str, object] | None]] = []
+    seen: dict[Path, int] = {}
+    for path, record in items:
+        key = path.resolve()
+        if key in seen:
+            if deduped[seen[key]][1] is None and record is not None:
+                deduped[seen[key]] = (path, record)
+        else:
+            seen[key] = len(deduped)
+            deduped.append((path, record))
+    items = deduped
     if not items:
         parser.error("provide --cell, --cells-dir, and/or --index")
 

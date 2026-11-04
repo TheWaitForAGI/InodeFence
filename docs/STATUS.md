@@ -336,7 +336,7 @@ N01 human correspondence, N03/N04 NOT_AUTHORIZED 서술)은 LOG·diagnostics에 
 | ④ | oracle — fixture 매트릭스 재발견률 + 위양성 상한 | `tests/container_integration/check_oracle_fn_matrix.py`(#214); FP 상한 `src/inodefence/sentinel_set.py`(#205) | ✓ main | ✓ #205/#214 PASS | 부분(FN 0/5·FP n=1200 보정값) |
 | ⑤ | 비교군 — R/D/S 어휘 동등성 단위테스트 | `pytest tests/evaluation/test_rds.py tests/test_run_g1_smoke.py -k vocabulary` | ✓ main(#206·#212) | ✓ G1 셀별 equality=true | 대기 |
 | ⑥ | 결과 — KM 곡선·표(표본·중도절단·abort 분리) | `paper/figures/render_exp0_survival.py`(#219) + `scripts/analyze_exp0.py`(#209) | ✓(#202 스택, 머지 대기) | ✓ 리허설 체인 결함 0(레인 6) | 대기 |
-| ⑦ | 증거 — raw 압축본 + SHA-256 목록 + 재생 스크립트 | `experiments/summaries/raw-manifest-*.sha256`; `make replay`(#208); `scripts/make_evidence_bundle.py`(#215) | ✓ main(#208)·(#215·#251 대기) | ✓ manifest 141/282 검증, 번들 round-trip | 부분(Mac 1,614 raw 미이관) |
+| ⑦ | 증거 — raw 압축본 + SHA-256 목록 + 재생 스크립트 | `experiments/summaries/raw-manifest-*.sha256`; `make replay`(#208); `scripts/make_evidence_bundle.py`(#215) | ✓ main(#208)·(#215·#251 대기) | ✓ #251 282/282 레인 10 독립 재해시; 141은 레인 8 `--verify` + 번들 round-trip 218/218 | 부분(Mac 1,614 raw 미이관) |
 | ⑧ | 통계 — 스크립트 하나가 모든 표·그림을 raw에서 생성 | `make paper-artifacts --verify`(#232·#256) | ◑(M2/M3 표 BYTE-MATCH, 그림 size-only, ledger exists-only) | ✓ #256 PASS | — |
 | ⑨ | 한계·실패 — abort 사유 표, 음성 결과 전부 | `scripts/analyze_abort_rollup.py`(#210·#227); `paper/sections/06-results.md` §5.3.3·§5.4 | ✓(머지 대기) | ✓ PASS | 대기(EXP-0 abort율) |
 | ⑩ | 문서 — STATUS 1페이지 현황 | 이 파일 | ✗ 미축소(수술 종료 후) | — | — |

@@ -579,7 +579,7 @@ def _p2_steps() -> list[dict[str, Any]]:
     report: dict[str, Any] = synthetic_demo_report(
         123, 20, EffectSearchPolicy.P2_EFFECT_ADAPTIVE, MutationPolicy.M1
     )
-    assert report["demo_report_schema"] == 2
+    assert report["demo_report_schema"] == 3
     return report["steps"]
 
 

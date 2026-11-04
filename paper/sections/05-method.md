@@ -169,8 +169,13 @@ MDE는 극소 사건 수의 **형식적 역산값**일 뿐으로 40 사건 낙�
 
 다음은 EXP-3 실행 후 채운다. 현재는 **TBD**다.
 
-- 표: arm별 T_first 생존표(중앙값·로그랭크 p·A12), U_viol 수, abort 3정책 민감도. — **TBD**
-- 그림: R/D/S-u Kaplan–Meier 생존곡선. — **TBD**
+- 표(TBD): arm별 T_first 생존표 — KM 중앙값 · **seed-block permutation 로그랭크 p**
+  (`confirmatory.contrasts[].permutation.p_value`; `holm_adjusted_p`·`reject_at_alpha`·`underpowered` 동반).
+  U_viol 수와 효과크기 **A12 = `supplementary.u_viol_a12`**(Vargha–Delaney, seed-블록 paired; >0.5면 arm_a 우세,
+  **비확증**; 페어 없으면 null). abort 3정책 민감도 = `item5_first_contract_index.sensitivity`(exclude·censor-at-budget).
+  zero-hit 시 `campaign_unit_rule_of_three_upper95`(단위=캠페인, item7·확증 섹션 공통 이름). **확증은 holdout 패밀리의
+  `reject_at_alpha`뿐**(`confirmatory.confirmatory_scope`). — **TBD**
+- 그림(TBD): R/D/S-u Kaplan–Meier 생존곡선(중도절단 tick). — **TBD**
 
 ## 4.7 AI 도구 사용 (재현성·공개)
 

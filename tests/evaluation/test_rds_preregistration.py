@@ -285,7 +285,7 @@ TARGETS_BLOCK = BLOCK.replace(f"image_digest = {DIGEST}\n", "").replace(
     "targets.py-tarfile-3.12.exposure = none\n"
     "exposure_ledger = experiments/preregistration/exposure-ledger.md\n"
     f"exposure_ledger_sha256 = {LEDGER_SHA}\n"
-    "confirmatory_family = holdout:S-u-vs-R,S-u-vs-D\n"
+    "confirmatory_family = holdout:S-u-vs-R\n"
     "confirmatory_test = exact-logrank-permutation-v1\n"
     "multiplicity = holm-fwer-v1\n"
     "primary_endpoint = t_first\n"
@@ -327,7 +327,7 @@ def test_targets_are_parsed_with_roles_digests_arms_and_analysis_keys() -> None:
     assert prereg.target("node-tar-7.9.9") is holdout and prereg.target("nope") is None
     assert prereg.exposure_ledger == "experiments/preregistration/exposure-ledger.md"
     assert prereg.exposure_ledger_sha256 == LEDGER_SHA
-    assert prereg.confirmatory_family == "holdout:S-u-vs-R,S-u-vs-D"
+    assert prereg.confirmatory_family == "holdout:S-u-vs-R"
     assert prereg.confirmatory_test == "exact-logrank-permutation-v1"
     assert prereg.multiplicity == "holm-fwer-v1" and prereg.primary_endpoint == "t_first"
     assert prereg.event_threshold == 5
@@ -336,8 +336,19 @@ def test_targets_are_parsed_with_roles_digests_arms_and_analysis_keys() -> None:
     rows = [
         (c["order"], c["target_id"], c["contrast_order"], c["arm_a"], c["arm_b"]) for c in contrasts
     ]
-    assert rows == [(1, "node-tar-7.9.9", 1, "S-u", "R"), (2, "node-tar-7.9.9", 2, "S-u", "D")]
+    assert rows == [(1, "node-tar-7.9.9", 1, "S-u", "R")]  # the holdout runs R and S-u only
     assert all(c["role"] == "holdout" and c["hypothesis"] == "H-A" for c in contrasts)
+    # A holdout running every arm carries both registered contrasts, in Holm order.
+    full = parse_preregistration(
+        TARGETS_BLOCK.replace("targets.node-tar-7.9.9.arms = R, S-u\n", "").replace(
+            "confirmatory_family = holdout:S-u-vs-R",
+            "confirmatory_family = holdout:S-u-vs-R,S-u-vs-D",
+        )
+    )
+    assert [(c["order"], c["contrast"]) for c in full.confirmatory_contrasts()] == [
+        (1, "S-u-vs-R"),
+        (2, "S-u-vs-D"),
+    ]
     assert parse_preregistration(BLOCK).confirmatory_contrasts() == ()
 
 
@@ -379,8 +390,15 @@ TARGET_EDITS: list[tuple[tuple[str, str], str]] = [
         "confirmatory_test must be one of",
     ),
     (
-        ("confirmatory_family = holdout:S-u-vs-R,S-u-vs-D", "confirmatory_family = train:S-u-vs-R"),
+        ("confirmatory_family = holdout:S-u-vs-R", "confirmatory_family = train:S-u-vs-R"),
         "confirmatory_family must be",
+    ),
+    (
+        (
+            "confirmatory_family = holdout:S-u-vs-R",
+            "confirmatory_family = holdout:S-u-vs-R,S-u-vs-D",
+        ),
+        "contrast S-u-vs-D needs arms not run on confirmatory target node-tar-7.9.9",
     ),
     (("multiplicity = holm-fwer-v1", "multiplicity = bonferroni"), "multiplicity must be one of"),
     (("primary_endpoint = t_first", "primary_endpoint = hits"), "primary_endpoint must be one of"),

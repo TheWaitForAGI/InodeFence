@@ -6,41 +6,37 @@ target) and produces the EVALUATION-lane EXP-0 infrastructure-measurement roll-u
 H-A and never concludes effectiveness (prereg v2 "목적: 인프라 측정"). Every reported number
 carries its denominator, and the hazard proxy is emitted only as a판정-무관 reference value.
 
-Input schema is lane 5's ``RdsCellSummary.summary_record()`` (schema_version 1). All per-cell
-fields are read ONLY through ``_DEFAULT_FIELD_MAP`` (override any name with ``--field-map``);
-that one map is the single place a runner field name is bound, following the #202 adapter
-model. The T_first survival pair (``t_first`` / ``t_first_event``) is consumed directly by
-:mod:`inodefence.evaluation.survival`.
+Input is lane 5's G1-smoke / EXP-0 run directory. Each cell file
+(``summaries/<run_id>.summary.json``) is a wrapper:
 
-Items produced:
+* ``summary``  -- the ``RdsCellSummary.summary_record()`` fields (``t_first`` / ``t_first_event``,
+  ``executions_completed``, ``first_c0/c1/c2``, dense counts, ...); ``null`` for an invalid cell;
+* ``timing``   -- ``wall_seconds``, ``step_wall_seconds`` (per-step full-step wall, step order),
+  ``execution_mode`` ("per-case-container" | "worker-pool"), ``exec_per_hour`` (runner value);
+* ``environment`` -- host / docker / image / node versions (passthrough provenance);
+* ``config_nonconformant`` / ``invalid_reason`` -- the invalid bucket (summary is ``null``);
+* ``unfingerprinted_hit_steps`` -- C1|C2 steps whose fingerprint the raw report did not record.
 
-1. aborts by reason and arm (reasons bucketed into observer_integrity / broker /
-   cleanup_inspect / cleanup_remove / other; a separate ``invalid`` config-nonconformant
-   bucket is tracked when the runner flags it);
-2. p95 full-step time per cell and pooled -- requires a per-step duration field;
-3. exec/h per cell and summed -- requires a wall-clock field;
-4. per-case vs worker-pool throughput side by side, with the parity VERDICT read from a
-   lane-4 comparator result file (this report never decides parity itself);
-5. first C0 / C1 / C2 execution index per arm, right-censored (no-hit at budget, abort at the
-   abort execution), plus the combined T_first (C1|C2) survival per arm;
-6. dense signals per arm: boundary-attempt keys, rejected ratio, observation failures, U_viol;
-7. hazard proxy = (C1|C2 steps)/(executions) per arm, reference-only; when every arm observed
-   zero hits, the campaign-unit rule-of-three upper bound is primary and the execution-unit
-   bound is exploratory (prereg v2 zero-hit policy (a)).
+``summaries/index.json`` (``--index``) lists the cells and carries each cell's ``arm`` / ``seed``,
+so invalid cells (whose ``summary`` is ``null``) still get their identity. A flat
+``summary_record()`` dict is also accepted (no wrapper, no timing).
 
-Lane 5's current summary carries no wall-clock or per-step-duration or execution-mode field, so
-items 2/3/4 report ``available: false`` with the missing field names until the runner (or a
-separate timing/run-ledger source) provides them. Items 1/5/6/7 compute from lane 5's schema.
+The RdsCellSummary field names are bound in ``_DEFAULT_FIELD_MAP`` and the timing subfields in
+``_TIMING_*`` -- those are the single places a runner field name is bound; override cell fields
+with ``--field-map``. The T_first survival pair feeds :mod:`inodefence.evaluation.survival`.
 
-Input is lane 5's run directory: either point ``--index`` at ``summaries/index.json`` (it
-resolves each entry's summary pointer) or ``--cells-dir`` at the ``summaries/`` directory of
-``<run_id>.summary.json`` cells. Each cell file may wrap the RdsCellSummary fields under a
-``"summary"`` key (lane 5) or be a flat ``summary_record()`` dict; both are accepted.
+Items: (1) aborts by reason and arm + invalid bucket; (2) p95 full-step per cell and pooled;
+(3) exec/h per cell and summed; (4) per-case vs worker-pool throughput + lane-4 parity verdict
+(read, never decided here); (5) first C0/C1/C2 index per arm right-censored + combined T_first;
+(6) dense signals; (7) hazard proxy (reference-only; campaign-unit rule-of-three when zero-hit).
+A measurement whose inputs are entirely null/absent is reported ``available: false`` with the
+missing field, never invented.
 
   python -m scripts.analyze_exp0 --index <run>/summaries/index.json [--parity <file>]
 """
 
 import argparse
+import math
 import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -77,25 +73,40 @@ _DEFAULT_FIELD_MAP = {
     "rejected_executions": "rejected_executions",
     "observation_failures": "observation_failures",
     "u_viol": "u_viol",
-    "wall_clock_seconds": "wall_clock_seconds",
-    "full_step_durations": "full_step_durations_seconds",
-    "execution_mode": "execution_mode",
 }
 
-# Items 2/3/4 need these; they are absent from lane 5's schema v1.
-_TIMING_FIELDS = ("wall_clock_seconds", "full_step_durations")
-_MODE_FIELD = "execution_mode"
+# Wrapper top-level keys (outside the inner "summary" object), from lane 5's schema.
+_SUMMARY_KEY = "summary"
+_TIMING_KEY = "timing"
+_ENVIRONMENT_KEY = "environment"
+_CONFIG_NONCONFORMANT_KEY = "config_nonconformant"
+_INVALID_REASON_KEY = "invalid_reason"
+_UNFINGERPRINTED_KEY = "unfingerprinted_hit_steps"
+# Subfields of the "timing" object.
+_TIMING_WALL = "wall_seconds"
+_TIMING_STEPS = "step_wall_seconds"
+_TIMING_MODE = "execution_mode"
+_TIMING_EXEC_PER_HOUR = "exec_per_hour"
+_TIMING_RUNNER_P95 = "full_step_seconds_p95"
+
+
+@dataclass(frozen=True, slots=True)
+class InvalidCell:
+    """A config-nonconformant cell (summary is null): tracked and reported, never analyzed."""
+
+    seed: int
+    arm: str
+    invalid_reason: str | None
 
 
 @dataclass(frozen=True, slots=True)
 class CellSummary:
-    """One EXP-0 cell (seed x arm x target), as the runtime lane summarized it.
+    """One analyzable EXP-0 cell (complete or abort), as the runtime lane summarized it.
 
-    ``disposition`` is derived from the runner booleans: ``"invalid"`` (config-nonconformant,
-    excluded from the T_first risk set and reported separately), else ``"abort"`` (fail-closed
-    stop, carrying a raw ``abort_reason``), else ``"complete"``. ``t_first`` / ``t_first_event``
-    is the combined C1|C2 survival pair. ``first_cX`` is the 1-based first C0/C1/C2 execution
-    or ``None``. Timing and execution-mode are optional (absent in lane 5 schema v1).
+    ``disposition`` is ``"abort"`` (fail-closed stop, raw ``abort_reason``) or ``"complete"``.
+    ``t_first`` / ``t_first_event`` is the combined C1|C2 survival pair. ``first_cX`` is the
+    1-based first C0/C1/C2 execution or ``None``. Timing (``wall_clock_seconds``,
+    ``full_step_durations``, ``execution_mode``) is optional; ``None`` when the runner omitted it.
     """
 
     seed: int
@@ -115,14 +126,18 @@ class CellSummary:
     rejected_executions: int
     observation_failures: int
     u_viol: int
+    unfingerprinted_hit_steps: int
     wall_clock_seconds: float | None
     full_step_durations: tuple[float, ...] | None
     execution_mode: str | None
+    runner_exec_per_hour: float | None
+    runner_p95_seconds: float | None
+    environment: Mapping[str, object] | None
 
     def __post_init__(self) -> None:
-        if self.disposition not in ("complete", "abort", "invalid"):
+        if self.disposition not in ("complete", "abort"):
             raise ValueError(
-                f"disposition must be complete/abort/invalid, got {self.disposition!r}"
+                f"CellSummary disposition must be complete/abort, got {self.disposition!r}"
             )
         if self.disposition != "abort" and self.abort_reason is not None:
             raise ValueError("only an aborted cell may carry an abort_reason")
@@ -152,79 +167,116 @@ def _get(row: Mapping[str, object], field_map: Mapping[str, str], key: str) -> o
     return row.get(field_map[key])
 
 
-def _unwrap(row: Mapping[str, object]) -> Mapping[str, object]:
-    """Return lane 5's nested ``summary`` object, or the row itself if already flat.
+def _timing_value(timing: Mapping[str, object] | None, key: str) -> object:
+    return None if timing is None else timing.get(key)
 
-    Lane 5's ``summaries/<run_id>.summary.json`` wraps the RdsCellSummary fields under a
-    ``"summary"`` key (alongside ``label`` / ``source`` / ``u_viol_note``); a flat row is
-    also accepted so a bare ``summary_record()`` dict works.
+
+def _identity(
+    inner: Mapping[str, object] | None,
+    entry: Mapping[str, object] | None,
+    field_map: Mapping[str, str],
+) -> tuple[int, str]:
+    for source in (inner, entry):
+        if isinstance(source, dict):
+            seed = source.get(field_map["seed"], source.get("seed"))
+            arm = source.get(field_map["arm"], source.get("arm"))
+            if seed is not None and arm is not None:
+                return int(seed), str(arm)  # type: ignore[arg-type]
+    raise ValueError("invalid cell has no identity; load it via --index so arm/seed are known")
+
+
+def cell_from_row(
+    row: Mapping[str, object],
+    field_map: Mapping[str, str],
+    *,
+    entry: Mapping[str, object] | None = None,
+) -> CellSummary | InvalidCell:
+    """Map one wrapper (or flat) runner row to a :class:`CellSummary` or :class:`InvalidCell`.
+
+    Reads the inner RdsCellSummary object through ``field_map`` and the wrapper's ``timing`` /
+    ``config_nonconformant`` / ``unfingerprinted_hit_steps`` through the ``_TIMING_*`` / ``_*_KEY``
+    constants. ``entry`` is the matching ``index.json`` record, used only to recover an invalid
+    cell's arm/seed when its ``summary`` is null.
     """
-    inner = row.get("summary")
-    return inner if isinstance(inner, dict) else row
+    has_wrapper = _SUMMARY_KEY in row
+    inner = row.get(_SUMMARY_KEY) if has_wrapper else row
+    config_nonconformant = (
+        bool(row.get(_CONFIG_NONCONFORMANT_KEY))
+        if has_wrapper
+        else bool(_get(row, field_map, "invalid"))
+    )
+    if config_nonconformant or (has_wrapper and inner is None):
+        reason = row.get(_INVALID_REASON_KEY) if has_wrapper else None
+        seed, arm = _identity(inner if isinstance(inner, dict) else None, entry, field_map)
+        return InvalidCell(
+            seed=seed, arm=arm, invalid_reason=None if reason is None else str(reason)
+        )
 
-
-def cell_from_row(row: Mapping[str, object], field_map: Mapping[str, str]) -> CellSummary:
-    """Map one runner-output row to a :class:`CellSummary` through the field map only."""
-    row = _unwrap(row)
+    if not isinstance(inner, dict):
+        raise ValueError("a non-invalid cell must carry a summary object")
 
     def optional_int(key: str) -> int | None:
-        value = _get(row, field_map, key)
+        value = _get(inner, field_map, key)
         return None if value is None else int(value)  # type: ignore[arg-type]
 
-    invalid = bool(_get(row, field_map, "invalid"))
-    aborted = bool(_get(row, field_map, "aborted"))
-    complete = bool(_get(row, field_map, "complete"))
-    if invalid:
-        disposition = "invalid"
-    elif aborted:
+    aborted = bool(_get(inner, field_map, "aborted"))
+    complete = bool(_get(inner, field_map, "complete"))
+    if aborted:
         disposition = "abort"
     elif complete:
         disposition = "complete"
     else:
-        raise ValueError("cell is neither complete, aborted, nor invalid")
+        raise ValueError("a non-invalid cell must be complete or aborted")
 
-    abort_reason = _get(row, field_map, "abort_reason")
-    durations = _get(row, field_map, "full_step_durations")
+    timing = row.get(_TIMING_KEY) if has_wrapper else None
+    timing = timing if isinstance(timing, dict) else None
+    durations = _timing_value(timing, _TIMING_STEPS)
     if durations is not None and not isinstance(durations, list):
-        raise ValueError("full_step_durations, when present, must be a list of seconds")
-    wall = _get(row, field_map, "wall_clock_seconds")
-    mode = _get(row, field_map, "execution_mode")
+        raise ValueError("timing.step_wall_seconds, when present, must be a list of seconds")
+    wall = _timing_value(timing, _TIMING_WALL)
+    mode = _timing_value(timing, _TIMING_MODE)
+    runner_eph = _timing_value(timing, _TIMING_EXEC_PER_HOUR)
+    runner_p95 = _timing_value(timing, _TIMING_RUNNER_P95)
+    environment = row.get(_ENVIRONMENT_KEY) if has_wrapper else None
+    abort_reason = _get(inner, field_map, "abort_reason")
 
     return CellSummary(
-        seed=int(_get(row, field_map, "seed")),  # type: ignore[arg-type]
-        arm=str(_get(row, field_map, "arm")),
-        target=str(_get(row, field_map, "target") or "unspecified"),
-        budget=int(_get(row, field_map, "budget")),  # type: ignore[arg-type]
-        executions=int(_get(row, field_map, "executions")),  # type: ignore[arg-type]
+        seed=int(_get(inner, field_map, "seed")),  # type: ignore[arg-type]
+        arm=str(_get(inner, field_map, "arm")),
+        target=str(_get(inner, field_map, "target") or "unspecified"),
+        budget=int(_get(inner, field_map, "budget")),  # type: ignore[arg-type]
+        executions=int(_get(inner, field_map, "executions")),  # type: ignore[arg-type]
         disposition=disposition,
         abort_reason=None
         if (disposition != "abort" or abort_reason is None)
         else str(abort_reason),
-        t_first=int(_get(row, field_map, "t_first")),  # type: ignore[arg-type]
-        t_first_event=int(_get(row, field_map, "t_first_event")),  # type: ignore[arg-type]
-        hit_steps=int(_get(row, field_map, "hit_steps")),  # type: ignore[arg-type]
+        t_first=int(_get(inner, field_map, "t_first")),  # type: ignore[arg-type]
+        t_first_event=int(_get(inner, field_map, "t_first_event")),  # type: ignore[arg-type]
+        hit_steps=int(_get(inner, field_map, "hit_steps")),  # type: ignore[arg-type]
         first_c0=optional_int("first_c0"),
         first_c1=optional_int("first_c1"),
         first_c2=optional_int("first_c2"),
-        boundary_attempt_keys=int(_get(row, field_map, "boundary_attempt_keys")),  # type: ignore[arg-type]
-        rejected_executions=int(_get(row, field_map, "rejected_executions")),  # type: ignore[arg-type]
-        observation_failures=int(_get(row, field_map, "observation_failures") or 0),  # type: ignore[arg-type]
-        u_viol=int(_get(row, field_map, "u_viol") or 0),  # type: ignore[arg-type]
+        boundary_attempt_keys=int(_get(inner, field_map, "boundary_attempt_keys")),  # type: ignore[arg-type]
+        rejected_executions=int(_get(inner, field_map, "rejected_executions")),  # type: ignore[arg-type]
+        observation_failures=int(_get(inner, field_map, "observation_failures") or 0),  # type: ignore[arg-type]
+        u_viol=int(_get(inner, field_map, "u_viol") or 0),  # type: ignore[arg-type]
+        unfingerprinted_hit_steps=int(row.get(_UNFINGERPRINTED_KEY) or 0) if has_wrapper else 0,  # type: ignore[arg-type]
         wall_clock_seconds=None if wall is None else float(wall),  # type: ignore[arg-type]
         full_step_durations=None if durations is None else tuple(float(v) for v in durations),
         execution_mode=None if mode is None else str(mode),
+        runner_exec_per_hour=None if runner_eph is None else float(runner_eph),  # type: ignore[arg-type]
+        runner_p95_seconds=None if runner_p95 is None else float(runner_p95),  # type: ignore[arg-type]
+        environment=environment if isinstance(environment, dict) else None,
     )
 
 
 def _percentile(values: Sequence[float], p: float) -> float | None:
-    """Inclusive-linear percentile at position ``(n-1)*p`` (matching evaluation.statistics)."""
+    """Nearest-rank percentile (matching lane 5's precomputed p50/p95/max)."""
     if not values:
         return None
     ordered = sorted(values)
-    position = (len(ordered) - 1) * p
-    lower = int(position)
-    upper = min(lower + 1, len(ordered) - 1)
-    return ordered[lower] + (ordered[upper] - ordered[lower]) * (position - lower)
+    rank = max(1, math.ceil(p * len(ordered)))
+    return ordered[min(rank - 1, len(ordered) - 1)]
 
 
 def _by_arm(cells: Sequence[CellSummary]) -> dict[str, list[CellSummary]]:
@@ -238,25 +290,29 @@ def _bucket_reason(reason: str) -> str:
     return reason if reason in ABORT_REASONS else "other"
 
 
-def _aborts(cells: Sequence[CellSummary]) -> dict:
+def _aborts(cells: Sequence[CellSummary], invalid: Sequence[InvalidCell]) -> dict:
+    invalid_by_arm: dict[str, int] = {}
+    for cell in invalid:
+        invalid_by_arm[cell.arm] = invalid_by_arm.get(cell.arm, 0) + 1
     per_arm = {}
-    for arm, arm_cells in _by_arm(cells).items():
+    arms = sorted({c.arm for c in cells} | set(invalid_by_arm))
+    for arm in arms:
+        arm_cells = [c for c in cells if c.arm == arm]
         reasons = {reason: 0 for reason in ABORT_REASONS}
-        invalid = 0
         for cell in arm_cells:
             if cell.disposition == "abort":
                 reasons[_bucket_reason(cell.abort_reason or "other")] += 1
-            elif cell.disposition == "invalid":
-                invalid += 1
         aborts = sum(reasons.values())
+        invalid_count = invalid_by_arm.get(arm, 0)
+        total = len(arm_cells) + invalid_count
         per_arm[arm] = {
-            "number_cells": len(arm_cells),
+            "number_cells": total,
             "number_complete": sum(1 for c in arm_cells if c.disposition == "complete"),
             "number_abort": aborts,
-            "number_invalid_nonconformant": invalid,
+            "number_invalid_nonconformant": invalid_count,
             "abort_by_reason": reasons,
-            "abort_fraction": aborts / len(arm_cells),
-            "denominator": len(arm_cells),
+            "abort_fraction": aborts / total if total else None,
+            "denominator": total,
         }
     return {"by_arm": per_arm, "abort_reason_enum": list(ABORT_REASONS)}
 
@@ -266,8 +322,8 @@ def _p95_full_step(cells: Sequence[CellSummary]) -> dict:
     if not timed:
         return {
             "available": False,
-            "missing_field": _DEFAULT_FIELD_MAP["full_step_durations"],
-            "note": "no per-step duration field in the runner summary (lane 5 schema v1)",
+            "missing_field": f"{_TIMING_KEY}.{_TIMING_STEPS}",
+            "note": "no per-step duration field in the runner timing block",
         }
     per_cell = []
     pooled: list[float] = []
@@ -280,12 +336,13 @@ def _p95_full_step(cells: Sequence[CellSummary]) -> dict:
                 "arm": cell.arm,
                 "number_steps": len(durations),
                 "p95_seconds": _percentile(durations, 0.95),
+                "runner_p95_seconds": cell.runner_p95_seconds,
             }
         )
     return {
         "available": True,
         "unit": "seconds",
-        "method": "inclusive-linear percentile at (n-1)*p",
+        "method": "nearest-rank percentile",
         "per_cell": per_cell,
         "pooled": {"number_steps": len(pooled), "p95_seconds": _percentile(pooled, 0.95)},
     }
@@ -296,8 +353,8 @@ def _throughput(cells: Sequence[CellSummary]) -> dict:
     if not timed:
         return {
             "available": False,
-            "missing_field": _DEFAULT_FIELD_MAP["wall_clock_seconds"],
-            "note": "no wall-clock field in the runner summary (lane 5 schema v1)",
+            "missing_field": f"{_TIMING_KEY}.{_TIMING_WALL}",
+            "note": "no wall-clock field in the runner timing block",
         }
     executions = sum(c.executions for c in timed)
     wall = sum(c.wall_clock_seconds or 0.0 for c in timed)
@@ -308,6 +365,7 @@ def _throughput(cells: Sequence[CellSummary]) -> dict:
             "executions": c.executions,
             "wall_clock_seconds": c.wall_clock_seconds,
             "exec_per_hour": c.executions / ((c.wall_clock_seconds or 0.0) / 3600.0),
+            "runner_exec_per_hour": c.runner_exec_per_hour,
         }
         for c in timed
     ]
@@ -335,20 +393,18 @@ def _throughput_parity(cells: Sequence[CellSummary], parity: object | None) -> d
         bucket["wall"] += cell.wall_clock_seconds or 0.0
     rendered = {
         mode: {
-            "number_cells": stats["number_cells"],
-            "executions": stats["executions"],
-            "exec_per_hour": stats["executions"] / (stats["wall"] / 3600.0)
-            if stats["wall"]
-            else None,
+            "number_cells": s["number_cells"],
+            "executions": s["executions"],
+            "exec_per_hour": s["executions"] / (s["wall"] / 3600.0) if s["wall"] else None,
         }
-        for mode, stats in by_mode.items()
+        for mode, s in by_mode.items()
     }
     return {
         "available_self_throughput": bool(rendered),
         "by_execution_mode": rendered,
         "mode_note": (
-            "null/empty = the runner summary has no execution-mode + wall-clock fields "
-            "(lane 5 schema v1); per-case vs worker-pool split is unavailable from summaries alone"
+            "null/empty = the runner summaries carry no execution-mode + wall-clock timing; "
+            "per-case vs worker-pool split is then unavailable from summaries alone"
         ),
         "parity_verdict": parity,
         "parity_note": (
@@ -358,10 +414,12 @@ def _throughput_parity(cells: Sequence[CellSummary], parity: object | None) -> d
     }
 
 
-def _first_index_censored(cells: Sequence[CellSummary]) -> dict:
+def _first_index_censored(cells: Sequence[CellSummary], invalid: Sequence[InvalidCell]) -> dict:
+    invalid_by_arm: dict[str, int] = {}
+    for cell in invalid:
+        invalid_by_arm[cell.arm] = invalid_by_arm.get(cell.arm, 0) + 1
     per_arm = {}
-    for arm, arm_cells in _by_arm(cells).items():
-        valid = [c for c in arm_cells if c.disposition != "invalid"]
+    for arm, valid in _by_arm(cells).items():
         contracts = {}
         for contract in CONTRACTS:
             observations, observed = [], []
@@ -380,11 +438,10 @@ def _first_index_censored(cells: Sequence[CellSummary]) -> dict:
                 "km_median_executions": km_median(steps),
                 "denominator_cells_in_risk_set": len(observations),
             }
-        # combined T_first (C1|C2) survival pair from the runner, consumed directly
         t_first_obs = [Observation(time=c.t_first, event=bool(c.t_first_event)) for c in valid]
         t_first_observed = [c.t_first for c in valid if c.t_first_event == 1]
         per_arm[arm] = {
-            "number_invalid_excluded": len(arm_cells) - len(valid),
+            "number_invalid_excluded": invalid_by_arm.get(arm, 0),
             "censoring": "no-hit censored at budget; abort censored at abort execution",
             "contracts": contracts,
             "t_first_combined_c1_or_c2": {
@@ -400,8 +457,7 @@ def _first_index_censored(cells: Sequence[CellSummary]) -> dict:
 
 def _dense_signals(cells: Sequence[CellSummary]) -> dict:
     per_arm = {}
-    for arm, arm_cells in _by_arm(cells).items():
-        valid = [c for c in arm_cells if c.disposition != "invalid"]
+    for arm, valid in _by_arm(cells).items():
         executions = sum(c.executions for c in valid)
         boundary_total = sum(c.boundary_attempt_keys for c in valid)
         rejected = sum(c.rejected_executions for c in valid)
@@ -422,6 +478,7 @@ def _dense_signals(cells: Sequence[CellSummary]) -> dict:
                 "total_unique_c1_c2_fingerprints": u_viol_total,
                 "mean_per_cell": u_viol_total / len(valid) if valid else None,
             },
+            "unfingerprinted_hit_steps_total": sum(c.unfingerprinted_hit_steps for c in valid),
         }
     return {"by_arm": per_arm}
 
@@ -429,8 +486,7 @@ def _dense_signals(cells: Sequence[CellSummary]) -> dict:
 def _hazard_proxy(cells: Sequence[CellSummary]) -> dict:
     per_arm = {}
     total_hits = 0
-    for arm, arm_cells in _by_arm(cells).items():
-        valid = [c for c in arm_cells if c.disposition != "invalid"]
+    for arm, valid in _by_arm(cells).items():
         executions = sum(c.executions for c in valid)
         hits = sum(c.hit_steps for c in valid)
         total_hits += hits
@@ -453,22 +509,35 @@ def _hazard_proxy(cells: Sequence[CellSummary]) -> dict:
             "by_arm": {
                 arm: {
                     "campaign_unit_rule_of_three_upper95": (
-                        rule_of_three(stats["campaigns"]) if stats["campaigns"] else None
+                        rule_of_three(s["campaigns"]) if s["campaigns"] else None
                     ),
-                    "campaign_denominator": stats["campaigns"],
+                    "campaign_denominator": s["campaigns"],
                     "execution_unit_rule_of_three_upper95_exploratory": (
-                        rule_of_three(stats["executions"]) if stats["executions"] else None
+                        rule_of_three(s["executions"]) if s["executions"] else None
                     ),
-                    "execution_denominator": stats["executions"],
+                    "execution_denominator": s["executions"],
                 }
-                for arm, stats in per_arm.items()
+                for arm, s in per_arm.items()
             },
         }
     return result
 
 
+def _environments(cells: Sequence[CellSummary]) -> dict:
+    seen = [c.environment for c in cells if c.environment is not None]
+    distinct = []
+    for env in seen:
+        if env not in distinct:
+            distinct.append(dict(env))
+    return {
+        "number_cells_with_environment": len(seen),
+        "distinct": distinct,
+        "homogeneous": len(distinct) <= 1,
+    }
+
+
 def build_report(
-    cells: Sequence[CellSummary],
+    cells: Sequence[CellSummary | InvalidCell],
     *,
     parity: object | None = None,
     field_map: Mapping[str, str],
@@ -477,6 +546,9 @@ def build_report(
     """Assemble the EXP-0 measurement report (prereg items 1-7) from validated cells."""
     if not cells:
         raise ValueError("no cells to summarize")
+    valid = [c for c in cells if isinstance(c, CellSummary)]
+    invalid = [c for c in cells if isinstance(c, InvalidCell)]
+    arms = sorted({c.arm for c in cells})
     return {
         "schema_version": 1,
         "classification": "exp0-pilot-infrastructure-measurement",
@@ -485,16 +557,19 @@ def build_report(
             "effectiveness claim (prereg v2)"
         ),
         "number_cells": len(cells),
-        "arms": sorted({c.arm for c in cells}),
+        "number_valid_cells": len(valid),
+        "number_invalid_cells": len(invalid),
+        "arms": arms,
         "seeds": sorted({c.seed for c in cells}),
-        "targets": sorted({c.target for c in cells}),
-        "item1_aborts": _aborts(cells),
-        "item2_p95_full_step": _p95_full_step(cells),
-        "item3_throughput": _throughput(cells),
-        "item4_throughput_parity": _throughput_parity(cells, parity),
-        "item5_first_contract_index": _first_index_censored(cells),
-        "item6_dense_signals": _dense_signals(cells),
-        "item7_hazard_proxy": _hazard_proxy(cells),
+        "targets": sorted({c.target for c in valid}),
+        "item1_aborts": _aborts(valid, invalid),
+        "item2_p95_full_step": _p95_full_step(valid),
+        "item3_throughput": _throughput(valid),
+        "item4_throughput_parity": _throughput_parity(valid, parity),
+        "item5_first_contract_index": _first_index_censored(valid, invalid),
+        "item6_dense_signals": _dense_signals(valid),
+        "item7_hazard_proxy": _hazard_proxy(valid),
+        "environment": _environments(valid),
         "provenance": {"source_files": list(sources), "field_map": dict(field_map)},
     }
 
@@ -509,8 +584,9 @@ def report_markdown(report: dict) -> str:
     lines = [
         "# EXP-0 pilot infrastructure measurement",
         "",
-        f"Cells: {report['number_cells']} | arms: {', '.join(report['arms'])} | "
-        f"seeds: {len(report['seeds'])} | targets: {', '.join(report['targets'])}",
+        f"Cells: {report['number_cells']} "
+        f"(valid {report['number_valid_cells']}, invalid {report['number_invalid_cells']}) | "
+        f"arms: {', '.join(report['arms'])} | seeds: {len(report['seeds'])}",
         "",
         "_Infrastructure measurement only; not an H-A test, not an effectiveness claim._",
         "",
@@ -526,7 +602,7 @@ def report_markdown(report: dict) -> str:
                 s["number_complete"],
                 s["number_abort"],
                 s["number_invalid_nonconformant"],
-                f"{s['abort_fraction']:.3f}",
+                "n/a" if s["abort_fraction"] is None else f"{s['abort_fraction']:.3f}",
             ]
             for arm, s in report["item1_aborts"]["by_arm"].items()
         ],
@@ -567,14 +643,14 @@ def report_markdown(report: dict) -> str:
     index_rows = []
     for arm, s in report["item5_first_contract_index"]["by_arm"].items():
         for contract in CONTRACTS:
-            entry = s["contracts"][contract]
+            e = s["contracts"][contract]
             index_rows.append(
                 [
                     arm,
                     contract,
-                    entry["number_observed"],
-                    entry["number_right_censored"],
-                    entry["km_median_executions"],
+                    e["number_observed"],
+                    e["number_right_censored"],
+                    e["km_median_executions"],
                 ]
             )
         t = s["t_first_combined_c1_or_c2"]
@@ -616,12 +692,12 @@ def report_markdown(report: dict) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _index_paths(index_file: Path) -> list[Path]:
-    """Resolve lane 5 ``summaries/index.json`` entries to their per-cell summary files.
+def _index_entries(index_file: Path) -> list[tuple[Path, Mapping[str, object]]]:
+    """Resolve lane 5 ``summaries/index.json`` entries to (summary path, entry) pairs.
 
-    Accepts either a top-level list of entries or an object holding one such list; each entry's
-    ``summary`` pointer is resolved against the index's directory and its parent (so a
-    run-root-relative ``summaries/<run_id>.summary.json`` resolves from either location).
+    Accepts a top-level list of entries or an object holding one such list; each entry's
+    ``summary`` pointer is resolved against the index directory and its parent (so a run-root-
+    relative ``summaries/<run_id>.summary.json`` resolves from either location).
     """
     data = read_json(index_file.read_bytes())
     if isinstance(data, list):
@@ -640,32 +716,34 @@ def _index_paths(index_file: Path) -> list[Path]:
     if not isinstance(entries, list) or not entries:
         raise ValueError(f"{index_file}: no cell-entry list found")
     roots = [index_file.parent, index_file.parent.parent]
-    resolved = []
+    resolved: list[tuple[Path, Mapping[str, object]]] = []
     for entry in entries:
         pointer = entry.get("summary") if isinstance(entry, dict) else None
         if not isinstance(pointer, str):
             raise ValueError(f"{index_file}: an entry has no 'summary' path")
         candidate = Path(pointer)
         if candidate.is_absolute() and candidate.exists():
-            resolved.append(candidate)
+            resolved.append((candidate, entry))
             continue
         for root in roots:
             option = root / pointer
             if option.exists():
-                resolved.append(option)
+                resolved.append((option, entry))
                 break
         else:
             raise ValueError(f"{index_file}: cannot resolve summary pointer {pointer!r}")
     return resolved
 
 
-def load_cells(paths: Sequence[Path], field_map: Mapping[str, str]) -> list[CellSummary]:
-    cells = []
-    for path in paths:
+def load_cells(
+    items: Sequence[tuple[Path, Mapping[str, object] | None]], field_map: Mapping[str, str]
+) -> list[CellSummary | InvalidCell]:
+    cells: list[CellSummary | InvalidCell] = []
+    for path, entry in items:
         row = read_json(path.read_bytes())
         if not isinstance(row, dict):
             raise ValueError(f"{path}: expected a JSON object per cell")
-        cells.append(cell_from_row(row, field_map))
+        cells.append(cell_from_row(row, field_map, entry=entry))
     return cells
 
 
@@ -678,7 +756,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--cells-dir", type=Path, help="lane 5 summaries/ dir of *.summary.json cells"
     )
     parser.add_argument(
-        "--index", type=Path, help="lane 5 summaries/index.json (resolves summary pointers)"
+        "--index", type=Path, help="lane 5 summaries/index.json (resolves pointers + identity)"
     )
     parser.add_argument(
         "--parity", type=Path, help="lane-4 throughput-parity comparator result JSON"
@@ -695,7 +773,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             parser.error("--field-map must be a JSON object")
         field_map.update({str(k): str(v) for k, v in override.items()})
 
-    paths = list(args.cell)
+    items: list[tuple[Path, Mapping[str, object] | None]] = [(p, None) for p in args.cell]
     if args.cells_dir is not None:
         found = sorted(args.cells_dir.glob("*.summary.json"))
         if not found:
@@ -704,21 +782,21 @@ def main(argv: Sequence[str] | None = None) -> int:
                 for p in sorted(args.cells_dir.glob("*.json"))
                 if p.name not in ("index.json", "matrix.json")
             ]
-        paths.extend(found)
+        items.extend((p, None) for p in found)
     if args.index is not None:
         try:
-            paths.extend(_index_paths(args.index))
+            items.extend(_index_entries(args.index))
         except (ValueError, KeyError, OSError) as error:
             parser.error(f"--index: {error}")
-    if not paths:
+    if not items:
         parser.error("provide --cell, --cells-dir, and/or --index")
 
     parity = None if args.parity is None else read_json(args.parity.read_bytes())
 
     try:
-        cells = load_cells(paths, field_map)
+        cells = load_cells(items, field_map)
         report = build_report(
-            cells, parity=parity, field_map=field_map, sources=[str(p) for p in paths]
+            cells, parity=parity, field_map=field_map, sources=[str(p) for p, _ in items]
         )
     except (ValueError, KeyError, OSError) as error:
         print(str(error), file=sys.stderr)

@@ -5,12 +5,40 @@ import json
 import pytest
 from scripts.analyze_exp0 import (
     _DEFAULT_FIELD_MAP,
+    CellSummary,
+    InvalidCell,
     build_report,
     cell_from_row,
     main,
 )
 
 DEFAULT_MAP = dict(_DEFAULT_FIELD_MAP)
+
+
+def _wrap(
+    rec=None,
+    *,
+    timing=None,
+    environment=None,
+    invalid=False,
+    invalid_reason=None,
+    unfingerprinted=0,
+):
+    """Build a lane 5 wrapper file dict: inner summary + top-level timing/env/invalid."""
+    wrapper = {
+        "schema_version": 1,
+        "label": ["demo run", "unregistered G1 smoke"],
+        "producer": "native",
+        "summary": None if invalid else rec,
+        "config_nonconformant": invalid,
+        "invalid_reason": invalid_reason,
+        "unfingerprinted_hit_steps": unfingerprinted,
+    }
+    if timing is not None:
+        wrapper["timing"] = timing
+    if environment is not None:
+        wrapper["environment"] = environment
+    return wrapper
 
 
 def _rec(**over):
@@ -235,3 +263,98 @@ def test_main_reads_lane5_index_json(tmp_path, capsys):
         ]
         == 150
     )
+
+
+# --- lane 5 wrapper: timing, invalid-via-index, environment ----------------------
+
+
+def test_wrapper_timing_enables_items_2_3_4():
+    cells = [
+        cell_from_row(
+            _wrap(
+                _rec(arm="R", random_seed=9001),
+                timing={
+                    "wall_seconds": 3600.0,
+                    "step_wall_seconds": [1.0, 2.0, 3.0, 4.0],
+                    "execution_mode": "per-case-container",
+                    "exec_per_hour": 200.0,
+                    "full_step_seconds_p95": 4.0,
+                },
+            ),
+            DEFAULT_MAP,
+        ),
+        cell_from_row(
+            _wrap(
+                _rec(arm="S-u", random_seed=9001),
+                timing={
+                    "wall_seconds": 1800.0,
+                    "step_wall_seconds": [2.0, 2.0],
+                    "execution_mode": "worker-pool",
+                },
+            ),
+            DEFAULT_MAP,
+        ),
+    ]
+    report = build_report(cells, field_map=DEFAULT_MAP, sources=["t"])
+    p95 = report["item2_p95_full_step"]
+    assert p95["available"] is True
+    # nearest-rank p95 of [1,2,3,4] = 4.0; pooled over [1,2,3,4,2,2]
+    assert p95["per_cell"][0]["p95_seconds"] == 4.0
+    assert p95["pooled"]["number_steps"] == 6
+    tput = report["item3_throughput"]
+    assert tput["available"] is True
+    assert tput["summed"]["exec_per_hour"] == pytest.approx(400 / (5400 / 3600))
+    modes = report["item4_throughput_parity"]["by_execution_mode"]
+    assert set(modes) == {"per-case-container", "worker-pool"}
+
+
+def test_invalid_wrapper_null_summary_uses_index_identity():
+    entry = {"run_id": "7.5.2-D-s9003", "arm": "D", "seed": 9003, "invalid": True}
+    cell = cell_from_row(
+        _wrap(invalid=True, invalid_reason="budget mismatch vs plan"),
+        DEFAULT_MAP,
+        entry=entry,
+    )
+    assert isinstance(cell, InvalidCell)
+    assert cell.seed == 9003 and cell.arm == "D"
+    assert cell.invalid_reason == "budget mismatch vs plan"
+
+
+def test_invalid_wrapper_without_identity_raises():
+    with pytest.raises(ValueError):
+        cell_from_row(_wrap(invalid=True), DEFAULT_MAP)
+
+
+def test_environment_and_unfingerprinted_passthrough():
+    env = {"host_machine": "x86_64", "docker_server_version": "29.8.1", "node_tar_version": "7.5.2"}
+    cells = [
+        cell_from_row(
+            _wrap(
+                _rec(arm="R", random_seed=9001, hit_steps=2),
+                environment=env,
+                unfingerprinted=3,
+            ),
+            DEFAULT_MAP,
+        )
+    ]
+    report = build_report(cells, field_map=DEFAULT_MAP, sources=["t"])
+    assert report["environment"]["homogeneous"] is True
+    assert report["environment"]["distinct"][0]["docker_server_version"] == "29.8.1"
+    dense = report["item6_dense_signals"]["by_arm"]["R"]
+    assert dense["unfingerprinted_hit_steps_total"] == 3
+
+
+def test_build_report_counts_valid_and_invalid():
+    cells = [
+        cell_from_row(_wrap(_rec(arm="R", random_seed=9001)), DEFAULT_MAP),
+        cell_from_row(
+            _wrap(invalid=True, invalid_reason="parse failure"),
+            DEFAULT_MAP,
+            entry={"arm": "R", "seed": 9002},
+        ),
+    ]
+    assert isinstance(cells[0], CellSummary) and isinstance(cells[1], InvalidCell)
+    report = build_report(cells, field_map=DEFAULT_MAP, sources=["t"])
+    assert report["number_valid_cells"] == 1 and report["number_invalid_cells"] == 1
+    assert report["item1_aborts"]["by_arm"]["R"]["number_invalid_nonconformant"] == 1
+    assert report["item1_aborts"]["by_arm"]["R"]["number_cells"] == 2

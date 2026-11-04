@@ -10,7 +10,7 @@ DEMO_OUT ?= $(or $(INODEFENCE_RUNTIME_ROOT),/var/lib/inodefence)/demo/effect-dem
 TAR_VERSION ?= 7.5.2
 HISTORICAL_IMAGE ?= inodefence-node-tar-effect:$(TAR_VERSION)
 
-.PHONY: install target-tools lint format-check typecheck test env-check docs-check evidence-chain check fixtures probe isolation-support node-entry-timing-probe node-tar-smoke node-tar-effect-check demo demo-native demo-synthetic demo-native-historical replay
+.PHONY: install target-tools lint format-check typecheck test env-check docs-check evidence-chain check fixtures probe isolation-support node-entry-timing-probe node-tar-smoke node-tar-effect-check demo demo-native demo-synthetic demo-native-historical replay paper-artifacts
 
 target-tools:
 	npm ci --prefix tools/node-tar --ignore-scripts --no-audit --no-fund
@@ -100,3 +100,10 @@ ifndef REPORT
 	$(error REPORT=<demo-report.json> is required)
 endif
 	PYTHONPATH=src $(PYTHON) -m scripts.replay_report --report $(REPORT)
+
+# Regenerate/verify the paper's tables and figures from one entry point (audit (8)).
+# Default (ARGS empty) verifies committed artifacts read-only + runs the evidence-chain
+# check; ARGS=--list lists inputs; ARGS=--regenerate runs the matplotlib generators in
+# an ephemeral env (writes figures in place). Not part of `make check`.
+paper-artifacts:
+	$(PYTHON) -m scripts.regenerate_paper_artifacts $(ARGS)

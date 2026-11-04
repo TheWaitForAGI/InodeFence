@@ -400,3 +400,36 @@ def test_u_viol_c0_in_dense_signals():
     assert dense["u_viol_c0"]["mean_per_cell"] == 4.0
     # the existing C1/C2 u_viol is unchanged
     assert dense["u_viol"]["total_unique_c1_c2_fingerprints"] == 2
+
+
+# --- abort-reason vocabulary from the shared enum (cleanup_reset) -----------------
+
+
+def test_abort_reasons_includes_cleanup_reset():
+    from scripts.analyze_exp0 import ABORT_REASONS
+
+    assert "cleanup_reset" in ABORT_REASONS
+    assert set(ABORT_REASONS) >= {
+        "observer_integrity",
+        "broker",
+        "cleanup_inspect",
+        "cleanup_remove",
+        "cleanup_reset",
+        "other",
+    }
+
+
+def test_cleanup_reset_abort_bucketed_distinctly():
+    rows = [
+        _rec(
+            arm="R",
+            complete=False,
+            aborted=True,
+            abort_reason="cleanup_reset",
+            executions_completed=10,
+            t_first=10,
+        )
+    ]
+    report = build_report(_cells(rows), field_map=DEFAULT_MAP, sources=["t"])
+    by_reason = report["item1_aborts"]["by_arm"]["R"]["abort_by_reason"]
+    assert by_reason["cleanup_reset"] == 1 and by_reason["other"] == 0

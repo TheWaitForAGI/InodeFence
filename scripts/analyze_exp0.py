@@ -36,6 +36,7 @@ missing field, never invented.
 """
 
 import argparse
+import importlib
 import math
 import sys
 from collections.abc import Mapping, Sequence
@@ -50,7 +51,30 @@ from inodefence.evaluation.survival import (
     rule_of_three,
 )
 
-ABORT_REASONS = ("observer_integrity", "broker", "cleanup_inspect", "cleanup_remove", "other")
+# Abort-reason vocabulary. Prefer the shared lane-3 enum so the buckets stay in lock-step
+# with the classifier; fall back to a literal list (with the same members) when that module is
+# not yet on this branch (before #203 merges). The fallback MUST list every InvalidReason value.
+_FALLBACK_ABORT_REASONS = (
+    "observer_integrity",
+    "broker",
+    "cleanup_inspect",
+    "cleanup_remove",
+    "cleanup_reset",
+    "other",
+)
+
+
+def _load_abort_reasons() -> tuple[str, ...]:
+    # Dynamic import so a missing module (before #203 merges) is a clean fallback, not a
+    # pyright reportMissingImports on this branch.
+    try:
+        module = importlib.import_module("inodefence.evaluation.abort_classification")
+    except ImportError:
+        return _FALLBACK_ABORT_REASONS
+    return tuple(reason.value for reason in module.InvalidReason)
+
+
+ABORT_REASONS = _load_abort_reasons()
 CONTRACTS = ("C0", "C1", "C2")
 
 _DEFAULT_FIELD_MAP = {

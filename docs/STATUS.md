@@ -333,7 +333,7 @@ N01 human correspondence, N03/N04 NOT_AUTHORIZED 서술)은 LOG·diagnostics에 
 | ① | 프로토타입 — `make check` 녹색 + 3-arm을 한 명령으로 돌리는 러너 | `make check`; `scripts/run_rds_cell.py`(합성)·`scripts/run_g1_smoke.py`(native, #212) | ✓ main | ✓ G1 15셀 native(레인 10 재현) | 대기(EXP-0) |
 | ② | 재현 환경 — 이미지 digest 고정 + 다른 호스트에서 같은 seed로 같은 case_id 시퀀스 1회 | `docker image inspect inodefence-node-tar-effect:7.5.2 --format '{{.Id}}'` = v2.1 `image_digest`; 타 호스트 재현 기록 없음 | ✓ digest(#238·#258) | ✓ 호스트 Id 일치(레인 4) | ✗ 타 호스트 재현 미수행 |
 | ③ | 실험 실행기 — 사전등록 파일을 입력으로 매트릭스 실행 + raw+체크섬 | `python -m scripts.run_exp0 --preregistration <file> --dry-run` | ✓ main(#223·#230·#236·#244·#245) | ✓ 게이트 거부/통과 독립 재현(레인 10) | 대기(EXP-0) |
-| ④ | oracle — fixture 매트릭스 재발견률 + 위양성 상한 | `scripts/check_oracle_fn_matrix.py`(#214); FP 상한 `src/inodefence/evaluation/sentinel_set.py`(#205) | ✓ main | ✓ #205/#214 PASS | 부분(FN 0/5·FP n=1200 보정값) |
+| ④ | oracle — fixture 매트릭스 재발견률 + 위양성 상한 | `tests/container_integration/check_oracle_fn_matrix.py`(#214); FP 상한 `src/inodefence/sentinel_set.py`(#205) | ✓ main | ✓ #205/#214 PASS | 부분(FN 0/5·FP n=1200 보정값) |
 | ⑤ | 비교군 — R/D/S 어휘 동등성 단위테스트 | `pytest tests/evaluation/test_rds.py tests/test_run_g1_smoke.py -k vocabulary` | ✓ main(#206·#212) | ✓ G1 셀별 equality=true | 대기 |
 | ⑥ | 결과 — KM 곡선·표(표본·중도절단·abort 분리) | `paper/figures/render_exp0_survival.py`(#219) + `scripts/analyze_exp0.py`(#209) | ✓(#202 스택, 머지 대기) | ✓ 리허설 체인 결함 0(레인 6) | 대기 |
 | ⑦ | 증거 — raw 압축본 + SHA-256 목록 + 재생 스크립트 | `experiments/summaries/raw-manifest-*.sha256`; `make replay`(#208); `scripts/make_evidence_bundle.py`(#215) | ✓ main(#208)·(#215·#251 대기) | ✓ manifest 141/282 검증, 번들 round-trip | 부분(Mac 1,614 raw 미이관) |

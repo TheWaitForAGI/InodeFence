@@ -59,15 +59,20 @@ retention 피드백(S-u)이 무작위(R)·구조 커버리지(D)보다 첫 경�
 M2.2에서 7.5.6 거동에 일치하도록 검증됐다(FACT ②) — 약한 평가신호 노출이다. oracle은 CVE/경로 하드코딩 없는
 고정 불변식이라 7.5.6-특정 튜닝은 아니라고 본다(이 한 문장은 추론).
 
-### 재분류 선택지 — `TBD-DECISION(지웅)` (11/18 동결 전 확정)
+### 재분류 (지웅 결정 5 = B)
 
-- **A. hold-out 유지:** 7.5.6/7.5.7를 EXP-3 평가 전용 hold-out으로 유지. 전제 — EXP-3 어휘·정책·seed가 7.5.6
-  실행 산출물에서 유도되지 않음(FACT ③로 현재 충족), M2.2 oracle 노출은 effectiveness-neutral로 간주(결과에 노출
-  사실 명시).
-- **B. '수정 검증 쌍'으로 재분류:** 7.5.6/7.5.7를 **fix-verification differential pair**(M2에서 이미 노출)로
-  재분류하고 hold-out을 (ⅰ) sweep 밖 node-tar 릴리스 또는 (ⅱ) 다른 extractor(tarfile/decompress/oras-go)에서
-  신규 지정. **주의:** node-tar 5릴리스는 전부 노출됨(FACT ④) → node-tar 내 미노출 쌍 확보 불가, sweep 밖 버전이
-  필요하다.
+**7.5.6/7.5.7은 '기(旣)노출된 수정 검증 쌍(fix-verification pair)'으로 재분류**한다 — hold-out이 아니다. 노출
+이력은 위 FACT ①②④(M2 통제재현 · M2.2 oracle 일치검증 · sweep 5릴리스; file:line)로 명시돼 있고, 이 쌍은 R2
+수정이 닫혔는지 **확인**하는 용도(hit 기대 0)로만 쓰며 H-A 효과 추론에서 제외한다(분석 단위는 아래 '다중 타깃' 절).
+
+**독립 hold-out**은 기존 sweep 밖 node-tar 릴리스 또는 다른 extractor에서 선정한다. 값(버전 · 이미지 digest ·
+제외 기준)은 **`TBD-FREEZE`**(11/18 동결 전 확정)로 두되 **선정 규칙은 지금 고정**한다:
+1. 후보 선정 과정에서 얻은 결과로 **유리한 대상을 사후 선택하지 않는다**.
+2. **이미 노출된 타깃은 독립 hold-out으로 재사용하지 않는다** — node-tar 7.5.2/7.5.3/7.5.6/7.5.7/7.5.8 ·
+   decompress 4.2.1 · oras-go v2.6.1 · Python tarfile(M4.1b 노출분).
+3. 후보는 **hazard·결과를 보기 전에 등록**한다. 기노출 목록은 레인 8 소유 `exposure-ledger.md`(제안)로 커밋하고,
+   레인 5 게이트가 `role=holdout` 타깃의 (extractor, version)이 그 목록에 있으면 **거부**한다(레인 5 설계안;
+   `role=holdout ∧ exposure=pre-exposed`는 파서 레벨 포맷 오류).
 
 ---
 
@@ -77,7 +82,7 @@ M2.2에서 7.5.6 거동에 일치하도록 검증됐다(FACT ②) — 약한 평
 블록(레인 5 `rds_preregistration.py` KNOWN_KEYS, #223/#230)과 동일하며, EXP-3 값으로 바꾸고 `TBD-*`를 11/18 전에 채운다. **주의:** 현 레인 5 스키마는 **단일
 `image_digest`**다. EXP-3 다중 타깃(train 7.5.2 + hold-out 쌍 + Python tarfile) 표현은 스키마 확장이 필요하며
 레인 5 조율 사항이다(11/18 전) — 초안에서는 `image_digest`=train 타깃(7.5.2)으로 두고 hold-out은 (a)의 산문 +
-`TBD-DECISION`으로 관리한다(스키마 키를 임의로 발명하지 않는다).
+`TBD-FREEZE` + 아래 '다중 타깃' 절로 관리한다 — 다중 타깃은 레인 5 targets[] 설계안(`targets.<id>.*`: role·exposure 키)으로 확장 예정이며 스키마 키를 임의로 발명하지 않는다.
 
 ```preregistration
 # EXP-3 본실험 v1 (초안, 11/18 동결 전). TBD-* 를 채우고 실행 전에 커밋해야 유효하다.
@@ -215,6 +220,24 @@ research-questions v2 "판정 시나리오"(①~⑧)를 **그대로 포인터로
 동결 전 EXP-3 타당성을 재평가하며, 보조 종단점 · 검정력 n은 11/18 등록한다.
 
 ---
+
+## 다중 타깃 분석 단위 · 층화 · 다중검정 — `TBD-REVIEW(레인 6·9·10)`
+
+EXP-3는 여러 타깃을 포함한다(`role`: train 7.5.2 · fix-verification 7.5.6/7.5.7 · 독립 holdout `TBD-FREEZE` ·
+Python tarfile). 분석 단위를 사전 고정해야 하며 레인 5 targets[] 설계안과 연계한다 —
+`targets.<id>.{extractor, version, image_digest|lock_digest, role, exposure, exposure_ref}`, 셀 = target × arm ×
+seed(run_id = `<target_id>-<arm>-s<seed>`). 아래는 `TBD-REVIEW`(레인 6·9·10 검토 후 11/18 확정):
+
+- **H-A 1차 추론은 `role=train` 타깃만.** `fix-verification`은 수정 확인(hit 기대 0) 별도 표, `holdout`은
+  사전등록된 1차 가설만.
+- **캠페인 단위 rule-of-three는 타깃별**로 보고. 층화(타깃별 hazard 이질성)는 index/summaries의 `target_id` ·
+  `role` 필드로 처리.
+- **다중검정 보정**(여러 타깃 · arm 쌍) 방식 = `TBD-REVIEW` — 보정 규칙 id를 블록 키(예: `holdout_test`)로 둘지
+  레인 6 판단.
+- `interim_analysis = forbidden`은 전 타깃 공통(파일 1개 = 실험 1개).
+
+구현(파서 · 런처 · 게이트 · index 필드)은 레인 5 PR을 포인터로 둔다 — 승인·머지 후 그 파서를 포함한 engine_sha로
+동결한다(그 전엔 `targets.*`가 현 파서에서 '미지 키 경고'로만 통과하므로 동결 금지).
 
 ## 측정 · 바뀌지 않는 것
 

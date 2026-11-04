@@ -84,3 +84,24 @@ def test_regenerate_skips_handmaintained_and_absent(tmp_path: Path) -> None:
     )
     assert [r.status for r in rows] == ["SKIP", "SKIP"]
     assert "hand-maintained" in rows[0].detail
+
+
+def test_regenerate_apply_gate(tmp_path: Path) -> None:
+    # Without --apply: out_flag generators stage to a temp dir (committed untouched);
+    # non-out_flag (figure) generators are skipped. With --apply they would write in place.
+    (tmp_path / "g.py").write_text(
+        "import argparse\n"
+        "p=argparse.ArgumentParser(); p.add_argument('--out'); a=p.parse_args()\n"
+        "open(a.out,'w').write('TABLE')\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "f.py").write_text("open('fig.out','w').write('F')\n", encoding="utf-8")
+    table = Artifact("out/t.md", "table", "g.py", "project", ("s",), "byte", "", out_flag=True)
+    fig = Artifact("out/f.png", "figure", "f.py", "project", ("s",), "size", "")
+    stage = tmp_path / "stage"
+    rows = regenerate_artifacts((table, fig), tmp_path, apply=False, stage_dir=stage)
+    st = {r.output: r.status for r in rows}
+    assert st["out/t.md"] == "STAGED"
+    assert st["out/f.png"] == "SKIP"
+    assert (stage / "t.md").read_text(encoding="utf-8") == "TABLE"
+    assert not (tmp_path / "out" / "t.md").exists()  # committed path untouched

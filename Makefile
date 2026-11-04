@@ -10,7 +10,7 @@ DEMO_OUT ?= $(or $(INODEFENCE_RUNTIME_ROOT),/var/lib/inodefence)/demo/effect-dem
 TAR_VERSION ?= 7.5.2
 HISTORICAL_IMAGE ?= inodefence-node-tar-effect:$(TAR_VERSION)
 
-.PHONY: install target-tools lint format-check typecheck test env-check docs-check check fixtures probe isolation-support node-entry-timing-probe node-tar-smoke node-tar-effect-check demo demo-native demo-synthetic demo-native-historical
+.PHONY: install target-tools lint format-check typecheck test env-check docs-check check fixtures probe isolation-support node-entry-timing-probe node-tar-smoke node-tar-effect-check demo demo-native demo-synthetic demo-native-historical regression
 
 target-tools:
 	npm ci --prefix tools/node-tar --ignore-scripts --no-audit --no-fund
@@ -85,3 +85,12 @@ demo-native-historical: DEMO_POLICY :=
 demo-native-historical: DEMO_MUTATION_POLICY :=
 demo-native-historical:
 	TAR_VERSION=$(TAR_VERSION) HISTORICAL_IMAGE=$(HISTORICAL_IMAGE) DEMO_POLICY=$(DEMO_POLICY) DEMO_MUTATION_POLICY=$(DEMO_MUTATION_POLICY) DEMO_SEED=$(DEMO_SEED) DEMO_BUDGET=$(DEMO_BUDGET) bash scripts/local_node_tar_smoke.sh demo-historical
+
+# Maintainer regression: do known C1/C2 boundary fixtures still breach at a node-tar version?
+# Runs the M2.1 hand hardlink fixtures + the #205 FN symlink-write placements through the repro
+# disposable-container path against inodefence-node-tar-effect:$(TAR_VERSION); one-line PASS/FAIL
+# + JSON. Host terminal only (docker). `--dry-run` via REGRESSION_ARGS runs no container.
+#   make regression TAR_VERSION=7.5.2
+#   make regression TAR_VERSION=7.5.2 REGRESSION_ARGS=--dry-run
+regression:
+	PYTHONPATH=src:. $(PYTHON) scripts/regression_check.py --tar-version $(TAR_VERSION) $(REGRESSION_ARGS)

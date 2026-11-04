@@ -136,3 +136,12 @@ success 케이스(exit 0)에서 발생한 native 관찰 무결성 결함(malform
 - 리셋 검증 `verify_reset`/`ResetObserver`는 마운트된 볼륨 top-level listing(순수 Python 주입)으로 `core-run-*` 잔여·baseline 외 변화 탐지 — 새 docker 명령·R4 변경 0.
 - **R4 diff: 불필요(없음)** — 실행 백엔드·브로커 전송·isolation 정책 모델 변경 0, 변경 없이 조합만. 격리·단일경로 불변.
 - 후속(통합, docker 호스트 필요): 실제 docker WorkerHandle.recycle(기존 컨트롤러·볼륨 bring-up 재사용)·N-워커 fan-out(`run_parallel_native` 재사용)·`measurement_runners`(#213 `execution_parity`/`throughput` 필요)·heartbeat/watchdog/disk-pause.
+
+## 레인4 워커풀 호스트 통합 (증분 1) — orchestration wiring + 리셋/재시도 + dry-run (2026-11-04)
+
+- 브랜치 `claude/s3-worker-pool-host`(base `claude/s3-worker-pool-impl`, #217 스택). 상태: **검토대기**(verifier inodefence-19). docker 미실행(fake + dry-run, 수술 3단계 Runtime).
+- **정직한 스코프(verifier·a4 합의)**: 캠페인 루프는 컨트롤러 안에서 돌고 `run_parallel_native`가 이미 캠페인별 전용 컨트롤러·볼륨을 띄우므로, 워커풀의 실질 증분은 **per-case 리셋 검증 + 인컨트롤러 인프라 재시도**이고 `broker` 실패(컨트롤러 사망)는 G1에서 **right-censored**. 감사 문서의 "N 워커 사전기동"과의 차이를 숨기지 않음.
+- `src/inodefence/execution/worker_pool.py` 추가: `run_worker_campaign`(ResettingProducer를 `run_effect_campaign`에 꽂아 성공 step 레코드에 `infra_retries` 첨부·포기 case에 `invalid_cases[]` 기록·`CaseAbandoned`→right-censored), `s3wp-` 네이밍(`worker_run_id`/`controller_name`/`volume_name` — 워커별 전용 볼륨), 2h `campaign_deadline_exceeded`, 90% `should_pause_for_disk`, `plan_worker_bringup`(controller/volume/mount/env), `measurement_runners` 인터페이스(parity/throughput analysis 모듈 필요 — importorskip 가드, 실행은 통합 base + docker 슬롯).
+- `scripts/run_worker_pool.py --dry-run`: per-worker bring-up(run_id·controller·volume·mount·env) 출력, launch 안 함. slot 없는 실행은 거부.
+- 테스트: `tests/test_worker_pool.py` 23 passed +1 skip(measurement_runners importorskip), `tests/test_run_worker_pool.py` 4. **case_id 시퀀스 동일 직접 테스트**(1회 인프라 재시도 vs clean) 포함 — 레인3 #220(코어 레벨 byte-identical)과 레이어 달라 비중복.
+- R4 실행 백엔드 변경 0. 격리 불변. `measurement_runners`·parity 판정은 통합 브랜치(main+#203→#217→#213→host)에서 docker 슬롯으로.

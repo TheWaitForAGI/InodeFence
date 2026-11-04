@@ -44,6 +44,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from inodefence.evaluation.encoding import json_bytes, read_json
+from inodefence.evaluation.independence import arm_abort_independence_from_contingency
 from inodefence.evaluation.survival import (
     Observation,
     kaplan_meier,
@@ -601,16 +602,21 @@ def build_report(
     cells: Sequence[CellSummary | InvalidCell],
     *,
     parity: object | None = None,
+    independence: dict | None = None,
     field_map: Mapping[str, str],
     sources: Sequence[str],
 ) -> dict:
-    """Assemble the EXP-0 measurement report (prereg items 1-7) from validated cells."""
+    """Assemble the EXP-0 measurement report (prereg items 1-7) from validated cells.
+
+    ``independence`` is the optional arm x abort independence reporting flag (audit 13a) from
+    lane 3's contingency table; when present it is added as ``item8_arm_abort_independence``.
+    """
     if not cells:
         raise ValueError("no cells to summarize")
     valid = [c for c in cells if isinstance(c, CellSummary)]
     invalid = [c for c in cells if isinstance(c, InvalidCell)]
     arms = sorted({c.arm for c in cells})
-    return {
+    report = {
         "schema_version": 1,
         "classification": "exp0-pilot-infrastructure-measurement",
         "purpose": (
@@ -633,6 +639,9 @@ def build_report(
         "environment": _environments(valid),
         "provenance": {"source_files": list(sources), "field_map": dict(field_map)},
     }
+    if independence is not None:
+        report["item8_arm_abort_independence"] = independence
+    return report
 
 
 def _md_table(headers: Sequence[str], rows: Sequence[Sequence[object]]) -> list[str]:
@@ -750,6 +759,17 @@ def report_markdown(report: dict) -> str:
     )
     if "zero_hit" in hazard:
         lines += ["", f"Zero-hit: {hazard['zero_hit']['policy']}"]
+    independence = report.get("item8_arm_abort_independence")
+    if independence:
+        primary = independence["primary_arm_vs_abort"]
+        lines += [
+            "",
+            "## 8. Arm x abort independence (audit 13a reporting flag, not a verdict)",
+            "",
+            f"Flag: **{independence['flag']}** -- {independence['flag_meaning']}",
+            f"Primary (arm x abort) p-value: {primary.get('p_value')} "
+            f"(test: {primary.get('test')}).",
+        ]
     return "\n".join(lines) + "\n"
 
 
@@ -822,6 +842,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--parity", type=Path, help="lane-4 throughput-parity comparator result JSON"
     )
+    parser.add_argument(
+        "--contingency",
+        type=Path,
+        help="lane-3 abort-contingency JSON; adds the arm x abort independence flag (audit 13a)",
+    )
     parser.add_argument("--field-map", type=Path, help="JSON overriding runner field names")
     parser.add_argument("--format", choices=("json", "markdown"), default="json")
     parser.add_argument("--output", type=Path)
@@ -853,11 +878,24 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error("provide --cell, --cells-dir, and/or --index")
 
     parity = None if args.parity is None else read_json(args.parity.read_bytes())
+    independence = None
+    if args.contingency is not None:
+        contingency = read_json(args.contingency.read_bytes())
+        if not isinstance(contingency, dict):
+            parser.error("--contingency must be a JSON object")
+        try:
+            independence = arm_abort_independence_from_contingency(contingency)
+        except (ValueError, KeyError) as error:
+            parser.error(f"--contingency: {error}")
 
     try:
         cells = load_cells(items, field_map)
         report = build_report(
-            cells, parity=parity, field_map=field_map, sources=[str(p) for p, _ in items]
+            cells,
+            parity=parity,
+            independence=independence,
+            field_map=field_map,
+            sources=[str(p) for p, _ in items],
         )
     except (ValueError, KeyError, OSError) as error:
         print(str(error), file=sys.stderr)

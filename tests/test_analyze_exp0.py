@@ -433,3 +433,37 @@ def test_cleanup_reset_abort_bucketed_distinctly():
     report = build_report(_cells(rows), field_map=DEFAULT_MAP, sources=["t"])
     by_reason = report["item1_aborts"]["by_arm"]["R"]["abort_by_reason"]
     assert by_reason["cleanup_reset"] == 1 and by_reason["other"] == 0
+
+
+# --- lane 3 contingency -> arm x abort independence flag (item 8) -----------------
+
+
+def test_build_report_with_independence_adds_item8():
+    from inodefence.evaluation.independence import arm_abort_independence
+
+    cells = [cell_from_row(_rec(arm="R", random_seed=9001), DEFAULT_MAP)]
+    indep = arm_abort_independence([[4, 0, 0], [4, 0, 0], [4, 0, 0]], ["R", "D", "S-u"])
+    report = build_report(cells, field_map=DEFAULT_MAP, sources=["t"], independence=indep)
+    assert report["item8_arm_abort_independence"]["flag"] == "not_assessable"
+
+
+def test_main_contingency_option(tmp_path, capsys):
+    cell = tmp_path / "7.5.2-R-s9001.summary.json"
+    cell.write_text(json.dumps({"summary": _rec(arm="R", random_seed=9001)}))
+    contingency = tmp_path / "contingency.json"
+    contingency.write_text(
+        json.dumps(
+            {
+                "arms": ["R", "D", "S-u"],
+                "per_campaign": {
+                    "columns": ["complete", "aborted", "invalid"],
+                    "matrix": [[4, 0, 0], [4, 0, 0], [4, 0, 0]],
+                },
+            }
+        )
+    )
+    exit_code = main(["--cell", str(cell), "--contingency", str(contingency), "--format", "json"])
+    assert exit_code == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["item8_arm_abort_independence"]["flag"] == "not_assessable"
+    assert report["item8_arm_abort_independence"]["arms"] == ["R", "D", "S-u"]

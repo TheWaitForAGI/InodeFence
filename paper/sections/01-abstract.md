@@ -18,11 +18,13 @@ InodeFence는 TAR archive extraction의 보안 경계위반 탐색에서, 고정
 3. 영향 릴리스 node-tar 7.5.2에서 object-identity 관찰을 **끄면**(identity-blind 대조) 자율 경계위반
    발견이 0이고 **켜면** 특정 seed에서 결정론적으로 재현되는 자율 C1 트리거(21건)가 나타난다 —
    즉 발견의 **인과적 원인**이 가설이 지목한 바로 그 feedback임을 blind 대조로 보인다(M3).
+   (2026-11-03 정정: 이 blind 대조는 피드백이 아니라 **어휘**를 통제한 실험이다. 입증된 것은 "외부 객체 이름의 관찰(어휘 획득)이 자율 C1의 필요조건"이지 (st_dev, st_ino) retention·스케줄링 피드백의 기여가 아니며, 그 기여는 어휘를 맞춘 R/D/S-u 비교(research-questions v2 H-A)로 미분리다. 수치·서술은 보존한다. 상세: §5.3.2 정정.)
 4. 동일한 generic oracle(코드 불변)이 adapter 수준에서 3개 독립 extractor(python-tarfile · oras-go ·
    decompress)에 target-agnostic하게 적용된다(M4, **oracle/adapter 수준** 일반성).
 
 **정직 경계를 명시한다.** (3)은 "상태-인지 feedback이 무작위보다 빠르다/많이 찾는다"는 **rate 우위가
-아니라** "feedback(identity 관찰)이 발견을 가능케 한다 — 없으면 도달 불가"라는 **인과 명제**다. 자율
+아니라** "feedback(identity 관찰)이 발견을 가능케 한다 — 없으면 도달 불가"라는 **인과 명제**다.
+(2026-11-03 정정: 이 blind 대조는 피드백이 아니라 **어휘**를 통제한 실험이다. 입증된 것은 "외부 객체 이름의 관찰(어휘 획득)이 자율 C1의 필요조건"이지 (st_dev, st_ino) retention·스케줄링 피드백의 기여가 아니며, 그 기여는 어휘를 맞춘 R/D/S-u 비교(research-questions v2 H-A)로 미분리다. 수치·서술은 보존한다. 상세: §5.3.2 정정.) 자율
 트리거는 이 예산(budget 1500)에서 65 seed 중 1개로 **seed-rare**이며, 이것은 **blind 발견이 아니다**
 (기존 외부 객체에 하드링크하려면 그 이름이 필요하고 퍼저는 그것을 관찰로 얻는다; 어휘·oracle에
 대상 경로·식별자·정답 seed·근접 보상을 하드코딩하지 않았고 EXTERNAL 필터는 region 기준

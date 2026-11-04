@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 from scripts.run_effect_demo import synthetic_demo_report
@@ -12,6 +13,7 @@ from inodefence.effect_synthetic import synthetic_effect_result
 from inodefence.evaluation.rds import (
     RdsArm,
     RdsCellConfig,
+    RdsCellSummary,
     RVariant,
     arm_for_policy,
     run_rds_cell,
@@ -118,8 +120,8 @@ def test_u_viol_reads_oracle_classes_regardless_of_eligibility() -> None:
     assert summary.u_viol_source == "oracle" and summary.u_viol_feedback == 1
     assert result.unfingerprinted_hit_steps == 1
     assert (summary.first_c2, summary.first_c1, summary.first_c0) == (8, 11, 12)
-    record = result.record()
-    assert record["summary"]["u_viol_source"] == "oracle" and "u_viol_feedback" in record["summary"]
+    summary_record = cast(dict[str, Any], result.record()["summary"])
+    assert summary_record["u_viol_source"] == "oracle" and "u_viol_feedback" in summary_record
 
 
 def test_records_without_oracle_classes_fall_back_to_feedback_and_say_so() -> None:
@@ -249,11 +251,13 @@ PARITY_FIELDS = (
 )
 
 
-def _scripted_cell(arm: RdsArm, special: dict, *, budget: int = 20):
+def _scripted_cell(
+    arm: RdsArm, special: dict, *, budget: int = 20
+) -> tuple[RdsCellConfig, RdsCellSummary, list[dict[str, Any]]]:
     config = RdsCellConfig(arm, 9001, budget)
     cell = run_rds_cell(minimal_seed_corpus(), _Script(special), config)
     report = effect_campaign_report(cell.campaign, "synthetic")
-    return config, cell.summary, report
+    return config, cell.summary, cast(list[dict[str, Any]], report["steps"])
 
 
 @pytest.mark.parametrize("arm", [RdsArm.R, RdsArm.D, RdsArm.S_U, RdsArm.S_A])
@@ -268,15 +272,15 @@ def test_memory_and_report_paths_agree_on_eligible_and_ineligible_hits(arm: RdsA
         11: _ineligible(_c1_hit, how="failure"),
         14: _ineligible(_c1_hit, how="integrity"),
     }
-    config, memory, report = _scripted_cell(arm, special)
-    result = summarize_report_records(report["steps"], config)
+    config, memory, steps = _scripted_cell(arm, special)
+    result = summarize_report_records(steps, config)
     for field in PARITY_FIELDS:
         assert getattr(result.summary, field) == getattr(memory, field), field
     assert memory.hit and memory.t_first == 6 and memory.u_viol == 2
     assert memory.u_viol_source == "oracle" and memory.u_viol_feedback == 1
     assert result.unfingerprinted_hit_steps == 2
     for index in (11, 14):
-        step = report["steps"][index]
+        step = steps[index]
         assert step["oracle"]["C1"] and not step["feedback"]["feedback_eligible"]
         assert step["oracle_fingerprints"] and not step["feedback"]["new_violation_fingerprints"]
 
@@ -285,11 +289,11 @@ def test_pre_fix_logic_differs_from_oracle_count_on_an_ineligible_hit() -> None:
     """Pins lane 10's finding: on an ineligible C1 hit the feedback-only count (the
     pre-fix report path, still reachable as the fallback) under-counts U_viol while hit
     and t_first already see the step; the oracle count does not."""
-    config, memory, report = _scripted_cell(RdsArm.S_U, {6: _ineligible(_c1_hit, how="failure")})
-    with_classes = summarize_report_records(report["steps"], config).summary
-    for step in report["steps"]:
+    config, memory, steps = _scripted_cell(RdsArm.S_U, {6: _ineligible(_c1_hit, how="failure")})
+    with_classes = summarize_report_records(steps, config).summary
+    for step in steps:
         del step["oracle_fingerprints"]
-    pre_fix = summarize_report_records(report["steps"], config).summary
+    pre_fix = summarize_report_records(steps, config).summary
     assert with_classes.hit == pre_fix.hit is True and with_classes.t_first == pre_fix.t_first == 7
     assert with_classes.u_viol == memory.u_viol == 1 and with_classes.u_viol_source == "oracle"
     assert pre_fix.u_viol == 0 and pre_fix.u_viol_source == "feedback-fallback"

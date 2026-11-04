@@ -100,3 +100,17 @@ C1@budget1500)와 정합. 이번 음성은 "도달 불가 증명"이 아니라 "
   (observed/inferred 경계).
 - 새 취약점 발견·effectiveness 주장 아님. decompress 4.2.1은 기존 취약(CWE-59 계열)이고 C0 자력도달은 루프
   작동의 증거다. oracle 로직 불변.
+
+## 정의 변경 기록 (2026-11-03)
+
+2026-11-03 독립 감사가 사전등록 commit과 분석 commit을 대조해 확인한 사실이다(observed).
+
+- **등록된 hit 정의.** 사전등록 commit 5361c62(LOG 2026-10-30 18:05)의 hit는 `discovered_violation`
+  = any step `contract_violated`(**C0 포함**)이다.
+- **by_contract 분리 시점.** C0/C1·C2를 나눠 세는 by_contract 분리는 2af0a03(2026-10-31 00:33, 윈도우 결과와
+  함께)에서 처음 등장했다 — 즉 결과가 들어온 뒤에 도입된 분석 축이다.
+- **등록 정의 기준 수치.** 등록된 정의로 세면 decompress 완주 19 중 16이 "hit"다(C0 자력도달이 그대로 hit로
+  집계됨).
+- **"0/28" 합산.** 양 arm을 합친 C1/C2 0/28 headline은 사전등록에 없다.
+- **라벨.** 따라서 이 요약의 C1/C2 음성(0/14 per arm, 0/28 pooled)은 **사후 분석(post-hoc by_contract)**으로
+  라벨한다. 사전등록 판정으로 읽지 않는다. 수치 자체와 oracle 로직은 바뀌지 않는다.

@@ -1,118 +1,110 @@
-# 연구 질문과 가설
+# 연구 질문과 가설 (v2)
 
-[Research Contract v1](research-contract-v1.md)의 G0 freeze는 main
-`8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`의 구현을 기준으로 한다.
-DESIGNED / IMPLEMENTED / TESTED / EXPERIMENTALLY VALIDATED를 구분한다.
-현재는 code/tests/benign engineering evidence가 있으며, **historical rediscovery와
-formal comparative evaluation은 NOT_RUN이다. 현재 취약점을 주장하지 않는다.**
+**v2 — 2026-11-03.** 2026-11-03 독립 감사 문서(Claude Doc 「InodeFence 독립 연구 감사 및 실험 설계 재정립」,
+https://claude.ai/artifact/JJtsK3VowEGuBFN3YXZDFq)를 채택해 전면 교체했다([D038](../../DECISIONS.md)).
+v1의 RQ1–RQ6·H1–H4는 아래 **'폐기·대체 기록'**에 남긴다. 실행 기준은 Git에 동결된 사전등록 파일
+([`experiments/preregistration/`](../../../experiments/preregistration/README.md))이고, 증거 기준은 raw +
+SHA-256 목록이다. DESIGNED / IMPLEMENTED / TESTED / EXPERIMENTALLY VALIDATED 구분과 observed/inferred 구분은
+그대로 유지한다. 현재 취약점을 주장하지 않는다.
 
-## RQ1 — Known Vulnerability Rediscovery
+## 핵심 RQ
 
-해당 CVE PoC를 search seed로 제공하지 않고 일반 TAR-entry mutation으로 알려진
-persistent C0/C1/C2 boundary violation을 재발견할 수 있는가?
+> 피해 경로 이름을 아는 **동일 어휘·동일 예산** 아래서, filesystem security state(C1 identity·C2 effect)를
+> retention·스케줄링 피드백으로 쓰는 탐색이 **무작위 탐색**과 **구조 커버리지 탐색**보다 첫 경계위반까지의
+> 실행 수를 줄이고 고유 위반 입력을 더 많이 찾는가?
 
-첫 intended qualification은 **N01 node-tar 7.5.2 / 7.5.3의 hardlink arm**이다.
-아직 pair의 runtime/strict behavior, generation reachability와 matching affected/fixed effect를
-독립적으로 qualify하지 않았다. [Benchmark Set](../benchmarks/benchmark-set-v1.md)의
-나머지 Node 및 cross-implementation candidates는 조건부 planning scope다.
-Catalog selection/source verification은 실행·재발견 증거가 아니다.
+### 하위 질문
 
-## RQ2 — Feedback Effectiveness
+- **SQ-a (oracle 일반성).** 같은 generic oracle(C0/C1/C2, CVE 문자열 없음)이 여러 extractor의 취약/수정 쌍을
+  코드 변경 없이 구분하는가?
+- **SQ-b (피드백 분리).** identity/effect 피드백이 커버리지 피드백과 **다른 탐색 경로**를 만드는가? 현재
+  escape-hardlink 문법에서는 identity(C) ≡ coverage(D)가 operationally identical(4/4 짝 seed)인 **음성**이고,
+  symlink 계열 문법(M4.8)에서는 mechanistic distinctiveness만 관찰됐다(effectiveness 아님).
 
-동일한 benign initial corpus, mutation policy, setup, target/version과 execution budget에서
-B3 filesystem-state OR violation-novelty search는 다음 실행 가능한 비교군보다
-의미 있는 state/contract evidence를 더 효율적으로 탐색하는가?
+## 위협 모델 (v2 추가)
 
-- B0: unretained multi-step random walk; feedback diagnostics는 다음 parent에 영향 없음.
-- B1: full StateSignature key novelty만 admission에 사용; violation novelty는 diagnostics만 유지.
-- B3: full StateSignature key OR violation fingerprint novelty로 admission; uniform retained parents.
+공격자는 **피해 경로 이름**(보호 대상 외부 객체의 추출 루트 기준 상대 경로)을 안다고 가정하고, 그 이름을
+세 arm의 어휘에 **동일하게** 포함한다. 따라서 이 연구는 blind 발견을 주장하지 않으며, 어떤 프레이밍에서도
+"blind 아님"을 명시한다. 비교의 대상은 "이름을 아는 상태에서 **어떤 피드백이 위반에 더 빨리·더 많이
+도달시키는가**"다.
 
-B0는 retention과 parent distribution을 함께 바꾸는 whole-search baseline이다.
-B1/B3는 violation-novelty admission의 기여를 비교한다. B1은 path-only가 아니다.
-**Path-only와 fixed attack-recipe comparator는 구현되지 않았으며 이 RQ의 비교 대상이 아니다.**
-Search API가 IMPLEMENTED/TESTED인 것과 effectiveness가 EXPERIMENTALLY VALIDATED인 것은 다르다.
+## H-A (주 가설) — 피드백 정책
 
-측정은 [프로토콜](../benchmarks/evaluation-protocol-v1.md)의 unique full semantic states,
-generic fingerprints, executions to first observed contract evidence와 status/corpus counts를
-공통 정의로 보고한다. Qualified known-class confirmation 뒤에만 rediscovery success 및
-first confirmed rediscovery를 보고한다. Full-pipeline timing이 없는 현재 target duration을
-time-to-first-violation/throughput 대신 사용하지 않는다.
+**독립변수: retention 피드백 정책 3 arm.** 세 arm은 어휘(관찰 이름 포함 여부를 세 arm에 동일 적용)·seed·
+예산·이미지·oracle·**operator 선택(uniform)**이 모두 같고 retention 정책만 다르다. 주 비교의 S는
+**S-u(uniform 스케줄러)**다 — D와 operator 정책을 동일하게 통제해 retention 효과만 분리한다. adaptive
+스케줄러(기존 P3)를 얹은 **S-a**는 주 비교가 아니라 **탐색적 ablation(선택)**이며, S-a − S-u는 스케줄러
+효과로 따로 해석한다(retention 효과와 섞지 않는다).
 
-## RQ3 — Feedback / Mutation Ablation
+| arm | retention | operator 선택 | 뜻 |
+| --- | --- | --- | --- |
+| **R** | 없음 | uniform | 무작위 탐색(바닥) |
+| **D** | 구조 커버리지(`SearchPolicy.D` = target-agnostic extraction 구조 키) | uniform | 커버리지 피드백 대조 |
+| **S-u** (주) | identity/effect/boundary-attempt 상태 키 | uniform | InodeFence retention 피드백 |
+| S-a (선택, ablation) | S-u와 동일 | adaptive | 스케줄러 효과 분리용, 주 비교 아님 |
 
-B3 대비 다음 구현된 좁은 ablation이 탐색에 어떤 기여를 하는가?
+**종속변수.**
 
-- A1: feedback key에서 identity_groups만 제외; regular nlink와 C1 fingerprints는 남음.
-- A2: feedback key에서 external_effects labels만 제외; sentinel object/digest와 C2 fingerprints는 남음.
-- A3: reorder operator slot을 같은 RNG draws를 소비하는 executed no-op로 바꿈;
-  append/insertion/duplicate로 생기는 order variation은 남음.
+- **T_first** — 첫 C1 ∨ C2까지의 실행 수. **우측중도절단**: 완주 무hit는 N(예산)에서 절단, abort는 abort
+  시점에서 절단. 생존분석(Kaplan–Meier, 로그랭크, Vargha–Delaney A12)으로 비교한다.
+- **U_viol** — 고유 위반 입력 수(정규화 서명 기준; 같은 lineage·같은 fingerprint는 1).
 
-모든 arm은 raw snapshot, oracle, full-signature analysis와 fingerprints를 보존한다.
-A1/A2는 모든 identity/effect information의 제거가 아니며 A3는 모든 order variation의 제거가 아니다.
-기존 F0–F3 path-only ladder와 fixed-recipe 비교를 이 실행 가능한 비교로 대체한다.
-Exact IDs, assumptions와 provisional subsets는 [baselines/ablations](../benchmarks/baseline-and-ablation-v1.md)를 따른다.
+**예측.** S-u가 R보다 T_first 중앙값이 **2배 이상 빠르고**(로그랭크 p < 0.05, A12 ≥ 0.64) **S-u ≠ D**다.
 
-## RQ4 — Cross-Implementation Generality
+**반증.** S-u와 R의 생존곡선이 분리되지 않는다.
 
-같은 representation과 generic C0/C1/C2를 독립적으로 qualified된 여러 TAR extractor에
-적용할 수 있는가? Contained node-tar가 현재 research adapter이고 Python reference는
-architecture 검증용이다. GNU route는 allowlisted benign fixtures만 지원하며 ORAS adapter는 없다.
-Source-selected second-family candidates는 실행 증거가 아니다. 두 family의 qualification 없이
-generality를 주장하지 않는다. 이 freeze는 새 adapter를 승인하지 않는다.
+## H-B — generic oracle 일반성
 
-## RQ5 — Unknown-State Discovery
+CVE 문자열·버전·PoC 바이트를 넣지 않은 generic C0/C1/C2가 **≥ 3 extractor**의 취약/수정 쌍을 손 fixture로
+구분한다. 사실상 충족(node-tar 5 릴리스 차분 M2, Python tarfile `fully_trusted`/`data`, oras-go·decompress 통제
+차분 #176/#177)이며 수술 기간에 **재확인**한다. snapshot 한계상 transient effect와 check/use coherence는
+측정 범위가 아니다.
 
-G1–G4와 frozen evaluation을 통과한 후 latest supported stable target에서
-아직 분류하지 않은 persistent contract evidence가 나타나는가?
+## H-C (보조) — 어휘 음성 통제
 
-이는 exploratory stretch question이다. New vulnerability/CVE는 프로젝트 성공의 필수조건이 아니다.
-현재 discovery campaign이나 vulnerability claim은 없다. Candidate는 재현, 영향/문서화된 동작 검토,
-minimization, affected-version/root-cause 분석과 [private disclosure](../../../SECURITY.md)를 요구한다.
+현재 generic 어휘로는 기본 sentinel 이름을 철자할 수 없고(코드상 사실: `src/inodefence/mutator/m1.py`의
+`COMPONENTS` 7토큰, `m1_addressing.py` 주석), 실험상 A1 0/19 완주·A3blind 6셀 7,983 step에서 C1이 관찰되지
+않았다(음성 통제, observed). 외부 객체 이름이 어휘 토큰과 일치하는 설정에서는 도달할 수 있으므로 일반적
+"구조적 불가"로 단정하지 않는다. 이는 위협 모델 전제(이름을 알아야 도달)를 지지하는 **미관찰** 결과이지
+effectiveness 주장이 아니다.
 
-## RQ6 — Entry-Transition Feedback
+## 판정 시나리오
 
-동일 target/version, initial seeds, execution budget, timeout, sentinel, mutation vocabulary와
-final C0/C1/C2 oracle에서 entry 처리 후 filesystem transition을 retention feedback으로 쓰면
-final-state feedback보다 security-relevant state와 persistent contract candidate를 더 효율적으로
-탐색하는가? 같은 transition retention에서 bounded adaptive operator selection을 추가하면
-uniform operator selection보다 추가 이득이 있는가?
+아래 S는 주 비교의 **S-u**다(S-a는 ablation으로 별도 보고).
 
-P0 final-state+uniform, P1 transition+uniform, P2 transition+adaptive를 분리해 P1−P0와
-P2−P1을 각각 해석한다. Transition key 수는 vulnerability 수가 아니다. Native boundary가
-qualification되지 않은 target에는 이 RQ의 formal campaign을 실행하지 않는다.
+| # | 관찰 | 판정 |
+| --- | --- | --- |
+| ① | S > R **그리고** S > D (T_first·U_viol 양쪽) | 가속 주장 가능 |
+| ② | S > R이나 S ≈ D | 피드백 **일반** 효과만(identity 특정 효과 미입증) |
+| ③ | 탐색 지표(새 state key 등)는 다르나 위반은 동등 | 보안 이득 미입증(EN-008) |
+| ④ | 알려진 클래스만 발견 | 정상(D007: zero-day는 성공 조건 아님) |
+| ⑤ | 전 arm 위반 0 | 미관찰로 보고·분모 명시·rule of three 상한 |
+| ⑥ | extractor 간 불일치 | oracle 일반성(H-B)과 피드백 일반성(H-A)을 분리해 보고 |
+| ⑦ | S의 비용 과다 | 실행 수 외에 시간 정규화 지표 병기 |
+| ⑧ | S ≤ R | **반증** |
 
-## H1 — State-Guided Search
+## 평가 원칙
 
-고정된 조건과 budget에서 B3가 B0/B1보다 meaningful state 탐색 또는 confirmed known-class
-rediscovery를 개선할 수 있다는 가설이다. Null/negative result도 정당한 결과다.
-A1/A2/A3는 명시한 component의 좁은 marginal contribution을 검증한다.
-아직 실험 결과가 없으며 path-only/fixed-recipe superiority로 해석하지 않는다.
+- 동일 어휘·seed·이미지(digest)·oracle·operator 선택(uniform). 세 arm은 retention 정책 외 어떤 것도 다르지 않다.
+- **사전등록 뒤 변경 금지.** 지표·예산·hit 정의·분모 규칙은 `experiments/preregistration/`에 커밋된 뒤 바꾸지
+  않는다. 수정은 새 버전 파일로만.
+- 검정력은 EXP-0 파일럿 **실측**(abort율·hazard proxy)에서 산출하고 그 값으로 EXP-3 규모를 고정한다.
+- 새 state key 수·fingerprint 수는 **탐색 거동 설명용**일 뿐 effectiveness 척도가 아니다(EN-008).
+- 분모는 항상 abort 포함 여부를 명시하고, abort는 우측중도절단으로 보고한다.
+- Paired seed, 독립 반복, negative/invalid 결과를 보존한다. 결과를 본 뒤 방법을 바꾸지 않는다.
 
-## H2 — Generic Security Contract
+## 폐기·대체 기록 (v1 → v2)
 
-CVE 문자열, version 또는 PoC bytes를 oracle에 넣지 않은 일반 C0/C1/C2가
-qualified extractor들의 유사한 persistent effect를 관찰할 수 있다는 가설이다.
-Snapshot limits 때문에 transient effect와 check/use coherence는 이 가설의 측정 범위가 아니다.
+| v1 | v2 처분 |
+| --- | --- |
+| RQ1 Known Vulnerability Rediscovery | **EXP-5 산출물**(최소화·교차 replay)로 이동. 성공 조건이 아니라 산출물이다. |
+| RQ2 Feedback Effectiveness (B0/B1/B3) | **H-A R/D/S로 대체.** |
+| RQ3 Feedback/Mutation Ablation (A1/A2/A3 projection·reorder) | **H-A R/D/S로 대체.** 기호 **A1/A3**는 [baseline-and-ablation-v1](../benchmarks/baseline-and-ablation-v1.md)의 projection 의미와 M3 요약의 arm 이름(A1 random floor·A3full state-aware)이 충돌했으므로 **더 쓰지 않는다**. |
+| RQ4 Cross-Implementation Generality | **H-B.** |
+| RQ5 Unknown-State Discovery | **D007 유지**(성공 조건 아님). |
+| RQ6 Entry-Transition Feedback · H3 Transition Retention · H4 Transition-Adaptive Mutation | **폐기.** BACKLOG M3.6: ordered entry-transition 경계는 현 extractor군에서 관찰 불가(honest negative, [transition-feedback-v1](transition-feedback-v1.md)). |
+| H1 State-Guided Search | **H-A.** |
+| H2 Generic Security Contract | **H-B.** |
 
-## H3 — Transition Retention
-
-Entry 사이의 normalized filesystem transition novelty를 parent retention에 사용하면 같은
-budget의 final-state-only retention보다 추가 탐색 이득이 있을 것이다. 이는 **HYPOTHESIS**이며
-현재 infrastructure 구현이나 synthetic test는 효과 **RESULT**가 아니다.
-
-## H4 — Transition-Adaptive Mutation
-
-같은 transition retention에서 새 transition key를 만든 operator에 bounded online reward를
-주면 uniform operator 선택보다 추가 탐색 이득이 있을 것이다. 첫 policy는 violation을 reward에
-섞지 않으며 CVE/target-specific recipe를 사용하지 않는다. 이 역시 **HYPOTHESIS**다.
-
-## Evaluation 원칙
-
-같은 target/version, initial seed IDs/order, mutation grammar, controlled sentinel/setup,
-limits, source revision과 oracle를 유지한다. 각 campaign은 fresh state/corpus, owned deterministic RNG,
-all-status seed-inclusive budget을 사용한다. 동일 seed는 identical evolved input을 뜻하지 않는다.
-Paired seeds, independent repetitions, denominator/censor flag, negative/invalid results를 보존한다.
-
-[Evaluation protocol](../benchmarks/evaluation-protocol-v1.md)의 median/IQR, success counts/intervals와
-censored first-hit 정의를 따른다. Budget/repetition 숫자는 pilot 후 별도 experiment freeze에서 확정한다.
-효과를 입증하기 전에 결과를 예상하거나 favorable outcome 뒤에 methodology를 바꾸지 않는다.
+v1의 G0 freeze 기준(main `8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`, [Research Contract v1](research-contract-v1.md))은
+역사 기록으로 남고, v2의 실행 기준은 사전등록 파일이 가리키는 엔진 SHA·이미지 digest·policy ID다.

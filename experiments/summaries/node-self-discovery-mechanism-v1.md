@@ -1,4 +1,4 @@
-# node-tar 자력 발견 — 메커니즘 인과 validated summary v1
+# node-tar 자력 발견 — 이름 획득 조건 관찰 validated summary v1 (피드백 인과 미입증)
 
 M3(퍼저가 자력으로 경계위반을 발견) 결론의 **검증된 작은 요약**이다.
 [summaries 규칙](README.md)의 체인을 명시한다:
@@ -50,14 +50,24 @@ process returncode 1 을 "발견 없음"으로 읽으면 안 된다 — hit는 p
 
 ## Finding
 
-영향 릴리스 7.5.2에서 **state-aware 퍼징(filesystem-state의 object-identity를 feedback으로 사용)이
-경계위반을 자율 트리거**한다: A3full s11이 퍼저 생성 `../outside/sentinel.txt` 하드링크로 추출 객체↔
+영향 릴리스 7.5.2에서 **외부 객체 이름을 mutation 어휘에 획득한 arm(A3full)에서 경계위반의 자율
+트리거가 관찰됐다**: A3full s11이 퍼저 생성 `../outside/sentinel.txt` 하드링크로 추출 객체↔
 외부 sentinel 동일 inode(C1+C2) 21건을 만든다.
 
-**인과(핵심 주장, observed):** 발견의 원인은 **object-identity 관찰**이다 — blind 대조(관찰 이름에서
-EXTERNAL region 제외)의 A3blind s11은 1475 step에도 0, 무작위 바닥 A1은 33,005 step에도 0.
-즉 **"피드백(identity 관찰)이 발견을 가능케 한다 — 없으면 도달 불가."** 이것은 가설이 명시한
-object-identity feedback이 실제로 발견을 구동함을 blind 대조로 확정한 것이다.
+**관찰된 조건 차이(observed):** 자율 C1은 BEFORE snapshot의 EXTERNAL 이름을 어휘에 넣은 A3full s11에서만
+관찰됐고(21), 그 이름을 뺀 A3blind s11은 1475 step에도 0, generic 어휘로 이름을 철자할 수 없는 무작위 바닥
+A1은 33,005 step에도 0이었다. **현재 결론(통일 문장):** 기존 실험은 외부 객체 이름을 mutation 어휘에 획득한 조건에서 경계위반이 관찰되었음을 보여준다. 동일 어휘로 통제하지 않았으므로 inode/effect retention 피드백 자체의 인과적 기여는 아직 입증되지 않았다.
+(v1 원문은 이를 "피드백(identity 관찰)이 발견을 가능케 한다 — 없으면 도달 불가"라는 인과 확정으로 적었고,
+아래 2026-11-03 정정으로 철회했다.)
+
+**2026-11-03 정정(해석; 위 수치·서술은 보존).** 이 blind 대조는 **피드백이 아니라 어휘**를 통제한다: A3full은
+BEFORE snapshot의 EXTERNAL 이름을 어휘에 넣고, A3blind는 그 이름을 빼며, A1은 generic 어휘 7토큰
+(`src/inodefence/mutator/m1.py`의 `COMPONENTS`, `m1_addressing.py` 주석)이라 대상 이름을 철자할 수 없다. 따라서
+21/0/0이 입증한 것은 **"외부 객체 이름의 관찰(어휘 획득)이 자율 C1의 필요조건"**이며, (st_dev, st_ino) 기반
+retention·스케줄링 피드백의 기여는 **아직 분리되지 않았다** — 어휘를 맞춘 기존 비교(item-3 A/B/C/D, M4.8)는
+C≡D·위반 0이고, 분리는 수술 기간 H-A(R/D/S 동일 어휘,
+[research-questions v2](../../docs/research/design/research-questions.md))에서 판정한다. 이 문서의 제목·Finding·
+"선행연구 포지셔닝"의 결론 문장은 이 기준으로 통일했다.
 
 ### 정직 경계 (반드시 유지 — inferred/열린 항목)
 
@@ -66,10 +76,11 @@ object-identity feedback이 실제로 발견을 구동함을 blind 대조로 확
   보상을 하드코딩하지 않았고, EXTERNAL 필터는 region 기준 target-agnostic이다. 다만 state-aware
   mutation 어휘 계열(`m1_addressing`)이 `outside`/`sentinel.txt` 토큰을 포함할 수 있으므로, 어떤
   rediscovery 프레이밍에서도 **"blind 아님"을 명시**해야 한다(연구 정직성).
-- **rate 우위(H1 effectiveness)는 미판정 / 진행 중.** 이 요약의 주장은 **인과**("피드백이 발견을
-  가능케 함")이지 **"상태-인지 피드백이 무작위보다 빠르다(rate)"가 아니다.** 동일 seed·budget 매칭
-  대조(A1 vs A3full, budget 2000, seed 100–119)의 **powered 독립 반복이 별도 세션에서 실행 중**이며,
-  그 결과가 나오기 전까지 rate 결론은 **열어 둔다**. budget 100·~60 seed study는 clean exact C1 0였다.
+- **rate 우위(H1 effectiveness)는 사전등록 판정 결과 CI 미분리.** 이 요약의 주장은 **이름 획득 조건에서의
+  관찰**이지 **"상태-인지 피드백이 무작위보다 빠르다(rate)"가 아니다.** 동일 budget 2000 매칭
+  대조(A1 vs A3full, seeds {100..129})의 powered 판정은 A1 0/19 Wilson [0, 0.1682] vs A3full 1/17
+  [0.0105, 0.2698]로 **겹침**([verdict v2](m3-powered-matched-verdict-v2.md)) — rate 우위는 미입증이며
+  주 주장이 아니다. budget 100·~60 seed study는 clean exact C1 0였다.
 - **seed-rare.** s11은 동일 seed에서 결정론적으로 재현(21건)되지만, 교차-seed로는 budget 1500에서
   65개 중 1개뿐이라 **이 예산에서 다른 seed로 일반화되지 않는다**(재현 0/30).
 - observed(위 표의 재집계 숫자)와 inferred(메커니즘 서술·CVE 대응)를 구분한다.
@@ -80,9 +91,26 @@ object-identity feedback이 실제로 발견을 구동함을 blind 대조로 확
 feedback-driven file-state fuzzing(LinkZard), feedback-guided archive fuzzing(ZIPDiff),
 archive-extraction symlink/hardlink 공격(Wormholes)은 선행연구가 다룬다. 따라서 "최초의
 state-guided archive fuzzer", "기존 연구는 inode를 안 썼다" 류 주장은 하지 않는다. 이 요약이
-방어하는 것은 좁은 인과 명제(**identity 관찰이 없으면 이 경계위반에 도달 불가**)뿐이다.
+방어하는 것은 좁은 명제(**외부 객체 이름을 어휘에 획득한 조건에서 경계위반이 관찰됐다**; 피드백 인과는
+미입증)뿐이다.
 
 ## 통제 재현(M2)과의 구분
 
 M2([cross-release 재현 요약](cross-release-identity-repro-v1.md))는 손 fixture의 통제 재현이고,
 여기 M3는 퍼저 자력 발견이다. 두 결론을 섞지 않는다.
+
+## 추가 관찰 (2026-11-03)
+
+2026-11-03 독립 감사가 raw를 재집계해 확인한 사실이다(observed). 위 표의 수치는 바뀌지 않는다.
+
+- **21 hit = 1 lineage.** s11의 21 hit는 21개 distinct case_id이나 계보상 **하나의 lineage**다: 독립 루트
+  0-based idx 263 + 자손 20(부모 7). 고유 C1 fingerprint는 2개(`extract/archive/sentinel.txt/b/b`,
+  `extract/dir/a.txt` ↔ `outside/sentinel.txt`) + C2 1개, 모두 링크 타깃 `../outside/sentinel.txt`다.
+  step 416 abort 사유는 malformed_identity(중복 경로 `dir/`가 regular와 directory로 동시 존재).
+- **s60 C2-only 14 step.** `m3-repro` A3full-s60에 C2=True·C1=False·contract_violated=True인 step이 14개
+  있다(rejected run, sentinel ctime 변화·nlink 불변). M3 hit 정의(C1 ∧ contract_violated)에 걸리지 않아 위 표와
+  논문 어디에도 보고되지 않았다.
+- **분모는 abort 포함.** 위 표의 seed 수는 abort된 campaign을 포함한다: A1 35 = 완주 19/abort 16, A3full 35 =
+  완주 24/abort 11, 재현 30 = 완주 18/abort 12, A3blind 6셀 7,983 step.
+- **사전등록 부재.** 10/26 M3 scale·ablation·repro run은 LOG에 공식 사전등록이 없다(첫 공식 사전등록은
+  10/30 00:31). 따라서 이 요약은 메커니즘 관찰 기록이지 사전등록 판정이 아니다.

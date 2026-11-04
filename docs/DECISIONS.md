@@ -592,3 +592,50 @@ finding → `paper/`의 증거 사슬, 그리고 더 뽑을 항목이 없는 큐
 observed/inferred, synthetic 비승격, 비교 없는 effectiveness 주장 금지), evaluation 원칙(결과를 보고 방법을
 바꾸지 않음), 사람 게이트(외부 공개, 가드·격리·allowlist, FROZEN, BREAKING, 승인 범위 밖 예산). 연속 실행은
 `/loop autoloop`으로 하며 턴 종료는 7.1 충족 또는 전부 사람 게이트일 때만이다(7.3).
+
+## D037 — (예약) 수술 기간 병합 정책·GitHub 브랜치 보호
+
+**상태:** **미결정(지웅)** — 2026-11-03 예약
+
+수술 기간(2026-11-03~11-30)의 병합 정책과 GitHub `main` 브랜치 보호를 한 번에 결정한다. 결정 전 **임시 정책**:
+
+- PR은 에이전트가 열고(`--body-file`, 첫 항목은 AGENTS.md PR 규칙의 질문에 대한 답), **머지는 지웅이 직접** 한다.
+- autoloop·builder의 **자율 머지 루프는 D037 결정 전 시작하지 않는다**(D035의 자율 squash 머지는 보류).
+- 서버 측 브랜치 보호(required check·review)를 켜면 D035("머지는 사람 게이트가 아니다")와 충돌하므로,
+  verifier를 **필수 체크(required status check)**로 포함할지까지 묶어 한 번에 결정한다. 결정 시 D035를 갱신한다.
+
+바뀌지 않는 것: `main` 직접 push 금지(R2), 가드·격리·allowlist 설정은 사람만(R4), FROZEN 불변, 새 audit/readiness류
+문서 금지(R1).
+
+## D038 — 수술 기간 연구 설계 재정립
+
+**상태:** 적용 (2026-11-03, 지웅 결정: 2026-11-03 독립 감사 문서 채택)
+
+2026-11-03 독립 연구 감사(Claude Doc 「InodeFence 독립 연구 감사 및 실험 설계 재정립」, https://claude.ai/artifact/JJtsK3VowEGuBFN3YXZDFq)를
+수술 기간의 **계획 기준**으로 채택하고 연구 설계를 다음과 같이 재정립한다. 상세는
+[research-questions v2](research/design/research-questions.md).
+
+- **단일 RQ**와 **H-A / H-B / H-C.** H-A(주): 피해 경로 이름을 아는 동일 어휘·동일 예산 아래 filesystem
+  security state 피드백 탐색이 무작위·구조 커버리지 탐색보다 첫 경계위반까지 빠르고 고유 위반을 더 찾는가.
+  H-B: generic oracle이 ≥3 extractor 취약/수정 쌍을 구분(재확인). H-C(보조): 어휘에 이름이 없으면 전 arm C1
+  미도달(음성 통제).
+- **비교군 R/D/S-u, 동일 어휘·동일 스케줄러.** R 무작위(retention 없음·uniform), D 구조 커버리지 retention
+  (`SearchPolicy.D`)·uniform, **S-u** identity/effect/boundary-attempt retention·**uniform**(주 비교; D와 operator
+  정책을 동일하게 통제해 retention 효과만 분리). adaptive 스케줄러를 얹은 S-a는 **탐색적 ablation(선택)**이며
+  S-a − S-u는 스케줄러 효과로 따로 해석한다. 관찰 이름 포함 여부는 세 arm에 동일 적용. 기존 기호
+  **A1(random floor)/A3full은 폐기**한다(v1 ablation 기호와 충돌).
+- **1차 지표 = T_first·U_viol, 생존분석.** T_first는 첫 C1∨C2까지 실행 수(우측중도절단: 완주 무hit=N, abort=abort
+  시점), U_viol은 정규화 서명 기준 고유 위반 입력 수. Kaplan–Meier·로그랭크·A12. 새 state key 수는 설명용(EN-008).
+- **실험 순서.** EXP-0 파일럿(5 seed×200×R/D/S, 인프라 측정) → **11/18 사전등록**(EXP-3 + EXP-2 GO/NO-GO 규칙,
+  x·n은 EXP-0 실측으로 11/14 확정) → EXP-3(20 seed×2000×R/D/S, 다수 sentinel) → **11/20 규칙 기계 적용** → EXP-2
+  조건부. 파일럿 데이터는 formal 추정에 합산하지 않는다.
+- **MVP 범위.** node-tar 7.5.2/7.5.3·7.5.6/7.5.7 + Python tarfile `fully_trusted`/`data`. 자력발견 타깃은 node-tar
+  하나. decompress는 확장, oras-go는 oracle 일반성 증거로만. entry-transition 계열·GNU·Windows는 범위 밖.
+- **기준 3층.** 계획 = Claude Doc(포인터만, 복사본 없음) · 실행 = Git에 동결된 사전등록 파일 + 엔진 SHA +
+  이미지 digest · 증거 = raw + SHA-256 목록(`experiments/summaries/raw-manifest-*.sha256`, 기준선 태그
+  `audit-baseline-20261103`).
+
+**바뀌지 않는 것:** 안전경계(disposable sandbox + sentinel, 고정 버전, 격리 완화 금지, 훅 우회 금지, 실제 민감 파일
+금지), D005(CVE-specific oracle 금지)·D006(known PoC seed 금지)·D007(zero-day는 성공 조건 아님), **oracle 정의
+(C0/C1/C2 불변)**. C2 대상(sentinel 집합) 확장은 Oracle 레인의 **별도 사람 승인**이 필요하다. 문서가 STATUS·BACKLOG·
+AGENTS·메모리·논문 초안과 충돌하면 문서가 맞고 저장소를 문서에 맞춰 바로잡는다.

@@ -31,7 +31,7 @@ import argparse
 import json
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, cast
 
 from scripts.run_parallel_native import MAX_BUDGET, MODES, Arm, Cell, build_cells, parse_arm
 
@@ -143,7 +143,9 @@ def _build_runners(jobs: int) -> tuple[MethodRunner, MethodRunner]:
         # Forward reference to the worker pool module landing in this lane's step 4.
         from inodefence.execution import worker_pool  # pyright: ignore[reportAttributeAccessIssue]
 
-        return worker_pool.measurement_runners(jobs)
+        # measurement_runners cannot name this script's MethodRunner protocol (src must not
+        # import scripts), so it is typed loosely; the runners it returns satisfy the protocol.
+        return cast("tuple[MethodRunner, MethodRunner]", worker_pool.measurement_runners(jobs))
     except (ImportError, NotImplementedError) as error:
         raise SystemExit(
             "worker pool method runners are not available yet "

@@ -385,3 +385,24 @@ def test_reset_verification_rejects_non_bool() -> None:
 def test_extract_rejects_wrong_type() -> None:
     with pytest.raises(ValueError):
         extract_parity_subject(object(), label="x")  # type: ignore[arg-type]
+
+
+# ---- ParitySubject JSON round-trip -------------------------------------------
+
+
+def test_parity_subject_json_round_trip_equals_original() -> None:
+    import json
+
+    from inodefence.evaluation.execution_parity import (
+        parity_subject_from_dict,
+        parity_subject_to_dict,
+    )
+
+    result = _run_synthetic_campaign(seed=11, budget=5)
+    resets = tuple(ResetVerification(i, False, False) for i in range(len(result.steps)))
+    subject = extract_parity_subject(result, label="x", isolation=_isolation(), resets=resets)
+    restored = parity_subject_from_dict(json.loads(json.dumps(parity_subject_to_dict(subject))))
+    assert restored == subject
+    # A deserialized subject compares equal to the original across all dimensions.
+    report = compare_subjects(subject, restored)
+    assert report.passed is True

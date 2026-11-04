@@ -182,6 +182,8 @@ def add_demo_arguments(parser: argparse.ArgumentParser) -> None:
             "'stop' (default) aborts the campaign on a successful run with an untrustworthy "
             "trace; 'invalid-continue' keeps the step as validity=invalid and continues"
         ),
+    )
+    parser.add_argument(
         "--sentinel-count",
         type=int,
         help=f"opt-in: number of randomly named external sentinels (1..{MAX_SENTINEL_COUNT}); "

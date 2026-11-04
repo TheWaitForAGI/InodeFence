@@ -32,15 +32,23 @@ Scale controls (all from the file; the launcher only enforces them):
   an abort (``watchdog``); its completed steps stay on disk and it reruns next time.
 * ``disk_pause_fraction``: a new cell waits while the output filesystem is at least
   this full (lane 4 ``should_pause_for_disk``), logged in ``matrix.json``.
-* ``interim_analysis = forbidden``: until every cell has been *attempted* the index
-  carries completion state only (no hit/T_first fields, no summary files). A cell is
-  attempted when the controller wrote its report (complete or with an abort record)
-  or when a launcher invocation recorded its termination (``matrix.json``) and its
-  steps file exists (e.g. a watchdog kill). Once every cell is attempted the
-  outcomes are published: aborted cells stay in the denominator, right-censored at
-  their abort point (the preregistered abort rule); they are not re-run by the
-  summary step. A cell with no files at all (never started, or a controller that
-  died before writing anything) keeps the outcomes redacted until it is run.
+* ``interim_analysis = forbidden``: the index carries completion state only (no
+  hit/T_first fields, no summary files) until every planned cell has a *final*
+  terminal state AND the evidence passed the integrity checks. Terminal states
+  (``cell_state``): ``complete``; ``abort-final`` = an abort record (report with an
+  abort record, or steps on disk with a recorded termination) marked final with
+  ``--finalize-abort RUN_ID[=NOTE]`` — the manual classification step of the run
+  procedure until #203's reason classifier automates it (campaign aborts final at
+  once, infrastructure aborts after the retry cap); ``abort-pending`` = an abort
+  record not yet final (re-run next time); ``unattempted`` = no record (never
+  started, in progress, or a controller that died before writing). Integrity:
+  report/steps files present, the steps file a prefix of the report steps, the raw
+  manifest generated and re-verified with the manifest script's ``--verify``
+  (``manifest-verification.json``, an extra file outside the manifest). Once all of
+  that holds the outcomes are published with aborted cells right-censored at their
+  abort point and kept in the denominator (the preregistered abort rule); a final
+  abort is never re-run. ``registration.json`` is updated before the manifest so the
+  manifest covers its final bytes.
 
 Idempotent: a rerun skips cells whose report is complete and conformant (budget
 reached, no abort, planned config, preregistered image id and sentinel set) and
@@ -106,10 +114,15 @@ DEFAULT_JOBS = 2
 DEFAULT_MANIFEST_SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "make_raw_manifest.py"
 REGISTRATION_FILE = "registration.json"
 INTERIM_RULE = (
-    "outcomes are redacted while any cell is unattempted (no report and no recorded "
-    "termination with steps); once every cell is attempted they are published, with "
-    "aborted cells right-censored at their abort point and kept in the denominator"
+    "outcomes are published only when every planned cell has a final terminal state "
+    "(complete report, or an abort record marked final) and the evidence passed the "
+    "integrity checks (report/steps files present, steps prefix consistent, raw manifest "
+    "generated and re-verified); aborted cells are right-censored at their abort point and "
+    "kept in the denominator; until then the index carries completion state only"
 )
+ABORT_DECISIONS_FILE = "abort-decisions.json"
+VERIFICATION_FILE = "manifest-verification.json"
+CELL_STATES = ("complete", "abort-final", "abort-pending", "unattempted")
 WORKER_POOL_MODE = "worker-pool"
 # Fallbacks when lane 4's module is not importable (its constants are preferred).
 DEFAULT_WATCHDOG_SECONDS = 2 * 60 * 60.0
@@ -338,16 +351,140 @@ def recorded_terminations(output: Path) -> set[str]:
     return {c["run_id"] for c in cells if isinstance(c, Mapping) and "run_id" in c}
 
 
-def cell_attempted(cell: Cell, output: Path, terminated: Collection[str]) -> bool:
-    """Attempted = report written (complete or aborted), or terminated with steps on disk.
+def load_abort_decisions(output: Path) -> dict[str, dict[str, Any]]:
+    """``abort-decisions.json``: run id -> {final, note, abort_reason, recorded_at}."""
+    path = output / ABORT_DECISIONS_FILE
+    if not path.is_file():
+        return {}
+    loaded = json.loads(path.read_text(encoding="utf-8"))
+    return dict(loaded) if isinstance(loaded, Mapping) else {}
 
-    An in-progress cell (steps file but no recorded termination) and a cell with no
-    files are not attempted; interim redaction stays on while any such cell exists.
+
+def cell_state(
+    plan: Exp0Plan,
+    cell: Cell,
+    output: Path,
+    decisions: Mapping[str, Mapping[str, Any]],
+    terminated: Collection[str],
+) -> str:
+    """Terminal-state classification of one planned cell.
+
+    ``complete``: report complete and conformant. ``abort-final``: an abort record
+    exists (report with an abort record, or steps on disk with a recorded
+    termination) and it was marked final (``--finalize-abort``; the manual
+    classification step of the run procedure until #203's reason classifier lands).
+    ``abort-pending``: an abort record exists but is not final (the next invocation
+    re-runs it). ``unattempted``: no record at all (never started, in progress, or a
+    controller that died before writing anything).
     """
+    if cell_is_complete(plan, cell, output):
+        return "complete"
     paths = cell_paths(cell, output)
+    has_record = paths["report"].is_file() or (
+        paths["steps_jsonl"].is_file() and cell.run_id in terminated
+    )
+    if not has_record:
+        return "unattempted"
+    return "abort-final" if decisions.get(cell.run_id, {}).get("final") else "abort-pending"
+
+
+def record_abort_final(plan: Exp0Plan, output: Path, run_id: str, note: str | None) -> None:
+    """Mark a cell's abort record final (a result, not a retry candidate); fail-closed."""
+    cells = {cell.run_id: cell for cell in plan.cells()}
+    if run_id not in cells:
+        raise SystemExit(f"--finalize-abort {run_id}: not a planned cell")
+    decisions = load_abort_decisions(output)
+    state = cell_state(plan, cells[run_id], output, decisions, recorded_terminations(output))
+    if state == "complete":
+        raise SystemExit(f"--finalize-abort {run_id}: the cell is complete, nothing to finalize")
+    if state == "unattempted":
+        raise SystemExit(f"--finalize-abort {run_id}: no abort record on disk to finalize")
+    paths = cell_paths(cells[run_id], output)
+    reason: str | None = "no report written"
     if paths["report"].is_file():
-        return True
-    return paths["steps_jsonl"].is_file() and cell.run_id in terminated
+        report = json.loads(paths["report"].read_text(encoding="utf-8"))
+        aborted = report.get("aborted") if isinstance(report, Mapping) else None
+        reason = (
+            str(aborted.get("reason")) if isinstance(aborted, Mapping) else "report not complete"
+        )
+    decisions[run_id] = {
+        "final": True,
+        "note": note,
+        "abort_reason": reason,
+        "recorded_at": datetime.now(UTC).isoformat(),
+    }
+    (output / ABORT_DECISIONS_FILE).write_text(
+        json.dumps(decisions, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+
+
+def _steps_prefix_consistent(records: Sequence[Mapping[str, Any]], steps: Sequence[Any]) -> bool:
+    if len(records) > len(steps):
+        return False
+    for record, step in zip(records, steps, strict=False):
+        if not isinstance(step, Mapping) or record.get("index") != step.get("index"):
+            return False
+        if record.get("oracle") != step.get("oracle"):
+            return False
+    return True
+
+
+def evidence_integrity(plan: Exp0Plan, output: Path, states: Mapping[str, str]) -> list[str]:
+    """Minimal per-cell file checks (the hash-level check is the raw manifest itself).
+
+    Complete cells: report and steps file present and the steps file is a prefix of
+    the report steps (index and oracle verdict agree). Abort records: the steps file
+    is present; when the report carries steps they must agree the same way.
+    """
+    problems: list[str] = []
+    for cell in plan.cells():
+        state = states.get(cell.run_id, "unattempted")
+        if state == "unattempted":
+            continue
+        paths = cell_paths(cell, output)
+        if not paths["steps_jsonl"].is_file():
+            problems.append(f"{cell.run_id}: steps file missing")
+            continue
+        if state == "complete" and not paths["report"].is_file():
+            problems.append(f"{cell.run_id}: report missing")
+            continue
+        if not paths["report"].is_file():
+            continue
+        try:
+            records = [
+                json.loads(line)
+                for line in paths["steps_jsonl"].read_text(encoding="utf-8").splitlines()
+                if line.strip()
+            ]
+            report = json.loads(paths["report"].read_text(encoding="utf-8"))
+        except json.JSONDecodeError as error:
+            problems.append(f"{cell.run_id}: unreadable evidence ({error})")
+            continue
+        steps = report.get("steps") if isinstance(report, Mapping) else None
+        if isinstance(steps, list) and not _steps_prefix_consistent(records, steps):
+            problems.append(f"{cell.run_id}: steps file is not a prefix of the report steps")
+    return problems
+
+
+def verify_raw_manifest(
+    output: Path, *, script: Path, python: str, manifest: Path
+) -> dict[str, Any]:
+    """Re-hash the output tree against the manifest just written (``--verify``)."""
+    if not script.is_file() or not manifest.is_file():
+        return {"verified": False, "reason": "manifest or script missing", "returncode": None}
+    command = [python, str(script), "--verify", str(manifest), "--root", str(output)]
+    completed = subprocess.run(command, capture_output=True, text=True, check=False)
+    return {
+        "verified": completed.returncode == 0,
+        "returncode": completed.returncode,
+        "stdout": completed.stdout.strip()[-500:],
+        "stderr": completed.stderr.strip()[-500:],
+    }
+
+
+def _remove_summaries(output: Path) -> None:
+    for stale in (output / "summaries").glob("*.summary.json"):
+        stale.unlink()
 
 
 def archive_attempt(cell: Cell, output: Path) -> int | None:
@@ -641,6 +778,24 @@ def _print_dry_run(
         print(f"    report={paths['report']} summary={paths['summary']}")
 
 
+def _pending_cells(plan: Exp0Plan, output: Path) -> tuple[list[Cell], list[str], list[str]]:
+    """Cells to (re-)run, complete cells skipped, final aborts skipped (never re-run)."""
+    decisions = load_abort_decisions(output)
+    terminated = recorded_terminations(output)
+    pending: list[Cell] = []
+    skipped: list[str] = []
+    skipped_final: list[str] = []
+    for cell in plan.cells():
+        state = cell_state(plan, cell, output, decisions, terminated)
+        if state == "complete":
+            skipped.append(cell.run_id)
+        elif state == "abort-final":
+            skipped_final.append(cell.run_id)
+        else:
+            pending.append(cell)
+    return pending, skipped, skipped_final
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -677,6 +832,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--summarize-only", action="store_true")
+    parser.add_argument(
+        "--finalize-abort",
+        action="append",
+        default=[],
+        metavar="RUN_ID[=NOTE]",
+        help="mark a cell's abort record final (a result, right-censored, kept in the "
+        "denominator; never re-run); the manual classification step until #203 lands",
+    )
     args = parser.parse_args(argv)
     if args.jobs < 1:
         parser.error("--jobs must be >= 1")
@@ -720,7 +883,7 @@ def main(argv: list[str] | None = None) -> int:
         print("gate: PASS" if not mismatches else "gate: FAIL", f"({plan.gate_text()})")
         for line in _refusal_preview(mismatches, wiring):
             print(line)
-        pending = [cell for cell in plan.cells() if not cell_is_complete(plan, cell, output)]
+        pending = _pending_cells(plan, output)[0]
         _print_dry_run(plan, output, base_env, pending)
         return 0 if not mismatches else 2
     if mismatches:
@@ -730,40 +893,80 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     def finish(results: list[CellResult] | None) -> int:
-        pending_now = [cell for cell in plan.cells() if not cell_is_complete(plan, cell, output)]
         terminated = recorded_terminations(output) | {r.cell.run_id for r in results or ()}
-        unattempted = [
-            cell for cell in plan.cells() if not cell_attempted(cell, output, terminated)
-        ]
-        redact = plan.interim_forbidden and bool(unattempted)
-        document = summarize_output(
-            plan,
-            output,
-            labels=plan.labels(source.revision),
-            gate=plan.gate_text(),
-            verdict_fn=exp0_status,
-            post_check=post_check(plan),
-            extra={
-                "preregistration": {
-                    "file": plan.preregistration_path.name,
-                    "sha256": plan.preregistration_sha256,
-                    "engine_sha": source.revision,
-                    "image_digest": args.image_digest,
-                    "experiment_id": plan.plan,
-                    "commit": args.preregistration_commit,
+        decisions = load_abort_decisions(output)
+        states = {
+            cell.run_id: cell_state(plan, cell, output, decisions, terminated)
+            for cell in plan.cells()
+        }
+        counts = {state: sum(1 for s in states.values() if s == state) for state in CELL_STATES}
+        pending_now = sum(1 for s in states.values() if s != "complete")
+        problems = evidence_integrity(plan, output, states)
+        reasons: list[str] = []
+        if counts["unattempted"]:
+            reasons.append(f"{counts['unattempted']} cell(s) unattempted (no record on disk)")
+        if counts["abort-pending"]:
+            reasons.append(
+                f"{counts['abort-pending']} abort record(s) not final "
+                "(classify with --finalize-abort or re-run)"
+            )
+        reasons.extend(f"evidence integrity: {problem}" for problem in problems)
+        if args.no_manifest:
+            reasons.append("raw manifest not generated (--no-manifest)")
+
+        def write(redact: bool, manifest_state: Mapping[str, Any]) -> dict[str, Any]:
+            if redact:
+                _remove_summaries(output)
+            return summarize_output(
+                plan,
+                output,
+                labels=plan.labels(source.revision),
+                gate=plan.gate_text(),
+                verdict_fn=exp0_status,
+                post_check=post_check(plan),
+                extra={
+                    "preregistration": {
+                        "file": plan.preregistration_path.name,
+                        "sha256": plan.preregistration_sha256,
+                        "engine_sha": source.revision,
+                        "image_digest": args.image_digest,
+                        "experiment_id": plan.plan,
+                        "commit": args.preregistration_commit,
+                    },
+                    "interim": {
+                        "analysis": prereg.interim_analysis,
+                        "redacted": redact,
+                        "rule": INTERIM_RULE,
+                        "reasons": list(reasons),
+                        "pending_cells": pending_now,
+                        "states": counts,
+                        "cell_states": states,
+                        "integrity_problems": problems,
+                        "manifest": dict(manifest_state),
+                    },
                 },
-                "interim": {
-                    "analysis": prereg.interim_analysis,
-                    "redacted": redact,
-                    "rule": INTERIM_RULE,
-                    "pending_cells": len(pending_now),
-                    "unattempted_cells": len(unattempted),
-                },
-            },
-            redact_outcomes=redact,
-        )
+                redact_outcomes=redact,
+            )
+
+        def update_registration(status: Mapping[str, Any]) -> None:
+            path = output / REGISTRATION_FILE
+            registration = json.loads(path.read_text(encoding="utf-8"))
+            registration["last_status"] = status
+            registration["cell_states"] = states
+            registration["abort_decisions"] = decisions
+            path.write_text(
+                json.dumps(registration, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+            )
+
+        redact = plan.interim_forbidden and bool(reasons)
+        document = write(redact, {"generated": None, "verified": None})
         status = document["g1_verdict"]
+        # registration.json is updated BEFORE the manifest so the manifest covers its
+        # final bytes; everything learned after the manifest goes to VERIFICATION_FILE
+        # (an extra file, which #208's verifier reports but does not fail on).
+        update_registration(status)
         manifest: dict[str, Any] = {"generated": False, "reason": "--no-manifest", "path": None}
+        verification: dict[str, Any] = {"verified": False, "reason": "manifest not generated"}
         if not args.no_manifest:
             host = args.manifest_host or os.uname().nodename.split(".")[0]
             manifest = write_raw_manifest(
@@ -774,21 +977,59 @@ def main(argv: list[str] | None = None) -> int:
                 date=datetime.now(UTC).strftime("%Y%m%d"),
                 out=args.manifest_out,
             )
-        registration = json.loads((output / REGISTRATION_FILE).read_text(encoding="utf-8"))
-        registration["raw_manifest"] = manifest
-        registration["last_status"] = status
-        (output / REGISTRATION_FILE).write_text(
-            json.dumps(registration, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+            if manifest["generated"]:
+                verification = verify_raw_manifest(
+                    output,
+                    script=args.manifest_script,
+                    python=args.python or sys.executable,
+                    manifest=Path(manifest["path"]),
+                )
+        manifest_ok = bool(manifest["generated"] and verification["verified"])
+        if not redact and plan.interim_forbidden and not args.no_manifest and not manifest_ok:
+            reasons.append(
+                "raw manifest verification failed"
+                if manifest["generated"]
+                else "raw manifest not generated"
+            )
+            redact = True
+            document = write(True, {"generated": manifest["generated"], "verified": False})
+            status = document["g1_verdict"]
+            update_registration(status)
+        (output / VERIFICATION_FILE).write_text(
+            json.dumps(
+                {
+                    "checked_at": datetime.now(UTC).isoformat(),
+                    "raw_manifest": manifest,
+                    "verification": verification,
+                    "outcomes_redacted": redact,
+                    "redaction_reasons": reasons,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
         )
         print(
             json.dumps(
-                {"status": status, "raw_manifest": manifest, "outcomes_redacted": redact},
+                {
+                    "status": status,
+                    "raw_manifest": manifest,
+                    "manifest_verification": verification,
+                    "outcomes_redacted": redact,
+                    "redaction_reasons": reasons,
+                },
                 sort_keys=True,
             )
         )
         if not manifest["generated"] and not args.no_manifest:
             print("raw manifest NOT generated (completion condition 8 unmet)", file=sys.stderr)
-        return 0 if status["pass"] and (manifest["generated"] or args.no_manifest) else 1
+        elif manifest["generated"] and not verification["verified"]:
+            print(
+                "raw manifest verification FAILED (completion condition 8 unmet)", file=sys.stderr
+            )
+        evidence_ok = not problems and (manifest_ok or args.no_manifest)
+        return 0 if status["pass"] and evidence_ok else 1
 
     output.mkdir(parents=True, exist_ok=True)
     write_registration(
@@ -798,6 +1039,9 @@ def main(argv: list[str] | None = None) -> int:
         image_digest=args.image_digest,
         preregistration_commit=args.preregistration_commit,
     )
+    for item in args.finalize_abort:
+        run_id, _, note = item.partition("=")
+        record_abort_final(plan, output, run_id.strip(), note.strip() or None)
     if args.summarize_only:
         return finish(None)
 
@@ -809,8 +1053,7 @@ def main(argv: list[str] | None = None) -> int:
     bash = shutil.which("bash")
     if bash is None:
         raise SystemExit("bash not found: the native launcher runs only on the host terminal")
-    pending = [cell for cell in plan.cells() if not cell_is_complete(plan, cell, output)]
-    skipped = [cell.run_id for cell in plan.cells() if cell not in pending]
+    pending, skipped, skipped_final = _pending_cells(plan, output)
     archived = {cell.run_id: archive_attempt(cell, output) for cell in pending}
     if pending and not args.skip_build:
         code = _warmup("demo-historical", output, base_env, bash)
@@ -855,6 +1098,7 @@ def main(argv: list[str] | None = None) -> int:
                     "release": os.uname().release,
                 },
                 "skipped_complete": skipped,
+                "skipped_final_aborts": skipped_final,
                 "archived_attempts": {k: v for k, v in archived.items() if v is not None},
                 "cells": [
                     {

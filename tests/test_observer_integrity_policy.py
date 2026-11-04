@@ -187,3 +187,182 @@ def test_continue_policy_keeps_the_invalid_step_and_finishes_the_budget(monkeypa
     summary = cast(dict[str, Any], report["observer_integrity_summary"])
     assert summary["invalid_steps"] == 1
     assert summary["invalid_by_reason"] == {OBSERVER_INTEGRITY_REASON: 1}
+
+
+class _FakeHistoricalTarget:
+    tar_version = "7.5.2"
+    node_version = "22.22.0"
+
+
+def _bind_fake_historical_producer(monkeypatch, invalid_index: int):
+    """Historical producer with an observer-integrity invalid run at ``invalid_index``.
+
+    The catalog guards are stubbed so the test exercises the step policy, not the
+    frozen-image allowlist (covered elsewhere).
+    """
+    monkeypatch.setattr(run_effect_demo, "historical_target_versions", lambda: {"7.5.2": "lock"})
+    monkeypatch.setattr(
+        run_effect_demo.NodeTarEffectTarget, "bind", lambda *a, **k: _FakeHistoricalTarget()
+    )
+    calls = 0
+
+    def fake_run(case, target):
+        nonlocal calls
+        result = (
+            _non_integrity_success(case)
+            if calls == invalid_index
+            else synthetic_effect_result(case)
+        )
+        calls += 1
+        return _FakeRun(result)
+
+    monkeypatch.setattr(run_effect_demo, "run_node_tar_effect_case", fake_run)
+
+
+def test_historical_stop_policy_aborts_like_the_powered_campaign(monkeypatch) -> None:
+    _bind_fake_historical_producer(monkeypatch, invalid_index=1)
+
+    with pytest.raises(NativeDemoAborted) as aborted:
+        run_effect_demo.historical_demo_report(object(), "sha256:" + "0" * 64, "7.5.2", budget=6)  # type: ignore[arg-type]
+
+    assert aborted.value.step_index == 1
+    assert "evidence integrity failed" in aborted.value.reason
+
+
+def test_historical_continue_policy_keeps_the_invalid_step(monkeypatch) -> None:
+    _bind_fake_historical_producer(monkeypatch, invalid_index=1)
+
+    report = run_effect_demo.historical_demo_report(
+        object(),  # type: ignore[arg-type]
+        "sha256:" + "0" * 64,
+        "7.5.2",
+        budget=6,
+        observer_integrity_continue=True,
+    )
+
+    steps = cast(list[dict[str, Any]], report["steps"])
+    assert len(steps) == 6
+    assert steps[1]["validity"] == "invalid"
+    assert steps[1]["invalid_reason"] == OBSERVER_INTEGRITY_REASON
+    summary = cast(dict[str, Any], report["observer_integrity_summary"])
+    assert summary["invalid_steps"] == 1
+
+
+def _demo_namespace(mode: str, policy: str | None):
+    import argparse
+
+    return argparse.Namespace(
+        mode=mode,
+        seed=None,
+        budget=None,
+        policy=None,
+        mutation_policy=None,
+        tar_version="7.5.2" if mode == run_effect_demo.HISTORICAL_DEMO_MODE else None,
+        observer_integrity_policy=policy,
+    )
+
+
+@pytest.mark.parametrize("mode", ["effect-demo", run_effect_demo.HISTORICAL_DEMO_MODE])
+def test_policy_flag_is_accepted_and_mapped_for_both_demos(mode) -> None:
+    parser = run_effect_demo.argparse.ArgumentParser()
+    args = _demo_namespace(mode, "invalid-continue")
+
+    run_effect_demo.check_demo_arguments(parser, args)  # does not raise
+
+    assert run_effect_demo.demo_options(args)["observer_integrity_continue"] is True
+    assert "observer_integrity_policy" in run_effect_demo.DEMO_FORWARDED_ARGUMENTS
+
+
+def test_policy_flag_defaults_to_stop_and_is_rejected_outside_the_demos() -> None:
+    parser = run_effect_demo.argparse.ArgumentParser()
+    # Default (no flag) leaves the frozen behavior: no continue option in the forwarded opts.
+    assert "observer_integrity_continue" not in run_effect_demo.demo_options(
+        _demo_namespace("effect-demo", None)
+    )
+    # 'stop' is explicit frozen behavior, still no continue flag.
+    assert "observer_integrity_continue" not in run_effect_demo.demo_options(
+        _demo_namespace("effect-demo", "stop")
+    )
+    # Restricted to the effect demos.
+    with pytest.raises(SystemExit):
+        run_effect_demo.check_demo_arguments(
+            parser, _demo_namespace("benign-node-smoke", "invalid-continue")
+        )
+
+
+class _TransportBrokenRun:
+    """A SUCCESS run whose trace is integrity-valid but whose transport is not trusted.
+
+    Constructed directly (not reachable from a real capture, where the signals are
+    coupled) to prove the continue policy never releases a host/transport trust
+    failure: that abort is the runtime lane's to classify, not observer_integrity.
+    """
+
+    def __init__(self, result) -> None:
+        self.result = result
+        self.controller_flush_verified = False
+        self.transport_error = "controller did not acknowledge terminal frame"
+        self.raw_stream = b""
+
+
+def test_continue_policy_still_aborts_on_host_transport_trust_failure(monkeypatch) -> None:
+    monkeypatch.setattr(run_effect_demo.NodeTarEffectTarget, "bind", lambda *a, **k: _FakeTarget())
+    calls = 0
+
+    def fake_run(case, target):
+        nonlocal calls
+        # A fully valid (integrity_valid=True) result, but the controller could not
+        # verify the terminal frame: a transport trust failure, not observer-integrity.
+        run = (
+            _TransportBrokenRun(synthetic_effect_result(case))
+            if calls == 1
+            else _FakeRun(synthetic_effect_result(case))
+        )
+        calls += 1
+        return run
+
+    monkeypatch.setattr(run_effect_demo, "run_node_tar_effect_case", fake_run)
+
+    # Even with the continue policy on, a transport trust failure aborts: it is not
+    # a pure observer-integrity failure, so it is never kept or mislabeled.
+    with pytest.raises(NativeDemoAborted) as aborted:
+        native_demo_report(
+            object(),  # type: ignore[arg-type]
+            "sha256:" + "0" * 64,
+            budget=6,
+            observer_integrity_continue=True,
+        )
+    assert aborted.value.step_index == 1
+    assert "evidence integrity failed" in aborted.value.reason
+
+
+def test_stop_and_continue_share_the_case_id_sequence_up_to_the_invalid_step(monkeypatch) -> None:
+    invalid_index = 2
+
+    def run_once(continue_policy: bool, records: list[dict]):
+        return native_demo_report(
+            object(),  # type: ignore[arg-type]
+            "sha256:" + "0" * 64,
+            budget=6,
+            step_sink=records.append,
+            observer_integrity_continue=continue_policy,
+        )
+
+    _bind_fake_producer(monkeypatch, invalid_index=invalid_index)
+    stop_records: list[dict] = []
+    with pytest.raises(NativeDemoAborted):
+        run_once(False, stop_records)
+
+    _bind_fake_producer(monkeypatch, invalid_index=invalid_index)
+    continue_records: list[dict] = []
+    report = run_once(True, continue_records)
+    continue_steps = cast(list[dict[str, Any]], report["steps"])
+
+    # stop aborts exactly at the invalid step, so it delivered only the steps before it.
+    assert [record["index"] for record in stop_records] == list(range(invalid_index))
+    # Both policies drive an identical case_id sequence up to the invalid step; only
+    # at the invalid step do they diverge (stop aborts, continue keeps and continues).
+    stop_case_ids = [record["case_id"] for record in stop_records]
+    continue_case_ids = [step["case_id"] for step in continue_steps[:invalid_index]]
+    assert stop_case_ids == continue_case_ids
+    assert continue_steps[invalid_index]["validity"] == "invalid"

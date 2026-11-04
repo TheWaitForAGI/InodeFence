@@ -161,9 +161,9 @@ def add_demo_arguments(parser: argparse.ArgumentParser) -> None:
         "--observer-integrity-policy",
         choices=("stop", "invalid-continue"),
         help=(
-            "observer-integrity STOP policy; effect-demo only. 'stop' (default) aborts the "
-            "campaign on a successful run with an untrustworthy trace; 'invalid-continue' keeps "
-            "the step as validity=invalid and continues"
+            "observer-integrity STOP policy; effect-demo and effect-demo-historical only. "
+            "'stop' (default) aborts the campaign on a successful run with an untrustworthy "
+            "trace; 'invalid-continue' keeps the step as validity=invalid and continues"
         ),
     )
 
@@ -179,8 +179,11 @@ def check_demo_arguments(parser: argparse.ArgumentParser, args: argparse.Namespa
         parser.error("--tar-version is restricted to effect-demo-historical")
     if args.mode == HISTORICAL_DEMO_MODE and tar_version is None:
         parser.error("effect-demo-historical requires --tar-version")
-    if getattr(args, "observer_integrity_policy", None) is not None and args.mode != "effect-demo":
-        parser.error("--observer-integrity-policy is restricted to effect-demo")
+    if getattr(args, "observer_integrity_policy", None) is not None and args.mode not in (
+        "effect-demo",
+        HISTORICAL_DEMO_MODE,
+    ):
+        parser.error("--observer-integrity-policy is restricted to the effect demos")
 
 
 def demo_options(args: argparse.Namespace) -> dict:
@@ -298,7 +301,19 @@ def native_demo_report(
             and run.transport_error is None
             and check["archive_entries_match"]
         ):
-            if not observer_integrity_continue:
+            # Only a pure observer-integrity failure is eligible for the
+            # continue policy: the trace itself is not integrity_valid while the
+            # host/transport trust signals are all good. Flush/transport/
+            # archive-identity failures are infrastructure trust failures the
+            # runtime lane classifies, so they keep aborting regardless of policy
+            # and are never recorded as observer_integrity or fed back.
+            observer_integrity_only = (
+                not check["integrity_valid"]
+                and run.controller_flush_verified
+                and run.transport_error is None
+                and check["archive_entries_match"]
+            )
+            if not (observer_integrity_continue and observer_integrity_only):
                 execution = run.result.base_result.execution
                 raise NativeDemoAborted(
                     index,
@@ -309,8 +324,7 @@ def native_demo_report(
                         "target_stderr": execution.stderr,
                     },
                 )
-            # Step-level policy: keep the step as an observer-integrity invalid
-            # observation and let the loop continue. The trace is not
+            # Kept as an observer-integrity invalid step; the trace is not
             # integrity_valid, so feedback and corpus admission already exclude it.
         return run.result
 
@@ -424,6 +438,7 @@ def historical_demo_report(
     policy: EffectSearchPolicy = HISTORICAL_SEARCH_POLICY,
     mutation_policy: MutationPolicy = HISTORICAL_MUTATION_POLICY,
     step_sink: Callable[[dict[str, object]], None] | None = None,
+    observer_integrity_continue: bool = False,
 ) -> dict[str, object]:
     """Run the state-aware effect loop on a frozen historical node-tar; label it a demo run.
 
@@ -435,6 +450,12 @@ def historical_demo_report(
     link targets. Seeds are RNG integers only; no PoC input is accepted. The
     result is labeled "demo run" with oracle hits labeled "oracle-detected Cx
     event"; it is never labeled rediscovery or vulnerability.
+
+    `observer_integrity_continue` selects the same observer-integrity STOP policy
+    as native_demo_report (default False = the frozen abort). The powered matched
+    campaigns run on this path, so the step-level policy is wired here too: a
+    successful target run with an untrustworthy trace is kept as an
+    observer-integrity invalid step and the loop continues.
     """
     allowed = historical_target_versions()
     _require_historical_request(tar_version, budget, allowed)
@@ -473,16 +494,31 @@ def historical_demo_report(
             and run.transport_error is None
             and check["archive_entries_match"]
         ):
-            execution = run.result.base_result.execution
-            raise NativeDemoAborted(
-                index,
-                case.case_id,
-                f"evidence integrity failed after target success: {check}",
-                {
-                    "raw_stream": run.raw_stream.decode("utf-8", "surrogateescape"),
-                    "target_stderr": execution.stderr,
-                },
+            # Only a pure observer-integrity failure is eligible for the
+            # continue policy: the trace itself is not integrity_valid while the
+            # host/transport trust signals are all good. Flush/transport/
+            # archive-identity failures are infrastructure trust failures the
+            # runtime lane classifies, so they keep aborting regardless of policy
+            # and are never recorded as observer_integrity or fed back.
+            observer_integrity_only = (
+                not check["integrity_valid"]
+                and run.controller_flush_verified
+                and run.transport_error is None
+                and check["archive_entries_match"]
             )
+            if not (observer_integrity_continue and observer_integrity_only):
+                execution = run.result.base_result.execution
+                raise NativeDemoAborted(
+                    index,
+                    case.case_id,
+                    f"evidence integrity failed after target success: {check}",
+                    {
+                        "raw_stream": run.raw_stream.decode("utf-8", "surrogateescape"),
+                        "target_stderr": execution.stderr,
+                    },
+                )
+            # Kept as an observer-integrity invalid step; the trace is not
+            # integrity_valid, so feedback and corpus admission already exclude it.
         return run.result
 
     reporter = EffectStepReporter()

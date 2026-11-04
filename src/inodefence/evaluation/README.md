@@ -407,8 +407,11 @@ hashes differently, or lists a holdout target. Cells are target × arm × seed w
 ids `<target_id>-<arm>-s<seed>` and per-target evidence directories; the gate compares
 each cell against the digest supplied for its target (`run_exp0 --target-digest
 ID=sha256:…`, `run_rds_cell --target ID`). Analysis-plan keys are recorded, not
-compared: `confirmatory_family` (`holdout:S-u-vs-R,S-u-vs-D`, also emitted as the ordered
-`confirmatory_contrasts` records — holdout targets with hypothesis H-A only), `confirmatory_test`
+compared: `confirmatory_family` (`holdout:S-u-vs-R,S-u-vs-D`; membership is derived from the
+frozen target tags — holdout targets with hypothesis H-A only, at least one required — and
+emitted as the ordered `confirmatory_contrasts` records with `target_id`, target-major,
+contrast-minor, so the analysis tools consume and echo the family instead of deriving
+it), `confirmatory_test`
 (`exact-logrank-permutation-v1` is the confirmatory test at every n — a sparse-event
 family gives p ≈ 1, a correct non-rejection), `multiplicity` (`holm-fwer-v1`),
 `primary_endpoint` (`t_first`; U_viol secondary) and `event_threshold` (an

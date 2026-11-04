@@ -331,24 +331,13 @@ def test_targets_are_parsed_with_roles_digests_arms_and_analysis_keys() -> None:
     assert prereg.confirmatory_test == "exact-logrank-permutation-v1"
     assert prereg.multiplicity == "holm-fwer-v1" and prereg.primary_endpoint == "t_first"
     assert prereg.event_threshold == 5
-    assert prereg.confirmatory_contrasts() == (
-        {
-            "order": 1,
-            "role": "holdout",
-            "hypothesis": "H-A",
-            "arm_a": "S-u",
-            "arm_b": "R",
-            "contrast": "S-u-vs-R",
-        },
-        {
-            "order": 2,
-            "role": "holdout",
-            "hypothesis": "H-A",
-            "arm_a": "S-u",
-            "arm_b": "D",
-            "contrast": "S-u-vs-D",
-        },
-    )
+    assert prereg.confirmatory_targets() == ("node-tar-7.9.9",)  # holdout ∧ H-A only
+    contrasts = prereg.confirmatory_contrasts()
+    rows = [
+        (c["order"], c["target_id"], c["contrast_order"], c["arm_a"], c["arm_b"]) for c in contrasts
+    ]
+    assert rows == [(1, "node-tar-7.9.9", 1, "S-u", "R"), (2, "node-tar-7.9.9", 2, "S-u", "D")]
+    assert all(c["role"] == "holdout" and c["hypothesis"] == "H-A" for c in contrasts)
     assert parse_preregistration(BLOCK).confirmatory_contrasts() == ()
 
 
@@ -397,11 +386,8 @@ TARGET_EDITS: list[tuple[tuple[str, str], str]] = [
     (("primary_endpoint = t_first", "primary_endpoint = hits"), "primary_endpoint must be one of"),
     (("event_threshold = 5", "event_threshold = 0"), "event_threshold must be >= 1"),
     (
-        (
-            "targets.node-tar-7.5.2.extractor = node-tar\n",
-            "targets.node-tar-7.5.2.extractor = node-tar\nimage_digest = " + DIGEST + "\n",
-        ),
-        "mutually exclusive",
+        ("targets.node-tar-7.9.9.hypothesis = H-A", "targets.node-tar-7.9.9.hypothesis = H-B"),
+        "requires at least one holdout target with hypothesis H-A",
     ),
 ]
 

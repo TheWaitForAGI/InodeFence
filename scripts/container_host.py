@@ -25,6 +25,7 @@ from uuid import uuid4
 from scripts.run_effect_demo import (
     DECOMPRESS_CAMPAIGN_MODE,
     DEMO_FORWARDED_ARGUMENTS,
+    DEMO_FORWARDED_FLAGS,
     HISTORICAL_DEMO_MODE,
     ORAS_GO_CAMPAIGN_MODE,
     add_demo_arguments,
@@ -662,6 +663,11 @@ def main() -> int:
             for name in DEMO_FORWARDED_ARGUMENTS
             if getattr(args, name) is not None
             for argument in (f"--{name.replace('_', '-')}", str(getattr(args, name)))
+        ),
+        *(
+            f"--{name.replace('_', '-')}"
+            for name in DEMO_FORWARDED_FLAGS
+            if getattr(args, name, False)
         ),
         args.mode,
     )

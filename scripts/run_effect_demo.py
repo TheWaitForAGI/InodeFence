@@ -7,6 +7,8 @@ evidence. `native_demo_report` runs inside the trusted Linux controller
 
 import argparse
 import json
+import os
+import random
 import sys
 from collections.abc import Callable, Mapping
 from hashlib import sha256
@@ -25,7 +27,19 @@ from inodefence.effect_demo import (
 )
 from inodefence.effect_pipeline import run_node_tar_effect_case
 from inodefence.effect_synthetic import synthetic_effect_result
+from inodefence.evaluation.execution_parity import (
+    ResetVerification,
+    extract_parity_subject,
+    parity_subject_to_dict,
+)
 from inodefence.execution.base import ExecutionBackend
+from inodefence.execution.worker_pool import (
+    CaseAbandoned,
+    NoRecycleWorker,
+    ResetObserver,
+    ResetObservingProducer,
+    ResettingProducer,
+)
 from inodefence.feedback import EffectSearchPolicy
 from inodefence.generator import minimal_seed_corpus
 from inodefence.model import (
@@ -35,7 +49,7 @@ from inodefence.model import (
     ExecutionStatus,
 )
 from inodefence.mutator import MutationPolicy
-from inodefence.runtime import SentinelSpec
+from inodefence.runtime import SentinelSpec, runtime_root
 from inodefence.sentinel_set import (
     MAX_SENTINEL_COUNT,
     GeneratedSentinelSet,
@@ -160,6 +174,79 @@ DEMO_FORWARDED_ARGUMENTS = (
     "sentinel_count",
     "sentinel_seed",
 )
+# store_true flags the host forwards to the controller as bare flags (no value).
+DEMO_FORWARDED_FLAGS = ("emit_parity", "worker_pool")
+
+
+def _parity_campaign_producer(
+    produce: Callable[[ArchiveCase], EffectRunResult],
+    *,
+    worker_pool: bool,
+    seed: int,
+    completed_step_count: Callable[[], int],
+):
+    """Wrap the per-case producer for ParitySubject emission (runs inside the controller).
+
+    Both paths observe the reused runtime volume after each case; the worker-pool path
+    additionally retries recoverable infrastructure failures (``ResettingProducer``). The
+    worker-local backoff RNG is seeded from the campaign seed but is a separate stream, so
+    the campaign RNG — and therefore the step trajectory — is untouched. ``completed_step_count``
+    lets an abandoned case record how many valid steps preceded it (its ``step_index``) instead
+    of a fixed zero.
+    """
+    observer = ResetObserver(lambda: frozenset(os.listdir(runtime_root())))
+    if worker_pool:
+        return ResettingProducer(
+            produce,
+            NoRecycleWorker(),
+            observer,
+            completed_step_count=completed_step_count,
+            rng=random.Random(seed),
+        )
+    return ResetObservingProducer(produce, observer)
+
+
+def _attach_parity_subject(
+    report: dict[str, object],
+    result: EffectCampaignResult,
+    backend: ExecutionBackend,
+    image_id: str,
+    producer: object,
+    *,
+    worker_pool: bool,
+    label: str,
+) -> None:
+    """Attach a serialized ParitySubject + execution mode + retry summary to the report.
+
+    The ParitySubject is extracted from the typed campaign result here (inside the
+    controller); the host reads ``report['parity_subject']`` back and compares the two
+    methods with the parity comparator. Additive: no existing report field changes.
+    """
+    observations = producer.reset_observations  # type: ignore[attr-defined]
+    resets = tuple(
+        ResetVerification(index, obs.reset_residual, obs.reset_other_path_change)
+        for index, obs in enumerate(observations)
+    )
+    retries: dict[int, int] = {}
+    retry_records: list[dict[str, object]] = []
+    if worker_pool:
+        for step in result.steps:
+            found = producer.retries_for(step.result.base_result.case.case_id)  # type: ignore[attr-defined]
+            if found:
+                retries[step.index] = len(found)
+                retry_records.append(
+                    {"step_index": step.index, "infra_retries": [r.to_record() for r in found]}
+                )
+    subject = extract_parity_subject(
+        result,
+        label=label,
+        isolation=backend.capture_isolation(image_id),
+        resets=resets,
+        retries=retries,
+    )
+    report["parity_subject"] = parity_subject_to_dict(subject)
+    report["execution_mode"] = "worker-pool" if worker_pool else "per-case-container"
+    report["worker_pool_retries"] = {"total": sum(retries.values()), "by_step": retry_records}
 
 
 def add_demo_arguments(parser: argparse.ArgumentParser) -> None:
@@ -194,6 +281,18 @@ def add_demo_arguments(parser: argparse.ArgumentParser) -> None:
         type=int,
         help="opt-in: PRNG seed for generated sentinel names; requires --sentinel-count",
     )
+    parser.add_argument(
+        "--emit-parity",
+        action="store_true",
+        help="emit a parity subject (steps/oracle/snapshots/isolation/reset) in the report; "
+        "node-tar effect demos only",
+    )
+    parser.add_argument(
+        "--worker-pool",
+        action="store_true",
+        help="run the campaign through the worker-pool ResettingProducer (per-case reset "
+        "verification + infrastructure retry); requires --emit-parity",
+    )
 
 
 def check_demo_arguments(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
@@ -212,6 +311,12 @@ def check_demo_arguments(parser: argparse.ArgumentParser, args: argparse.Namespa
         HISTORICAL_DEMO_MODE,
     ):
         parser.error("--observer-integrity-policy is restricted to the effect demos")
+    if (getattr(args, "emit_parity", False) or getattr(args, "worker_pool", False)) and (
+        args.mode != HISTORICAL_DEMO_MODE
+    ):
+        parser.error("--emit-parity/--worker-pool are restricted to effect-demo-historical")
+    if getattr(args, "worker_pool", False) and not getattr(args, "emit_parity", False):
+        parser.error("--worker-pool requires --emit-parity")
     count = getattr(args, "sentinel_count", None)
     seed = getattr(args, "sentinel_seed", None)
     if (count is None) != (seed is None):
@@ -235,6 +340,10 @@ def demo_options(args: argparse.Namespace) -> dict:
         options["mutation_policy"] = MutationPolicy(args.mutation_policy)
     if getattr(args, "observer_integrity_policy", None) == "invalid-continue":
         options["observer_integrity_continue"] = True
+    if getattr(args, "emit_parity", False):
+        options["emit_parity"] = True
+    if getattr(args, "worker_pool", False):
+        options["worker_pool"] = True
     return options
 
 
@@ -509,6 +618,8 @@ def historical_demo_report(
     step_sink: Callable[[dict[str, object]], None] | None = None,
     observer_integrity_continue: bool = False,
     sentinel_set: GeneratedSentinelSet | None = None,
+    emit_parity: bool = False,
+    worker_pool: bool = False,
 ) -> dict[str, object]:
     """Run the state-aware effect loop on a frozen historical node-tar; label it a demo run.
 
@@ -593,16 +704,39 @@ def historical_demo_report(
         return run.result
 
     reporter = EffectStepReporter()
+    completed_steps = [0]
 
     def record_step(step) -> None:
         # Persist each finished step so an abort mid-campaign still leaves the completed
         # loop record (including any oracle event); large-budget runs abort more often.
         record = reporter.add(step)
+        completed_steps[0] += 1
         if step_sink is not None:
             step_sink(record)
 
+    campaign_producer = (
+        _parity_campaign_producer(
+            produce,
+            worker_pool=worker_pool,
+            seed=seed,
+            completed_step_count=lambda: completed_steps[0],
+        )
+        if emit_parity
+        else produce
+    )
     started = perf_counter()
-    result = run_effect_campaign(minimal_seed_corpus(), produce, config, on_step=record_step)
+    try:
+        result = run_effect_campaign(
+            minimal_seed_corpus(), campaign_producer, config, on_step=record_step
+        )
+    except CaseAbandoned as abandoned:
+        invalid = abandoned.invalid_case
+        raise NativeDemoAborted(
+            invalid.step_index,
+            invalid.case_id,
+            f"worker-pool case abandoned: {invalid.invalid_reason.value}",
+            None,
+        ) from abandoned
     total = perf_counter() - started
     report = effect_campaign_report(result, "native")
     report.update(
@@ -617,6 +751,16 @@ def historical_demo_report(
         # Wall-clock values differ per run; keep them apart from the loop record.
         timing={"total_seconds": total, "per_case": timing},
     )
+    if emit_parity:
+        _attach_parity_subject(
+            report,
+            result,
+            backend,
+            image_id,
+            campaign_producer,
+            worker_pool=worker_pool,
+            label=f"{tar_version}-{'worker-pool' if worker_pool else 'per-case'}",
+        )
     apply_sentinel_set_record(report, sentinel_set)
     return report
 

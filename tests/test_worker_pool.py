@@ -401,3 +401,33 @@ def test_measurement_runners_interface_requires_analysis_modules() -> None:
     pytest.importorskip("inodefence.evaluation.throughput")
     with pytest.raises(NotImplementedError):
         measurement_runners(2)
+
+
+# ---- reset observation recording (both paths) --------------------------------
+
+
+def test_resetting_producer_records_clean_reset_observations() -> None:
+    worker = FakeWorker()
+    producer = _producer(FlakyInner(), worker, _clean_observer())
+    producer(CASE)
+    assert len(producer.reset_observations) == 1
+    assert producer.reset_observations[0].clean is True
+
+
+def test_reset_observing_producer_records_and_reraises() -> None:
+    from inodefence.execution.worker_pool import NoRecycleWorker, ResetObservingProducer
+
+    observer = _clean_observer()
+    good = ResetObservingProducer(FlakyInner(), observer)
+    good(CASE)
+    assert len(good.reset_observations) == 1
+
+    # Baseline wrapper never retries: an infra failure propagates unchanged.
+    bad = ResetObservingProducer(FlakyInner(BackendError(BROKER_MSG)), observer)
+    with pytest.raises(BackendError):
+        bad(CASE)
+    assert len(bad.reset_observations) == 0
+
+    worker = NoRecycleWorker()
+    assert worker.worker_id == "in-controller"
+    assert worker.recycle() is None

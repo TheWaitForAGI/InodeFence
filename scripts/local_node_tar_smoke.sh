@@ -227,6 +227,8 @@ if [ "$MODE" = demo-historical ]; then
     DEMO_ARGS+=(--observer-integrity-policy "$DEMO_OBSERVER_INTEGRITY_POLICY")
   [ -n "${DEMO_SENTINEL_COUNT:-}" ] && DEMO_ARGS+=(--sentinel-count "$DEMO_SENTINEL_COUNT")
   [ -n "${DEMO_SENTINEL_SEED:-}" ] && DEMO_ARGS+=(--sentinel-seed "$DEMO_SENTINEL_SEED")
+  [ -n "${DEMO_EMIT_PARITY:-}" ] && DEMO_ARGS+=(--emit-parity)
+  [ -n "${DEMO_WORKER_POOL:-}" ] && DEMO_ARGS+=(--worker-pool)
   host --image "$IF_HISTORICAL_IMAGE" --tar-version "$TAR_VERSION" \
     --evidence "$CONTROLLER_EVIDENCE" ${DEMO_ARGS[@]+"${DEMO_ARGS[@]}"} effect-demo-historical
   exit 0

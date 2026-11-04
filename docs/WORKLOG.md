@@ -153,3 +153,15 @@ success 케이스(exit 0)에서 발생한 native 관찰 무결성 결함(malform
 - `ResetVerification` 필드명·극성은 레인3 `evaluation/abort_classification`의 ResetFailureDetail(reset_residual, reset_other_path_change; True=실패)과 일치 → step 4가 레코드 1:1 매핑. 그 모듈은 #203이라 step 4(스택)에서 import.
 - 격리·단일경로·synthetic sha256 전부 불변. R4 실행 백엔드(컨테이너 백엔드·브로커 전송·isolation 정책 모델) 편집 0건 — 변경 없이 조합만.
 - make check(기본 루트 `/var/lib/inodefence`): ruff/format/pyright 0, pytest 2227 passed/4 skip, env-check·docs-check PASS. (per-worktree 루트는 하드코딩 때문에 백엔드 테스트 10건 결정론 실패라 기본 루트 사용.)
+
+## 레인4 워커풀 parity 방출 플러밍 — docker 실행 준비 (2026-11-04)
+
+- 브랜치 `claude/s3-wp-emission`(통합 base 위). 상태: **검토대기**. docker 미실행(오프라인 테스트만).
+- 목적: #213 비교기 4차원 판정을 **실제 node-tar 런**으로 돌릴 수 있게, campaign의 typed 결과에서 ParitySubject를 방출(요약 report로는 dim3 스냅샷·dim4 isolation+reset 판정 불가 — 이 플러밍으로 해결).
+- `evaluation/execution_parity`: ParitySubject JSON 직렬화(`parity_subject_to_dict`/`from_dict`, round-trip 테스트).
+- `execution/worker_pool`: `ResettingProducer`가 clean reset 관찰 기록(`reset_observations`), `ResetObservingProducer`(베이스라인 관찰 전용·재시도 없이 실패 전파), `NoRecycleWorker`(인컨트롤러 — 컨트롤러 teardown 불가, recycle no-op).
+- `scripts/run_effect_demo` 히스토리컬 경로: `--emit-parity`/`--worker-pool` 게이트(additive·기본 off). campaign 뒤 `extract_parity_subject`→`report["parity_subject"]`+`execution_mode`+`worker_pool_retries` 첨부. worker-pool `CaseAbandoned`→기존 `NativeDemoAborted` 경로(right-censored).
+- `scripts/local_node_tar_smoke.sh`: `DEMO_EMIT_PARITY`/`DEMO_WORKER_POOL` env 전달(demo-historical).
+- `scripts/compare_wp_parity.py`: 두 report의 parity_subject를 `compare_subjects`로 4차원 판정 + 재시도 0 확인 + 처리량 나란히(측정4) + EN-008 주(effect-event async sequence는 ParityStep 필드 아님→판정 제외).
+- 테스트 71 passed(parity/throughput/worker_pool/run_worker_pool/measure/compare), 기존 demo 72 passed 불변. R4 변경 0. 격리 불변.
+- 다음(슬롯): (a) `--emit-parity` + (b) `--emit-parity --worker-pool`(seed 9001·R·budget 50·7.5.2) 실행 → `compare_wp_parity`로 4차원 PASS + 재시도 0 판정, 출력 `~/inodefence-evidence/wp-parity-20261104/`.

@@ -481,3 +481,104 @@ def _retried_step_verdicts(
             )
         )
     return tuple(verdicts)
+
+
+# ---------------------------------------------------------------------------
+# JSON round-trip for a ParitySubject. The worker-pool run extracts a subject
+# inside the controller (where the typed EffectCampaignResult lives), writes it
+# as JSON, and the host reads both methods' subjects back to compare them. The
+# round-trip restores tuples so a deserialized subject equals a freshly extracted
+# one (lists in JSON -> tuples here).
+# ---------------------------------------------------------------------------
+
+
+def _isolation_value_to_json(value: object) -> object:
+    return list(value) if isinstance(value, tuple) else value
+
+
+def _isolation_value_from_json(value: object) -> object:
+    return tuple(value) if isinstance(value, list) else value
+
+
+def _snapshot_to_dict(snapshot: CanonicalSnapshot) -> dict[str, object]:
+    return {
+        "phase": snapshot.phase,
+        "protected_paths": list(snapshot.protected_paths),
+        "objects": [list(obj) for obj in snapshot.objects],
+        "identity_groups": [list(group) for group in snapshot.identity_groups],
+    }
+
+
+def _snapshot_from_dict(value: dict) -> CanonicalSnapshot:
+    return CanonicalSnapshot(
+        phase=value["phase"],
+        protected_paths=tuple(value["protected_paths"]),
+        objects=tuple(tuple(obj) for obj in value["objects"]),
+        identity_groups=tuple(tuple(group) for group in value["identity_groups"]),
+    )
+
+
+def _step_to_dict(step: ParityStep) -> dict[str, object]:
+    return {
+        "index": step.index,
+        "case_id": step.case_id,
+        "oracle": [list(verdict) for verdict in step.oracle],
+        "feedback_keys": list(step.feedback_keys),
+        "before": _snapshot_to_dict(step.before),
+        "after": _snapshot_to_dict(step.after),
+        "retry_count": step.retry_count,
+    }
+
+
+def _step_from_dict(value: dict) -> ParityStep:
+    return ParityStep(
+        index=value["index"],
+        case_id=value["case_id"],
+        oracle=tuple((str(v[0]), bool(v[1])) for v in value["oracle"]),
+        feedback_keys=tuple(value["feedback_keys"]),
+        before=_snapshot_from_dict(value["before"]),
+        after=_snapshot_from_dict(value["after"]),
+        retry_count=value["retry_count"],
+    )
+
+
+def _reset_to_dict(reset: ResetVerification) -> dict[str, object]:
+    return {
+        "case_index": reset.case_index,
+        "reset_residual": reset.reset_residual,
+        "reset_other_path_change": reset.reset_other_path_change,
+    }
+
+
+def _reset_from_dict(value: dict) -> ResetVerification:
+    return ResetVerification(
+        value["case_index"], value["reset_residual"], value["reset_other_path_change"]
+    )
+
+
+def parity_subject_to_dict(subject: ParitySubject) -> dict[str, object]:
+    """A JSON-able mapping of a ParitySubject (schema-tagged)."""
+    return {
+        "schema": "parity-subject-v1",
+        "label": subject.label,
+        "steps": [_step_to_dict(step) for step in subject.steps],
+        "isolation": None
+        if subject.isolation is None
+        else [[key, _isolation_value_to_json(value)] for key, value in subject.isolation],
+        "resets": [_reset_to_dict(reset) for reset in subject.resets],
+    }
+
+
+def parity_subject_from_dict(value: dict) -> ParitySubject:
+    """Rebuild a ParitySubject from :func:`parity_subject_to_dict` output."""
+    isolation = (
+        None
+        if value["isolation"] is None
+        else tuple((pair[0], _isolation_value_from_json(pair[1])) for pair in value["isolation"])
+    )
+    return ParitySubject(
+        label=value["label"],
+        steps=tuple(_step_from_dict(step) for step in value["steps"]),
+        isolation=isolation,
+        resets=tuple(_reset_from_dict(reset) for reset in value["resets"]),
+    )

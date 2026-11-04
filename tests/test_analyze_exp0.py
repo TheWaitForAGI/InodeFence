@@ -513,3 +513,94 @@ def test_item5_abort_sensitivity_median_moves_with_policy():
     assert primary == 100  # abort censored at 60 (CENSOR_AT_ABORT)
     assert excl == 50  # abort dropped -> events at 50, 100 -> S=0.5 at 50
     assert budget == 100  # abort censored at budget 200
+
+
+def _write_multitarget_index(tmp_path):
+    """A lane-5 index.json spanning 2 targets (train + holdout), EXP-3 schema shape."""
+    summaries = tmp_path / "summaries"
+    summaries.mkdir(parents=True)
+    targets_meta = [
+        {"target_id": "nt-7.5.2", "extractor": "node-tar", "version": "7.5.2",
+         "role": "train", "hypothesis": "H-A", "exposure": "pre-exposed"},
+        {"target_id": "nt-holdout", "extractor": "node-tar", "version": "7.6.0",
+         "role": "holdout", "hypothesis": "H-A", "exposure": "none"},
+    ]
+    cells = []
+    su_over = {"t_first": 120, "t_first_event": 1, "first_c1": 120, "hit_steps": 1}
+    for tid, role in (("nt-7.5.2", "train"), ("nt-holdout", "holdout")):
+        for arm, over in (("R", {}), ("S-u", su_over)):
+            rec = _rec(arm=arm, random_seed=1, **over)
+            run_id = f"{tid}-{arm}-s1"
+            (summaries / f"{run_id}.summary.json").write_text(
+                json.dumps({"summary": rec, "schema_version": 1})
+            )
+            cells.append({
+                "run_id": run_id, "arm": arm, "seed": 1, "budget": rec["execution_budget"],
+                "summary": f"summaries/{run_id}.summary.json",
+                "target_id": tid, "role": role, "hypothesis": "H-A",
+            })
+    analysis_plan = {
+        "confirmatory_family": "holdout:S-u-vs-R,S-u-vs-D",
+        "confirmatory_test": "exact-logrank-permutation-v1",
+        "multiplicity": "holm-fwer-v1",
+        "primary_endpoint": "t_first",
+        "event_threshold": 5,
+        "confirmatory_targets": ["nt-holdout"],
+        "confirmatory_contrasts": [
+            {"order": 1, "target_id": "nt-holdout", "role": "holdout", "hypothesis": "H-A",
+             "arm_a": "S-u", "arm_b": "R", "contrast": "S-u-vs-R"},
+            {"order": 2, "target_id": "nt-holdout", "role": "holdout", "hypothesis": "H-A",
+             "arm_a": "S-u", "arm_b": "D", "contrast": "S-u-vs-D"},
+        ],
+    }
+    index = {"targets": targets_meta, "analysis_plan": analysis_plan, "cells": cells}
+    (summaries / "index.json").write_text(json.dumps(index))
+    return summaries / "index.json"
+
+
+def test_single_target_report_stays_flat_schema1():
+    # FIXTURE has one (default) target_id -> legacy flat build_report, byte-shape unchanged.
+    report = _report()
+    assert report["schema_version"] == 1
+    assert "by_target" not in report and "target_ids" not in report
+
+
+def test_multitarget_sections_no_pooling(tmp_path, capsys):
+    index = _write_multitarget_index(tmp_path)
+    assert main(["--index", str(index), "--format", "json"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["schema_version"] == 2
+    assert report["target_ids"] == ["nt-7.5.2", "nt-holdout"]
+    train, hold = report["by_target"]["nt-7.5.2"], report["by_target"]["nt-holdout"]
+    assert train["role"] == "train" and train["hypothesis"] == "H-A"
+    assert hold["role"] == "holdout" and "confirmatory" in hold["role_interpretation"]
+    # no pooling: each target sees only its own 2 cells
+    assert train["number_cells"] == 2 and hold["number_cells"] == 2
+    assert report["number_cells"] == 4
+    assert "item5_first_contract_index" in train and "item1_aborts" in hold
+
+
+def test_multitarget_echoes_frozen_analysis_plan(tmp_path, capsys):
+    index = _write_multitarget_index(tmp_path)
+    assert main(["--index", str(index), "--format", "json"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    plan = report["analysis_plan"]
+    assert plan["multiplicity"] == "holm-fwer-v1" and plan["primary_endpoint"] == "t_first"
+    assert plan["event_threshold"] == 5
+    assert [c["contrast"] for c in plan["confirmatory_contrasts"]] == ["S-u-vs-R", "S-u-vs-D"]
+    assert report["confirmatory_targets"] == ["nt-holdout"]
+
+
+def test_multitarget_markdown_renders(tmp_path, capsys):
+    index = _write_multitarget_index(tmp_path)
+    assert main(["--index", str(index), "--format", "markdown"]) == 0
+    out = capsys.readouterr().out
+    assert "EXP-3 multi-target" in out and "nt-holdout" in out and "S-u-vs-R" in out
+
+
+def test_index_entries_skips_targets_metadata_list(tmp_path, capsys):
+    # top-level targets[] (no 'summary' pointer) must not be mistaken for the cell list.
+    index = _write_multitarget_index(tmp_path)
+    assert main(["--index", str(index), "--format", "json"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["number_cells"] == 4  # resolved the 4-cell list, not the 2-entry targets[]

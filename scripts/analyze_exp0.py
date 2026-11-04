@@ -128,6 +128,7 @@ class InvalidCell:
     seed: int
     arm: str
     invalid_reason: str | None
+    target_id: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,8 +168,15 @@ class CellSummary:
     runner_p95_seconds: float | None
     runner_max_seconds: float | None
     environment: Mapping[str, object] | None
+    target_id: str = ""
+    role: str = "train"
+    hypothesis: str = "H-A"
 
     def __post_init__(self) -> None:
+        if self.role not in ("train", "fix-verification", "holdout"):
+            raise ValueError(f"role must be train/fix-verification/holdout, got {self.role!r}")
+        if self.hypothesis not in ("H-A", "H-B"):
+            raise ValueError(f"hypothesis must be H-A/H-B, got {self.hypothesis!r}")
         if self.disposition not in ("complete", "abort"):
             raise ValueError(
                 f"CellSummary disposition must be complete/abort, got {self.disposition!r}"
@@ -242,8 +250,14 @@ def cell_from_row(
     if config_nonconformant or (has_wrapper and inner is None):
         reason = row.get(_INVALID_REASON_KEY) if has_wrapper else None
         seed, arm = _identity(inner if isinstance(inner, dict) else None, entry, field_map)
+        invalid_tid = (
+            str(entry["target_id"]) if isinstance(entry, Mapping) and entry.get("target_id") else ""
+        )
         return InvalidCell(
-            seed=seed, arm=arm, invalid_reason=None if reason is None else str(reason)
+            seed=seed,
+            arm=arm,
+            invalid_reason=None if reason is None else str(reason),
+            target_id=invalid_tid,
         )
 
     if not isinstance(inner, dict):
@@ -275,11 +289,16 @@ def cell_from_row(
     runner_max = _timing_value(timing, _TIMING_RUNNER_MAX)
     environment = row.get(_ENVIRONMENT_KEY) if has_wrapper else None
     abort_reason = _get(inner, field_map, "abort_reason")
+    target = str(_get(inner, field_map, "target") or "unspecified")
+    meta = entry if isinstance(entry, Mapping) else None
+    target_id = str(meta["target_id"]) if meta and meta.get("target_id") else target
+    role = str(meta["role"]) if meta and meta.get("role") else "train"
+    hypothesis = str(meta["hypothesis"]) if meta and meta.get("hypothesis") else "H-A"
 
     return CellSummary(
         seed=int(_get(inner, field_map, "seed")),  # type: ignore[arg-type]
         arm=str(_get(inner, field_map, "arm")),
-        target=str(_get(inner, field_map, "target") or "unspecified"),
+        target=target,
         budget=int(_get(inner, field_map, "budget")),  # type: ignore[arg-type]
         executions=int(_get(inner, field_map, "executions")),  # type: ignore[arg-type]
         disposition=disposition,
@@ -306,6 +325,9 @@ def cell_from_row(
         runner_p95_seconds=None if runner_p95 is None else float(runner_p95),  # type: ignore[arg-type]
         runner_max_seconds=None if runner_max is None else float(runner_max),  # type: ignore[arg-type]
         environment=environment if isinstance(environment, dict) else None,
+        target_id=target_id,
+        role=role,
+        hypothesis=hypothesis,
     )
 
 
@@ -706,13 +728,178 @@ def build_report(
     return report
 
 
+_ROLE_INTERPRETATION = {
+    "train": "exploratory (pre-exposed; design developed here, not confirmatory)",
+    "fix-verification": "negative control (patched; expected 0 hits)",
+    "holdout": "confirmatory (independent, unseen)",
+}
+
+
+def _index_plan(index_file: Path) -> dict | None:
+    """Read the top-level ``analysis_plan`` (EXP-3 multi-target) from an index, if present."""
+    data = read_json(index_file.read_bytes())
+    if isinstance(data, dict):
+        plan = data.get("analysis_plan")
+        if isinstance(plan, dict):
+            return plan
+    return None
+
+
+def build_multitarget_report(
+    cells: Sequence[CellSummary | InvalidCell],
+    *,
+    analysis_plan: dict | None = None,
+    parity: object | None = None,
+    independence: dict | None = None,
+    field_map: Mapping[str, str],
+    sources: Sequence[str],
+) -> dict:
+    """Per-target, per-role EXP-3 sections (no cross-target pooling).
+
+    Each target is reported in its own ``by_target`` section -- train (pre-exposed, exploratory),
+    fix-verification (negative control, expected 0 hits) and holdout (confirmatory) never share a
+    risk set, because hazards differ by extractor/version (pooling would confound; Simpson). The
+    frozen ``analysis_plan`` (ordered ``confirmatory_contrasts`` on holdout&H-A, ``multiplicity``,
+    ``primary_endpoint``, ``event_threshold``) is echoed verbatim -- this builder derives no family
+    membership and runs no confirmatory test (that is the exact-log-rank step). Single-target input
+    uses :func:`build_report` (byte-identical to the EXP-0 output); this path is for >1 target_id.
+    """
+    if not cells:
+        raise ValueError("no cells to summarize")
+    valid = [c for c in cells if isinstance(c, CellSummary)]
+    invalid = [c for c in cells if isinstance(c, InvalidCell)]
+    target_ids = sorted({c.target_id for c in cells})
+    by_target: dict[str, dict] = {}
+    for tid in target_ids:
+        tvalid = [c for c in valid if c.target_id == tid]
+        tinvalid = [c for c in invalid if c.target_id == tid]
+        roles = sorted({c.role for c in tvalid})
+        hyps = sorted({c.hypothesis for c in tvalid})
+        role: object = roles[0] if len(roles) == 1 else roles
+        by_target[tid] = {
+            "role": role,
+            "hypothesis": hyps[0] if len(hyps) == 1 else hyps,
+            "role_interpretation": _ROLE_INTERPRETATION.get(role, "mixed roles in one target")
+            if isinstance(role, str)
+            else "mixed roles in one target",
+            "number_cells": len(tvalid) + len(tinvalid),
+            "arms": sorted({c.arm for c in [*tvalid, *tinvalid]}),
+            "seeds": sorted({c.seed for c in [*tvalid, *tinvalid]}),
+            "item1_aborts": _aborts(tvalid, tinvalid),
+            "item2_p95_full_step": _p95_full_step(tvalid),
+            "item3_throughput": _throughput(tvalid),
+            "item4_throughput_parity": _throughput_parity(tvalid, parity),
+            "item5_first_contract_index": _first_index_censored(tvalid, tinvalid),
+            "item6_dense_signals": _dense_signals(tvalid),
+            "item7_hazard_proxy": _hazard_proxy(tvalid),
+            "environment": _environments(tvalid),
+        }
+    report = {
+        "schema_version": 2,
+        "classification": "exp3-multitarget-measurement",
+        "purpose": (
+            "per-target, per-role measurement; targets are NOT pooled (hazard differs by "
+            "extractor/version). H-A arm inference is confirmatory only on a holdout target; "
+            "train is exploratory (pre-exposed) and fix-verification is a negative control "
+            "(expected 0 hits). This report echoes the frozen analysis_plan and runs no "
+            "confirmatory test (the exact-log-rank step consumes it separately)."
+        ),
+        "number_cells": len(cells),
+        "number_valid_cells": len(valid),
+        "number_invalid_cells": len(invalid),
+        "target_ids": target_ids,
+        "arms": sorted({c.arm for c in cells}),
+        "seeds": sorted({c.seed for c in cells}),
+        "analysis_plan": analysis_plan,
+        "confirmatory_targets": (analysis_plan or {}).get("confirmatory_targets"),
+        "by_target": by_target,
+        "provenance": {"source_files": list(sources), "field_map": dict(field_map)},
+    }
+    if independence is not None:
+        report["arm_abort_independence"] = independence
+    return report
+
+
 def _md_table(headers: Sequence[str], rows: Sequence[Sequence[object]]) -> list[str]:
     lines = ["| " + " | ".join(headers) + " |", "| " + " | ".join("---" for _ in headers) + " |"]
     lines.extend("| " + " | ".join(str(cell) for cell in row) + " |" for row in rows)
     return lines
 
 
+def _multitarget_markdown(report: dict) -> str:
+    lines = [
+        "# EXP-3 multi-target measurement (per-target, no pooling)",
+        "",
+        f"Targets: {', '.join(report['target_ids'])} | "
+        f"cells {report['number_cells']} (valid {report['number_valid_cells']}, "
+        f"invalid {report['number_invalid_cells']}) | arms {', '.join(report['arms'])}",
+        "",
+        "_H-A arm inference is confirmatory on a holdout target only; train is exploratory "
+        "(pre-exposed), fix-verification is a negative control. Targets are not pooled._",
+        "",
+    ]
+    plan = report.get("analysis_plan")
+    if isinstance(plan, dict):
+        lines += [
+            "## Confirmatory plan (frozen, echoed)",
+            "",
+            f"primary_endpoint={plan.get('primary_endpoint')} · "
+            f"multiplicity={plan.get('multiplicity')} · "
+            f"event_threshold={plan.get('event_threshold')} · "
+            f"confirmatory_test={plan.get('confirmatory_test')}",
+            "",
+        ]
+        contrasts = plan.get("confirmatory_contrasts") or []
+        if isinstance(contrasts, list) and contrasts:
+            lines += _md_table(
+                ["order", "target_id", "arm_a", "arm_b", "contrast"],
+                [
+                    [
+                        c.get("order"),
+                        c.get("target_id"),
+                        c.get("arm_a"),
+                        c.get("arm_b"),
+                        c.get("contrast"),
+                    ]
+                    for c in contrasts
+                ],
+            )
+        else:
+            lines.append("(no H-A holdout contrasts registered)")
+        lines.append("")
+    for tid in report["target_ids"]:
+        sec = report["by_target"][tid]
+        t5 = sec["item5_first_contract_index"]["by_arm"]
+        aborts = sec["item1_aborts"]["by_arm"]
+        lines += [
+            f"## Target `{tid}` — role {sec['role']} ({sec['role_interpretation']}), "
+            f"hypothesis {sec['hypothesis']}",
+            "",
+            f"arms {', '.join(sec['arms'])} | seeds {len(sec['seeds'])} | "
+            f"cells {sec['number_cells']}",
+            "",
+        ]
+        lines += _md_table(
+            ["arm", "T_first observed", "T_first median", "aborts"],
+            [
+                [
+                    arm,
+                    t5[arm]["t_first_combined_c1_or_c2"]["number_observed"],
+                    t5[arm]["t_first_combined_c1_or_c2"]["km_median_executions"],
+                    aborts.get(arm, {}).get("number_abort", 0),
+                ]
+                for arm in sec["arms"]
+                if arm in t5
+            ],
+        )
+        lines.append("")
+    lines.append("_Full per-item detail (items 1-7, item5 sensitivity) is in the JSON report._")
+    return "\n".join(lines)
+
+
 def report_markdown(report: dict) -> str:
+    if "by_target" in report:
+        return _multitarget_markdown(report)
     lines = [
         "# EXP-0 pilot infrastructure measurement",
         "",
@@ -846,11 +1033,16 @@ def _index_entries(index_file: Path) -> list[tuple[Path, Mapping[str, object]]]:
     if isinstance(data, list):
         entries: object = data
     elif isinstance(data, dict):
+        # Pick the cell-entry list specifically: its entries carry a "summary" pointer. This
+        # must not match the EXP-3 schema's top-level ``targets`` list (target metadata, no
+        # pointer) nor ``analysis_plan`` (a dict).
         entries = next(
             (
                 v
                 for v in data.values()
-                if isinstance(v, list) and v and all(isinstance(e, dict) for e in v)
+                if isinstance(v, list)
+                and v
+                and all(isinstance(e, dict) and "summary" in e for e in v)
             ),
             None,
         )
@@ -952,13 +1144,25 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         cells = load_cells(items, field_map)
-        report = build_report(
-            cells,
-            parity=parity,
-            independence=independence,
-            field_map=field_map,
-            sources=[str(p) for p, _ in items],
-        )
+        sources = [str(p) for p, _ in items]
+        if len({c.target_id for c in cells}) > 1:
+            analysis_plan = _index_plan(args.index) if args.index is not None else None
+            report = build_multitarget_report(
+                cells,
+                analysis_plan=analysis_plan,
+                parity=parity,
+                independence=independence,
+                field_map=field_map,
+                sources=sources,
+            )
+        else:
+            report = build_report(
+                cells,
+                parity=parity,
+                independence=independence,
+                field_map=field_map,
+                sources=sources,
+            )
     except (ValueError, KeyError, OSError) as error:
         print(str(error), file=sys.stderr)
         return 1

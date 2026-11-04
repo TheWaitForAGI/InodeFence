@@ -79,3 +79,95 @@ Research Plane(무엇을 위험으로 볼지 정의) → Runtime Engine(생성·
 Evidence Plane(raw 결과 → 재현·최소화 → finding → paper)의 세 Plane을 분리하며, **raw 결과가 곧
 논문 주장은 아니다.** observed(실행 출력으로 확인)와 inferred(추론)를 문장에서 구분하고, synthetic을
 native 증거로 승격하지 않는다(§5의 각 소절이 이 규율을 따른다).
+
+## 4.6 실험 설계 (계획 — 11/18 사전등록 후 잠금)
+
+이 소절은 **결과가 아니라 계획**이다. 설계 기준은 [research-questions v2 H-A](../../docs/research/design/research-questions.md)와
+[EXP-0 파일럿 사전등록 v2](../../experiments/preregistration/exp0-pilot-v2.md)이며, **지표·예산·hit 정의·분모 규칙은
+11/18 사전등록 시점에 잠근다** — 그 이후에는 바꾸지 않고 수정은 새 버전 파일로만 한다. 엔진 SHA·이미지
+digest·**policy ID 문자열은 G1(구현 수리) 동결 시 사전등록 v2.1에 채운다. 현재 미동결(TBD)이므로 아래 arm은
+retention·스케줄러 정의로만 고정하고 policy ID 문자열은 v2.1에서 기록한다.**
+
+### 4.6.1 비교 arm (R / D / S-u; S-a는 ablation)
+
+세 주 arm은 어휘(관찰 이름 포함 여부를 세 arm에 동일 적용)·seed·예산·이미지·oracle·operator 선택(uniform)이
+모두 같고 **retention 정책만** 다르다. 주 비교의 S는 **S-u(uniform 스케줄러)**다(D와 operator 정책을 동일 통제해
+retention 효과만 분리). adaptive 스케줄러를 얹은 **S-a**는 주 비교가 아니라 탐색적 ablation(선택)이며 S-a − S-u는
+스케줄러 효과로 따로 해석한다.
+
+| arm | retention | operator 선택 | 뜻 | policy ID |
+| --- | --- | --- | --- | --- |
+| **R** | 없음 | uniform | 무작위 탐색(바닥) | TBD (v2.1 동결 시 기록) |
+| **D** | 구조 커버리지(`SearchPolicy.D` = target-agnostic extraction 구조 키) | uniform | 커버리지 피드백 대조 | TBD (v2.1; `SearchPolicy.D` 러너) |
+| **S-u** (주) | identity/effect/boundary-attempt 상태 키 | uniform | InodeFence retention 피드백 | TBD (v2.1 동결 시 기록) |
+| S-a (선택, ablation) | S-u와 동일 | adaptive | 스케줄러 효과 분리용, 주 비교 아님 | TBD (v2.1) |
+
+**sentinel.** ≥ 3개를 쓰고, 이름은 **seed 고정 무작위 생성기**로 만들며 생성기 seed를 결과에 기록한다(손으로 정한
+이름 없음). 어휘에 피해 경로 이름을 넣는 것은 위협 모델(research-questions v2)의 일부이며 세 arm에 동일하게
+적용한다 — 따라서 blind 발견을 주장하지 않는다.
+
+### 4.6.2 지표와 분석
+
+- **1차 종속변수 T_first** — 첫 `C1 ∨ C2`까지의 실행 수. **우측중도절단**(완주 무hit = 예산 N에서 절단, abort =
+  abort 시점에서 절단). **생존분석**으로 비교한다: Kaplan–Meier 곡선, 로그랭크 검정, Vargha–Delaney A12.
+- **1차 종속변수 U_viol** — 고유 위반 입력 수(정규화 서명 기준; 같은 lineage·같은 fingerprint는 1).
+- **hit 정의** — post-state oracle `C1 ∨ C2`이고 `contract_violated`인 step. **C0만은 hit가 아니다**(path-boundary
+  baseline으로 별도 집계).
+- **dense 신호**(boundary-attempt 키 수·C0 도달 인덱스/비율·rejected 비율·exec/h·abort 사유별 수) — 탐색 거동
+  설명용이며 **effectiveness 척도가 아니다(EN-008)**. 새 state key 수를 보안 이득 결론으로 옮기지 않는다.
+- **seed-block paired** — 동일 seed 블록 안에서 arm을 **쌍으로** 비교한다(seed 간 분산을 공통 블록으로 통제).
+- **abort 민감도(3정책)** — abort 처리 규칙을 바꿔 결론 robustness를 확인한다: (1) **우측중도절단**(1차 분석),
+  (2) **완주-only**(abort 셀 제외), (3) **abort = no-hit**(보수적 하한). 분모는 항상 abort 포함/제외를 명시하고
+  abort를 몰래 빼지 않는다.
+
+### 4.6.3 실험 순서
+
+1. **EXP-0 파일럿** — seed {9001..9005} × budget 200 × R/D/S-u, 인프라·dense 신호 실측. **zero-hit이 기본 결과**이며
+   C1/C2 hit으로 hazard를 추정하지 않는다(zero면 캠페인 단위 rule-of-three 상한만 참고로 병기).
+2. **11/18 사전등록 잠금** — EXP-3 본실험 + EXP-2 GO/NO-GO 규칙을 고정한다. 규칙의 n(arm당 캠페인 수)·x(목표
+   효과)는 EXP-0 처리량·abort율 실측에서 **11/14 확정**한다. EXP-0의 hit 수는 x 산정에 쓰지 않는다.
+3. **EXP-3 본실험** — 20 seed × budget 2000 × R/D/S-u, 다수 sentinel. 1차 지표 T_first(우측중도절단)·U_viol.
+4. **11/20 규칙 기계 적용** — EXP-3 결과에 사전등록된 GO/NO-GO 규칙을 **그대로** 적용한다(결과를 본 뒤 규칙을
+   바꾸지 않는다).
+5. **EXP-2 조건부** — GO일 때만 수행한다.
+
+### 4.6.4 판정 시나리오
+
+아래 표는 [research-questions v2 '판정 시나리오'](../../docs/research/design/research-questions.md)를 그대로 인용한다
+(S는 주 비교의 S-u; S-a는 ablation으로 별도 보고).
+
+| # | 관찰 | 판정 |
+| --- | --- | --- |
+| ① | S > R **그리고** S > D (T_first·U_viol 양쪽) | 가속 주장 가능 |
+| ② | S > R이나 S ≈ D | 피드백 **일반** 효과만(identity 특정 효과 미입증) |
+| ③ | 탐색 지표(새 state key 등)는 다르나 위반은 동등 | 보안 이득 미입증(EN-008) |
+| ④ | 알려진 클래스만 발견 | 정상(D007: zero-day는 성공 조건 아님) |
+| ⑤ | 전 arm 위반 0 | 미관찰로 보고·분모 명시·rule of three 상한(캠페인 단위 참고 상한, 판정 입력 아님) |
+| ⑥ | extractor 간 불일치 | oracle 일반성(H-B)과 피드백 일반성(H-A)을 분리해 보고 |
+| ⑦ | S의 비용 과다 | 실행 수 외에 시간 정규화 지표 병기 |
+| ⑧ | S ≤ R | **반증** |
+
+**예측(사전등록 전 가설).** S-u가 R보다 T_first 중앙값이 2배 이상 빠르고(로그랭크 p < 0.05, A12 ≥ 0.64) S-u ≠ D.
+**반증.** S-u와 R의 생존곡선이 분리되지 않는다.
+
+### 4.6.5 결과 자리 (실험 전 — TBD)
+
+다음은 EXP-3 실행 후 채운다. 현재는 **TBD**다.
+
+- 표: arm별 T_first 생존표(중앙값·로그랭크 p·A12), U_viol 수, abort 3정책 민감도. — **TBD**
+- 그림: R/D/S-u Kaplan–Meier 생존곡선. — **TBD**
+
+## 4.7 AI 도구 사용 (재현성·공개)
+
+이 프로젝트는 코드 작성·분석·문서화에 Claude(Claude Code) 코딩 에이전트를 적극 사용했다(저장소 바이브코딩
+정책 [`AGENTS.md`](../../AGENTS.md)). 공개 기준으로 다음을 명시한다.
+
+- **검토 게이트.** 모든 코드 변경은 브랜치 → PR → CI → 검토(verifier 또는 사람) → squash 머지 경로를 거친다.
+  안전경계와 연구 불변식(disposable sandbox + sentinel, 격리 완화 0, D005 CVE-specific oracle 금지, D006 known
+  PoC seed 금지, D007 zero-day는 성공 조건 아님, oracle C0/C1/C2 정의 불변)은 에이전트가 바꾸지 못한다.
+- **정량 지표(2026-11-04, `main` 기준).** 전체 413개 커밋 중 **95개**가 Claude를 co-author로 명시한다. 지정 집계
+  명령 `git log --format=%b | grep -c "Co-Authored-By: Claude"`는 trailer **라인 140**을 반환하는데, 이는 squash
+  머지가 여러 커밋의 co-author trailer를 하나의 커밋 본문에 합치기 때문이다(라인 수 ≥ 커밋 수). 두 수치 모두
+  재현 가능한 명령으로 센 값이다.
+- **증거 규율.** 에이전트 산출물과 사람 검증을 구분하며, raw 결과 → validated summary → finding → 이 드래프트의
+  증거 사슬(§4.5)과 observed/inferred 구분을 유지한다. 에이전트가 생성한 수치가 자동으로 논문 주장이 되지 않는다.

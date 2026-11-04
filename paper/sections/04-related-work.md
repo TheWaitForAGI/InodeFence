@@ -58,3 +58,34 @@ creation, arbitrary file read/write effect를 다룬다. 현재 InodeFence와 �
 
 일부는 선행연구와 충돌하고, 일부는 추가 문헌조사·실험이 필요하다. 이 드래프트가 방어하는 것은
 §5의 좁은 명제들(M1 동작, M2 통제 재현, M3 이름 획득 조건의 관찰(피드백 인과 미입증), M4 oracle/adapter 일반성)뿐이다 *(구: "M3 인과 입증", 2026-11-03 정정 — 상세 §5.3.2)*.
+
+## 3.7 비교 축과 평가 방법론 (감사 03 권고)
+
+### 3.7.1 5축 비교표
+
+아래 표는 포지셔닝 문서([related-work-positioning.md](../../docs/research/design/related-work-positioning.md))에
+**이미 명시된 사실만** 다섯 축(입력·관찰·판정(oracle)·피드백·평가)으로 재배열한 것이다. 문서에 그 축이 서술돼
+있지 않으면 "— (명시 없음)"으로 둔다. 각 원문에 대한 추가 대조는 TBD이며, 읽지 않은 원문의 수치·주장은 적지
+않는다. 서지는 §3.1–3.4와 포지셔닝 문서(2026-10-26 독립 확인)를 따른다.
+
+| 연구 | 입력 | 관찰 | 판정(oracle) | 피드백 | 평가(규모·방법) |
+| --- | --- | --- | --- | --- | --- |
+| Jana & Shmatikov 2012 | malformed archive/파일 metadata (TAR 포함) | file-processing 구현 간 semantic gap | 일부 format에 black-box differential | — (명시 없음) | — (정량 명시 없음; differential) |
+| ZIPDiff 2025 | archive-aware + byte-level mutation (ZIP) | extraction-output 비교 | parser 간 differential | feedback-guided corpus evolution + interesting-seed retention | 50 parser / 19개 언어 대규모 differential, 공개 아티팩트 |
+| LinkZard 2025 | Windows 파일 연산(링크 추종; archive corpus 아님) | file-operation sequence + hardlink/link-count state | link-following 취약점 탐지 | feedback-driven file-state fuzzing + state-query-driven mutation | 120개 상용 프로그램, 55 zero-day, 15 CVE |
+| Wormholes 2026 | archive extraction(symlink composition·entry order·dangling·update·extraction-root manipulation·symlink 경유 hardlink) | — (명시 없음) | arbitrary file read/write effect | — (명시 없음) | 85개 프로젝트, 16 arbitrary file write, 2 high-severity CVE |
+| InodeFence (현재) | generic archive-entry mutation (TAR; 8 generic operator, 고정 recipe 없음) | object identity `(st_dev, st_ino)`·external effect·boundary-attempt | generic C0/C1/C2 Security Contract (CVE 비하드코딩) | identity/effect 상태 retention (StateSignature) | 계획: R/D/S-u T_first·U_viol(§4.6); 현재: M1–M4 좁은 명제 |
+
+이 표는 신규성 주장이 아니라 **포지셔닝**이다(§3.6 금지 목록 준수). InodeFence 행의 평가 칸은 아직 계획이며,
+그 결과는 실험 후에만 채운다.
+
+### 3.7.2 평가 방법론 기준
+
+정량 비교(§4.6)는 퍼징 평가 방법론 문헌의 권고를 따르는 것을 목표로 한다: 복수 seed·독립 반복, 의미 있는
+baseline(R/D), 통계적 유의성 검정(로그랭크·A12), 우측중도절단과 abort 민감도, negative/invalid 결과 보존.
+해당 방법론 참고 문헌으로 Klees et al. (CCS 2018, 퍼징 평가 방법론), Böhme et al. (2021, 퍼징 통계), 그리고
+2024년 퍼징 SoK를 **인용 대상으로 둔다**.
+
+> **인용 확인 TBD.** 위 세 문헌의 정확한 서지(제목·저자·venue·페이지)와 **구체 권고 문장의 매핑은 원문 대조
+> 전이므로 아직 적지 않는다**(포지셔닝 문서의 서지 확인 규율과 동일). 원문 확인 후 §3.1–3.4 형식의 서지와 함께
+> 채운다. 읽지 않은 원문의 수치·주장은 이 드래프트에 넣지 않는다.

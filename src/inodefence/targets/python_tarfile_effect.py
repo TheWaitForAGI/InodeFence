@@ -312,12 +312,18 @@ def _extracted_path(reference: ArchiveEntryReference, root: Path, extraction_roo
 def _build_trace(
     before: StateSnapshot,
     after: StateSnapshot,
+    references: tuple[ArchiveEntryReference, ...],
     extractions: tuple[_EntryExtraction, ...],
     status: ExecutionStatus,
     root: Path,
     extraction_root: Path,
 ) -> EffectEventTrace:
-    references = tuple(item.reference for item in extractions)
+    # ``archive_entries`` is the FULL declared case structure (every entry by ordinal
+    # + path, duplicates and order preserved), NOT only the entries reached before an
+    # early rejection -- the EffectRunResult identity invariant requires it to equal
+    # ArchiveCase. This matches the node-tar producer, whose canonical records are keyed
+    # per ordinal too. Lifecycle/effect events below cover only the observed (succeeded)
+    # entries; a rejected/failed run is therefore feedback-ineligible, not a crash.
     after_by_path = {obj.path: obj for obj in after.objects}
     before_by_path = {obj.path: obj for obj in before.objects}
 
@@ -415,7 +421,7 @@ def _build_trace(
 
 def _extract_in_process(
     target: PythonTarfileEffectTarget, archive_path: Path, extraction_root: Path, case: ArchiveCase
-) -> tuple[tuple[_EntryExtraction, ...], ExecutionResult]:
+) -> tuple[tuple[ArchiveEntryReference, ...], tuple[_EntryExtraction, ...], ExecutionResult]:
     references = tuple(
         ArchiveEntryReference(index, entry.path, entry.entry_type, entry.link_target)
         for index, entry in enumerate(case.entries)
@@ -468,7 +474,7 @@ def _extract_in_process(
         stderr[:200],
         duration_seconds=elapsed,
     )
-    return tuple(results), execution
+    return references, tuple(results), execution
 
 
 def run_python_tarfile_effect_case(
@@ -505,12 +511,18 @@ def run_python_tarfile_effect_case(
     with disposable_sandbox(sentinels) as sandbox:
         sandbox.archive_path.write_bytes(archive)
         before = capture_state(sandbox.root, SnapshotPhase.BEFORE, sandbox.protected_paths)
-        extractions, execution = _extract_in_process(
+        references, extractions, execution = _extract_in_process(
             target, sandbox.archive_path, sandbox.extraction_root, case
         )
         after = capture_state(sandbox.root, SnapshotPhase.AFTER, sandbox.protected_paths)
         trace = _build_trace(
-            before, after, extractions, execution.status, sandbox.root, sandbox.extraction_root
+            before,
+            after,
+            references,
+            extractions,
+            execution.status,
+            sandbox.root,
+            sandbox.extraction_root,
         )
         base = RunResult(
             case,

@@ -116,14 +116,26 @@ def test_main_generate_and_verify(tmp_path: Path) -> None:
     assert main(["--verify", str(out)]) == 0
 
 
-def test_bundle_self_consistent_after_source_changes(tmp_path: Path) -> None:
-    # Single-pass: the embedded manifest describes the exact archived bytes, so a bundle
-    # stays internally consistent even if the source tree is written after creation
-    # (the live-tree concurrency race that stage-4 of the preservation proof caught).
+def test_bundle_self_consistent_under_mid_read_mutation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A concurrent writer mutates each file ON DISK right after the archive pass reads it.
+    # Single-pass hashes the exact bytes it archived, so the bundle stays consistent
+    # (verify from the tar: 0 mismatch). The old two-pass code archived via read_bytes
+    # then re-hashed from disk in a second pass, so it would see the mutated bytes and
+    # report a mismatch -- this test is the guard that distinguishes the two.
     root = _tree(tmp_path)
+    real_read = Path.read_bytes
+
+    def mutating_read(self: Path) -> bytes:
+        data = real_read(self)
+        if self.suffix == ".json":  # simulate a writer touching the file post-read
+            self.write_bytes(data + b"-MUTATED-ON-DISK")
+        return data
+
+    monkeypatch.setattr(Path, "read_bytes", mutating_read)
     out = tmp_path / "b.tar.gz"
     create_bundle(root, out, "gz")
-    (root / "a.json").write_text("CHANGED AFTER BUNDLING", encoding="utf-8")
-    (root / "new-during-run.json").write_text("appeared later", encoding="utf-8")
+    monkeypatch.undo()  # verify re-reads from the tar, not disk
     result = verify_bundle(out)
     assert not result.failed and result.mismatched == [] and result.missing == []

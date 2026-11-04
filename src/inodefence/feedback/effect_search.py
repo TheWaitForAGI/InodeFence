@@ -1,4 +1,8 @@
-"""P0-v2/P1-v2/P2-v2 corpus retention over qualified effect traces."""
+"""P0-v2/P1-v2/P2-v2 corpus retention over qualified effect traces.
+
+Also hosts the R/D/S-u equal-vocabulary arms (research-questions v2 H-A): same
+diagnostic channel and uniform operator scheduling, differing only in admission.
+"""
 
 import random
 from collections.abc import Sequence
@@ -15,6 +19,7 @@ from inodefence.model import (
     StateSignature,
 )
 
+from .coverage import StructureCoverageFeature, structure_coverage_features
 from .effect_novelty import EffectNoveltyIndex
 from .fingerprint import ViolationFingerprint, violation_fingerprints
 
@@ -37,6 +42,51 @@ class EffectSearchPolicy(StrEnum):
     P3_EXTERNAL_RESOLVE_GRADIENT = (
         "effect-feedback-v2-or-violation-v1-external-resolve-v1-adaptive-mutation-v1"
     )
+    # ---- R/D/S-u equal-vocabulary comparison (research-questions v2 H-A; EXP-0 v2.1) ----
+    # The four IDs below share ONE diagnostic channel — the P3 boundary-attempt key
+    # set under the P3 clean-trace gate (integrity-valid, complete, SUCCESS or
+    # REJECTED) — so `new_effect_keys`, `unique_effect_keys` and the dense signals
+    # (boundary-attempt key count, rejected ratio) are measured identically in every
+    # arm. They differ ONLY in admission (which observation becomes a mutation
+    # parent). All four use the uniform operator scheduler (every slot weight 1).
+    #
+    # R (random floor), walk variant: retention none. The first parent is drawn once
+    # from the seeds; afterwards every observed child becomes the next parent
+    # regardless of outcome (the `SearchPolicy.B0` "unretained walk" convention).
+    # `r_variant = walk`.
+    R_UNRETAINED_WALK = "unretained-walk-v1-uniform-mutation-v1"
+    # R, seed-restart variant: retention none; EVERY parent is drawn uniformly from
+    # the seed corpus, so each mutation is one step away from a seed. A different
+    # random floor from the walk (no lineage depth); recorded as `r_variant =
+    # seed-restart`. Not the EXP-0 default.
+    R_UNRETAINED_SEED_RESTART = "unretained-seed-restart-v1-uniform-mutation-v1"
+    # D (coverage control): admit a mutation when its post-state structure signature
+    # exercises a target-agnostic structure-coverage feature (`coverage.py`) not yet
+    # seen; seeds are the base corpus. Never reads identity groups, external effects
+    # or any effect key — the same separation as `SearchPolicy.D` on the final-state
+    # path, now on the effect-campaign path.
+    D_STRUCTURE_COVERAGE = "structure-coverage-v1-uniform-mutation-v1"
+    # S-u (InodeFence retention, main comparison): the P3_BOUNDARY_ATTEMPT_GRADIENT
+    # admission rule (effect-feedback novelty OR new violation fingerprint OR new
+    # boundary-attempt key) with the UNIFORM scheduler instead of the adaptive one,
+    # so S-u vs D isolates the retention type and S-a (= P3_BOUNDARY_ATTEMPT_GRADIENT
+    # itself, the optional ablation) minus S-u isolates the scheduler effect.
+    S_U_STATE_RETENTION_UNIFORM = (
+        "effect-feedback-v2-or-violation-v1-boundary-attempt-v1-uniform-mutation-v1"
+    )
+
+
+# The equal-vocabulary arms (uniform scheduler, shared diagnostic channel).
+RDS_POLICIES = (
+    EffectSearchPolicy.R_UNRETAINED_WALK,
+    EffectSearchPolicy.R_UNRETAINED_SEED_RESTART,
+    EffectSearchPolicy.D_STRUCTURE_COVERAGE,
+    EffectSearchPolicy.S_U_STATE_RETENTION_UNIFORM,
+)
+_R_POLICIES = (
+    EffectSearchPolicy.R_UNRETAINED_WALK,
+    EffectSearchPolicy.R_UNRETAINED_SEED_RESTART,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,6 +221,7 @@ class EffectSearchState:
             in (
                 EffectSearchPolicy.P3_BOUNDARY_ATTEMPT_GRADIENT,
                 EffectSearchPolicy.P3_EXTERNAL_RESOLVE_GRADIENT,
+                *RDS_POLICIES,
             ),
             include_external_resolve=(policy == EffectSearchPolicy.P3_EXTERNAL_RESOLVE_GRADIENT),
         )
@@ -178,6 +229,10 @@ class EffectSearchState:
         self._violations: set[ViolationFingerprint] = set()
         self._entries: list[EffectCorpusEntry] = []
         self._retained_ids: set[str] = set()
+        # D only: structure-coverage features seen so far (eligible observations).
+        self._coverage: set[StructureCoverageFeature] = set()
+        # R walk only: the working parent (last observed child), never a retained entry.
+        self._active: ArchiveCase | None = None
         self._observation_failures = 0
         self._interesting_observations = 0
 
@@ -189,10 +244,8 @@ class EffectSearchState:
         if not isinstance(result, EffectRunResult):
             raise ValueError("effect search requires EffectRunResult")
         index = self._effect_novelty.observations
-        if (
-            index < len(self._initial_cases)
-            and result.base_result.case != self._initial_cases[index]
-        ):
+        is_seed = index < len(self._initial_cases)
+        if is_seed and result.base_result.case != self._initial_cases[index]:
             raise ValueError("seed observations must match declared cases/order")
 
         novelty = self._effect_novelty.observe(result.trace)
@@ -211,6 +264,15 @@ class EffectSearchState:
         already_retained = result.base_result.case.case_id in self._retained_ids
         if self.policy == EffectSearchPolicy.P0_FINAL_STATE:
             policy_novel = state_novel or bool(new_violations)
+        elif self.policy in _R_POLICIES:
+            policy_novel = False
+        elif self.policy == EffectSearchPolicy.D_STRUCTURE_COVERAGE:
+            features = structure_coverage_features(result.base_result.signature)
+            # Seeds are the base corpus; a mutation is admitted only when it exercises
+            # a structure feature not yet covered by an eligible observation.
+            policy_novel = is_seed or not features <= self._coverage
+            if novelty.feedback_eligible:
+                self._coverage |= features
         else:
             policy_novel = novelty.effect_novel or bool(new_violations)
         admission_eligible = novelty.feedback_eligible and policy_novel
@@ -242,14 +304,31 @@ class EffectSearchState:
                 )
             )
             self._retained_ids.add(result.base_result.case.case_id)
+        if self.policy == EffectSearchPolicy.R_UNRETAINED_WALK and not is_seed:
+            self._active = result.base_result.case
         return decision
 
     def select_case(self, rng: random.Random) -> ArchiveCase:
+        """R walk: one seed draw then the last child; R seed-restart: a seed each time.
+
+        Every retaining policy draws uniformly from its retained parents.
+        """
         if self._effect_novelty.observations < len(self._initial_cases):
             raise ValueError("parent selection requires a completed seed phase")
+        if self.policy == EffectSearchPolicy.R_UNRETAINED_WALK:
+            if self._active is None:
+                self._active = rng.choice(self._initial_cases)
+            return self._active
+        if self.policy == EffectSearchPolicy.R_UNRETAINED_SEED_RESTART:
+            return rng.choice(self._initial_cases)
         if not self._entries:
             raise ValueError("cannot select a case from an empty effect corpus")
         return rng.choice(self._entries).case
+
+    @property
+    def active_case(self) -> ArchiveCase | None:
+        """R-walk working parent, separate from retained-case accounting."""
+        return self._active
 
     @property
     def entries(self) -> tuple[EffectCorpusEntry, ...]:

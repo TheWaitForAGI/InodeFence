@@ -142,7 +142,7 @@ def synthetic_demo_json(
 DEMO_ARGUMENTS = ("seed", "budget", "policy", "mutation_policy")
 # Arguments the host broker forwards verbatim to the controller. tar_version is
 # historical-only; the other four are shared by both effect demos.
-DEMO_FORWARDED_ARGUMENTS = (*DEMO_ARGUMENTS, "tar_version")
+DEMO_FORWARDED_ARGUMENTS = (*DEMO_ARGUMENTS, "tar_version", "observer_integrity_policy")
 
 
 def add_demo_arguments(parser: argparse.ArgumentParser) -> None:
@@ -157,6 +157,15 @@ def add_demo_arguments(parser: argparse.ArgumentParser) -> None:
         "--tar-version",
         help="catalog-registered historical node-tar version; effect-demo-historical only",
     )
+    parser.add_argument(
+        "--observer-integrity-policy",
+        choices=("stop", "invalid-continue"),
+        help=(
+            "observer-integrity STOP policy; effect-demo only. 'stop' (default) aborts the "
+            "campaign on a successful run with an untrustworthy trace; 'invalid-continue' keeps "
+            "the step as validity=invalid and continues"
+        ),
+    )
 
 
 def check_demo_arguments(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
@@ -170,6 +179,8 @@ def check_demo_arguments(parser: argparse.ArgumentParser, args: argparse.Namespa
         parser.error("--tar-version is restricted to effect-demo-historical")
     if args.mode == HISTORICAL_DEMO_MODE and tar_version is None:
         parser.error("effect-demo-historical requires --tar-version")
+    if getattr(args, "observer_integrity_policy", None) is not None and args.mode != "effect-demo":
+        parser.error("--observer-integrity-policy is restricted to effect-demo")
 
 
 def demo_options(args: argparse.Namespace) -> dict:
@@ -182,6 +193,8 @@ def demo_options(args: argparse.Namespace) -> dict:
         options["policy"] = EffectSearchPolicy(args.policy)
     if args.mutation_policy is not None:
         options["mutation_policy"] = MutationPolicy(args.mutation_policy)
+    if getattr(args, "observer_integrity_policy", None) == "invalid-continue":
+        options["observer_integrity_continue"] = True
     return options
 
 
@@ -225,6 +238,7 @@ def native_demo_report(
     policy: EffectSearchPolicy = EffectSearchPolicy.P2_EFFECT_ADAPTIVE,
     mutation_policy: MutationPolicy = MutationPolicy.M1,
     step_sink: Callable[[dict[str, object]], None] | None = None,
+    observer_integrity_continue: bool = False,
 ) -> dict[str, object]:
     """Run the effect loop on real node-tar (FULL profile); label the result a demo run.
 
@@ -233,6 +247,15 @@ def native_demo_report(
     `step_sink` gets each finished step's report record (identical to `steps[i]`
     of the returned report) before the next case runs, so a NativeDemoAborted
     later still leaves the completed loop record with the caller.
+
+    `observer_integrity_continue` selects the observer-integrity STOP policy. When
+    False (default, the frozen behavior) a target that succeeds with an
+    untrustworthy effect trace aborts the campaign. When True the step is kept
+    instead: the reader already keeps it feedback-ineligible and off the retained
+    corpus, so it consumes one budget unit, is marked `validity=invalid`
+    (`invalid_reason=observer_integrity`) in the report, and the loop continues.
+    The snapshot C0/C1/C2 oracle verdict is independent of the trace and is
+    recorded either way, so the preregistration hit count is unchanged.
     """
     if type(budget) is not int or not 1 <= budget <= MAX_NATIVE_BUDGET:
         raise ValueError(f"native demo budget must be in 1..{MAX_NATIVE_BUDGET}")
@@ -275,16 +298,20 @@ def native_demo_report(
             and run.transport_error is None
             and check["archive_entries_match"]
         ):
-            execution = run.result.base_result.execution
-            raise NativeDemoAborted(
-                index,
-                case.case_id,
-                f"evidence integrity failed after target success: {check}",
-                {
-                    "raw_stream": run.raw_stream.decode("utf-8", "surrogateescape"),
-                    "target_stderr": execution.stderr,
-                },
-            )
+            if not observer_integrity_continue:
+                execution = run.result.base_result.execution
+                raise NativeDemoAborted(
+                    index,
+                    case.case_id,
+                    f"evidence integrity failed after target success: {check}",
+                    {
+                        "raw_stream": run.raw_stream.decode("utf-8", "surrogateescape"),
+                        "target_stderr": execution.stderr,
+                    },
+                )
+            # Step-level policy: keep the step as an observer-integrity invalid
+            # observation and let the loop continue. The trace is not
+            # integrity_valid, so feedback and corpus admission already exclude it.
         return run.result
 
     reporter = EffectStepReporter()

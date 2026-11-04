@@ -20,11 +20,27 @@ fence and the closing ```` ``` ````::
     sentinel_generator_id = sentinel-names/seed-random-v1
     sentinel_generator_seed = 9001
     sentinel_count = 3
+    observer_integrity_policy = invalid-continue
+    hit_definition = c1-or-c2-and-contract-violated
+    c0_counts_as_hit = false
+    denominator = all-cells-including-abort
+    abort_reporting = right-censored
+    rule_of_three_unit = campaign
     ```
 
 ``require_preregistered_cell`` refuses to produce a cell config unless the request's
 engine SHA (clean checkout), image digest, seed, budget, arm and — when declared —
-sentinel generator identity/seed/count all match the block. A refusal runs nothing.
+sentinel generator identity/seed/count and observer-integrity policy all match the
+block. A refusal runs nothing.
+
+"Compare if provided": the rule keys (``hit_definition``, ``c0_counts_as_hit``,
+``denominator``, ``abort_reporting``, ``rule_of_three_unit``) are optional, but when
+present they must spell exactly the rule this engine implements (``RULE_CONSTANTS``);
+a different value is a format error, because the file would then preregister a rule
+the runner does not compute. ``observer_integrity_policy`` (``stop`` or
+``invalid-continue``, the controller's ``--observer-integrity-policy`` values) must
+equal the value the run is launched with. Keys this module does not know are kept in
+``unknown_keys`` and only warned about.
 """
 
 import re
@@ -46,6 +62,29 @@ _ARM_KEY = "arm."
 _SENTINEL_ID = "sentinel_generator_id"
 _SENTINEL_SEED = "sentinel_generator_seed"
 _SENTINEL_COUNT = "sentinel_count"
+_OBSERVER_POLICY = "observer_integrity_policy"
+OBSERVER_INTEGRITY_POLICIES = ("stop", "invalid-continue")
+# The measurement rules this engine implements (rds.py); a block may restate them
+# with exactly these strings and nothing else.
+RULE_CONSTANTS: Mapping[str, str] = MappingProxyType(
+    {
+        "hit_definition": "c1-or-c2-and-contract-violated",
+        "c0_counts_as_hit": "false",
+        "denominator": "all-cells-including-abort",
+        "abort_reporting": "right-censored",
+        "rule_of_three_unit": "campaign",
+    }
+)
+KNOWN_KEYS = frozenset(
+    (
+        *_REQUIRED_KEYS,
+        _SENTINEL_ID,
+        _SENTINEL_SEED,
+        _SENTINEL_COUNT,
+        _OBSERVER_POLICY,
+        *RULE_CONSTANTS,
+    )
+)
 
 
 class PreregistrationFormatError(ValueError):
@@ -72,6 +111,8 @@ class Preregistration:
     sentinel_generator_id: str | None
     sentinel_generator_seed: int | None
     sentinel_count: int | None
+    observer_integrity_policy: str | None
+    unknown_keys: tuple[str, ...]
     raw: Mapping[str, str]
 
 
@@ -151,6 +192,17 @@ def parse_preregistration(text: str) -> Preregistration:
     count = _int(values, _SENTINEL_COUNT) if _SENTINEL_COUNT in values else None
     if count is not None and count <= 0:
         raise PreregistrationFormatError("sentinel_count must be positive")
+    for key, expected in RULE_CONSTANTS.items():
+        if key in values and values[key] != expected:
+            raise PreregistrationFormatError(
+                f"{key} = {values[key]!r} is not the rule this engine implements ({expected!r})"
+            )
+    observer_policy = values.get(_OBSERVER_POLICY)
+    if observer_policy is not None and observer_policy not in OBSERVER_INTEGRITY_POLICIES:
+        raise PreregistrationFormatError(
+            f"{_OBSERVER_POLICY} must be one of {OBSERVER_INTEGRITY_POLICIES}"
+        )
+    unknown = tuple(key for key in values if key not in KNOWN_KEYS and not key.startswith(_ARM_KEY))
     return Preregistration(
         values["engine_sha"],
         values["image_digest"],
@@ -162,6 +214,8 @@ def parse_preregistration(text: str) -> Preregistration:
         values.get(_SENTINEL_ID),
         generator_seed,
         count,
+        observer_policy,
+        unknown,
         values,
     )
 
@@ -181,6 +235,7 @@ class CellRequest:
     engine_dirty: bool | None
     image_digest: str | None
     sentinel_set: Mapping[str, object] | None = None
+    observer_integrity_policy: str | None = None
 
 
 def preregistration_mismatches(
@@ -227,6 +282,16 @@ def preregistration_mismatches(
                         f"sentinel_set.{key} {request.sentinel_set.get(key)!r} != "
                         f"preregistered {expected!r}"
                     )
+    if preregistration.observer_integrity_policy is not None:
+        if request.observer_integrity_policy is None:
+            problems.append(
+                "observer_integrity_policy declared in preregistration but not supplied"
+            )
+        elif request.observer_integrity_policy != preregistration.observer_integrity_policy:
+            problems.append(
+                f"observer_integrity_policy {request.observer_integrity_policy!r} != "
+                f"preregistered {preregistration.observer_integrity_policy!r}"
+            )
     return tuple(problems)
 
 

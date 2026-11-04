@@ -239,6 +239,25 @@ frame을 파생한다(decompress의 fs-wrap보다 좁다).
 - **판정:** 3번째 독립 extractor에서도 자력발견 effectiveness는 음성이다. generality=oracle/adapter
   수준(§5.4.1)이며 self-discovery 루프는 작동하나 발견은 미도달.
 
+### 5.4.5 계획: 미노출 node-tar 버전 oracle 일반성 검증 (사전등록 · 실행 전 TBD)
+
+§5.4.1의 oracle/adapter 일반성(노출 4개: node-tar · Python tarfile · oras-go · decompress)을 **미노출 node-tar
+버전**으로 보강하는 검증을 **사전등록**한다(EXP-3 사전등록 `exp3-v1.md`(#239) Hold-out 블록,
+결정 7 = B). **아직 실행 전이며 결과는 미주장(TBD)**이다 — 아래는 설계/방법이지 관찰 결과가 아니다.
+
+- **설계(계획).** 기존 adapter·recipe를 그대로 쓰는 미노출 node-tar **7.2.0 · 7.3.0 · 7.4.4**(노출집합에 없는
+  minor 7.2/7.3/7.4의 최신 patch, advisory/CVE 상태에 **blind한** minor-coverage 규칙으로 실행 전 선정)에 **고정
+  경계 fixture**(손 하드링크 · symlink-write)를 `make regression`으로 1회 돌린다 — **퍼징 0 · 결과 전 사전등록 ·
+  결과 미예측**.
+- **역할 배정(실행 후 원장이 채움).** fixture 상태가 위반(C1/C2)이면 H-A 확증 holdout, 위반 0이면 **H-B oracle
+  no-false-positive**(위반 0 = ground-truth 일치 = 확인이지 실패 아님). 역할은 결과를 본 뒤 exposure-ledger의
+  status-check 행이 채운다(사전에 고르지 않는다).
+- **결과 자리(TBD).** 역할별 분리 표 — **holdout/H-A(확증)** vs **fix-verification/H-B(no-FP)** — 는 실행(EXP-0
+  종료 후 레인 4 docker 슬롯) 뒤 채운다. 이미지 digest는 빌드 후 생성되므로 지금은 **버전만** 인용하고 산출물
+  digest는 미기입. — **현재 TBD.**
+- **주장 범위.** 기여는 **version·config robustness · no-FP**이지 새 계보 일반성이 아니다(§6.5). effectiveness/
+  자력발견 주장이 아니다(EN-008 · D007). 계보 확장(Tier-B)은 승인 후에만.
+
 ## 5.5 Capability Ledger 요약
 
 M1–M4의 능력과 증거 수준을 한눈에 보는 요약은 [Capability Ledger 요약표](../tables/capability-ledger-summary.md)에

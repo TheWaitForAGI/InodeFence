@@ -193,3 +193,19 @@ MDE는 극소 사건 수의 **형식적 역산값**일 뿐으로 40 사건 낙�
   같은 값으로 재현된다.
 - **증거 규율.** 에이전트 산출물과 사람 검증을 구분하며, raw 결과 → validated summary → finding → 이 드래프트의
   증거 사슬(§4.5)과 observed/inferred 구분을 유지한다. 에이전트가 생성한 수치가 자동으로 논문 주장이 되지 않는다.
+
+## 4.8 oracle 일반성 검증 (hold-out — 계획, 실행 전)
+
+§4.4의 generic oracle/adapter 일반성을 **미노출 node-tar 버전**으로 보강하는 검증을 사전등록한다(hold-out;
+EXP-3 사전등록 `exp3-v1.md`(#239), 결정 7 = B). 실행 전이며 **설계만** 기술한다(결과 미주장).
+
+- **후보(P1, advisory-blind 선정).** 기존 adapter·recipe를 쓰는 미노출 node-tar **7.2.0 · 7.3.0 · 7.4.4**(노출집합에
+  없는 minor의 최신 patch). CVE/advisory 상태에 **blind한** minor-coverage 규칙으로 **결과 전** 선정한다.
+- **상태 확인(유일 허용).** `make regression TAR_VERSION=<x>` 고정 경계 fixture(손 하드링크 · symlink-write) 1회,
+  **퍼징 0**.
+- **등록 전 역할 배정(결과 미예측).** fixture가 위반(C1/C2)이면 H-A 확증 holdout, 위반 0이면 H-B oracle
+  no-false-positive(위반 0 = ground-truth 일치). 역할은 **실행 후** exposure-ledger의 status-check가 채운다.
+- **동결.** digest 2핀(소스 `package-lock.json` integrity + 산출물 이미지 sha256) · engine_sha-pinned(train 결과를
+  본 뒤 교체 불가) · 기노출 타깃 재사용 금지(exposure-ledger 게이트).
+- **주장 범위.** 기여는 **version·config robustness · no-FP**이지 새 계보 extractor 일반성이 아니다(§6.5). 계보
+  확장(Tier-B: Rust `tar` · Apache Commons Compress)은 **사람 승인 후에만**.

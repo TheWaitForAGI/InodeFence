@@ -328,17 +328,17 @@ N01 human correspondence, N03/N04 NOT_AUTHORIZED 서술)은 LOG·diagnostics에 
 
 | # | 문서 주장 | 코드·증거 | 상태 |
 | --- | --- | --- | --- |
-| 1 | README·`src/inodefence/README.md`·STATUS Ledger(C3/C4 행)·architecture.md "ORAS adapter 없음" | `targets/oras_go*.py` 존재, Ledger M4 구현 완료(#176) | 완료(PR #PENDING): README·`src/inodefence/README.md`·architecture.md 정정(oras-go adapter 구현 #176, Ledger M4; adapter 수준 일반성) |
-| 2 | Makefile·smoke 스크립트·experiment-fanout.yml "budget 상한 100" | `scripts/run_effect_demo.py` `MAX_NATIVE_BUDGET=2000` | 완료(PR #PENDING): STATUS fanout 행 문장 정정(GHA fanout 하드캡 100 ≠ native MAX_NATIVE_BUDGET 2000 명시; 상한 값 불변) |
-| 3 | START_HERE §4·README "A/B/C 비교 안 함·formal NOT_RUN", STATUS 위 "NOT_AUTHORIZED" 서술 | Ledger M3·M4 실행됨 | 완료(PR #PENDING): START_HERE §4·README·architecture.md 정정(비교 실행됨·effectiveness 우위 없음·rate CI 미분리, claims 원장 문구 그대로) |
-| 4 | `src/inodefence/README.md` "native producer NOT_QUALIFIED라 캠페인에 안 씀" | `make demo`가 native producer로 돈다 | 완료(PR #PENDING): `src/inodefence/README.md` 정정(M1 native effect producer가 make demo로 실행) |
+| 1 | README·`src/inodefence/README.md`·STATUS Ledger(C3/C4 행)·architecture.md "ORAS adapter 없음" | `targets/oras_go*.py` 존재, Ledger M4 구현 완료(#176) | 완료(PR #221): README·`src/inodefence/README.md`·architecture.md 정정(oras-go adapter 구현 #176, Ledger M4; adapter 수준 일반성) |
+| 2 | Makefile·smoke 스크립트·experiment-fanout.yml "budget 상한 100" | `scripts/run_effect_demo.py` `MAX_NATIVE_BUDGET=2000` | 완료(PR #221): STATUS fanout 행 문장 정정(GHA fanout 하드캡 100 ≠ native MAX_NATIVE_BUDGET 2000 명시; 상한 값 불변) |
+| 3 | START_HERE §4·README "A/B/C 비교 안 함·formal NOT_RUN", STATUS 위 "NOT_AUTHORIZED" 서술 | Ledger M3·M4 실행됨 | 완료(PR #221): START_HERE §4·README·architecture.md 정정(비교 실행됨·effectiveness 우위 없음·rate CI 미분리, claims 원장 문구 그대로) |
+| 4 | `src/inodefence/README.md` "native producer NOT_QUALIFIED라 캠페인에 안 씀" | `make demo`가 native producer로 돈다 | 완료(PR #221): `src/inodefence/README.md` 정정(M1 native effect producer가 make demo로 실행) |
 | 5 | baseline-and-ablation-v1의 A1/A3(projection·reorder) | M3 요약의 A1/A3full(무작위·state-aware) | research-questions v2에 기호 폐기 명시(이 PR) |
 | 6 | STATUS "다음 연구 gate" entry-transition 재개 조건 | BACKLOG M3.6 폐기(honest negative) | 이 PR에서 해소(이 절 교체) |
 | 7 | 논문 06 §5.3.3 A1 수치(v1 0/12) vs 07 §6.1 A1 수치(0/7 [0,0.354]) | 07의 수치는 M3.3 A1 단독 배치, powered run 아님 | 이 PR(07 교체·06 v2 bullet) |
 | 8 | 발표 덱 8장 v1(1/10 vs 0/12) | v2 {100..129} 1/17 vs 0/19 | 덱 미수정(발표 종료), LOG 기록 |
 | 9 | 논문 §5.3.1 표 분모가 abort 포함임을 미명시 | A1 35=완주 19/abort 16 등 | 이 PR(주석 문단) |
 | 10 | M4.5 사전등록 hit 정의(`discovered_violation`, C0 포함) | 분석은 by_contract(2af0a03 사후) | 이 PR(unified-v1 '정의 변경 기록') |
-| 11 | `src/inodefence/README.md` "Node campaign CLI 없음" | `container_host` 컨트롤러 모드로 실행됨 | 완료(PR #PENDING): README 정정(실제 캠페인은 container_host 컨트롤러 모드) |
+| 11 | `src/inodefence/README.md` "Node campaign CLI 없음" | `container_host` 컨트롤러 모드로 실행됨 | 완료(PR #221): README 정정(실제 캠페인은 container_host 컨트롤러 모드) |
 | 12 | `evaluation/n04_preflight.py` L68–76 호스트 절대경로 하드코딩 | 이식 불가 | 5단계 |
 
 ## 변경 범위와 문서 우선순위

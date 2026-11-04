@@ -81,11 +81,29 @@ creation, arbitrary file read/write effect를 다룬다. 현재 InodeFence와 �
 
 ### 3.7.2 평가 방법론 기준
 
-정량 비교(§4.6)는 퍼징 평가 방법론 문헌의 권고를 따르는 것을 목표로 한다: 복수 seed·독립 반복, 의미 있는
-baseline(R/D), 통계적 유의성 검정(로그랭크·A12), 우측중도절단과 abort 민감도, negative/invalid 결과 보존.
-해당 방법론 참고 문헌으로 Klees et al. (CCS 2018, 퍼징 평가 방법론), Böhme et al. (2021, 퍼징 통계), 그리고
-2024년 퍼징 SoK를 **인용 대상으로 둔다**.
+정량 비교(§4.6)는 퍼징 평가 방법론 문헌의 권고를 따르는 것을 목표로 한다. 아래 세 편의 서지는 2026-11-04
+웹에서 확인했고, 각 연결 문장은 해당 논문의 **초록·권고 목록에서 실제로 읽은 범위**에 한정한다(읽지 못한
+본문 통계는 적지 않는다).
 
-> **인용 확인 TBD.** 위 세 문헌의 정확한 서지(제목·저자·venue·페이지)와 **구체 권고 문장의 매핑은 원문 대조
-> 전이므로 아직 적지 않는다**(포지셔닝 문서의 서지 확인 규율과 동일). 원문 확인 후 §3.1–3.4 형식의 서지와 함께
-> 채운다. 읽지 않은 원문의 수치·주장은 이 드래프트에 넣지 않는다.
+- **Klees et al., "Evaluating Fuzz Testing," ACM CCS 2018** (DOI [10.1145/3243734.3243804](https://doi.org/10.1145/3243734.3243804);
+  arXiv [1808.09700](https://arxiv.org/abs/1808.09700)). 이 논문은 복수 trial + 통계 검정(randomized algorithm에
+  Mann-Whitney U), 서로 다른 seed, 더 긴 timeout(≥24h), "unique crashes" 같은 중복제거 heuristic 대신
+  ground-truth 버그 기준 측정을 권고한다(초록·본문 §4–§8에서 읽음; 자체 실험은 ≥30 run 중앙값·95% CI). 우리
+  설계는 EXP-3에서 20 seed 복수 반복·로그랭크 검정·문서화된 seed를 쓰고 hit을 generic C0/C1/C2 oracle(중복제거
+  heuristic 아님)로 둔다(§4.6.2). 단 우리 1차 지표는 wall-time이 아니라 executions-to-first(T_first)이며 시간
+  정규화는 보조로 병기한다(§4.6.4 ⑦).
+- **Böhme, Liyanage & Wüstholz, "Estimating Residual Risk in Greybox Fuzzing," ESEC/FSE 2021**
+  (DOI [10.1145/3468264.3468570](https://doi.org/10.1145/3468264.3468570); [PDF](https://mboehme.github.io/paper/FSE21.pdf)).
+  초록은 오류 없는 campaign에도 잔여 위험(residual risk)이 남으며 greybox에서는 이를 직접 추정할 수 없어
+  discovery probability(다음 입력이 커버리지를 늘릴 확률)를 상한으로 쓰고 campaign 중 추정해 중단 시점을
+  정한다고 밝힌다(초록에서 읽음; reachability 주장은 초록에 없음). 우리 설계의 우측중도절단과 zero-hit
+  rule-of-three 상한(§4.6.2·§5.6)은 "위반 0 = 안전"이 아니라 **잔여 위험의 상한 보고**라는 같은 입장이다.
+- **Schloegel et al., "SoK: Prudent Evaluation Practices for Fuzzing," IEEE S&P 2024**
+  (DOI [10.1109/SP54263.2024.00137](https://doi.org/10.1109/SP54263.2024.00137); arXiv [2405.10220](https://arxiv.org/abs/2405.10220)).
+  2018–2023 top-venue 150편을 분석해 통계 검정 권고의 광범위한 미준수를 보고하고, baseline 비교·충분한 trial
+  수와 통계 검정·효과크기·문서화된 seed·버그 기준 지표(fuzzer 고유 proxy 지양)를 갱신 guideline으로 제시한다
+  (초록·§II 권고 목록에서 읽음). 우리 설계의 R/D baseline·paired seed·로그랭크+A12 효과크기·EN-008(중간상태는
+  search behavior이지 effectiveness 아님)이 이에 대응한다.
+
+> **아직 적지 않는 것(TBD).** 위 논문들의 **본문 설문 통계(논문 수·비율 분해 등)** 중 이번에 원문에서 직접
+> 확인하지 못한 수치는 적지 않는다. 필요 시 전체 PDF 확인 후 채운다.

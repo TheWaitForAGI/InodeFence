@@ -161,3 +161,33 @@ InodeFence hypothesis
 - 약한 baseline이 도달하지 못한 state 탐색
 
 실험 전까지 이 내용은 모두 가설이다.
+
+
+## 평가 방법론 문헌 (서지)
+
+아래는 논문 §3.7.2가 인용하는 **퍼징 평가 방법론** 참고 문헌이다(공격·기법 선행연구가 아니라 평가 설계 기준).
+서지는 2026-11-04 웹 확인. 각 항목의 연결 서술은 해당 논문의 초록·권고 목록에서 실제로 읽은 범위에 한정한다.
+
+### Klees et al. — 2018
+
+**Evaluating Fuzz Testing**
+
+서지: George Klees, Andrew Ruef, Benji Cooper, Shiyi Wei, Michael Hicks. ACM CCS 2018 (Toronto, 2018-10-15~19). DOI [10.1145/3243734.3243804](https://doi.org/10.1145/3243734.3243804) · arXiv [1808.09700](https://arxiv.org/abs/1808.09700)
+
+실제로 읽은 권고(초록·본문 §4–§8): 복수 trial + 통계 검정(Mann-Whitney U), 서로 다른 seed, 더 긴 timeout(≥24h), ground-truth 버그 기준(중복제거 heuristic 지양), 다양한 benchmark. 자체 실험은 ≥30 run 중앙값·95% CI.
+
+### Böhme, Liyanage & Wüstholz — 2021
+
+**Estimating Residual Risk in Greybox Fuzzing**
+
+서지: Marcel Böhme, Danushka Liyanage, Valentin Wüstholz. ESEC/FSE 2021. DOI [10.1145/3468264.3468570](https://doi.org/10.1145/3468264.3468570) · [PDF](https://mboehme.github.io/paper/FSE21.pdf)
+
+실제로 읽은 초록: 오류 없는 campaign에도 잔여 위험이 남고 greybox에서는 직접 추정 불가 → discovery probability(다음 입력이 커버리지를 늘릴 확률)를 상한으로, campaign 중 추정해 중단 시점 결정. reachability 주장은 초록에 없음.
+
+### Schloegel et al. — 2024
+
+**SoK: Prudent Evaluation Practices for Fuzzing**
+
+서지: Moritz Schloegel, Nils Bars, Nico Schiller, Lukas Bernhard, Tobias Scharnowski, Addison Crump, Arash Ale Ebrahim, Nicolai Bissantz, Marius Muench, Thorsten Holz. IEEE S&P 2024. DOI [10.1109/SP54263.2024.00137](https://doi.org/10.1109/SP54263.2024.00137) · arXiv [2405.10220](https://arxiv.org/abs/2405.10220)
+
+실제로 읽은 권고(초록·§II): 2018–2023 top-venue 150편 분석, 통계 검정 권고의 광범위한 미준수 보고; baseline·충분한 trial 수+통계 검정·효과크기·문서화 seed·버그 기준 지표(fuzzer 고유 proxy 지양)를 갱신 guideline으로 제시.

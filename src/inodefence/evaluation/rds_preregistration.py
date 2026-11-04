@@ -402,13 +402,26 @@ def parse_preregistration(text: str) -> Preregistration:
             f"{_CONFIRMATORY_FAMILY} must be holdout:<contrast>[,<contrast>] with contrasts "
             "S-u-vs-R / S-u-vs-D"
         )
-    if family is not None and not any(
-        target.role == "holdout" and target.hypothesis == "H-A" for target in targets
-    ):
-        raise PreregistrationFormatError(
-            f"{_CONFIRMATORY_FAMILY} requires at least one holdout target with hypothesis H-A "
-            "(the family is arm superiority on unseen targets)"
-        )
+    if family is not None:
+        members = [t for t in targets if t.role == "holdout" and t.hypothesis == "H-A"]
+        if not members:
+            raise PreregistrationFormatError(
+                f"{_CONFIRMATORY_FAMILY} requires at least one holdout target with hypothesis "
+                "H-A (the family is arm superiority on unseen targets)"
+            )
+        # Every registered contrast must be runnable on every confirmatory target: a
+        # target that restricts its arms cannot carry a contrast on an arm it never runs.
+        for member in members:
+            allowed = member.arms if member.arms is not None else tuple(arm_policies)
+            for contrast in family.partition(":")[2].split(","):
+                arm_a, _, arm_b = contrast.partition("-vs-")
+                needed = {RdsArm(arm_a), RdsArm(arm_b)}
+                if not needed <= set(allowed):
+                    raise PreregistrationFormatError(
+                        f"{_CONFIRMATORY_FAMILY}: contrast {contrast} needs arms not run on "
+                        f"confirmatory target {member.target_id} (arms = "
+                        f"{[a.value for a in allowed]})"
+                    )
     for key, allowed in (
         (_CONFIRMATORY_TEST, CONFIRMATORY_TESTS),
         (_MULTIPLICITY, MULTIPLICITY_RULES),

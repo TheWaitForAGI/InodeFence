@@ -408,7 +408,8 @@ ids `<target_id>-<arm>-s<seed>` and per-target evidence directories; the gate co
 each cell against the digest supplied for its target (`run_exp0 --target-digest
 ID=sha256:…`, `run_rds_cell --target ID`). Analysis-plan keys are recorded, not
 compared: `confirmatory_family` (`holdout:S-u-vs-R,S-u-vs-D`; membership is derived from the
-frozen target tags — holdout targets with hypothesis H-A only, at least one required — and
+frozen target tags — holdout targets with hypothesis H-A only, at least one required, and
+every registered contrast must use arms that each confirmatory target actually runs — and
 emitted as the ordered `confirmatory_contrasts` records with `target_id`, target-major,
 contrast-minor, so the analysis tools consume and echo the family instead of deriving
 it), `confirmatory_test`

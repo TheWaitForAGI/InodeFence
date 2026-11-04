@@ -829,7 +829,7 @@ def _targets_file(tmp_path: Path, *, ledger_sha: str, holdout_version: str = "7.
         f"targets.node-tar-{holdout_version}.budget = 4\n"
         "exposure_ledger = exposure-ledger.md\n"
         f"exposure_ledger_sha256 = {ledger_sha}\n"
-        "confirmatory_family = holdout:S-u-vs-R,S-u-vs-D\n"
+        "confirmatory_family = holdout:S-u-vs-R\n"
         "confirmatory_test = exact-logrank-permutation-v1\n"
         "multiplicity = holm-fwer-v1\n"
         "primary_endpoint = t_first\n"
@@ -1025,10 +1025,7 @@ def test_multi_target_dry_run_and_live_run_with_fake_cells(
     assert index["analysis_plan"]["multiplicity"] == "holm-fwer-v1"
     assert index["analysis_plan"]["event_threshold"] == 5
     contrasts = index["analysis_plan"]["confirmatory_contrasts"]
-    assert [(c["order"], c["arm_a"], c["arm_b"]) for c in contrasts] == [
-        (1, "S-u", "R"),
-        (2, "S-u", "D"),
-    ]
+    assert [(c["order"], c["arm_a"], c["arm_b"]) for c in contrasts] == [(1, "S-u", "R")]
     assert all(c["role"] == "holdout" and c["hypothesis"] == "H-A" for c in contrasts)
     holdout_cells = [c for c in index["cells"] if c["target_id"] == "node-tar-7.9.9"]
     assert len(holdout_cells) == 4 and all(c["role"] == "holdout" for c in holdout_cells)

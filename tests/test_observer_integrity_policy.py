@@ -131,7 +131,7 @@ def _bind_fake_producer(monkeypatch, invalid_index: int):
     monkeypatch.setattr(run_effect_demo.NodeTarEffectTarget, "bind", lambda *a, **k: _FakeTarget())
     calls = 0
 
-    def fake_run(case, target):
+    def fake_run(case, target, **_sentinel_kwargs):
         nonlocal calls
         result = (
             _non_integrity_success(case)
@@ -206,7 +206,7 @@ def _bind_fake_historical_producer(monkeypatch, invalid_index: int):
     )
     calls = 0
 
-    def fake_run(case, target):
+    def fake_run(case, target, **_sentinel_kwargs):
         nonlocal calls
         result = (
             _non_integrity_success(case)
@@ -309,7 +309,7 @@ def test_continue_policy_still_aborts_on_host_transport_trust_failure(monkeypatc
     monkeypatch.setattr(run_effect_demo.NodeTarEffectTarget, "bind", lambda *a, **k: _FakeTarget())
     calls = 0
 
-    def fake_run(case, target):
+    def fake_run(case, target, **_sentinel_kwargs):
         nonlocal calls
         # A fully valid (integrity_valid=True) result, but the controller could not
         # verify the terminal frame: a transport trust failure, not observer-integrity.

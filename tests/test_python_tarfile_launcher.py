@@ -82,15 +82,18 @@ def test_python_tarfile_demo_report_records_lock_and_parses(tmp_path: Path) -> N
     assert summary.summary.u_viol_source == "oracle"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="PR-A producer: a mutated case with two entries on one path fails the "
-    "EffectRunResult entry-identity check (reported to lane 3); flip when fixed",
-)
 def test_python_tarfile_demo_report_survives_mutated_cases() -> None:
-    python_tarfile_demo_report(
+    """Regression (PR-A d13ba41): a mutated case with two entries on one path (regular +
+    hardlink) used to fail the EffectRunResult entry-identity check at the first
+    mutated case; the campaign now runs past the seeds with the data filter."""
+    report = python_tarfile_demo_report(
         seed=9001, budget=SEEDS_ONLY + 3, policy=R_POLICY, mutation_policy=FIXED
     )
+    steps = cast(list[dict[str, Any]], report["steps"])
+    assert len(steps) == SEEDS_ONLY + 3
+    assert {step["origin"] for step in steps} == {"seed", "mutation"}
+    summary = summarize_report_records(steps, RdsCellConfig(RdsArm.R, 9001, SEEDS_ONLY + 3))
+    assert summary.summary.complete and summary.summary.executions_completed == SEEDS_ONLY + 3
 
 
 def test_host_script_reads_the_cell_environment_and_writes_both_files(tmp_path: Path) -> None:

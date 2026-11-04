@@ -413,4 +413,11 @@ The launcher reads the experiment-scale keys when the file declares them
 watchdog is terminated and reruns later, new cells wait while the output filesystem is
 at least the pause fraction full, and with `interim_analysis = forbidden` the index
 carries completion state only (no hit/T_first fields, no summary files) until every
-cell is complete. `--dry-run` lists what a live run would refuse (gate and wiring).
+cell has been *attempted* (its report exists, complete or with an abort record, or a
+launcher invocation recorded its termination and its steps file exists). Once every
+cell is attempted the outcomes are published with aborted cells right-censored at
+their abort point and kept in the denominator (the preregistered abort rule); the
+summary step never re-runs an abort, and a cell with no files at all keeps the
+outcomes redacted until it is run. `--preregistration-commit` records (never
+compares) the commit that registered the file next to the engine SHA and the file's
+SHA-256. `--dry-run` lists what a live run would refuse (gate and wiring).

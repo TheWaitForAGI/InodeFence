@@ -339,6 +339,7 @@ def summarize_output(
                 hit=None,
                 t_first=None,
                 t_first_event=None,
+                t_first_censored=None,
                 vocabulary_pool_final=[],
             )
         else:
@@ -356,10 +357,11 @@ def summarize_output(
                 hit=summary.hit,
                 t_first=summary.t_first,
                 t_first_event=summary.t_first_event,
+                t_first_censored=summary.t_first_censored,
                 vocabulary_pool_final=list(summary.vocabulary_pool_final),
             )
         if redact_outcomes:
-            for key in ("hit", "t_first", "t_first_event"):
+            for key in ("hit", "t_first", "t_first_event", "t_first_censored"):
                 entry.pop(key, None)
             entry["summary"] = None
             entry["outcomes_redacted"] = True

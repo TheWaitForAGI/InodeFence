@@ -413,4 +413,15 @@ The launcher reads the experiment-scale keys when the file declares them
 watchdog is terminated and reruns later, new cells wait while the output filesystem is
 at least the pause fraction full, and with `interim_analysis = forbidden` the index
 carries completion state only (no hit/T_first fields, no summary files) until every
-cell is complete. `--dry-run` lists what a live run would refuse (gate and wiring).
+planned cell has a final terminal state (complete, or an abort record marked final with
+`--finalize-abort RUN_ID[=NOTE]` — the manual classification step until #203's reason
+classifier automates it) and the evidence passed the integrity checks (report/steps
+files present, steps file a prefix of the report steps, raw manifest generated and
+re-verified via the manifest script's `--verify`; `manifest-verification.json`). Then the
+outcomes are published with aborted cells right-censored at their abort point and kept
+in the denominator (the preregistered abort rule); a final abort is never re-run, and
+an unattempted or in-progress cell, a pending abort, an integrity problem or a failed
+manifest verification keep the outcomes redacted with the reasons listed in
+`index.json` (`interim.reasons`). `--preregistration-commit` records (never compares)
+the commit that registered the file next to the engine SHA and the file's SHA-256.
+`--dry-run` lists what a live run would refuse (gate and wiring).

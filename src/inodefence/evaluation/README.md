@@ -351,3 +351,29 @@ reconstructs lifecycle/effect/causal evidence from the exact raw frame, verifies
 archive, command, sequence, correlation, flush and final-state bindings, and recomputes the
 normalized feedback keys. `scripts/verify_node_effect_evidence.py` exposes this reader for one
 bundle. Invalid or incomplete streams never return verified evidence.
+
+## R/D/S-u equal-vocabulary cells (H-A, EXP-0)
+
+`rds.py` realizes the research-questions v2 H-A arms on the effect-campaign path
+(`run_effect_campaign`): R (`unretained-walk-v1-uniform-mutation-v1`, variant
+`unretained-seed-restart-v1-uniform-mutation-v1`), D
+(`structure-coverage-v1-uniform-mutation-v1`), S-u
+(`effect-feedback-v2-or-violation-v1-boundary-attempt-v1-uniform-mutation-v1`) and the
+optional S-a ablation (the existing `P3_BOUNDARY_ATTEMPT_GRADIENT`). One
+`VocabularyMode` fixes one `MutationPolicy` for every arm of a cell; the EXP-0 default
+`observed-names` uses `uniform-generic-m1-state-aware-escape-hardlink-fixed-baseline-v1`,
+whose observed-name pool is read once from the seed baseline run's BEFORE snapshot and
+never grows, so the pool cannot depend on the retention policy. All main arms use the
+uniform scheduler and share the P3 boundary-attempt diagnostic channel; only admission
+differs. `RdsCellSummary` (`summary_record` for JSON) carries `t_first`/`t_first_event`
+(first C1 ∨ C2, right-censored at the budget or at the abort point), `u_viol` (unique
+C1/C2 fingerprints), per-contract first indexes, dense signals and the reconstructed
+vocabulary pools. Historical A1/A3full policy IDs are untouched.
+
+`rds_preregistration.py` reads the fenced ```` ```preregistration ```` `key = value`
+block of a committed preregistration file (`engine_sha`, `image_digest`, `seeds`,
+`budget`, `vocabulary`, `arm.R`/`arm.D`/`arm.S-u`, optional `arm.S-a`,
+`sentinel_generator_id`/`sentinel_generator_seed`/`sentinel_count`) and refuses to
+produce a cell config when the engine HEAD (clean), image digest, seed, budget, arm or
+sentinel binding differ. `scripts/run_rds_cell.py` is the synthetic-producer entry
+point; the native producer is bound by the runtime lane with the same gate.

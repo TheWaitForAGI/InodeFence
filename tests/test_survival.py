@@ -328,3 +328,19 @@ def test_seed_block_logrank_permutation_empty():
 
     r = seed_block_logrank_permutation([])
     assert r["p_value"] is None and r["number_blocks"] == 0
+
+
+def test_seed_block_logrank_direction_sign():
+    from inodefence.evaluation.survival import seed_block_logrank_permutation
+
+    fast = [(Observation(10, True), Observation(100, False))] * 3  # arm a faster
+    slow = [(Observation(100, False), Observation(10, True))] * 3  # arm b faster
+    rf = seed_block_logrank_permutation(fast)
+    rs = seed_block_logrank_permutation(slow)
+    # identical two-sided p and chi-square, opposite direction sign
+    assert rf["p_value"] == rs["p_value"]
+    assert rf["observed_chi_square"] == pytest.approx(rs["observed_chi_square"])
+    assert rf["observed_minus_expected_a"] > 0  # a faster
+    assert rs["observed_minus_expected_a"] < 0  # b faster
+    none = seed_block_logrank_permutation([(Observation(100, False), Observation(100, False))] * 2)
+    assert none["observed_minus_expected_a"] == 0.0

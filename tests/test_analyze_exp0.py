@@ -790,3 +790,28 @@ def test_confirmatory_supplementary_u_viol_a12():
     assert "NOT a confirmatory test" in sup["u_viol_a12_note"]
     # confirmatory-scope one-liner present, marks only reject_at_alpha as confirmatory
     assert "reject_at_alpha" in conf["confirmatory_scope"]
+
+
+def test_confirmatory_faster_arm_prevents_sign_flip():
+    plan = {
+        "confirmatory_contrasts": [
+            {"order": 1, "target_id": "h", "arm_a": "S-u", "arm_b": "R", "contrast": "S-u-vs-R"},
+        ],
+        "event_threshold": 5,
+        "multiplicity": "holm-fwer-v1",
+        "primary_endpoint": "t_first",
+        "confirmatory_test": "exact-logrank-permutation-v1",
+        "confirmatory_targets": ["h"],
+    }
+    fast, slow = [], []
+    for s in (1, 2, 3):
+        fast += [_mt_cell("S-u", s, "h", "holdout", **_SU_HIT), _mt_cell("R", s, "h", "holdout")]
+        slow += [_mt_cell("S-u", s, "h", "holdout"), _mt_cell("R", s, "h", "holdout", **_SU_HIT)]
+    rf = build_multitarget_report(fast, analysis_plan=plan, field_map=DEFAULT_MAP, sources=["t"])
+    rs = build_multitarget_report(slow, analysis_plan=plan, field_map=DEFAULT_MAP, sources=["t"])
+    cf = rf["confirmatory"]["contrasts"][0]
+    cs = rs["confirmatory"]["contrasts"][0]
+    assert cf["faster_arm"] == "S-u"  # S-u faster -> acceleration (scenario 1)
+    assert cs["faster_arm"] == "R"  # R faster -> reverse (scenario 8)
+    # same two-sided p regardless of direction (sign is carried by faster_arm, not p)
+    assert cf["permutation"]["p_value"] == cs["permutation"]["p_value"]

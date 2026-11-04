@@ -467,3 +467,49 @@ def test_main_contingency_option(tmp_path, capsys):
     report = json.loads(capsys.readouterr().out)
     assert report["arm_abort_independence"]["flag"] == "not_assessable"
     assert report["arm_abort_independence"]["arms"] == ["R", "D", "S-u"]
+
+
+def test_item5_abort_sensitivity_structure_and_risk_set():
+    # item5 gains an additive abort-censoring sensitivity (EXCLUDE + CENSOR_AT_BUDGET);
+    # the primary body stays right-censored (CENSOR_AT_ABORT).
+    item5 = _report()["item5_first_contract_index"]
+    sens = item5["sensitivity"]
+    assert sens["primary_policy"] == "censor-at-abort"
+    assert set(sens["policies"]) == {"exclude", "censor-at-budget"}
+    # R has one abort (s9002): EXCLUDE drops it (risk set 1), CENSOR_AT_BUDGET keeps it (2).
+    assert sens["policies"]["exclude"]["by_arm"]["R"]["number_in_risk_set"] == 1
+    assert sens["policies"]["censor-at-budget"]["by_arm"]["R"]["number_in_risk_set"] == 2
+    # S-u has no abort -> identical across policies (only aborts move).
+    assert sens["policies"]["exclude"]["by_arm"]["S-u"]["number_in_risk_set"] == 2
+    assert sens["policies"]["censor-at-budget"]["by_arm"]["S-u"]["number_in_risk_set"] == 2
+
+
+def test_item5_abort_sensitivity_median_moves_with_policy():
+    # Two events (50, 100) and one no-event abort at 60, budget 200. The abort policy moves the
+    # T_first KM median: dropping the abort (EXCLUDE) makes 2 events -> S=0.5 at 50; censoring it
+    # at abort (primary) or at budget keeps 3 at risk -> median 100.
+    rows = [
+        _rec(arm="R", random_seed=1, t_first=50, t_first_event=1, first_c1=50, hit_steps=1),
+        _rec(arm="R", random_seed=2, t_first=100, t_first_event=1, first_c1=100, hit_steps=1),
+        _rec(
+            arm="R",
+            random_seed=3,
+            complete=False,
+            aborted=True,
+            abort_reason="broker",
+            executions_completed=60,
+            t_first=60,
+            t_first_event=0,
+        ),
+    ]
+    item5 = build_report(_cells(rows), field_map=DEFAULT_MAP, sources=["t"])[
+        "item5_first_contract_index"
+    ]
+    primary = item5["by_arm"]["R"]["t_first_combined_c1_or_c2"]["km_median_executions"]
+    excl = item5["sensitivity"]["policies"]["exclude"]["by_arm"]["R"]["km_median_executions"]
+    budget = item5["sensitivity"]["policies"]["censor-at-budget"]["by_arm"]["R"][
+        "km_median_executions"
+    ]
+    assert primary == 100  # abort censored at 60 (CENSOR_AT_ABORT)
+    assert excl == 50  # abort dropped -> events at 50, 100 -> S=0.5 at 50
+    assert budget == 100  # abort censored at budget 200

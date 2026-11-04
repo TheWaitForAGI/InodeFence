@@ -221,19 +221,19 @@ research-questions v2 "판정 시나리오"(①~⑧)를 **그대로 포인터로
 
 ---
 
-## 다중 타깃 분석 단위 · 층화 · 다중검정 — `TBD-REVIEW(레인 6·9·10)`
+## 다중 타깃 분석 단위 · 층화 · 다중검정 — 레인 6 확정안 (레인 10 검토 중, 11/18 최종)
 
 EXP-3는 여러 타깃을 포함한다(`role`: train 7.5.2 · fix-verification 7.5.6/7.5.7 · 독립 holdout `TBD-FREEZE` ·
-Python tarfile). 분석 단위를 사전 고정해야 하며 레인 5 targets[] 설계안과 연계한다 —
+Python tarfile). 레인 5 targets[] 설계안과 연계한다 —
 `targets.<id>.{extractor, version, image_digest|lock_digest, role, exposure, exposure_ref}`, 셀 = target × arm ×
-seed(run_id = `<target_id>-<arm>-s<seed>`). 아래는 `TBD-REVIEW`(레인 6·9·10 검토 후 11/18 확정):
+seed(run_id = `<target_id>-<arm>-s<seed>`). 아래는 **레인 6 확정안**(레인 10 검토 후 11/18 최종):
 
-- **H-A 1차 추론은 `role=train` 타깃만.** `fix-verification`은 수정 확인(hit 기대 0) 별도 표, `holdout`은
-  사전등록된 1차 가설만.
-- **캠페인 단위 rule-of-three는 타깃별**로 보고. 층화(타깃별 hazard 이질성)는 index/summaries의 `target_id` ·
-  `role` 필드로 처리.
-- **다중검정 보정**(여러 타깃 · arm 쌍) 방식 = `TBD-REVIEW` — 보정 규칙 id를 블록 키(예: `holdout_test`)로 둘지
-  레인 6 판단.
+- **1차 추론 = `role=train` 타깃에서의 탐색.** `fix-verification`(7.5.6/7.5.7)은 수정 확인(hit 기대 0) **별도 표**.
+  **`holdout`은 유일한 확증(confirmatory) 검정**이다.
+- **다중검정 보정 = Holm FWER** — 블록 키 `holdout_test = holm-fwer-v1`.
+- **rule-of-three는 타깃별**(캠페인 단위)로 보고하고 **타깃 간 풀링은 금지**한다. 층화(타깃별 hazard 이질성)는
+  index/summaries의 `target_id` · `role` 필드로 처리.
+- **holdout은 underpower임을 명시**한다((d)의 사건 상한 · 예상 사건 한계가 holdout에도 적용).
 - `interim_analysis = forbidden`은 전 타깃 공통(파일 1개 = 실험 1개).
 
 구현(파서 · 런처 · 게이트 · index 필드)은 레인 5 PR을 포인터로 둔다 — 승인·머지 후 그 파서를 포함한 engine_sha로

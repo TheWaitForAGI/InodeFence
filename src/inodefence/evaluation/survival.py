@@ -33,8 +33,6 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 
-_Z_95 = 1.959963984540054
-
 
 @dataclass(frozen=True, slots=True)
 class Observation:
@@ -306,8 +304,11 @@ def a12_first_faster(arm_a: Sequence[Observation], arm_b: Sequence[Observation])
             "b": len(b_obs) - len(b_times),
         },
         "note": (
-            "supplementary effect size over observed magnitudes only; exploratory when "
-            "censoring is heavy. The censoring-aware comparison is the log-rank test."
+            "supplementary effect size over observed magnitudes only. Dropping censored "
+            "observations is a systematic bias, not noise: removing the campaigns that "
+            "never reached the event makes the arm with more censoring look faster, so "
+            "read it as exploratory only when censoring is heavy. The censoring-aware "
+            "comparison is the log-rank test."
         ),
     }
 

@@ -57,7 +57,7 @@ def _non_integrity_success(case):
 
 
 def test_schema_is_bumped_for_the_additive_validity_field() -> None:
-    assert DEMO_REPORT_SCHEMA == 3
+    assert DEMO_REPORT_SCHEMA >= 3  # integration: 4 after oracle_fingerprints (lane 5)
 
 
 def test_validity_marks_success_with_untrustworthy_trace_invalid() -> None:

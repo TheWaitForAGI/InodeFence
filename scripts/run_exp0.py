@@ -32,8 +32,15 @@ Scale controls (all from the file; the launcher only enforces them):
   an abort (``watchdog``); its completed steps stay on disk and it reruns next time.
 * ``disk_pause_fraction``: a new cell waits while the output filesystem is at least
   this full (lane 4 ``should_pause_for_disk``), logged in ``matrix.json``.
-* ``interim_analysis = forbidden``: until every cell is complete the index carries
-  completion state only (no hit/T_first fields, no summary files).
+* ``interim_analysis = forbidden``: until every cell has been *attempted* the index
+  carries completion state only (no hit/T_first fields, no summary files). A cell is
+  attempted when the controller wrote its report (complete or with an abort record)
+  or when a launcher invocation recorded its termination (``matrix.json``) and its
+  steps file exists (e.g. a watchdog kill). Once every cell is attempted the
+  outcomes are published: aborted cells stay in the denominator, right-censored at
+  their abort point (the preregistered abort rule); they are not re-run by the
+  summary step. A cell with no files at all (never started, or a controller that
+  died before writing anything) keeps the outcomes redacted until it is run.
 
 Idempotent: a rerun skips cells whose report is complete and conformant (budget
 reached, no abort, planned config, preregistered image id and sentinel set) and
@@ -55,7 +62,7 @@ import os
 import shutil
 import subprocess
 import sys
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -98,6 +105,11 @@ DEFAULT_VERSION = "7.5.2"
 DEFAULT_JOBS = 2
 DEFAULT_MANIFEST_SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "make_raw_manifest.py"
 REGISTRATION_FILE = "registration.json"
+INTERIM_RULE = (
+    "outcomes are redacted while any cell is unattempted (no report and no recorded "
+    "termination with steps); once every cell is attempted they are published, with "
+    "aborted cells right-censored at their abort point and kept in the denominator"
+)
 WORKER_POOL_MODE = "worker-pool"
 # Fallbacks when lane 4's module is not importable (its constants are preferred).
 DEFAULT_WATCHDOG_SECONDS = 2 * 60 * 60.0
@@ -311,6 +323,33 @@ def cell_is_complete(plan: Exp0Plan, cell: Cell, output: Path) -> bool:
     return post_check(plan)(loaded.report, cell) is None
 
 
+def recorded_terminations(output: Path) -> set[str]:
+    """Run ids whose termination a launcher invocation recorded in ``matrix.json``."""
+    path = output / "matrix.json"
+    if not path.is_file():
+        return set()
+    try:
+        matrix = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return set()
+    cells = matrix.get("cells") if isinstance(matrix, Mapping) else None
+    if not isinstance(cells, list):
+        return set()
+    return {c["run_id"] for c in cells if isinstance(c, Mapping) and "run_id" in c}
+
+
+def cell_attempted(cell: Cell, output: Path, terminated: Collection[str]) -> bool:
+    """Attempted = report written (complete or aborted), or terminated with steps on disk.
+
+    An in-progress cell (steps file but no recorded termination) and a cell with no
+    files are not attempted; interim redaction stays on while any such cell exists.
+    """
+    paths = cell_paths(cell, output)
+    if paths["report"].is_file():
+        return True
+    return paths["steps_jsonl"].is_file() and cell.run_id in terminated
+
+
 def archive_attempt(cell: Cell, output: Path) -> int | None:
     """Move an incomplete cell's files to ``attempts/``; returns the attempt number."""
     paths = cell_paths(cell, output)
@@ -375,7 +414,12 @@ def wiring_problems(plan: Exp0Plan) -> tuple[str, ...]:
 
 
 def write_registration(
-    plan: Exp0Plan, output: Path, *, engine_sha: str | None, image_digest: str | None
+    plan: Exp0Plan,
+    output: Path,
+    *,
+    engine_sha: str | None,
+    image_digest: str | None,
+    preregistration_commit: str | None = None,
 ) -> dict[str, Any]:
     """Create or re-validate the directory's registration record."""
     path = output / REGISTRATION_FILE
@@ -384,6 +428,10 @@ def write_registration(
         "experiment_id": plan.plan,
         "preregistration_file": plan.preregistration_path.name,
         "preregistration_sha256": plan.preregistration_sha256,
+        # Record only (not compared): the commit that registered the file, so the
+        # three provenance values (engine_sha, registration commit, file sha256) sit
+        # together when the engine checkout predates the registration commit.
+        "preregistration_commit": preregistration_commit,
         "engine_sha": engine_sha,
         "image_digest": image_digest,
         "version": plan.version,
@@ -621,6 +669,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--manifest-out", type=Path, default=None)
     parser.add_argument("--manifest-script", type=Path, default=DEFAULT_MANIFEST_SCRIPT)
     parser.add_argument("--no-manifest", action="store_true")
+    parser.add_argument(
+        "--preregistration-commit",
+        default=None,
+        help="record-only: the git commit that registered the preregistration file "
+        "(written to registration.json and the index; never compared by the gate)",
+    )
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--summarize-only", action="store_true")
     args = parser.parse_args(argv)
@@ -677,7 +731,11 @@ def main(argv: list[str] | None = None) -> int:
 
     def finish(results: list[CellResult] | None) -> int:
         pending_now = [cell for cell in plan.cells() if not cell_is_complete(plan, cell, output)]
-        redact = plan.interim_forbidden and bool(pending_now)
+        terminated = recorded_terminations(output) | {r.cell.run_id for r in results or ()}
+        unattempted = [
+            cell for cell in plan.cells() if not cell_attempted(cell, output, terminated)
+        ]
+        redact = plan.interim_forbidden and bool(unattempted)
         document = summarize_output(
             plan,
             output,
@@ -692,11 +750,14 @@ def main(argv: list[str] | None = None) -> int:
                     "engine_sha": source.revision,
                     "image_digest": args.image_digest,
                     "experiment_id": plan.plan,
+                    "commit": args.preregistration_commit,
                 },
                 "interim": {
                     "analysis": prereg.interim_analysis,
                     "redacted": redact,
+                    "rule": INTERIM_RULE,
                     "pending_cells": len(pending_now),
+                    "unattempted_cells": len(unattempted),
                 },
             },
             redact_outcomes=redact,
@@ -730,7 +791,13 @@ def main(argv: list[str] | None = None) -> int:
         return 0 if status["pass"] and (manifest["generated"] or args.no_manifest) else 1
 
     output.mkdir(parents=True, exist_ok=True)
-    write_registration(plan, output, engine_sha=source.revision, image_digest=args.image_digest)
+    write_registration(
+        plan,
+        output,
+        engine_sha=source.revision,
+        image_digest=args.image_digest,
+        preregistration_commit=args.preregistration_commit,
+    )
     if args.summarize_only:
         return finish(None)
 

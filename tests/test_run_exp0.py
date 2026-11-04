@@ -486,28 +486,136 @@ def test_worker_pool_mode_requires_module_and_wiring(
     assert env["RUN_ID"] == "s3wp-7.5.2-R-s9001" and env["DEMO_EXECUTION_MODE"] == "worker-pool"
 
 
-def test_interim_forbidden_redacts_index_until_every_cell_is_complete(
-    exp3_file: Path, tmp_path: Path, clean_engine: None, monkeypatch: pytest.MonkeyPatch
+def _fifteen_cell_file(tmp_path: Path) -> Path:
+    path = tmp_path / "exp3-15.md"
+    path.write_text(
+        BLOCK.replace("seeds = 9001, 9002\n", "seeds = 9001, 9002, 9003, 9004, 9005\n").replace(
+            "rule_of_three_unit = campaign\n", "rule_of_three_unit = campaign\n" + EXP3_EXTRA
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_interim_publishes_once_every_cell_is_attempted_with_abort_censored(
+    tmp_path: Path, clean_engine: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Preregistered abort rule: abort = right-censored, kept in the denominator.
+
+    One aborted cell plus fourteen complete ones is a finished (attempted) run: the
+    index must carry hit/t_first for every cell and mark the abort as censored,
+    instead of staying redacted until the abort is re-run to completion.
+    """
+    file = _fifteen_cell_file(tmp_path)
     out = tmp_path / "exp3"
     monkeypatch.setattr(
         run_exp0, "run_cell_with_watchdog", _fake_runner({"abort": {"7.5.2-S-u-s9002"}})
     )
     monkeypatch.setattr(run_exp0, "_warmup", lambda *a, **k: 0)
-    args = [*_base_args(exp3_file, out), "--jobs", "2"]
-    assert main(args) == 1
+    args = [*_base_args(file, out), "--jobs", "2"]
+    assert main(args) == 1  # status fail (not all complete) but outcomes published
     index = json.loads((out / "summaries" / "index.json").read_text())
-    assert index["outcomes_redacted"] is True and index["interim"]["pending_cells"] == 1
+    assert index["outcomes_redacted"] is False
+    assert index["interim"] == {
+        "analysis": "forbidden",
+        "redacted": False,
+        "rule": run_exp0.INTERIM_RULE,
+        "pending_cells": 1,
+        "unattempted_cells": 0,
+    }
+    assert len(index["cells"]) == 15 and all("t_first" in c and "hit" in c for c in index["cells"])
+    assert index["g1_verdict"]["complete"] == 14 and index["g1_verdict"]["aborts"] == 1
+    aborted = next(c for c in index["cells"] if c["run_id"] == "7.5.2-S-u-s9002")
+    assert aborted["aborted"] is True and aborted["complete"] is False
+    assert aborted["t_first_censored"] is True and aborted["t_first_event"] == 0
+    assert aborted["t_first"] == 2  # censored at the number of executions before the abort
+    assert all(c["t_first_censored"] in (True, False) for c in index["cells"])
+    assert len(list((out / "summaries").glob("*.summary.json"))) == 15
+    record = json.loads((out / "summaries" / "7.5.2-S-u-s9002.summary.json").read_text())
+    assert record["summary"]["aborted"] is True and record["summary"]["t_first_censored"] is True
+    # The abort stays a result: a summary-only pass does not re-run it and keeps publishing.
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", _fake_runner({}))
+    assert main([*args, "--summarize-only"]) == 1
+    index = json.loads((out / "summaries" / "index.json").read_text())
+    assert index["outcomes_redacted"] is False and index["g1_verdict"]["aborts"] == 1
+
+
+def test_interim_stays_redacted_while_a_cell_is_unattempted(
+    exp3_file: Path, tmp_path: Path, clean_engine: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    out = tmp_path / "exp3"
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", _fake_runner({}))
+    monkeypatch.setattr(run_exp0, "_warmup", lambda *a, **k: 0)
+    args = [*_base_args(exp3_file, out), "--jobs", "2"]
+    assert main(args) == 0
+    plan = _plan(exp3_file)
+    victim = plan.cells()[3]
+    paths = cell_paths(victim, out)
+    # (1) no files at all (never started / controller died before writing) -> redacted
+    for key in ("report", "steps_jsonl", "log"):
+        paths[key].unlink()
+    matrix = json.loads((out / "matrix.json").read_text())
+    matrix["cells"] = [c for c in matrix["cells"] if c["run_id"] != victim.run_id]
+    (out / "matrix.json").write_text(json.dumps(matrix))
+    for stale in (out / "summaries").glob("*.summary.json"):
+        stale.unlink()
+    assert main([*args, "--summarize-only"]) == 1
+    index = json.loads((out / "summaries" / "index.json").read_text())
+    assert index["outcomes_redacted"] is True
+    assert index["interim"]["unattempted_cells"] == 1 and index["interim"]["pending_cells"] == 1
     assert all(
         "hit" not in c and "t_first" not in c and c["summary"] is None for c in index["cells"]
     )
     assert not list((out / "summaries").glob("*.summary.json"))
     assert index["g1_verdict"]["complete"] == 5  # completion state is still visible
-    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", _fake_runner({}))
+    # (2) steps on disk but no recorded termination (in progress) -> still redacted
+    paths["steps_jsonl"].write_text("{}\n", encoding="utf-8")
+    assert main([*args, "--summarize-only"]) == 1
+    index = json.loads((out / "summaries" / "index.json").read_text())
+    assert index["outcomes_redacted"] is True and index["interim"]["unattempted_cells"] == 1
+    # (3) the launcher runs it to termination -> attempted -> published
+    paths["steps_jsonl"].unlink()
     assert main(args) == 0
     index = json.loads((out / "summaries" / "index.json").read_text())
     assert index["outcomes_redacted"] is False and all("t_first" in c for c in index["cells"])
     assert len(list((out / "summaries").glob("*.summary.json"))) == 6
+
+
+def test_cell_attempted_rules(tmp_path: Path, prereg_file: Path) -> None:
+    plan = _plan(prereg_file)
+    cell = plan.cells()[0]
+    paths = cell_paths(cell, tmp_path)
+    assert run_exp0.cell_attempted(cell, tmp_path, set()) is False
+    paths["steps_jsonl"].write_text("{}\n", encoding="utf-8")
+    assert run_exp0.cell_attempted(cell, tmp_path, set()) is False  # in progress
+    assert run_exp0.cell_attempted(cell, tmp_path, {cell.run_id}) is True  # terminated
+    paths["steps_jsonl"].unlink()
+    assert run_exp0.cell_attempted(cell, tmp_path, {cell.run_id}) is False  # nothing written
+    paths["report"].write_text("{}", encoding="utf-8")
+    assert run_exp0.cell_attempted(cell, tmp_path, set()) is True  # report (complete or aborted)
+    assert run_exp0.recorded_terminations(tmp_path) == set()
+    (tmp_path / "matrix.json").write_text(json.dumps({"cells": [{"run_id": "x"}, {"other": 1}]}))
+    assert run_exp0.recorded_terminations(tmp_path) == {"x"}
+
+
+def test_preregistration_commit_is_recorded_not_compared(
+    prereg_file: Path, tmp_path: Path, clean_engine: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    out = tmp_path / "exp0"
+    commit = "f" * 40
+    args = [*_base_args(prereg_file, out), "--preregistration-commit", commit, "--summarize-only"]
+    assert main(args) == 1  # nothing run yet
+    registration = json.loads((out / "registration.json").read_text())
+    assert registration["preregistration_commit"] == commit
+    assert registration["engine_sha"] == SHA and registration["preregistration_sha256"]
+    index = json.loads((out / "summaries" / "index.json").read_text())
+    assert index["preregistration"]["commit"] == commit
+    assert index["preregistration"]["engine_sha"] == SHA
+    # Not a gate: a different (or absent) value on a rerun is accepted and recorded.
+    assert main([*_base_args(prereg_file, out), "--summarize-only"]) == 1
+    assert json.loads((out / "registration.json").read_text())["preregistration_commit"] is None
+    dry = main([*_base_args(prereg_file, out), "--preregistration-commit", "zzz", "--dry-run"])
+    assert dry == 0
 
 
 def test_watchdog_terminates_an_overrunning_cell(tmp_path: Path, prereg_file: Path) -> None:

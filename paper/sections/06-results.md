@@ -254,11 +254,15 @@ M1–M4의 능력과 증거 수준을 한눈에 보는 요약은 [Capability Led
 > §5.3.3의 M3.3 powered(동일 budget 2000, seed {100..129})는 이미 **수행**된 결과로 매칭 Wilson CI가 미분리
 > (검정력 부족)인 **음성**이다 — 둘은 다른 실험·다른 seed이며, §5.6의 자리를 §5.3.3 결과로 읽지 않는다.
 
-- **표(TBD).** EXP-0 인프라·dense 신호 요약 — abort 사유 × arm, 첫 C0/C1/C2 및 T_first(우측중도절단),
-  dense 신호(전부 분모 병기). 생성 경로: `scripts/analyze_exp0.py` JSON → `paper/tables/exp0-summary.md`
-  (레인 6 생성기; EXP-0 미실행 시 "TBD — EXP-0 미실행" 플레이스홀더). — **현재 TBD.**
+- **표(TBD).** EXP-0 인프라·dense 신호 요약 — `analyze_exp0` report.json **item1~7 전부**(전부 분모 병기):
+  item1 abort(사유 × arm) · item2 p95 full-step · item3 처리량(exec/h) · item4 per-case vs 워커풀 parity ·
+  item5 첫 C0/C1/C2 및 T_first(우측중도절단) · item6 dense 신호 · item7 hazard proxy. **item2·item3·item4·item7은
+  '참고값' 라벨**(effectiveness·판정 입력 아님). 생성 경로: `scripts/analyze_exp0.py` → `report.json` →
+  `paper/figures/render_exp0_survival.py` → `paper/tables/exp0-summary.md`(레인 6 생성기; EXP-0 미실행 시
+  "TBD — EXP-0 미실행" 플레이스홀더). — **현재 TBD.**
 - **그림(TBD).** arm별 결합 T_first(C1 ∨ C2) Kaplan–Meier 생존곡선(중도절단 tick). 생성 경로:
-  `paper/figures/render_exp0_survival.py` → PNG. — **현재 TBD.**
+  `scripts/analyze_exp0.py` → `report.json` → `paper/figures/render_exp0_survival.py` → `exp0-survival.png`.
+  — **현재 TBD.**
 
 **판정 절차(사전등록 규칙의 기계 적용).** 판정은 EXP-0이 아니라 **EXP-3 결과**에 11/18 사전등록된
 GO/NO-GO 규칙과 §4.6.4 판정 시나리오 ①–⑧(research-questions v2)을 **기계적으로** 적용해 결정한다.

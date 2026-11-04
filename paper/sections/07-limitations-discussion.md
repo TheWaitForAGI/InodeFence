@@ -81,8 +81,9 @@ decompress·oras-go 자력발견 음성). 음성·미분리도 정직한 결과�
 
 - **informative censoring.** abort(관찰 무결성 실패 등)가 arm마다 다른 비율로 일어나면 right-censoring이
   **정보적**이 되어 arm 간 T_first 추정이 편향될 수 있다(기존 item-3에서 gradient arm C/D의 abort율이
-  A/B보다 높았던 관찰과 정합). 따라서 §4.6.2의 abort 민감도 3정책(우측중도절단 / 완주-only / abort=no-hit)으로
-  결론 robustness를 함께 보고하고, 분모의 abort 포함/제외를 항상 명시한다.
+  A/B보다 높았던 관찰과 정합). 따라서 §4.6.2의 abort 민감도 정책으로 결론 robustness를 보고한다 — 현재
+  생성기(`analyze_exp0` item5)는 **right-censored(1차)**만 산출하고 **완주-only · abort=no-hit 2정책은 from-raw
+  민감도(후속, 레인 6 보강 PR 대기)**다. 분모의 abort 포함/제외는 항상 명시한다.
 - **sentinel 이름 무작위화의 한계.** sentinel 이름을 seed 고정 무작위 생성기로 만들어도(§4.6.1), 위협 모델상
   그 이름은 세 arm 어휘에 동일하게 포함된다. 무작위화는 특정 이름에의 과적합을 줄일 뿐 **blind 발견을
   만들지 않으며**, 생성기 seed를 결과에 기록해야 재현·감사가 가능하다.

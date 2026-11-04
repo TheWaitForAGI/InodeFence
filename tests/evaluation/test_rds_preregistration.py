@@ -38,6 +38,13 @@ arm.S-a = effect-feedback-v2-or-violation-v1-boundary-attempt-v1-adaptive-mutati
 sentinel_generator_id = sentinel-names/seed-random-v1
 sentinel_generator_seed = 9001
 sentinel_count = 3
+observer_integrity_policy = invalid-continue
+hit_definition = c1-or-c2-and-contract-violated
+c0_counts_as_hit = false
+denominator = all-cells-including-abort
+abort_reporting = right-censored
+rule_of_three_unit = campaign
+future_key = something-new
 ```
 
 prose below is ignored too.
@@ -53,9 +60,17 @@ def _request(
     engine_dirty: bool | None = False,
     image_digest: str | None = DIGEST,
     sentinel_set: Mapping[str, object] | None = SENTINEL_SET,
+    observer_integrity_policy: str | None = "invalid-continue",
 ) -> CellRequest:
     return CellRequest(
-        arm, random_seed, execution_budget, engine_sha, engine_dirty, image_digest, sentinel_set
+        arm,
+        random_seed,
+        execution_budget,
+        engine_sha,
+        engine_dirty,
+        image_digest,
+        sentinel_set,
+        observer_integrity_policy,
     )
 
 
@@ -67,6 +82,8 @@ def test_parse_reads_only_the_fenced_block() -> None:
     assert prereg.arm_policies[RdsArm.S_A] == EffectSearchPolicy.P3_BOUNDARY_ATTEMPT_GRADIENT
     assert prereg.r_variant == RVariant.WALK
     assert (prereg.sentinel_generator_seed, prereg.sentinel_count) == (9001, 3)
+    assert prereg.observer_integrity_policy == "invalid-continue"
+    assert prereg.unknown_keys == ("future_key",)
     assert "prose" not in " ".join(prereg.raw)
 
 
@@ -105,6 +122,8 @@ def test_r_variant_follows_the_declared_r_policy() -> None:
         ({"sentinel_set": None}, "sentinel set declared"),
         ({"sentinel_set": {**SENTINEL_SET, "generator_seed": 1}}, "sentinel_set.generator_seed"),
         ({"sentinel_set": {**SENTINEL_SET, "count": 1}}, "sentinel_set.count"),
+        ({"observer_integrity_policy": None}, "observer_integrity_policy declared"),
+        ({"observer_integrity_policy": "stop"}, "observer_integrity_policy 'stop'"),
     ),
 )
 def test_each_mismatch_refuses_the_run(overrides: dict[str, Any], fragment: str) -> None:
@@ -122,6 +141,41 @@ def test_undeclared_arm_is_refused() -> None:
     assert RdsArm.S_A not in prereg.arm_policies
     mismatches = preregistration_mismatches(prereg, _request(arm=RdsArm.S_A))
     assert any("not preregistered" in item for item in mismatches)
+
+
+def test_observer_policy_is_compared_only_when_declared() -> None:
+    text = "\n".join(line for line in BLOCK.splitlines() if not line.startswith("observer_"))
+    prereg = parse_preregistration(text)
+    assert prereg.observer_integrity_policy is None
+    assert preregistration_mismatches(prereg, _request(observer_integrity_policy=None)) == ()
+    assert preregistration_mismatches(prereg, _request(observer_integrity_policy="stop")) == ()
+
+
+@pytest.mark.parametrize(
+    ("line", "wrong"),
+    (
+        ("hit_definition = c1-or-c2-and-contract-violated", "hit_definition = c0-or-c1-or-c2"),
+        ("c0_counts_as_hit = false", "c0_counts_as_hit = true"),
+        ("denominator = all-cells-including-abort", "denominator = complete-cells-only"),
+        ("abort_reporting = right-censored", "abort_reporting = excluded"),
+        ("rule_of_three_unit = campaign", "rule_of_three_unit = execution"),
+        ("observer_integrity_policy = invalid-continue", "observer_integrity_policy = ignore"),
+    ),
+)
+def test_rule_keys_must_match_the_engine_rules(line: str, wrong: str) -> None:
+    with pytest.raises(PreregistrationFormatError, match=wrong.split(" = ")[0]):
+        parse_preregistration(BLOCK.replace(line, wrong))
+
+
+def test_rule_keys_are_optional_and_unknown_keys_only_recorded() -> None:
+    kept = [
+        line
+        for line in BLOCK.splitlines()
+        if not line.startswith(("hit_definition", "c0_counts", "denominator", "abort_", "rule_of"))
+    ]
+    prereg = parse_preregistration("\n".join(kept))
+    assert prereg.unknown_keys == ("future_key",)
+    assert preregistration_mismatches(prereg, _request()) == ()
 
 
 def test_sentinel_binding_is_optional_when_undeclared() -> None:

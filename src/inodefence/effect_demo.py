@@ -11,7 +11,11 @@ from collections.abc import Callable, Mapping, Sequence
 from enum import StrEnum
 from typing import Any
 
-from inodefence.effect_campaign import EffectCampaignResult, EffectCampaignStep
+from inodefence.effect_campaign import (
+    EffectCampaignResult,
+    EffectCampaignStep,
+    _observed_name_segments,
+)
 from inodefence.effect_synthetic import SYNTHETIC_MECHANISM
 from inodefence.model import (
     ContractId,
@@ -297,8 +301,19 @@ def _step_report(step: EffectCampaignStep) -> dict[str, object]:
     feedback = step.feedback
     attempt = step.mutation_attempt
     evidence = step.scheduler_evidence
+    before_names = _observed_name_segments(step.result, before_only=True)
     return {
         "trace": _trace_report(step.result),
+        # Additive: the segment names the state-aware vocabulary mechanism can see
+        # (ObjectSnapshot paths of the general tree; "before" = the BEFORE snapshot
+        # only, "observed" = before+after). Lets a report reader reconstruct the
+        # exact token pool a campaign used (fixed-baseline: step 0 "before";
+        # accumulated: union of "observed") and check it across arms.
+        "name_segments": {
+            "before": sorted(before_names),
+            "observed": sorted(_observed_name_segments(step.result)),
+        },
+        "before_protected_paths": list(step.result.trace.before.protected_paths),
         "target_stderr": _stderr_record(base.execution.stderr),
         "index": step.index,
         "origin": step.origin.value,

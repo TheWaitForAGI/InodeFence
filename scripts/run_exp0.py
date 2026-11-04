@@ -305,6 +305,9 @@ class Exp0Plan:
         prereg = self.preregistration
         return {
             "confirmatory_family": prereg.confirmatory_family,
+            # Ordered Holm family for the analysis tools (lane 6): one record per
+            # contrast, holdout targets with hypothesis H-A only.
+            "confirmatory_contrasts": [dict(c) for c in prereg.confirmatory_contrasts()],
             "confirmatory_test": prereg.confirmatory_test,
             "multiplicity": prereg.multiplicity,
             "primary_endpoint": prereg.primary_endpoint,

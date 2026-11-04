@@ -331,6 +331,25 @@ def test_targets_are_parsed_with_roles_digests_arms_and_analysis_keys() -> None:
     assert prereg.confirmatory_test == "exact-logrank-permutation-v1"
     assert prereg.multiplicity == "holm-fwer-v1" and prereg.primary_endpoint == "t_first"
     assert prereg.event_threshold == 5
+    assert prereg.confirmatory_contrasts() == (
+        {
+            "order": 1,
+            "role": "holdout",
+            "hypothesis": "H-A",
+            "arm_a": "S-u",
+            "arm_b": "R",
+            "contrast": "S-u-vs-R",
+        },
+        {
+            "order": 2,
+            "role": "holdout",
+            "hypothesis": "H-A",
+            "arm_a": "S-u",
+            "arm_b": "D",
+            "contrast": "S-u-vs-D",
+        },
+    )
+    assert parse_preregistration(BLOCK).confirmatory_contrasts() == ()
 
 
 LOCK = "targets.py-tarfile-3.12.lock_digest = sha256:" + "ef" * 32

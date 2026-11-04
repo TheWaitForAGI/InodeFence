@@ -1024,6 +1024,12 @@ def test_multi_target_dry_run_and_live_run_with_fake_cells(
     assert index["targets"][1]["role"] == "holdout" and index["targets"][1]["budget"] == 4
     assert index["analysis_plan"]["multiplicity"] == "holm-fwer-v1"
     assert index["analysis_plan"]["event_threshold"] == 5
+    contrasts = index["analysis_plan"]["confirmatory_contrasts"]
+    assert [(c["order"], c["arm_a"], c["arm_b"]) for c in contrasts] == [
+        (1, "S-u", "R"),
+        (2, "S-u", "D"),
+    ]
+    assert all(c["role"] == "holdout" and c["hypothesis"] == "H-A" for c in contrasts)
     holdout_cells = [c for c in index["cells"] if c["target_id"] == "node-tar-7.9.9"]
     assert len(holdout_cells) == 4 and all(c["role"] == "holdout" for c in holdout_cells)
     assert all(c["hypothesis"] == "H-A" and c["budget"] == 4 for c in holdout_cells)

@@ -20,6 +20,10 @@
 - hardlink
 - 필요한 범위의 symbolic link
 
+공격자는 **피해 경로 이름(보호 대상 외부 객체의 추출 루트 기준 상대 경로)을 안다**고 가정한다(위협 모델 가정).
+이 이름은 세 arm의 mutation 어휘에 동일하게 포함되며, 따라서 이 프로젝트는 **blind 발견을 주장하지 않는다**
+(퍼저가 이름을 모른 채 피해 경로를 스스로 알아낸다는 주장이 아니다). 상세 근거는 [research-questions v2](research-questions.md) H-A·H-C.
+
 ## Victim 동작
 
 Target extractor는 공격자가 제공한 TAR를 지정된 extraction directory에 해제한다.

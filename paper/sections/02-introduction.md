@@ -13,9 +13,16 @@ underlying object를 가리키는 경우를 놓친다.
 
 이 프로젝트의 핵심 연구 질문은 다음이다(상세: [`../../docs/research/design/research-questions.md`](../../docs/research/design/research-questions.md)).
 
-> 특정 CVE PoC나 고정된 공격 패턴을 하드코딩하지 않고, filesystem-security-state(특히 object
-> identity와 external effect)를 feedback으로 사용하면 archive extraction의 보안 경계위반을 더
-> 효과적으로 탐색할 수 있는가? (H1)
+> 피해 경로 이름을 아는 **동일 어휘·동일 예산** 아래서, filesystem security state(C1 identity·C2 effect)를
+> retention·스케줄링 피드백으로 쓰는 탐색이 **무작위 탐색**과 **구조 커버리지 탐색**보다 첫 경계위반까지의
+> 실행 수를 줄이고 고유 위반 입력을 더 많이 찾는가?
+> (핵심 RQ, research-questions v2. 위협 모델 전제: 공격자는 피해 경로 이름 — 보호 대상 외부 객체의
+> 추출 루트 기준 상대 경로 — 을 알며 세 arm 어휘에 동일하게 포함한다. blind 발견을 주장하지 않는다.)
+
+(2026-11-03 정정: 드래프트 v1이 여기 적었던 H1 — "특정 CVE PoC나 고정된 공격 패턴을 하드코딩하지
+않고, filesystem-security-state(특히 object identity와 external effect)를 feedback으로 사용하면
+archive extraction의 보안 경계위반을 더 효과적으로 탐색할 수 있는가? (H1)" — 는 **폐기**됐고 위 v2
+핵심 RQ·H-A로 대체됐다. research-questions v2 '폐기·대체 기록' 참조.)
 
 이 프로젝트는 TAR fuzzing, hardlink/symlink 공격, entry order, filesystem-state fuzzing, outside-root
 write **자체가 새롭다고 주장하지 않는다.** 이들은 선행연구가 이미 다룬 영역이다(§4). 참신성은
@@ -30,9 +37,11 @@ write **자체가 새롭다고 주장하지 않는다.** 이들은 선행연구�
 - **주 주장 A (M2, observed):** 하나의 generic identity oracle이 릴리스 id·정답 경로 하드코딩 없이
   두 root-cause를 통제 차분으로 포착한다. 이것은 "CVE 식별자를 oracle에 심지 않는다"는 연구
   규칙(아래 1.5)의 실증이다.
-- **주 주장 B (M3, 인과):** object-identity 관찰(= 가설이 지목한 feedback)이 없으면 이 자율 경계위반
-  발견에 도달하지 못하고, 있으면 도달한다. 이는 blind 대조로 입증한 **인과 명제**이지 rate 우위가
-  아니다.
+- **주 주장 B (M3, 이름 획득 조건의 관찰):** 외부 객체 이름을 mutation 어휘에 획득하면 이 자율 경계위반을
+  관찰하고, 그 이름을 빼면 도달하지 못한다. 이는 **어휘를 통제한 blind 대조에서 관찰된 이름 획득 조건**이지
+  retention·effect 피드백 자체의 인과 명제도 rate 우위도 아니다(피드백 인과는 어휘를 맞춘 R/D/S-u로 미분리)
+  *(구: "blind 대조로 입증한 인과 명제", 2026-11-03 정정)*.
+  (2026-11-03 정정: 이 blind 대조는 피드백이 아니라 **어휘**를 통제한 실험이다. 입증된 것은 "외부 객체 이름의 관찰(어휘 획득)이 자율 C1의 필요조건"이지 (st_dev, st_ino) retention·스케줄링 피드백의 기여가 아니며, 그 기여는 어휘를 맞춘 R/D/S-u 비교(research-questions v2 H-A)로 미분리다. 수치·서술은 보존한다. 상세: §5.3.2 정정.)
 - **보조 질문 (H1 effectiveness, 사전등록 판정: CI 미분리):** 상태-인지 feedback이 무작위보다 **더
   빨리/더 많이** 경계위반을 찾는가(rate 우위). powered matched 독립 반복(budget 2000, disjoint seed
   {100..119})으로 판정한 결과 매칭 Wilson CI가 겹쳐 **rate 우위는 미입증**이다(~0.1 효과 검정력 부족;
@@ -48,8 +57,9 @@ write **자체가 새롭다고 주장하지 않는다.** 이들은 선행연구�
    다음 mutation 루프가 하나의 명령으로 반복 재현된다(§5.1).
 2. **outcome 기반 oracle의 2-root-cause 관통(M2).** 추출 객체↔외부 객체 identity 공유라는 하나의
    generic 조건이 CVE-2026-23745와 그 수정이 도입한 회귀 CVE-2026-24842를 모두 포착한다(§5.2).
-3. **발견의 인과 입증(M3).** object-identity 관찰이 이 자율 발견을 가능케 함을 blind 대조로 보인다
-   (§5.3). blind 발견이 아니라는 점과 seed-rare라는 점을 함께 명시한다.
+3. **이름 획득 조건의 자율 발견 관찰(M3).** 외부 객체 이름을 어휘에 획득한 조건에서만 자율 발견이 관찰됨을
+   blind 대조(어휘 통제)로 보인다(§5.3); retention·effect 피드백 자체의 인과는 미입증이다 *(구: "발견의 인과 입증", 2026-11-03 정정)*. blind 발견이 아니라는 점과 seed-rare라는 점을 함께 명시한다.
+   (2026-11-03 정정: 이 blind 대조는 피드백이 아니라 **어휘**를 통제한 실험이다. 입증된 것은 "외부 객체 이름의 관찰(어휘 획득)이 자율 C1의 필요조건"이지 (st_dev, st_ino) retention·스케줄링 피드백의 기여가 아니며, 그 기여는 어휘를 맞춘 R/D/S-u 비교(research-questions v2 H-A)로 미분리다. 수치·서술은 보존한다. 상세: §5.3.2 정정.)
 4. **oracle/adapter 수준 일반성(M4).** 동일 generic oracle(코드 불변)이 3개 독립 extractor에
    target-agnostic하게 적용된다(§5.4). 이는 **oracle/adapter 수준**이며 fuzzer 자력 발견의 일반성이나
    effectiveness 주장이 아니다.

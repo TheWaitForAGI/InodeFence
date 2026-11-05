@@ -520,10 +520,22 @@ def _write_multitarget_index(tmp_path):
     summaries = tmp_path / "summaries"
     summaries.mkdir(parents=True)
     targets_meta = [
-        {"target_id": "nt-7.5.2", "extractor": "node-tar", "version": "7.5.2",
-         "role": "train", "hypothesis": "H-A", "exposure": "pre-exposed"},
-        {"target_id": "nt-holdout", "extractor": "node-tar", "version": "7.6.0",
-         "role": "holdout", "hypothesis": "H-A", "exposure": "none"},
+        {
+            "target_id": "nt-7.5.2",
+            "extractor": "node-tar",
+            "version": "7.5.2",
+            "role": "train",
+            "hypothesis": "H-A",
+            "exposure": "pre-exposed",
+        },
+        {
+            "target_id": "nt-holdout",
+            "extractor": "node-tar",
+            "version": "7.6.0",
+            "role": "holdout",
+            "hypothesis": "H-A",
+            "exposure": "none",
+        },
     ]
     cells = []
     su_over = {"t_first": 120, "t_first_event": 1, "first_c1": 120, "hit_steps": 1}
@@ -534,11 +546,18 @@ def _write_multitarget_index(tmp_path):
             (summaries / f"{run_id}.summary.json").write_text(
                 json.dumps({"summary": rec, "schema_version": 1})
             )
-            cells.append({
-                "run_id": run_id, "arm": arm, "seed": 1, "budget": rec["execution_budget"],
-                "summary": f"summaries/{run_id}.summary.json",
-                "target_id": tid, "role": role, "hypothesis": "H-A",
-            })
+            cells.append(
+                {
+                    "run_id": run_id,
+                    "arm": arm,
+                    "seed": 1,
+                    "budget": rec["execution_budget"],
+                    "summary": f"summaries/{run_id}.summary.json",
+                    "target_id": tid,
+                    "role": role,
+                    "hypothesis": "H-A",
+                }
+            )
     analysis_plan = {
         "confirmatory_family": "holdout:S-u-vs-R,S-u-vs-D",
         "confirmatory_test": "exact-logrank-permutation-v1",
@@ -547,10 +566,24 @@ def _write_multitarget_index(tmp_path):
         "event_threshold": 5,
         "confirmatory_targets": ["nt-holdout"],
         "confirmatory_contrasts": [
-            {"order": 1, "target_id": "nt-holdout", "role": "holdout", "hypothesis": "H-A",
-             "arm_a": "S-u", "arm_b": "R", "contrast": "S-u-vs-R"},
-            {"order": 2, "target_id": "nt-holdout", "role": "holdout", "hypothesis": "H-A",
-             "arm_a": "S-u", "arm_b": "D", "contrast": "S-u-vs-D"},
+            {
+                "order": 1,
+                "target_id": "nt-holdout",
+                "role": "holdout",
+                "hypothesis": "H-A",
+                "arm_a": "S-u",
+                "arm_b": "R",
+                "contrast": "S-u-vs-R",
+            },
+            {
+                "order": 2,
+                "target_id": "nt-holdout",
+                "role": "holdout",
+                "hypothesis": "H-A",
+                "arm_a": "S-u",
+                "arm_b": "D",
+                "contrast": "S-u-vs-D",
+            },
         ],
     }
     index = {"targets": targets_meta, "analysis_plan": analysis_plan, "cells": cells}

@@ -10,8 +10,14 @@ there is **no container boundary**, so every trace carries
 ``mechanism = "python-tarfile-inprocess"`` and must never be reported as a node-tar
 (native) observation.
 
-SAFETY: the ``data`` policy (PEP 706) confines extraction to ``extract/`` and is safe
-for arbitrary (fuzzed/mutated) archives in-process. The ``fully_trusted`` policy
+SAFETY: the ``data`` policy (PEP 706) is designed to confine extraction to ``extract/``,
+but whether it does so for arbitrary (fuzzed/mutated) archives in-process depends on the
+CPython patch level: upstream PEP 706 filter bypasses were fixed in 3.12.11, and distro
+builds may or may not carry the backports. The lock (:func:`python_tarfile_lock`) only
+records the interpreter version string and the ``tarfile.py`` hash; it does not verify
+those fixes. Using this in-process producer in a registered campaign therefore needs
+지웅's approval under D022 (untrusted targets run behind a container boundary); this
+module does not grant that approval. The ``fully_trusted`` policy
 applies no sanitation, so a ``..``/absolute member can escape the disposable sandbox
 to the host -- it is only for TRUSTED, bounded inputs (the committed M4.1b control
 fixtures, whose escape reaches the in-sandbox sentinel, not the host). Do NOT run a
@@ -462,6 +468,13 @@ def _extract_in_process(
     except tarfile.FilterError as error:
         status, code, stderr = ExecutionStatus.REJECTED, 2, f"{type(error).__name__}: {error}"
     except tarfile.TarError as error:
+        status, code, stderr = ExecutionStatus.FAILED, 3, f"{type(error).__name__}: {error}"
+    except OSError as error:
+        # errorlevel=2 (and the ``data`` filter's realpath check) surface extractor
+        # filesystem errors -- e.g. an entry whose parent path was already extracted as a
+        # regular file -- as OSError. That is a target-side step failure, mapped to the
+        # same FAILED / INCOMPLETE fail-closed trace as a TarError; letting it propagate
+        # would make the campaign driver count it as a cell abort (censoring) instead.
         status, code, stderr = ExecutionStatus.FAILED, 3, f"{type(error).__name__}: {error}"
     elapsed = perf_counter() - started
     execution = ExecutionResult(

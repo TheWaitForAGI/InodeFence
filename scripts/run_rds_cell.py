@@ -57,6 +57,16 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--preregistration", type=Path)
     parser.add_argument("--image-digest", help="sha256:<64 hex>; required with --preregistration")
+    parser.add_argument(
+        "--target",
+        default=None,
+        help="target id of a multi-target registration (its digest goes in --image-digest)",
+    )
+    parser.add_argument(
+        "--observer-integrity-policy",
+        choices=("stop", "invalid-continue"),
+        help="the controller policy the run is launched with; compared when preregistered",
+    )
     parser.add_argument("--producer", choices=("synthetic",), default="synthetic")
     parser.add_argument("--out", type=Path, help="write JSON here instead of stdout")
     args = parser.parse_args(argv)
@@ -83,8 +93,16 @@ def main(argv: list[str] | None = None) -> int:
                     source.revision,
                     source.dirty,
                     args.image_digest,
+                    observer_integrity_policy=args.observer_integrity_policy,
+                    target_id=args.target,
                 ),
             )
+            if preregistration.unknown_keys:
+                print(
+                    "warning: unknown preregistration keys (not compared): "
+                    + ", ".join(preregistration.unknown_keys),
+                    file=sys.stderr,
+                )
         except PreregistrationFormatError as error:
             print(f"preregistration unusable: {error}", file=sys.stderr)
             return 2

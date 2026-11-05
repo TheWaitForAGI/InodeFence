@@ -20,6 +20,35 @@ normalized C1/C2 violation fingerprints). A hit is a post-state oracle C1 or C2
 contract violation; C0 alone is not a hit and is counted separately. Nothing here
 ranks arms or claims effectiveness; this is the measurement harness.
 
+Unique-violation identification (U_viol) — the oracle-evidence design:
+
+1. **Signature.** One ``ViolationFingerprint`` per violated contract per step
+   (``feedback/fingerprint.py``): ``contract_id`` plus the sorted, duplicate-free
+   evidence tuple — C1: ``(internal_path, sentinel_path)`` identity relations;
+   C0/C2: ``(path, changed-field labels)``. Excluded from the signature: device and
+   inode numbers, timestamps and other before/after values, explanation and
+   limitations text, the step index, the case id and the mutation that produced
+   the step. The canonical order is ``(contract_id, evidence keys)``.
+2. **Deduplication scope.** Within one cell, across all its steps: a signature
+   reached at several steps counts once. Pooling across cells (per arm, per seed)
+   is the analysis tools' job and is not done here.
+3. **Lineage.** Lineage is not a signature component. "Same lineage, same
+   fingerprint counts once" is absorbed by fingerprint equality: two steps of the
+   same lineage with the same signature are one class, and so are two steps of
+   different lineages with the same signature.
+4. **Eligibility.** A step is feedback-eligible when its trace is integrity-valid,
+   complete and terminated SUCCESS (or REJECTED under the boundary-attempt
+   channel); ineligible otherwise (``feedback/effect.py``, ``effect_novelty.py``).
+   Eligibility gates what the loop *feeds back*, not what the oracle *found*:
+   ``u_viol`` counts the oracle's classes of every step regardless of eligibility,
+   while ``u_viol_feedback`` separately counts the classes the loop recorded as new
+   feedback on eligible steps (raw search-behaviour diversity, not the metric).
+5. **One event definition.** ``hit``, ``t_first`` and ``u_viol`` all read the same
+   event — a step whose post-state oracle reports C1 ∨ C2 violated
+   (``contract_violated``) — for every arm, and the in-memory summary
+   (``summarize_rds_steps``) and the report summary (``rds_report``) realize it
+   identically; the parity tests in ``tests/evaluation`` hold them to that.
+
 The producer is caller-owned: the synthetic producer yields "synthetic" labelled
 results, and a native node-tar producer is bound by the runtime lane inside the
 controller. This module never executes a target itself.
@@ -60,8 +89,18 @@ CENSORING_NOTE = (
     "of executions completed before the abort; no hit index is imputed"
 )
 U_VIOL_DEFINITION = (
-    "number of unique normalized C1/C2 ViolationFingerprint classes over all executions; "
-    "the same fingerprint reached again (same lineage or not) counts once"
+    "number of unique normalized C1/C2 ViolationFingerprint classes (contract_id + sorted "
+    "evidence: C1 internal/sentinel path pairs, C2 path + changed-field labels; no "
+    "device/inode numbers, timestamps, values, text, step or case identity) over all "
+    "executions of the cell, read from the post-state oracle of every step regardless of "
+    "feedback eligibility; the same fingerprint reached again (same lineage or not) counts "
+    "once; pooling across cells is left to the analysis tools"
+)
+U_VIOL_SOURCE_ORACLE = "oracle"
+U_VIOL_SOURCE_FEEDBACK_FALLBACK = "feedback-fallback"
+U_VIOL_FEEDBACK_DEFINITION = (
+    "number of unique C1/C2 fingerprints the search loop recorded as new feedback "
+    "(feedback-eligible steps only); a search-behaviour descriptor, not the U_viol metric"
 )
 
 
@@ -262,6 +301,11 @@ class RdsCellSummary:
     hit_steps: int
     u_viol: int
     u_viol_c0: int
+    # Where u_viol/u_viol_c0 were read from: "oracle" (the post-state verdicts of every
+    # step, eligibility-independent) or "feedback-fallback" (records that predate
+    # oracle_fingerprints; counts only what the loop fed back).
+    u_viol_source: str
+    u_viol_feedback: int
     first_c0: int | None
     first_c1: int | None
     first_c2: int | None
@@ -278,6 +322,7 @@ class RdsCellSummary:
     hit_definition: str = HIT_DEFINITION
     censoring: str = CENSORING_NOTE
     u_viol_definition: str = U_VIOL_DEFINITION
+    u_viol_feedback_definition: str = U_VIOL_FEEDBACK_DEFINITION
 
 
 def _first_execution(indexes: Sequence[int]) -> int | None:
@@ -326,12 +371,18 @@ def summarize_rds_steps(
     }
     hit_fingerprints = set()
     c0_fingerprints = set()
+    feedback_fingerprints = set()
     for step in recorded:
+        # U_viol reads the oracle verdicts of every step; feedback eligibility (which
+        # gates what the loop fed back) does not enter the metric.
         for fingerprint in violation_fingerprints(step.result.base_result.violations):
             if fingerprint.contract_id in HIT_CONTRACTS:
                 hit_fingerprints.add(fingerprint)
             else:
                 c0_fingerprints.add(fingerprint)
+        for fingerprint in step.feedback.new_violation_fingerprints:
+            if fingerprint.contract_id in HIT_CONTRACTS:
+                feedback_fingerprints.add(fingerprint)
     first_hit = _first_execution(hit_indexes)
     boundary_keys = sum(
         1
@@ -363,6 +414,8 @@ def summarize_rds_steps(
         hit_steps=len(hit_indexes),
         u_viol=len(hit_fingerprints),
         u_viol_c0=len(c0_fingerprints),
+        u_viol_source=U_VIOL_SOURCE_ORACLE,
+        u_viol_feedback=len(feedback_fingerprints),
         first_c0=_first_execution(per_contract[ContractId.C0]),
         first_c1=_first_execution(per_contract[ContractId.C1]),
         first_c2=_first_execution(per_contract[ContractId.C2]),

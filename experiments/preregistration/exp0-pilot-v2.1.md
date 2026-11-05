@@ -20,8 +20,8 @@ image digest·seed·budget·arm 일치가 아니면 실행을 거부한다(아�
 ```preregistration
 # EXP-0 파일럿 v2.1 (초안). G1 동결 시 TBD-FREEZE을 채우고 실행 전에 커밋한다.
 # 레인 5 확정 포맷 키: engine_sha image_digest seeds budget vocabulary arm.* sentinel_*
-engine_sha = TBD-FREEZE
-image_digest = TBD-FREEZE
+engine_sha = b609981a8a625b557018c953e87e5bbdd3e208ed
+image_digest = sha256:22c8734f141d91b333ba37c7fe6a9a7547d7abfab487fa028da2053bed6f3dbb
 seeds = 9001, 9002, 9003, 9004, 9005
 budget = 200
 # observed-names = step 0 BEFORE 스냅샷에서 풀 1회 고정(baseline mutation policy
@@ -34,7 +34,7 @@ arm.S-u = effect-feedback-v2-or-violation-v1-boundary-attempt-v1-uniform-mutatio
 arm.S-a = effect-feedback-v2-or-violation-v1-boundary-attempt-v1-adaptive-mutation-v1
 # sentinel: 레인 7 #205 describe() 스키마. generator_id는 #205 확정값과 일치해야 함.
 sentinel_generator_id = sentinel-names/seed-random-v1
-sentinel_generator_seed = TBD-FREEZE
+sentinel_generator_seed = 20261104
 sentinel_count = 3
 # --- 아래 키는 #223(scripts/run_exp0.py + rds_preregistration KNOWN_KEYS)에서 게이트가 대조한다.
 #     rule 5키(hit_definition·c0_counts_as_hit·denominator·abort_reporting·rule_of_three_unit)는

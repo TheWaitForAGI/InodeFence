@@ -999,16 +999,18 @@ def _multitarget_markdown(report: dict) -> str:
         rows = []
         for c in conf["contrasts"]:
             perm_p = c["permutation"]["p_value"]
-            rows.append([
-                c.get("order"),
-                c.get("contrast"),
-                c.get("number_seed_blocks"),
-                c.get("total_events"),
-                "n/a" if perm_p is None else f"{perm_p:.4f}",
-                f"{c['holm_adjusted_p']:.4f}",
-                c["reject_at_alpha"],
-                c["underpowered"],
-            ])
+            rows.append(
+                [
+                    c.get("order"),
+                    c.get("contrast"),
+                    c.get("number_seed_blocks"),
+                    c.get("total_events"),
+                    "n/a" if perm_p is None else f"{perm_p:.4f}",
+                    f"{c['holm_adjusted_p']:.4f}",
+                    c["reject_at_alpha"],
+                    c["underpowered"],
+                ]
+            )
         lines += _md_table(
             ["order", "contrast", "blocks", "events", "perm_p", "holm_p", "reject", "underpow"],
             rows,

@@ -11,8 +11,13 @@ from collections.abc import Callable, Mapping, Sequence
 from enum import StrEnum
 from typing import Any
 
-from inodefence.effect_campaign import EffectCampaignResult, EffectCampaignStep
+from inodefence.effect_campaign import (
+    EffectCampaignResult,
+    EffectCampaignStep,
+    _observed_name_segments,
+)
 from inodefence.effect_synthetic import SYNTHETIC_MECHANISM
+from inodefence.feedback import violation_fingerprints
 from inodefence.model import (
     ContractId,
     EffectEventTrace,
@@ -27,7 +32,9 @@ from inodefence.model import (
 )
 from inodefence.mutation_scheduler import WeightSnapshot
 
-DEMO_REPORT_SCHEMA = 3
+# 2: name_segments/before_protected_paths; 3: step validity (observer-integrity policy,
+# #207); 4: oracle_fingerprints. Every bump is additive.
+DEMO_REPORT_SCHEMA = 4
 POLICY_COMPARISON_SCHEMA = 1
 
 # Reasons a recorded step's effect-trace observation is not trustworthy. Only
@@ -297,8 +304,19 @@ def _step_report(step: EffectCampaignStep) -> dict[str, object]:
     feedback = step.feedback
     attempt = step.mutation_attempt
     evidence = step.scheduler_evidence
+    before_names = _observed_name_segments(step.result, before_only=True)
     return {
         "trace": _trace_report(step.result),
+        # Additive: the segment names the state-aware vocabulary mechanism can see
+        # (ObjectSnapshot paths of the general tree; "before" = the BEFORE snapshot
+        # only, "observed" = before+after). Lets a report reader reconstruct the
+        # exact token pool a campaign used (fixed-baseline: step 0 "before";
+        # accumulated: union of "observed") and check it across arms.
+        "name_segments": {
+            "before": sorted(before_names),
+            "observed": sorted(_observed_name_segments(step.result)),
+        },
+        "before_protected_paths": list(step.result.trace.before.protected_paths),
         "target_stderr": _stderr_record(base.execution.stderr),
         "index": step.index,
         "origin": step.origin.value,
@@ -309,6 +327,12 @@ def _step_report(step: EffectCampaignStep) -> dict[str, object]:
         # snapshot oracle verdict below is independent and always recorded.
         **observer_integrity_validity(step.result),
         "oracle": {verdict.contract_id.value: verdict.violated for verdict in base.violations},
+        # Additive (schema 4): the oracle's normalized violation classes for this step,
+        # independent of feedback eligibility, so a report reader counts U_viol exactly
+        # as the in-memory summary does (rds.summarize_rds_steps reads the same
+        # verdicts). feedback.new_violation_fingerprints below stays the search-
+        # behaviour record (what the loop fed back, eligible steps only).
+        "oracle_fingerprints": [_model(item) for item in violation_fingerprints(base.violations)],
         "feedback": {
             "new_effect_keys": [_model(key) for key in feedback.new_effect_keys],
             "new_violation_fingerprints": [

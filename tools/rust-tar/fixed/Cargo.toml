@@ -1,0 +1,18 @@
+# Rust `tar` crate worker, FIXED role: tar 0.4.36 (the release carrying the fix; see
+# tools/rust-tar/README.md for the advisory and selection rule). The `=` pin fixes the crate
+# release; the committed Cargo.lock beside this file freezes the whole resolved crate graph and
+# the image builds with `cargo build --locked`. Only this file and the lock differ between roles.
+[package]
+name = "rust-tar-worker"
+version = "0.0.0"
+edition = "2021"
+publish = false
+build = "../worker/build.rs"
+
+[[bin]]
+name = "rust-tar-worker"
+path = "../worker/src/main.rs"
+
+[dependencies]
+# Default features: the crate's standard configuration. The worker never changes Archive settings.
+tar = "=0.4.36"

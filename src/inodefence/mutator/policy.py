@@ -40,6 +40,20 @@ class MutationPolicy(StrEnum):
     # object-identity observation as the causal input: with it (full) a run can
     # compose a reference to an external object, without it (this arm) it cannot.
     M1_STATE_AWARE_ESCAPE_HARDLINK_BLIND = "uniform-generic-m1-state-aware-escape-hardlink-blind-v1"
+    # Additive, vocabulary-fixed variant of M1_STATE_AWARE_ESCAPE_HARDLINK for the
+    # R/D/S-u equal-vocabulary comparison (research-questions v2 H-A). Identical
+    # slots, draws and observed-name mechanism, except the observed-name pool is
+    # FIXED ONCE at campaign start from the seed baseline run's (step 0) BEFORE
+    # snapshot — the pre-extraction tree the harness laid out, EXTERNAL names
+    # included — and never grows afterwards. With the accumulated variant a
+    # retention difference changes which objects a run observes and therefore the
+    # pool, so vocabulary would be confounded with the retention policy under test;
+    # fixing the pool at the baseline makes every arm draw from the same set. Still
+    # target-agnostic: the names come from the observed tree, never the
+    # protected-path list, and no sentinel name is hardcoded.
+    M1_STATE_AWARE_ESCAPE_HARDLINK_FIXED_BASELINE = (
+        "uniform-generic-m1-state-aware-escape-hardlink-fixed-baseline-v1"
+    )
 
 
 def mutate_with_policy(

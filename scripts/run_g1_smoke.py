@@ -168,11 +168,24 @@ VerdictFn = Callable[[str, Sequence[Mapping[str, Any]], bool], dict[str, Any]]
 
 def cell_paths(cell: Cell, output: Path) -> dict[str, Path]:
     # Not Path.with_suffix: the version token ("7.5.2") contains dots.
+    # A multi-target cell (run_exp0.TargetCell) keeps its evidence under
+    # <output>/<subdir>/ so per-target evidence never collides; summaries stay flat.
+    subdir = getattr(cell, "subdir", None)
+    base = output / subdir if subdir else output
     return {
-        "report": output / f"{cell.evidence_basename}.json",
-        "steps_jsonl": output / f"{cell.evidence_basename}.steps.jsonl",
-        "log": output / f"{cell.run_id}.log",
+        "report": base / f"{cell.evidence_basename}.json",
+        "steps_jsonl": base / f"{cell.evidence_basename}.steps.jsonl",
+        "log": base / f"{cell.run_id}.log",
         "summary": output / "summaries" / f"{cell.run_id}.summary.json",
+    }
+
+
+def cell_target(cell: Cell) -> dict[str, Any]:
+    """Target descriptor of a cell; single-target plans report their version as id."""
+    return {
+        "target_id": getattr(cell, "target_id", cell.version),
+        "role": getattr(cell, "role", "train"),
+        "hypothesis": getattr(cell, "hypothesis", "H-A"),
     }
 
 
@@ -301,6 +314,7 @@ def summarize_output(
                 "log": paths["log"].name,
             },
             "sentinel_set_requested": plan.sentinel_request(),
+            "target": cell_target(cell),
             "config_nonconformant": False,
             "invalid_reason": None,
         }
@@ -310,6 +324,7 @@ def summarize_output(
             "seed": cell.seed,
             "budget": cell.budget,
             "summary": f"summaries/{paths['summary'].name}",
+            **cell_target(cell),
         }
         try:
             loaded = load_cell_files(paths["report"], paths["steps_jsonl"])

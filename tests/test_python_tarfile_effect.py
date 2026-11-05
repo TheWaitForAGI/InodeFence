@@ -15,7 +15,14 @@ from inodefence.effect_demo import effect_campaign_report
 from inodefence.evaluation.rds import RdsArm, RdsCellConfig, run_rds_cell
 from inodefence.evaluation.rds_report import summarize_report_records
 from inodefence.generator import minimal_seed_corpus
-from inodefence.model import EffectStreamCompleteness, EffectTargetTermination, ExecutionStatus
+from inodefence.model import (
+    ArchiveCase,
+    ArchiveEntry,
+    EffectStreamCompleteness,
+    EffectTargetTermination,
+    EntryType,
+    ExecutionStatus,
+)
 from inodefence.targets.python_tarfile_effect import (
     PYTHON_TARFILE_MECHANISM,
     PythonTarfileEffectTarget,
@@ -145,4 +152,28 @@ def test_multi_entry_full_archive_entries_preserved_on_success() -> None:
         case, PythonTarfileEffectTarget("fully_trusted"), trusted_fixture=True
     )
     trace = run.result.trace
+    assert tuple((r.entry_index, r.path) for r in trace.archive_entries) == _entry_identity(case)
+
+
+def test_extractor_oserror_is_a_failed_incomplete_trace_not_an_exception() -> None:
+    # Regression (verifier, #254): with errorlevel=2 an extractor OSError -- here the
+    # parent of 'a/b' was already created as a regular file 'a', so opening 'a/b'
+    # raises NotADirectoryError -- used to escape the producer; run_rds_cell then
+    # counted the step as a cell abort (censoring) instead of a step failure. It must
+    # map to the same FAILED / INCOMPLETE fail-closed trace as a TarError.
+    case = ArchiveCase(
+        (
+            ArchiveEntry("a", EntryType.REGULAR, b"file"),
+            ArchiveEntry("a/b", EntryType.REGULAR, b"child"),
+        )
+    )
+    run = run_python_tarfile_effect_case(case, PythonTarfileEffectTarget("data"))
+    base = run.result.base_result
+    assert base.execution.status == ExecutionStatus.FAILED
+    assert base.execution.exit_code == 3
+    assert "Error" in base.execution.stderr  # e.g. NotADirectoryError: ...
+    trace = run.result.trace
+    assert trace.completeness == EffectStreamCompleteness.INCOMPLETE
+    assert trace.termination == EffectTargetTermination.FAILED
+    assert not trace.integrity_valid
     assert tuple((r.entry_index, r.path) for r in trace.archive_entries) == _entry_identity(case)

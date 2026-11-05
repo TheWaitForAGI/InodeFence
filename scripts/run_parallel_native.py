@@ -178,6 +178,8 @@ def github_matrix(cells: Sequence[Cell]) -> dict[str, list[dict[str, str]]]:
 
 def cell_env(cell: Cell, output_dir: Path, base_env: dict[str, str]) -> dict[str, str]:
     """Environment for one cell: unique names, reused images, campaign parameters."""
+    # dict(base_env) carries opt-in DEMO_SENTINEL_COUNT/DEMO_SENTINEL_SEED through to
+    # local_node_tar_smoke.sh verbatim; they are never popped here.
     env = dict(base_env)
     env["RUN_ID"] = cell.run_id
     env["SKIP_BUILD"] = "1"
@@ -390,7 +392,13 @@ def main(argv: list[str] | None = None) -> int:
             env = cell_env(cell, args.output, base_env)
             extra = {
                 k: env[k]
-                for k in ("DEMO_POLICY", "DEMO_MUTATION_POLICY", "TAR_VERSION")
+                for k in (
+                    "DEMO_POLICY",
+                    "DEMO_MUTATION_POLICY",
+                    "TAR_VERSION",
+                    "DEMO_SENTINEL_COUNT",
+                    "DEMO_SENTINEL_SEED",
+                )
                 if k in env
             }
             print(f"  {cell.run_id}: seed={cell.seed} budget={cell.budget} {extra}")

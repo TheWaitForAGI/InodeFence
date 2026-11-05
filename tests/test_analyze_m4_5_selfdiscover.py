@@ -225,3 +225,13 @@ def test_filename_seed_mismatch_raises(tmp_path):
     )
     with pytest.raises(ValueError, match="filename seed"):
         load_campaign(path)
+
+
+def test_roll_up_architecture_defaults_to_windows_and_is_overridable():
+    # Default call is unchanged (windows x86_64); the unified mac block overrides both.
+    default = roll_up([])
+    assert default["architecture"] == "x86_64"
+    assert default["arch_disclosure"].startswith("x86_64 (this host)")
+    mac = roll_up([], architecture="arm64", arch_disclosure="arm64 (mac host); disclosed.")
+    assert mac["architecture"] == "arm64"
+    assert mac["arch_disclosure"] == "arm64 (mac host); disclosed."

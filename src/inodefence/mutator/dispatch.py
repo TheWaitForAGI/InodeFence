@@ -71,6 +71,7 @@ def _operator_table(
         MutationPolicy.M1_GENERIC_ESCAPE_HARDLINK,
         MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK,
         MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_BLIND,
+        MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_FIXED_BASELINE,
     ):
         # Static default pool; the state-aware policies' observed-name pool is applied
         # per-call in apply_operator when the caller provides extra_components. The
@@ -86,10 +87,13 @@ _NO_REORDER_POLICIES = (
 )
 
 # The state-aware escape policies accept a caller-supplied observed-name pool
-# (full and its blind control); every other policy ignores extra_components.
+# (full, its blind control and the fixed-baseline variant); every other policy
+# ignores extra_components. Which names the caller accumulates (or fixes) is the
+# campaign's decision; the operator slots are identical across the three.
 _STATE_AWARE_POLICIES = (
     MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK,
     MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_BLIND,
+    MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_FIXED_BASELINE,
 )
 
 

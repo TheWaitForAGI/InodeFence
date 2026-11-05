@@ -9,7 +9,8 @@
 >
 > **기준:** [research-questions v2](../../docs/research/design/research-questions.md) · [D038](../../docs/DECISIONS.md) ·
 > 공통 키는 [exp0-pilot-v2](exp0-pilot-v2.md)와 레인 5 `rds_preregistration.py`(KNOWN_KEYS, #223/#230);
-> pre-exposure 공개는 레인 8 exp0-pilot-v2.1 초안(미커밋)·#225 §5.6. 상위 계획은 Claude Doc(포인터만, 복사본 없음).
+> pre-exposure 공개는 [exp0-pilot-v2.1](exp0-pilot-v2.1.md)(동결·머지 23e5c66, #258) "사전 노출 공개" 절 + 아래 (a)
+> "seed 사전 노출"(v2.1 누락분 보완)·#225 §5.6. 상위 계획은 Claude Doc(포인터만, 복사본 없음).
 
 ## 목적
 
@@ -59,20 +60,46 @@ retention 피드백(S-u)이 무작위(R)·구조 커버리지(D)보다 첫 경�
 M2.2에서 7.5.6 거동에 일치하도록 검증됐다(FACT ②) — 약한 평가신호 노출이다. oracle은 CVE/경로 하드코딩 없는
 고정 불변식이라 7.5.6-특정 튜닝은 아니라고 본다(이 한 문장은 추론).
 
+### seed 사전 노출 — EXP-0 동결 전 seed 9001 3회 (v2.1 공개 보완)
+
+EXP-0 등록 seed 9001은 v2.1 동결(23e5c66) **이전에 세 번** 미등록 실행으로 노출됐다(모두 node-tar 7.5.2,
+budget 50, demo run/unregistered — 등록 결과로 집계하지 않음):
+
+1. **G1 completion** — R/D/S-u × s9001 × budget 50, 3런 완주(`docs/LOG.md:164` "completion 3/3").
+2. **G1 smoke** — R/D/S-u × s{9001..9004} × budget 50, 12런(`docs/LOG.md:164` "smoke 12/12";
+   `exp0-pilot-v2.1.md:154–161`). 9002~9004도 여기서 1회 노출.
+3. **nosamp 타이밍 재실행** — `ctl-pc-b50-s9001-nosamp`, budget 50(`exp0-pilot-v2.1.md:163–166`).
+
+동결된 `exp0-pilot-v2.1.md`의 사전 노출 절은 ②·③만 적고 ①(completion)을 빠뜨렸다. 동결 파일은 고칠 수 없으므로
+EXP-3가 여기서 공개한다. EXP-3 seed는 이 노출 seed(9001~9004)·EXP-0(9001~9005)와 disjoint로 동결한다((b) `seeds`
+주석).
+
 ### 재분류 (지웅 결정 5 = B)
 
 **7.5.6/7.5.7은 '기(旣)노출된 수정 검증 쌍(fix-verification pair)'으로 재분류**한다 — hold-out이 아니다. 노출
-이력은 위 FACT ①②④(M2 통제재현 · M2.2 oracle 일치검증 · sweep 5릴리스; file:line)로 명시돼 있고, 이 쌍은 R2
-수정이 닫혔는지 **확인**하는 용도(hit 기대 0)로만 쓰며 H-A 효과 추론에서 제외한다(분석 단위는 아래 '다중 타깃' 절).
+이력은 위 FACT ①②④(M2 통제재현 · M2.2 oracle 일치검증 · sweep 5릴리스; file:line)로 명시돼 있고, 이 쌍은 등록
+역할 `role=fix-verification` · `hypothesis=H-A` · `exposure=pre-exposed` · `exposure_ref =
+experiments/summaries/cross-release-identity-repro-v1.md`((b) 블록)로만 쓰며 H-A 효과 추론에서 제외한다(분석 단위는
+아래 '다중 타깃' 절). 고정 fixture 근거(observed): **7.5.6은 nested 하드링크 identity 공유 = affected**
+(`cross-release-identity-repro-v1.md:49`, `experiments/repro/evidence/summary.json` `"7.5.6": true`), **7.5.7은
+고정 fixture 2종 모두 거부**(`cross-release-identity-repro-v1.md:50,53`). 따라서 7.5.6에 hit 0을 기대하지 않으며,
+캠페인 조건의 hit 수는 두 타깃 모두 사전 예측하지 않는다(7.5.7의 '거부'는 고정 fixture 범위의 관찰일 뿐이다).
 
 ### Hold-out 추출기 사전등록 (P1 동결, 결정 7 = B · 2026-11-05)
 
-**독립 hold-out**은 기존 adapter·recipe를 재사용하는 **sweep 밖 node-tar 버전**에서 선정한다. 버전·규칙·역할은
-**지금 동결**하고, 이미지 digest·버전 config는 `TBD-FREEZE`(EXP-0 후 빌드 시 기입)다.
+**독립 hold-out**은 기존 adapter·recipe를 재사용하는 **sweep 밖 node-tar 버전**에서 선정한다. 규칙·역할 배정은
+**지금 동결**하고, 버전 정체·이미지 digest·버전 config는 `TBD-FREEZE`(EXP-0 후 빌드 시 기입)다.
 
-1. **후보 집합 (P1, 확정):** node-tar 미노출 버전 **7.2.0 · 7.3.0 · 7.4.4**(npm `tar`; 노출집합 {7.0.4, 7.1.2,
-   7.1.3, 7.5.2, 7.5.3, 7.5.6, 7.5.7, 7.5.8, 7.5.22}에 없는 minor 7.2/7.3/7.4의 최신 patch). **advisory/CVE
-   상태에 blind한 minor-coverage 규칙**으로 실행 전 선정한다(결과로 유리한 대상을 사후 선택하지 않는다).
+1. **후보 집합 (P1, 규칙 확정 · 정체 `TBD-FREEZE`):** 노출 node-tar 집합 = **{7.5.2, 7.5.3, 7.5.6, 7.5.7, 7.5.8,
+   7.5.22}** — 7.5.2/7.5.3/7.5.6/7.5.7/7.5.8: `tools/node-tar/versions/<v>/` 핀 + `docs/LOG.md:65`(M2.1 5릴리스
+   추출)·`:76`(5릴리스 이미지 빌드), 7.5.2/7.5.3은 historical·M2 probe·M3 캠페인도(`docs/LOG.md:59,61,67,156`); 7.5.22:
+   `tools/node-tar/package.json:7`(기본 demo 핀)·`docs/LOG.md:15,18,56,60`(M1 native demo·정책 매트릭스)·
+   `docs/DECISIONS.md:296`. hold-out 후보는 **`TBD-FREEZE`** — 이 집합 밖이며 `docs/LOG.md`에 **실행 기록이 없는**
+   npm `tar` 릴리스 중에서 **advisory/CVE 상태에 blind한 minor-coverage 규칙**으로 실행 전 선정한다(결과로 유리한
+   대상을 사후 선택하지 않는다). *(정정 2026-11-05: 이전 초안 노출집합의 7.0.4 · 7.1.2 · 7.1.3은 node-tar 릴리스가
+   아니라 lock의 minipass 의존 버전 — `experiments/benchmarks/locks/node-tar-7.5.2.package-lock.json:20`
+   `"minipass": "^7.0.4"`·`:36` `7.1.2`, 7.5.7/7.5.8 lock `:36` `7.1.3` — 이었으므로 제거했다. 그 오독 위에서
+   도출된 "미노출 minor 7.2/7.3/7.4 최신 patch" 후보 확정도 철회하고 정체를 `TBD-FREEZE`로 둔다; 이력은 7항.)*
 2. **상태 확인 (유일 허용):** `make regression TAR_VERSION=<x>`(연구 규칙 3의 ground truth) — 고정 경계 fixture
    (손 하드링크 top-level/nested + symlink-write top-level/nested/dir), **퍼징 0**, 후보당 1회, EXP-0 종료 후
    docker 슬롯(레인 4).
@@ -83,21 +110,24 @@ M2.2에서 7.5.6 거동에 일치하도록 검증됐다(FACT ②) — 약한 평
    핀 = 빌드 이미지 docker sha256(`TBD-FREEZE`, EXP-0 후 1줄/버전). 선정 정체는 **engine_sha-pinned 동결**(train
    결과를 본 뒤 교체 불가). 기노출 타깃은 레인 8 `exposure-ledger.md`(#249, sha256 핀)에 등재돼 레인 5 게이트가
    `role=holdout` 재사용을 **거부**한다(#244; `role=holdout ∧ exposure=pre-exposed`=파서 포맷 오류). 재사용 금지
-   집합 = node-tar 7.5.2/7.5.3/7.5.6/7.5.7/7.5.8 · decompress 4.2.1 · oras-go v2.6.1 · Python tarfile(M4.1b).
+   집합 = node-tar 7.5.2/7.5.3/7.5.6/7.5.7/7.5.8/7.5.22 · decompress 4.2.1 · oras-go v2.6.1 · Python tarfile(M4.1b).
 5. **주장 범위:** P1은 **미노출 node-tar 버전**이므로 H-B 기여는 **version/config robustness · oracle no-FP**이지
    **새 계보 extractor 일반성이 아니다**. "3→N extractor · K 독립 계보" 주장은 새 계보 extractor가 필요 →
    Tier-B(Rust `tar` · Apache Commons Compress)는 **지웅 결정 8 승인 후에만**(동일 규율: 미노출 · 결과 전 등록 ·
-   고정 fixture only · 퍼징 0 · 결과 미예측). 승인 전 H-B 주장은 노출 4개(node-tar · python-tarfile · oras-go ·
+   고정 fixture only · 퍼징 0 · 결과 미예측). **결정 8 = B(2026-11-05):** Rust `tar` 1개만 조건부 추가 — 11/18
+   등록을 지연시키면 A(미추가)로 복귀. 승인 전 H-B 주장은 노출 4개(node-tar · python-tarfile · oras-go ·
    decompress) + 버전/config robustness에 한정한다. python-tarfile은 **기노출 fully_trusted/data 통제 차분
    (train/H-B)으로만 유지**하며 hold-out 후보가 아니다.
-6. **선행 작업:** lock-prep(`tools/node-tar/versions/{7.2.0,7.3.0,7.4.4}/{package.json,package-lock.json}`
+6. **선행 작업:** lock-prep(`tools/node-tar/versions/<TBD-FREEZE 후보>/{package.json,package-lock.json}`
    byte-pinned) = **레인 4**, EXP-0 종료 공지 후 docs/recipe-only PR(코드 0).
 7. **이력:** 2026-11-05 후보 범위를 새 계보 extractor(신규 adapter·worker·이미지 = audit-07 MVP[node-tar +
    python-tarfile] 밖 설계변경)에서 **기존 adapter 재사용 미노출 node-tar 버전**으로 좁혔다. python-tarfile PEP 706
    `tar` 필터 후보는 **부적격으로 제외**(레인 3 확인: `tar`는 `..`를 차단해 탈출 기반 fixture에서 노출된 `data`와
    동일 REJECT·새 신호 0, 그 결과가 PEP 706 설계상 예측 가능 → "결과 미예측" 블라인드 규율 위반; `tar`≠`data`
    차이는 device/FIFO/setuid 등 비탈출 엔트리에서만 나며 C0/C1/C2 범위 밖). 새 계보 extractor는 미노출 MVP config
-   부재 시·사람 승인(결정 8)으로만 추가하는 Tier-B 대안으로 문서화한다.
+   부재 시·사람 승인(결정 8)으로만 추가하는 Tier-B 대안으로 문서화한다. 같은 날 결정 7 = B의 예시 후보
+   7.2.0/7.3.0/7.4.4를 1항에 확정으로 적었으나, 그 근거(노출집합 7.0.4/7.1.2/7.1.3)가 minipass 버전 오독이어서
+   2026-11-05 정정으로 후보 정체를 `TBD-FREEZE`로 되돌렸다(규칙·역할 배정은 불변).
 
 ---
 
@@ -144,7 +174,8 @@ targets.node-tar-7.5.7.role = fix-verification
 targets.node-tar-7.5.7.hypothesis = H-A
 targets.node-tar-7.5.7.exposure = pre-exposed
 targets.node-tar-7.5.7.exposure_ref = experiments/summaries/cross-release-identity-repro-v1.md
-# 독립 holdout(결정 7): sweep 밖 node-tar(예: 7.9.x) 또는 타 extractor. 정체·버전·digest는 engine_sha-pinned 동결(train 결과 후 교체 불가).
+# 독립 holdout(결정 7=B): 노출집합{7.5.2,7.5.3,7.5.6,7.5.7,7.5.8,7.5.22} 밖·LOG 실행 기록 없는 node-tar 릴리스((a) Hold-out 1항, 정체 TBD-FREEZE).
+# 타 extractor는 결정 8=B(2026-11-05)로 Rust tar 1개만 조건부 별도 targets.<id> — 11/18 등록 지연 시 A(미추가) 복귀. 정체·버전·digest는 engine_sha-pinned 동결(train 결과 후 교체 불가).
 # arms 생략 = 선언 arm 전체(R/D/S-u) → confirmatory_family S-u-vs-R·S-u-vs-D 둘 다 동결 가능.
 targets.node-tar-holdout.extractor = node-tar
 targets.node-tar-holdout.version = TBD-FREEZE
@@ -307,8 +338,11 @@ Python tarfile). 레인 5 targets[] 설계안과 연계한다 —
 `targets.<id>.{extractor, version, image_digest|lock_digest, role, exposure, exposure_ref}`, 셀 = target × arm ×
 seed(run_id = `<target_id>-<arm>-s<seed>`). 아래는 **지웅 결정 6 확정**이다:
 
-- **1차 추론 = `role=train`(node-tar 7.5.2) 타깃의 탐색**(R/D/S-u T_first 비교). `fix-verification`(7.5.6/7.5.7)은
-  수정 확인(hit 기대 0) **별도 표**(H-A 효과 추론 제외). **`holdout`(sweep 밖)이 유일한 확증(confirmatory) 검정**이다.
+- **1차 추론 = `role=train`(node-tar 7.5.2) 타깃의 탐색**(R/D/S-u T_first 비교). `fix-verification`(7.5.6/7.5.7;
+  `hypothesis=H-A` · `exposure=pre-exposed` · `exposure_ref` = cross-release repro 요약)은 **별도 표**(H-A 효과
+  추론 제외). 결과는 예측하지 않는다 — 7.5.6은 고정 fixture에서 affected(nested 공유, observed)라 hit 0을
+  기대하지 않고, 7.5.7은 고정 fixture 2종 거부(observed)일 뿐 캠페인 hit 수 예측이 아니다((a) 재분류 절).
+  **`holdout`(sweep 밖)이 유일한 확증(confirmatory) 검정**이다.
 - **1차 확증 검정 `confirmatory_test = exact-logrank-permutation-v1`** — **seed-block paired exact 순열 로그랭크**
   (모든 n 유효; 독립 점근 로그랭크 필드 없음, `contrasts[].permutation.p_value`). **`primary_endpoint = t_first`**
   (U_viol은 2차 · `supplementary.u_viol_a12`, 비확증; 종단점 간 보정 없음).

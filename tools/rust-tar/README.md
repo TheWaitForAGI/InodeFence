@@ -92,8 +92,6 @@ for role in affected fixed; do
 done
 sha256sum tools/rust-tar/{affected,fixed}/Cargo.lock
 
-> **libc 핀 (2026-11-05 실측):** `tar`의 기본 의존성 `xattr 0.2.3`은 `libc >= 0.2.190`에서 `ENOATTR` 미정의로 컴파일이 깨진다(E0425). 따라서 `generate-lockfile` 직후 같은 고정 rust 이미지 안에서 각 role에 `cargo update -p libc --precise 0.2.189`를 적용한 lock을 커밋한다(현재 committed lock이 그 상태; 0.2.150~0.2.189 컴파일 확인, 0.2.190/0.2.191 실패). lock을 재생성하면 이 단계를 반드시 다시 적용한다.
-
 # 1. build both pinned images (context = repo root); fails without the committed lock
 docker build -f tools/rust-tar/Dockerfile --build-arg ROLE=affected -t inodefence-rust-tar:0.4.35 .
 docker build -f tools/rust-tar/Dockerfile --build-arg ROLE=fixed    -t inodefence-rust-tar:0.4.36 .
@@ -106,6 +104,8 @@ docker run --rm --network none --read-only --cap-drop ALL inodefence-rust-tar:0.
 PYTHONPATH=src:. python3 experiments/repro/rust_tar_fixture_probe.py --dry-run
 PYTHONPATH=src:. python3 experiments/repro/rust_tar_fixture_probe.py --skip-build --out experiments/repro/evidence
 ```
+
+> **libc 핀 (2026-11-05 실측):** `tar`의 기본 의존성 `xattr 0.2.3`은 `libc >= 0.2.190`에서 `ENOATTR` 미정의로 컴파일이 깨진다(E0425). 따라서 `generate-lockfile` 직후 같은 고정 rust 이미지 안에서 각 role에 `cargo update -p libc --precise 0.2.189`를 적용한 lock을 커밋한다(현재 committed lock이 그 상태; 0.2.150~0.2.189 컴파일 확인, 0.2.190/0.2.191 실패). lock을 재생성하면 이 단계를 반드시 다시 적용한다.
 
 Every probe run uses a disposable, network-isolated, read-only container (writable `/work` and
 `/tmp` tmpfs only, all capabilities dropped, non-root distroless `cc-debian12`), with the whole

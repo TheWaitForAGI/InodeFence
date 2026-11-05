@@ -833,6 +833,7 @@ def test_invalid_bare_cell_without_target_keeps_single_target_schema(tmp_path, c
     assert all(c.target_id == "unspecified" for c in cells)
     expected = build_report(cells, field_map=DEFAULT_MAP, sources=[str(valid), str(invalid)])
     assert out == json_bytes(expected).decode("ascii") + "\n"
+    assert "role_interpretation" not in out and "fix-verification" not in out
 
 
 def test_old_index_invalid_cell_inherits_single_target(tmp_path):
@@ -853,3 +854,18 @@ def test_old_index_invalid_cell_inherits_single_target(tmp_path):
     cells = load_cells(items, DEFAULT_MAP)
     assert isinstance(cells[1], InvalidCell)
     assert [c.target_id for c in cells] == ["nt-7.5.2", "nt-7.5.2"]
+
+
+def test_fix_verification_role_label_makes_no_hit_count_prediction():
+    # 7.5.6 is affected (cross-release-identity-repro-v1.md:49): the fix-verification label
+    # describes the registered role only -- no "negative control" / "expected 0 hits".
+    cells = [_mt_cell(a, s, "nt-7.5.6", "fix-verification") for a in ("R", "S-u") for s in (1, 2)]
+    cells += [_mt_cell(a, s, "h", "holdout") for a in ("R", "S-u") for s in (1, 2)]
+    report = build_multitarget_report(cells, field_map=DEFAULT_MAP, sources=["t"])
+    label = report["by_target"]["nt-7.5.6"]["role_interpretation"]
+    assert label == "fix-verification (H-A, pre-exposed; no hit-count prediction)"
+    from scripts.analyze_exp0 import report_markdown
+
+    rendered = json_bytes(report).decode("ascii") + report_markdown(report)
+    assert "negative control" not in rendered and "expected 0 hits" not in rendered
+    assert "no hit-count prediction" in report["purpose"]

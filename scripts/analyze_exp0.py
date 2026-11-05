@@ -774,7 +774,7 @@ def build_report(
 
 _ROLE_INTERPRETATION = {
     "train": "exploratory (pre-exposed; design developed here, not confirmatory)",
-    "fix-verification": "negative control (patched; expected 0 hits)",
+    "fix-verification": "fix-verification (H-A, pre-exposed; no hit-count prediction)",
     "holdout": "confirmatory (independent, unseen)",
 }
 
@@ -891,12 +891,13 @@ def build_multitarget_report(
     """Per-target, per-role EXP-3 sections (no cross-target pooling).
 
     Each target is reported in its own ``by_target`` section -- train (pre-exposed, exploratory),
-    fix-verification (negative control, expected 0 hits) and holdout (confirmatory) never share a
-    risk set, because hazards differ by extractor/version (pooling would confound; Simpson). The
-    frozen ``analysis_plan`` (ordered ``confirmatory_contrasts`` on holdout&H-A, ``multiplicity``,
-    ``primary_endpoint``, ``event_threshold``) is echoed verbatim -- this builder derives no family
-    membership and runs no confirmatory test (that is the exact-log-rank step). Single-target input
-    uses :func:`build_report` (byte-identical to the EXP-0 output); this path is for >1 target_id.
+    fix-verification (H-A, pre-exposed; no hit-count prediction) and holdout (confirmatory) never
+    share a risk set, because hazards differ by extractor/version (pooling would confound; Simpson).
+    The frozen ``analysis_plan`` (ordered ``confirmatory_contrasts`` on holdout&H-A,
+    ``multiplicity``, ``primary_endpoint``, ``event_threshold``) is echoed verbatim -- this builder
+    derives no family membership and runs no confirmatory test (that is the exact-log-rank step).
+    Single-target input uses :func:`build_report` (byte-identical to the EXP-0 output); this path
+    is for >1 target_id.
     """
     if not cells:
         raise ValueError("no cells to summarize")
@@ -934,9 +935,10 @@ def build_multitarget_report(
         "purpose": (
             "per-target, per-role measurement; targets are NOT pooled (hazard differs by "
             "extractor/version). H-A arm inference is confirmatory only on a holdout target; "
-            "train is exploratory (pre-exposed) and fix-verification is a negative control "
-            "(expected 0 hits). This report echoes the frozen analysis_plan and runs no "
-            "confirmatory test (the exact-log-rank step consumes it separately)."
+            "train is exploratory (pre-exposed) and fix-verification is a pre-exposed H-A "
+            "fix-verification pair (no hit-count prediction). This report echoes the frozen "
+            "analysis_plan and runs no confirmatory test (the exact-log-rank step consumes it "
+            "separately)."
         ),
         "number_cells": len(cells),
         "number_valid_cells": len(valid),
@@ -972,7 +974,8 @@ def _multitarget_markdown(report: dict) -> str:
         f"invalid {report['number_invalid_cells']}) | arms {', '.join(report['arms'])}",
         "",
         "_H-A arm inference is confirmatory on a holdout target only; train is exploratory "
-        "(pre-exposed), fix-verification is a negative control. Targets are not pooled._",
+        "(pre-exposed), fix-verification is a pre-exposed pair (no hit-count prediction). "
+        "Targets are not pooled._",
         "",
     ]
     plan = report.get("analysis_plan")

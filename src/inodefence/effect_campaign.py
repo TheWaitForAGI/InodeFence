@@ -130,7 +130,9 @@ EffectResultProducer = Callable[[ArchiveCase], EffectRunResult]
 EffectStepObserver = Callable[[EffectCampaignStep], None]
 
 
-def _observed_name_segments(result: EffectRunResult, *, exclude_external: bool = False) -> set[str]:
+def _observed_name_segments(
+    result: EffectRunResult, *, exclude_external: bool = False, before_only: bool = False
+) -> set[str]:
     """Segment names of objects observed in the general filesystem tree.
 
     Sourced from `ObjectSnapshot` paths in the run's before/after snapshots — the
@@ -144,9 +146,14 @@ def _observed_name_segments(result: EffectRunResult, *, exclude_external: bool =
     boundary — the identity of a pre-existing external object — never enters the pool.
     EXTRACTION/HARNESS names the run itself produced are still kept. The filter is by
     common Region, not by any specific name, so it stays target-agnostic.
+
+    With `before_only` set (the fixed-baseline variant), only the BEFORE snapshot is
+    read: the tree as the harness laid it out before extraction, independent of what
+    this run's extraction then produced.
     """
     names: set[str] = set()
-    for snapshot in (result.trace.before, result.trace.after):
+    snapshots = (result.trace.before,) if before_only else (result.trace.before, result.trace.after)
+    for snapshot in snapshots:
         for obj in snapshot.objects:
             if exclude_external and path_region(obj.path) == Region.EXTERNAL:
                 continue
@@ -191,11 +198,18 @@ def run_effect_campaign(
     state_aware = config.mutation_policy in (
         MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK,
         MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_BLIND,
+        MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_FIXED_BASELINE,
     )
     # The blind control observes the same tree but drops EXTERNAL-region names, so it
     # cannot learn the identity (name) of a pre-existing external object.
     blind_observation = (
         config.mutation_policy == MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_BLIND
+    )
+    # The fixed-baseline variant reads the pool exactly once, from the first seed
+    # run's BEFORE snapshot, and never updates it: the vocabulary is then a property
+    # of the harness layout shared by every arm, not of the arm's own search history.
+    fixed_baseline = (
+        config.mutation_policy == MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_FIXED_BASELINE
     )
     observed_names: set[str] = set()
     scheduler = (
@@ -219,7 +233,10 @@ def run_effect_campaign(
         result = produce_result(case)
         if not isinstance(result, EffectRunResult) or result.base_result.case != case:
             raise ValueError("producer must return EffectRunResult for the requested case")
-        if state_aware:
+        if fixed_baseline:
+            if not steps:
+                observed_names.update(_observed_name_segments(result, before_only=True))
+        elif state_aware:
             observed_names.update(
                 _observed_name_segments(result, exclude_external=blind_observation)
             )

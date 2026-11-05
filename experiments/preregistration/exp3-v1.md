@@ -1,7 +1,7 @@
 # EXP-3 본실험 사전등록 v1 (11/18 동결 전 최종 검토본 — 결정 6·7 반영)
 
 > **상태(2026-11-05):** 지웅 **결정 6·7 반영**된 11/18 사전등록 **동결 전 최종 검토본**이다. **아직 실행
-> 유효본이 아니다** — 남은 `TBD-FREEZE` 토큰(engine_sha · 각 target image_digest/lock_digest · holdout 정체 ·
+> 유효본이 아니다** — 남은 `TBD-FREEZE` 토큰(engine_sha · 각 target image_digest/lock_digest · holdout 정체 · py-tarfile version ·
 > seed 수 · sentinel_generator_seed · exposure_ledger_sha256; `jobs_max = 2`·`campaign_watchdog_seconds = 10800`은
 > 2026-11-05 '규모 산정 입력'으로 기입)이 있는 한 레인 5 파서
 > (`rds_preregistration.py`, #244)가 포맷 위반으로 **실행을 거부**한다(코드로 보장되는 비실행본). 이 값들은 G1
@@ -187,6 +187,8 @@ targets.node-tar-holdout.hypothesis = H-A
 targets.node-tar-holdout.exposure = none
 # H-B 탐색적 일반성(확증 아님). 기노출(M4.1b): docs/STATUS.md:57·docs/BACKLOG.md:93·docs/STATUS.md:55. live 배선 전 dry-run 거부.
 targets.py-tarfile-3.12.extractor = python-tarfile
+# version: #244 스키마상 모든 target 필수. 값 = 실행 Python 인터프리터 버전 문자열(동결 시 채움; 타깃 id의 3.12는 minor 표기).
+targets.py-tarfile-3.12.version = TBD-FREEZE
 targets.py-tarfile-3.12.lock_digest = TBD-FREEZE
 targets.py-tarfile-3.12.role = train
 targets.py-tarfile-3.12.hypothesis = H-B
@@ -197,7 +199,8 @@ exposure_ledger = experiments/preregistration/exposure-ledger.md
 exposure_ledger_sha256 = TBD-FREEZE
 sentinel_generator_id = sentinel-names/seed-random-v1
 sentinel_generator_seed = TBD-FREEZE
-sentinel_count = 3   # 지웅 결정 B: hazard 상향 입력. >=3 다수 sentinel.
+# 지웅 결정 B: hazard 상향 입력. >=3 다수 sentinel.
+sentinel_count = 3
 # rule 5키: v2 본문 규칙(제공 시 대조). EXP-3 동일.
 hit_definition = c1-or-c2-and-contract-violated
 c0_counts_as_hit = false
@@ -211,7 +214,8 @@ confirmatory_test = exact-logrank-permutation-v1
 confirmatory_family = holdout:S-u-vs-R,S-u-vs-D
 multiplicity = holm-fwer-v1
 # event_threshold 주의(2026-11-05 규모 산정, 값 미변경): 5는 등록 exact 검정이 α=0.025에서 기각할 수 있는 최소 informative seed block 7보다 작다(7개 → p = 0.0156, 6개 → p = 0.0313) — 동결 전 ≥ 7로 정해야 한다(결정: 지웅).
-event_threshold = 5   # event<5 = underpowered 플래그(검정 교체 아님); rule-of-three 서술·비검정, 시나리오 ⑤.
+# event<5 = underpowered 플래그(검정 교체 아님); rule-of-three 서술·비검정, 시나리오 ⑤.
+event_threshold = 5
 # --- EXP-2 GO/NO-GO 규칙(본문 'EXP-2 GO/NO-GO 규칙' 절; 블록 키 없음) ---
 # x 단위 규칙: x = 캠페인당 첫 C1∨C2 사건 수(실행 at-risk당 병기)이며 hit step 수가 아니다(M3 A3full step proxy 66/47263 vs 첫 사건 2 = 33× 과대).
 # #230 런처 키(제공 시 대조; 열거/범위 위반은 포맷 오류).
@@ -221,7 +225,8 @@ jobs_max = 2
 # watchdog ≥ 10800: budget 2000 캠페인 ≈ 3098 s(한산, p95 step 1.549 s) / ≈ 9573 s(바쁜 호스트 ×3.09, inferred); EXP-0의 7200은 바쁜 호스트 캠페인을 자른다(exp3-sizing-20261105).
 campaign_watchdog_seconds = 10800
 disk_pause_fraction = 0.9
-interim_analysis = forbidden     # peeking 금지 — 사전등록 무결성
+# peeking 금지 — 사전등록 무결성
+interim_analysis = forbidden
 ```
 
 ---

@@ -337,10 +337,10 @@ N01 human correspondence, N03/N04 NOT_AUTHORIZED 서술)은 LOG·diagnostics에 
 | ⑤ | 비교군 — R/D/S 어휘 동등성 단위테스트 | `pytest tests/evaluation/test_rds.py tests/test_run_g1_smoke.py -k vocabulary` | ✓ main(#206·#212) | ✓ G1 셀별 equality=true | 대기 |
 | ⑥ | 결과 — KM 곡선·표(표본·중도절단·abort 분리) | `paper/figures/render_exp0_survival.py`(#219) + `scripts/analyze_exp0.py`(#209) | ✓(#202 스택, 머지 대기) | ✓ 리허설 체인 결함 0(레인 6) | 대기 |
 | ⑦ | 증거 — raw 압축본 + SHA-256 목록 + 재생 스크립트 | `experiments/summaries/raw-manifest-*.sha256`; `make replay`(#208); `scripts/make_evidence_bundle.py`(#215) | ✓ main(#208)·(#215·#251 대기) | ✓ #251 verifier PASS(2026-11-05; 282항목 `raw-manifest-win-20261104-2317.sha256`); 141은 레인 8 `--verify` + 번들 round-trip 218/218 | 부분(Mac 1,614 raw 미이관) |
-| ⑧ | 통계 — 스크립트 하나가 모든 표·그림을 raw에서 생성 | `make paper-artifacts --verify`(#232·#256) | ◑(M2/M3 표 BYTE-MATCH, 그림 size-only, ledger exists-only) | ✗ #256 ISSUES(2026-11-05)→수정 푸시, 재검증 대기 | — |
+| ⑧ | 통계 — 스크립트 하나가 모든 표·그림을 raw에서 생성 | `make paper-artifacts --verify`(#232·#256) | ◑(M2/M3 표 BYTE-MATCH, 그림 size-only, ledger exists-only) | ✓ #256 PASS (2026-11-05 재검증, head 7dfd21f) | — |
 | ⑨ | 한계·실패 — abort 사유 표, 음성 결과 전부 | `scripts/analyze_abort_rollup.py`(#210·#227); `paper/sections/06-results.md` §5.3.3·§5.4 | ✓(머지 대기) | ✓ PASS | 대기(EXP-0 abort율) |
 | ⑩ | 문서 — STATUS 1페이지 현황 | 이 파일 | ✗ 미축소(수술 종료 후) | — | — |
-| ⑪ | 논문 — 영문 6–8쪽 + AI 도구 사용 절 | `paper/sections/05-method.md` §4.7(#216) | ◑ 초안·결과 TBD | ◑ #216/#225 PASS(2026-11-04) · #253 PASS(2026-11-05) · #247 ISSUES(2026-11-05)→수정 푸시, 재검증 대기 | 대기 |
+| ⑪ | 논문 — 영문 6–8쪽 + AI 도구 사용 절 | `paper/sections/05-method.md` §4.7(#216) | ◑ 초안·결과 TBD | ◑ #216/#225 PASS(2026-11-04) · #253 PASS(2026-11-05) · #247 PASS (2026-11-05 재검증, head efb1e37) | 대기 |
 | ⑫ | 유지보수자용 회귀 명령 | `make regression TAR_VERSION=7.5.2` (#218) | ✓ main(#218 `d7ab2a6`, 2026-11-05 머지) | ✓ #218 PASS | ✓ 고정 fixture native(M2.1) |
 
 꼭지 1~15 전체의 구현/검증/실험 대조는 LOG 2026-11-05(레인 9 대조표)와 BACKLOG 수술 보강 큐(S-08·S-11·S-UV·S-15)에 둔다.

@@ -466,6 +466,8 @@ def measurement_runners(jobs: int) -> tuple[object, object]:
         "worker-pool executors on the integration base (claude/s3-wp-integration) and "
         "run only with an assigned Docker slot"
     )
+
+
 @dataclass(frozen=True, slots=True)
 class NoRecycleWorker(WorkerHandle):
     """In-controller worker handle: the campaign loop runs inside this controller, so a

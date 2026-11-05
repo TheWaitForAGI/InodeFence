@@ -401,6 +401,8 @@ def test_measurement_runners_interface_requires_analysis_modules() -> None:
     pytest.importorskip("inodefence.evaluation.throughput")
     with pytest.raises(NotImplementedError):
         measurement_runners(2)
+
+
 # ---- reset observation recording (both paths) --------------------------------
 
 

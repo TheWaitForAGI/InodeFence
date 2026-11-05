@@ -1,0 +1,13 @@
+mde...
+converse...
+sensitivity...
+validation...
+validation {'label': 'floor n20 pS0.45', 'n': 20, 'p_S_complete': 0.44999999999999996, 'p_R_complete': 0.0, 'abort': 0.0, 'mc_power_registered_test': 0.87, 'mc_ci95_halfwidth': 0.03295773657276846, 'sims': 400, 'signtest_analytic_power': 0.8700662113986141, 'seconds': 20.0}
+validation {'label': 'floor n30 pS0.30', 'n': 30, 'p_S_complete': 0.30000000000000004, 'p_R_complete': 0.0, 'abort': 0.0, 'mc_power_registered_test': 0.8275, 'mc_ci95_halfwidth': 0.037025814980902176, 'sims': 400, 'signtest_analytic_power': 0.8404770178041304, 'seconds': 20.8}
+validation {'label': 'floor n30 pS0.0588 (M3 A3full 1/17)', 'n': 30, 'p_S_complete': 0.05882352941176472, 'p_R_complete': 0.0, 'abort': 0.0, 'mc_power_registered_test': 0.0, 'mc_ci95_halfwidth': 0.0, 'sims': 400, 'signtest_analytic_power': 0.0014901902570599243, 'seconds': 0.1}
+validation {'label': 'pR0.05 n30 pS0.35', 'n': 30, 'p_S_complete': 0.35, 'p_R_complete': 0.05, 'abort': 0.0, 'mc_power_registered_test': 0.75, 'mc_ci95_halfwidth': 0.04243524478543749, 'sims': 400, 'signtest_analytic_power': 0.6544485478149189, 'seconds': 42.3, 'schoenfeld_power': 0.9256977249214495}
+validation {'label': 'pR0.20 n30 HR2', 'n': 30, 'p_S_complete': 0.36, 'p_R_complete': 0.2, 'abort': 0.0, 'mc_power_registered_test': 0.145, 'mc_ci95_halfwidth': 0.034505882107258176, 'sims': 400, 'signtest_analytic_power': 0.1120778860436432, 'seconds': 61.3, 'schoenfeld_power': 0.20585910054232032}
+validation {'label': 'pR0.50 n40 HR2', 'n': 40, 'p_S_complete': 0.75, 'p_R_complete': 0.5, 'abort': 0.0, 'mc_power_registered_test': 0.5675, 'mc_ci95_halfwidth': 0.0485514343248477, 'sims': 400, 'signtest_analytic_power': 0.3437085274640441, 'seconds': 187.5, 'schoenfeld_power': 0.5828705829309989}
+validation {'label': 'pR0.10 n50 pS0.40 abort0.2', 'n': 50, 'p_S_complete': 0.4, 'p_R_complete': 0.1, 'abort': 0.2, 'mc_power_registered_test': 0.885, 'mc_ci95_halfwidth': 0.03126415039626057, 'sims': 400, 'signtest_analytic_power': 0.769882129636372, 'seconds': 101.8, 'schoenfeld_power': 0.936350178773337}
+validation {'label': 'floor n76 pS0.117 (k=3 inferred x2.06 of 1/17)', 'n': 76, 'p_S_complete': 0.11740312333508673, 'p_R_complete': 0.0, 'abort': 0.0, 'mc_power_registered_test': 0.7725, 'mc_ci95_halfwidth': 0.041083366159554165, 'sims': 400, 'signtest_analytic_power': 0.8030042948465361, 'seconds': 29.8}
+done 465.4 s

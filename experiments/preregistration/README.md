@@ -5,6 +5,7 @@
 - 수정은 새 버전 파일(`*-v1.1.md`, `*-v2.md`)로만 하고, 이전 버전은 그대로 둔다.
 - `exp0-pilot-v1.md`는 `exp0-pilot-v2.md`로 **대체됨**(v1은 보존). G1 동결 시 엔진 SHA·이미지 digest·policy ID를 채운 **v2.1**이 실행 유효본이다.
 - `exp3-v1.md`는 **EXP-3 본실험 사전등록 초안(11/18 동결 전)**이다. 실행 유효본이 아니며 `TBD-FREEZE`(동결 시 #245가 치환)·`TBD-LANE6`(레인 6 검정력 수치) 토큰을 채우고 동결 시 실행 전에 커밋해야 유효하다. hold-out 규칙과 7.5.6 기(旣)노출 공개를 포함한다.
+- [`exp3-sizing-20261105/`](exp3-sizing-20261105/README.md)는 EXP-3 규모(n, x)·런처 값 **산정 입력**(사전등록 계획 입력, 결과 아님)이다 — `compute.py` → `sizing.json`·`report.md`; `exp3-v1.md` '규모 산정 입력'·'EXP-2 GO/NO-GO 규칙' 절의 출처.
 
 ## 버전 상태
 

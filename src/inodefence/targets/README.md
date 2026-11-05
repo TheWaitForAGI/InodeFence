@@ -80,6 +80,21 @@ the exact decision is `V2_NATIVE_EFFECT_OBSERVATION_NOT_QUALIFIED`. The producer
 unqualified and is not connected to a campaign. Raw evidence and audits are linked from the
 [qualification summary](../../../experiments/summaries/node-native-effect-observation-qualification-v2.md).
 
+## Rust `tar` crate container target (Tier-B, D039)
+
+[RustTarTarget](rust_tar.py) and [RustTarFrameTarget](rust_tar_effect.py) mirror the oras-go
+pair (`extract` and `frame`) for the Rust `tar` crate (tar-rs), a new-lineage extractor added by
+[D039](../../../docs/DECISIONS.md). The [image recipe](../../../tools/rust-tar/README.md) pins
+`tar` 0.4.35/0.4.36 per role with a committed `Cargo.lock` and `cargo build --locked`; the Rust
+worker runs `Archive::unpack` with the crate's default settings from the sandbox root and speaks
+the oras-go worker protocol (identify/extract/frame/probe, exit 0/2/3). ID is rust-tar (frame:
+rust-tar-boundary-attempt-frame), version tar=<exact>;rustc=<exact>, artifacts are the Cargo.lock
+and worker digests, safety is ISOLATION_REQUIRED. The frame target needs no new pipeline code
+(`effect_pipeline_oras_go.run_oras_go_frame_case` takes any bound frame target), and no campaign
+mode is wired: under the Tier-B discipline only the fixed-fixture probe runs before registration.
+Status: implemented; image build, `identify` and the fixture probe wait for the post-EXP-0 docker
+slot. No advisory identifier enters the adapters, oracle or feedback.
+
 ## 공통 실행 경계
 
 TargetProvenance.execution_safety는 explicit ExecutionSafety enum이며 default ISOLATION_REQUIRED다.

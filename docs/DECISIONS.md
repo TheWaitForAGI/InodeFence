@@ -639,3 +639,30 @@ observed/inferred, synthetic 비승격, 비교 없는 effectiveness 주장 금�
 금지), D005(CVE-specific oracle 금지)·D006(known PoC seed 금지)·D007(zero-day는 성공 조건 아님), **oracle 정의
 (C0/C1/C2 불변)**. C2 대상(sentinel 집합) 확장은 Oracle 레인의 **별도 사람 승인**이 필요하다. 문서가 STATUS·BACKLOG·
 AGENTS·메모리·논문 초안과 충돌하면 문서가 맞고 저장소를 문서에 맞춰 바로잡는다.
+
+## D039 — Tier-B 새 계보 extractor: Rust `tar` crate 1개 조건부 추가 (지웅 결정 8)
+
+**상태:** 적용 (2026-11-05, 지웅 결정 8)
+
+지웅 결정 8(2026-11-05) 원문: "결정 8: B 승인 — Rust `tar` 1개 조건부 추가. 11월 18일 사전등록을 지연시키면 A로 복귀."
+
+- **무엇:** EXP-3 사전등록 초안 (a) hold-out 절의 Tier-B 대안 중 **Rust `tar` crate(tar-rs) 1개만** 새 계보
+  extractor로 추가한다(Apache Commons Compress는 추가하지 않는다). 쌍은 `tar` **0.4.35 affected / 0.4.36 fixed**,
+  ground truth는 RUSTSEC-2021-0080(`Archive::unpack`이 symlink를 거쳐 추출 루트 밖에 디렉터리 생성). 선정 규칙
+  (경로/링크 confinement advisory 중 **불변 C0/C1/C2가 관찰 가능한 가장 최근 것**)과 제외 근거는
+  `tools/rust-tar/README.md`에 둔다. advisory id는 ground truth·README·probe 증거 라벨에만 쓰고 oracle·feedback·
+  어휘·seed에 넣지 않는다(D005/D006).
+- **조건(Tier-B 규율, hold-out과 동일):** 미노출 · 결과 전 등록 · 고정 fixture only(퍼징 캠페인 0, 캠페인 모드
+  미배선) · 결과 미예측. 역할은 고정 fixture probe(`experiments/repro/rust_tar_fixture_probe.py`, 역할 fixture =
+  `make regression` 세트 그대로)의 관찰에 사전등록 규칙을 기계 적용한다: C1/C2 위반 → `role=holdout`·H-A,
+  0 → `role=fix-verification`·H-B. advisory 기술 fixture(ground truth)는 쌍 확인용으로 따로 보고하며 역할 규칙에
+  들어가지 않는다.
+- **복귀 조건:** 이 작업이 **11/18 EXP-3 사전등록을 지연시키면 A로 복귀**한다(Rust `tar`를 등록하지 않고 결정 7
+  범위 — 미노출 node-tar 버전 hold-out, Tier-B 없음 — 로 사전등록). 이 레인은 실행 중인 EXP-0과 독립이며 EXP-0
+  진행 중에는 docker·cargo build를 쓰지 않는다(이미지 빌드·`Cargo.lock` 생성·fixture probe는 EXP-0 종료 후).
+- **범위:** target-specific만(image recipe·Rust worker·adapter·고정 fixture probe). generic model/Observer/Oracle/
+  Feedback과 C0/C1/C2 정의는 불변이다.
+- **주장 범위:** 등록·실행 전까지 H-B 주장은 결정 7의 범위(노출 4개 extractor + 버전/config robustness)에
+  한정한다. Rust `tar`는 등록되고 사전등록대로 실행된 뒤에만 "새 계보 extractor" 근거가 된다.
+
+바뀌지 않는 것: 안전경계(disposable sandbox + sentinel, 고정 버전, 격리 완화 금지), D005·D006, oracle 정의(C0/C1/C2).

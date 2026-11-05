@@ -172,38 +172,59 @@ def verify_artifacts(
     runner: Runner = _default_runner,
     tmp_dir: Path | None = None,
 ) -> list[VerifyRow]:
-    """Verify each committed artifact per its policy (read-only for the committed tree)."""
+    """Verify each committed artifact per its policy (read-only for the committed tree).
+
+    Byte-verify regenerates into ``tmp_dir`` or, when not given, a :func:`make_stage_dir` temp
+    dir outside the repo that is removed before returning; each ``*.regen`` file is also removed
+    in a ``finally``, so a failing generator never leaves a file in the checkout.
+    """
     rows: list[VerifyRow] = []
-    for art in artifacts:
-        committed = repo_root / art.output
-        generator_present = art.generator is not None and (repo_root / art.generator).is_file()
-        if not committed.exists():
-            if art.generator is not None and not generator_present:
+    own_tmp: Path | None = None
+    try:
+        for art in artifacts:
+            committed = repo_root / art.output
+            generator_present = art.generator is not None and (repo_root / art.generator).is_file()
+            if not committed.exists():
+                if art.generator is not None and not generator_present:
+                    rows.append(
+                        VerifyRow(art.output, "SKIP", f"optional; generator absent ({art.note})")
+                    )
+                else:
+                    rows.append(VerifyRow(art.output, "MISSING", "committed artifact not found"))
+                continue
+            _, size = _sha_size(committed)
+            if art.verify == "byte" and generator_present and art.out_flag:
+                if tmp_dir is not None:
+                    base = tmp_dir
+                else:
+                    if own_tmp is None:
+                        own_tmp = make_stage_dir()
+                    base = own_tmp
+                dest = base / (committed.name + ".regen")
+                try:
+                    try:
+                        runner(art, repo_root, dest)
+                    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+                        rows.append(
+                            VerifyRow(art.output, "SKIP", f"regeneration unavailable: {exc}")
+                        )
+                        continue
+                    match = dest.read_bytes() == committed.read_bytes()
+                finally:
+                    dest.unlink(missing_ok=True)
+                status = "BYTE-MATCH" if match else "BYTE-MISMATCH"
+                rows.append(VerifyRow(art.output, status, f"{size} bytes"))
+            elif art.verify == "size":
                 rows.append(
-                    VerifyRow(art.output, "SKIP", f"optional; generator absent ({art.note})")
+                    VerifyRow(
+                        art.output, "SIZE-ONLY", f"{size} bytes; byte-compare N/A — {art.note}"
+                    )
                 )
             else:
-                rows.append(VerifyRow(art.output, "MISSING", "committed artifact not found"))
-            continue
-        _, size = _sha_size(committed)
-        if art.verify == "byte" and generator_present and art.out_flag:
-            dest = (tmp_dir or committed.parent) / (committed.name + ".regen")
-            try:
-                runner(art, repo_root, dest)
-            except (subprocess.CalledProcessError, FileNotFoundError) as exc:
-                rows.append(VerifyRow(art.output, "SKIP", f"regeneration unavailable: {exc}"))
-                continue
-            match = dest.read_bytes() == committed.read_bytes()
-            dest.unlink(missing_ok=True)
-            rows.append(
-                VerifyRow(art.output, "BYTE-MATCH" if match else "BYTE-MISMATCH", f"{size} bytes")
-            )
-        elif art.verify == "size":
-            rows.append(
-                VerifyRow(art.output, "SIZE-ONLY", f"{size} bytes; byte-compare N/A — {art.note}")
-            )
-        else:
-            rows.append(VerifyRow(art.output, "EXISTS", f"{size} bytes; {art.note}"))
+                rows.append(VerifyRow(art.output, "EXISTS", f"{size} bytes; {art.note}"))
+    finally:
+        if own_tmp is not None:
+            shutil.rmtree(own_tmp, ignore_errors=True)
     return rows
 
 

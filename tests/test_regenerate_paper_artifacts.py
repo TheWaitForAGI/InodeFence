@@ -155,3 +155,31 @@ def test_main_regenerate_removes_stage_unless_keep(tmp_path: Path, monkeypatch) 
     [kept] = list(temp_root.iterdir())
     assert (kept / "t.md").read_text(encoding="utf-8") == "TABLE"
     assert sorted(p.name for p in repo.iterdir()) == ["g.py"]
+
+
+def test_verify_failing_generator_leaves_no_regen_file(tmp_path: Path, monkeypatch) -> None:
+    # A generator that writes a partial file then fails must not leave `<table>.regen` in the
+    # checkout (that untracked file would dirty it); the temp dir is removed too.
+    import subprocess
+
+    temp_root = tmp_path / "tmp"
+    temp_root.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(temp_root))
+    repo = tmp_path / "repo"
+    art = Artifact(
+        "paper/tables/gen.md", "table", "g.py", "project", ("s",), "byte", "", out_flag=True
+    )
+    _write(repo, art.output, b"ROW\n")
+    _write(repo, "g.py", b"# gen\n")
+    seen: list[Path] = []
+
+    def failing_runner(_a: Artifact, _root: Path, dest: Path) -> None:
+        seen.append(dest)
+        dest.write_bytes(b"partial")
+        raise subprocess.CalledProcessError(1, ["g.py"])
+
+    [row] = verify_artifacts((art,), repo, runner=failing_runner)
+    assert row.status == "SKIP"
+    assert not seen[0].is_relative_to(repo) and not seen[0].exists()
+    assert sorted(p.name for p in (repo / "paper" / "tables").iterdir()) == ["gen.md"]
+    assert list(temp_root.iterdir()) == []

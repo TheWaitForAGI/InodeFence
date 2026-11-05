@@ -654,12 +654,15 @@ def python_tarfile_demo_report(
 
     The in-process reference extractor of EXP-3: ``PythonTarfileEffectTarget("data")``
     only — the producer refuses ``fully_trusted`` for fuzzed input (no container
-    boundary; the data filter confines extraction). Each case gets a fresh disposable
-    sandbox and a fresh subprocess, so the execution mode is ``per-case-subprocess``
-    and no reset verification applies. The report mirrors the historical demo report
-    (same loop records, so ``summarize_report_records`` and the memory/report parity
-    hold) and pins the interpreter with the top-level ``lock_digest`` (plus the raw
-    ``lock_material``) that the registration gate compares instead of ``image_id``.
+    boundary; the data filter is designed to confine extraction, but whether it does so
+    for fuzzed input depends on the CPython patch level, and registered in-process use
+    still needs D022 approval -- see the producer module docstring). Each case gets a
+    fresh disposable sandbox and a fresh subprocess, so the execution mode is
+    ``per-case-subprocess`` and no reset verification applies. The report mirrors the
+    historical demo report (same loop records, so ``summarize_report_records`` and the
+    memory/report parity hold) and pins the interpreter with the top-level
+    ``lock_digest`` (plus the raw ``lock_material``) that the registration gate compares
+    instead of ``image_id``.
     Observer-integrity policies are recorded but not applicable: there is no
     transport frame; an invalid trace comes only from an extraction failure.
     """

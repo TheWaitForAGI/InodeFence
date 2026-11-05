@@ -77,8 +77,11 @@ class RustTarTarget:
     The returned IsolatedTarget owns execution via the backend. Versions and the lock/worker
     digests are declarations until the wrapper observes and verifies them before provenance freeze
     and before archive execution; metadata is never Oracle truth. ID is rust-tar, version
-    tar=<exact>;rustc=<exact>. The Cargo.lock digest equals the committed role lock, so it doubles
-    as the preregistration ``lock_digest`` binding of this target.
+    tar=<exact>;rustc=<exact>. This is a CONTAINER target, so -- like node-tar, oras-go and
+    decompress -- its preregistration binding is ``targets.<id>.image_digest`` = the immutable
+    docker image id (:attr:`image_digest`); ``lock_digest`` is reserved for in-process targets. The
+    Cargo.lock digest (``cargo_lock_sha256``, equal to the committed role lock) is build-recipe
+    provenance, like node-tar's ``recipe_sha256``, not the registration digest.
     """
 
     image_id: str
@@ -115,6 +118,11 @@ class RustTarTarget:
             f"tar={self.tar_crate_version};rustc={self.rustc_version}",
             self.timeout_seconds,
         )
+
+    @property
+    def image_digest(self) -> str:
+        """Preregistration ``targets.<id>.image_digest``: the image id, ``sha256:<64 hex>``."""
+        return self.image_id
 
     @property
     def artifacts(self) -> tuple[ArtifactDigest, ...]:

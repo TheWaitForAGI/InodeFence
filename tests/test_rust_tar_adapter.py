@@ -66,7 +66,11 @@ def test_command_identity_command_and_artifacts() -> None:
         "/s/extract",
     )
     assert target.identity_command == (WORKER, "identify")
-    # The Cargo.lock digest is bound like node-tar's package lock (preregistration lock_digest).
+    # Container target: the preregistration binding is the image id (targets.<id>.image_digest),
+    # as for node-tar/oras-go/decompress; lock_digest is reserved for in-process targets.
+    assert target.image_digest == _IMAGE
+    # The Cargo.lock digest is build-recipe provenance (like node-tar's recipe_sha256), carried
+    # as an identity artifact next to the worker digest -- not the registration digest.
     assert target.artifacts == (
         ArtifactDigest("rust-tar-cargo-lock", _LOCK_SHA),
         ArtifactDigest("rust-tar-worker", _WORKER_SHA),

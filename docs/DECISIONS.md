@@ -648,7 +648,9 @@ AGENTS·메모리·논문 초안과 충돌하면 문서가 맞고 저장소를 �
 
 - **무엇:** EXP-3 사전등록 초안 (a) hold-out 절의 Tier-B 대안 중 **Rust `tar` crate(tar-rs) 1개만** 새 계보
   extractor로 추가한다(Apache Commons Compress는 추가하지 않는다). 쌍은 `tar` **0.4.35 affected / 0.4.36 fixed**,
-  ground truth는 RUSTSEC-2021-0080(`Archive::unpack`이 symlink를 거쳐 추출 루트 밖에 디렉터리 생성). 선정 규칙
+  ground truth는 RUSTSEC-2021-0080(`Archive::unpack`이 symlink를 거쳐 추출 루트 밖에 디렉터리 생성). **[레인 해석 —
+  지웅 확인 필요(2026-11-05 기준 미확인)]** 결정 8 원문은 "Rust `tar` 1개"만 정하며, 이 버전 쌍·advisory와 그
+  선정 규칙은 레인이 결과 전에 정한 해석이다. 선정 규칙
   (경로/링크 confinement advisory 중 **불변 C0/C1/C2가 관찰 가능한 가장 최근 것**)과 제외 근거는
   `tools/rust-tar/README.md`에 둔다. advisory id는 ground truth·README·probe 증거 라벨에만 쓰고 oracle·feedback·
   어휘·seed에 넣지 않는다(D005/D006).
@@ -657,8 +659,9 @@ AGENTS·메모리·논문 초안과 충돌하면 문서가 맞고 저장소를 �
   `make regression` 세트 그대로)의 관찰에 사전등록 규칙을 기계 적용한다: C1/C2 위반 → `role=holdout`·H-A,
   0 → `role=fix-verification`·H-B. advisory 기술 fixture(ground truth)는 쌍 확인용으로 따로 보고하며 역할 규칙에
   들어가지 않는다.
-- **복귀 조건:** 이 작업이 **11/18 EXP-3 사전등록을 지연시키면 A로 복귀**한다(Rust `tar`를 등록하지 않고 결정 7
-  범위 — 미노출 node-tar 버전 hold-out, Tier-B 없음 — 로 사전등록). 이 레인은 실행 중인 EXP-0과 독립이며 EXP-0
+- **복귀 조건:** 이 작업이 **11/18 EXP-3 사전등록을 지연시키면 A로 복귀**한다(원문). "A"의 의미 — Rust `tar`를
+  등록하지 않고 결정 7 범위(미노출 node-tar 버전 hold-out, Tier-B 없음)로 사전등록 — 는 **[레인 해석 — 지웅 확인
+  필요(2026-11-05 기준 미확인)]**이다. 이 레인은 실행 중인 EXP-0과 독립이며 EXP-0
   진행 중에는 docker·cargo build를 쓰지 않는다(이미지 빌드·`Cargo.lock` 생성·fixture probe는 EXP-0 종료 후).
 - **범위:** target-specific만(image recipe·Rust worker·adapter·고정 fixture probe). generic model/Observer/Oracle/
   Feedback과 C0/C1/C2 정의는 불변이다.

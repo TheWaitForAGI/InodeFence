@@ -8,9 +8,15 @@ oracle as node-tar. The generic model/Observer/Oracle/Feedback modules are untou
 image recipe, the worker and the target-specific adapters (`src/inodefence/targets/rust_tar.py`,
 `rust_tar_effect.py`) are new.
 
-**Status: skeleton — implemented, not built, not run.** No image has been built, no `Cargo.lock`
-is committed yet and no fixture has been executed (the host was reserved for EXP-0 when this was
-written). Nothing here is evidence until the post-EXP-0 steps below run.
+**Status: implemented + demo-run validated; no registered campaign has run.** After EXP-0 finished
+(2026-11-05, see `docs/LOG.md`): both role `Cargo.lock` files are committed (libc pinned to 0.2.189,
+see the build notes below), both images were built (0.4.35 `sha256:fe2da8c5…`, 0.4.36
+`sha256:5cf1bc7c…`, as logged in `docs/LOG.md`; full ids in the probe evidence), `identify` matched 3 ways
+(`cargo_lock_sha256` = committed lock, `tar_crate_version`, `worker_sha256` = the copied-out binary)
+and the fixed-fixture probe ran ([evidence](../../experiments/repro/evidence/rust_tar_fixture_probe.json)):
+no C1/C2 on any role fixture for either version, so the preregistered rule gives
+`role_by_rule = fix-verification / H-B` for both. This is a demo run / fixture probe — not a
+campaign, not qualification and not a registration.
 
 ## Tier-B discipline
 
@@ -53,7 +59,9 @@ advisories and GitHub lists two more without a RUSTSEC id (both checked 2026-11-
 
 The selection looks only at what the advisory's effect is and whether the frozen contracts can see
 it; it does not use (and could not use) any InodeFence result for this crate. If 지웅 prefers a
-different pair, only the two `Cargo.toml` pins, the probe's `ROLES` and this table change.
+different pair, only the two `Cargo.toml` pins, the probe's `ROLES` and this table change — but that
+was a pre-result option: now that the probe has run, changing the pair because of its outcome would
+be post-hoc target selection and is not proposed (#239 hold-out rule).
 
 ## Worker protocol (same as `tools/oras-go/worker`)
 
@@ -62,7 +70,7 @@ small local helpers so the locked graph stays the crate's own):
 
 | subcommand | behaviour |
 | --- | --- |
-| `identify` | JSON `{tar_crate_version, rustc_version, cargo_lock_sha256, worker_sha256}`: the `tar` version from the embedded committed `Cargo.lock`, the compiler version seen by `build.rs`, the lock's SHA-256 (= the preregistration `lock_digest`) and the worker binary's own SHA-256 |
+| `identify` | JSON `{tar_crate_version, rustc_version, cargo_lock_sha256, worker_sha256}`: the `tar` version from the embedded committed `Cargo.lock`, the compiler version seen by `build.rs`, the lock's SHA-256 (build-recipe provenance, checked against the committed lock — the preregistration binds the image id as `targets.<id>.image_digest`, like node-tar/oras-go/decompress) and the worker binary's own SHA-256 |
 | `extract <archive> <dest>` | `tar::Archive::new(..).unpack(dest)` with the crate's **default settings** (no `set_*` call), CWD = sandbox root; exit 0 success, 2 crate refused/failed (REJECTED), 3 harness/IO |
 | `frame <archive> <dest>` | same extraction, then one `inodefence-boundary-attempt-v1` frame on stdout derived from the observed post-state (region-based, no sentinel/advisory names), exactly the oras-go channel |
 | `probe` | self-contained fixture probe in the node-tar regression geometry (`/work/extract`, external `/work/ext/reference.bin`; `TAR_B64`/`REF_B64`): reference lstat before/after, extracted objects sharing its inode, objects created/removed/changed outside the extraction root — raw only |

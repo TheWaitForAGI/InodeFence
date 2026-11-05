@@ -89,11 +89,16 @@ pair (`extract` and `frame`) for the Rust `tar` crate (tar-rs), a new-lineage ex
 worker runs `Archive::unpack` with the crate's default settings from the sandbox root and speaks
 the oras-go worker protocol (identify/extract/frame/probe, exit 0/2/3). ID is rust-tar (frame:
 rust-tar-boundary-attempt-frame), version tar=<exact>;rustc=<exact>, artifacts are the Cargo.lock
-and worker digests, safety is ISOLATION_REQUIRED. The frame target needs no new pipeline code
+and worker digests, safety is ISOLATION_REQUIRED. As a container target its preregistration binding
+is the image id (`targets.<id>.image_digest`, `RustTarTarget.image_digest`); the Cargo.lock digest
+is build-recipe provenance. The frame target needs no new pipeline code
 (`effect_pipeline_oras_go.run_oras_go_frame_case` takes any bound frame target), and no campaign
 mode is wired: under the Tier-B discipline only the fixed-fixture probe runs before registration.
-Status: implemented; image build, `identify` and the fixture probe wait for the post-EXP-0 docker
-slot. No advisory identifier enters the adapters, oracle or feedback.
+Status: implemented and demo-run validated after EXP-0 (2026-11-05): both role locks committed
+(libc pinned 0.2.189), both images built, `identify` 3-way match, fixed-fixture probe run →
+`role_by_rule = fix-verification / H-B` for both versions
+([evidence](../../../experiments/repro/evidence/rust_tar_fixture_probe.json)); no registered
+campaign has run. No advisory identifier enters the adapters, oracle or feedback.
 
 ## 공통 실행 경계
 

@@ -108,7 +108,7 @@ def _registration(role: str, hypothesis: str) -> str:
         "arm.S-u = effect-feedback-v2-or-violation-v1-boundary-attempt-v1-uniform-mutation-v1",
         "targets.rust-tar-0.4.35.extractor = rust-tar",
         "targets.rust-tar-0.4.35.version = 0.4.35",
-        "targets.rust-tar-0.4.35.lock_digest = sha256:" + "ab" * 32,
+        "targets.rust-tar-0.4.35.image_digest = sha256:" + "ab" * 32,
         f"targets.rust-tar-0.4.35.role = {role}",
         f"targets.rust-tar-0.4.35.hypothesis = {hypothesis}",
         "targets.rust-tar-0.4.35.exposure = none",
@@ -139,3 +139,5 @@ def test_either_rule_outcome_registers_without_generic_code_changes(
         hypothesis,
     )
     assert target.exposure == "none"
+    # A container target binds its image id, like node-tar/oras-go/decompress.
+    assert (target.digest_kind, target.digest) == ("image", "sha256:" + "ab" * 32)

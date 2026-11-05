@@ -508,7 +508,9 @@ def run_python_tarfile_effect_case(
     sanitation, so in-process it can escape the disposable sandbox to the host. It is
     therefore permitted ONLY when the caller asserts a trusted, bounded input via
     ``trusted_fixture=True`` (the committed M4.1b control fixtures). Any arbitrary or
-    fuzzed archive must use the ``data`` filter (which confines extraction), so a
+    fuzzed archive must use the ``data`` filter (designed to confine extraction; whether
+    it does so for fuzzed input depends on the CPython patch level, and registered
+    in-process use still needs D022 approval -- see the module docstring), so a
     campaign/fuzzing driver -- which never sets ``trusted_fixture`` -- is rejected under
     ``fully_trusted``. ``fully_trusted`` fuzzing requires a container-isolated path.
     """

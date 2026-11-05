@@ -20,7 +20,12 @@ Modes (default ``--verify``, read-only):
 
     python -m scripts.regenerate_paper_artifacts --list
     python -m scripts.regenerate_paper_artifacts --verify
-    python -m scripts.regenerate_paper_artifacts --regenerate   # runs generators in place
+    python -m scripts.regenerate_paper_artifacts --regenerate   # stages to a temp dir
+    python -m scripts.regenerate_paper_artifacts --regenerate --apply   # writes in place
+
+``--regenerate`` without ``--apply`` stages the ``--out``-capable tables into a fresh
+``tempfile.mkdtemp()`` directory outside the repository (removed on success unless
+``--keep-stage``), so the checkout stays clean for the registered-run clean-checkout gate.
 
 ``--verify`` and ``--list`` also run the evidence-chain check so a broken summary->raw
 pointer surfaces here too.
@@ -29,8 +34,10 @@ pointer surfaces here too.
 from __future__ import annotations
 
 import argparse
+import shutil
 import subprocess
 import sys
+import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from hashlib import sha256
@@ -207,6 +214,15 @@ class RegenRow:
     detail: str
 
 
+def make_stage_dir() -> Path:
+    """A fresh staging directory outside the repository (``tempfile.mkdtemp``).
+
+    Staging must not land in the checkout: an untracked directory there makes the engine
+    checkout dirty, and the registered-run gate refuses a dirty checkout.
+    """
+    return Path(tempfile.mkdtemp(prefix="inodefence-paper-artifacts-"))
+
+
 def regenerate_artifacts(
     artifacts: tuple[Artifact, ...],
     repo_root: Path,
@@ -216,11 +232,12 @@ def regenerate_artifacts(
     """Run each present generator.
 
     Default (``apply=False``) does not touch committed files: ``--out``-capable generators
-    (the byte-reproducible tables) render to ``stage_dir``; non-``--out`` generators (the
-    matplotlib figures, which write their fixed path and are not bit-reproducible) are skipped
-    with a note. With ``apply=True`` generators write in place.
+    (the byte-reproducible tables) render to ``stage_dir`` (a fresh :func:`make_stage_dir`
+    temp dir outside the repo when not given; the caller removes it); non-``--out`` generators
+    (the matplotlib figures, which write their fixed path and are not bit-reproducible) are
+    skipped with a note. With ``apply=True`` generators write in place.
     """
-    stage = stage_dir or (repo_root / ".paper-artifacts-stage")
+    stage = stage_dir
     rows: list[RegenRow] = []
     for art in artifacts:
         if art.generator is None:
@@ -234,6 +251,8 @@ def regenerate_artifacts(
             if apply:
                 dest = repo_root / art.output
             else:
+                if stage is None:
+                    stage = make_stage_dir()
                 stage.mkdir(parents=True, exist_ok=True)
                 dest = stage / Path(art.output).name
             cmd = [sys.executable, str(gen), "--out", str(dest)]
@@ -279,11 +298,20 @@ def main(argv: list[str] | None = None) -> int:
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--list", action="store_true", help="list artifacts and their inputs")
     group.add_argument("--verify", action="store_true", help="verify committed artifacts (default)")
-    group.add_argument("--regenerate", action="store_true", help="run generators (stages to temp)")
+    group.add_argument(
+        "--regenerate",
+        action="store_true",
+        help="run generators (stages to a temp dir outside the repo)",
+    )
     parser.add_argument(
         "--apply",
         action="store_true",
         help="with --regenerate: write in place instead of staging to a temp dir",
+    )
+    parser.add_argument(
+        "--keep-stage",
+        action="store_true",
+        help="with --regenerate: keep the temp staging dir (removed on success by default)",
     )
     args = parser.parse_args(argv)
 
@@ -292,12 +320,19 @@ def main(argv: list[str] | None = None) -> int:
         _print_list(ARTIFACTS)
         return _evidence_chain(repo_root)
     if args.regenerate:
-        rows = regenerate_artifacts(ARTIFACTS, repo_root, apply=args.apply)
+        stage = None if args.apply else make_stage_dir()
+        rows = regenerate_artifacts(ARTIFACTS, repo_root, apply=args.apply, stage_dir=stage)
         for row in rows:
             print(f"{row.status:<7} {row.output}  [{row.detail}]")
-        if not args.apply:
+        failed = any(r.status == "FAIL" for r in rows)
+        if stage is not None:
             print("staged only (no committed file changed); pass --apply to write in place")
-        return 1 if any(r.status == "FAIL" for r in rows) else 0
+            if failed or args.keep_stage:
+                print(f"staging dir kept: {stage}")
+            else:
+                shutil.rmtree(stage, ignore_errors=True)
+                print(f"staging dir removed: {stage} (pass --keep-stage to keep it)")
+        return 1 if failed else 0
 
     verify_rows = verify_artifacts(ARTIFACTS, repo_root)
     for row in verify_rows:

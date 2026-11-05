@@ -1,7 +1,9 @@
 """The paper-artifacts regenerator verifies committed outputs honestly by policy."""
 
+import tempfile
 from pathlib import Path
 
+import scripts.regenerate_paper_artifacts as regen
 from scripts.regenerate_paper_artifacts import (
     Artifact,
     regenerate_artifacts,
@@ -105,3 +107,51 @@ def test_regenerate_apply_gate(tmp_path: Path) -> None:
     assert st["out/f.png"] == "SKIP"
     assert (stage / "t.md").read_text(encoding="utf-8") == "TABLE"
     assert not (tmp_path / "out" / "t.md").exists()  # committed path untouched
+
+
+_OUT_GENERATOR = (
+    "import argparse\n"
+    "p=argparse.ArgumentParser(); p.add_argument('--out'); a=p.parse_args()\n"
+    "open(a.out,'w').write('TABLE')\n"
+)
+
+
+def _out_table_repo(tmp_path: Path) -> tuple[Path, Artifact]:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "g.py").write_text(_OUT_GENERATOR, encoding="utf-8")
+    table = Artifact("out/t.md", "table", "g.py", "project", ("s",), "byte", "", out_flag=True)
+    return repo, table
+
+
+def test_regenerate_default_stage_is_outside_repo(tmp_path: Path, monkeypatch) -> None:
+    # No stage_dir: stage into a fresh temp dir outside the repo, never the old in-repo
+    # <repo>/.paper-artifacts-stage (an untracked dir that dirtied the checkout).
+    repo, table = _out_table_repo(tmp_path)
+    temp_root = tmp_path / "tmp"
+    temp_root.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(temp_root))
+    [row] = regenerate_artifacts((table,), repo, apply=False)
+    assert row.status == "STAGED"
+    staged = Path(row.detail.split("(staged ", 1)[1].rstrip(")"))
+    assert staged.read_text(encoding="utf-8") == "TABLE"
+    assert staged.is_relative_to(temp_root) and not staged.is_relative_to(repo)
+    assert sorted(p.name for p in repo.iterdir()) == ["g.py"]  # checkout untouched
+
+
+def test_main_regenerate_removes_stage_unless_keep(tmp_path: Path, monkeypatch) -> None:
+    repo, table = _out_table_repo(tmp_path)
+    temp_root = tmp_path / "tmp"
+    temp_root.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(temp_root))
+    monkeypatch.setattr(regen, "_repo_root", lambda: repo)
+    monkeypatch.setattr(regen, "ARTIFACTS", (table,))
+
+    assert regen.main(["--regenerate"]) == 0
+    assert list(temp_root.iterdir()) == []  # removed on success
+    assert sorted(p.name for p in repo.iterdir()) == ["g.py"]
+
+    assert regen.main(["--regenerate", "--keep-stage"]) == 0
+    [kept] = list(temp_root.iterdir())
+    assert (kept / "t.md").read_text(encoding="utf-8") == "TABLE"
+    assert sorted(p.name for p in repo.iterdir()) == ["g.py"]

@@ -37,6 +37,8 @@ experiments/raw/*
 artifacts/*
 !artifacts/.gitkeep
 !artifacts/README.md
+# Legacy in-repo staging dir of scripts/regenerate_paper_artifacts.py (now stages to a temp dir)
+.paper-artifacts-stage/
 
 # Local environment / secrets
 .env

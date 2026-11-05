@@ -126,7 +126,9 @@ _JOBS_MAX = "jobs_max"
 _WATCHDOG = "campaign_watchdog_seconds"
 _DISK_PAUSE = "disk_pause_fraction"
 _INTERIM = "interim_analysis"
-EXECUTION_MODES = ("per-case-container", "worker-pool")
+# per-case-subprocess: in-process (host subprocess) targets such as python-tarfile; every
+# case gets a fresh disposable sandbox and a fresh subprocess, so no reset verification.
+EXECUTION_MODES = ("per-case-container", "worker-pool", "per-case-subprocess")
 INTERIM_ANALYSIS_VALUES = ("forbidden", "allowed")
 # The measurement rules this engine implements (rds.py); a block may restate them
 # with exactly these strings and nothing else.

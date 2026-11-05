@@ -42,3 +42,6 @@ artifacts/*
 .env
 .env.*
 !.env.example
+
+# uv run이 생성하는 lock(런타임 의존성 없음, dev 도구만) — 실험 게이트의 clean-tree 검사를 오염시키지 않도록 무시
+uv.lock

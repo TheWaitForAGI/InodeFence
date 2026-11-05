@@ -43,7 +43,8 @@ cc01ede85977fa9e45be99f717b0895947d97cb6afd4f31431fc0473696b6ec6  ./inodefence-e
 7aba511dde68ca7fb6025e3c0b49dfb66f68daa68cf5f3eecb3cede29965e4dc  ./inodefence-effect-demo-historical-7.5.2-S-u-s9004.steps.jsonl
 3da89e92d34253a343013d82db94e65da57f27225cac2d10213bb8fc1d53b91e  ./inodefence-effect-demo-historical-7.5.2-S-u-s9005.json
 15255414e8c5fb6afb63c555affad1b89b2def63b167afcad49349a0070638fd  ./inodefence-effect-demo-historical-7.5.2-S-u-s9005.steps.jsonl
-d183ab7949080fac89ec956c26e2f28eeff0cde0827eb61e8e2b64d6dabc1115  ./launcher.console.log
+204bbfae0e1d785be0ef0cf117e531cd39669e72542c295c4b80b9087efa4741  ./launcher.console.log
+2dd6890dc211472fa4f940a42d81bb5057d5f54fdbb2d0c0783fdde2d9b019d5  ./manifest-verification.json
 cebe9f55c56a508fe0de25fb90c5d7171289703ef6ff07d63f6519449c9f709a  ./matrix.json
 2fcb4dea98c1f8246e37637364baf12da50e852150edf842b12811742b177b07  ./registration.json
 5c393d8823b07f57ae7e35259f3f875b6eb2142a91d65d5a4c34c9fb646c728f  ./summaries/7.5.2-D-s9001.summary.json

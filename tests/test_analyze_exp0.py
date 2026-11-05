@@ -10,8 +10,11 @@ from scripts.analyze_exp0 import (
     build_multitarget_report,
     build_report,
     cell_from_row,
+    load_cells,
     main,
 )
+
+from inodefence.evaluation.encoding import json_bytes
 
 DEFAULT_MAP = dict(_DEFAULT_FIELD_MAP)
 
@@ -805,3 +808,48 @@ def test_confirmatory_degenerate_contrast_rule_of_three_is_none():
     c = report["confirmatory"]["contrasts"][0]
     assert c["number_seed_blocks"] == 0 and c["underpowered"] is True
     assert c["rule_of_three_upper95"] is None
+
+
+def test_invalid_bare_cell_without_target_keeps_single_target_schema(tmp_path, capsys):
+    # One valid + one config-nonconformant bare --cell, neither naming a target id. #246 gave the
+    # invalid cell target_id "" while the valid one defaulted to "unspecified", so the two
+    # distinct ids flipped this single-target run into the schema-2 multi-target report.
+    valid = tmp_path / "R-s9001.summary.json"
+    valid.write_text(json.dumps(_wrap(_rec(arm="R", random_seed=9001))))
+    flagged = _wrap(_rec(arm="R", random_seed=9002))
+    flagged["config_nonconformant"] = True
+    flagged["invalid_reason"] = "budget mismatch vs plan"
+    invalid = tmp_path / "R-s9002.summary.json"
+    invalid.write_text(json.dumps(flagged))
+
+    assert main(["--cell", str(valid), "--cell", str(invalid), "--format", "json"]) == 0
+    out = capsys.readouterr().out
+    report = json.loads(out)
+    assert report["schema_version"] == 1
+    assert "by_target" not in report and "target_ids" not in report
+    assert report["number_valid_cells"] == 1 and report["number_invalid_cells"] == 1
+    # Byte-identical to the single-target build_report path (unchanged since pre-#246).
+    cells = [cell_from_row(json.loads(p.read_text()), DEFAULT_MAP) for p in (valid, invalid)]
+    assert all(c.target_id == "unspecified" for c in cells)
+    expected = build_report(cells, field_map=DEFAULT_MAP, sources=[str(valid), str(invalid)])
+    assert out == json_bytes(expected).decode("ascii") + "\n"
+
+
+def test_old_index_invalid_cell_inherits_single_target(tmp_path):
+    # An index entry without target_id + a null summary: the invalid cell takes the run's one
+    # target id (from the valid cell's wrapper target), never "".
+    summaries = tmp_path / "summaries"
+    summaries.mkdir()
+    valid = {
+        "summary": _rec(arm="R", random_seed=9001),
+        "target": {"target_id": "nt-7.5.2", "role": "train", "hypothesis": "H-A"},
+    }
+    (summaries / "R-s9001.summary.json").write_text(json.dumps(valid))
+    (summaries / "R-s9002.summary.json").write_text(json.dumps(_wrap(invalid=True)))
+    items = [
+        (summaries / "R-s9001.summary.json", {"arm": "R", "seed": 9001}),
+        (summaries / "R-s9002.summary.json", {"arm": "R", "seed": 9002}),
+    ]
+    cells = load_cells(items, DEFAULT_MAP)
+    assert isinstance(cells[1], InvalidCell)
+    assert [c.target_id for c in cells] == ["nt-7.5.2", "nt-7.5.2"]

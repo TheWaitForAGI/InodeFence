@@ -370,6 +370,19 @@ differs. `RdsCellSummary` (`summary_record` for JSON) carries `t_first`/`t_first
 C1/C2 fingerprints), per-contract first indexes, dense signals and the reconstructed
 vocabulary pools. Historical A1/A3full policy IDs are untouched.
 
+U_viol follows the oracle-evidence design (module docstring of `rds.py`): the
+signature is one `ViolationFingerprint` per violated contract — `contract_id` plus the
+sorted evidence (C1 internal/sentinel path pairs; C0/C2 path + changed-field labels),
+with device/inode numbers, timestamps, values, text, step and case identity excluded;
+deduplication is within a cell across steps (pooling across cells belongs to the
+analysis tools); lineage is not a signature component, so "same lineage, same
+fingerprint" is one class by equality; the classes are read from the post-state oracle
+of **every** step regardless of feedback eligibility, while `u_viol_feedback` reports
+separately how many classes the loop recorded as new feedback on eligible steps (raw
+search-behaviour diversity, not the metric). `hit`, `t_first` and `u_viol` share one
+event (a step whose oracle reports C1 ∨ C2 violated) across arms and across the
+in-memory and report paths; `u_viol_source` says which record the report path read.
+
 `rds_preregistration.py` reads the fenced ```` ```preregistration ```` `key = value`
 block of a committed preregistration file (`engine_sha`, `image_digest`, `seeds`,
 `budget`, `vocabulary`, `arm.R`/`arm.D`/`arm.S-u`, optional `arm.S-a`,
@@ -378,12 +391,53 @@ produce a cell config when the engine HEAD (clean), image digest, seed, budget, 
 sentinel binding differ. `scripts/run_rds_cell.py` is the synthetic-producer entry
 point; the native producer is bound by the runtime lane with the same gate.
 
+`scripts/freeze_preregistration.py` turns a draft into the frozen file with no hand
+editing: it replaces exactly the `key = TBD-FREEZE` lines inside the block
+(`--engine-sha HEAD|<sha>`, `--image-digest docker:<image>|sha256:…`,
+`--sentinel-generator-seed`, `--set KEY=VALUE` for any other token), proves every
+other byte unchanged, refuses when a token is left or a non-token line is named,
+parses the result and prints the gate preview (format, engine SHA vs HEAD, clean
+checkout, plan), the unified diff and the SHA-256 of the frozen bytes; `--check`
+only inspects. It never commits (the Evidence lane opens the freeze PR).
+
+Multi-target registrations (EXP-3) declare `targets.<id>.<field>` groups instead of the
+single `image_digest` (the single key is the one-target shorthand: a node-tar train
+target named by its version; declaring both is a format error). Fields: `extractor`,
+`version`, exactly one of `image_digest` (container) / `lock_digest` (in-process:
+sha256 of `python -VV` + the tarfile.py file hash + `uname -sr`; filesystem semantics
+are host-fixed and shared by every arm), `role` train | fix-verification | holdout,
+`hypothesis` H-A | H-B, `exposure` none | pre-exposed (+ `exposure_ref` pointing at a
+ledger row), optional `exclusion_ref`, `arms` (subset of the declared arms) and
+`budget`. An unknown target field is a format error; a holdout target cannot be
+pre-exposed (format error) and requires `exposure_ledger` + `exposure_ledger_sha256`
+— the Evidence-owned ledger (markdown pipe tables with `extractor`/`version` columns)
+is the single source of truth: the launcher refuses the run when the file is missing,
+hashes differently, or lists a holdout target. Cells are target × arm × seed with run
+ids `<target_id>-<arm>-s<seed>` and per-target evidence directories; the gate compares
+each cell against the digest supplied for its target (`run_exp0 --target-digest
+ID=sha256:…`, `run_rds_cell --target ID`). Analysis-plan keys are recorded, not
+compared: `confirmatory_family` (`holdout:S-u-vs-R,S-u-vs-D`; membership is derived from the
+frozen target tags — holdout targets with hypothesis H-A only, at least one required, and
+every registered contrast must use arms that each confirmatory target actually runs — and
+emitted as the ordered `confirmatory_contrasts` records with `target_id`, target-major,
+contrast-minor, so the analysis tools consume and echo the family instead of deriving
+it), `confirmatory_test`
+(`exact-logrank-permutation-v1` is the confirmatory test at every n — a sparse-event
+family gives p ≈ 1, a correct non-rejection), `multiplicity` (`holm-fwer-v1`),
+`primary_endpoint` (`t_first`; U_viol secondary) and `event_threshold` (an
+underpowered flag, not a switch; the rule-of-three bound is descriptive).
+
 `rds_report.py` builds the same per-cell summary from a controller-path demo report
 (`effect_campaign_report` JSON and/or its `.steps.jsonl`): hits read the per-step
-`oracle` verdicts, `u_viol` the recorded `new_violation_fingerprints` (hit steps whose
-trace was not feedback-eligible carry no fingerprint and are counted separately as
-`unfingerprinted_hit_steps`), and the vocabulary pools are reconstructed from the
-additive per-step `name_segments` record. `scripts/run_g1_smoke.py` plans the G1 cells
+`oracle` verdicts, `u_viol` the per-step `oracle_fingerprints` (report schema 4; the
+oracle's classes of every step, `u_viol_source = "oracle"`), and the vocabulary pools
+are reconstructed from the additive per-step `name_segments` record. Records that
+predate `oracle_fingerprints` (the G1 2026-11-04 runs) fall back to the recorded
+`new_violation_fingerprints` with `u_viol_source = "feedback-fallback"`; under the
+fallback a hit on a non-eligible trace carries no fingerprint and is only visible as
+`unfingerprinted_hit_steps`. `tests/fixtures/g1-20261104/` holds reduced copies of two
+G1 raw reports (source sha256 recorded) and the frozen 15-cell values so the fallback
+keeps reproducing the pre-fix summaries. `scripts/run_g1_smoke.py` plans the G1 cells
 (R/D/S-u × seeds × budget 50) through `scripts/local_node_tar_smoke.sh demo-historical`
 with the existing `--policy`/`--mutation-policy` selection, writes
 `<output>/summaries/<run_id>.summary.json` + `index.json`, asserts

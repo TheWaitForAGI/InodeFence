@@ -314,6 +314,6 @@ TAR fuzzing, hardlink·symlink 공격, entry 순서, 파일 상태 기반 fuzzin
 [^exp0-clock]: evidence: `experiments/summaries/exp0-20261105-report.md` 편차 1(합산 1.0914, 셀별 1.0855~1.0964; 표기 1.091). 호스트 전체 처리량은 셀 구간 4763, 해시 고정 타임스탬프 4758 exec/h. 실시간 기준, 장기 편차 검증 중.
 [^exp0-manifest]: evidence: `experiments/summaries/raw-manifest-win-20261105-20261105.sha256`(PR #262, sha256 `a9dc149c…`), `scripts/make_raw_manifest.py --verify` 2026-11-06 재실행.
 [^exp3-draft]: evidence: PR #239→#263→#264의 `experiments/preregistration/exp3-v1.md`(head e11d302, 미머지·미동결), PR #248과 #257의 confirmatory 출력.
-[^exp3-sizing]: evidence: PR #216 §4.6.3 "계획 단계 검정력 한계", PR #263 '규모 산정 입력' 절(둘 다 미머지).
+[^exp3-sizing]: evidence: [§4.6.3](../sections/05-method.md) "계획 단계 검정력 한계"(PR #216), PR #263 '규모 산정 입력' 절(미머지).
 [^related]: evidence: [related-work-positioning](../../docs/research/design/related-work-positioning.md), [§3](../sections/04-related-work.md).
-[^ai]: evidence: `git rev-list --count 24867be` = 414, `git log 24867be --grep='Co-Authored-By: Claude' --format=%H | wc -l` = 96 (2026-11-06 재실행). PR #216 §4.7(미머지).
+[^ai]: evidence: `git rev-list --count 24867be` = 414, `git log 24867be --grep='Co-Authored-By: Claude' --format=%H | wc -l` = 96 (2026-11-06 재실행). [§4.7](../sections/05-method.md)(PR #216).

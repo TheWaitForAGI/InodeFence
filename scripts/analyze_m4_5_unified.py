@@ -276,7 +276,14 @@ def unify(mac_campaigns: Sequence[Campaign], win: dict, *, mac_raw_pointer: str)
                 "architecture": "arm64",
                 "seeds": mac_seeds,
                 "raw_pointer": mac_raw_pointer,
-                "roll_up": roll_up(list(mac_campaigns)),
+                "roll_up": roll_up(
+                    list(mac_campaigns),
+                    architecture="arm64",
+                    arch_disclosure=(
+                        "arm64 (mac host); the paired windows control runs x86_64. decompress "
+                        "cross-arch byte-identity is NOT claimed -- arch is a disclosed variable."
+                    ),
+                ),
             },
             "windows": {
                 "architecture": "x86_64",

@@ -54,8 +54,9 @@ Idempotent: a rerun skips cells whose report is complete and conformant (budget
 reached, no abort, planned config, preregistered image id and sentinel set) and
 re-runs only the rest, moving their earlier files to ``attempts/``. ``--dry-run``
 prints the gate verdict, the items a live run would refuse, and every cell's
-command/env/paths without Docker; ``--summarize-only`` rebuilds the summaries and
-manifest from existing files.
+command/env/paths without Docker, and exits non-zero when a live run would be refused
+(gate or controller wiring, including a version or budget the controller rejects);
+``--summarize-only`` rebuilds the summaries and manifest from existing files.
 
 Post-run conformance (per cell, third bucket ``config_nonconformant`` when it
 fails): the report's ``image_id`` must equal the preregistered digest and, when the
@@ -664,6 +665,32 @@ def exp0_cell_env(
     return env
 
 
+def _controller_request_problems(plan: Exp0Plan) -> list[str]:
+    """What the controller's own pre-bind check would refuse for each node-tar target.
+
+    The controller checks a version and budget only when a cell starts, so a plan it
+    cannot run would otherwise look fine until earlier targets have spent their budget.
+    Calling the same function keeps one definition of what is admitted.
+    """
+    from scripts.run_effect_demo import _require_historical_request, historical_target_versions
+
+    targets = [target for target in plan.targets() if target.extractor == "node-tar"]
+    if not targets:
+        return []
+    try:
+        allowed = historical_target_versions()
+    except (OSError, ValueError) as error:
+        return [f"controller version allowlist cannot be read: {error}"]
+    problems: list[str] = []
+    for target in targets:
+        budget = target.budget if target.budget is not None else plan.preregistration.budget
+        try:
+            _require_historical_request(target.version, budget, allowed)
+        except ValueError as error:
+            problems.append(f"target {target.target_id}: {error}")
+    return problems
+
+
 def wiring_problems(plan: Exp0Plan) -> tuple[str, ...]:
     prereg = plan.preregistration
     problems: list[str] = []
@@ -678,6 +705,7 @@ def wiring_problems(plan: Exp0Plan) -> tuple[str, ...]:
                 f"target {target.target_id}: lock_digest targets need the controller to record "
                 "lock_digest in the report (in-process wiring pending)"
             )
+    problems.extend(_controller_request_problems(plan))
     if prereg.sentinel_generator_seed is not None and not all(_script_has(v) for v in SENTINEL_ENV):
         problems.append(
             f"preregistration declares a sentinel set but {SCRIPT.name} does not consume "
@@ -1088,7 +1116,7 @@ def main(argv: list[str] | None = None) -> int:
             print(line)
         pending = _pending_cells(plan, output)[0]
         _print_dry_run(plan, output, base_env, pending)
-        return 0 if not mismatches else 2
+        return 0 if not mismatches and not wiring else 2
     if mismatches:
         print("refusing to run (preregistration gate):", file=sys.stderr)
         for item in mismatches:

@@ -66,7 +66,7 @@ raw manifest 대상이 아니다. win manifest의 생성·검증은 `scripts/mak
 | EXP-0 seed 사전 노출(pre-exposure) | 공개 사실 (완료 아님 범주) | 동결 전 비등록 실행이 EXP-0 seed `{9001..9004}`를 budget 50으로 선행 실행: seed 9001은 10런(G1 smoke 3, G1 completion 3, parity `s3wp` 3, 타이밍 대조 1), 9002–9004는 G1 smoke 각 3런. v2.1 미공개 6런, 노출 원장 누락 `s3wp` 3런(`experiments/summaries/exp0-20261105-report.md` 편차 9). smoke `7.5.2-D-s9002` step 42 C2 1건(raw 재확인). `experiments/preregistration/exp0-pilot-v2.1`(`23e5c66` 동결)·[보존 상태표](../../experiments/summaries/README.md) 기록 |
 
 이 표의 어떤 행도 novelty·effectiveness·일반성 주장으로 승격하지 않는다. G1·observer·parity는 **인프라/도구
-검증**이고, 사전 노출은 **정직성 공개**다. EXP-0/EXP-3의 가설 판정은 사전등록(`exp0-pilot-v2.1` 동결 후)과
+검증**이고, 사전 노출은 **정직성 공개**다. EXP-0은 인프라 측정이라 가설을 판정하지 않는다. H-A 판정은 EXP-3 사전등록(동결 후)과
 그 결과에만 근거한다.
 
 ## 완료 아님 항목의 취급(명시)

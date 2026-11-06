@@ -129,9 +129,9 @@ retention 효과만 분리). adaptive 스케줄러를 얹은 **S-a**는 주 비�
 1. **EXP-0 파일럿(완료, 2026-11-05)** — seed {9001..9005} × budget 200 × R/D/S-u, 인프라·dense 신호 실측. **zero-hit이 기본
    결과**이며 C1/C2 hit으로 hazard를 추정하지 않는다(zero면 캠페인 단위 rule-of-three 상한만 참고로 병기). 15/15 완주, C1/C2 hit
    0(`experiments/summaries/exp0-20261105-report.md`).
-2. **11/18 사전등록 잠금** — EXP-3 본실험 + EXP-2 GO/NO-GO 규칙을 고정한다. 규칙의 n(arm당 캠페인 수)·x(EXP-3 R/D/S-u 합산
-   hazard 문턱, EXP-2 검정력 요구에서 역산)는 EXP-0 처리량·abort율 실측에서 **11/14 확정**한다. EXP-0의 hit 수는 x 산정에
-   쓰지 않는다. *(구: "x(목표 효과)", 2026-11-06 정정)*
+2. **11/18 사전등록 잠금** — EXP-3 본실험 + EXP-2 GO/NO-GO 규칙을 고정한다. 규칙의 n(arm당 캠페인 수)은 EXP-0 처리량·abort율
+   실측에서, x(EXP-3 R/D/S-u 합산 hazard 문턱)는 EXP-2 검정력 요구(목표 효과·n)에서 역산해 **11/14 확정**한다. EXP-0의 hit 수는
+   x 산정에 쓰지 않는다. *(구: "x(목표 효과)", 2026-11-06 정정)*
 3. **EXP-3 본실험** — 20 seed × budget 2000 × R/D/S-u, 다수 sentinel. 1차 지표 T_first(우측중도절단)·U_viol. *(규모는 D7,
    재판정 대기(파일럿 후))*
 4. **11/20 규칙 기계 적용** — EXP-3 결과에 사전등록된 GO/NO-GO 규칙을 **그대로** 적용한다(결과를 본 뒤 규칙을
@@ -142,8 +142,8 @@ retention 효과만 분리). adaptive 스케줄러를 얹은 **S-a**는 주 비�
 M3.3 powered 결과(§5.3.3, 동일 budget 2000이되 **수행·음성**: 매칭 Wilson CI 미분리)와 혼동하지 않는다. 1차
 지표 T_first의 검출력에는 사전 고지할 한계가 있다(레인 6 산출 #209 `power.py`, a4 독립 재대조). 두 사실을
 **구분**한다 — **(a) 사건 상한:** T_first는 캠페인당 ≤ 1 event라 20 seed × 2 arm = 40 캠페인이면 event 상한 40인데
-로그랭크 HR 0.5의 Schoenfeld 필요 event ≈ 65.3 > 40이다(단 상한은 seed에 **선형**이라 33 seed/arm이면 상한 ≥
-65.3). **(b) 예상 사건 부족:** 참고 proxy hazard 2e-5 · budget 2000에서 기대 event ≈ 2.3(informative 쌍 ≈ 1.5).
+로그랭크 HR 0.5의 Schoenfeld 필요 event(검정력 .8, 양측)는 α=.05면 ≈ 65.3, Holm 첫 단계 α=.025면 ≈ 79.1로 둘 다 40보다 크다(단
+상한은 seed에 **선형**이라 α=.05면 33 seed/arm, α=.025면 40 seed/arm에서 상한이 필요량에 닿는다). **(b) 예상 사건 부족:** 참고 proxy hazard 2e-5 · budget 2000에서 기대 event ≈ 2.3(informative 쌍 ≈ 1.5).
 MDE는 극소 사건 수의 **형식적 역산값**일 뿐으로 40 사건 낙관 상한에서 HR ≈ 2.43, 현실 예상 사건에서 HR ≈ 40이며
 **점근 근사는 event < 5에서 무효**다(hazard는 참고 proxy, 다수 sentinel 조건에서 미측정). 따라서 현 hazard에서는
 시나리오 ⑤(미관찰)가 기본 결과다. 규모는 **seed 수**와 **hazard 상향(다수 sentinel)** 두 입력으로 조정하며,

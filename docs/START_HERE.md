@@ -95,7 +95,7 @@ C0/C1/C2 판정 → feedback → 다음 mutation 선택" 루프가 `make demo` �
 - 취약점을 찾았다거나 재발견했다는 주장은 없다. `make demo`의 정상 입력 20개에서 C0/C1/C2 위반은 0건이다.
 - N01(과거 취약 버전 node-tar 7.5.2/7.5.3 재발견)은 자동 replay까지 끝났고 사람 검토를 기다린다.
   재발견 실행은 사람 승인 뒤(10/27~)에만 한다.
-- A/B/C(random / structure-aware / state-aware) 비교 실험은 하지 않았다. 중간발표 이후 과제다.
+- A/B/C/D(random / structure / state-aware / coverage) 비교는 실행됐다(Ledger M3.2 item-3 단일경로 A/B/C/D, M3.3 powered matched #196). 결과는 effectiveness 우위 없음 — rate CI 미분리(검정력 부족)이고, M3는 "이름 획득 조건의 관찰(피드백 인과 미입증)"이다(claims 원장·Ledger M3). *(2026-11-03 정정: 이전 "A/B/C 비교 실험은 하지 않았다" 폐기.)*
 - node-tar가 거부한 입력(`..` 경로, 절대 경로)에서는 중간 상태 event가 0개로 남는다.
   이 한계를 어떻게 표현할지 아직 정하지 않았다.
 

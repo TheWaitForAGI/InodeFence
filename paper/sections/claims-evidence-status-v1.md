@@ -51,6 +51,24 @@ raw manifest가 "해당 없음"인 행은 raw가 저장소 안(C-M2)이거나 �
 raw manifest 대상이 아니다. win manifest의 생성·검증은 `scripts/make_raw_manifest.py`, 각 요약의 raw
 포인터가 manifest/저장소에 닿는지는 `scripts/check_evidence_chain.py`로 점검한다.
 
+## 수술 3단계 도구·증거 행 (완료 아님 / 도구 검증 / 대기)
+
+아래는 수술 3단계에서 나온 **도구·증거 행**이다. **능력(claim) 주장이 아니다** — 도구 검증·증거 수집
+상태이며, 위 현황표의 어떤 **C-ID paper-ready 판정도 바꾸지 않는다.** 전부 "완료 아님 / 도구 검증 / 대기"로
+표기하고, 관찰 사실과 다른 레인의 보고를 구분한다(provenance는 이 호스트에서 재확인한 값만 "재확인"으로 표시).
+
+| 항목 | 상태 | provenance / 증거 |
+| --- | --- | --- |
+| G1 조건 1–3 (unregistered) | 도구 검증 (레인 5 보고; EXP-0 사전등록 아님) | 통합 브랜치 `4b072a5`, image `sha256:22c8734f…`, completion index `sha256 fc748d68…`·smoke index `sha256 26235b44…` (둘 다 이 호스트 디스크 재확인), raw `g1-20261104/` (manifest `raw-manifest-win-20261104-1421.sha256`) |
+| 네이티브 observer 13런 | 도구 검증 (레인 2 보고; 해시 무결성만 독립 재확인) | `s3-observer-20261104/` 26파일 SHA-256 26/26 독립 재해시 일치; 레인 2 보고 = abort 0, budget ≤100에서 `malformed_identity` 미발생·분기 아티팩트 없음(이 세션에서 재현 안 함) |
+| 워커풀 parity | **PASS (도구 검증, unregistered)** | a1 vs b 4차원 agree · 재시도 0 · self-determinism PASS; 결과 SHA `a700c06c…`/`fb1a21b0…`; 처리량 동등(speedup 1.002, 50-step 1셀 값). 워커풀의 값은 처리량이 아니라 **리셋 검증 + 인프라 재시도 견고성**이다. 능력 주장 아님(G1 조건 4). **EXP-0 측정 항목 4는 미충족**이다: 등록 실행은 per-case뿐이고 이 비등록 결과가 등록 측정을 대신하지 않는다(`experiments/summaries/exp0-20261105-report.md` 편차 3) |
+| 증거 보존·검증 도구 | 도구 검증 (구현·테스트 통과; 외부 백업 미완) | `make_raw_manifest.py`(`--verify`/`--exclude-suffix`), `check_evidence_chain.py`(`make check` 연결), `make replay`, `make_evidence_bundle.py`(로컬 번들만, 업로드 0). PR #208·#211·#215·#226 |
+| EXP-0 seed 사전 노출(pre-exposure) | 공개 사실 (완료 아님 범주) | 동결 전 비등록 실행이 EXP-0 seed `{9001..9004}`를 budget 50으로 선행 실행: seed 9001은 10런(G1 smoke 3, G1 completion 3, parity `s3wp` 3, 타이밍 대조 1), 9002–9004는 G1 smoke 각 3런. v2.1 미공개 6런, 노출 원장 누락 `s3wp` 3런(`experiments/summaries/exp0-20261105-report.md` 편차 9). smoke `7.5.2-D-s9002` step 42 C2 1건(raw 재확인). `experiments/preregistration/exp0-pilot-v2.1`(`23e5c66` 동결)·[보존 상태표](../../experiments/summaries/README.md) 기록 |
+
+이 표의 어떤 행도 novelty·effectiveness·일반성 주장으로 승격하지 않는다. G1·observer·parity는 **인프라/도구
+검증**이고, 사전 노출은 **정직성 공개**다. EXP-0은 인프라 측정이라 가설을 판정하지 않는다. H-A 판정은 EXP-3 사전등록(동결 후)과
+그 결과에만 근거한다.
+
 ## 완료 아님 항목의 취급(명시)
 
 - **C-M3b (rate 우위)**: powered 매칭 런으로 **사전등록 판정 완료 — rate CI 미분리(검정력 부족)**.

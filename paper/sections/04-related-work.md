@@ -19,8 +19,11 @@ header/metadata mutation 자체는 신규성에서 제외된다.** 이 연구에
 "My ZIP isn't your ZIP"은 archive-aware·byte-level mutation, feedback-guided corpus evolution,
 extraction-output 비교로 50개 ZIP parser를 대규모 differential testing했다. 따라서 **archive-aware
 fuzzing, feedback-guided archive fuzzing, interesting-seed retention, path/order mutation 자체는
-신규성에서 제외된다.** 후속 연구는 ZIPDiff가 복잡한 link composition과 creation order가 필요한
-symlink 취약점을 찾지 못했다고 보고한 바 있다(선행연구 보고로만 인용).
+신규성에서 제외된다.** 후속 연구(Wormholes §5.6)는 ZIPDiff를 재현해 ZIP 도구 20개(그중 8개가 symlink 취약)에 돌렸고,
+ZIPDiff가 복잡한 link composition과 creation order가 필요한 symlink 취약점을 찾지 못했다고 보고한 바 있다(선행연구 보고로만
+인용).[^zipdiff-wormholes]
+
+[^zipdiff-wormholes]: evidence: [Wormholes in the File System](https://www.usenix.org/conference/usenixsecurity26/presentation/liu-yongheng) §5.6: 재현한 ZIPDiff를 ZIP 도구 20개(그중 8개 symlink 취약)에 돌렸고 "fails to detect any of them". 원문 확인은 2026-11-06 독립 심사(W3)이며 이 문장을 쓸 때 다시 대조하지 않았다.
 
 ## 3.3 LinkZard (USENIX Security 2025)
 

@@ -116,7 +116,10 @@ InodeFence 관점의 중요한 한계:
 
 현재 질문은 다음이다.
 
-> 고정된 공격 recipe 없이 generic archive-entry mutation을 수행하면서 filesystem object identity와 external-effect state를 feedback으로 사용하면, fuzzer가 security-relevant state 방향으로 corpus를 발전시킬 수 있는가?
+> 피해 경로 이름을 아는 **동일 어휘·동일 예산** 아래서, filesystem security state(C1 identity·C2 effect)를 retention·스케줄링 피드백으로 쓰는 탐색이 **무작위 탐색**과 **구조 커버리지 탐색**보다 첫 경계위반까지의 실행 수를 줄이고 고유 위반 입력을 더 많이 찾는가?
+> (핵심 RQ, [research-questions v2](research-questions.md). 위협 모델 전제: 공격자는 피해 경로 이름 — 보호 대상 외부 객체의 추출 루트 기준 상대 경로 — 을 알며 세 arm 어휘에 동일하게 포함한다. blind 발견을 주장하지 않는다.)
+
+*(구: "고정된 공격 recipe 없이 generic archive-entry mutation을 수행하면서 … corpus를 발전시킬 수 있는가?", v1 질문, 2026-11-06 v2로 교체. research-questions v2 '폐기·대체 기록' 참조.)*
 
 개념적으로:
 

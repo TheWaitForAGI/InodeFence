@@ -199,8 +199,8 @@ MDE는 극소 사건 수의 **형식적 역산값**일 뿐으로 40 사건 낙�
 §4.4의 generic oracle/adapter 일반성을 **미노출 node-tar 버전**으로 보강하는 검증을 사전등록한다(hold-out;
 EXP-3 사전등록 `exp3-v1.md`(#239), 결정 7 = B). 실행 전이며 **설계만** 기술한다(결과 미주장).
 
-- **후보(P1, advisory-blind 선정).** 기존 adapter·recipe를 쓰는 미노출 node-tar **7.2.0 · 7.3.0 · 7.4.4**(노출집합에
-  없는 minor의 최신 patch). CVE/advisory 상태에 **blind한** minor-coverage 규칙으로 **결과 전** 선정한다.
+- **후보(P1, advisory-blind 선정).** 기존 adapter·recipe를 쓰는 미노출 node-tar 버전. 정체는 동결 전 `TBD-FREEZE`이며,
+  노출집합 밖 릴리스 중에서 CVE/advisory 상태에 **blind한** minor-coverage 규칙으로 **결과 전** 선정한다.
 - **상태 확인(유일 허용).** `make regression TAR_VERSION=<x>` 고정 경계 fixture(손 하드링크 · symlink-write) 1회,
   **퍼징 0**.
 - **등록 전 역할 배정(결과 미예측).** fixture가 위반(C1/C2)이면 H-A 확증 holdout, 위반 0이면 H-B oracle

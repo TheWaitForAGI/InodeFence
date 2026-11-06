@@ -74,7 +74,7 @@ creation, arbitrary file read/write effect를 다룬다. 현재 InodeFence와 �
 | ZIPDiff 2025 | archive-aware + byte-level mutation (ZIP) | extraction-output 비교 | parser 간 differential | feedback-guided corpus evolution + interesting-seed retention | 50 parser / 19개 언어 대규모 differential, 공개 아티팩트 |
 | LinkZard 2025 | Windows 파일 연산(링크 추종; archive corpus 아님) | file-operation sequence + hardlink/link-count state | link-following 취약점 탐지 | feedback-driven file-state fuzzing + state-query-driven mutation | 120개 상용 프로그램, 55 zero-day, 15 CVE |
 | Wormholes 2026 | archive extraction(symlink composition·entry order·dangling·update·extraction-root manipulation·symlink 경유 hardlink) | — (명시 없음) | arbitrary file read/write effect | — (명시 없음) | 85개 프로젝트, 16 arbitrary file write, 2 high-severity CVE |
-| InodeFence (현재) | generic archive-entry mutation (TAR; 8 generic operator, 고정 recipe 없음) | object identity `(st_dev, st_ino)`·external effect·boundary-attempt | generic C0/C1/C2 Security Contract (CVE 비하드코딩) | identity/effect 상태 retention (StateSignature) | 계획: R/D/S-u T_first·U_viol(§4.6) + oracle 일반성 hold-out(미노출 node-tar 3버전·advisory-blind·고정 fixture 상태확인만, §5.4.5); 현재: M1–M4 좁은 명제 |
+| InodeFence (현재) | generic archive-entry mutation (TAR; 8 generic operator, 고정 recipe 없음) | object identity `(st_dev, st_ino)`·external effect·boundary-attempt | generic C0/C1/C2 Security Contract (CVE 비하드코딩) | identity/effect 상태 retention (StateSignature) | 계획: R/D/S-u T_first·U_viol(§4.6) + oracle 일반성 hold-out(미노출 node-tar 버전·advisory-blind·고정 fixture 상태확인만, §5.4.5); 현재: M1–M4 좁은 명제 |
 
 이 표는 신규성 주장이 아니라 **포지셔닝**이다(§3.6 금지 목록 준수). InodeFence 행의 평가 칸은 아직 계획이며,
 그 결과는 실험 후에만 채운다.

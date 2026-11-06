@@ -36,6 +36,13 @@ raw는 Git에 올리지 않으므로(위 정책), 저장소에는 **checksum 목
 | win (이 호스트) | x86_64 | `~/inodefence-evidence/` (WSL2) | 전체 스냅샷 [raw-manifest-win-20261104-1421.sha256](raw-manifest-win-20261104-1421.sha256) (141 항목, in-tree `.sha256` 제외); 초기 [raw-manifest-win-20261104.sha256](raw-manifest-win-20261104.sha256)(44) **불변 보존** | 141 파일 (원본 44 + s3-observer 26 + g1 71) | **없음** | 이 호스트 원본 + 저장소 checksum; off-host 사본 없음 (#215 번들은 로컬만) |
 | └ s3-observer-20261104 | x86_64 | `~/inodefence-evidence/s3-observer-20261104/` | 위 전체 스냅샷에 포함 | 26 파일 (네이티브 13런, 완주 13/13·abort 0) | **없음** | 레인 2 제공 SHA 목록과 독립 재해시 26/26 일치 |
 | └ g1-20261104 | x86_64 | `~/inodefence-evidence/g1-20261104/{completion,smoke,analysis-toolcheck}` | 위 전체 스냅샷에 포함 | 71 파일 (completion 14·smoke 50·analysis 7); **unregistered G1 smoke (pre-exposure of EXP-0 seeds 9001–9004)**, demo run — EXP-0 사전등록 raw 아님 | **없음** | 이 호스트 원본 + 저장소 checksum |
+| win 전체 스냅샷 (2026-11-04-2317) | x86_64 | `~/inodefence-evidence/` (WSL2) | [raw-manifest-win-20261104-2317.sha256](raw-manifest-win-20261104-2317.sha256) (282 항목); 141 스냅샷·44 초기 **불변 보존** | 282 파일 (141 + 아래 6묶음) | **없음** | --verify 282/282 ok, 141 전부 subset |
+| └ s3-determinism-20261104 | x86_64 | 동 디렉터리 | 2317 스냅샷 포함 | 16 파일 — node-tar 7.5.2 demo run 6런(s3det-) 완주, G1 parity 전제 3쌍 PASS, s124 async-sequence EN-008(sub-parity) | **없음** | 레인 2 SHA 16/16 독립 일치 |
+| └ wp-parity-20261104 | x86_64 | 동 디렉터리 | 2317 스냅샷 포함 | 8 파일 — unregistered 도구 검증(G1 조건 4 parity) | **없음** | 8/8 ok |
+| └ wp-throughput-20261104 | x86_64 | 동 디렉터리 | 2317 스냅샷 포함 | 92 파일 — unregistered 도구 검증(처리량 4× 분해; 9001 측정 재실행 포함) MANIFEST `9ebdc437…` | **없음** | dir index |
+| └ audit11-survival-recompute-20261104 | x86_64 | 동 디렉터리 | 2317 스냅샷 포함 | 4 파일 — 감사11 탐색적 재계산(공식 실험 아님) | **없음** | 레인 6 index |
+| └ analysis-rehearsal-g1-20261104 | x86_64 | 동 디렉터리 | 2317 스냅샷 포함 | 17 파일 — unregistered rehearsal on G1 smoke data; not EXP-0 | **없음** | 레인 6 index |
+| └ sentinel-k-reach-20261104 | x86_64 | 동 디렉터리 | 2317 스냅샷 포함 | 4 파일 — sentinel k-vs-reach 설계 입력(공식 실험 아님) | **없음** | 레인 7 SHA256SUMS |
 
 초기 win manifest(44)는 두 독립 도구가 바이트 동일하게 생성했고(이 저장소 스크립트 + 코드 재사용 없이 손으로
 Wilson까지 재계산한 별도 검증, SHA-256 `0de2aef3…` 일치, `--verify` 44/44 ok) 그대로 보존한다. 2026-11-04

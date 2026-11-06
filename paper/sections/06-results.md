@@ -148,8 +148,8 @@ generic 어휘 7토큰(`src/inodefence/mutator/m1.py`의 `COMPONENTS`, `m1_addre
   **post-state** C1+C2(하드링크 `/a/dir`→`../outside/sentinel.txt`가 뒤 entry 거부 전에 생성·잔존,
   unique_violation_fingerprints 0)다 — 여기서 "clean"은 hit 술어(`oracle.C1 && contract_violated`)를 뜻하며
   clean trace가 아니다.
-- **판정:** 완주 clean-C1 rate 점추정은 identity feedback 쪽(0.10 vs 0.00)이나 **매칭 Wilson 구간이
-  겹쳐 rate 우위는 CI로 분리되지 않는다** — ~0.1 효과에 대해 이 예산·seed 수로는 검정력이 부족하다.
+- **판정:** 완주 clean-C1 rate 점추정은 identity feedback 쪽(0.059 vs 0.00)이나 **매칭 Wilson 구간이
+  겹쳐 rate 우위는 CI로 분리되지 않는다** — ~0.06 효과에 대해 이 예산·seed 수로는 검정력이 부족하다.
   rate 우위는 여전히 **미입증**이며 이 논문의 주 주장이 아니다.
 - **이름 획득 조건에서의 자율 트리거가 신규 seed(s101·s118)에서도 관찰됐다(인과 강화 아님).** §5.3.2의 자율
   트리거는 budget 1500·seed 1–65에서 s11 하나였으나, 이 powered 런은 **기존과 disjoint한 새 seed s101**(완주
@@ -202,7 +202,7 @@ feasible set-based frame 채널을 쓴다(node-tar의 ordered per-op보다 좁�
   feedback 조향) 그러나 exact 경계위반에 미도달.
 - **inferred:** exact 자력발견은 budget/seed-rare(node-tar M3와 정합 — budget 100=0, 자율 트리거는
   budget 1500+특정 seed). arm 차분(A3 11 > A1 8)은 1-seed라 검정력이 없다(EN-008, rate/effectiveness
-  아님) → autoloop 7.1상 당시 **미판정**이었고, §5.4.3의 powered 통합 반복에서 검정력 있게 판정한다.
+  아님) → autoloop 7.1상 당시 **미판정**이었고, §5.4.3에서 사후 분석 기준으로 다룬다.
 
 ### 5.4.3 decompress powered 판정 — 사후 분석 기준 음성(사전등록 판정 아님)
 

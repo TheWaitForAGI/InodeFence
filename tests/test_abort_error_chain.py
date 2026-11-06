@@ -13,6 +13,7 @@ import pytest
 from scripts import container_controller, run_effect_demo
 from scripts.run_effect_demo import (
     NativeDemoAborted,
+    case_shape,
     exception_chain,
     historical_demo_report,
     native_demo_report,
@@ -22,6 +23,7 @@ from inodefence.evaluation.abort_classification import classify_abort_reason
 from inodefence.execution import container as backend_module
 from inodefence.execution.base import BackendError
 from inodefence.execution.docker_client import CommandResult
+from inodefence.model.archive import ArchiveCase, ArchiveEntry, EntryType
 
 FIRST_ERROR = "created container differs from required execution policy"
 
@@ -139,6 +141,25 @@ def test_producer_records_the_chain_and_keeps_the_reason(
     assert classify_abort_reason(aborted.value.reason).value == "cleanup_inspect"
     assert aborted.value.error_chain is not None
     assert aborted.value.error_chain[-1]["message"] == FIRST_ERROR
+    assert aborted.value.case_shape is not None
+    assert int(str(aborted.value.case_shape["entries"])) >= 0
+
+
+def test_case_shape_counts_without_names() -> None:
+    case = ArchiveCase(
+        (
+            ArchiveEntry("secret-dir", EntryType.DIRECTORY),
+            ArchiveEntry("secret-file", EntryType.REGULAR, content=b"abc"),
+            ArchiveEntry("secret-link", EntryType.HARDLINK, link_target="secret-target"),
+        )
+    )
+    shape = case_shape(case)
+    assert shape == {
+        "entries": 3,
+        "entry_types": {"directory": 1, "hardlink": 1, "regular": 1},
+        "content_bytes": 3,
+    }
+    assert "secret" not in json.dumps(shape)
 
 
 @pytest.mark.parametrize("historical", [False, True])
@@ -146,9 +167,12 @@ def test_controller_writes_the_chain_into_the_abort_record(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, historical: bool
 ) -> None:
     chain = [{"type": "builtins.OSError", "message": "first"}]
+    shape = {"entries": 2, "entry_types": {"regular": 2}, "content_bytes": 9}
 
     def fake_report(*_args: object, **_kwargs: object) -> None:
-        raise NativeDemoAborted(3, "case", "builtins.OSError: first", error_chain=chain)
+        raise NativeDemoAborted(
+            3, "case", "builtins.OSError: first", error_chain=chain, case_shape=shape
+        )
 
     evidence = tmp_path / "demo.json"
     if historical:
@@ -175,5 +199,6 @@ def test_controller_writes_the_chain_into_the_abort_record(
     assert code == 1
     aborted = json.loads(evidence.read_text(encoding="ascii"))["aborted"]
     assert aborted["error_chain"] == chain
+    assert aborted["case_shape"] == shape
     assert aborted["reason"] == "builtins.OSError: first"
     assert aborted["category"] == "other"

@@ -8,6 +8,7 @@ evidence. `native_demo_report` runs inside the trusted Linux controller
 import argparse
 import json
 import sys
+from collections import Counter
 from collections.abc import Callable, Mapping
 from hashlib import sha256
 from pathlib import Path
@@ -121,6 +122,19 @@ def exception_chain(error: BaseException) -> list[dict[str, object]]:
     return chain
 
 
+def case_shape(case: ArchiveCase) -> dict[str, object]:
+    """Size of the aborted case, so an abort can be compared with the campaign's other steps.
+
+    A step that aborts leaves no step record. Counts only: no path or link target.
+    """
+    types = Counter(entry.entry_type.value for entry in case.entries)
+    return {
+        "entries": len(case.entries),
+        "entry_types": dict(sorted(types.items())),
+        "content_bytes": sum(len(entry.content or b"") for entry in case.entries),
+    }
+
+
 class NativeDemoAborted(RuntimeError):
     """Infrastructure failure: stop the demo instead of recording a result.
 
@@ -138,6 +152,7 @@ class NativeDemoAborted(RuntimeError):
         reason: str,
         observed: dict[str, object] | None = None,
         error_chain: list[dict[str, object]] | None = None,
+        case_shape: dict[str, object] | None = None,
     ) -> None:
         super().__init__(f"step {step_index} case {case_id}: {reason}")
         self.step_index = step_index
@@ -147,6 +162,7 @@ class NativeDemoAborted(RuntimeError):
         self.observed = observed
         # The raised exception and what it replaced. `reason` keeps naming the outermost one.
         self.error_chain = error_chain
+        self.case_shape = case_shape
 
 
 def synthetic_demo_report(
@@ -387,7 +403,11 @@ def native_demo_report(
         except Exception as error:
             reason = f"{type(error).__module__}.{type(error).__qualname__}: {error}"
             raise NativeDemoAborted(
-                index, case.case_id, reason, error_chain=exception_chain(error)
+                index,
+                case.case_id,
+                reason,
+                error_chain=exception_chain(error),
+                case_shape=case_shape(case),
             ) from error
         check = _native_check(case, run.result, run.controller_flush_verified, run.transport_error)
         checks.append(check)
@@ -427,6 +447,7 @@ def native_demo_report(
                         "raw_stream": run.raw_stream.decode("utf-8", "surrogateescape"),
                         "target_stderr": execution.stderr,
                     },
+                    case_shape=case_shape(case),
                 )
             # Kept as an observer-integrity invalid step; the trace is not
             # integrity_valid, so feedback and corpus admission already exclude it.
@@ -585,7 +606,11 @@ def historical_demo_report(
         except Exception as error:
             reason = f"{type(error).__module__}.{type(error).__qualname__}: {error}"
             raise NativeDemoAborted(
-                index, case.case_id, reason, error_chain=exception_chain(error)
+                index,
+                case.case_id,
+                reason,
+                error_chain=exception_chain(error),
+                case_shape=case_shape(case),
             ) from error
         check = _native_check(case, run.result, run.controller_flush_verified, run.transport_error)
         checks.append(check)
@@ -625,6 +650,7 @@ def historical_demo_report(
                         "raw_stream": run.raw_stream.decode("utf-8", "surrogateescape"),
                         "target_stderr": execution.stderr,
                     },
+                    case_shape=case_shape(case),
                 )
             # Kept as an observer-integrity invalid step; the trace is not
             # integrity_valid, so feedback and corpus admission already exclude it.

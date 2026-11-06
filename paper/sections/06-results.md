@@ -105,7 +105,7 @@ A3full s11에서만** 관찰됐고(21), 그 이름을 뺀 A3blind s11은 1475 st
 **2026-11-03 정정(해석; 위 수치·서술은 보존).** 위 어휘 제거 대조는 **피드백이 아니라 어휘**를 통제한 실험이다.
 A3full은 BEFORE snapshot에서 관찰한 EXTERNAL 이름을 mutation 어휘에 넣고, A3blind는 그 이름을 빼며, A1은
 generic 어휘 7토큰(`src/inodefence/mutator/m1.py`의 `COMPONENTS`, `m1_addressing.py` 주석)이라 대상 이름을
-철자할 수 없다. 따라서 21/0/0이 보인 것은 **"외부 객체 이름의 관찰(어휘 획득)이 자율 C1의 필요조건"**이지,
+철자할 수 없다. 따라서 21/0/0이 보인 것은 **"외부 객체 이름을 어휘에 넣은 조건에서 자율 C1이 관찰됐고 그 조건 밖에서는 관찰되지 않았다"**(구조적 불가로 단정하지 않는다)이지,
 (st_dev, st_ino) 기반 retention·스케줄링 피드백이 발견에 기여했다는 것이 아니다. 그 기여는 어휘를 맞춘 비교
 (R/D/S, [research-questions v2](../../docs/research/design/research-questions.md) H-A)로 아직 분리되지 않았고,
 어휘를 맞춘 기존 비교(§5.3.4 item-3 A/B/C/D, M4.8)는 C≡D·위반 0이다. §5.3 제목·§5.3.2·§5.3.3의 결론 문장은

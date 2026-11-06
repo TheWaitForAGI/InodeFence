@@ -100,8 +100,9 @@ Seed Generator -> Structure Mutator -> TAR Builder -> Target Adapter
   U_viol은 고유 위반 입력 수다. C0만 나온 step은 hit가 아니다.[^rq]
 - **판정.** 결과를 본 뒤 규칙을 바꾸지 않고 [판정 시나리오 표](../../docs/research/design/research-questions.md)를 그대로
   적용한다. 전 arm 위반 0(⑤)이나 S ≤ R(⑧)도 그대로 보고한다.
-- **EXP-3 초안 설계.** 예산 2000, 1차 지표 T_first, 확증 검정은 seed-block exact 순열 로그랭크와 holdout 패밀리의 Holm
-  보정이다. 동결 전 초안 기준이며 seed 수와 hold-out 정체는 11/18에 확정한다.[^exp3-draft]
+- **EXP-3 초안 설계.** 예산 2000, 1차 지표 T_first, 확증 검정은 seed-block 순열 로그랭크와 holdout 패밀리의 Holm
+  보정이다. 동결 전 초안 기준이며 seed 수와 hold-out 정체는 11/18에 확정한다.[^exp3-draft] *(holdout 배정 D1, 7.5.6/7.5.7 캠페인 D3,
+  판정 규칙 D12, U_viol 지위 D13은 재판정 대기(파일럿 후))*
 
 ## 7. 결과
 
@@ -171,24 +172,25 @@ node-tar 7.5.2다.[^exp0-prereg]
 | 항목 | 값 (observed) | 주석 |
 | --- | --- | --- |
 | 셀 / 실행 수 | 15셀 / 3,000 실행 | [^exp0-run] |
-| 완주 | 15/15 | abort 0, invalid 0, arm 간 어휘 동등 [^exp0-run] |
+| 완주 | 15/15 | abort 0, invalid 셀 0, arm 간 어휘 동등. 셀 판정과 별개로 trace가 invalid인 step 11개(D 8, S-u 3)와 failed step 10개(D 4, S-u 6)가 있다 [^exp0-run] [^exp0-analysis] |
 | C1/C2 hit | 0 | 사전등록의 zero-hit 기본 결과 [^exp0-prereg] |
 | rule-of-three 참고 상한 (사전등록 v2 (a)) | arm당 캠페인 단위 3/5 = 0.6, 실행 단위 3/1000 = 0.003(탐색적) | 판정 입력 아님 [^exp0-analysis] |
 | p95 full-step | 기록값 1.549 s / 실시간 환산 1.419 s | 3,000 step 합산, nearest-rank [^exp0-analysis] [^exp0-clock] |
-| 처리량 (스트림당) | 기록값 2428 exec/h / 실시간 환산 2650 exec/h | 셀별 wall-clock 합 기준. 호스트 전체 처리량이 아니다 [^exp0-analysis] [^exp0-clock] |
+| 처리량 (스트림당) | 기록값 2428 exec/h / 실시간 환산 2650 exec/h | 리포트 내부 시간 합 기준, 셀 준비 시간 제외. 런처 wall 합 기준(준비 포함)은 기록값 2307 / 환산 2518이다. 호스트 전체 처리량이 아니다 [^exp0-analysis] [^exp0-clock] |
 | 처리량 (호스트 전체) | ≈4760 exec/h | jobs 2, 실제 경과에서 직접 계산(배율 환산 아님) [^exp0-clock] |
 | raw 무결성 | 66 파일 verify 통과 | 66 ok, 0 mismatched, 0 missing, 0 extra [^exp0-manifest] |
 
 **시간 지표 주의.** 기록값은 monotonic clock(`perf_counter`) 기준이다. EXP-0 당시 이 호스트의 monotonic clock은 실시간보다
-1.091배 빠르게 갔다(셀별 1.086–1.096).[^exp0-clock] 환산값은 실시간 기준이며, `CLOCK_REALTIME`의 장기 편차는 검증 중이다. 완주, hit,
-T_first, U_viol처럼 실행 수로 세는 값은 영향을 받지 않는다.
+1.091배 빠르게 갔다(셀별 1.086–1.096).[^exp0-clock] 환산값은 실시간 기준이며, `CLOCK_REALTIME`의 장기 편차는 검증 중이다. T_first와
+hazard proxy는 실행 수로 세므로 시계와 무관하다(관찰). oracle과 U_viol은 파일 시각을 포함한 파일시스템 스냅샷을 보지만 파일 시각은
+실시간 시계로 찍히므로 이 배율의 영향을 받지 않는다고 본다(추론).[^exp0-clock]
 
-분석은 아직 머지되지 않은 생성기로 돌린 pre-merge 결과다. 스택 머지 후 같은 입력으로 재생성해 값을 다시 확인한다.
-[^exp0-analysis]
+위 수치의 기준은 공식 리포트이고, 사전등록 대비 편차 11건도 그 리포트에 공개돼 있다.[^exp0-analysis]
 
 ### 7.6 EXP-3 본실험: 사전등록 예정(11/18), 실행 예정
 
-**아직 실행하지 않았다. 아래 값은 모두 자리다.** 타깃 역할을 섞지 않고 역할별로 보고한다.[^exp3-draft]
+**아직 실행하지 않았다. 아래 값은 모두 자리다.** 타깃 역할을 섞지 않고 역할별로 보고한다.[^exp3-draft] *(역할 구성은 초안 기준이다. D1·D3은
+재판정 대기(파일럿 후))*
 
 **표 7-A. `role=holdout` (확증)**
 
@@ -217,7 +219,7 @@ T_first, U_viol처럼 실행 수로 세는 값은 영향을 받지 않는다.
 읽는 법:
 
 - 확증 결과는 holdout 패밀리의 Holm 판정뿐이다. 나머지 역할은 확증이 아니다.
-- 검정은 양측이다. 기각되어도 어느 arm이 빠른지(`faster_arm`)를 함께 읽는다.
+- 검정은 양측이다. 기각되어도 어느 arm이 빠른지(`faster_arm`)를 함께 읽는다. 비기각의 해석은 D12, 재판정 대기(파일럿 후)다.
 - T_first 중앙값은 Kaplan–Meier 중앙값이고, 사건이 절반에 못 미치면 "미도달"로 적는다.
 - 전 arm 위반 0이면 미관찰로 보고하고 캠페인 단위 rule-of-three 상한을 참고로 병기한다.
 
@@ -235,10 +237,11 @@ EXP-3 결과에 사전등록 GO/NO-GO 규칙을 적용해 GO일 때만 수행한
 - **M2.** 손 fixture 범위의 통제 재현이며 CVE 대응은 추론이다.[^m2]
 - **M3.** blind 발견이 아니고 seed-rare이며 피드백 인과는 미입증이다.[^m3]
 - **M4.** 일반성은 oracle·adapter 수준에 한정된다.[^m4]
-- **EXP-0 seed 사전 노출.** seed 9001–9004는 동결 전 미등록 smoke에서 이미 실행됐고, 그 관찰은 등록 결과로 집계하지
-  않는다.[^exp0-prereg] EXP-3 seed는 이들과 겹치지 않게 정한다.[^exp3-draft]
-- **EXP-0 parity.** 사전등록 측정 항목인 per-case 대 워커 풀 처리량 비교는 이 리포트에 없다(`parity_verdict` null).
-  [^exp0-analysis]
+- **EXP-0 seed 사전 노출.** seed 9001–9004는 동결 전 비등록 실행에 이미 노출됐고, 그 관찰은 등록 결과로 집계하지 않는다. seed 9001은
+  이 호스트 raw 기준 10런이며, 사전등록 공개에서 6런이, 노출 원장에서 3런이 빠져 공식 리포트에 공개했다.[^exp0-analysis] EXP-3 seed는 이들과
+  겹치지 않게 정한다.[^exp3-draft]
+- **EXP-0 측정 항목 미충족.** 사전등록 측정 4(per-case 대 워커 풀 처리량 비교)는 미충족이다. 등록 실행은 per-case뿐이다.[^exp0-analysis]
+- **EXP-0 편차.** invalid trace, 시계 배율을 포함한 사전등록 대비 편차 11건은 공식 리포트 §3에 있다.[^exp0-analysis]
 - **EXP-0 시간 지표.** 기록값은 빠르게 간 monotonic clock 기준이고 환산값은 실시간 기준이다. 실시간의 장기 편차는 검증
   중이다(§7.5).[^exp0-clock]
 - **raw 보존.** raw는 호스트 로컬에 있고 저장소에는 체크섬 목록만 들어간다.[^exp0-manifest]
@@ -307,9 +310,9 @@ TAR fuzzing, hardlink·symlink 공격, entry 순서, 파일 상태 기반 fuzzin
 [^contracts]: evidence: [security-contracts](../../docs/research/design/security-contracts.md), [threat-model](../../docs/research/design/threat-model.md), [§2](../sections/03-background-threat-model.md).
 [^exp0-prereg]: evidence: [exp0-pilot-v2.1](../../experiments/preregistration/exp0-pilot-v2.1.md) '사전 노출 공개'·'zero-hit 방침' 절, 동결 커밋 23e5c66 (PR #258).
 [^exp0-run]: evidence: `~/inodefence-evidence/exp0-20261105/summaries/index.json`(abort_count 0, invalid_count 0, cells 15), `registration.json`(last_status), 매니페스트 PR #262.
-[^exp0-analysis]: evidence: `~/inodefence-evidence/exp0-20261105-analysis-premerge/exp0-report-premerge.json`의 item2_p95_full_step, item3_throughput.summed, item4_throughput_parity, item7_hazard_proxy.zero_hit. 생성기는 미머지 스택 머리 f655f18 (같은 폴더 `PROVENANCE.txt`).
-[^exp0-clock]: evidence: 배율은 W2 확정값(2026-11-06, 근거 문서 경로 TBD). `~/inodefence-evidence/exp0-20261105/matrix.json`의 셀 `wall_seconds`를 worker 2개로 재생한 2474.9 s ÷ warmup 2.4 s를 뺀 실경과 2267.6 s = 1.0914, 표기 1.091. 환산값은 1.0914로 계산했다. 호스트 전체 처리량은 `registration.json`→`matrix.json`의 `created_at` 2270.02 s(warmup 포함) 기준 4758 exec/h. 실시간 기준, 장기 편차 검증 중. 기록 필드는 엔진 b609981 `scripts/run_effect_demo.py`의 `perf_counter`.
-[^exp0-manifest]: evidence: PR #262 `experiments/summaries/raw-manifest-win-20261105-20261105.sha256`(sha256 `a9dc149c…`), `scripts/make_raw_manifest.py --verify` 2026-11-06 재실행.
+[^exp0-analysis]: evidence: `experiments/summaries/exp0-20261105-report.md`와 `.json`(PR #268)의 §2 측정 상태, §3 편차 2·3·9. 분석 코드는 main `f3e6035`의 `scripts/analyze_exp0.py`.
+[^exp0-clock]: evidence: `experiments/summaries/exp0-20261105-report.md` 편차 1(합산 1.0914, 셀별 1.0855~1.0964; 표기 1.091). 호스트 전체 처리량은 셀 구간 4763, 해시 고정 타임스탬프 4758 exec/h. 실시간 기준, 장기 편차 검증 중.
+[^exp0-manifest]: evidence: `experiments/summaries/raw-manifest-win-20261105-20261105.sha256`(PR #262, sha256 `a9dc149c…`), `scripts/make_raw_manifest.py --verify` 2026-11-06 재실행.
 [^exp3-draft]: evidence: PR #239→#263→#264의 `experiments/preregistration/exp3-v1.md`(head e11d302, 미머지·미동결), PR #248과 #257의 confirmatory 출력.
 [^exp3-sizing]: evidence: PR #216 §4.6.3 "계획 단계 검정력 한계", PR #263 '규모 산정 입력' 절(둘 다 미머지).
 [^related]: evidence: [related-work-positioning](../../docs/research/design/related-work-positioning.md), [§3](../sections/04-related-work.md).

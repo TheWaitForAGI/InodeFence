@@ -1,7 +1,7 @@
 # 결과 표·그림 요구 목록 (EXP-3 종료 후 W2 생성용)
 
-보고서 [§7.6](capstone-report-draft.md)과 논문 §5.6을 채우는 데 필요한 산출물이다. 스키마 기준은 PR #219와 #256,
-그리고 `scripts/analyze_exp0.py` #257 head(`fe872f0`)다(모두 미머지, 2026-11-06 확인).
+보고서 [§7.6](capstone-report-draft.md)과 논문 §5.6을 채우는 데 필요한 산출물이다. 스키마 기준은 main의 `scripts/analyze_exp0.py`와
+`paper/figures/render_exp0_survival.py`, 그리고 미머지 PR #256이다(2026-11-06 확인).
 
 **입력 생성.** 다중 타깃이면 `schema_version: 2` 리포트가 나오고, item은 모두 `by_target.<tid>.` 아래로 들어간다.
 
@@ -27,7 +27,7 @@ PYTHONPATH=src python3 scripts/analyze_exp0.py --index <run>/summaries/index.jso
 
 | ID | 파일 | 생성기 | 입력·상태 |
 | --- | --- | --- | --- |
-| T-EXP0 | `paper/tables/exp0-summary.md` | `paper/figures/render_exp0_survival.py --report <json> --no-figure` (#219) | 스키마 1 리포트. pre-merge 리포트로 표 렌더링 확인. 스택 머지 후 재생성 |
+| T-EXP0 | `paper/tables/exp0-summary.md` | `paper/figures/render_exp0_survival.py --report <json> --no-figure` | 입력은 `experiments/summaries/exp0-20261105-report.json`(스키마 1). main의 표 파일은 아직 "TBD — EXP-0 미실행" 플레이스홀더이므로 재생성이 필요하다(호스트 동결 뒤) |
 | F-EXP0 | `paper/figures/exp0-survival.png` | 같은 스크립트 (matplotlib 임시 환경) | `item5_first_contract_index.by_arm.<arm>.t_first_combined_c1_or_c2.{km_curve,censored_times}`. hit 0이므로 곡선은 사건 없이 평평하다 |
 | T-M2, T-M3 | `paper/tables/m2-cross-release-evidence.md`, `m3-blind-ablation.md` | `scripts.gen_table_m2`, `scripts.gen_table_m3` (#256) | `experiments/repro/evidence/summary.json`, `node-self-discovery-mechanism-v1.md`. `--check`로 바이트 대조 |
 | F-M2, F-M3 | `paper/figures/m2-cross-release-evidence.png`, `m3-blind-ablation.png` | `render_m2_cross_release.py`, `render_m3_blind_ablation.py` | 2026-11-06 재렌더, 철회·혼동 문구 정정 완료 |
@@ -42,7 +42,7 @@ PYTHONPATH=src python3 scripts/analyze_exp0.py --index <run>/summaries/index.jso
 3. **#256 `gen_table_m3.py`에 T-M3 옛 문구가 복제돼 있다.** T-M3를 2026-11-06에 정정했으므로(제목, 관련 PR 행, A3blind 행 라벨, "읽는 법",
    정정 주석), #265와 #256을 둘 다 머지하면 `tests/test_gen_tables.py::test_m3_render_byte_identical_to_committed`와 `--verify` T-M3 행이
    깨진다. 머지 때 PREFIX·LABELS·SUFFIX를 새 T-M3에 맞춘다(W1). T-M2는 바꾸지 않았다.
-4. **EXP-0 재생성 시 확인.** pre-merge 리포트의 `targets`가 `["unspecified"]`인데 `index.json`의 `target_id`는 `7.5.2`다.
+4. **EXP-0 리포트의 타깃 필드.** JSON `targets`는 `["unspecified"]`이고 실제 타깃은 `7.5.2`다(공식 리포트 편차 5).
 5. **시간 값에는 clock을 표시한다.** `item2`·`item3`은 monotonic clock 기록이고 `summed.exec_per_hour`는 스트림당 값이다. 기록값과
    실시간 환산값을 나란히 적는다. EXP-0 배율 1.091(W2 확정)은 EXP-0 전용이므로 EXP-3에는 그 실행의 배율을 따로 확정해 쓴다. 호스트 전체
    처리량은 `registration.json`→`matrix.json`의 `created_at`으로 직접 계산한다. 실행 수로 세는 값은 영향이 없다.

@@ -34,7 +34,7 @@ EXP-3 결과는 없다.
      --build-arg TAR_VERSION=7.5.3 -t inodefence-node-tar-effect:7.5.3 .
    ```
 
-4. PR #262가 머지되어 매니페스트가 저장소에 있어야 한다. 머지 전이면 장면 7을 찍지 않는다.
+4. 장면 7의 raw는 실험 호스트에만 있으므로 그 호스트에서 찍는다. 매니페스트(#262)와 공식 리포트(#268)는 저장소에 있다.
 5. 이 호스트에는 `python`이 없다. 대본의 `python3`를 그대로 쓴다.
 6. 터미널 글꼴을 키우고, 프롬프트와 환경변수에 토큰이나 개인정보가 보이지 않는지 확인한다.
 7. 찍기 전에 `rm -rf /tmp/inodefence-video`로 이전 결과를 지운다(장면 4와 E1의 파일 glob이 1개만 잡히도록).
@@ -151,7 +151,7 @@ condition"인 판). 그 전 판은 철회한 인과 문구를 담고 있다.
 
   ```bash
   python3 scripts/make_raw_manifest.py --verify experiments/summaries/raw-manifest-win-20261105-20261105.sha256 --root ~/inodefence-evidence/exp0-20261105
-  sed -n 1,21p ~/inodefence-evidence/exp0-20261105-analysis-premerge/exp0-report-premerge.md
+  sed -n '/^# EXP-0 pilot infrastructure measurement$/,/^Summed/p' experiments/summaries/exp0-20261105-report.md
   ```
 
 - **기대 출력:**
@@ -166,7 +166,7 @@ condition"인 판). 그 전 판은 철회한 인과 문구를 담고 있다.
   Summed: 2428.1045209054023 exec/h over 3000 executions.
   ```
 
-  스택 머지 후 재생성한 리포트가 있으면 그 파일로 바꾼다. 위 경로는 pre-merge 분석이다.
+  공식 리포트(#268)의 생성기 출력 원문이다. 편차 11건은 같은 파일 §3에 있다.
 - **자막:** "화면 값 = monotonic clock 기록값. 실시간 환산: p95 1.419 s · 스트림당 2650 exec/h · 호스트 전체 ≈4760 exec/h (실시간 기준,
   장기 편차 검증 중)".
 - **내레이션:** 이어서 EXP-0 등록 실행의 증거입니다. 세 arm, seed 다섯 개, budget 200의 15셀을 모두 완주했고 abort는 0입니다.

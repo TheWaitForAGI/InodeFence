@@ -1107,7 +1107,6 @@ def test_a_level_stop_of_a_later_reference_steps_down(design: bench.Design, inde
     [
         _level(watchdog_kills=1),
         _level(other_abnormal=2),
-        _level(aborts=8),
         _level({"D": {"target_seconds_p999": 5.01}}),
         _level({"D": {"timed_out": 13}}),
         _level({"D": {"ineligible_steps": 241}}),
@@ -1123,6 +1122,56 @@ def test_a_later_reference_over_an_absolute_rule_steps_down(
     assert decision["selected_jobs"] == 2
     assert decision["stages"]["B"]["ref_cancelled"] is True
     assert decision["halts"] == []
+
+
+FOUR_ABORTS = {name: {"aborts": 1} for name in ARMS}
+
+
+@pytest.mark.parametrize(
+    ("new_aborts", "cancelled", "selected"),
+    [
+        # 14 of 48 stays; 15 of 48 is over .30. Both are over .30 on the new 24 campaigns alone.
+        (10, False, 6),
+        (11, True, 2),
+    ],
+)
+def test_a_later_reference_pools_v3_with_its_earlier_blocks(
+    design: bench.Design, new_aborts: int, cancelled: bool, selected: int
+) -> None:
+    stages = {
+        "A": _stage(design, "A", high=_level(FOUR_ABORTS)),
+        "B": _stage(design, "B", ref=_level(aborts=new_aborts)),
+    }
+    decision = analysis.decide(design, stages)
+    assert decision["stages"]["A"]["passed"] is True
+    assert decision["stages"]["B"]["ref_cancelled"] is cancelled
+    assert decision["selected_jobs"] == selected
+
+
+def test_a_noisy_new_block_alone_does_not_cancel_a_clean_level(design: bench.Design) -> None:
+    # 8 of 24 would exclude a higher level, but this level's earlier 24 campaigns had none.
+    stages = {"A": _stage(design, "A"), "B": _stage(design, "B", ref=_level(aborts=8))}
+    assert analysis.decide(design, stages)["stages"]["B"]["ref_cancelled"] is False
+
+
+@pytest.mark.parametrize(("new_aborts", "cancelled"), [(10, False), (11, True)])
+def test_v3_pools_the_stage_where_the_level_was_higher(
+    design: bench.Design, new_aborts: int, cancelled: bool
+) -> None:
+    # Stage A has jobs 2 and 4 only, so its aborts must not reach jobs 6 in stage C.
+    stages = {
+        "A": _stage(design, "A", ref=_level(aborts=7), high=_level(aborts=7)),
+        "B": _stage(design, "B", high=_level(FOUR_ABORTS)),
+        "C": _stage(design, "C", ref=_level(aborts=new_aborts)),
+    }
+    assert analysis.decide(design, stages)["stages"]["C"]["ref_cancelled"] is cancelled
+
+
+def test_pooling_v3_leaves_the_other_rules_on_the_new_blocks() -> None:
+    earlier = _level(watchdog_kills=1, other_abnormal=2)
+    assert analysis.absolute_violations(_level(), earlier) == []
+    new = _level(watchdog_kills=1)
+    assert {item["rule"] for item in analysis.absolute_violations(new, _level())} == {"V1"}
 
 
 def test_a_cancelled_reference_steps_down_one_stage_only(design: bench.Design) -> None:

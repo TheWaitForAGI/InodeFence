@@ -740,11 +740,15 @@ def _ineligible_over_limit(arm: Mapping[str, Any]) -> bool:
     return bool(steps) and arm["ineligible_steps"] / steps * 1000 > V8_PER_1000
 
 
-def absolute_violations(level: Mapping[str, Any]) -> list[dict[str, Any]]:
+def absolute_violations(
+    level: Mapping[str, Any], earlier: Mapping[str, Any] | None = None
+) -> list[dict[str, Any]]:
     """The rules that need no reference level: V1, V2, V3, V6, V7 per arm, V8 limit, V10.
 
     A stage's reference level is re-judged by these alone. It passed its own comparison earlier,
-    so only an outright failure in its new blocks can take that back.
+    so only an outright failure in its new blocks can take that back. ``earlier`` is the same level
+    in the stage where it was the higher one. V3 pools it, since a(j) is over all the level's blocks
+    and abort noise alone would otherwise cancel a sound level; the other rules read new blocks.
     """
     found: list[dict[str, Any]] = []
 
@@ -755,7 +759,9 @@ def absolute_violations(level: Mapping[str, Any]) -> list[dict[str, Any]]:
         add("V1", level["watchdog_kills"])
     if level["other_abnormal"] >= V2_OTHER_ABNORMAL:
         add("V2", level["other_abnormal"])
-    fraction = level["aborts"] / level["campaigns"] if level["campaigns"] else 0.0
+    aborts = level["aborts"] + (earlier["aborts"] if earlier else 0)
+    campaigns = level["campaigns"] + (earlier["campaigns"] if earlier else 0)
+    fraction = aborts / campaigns if campaigns else 0.0
     if fraction > V3_ABORT_FRACTION:
         add("V3", fraction)
     for name, arm in level["arms"].items():
@@ -947,7 +953,10 @@ def decide(design: Design, stages: Mapping[str, Mapping[str, Any]]) -> dict[str,
                 if high is not None
                 else [{"rule": "stopped", "detail": "the higher level did not run"}]
             )
-            ref_violations = absolute_violations(ref)
+            earlier = (
+                None if first_stage else stages[measured[position - 1]]["levels"].get(str(ref_jobs))
+            )
+            ref_violations = absolute_violations(ref, earlier)
             if ref["stopped"]:
                 ref_violations.append({"rule": "stopped", "detail": ref["stopped"]})
         # The first reference has nowhere lower to go, so its violations are only shown.

@@ -10,7 +10,7 @@
   동일 budget powered matched A1 vs A3full(disjoint seed {100..119})을 사전등록 후 판정한 결과 A3full
   1/10 vs A1 0/12로 매칭 Wilson CI가 겹친다(~0.1 효과 검정력 부족). CI 분리는 사람-게이트 대예산
   pilot(M3.4)이 필요하다.
-  (2026-11-03 정정: 이 blind 대조는 피드백이 아니라 **어휘**를 통제한 실험이다. 입증된 것은 "외부 객체 이름의 관찰(어휘 획득)이 자율 C1의 필요조건"이지 (st_dev, st_ino) retention·스케줄링 피드백의 기여가 아니며, 그 기여는 어휘를 맞춘 R/D/S-u 비교(research-questions v2 H-A)로 미분리다. 수치·서술은 보존한다. 상세: §5.3.2 정정.)
+  (2026-11-03 정정: 이 어휘 제거 대조는 피드백이 아니라 **어휘**를 통제한 실험이다. 입증된 것은 "외부 객체 이름의 관찰(어휘 획득)이 자율 C1의 필요조건"이지 (st_dev, st_ino) retention·스케줄링 피드백의 기여가 아니며, 그 기여는 어휘를 맞춘 R/D/S-u 비교(research-questions v2 H-A)로 미분리다. 수치·서술은 보존한다. 상세: §5.3.2 정정.)
 - **seed-rare.** 자율 C1 트리거는 budget 1500·65 seed 중 s11 하나뿐이다(재현 0/30). 정답이 사실상
   한 점(좁은 구성)이고 final-state C1/C2 oracle이 all-or-nothing이라 adaptive 탐색에 gradient가 거의
   없기 때문이다. 따라서 정책 간 rate 차이를 검출할 **검정력이 현재 없다.**
@@ -36,9 +36,9 @@
 
 M3의 자율 발견은 **blind 발견이 아니다.** 기존 외부 객체에 하드링크하려면 그 이름이 필요하고
 퍼저는 그것을 **관찰(어휘 획득)**로 얻는다(이 이름 획득이 자율 C1의 필요조건이며, retention·effect 피드백 자체의
-인과 기여는 어휘를 맞춘 R/D/S-u로 미분리) *(구: "관찰(가설이 지목한 object-identity feedback)로 얻는다", 2026-11-03 정정)*. 어휘·oracle에 대상 경로·
-식별자·정답 seed·근접 보상은 하드코딩하지 않았으나, state-aware mutation 어휘 계열이
-`outside`/`sentinel.txt` 토큰을 포함할 수 있다. 어떤 rediscovery 프레이밍에서도 이 사실을 명시한다.
+인과 기여는 어휘를 맞춘 R/D/S-u로 미분리) *(구: "관찰(가설이 지목한 object-identity feedback)로 얻는다", 2026-11-03 정정)*. oracle·feedback에 대상 경로·
+식별자·정답 seed·근접 보상은 넣지 않았으나, state-aware mutation 어휘 계열이
+`outside`/`sentinel.txt` 토큰을 포함할 수 있다. 어떤 rediscovery 프레이밍에서도 이 사실을 명시한다. *(구: "어휘·oracle에 … 하드코딩하지 않았으나", 2026-11-06 범위 정정)*
 
 ## 6.4 snapshot oracle의 구조적 한계
 
@@ -66,12 +66,12 @@ M3의 자율 발견은 **blind 발견이 아니다.** 기존 외부 객체에 �
 
 방어 가능한 서사는 다음이다: 하나의 outcome 기반 generic oracle이 CVE 식별자 없이 두 root-cause를
 통제 차분으로 포착하고(M2), 외부 객체 이름을 mutation 어휘에 넣지 **않으면** 자율
-경계위반 발견에 도달하지 못한다(M3 blind 대조는 어휘 통제). 이는 "filesystem-security-state를 feedback으로
+경계위반 발견에 도달하지 못한다(M3 어휘 제거 대조). 이는 "filesystem-security-state를 feedback으로
 쓴다"는 가설에서 **외부 이름의 관찰(어휘 획득)이 자율 발견의 필요조건임을 보이는 데까지** 왔다는 뜻이다
 *(구: "메커니즘이 실제로 발견을 구동함을 보이는 데까지 왔다", 2026-11-03 정정; retention·effect 피드백 자체의 인과는 R/D/S-u로 미분리)*. 그 feedback이
 무작위보다 **얼마나 효율적인가**(rate)와 여러 extractor로 **얼마나 일반화되는가**(자력발견
 effectiveness)는 powered 독립 반복으로 판정했고 **모두 효과 우위를 보이지 않았다**(rate CI 미분리·
 decompress·oras-go 자력발견 음성). 음성·미분리도 정직한 결과로 보고한다.
 
-(2026-11-03 정정: 이 blind 대조는 피드백이 아니라 **어휘**를 통제한 실험이다. 입증된 것은 "외부 객체 이름의 관찰(어휘 획득)이 자율 C1의 필요조건"이지 (st_dev, st_ino) retention·스케줄링 피드백의 기여가 아니며, 그 기여는 어휘를 맞춘 R/D/S-u 비교(research-questions v2 H-A)로 미분리다. 수치·서술은 보존한다. 상세: §5.3.2 정정.) 따라서 위 "메커니즘이 실제로 발견을 구동함"은 "이름 획득 조건에서 자율 트리거가
+(2026-11-03 정정: 이 어휘 제거 대조는 피드백이 아니라 **어휘**를 통제한 실험이다. 입증된 것은 "외부 객체 이름의 관찰(어휘 획득)이 자율 C1의 필요조건"이지 (st_dev, st_ino) retention·스케줄링 피드백의 기여가 아니며, 그 기여는 어휘를 맞춘 R/D/S-u 비교(research-questions v2 H-A)로 미분리다. 수치·서술은 보존한다. 상세: §5.3.2 정정.) 따라서 위 "메커니즘이 실제로 발견을 구동함"은 "이름 획득 조건에서 자율 트리거가
 관찰됨"으로 읽는다.

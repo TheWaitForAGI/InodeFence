@@ -24,12 +24,12 @@ AFTER를 찍는다. `StateSnapshot`에서 결과가 둘로 갈라진다: **State
 
 ## 4.2 generic과 target-specific의 분리
 
-연구 질문이 "고정 recipe 없이 generic mutation + state feedback"이므로, target/CVE 로직이 generic
-경로에 새지 않는 것이 설계의 핵심 불변식이다.
+핵심 RQ(research-questions v2)는 동일 어휘·동일 예산 아래 피드백 정책만 바꿔 비교한다. 따라서 CVE 식별자·PoC·고정 공격 패턴·대상 경로·sentinel 이름을
+oracle과 feedback에 넣지 않고, target/CVE 로직이 generic 경로에 새지 않는 것이 설계의 핵심 불변식이다 *(구: "고정 recipe 없이 generic mutation + state feedback", v1 질문, 2026-11-06 교체)*.
 
 - **Generic (target 무지):** `model/`, `generator/`, `mutator/`, `builder`, `observer/`, `oracle/`,
   `feedback/`, `pipeline`. Mutator는 8개 generic operator(add/remove/duplicate/reorder/path/hardlink/
-  symlink/link-target)만 가지며 target-specific vulnerability recipe를 소유하지 않는다. Observer는
+  symlink/link-target)를 가지며 CVE별 PoC를 소유하지 않는다. 다만 mutation 정책에는 escape-hardlink 문법과 관찰 이름 어휘가 있으므로(§4.4) 고정 패턴이 전혀 없다는 뜻은 아니다 *(구: "target-specific vulnerability recipe를 소유하지 않는다", 2026-11-06 범위 정정)*. Observer는
   `(st_dev, st_ino)`·nlink·mode·size·content digest·link text 같은 **사실만** 기록하고 취약 여부를
   판단하지 않는다. Oracle은 Contract를 적용하되 filesystem 접근·target 실행을 하지 않는다.
 - **Target-specific (격리):** `targets/`(node-tar worker 등)와 `execution/`(container backend). 실행
@@ -56,11 +56,11 @@ sentinel 경로·CVE를 feedback에 심지 않으며, EXTERNAL 판정은 region 
 
 결과에서 쓰는 arm 라벨은 다음 두 축에서 정의된다. 라벨의 정확한 정의는 각 validated summary와
 [`../../docs/research/design/research-questions.md`](../../docs/research/design/research-questions.md)의
-RQ2/RQ3를 따른다.
+H-A와 '폐기·대체 기록'을 따른다 *(구: "RQ2/RQ3", v1 번호, 2026-11-06 교체)*.
 
 - **M3 자력발견 study arm**([M3 요약](../../experiments/summaries/node-self-discovery-mechanism-v1.md) 정의):
   `A3full` = state-aware escape-hardlink(`uniform-generic-m1-state-aware-escape-hardlink-v1`),
-  `A3blind` = 동일하되 관찰 이름에서 EXTERNAL region 제외(identity-blind 대조),
+  `A3blind` = 동일하되 관찰 이름에서 EXTERNAL region 제외(어휘 제거 대조; 코드 이름 identity-blind),
   `A1` = 무작위 바닥(token-clean, state-aware 외부 주소지정 없음). search 정책은
   `effect-feedback-v2-or-violation-v1-boundary-attempt-v1-adaptive-mutation-v1`.
 - **item-3 단일경로 A/B/C/D arm**(Ledger 정의): `A` = B0/legacy(무작위), `B` = B0/M1(구조),

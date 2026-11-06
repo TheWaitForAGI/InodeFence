@@ -39,9 +39,9 @@ PYTHONPATH=src python3 scripts/analyze_exp0.py --index <run>/summaries/index.jso
    `by_target`을 읽는 새 생성기가 필요하다.
 2. **#256 `ARTIFACTS`에 EXP-3 행이 없다.** 새 생성기와 함께 추가하고, `exp0-survival.png` 행의 "pending lane 6 #219" 메모를
    갱신한다.
-3. **#256 `gen_table_m3.py`의 SUFFIX에 T-M3 옛 문단이 복제돼 있다.** T-M3 "읽는 법"을 2026-11-06에 정정했으므로, #265와 #256을 둘 다
-   머지하면 `tests/test_gen_tables.py::test_m3_render_byte_identical_to_committed`와 `--verify` T-M3 행이 깨진다. 머지 때 SUFFIX를
-   새 T-M3 본문에 맞춘다(W1). T-M2는 바꾸지 않았다.
+3. **#256 `gen_table_m3.py`에 T-M3 옛 문구가 복제돼 있다.** T-M3를 2026-11-06에 정정했으므로(제목, 관련 PR 행, A3blind 행 라벨, "읽는 법",
+   정정 주석), #265와 #256을 둘 다 머지하면 `tests/test_gen_tables.py::test_m3_render_byte_identical_to_committed`와 `--verify` T-M3 행이
+   깨진다. 머지 때 PREFIX·LABELS·SUFFIX를 새 T-M3에 맞춘다(W1). T-M2는 바꾸지 않았다.
 4. **EXP-0 재생성 시 확인.** pre-merge 리포트의 `targets`가 `["unspecified"]`인데 `index.json`의 `target_id`는 `7.5.2`다.
 5. **시간 값에는 clock을 표시한다.** `item2`·`item3`은 monotonic clock 기록이고 `summed.exec_per_hour`는 스트림당 값이다. 기록값과
    실시간 환산값을 나란히 적는다. EXP-0 배율 1.091(W2 확정)은 EXP-0 전용이므로 EXP-3에는 그 실행의 배율을 따로 확정해 쓴다. 호스트 전체

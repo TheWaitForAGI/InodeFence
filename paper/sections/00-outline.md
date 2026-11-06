@@ -14,12 +14,12 @@ Capability Ledger)로 추적 가능하다.
 ## 정직 프레이밍 (한 문단 요약)
 
 이 드래프트의 **주 주장은 두 개**다: (M2) 하나의 generic identity oracle이 릴리스 id·정답 경로
-하드코딩 없이 두 root-cause를 통제 차분으로 포착한다(observed), (M3) 영향 릴리스에서 object-identity
-관찰이 자율 경계위반 발견의 **이름 획득 조건으로 관찰된다(피드백 인과 미입증)** *(구: "인과적으로 가능케 한다", 2026-11-03 정정)*(blind 대조는 어휘 통제; 이름 없으면 도달 불가). **rate 우위
+하드코딩 없이 두 root-cause를 통제 차분으로 포착한다(observed), (M3) 영향 릴리스에서 외부 객체 이름을
+어휘에 획득한 조건에서 자율 경계위반이 관찰된다(**이름 획득 조건의 관찰, 피드백 인과 미입증**) *(구: "인과적으로 가능케 한다", 2026-11-03 정정; "object-identity 관찰이 … 이름 획득 조건으로 관찰된다", 2026-11-06 정정)*(어휘 제거 대조; 이름 없으면 도달 불가). **rate 우위
 (상태-인지 feedback이 무작위보다 빠르다/많이 찾는다)는 주 주장이 아니라 보조이며, powered 매칭 판정
 결과 Wilson CI가 겹쳐 미분리다(검정력 부족; 단 신규 seed s101로 메커니즘은 멀티-seed로 강화).**
 참신성은 확정 사실이 아니라 검증 대상 가설로 두고, "최초/새로운/기존연구에 없음" 류 표현은 쓰지 않는다.
-(2026-11-03 정정: 이 blind 대조는 피드백이 아니라 **어휘**를 통제한 실험이다. 입증된 것은 "외부 객체 이름의 관찰(어휘 획득)이 자율 C1의 필요조건"이지 (st_dev, st_ino) retention·스케줄링 피드백의 기여가 아니며, 그 기여는 어휘를 맞춘 R/D/S-u 비교(research-questions v2 H-A)로 미분리다. 수치·서술은 보존한다. 상세: §5.3.2 정정.) 따라서 (M3)는 "이름 획득 조건에서 자율 경계위반이 관찰됨(피드백 인과 미입증)"으로 읽는다.
+(2026-11-03 정정: 이 어휘 제거 대조는 피드백이 아니라 **어휘**를 통제한 실험이다. 입증된 것은 "외부 객체 이름의 관찰(어휘 획득)이 자율 C1의 필요조건"이지 (st_dev, st_ino) retention·스케줄링 피드백의 기여가 아니며, 그 기여는 어휘를 맞춘 R/D/S-u 비교(research-questions v2 H-A)로 미분리다. 수치·서술은 보존한다. 상세: §5.3.2 정정.) 따라서 (M3)는 "이름 획득 조건에서 자율 경계위반이 관찰됨(피드백 인과 미입증)"으로 읽는다.
 
 ## 읽는 순서
 
@@ -39,7 +39,7 @@ Capability Ledger)로 추적 가능하다.
 - 표: [`../tables/m2-cross-release-evidence.md`](../tables/m2-cross-release-evidence.md),
   [`../tables/m3-blind-ablation.md`](../tables/m3-blind-ablation.md),
   [`../tables/capability-ledger-summary.md`](../tables/capability-ledger-summary.md)
-- 그림(렌더됨, observed): [M2 verdict](../figures/m2-cross-release-evidence.png) · [M3 blind-ablation](../figures/m3-blind-ablation.png) — 사양 [m3-blind-ablation-figure-spec](../figures/m3-blind-ablation-figure-spec.md), 생성 소스 `../figures/render_*.py`
+- 그림(렌더됨, observed): [M2 verdict](../figures/m2-cross-release-evidence.png) · [M3 어휘 제거 대조](../figures/m3-blind-ablation.png) — 사양 [m3-blind-ablation-figure-spec](../figures/m3-blind-ablation-figure-spec.md), 생성 소스 `../figures/render_*.py`
 - 주장↔증거 매핑: [`claims-evidence-status-v1.md`](claims-evidence-status-v1.md)
 
 ## 상태 범례

@@ -52,7 +52,7 @@
 
 InodeFence 관점의 중요한 한계:
 
-후속 연구에서는 ZIPDiff가 복잡한 link composition과 creation order가 필요한 테스트 대상 symlink vulnerability를 찾지 못했다고 보고했다.
+후속 연구(Wormholes §5.6)에서는 ZIPDiff가 복잡한 link composition과 creation order가 필요한 테스트 대상 symlink vulnerability를 찾지 못했다고 보고했다. 재현한 ZIPDiff를 ZIP 도구 20개(그중 8개 symlink 취약)에 돌렸고 "fails to detect any of them"이다(원문 확인 2026-11-06 독립 심사).
 
 ## LinkZard — 2025
 
@@ -137,6 +137,8 @@ InodeFence hypothesis
         -> retain novel state
         -> mutate again
 ```
+
+이 도식은 가설의 구도일 뿐 "고정 recipe가 없다"는 주장이 아니다. InodeFence mutation에도 `add_hardlink` 연산자와 escape-hardlink 문법이 있고, 피해 경로 이름은 위협 모델 전제로 어휘에 포함한다. 불변식은 CVE 식별자·PoC·고정 공격 패턴·대상 경로·sentinel 이름을 oracle·feedback에 넣지 않는 것이다(D005·D006).
 
 ## 아직 하면 안 되는 주장
 

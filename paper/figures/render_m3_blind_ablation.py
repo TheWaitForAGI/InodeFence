@@ -1,4 +1,4 @@
-"""Render the M3 blind-ablation figure (observed data only).
+"""Render the M3 vocabulary-removal contrast figure (observed data only).
 
 Data source (observed): ``paper/tables/m3-blind-ablation.md``, re-counted from the raw
 step logs (hit = a step with ``oracle.C1`` AND ``feedback.contract_violated``). node-tar
@@ -57,8 +57,8 @@ def main() -> None:
         "a rate claim. The 21 hits are one lineage from one seed, in a run that aborted at step "
         "416; bars have different denominators (416 / 1475 / 33,005 steps, aborted campaigns "
         "included). The trigger is seed-rare (1 of 65 seeds). It is not blind discovery (the "
-        "fuzzer obtains the external name by observation; no hardcoded target path / answer seed "
-        "/ proximity reward). node-tar 7.5.2, budget 1500."
+        "fuzzer obtains the external name by observation; the oracle and feedback hold no target "
+        "path / answer seed / proximity reward). node-tar 7.5.2, budget 1500."
     )
     fig.text(0.5, 0.015, caption, ha="center", va="bottom", fontsize=7, wrap=True)
     fig.subplots_adjust(left=0.1, right=0.97, top=0.9, bottom=0.36)

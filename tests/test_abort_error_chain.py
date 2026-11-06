@@ -166,8 +166,8 @@ def test_case_shape_counts_without_names() -> None:
 def test_controller_writes_the_chain_into_the_abort_record(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, historical: bool
 ) -> None:
-    chain = [{"type": "builtins.OSError", "message": "first"}]
-    shape = {"entries": 2, "entry_types": {"regular": 2}, "content_bytes": 9}
+    chain: list[dict[str, object]] = [{"type": "builtins.OSError", "message": "first"}]
+    shape: dict[str, object] = {"entries": 2, "entry_types": {"regular": 2}, "content_bytes": 9}
 
     def fake_report(*_args: object, **_kwargs: object) -> None:
         raise NativeDemoAborted(

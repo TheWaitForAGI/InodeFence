@@ -444,7 +444,7 @@ def test_build_report_with_independence_adds_item8():
     cells = [cell_from_row(_rec(arm="R", random_seed=9001), DEFAULT_MAP)]
     indep = arm_abort_independence([[4, 0, 0], [4, 0, 0], [4, 0, 0]], ["R", "D", "S-u"])
     report = build_report(cells, field_map=DEFAULT_MAP, sources=["t"], independence=indep)
-    assert report["item8_arm_abort_independence"]["flag"] == "not_assessable"
+    assert report["arm_abort_independence"]["flag"] == "not_assessable"
 
 
 def test_main_contingency_option(tmp_path, capsys):
@@ -465,5 +465,5 @@ def test_main_contingency_option(tmp_path, capsys):
     exit_code = main(["--cell", str(cell), "--contingency", str(contingency), "--format", "json"])
     assert exit_code == 0
     report = json.loads(capsys.readouterr().out)
-    assert report["item8_arm_abort_independence"]["flag"] == "not_assessable"
-    assert report["item8_arm_abort_independence"]["arms"] == ["R", "D", "S-u"]
+    assert report["arm_abort_independence"]["flag"] == "not_assessable"
+    assert report["arm_abort_independence"]["arms"] == ["R", "D", "S-u"]

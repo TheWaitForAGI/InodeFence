@@ -609,7 +609,7 @@ def build_report(
     """Assemble the EXP-0 measurement report (prereg items 1-7) from validated cells.
 
     ``independence`` is the optional arm x abort independence reporting flag (audit 13a) from
-    lane 3's contingency table; when present it is added as ``item8_arm_abort_independence``.
+    lane 3's contingency table; when present it is added as ``arm_abort_independence``.
     """
     if not cells:
         raise ValueError("no cells to summarize")
@@ -640,7 +640,7 @@ def build_report(
         "provenance": {"source_files": list(sources), "field_map": dict(field_map)},
     }
     if independence is not None:
-        report["item8_arm_abort_independence"] = independence
+        report["arm_abort_independence"] = independence
     return report
 
 
@@ -759,7 +759,7 @@ def report_markdown(report: dict) -> str:
     )
     if "zero_hit" in hazard:
         lines += ["", f"Zero-hit: {hazard['zero_hit']['policy']}"]
-    independence = report.get("item8_arm_abort_independence")
+    independence = report.get("arm_abort_independence")
     if independence:
         primary = independence["primary_arm_vs_abort"]
         lines += [

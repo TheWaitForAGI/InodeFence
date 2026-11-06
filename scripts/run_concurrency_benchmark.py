@@ -110,6 +110,10 @@ OWN_CONTAINER = re.compile(r"inodefence-(local-controller-|[0-9a-f]{32}$)")
 BLOCK_FILE = "block.json"
 #: Written by the analysis script; the next stage's gate reads its mechanical decision.
 REPORT_JSON = "concurrency-report.json"
+# Why a block stopped (design file, section 6.3). A load the level may have caused, or a fact about
+# the host that voids the measurement whatever the level.
+STOP_LEVEL = "level"
+STOP_EXTERNAL = "external"
 
 
 class DesignError(ValueError):
@@ -405,18 +409,18 @@ def read_host_counters(proc: Path = Path("/proc")) -> dict[str, Any]:
     return {"memory": memory, "cpu_jiffies": [int(item) for item in cpu], "pressure": pressure}
 
 
-def host_stop_reason(sample: Mapping[str, Any], design: Design) -> str | None:
-    """A host sample that means this level must not start more cells."""
+def host_stop_reason(sample: Mapping[str, Any], design: Design) -> tuple[str, str] | None:
+    """A host sample that means this level must not start more cells: (reason, stop kind)."""
     memory = sample.get("memory") or {}
     total, available = memory.get("MemTotal"), memory.get("MemAvailable")
     if total and available is not None and available / total < design.memory_stop_fraction:
-        return f"available memory {available / total:.1%} is under the stop fraction"
+        return f"available memory {available / total:.1%} is under the stop fraction", STOP_LEVEL
     disk = sample.get("disk_fraction")
     if disk is not None and disk >= design.disk_stop_fraction:
-        return f"disk usage {disk:.1%} reached the stop fraction"
+        return f"disk usage {disk:.1%} reached the stop fraction", STOP_EXTERNAL
     foreign = [name for name in sample.get("containers") or () if OWN_CONTAINER.match(name) is None]
     if foreign:
-        return f"foreign containers appeared during the block: {foreign}"
+        return f"foreign containers appeared during the block: {foreign}", STOP_EXTERNAL
     return None
 
 
@@ -439,12 +443,15 @@ class BlockRun:
         self.lock = threading.Lock()
         self.nonzero_cells = 0
         self.stopped_reason: str | None = None
+        self.stop_kind: str | None = None
         self.records: list[dict[str, Any]] = []
 
-    def request_stop(self, reason: str) -> None:
+    def request_stop(self, reason: str, kind: str) -> None:
+        """The first reason is the block's reason: what came after it may be its consequence."""
         with self.lock:
             if self.stopped_reason is None:
                 self.stopped_reason = reason
+                self.stop_kind = kind
 
     def run_one(self, cell: Cell) -> None:
         if self.stopped_reason is not None:
@@ -476,9 +483,9 @@ class BlockRun:
             if result.returncode != 0:
                 self.nonzero_cells += 1
         if result.returncode == WATCHDOG_RETURNCODE:
-            self.request_stop(f"{cell.run_id} hit the campaign watchdog")
+            self.request_stop(f"{cell.run_id} hit the campaign watchdog", STOP_LEVEL)
         elif self.nonzero_cells >= self.design.stop_nonzero_cells:
-            self.request_stop(f"{self.nonzero_cells} cells exited nonzero")
+            self.request_stop(f"{self.nonzero_cells} cells exited nonzero", STOP_LEVEL)
 
     def execute(self) -> dict[str, Any]:
         self.raw.mkdir(parents=True, exist_ok=True)
@@ -497,6 +504,7 @@ class BlockRun:
             "started": started,
             "ended": ended,
             "stopped_reason": self.stopped_reason,
+            "stop_kind": self.stop_kind,
             "finished": True,
             "cells": sorted(self.records, key=lambda record: order[record["run_id"]]),
         }
@@ -530,13 +538,13 @@ def _sample_host(
                     next_probe = sample["monotonic"] + DOCKER_PROBE_SECONDS
                 stream.write(json.dumps(sample, sort_keys=True) + "\n")
                 stream.flush()
-                reason = host_stop_reason(sample, run.design)
-                if reason is not None:
-                    run.request_stop(reason)
+                host_stop = host_stop_reason(sample, run.design)
+                if host_stop is not None:
+                    run.request_stop(*host_stop)
                 if stop.wait(seconds):
                     return
     except Exception as error:
-        run.request_stop(f"host sampler failed: {type(error).__name__}: {error}")
+        run.request_stop(f"host sampler failed: {type(error).__name__}: {error}", STOP_EXTERNAL)
 
 
 def _start_events(path: Path) -> subprocess.Popen[bytes]:
@@ -573,10 +581,12 @@ def run_block(design: Design, block: Block, directory: Path, bash: str) -> dict[
         events.wait(timeout=30)
     # A sampler stop that came after the last cell started is still a reason to end the stage.
     record["stopped_reason"] = run.stopped_reason
+    record["stop_kind"] = run.stop_kind
     residual = residual_resources()
     record["residual_after_block"] = residual
     if residual and record["stopped_reason"] is None:
         record["stopped_reason"] = f"residual resources after the block: {residual}"
+        record["stop_kind"] = STOP_LEVEL
     (directory / BLOCK_FILE).write_text(
         json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )

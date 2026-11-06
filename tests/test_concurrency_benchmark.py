@@ -132,6 +132,7 @@ def test_block_stops_starting_cells_after_half_fail(design: bench.Design, tmp_pa
     states = [cell["state"] for cell in record["cells"]]
     assert "not-run" in states
     assert record["stopped_reason"] is not None
+    assert record["stop_kind"] == bench.STOP_LEVEL
     ran = sum(1 for state in states if state == "ran")
     assert 6 <= ran <= 6 + block.jobs - 1
 
@@ -158,6 +159,7 @@ def test_watchdog_kill_stops_the_block(design: bench.Design, tmp_path: Path) -> 
     )
     record = run.execute()
     assert "watchdog" in (record["stopped_reason"] or "")
+    assert record["stop_kind"] == bench.STOP_LEVEL
 
 
 def test_host_stop_reasons(design: bench.Design) -> None:
@@ -168,10 +170,47 @@ def test_host_stop_reasons(design: bench.Design) -> None:
     }
     assert bench.host_stop_reason(quiet, design) is None
     low_memory = {**quiet, "memory": {"MemTotal": 100, "MemAvailable": 5}}
-    assert "memory" in (bench.host_stop_reason(low_memory, design) or "")
-    assert "disk" in (bench.host_stop_reason({**quiet, "disk_fraction": 0.95}, design) or "")
+    reason, kind = bench.host_stop_reason(low_memory, design) or ("", "")
+    assert "memory" in reason
+    assert kind == bench.STOP_LEVEL
+    reason, kind = bench.host_stop_reason({**quiet, "disk_fraction": 0.95}, design) or ("", "")
+    assert "disk" in reason
+    assert kind == bench.STOP_EXTERNAL
     foreign = {**quiet, "containers": ["someone-else"]}
-    assert "foreign" in (bench.host_stop_reason(foreign, design) or "")
+    reason, kind = bench.host_stop_reason(foreign, design) or ("", "")
+    assert "foreign" in reason
+    assert kind == bench.STOP_EXTERNAL
+
+
+def test_the_first_stop_names_the_block(design: bench.Design, tmp_path: Path) -> None:
+    block = bench.planned_blocks(design, "A")[0]
+    run = bench.BlockRun(design, block, tmp_path, lambda c, r, _e: _fake_result(c, r, 0))
+    run.request_stop("foreign container", bench.STOP_EXTERNAL)
+    run.request_stop("watchdog", bench.STOP_LEVEL)
+    assert (run.stopped_reason, run.stop_kind) == ("foreign container", bench.STOP_EXTERNAL)
+
+
+def test_residual_resources_after_a_block_are_a_level_stop(
+    design: bench.Design, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class FakeEvents:
+        def terminate(self) -> None:
+            pass
+
+        def wait(self, timeout: float) -> int:
+            return 0
+
+    monkeypatch.setattr(bench, "_start_events", lambda _path: FakeEvents())
+    monkeypatch.setattr(bench, "_sample_host", lambda *_args: None)
+    monkeypatch.setattr(bench, "residual_resources", lambda: ["left-over"])
+    monkeypatch.setattr(
+        bench, "run_cell_with_watchdog", lambda c, r, _e, _b, limit_seconds: _fake_result(c, r, 0)
+    )
+    block = bench.planned_blocks(design, "A")[0]
+    record = bench.run_block(design, block, tmp_path, "bash")
+    assert "residual" in (record["stopped_reason"] or "")
+    assert record["stop_kind"] == bench.STOP_LEVEL
+    assert json.loads((tmp_path / bench.BLOCK_FILE).read_text("utf-8"))["stop_kind"] == "level"
 
 
 def test_a_failed_sampler_stops_the_block(
@@ -185,6 +224,7 @@ def test_a_failed_sampler_stops_the_block(
     run = bench.BlockRun(design, block, tmp_path, lambda c, r, _e: _fake_result(c, r, 0))
     bench._sample_host(run, tmp_path / "samples.jsonl", threading.Event(), seconds=0.01)
     assert "sampler failed" in (run.stopped_reason or "")
+    assert run.stop_kind == bench.STOP_EXTERNAL
 
 
 def _write_report(path: Path, design: bench.Design, passed: bool, **extra: Any) -> None:
@@ -271,6 +311,47 @@ def test_watchdog_and_other_abnormal_boundaries() -> None:
 
 def test_stopped_level_is_excluded() -> None:
     assert _rules(_level(stopped=["6 cells exited nonzero"])) == {"stopped"}
+
+
+@pytest.mark.parametrize(
+    ("values", "arm_values", "rule"),
+    [
+        ({"watchdog_kills": 1}, {}, "V1"),
+        ({"other_abnormal": 2}, {}, "V2"),
+        ({"aborts": 8}, {}, "V3"),
+        ({}, {"target_seconds_p999": 5.01}, "V6"),
+        ({}, {"timed_out": 13}, "V7"),
+        ({}, {"ineligible_steps": 241}, "V8"),
+        ({}, {"cell_monotonic_max": 7200.1}, "V10"),
+    ],
+)
+def test_absolute_rules_over_the_limit(
+    values: dict[str, Any], arm_values: dict[str, Any], rule: str
+) -> None:
+    level = _level({"D": arm_values}, **values)
+    assert {item["rule"] for item in analysis.absolute_violations(level)} == {rule}
+
+
+@pytest.mark.parametrize(
+    ("values", "arm_values"),
+    [
+        ({"other_abnormal": 1}, {}),
+        ({"aborts": 7}, {}),
+        ({}, {"target_seconds_p999": 5.0}),
+        ({}, {"timed_out": 12}),
+        ({}, {"ineligible_steps": 240}),
+        ({}, {"cell_monotonic_max": 7200.0}),
+    ],
+)
+def test_absolute_rules_at_the_limit(values: dict[str, Any], arm_values: dict[str, Any]) -> None:
+    assert analysis.absolute_violations(_level({"D": arm_values}, **values)) == []
+
+
+def test_absolute_rules_leave_out_the_comparisons() -> None:
+    # Over V4, V7 in total and V8 relative against a clean reference, with no absolute limit broken.
+    worse = _level({name: {"aborts": 1, "timed_out": 3, "ineligible_steps": 60} for name in ARMS})
+    assert analysis.absolute_violations(worse) == []
+    assert {"V7", "V8"} <= _rules(worse)
 
 
 def test_abort_absolute_boundary_is_eight_of_twentyfour() -> None:
@@ -700,9 +781,12 @@ def _write_stage(
     abort_step: int = 2,
     abort_duration: float = 360.0,
     last_block_case: str | None = None,
+    stop: tuple[int, str] | None = None,
 ) -> None:
     order = design.stages[stage]
     for index, jobs in enumerate(order, start=1):
+        if stop is not None and index > stop[0]:
+            break
         directory = root / stage / f"block-{index}-j{jobs}"
         raw = directory / "raw"
         duration = (durations or {}).get(jobs, 720.0 / jobs)
@@ -729,7 +813,8 @@ def _write_stage(
             "jobs": jobs,
             "started": {"realtime": 0.0, "monotonic": 0.0},
             "ended": {"realtime": duration, "monotonic": duration * 1.09},
-            "stopped_reason": None,
+            "stopped_reason": "stopped here" if stop and stop[0] == index else None,
+            "stop_kind": stop[1] if stop and stop[0] == index else None,
             "residual_after_block": [],
             "cells": cells,
         }
@@ -896,6 +981,191 @@ def test_jobs_two_over_the_abort_limit_halts(design: bench.Design) -> None:
     assert [item["rule"] for item in decision["halts"]] == ["H1"]
     assert decision["selected_jobs"] is None
     assert decision["fallback_jobs"] is None
+
+
+def _stage(
+    design: bench.Design,
+    name: str,
+    *,
+    stop: tuple[int, str] | None = None,
+    ref: dict[str, Any] | None = None,
+    high: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """A stage whose higher level has twice the throughput, cut off at a stopped block."""
+    order = design.stages[name]
+    blocks: list[dict[str, Any]] = []
+    for index, jobs in enumerate(order, start=1):
+        stopped = stop is not None and stop[0] == index
+        blocks.append(
+            {
+                "stage": name,
+                "index": index,
+                "jobs": jobs,
+                "stopped_reason": "stopped here" if stopped else None,
+                "stop_kind": stop[1] if stop is not None and stopped else None,
+                "cells": [
+                    {"run_id": f"cell-{cell}", "disposition": "normal", "abort": None}
+                    for cell in range(12)
+                ],
+                "cells_planned": 12,
+                "cells_not_run": 0,
+                "saturated_exec_per_real_hour": 200.0 if jobs == order[1] else 100.0,
+                "determinism": {"m": 0, "one_sided_congestion_cells": []},
+            }
+        )
+        if stopped:
+            break
+    levels: dict[str, Any] = {}
+    for jobs, given in ((order[0], ref), (order[1], high)):
+        group = [block for block in blocks if block["jobs"] == jobs]
+        if group:
+            reasons = [block["stopped_reason"] for block in group if block["stopped_reason"]]
+            levels[str(jobs)] = {**(given or _level()), "stopped": reasons}
+    return {"blocks": blocks, "levels": levels}
+
+
+LEVEL_STOP = bench.STOP_LEVEL
+EXTERNAL_STOP = bench.STOP_EXTERNAL
+
+
+@pytest.mark.parametrize(
+    ("index", "kind"), [(1, EXTERNAL_STOP), (4, EXTERNAL_STOP), (1, LEVEL_STOP)]
+)
+def test_a_stopped_first_reference_halts_as_h5(design: bench.Design, index: int, kind: str) -> None:
+    stage = _stage(design, "A", stop=(index, kind))
+    decision = analysis.decide(design, {"A": stage})
+    assert [item["rule"] for item in decision["halts"]] == ["H5"]
+    assert decision["status"] == "halted"
+    assert decision["selected_jobs"] is None
+    assert decision["fallback_jobs"] is None
+    assert decision["stage_invalid"] is None
+    assert decision["stages"]["A"]["passed"] is False
+
+
+@pytest.mark.parametrize("index", [2, 3])
+def test_an_external_stop_of_the_first_higher_level_selects_nothing(
+    design: bench.Design, index: int
+) -> None:
+    decision = analysis.decide(design, {"A": _stage(design, "A", stop=(index, EXTERNAL_STOP))})
+    assert decision["status"] == "provisional"
+    assert decision["selected_jobs"] is None
+    assert decision["halts"] == []
+    assert decision["stage_invalid"] == "A"
+    verdict = decision["stages"]["A"]
+    assert verdict["stage_invalid"] is True
+    assert verdict["passed"] is False
+    # Not an exclusion: nothing is held against the level.
+    assert verdict["violations"] == []
+
+
+@pytest.mark.parametrize("index", [1, 2, 3, 4])
+def test_an_external_stop_in_a_later_stage_keeps_the_passed_level(
+    design: bench.Design, index: int
+) -> None:
+    stages = {"A": _stage(design, "A"), "B": _stage(design, "B", stop=(index, EXTERNAL_STOP))}
+    decision = analysis.decide(design, stages)
+    assert decision["status"] == "provisional"
+    assert decision["selected_jobs"] == 4
+    assert decision["stage_invalid"] == "B"
+    assert decision["halts"] == []
+    assert decision["stages"]["A"]["passed"] is True
+    assert decision["stages"]["B"]["passed"] is False
+
+
+def test_an_external_stop_ignores_what_the_voided_stage_measured(design: bench.Design) -> None:
+    high_aborts = _level({name: {"aborts": 4} for name in ARMS})
+    stage = _stage(design, "A", stop=(3, EXTERNAL_STOP), high=high_aborts, ref=high_aborts)
+    decision = analysis.decide(design, {"A": stage})
+    assert decision["halts"] == []
+    assert decision["stages"]["A"]["ref_violations"] == []
+
+
+def test_a_level_stop_of_a_higher_level_excludes_it(design: bench.Design) -> None:
+    decision = analysis.decide(design, {"A": _stage(design, "A", stop=(2, LEVEL_STOP))})
+    assert decision["status"] == "selected"
+    assert decision["selected_jobs"] == 2
+    assert decision["stage_invalid"] is None
+    assert {item["rule"] for item in decision["stages"]["A"]["violations"]} == {"stopped"}
+    stages = {"A": _stage(design, "A"), "B": _stage(design, "B", stop=(3, LEVEL_STOP))}
+    decision = analysis.decide(design, stages)
+    assert decision["status"] == "selected"
+    assert decision["selected_jobs"] == 4
+
+
+@pytest.mark.parametrize("index", [1, 4])
+def test_a_level_stop_of_a_later_reference_steps_down(design: bench.Design, index: int) -> None:
+    stages = {"A": _stage(design, "A"), "B": _stage(design, "B", stop=(index, LEVEL_STOP))}
+    decision = analysis.decide(design, stages)
+    assert decision["status"] == "selected"
+    assert decision["selected_jobs"] == 2
+    assert decision["stages"]["B"]["ref_cancelled"] is True
+    assert decision["stages"]["B"]["passed"] is False
+
+
+@pytest.mark.parametrize(
+    "ref",
+    [
+        _level(watchdog_kills=1),
+        _level(other_abnormal=2),
+        _level(aborts=8),
+        _level({"D": {"target_seconds_p999": 5.01}}),
+        _level({"D": {"timed_out": 13}}),
+        _level({"D": {"ineligible_steps": 241}}),
+        _level({"D": {"cell_monotonic_max": 7200.1}}),
+    ],
+)
+def test_a_later_reference_over_an_absolute_rule_steps_down(
+    design: bench.Design, ref: dict[str, Any]
+) -> None:
+    stages = {"A": _stage(design, "A"), "B": _stage(design, "B", ref=ref)}
+    decision = analysis.decide(design, stages)
+    assert decision["status"] == "selected"
+    assert decision["selected_jobs"] == 2
+    assert decision["stages"]["B"]["ref_cancelled"] is True
+    assert decision["halts"] == []
+
+
+def test_a_cancelled_reference_steps_down_one_stage_only(design: bench.Design) -> None:
+    stages = {
+        "A": _stage(design, "A"),
+        "B": _stage(design, "B"),
+        "C": _stage(design, "C", ref=_level(watchdog_kills=1)),
+    }
+    decision = analysis.decide(design, stages)
+    assert decision["status"] == "selected"
+    assert decision["selected_jobs"] == 4
+
+
+def test_the_first_reference_over_an_absolute_rule_is_only_shown(design: bench.Design) -> None:
+    stage = _stage(design, "A", ref=_level({"D": {"target_seconds_p999": 5.01}}))
+    decision = analysis.decide(design, {"A": stage})
+    verdict = decision["stages"]["A"]
+    assert {item["rule"] for item in verdict["ref_violations"]} == {"V6"}
+    assert verdict["ref_cancelled"] is False
+    assert verdict["passed"] is True
+    assert decision["selected_jobs"] == 4
+
+
+def test_clean_stages_end_at_the_top_level(design: bench.Design) -> None:
+    stages = {name: _stage(design, name) for name in ("A", "B", "C")}
+    decision = analysis.decide(design, stages)
+    assert decision["status"] == "selected"
+    assert decision["selected_jobs"] == 8
+    assert decision["stage_invalid"] is None
+
+
+def test_stop_kind_reaches_the_decision_from_the_block_file(
+    design: bench.Design, tmp_path: Path
+) -> None:
+    _write_stage(tmp_path, design, "A", stop=(3, EXTERNAL_STOP))
+    report = analysis.analyze(tmp_path, design)
+    assert report["decision"]["stage_invalid"] == "A"
+    assert report["decision"]["selected_jobs"] is None
+    assert report["stages"]["A"]["blocks"][2]["stop_kind"] == EXTERNAL_STOP
+    assert "측정 무효 단계(외부 탓 멈춤, 재실행은 별도 승인): A" in analysis.render_markdown(report)
+    # The driver's gate refuses the next stage on this report.
+    (tmp_path / bench.REPORT_JSON).write_text(json.dumps(report), encoding="utf-8")
+    assert "did not pass" in (bench.stage_gate_problem(design, "B", tmp_path) or "")
 
 
 def test_one_sided_congestion_cell_is_not_normal_for_g(design: bench.Design) -> None:

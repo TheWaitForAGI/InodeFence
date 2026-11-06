@@ -1,8 +1,8 @@
 """Analysis and decision of the concurrency scaling benchmark (``concurrency-scaling-v1``).
 
 Reads a benchmark output tree and writes ``concurrency-report.json`` and ``.md``. The report ends
-in a mechanical decision (design file, section 6): a selected concurrency level, or a stop
-condition H1 to H3, plus the H4 count.
+in a mechanical decision (design file, section 6): a selected concurrency level, a stage whose
+measurement an external stop voided, or a stop condition H1, H2, H3 or H5, plus the H4 count.
 
 Sealed raw: no oracle value leaves this script. To compare paths between blocks, each step's
 oracle verdict and fed-back keys are reduced to an in-memory hash. The one thing the decision takes
@@ -38,6 +38,7 @@ from scripts.run_concurrency_benchmark import (
     BLOCK_FILE,
     REPORT_JSON,
     SMOKE_STAGE,
+    STOP_EXTERNAL,
     Design,
     load_design,
     measured_stages,
@@ -520,6 +521,7 @@ def summarize_block(
         "real_seconds": real,
         "monotonic_over_real": monotonic / real if real > 0 else None,
         "stopped_reason": record.get("stopped_reason"),
+        "stop_kind": record.get("stop_kind"),
         "residual_after_block": record.get("residual_after_block"),
         "cells_planned": len(record["cells"]),
         "cells_not_run": not_run,
@@ -733,6 +735,44 @@ def abort_arm_p_value(level: Mapping[str, Any]) -> float | None:
     return result["primary_arm_vs_abort"]["p_value"]
 
 
+def _ineligible_over_limit(arm: Mapping[str, Any]) -> bool:
+    steps = arm["steps"]
+    return bool(steps) and arm["ineligible_steps"] / steps * 1000 > V8_PER_1000
+
+
+def absolute_violations(level: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """The rules that need no reference level: V1, V2, V3, V6, V7 per arm, V8 limit, V10.
+
+    A stage's reference level is re-judged by these alone. It passed its own comparison earlier,
+    so only an outright failure in its new blocks can take that back.
+    """
+    found: list[dict[str, Any]] = []
+
+    def add(rule: str, detail: object) -> None:
+        found.append({"rule": rule, "detail": detail})
+
+    if level["watchdog_kills"] >= 1:
+        add("V1", level["watchdog_kills"])
+    if level["other_abnormal"] >= V2_OTHER_ABNORMAL:
+        add("V2", level["other_abnormal"])
+    fraction = level["aborts"] / level["campaigns"] if level["campaigns"] else 0.0
+    if fraction > V3_ABORT_FRACTION:
+        add("V3", fraction)
+    for name, arm in level["arms"].items():
+        p999 = arm["target_seconds_p999"]
+        if p999 is not None and p999 > V6_TARGET_P999_SECONDS:
+            add("V6", {"arm": name, "p999": p999})
+        steps = arm["steps"]
+        if steps and arm["timed_out"] / steps * 1000 > V7_TIMED_OUT_PER_1000:
+            add("V7", {"arm": name, "timed_out": arm["timed_out"], "steps": steps})
+        if _ineligible_over_limit(arm):
+            add("V8", {"arm": name, "ineligible": arm["ineligible_steps"], "steps": steps})
+        monotonic = arm["cell_monotonic_max"]
+        if monotonic is not None and monotonic > V10_CELL_MONOTONIC_SECONDS:
+            add("V10", {"arm": name, "cell_monotonic_max": monotonic})
+    return found
+
+
 def level_violations(
     level: Mapping[str, Any],
     ref: Mapping[str, Any],
@@ -742,20 +782,13 @@ def level_violations(
     one_sided_cells: int,
 ) -> list[dict[str, Any]]:
     """Exclusion rules V1 to V10 for a level against its stage's reference level."""
-    found: list[dict[str, Any]] = []
+    found = absolute_violations(level)
 
     def add(rule: str, detail: object) -> None:
         found.append({"rule": rule, "detail": detail})
 
     if level["stopped"]:
         add("stopped", level["stopped"])
-    if level["watchdog_kills"] >= 1:
-        add("V1", level["watchdog_kills"])
-    if level["other_abnormal"] >= V2_OTHER_ABNORMAL:
-        add("V2", level["other_abnormal"])
-    fraction = level["aborts"] / level["campaigns"] if level["campaigns"] else 0.0
-    if fraction > V3_ABORT_FRACTION:
-        add("V3", fraction)
     if significantly_more(level["aborts"], ref["aborts"]):
         add("V4", {"aborts": level["aborts"], "ref_aborts": ref["aborts"]})
     if level["aborts"] > ref["aborts"]:
@@ -763,16 +796,9 @@ def level_violations(
         if p_value is not None and p_value <= V5_ARM_P:
             add("V5", p_value)
     for name, arm in level["arms"].items():
-        p999 = arm["target_seconds_p999"]
-        if p999 is not None and p999 > V6_TARGET_P999_SECONDS:
-            add("V6", {"arm": name, "p999": p999})
         steps = arm["steps"]
-        if steps and arm["timed_out"] / steps * 1000 > V7_TIMED_OUT_PER_1000:
-            add("V7", {"arm": name, "timed_out": arm["timed_out"], "steps": steps})
         ref_arm = ref["arms"].get(name)
-        if steps and arm["ineligible_steps"] / steps * 1000 > V8_PER_1000:
-            add("V8", {"arm": name, "ineligible": arm["ineligible_steps"], "steps": steps})
-        elif steps and ref_arm and ref_arm["steps"]:
+        if not _ineligible_over_limit(arm) and steps and ref_arm and ref_arm["steps"]:
             rate = arm["ineligible_steps"] / steps
             ref_rate = ref_arm["ineligible_steps"] / ref_arm["steps"]
             share = steps / (steps + ref_arm["steps"])
@@ -782,9 +808,6 @@ def level_violations(
                 <= ALPHA
             ):
                 add("V8", {"arm": name, "rate": rate, "ref_rate": ref_rate})
-        monotonic = arm["cell_monotonic_max"]
-        if monotonic is not None and monotonic > V10_CELL_MONOTONIC_SECONDS:
-            add("V10", {"arm": name, "cell_monotonic_max": monotonic})
     if significantly_more(level["timed_out"], ref["timed_out"]):
         add("V7", {"timed_out": level["timed_out"], "ref_timed_out": ref["timed_out"]})
     if block_m and max(block_m) - floor >= V9_EXCESS_OVER_FLOOR:
@@ -872,20 +895,30 @@ def decide(design: Design, stages: Mapping[str, Mapping[str, Any]]) -> dict[str,
     halts: list[dict[str, Any]] = []
     verdicts: dict[str, Any] = {}
     status = "pending"
+    invalid_stage: str | None = None
     if repeated:
         halts.append({"rule": "H2", "detail": repeated})
-    for name in measured_stages(design):
+    measured = measured_stages(design)
+    for position, name in enumerate(measured):
         order = design.stages[name]
         ref_jobs, high_jobs = order[0], order[1]
+        first_stage = position == 0
         if selected is None:
             selected = ref_jobs
         stage = stages.get(name)
         if stage is None:
             break
         blocks = stage["blocks"]
-        stopped = any(block["stopped_reason"] for block in blocks)
-        if len(blocks) < len(order) and not stopped:
+        stopped_blocks = [block for block in blocks if block["stopped_reason"]]
+        if len(blocks) < len(order) and not stopped_blocks:
             break
+        external = any(block["stop_kind"] == STOP_EXTERNAL for block in stopped_blocks)
+        ref_stopped = any(block["jobs"] == ref_jobs for block in stopped_blocks)
+        # The first reference did not finish: not "failed to pass" but "could not measure".
+        if first_stage and ref_stopped:
+            halts.append({"rule": "H5", "detail": [b["stopped_reason"] for b in stopped_blocks]})
+        # An external stop voids the stage's measurements, so no rule reads them.
+        invalid = external and not (first_stage and ref_stopped)
         ref = stage["levels"][str(ref_jobs)]
         high = stage["levels"].get(str(high_jobs))
         floor = next(
@@ -893,43 +926,62 @@ def decide(design: Design, stages: Mapping[str, Mapping[str, Any]]) -> dict[str,
             0,
         )
         fraction = ref["aborts"] / ref["campaigns"] if ref["campaigns"] else 0.0
-        if name == measured_stages(design)[0] and fraction > V3_ABORT_FRACTION:
+        if first_stage and not external and fraction > V3_ABORT_FRACTION:
             halts.append({"rule": "H1", "detail": fraction})
-        if floor >= H3_FLOOR:
+        if not external and floor >= H3_FLOOR:
             halts.append({"rule": "H3", "stage": name, "floor": floor})
         high_blocks = [b for b in blocks if b["jobs"] == high_jobs]
-        violations: list[dict[str, Any]] = (
-            level_violations(
-                high,
-                ref,
-                floor=floor,
-                block_m=[b["determinism"]["m"] for b in high_blocks],
-                one_sided_cells=sum(
-                    len(b["determinism"]["one_sided_congestion_cells"]) for b in high_blocks
-                ),
+        violations: list[dict[str, Any]] = []
+        ref_violations: list[dict[str, Any]] = []
+        if not external:
+            violations = (
+                level_violations(
+                    high,
+                    ref,
+                    floor=floor,
+                    block_m=[b["determinism"]["m"] for b in high_blocks],
+                    one_sided_cells=sum(
+                        len(b["determinism"]["one_sided_congestion_cells"]) for b in high_blocks
+                    ),
+                )
+                if high is not None
+                else [{"rule": "stopped", "detail": "the higher level did not run"}]
             )
-            if high is not None
-            else [{"rule": "stopped", "detail": "the higher level did not run"}]
-        )
-        if ref["stopped"]:
-            violations.append({"rule": "stopped", "detail": {"reference": ref["stopped"]}})
+            ref_violations = absolute_violations(ref)
+            if ref["stopped"]:
+                ref_violations.append({"rule": "stopped", "detail": ref["stopped"]})
+        # The first reference has nowhere lower to go, so its violations are only shown.
+        ref_cancelled = bool(ref_violations) and not first_stage
         ratios = selection_ratios(
             [block["saturated_exec_per_real_hour"] for block in blocks],
             normal_fraction([b for b in blocks if b["jobs"] == ref_jobs]),
             normal_fraction(high_blocks),
         )
-        passed = not violations and bool(ratios["gain"])
+        passed = not invalid and not ref_cancelled and not violations and bool(ratios["gain"])
         verdicts[name] = {
             "ref_jobs": ref_jobs,
             "high_jobs": high_jobs,
             "floor": floor,
+            "stage_invalid": invalid,
             "violations": violations,
+            "ref_violations": ref_violations,
+            "ref_cancelled": ref_cancelled,
             "g_blocks": [block_g(block, design.budget) for block in blocks],
             **ratios,
             "throughput_judgement_invalid": ratios["drift"] is not None and not ratios["valid"],
             "passed": passed and not halts,
         }
         if halts:
+            break
+        if invalid:
+            invalid_stage = name
+            status = "provisional"
+            if first_stage:
+                selected = None
+            break
+        if ref_cancelled:
+            selected = design.stages[measured[position - 1]][0]
+            status = "selected"
             break
         if not passed:
             status = "selected"
@@ -946,13 +998,14 @@ def decide(design: Design, stages: Mapping[str, Mapping[str, Any]]) -> dict[str,
     elif status == "pending":
         selected = None
     elif status == "provisional" and all(
-        name in verdicts and verdicts[name]["passed"] for name in measured_stages(design)
+        name in verdicts and verdicts[name]["passed"] for name in measured
     ):
         status = "selected"
     return {
         "status": status,
         "selected_jobs": selected,
         "fallback_jobs": fallback,
+        "stage_invalid": invalid_stage,
         "halts": halts,
         "h4_first_error_unconfirmed": unconfirmed,
         "stages": verdicts,
@@ -1026,6 +1079,7 @@ def render_markdown(report: Mapping[str, Any]) -> str:
         f"- 상태: {decision['status']}",
         f"- 선택 수준: {_fmt(decision['selected_jobs'])}",
         f"- 대체값(H3, 비교로 고른 값 아님): {_fmt(decision['fallback_jobs'])}",
+        f"- 측정 무효 단계(외부 탓 멈춤, 재실행은 별도 승인): {_fmt(decision['stage_invalid'])}",
         f"- 중단 조건: {[item['rule'] for item in decision['halts']] or '없음'}",
         f"- 첫 오류 미확인 abort(H4): {decision['h4_first_error_unconfirmed']}",
         f"- 재발 abort: {len(decision['recurrences']['same_input'])}, "
@@ -1036,9 +1090,12 @@ def render_markdown(report: Mapping[str, Any]) -> str:
     ]
     for name, verdict in decision["stages"].items():
         rules = sorted({item["rule"] for item in verdict["violations"]})
+        ref_rules = sorted({item["rule"] for item in verdict["ref_violations"]})
         lines.append(
             f"- 단계 {name} ({verdict['ref_jobs']}→{verdict['high_jobs']}): "
-            f"통과 {verdict['passed']}, 배제 {rules or '없음'}, rho {verdict['rho']}, "
+            f"통과 {verdict['passed']}, 측정 무효 {verdict['stage_invalid']}, "
+            f"배제 {rules or '없음'}, 기준 수준 위반 {ref_rules or '없음'}"
+            f"{' (취소하고 내림)' if verdict['ref_cancelled'] else ''}, rho {verdict['rho']}, "
             f"정상 비율 반영 이득 {_fmt(verdict['adjusted_gain'])}, "
             f"드리프트 {_fmt(verdict['drift'])}, 바닥값 F {verdict['floor']}"
         )

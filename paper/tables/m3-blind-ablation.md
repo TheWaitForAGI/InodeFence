@@ -35,12 +35,17 @@ arm 정의: `A3full` = `uniform-generic-m1-state-aware-escape-hardlink-v1`; `A3b
 s11 run은 step 416에서 evidence-integrity 검사로 abort(returncode 1)하지만 21건의 hit는 **abort
 이전**에 기록된 step이다(producer abort-drain). process returncode 1을 "발견 없음"으로 읽지 않는다.
 
-## 읽는 법 (인과, rate 아님)
+## 읽는 법 (이름 획득 조건의 대조; 피드백 인과·rate 아님)
 
-세 바닥(A3blind s11 = 0 · A1 random floor = 0) 대비 A3full s11 = 21이 보이는 것은 **"object-identity
-관찰(feedback)이 없으면 도달 불가, 있으면 도달"**이라는 **인과**다. 이는 **rate 우위가 아니다**
-(§5.3.3 powered 판정: 매칭 Wilson CI 미분리). 자율 트리거는 이 그림의 budget 1500·seed 1–65에선
-s11 하나(seed-rare)이나 powered 런에서 신규 disjoint seed s101로 재현돼 멀티-seed로 강화됐고,
-**blind 발견이 아니다**(퍼저는 외부 객체 이름을 관찰로 얻는다; 하드코딩 없음, §5.3.2).
+판정은 **이름 획득 조건의 관찰(피드백 인과 미입증)**이다. 세 셀은 외부 객체 이름이 mutation 어휘에 있느냐가 다르다.
+A3full s11 = 21은 이름을 어휘에 넣은 조건의 관찰이고, 이름을 뺀 A3blind s11 = 0과 이름을 철자할 수 없는 A1 = 0은 그 조건
+밖의 미관찰이다. "A1 random floor"는 기존 셀 이름이다. A1도 feedback retention 탐색을 쓰므로 탐색 자체가 무작위라는 뜻은
+아니다([verdict v2](../../experiments/summaries/m3-powered-matched-verdict-v2.md) Arms). 어휘 미통제라 retention·effect 피드백 인과는
+미입증이며, 그 기여는 어휘를 맞춘 R/D/S-u 비교로 아직 분리되지 않았다. 이는 **rate 우위도 아니다**(§5.3.3 powered 판정: 매칭
+Wilson CI 미분리). 21 hit는 한 seed의 1 lineage이고 셀마다 분모(step 수)가 다르다(§5.3.1). 자율 트리거는 이 그림의 budget
+1500·seed 1–65에선 s11 하나(seed-rare)이고 powered 런의 신규 disjoint seed s101에서도 관찰됐지만, 동일 어휘 통제가 없으므로
+피드백 인과의 강화는 아니다. **blind 발견이 아니다**(퍼저는 외부 객체 이름을 관찰로 얻는다; 하드코딩 없음, §5.3.2).
+
+*(구: "object-identity 관찰(feedback)이 없으면 도달 불가, 있으면 도달"이라는 인과, 2026-11-03 정정을 2026-11-06 본문에 반영.)*
 
 (2026-11-03 정정: 이 blind 대조는 피드백이 아니라 **어휘**를 통제한 실험이다. 입증된 것은 "외부 객체 이름의 관찰(어휘 획득)이 자율 C1의 필요조건"이지 (st_dev, st_ino) retention·스케줄링 피드백의 기여가 아니며, 그 기여는 어휘를 맞춘 R/D/S-u 비교(research-questions v2 H-A)로 미분리다. 수치·서술은 보존한다. 상세: §5.3.2 정정.) 이 표의 세 셀은 어휘(이름 포함 여부)가 다른 셀이므로, 읽는 법은 "이름 획득 조건의 대조"다.

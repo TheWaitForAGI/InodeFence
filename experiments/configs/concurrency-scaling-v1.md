@@ -264,7 +264,7 @@ W3-T8이 실행 전에 정했다. 임계값은 W3의 판단이며 측정값이 �
 - [ ] main 전체 `make check`, git 정리, `w1/*` 삭제 완료(승인된 선행 작업).
 - [ ] 지웅 승인 기록(단계별). §6 동결 커밋 확인.
 - [ ] 실행 SHA에 #271(`error_chain`, `case_shape`)이 들어 있는지 확인(머지됨). 필드의 실제 동작은 abort가 있어야 보이므로 smoke로는 확인되지 않을 수 있다. 첫 abort 때 확인하고, 그 전까지 미확인으로 적는다.
-- [ ] D6 결과 확인: R-walk를 쓰지 않기로 했으면 동결 전에 arm에서 뺀다.
+- [ ] D6 결과 확인: R-walk를 쓰지 않기로 했으면 실행 전에 arm에서 뺀다. 이 파일은 머지로 동결되므로 새 버전 파일과 W3 재검증이 필요하다(§2).
 - [ ] 노출 원장: 실행 전 LOG에 계획 1줄(seed, budget, 수준, oracle 봉인).
 - [ ] 봉인 규칙(§6.6) 전 세션 통지.
 - [ ] 다른 세션 docker·`make check`·대용량 pytest 동결 통지.
@@ -313,7 +313,7 @@ python3.12 scripts/make_raw_manifest.py --root "$OUT" --host win --date <YYYYMMD
    | C | 6,8,8,6 | 6–20 h |
 
 3. **시드:** smoke 6100, 측정 6101–6103. 전 블록 공통.
-4. **순서·반복:** 단계당 ABBA 2회, 수준당 2블록, 블록당 12캠페인. 2→4 먼저, 안정 확인 후 6, 필요 시 8.
+4. **순서·반복:** 단계당 ABBA 2회, 수준당 2블록, 블록당 12캠페인. 2→4 먼저, 안정 확인 후 6, 필요 시 8. B를 돌리면 A를 통과한 수준이 내려갈 수 있다(§6.3). V3 기준 취소 확률은 참 a=.22에서 .04다. 다른 규칙이 더해지면 이보다 높을 수 있고 호스트 영향은 뺀 값이다.
 5. **중단 조건:** §5.
 6. **예상 자원(추정):** 메모리 jobs 8에서 약 1.6 GiB, 최악 약 5.6 GiB. 디스크 블록당 약 0.9–1.3 GB, 전 단계 최대 약 17 GB. CPU는 상위 수준에서 포화에 가까울 수 있다(2026-10-31 conc 6에서 약 92%). 벤치마크 동안 호스트의 다른 docker 작업은 금지다.
 7. **데이터 분리:** raw는 `~/inodefence-benchmarks/`이며 증거 트리와 저장소 안은 드라이버가 거부한다. 해시만 담은 매니페스트를 `experiments/summaries/`에 커밋한다. 라벨은 `demo run`이고 oracle 필드는 봉인한다(§6.6). 7.5.2 외 버전은 실행하지 않아 holdout 후보는 건드리지 않는다.
@@ -358,7 +358,7 @@ python3.12 scripts/make_raw_manifest.py --root "$OUT" --host win --date <YYYYMMD
 
 ## 10. 결과 보고서 형식
 
-`analyze_concurrency_benchmark`가 `concurrency-report.{json,md}`를 쓴다. 판정(상태, 선택 수준, 중단 조건, 단계별 배제와 ρ·드리프트·F), 블록 표, arm 표, abort 목록이다.
+`analyze_concurrency_benchmark`가 `concurrency-report.{json,md}`를 쓴다. 판정(상태, 선택 수준, 대체값, 측정 무효 단계, 중단 조건, 단계별 배제·기준 수준 위반과 ρ·드리프트·F), 블록 표, arm 표, abort 목록이다.
 
 보고에는 다음을 덧붙인다.
 

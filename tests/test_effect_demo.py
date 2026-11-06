@@ -579,7 +579,7 @@ def _p2_steps() -> list[dict[str, Any]]:
     report: dict[str, Any] = synthetic_demo_report(
         123, 20, EffectSearchPolicy.P2_EFFECT_ADAPTIVE, MutationPolicy.M1
     )
-    assert report["demo_report_schema"] == 3
+    assert report["demo_report_schema"] == 4
     return report["steps"]
 
 
@@ -718,3 +718,13 @@ def test_stderr_record_keeps_head_and_tail_with_omission_marker() -> None:
         "chars": 2 * edge,
         "truncated": False,
     }
+
+
+def test_demo_report_step_carries_oracle_fingerprints_independent_of_feedback() -> None:
+    steps = _p2_steps()
+    for step in steps:
+        assert isinstance(step["oracle_fingerprints"], list)
+        classes = {item["value"]["contract_id"] for item in step["oracle_fingerprints"]}
+        assert classes == {contract for contract, flag in step["oracle"].items() if flag}
+        if not step["feedback"]["feedback_eligible"]:
+            assert step["feedback"]["new_violation_fingerprints"] == []

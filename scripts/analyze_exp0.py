@@ -40,7 +40,7 @@ import importlib
 import math
 import sys
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from inodefence.evaluation.encoding import json_bytes, read_json
@@ -230,18 +230,47 @@ def _identity(
     raise ValueError("invalid cell has no identity; load it via --index so arm/seed are known")
 
 
+# Target id an invalid cell falls back to when neither its index entry, its wrapper ``target``
+# object nor its inner summary names one -- the same default a valid cell without a target gets.
+_DEFAULT_TARGET_ID = "unspecified"
+
+
+def _invalid_target_id(
+    row: Mapping[str, object],
+    inner: Mapping[str, object] | None,
+    entry: Mapping[str, object] | None,
+    field_map: Mapping[str, str],
+) -> str | None:
+    """An invalid cell's explicit target id: index entry -> wrapper ``target`` -> inner summary.
+
+    Mirrors a valid cell's lookup order. ``None`` when no source names one (an old index, or a
+    bare ``--cell``); the caller then defaults it, never to ``""``.
+    """
+    wrapper_target = row.get("target") if _SUMMARY_KEY in row else None
+    for source in (entry, wrapper_target if isinstance(wrapper_target, Mapping) else None):
+        if isinstance(source, Mapping) and source.get("target_id"):
+            return str(source["target_id"])
+    if isinstance(inner, Mapping):
+        value = _get(inner, field_map, "target")
+        if value:
+            return str(value)
+    return None
+
+
 def cell_from_row(
     row: Mapping[str, object],
     field_map: Mapping[str, str],
     *,
     entry: Mapping[str, object] | None = None,
+    default_target_id: str = _DEFAULT_TARGET_ID,
 ) -> CellSummary | InvalidCell:
     """Map one wrapper (or flat) runner row to a :class:`CellSummary` or :class:`InvalidCell`.
 
     Reads the inner RdsCellSummary object through ``field_map`` and the wrapper's ``timing`` /
     ``config_nonconformant`` / ``unfingerprinted_hit_steps`` through the ``_TIMING_*`` / ``_*_KEY``
     constants. ``entry`` is the matching ``index.json`` record, used only to recover an invalid
-    cell's arm/seed when its ``summary`` is null.
+    cell's arm/seed when its ``summary`` is null. ``default_target_id`` is an invalid cell's
+    target id when no source names one (:func:`load_cells` resolves it to the run's single target).
     """
     has_wrapper = _SUMMARY_KEY in row
     inner = row.get(_SUMMARY_KEY) if has_wrapper else row
@@ -253,9 +282,11 @@ def cell_from_row(
     if config_nonconformant or (has_wrapper and inner is None):
         reason = row.get(_INVALID_REASON_KEY) if has_wrapper else None
         seed, arm = _identity(inner if isinstance(inner, dict) else None, entry, field_map)
-        invalid_tid = (
-            str(entry["target_id"]) if isinstance(entry, Mapping) and entry.get("target_id") else ""
+        invalid_tid = _invalid_target_id(
+            row, inner if isinstance(inner, dict) else None, entry, field_map
         )
+        if invalid_tid is None:
+            invalid_tid = default_target_id
         return InvalidCell(
             seed=seed,
             arm=arm,
@@ -744,7 +775,7 @@ def build_report(
 
 _ROLE_INTERPRETATION = {
     "train": "exploratory (pre-exposed; design developed here, not confirmatory)",
-    "fix-verification": "negative control (patched; expected 0 hits)",
+    "fix-verification": "fix-verification (H-A, pre-exposed; no hit-count prediction)",
     "holdout": "confirmatory (independent, unseen)",
 }
 
@@ -880,12 +911,13 @@ def build_multitarget_report(
     """Per-target, per-role EXP-3 sections (no cross-target pooling).
 
     Each target is reported in its own ``by_target`` section -- train (pre-exposed, exploratory),
-    fix-verification (negative control, expected 0 hits) and holdout (confirmatory) never share a
-    risk set, because hazards differ by extractor/version (pooling would confound; Simpson). The
-    frozen ``analysis_plan`` (ordered ``confirmatory_contrasts`` on holdout&H-A, ``multiplicity``,
-    ``primary_endpoint``, ``event_threshold``) is echoed verbatim -- this builder derives no family
-    membership and runs no confirmatory test (that is the exact-log-rank step). Single-target input
-    uses :func:`build_report` (byte-identical to the EXP-0 output); this path is for >1 target_id.
+    fix-verification (H-A, pre-exposed; no hit-count prediction) and holdout (confirmatory) never
+    share a risk set, because hazards differ by extractor/version (pooling would confound; Simpson).
+    The frozen ``analysis_plan`` (ordered ``confirmatory_contrasts`` on holdout&H-A,
+    ``multiplicity``, ``primary_endpoint``, ``event_threshold``) is echoed verbatim -- this builder
+    derives no family membership and runs no confirmatory test (that is the exact-log-rank step).
+    Single-target input uses :func:`build_report` (byte-identical to the EXP-0 output); this path
+    is for >1 target_id.
     """
     if not cells:
         raise ValueError("no cells to summarize")
@@ -923,9 +955,10 @@ def build_multitarget_report(
         "purpose": (
             "per-target, per-role measurement; targets are NOT pooled (hazard differs by "
             "extractor/version). H-A arm inference is confirmatory only on a holdout target; "
-            "train is exploratory (pre-exposed) and fix-verification is a negative control "
-            "(expected 0 hits). This report echoes the frozen analysis_plan and runs no "
-            "confirmatory test (the exact-log-rank step consumes it separately)."
+            "train is exploratory (pre-exposed) and fix-verification is a pre-exposed H-A "
+            "fix-verification pair (no hit-count prediction). This report echoes the frozen "
+            "analysis_plan and runs no confirmatory test (the exact-log-rank step consumes it "
+            "separately)."
         ),
         "number_cells": len(cells),
         "number_valid_cells": len(valid),
@@ -961,7 +994,8 @@ def _multitarget_markdown(report: dict) -> str:
         f"invalid {report['number_invalid_cells']}) | arms {', '.join(report['arms'])}",
         "",
         "_H-A arm inference is confirmatory on a holdout target only; train is exploratory "
-        "(pre-exposed), fix-verification is a negative control. Targets are not pooled._",
+        "(pre-exposed), fix-verification is a pre-exposed pair (no hit-count prediction). "
+        "Targets are not pooled._",
         "",
     ]
     plan = report.get("analysis_plan")
@@ -1219,16 +1253,37 @@ def _index_entries(index_file: Path) -> list[tuple[Path, Mapping[str, object]]]:
     return resolved
 
 
+# Internal marker for "this invalid cell named no target"; load_cells replaces it before returning.
+_UNRESOLVED_TARGET_ID = ""
+
+
 def load_cells(
     items: Sequence[tuple[Path, Mapping[str, object] | None]], field_map: Mapping[str, str]
 ) -> list[CellSummary | InvalidCell]:
+    """Load cells; an invalid cell naming no target takes the run's single target id.
+
+    A config-nonconformant cell has no summary to read a target from, and an old index (or a bare
+    ``--cell``) carries no ``target_id``. Leaving it ``""`` would add a phantom second target and
+    flip a single-target EXP-0 run into the multi-target report, so it inherits the one target id
+    the other cells resolve to; with zero or several such ids it gets ``"unspecified"`` (the valid
+    cells' own default) -- never ``""``.
+    """
     cells: list[CellSummary | InvalidCell] = []
     for path, entry in items:
         row = read_json(path.read_bytes())
         if not isinstance(row, dict):
             raise ValueError(f"{path}: expected a JSON object per cell")
-        cells.append(cell_from_row(row, field_map, entry=entry))
-    return cells
+        cells.append(
+            cell_from_row(row, field_map, entry=entry, default_target_id=_UNRESOLVED_TARGET_ID)
+        )
+    resolved = {c.target_id for c in cells if c.target_id != _UNRESOLVED_TARGET_ID}
+    fallback = next(iter(resolved)) if len(resolved) == 1 else _DEFAULT_TARGET_ID
+    return [
+        replace(c, target_id=fallback)
+        if isinstance(c, InvalidCell) and c.target_id == _UNRESOLVED_TARGET_ID
+        else c
+        for c in cells
+    ]
 
 
 def main(argv: Sequence[str] | None = None) -> int:

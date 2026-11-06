@@ -243,3 +243,54 @@ frame을 파생한다(decompress의 fs-wrap보다 좁다).
 
 M1–M4의 능력과 증거 수준을 한눈에 보는 요약은 [Capability Ledger 요약표](../tables/capability-ledger-summary.md)에
 두며, 단일 기준은 [`../../docs/STATUS.md`](../../docs/STATUS.md)다.
+
+
+## 5.6 EXP-0 / EXP-3 결과 (EXP-0 완료 · EXP-3 실험 전 TBD)
+
+이 소절은 §4.6 실험 설계(계획)의 실행 결과 자리다. EXP-0 파일럿은 완료됐고(인프라 측정, H-A 검정 아님) 공식 리포트는
+`experiments/summaries/exp0-20261105-report.md`다. EXP-3 본실험은 실행 전이므로 EXP-3 표·그림은 **TBD**이며, 사전등록 잠금
+뒤 생성기 출력으로 채운다.
+
+> **주의(budget 2000 표기 구분):** 이 §5.6의 EXP-3(20 seed × budget 2000)은 **계획**이며 아직 미실행이다(규모는 D7, 재판정
+> 대기(파일럿 후)).
+> §5.3.3의 M3.3 powered(동일 budget 2000, seed {100..129})는 이미 **수행**된 결과로 매칭 Wilson CI가 미분리
+> (검정력 부족)인 **음성**이다 — 둘은 다른 실험·다른 seed이며, §5.6의 자리를 §5.3.3 결과로 읽지 않는다.
+
+- **표.** EXP-0 인프라·dense 신호 요약 — `analyze_exp0` report.json **item1~7 전부**(전부 분모 병기):
+  item1 abort(사유 × arm) · item2 p95 full-step · item3 처리량(exec/h) · item4 per-case vs 워커풀 parity ·
+  item5 첫 C0/C1/C2 · T_first(우측중도절단; abort 민감도 **3정책** `item5.sensitivity` — exclude · censor-at-budget, #243) ·
+  item6 dense 신호 · item7 hazard proxy. **item2·item3·item4·item7은 '참고값' 라벨**(effectiveness·판정 입력 아님).
+  arm×abort 독립성(꼭지 13 validity, 레인 3 optional)은 번호 없는 `arm_abort_independence` 키(#242)로 보고 —
+  사전등록 **측정 item8 = raw SHA-256 체크섬 목록**과 번호 충돌을 피한다(체크섬은 report.json 밖 manifest).
+  생성 경로: `scripts/analyze_exp0.py` → `report.json` →
+  `paper/figures/render_exp0_survival.py` → `paper/tables/exp0-summary.md`. — **EXP-0 값의 기준은 위 공식 리포트다. EXP-3 표는
+  TBD.**
+- **그림.** arm별 결합 T_first(C1 ∨ C2) Kaplan–Meier 생존곡선(중도절단 tick). 생성 경로:
+  `scripts/analyze_exp0.py` → `report.json` → `paper/figures/render_exp0_survival.py` → `exp0-survival.png`.
+  — **EXP-0은 전 arm 사건 0(공식 리포트 측정 5)이다. EXP-3 그림은 TBD.**
+
+**EXP-3 결과는 타깃 역할(`role`)별로 분리 보고한다** *(이 문단은 #239 초안 기준이다. holdout의 실험 배정은 D1, 7.5.6/7.5.7 캠페인 여부는 D3이며 재판정 대기(파일럿 후))*(#239·#246 용어 동일, 역할 간 풀링 없음): `train`(node-tar
+7.5.2) = 1차 **탐색**(R/D/S-u 생존 비교) · `fix-verification`(7.5.6/7.5.7) = 등록 역할 `role=fix-verification` ·
+`hypothesis=H-A` · `exposure=pre-exposed`의 **기노출 수정 검증 쌍**(M2 cross-release 통제 재현
+[cross-release-identity-repro-v1](../../experiments/summaries/cross-release-identity-repro-v1.md)으로 이미 실행됨;
+확증 아님) · `holdout`(sweep 밖) = **확증(confirmatory)**. 그 쌍의 근거는 고정 손 fixture 관찰(observed)뿐이다 —
+**7.5.6은 nested 하드링크 identity 공유(affected, R2)**, 7.5.7은 고정 fixture 2종(toplevel·nested) 모두 거부.
+따라서 7.5.6에 hit 0을 기대하지 않으며, 캠페인 조건의 hit 수는 두 타깃 모두 사전 예측하지 않는다(7.5.7의 '거부'는
+고정 fixture 2종 범위의 관찰일 뿐 퍼징 캠페인 hit 0의 근거가 아니다). 각 역할의 결과는 섞지 않고 타깃별 표로
+제시한다.
+
+**판정 절차(사전등록 규칙의 기계 적용).** 판정은 EXP-0이 아니라 **EXP-3 결과**에 11/18 사전등록된
+GO/NO-GO 규칙과 §4.6.4 판정 시나리오 ①–⑧(research-questions v2)을 **기계적으로** 적용해 결정한다.
+규칙·지표·분모는 결과를 본 뒤 바꾸지 않는다. EXP-0의 hit 수는 검정력 x 산정에 쓰지 않으며, zero-hit은
+NO-GO 사유가 아니다(사전등록 v2 (a)·(d)). *(규칙과 일정은 D7·D11·D12, 재판정 대기(파일럿 후))*
+
+**EXP-0 seed 사전 노출 공개 (결과 아님 — 도구 검증).** EXP-0 사전등록 seed 중 9001–9004는 동결 전 비등록 실행에 이미
+노출됐다. 이 호스트 raw 기준으로 seed 9001은 10런(G1 smoke 3, G1 completion 3, parity 확인 `s3wp` 3, 타이밍 대조 1)이고
+9002–9004는 G1 smoke 각 3런이다. v2.1 사전 노출 절은 seed 9001의 4런만 공개해 6런이 빠졌고, 노출 원장은 7런을 기록해
+`s3wp` 3런이 빠졌다(공식 리포트 편차 9). 이 실행들의 출력은 **결과가 아니며 논문 표·결론에 쓰지 않는다**.
+이 중 G1 smoke는 통합 브랜치 `4b072a5`(image `sha256:22c8734f…`, node-tar 7.5.2), seed 9001–9004 × budget 50에서
+**12/12 완주(abort 0, arm 간 어휘 동등 true)**했고, 그중 **D arm s9002의 exec 42에서 generic oracle C2 이벤트
+1건**(u_viol 1; hardlink `a.txt` → `../outside/sentinel.txt` 뒤 regular `a.txt`)이 관찰됐다 — 출처 PR #223
+(`claude/s3-exp0-launcher`) LOG + 호스트 `~/inodefence-evidence/g1-20261104/smoke/summaries/index.json`
+(sha256 `26235b44…`), SHA-256 매니페스트 반입 예정. 이는 사전등록 판정이 아니라 도구 검증 관측이므로
+**해석하지 않는다**. 사전 노출된 seed로 얻은 EXP-0/EXP-3 결과의 독립성 해석상 한계는 §6.7에 둔다.

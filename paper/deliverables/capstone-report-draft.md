@@ -164,10 +164,15 @@ node-tar 7.5.2다.[^exp0-prereg]
 | 셀 / 실행 수 | 15셀 / 3,000 실행 | [^exp0-run] |
 | 완주 | 15/15 | abort 0, invalid 0, arm 간 어휘 동등 [^exp0-run] |
 | C1/C2 hit | 0 | 사전등록의 zero-hit 기본 결과 [^exp0-prereg] |
-| rule-of-three 참고 상한 | arm당 3/5 = 0.6 (캠페인 단위) | 판정 입력 아님. 실행 단위 3/1000 = 0.003은 탐색적 병기 [^exp0-analysis] |
-| p95 full-step | 1.549 s | 3,000 step 합산, nearest-rank [^exp0-analysis] |
-| 처리량 | 2428 exec/h | 셀별 wall-clock 합 기준의 스트림당 값. 동시 실행 호스트 전체 처리량이 아니다 [^exp0-analysis] |
+| rule-of-three 참고 상한 (사전등록 v2 (a)) | arm당 캠페인 단위 3/5 = 0.6, 실행 단위 3/1000 = 0.003(탐색적) | 판정 입력 아님 [^exp0-analysis] |
+| p95 full-step | 1.549 s (clock 보정 전 기록값) | 3,000 step 합산, nearest-rank. 실제 시간보다 크게 기록됐다 [^exp0-analysis] [^exp0-clock] |
+| 처리량 | 2428 exec/h (clock 보정 전 기록값) | 셀별 wall-clock 합 기준의 스트림당 값. 동시 실행 호스트 전체 처리량이 아니고, 실제 시간보다 작게 기록됐다 [^exp0-analysis] [^exp0-clock] |
 | raw 무결성 | 66 파일 verify 통과 | 66 ok, 0 mismatched, 0 missing, 0 extra [^exp0-manifest] |
+
+**시간 지표 주의.** 위 p95와 처리량은 `perf_counter` 기준 기록값이다. 이 호스트의 `perf_counter`는 `CLOCK_MONOTONIC_RAW`보다
+빠르게 간다(2026-11-06 측정 1.0837배). EXP-0에서도 8개 셀 묶음 모두에서 기록 wall이 파일 타임스탬프 경과 시간보다 길었다
+(1.03–1.05배, 셀 준비 시간을 빼지 않은 하한).[^exp0-clock] 실제 시간 환산값은 확정 후 넣는다(TBD). 완주, hit, T_first, U_viol처럼
+실행 수로 세는 값은 영향을 받지 않는다.
 
 분석은 아직 머지되지 않은 생성기로 돌린 pre-merge 결과다. 스택 머지 후 같은 입력으로 재생성해 값을 다시 확인한다.
 [^exp0-analysis]
@@ -225,6 +230,7 @@ EXP-3 결과에 사전등록 GO/NO-GO 규칙을 적용해 GO일 때만 수행한
   않는다.[^exp0-prereg] EXP-3 seed는 이들과 겹치지 않게 정한다.[^exp3-draft]
 - **EXP-0 parity.** 사전등록 측정 항목인 per-case 대 워커 풀 처리량 비교는 이 리포트에 없다(`parity_verdict` null).
   [^exp0-analysis]
+- **EXP-0 시간 지표.** p95와 처리량은 빠르게 가는 호스트 clock으로 기록한 보정 전 값이다(§7.5).[^exp0-clock]
 - **raw 보존.** raw는 호스트 로컬에 있고 저장소에는 체크섬 목록만 들어간다.[^exp0-manifest]
 
 ## 9. 결론과 향후 계획
@@ -291,6 +297,7 @@ TAR fuzzing, hardlink·symlink 공격, entry 순서, 파일 상태 기반 fuzzin
 [^exp0-prereg]: evidence: [exp0-pilot-v2.1](../../experiments/preregistration/exp0-pilot-v2.1.md) '사전 노출 공개'·'zero-hit 방침' 절, 동결 커밋 23e5c66 (PR #258).
 [^exp0-run]: evidence: `~/inodefence-evidence/exp0-20261105/summaries/index.json`(abort_count 0, invalid_count 0, cells 15), `registration.json`(last_status), 매니페스트 PR #262.
 [^exp0-analysis]: evidence: `~/inodefence-evidence/exp0-20261105-analysis-premerge/exp0-report-premerge.json`의 item2_p95_full_step, item3_throughput.summed, item4_throughput_parity, item7_hazard_proxy.zero_hit. 생성기는 미머지 스택 머리 f655f18 (같은 폴더 `PROVENANCE.txt`).
+[^exp0-clock]: evidence: 측정과 대조 값은 [LOG](../../docs/LOG.md) 같은 날짜 W4 clock 항목. 기록 필드는 엔진 b609981 `scripts/run_effect_demo.py`의 `perf_counter`, 타임스탬프는 `registration.json`의 `created_at`과 셀 로그 mtime.
 [^exp0-manifest]: evidence: PR #262 `experiments/summaries/raw-manifest-win-20261105-20261105.sha256`(sha256 `a9dc149c…`), `scripts/make_raw_manifest.py --verify` 2026-11-06 재실행.
 [^exp3-draft]: evidence: PR #239→#263→#264의 `experiments/preregistration/exp3-v1.md`(head e11d302, 미머지·미동결), PR #248과 #257의 confirmatory 출력.
 [^exp3-sizing]: evidence: PR #216 §4.6.3 "계획 단계 검정력 한계", PR #263 '규모 산정 입력' 절(둘 다 미머지).

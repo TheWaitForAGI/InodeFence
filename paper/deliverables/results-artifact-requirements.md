@@ -16,7 +16,7 @@ PYTHONPATH=src python3 scripts/analyze_exp0.py --index <run>/summaries/index.jso
 | T-EXP3-1 타깃별 생존표 | `paper/tables/exp3-survival-by-target.md` | `by_target.<tid>.{role,hypothesis,seeds,number_cells}` · n=`T.denominator_cells_in_risk_set` · `T.{number_observed,number_right_censored,km_median_executions}` · U_viol=`by_target.<tid>.item6_dense_signals.by_arm.<arm>.u_viol.total_unique_c1_c2_fingerprints` · abort=`by_target.<tid>.item1_aborts.by_arm.<arm>.number_abort` |
 | T-EXP3-2 확증 검정표 | `paper/tables/exp3-confirmatory.md` | `confirmatory.contrasts[].{order,target_id,contrast,arm_a,arm_b,number_seed_blocks,total_events,holm_adjusted_p,reject_at_alpha,faster_arm,underpowered}` · `.permutation.p_value` · `.supplementary.u_viol_a12` · `.campaign_unit_rule_of_three_upper95`(underpowered일 때만) · 머리글 `confirmatory.{alpha,event_threshold,confirmatory_test,multiplicity,primary_endpoint,confirmatory_scope}` |
 | T-EXP3-3 abort 민감도 | `paper/tables/exp3-abort-sensitivity.md` | 1차=`T` · `T5.sensitivity.{primary_policy,policies.{exclude,censor-at-budget}.by_arm.<arm>.{number_observed,number_right_censored,number_in_risk_set,km_median_executions}}` · `--contingency`를 줬으면 최상위 `arm_abort_independence` |
-| T-EXP3-4 인프라 참고값 | `paper/tables/exp3-infra.md` | `by_target.<tid>.{item2_p95_full_step.pooled,item3_throughput.summed,environment}` · `.item7_hazard_proxy.zero_hit`(그 타깃 hit 0일 때만). `summed.exec_per_hour`는 스트림당 값으로 표기 |
+| T-EXP3-4 인프라 참고값 | `paper/tables/exp3-infra.md` | `by_target.<tid>.{item2_p95_full_step.pooled,item3_throughput.summed,environment}` · `.item7_hazard_proxy.zero_hit`(그 타깃 hit 0일 때만). 시간 값의 표기는 공백 6 |
 | F-EXP3-1 KM 곡선 | `paper/figures/exp3-survival-<tid>.png` | `T.{km_curve[].time,km_curve[].survival,censored_times,denominator_cells_in_risk_set}`. **타깃별 1장, 풀링 금지** |
 
 **보고서 표 7-A/B/C 매핑.** arm·n·T_first 중앙값·U_viol은 T-EXP3-1에서 온다. p(Holm)은 arm이 아니라 대조의 값이므로
@@ -45,5 +45,8 @@ PYTHONPATH=src python3 scripts/analyze_exp0.py --index <run>/summaries/index.jso
    `gen_table_m3.py`의 SUFFIX에도 복제돼 있다. **재렌더 전까지 보고서와 영상에 넣지 않는다.**
 4. **F-M2 캡션.** "the 7.5.6 regression was introduced by the R1 fix. Observed."로 끝나지만 이 인과 서술은 §5.2 기준 inferred다.
 5. **EXP-0 재생성 시 확인.** pre-merge 리포트의 `targets`가 `["unspecified"]`인데 `index.json`의 `target_id`는 `7.5.2`다.
+6. **시간 값은 빠른 clock 기준이다.** `item2`·`item3`의 값은 `perf_counter` 기록이고 이 호스트 clock은 실제보다 빠르다
+   (2026-11-06 측정 1.0837배). `summed.exec_per_hour`는 스트림당 값이기도 하다. 그대로 쓸 때는 "clock 보정 전 기록값 · 스트림당"으로
+   표기하고, 실제 시간 처리량은 `registration.json`의 `created_at`과 파일 mtime으로 따로 계산한다. 실행 수로 세는 값은 영향이 없다.
 
 EXP-2 산출물은 EXP-3에 GO 규칙을 적용한 뒤에 정한다(현재 TBD).

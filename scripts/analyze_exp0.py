@@ -49,10 +49,12 @@ from inodefence.evaluation.survival import (
     AbortPolicy,
     Observation,
     SeedRecord,
+    holm_adjust,
     kaplan_meier,
     km_median,
     observations_for_policy,
     rule_of_three,
+    seed_block_logrank_permutation,
 )
 
 # Abort-reason vocabulary. Prefer the shared lane-3 enum so the buckets stay in lock-step
@@ -745,6 +747,82 @@ def _index_plan(index_file: Path) -> dict | None:
     return None
 
 
+def _confirmatory_section(
+    valid: Sequence[CellSummary], analysis_plan: Mapping[str, object], *, alpha: float = 0.05
+) -> dict | None:
+    """Run the frozen confirmatory family: seed-block exact-permutation log-rank + Holm-FWER.
+
+    For each ordered ``confirmatory_contrasts`` record (holdout&H-A only, pre-filtered by the
+    registration) this pairs the target's two arms by seed on the primary endpoint (T_first,
+    right-censored) and runs :func:`survival.seed_block_logrank_permutation` (valid at any n),
+    then applies :func:`survival.holm_adjust` across the family in order. When a contrast's
+    observed events fall below ``event_threshold`` it is FLAGGED underpowered and a descriptive
+    campaign-unit rule-of-three bound is attached -- the test is never switched, and the bound is
+    not a confirmation (EN-008). Returns ``None`` when the plan declares no contrasts.
+    """
+    contrasts = analysis_plan.get("confirmatory_contrasts")
+    if not isinstance(contrasts, list) or not contrasts:
+        return None
+    threshold = analysis_plan.get("event_threshold")
+    results: list[dict] = []
+    raw_ps: list[float] = []
+    for contrast in contrasts:
+        tid, arm_a, arm_b = (
+            contrast.get("target_id"),
+            contrast.get("arm_a"),
+            contrast.get("arm_b"),
+        )
+        cells_t = [c for c in valid if c.target_id == tid and c.arm in (arm_a, arm_b)]
+        by_seed: dict[int, dict[str, Observation]] = {}
+        for c in cells_t:
+            by_seed.setdefault(c.seed, {})[c.arm] = Observation(c.t_first, bool(c.t_first_event))
+        blocks = [
+            (by_seed[s][arm_a], by_seed[s][arm_b])
+            for s in sorted(by_seed)
+            if arm_a in by_seed[s] and arm_b in by_seed[s]
+        ]
+        perm = seed_block_logrank_permutation(blocks, seed=0)
+        events = int(perm["total_events"])
+        underpowered = isinstance(threshold, int) and events < threshold
+        entry: dict = {
+            "order": contrast.get("order"),
+            "target_id": tid,
+            "contrast": contrast.get("contrast"),
+            "arm_a": arm_a,
+            "arm_b": arm_b,
+            "number_seed_blocks": perm["number_blocks"],
+            "total_events": events,
+            "permutation": perm,
+            "underpowered": underpowered,
+        }
+        if underpowered:
+            entry["rule_of_three_upper95"] = rule_of_three(len(cells_t)) if cells_t else None
+            entry["underpowered_note"] = (
+                "events below event_threshold: the permutation test is valid but near-powerless "
+                "(verdict is scenario-5, unobserved at achieved power); the rule-of-three is a "
+                "descriptive campaign-unit upper bound, NOT a confirmation (EN-008)"
+            )
+        raw_ps.append(float(perm["p_value"]) if perm["p_value"] is not None else 1.0)
+        results.append(entry)
+    for entry, adjusted in zip(results, holm_adjust(raw_ps), strict=True):
+        entry["holm_adjusted_p"] = adjusted
+        entry["reject_at_alpha"] = adjusted <= alpha
+    return {
+        "classification": "confirmatory-holm-fwer",
+        "confirmatory_test": analysis_plan.get("confirmatory_test"),
+        "multiplicity": analysis_plan.get("multiplicity"),
+        "primary_endpoint": analysis_plan.get("primary_endpoint"),
+        "event_threshold": threshold,
+        "alpha": alpha,
+        "contrasts": results,
+        "note": (
+            "per-contrast seed-block arm-label permutation log-rank (valid at any n), Holm-FWER "
+            "over the frozen ordered family; event_threshold is an underpowered FLAG + rule-of-"
+            "three descriptor, never a test switch; rule-of-three is not a confirmation (EN-008)"
+        ),
+    }
+
+
 def build_multitarget_report(
     cells: Sequence[CellSummary | InvalidCell],
     *,
@@ -812,6 +890,9 @@ def build_multitarget_report(
         "seeds": sorted({c.seed for c in cells}),
         "analysis_plan": analysis_plan,
         "confirmatory_targets": (analysis_plan or {}).get("confirmatory_targets"),
+        "confirmatory": (
+            _confirmatory_section(valid, analysis_plan) if isinstance(analysis_plan, dict) else None
+        ),
         "by_target": by_target,
         "provenance": {"source_files": list(sources), "field_map": dict(field_map)},
     }
@@ -867,6 +948,29 @@ def _multitarget_markdown(report: dict) -> str:
         else:
             lines.append("(no H-A holdout contrasts registered)")
         lines.append("")
+    conf = report.get("confirmatory")
+    if isinstance(conf, dict):
+        lines += ["## Confirmatory result (seed-block permutation log-rank + Holm)", ""]
+        rows = []
+        for c in conf["contrasts"]:
+            perm_p = c["permutation"]["p_value"]
+            rows.append(
+                [
+                    c.get("order"),
+                    c.get("contrast"),
+                    c.get("number_seed_blocks"),
+                    c.get("total_events"),
+                    "n/a" if perm_p is None else f"{perm_p:.4f}",
+                    f"{c['holm_adjusted_p']:.4f}",
+                    c["reject_at_alpha"],
+                    c["underpowered"],
+                ]
+            )
+        lines += _md_table(
+            ["order", "contrast", "blocks", "events", "perm_p", "holm_p", "reject", "underpow"],
+            rows,
+        )
+        lines += ["", f"_{conf['note']}_", ""]
     for tid in report["target_ids"]:
         sec = report["by_target"][tid]
         t5 = sec["item5_first_contract_index"]["by_arm"]

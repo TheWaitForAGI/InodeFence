@@ -33,6 +33,7 @@ from inodefence.effect_demo import (
     render_effect_step_line,
     render_effect_step_summary,
 )
+from inodefence.evaluation.abort_classification import classify_abort_reason
 from inodefence.execution import ContainerExecutionBackend, StdioDockerClient
 
 
@@ -90,6 +91,7 @@ def run_native_effect_demo(
                     "step_index": error.step_index,
                     "case_id": error.case_id,
                     "reason": error.reason,
+                    "category": classify_abort_reason(error.reason).value,
                     "observed": error.observed,
                 },
             }
@@ -145,6 +147,7 @@ def run_native_historical_demo(
                     "step_index": error.step_index,
                     "case_id": error.case_id,
                     "reason": error.reason,
+                    "category": classify_abort_reason(error.reason).value,
                     "observed": error.observed,
                 },
             }
@@ -229,7 +232,10 @@ def run_native_decompress_campaign(
             "decompress_campaign_schema": 1,
             "producer": producer,
             "label": "demo run",
-            "aborted": {"reason": str(error)},
+            "aborted": {
+                "reason": str(error),
+                "category": classify_abort_reason(str(error)).value,
+            },
         }
         _announce(f"{DECOMPRESS_CAMPAIGN_MODE} aborted: {error}")
         returncode = 1
@@ -300,7 +306,10 @@ def run_native_oras_go_campaign(
             "oras_go_campaign_schema": 1,
             "producer": producer,
             "label": "demo run",
-            "aborted": {"reason": str(error)},
+            "aborted": {
+                "reason": str(error),
+                "category": classify_abort_reason(str(error)).value,
+            },
         }
         _announce(f"{ORAS_GO_CAMPAIGN_MODE} aborted: {error}")
         returncode = 1

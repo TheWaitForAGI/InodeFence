@@ -366,3 +366,41 @@ def test_stop_and_continue_share_the_case_id_sequence_up_to_the_invalid_step(mon
     continue_case_ids = [step["case_id"] for step in continue_steps[:invalid_index]]
     assert stop_case_ids == continue_case_ids
     assert continue_steps[invalid_index]["validity"] == "invalid"
+
+
+def test_continue_policy_still_aborts_when_archive_identity_mismatches(monkeypatch) -> None:
+    """Archive-identity mismatch is not a pure observer-integrity failure: it aborts.
+
+    ``observer_integrity_only`` requires ``archive_entries_match`` in addition to
+    ``not integrity_valid`` (plus flush verified and no transport error). This
+    isolates the archive-identity signal: the run at the invalid step is both
+    observer-integrity invalid AND its trace entries do not match the case
+    references, while flush/transport are healthy. Because the archive identity
+    broke, the step is an infrastructure trust failure the runtime lane classifies,
+    so the continue policy must never keep it or relabel it observer_integrity --
+    it aborts even with ``observer_integrity_continue=True``. (In a real capture the
+    signals are coupled in ``_verify_transport_frame``; this unit constructs the
+    combination directly to pin the guard predicate's defense line.)
+    """
+    _bind_fake_producer(monkeypatch, invalid_index=1)
+    real_references = run_effect_demo.archive_references
+    observed = {"calls": 0}
+
+    def mismatched_at_invalid_step(case):
+        index = observed["calls"]
+        observed["calls"] += 1
+        # Only step 1 (the observer-integrity invalid run) also fails archive
+        # identity; every other step keeps its true references.
+        return () if index == 1 else real_references(case)
+
+    monkeypatch.setattr(run_effect_demo, "archive_references", mismatched_at_invalid_step)
+
+    with pytest.raises(NativeDemoAborted) as aborted:
+        native_demo_report(
+            object(),  # type: ignore[arg-type]
+            "sha256:" + "0" * 64,
+            budget=6,
+            observer_integrity_continue=True,
+        )
+    assert aborted.value.step_index == 1
+    assert "evidence integrity failed" in aborted.value.reason

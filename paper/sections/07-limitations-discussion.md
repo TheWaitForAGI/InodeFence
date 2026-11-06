@@ -75,3 +75,20 @@ decompress·oras-go 자력발견 음성). 음성·미분리도 정직한 결과�
 
 (2026-11-03 정정: 이 blind 대조는 피드백이 아니라 **어휘**를 통제한 실험이다. 입증된 것은 "외부 객체 이름의 관찰(어휘 획득)이 자율 C1의 필요조건"이지 (st_dev, st_ino) retention·스케줄링 피드백의 기여가 아니며, 그 기여는 어휘를 맞춘 R/D/S-u 비교(research-questions v2 H-A)로 미분리다. 수치·서술은 보존한다. 상세: §5.3.2 정정.) 따라서 위 "메커니즘이 실제로 발견을 구동함"은 "이름 획득 조건에서 자율 트리거가
 관찰됨"으로 읽는다.
+
+
+## 6.7 EXP-0/EXP-3 계획의 한계와 공개
+
+- **informative censoring.** abort(관찰 무결성 실패 등)가 arm마다 다른 비율로 일어나면 right-censoring이
+  **정보적**이 되어 arm 간 T_first 추정이 편향될 수 있다(기존 item-3에서 gradient arm C/D의 abort율이
+  A/B보다 높았던 관찰과 정합). 따라서 §4.6.2의 abort 민감도 **3정책**으로 결론 robustness를 보고한다 —
+  **right-censored(CENSOR_AT_ABORT) 1차 + 완주-only(exclude) · abort=no-hit(censor-at-budget)**를
+  `item5_first_contract_index.sensitivity`(#243)로 **셀 summary 레벨에서 산출**한다(RdsCellSummary의
+  `disposition · executions · t_first/t_first_event · budget`만 사용, raw `.steps.jsonl` 불요 → EXP-0 실행 시
+  즉시 가용; 완주 셀 정책 불변 · abort만 이동, EN-008 bracket). 분모의 abort 포함/제외는 항상 명시한다.
+- **sentinel 이름 무작위화의 한계.** sentinel 이름을 seed 고정 무작위 생성기로 만들어도(§4.6.1), 위협 모델상
+  그 이름은 세 arm 어휘에 동일하게 포함된다. 무작위화는 특정 이름에의 과적합을 줄일 뿐 **blind 발견을
+  만들지 않으며**, 생성기 seed를 결과에 기록해야 재현·감사가 가능하다.
+- **EXP-0 seed 사전 노출.** EXP-0 seed 중 9001–9004는 동결 전 비등록 실행에 이미 노출됐다(seed 9001은 10런, v2.1 미공개 6런·
+  노출 원장 누락 3런; §5.6, 공식 리포트 편차 9). 이 출력은 결과가 아니지만, 사전 노출 자체가 EXP-0/EXP-3의 "신규 seed" 독립성 해석을 약화시킬 수 있으므로
+  공개한다. 해석은 사전등록 판정에만 의존하고, 사전 노출 관측은 판정에 쓰지 않는다.

@@ -27,8 +27,8 @@ symlink 취약점을 찾지 못했다고 보고한 바 있다(선행연구 보�
 "Pig in a Poke"는 feedback-driven file-state fuzzing, state-query-driven mutation, file-operation
 sequence 분석, hardlink 정보·link count를 포함한 link-related state를 사용했다. 따라서
 **filesystem-state fuzzing 일반, hardlink state 관찰, link count 관찰, ordered file operation 분석은
-신규성에서 제외된다.** 확인된 차이는 LinkZard가 archive-entry mutation framework가 아니며 TAR
-아카이브 자체를 evolving input corpus로 쓰지 않는다는 점이다.
+신규성에서 제외된다.** LinkZard의 대상은 제목과 발표 페이지 기준 Windows 파일 연산이다. 추가 검증할 차이(확정이 아니라 가설)는
+LinkZard가 archive-entry mutation framework가 아니며 TAR 아카이브 자체를 evolving input corpus로 쓰지 않는다는 점이다.
 
 ## 3.4 Wormholes (USENIX Security 2026)
 
@@ -43,9 +43,15 @@ creation, arbitrary file read/write effect를 다룬다. 현재 InodeFence와 �
 위 선행연구를 고려하면, 현재 질문은 "TAR hardlink/symlink/entry order가 extraction 취약점을 만들
 수 있는가"가 **아니다**(이미 보여졌다). 현재 질문은 다음이다.
 
-> 고정된 공격 recipe 없이 generic archive-entry mutation을 수행하면서 filesystem object identity와
-> external-effect state를 feedback으로 쓰면, fuzzer가 security-relevant state 방향으로 corpus를
-> 발전시킬 수 있는가?
+> 피해 경로 이름을 아는 **동일 어휘·동일 예산** 아래서, filesystem security state(C1 identity·C2 effect)를
+> retention·스케줄링 피드백으로 쓰는 탐색이 **무작위 탐색**과 **구조 커버리지 탐색**보다 첫 경계위반까지의
+> 실행 수를 줄이고 고유 위반 입력을 더 많이 찾는가?
+> (핵심 RQ, [research-questions v2](../../docs/research/design/research-questions.md). 위협 모델 전제: 공격자는
+> 피해 경로 이름 — 보호 대상 외부 객체의 추출 루트 기준 상대 경로 — 을 알며 세 arm 어휘에 동일하게 포함한다.
+> blind 발견을 주장하지 않는다.)
+
+*(구: "고정된 공격 recipe 없이 generic archive-entry mutation을 수행하면서 … corpus를 발전시킬 수 있는가?", v1 질문,
+2026-11-06 v2로 교체. research-questions v2 '폐기·대체 기록' 참조.)*
 
 ## 3.6 이 단계에서 하지 않는 주장 (엄수)
 

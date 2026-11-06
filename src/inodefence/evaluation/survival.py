@@ -729,6 +729,25 @@ def _two_arm_logrank_chi2(group_a: Sequence[Observation], group_b: Sequence[Obse
     return float(stat) if stat is not None else 0.0
 
 
+def _two_arm_logrank_observed(
+    group_a: Sequence[Observation], group_b: Sequence[Observation]
+) -> tuple[float, float]:
+    """Observed two-arm log-rank chi-square and the signed ``O_a - E_a`` for arm ``a``.
+
+    ``O_a - E_a > 0`` means arm ``a`` had more events than the null expects -- for
+    right-censored T_first that is EARLIER events, i.e. arm ``a`` is the *faster* arm; ``< 0``
+    means arm ``b`` is faster. The chi-square itself is direction-agnostic (two-sided), so this
+    signed quantity is what tells a rejection apart as acceleration vs the reverse. Zero events
+    -> ``(0.0, 0.0)`` (no evidence, no direction).
+    """
+    if not any(o.event for o in [*group_a, *group_b]):
+        return 0.0, 0.0
+    result = logrank_test({"a": list(group_a), "b": list(group_b)})
+    chi2 = result["chi_square"]
+    oe_a = result["observed_events"]["a"] - result["expected_events"]["a"]
+    return (float(chi2) if chi2 is not None else 0.0), float(oe_a)
+
+
 def seed_block_logrank_permutation(
     blocks: Sequence[tuple[Observation, Observation]],
     *,
@@ -764,7 +783,7 @@ def seed_block_logrank_permutation(
         }
     group_a = [a for a, _ in blocks]
     group_b = [b for _, b in blocks]
-    observed = _two_arm_logrank_chi2(group_a, group_b)
+    observed, observed_oe_a = _two_arm_logrank_observed(group_a, group_b)
     total_events = sum(1 for obs in [*group_a, *group_b] if obs.event)
     eps = 1e-9
 
@@ -785,6 +804,7 @@ def seed_block_logrank_permutation(
             "exact": True,
             "p_value": ge / total,
             "observed_chi_square": observed,
+            "observed_minus_expected_a": observed_oe_a,
             "number_blocks": n,
             "number_permutations": total,
             "total_events": total_events,
@@ -803,6 +823,7 @@ def seed_block_logrank_permutation(
         "p_value": p,
         "p_value_mc_ci95": [max(0.0, p - half), min(1.0, p + half)],
         "observed_chi_square": observed,
+        "observed_minus_expected_a": observed_oe_a,
         "number_blocks": n,
         "resamples": resamples,
         "seed": seed,

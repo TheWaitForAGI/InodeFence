@@ -830,6 +830,11 @@ def _confirmatory_section(
         perm = seed_block_logrank_permutation(blocks, seed=0)
         events = int(perm["total_events"])
         underpowered = isinstance(threshold, int) and events < threshold
+        # The permutation chi-square is two-sided; the signed observed-minus-expected for arm_a
+        # says which arm is faster (more early events = shorter T_first), so a rejection is read
+        # as acceleration vs the reverse rather than ambiguous separation.
+        oe_a = perm.get("observed_minus_expected_a")
+        faster_arm = None if not oe_a else (arm_a if oe_a > 0 else arm_b)
         entry: dict = {
             "order": contrast.get("order"),
             "target_id": tid,
@@ -839,6 +844,14 @@ def _confirmatory_section(
             "number_seed_blocks": perm["number_blocks"],
             "total_events": events,
             "permutation": perm,
+            "faster_arm": faster_arm,
+            "direction_note": (
+                "two-sided: reject_at_alpha means the arms' T_first separated (either "
+                "direction); faster_arm (more observed than expected events = earlier T_first) "
+                f"says which -- reject with faster_arm == arm_a ('{arm_a}') is acceleration "
+                f"(scenario 1), with arm_b ('{arm_b}') is the reverse (scenario 8); "
+                "null or no events -> None"
+            ),
             "underpowered": underpowered,
         }
         if underpowered:
@@ -1043,13 +1056,22 @@ def _multitarget_markdown(report: dict) -> str:
                     "n/a" if perm_p is None else f"{perm_p:.4f}",
                     f"{c['holm_adjusted_p']:.4f}",
                     c["reject_at_alpha"],
+                    c.get("faster_arm") or "-",
                     c["underpowered"],
                 ]
             )
-        lines += _md_table(
-            ["order", "contrast", "blocks", "events", "perm_p", "holm_p", "reject", "underpow"],
-            rows,
-        )
+        conf_headers = [
+            "order",
+            "contrast",
+            "blocks",
+            "events",
+            "perm_p",
+            "holm_p",
+            "reject",
+            "faster",
+            "underpow",
+        ]
+        lines += _md_table(conf_headers, rows)
         lines += ["", f"_{conf['note']}_", ""]
     for tid in report["target_ids"]:
         sec = report["by_target"][tid]

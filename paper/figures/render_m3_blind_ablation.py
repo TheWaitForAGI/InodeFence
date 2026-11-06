@@ -1,4 +1,4 @@
-"""Render the M3 blind-ablation figure (observed data only).
+"""Render the M3 vocabulary-removal contrast figure (observed data only).
 
 Data source (observed): ``paper/tables/m3-blind-ablation.md``, re-counted from the raw
 step logs (hit = a step with ``oracle.C1`` AND ``feedback.contract_violated``). node-tar
@@ -18,13 +18,13 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 ARMS = [
-    "A3full s11\n(identity obs ON)",
-    "A3blind s11\n(identity obs OFF)",
-    "A1 random floor\n(seeds 1-35)",
+    "A3full s11\n(external name in vocabulary)",
+    "A3blind s11\n(external name removed)",
+    "A1 token-clean vocabulary\nseeds 1-35\n(cannot spell the name)",
 ]
 HITS = [21, 0, 0]
 STEP_NOTES = ["416 steps (pre-abort)", "1475 steps", "33,005 steps"]
-BAR_COLORS = ["#D55E00", "#999999", "#999999"]  # vermillion = discovery; grey = floor
+BAR_COLORS = ["#D55E00", "#999999", "#999999"]  # vermillion = hits observed; grey = none observed
 
 
 def main() -> None:
@@ -38,7 +38,7 @@ def main() -> None:
     ax.set_ylabel("autonomous C1 hits  (C1 and contract_violated)")
     ax.set_ylim(0, 26)
     ax.set_title(
-        "M3: object-identity observation enables autonomous discovery (observed)",
+        "M3: autonomous C1 under the name-acquisition condition (observed)",
         fontsize=11,
     )
     ax.spines["top"].set_visible(False)
@@ -51,13 +51,17 @@ def main() -> None:
         ax.text(x, hits + 2.4, note, ha="center", va="bottom", fontsize=8, color="#333333")
 
     caption = (
-        "Causal contrast: feedback (identity observation) enables discovery; absent -> "
-        "unreachable. This is NOT a rate claim. The trigger is seed-rare (1 of 65 seeds). It "
-        "is not blind discovery (the fuzzer obtains the external name by observation; no "
-        "hardcoded target path / answer seed / proximity reward). node-tar 7.5.2, budget 1500."
+        "Observation under the name-acquisition condition; feedback causation is not established. "
+        "The arms differ in whether the external object's name is in the mutation vocabulary, so "
+        "vocabulary is not held equal and retention/effect feedback is not separated. This is NOT "
+        "a rate claim. The 21 hits are one lineage from one seed, in a run that aborted at step "
+        "416; bars have different denominators (416 / 1475 / 33,005 steps, aborted campaigns "
+        "included). The trigger is seed-rare (1 of 65 seeds). It is not blind discovery (the "
+        "fuzzer obtains the external name by observation; the oracle and feedback hold no target "
+        "path / answer seed / proximity reward). node-tar 7.5.2, budget 1500."
     )
     fig.text(0.5, 0.015, caption, ha="center", va="bottom", fontsize=7, wrap=True)
-    fig.subplots_adjust(left=0.1, right=0.97, top=0.9, bottom=0.26)
+    fig.subplots_adjust(left=0.1, right=0.97, top=0.9, bottom=0.36)
     fig.savefig(out_path, dpi=200)
     plt.close(fig)
     print(f"wrote {out_path}")

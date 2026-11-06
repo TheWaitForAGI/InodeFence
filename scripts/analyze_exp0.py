@@ -46,9 +46,12 @@ from pathlib import Path
 from inodefence.evaluation.encoding import json_bytes, read_json
 from inodefence.evaluation.independence import arm_abort_independence_from_contingency
 from inodefence.evaluation.survival import (
+    AbortPolicy,
     Observation,
+    SeedRecord,
     kaplan_meier,
     km_median,
+    observations_for_policy,
     rule_of_three,
 )
 
@@ -459,6 +462,65 @@ def _throughput_parity(cells: Sequence[CellSummary], parity: object | None) -> d
     }
 
 
+def _seed_record_from_cell(cell: CellSummary) -> SeedRecord:
+    """Project a cell to a survival :class:`SeedRecord` (the pre-censoring T_first fact).
+
+    An aborted cell's abort execution is its ``executions`` (where the fail-closed stop
+    happened); a complete cell carries no abort index. The first event, when observed, is
+    ``t_first``. This reconstructs the observation from the raw facts so each abort policy can
+    be applied, rather than reusing the already-right-censored ``t_first`` column.
+    """
+    return SeedRecord(
+        seed=cell.seed,
+        budget=cell.budget,
+        status=cell.disposition,
+        first_event_executions=cell.t_first if cell.t_first_event == 1 else None,
+        abort_executions=cell.executions if cell.disposition == "abort" else None,
+    )
+
+
+def _t_first_abort_sensitivity(cells: Sequence[CellSummary]) -> dict:
+    """Abort-censoring sensitivity for combined-C1|C2 T_first (promised in §4.6.2 / §6.7).
+
+    item5's main body is the primary read, which censors an abort at its abort execution
+    (:attr:`AbortPolicy.CENSOR_AT_ABORT`). This adds the other two conventions as an additive
+    ``sensitivity`` object -- complete campaigns only (:attr:`AbortPolicy.EXCLUDE`) and an abort
+    treated as a no-hit full run (:attr:`AbortPolicy.CENSOR_AT_BUDGET`) -- so a median or
+    ordering stable across all three is robust to the abort assumption and one that moves is
+    driven by it (EN-008). Only aborted cells move; complete cells are identical across policies.
+    Reuses :func:`inodefence.evaluation.survival.observations_for_policy`; invents no numbers.
+    """
+    policies: dict[str, dict] = {}
+    for policy in (AbortPolicy.EXCLUDE, AbortPolicy.CENSOR_AT_BUDGET):
+        by_arm = {}
+        for arm, valid in _by_arm(cells).items():
+            records = [_seed_record_from_cell(c) for c in valid]
+            observations = observations_for_policy(records, policy)
+            observed = [o.time for o in observations if o.event]
+            steps = kaplan_meier(observations)
+            by_arm[arm] = {
+                "number_observed": len(observed),
+                "observed_t_first": sorted(observed),
+                "number_right_censored": len(observations) - len(observed),
+                "number_in_risk_set": len(observations),
+                "km_median_executions": km_median(steps),
+            }
+        policies[policy.value] = {"by_arm": by_arm}
+    return {
+        "classification": "abort-censoring-sensitivity (T_first combined C1|C2)",
+        "primary_policy": AbortPolicy.CENSOR_AT_ABORT.value,
+        "primary_location": "item5_first_contract_index.by_arm[*].t_first_combined_c1_or_c2",
+        "policies": policies,
+        "note": (
+            "primary (item5 body) censors an abort at its abort execution; these two bracket the "
+            "informative-censoring assumption -- EXCLUDE drops aborts (risk set = complete cells), "
+            "CENSOR_AT_BUDGET treats an abort as a no-hit full run. A verdict stable across all "
+            "three is robust; one that moves is abort-assumption-driven (EN-008). Complete cells "
+            "are identical across policies, so any change is the aborts alone."
+        ),
+    }
+
+
 def _first_index_censored(cells: Sequence[CellSummary], invalid: Sequence[InvalidCell]) -> dict:
     invalid_by_arm: dict[str, int] = {}
     for cell in invalid:
@@ -509,7 +571,7 @@ def _first_index_censored(cells: Sequence[CellSummary], invalid: Sequence[Invali
                 "censored_times": sorted(o.time for o in t_first_obs if not o.event),
             },
         }
-    return {"by_arm": per_arm}
+    return {"by_arm": per_arm, "sensitivity": _t_first_abort_sensitivity(cells)}
 
 
 def _dense_signals(cells: Sequence[CellSummary]) -> dict:

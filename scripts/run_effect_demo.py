@@ -91,6 +91,36 @@ HISTORICAL_SEARCH_POLICY = EffectSearchPolicy.P2_EFFECT_ADAPTIVE
 HISTORICAL_MUTATION_POLICY = MutationPolicy.M1_PROTECTED_COMPONENTS_ESCAPE_HARDLINK
 
 
+#: An exception chain longer than this is cut; the record says so.
+ERROR_CHAIN_LIMIT = 8
+ERROR_CHAIN_MESSAGE_LIMIT = 2000
+
+
+def exception_chain(error: BaseException) -> list[dict[str, object]]:
+    """The raised exception and everything it replaced, outermost first; the last came first.
+
+    A cleanup failure raised in a ``finally`` replaces the error in flight, so ``str(error)``
+    can name only the cleanup. Python keeps the replaced error on ``__context__``, and ``raise
+    ... from`` keeps it on ``__cause__``. Reporting only: nothing classifies on this.
+    """
+    chain: list[dict[str, object]] = []
+    seen: set[int] = set()
+    current: BaseException | None = error
+    while current is not None and id(current) not in seen:
+        if len(chain) == ERROR_CHAIN_LIMIT:
+            chain.append({"truncated": True})
+            break
+        seen.add(id(current))
+        chain.append(
+            {
+                "type": f"{type(current).__module__}.{type(current).__qualname__}",
+                "message": str(current)[:ERROR_CHAIN_MESSAGE_LIMIT],
+            }
+        )
+        current = current.__cause__ or current.__context__
+    return chain
+
+
 class NativeDemoAborted(RuntimeError):
     """Infrastructure failure: stop the demo instead of recording a result.
 
@@ -107,6 +137,7 @@ class NativeDemoAborted(RuntimeError):
         case_id: str | None,
         reason: str,
         observed: dict[str, object] | None = None,
+        error_chain: list[dict[str, object]] | None = None,
     ) -> None:
         super().__init__(f"step {step_index} case {case_id}: {reason}")
         self.step_index = step_index
@@ -114,6 +145,8 @@ class NativeDemoAborted(RuntimeError):
         self.reason = reason
         # Raw target output of the aborted case, kept as observed (not reinterpreted).
         self.observed = observed
+        # The raised exception and what it replaced. `reason` keeps naming the outermost one.
+        self.error_chain = error_chain
 
 
 def synthetic_demo_report(
@@ -353,7 +386,9 @@ def native_demo_report(
             run = run_node_tar_effect_case(case, target, sentinels=sentinels)
         except Exception as error:
             reason = f"{type(error).__module__}.{type(error).__qualname__}: {error}"
-            raise NativeDemoAborted(index, case.case_id, reason) from error
+            raise NativeDemoAborted(
+                index, case.case_id, reason, error_chain=exception_chain(error)
+            ) from error
         check = _native_check(case, run.result, run.controller_flush_verified, run.transport_error)
         checks.append(check)
         timing.append(
@@ -549,7 +584,9 @@ def historical_demo_report(
             run = run_node_tar_effect_case(case, target, sentinels=sentinels)
         except Exception as error:
             reason = f"{type(error).__module__}.{type(error).__qualname__}: {error}"
-            raise NativeDemoAborted(index, case.case_id, reason) from error
+            raise NativeDemoAborted(
+                index, case.case_id, reason, error_chain=exception_chain(error)
+            ) from error
         check = _native_check(case, run.result, run.controller_flush_verified, run.transport_error)
         checks.append(check)
         timing.append(

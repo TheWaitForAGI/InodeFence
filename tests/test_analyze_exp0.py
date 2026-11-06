@@ -10,8 +10,11 @@ from scripts.analyze_exp0 import (
     build_multitarget_report,
     build_report,
     cell_from_row,
+    load_cells,
     main,
 )
+
+from inodefence.evaluation.encoding import json_bytes
 
 DEFAULT_MAP = dict(_DEFAULT_FIELD_MAP)
 
@@ -834,6 +837,9 @@ def test_confirmatory_supplementary_u_viol_a12():
     assert "NOT a confirmatory test" in sup["u_viol_a12_note"]
     # confirmatory-scope one-liner present, marks only reject_at_alpha as confirmatory
     assert "reject_at_alpha" in conf["confirmatory_scope"]
+    # 7.5.6 is affected: the scope line must not re-state the role as a negative control.
+    assert "negative control" not in conf["confirmatory_scope"]
+    assert "no hit-count prediction" in conf["confirmatory_scope"]
 
 
 def test_confirmatory_faster_arm_prevents_sign_flip():
@@ -859,3 +865,64 @@ def test_confirmatory_faster_arm_prevents_sign_flip():
     assert cs["faster_arm"] == "R"  # R faster -> reverse (scenario 8)
     # same two-sided p regardless of direction (sign is carried by faster_arm, not p)
     assert cf["permutation"]["p_value"] == cs["permutation"]["p_value"]
+
+
+def test_invalid_bare_cell_without_target_keeps_single_target_schema(tmp_path, capsys):
+    # One valid + one config-nonconformant bare --cell, neither naming a target id. #246 gave the
+    # invalid cell target_id "" while the valid one defaulted to "unspecified", so the two
+    # distinct ids flipped this single-target run into the schema-2 multi-target report.
+    valid = tmp_path / "R-s9001.summary.json"
+    valid.write_text(json.dumps(_wrap(_rec(arm="R", random_seed=9001))))
+    flagged = _wrap(_rec(arm="R", random_seed=9002))
+    flagged["config_nonconformant"] = True
+    flagged["invalid_reason"] = "budget mismatch vs plan"
+    invalid = tmp_path / "R-s9002.summary.json"
+    invalid.write_text(json.dumps(flagged))
+
+    assert main(["--cell", str(valid), "--cell", str(invalid), "--format", "json"]) == 0
+    out = capsys.readouterr().out
+    report = json.loads(out)
+    assert report["schema_version"] == 1
+    assert "by_target" not in report and "target_ids" not in report
+    assert report["number_valid_cells"] == 1 and report["number_invalid_cells"] == 1
+    # Byte-identical to the single-target build_report path (unchanged since pre-#246).
+    cells = [cell_from_row(json.loads(p.read_text()), DEFAULT_MAP) for p in (valid, invalid)]
+    assert all(c.target_id == "unspecified" for c in cells)
+    expected = build_report(cells, field_map=DEFAULT_MAP, sources=[str(valid), str(invalid)])
+    assert out == json_bytes(expected).decode("ascii") + "\n"
+    assert "role_interpretation" not in out and "fix-verification" not in out
+
+
+def test_old_index_invalid_cell_inherits_single_target(tmp_path):
+    # An index entry without target_id + a null summary: the invalid cell takes the run's one
+    # target id (from the valid cell's wrapper target), never "".
+    summaries = tmp_path / "summaries"
+    summaries.mkdir()
+    valid = {
+        "summary": _rec(arm="R", random_seed=9001),
+        "target": {"target_id": "nt-7.5.2", "role": "train", "hypothesis": "H-A"},
+    }
+    (summaries / "R-s9001.summary.json").write_text(json.dumps(valid))
+    (summaries / "R-s9002.summary.json").write_text(json.dumps(_wrap(invalid=True)))
+    items = [
+        (summaries / "R-s9001.summary.json", {"arm": "R", "seed": 9001}),
+        (summaries / "R-s9002.summary.json", {"arm": "R", "seed": 9002}),
+    ]
+    cells = load_cells(items, DEFAULT_MAP)
+    assert isinstance(cells[1], InvalidCell)
+    assert [c.target_id for c in cells] == ["nt-7.5.2", "nt-7.5.2"]
+
+
+def test_fix_verification_role_label_makes_no_hit_count_prediction():
+    # 7.5.6 is affected (cross-release-identity-repro-v1.md:49): the fix-verification label
+    # describes the registered role only -- no "negative control" / "expected 0 hits".
+    cells = [_mt_cell(a, s, "nt-7.5.6", "fix-verification") for a in ("R", "S-u") for s in (1, 2)]
+    cells += [_mt_cell(a, s, "h", "holdout") for a in ("R", "S-u") for s in (1, 2)]
+    report = build_multitarget_report(cells, field_map=DEFAULT_MAP, sources=["t"])
+    label = report["by_target"]["nt-7.5.6"]["role_interpretation"]
+    assert label == "fix-verification (H-A, pre-exposed; no hit-count prediction)"
+    from scripts.analyze_exp0 import report_markdown
+
+    rendered = json_bytes(report).decode("ascii") + report_markdown(report)
+    assert "negative control" not in rendered and "expected 0 hits" not in rendered
+    assert "no hit-count prediction" in report["purpose"]

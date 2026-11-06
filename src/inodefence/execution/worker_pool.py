@@ -33,9 +33,11 @@ accounting.
 
 import random
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
+from inodefence.effect_campaign import EffectCampaignConfig, run_effect_campaign
+from inodefence.effect_demo import EffectStepReporter
 from inodefence.evaluation.abort_classification import (
     INFRASTRUCTURE_REASONS,
     MAX_INFRA_RETRIES,
@@ -46,6 +48,7 @@ from inodefence.evaluation.abort_classification import (
     classify_abort_reason,
 )
 from inodefence.model import ArchiveCase, EffectRunResult
+from inodefence.runtime import RUNTIME_BASE
 
 # A reused controller volume is clean when neither flag is set after a case.
 RUN_PREFIX = "core-run-"
@@ -304,6 +307,165 @@ class ResettingProducer:
         """Full-jitter wait in ``[0, min(cap, base * 2**attempt)]`` from the worker RNG."""
         ceiling = min(self.backoff_cap, self.backoff_base * (2**attempt))
         self.sleep(self.rng.uniform(0.0, ceiling))
+
+
+# ---------------------------------------------------------------------------
+# Campaign orchestration wiring and host-side bring-up planning.
+#
+# Honest scope note (agreed with the orchestrator, verifier note): the campaign
+# loop runs *inside* one controller container, and ``run_parallel_native`` already
+# gives each campaign its own controller + dedicated volume. So this worker pool's
+# real increment is per-case reset verification + in-controller infrastructure
+# retry (cleanup_inspect / cleanup_remove / cleanup_reset), NOT a persistent fleet
+# of pre-started workers. A ``broker`` failure kills the controller's channel; its
+# host relaunch + resume-from-``.steps.jsonl`` is deferred past G1, so a broker
+# failure right-censors the campaign (the completed steps are retained). The
+# audit's "N pre-started workers" wording differs from this on purpose.
+#
+# Reset condition coverage (verifier note): ``verify_reset`` covers volume-path
+# residue only. The other reset condition -- that no owned-label target container
+# survives a case -- is enforced by the execution backend's ``remove_owned`` (it
+# verifies absence and raises on failure, classified ``cleanup_remove``), so it is
+# retried through the same path without being re-checked here.
+# ---------------------------------------------------------------------------
+
+WORKER_RUN_PREFIX = "s3wp-"
+CONTROLLER_NAME_STEM = "inodefence-local-controller"
+VOLUME_NAME_STEM = "inodefence-local-runtime"
+CAMPAIGN_WATCHDOG_SECONDS: float = 2 * 60 * 60
+DISK_PAUSE_FRACTION: float = 0.9
+
+
+def worker_run_id(cell_run_id: str) -> str:
+    """Prefix a parallel-matrix cell id with the worker-pool run tag."""
+    if not isinstance(cell_run_id, str) or not cell_run_id:
+        raise ValueError("cell run id must be nonempty")
+    return f"{WORKER_RUN_PREFIX}{cell_run_id}"
+
+
+def controller_name(run_id: str) -> str:
+    """The dedicated controller container name for a worker (mirrors the smoke script)."""
+    return f"{CONTROLLER_NAME_STEM}-{run_id}"
+
+
+def volume_name(run_id: str) -> str:
+    """The dedicated runtime volume name for a worker (no write path shared between workers)."""
+    return f"{VOLUME_NAME_STEM}-{run_id}"
+
+
+def campaign_deadline_exceeded(
+    elapsed_seconds: float, limit: float = CAMPAIGN_WATCHDOG_SECONDS
+) -> bool:
+    """Whether a campaign has run past the watchdog limit and should be stopped."""
+    return elapsed_seconds >= limit
+
+
+def should_pause_for_disk(usage_fraction: float, threshold: float = DISK_PAUSE_FRACTION) -> bool:
+    """Whether the runtime volume is full enough that new cases should pause."""
+    return usage_fraction >= threshold
+
+
+@dataclass(frozen=True, slots=True)
+class WorkerBringup:
+    """The planned bring-up of one worker: dedicated controller + volume + mount.
+
+    ``env`` is the per-campaign environment the existing ``run_parallel_native`` path
+    sets (RUN_ID, DEMO_SEED, ...). This is a plan for ``--dry-run`` and is never a
+    command that runs here; Docker is launched only on a host with an assigned slot.
+    """
+
+    run_id: str
+    controller: str
+    volume: str
+    mount_target: str
+    env: tuple[tuple[str, str], ...]
+
+    def describe(self) -> dict[str, object]:
+        return {
+            "run_id": self.run_id,
+            "controller": self.controller,
+            "volume": self.volume,
+            "mount": f"{self.volume} -> {self.mount_target} (per-case subpath)",
+            "env": dict(self.env),
+        }
+
+
+def plan_worker_bringup(cell_run_id: str, env: dict[str, str]) -> WorkerBringup:
+    """Plan one worker's bring-up from a matrix cell id and its campaign environment."""
+    run_id = worker_run_id(cell_run_id)
+    worker_env = dict(env)
+    worker_env["RUN_ID"] = run_id
+    return WorkerBringup(
+        run_id=run_id,
+        controller=controller_name(run_id),
+        volume=volume_name(run_id),
+        mount_target=str(RUNTIME_BASE),
+        env=tuple(sorted(worker_env.items())),
+    )
+
+
+def run_worker_campaign(
+    initial_cases: Sequence[ArchiveCase],
+    inner_producer: Callable[[ArchiveCase], EffectRunResult],
+    config: EffectCampaignConfig,
+    worker: WorkerHandle,
+    reset_observer: ResetObserver,
+    *,
+    sleep: Callable[[float], None] = time.sleep,
+    rng: random.Random | None = None,
+) -> dict[str, object]:
+    """Drive one campaign through the reset/retry wrapper, recording the agreed fields.
+
+    Returns a report fragment: ``steps`` (valid completed step records, each carrying
+    ``infra_retries`` only when the case needed one) and ``invalid_cases`` (at most one,
+    present when a case was abandoned and the campaign was right-censored). The campaign
+    RNG lives in ``run_effect_campaign`` (seeded from ``config``); ``rng`` here is only the
+    worker-local backoff RNG, so the step trajectory is identical with or without retries.
+    """
+    reporter = EffectStepReporter()
+    steps: list[dict[str, object]] = []
+    producer = ResettingProducer(
+        inner_producer,
+        worker,
+        reset_observer,
+        completed_step_count=lambda: len(steps),
+        sleep=sleep,
+        rng=rng if rng is not None else random.Random(),
+    )
+    invalid_cases: list[dict[str, object]] = []
+
+    def on_step(step: object) -> None:
+        record = reporter.add(step)  # type: ignore[arg-type]
+        case_id = step.result.base_result.case.case_id  # type: ignore[attr-defined]
+        retries = producer.retries_for(case_id)
+        if retries:
+            record["infra_retries"] = [retry.to_record() for retry in retries]
+        steps.append(record)
+
+    try:
+        run_effect_campaign(initial_cases, producer, config, on_step=on_step)
+    except CaseAbandoned as abandoned:
+        invalid_cases.append(abandoned.invalid_case.to_record())
+    return {"steps": steps, "invalid_cases": invalid_cases}
+
+
+def measurement_runners(jobs: int) -> tuple[object, object]:
+    """Return the per-case and worker-pool method runners the throughput script expects.
+
+    Each runner executes the matrix under one method and returns its timing plus the
+    per-cell parity subjects the throughput report compares. That comparison needs the
+    parity/throughput analysis modules (``evaluation.execution_parity`` /
+    ``evaluation.throughput``), which arrive on the integration base (main + the parity
+    PR + this stack), and executing either runner launches Docker on an assigned slot.
+    This stacked PR ships the interface only; the executors are wired on the integration
+    base, so the throughput script's test and this one guard on the analysis modules
+    being importable (``pytest.importorskip``).
+    """
+    raise NotImplementedError(
+        "measurement_runners executes campaigns under Docker; wire the per-case and "
+        "worker-pool executors on the integration base (claude/s3-wp-integration) and "
+        "run only with an assigned Docker slot"
+    )
 
 
 @dataclass(frozen=True, slots=True)

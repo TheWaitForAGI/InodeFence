@@ -4,10 +4,13 @@ import random
 
 import pytest
 
+from inodefence.effect_campaign import EffectCampaignConfig
 from inodefence.effect_synthetic import synthetic_effect_result
 from inodefence.evaluation.abort_classification import InvalidReason, ResetFailureDetail
 from inodefence.execution.base import BackendError
 from inodefence.execution.worker_pool import (
+    CAMPAIGN_WATCHDOG_SECONDS,
+    DISK_PAUSE_FRACTION,
     CaseAbandoned,
     InfraRetry,
     InvalidCase,
@@ -15,9 +18,20 @@ from inodefence.execution.worker_pool import (
     ResetObserver,
     ResettingProducer,
     WorkerHandle,
+    campaign_deadline_exceeded,
+    controller_name,
+    measurement_runners,
+    plan_worker_bringup,
+    run_worker_campaign,
+    should_pause_for_disk,
     verify_reset,
+    volume_name,
+    worker_run_id,
 )
+from inodefence.feedback import EffectSearchPolicy
+from inodefence.generator.minimal import minimal_seed_corpus
 from inodefence.model import ArchiveCase, ArchiveEntry, EntryType
+from inodefence.mutator import MutationPolicy
 from inodefence.observer.snapshot import ObservationError
 
 CASE = ArchiveCase((ArchiveEntry("a.txt", EntryType.REGULAR, content=b"x"),))
@@ -243,6 +257,150 @@ def test_record_validation_rejects_bad_values() -> None:
         InfraRetry(-1, InvalidReason.BROKER, None, "w0")
     with pytest.raises(ValueError):
         InvalidCase("cid", 0, InvalidReason.BROKER, None, 0, "w0")
+
+
+# ---- campaign orchestration wiring: infra_retries, invalid_cases, right-censor ----
+
+
+def _config(seed: int = 7, budget: int = 6) -> EffectCampaignConfig:
+    return EffectCampaignConfig(
+        seed, budget, EffectSearchPolicy.P1_EFFECT_RETENTION, MutationPolicy.LEGACY
+    )
+
+
+def _noop(_: float) -> None:
+    return None
+
+
+def _steps(report: dict) -> list:
+    value = report["steps"]
+    assert isinstance(value, list)
+    return value
+
+
+def _invalids(report: dict) -> list:
+    value = report["invalid_cases"]
+    assert isinstance(value, list)
+    return value
+
+
+def test_run_worker_campaign_clean_has_no_retries_or_invalids() -> None:
+    report = run_worker_campaign(
+        minimal_seed_corpus(),
+        synthetic_effect_result,
+        _config(budget=6),
+        FakeWorker(),
+        _clean_observer(),
+        sleep=_noop,
+        rng=random.Random(0),
+    )
+    assert len(_steps(report)) == 6
+    assert _invalids(report) == []
+    assert all("infra_retries" not in step for step in _steps(report))
+
+
+def test_run_worker_campaign_attaches_infra_retries_to_the_retried_step() -> None:
+    inner = FlakyInner(BackendError(BROKER_MSG))  # first produce fails once then succeeds
+    report = run_worker_campaign(
+        minimal_seed_corpus(),
+        inner,
+        _config(),
+        FakeWorker(),
+        _clean_observer(),
+        sleep=_noop,
+        rng=random.Random(0),
+    )
+    assert _invalids(report) == []
+    first = _steps(report)[0]
+    assert first["infra_retries"] == [
+        {"attempt_index": 0, "reason": "broker", "detail": None, "worker_id": "w0"}
+    ]
+    assert all("infra_retries" not in step for step in _steps(report)[1:])
+
+
+def test_run_worker_campaign_records_invalid_case_and_right_censors() -> None:
+    inner = FlakyInner(*(BackendError(BROKER_MSG) for _ in range(10)))  # never recovers
+    report = run_worker_campaign(
+        minimal_seed_corpus(),
+        inner,
+        _config(),
+        FakeWorker(),
+        _clean_observer(),
+        sleep=_noop,
+        rng=random.Random(0),
+    )
+    assert _steps(report) == []  # abandoned on the first case -> campaign right-censored
+    assert len(_invalids(report)) == 1
+    invalid = _invalids(report)[0]
+    assert invalid["validity"] == "invalid"
+    assert invalid["invalid_reason"] == "broker"
+    assert invalid["attempts"] == 3
+    assert invalid["step_index"] == 0
+
+
+def test_case_id_sequence_identical_with_and_without_a_retry() -> None:
+    # Direct G1-parity check at the wiring level: a transient infra retry re-runs the
+    # same case and never draws from the campaign RNG, so the step trajectory matches.
+    clean = run_worker_campaign(
+        minimal_seed_corpus(),
+        synthetic_effect_result,
+        _config(seed=7),
+        FakeWorker(),
+        _clean_observer(),
+        sleep=_noop,
+        rng=random.Random(0),
+    )
+    retried = run_worker_campaign(
+        minimal_seed_corpus(),
+        FlakyInner(BackendError(BROKER_MSG)),
+        _config(seed=7),
+        FakeWorker(),
+        _clean_observer(),
+        sleep=_noop,
+        rng=random.Random(0),
+    )
+    assert [s["case_id"] for s in _steps(clean)] == [s["case_id"] for s in _steps(retried)]
+    assert "infra_retries" in _steps(retried)[0]  # the retry really happened
+
+
+# ---- host bring-up planning, watchdog, disk pressure -------------------------
+
+
+def test_worker_naming_convention() -> None:
+    run_id = worker_run_id("native-default-s123")
+    assert run_id == "s3wp-native-default-s123"
+    assert controller_name(run_id) == "inodefence-local-controller-s3wp-native-default-s123"
+    assert volume_name(run_id) == "inodefence-local-runtime-s3wp-native-default-s123"
+
+
+def test_watchdog_boundary() -> None:
+    assert campaign_deadline_exceeded(CAMPAIGN_WATCHDOG_SECONDS) is True
+    assert campaign_deadline_exceeded(CAMPAIGN_WATCHDOG_SECONDS - 1) is False
+
+
+def test_disk_pause_boundary() -> None:
+    assert should_pause_for_disk(DISK_PAUSE_FRACTION) is True
+    assert should_pause_for_disk(DISK_PAUSE_FRACTION - 0.01) is False
+
+
+def test_plan_worker_bringup_dedicated_controller_and_volume() -> None:
+    bringup = plan_worker_bringup("native-default-s123", {"DEMO_SEED": "123", "DEMO_BUDGET": "50"})
+    assert bringup.run_id == "s3wp-native-default-s123"
+    assert bringup.controller == "inodefence-local-controller-s3wp-native-default-s123"
+    assert bringup.volume == "inodefence-local-runtime-s3wp-native-default-s123"
+    described = bringup.describe()
+    assert described["env"]["RUN_ID"] == "s3wp-native-default-s123"  # type: ignore[index]
+    assert described["env"]["DEMO_SEED"] == "123"  # type: ignore[index]
+    assert "/var/lib/inodefence" in str(described["mount"])
+
+
+def test_measurement_runners_interface_requires_analysis_modules() -> None:
+    # On the integration base the analysis modules are present and the executors are
+    # wired; on this stacked base they are absent, so the check skips.
+    pytest.importorskip("inodefence.evaluation.execution_parity")
+    pytest.importorskip("inodefence.evaluation.throughput")
+    with pytest.raises(NotImplementedError):
+        measurement_runners(2)
 
 
 # ---- reset observation recording (both paths) --------------------------------

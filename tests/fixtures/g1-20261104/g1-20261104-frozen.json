@@ -1,0 +1,182 @@
+{
+ "cells": {
+  "completion/7.5.2-D-s9001": {
+   "hit": false,
+   "hit_steps": 0,
+   "t_first": 50,
+   "t_first_event": 0,
+   "u_viol": 0,
+   "u_viol_c0": 0,
+   "unfingerprinted_hit_steps": 0
+  },
+  "completion/7.5.2-R-s9001": {
+   "hit": false,
+   "hit_steps": 0,
+   "t_first": 50,
+   "t_first_event": 0,
+   "u_viol": 0,
+   "u_viol_c0": 0,
+   "unfingerprinted_hit_steps": 0
+  },
+  "completion/7.5.2-S-u-s9001": {
+   "hit": false,
+   "hit_steps": 0,
+   "t_first": 50,
+   "t_first_event": 0,
+   "u_viol": 0,
+   "u_viol_c0": 0,
+   "unfingerprinted_hit_steps": 0
+  },
+  "smoke/7.5.2-D-s9001": {
+   "hit": false,
+   "hit_steps": 0,
+   "t_first": 50,
+   "t_first_event": 0,
+   "u_viol": 0,
+   "u_viol_c0": 0,
+   "unfingerprinted_hit_steps": 0
+  },
+  "smoke/7.5.2-D-s9002": {
+   "hit": true,
+   "hit_steps": 1,
+   "t_first": 42,
+   "t_first_event": 1,
+   "u_viol": 1,
+   "u_viol_c0": 0,
+   "unfingerprinted_hit_steps": 0
+  },
+  "smoke/7.5.2-D-s9003": {
+   "hit": false,
+   "hit_steps": 0,
+   "t_first": 50,
+   "t_first_event": 0,
+   "u_viol": 0,
+   "u_viol_c0": 0,
+   "unfingerprinted_hit_steps": 0
+  },
+  "smoke/7.5.2-D-s9004": {
+   "hit": false,
+   "hit_steps": 0,
+   "t_first": 50,
+   "t_first_event": 0,
+   "u_viol": 0,
+   "u_viol_c0": 0,
+   "unfingerprinted_hit_steps": 0
+  },
+  "smoke/7.5.2-R-s9001": {
+   "hit": false,
+   "hit_steps": 0,
+   "t_first": 50,
+   "t_first_event": 0,
+   "u_viol": 0,
+   "u_viol_c0": 0,
+   "unfingerprinted_hit_steps": 0
+  },
+  "smoke/7.5.2-R-s9002": {
+   "hit": false,
+   "hit_steps": 0,
+   "t_first": 50,
+   "t_first_event": 0,
+   "u_viol": 0,
+   "u_viol_c0": 0,
+   "unfingerprinted_hit_steps": 0
+  },
+  "smoke/7.5.2-R-s9003": {
+   "hit": false,
+   "hit_steps": 0,
+   "t_first": 50,
+   "t_first_event": 0,
+   "u_viol": 0,
+   "u_viol_c0": 0,
+   "unfingerprinted_hit_steps": 0
+  },
+  "smoke/7.5.2-R-s9004": {
+   "hit": false,
+   "hit_steps": 0,
+   "t_first": 50,
+   "t_first_event": 0,
+   "u_viol": 0,
+   "u_viol_c0": 0,
+   "unfingerprinted_hit_steps": 0
+  },
+  "smoke/7.5.2-S-u-s9001": {
+   "hit": false,
+   "hit_steps": 0,
+   "t_first": 50,
+   "t_first_event": 0,
+   "u_viol": 0,
+   "u_viol_c0": 0,
+   "unfingerprinted_hit_steps": 0
+  },
+  "smoke/7.5.2-S-u-s9002": {
+   "hit": false,
+   "hit_steps": 0,
+   "t_first": 50,
+   "t_first_event": 0,
+   "u_viol": 0,
+   "u_viol_c0": 0,
+   "unfingerprinted_hit_steps": 0
+  },
+  "smoke/7.5.2-S-u-s9003": {
+   "hit": false,
+   "hit_steps": 0,
+   "t_first": 50,
+   "t_first_event": 0,
+   "u_viol": 0,
+   "u_viol_c0": 0,
+   "unfingerprinted_hit_steps": 0
+  },
+  "smoke/7.5.2-S-u-s9004": {
+   "hit": false,
+   "hit_steps": 0,
+   "t_first": 50,
+   "t_first_event": 0,
+   "u_viol": 0,
+   "u_viol_c0": 0,
+   "unfingerprinted_hit_steps": 0
+  }
+ },
+ "generated_from": "~/inodefence-evidence/g1-20261104/{completion,smoke}/summaries (lane-5 G1 runs, 2026-11-04, engine 4b072a5/6a29806 integration branch)",
+ "reduced_reports": {
+  "7.5.2-D-s9002": {
+   "frozen": {
+    "aborted": false,
+    "c0_steps": 0,
+    "complete": true,
+    "executions_completed": 50,
+    "first_c0": null,
+    "first_c1": null,
+    "first_c2": 42,
+    "hit": true,
+    "hit_steps": 1,
+    "t_first": 42,
+    "t_first_censored": false,
+    "t_first_event": 1,
+    "u_viol": 1,
+    "u_viol_c0": 0
+   },
+   "summary_sha256": "e288c095b1d9f25e16e8e441a3800a85ef11e065ed20d51b6174e1e23a28fb23",
+   "unfingerprinted_hit_steps": 0
+  },
+  "7.5.2-R-s9001": {
+   "frozen": {
+    "aborted": false,
+    "c0_steps": 0,
+    "complete": true,
+    "executions_completed": 50,
+    "first_c0": null,
+    "first_c1": null,
+    "first_c2": null,
+    "hit": false,
+    "hit_steps": 0,
+    "t_first": 50,
+    "t_first_censored": true,
+    "t_first_event": 0,
+    "u_viol": 0,
+    "u_viol_c0": 0
+   },
+   "summary_sha256": "36585f38767230fd06c189a755aec3ce183d41675f9719e048f2b28d9672ff68",
+   "unfingerprinted_hit_steps": 0
+  }
+ }
+}

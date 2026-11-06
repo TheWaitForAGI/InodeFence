@@ -52,7 +52,7 @@
 
 InodeFence 관점의 중요한 한계:
 
-후속 연구(Wormholes §5.6)에서는 ZIPDiff가 복잡한 link composition과 creation order가 필요한 테스트 대상 symlink vulnerability를 찾지 못했다고 보고했다. 재현한 ZIPDiff를 ZIP 도구 20개(그중 8개 symlink 취약)에 돌렸고 "fails to detect any of them"이다(원문 확인 2026-11-06 독립 심사).
+Wormholes 저자들은 ZIPDiff 구현을 재현해 자신들의 ZIP 도구 20개(그중 8개에 symlink 취약점)에 적용했을 때 하나도 탐지하지 못했다고 보고하고("fails to detect any of them"), 복잡한 symlink composition과 creation order가 필요하기 때문이라고 설명한다(Wormholes §5.6, p. 5223; 원문 확인 2026-11-06 독립 심사). 단일 출처의 저자 평가이므로 일반적인 ZIPDiff 한계로 읽지 않는다. 범용 변이인 InodeFence에도 같은 한계가 있을 수 있다.
 
 ## LinkZard — 2025
 

@@ -12,13 +12,13 @@ Two layers, because the demo report does not serialize raw ``StateSnapshot``s:
 1. ``compare_report_pair`` (the native deliverable). Builds a ``ParitySubject``
    from each report and reports the two parity dimensions the report fully backs
    -- ``case_sequence`` (per-step case id) and ``oracle_and_feedback`` (C0/C1/C2
-   verdict and fed-back keys) -- plus a *full-report equality* check over the
-   deterministic loop record (``steps`` and the deterministic summaries). Because
-   the report omits per-step filesystem snapshots and isolation provenance, the
-   ``snapshots`` and ``isolation_and_reset`` dimensions are not independently
-   report-backed; full-report equality subsumes them (identical reports carry
-   identical serialized observations), and ``coverage`` says so explicitly. The
-   determinism verdict is report equality AND the two report-backed dimensions.
+   verdict and fed-back keys) -- plus a *full-report equality* diagnostic over the
+   deterministic loop record (``steps`` and the deterministic summaries). The
+   determinism verdict is those two report-backed dimensions alone. The report omits
+   per-step filesystem snapshots and isolation provenance, so the ``snapshots`` and
+   ``isolation_and_reset`` dimensions do not enter the verdict, and ``coverage`` says
+   so explicitly. Equality is reported as ``observation_sequence_identical`` and does
+   not change the verdict.
 
 2. ``selftest_inprocess`` (``--dry-run``, no docker). Runs the synthetic campaign
    in process twice for the same seed and feeds the two ``EffectCampaignResult``s

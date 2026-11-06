@@ -49,6 +49,7 @@ from inodefence.evaluation.survival import (
     AbortPolicy,
     Observation,
     SeedRecord,
+    a12,
     holm_adjust,
     kaplan_meier,
     km_median,
@@ -815,13 +816,16 @@ def _confirmatory_section(
             contrast.get("arm_b"),
         )
         cells_t = [c for c in valid if c.target_id == tid and c.arm in (arm_a, arm_b)]
-        by_seed: dict[int, dict[str, Observation]] = {}
+        by_seed: dict[int, dict[str, CellSummary]] = {}
         for c in cells_t:
-            by_seed.setdefault(c.seed, {})[c.arm] = Observation(c.t_first, bool(c.t_first_event))
+            by_seed.setdefault(c.seed, {})[c.arm] = c
+        paired = [s for s in sorted(by_seed) if arm_a in by_seed[s] and arm_b in by_seed[s]]
         blocks = [
-            (by_seed[s][arm_a], by_seed[s][arm_b])
-            for s in sorted(by_seed)
-            if arm_a in by_seed[s] and arm_b in by_seed[s]
+            (
+                Observation(by_seed[s][arm_a].t_first, bool(by_seed[s][arm_a].t_first_event)),
+                Observation(by_seed[s][arm_b].t_first, bool(by_seed[s][arm_b].t_first_event)),
+            )
+            for s in paired
         ]
         perm = seed_block_logrank_permutation(blocks, seed=0)
         events = int(perm["total_events"])
@@ -844,20 +848,31 @@ def _confirmatory_section(
                 # fewer than 3 campaigns has no meaningful 3/n bound (3/n > 1). It is undefined,
                 # not merely underpowered. (A valid registration cannot reach this -- #244's
                 # parser rejects a contrast arm absent from the target -- but defend old indexes.)
-                entry["rule_of_three_upper95"] = None
+                entry["campaign_unit_rule_of_three_upper95"] = None
                 entry["underpowered_note"] = (
                     "no paired seed blocks (an arm has no campaigns on this target) or fewer than "
                     "3 campaigns: the contrast is undefined/uninformative, not merely "
                     "underpowered; rule-of-three is not applicable"
                 )
             else:
-                entry["rule_of_three_upper95"] = rule_of_three(n_campaigns)
+                entry["campaign_unit_rule_of_three_upper95"] = rule_of_three(n_campaigns)
                 entry["underpowered_note"] = (
                     "events below event_threshold: the permutation test is valid but near-"
                     "powerless (verdict is scenario-5, unobserved at achieved power); the rule-"
                     "of-three is a descriptive campaign-unit upper bound, NOT a confirmation "
                     "(EN-008)"
                 )
+        a_uviol = [by_seed[s][arm_a].u_viol for s in paired]
+        b_uviol = [by_seed[s][arm_b].u_viol for s in paired]
+        entry["supplementary"] = {
+            "u_viol_a12": a12(a_uviol, b_uviol) if a_uviol and b_uviol else None,
+            "u_viol_a12_note": (
+                "Vargha-Delaney A12 on per-seed U_viol (secondary metric; higher = more unique "
+                "violations, so >0.5 favors arm_a), seed-block paired over seeds observed in both "
+                "arms. SUPPLEMENTARY effect size (research-questions v2 U_viol: Mann-Whitney/A12), "
+                "NOT a confirmatory test (EN-008)."
+            ),
+        }
         raw_ps.append(float(perm["p_value"]) if perm["p_value"] is not None else 1.0)
         results.append(entry)
     for entry, adjusted in zip(results, holm_adjust(raw_ps), strict=True):
@@ -871,6 +886,12 @@ def _confirmatory_section(
         "event_threshold": threshold,
         "alpha": alpha,
         "contrasts": results,
+        "confirmatory_scope": (
+            "the only confirmatory result is this family's reject_at_alpha (holdout targets, "
+            "H-A, Holm-adjusted); the by_target train (exploratory, pre-exposed) and "
+            "fix-verification (pre-exposed, no hit-count prediction) sections are never "
+            "confirmatory"
+        ),
         "note": (
             "per-contrast seed-block arm-label permutation log-rank (valid at any n), Holm-FWER "
             "over the frozen ordered family; event_threshold is an underpowered FLAG + rule-of-"

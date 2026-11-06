@@ -93,6 +93,8 @@ def run_native_effect_demo(
                     "reason": error.reason,
                     "category": classify_abort_reason(error.reason).value,
                     "observed": error.observed,
+                    "error_chain": error.error_chain,
+                    "case_shape": error.case_shape,
                 },
             }
             print(f"effect-demo aborted: {error}", file=sys.stderr)
@@ -149,6 +151,8 @@ def run_native_historical_demo(
                     "reason": error.reason,
                     "category": classify_abort_reason(error.reason).value,
                     "observed": error.observed,
+                    "error_chain": error.error_chain,
+                    "case_shape": error.case_shape,
                 },
             }
             print(f"effect-demo-historical aborted: {error}", file=sys.stderr)

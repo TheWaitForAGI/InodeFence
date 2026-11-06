@@ -33,11 +33,16 @@ raw는 Git에 올리지 않으므로(위 정책), 저장소에는 **checksum 목
 | 호스트 | 아키텍처 | raw 위치 | manifest | 파일/크기 | 외부 백업 | 복구 가능성 |
 | --- | --- | --- | --- | --- | --- | --- |
 | mac | arm64 | `~/inodefence-evidence/` (mac 호스트) | [raw-manifest-mac-20261103.sha256](raw-manifest-mac-20261103.sha256) | 1,614 파일 / 이 호스트에서 크기 측정 불가 | **없음** | mac 호스트가 원본을 보유하는 동안만. 저장소는 checksum만 보유 |
-| win (이 호스트) | x86_64 | `~/inodefence-evidence/` (WSL2) | [raw-manifest-win-20261104.sha256](raw-manifest-win-20261104.sha256) | 44 파일 / 약 20.7 MiB (gzip -9 약 2.68 MiB) | **없음** | 이 호스트의 원본 + 저장소 checksum. off-host 사본 없음 |
+| win (이 호스트) | x86_64 | `~/inodefence-evidence/` (WSL2) | 전체 스냅샷 [raw-manifest-win-20261104-1421.sha256](raw-manifest-win-20261104-1421.sha256) (141 항목, in-tree `.sha256` 제외); 초기 [raw-manifest-win-20261104.sha256](raw-manifest-win-20261104.sha256)(44) **불변 보존** | 141 파일 (원본 44 + s3-observer 26 + g1 71) | **없음** | 이 호스트 원본 + 저장소 checksum; off-host 사본 없음 (#215 번들은 로컬만) |
+| └ s3-observer-20261104 | x86_64 | `~/inodefence-evidence/s3-observer-20261104/` | 위 전체 스냅샷에 포함 | 26 파일 (네이티브 13런, 완주 13/13·abort 0) | **없음** | 레인 2 제공 SHA 목록과 독립 재해시 26/26 일치 |
+| └ g1-20261104 | x86_64 | `~/inodefence-evidence/g1-20261104/{completion,smoke,analysis-toolcheck}` | 위 전체 스냅샷에 포함 | 71 파일 (completion 14·smoke 50·analysis 7); **unregistered G1 smoke (pre-exposure of EXP-0 seeds 9001–9004)**, demo run — EXP-0 사전등록 raw 아님 | **없음** | 이 호스트 원본 + 저장소 checksum |
 
-win manifest는 두 독립 도구가 바이트 동일하게 생성했다(이 저장소 스크립트, 그리고 코드 재사용 없이 손으로
-Wilson까지 재계산한 별도 검증 — 재계산 보고는 이 세션 외부 산출물이므로 포인터만 둔다). 두 파일의
-SHA-256 `0de2aef3…`가 일치하고, `--verify`는 44/44 ok다.
+초기 win manifest(44)는 두 독립 도구가 바이트 동일하게 생성했고(이 저장소 스크립트 + 코드 재사용 없이 손으로
+Wilson까지 재계산한 별도 검증, SHA-256 `0de2aef3…` 일치, `--verify` 44/44 ok) 그대로 보존한다. 2026-11-04
+전체 스냅샷 `raw-manifest-win-20261104-1421.sha256`는 s3-observer·g1을 더한 141 항목이며(트리에 생긴
+in-tree `.sha256` 사본은 `--exclude-suffix .sha256`로 제외), `--verify` 141/141 ok·GNU `sha256sum --check` ok,
+초기 44 항목의 모든 줄을 그대로 포함한다(보존 확인). manifest는 **시점 스냅샷**이다 — 다른 레인이 raw를
+계속 추가하므로 이후 스냅샷은 또 새 파일명으로 남긴다.
 
 ### win 호스트 raw 구성 메모 (오해 방지)
 
@@ -54,6 +59,16 @@ SHA-256 `0de2aef3…`가 일치하고, `--verify`는 44/44 ok다.
 - **검증 불가 서술**: 4개 재실행 셀(a1/sa-s500, a1-s505, sa-s504)의 첫 시도 abort stub이 덮어써져,
   "sa-s504가 2회 연속 abort됐다"는 서술은 LOG/WORKLOG 기록으로만 남고 raw로 재확인되지 않는다. 현재
   남은 `…-m45-sa-s504.json`은 217바이트 abort stub 1개다.
+- **s3-observer-20261104 (레인 2, 2026-11-04)**: node-tar 7.5.2 overlay demo run 네이티브 13런
+  (`…-s3obs-{cont,scan,stop}-*.json` + `.steps.jsonl`), 완주 13/13·abort 0. 레인 2가 보낸 26개 SHA-256을
+  이 호스트 디스크에서 독립 재해시해 26/26 일치 확인.
+- **g1-20261104 (레인 5 G1, 2026-11-04)**: `completion/`(R/D/S-u × s9001, 14파일)·`smoke/`(50파일)·
+  `analysis-toolcheck/`(7파일). 라벨 demo run, **EXP-0 사전등록 raw 아님**. 통합 브랜치 `claude/s3-g1-integration`
+  `4b072a5`, image `sha256:22c8734f…`. **unregistered G1 smoke가 EXP-0 사전등록 seed {9001..9004}를
+  budget 50으로 먼저 실행(pre-exposure)**: 12런 완주 12/12·abort 0, 그중 smoke `7.5.2-D-s9002`의 1-based
+  step 42에서 **C2 사건 1건 관찰**(raw 재확인: `oracle.C2=true` + `feedback.contract_violated=true`; 12런 통틀어
+  유일한 contract_violated step). 이 pre-exposure의 정직성 공개는 EXP-0 사전등록 초안(`exp0-pilot-v2.1`)의
+  "사전 노출 공개" 절에 둔다 — EXP-0은 인프라 측정이라 가설 검정에 영향은 없으나 사실로 공개한다.
 
 ### m4-5 통합 verdict 라벨 결함 (알려짐, 수치 무관)
 

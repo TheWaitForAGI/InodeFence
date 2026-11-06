@@ -252,8 +252,20 @@ def _sum_terminations(campaigns: Sequence[Campaign]) -> dict[str, int]:
     return total
 
 
-def roll_up(campaigns: Sequence[Campaign], *, external_seed_sets: dict | None = None) -> dict:
-    """Group campaigns by arm and roll each up with the shared right-censored engine."""
+def roll_up(
+    campaigns: Sequence[Campaign],
+    *,
+    external_seed_sets: dict | None = None,
+    architecture: str = "x86_64",
+    arch_disclosure: str | None = None,
+) -> dict:
+    """Group campaigns by arm and roll each up with the shared right-censored engine.
+
+    ``architecture``/``arch_disclosure`` label the host the campaigns ran on. They
+    default to this (windows x86_64) host, so an unargumented call is unchanged; the
+    unified roll-up passes the mac values for the mac block, which previously inherited
+    the x86_64 default and mislabeled the mac host's architecture.
+    """
     arms: dict[str, list[Campaign]] = {}
     for campaign in campaigns:
         arms.setdefault(campaign.arm, []).append(campaign)
@@ -290,8 +302,10 @@ def roll_up(campaigns: Sequence[Campaign], *, external_seed_sets: dict | None = 
         "schema_version": 1,
         "classification": "m4-5-decompress-self-discovery-right-censored",
         "target": "decompress@4.2.1 AFFECTED",
-        "architecture": "x86_64",
-        "arch_disclosure": (
+        "architecture": architecture,
+        "arch_disclosure": arch_disclosure
+        if arch_disclosure is not None
+        else (
             "x86_64 (this host); the paired mac control runs arm64. decompress cross-arch "
             "byte-identity is NOT claimed -- arch is a disclosed variable."
         ),

@@ -837,6 +837,9 @@ def test_confirmatory_supplementary_u_viol_a12():
     assert "NOT a confirmatory test" in sup["u_viol_a12_note"]
     # confirmatory-scope one-liner present, marks only reject_at_alpha as confirmatory
     assert "reject_at_alpha" in conf["confirmatory_scope"]
+    # 7.5.6 is affected: the scope line must not re-state the role as a negative control.
+    assert "negative control" not in conf["confirmatory_scope"]
+    assert "no hit-count prediction" in conf["confirmatory_scope"]
 
 
 def test_invalid_bare_cell_without_target_keeps_single_target_schema(tmp_path, capsys):

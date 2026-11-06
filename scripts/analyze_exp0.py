@@ -889,7 +889,8 @@ def _confirmatory_section(
         "confirmatory_scope": (
             "the only confirmatory result is this family's reject_at_alpha (holdout targets, "
             "H-A, Holm-adjusted); the by_target train (exploratory, pre-exposed) and "
-            "fix-verification (negative control) sections are never confirmatory"
+            "fix-verification (pre-exposed, no hit-count prediction) sections are never "
+            "confirmatory"
         ),
         "note": (
             "per-contrast seed-block arm-label permutation log-rank (valid at any n), Holm-FWER "

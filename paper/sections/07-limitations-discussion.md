@@ -62,6 +62,11 @@ M3의 자율 발견은 **blind 발견이 아니다.** 기존 외부 객체에 �
 - **synthetic ≠ native.** synthetic 하너스 결과(예: 단일경로 비교 하너스의 synthetic 검증)를 native
   증거로 승격하지 않는다. 비교 없이 effectiveness를 주장하지 않는다.
 
+- **일반성 보강의 한계.** 미노출 node-tar 버전 hold-out(§4.8 · §5.4.5)의 기여는 oracle이 특정 버전에
+  overfit되지 않았다는 **version·config robustness · no-FP**이지 **새 계보 extractor로의 일반성 확장이 아니다**.
+  "3 → N extractor · K 독립 계보" 주장은 새 계보(Rust `tar` · Apache Commons Compress)가 필요하며, 이는 **미승인
+  대안(Tier-B, 사람 승인 전)**이다. hold-out은 실행 전이므로 결과를 주장하지 않는다(TBD).
+
 ## 6.6 논의 — 중간 지점에서 방어 가능한 서사
 
 방어 가능한 서사는 다음이다: 하나의 outcome 기반 generic oracle이 CVE 식별자 없이 두 root-cause를

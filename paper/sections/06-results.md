@@ -269,7 +269,7 @@ M1–M4의 능력과 증거 수준을 한눈에 보는 요약은 [Capability Led
   `scripts/analyze_exp0.py` → `report.json` → `paper/figures/render_exp0_survival.py` → `exp0-survival.png`.
   — **EXP-0은 전 arm 사건 0(공식 리포트 측정 5)이다. EXP-3 그림은 TBD.**
 
-**EXP-3 결과는 타깃 역할(`role`)별로 분리 보고한다**(#239·#246 용어 동일, 역할 간 풀링 없음): `train`(node-tar
+**EXP-3 결과는 타깃 역할(`role`)별로 분리 보고한다** *(이 문단은 #239 초안 기준이다. holdout의 실험 배정은 D1, 7.5.6/7.5.7 캠페인 여부는 D3이며 재판정 대기(파일럿 후))*(#239·#246 용어 동일, 역할 간 풀링 없음): `train`(node-tar
 7.5.2) = 1차 **탐색**(R/D/S-u 생존 비교) · `fix-verification`(7.5.6/7.5.7) = 등록 역할 `role=fix-verification` ·
 `hypothesis=H-A` · `exposure=pre-exposed`의 **기노출 수정 검증 쌍**(M2 cross-release 통제 재현
 [cross-release-identity-repro-v1](../../experiments/summaries/cross-release-identity-repro-v1.md)으로 이미 실행됨;

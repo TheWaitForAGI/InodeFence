@@ -112,7 +112,8 @@ endif
 
 # Regenerate/verify the paper's tables and figures from one entry point (audit (8)).
 # Default (ARGS empty) verifies committed artifacts read-only + runs the evidence-chain
-# check; ARGS=--list lists inputs; ARGS=--regenerate runs the matplotlib generators in
-# an ephemeral env (writes figures in place). Not part of `make check`.
+# check; ARGS=--list lists inputs; ARGS=--regenerate stages the tables to a temp dir outside
+# the repo (removed on success unless --keep-stage); ARGS="--regenerate --apply" writes in
+# place (figures via an ephemeral matplotlib env). Not part of `make check`.
 paper-artifacts:
 	$(PYTHON) -m scripts.regenerate_paper_artifacts $(ARGS)

@@ -8,10 +8,11 @@ raw. This orchestrates the generators that exist and is **honest about the gaps*
     (`uv run --with matplotlib`), which this project's venv does not carry, and matplotlib
     PNG output is not bit-reproducible. So ``--verify`` checks a figure by existence and
     size, not byte-equality, and records that reason.
-  * Tables (`paper/tables/*.md`) are currently **hand-maintained**: no committed generator
-    derives them from raw. ``--verify`` checks them by existence only and flags the missing
-    generator as the audit-(8) gap. A future table generator that accepts ``--out`` can be
-    registered with ``verify="byte"`` to get real byte-comparison.
+  * The M2 and M3 tables now have generators (`gen_table_m2.py` from summary.json,
+    `gen_table_m3.py` from the validated summary table) that reproduce the committed tables
+    **byte-identically**, so ``--verify`` byte-compares them (``verify="byte"``). The
+    capability-ledger summary is still hand-maintained (STATUS-derived, no raw generator),
+    checked by existence only.
   * The EXP-0 survival figure's generator is merged (#219) but needs ``--report``, and the
     PNG is not committed yet. Its row is ``optional``: ``--verify`` skips it until the PNG is
     committed and then checks its size, and ``--regenerate`` never runs that generator (with
@@ -21,7 +22,12 @@ Modes (default ``--verify``, read-only):
 
     python -m scripts.regenerate_paper_artifacts --list
     python -m scripts.regenerate_paper_artifacts --verify
-    python -m scripts.regenerate_paper_artifacts --regenerate   # runs generators in place
+    python -m scripts.regenerate_paper_artifacts --regenerate   # stages to a temp dir
+    python -m scripts.regenerate_paper_artifacts --regenerate --apply   # writes in place
+
+``--regenerate`` without ``--apply`` stages the ``--out``-capable tables into a fresh
+``tempfile.mkdtemp()`` directory outside the repository (removed on success unless
+``--keep-stage``), so the checkout stays clean for the registered-run clean-checkout gate.
 
 ``--verify`` and ``--list`` also run the evidence-chain check so a broken summary->raw
 pointer surfaces here too.
@@ -30,8 +36,10 @@ pointer surfaces here too.
 from __future__ import annotations
 
 import argparse
+import shutil
 import subprocess
 import sys
+import tempfile
 from collections.abc import Callable
 from dataclasses import dataclass
 from hashlib import sha256
@@ -80,20 +88,25 @@ ARTIFACTS: tuple[Artifact, ...] = (
     Artifact(
         "paper/tables/m2-cross-release-evidence.md",
         "table",
-        None,
-        "",
+        "scripts/gen_table_m2.py",
+        "project",
         ("experiments/repro/evidence/summary.json", "experiments/repro/cross_release_identity.py"),
-        "exists",
-        "hand-maintained; no generator derives it from raw (audit-(8) gap)",
+        "byte",
+        "grid derived from summary.json (per_release_shared + fixed_pair); reasons/prose literal",
+        out_flag=True,
     ),
     Artifact(
         "paper/tables/m3-blind-ablation.md",
         "table",
-        None,
-        "",
-        ("~/inodefence-evidence/m3-scale-full|m3-ablation (manifest mac-20261103)",),
-        "exists",
-        "hand-maintained; no generator derives it from raw (audit-(8) gap)",
+        "scripts/gen_table_m3.py",
+        "project",
+        (
+            "experiments/summaries/node-self-discovery-mechanism-v1.md",
+            "raw m3-scale-full|m3-ablation|m3-repro (manifest mac-20261103, host-local)",
+        ),
+        "byte",
+        "data cols from validated summary table (raw mac-host-local); paper labels literal",
+        out_flag=True,
     ),
     Artifact(
         "paper/tables/capability-ledger-summary.md",
@@ -163,40 +176,63 @@ def verify_artifacts(
     runner: Runner = _default_runner,
     tmp_dir: Path | None = None,
 ) -> list[VerifyRow]:
-    """Verify each committed artifact per its policy (read-only for the committed tree)."""
+    """Verify each committed artifact per its policy (read-only for the committed tree).
+
+    Byte-verify regenerates into ``tmp_dir`` or, when not given, a :func:`make_stage_dir` temp
+    dir outside the repo that is removed before returning; each ``*.regen`` file is also removed
+    in a ``finally``, so a failing generator never leaves a file in the checkout.
+    """
     rows: list[VerifyRow] = []
-    for art in artifacts:
-        committed = repo_root / art.output
-        generator_present = art.generator is not None and (repo_root / art.generator).is_file()
-        if not committed.exists():
-            if art.optional:
-                rows.append(VerifyRow(art.output, "SKIP", f"optional; not committed ({art.note})"))
-            elif art.generator is not None and not generator_present:
+    own_tmp: Path | None = None
+    try:
+        for art in artifacts:
+            committed = repo_root / art.output
+            generator_present = art.generator is not None and (repo_root / art.generator).is_file()
+            if not committed.exists():
+                if art.optional:
+                    rows.append(
+                        VerifyRow(art.output, "SKIP", f"optional; not committed ({art.note})")
+                    )
+                elif art.generator is not None and not generator_present:
+                    rows.append(
+                        VerifyRow(art.output, "SKIP", f"optional; generator absent ({art.note})")
+                    )
+                else:
+                    rows.append(VerifyRow(art.output, "MISSING", "committed artifact not found"))
+                continue
+            _, size = _sha_size(committed)
+            if art.verify == "byte" and generator_present and art.out_flag:
+                if tmp_dir is not None:
+                    base = tmp_dir
+                else:
+                    if own_tmp is None:
+                        own_tmp = make_stage_dir()
+                    base = own_tmp
+                dest = base / (committed.name + ".regen")
+                try:
+                    try:
+                        runner(art, repo_root, dest)
+                    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+                        rows.append(
+                            VerifyRow(art.output, "SKIP", f"regeneration unavailable: {exc}")
+                        )
+                        continue
+                    match = dest.read_bytes() == committed.read_bytes()
+                finally:
+                    dest.unlink(missing_ok=True)
+                status = "BYTE-MATCH" if match else "BYTE-MISMATCH"
+                rows.append(VerifyRow(art.output, status, f"{size} bytes"))
+            elif art.verify == "size":
                 rows.append(
-                    VerifyRow(art.output, "SKIP", f"optional; generator absent ({art.note})")
+                    VerifyRow(
+                        art.output, "SIZE-ONLY", f"{size} bytes; byte-compare N/A — {art.note}"
+                    )
                 )
             else:
-                rows.append(VerifyRow(art.output, "MISSING", "committed artifact not found"))
-            continue
-        _, size = _sha_size(committed)
-        if art.verify == "byte" and generator_present and art.out_flag:
-            dest = (tmp_dir or committed.parent) / (committed.name + ".regen")
-            try:
-                runner(art, repo_root, dest)
-            except (subprocess.CalledProcessError, FileNotFoundError) as exc:
-                rows.append(VerifyRow(art.output, "SKIP", f"regeneration unavailable: {exc}"))
-                continue
-            match = dest.read_bytes() == committed.read_bytes()
-            dest.unlink(missing_ok=True)
-            rows.append(
-                VerifyRow(art.output, "BYTE-MATCH" if match else "BYTE-MISMATCH", f"{size} bytes")
-            )
-        elif art.verify == "size":
-            rows.append(
-                VerifyRow(art.output, "SIZE-ONLY", f"{size} bytes; byte-compare N/A — {art.note}")
-            )
-        else:
-            rows.append(VerifyRow(art.output, "EXISTS", f"{size} bytes; {art.note}"))
+                rows.append(VerifyRow(art.output, "EXISTS", f"{size} bytes; {art.note}"))
+    finally:
+        if own_tmp is not None:
+            shutil.rmtree(own_tmp, ignore_errors=True)
     return rows
 
 
@@ -207,8 +243,30 @@ class RegenRow:
     detail: str
 
 
-def regenerate_artifacts(artifacts: tuple[Artifact, ...], repo_root: Path) -> list[RegenRow]:
-    """Run each present generator in place (writes into the tree). Tables are skipped."""
+def make_stage_dir() -> Path:
+    """A fresh staging directory outside the repository (``tempfile.mkdtemp``).
+
+    Staging must not land in the checkout: an untracked directory there makes the engine
+    checkout dirty, and the registered-run gate refuses a dirty checkout.
+    """
+    return Path(tempfile.mkdtemp(prefix="inodefence-paper-artifacts-"))
+
+
+def regenerate_artifacts(
+    artifacts: tuple[Artifact, ...],
+    repo_root: Path,
+    apply: bool = False,
+    stage_dir: Path | None = None,
+) -> list[RegenRow]:
+    """Run each present generator.
+
+    Default (``apply=False``) does not touch committed files: ``--out``-capable generators
+    (the byte-reproducible tables) render to ``stage_dir`` (a fresh :func:`make_stage_dir`
+    temp dir outside the repo when not given; the caller removes it); non-``--out`` generators
+    (the matplotlib figures, which write their fixed path and are not bit-reproducible) are
+    skipped with a note. With ``apply=True`` generators write in place.
+    """
+    stage = stage_dir
     rows: list[RegenRow] = []
     for art in artifacts:
         if art.generator is None:
@@ -221,13 +279,28 @@ def regenerate_artifacts(artifacts: tuple[Artifact, ...], repo_root: Path) -> li
         if not gen.is_file():
             rows.append(RegenRow(art.output, "SKIP", f"generator absent ({art.note})"))
             continue
-        if art.env == "matplotlib-ephemeral":
+        if art.out_flag:
+            if apply:
+                dest = repo_root / art.output
+            else:
+                if stage is None:
+                    stage = make_stage_dir()
+                stage.mkdir(parents=True, exist_ok=True)
+                dest = stage / Path(art.output).name
+            cmd = [sys.executable, str(gen), "--out", str(dest)]
+        elif not apply:
+            rows.append(RegenRow(art.output, "SKIP", "needs --apply (generator writes in place)"))
+            continue
+        elif art.env == "matplotlib-ephemeral":
             cmd = ["uv", "run", "--no-project", "--with", "matplotlib", "python", str(gen)]
         else:
             cmd = [sys.executable, str(gen)]
         try:
             subprocess.run(cmd, check=True, capture_output=True, text=True, cwd=repo_root)
-            rows.append(RegenRow(art.output, "WROTE", f"via {art.generator} ({art.env})"))
+            where = "in place" if apply else f"staged {dest}" if art.out_flag else "staged"
+            rows.append(
+                RegenRow(art.output, "WROTE" if apply else "STAGED", f"{art.generator} ({where})")
+            )
         except (subprocess.CalledProcessError, FileNotFoundError) as exc:
             rows.append(RegenRow(art.output, "FAIL", f"{art.generator}: {exc}"))
     return rows
@@ -257,7 +330,21 @@ def main(argv: list[str] | None = None) -> int:
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--list", action="store_true", help="list artifacts and their inputs")
     group.add_argument("--verify", action="store_true", help="verify committed artifacts (default)")
-    group.add_argument("--regenerate", action="store_true", help="run generators in place (writes)")
+    group.add_argument(
+        "--regenerate",
+        action="store_true",
+        help="run generators (stages to a temp dir outside the repo)",
+    )
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="with --regenerate: write in place instead of staging to a temp dir",
+    )
+    parser.add_argument(
+        "--keep-stage",
+        action="store_true",
+        help="with --regenerate: keep the temp staging dir (removed on success by default)",
+    )
     args = parser.parse_args(argv)
 
     repo_root = _repo_root()
@@ -265,10 +352,19 @@ def main(argv: list[str] | None = None) -> int:
         _print_list(ARTIFACTS)
         return _evidence_chain(repo_root)
     if args.regenerate:
-        rows = regenerate_artifacts(ARTIFACTS, repo_root)
+        stage = None if args.apply else make_stage_dir()
+        rows = regenerate_artifacts(ARTIFACTS, repo_root, apply=args.apply, stage_dir=stage)
         for row in rows:
-            print(f"{row.status:<6} {row.output}  [{row.detail}]")
-        return 1 if any(r.status == "FAIL" for r in rows) else 0
+            print(f"{row.status:<7} {row.output}  [{row.detail}]")
+        failed = any(r.status == "FAIL" for r in rows)
+        if stage is not None:
+            print("staged only (no committed file changed); pass --apply to write in place")
+            if failed or args.keep_stage:
+                print(f"staging dir kept: {stage}")
+            else:
+                shutil.rmtree(stage, ignore_errors=True)
+                print(f"staging dir removed: {stage} (pass --keep-stage to keep it)")
+        return 1 if failed else 0
 
     verify_rows = verify_artifacts(ARTIFACTS, repo_root)
     for row in verify_rows:

@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from scripts import run_exp0
+from scripts import run_effect_demo, run_exp0
 from scripts.run_effect_demo import synthetic_demo_report
 from scripts.run_exp0 import (
     WATCHDOG_RETURNCODE,
@@ -463,8 +463,9 @@ def test_worker_pool_mode_requires_module_and_wiring(
     monkeypatch.setattr(run_exp0, "_script_has", lambda variable: variable != "DEMO_EXECUTION_MODE")
     monkeypatch.setattr(run_exp0, "_worker_pool_module", lambda: None)
     out = tmp_path / "wp"
-    assert main([*_base_args(exp3_file, out), "--dry-run"]) == 0  # gate passes; wiring is previewed
+    assert main([*_base_args(exp3_file, out), "--dry-run"]) == 2  # gate passes; wiring refuses
     text = capsys.readouterr().out
+    assert "gate: PASS" in text
     assert "wiring: execution_mode worker-pool needs inodefence.execution.worker_pool" in text
     assert "DEMO_EXECUTION_MODE" in text and '"DEMO_EXECUTION_MODE": "worker-pool"' in text
     assert main(_base_args(exp3_file, out)) == 2
@@ -808,6 +809,13 @@ LEDGER_TEXT = (
 )
 
 
+@pytest.fixture
+def admit_fixture_holdout(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The multi-target fixtures use a made-up holdout version the real allowlist refuses."""
+    allowed = {"7.5.2": "lock-a", "7.9.9": "lock-b"}
+    monkeypatch.setattr(run_effect_demo, "historical_target_versions", lambda: allowed)
+
+
 def _targets_file(tmp_path: Path, *, ledger_sha: str, holdout_version: str = "7.9.9") -> Path:
     block = BLOCK.replace(f"image_digest = {DIGEST}\n", "").replace(
         "```preregistration\n",
@@ -899,7 +907,7 @@ def test_single_key_registration_plans_the_same_cells_as_before(prereg_file: Pat
 
 
 def test_multi_target_plan_cells_gate_and_per_target_evidence_dirs(
-    tmp_path: Path, clean_engine: None
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None
 ) -> None:
     ledger, sha = _ledger(tmp_path)
     plan = _plan(_targets_file(tmp_path, ledger_sha=sha))
@@ -996,7 +1004,11 @@ def test_holdout_listed_in_the_ledger_is_refused_at_the_gate(tmp_path: Path) -> 
 
 
 def test_multi_target_dry_run_and_live_run_with_fake_cells(
-    tmp_path: Path, clean_engine: None, monkeypatch: pytest.MonkeyPatch, capsys
+    tmp_path: Path,
+    clean_engine: None,
+    admit_fixture_holdout: None,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys,
 ) -> None:
     ledger, sha = _ledger(tmp_path)
     file = _targets_file(tmp_path, ledger_sha=sha)
@@ -1041,6 +1053,54 @@ def test_multi_target_dry_run_and_live_run_with_fake_cells(
     assert registration["image_digest"] is None and len(registration["targets"]) == 2
     matrix = json.loads((out / "matrix.json").read_text())
     assert {c["target_id"] for c in matrix["cells"]} == {"node-tar-7.5.2", "node-tar-7.9.9"}
+
+
+def test_controller_refusals_stop_dry_run_and_live_run_before_warmup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    """A target the controller would refuse must fail fast, not after earlier targets ran.
+
+    Uses the controller's real allowlist: 7.9.9 is not a catalog-registered target.
+    """
+    monkeypatch.setattr(run_exp0, "capture_source", lambda: SourceProvenance(SHA, False))
+    monkeypatch.setattr(run_exp0, "_script_has", lambda variable: True)
+
+    def no_warmup(*args: object, **kwargs: object) -> int:
+        raise AssertionError("warmup must not start")
+
+    monkeypatch.setattr(run_exp0, "_warmup", no_warmup)
+    ledger, sha = _ledger(tmp_path)
+    file = _targets_file(tmp_path, ledger_sha=sha)
+    out = tmp_path / "exp3"
+    args = _target_args(file, out, ledger)
+
+    assert main([*args, "--dry-run"]) == 2
+    text = capsys.readouterr().out
+    assert "gate: PASS" in text  # the registration itself is fine; the controller is not
+    assert "- wiring: target node-tar-7.9.9:" in text and "'7.9.9'" in text
+    assert "node-tar-7.5.2:" not in text.split("would be refused at live run:")[1].split("plan=")[0]
+    assert not out.exists()
+
+    assert main(args) == 2
+    err = capsys.readouterr().err
+    assert "controller wiring" in err and "'7.9.9'" in err
+    assert not list(out.glob("node-tar-*/*.json"))
+
+    # An over-budget target is refused the same way (the controller's own budget check).
+    over = file.read_text().replace(
+        "targets.node-tar-7.9.9.budget = 4", "targets.node-tar-7.9.9.budget = 2001"
+    )
+    file.write_text(over.replace("7.9.9", "7.5.3"), encoding="utf-8")
+    args = _target_args(file, tmp_path / "over", ledger)
+    args[args.index(f"node-tar-7.9.9={DIGEST_B}")] = f"node-tar-7.5.3={DIGEST_B}"
+    assert main([*args, "--dry-run"]) == 2
+    assert "budget must be in 1..2000" in capsys.readouterr().out
+
+    # A plan the controller admits still passes: 7.5.2 single target, real allowlist.
+    file = tmp_path / "single.md"
+    file.write_text(BLOCK, encoding="utf-8")
+    assert run_exp0.wiring_problems(_plan(file)) == ()
+    assert main([*_base_args(file, tmp_path / "single"), "--dry-run"]) == 0
 
 
 def test_single_key_index_entries_gain_only_default_target_fields(

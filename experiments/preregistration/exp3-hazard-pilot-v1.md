@@ -1,0 +1,211 @@
+# EXP-3 동결 전 hazard 파일럿 설계 v1
+
+> **탐색 파일럿·비등록·비합산·EXP-2 확증과 분리.** 라벨은 `demo run`이다. 가설 검정이 아니고, 결과를 EXP-0·EXP-2·EXP-3
+> 추정에 합치지 않는다. **40캠페인으로 확증 검정력을 확보했다고 주장하지 않는다.**
+>
+> **상태:** 실행 전 기록이다. W3 게이트가 PASS한 커밋 SHA에서 이 파일을 동결한다. 동결 전 수정은 이 파일에서 하고 다시
+> 게이트를 받는다. 동결 후 수정은 새 버전 파일로만 한다([사전등록 규칙](README.md)). 결과를 본 뒤 판정 규칙은 바꾸지 않는다.
+
+## 1. 승인과 구속 조건
+
+지웅 D9 승인(오케스트레이터 inodefence-3b 전달, 2026-11-06)의 조건과 이 문서의 대응이다.
+
+| # | 조건 | 대응 |
+| --- | --- | --- |
+| 1 | R/D/S-u 동일 어휘 + R 변형 포함 총 40캠페인 | §2, §3. 10 seed × 4 arm |
+| 2 | D6 R 변형과 연결해 배분·seed·환경·소요시간 확정 | §2~§5, §9 |
+| 3 | 탐색·설계 보정 목적, EXP-2와 분리, holdout 블라인드 유지 | 타깃은 train 7.5.2뿐. holdout 버전을 실행하지 않는다 |
+| 4 | R 또는 D 사건 ≥ 1 → `R=D=0` 폐기, 검정력·필요 n 재계산 | §6 규칙 A |
+| 5 | 사건 0이어도 hazard = 0 판단 금지, 이항 신뢰구간 + 민감도 병기 | §6 규칙 B, §7 |
+| 6 | EXP-2 실행 가능성·검정력·효과크기 가정·일정 재판정 | §6 규칙 C, §8 메모 |
+| 7 | 실행 전에 설계와 판정 규칙을 기록, 소급 변경 금지 | 이 파일 + 드라이버 + 분석 스크립트 + 테스트를 같은 커밋 SHA로 고정 |
+
+### 지웅 결정 D8 (2026-11-06)
+
+파일럿 sentinel **k=5 승인**(이번 40캠페인 hazard 파일럿에 한정, 오케스트레이터 inodefence-3b 전달). 구속 조건:
+
+1. k=5를 사전등록 설계에 명시하고 **실행 전 SHA로 고정**한다.
+2. **W3 독립 검증 PASS 이후** S-u 1캠페인 smoke를 수행한다(순서: 게이트 PASS → smoke → 본 실행).
+3. smoke 데이터는 40캠페인 hazard 추정에서 **제외**하고 별도 기록한다(별 폴더·라벨).
+4. **smoke 실패 시 실행을 중단**하고 원인·영향·대안을 보고한다. **k=3으로 자동 전환하지 않는다.**
+5. EXP-0 동결 조건은 불변이다.
+6. EXP-2의 k=5는 이번 승인으로 자동 확정되지 않는다. 파일럿 결과로 별도 결정한다.
+7. 본실험 시작 후 sentinel 수·판정 규칙을 소급 변경하지 않는다.
+
+## 2. 기계판독 설계 블록
+
+드라이버(`scripts/run_hazard_pilot.py`)와 분석(`scripts/analyze_hazard_pilot.py`)이 읽는 유일한 입력이다. 드라이버에는 파라미터
+플래그가 없다. 파서는 미지·누락·중복 키, 그리고 arm과 정책 ID 불일치를 거부한다.
+
+```hazard-pilot
+design_id = exp3-hazard-pilot-v1
+target_version = 7.5.2
+image_digest = sha256:22c8734f141d91b333ba37c7fe6a9a7547d7abfab487fa028da2053bed6f3dbb
+docker_engine = 29.8.0
+budget = 2000
+seeds = 8101, 8102, 8103, 8104, 8105, 8106, 8107, 8108, 8109, 8110
+vocabulary = observed-names
+mutation_policy = uniform-generic-m1-state-aware-escape-hardlink-fixed-baseline-v1
+arm.R-walk = unretained-walk-v1-uniform-mutation-v1
+arm.R-restart = unretained-seed-restart-v1-uniform-mutation-v1
+arm.D = structure-coverage-v1-uniform-mutation-v1
+arm.S-u = effect-feedback-v2-or-violation-v1-boundary-attempt-v1-uniform-mutation-v1
+sentinel_generator_id = sentinel-names/seed-random-v1
+sentinel_generator_seed = 20261104
+sentinel_count = 5
+observer_integrity_policy = invalid-continue
+execution_mode = per-case-container
+jobs = 2
+campaign_watchdog_seconds = 10800
+disk_pause_fraction = 0.9
+```
+
+**seed.** 8101–8110 전 arm 공통(seed 블록). 다음과 겹치지 않는다: EXP-0 9001–9005, 리허설 8001, 사전점검 8002·8003(§4), EXP-3
+제안 블록 9006~, 기존 노출 ≤1415·7001–7002·decompress 500–529. `tests/test_hazard_pilot.py`가 고정한다.
+
+**sentinel.** k=5(D8). 생성기 seed는 고정 상수이며 캠페인 seed에서 파생하지 않는다. 모든 arm·seed에 같은 집합이 쓰인다. 이 집합은 EXP-0 k=3 집합의 상위 집합이다(같은 3개 + 2개 추가, 관찰).
+
+## 3. arm과 R 변형
+
+세 arm 구성은 동결된 EXP-0 v2.1과 같고 mutation 정책도 모두 같다(동일 어휘). R 변형은 W3 결정 매트릭스 D6(선택지: walk 유지 /
+seed-restart 교체 / 둘 다)이 출처이며, 코드 정의는 `src/inodefence/feedback/effect_search.py:53-62`다.
+
+| arm | 부모 선택 | 비고 |
+| --- | --- | --- |
+| R-walk | 시드에서 1회 뽑은 뒤 직전 자식 | EXP-0 R. 거부 97.6%(EXP-0 관찰) |
+| R-restart | 매번 시드에서 균일 추출 | budget 2000 native 실행 기록 없음. 사전점검 대상(§4) |
+| D | 구조 커버리지 retention | |
+| S-u | identity/effect/boundary-attempt retention | 주 비교 arm |
+
+**R 변형 사전 규칙(조건 7).**
+
+1. EXP-2의 R 변형을 **사건 수로 고르지 않는다.** 사건이 적은 쪽을 고르면 S-u에 유리한 편향이 된다.
+2. 변형 선택은 **비-사건 지표**(거부 비율, 변이 성공률, 시드 직속 부모 비율, 평균 entry 수)와 **지웅 결정**으로 한다.
+3. 재계산에는 **두 변형 중 높은 값**을 쓴다(보수적).
+
+## 4. 실행 환경과 순서
+
+- **체크아웃:** 게이트 PASS SHA의 전용 detached worktree. 드라이버가 `--expected-head`로 HEAD 일치와 clean을 확인한다.
+- **엔진 코드:** main `884dc789`와 동일하다. 이 PR의 diff는 새 파일 4개(이 문서, 드라이버, 분석, 테스트)뿐이고 기존 파일 변경은
+  0이다. `884dc789`는 EXP-0 등록 커밋 `23e5c66`에 #202(통계 모듈 `survival.py`와 테스트, LOG)만 더한 것이다. 열린 PR 46개 중
+  mutator·feedback·oracle·observer·캠페인 코드와 effect 이미지 입력을 바꾸는 것도 0이다(2026-11-06 관찰).
+- **기존 경로 부재 사유:** `run_parallel_native`는 budget 상한 100이고, `run_g1_smoke`는 R 변형을 한 번에 하나만 돌리며 sentinel
+  플래그를 실제 실행에서 거부한다. 드라이버는 `cell_env`, `run_cell_with_watchdog`, `wait_for_disk`, `archive_attempt`만 호출한다.
+- **호스트:** Windows WSL2 x86_64, Docker Desktop 29.8.0, 격리 완화 0, disposable sandbox + sentinel, per-case 컨테이너.
+  드라이버는 엔진 버전, 이미지 id, 다른 실행 중 컨테이너 없음을 확인하고 하나라도 어긋나면 시작하지 않는다.
+- **jobs = 2.** 측정된 유일한 값이다(EXP-0, 레인 4). jobs 3은 미측정이라 쓰지 않는다.
+- **순서:** seed 블록 순서로 돌고 블록마다 arm 순서를 한 칸씩 돌린다. arm별로 묶으면 호스트 장애·드리프트가 arm과 교락되기 때문이다.
+
+**사전점검(순서: 게이트 PASS → 사전점검 → 본 실행, 40캠페인 집계에서 제외):**
+
+| 점검 | 내용 | 통과 조건 |
+| --- | --- | --- |
+| P0 | R-restart, seed 8003, budget 20, k=5, 같은 경로 | exit 0, 20/20 완주 |
+| P1 (D8 smoke) | S-u, seed 8002, budget 2000, k=5, 같은 경로 | exit 0, 2000/2000 완주, abort 0, 보고서 image_id 일치, `sentinel_set.count`=5, 실시간 s/step ≤ 리허설의 1.5배 |
+
+- 사전점검은 게이트 PASS SHA의 체크아웃에서 `local_node_tar_smoke.sh demo-historical`을 직접 호출한다. 증거는 `~/inodefence-evidence/exp3-hazard-pilot-20261106-smoke-k5/`에 따로 두고 라벨은 `demo run`, 파일럿 smoke다.
+- **실패 시(D8-4):** 본 실행을 시작하지 않는다. 원인·영향·대안을 보고하고 결정을 기다린다. k=3으로 자동 전환하지 않는다.
+- 사전점검의 oracle 결과는 파일럿 완료 전에 읽지 않는다. 판정에는 위 통과 조건만 쓴다. 완료 후 별도 항목으로 공개하고 hazard 추정에는 넣지 않는다.
+
+**예상 자원:** §9.
+
+## 5. 사건과 분모
+
+- **사건:** 사전등록 hit 정의 그대로. post-state oracle C1 ∨ C2이고 `contract_violated`인 step. C0만은 사건이 아니며 따로 센다.
+- **T_first:** 첫 사건까지 실행 수. 무사건 완주는 2000에서, abort는 abort 시점에서 우측중도절단한다.
+- **분모:** arm의 계획 캠페인 전부(abort, no-record 포함). 교체·제외하지 않는다.
+- **무효(invalid):** 보고서 config·이미지·sentinel이 설계와 다른 셀. 분모에서 빼고 따로 보고한다. 0을 기대한다.
+- **재시도:** 레코드(보고서 또는 비어 있지 않은 steps)가 하나도 없는 셀만 1회 재시도한다. 관찰 가능한 결과가 없으므로 결과에 따른 선택이
+  될 수 없다. 레코드가 있으면 abort여도 최종이다. 2회 모두 레코드가 없으면 `no-record`(abort로 집계, 노출 0).
+- **중단:** 3셀 연속 레코드 없음이면 새 셀을 시작하지 않고 보고한다. **결과에 근거한 조기 중단·연장은 없다.**
+- **중간 보고:** 진행·abort 수만이다(`--status`는 셀 파일을 읽지 않는다). 사건 수는 40캠페인이 끝날 때까지 집계하지 않는다.
+- **리허설(seed 8001, S-u, k=3)과 사전점검(§4)은 40캠페인에 포함하지 않는다.** 그 oracle 결과는 파일럿 완료 전에 읽지 않는다. 설계에는 시간·abort·용량만 썼다.
+
+## 6. 판정 규칙 (사전 고정)
+
+구현은 `scripts/analyze_hazard_pilot.py`이고 `tests/test_hazard_pilot.py`가 고정한다.
+
+**규칙 A (조건 4).** R-walk, R-restart, D 중 어느 arm이든 첫 사건 ≥ 1이면 `R=D=0` 가정을 **폐기**하고 §7 형식으로 검정력·필요 n을 재계산한다.
+
+**규칙 B (조건 5).** 사건 0인 arm은 "미관찰, 95% 상한"으로만 보고한다. hazard = 0, 가정 확인이라고 쓰지 않는다. `R=D=0`은 "폐기되지 않음(확인 아님)"으로 적는다.
+10캠페인 0건의 단측 95% 상한은 **.259**, 양측 95% CI는 0–**.308**이다. 1건이면 양측 .003–.445다.
+
+**규칙 C (조건 6).** 입력은 p_S(S-u 점추정), p_R(두 변형 중 높은 점추정), p_D(점추정), abort 비율(관찰)이다. 필요 n/arm은 80% 검정력 기준으로 계산하고, 확증 타깃은 holdout 1개(3 arm)로 둔다.
+용량은 파일럿 실측 실시간 처리량으로 계산하며, 판정 창은 **8호스트-일**(11/18~11/26, 호스트 1대)이다.
+
+| 판정 | 기계 규칙 |
+| --- | --- |
+| **가능** | S-u 사건 ≥ 1이고, 점추정 필요 n ≤ 8호스트-일 용량 |
+| **축소안** | 위가 아니지만, p_S를 단측 95% 상한으로 둔 필요 n ≤ 8호스트-일 용량. 검정력은 보장되지 않는다고 명시 |
+| **불가** | p_S 상한으로도 용량을 넘거나 분리 불가(p_S ≤ max(p_R, p_D)) |
+
+이 판정은 지웅 결정의 입력이다. train 7.5.2 hazard가 holdout에 전이된다는 것은 **미검증 가정**이고, 어떤 판정도 확증 검정력 확보를 뜻하지 않는다.
+
+**검정력 모델.** 계획용 근사이며 검토(W3 D7) 격자와 같다: 일정 hazard, seed 블록, 블록 승자 exact sign test, Holm 두 대비 모두 S-u 쪽 기각(패밀리 α .05), abort는 노출 절반.
+등록 검정(순열 로그랭크)의 근사다. 검증: n=76에서 R=D=0 .806, R=D=.02 .382, R=D=.05 .084(2만 회; W3 .800/.382/.088).
+
+**사전 민감도 표(결과와 무관, 80% 검정력 필요 n/arm, abort 0, 4000회).** `-`는 p_S ≤ R=D로 분리 불가, `>1000`은 탐색 상한 초과.
+
+| p_S \ R=D | 0 | .02 | .05 | .10 |
+| --- | --- | --- | --- | --- |
+| .059 (M3 k=1 관찰) | 152 | 538 | >1000 | - |
+| .117 (k=3 추론) | 75 | 140 | 368 | >1000 |
+| .145 (k=5 추론) | 61 | 100 | 212 | >1000 |
+| .259 (10캠페인 0건 상한) | 34 | 43 | 67 | 132 |
+| .418 (n=20 바닥 요구) | 20 | 23 | 31 | 46 |
+
+**이 표본이 말할 수 있는 범위.** arm당 10캠페인에서 사건 ≥ 1을 볼 확률은 p=.02/.05/.117/.145에서 .18/.40/.71/.79이고, R·D 30캠페인 합쳐서는 p=.02/.05에서 .46/.79다. 따라서 0건은 낮은 hazard를 배제하지 못한다.
+반면 p_S = .418이면 10캠페인 0건 확률은 .0045라서, n=20 바닥 가정은 걸러낼 수 있다.
+
+## 7. 보고 템플릿
+
+완료 시 오케스트레이터에 보고한다(`pilot-report.{json,md}`에서 그대로 옮김).
+
+- arm별: 캠페인 수, 완주, abort(사유), no-record, 무효, 첫 C1∨C2 사건 수, C1·C2·C0 도달 캠페인 수, T_first 관측값, 양측 95% CI, 단측 95% 상한.
+- 규칙 A·B 판정, 규칙 C 판정과 필요 n(점추정, S-u 상한), 용량(2·5·8호스트-일), 민감도 표.
+- 비-사건 지표(§3), arm 간 어휘 동일 여부.
+- 소요 실경과, 실시간 exec/h, monotonic/실시간 배율, 실시간/raw 배율.
+- 리허설·사전점검 oracle 결과(이때 처음 읽음, 집계 제외, 별도 항목).
+
+## 8. 증거와 기록
+
+- **증거 폴더:** `~/inodefence-evidence/exp3-hazard-pilot-20261106/`. `raw/`는 셀 파일·`clocks.jsonl`·`pilot.json`·`matrix.json`, `host/`는 호스트 샘플.
+  콘솔 로그와 분석 산출물은 `raw/` 밖에 둔다(EXP-0 tee 교훈).
+- **시계:** 셀마다 CLOCK_REALTIME·CLOCK_MONOTONIC·CLOCK_MONOTONIC_RAW를 시작·끝에 기록하고, 300초마다 호스트 샘플을 남긴다. 이 호스트의 monotonic은 실시간보다 빠르므로
+  (EXP-0 당일 1.091) p50·p95는 monotonic 값이라고 표기하고 처리량은 실시간으로 낸다.
+- **체크섬:** 완료 후 `raw/`에 `make_raw_manifest.py`를 돌려 `experiments/summaries/`에 커밋한다. raw는 커밋하지 않는다.
+- **재판정 메모:** 완료 후 같은 PR에 `experiments/summaries/exp3-hazard-pilot-v1-result.md`로 커밋한다.
+- **노출 기록:** 7.5.2·seed 8001~8003·8101–8110을 #249 원장에 올린다. 원장 sha256 고정 전에 끝나야 한다. LOG 줄은 스택 E 머지 후 standalone PR로 넣는다.
+
+## 9. k와 예상 자원
+
+**k = 5.** 사람 승인 사항([v2.1](exp0-pilot-v2.1.md) "k=5·파일럿은 사람 승인 항목", D038)이며 지웅 결정 D8로 승인됐다(§1). 범위는 이 파일럿뿐이다.
+
+- **인프라:** budget 2000 인프라는 k=3 리허설로 확인했고 k=5는 미측정이다. P1 smoke가 이를 확인한다.
+- **기대 사건(추론):** S-u arm 10캠페인 기대 사건은 k=5 1.45, k=3 1.17이다. 이 값은 mutation reach 비(1.26배)와 M3 관찰 1건에 근거한 추론이고 실현 hazard는 미측정이다.
+- **해석 범위:** 이 파일럿의 hazard는 k=5에서 측정된다. k=3 조건으로 옮기는 것은 추론이고, EXP-2의 k는 이 결과를 보고 별도로 결정한다(D8-6).
+
+**리허설 관찰**(2026-11-06, S-u, seed 8001, k=3, budget 2000, 단독 스트림, 다른 세션이 있는 호스트 load ≈ 3, `demo run`, 40캠페인 제외):
+
+| 항목 | 값 |
+| --- | --- |
+| 완주·abort | 2000/2000, abort 0, 보고서 observer `invalid_steps` 0 |
+| 실경과 | 44.7분(컨트롤러 준비 포함), 실시간 2687 exec/h |
+| step 시간 (monotonic) | p50 1.443 s, p95 1.508 s. 실시간 환산 ≈1.33, 1.39 s (당일 배율 1.0855) |
+| drift | 400-step 구간 평균 1.453 → 1.444 s, 마지막/처음 0.994. budget 2000까지 증가 없음 |
+| 시계 | monotonic/실시간 1.0855, 실시간/raw 0.99999(45분), tick 10547~11000 |
+| 컨트롤러 메모리 | 42 MiB부터 선형 증가해 150 MiB 이상, 제한 없음(26 GiB) |
+| raw | 보고서 31.9 MB + steps 16.8 MB = 48.6 MB |
+
+**예상 자원(40캠페인, 80,000 exec, jobs=2):**
+
+| 기준 | exec/h | 소요 |
+| --- | --- | --- |
+| EXP-0 실경과 | 4760 | 16.8 h |
+| 리허설 단독률 × 1.72(EXP-0 쌍 구간 가속) | 4620 | 17.3 h |
+| EXP-0 쌍 구간 step 모델 | 5235 | 15.3 h |
+| 바쁜 호스트(레인 4 하단) | 1440 | 55.6 h |
+
+- 한산 기준 **약 15~18 h**, 사전점검 약 50분은 별도다. k=5의 step 비용 증가는 P1에서 측정한다. 스냅샷 대상이 2개 늘 뿐이라 작을 것으로 보지만(추론) 측정 전이다.
+- raw는 약 2 GB(EXP-0 arm별 크기 비 × 리허설 12배, 추정), 여유 848 GB.
+- **abort는 예측하지 않는다.** 근거가 부족하다: budget 2000 현재 정책 실측은 리허설 1건뿐이고, EXP-0 0/15는 budget 200이며, M3 24/60은 observer-integrity 정지 정책의 이전 엔진이다. 이 40캠페인이 현재 정책에서 budget 2000 abort의 첫 실측이다.

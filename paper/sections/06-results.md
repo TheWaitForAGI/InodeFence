@@ -39,11 +39,11 @@ raw는 [`../../experiments/repro/evidence/summary.json`](../../experiments/repro
 - **R1 = CVE-2026-23745** (catalog N01): linkpath sanitation 누락. 최상위 하드링크가 7.5.2에서
   공유(nlink 1→2)되고 7.5.3에서 거부되는 전환으로 재현.
 - **R2 = CVE-2026-24842** (catalog N02, GHSA-34x7-hfp2-rc4v): 검증 base ≠ 생성 base의 check/use
-  mismatch 회귀로, **R1 수정이 도입**했다. 중첩 하드링크가 7.5.6에서 공유되고 7.5.7에서 거부되는
+  mismatch 회귀이며, R1 수정이 도입한 것으로 **추론**한다(아래 inferred). 중첩 하드링크가 7.5.6에서 공유되고 7.5.7에서 거부되는
   전환으로 재현.
 
 관찰된 공유 분포는 **비단조**(중첩: 7.5.2 공유 · 7.5.3 거부 · 7.5.6 공유 · 7.5.7/7.5.8 거부)로,
-7.5.3이 닫은 경로를 7.5.6이 되돌렸고 7.5.7이 다시 닫았음을 보인다.
+7.5.3에서 거부된 입력이 7.5.6에서 다시 공유되고 7.5.7에서 다시 거부됨을 보인다.
 
 - **observed:** 5×2 verdict 표, nlink 전이, 거부 메시지, 비단조 분포.
 - **inferred:** 특정 CVE↔fixture 대응과 "7.5.6 회귀가 R1 수정이 도입한 것"이라는 인과 서술.
@@ -60,14 +60,14 @@ raw는 [`../../experiments/repro/evidence/summary.json`](../../experiments/repro
 ## 5.3 M3 — 퍼저가 자력으로 위반을 찾는다: 이름 획득 조건의 관찰(피드백 인과는 미입증)
 
 영향 릴리스 node-tar 7.5.2(budget 1500)에서 **외부 객체 이름을 mutation 어휘에 획득한 arm(A3full)에서
-경계위반의 자율 트리거가 관찰됐다**. 전체 대조표는 [M3 blind-ablation 표](../tables/m3-blind-ablation.md),
+경계위반의 자율 트리거가 관찰됐다**. 전체 대조표는 [M3 어휘 제거 대조표](../tables/m3-blind-ablation.md),
 그림 사양은 [m3-blind-ablation-figure-spec](../figures/m3-blind-ablation-figure-spec.md), 검증 요약은
 [node-self-discovery-mechanism-v1](../../experiments/summaries/node-self-discovery-mechanism-v1.md)다
 (Ledger M3 / PR #151, merge d44d903).
 
-![M3 blind-ablation 막대그래프: A3full s11 21 hits vs A3blind s11 0 vs A1 random floor 0, EXTERNAL 이름 어휘 포함 on/off 대조](../figures/m3-blind-ablation.png)
+![M3 어휘 제거 대조 막대그래프: A3full s11 21 hits vs A3blind s11 0 vs A1 random floor 0, EXTERNAL 이름 어휘 포함 on/off 대조](../figures/m3-blind-ablation.png)
 
-*그림 2 — blind-ablation 대조(observed; 이름 획득 조건 대조이지 피드백 인과·rate 아님). 데이터 [표 M3](../tables/m3-blind-ablation.md),
+*그림 2 — 어휘 제거 대조(observed; 이름 획득 조건 대조이지 피드백 인과·rate 아님). 데이터 [표 M3](../tables/m3-blind-ablation.md),
 생성 소스 [`../figures/render_m3_blind_ablation.py`](../figures/render_m3_blind_ablation.py).*
 
 ### 5.3.1 관찰된 수치 (observed, raw step 로그 재집계)
@@ -77,7 +77,7 @@ hit의 정의는 **step에서 `oracle.C1` AND `feedback.contract_violated`가 �
 | 셀 | seeds | 기록 step 수 | 자율 C1 hit |
 | --- | --- | --- | --- |
 | A3full s11 (state-aware) | 11 | 416 (abort 전) | **21** (모두 C1·C2·contract_violated 동시) |
-| A3blind s11 (identity-blind 대조) | 11 | 1475 | **0** |
+| A3blind s11 (어휘 제거 대조) | 11 | 1475 | **0** |
 | A1 random floor | 1–35 (35개) | 33,005 | **0** |
 | A3full scale study | 1–35 (35개) | 41,494 | **s11만 21** (그 외 전 seed 0) |
 | A3full 재현 | 36–65 (30개) | 34,585 | **0/30** |
@@ -102,10 +102,10 @@ A3full s11에서만** 관찰됐고(21), 그 이름을 뺀 A3blind s11은 1475 st
 이름을 뺀 A3blind·철자 불가 A1에서는 미관찰**이다. (이 드래프트 v1은 이를 "feedback(identity 관찰)이 발견을
 가능케 한다 — 없으면 도달 불가"라는 인과 확정으로 적었으나, 아래 2026-11-03 정정대로 그 해석은 철회한다.)
 
-**2026-11-03 정정(해석; 위 수치·서술은 보존).** 위 blind 대조는 **피드백이 아니라 어휘**를 통제한 실험이다.
+**2026-11-03 정정(해석; 위 수치·서술은 보존).** 위 어휘 제거 대조는 **피드백이 아니라 어휘**를 통제한 실험이다.
 A3full은 BEFORE snapshot에서 관찰한 EXTERNAL 이름을 mutation 어휘에 넣고, A3blind는 그 이름을 빼며, A1은
 generic 어휘 7토큰(`src/inodefence/mutator/m1.py`의 `COMPONENTS`, `m1_addressing.py` 주석)이라 대상 이름을
-철자할 수 없다. 따라서 21/0/0이 보인 것은 **"외부 객체 이름의 관찰(어휘 획득)이 자율 C1의 필요조건"**이지,
+철자할 수 없다. 따라서 21/0/0이 보인 것은 **"외부 객체 이름을 어휘에 넣은 조건에서 자율 C1이 관찰됐고 그 조건 밖에서는 관찰되지 않았다"**(구조적 불가로 단정하지 않는다)이지,
 (st_dev, st_ino) 기반 retention·스케줄링 피드백이 발견에 기여했다는 것이 아니다. 그 기여는 어휘를 맞춘 비교
 (R/D/S, [research-questions v2](../../docs/research/design/research-questions.md) H-A)로 아직 분리되지 않았고,
 어휘를 맞춘 기존 비교(§5.3.4 item-3 A/B/C/D, M4.8)는 C≡D·위반 0이다. §5.3 제목·§5.3.2·§5.3.3의 결론 문장은
@@ -115,10 +115,10 @@ generic 어휘 7토큰(`src/inodefence/mutator/m1.py`의 `COMPONENTS`, `m1_addre
 
 - **현재 결론(통일 문장).** 기존 실험은 외부 객체 이름을 mutation 어휘에 획득한 조건에서 경계위반이 관찰되었음을 보여준다. 동일 어휘로 통제하지 않았으므로 inode/effect retention 피드백 자체의 인과적 기여는 아직 입증되지 않았다.
 - **blind 발견이 아니다.** 기존 외부 객체에 하드링크하려면 그 이름이 필요하고 퍼저는 그것을
-  **관찰**로 얻는다. 어휘·oracle에 대상 경로·식별자·정답 seed·근접 보상을 하드코딩하지 않았고
+  **관찰**로 얻는다. oracle·feedback에 대상 경로·식별자·정답 seed·근접 보상을 넣지 않았고
   EXTERNAL 필터는 region 기준 target-agnostic이다. 다만 state-aware mutation 어휘 계열이
   `outside`/`sentinel.txt` 토큰을 포함할 수 있으므로, 어떤 rediscovery 프레이밍에서도 "blind 아님"을
-  명시한다.
+  명시한다. *(구: "어휘·oracle에 … 하드코딩하지 않았고", 2026-11-06 범위 정정)*
 - **seed-rare.** s11은 동일 seed에서 결정론적으로 재현(21건)되지만, budget 1500·65 seed 중 자율
   C1을 내는 seed는 s11 하나뿐이다(재현 0/30). 이 예산에서 다른 seed로 일반화되지 않는다.
 - **rate 우위가 아니다.** 이 소절의 주장은 **이름 획득 조건에서의 관찰**이지 "상태-인지 feedback이
@@ -148,8 +148,8 @@ generic 어휘 7토큰(`src/inodefence/mutator/m1.py`의 `COMPONENTS`, `m1_addre
   **post-state** C1+C2(하드링크 `/a/dir`→`../outside/sentinel.txt`가 뒤 entry 거부 전에 생성·잔존,
   unique_violation_fingerprints 0)다 — 여기서 "clean"은 hit 술어(`oracle.C1 && contract_violated`)를 뜻하며
   clean trace가 아니다.
-- **판정:** 완주 clean-C1 rate 점추정은 identity feedback 쪽(0.10 vs 0.00)이나 **매칭 Wilson 구간이
-  겹쳐 rate 우위는 CI로 분리되지 않는다** — ~0.1 효과에 대해 이 예산·seed 수로는 검정력이 부족하다.
+- **판정:** 완주 clean-C1 rate 점추정은 identity feedback 쪽(0.059 vs 0.00)이나 **매칭 Wilson 구간이
+  겹쳐 rate 우위는 CI로 분리되지 않는다** — ~0.06 효과에 대해 이 예산·seed 수로는 검정력이 부족하다.
   rate 우위는 여전히 **미입증**이며 이 논문의 주 주장이 아니다.
 - **이름 획득 조건에서의 자율 트리거가 신규 seed(s101·s118)에서도 관찰됐다(인과 강화 아님).** §5.3.2의 자율
   트리거는 budget 1500·seed 1–65에서 s11 하나였으나, 이 powered 런은 **기존과 disjoint한 새 seed s101**(완주
@@ -202,7 +202,7 @@ feasible set-based frame 채널을 쓴다(node-tar의 ordered per-op보다 좁�
   feedback 조향) 그러나 exact 경계위반에 미도달.
 - **inferred:** exact 자력발견은 budget/seed-rare(node-tar M3와 정합 — budget 100=0, 자율 트리거는
   budget 1500+특정 seed). arm 차분(A3 11 > A1 8)은 1-seed라 검정력이 없다(EN-008, rate/effectiveness
-  아님) → autoloop 7.1상 당시 **미판정**이었고, §5.4.3의 powered 통합 반복에서 검정력 있게 판정한다.
+  아님) → autoloop 7.1상 당시 **미판정**이었고, §5.4.3에서 사후 분석 기준으로 다룬다.
 
 ### 5.4.3 decompress powered 판정 — 사후 분석 기준 음성(사전등록 판정 아님)
 

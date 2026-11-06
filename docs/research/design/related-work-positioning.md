@@ -52,7 +52,7 @@
 
 InodeFence 관점의 중요한 한계:
 
-후속 연구에서는 ZIPDiff가 복잡한 link composition과 creation order가 필요한 테스트 대상 symlink vulnerability를 찾지 못했다고 보고했다.
+Wormholes 저자들은 ZIPDiff 구현을 재현해 자신들의 ZIP 도구 20개(그중 8개에 symlink 취약점)에 적용했을 때 하나도 탐지하지 못했다고 보고하고("fails to detect any of them"), 복잡한 symlink composition과 creation order가 필요하기 때문이라고 설명한다(Wormholes §5.6, p. 5223; 원문 확인 2026-11-06 독립 심사). 단일 출처의 저자 평가이므로 일반적인 ZIPDiff 한계로 읽지 않는다. 범용 변이인 InodeFence에도 같은 한계가 있을 수 있다.
 
 ## LinkZard — 2025
 
@@ -116,7 +116,10 @@ InodeFence 관점의 중요한 한계:
 
 현재 질문은 다음이다.
 
-> 고정된 공격 recipe 없이 generic archive-entry mutation을 수행하면서 filesystem object identity와 external-effect state를 feedback으로 사용하면, fuzzer가 security-relevant state 방향으로 corpus를 발전시킬 수 있는가?
+> 피해 경로 이름을 아는 **동일 어휘·동일 예산** 아래서, filesystem security state(C1 identity·C2 effect)를 retention·스케줄링 피드백으로 쓰는 탐색이 **무작위 탐색**과 **구조 커버리지 탐색**보다 첫 경계위반까지의 실행 수를 줄이고 고유 위반 입력을 더 많이 찾는가?
+> (핵심 RQ, [research-questions v2](research-questions.md). 위협 모델 전제: 공격자는 피해 경로 이름 — 보호 대상 외부 객체의 추출 루트 기준 상대 경로 — 을 알며 세 arm 어휘에 동일하게 포함한다. blind 발견을 주장하지 않는다.)
+
+*(구: "고정된 공격 recipe 없이 generic archive-entry mutation을 수행하면서 … corpus를 발전시킬 수 있는가?", v1 질문, 2026-11-06 v2로 교체. research-questions v2 '폐기·대체 기록' 참조.)*
 
 개념적으로:
 
@@ -134,6 +137,8 @@ InodeFence hypothesis
         -> retain novel state
         -> mutate again
 ```
+
+이 도식은 가설의 구도일 뿐 "고정 recipe가 없다"는 주장이 아니다. InodeFence mutation에도 `add_hardlink` 연산자와 escape-hardlink 문법이 있고, 피해 경로 이름은 위협 모델 전제로 어휘에 포함한다. 불변식은 CVE 식별자·PoC·고정 공격 패턴·대상 경로·sentinel 이름을 oracle·feedback에 넣지 않는 것이다(D005·D006).
 
 ## 아직 하면 안 되는 주장
 

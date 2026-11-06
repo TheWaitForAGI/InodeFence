@@ -109,7 +109,7 @@ stage.C = 6,8,8,6
 - **disk pause:** 새 셀 시작 때만 검사하고 대기한다(`run_exp0.py:841-859,1305`). 벤치마크에서는 대기가 처리량을 오염시키므로 대기하지 않고 중단한다.
 - **cleanup 예외가 첫 오류를 덮는다(W2가 파일럿 abort 3건에서 확인):** `container.py:288-290`의 `finally: remove_owned(...)`가 예외를 던지면 진행 중이던 첫 오류를 대체한다. 보고서 사유는 `str(error)`만 쓰고(`scripts/run_effect_demo.py:355`) 분류도 그 문자열을 쓴다(`scripts/container_controller.py:94`).
   - 그 결과 관찰 오류나 start 실패 같은 첫 오류가 `cleanup_inspect`·`cleanup_remove`로 기록된다. 이 두 범주는 재시도 대상 인프라 사유다(`evaluation/abort_classification.py:98-105`). 그래서 `cleanup_*`만 보면 입력 무관이라고 적을 수 없다.
-  - **#271이 격리 경계 파일을 고치지 않고 첫 오류를 얻는다.** Python이 남긴 `__context__` 체인을 `aborted.error_chain`으로 기록한다. 수정하지 않은 `prepare()`로 재현해 확인했다(실제 docker 아님). **벤치마크 전에 머지한다.** `case_shape`(abort step의 entry 수·종류·바이트)도 함께 들어온다.
+  - **#271(머지됨)이 격리 경계 파일을 고치지 않고 첫 오류를 얻는다.** Python이 남긴 `__context__` 체인을 `aborted.error_chain`으로 기록한다. 수정하지 않은 `prepare()`로 재현해 확인했다(실제 docker 아님, 첫 실제 확인은 smoke). `case_shape`(abort step의 entry 수·종류·바이트)도 함께 들어왔다. 위 줄 번호는 #271 전 기준이다.
   - **미확인 판정(H4):** 보고서 없음, 체인 잘림, 체인 없는 cleanup 사유다. 체인이 끝까지 있으면 마지막이 cleanup이어도 확인이다. 덮인 오류가 있었다면 체인에 더 있기 때문이다. 체인이 없어도 cleanup이 아닌 사유는 덮는 경로가 아니므로 확인으로 센다.
   - **이전 가능성:** 어떤 예외를 올릴지만 바꾸는 수정이면 처리량·timed_out·관찰 오류·경로 일치·abort 수를 옮길 수 있고 smoke로 충분하다. abort 원인 분류는 옮기지 못한다. 재시도·제한시간·정리 순서가 바뀌면 옮길 수 있는 것이 없고 jobs 2·j* 각 1블록을 다시 잰다. 격리 경계 파일 수정은 필요할 때 사람 승인을 받은 별도 PR로 한다.
 
@@ -254,7 +254,7 @@ W3-T8이 실행 전에 정했다. 임계값은 W3의 판단이며 측정값이 �
 - [ ] 파일럿 완료 통지, W2 raw 매니페스트 완료.
 - [ ] main 전체 `make check`, git 정리, `w1/*` 삭제 완료(승인된 선행 작업).
 - [ ] 지웅 승인 기록(단계별). §6 동결 커밋 확인.
-- [ ] #271(`error_chain`, `case_shape`) 머지 확인. 없으면 H4 조건으로 돌리고 원인 미상을 공개한다.
+- [ ] 실행 SHA에 #271(`error_chain`, `case_shape`)이 들어 있는지 확인(머지됨). smoke에서 필드가 실제로 나오는지는 abort가 있어야 보이므로, 없으면 미확인으로 남긴다.
 - [ ] D6 결과 확인: R-walk를 쓰지 않기로 했으면 동결 전에 arm에서 뺀다.
 - [ ] 노출 원장: 실행 전 LOG에 계획 1줄(seed, budget, 수준, oracle 봉인).
 - [ ] 봉인 규칙(§6.6) 전 세션 통지.
@@ -314,7 +314,7 @@ python3.12 scripts/make_raw_manifest.py --root "$OUT" --host win --date <YYYYMMD
    3. EXP-3 seed 제외 목록(`exp3-v1.md:149`)에 6100–6103을 넣는다.
    4. 고정 뒤에 실행하면 원장이 바뀌어 사전등록이 fail-closed로 재등록돼야 한다. 그래서 순서를 강제한다.
 
-**선행 조건:** #271을 벤치마크 전에 머지한다. 격리 경계 파일 수정이 필요 없어져 사람 승인 항목에서 빠졌다.
+**선행 조건:** #271은 머지됐다. 격리 경계 파일 수정이 필요 없어져 사람 승인 항목에서 빠졌다.
 
 ## 9. EXP-3 반영 시 변경 목록
 

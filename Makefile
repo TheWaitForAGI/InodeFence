@@ -10,7 +10,7 @@ DEMO_OUT ?= $(or $(INODEFENCE_RUNTIME_ROOT),/var/lib/inodefence)/demo/effect-dem
 TAR_VERSION ?= 7.5.2
 HISTORICAL_IMAGE ?= inodefence-node-tar-effect:$(TAR_VERSION)
 
-.PHONY: install target-tools lint format-check typecheck test env-check docs-check check fixtures probe isolation-support node-entry-timing-probe node-tar-smoke node-tar-effect-check demo demo-native demo-synthetic demo-native-historical regression replay
+.PHONY: install target-tools lint format-check typecheck test env-check docs-check evidence-chain check fixtures probe isolation-support node-entry-timing-probe node-tar-smoke node-tar-effect-check demo demo-native demo-synthetic demo-native-historical regression replay
 
 target-tools:
 	npm ci --prefix tools/node-tar --ignore-scripts --no-audit --no-fund
@@ -39,7 +39,13 @@ isolation-support:
 docs-check:
 	$(PYTHON) scripts/check_docs.py
 
-check: lint format-check typecheck test env-check docs-check
+# Verify each validated summary's raw pointer resolves to a committed manifest or
+# in-repo file. Reads only committed files (no raw bytes), so it runs on any host.
+# Non-strict: fails only on broken in-repo links (REPO-MISSING).
+evidence-chain:
+	$(PYTHON) -m scripts.check_evidence_chain
+
+check: lint format-check typecheck test env-check docs-check evidence-chain
 
 fixtures:
 	$(PYTHON) scripts/generate_tar_fixtures.py

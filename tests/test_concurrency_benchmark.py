@@ -355,21 +355,41 @@ def test_watchdog_margin_boundary() -> None:
 
 
 def test_selection_ratios_boundaries() -> None:
-    passing = analysis.selection_ratios([10.0, 12.0, 12.0, 10.0])
+    def ratios(
+        throughput: Sequence[float | None], ref: float | None = 1.0, high: float | None = 1.0
+    ) -> dict[str, Any]:
+        return analysis.selection_ratios(throughput, ref, high)
+
+    passing = ratios([10.0, 12.0, 12.0, 10.0])
     assert passing["rho"] == pytest.approx([1.2, 1.2])
     assert passing["drift"] == pytest.approx(0.0)
     assert passing["gain"] is True
-    assert analysis.selection_ratios([10.0, 11.5, 11.5, 10.0])["gain"] is True
-    assert analysis.selection_ratios([10.0, 11.4, 11.4, 10.0])["gain"] is False
+    assert ratios([10.0, 11.5, 11.5, 10.0])["gain"] is True
+    assert ratios([10.0, 11.4, 11.4, 10.0])["gain"] is False
     # One crossed half below 1.15 is enough to refuse the level.
-    assert analysis.selection_ratios([10.0, 13.0, 11.0, 10.0])["gain"] is False
-    within_drift = analysis.selection_ratios([10.0, 12.0, 11.0, 9.5])
+    assert ratios([10.0, 13.0, 11.0, 10.0])["gain"] is False
+    within_drift = ratios([10.0, 12.0, 11.0, 9.5])
     assert within_drift["drift"] == pytest.approx(1 / 12)
     assert within_drift["gain"] is True
-    too_much_drift = analysis.selection_ratios([10.0, 20.0, 16.0, 8.0])
+    too_much_drift = ratios([10.0, 20.0, 16.0, 8.0])
     assert too_much_drift["valid"] is False
     assert too_much_drift["gain"] is False
-    assert analysis.selection_ratios([10.0, None, 12.0, 10.0])["gain"] is False
+    assert ratios([10.0, None, 12.0, 10.0])["gain"] is False
+
+
+def test_normal_fraction_enters_once_as_level_totals() -> None:
+    double = [10.0, 20.0, 20.0, 10.0]
+    # Twice the throughput survives losing 40% of campaigns, not 50%.
+    kept = analysis.selection_ratios(double, 1.0, 0.6)
+    assert kept["adjusted_gain"] == pytest.approx(1.2)
+    assert kept["gain"] is True
+    lost = analysis.selection_ratios(double, 1.0, 0.5)
+    assert lost["adjusted_gain"] == pytest.approx(1.0)
+    assert lost["gain"] is False
+    # The reference losing campaigns too leaves the ratio, so the high level is not penalized.
+    assert analysis.selection_ratios(double, 0.75, 0.75)["adjusted_gain"] == pytest.approx(2.0)
+    assert analysis.selection_ratios(double, 0.0, 1.0)["gain"] is False
+    assert analysis.selection_ratios(double, None, 1.0)["gain"] is False
 
 
 # ---- first error, paths, saturation --------------------------------------------------
@@ -389,7 +409,8 @@ def test_selection_ratios_boundaries() -> None:
                     {"type": "BackendError", "message": "container runtime remove failed: y"}
                 ],
             },
-            "unconfirmed",
+            # A whole chain ending in cleanup: nothing was replaced, cleanup really came first.
+            "confirmed",
         ),
         (
             {
@@ -676,6 +697,8 @@ def _write_stage(
     *,
     durations: dict[int, float] | None = None,
     abort_blocks: Sequence[int] = (),
+    abort_step: int = 2,
+    abort_duration: float = 360.0,
     last_block_case: str | None = None,
 ) -> None:
     order = design.stages[stage]
@@ -688,7 +711,11 @@ def _write_stage(
             arm = ARMS[position]
             run_id = f"cell-{seed}"
             if index in abort_blocks and position == 0:
-                cells.append(_write_abort_cell(raw, design, run_id, seed, arm=arm))
+                cells.append(
+                    _write_abort_cell(
+                        raw, design, run_id, seed, step=abort_step, arm=arm, duration=abort_duration
+                    )
+                )
                 continue
             steps = None
             if last_block_case and index == len(order):
@@ -749,8 +776,38 @@ def test_recurring_abort_halts_without_a_selection(design: bench.Design, tmp_pat
     assert decision["status"] == "halted"
     assert decision["selected_jobs"] is None
     assert [item["rule"] for item in decision["halts"]] == ["H2"]
-    assert decision["recurrences"][0]["blocks"] == ["A/1", "A/2"]
+    assert decision["recurrences"]["same_input"][0]["blocks"] == ["A/1", "A/2"]
+    assert decision["fallback_jobs"] is None
     assert decision["stages"]["A"]["passed"] is False
+
+
+def test_nothing_run_yet_selects_nothing(design: bench.Design, tmp_path: Path) -> None:
+    decision = analysis.analyze(tmp_path, design)["decision"]
+    assert decision["status"] == "pending"
+    assert decision["selected_jobs"] is None
+    assert decision["fallback_jobs"] is None
+    assert decision["recurrences"]["recurrence_upper95"] is None
+
+
+def test_recurrence_denominator_and_upper_bound() -> None:
+    def cell(arm: str, seed: int, step: int, case: str, passes: int) -> dict[str, Any]:
+        return {
+            "arm": arm,
+            "seed": seed,
+            "abort": {"step_index": step, "case_id": case, "passes_elsewhere": passes},
+        }
+
+    first = {"stage": "A", "index": 1, "cells": [cell("D", 6101, 5, "c1", 10)]}
+    # The same case at another arm, seed and step is only reported.
+    second = {"stage": "A", "index": 2, "cells": [cell("S-u", 6102, 9, "c1", 8)]}
+    result = analysis.recurrences([first, second])
+    assert result["same_input"] == []
+    assert result["same_case_elsewhere"] == 1
+    assert result["passes_elsewhere"] == 18
+    assert result["recurrence_upper95"] == pytest.approx(0.153, abs=0.001)
+    third = {"stage": "A", "index": 3, "cells": [cell("D", 6101, 5, "c1", 0)]}
+    assert len(analysis.recurrences([first, third])["same_input"]) == 1
+    assert analysis.recurrences([])["recurrence_upper95"] is None
 
 
 def test_single_abort_is_counted_not_halted_and_gets_the_operator(
@@ -761,8 +818,22 @@ def test_single_abort_is_counted_not_halted_and_gets_the_operator(
     assert report["decision"]["halts"] == []
     assert report["decision"]["h4_first_error_unconfirmed"] == 0
     abort = report["stages"]["A"]["blocks"][1]["aborts"][0]
-    # Other blocks passed step 2 with a different case id, so the operator stays unknown.
+    # Other blocks passed step 2 with a different case id: no operator, and no real retry.
     assert abort["operator_from_other_block"] is None
+    assert abort["passes_elsewhere"] == 0
+    assert report["decision"]["recurrences"]["recurrence_upper95"] is None
+
+
+def test_an_abort_does_not_sink_a_real_throughput_gain(
+    design: bench.Design, tmp_path: Path
+) -> None:
+    """The earlier rule let one block's abort noise dominate; X and level totals do not."""
+    # A late abort: the campaign's executions and time are as in the other blocks.
+    _write_stage(tmp_path, design, "A", abort_blocks=(2,), abort_step=3, abort_duration=180.0)
+    verdict = analysis.analyze(tmp_path, design)["decision"]["stages"]["A"]
+    assert verdict["rho"] == pytest.approx([2.0, 2.0])
+    assert verdict["adjusted_gain"] == pytest.approx(1.5)
+    assert verdict["passed"] is True
 
 
 def test_abort_operator_comes_from_a_block_that_passed_the_same_case(
@@ -776,8 +847,9 @@ def test_abort_operator_comes_from_a_block_that_passed_the_same_case(
         [_step(0), _step(1), {**_step(2, case="case-x"), "mutation_attempt": {"operator_id": "op"}}]
     )
     assert other is not None
-    analysis.fill_abort_operators([block], [{"cell": other}])
+    analysis.fill_abort_operators([block], [{"cell": other}, {"cell": other}])
     assert block["aborts"][0]["operator_from_other_block"] == "op"
+    assert block["aborts"][0]["passes_elsewhere"] == 2
 
 
 def test_floor_of_three_halts(design: bench.Design) -> None:
@@ -798,6 +870,9 @@ def test_floor_of_three_halts(design: bench.Design) -> None:
     decision = analysis.decide(design, {"A": {"blocks": blocks, "levels": levels}})
     assert [item["rule"] for item in decision["halts"]] == ["H3"]
     assert decision["status"] == "halted"
+    # Nothing was selected by comparison, but EXP-3 has a value to use.
+    assert decision["selected_jobs"] is None
+    assert decision["fallback_jobs"] == 2
 
 
 def test_jobs_two_over_the_abort_limit_halts(design: bench.Design) -> None:
@@ -820,6 +895,7 @@ def test_jobs_two_over_the_abort_limit_halts(design: bench.Design) -> None:
     )
     assert [item["rule"] for item in decision["halts"]] == ["H1"]
     assert decision["selected_jobs"] is None
+    assert decision["fallback_jobs"] is None
 
 
 def test_one_sided_congestion_cell_is_not_normal_for_g(design: bench.Design) -> None:

@@ -4,9 +4,10 @@ Reads a benchmark output tree and writes ``concurrency-report.json`` and ``.md``
 in a mechanical decision (design file, section 6): a selected concurrency level, or a stop
 condition H1 to H3, plus the H4 count.
 
-Sealed raw: no oracle value leaves this script, and the decision reads none. To compare paths
-between blocks, each step's oracle verdict and fed-back keys are reduced to an in-memory hash, and
-a pure verdict difference is reported only as a total per concurrency level, with no arm or seed.
+Sealed raw: no oracle value leaves this script. To compare paths between blocks, each step's
+oracle verdict and fed-back keys are reduced to an in-memory hash. The one thing the decision takes
+from that hash is whether it differs, which counts toward a block's path differences (m). A pure
+verdict difference is otherwise reported only as a total per concurrency level, with no arm or seed.
 
 Terms:
 
@@ -14,8 +15,8 @@ Terms:
   the planned config and image, a steps file that matches the report (design file, section 4);
 * throughput uses CLOCK_REALTIME, because this host's monotonic clock is not real time. Per-step
   seconds come from the report and stay labelled monotonic;
-* G is the real-time execution rate while every slot is busy, per campaign budget, times the
-  normal fraction. A cell whose path first differs at a step that is ``timed_out`` or ``failed``
+* X is a block's real-time execution rate while every slot is busy; N is a level's normal fraction
+  over all its blocks. A cell whose path first differs at a step that is ``timed_out`` or ``failed``
   on only one side does not count as normal.
 """
 
@@ -212,9 +213,11 @@ def _nonconformance(report: Mapping[str, Any], cell: Mapping[str, Any], design: 
 def first_error(aborted: Mapping[str, Any] | None) -> dict[str, Any]:
     """Whether an abort's first error is known (H4).
 
-    Unconfirmed only when a failure could still be hiding: no abort record at all, a truncated
-    chain, or nothing but a cleanup error left. A null chain with a non-cleanup reason comes from
-    a raise that replaces nothing (evidence integrity, image version), so it is confirmed.
+    Unconfirmed only when a failure could still be hiding: no abort record, a truncated chain, or
+    a cleanup reason with no chain. A whole chain is confirmed even if it ends in a cleanup error:
+    a replaced error would be further along it, so that cleanup error really came first. A null
+    chain with a non-cleanup reason comes from a raise that replaces nothing (evidence integrity,
+    image version), so it is confirmed too.
     """
     if aborted is None:
         return {"status": "unconfirmed", "type": None, "message": None}
@@ -224,13 +227,10 @@ def first_error(aborted: Mapping[str, Any] | None) -> dict[str, Any]:
         last = chain[-1]
         if not isinstance(last, Mapping) or last.get("truncated"):
             return {"status": "unconfirmed", "type": None, "message": None}
-        message = str(last.get("message") or "")[:REASON_LIMIT]
-        kind = last.get("type")
-        cleanup = classify_abort_reason(message) in CLEANUP_CATEGORIES
         return {
-            "status": "unconfirmed" if cleanup else "confirmed",
-            "type": kind,
-            "message": message,
+            "status": "confirmed",
+            "type": last.get("type"),
+            "message": str(last.get("message") or "")[:REASON_LIMIT],
         }
     cleanup = classify_abort_reason(reason) in CLEANUP_CATEGORIES
     return {
@@ -595,11 +595,18 @@ def block_determinism(
 def fill_abort_operators(
     blocks: Sequence[Mapping[str, Any]], paths_by_block: Sequence[Mapping[str, CellPath]]
 ) -> None:
-    """The aborted step left no record; another block that passed the same case did."""
+    """Use the blocks that passed an aborted case: its operator, and how often it passed.
+
+    The aborted step left no record, but another block that completed the same step did. The
+    number of such passes is the denominator of "no recurrence".
+    """
     for block in blocks:
         for cell in block["cells"]:
             abort = cell["abort"]
-            if abort is None or not isinstance(abort["step_index"], int):
+            if abort is None:
+                continue
+            abort["passes_elsewhere"] = 0
+            if not isinstance(abort["step_index"], int) or abort["case_id"] is None:
                 continue
             step = abort["step_index"]
             for paths in paths_by_block:
@@ -609,28 +616,42 @@ def fill_abort_operators(
                     and step < len(path.case_ids)
                     and path.case_ids[step] == abort["case_id"]
                 ):
+                    abort["passes_elsewhere"] += 1
                     abort["operator_from_other_block"] = path.operators[step]
-                    break
     for block in blocks:
         for item in block["aborts"]:
             match = next(cell for cell in block["cells"] if cell["run_id"] == item["run_id"])
             item["operator_from_other_block"] = match["abort"]["operator_from_other_block"]
+            item["passes_elsewhere"] = match["abort"]["passes_elsewhere"]
 
 
-def block_g(block: Mapping[str, Any], design_budget: int) -> float | None:
-    """G: saturated exec/h per budget, times the normal fraction (one-sided cells not normal)."""
-    rate = block["saturated_exec_per_real_hour"]
-    ran = block["cells_planned"] - block["cells_not_run"]
-    if rate is None or not ran:
-        return None
+def _counted_normal(block: Mapping[str, Any]) -> int:
+    """Normal cells, without those whose path changed at a one-sided timed_out or failed step."""
     determinism = block.get("determinism") or {}
     excluded = determinism.get("one_sided_congestion_cells") or ()
-    normal = sum(
+    return sum(
         1
         for cell in block["cells"]
         if cell["disposition"] == "normal" and cell["run_id"] not in excluded
     )
-    return rate / design_budget * normal / ran
+
+
+def normal_fraction(blocks: Sequence[Mapping[str, Any]]) -> float | None:
+    """N(j): the normal fraction over all of a level's blocks, the selection rule's only use."""
+    ran = sum(block["cells_planned"] - block["cells_not_run"] for block in blocks)
+    return sum(_counted_normal(block) for block in blocks) / ran if ran else None
+
+
+def block_g(block: Mapping[str, Any], design_budget: int) -> float | None:
+    """G: saturated exec/h per budget times the block's normal fraction. A report column only.
+
+    The selection rule does not use it: in a 12-cell block the abort noise would dominate.
+    """
+    rate = block["saturated_exec_per_real_hour"]
+    fraction = normal_fraction([block])
+    if rate is None or fraction is None:
+        return None
+    return rate / design_budget * fraction
 
 
 def summarize_level(
@@ -773,39 +794,75 @@ def level_violations(
     return found
 
 
-def selection_ratios(g: Sequence[float | None]) -> dict[str, Any]:
-    """rho and drift from the four crossed blocks' G, in run order (ref, high, high, ref)."""
-    if len(g) != 4 or any(value is None or value <= 0 for value in g):
-        return {"rho": None, "drift": None, "valid": False, "gain": False}
-    first, second, third, fourth = (float(value) for value in g)  # type: ignore[arg-type]
+def selection_ratios(
+    throughput: Sequence[float | None], normal_ref: float | None, normal_high: float | None
+) -> dict[str, Any]:
+    """The selection rule from the four crossed blocks' X, in run order (ref, high, high, ref).
+
+    rho and drift use the saturated execution rate X, which aborts barely move. The normal
+    fraction enters once, as the level totals N(high)/N(ref).
+    """
+    empty = {"rho": None, "drift": None, "valid": False, "adjusted_gain": None, "gain": False}
+    if len(throughput) != 4 or any(value is None or value <= 0 for value in throughput):
+        return empty
+    first, second, third, fourth = (float(value) for value in throughput)  # type: ignore[arg-type]
     rho = (second / first, third / fourth)
     # Later block over earlier block of the same level.
     drift = max(abs(fourth / first - 1), abs(third / second - 1))
-    gain = min(rho) >= RHO_MIN and drift <= DRIFT_MAX and min(rho) - 1 > drift
-    return {"rho": list(rho), "drift": drift, "valid": drift <= DRIFT_MAX, "gain": gain}
+    adjusted = (
+        min(rho) * normal_high / normal_ref if normal_ref and normal_high is not None else None
+    )
+    gain = (
+        min(rho) >= RHO_MIN and drift <= DRIFT_MAX and adjusted is not None and adjusted >= RHO_MIN
+    )
+    return {
+        "rho": list(rho),
+        "drift": drift,
+        "valid": drift <= DRIFT_MAX,
+        "adjusted_gain": adjusted,
+        "gain": gain,
+    }
 
 
-def recurrences(blocks: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
-    """The same step of the same input aborting in two or more blocks: input dependence."""
+def recurrences(blocks: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Whether aborts repeat on the same input, and how often that input was tried again.
+
+    The same (arm, seed, step, case id) in two or more blocks is input dependence (H2). "None" is
+    only as strong as its denominator: how often an aborted case passed in another block. A case
+    id alone repeating at another arm, seed or step is reported but does not count, since a common
+    case can coincide by chance.
+    """
     seen: dict[tuple[str, int, Any, Any], list[str]] = defaultdict(list)
+    by_case: dict[Any, set[tuple[str, int, Any]]] = defaultdict(set)
+    passes = 0
     for block in blocks:
         for cell in block["cells"]:
             abort = cell["abort"]
-            if abort is None or abort["case_id"] is None:
+            if abort is None:
+                continue
+            passes += abort.get("passes_elsewhere") or 0
+            if abort["case_id"] is None:
                 continue
             key = (cell["arm"], cell["seed"], abort["step_index"], abort["case_id"])
             seen[key].append(f"{block['stage']}/{block['index']}")
-    return [
-        {"arm": key[0], "seed": key[1], "step": key[2], "blocks": where}
-        for key, where in seen.items()
-        if len(where) >= 2
-    ]
+            by_case[abort["case_id"]].add(key[:3])
+    return {
+        "same_input": [
+            {"arm": key[0], "seed": key[1], "step": key[2], "blocks": where}
+            for key, where in seen.items()
+            if len(where) >= 2
+        ],
+        "same_case_elsewhere": sum(1 for places in by_case.values() if len(places) >= 2),
+        "passes_elsewhere": passes,
+        "recurrence_upper95": 1 - 0.05 ** (1 / passes) if passes else None,
+    }
 
 
 def decide(design: Design, stages: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
     """The mechanical result: a selected level or a stop, and what the next stage may do."""
     all_blocks = [block for stage in stages.values() for block in stage["blocks"]]
-    repeated = recurrences(all_blocks)
+    recurrence = recurrences(all_blocks)
+    repeated = recurrence["same_input"]
     unconfirmed = sum(
         level["first_error_unconfirmed"]
         for stage in stages.values()
@@ -856,7 +913,11 @@ def decide(design: Design, stages: Mapping[str, Mapping[str, Any]]) -> dict[str,
         )
         if ref["stopped"]:
             violations.append({"rule": "stopped", "detail": {"reference": ref["stopped"]}})
-        ratios = selection_ratios([block_g(block, design.budget) for block in blocks])
+        ratios = selection_ratios(
+            [block["saturated_exec_per_real_hour"] for block in blocks],
+            normal_fraction([b for b in blocks if b["jobs"] == ref_jobs]),
+            normal_fraction(high_blocks),
+        )
         passed = not violations and bool(ratios["gain"])
         verdicts[name] = {
             "ref_jobs": ref_jobs,
@@ -875,8 +936,14 @@ def decide(design: Design, stages: Mapping[str, Mapping[str, Any]]) -> dict[str,
             break
         selected = high_jobs
         status = "provisional"
+    # H3 alone: nothing was selected by comparison, but EXP-3 needs a value, the measured safe one.
+    fallback: int | None = None
     if halts:
         status = "halted"
+        selected = None
+        if all(item["rule"] == "H3" for item in halts):
+            fallback = design.stages[measured_stages(design)[0]][0]
+    elif status == "pending":
         selected = None
     elif status == "provisional" and all(
         name in verdicts and verdicts[name]["passed"] for name in measured_stages(design)
@@ -885,22 +952,24 @@ def decide(design: Design, stages: Mapping[str, Mapping[str, Any]]) -> dict[str,
     return {
         "status": status,
         "selected_jobs": selected,
+        "fallback_jobs": fallback,
         "halts": halts,
         "h4_first_error_unconfirmed": unconfirmed,
         "stages": verdicts,
-        "recurrences": repeated,
+        "recurrences": recurrence,
     }
 
 
 def analyze(output: Path, design: Design) -> dict[str, Any]:
     stages: dict[str, Any] = {}
+    every_block: list[dict[str, Any]] = []
+    every_path: list[dict[str, CellPath]] = []
     for stage in design.stages:
         if stage == SMOKE_STAGE or not (output / stage).is_dir():
             continue
         blocks: list[dict[str, Any]] = []
         targets_by_jobs: dict[int, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
         reference: dict[str, CellPath] = {}
-        paths_by_block: list[dict[str, CellPath]] = []
         for index, jobs in enumerate(design.stages[stage], start=1):
             directory = output / stage / f"block-{index}-j{jobs}"
             record_path = directory / BLOCK_FILE
@@ -914,8 +983,8 @@ def analyze(output: Path, design: Design) -> dict[str, Any]:
             for arm, seconds in targets.items():
                 targets_by_jobs[jobs][arm].extend(seconds)
             blocks.append(block)
-            paths_by_block.append(paths)
-        fill_abort_operators(blocks, paths_by_block)
+            every_path.append(paths)
+        every_block.extend(blocks)
         by_jobs: dict[int, list[dict[str, Any]]] = defaultdict(list)
         for block in blocks:
             by_jobs[block["jobs"]].append(block)
@@ -924,6 +993,8 @@ def analyze(output: Path, design: Design) -> dict[str, Any]:
             for jobs, group in sorted(by_jobs.items())
         }
         stages[stage] = {"levels": levels, "blocks": blocks}
+    # Every stage repeats the same seeds, so a case can pass again in any of them.
+    fill_abort_operators(every_block, every_path)
     return {
         "label": LABEL,
         "design_id": design.design_id,
@@ -953,15 +1024,21 @@ def render_markdown(report: Mapping[str, Any]) -> str:
         "",
         f"- 상태: {decision['status']}",
         f"- 선택 수준: {_fmt(decision['selected_jobs'])}",
+        f"- 대체값(H3, 비교로 고른 값 아님): {_fmt(decision['fallback_jobs'])}",
         f"- 중단 조건: {[item['rule'] for item in decision['halts']] or '없음'}",
         f"- 첫 오류 미확인 abort(H4): {decision['h4_first_error_unconfirmed']}",
-        f"- 재발 abort: {len(decision['recurrences'])}",
+        f"- 재발 abort: {len(decision['recurrences']['same_input'])}, "
+        f"다시 지나간 횟수 {decision['recurrences']['passes_elsewhere']}, "
+        f"재발률 95% 상한 {_fmt(decision['recurrences']['recurrence_upper95'], 3)}",
+        f"- 같은 case가 다른 위치에서 abort(H2 아님): "
+        f"{decision['recurrences']['same_case_elsewhere']}",
     ]
     for name, verdict in decision["stages"].items():
         rules = sorted({item["rule"] for item in verdict["violations"]})
         lines.append(
             f"- 단계 {name} ({verdict['ref_jobs']}→{verdict['high_jobs']}): "
             f"통과 {verdict['passed']}, 배제 {rules or '없음'}, rho {verdict['rho']}, "
+            f"정상 비율 반영 이득 {_fmt(verdict['adjusted_gain'])}, "
             f"드리프트 {_fmt(verdict['drift'])}, 바닥값 F {verdict['floor']}"
         )
     for stage, content in report["stages"].items():

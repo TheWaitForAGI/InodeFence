@@ -98,7 +98,8 @@ creation, arbitrary file read/write effect를 다룬다. 현재 InodeFence와 �
   초록은 오류 없는 campaign에도 잔여 위험(residual risk)이 남으며 greybox에서는 이를 직접 추정할 수 없어
   discovery probability(다음 입력이 커버리지를 늘릴 확률)를 상한으로 쓰고 campaign 중 추정해 중단 시점을
   정한다고 밝힌다(초록에서 읽음; reachability 주장은 초록에 없음). 우리 설계의 우측중도절단과 zero-hit
-  rule-of-three 상한(§4.6.2·§5.6)은 "위반 0 = 안전"이 아니라 **잔여 위험의 상한 보고**라는 같은 입장이다.
+  rule-of-three 상한(§4.6.2·§5.6)도 '위반 0 = 안전'으로 읽지 않는다는 취지는 같지만, 우리 상한은 캠페인 단위 hit 확률이지 잔여 위험
+  추정이 아니다. *(구: "잔여 위험의 상한 보고라는 같은 입장", 2026-11-06 정정)*
 - **Schloegel et al., "SoK: Prudent Evaluation Practices for Fuzzing," IEEE S&P 2024**
   (DOI [10.1109/SP54263.2024.00137](https://doi.org/10.1109/SP54263.2024.00137); arXiv [2405.10220](https://arxiv.org/abs/2405.10220)).
   2018–2023 top-venue 150편을 분석해 통계 검정 권고의 광범위한 미준수를 보고하고, baseline 비교·충분한 trial

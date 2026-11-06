@@ -106,7 +106,7 @@ def test_forced_abort_leaves_the_completed_steps_with_the_sink(monkeypatch) -> N
     """The producer fails on the 3rd case; the 2 finished steps were already delivered."""
     calls = 0
 
-    def fake_run(case, target):
+    def fake_run(case, target, **kwargs):
         nonlocal calls
         calls += 1
         if calls == 3:

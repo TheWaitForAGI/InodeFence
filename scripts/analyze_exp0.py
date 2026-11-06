@@ -484,6 +484,7 @@ def _first_index_censored(cells: Sequence[CellSummary], invalid: Sequence[Invali
             }
         t_first_obs = [Observation(time=c.t_first, event=bool(c.t_first_event)) for c in valid]
         t_first_observed = [c.t_first for c in valid if c.t_first_event == 1]
+        t_first_steps = kaplan_meier(t_first_obs)
         per_arm[arm] = {
             "number_invalid_excluded": invalid_by_arm.get(arm, 0),
             "censoring": "no-hit censored at budget; abort censored at abort execution",
@@ -492,8 +493,19 @@ def _first_index_censored(cells: Sequence[CellSummary], invalid: Sequence[Invali
                 "number_observed": len(t_first_observed),
                 "observed_t_first": sorted(t_first_observed),
                 "number_right_censored": len(t_first_obs) - len(t_first_observed),
-                "km_median_executions": km_median(kaplan_meier(t_first_obs)),
+                "km_median_executions": km_median(t_first_steps),
                 "denominator_cells_in_risk_set": len(t_first_obs),
+                # Plottable step curve + censoring tick times (all derived from observed data).
+                "km_curve": [
+                    {
+                        "time": step.time,
+                        "survival": step.survival,
+                        "at_risk": step.at_risk,
+                        "events": step.events,
+                    }
+                    for step in t_first_steps
+                ],
+                "censored_times": sorted(o.time for o in t_first_obs if not o.event),
             },
         }
     return {"by_arm": per_arm}

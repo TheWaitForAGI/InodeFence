@@ -213,6 +213,32 @@ def test_residual_resources_after_a_block_are_a_level_stop(
     assert json.loads((tmp_path / bench.BLOCK_FILE).read_text("utf-8"))["stop_kind"] == "level"
 
 
+def test_a_stop_after_the_last_cell_keeps_its_kind(
+    design: bench.Design, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class FakeEvents:
+        def terminate(self) -> None:
+            pass
+
+        def wait(self, timeout: float) -> int:
+            return 0
+
+    def late_sampler(run: bench.BlockRun, _path: Path, stop: threading.Event) -> None:
+        stop.wait()
+        run.request_stop("foreign containers appeared", bench.STOP_EXTERNAL)
+
+    monkeypatch.setattr(bench, "_start_events", lambda _path: FakeEvents())
+    monkeypatch.setattr(bench, "_sample_host", late_sampler)
+    monkeypatch.setattr(bench, "residual_resources", list)
+    monkeypatch.setattr(
+        bench, "run_cell_with_watchdog", lambda c, r, _e, _b, limit_seconds: _fake_result(c, r, 0)
+    )
+    block = bench.planned_blocks(design, "A")[0]
+    record = bench.run_block(design, block, tmp_path, "bash")
+    assert "foreign" in (record["stopped_reason"] or "")
+    assert record["stop_kind"] == bench.STOP_EXTERNAL
+
+
 def test_a_failed_sampler_stops_the_block(
     design: bench.Design, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1039,6 +1065,7 @@ def test_a_stopped_first_reference_halts_as_h5(design: bench.Design, index: int,
     assert decision["selected_jobs"] is None
     assert decision["fallback_jobs"] is None
     assert decision["stage_invalid"] is None
+    assert decision["stages"]["A"]["stage_invalid"] is False
     assert decision["stages"]["A"]["passed"] is False
 
 
@@ -1078,6 +1105,20 @@ def test_an_external_stop_ignores_what_the_voided_stage_measured(design: bench.D
     decision = analysis.decide(design, {"A": stage})
     assert decision["halts"] == []
     assert decision["stages"]["A"]["ref_violations"] == []
+
+
+def test_h3_does_not_read_a_voided_stage(design: bench.Design) -> None:
+    voided = _stage(design, "B", stop=(4, EXTERNAL_STOP))
+    voided["blocks"][3]["determinism"]["m"] = 3
+    decision = analysis.decide(design, {"A": _stage(design, "A"), "B": voided})
+    assert decision["halts"] == []
+    assert decision["stage_invalid"] == "B"
+    assert decision["selected_jobs"] == 4
+    # The same floor in a stage that finished does halt.
+    finished = _stage(design, "B")
+    finished["blocks"][3]["determinism"]["m"] = 3
+    decision = analysis.decide(design, {"A": _stage(design, "A"), "B": finished})
+    assert [item["rule"] for item in decision["halts"]] == ["H3"]
 
 
 def test_a_level_stop_of_a_higher_level_excludes_it(design: bench.Design) -> None:

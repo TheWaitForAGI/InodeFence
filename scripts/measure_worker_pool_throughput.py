@@ -31,7 +31,7 @@ import argparse
 import json
 from collections.abc import Sequence
 from pathlib import Path
-from typing import Protocol
+from typing import Protocol, cast
 
 from scripts.run_parallel_native import MAX_BUDGET, MODES, Arm, Cell, build_cells, parse_arm
 
@@ -133,19 +133,25 @@ def _build_runners(jobs: int) -> tuple[MethodRunner, MethodRunner]:
     """Load the two Docker-backed method runners from the worker pool module.
 
     Both runners live with the worker pool because both must emit the canonical
-    per-case evidence (steps, resets, isolation) the parity extractor reads. This
-    import fails until that module lands; ``--plan`` never reaches here.
+    per-case evidence (steps, resets, isolation) the parity extractor reads. Until
+    they are wired on the integration base the runners are unavailable in two ways:
+    the module is absent (``ImportError``) on this parity branch, or it is present
+    but its executors are not wired yet (``NotImplementedError``) on the stack.
+    Both surface the same clear refusal; ``--plan`` never reaches here.
     """
     try:
         # Forward reference to the worker pool module landing in this lane's step 4.
         from inodefence.execution import worker_pool  # pyright: ignore[reportAttributeAccessIssue]
-    except ImportError as error:
+
+        # measurement_runners cannot name this script's MethodRunner protocol (src must not
+        # import scripts), so it is typed loosely; the runners it returns satisfy the protocol.
+        return cast("tuple[MethodRunner, MethodRunner]", worker_pool.measurement_runners(jobs))
+    except (ImportError, NotImplementedError) as error:
         raise SystemExit(
             "worker pool method runners are not available yet "
             "(inodefence.execution.worker_pool.measurement_runners); "
             "run with --plan to inspect the matrix, or land the worker pool first"
         ) from error
-    return worker_pool.measurement_runners(jobs)
 
 
 def main(argv: list[str] | None = None) -> int:

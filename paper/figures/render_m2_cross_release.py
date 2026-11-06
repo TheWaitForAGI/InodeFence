@@ -82,8 +82,9 @@ def main() -> None:
         "Orange = shared (identity, C1 violation); grey = rejected.  "
         "verdict = extraction object shares (st_dev, st_ino) with the external reference file "
         "(generic C1 oracle). One oracle, no release-id/answer-path hardcoding. The nested row "
-        "is non-monotone (7.5.2 shared, 7.5.3 rejected, 7.5.6 shared, 7.5.7/7.5.8 rejected): the "
-        "7.5.6 regression was introduced by the R1 fix. Observed."
+        "is non-monotone (7.5.2 shared, 7.5.3 rejected, 7.5.6 shared, 7.5.7/7.5.8 rejected). "
+        "Observed: verdicts, nlink change, non-monotone pattern. Inferred: the R1/R2 CVE mapping "
+        "and that the R1 fix introduced the 7.5.6 regression."
     )
     fig.text(0.5, 0.02, caption, ha="center", va="bottom", fontsize=7, wrap=True)
     fig.subplots_adjust(left=0.16, right=0.98, top=0.9, bottom=0.24)

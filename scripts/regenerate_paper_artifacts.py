@@ -12,8 +12,10 @@ raw. This orchestrates the generators that exist and is **honest about the gaps*
     derives them from raw. ``--verify`` checks them by existence only and flags the missing
     generator as the audit-(8) gap. A future table generator that accepts ``--out`` can be
     registered with ``verify="byte"`` to get real byte-comparison.
-  * Lane 6's EXP-0 survival generators are not merged yet (#219); their rows are optional
-    and skipped until the generator files appear.
+  * The EXP-0 survival figure's generator is merged (#219) but needs ``--report``, and the
+    PNG is not committed yet. Its row is ``optional``: ``--verify`` skips it until the PNG is
+    committed and then checks its size, and ``--regenerate`` never runs that generator (with
+    no report it would overwrite the summary table with a placeholder).
 
 Modes (default ``--verify``, read-only):
 
@@ -49,6 +51,7 @@ class Artifact:
     verify: str  # "byte" | "size" | "exists"
     note: str = ""
     out_flag: bool = False  # generator accepts --out <path> (enables byte-verify to temp)
+    optional: bool = False  # uncommitted output is SKIP, not MISSING; --regenerate leaves it alone
 
 
 #: The committed paper artifacts and how each is produced/verified.
@@ -101,7 +104,7 @@ ARTIFACTS: tuple[Artifact, ...] = (
         "exists",
         "hand-maintained summary of the Ledger; no raw generator",
     ),
-    # Lane 6 EXP-0 survival (optional until #219 merges): generators are not in the tree yet.
+    # EXP-0 survival: optional until the PNG is committed, then checked by size like the others.
     Artifact(
         "paper/figures/exp0-survival.png",
         "figure",
@@ -109,7 +112,8 @@ ARTIFACTS: tuple[Artifact, ...] = (
         "matplotlib-ephemeral",
         ("scripts/analyze_exp0.py output",),
         "size",
-        "pending lane 6 #219 (generator not in tree)",
+        "generator merged (#219); PNG to be regenerated with --report after the host freeze (W4)",
+        optional=True,
     ),
 )
 
@@ -165,7 +169,9 @@ def verify_artifacts(
         committed = repo_root / art.output
         generator_present = art.generator is not None and (repo_root / art.generator).is_file()
         if not committed.exists():
-            if art.generator is not None and not generator_present:
+            if art.optional:
+                rows.append(VerifyRow(art.output, "SKIP", f"optional; not committed ({art.note})"))
+            elif art.generator is not None and not generator_present:
                 rows.append(
                     VerifyRow(art.output, "SKIP", f"optional; generator absent ({art.note})")
                 )
@@ -207,6 +213,9 @@ def regenerate_artifacts(artifacts: tuple[Artifact, ...], repo_root: Path) -> li
     for art in artifacts:
         if art.generator is None:
             rows.append(RegenRow(art.output, "SKIP", "hand-maintained; no generator"))
+            continue
+        if art.optional:
+            rows.append(RegenRow(art.output, "SKIP", f"optional; not run here ({art.note})"))
             continue
         gen = repo_root / art.generator
         if not gen.is_file():

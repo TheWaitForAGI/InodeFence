@@ -50,6 +50,33 @@ def test_optional_artifact_skips_when_generator_absent(tmp_path: Path) -> None:
     assert row.status == "SKIP"
 
 
+def test_optional_artifact_with_generator_present(tmp_path: Path) -> None:
+    generator = "paper/figures/gen.py"
+    _write(tmp_path, generator, b"# gen\n")
+    art = Artifact(
+        "paper/figures/pending.png",
+        "figure",
+        generator,
+        "matplotlib-ephemeral",
+        ("src",),
+        "size",
+        "png",
+        optional=True,
+    )
+    # Generator in the tree, output not committed: optional -> SKIP, required -> still MISSING.
+    [row] = verify_artifacts((art,), tmp_path)
+    assert row.status == "SKIP"
+    [required] = verify_artifacts((_figure(art.output, generator),), tmp_path)
+    assert required.status == "MISSING"
+    # --regenerate must not run it: it needs inputs this entry point does not pass.
+    [regen] = regenerate_artifacts((art,), tmp_path)
+    assert regen.status == "SKIP"
+    # Once committed, the row gets the normal size check.
+    _write(tmp_path, art.output, b"\x89PNG\r\n")
+    [committed] = verify_artifacts((art,), tmp_path)
+    assert committed.status == "SIZE-ONLY"
+
+
 def test_byte_policy_match_and_mismatch(tmp_path: Path) -> None:
     art = Artifact(
         "paper/tables/gen.md",

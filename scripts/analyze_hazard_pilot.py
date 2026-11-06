@@ -5,6 +5,11 @@ design's decision rules mechanically. It never claims confirmatory power, never 
 bound as "hazard = 0", and never selects an R variant by its event count (the higher of the two
 is used, the conservative choice for S-u).
 
+Two scales, kept apart. The reported event share and two-sided interval count every planned cell
+(an aborted or unrecorded campaign is never replaced or dropped). The decision rules use the
+exposure actually run, so a cell that ran less bounds the hazard less tightly, and an abort
+enters the planning once, in the required-n projection, and not again through the estimate.
+
 The power model matches the planning model the review used: constant per-execution hazard,
 seed blocks, block-winner exact sign test, both Holm contrasts rejected at family alpha .05 with
 S-u faster. It approximates the registered permutation log-rank; it is a planning input.
@@ -27,10 +32,12 @@ from pathlib import Path
 from typing import Any
 
 from scripts.run_g1_smoke import cell_paths
-from scripts.run_hazard_pilot import PilotDesign, load_design, planned_cells
+from scripts.run_hazard_pilot import PilotDesign, has_record, load_design, planned_cells
 from scripts.run_parallel_native import Cell
 
+from inodefence.evaluation.rds import RdsCellConfig
 from inodefence.evaluation.rds_report import (
+    LoadedCell,
     ReportFormatError,
     check_report_config,
     load_cell_files,
@@ -57,6 +64,18 @@ NOT_A_CLAIM = (
     "exploratory planning input: not a confirmatory result, no claim of confirmatory power, "
     "not pooled with EXP-0/EXP-2/EXP-3, zero events never mean hazard = 0"
 )
+VERDICT_LABELS = {
+    "possible": "가능",
+    "reduced": "축소안",
+    "undetermined": "미결(증거 부족)",
+    "impossible": "불가",
+}
+UPPER_N_NOTE = (
+    "required_n_s_upper95 is the best-case lower bound, never a planned EXP-2 n; "
+    "power at that n is not assured"
+)
+#: What a malformed record can raise while it is read or summarized.
+UNREADABLE_ERRORS = (ValueError, KeyError, TypeError, AttributeError, OSError)
 
 
 # ---- binomial intervals ---------------------------------------------------------------------
@@ -69,8 +88,8 @@ def _binomial_tail_at_least(k: int, n: int, p: float) -> float:
     return sum(math.comb(n, x) * p**x * (1 - p) ** (n - x) for x in range(k, n + 1))
 
 
-def _solve_increasing(function: Any, target: float) -> float:
-    low, high = 0.0, 1.0
+def _solve_increasing(function: Any, target: float, upper_limit: float = 1.0) -> float:
+    low, high = 0.0, upper_limit
     for _ in range(80):
         middle = (low + high) / 2
         if function(middle) < target:
@@ -99,6 +118,44 @@ def one_sided_upper(k: int, n: int, confidence: float = 0.95) -> float:
     return _solve_increasing(lambda p: _binomial_tail_at_least(k + 1, n, p), confidence)
 
 
+# ---- estimates on the exposure actually run ------------------------------------------------
+
+
+def _poisson_upper_mean(events: int, confidence: float) -> float:
+    """Exact one-sided upper bound on a Poisson mean, given the observed count."""
+
+    def at_least_one_more(mean: float) -> float:
+        below = sum(mean**x / math.factorial(x) for x in range(events + 1))
+        return 1 - math.exp(-mean) * below
+
+    limit = float(events + 4)
+    while at_least_one_more(limit) < confidence:
+        limit *= 2
+    return _solve_increasing(at_least_one_more, confidence, limit)
+
+
+def exposure_point(events: int, at_risk: int, budget: int) -> float | None:
+    """Per-campaign event probability on exposure: 1 - exp(-budget * events / at_risk).
+
+    Constant per-execution hazard, as the power model assumes: a right-censored cell counts only
+    the executions it ran. None when nothing ran.
+    """
+    if at_risk <= 0:
+        return None
+    return -math.expm1(-budget * events / at_risk) if events else 0.0
+
+
+def exposure_upper(events: int, at_risk: int, budget: int, confidence: float = 0.95) -> float:
+    """One-sided upper bound of that probability; 1.0 when nothing ran.
+
+    With no events this is 1 - (1 - confidence) ** (budget / at_risk), the exact binomial bound
+    for at_risk / budget campaigns: ten full campaigns give .259, seven give .348.
+    """
+    if at_risk <= 0:
+        return 1.0
+    return -math.expm1(-_poisson_upper_mean(events, confidence) * budget / at_risk)
+
+
 # ---- power model ----------------------------------------------------------------------------
 
 
@@ -118,6 +175,8 @@ def sign_p(wins: int, total: int) -> float:
 def _rate(p: float) -> float:
     if p <= 0:
         return 0.0
+    if p >= 1:
+        return math.inf
     return -math.log(1 - p) / BUDGET
 
 
@@ -220,7 +279,7 @@ class CellOutcome:
     run_id: str
     arm: str
     seed: int
-    state: str  # complete | abort | no-record | invalid
+    state: str  # complete | abort | no-record | unreadable | invalid
     reason: str | None
     executions: int
     event: bool
@@ -320,26 +379,44 @@ def _step_metrics(
 
 
 def load_outcome(cell: Cell, raw: Path, design: PilotDesign) -> CellOutcome:
+    """One cell's outcome, keeping apart the states the design treats differently.
+
+    invalid: the report states a config, image or sentinel set other than the design's; the cell
+    was not the planned one and leaves the denominator. unreadable: the record exists but cannot
+    be parsed; the planned cell stays in the denominator with zero exposure and its own reason.
+    """
     paths = cell_paths(cell, raw)
-    if not paths["report"].is_file() and not paths["steps_jsonl"].is_file():
-        return _no_outcome(cell, "no-record", "no report and no steps file")
+    if not has_record(cell, raw):
+        return _no_outcome(cell, "no-record", "no report and no nonempty steps file")
     config = design.cell_config(cell)
     try:
         loaded = load_cell_files(paths["report"], paths["steps_jsonl"])
-        if loaded.report is not None and "aborted" not in loaded.report:
+    except UNREADABLE_ERRORS as error:
+        return _no_outcome(cell, "unreadable", f"{type(error).__name__}: {error}")
+    if loaded.report is not None and "aborted" not in loaded.report:
+        try:
             check_report_config(loaded.report, config)
-            problem = _conformance_problem(loaded.report, design)
-            if problem is not None:
-                raise ReportFormatError(problem)
-        aborted_at, reason = loaded.aborted_at_step, loaded.abort_reason
-        if aborted_at is None and len(loaded.records) < config.execution_budget:
-            aborted_at = len(loaded.records)
-            reason = "report has fewer steps than the budget and no abort record"
-        summary = summarize_report_records(
-            loaded.records, config, aborted_at_step=aborted_at, abort_reason=reason
-        ).summary
-    except (ReportFormatError, ValueError, json.JSONDecodeError) as error:
-        return _no_outcome(cell, "invalid", f"{type(error).__name__}: {error}")
+        except ReportFormatError as error:
+            return _no_outcome(cell, "invalid", str(error))
+        problem = _conformance_problem(loaded.report, design)
+        if problem is not None:
+            return _no_outcome(cell, "invalid", problem)
+    try:
+        return _outcome_from_records(cell, loaded, config, design)
+    except UNREADABLE_ERRORS as error:
+        return _no_outcome(cell, "unreadable", f"{type(error).__name__}: {error}")
+
+
+def _outcome_from_records(
+    cell: Cell, loaded: LoadedCell, config: RdsCellConfig, design: PilotDesign
+) -> CellOutcome:
+    aborted_at, reason = loaded.aborted_at_step, loaded.abort_reason
+    if aborted_at is None and len(loaded.records) < config.execution_budget:
+        aborted_at = len(loaded.records)
+        reason = "report has fewer steps than the budget and no abort record"
+    summary = summarize_report_records(
+        loaded.records, config, aborted_at_step=aborted_at, abort_reason=reason
+    ).summary
     report = loaded.report or {}
     initial = report.get("initial_case_ids")
     initial_ids = frozenset(initial) if isinstance(initial, list) else frozenset()
@@ -383,8 +460,20 @@ def _ratio(numerator: float, denominator: float) -> float | None:
     return numerator / denominator if denominator else None
 
 
-def summarize_arm(arm: str, cells: Sequence[CellOutcome]) -> dict[str, Any]:
-    """Events over ALL planned, non-invalid cells; abort and no-record stay in the denominator."""
+def _reasons(cells: Sequence[CellOutcome], *states: str) -> list[str]:
+    return sorted(
+        {str(cell.reason)[:160] for cell in cells if cell.state in states and cell.reason}
+    )
+
+
+def summarize_arm(
+    arm: str, cells: Sequence[CellOutcome], *, budget: int = BUDGET
+) -> dict[str, Any]:
+    """Report events over all planned, non-invalid cells; decide on the exposure they ran.
+
+    ``p_hat``, ``ci95_two_sided`` and ``upper95_one_sided`` count every such cell as a campaign.
+    ``p_hat_exposure`` and ``upper95_exposure`` are what the decision rules read.
+    """
     denominator = [cell for cell in cells if cell.state != "invalid"]
     n = len(denominator)
     events = [cell for cell in denominator if cell.event]
@@ -398,8 +487,11 @@ def summarize_arm(arm: str, cells: Sequence[CellOutcome]) -> dict[str, Any]:
         "complete": sum(cell.state == "complete" for cell in cells),
         "abort": sum(cell.state == "abort" for cell in cells),
         "no_record": sum(cell.state == "no-record" for cell in cells),
+        "unreadable": sum(cell.state == "unreadable" for cell in cells),
         "invalid": sum(cell.state == "invalid" for cell in cells),
-        "abort_reasons": sorted({str(cell.reason)[:160] for cell in cells if cell.reason}),
+        "abort_reasons": _reasons(cells, "abort", "no-record"),
+        "unreadable_reasons": _reasons(cells, "unreadable"),
+        "invalid_reasons": _reasons(cells, "invalid"),
         "events_first_c1_or_c2": len(events),
         "campaigns_with_c1": sum(cell.first_c1 is not None for cell in denominator),
         "campaigns_with_c2": sum(cell.first_c2 is not None for cell in denominator),
@@ -410,6 +502,9 @@ def summarize_arm(arm: str, cells: Sequence[CellOutcome]) -> dict[str, Any]:
         "ci95_two_sided": [low, high],
         "upper95_one_sided": one_sided_upper(len(events), n) if n else 1.0,
         "at_risk_executions": at_risk,
+        "exposure_campaigns": at_risk / budget,
+        "p_hat_exposure": exposure_point(len(events), at_risk, budget),
+        "upper95_exposure": exposure_upper(len(events), at_risk, budget),
         "events_per_execution_at_risk": _ratio(len(events), at_risk),
         "u_viol_total": sum(cell.u_viol for cell in denominator),
         "non_event_metrics": {
@@ -444,14 +539,16 @@ def rule_condition_4(arms: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
     triggered = any(count >= 1 for count in counts.values())
     return {
         "events": counts,
+        "unreadable_cells": {arm: arms[arm]["unreadable"] for arm in ZERO_RULE_ARMS},
         "r_d_zero_assumption": "discarded" if triggered else "not discarded (not confirmed)",
         "recalculate_power": triggered,
     }
 
 
 def rule_condition_5(arms: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
+    """Zero-event arms get the bound on the exposure they ran, wider when cells ran less."""
     zero = {
-        arm: summary["upper95_one_sided"]
+        arm: summary["upper95_exposure"]
         for arm, summary in arms.items()
         if summary["events_first_c1_or_c2"] == 0
     }
@@ -462,12 +559,12 @@ def rule_condition_5(arms: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
 
 
 def planning_inputs(arms: Mapping[str, Mapping[str, Any]]) -> dict[str, float]:
-    """Point estimates and the S-u upper bound; R is the higher of the two variants."""
+    """Exposure-based estimates and the S-u upper bound; R is the higher of the two variants."""
     return {
-        "p_s_point": arms["S-u"]["p_hat"] or 0.0,
-        "p_s_upper95": arms["S-u"]["upper95_one_sided"],
-        "p_r_point_higher_variant": max(arms[arm]["p_hat"] or 0.0 for arm in R_ARMS),
-        "p_d_point": arms["D"]["p_hat"] or 0.0,
+        "p_s_point": arms["S-u"]["p_hat_exposure"] or 0.0,
+        "p_s_upper95": arms["S-u"]["upper95_exposure"],
+        "p_r_point_higher_variant": max(arms[arm]["p_hat_exposure"] or 0.0 for arm in R_ARMS),
+        "p_d_point": arms["D"]["p_hat_exposure"] or 0.0,
     }
 
 
@@ -480,8 +577,12 @@ def feasibility(
 ) -> dict[str, Any]:
     """Condition 6 label, by the design's fixed rule, on the decision window.
 
-    possible: at least one S-u event and the point-estimate n fits. reduced: the point estimate
-    does not fit but the S-u upper bound does (power not assured). impossible: not even that.
+    possible: S-u leads and the point-estimate n fits. reduced: S-u leads, its point-estimate n
+    does not fit, but the n at its upper bound does (power not assured). undetermined: S-u does
+    not lead, which includes zero S-u events, but the upper bound still fits, so this sample
+    cannot tell. impossible: even the upper bound does not fit, or does not separate.
+
+    ``abort`` enters here once, in the projection; the inputs are already on exposure.
     """
     point_n = required_n(
         inputs["p_s_point"],
@@ -499,16 +600,22 @@ def feasibility(
     )
     capacity = {str(days): n_capacity(campaigns_per_host_day, days) for days in WINDOWS_HOST_DAYS}
     decision_capacity = capacity[str(DECISION_WINDOW_HOST_DAYS)]
-    if inputs["p_s_point"] > 0 and point_n is not None and point_n <= decision_capacity:
+    s_leads = inputs["p_s_point"] > max(inputs["p_r_point_higher_variant"], inputs["p_d_point"])
+    if s_leads and point_n is not None and point_n <= decision_capacity:
         verdict = "possible"
-    elif optimistic_n is not None and optimistic_n <= decision_capacity:
+    elif optimistic_n is None or optimistic_n > decision_capacity:
+        verdict = "impossible"
+    elif s_leads:
         verdict = "reduced"
     else:
-        verdict = "impossible"
+        verdict = "undetermined"
     return {
         "verdict": verdict,
+        "verdict_label": VERDICT_LABELS[verdict],
+        "s_u_leads_on_point_estimates": s_leads,
         "required_n_point": point_n,
         "required_n_s_upper95": optimistic_n,
+        "required_n_s_upper95_note": UPPER_N_NOTE,
         "abort_fraction_used": abort,
         "campaigns_per_host_day": campaigns_per_host_day,
         "n_capacity_by_host_days": capacity,
@@ -554,10 +661,31 @@ def clock_summary(raw: Path, executions: int, budget: int) -> dict[str, Any]:
     }
 
 
+def incomplete_attempts(raw: Path, cells: Sequence[CellOutcome]) -> dict[str, list[dict[str, Any]]]:
+    """Exit code and wall time of each attempt of an unfinished cell; a watchdog kill shows here."""
+    path = raw / "clocks.jsonl"
+    records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    incomplete = {cell.run_id for cell in cells if cell.state != "complete"}
+    attempts: dict[str, list[dict[str, Any]]] = {}
+    for record in records:
+        if record["run_id"] in incomplete:
+            attempts.setdefault(record["run_id"], []).append(
+                {
+                    "attempt": record["attempt"],
+                    "returncode": record["returncode"],
+                    "launcher_wall_seconds": record["launcher_wall_seconds"],
+                    "record_present": record["record_present"],
+                }
+            )
+    return attempts
+
+
 def analyze(raw: Path, design: PilotDesign, *, sims: int = SIMS) -> dict[str, Any]:
     outcomes = [load_outcome(cell, raw, design) for cell in planned_cells(design)]
     arms = {
-        arm.label: summarize_arm(arm.label, [cell for cell in outcomes if cell.arm == arm.label])
+        arm.label: summarize_arm(
+            arm.label, [cell for cell in outcomes if cell.arm == arm.label], budget=design.budget
+        )
         for arm in design.arms
     }
     clocks = clock_summary(raw, sum(cell.executions for cell in outcomes), design.budget)
@@ -582,6 +710,7 @@ def analyze(raw: Path, design: PilotDesign, *, sims: int = SIMS) -> dict[str, An
         ),
         "sensitivity": sensitivity_rows(sims=sims),
         "clocks": clocks,
+        "incomplete_cell_attempts": incomplete_attempts(raw, outcomes),
         "cells": [asdict(cell) for cell in outcomes],
     }
 
@@ -592,28 +721,36 @@ def render_markdown(report: Mapping[str, Any]) -> str:
         "",
         f"_{report['classification']}_",
         "",
-        "| arm | 캠페인 | 완주 | abort | 기록 없음 | 무효 | 첫 C1∨C2 사건 | 95% CI (양측) | "
-        "95% 상한 (단측) | T_first 관측 |",
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        "| arm | 캠페인 | 완주 | abort | 기록 없음 | 읽기 불가 | 무효 | 첫 C1∨C2 사건 | "
+        "95% CI (양측, 계획 분모) | 노출 (캠페인분) | p̂ (노출) | 95% 상한 (단측, 노출, 규칙 B) | "
+        "T_first 관측 |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for arm in report["arms"].values():
         low, high = arm["ci95_two_sided"]
+        point = arm["p_hat_exposure"]
         lines.append(
             f"| {arm['arm']} | {arm['campaigns']} | {arm['complete']} | {arm['abort']} | "
-            f"{arm['no_record']} | {arm['invalid']} | {arm['events_first_c1_or_c2']} | "
-            f"{low:.3f}–{high:.3f} | {arm['upper95_one_sided']:.3f} | "
-            f"{arm['t_first_observed']} |"
+            f"{arm['no_record']} | {arm['unreadable']} | {arm['invalid']} | "
+            f"{arm['events_first_c1_or_c2']} | {low:.3f}–{high:.3f} | "
+            f"{arm['exposure_campaigns']:.2f} | "
+            f"{'-' if point is None else format(point, '.3f')} | "
+            f"{arm['upper95_exposure']:.3f} | {arm['t_first_observed']} |"
         )
     condition_4, condition_6 = report["condition_4"], report["condition_6"]
     clocks = report["clocks"]
     lines += [
         "",
         f"- 조건 4: `R=D=0` 가정 = **{condition_4['r_d_zero_assumption']}** "
-        f"(사건 {condition_4['events']})",
+        f"(사건 {condition_4['events']}, 사건 여부를 알 수 없는 읽기 불가 셀 "
+        f"{condition_4['unreadable_cells']})",
         f"- 조건 5: {report['condition_5']['statement']}",
-        f"- 조건 6: **{condition_6['verdict']}** (점추정 n/arm {condition_6['required_n_point']}, "
-        f"S-u 상한 n/arm {condition_6['required_n_s_upper95']}, "
+        f"- 조건 6: **{condition_6['verdict_label']}** "
+        f"(점추정 n/arm {condition_6['required_n_point']}, "
+        f"S-u 상한 n/arm {condition_6['required_n_s_upper95']} (계획 n이 아니라 최선 가정의 하한), "
+        f"미완주 비율 {condition_6['abort_fraction_used']:.3f}, "
         f"용량 {condition_6['n_capacity_by_host_days']}, 가정: {condition_6['assumption']})",
+        f"- 미완주 셀 시도 기록(종료 코드·실경과): {report['incomplete_cell_attempts']}",
         f"- arm 간 어휘 동일: {report['vocabulary_equal_across_arms']}",
         f"- 실경과 {clocks['elapsed_real_seconds'] / 3600:.2f} h, "
         f"{clocks['exec_per_hour_real']:.0f} exec/h (실시간), "

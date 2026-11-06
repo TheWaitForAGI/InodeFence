@@ -105,8 +105,11 @@ RESERVED_SEED_RANGES: tuple[tuple[int, int], ...] = (
 PROC_SAMPLE_SECONDS = 30.0
 DOCKER_PROBE_SECONDS = 60.0
 EVENT_ACTIONS = ("create", "start", "die", "destroy")
+LOCAL_IMAGES = ("inodefence-controller:local", "inodefence-helper:local")
 OWN_CONTAINER = re.compile(r"inodefence-(local-controller-|[0-9a-f]{32}$)")
 BLOCK_FILE = "block.json"
+#: Written by the analysis script; the next stage's gate reads its mechanical decision.
+REPORT_JSON = "concurrency-report.json"
 
 
 class DesignError(ValueError):
@@ -277,8 +280,8 @@ def planned_cells(design: Design, stage: str) -> tuple[Cell, ...]:
     budget = design.smoke_budget if smoke else design.budget
     count = len(design.arms)
     return tuple(
-        Cell(MODE, design.target_version, design.arms[(block + offset) % count], seed, budget)
-        for block, seed in enumerate(seeds)
+        Cell(MODE, design.target_version, design.arms[(position + offset) % count], seed, budget)
+        for position, seed in enumerate(seeds)
         for offset in range(count)
     )
 
@@ -360,9 +363,13 @@ def preflight(design: Design, expected_head: str) -> tuple[dict[str, Any], list[
         image_id = _docker("image", "inspect", image, "--format", "{{.Id}}")
         running = _docker("ps", "--format", "{{.Names}}").split()
         residual = residual_resources()
+        # Cells run with SKIP_BUILD=1, so these must exist before the first cell.
+        local = {
+            name: _docker("image", "inspect", name, "--format", "{{.Id}}") for name in LOCAL_IMAGES
+        }
     except (RuntimeError, OSError, subprocess.SubprocessError) as error:
         return facts, [*problems, f"docker: {error}"]
-    facts.update(docker_server=server, image_id=image_id)
+    facts.update(docker_server=server, image_id=image_id, local_images=local)
     if server != design.docker_engine:
         problems.append(f"docker engine {server} != {design.docker_engine}")
     if image_id != design.image_digest:
@@ -498,34 +505,38 @@ class BlockRun:
 def _sample_host(
     run: BlockRun, path: Path, stop: threading.Event, seconds: float = PROC_SAMPLE_SECONDS
 ) -> None:
+    """Sample until told to stop. A sampler failure stops the block: its guards would be off."""
     next_probe = 0.0
-    with path.open("a", encoding="utf-8") as stream:
-        while True:
-            sample: dict[str, Any] = {
-                **clock_stamp(),
-                "loadavg": os.getloadavg(),
-                "disk_fraction": disk_usage_fraction(run.directory),
-                **read_host_counters(),
-            }
-            if sample["monotonic"] >= next_probe:
-                # Daemon responsiveness at a fixed low rate: the same small load at every level.
-                probe_started = time.clock_gettime(time.CLOCK_REALTIME)
-                try:
-                    names = _docker("ps", "--format", "{{.Names}}").split()
-                    sample["containers"] = names
-                    sample["docker_ps_seconds"] = (
-                        time.clock_gettime(time.CLOCK_REALTIME) - probe_started
-                    )
-                except (RuntimeError, OSError, subprocess.SubprocessError) as error:
-                    sample["docker_ps_error"] = str(error)
-                next_probe = sample["monotonic"] + DOCKER_PROBE_SECONDS
-            stream.write(json.dumps(sample, sort_keys=True) + "\n")
-            stream.flush()
-            reason = host_stop_reason(sample, run.design)
-            if reason is not None:
-                run.request_stop(reason)
-            if stop.wait(seconds):
-                return
+    try:
+        with path.open("a", encoding="utf-8") as stream:
+            while True:
+                sample: dict[str, Any] = {
+                    **clock_stamp(),
+                    "loadavg": os.getloadavg(),
+                    "disk_fraction": disk_usage_fraction(run.directory),
+                    **read_host_counters(),
+                }
+                if sample["monotonic"] >= next_probe:
+                    # Daemon responsiveness at a fixed low rate: the same load at every level.
+                    probe_started = time.clock_gettime(time.CLOCK_REALTIME)
+                    try:
+                        names = _docker("ps", "--format", "{{.Names}}").split()
+                        sample["containers"] = names
+                        sample["docker_ps_seconds"] = (
+                            time.clock_gettime(time.CLOCK_REALTIME) - probe_started
+                        )
+                    except (RuntimeError, OSError, subprocess.SubprocessError) as error:
+                        sample["docker_ps_error"] = str(error)
+                    next_probe = sample["monotonic"] + DOCKER_PROBE_SECONDS
+                stream.write(json.dumps(sample, sort_keys=True) + "\n")
+                stream.flush()
+                reason = host_stop_reason(sample, run.design)
+                if reason is not None:
+                    run.request_stop(reason)
+                if stop.wait(seconds):
+                    return
+    except Exception as error:
+        run.request_stop(f"host sampler failed: {type(error).__name__}: {error}")
 
 
 def _start_events(path: Path) -> subprocess.Popen[bytes]:
@@ -583,14 +594,32 @@ def stage_state(output: Path, block: Block) -> str:
 
 
 def stage_gate_problem(design: Design, stage: str, output: Path) -> str | None:
-    """Stages run in design order, and only after the previous one finished without a stop."""
+    """Stages run in design order. A measured stage follows only a passed mechanical decision.
+
+    Smoke must finish without a stop before the first measured stage. A later stage needs the
+    analysis report of this design to say the previous stage passed and nothing halted.
+    """
     if stage == SMOKE_STAGE:
         return None
     order = (SMOKE_STAGE, *measured_stages(design))
     previous = order[order.index(stage) - 1]
-    states = [stage_state(output, block) for block in planned_blocks(design, previous)]
-    if any(state != "clean" for state in states):
-        return f"stage {previous} is not clean ({states}); {stage} may not start"
+    if previous == SMOKE_STAGE:
+        states = [stage_state(output, block) for block in planned_blocks(design, previous)]
+        if any(state != "clean" for state in states):
+            return f"stage {previous} is not clean ({states}); {stage} may not start"
+        return None
+    report_path = output / REPORT_JSON
+    if not report_path.is_file():
+        return f"no analysis report; analyze stage {previous} before {stage}"
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    if report.get("design_sha256") != design.sha256:
+        return "the analysis report was made under another design"
+    decision = report.get("decision") or {}
+    if decision.get("halts"):
+        return f"the analysis halted: {[item.get('rule') for item in decision['halts']]}"
+    verdict = (decision.get("stages") or {}).get(previous) or {}
+    if not verdict.get("passed"):
+        return f"stage {previous} did not pass the decision rule; {stage} may not start"
     return None
 
 

@@ -1,54 +1,172 @@
-"""Analysis of the concurrency scaling benchmark (``concurrency-scaling-v1``).
+"""Analysis and decision of the concurrency scaling benchmark (``concurrency-scaling-v1``).
 
-Reads a benchmark output tree and writes ``concurrency-report.json`` and ``.md``. Timing and
-counts only: oracle fields are never copied into a result, and no hit, T_first or U_viol is
-computed here. The one comparison that touches them, ``check_native_determinism``, is reduced to
-two booleans.
+Reads a benchmark output tree and writes ``concurrency-report.json`` and ``.md``. The report ends
+in a mechanical decision (design file, section 6): a selected concurrency level, or a stop
+condition H1 to H3, plus the H4 count.
 
-Terms (design file, section 4):
+Sealed raw: no oracle value leaves this script, and the decision reads none. To compare paths
+between blocks, each step's oracle verdict and fed-back keys are reduced to an in-memory hash, and
+a pure verdict difference is reported only as a total per concurrency level, with no arm or seed.
+
+Terms:
 
 * normal campaign: return code 0, a report without an abort record, every planned step present,
-  the planned config and image, and a steps file that matches the report;
+  the planned config and image, a steps file that matches the report (design file, section 4);
 * throughput uses CLOCK_REALTIME, because this host's monotonic clock is not real time. Per-step
   seconds come from the report and stay labelled monotonic;
-* a ``cleanup_*`` abort category can hide an earlier error (design file, section 3), so such an
-  abort is marked ``first_error_may_be_masked``.
+* G is the real-time execution rate while every slot is busy, per campaign budget, times the
+  normal fraction. A cell whose path first differs at a step that is ``timed_out`` or ``failed``
+  on only one side does not count as normal.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import statistics
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping, Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from scripts.check_native_determinism import compare_report_pair
-from scripts.run_concurrency_benchmark import BLOCK_FILE, SMOKE_STAGE, Design, load_design
+from scripts.check_native_determinism import subject_from_report
+from scripts.run_concurrency_benchmark import (
+    BLOCK_FILE,
+    REPORT_JSON,
+    SMOKE_STAGE,
+    Design,
+    load_design,
+    measured_stages,
+)
 
 from inodefence.evaluation.abort_classification import InvalidReason, classify_abort_reason
+from inodefence.evaluation.independence import arm_abort_independence
 from inodefence.evaluation.rds_report import LoadedCell, ReportFormatError, load_cell_files
 
-LABEL = "demo run; concurrency benchmark (unregistered, not pooled, no oracle analysis)"
-REPORT_JSON = "concurrency-report.json"
+LABEL = "demo run; concurrency benchmark (unregistered, not pooled, oracle sealed)"
 REPORT_MD = "concurrency-report.md"
-MASKING_CATEGORIES = frozenset({InvalidReason.CLEANUP_INSPECT, InvalidReason.CLEANUP_REMOVE})
-TARGET_TIMEOUT_SECONDS = 10.0
+CLEANUP_CATEGORIES = frozenset({InvalidReason.CLEANUP_INSPECT, InvalidReason.CLEANUP_REMOVE})
 _FAILED_STEP = re.compile(r"FAILED at step: (.+?) \(exit")
+#: Target outcomes that can be congestion rather than the input (first-difference check).
+CONGESTION_TERMINATIONS = frozenset({"timed_out", "failed"})
+REASON_LIMIT = 500
+ABNORMAL_DISPOSITIONS = (
+    "no-record",
+    "incomplete",
+    "unreadable",
+    "nonconformant",
+    "integrity-failure",
+)
+
+# The decision thresholds below are the design file's section 6, set by W3 before any run. They
+# are judgement values, not measurements.
+V2_OTHER_ABNORMAL = 2
+V3_ABORT_FRACTION = 0.30
+ALPHA = 0.05
+V5_ARM_P = 0.10
+V6_TARGET_P999_SECONDS = 5.0
+V7_TIMED_OUT_PER_1000 = 1.0
+V8_RATE_RATIO = 1.25
+V8_PER_1000 = 20.0
+V9_EXCESS_OVER_FLOOR = 2
+V9_ONE_SIDED_CELLS = 2
+V10_CELL_MONOTONIC_SECONDS = 7200.0
+RHO_MIN = 1.15
+DRIFT_MAX = 0.15
+H3_FLOOR = 3
+COINCIDENCE_SECONDS = 60.0
 
 
 def _percentile(values: Sequence[float], fraction: float) -> float | None:
+    """Nearest-rank percentile."""
     if not values:
         return None
     ordered = sorted(values)
-    return ordered[min(len(ordered) - 1, int(fraction * len(ordered)))]
+    return ordered[max(0, math.ceil(fraction * len(ordered)) - 1)]
 
 
 def _rate(count: float, seconds: float) -> float | None:
     return count / seconds * 3600.0 if seconds > 0 else None
+
+
+def exact_upper_p(events: int, other_events: int, share: float = 0.5) -> float:
+    """One-sided exact conditional test: P(X >= events) for X ~ Bin(events + other, share)."""
+    total = events + other_events
+    return sum(
+        math.comb(total, k) * share**k * (1 - share) ** (total - k)
+        for k in range(events, total + 1)
+    )
+
+
+def significantly_more(events: int, ref_events: int, share: float = 0.5) -> bool:
+    return events > ref_events and exact_upper_p(events, ref_events, share) <= ALPHA
+
+
+@dataclass(slots=True)
+class CellPath:
+    """A cell's path. Verdicts are opaque hashes so that no oracle value can leak from here."""
+
+    case_ids: tuple[str, ...]
+    terminations: tuple[str, ...]
+    verdicts: tuple[int, ...]
+    operators: tuple[str | None, ...]
+
+
+@dataclass(slots=True)
+class PathDifference:
+    case_sequence_same: bool
+    verdicts_same: bool
+    first_step: int | None
+    terminations: tuple[str, str] | None
+
+    @property
+    def differs(self) -> bool:
+        return not self.case_sequence_same or not self.verdicts_same or self.first_step is not None
+
+    @property
+    def one_sided_congestion(self) -> bool:
+        if self.terminations is None:
+            return False
+        left, right = self.terminations
+        return (left in CONGESTION_TERMINATIONS) != (right in CONGESTION_TERMINATIONS)
+
+
+def cell_path(records: Sequence[Mapping[str, Any]]) -> CellPath | None:
+    if not records:
+        return None
+    try:
+        subject = subject_from_report({"steps": [dict(step) for step in records]}, label="cell")
+    except (KeyError, TypeError, ValueError):
+        return None
+    return CellPath(
+        tuple(step.case_id for step in subject.steps),
+        tuple(str((step.get("feedback") or {}).get("trace_termination")) for step in records),
+        tuple(hash((step.oracle, step.feedback_keys)) for step in subject.steps),
+        tuple((step.get("mutation_attempt") or {}).get("operator_id") for step in records),
+    )
+
+
+def compare_paths(reference: CellPath, candidate: CellPath) -> PathDifference:
+    """Compare the common prefix, so an aborted cell is compared up to its abort."""
+    common = min(len(reference.case_ids), len(candidate.case_ids))
+    first_step: int | None = None
+    terminations: tuple[str, str] | None = None
+    for index in range(common):
+        same_case = reference.case_ids[index] == candidate.case_ids[index]
+        same_end = reference.terminations[index] == candidate.terminations[index]
+        if not same_case or not same_end:
+            first_step = index
+            terminations = (reference.terminations[index], candidate.terminations[index])
+            break
+    return PathDifference(
+        reference.case_ids[:common] == candidate.case_ids[:common],
+        reference.verdicts[:common] == candidate.verdicts[:common],
+        first_step,
+        terminations,
+    )
 
 
 def _harness_step(log: Path) -> str | None:
@@ -85,87 +203,192 @@ def _nonconformance(report: Mapping[str, Any], cell: Mapping[str, Any], design: 
     if report.get("image_id") != design.image_digest:
         return f"report image_id is {report.get('image_id')}"
     sentinels = report.get("sentinel_set")
-    if isinstance(sentinels, Mapping) and sentinels.get("count") != design.sentinel_count:
-        return f"report sentinel count is {sentinels.get('count')}"
+    if not isinstance(sentinels, Mapping) or sentinels.get("count") != design.sentinel_count:
+        count = sentinels.get("count") if isinstance(sentinels, Mapping) else None
+        return f"report sentinel count is {count}"
     return ""
 
 
-def summarize_cell(
-    cell: Mapping[str, Any], raw: Path, design: Design
-) -> tuple[dict[str, Any], dict[str, Any] | None]:
-    """One cell's facts (no oracle field), and its report when the cell is comparable."""
+def first_error(aborted: Mapping[str, Any] | None) -> dict[str, Any]:
+    """Whether an abort's first error is known (H4).
+
+    Unconfirmed only when a failure could still be hiding: no abort record at all, a truncated
+    chain, or nothing but a cleanup error left. A null chain with a non-cleanup reason comes from
+    a raise that replaces nothing (evidence integrity, image version), so it is confirmed.
+    """
+    if aborted is None:
+        return {"status": "unconfirmed", "type": None, "message": None}
+    chain = aborted.get("error_chain")
+    reason = str(aborted.get("reason") or "")
+    if isinstance(chain, list) and chain:
+        last = chain[-1]
+        if not isinstance(last, Mapping) or last.get("truncated"):
+            return {"status": "unconfirmed", "type": None, "message": None}
+        message = str(last.get("message") or "")[:REASON_LIMIT]
+        kind = last.get("type")
+        cleanup = classify_abort_reason(message) in CLEANUP_CATEGORIES
+        return {
+            "status": "unconfirmed" if cleanup else "confirmed",
+            "type": kind,
+            "message": message,
+        }
+    cleanup = classify_abort_reason(reason) in CLEANUP_CATEGORIES
+    return {
+        "status": "unconfirmed" if cleanup else "confirmed",
+        "type": None,
+        "message": reason[:REASON_LIMIT],
+    }
+
+
+@dataclass(slots=True)
+class CellData:
+    summary: dict[str, Any]
+    path: CellPath | None = None
+    target_seconds: list[float] = field(default_factory=list)
+
+
+def _abort_record(
+    aborted: Mapping[str, Any] | None, records: Sequence[Mapping[str, Any]]
+) -> dict[str, Any]:
+    reason = str(aborted.get("reason")) if aborted is not None else "no report written"
+    shape = aborted.get("case_shape") if aborted is not None else None
+    step_entries = [
+        step["trace"]["entries"]
+        for step in records
+        if isinstance((step.get("trace") or {}).get("entries"), list)
+    ]
+    abort_entries = shape.get("entries") if isinstance(shape, Mapping) else None
+    abort_types = shape.get("entry_types") if isinstance(shape, Mapping) else None
+
+    def rank(count: object, counts: Sequence[int]) -> float | None:
+        if not counts or not isinstance(count, int):
+            return None
+        return sum(1 for value in counts if value <= count) / len(counts)
+
+    return {
+        "step_index": aborted.get("step_index") if aborted is not None else len(records),
+        "case_id": aborted.get("case_id") if aborted is not None else None,
+        "category": classify_abort_reason(reason).value,
+        "first_error": first_error(aborted),
+        "reason": reason[:REASON_LIMIT],
+        # Bytes are the recorded value only: completed steps do not record content size.
+        "case_shape": shape,
+        # Case comparison against the same cell's completed steps: entry count and entry types.
+        "entries_rank_in_cell": rank(abort_entries, [len(entries) for entries in step_entries]),
+        "entry_type_ranks_in_cell": (
+            {
+                kind: rank(
+                    count,
+                    [
+                        sum(1 for entry in entries if entry.get("type") == kind)
+                        for entries in step_entries
+                    ],
+                )
+                for kind, count in abort_types.items()
+            }
+            if isinstance(abort_types, Mapping)
+            else None
+        ),
+        "operator_from_other_block": None,
+    }
+
+
+def summarize_cell(cell: Mapping[str, Any], raw: Path, design: Design) -> CellData:
+    """One cell's facts and path. No oracle field is copied into the summary."""
+    budget = cell["budget"]
     summary: dict[str, Any] = {
         "run_id": cell["run_id"],
         "arm": cell["arm"],
         "seed": cell["seed"],
         "returncode": cell["returncode"],
         "watchdog_killed": cell["watchdog_killed"],
+        "started_real": cell["started"]["realtime"],
+        "ended_real": cell["ended"]["realtime"],
         "real_seconds": cell["ended"]["realtime"] - cell["started"]["realtime"],
+        "monotonic_seconds": cell["ended"]["monotonic"] - cell["started"]["monotonic"],
         "harness_failed_step": _harness_step(raw / cell["log"]),
         "executions": 0,
+        "exposure": 0.0,
         "abort": None,
         "terminations": {},
-        "invalid_steps": 0,
-        "observation_failures": 0,
-        "step_seconds_monotonic_p50": None,
-        "step_seconds_monotonic_p95": None,
-        "target_seconds_max": None,
+        "ineligible_steps": 0,
+        "failure_kinds": {},
         "integrity_problem": None,
     }
+    data = CellData(summary)
     report_path, steps_path = raw / cell["report"], raw / cell["steps"]
     if not report_path.is_file() and not steps_path.is_file():
         summary["disposition"] = "no-record"
-        return summary, None
+        return data
     try:
         loaded = load_cell_files(report_path, steps_path)
     except (ReportFormatError, ValueError, OSError) as error:
         summary["disposition"] = "unreadable"
-        summary["integrity_problem"] = str(error)
-        return summary, None
+        summary["integrity_problem"] = str(error)[:REASON_LIMIT]
+        return data
     records = loaded.records
+    data.path = cell_path(records)
     summary["executions"] = len(records)
+    summary["exposure"] = len(records) / budget if budget else 0.0
     summary["terminations"] = dict(
         Counter(str((step.get("feedback") or {}).get("trace_termination")) for step in records)
     )
-    summary["invalid_steps"] = sum(1 for step in records if step.get("validity") == "invalid")
-    summary["observation_failures"] = sum(
-        len((step.get("trace") or {}).get("observation_failures") or ()) for step in records
+    summary["ineligible_steps"] = sum(
+        1 for step in records if (step.get("feedback") or {}).get("feedback_eligible") is False
     )
+    kinds: Counter[str] = Counter()
+    for step in records:
+        for failure in (step.get("trace") or {}).get("observation_failures") or ():
+            kinds[str(failure.get("kind") if isinstance(failure, Mapping) else failure)] += 1
+    summary["failure_kinds"] = dict(kinds)
     report = loaded.report
     timing = report.get("timing") if report else None
     per_case = timing.get("per_case") if isinstance(timing, Mapping) else None
-    if isinstance(per_case, list) and per_case:
-        walls = [float(item["wall_seconds"]) for item in per_case]
-        summary["step_seconds_monotonic_p50"] = _percentile(walls, 0.5)
-        summary["step_seconds_monotonic_p95"] = _percentile(walls, 0.95)
-        summary["target_seconds_max"] = max(float(item["target_seconds"]) for item in per_case)
+    if isinstance(per_case, list):
+        data.target_seconds = [float(item["target_seconds"]) for item in per_case]
     if loaded.aborted_at_step is not None:
         aborted = report.get("aborted") if report else None
-        reason = str(aborted.get("reason")) if isinstance(aborted, Mapping) else None
-        category = classify_abort_reason(reason) if reason else InvalidReason.OTHER
         summary["disposition"] = "abort"
-        summary["abort"] = {
-            "step_index": aborted.get("step_index") if isinstance(aborted, Mapping) else None,
-            "category": category.value,
-            "first_error_may_be_masked": category in MASKING_CATEGORIES,
-            "reason": reason if reason is not None else "no report written",
-        }
-        return summary, None
+        summary["abort"] = _abort_record(aborted if isinstance(aborted, Mapping) else None, records)
+        return data
     assert report is not None
     problem = _nonconformance(report, cell, design)
     if problem:
         summary["disposition"] = "nonconformant"
         summary["integrity_problem"] = problem
-        return summary, None
+        return data
     if not _steps_match_report(loaded, steps_path):
         summary["disposition"] = "integrity-failure"
         summary["integrity_problem"] = "steps file is not a prefix of the report steps"
-        return summary, None
-    if cell["returncode"] != 0 or len(records) != cell["budget"]:
-        summary["disposition"] = "incomplete"
-        return summary, None
-    summary["disposition"] = "normal"
-    return summary, dict(report)
+        return data
+    summary["disposition"] = (
+        "normal" if cell["returncode"] == 0 and len(records) == budget else "incomplete"
+    )
+    return data
+
+
+def saturated_exec_per_hour(cells: Sequence[Mapping[str, Any]], jobs: int) -> float | None:
+    """Real-time execution rate while every slot is busy.
+
+    The window ends when the first slot has nothing left to start: the (N - jobs + 1)th cell end.
+    Each cell's executions are spread evenly over its real duration. Without this, a batch that
+    does not divide by ``jobs`` would count its tail, where fewer cells share the host and run
+    faster.
+    """
+    if not cells:
+        return None
+    start = min(cell["started_real"] for cell in cells)
+    ends = sorted(cell["ended_real"] for cell in cells)
+    end = ends[max(0, len(ends) - jobs)]
+    if end <= start:
+        return None
+    executions = 0.0
+    for cell in cells:
+        duration = cell["ended_real"] - cell["started_real"]
+        overlap = min(cell["ended_real"], end) - max(cell["started_real"], start)
+        if duration > 0 and overlap > 0:
+            executions += cell["executions"] * overlap / duration
+    return _rate(executions, end - start)
 
 
 def lifecycle_seconds(lines: Iterable[str]) -> dict[str, dict[str, float | int | None]]:
@@ -210,9 +433,8 @@ def lifecycle_seconds(lines: Iterable[str]) -> dict[str, dict[str, float | int |
     }
 
 
-def host_summary(lines: Iterable[str]) -> dict[str, Any]:
+def host_summary(samples: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     """Peaks and means from the host samples; CPU busy share from the kernel counters."""
-    samples = [json.loads(line) for line in lines if line.strip()]
     if not samples:
         return {"samples": 0}
     available = [s["memory"]["MemAvailable"] for s in samples if "MemAvailable" in s["memory"]]
@@ -241,45 +463,56 @@ def _read_lines(path: Path) -> list[str]:
     return path.read_text(encoding="utf-8").splitlines() if path.is_file() else []
 
 
-def _arm_spread(cells: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    """Real seconds per executed step by arm, normal cells only."""
-    per_arm: dict[str, list[float]] = defaultdict(list)
-    for cell in cells:
-        if cell["disposition"] == "normal" and cell["executions"]:
-            per_arm[cell["arm"]].append(cell["real_seconds"] / cell["executions"])
-    means = {arm: statistics.fmean(values) for arm, values in sorted(per_arm.items())}
+def _coincidence(
+    cell: Mapping[str, Any],
+    cells: Sequence[Mapping[str, Any]],
+    samples: Sequence[Mapping[str, Any]],
+) -> dict[str, Any]:
+    """What else happened within the window of this cell's end (input-independent signal)."""
+    moment = cell["ended_real"]
+
+    def near(when: float) -> bool:
+        return abs(when - moment) <= COINCIDENCE_SECONDS
+
+    nearby = [s for s in samples if near(s["realtime"])]
+    probes = [s["docker_ps_seconds"] for s in nearby if "docker_ps_seconds" in s]
     return {
-        "real_seconds_per_step_by_arm": means,
-        "slowest_over_fastest": (max(means.values()) / min(means.values()) if means else None),
+        "other_aborts": sum(
+            1
+            for other in cells
+            if other is not cell and other["disposition"] == "abort" and near(other["ended_real"])
+        ),
+        "docker_ps_errors": sum(1 for s in nearby if "docker_ps_error" in s),
+        "docker_ps_seconds_max": max(probes) if probes else None,
     }
 
 
 def summarize_block(
     directory: Path, record: Mapping[str, Any], design: Design
-) -> tuple[dict[str, Any], dict[str, dict[str, Any]]]:
-    """One block's metrics, and its comparable reports keyed by run id."""
+) -> tuple[dict[str, Any], dict[str, CellPath], dict[str, list[float]]]:
+    """One block's metrics, cell paths by run id, and target seconds by arm."""
     raw = directory / "raw"
     cells: list[dict[str, Any]] = []
-    reports: dict[str, dict[str, Any]] = {}
+    paths: dict[str, CellPath] = {}
+    target_by_arm: dict[str, list[float]] = defaultdict(list)
     not_run = 0
     for cell in record["cells"]:
         if cell["state"] != "ran":
             not_run += 1
             continue
-        summary, report = summarize_cell(cell, raw, design)
-        cells.append(summary)
-        if report is not None:
-            reports[cell["run_id"]] = report
+        data = summarize_cell(cell, raw, design)
+        cells.append(data.summary)
+        target_by_arm[cell["arm"]].extend(data.target_seconds)
+        if data.path is not None:
+            paths[cell["run_id"]] = data.path
+    samples = [json.loads(line) for line in _read_lines(directory / "host" / "samples.jsonl")]
+    for cell in cells:
+        if cell["abort"] is not None:
+            cell["abort"]["coincidence"] = _coincidence(cell, cells, samples)
     real = record["ended"]["realtime"] - record["started"]["realtime"]
     monotonic = record["ended"]["monotonic"] - record["started"]["monotonic"]
-    normal = [cell for cell in cells if cell["disposition"] == "normal"]
     executions = sum(cell["executions"] for cell in cells)
-    aborts = [cell for cell in cells if cell["disposition"] == "abort"]
-    terminations: Counter[str] = Counter()
-    for cell in cells:
-        terminations.update(cell["terminations"])
-    target_max = [c["target_seconds_max"] for c in cells if c["target_seconds_max"] is not None]
-    mean_cell = statistics.fmean(cell["real_seconds"] for cell in normal) if normal else None
+    normal = sum(1 for cell in cells if cell["disposition"] == "normal")
     block = {
         "stage": record["stage"],
         "index": record["index"],
@@ -291,18 +524,13 @@ def summarize_block(
         "cells_planned": len(record["cells"]),
         "cells_not_run": not_run,
         "dispositions": dict(Counter(cell["disposition"] for cell in cells)),
-        "normal_campaigns": len(normal),
-        "normal_campaigns_per_real_hour": _rate(len(normal), real),
-        # Every slot busy, without the tail of a batch that does not divide by jobs.
-        "normal_campaigns_per_real_hour_full_slots": (
-            record["jobs"] * 3600.0 / mean_cell if mean_cell else None
-        ),
+        "normal_campaigns": normal,
+        "normal_campaigns_per_real_hour": _rate(normal, real),
         "executions": executions,
         "executions_per_real_hour": _rate(executions, real),
-        "aborts": [{"run_id": cell["run_id"], **cell["abort"]} for cell in aborts],
-        "abort_per_execution_rule_of_three": (
-            3.0 / executions if executions and not aborts else None
-        ),
+        "exposure_per_real_hour": _rate(sum(cell["exposure"] for cell in cells), real),
+        "saturated_exec_per_real_hour": saturated_exec_per_hour(cells, record["jobs"]),
+        "aborts": [{"run_id": cell["run_id"], **cell["abort"]} for cell in cells if cell["abort"]],
         "watchdog_kills": sum(1 for cell in cells if cell["watchdog_killed"]),
         "harness_failed_steps": dict(
             Counter(cell["harness_failed_step"] for cell in cells if cell["harness_failed_step"])
@@ -310,96 +538,398 @@ def summarize_block(
         "integrity_problems": {
             cell["run_id"]: cell["integrity_problem"] for cell in cells if cell["integrity_problem"]
         },
-        "terminations": dict(terminations),
-        "invalid_steps": sum(cell["invalid_steps"] for cell in cells),
-        "observation_failures": sum(cell["observation_failures"] for cell in cells),
-        "target_seconds_max": max(target_max) if target_max else None,
-        "target_timeout_seconds": TARGET_TIMEOUT_SECONDS,
-        "arm_spread": _arm_spread(cells),
-        "host": host_summary(_read_lines(directory / "host" / "samples.jsonl")),
+        "host": host_summary(samples),
         "lifecycle_seconds": lifecycle_seconds(_read_lines(directory / "host" / "events.jsonl")),
         "cells": cells,
     }
-    return block, reports
+    return block, paths, dict(target_by_arm)
 
 
-def determinism_against_reference(
-    reports: Mapping[str, Mapping[str, Any]], reference: dict[str, Mapping[str, Any]]
+def block_determinism(
+    block: Mapping[str, Any],
+    paths: Mapping[str, CellPath],
+    reference: Mapping[str, CellPath],
 ) -> dict[str, Any]:
-    """Compare each normal cell with its first normal run; booleans only, so no outcome leaks."""
-    compared = passed = identical = 0
-    differing: list[str] = []
-    for run_id, report in reports.items():
-        if run_id not in reference:
-            reference[run_id] = report
+    """Differences against the stage's first block. Verdict-only differences carry no identity."""
+    arm_by_run = {cell["run_id"]: cell for cell in block["cells"]}
+    differing = 0
+    verdict_only = 0
+    uncomparable = 0
+    by_arm: Counter[str] = Counter()
+    first_differences: list[dict[str, Any]] = []
+    one_sided: list[str] = []
+    for run_id, cell in arm_by_run.items():
+        path = paths.get(run_id)
+        base = reference.get(run_id)
+        if path is None or base is None:
+            uncomparable += 1
             continue
-        verdict = compare_report_pair(dict(reference[run_id]), dict(report))
-        compared += 1
-        passed += bool(verdict["determinism_pass"])
-        identical += bool(verdict["observation_sequence_identical"])
-        if not verdict["determinism_pass"]:
-            differing.append(run_id)
+        difference = compare_paths(base, path)
+        if not difference.differs:
+            continue
+        differing += 1
+        if difference.first_step is None and difference.case_sequence_same:
+            verdict_only += 1
+            continue
+        if not difference.case_sequence_same:
+            by_arm[cell["arm"]] += 1
+        first_differences.append(
+            {
+                "run_id": run_id,
+                "first_step": difference.first_step,
+                "terminations": difference.terminations,
+            }
+        )
+        if difference.one_sided_congestion:
+            one_sided.append(run_id)
     return {
-        "cells_compared": compared,
-        "determinism_pass": passed,
-        "observation_sequence_identical": identical,
-        "differing_cells": differing,
+        "m": differing,
+        "uncomparable": uncomparable,
+        "case_sequence_by_arm": dict(by_arm),
+        "first_differences": first_differences,
+        "one_sided_congestion_cells": one_sided,
+        "verdict_only_cells": verdict_only,
     }
 
 
-def compare_levels(blocks: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    """Per-stage level table, plus the drift between a level's two blocks in crossed order."""
-    by_jobs: dict[int, list[Mapping[str, Any]]] = defaultdict(list)
+def fill_abort_operators(
+    blocks: Sequence[Mapping[str, Any]], paths_by_block: Sequence[Mapping[str, CellPath]]
+) -> None:
+    """The aborted step left no record; another block that passed the same case did."""
     for block in blocks:
-        by_jobs[block["jobs"]].append(block)
-    levels: dict[str, Any] = {}
-    for jobs, group in sorted(by_jobs.items()):
-        rates = [b["normal_campaigns_per_real_hour"] or 0.0 for b in group]
-        levels[str(jobs)] = {
-            "blocks": len(group),
-            "normal_campaigns_per_real_hour_mean": statistics.fmean(rates),
-            "normal_campaigns_per_real_hour_blocks": rates,
-            "executions_per_real_hour_mean": statistics.fmean(
-                b["executions_per_real_hour"] or 0.0 for b in group
-            ),
-            "drift_second_over_first": rates[-1] / rates[0]
-            if len(rates) > 1 and rates[0]
-            else None,
-            "executions": sum(b["executions"] for b in group),
-            "aborts": sum(len(b["aborts"]) for b in group),
-            "watchdog_kills": sum(b["watchdog_kills"] for b in group),
-            "invalid_steps": sum(b["invalid_steps"] for b in group),
-            "observation_failures": sum(b["observation_failures"] for b in group),
-            "timed_out_steps": sum(b["terminations"].get("timed_out", 0) for b in group),
-            "determinism_cells_differing": sum(
-                len((b.get("determinism") or {}).get("differing_cells") or ()) for b in group
+        for cell in block["cells"]:
+            abort = cell["abort"]
+            if abort is None or not isinstance(abort["step_index"], int):
+                continue
+            step = abort["step_index"]
+            for paths in paths_by_block:
+                path = paths.get(cell["run_id"])
+                if (
+                    path is not None
+                    and step < len(path.case_ids)
+                    and path.case_ids[step] == abort["case_id"]
+                ):
+                    abort["operator_from_other_block"] = path.operators[step]
+                    break
+    for block in blocks:
+        for item in block["aborts"]:
+            match = next(cell for cell in block["cells"] if cell["run_id"] == item["run_id"])
+            item["operator_from_other_block"] = match["abort"]["operator_from_other_block"]
+
+
+def block_g(block: Mapping[str, Any], design_budget: int) -> float | None:
+    """G: saturated exec/h per budget, times the normal fraction (one-sided cells not normal)."""
+    rate = block["saturated_exec_per_real_hour"]
+    ran = block["cells_planned"] - block["cells_not_run"]
+    if rate is None or not ran:
+        return None
+    determinism = block.get("determinism") or {}
+    excluded = determinism.get("one_sided_congestion_cells") or ()
+    normal = sum(
+        1
+        for cell in block["cells"]
+        if cell["disposition"] == "normal" and cell["run_id"] not in excluded
+    )
+    return rate / design_budget * normal / ran
+
+
+def summarize_level(
+    jobs: int, blocks: Sequence[Mapping[str, Any]], targets: Mapping[str, Sequence[float]]
+) -> dict[str, Any]:
+    """Everything the decision reads for one concurrency level of one stage."""
+    cells = [cell for block in blocks for cell in block["cells"]]
+    arms: dict[str, dict[str, Any]] = {}
+    for arm in sorted({cell["arm"] for cell in cells}):
+        group = [cell for cell in cells if cell["arm"] == arm]
+        steps = sum(cell["executions"] for cell in group)
+        timed_out = sum(cell["terminations"].get("timed_out", 0) for cell in group)
+        ineligible = sum(cell["ineligible_steps"] for cell in group)
+        kinds: Counter[str] = Counter()
+        for cell in group:
+            kinds.update(cell["failure_kinds"])
+        seconds = list(targets.get(arm, ()))
+        arms[arm] = {
+            "campaigns": len(group),
+            "aborts": sum(1 for cell in group if cell["disposition"] == "abort"),
+            "abort_steps": [c["abort"]["step_index"] for c in group if c["abort"]],
+            "exposure": sum(cell["exposure"] for cell in group),
+            "steps": steps,
+            "timed_out": timed_out,
+            "ineligible_steps": ineligible,
+            "failure_kinds": dict(kinds),
+            "target_seconds_p50": _percentile(seconds, 0.5),
+            "target_seconds_p99": _percentile(seconds, 0.99),
+            "target_seconds_p999": _percentile(seconds, 0.999),
+            "target_seconds_max": max(seconds) if seconds else None,
+            "cell_monotonic_max": max((c["monotonic_seconds"] for c in group), default=None),
+            "cell_real_max": max((c["real_seconds"] for c in group), default=None),
+            "real_seconds_per_step": (
+                statistics.fmean(
+                    c["real_seconds"] / c["executions"]
+                    for c in group
+                    if c["disposition"] == "normal" and c["executions"]
+                )
+                if any(c["disposition"] == "normal" and c["executions"] for c in group)
+                else None
             ),
         }
-    return levels
+    rates = [b["normal_campaigns_per_real_hour"] or 0.0 for b in blocks]
+    return {
+        "jobs": jobs,
+        "blocks": len(blocks),
+        "campaigns": len(cells),
+        "aborts": sum(1 for cell in cells if cell["disposition"] == "abort"),
+        "watchdog_kills": sum(1 for cell in cells if cell["watchdog_killed"]),
+        "stopped": [b["stopped_reason"] for b in blocks if b["stopped_reason"]],
+        "other_abnormal": sum(1 for cell in cells if cell["disposition"] in ABNORMAL_DISPOSITIONS),
+        "steps": sum(cell["executions"] for cell in cells),
+        "timed_out": sum(arm["timed_out"] for arm in arms.values()),
+        "first_error_unconfirmed": sum(
+            1
+            for cell in cells
+            if cell["abort"] and cell["abort"]["first_error"]["status"] == "unconfirmed"
+        ),
+        "verdict_only_cells": sum(
+            (b.get("determinism") or {}).get("verdict_only_cells", 0) for b in blocks
+        ),
+        "normal_campaigns_per_real_hour_mean": statistics.fmean(rates) if rates else None,
+        "executions_per_real_hour_mean": (
+            statistics.fmean(b["executions_per_real_hour"] or 0.0 for b in blocks)
+            if blocks
+            else None
+        ),
+        "arms": arms,
+    }
+
+
+def abort_arm_p_value(level: Mapping[str, Any]) -> float | None:
+    """V5 input: the existing arm x abort test on the level's per-campaign table."""
+    arms = level["arms"]
+    if len(arms) < 2 or not level["aborts"]:
+        return None
+    matrix = [[arm["campaigns"] - arm["aborts"], arm["aborts"], 0] for arm in arms.values()]
+    result = arm_abort_independence(matrix, list(arms))
+    return result["primary_arm_vs_abort"]["p_value"]
+
+
+def level_violations(
+    level: Mapping[str, Any],
+    ref: Mapping[str, Any],
+    *,
+    floor: int,
+    block_m: Sequence[int],
+    one_sided_cells: int,
+) -> list[dict[str, Any]]:
+    """Exclusion rules V1 to V10 for a level against its stage's reference level."""
+    found: list[dict[str, Any]] = []
+
+    def add(rule: str, detail: object) -> None:
+        found.append({"rule": rule, "detail": detail})
+
+    if level["stopped"]:
+        add("stopped", level["stopped"])
+    if level["watchdog_kills"] >= 1:
+        add("V1", level["watchdog_kills"])
+    if level["other_abnormal"] >= V2_OTHER_ABNORMAL:
+        add("V2", level["other_abnormal"])
+    fraction = level["aborts"] / level["campaigns"] if level["campaigns"] else 0.0
+    if fraction > V3_ABORT_FRACTION:
+        add("V3", fraction)
+    if significantly_more(level["aborts"], ref["aborts"]):
+        add("V4", {"aborts": level["aborts"], "ref_aborts": ref["aborts"]})
+    if level["aborts"] > ref["aborts"]:
+        p_value = abort_arm_p_value(level)
+        if p_value is not None and p_value <= V5_ARM_P:
+            add("V5", p_value)
+    for name, arm in level["arms"].items():
+        p999 = arm["target_seconds_p999"]
+        if p999 is not None and p999 > V6_TARGET_P999_SECONDS:
+            add("V6", {"arm": name, "p999": p999})
+        steps = arm["steps"]
+        if steps and arm["timed_out"] / steps * 1000 > V7_TIMED_OUT_PER_1000:
+            add("V7", {"arm": name, "timed_out": arm["timed_out"], "steps": steps})
+        ref_arm = ref["arms"].get(name)
+        if steps and arm["ineligible_steps"] / steps * 1000 > V8_PER_1000:
+            add("V8", {"arm": name, "ineligible": arm["ineligible_steps"], "steps": steps})
+        elif steps and ref_arm and ref_arm["steps"]:
+            rate = arm["ineligible_steps"] / steps
+            ref_rate = ref_arm["ineligible_steps"] / ref_arm["steps"]
+            share = steps / (steps + ref_arm["steps"])
+            if (
+                rate > V8_RATE_RATIO * ref_rate
+                and exact_upper_p(arm["ineligible_steps"], ref_arm["ineligible_steps"], share)
+                <= ALPHA
+            ):
+                add("V8", {"arm": name, "rate": rate, "ref_rate": ref_rate})
+        monotonic = arm["cell_monotonic_max"]
+        if monotonic is not None and monotonic > V10_CELL_MONOTONIC_SECONDS:
+            add("V10", {"arm": name, "cell_monotonic_max": monotonic})
+    if significantly_more(level["timed_out"], ref["timed_out"]):
+        add("V7", {"timed_out": level["timed_out"], "ref_timed_out": ref["timed_out"]})
+    if block_m and max(block_m) - floor >= V9_EXCESS_OVER_FLOOR:
+        add("V9", {"block_m": list(block_m), "floor": floor})
+    if one_sided_cells >= V9_ONE_SIDED_CELLS:
+        add("V9", {"one_sided_congestion_cells": one_sided_cells})
+    return found
+
+
+def selection_ratios(g: Sequence[float | None]) -> dict[str, Any]:
+    """rho and drift from the four crossed blocks' G, in run order (ref, high, high, ref)."""
+    if len(g) != 4 or any(value is None or value <= 0 for value in g):
+        return {"rho": None, "drift": None, "valid": False, "gain": False}
+    first, second, third, fourth = (float(value) for value in g)  # type: ignore[arg-type]
+    rho = (second / first, third / fourth)
+    # Later block over earlier block of the same level.
+    drift = max(abs(fourth / first - 1), abs(third / second - 1))
+    gain = min(rho) >= RHO_MIN and drift <= DRIFT_MAX and min(rho) - 1 > drift
+    return {"rho": list(rho), "drift": drift, "valid": drift <= DRIFT_MAX, "gain": gain}
+
+
+def recurrences(blocks: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """The same step of the same input aborting in two or more blocks: input dependence."""
+    seen: dict[tuple[str, int, Any, Any], list[str]] = defaultdict(list)
+    for block in blocks:
+        for cell in block["cells"]:
+            abort = cell["abort"]
+            if abort is None or abort["case_id"] is None:
+                continue
+            key = (cell["arm"], cell["seed"], abort["step_index"], abort["case_id"])
+            seen[key].append(f"{block['stage']}/{block['index']}")
+    return [
+        {"arm": key[0], "seed": key[1], "step": key[2], "blocks": where}
+        for key, where in seen.items()
+        if len(where) >= 2
+    ]
+
+
+def decide(design: Design, stages: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
+    """The mechanical result: a selected level or a stop, and what the next stage may do."""
+    all_blocks = [block for stage in stages.values() for block in stage["blocks"]]
+    repeated = recurrences(all_blocks)
+    unconfirmed = sum(
+        level["first_error_unconfirmed"]
+        for stage in stages.values()
+        for level in stage["levels"].values()
+    )
+    selected: int | None = None
+    halts: list[dict[str, Any]] = []
+    verdicts: dict[str, Any] = {}
+    status = "pending"
+    if repeated:
+        halts.append({"rule": "H2", "detail": repeated})
+    for name in measured_stages(design):
+        order = design.stages[name]
+        ref_jobs, high_jobs = order[0], order[1]
+        if selected is None:
+            selected = ref_jobs
+        stage = stages.get(name)
+        if stage is None:
+            break
+        blocks = stage["blocks"]
+        stopped = any(block["stopped_reason"] for block in blocks)
+        if len(blocks) < len(order) and not stopped:
+            break
+        ref = stage["levels"][str(ref_jobs)]
+        high = stage["levels"].get(str(high_jobs))
+        floor = next(
+            (b["determinism"]["m"] for b in blocks if b["index"] == len(order)),
+            0,
+        )
+        fraction = ref["aborts"] / ref["campaigns"] if ref["campaigns"] else 0.0
+        if name == measured_stages(design)[0] and fraction > V3_ABORT_FRACTION:
+            halts.append({"rule": "H1", "detail": fraction})
+        if floor >= H3_FLOOR:
+            halts.append({"rule": "H3", "stage": name, "floor": floor})
+        high_blocks = [b for b in blocks if b["jobs"] == high_jobs]
+        violations: list[dict[str, Any]] = (
+            level_violations(
+                high,
+                ref,
+                floor=floor,
+                block_m=[b["determinism"]["m"] for b in high_blocks],
+                one_sided_cells=sum(
+                    len(b["determinism"]["one_sided_congestion_cells"]) for b in high_blocks
+                ),
+            )
+            if high is not None
+            else [{"rule": "stopped", "detail": "the higher level did not run"}]
+        )
+        if ref["stopped"]:
+            violations.append({"rule": "stopped", "detail": {"reference": ref["stopped"]}})
+        ratios = selection_ratios([block_g(block, design.budget) for block in blocks])
+        passed = not violations and bool(ratios["gain"])
+        verdicts[name] = {
+            "ref_jobs": ref_jobs,
+            "high_jobs": high_jobs,
+            "floor": floor,
+            "violations": violations,
+            "g_blocks": [block_g(block, design.budget) for block in blocks],
+            **ratios,
+            "throughput_judgement_invalid": ratios["drift"] is not None and not ratios["valid"],
+            "passed": passed and not halts,
+        }
+        if halts:
+            break
+        if not passed:
+            status = "selected"
+            break
+        selected = high_jobs
+        status = "provisional"
+    if halts:
+        status = "halted"
+        selected = None
+    elif status == "provisional" and all(
+        name in verdicts and verdicts[name]["passed"] for name in measured_stages(design)
+    ):
+        status = "selected"
+    return {
+        "status": status,
+        "selected_jobs": selected,
+        "halts": halts,
+        "h4_first_error_unconfirmed": unconfirmed,
+        "stages": verdicts,
+        "recurrences": repeated,
+    }
 
 
 def analyze(output: Path, design: Design) -> dict[str, Any]:
     stages: dict[str, Any] = {}
-    reference: dict[str, Mapping[str, Any]] = {}
     for stage in design.stages:
         if stage == SMOKE_STAGE or not (output / stage).is_dir():
             continue
         blocks: list[dict[str, Any]] = []
+        targets_by_jobs: dict[int, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
+        reference: dict[str, CellPath] = {}
+        paths_by_block: list[dict[str, CellPath]] = []
         for index, jobs in enumerate(design.stages[stage], start=1):
             directory = output / stage / f"block-{index}-j{jobs}"
             record_path = directory / BLOCK_FILE
             if not record_path.is_file():
                 continue
             record = json.loads(record_path.read_text(encoding="utf-8"))
-            block, reports = summarize_block(directory, record, design)
-            block["determinism"] = determinism_against_reference(reports, reference)
+            block, paths, targets = summarize_block(directory, record, design)
+            if index == 1:
+                reference = paths
+            block["determinism"] = block_determinism(block, paths, reference)
+            for arm, seconds in targets.items():
+                targets_by_jobs[jobs][arm].extend(seconds)
             blocks.append(block)
-        stages[stage] = {"levels": compare_levels(blocks), "blocks": blocks}
+            paths_by_block.append(paths)
+        fill_abort_operators(blocks, paths_by_block)
+        by_jobs: dict[int, list[dict[str, Any]]] = defaultdict(list)
+        for block in blocks:
+            by_jobs[block["jobs"]].append(block)
+        levels = {
+            str(jobs): summarize_level(jobs, group, targets_by_jobs[jobs])
+            for jobs, group in sorted(by_jobs.items())
+        }
+        stages[stage] = {"levels": levels, "blocks": blocks}
     return {
         "label": LABEL,
         "design_id": design.design_id,
         "design_sha256": design.sha256,
         "execution_mode": "per-case-container",
+        "decision": decide(design, stages),
         "stages": stages,
     }
 
@@ -411,65 +941,81 @@ def _fmt(value: Any, digits: int = 2) -> str:
 
 
 def render_markdown(report: Mapping[str, Any]) -> str:
+    decision = report["decision"]
     lines = [
         f"# 동시 실행 벤치마크 결과: {report['design_id']}",
         "",
         f"라벨: {report['label']}.",
-        "실험 결과가 아니며 EXP 데이터와 합치지 않는다. oracle 값은 읽지 않았다.",
-        "처리량은 실시간 기준이다. step 초는 monotonic 값이다.",
+        "실험 결과가 아니며 EXP 데이터와 합치지 않는다. 판정은 oracle 값을 읽지 않는다.",
+        "처리량은 실시간 기준이다. 제한시간 비교 값은 monotonic이다.",
+        "",
+        "## 판정",
+        "",
+        f"- 상태: {decision['status']}",
+        f"- 선택 수준: {_fmt(decision['selected_jobs'])}",
+        f"- 중단 조건: {[item['rule'] for item in decision['halts']] or '없음'}",
+        f"- 첫 오류 미확인 abort(H4): {decision['h4_first_error_unconfirmed']}",
+        f"- 재발 abort: {len(decision['recurrences'])}",
     ]
+    for name, verdict in decision["stages"].items():
+        rules = sorted({item["rule"] for item in verdict["violations"]})
+        lines.append(
+            f"- 단계 {name} ({verdict['ref_jobs']}→{verdict['high_jobs']}): "
+            f"통과 {verdict['passed']}, 배제 {rules or '없음'}, rho {verdict['rho']}, "
+            f"드리프트 {_fmt(verdict['drift'])}, 바닥값 F {verdict['floor']}"
+        )
     for stage, content in report["stages"].items():
         lines += [
             "",
             f"## 단계 {stage}",
             "",
-            "| jobs | 블록 | 정상 캠페인/실시간 h | 블록별 | 실행/실시간 h | 드리프트 | 실행 수 | "
-            "abort | watchdog | timed_out | invalid | 관찰 실패 | 결정론 불일치 셀 |",
-            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+            "| 블록 | jobs | 실시간 h | G | 포화 실행/h | 정상/h | 노출/h | abort | 불일치 m | "
+            "CPU | iowait | 최소 가용 GiB | docker ps p50 s | 중단 사유 |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
         ]
-        for jobs, level in content["levels"].items():
-            per_block = ", ".join(
-                _fmt(value) for value in level["normal_campaigns_per_real_hour_blocks"]
-            )
+        verdict = decision["stages"].get(stage)
+        for position, block in enumerate(content["blocks"]):
+            host = block["host"]
+            available = host.get("memory_available_min_bytes")
+            g_blocks = verdict["g_blocks"] if verdict else ()
             lines.append(
-                f"| {jobs} | {level['blocks']} | "
-                f"{_fmt(level['normal_campaigns_per_real_hour_mean'])} | {per_block} | "
-                f"{_fmt(level['executions_per_real_hour_mean'], 0)} | "
-                f"{_fmt(level['drift_second_over_first'])} | {level['executions']} | "
-                f"{level['aborts']} | {level['watchdog_kills']} | {level['timed_out_steps']} | "
-                f"{level['invalid_steps']} | {level['observation_failures']} | "
-                f"{level['determinism_cells_differing']} |"
+                f"| {block['index']} | {block['jobs']} | {block['real_seconds'] / 3600:.2f} | "
+                f"{_fmt(g_blocks[position] if position < len(g_blocks) else None)} | "
+                f"{_fmt(block['saturated_exec_per_real_hour'], 0)} | "
+                f"{_fmt(block['normal_campaigns_per_real_hour'])} | "
+                f"{_fmt(block['exposure_per_real_hour'])} | {len(block['aborts'])} | "
+                f"{block['determinism']['m']} | {_fmt(host.get('cpu_busy_fraction'))} | "
+                f"{_fmt(host.get('cpu_iowait_fraction'))} | "
+                f"{_fmt(available / 2**30 if available else None)} | "
+                f"{_fmt(host.get('docker_ps_seconds_p50'))} | {block['stopped_reason'] or '—'} |"
             )
         lines += [
             "",
-            "| 블록 | jobs | 실시간 h | 포화 캠페인/h | CPU 사용 | iowait | 최대 load | "
-            "최소 가용 GiB | docker ps p50 s | target 최대 s | arm 편차 | 중단 사유 |",
-            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+            "| jobs | arm | 캠페인 | abort | 노출 | timed_out | 부적격 step | "
+            "target p50/p99/p99.9 s | 셀 monotonic 최대 s | 실시간 s/step |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
         ]
-        for block in content["blocks"]:
-            host = block["host"]
-            available = host.get("memory_available_min_bytes")
-            lines.append(
-                f"| {block['index']} | {block['jobs']} | {block['real_seconds'] / 3600:.2f} | "
-                f"{_fmt(block['normal_campaigns_per_real_hour_full_slots'])} | "
-                f"{_fmt(host.get('cpu_busy_fraction'))} | "
-                f"{_fmt(host.get('cpu_iowait_fraction'))} | "
-                f"{_fmt(host.get('load1_max'))} | "
-                f"{_fmt(available / 2**30 if available else None)} | "
-                f"{_fmt(host.get('docker_ps_seconds_p50'))} | "
-                f"{_fmt(block['target_seconds_max'])} | "
-                f"{_fmt(block['arm_spread']['slowest_over_fastest'])} | "
-                f"{block['stopped_reason'] or '—'} |"
-            )
-        aborts = [(block["index"], item) for block in content["blocks"] for item in block["aborts"]]
+        for jobs, level in content["levels"].items():
+            for arm_name, arm in level["arms"].items():
+                lines.append(
+                    f"| {jobs} | {arm_name} | {arm['campaigns']} | {arm['aborts']} | "
+                    f"{_fmt(arm['exposure'])} | {arm['timed_out']} | {arm['ineligible_steps']} | "
+                    f"{_fmt(arm['target_seconds_p50'])}/{_fmt(arm['target_seconds_p99'])}/"
+                    f"{_fmt(arm['target_seconds_p999'])} | {_fmt(arm['cell_monotonic_max'], 0)} | "
+                    f"{_fmt(arm['real_seconds_per_step'])} |"
+                )
         lines += ["", "### abort", ""]
+        aborts = [(block["index"], item) for block in content["blocks"] for item in block["aborts"]]
         if not aborts:
             lines.append("없음.")
         for index, item in aborts:
-            masked = " (첫 오류가 가려졌을 수 있음)" if item["first_error_may_be_masked"] else ""
+            first = item["first_error"]
+            coincidence = item.get("coincidence") or {}
             lines.append(
-                f"- 블록 {index} `{item['run_id']}` step {item['step_index']}: "
-                f"{item['category']}{masked}"
+                f"- 블록 {index} `{item['run_id']}` step {item['step_index']}: {item['category']}, "
+                f"첫 오류 {first['status']}: {first['message'] or '—'}; "
+                f"±{COINCIDENCE_SECONDS:.0f} s 다른 abort {coincidence.get('other_aborts')}, "
+                f"입력 크기 순위 {_fmt(item['entries_rank_in_cell'])}"
             )
     return "\n".join(lines) + "\n"
 
@@ -486,7 +1032,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
     (args.output / REPORT_MD).write_text(render_markdown(report), encoding="utf-8")
-    print(f"wrote {args.output / REPORT_JSON} and {REPORT_MD}")
+    decision = report["decision"]
+    print(
+        f"status={decision['status']} selected_jobs={decision['selected_jobs']} "
+        f"halts={[item['rule'] for item in decision['halts']]}; wrote {args.output / REPORT_JSON}"
+    )
     return 0
 
 

@@ -1,10 +1,10 @@
 # 동시 실행 벤치마크 설계 v1
 
 > **비등록·비합산 도구 측정.** 라벨은 `demo run`이다. 가설 검정이 아니고 EXP-0·파일럿·EXP-2·EXP-3 데이터에 합치지 않는다.
-> oracle 값을 읽지 않는다. 결정 대상은 본실험의 동시 실행 수이며 효과 주장이 아니다.
+> raw의 oracle 값은 봉인한다(§6.6). 결정 대상은 본실험의 동시 실행 수이며 효과 주장이 아니다.
 >
 > **상태:** 준비 단계다. 지웅 승인 전에는 실행하지 않는다. 파일럿 완료와 승인된 정리 작업(main `make check`, git 정리, 임시 브랜치 삭제)이 먼저다.
-> 판정 기준은 W3 방법론 문서를 따른다(§6). 이 파일은 동결 전 초안이며 W3 정합을 받은 뒤 고정한다.
+> §6 판정 기준은 W3-T8이 실행 전에 정한 것이며, 이 파일이 머지된 커밋에서 동결한다. 동결 후 변경은 새 버전 파일로만 한다.
 
 ## 1. 질문과 원칙
 
@@ -40,7 +40,7 @@ execution_mode = per-case-container
 campaign_watchdog_seconds = 10800
 disk_stop_fraction = 0.9
 memory_stop_fraction = 0.1
-stop_nonzero_cells = 3
+stop_nonzero_cells = 6
 preflight_load_fraction = 0.25
 cooldown_seconds = 120
 stage.smoke = 2
@@ -51,9 +51,11 @@ stage.C = 6,8,8,6
 
 **조건을 파일럿과 맞춘 이유.** budget·k·arm·watchdog이 파일럿(`exp3-hazard-pilot-v1`, #267)과 같으므로 파일럿의 jobs=2 실측을 참고값으로 나란히 볼 수 있다(합치지 않는다). budget을 200으로 줄이면 컨트롤러 메모리 증가, R-walk entry 증가, 큰 보고서 복사가 측정에서 빠지고 EXP-3 조건과도 달라진다.
 
-**seed.** 6100(smoke), 6101–6103. 파일럿 8001–8003·8101–8110, EXP-0 9001–9005, EXP-3 제안 블록 9006~, 기존 노출 ≤1415·7001–7002와 겹치지 않는다. `scripts/run_concurrency_benchmark.py`의 `RESERVED_SEED_RANGES`와 테스트가 고정한다. **W3 격리 검토 대상이다.**
+**seed.** 6100(smoke), 6101–6103. 파일럿 8001–8003·8101–8110, EXP-0 9001–9005, EXP-3 제안 블록 9006~, 기존 노출 ≤1415·7001–7002와 겹치지 않는다. `scripts/run_concurrency_benchmark.py`의 `RESERVED_SEED_RANGES`와 테스트가 고정한다. W3 격리 검토 승인. seed가 3개라 입력 다양성은 낮지만 재발 검정에는 유리하다.
 
-**블록 크기.** 4 arm × 3 seed = 12캠페인, 24,000 실행. 12는 2·4·6으로 나누어떨어진다. jobs 8에서는 마지막 4셀이 낮은 점유로 돌므로, 전체 처리량과 함께 슬롯이 찬 상태의 추정치(`jobs × 3600 / 평균 셀 실시간 초`)를 낸다.
+**블록 크기.** 4 arm × 3 seed = 12캠페인, 24,000 실행. 12는 2·4·6으로 나누어떨어진다. jobs 8에서는 마지막 4셀이 낮은 점유로 돌아 더 빠르므로, 처리량 판정은 **슬롯이 찬 구간**의 exec/h로 한다(§4).
+
+**arm.** D6에서 R-walk를 쓰지 않기로 정해지면 **이 설계를 동결하기 전에** arm에서 뺀다. 결과를 본 뒤에는 빼지 않는다. R-walk만 watchdog에 걸려도 그 수준은 배제된다(V1).
 
 ## 3. main 실행 구조 분석
 
@@ -97,17 +99,19 @@ stage.C = 6,8,8,6
 - 시간 초과는 `exit_code None` → `TIMED_OUT`이고(`node_tar_effect.py:244`), **abort가 아니라 target 결과다.** 피드백과 다음 입력 선택에 들어간다.
 - 즉 과부하에서 정상 추출이 `timed_out`으로 기록되면 탐색 경로가 동시 실행 수에 따라 달라진다. 캠페인은 "정상 완료"로 보인다.
 
-대응(도구에 구현): 같은 arm·seed의 보고서를 블록 간에 `check_native_determinism.compare_report_pair`로 비교하고, `timed_out` step 수와 `target_seconds` 최대값을 낸다. 비교 결과는 불리언만 남기므로 oracle 값은 노출되지 않는다. 다만 관찰 무결성 abort에는 동시성과 무관한 비결정성 전력이 있다(LOG 2026-10-30, 14셀 중 3셀 불일치). 그래서 **기준 수준(jobs 2) 두 블록 사이의 불일치를 바닥값으로 함께 본다.**
+대응(도구에 구현): 같은 arm·seed의 경로를 단계 첫 블록과 비교한다(§4). abort 셀은 공통 앞부분까지 비교한다. `timed_out` step 수와 `target_seconds` 분위수도 낸다. 다만 관찰 무결성 abort에는 동시성과 무관한 비결정성 전력이 있다(LOG 2026-10-30, 14셀 중 3셀 불일치, 이전 정책). 그래서 **같은 단계 기준 수준 두 블록 사이의 불일치를 바닥값 F로 삼는다**(§6).
+
+**동시 실행이 arm에 다른 영향을 줄 경로(W3-T8, 추론).** `feedback_eligible=false`면 입회가 없으므로 관찰 실패의 손해는 S-u·D에만 간다. R은 원래 입회가 없다. 혼잡이 관찰 실패를 늘리면 S-u vs R을 S-u 불리로 민다. 그래서 관찰 오류를 arm별로 낸다(V8).
 
 ### 3.5 watchdog·disk pause·cleanup 예외
 
 - **watchdog:** 셀 단위 `process.wait(timeout)`이고 monotonic 기준이다(`scripts/run_exp0.py:862-907`). 이 호스트의 monotonic은 실시간보다 빠르다(EXP-0 당일 1.091). 그래서 10800은 실시간 약 9900 s다. 초과하면 SIGTERM → 30 s 뒤 SIGKILL이다. 혼잡할수록 `docker cp`가 30 s를 넘겨 SIGKILL될 수 있고, 그러면 컨트롤러와 볼륨이 남는다. 같은 RUN_ID는 다음 실행에서 거부된다(`local_node_tar_smoke.sh:166-171`). R-walk가 가장 느리므로 **arm에 치우친 중도절단**이 먼저 나타날 수 있다.
 - **disk pause:** 새 셀 시작 때만 검사하고 대기한다(`run_exp0.py:841-859,1305`). 벤치마크에서는 대기가 처리량을 오염시키므로 대기하지 않고 중단한다.
-- **cleanup 예외가 첫 오류를 덮는다(W2가 파일럿 abort 3건에서 확인):** `container.py:288-290`의 `finally: remove_owned(...)`가 예외를 던지면 진행 중이던 첫 오류를 대체한다. Python은 원래 오류를 `__context__`에 두지만 보고서 사유는 `str(error)`만 쓴다(`scripts/run_effect_demo.py:355`). 분류도 그 문자열을 쓴다(`scripts/container_controller.py:94`).
-  - 그 결과 관찰 오류나 start 실패 같은 첫 오류가 `cleanup_inspect`·`cleanup_remove`로 기록된다. 혼잡할수록 두 오류가 겹치기 쉽다.
-  - 이 두 범주는 재시도 대상 인프라 사유다(`evaluation/abort_classification.py:98-105`). 잘못 분류되면 비인프라 오류까지 재시도 대상으로 읽힌다.
-  - **벤치마크 영향:** `cleanup_*` 사유만으로는 첫 원인을 알 수 없다. 분석은 이런 abort에 `first_error_may_be_masked`를 표시한다. **원인 분류는 부분적으로만 가능하다.**
-  - **수정은 이 PR 밖이다.** 격리 경계 파일이라 사람 승인을 받은 별도 PR로 한다. 수정이 들어오면 엔진이 바뀌므로, 벤치마크 전에 넣을지 먼저 결정해야 한다(§8 승인 항목 8).
+- **cleanup 예외가 첫 오류를 덮는다(W2가 파일럿 abort 3건에서 확인):** `container.py:288-290`의 `finally: remove_owned(...)`가 예외를 던지면 진행 중이던 첫 오류를 대체한다. 보고서 사유는 `str(error)`만 쓰고(`scripts/run_effect_demo.py:355`) 분류도 그 문자열을 쓴다(`scripts/container_controller.py:94`).
+  - 그 결과 관찰 오류나 start 실패 같은 첫 오류가 `cleanup_inspect`·`cleanup_remove`로 기록된다. 이 두 범주는 재시도 대상 인프라 사유다(`evaluation/abort_classification.py:98-105`). 그래서 `cleanup_*`만 보면 입력 무관이라고 적을 수 없다.
+  - **#271이 격리 경계 파일을 고치지 않고 첫 오류를 얻는다.** Python이 남긴 `__context__` 체인을 `aborted.error_chain`으로 기록한다. 수정하지 않은 `prepare()`로 재현해 확인했다(실제 docker 아님). **벤치마크 전에 머지한다.** `case_shape`(abort step의 entry 수·종류·바이트)도 함께 들어온다.
+  - **미확인 판정(H4):** 보고서가 없거나, 체인이 잘렸거나, cleanup 오류만 남은 abort다. 체인이 없어도 cleanup이 아닌 사유는 덮는 경로가 아니므로 확인으로 센다.
+  - **이전 가능성:** 어떤 예외를 올릴지만 바꾸는 수정이면 처리량·timed_out·관찰 오류·경로 일치·abort 수를 옮길 수 있고 smoke로 충분하다. abort 원인 분류는 옮기지 못한다. 재시도·제한시간·정리 순서가 바뀌면 옮길 수 있는 것이 없고 jobs 2·j* 각 1블록을 다시 잰다. 격리 경계 파일 수정은 필요할 때 사람 승인을 받은 별도 PR로 한다.
 
 ### 3.6 per-case-container와 worker-pool
 
@@ -117,25 +121,29 @@ stage.C = 6,8,8,6
 
 ## 4. 측정
 
-**순서와 반복.** 단계 안에서 ABBA 교차로 수준당 2블록이다. 블록 사이 쿨다운은 120 s다. A(2,4,4,2) → B(4,6,6,4) → C(6,8,8,6) 순서이며, 드라이버가 이전 단계가 깨끗하지 않으면 다음 단계를 거부한다. 단계마다 별도 승인을 받는다. 앞 단계의 상위 수준이 다음 단계의 기준이다.
+**순서와 반복.** 단계 안에서 ABBA 교차로 수준당 2블록이다. 블록 사이 쿨다운은 120 s다. A(2,4,4,2) → B(4,6,6,4) → C(6,8,8,6) 순서이며, 드라이버가 분석 보고서의 판정을 읽어 이전 단계가 통과하지 않으면 다음 단계를 거부한다(§6). 단계마다 별도 승인을 받는다. 앞 단계의 상위 수준이 다음 단계의 기준이다. C는 B가 통과했고 필요한 용량이 아직 부족할 때만 돈다.
 
 **정상 완료 캠페인.** 종료 코드 0, abort 기록 없음, 계획한 step 전부 존재, config·이미지·sentinel 일치, steps 파일이 보고서와 일치. 처분은 `normal` · `abort` · `incomplete` · `no-record` · `unreadable` · `nonconformant` · `integrity-failure`다. 재시도는 하지 않는다. **실패도 데이터다.**
 
 | 지표 | 출처 | 비고 |
 | --- | --- | --- |
-| 전체 경과, 시간당 실행 수, **시간당 정상 완료 캠페인 수** | `block.json`의 CLOCK_REALTIME | 슬롯 포화 추정치 병기 |
-| abort·timeout 발생률 | 셀 보고서, 반환 코드 | 사건 0이면 실행당 rule-of-three 상한 |
-| abort 단계·원인 | 보고서 `aborted`, 하네스 `FAILED at step`, 분류기 | 가려짐 표시(§3.5) |
-| target 결과 분포, invalid, 관찰 실패 | `feedback.trace_termination`, `validity`, `trace` | oracle 아님 |
+| **G** | 슬롯이 찬 구간의 실시간 exec/h ÷ budget × 정상 비율 | 판정 지표. 구간 끝은 (N − jobs + 1)번째 셀 종료. 첫 불일치 step이 한쪽에서만 `timed_out`·`failed`인 셀은 정상에서 뺀다 |
+| 전체 경과, 시간당 실행 수, 정상 완료 캠페인 수, 노출 | `block.json`의 CLOCK_REALTIME | 병기 |
+| abort·timeout 발생률, abort step과 노출 | 셀 보고서, 반환 코드 | arm별 |
+| abort 원인 | `aborted.error_chain`, 분류기, 하네스 `FAILED at step` | 첫 오류 확인 여부(H4) |
+| abort 재발·동시 발생·사례 대조 | §6.5 | 입력 종속 판별 |
+| target 결과, 관찰 오류 | `trace_termination`, `feedback_eligible`, `observation_failures[].kind` | arm별, oracle 아님 |
+| `target_seconds` | 보고서 `timing.per_case` | arm별 p50·p99·p99.9. **abort 셀은 보고서에 없다** |
+| 셀 시간 | 실시간, monotonic 최대 | arm별 |
+| 경로 불일치 | 단계 첫 블록과 비교 | 블록별 m, `case_sequence`는 arm별, 첫 불일치 step과 양쪽 `trace_termination`. 판정값만 다른 셀은 수준 합계만 |
 | 컨테이너 생성·실행·정리 시간 | `docker events` | 엔진 수정 없음, daemon 시계 |
 | CPU·RAM·디스크·압력 | `/proc` 30 s, 디스크 사용률 | WSL2는 VM 공유라 Docker 작업 포함 |
 | Docker 응답성 | `docker ps` 지연 60 s | 수준과 무관하게 같은 낮은 부하 |
-| 결과물·실행기록 무결성 | steps와 보고서 일치, 블록 간 결정론 | §3.4 |
-| arm별 편차 | 정상 셀의 실시간 s/step | 느린 arm 치우침 확인 |
+| 결과물·실행기록 무결성 | steps와 보고서 일치 | 처분 `integrity-failure` |
 
 **샘플러 영향.** 이전 측정에서 무거운 샘플러가 처리량을 0.79배로 낮췄다(레인 4). 그래서 `/proc`만 30 s마다 읽고 `docker stats`는 쓰지 않는다. `docker events`는 스트림 1개다. 이 비용이 수준별로 다른지는 측정하지 않았다.
 
-**이 측정이 말할 수 없는 것.** 수준당 48,000 실행이다. abort 0이어도 실행당 상한은 6.3e-5, budget 2000 캠페인 환산 약 12%다. **드문 abort의 동등성은 증명하지 못한다.** 큰 악화와 처리량만 가려낸다. 호스트 한 대, 이 이미지, 이 정책에 대한 측정이다.
+**이 측정이 말할 수 없는 것.** 수준당 48,000 실행이다. abort 0이어도 실행당 상한은 6.3e-5, budget 2000 캠페인 환산 약 12%다. 기준 abort .22에서 abort 2배를 잡을 확률은 약 .29다(W3-T8 정확 계산). **드문 abort의 동등성은 증명하지 못한다.** 처리량, timeout, 관찰 오류, 경로 일치와 큰 악화만 가려낸다. 그래서 선택 규칙은 낮은 수준 쪽으로 기울어 있고, EXP-3에는 실행 중 중단 규칙이 따로 필요하다(§9). 호스트 한 대, 이 이미지, 이 정책에 대한 측정이다. holdout 버전의 혼잡 민감도로 옮기는 것은 미검증이다.
 
 ## 5. 중단 조건
 
@@ -143,30 +151,106 @@ stage.C = 6,8,8,6
 
 | 조건 | 값 |
 | --- | --- |
-| 블록 내 비정상 종료 셀 | 3개 이상(12셀의 25%) |
+| 블록 내 비정상 종료 셀 | 6개 이상(12셀의 절반). 파일럿 수준 a=.22에서 발동 .03, a=.50에서 .61(W3-T8). 3은 a=.22에서 .51이라 결과에 따른 조기 중단이 된다 |
 | watchdog 종료 | 1개 |
 | 가용 메모리 | 총량의 10% 미만 |
 | 디스크 사용률 | 90% 이상(대기하지 않음) |
 | 다른 컨테이너 등장 | 1개 |
 | 블록 뒤 잔여 컨테이너·볼륨 | 1개 |
 
-시작 조건: checkout SHA와 clean, 엔진 버전, 이미지 id, 실행 중 컨테이너 0, 잔여 자원 0, load < 코어의 25%. 어긋나면 시작하지 않는다.
+시작 조건: checkout SHA와 clean, 엔진 버전, 이미지 id, 실행 중 컨테이너 0, 잔여 자원 0, load < 코어의 25%. 어긋나면 시작하지 않는다. 멈춘 수준은 배제로 기록한다(§6).
 
-## 6. 판정
+## 6. 판정 기준 (실행 전 고정)
 
-기준값은 **W3 방법론 문서**가 정한다. 도구는 아래 입력을 낸다.
+W3-T8이 실행 전에 정했다. 임계값은 W3의 판단이며 측정값이 아니다. `scripts/analyze_concurrency_benchmark.py`가 이 규칙을 기계적으로 적용해 `decision`을 내고, 드라이버는 그 판정으로 다음 단계를 허용한다.
 
-- 수준별 정상 캠페인/h(블록별 값과 드리프트), abort, watchdog, timed_out, invalid, 관찰 실패.
-- 결정론 불일치 셀 수(기준 수준의 바닥값 포함), 무결성 문제, arm 편차, 자원 최대치.
+### 6.1 입력
 
-제안(W3 확정 전 초안): 타당성 조건을 만족하는 수준 중 정상 캠페인/h가 가장 높은 수준을 고르되, 다음 단계로 올라간 이득이 두 블록의 드리프트보다 작으면 낮은 수준을 택한다.
+수준 j는 동시 실행 수이고, ref는 같은 단계의 낮은 수준이다(A: 2→4, B: 4→6, C: 6→8). 블록은 ABBA 순서로 12캠페인이다.
+
+- **a(j):** 그 수준의 전 블록에서 abort 캠페인 비율.
+- **X(j):** 그 수준의 전체 abort 수. 비교는 같은 단계의 두 블록끼리 한다.
+- **G(j):** 슬롯이 찬 구간의 실시간 exec/h ÷ 2000 × 정상 캠페인 비율. 정상의 정의는 §4를 따른다.
+- **F:** 같은 단계 ref 두 블록 사이의 결정론 불일치 셀 수(바닥값).
+
+### 6.2 배제 규칙
+
+하나라도 걸리면 그 수준을 배제하고 **더 높은 수준으로 올라가지 않는다.** 중단 조건(§5)으로 멈춘 수준도 배제다.
+
+| # | 항목 | 배제 조건 | 근거 |
+| --- | --- | --- | --- |
+| V1 | watchdog | 종료 1건 이상 | arm에 치우친 중도절단이 먼저 나타나는 경로다(§3.5). R-walk만 걸려도 배제한다 |
+| V2 | 기타 비정상 | no-record·incomplete·unreadable·nonconformant·integrity-failure 합계 2건 이상. 1건은 보고 | 1건은 시작 폭주·`pip install` 같은 일회성일 수 있다(추론) |
+| V3 | abort 절대 | a(j) > .30 | 노출 .84로 n=76→91(+20%). 24캠페인이면 8건부터 배제. 참 a=.22면 통과 .86, .30이면 .56, .40이면 .19 |
+| V4 | abort 상대 | 단측 정확 조건부 검정 p ≤ .05. X(ref)=0이면 X(j)≥5, 1이면 ≥7, 2이면 ≥9 | 상한만으로는 ref 대비 악화를 못 본다 |
+| V5 | arm 치우침 | 수준의 arm×abort에 `arm_abort_independence` p ≤ .10이고 ref보다 abort가 많음. arm당 6캠페인에서 (3,0,0,0)은 .04, (4,1,1,0)은 .089로 걸리고, (3,1,1,0)은 .314, (2,0,0,0)은 .217로 안 걸린다 | 기존 모듈을 재사용한다. 값은 정확 계산 |
+| V6 | 타깃 시간 | 어느 arm이든 `target_seconds` p99.9 > 5 s | 제한 10 s의 절반. 10 s를 넘으면 abort가 아니라 `timed_out` 결과가 된다 |
+| V7 | timed_out | 어느 arm이든 1,000 step당 1건 초과, 또는 수준 합계가 V4와 같은 표로 ref보다 유의하게 많음 | 결과값 자체가 바뀌는 경로라 abort보다 직접적이다 |
+| V8 | 관찰 오류 | arm별 `feedback_eligible=false`율이 ref의 1.25배 초과이고 정확 p ≤ .05, 또는 1,000 step당 20건 초과 | EXP-0 기록: D invalid 8 + failed 4, S-u 3 + 6, R 0(각 1,000 step). 사건이 많아 RR 1.5도 잡는다 |
+| V9 | 경로 불일치 | 블록별 불일치 m과 F에 대해 max(m) − F ≥ 2, 또는 첫 불일치 step이 한쪽에서만 `timed_out`·`failed`인 셀이 2개 이상 | 처리량이 올라도 같은 seed의 경로가 바뀌면 쓰지 않는다 |
+| V10 | watchdog 여유 | 어느 arm이든 셀 monotonic 최대 > 7200 s(제한의 2/3) | 10800은 실시간 약 9900 s다 |
+
+**핵심 배제는 V7과 V9다.** 혼잡이 `timed_out`으로 기록되면 캠페인은 정상 완료로 보이면서 탐색 경로만 바뀐다. abort 규칙으로는 이 경로를 잡지 못한다.
+
+### 6.3 멈추고 보고하는 경우 (수준 선택을 하지 않음)
+
+| # | 조건 | 처리 |
+| --- | --- | --- |
+| H1 | jobs=2가 V3을 넘음 | 전제 실패. abort 원인을 먼저 찾는다 |
+| H2 | abort가 입력에 종속(§6.5) | 동시 실행 수 문제가 아니다. 벤치마크를 멈추고 EXP-3의 중도절단 처리부터 결정한다 |
+| H3 | F ≥ 3 (12셀 중) | 동시 실행과 무관한 비결정성이 커서 V9가 판별력이 없다. jobs=2를 유지하고 비결정성을 보고한다 |
+| H4 | abort 첫 오류 미확인 비율 > 0 | 미확인 abort는 입력 종속으로 간주해 V3·V4에 그대로 세고, 결과에 그 수를 병기한다 |
+
+### 6.4 선택 규칙
+
+한 단계 올라가려면 다음을 모두 만족해야 한다.
+
+1. 상위 수준이 V1~V10을 통과한다.
+2. ABBA 반쪽별 비율 ρ1 = G(블록2)/G(블록1), ρ2 = G(블록3)/G(블록4)에서 min(ρ1, ρ2) ≥ 1.15.
+3. 드리프트 d = 같은 수준 두 블록의 G 비율과 1의 차이 중 큰 값이 .15 이하이고, min(ρ) − 1 > d. G 비율은 나중 블록 ÷ 먼저 블록이다.
+
+드리프트가 .15를 넘으면 그 단계의 처리량 판정은 무효이고 재실행은 별도 승인이다. **최종 값은 이 절차로 도달한 가장 높은 수준이다. 어느 단계도 통과하지 못하면 jobs=2다.** jobs=2는 측정된 값이므로 이것도 정상 결론이다.
+
+**단계 건너뛰기 금지.** C는 B가 통과했고 필요한 용량이 아직 부족할 때만 돈다. 기준 밖 선택을 하려면 사람 결정으로 기록하고, 이 기준에 따른 선택이라고 적지 않는다.
+
+**이 규칙이 보지 않는 것:** C0·C1·C2, hit, T_first, U_viol. 선택은 oracle을 읽지 않는다.
+
+분석기의 `decision.status`는 `selected`, `provisional`(통과한 단계까지의 수준, 다음 단계 미실행), `pending`, `halted`다. `halted`이면 `selected_jobs`를 내지 않는다.
+
+### 6.5 abort가 입력에 종속되는가
+
+같은 seed를 블록마다 반복하므로 입력이 같다. 이것이 가장 강한 검정이다.
+
+| 신호 | 입력 종속 | 입력 무관 |
+| --- | --- | --- |
+| **재발** | 같은 (arm, seed, step, case_id)가 2개 블록 이상에서 abort | 재발 0 |
+| 동시 발생 | 무관 | 병행 셀의 abort나 daemon 이상이 ±60 s 안에 겹침 |
+| 단계 | 추출·관찰 단계 | archive 읽기 전 |
+| 사례 대조 | abort step의 entry 수·종류가 같은 셀의 다른 step과 다름. 연산은 다른 블록의 공통 앞부분에 있는 같은 step으로 본다. `content_bytes`는 정상 step에 없어 대조 없이 기록만 한다 | 차이 없음 |
+
+- **판정:** 일정 hazard(1.24e-4/step)에서 우연히 같은 step이 재발할 확률은 abort당 약 4e-4다. 그래서 **재발 1건이면 입력 종속으로 본다**(H2). `case_id`가 내용 주소이므로 경로가 갈라진 셀은 자동으로 제외된다.
+- **입력 무관으로 적을 수 있는 조건:** 재발 0, 첫 오류 전부 확인, 다수가 archive 읽기 전 단계. 이때도 "이 seed·이 정책 범위에서"로만 적는다.
+- **도구 한계:** 단계는 하네스 `FAILED at step`과 첫 오류 문자열로 사람이 읽는다. 도구는 "archive 읽기 전"을 자동 판별하지 않는다.
+
+### 6.6 raw 봉인
+
+12 시드-arm 조합은 파일럿 40캠페인의 약 30%에 해당하는 hazard 정보이고, 값이 raw에 있다. 불리언 출력만으로는 부족하다.
+
+- **봉인:** EXP-3 동결 전까지 어떤 세션도 raw의 oracle 필드를 읽지 않는다. 해시 계산과 이 분석기만 허용한다.
+- **금지:** n, x, k, R 변형, D1~D20, EXP-2 GO/NO-GO의 입력으로 쓰지 않는다. 파일럿·EXP 데이터와 합치지 않는다.
+- **공개:** 벤치마크의 존재, seed, 봉인 상태를 EXP-3 사전등록에 적는다. 동결 후 hit 유무를 별도 항목으로 공개하고 추정에는 넣지 않는다.
+- **허용:** arm별 `trace_termination`·관찰 실패는 oracle이 아니다. 다만 동시 실행 판정에만 쓰고 D6 근거로 쓰지 않는다.
+- **남는 누출:** 경로 불일치는 "그 셀의 어딘가가 달랐다"를 알려 준다. 판정값만 다른 셀은 arm 없이 수준 합계로만 낸다. 블록별 m에는 포함된다.
 
 ## 7. 실행 전 점검표
 
 - [ ] 파일럿 완료 통지, W2 raw 매니페스트 완료.
 - [ ] main 전체 `make check`, git 정리, `w1/*` 삭제 완료(승인된 선행 작업).
-- [ ] 지웅 승인 기록(단계별), W3 방법론 문서 SHA.
-- [ ] 격리 경계 수정의 선행 여부 결정(§3.5).
+- [ ] 지웅 승인 기록(단계별). §6 동결 커밋 확인.
+- [ ] #271(`error_chain`, `case_shape`) 머지 확인. 없으면 H4 조건으로 돌리고 원인 미상을 공개한다.
+- [ ] D6 결과 확인: R-walk를 쓰지 않기로 했으면 동결 전에 arm에서 뺀다.
+- [ ] 노출 원장: 실행 전 LOG에 계획 1줄(seed, budget, 수준, oracle 봉인).
+- [ ] 봉인 규칙(§6.6) 전 세션 통지.
 - [ ] 다른 세션 docker·`make check`·대용량 pytest 동결 통지.
 - [ ] 이 파일과 도구가 main에 머지됨, 그 SHA에 detached worktree, `uv.lock` 없음, clean.
 - [ ] `docker ps -a` 잔여 없음, `docker volume ls` 잔여 없음, 이미지 id `22c8734f…`, 엔진 29.8.0.
@@ -193,8 +277,9 @@ python3.12 -m scripts.run_concurrency_benchmark --design "$DESIGN" --output "$OU
   --expected-head <SHA> --approval-ref "<APPROVAL>"
 python3.12 -m scripts.analyze_concurrency_benchmark --design "$DESIGN" --output "$OUT"
 # 결과 보고 → 별도 승인 → --stage B, 다시 승인 → 필요하면 --stage C
+# 끝난 뒤: 매니페스트(해시만)를 만들어 experiments/summaries/에 PR로 커밋한다. raw는 커밋하지 않는다.
 python3.12 scripts/make_raw_manifest.py --root "$OUT" --host win --date <YYYYMMDD> \
-  --out "$OUT/raw-manifest.sha256"
+  --out <main worktree>/experiments/summaries/raw-manifest-concurrency-<YYYYMMDD>.sha256
 ```
 
 진행 확인은 `--status`다. 블록 기록만 읽고 셀 파일은 읽지 않는다.
@@ -215,28 +300,54 @@ python3.12 scripts/make_raw_manifest.py --root "$OUT" --host win --date <YYYYMMD
 4. **순서·반복:** 단계당 ABBA 2회, 수준당 2블록, 블록당 12캠페인. 2→4 먼저, 안정 확인 후 6, 필요 시 8.
 5. **중단 조건:** §5.
 6. **예상 자원(추정):** 메모리 jobs 8에서 약 1.6 GiB, 최악 약 5.6 GiB. 디스크 블록당 약 0.9–1.3 GB, 전 단계 최대 약 17 GB. CPU는 상위 수준에서 포화에 가까울 수 있다(2026-10-31 conc 6에서 약 92%). 벤치마크 동안 호스트의 다른 docker 작업은 금지다.
-7. **데이터 분리:** 출력은 `~/inodefence-benchmarks/`이며 증거 트리와 저장소 안은 드라이버가 거부한다. 매니페스트도 그 안에 둔다. 라벨은 `demo run`이고 분석은 oracle을 읽지 않는다. 노출 원장은 sha가 동결 대상이라 **이 도구가 수정하지 않는다.** seed 6100–6103을 원장에 어떻게 기록할지는 W3 결정이다. 7.5.2 외 버전은 실행하지 않아 holdout 후보는 건드리지 않는다.
+7. **데이터 분리:** raw는 `~/inodefence-benchmarks/`이며 증거 트리와 저장소 안은 드라이버가 거부한다. 해시만 담은 매니페스트를 `experiments/summaries/`에 커밋한다. 라벨은 `demo run`이고 oracle 필드는 봉인한다(§6.6). 7.5.2 외 버전은 실행하지 않아 holdout 후보는 건드리지 않는다.
+   **노출 원장 절차:** 도구는 원장을 고치지 않는다.
+   1. 실행 전: LOG에 계획 1줄(seed, budget, 수준, oracle 봉인).
+   2. 실행 후, **EXP-3의 `exposure_ledger_sha256` 고정 전:** standalone PR로 7.5.2에 행 추가. `exposure_kind = concurrency benchmark (oracle 봉인)`, seed, budget, jobs 수준, 이미지 digest, 경로, 매니페스트 sha.
+   3. EXP-3 seed 제외 목록(`exp3-v1.md:149`)에 6100–6103을 넣는다.
+   4. 고정 뒤에 실행하면 원장이 바뀌어 사전등록이 fail-closed로 재등록돼야 한다. 그래서 순서를 강제한다.
 
-**추가 결정 1건:** 격리 경계 수정(§3.5)을 벤치마크 전에 넣을지. 권장은 **먼저 넣기**다. abort 원인을 가려내려는 측정이고, EXP-3가 쓸 엔진과 같아야 결과를 옮길 수 있기 때문이다.
+**선행 조건:** #271을 벤치마크 전에 머지한다. 격리 경계 파일 수정이 필요 없어져 사람 승인 항목에서 빠졌다.
 
 ## 9. EXP-3 반영 시 변경 목록
 
-- 사전등록: `jobs_max`와 그 주석(`exp3-v1.md:223-224` "jobs 3 미측정"), `--jobs` 실행 명령. 산출 근거로 이 결과를 인용한다.
-- 사전등록: `campaign_watchdog_seconds`. 선택한 수준의 셀 실시간과 monotonic 배율로 다시 계산한다.
-- 규모 산정: `exp3-v1.md:311-322`의 처리량, 파일럿 규칙 C의 호스트-일 용량. 선택 수준의 실시간 처리량으로 교체한다.
+**코드 변경이 필요하다.**
+
+- **런처 셀 순서:** `scripts/run_exp0.py:285-286`은 arm→seed 순서로 셀을 만든다. 벤치마크는 seed 블록·arm 회전이라 혼잡 구성이 다르고, 현재 런처로는 시간과 arm이 섞인다(EXP-0도 그랬다). **이 결과를 옮기려면 EXP-3 동결 전에 런처를 seed 블록·회전으로 바꾼다.** EXP-0·파일럿 기록은 그대로 두고 공개한다.
+- **실행 경로 변경과 재측정:** 벤치마크와 EXP-3의 실행 경로(`scripts/container_*`, `run_effect_demo.py`, `local_node_tar_smoke.sh`, `execution/`, `targets/`, `observer/`, `feedback/`, `mutator/`)가 달라지면 결과를 그대로 옮기지 않는다.
+  - 기록 필드만 추가, 또는 어떤 예외를 올릴지만 바꿈: smoke.
+  - step당 Docker 호출, 재시도, 제한시간, 정리 순서, 오류 처리 변경: jobs 2·j* 각 1블록 재측정.
+  - #122·#233·#255 등이 머지되면 해당 여부를 판단한다.
+
+**사전등록 값(동결 전 변경, 동결 후 금지).**
+
+| 항목 | 처리 |
+| --- | --- |
+| `jobs_max` | 선택값으로 변경(`exp3-v1.md:223-224`의 "jobs 3 미측정" 주석 포함). 동결 후 상향은 게이트가 거부한다 |
+| 실제 `--jobs` | `jobs_max`는 상한뿐이므로 **등록 문서에 정확한 값을 명시**한다. 하향은 아래 중단 규칙으로만 |
+| `campaign_watchdog_seconds` | 선택 수준의 셀 시간과 monotonic 배율로 다시 계산한다 |
+| `execution_mode` | per-case 외 모드는 이 벤치마크가 뒷받침하지 않는다 |
+| Docker 엔진·VM CPU/메모리 | 기록한다. 다르면 결과를 옮기지 않는다 |
+| 호스트 | 호스트별 결과다. 2번째 호스트에는 smoke + jobs 2·j* 각 1블록 |
+| **실행 중 중단(새로 등록)** | arm을 보지 않는 pooled abort. 처음 15캠페인에서 8건 이상이면 새 셀을 멈추고 원인을 본다. 참 a=.22면 발동 .008, .50이면 .50. 재개는 동일 설정 또는 jobs=2로만 |
+
+**그 밖.**
+
+- 규모 산정: `exp3-v1.md:311-322`의 처리량, 파일럿 규칙 C의 호스트-일 용량을 선택 수준의 실시간 처리량으로 바꾼다. 계획 abort a = max(파일럿 a, 이 벤치마크의 a(j*)). a는 oracle이 아니다. **순서는 j*를 먼저, 그다음 n이다.** 둘 다 hit를 보지 않는다.
+- 사전등록: 벤치마크의 존재, seed, 봉인 상태를 적고 seed 제외 목록(`exp3-v1.md:149`)에 6100–6103을 넣는다. 원장 sha 고정 전에 끝낸다(§8-7).
+- EXP-2의 k가 5가 아니면 smoke로 확인한다.
 - 논문: `05-method.md` §4.6.3 일정, `paper/deliverables/capstone-report-draft.md`의 소요 서술.
 - 운영: EXP-3 런북의 jobs, 호스트 동결 시간, 중단 조건.
-- 코드 변경은 없어야 한다. `run_exp0`는 이미 `--jobs`를 받는다. 격리 경계 수정이 들어오면 `engine_sha`가 바뀌므로 smoke를 다시 돈다.
-- 벤치마크 seed는 EXP-3 seed에서 제외한다. 결과를 EXP-3 데이터와 합치지 않는다.
+- 결과를 EXP-3 데이터와 합치지 않는다.
 
 ## 10. 결과 보고서 형식
 
-`analyze_concurrency_benchmark`가 `concurrency-report.{json,md}`를 쓴다. 표 두 개(수준별 비교, 블록별 자원)와 abort 목록이다.
+`analyze_concurrency_benchmark`가 `concurrency-report.{json,md}`를 쓴다. 판정(상태, 선택 수준, 중단 조건, 단계별 배제와 ρ·드리프트·F), 블록 표, arm 표, abort 목록이다.
 
 보고에는 다음을 덧붙인다.
 
-- 선택 수준과 판정 근거(W3 기준 그대로).
 - 호스트 상태(load, 다른 세션 유무), monotonic/실시간 배율.
-- 드리프트와 기준 수준의 결정론 바닥값.
+- H4 수치와, 입력 무관이라고 적을 수 있는지(§6.5).
 - 측정이 말할 수 없는 것(§4).
-- 저장소에는 요약만 `experiments/summaries/`에 커밋하고 raw는 커밋하지 않는다.
+- 저장소에는 요약과 매니페스트(해시만)만 `experiments/summaries/`에 커밋하고 raw는 커밋하지 않는다.
+- 봉인을 지켰음을 적는다(§6.6).

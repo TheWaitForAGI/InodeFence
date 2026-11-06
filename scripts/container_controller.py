@@ -24,6 +24,7 @@ from scripts.run_effect_demo import (
     demo_options,
     historical_demo_report,
     native_demo_report,
+    sentinel_set_from_args,
 )
 
 from inodefence.effect_demo import (
@@ -32,6 +33,7 @@ from inodefence.effect_demo import (
     render_effect_step_line,
     render_effect_step_summary,
 )
+from inodefence.evaluation.abort_classification import classify_abort_reason
 from inodefence.execution import ContainerExecutionBackend, StdioDockerClient
 
 
@@ -72,7 +74,13 @@ def run_native_effect_demo(
             _announce(render_effect_step_summary(record, budget))
 
         try:
-            report = native_demo_report(backend, image, step_sink=persist_step, **options)
+            report = native_demo_report(
+                backend,
+                image,
+                step_sink=persist_step,
+                sentinel_set=sentinel_set_from_args(args),
+                **options,
+            )
             _announce(render_effect_campaign_summary(report))
             returncode = 0
         except NativeDemoAborted as error:
@@ -83,6 +91,7 @@ def run_native_effect_demo(
                     "step_index": error.step_index,
                     "case_id": error.case_id,
                     "reason": error.reason,
+                    "category": classify_abort_reason(error.reason).value,
                     "observed": error.observed,
                 },
             }
@@ -119,7 +128,12 @@ def run_native_historical_demo(
 
         try:
             report = historical_demo_report(
-                backend, image, args.tar_version, step_sink=persist_step, **options
+                backend,
+                image,
+                args.tar_version,
+                step_sink=persist_step,
+                sentinel_set=sentinel_set_from_args(args),
+                **options,
             )
             _announce(render_effect_campaign_summary(report))
             returncode = 0
@@ -133,6 +147,7 @@ def run_native_historical_demo(
                     "step_index": error.step_index,
                     "case_id": error.case_id,
                     "reason": error.reason,
+                    "category": classify_abort_reason(error.reason).value,
                     "observed": error.observed,
                 },
             }
@@ -217,7 +232,10 @@ def run_native_decompress_campaign(
             "decompress_campaign_schema": 1,
             "producer": producer,
             "label": "demo run",
-            "aborted": {"reason": str(error)},
+            "aborted": {
+                "reason": str(error),
+                "category": classify_abort_reason(str(error)).value,
+            },
         }
         _announce(f"{DECOMPRESS_CAMPAIGN_MODE} aborted: {error}")
         returncode = 1
@@ -288,7 +306,10 @@ def run_native_oras_go_campaign(
             "oras_go_campaign_schema": 1,
             "producer": producer,
             "label": "demo run",
-            "aborted": {"reason": str(error)},
+            "aborted": {
+                "reason": str(error),
+                "category": classify_abort_reason(str(error)).value,
+            },
         }
         _announce(f"{ORAS_GO_CAMPAIGN_MODE} aborted: {error}")
         returncode = 1

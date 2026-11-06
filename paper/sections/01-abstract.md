@@ -13,7 +13,7 @@ oracle과 feedback에 넣지 않고 **filesystem-security-state**(추출 객체�
    (M1, 증거 수준 TESTED).
 2. **하나의 generic identity oracle**(추출 객체가 외부 참조파일의 `(st_dev, st_ino)`를 공유 = C1;
    보호된 외부 sentinel의 전후 metadata 변화 = C2)이 릴리스 id나 정답 경로를 판정 조건에 넣지
-   않고 서로 다른 두 root-cause(CVE-2026-23745, 그리고 그 수정이 도입한 회귀 CVE-2026-24842)를
+   않고 서로 다른 두 root-cause(CVE-2026-23745와 CVE-2026-24842; CVE 대응과 회귀 원인은 추론)를
    5개 고정 릴리스의 통제 차분으로 포착한다(M2, observed).
 3. 영향 릴리스 node-tar 7.5.2에서 외부 객체 이름을 mutation 어휘에서 **빼면**(A3blind, 어휘 제거 대조) 자율 경계위반
    발견이 0이고 **넣으면**(A3full) 특정 seed에서 결정론적으로 재현되는 자율 C1 트리거(21건)가 나타난다 *(구: "object-identity 관찰을 끄면/켜면", 2026-11-06 정정)* —

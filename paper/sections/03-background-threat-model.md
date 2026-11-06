@@ -54,6 +54,10 @@ violation **후보**이며, confirmed vulnerability로 보려면 재현과 root-
 ## 2.4 Threat model과 sentinel 정책
 
 - **대상.** 고정 버전의 TAR extractor(본문은 주로 node-tar). 공격면은 공격자 제어 아카이브 bytes다.
+- **공격자 지식(위협 모델 전제).** 공격자는 **피해 경로 이름**(보호 대상 외부 객체의 추출 루트 기준 상대 경로)을 안다고 가정하고,
+  그 이름을 세 arm(R/D/S-u)의 mutation 어휘에 **동일하게** 포함한다. 따라서 이 연구는 **blind 발견을 주장하지 않는다.** 비교 대상은
+  이름을 아는 상태에서 어떤 피드백이 위반에 더 빨리·더 많이 도달시키는가다
+  ([research-questions v2](../../docs/research/design/research-questions.md)).
 - **sentinel.** 실제 host의 민감 파일(`/etc/passwd`, SSH key 등)을 **대상으로 쓰지 않는다.** 각 run은
   전용 runtime sandbox 안에 controlled sentinel(`outside/**` 등 EXTERNAL object)을 만들고, Observer가
   extraction 전후 sentinel 상태를 기록한다.

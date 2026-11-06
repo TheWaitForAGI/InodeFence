@@ -32,8 +32,8 @@ M2(§5.2)의 근거표다. verdict = "추출된 객체가 외부 참조파일의
 - **고정 쌍(fixed pair):** toplevel = (7.5.2 공유 → 7.5.3 거부) = R1 = CVE-2026-23745 (catalog N01);
   nested = (7.5.6 공유 → 7.5.7 거부) = R2 = CVE-2026-24842 (catalog N02, GHSA-34x7-hfp2-rc4v).
 - **비단조 분포:** nested fixture는 7.5.2 공유 · 7.5.3 거부 · 7.5.6 공유 · 7.5.7 거부 · 7.5.8 거부로,
-  7.5.3이 닫은 경로를 7.5.6이 되돌렸고 7.5.7이 다시 닫았음을 보인다. R2는 R1 수정이 도입한
-  check/use mismatch 회귀다.
+  7.5.3에서 거부된 입력이 7.5.6에서 다시 공유되고 7.5.7에서 다시 거부됨을 보인다. R2가 R1 수정이 도입한
+  check/use mismatch 회귀라는 것은 추론이다(아래 inferred).
 
 ## observed vs inferred
 

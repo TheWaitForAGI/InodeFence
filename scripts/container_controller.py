@@ -24,6 +24,7 @@ from scripts.run_effect_demo import (
     demo_options,
     historical_demo_report,
     native_demo_report,
+    sentinel_set_from_args,
 )
 
 from inodefence.effect_demo import (
@@ -73,7 +74,13 @@ def run_native_effect_demo(
             _announce(render_effect_step_summary(record, budget))
 
         try:
-            report = native_demo_report(backend, image, step_sink=persist_step, **options)
+            report = native_demo_report(
+                backend,
+                image,
+                step_sink=persist_step,
+                sentinel_set=sentinel_set_from_args(args),
+                **options,
+            )
             _announce(render_effect_campaign_summary(report))
             returncode = 0
         except NativeDemoAborted as error:
@@ -121,7 +128,12 @@ def run_native_historical_demo(
 
         try:
             report = historical_demo_report(
-                backend, image, args.tar_version, step_sink=persist_step, **options
+                backend,
+                image,
+                args.tar_version,
+                step_sink=persist_step,
+                sentinel_set=sentinel_set_from_args(args),
+                **options,
             )
             _announce(render_effect_campaign_summary(report))
             returncode = 0

@@ -282,7 +282,7 @@ GO/NO-GO 규칙과 §4.6.4 판정 시나리오 ①–⑧(research-questions v2)�
 규칙·지표·분모는 결과를 본 뒤 바꾸지 않는다. EXP-0의 hit 수는 검정력 x 산정에 쓰지 않으며, zero-hit은
 NO-GO 사유가 아니다(사전등록 v2 (a)·(d)).
 
-**EXP-0 seed 사전 노출 공개 (결과 아님 — 도구 검증).** EXP-0 사전등록 seed(9001–9005)는 정식 EXP-0 실행
+**EXP-0 seed 사전 노출 공개 (결과 아님 — 도구 검증).** EXP-0 사전등록 seed 중 9001–9004는 정식 EXP-0 실행
 전에 **unregistered G1 smoke**(배선·도구 검증용, 사전등록 게이트 off)에서 이미 한 번 노출됐다. 이 smoke의
 출력은 **결과가 아니며 논문 표·결론에 쓰지 않는다**(G1 smoke 드라이버·그림 생성기 기록 기준, unregistered).
 이 smoke는 통합 브랜치 `4b072a5`(image `sha256:22c8734f…`, node-tar 7.5.2), seed 9001–9004 × budget 50에서

@@ -247,9 +247,18 @@ M1–M4의 능력과 증거 수준을 한눈에 보는 요약은 [Capability Led
 
 ## 5.6 EXP-0 / EXP-3 결과 (EXP-0 완료 · EXP-3 실험 전 TBD)
 
-이 소절은 §4.6 실험 설계(계획)의 실행 결과 자리다. EXP-0 파일럿은 완료됐고(인프라 측정, H-A 검정 아님) 공식 리포트는
-`experiments/summaries/exp0-20261105-report.md`다. EXP-3 본실험은 실행 전이므로 EXP-3 표·그림은 **TBD**이며, 사전등록 잠금
-뒤 생성기 출력으로 채운다.
+이 소절은 §4.6 실험 설계(계획)의 실행 결과 자리다. EXP-0 등록 실행은 완료됐고 핵심 수치를 아래에 적는다. EXP-3 본실험은 실행
+전이므로 EXP-3 표·그림은 **TBD**이며, 사전등록 잠금 뒤 생성기 출력으로 채운다.
+
+**EXP-0 등록 실행 (registered run · 인프라 측정 · 가설 검정 아님).** 2026-11-05에 사전등록 v2.1로 등록한 실행이다. 대상은
+node-tar 7.5.2, 설계는 seed 9001–9005 × {R, D, S-u}, budget 200, sentinel k=3(생성기 seed 고정 무작위 이름, 전 arm·seed 공통)이다(15셀,
+3000 실행). H-A 검정도 효과 주장도 아니며, 이 숫자로 arm을 비교하지 않는다. 값의 기준과 재현 명령은 공식 리포트 [exp0-20261105-report](../../experiments/summaries/exp0-20261105-report.md)(#268)다.
+
+- **완주.** 15/15, abort 0, invalid 셀 0. 셀 판정과 별개로 trace가 invalid인 step 11개와 failed step 10개가 있다(리포트 편차 2).
+- **위반 hit.** C1/C2 전 arm 0(C0 관측도 0, arm마다 5/5 우측중도절단 @200). hit 0은 hazard 0이 아니다. 캠페인 단위 rule-of-three 참고 상한은 .6(n=5)이고 판정 입력이 아니다.
+- **p95 full-step.** 기록값 1.549 s, 실시간 환산 1.419 s.[^exp0-clock]
+- **처리량.** 호스트 집계 약 4760 exec/h(jobs 2, 실제 경과에서 직접 계산).[^exp0-clock]
+- **편차.** 사전등록 대비 편차 11건은 리포트 §3에 공개했다. 측정 4(per-case 대 워커 풀 처리량 비교)는 미충족이다(편차 3).
 
 > **주의(budget 2000 표기 구분):** 이 §5.6의 EXP-3(20 seed × budget 2000)은 **계획**이며 아직 미실행이다(규모는 D7, 재판정
 > 대기(파일럿 후)).
@@ -292,5 +301,7 @@ NO-GO 사유가 아니다(사전등록 v2 (a)·(d)). *(규칙과 일정은 D7·D
 **12/12 완주(abort 0, arm 간 어휘 동등 true)**했고, 그중 **D arm s9002의 exec 42에서 generic oracle C2 이벤트
 1건**(u_viol 1; hardlink `a.txt` → `../outside/sentinel.txt` 뒤 regular `a.txt`)이 관찰됐다 — 출처 PR #223
 (`claude/s3-exp0-launcher`) LOG + 호스트 `~/inodefence-evidence/g1-20261104/smoke/summaries/index.json`
-(sha256 `26235b44…`), SHA-256 매니페스트 반입 예정. 이는 사전등록 판정이 아니라 도구 검증 관측이므로
-**해석하지 않는다**. 사전 노출된 seed로 얻은 EXP-0/EXP-3 결과의 독립성 해석상 한계는 §6.7에 둔다.
+(sha256 `26235b44…`, [raw-manifest-win-20261104-1421](../../experiments/summaries/raw-manifest-win-20261104-1421.sha256) 71행). 이는 사전등록 판정이 아니라 도구 검증 관측이므로
+**해석하지 않는다**. smoke는 sentinel 설정과 budget이 등록 실행과 달라 등록 결과와 비교하지 않는다. 사전 노출된 seed로 얻은 EXP-0/EXP-3 결과의 독립성 해석상 한계는 §6.7에 둔다.
+
+[^exp0-clock]: evidence: `experiments/summaries/exp0-20261105-report.md` 편차 1. 기록값은 monotonic clock 기준이고, EXP-0 당시 이 호스트의 monotonic clock은 실시간보다 1.091배 빠르게 갔다(합산 1.0914, 셀별 1.0855~1.0964; EXP-0 전용 배율). 환산값은 실시간 기준이며 실시간 시계의 장기 편차는 검증 중이다. 호스트 집계 처리량은 배율 환산이 아니라 실제 경과에서 직접 계산했다(셀 구간 4763, 해시 고정 타임스탬프 4758 exec/h). T_first와 hazard proxy는 실행 수로 세므로 시계와 무관하다.

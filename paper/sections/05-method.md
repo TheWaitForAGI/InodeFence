@@ -84,9 +84,9 @@ native 증거로 승격하지 않는다(§5의 각 소절이 이 규율을 따�
 
 이 소절은 **결과가 아니라 계획**이다. 설계 기준은 [research-questions v2 H-A](../../docs/research/design/research-questions.md)와
 [EXP-0 파일럿 사전등록 v2](../../experiments/preregistration/exp0-pilot-v2.md)이며, **지표·예산·hit 정의·분모 규칙은
-11/18 사전등록 시점에 잠근다** — 그 이후에는 바꾸지 않고 수정은 새 버전 파일로만 한다. 엔진 SHA·이미지
-digest·**policy ID 문자열은 G1(구현 수리) 동결 시 사전등록 v2.1에 채운다. 현재 미동결(TBD)이므로 아래 arm은
-retention·스케줄러 정의로만 고정하고 policy ID 문자열은 v2.1에서 기록한다.**
+11/18 사전등록 시점에 잠근다** — 그 이후에는 바꾸지 않고 수정은 새 버전 파일로만 한다. EXP-0의 엔진 SHA·이미지
+digest·policy ID는 사전등록 v2.1(등록 커밋 `23e5c66`)에 동결됐고 EXP-0 등록 실행은 완료됐다
+(`experiments/summaries/exp0-20261105-report.md`). **EXP-3의 값은 아직 동결 전이다.**
 
 ### 4.6.1 비교 arm (R / D / S-u; S-a는 ablation)
 
@@ -97,13 +97,13 @@ retention 효과만 분리). adaptive 스케줄러를 얹은 **S-a**는 주 비�
 
 | arm | retention | operator 선택 | 뜻 | policy ID |
 | --- | --- | --- | --- | --- |
-| **R** | 없음 | uniform | 무작위 탐색(바닥) | TBD (v2.1 동결 시 기록) |
-| **D** | 구조 커버리지(`SearchPolicy.D` = target-agnostic extraction 구조 키) | uniform | 커버리지 피드백 대조 | TBD (v2.1; `SearchPolicy.D` 러너) |
-| **S-u** (주) | identity/effect/boundary-attempt 상태 키 | uniform | InodeFence retention 피드백 | TBD (v2.1 동결 시 기록) |
-| S-a (선택, ablation) | S-u와 동일 | adaptive | 스케줄러 효과 분리용, 주 비교 아님 | TBD (v2.1) |
+| **R** | 없음 | uniform | 무작위 탐색(바닥) | `unretained-walk-v1-uniform-mutation-v1` |
+| **D** | 구조 커버리지(`SearchPolicy.D` = target-agnostic extraction 구조 키) | uniform | 커버리지 피드백 대조 | `structure-coverage-v1-uniform-mutation-v1` |
+| **S-u** (주) | identity/effect/boundary-attempt 상태 키 | uniform | InodeFence retention 피드백 | `effect-feedback-v2-or-violation-v1-boundary-attempt-v1-uniform-mutation-v1` |
+| S-a (선택, ablation) | S-u와 동일 | adaptive | 스케줄러 효과 분리용, 주 비교 아님 | `effect-feedback-v2-or-violation-v1-boundary-attempt-v1-adaptive-mutation-v1` |
 
-> policy ID 각주: 구현 후보 ID는 PR #206의 `EffectSearchPolicy`/`MutationPolicy`를 참조하며, 최종 문자열은
-> 사전등록 v2.1 동결 시 기록한다.
+> policy ID 각주: 위 문자열은 EXP-0 사전등록 v2.1 기계판독 블록의 동결값이다. EXP-3 값은 그 사전등록을 동결할 때
+> 확정한다(R 변형은 D6, 재판정 대기(파일럿 후)).
 
 **sentinel.** ≥ 3개를 쓰고, 이름은 **seed 고정 무작위 생성기**로 만들며 생성기 seed를 결과에 기록한다(손으로 정한
 이름 없음). 어휘에 피해 경로 이름을 넣는 것은 위협 모델(research-questions v2)의 일부이며 세 arm에 동일하게
@@ -113,7 +113,8 @@ retention 효과만 분리). adaptive 스케줄러를 얹은 **S-a**는 주 비�
 
 - **1차 종속변수 T_first** — 첫 `C1 ∨ C2`까지의 실행 수. **우측중도절단**(완주 무hit = 예산 N에서 절단, abort =
   abort 시점에서 절단). **생존분석**으로 비교한다: Kaplan–Meier 곡선, 로그랭크 검정, Vargha–Delaney A12.
-- **1차 종속변수 U_viol** — 고유 위반 입력 수(정규화 서명 기준; 같은 lineage·같은 fingerprint는 1).
+- **1차 종속변수 U_viol** — 고유 위반 입력 수(정규화 서명 기준; 같은 lineage·같은 fingerprint는 1). *(1차 여부는 D13,
+  재판정 대기(파일럿 후))*
 - **hit 정의** — post-state oracle `C1 ∨ C2`이고 `contract_violated`인 step. **C0만은 hit가 아니다**(path-boundary
   baseline으로 별도 집계).
 - **dense 신호**(boundary-attempt 키 수·C0 도달 인덱스/비율·rejected 비율·exec/h·abort 사유별 수) — 탐색 거동
@@ -125,11 +126,14 @@ retention 효과만 분리). adaptive 스케줄러를 얹은 **S-a**는 주 비�
 
 ### 4.6.3 실험 순서
 
-1. **EXP-0 파일럿** — seed {9001..9005} × budget 200 × R/D/S-u, 인프라·dense 신호 실측. **zero-hit이 기본 결과**이며
-   C1/C2 hit으로 hazard를 추정하지 않는다(zero면 캠페인 단위 rule-of-three 상한만 참고로 병기).
-2. **11/18 사전등록 잠금** — EXP-3 본실험 + EXP-2 GO/NO-GO 규칙을 고정한다. 규칙의 n(arm당 캠페인 수)·x(목표
-   효과)는 EXP-0 처리량·abort율 실측에서 **11/14 확정**한다. EXP-0의 hit 수는 x 산정에 쓰지 않는다.
-3. **EXP-3 본실험** — 20 seed × budget 2000 × R/D/S-u, 다수 sentinel. 1차 지표 T_first(우측중도절단)·U_viol.
+1. **EXP-0 파일럿(완료, 2026-11-05)** — seed {9001..9005} × budget 200 × R/D/S-u, 인프라·dense 신호 실측. **zero-hit이 기본
+   결과**이며 C1/C2 hit으로 hazard를 추정하지 않는다(zero면 캠페인 단위 rule-of-three 상한만 참고로 병기). 15/15 완주, C1/C2 hit
+   0(`experiments/summaries/exp0-20261105-report.md`).
+2. **11/18 사전등록 잠금** — EXP-3 본실험 + EXP-2 GO/NO-GO 규칙을 고정한다. 규칙의 n(arm당 캠페인 수)·x(EXP-3 R/D/S-u 합산
+   hazard 문턱, EXP-2 검정력 요구에서 역산)는 EXP-0 처리량·abort율 실측에서 **11/14 확정**한다. EXP-0의 hit 수는 x 산정에
+   쓰지 않는다. *(구: "x(목표 효과)", 2026-11-06 정정)*
+3. **EXP-3 본실험** — 20 seed × budget 2000 × R/D/S-u, 다수 sentinel. 1차 지표 T_first(우측중도절단)·U_viol. *(규모는 D7,
+   재판정 대기(파일럿 후))*
 4. **11/20 규칙 기계 적용** — EXP-3 결과에 사전등록된 GO/NO-GO 규칙을 **그대로** 적용한다(결과를 본 뒤 규칙을
    바꾸지 않는다).
 5. **EXP-2 조건부** — GO일 때만 수행한다.

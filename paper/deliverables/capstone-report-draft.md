@@ -6,11 +6,11 @@
 >   접근이 차단됨). 아래 절 구조는 일반 결과보고서 구조다. 서식과 대조해 절 이름과 순서를 맞춘다.
 > - **제출 요건 UNVERIFIED.** 이전 세션이 붙임 원문에서 옮겨 적은 기록은 다음과 같다: 결과보고서 HWP+PDF,
 >   소개영상 5분 이하, 생성형 AI 사용 내역 기입 필수, 결과물 기한 2026-11-30. 이번에 원문과 다시 대조하지 못했다.
-> - **일정.** 내부 게이트 G2는 2026-11-26, 제출은 2026-11-30이다([STATUS 일정표](../../docs/STATUS.md)).
+> - **일정.** 결과보고서·영상 제출 2026-11-26, 최종발표 2026-11-30(오케스트레이터가 사용자 확정 일정으로 전달). 위 붙임 기록의
+>   "결과물 기한 11-30"과 다르므로 서식을 대조할 때 함께 확인한다.
 > - **수치 규칙.** 정량 문장 끝에 증거 각주를 둔다. 미머지 PR을 가리키는 각주는 머지 후 경로를 다시 확인한다.
 > - **미실행.** EXP-3과 EXP-2는 실행 전이다. §7.6과 §7.7은 자리만 있다.
-> - **그림.** M3 그림(`paper/figures/m3-blind-ablation.png`)은 2026-11-03에 철회한 인과 문구를 아직 담고 있어
->   재렌더 전에는 넣지 않는다. 요구 사항은 [표·그림 요구 목록](results-artifact-requirements.md)에 있다.
+> - **표·그림 요구 사항**은 [표·그림 요구 목록](results-artifact-requirements.md)에 있다.
 
 | 항목 | 내용 |
 | --- | --- |
@@ -130,6 +130,10 @@ inferred는 추론한 것이다.
 | 7.5.7 | 거부 | 거부 |
 | 7.5.8 | 거부 | 거부 |
 
+![node-tar 릴리스별 하드링크 identity verdict 그리드](../figures/m2-cross-release-evidence.png)
+
+*그림 7-1. 릴리스별 verdict(observed). CVE 대응과 회귀 원인 서술은 inferred다.*
+
 - **observed:** 위 표, nlink 전이, 거부 메시지. 2026-11-06 재실행의 `summary.json`은 저장소의 raw와 같았다.[^m2]
 - **production 경로 일치:** 같은 외부 하드링크를 production Observer+Oracle로 판정한 결과가 C1+C2로 일치함을 테스트로
   고정했다.[^m2-oracle]
@@ -142,10 +146,15 @@ inferred는 추론한 것이다.
 Ledger 판정: 외부 객체 이름을 어휘에 획득한 조건에서 자율 C1 관찰 (A3 21 vs A1 0 vs identity-blind 0); 어휘 미통제라
 retention·effect 피드백 인과는 미입증.[^m3]
 
+![M3 대조 막대그래프: 외부 이름을 어휘에 넣은 A3full s11 21 hits, 이름을 뺀 A3blind s11 0, 이름을 철자할 수 없는 A1 0](../figures/m3-blind-ablation.png)
+
+*그림 7-2. 이름 획득 조건의 관찰(피드백 인과 미입증). 어휘가 다른 셀의 대조이며 rate 비교가 아니다.*
+
 - 이 대조는 피드백이 아니라 **어휘**를 통제했다. 피드백의 기여는 어휘를 맞춘 R/D/S-u 비교(EXP-3)로 아직 분리되지
   않았다.[^m3]
 - **blind 발견이 아니다.** 기존 외부 객체에 하드링크하려면 이름이 필요하고 퍼저는 그것을 관찰로 얻는다.[^m3]
-- **seed-rare다.** 예산 1500에서 자율 트리거는 65 seed 중 s11 1개였다.[^m3]
+- **seed-rare다.** 예산 1500에서 자율 트리거는 65 seed 중 s11 1개였다. 21건은 그 run의 1 lineage이고, run은 step 416에서 abort했다.
+  막대마다 분모(step 수)도 다르다.[^m3]
 - **rate 우위는 미입증이다.** 사전등록 매칭 대조의 Wilson 구간이 겹쳤다.[^m3-rate]
 
 ### 7.4 M4: oracle 수준 일반성
@@ -165,14 +174,14 @@ node-tar 7.5.2다.[^exp0-prereg]
 | 완주 | 15/15 | abort 0, invalid 0, arm 간 어휘 동등 [^exp0-run] |
 | C1/C2 hit | 0 | 사전등록의 zero-hit 기본 결과 [^exp0-prereg] |
 | rule-of-three 참고 상한 (사전등록 v2 (a)) | arm당 캠페인 단위 3/5 = 0.6, 실행 단위 3/1000 = 0.003(탐색적) | 판정 입력 아님 [^exp0-analysis] |
-| p95 full-step | 1.549 s (clock 보정 전 기록값) | 3,000 step 합산, nearest-rank. 실제 시간보다 크게 기록됐다 [^exp0-analysis] [^exp0-clock] |
-| 처리량 | 2428 exec/h (clock 보정 전 기록값) | 셀별 wall-clock 합 기준의 스트림당 값. 동시 실행 호스트 전체 처리량이 아니고, 실제 시간보다 작게 기록됐다 [^exp0-analysis] [^exp0-clock] |
+| p95 full-step | 기록값 1.549 s / 실시간 환산 1.419 s | 3,000 step 합산, nearest-rank [^exp0-analysis] [^exp0-clock] |
+| 처리량 (스트림당) | 기록값 2428 exec/h / 실시간 환산 2650 exec/h | 셀별 wall-clock 합 기준. 호스트 전체 처리량이 아니다 [^exp0-analysis] [^exp0-clock] |
+| 처리량 (호스트 전체) | ≈4760 exec/h | jobs 2, 실제 경과에서 직접 계산(배율 환산 아님) [^exp0-clock] |
 | raw 무결성 | 66 파일 verify 통과 | 66 ok, 0 mismatched, 0 missing, 0 extra [^exp0-manifest] |
 
-**시간 지표 주의.** 위 p95와 처리량은 `perf_counter` 기준 기록값이다. 이 호스트의 `perf_counter`는 `CLOCK_MONOTONIC_RAW`보다
-빠르게 간다(2026-11-06 측정 1.0837배). EXP-0에서도 8개 셀 묶음 모두에서 기록 wall이 파일 타임스탬프 경과 시간보다 길었다
-(1.03–1.05배, 셀 준비 시간을 빼지 않은 하한).[^exp0-clock] 실제 시간 환산값은 확정 후 넣는다(TBD). 완주, hit, T_first, U_viol처럼
-실행 수로 세는 값은 영향을 받지 않는다.
+**시간 지표 주의.** 기록값은 monotonic clock(`perf_counter`) 기준이다. EXP-0 당시 이 호스트의 monotonic clock은 실시간보다
+1.091배 빠르게 갔다(셀별 1.086–1.096).[^exp0-clock] 환산값은 실시간 기준이며, `CLOCK_REALTIME`의 장기 편차는 검증 중이다. 완주, hit,
+T_first, U_viol처럼 실행 수로 세는 값은 영향을 받지 않는다.
 
 분석은 아직 머지되지 않은 생성기로 돌린 pre-merge 결과다. 스택 머지 후 같은 입력으로 재생성해 값을 다시 확인한다.
 [^exp0-analysis]
@@ -230,7 +239,8 @@ EXP-3 결과에 사전등록 GO/NO-GO 규칙을 적용해 GO일 때만 수행한
   않는다.[^exp0-prereg] EXP-3 seed는 이들과 겹치지 않게 정한다.[^exp3-draft]
 - **EXP-0 parity.** 사전등록 측정 항목인 per-case 대 워커 풀 처리량 비교는 이 리포트에 없다(`parity_verdict` null).
   [^exp0-analysis]
-- **EXP-0 시간 지표.** p95와 처리량은 빠르게 가는 호스트 clock으로 기록한 보정 전 값이다(§7.5).[^exp0-clock]
+- **EXP-0 시간 지표.** 기록값은 빠르게 간 monotonic clock 기준이고 환산값은 실시간 기준이다. 실시간의 장기 편차는 검증
+  중이다(§7.5).[^exp0-clock]
 - **raw 보존.** raw는 호스트 로컬에 있고 저장소에는 체크섬 목록만 들어간다.[^exp0-manifest]
 
 ## 9. 결론과 향후 계획
@@ -245,7 +255,8 @@ extractor에 적용된다(M4). 피드백 정책의 효과는 아직 판정하지
 | --- | --- |
 | EXP-3·EXP-2 규칙 사전등록 고정 | 11/18 |
 | EXP-3 실행과 분석, 논문 반영 (G2) | 11/26 |
-| 제출 | 11/30 |
+| 결과보고서·영상 제출 | 11/26 |
+| 최종발표 | 11/30 |
 
 ## 10. 선행연구와의 관계
 
@@ -285,8 +296,8 @@ TAR fuzzing, hardlink·symlink 공격, entry 순서, 파일 상태 기반 fuzzin
 ## 증거 각주
 
 [^m1]: evidence: [Capability Ledger](../../docs/STATUS.md) 1–6행, 마일스톤 M1.
-[^m1-run]: evidence: `make demo` 2026-11-06 재실행 stdout. [LOG](../../docs/LOG.md) 같은 날짜 W4 항목.
-[^m2]: evidence: `experiments/repro/evidence/summary.json`, [cross-release-identity-repro-v1](../../experiments/summaries/cross-release-identity-repro-v1.md), Ledger 마일스톤 M2. 재실행 대조는 [LOG](../../docs/LOG.md) 같은 날짜 W4 항목.
+[^m1-run]: evidence: `~/inodefence-evidence/w4-script-verification-20261106/`의 `demo-run1`, `demo-run2`, `stdout/`(MANIFEST sha256 `88ac345e…`). [LOG](../../docs/LOG.md) 같은 날짜 W4 항목.
+[^m2]: evidence: `experiments/repro/evidence/summary.json`, [cross-release-identity-repro-v1](../../experiments/summaries/cross-release-identity-repro-v1.md), Ledger 마일스톤 M2. 2026-11-06 재실행은 `~/inodefence-evidence/w4-script-verification-20261106/repro/`, [LOG](../../docs/LOG.md) 같은 날짜 W4 항목.
 [^m2-oracle]: evidence: `tests/test_cross_release_oracle_agreement.py`, `tests/container_integration/check_cross_release_oracle_agreement.py`, Ledger M2.2.
 [^m3]: evidence: [Capability Ledger](../../docs/STATUS.md) "퍼저가 자력으로 경계위반을 발견" 행과 마일스톤 M3, PR #151, [§5.3.2 정정](../sections/06-results.md), [node-self-discovery-mechanism-v1](../../experiments/summaries/node-self-discovery-mechanism-v1.md).
 [^m3-rate]: evidence: [m3-powered-matched-verdict-v2](../../experiments/summaries/m3-powered-matched-verdict-v2.md), PR #200.
@@ -297,7 +308,7 @@ TAR fuzzing, hardlink·symlink 공격, entry 순서, 파일 상태 기반 fuzzin
 [^exp0-prereg]: evidence: [exp0-pilot-v2.1](../../experiments/preregistration/exp0-pilot-v2.1.md) '사전 노출 공개'·'zero-hit 방침' 절, 동결 커밋 23e5c66 (PR #258).
 [^exp0-run]: evidence: `~/inodefence-evidence/exp0-20261105/summaries/index.json`(abort_count 0, invalid_count 0, cells 15), `registration.json`(last_status), 매니페스트 PR #262.
 [^exp0-analysis]: evidence: `~/inodefence-evidence/exp0-20261105-analysis-premerge/exp0-report-premerge.json`의 item2_p95_full_step, item3_throughput.summed, item4_throughput_parity, item7_hazard_proxy.zero_hit. 생성기는 미머지 스택 머리 f655f18 (같은 폴더 `PROVENANCE.txt`).
-[^exp0-clock]: evidence: 측정과 대조 값은 [LOG](../../docs/LOG.md) 같은 날짜 W4 clock 항목. 기록 필드는 엔진 b609981 `scripts/run_effect_demo.py`의 `perf_counter`, 타임스탬프는 `registration.json`의 `created_at`과 셀 로그 mtime.
+[^exp0-clock]: evidence: 배율은 W2 확정값(2026-11-06, 근거 문서 경로 TBD). `~/inodefence-evidence/exp0-20261105/matrix.json`의 셀 `wall_seconds`를 worker 2개로 재생한 2474.9 s ÷ warmup 2.4 s를 뺀 실경과 2267.6 s = 1.0914, 표기 1.091. 환산값은 1.0914로 계산했다. 호스트 전체 처리량은 `registration.json`→`matrix.json`의 `created_at` 2270.02 s(warmup 포함) 기준 4758 exec/h. 실시간 기준, 장기 편차 검증 중. 기록 필드는 엔진 b609981 `scripts/run_effect_demo.py`의 `perf_counter`.
 [^exp0-manifest]: evidence: PR #262 `experiments/summaries/raw-manifest-win-20261105-20261105.sha256`(sha256 `a9dc149c…`), `scripts/make_raw_manifest.py --verify` 2026-11-06 재실행.
 [^exp3-draft]: evidence: PR #239→#263→#264의 `experiments/preregistration/exp3-v1.md`(head e11d302, 미머지·미동결), PR #248과 #257의 confirmatory 출력.
 [^exp3-sizing]: evidence: PR #216 §4.6.3 "계획 단계 검정력 한계", PR #263 '규모 산정 입력' 절(둘 다 미머지).

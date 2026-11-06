@@ -25,6 +25,7 @@ from scripts.analyze_hazard_pilot import (
     required_n,
     rule_condition_4,
     rule_condition_5,
+    s_u_leads,
     scenario_power,
     sign_p,
     summarize_arm,
@@ -82,17 +83,15 @@ def _outcome(arm: str, seed: int, **changes: object) -> CellOutcome:
     return dataclasses.replace(base, **changes)  # type: ignore[arg-type]
 
 
+def _arm(arm: str, events: int, t_first: int = 500) -> dict[str, object]:
+    return summarize_arm(
+        arm,
+        [_outcome(arm, 8101 + index, event=index < events, t_first=t_first) for index in range(10)],
+    )
+
+
 def _arms(**events: int) -> dict[str, dict[str, object]]:
-    return {
-        arm: summarize_arm(
-            arm,
-            [
-                _outcome(arm, 8101 + index, event=index < events.get(arm, 0), t_first=500)
-                for index in range(10)
-            ],
-        )
-        for arm in ("R-walk", "R-restart", "D", "S-u")
-    }
+    return {arm: _arm(arm, events.get(arm, 0)) for arm in ("R-walk", "R-restart", "D", "S-u")}
 
 
 def test_committed_design_binds_the_approved_plan() -> None:
@@ -306,7 +305,12 @@ def test_a_certain_s_u_hazard_does_not_break_the_report() -> None:
 def test_condition_6_labels_follow_the_fixed_rule() -> None:
     capacity = 57.0
     assert n_capacity(capacity, 8) == 152
-    common = {"p_r_point_higher_variant": 0.0, "p_d_point": 0.0}
+    common = {
+        "p_r_point_higher_variant": 0.0,
+        "p_d_point": 0.0,
+        "events_s": 3,
+        "events_r_d_max": 0,
+    }
     possible = feasibility(
         {"p_s_point": 0.3, "p_s_upper95": 0.6, **common},
         abort=0.0,
@@ -326,7 +330,14 @@ def test_condition_6_labels_follow_the_fixed_rule() -> None:
     assert reduced["required_n_point"] > 53 >= reduced["required_n_s_upper95"]
     # The upper bound does not separate from the floor.
     not_separated = feasibility(
-        {"p_s_point": 0.1, "p_s_upper95": 0.3, "p_r_point_higher_variant": 0.3, "p_d_point": 0.3},
+        {
+            "p_s_point": 0.1,
+            "p_s_upper95": 0.3,
+            "p_r_point_higher_variant": 0.3,
+            "p_d_point": 0.3,
+            "events_s": 1,
+            "events_r_d_max": 3,
+        },
         abort=0.0,
         campaigns_per_host_day=capacity,
         sims=200,
@@ -334,7 +345,14 @@ def test_condition_6_labels_follow_the_fixed_rule() -> None:
     assert not_separated["verdict"] == "impossible"
     # The upper bound separates, but needs more than a capacity of 26.
     over_capacity = feasibility(
-        {"p_s_point": 0.0, "p_s_upper95": 0.259, "p_r_point_higher_variant": 0.1, "p_d_point": 0.1},
+        {
+            "p_s_point": 0.0,
+            "p_s_upper95": 0.259,
+            "p_r_point_higher_variant": 0.1,
+            "p_d_point": 0.1,
+            "events_s": 0,
+            "events_r_d_max": 1,
+        },
         abort=0.0,
         campaigns_per_host_day=10.0,
         sims=300,
@@ -348,9 +366,65 @@ def test_s_u_not_leading_is_undetermined_never_a_reduced_plan(s_u: int, r: int, 
     result = feasibility(inputs, abort=0.0, campaigns_per_host_day=57.0, sims=500)
     assert result["verdict"] == "undetermined"
     assert result["verdict_label"] == "미결(증거 부족)"
-    assert result["s_u_leads_on_point_estimates"] is False
+    assert result["s_u_leads"] is False
     assert result["required_n_s_upper95"] <= 152  # fits, and is still not a planned n
     assert "never a planned EXP-2 n" in result["required_n_s_upper95_note"]
+
+
+@pytest.mark.parametrize(
+    ("events", "s_u_first", "others_first"),
+    [(1, 100, 1900), (1, 1900, 100), (2, 100, 1900), (2, 1900, 100), (3, 50, 1950)],
+)
+def test_tied_event_counts_never_lead_whatever_the_first_event_times(
+    events: int, s_u_first: int, others_first: int
+) -> None:
+    arms = {
+        "S-u": _arm("S-u", events, s_u_first),
+        "R-walk": _arm("R-walk", events, others_first),
+        "R-restart": _arm("R-restart", 0),
+        "D": _arm("D", events, others_first),
+    }
+    inputs = planning_inputs(arms)
+    # The trap this pins: an earlier S-u event raises its estimate with no more events than D.
+    assert (inputs["p_s_point"] > inputs["p_d_point"]) == (s_u_first < others_first)
+    result = feasibility(inputs, abort=0.0, campaigns_per_host_day=57.0, sims=500)
+    assert result["s_u_leads"] is False
+    assert result["verdict"] == "undetermined"
+
+
+def test_a_tie_with_only_one_r_variant_still_does_not_lead() -> None:
+    arms = {
+        "S-u": _arm("S-u", 2, 100),
+        "R-walk": _arm("R-walk", 0),
+        "R-restart": _arm("R-restart", 2, 1900),
+        "D": _arm("D", 0),
+    }
+    assert s_u_leads(planning_inputs(arms)) is False
+
+
+def test_more_s_u_events_still_need_the_higher_estimate_on_exposure() -> None:
+    # R-walk's one event came in about two campaigns' exposure: a higher rate than S-u's two in ten.
+    short_r_walk = [
+        _outcome("R-walk", 8101, event=True, t_first=100),
+        _outcome("R-walk", 8102),
+        _outcome("R-walk", 8103),
+        *[
+            _outcome("R-walk", 8104 + index, state="no-record", executions=0, reason="none")
+            for index in range(7)
+        ],
+    ]
+    arms = {
+        "S-u": _arm("S-u", 2, 2000),
+        "R-walk": summarize_arm("R-walk", short_r_walk),
+        "R-restart": _arm("R-restart", 0),
+        "D": _arm("D", 0),
+    }
+    inputs = planning_inputs(arms)
+    assert inputs["events_s"] > inputs["events_r_d_max"]
+    assert inputs["p_r_point_higher_variant"] > inputs["p_s_point"]
+    assert s_u_leads(inputs) is False
+    arms["R-walk"] = _arm("R-walk", 1, 2000)
+    assert s_u_leads(planning_inputs(arms)) is True
 
 
 def test_every_condition_6_label_is_the_one_the_design_states() -> None:

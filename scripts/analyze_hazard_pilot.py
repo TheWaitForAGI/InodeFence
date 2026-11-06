@@ -565,7 +565,20 @@ def planning_inputs(arms: Mapping[str, Mapping[str, Any]]) -> dict[str, float]:
         "p_s_upper95": arms["S-u"]["upper95_exposure"],
         "p_r_point_higher_variant": max(arms[arm]["p_hat_exposure"] or 0.0 for arm in R_ARMS),
         "p_d_point": arms["D"]["p_hat_exposure"] or 0.0,
+        "events_s": arms["S-u"]["events_first_c1_or_c2"],
+        "events_r_d_max": max(arms[arm]["events_first_c1_or_c2"] for arm in ZERO_RULE_ARMS),
     }
+
+
+def s_u_leads(inputs: Mapping[str, float]) -> bool:
+    """More S-u events than any R variant or D, and a higher estimate on exposure.
+
+    The count comes first: with equal counts the estimates differ only by when the events fell,
+    and a single event's timing must not decide the label.
+    """
+    return inputs["events_s"] > inputs["events_r_d_max"] and inputs["p_s_point"] > max(
+        inputs["p_r_point_higher_variant"], inputs["p_d_point"]
+    )
 
 
 def n_capacity(campaigns_per_host_day: float, host_days: int) -> int:
@@ -577,10 +590,11 @@ def feasibility(
 ) -> dict[str, Any]:
     """Condition 6 label, by the design's fixed rule, on the decision window.
 
-    possible: S-u leads and the point-estimate n fits. reduced: S-u leads, its point-estimate n
-    does not fit, but the n at its upper bound does (power not assured). undetermined: S-u does
-    not lead, which includes zero S-u events, but the upper bound still fits, so this sample
-    cannot tell. impossible: even the upper bound does not fit, or does not separate.
+    possible: S-u leads (``s_u_leads``) and the point-estimate n fits. reduced: S-u leads, its
+    point-estimate n does not fit, but the n at its upper bound does (power not assured).
+    undetermined: S-u does not lead, which includes zero S-u events and tied event counts, but the
+    upper bound still fits, so this sample cannot tell. impossible: even the upper bound does not
+    fit, or does not separate.
 
     ``abort`` enters here once, in the projection; the inputs are already on exposure.
     """
@@ -600,7 +614,7 @@ def feasibility(
     )
     capacity = {str(days): n_capacity(campaigns_per_host_day, days) for days in WINDOWS_HOST_DAYS}
     decision_capacity = capacity[str(DECISION_WINDOW_HOST_DAYS)]
-    s_leads = inputs["p_s_point"] > max(inputs["p_r_point_higher_variant"], inputs["p_d_point"])
+    s_leads = s_u_leads(inputs)
     if s_leads and point_n is not None and point_n <= decision_capacity:
         verdict = "possible"
     elif optimistic_n is None or optimistic_n > decision_capacity:
@@ -612,7 +626,7 @@ def feasibility(
     return {
         "verdict": verdict,
         "verdict_label": VERDICT_LABELS[verdict],
-        "s_u_leads_on_point_estimates": s_leads,
+        "s_u_leads": s_leads,
         "required_n_point": point_n,
         "required_n_s_upper95": optimistic_n,
         "required_n_s_upper95_note": UPPER_N_NOTE,

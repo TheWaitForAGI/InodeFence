@@ -7,21 +7,6 @@ v1의 RQ1–RQ6·H1–H4는 아래 **'폐기·대체 기록'**에 남긴다. 실
 SHA-256 목록이다. DESIGNED / IMPLEMENTED / TESTED / EXPERIMENTALLY VALIDATED 구분과 observed/inferred 구분은
 그대로 유지한다. 현재 취약점을 주장하지 않는다.
 
-## 연구 동기 (why)
-
-2026-11-03 독립 감사(Report 2 꼭지 02 '연구 필요성')의 권고를 채택해 동기를 세 문장으로 고정한다:
-
-1. 2026년 node-tar 하드링크 회귀(CVE-2026-23745 → 그 수정이 만든 회귀 CVE-2026-24842)는 **수정 자체가 새
-   경계위반을 만들 수 있음**을 보인다(M2 2-CVE 차분).
-2. 그러므로 CVE별 PoC가 아니라 **일반 불변식(C1/C2)으로 릴리스마다 자동 검사**할 도구가 필요하다.
-3. 이 프로젝트는 그 불변식을 **generic oracle로 구현**하고, 그 oracle이 **퍼징 탐색 신호로도 유효한지**(H-A)
-   묻는다. 음성 결과("피드백이 무작위와 다르지 않다")도 "oracle은 유용하되 탐색 신호로는 약하다"는 지식으로
-   보고한다.
-
-**수혜자 산출물.** 1차 수혜자는 extractor 유지보수자다 — 릴리스 전 회귀 검사 명령
-`make regression TAR_VERSION=<x>`([#218](https://github.com/TheWaitForAGI/InodeFence/pull/218), 감사 산출물 ⑫)로
-C1/C2 경계 회귀를 CVE 하드코딩 없이 점검한다.
-
 ## 핵심 RQ
 
 > 피해 경로 이름을 아는 **동일 어휘·동일 예산** 아래서, filesystem security state(C1 identity·C2 effect)를
@@ -124,3 +109,22 @@ effectiveness 주장이 아니다.
 
 v1의 G0 freeze 기준(main `8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`, [Research Contract v1](research-contract-v1.md))은
 역사 기록으로 남고, v2의 실행 기준은 사전등록 파일이 가리키는 엔진 SHA·이미지 digest·policy ID다.
+
+## 연구 동기 (why)
+
+이 절은 동결 문서의 줄 번호 포인터(`exp0-pilot-v2.1.md:89`의 L50 등)를 유지하려고 파일 끝에 둔다.
+
+2026-11-03 독립 감사(Report 2 꼭지 02 '연구 필요성')의 권고를 채택해 동기를 세 문장으로 고정한다:
+
+1. node-tar 중첩 하드링크 fixture에서 7.5.3 거부 → 7.5.6 공유 → 7.5.7 거부가 관찰됐다(M2 통제 재현). 한 릴리스에서
+   거부된 입력이 **이후 릴리스에서 다시 경계위반이 될 수 있음**을 보인다(CVE-2026-23745·CVE-2026-24842 대응과 회귀 원인은 추론).
+2. 그러므로 CVE별 PoC가 아니라 **일반 불변식(C1/C2)으로 릴리스마다 자동 검사**할 도구가 필요하다.
+3. 이 프로젝트는 그 불변식을 **generic oracle로 구현**하고, 그 oracle이 **퍼징 탐색 신호로도 유효한지**(H-A)
+   묻는다. 음성 결과도 지식으로 보고한다. 다만 "피드백이 무작위와 다르지 않다", "oracle은 유용하되 탐색 신호로는 약하다"로
+   읽는 것은 사건 수가 검정이 기각할 수 있는 규모일 때만이다. 그에 못 미치는 미기각은 효과 없음도 반증도 아니다(기준은 파일럿 후
+   재판정 대기).
+
+**수혜자 산출물.** 1차 수혜자는 node-tar 유지보수자다 — 릴리스 전 회귀 검사 명령
+`make regression TAR_VERSION=<x>`([#218](https://github.com/TheWaitForAGI/InodeFence/pull/218), 감사 산출물 ⑫)로
+C1/C2 경계 회귀를 CVE 하드코딩 없이 점검한다. 이 명령은 고정 손 fixture 범위만 검사하므로, PASS는 그 fixture에서 C1/C2가
+없었다는 뜻이지 안전을 뜻하지 않는다.

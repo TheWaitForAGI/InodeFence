@@ -41,6 +41,7 @@ PILOT_DESIGN = ROOT / "experiments/preregistration/exp3-hazard-pilot-v1.md"
 BENCHMARK_DESIGN = ROOT / "experiments/configs/concurrency-scaling-v1.md"
 ORACLE_SECRET = "ORACLE-VALUE-MUST-NOT-LEAK"
 ABORT = AbortRecord(3, "c3", "BackendError: x", None)
+PILOT_PATH = ["c0", "c1", "c2", "c3"]
 
 
 def write_steps(path: Path, case_ids: list[str]) -> Path:
@@ -411,6 +412,8 @@ def test_a_damaged_rerun_report_marks_only_that_cell(tmp_path: Path) -> None:
     assert [test["status"] for test in result["abort_tests"]] == [NOT_TESTED_REPORT, PASSED]
     assert result["summary"]["passes_m"] == 1
     assert result["summary"]["not_tested"] == {NOT_TESTED_REPORT: 1}
+    assert result["input_dependence_signal"] is None
+    assert result["summary"]["recurrence_upper95"] is None
 
 
 def test_a_damaged_stub_in_a_rerun_report_marks_the_cell(tmp_path: Path) -> None:
@@ -441,3 +444,119 @@ def test_summary_line_states_attempts_against_the_maximum(tmp_path: Path) -> Non
     assert result["attempts"] == {"tests": 2, "pilot_aborts": 1, "blocks": 2, "maximum": 2}
     text = render_markdown({"label": "t", "pilot_head": "h", "rerun_heads": [], **result})
     assert "시도 2건(파일럿 abort 1 × 블록 2 = 최댓값 2), 통과 m = 1, 시험 안 됨 1" in text
+
+
+def _stopped_at_three(directory: Path, name: str, how: str) -> CellFiles:
+    """A nonzero cell that stopped at the pilot's abort position with no readable stub."""
+    cell = make_cell(directory, name, ["c0", "c1", "c2"], returncode=1)
+    assert cell.report is not None
+    if how == "damaged":
+        cell.report.write_text("{not json", encoding="utf-8")
+    elif how == "no_stub":
+        cell.report.write_text(json.dumps({"aborted": None}), encoding="utf-8")
+    return cell
+
+
+UNREADABLE_WAYS = ("damaged", "no_stub", "no_report")
+UNRESOLVED_SENTENCE = (
+    "같은 위치에서 멈췄지만 보고서를 읽지 못한 1건이 있어 재발을 배제하지 못한다. "
+    "상한을 내지 않는다."
+)
+
+
+@pytest.mark.parametrize("how", UNREADABLE_WAYS)
+def test_a_stop_at_the_position_without_a_stub_withholds_signal_and_bound(
+    tmp_path: Path, how: str
+) -> None:
+    pilot = pilot_map(tmp_path)
+    cell = _stopped_at_three(rerun_dir(tmp_path), "r", how)
+    result = compare(pilot, [RerunBlock("b1", 2, (cell,))], 5)
+    assert result["abort_tests"][0]["status"] == NOT_TESTED_REPORT
+    assert result["abort_tests"][0]["prefix_identical"] is True
+    assert result["cells"][0]["report_unreadable"] is True
+    assert result["input_dependence_signal"] is None
+    assert result["summary"]["recurrence_upper95"] is None
+    report = {"label": "t", "pilot_head": "h", "rerun_heads": [], **result}
+    assert UNRESOLVED_SENTENCE in render_markdown(report)
+
+
+@pytest.mark.parametrize("how", UNREADABLE_WAYS)
+def test_a_pass_alongside_an_unresolved_stop_still_gives_no_signal_or_bound(
+    tmp_path: Path, how: str
+) -> None:
+    pilot = pilot_map(tmp_path)
+    directory = rerun_dir(tmp_path)
+    cell = _stopped_at_three(directory, "r1", how)
+    fine = make_cell(directory, "r2", ["c0", "c1", "c2", "c3"])
+    result = compare(pilot, [RerunBlock("b1", 2, (cell, fine))], 5)
+    assert [test["status"] for test in result["abort_tests"]] == [NOT_TESTED_REPORT, PASSED]
+    assert result["summary"]["passes_m"] == 1
+    assert result["input_dependence_signal"] is None
+    assert result["summary"]["recurrence_upper95"] is None
+    report = {"label": "t", "pilot_head": "h", "rerun_heads": [], **result}
+    text = render_markdown(report)
+    assert UNRESOLVED_SENTENCE in text
+    assert "입력 종속 신호: **시험 안 됨**" in text
+
+
+@pytest.mark.parametrize("how", UNREADABLE_WAYS)
+def test_a_recurrence_elsewhere_keeps_the_signal_true(tmp_path: Path, how: str) -> None:
+    pilot = pilot_map(tmp_path)
+    directory = rerun_dir(tmp_path)
+    cell = _stopped_at_three(directory, "r1", how)
+    again = make_cell(directory, "r2", ["c0", "c1", "c2"], abort=stub(3, "c3"))
+    result = compare(pilot, [RerunBlock("b1", 2, (cell, again))], 5)
+    assert result["summary"]["recurrences"] == 1
+    assert result["input_dependence_signal"] is True
+    assert result["summary"]["recurrence_upper95"] is None
+    report = {"label": "t", "pilot_head": "h", "rerun_heads": [], **result}
+    assert "재발 1건" in render_markdown(report)
+
+
+def test_a_diverged_stop_at_the_position_without_a_stub_is_also_unresolved() -> None:
+    # A recurrence is decided by the key alone, so a diverged path does not rule it out.
+    status = classify_abort(ABORT, PILOT_PATH, ["c0", "xx", "c2"], None, stopped_nonzero=True)
+    assert status == (NOT_TESTED_REPORT, False)
+
+
+def test_a_nonzero_cell_with_no_step_record_and_no_stub_is_unresolved() -> None:
+    assert classify_abort(ABORT, PILOT_PATH, None, None, stopped_nonzero=True) == (
+        NOT_TESTED_REPORT,
+        None,
+    )
+
+
+@pytest.mark.parametrize(
+    ("rerun", "expected"),
+    [
+        (["c0", "c1"], (NOT_TESTED_STOPPED, True)),
+        (["c0", "c1", "c2", "c3"], (PASSED, True)),
+        (["c0", "c1", "c2", "other"], (NOT_TESTED_OTHER_CASE, True)),
+    ],
+)
+def test_no_stub_away_from_the_position_changes_nothing(rerun, expected) -> None:
+    assert classify_abort(ABORT, PILOT_PATH, rerun, None, stopped_nonzero=True) == expected
+
+
+def test_a_clean_exit_at_the_position_is_only_stopped(tmp_path: Path) -> None:
+    pilot = pilot_map(tmp_path)
+    cell = make_cell(rerun_dir(tmp_path), "r", ["c0", "c1", "c2"])
+    result = compare(pilot, [RerunBlock("b1", 2, (cell,))], 5)
+    assert result["abort_tests"][0]["status"] == NOT_TESTED_STOPPED
+    assert result["cells"][0]["report_unreadable"] is False
+
+
+def test_a_cell_that_did_not_run_is_not_unresolved(tmp_path: Path) -> None:
+    pilot = pilot_map(tmp_path)
+    cell = make_cell(rerun_dir(tmp_path), "r", ["c0"], returncode=1, state="not-run")
+    result = compare(pilot, [RerunBlock("b1", 2, (cell,))], 5)
+    assert result["abort_tests"][0]["status"] == NOT_TESTED_NO_RECORD
+    assert result["cells"][0]["report_unreadable"] is False
+
+
+def test_a_readable_stub_for_another_case_at_the_position_is_not_unresolved() -> None:
+    other = AbortRecord(3, "other", "r", None)
+    assert classify_abort(ABORT, PILOT_PATH, ["c0", "c1", "c2"], other, stopped_nonzero=True) == (
+        NOT_TESTED_OTHER_CASE,
+        True,
+    )

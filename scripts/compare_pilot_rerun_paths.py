@@ -173,22 +173,32 @@ def classify_abort(
     pilot: Sequence[str],
     rerun: Sequence[str] | None,
     rerun_abort: AbortRecord | None,
+    *,
+    stopped_nonzero: bool = False,
 ) -> tuple[str, bool | None]:
     """A pilot abort against one re-run cell: (status, path identical up to that step).
 
     A recurrence is decided by the key alone, as the benchmark design defines it. Everything else
     needs the path: a diverged cell did not test the position, so it stays out of the denominator.
+
+    ``stopped_nonzero`` says the cell exited nonzero. Without a readable stub, stopping at this
+    step (or at a step the steps file cannot show) leaves that key unknown, whatever the path was.
     """
+    stub_unknown = stopped_nonzero and rerun_abort is None
     step, case_id = pilot_abort.step_index, pilot_abort.case_id
     if rerun is None:
         same_key = rerun_abort is not None and (
             (rerun_abort.step_index, rerun_abort.case_id) == (step, case_id)
         )
-        return (RECURRED, None) if same_key else (NOT_TESTED_NO_RECORD, None)
+        if same_key:
+            return RECURRED, None
+        return (NOT_TESTED_REPORT, None) if stub_unknown else (NOT_TESTED_NO_RECORD, None)
     shared = min(step, len(rerun))
     identical = list(pilot[:shared]) == list(rerun[:shared])
     if rerun_abort is not None and (rerun_abort.step_index, rerun_abort.case_id) == (step, case_id):
         return RECURRED, identical and len(rerun) >= step
+    if stub_unknown and len(rerun) == step:
+        return NOT_TESTED_REPORT, identical
     if not identical:
         return NOT_TESTED_DIVERGED, False
     if len(rerun) > step:
@@ -199,9 +209,13 @@ def classify_abort(
 
 
 def summarize(tests: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
-    """Passes, recurrences and the bound. With no pass and no recurrence nothing is claimed."""
+    """Passes, recurrences and the bound. With no pass and no recurrence nothing is claimed.
+
+    A stop at the position with an unreadable stub may be a recurrence, so it withholds the bound.
+    """
     statuses = Counter(test["status"] for test in tests)
     passes, recurrences = statuses[PASSED], statuses[RECURRED]
+    unresolved = statuses[NOT_TESTED_REPORT]
     return {
         "passes_m": passes,
         "recurrences": recurrences,
@@ -209,7 +223,9 @@ def summarize(tests: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
             status: count for status, count in sorted(statuses.items()) if status.startswith("not")
         },
         "recurrence_upper95": (
-            1 - 0.05 ** (1 / passes) if passes >= 1 and recurrences == 0 else None
+            1 - 0.05 ** (1 / passes)
+            if passes >= 1 and recurrences == 0 and not unresolved
+            else None
         ),
     }
 
@@ -218,11 +234,13 @@ def input_dependence_signal(tests: Iterable[Mapping[str, Any]]) -> bool | None:
     """True on any recurrence, False only when a position was really passed, else not tested.
 
     A cell that diverged or never reached the position says nothing, so no pass and no recurrence
-    is ``None``, not ``False``.
+    is ``None``, not ``False``. A stop at the position with an unreadable stub rules out ``False``.
     """
     summary = summarize(tests)
     if summary["recurrences"]:
         return True
+    if summary["not_tested"].get(NOT_TESTED_REPORT):
+        return None
     return False if summary["passes_m"] else None
 
 
@@ -370,12 +388,13 @@ def compare(
             if pilot_ids is None:
                 raise ComparisonError(f"pilot cell {source.label}-s{cell.seed}: {pilot_problem}")
             rerun_ids, problem = _safe_ids(cell.steps) if cell.state == "ran" else (None, "not_run")
-            report_unreadable = False
             try:
                 rerun_abort = read_abort(cell)
             except UnreadableReport:
                 # One damaged re-run report stays that cell's problem; the others still count.
-                rerun_abort, report_unreadable = None, True
+                rerun_abort = None
+            stopped_nonzero = cell.state == "ran" and bool(cell.returncode)
+            report_unreadable = stopped_nonzero and rerun_abort is None
             rerun_aborts[(block.name, cell.search, cell.seed)] = rerun_abort
             row: dict[str, Any] = {
                 "block": block.name,
@@ -403,10 +422,9 @@ def compare(
             if pilot_abort is None:
                 continue
             tested_aborts[key] = pilot_abort
-            status, identical = classify_abort(pilot_abort, pilot_ids, rerun_ids, rerun_abort)
-            if report_unreadable and status in (NOT_TESTED_STOPPED, NOT_TESTED_NO_RECORD):
-                # The cell stopped and its stub cannot be read: a recurrence cannot be ruled out.
-                status = NOT_TESTED_REPORT
+            status, identical = classify_abort(
+                pilot_abort, pilot_ids, rerun_ids, rerun_abort, stopped_nonzero=stopped_nonzero
+            )
             tests.append(
                 {
                     "block": block.name,
@@ -482,6 +500,12 @@ def compare(
 def _bound_sentence(summary: Mapping[str, Any]) -> str:
     if summary["recurrences"]:
         return f"재발 {summary['recurrences']}건, 통과 {summary['passes_m']}건. 상한을 내지 않는다."
+    unresolved = summary["not_tested"].get(NOT_TESTED_REPORT)
+    if unresolved:
+        return (
+            f"같은 위치에서 멈췄지만 보고서를 읽지 못한 {unresolved}건이 있어 "
+            "재발을 배제하지 못한다. 상한을 내지 않는다."
+        )
     if not summary["passes_m"]:
         return "통과 0건. 재발과 상한을 말하지 않는다(시험 안 됨만 적는다)."
     return (

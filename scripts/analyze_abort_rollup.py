@@ -69,12 +69,14 @@ def classify_md_label(label: str) -> InvalidReason:
         return InvalidReason.OBSERVER_INTEGRITY
     if "broker" in text:
         return InvalidReason.BROKER
-    if "cleanup inspect" in text or "inspect failed" in text:
+    if "cleanup inspect" in text:
         return InvalidReason.CLEANUP_INSPECT
     if "remove failed" in text or "removal" in text:
         return InvalidReason.CLEANUP_REMOVE
     if "reset" in text:
         return InvalidReason.CLEANUP_RESET
+    if "container runtime" in text:
+        return InvalidReason.RUNTIME_CALL
     return InvalidReason.OTHER
 
 

@@ -67,6 +67,7 @@ _FALLBACK_ABORT_REASONS = (
     "cleanup_inspect",
     "cleanup_remove",
     "cleanup_reset",
+    "runtime_call",
     "other",
 )
 

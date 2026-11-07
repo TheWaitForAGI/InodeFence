@@ -409,6 +409,14 @@ def test_u_viol_c0_in_dense_signals():
 # --- abort-reason vocabulary from the shared enum (cleanup_reset) -----------------
 
 
+def test_fallback_abort_reasons_list_every_category():
+    from scripts.analyze_exp0 import _FALLBACK_ABORT_REASONS
+
+    from inodefence.evaluation.abort_classification import InvalidReason
+
+    assert set(_FALLBACK_ABORT_REASONS) == {reason.value for reason in InvalidReason}
+
+
 def test_abort_reasons_includes_cleanup_reset():
     from scripts.analyze_exp0 import ABORT_REASONS
 

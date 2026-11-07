@@ -127,3 +127,11 @@ def test_dense_u_viol_c0_and_timing_distribution_in_table():
     )
     assert "u_viol_c0" in table
     assert "Full-step time distribution" in table and "p50" in table and "max" in table
+    assert "monotonic-clock recorded values" in table and "deviation 1" in table
+
+
+def test_table_notes_explain_boundary_keys_and_skip_placeholder():
+    table = render.render_summary_table(_report())
+    assert "per-cell sum" in table and "deviation 4" in table
+    placeholder = render.render_summary_table(None)
+    assert "per-cell sum" not in placeholder and "monotonic-clock" not in placeholder

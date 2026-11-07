@@ -243,9 +243,9 @@ R-restart-s8110과 S-u-s8110의 abort case가 같다(`842bdde9…`, index 3의 s
 | 호스트 동결 해제 | 충족 (오케스트레이터 선언 09:22 KST) |
 | 지웅 승인 | 대기 |
 | D21 | W3 권고: 지금은 안 함. 재개 조건은 지웅 결정 뒤 `docs/DECISIONS.md`에 기록. 첫 실패 경로는 미확인 |
-| 로그 보존 | 부하 중 Docker Desktop 로그 보존이 약 30 s~5 min이라 사후 열람으로 경로를 잡지 못한다. `error_chain` 또는 abort 직후 수집이 필요하다 |
-| abort | 관찰 .275 (W3: a=.28이면 벤치마크가 jobs 답을 낼 확률이 절반 정도) |
+| 로그 보존 | Docker Desktop 로그 보존이 약 30 s~5 min이라(파일럿 끝 단독 1스트림 구간 실측, jobs 2 이상은 미측정) 사후 열람으로 경로를 잡지 못한다. `error_chain` 또는 abort 직후 수집이 필요하다 |
+| abort | 관찰 .275 (W3: a=.28이면 1단계만 도는 벤치마크가 jobs 답을 낼 확률이 약 2/3(.655)) |
 
 ## 12. 노출 기록
 
-7.5.2·seed 8001~8003·8101–8110과 `s3wp` 묶음은 #273에서 노출 원장에 올렸다. 분석 산출물과 재현 스크립트는 증거 폴더 `analysis/`에 있고 manifest 밖이다. `analysis/` sha256 목록과 스크립트는 `experiments/preregistration/exp3-sizing-20261107/` 이 폴더에 수록했다.
+7.5.2·seed 8001~8003·8101–8110과 `s3wp` 묶음은 #273에서 노출 원장에 올렸다. 분석 산출물과 재현 스크립트는 증거 폴더 `analysis/`에 있고 manifest 밖이다. `analysis/` sha256 목록과 스크립트는 `experiments/preregistration/exp3-sizing-20261107/` 폴더에 수록했다.

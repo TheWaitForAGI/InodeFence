@@ -973,9 +973,10 @@ def build_multitarget_report(
     ``multiplicity``, ``primary_endpoint``, ``event_threshold``) is echoed verbatim -- this builder
     derives no family membership and runs no confirmatory test (that is the exact-log-rank step).
     Single-target input without registered contrasts uses :func:`build_report` (byte-identical to
-    the EXP-0 output); this path is for >1 target_id or a plan with contrasts.
+    the EXP-0 output); this path is for >1 target_id, a plan with contrasts or a deadline. A
+    deadline may exclude every seed: that is reported (zero blocks, untested), not an error.
     """
-    if not cells:
+    if not cells and deadline is None:
         raise ValueError("no cells to summarize")
     valid = [c for c in cells if isinstance(c, CellSummary)]
     invalid = [c for c in cells if isinstance(c, InvalidCell)]
@@ -1460,7 +1461,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         sources = [str(p) for p, _ in items]
         analysis_plan = _index_plan(args.index) if args.index is not None else None
-        if len({c.target_id for c in cells}) > 1 or _has_contrasts(analysis_plan):
+        # A registered deadline must report what it excluded, even for one target and no contrasts.
+        if (
+            len({c.target_id for c in cells}) > 1
+            or _has_contrasts(analysis_plan)
+            or deadline is not None
+        ):
             report = build_multitarget_report(
                 cells,
                 analysis_plan=analysis_plan,

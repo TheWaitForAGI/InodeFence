@@ -1045,6 +1045,44 @@ def test_a_deadline_excluded_seed_leaves_every_arm_and_cannot_come_back(tmp_path
     }
 
 
+def test_one_target_without_contrasts_still_reports_what_the_deadline_excluded(tmp_path, capsys):
+    """EXP-3's train file has one target and no contrasts; the exclusion must not be silent."""
+    causes = {"h-R-s2": "unattempted"}
+    report = _json_report(_write_index(tmp_path, deadline=_deadline({"h": [2]}, causes)), capsys)
+    assert report["classification"] == "exp3-multitarget-measurement"
+    assert report["deadline"]["number_excluded_cells"] == 2
+    assert report["deadline"]["excluded_seeds"] == {"h": [2]}
+    assert report["deadline"]["causes"] == causes
+    assert report["by_target"]["h"]["seeds"] == [1, 3]
+
+
+def test_a_deadline_with_no_exclusion_still_uses_the_report_that_names_it(tmp_path, capsys):
+    report = _json_report(_write_index(tmp_path, deadline=_deadline({}, passed=False)), capsys)
+    assert report["classification"] == "exp3-multitarget-measurement"
+    assert report["deadline"]["number_excluded_seeds"] == 0
+
+
+def test_a_deadline_may_exclude_every_seed_and_the_report_still_says_so(tmp_path, capsys):
+    index = _write_index(
+        tmp_path, analysis_plan=ONE_CONTRAST_PLAN, deadline=_deadline({"h": [1, 2, 3]})
+    )
+    report = _json_report(index, capsys)
+    contrast = report["confirmatory"]["contrasts"][0]
+    assert contrast["number_seed_blocks"] == 0 and contrast["permutation"]["p_value"] is None
+    assert contrast["reject_at_alpha"] is False
+    assert report["number_cells"] == 0 and report["by_target"] == {}
+    assert report["deadline"]["number_excluded_seeds"] == 3
+    assert report["deadline"]["number_excluded_cells"] == 6
+    capsys.readouterr()
+    assert main(["--index", str(index), "--format", "markdown"]) == 0
+    assert "excluded seeds 3 · excluded cells 6" in capsys.readouterr().out
+
+
+def test_no_cells_without_a_deadline_is_still_an_error():
+    with pytest.raises(ValueError, match="no cells to summarize"):
+        build_multitarget_report([], field_map=DEFAULT_MAP, sources=[])
+
+
 def test_a_deadline_exclusion_stays_in_its_own_target(tmp_path, capsys):
     targets = (("h", "holdout"), ("t", "train"))
     index = _write_index(

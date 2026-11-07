@@ -111,7 +111,7 @@ def test_multi_target_cell_order_follows_the_concurrency_benchmark_rule(
         ]
 
     design = bench.load_design(
-        Path(__file__).parents[1] / "experiments/configs/concurrency-scaling-v1.md"
+        Path(__file__).parents[1] / "experiments/configs/concurrency-scaling-v2.md"
     )
     measured = [(cell.seed, cell.arm.label) for cell in bench.planned_cells(design, "A")]
     assert measured == rotated(design.seeds, [arm.label for arm in design.arms])

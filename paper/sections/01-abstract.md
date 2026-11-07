@@ -28,7 +28,7 @@ oracle과 feedback에 넣지 않고 **filesystem-security-state**(추출 객체�
 트리거는 이 예산(budget 1500)에서 65 seed 중 1개로 **seed-rare**이며, 이것은 **blind 발견이 아니다**
 (기존 외부 객체에 하드링크하려면 그 이름이 필요하고 퍼저는 그것을 관찰로 얻는다; oracle·feedback에
 대상 경로·식별자·정답 seed·근접 보상을 넣지 않았고 EXTERNAL 필터는 region 기준
-target-agnostic이다; 외부 이름 자체는 어휘에 들어간다) *(구: "어휘·oracle에 … 하드코딩하지 않았고", 2026-11-06 범위 정정)*. rate 우위 판정(동일 budget powered matched A1 vs A3full)과 2·3번째 extractor의
+target-agnostic이다; 외부 이름 자체는 어휘에 들어간다) *(구: "어휘·oracle에 … 하드코딩하지 않았고", 2026-11-06 범위 정정)*. rate 우위 판정(동일 budget powered matched A1(generic 어휘, effect retention; 이름 철자 불가) vs A3full)과 2·3번째 extractor의
 powered 자력발견 판정은 사전등록 후 수행했고 **모두 효과 우위를 보이지 않았다**: rate는 매칭 Wilson
 CI가 겹쳐 **미분리**(검정력 부족)이고 신규 disjoint seed s101에서 이름 획득 조건의 자율 트리거 재현이 1건 추가됐으며(인과 강화 아님)
 *(구: "메커니즘이 재현돼 멀티-seed로 강화됐고", 2026-11-06 정정)*, 2번째(decompress 통합 0/28)·3번째(oras-go 0/1) extractor 자력발견은 각각 **사후 분석 기준 음성(사전등록 판정 아님)·약한

@@ -61,7 +61,7 @@ H-A와 '폐기·대체 기록'을 따른다 *(구: "RQ2/RQ3", v1 번호, 2026-11
 - **M3 자력발견 study arm**([M3 요약](../../experiments/summaries/node-self-discovery-mechanism-v1.md) 정의):
   `A3full` = state-aware escape-hardlink(`uniform-generic-m1-state-aware-escape-hardlink-v1`),
   `A3blind` = 동일하되 관찰 이름에서 EXTERNAL region 제외(어휘 제거 대조; 코드 이름 identity-blind),
-  `A1` = 무작위 바닥(token-clean, state-aware 외부 주소지정 없음). search 정책은
+  `A1` = generic 어휘, effect retention; 이름 철자 불가(token-clean, state-aware 외부 주소지정 없음). search 정책은
   `effect-feedback-v2-or-violation-v1-boundary-attempt-v1-adaptive-mutation-v1`.
 - **item-3 단일경로 A/B/C/D arm**(Ledger 정의): `A` = B0/legacy(무작위), `B` = B0/M1(구조),
   `C` = B3/M1(identity-state feedback), `D` = coverage-guided/M1. 이들은 한 `run_search_campaign`
@@ -97,7 +97,7 @@ retention 효과만 분리). adaptive 스케줄러를 얹은 **S-a**는 주 비�
 
 | arm | retention | operator 선택 | 뜻 | policy ID |
 | --- | --- | --- | --- | --- |
-| **R** | 없음 | uniform | 무작위 탐색(바닥) | `unretained-walk-v1-uniform-mutation-v1` |
+| **R** | 없음 | uniform | 무작위 탐색 | `unretained-walk-v1-uniform-mutation-v1` |
 | **D** | 구조 커버리지(`SearchPolicy.D` = target-agnostic extraction 구조 키) | uniform | 커버리지 피드백 대조 | `structure-coverage-v1-uniform-mutation-v1` |
 | **S-u** (주) | identity/effect/boundary-attempt 상태 키 | uniform | InodeFence retention 피드백 | `effect-feedback-v2-or-violation-v1-boundary-attempt-v1-uniform-mutation-v1` |
 | S-a (선택, ablation) | S-u와 동일 | adaptive | 스케줄러 효과 분리용, 주 비교 아님 | `effect-feedback-v2-or-violation-v1-boundary-attempt-v1-adaptive-mutation-v1` |

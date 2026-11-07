@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta, timezone
+from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
@@ -288,7 +290,8 @@ def _fake_runner(behaviour: dict[str, Any]):
         paths["log"].write_text(
             "context=default engine=29.8.0 mode=demo-historical\n", encoding="utf-8"
         )
-        return CellResult(cell, 0, 1.0, paths["report"], True, paths["log"])
+        returncode = 1 if cell.run_id in behaviour.get("abort", ()) else 0
+        return CellResult(cell, returncode, 1.0, paths["report"], True, paths["log"])
 
     run.calls = calls  # type: ignore[attr-defined]
     return run
@@ -840,6 +843,27 @@ def test_watchdog_terminates_an_overrunning_cell(tmp_path: Path, prereg_file: Pa
     assert result.returncode == WATCHDOG_RETURNCODE and events[:2] == ["wait:1.5", "terminate"]
     assert "[watchdog] terminated after 2 s" in (tmp_path / f"{cell.run_id}.log").read_text()
     assert not result.evidence_exists
+    assert result.watchdog_fired is True
+
+
+def test_watchdog_flag_stays_false_for_any_exit_the_watchdog_did_not_cause(
+    prereg_file: Path, tmp_path: Path
+) -> None:
+    """Exit code -15 alone is an outside SIGTERM; only the timeout branch sets the flag."""
+
+    class Terminated:
+        def wait(self, timeout=None):
+            return WATCHDOG_RETURNCODE
+
+    result = run_cell_with_watchdog(
+        _plan(prereg_file).cells()[0],
+        tmp_path,
+        {},
+        "bash",
+        limit_seconds=1.5,
+        popen=lambda *a, **k: Terminated(),
+    )
+    assert result.returncode == WATCHDOG_RETURNCODE and result.watchdog_fired is False
 
 
 def test_disk_pause_waits_until_below_threshold(tmp_path: Path) -> None:
@@ -1267,14 +1291,13 @@ def test_an_integrity_problem_keeps_outcomes_hidden_after_the_deadline(
 def test_no_cell_starts_after_the_deadline_and_records_stay_in_place(
     tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch
 ) -> None:
-    victim = "node-tar-7.5.2-D-s9002"
+    aborted, unfinished = "node-tar-7.5.2-D-s9002", "node-tar-7.9.9-R-s9001"
     out, args, clock = _deadline_setup(tmp_path, monkeypatch, BEFORE)
-    behaviour = {**TARGET_IMAGES, "abort": {victim}}
+    behaviour = {**TARGET_IMAGES, "abort": {aborted}}
     monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", _fake_runner(behaviour))
     assert main(args) == 1
-    report = cell_paths(next(c for c in _deadline_plan(args).cells() if c.run_id == victim), out)[
-        "report"
-    ]
+    _forget_cell(out, unfinished, _deadline_plan(args))
+    report = _cell(args, aborted, out)["report"]
     before = report.read_bytes()
 
     def no_warmup(*_args: object, **_kwargs: object) -> int:
@@ -1288,10 +1311,328 @@ def test_no_cell_starts_after_the_deadline_and_records_stay_in_place(
     assert late_runner.calls == []  # type: ignore[attr-defined]
     assert report.read_bytes() == before  # the abort record was not moved or replaced
     assert not (out / "attempts").exists()
-    assert json.loads((out / "matrix.json").read_text())["deadline_not_started"] == [victim]
+    assert json.loads((out / "matrix.json").read_text())["deadline_not_started"] == [unfinished]
     deadline = _index(out)["deadline"]
-    assert deadline["causes"] == {victim: "abort-pending"}
-    assert deadline["excluded_seeds"] == {"node-tar-7.5.2": [9002]}
+    # An abort that ended in time is finished: only the cell with no record excludes its seed.
+    assert deadline["causes"] == {unfinished: "unattempted"}
+    assert deadline["excluded_seeds"] == {"node-tar-7.9.9": [9001]}
+
+
+def _cell(args: list[str], run_id: str, out: Path) -> dict[str, Path]:
+    cell = next(c for c in _deadline_plan(args).cells() if c.run_id == run_id)
+    return cell_paths(cell, out)
+
+
+def _result_lines(out: Path) -> list[dict[str, Any]]:
+    path = out / "cell-results.jsonl"
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+
+def _rewrite_results(out: Path, lines: list[dict[str, Any]]) -> None:
+    (out / "cell-results.jsonl").write_text(
+        "".join(json.dumps(line, sort_keys=True) + "\n" for line in lines), encoding="utf-8"
+    )
+
+
+def test_deadline_exclusion_is_the_same_across_summaries_as_a_late_cell_ends(
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch
+) -> None:
+    """Restarts and repeated summaries read the exit record, so the excluded set cannot move."""
+    victim = "node-tar-7.5.2-D-s9002"
+    out, args, clock = _deadline_setup(tmp_path, monkeypatch, BEFORE)
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", _fake_runner(TARGET_IMAGES))
+    assert main(args) == 0
+    lines = _result_lines(out)
+    end = next(row for row in lines if row["run_id"] == victim and row["event"] == "end")
+    _rewrite_results(out, [row for row in lines if row is not end])  # still running at 12:00
+    clock["now"] = AFTER
+    assert main([*args, "--summarize-only"]) == 1
+    first = _index(out)["deadline"]
+    assert first["causes"] == {victim: "not-ended-by-deadline"}
+    assert first["excluded_seeds"] == {"node-tar-7.5.2": [9002]}
+    end["clocks"]["realtime"] = AFTER.timestamp()  # it ends between the two summaries
+    _rewrite_results(out, [*_result_lines(out), end])
+    assert main([*args, "--summarize-only"]) == 0
+    second = _index(out)["deadline"]
+    assert second["causes"] == {victim: "ended-after-deadline"}
+    assert second["excluded_seeds"] == first["excluded_seeds"]
+
+
+# ---- exit record and record checks of the targets form (D041 item 3) -------------------------
+
+VICTIM = "node-tar-7.5.2-D-s9001"
+
+
+def _runner_with(special: dict[str, Any]) -> Any:
+    """The fake runner, with some cells replaced by a function that post-processes their files."""
+    inner = _fake_runner(TARGET_IMAGES)
+
+    def run(cell: Any, output: Path, env: dict[str, str], bash: str, **limits: Any) -> Any:
+        result = inner(cell, output, env, bash, **limits)
+        action = special.get(cell.run_id)
+        return result if action is None else action(cell, output, result)
+
+    run.calls = inner.calls  # type: ignore[attr-defined]
+    return run
+
+
+def _dies_without_a_record(cell: Any, output: Path, result: Any) -> Any:
+    paths = cell_paths(cell, output)
+    paths["report"].unlink()
+    paths["steps_jsonl"].unlink()
+    return replace(result, returncode=1, evidence_exists=False)
+
+
+def _killed(keep: int, *, torn: int = 0, flag: bool = True) -> Any:
+    """Terminated with no report: ``keep`` whole step lines, then ``torn`` cut ones."""
+
+    def action(cell: Any, output: Path, result: Any) -> Any:
+        paths = cell_paths(cell, output)
+        lines = paths["steps_jsonl"].read_text(encoding="utf-8").splitlines()
+        cut = [lines[keep + position][:20] for position in range(torn)]
+        paths["steps_jsonl"].write_text("\n".join([*lines[:keep], *cut]) + "\n", encoding="utf-8")
+        paths["report"].unlink()
+        return replace(
+            result, returncode=WATCHDOG_RETURNCODE, watchdog_fired=flag, evidence_exists=False
+        )
+
+    return action
+
+
+def _state(out: Path, run_id: str = VICTIM) -> str:
+    return _index(out)["interim"]["cell_states"][run_id]
+
+
+def _digest(*paths: Path) -> list[str]:
+    return [sha256(path.read_bytes()).hexdigest() for path in paths]
+
+
+def test_each_attempt_writes_start_and_end_with_three_clocks_and_no_outcome(
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch
+) -> None:
+    out, args, _clock = _deadline_setup(tmp_path, monkeypatch, BEFORE)
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", _fake_runner(TARGET_IMAGES))
+    assert main(args) == 0
+    lines = _result_lines(out)
+    cells = _deadline_plan(args).cells()
+    assert len(lines) == 2 * len(cells)
+    clocks = {"realtime", "monotonic", "monotonic_raw"}
+    for line in lines:
+        assert set(line["clocks"]) == clocks and line["attempt"] == 1
+        common = {"event", "run_id", "attempt", "clocks"}
+        extra = {"returncode", "watchdog_fired", "wall_seconds"}
+        assert set(line) == (common | extra if line["event"] == "end" else common)
+    assert all(row["watchdog_fired"] is False for row in lines if row["event"] == "end")
+    assert all(row["returncode"] == 0 for row in lines if row["event"] == "end")
+
+
+def test_single_key_form_keeps_its_records_and_states(
+    exp3_file: Path, tmp_path: Path, clean_engine: None, monkeypatch
+) -> None:
+    out = tmp_path / "exp3"
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", _fake_runner({}))
+    monkeypatch.setattr(run_exp0, "_warmup", lambda *a, **k: 0)
+    assert main(_interim_args(exp3_file, out, tmp_path)) == 0
+    assert not (out / "cell-results.jsonl").exists()
+    index = _index(out)
+    assert "cell_completeness" not in index
+    assert set(index["interim"]["states"]) == set(run_exp0.CELL_STATES)
+
+
+def test_a_record_is_final_across_two_restarts(
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch
+) -> None:
+    aborted, inconsistent = VICTIM, "node-tar-7.5.2-R-s9002"
+    out, args, _clock = _deadline_setup(tmp_path, monkeypatch, BEFORE)
+    behaviour = {**TARGET_IMAGES, "abort": {aborted}}
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", _fake_runner(behaviour))
+    assert main(args) == 1
+    paths = _cell(args, inconsistent, out)
+    paths["steps_jsonl"].write_text("not json\n", encoding="utf-8")
+    files = [
+        *(_cell(args, aborted, out)[key] for key in ("report", "steps_jsonl")),
+        paths["report"],
+        paths["steps_jsonl"],
+    ]
+    before, lines = _digest(*files), _result_lines(out)
+    restart = _fake_runner(TARGET_IMAGES)
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", restart)
+    for _ in range(2):
+        assert main(args) == 1
+        assert restart.calls == []  # type: ignore[attr-defined]
+        assert _digest(*files) == before and _result_lines(out) == lines
+        assert not (out / "attempts").exists()
+    assert _state(out, aborted) == "abort-final"
+    assert _state(out, inconsistent) == "record-inconsistent"
+
+
+def test_a_cell_with_no_record_runs_once_more_and_then_is_no_record(
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch
+) -> None:
+    out, args, _clock = _deadline_setup(tmp_path, monkeypatch, BEFORE)
+    runner = _runner_with({VICTIM: _dies_without_a_record})
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", runner)
+    assert main(args) == 1
+    assert _state(out) == "unattempted"
+    assert main(args) == 1
+    assert _state(out) == "no-record"
+    assert main(args) == 1  # no third start
+    assert runner.calls.count(VICTIM) == 2
+    starts = [r for r in _result_lines(out) if r["run_id"] == VICTIM and r["event"] == "start"]
+    assert [row["attempt"] for row in starts] == [1, 2]
+    assert (
+        out / "attempts" / f"{VICTIM}.attempt1.log"
+    ).is_file()  # the first attempt's file is kept
+    summary = _index(out)["cell_completeness"]
+    assert summary["no_record"] == 1 and summary["aborts"] == 1
+    entry = next(c for c in _index(out)["cells"] if c["run_id"] == VICTIM)
+    assert entry["invalid"] is True  # T_first: leaves the contrast; counted as an abort
+
+
+def test_a_start_without_an_end_counts_as_an_attempt(
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch
+) -> None:
+    """A launcher that keeps dying before the cell writes anything cannot retry for ever."""
+    out, args, _clock = _deadline_setup(tmp_path, monkeypatch, BEFORE)
+    out.mkdir()
+    _rewrite_results(
+        out, [{"event": "start", "run_id": VICTIM, "attempt": n, "clocks": {}} for n in (1, 2)]
+    )
+    runner = _fake_runner(TARGET_IMAGES)
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", runner)
+    assert main(args) == 1
+    assert VICTIM not in runner.calls  # type: ignore[attr-defined]
+    assert _state(out) == "no-record"
+
+
+def test_a_record_without_an_exit_line_is_inconsistent_and_not_rerun(
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch
+) -> None:
+    out, args, _clock = _deadline_setup(tmp_path, monkeypatch, BEFORE)
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", _fake_runner(TARGET_IMAGES))
+    assert main(args) == 0
+    lines = _result_lines(out)
+    _rewrite_results(
+        out, [row for row in lines if not (row["run_id"] == VICTIM and row["event"] == "end")]
+    )
+    restart = _fake_runner(TARGET_IMAGES)
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", restart)
+    assert main(args) == 1
+    assert restart.calls == []  # type: ignore[attr-defined]
+    assert _state(out) == "record-inconsistent"
+    assert _index(out)["cell_completeness"]["inconsistent_checks"] == {VICTIM: ["no-exit-record"]}
+
+
+def test_a_watchdog_cell_is_an_abort_and_its_cut_last_line_is_of_unknown_outcome(
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch
+) -> None:
+    out, args, _clock = _deadline_setup(tmp_path, monkeypatch, BEFORE)
+    runner = _runner_with({VICTIM: _killed(2, torn=1)})
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", runner)
+    assert main(args) == 1
+    assert _state(out) == "abort-final"
+    index = _index(out)
+    summary = index["cell_completeness"]
+    assert summary["watchdog"] == 1 and summary["aborts"] == 1
+    assert summary["unknown_outcome_steps"] == 1
+    entry = next(c for c in index["cells"] if c["run_id"] == VICTIM)
+    assert entry["invalid"] is False and entry["aborted"] is True
+    record = json.loads((out / "summaries" / f"{VICTIM}.summary.json").read_text())
+    assert record["unknown_outcome_steps"] == 1
+    assert record["summary"]["executions_completed"] == 2  # the cut line's step is not counted
+    assert "watchdog" in record["summary"]["abort_reason"]
+    assert main(args) == 1
+    assert runner.calls.count(VICTIM) == 1  # final: no retry
+
+
+def test_a_whole_last_line_in_a_watchdog_cell_is_kept(
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch
+) -> None:
+    out, args, _clock = _deadline_setup(tmp_path, monkeypatch, BEFORE)
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", _runner_with({VICTIM: _killed(3)}))
+    assert main(args) == 1
+    assert _state(out) == "abort-final"
+    assert _index(out)["cell_completeness"]["unknown_outcome_steps"] == 0
+    record = json.loads((out / "summaries" / f"{VICTIM}.summary.json").read_text())
+    assert record["summary"]["executions_completed"] == 3
+
+
+def test_two_cut_lines_in_a_watchdog_cell_are_inconsistent(
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch
+) -> None:
+    out, args, _clock = _deadline_setup(tmp_path, monkeypatch, BEFORE)
+    monkeypatch.setattr(
+        run_exp0, "run_cell_with_watchdog", _runner_with({VICTIM: _killed(2, torn=2)})
+    )
+    assert main(args) == 1
+    assert _state(out) == "record-inconsistent"
+
+
+def test_a_watchdog_cell_with_no_whole_line_has_no_record_and_keeps_its_file(
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch
+) -> None:
+    out, args, _clock = _deadline_setup(tmp_path, monkeypatch, BEFORE)
+    runner = _runner_with({VICTIM: _killed(0, torn=1)})
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", runner)
+    assert main(args) == 1
+    assert _state(out) == "unattempted"
+    original = _cell(args, VICTIM, out)["steps_jsonl"].read_bytes()
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", _fake_runner(TARGET_IMAGES))
+    assert main(args) == 0  # the retry completes
+    assert _state(out) == "complete"
+    assert (out / "attempts" / f"{VICTIM}.attempt1.steps.jsonl").read_bytes() == original
+
+
+def test_an_outside_sigterm_is_inconsistent_not_a_watchdog_abort(
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch
+) -> None:
+    """Exit code -15 with the flag false and no report: a record, but one that does not hold."""
+    out, args, _clock = _deadline_setup(tmp_path, monkeypatch, BEFORE)
+    runner = _runner_with({VICTIM: _killed(2, flag=False)})
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", runner)
+    assert main(args) == 1
+    assert _state(out) == "record-inconsistent"
+    index = _index(out)
+    assert index["cell_completeness"]["watchdog"] == 0
+    assert index["cell_completeness"]["inconsistent_checks"] == {
+        VICTIM: ["no-report-and-no-watchdog"]
+    }
+    entry = next(c for c in index["cells"] if c["run_id"] == VICTIM)
+    assert entry["invalid"] is True
+    assert main(args) == 1
+    assert runner.calls.count(VICTIM) == 1
+
+
+def test_an_inconsistent_record_does_not_hide_outcomes_and_counts_as_a_failure(
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch
+) -> None:
+    out, args, _clock = _deadline_setup(tmp_path, monkeypatch, BEFORE)
+    behaviour = {**TARGET_IMAGES, "abort": {"node-tar-7.5.2-R-s9001"}}
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", _fake_runner(behaviour))
+    assert main(args) == 1
+    _cell(args, VICTIM, out)["steps_jsonl"].write_text("not json\n", encoding="utf-8")
+    assert main([*args, "--summarize-only"]) == 1
+    index = _index(out)
+    assert index["outcomes_redacted"] is False and index["interim"]["integrity_problems"] == []
+    summary = index["cell_completeness"]
+    cells = len(_deadline_plan(args).cells())
+    assert (summary["aborts"], summary["record_inconsistent"]) == (1, 1)
+    assert summary["aborts_plus_inconsistent"] == 2
+    assert summary["infrastructure_failure_rate"] == pytest.approx(2 / cells)
+    record = json.loads((out / "summaries" / f"{VICTIM}.summary.json").read_text())
+    assert record["config_nonconformant"] is True
+    assert "record-inconsistent" in record["invalid_reason"]
+
+
+def test_finalize_abort_is_refused_in_the_targets_form(
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch
+) -> None:
+    _out, args, _clock = _deadline_setup(tmp_path, monkeypatch, BEFORE)
+    behaviour = {**TARGET_IMAGES, "abort": {VICTIM}}
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", _fake_runner(behaviour))
+    assert main(args) == 1
+    with pytest.raises(SystemExit, match="refused for a targets"):
+        main([*args, "--finalize-abort", VICTIM, "--summarize-only"])
 
 
 def test_a_cell_running_across_the_deadline_finishes_and_excludes_its_seed(

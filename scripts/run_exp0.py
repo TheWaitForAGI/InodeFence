@@ -29,7 +29,8 @@ Scale controls (all from the file; the launcher only enforces them):
   is refused when it or the wiring is absent).
 * ``jobs_max``: upper bound on ``--jobs``.
 * ``campaign_watchdog_seconds``: a cell running longer is terminated and counted as
-  an abort (``watchdog``); its completed steps stay on disk and it reruns next time.
+  an abort (``watchdog``); its completed steps stay on disk. In the single-key form it
+  reruns next time; in the ``targets.<id>`` form a record is final (see below).
 * ``disk_pause_fraction``: a new cell waits while the output filesystem is at least
   this full (lane 4 ``should_pause_for_disk``), logged in ``matrix.json``.
 * ``interim_analysis = forbidden``: the index carries completion state only (no
@@ -53,6 +54,11 @@ Scale controls (all from the file; the launcher only enforces them):
   cell starts after it, a running cell finishes, and only the clock lifts the
   unfinished-cell reasons for redaction. Every cell of a seed with a cell unfinished at
   the deadline is excluded; the index ``deadline`` record names the seeds and causes.
+* ``targets.<id>`` form: every attempt appends ``start`` and ``end`` lines to
+  ``cell-results.jsonl`` (exit code, ``watchdog_fired``, clocks, no outcome). A cell with
+  a record is final and never re-run; the record is checked by
+  ``evaluation.cell_completeness``. Only a cell with no record runs again, once, on the
+  next invocation, its files kept under ``attempts/``. ``--finalize-abort`` is refused.
 
 Idempotent: a rerun skips cells whose report is complete and conformant (budget
 reached, no abort, planned config, preregistered image id and sentinel set) and
@@ -82,7 +88,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
-from time import monotonic, sleep
+from threading import Lock
+from time import CLOCK_MONOTONIC, CLOCK_MONOTONIC_RAW, clock_gettime, monotonic, sleep
 from typing import Any
 
 from scripts.run_g1_smoke import (
@@ -102,6 +109,19 @@ from scripts.run_parallel_native import (
     cell_env,
 )
 
+from inodefence.evaluation.cell_completeness import (
+    ABORT_FINAL,
+    CELL_RESULTS_FILE,
+    COMPLETE,
+    NO_RECORD,
+    RECORD_INCONSISTENT,
+    UNATTEMPTED,
+    CellCheck,
+    classify_cell,
+    infrastructure_summary,
+    read_cell_results,
+)
+from inodefence.evaluation.cell_completeness import CELL_STATES as TARGET_CELL_STATES
 from inodefence.evaluation.rds import VOCABULARY_MUTATION_POLICY, RdsArm, RdsCellConfig
 from inodefence.evaluation.rds_preregistration import (
     CellRequest,
@@ -131,7 +151,7 @@ INTERIM_RULE = (
 ABORT_DECISIONS_FILE = "abort-decisions.json"
 VERIFICATION_FILE = "manifest-verification.json"
 CELL_STATES = ("complete", "abort-final", "abort-pending", "unattempted")
-DEADLINE_UNFINISHED_STATES = ("abort-pending", "unattempted")
+_CELL_RESULTS_LOCK = Lock()
 WORKER_POOL_MODE = "worker-pool"
 # Fallbacks when lane 4's module is not importable (its constants are preferred).
 DEFAULT_WATCHDOG_SECONDS = 2 * 60 * 60.0
@@ -523,13 +543,66 @@ def deadline_passed(plan: Exp0Plan) -> bool:
     return deadline is not None and _now() > deadline
 
 
+def _clock_stamp() -> dict[str, float]:
+    """All three clocks: this host's monotonic clock is not real time; its wall clock steps back."""
+    return {
+        "realtime": _now().timestamp(),
+        "monotonic": clock_gettime(CLOCK_MONOTONIC),
+        "monotonic_raw": clock_gettime(CLOCK_MONOTONIC_RAW),
+    }
+
+
+def append_cell_result(output: Path, record: Mapping[str, Any]) -> None:
+    """One line, written at once: the record must outlive a launcher that dies. No outcome in it."""
+    with _CELL_RESULTS_LOCK, (output / CELL_RESULTS_FILE).open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(record, sort_keys=True) + "\n")
+
+
+def target_cell_checks(plan: Exp0Plan, output: Path) -> dict[str, CellCheck]:
+    """Record checks of every planned cell of a ``targets.<id>`` registration."""
+    attempts = read_cell_results(output / CELL_RESULTS_FILE)
+    checks: dict[str, CellCheck] = {}
+    for cell in plan.cells():
+        paths = cell_paths(cell, output)
+        checks[cell.run_id] = classify_cell(
+            report_path=paths["report"],
+            steps_path=paths["steps_jsonl"],
+            budget=cell.budget,
+            attempts=attempts.get(cell.run_id, ()),
+            complete_and_conformant=cell_is_complete(plan, cell, output),
+        )
+    return checks
+
+
+def deadline_late_cells(plan: Exp0Plan, output: Path) -> dict[str, str]:
+    """Cells whose last attempt did not end by the deadline, from the exit record on disk.
+
+    Reading the file keeps the answer the same across restarts and repeated summaries: a cell still
+    running at one summary and ended at the next is late both times.
+    """
+    deadline = plan.preregistration.execution_deadline
+    assert deadline is not None
+    late: dict[str, str] = {}
+    for run_id, attempts in read_cell_results(output / CELL_RESULTS_FILE).items():
+        ended = attempts[-1].ended
+        clocks = ended.get("clocks") if ended is not None else None
+        ended_at = clocks.get("realtime") if isinstance(clocks, Mapping) else None
+        if not isinstance(ended_at, int | float):
+            late[run_id] = "not-ended-by-deadline"
+        elif ended_at > deadline.timestamp():
+            late[run_id] = "ended-after-deadline"
+    return late
+
+
 def deadline_record(
-    plan: Exp0Plan, states: Mapping[str, str], ended_late: Collection[str]
+    plan: Exp0Plan, states: Mapping[str, str], late: Mapping[str, str]
 ) -> dict[str, Any]:
     """What the registered deadline excludes: every cell of a seed with one unfinished cell (D041).
 
-    The inputs are the clock and cell states, never an outcome, so the exclusion cannot follow the
-    results. Blocks are per target, as the contrasts are. Before the deadline nothing is excluded.
+    The inputs are the clock, the exit record and cell states, never an outcome, so the exclusion
+    cannot follow the results. Blocks are per target, as the contrasts are. An abort, a no-record
+    cell or an inconsistent record that ended in time is finished, and its seed stays. Before the
+    deadline nothing is excluded.
     """
     deadline = plan.preregistration.execution_deadline
     assert deadline is not None
@@ -537,9 +610,9 @@ def deadline_record(
     causes: dict[str, str] = {}
     excluded: dict[str, set[int]] = {}
     for cell in plan.cells() if passed else ():
-        cause = states[cell.run_id] if states[cell.run_id] in DEADLINE_UNFINISHED_STATES else None
-        if cell.run_id in ended_late:
-            cause = "ended-after-deadline"
+        cause = late.get(cell.run_id)
+        if cause is None and states[cell.run_id] == UNATTEMPTED:
+            cause = UNATTEMPTED
         if cause is not None:
             causes[cell.run_id] = cause
             # A deadline requires the targets form, so every cell is a TargetCell.
@@ -592,6 +665,11 @@ def cell_state(
 
 def record_abort_final(plan: Exp0Plan, output: Path, run_id: str, note: str | None) -> None:
     """Mark a cell's abort record final (a result, not a retry candidate); fail-closed."""
+    if plan.multi_target:
+        raise SystemExit(
+            f"--finalize-abort {run_id}: refused for a targets.<id> registration, whose records "
+            "are classified from the exit record and never marked by hand"
+        )
     cells = {cell.run_id: cell for cell in plan.cells()}
     if run_id not in cells:
         raise SystemExit(f"--finalize-abort {run_id}: not a planned cell")
@@ -641,7 +719,8 @@ def evidence_integrity(plan: Exp0Plan, output: Path, states: Mapping[str, str]) 
     problems: list[str] = []
     for cell in plan.cells():
         state = states.get(cell.run_id, "unattempted")
-        if state == "unattempted":
+        # An inconsistent record is reported and leaves the analysis; it does not hide outcomes.
+        if state in ("unattempted", RECORD_INCONSISTENT, NO_RECORD):
             continue
         paths = cell_paths(cell, output)
         if not paths["steps_jsonl"].is_file():
@@ -947,6 +1026,7 @@ def run_cell_with_watchdog(
     evidence = output / f"{cell.evidence_basename}.json"
     log = output / f"{cell.run_id}.log"
     started = monotonic()
+    watchdog_fired = False
     with log.open("w", encoding="utf-8") as stream:
         process = popen(
             [bash, str(SCRIPT), cell.mode],
@@ -958,6 +1038,7 @@ def run_cell_with_watchdog(
         try:
             returncode = process.wait(timeout=limit_seconds)
         except subprocess.TimeoutExpired:
+            watchdog_fired = True
             process.terminate()
             try:
                 process.wait(timeout=30)
@@ -973,6 +1054,7 @@ def run_cell_with_watchdog(
         evidence=evidence,
         evidence_exists=evidence.is_file(),
         log=log,
+        watchdog_fired=watchdog_fired,
     )
 
 
@@ -1032,7 +1114,23 @@ def _print_dry_run(
 
 
 def _pending_cells(plan: Exp0Plan, output: Path) -> tuple[list[Cell], list[str], list[str]]:
-    """Cells to (re-)run, complete cells skipped, final aborts skipped (never re-run)."""
+    """Cells to (re-)run, complete cells skipped, final aborts skipped (never re-run).
+
+    In the ``targets.<id>`` form a cell runs again only when it has no record and attempts left:
+    a record is final, so a restart never replaces one.
+    """
+    if plan.multi_target:
+        checks = target_cell_checks(plan, output)
+        cells = plan.cells()
+        return (
+            [cell for cell in cells if checks[cell.run_id].state == UNATTEMPTED],
+            [cell.run_id for cell in cells if checks[cell.run_id].state == COMPLETE],
+            [
+                cell.run_id
+                for cell in cells
+                if checks[cell.run_id].state in (ABORT_FINAL, RECORD_INCONSISTENT, NO_RECORD)
+            ],
+        )
     decisions = load_abort_decisions(output)
     terminated = recorded_terminations(output)
     pending: list[Cell] = []
@@ -1194,16 +1292,30 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  - {item}", file=sys.stderr)
         return 2
 
-    ended_late: set[str] = set()
-
     def finish(results: list[CellResult] | None) -> int:
         terminated = recorded_terminations(output) | {r.cell.run_id for r in results or ()}
         decisions = load_abort_decisions(output)
-        states = {
-            cell.run_id: cell_state(plan, cell, output, decisions, terminated)
-            for cell in plan.cells()
+        checks = target_cell_checks(plan, output) if plan.multi_target else None
+        states = (
+            {run_id: check.state for run_id, check in checks.items()}
+            if checks is not None
+            else {
+                cell.run_id: cell_state(plan, cell, output, decisions, terminated)
+                for cell in plan.cells()
+            }
+        )
+        known_states = TARGET_CELL_STATES if checks is not None else CELL_STATES
+        counts = {state: sum(1 for s in states.values() if s == state) for state in known_states}
+        invalid_cells = {
+            run_id: f"{check.state}: {', '.join(check.problems) or 'no record after the retry'}"
+            for run_id, check in (checks or {}).items()
+            if check.state in (RECORD_INCONSISTENT, NO_RECORD)
         }
-        counts = {state: sum(1 for s in states.values() if s == state) for state in CELL_STATES}
+        watchdog_cells = {
+            run_id
+            for run_id, check in (checks or {}).items()
+            if check.watchdog and check.state == ABORT_FINAL
+        }
         pending_now = sum(1 for s in states.values() if s != "complete")
         problems = evidence_integrity(plan, output, states)
         reasons: list[str] = []
@@ -1212,7 +1324,7 @@ def main(argv: list[str] | None = None) -> int:
         passed = deadline_passed(plan)
         if counts["unattempted"] and not passed:
             reasons.append(f"{counts['unattempted']} cell(s) unattempted (no record on disk)")
-        if counts["abort-pending"] and not passed:
+        if counts.get("abort-pending") and not passed:
             reasons.append(
                 f"{counts['abort-pending']} abort record(s) not final "
                 "(classify with --finalize-abort or re-run)"
@@ -1243,8 +1355,17 @@ def main(argv: list[str] | None = None) -> int:
                     "targets": [target_record(target) for target in plan.targets()],
                     "analysis_plan": plan.analysis_plan(),
                     **(
-                        {"deadline": deadline_record(plan, states, ended_late)}
+                        {
+                            "deadline": deadline_record(
+                                plan, states, deadline_late_cells(plan, output)
+                            )
+                        }
                         if prereg.execution_deadline is not None
+                        else {}
+                    ),
+                    **(
+                        {"cell_completeness": infrastructure_summary(checks)}
+                        if checks is not None
                         else {}
                     ),
                     "interim": {
@@ -1260,6 +1381,8 @@ def main(argv: list[str] | None = None) -> int:
                     },
                 },
                 redact_outcomes=redact,
+                invalid_cells=invalid_cells,
+                watchdog_cells=watchdog_cells,
             )
 
         def update_registration(status: Mapping[str, Any]) -> None:
@@ -1386,6 +1509,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             return code
     disk_pauses: dict[str, int] = {}
+    past_attempts = read_cell_results(output / CELL_RESULTS_FILE)
 
     def run_one(cell: Cell) -> CellResult | None:
         pauses = wait_for_disk(output, plan.disk_pause_fraction)
@@ -1394,6 +1518,17 @@ def main(argv: list[str] | None = None) -> int:
         if deadline_passed(plan):
             not_started.append(cell.run_id)
             return None
+        attempt = len(past_attempts.get(cell.run_id, ())) + 1
+        if plan.multi_target:
+            append_cell_result(
+                output,
+                {
+                    "event": "start",
+                    "run_id": cell.run_id,
+                    "attempt": attempt,
+                    "clocks": _clock_stamp(),
+                },
+            )
         result = run_cell_with_watchdog(
             cell,
             output,
@@ -1402,8 +1537,19 @@ def main(argv: list[str] | None = None) -> int:
             limit_seconds=plan.watchdog_seconds,
         )
         # A running cell is never killed for the deadline: its record is kept, its seed excluded.
-        if deadline_passed(plan):
-            ended_late.add(cell.run_id)
+        if plan.multi_target:
+            append_cell_result(
+                output,
+                {
+                    "event": "end",
+                    "run_id": cell.run_id,
+                    "attempt": attempt,
+                    "clocks": _clock_stamp(),
+                    "returncode": result.returncode,
+                    "watchdog_fired": result.watchdog_fired,
+                    "wall_seconds": round(result.wall_seconds, 3),
+                },
+            )
         return result
 
     results: list[CellResult] = []

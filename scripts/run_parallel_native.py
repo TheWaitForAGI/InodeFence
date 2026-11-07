@@ -210,6 +210,8 @@ class CellResult:
     evidence: Path
     evidence_exists: bool
     log: Path
+    # Set only where a launcher's watchdog ended the cell. Exit code -15 is any SIGTERM.
+    watchdog_fired: bool = False
 
 
 def _run_cell(cell: Cell, output_dir: Path, base_env: dict[str, str], bash: str) -> CellResult:

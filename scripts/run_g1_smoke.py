@@ -45,7 +45,7 @@ import platform
 import re
 import shutil
 import sys
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -84,6 +84,7 @@ MAIN_ARMS = (RdsArm.R, RdsArm.D, RdsArm.S_U)
 SMOKE_MIN_CELLS = 10
 SMOKE_MAX_ABORTS = 1
 SENTINEL_GENERATOR_ID = "sentinel-names/seed-random-v1"
+WATCHDOG_ABORT_REASON = "campaign watchdog terminated the cell"
 EXECUTION_MODES = ("per-case-container", "worker-pool")
 # The controller demo path runs one disposable target container per case.
 DEFAULT_EXECUTION_MODE = "per-case-container"
@@ -281,8 +282,14 @@ def summarize_output(
     post_check: PostCheck | None = None,
     extra: Mapping[str, Any] | None = None,
     redact_outcomes: bool = False,
+    invalid_cells: Mapping[str, str] | None = None,
+    watchdog_cells: Collection[str] = (),
 ) -> dict[str, Any]:
     """(Re)build ``summaries/`` from the cell files in ``output``; returns the index.
+
+    ``invalid_cells`` (run id -> reason) and ``watchdog_cells`` come from a launcher that has
+    an exit record: the first are not read and take the invalid bucket; the second are aborts
+    named as such, and one cut last line is dropped and counted as a step of unknown outcome.
 
     A cell whose report records a different config than planned (or fails
     ``post_check``) is not folded into complete/abort: it is the third bucket,
@@ -328,7 +335,12 @@ def summarize_output(
             **cell_target(cell),
         }
         try:
-            loaded = load_cell_files(paths["report"], paths["steps_jsonl"])
+            if invalid_cells is not None and cell.run_id in invalid_cells:
+                raise ReportFormatError(invalid_cells[cell.run_id])
+            watchdog = cell.run_id in watchdog_cells
+            loaded = load_cell_files(
+                paths["report"], paths["steps_jsonl"], drop_torn_last_line=watchdog
+            )
             if loaded.report is not None:
                 check_report_config(loaded.report, config)
             if post_check is not None:
@@ -336,6 +348,9 @@ def summarize_output(
                 if problem is not None:
                     raise ReportFormatError(problem)
             aborted_at, reason = loaded.aborted_at_step, loaded.abort_reason
+            if watchdog:
+                reason = WATCHDOG_ABORT_REASON
+                record["unknown_outcome_steps"] = int(loaded.torn_last_line)
             if aborted_at is None and len(loaded.records) < config.execution_budget:
                 aborted_at = len(loaded.records)
                 reason = "report has fewer steps than the budget and no abort record"

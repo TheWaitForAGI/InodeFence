@@ -2,7 +2,8 @@
 
 Reads a benchmark output tree and writes ``concurrency-report.json`` and ``.md``. The report ends
 in a mechanical decision (design file, section 6): a selected concurrency level, a stage whose
-measurement an external stop voided, or a stop condition H1, H2, H3 or H5, plus the H4 count.
+measurement an external stop voided, or a stop condition H1, H2, H3, H3-unmeasured or H5, plus the
+H4 count.
 
 Sealed raw: no oracle value leaves this script. To compare paths between blocks, each step's
 oracle verdict and fed-back keys are reduced to an in-memory hash. The one thing the decision takes
@@ -75,6 +76,9 @@ V8_RATE_RATIO = 1.25
 V8_PER_1000 = 20.0
 V9_EXCESS_OVER_FLOOR = 2
 V9_ONE_SIDED_CELLS = 2
+#: Cells of one block without a path on either side. Fewer differences could only mean less was
+#: compared, so this many cannot pass V9 or measure F; one is reported.
+UNCOMPARABLE_CELLS = 2
 V10_CELL_MONOTONIC_SECONDS = 7200.0
 RHO_MIN = 1.15
 DRIFT_MAX = 0.15
@@ -555,11 +559,17 @@ def block_determinism(
     paths: Mapping[str, CellPath],
     reference: Mapping[str, CellPath],
 ) -> dict[str, Any]:
-    """Differences against the stage's first block. Verdict-only differences carry no identity."""
+    """Differences against the stage's first block. Verdict-only differences carry no identity.
+
+    A cell that cannot be compared is counted, not passed. The two sides are told apart so that a
+    loss in the first block does not read as this block's fault.
+    """
     arm_by_run = {cell["run_id"]: cell for cell in block["cells"]}
     differing = 0
     verdict_only = 0
     uncomparable = 0
+    reference_missing = 0
+    block_missing = 0
     by_arm: Counter[str] = Counter()
     first_differences: list[dict[str, Any]] = []
     one_sided: list[str] = []
@@ -568,6 +578,8 @@ def block_determinism(
         base = reference.get(run_id)
         if path is None or base is None:
             uncomparable += 1
+            reference_missing += base is None
+            block_missing += path is None
             continue
         difference = compare_paths(base, path)
         if not difference.differs:
@@ -590,6 +602,8 @@ def block_determinism(
     return {
         "m": differing,
         "uncomparable": uncomparable,
+        "uncomparable_reference_missing": reference_missing,
+        "uncomparable_block_missing": block_missing,
         "case_sequence_by_arm": dict(by_arm),
         "first_differences": first_differences,
         "one_sided_congestion_cells": one_sided,
@@ -789,6 +803,7 @@ def level_violations(
     floor: int,
     block_m: Sequence[int],
     one_sided_cells: int,
+    block_uncomparable: Sequence[int] = (),
 ) -> list[dict[str, Any]]:
     """Exclusion rules V1 to V10 for a level against its stage's reference level."""
     found = absolute_violations(level)
@@ -823,6 +838,8 @@ def level_violations(
         add("V9", {"block_m": list(block_m), "floor": floor})
     if one_sided_cells >= V9_ONE_SIDED_CELLS:
         add("V9", {"one_sided_congestion_cells": one_sided_cells})
+    if block_uncomparable and max(block_uncomparable) >= UNCOMPARABLE_CELLS:
+        add("V9", {"uncomparable_cells": list(block_uncomparable)})
     return found
 
 
@@ -939,6 +956,14 @@ def decide(design: Design, stages: Mapping[str, Mapping[str, Any]]) -> dict[str,
             halts.append({"rule": "H1", "detail": fraction})
         if not external and floor >= H3_FLOOR:
             halts.append({"rule": "H3", "stage": name, "floor": floor})
+        # F cannot be measured: not a pass and not H3, whose fallback needs a measured jobs=2.
+        ref_uncomparable = [
+            b["determinism"]["uncomparable"] for b in blocks if b["jobs"] == ref_jobs
+        ]
+        if not external and max(ref_uncomparable, default=0) >= UNCOMPARABLE_CELLS:
+            halts.append(
+                {"rule": "H3-unmeasured", "stage": name, "uncomparable_cells": ref_uncomparable}
+            )
         high_blocks = [b for b in blocks if b["jobs"] == high_jobs]
         violations: list[dict[str, Any]] = []
         ref_violations: list[dict[str, Any]] = []
@@ -952,6 +977,7 @@ def decide(design: Design, stages: Mapping[str, Mapping[str, Any]]) -> dict[str,
                     one_sided_cells=sum(
                         len(b["determinism"]["one_sided_congestion_cells"]) for b in high_blocks
                     ),
+                    block_uncomparable=[b["determinism"]["uncomparable"] for b in high_blocks],
                 )
                 if high is not None
                 else [{"rule": "stopped", "detail": "the higher level did not run"}]
@@ -1117,8 +1143,10 @@ def render_markdown(report: Mapping[str, Any]) -> str:
             f"## 단계 {stage}",
             "",
             "| 블록 | jobs | 실시간 h | G | 포화 실행/h | 정상/h | 노출/h | abort | 불일치 m | "
+            "비교 불가: 기준 블록 셀 없음 | 비교 불가: 이 블록 셀 없음 | "
             "CPU | iowait | 최소 가용 GiB | docker ps p50 s | 중단 사유 |",
-            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | "
+            "--- | --- |",
         ]
         verdict = decision["stages"].get(stage)
         for position, block in enumerate(content["blocks"]):
@@ -1131,7 +1159,10 @@ def render_markdown(report: Mapping[str, Any]) -> str:
                 f"{_fmt(block['saturated_exec_per_real_hour'], 0)} | "
                 f"{_fmt(block['normal_campaigns_per_real_hour'])} | "
                 f"{_fmt(block['exposure_per_real_hour'])} | {len(block['aborts'])} | "
-                f"{block['determinism']['m']} | {_fmt(host.get('cpu_busy_fraction'))} | "
+                f"{block['determinism']['m']} | "
+                f"{block['determinism']['uncomparable_reference_missing']} | "
+                f"{block['determinism']['uncomparable_block_missing']} | "
+                f"{_fmt(host.get('cpu_busy_fraction'))} | "
                 f"{_fmt(host.get('cpu_iowait_fraction'))} | "
                 f"{_fmt(available / 2**30 if available else None)} | "
                 f"{_fmt(host.get('docker_ps_seconds_p50'))} | {block['stopped_reason'] or '—'} |"

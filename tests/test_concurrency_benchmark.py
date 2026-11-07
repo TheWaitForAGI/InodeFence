@@ -986,7 +986,7 @@ def test_floor_of_three_halts(design: bench.Design) -> None:
             "cells_planned": 12,
             "cells_not_run": 0,
             "saturated_exec_per_real_hour": 100.0,
-            "determinism": {"m": m, "one_sided_congestion_cells": []},
+            "determinism": {"m": m, "uncomparable": 0, "one_sided_congestion_cells": []},
         }
 
     blocks = [block(1, 2, 0), block(2, 4, 0), block(3, 4, 0), block(4, 2, 3)]
@@ -1009,7 +1009,7 @@ def test_jobs_two_over_the_abort_limit_halts(design: bench.Design) -> None:
             "cells_planned": 12,
             "cells_not_run": 0,
             "saturated_exec_per_real_hour": 100.0,
-            "determinism": {"m": 0, "one_sided_congestion_cells": []},
+            "determinism": {"m": 0, "uncomparable": 0, "one_sided_congestion_cells": []},
         }
 
     blocks = [block(1, 2), block(2, 4), block(3, 4), block(4, 2)]
@@ -1049,7 +1049,7 @@ def _stage(
                 "cells_planned": 12,
                 "cells_not_run": 0,
                 "saturated_exec_per_real_hour": 200.0 if jobs == order[1] else 100.0,
-                "determinism": {"m": 0, "one_sided_congestion_cells": []},
+                "determinism": {"m": 0, "uncomparable": 0, "one_sided_congestion_cells": []},
             }
         )
         if stopped:
@@ -1284,3 +1284,183 @@ def test_one_sided_congestion_cell_is_not_normal_for_g(design: bench.Design) -> 
         "determinism": {"one_sided_congestion_cells": ["x"]},
     }
     assert analysis.block_g(block, design.budget) == pytest.approx(1.0)
+
+
+DESIGN_V2_PATH = DESIGN_PATH.with_name("concurrency-scaling-v2.md")
+
+
+def test_pilot_rerun_exception_is_exactly_four_seeds() -> None:
+    assert frozenset({8102, 8103, 8106, 8110}) == bench.PILOT_RERUN_SEEDS
+    assert (8101, 8110) in bench.RESERVED_SEED_RANGES
+
+
+def test_measured_seeds_may_be_the_four_pilot_seeds() -> None:
+    design = bench.parse_design(_replace_line("seeds", "8110, 8102, 8103, 8106"))
+    assert design.seeds == (8110, 8102, 8103, 8106)
+
+
+@pytest.mark.parametrize("seed", [8101, 8104, 8105, 8107, 8108, 8109])
+def test_the_other_pilot_seeds_stay_reserved(seed: int) -> None:
+    with pytest.raises(bench.DesignError, match="reserved"):
+        bench.parse_design(_replace_line("seeds", f"8110, {seed}"))
+
+
+@pytest.mark.parametrize("seed", sorted(bench.PILOT_RERUN_SEEDS))
+def test_the_exception_does_not_cover_the_smoke_seed(seed: int) -> None:
+    with pytest.raises(bench.DesignError, match="reserved"):
+        bench.parse_design(_replace_line("smoke_seed", str(seed)))
+
+
+@pytest.mark.skipif(not DESIGN_V2_PATH.is_file(), reason="design v2 merges separately")
+def test_design_v2_parses_and_plans_twelve_cells_of_three_arms() -> None:
+    v2 = bench.load_design(DESIGN_V2_PATH)
+    assert v2.design_id == "concurrency-scaling-v2"
+    assert {arm.label for arm in v2.arms} == {"R-restart", "D", "S-u"}
+    assert v2.seeds == (8110, 8102, 8103, 8106)
+    measured = bench.planned_cells(v2, "A")
+    assert len(measured) == len({cell.run_id for cell in measured}) == 12
+    assert [block.jobs for block in bench.planned_blocks(v2, "A")] == [2, 4, 4, 2]
+    assert len(bench.planned_cells(v2, bench.SMOKE_STAGE)) == 3
+    assert [measured[i * 3].arm.label for i in range(4)] == ["R-restart", "D", "S-u", "R-restart"]
+
+
+def test_a_cell_without_a_path_is_counted_on_its_side() -> None:
+    block = {"cells": [{"run_id": name, "arm": "D"} for name in ("both", "here", "first", "fine")]}
+    result = analysis.block_determinism(
+        block,
+        {"first": _path(["a"]), "fine": _path(["a"])},
+        {"here": _path(["a"]), "fine": _path(["a"])},
+    )
+    assert result["m"] == 0
+    assert result["uncomparable"] == 3
+    assert result["uncomparable_reference_missing"] == 2
+    assert result["uncomparable_block_missing"] == 2
+
+
+def test_no_comparable_cell_cannot_pass_v9() -> None:
+    assert "V9" in _rules(_level(), block_uncomparable=[12, 12])
+
+
+@pytest.mark.parametrize(
+    ("counts", "violated"),
+    [([0, 0], False), ([1, 0], False), ([1, 1], False), ([2, 0], True), ([0, 2], True)],
+)
+def test_uncomparable_boundary_is_per_block(counts: list[int], violated: bool) -> None:
+    assert ("V9" in _rules(_level(), block_uncomparable=counts)) is violated
+
+
+def _with_uncomparable(stage: dict[str, Any], counts: dict[int, int]) -> dict[str, Any]:
+    for block in stage["blocks"]:
+        block["determinism"]["uncomparable"] = counts.get(block["index"], 0)
+    return stage
+
+
+@pytest.mark.parametrize("index", [2, 3])
+def test_two_uncomparable_cells_exclude_the_higher_level(design: bench.Design, index: int) -> None:
+    stage = _with_uncomparable(_stage(design, "A"), {index: 2})
+    decision = analysis.decide(design, {"A": stage})
+    verdict = decision["stages"]["A"]
+    assert {item["rule"] for item in verdict["violations"]} == {"V9"}
+    assert verdict["passed"] is False
+    assert decision["halts"] == []
+    assert decision["status"] == "selected"
+    assert decision["selected_jobs"] == 2
+
+
+def test_one_uncomparable_cell_of_a_level_is_only_reported(design: bench.Design) -> None:
+    stage = _with_uncomparable(_stage(design, "A"), {1: 1, 2: 1, 3: 1, 4: 1})
+    decision = analysis.decide(design, {"A": stage})
+    assert decision["stages"]["A"]["passed"] is True
+    assert decision["halts"] == []
+    assert decision["selected_jobs"] == 4
+
+
+@pytest.mark.parametrize("index", [1, 4])
+def test_an_unmeasured_reference_is_not_a_pass_and_gives_no_fallback(
+    design: bench.Design, index: int
+) -> None:
+    stage = _with_uncomparable(_stage(design, "A"), {index: 2})
+    decision = analysis.decide(design, {"A": stage})
+    assert [item["rule"] for item in decision["halts"]] == ["H3-unmeasured"]
+    assert decision["status"] == "halted"
+    assert decision["selected_jobs"] is None
+    assert decision["fallback_jobs"] is None
+    assert decision["stages"]["A"]["passed"] is False
+
+
+def test_h3_with_an_unmeasured_reference_keeps_no_fallback(design: bench.Design) -> None:
+    stage = _with_uncomparable(_stage(design, "A"), {1: 2})
+    stage["blocks"][3]["determinism"]["m"] = 3
+    decision = analysis.decide(design, {"A": stage})
+    assert {item["rule"] for item in decision["halts"]} == {"H3", "H3-unmeasured"}
+    assert decision["fallback_jobs"] is None
+
+
+def test_an_unmeasured_later_reference_also_halts(design: bench.Design) -> None:
+    later = _with_uncomparable(_stage(design, "B"), {1: 2})
+    decision = analysis.decide(design, {"A": _stage(design, "A"), "B": later})
+    assert [item["rule"] for item in decision["halts"]] == ["H3-unmeasured"]
+    assert decision["selected_jobs"] is None
+
+
+def test_a_voided_stage_is_not_read_for_unmeasured(design: bench.Design) -> None:
+    voided = _with_uncomparable(_stage(design, "B", stop=(3, EXTERNAL_STOP)), {1: 2})
+    decision = analysis.decide(design, {"A": _stage(design, "A"), "B": voided})
+    assert decision["halts"] == []
+    assert decision["stage_invalid"] == "B"
+    assert decision["selected_jobs"] == 4
+
+
+def _drop_records(root: Path, name: str) -> None:
+    directory = root / "A" / name
+    for cell in json.loads((directory / bench.BLOCK_FILE).read_text(encoding="utf-8"))["cells"]:
+        (directory / "raw" / cell["report"]).unlink()
+        (directory / "raw" / cell["steps"]).unlink()
+
+
+def test_lost_cells_of_a_higher_block_exclude_it_end_to_end(
+    design: bench.Design, tmp_path: Path
+) -> None:
+    _write_stage(tmp_path, design, "A")
+    _drop_records(tmp_path, "block-2-j4")
+    report = analysis.analyze(tmp_path, design)
+    determinism = report["stages"]["A"]["blocks"][1]["determinism"]
+    assert determinism["uncomparable"] == 2
+    assert determinism["uncomparable_block_missing"] == 2
+    assert determinism["uncomparable_reference_missing"] == 0
+    verdict = report["decision"]["stages"]["A"]
+    assert "V9" in {item["rule"] for item in verdict["violations"]}
+    assert report["decision"]["selected_jobs"] == 2
+
+
+def test_loss_in_the_first_block_is_shown_as_the_reference_side_end_to_end(
+    design: bench.Design, tmp_path: Path
+) -> None:
+    _write_stage(tmp_path, design, "A")
+    _drop_records(tmp_path, "block-1-j2")
+    report = analysis.analyze(tmp_path, design)
+    second = report["stages"]["A"]["blocks"][1]["determinism"]
+    assert second["uncomparable_reference_missing"] == 2
+    assert second["uncomparable_block_missing"] == 0
+    decision = report["decision"]
+    assert "H3-unmeasured" in {item["rule"] for item in decision["halts"]}
+    assert decision["status"] == "halted"
+    assert decision["selected_jobs"] is None
+    assert decision["fallback_jobs"] is None
+    markdown = analysis.render_markdown(report)
+    assert "비교 불가: 기준 블록 셀 없음" in markdown
+    assert "비교 불가: 이 블록 셀 없음" in markdown
+    assert "H3-unmeasured" in markdown
+    row = next(line for line in markdown.splitlines() if line.startswith("| 2 | 4 |"))
+    header = next(line for line in markdown.splitlines() if line.startswith("| 블록 | jobs |"))
+    assert len(row.split("|")) == len(header.split("|"))
+    assert row.split("|")[10].strip() == "2"
+    assert row.split("|")[11].strip() == "0"
+
+
+def test_a_halted_decision_refuses_the_next_stage(design: bench.Design, tmp_path: Path) -> None:
+    _write_stage(tmp_path, design, "A")
+    _drop_records(tmp_path, "block-4-j2")
+    report = analysis.analyze(tmp_path, design)
+    (tmp_path / bench.REPORT_JSON).write_text(json.dumps(report), encoding="utf-8")
+    assert "H3-unmeasured" in (bench.stage_gate_problem(design, "B", tmp_path) or "")

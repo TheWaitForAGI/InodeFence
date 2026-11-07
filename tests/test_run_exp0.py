@@ -2101,9 +2101,9 @@ def _one_target_args(args: list[str], role: str) -> list[str]:
     file = Path(args[args.index("--preregistration") + 1])
     lines = file.read_text(encoding="utf-8").splitlines(keepends=True)
     kept = [
-        line
+        line.replace("holdout:S-u-vs-R", "holdout:S-u-vs-R,S-u-vs-D")
         for line in lines
-        if not line.startswith(f"targets.{dropped}.")
+        if not line.startswith((f"targets.{dropped}.", "targets.node-tar-7.9.9.arms"))
         and not (role == "train" and line.startswith("confirmatory_family"))
     ]
     file.write_text("".join(kept), encoding="utf-8")
@@ -2180,9 +2180,11 @@ def test_a_launcher_run_feeds_the_analyzer_and_every_table(
         assert "미산출" not in text and "정지 0회, 누적 공백 0.0 h" in text
         assert f"GO 판정 시각(실시간): {decided_at}" in text
     else:
-        contrast = report["confirmatory"]["contrasts"][0]
-        assert contrast["contrast"] == "S-u-vs-R" and contrast["number_seed_blocks"] == 2
+        contrasts = report["confirmatory"]["contrasts"]
+        assert [c["contrast"] for c in contrasts] == ["S-u-vs-R", "S-u-vs-D"]
+        assert all(c["number_seed_blocks"] == 2 for c in contrasts)
         assert "| S-u-vs-R | 2 |" in tables["T-EXP2-2"]
+        assert "| S-u-vs-D | 2 |" in tables["T-EXP2-2"]
         assert "- 운영 중단: 발동 없음" in tables["T-EXP2-3"]
         assert "| S-u | exclude |" in tables["T-EXP2-4"]
-        assert "| 실행 수 | 16 |" in tables["T-EXP2-5"]  # two arms, two seeds, budget 4
+        assert "| 실행 수 | 24 |" in tables["T-EXP2-5"]  # three arms, two seeds, budget 4

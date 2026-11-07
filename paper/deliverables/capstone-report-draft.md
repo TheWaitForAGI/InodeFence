@@ -152,18 +152,19 @@ retention·effect 피드백 인과는 미입증.[^m3] 인용의 A1은 generic �
 
 *그림 7-2. 이름 획득 조건의 관찰(피드백 인과 미입증). 어휘가 다른 셀의 대조이며 rate 비교가 아니다.*
 
-- 이 대조는 피드백이 아니라 **어휘**를 통제했다. 피드백의 기여는 어휘를 맞춘 R/D/S-u 비교(EXP-3)로 아직 분리되지
+- 이 대조는 피드백이 아니라 **어휘**(이름 포함 여부)를 달리했다. 피드백의 기여는 어휘를 맞춘 R/D/S-u 비교(EXP-3)로 아직 분리되지
   않았다.[^m3]
 - **blind 발견이 아니다.** 기존 외부 객체에 하드링크하려면 이름이 필요하고 퍼저는 그것을 관찰로 얻는다.[^m3]
-- **seed-rare다.** 예산 1500에서 자율 트리거는 65 seed 중 s11 1개였다. 21건은 그 run의 1 lineage이고, run은 step 416에서 abort했다.
+- **seed-rare다.** 예산 1500에서 자율 C1은 65 seed 중 s11 1개였다. 21건은 그 run의 1 lineage이고, run은 step 416에서 abort했다.
   막대마다 분모(step 수)도 다르다.[^m3]
+- **hit 정의가 다르다.** 이 표의 hit는 C1 ∧ contract_violated다. 표 7-P의 C1 ∨ C2와 다르다. A3full-s60에는 C2만 위반인 step 14개가 있어 여기에 세지 않았다.[^m3]
 - **rate 우위는 미입증이다.** 사전등록 매칭 대조의 Wilson 구간이 겹쳤다.[^m3-rate]
 
 ### 7.4 M4: oracle 수준 일반성
 
 동일 generic C0/C1/C2 oracle(코드 불변)이 python-tarfile, oras-go, decompress 3개 extractor에서 통제 차분을 구분했다
-(일부 TESTED, oracle·adapter 수준).[^m4] 이는 fuzzer 자력 발견의 일반성이나 효과 주장이 아니다. decompress와 oras-go의
-자력발견 실행은 C1/C2에 도달하지 못했다.[^m4-neg]
+(일부 TESTED, oracle·adapter 수준).[^m4] 이는 fuzzer 자력 발견의 일반성이나 효과 주장이 아니다. decompress(사후 분석)와 oras-go(1 seed)의
+자력 실행에서 C1/C2는 관찰되지 않았다.[^m4-neg]
 
 ### 7.5 EXP-0 등록 실행: 인프라 측정
 
@@ -334,7 +335,7 @@ TAR fuzzing, hardlink·symlink 공격, entry 순서, 파일 상태 기반 fuzzin
 [^m1-run]: evidence: `~/inodefence-evidence/w4-script-verification-20261106/`의 `demo-run1`, `demo-run2`, `stdout/`(MANIFEST sha256 `88ac345e…`). [LOG](../../docs/LOG.md) 같은 날짜 W4 항목.
 [^m2]: evidence: `experiments/repro/evidence/summary.json`, [cross-release-identity-repro-v1](../../experiments/summaries/cross-release-identity-repro-v1.md), Ledger 마일스톤 M2. 2026-11-06 재실행은 `~/inodefence-evidence/w4-script-verification-20261106/repro/`, [LOG](../../docs/LOG.md) 같은 날짜 W4 항목.
 [^m2-oracle]: evidence: `tests/test_cross_release_oracle_agreement.py`, `tests/container_integration/check_cross_release_oracle_agreement.py`, Ledger M2.2.
-[^m3]: evidence: [Capability Ledger](../../docs/STATUS.md) "퍼저가 자력으로 경계위반을 발견" 행과 마일스톤 M3, PR #151, [§5.3.2 정정](../sections/06-results.md), [node-self-discovery-mechanism-v1](../../experiments/summaries/node-self-discovery-mechanism-v1.md).
+[^m3]: evidence: [Capability Ledger](../../docs/STATUS.md) "퍼저가 자력으로 경계위반을 발견" 행과 마일스톤 M3, PR #151, [§5.3.2 정정](../sections/06-results.md), [node-self-discovery-mechanism-v1](../../experiments/summaries/node-self-discovery-mechanism-v1.md). raw는 Mac 호스트 보관, 체크섬 `experiments/summaries/raw-manifest-mac-20261103.sha256`, 2026-11-03 감사 재집계. 이 표는 요약에서 생성.
 [^m3-rate]: evidence: [m3-powered-matched-verdict-v2](../../experiments/summaries/m3-powered-matched-verdict-v2.md), PR #200.
 [^m4]: evidence: [Capability Ledger](../../docs/STATUS.md) cross-implementation 행과 마일스톤 M4, `tests/test_python_tarfile_generality.py`, PR #176, PR #177.
 [^m4-neg]: evidence: [m4-5 통합 verdict](../../experiments/summaries/m4-5-decompress-selfdiscover-unified-v1.md), [m4-7 oras-go](../../experiments/summaries/m4-7-oras-go-selfdiscover-v1.md), PR #197, PR #198.

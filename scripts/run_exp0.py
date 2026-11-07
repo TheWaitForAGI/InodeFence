@@ -1390,7 +1390,13 @@ def main(argv: list[str] | None = None) -> int:
                         {
                             "cell_completeness": infrastructure_summary(
                                 checks, read_infrastructure_events(output / CELL_RESULTS_FILE)
-                            )
+                            ),
+                            "registered": {
+                                "seeds": list(prereg.seeds),
+                                "budget": prereg.budget,
+                                "sentinel_count": prereg.sentinel_count,
+                                "targets": [target_record(target) for target in plan.targets()],
+                            },
                         }
                         if checks is not None
                         else {}

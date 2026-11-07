@@ -299,6 +299,8 @@ def infrastructure_summary(
         "aborts_plus_inconsistent": failures,
         "infrastructure_failure_rate": failures / len(checks) if checks else None,
         "unknown_outcome_steps": sum(check.unknown_outcome_steps for check in checks.values()),
+        # Every attempted cell's whole step lines, invalid cells too (the GO step ratio).
+        "recorded_steps": sum(check.step_count for check in checks.values()),
         "infrastructure_stopped": infrastructure_stopped(events),
         "infrastructure_stops": [
             {"reason": event.get("reason"), "clocks": event.get("clocks")}

@@ -221,23 +221,26 @@ def first_error(aborted: Mapping[str, Any] | None) -> dict[str, Any]:
     image version), so it is confirmed too.
     """
     if aborted is None:
-        return {"status": "unconfirmed", "type": None, "message": None}
+        return {"status": "unconfirmed", "type": None, "message": None, "frames": None}
     chain = aborted.get("error_chain")
     reason = str(aborted.get("reason") or "")
     if isinstance(chain, list) and chain:
         last = chain[-1]
         if not isinstance(last, Mapping) or last.get("truncated"):
-            return {"status": "unconfirmed", "type": None, "message": None}
+            return {"status": "unconfirmed", "type": None, "message": None, "frames": None}
         return {
             "status": "confirmed",
             "type": last.get("type"),
             "message": str(last.get("message") or "")[:REASON_LIMIT],
+            # For a person to read which call site this was; no rule uses it.
+            "frames": last.get("frames"),
         }
     cleanup = classify_abort_reason(reason) in CLEANUP_CATEGORIES
     return {
         "status": "unconfirmed" if cleanup else "confirmed",
         "type": None,
         "message": reason[:REASON_LIMIT],
+        "frames": None,
     }
 
 

@@ -262,13 +262,14 @@ def test_a_train_table_has_no_test_value_and_refuses_a_confirmatory_section(
 
 def test_go_inputs_are_computed_and_the_result_stays_empty(tmp_path: Path) -> None:
     lines = gen.render("T-EXP3-2", _inputs(_train_report(), tmp_path)).splitlines()
-    row = {line.split(" | ")[0].removeprefix("| "): line.split(" | ")[1] for line in lines[4:]}
+    table = [line for line in lines[4:] if line.startswith("| ")]
+    row = {line.split(" | ")[0].removeprefix("| "): line.split(" | ")[1] for line in table}
     assert row["E: train 첫 C1∨C2 캠페인(3 arm 합산, abort 포함, invalid 제외)"] == "2"
-    # 1800 recorded steps over the two hours between the first start and the last end.
-    assert row["r: EXP-3 실경과 처리량(실시간, exec/h)"] == "900"
+    # 1800 recorded steps over the two hours between the first start and the last end, no stop.
+    assert row["r: 정지 공백을 뺀 처리량(실시간, exec/h)"] == "900"
     assert row["e: 기록/계획 step 비율"] == "1.000"
     assert row["인프라 실패 비율 (abort + 기록 어긋남)/전체 셀"] == ".125"
-    assert lines[-1] == "| 결과 |  | W3가 적용해 LOG에 남긴다 |"
+    assert "| 결과 |  | W3가 적용해 LOG에 남긴다 |" in lines
 
 
 def test_go_capacity_follows_the_registered_formula(tmp_path: Path) -> None:
@@ -425,32 +426,88 @@ def _stamp(event: str, realtime: float) -> dict[str, Any]:
     return {"event": event, "clocks": {"realtime": realtime}}
 
 
-def test_stop_and_resume_lines_do_not_end_the_run(tmp_path: Path) -> None:
-    rows = [
-        _stamp("start", 1000.0),
-        _stamp("end", 8200.0),
-        _stamp("infrastructure-stop", 8300.0),
-        _stamp("infrastructure-resume", 9000.0),
-    ]
-    text = gen.render("T-EXP3-2", _write_results(tmp_path, rows))
-    assert _go_row(text, "r:") == "900"  # 7200 s to the last end, not to the resume line
+STOP = {"event": "infrastructure-stop", "reason": "why", "clocks": {"realtime": 1000.0}}
+RESUME = {"event": "infrastructure-resume", "approval_ref": "ok", "clocks": {"realtime": 4600.0}}
+NO_GAP_ROWS = [_stamp("start", 0.0), _stamp("end", 1000.0)]
+NO_GAP_ROWS += [_stamp("start", 4600.0), _stamp("end", 7200.0)]
+GAP_ROWS = [*NO_GAP_ROWS[:2], STOP, RESUME, *NO_GAP_ROWS[2:]]
+R_WALL_NOTE = "r_wall(참고, GO 입력 아님): 900 exec/h. 정지 공백을 포함한 값이고 판정을 뒤집는 데"
 
 
-def test_the_gap_free_rate_is_a_reference_line_and_the_go_row_keeps_elapsed_time(
-    tmp_path: Path,
-) -> None:
-    rows = [
-        _stamp("start", 0.0),
-        _stamp("end", 1000.0),
-        _stamp("infrastructure-stop", 1000.0),
-        _stamp("infrastructure-resume", 4600.0),
-        _stamp("start", 4600.0),
-        _stamp("end", 7200.0),
-    ]
-    text = gen.render("T-EXP3-2", _write_results(tmp_path, rows))
+def test_no_gap_gives_r_equal_to_r_wall(tmp_path: Path) -> None:
+    text = gen.render("T-EXP3-2", _write_results(tmp_path, NO_GAP_ROWS))
     assert _go_row(text, "r:") == "900"
-    assert _go_row(text, "참고:") == "1800"  # 3600 s of the 7200 s were the stop
-    assert "| 참고: 정지 공백 제외 r(실시간, exec/h) | 1800 | GO 입력 아님 |" in text
+    assert R_WALL_NOTE in text
+    assert "정지 0회, 누적 공백 0.0 h(실시간). 원인은 docs/LOG.md의 W2 기록." in text
+
+
+def test_a_resumed_stop_raises_r_and_keeps_r_wall_as_a_reference(tmp_path: Path) -> None:
+    text = gen.render("T-EXP3-2", _write_results(tmp_path, GAP_ROWS))
+    assert _go_row(text, "r:") == "1800"  # 3600 s of the 7200 s were the stop
+    assert R_WALL_NOTE in text
+    assert "정지 1회, 누적 공백 1.0 h(실시간)." in text
+
+
+def test_a_cell_running_after_the_stop_keeps_its_time_in_r(tmp_path: Path) -> None:
+    """The gap opens at the last end before the resume, not at the stop line."""
+    rows = [_stamp("start", 0.0), _stamp("start", 0.0), _stamp("end", 1000.0), STOP]
+    rows += [_stamp("end", 3000.0), RESUME, _stamp("start", 4600.0), _stamp("end", 7200.0)]
+    text = gen.render("T-EXP3-2", _write_results(tmp_path, rows))
+    # 1600 s gap: 1800 steps over 5600 s. Counting from the stop would give 1800.
+    assert _go_row(text, "r:") == "1157"
+    assert "누적 공백 0.4 h" in text
+
+
+def test_a_resume_after_the_last_end_adds_no_gap_and_moves_h_rem(tmp_path: Path) -> None:
+    stop = {**STOP, "clocks": {"realtime": 8300.0}}
+    resume = {**RESUME, "clocks": {"realtime": 9000.0}}
+    rows = [_stamp("start", 1000.0), _stamp("end", 8200.0), stop, resume]
+    inputs = _write_results(tmp_path, rows)
+    inputs.report["deadline"]["execution_deadline"] = "1970-01-01T12:00:00+00:00"
+    text = gen.render("T-EXP3-2", inputs)
+    assert _go_row(text, "r:") == "900"  # that gap was never in the 7200 s span
+    assert "정지 1회, 누적 공백 0.0 h" in text
+    assert _go_row(text, "H_rem") == "9.5"  # from the resume at 9000 s, not the last end
+
+
+def test_h_rem_stays_on_the_wall_clock_and_capacity_uses_r(tmp_path: Path) -> None:
+    def table(rows: list[Any]) -> str:
+        inputs = _write_results(tmp_path, rows)
+        # 10 h after the last end at 7200 s.
+        inputs.report["deadline"]["execution_deadline"] = "1970-01-01T12:00:00+00:00"
+        return gen.render("T-EXP3-2", inputs)
+
+    with_gap, without = table(GAP_ROWS), table(NO_GAP_ROWS)
+    assert _go_row(with_gap, "H_rem") == _go_row(without, "H_rem") == "10.0"
+    # floor(10 * r / (6000 * 1.0)): 3 at r = 1800, 1 at r_wall = 900.
+    assert (_go_row(with_gap, "용량"), _go_row(without, "용량")) == ("3", "1")
+
+
+@pytest.mark.parametrize(
+    ("rows", "stops", "gap"),
+    [
+        ([*NO_GAP_ROWS, {**STOP, "clocks": {"realtime": 7300.0}}], 1, "0.0"),
+        ([*GAP_ROWS, {**STOP, "clocks": {"realtime": 7300.0}}], 2, "1.0"),
+    ],
+)
+def test_an_unresumed_stop_leaves_the_go_cells_not_computed(
+    tmp_path: Path, rows: list[Any], stops: int, gap: str
+) -> None:
+    text = gen.render("T-EXP3-2", _write_results(tmp_path, rows))
+    for label in ("r:", "H_rem", "용량"):
+        assert _go_row(text, label) == "미산출"
+    assert _go_row(text, "결과") == "미산출: 인프라 정지 미재개. GO 미적용, EXP-2 미시작"
+    # Measured values stay: E, e, the failure rate, r_wall, stops, resumed gaps.
+    assert _go_row(text, "E:") == "2"
+    assert _go_row(text, "e:") == "1.000"
+    assert _go_row(text, "인프라 실패 비율") == ".125"
+    assert R_WALL_NOTE in text
+    assert f"정지 {stops}회, 누적 공백 {gap} h(실시간)." in text
+
+
+def test_a_resume_after_an_unresumed_stop_brings_the_go_cells_back(tmp_path: Path) -> None:
+    text = gen.render("T-EXP3-2", _write_results(tmp_path, GAP_ROWS))
+    assert "미산출" not in text
 
 
 def test_only_a_cut_last_line_of_the_exit_record_is_forgiven(tmp_path: Path) -> None:
@@ -466,6 +523,7 @@ def test_the_step_ratio_plans_only_attempted_cells_and_counts_invalid_ones(tmp_p
     report = _train_report()
     # 12 cells, 2 never started: 10 attempted × budget 200 against 1500 recorded.
     report["cell_completeness"].update(cells=12, unattempted=2, recorded_steps=1500)
+    assert report["registered"]["budget"] == 200
     text = gen.render("T-EXP3-2", _inputs(report, tmp_path))
     assert _go_row(text, "e:") == ".750"
     assert "| 시작하지 않은 셀 | 2 | 기록 |" in text

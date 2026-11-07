@@ -38,6 +38,7 @@ MULTITARGET_CLASSIFICATION = "exp3-multitarget-measurement"
 ARM_ORDER = ("R", "D", "S-u")
 GO_STEP_DIVISOR = 6000  # D040-D11: capacity = floor(H_rem * r / (6000 * e)).
 MONOTONIC_NOTE = "시계: monotonic 기록값이다. 이 호스트의 monotonic은 실시간이 아니다."
+GO_NOT_COMPUTED = "미산출"
 
 
 class TableInputError(ValueError):
@@ -228,30 +229,65 @@ def _result_lines(cell_results: Path) -> list[Mapping[str, Any]]:
     return records
 
 
-def _run_span(records: Sequence[Mapping[str, Any]]) -> tuple[float, float]:
-    """First start and last end on the wall clock. Stop and resume lines do not end the run."""
-    starts = [
-        float(_field(row, "clocks", "realtime")) for row in records if row.get("event") == "start"
-    ]
-    ends = [
-        float(_field(row, "clocks", "realtime")) for row in records if row.get("event") == "end"
-    ]
+@dataclass(frozen=True, slots=True)
+class RunClock:
+    """The D043 clock values of one run, all ``realtime`` from whole lines of the exit record."""
+
+    t_wall: float
+    gap_seconds: float  # Resumed stops only, inside the first start to last end span.
+    stops: int
+    last_activity: float  # The later of the last end and the last resume: H_rem counts from it.
+    unresumed: bool
+
+    @property
+    def t_up(self) -> float:
+        return self.t_wall - self.gap_seconds
+
+
+def _run_clock(records: Sequence[Mapping[str, Any]]) -> RunClock:
+    """Only a registered stop-to-resume gap leaves r; a slow host or a dead launcher stays in.
+
+    A gap opens at the later of the stop and the last end before the resume: a cell still running
+    after the stop adds steps, so its time stays in r's denominator.
+    """
+    starts: list[float] = []
+    ends: list[float] = []
+    resumes: list[float] = []
+    pairs: list[tuple[float, float]] = []
+    stops = 0
+    stopped_at: float | None = None
+    last_infrastructure = ""
+    for row in records:
+        event = row.get("event")
+        if event not in ("start", "end", "infrastructure-stop", "infrastructure-resume"):
+            continue
+        stamp = float(_field(row, "clocks", "realtime"))
+        if event == "start":
+            starts.append(stamp)
+        elif event == "end":
+            ends.append(stamp)
+        elif event == "infrastructure-stop":
+            stops += 1
+            stopped_at = stamp if stopped_at is None else stopped_at
+            last_infrastructure = str(event)
+        else:
+            resumes.append(stamp)
+            if stopped_at is not None:
+                pairs.append((max([stopped_at, *ends]), stamp))
+            stopped_at = None
+            last_infrastructure = str(event)
     if not starts or not ends:
         raise TableInputError("cell results need start and end lines")
-    return min(starts), max(ends)
-
-
-def _stop_gaps(records: Sequence[Mapping[str, Any]]) -> float:
-    """Seconds between each infrastructure stop and the resume that ended it."""
-    total = 0.0
-    stopped_at: float | None = None
-    for row in records:
-        if row.get("event") == "infrastructure-stop" and stopped_at is None:
-            stopped_at = float(_field(row, "clocks", "realtime"))
-        elif row.get("event") == "infrastructure-resume" and stopped_at is not None:
-            total += float(_field(row, "clocks", "realtime")) - stopped_at
-            stopped_at = None
-    return total
+    first_start, last_end = min(starts), max(ends)
+    return RunClock(
+        t_wall=last_end - first_start,
+        gap_seconds=sum(
+            max(0.0, min(resume, last_end) - max(opened, first_start)) for opened, resume in pairs
+        ),
+        stops=stops,
+        last_activity=max([last_end, *resumes]),
+        unresumed=last_infrastructure == "infrastructure-stop",
+    )
 
 
 def t_exp3_2(inputs: "Inputs") -> list[str]:
@@ -272,33 +308,45 @@ def t_exp3_2(inputs: "Inputs") -> list[str]:
     unattempted = _field(completeness, "unattempted")
     recorded = _field(completeness, "recorded_steps")
     planned = (_field(completeness, "cells") - unattempted) * budget
-    records = _result_lines(inputs.cell_results)
-    first_start, last_end = _run_span(records)
-    if last_end <= first_start or not recorded or not planned:
+    clock = _run_clock(_result_lines(inputs.cell_results))
+    if clock.t_wall <= 0 or clock.t_up <= 0 or not recorded or not planned:
         raise TableInputError("the run span and step counts must be positive")
-    elapsed = last_end - first_start
-    rate = recorded / (elapsed / 3600)
-    gaps = _stop_gaps(records)
-    if gaps >= elapsed:
-        raise TableInputError("the stop gaps cannot exceed the run span")
-    rate_without_gaps = recorded / ((elapsed - gaps) / 3600)
+    rate_wall = recorded / (clock.t_wall / 3600)
     ratio = recorded / planned
-    deadline = datetime.fromisoformat(_field(report, "deadline", "execution_deadline"))
-    remaining = (deadline.timestamp() - last_end) / 3600
-    capacity = math.floor(remaining * rate / (GO_STEP_DIVISOR * ratio))
-    failure_rate = _field(report, "cell_completeness", "infrastructure_failure_rate")
+    failure_rate = _field(completeness, "infrastructure_failure_rate")
+    if clock.unresumed:
+        # D043 condition 6: no normal resume is assumed, so these cells have no value.
+        rate_text = remaining_text = capacity_text = GO_NOT_COMPUTED
+        result = f"{GO_NOT_COMPUTED}: 인프라 정지 미재개. GO 미적용, EXP-2 미시작"
+    else:
+        rate = recorded / (clock.t_up / 3600)
+        deadline = datetime.fromisoformat(_field(report, "deadline", "execution_deadline"))
+        remaining = (deadline.timestamp() - clock.last_activity) / 3600
+        rate_text = f"{rate:.0f}"
+        remaining_text = f"{remaining:.1f}"
+        capacity_text = str(math.floor(remaining * rate / (GO_STEP_DIVISOR * ratio)))
+        result = ""
     rows = [
         ["E: train 첫 C1∨C2 캠페인(3 arm 합산, abort 포함, invalid 제외)", events, "≥ 1"],
-        ["r: EXP-3 실경과 처리량(실시간, exec/h)", f"{rate:.0f}", "입력"],
-        ["참고: 정지 공백 제외 r(실시간, exec/h)", f"{rate_without_gaps:.0f}", "GO 입력 아님"],
+        ["r: 정지 공백을 뺀 처리량(실시간, exec/h)", rate_text, "입력"],
         ["e: 기록/계획 step 비율", _ratio(ratio), "입력"],
-        ["H_rem: EXP-3 종료부터 실행 마감까지 호스트 시간(실시간, h)", f"{remaining:.1f}", "입력"],
-        ["용량 ⌊H_rem·r÷(6000·e)⌋", capacity, "≥ 76"],
+        ["H_rem: EXP-3 종료부터 실행 마감까지 호스트 시간(실시간, h)", remaining_text, "입력"],
+        ["용량 ⌊H_rem·r÷(6000·e)⌋", capacity_text, "≥ 76"],
         ["인프라 실패 비율 (abort + 기록 어긋남)/전체 셀", _ratio(failure_rate), "≤ .45"],
         ["시작하지 않은 셀", unattempted, "기록"],
-        ["결과", "", "W3가 적용해 LOG에 남긴다"],
+        ["결과", result, "W3가 적용해 LOG에 남긴다"],
     ]
-    return ["# 표 7-B2. GO 판정 입력", "", *_md_table(["입력", "값", "기준"], rows)]
+    return [
+        "# 표 7-B2. GO 판정 입력",
+        "",
+        *_md_table(["입력", "값", "기준"], rows),
+        "",
+        f"r_wall(참고, GO 입력 아님): {rate_wall:.0f} exec/h. "
+        "정지 공백을 포함한 값이고 판정을 뒤집는 데 쓰지 않는다.",
+        "",
+        f"정지 {clock.stops}회, 누적 공백 {clock.gap_seconds / 3600:.1f} h(실시간). "
+        "원인은 docs/LOG.md의 W2 기록.",
+    ]
 
 
 def _dense_table(title: str, report: Mapping[str, Any], target: Target) -> list[str]:

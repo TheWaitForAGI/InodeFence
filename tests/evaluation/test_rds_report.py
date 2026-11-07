@@ -210,6 +210,46 @@ def test_no_evidence_at_all_is_an_abort_at_zero(tmp_path: Path) -> None:
     assert summary.summary.aborted and summary.summary.t_first == 0
 
 
+def _steps_file(tmp_path: Path, lines: list[str]) -> tuple[Path, Path]:
+    steps_path = tmp_path / "cell.steps.jsonl"
+    steps_path.write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
+    return tmp_path / "absent.json", steps_path
+
+
+def test_a_cut_last_line_raises_unless_the_caller_names_a_watchdog_cell(tmp_path: Path) -> None:
+    whole = [json.dumps(step) for step in _report()["steps"][:2]]
+    report_path, steps_path = _steps_file(tmp_path, [*whole, whole[1][:15]])
+    with pytest.raises(json.JSONDecodeError):
+        load_cell_files(report_path, steps_path)
+    loaded = load_cell_files(report_path, steps_path, drop_torn_last_line=True)
+    assert len(loaded.records) == 2 and loaded.torn_last_line is True
+    assert loaded.aborted_at_step == 2
+
+
+@pytest.mark.parametrize("cut_at", [0, 1])
+def test_the_watchdog_flag_forgives_only_the_last_line(tmp_path: Path, cut_at: int) -> None:
+    whole = [json.dumps(step) for step in _report()["steps"][:3]]
+    damaged = [line[:15] if position == cut_at else line for position, line in enumerate(whole)]
+    report_path, steps_path = _steps_file(tmp_path, damaged)
+    with pytest.raises(json.JSONDecodeError):
+        load_cell_files(report_path, steps_path, drop_torn_last_line=True)
+
+
+def test_the_watchdog_flag_forgives_one_line_not_two(tmp_path: Path) -> None:
+    whole = [json.dumps(step) for step in _report()["steps"][:2]]
+    report_path, steps_path = _steps_file(tmp_path, [whole[0], whole[1][:15], whole[1][:15]])
+    with pytest.raises(json.JSONDecodeError):
+        load_cell_files(report_path, steps_path, drop_torn_last_line=True)
+
+
+def test_the_watchdog_flag_does_not_remove_a_line_that_parses(tmp_path: Path) -> None:
+    steps = _report()["steps"][:3]
+    report_path, steps_path = _steps_file(tmp_path, [json.dumps(step) for step in steps])
+    plain = load_cell_files(report_path, steps_path)
+    flagged = load_cell_files(report_path, steps_path, drop_torn_last_line=True)
+    assert flagged == plain and flagged.torn_last_line is False
+
+
 def test_short_report_without_abort_record_is_still_censored(tmp_path: Path) -> None:
     report = _report()
     report["steps"] = report["steps"][:4]

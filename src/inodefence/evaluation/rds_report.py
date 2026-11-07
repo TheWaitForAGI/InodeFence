@@ -353,14 +353,22 @@ class LoadedCell:
     aborted_at_step: int | None
     abort_reason: str | None
     report: Mapping[str, Any] | None
+    torn_last_line: bool = False
 
 
-def load_cell_files(report_path: Path, steps_path: Path) -> LoadedCell:
+def load_cell_files(
+    report_path: Path, steps_path: Path, *, drop_torn_last_line: bool = False
+) -> LoadedCell:
     """Read a cell's evidence; a missing report means the run did not finish cleanly.
 
     Precedence: a report with ``steps`` is authoritative; otherwise the steps JSONL
     (written before each next case) supplies the completed steps and the cell is
     treated as aborted after them, with the report's ``aborted`` reason when present.
+
+    ``drop_torn_last_line`` is for a cell the launcher's watchdog terminated, and only the
+    caller knows that: its last line may be cut by the kill. Only an unparsable last line is
+    dropped and reported as ``torn_last_line``. Anywhere else, or without the flag, the
+    parse error stands.
     """
     report: Mapping[str, Any] | None = None
     if report_path.is_file():
@@ -370,13 +378,21 @@ def load_cell_files(report_path: Path, steps_path: Path) -> LoadedCell:
         report = loaded
     records: list[Mapping[str, Any]] = []
     steps_from = "none"
+    torn_last_line = False
     if report is not None and isinstance(report.get("steps"), list):
         records = list(report["steps"])
         steps_from = "report"
     elif steps_path.is_file():
-        for line in steps_path.read_text(encoding="utf-8").splitlines():
-            if line.strip():
+        lines = [
+            line for line in steps_path.read_text(encoding="utf-8").splitlines() if line.strip()
+        ]
+        for position, line in enumerate(lines):
+            try:
                 records.append(json.loads(line))
+            except json.JSONDecodeError:
+                if not drop_torn_last_line or position != len(lines) - 1:
+                    raise
+                torn_last_line = True
         steps_from = "steps_jsonl"
     aborted_at: int | None = None
     reason: str | None = None
@@ -387,7 +403,9 @@ def load_cell_files(report_path: Path, steps_path: Path) -> LoadedCell:
     elif report is None:
         aborted_at = len(records)
         reason = "no report written (controller run did not finish; see the cell log)"
-    return LoadedCell(tuple(records), steps_from, report is not None, aborted_at, reason, report)
+    return LoadedCell(
+        tuple(records), steps_from, report is not None, aborted_at, reason, report, torn_last_line
+    )
 
 
 def summarize_cell_files(

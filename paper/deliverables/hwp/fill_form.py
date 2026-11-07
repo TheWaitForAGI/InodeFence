@@ -7,7 +7,7 @@ Run (host; needs Node and the claw-hwp plugin, no docker):
     python3 paper/deliverables/hwp/fill_form.py fill --template <form.hwp> --out <out.hwp>
     python3 paper/deliverables/hwp/fill_form.py fill --template <form.hwp> --out <out.hwp> \\
         --header-values ~/capstone-work/header-values.json --final
-    python3 paper/deliverables/hwp/fill_form.py check <saved.hwp>
+    python3 paper/deliverables/hwp/fill_form.py check <saved.hwp> --dump-text <paragraphs.md>
 
 ``fill`` verifies the written cells by reading the output back. ``check`` reports sample terms in
 BodyText and PrvText, and form paragraphs still in gray or italic. Neither replaces opening the
@@ -275,7 +275,7 @@ def paragraph_text(payload: bytes) -> str:
     return "".join(text)
 
 
-def check_saved(scripts: Path, path: Path, cell_map: dict) -> int:
+def check_saved(scripts: Path, path: Path, cell_map: dict, dump_text: Path | None = None) -> int:
     """Report sample terms per stream and leftover sample styling. Returns the problem count."""
     with tempfile.TemporaryDirectory() as temp:
         streams = Path(temp)
@@ -304,6 +304,13 @@ def check_saved(scripts: Path, path: Path, cell_map: dict) -> int:
         shapes = [
             payload for tag, _, payload in records(stream("DocInfo")) if tag == TAG_CHAR_SHAPE
         ]
+
+    if dump_text:
+        # Paragraph boundaries are real here, unlike the cell-joined markdown extract.
+        dump_text.write_text(
+            "\n\n".join(line for line in body_text.split("\n") if line.strip()) + "\n",
+            encoding="utf-8",
+        )
 
     problems = 0
     for name, text in (("BodyText", body_text), ("PrvText", preview)):
@@ -384,12 +391,13 @@ def main() -> None:
     fill_parser.add_argument("--final", action="store_true")
     check_parser = commands.add_parser("check")
     check_parser.add_argument("path", type=Path)
+    check_parser.add_argument("--dump-text", type=Path, help="write BodyText paragraphs to a file")
     args = parser.parse_args()
 
     cell_map = json.loads(CELL_MAP.read_text(encoding="utf-8"))
     if args.command == "fill":
         fill(args, cell_map)
-    elif check_saved(args.scripts, args.path, cell_map):
+    elif check_saved(args.scripts, args.path, cell_map, args.dump_text):
         sys.exit(1)
 
 

@@ -98,7 +98,7 @@ s11 run은 step 416에서 evidence-integrity 검사로 abort(returncode 1)하지
 
 **관찰된 조건 차이(observed):** 자율 C1은 **BEFORE snapshot의 EXTERNAL 이름을 mutation 어휘에 넣은
 A3full s11에서만** 관찰됐고(21), 그 이름을 뺀 A3blind s11은 1475 step에도 0, generic 어휘로 이름을 철자할 수
-없는 무작위 바닥 A1은 33,005 step에도 0이었다. 즉 **EXTERNAL 이름을 어휘에 넣은 A3full에서만 관찰됐고,
+없는 A1(generic 어휘, effect retention)은 33,005 step에도 0이었다. 즉 **EXTERNAL 이름을 어휘에 넣은 A3full에서만 관찰됐고,
 이름을 뺀 A3blind·철자 불가 A1에서는 미관찰**이다. (이 드래프트 v1은 이를 "feedback(identity 관찰)이 발견을
 가능케 한다 — 없으면 도달 불가"라는 인과 확정으로 적었으나, 아래 2026-11-03 정정대로 그 해석은 철회한다.)
 
@@ -129,7 +129,7 @@ generic 어휘 7토큰(`src/inodefence/mutator/m1.py`의 `COMPONENTS`, `m1_addre
 동일 budget·신규 disjoint seed 매칭 대조로 **rate 우위**(상태-인지 feedback이 무작위보다 더
 빨리/많이 C1을 찾는가)를 사전등록 후 판정했다([powered verdict](../../experiments/summaries/m3-powered-matched-verdict-v1.md)).
 
-- **설정(사전등록, 실행 전 고정):** A1 random floor vs A3full state-aware, node-tar 7.5.2 frozen
+- **설정(사전등록, 실행 전 고정):** A1 random floor(기존 셀 이름; generic 어휘, effect retention; 이름 철자 불가) vs A3full state-aware, node-tar 7.5.2 frozen
   overlay, **동일 budget 2000**, 기존 전부와 disjoint한 seed {100..119}(20개). hit = 한 step에서
   `oracle.C1 && feedback.contract_violated`(clean exact C1). rate 주장은 Wilson 95% CI 분리를
   요구한다(점추정 차이는 rate 아님, EN-008).
@@ -196,7 +196,7 @@ decompress를 effect 캠페인 퍼즈 타깃으로 연결하는 루프를 구현
 feasible set-based frame 채널을 쓴다(node-tar의 ordered per-op보다 좁음; #179 observed).
 
 - **실행 설정(observed):** 실제 decompress 4.2.1 AFFECTED, production backend(컨트롤러 내 non-root
-  Linux, 격리계약·완화 플래그 0), budget 200 × seed 11 × 2 arm(A3 state-aware + A1 random).
+  Linux, 격리계약·완화 플래그 0), budget 200 × seed 11 × 2 arm(A3 state-aware + A1(generic 어휘, 관찰 이름 조합 없음; 양 arm 같은 피드백 루프, 기존 라벨 'A1 random')).
 - **결과(observed):** **양 arm 0 C1/C2 (right-censored 음성).** 루프는 2번째 extractor에서 기능
   작동한다(실제 decompress frame 관찰, boundary-attempt 키 A3 11 / A1 8, rejected 141 vs 103,
   feedback 조향) 그러나 exact 경계위반에 미도달.
@@ -211,7 +211,7 @@ M4.4의 검정력 없는 음성을 더 큰 사전고정 예산·복수 seed로 �
 [통합 verdict](../../experiments/summaries/m4-5-decompress-selfdiscover-unified-v1.md)다.
 
 - **설정(사전등록):** 실제 decompress 4.2.1 AFFECTED, production backend(격리계약·완화 플래그 0),
-  A1 random vs A3 state-aware. 윈도우 seed {500..509}, 맥 seed {11,85,163,211,307,401}(교집합 ∅).
+  A1(generic 어휘, 관찰 이름 조합 없음; 양 arm 같은 피드백 루프, 기존 라벨 'A1 random') vs A3 state-aware. 윈도우 seed {500..509}, 맥 seed {11,85,163,211,307,401}(교집합 ∅).
   **등록된 hit 정의는 `discovered_violation`(any step `contract_violated`, C0 포함)이다. C1/C2 by_contract
   분리와 pooled 0/28 합산은 결과가 들어온 뒤 도입된 사후 분석(post-hoc) 축으로, 사전등록에 없다**
   (근거: [통합 verdict](../../experiments/summaries/m4-5-decompress-selfdiscover-unified-v1.md) 「정의 변경 기록」).

@@ -68,7 +68,11 @@ _TRAIN = ("exp3-train-report.json",)
 _HOLDOUT = ("exp2-holdout-report.json",)
 _EXP3_TABLES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("T-EXP3-1", "paper/tables/exp3-train-arms.md", _TRAIN),
-    ("T-EXP3-2", "paper/tables/exp3-go-inputs.md", (*_TRAIN, "exp3-train-cell-results.jsonl")),
+    (
+        "T-EXP3-2",
+        "paper/tables/exp3-go-inputs.md",
+        (*_TRAIN, "exp3-train-cell-results.jsonl", "exp3-go-decision.json"),
+    ),
     ("T-EXP3-3", "paper/tables/exp3-dense-signals.md", _TRAIN),
     ("T-EXP2-1", "paper/tables/exp2-holdout-arms.md", _HOLDOUT),
     ("T-EXP2-2", "paper/tables/exp2-holdout-contrasts.md", _HOLDOUT),

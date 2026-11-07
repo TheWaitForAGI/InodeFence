@@ -34,6 +34,7 @@ TRAIN_REPORT = SUMMARIES / "exp3-train-report.json"
 HOLDOUT_REPORT = SUMMARIES / "exp2-holdout-report.json"
 TRAIN_CELL_RESULTS = SUMMARIES / "exp3-train-cell-results.jsonl"
 HOLDOUT_HAND_INPUT = SUMMARIES / "exp2-holdout-hand-input.json"
+GO_DECISION = SUMMARIES / "exp3-go-decision.json"
 MULTITARGET_CLASSIFICATION = "exp3-multitarget-measurement"
 ARM_ORDER = ("R", "D", "S-u")
 GO_STEP_DIVISOR = 6000  # D040-D11: capacity = floor(H_rem * r / (6000 * e)).
@@ -236,7 +237,7 @@ class RunClock:
     t_wall: float
     gap_seconds: float  # Resumed stops only, inside the first start to last end span.
     stops: int
-    last_activity: float  # The later of the last end and the last resume: H_rem counts from it.
+    last_activity: float  # The later of the last end and the last resume.
     unresumed: bool
 
     @property
@@ -290,6 +291,16 @@ def _run_clock(records: Sequence[Mapping[str, Any]]) -> RunClock:
     )
 
 
+def _go_decision_time(path: Path) -> float:
+    """The recorded GO decision time. A file, not this call's clock: rule 6 needs the same bytes."""
+    if not path.is_file():
+        raise TableInputError(f"GO decision time not found: {path}")
+    as_of = datetime.fromisoformat(_field(json.loads(path.read_text(encoding="utf-8")), "as_of"))
+    if as_of.tzinfo is None:
+        raise TableInputError(f"{path}: as_of needs a UTC offset")
+    return as_of.timestamp()
+
+
 def t_exp3_2(inputs: "Inputs") -> list[str]:
     report = inputs.report
     target = _train_target(report)
@@ -321,7 +332,8 @@ def t_exp3_2(inputs: "Inputs") -> list[str]:
     else:
         rate = recorded / (clock.t_up / 3600)
         deadline = datetime.fromisoformat(_field(report, "deadline", "execution_deadline"))
-        remaining = (deadline.timestamp() - clock.last_activity) / 3600
+        counted_from = max(clock.last_activity, _go_decision_time(inputs.go_decision))
+        remaining = (deadline.timestamp() - counted_from) / 3600
         rate_text = f"{rate:.0f}"
         remaining_text = f"{remaining:.1f}"
         capacity_text = str(math.floor(remaining * rate / (GO_STEP_DIVISOR * ratio)))
@@ -330,7 +342,7 @@ def t_exp3_2(inputs: "Inputs") -> list[str]:
         ["E: train 첫 C1∨C2 캠페인(3 arm 합산, abort 포함, invalid 제외)", events, "≥ 1"],
         ["r: 정지 공백을 뺀 처리량(실시간, exec/h)", rate_text, "입력"],
         ["e: 기록/계획 step 비율", _ratio(ratio), "입력"],
-        ["H_rem: EXP-3 종료부터 실행 마감까지 호스트 시간(실시간, h)", remaining_text, "입력"],
+        ["H_rem: GO 판정 시점부터 실행 마감까지 호스트 시간(실시간, h)", remaining_text, "입력"],
         ["용량 ⌊H_rem·r÷(6000·e)⌋", capacity_text, "≥ 76"],
         ["인프라 실패 비율 (abort + 기록 어긋남)/전체 셀", _ratio(failure_rate), "≤ .45"],
         ["시작하지 않은 셀", unattempted, "기록"],
@@ -605,6 +617,7 @@ class Inputs:
     report: Mapping[str, Any]
     cell_results: Path
     hand_input: Path
+    go_decision: Path
 
 
 @dataclass(frozen=True, slots=True)
@@ -637,12 +650,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--report", type=Path, help="analyze_exp0 --index --format json output")
     parser.add_argument("--cell-results", type=Path, default=TRAIN_CELL_RESULTS)
     parser.add_argument("--hand-input", type=Path, default=HOLDOUT_HAND_INPUT)
+    parser.add_argument("--go-decision", type=Path, default=GO_DECISION)
     parser.add_argument("--out", type=Path)
     parser.add_argument("--check", type=Path)
     args = parser.parse_args(argv)
     try:
         report = _load_report(args.report or TABLES[args.artifact].report)
-        text = render(args.artifact, Inputs(report, args.cell_results, args.hand_input))
+        inputs = Inputs(report, args.cell_results, args.hand_input, args.go_decision)
+        text = render(args.artifact, inputs)
     except TableInputError as error:
         print(f"{args.artifact}: {error}", file=sys.stderr)
         return 2

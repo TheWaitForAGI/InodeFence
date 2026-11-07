@@ -6,7 +6,7 @@
 
 - **rate 우위 CI 미분리.** 이 드래프트의 M3 주장은 **이름 획득 조건의 관찰**("외부 객체 이름을 어휘에 획득한
   조건에서만 자율 C1이 관찰됨"; retention·effect 피드백 자체의 인과는 미입증) *(구: "인과 — object-identity 관찰이 발견을 가능케 함", 2026-11-03 정정)*이고,
-  "상태-인지 feedback이 무작위보다 빠르다/많이 찾는다"는 **rate 우위는 CI로 분리되지 않았다**(§5.3.3).
+  "상태-인지 feedback이 무작위보다 빠르다/많이 찾는다"(v1 표현. 실제 대조 arm은 A1이고 무작위가 아니다)는 **rate 우위는 CI로 분리되지 않았다**(§5.3.3).
   동일 budget powered matched A1(generic 어휘, effect retention; 이름 철자 불가) vs A3full(disjoint seed {100..129}, 풀링 판정이 canonical)을 사전등록 후 판정한 결과 A3full
   1/17 vs A1 0/19로 매칭 Wilson CI가 겹친다(~0.06 효과 검정력 부족). CI 분리는 사람-게이트 대예산
   pilot(M3.4)이 필요하다.

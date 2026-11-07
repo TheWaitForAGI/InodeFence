@@ -125,13 +125,14 @@
 입력 파일은 `paper/deliverables/hwp/fill_form.py`로 만든다. 도구 입력 경로의 한컴 열기는 2026-11-07 지웅이 시험본(`w5-test-full-body.hwp`)으로 확인했다. 최종 파일은 다음 순서로 한컴에서 마무리한다.
 
 1. 입력 파일을 한컴에서 연다. 표지와 서식 목록 처리는 지웅 결정에 따른다.
-2. ■ 결과물 사진 칸에 그림 3장을 넣는다. 각 그림은 해당 제목 줄 바로 위에 둔다.
+2. ■ 결과물 사진 칸에 그림 3장을 넣는다. 각 그림은 해당 제목 줄 바로 위에 둔다. M3 그림은 재렌더 판(제목에 "name-acquisition condition"이 있는 판)만 쓴다.
 3. 표 3의 메모 2개(라벨 칸 `팀명`, `결과물`)를 삭제한다.
-4. 작성일과 팀장 명을 적고 서명한다.
+4. 작성일과 팀장 명을 적고 서명한다. 커밋 수(484, 146)와 학기 일정 날짜는 제출 직전에 사람이 다시 확인한다.
 5. 다른 이름으로 저장해 재저장본을 만들고 쪽수가 5장 내외인지 본다.
-6. `python3 paper/deliverables/hwp/fill_form.py check <재저장본.hwp>`로 BodyText와 PrvText의 샘플 잔존을 검사해 결과를 W4에 넘긴다. 0건이 기준이다.
-7. 재저장본을 PDF로 저장하고 HWP와 PDF를 모두 다시 열어 확인한다.
-8. 파일명 `[참가번호][학과명] 팀명 결과보고서`로 바꾼다(참가번호는 11/23 안내).
+6. `python3 paper/deliverables/hwp/fill_form.py check <재저장본.hwp> --dump-text ~/capstone-work/final-hwp.txt`로 BodyText와 PrvText의 샘플 잔존을 검사해 결과를 W4에 넘긴다. 0건이 기준이다.
+7. 재저장본을 PDF로 저장하고 HWP와 PDF를 모두 다시 열어 확인한다. `pdftotext <최종.pdf> ~/capstone-work/final-pdf.txt`로 텍스트를 뽑는다.
+8. HWP와 PDF 텍스트를 각각 본문과 대조해 W3에 넘긴다: `python3 ~/capstone-work/check_hwp_body.py paper/deliverables/capstone-report-form-body.md <final-hwp.txt 또는 final-pdf.txt> ~/inodefence-evidence/demo-recordings-20261107/demo-output`.
+9. 파일명 `[참가번호][학과명] 팀명 결과보고서`로 바꾼다(참가번호는 11/23 안내).
 
 ---
 
@@ -144,7 +145,7 @@
 | 목적 3) | 7.5.3 거부 → 7.5.6 공유 → 7.5.7 거부, 대응·원인 추론 | `experiments/summaries/cross-release-identity-repro-v1.md`, `paper/tables/m2-cross-release-evidence.md` | PASS(01cceeb) |
 | 수행 ③ | R/D/S-u, 등록 파일 2개 | `docs/research/design/research-questions.md`, D040(#282, 머지됨 `05b26a9`), R 표기는 D040-D6(seed-restart) | PASS(9eafebd) |
 | 목적 2) | 7.5.3 거부 → 7.5.6 공유로 재검사 필요를 말함. "알려진 입력 재실행으로는 부족" 주장 삭제 | 목적 3)과 같은 출처, `scripts/regression_check.py` | W3 정정 문구 반영(`c50118a`), PASS(9eafebd) |
-| 루프 동작 | `make demo` 1회에 7.5.22, 20 step, 위반 0, corpus 4→7 | `~/inodefence-evidence/w4-script-verification-20261106/stdout/make_demo.out` | PASS(d22577b) |
+| 루프 동작 | `make demo` 1회에 7.5.22, 20 step, 위반 0, corpus 4→7 | `~/inodefence-evidence/w4-script-verification-20261106/stdout/make_demo.out`. 그림 3의 2026-11-07 실행 기록은 `~/inodefence-evidence/demo-recordings-20261107/scene4-take1.typescript` | PASS(d22577b) |
 | 통제 재현 | nlink 1→2, 거부 | `experiments/repro/evidence/summary.json`, 표 M2 | 표·그림 PASS |
 | 자력 발견 | 자율 C1은 65 seed 중 s11, 이름 획득 조건 문구. hit는 C1 ∧ contract_violated이고 A3full-s60의 C2만 위반 step 14개는 세지 않았다 | `docs/STATUS.md` Ledger, 표 M3, `experiments/summaries/m3-powered-matched-verdict-v2.md`. raw는 Mac 호스트 보관, 체크섬 `raw-manifest-mac-20261103.sha256`, 2026-11-03 감사 재집계. 표는 요약에서 생성. M3 raw 재집계는 11/03 감사 기록에 의존(제출 차단 아님) | 표 수치·그림·hit 문구 PASS. "어휘(이름 포함 여부)를 달리한 대조" PASS(d22577b) |
 | 일반성 | 3 extractor, decompress(사후 분석)·oras-go(1 seed) 자력 실행에서 C1/C2 미관찰 | `docs/STATUS.md` Ledger, `experiments/summaries/m4-5-decompress-selfdiscover-unified-v1.md`, `m4-7-oras-go-selfdiscover-v1.md` | PASS(d22577b) |

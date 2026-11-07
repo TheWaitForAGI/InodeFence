@@ -999,15 +999,17 @@ def _confirmatory_section(
             # from its target.
             entry["campaign_unit_rule_of_three_upper95"] = None
         elif events == 0:
+            # Over the paired seeds, the only cells ``events`` saw: an unpaired cell may hold an
+            # event, so it cannot count toward a bound that says this arm saw none.
             observations = {
-                arm: [Observation(c.t_first, False) for c in cells_t if c.arm == arm]
+                arm: [Observation(by_seed[s][arm].t_first, False) for s in paired]
                 for arm in (arm_a, arm_b)
             }
             arms = zero_event_summary(observations)["arms"]
             entry["zero_event_bound"] = {
                 arm: {
                     "number_complete": sum(
-                        1 for c in cells_t if c.arm == arm and c.disposition == "complete"
+                        1 for s in paired if by_seed[s][arm].disposition == "complete"
                     ),
                     "number_campaigns": len(observations[arm]),
                     "rule_of_three_upper_95": arms[arm]["rule_of_three_upper_95"],
@@ -1175,7 +1177,7 @@ def _damage_summary(confirmatory: Mapping | None, invalid: Sequence[InvalidCell]
     """The record-damage sensitivity's wording: only present when a record is inconsistent."""
     number = sum(1 for cell in invalid if cell.consistent_prefix is not None)
     if not number:
-        return {"number_inconsistent_cells": 0, "summary": "어긋남 없음"}
+        return {"number_inconsistent_cells": 0, "summary": "분석 대상 안 어긋남 없음"}
     parts = [f"어긋남 {number}셀"]
     moved = False
     for contrast in (confirmatory or {}).get("contrasts", ()):

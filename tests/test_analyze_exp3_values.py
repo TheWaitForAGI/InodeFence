@@ -148,6 +148,21 @@ def test_zero_event_bound_counts_only_complete_as_complete() -> None:
     assert bound["S-u"]["number_complete"] == 3 and bound["S-u"]["number_campaigns"] == 4
 
 
+def test_zero_event_bound_leaves_out_unpaired_cells() -> None:
+    # S-u has an event at seed 7, but R's cell there is invalid: the contrast sees no event, and
+    # that S-u cell must not join a denominator that claims this arm saw none.
+    cells = [*_pairs(range(1, 7), {}, {}), _cell("S-u", 7, **HIT)]
+    cells.append(_damaged("R", 7, steps=1, t_first=1, t_first_event=0))
+    # An aborted cell without a partner stays out of the complete count too.
+    cells.append(_cell("S-u", 8, **ABORT))
+    contrast = _contrast(_report(cells, "R"))
+    assert contrast["total_events"] == 0 and contrast["number_seed_blocks"] == 6
+    bound = contrast["zero_event_bound"]
+    for arm in ("S-u", "R"):
+        assert bound[arm]["number_campaigns"] == 6 and bound[arm]["number_complete"] == 6
+        assert bound[arm]["rule_of_three_upper_95"] == pytest.approx(0.5)
+
+
 def test_no_paired_block_stays_undefined() -> None:
     contrast = _contrast(_report([_cell("S-u", 1, **HIT)], "R"))
     assert contrast["number_seed_blocks"] == 0
@@ -336,7 +351,7 @@ def test_no_damage_says_so_and_adds_nothing() -> None:
     report = _report(_pairs(range(1, 4), HIT, {}), "R")
     assert report["record_inconsistent_sensitivity"] == {
         "number_inconsistent_cells": 0,
-        "summary": "어긋남 없음",
+        "summary": "분석 대상 안 어긋남 없음",
     }
     assert "record_inconsistent_sensitivity" not in _contrast(report)
 

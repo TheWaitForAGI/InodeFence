@@ -2162,7 +2162,7 @@ def test_a_launcher_run_feeds_the_analyzer_and_every_table(
     budget = 4 if role == "holdout" else 6
     target_id = "node-tar-7.9.9" if role == "holdout" else "node-tar-7.5.2"
     section = report["by_target"][target_id]
-    arms = {cell.arm.value for cell in cells}
+    arms = {cell.arm.label for cell in cells}
     assert set(section["dense_signals_registered"]["by_arm"]) == arms
     for arm in arms:
         by_arm = section["dense_signals_registered"]["by_arm"][arm]

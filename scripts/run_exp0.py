@@ -273,7 +273,7 @@ class Exp0Plan:
         )
 
     def cells(self) -> list[Cell]:
-        """Targets in order. A multi-target plan runs seed blocks with the arm order rotated.
+        """Targets in order. A ``targets.<id>`` plan (even one target) rotates arms by seed block.
 
         Then every arm runs at about the same time on each seed, so a slow host or a change over
         the run does not fall on one arm, and a campaign stopped early leaves only later seed blocks

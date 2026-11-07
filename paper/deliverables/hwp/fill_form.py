@@ -6,12 +6,15 @@ Personal header values stay out of the repository and come from ``--header-value
 Run (host; needs Node and the claw-hwp plugin, no docker):
     python3 paper/deliverables/hwp/fill_form.py fill --template <form.hwp> --out <out.hwp>
     python3 paper/deliverables/hwp/fill_form.py fill --template <form.hwp> --out <out.hwp> \\
-        --header-values ~/capstone-work/header-values.json --final
-    python3 paper/deliverables/hwp/fill_form.py check <saved.hwp> --dump-text <paragraphs.md>
+        --header-values <values.json> --final
+    python3 paper/deliverables/hwp/fill_form.py check <saved.hwp> \\
+        --sample-terms <terms.json> --dump-text <paragraphs.md>
 
 ``fill`` verifies the written cells by reading the output back. ``check`` reports sample terms in
 BodyText and PrvText, and form paragraphs still in gray or italic. Neither replaces opening the
-file in Hancom.
+file in Hancom. The form's sample names stay outside this public repository: ``--sample-terms``
+points at a JSON file with a ``sample_terms`` list, and without it the sample check is reported as
+not run.
 """
 
 import argparse
@@ -308,7 +311,29 @@ def paragraph_text(payload: bytes) -> str:
     return "".join(text)
 
 
-def check_saved(scripts: Path, path: Path, cell_map: dict, dump_text: Path | None = None) -> int:
+def load_sample_terms(path: Path) -> list[str]:
+    return json.loads(path.read_text(encoding="utf-8"))["sample_terms"]
+
+
+def report_sample_terms(streams: dict[str, str], terms: list[str] | None) -> int:
+    """Print sample terms per stream and return how many terms were found."""
+    found = 0
+    for name, text in streams.items():
+        if terms is None:
+            print(f"{name}: sample terms 미검사 (--sample-terms 없음)")
+            continue
+        hits = {term: text.count(term) for term in terms if term in text}
+        print(f"{name}: sample terms {hits or '0건'}")
+        found += len(hits)
+    return found
+
+
+def check_saved(
+    scripts: Path,
+    path: Path,
+    dump_text: Path | None = None,
+    sample_terms: list[str] | None = None,
+) -> int:
     """Report sample terms per stream and leftover sample styling. Returns the problem count."""
     with tempfile.TemporaryDirectory() as temp:
         streams = Path(temp)
@@ -346,10 +371,7 @@ def check_saved(scripts: Path, path: Path, cell_map: dict, dump_text: Path | Non
         )
 
     problems = 0
-    for name, text in (("BodyText", body_text), ("PrvText", preview)):
-        hits = {term: text.count(term) for term in cell_map["sample_terms"] if term in text}
-        print(f"{name}: sample terms {hits or '0건'}")
-        problems += len(hits)
+    problems += report_sample_terms({"BodyText": body_text, "PrvText": preview}, sample_terms)
     markup = body_text.count("**")
     print(f"BodyText: markdown markers {markup or '0건'}")
     problems += markup
@@ -427,12 +449,18 @@ def main() -> None:
     check_parser = commands.add_parser("check")
     check_parser.add_argument("path", type=Path)
     check_parser.add_argument("--dump-text", type=Path, help="write BodyText paragraphs to a file")
+    check_parser.add_argument("--sample-terms", type=Path, help="JSON file with sample_terms")
     args = parser.parse_args()
 
     cell_map = json.loads(CELL_MAP.read_text(encoding="utf-8"))
     if args.command == "fill":
         fill(args, cell_map)
-    elif check_saved(args.scripts, args.path, cell_map, args.dump_text):
+    elif check_saved(
+        args.scripts,
+        args.path,
+        args.dump_text,
+        load_sample_terms(args.sample_terms) if args.sample_terms else None,
+    ):
         sys.exit(1)
 
 

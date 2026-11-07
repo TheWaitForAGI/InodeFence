@@ -94,3 +94,21 @@ def test_linkage_cell_is_cleared_only_for_types_that_do_not_require_it() -> None
     section = fill_form.parse_body(fill_form.DEFAULT_BODY)[fill_form.LINKAGE_BLOCK]
     assert cleared == []
     assert kept == [line.text for line in fill_form.prose_lines(section)]
+
+
+def test_public_cell_map_has_no_sample_terms() -> None:
+    assert "sample_terms" not in CELL_MAP
+
+
+def test_sample_terms_come_from_a_file_and_are_counted(tmp_path: Path, capsys: Any) -> None:
+    path = tmp_path / "terms.json"
+    path.write_text(json.dumps({"sample_terms": ["견본어", "없는말"]}), encoding="utf-8")
+    terms = fill_form.load_sample_terms(path)
+    assert fill_form.report_sample_terms({"BodyText": "견본어 견본어"}, terms) == 1
+    assert "'견본어': 2" in capsys.readouterr().out
+
+
+def test_sample_check_is_reported_as_not_run_without_terms(capsys: Any) -> None:
+    assert fill_form.report_sample_terms({"BodyText": "text", "PrvText": "text"}, None) == 0
+    output = capsys.readouterr().out
+    assert output.count("미검사") == 2

@@ -40,10 +40,5 @@
   },
   "photo": {"row": 29, "paragraphs": 2},
   "ai_table": {"first_row": 32, "rows": 4, "cols": [2, 8, 10, 12]},
-  "schedule_table": {"first_row": 38, "rows": 5, "cols": [1, 6, 10]},
-  "sample_terms": [
-    "수뭉이", "안유진", "장원영", "카리나", "윈터", "지젤", "가정폭력", "아동학대", "생존자", "브랜드",
-    "Gemini", "Midjourney", "Runway", "ElevenLabs", "시제품", "OO시", "OO사", "9월0일", "10월0일",
-    "11월0일", "12월0일", "스토리보드", "페르소나"
-  ]
+  "schedule_table": {"first_row": 38, "rows": 5, "cols": [1, 6, 10]}
 }

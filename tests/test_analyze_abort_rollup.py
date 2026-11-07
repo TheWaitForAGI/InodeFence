@@ -58,6 +58,11 @@ def test_classify_md_label_maps_to_shared_vocabulary() -> None:
         classify_md_label("container runtime cleanup inspect failed")
         == InvalidReason.CLEANUP_INSPECT
     )
+    # A bare "inspect failed" is no longer read as cleanup; the two forms mean different things.
+    assert classify_md_label("container runtime inspect failed") == InvalidReason.RUNTIME_CALL
+    assert classify_md_label("cleanup inspect (s118 포함)") == InvalidReason.CLEANUP_INSPECT
+    assert classify_md_label("inspect failed") == InvalidReason.OTHER
+    assert classify_md_label("container runtime remove failed") == InvalidReason.CLEANUP_REMOVE
     assert classify_md_label("remove failed") == InvalidReason.CLEANUP_REMOVE
     assert classify_md_label("worker reset residual") == InvalidReason.CLEANUP_RESET
     assert classify_md_label("something unexpected") == InvalidReason.OTHER

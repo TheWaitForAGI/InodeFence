@@ -70,6 +70,15 @@ the harness-generated message *substring*, never an exact string.
    reused controller volume subpath dirty (residual ``core-run-*`` or an unexpected
    path change). No single abort string: the worker-pool lane detects this directly
    and records the :class:`ResetFailureDetail`. Recoverable by recycling the worker.
+
+5. ``runtime_call`` -- ``"container runtime <op> failed: ..."`` for every other operation
+   (``create``, ``inspect``, ``image inspect``, ``wait``, ``version``, ``timeout kill``, ``timeout
+   wait``). Origin: ``checked`` (``execution/container.py``). It says that a harness call to the
+   runtime failed outside cleanup, not that the case was harmless or that the abort carries no
+   information. It is not in :data:`INFRASTRUCTURE_REASONS`, so nothing retries it: whether it
+   should be retried is a separate decision (D21). A cleanup error replacing one of these still
+   classifies as cleanup, because the reason names only the last error; ``error_chain`` keeps the
+   first one.
 """
 
 from enum import StrEnum
@@ -83,6 +92,7 @@ class InvalidReason(StrEnum):
     CLEANUP_INSPECT = "cleanup_inspect"
     CLEANUP_REMOVE = "cleanup_remove"
     CLEANUP_RESET = "cleanup_reset"
+    RUNTIME_CALL = "runtime_call"
     OTHER = "other"
 
 
@@ -129,6 +139,8 @@ _SIGNATURES: tuple[tuple[str, InvalidReason], ...] = (
     # producer wraps it as "<module>.ObservationError: <msg>", so the type name is
     # present. The observer lane records the observation_capture sub-reason.
     ("ObservationError", InvalidReason.OBSERVER_INTEGRITY),
+    # Last on purpose: the cleanup operations above share this prefix and must win.
+    ("container runtime ", InvalidReason.RUNTIME_CALL),
 )
 
 

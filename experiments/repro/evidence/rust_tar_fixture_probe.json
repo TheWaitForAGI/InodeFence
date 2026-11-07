@@ -1,0 +1,591 @@
+{
+  "ground_truth_advisory": "RUSTSEC-2021-0080",
+  "ground_truth_pair_distinguished": true,
+  "label": "fixed-fixture probe (Tier-B role input; not a campaign, not qualification)",
+  "per_role": {
+    "affected": {
+      "ground_truth": {
+        "fixture": "symlink_parent_then_nested_file",
+        "outcome": "declined",
+        "outside_created": [
+          "created",
+          "created/nested"
+        ],
+        "outside_namespace_changed": true,
+        "raw": {
+          "declined": {
+            "message": "trying to unpack outside of destination path: /work/extract"
+          },
+          "extract_tree": {
+            "up": {
+              "dev": "143",
+              "ino": "7",
+              "nlink": 1,
+              "size": 2,
+              "target": "..",
+              "type": "sym"
+            }
+          },
+          "nlink_after": 1,
+          "nlink_before": 1,
+          "outside_changed": [],
+          "outside_created": [
+            "created",
+            "created/nested"
+          ],
+          "outside_removed": [],
+          "reference_after": {
+            "dev": "143",
+            "ino": "5",
+            "nlink": 1,
+            "size": 48,
+            "target": null,
+            "type": "reg"
+          },
+          "reference_before": {
+            "dev": "143",
+            "ino": "5",
+            "nlink": 1,
+            "size": 48,
+            "target": null,
+            "type": "reg"
+          },
+          "shared_identity": []
+        }
+      },
+      "identify": {
+        "cargo_lock_sha256": "5658400e8e2c14fbbb157783f21bce003f5268c8b054bf3ff1746167760d3248",
+        "rustc_version": "1.99.1",
+        "tar_crate_version": "0.4.35",
+        "worker_sha256": "114bbf575fd4315444f8fce44c2b3afb353d25f75d5b097553e572af72e88c3d"
+      },
+      "image": "inodefence-rust-tar:0.4.35",
+      "image_id": "sha256:fe2da8c57ae72895c30ff361ff9ad5ae73ca4e5e99c4493883b85ab51da74dc7",
+      "role_by_rule": {
+        "hypothesis": "H-B",
+        "reason": "no C1/C2 observed",
+        "role": "fix-verification"
+      },
+      "role_fixtures": [
+        {
+          "c1_identity_shared": false,
+          "c1_or_c2": false,
+          "c2_reference_changed": false,
+          "fixture": "toplevel_hardlink",
+          "kind": "hand-hardlink",
+          "outcome": "declined",
+          "outside_namespace_changed": false,
+          "raw": {
+            "declined": {
+              "message": "failed to unpack `/work/extract/link`"
+            },
+            "extract_tree": {},
+            "nlink_after": 1,
+            "nlink_before": 1,
+            "outside_changed": [],
+            "outside_created": [],
+            "outside_removed": [],
+            "reference_after": {
+              "dev": "143",
+              "ino": "5",
+              "nlink": 1,
+              "size": 48,
+              "target": null,
+              "type": "reg"
+            },
+            "reference_before": {
+              "dev": "143",
+              "ino": "5",
+              "nlink": 1,
+              "size": 48,
+              "target": null,
+              "type": "reg"
+            },
+            "shared_identity": []
+          }
+        },
+        {
+          "c1_identity_shared": false,
+          "c1_or_c2": false,
+          "c2_reference_changed": false,
+          "fixture": "nested_hardlink",
+          "kind": "hand-hardlink",
+          "outcome": "declined",
+          "outside_namespace_changed": false,
+          "raw": {
+            "declined": {
+              "message": "failed to unpack `/work/extract/sub/link`"
+            },
+            "extract_tree": {
+              "sub": {
+                "dev": "143",
+                "ino": "7",
+                "nlink": 2,
+                "size": 40,
+                "target": null,
+                "type": "dir"
+              }
+            },
+            "nlink_after": 1,
+            "nlink_before": 1,
+            "outside_changed": [],
+            "outside_created": [],
+            "outside_removed": [],
+            "reference_after": {
+              "dev": "143",
+              "ino": "5",
+              "nlink": 1,
+              "size": 48,
+              "target": null,
+              "type": "reg"
+            },
+            "reference_before": {
+              "dev": "143",
+              "ino": "5",
+              "nlink": 1,
+              "size": 48,
+              "target": null,
+              "type": "reg"
+            },
+            "shared_identity": []
+          }
+        },
+        {
+          "c1_identity_shared": false,
+          "c1_or_c2": false,
+          "c2_reference_changed": false,
+          "fixture": "toplevel_symlink_write",
+          "kind": "fn-symlink",
+          "outcome": "resolved",
+          "outside_namespace_changed": false,
+          "raw": {
+            "declined": null,
+            "extract_tree": {
+              "link": {
+                "dev": "143",
+                "ino": "8",
+                "nlink": 1,
+                "size": 20,
+                "target": null,
+                "type": "reg"
+              }
+            },
+            "nlink_after": 1,
+            "nlink_before": 1,
+            "outside_changed": [],
+            "outside_created": [],
+            "outside_removed": [],
+            "reference_after": {
+              "dev": "143",
+              "ino": "5",
+              "nlink": 1,
+              "size": 48,
+              "target": null,
+              "type": "reg"
+            },
+            "reference_before": {
+              "dev": "143",
+              "ino": "5",
+              "nlink": 1,
+              "size": 48,
+              "target": null,
+              "type": "reg"
+            },
+            "shared_identity": []
+          }
+        },
+        {
+          "c1_identity_shared": false,
+          "c1_or_c2": false,
+          "c2_reference_changed": false,
+          "fixture": "nested_symlink_write",
+          "kind": "fn-symlink",
+          "outcome": "resolved",
+          "outside_namespace_changed": false,
+          "raw": {
+            "declined": null,
+            "extract_tree": {
+              "sub": {
+                "dev": "143",
+                "ino": "7",
+                "nlink": 2,
+                "size": 60,
+                "target": null,
+                "type": "dir"
+              },
+              "sub/link": {
+                "dev": "143",
+                "ino": "9",
+                "nlink": 1,
+                "size": 20,
+                "target": null,
+                "type": "reg"
+              }
+            },
+            "nlink_after": 1,
+            "nlink_before": 1,
+            "outside_changed": [],
+            "outside_created": [],
+            "outside_removed": [],
+            "reference_after": {
+              "dev": "143",
+              "ino": "5",
+              "nlink": 1,
+              "size": 48,
+              "target": null,
+              "type": "reg"
+            },
+            "reference_before": {
+              "dev": "143",
+              "ino": "5",
+              "nlink": 1,
+              "size": 48,
+              "target": null,
+              "type": "reg"
+            },
+            "shared_identity": []
+          }
+        },
+        {
+          "c1_identity_shared": false,
+          "c1_or_c2": false,
+          "c2_reference_changed": false,
+          "fixture": "dir_symlink_write",
+          "kind": "fn-symlink",
+          "outcome": "declined",
+          "outside_namespace_changed": false,
+          "raw": {
+            "declined": {
+              "message": "trying to unpack outside of destination path: /work/extract"
+            },
+            "extract_tree": {
+              "d": {
+                "dev": "143",
+                "ino": "7",
+                "nlink": 1,
+                "size": 6,
+                "target": "../ext",
+                "type": "sym"
+              }
+            },
+            "nlink_after": 1,
+            "nlink_before": 1,
+            "outside_changed": [],
+            "outside_created": [],
+            "outside_removed": [],
+            "reference_after": {
+              "dev": "143",
+              "ino": "5",
+              "nlink": 1,
+              "size": 48,
+              "target": null,
+              "type": "reg"
+            },
+            "reference_before": {
+              "dev": "143",
+              "ino": "5",
+              "nlink": 1,
+              "size": 48,
+              "target": null,
+              "type": "reg"
+            },
+            "shared_identity": []
+          }
+        }
+      ],
+      "tar_crate_version": "0.4.35"
+    },
+    "fixed": {
+      "ground_truth": {
+        "fixture": "symlink_parent_then_nested_file",
+        "outcome": "declined",
+        "outside_created": [],
+        "outside_namespace_changed": false,
+        "raw": {
+          "declined": {
+            "message": "failed to create `/work/extract/up/created/nested`"
+          },
+          "extract_tree": {
+            "up": {
+              "dev": "143",
+              "ino": "7",
+              "nlink": 1,
+              "size": 2,
+              "target": "..",
+              "type": "sym"
+            }
+          },
+          "nlink_after": 1,
+          "nlink_before": 1,
+          "outside_changed": [],
+          "outside_created": [],
+          "outside_removed": [],
+          "reference_after": {
+            "dev": "143",
+            "ino": "5",
+            "nlink": 1,
+            "size": 48,
+            "target": null,
+            "type": "reg"
+          },
+          "reference_before": {
+            "dev": "143",
+            "ino": "5",
+            "nlink": 1,
+            "size": 48,
+            "target": null,
+            "type": "reg"
+          },
+          "shared_identity": []
+        }
+      },
+      "identify": {
+        "cargo_lock_sha256": "5b91f2b52a099c14849b7a58395540035fae780cd2cfebf24347b06e24719c1f",
+        "rustc_version": "1.99.1",
+        "tar_crate_version": "0.4.36",
+        "worker_sha256": "0c62e6abe65680de478849524f9cea0d2c3b6846a4b27bc0b950c4d576c4a916"
+      },
+      "image": "inodefence-rust-tar:0.4.36",
+      "image_id": "sha256:5cf1bc7ce02fa710125d274362ae78c43cdd6fddac20a762e993aa1df453a1b5",
+      "role_by_rule": {
+        "hypothesis": "H-B",
+        "reason": "no C1/C2 observed",
+        "role": "fix-verification"
+      },
+      "role_fixtures": [
+        {
+          "c1_identity_shared": false,
+          "c1_or_c2": false,
+          "c2_reference_changed": false,
+          "fixture": "toplevel_hardlink",
+          "kind": "hand-hardlink",
+          "outcome": "declined",
+          "outside_namespace_changed": false,
+          "raw": {
+            "declined": {
+              "message": "failed to unpack `/work/extract/link`"
+            },
+            "extract_tree": {},
+            "nlink_after": 1,
+            "nlink_before": 1,
+            "outside_changed": [],
+            "outside_created": [],
+            "outside_removed": [],
+            "reference_after": {
+              "dev": "143",
+              "ino": "5",
+              "nlink": 1,
+              "size": 48,
+              "target": null,
+              "type": "reg"
+            },
+            "reference_before": {
+              "dev": "143",
+              "ino": "5",
+              "nlink": 1,
+              "size": 48,
+              "target": null,
+              "type": "reg"
+            },
+            "shared_identity": []
+          }
+        },
+        {
+          "c1_identity_shared": false,
+          "c1_or_c2": false,
+          "c2_reference_changed": false,
+          "fixture": "nested_hardlink",
+          "kind": "hand-hardlink",
+          "outcome": "declined",
+          "outside_namespace_changed": false,
+          "raw": {
+            "declined": {
+              "message": "failed to unpack `/work/extract/sub/link`"
+            },
+            "extract_tree": {
+              "sub": {
+                "dev": "143",
+                "ino": "7",
+                "nlink": 2,
+                "size": 40,
+                "target": null,
+                "type": "dir"
+              }
+            },
+            "nlink_after": 1,
+            "nlink_before": 1,
+            "outside_changed": [],
+            "outside_created": [],
+            "outside_removed": [],
+            "reference_after": {
+              "dev": "143",
+              "ino": "5",
+              "nlink": 1,
+              "size": 48,
+              "target": null,
+              "type": "reg"
+            },
+            "reference_before": {
+              "dev": "143",
+              "ino": "5",
+              "nlink": 1,
+              "size": 48,
+              "target": null,
+              "type": "reg"
+            },
+            "shared_identity": []
+          }
+        },
+        {
+          "c1_identity_shared": false,
+          "c1_or_c2": false,
+          "c2_reference_changed": false,
+          "fixture": "toplevel_symlink_write",
+          "kind": "fn-symlink",
+          "outcome": "resolved",
+          "outside_namespace_changed": false,
+          "raw": {
+            "declined": null,
+            "extract_tree": {
+              "link": {
+                "dev": "143",
+                "ino": "8",
+                "nlink": 1,
+                "size": 20,
+                "target": null,
+                "type": "reg"
+              }
+            },
+            "nlink_after": 1,
+            "nlink_before": 1,
+            "outside_changed": [],
+            "outside_created": [],
+            "outside_removed": [],
+            "reference_after": {
+              "dev": "143",
+              "ino": "5",
+              "nlink": 1,
+              "size": 48,
+              "target": null,
+              "type": "reg"
+            },
+            "reference_before": {
+              "dev": "143",
+              "ino": "5",
+              "nlink": 1,
+              "size": 48,
+              "target": null,
+              "type": "reg"
+            },
+            "shared_identity": []
+          }
+        },
+        {
+          "c1_identity_shared": false,
+          "c1_or_c2": false,
+          "c2_reference_changed": false,
+          "fixture": "nested_symlink_write",
+          "kind": "fn-symlink",
+          "outcome": "resolved",
+          "outside_namespace_changed": false,
+          "raw": {
+            "declined": null,
+            "extract_tree": {
+              "sub": {
+                "dev": "143",
+                "ino": "7",
+                "nlink": 2,
+                "size": 60,
+                "target": null,
+                "type": "dir"
+              },
+              "sub/link": {
+                "dev": "143",
+                "ino": "9",
+                "nlink": 1,
+                "size": 20,
+                "target": null,
+                "type": "reg"
+              }
+            },
+            "nlink_after": 1,
+            "nlink_before": 1,
+            "outside_changed": [],
+            "outside_created": [],
+            "outside_removed": [],
+            "reference_after": {
+              "dev": "143",
+              "ino": "5",
+              "nlink": 1,
+              "size": 48,
+              "target": null,
+              "type": "reg"
+            },
+            "reference_before": {
+              "dev": "143",
+              "ino": "5",
+              "nlink": 1,
+              "size": 48,
+              "target": null,
+              "type": "reg"
+            },
+            "shared_identity": []
+          }
+        },
+        {
+          "c1_identity_shared": false,
+          "c1_or_c2": false,
+          "c2_reference_changed": false,
+          "fixture": "dir_symlink_write",
+          "kind": "fn-symlink",
+          "outcome": "declined",
+          "outside_namespace_changed": false,
+          "raw": {
+            "declined": {
+              "message": "trying to unpack outside of destination path: /work/extract"
+            },
+            "extract_tree": {
+              "d": {
+                "dev": "143",
+                "ino": "7",
+                "nlink": 1,
+                "size": 6,
+                "target": "../ext",
+                "type": "sym"
+              }
+            },
+            "nlink_after": 1,
+            "nlink_before": 1,
+            "outside_changed": [],
+            "outside_created": [],
+            "outside_removed": [],
+            "reference_after": {
+              "dev": "143",
+              "ino": "5",
+              "nlink": 1,
+              "size": 48,
+              "target": null,
+              "type": "reg"
+            },
+            "reference_before": {
+              "dev": "143",
+              "ino": "5",
+              "nlink": 1,
+              "size": 48,
+              "target": null,
+              "type": "reg"
+            },
+            "shared_identity": []
+          }
+        }
+      ],
+      "tar_crate_version": "0.4.36"
+    }
+  },
+  "probe": "rust_tar_fixture_probe",
+  "role_rule": "any C1/C2 on a role fixture -> role=holdout, hypothesis=H-A; none -> role=fix-verification, hypothesis=H-B (EXP-3 preregistration (a)3, fixed before results)",
+  "roles": {
+    "affected": "0.4.35",
+    "fixed": "0.4.36"
+  }
+}

@@ -21,11 +21,14 @@ from inodefence.evaluation.rds import (
 from inodefence.evaluation.rds_report import (
     ReportFormatError,
     check_report_config,
+    consistent_prefix,
     load_cell_files,
+    registered_dense_detail,
     summarize_cell_files,
     summarize_report_records,
 )
 from inodefence.generator import minimal_seed_corpus
+from inodefence.model import EffectFeedbackKeyKind
 
 CONFIG = RdsCellConfig(RdsArm.S_U, 9001, 12)
 
@@ -248,6 +251,84 @@ def test_the_watchdog_flag_does_not_remove_a_line_that_parses(tmp_path: Path) ->
     plain = load_cell_files(report_path, steps_path)
     flagged = load_cell_files(report_path, steps_path, drop_torn_last_line=True)
     assert flagged == plain and flagged.torn_last_line is False
+
+
+def _dense_step(index: int, *keys: dict, failures: tuple = (), eligible: bool = True) -> dict:
+    return {
+        "index": index,
+        "feedback": {"new_effect_keys": list(keys), "feedback_eligible": eligible},
+        "trace": {"observation_failures": list(failures)},
+    }
+
+
+def test_dense_detail_keeps_boundary_keys_and_counts_steps_per_failure_kind() -> None:
+    boundary = EffectFeedbackKeyKind.BOUNDARY_ESCAPE_ATTEMPT.value
+    first = {"kind": boundary, "value": {"kind": boundary, "shape": "absolute"}}
+    second = {"kind": boundary, "value": {"kind": boundary, "shape": "parent_1"}}
+    other = {"value": {"kind": EffectFeedbackKeyKind.INDIVIDUAL_EFFECT.value, "x": 1}}
+    records = [
+        _dense_step(0, first, other, failures=({"kind": "gap"}, {"kind": "gap"}), eligible=False),
+        _dense_step(1, second, failures=({"kind": "malformed"},)),
+        _dense_step(2, first),
+    ]
+    detail = registered_dense_detail(records, None)
+    assert len(cast(list, detail["boundary_keys"])) == 2  # identity kept, the repeat is one
+    # Steps with that kind: two "gap" items in one step are one step.
+    assert detail["observation_failures_by_kind"] == {"gap": 1, "malformed": 1}
+    assert detail["feedback_ineligible_steps"] == 1 and detail["recorded_steps"] == 3
+    assert detail["abort_observed_present"] is False
+
+
+@pytest.mark.parametrize(
+    ("aborted", "present"),
+    [({"observed": {"raw_stream": "x"}}, True), ({"observed": None}, False), (None, False)],
+)
+def test_dense_detail_reads_the_abort_stub(aborted: dict | None, present: bool) -> None:
+    detail = registered_dense_detail([], {"aborted": aborted})
+    assert detail["abort_observed_present"] is present
+
+
+def test_dense_detail_refuses_a_step_without_its_mappings() -> None:
+    with pytest.raises(ReportFormatError, match="lacks feedback/trace"):
+        registered_dense_detail([{"index": 0}], None)
+
+
+def _oracle_line(index: object, *, c1: bool = False) -> str:
+    return json.dumps({"index": index, "oracle": {"C0": False, "C1": c1, "C2": False}})
+
+
+@pytest.mark.parametrize(
+    ("lines", "expected"),
+    [
+        ([], {"steps": 0, "t_first": 0, "t_first_event": 0}),
+        (["cut"], {"steps": 0, "t_first": 0, "t_first_event": 0}),
+        (
+            [_oracle_line(0), _oracle_line(1, c1=True), _oracle_line(2)],
+            {"steps": 3, "t_first": 2, "t_first_event": 1},
+        ),
+        (
+            [_oracle_line(0), "cut", _oracle_line(1, c1=True)],
+            {"steps": 1, "t_first": 1, "t_first_event": 0},
+        ),
+        (
+            [_oracle_line(0), _oracle_line(5, c1=True)],
+            {"steps": 1, "t_first": 1, "t_first_event": 0},
+        ),
+        (
+            [_oracle_line(0, c1=True), '{"index": 1}'],
+            {"steps": 1, "t_first": 1, "t_first_event": 1},
+        ),
+    ],
+)
+def test_consistent_prefix_stops_at_the_first_inconsistency(
+    tmp_path: Path, lines: list[str], expected: dict[str, int]
+) -> None:
+    _report_path, steps_path = _steps_file(tmp_path, lines)
+    assert consistent_prefix(steps_path) == expected
+
+
+def test_consistent_prefix_of_a_missing_file_is_empty(tmp_path: Path) -> None:
+    assert consistent_prefix(tmp_path / "none")["steps"] == 0
 
 
 def test_short_report_without_abort_record_is_still_censored(tmp_path: Path) -> None:

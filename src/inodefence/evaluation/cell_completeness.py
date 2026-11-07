@@ -48,6 +48,7 @@ MAX_ATTEMPTS = 2
 STOP_AFTER_NO_RECORD = 3
 INFRASTRUCTURE_STOP_EVENT = "infrastructure-stop"
 INFRASTRUCTURE_RESUME_EVENT = "infrastructure-resume"
+WATCHDOG_ABORT_REASON = "campaign watchdog terminated the cell"
 
 
 @dataclass(frozen=True, slots=True)

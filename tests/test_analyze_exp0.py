@@ -693,9 +693,10 @@ def test_confirmatory_permutation_and_holm():
     assert all(c["permutation"]["p_value"] == pytest.approx(0.25) for c in cr)
     assert all(c["holm_adjusted_p"] == pytest.approx(0.5) for c in cr)
     assert all(c["reject_at_alpha"] is False for c in cr)
-    # events 3 < threshold 5 -> underpowered + descriptive rule-of-three (6 cells in the contrast)
-    assert all(c["underpowered"] is True for c in cr)
-    assert cr[0]["campaign_unit_rule_of_three_upper95"] == pytest.approx(0.5)  # 3 / 6
+    # 3 informative blocks < threshold 5 -> underpowered. With events there is no rule-of-three.
+    assert all(c["underpowered"] is True and c["informative_blocks"] == 3 for c in cr)
+    assert all("campaign_unit_rule_of_three_upper95" not in c for c in cr)
+    assert all("zero_event_bound" not in c for c in cr)
 
 
 def test_build_multitarget_confirmatory_is_none_without_plan():

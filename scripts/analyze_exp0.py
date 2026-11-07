@@ -39,10 +39,13 @@ import argparse
 import importlib
 import math
 import sys
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
+from statistics import median
 
+from inodefence.evaluation.cell_completeness import WATCHDOG_ABORT_REASON
 from inodefence.evaluation.encoding import json_bytes, read_json
 from inodefence.evaluation.independence import arm_abort_independence_from_contingency
 from inodefence.evaluation.survival import (
@@ -51,11 +54,13 @@ from inodefence.evaluation.survival import (
     SeedRecord,
     a12,
     holm_adjust,
+    informative_blocks,
     kaplan_meier,
     km_median,
     observations_for_policy,
     rule_of_three,
     seed_block_logrank_permutation,
+    zero_event_summary,
 )
 
 # Abort-reason vocabulary. Prefer the shared lane-3 enum so the buckets stay in lock-step
@@ -133,6 +138,8 @@ class InvalidCell:
     arm: str
     invalid_reason: str | None
     target_id: str = ""
+    # Steps before the first inconsistency, for the record-damage sensitivity only.
+    consistent_prefix: Mapping[str, int] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -175,6 +182,9 @@ class CellSummary:
     target_id: str = ""
     role: str = "train"
     hypothesis: str = "H-A"
+    # Launcher records of a targets-form registration; absent elsewhere.
+    dense_detail: Mapping[str, object] | None = None
+    unknown_outcome_steps: int = 0
 
     def __post_init__(self) -> None:
         if self.role not in ("train", "fix-verification", "holdout"):
@@ -288,11 +298,13 @@ def cell_from_row(
         )
         if invalid_tid is None:
             invalid_tid = default_target_id
+        prefix = row.get("record_inconsistent_prefix") if has_wrapper else None
         return InvalidCell(
             seed=seed,
             arm=arm,
             invalid_reason=None if reason is None else str(reason),
             target_id=invalid_tid,
+            consistent_prefix=prefix if isinstance(prefix, Mapping) else None,  # type: ignore[arg-type]
         )
 
     if not isinstance(inner, dict):
@@ -340,6 +352,7 @@ def cell_from_row(
     target_id = _target_meta("target_id", target)
     role = _target_meta("role", "train")
     hypothesis = _target_meta("hypothesis", "H-A")
+    detail = row.get("dense_detail") if has_wrapper else None
 
     return CellSummary(
         seed=int(_get(inner, field_map, "seed")),  # type: ignore[arg-type]
@@ -374,6 +387,8 @@ def cell_from_row(
         target_id=target_id,
         role=role,
         hypothesis=hypothesis,
+        dense_detail=detail if isinstance(detail, Mapping) else None,  # type: ignore[arg-type]
+        unknown_outcome_steps=int(row.get("unknown_outcome_steps") or 0) if has_wrapper else 0,  # type: ignore[arg-type]
     )
 
 
@@ -831,18 +846,63 @@ def _apply_deadline(
     return kept, summary
 
 
+def _policy_blocks(
+    by_seed: Mapping[int, Mapping[str, CellSummary]],
+    paired: Sequence[int],
+    arm_a: str,
+    arm_b: str,
+    policy: AbortPolicy,
+) -> list[tuple[Observation, Observation]]:
+    """Seed blocks under one abort policy; a block loses both arms when the policy drops one."""
+    blocks = []
+    for seed in paired:
+        first = observations_for_policy([_seed_record_from_cell(by_seed[seed][arm_a])], policy)
+        second = observations_for_policy([_seed_record_from_cell(by_seed[seed][arm_b])], policy)
+        if first and second:
+            blocks.append((first[0], second[0]))
+    return blocks
+
+
+def _damage_observation(
+    arm: str, seed: int, by_seed: Mapping[int, Mapping[str, CellSummary]], damaged: Mapping
+) -> Observation | None:
+    """A cell's observation when an inconsistent record's consistent prefix is trusted."""
+    cell = by_seed.get(seed, {}).get(arm)
+    if cell is not None:
+        return Observation(cell.t_first, bool(cell.t_first_event))
+    prefix = damaged.get((seed, arm))
+    if prefix is None or not prefix["steps"]:
+        return None
+    return Observation(prefix["t_first"], bool(prefix["t_first_event"]))
+
+
+def _with_family_holm(results: list[dict], key: str, values: list[dict], alpha: float) -> None:
+    """Holm over one family of values, each stored on its contrast under ``key``."""
+    raw = [1.0 if item["raw_p"] is None else float(item["raw_p"]) for item in values]
+    for entry, item, adjusted in zip(results, values, holm_adjust(raw), strict=True):
+        entry[key] = {**item, "holm_adjusted_p": adjusted, "reject_at_alpha": adjusted <= alpha}
+
+
 def _confirmatory_section(
-    valid: Sequence[CellSummary], analysis_plan: Mapping[str, object], *, alpha: float = 0.05
+    valid: Sequence[CellSummary],
+    analysis_plan: Mapping[str, object],
+    *,
+    invalid: Sequence[InvalidCell] = (),
+    alpha: float = 0.05,
 ) -> dict | None:
     """Run the frozen confirmatory family: seed-block exact-permutation log-rank + Holm-FWER.
 
     For each ordered ``confirmatory_contrasts`` record (holdout&H-A only, pre-filtered by the
     registration) this pairs the target's two arms by seed on the primary endpoint (T_first,
     right-censored) and runs :func:`survival.seed_block_logrank_permutation` (valid at any n),
-    then applies :func:`survival.holm_adjust` across the family in order. When a contrast's
-    observed events fall below ``event_threshold`` it is FLAGGED underpowered and a descriptive
-    campaign-unit rule-of-three bound is attached -- the test is never switched, and the bound is
-    not a confirmation (EN-008). Returns ``None`` when the plan declares no contrasts.
+    then applies :func:`survival.holm_adjust` across the family in order. A contrast with fewer
+    informative blocks than ``event_threshold`` is FLAGGED underpowered (D040-D14), never by its
+    total events; the test is never switched. A contrast with no event gets a descriptive per-arm
+    rule-of-three bound, which is not a confirmation (EN-008).
+
+    Values only, no verdict (D040-D12): each abort policy has its own blocks, I and Holm family,
+    the record-damage sensitivity appears only when a record is damaged, and U_viol gives a
+    direction. Returns ``None`` when the plan declares no contrasts.
     """
     contrasts = analysis_plan.get("confirmatory_contrasts")
     if not isinstance(contrasts, list) or not contrasts:
@@ -850,6 +910,10 @@ def _confirmatory_section(
     threshold = analysis_plan.get("event_threshold")
     results: list[dict] = []
     raw_ps: list[float] = []
+    policy_values: dict[str, list[dict]] = {policy.value: [] for policy in AbortPolicy}
+    damage_values: list[dict] = []
+    # With no damaged record this sensitivity is absent, so skip its permutation run.
+    any_damage = any(cell.consistent_prefix is not None for cell in invalid)
     for contrast in contrasts:
         tid, arm_a, arm_b = (
             contrast.get("target_id"),
@@ -870,12 +934,23 @@ def _confirmatory_section(
         ]
         perm = seed_block_logrank_permutation(blocks, seed=0)
         events = int(perm["total_events"])
-        underpowered = isinstance(threshold, int) and events < threshold
+        informative = informative_blocks(blocks)
+        underpowered = isinstance(threshold, int) and informative < threshold
         # The permutation chi-square is two-sided; the signed observed-minus-expected for arm_a
-        # says which arm is faster (more early events = shorter T_first), so a rejection is read
-        # as acceleration vs the reverse rather than ambiguous separation.
+        # says which arm is faster (more early events = shorter T_first).
         oe_a = perm.get("observed_minus_expected_a")
         faster_arm = None if not oe_a else (arm_a if oe_a > 0 else arm_b)
+        invalid_t = [c for c in invalid if c.target_id == tid and c.arm in (arm_a, arm_b)]
+        a_uviol = [by_seed[s][arm_a].u_viol for s in paired]
+        b_uviol = [by_seed[s][arm_b].u_viol for s in paired]
+        mean_a = sum(a_uviol) / len(a_uviol) if a_uviol else None
+        mean_b = sum(b_uviol) / len(b_uviol) if b_uviol else None
+        if mean_a is None or mean_b is None:
+            u_viol_direction = "없음"
+        elif mean_a == mean_b:
+            u_viol_direction = "동률"
+        else:
+            u_viol_direction = arm_a if mean_a > mean_b else arm_b
         entry: dict = {
             "order": contrast.get("order"),
             "target_id": tid,
@@ -883,41 +958,50 @@ def _confirmatory_section(
             "arm_a": arm_a,
             "arm_b": arm_b,
             "number_seed_blocks": perm["number_blocks"],
+            "informative_blocks": informative,
             "total_events": events,
+            "number_blocks_invalid_excluded": len({c.seed for c in invalid_t}),
             "permutation": perm,
             "faster_arm": faster_arm,
             "direction_note": (
-                "two-sided: reject_at_alpha means the arms' T_first separated (either "
-                "direction); faster_arm (more observed than expected events = earlier T_first) "
-                f"says which -- reject with faster_arm == arm_a ('{arm_a}') is acceleration "
-                f"(scenario 1), with arm_b ('{arm_b}') is the reverse (scenario 8); "
-                "null or no events -> None"
+                "two-sided: reject_at_alpha means the arms' T_first separated in either "
+                "direction; faster_arm (more observed than expected events = earlier T_first) "
+                "says which arm is faster; null when no arm is. One contrast alone gives no "
+                "verdict: the D040-D12 table reads both"
             ),
             "underpowered": underpowered,
+            "u_viol_mean_a": mean_a,
+            "u_viol_mean_b": mean_b,
+            "u_viol_direction": u_viol_direction,
         }
         if underpowered:
-            n_campaigns = len(cells_t)
-            if perm["number_blocks"] == 0 or n_campaigns < 3:
-                # A degenerate contrast (an arm has no campaigns on this target, so no pairs) or
-                # fewer than 3 campaigns has no meaningful 3/n bound (3/n > 1). It is undefined,
-                # not merely underpowered. (A valid registration cannot reach this -- #244's
-                # parser rejects a contrast arm absent from the target -- but defend old indexes.)
-                entry["campaign_unit_rule_of_three_upper95"] = None
-                entry["underpowered_note"] = (
-                    "no paired seed blocks (an arm has no campaigns on this target) or fewer than "
-                    "3 campaigns: the contrast is undefined/uninformative, not merely "
-                    "underpowered; rule-of-three is not applicable"
-                )
-            else:
-                entry["campaign_unit_rule_of_three_upper95"] = rule_of_three(n_campaigns)
-                entry["underpowered_note"] = (
-                    "events below event_threshold: the permutation test is valid but near-"
-                    "powerless (verdict is scenario-5, unobserved at achieved power); the rule-"
-                    "of-three is a descriptive campaign-unit upper bound, NOT a confirmation "
-                    "(EN-008)"
-                )
-        a_uviol = [by_seed[s][arm_a].u_viol for s in paired]
-        b_uviol = [by_seed[s][arm_b].u_viol for s in paired]
+            entry["underpowered_note"] = (
+                "informative blocks below event_threshold: the permutation test is valid but "
+                "cannot reach the Holm step (smallest p is 2^(1-I))"
+            )
+        if perm["number_blocks"] == 0:
+            # An arm has no campaigns here: undefined, not merely underpowered. A deadline can
+            # leave this, and old indexes can; the #244 parser refuses a contrast arm absent
+            # from its target.
+            entry["campaign_unit_rule_of_three_upper95"] = None
+        elif events == 0:
+            # Over the paired seeds, the only cells ``events`` saw: an unpaired cell may hold an
+            # event, so it cannot count toward a bound that says this arm saw none.
+            observations = {
+                arm: [Observation(by_seed[s][arm].t_first, False) for s in paired]
+                for arm in (arm_a, arm_b)
+            }
+            arms = zero_event_summary(observations)["arms"]
+            entry["zero_event_bound"] = {
+                arm: {
+                    "number_complete": sum(
+                        1 for s in paired if by_seed[s][arm].disposition == "complete"
+                    ),
+                    "number_campaigns": len(observations[arm]),
+                    "rule_of_three_upper_95": arms[arm]["rule_of_three_upper_95"],
+                }
+                for arm in (arm_a, arm_b)
+            }
         entry["supplementary"] = {
             "u_viol_a12": a12(a_uviol, b_uviol) if a_uviol and b_uviol else None,
             "u_viol_a12_note": (
@@ -927,11 +1011,57 @@ def _confirmatory_section(
                 "NOT a confirmatory test (EN-008)."
             ),
         }
+        for policy in AbortPolicy:
+            policy_blocks = _policy_blocks(by_seed, paired, arm_a, arm_b, policy)
+            policy_perm = seed_block_logrank_permutation(policy_blocks, seed=0)
+            policy_values[policy.value].append(
+                {
+                    "number_seed_blocks": len(policy_blocks),
+                    "informative_blocks": informative_blocks(policy_blocks),
+                    "total_events": policy_perm["total_events"],
+                    "raw_p": policy_perm["p_value"],
+                }
+            )
+        if any_damage:
+            damaged = {
+                (c.seed, c.arm): c.consistent_prefix
+                for c in invalid_t
+                if c.consistent_prefix is not None
+            }
+            damage_seeds = sorted({*by_seed, *(seed for seed, _arm in damaged)})
+            damage_blocks = []
+            for seed in damage_seeds:
+                first = _damage_observation(arm_a, seed, by_seed, damaged)
+                second = _damage_observation(arm_b, seed, by_seed, damaged)
+                if first is not None and second is not None:
+                    damage_blocks.append((first, second))
+            damage_perm = seed_block_logrank_permutation(damage_blocks, seed=0)
+            damage_values.append(
+                {
+                    "number_inconsistent_cells": len(damaged),
+                    "number_seed_blocks": len(damage_blocks),
+                    "informative_blocks": informative_blocks(damage_blocks),
+                    "total_events": damage_perm["total_events"],
+                    "raw_p": damage_perm["p_value"],
+                }
+            )
         raw_ps.append(float(perm["p_value"]) if perm["p_value"] is not None else 1.0)
         results.append(entry)
     for entry, adjusted in zip(results, holm_adjust(raw_ps), strict=True):
         entry["holm_adjusted_p"] = adjusted
         entry["reject_at_alpha"] = adjusted <= alpha
+    for entry in results:
+        entry["abort_policy_results"] = {}
+    for name, values in policy_values.items():
+        raw = [1.0 if item["raw_p"] is None else float(item["raw_p"]) for item in values]
+        for entry, item, adjusted in zip(results, values, holm_adjust(raw), strict=True):
+            entry["abort_policy_results"][name] = {
+                **item,
+                "holm_adjusted_p": adjusted,
+                "reject_at_alpha": adjusted <= alpha,
+            }
+    if any(item["number_inconsistent_cells"] for item in damage_values):
+        _with_family_holm(results, "record_inconsistent_sensitivity", damage_values, alpha)
     return {
         "classification": "confirmatory-holm-fwer",
         "confirmatory_test": analysis_plan.get("confirmatory_test"),
@@ -948,10 +1078,106 @@ def _confirmatory_section(
         ),
         "note": (
             "per-contrast seed-block arm-label permutation log-rank (valid at any n), Holm-FWER "
-            "over the frozen ordered family; event_threshold is an underpowered FLAG + rule-of-"
-            "three descriptor, never a test switch; rule-of-three is not a confirmation (EN-008)"
+            "over the frozen ordered family; event_threshold is an underpowered FLAG on "
+            "informative blocks, never a test switch; a rule-of-three bound is not a confirmation "
+            "(EN-008)"
         ),
     }
+
+
+def _dense_registered(cells: Sequence[CellSummary]) -> dict | None:
+    """The registered dense table (exp2 section 5, exp3 section 4): exploratory, per arm.
+
+    Over analysed cells. New keys per cell are the existing per-cell count. Unique keys in an arm
+    are the union over its cells, not a sum (EXP-0 deviation 4). ``None`` when a cell lacks the
+    launcher's detail, so a table reading this stops rather than fills in.
+    """
+    if not cells or any(cell.dense_detail is None for cell in cells):
+        return None
+    per_arm = {}
+    for arm, arm_cells in _by_arm(cells).items():
+        details = [cell.dense_detail or {} for cell in arm_cells]
+        new_keys = [cell.boundary_attempt_keys for cell in arm_cells]
+        steps = sum(int(detail["recorded_steps"]) for detail in details)  # type: ignore[arg-type]
+        ineligible = sum(int(detail["feedback_ineligible_steps"]) for detail in details)  # type: ignore[arg-type]
+        kinds: Counter[str] = Counter()
+        union: set[str] = set()
+        for detail in details:
+            kinds.update(detail["observation_failures_by_kind"])  # type: ignore[arg-type]
+            union.update(detail["boundary_keys"])  # type: ignore[arg-type]
+        per_arm[arm] = {
+            "number_cells": len(arm_cells),
+            "recorded_steps": steps,
+            "new_boundary_keys_per_cell": {
+                "mean": sum(new_keys) / len(new_keys),
+                "median": median(new_keys),
+            },
+            "unique_boundary_keys_in_arm": len(union),
+            "observation_failures_by_kind": {
+                kind: {
+                    "total": kinds[kind],
+                    "per_1000_steps": kinds[kind] / steps * 1000 if steps else None,
+                }
+                for kind in sorted(kinds)
+            },
+            "feedback_ineligible_ratio": {
+                "numerator": ineligible,
+                "denominator_steps": steps,
+                "value": ineligible / steps if steps else None,
+            },
+        }
+    return {
+        "by_arm": per_arm,
+        "label": "exploratory, not effectiveness (D040-D20); arms are not pooled",
+    }
+
+
+def _abort_details(cells: Sequence[CellSummary]) -> dict:
+    """Per arm: aborts with no event before them, and aborts the launcher's watchdog ended."""
+    return {
+        arm: {
+            "number_abort_before_event": sum(
+                1 for c in arm_cells if c.disposition == "abort" and not c.t_first_event
+            ),
+            "number_watchdog": sum(1 for c in arm_cells if c.abort_reason == WATCHDOG_ABORT_REASON),
+        }
+        for arm, arm_cells in _by_arm(cells).items()
+    }
+
+
+def _unknown_outcome(cells: Sequence[CellSummary]) -> dict:
+    """Steps whose outcome was lost; never counted as events.
+
+    The stub count is a lower bound: a target that ran and was then lost to a failed inspect leaves
+    no ``observed``, and only docker events show it, so the registered count is a hand input.
+    """
+    return {
+        "lost_after_execution_lower_bound": sum(
+            1 for c in cells if c.dense_detail and c.dense_detail.get("abort_observed_present")
+        ),
+        "watchdog_cut_line": sum(c.unknown_outcome_steps for c in cells),
+    }
+
+
+def _damage_summary(confirmatory: Mapping | None, invalid: Sequence[InvalidCell]) -> dict:
+    """The record-damage sensitivity's wording: only present when a record is inconsistent."""
+    number = sum(1 for cell in invalid if cell.consistent_prefix is not None)
+    if not number:
+        return {"number_inconsistent_cells": 0, "summary": "분석 대상 안 어긋남 없음"}
+    parts = [f"어긋남 {number}셀"]
+    moved = False
+    for contrast in (confirmatory or {}).get("contrasts", ()):
+        sensitivity = contrast.get("record_inconsistent_sensitivity")
+        if sensitivity is None:
+            continue
+        rejected = sensitivity["reject_at_alpha"]
+        moved = moved or rejected != contrast["reject_at_alpha"]
+        parts.append(
+            f"{contrast['contrast']} 첫 어긋남 앞까지 신뢰 시 {'기각' if rejected else '비기각'}"
+        )
+    if moved:
+        parts.append("기록 손상 가정에 좌우됨")
+    return {"number_inconsistent_cells": number, "summary": "; ".join(parts)}
 
 
 def build_multitarget_report(
@@ -1006,6 +1232,18 @@ def build_multitarget_report(
             "item7_hazard_proxy": _hazard_proxy(tvalid),
             "environment": _environments(tvalid),
         }
+        details = _abort_details(tvalid)
+        for arm, values in by_target[tid]["item1_aborts"]["by_arm"].items():
+            # An arm with only invalid cells has no abort: real zeros.
+            values.update(details.get(arm, {"number_abort_before_event": 0, "number_watchdog": 0}))
+        dense = _dense_registered(tvalid)
+        if dense is not None:
+            by_target[tid]["dense_signals_registered"] = dense
+    confirmatory = (
+        _confirmatory_section(valid, analysis_plan, invalid=invalid)
+        if isinstance(analysis_plan, dict)
+        else None
+    )
     report = {
         "schema_version": 2,
         "classification": "exp3-multitarget-measurement",
@@ -1025,9 +1263,9 @@ def build_multitarget_report(
         "seeds": sorted({c.seed for c in cells}),
         "analysis_plan": analysis_plan,
         "confirmatory_targets": (analysis_plan or {}).get("confirmatory_targets"),
-        "confirmatory": (
-            _confirmatory_section(valid, analysis_plan) if isinstance(analysis_plan, dict) else None
-        ),
+        "confirmatory": confirmatory,
+        "unknown_outcome_steps": _unknown_outcome(valid),
+        "record_inconsistent_sensitivity": _damage_summary(confirmatory, invalid),
         "by_target": by_target,
         "provenance": {"source_files": list(sources), "field_map": dict(field_map)},
     }
@@ -1123,6 +1361,7 @@ def _multitarget_markdown(report: dict) -> str:
                     c.get("order"),
                     c.get("contrast"),
                     c.get("number_seed_blocks"),
+                    c.get("informative_blocks"),
                     c.get("total_events"),
                     "n/a" if perm_p is None else f"{perm_p:.4f}",
                     f"{c['holm_adjusted_p']:.4f}",
@@ -1135,6 +1374,7 @@ def _multitarget_markdown(report: dict) -> str:
             "order",
             "contrast",
             "blocks",
+            "I",
             "events",
             "perm_p",
             "holm_p",

@@ -1796,6 +1796,38 @@ def test_a_whole_last_line_in_a_watchdog_cell_is_kept(
     assert record["summary"]["executions_completed"] == 3
 
 
+def test_the_new_record_fields_exist_only_in_unredacted_summary_files(
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch
+) -> None:
+    """Both hold outcomes (a boundary key, an event in the prefix): the seal must cover them."""
+    out, args, _clock = _deadline_setup(tmp_path, monkeypatch, BEFORE)
+    monkeypatch.setattr(
+        run_exp0, "run_cell_with_watchdog", _runner_with({VICTIM: _killed(2, torn=2)})
+    )
+    assert main(args) == 1
+    plan = _deadline_plan(args)
+    other = next(cell.run_id for cell in plan.cells() if cell.run_id != VICTIM)
+    index_path = out / "summaries" / "index.json"
+    # Not hidden: the cell's own summary file has them, and the index never does.
+    assert _index(out)["outcomes_redacted"] is False
+    damaged = json.loads(_cell(args, VICTIM, out)["summary"].read_text(encoding="utf-8"))
+    assert damaged["record_inconsistent_prefix"]["steps"] == 2
+    plain = json.loads(_cell(args, other, out)["summary"].read_text(encoding="utf-8"))
+    assert plain["dense_detail"]["recorded_steps"] > 0
+    assert b"dense_detail" not in index_path.read_bytes()
+    assert b"record_inconsistent_prefix" not in index_path.read_bytes()
+    # A cell goes unfinished, so outcomes are hidden: nothing under the output may hold them.
+    _forget_cell(out, other, plan)
+    _rewrite_results(out, [row for row in _result_lines(out) if row.get("run_id") != other])
+    assert main([*args, "--summarize-only"]) == 1
+    assert _index(out)["outcomes_redacted"] is True
+    assert not list((out / "summaries").glob("*.summary.json"))
+    for path in out.rglob("*"):
+        if path.is_file():
+            assert b"dense_detail" not in path.read_bytes(), path
+            assert b"record_inconsistent_prefix" not in path.read_bytes(), path
+
+
 def test_two_cut_lines_in_a_watchdog_cell_are_inconsistent(
     tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch
 ) -> None:

@@ -141,6 +141,13 @@ def test_planning_abort_and_restart_condition_are_defined() -> None:
     assert "제외값이 .30 이하이면 입력 쪽을 먼저 본다" in V2_TEXT
 
 
+def test_jobs_max_comes_from_this_benchmark() -> None:
+    assert "`jobs_max = 2`" not in V2_TEXT
+    assert "등록 초안의 `jobs_max`는 `TBD-FREEZE`이고" in V2_TEXT
+    row = _row(V2_TEXT, "| `jobs_max` |")
+    assert "`selected_jobs`로 채운다" in row and "지웅 결정을 기록한다" in row
+
+
 def test_operating_stop_points_to_the_adopted_rule() -> None:
     assert "처음 15캠페인에서 8건" not in V2_TEXT
     row = _row(V2_TEXT, "| **실행 중 중단** |")

@@ -69,7 +69,7 @@ stage.C = 6,8,8,6
 - `jobs_max`는 **상한 검사일 뿐이다**: `src/inodefence/evaluation/rds_preregistration.py:721-725`.
 - 실제 동시 실행 수는 `--jobs`다: `scripts/run_exp0.py:1318` `ThreadPoolExecutor(max_workers=args.jobs)`.
 - 슬롯 하나가 캠페인 하나다. 캠페인 안에서는 직렬이다. 따라서 Docker 입장의 동시성은 컨트롤러 J개 + 타깃 최대 J개다.
-- EXP-3 초안은 `jobs_max = 2`다(`exp3-v1.md:224`, #264, 미머지). 다른 값을 쓰려면 재작성 때 함께 바꿔야 한다(§9).
+- 등록 초안의 `jobs_max`는 `TBD-FREEZE`이고 이 벤치마크의 `selected_jobs`로 채운다(§9).
 
 ### 3.2 컨테이너 생성·실행·종료·정리 경로
 
@@ -353,7 +353,7 @@ python3.12 scripts/make_raw_manifest.py --root "$OUT" --host win --date <YYYYMMD
 
 | 항목 | 처리 |
 | --- | --- |
-| `jobs_max` | 선택값으로 변경(`exp3-v1.md:223-224`의 "jobs 3 미측정" 주석 포함). 동결 후 상향은 게이트가 거부한다 |
+| `jobs_max` | 이 벤치마크의 `selected_jobs`로 채운다. 어느 단계도 통과하지 못하면 2다. H1·H5처럼 선택값이 없으면 지웅 결정을 기록한다. 동결 후 상향은 게이트가 거부한다 |
 | 실제 `--jobs` | `jobs_max`는 상한뿐이므로 **등록 문서에 정확한 값을 명시**한다. 하향은 아래 중단 규칙으로만 |
 | `campaign_watchdog_seconds` | 선택 수준의 셀 시간과 monotonic 배율로 다시 계산한다 |
 | `execution_mode` | per-case 외 모드는 이 벤치마크가 뒷받침하지 않는다 |

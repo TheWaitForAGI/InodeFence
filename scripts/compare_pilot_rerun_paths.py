@@ -60,6 +60,7 @@ NOT_TESTED_DIVERGED = "not_tested_diverged"
 NOT_TESTED_STOPPED = "not_tested_rerun_stopped"
 NOT_TESTED_OTHER_CASE = "not_tested_other_case"
 NOT_TESTED_NO_RECORD = "not_tested_no_record"
+NOT_TESTED_REPORT = "not_tested_report_unreadable"
 GROUP_LABELS = {
     "created/never started": "(1)",
     "started/died, then stall": "(2)",
@@ -73,6 +74,10 @@ class ComparisonError(ValueError):
 
 class UnreadableSteps(ValueError):
     """A steps file does not parse, or its indices are not its line numbers."""
+
+
+class UnreadableReport(ValueError):
+    """A nonzero cell's report does not parse, or its abort stub is malformed."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,12 +129,16 @@ def read_abort(cell: CellFiles) -> AbortRecord | None:
     """The abort stub of a nonzero cell. A completed cell's report is never opened."""
     if not cell.returncode or cell.report is None or not cell.report.is_file():
         return None
-    stub = json.loads(cell.report.read_text(encoding="utf-8")).get("aborted")
-    if not isinstance(stub, Mapping):
-        return None
-    return AbortRecord(
-        int(stub["step_index"]), str(stub["case_id"]), str(stub["reason"]), stub.get("category")
-    )
+    try:
+        data = json.loads(cell.report.read_text(encoding="utf-8"))
+        stub = data.get("aborted")
+        if not isinstance(stub, Mapping):
+            return None
+        return AbortRecord(
+            int(stub["step_index"]), str(stub["case_id"]), str(stub["reason"]), stub.get("category")
+        )
+    except (ValueError, KeyError, TypeError, AttributeError, OSError) as error:
+        raise UnreadableReport(f"{cell.report.name}: {type(error).__name__}") from error
 
 
 def common_prefix(first: Sequence[str], second: Sequence[str]) -> int:
@@ -203,6 +212,18 @@ def summarize(tests: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
             1 - 0.05 ** (1 / passes) if passes >= 1 and recurrences == 0 else None
         ),
     }
+
+
+def input_dependence_signal(tests: Iterable[Mapping[str, Any]]) -> bool | None:
+    """True on any recurrence, False only when a position was really passed, else not tested.
+
+    A cell that diverged or never reached the position says nothing, so no pass and no recurrence
+    is ``None``, not ``False``.
+    """
+    summary = summarize(tests)
+    if summary["recurrences"]:
+        return True
+    return False if summary["passes_m"] else None
 
 
 def design_differences(pilot: PilotDesign, benchmark: Design) -> list[str]:
@@ -330,6 +351,7 @@ def compare(
     tests: list[dict[str, Any]] = []
     elsewhere: list[dict[str, Any]] = []
     tested_aborts: dict[tuple[str, int], AbortRecord] = {}
+    rerun_aborts: dict[tuple[str, str, int], AbortRecord | None] = {}
     for block in blocks:
         for cell in block.cells:
             key = (cell.search, cell.seed)
@@ -348,13 +370,20 @@ def compare(
             if pilot_ids is None:
                 raise ComparisonError(f"pilot cell {source.label}-s{cell.seed}: {pilot_problem}")
             rerun_ids, problem = _safe_ids(cell.steps) if cell.state == "ran" else (None, "not_run")
-            rerun_abort = read_abort(cell)
+            report_unreadable = False
+            try:
+                rerun_abort = read_abort(cell)
+            except UnreadableReport:
+                # One damaged re-run report stays that cell's problem; the others still count.
+                rerun_abort, report_unreadable = None, True
+            rerun_aborts[(block.name, cell.search, cell.seed)] = rerun_abort
             row: dict[str, Any] = {
                 "block": block.name,
                 "jobs": block.jobs,
                 "label": cell.label,
                 "seed": cell.seed,
                 "returncode": cell.returncode,
+                "report_unreadable": report_unreadable,
             }
             if rerun_ids is None:
                 row.update(
@@ -367,11 +396,17 @@ def compare(
             else:
                 row.update(compare_paths(pilot_ids, rerun_ids, budget))
             cell_rows.append(row)
-            pilot_abort = read_abort(source)
+            try:
+                pilot_abort = read_abort(source)
+            except UnreadableReport as error:
+                raise ComparisonError(f"pilot report: {error}") from error
             if pilot_abort is None:
                 continue
             tested_aborts[key] = pilot_abort
             status, identical = classify_abort(pilot_abort, pilot_ids, rerun_ids, rerun_abort)
+            if report_unreadable and status in (NOT_TESTED_STOPPED, NOT_TESTED_NO_RECORD):
+                # The cell stopped and its stub cannot be read: a recurrence cannot be ruled out.
+                status = NOT_TESTED_REPORT
             tests.append(
                 {
                     "block": block.name,
@@ -394,7 +429,7 @@ def compare(
     # Same case only, at another position: for information, never a recurrence.
     for block in blocks:
         for cell in block.cells:
-            rerun_abort = read_abort(cell)
+            rerun_abort = rerun_aborts.get((block.name, cell.search, cell.seed))
             if rerun_abort is None:
                 continue
             for (search, seed), pilot_abort in tested_aborts.items():
@@ -432,7 +467,13 @@ def compare(
             )
             for label, seed in sorted({(test["label"], test["seed"]) for test in tests})
         },
-        "input_dependence_signal": bool(recurrences),
+        "attempts": {
+            "tests": len(tests),
+            "pilot_aborts": len(tested_aborts),
+            "blocks": len(blocks),
+            "maximum": len(tested_aborts) * len(blocks),
+        },
+        "input_dependence_signal": input_dependence_signal(tests),
         "recurrences": recurrences,
         "same_case_elsewhere_information_only": elsewhere,
     }
@@ -449,7 +490,13 @@ def _bound_sentence(summary: Mapping[str, Any]) -> str:
     )
 
 
+def _signal_words(signal: bool | None) -> str:
+    return "시험 안 됨" if signal is None else str(signal)
+
+
 def render_markdown(report: Mapping[str, Any]) -> str:
+    attempts = report["attempts"]
+    not_tested = sum(report["summary"]["not_tested"].values())
     lines = [
         "# 파일럿 대 재실행 경로 대조",
         "",
@@ -463,8 +510,11 @@ def render_markdown(report: Mapping[str, Any]) -> str:
         "EXP-3 동결 전에는 공통 앞부분을 파일럿 사건 위치와 결합해 재실행 사건 수를 만들지 않는다.",
         "",
         f"- 파일럿 엔진: `{report['pilot_head']}`, 재실행 엔진: {report['rerun_heads']}",
-        f"- 입력 종속 신호: **{report['input_dependence_signal']}** "
+        f"- 입력 종속 신호: **{_signal_words(report['input_dependence_signal'])}** "
         "(같은 arm, seed, step, case_id의 재발. 자동 정지가 아니라 지웅 판단이다)",
+        f"- 시도 {attempts['tests']}건(파일럿 abort {attempts['pilot_aborts']} × "
+        f"블록 {attempts['blocks']} = 최댓값 {attempts['maximum']}), "
+        f"통과 m = {report['summary']['passes_m']}, 시험 안 됨 {not_tested}",
         f"- 전체: {_bound_sentence(report['summary'])}",
     ]
     if report["summary"]["passes_m"]:

@@ -12,6 +12,7 @@ from scripts.compare_pilot_rerun_paths import (
     NOT_TESTED_DIVERGED,
     NOT_TESTED_NO_RECORD,
     NOT_TESTED_OTHER_CASE,
+    NOT_TESTED_REPORT,
     NOT_TESTED_STOPPED,
     PASSED,
     RECURRED,
@@ -241,7 +242,7 @@ def test_same_case_elsewhere_is_information_only(tmp_path: Path) -> None:
     pilot = pilot_map(tmp_path)
     cell = make_cell(rerun_dir(tmp_path), "r", ["c0", "c1"], abort=stub(2, "c3"))
     result = compare(pilot, [RerunBlock("b1", 2, (cell,))], 5)
-    assert result["input_dependence_signal"] is False
+    assert result["input_dependence_signal"] is None
     assert [item["step"] for item in result["same_case_elsewhere_information_only"]] == [2]
 
 
@@ -347,3 +348,96 @@ def test_rerun_blocks_read_the_driver_layout(tmp_path: Path) -> None:
     assert loaded.cells[0].returncode == 1
     assert loaded.cells[0].steps == directory / "raw" / "x.jsonl"
     assert loaded.cells[1].state == "not-run"
+
+
+@pytest.mark.parametrize("inside", ["repository", "evidence"])
+def test_output_inside_the_repository_or_evidence_tree_is_refused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, inside: str
+) -> None:
+    monkeypatch.setenv("HOME", str(tmp_path))
+    root = ROOT if inside == "repository" else tmp_path / "inodefence-evidence"
+    out = root / "must-not-be-created-by-this-test"
+    code = cmp.main(
+        [
+            "--pilot-raw",
+            str(tmp_path / "no-raw"),
+            "--pilot-design",
+            str(PILOT_DESIGN),
+            "--pilot-manifest",
+            str(tmp_path / "no-manifest"),
+            "--self-test-seeds",
+            "8110",
+            "--out",
+            str(out),
+        ]
+    )
+    assert code == 2
+    assert not out.exists()
+
+
+def test_no_pass_and_no_recurrence_is_not_a_false_signal(tmp_path: Path) -> None:
+    pilot = pilot_map(tmp_path)
+    cell = make_cell(rerun_dir(tmp_path), "r", ["c0", "x", "c2", "c3"])
+    result = compare(pilot, [RerunBlock("b1", 2, (cell,))], 5)
+    assert result["input_dependence_signal"] is None
+    report = {"label": "t", "pilot_head": "h", "rerun_heads": [], **result}
+    assert "입력 종속 신호: **시험 안 됨**" in render_markdown(report)
+    assert json.loads(json.dumps(report))["input_dependence_signal"] is None
+
+
+def test_a_pass_gives_a_false_signal_and_a_recurrence_a_true_one() -> None:
+    passed, recurred = {"status": PASSED}, {"status": RECURRED}
+    assert cmp.input_dependence_signal([passed]) is False
+    assert cmp.input_dependence_signal([recurred]) is True
+    assert cmp.input_dependence_signal([passed, recurred]) is True
+    assert cmp.input_dependence_signal([{"status": NOT_TESTED_DIVERGED}]) is None
+    assert cmp.input_dependence_signal([]) is None
+
+
+def test_six_passes_give_the_stated_bound() -> None:
+    summary = summarize([{"status": PASSED}] * 6)
+    assert summary["recurrence_upper95"] == pytest.approx(0.393, abs=0.001)
+
+
+def test_a_damaged_rerun_report_marks_only_that_cell(tmp_path: Path) -> None:
+    pilot = pilot_map(tmp_path)
+    directory = rerun_dir(tmp_path)
+    damaged = make_cell(directory, "r1", ["c0", "c1", "c2"], abort=stub(3, "c3"))
+    assert damaged.report is not None
+    damaged.report.write_text("{not json", encoding="utf-8")
+    fine = make_cell(directory, "r2", ["c0", "c1", "c2", "c3"])
+    result = compare(pilot, [RerunBlock("b1", 2, (damaged, fine))], 5)
+    assert [row["report_unreadable"] for row in result["cells"]] == [True, False]
+    assert [test["status"] for test in result["abort_tests"]] == [NOT_TESTED_REPORT, PASSED]
+    assert result["summary"]["passes_m"] == 1
+    assert result["summary"]["not_tested"] == {NOT_TESTED_REPORT: 1}
+
+
+def test_a_damaged_stub_in_a_rerun_report_marks_the_cell(tmp_path: Path) -> None:
+    pilot = pilot_map(tmp_path)
+    damaged = make_cell(rerun_dir(tmp_path), "r", ["c0", "c1", "c2"], abort={"step_index": "x"})
+    result = compare(pilot, [RerunBlock("b1", 2, (damaged,))], 5)
+    assert result["abort_tests"][0]["status"] == NOT_TESTED_REPORT
+
+
+def test_a_damaged_pilot_report_is_still_refused(tmp_path: Path) -> None:
+    pilot = pilot_map(tmp_path)
+    source = next(iter(pilot.values()))
+    assert source.report is not None
+    source.report.write_text("{not json", encoding="utf-8")
+    cell = make_cell(rerun_dir(tmp_path), "r", ["c0", "c1", "c2", "c3"])
+    with pytest.raises(ComparisonError):
+        compare(pilot, [RerunBlock("b1", 2, (cell,))], 5)
+
+
+def test_summary_line_states_attempts_against_the_maximum(tmp_path: Path) -> None:
+    pilot = pilot_map(tmp_path)
+    directory = rerun_dir(tmp_path)
+    blocks = [
+        RerunBlock("b1", 2, (make_cell(directory, "r1", ["c0", "c1", "c2", "c3"]),)),
+        RerunBlock("b2", 4, (make_cell(directory, "r2", ["x"]),)),
+    ]
+    result = compare(pilot, blocks, 5)
+    assert result["attempts"] == {"tests": 2, "pilot_aborts": 1, "blocks": 2, "maximum": 2}
+    text = render_markdown({"label": "t", "pilot_head": "h", "rerun_heads": [], **result})
+    assert "시도 2건(파일럿 abort 1 × 블록 2 = 최댓값 2), 통과 m = 1, 시험 안 됨 1" in text

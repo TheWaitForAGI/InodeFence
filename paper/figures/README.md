@@ -24,8 +24,10 @@ InodeFence commit / target version
 | --- | --- | --- | --- |
 | M2 cross-release verdict | [`m2-cross-release-evidence.png`](m2-cross-release-evidence.png) | [`render_m2_cross_release.py`](render_m2_cross_release.py) | [표 M2](../tables/m2-cross-release-evidence.md), [raw summary.json](../../experiments/repro/evidence/summary.json) |
 | M3 어휘 제거 대조 | [`m3-blind-ablation.png`](m3-blind-ablation.png) | [`render_m3_blind_ablation.py`](render_m3_blind_ablation.py) | [표 M3](../tables/m3-blind-ablation.md), [자력발견 요약](../../experiments/summaries/node-self-discovery-mechanism-v1.md) |
+| EXP-0 결합 T_first (인프라 측정) | [`exp0-survival.png`](exp0-survival.png) | [`render_exp0_survival.py`](render_exp0_survival.py) | [표 EXP-0](../tables/exp0-summary.md), [공식 리포트 JSON](../../experiments/summaries/exp0-20261105-report.json) |
 
-두 그림은 **observed 수치만** 쓴다(스크립트가 수치를 하드코딩, 추측 없음). 렌더는 `make check` 밖의
+세 그림은 **observed 수치만** 쓴다(M2·M3는 스크립트가 수치를 하드코딩, EXP-0은 리포트 JSON을 읽음; 추측 없음). EXP-0 그림은 전 arm 사건 0이라
+세 곡선이 S(t)=1에 겹쳐 맨 위 S-u만 보이며, arm 비교가 아니다. EXP-0은 `--report` 경로로 직접 실행한다. 렌더는 `make check` 밖의
 ephemeral matplotlib 환경에서 하며, 각 스크립트 docstring의 명령으로 재생성한다. powered 판정
 소절(Results §5.3.3 rate CI 미분리 · §5.4.3 decompress 0/28 음성 · §5.4.4 oras-go 0/1 음성)은 모두
 음성/미분리라 막대그림의 정보 가치가 낮아 본문 표·수치로만 보고하고 별도 그림은 두지 않는다.

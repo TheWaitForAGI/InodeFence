@@ -27,8 +27,8 @@ PYTHONPATH=src python3 scripts/analyze_exp0.py --index <run>/summaries/index.jso
 
 | ID | 파일 | 생성기 | 입력·상태 |
 | --- | --- | --- | --- |
-| T-EXP0 | `paper/tables/exp0-summary.md` | `paper/figures/render_exp0_survival.py --report <json> --no-figure` | 입력은 `experiments/summaries/exp0-20261105-report.json`(스키마 1). main의 표 파일은 아직 "TBD — EXP-0 미실행" 플레이스홀더이므로 재생성이 필요하다(호스트 동결 뒤). `regenerate_paper_artifacts.py --regenerate`는 이 생성기를 실행하지 않으므로 직접 실행한다 |
-| F-EXP0 | `paper/figures/exp0-survival.png` | 같은 스크립트 (matplotlib 임시 환경) | `item5_first_contract_index.by_arm.<arm>.t_first_combined_c1_or_c2.{km_curve,censored_times}`. hit 0이므로 곡선은 사건 없이 평평하다 |
+| T-EXP0 | `paper/tables/exp0-summary.md` | `paper/figures/render_exp0_survival.py --report <json> --no-figure` | 입력은 `experiments/summaries/exp0-20261105-report.json`(스키마 1). 2026-11-07 재생성 완료. `regenerate_paper_artifacts.py --regenerate`는 이 생성기를 실행하지 않으므로 직접 실행한다. 표의 p50·p95는 monotonic 기록값이다(공백 5) |
+| F-EXP0 | `paper/figures/exp0-survival.png` | 같은 스크립트 (matplotlib 임시 환경) | `item5_first_contract_index.by_arm.<arm>.t_first_combined_c1_or_c2.{km_curve,censored_times}`. 2026-11-07 생성 완료. hit 0이므로 곡선은 사건 없이 평평하고 세 arm이 겹쳐 맨 위 S-u만 보인다 |
 | T-M2, T-M3 | `paper/tables/m2-cross-release-evidence.md`, `m3-blind-ablation.md` | `scripts.gen_table_m2`, `scripts.gen_table_m3` (#256) | `experiments/repro/evidence/summary.json`, `node-self-discovery-mechanism-v1.md`. `--check`로 바이트 대조 |
 | F-M2, F-M3 | `paper/figures/m2-cross-release-evidence.png`, `m3-blind-ablation.png` | `render_m2_cross_release.py`, `render_m3_blind_ablation.py` | 2026-11-06 재렌더, 철회·혼동 문구 정정 완료 |
 
@@ -38,7 +38,7 @@ PYTHONPATH=src python3 scripts/analyze_exp0.py --index <run>/summaries/index.jso
    `KeyError: 'item1_aborts'`, 그림은 `KeyError: 'item5_first_contract_index'`). 면책 문구도 EXP-0 전용이다. 위 EXP-3 5종은
    `by_target`을 읽는 새 생성기가 필요하다.
 2. **`ARTIFACTS`에 EXP-3 행이 없다.** 새 생성기와 함께 `scripts/regenerate_paper_artifacts.py`에 추가한다. `exp0-survival.png` 행의
-   메모는 #232·#256으로 해소됐다(optional 행, PNG 커밋 전 `--verify`는 SKIP).
+   메모는 해소됐다(optional 행, 커밋된 PNG는 `--verify`가 크기로 확인).
 3. **해소됨: 표 생성기의 옛 문구.** `gen_table_m2.py`·`gen_table_m3.py`는 2026-11-06 정정 문구로 맞춰 #256으로 머지됐다. T-M2·T-M3를 고칠 때는
    생성기 리터럴도 함께 고친다. `tests/test_gen_tables.py`와 `--verify`가 바이트로 대조한다.
 4. **EXP-0 리포트의 타깃 필드.** JSON `targets`는 `["unspecified"]`이고 실제 타깃은 `7.5.2`다(공식 리포트 편차 5).

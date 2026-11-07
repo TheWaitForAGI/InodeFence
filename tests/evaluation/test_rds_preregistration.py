@@ -1,6 +1,7 @@
 """Preregistration gate: block parsing and refusal on any mismatch."""
 
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -621,3 +622,40 @@ def test_listed_pairs_are_unchanged_by_the_kinds() -> None:
         ("node-tar", "7.9.9"),
     }
     assert parse_exposure_ledger_kinds(text)[("node-tar", "7.9.9")] == {"qualification-only"}
+
+
+def _with_deadline(value: str) -> str:
+    return TARGETS_BLOCK.replace(
+        "event_threshold = 5\n", f"event_threshold = 5\nexecution_deadline = {value}\n"
+    )
+
+
+def test_execution_deadline_is_an_instant_with_an_offset() -> None:
+    prereg = parse_preregistration(_with_deadline("2026-11-25T12:00:00+09:00"))
+    assert prereg.execution_deadline == datetime(2026, 11, 25, 3, 0, tzinfo=UTC)
+    assert prereg.unknown_keys == parse_preregistration(TARGETS_BLOCK).unknown_keys
+    assert parse_preregistration(TARGETS_BLOCK).execution_deadline is None
+    assert parse_preregistration(BLOCK).execution_deadline is None
+
+
+@pytest.mark.parametrize(
+    ("value", "fragment"),
+    [
+        ("2026-11-25T12:00:00", "must carry a UTC offset"),
+        ("2026-11-25", "must carry a UTC offset"),
+        ("soon", "execution_deadline"),
+        ("11/25 12:00 KST", "execution_deadline"),
+    ],
+)
+def test_execution_deadline_refuses_an_ambiguous_value(value: str, fragment: str) -> None:
+    with pytest.raises(PreregistrationFormatError, match=fragment):
+        parse_preregistration(_with_deadline(value))
+
+
+def test_execution_deadline_needs_the_targets_form() -> None:
+    block = BLOCK.replace(
+        "```preregistration\n",
+        "```preregistration\nexecution_deadline = 2026-11-25T12:00:00+09:00\n",
+    )
+    with pytest.raises(PreregistrationFormatError, match="requires targets"):
+        parse_preregistration(block)

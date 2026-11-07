@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -1100,6 +1101,224 @@ def test_qualification_only_holdout_passes_the_gate(tmp_path: Path) -> None:
         ledger=run_exp0.read_ledger(ledger),
     )
     assert problems == ()
+
+
+# ---- execution deadline (D041) ---------------------------------------------------------------
+
+DEADLINE_TEXT = "2026-11-25T12:00:00+09:00"
+DEADLINE = datetime(2026, 11, 25, 3, 0, tzinfo=UTC)
+BEFORE, AFTER = DEADLINE - timedelta(seconds=1), DEADLINE + timedelta(seconds=1)
+TARGET_IMAGES = {"image_id_by_target": {"node-tar-7.5.2": DIGEST, "node-tar-7.9.9": DIGEST_B}}
+
+
+def _deadline_setup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, now: datetime, *, jobs: str = "2"
+) -> tuple[Path, list[str], dict[str, datetime]]:
+    """A targets registration with a deadline, its live arguments, and a clock tests can move."""
+    ledger, sha = _ledger(tmp_path)
+    file = _targets_file(tmp_path, ledger_sha=sha)
+    file.write_text(
+        file.read_text(encoding="utf-8").replace(
+            "event_threshold = 5\n",
+            f"event_threshold = 5\n{EXP3_EXTRA}execution_deadline = {DEADLINE_TEXT}\n",
+        ),
+        encoding="utf-8",
+    )
+    out = tmp_path / "exp3"
+    base = [a for a in _target_args(file, out, ledger) if a != "--no-manifest"]
+    args = [*base, *_manifest_args(tmp_path), "--jobs", jobs]
+    clock = {"now": now}
+    monkeypatch.setattr(run_exp0, "_now", lambda: clock["now"])
+    monkeypatch.setattr(run_exp0, "_warmup", lambda *a, **k: 0)
+    return out, args, clock
+
+
+def _forget_cell(out: Path, run_id: str, plan: Exp0Plan) -> None:
+    """Leave a planned cell with no record at all, as if it never started."""
+    cell = next(c for c in plan.cells() if c.run_id == run_id)
+    paths = cell_paths(cell, out)
+    for key in ("report", "steps_jsonl", "log"):
+        paths[key].unlink()
+    matrix = json.loads((out / "matrix.json").read_text())
+    matrix["cells"] = [c for c in matrix["cells"] if c["run_id"] != run_id]
+    (out / "matrix.json").write_text(json.dumps(matrix))
+
+
+def _index(out: Path) -> dict[str, Any]:
+    return json.loads((out / "summaries" / "index.json").read_text())
+
+
+def _deadline_plan(args: list[str]) -> Exp0Plan:
+    return _plan(Path(args[args.index("--preregistration") + 1]))
+
+
+def test_deadline_instant_is_compared_across_offsets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _out, args, clock = _deadline_setup(tmp_path, monkeypatch, DEADLINE)
+    plan = _deadline_plan(args)
+    assert plan.preregistration.execution_deadline == DEADLINE
+    assert run_exp0.deadline_passed(plan) is False  # the instant itself is still on time
+    clock["now"] = DEADLINE + timedelta(microseconds=1)
+    assert run_exp0.deadline_passed(plan) is True
+    clock["now"] = DEADLINE - timedelta(microseconds=1)
+    assert run_exp0.deadline_passed(plan) is False
+    # The same instant written at another offset.
+    clock["now"] = datetime(2026, 11, 25, 12, 0, 1, tzinfo=timezone(timedelta(hours=9)))
+    assert run_exp0.deadline_passed(plan) is True
+
+
+def test_no_deadline_leaves_every_record_as_it_was(
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ledger, sha = _ledger(tmp_path)
+    out = tmp_path / "exp3"
+    args = _target_args(_targets_file(tmp_path, ledger_sha=sha), out, ledger)
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", _fake_runner(TARGET_IMAGES))
+    monkeypatch.setattr(run_exp0, "_warmup", lambda *a, **k: 0)
+    assert main(args) == 0
+    assert "deadline" not in _index(out)
+    assert "execution_deadline" not in json.loads((out / "registration.json").read_text())
+    assert "deadline_not_started" not in json.loads((out / "matrix.json").read_text())
+
+
+def test_dry_run_shows_the_deadline(
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch, capsys
+) -> None:
+    _out, args, _clock = _deadline_setup(tmp_path, monkeypatch, BEFORE)
+    assert main([*args, "--dry-run"]) == 0
+    assert f"execution_deadline={DEADLINE_TEXT}" in capsys.readouterr().out
+
+
+def test_before_the_deadline_an_unfinished_cell_keeps_outcomes_hidden(
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch
+) -> None:
+    out, args, _clock = _deadline_setup(tmp_path, monkeypatch, BEFORE)
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", _fake_runner(TARGET_IMAGES))
+    assert main(args) == 0
+    index = _index(out)
+    assert index["outcomes_redacted"] is False
+    assert index["deadline"] == {
+        "execution_deadline": DEADLINE_TEXT,
+        "passed": False,
+        "excluded_seeds": {},
+        "causes": {},
+    }
+    _forget_cell(out, "node-tar-7.9.9-R-s9002", _deadline_plan(args))
+    assert main([*args, "--summarize-only"]) == 1
+    index = _index(out)
+    assert index["outcomes_redacted"] is True
+    assert index["interim"]["reasons"][0].startswith("1 cell(s) unattempted")
+    assert index["deadline"]["passed"] is False and index["deadline"]["excluded_seeds"] == {}
+    assert all(c["summary"] is None and "t_first" not in c for c in index["cells"])
+
+
+def test_after_the_deadline_outcomes_open_and_the_whole_seed_is_named(
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch
+) -> None:
+    out, args, clock = _deadline_setup(tmp_path, monkeypatch, BEFORE)
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", _fake_runner(TARGET_IMAGES))
+    assert main(args) == 0
+    _forget_cell(out, "node-tar-7.9.9-R-s9002", _deadline_plan(args))
+    clock["now"] = AFTER
+    assert main([*args, "--summarize-only"]) == 1  # not all complete, but published
+    index = _index(out)
+    assert index["outcomes_redacted"] is False and index["interim"]["reasons"] == []
+    assert index["interim"]["states"]["unattempted"] == 1
+    assert index["deadline"] == {
+        "execution_deadline": DEADLINE_TEXT,
+        "passed": True,
+        "excluded_seeds": {"node-tar-7.9.9": [9002]},
+        "causes": {"node-tar-7.9.9-R-s9002": "unattempted"},
+    }
+    published = [c for c in index["cells"] if c["run_id"] != "node-tar-7.9.9-R-s9002"]
+    assert all("t_first" in c and c["summary"] for c in published)
+
+
+def test_no_flag_can_open_outcomes_before_the_deadline(
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch
+) -> None:
+    out, args, _clock = _deadline_setup(tmp_path, monkeypatch, DEADLINE)
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", _fake_runner(TARGET_IMAGES))
+    assert main(args) == 0
+    _forget_cell(out, "node-tar-7.5.2-D-s9001", _deadline_plan(args))
+    assert main([*args, "--summarize-only"]) == 1  # exactly at the deadline: still hidden
+    assert _index(out)["outcomes_redacted"] is True
+
+
+def test_an_integrity_problem_keeps_outcomes_hidden_after_the_deadline(
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch
+) -> None:
+    out, args, clock = _deadline_setup(tmp_path, monkeypatch, BEFORE)
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", _fake_runner(TARGET_IMAGES))
+    assert main(args) == 0
+    plan = _deadline_plan(args)
+    paths = cell_paths(plan.cells()[1], out)
+    records = [json.loads(line) for line in paths["steps_jsonl"].read_text().splitlines()]
+    records[0]["oracle"] = {"C0": True, "C1": True, "C2": True}  # disagrees with the report
+    paths["steps_jsonl"].write_text("".join(json.dumps(r) + "\n" for r in records))
+    clock["now"] = AFTER
+    assert main([*args, "--summarize-only"]) == 1
+    index = _index(out)
+    assert index["outcomes_redacted"] is True
+    assert index["interim"]["reasons"][0].startswith("evidence integrity:")
+
+
+def test_no_cell_starts_after_the_deadline_and_records_stay_in_place(
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch
+) -> None:
+    victim = "node-tar-7.5.2-D-s9002"
+    out, args, clock = _deadline_setup(tmp_path, monkeypatch, BEFORE)
+    behaviour = {**TARGET_IMAGES, "abort": {victim}}
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", _fake_runner(behaviour))
+    assert main(args) == 1
+    report = cell_paths(next(c for c in _deadline_plan(args).cells() if c.run_id == victim), out)[
+        "report"
+    ]
+    before = report.read_bytes()
+
+    def no_warmup(*_args: object, **_kwargs: object) -> int:
+        raise AssertionError("nothing runs after the deadline, so nothing warms up")
+
+    late_runner = _fake_runner(TARGET_IMAGES)
+    monkeypatch.setattr(run_exp0, "_warmup", no_warmup)
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", late_runner)
+    clock["now"] = AFTER
+    assert main(args) == 1
+    assert late_runner.calls == []  # type: ignore[attr-defined]
+    assert report.read_bytes() == before  # the abort record was not moved or replaced
+    assert not (out / "attempts").exists()
+    assert json.loads((out / "matrix.json").read_text())["deadline_not_started"] == [victim]
+    deadline = _index(out)["deadline"]
+    assert deadline["causes"] == {victim: "abort-pending"}
+    assert deadline["excluded_seeds"] == {"node-tar-7.5.2": [9002]}
+
+
+def test_a_cell_running_across_the_deadline_finishes_and_excludes_its_seed(
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch
+) -> None:
+    out, args, clock = _deadline_setup(tmp_path, monkeypatch, BEFORE, jobs="1")
+    inner = _fake_runner(TARGET_IMAGES)
+
+    def crossing(cell: Any, *rest: Any, **limits: Any) -> Any:
+        result = inner(cell, *rest, **limits)
+        clock["now"] = AFTER  # the deadline passes while this one cell runs
+        return result
+
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", crossing)
+    assert main(args) == 1
+    cells = _deadline_plan(args).cells()
+    first = cells[0]
+    assert inner.calls == [first.run_id]  # type: ignore[attr-defined]
+    assert cell_paths(first, out)["report"].is_file()  # finished, not killed, record kept
+    matrix = json.loads((out / "matrix.json").read_text())
+    assert matrix["deadline_not_started"] == sorted(c.run_id for c in cells[1:])
+    deadline = _index(out)["deadline"]
+    assert deadline["causes"][first.run_id] == "ended-after-deadline"
+    assert deadline["excluded_seeds"] == {
+        "node-tar-7.5.2": [9001, 9002],
+        "node-tar-7.9.9": [9001, 9002],
+    }
 
 
 def test_multi_target_dry_run_and_live_run_with_fake_cells(

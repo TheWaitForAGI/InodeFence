@@ -1071,7 +1071,10 @@ def _multitarget_markdown(report: dict) -> str:
         if excluded:
             lines += _md_table(
                 ["target_id", "excluded seeds"],
-                [[tid, ", ".join(str(s) for s in seeds)] for tid, seeds in sorted(excluded.items())],
+                [
+                    [tid, ", ".join(str(s) for s in seeds)]
+                    for tid, seeds in sorted(excluded.items())
+                ],
             )
             lines.append("")
         if causes:

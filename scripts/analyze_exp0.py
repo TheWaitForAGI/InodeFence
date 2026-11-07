@@ -1020,11 +1020,6 @@ def build_multitarget_report(
             "record_states": _record_states(
                 sorted({c.arm for c in [*tvalid, *tinvalid]}), tinvalid
             ),
-            # Over the analysed cells: an invalid cell's summary has no budget to plan from.
-            "execution_steps": {
-                "recorded": sum(c.executions for c in tvalid),
-                "planned": sum(c.budget for c in tvalid),
-            },
         }
     report = {
         "schema_version": 2,

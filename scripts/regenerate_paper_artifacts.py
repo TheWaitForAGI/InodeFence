@@ -64,16 +64,18 @@ class Artifact:
 
 
 #: EXP-3 and EXP-2 result tables (scripts/gen_exp3_tables.py); none exists before those runs.
-_EXP3_TABLES: tuple[tuple[str, str, str], ...] = (
-    ("T-EXP3-1", "paper/tables/exp3-train-arms.md", "exp3-train-report.json"),
-    ("T-EXP3-2", "paper/tables/exp3-go-inputs.md", "exp3-train-report.json"),
-    ("T-EXP3-3", "paper/tables/exp3-dense-signals.md", "exp3-train-report.json"),
-    ("T-EXP2-1", "paper/tables/exp2-holdout-arms.md", "exp2-holdout-report.json"),
-    ("T-EXP2-2", "paper/tables/exp2-holdout-contrasts.md", "exp2-holdout-report.json"),
-    ("T-EXP2-3", "paper/tables/exp2-holdout-notes.md", "exp2-holdout-report.json"),
-    ("T-EXP2-4", "paper/tables/exp2-abort-sensitivity.md", "exp2-holdout-report.json"),
-    ("T-EXP2-5", "paper/tables/exp2-infra.md", "exp2-holdout-report.json"),
-    ("T-EXP2-6", "paper/tables/exp2-dense-signals.md", "exp2-holdout-report.json"),
+_TRAIN = ("exp3-train-report.json",)
+_HOLDOUT = ("exp2-holdout-report.json",)
+_EXP3_TABLES: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    ("T-EXP3-1", "paper/tables/exp3-train-arms.md", _TRAIN),
+    ("T-EXP3-2", "paper/tables/exp3-go-inputs.md", (*_TRAIN, "exp3-train-cell-results.jsonl")),
+    ("T-EXP3-3", "paper/tables/exp3-dense-signals.md", _TRAIN),
+    ("T-EXP2-1", "paper/tables/exp2-holdout-arms.md", _HOLDOUT),
+    ("T-EXP2-2", "paper/tables/exp2-holdout-contrasts.md", _HOLDOUT),
+    ("T-EXP2-3", "paper/tables/exp2-holdout-notes.md", (*_HOLDOUT, "exp2-holdout-hand-input.json")),
+    ("T-EXP2-4", "paper/tables/exp2-abort-sensitivity.md", _HOLDOUT),
+    ("T-EXP2-5", "paper/tables/exp2-infra.md", _HOLDOUT),
+    ("T-EXP2-6", "paper/tables/exp2-dense-signals.md", _HOLDOUT),
 )
 _EXP3_FIGURES: tuple[tuple[str, str], ...] = (
     ("paper/figures/exp3-train-survival.png", "exp3-train-report.json"),
@@ -153,14 +155,14 @@ ARTIFACTS: tuple[Artifact, ...] = (
             "table",
             "scripts/gen_exp3_tables.py",
             "project",
-            (f"experiments/summaries/{report}",),
+            tuple(f"experiments/summaries/{name}" for name in inputs),
             "byte",
             "from the analyze_exp0 report; a missing input stops it",
             out_flag=True,
             optional=True,
             generator_args=("--artifact", artifact),
         )
-        for artifact, output, report in _EXP3_TABLES
+        for artifact, output, inputs in _EXP3_TABLES
     ),
     *(
         Artifact(

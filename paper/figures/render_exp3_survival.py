@@ -45,7 +45,9 @@ def arm_curves(report: dict[str, Any], role: str) -> dict[str, dict[str, Any]]:
     targets = report["registered"]["targets"]
     if len(targets) != 1 or targets[0]["role"] != role:
         raise ValueError(f"expected exactly one registered target, with role {role}")
-    section = report["by_target"][targets[0]["target_id"]]
+    section = report["by_target"].get(targets[0]["target_id"])
+    if section is None:
+        raise ValueError("no analysed cell: every seed was excluded, so there is no curve to draw")
     return {
         arm: values["t_first_combined_c1_or_c2"]
         for arm, values in sorted(section["item5_first_contract_index"]["by_arm"].items())
@@ -59,11 +61,9 @@ def render(report: dict[str, Any], role: str, out_path: Path) -> None:
     plt = importlib.import_module("matplotlib.pyplot")
     horizon = 1.0
     for curve in curves.values():
-        horizon = max(
-            horizon,
-            *(float(step["time"]) for step in curve["km_curve"]),
-            *(float(time) for time in curve["censored_times"]),
-        )
+        times = [float(step["time"]) for step in curve["km_curve"]]
+        times += [float(time) for time in curve["censored_times"]]
+        horizon = max([horizon, *times])
     fig, ax = plt.subplots(figsize=(8.0, 4.2))
     for index, (arm, curve) in enumerate(curves.items()):
         color = _base._arm_color(arm, index)

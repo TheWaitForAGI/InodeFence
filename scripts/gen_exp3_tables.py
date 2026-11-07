@@ -181,7 +181,12 @@ def _arm_rows(section: Mapping[str, Any], *, before_event: bool) -> list[list[ob
     return rows
 
 
-def _no_cells_line() -> list[str]:
+def _no_cells_line(report: Mapping[str, Any]) -> list[str]:
+    """The empty table's sentence, true only when the deadline excluded every registered seed."""
+    excluded = _field(report, "deadline", "number_excluded_seeds")
+    registered = len(_field(report, "registered", "seeds"))
+    if excluded != registered:
+        raise TableInputError(f"no analysed cell, but {excluded} of {registered} seeds excluded")
     return ["분석 캠페인 0: 마감으로 모든 seed가 제외됐다."]
 
 
@@ -194,7 +199,7 @@ def t_exp3_1(inputs: "Inputs") -> list[str]:
         "",
     ]
     if target.section is None:
-        return [*lines, *_no_cells_line()]
+        return [*lines, *_no_cells_line(inputs.report)]
     headers = [
         "arm",
         "분석 캠페인",
@@ -208,19 +213,45 @@ def t_exp3_1(inputs: "Inputs") -> list[str]:
     return [*lines, *_md_table(headers, _arm_rows(target.section, before_event=False))]
 
 
-def _run_span(cell_results: Path) -> tuple[float, float]:
-    """First start and last end on the wall clock; a line with no clock stops the table."""
+def _result_lines(cell_results: Path) -> list[Mapping[str, Any]]:
+    """Whole lines of the exit record. Only a cut last line is forgiven; anything else stops."""
     if not cell_results.is_file():
         raise TableInputError(f"cell results not found: {cell_results}")
-    starts: list[float] = []
-    ends: list[float] = []
-    for line in cell_results.read_text(encoding="utf-8").splitlines():
-        record = json.loads(line)
-        stamp = _field(record, "clocks", "realtime")
-        (starts if _field(record, "event") == "start" else ends).append(float(stamp))
+    lines = cell_results.read_text(encoding="utf-8").splitlines()
+    records: list[Mapping[str, Any]] = []
+    for position, line in enumerate(lines):
+        try:
+            records.append(json.loads(line))
+        except json.JSONDecodeError as error:
+            if position != len(lines) - 1:
+                raise TableInputError(f"{cell_results}: unreadable line {position + 1}") from error
+    return records
+
+
+def _run_span(records: Sequence[Mapping[str, Any]]) -> tuple[float, float]:
+    """First start and last end on the wall clock. Stop and resume lines do not end the run."""
+    starts = [
+        float(_field(row, "clocks", "realtime")) for row in records if row.get("event") == "start"
+    ]
+    ends = [
+        float(_field(row, "clocks", "realtime")) for row in records if row.get("event") == "end"
+    ]
     if not starts or not ends:
-        raise TableInputError(f"{cell_results}: needs start and end lines")
+        raise TableInputError("cell results need start and end lines")
     return min(starts), max(ends)
+
+
+def _stop_gaps(records: Sequence[Mapping[str, Any]]) -> float:
+    """Seconds between each infrastructure stop and the resume that ended it."""
+    total = 0.0
+    stopped_at: float | None = None
+    for row in records:
+        if row.get("event") == "infrastructure-stop" and stopped_at is None:
+            stopped_at = float(_field(row, "clocks", "realtime"))
+        elif row.get("event") == "infrastructure-resume" and stopped_at is not None:
+            total += float(_field(row, "clocks", "realtime")) - stopped_at
+            stopped_at = None
+    return total
 
 
 def t_exp3_2(inputs: "Inputs") -> list[str]:
@@ -233,12 +264,24 @@ def t_exp3_2(inputs: "Inputs") -> list[str]:
         _field(_t_first(section, arm), "number_observed")
         for arm in _field(section, "item5_first_contract_index", "by_arm")
     )
-    recorded = _field(section, "execution_steps", "recorded")
-    planned = _field(section, "execution_steps", "planned")
-    first_start, last_end = _run_span(inputs.cell_results)
+    # Every attempted cell, not only analysed ones: an invalid cell ran and used host time. A cell
+    # never started did not, so it stays out of the plan (exp3 section 5).
+    completeness = _field(report, "cell_completeness")
+    registered = _field(report, "registered")
+    budget = _nullable(target.registered, "budget") or _field(registered, "budget")
+    unattempted = _field(completeness, "unattempted")
+    recorded = _field(completeness, "recorded_steps")
+    planned = (_field(completeness, "cells") - unattempted) * budget
+    records = _result_lines(inputs.cell_results)
+    first_start, last_end = _run_span(records)
     if last_end <= first_start or not recorded or not planned:
         raise TableInputError("the run span and step counts must be positive")
-    rate = recorded / ((last_end - first_start) / 3600)
+    elapsed = last_end - first_start
+    rate = recorded / (elapsed / 3600)
+    gaps = _stop_gaps(records)
+    if gaps >= elapsed:
+        raise TableInputError("the stop gaps cannot exceed the run span")
+    rate_without_gaps = recorded / ((elapsed - gaps) / 3600)
     ratio = recorded / planned
     deadline = datetime.fromisoformat(_field(report, "deadline", "execution_deadline"))
     remaining = (deadline.timestamp() - last_end) / 3600
@@ -247,10 +290,12 @@ def t_exp3_2(inputs: "Inputs") -> list[str]:
     rows = [
         ["E: train 첫 C1∨C2 캠페인(3 arm 합산, abort 포함, invalid 제외)", events, "≥ 1"],
         ["r: EXP-3 실경과 처리량(실시간, exec/h)", f"{rate:.0f}", "입력"],
+        ["참고: 정지 공백 제외 r(실시간, exec/h)", f"{rate_without_gaps:.0f}", "GO 입력 아님"],
         ["e: 기록/계획 step 비율", _ratio(ratio), "입력"],
         ["H_rem: EXP-3 종료부터 실행 마감까지 호스트 시간(실시간, h)", f"{remaining:.1f}", "입력"],
         ["용량 ⌊H_rem·r÷(6000·e)⌋", capacity, "≥ 76"],
         ["인프라 실패 비율 (abort + 기록 어긋남)/전체 셀", _ratio(failure_rate), "≤ .45"],
+        ["시작하지 않은 셀", unattempted, "기록"],
         ["결과", "", "W3가 적용해 LOG에 남긴다"],
     ]
     return ["# 표 7-B2. GO 판정 입력", "", *_md_table(["입력", "값", "기준"], rows)]
@@ -259,7 +304,7 @@ def t_exp3_2(inputs: "Inputs") -> list[str]:
 def _dense_table(title: str, report: Mapping[str, Any], target: Target) -> list[str]:
     lines = [title, "", _scope_line(report, target), ""]
     if target.section is None:
-        return [*lines, *_no_cells_line()]
+        return [*lines, *_no_cells_line(report)]
     section = target.section
     rows: list[list[object]] = []
     for arm in sorted(_field(section, "dense_signals_registered", "by_arm"), key=_arm_key):
@@ -304,7 +349,7 @@ def t_exp2_1(inputs: "Inputs") -> list[str]:
     target = _target(inputs.report, "holdout")
     lines = ["# 표 7-A. EXP-2 `role=holdout` arm별", "", _scope_line(inputs.report, target), ""]
     if target.section is None:
-        return [*lines, *_no_cells_line()]
+        return [*lines, *_no_cells_line(inputs.report)]
     headers = [
         "arm",
         "분석 캠페인",
@@ -399,6 +444,12 @@ def t_exp2_3(inputs: "Inputs") -> list[str]:
     unknown = _field(report, "unknown_outcome_steps")
     sensitivity = _field(report, "record_inconsistent_sensitivity")
     stop = _field(hand, "operating_stop")
+    # The stub sees only a target whose result was dropped; docker events see the rest.
+    lost = _field(hand, "abort_split", "lost_after_execution")
+    lower_bound = _field(unknown, "lost_after_execution_lower_bound")
+    if lost < lower_bound:
+        raise TableInputError(f"hand lost_after_execution {lost} is below the stubs' {lower_bound}")
+    cut = _field(unknown, "watchdog_cut_line")
     lines = [
         "# EXP-2 holdout 표 아래 병기 (0이어도 적는다)",
         "",
@@ -409,12 +460,14 @@ def t_exp2_3(inputs: "Inputs") -> list[str]:
         f"민감도: {_field(sensitivity, 'summary')}",
         "- abort 3분할(W2 손 입력, 분석기 값 아님): "
         f"target 미시작 {_field(hand, 'abort_split', 'target_not_started')}, "
-        f"실행 후 소실 {_field(hand, 'abort_split', 'lost_after_execution')}, "
+        f"실행 후 소실 {lost}, "
         f"첫 오류 미확인 {_field(hand, 'abort_split', 'first_error_unconfirmed')}",
+        f"- no-record {_field(completeness, 'no_record')}",
         f"- watchdog 사유 {_field(completeness, 'watchdog')}",
-        f"- 결과 미상 step: 실행 후 소실 {_field(unknown, 'lost_after_execution')}, "
-        f"watchdog 잘린 줄 {_field(unknown, 'watchdog_cut_line')}, "
-        f"합계 {_field(unknown, 'total')}",
+        f"- 결과 미상 step: 실행 후 소실 {lost}(스텁 하한 {lower_bound}), "
+        f"watchdog 잘린 줄 {cut}, 합계 {lost + cut}",
+        f"- 인프라 정지 {len(_field(completeness, 'infrastructure_stops'))}, "
+        f"재개 {len(_field(completeness, 'infrastructure_resumes'))}",
         "- 대비별 invalid 제외: "
         + ", ".join(
             f"{_field(contrast, 'contrast')} {_field(contrast, 'number_blocks_invalid_excluded')}"
@@ -430,7 +483,7 @@ def t_exp2_4(inputs: "Inputs") -> list[str]:
     target = _target(inputs.report, "holdout")
     lines = ["# EXP-2 holdout abort 정책 민감도", ""]
     if target.section is None:
-        return [*lines, *_no_cells_line()]
+        return [*lines, *_no_cells_line(inputs.report)]
     section = target.section
     sensitivity = _field(section, "item5_first_contract_index", "sensitivity")
     rows: list[list[object]] = []
@@ -470,7 +523,7 @@ def t_exp2_5(inputs: "Inputs") -> list[str]:
     target = _target(inputs.report, "holdout")
     lines = ["# EXP-2 holdout 인프라 측정", "", MONOTONIC_NOTE, ""]
     if target.section is None:
-        return [*lines, *_no_cells_line()]
+        return [*lines, *_no_cells_line(inputs.report)]
     section = target.section
     pooled = _field(section, "item2_p95_full_step", "pooled")
     summed = _field(section, "item3_throughput", "summed")

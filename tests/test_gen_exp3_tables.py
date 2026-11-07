@@ -78,9 +78,15 @@ def _registered(target_id: str, role: str) -> dict[str, Any]:
 def _completeness(**over: Any) -> dict[str, Any]:
     return {
         "aborts": 1,
+        "cells": 10,
+        "unattempted": 1,
+        "recorded_steps": 1800,
+        "no_record": 0,
         "watchdog": 1,
         "record_inconsistent": 1,
         "infrastructure_failure_rate": 0.125,
+        "infrastructure_stops": [],
+        "infrastructure_resumes": [],
         **over,
     }
 
@@ -184,9 +190,8 @@ def _holdout_report() -> dict[str, Any]:
             "censor-at-budget": {"reject_at_alpha": False},
         }
     report["unknown_outcome_steps"] = {
-        "lost_after_execution": 1,
+        "lost_after_execution_lower_bound": 1,
         "watchdog_cut_line": 2,
-        "total": 3,
     }
     report["record_inconsistent_sensitivity"] = {"summary": "어긋남 없음"}
     return report
@@ -316,7 +321,8 @@ def test_ratio_and_median_format() -> None:
         ("T-EXP3-1", ("deadline", "causes")),
         ("T-EXP3-1", ("by_target", "t", "record_states")),
         ("T-EXP3-2", ("cell_completeness", "infrastructure_failure_rate")),
-        ("T-EXP3-2", ("by_target", "t", "execution_steps")),
+        ("T-EXP3-2", ("cell_completeness", "recorded_steps")),
+        ("T-EXP3-2", ("cell_completeness", "unattempted")),
         ("T-EXP3-3", ("by_target", "t", "dense_signals_registered")),
     ],
 )
@@ -369,7 +375,8 @@ def test_notes_need_the_hand_input_and_write_zeros(tmp_path: Path) -> None:
     text = gen.render("T-EXP2-3", _inputs(report, tmp_path, hand=HAND))
     assert "미완주 제외 seed 0" in text and "기록 어긋남 0" in text and "watchdog 사유 0" in text
     assert "target 미시작 1, 실행 후 소실 2, 첫 오류 미확인 3" in text
-    assert "실행 후 소실 1, watchdog 잘린 줄 2, 합계 3" in text
+    assert "실행 후 소실 2(스텁 하한 1), watchdog 잘린 줄 2, 합계 4" in text
+    assert "no-record 0" in text and "인프라 정지 0, 재개 0" in text
     assert "운영 중단: 발동 없음" in text
 
 
@@ -384,6 +391,108 @@ def test_a_second_target_or_the_wrong_role_is_refused_never_pooled(tmp_path: Pat
     report["by_target"]["other"] = report["by_target"]["t"]
     with pytest.raises(TableInputError, match="not t"):
         gen.render("T-EXP3-1", _inputs(report, tmp_path))
+
+
+def test_a_hand_count_below_the_stub_lower_bound_stops_the_notes(tmp_path: Path) -> None:
+    report = _holdout_report()
+    report["unknown_outcome_steps"]["lost_after_execution_lower_bound"] = 3
+    with pytest.raises(TableInputError, match="below the stubs"):
+        gen.render("T-EXP2-3", _inputs(report, tmp_path, hand=HAND))
+
+
+def test_notes_count_stops_and_resumes(tmp_path: Path) -> None:
+    report = _holdout_report()
+    report["cell_completeness"]["infrastructure_stops"] = [{}, {}]
+    report["cell_completeness"]["infrastructure_resumes"] = [{}]
+    report["cell_completeness"]["no_record"] = 4
+    text = gen.render("T-EXP2-3", _inputs(report, tmp_path, hand=HAND))
+    assert "인프라 정지 2, 재개 1" in text and "no-record 4" in text
+
+
+def _go_row(text: str, label: str) -> str:
+    row = next(line for line in text.splitlines() if line.startswith(f"| {label}"))
+    return row.split(" | ")[1]
+
+
+def _write_results(tmp_path: Path, rows: list[Any], tail: str = "") -> Inputs:
+    inputs = _inputs(_train_report(), tmp_path)
+    body = "".join(json.dumps(row) + "\n" for row in rows) + tail
+    inputs.cell_results.write_text(body, encoding="utf-8")
+    return inputs
+
+
+def _stamp(event: str, realtime: float) -> dict[str, Any]:
+    return {"event": event, "clocks": {"realtime": realtime}}
+
+
+def test_stop_and_resume_lines_do_not_end_the_run(tmp_path: Path) -> None:
+    rows = [
+        _stamp("start", 1000.0),
+        _stamp("end", 8200.0),
+        _stamp("infrastructure-stop", 8300.0),
+        _stamp("infrastructure-resume", 9000.0),
+    ]
+    text = gen.render("T-EXP3-2", _write_results(tmp_path, rows))
+    assert _go_row(text, "r:") == "900"  # 7200 s to the last end, not to the resume line
+
+
+def test_the_gap_free_rate_is_a_reference_line_and_the_go_row_keeps_elapsed_time(
+    tmp_path: Path,
+) -> None:
+    rows = [
+        _stamp("start", 0.0),
+        _stamp("end", 1000.0),
+        _stamp("infrastructure-stop", 1000.0),
+        _stamp("infrastructure-resume", 4600.0),
+        _stamp("start", 4600.0),
+        _stamp("end", 7200.0),
+    ]
+    text = gen.render("T-EXP3-2", _write_results(tmp_path, rows))
+    assert _go_row(text, "r:") == "900"
+    assert _go_row(text, "참고:") == "1800"  # 3600 s of the 7200 s were the stop
+    assert "| 참고: 정지 공백 제외 r(실시간, exec/h) | 1800 | GO 입력 아님 |" in text
+
+
+def test_only_a_cut_last_line_of_the_exit_record_is_forgiven(tmp_path: Path) -> None:
+    rows = [_stamp("start", 1000.0), _stamp("end", 8200.0)]
+    text = gen.render("T-EXP3-2", _write_results(tmp_path, rows, tail='{"event": "st'))
+    assert _go_row(text, "r:") == "900"
+    inputs = _write_results(tmp_path, [_stamp("start", 1000.0)], tail="cut\n" + json.dumps(rows[1]))
+    with pytest.raises(TableInputError, match="unreadable line 2"):
+        gen.render("T-EXP3-2", inputs)
+
+
+def test_the_step_ratio_plans_only_attempted_cells_and_counts_invalid_ones(tmp_path: Path) -> None:
+    report = _train_report()
+    # 12 cells, 2 never started: 10 attempted × budget 200 against 1500 recorded.
+    report["cell_completeness"].update(cells=12, unattempted=2, recorded_steps=1500)
+    text = gen.render("T-EXP3-2", _inputs(report, tmp_path))
+    assert _go_row(text, "e:") == ".750"
+    assert "| 시작하지 않은 셀 | 2 | 기록 |" in text
+
+
+def test_the_empty_table_sentence_needs_every_seed_excluded(tmp_path: Path) -> None:
+    report = _holdout_report()
+    report["by_target"] = {}
+    report["deadline"]["number_excluded_seeds"] = 3  # of 4 registered
+    with pytest.raises(TableInputError, match="3 of 4 seeds excluded"):
+        gen.render("T-EXP2-1", _inputs(report, tmp_path))
+
+
+def test_the_figure_says_why_when_every_seed_was_excluded() -> None:
+    figure = importlib.import_module("paper.figures.render_exp3_survival")
+    report = _train_report()
+    report["by_target"] = {}
+    with pytest.raises(ValueError, match="every seed was excluded"):
+        figure.arm_curves(report, "train")
+
+
+def test_the_generators_inputs_are_registered_with_each_table() -> None:
+    registered = {artifact.output: artifact for artifact in ARTIFACTS}
+    go_inputs = registered["paper/tables/exp3-go-inputs.md"].inputs
+    assert "experiments/summaries/exp3-train-cell-results.jsonl" in go_inputs
+    notes = registered["paper/tables/exp2-holdout-notes.md"].inputs
+    assert "experiments/summaries/exp2-holdout-hand-input.json" in notes
 
 
 def test_every_seed_excluded_is_a_stated_table_not_a_failure(tmp_path: Path) -> None:
@@ -458,6 +567,17 @@ def test_figure_curves_are_of_the_one_target_and_the_train_title_says_explorator
     assert "not confirmatory" in figure.TITLES["train"]
     with pytest.raises(ValueError, match="exactly one"):
         figure.arm_curves(_train_report(), "holdout")
+
+
+def test_figure_renders_an_arm_with_no_curve_and_no_censoring(tmp_path: Path) -> None:
+    pytest.importorskip("matplotlib")
+    figure = importlib.import_module("paper.figures.render_exp3_survival")
+    report = _train_report()
+    by_arm = report["by_target"]["t"]["item5_first_contract_index"]["by_arm"]
+    by_arm["R"]["t_first_combined_c1_or_c2"].update(km_curve=[], censored_times=[])
+    out = tmp_path / "figure.png"
+    figure.render(report, "train", out)
+    assert out.stat().st_size > 0
 
 
 def test_figure_renders_when_matplotlib_is_present(tmp_path: Path) -> None:
@@ -538,7 +658,6 @@ def test_analyzer_carries_the_launcher_records_from_the_index(tmp_path: Path, ca
     report = json.loads(capsys.readouterr().out)
     assert report["registered"]["sentinel_count"] == 5
     assert report["cell_completeness"]["record_inconsistent"] == 1
-    assert report["by_target"]["h"]["execution_steps"] == {"recorded": 300, "planned": 400}
 
 
 def test_apply_deadline_keeps_its_contract_for_the_tables() -> None:

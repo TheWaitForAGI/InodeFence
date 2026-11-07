@@ -9,14 +9,19 @@ import pytest
 from inodefence.evaluation.cell_completeness import (
     ABORT_FINAL,
     COMPLETE,
+    MAX_ATTEMPTS,
     NO_RECORD,
     RECORD_INCONSISTENT,
+    STOP_AFTER_NO_RECORD,
     UNATTEMPTED,
     Attempt,
     CellCheck,
+    InfrastructureGuard,
     classify_cell,
+    infrastructure_stopped,
     infrastructure_summary,
     read_cell_results,
+    read_infrastructure_events,
     scan_steps,
 )
 
@@ -170,9 +175,26 @@ def test_no_record_is_unattempted_until_the_attempts_are_used_up(tmp_path: Path)
     assert _classify(tmp_path, attempts=_attempts(None, None)).state == NO_RECORD
 
 
-def test_a_single_cut_line_alone_is_no_record(tmp_path: Path) -> None:
+def test_a_single_cut_line_alone_is_no_record_only_for_a_watchdog_cell(tmp_path: Path) -> None:
     attempts = _attempts(_end(-15, watchdog=True))
     assert _classify(tmp_path, lines=["cut"], attempts=attempts).state == UNATTEMPTED
+    used_up = _attempts(_end(-15, watchdog=True), _end(-15, watchdog=True))
+    assert _classify(tmp_path, lines=["cut"], attempts=used_up).state == NO_RECORD
+    without = _classify(tmp_path, lines=["cut"], attempts=_attempts(_end(-15)))
+    assert without.state == RECORD_INCONSISTENT
+    assert "unparsable-last-line-without-the-watchdog" in without.problems
+    no_exit = _classify(tmp_path, lines=["cut"], attempts=_attempts(None))
+    assert no_exit.state == RECORD_INCONSISTENT
+
+
+def test_two_cut_lines_alone_are_inconsistent_even_with_the_watchdog(tmp_path: Path) -> None:
+    attempts = _attempts(_end(-15, watchdog=True))
+    check = _classify(tmp_path, lines=["cut", "cut"], attempts=attempts)
+    assert check.state == RECORD_INCONSISTENT
+
+
+def test_an_empty_steps_file_is_no_record(tmp_path: Path) -> None:
+    assert _classify(tmp_path, lines=[], attempts=_attempts(_end(1))).state == UNATTEMPTED
 
 
 def test_watchdog_cell_rules_read_only_the_flag(tmp_path: Path) -> None:
@@ -208,6 +230,61 @@ def test_a_watchdog_flag_does_not_excuse_a_report_that_disagrees(tmp_path: Path)
     check = _classify(tmp_path, lines=_steps(2), report=_abort_report(step_index=9), attempts=fired)
     assert check.state == RECORD_INCONSISTENT
     assert check.problems == ("abort-step-index-differs-from-the-record-count",)
+    assert check.watchdog is True  # the mark stays for the separate watchdog line
+    holds = _classify(tmp_path, lines=_steps(2), report=_abort_report(), attempts=fired)
+    assert holds.state == ABORT_FINAL and holds.watchdog is True
+
+
+def test_infrastructure_events_are_read_and_reported(tmp_path: Path) -> None:
+    path = tmp_path / "cell-results.jsonl"
+    stop = {"event": "infrastructure-stop", "reason": "why", "clocks": {"realtime": 1.0}}
+    resume = {"event": "infrastructure-resume", "approval_ref": "ok", "clocks": {"realtime": 2.0}}
+    start = {"event": "start", "run_id": "a", "attempt": 1}
+    path.write_text(f"{json.dumps(start)}\n{json.dumps(stop)}\ncut", encoding="utf-8")
+    events = read_infrastructure_events(path)
+    assert events == [stop] and infrastructure_stopped(events) is True
+    assert list(read_cell_results(path)) == ["a"]  # a stop line is not an attempt
+    assert read_infrastructure_events(tmp_path / "missing") == []
+    assert infrastructure_stopped([]) is False
+    summary = infrastructure_summary({}, [stop, resume])
+    assert summary["infrastructure_stopped"] is False
+    assert summary["infrastructure_stops"] == [{"reason": "why", "clocks": {"realtime": 1.0}}]
+    assert summary["infrastructure_resumes"] == [
+        {"approval_ref": "ok", "clocks": {"realtime": 2.0}}
+    ]
+    # A second stop after a resume is in effect again.
+    assert infrastructure_stopped([stop, resume, stop]) is True
+
+
+def test_the_guard_stops_at_three_cells_in_a_row_in_the_order_they_end() -> None:
+    guard = InfrastructureGuard()
+    assert guard.note_cell_end(recorded=False) is None
+    assert guard.note_cell_end(recorded=False) is None
+    assert guard.stopped is False
+    reason = guard.note_cell_end(recorded=False)
+    assert reason is not None and "3 consecutive cells" in reason and guard.stopped is True
+
+
+def test_one_recorded_cell_sets_the_count_to_zero() -> None:
+    guard = InfrastructureGuard()
+    for recorded in (False, False, True, False, False):
+        assert guard.note_cell_end(recorded=recorded) is None
+    assert guard.stopped is False
+    assert guard.note_cell_end(recorded=False) is not None
+
+
+def test_the_stop_reason_comes_once_and_a_later_record_does_not_undo_it() -> None:
+    guard = InfrastructureGuard()
+    for _ in range(2):
+        guard.note_cell_end(recorded=False)
+    assert guard.note_cell_end(recorded=False) is not None
+    assert guard.note_cell_end(recorded=False) is None  # no second stop line
+    assert guard.note_cell_end(recorded=True) is None  # a running cell ended with a record
+    assert guard.stopped is True
+
+
+def test_attempt_and_stop_limits_are_the_registered_values() -> None:
+    assert (MAX_ATTEMPTS, STOP_AFTER_NO_RECORD) == (2, 3)
 
 
 def test_only_the_last_attempt_decides(tmp_path: Path) -> None:

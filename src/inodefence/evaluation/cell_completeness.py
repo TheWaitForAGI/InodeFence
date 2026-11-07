@@ -19,8 +19,10 @@ States:
 * ``no-record``: no record, attempts used up. It counts as an abort.
 
 The watchdog is known only from ``watchdog_fired`` in the exit record. Exit code -15 is the same as
-an outside SIGTERM and log lines are not conditions. A watchdog cell has no report, and its last
-line may be cut: only that one unparsable last line is forgiven, as a step of unknown outcome.
+an outside SIGTERM and log lines are not conditions. A watchdog cell usually has no report, and its
+last line may be cut: only that one unparsable last line is forgiven, as a step of unknown outcome.
+A cut line alone, with no whole line, is no record for a watchdog cell and inconsistent otherwise.
+With a report, a watchdog cell takes the ordinary checks and keeps its watchdog mark.
 """
 
 import json
@@ -28,6 +30,7 @@ from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Lock
 from typing import Any
 
 CELL_RESULTS_FILE = "cell-results.jsonl"
@@ -40,6 +43,11 @@ CELL_STATES = (COMPLETE, ABORT_FINAL, RECORD_INCONSISTENT, UNATTEMPTED, NO_RECOR
 # One first attempt and one retry. A start with no record counts, so a launcher that keeps dying
 # cannot retry for ever.
 MAX_ATTEMPTS = 2
+# Consecutive cells ending with no record point at the infrastructure, not at the cells: without a
+# stop, a dead Docker would use up every waiting cell's attempts within minutes (same as the pilot).
+STOP_AFTER_NO_RECORD = 3
+INFRASTRUCTURE_STOP_EVENT = "infrastructure-stop"
+INFRASTRUCTURE_RESUME_EVENT = "infrastructure-resume"
 
 
 @dataclass(frozen=True, slots=True)
@@ -163,9 +171,12 @@ def classify_cell(
     scan = scan_steps(steps_path)
     count = len(scan.indexes)
     has_report = report_path.is_file()
-    if not has_report and not count:
-        return CellCheck(UNATTEMPTED if len(attempts) < MAX_ATTEMPTS else NO_RECORD)
     ended = attempts[-1].ended if attempts else None
+    watchdog = ended is not None and ended.get("watchdog_fired") is True
+    # No whole line is no record, unless a cut line shows a run the watchdog does not explain.
+    only_a_watchdog_cut = scan.torn_last_line and not scan.torn_inner_line and watchdog
+    if not has_report and not count and (not scan.torn_last_line or only_a_watchdog_cut):
+        return CellCheck(UNATTEMPTED if len(attempts) < MAX_ATTEMPTS else NO_RECORD)
     problems: list[str] = []
     if ended is None:
         problems.append("no-exit-record")
@@ -175,7 +186,6 @@ def classify_cell(
         problems.append("step-indexes-not-contiguous")
     if scan.torn_inner_line:
         problems.append("unparsable-line-inside-the-steps-file")
-    watchdog = ended is not None and ended.get("watchdog_fired") is True
     if watchdog and not has_report:
         unknown = int(scan.torn_last_line)
         if problems:
@@ -202,12 +212,74 @@ def classify_cell(
             else:
                 problems.append("report-is-not-an-object")
     if problems:
-        return CellCheck(RECORD_INCONSISTENT, tuple(problems), step_count=count)
+        return CellCheck(RECORD_INCONSISTENT, tuple(problems), watchdog, 0, count)
     state = COMPLETE if complete_and_conformant else ABORT_FINAL
-    return CellCheck(state, step_count=count)
+    return CellCheck(state, (), watchdog, 0, count)
 
 
-def infrastructure_summary(checks: Mapping[str, CellCheck]) -> dict[str, Any]:
+class InfrastructureGuard:
+    """Stops new cells after ``STOP_AFTER_NO_RECORD`` consecutive cells with no record.
+
+    It reads no outcome, only whether a cell left a record. The rules are fixed here:
+
+    * **What counts:** a cell, once, when it ends with no record after its last attempt. A failed
+      attempt that is retried does not count.
+    * **Order:** the order in which cells end, as the launcher notes them under this lock. Not the
+      order they started and not the planned order, so with several jobs the count follows the
+      infrastructure's state over time.
+    * **Reset:** any cell that leaves a record sets the count to 0, whatever the record says
+      (complete, abort or inconsistent). A cell not started changes nothing.
+    * **Scope:** one launcher call, starting at 0. A resume is a new call and starts at 0.
+    * **After the stop:** no new attempt starts, retries included. Running cells finish and keep
+      their records; nothing is deleted or overwritten. A cell ending after the stop does not undo
+      it. A later call refuses to start cells until an operator resumes with an approval reference
+      (``--resume-after-stop``). Nothing resumes by itself.
+    """
+
+    def __init__(self) -> None:
+        self._lock = Lock()
+        self._streak = 0
+        self.stopped = False
+
+    def note_cell_end(self, *, recorded: bool) -> str | None:
+        """Note one ended cell. Returns the stop reason once, when this end triggers the stop."""
+        with self._lock:
+            self._streak = 0 if recorded else self._streak + 1
+            if self.stopped or self._streak < STOP_AFTER_NO_RECORD:
+                return None
+            self.stopped = True
+        return (
+            f"{STOP_AFTER_NO_RECORD} consecutive cells left no record; "
+            "infrastructure suspected, no new cell started"
+        )
+
+
+def read_infrastructure_events(path: Path) -> list[dict[str, Any]]:
+    """The launcher's stop and resume lines, in file order."""
+    if not path.is_file():
+        return []
+    events: list[dict[str, Any]] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(record, dict) and record.get("event") in (
+            INFRASTRUCTURE_STOP_EVENT,
+            INFRASTRUCTURE_RESUME_EVENT,
+        ):
+            events.append(record)
+    return events
+
+
+def infrastructure_stopped(events: Sequence[Mapping[str, Any]]) -> bool:
+    """Whether the last stop has not been resumed."""
+    return bool(events) and events[-1].get("event") == INFRASTRUCTURE_STOP_EVENT
+
+
+def infrastructure_summary(
+    checks: Mapping[str, CellCheck], events: Sequence[Mapping[str, Any]] = ()
+) -> dict[str, Any]:
     """Counts and the infrastructure failure rate: (aborts + inconsistent records) / all cells.
 
     A no-record cell counts as an abort and is also shown alone. Both the abort count and the sum
@@ -227,6 +299,17 @@ def infrastructure_summary(checks: Mapping[str, CellCheck]) -> dict[str, Any]:
         "aborts_plus_inconsistent": failures,
         "infrastructure_failure_rate": failures / len(checks) if checks else None,
         "unknown_outcome_steps": sum(check.unknown_outcome_steps for check in checks.values()),
+        "infrastructure_stopped": infrastructure_stopped(events),
+        "infrastructure_stops": [
+            {"reason": event.get("reason"), "clocks": event.get("clocks")}
+            for event in events
+            if event.get("event") == INFRASTRUCTURE_STOP_EVENT
+        ],
+        "infrastructure_resumes": [
+            {"approval_ref": event.get("approval_ref"), "clocks": event.get("clocks")}
+            for event in events
+            if event.get("event") == INFRASTRUCTURE_RESUME_EVENT
+        ],
         "inconsistent_checks": {
             run_id: list(check.problems)
             for run_id, check in sorted(checks.items())

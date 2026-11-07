@@ -20,6 +20,7 @@ PYTHONPATH=src python3 scripts/analyze_exp0.py --index <exp2-run>/summaries/inde
 | --- | --- | --- | --- |
 | T-EXP3-1 | `paper/tables/exp3-train-arms.md` | 표 7-B | 분석 캠페인=`T.denominator_cells_in_risk_set` · 완주·abort=`item1_aborts.by_arm.<arm>` · 기록 어긋남=**신규** · 첫 사건=`T.number_observed` · 중앙값=`T.km_median_executions`(null이면 "미도달") · U_viol 평균(합)=`item6_dense_signals.by_arm.<arm>.u_viol.{mean_per_cell,total_unique_c1_c2_fingerprints}` · 머리 줄 n, m, 원인=**신규**(index `deadline`, #295) |
 | T-EXP3-2 | `paper/tables/exp3-go-inputs.md` | 표 7-B2 | E=세 arm `T.number_observed` 합(abort 포함, invalid 제외, D040-D11) · r=실시간 직접 계산. `matrix.json`은 호출마다 덮어써 재시작 때 어긋나므로 PR-B 뒤 `cell-results.jsonl`의 첫 start~마지막 end로 하고 W1이 확정한다 · e=**신규**(기록/계획 step) · H_rem=EXP-3 종료 시각에서 계산 · 용량=식 · 인프라 실패 비율=(abort + 어긋남)/전체 셀(D041) · 결과 칸은 비운다(W3 적용) |
+| T-EXP3-3 | `paper/tables/exp3-dense-signals.md` | 논문 §5.6 | T-EXP2-6과 같은 열, 같은 제목 "탐색, effectiveness 아님"(`exp3-v1` §4). 값은 holdout과 합치지 않는다. 신규 필드 구현은 PR-D(W3 지정) |
 | F-EXP3-1 | `paper/figures/exp3-train-survival.png` | 그림 | `T.{km_curve,censored_times,denominator_cells_in_risk_set}`. 제목에 "탐색, 확증 아님" |
 
 ## EXP-2 holdout 산출물 (`exp2-holdout-report.json`, GO일 때만)

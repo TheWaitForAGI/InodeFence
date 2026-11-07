@@ -25,6 +25,10 @@
     "지역사회 연계": 9
   },
   "project_type_col": 11,
+  "project_type_groups": {
+    "비융합": ["문제해결", "산학연계", "지역사회연계"],
+    "융합": ["사회맞춤형", "산업체 연계", "지역사회 연계"]
+  },
   "linkage_not_required": ["문제해결", "사회맞춤형"],
   "blocks": {
     "■ 과제 목적": {"row": 19, "paragraphs": 11, "keep_first": 1},

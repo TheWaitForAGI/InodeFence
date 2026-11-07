@@ -102,9 +102,11 @@ class Plan:
         self.cell_ops: list[dict] = []
         self.delete_ops: list[dict] = []
         self.styled: list[Line] = []
+        self.written: list[str] = []
         self.expected: dict[tuple[int, int], list[str]] = {}
 
     def set_text(self, row: int, col: int, text: str, **options: object) -> None:
+        self.written.append(text)
         self.cell_ops.append(
             {"type": "set_cell_text", **self.table, "row": row, "col": col, "text": text, **options}
         )
@@ -131,6 +133,22 @@ class Plan:
         self.expected[(row, 0)] = [line.text for line in lines]
 
 
+def resolve_project_type(cell_map: dict, value: str | None) -> str | None:
+    """Return the form row name. A 비융합/융합 prefix must agree with that row's group.
+
+    Messages omit the entered value, which comes from the personal header file.
+    """
+    if not value:
+        return None
+    match = re.match(r"^(비융합|융합)[\s·:/-]*", value)
+    name = value[match.end() :] if match else value
+    if name not in cell_map["project_type_rows"]:
+        raise SystemExit("project type is not a form option name")
+    if match and name not in cell_map["project_type_groups"][match.group(1)]:
+        raise SystemExit("project type prefix does not match the form group of that option")
+    return name
+
+
 def build_plan(cell_map: dict, sections: dict[str, str], values: dict[str, str]) -> Plan:
     plan = Plan(cell_map)
 
@@ -146,14 +164,11 @@ def build_plan(cell_map: dict, sections: dict[str, str], values: dict[str, str])
         restyle = name in cell_map["header_gray"]
         plan.cell(row, col, Line("" if given is None else (given or header[name])), restyle)
 
-    # The form groups types under 비융합/융합; the type name alone selects the row.
-    project_type = re.sub(r"^비?융합[\s·:/-]*", "", values.get("프로젝트 유형") or "") or None
+    project_type = resolve_project_type(cell_map, values.get("프로젝트 유형"))
     for name, row in cell_map["project_type_rows"].items():
         # The mark keeps the form's own shape: "○" also occurs in a label, so it cannot be a target.
         mark = "○" if name == project_type else ""
         plan.set_text(row, cell_map["project_type_col"], mark)
-    if project_type is not None and project_type not in cell_map["project_type_rows"]:
-        raise SystemExit("project type is not a form option name")
 
     for title, spec in cell_map["blocks"].items():
         lines = prose_lines(sections[title])
@@ -191,11 +206,16 @@ def build_plan(cell_map: dict, sections: dict[str, str], values: dict[str, str])
     return plan
 
 
+def placeholders_written(plan: Plan) -> list[str]:
+    """Placeholders in every text the plan writes, including cells that are not restyled."""
+    return sorted({match for text in plan.written for match in PLACEHOLDER.findall(text)})
+
+
 def reject_markup(plan: Plan) -> None:
     """Hancom shows markup literally, so a leftover marker must stop the build."""
-    for line in plan.styled:
-        if "**" in line.text or "`" in line.text:
-            raise SystemExit(f"markdown left in form text: {line.text[:60]}")
+    for index, text in enumerate(plan.written):
+        if "**" in text or "`" in text:
+            raise SystemExit(f"markdown left in form text: edit {index} ({len(text)} chars)")
 
 
 def style_ops(plan: Plan) -> list[dict]:
@@ -339,9 +359,11 @@ def check_saved(scripts: Path, path: Path, cell_map: dict, dump_text: Path | Non
 
     styled = 0
     current = b""
+    paragraph = 0
     for tag, _, payload in section:
         if tag == TAG_PARA_TEXT:
             current = payload
+            paragraph += 1
         elif tag == TAG_PARA_CHAR_SHAPE and current:
             # A run holding only control characters (line break, paragraph mark) shows no glyph.
             units = struct.unpack(f"<{len(current) // 2}H", current[: len(current) // 2 * 2])
@@ -358,7 +380,7 @@ def check_saved(scripts: Path, path: Path, cell_map: dict, dump_text: Path | Non
                 visible = any(unit >= 32 for unit in units[start:end])
                 if visible and (italic or gray):
                     styled += 1
-                    print(f"  gray/italic paragraph: {len(paragraph_text(current))} chars")
+                    print(f"  gray/italic: --dump-text paragraph {paragraph}, {len(units)} units")
                     break
             current = b""
     print(f"gray or italic paragraphs: {styled}")
@@ -374,7 +396,7 @@ def fill(args: argparse.Namespace, cell_map: dict) -> None:
     )
     plan = build_plan(cell_map, parse_body(args.body), values)
     reject_markup(plan)
-    leftovers = sorted({match for line in plan.styled for match in PLACEHOLDER.findall(line.text)})
+    leftovers = placeholders_written(plan)
     if args.final and leftovers:
         raise SystemExit(f"--final refuses placeholders: {leftovers}")
 

@@ -131,7 +131,7 @@
 5. 다른 이름으로 저장해 재저장본을 만들고 쪽수가 5장 내외인지 본다.
 6. `python3 paper/deliverables/hwp/fill_form.py check <재저장본.hwp> --dump-text ~/capstone-work/final-hwp.txt`로 BodyText와 PrvText의 샘플 잔존을 검사해 결과를 W4에 넘긴다. 0건이 기준이다.
 7. 재저장본을 PDF로 저장하고 HWP와 PDF를 모두 다시 열어 확인한다. `pdftotext <최종.pdf> ~/capstone-work/final-pdf.txt`로 텍스트를 뽑는다.
-8. HWP와 PDF 텍스트를 각각 본문과 대조해 W3에 넘긴다: `python3 ~/capstone-work/check_hwp_body.py paper/deliverables/capstone-report-form-body.md <final-hwp.txt 또는 final-pdf.txt> ~/inodefence-evidence/demo-recordings-20261107/demo-output`.
+8. HWP와 PDF 텍스트를 각각 본문과 대조해 W3에 넘긴다: `python3 ~/capstone-work/check_hwp_body.py paper/deliverables/capstone-report-form-body.md <final-hwp.txt 또는 final-pdf.txt> ~/inodefence-evidence/demo-recordings-20261107/demo-output`. W3 스크립트 판은 SHA-256 `67786743c9d59b02a2e607baa9ebef6162b341ad5df98463015bb1ffa6f093e7`이다.
 9. 파일명 `[참가번호][학과명] 팀명 결과보고서`로 바꾼다(참가번호는 11/23 안내).
 
 ---

@@ -15,6 +15,7 @@
     "P- (Product)": [16, 13],
     "SS- (Social-Service)": [17, 13]
   },
+  "header_gray": ["팀명", "팀장", "팀원", "과제명"],
   "project_type_rows": {
     "문제해결": 4,
     "산학연계": 5,
@@ -24,6 +25,7 @@
     "지역사회 연계": 9
   },
   "project_type_col": 11,
+  "linkage_not_required": ["문제해결", "사회맞춤형"],
   "blocks": {
     "■ 과제 목적": {"row": 19, "paragraphs": 11, "keep_first": 1},
     "■ 과제 내용 및 결과": {"row": 21, "paragraphs": 23, "keep_first": 0},

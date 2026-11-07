@@ -36,6 +36,8 @@ DEFAULT_SCRIPTS = Path.home() / (
 PLACEHOLDER = re.compile(r"\[(?:사람|대기|갱신)[^\]]*\]")
 TAG_PARA_HEADER, TAG_PARA_TEXT, TAG_PARA_CHAR_SHAPE, TAG_LIST_HEADER = 66, 67, 68, 72
 TAG_CHAR_SHAPE = 21
+RESULT_KEYS = ("R- (Research)", "P- (Product)", "SS- (Social-Service)")
+LINKAGE_BLOCK = "■ 산학/지역사회연계 활동 결과보고"
 
 
 @dataclass(frozen=True)
@@ -107,10 +109,10 @@ class Plan:
             {"type": "set_cell_text", **self.table, "row": row, "col": col, "text": text, **options}
         )
 
-    def cell(self, row: int, col: int, line: Line) -> None:
+    def cell(self, row: int, col: int, line: Line, restyle: bool = True) -> None:
         self.set_text(row, col, line.text)
         self.expected[(row, col)] = [line.text]
-        if line.text:
+        if line.text and restyle:
             self.styled.append(line)
 
     def block(self, row: int, paragraphs: int, keep_first: int, lines: list[Line]) -> None:
@@ -120,6 +122,8 @@ class Plan:
             )
         for index in range(paragraphs - 1, keep_first + len(lines) - 1, -1):
             self.set_text(row, 0, "", cell_para=index)
+        if not lines:
+            self.set_text(row, 0, "", cell_para=keep_first, collapse=True)
         for index, line in enumerate(lines):
             last = {"collapse": True} if index == len(lines) - 1 else {}
             self.set_text(row, 0, line.text, cell_para=keep_first + index, **last)
@@ -133,21 +137,29 @@ def build_plan(cell_map: dict, sections: dict[str, str], values: dict[str, str])
     header = {row[0]: row[1] for row in table_rows(sections["머리 정보"])}
     for name, (row, col) in cell_map["header"].items():
         # "" means not given yet (keep the placeholder); null means the cell stays empty.
+        # Once any result type is filled, the empty result types are simply not applicable.
         given = values.get(name, "")
-        plan.cell(row, col, Line("" if given is None else (given or header[name])))
+        if name in RESULT_KEYS and given == "" and any(values.get(key) for key in RESULT_KEYS):
+            given = None
+        # Only sample-styled header cells need restyling; a short value in a black cell such as
+        # the class number could not be a unique style target anyway.
+        restyle = name in cell_map["header_gray"]
+        plan.cell(row, col, Line("" if given is None else (given or header[name])), restyle)
 
-    project_type = values.get("프로젝트 유형") or None
+    # The form groups types under 비융합/융합; the type name alone selects the row.
+    project_type = re.sub(r"^비?융합[\s·:/-]*", "", values.get("프로젝트 유형") or "") or None
     for name, row in cell_map["project_type_rows"].items():
         # The mark keeps the form's own shape: "○" also occurs in a label, so it cannot be a target.
         mark = "○" if name == project_type else ""
         plan.set_text(row, cell_map["project_type_col"], mark)
     if project_type is not None and project_type not in cell_map["project_type_rows"]:
-        raise SystemExit(f"unknown project type: {project_type}")
+        raise SystemExit("project type is not a form option name")
 
     for title, spec in cell_map["blocks"].items():
-        plan.block(
-            spec["row"], spec["paragraphs"], spec["keep_first"], prose_lines(sections[title])
-        )
+        lines = prose_lines(sections[title])
+        if title == LINKAGE_BLOCK and project_type in cell_map["linkage_not_required"]:
+            lines = []
+        plan.block(spec["row"], spec["paragraphs"], spec["keep_first"], lines)
 
     titles = [row[2] for row in table_rows(sections["■ 결과물 사진"])]
     photo = cell_map["photo"]
@@ -193,16 +205,17 @@ def style_ops(plan: Plan) -> list[dict]:
     """
     texts = [line.text for line in plan.styled]
     operations: list[dict] = []
-    for line in plan.styled:
+    # Messages give positions only: these lines can hold personal header values.
+    for index, line in enumerate(plan.styled):
         if sum(line.text in text for text in texts) != 1:
-            raise SystemExit(f"style target is not unique: {line.text[:50]}")
+            raise SystemExit(f"style target {index} is not unique ({len(line.text)} chars)")
         operations.append(
             {"type": "apply_text_style", "target": line.text, "color": "#000000", "italic": False}
         )
-    for line in plan.styled:
+    for index, line in enumerate(plan.styled):
         if line.bold:
             if sum(line.bold in text for text in texts) != 1:
-                raise SystemExit(f"bold target is not unique: {line.bold}")
+                raise SystemExit(f"bold target {index} is not unique ({len(line.bold)} chars)")
             operations.append(
                 {"type": "apply_text_style", "target": line.bold, "bold": True, "italic": False}
             )
@@ -237,7 +250,7 @@ def verify_written(scripts: Path, path: Path, plan: Plan) -> list[str]:
     for (row, col), lines in plan.expected.items():
         actual = texts.get((row, col))
         if actual is None or not actual.endswith("\n".join(lines)):
-            problems.append(f"cell ({row},{col}) differs: {str(actual)[:60]!r}")
+            problems.append(f"cell ({row},{col}) differs")
     return problems
 
 
@@ -345,7 +358,7 @@ def check_saved(scripts: Path, path: Path, cell_map: dict, dump_text: Path | Non
                 visible = any(unit >= 32 for unit in units[start:end])
                 if visible and (italic or gray):
                     styled += 1
-                    print(f"  gray/italic paragraph: {paragraph_text(current)[:40]!r}")
+                    print(f"  gray/italic paragraph: {len(paragraph_text(current))} chars")
                     break
             current = b""
     print(f"gray or italic paragraphs: {styled}")
@@ -366,8 +379,8 @@ def fill(args: argparse.Namespace, cell_map: dict) -> None:
         raise SystemExit(f"--final refuses placeholders: {leftovers}")
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(args.template, args.out)
     styles = style_ops(plan)
+    shutil.copyfile(args.template, args.out)
     run_create(args.scripts, args.out, plan.cell_ops)
     run_create(args.scripts, args.out, styles)
     problems = verify_written(args.scripts, args.out, plan)

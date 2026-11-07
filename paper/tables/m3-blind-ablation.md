@@ -35,7 +35,7 @@ arm 정의: `A3full` = `uniform-generic-m1-state-aware-escape-hardlink-v1`; `A3b
 s11 run은 step 416에서 evidence-integrity 검사로 abort(returncode 1)하지만 21건의 hit는 **abort
 이전**에 기록된 step이다(producer abort-drain). process returncode 1을 "발견 없음"으로 읽지 않는다.
 
-이 표의 hit는 C1 ∧ contract_violated다. 표 7-P의 C1 ∨ C2와 다르다. A3full-s60에는 C2만 위반인 step 14개가 있어 여기에 세지 않았다.
+이 표의 hit는 C1 ∧ contract_violated다. 위험도 파일럿과 EXP-3의 사건 정의(C1 ∨ C2, 보고서 초안 표 7-P)와 다르다. A3full-s60에는 C2만 위반인 step 14개가 있어(rejected run, sentinel ctime 변화, nlink 불변) 여기에 세지 않았다.
 
 ## 읽는 법 (이름 획득 조건의 대조; 피드백 인과·rate 아님)
 

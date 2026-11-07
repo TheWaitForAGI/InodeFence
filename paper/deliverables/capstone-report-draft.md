@@ -157,7 +157,7 @@ retention·effect 피드백 인과는 미입증.[^m3] 인용의 A1은 generic �
 - **blind 발견이 아니다.** 기존 외부 객체에 하드링크하려면 이름이 필요하고 퍼저는 그것을 관찰로 얻는다.[^m3]
 - **seed-rare다.** 예산 1500에서 자율 C1은 65 seed 중 s11 1개였다. 21건은 그 run의 1 lineage이고, run은 step 416에서 abort했다.
   막대마다 분모(step 수)도 다르다.[^m3]
-- **hit 정의가 다르다.** 이 표의 hit는 C1 ∧ contract_violated다. 표 7-P의 C1 ∨ C2와 다르다. A3full-s60에는 C2만 위반인 step 14개가 있어 여기에 세지 않았다.[^m3]
+- **hit 정의가 다르다.** 그림 7-2의 hit는 C1 ∧ contract_violated다. 표 7-P의 C1 ∨ C2와 다르다. A3full-s60에는 C2만 위반인 step 14개가 있어 여기에 세지 않았다.[^m3]
 - **rate 우위는 미입증이다.** 사전등록 매칭 대조의 Wilson 구간이 겹쳤다.[^m3-rate]
 
 ### 7.4 M4: oracle 수준 일반성

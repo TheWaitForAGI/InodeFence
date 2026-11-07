@@ -46,8 +46,8 @@ _BOUNDARY_KEYS_NOTE = (
     f"(deviation 4 of {_OFFICIAL_REPORT})."
 )
 _TIMING_CLOCK_NOTE = (
-    "p50, p95 and max are monotonic-clock recorded values; real-time conversions are in "
-    f"deviation 1 of {_OFFICIAL_REPORT}."
+    "p50, p95 and max are monotonic-clock recorded values; real-time conversions of p50 and p95 "
+    f"are in deviation 1 of {_OFFICIAL_REPORT}."
 )
 
 

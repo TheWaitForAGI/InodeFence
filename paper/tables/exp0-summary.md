@@ -43,7 +43,7 @@ _boundary_keys is a per-cell sum, not a count of unique keys (deviation 4 of exp
 
 p50 1.4880454699996335 | p95 1.5489997629993013 | max 1.7028755140017893 over 3000 steps.
 
-_p50, p95 and max are monotonic-clock recorded values; real-time conversions are in deviation 1 of experiments/summaries/exp0-20261105-report.md._
+_p50, p95 and max are monotonic-clock recorded values; real-time conversions of p50 and p95 are in deviation 1 of experiments/summaries/exp0-20261105-report.md._
 
 ## Hazard proxy (reference value only, not a verdict)
 

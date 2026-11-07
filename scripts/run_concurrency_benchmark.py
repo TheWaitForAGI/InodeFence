@@ -102,6 +102,9 @@ RESERVED_SEED_RANGES: tuple[tuple[int, int], ...] = (
     (8101, 8110),
     (9001, 9999),
 )
+#: The pilot seeds a design may measure again on purpose: an abort's input comes round again, which
+#: tests recurrence (design v2). Measured seeds only, and only these four; the range stays reserved.
+PILOT_RERUN_SEEDS = frozenset({8102, 8103, 8106, 8110})
 PROC_SAMPLE_SECONDS = 30.0
 DOCKER_PROBE_SECONDS = 60.0
 EVENT_ACTIONS = ("create", "start", "die", "destroy")
@@ -233,7 +236,7 @@ def parse_design(text: str) -> Design:
     smoke_seed = int(plain["smoke_seed"])
     if len(set(seeds)) != len(seeds) or smoke_seed in seeds:
         raise DesignError("seeds must be unique and differ from smoke_seed")
-    for seed in (*seeds, smoke_seed):
+    for seed in (*(item for item in seeds if item not in PILOT_RERUN_SEEDS), smoke_seed):
         _check_seed(seed)
     vocabulary = VocabularyMode(plain["vocabulary"])
     budget = int(plain["budget"])

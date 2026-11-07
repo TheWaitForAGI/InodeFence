@@ -8,6 +8,7 @@ from dataclasses import replace
 from datetime import UTC, datetime, timedelta, timezone
 from hashlib import sha256
 from pathlib import Path
+from time import monotonic, sleep
 from typing import Any
 
 import pytest
@@ -1553,11 +1554,101 @@ def test_three_cells_in_a_row_with_no_record_stop_new_cells(
     assert len(stops) == 1 and "3 consecutive cells left no record" in stops[0]["reason"]
     assert set(stops[0]["clocks"]) == {"realtime", "monotonic", "monotonic_raw"}
     assert index["outcomes_redacted"] is True  # the waiting cells still hide outcomes
-    # A later call finds its own streak: waiting cells still have both attempts.
+    assert index["cell_completeness"]["infrastructure_stopped"] is True
+    # Nothing was deleted: the first attempts are kept and the last attempts stay in place.
+    for run_id in cells[:3]:
+        assert (out / "attempts" / f"{run_id}.attempt1.log").is_file()
+        assert _cell(args, run_id, out)["log"].is_file()
+    # A later call starts nothing by itself and changes no record.
     fresh = _fake_runner(TARGET_IMAGES)
     monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", fresh)
+    before = _result_lines(out)
     assert main(args) == 1
+    assert fresh.calls == []  # type: ignore[attr-defined]
+    assert _result_lines(out) == before
+    assert json.loads((out / "matrix.json").read_text())["cells_not_started"] == sorted(cells[3:])
+    assert _index(out)["cell_completeness"]["infrastructure_stopped"] is True
+    # A resume needs the operator's reference; the waiting cells still have both attempts.
+    assert main([*args, "--resume-after-stop", "jiwoong-cause-found"]) == 1
     assert sorted(fresh.calls) == sorted(cells[3:])  # type: ignore[attr-defined]
+    summary = _index(out)["cell_completeness"]
+    assert summary["infrastructure_stopped"] is False
+    assert summary["infrastructure_resumes"][0]["approval_ref"] == "jiwoong-cause-found"
+    assert set(summary["infrastructure_resumes"][0]["clocks"]) == set(stops[0]["clocks"])
+    assert [_index(out)["interim"]["cell_states"][run_id] for run_id in cells[:3]] == [
+        "no-record"
+    ] * 3  # a resume does not give used attempts back
+
+
+@pytest.mark.parametrize("reference", ["some-reference", "   "])
+def test_a_resume_needs_a_stop_and_a_reference(
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch, reference: str
+) -> None:
+    out, args, _clock = _deadline_setup(tmp_path, monkeypatch, BEFORE)
+    runner = _fake_runner(TARGET_IMAGES)
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", runner)
+    assert main([*args, "--resume-after-stop", reference]) == 2  # no stop to resume
+    assert runner.calls == []  # type: ignore[attr-defined]
+    assert not (out / "cell-results.jsonl").exists()
+
+
+def test_an_empty_reference_cannot_resume_a_real_stop(
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch
+) -> None:
+    out, args, _clock = _deadline_setup(tmp_path, monkeypatch, BEFORE)
+    out.mkdir()
+    _rewrite_results(out, [{"event": "infrastructure-stop", "reason": "why", "clocks": {}}])
+    runner = _fake_runner(TARGET_IMAGES)
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", runner)
+    assert main([*args, "--resume-after-stop", " "]) == 2
+    assert runner.calls == []  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize("mode", ["--summarize-only", "--dry-run"])
+def test_a_resume_cannot_go_with_a_mode_that_runs_no_cell(
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch, mode: str
+) -> None:
+    _out, args, _clock = _deadline_setup(tmp_path, monkeypatch, BEFORE)
+    with pytest.raises(SystemExit):
+        main([*args, "--resume-after-stop", "ref", mode])
+
+
+def test_a_running_cell_finishes_after_the_stop_and_keeps_its_record(
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch
+) -> None:
+    out, args, _clock = _deadline_setup(tmp_path, monkeypatch, BEFORE)
+    cells = [cell.run_id for cell in _deadline_plan(args).cells()]
+    long_running = cells[0]
+
+    def stop_written() -> bool:
+        path = out / "cell-results.jsonl"
+        return path.is_file() and "infrastructure-stop" in path.read_text(encoding="utf-8")
+
+    def waits_for_the_stop(_cell_: Any, _output: Path, result: Any) -> Any:
+        deadline = monotonic() + 30
+        while not stop_written():
+            assert monotonic() < deadline, "the stop never came"
+            sleep(0.01)
+        return result
+
+    special: dict[str, Any] = dict.fromkeys(cells, _dies_without_a_record)
+    special[long_running] = waits_for_the_stop
+    runner = _runner_with(special)
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", runner)
+    assert main(args) == 1  # two jobs: one slot waits while the other reaches the stop
+    assert _index(out)["interim"]["cell_states"][long_running] == "complete"
+    assert _cell(args, long_running, out)["report"].is_file()
+    lines = _result_lines(out)
+    stop_at = next(i for i, row in enumerate(lines) if row["event"] == "infrastructure-stop")
+    end_at = next(
+        i
+        for i, row in enumerate(lines)
+        if row.get("run_id") == long_running and row["event"] == "end"
+    )
+    assert stop_at < end_at  # it ended after the stop, and the stop stands
+    summary = _index(out)["cell_completeness"]
+    assert summary["infrastructure_stopped"] is True and len(summary["infrastructure_stops"]) == 1
+    assert len(set(runner.calls)) == 4  # the waiting cell and three with no record
 
 
 def test_a_recorded_cell_resets_the_no_record_streak(

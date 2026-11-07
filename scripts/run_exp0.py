@@ -58,9 +58,11 @@ Scale controls (all from the file; the launcher only enforces them):
   ``cell-results.jsonl`` (exit code, ``watchdog_fired``, clocks, no outcome). A cell with
   a record is final and never re-run; the record is checked by
   ``evaluation.cell_completeness``. Only a cell with no record runs again, once, in its
-  place in the queue, its files kept under ``attempts/``. Three cells in a row with no
-  record stop new cells (``infrastructure-stop`` line, index ``cell_completeness``); a
-  cell not started uses no attempt. ``--finalize-abort`` is refused.
+  place in the queue, its files kept under ``attempts/`` (at most two attempts). Three
+  cells in a row with no record stop new cells (``cell_completeness.InfrastructureGuard``
+  fixes the counting; ``infrastructure-stop`` line, index ``cell_completeness``). Running
+  cells finish, nothing is deleted, a cell not started uses no attempt, and later calls
+  start no cell until ``--resume-after-stop APPROVAL_REF``. ``--finalize-abort`` is refused.
 
 Idempotent: a rerun skips cells whose report is complete and conformant (budget
 reached, no abort, planned config, preregistered image id and sentinel set) and
@@ -115,18 +117,20 @@ from inodefence.evaluation.cell_completeness import (
     ABORT_FINAL,
     CELL_RESULTS_FILE,
     COMPLETE,
+    INFRASTRUCTURE_RESUME_EVENT,
     INFRASTRUCTURE_STOP_EVENT,
     MAX_ATTEMPTS,
     NO_RECORD,
     RECORD_INCONSISTENT,
-    STOP_AFTER_NO_RECORD,
     UNATTEMPTED,
     Attempt,
     CellCheck,
+    InfrastructureGuard,
     classify_cell,
+    infrastructure_stopped,
     infrastructure_summary,
     read_cell_results,
-    read_infrastructure_stops,
+    read_infrastructure_events,
 )
 from inodefence.evaluation.cell_completeness import CELL_STATES as TARGET_CELL_STATES
 from inodefence.evaluation.rds import VOCABULARY_MUTATION_POLICY, RdsArm, RdsCellConfig
@@ -582,27 +586,6 @@ def target_cell_checks(plan: Exp0Plan, output: Path) -> dict[str, CellCheck]:
     """Record checks of every planned cell of a ``targets.<id>`` registration."""
     attempts = read_cell_results(output / CELL_RESULTS_FILE)
     return {cell.run_id: target_cell_check(plan, cell, output, attempts) for cell in plan.cells()}
-
-
-class _InfrastructureGuard:
-    """Stops new cells after consecutive cells that end with no record (cells, not attempts)."""
-
-    def __init__(self) -> None:
-        self._lock = Lock()
-        self._streak = 0
-        self.stopped = False
-
-    def note_cell_end(self, *, recorded: bool) -> str | None:
-        """Returns the stop reason once, when this cell's end triggers the stop."""
-        with self._lock:
-            self._streak = 0 if recorded else self._streak + 1
-            if self.stopped or self._streak < STOP_AFTER_NO_RECORD:
-                return None
-            self.stopped = True
-        return (
-            f"{STOP_AFTER_NO_RECORD} consecutive cells left no record; "
-            "infrastructure suspected, no new cell started"
-        )
 
 
 def deadline_late_cells(plan: Exp0Plan, output: Path) -> dict[str, str]:
@@ -1240,9 +1223,18 @@ def main(argv: list[str] | None = None) -> int:
         help="mark a cell's abort record final (a result, right-censored, kept in the "
         "denominator; never re-run); the manual classification step until #203 lands",
     )
+    parser.add_argument(
+        "--resume-after-stop",
+        default=None,
+        metavar="APPROVAL_REF",
+        help="after the cause of an infrastructure stop was found: start cells again and record "
+        "this approval reference; nothing resumes without it",
+    )
     args = parser.parse_args(argv)
     if args.jobs < 1:
         parser.error("--jobs must be >= 1")
+    if args.resume_after_stop is not None and (args.summarize_only or args.dry_run):
+        parser.error("--resume-after-stop starts cells; it cannot go with a mode that runs none")
 
     try:
         prereg = load_preregistration(args.preregistration)
@@ -1397,7 +1389,7 @@ def main(argv: list[str] | None = None) -> int:
                     **(
                         {
                             "cell_completeness": infrastructure_summary(
-                                checks, read_infrastructure_stops(output / CELL_RESULTS_FILE)
+                                checks, read_infrastructure_events(output / CELL_RESULTS_FILE)
                             )
                         }
                         if checks is not None
@@ -1531,8 +1523,32 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("bash not found: the native launcher runs only on the host terminal")
     pending, skipped, skipped_final = _pending_cells(plan, output)
     not_started: list[str] = []
-    if deadline_passed(plan):
-        # No new cell after the deadline, and nothing to re-run: attempts stay where they are.
+    stopped = infrastructure_stopped(read_infrastructure_events(output / CELL_RESULTS_FILE))
+    if args.resume_after_stop is not None:
+        if not stopped or not args.resume_after_stop.strip():
+            print(
+                "--resume-after-stop needs an approval reference and an unresumed "
+                "infrastructure stop in this directory",
+                file=sys.stderr,
+            )
+            return 2
+        append_cell_result(
+            output,
+            {
+                "event": INFRASTRUCTURE_RESUME_EVENT,
+                "approval_ref": args.resume_after_stop,
+                "clocks": _clock_stamp(),
+            },
+        )
+        stopped = False
+    if stopped:
+        print(
+            "infrastructure stop in effect: no new cell starts. Find the cause, then resume with "
+            "--resume-after-stop <approval reference>",
+            file=sys.stderr,
+        )
+    if deadline_passed(plan) or stopped:
+        # No new cell, and nothing to re-run: attempts stay where they are.
         not_started = [cell.run_id for cell in pending]
         pending = []
     # The targets form archives right before each attempt, so a cell that never starts stays as is.
@@ -1549,7 +1565,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             return code
     disk_pauses: dict[str, int] = {}
-    guard = _InfrastructureGuard()
+    guard = InfrastructureGuard()
 
     def run_attempt(cell: Cell) -> CellResult:
         return run_cell_with_watchdog(

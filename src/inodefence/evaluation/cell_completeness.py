@@ -30,6 +30,7 @@ from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from threading import Lock
 from typing import Any
 
 CELL_RESULTS_FILE = "cell-results.jsonl"
@@ -46,6 +47,7 @@ MAX_ATTEMPTS = 2
 # stop, a dead Docker would use up every waiting cell's attempts within minutes (same as the pilot).
 STOP_AFTER_NO_RECORD = 3
 INFRASTRUCTURE_STOP_EVENT = "infrastructure-stop"
+INFRASTRUCTURE_RESUME_EVENT = "infrastructure-resume"
 
 
 @dataclass(frozen=True, slots=True)
@@ -215,23 +217,68 @@ def classify_cell(
     return CellCheck(state, (), watchdog, 0, count)
 
 
-def read_infrastructure_stops(path: Path) -> list[dict[str, Any]]:
-    """The launcher's ``infrastructure-stop`` lines, oldest first (clocks and reason only)."""
+class InfrastructureGuard:
+    """Stops new cells after ``STOP_AFTER_NO_RECORD`` consecutive cells with no record.
+
+    It reads no outcome, only whether a cell left a record. The rules are fixed here:
+
+    * **What counts:** a cell, once, when it ends with no record after its last attempt. A failed
+      attempt that is retried does not count.
+    * **Order:** the order in which cells end, as the launcher notes them under this lock. Not the
+      order they started and not the planned order, so with several jobs the count follows the
+      infrastructure's state over time.
+    * **Reset:** any cell that leaves a record sets the count to 0, whatever the record says
+      (complete, abort or inconsistent). A cell not started changes nothing.
+    * **Scope:** one launcher call, starting at 0. A resume is a new call and starts at 0.
+    * **After the stop:** no new attempt starts, retries included. Running cells finish and keep
+      their records; nothing is deleted or overwritten. A cell ending after the stop does not undo
+      it. A later call refuses to start cells until an operator resumes with an approval reference
+      (``--resume-after-stop``). Nothing resumes by itself.
+    """
+
+    def __init__(self) -> None:
+        self._lock = Lock()
+        self._streak = 0
+        self.stopped = False
+
+    def note_cell_end(self, *, recorded: bool) -> str | None:
+        """Note one ended cell. Returns the stop reason once, when this end triggers the stop."""
+        with self._lock:
+            self._streak = 0 if recorded else self._streak + 1
+            if self.stopped or self._streak < STOP_AFTER_NO_RECORD:
+                return None
+            self.stopped = True
+        return (
+            f"{STOP_AFTER_NO_RECORD} consecutive cells left no record; "
+            "infrastructure suspected, no new cell started"
+        )
+
+
+def read_infrastructure_events(path: Path) -> list[dict[str, Any]]:
+    """The launcher's stop and resume lines, in file order."""
     if not path.is_file():
         return []
-    stops: list[dict[str, Any]] = []
+    events: list[dict[str, Any]] = []
     for line in path.read_text(encoding="utf-8").splitlines():
         try:
             record = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if isinstance(record, dict) and record.get("event") == INFRASTRUCTURE_STOP_EVENT:
-            stops.append({"reason": record.get("reason"), "clocks": record.get("clocks")})
-    return stops
+        if isinstance(record, dict) and record.get("event") in (
+            INFRASTRUCTURE_STOP_EVENT,
+            INFRASTRUCTURE_RESUME_EVENT,
+        ):
+            events.append(record)
+    return events
+
+
+def infrastructure_stopped(events: Sequence[Mapping[str, Any]]) -> bool:
+    """Whether the last stop has not been resumed."""
+    return bool(events) and events[-1].get("event") == INFRASTRUCTURE_STOP_EVENT
 
 
 def infrastructure_summary(
-    checks: Mapping[str, CellCheck], stops: Sequence[Mapping[str, Any]] = ()
+    checks: Mapping[str, CellCheck], events: Sequence[Mapping[str, Any]] = ()
 ) -> dict[str, Any]:
     """Counts and the infrastructure failure rate: (aborts + inconsistent records) / all cells.
 
@@ -252,7 +299,17 @@ def infrastructure_summary(
         "aborts_plus_inconsistent": failures,
         "infrastructure_failure_rate": failures / len(checks) if checks else None,
         "unknown_outcome_steps": sum(check.unknown_outcome_steps for check in checks.values()),
-        "infrastructure_stops": [dict(stop) for stop in stops],
+        "infrastructure_stopped": infrastructure_stopped(events),
+        "infrastructure_stops": [
+            {"reason": event.get("reason"), "clocks": event.get("clocks")}
+            for event in events
+            if event.get("event") == INFRASTRUCTURE_STOP_EVENT
+        ],
+        "infrastructure_resumes": [
+            {"approval_ref": event.get("approval_ref"), "clocks": event.get("clocks")}
+            for event in events
+            if event.get("event") == INFRASTRUCTURE_RESUME_EVENT
+        ],
         "inconsistent_checks": {
             run_id: list(check.problems)
             for run_id, check in sorted(checks.items())

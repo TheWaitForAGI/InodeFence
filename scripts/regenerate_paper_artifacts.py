@@ -13,10 +13,10 @@ raw. This orchestrates the generators that exist and is **honest about the gaps*
     **byte-identically**, so ``--verify`` byte-compares them (``verify="byte"``). The
     capability-ledger summary is still hand-maintained (STATUS-derived, no raw generator),
     checked by existence only.
-  * The EXP-0 survival figure's generator is merged (#219) but needs ``--report``, and the
-    PNG is not committed yet. Its row is ``optional``: ``--verify`` skips it until the PNG is
-    committed and then checks its size, and ``--regenerate`` never runs that generator (with
-    no report it would overwrite the summary table with a placeholder).
+  * The EXP-0 survival figure's generator (#219) needs ``--report``. Its row is ``optional``:
+    ``--regenerate`` never runs that generator (with no report it would overwrite the summary
+    table with a placeholder), and ``--verify`` checks the committed PNG by size. Regenerate it
+    by running the script directly with ``--report``.
 
 Modes (default ``--verify``, read-only):
 
@@ -117,7 +117,7 @@ ARTIFACTS: tuple[Artifact, ...] = (
         "exists",
         "hand-maintained summary of the Ledger; no raw generator",
     ),
-    # EXP-0 survival: optional until the PNG is committed, then checked by size like the others.
+    # EXP-0 survival: optional keeps --regenerate from running it; verified by size when committed.
     Artifact(
         "paper/figures/exp0-survival.png",
         "figure",
@@ -125,7 +125,7 @@ ARTIFACTS: tuple[Artifact, ...] = (
         "matplotlib-ephemeral",
         ("scripts/analyze_exp0.py output",),
         "size",
-        "generator merged (#219); PNG to be regenerated with --report after the host freeze (W4)",
+        "matplotlib PNG not bit-reproducible; run directly with --report, not --regenerate",
         optional=True,
     ),
 )

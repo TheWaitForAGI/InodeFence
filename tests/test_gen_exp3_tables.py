@@ -219,7 +219,7 @@ def _inputs(report: dict[str, Any], tmp_path: Path, *, hand: Any = None) -> Inpu
         hand_path.write_text(json.dumps(hand), encoding="utf-8")
     decision = tmp_path / "go-decision.json"
     # Before every run clock in these tests, so it moves H_rem only where a test says so.
-    decision.write_text(json.dumps({"as_of": "1970-01-01T00:00:00+00:00"}), encoding="utf-8")
+    decision.write_text(json.dumps({"decided_at": "1970-01-01T00:00:00+00:00"}), encoding="utf-8")
     return Inputs(report, results, hand_path, decision)
 
 
@@ -491,17 +491,20 @@ def test_a_decision_after_the_last_end_shortens_h_rem(tmp_path: Path) -> None:
     inputs.report["deadline"]["execution_deadline"] = "1970-01-01T12:00:00+00:00"
     assert _go_row(gen.render("T-EXP3-2", inputs), "H_rem") == "10.0"  # decided before the end
     inputs.go_decision.write_text(
-        json.dumps({"as_of": "1970-01-01T04:00:00+00:00"}), encoding="utf-8"
+        json.dumps({"decided_at": "1970-01-01T04:00:00+00:00"}), encoding="utf-8"
     )
     text = gen.render("T-EXP3-2", inputs)
     assert _go_row(text, "H_rem") == "8.0"  # two hours after the last end at 7200 s
+    assert "GO 판정 시각(실시간): 1970-01-01T04:00:00+00:00" in text.splitlines()[-1]
     # floor(8 * 1800 / 6000): r does not move with the decision time.
     assert (_go_row(text, "r:"), _go_row(text, "용량")) == ("1800", "2")
 
 
 def test_a_decision_time_with_no_offset_or_no_file_stops_the_table(tmp_path: Path) -> None:
     inputs = _write_results(tmp_path, GAP_ROWS)
-    inputs.go_decision.write_text(json.dumps({"as_of": "1970-01-01T04:00:00"}), encoding="utf-8")
+    inputs.go_decision.write_text(
+        json.dumps({"decided_at": "1970-01-01T04:00:00"}), encoding="utf-8"
+    )
     with pytest.raises(TableInputError, match="UTC offset"):
         gen.render("T-EXP3-2", inputs)
     inputs.go_decision.unlink()
@@ -512,7 +515,9 @@ def test_a_decision_time_with_no_offset_or_no_file_stops_the_table(tmp_path: Pat
 def test_an_unresumed_stop_needs_no_decision_time(tmp_path: Path) -> None:
     inputs = _write_results(tmp_path, [*GAP_ROWS, {**STOP, "clocks": {"realtime": 7300.0}}])
     inputs.go_decision.unlink()
-    assert _go_row(gen.render("T-EXP3-2", inputs), "H_rem") == "미산출"
+    text = gen.render("T-EXP3-2", inputs)
+    assert _go_row(text, "H_rem") == "미산출"
+    assert "GO 판정 시각" not in text
 
 
 @pytest.mark.parametrize(
@@ -581,7 +586,7 @@ def test_the_generators_inputs_are_registered_with_each_table() -> None:
     registered = {artifact.output: artifact for artifact in ARTIFACTS}
     go_inputs = registered["paper/tables/exp3-go-inputs.md"].inputs
     assert "experiments/summaries/exp3-train-cell-results.jsonl" in go_inputs
-    assert "experiments/summaries/exp3-go-decision.json" in go_inputs
+    assert "experiments/summaries/exp3-train-go-decision.json" in go_inputs
     notes = registered["paper/tables/exp2-holdout-notes.md"].inputs
     assert "experiments/summaries/exp2-holdout-hand-input.json" in notes
 
@@ -611,6 +616,8 @@ def test_every_table_renders_and_repeats_byte_for_byte(tmp_path: Path) -> None:
 def test_dense_table_title_and_values(tmp_path: Path) -> None:
     text = gen.render("T-EXP3-3", _inputs(_train_report(), tmp_path))
     assert text.startswith("# EXP-3 train dense 지표 (탐색, effectiveness 아님)\n")
+    assert "arm 안 고유 키(온전한 trace 기준)" in text
+    assert "관찰 실패 종류별 step 수(1000 step당, 합계 아님)" in text
     assert "| S-u | 2.50 | 2 | 7 | .100 | malformed_identity 3(1.50/1000) | .250 |" in text
 
 

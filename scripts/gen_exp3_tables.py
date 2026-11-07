@@ -34,7 +34,7 @@ TRAIN_REPORT = SUMMARIES / "exp3-train-report.json"
 HOLDOUT_REPORT = SUMMARIES / "exp2-holdout-report.json"
 TRAIN_CELL_RESULTS = SUMMARIES / "exp3-train-cell-results.jsonl"
 HOLDOUT_HAND_INPUT = SUMMARIES / "exp2-holdout-hand-input.json"
-GO_DECISION = SUMMARIES / "exp3-go-decision.json"
+GO_DECISION = SUMMARIES / "exp3-train-go-decision.json"
 MULTITARGET_CLASSIFICATION = "exp3-multitarget-measurement"
 ARM_ORDER = ("R", "D", "S-u")
 GO_STEP_DIVISOR = 6000  # D040-D11: capacity = floor(H_rem * r / (6000 * e)).
@@ -291,14 +291,15 @@ def _run_clock(records: Sequence[Mapping[str, Any]]) -> RunClock:
     )
 
 
-def _go_decision_time(path: Path) -> float:
+def _go_decision_time(path: Path) -> tuple[str, float]:
     """The recorded GO decision time. A file, not this call's clock: rule 6 needs the same bytes."""
     if not path.is_file():
         raise TableInputError(f"GO decision time not found: {path}")
-    as_of = datetime.fromisoformat(_field(json.loads(path.read_text(encoding="utf-8")), "as_of"))
-    if as_of.tzinfo is None:
-        raise TableInputError(f"{path}: as_of needs a UTC offset")
-    return as_of.timestamp()
+    text = _field(json.loads(path.read_text(encoding="utf-8")), "decided_at")
+    decided_at = datetime.fromisoformat(text)
+    if decided_at.tzinfo is None:
+        raise TableInputError(f"{path}: decided_at needs a UTC offset")
+    return text, decided_at.timestamp()
 
 
 def t_exp3_2(inputs: "Inputs") -> list[str]:
@@ -328,12 +329,14 @@ def t_exp3_2(inputs: "Inputs") -> list[str]:
     if clock.unresumed:
         # D043 condition 6: no normal resume is assumed, so these cells have no value.
         rate_text = remaining_text = capacity_text = GO_NOT_COMPUTED
+        decision_lines: list[str] = []
         result = f"{GO_NOT_COMPUTED}: 인프라 정지 미재개. GO 미적용, EXP-2 미시작"
     else:
         rate = recorded / (clock.t_up / 3600)
         deadline = datetime.fromisoformat(_field(report, "deadline", "execution_deadline"))
-        counted_from = max(clock.last_activity, _go_decision_time(inputs.go_decision))
-        remaining = (deadline.timestamp() - counted_from) / 3600
+        decided_text, decided_at = _go_decision_time(inputs.go_decision)
+        remaining = (deadline.timestamp() - max(clock.last_activity, decided_at)) / 3600
+        decision_lines = ["", f"GO 판정 시각(실시간): {decided_text}"]
         rate_text = f"{rate:.0f}"
         remaining_text = f"{remaining:.1f}"
         capacity_text = str(math.floor(remaining * rate / (GO_STEP_DIVISOR * ratio)))
@@ -358,6 +361,7 @@ def t_exp3_2(inputs: "Inputs") -> list[str]:
         "",
         f"정지 {clock.stops}회, 누적 공백 {clock.gap_seconds / 3600:.1f} h(실시간). "
         "원인은 docs/LOG.md의 W2 기록.",
+        *decision_lines,
     ]
 
 
@@ -389,11 +393,11 @@ def _dense_table(title: str, report: Mapping[str, Any], target: Target) -> list[
         )
     headers = [
         "arm",
-        "셀별 새 키 평균",
-        "셀별 새 키 중앙값",
-        "arm 안 고유 키",
+        "셀별 새 키 평균(온전한 trace 기준)",
+        "셀별 새 키 중앙값(온전한 trace 기준)",
+        "arm 안 고유 키(온전한 trace 기준)",
         "rejected 비율",
-        "관찰 실패 종류별 합(1000 step당)",
+        "관찰 실패 종류별 step 수(1000 step당, 합계 아님)",
         "feedback_eligible=false 비율",
     ]
     return [*lines, *_md_table(headers, rows)]

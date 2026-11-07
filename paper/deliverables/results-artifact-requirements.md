@@ -43,7 +43,8 @@ PYTHONPATH=src python3 scripts/analyze_exp0.py --index <run>/summaries/index.jso
    생성기 리터럴도 함께 고친다. `tests/test_gen_tables.py`와 `--verify`가 바이트로 대조한다.
 4. **EXP-0 리포트의 타깃 필드.** JSON `targets`는 `["unspecified"]`이고 실제 타깃은 `7.5.2`다(공식 리포트 편차 5).
 5. **시간 값에는 clock을 표시한다.** `item2`·`item3`은 monotonic clock 기록이고 `summed.exec_per_hour`는 스트림당 값이다. 기록값과
-   실시간 환산값을 나란히 적는다. EXP-0 배율 1.091(W2 확정)은 EXP-0 전용이므로 EXP-3에는 그 실행의 배율을 따로 확정해 쓴다. 호스트 전체
-   처리량은 `registration.json`→`matrix.json`의 `created_at`으로 직접 계산한다. 실행 수로 세는 값은 영향이 없다.
+   실시간 환산값을 나란히 적는다. 배율은 실행마다, 한 실행 안에서도 변하므로(파일럿 셀별 1.00~1.10) 단일 배율로 환산하지 않는다. EXP-0 배율
+   1.091(W2 확정)은 EXP-0 전용이다. EXP-3의 시간 값은 셀별 배율로 환산하고 값마다 시계를 표기한다. 호스트 전체 처리량은 실시간에서 직접
+   계산한다(`registration.json`→`matrix.json`의 `created_at`). 실행 수로 세는 값은 영향이 없다.
 
 EXP-2 산출물은 EXP-3에 GO 규칙을 적용한 뒤에 정한다(현재 TBD).

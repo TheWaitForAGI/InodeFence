@@ -477,3 +477,72 @@ def test_exposure_ledger_guard_refuses_listed_holdouts() -> None:
         "holdout target node-tar-7.9.9 (node-tar 7.9.9) is in the exposure ledger",
     )
     assert ledger_problems(parse_preregistration(BLOCK), None, None) == ()  # no holdout
+
+
+def _holdout_problems(ledger_text: str) -> tuple[str, ...]:
+    from hashlib import sha256
+
+    from inodefence.evaluation.rds_preregistration import ledger_problems
+
+    digest = sha256(ledger_text.encode()).hexdigest()
+    pinned = parse_preregistration(TARGETS_BLOCK.replace(LEDGER_SHA, digest))
+    return ledger_problems(pinned, ledger_text, digest)
+
+
+REFUSED_HOLDOUT = ("holdout target node-tar-7.9.9 (node-tar 7.9.9) is in the exposure ledger",)
+
+
+def test_qualification_only_row_admits_a_holdout() -> None:
+    check = "| node-tar | 7.9.9 | qualification-only | D4 check |\n"
+    assert _holdout_problems(LEDGER + check) == ()
+    # Several status-check rows (an ERROR rerun has its own row) still admit it.
+    rerun = "| node-tar | 7.9.9 | qualification-only | D4 rerun |\n"
+    assert _holdout_problems(LEDGER + check + rerun) == ()
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        # Any other row for the same version refuses it, in either order.
+        "| node-tar | 7.9.9 | qualification-only | D4 |\n| node-tar | 7.9.9 | fuzzing | run |\n",
+        "| node-tar | 7.9.9 | fuzzing | run |\n| node-tar | 7.9.9 | qualification-only | D4 |\n",
+        # The kind must match exactly.
+        "| node-tar | 7.9.9 | Qualification-Only | D4 |\n",
+        "| node-tar | 7.9.9 | qualification-only (D4) | D4 |\n",
+        "| node-tar | 7.9.9 | qualification | D4 |\n",
+        "| node-tar | 7.9.9 |  | D4 |\n",
+        # A row too short to reach the kind column has no kind.
+        "| node-tar | 7.9.9 |\n",
+    ],
+)
+def test_other_ledger_rows_still_refuse_a_holdout(row: str) -> None:
+    assert _holdout_problems(LEDGER + row) == REFUSED_HOLDOUT
+
+
+def test_a_table_without_a_kind_column_refuses_a_holdout() -> None:
+    table = "\n\n| extractor | version |\n| --- | --- |\n| node-tar | 7.9.9 |\n"
+    assert _holdout_problems(LEDGER + table) == REFUSED_HOLDOUT
+
+
+def test_qualification_only_does_not_admit_another_version_or_extractor() -> None:
+    other_version = "| node-tar | 7.9.8 | qualification-only | D4 |\n"
+    assert _holdout_problems(LEDGER + other_version) == ()
+    both = other_version + "| node-tar | 7.9.9 | fuzzing | run |\n"
+    assert _holdout_problems(LEDGER + both) == REFUSED_HOLDOUT
+    other_extractor = "| decompress | 7.9.9 | fuzzing | run |\n"
+    assert _holdout_problems(LEDGER + other_extractor) == ()
+
+
+def test_listed_pairs_are_unchanged_by_the_kinds() -> None:
+    from inodefence.evaluation.rds_preregistration import (
+        parse_exposure_ledger,
+        parse_exposure_ledger_kinds,
+    )
+
+    text = LEDGER + "| node-tar | 7.9.9 | qualification-only | D4 |\n"
+    assert parse_exposure_ledger(text) == {
+        ("node-tar", "7.5.2"),
+        ("node-tar", "7.5.6"),
+        ("node-tar", "7.9.9"),
+    }
+    assert parse_exposure_ledger_kinds(text)[("node-tar", "7.9.9")] == {"qualification-only"}

@@ -95,6 +95,9 @@ TARGET_HYPOTHESES = ("H-A", "H-B")
 TARGET_EXPOSURES = ("none", "pre-exposed")
 _EXPOSURE_LEDGER = "exposure_ledger"
 _EXPOSURE_LEDGER_SHA = "exposure_ledger_sha256"
+# The only ledger kind a holdout target may have. See ledger_problems.
+QUALIFICATION_ONLY = "qualification-only"
+_HOLDOUT_ADMITTED_KINDS = frozenset({QUALIFICATION_ONLY})
 _SHA256_HEX = re.compile(r"[0-9a-f]{64}")
 _CONFIRMATORY_FAMILY = "confirmatory_family"
 _CONFIRMATORY_TEST = "confirmatory_test"
@@ -565,14 +568,16 @@ def _parse_targets(
     return tuple(targets)
 
 
-def parse_exposure_ledger(text: str) -> frozenset[tuple[str, str]]:
-    """(extractor, version) pairs listed in an exposure ledger (markdown pipe tables).
+def parse_exposure_ledger_kinds(text: str) -> dict[tuple[str, str], frozenset[str]]:
+    """``exposure_kind`` values per (extractor, version) in an exposure ledger.
 
     Every pipe table whose header has ``extractor`` and ``version`` columns
-    (case-insensitive) contributes its rows; prose and other tables are ignored.
+    (case-insensitive) contributes its rows; prose and other tables are ignored. A row
+    with no ``exposure_kind`` cell has the kind ``""``, which admits nothing.
     """
-    listed: set[tuple[str, str]] = set()
+    kinds: dict[tuple[str, str], set[str]] = {}
     columns: dict[str, int] | None = None
+    kind_at: int | None = None
     for raw in text.splitlines():
         line = raw.strip()
         if not line.startswith("|"):
@@ -582,12 +587,20 @@ def parse_exposure_ledger(text: str) -> frozenset[tuple[str, str]]:
         lowered = [cell.lower() for cell in cells]
         if "extractor" in lowered and "version" in lowered:
             columns = {"extractor": lowered.index("extractor"), "version": lowered.index("version")}
+            kind_at = lowered.index("exposure_kind") if "exposure_kind" in lowered else None
             continue
         if columns is None or all(set(cell) <= set("-: ") for cell in cells):
             continue
         if max(columns.values()) < len(cells):
-            listed.add((cells[columns["extractor"]], cells[columns["version"]]))
-    return frozenset(listed)
+            pair = (cells[columns["extractor"]], cells[columns["version"]])
+            kind = cells[kind_at] if kind_at is not None and kind_at < len(cells) else ""
+            kinds.setdefault(pair, set()).add(kind)
+    return {pair: frozenset(values) for pair, values in kinds.items()}
+
+
+def parse_exposure_ledger(text: str) -> frozenset[tuple[str, str]]:
+    """(extractor, version) pairs listed in an exposure ledger (markdown pipe tables)."""
+    return frozenset(parse_exposure_ledger_kinds(text))
 
 
 def ledger_problems(
@@ -596,7 +609,10 @@ def ledger_problems(
     """Holdout guard against the committed exposure ledger (the single source of truth).
 
     The ledger must exist and hash to the registered sha256; a holdout target whose
-    (extractor, version) the ledger lists is refused.
+    (extractor, version) the ledger lists is refused, unless every one of its rows has
+    the exact kind ``qualification-only`` (D040-D5: a fixed-fixture status check under a
+    rule committed beforehand). The gate cannot tell whether that kind is used honestly:
+    the D5 conditions are kept by the record and W3 review.
     """
     holdouts = [target for target in preregistration.targets if target.role == "holdout"]
     if not holdouts:
@@ -608,12 +624,13 @@ def ledger_problems(
             f"exposure ledger sha256 {ledger_sha256} != preregistered "
             f"{preregistration.exposure_ledger_sha256}",
         )
-    listed = parse_exposure_ledger(ledger_text)
+    listed = parse_exposure_ledger_kinds(ledger_text)
     return tuple(
         f"holdout target {target.target_id} ({target.extractor} {target.version}) is in the "
         "exposure ledger"
         for target in holdouts
-        if (target.extractor, target.version) in listed
+        if listed.get((target.extractor, target.version), _HOLDOUT_ADMITTED_KINDS)
+        != _HOLDOUT_ADMITTED_KINDS
     )
 
 

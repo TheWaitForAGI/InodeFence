@@ -4,8 +4,12 @@ Reference values for Kaplan-Meier, the log-rank test, and A12 are hand-computed 
 docstrings so the implementation is checked against arithmetic, not against itself.
 """
 
+import inspect
+import random
+
 import pytest
 
+from inodefence.evaluation.right_censored import wilson_interval
 from inodefence.evaluation.survival import (
     AbortPolicy,
     Observation,
@@ -317,10 +321,167 @@ def test_seed_block_logrank_permutation_mc_seed_reproducible():
     from inodefence.evaluation.survival import seed_block_logrank_permutation
 
     blocks = [(Observation(10, True), Observation(100, False)) for _ in range(5)]
-    a = seed_block_logrank_permutation(blocks, seed=7, max_exact_blocks=3, resamples=4000)
-    b = seed_block_logrank_permutation(blocks, seed=7, max_exact_blocks=3, resamples=4000)
+    a = seed_block_logrank_permutation(blocks, seed=7, max_exact_informative=3, resamples=4000)
+    b = seed_block_logrank_permutation(blocks, seed=7, max_exact_informative=3, resamples=4000)
     assert a["exact"] is False and "p_value_mc_ci95" in a
     assert a["p_value"] == b["p_value"]  # seed-fixed: reproducible
+
+
+def _full_enumeration_p(blocks):
+    """Every label over every block: the definition the informative-only path must equal."""
+    from inodefence.evaluation.survival import _two_arm_logrank_chi2
+
+    def statistic(mask):
+        a = [pair[(mask >> i) & 1] for i, pair in enumerate(blocks)]
+        b = [pair[1 - ((mask >> i) & 1)] for i, pair in enumerate(blocks)]
+        return _two_arm_logrank_chi2(a, b)
+
+    observed = statistic(0)
+    total = 1 << len(blocks)
+    return sum(1 for mask in range(total) if statistic(mask) >= observed - 1e-9) / total
+
+
+@pytest.mark.parametrize("seed", range(6))
+def test_informative_enumeration_equals_enumerating_every_block(seed):
+    from inodefence.evaluation.survival import seed_block_logrank_permutation
+
+    rng = random.Random(seed)
+    blocks = []
+    for _ in range(9):
+        first = Observation(rng.choice((10, 20, 40, 100)), rng.random() < 0.5)
+        second = first if rng.random() < 0.4 else Observation(rng.choice((10, 20, 40, 100)), False)
+        blocks.append((first, second))
+    assert seed_block_logrank_permutation(blocks)["p_value"] == pytest.approx(
+        _full_enumeration_p(blocks)
+    )
+
+
+def test_identical_blocks_are_not_swapped_but_stay_in_the_statistic():
+    from inodefence.evaluation.survival import (
+        _two_arm_logrank_chi2,
+        seed_block_logrank_permutation,
+    )
+
+    same = (Observation(30, True), Observation(30, True))
+    differ = (Observation(10, True), Observation(100, False))
+    result = seed_block_logrank_permutation([same, same, differ, differ])
+    assert result["informative_blocks"] == 2 and result["number_permutations"] == 4
+    assert result["number_blocks"] == 4
+    # Flipping an identical block leaves the statistic where it was.
+    a, b = [same[0], same[0], differ[0], differ[0]], [same[1], same[1], differ[1], differ[1]]
+    assert _two_arm_logrank_chi2(a, b) == _two_arm_logrank_chi2(
+        [same[1], *a[1:]], [same[0], *b[1:]]
+    )
+    # The risk sets hold the identical blocks: their removal is a different statistic.
+    assert result["observed_chi_square"] != pytest.approx(
+        seed_block_logrank_permutation([differ, differ])["observed_chi_square"]
+    )
+
+
+def test_no_informative_block_is_p_one_with_events():
+    from inodefence.evaluation.survival import seed_block_logrank_permutation
+
+    same = (Observation(30, True), Observation(30, True))
+    result = seed_block_logrank_permutation([same] * 5)
+    assert result["p_value"] == 1.0 and result["exact"] is True
+    assert result["number_permutations"] == 1 and result["total_events"] == 10
+
+
+def _differ(count):
+    return [(Observation(10 + i, True), Observation(100, False)) for i in range(count)]
+
+
+def test_the_exact_boundary_counts_informative_blocks_not_all_blocks():
+    from inodefence.evaluation.survival import seed_block_logrank_permutation
+
+    same = (Observation(30, True), Observation(30, True))
+    # 6 informative of 20 blocks: enumerated, though 20 blocks would have gone to Monte Carlo.
+    exact = seed_block_logrank_permutation([*_differ(6), *[same] * 14])
+    assert exact["exact"] is True and exact["number_permutations"] == 64
+    # The limit is inclusive, and one more informative block crosses it.
+    at_limit = seed_block_logrank_permutation(_differ(4), max_exact_informative=4)
+    over = seed_block_logrank_permutation(_differ(5), max_exact_informative=4, resamples=50)
+    assert at_limit["exact"] is True and over["exact"] is False
+
+
+def test_the_registered_defaults_are_sixteen_and_one_hundred_thousand():
+    from inodefence.evaluation.survival import seed_block_logrank_permutation
+
+    defaults = inspect.signature(seed_block_logrank_permutation).parameters
+    assert defaults["max_exact_informative"].default == 16
+    assert defaults["resamples"].default == 100_000
+    assert defaults["seed"].default == 0
+
+
+def test_monte_carlo_p_is_never_zero_and_uses_the_registered_denominator():
+    from inodefence.evaluation.survival import seed_block_logrank_permutation
+
+    # A maximally separated contrast: few draws tie it, and ge may be small.
+    blocks = [(Observation(10, True), Observation(100, False)) for _ in range(20)]
+    result = seed_block_logrank_permutation(blocks, max_exact_informative=3, resamples=200)
+    assert result["exact"] is False and result["resamples"] == 200
+    assert result["p_value"] > 0
+    ge = round(result["p_value"] * 201) - 1
+    assert result["p_value"] == pytest.approx((ge + 1) / 201)
+    low, high = wilson_interval(ge, 200)
+    assert result["p_value_mc_ci95"] == [low, high]
+
+
+def test_monte_carlo_draws_only_the_informative_blocks(monkeypatch):
+    from inodefence.evaluation import survival
+
+    same = (Observation(30, True), Observation(30, True))
+    draws = []
+
+    class Counting(random.Random):
+        def getrandbits(self, k):
+            draws.append(k)
+            return super().getrandbits(k)
+
+    monkeypatch.setattr(survival.random, "Random", Counting)
+    survival.seed_block_logrank_permutation(
+        [*_differ(6), same, same, same], seed=5, max_exact_informative=3, resamples=50
+    )
+    assert draws == [1] * (50 * 6)  # one bit per informative block, none for the identical three
+
+
+def test_monte_carlo_is_reproducible_from_its_seed():
+    from inodefence.evaluation.survival import seed_block_logrank_permutation
+
+    blocks = [(Observation(10 + i, True), Observation(15 + i, i % 2 == 0)) for i in range(8)]
+    run = {"max_exact_informative": 3, "resamples": 300}
+    first = seed_block_logrank_permutation(blocks, seed=11, **run)
+    assert first == seed_block_logrank_permutation(blocks, seed=11, **run)
+    assert first["seed"] == 11
+
+
+@pytest.mark.parametrize(
+    "arms",
+    [
+        ([Observation(5, True)], [Observation(3, False)]),  # one event, its arm alone at risk
+        ([Observation(5, True)], [Observation(5, True)]),  # the whole risk set fails together
+        (
+            [Observation(50, True), *[Observation(10, False)] * 119],
+            [Observation(10, False)] * 120,
+        ),  # one event of 120 blocks, all others censored before it
+    ],
+)
+def test_zero_event_variance_is_chi_square_zero(arms):
+    from inodefence.evaluation.survival import logrank_test, seed_block_logrank_permutation
+
+    result = logrank_test({"a": arms[0], "b": arms[1]})
+    assert result["chi_square"] == 0.0 and result["p_value"] == 1.0
+    permutation = seed_block_logrank_permutation(list(zip(*arms, strict=True)))
+    assert permutation["observed_chi_square"] == 0.0 and permutation["p_value"] == 1.0
+
+
+def test_a_singular_multi_arm_covariance_still_raises():
+    from inodefence.evaluation.survival import logrank_test
+
+    with pytest.raises(ValueError, match="singular"):
+        logrank_test(
+            {name: [Observation(5, True)] for name in ("a", "b", "c")},
+        )
 
 
 def test_seed_block_logrank_permutation_empty():

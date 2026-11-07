@@ -130,6 +130,7 @@ def test_abort_rate_stays_out_of_exp3_planning() -> None:
     sealing = _section(V2_TEXT, "### 6.6 raw 봉인", "## 7. 실행 전 점검표")
     assert "D1~D21" in sealing and "D1~D20" not in sealing
     assert "이번 a를 EXP-3 abort 추정과 n에 쓰지 않는다" in sealing
+    assert "common_prefix를 파일럿 사건 위치와 결합해 재실행 사건 수를 만들지 않는다" in sealing
     assert "max(파일럿 a" not in V2_TEXT
 
 
@@ -137,7 +138,8 @@ def test_planning_abort_and_restart_condition_are_defined() -> None:
     assert "계획 a는 파일럿 .275, 상한 .43이다." in V2_TEXT
     assert "벤치마크 a는 seed를 abort 이력으로 골랐으므로 계획 a에 넣지 않는다." in V2_TEXT
     assert "용량 판단은 EXP-3 train 실측 e와 abort(GO)로 한다." in V2_TEXT
-    assert "jobs=2 **24셀 전체** 값을 쓰고, 파일럿 abort 6셀을 뺀 12셀 값을 병기한다." in V2_TEXT
+    assert "jobs=2 **24셀 전체** 값을 쓰고," in V2_TEXT
+    assert "파일럿에서 abort한 6개 조합(2블록 12셀)을 뺀 12셀 값을 병기한다." in V2_TEXT
     assert "제외값이 .30 이하이면 입력 쪽을 먼저 본다" in V2_TEXT
 
 
@@ -145,7 +147,9 @@ def test_jobs_max_comes_from_this_benchmark() -> None:
     assert "`jobs_max = 2`" not in V2_TEXT
     assert "등록 초안의 `jobs_max`는 `TBD-FREEZE`이고" in V2_TEXT
     row = _row(V2_TEXT, "| `jobs_max` |")
-    assert "`selected_jobs`로 채운다" in row and "지웅 결정을 기록한다" in row
+    assert "`selected_jobs`로 채운다" in row
+    assert "H3이면 `fallback_jobs` 2다" in row
+    assert "H1, H2, H5, H3-unmeasured, 측정 무효로 값이 없으면 지웅 결정을 기록한다" in row
 
 
 def test_operating_stop_points_to_the_adopted_rule() -> None:
@@ -162,11 +166,10 @@ def test_pilot_comparison_is_reported_not_a_halt() -> None:
     assert "시험 안 됨" in section
     assert "자동 정지가 아니다" in section
     assert "m=0이면 재발을 언급하지 않는다" in section
+    assert "스크립트는 단계 끝에 1회 돌린다" in section
 
 
-def test_host_record_and_delayed_start_appendix_are_present() -> None:
+def test_host_record_is_present_and_there_is_no_alternative_procedure() -> None:
     assert "재부팅 여부(기본: 재부팅 안 함)" in V2_TEXT
-    appendix = V2_TEXT[V2_TEXT.index("## 부록 A") :]
-    assert "C 구조(4→2→4) 변형" in appendix
-    assert "5040 exec/h" in appendix and "**멈추는 데만**" in appendix
-    assert "**그 코드가 없으면 첫 블록 뒤 jobs=2로 끝낸다.**" in appendix
+    assert "부록" not in V2_TEXT and "5040" not in V2_TEXT and "C′" not in V2_TEXT
+    assert "대체 절차는 없다. 시작이 늦어지면 보고하고 지웅이 결정한다(D041)." in V2_TEXT

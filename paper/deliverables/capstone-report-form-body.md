@@ -86,7 +86,7 @@
 | --- | --- | --- | --- |
 | 1 | `paper/figures/m2-cross-release-evidence.png` | 릴리스별 하드링크 입력 판정(통제 재현) | W3 PASS |
 | 2 | `paper/figures/m3-blind-ablation.png` | 어휘 조건별 자율 C1 관찰(피드백 인과 미입증) | W3 PASS |
-| 3 | `paper/figures/make-demo-screen.png` | 실제 node-tar 탐색 루프 실행 화면(2026-11-07 실행 기록) | W4 검수 요청 |
+| 3 | `paper/figures/make-demo-screen.png` | 실제 node-tar 탐색 루프 실행 화면(2026-11-07 실행 기록) | W4 PASS(`959e845`) |
 
 ## ■ 생성형 AI 사용 결과
 

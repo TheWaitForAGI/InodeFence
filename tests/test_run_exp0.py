@@ -1421,7 +1421,9 @@ def test_each_attempt_writes_start_and_end_with_three_clocks_and_no_outcome(
         assert set(line["clocks"]) == clocks and line["attempt"] == 1
         common = {"event", "run_id", "attempt", "clocks"}
         extra = {"returncode", "watchdog_fired", "wall_seconds"}
-        assert set(line) == (common | extra if line["event"] == "end" else common)
+        assert set(line) == (common | extra if line["event"] == "end" else common | {"jobs"})
+    # Not a result: it lets a resume be compared with the call it continues.
+    assert {row["jobs"] for row in lines if row["event"] == "start"} == {2}
     assert all(row["watchdog_fired"] is False for row in lines if row["event"] == "end")
     assert all(row["returncode"] == 0 for row in lines if row["event"] == "end")
 
@@ -1611,6 +1613,84 @@ def test_a_resume_cannot_go_with_a_mode_that_runs_no_cell(
     _out, args, _clock = _deadline_setup(tmp_path, monkeypatch, BEFORE)
     with pytest.raises(SystemExit):
         main([*args, "--resume-after-stop", "ref", mode])
+
+
+def test_a_failed_warmup_on_resume_leaves_the_stop_in_force(
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch
+) -> None:
+    """If docker is still down the resume never happened: the next plain call starts nothing."""
+    out, args, _clock = _deadline_setup(tmp_path, monkeypatch, BEFORE)
+    out.mkdir()
+    _rewrite_results(out, [{"event": "infrastructure-stop", "reason": "why", "clocks": {}}])
+    runner = _fake_runner(TARGET_IMAGES)
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", runner)
+    monkeypatch.setattr(run_exp0, "_warmup", lambda *a, **k: 7)
+    assert main([*args, "--resume-after-stop", "ref"]) == 7
+    assert [row["event"] for row in _result_lines(out)] == ["infrastructure-stop"]
+    assert runner.calls == []  # type: ignore[attr-defined]
+    monkeypatch.setattr(run_exp0, "_warmup", lambda *a, **k: 0)
+    assert main(args) == 1  # no flag: still stopped
+    assert runner.calls == []  # type: ignore[attr-defined]
+    assert main([*args, "--resume-after-stop", "ref"]) == 0
+    assert [row["event"] for row in _result_lines(out)][:2] == [
+        "infrastructure-stop",
+        "infrastructure-resume",
+    ]
+
+
+def test_a_stop_during_a_first_attempt_blocks_its_retry_until_a_resume(
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch
+) -> None:
+    """Not left to timing: the first attempt ends with no record only after the stop is written."""
+    out, args, _clock = _deadline_setup(tmp_path, monkeypatch, BEFORE)
+    cells = [cell.run_id for cell in _deadline_plan(args).cells()]
+    waiting = cells[0]
+
+    def ends_with_no_record_after_the_stop(cell: Any, output: Path, result: Any) -> Any:
+        deadline = monotonic() + 30
+        path = out / "cell-results.jsonl"
+        while "infrastructure-stop" not in path.read_text(encoding="utf-8"):
+            assert monotonic() < deadline, "the stop never came"
+            sleep(0.01)
+        return _dies_without_a_record(cell, output, result)
+
+    special: dict[str, Any] = dict.fromkeys(cells[1:], _dies_without_a_record)
+    special[waiting] = ends_with_no_record_after_the_stop
+    runner = _runner_with(special)
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", runner)
+    assert main(args) == 1
+    assert runner.calls.count(waiting) == 1  # no second attempt after the stop
+    starts = [r for r in _result_lines(out) if r.get("run_id") == waiting and r["event"] == "start"]
+    assert [row["attempt"] for row in starts] == [1]
+    assert _index(out)["interim"]["cell_states"][waiting] == "unattempted"
+    assert waiting in json.loads((out / "matrix.json").read_text())["cells_not_started"]
+    # Its one remaining attempt is used exactly once after the resume.
+    fresh = _fake_runner(TARGET_IMAGES)
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", fresh)
+    assert main([*args, "--resume-after-stop", "ref"]) == 1
+    assert fresh.calls.count(waiting) == 1  # type: ignore[attr-defined]
+    starts = [r for r in _result_lines(out) if r.get("run_id") == waiting and r["event"] == "start"]
+    assert [row["attempt"] for row in starts] == [1, 2]
+    assert _index(out)["interim"]["cell_states"][waiting] == "complete"
+
+
+def test_two_jobs_with_every_cell_dying_stop_within_the_registered_counts(
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch
+) -> None:
+    """The stop-path smoke's expectations: started cells = no-record cells + first-attempt cells."""
+    out, args, _clock = _deadline_setup(tmp_path, monkeypatch, BEFORE)
+    cells = [cell.run_id for cell in _deadline_plan(args).cells()]
+    runner = _runner_with(dict.fromkeys(cells, _dies_without_a_record))
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", runner)
+    assert main(args) == 1
+    started = {r["run_id"] for r in _result_lines(out) if r["event"] == "start"}
+    states = _index(out)["interim"]["cell_states"]
+    no_record = {run_id for run_id in cells if states[run_id] == "no-record"}
+    first_only = started - no_record
+    assert len(started) in (3, 4) and len(no_record) in (3, 4) and len(first_only) in (0, 1)
+    assert len(started) == len(no_record) + len(first_only)
+    assert all(states[run_id] == "unattempted" for run_id in first_only)
+    assert _index(out)["cell_completeness"]["no_record"] == len(no_record)
 
 
 def test_a_running_cell_finishes_after_the_stop_and_keeps_its_record(

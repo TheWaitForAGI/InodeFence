@@ -97,15 +97,15 @@ retention 효과만 분리). adaptive 스케줄러를 얹은 **S-a**는 주 비�
 
 | arm | retention | operator 선택 | 뜻 | policy ID |
 | --- | --- | --- | --- | --- |
-| **R** | 없음 | uniform | 무작위 탐색 | `unretained-walk-v1-uniform-mutation-v1` |
+| **R** | 없음 | uniform | 시드 근처 무작위 탐색(입력을 유지하지 않고 매번 시드에서 변형) | `unretained-seed-restart-v1-uniform-mutation-v1` |
 | **D** | 구조 커버리지(`SearchPolicy.D` = target-agnostic extraction 구조 키) | uniform | 커버리지 피드백 대조 | `structure-coverage-v1-uniform-mutation-v1` |
 | **S-u** (주) | identity/effect/boundary-attempt 상태 키 | uniform | InodeFence retention 피드백 | `effect-feedback-v2-or-violation-v1-boundary-attempt-v1-uniform-mutation-v1` |
 | S-a (선택, ablation) | S-u와 동일 | adaptive | 스케줄러 효과 분리용, 주 비교 아님 | `effect-feedback-v2-or-violation-v1-boundary-attempt-v1-adaptive-mutation-v1` |
 
-> policy ID 각주: 위 문자열은 EXP-0 사전등록 v2.1 기계판독 블록의 동결값이다. EXP-3 값은 그 사전등록을 동결할 때
-> 확정한다(R 변형은 D6, 재판정 대기(파일럿 후)).
+> policy ID 각주: R은 EXP-3·EXP-2 값이다(D040-D6). EXP-0 사전등록 v2.1의 동결값은 `unretained-walk-v1-uniform-mutation-v1`이었고
+> EXP-0 결과는 그 값으로 읽는다. 나머지 ID는 EXP-0 동결값이고 EXP-3·EXP-2 값은 등록 파일을 동결할 때 확정한다.
 
-**sentinel.** ≥ 3개를 쓰고, 이름은 **seed 고정 무작위 생성기**로 만들며 생성기 seed를 결과에 기록한다(손으로 정한
+**sentinel.** EXP-3·EXP-2는 k=5를 전 arm에 같게 쓰고(D040-D8), EXP-0은 k=3이었다. 이름은 **seed 고정 무작위 생성기**로 만들며 생성기 seed를 결과에 기록한다(손으로 정한
 이름 없음). 어휘에 피해 경로 이름을 넣는 것은 위협 모델(research-questions v2)의 일부이며 세 arm에 동일하게
 적용한다 — 따라서 blind 발견을 주장하지 않는다.
 
@@ -129,26 +129,21 @@ retention 효과만 분리). adaptive 스케줄러를 얹은 **S-a**는 주 비�
 1. **EXP-0 파일럿(완료, 2026-11-05)** — seed {9001..9005} × budget 200 × R/D/S-u, 인프라·dense 신호 실측. **zero-hit이 기본
    결과**이며 C1/C2 hit으로 hazard를 추정하지 않는다(zero면 캠페인 단위 rule-of-three 상한만 참고로 병기). 15/15 완주, C1/C2 hit
    0(`experiments/summaries/exp0-20261105-report.md`).
-2. **11/18 사전등록 잠금** — EXP-3 본실험 + EXP-2 GO/NO-GO 규칙을 고정한다. 규칙의 n(arm당 캠페인 수)은 EXP-0 처리량·abort율
-   실측에서, x(EXP-3 R/D/S-u 합산 hazard 문턱)는 EXP-2 검정력 요구(목표 효과·n)에서 역산해 **11/14 확정**한다. EXP-0의 hit 수는
-   x 산정에 쓰지 않는다. *(구: "x(목표 효과)", 2026-11-06 정정)*
-3. **EXP-3 본실험** — 20 seed × budget 2000 × R/D/S-u, 다수 sentinel. 1차 지표 T_first(우측중도절단)·U_viol. *(규모는 D7,
-   재판정 대기(파일럿 후))*
-4. **11/20 규칙 기계 적용** — EXP-3 결과에 사전등록된 GO/NO-GO 규칙을 **그대로** 적용한다(결과를 본 뒤 규칙을
-   바꾸지 않는다).
-5. **EXP-2 조건부** — GO일 때만 수행한다.
+2. **11/18 사전등록 동결** — 등록 파일 2개, `exp3-v1`(train)과 `exp2-v1`(holdout)을 함께 동결한다. `engine_sha`, k, sentinel generator,
+   budget, arm이 같아야 한다(D040-D1).
+3. **EXP-3(train, 탐색)** — node-tar 7.5.2, seed {9006..9025} × budget 2000 × R/D/S-u, k=5. 인프라 게이트이고 확증이 아니다.
+   결합 검정력은 약 .17이다(등록 판정(순열) .174, 800회, 계획값).
+4. **GO 판정** — GO = E≥1 ∧ ⌊H_rem·r÷(6000·e)⌋ ≥ 76 ∧ 인프라 실패 비율 ≤ .45(D040-D11, D041). 자동이 아니고 W3가 train 리포트 값으로 적용해
+   LOG에 남긴다. 결과를 본 뒤 규칙을 바꾸지 않는다.
+5. **EXP-2(holdout, 확증, 조건부)** — GO일 때만. 미노출 릴리스, seed {9026..9145} × budget 2000 × R/D/S-u, k=5, arm당 120 상한(D040-D7).
+   실행 마감 11/25 12:00 KST. 마감에 닿으면 완료된 블록으로 분석하고 미완주 수와 원인을 공개한다(D041).
 
-**계획 단계 검정력 한계(사전 명시).** 위 EXP-3 규모(20 seed × budget 2000)는 **계획**이다 — 과거 수행된
-M3.3 powered 결과(§5.3.3, 동일 budget 2000이되 **수행·음성**: 매칭 Wilson CI 미분리)와 혼동하지 않는다. 1차
-지표 T_first의 검출력에는 사전 고지할 한계가 있다(레인 6 산출 #209 `power.py`, a4 독립 재대조). 두 사실을
-**구분**한다 — **(a) 사건 상한:** T_first는 캠페인당 ≤ 1 event라 20 seed × 2 arm = 40 캠페인이면 event 상한 40인데
-로그랭크 HR 0.5의 Schoenfeld 필요 event(검정력 .8, 양측)는 α=.05면 ≈ 65.3, Holm 첫 단계 α=.025면 ≈ 79.1로 둘 다 40보다 크다(단
-상한은 seed에 **선형**이라 α=.05면 33 seed/arm, α=.025면 40 seed/arm에서 상한이 필요량에 닿는다). **(b) 예상 사건 부족:** 참고 proxy hazard 2e-5 · budget 2000에서 기대 event ≈ 2.3(informative 쌍 ≈ 1.5).
-MDE는 극소 사건 수의 **형식적 역산값**일 뿐으로 40 사건 낙관 상한에서 HR ≈ 2.43, 현실 예상 사건에서 HR ≈ 40이며
-**점근 근사는 event < 5에서 무효**다(hazard는 참고 proxy, 다수 sentinel 조건에서 미측정). 따라서 현 hazard에서는
-시나리오 ⑤(미관찰)가 기본 결과다. 규모는 **seed 수**와 **hazard 상향(다수 sentinel)** 두 입력으로 조정하며,
-1차 지표는 T_first로 보존하되(한계 명시) **1차/2차 종단점 조정은 EXP-0 실측 반영 후 11/18 사전등록에서 결정한다
-(TBD)** — 결과를 보기 전에 선취하지 않는다.
+**계획 단계 검정력 한계(사전 명시).** 위 규모는 **계획**이고 어떤 값도 확증 검정력을 뜻하지 않는다. 과거 수행된 M3.3 powered 결과(§5.3.3, 동일 budget 2000이되
+**수행·음성**: 매칭 Wilson CI 미분리)와 혼동하지 않는다. 두 사실을 **구분**한다. **(a) 사건 상한:** T_first는 캠페인당 ≤ 1 event라 대비당 상한은 2n이다. 로그랭크
+HR 2의 Schoenfeld 필요 event(검정력 .8, 양측, Holm 첫 단계 α=.025)는 ≈ 79.1이므로 train(상한 40)은 못 미치고 holdout(상한 240)은 닿을 수 있다. **(b) 파일럿 입력:** 파일럿 점추정을
+등록 통계량(합동 로그랭크, 블록 내 라벨 순열)에 넣으면 80%는 n=76 부근이다([규모 산정 폴더](../../experiments/preregistration/exp3-sizing-20261107/README.md)). 이 입력은 구간이 넓고
+train 7.5.2, k=5 값이며 holdout으로의 전이는 미검증이다. 120은 holdout hazard가 절반이거나 HR이 1.75여도 약 .76~.79를 지키지만(χ² 근사), HR 1.5나 hazard 1/4에서는 어떤 n도 창
+안에서 80%가 안 된다. 그 경우와 사건 부족은 D040-D12 표가 처리한다. k=3 hazard는 미측정이다.
 
 ### 4.6.4 판정 시나리오
 

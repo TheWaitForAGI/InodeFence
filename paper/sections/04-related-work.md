@@ -111,7 +111,7 @@ state(C1 identity·C2 effect) retention을 더한 탐색이 무작위 탐색과 
   arXiv [1808.09700](https://arxiv.org/abs/1808.09700)). 이 논문은 복수 trial + 통계 검정(randomized algorithm에
   Mann-Whitney U), 서로 다른 seed, 더 긴 timeout(≥24h), "unique crashes" 같은 중복제거 heuristic 대신
   ground-truth 버그 기준 측정을 권고한다(초록·본문 §4–§8에서 읽음; 자체 실험은 ≥30 run 중앙값·95% CI). 우리
-  설계는 EXP-3에서 20 seed 복수 반복·로그랭크 검정·문서화된 seed를 쓰고(seed 수는 D7, 재판정 대기(파일럿 후)) hit을 generic
+  설계는 EXP-3 train 20 seed와 EXP-2 holdout arm당 최대 120 seed의 복수 반복·로그랭크 검정·문서화된 seed를 쓰고(D040-D1·D7) hit을 generic
   C0/C1/C2 oracle 판정으로 둔다(§4.6.2). 다만 U_viol은 oracle fingerprint 중복제거로 세므로 이 논문이 경계한 중복제거 부류에
   속하며, ground-truth 버그 수로 읽지 않는다 *(구: "중복제거 heuristic 아님", 2026-11-06 정정)*. 단 우리 1차 지표는 wall-time이 아니라 executions-to-first(T_first)이며 시간
   정규화는 보조로 병기한다(§4.6.4 ⑦).

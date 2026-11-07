@@ -1081,8 +1081,17 @@ def test_holdout_listed_in_the_ledger_is_refused_at_the_gate(tmp_path: Path) -> 
 def test_qualification_only_holdout_passes_the_gate(tmp_path: Path) -> None:
     checked = LEDGER_TEXT + "| node-tar | 7.9.9 | qualification-only |\n"
     ledger, sha = _ledger(tmp_path, checked)
+    file = _targets_file(tmp_path, ledger_sha=sha)
+    file.write_text(
+        file.read_text(encoding="utf-8").replace(
+            "targets.node-tar-7.9.9.exposure = none\n",
+            "targets.node-tar-7.9.9.exposure = qualification-only\n"
+            "targets.node-tar-7.9.9.exposure_ref = node-tar@7.9.9\n",
+        ),
+        encoding="utf-8",
+    )
     problems = gate_mismatches(
-        _plan(_targets_file(tmp_path, ledger_sha=sha)),
+        _plan(file),
         engine_sha=SHA,
         engine_dirty=False,
         image_digest=None,

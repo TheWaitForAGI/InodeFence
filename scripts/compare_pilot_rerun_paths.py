@@ -175,6 +175,7 @@ def classify_abort(
     rerun_abort: AbortRecord | None,
     *,
     stopped_nonzero: bool = False,
+    steps_damaged: bool = False,
 ) -> tuple[str, bool | None]:
     """A pilot abort against one re-run cell: (status, path identical up to that step).
 
@@ -182,17 +183,21 @@ def classify_abort(
     needs the path: a diverged cell did not test the position, so it stays out of the denominator.
 
     ``stopped_nonzero`` says the cell exited nonzero. Without a readable stub, stopping at this
-    step (or at a step the steps file cannot show) leaves that key unknown, whatever the path was.
+    step leaves that key unknown, whatever the path was. ``steps_damaged`` says a steps file exists
+    but does not parse, so the stop may be at this step too. A missing or empty steps file is no
+    evidence of reaching the step: no record, and the other cells' signal and bound stand.
     """
     stub_unknown = stopped_nonzero and rerun_abort is None
     step, case_id = pilot_abort.step_index, pilot_abort.case_id
-    if rerun is None:
+    if rerun is None or (not rerun and rerun_abort is None):
         same_key = rerun_abort is not None and (
             (rerun_abort.step_index, rerun_abort.case_id) == (step, case_id)
         )
         if same_key:
             return RECURRED, None
-        return (NOT_TESTED_REPORT, None) if stub_unknown else (NOT_TESTED_NO_RECORD, None)
+        if stub_unknown and steps_damaged:
+            return NOT_TESTED_REPORT, None
+        return NOT_TESTED_NO_RECORD, None
     shared = min(step, len(rerun))
     identical = list(pilot[:shared]) == list(rerun[:shared])
     if rerun_abort is not None and (rerun_abort.step_index, rerun_abort.case_id) == (step, case_id):
@@ -423,7 +428,12 @@ def compare(
                 continue
             tested_aborts[key] = pilot_abort
             status, identical = classify_abort(
-                pilot_abort, pilot_ids, rerun_ids, rerun_abort, stopped_nonzero=stopped_nonzero
+                pilot_abort,
+                pilot_ids,
+                rerun_ids,
+                rerun_abort,
+                stopped_nonzero=stopped_nonzero,
+                steps_damaged=bool(problem) and problem.startswith("unreadable"),
             )
             tests.append(
                 {
@@ -503,7 +513,7 @@ def _bound_sentence(summary: Mapping[str, Any]) -> str:
     unresolved = summary["not_tested"].get(NOT_TESTED_REPORT)
     if unresolved:
         return (
-            f"같은 위치에서 멈췄지만 보고서를 읽지 못한 {unresolved}건이 있어 "
+            f"같은 위치에서 멈췄거나 위치를 알 수 없는데 보고서를 읽지 못한 {unresolved}건이 있어 "
             "재발을 배제하지 못한다. 상한을 내지 않는다."
         )
     if not summary["passes_m"]:

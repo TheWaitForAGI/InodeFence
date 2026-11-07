@@ -459,7 +459,8 @@ def _stopped_at_three(directory: Path, name: str, how: str) -> CellFiles:
 
 UNREADABLE_WAYS = ("damaged", "no_stub", "no_report")
 UNRESOLVED_SENTENCE = (
-    "같은 위치에서 멈췄지만 보고서를 읽지 못한 1건이 있어 재발을 배제하지 못한다. "
+    "같은 위치에서 멈췄거나 위치를 알 수 없는데 보고서를 읽지 못한 1건이 있어 "
+    "재발을 배제하지 못한다. "
     "상한을 내지 않는다."
 )
 
@@ -519,11 +520,58 @@ def test_a_diverged_stop_at_the_position_without_a_stub_is_also_unresolved() -> 
     assert status == (NOT_TESTED_REPORT, False)
 
 
-def test_a_nonzero_cell_with_no_step_record_and_no_stub_is_unresolved() -> None:
-    assert classify_abort(ABORT, PILOT_PATH, None, None, stopped_nonzero=True) == (
-        NOT_TESTED_REPORT,
-        None,
-    )
+def test_damaged_steps_with_no_stub_are_unresolved() -> None:
+    status = classify_abort(ABORT, PILOT_PATH, None, None, stopped_nonzero=True, steps_damaged=True)
+    assert status == (NOT_TESTED_REPORT, None)
+
+
+@pytest.mark.parametrize("rerun", [None, []])
+def test_missing_or_empty_steps_with_no_stub_are_no_record(rerun) -> None:
+    status = classify_abort(ABORT, PILOT_PATH, rerun, None, stopped_nonzero=True)
+    assert status == (NOT_TESTED_NO_RECORD, None)
+
+
+def test_damaged_steps_with_a_clean_exit_are_no_record() -> None:
+    status = classify_abort(ABORT, PILOT_PATH, None, None, steps_damaged=True)
+    assert status == (NOT_TESTED_NO_RECORD, None)
+
+
+def _nonzero_cell_with_steps(directory: Path, name: str, how: str) -> CellFiles:
+    """A nonzero cell with no stub whose steps file is missing, empty or damaged."""
+    cell = make_cell(directory, name, ["c0"], returncode=1)
+    assert cell.steps is not None
+    if how == "missing":
+        cell.steps.unlink()
+    elif how == "empty":
+        cell.steps.write_text("", encoding="utf-8")
+    else:
+        cell.steps.write_text("{nope\n", encoding="utf-8")
+    return cell
+
+
+@pytest.mark.parametrize("how", ["missing", "empty"])
+def test_no_steps_leave_the_other_cells_signal_and_bound_standing(tmp_path: Path, how: str) -> None:
+    pilot = pilot_map(tmp_path)
+    directory = rerun_dir(tmp_path)
+    cell = _nonzero_cell_with_steps(directory, "r1", how)
+    fine = make_cell(directory, "r2", ["c0", "c1", "c2", "c3"])
+    result = compare(pilot, [RerunBlock("b1", 2, (cell, fine))], 5)
+    assert [test["status"] for test in result["abort_tests"]] == [NOT_TESTED_NO_RECORD, PASSED]
+    assert result["input_dependence_signal"] is False
+    assert result["summary"]["recurrence_upper95"] == pytest.approx(0.95)
+
+
+def test_damaged_steps_withhold_the_signal_and_bound(tmp_path: Path) -> None:
+    pilot = pilot_map(tmp_path)
+    directory = rerun_dir(tmp_path)
+    cell = _nonzero_cell_with_steps(directory, "r1", "damaged")
+    fine = make_cell(directory, "r2", ["c0", "c1", "c2", "c3"])
+    result = compare(pilot, [RerunBlock("b1", 2, (cell, fine))], 5)
+    assert [test["status"] for test in result["abort_tests"]] == [NOT_TESTED_REPORT, PASSED]
+    assert result["input_dependence_signal"] is None
+    assert result["summary"]["recurrence_upper95"] is None
+    report = {"label": "t", "pilot_head": "h", "rerun_heads": [], **result}
+    assert UNRESOLVED_SENTENCE in render_markdown(report)
 
 
 @pytest.mark.parametrize(
@@ -558,5 +606,13 @@ def test_a_readable_stub_for_another_case_at_the_position_is_not_unresolved() ->
     other = AbortRecord(3, "other", "r", None)
     assert classify_abort(ABORT, PILOT_PATH, ["c0", "c1", "c2"], other, stopped_nonzero=True) == (
         NOT_TESTED_OTHER_CASE,
+        True,
+    )
+
+
+def test_empty_steps_with_a_readable_stub_for_an_early_stop_are_only_stopped() -> None:
+    early = AbortRecord(0, "c0", "r", None)
+    assert classify_abort(ABORT, PILOT_PATH, [], early, stopped_nonzero=True) == (
+        NOT_TESTED_STOPPED,
         True,
     )

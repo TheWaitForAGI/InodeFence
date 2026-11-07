@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
 import pytest
+from scripts import run_concurrency_benchmark as bench
 from scripts import run_effect_demo, run_exp0
 from scripts.run_effect_demo import synthetic_demo_report
 from scripts.run_exp0 import (
@@ -94,6 +96,36 @@ def _base_args(prereg_file: Path, out: Path) -> list[str]:
         "invalid-continue",
         "--no-manifest",
     ]
+
+
+def test_multi_target_cell_order_follows_the_concurrency_benchmark_rule(
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None
+) -> None:
+    """The benchmark's result moves to EXP-3 only if EXP-3 runs cells in the order it measured."""
+
+    def rotated(seeds: Sequence[int], labels: Sequence[str]) -> list[tuple[int, str]]:
+        return [
+            (seed, labels[(position + offset) % len(labels)])
+            for position, seed in enumerate(seeds)
+            for offset in range(len(labels))
+        ]
+
+    design = bench.load_design(
+        Path(__file__).parents[1] / "experiments/configs/concurrency-scaling-v1.md"
+    )
+    measured = [(cell.seed, cell.arm.label) for cell in bench.planned_cells(design, "A")]
+    assert measured == rotated(design.seeds, [arm.label for arm in design.arms])
+    _ledger_path, sha = _ledger(tmp_path)
+    cells = _plan(_targets_file(tmp_path, ledger_sha=sha)).cells()
+    train = [(cell.seed, cell.arm.label) for cell in cells if cell.version == "7.5.2"]
+    assert train == rotated((9001, 9002), ("R", "D", "S-u"))
+    # A target with fewer arms rotates among its own arms.
+    holdout = [(cell.seed, cell.arm.label) for cell in cells if cell.version == "7.9.9"]
+    assert holdout == rotated((9001, 9002), ("R", "S-u"))
+    # All of one target runs before the next, and no cell is lost or repeated.
+    assert [cell.version for cell in cells] == ["7.5.2"] * 6 + ["7.9.9"] * 4
+    assert len(set(train)) == 6
+    assert len(set(holdout)) == 4
 
 
 def test_plan_is_entirely_from_the_file(prereg_file: Path) -> None:
@@ -935,8 +967,12 @@ def test_multi_target_plan_cells_gate_and_per_target_evidence_dirs(
     assert [t.target_id for t in plan.targets()] == ["node-tar-7.5.2", "node-tar-7.9.9"]
     cells = plan.cells()
     ids = [c.run_id for c in cells]
-    assert ids[:6] == [f"node-tar-7.5.2-{a}-s{s}" for a in ("R", "D", "S-u") for s in (9001, 9002)]
-    assert ids[6:] == [f"node-tar-7.9.9-{a}-s{s}" for a in ("R", "S-u") for s in (9001, 9002)]
+    assert sorted(ids[:6]) == sorted(
+        f"node-tar-7.5.2-{a}-s{s}" for a in ("R", "D", "S-u") for s in (9001, 9002)
+    )
+    assert sorted(ids[6:]) == sorted(
+        f"node-tar-7.9.9-{a}-s{s}" for a in ("R", "S-u") for s in (9001, 9002)
+    )
     holdout = cells[-1]
     assert holdout.budget == 4 and holdout.version == "7.9.9"
     assert holdout.subdir == "node-tar-7.9.9"  # type: ignore[attr-defined]

@@ -380,7 +380,7 @@ def check_saved(scripts: Path, path: Path, cell_map: dict, dump_text: Path | Non
                 visible = any(unit >= 32 for unit in units[start:end])
                 if visible and (italic or gray):
                     styled += 1
-                    print(f"  gray/italic: --dump-text paragraph {paragraph}, {len(units)} units")
+                    print(f"  gray/italic: paragraph record {paragraph}, {len(units)} units")
                     break
             current = b""
     print(f"gray or italic paragraphs: {styled}")

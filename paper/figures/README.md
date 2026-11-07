@@ -18,9 +18,7 @@ InodeFence commit / target version
 
 설명용 개념도와 측정 결과 그래프를 구분한다.
 
-시스템 구성도 [`system-architecture.png`](system-architecture.png)는 설명용 개념도이고 측정값이 없다. 생성 소스: [`render_system_architecture.py`](render_system_architecture.py). 영상 재개 때 라벨을 고치기 전까지 보고서에 쓰지 않는다.
-
-`make demo` 끝 화면 [`make-demo-screen.png`](make-demo-screen.png)은 2026-11-07 `script` 기록을 그대로 그린 실행 기록 재생이고 새 실행이 아니다. 생성 소스: [`render_make_demo_screen.py`](render_make_demo_screen.py). 두 스크립트 모두 Pillow가 필요하고 개발 의존성 밖이다.
+`make demo` 끝 화면 [`make-demo-screen.png`](make-demo-screen.png)은 2026-11-07 `script` 기록을 그대로 그린 실행 기록 재생이고 새 실행이 아니다. 생성 소스: [`render_make_demo_screen.py`](render_make_demo_screen.py). 이 스크립트는 Pillow가 필요하고 개발 의존성 밖이다.
 
 ## 렌더된 그림 (observed only)
 

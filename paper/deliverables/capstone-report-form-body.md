@@ -86,7 +86,7 @@
 | --- | --- | --- | --- |
 | 1 | `paper/figures/m2-cross-release-evidence.png` | 릴리스별 하드링크 입력 판정(통제 재현) | W3 PASS |
 | 2 | `paper/figures/m3-blind-ablation.png` | 어휘 조건별 자율 C1 관찰(피드백 인과 미입증) | W3 PASS |
-| 3 | `make demo` 실행 기록 화면 | 실제 node-tar 탐색 루프 실행 화면(2026-11-07 실행 기록) | 기록 있음, 캡처 제작 중 |
+| 3 | `paper/figures/make-demo-screen.png` | 실제 node-tar 탐색 루프 실행 화면(2026-11-07 실행 기록) | W4 검수 요청 |
 
 ## ■ 생성형 AI 사용 결과
 
@@ -146,6 +146,7 @@
 | 수행 ③ | R/D/S-u, 등록 파일 2개 | `docs/research/design/research-questions.md`, D040(#282, 머지됨 `05b26a9`), R 표기는 D040-D6(seed-restart) | PASS(9eafebd) |
 | 목적 2) | 7.5.3 거부 → 7.5.6 공유로 재검사 필요를 말함. "알려진 입력 재실행으로는 부족" 주장 삭제 | 목적 3)과 같은 출처, `scripts/regression_check.py` | W3 정정 문구 반영(`c50118a`), PASS(9eafebd) |
 | 루프 동작 | `make demo` 1회에 7.5.22, 20 step, 위반 0, corpus 4→7 | `~/inodefence-evidence/w4-script-verification-20261106/stdout/make_demo.out`. 그림 3의 2026-11-07 실행 기록은 `~/inodefence-evidence/demo-recordings-20261107/scene4-take1.typescript` | PASS(d22577b) |
+| 사진 3 | `make demo` 끝 화면 1프레임, 실행 기록 재생(2026-11-07). 새 실행 없음, 출력 편집 없음, 줄바꿈 폭만 156열. PNG sha256 `6d1c318c5d5872e9d5d6caa78f7cc89e7a4a111e9377207548a432b061b5a893` | `~/inodefence-evidence/demo-recordings-20261107/scene4-take1.typescript`(sha256 `916087442b27743c8c141f33371a88e5c8a368d8e67a14fd18ac73026b447fa1`, `SHA256SUMS`와 일치), `paper/figures/render_make_demo_screen.py` | 요청 |
 | 통제 재현 | nlink 1→2, 거부 | `experiments/repro/evidence/summary.json`, 표 M2 | 표·그림 PASS |
 | 자력 발견 | 자율 C1은 65 seed 중 s11, 이름 획득 조건 문구. hit는 C1 ∧ contract_violated이고 A3full-s60의 C2만 위반 step 14개는 세지 않았다 | `docs/STATUS.md` Ledger, 표 M3, `experiments/summaries/m3-powered-matched-verdict-v2.md`. raw는 Mac 호스트 보관, 체크섬 `raw-manifest-mac-20261103.sha256`, 2026-11-03 감사 재집계. 표는 요약에서 생성. M3 raw 재집계는 11/03 감사 기록에 의존(제출 차단 아님) | 표 수치·그림·hit 문구 PASS. "어휘(이름 포함 여부)를 달리한 대조" PASS(d22577b) |
 | 일반성 | 3 extractor, decompress(사후 분석)·oras-go(1 seed) 자력 실행에서 C1/C2 미관찰 | `docs/STATUS.md` Ledger, `experiments/summaries/m4-5-decompress-selfdiscover-unified-v1.md`, `m4-7-oras-go-selfdiscover-v1.md` | PASS(d22577b) |

@@ -18,6 +18,8 @@ InodeFence commit / target version
 
 설명용 개념도와 측정 결과 그래프를 구분한다.
 
+`make demo` 끝 화면 [`make-demo-screen.png`](make-demo-screen.png)은 2026-11-07 `script` 기록을 그대로 그린 실행 기록 재생이고 새 실행이 아니다. 생성 소스: [`render_make_demo_screen.py`](render_make_demo_screen.py). 이 스크립트는 Pillow가 필요하고 개발 의존성 밖이다.
+
 ## 렌더된 그림 (observed only)
 
 | 그림 | PNG | 생성 소스 | 데이터 근거(observed) |

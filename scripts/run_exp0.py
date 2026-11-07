@@ -1364,7 +1364,15 @@ def main(argv: list[str] | None = None) -> int:
                         else {}
                     ),
                     **(
-                        {"cell_completeness": infrastructure_summary(checks)}
+                        {
+                            "cell_completeness": infrastructure_summary(checks),
+                            "registered": {
+                                "seeds": list(prereg.seeds),
+                                "budget": prereg.budget,
+                                "sentinel_count": prereg.sentinel_count,
+                                "targets": [target_record(target) for target in plan.targets()],
+                            },
+                        }
                         if checks is not None
                         else {}
                     ),

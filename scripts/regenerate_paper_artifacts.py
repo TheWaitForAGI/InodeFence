@@ -60,6 +60,25 @@ class Artifact:
     note: str = ""
     out_flag: bool = False  # generator accepts --out <path> (enables byte-verify to temp)
     optional: bool = False  # uncommitted output is SKIP, not MISSING; --regenerate leaves it alone
+    generator_args: tuple[str, ...] = ()  # passed before --out, for a generator of several outputs
+
+
+#: EXP-3 and EXP-2 result tables (scripts/gen_exp3_tables.py); none exists before those runs.
+_EXP3_TABLES: tuple[tuple[str, str, str], ...] = (
+    ("T-EXP3-1", "paper/tables/exp3-train-arms.md", "exp3-train-report.json"),
+    ("T-EXP3-2", "paper/tables/exp3-go-inputs.md", "exp3-train-report.json"),
+    ("T-EXP3-3", "paper/tables/exp3-dense-signals.md", "exp3-train-report.json"),
+    ("T-EXP2-1", "paper/tables/exp2-holdout-arms.md", "exp2-holdout-report.json"),
+    ("T-EXP2-2", "paper/tables/exp2-holdout-contrasts.md", "exp2-holdout-report.json"),
+    ("T-EXP2-3", "paper/tables/exp2-holdout-notes.md", "exp2-holdout-report.json"),
+    ("T-EXP2-4", "paper/tables/exp2-abort-sensitivity.md", "exp2-holdout-report.json"),
+    ("T-EXP2-5", "paper/tables/exp2-infra.md", "exp2-holdout-report.json"),
+    ("T-EXP2-6", "paper/tables/exp2-dense-signals.md", "exp2-holdout-report.json"),
+)
+_EXP3_FIGURES: tuple[tuple[str, str], ...] = (
+    ("paper/figures/exp3-train-survival.png", "exp3-train-report.json"),
+    ("paper/figures/exp2-holdout-survival.png", "exp2-holdout-report.json"),
+)
 
 
 #: The committed paper artifacts and how each is produced/verified.
@@ -128,6 +147,34 @@ ARTIFACTS: tuple[Artifact, ...] = (
         "matplotlib PNG not bit-reproducible; run directly with --report, not --regenerate",
         optional=True,
     ),
+    *(
+        Artifact(
+            output,
+            "table",
+            "scripts/gen_exp3_tables.py",
+            "project",
+            (f"experiments/summaries/{report}",),
+            "byte",
+            "from the analyze_exp0 report; a missing input stops it",
+            out_flag=True,
+            optional=True,
+            generator_args=("--artifact", artifact),
+        )
+        for artifact, output, report in _EXP3_TABLES
+    ),
+    *(
+        Artifact(
+            output,
+            "figure",
+            "paper/figures/render_exp3_survival.py",
+            "matplotlib-ephemeral",
+            (f"experiments/summaries/{report}",),
+            "size",
+            "matplotlib PNG not bit-reproducible; run directly with --role, not --regenerate",
+            optional=True,
+        )
+        for output, report in _EXP3_FIGURES
+    ),
 )
 
 #: Verify statuses that mean failure.
@@ -159,11 +206,12 @@ def _default_runner(artifact: Artifact, repo_root: Path, dest: Path) -> None:
             "matplotlib",
             "python",
             str(gen),
+            *artifact.generator_args,
             "--out",
             str(dest),
         ]
     else:
-        cmd = [sys.executable, str(gen), "--out", str(dest)]
+        cmd = [sys.executable, str(gen), *artifact.generator_args, "--out", str(dest)]
     subprocess.run(cmd, check=True, capture_output=True, text=True, cwd=repo_root)
 
 

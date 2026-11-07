@@ -43,6 +43,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from inodefence.evaluation.cell_completeness import NO_RECORD, RECORD_INCONSISTENT
 from inodefence.evaluation.encoding import json_bytes, read_json
 from inodefence.evaluation.independence import arm_abort_independence_from_contingency
 from inodefence.evaluation.survival import (
@@ -796,14 +797,24 @@ def _has_contrasts(analysis_plan: Mapping[str, object] | None) -> bool:
     return bool(analysis_plan and analysis_plan.get("confirmatory_contrasts"))
 
 
-def _index_deadline(index_file: Path) -> dict | None:
-    """Read the launcher's ``deadline`` record from an index, if the registration has a deadline."""
+def _index_mapping(index_file: Path, key: str) -> dict | None:
+    """Read one launcher record from an index (``deadline``, ``registered``, ...), if present."""
     data = read_json(index_file.read_bytes())
     if isinstance(data, dict):
-        deadline = data.get("deadline")
-        if isinstance(deadline, dict):
-            return deadline
+        value = data.get(key)
+        if isinstance(value, dict):
+            return value
     return None
+
+
+def _record_states(arms: Sequence[str], invalid: Sequence[InvalidCell]) -> dict:
+    """Per arm, the invalid cells the launcher's record check put there (see cell_completeness)."""
+    by_arm = {arm: {"record_inconsistent": 0, "no_record": 0} for arm in arms}
+    for cell in invalid:
+        reason = cell.invalid_reason or ""
+        by_arm[cell.arm]["record_inconsistent"] += f"{RECORD_INCONSISTENT}:" in reason
+        by_arm[cell.arm]["no_record"] += f"{NO_RECORD}:" in reason
+    return {"by_arm": by_arm}
 
 
 def _apply_deadline(
@@ -963,6 +974,7 @@ def build_multitarget_report(
     field_map: Mapping[str, str],
     sources: Sequence[str],
     deadline: dict | None = None,
+    registration: Mapping[str, dict] | None = None,
 ) -> dict:
     """Per-target, per-role EXP-3 sections (no cross-target pooling).
 
@@ -1005,6 +1017,14 @@ def build_multitarget_report(
             "item6_dense_signals": _dense_signals(tvalid),
             "item7_hazard_proxy": _hazard_proxy(tvalid),
             "environment": _environments(tvalid),
+            "record_states": _record_states(
+                sorted({c.arm for c in [*tvalid, *tinvalid]}), tinvalid
+            ),
+            # Over the analysed cells: an invalid cell's summary has no budget to plan from.
+            "execution_steps": {
+                "recorded": sum(c.executions for c in tvalid),
+                "planned": sum(c.budget for c in tvalid),
+            },
         }
     report = {
         "schema_version": 2,
@@ -1035,6 +1055,8 @@ def build_multitarget_report(
         report["arm_abort_independence"] = independence
     if deadline is not None:
         report["deadline"] = deadline
+    for key, value in (registration or {}).items():
+        report[key] = value
     return report
 
 
@@ -1457,8 +1479,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         cells, deadline = _apply_deadline(
             load_cells(items, field_map),
-            _index_deadline(args.index) if args.index is not None else None,
+            _index_mapping(args.index, "deadline") if args.index is not None else None,
         )
+        # Records of the launcher that the result tables read; absent from older indexes.
+        registration = {
+            key: value
+            for key in ("registered", "cell_completeness")
+            if args.index is not None and (value := _index_mapping(args.index, key)) is not None
+        }
         sources = [str(p) for p, _ in items]
         analysis_plan = _index_plan(args.index) if args.index is not None else None
         # A registered deadline must report what it excluded, even for one target and no contrasts.
@@ -1475,6 +1503,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 field_map=field_map,
                 sources=sources,
                 deadline=deadline,
+                registration=registration,
             )
         else:
             report = build_report(

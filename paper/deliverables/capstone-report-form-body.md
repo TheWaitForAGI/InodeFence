@@ -142,7 +142,7 @@
 | 수행 ① | 모든 실험은 일회용 샌드박스·sentinel, node-tar 실행은 격리 컨테이너. python-tarfile은 프로세스 안 실행 | `tests/test_python_tarfile_generality.py`, `docs/research/design/security-contracts.md` | 재확인 요청(W4 지적 반영) |
 | 결과 줄글 | 최종 결과물 항목의 문장화. 숫자와 고정 문구는 그대로 | 아래 각 행과 같음 | 재확인 요청(문구 delta만) |
 | 목적 3) | 7.5.3 거부 → 7.5.6 공유 → 7.5.7 거부, 대응·원인 추론 | `experiments/summaries/cross-release-identity-repro-v1.md`, `paper/tables/m2-cross-release-evidence.md` | PASS(01cceeb) |
-| 수행 ③ | R/D/S-u, 등록 파일 2개 | `docs/research/design/research-questions.md`, D040(#282, 머지 전), R 표기는 D040-D6(seed-restart) | 재확인 요청(R 표기만 바뀜, 나머지 PASS(01cceeb)) |
+| 수행 ③ | R/D/S-u, 등록 파일 2개 | `docs/research/design/research-questions.md`, D040(#282, `05b26a9` 머지), R 표기는 D040-D6(seed-restart) | 재확인 요청(R 표기만 바뀜, 나머지 PASS(01cceeb)) |
 | 목적 2) | 7.5.3 거부 → 7.5.6 공유로 재검사 필요를 말함. "알려진 입력 재실행으로는 부족" 주장 삭제 | 목적 3)과 같은 출처, `scripts/regression_check.py` | 재확인 요청(수정 2) |
 | 루프 동작 | `make demo` 1회에 7.5.22, 20 step, 위반 0, corpus 4→7 | `~/inodefence-evidence/w4-script-verification-20261106/stdout/make_demo.out` | 재확인 요청(수정 1) |
 | 통제 재현 | nlink 1→2, 거부 | `experiments/repro/evidence/summary.json`, 표 M2 | 표·그림 PASS |

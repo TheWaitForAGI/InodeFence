@@ -38,7 +38,7 @@ SHA-256 목록이다. DESIGNED / IMPLEMENTED / TESTED / EXPERIMENTALLY VALIDATED
 
 | arm | retention | operator 선택 | 뜻 |
 | --- | --- | --- | --- |
-| **R** | 없음 | uniform | 무작위 탐색 |
+| **R** | 없음 | uniform | 시드 근처 무작위 탐색(D040-D6) |
 | **D** | 구조 커버리지(`SearchPolicy.D` = target-agnostic extraction 구조 키) | uniform | 커버리지 피드백 대조 |
 | **S-u** (주) | identity/effect/boundary-attempt 상태 키 | uniform | InodeFence retention 피드백 |
 | S-a (선택, ablation) | S-u와 동일 | adaptive | 스케줄러 효과 분리용, 주 비교 아님 |

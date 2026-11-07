@@ -44,6 +44,8 @@ Python 3.12.3, numpy 1.26.4, seed 기본값 20261107. 스크립트는 증거 폴
 
 스크립트의 p 값은 분자·분모에 1을 더한다. 등록 함수는 더하지 않는다. 순열 1000개에서 영향은 작다.
 
+**n=20.** `permutation --sims 800 --perms 1000 --n 20`(같은 환경, 기본 seed)은 검정력 .174, 표준오차 .013이고 W3 값과 일치한다(`run-n20.log`, 3.2 s). 위 표와 RNG 순서가 달라 같은 줄의 값이 아니다. `exp3-v1` §1의 n=20 근거다. 같은 n의 `grid` χ² 근사는 이 격자에 없다.
+
 **격자.** `/usr/bin/python3 -I exp3_power_registered.py grid`(같은 환경, 기본 seed)의 7줄이 W3가 전한 값과 정확히 일치한다. 격자는 χ² 근사(시나리오·n 조합당 8000회)이고 a=.43 칸은 지수 abort 모형이다. 위 순열 표와 같은 값으로 읽지 않는다.
 
 ## 파일
@@ -53,6 +55,7 @@ Python 3.12.3, numpy 1.26.4, seed 기본값 20261107. 스크립트는 증거 폴
 | `exp3_power_registered.py` | W3 검정력 스크립트 |
 | `run.log`, `run-seed-20261108.log`, `run-w3-original.log` | 실행 로그 |
 | `results.json` | 위 표 |
+| `run-n20.log` | n=20 순열 검정력 |
 | `run-grid.log` | 시나리오 격자(n=94, 120, 150; 뒤쪽은 a=.43). `grid` 모드는 **χ² 근사**이고 순열 검정이 아니다 |
 | `check_stat_vs_registered.py`, `check-stat.log` | 등록 통계량 대조 |
 | `rule_c_pair_riskset.py` | 결과 메모 §3 참고값(n 120, 32) |

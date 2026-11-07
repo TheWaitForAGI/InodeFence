@@ -84,7 +84,12 @@ def parse_body(path: Path) -> dict[str, str]:
 
 
 def prose_lines(section: str) -> list[Line]:
-    return [parse_line(block) for block in re.split(r"\n\s*\n", section.strip()) if block.strip()]
+    """One line per blank-line separated block, and one per item of a numbered list."""
+    lines: list[Line] = []
+    for block in re.split(r"\n\s*\n", section.strip()):
+        items = re.split(r"\n(?=\d+\.\s)", block) if re.match(r"\d+\.\s", block) else [block]
+        lines.extend(parse_line(item) for item in items if item.strip())
+    return lines
 
 
 class Plan:
@@ -127,10 +132,11 @@ def build_plan(cell_map: dict, sections: dict[str, str], values: dict[str, str])
 
     header = {row[0]: row[1] for row in table_rows(sections["머리 정보"])}
     for name, (row, col) in cell_map["header"].items():
-        given = values.get(name, header[name])
-        plan.cell(row, col, Line(given))
+        # "" means not given yet (keep the placeholder); null means the cell stays empty.
+        given = values.get(name, "")
+        plan.cell(row, col, Line("" if given is None else (given or header[name])))
 
-    project_type = values.get("프로젝트 유형")
+    project_type = values.get("프로젝트 유형") or None
     for name, row in cell_map["project_type_rows"].items():
         # The mark keeps the form's own shape: "○" also occurs in a label, so it cannot be a target.
         mark = "○" if name == project_type else ""
@@ -171,6 +177,13 @@ def build_plan(cell_map: dict, sections: dict[str, str], values: dict[str, str])
         for row in sorted(delete_rows, reverse=True)
     ]
     return plan
+
+
+def reject_markup(plan: Plan) -> None:
+    """Hancom shows markup literally, so a leftover marker must stop the build."""
+    for line in plan.styled:
+        if "**" in line.text or "`" in line.text:
+            raise SystemExit(f"markdown left in form text: {line.text[:60]}")
 
 
 def style_ops(plan: Plan) -> list[dict]:
@@ -297,6 +310,9 @@ def check_saved(scripts: Path, path: Path, cell_map: dict) -> int:
         hits = {term: text.count(term) for term in cell_map["sample_terms"] if term in text}
         print(f"{name}: sample terms {hits or '0건'}")
         problems += len(hits)
+    markup = body_text.count("**")
+    print(f"BodyText: markdown markers {markup or '0건'}")
+    problems += markup
     placeholders = sorted(set(PLACEHOLDER.findall(body_text)))
     print(f"BodyText: placeholders {placeholders or '0건'}")
     problems += len(placeholders)
@@ -337,6 +353,7 @@ def fill(args: argparse.Namespace, cell_map: dict) -> None:
         json.loads(args.header_values.read_text(encoding="utf-8")) if args.header_values else {}
     )
     plan = build_plan(cell_map, parse_body(args.body), values)
+    reject_markup(plan)
     leftovers = sorted({match for line in plan.styled for match in PLACEHOLDER.findall(line.text)})
     if args.final and leftovers:
         raise SystemExit(f"--final refuses placeholders: {leftovers}")

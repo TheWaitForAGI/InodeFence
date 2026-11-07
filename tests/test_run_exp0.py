@@ -98,34 +98,53 @@ def _base_args(prereg_file: Path, out: Path) -> list[str]:
     ]
 
 
+def _rotated(seeds: Sequence[int], labels: Sequence[str]) -> list[tuple[int, str]]:
+    return [
+        (seed, labels[(position + offset) % len(labels)])
+        for position, seed in enumerate(seeds)
+        for offset in range(len(labels))
+    ]
+
+
 def test_multi_target_cell_order_follows_the_concurrency_benchmark_rule(
     tmp_path: Path, clean_engine: None, admit_fixture_holdout: None
 ) -> None:
     """The benchmark's result moves to EXP-3 only if EXP-3 runs cells in the order it measured."""
-
-    def rotated(seeds: Sequence[int], labels: Sequence[str]) -> list[tuple[int, str]]:
-        return [
-            (seed, labels[(position + offset) % len(labels)])
-            for position, seed in enumerate(seeds)
-            for offset in range(len(labels))
-        ]
-
     design = bench.load_design(
         Path(__file__).parents[1] / "experiments/configs/concurrency-scaling-v2.md"
     )
     measured = [(cell.seed, cell.arm.label) for cell in bench.planned_cells(design, "A")]
-    assert measured == rotated(design.seeds, [arm.label for arm in design.arms])
+    assert measured == _rotated(design.seeds, [arm.label for arm in design.arms])
     _ledger_path, sha = _ledger(tmp_path)
     cells = _plan(_targets_file(tmp_path, ledger_sha=sha)).cells()
     train = [(cell.seed, cell.arm.label) for cell in cells if cell.version == "7.5.2"]
-    assert train == rotated((9001, 9002), ("R", "D", "S-u"))
+    assert train == _rotated((9001, 9002), ("R", "D", "S-u"))
     # A target with fewer arms rotates among its own arms.
     holdout = [(cell.seed, cell.arm.label) for cell in cells if cell.version == "7.9.9"]
-    assert holdout == rotated((9001, 9002), ("R", "S-u"))
+    assert holdout == _rotated((9001, 9002), ("R", "S-u"))
     # All of one target runs before the next, and no cell is lost or repeated.
     assert [cell.version for cell in cells] == ["7.5.2"] * 6 + ["7.9.9"] * 4
     assert len(set(train)) == 6
     assert len(set(holdout)) == 4
+
+
+def test_a_single_target_block_is_the_targets_form_and_rotates(tmp_path: Path) -> None:
+    """D040 writes both registration files with ``targets.<id>``, one target included."""
+    _ledger_path, sha = _ledger(tmp_path)
+    dropped = ("exposure_ledger", "confirmatory_", "multiplicity", "primary_endpoint", "event_")
+    lines = _targets_file(tmp_path, ledger_sha=sha).read_text(encoding="utf-8").splitlines()
+    path = tmp_path / "exp3-one-target.md"
+    path.write_text(
+        "".join(
+            f"{line}\n" for line in lines if "7.9.9" not in line and not line.startswith(dropped)
+        ),
+        encoding="utf-8",
+    )
+    plan = _plan(path)
+    assert plan.multi_target is True
+    assert [(cell.seed, cell.arm.label) for cell in plan.cells()] == _rotated(
+        (9001, 9002), ("R", "D", "S-u")
+    )
 
 
 def test_plan_is_entirely_from_the_file(prereg_file: Path) -> None:

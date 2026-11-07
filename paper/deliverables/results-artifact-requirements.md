@@ -18,19 +18,20 @@ PYTHONPATH=src python3 scripts/analyze_exp0.py --index <exp2-run>/summaries/inde
 
 | ID | 파일 | 보고서 | 열 → 입력 |
 | --- | --- | --- | --- |
-| T-EXP3-1 | `paper/tables/exp3-train-arms.md` | 표 7-B | 분석 캠페인=`T.denominator_cells_in_risk_set` · 완주·abort=`item1_aborts.by_arm.<arm>` · 기록 어긋남=**신규** · 첫 사건=`T.number_observed` · 중앙값=`T.km_median_executions`(null이면 "미도달") · U_viol=`item6_dense_signals.by_arm.<arm>.u_viol.total_unique_c1_c2_fingerprints` · 머리 줄 n, m, 원인=**신규**(index `deadline`, #295) |
-| T-EXP3-2 | `paper/tables/exp3-go-inputs.md` | 표 7-B2 | E=세 arm `T.number_observed` 합(abort 포함, invalid 제외, D040-D11) · r=실시간 직접 계산(`registration.json`→`matrix.json`의 `created_at`) · e=**신규**(기록/계획 step) · H_rem=EXP-3 종료 시각에서 계산 · 용량=식 · 인프라 실패 비율=(abort + 어긋남)/전체 셀(D041) · 결과 칸은 비운다(W3 적용) |
+| T-EXP3-1 | `paper/tables/exp3-train-arms.md` | 표 7-B | 분석 캠페인=`T.denominator_cells_in_risk_set` · 완주·abort=`item1_aborts.by_arm.<arm>` · 기록 어긋남=**신규** · 첫 사건=`T.number_observed` · 중앙값=`T.km_median_executions`(null이면 "미도달") · U_viol 평균(합)=`item6_dense_signals.by_arm.<arm>.u_viol.{mean_per_cell,total_unique_c1_c2_fingerprints}` · 머리 줄 n, m, 원인=**신규**(index `deadline`, #295) |
+| T-EXP3-2 | `paper/tables/exp3-go-inputs.md` | 표 7-B2 | E=세 arm `T.number_observed` 합(abort 포함, invalid 제외, D040-D11) · r=실시간 직접 계산. `matrix.json`은 호출마다 덮어써 재시작 때 어긋나므로 PR-B 뒤 `cell-results.jsonl`의 첫 start~마지막 end로 하고 W1이 확정한다 · e=**신규**(기록/계획 step) · H_rem=EXP-3 종료 시각에서 계산 · 용량=식 · 인프라 실패 비율=(abort + 어긋남)/전체 셀(D041) · 결과 칸은 비운다(W3 적용) |
 | F-EXP3-1 | `paper/figures/exp3-train-survival.png` | 그림 | `T.{km_curve,censored_times,denominator_cells_in_risk_set}`. 제목에 "탐색, 확증 아님" |
 
 ## EXP-2 holdout 산출물 (`exp2-holdout-report.json`, GO일 때만)
 
 | ID | 파일 | 보고서 | 열 → 입력 |
 | --- | --- | --- | --- |
-| T-EXP2-1 | `paper/tables/exp2-holdout-arms.md` | 표 7-A | T-EXP3-1과 같은 열 + 사건 전 abort=**신규**(판 문서 붙는 문장 "abort 차이가 기각에 기여") · 머리 줄 버전=등록 값 |
-| T-EXP2-2 | `paper/tables/exp2-holdout-contrasts.md` | 표 7-A2 | 대비·순서=`confirmatory.contrasts[].{contrast,order}` · seed 블록=`number_seed_blocks` · I=**신규**(D041-5, D040-D14, 총 사건으로 대체 금지) · E=`total_events` · 순열 p=`permutation.p_value` · Holm p=`holm_adjusted_p` · 기각=`reject_at_alpha` · 빠른 쪽=`faster_arm` · U_viol 방향=**신규**(D041-6) · exclude·censor-at-budget 기각=**신규**(D041-6) |
-| T-EXP2-3 | `paper/tables/exp2-holdout-notes.md` | 표 아래 병기 | 미완주 제외 seed 수와 셀별 원인(index `deadline`, #295), 기록 어긋남 수와 민감도(**신규**), abort 3분할(**신규**, D040-D20), 결과 미상 step(**신규**), 대비별 invalid 제외 수, 운영 중단 여부·시각(LOG 입력) |
+| T-EXP2-1 | `paper/tables/exp2-holdout-arms.md` | 표 7-A | T-EXP3-1과 같은 열 + 사건 전 abort=**신규**(abort 셀 중 abort 전 사건이 없는 수, 판 문서 붙는 문장 "abort 차이가 기각에 기여") · 머리 줄 버전=등록 값 |
+| T-EXP2-2 | `paper/tables/exp2-holdout-contrasts.md` | 표 7-A2 | 대비·순서=`confirmatory.contrasts[].{contrast,order}` · seed 블록=`number_seed_blocks` · I=**신규**(D041-5, D040-D14, 총 사건으로 대체 금지) · E=`total_events` · 순열 p=`permutation.p_value` · Holm p=`holm_adjusted_p` · 기각=`reject_at_alpha` · 빠른 쪽=`faster_arm` · U_viol 방향=**신규**(D041-6, arm `mean_per_cell`의 차, `exp2-v1` §5) · exclude·censor-at-budget 기각=**신규**(D041-6) |
+| T-EXP2-3 | `paper/tables/exp2-holdout-notes.md` | 표 아래 병기 | 미완주 제외 seed 수와 셀별 원인(index `deadline`, #295), 기록 어긋남 수와 민감도(**신규**), abort 3분할과 watchdog 사유 별도 줄(`exp2-v1` §8 정의: target 미시작, 실행 후 소실, 첫 오류 미확인. **분석기 값이 아니다.** W2가 docker events, `.calls.jsonl`, `error_chain`에서 손으로 옮긴 입력 파일을 읽고, 그 파일이 없으면 실패한다), 결과 미상 step(**신규**), 대비별 invalid 제외 수, 운영 중단 여부·시각(LOG 입력) |
 | T-EXP2-4 | `paper/tables/exp2-abort-sensitivity.md` | 논문 §5.6 | 1차=`T` · `T5.sensitivity.{primary_policy,policies.{exclude,censor-at-budget}.by_arm.<arm>.{number_observed,number_right_censored,number_in_risk_set,km_median_executions}}` · `--contingency`를 줬으면 `arm_abort_independence` |
 | T-EXP2-5 | `paper/tables/exp2-infra.md` | 논문 §5.6 | `item2_p95_full_step.pooled`, `item3_throughput.summed`, `environment`. 시간 값의 표기는 공백 5 |
+| T-EXP2-6 | `paper/tables/exp2-dense-signals.md` | 논문 §5.6 | arm별 1행, 제목에 "탐색, effectiveness 아님"(D040-D20): 셀별 새 키와 arm 안 고유 키=**신규**, rejected 비율=`item6_dense_signals.by_arm.<arm>.rejected_ratio.value`, 관찰 실패 종류별 수=**신규**(지금은 `observation_failures_total`뿐), `feedback_eligible=false` 비율=**신규** |
 | F-EXP2-1 | `paper/figures/exp2-holdout-survival.png` | 그림 | F-EXP3-1과 같은 필드. 풀링 금지 |
 
 ## 생성기 규칙 (PR-G)
@@ -40,7 +41,7 @@ PYTHONPATH=src python3 scripts/analyze_exp0.py --index <exp2-run>/summaries/inde
 3. **합치지 않는다.** train, holdout, 파일럿, 벤치마크 값을 한 표에 넣지 않는다.
 4. **값이 없으면 실패한다.** 입력 필드가 없으면 0이나 빈칸으로 채우지 않고 멈춘다. 0은 실제 0일 때만 적는다. 값 없음이 정의된 경우만 문구로 적는다: 중앙값 null은 "미도달", 사건 0 대비의 빠른 쪽은 "없음".
 5. **고정 머리 문구를 함께 낸다.** 표 7-B "탐색, 기노출, 확증 아님". 그림 제목도 같다.
-6. **재현한다.** 입력 JSON이 같으면 바이트가 같고 `--check`로 대조한다. `tests/test_gen_tables.py`에 합성 리포트 시험을 더한다. 값의 소수 자릿수는 W3가 정한다(제안: p는 넷째 자리).
+6. **재현한다.** 입력 JSON이 같으면 바이트가 같고 `--check`로 대조한다. `tests/test_gen_tables.py`에 합성 리포트 시험을 더한다. 소수 자릿수(W3): p와 Holm p는 넷째 자리, .0001 미만은 "< .0001", 비율은 셋째 자리. HR은 넣지 않는다.
 7. **시간 값은 시계를 표기한다**(공백 5). 실행 수는 영향이 없다.
 
 ## EXP-0·기존 산출물

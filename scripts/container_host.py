@@ -18,10 +18,11 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
-from time import monotonic
+from time import monotonic, time
 from typing import BinaryIO, Protocol
 from uuid import uuid4
 
+from scripts.broker_call_log import BrokerCallLog
 from scripts.run_effect_demo import (
     DECOMPRESS_CAMPAIGN_MODE,
     DEMO_FORWARDED_ARGUMENTS,
@@ -466,6 +467,26 @@ class _DeadlineDockerClient:
         return self.client.run(args, self.bound(timeout))
 
 
+def _broker_response(
+    client: DockerCLI, argv: tuple[str, ...], timeout: float, call_log: BrokerCallLog | None
+) -> dict[str, object]:
+    """Run one controller request. The log only reads the clock and the result."""
+    if call_log is None:
+        outcome = client.run(argv, timeout)
+    else:
+        started = monotonic()
+        started_real = time()
+        outcome = client.run(argv, timeout)
+        call_log.observe(argv, outcome, monotonic() - started, started_real)
+    return {
+        "returncode": outcome.returncode,
+        "stdout": base64.b64encode(outcome.stdout).decode("ascii"),
+        "stderr": base64.b64encode(outcome.stderr).decode("ascii"),
+        "timed_out": outcome.timed_out,
+        "truncated": outcome.truncated,
+    }
+
+
 class _HostInspectionClient(Protocol):
     def run_host_inspection(self, args: tuple[str, ...], timeout: float) -> CommandResult: ...
 
@@ -534,6 +555,11 @@ def main() -> int:
         type=Path,
         help="new exact host-side attempt ledger; N04 preflight only",
     )
+    parser.add_argument(
+        "--call-log",
+        type=Path,
+        help="absolute host-side record of unusual Docker calls; effect campaigns only",
+    )
     add_demo_arguments(parser)
     parser.add_argument(
         "mode",
@@ -565,6 +591,10 @@ def main() -> int:
     }
     if (args.mode in evidence_modes) != (args.evidence is not None):
         parser.error("evidence mode requires --evidence; validation modes do not export")
+    if args.call_log is not None and (
+        args.mode not in {"effect-demo", HISTORICAL_DEMO_MODE} or not args.call_log.is_absolute()
+    ):
+        parser.error("--call-log needs an absolute path and an effect campaign mode")
     check_demo_arguments(parser, args)
     pair_mode = args.mode in {"qualify-node-n01", "preflight-node-n04-5s"}
     preflight_started = monotonic() if args.mode == "preflight-node-n04-5s" else None
@@ -860,6 +890,7 @@ def main() -> int:
                     raise TimeoutError("N04 preflight exhausted its controller time budget")
                 timer = threading.Timer(remaining, stop_at_deadline)
                 timer.start()
+            call_log = BrokerCallLog(args.call_log) if args.call_log is not None else None
             try:
                 terminal_seen = False
                 for line in process.stdout:
@@ -888,14 +919,9 @@ def main() -> int:
                         if _ACTIVE_N04_LEDGER is not None:
                             _ACTIVE_N04_LEDGER.target_names.update(names)
                             _ACTIVE_N04_LEDGER.cleanup_status = "pending"
-                    outcome = client.run(argv, bounded_timeout(request["timeout"]))
-                    response = {
-                        "returncode": outcome.returncode,
-                        "stdout": base64.b64encode(outcome.stdout).decode("ascii"),
-                        "stderr": base64.b64encode(outcome.stderr).decode("ascii"),
-                        "timed_out": outcome.timed_out,
-                        "truncated": outcome.truncated,
-                    }
+                    response = _broker_response(
+                        client, argv, bounded_timeout(request["timeout"]), call_log
+                    )
                     process.stdin.write((json.dumps(response) + "\n").encode("utf-8"))
                     process.stdin.flush()
                 returncode = process.wait()
@@ -907,6 +933,8 @@ def main() -> int:
                     raise BackendError("N04 controller ended without a terminal summary")
                 return returncode
             finally:
+                if call_log is not None:
+                    call_log.close()
                 if timer is not None:
                     timer.cancel()
                 if process.poll() is None:

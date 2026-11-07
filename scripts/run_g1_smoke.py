@@ -175,6 +175,7 @@ def cell_paths(cell: Cell, output: Path) -> dict[str, Path]:
     return {
         "report": base / f"{cell.evidence_basename}.json",
         "steps_jsonl": base / f"{cell.evidence_basename}.steps.jsonl",
+        "calls": base / f"{cell.evidence_basename}.calls.jsonl",
         "log": base / f"{cell.run_id}.log",
         "summary": output / "summaries" / f"{cell.run_id}.summary.json",
     }

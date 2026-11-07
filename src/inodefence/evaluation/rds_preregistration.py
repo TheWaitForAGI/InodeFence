@@ -92,7 +92,9 @@ TARGET_FIELDS = frozenset(
 _TARGET_REQUIRED = ("extractor", "version", "role", "hypothesis", "exposure")
 TARGET_ROLES = ("train", "fix-verification", "holdout")
 TARGET_HYPOTHESES = ("H-A", "H-B")
-TARGET_EXPOSURES = ("none", "pre-exposed")
+# Both the target exposure value and the ledger kind of a fixed-fixture status check (D040-D5).
+QUALIFICATION_ONLY = "qualification-only"
+TARGET_EXPOSURES = ("none", "pre-exposed", QUALIFICATION_ONLY)
 _EXPOSURE_LEDGER = "exposure_ledger"
 _EXPOSURE_LEDGER_SHA = "exposure_ledger_sha256"
 _SHA256_HEX = re.compile(r"[0-9a-f]{64}")
@@ -185,7 +187,8 @@ class TargetSpec:
     (in-process targets: sha256 of ``python -VV`` + the tarfile.py file hash +
     ``uname -sr``; filesystem semantics are host-fixed and shared by every arm).
     ``role``: train (design input, exploratory), fix-verification (negative control,
-    hit expected 0) or holdout (the only confirmatory test; must not be pre-exposed).
+    hit expected 0) or holdout (the only confirmatory test; must not be pre-exposed, though a
+    registered status check may list it as ``qualification-only``).
     """
 
     target_id: str
@@ -520,13 +523,17 @@ def _parse_targets(
                 raise PreregistrationFormatError(
                     f"targets.{target_id}.{name} must be one of {allowed}"
                 )
-        if fields["exposure"] == "pre-exposed" and not fields.get("exposure_ref"):
+        if fields["exposure"] != "none" and not fields.get("exposure_ref"):
             raise PreregistrationFormatError(
-                f"targets.{target_id}: exposure = pre-exposed requires exposure_ref"
+                f"targets.{target_id}: exposure = {fields['exposure']} requires exposure_ref"
             )
         if fields["role"] == "holdout" and fields["exposure"] == "pre-exposed":
             raise PreregistrationFormatError(
                 f"targets.{target_id}: a holdout target cannot be pre-exposed"
+            )
+        if fields["role"] != "holdout" and fields["exposure"] == QUALIFICATION_ONLY:
+            raise PreregistrationFormatError(
+                f"targets.{target_id}: exposure = {QUALIFICATION_ONLY} is for holdout targets only"
             )
         arms: tuple[RdsArm, ...] | None = None
         if "arms" in fields:
@@ -565,14 +572,16 @@ def _parse_targets(
     return tuple(targets)
 
 
-def parse_exposure_ledger(text: str) -> frozenset[tuple[str, str]]:
-    """(extractor, version) pairs listed in an exposure ledger (markdown pipe tables).
+def parse_exposure_ledger_kinds(text: str) -> dict[tuple[str, str], frozenset[str]]:
+    """``exposure_kind`` values per (extractor, version) in an exposure ledger.
 
     Every pipe table whose header has ``extractor`` and ``version`` columns
-    (case-insensitive) contributes its rows; prose and other tables are ignored.
+    (case-insensitive) contributes its rows; prose and other tables are ignored. A row
+    with no ``exposure_kind`` cell has the kind ``""``, which admits nothing.
     """
-    listed: set[tuple[str, str]] = set()
+    kinds: dict[tuple[str, str], set[str]] = {}
     columns: dict[str, int] | None = None
+    kind_at: int | None = None
     for raw in text.splitlines():
         line = raw.strip()
         if not line.startswith("|"):
@@ -582,24 +591,56 @@ def parse_exposure_ledger(text: str) -> frozenset[tuple[str, str]]:
         lowered = [cell.lower() for cell in cells]
         if "extractor" in lowered and "version" in lowered:
             columns = {"extractor": lowered.index("extractor"), "version": lowered.index("version")}
+            kind_at = lowered.index("exposure_kind") if "exposure_kind" in lowered else None
             continue
         if columns is None or all(set(cell) <= set("-: ") for cell in cells):
             continue
         if max(columns.values()) < len(cells):
-            listed.add((cells[columns["extractor"]], cells[columns["version"]]))
-    return frozenset(listed)
+            pair = (cells[columns["extractor"]], cells[columns["version"]])
+            kind = cells[kind_at] if kind_at is not None and kind_at < len(cells) else ""
+            kinds.setdefault(pair, set()).add(kind)
+    return {pair: frozenset(values) for pair, values in kinds.items()}
+
+
+def parse_exposure_ledger(text: str) -> frozenset[tuple[str, str]]:
+    """(extractor, version) pairs listed in an exposure ledger (markdown pipe tables)."""
+    return frozenset(parse_exposure_ledger_kinds(text))
+
+
+def _exposure_problem(target: TargetSpec, kinds: frozenset[str] | None) -> str | None:
+    """Whether a target's declared exposure agrees with its ledger rows (``None``: no rows)."""
+    name = f"{target.target_id} ({target.extractor} {target.version})"
+    if target.exposure == "none":
+        if kinds is None:
+            return None
+        if target.role == "holdout":
+            return f"holdout target {name} is in the exposure ledger"
+        return f"target {name} declares exposure = none but is in the exposure ledger"
+    if kinds is None:
+        return f"target {name} declares exposure = {target.exposure} but is not in the ledger"
+    if target.exposure == QUALIFICATION_ONLY and kinds != {QUALIFICATION_ONLY}:
+        return f"target {name} declares exposure = {QUALIFICATION_ONLY} but has other ledger rows"
+    return None
 
 
 def ledger_problems(
     preregistration: Preregistration, ledger_text: str | None, ledger_sha256: str | None
 ) -> tuple[str, ...]:
-    """Holdout guard against the committed exposure ledger (the single source of truth).
+    """Guard against the committed exposure ledger (the single source of truth).
 
-    The ledger must exist and hash to the registered sha256; a holdout target whose
-    (extractor, version) the ledger lists is refused.
+    Applies to a registration that names a ledger; a holdout must, and the single-key form
+    does not. The ledger must exist and hash to the registered sha256, and each target's
+    declared exposure must agree with the table in both directions (D040-D15):
+
+    * ``none``: not listed.
+    * ``pre-exposed``: listed. A holdout cannot declare this (the parser refuses it).
+    * ``qualification-only``: listed, every row with exactly that kind (D040-D5: a
+      fixed-fixture status check under a rule committed beforehand).
+
+    The gate cannot tell whether that kind is used honestly: the D5 conditions are kept by
+    the record and W3 review.
     """
-    holdouts = [target for target in preregistration.targets if target.role == "holdout"]
-    if not holdouts:
+    if preregistration.exposure_ledger is None:
         return ()
     if ledger_text is None:
         return (f"exposure ledger {preregistration.exposure_ledger} not readable",)
@@ -608,13 +649,12 @@ def ledger_problems(
             f"exposure ledger sha256 {ledger_sha256} != preregistered "
             f"{preregistration.exposure_ledger_sha256}",
         )
-    listed = parse_exposure_ledger(ledger_text)
-    return tuple(
-        f"holdout target {target.target_id} ({target.extractor} {target.version}) is in the "
-        "exposure ledger"
-        for target in holdouts
-        if (target.extractor, target.version) in listed
+    listed = parse_exposure_ledger_kinds(ledger_text)
+    problems = (
+        _exposure_problem(target, listed.get((target.extractor, target.version)))
+        for target in preregistration.targets
     )
+    return tuple(problem for problem in problems if problem is not None)
 
 
 def load_preregistration(path: Path) -> Preregistration:

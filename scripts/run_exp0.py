@@ -1532,14 +1532,6 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 2
-        append_cell_result(
-            output,
-            {
-                "event": INFRASTRUCTURE_RESUME_EVENT,
-                "approval_ref": args.resume_after_stop,
-                "clocks": _clock_stamp(),
-            },
-        )
         stopped = False
     if stopped:
         print(
@@ -1564,6 +1556,16 @@ def main(argv: list[str] | None = None) -> int:
                 f"image warmup failed (exit {code}); see {output / 'warmup.log'}", file=sys.stderr
             )
             return code
+    # Only now: a failed warmup leaves the stop in force, so the next call still needs the flag.
+    if args.resume_after_stop is not None:
+        append_cell_result(
+            output,
+            {
+                "event": INFRASTRUCTURE_RESUME_EVENT,
+                "approval_ref": args.resume_after_stop,
+                "clocks": _clock_stamp(),
+            },
+        )
     disk_pauses: dict[str, int] = {}
     guard = InfrastructureGuard()
 
@@ -1605,8 +1607,16 @@ def main(argv: list[str] | None = None) -> int:
                 not_started.append(cell.run_id)
                 return result
             used += 1
-            start = {"run_id": cell.run_id, "attempt": used, "clocks": _clock_stamp()}
-            append_cell_result(output, {"event": "start", **start})
+            append_cell_result(
+                output,
+                {
+                    "event": "start",
+                    "run_id": cell.run_id,
+                    "attempt": used,
+                    "jobs": args.jobs,  # matrix.json is overwritten; a resume must be comparable
+                    "clocks": _clock_stamp(),
+                },
+            )
             result = run_attempt(cell)
             append_cell_result(
                 output,

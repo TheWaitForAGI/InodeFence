@@ -28,6 +28,7 @@ What the report cannot give (and the summary says so through its wrapper
 """
 
 import json
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
@@ -406,6 +407,76 @@ def load_cell_files(
     return LoadedCell(
         tuple(records), steps_from, report is not None, aborted_at, reason, report, torn_last_line
     )
+
+
+def registered_dense_detail(
+    records: Sequence[Mapping[str, Any]], report: Mapping[str, Any] | None
+) -> dict[str, object]:
+    """Per-cell inputs of the registered dense table that the cell summary does not carry.
+
+    Boundary keys keep their identity so an arm's unique keys are a union, not a sum of per-cell
+    counts; they come only from clean traces, as the novelty index admits them. Failure kinds count
+    steps with that kind: a step with several kinds counts once under each, so the kinds do not sum
+    to a total. An abort stub with ``observed`` means the target ran and its result was dropped, a
+    lower bound on steps lost after execution.
+    """
+    boundary: set[str] = set()
+    failure_kinds: Counter[str] = Counter()
+    ineligible = 0
+    for step in records:
+        feedback = step.get("feedback")
+        trace = step.get("trace")
+        if not isinstance(feedback, Mapping) or not isinstance(trace, Mapping):
+            raise ReportFormatError(f"step {step.get('index')} lacks feedback/trace mappings")
+        for item in feedback.get("new_effect_keys", ()):
+            if _key_kind(item) == EffectFeedbackKeyKind.BOUNDARY_ESCAPE_ATTEMPT.value:
+                boundary.add(json.dumps(item, sort_keys=True, separators=(",", ":")))
+        failure_kinds.update(
+            {
+                _str(failure.get("kind"), "observation failure kind")
+                for failure in trace.get("observation_failures", ())
+            }
+        )
+        if not feedback.get("feedback_eligible", False):
+            ineligible += 1
+    aborted = report.get("aborted") if report is not None else None
+    return {
+        "boundary_keys": sorted(boundary),
+        "observation_failures_by_kind": dict(sorted(failure_kinds.items())),
+        "feedback_ineligible_steps": ineligible,
+        "recorded_steps": len(records),
+        "abort_observed_present": isinstance(aborted, Mapping)
+        and aborted.get("observed") is not None,
+    }
+
+
+def consistent_prefix(steps_path: Path) -> dict[str, int]:
+    """The steps before a record's first inconsistency, for the record-damage sensitivity only.
+
+    Stops at the first line that does not parse, is not an object with the next index, or has no
+    readable oracle. ``t_first_event`` is 1 when the prefix holds a C1 or C2 step.
+    """
+    count = 0
+    first_hit: int | None = None
+    if steps_path.is_file():
+        for line in steps_path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            try:
+                step = json.loads(line)
+                if not isinstance(step, Mapping) or step.get("index") != count:
+                    break
+                hit = bool(_record_hit_contracts(step) & HIT_CONTRACTS)
+            except (json.JSONDecodeError, ReportFormatError, ValueError):
+                break
+            count += 1
+            if hit and first_hit is None:
+                first_hit = count
+    return {
+        "steps": count,
+        "t_first": first_hit if first_hit is not None else count,
+        "t_first_event": int(first_hit is not None),
+    }
 
 
 def summarize_cell_files(

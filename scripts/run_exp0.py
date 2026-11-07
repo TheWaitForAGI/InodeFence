@@ -1410,6 +1410,10 @@ def main(argv: list[str] | None = None) -> int:
                 redact_outcomes=redact,
                 invalid_cells=invalid_cells,
                 watchdog_cells=watchdog_cells,
+                inconsistent_cells=[
+                    run_id for run_id, state in states.items() if state == RECORD_INCONSISTENT
+                ],
+                dense_detail=checks is not None,
             )
 
         def update_registration(status: Mapping[str, Any]) -> None:

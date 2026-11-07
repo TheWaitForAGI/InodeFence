@@ -64,12 +64,15 @@ from scripts.run_parallel_native import (
     cell_env,
 )
 
+from inodefence.evaluation.cell_completeness import WATCHDOG_ABORT_REASON
 from inodefence.evaluation.rds import RdsArm, RdsCellConfig, RVariant, VocabularyMode
 from inodefence.evaluation.rds_report import (
     ReportFormatError,
     check_report_config,
+    consistent_prefix,
     environment_record,
     load_cell_files,
+    registered_dense_detail,
     summarize_report_records,
     timing_record,
 )
@@ -84,7 +87,6 @@ MAIN_ARMS = (RdsArm.R, RdsArm.D, RdsArm.S_U)
 SMOKE_MIN_CELLS = 10
 SMOKE_MAX_ABORTS = 1
 SENTINEL_GENERATOR_ID = "sentinel-names/seed-random-v1"
-WATCHDOG_ABORT_REASON = "campaign watchdog terminated the cell"
 EXECUTION_MODES = ("per-case-container", "worker-pool")
 # The controller demo path runs one disposable target container per case.
 DEFAULT_EXECUTION_MODE = "per-case-container"
@@ -284,12 +286,16 @@ def summarize_output(
     redact_outcomes: bool = False,
     invalid_cells: Mapping[str, str] | None = None,
     watchdog_cells: Collection[str] = (),
+    inconsistent_cells: Collection[str] = (),
+    dense_detail: bool = False,
 ) -> dict[str, Any]:
     """(Re)build ``summaries/`` from the cell files in ``output``; returns the index.
 
     ``invalid_cells`` (run id -> reason) and ``watchdog_cells`` come from a launcher that has
     an exit record: the first are not read and take the invalid bucket; the second are aborts
     named as such, and one cut last line is dropped and counted as a step of unknown outcome.
+    ``inconsistent_cells`` also get their consistent prefix, and ``dense_detail`` adds the inputs
+    of the registered dense table, both from this same pass over the cell's files.
 
     A cell whose report records a different config than planned (or fails
     ``post_check``) is not folded into complete/abort: it is the third bucket,
@@ -357,12 +363,16 @@ def summarize_output(
             report_summary = summarize_report_records(
                 loaded.records, config, aborted_at_step=aborted_at, abort_reason=reason
             )
+            if dense_detail:
+                record["dense_detail"] = registered_dense_detail(loaded.records, loaded.report)
         except (ReportFormatError, ValueError, json.JSONDecodeError) as error:
             record.update(
                 config_nonconformant=True,
                 invalid_reason=f"{type(error).__name__}: {error}",
                 summary=None,
             )
+            if cell.run_id in inconsistent_cells:
+                record["record_inconsistent_prefix"] = consistent_prefix(paths["steps_jsonl"])
             entry.update(
                 complete=False,
                 aborted=False,

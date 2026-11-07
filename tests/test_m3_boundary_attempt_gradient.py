@@ -239,6 +239,38 @@ def test_p3_benign_success_trace_matches_p2_keys() -> None:
     assert all(k.kind != EffectFeedbackKeyKind.BOUNDARY_ESCAPE_ATTEMPT for k in p3.new_effect_keys)
 
 
+@pytest.mark.parametrize(
+    "outcome_and_status",
+    [
+        (OperationOutcome.NOT_FOUND, ExecutionStatus.REJECTED),
+        (OperationOutcome.ACCESS_DENIED, ExecutionStatus.REJECTED),
+    ],
+)
+def test_the_registered_arms_get_the_same_boundary_keys_from_the_same_step(
+    outcome_and_status: tuple[OperationOutcome, ExecutionStatus],
+) -> None:
+    """Per-cell new boundary keys compare across R, D and S-u only if all three derive them."""
+    outcome, status = outcome_and_status
+    result = _external_link_attempt_result(
+        link_target="../outside/ghost", outcome=outcome, termination=status
+    )
+    seed = (result.base_result.case,)
+    keys = {
+        policy: EffectSearchState(seed, policy).consider(result).new_effect_keys
+        for policy in (
+            EffectSearchPolicy.R_UNRETAINED_SEED_RESTART,
+            EffectSearchPolicy.R_UNRETAINED_WALK,
+            EffectSearchPolicy.D_STRUCTURE_COVERAGE,
+            EffectSearchPolicy.S_U_STATE_RETENTION_UNIFORM,
+        )
+    }
+    assert len(set(keys.values())) == 1
+    assert all(
+        any(key.kind == EffectFeedbackKeyKind.BOUNDARY_ESCAPE_ATTEMPT for key in found)
+        for found in keys.values()
+    )
+
+
 def test_p3_campaign_is_deterministic_and_adaptive() -> None:
     config = EffectCampaignConfig(
         random_seed=123,

@@ -647,6 +647,15 @@ def rule_of_three(n: int) -> float:
     return 3.0 / n
 
 
+def informative_blocks(blocks: Sequence[tuple[Observation, Observation]]) -> int:
+    """I: seed blocks whose two arms differ, the blocks a label swap can change (D040-D14).
+
+    The smallest permutation p is ``2^(1-I)``, so this decides whether a contrast can reject. The
+    total event count does not: many events in blocks where both arms agree add no information.
+    """
+    return sum(1 for first, second in blocks if first != second)
+
+
 def zero_event_summary(arms: Mapping[str, Sequence[Observation]]) -> dict:
     """Campaign-unit rule-of-three fallback for the all-arms-zero-event scenario (judgment 5).
 

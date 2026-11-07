@@ -144,7 +144,7 @@ def _report_problems(
         return problems
     if not complete_and_conformant:
         problems.append("report-incomplete-without-an-abort-record")
-    if returncode != 0:
+    if returncode is not None and returncode != 0:  # None: already reported as a missing record
         problems.append("complete-report-with-a-nonzero-exit")
     if len(scan.indexes) != budget:
         problems.append("steps-file-does-not-reach-the-budget")
@@ -169,6 +169,8 @@ def classify_cell(
     problems: list[str] = []
     if ended is None:
         problems.append("no-exit-record")
+    elif not isinstance(ended.get("returncode"), int):
+        problems.append("exit-record-without-an-exit-code")
     if scan.indexes != tuple(range(count)):
         problems.append("step-indexes-not-contiguous")
     if scan.torn_inner_line:

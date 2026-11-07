@@ -105,6 +105,27 @@ def test_a_complete_looking_record_with_one_check_off_is_inconsistent(
     assert check.state == RECORD_INCONSISTENT and problem in check.problems
 
 
+def test_a_missing_exit_record_is_named_once_and_a_codeless_one_is_its_own_problem(
+    tmp_path: Path,
+) -> None:
+    check = _classify(
+        tmp_path,
+        lines=_steps(BUDGET),
+        report=_complete_report(),
+        attempts=_attempts(None),
+        complete=True,
+    )
+    assert check.problems == ("no-exit-record",)
+    check = _classify(
+        tmp_path,
+        lines=_steps(BUDGET),
+        report=_complete_report(),
+        attempts=_attempts({"event": "end", "watchdog_fired": False}),
+        complete=True,
+    )
+    assert check.problems == ("exit-record-without-an-exit-code",)
+
+
 def test_an_abort_record_that_holds_together_is_final(tmp_path: Path) -> None:
     check = _classify(
         tmp_path, lines=_steps(2), report=_abort_report(), attempts=_attempts(_end(1))

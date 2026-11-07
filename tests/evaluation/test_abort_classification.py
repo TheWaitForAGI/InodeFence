@@ -8,6 +8,7 @@ embedded so the check is reproducible in CI without host evidence.
 """
 
 import pytest
+from scripts.analyze_concurrency_benchmark import first_error
 
 from inodefence.evaluation.abort_classification import (
     INFRASTRUCTURE_REASONS,
@@ -57,6 +58,15 @@ _WRAP = "inodefence.execution.base.BackendError: "
             "inodefence.observer.snapshot.ObservationError: cannot observe outside/x",
             InvalidReason.OBSERVER_INTEGRITY,
         ),
+        # runtime_call: the other `checked` operations; the empty tail is the time-out form
+        ("container runtime inspect failed: ", InvalidReason.RUNTIME_CALL),
+        (_WRAP + "container runtime inspect failed: ", InvalidReason.RUNTIME_CALL),
+        ("container runtime create failed: x", InvalidReason.RUNTIME_CALL),
+        ("container runtime wait failed: x", InvalidReason.RUNTIME_CALL),
+        ("container runtime image inspect failed: x", InvalidReason.RUNTIME_CALL),
+        ("container runtime version failed: x", InvalidReason.RUNTIME_CALL),
+        ("container runtime timeout kill failed: x", InvalidReason.RUNTIME_CALL),
+        ("container runtime timeout wait failed: x", InvalidReason.RUNTIME_CALL),
         # other (named by code but not an infra-recoverable class)
         ("image node-tar 7.5.2 differs from repository pin 7.5.22", InvalidReason.OTHER),
         ("node-tar execution identity changed after setup", InvalidReason.OTHER),
@@ -77,8 +87,18 @@ def test_shared_vocabulary_is_the_agreed_set() -> None:
         "cleanup_inspect",
         "cleanup_remove",
         "cleanup_reset",
+        "runtime_call",
         "other",
     }
+
+
+def test_runtime_call_changes_no_retry_and_no_first_error_status() -> None:
+    """Naming these aborts must not change behavior: no retry, H4 still confirmed (D21 decides)."""
+    assert InvalidReason.RUNTIME_CALL not in INFRASTRUCTURE_REASONS
+    reason = "container runtime inspect failed: "
+    assert classify_abort_reason(reason) == InvalidReason.RUNTIME_CALL
+    assert not is_infrastructure_abort(reason)
+    assert first_error({"reason": reason})["status"] == "confirmed"
 
 
 def test_reset_failure_detail_values() -> None:

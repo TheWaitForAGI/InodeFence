@@ -631,7 +631,7 @@ def _remove_summaries(output: Path) -> None:
 def archive_attempt(cell: Cell, output: Path) -> int | None:
     """Move an incomplete cell's files to ``attempts/``; returns the attempt number."""
     paths = cell_paths(cell, output)
-    existing = [key for key in ("report", "steps_jsonl", "log") if paths[key].exists()]
+    existing = [key for key in ("report", "steps_jsonl", "calls", "log") if paths[key].exists()]
     if not existing:
         return None
     attempts = output / "attempts"
@@ -640,7 +640,12 @@ def archive_attempt(cell: Cell, output: Path) -> int | None:
     while any(attempts.glob(f"{cell.run_id}.attempt{number}.*")):
         number += 1
     for key in existing:
-        suffix = {"report": "json", "steps_jsonl": "steps.jsonl", "log": "log"}[key]
+        suffix = {
+            "report": "json",
+            "steps_jsonl": "steps.jsonl",
+            "calls": "calls.jsonl",
+            "log": "log",
+        }[key]
         paths[key].rename(attempts / f"{cell.run_id}.attempt{number}.{suffix}")
     return number
 

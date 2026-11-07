@@ -539,6 +539,19 @@ def test_first_error_status(aborted: dict[str, Any] | None, status: str) -> None
     assert analysis.first_error(aborted)["status"] == status
 
 
+def test_first_error_carries_the_call_site_and_judges_nothing_by_it() -> None:
+    frames = [{"file": "inodefence/execution/container.py", "line": 310, "function": "f"}]
+    item = {"type": "BackendError", "message": "x", "frames": frames, "frames_cut": 0}
+    aborted = {"reason": "x", "error_chain": [item]}
+    assert analysis.first_error(aborted)["frames"] == frames
+    assert analysis.first_error(aborted)["status"] == "confirmed"
+    assert (
+        analysis.first_error({**aborted, "error_chain": [{"type": "x"}]})["status"] == "confirmed"
+    )
+    assert analysis.first_error(None)["frames"] is None
+    assert analysis.first_error({"reason": "x"})["frames"] is None
+
+
 def _path(
     cases: Sequence[str],
     terminations: Sequence[str] | None = None,

@@ -912,6 +912,8 @@ def _confirmatory_section(
     raw_ps: list[float] = []
     policy_values: dict[str, list[dict]] = {policy.value: [] for policy in AbortPolicy}
     damage_values: list[dict] = []
+    # With no damaged record this sensitivity is absent, so skip its permutation run.
+    any_damage = any(cell.consistent_prefix is not None for cell in invalid)
     for contrast in contrasts:
         tid, arm_a, arm_b = (
             contrast.get("target_id"),
@@ -1018,28 +1020,29 @@ def _confirmatory_section(
                     "raw_p": policy_perm["p_value"],
                 }
             )
-        damaged = {
-            (c.seed, c.arm): c.consistent_prefix
-            for c in invalid_t
-            if c.consistent_prefix is not None
-        }
-        damage_seeds = sorted({*by_seed, *(seed for seed, _arm in damaged)})
-        damage_blocks = []
-        for seed in damage_seeds:
-            first = _damage_observation(arm_a, seed, by_seed, damaged)
-            second = _damage_observation(arm_b, seed, by_seed, damaged)
-            if first is not None and second is not None:
-                damage_blocks.append((first, second))
-        damage_perm = seed_block_logrank_permutation(damage_blocks, seed=0)
-        damage_values.append(
-            {
-                "number_inconsistent_cells": len(damaged),
-                "number_seed_blocks": len(damage_blocks),
-                "informative_blocks": informative_blocks(damage_blocks),
-                "total_events": damage_perm["total_events"],
-                "raw_p": damage_perm["p_value"],
+        if any_damage:
+            damaged = {
+                (c.seed, c.arm): c.consistent_prefix
+                for c in invalid_t
+                if c.consistent_prefix is not None
             }
-        )
+            damage_seeds = sorted({*by_seed, *(seed for seed, _arm in damaged)})
+            damage_blocks = []
+            for seed in damage_seeds:
+                first = _damage_observation(arm_a, seed, by_seed, damaged)
+                second = _damage_observation(arm_b, seed, by_seed, damaged)
+                if first is not None and second is not None:
+                    damage_blocks.append((first, second))
+            damage_perm = seed_block_logrank_permutation(damage_blocks, seed=0)
+            damage_values.append(
+                {
+                    "number_inconsistent_cells": len(damaged),
+                    "number_seed_blocks": len(damage_blocks),
+                    "informative_blocks": informative_blocks(damage_blocks),
+                    "total_events": damage_perm["total_events"],
+                    "raw_p": damage_perm["p_value"],
+                }
+            )
         raw_ps.append(float(perm["p_value"]) if perm["p_value"] is not None else 1.0)
         results.append(entry)
     for entry, adjusted in zip(results, holm_adjust(raw_ps), strict=True):

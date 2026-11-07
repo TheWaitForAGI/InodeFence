@@ -15,8 +15,8 @@ from inodefence.evaluation.cell_completeness import WATCHDOG_ABORT_REASON
 from inodefence.evaluation.survival import Observation, informative_blocks
 
 FIELD_MAP = dict(_DEFAULT_FIELD_MAP)
-HIT = {"t_first": 20, "t_first_event": 1, "first_c1": 20, "hit_steps": 1}
-ABORT = {
+HIT: dict[str, Any] = {"t_first": 20, "t_first_event": 1, "first_c1": 20, "hit_steps": 1}
+ABORT: dict[str, Any] = {
     "aborted": True,
     "complete": False,
     "abort_reason": "broker",
@@ -196,6 +196,18 @@ def test_each_policy_has_its_own_blocks_and_holm_family() -> None:
     assert exclude["reject_at_alpha"] is True  # 7 informative blocks: p = 2/128
     assert exclude["number_seed_blocks"] == 7
     assert budget["number_seed_blocks"] == 12
+
+
+def test_the_policies_can_disagree_on_rejection() -> None:
+    # The two blocks with an aborted R cell decide it; excluding them leaves I = 5.
+    cells = [*_pairs(range(1, 6), HIT, {})]
+    for seed in (6, 7):
+        cells += [_cell("S-u", seed, **HIT), _cell("R", seed, **ABORT)]
+    policies = _contrast(_report(cells, "R"))["abort_policy_results"]
+    assert policies["exclude"]["number_seed_blocks"] == 5
+    assert policies["exclude"]["reject_at_alpha"] is False  # smallest p is 2/32
+    assert policies["censor-at-budget"]["raw_p"] == pytest.approx(2 / 128)
+    assert policies["censor-at-budget"]["reject_at_alpha"] is True
 
 
 def test_values_only_no_verdict_field() -> None:

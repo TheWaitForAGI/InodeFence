@@ -542,7 +542,9 @@ def deadline_record(
             cause = "ended-after-deadline"
         if cause is not None:
             causes[cell.run_id] = cause
-            excluded.setdefault(getattr(cell, "target_id", cell.version), set()).add(cell.seed)
+            # A deadline requires the targets form, so every cell is a TargetCell.
+            assert isinstance(cell, TargetCell)
+            excluded.setdefault(cell.target_id, set()).add(cell.seed)
     return {
         "execution_deadline": deadline.isoformat(),
         "passed": passed,

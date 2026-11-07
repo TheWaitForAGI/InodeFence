@@ -98,3 +98,18 @@ def test_default_output_path() -> None:
     assert default_output("win", "20261104") == Path(
         "experiments/summaries/raw-manifest-win-20261104.sha256"
     )
+
+
+def test_exclude_suffix_skips_matching_files_in_generate_and_verify(tmp_path: Path) -> None:
+    root = _tree(tmp_path)
+    (root / "note.sha256").write_text("deadbeef  ./x\n", encoding="utf-8")
+    # Default includes the sidecar; excluding .sha256 drops it from the manifest.
+    assert any(name.endswith("note.sha256") for name in "".join(manifest_lines(root)).split())
+    lines = manifest_lines(root, (".sha256",))
+    assert all("note.sha256" not in line for line in lines)
+    assert len(lines) == 2
+    # verify with the same exclusion does not flag the sidecar as extra.
+    manifest = tmp_path / "m.sha256"
+    manifest.write_text("".join(lines), encoding="utf-8")
+    result = verify_manifest(manifest, root, (".sha256",))
+    assert not result.failed and result.extra == []

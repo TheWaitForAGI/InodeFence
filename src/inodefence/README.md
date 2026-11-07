@@ -75,8 +75,8 @@ runner의 optional completed-step callback과 별도 full-step monotonic timing 
 publication/failure 시간을 포함하지 않고 formal timed dataset 또는 결과를 만들지 않는다.
 
 Python reference는 architecture용이다. Contained node-tar 7.5.22의 benign full path는 TESTED이나
-historical qualification/rediscovery/formal effectiveness는 NOT_RUN이고 취약점을 주장하지 않는다.
-첫 intended qualification은 N01 7.5.2/7.5.3이다. GNU는 benign allowlist에 제한되며 ORAS는 없다.
+historical qualification/rediscovery/formal effectiveness는 NOT_RUN이고 취약점을 주장하지 않는다. 다만 현재 native effect producer(node-tar)는 `make demo`와 effect 캠페인의 M1 루프에서 실제로 돈다(Ledger M1 TESTED); 위 v2 replacement-coverage NOT_QUALIFIED와 v3 미연결은 그 특정 게이트 경로에 한정된 서술이지 M1 effect 루프의 native 실행을 부정하지 않는다.
+첫 intended qualification은 N01 7.5.2/7.5.3이다. GNU는 benign allowlist에 제한되며, oras-go adapter는 구현됐다(#176, Ledger M4; adapter 수준 일반성).
 [Research Contract](../../docs/research/design/research-contract-v1.md)와 [STATUS](../../docs/STATUS.md)를 따른다.
 Disposable runtime 자체는 OS isolation이 아니다.
 

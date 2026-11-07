@@ -52,7 +52,7 @@
 
 InodeFence 관점의 중요한 한계:
 
-후속 연구에서는 ZIPDiff가 복잡한 link composition과 creation order가 필요한 테스트 대상 symlink vulnerability를 찾지 못했다고 보고했다.
+Wormholes 저자들은 ZIPDiff 구현을 재현해 자신들의 ZIP 도구 20개(그중 8개에 symlink 취약점)에 적용했을 때 하나도 탐지하지 못했다고 보고하고("fails to detect any of them"), 복잡한 symlink composition과 creation order가 필요하기 때문이라고 설명한다(Wormholes §5.6, p. 5223; 원문 확인 2026-11-06 독립 심사). 단일 출처의 저자 평가이므로 일반적인 ZIPDiff 한계로 읽지 않는다. 범용 변이인 InodeFence에도 같은 한계가 있을 수 있다.
 
 ## LinkZard — 2025
 
@@ -116,7 +116,10 @@ InodeFence 관점의 중요한 한계:
 
 현재 질문은 다음이다.
 
-> 고정된 공격 recipe 없이 generic archive-entry mutation을 수행하면서 filesystem object identity와 external-effect state를 feedback으로 사용하면, fuzzer가 security-relevant state 방향으로 corpus를 발전시킬 수 있는가?
+> 피해 경로 이름을 아는 **동일 어휘·동일 예산** 아래서, filesystem security state(C1 identity·C2 effect)를 retention·스케줄링 피드백으로 쓰는 탐색이 **무작위 탐색**과 **구조 커버리지 탐색**보다 첫 경계위반까지의 실행 수를 줄이고 고유 위반 입력을 더 많이 찾는가?
+> (핵심 RQ, [research-questions v2](research-questions.md). 위협 모델 전제: 공격자는 피해 경로 이름 — 보호 대상 외부 객체의 추출 루트 기준 상대 경로 — 을 알며 세 arm 어휘에 동일하게 포함한다. blind 발견을 주장하지 않는다.)
+
+*(구: "고정된 공격 recipe 없이 generic archive-entry mutation을 수행하면서 … corpus를 발전시킬 수 있는가?", v1 질문, 2026-11-06 v2로 교체. research-questions v2 '폐기·대체 기록' 참조.)*
 
 개념적으로:
 
@@ -134,6 +137,8 @@ InodeFence hypothesis
         -> retain novel state
         -> mutate again
 ```
+
+이 도식은 가설의 구도일 뿐 "고정 recipe가 없다"는 주장이 아니다. InodeFence mutation에도 `add_hardlink` 연산자와 escape-hardlink 문법이 있고, 피해 경로 이름은 위협 모델 전제로 어휘에 포함한다. 불변식은 CVE 식별자·PoC·고정 공격 패턴·대상 경로·sentinel 이름을 oracle·feedback에 넣지 않는 것이다(D005·D006).
 
 ## 아직 하면 안 되는 주장
 
@@ -161,3 +166,33 @@ InodeFence hypothesis
 - 약한 baseline이 도달하지 못한 state 탐색
 
 실험 전까지 이 내용은 모두 가설이다.
+
+
+## 평가 방법론 문헌 (서지)
+
+아래는 논문 §3.7.2가 인용하는 **퍼징 평가 방법론** 참고 문헌이다(공격·기법 선행연구가 아니라 평가 설계 기준).
+서지는 2026-11-04 웹 확인. 각 항목의 연결 서술은 해당 논문의 초록·권고 목록에서 실제로 읽은 범위에 한정한다.
+
+### Klees et al. — 2018
+
+**Evaluating Fuzz Testing**
+
+서지: George Klees, Andrew Ruef, Benji Cooper, Shiyi Wei, Michael Hicks. ACM CCS 2018 (Toronto, 2018-10-15~19). DOI [10.1145/3243734.3243804](https://doi.org/10.1145/3243734.3243804) · arXiv [1808.09700](https://arxiv.org/abs/1808.09700)
+
+실제로 읽은 권고(초록·본문 §4–§8): 복수 trial + 통계 검정(Mann-Whitney U), 서로 다른 seed, 더 긴 timeout(≥24h), ground-truth 버그 기준(중복제거 heuristic 지양), 다양한 benchmark. 자체 실험은 ≥30 run 중앙값·95% CI.
+
+### Böhme, Liyanage & Wüstholz — 2021
+
+**Estimating Residual Risk in Greybox Fuzzing**
+
+서지: Marcel Böhme, Danushka Liyanage, Valentin Wüstholz. ESEC/FSE 2021. DOI [10.1145/3468264.3468570](https://doi.org/10.1145/3468264.3468570) · [PDF](https://mboehme.github.io/paper/FSE21.pdf)
+
+실제로 읽은 초록: 오류 없는 campaign에도 잔여 위험이 남고 greybox에서는 직접 추정 불가 → discovery probability(다음 입력이 커버리지를 늘릴 확률)를 상한으로, campaign 중 추정해 중단 시점 결정. reachability 주장은 초록에 없음.
+
+### Schloegel et al. — 2024
+
+**SoK: Prudent Evaluation Practices for Fuzzing**
+
+서지: Moritz Schloegel, Nils Bars, Nico Schiller, Lukas Bernhard, Tobias Scharnowski, Addison Crump, Arash Ale Ebrahim, Nicolai Bissantz, Marius Muench, Thorsten Holz. IEEE S&P 2024. DOI [10.1109/SP54263.2024.00137](https://doi.org/10.1109/SP54263.2024.00137) · arXiv [2405.10220](https://arxiv.org/abs/2405.10220)
+
+실제로 읽은 권고(초록·§II): 2018–2023 top-venue 150편 분석, 통계 검정 권고의 광범위한 미준수 보고; baseline·충분한 trial 수+통계 검정·효과크기·문서화 seed·버그 기준 지표(fuzzer 고유 proxy 지양)를 갱신 guideline으로 제시.

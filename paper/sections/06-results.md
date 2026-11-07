@@ -39,11 +39,11 @@ raw는 [`../../experiments/repro/evidence/summary.json`](../../experiments/repro
 - **R1 = CVE-2026-23745** (catalog N01): linkpath sanitation 누락. 최상위 하드링크가 7.5.2에서
   공유(nlink 1→2)되고 7.5.3에서 거부되는 전환으로 재현.
 - **R2 = CVE-2026-24842** (catalog N02, GHSA-34x7-hfp2-rc4v): 검증 base ≠ 생성 base의 check/use
-  mismatch 회귀로, **R1 수정이 도입**했다. 중첩 하드링크가 7.5.6에서 공유되고 7.5.7에서 거부되는
+  mismatch 회귀이며, R1 수정이 도입한 것으로 **추론**한다(아래 inferred). 중첩 하드링크가 7.5.6에서 공유되고 7.5.7에서 거부되는
   전환으로 재현.
 
 관찰된 공유 분포는 **비단조**(중첩: 7.5.2 공유 · 7.5.3 거부 · 7.5.6 공유 · 7.5.7/7.5.8 거부)로,
-7.5.3이 닫은 경로를 7.5.6이 되돌렸고 7.5.7이 다시 닫았음을 보인다.
+7.5.3에서 거부된 입력이 7.5.6에서 다시 공유되고 7.5.7에서 다시 거부됨을 보인다.
 
 - **observed:** 5×2 verdict 표, nlink 전이, 거부 메시지, 비단조 분포.
 - **inferred:** 특정 CVE↔fixture 대응과 "7.5.6 회귀가 R1 수정이 도입한 것"이라는 인과 서술.
@@ -60,14 +60,14 @@ raw는 [`../../experiments/repro/evidence/summary.json`](../../experiments/repro
 ## 5.3 M3 — 퍼저가 자력으로 위반을 찾는다: 이름 획득 조건의 관찰(피드백 인과는 미입증)
 
 영향 릴리스 node-tar 7.5.2(budget 1500)에서 **외부 객체 이름을 mutation 어휘에 획득한 arm(A3full)에서
-경계위반의 자율 트리거가 관찰됐다**. 전체 대조표는 [M3 blind-ablation 표](../tables/m3-blind-ablation.md),
+경계위반의 자율 트리거가 관찰됐다**. 전체 대조표는 [M3 어휘 제거 대조표](../tables/m3-blind-ablation.md),
 그림 사양은 [m3-blind-ablation-figure-spec](../figures/m3-blind-ablation-figure-spec.md), 검증 요약은
 [node-self-discovery-mechanism-v1](../../experiments/summaries/node-self-discovery-mechanism-v1.md)다
 (Ledger M3 / PR #151, merge d44d903).
 
-![M3 blind-ablation 막대그래프: A3full s11 21 hits vs A3blind s11 0 vs A1 random floor 0, EXTERNAL 이름 어휘 포함 on/off 대조](../figures/m3-blind-ablation.png)
+![M3 어휘 제거 대조 막대그래프: A3full s11 21 hits vs A3blind s11 0 vs A1 random floor 0, EXTERNAL 이름 어휘 포함 on/off 대조](../figures/m3-blind-ablation.png)
 
-*그림 2 — blind-ablation 대조(observed; 이름 획득 조건 대조이지 피드백 인과·rate 아님). 데이터 [표 M3](../tables/m3-blind-ablation.md),
+*그림 2 — 어휘 제거 대조(observed; 이름 획득 조건 대조이지 피드백 인과·rate 아님). 데이터 [표 M3](../tables/m3-blind-ablation.md),
 생성 소스 [`../figures/render_m3_blind_ablation.py`](../figures/render_m3_blind_ablation.py).*
 
 ### 5.3.1 관찰된 수치 (observed, raw step 로그 재집계)
@@ -77,7 +77,7 @@ hit의 정의는 **step에서 `oracle.C1` AND `feedback.contract_violated`가 �
 | 셀 | seeds | 기록 step 수 | 자율 C1 hit |
 | --- | --- | --- | --- |
 | A3full s11 (state-aware) | 11 | 416 (abort 전) | **21** (모두 C1·C2·contract_violated 동시) |
-| A3blind s11 (identity-blind 대조) | 11 | 1475 | **0** |
+| A3blind s11 (어휘 제거 대조) | 11 | 1475 | **0** |
 | A1 random floor | 1–35 (35개) | 33,005 | **0** |
 | A3full scale study | 1–35 (35개) | 41,494 | **s11만 21** (그 외 전 seed 0) |
 | A3full 재현 | 36–65 (30개) | 34,585 | **0/30** |
@@ -102,10 +102,10 @@ A3full s11에서만** 관찰됐고(21), 그 이름을 뺀 A3blind s11은 1475 st
 이름을 뺀 A3blind·철자 불가 A1에서는 미관찰**이다. (이 드래프트 v1은 이를 "feedback(identity 관찰)이 발견을
 가능케 한다 — 없으면 도달 불가"라는 인과 확정으로 적었으나, 아래 2026-11-03 정정대로 그 해석은 철회한다.)
 
-**2026-11-03 정정(해석; 위 수치·서술은 보존).** 위 blind 대조는 **피드백이 아니라 어휘**를 통제한 실험이다.
+**2026-11-03 정정(해석; 위 수치·서술은 보존).** 위 어휘 제거 대조는 **피드백이 아니라 어휘**를 통제한 실험이다.
 A3full은 BEFORE snapshot에서 관찰한 EXTERNAL 이름을 mutation 어휘에 넣고, A3blind는 그 이름을 빼며, A1은
 generic 어휘 7토큰(`src/inodefence/mutator/m1.py`의 `COMPONENTS`, `m1_addressing.py` 주석)이라 대상 이름을
-철자할 수 없다. 따라서 21/0/0이 보인 것은 **"외부 객체 이름의 관찰(어휘 획득)이 자율 C1의 필요조건"**이지,
+철자할 수 없다. 따라서 21/0/0이 보인 것은 **"외부 객체 이름을 어휘에 넣은 조건에서 자율 C1이 관찰됐고 그 조건 밖에서는 관찰되지 않았다"**(구조적 불가로 단정하지 않는다)이지,
 (st_dev, st_ino) 기반 retention·스케줄링 피드백이 발견에 기여했다는 것이 아니다. 그 기여는 어휘를 맞춘 비교
 (R/D/S, [research-questions v2](../../docs/research/design/research-questions.md) H-A)로 아직 분리되지 않았고,
 어휘를 맞춘 기존 비교(§5.3.4 item-3 A/B/C/D, M4.8)는 C≡D·위반 0이다. §5.3 제목·§5.3.2·§5.3.3의 결론 문장은
@@ -115,10 +115,10 @@ generic 어휘 7토큰(`src/inodefence/mutator/m1.py`의 `COMPONENTS`, `m1_addre
 
 - **현재 결론(통일 문장).** 기존 실험은 외부 객체 이름을 mutation 어휘에 획득한 조건에서 경계위반이 관찰되었음을 보여준다. 동일 어휘로 통제하지 않았으므로 inode/effect retention 피드백 자체의 인과적 기여는 아직 입증되지 않았다.
 - **blind 발견이 아니다.** 기존 외부 객체에 하드링크하려면 그 이름이 필요하고 퍼저는 그것을
-  **관찰**로 얻는다. 어휘·oracle에 대상 경로·식별자·정답 seed·근접 보상을 하드코딩하지 않았고
+  **관찰**로 얻는다. oracle·feedback에 대상 경로·식별자·정답 seed·근접 보상을 넣지 않았고
   EXTERNAL 필터는 region 기준 target-agnostic이다. 다만 state-aware mutation 어휘 계열이
   `outside`/`sentinel.txt` 토큰을 포함할 수 있으므로, 어떤 rediscovery 프레이밍에서도 "blind 아님"을
-  명시한다.
+  명시한다. *(구: "어휘·oracle에 … 하드코딩하지 않았고", 2026-11-06 범위 정정)*
 - **seed-rare.** s11은 동일 seed에서 결정론적으로 재현(21건)되지만, budget 1500·65 seed 중 자율
   C1을 내는 seed는 s11 하나뿐이다(재현 0/30). 이 예산에서 다른 seed로 일반화되지 않는다.
 - **rate 우위가 아니다.** 이 소절의 주장은 **이름 획득 조건에서의 관찰**이지 "상태-인지 feedback이
@@ -148,8 +148,8 @@ generic 어휘 7토큰(`src/inodefence/mutator/m1.py`의 `COMPONENTS`, `m1_addre
   **post-state** C1+C2(하드링크 `/a/dir`→`../outside/sentinel.txt`가 뒤 entry 거부 전에 생성·잔존,
   unique_violation_fingerprints 0)다 — 여기서 "clean"은 hit 술어(`oracle.C1 && contract_violated`)를 뜻하며
   clean trace가 아니다.
-- **판정:** 완주 clean-C1 rate 점추정은 identity feedback 쪽(0.10 vs 0.00)이나 **매칭 Wilson 구간이
-  겹쳐 rate 우위는 CI로 분리되지 않는다** — ~0.1 효과에 대해 이 예산·seed 수로는 검정력이 부족하다.
+- **판정:** 완주 clean-C1 rate 점추정은 identity feedback 쪽(0.059 vs 0.00)이나 **매칭 Wilson 구간이
+  겹쳐 rate 우위는 CI로 분리되지 않는다** — ~0.06 효과에 대해 이 예산·seed 수로는 검정력이 부족하다.
   rate 우위는 여전히 **미입증**이며 이 논문의 주 주장이 아니다.
 - **이름 획득 조건에서의 자율 트리거가 신규 seed(s101·s118)에서도 관찰됐다(인과 강화 아님).** §5.3.2의 자율
   트리거는 budget 1500·seed 1–65에서 s11 하나였으나, 이 powered 런은 **기존과 disjoint한 새 seed s101**(완주
@@ -202,7 +202,7 @@ feasible set-based frame 채널을 쓴다(node-tar의 ordered per-op보다 좁�
   feedback 조향) 그러나 exact 경계위반에 미도달.
 - **inferred:** exact 자력발견은 budget/seed-rare(node-tar M3와 정합 — budget 100=0, 자율 트리거는
   budget 1500+특정 seed). arm 차분(A3 11 > A1 8)은 1-seed라 검정력이 없다(EN-008, rate/effectiveness
-  아님) → autoloop 7.1상 당시 **미판정**이었고, §5.4.3의 powered 통합 반복에서 검정력 있게 판정한다.
+  아님) → autoloop 7.1상 당시 **미판정**이었고, §5.4.3에서 사후 분석 기준으로 다룬다.
 
 ### 5.4.3 decompress powered 판정 — 사후 분석 기준 음성(사전등록 판정 아님)
 
@@ -243,3 +243,65 @@ frame을 파생한다(decompress의 fs-wrap보다 좁다).
 
 M1–M4의 능력과 증거 수준을 한눈에 보는 요약은 [Capability Ledger 요약표](../tables/capability-ledger-summary.md)에
 두며, 단일 기준은 [`../../docs/STATUS.md`](../../docs/STATUS.md)다.
+
+
+## 5.6 EXP-0 / EXP-3 결과 (EXP-0 완료 · EXP-3 실험 전 TBD)
+
+이 소절은 §4.6 실험 설계(계획)의 실행 결과 자리다. EXP-0 등록 실행은 완료됐고 핵심 수치를 아래에 적는다. EXP-3 본실험은 실행
+전이므로 EXP-3 표·그림은 **TBD**이며, 사전등록 잠금 뒤 생성기 출력으로 채운다.
+
+**EXP-0 등록 실행 (registered run · 인프라 측정 · 가설 검정 아님).** 2026-11-05에 사전등록 v2.1로 등록한 실행이다. 대상은
+node-tar 7.5.2, 설계는 seed 9001–9005 × {R, D, S-u}, budget 200, sentinel k=3(생성기 seed 고정 무작위 이름, 전 arm·seed 공통)이다(15셀,
+3000 실행). H-A 검정도 효과 주장도 아니며, 이 숫자로 arm을 비교하지 않는다. 값의 기준과 재현 명령은 공식 리포트 [exp0-20261105-report](../../experiments/summaries/exp0-20261105-report.md)(#268)다.
+
+- **완주.** 15/15, abort 0, invalid 셀 0. 셀 판정과 별개로 trace가 invalid인 step 11개와 failed step 10개가 있다(리포트 편차 2).
+- **위반 hit.** C1/C2 전 arm 0(C0 관측도 0, arm마다 5/5 우측중도절단 @200). hit 0은 hazard 0이 아니다. 캠페인 단위 rule-of-three 참고 상한은 .6(n=5)이고 판정 입력이 아니다.
+- **p95 full-step.** 기록값 1.549 s, 실시간 환산 1.419 s.[^exp0-clock]
+- **처리량.** 호스트 집계 약 4760 exec/h(jobs 2, 실제 경과에서 직접 계산).[^exp0-clock]
+- **편차.** 사전등록 대비 편차 11건은 리포트 §3에 공개했다. 측정 4(per-case 대 워커 풀 처리량 비교)는 미충족이다(편차 3).
+
+> **주의(budget 2000 표기 구분):** 이 §5.6의 EXP-3(20 seed × budget 2000)은 **계획**이며 아직 미실행이다(규모는 D7, 재판정
+> 대기(파일럿 후)).
+> §5.3.3의 M3.3 powered(동일 budget 2000, seed {100..129})는 이미 **수행**된 결과로 매칭 Wilson CI가 미분리
+> (검정력 부족)인 **음성**이다 — 둘은 다른 실험·다른 seed이며, §5.6의 자리를 §5.3.3 결과로 읽지 않는다.
+
+- **표.** EXP-0 인프라·dense 신호 요약 — `analyze_exp0` report.json **item1~7 전부**(전부 분모 병기):
+  item1 abort(사유 × arm) · item2 p95 full-step · item3 처리량(exec/h) · item4 per-case vs 워커풀 parity ·
+  item5 첫 C0/C1/C2 · T_first(우측중도절단; abort 민감도 **3정책** `item5.sensitivity` — exclude · censor-at-budget, #243) ·
+  item6 dense 신호 · item7 hazard proxy. **item2·item3·item4·item7은 '참고값' 라벨**(effectiveness·판정 입력 아님).
+  arm×abort 독립성(꼭지 13 validity, 레인 3 optional)은 번호 없는 `arm_abort_independence` 키(#242)로 보고 —
+  사전등록 **측정 item8 = raw SHA-256 체크섬 목록**과 번호 충돌을 피한다(체크섬은 report.json 밖 manifest).
+  생성 경로: `scripts/analyze_exp0.py` → `report.json` →
+  `paper/figures/render_exp0_survival.py` → `paper/tables/exp0-summary.md`. — **EXP-0 값의 기준은 위 공식 리포트다. EXP-3 표는
+  TBD.**
+- **그림.** arm별 결합 T_first(C1 ∨ C2) Kaplan–Meier 생존곡선(중도절단 tick). 생성 경로:
+  `scripts/analyze_exp0.py` → `report.json` → `paper/figures/render_exp0_survival.py` → `exp0-survival.png`.
+  — **EXP-0은 전 arm 사건 0(공식 리포트 측정 5)이다. EXP-3 그림은 TBD.**
+
+**EXP-3 결과는 타깃 역할(`role`)별로 분리 보고한다** *(이 문단은 #239 초안 기준이다. holdout의 실험 배정은 D1, 7.5.6/7.5.7 캠페인 여부는 D3이며 재판정 대기(파일럿 후))*(#239·#246 용어 동일, 역할 간 풀링 없음): `train`(node-tar
+7.5.2) = 1차 **탐색**(R/D/S-u 생존 비교) · `fix-verification`(7.5.6/7.5.7) = 등록 역할 `role=fix-verification` ·
+`hypothesis=H-A` · `exposure=pre-exposed`의 **기노출 수정 검증 쌍**(M2 cross-release 통제 재현
+[cross-release-identity-repro-v1](../../experiments/summaries/cross-release-identity-repro-v1.md)으로 이미 실행됨;
+확증 아님) · `holdout`(sweep 밖) = **확증(confirmatory)**. 그 쌍의 근거는 고정 손 fixture 관찰(observed)뿐이다 —
+**7.5.6은 nested 하드링크 identity 공유(affected, R2)**, 7.5.7은 고정 fixture 2종(toplevel·nested) 모두 거부.
+따라서 7.5.6에 hit 0을 기대하지 않으며, 캠페인 조건의 hit 수는 두 타깃 모두 사전 예측하지 않는다(7.5.7의 '거부'는
+고정 fixture 2종 범위의 관찰일 뿐 퍼징 캠페인 hit 0의 근거가 아니다). 각 역할의 결과는 섞지 않고 타깃별 표로
+제시한다.
+
+**판정 절차(사전등록 규칙의 기계 적용).** 판정은 EXP-0이 아니라 **EXP-3 결과**에 11/18 사전등록된
+GO/NO-GO 규칙과 §4.6.4 판정 시나리오 ①–⑧(research-questions v2)을 **기계적으로** 적용해 결정한다.
+규칙·지표·분모는 결과를 본 뒤 바꾸지 않는다. EXP-0의 hit 수는 검정력 x 산정에 쓰지 않으며, zero-hit은
+NO-GO 사유가 아니다(사전등록 v2 (a)·(d)). *(규칙과 일정은 D7·D11·D12, 재판정 대기(파일럿 후))*
+
+**EXP-0 seed 사전 노출 공개 (결과 아님 — 도구 검증).** EXP-0 사전등록 seed 중 9001–9004는 동결 전 비등록 실행에 이미
+노출됐다. 이 호스트 raw 기준으로 seed 9001은 10런(G1 smoke 3, G1 completion 3, parity 확인 `s3wp` 3, 타이밍 대조 1)이고
+9002–9004는 G1 smoke 각 3런이다. v2.1 사전 노출 절은 seed 9001의 4런만 공개해 6런이 빠졌고, 노출 원장은 7런을 기록해
+`s3wp` 3런이 빠졌다(공식 리포트 편차 9). 이 실행들의 출력은 **결과가 아니며 논문 표·결론에 쓰지 않는다**.
+이 중 G1 smoke는 통합 브랜치 `4b072a5`(image `sha256:22c8734f…`, node-tar 7.5.2), seed 9001–9004 × budget 50에서
+**12/12 완주(abort 0, arm 간 어휘 동등 true)**했고, 그중 **D arm s9002의 exec 42에서 generic oracle C2 이벤트
+1건**(u_viol 1; hardlink `a.txt` → `../outside/sentinel.txt` 뒤 regular `a.txt`)이 관찰됐다 — 출처 PR #223
+(`claude/s3-exp0-launcher`) LOG + 호스트 `~/inodefence-evidence/g1-20261104/smoke/summaries/index.json`
+(sha256 `26235b44…`, [raw-manifest-win-20261104-1421](../../experiments/summaries/raw-manifest-win-20261104-1421.sha256) 71행). 이는 사전등록 판정이 아니라 도구 검증 관측이므로
+**해석하지 않는다**. smoke는 sentinel 설정과 budget이 등록 실행과 달라 등록 결과와 비교하지 않는다. 사전 노출된 seed로 얻은 EXP-0/EXP-3 결과의 독립성 해석상 한계는 §6.7에 둔다.
+
+[^exp0-clock]: evidence: `experiments/summaries/exp0-20261105-report.md` 편차 1. 기록값은 monotonic clock 기준이고, EXP-0 당시 이 호스트의 monotonic clock은 실시간보다 1.091배 빠르게 갔다(합산 1.0914, 셀별 1.0855~1.0964; EXP-0 전용 배율). 환산값은 실시간 기준이며 실시간 시계의 장기 편차는 검증 중이다. 호스트 집계 처리량은 배율 환산이 아니라 실제 경과에서 직접 계산했다(셀 구간 4763, 해시 고정 타임스탬프 4758 exec/h). T_first와 hazard proxy는 실행 수로 세므로 시계와 무관하다.

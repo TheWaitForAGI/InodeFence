@@ -715,3 +715,139 @@ def seed_records_from_rows(
             )
         )
     return records
+
+
+def _two_arm_logrank_chi2(group_a: Sequence[Observation], group_b: Sequence[Observation]) -> float:
+    """Two-arm log-rank chi-square (0.0 when there are no events in the pooled risk set).
+
+    With zero events the statistic is undefined (the covariance is singular -- no risk-set
+    transitions); that is the no-evidence case, so it is reported as 0.0 rather than raised.
+    """
+    if not any(o.event for o in [*group_a, *group_b]):
+        return 0.0
+    stat = logrank_test({"a": list(group_a), "b": list(group_b)})["chi_square"]
+    return float(stat) if stat is not None else 0.0
+
+
+def _two_arm_logrank_observed(
+    group_a: Sequence[Observation], group_b: Sequence[Observation]
+) -> tuple[float, float]:
+    """Observed two-arm log-rank chi-square and the signed ``O_a - E_a`` for arm ``a``.
+
+    ``O_a - E_a > 0`` means arm ``a`` had more events than the null expects -- for
+    right-censored T_first that is EARLIER events, i.e. arm ``a`` is the *faster* arm; ``< 0``
+    means arm ``b`` is faster. The chi-square itself is direction-agnostic (two-sided), so this
+    signed quantity is what tells a rejection apart as acceleration vs the reverse. Zero events
+    -> ``(0.0, 0.0)`` (no evidence, no direction).
+    """
+    if not any(o.event for o in [*group_a, *group_b]):
+        return 0.0, 0.0
+    result = logrank_test({"a": list(group_a), "b": list(group_b)})
+    chi2 = result["chi_square"]
+    oe_a = result["observed_events"]["a"] - result["expected_events"]["a"]
+    return (float(chi2) if chi2 is not None else 0.0), float(oe_a)
+
+
+def seed_block_logrank_permutation(
+    blocks: Sequence[tuple[Observation, Observation]],
+    *,
+    seed: int = 0,
+    max_exact_blocks: int = 12,
+    resamples: int = 10000,
+) -> dict:
+    """Stratified seed-block arm-label permutation log-rank -- ``exact-logrank-permutation-v1``.
+
+    Each block is one seed's paired ``(arm_a, arm_b)`` T_first observations. Under the null the
+    two arms are exchangeable WITHIN a seed, so the reference distribution permutes arm labels
+    block-by-block (never across seeds); this respects the paired design that the ordinary
+    two-sample log-rank's independence assumption violates. The statistic is the two-arm
+    log-rank chi-square and the p-value is ``P(chi2_permuted >= chi2_observed)``. For up to
+    ``max_exact_blocks`` blocks all ``2^n`` label assignments are enumerated EXACTLY; above that
+    a ``seed``-fixed Monte-Carlo sample of ``resamples`` draws is used with a 95% binomial CI on
+    the p-value. Valid at any n (no asymptotic assumption): with few/no events it correctly
+    returns p near 1. ``total_events`` is the observed event count over both arms -- the caller
+    flags underpowered and adds the rule-of-three bound below the registered ``event_threshold``;
+    this function never switches the test.
+    """
+    blocks = list(blocks)
+    n = len(blocks)
+    if n == 0:
+        return {
+            "test": "exact-logrank-permutation-v1",
+            "exact": None,
+            "p_value": None,
+            "observed_chi_square": None,
+            "number_blocks": 0,
+            "total_events": 0,
+            "note": "no paired seed blocks (no seed observed in both arms)",
+        }
+    group_a = [a for a, _ in blocks]
+    group_b = [b for _, b in blocks]
+    observed, observed_oe_a = _two_arm_logrank_observed(group_a, group_b)
+    total_events = sum(1 for obs in [*group_a, *group_b] if obs.event)
+    eps = 1e-9
+
+    def stat_for(bits: Sequence[int]) -> float:
+        a = [blocks[i][1] if bit else blocks[i][0] for i, bit in enumerate(bits)]
+        b = [blocks[i][0] if bit else blocks[i][1] for i, bit in enumerate(bits)]
+        return _two_arm_logrank_chi2(a, b)
+
+    if n <= max_exact_blocks:
+        total = 1 << n
+        ge = sum(
+            1
+            for mask in range(total)
+            if stat_for([(mask >> i) & 1 for i in range(n)]) >= observed - eps
+        )
+        return {
+            "test": "exact-logrank-permutation-v1",
+            "exact": True,
+            "p_value": ge / total,
+            "observed_chi_square": observed,
+            "observed_minus_expected_a": observed_oe_a,
+            "number_blocks": n,
+            "number_permutations": total,
+            "total_events": total_events,
+            "note": "exact: all 2^n within-seed arm-label assignments enumerated",
+        }
+    rng = random.Random(seed)
+    ge = 0
+    for _ in range(resamples):
+        if stat_for([rng.getrandbits(1) for _ in range(n)]) >= observed - eps:
+            ge += 1
+    p = ge / resamples
+    half = 1.96 * math.sqrt(max(p * (1.0 - p), 0.0) / resamples)
+    return {
+        "test": "exact-logrank-permutation-v1",
+        "exact": False,
+        "p_value": p,
+        "p_value_mc_ci95": [max(0.0, p - half), min(1.0, p + half)],
+        "observed_chi_square": observed,
+        "observed_minus_expected_a": observed_oe_a,
+        "number_blocks": n,
+        "resamples": resamples,
+        "seed": seed,
+        "total_events": total_events,
+        "note": f"monte-carlo: 2^{n} too large to enumerate; seed-fixed {resamples} draws",
+    }
+
+
+def holm_adjust(pvalues: Sequence[float]) -> list[float]:
+    """Holm step-down FWER-adjusted p-values, returned in input order.
+
+    For ``m`` raw p-values the j-th smallest (0-based) is scaled by ``m - j``, the sequence is
+    made monotone non-decreasing, then capped at 1. Reject a hypothesis at level ``alpha`` iff
+    its adjusted p-value is ``<= alpha``; this controls the family-wise error at ``alpha``
+    without an independence assumption, and dominates Bonferroni. ``None`` is not accepted --
+    resolve an undefined p-value (e.g. no seed blocks) to ``1.0`` before calling.
+    """
+    m = len(pvalues)
+    if m == 0:
+        return []
+    order = sorted(range(m), key=lambda i: pvalues[i])
+    adjusted = [0.0] * m
+    running = 0.0
+    for rank, idx in enumerate(order):
+        running = max(running, (m - rank) * pvalues[idx])
+        adjusted[idx] = min(1.0, running)
+    return adjusted

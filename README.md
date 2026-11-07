@@ -15,7 +15,7 @@ InodeFence는 TAR archive entry를 생성·변형하고, 실제 extractor(압축
 관리합니다. 2026-10-18 이전 Layer별 이력(capability baseline `8ad07b8`)은 STATUS 하단에 있습니다.
 
 **DESIGNED / IMPLEMENTED / TESTED / EXPERIMENTALLY VALIDATED는 서로 다릅니다.**
-Historical qualification과 formal comparison은 **NOT_RUN**이며, 역사적 취약점을 재발견한 적이
+Historical vulnerability rediscovery(N01)는 성공 조건으로 실행·주장하지 않고, formal comparison(A/B/C/D·powered matched)은 실행됐으나 effectiveness 우위를 보이지 않았습니다(rate CI 미분리·자력발견 음성; M3는 "이름 획득 조건의 관찰(피드백 인과 미입증)", Ledger M3·M4·claims 원장) *(2026-11-03 정정: 이전 "formal comparison NOT_RUN" 정정)*. 역사적 취약점을 재발견한 적이
 없고 현재 취약점을 주장하지 않습니다. 첫 intended qualification pair는 **N01 node-tar
 7.5.2 / 7.5.3**입니다. 과거 감사·요약은 자체 revision의 기록이며 현재 capability baseline이 아닙니다.
 
@@ -182,7 +182,7 @@ InodeFence의 기여 여부는 **선행연구 비교, baseline, ablation, known-
 
 Target 구현 우선순위는 **node-tar → oras-go → 일정이 허용하면 GNU tar**입니다.
 처음부터 모든 target을 동시에 지원하지 않으며, benchmark용 target version은 별도로 고정합니다.
-Node-tar는 disposable target container에서 정상 fixture와 tiny benign configured campaign을 실행합니다. Uncontained target은 gate가 거부합니다. ORAS/GNU-tar adapter와 security evaluation은 다음 단계이며 현재 구현하지 않았습니다.
+Node-tar는 disposable target container에서 정상 fixture와 tiny benign configured campaign을 실행합니다. Uncontained target은 gate가 거부합니다. GNU-tar adapter와 fuzzing 기반 security evaluation은 다음 단계입니다. oras-go adapter는 구현됐습니다(#176, Ledger M4; adapter 수준 일반성 — affected/fixed 통제 reference 차분과 container-integration 체크, self-discovery native run은 right-censored 음성이라 effectiveness 주장 아님).
 
 공격자가 TAR entry를 제어한다고 가정하되, 실행 중 외부 process로 filesystem을 바꾸는 race 모델은 초기 범위에서 제외합니다.
 자세한 경계는 [project-scope.md](docs/research/design/project-scope.md)와 [threat-model.md](docs/research/design/threat-model.md)를 따릅니다.
@@ -246,7 +246,7 @@ Legacy `ExperimentConfig` v1/v2는 B3/legacy mutation만 지원하며 별도 `Po
 interrupted evidence와 full-pipeline timing의 한계는 [STATUS](docs/STATUS.md)를 따릅니다.
 현재 verification/statistics는 관찰된 contract evidence이며 known-class rediscovery나 vulnerability를
 자동 판정하지 않습니다. Python reference는 architecture 검증용이고 최종 benchmark target이 아닙니다.
-GNU invocation은 benign fixture allowlist에 제한돼 있고 ORAS adapter는 없습니다.
+GNU invocation은 benign fixture allowlist에 제한돼 있습니다. oras-go adapter는 구현됐습니다(#176, Ledger M4; adapter 수준 일반성).
 Canonical baseline 검증 근거는 [main CI](https://github.com/TheWaitForAGI/InodeFence/actions/runs/37248955432)입니다.
 
 ## 개발 환경과 현재 실행 가능한 명령
@@ -284,7 +284,7 @@ make probe CASE=hardlink
 
 Probe는 Python `tarfile`의 `data` filter를 사용하는 학습·관찰 도구입니다.
 임시 sandbox를 사용하고 실행 후 정리합니다. 기본 CASE는 `regular-file`이며 `directory`, `hardlink`, `symlink`도 지원합니다.
-이 명령은 node-tar/ oras-go adapter나 자동 security oracle을 실행하지 않습니다. Campaign CLI는 safe Python reference만 지원합니다. [개발 pilot](scripts/reference_campaign_pilot.py)과 [설정 기반 CLI](scripts/run_configured_reference.py)가 있습니다.
+이 명령은 node-tar/ oras-go adapter나 자동 security oracle을 실행하지 않습니다. 이 reference campaign CLI는 safe Python reference만 지원합니다. 실제 node-tar effect/자력발견 캠페인은 `container_host` 컨트롤러 모드(effect-campaign·effect-demo-historical)로 실행합니다(Ledger M1). [개발 pilot](scripts/reference_campaign_pilot.py)과 [설정 기반 CLI](scripts/run_configured_reference.py)가 있습니다.
 
 Exact Python version이 설정과 일치하는 Linux 환경에서 작은 설정 기반 실행을 기록합니다. 예제는 Python 3.12.3이며 다른 patch version에서는 [설정](experiments/configs/README.md)을 명시적으로 갱신해야 합니다.
 

@@ -38,7 +38,7 @@ SHA-256 목록이다. DESIGNED / IMPLEMENTED / TESTED / EXPERIMENTALLY VALIDATED
 
 | arm | retention | operator 선택 | 뜻 |
 | --- | --- | --- | --- |
-| **R** | 없음 | uniform | 무작위 탐색(바닥) |
+| **R** | 없음 | uniform | 무작위 탐색 |
 | **D** | 구조 커버리지(`SearchPolicy.D` = target-agnostic extraction 구조 키) | uniform | 커버리지 피드백 대조 |
 | **S-u** (주) | identity/effect/boundary-attempt 상태 키 | uniform | InodeFence retention 피드백 |
 | S-a (선택, ablation) | S-u와 동일 | adaptive | 스케줄러 효과 분리용, 주 비교 아님 |
@@ -63,7 +63,7 @@ CVE 문자열·버전·PoC 바이트를 넣지 않은 generic C0/C1/C2가 **≥ 
 ## H-C (보조) — 어휘 음성 통제
 
 현재 generic 어휘로는 기본 sentinel 이름을 철자할 수 없고(코드상 사실: `src/inodefence/mutator/m1.py`의
-`COMPONENTS` 7토큰, `m1_addressing.py` 주석), 실험상 A1 0/19 완주·A3blind 6셀 7,983 step에서 C1이 관찰되지
+`COMPONENTS` 7토큰, `m1_addressing.py` 주석), 실험상 A1(generic 어휘, effect retention; 이름 철자 불가) 0/19 완주·A3blind 6셀 7,983 step에서 C1이 관찰되지
 않았다(음성 통제, observed). 외부 객체 이름이 어휘 토큰과 일치하는 설정에서는 도달할 수 있으므로 일반적
 "구조적 불가"로 단정하지 않는다. 이는 위협 모델 전제(이름을 알아야 도달)를 지지하는 **미관찰** 결과이지
 effectiveness 주장이 아니다.

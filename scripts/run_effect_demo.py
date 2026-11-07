@@ -8,10 +8,11 @@ evidence. `native_demo_report` runs inside the trusted Linux controller
 import argparse
 import json
 import sys
+import traceback
 from collections import Counter
 from collections.abc import Callable, Mapping
 from hashlib import sha256
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from time import perf_counter
 
 from inodefence.effect_campaign import (
@@ -95,6 +96,36 @@ HISTORICAL_MUTATION_POLICY = MutationPolicy.M1_PROTECTED_COMPONENTS_ESCAPE_HARDL
 #: An exception chain longer than this is cut; the record says so.
 ERROR_CHAIN_LIMIT = 8
 ERROR_CHAIN_MESSAGE_LIMIT = 2000
+#: Frames kept per exception, innermost first to survive; ``frames_cut`` counts the rest.
+ERROR_CHAIN_FRAME_LIMIT = 24
+
+
+def _frame_file(path: str) -> str:
+    """Repository-relative when recognizable, otherwise the base name. Never an absolute path."""
+    parts = PurePosixPath(path).parts
+    for root in ("inodefence", "scripts"):
+        if root in parts:
+            last = len(parts) - 1 - parts[::-1].index(root)
+            return "/".join(parts[last:])
+    return parts[-1] if parts else ""
+
+
+def _frames(error: BaseException) -> tuple[list[dict[str, object]], int]:
+    """Where an exception travelled: file, line and function of each frame, outermost first.
+
+    The last frame is the ``raise``. Reads code object names and line numbers only: no source
+    line, no local variable, no argument. The same message can come from several call sites, so
+    this is what tells them apart.
+    """
+    frames: list[dict[str, object]] = [
+        {
+            "file": _frame_file(frame.f_code.co_filename),
+            "line": line,
+            "function": frame.f_code.co_qualname,
+        }
+        for frame, line in traceback.walk_tb(error.__traceback__)
+    ]
+    return frames[-ERROR_CHAIN_FRAME_LIMIT:], max(0, len(frames) - ERROR_CHAIN_FRAME_LIMIT)
 
 
 def exception_chain(error: BaseException) -> list[dict[str, object]]:
@@ -112,10 +143,13 @@ def exception_chain(error: BaseException) -> list[dict[str, object]]:
             chain.append({"truncated": True})
             break
         seen.add(id(current))
+        frames, frames_cut = _frames(current)
         chain.append(
             {
                 "type": f"{type(current).__module__}.{type(current).__qualname__}",
                 "message": str(current)[:ERROR_CHAIN_MESSAGE_LIMIT],
+                "frames": frames,
+                "frames_cut": frames_cut,
             }
         )
         current = current.__cause__ or current.__context__

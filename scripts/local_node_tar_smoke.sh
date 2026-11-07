@@ -96,6 +96,11 @@ else
   CONTROLLER_EVIDENCE="/tmp/inodefence-node-smoke-$LABEL"
   HOST_EVIDENCE="$EVIDENCE_DIR/inodefence-node-smoke-$LABEL"
 fi
+# Written by the host broker, which runs from the repository root: keep it absolute.
+case "$HOST_EVIDENCE" in
+  /*) HOST_CALL_LOG="${HOST_EVIDENCE%.json}.calls.jsonl" ;;
+  *) HOST_CALL_LOG="$PWD/${HOST_EVIDENCE%.json}.calls.jsonl" ;;
+esac
 
 STEP="setup"
 CREATED_VOLUME=0
@@ -227,7 +232,7 @@ if [ "$MODE" = demo-historical ]; then
   [ -n "${DEMO_SENTINEL_SEED:-}" ] && DEMO_ARGS+=(--sentinel-seed "$DEMO_SENTINEL_SEED")
   [ -n "${DEMO_OBSERVER_INTEGRITY_POLICY:-}" ] &&
     DEMO_ARGS+=(--observer-integrity-policy "$DEMO_OBSERVER_INTEGRITY_POLICY")
-  host --image "$IF_HISTORICAL_IMAGE" --tar-version "$TAR_VERSION" \
+  host --image "$IF_HISTORICAL_IMAGE" --tar-version "$TAR_VERSION" --call-log "$HOST_CALL_LOG" \
     --evidence "$CONTROLLER_EVIDENCE" ${DEMO_ARGS[@]+"${DEMO_ARGS[@]}"} effect-demo-historical
   exit 0
 fi
@@ -243,7 +248,8 @@ if [ "$MODE" = demo ]; then
   [ -n "${DEMO_SENTINEL_SEED:-}" ] && DEMO_ARGS+=(--sentinel-seed "$DEMO_SENTINEL_SEED")
   [ -n "${DEMO_OBSERVER_INTEGRITY_POLICY:-}" ] &&
     DEMO_ARGS+=(--observer-integrity-policy "$DEMO_OBSERVER_INTEGRITY_POLICY")
-  host --image "$IF_NODE_IMAGE" --evidence "$CONTROLLER_EVIDENCE" ${DEMO_ARGS[@]+"${DEMO_ARGS[@]}"} effect-demo
+  host --image "$IF_NODE_IMAGE" --call-log "$HOST_CALL_LOG" --evidence "$CONTROLLER_EVIDENCE" \
+    ${DEMO_ARGS[@]+"${DEMO_ARGS[@]}"} effect-demo
   exit 0
 fi
 

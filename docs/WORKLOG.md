@@ -157,3 +157,4 @@ success 케이스(exit 0)에서 발생한 native 관찰 무결성 결함(malform
 - `ResetVerification` 필드명·극성은 레인3 `evaluation/abort_classification`의 ResetFailureDetail(reset_residual, reset_other_path_change; True=실패)과 일치 → step 4가 레코드 1:1 매핑. 그 모듈은 #203이라 step 4(스택)에서 import.
 - 격리·단일경로·synthetic sha256 전부 불변. R4 실행 백엔드(컨테이너 백엔드·브로커 전송·isolation 정책 모델) 편집 0건 — 변경 없이 조합만.
 - make check(기본 루트 `/var/lib/inodefence`): ruff/format/pyright 0, pytest 2227 passed/4 skip, env-check·docs-check PASS. (per-worktree 루트는 하드코딩 때문에 백엔드 테스트 10건 결정론 실패라 기본 루트 사용.)
+- 2026-11-07 **막힘(가드 R4):** hazard 파일럿 abort 조사에서 R4 파일을 grep으로 읽는 구문과 로그를 awk로 읽는 구문을 한 셸 명령에 묶었다가 차단됨. 수정 의도는 없었고 파일 변경도 0. 우회하지 않고 그 단계를 멈춤. `create_command` 인자 재확인은 하지 않았으므로, abort가 입력 내용과 무관하다는 판단은 추론으로 남김.

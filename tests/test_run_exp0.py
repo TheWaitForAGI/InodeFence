@@ -362,6 +362,26 @@ def test_archive_attempt_numbers_increase(tmp_path: Path, prereg_file: Path) -> 
     ]
 
 
+def test_archive_attempt_moves_the_call_log(tmp_path: Path, prereg_file: Path) -> None:
+    """A retry starts its own call log; the earlier attempt's records do not mix into it."""
+    plan = _plan(prereg_file)
+    cell = plan.cells()[0]
+    out = tmp_path / "exp0"
+    out.mkdir()
+    calls = cell_paths(cell, out)["calls"]
+    assert calls.name.endswith(".calls.jsonl")
+    calls.write_text('{"kind":"header"}\n')
+    assert archive_attempt(cell, out) == 1
+    assert not calls.exists()
+    assert (out / "attempts" / "7.5.2-R-s9001.attempt1.calls.jsonl").is_file()
+
+
+def test_call_log_name_matches_the_harness(tmp_path: Path, prereg_file: Path) -> None:
+    cell = _plan(prereg_file).cells()[0]
+    paths = cell_paths(cell, tmp_path)
+    assert paths["calls"].name == paths["report"].name.removesuffix(".json") + ".calls.jsonl"
+
+
 def test_include_s_a_requires_declaration(
     prereg_file: Path, tmp_path: Path, clean_engine: None
 ) -> None:

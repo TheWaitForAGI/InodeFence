@@ -12,8 +12,9 @@ from time import monotonic, sleep
 from typing import Any
 
 import pytest
+from scripts import gen_exp3_tables, run_effect_demo, run_exp0
 from scripts import run_concurrency_benchmark as bench
-from scripts import run_effect_demo, run_exp0
+from scripts.analyze_exp0 import main as analyze_main
 from scripts.run_effect_demo import synthetic_demo_report
 from scripts.run_exp0 import (
     WATCHDOG_RETURNCODE,
@@ -2076,3 +2077,112 @@ def test_single_key_index_entries_gain_only_default_target_fields(
     assert not any(
         p.is_dir() and p.name != "summaries" and p.name != "attempts" for p in out.iterdir()
     )
+
+
+# ---- launcher to tables, one registered target (PR-E) ------------------------------------------
+
+ONE_TARGET_TABLES = {
+    "holdout": ("T-EXP2-1", "T-EXP2-2", "T-EXP2-3", "T-EXP2-4", "T-EXP2-5", "T-EXP2-6"),
+    "train": ("T-EXP3-1", "T-EXP3-2", "T-EXP3-3"),
+}
+ONE_TARGET_HAND = {
+    "abort_split": {
+        "target_not_started": 0,
+        "lost_after_execution": 0,
+        "first_error_unconfirmed": 0,
+    },
+    "operating_stop": {"fired": False},
+}
+
+
+def _one_target_args(args: list[str], role: str) -> list[str]:
+    """A real EXP-3 or EXP-2 registration has one target: the tables refuse several."""
+    dropped = "node-tar-7.9.9" if role == "train" else "node-tar-7.5.2"
+    file = Path(args[args.index("--preregistration") + 1])
+    lines = file.read_text(encoding="utf-8").splitlines(keepends=True)
+    kept = [
+        line
+        for line in lines
+        if not line.startswith(f"targets.{dropped}.")
+        and not (role == "train" and line.startswith("confirmatory_family"))
+    ]
+    file.write_text("".join(kept), encoding="utf-8")
+    result = list(args)
+    for index, value in enumerate(result):
+        if value.startswith(f"{dropped}="):
+            del result[index - 1 : index + 1]
+            break
+    return result
+
+
+@pytest.mark.parametrize("role", ["holdout", "train"])
+def test_a_launcher_run_feeds_the_analyzer_and_every_table(
+    role: str, tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch
+) -> None:
+    """The real keys, not ones a fixture wrote: launcher index, analyzer report, table text."""
+    out, args, clock = _deadline_setup(tmp_path, monkeypatch, DEADLINE - timedelta(hours=10))
+    args = _one_target_args(args, role)
+    cells = _deadline_plan(args).cells()
+
+    def timed(cell: Any, output: Path, result: Any) -> Any:
+        clock["now"] += timedelta(seconds=30)  # the run span must be real for the GO inputs
+        paths = cell_paths(cell, output)
+        report = json.loads(paths["report"].read_text(encoding="utf-8"))
+        report["timing"] = {
+            "total_seconds": 10.0,
+            "per_case": [{"wall_seconds": 1.0, "target_seconds": 0.5} for _step in report["steps"]],
+        }
+        paths["report"].write_text(json.dumps(report), encoding="utf-8")
+        return result
+
+    monkeypatch.setattr(
+        run_exp0,
+        "run_cell_with_watchdog",
+        _runner_with({cell.run_id: timed for cell in cells}),
+    )
+    assert main(args) == 0
+
+    report_path = tmp_path / "report.json"
+    assert (
+        analyze_main(
+            ["--index", str(out / "summaries" / "index.json"), "--output", str(report_path)]
+        )
+        == 0
+    )
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    hand = tmp_path / "hand.json"
+    hand.write_text(json.dumps(ONE_TARGET_HAND), encoding="utf-8")
+    decision = tmp_path / "decision.json"
+    decided_at = (DEADLINE - timedelta(hours=2)).isoformat()
+    decision.write_text(json.dumps({"decided_at": decided_at}), encoding="utf-8")
+    inputs = gen_exp3_tables.Inputs(report, out / "cell-results.jsonl", hand, decision)
+    tables = {name: gen_exp3_tables.render(name, inputs) for name in ONE_TARGET_TABLES[role]}
+
+    # The launcher's cell values are the ones the analyzer's dense table summed.
+    budget = 4 if role == "holdout" else 6
+    target_id = "node-tar-7.9.9" if role == "holdout" else "node-tar-7.5.2"
+    section = report["by_target"][target_id]
+    arms = {cell.arm.value for cell in cells}
+    assert set(section["dense_signals_registered"]["by_arm"]) == arms
+    for arm in arms:
+        by_arm = section["dense_signals_registered"]["by_arm"][arm]
+        assert by_arm["recorded_steps"] == budget * 2  # two seeds, every cell complete
+    for cell in cells:
+        record = json.loads(cell_paths(cell, out)["summary"].read_text(encoding="utf-8"))
+        keys = record["dense_detail"]["boundary_keys"]
+        assert len(keys) == record["summary"]["boundary_attempt_keys"]
+
+    if role == "train":
+        assert report["confirmatory"] is None
+        text = tables["T-EXP3-2"]
+        assert "| e: 기록/계획 step 비율 | 1.000 | 입력 |" in text
+        assert "| 시작하지 않은 셀 | 0 | 기록 |" in text
+        assert "미산출" not in text and "정지 0회, 누적 공백 0.0 h" in text
+        assert f"GO 판정 시각(실시간): {decided_at}" in text
+    else:
+        contrast = report["confirmatory"]["contrasts"][0]
+        assert contrast["contrast"] == "S-u-vs-R" and contrast["number_seed_blocks"] == 2
+        assert "| S-u-vs-R | 2 |" in tables["T-EXP2-2"]
+        assert "- 운영 중단: 발동 없음" in tables["T-EXP2-3"]
+        assert "| S-u | exclude |" in tables["T-EXP2-4"]
+        assert "| 실행 수 | 16 |" in tables["T-EXP2-5"]  # two arms, two seeds, budget 4

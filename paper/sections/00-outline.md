@@ -51,7 +51,7 @@ Capability Ledger)로 추적 가능하다.
 
 ### powered 판정 결과 소절
 
-- [Results §5.3.3 rate 판정](06-results.md) — M3 powered matched A1 vs A3full(동일 budget 2000,
+- [Results §5.3.3 rate 판정](06-results.md) — M3 powered matched A1(generic 어휘, effect retention; 이름 철자 불가) vs A3full(동일 budget 2000,
   disjoint seed {100..129}, A1 0/19 vs A3full 1/17): **CI 미분리(검정력 부족)**, 신규 seed s101에서 재현 1건 추가(인과 강화 아님).
 - [Results §5.4.3 decompress powered 판정](06-results.md) — M4.5 decompress 맥+윈도우 통합:
   **0/28 사후 분석 기준 음성(사전등록 판정 아님)**(Wilson ≤0.121; 등록 hit 정의는 C0 포함 discovered_violation, C1/C2 분리·0/28 합산은 사후 축).

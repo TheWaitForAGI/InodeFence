@@ -18,7 +18,7 @@ M3(§5.3)의 근거표다. hit = **step에서 `oracle.C1` AND `feedback.contract
 | 관련 PR | #151 (메커니즘·실제규모·어휘 제거 대조, main 머지 `d44d903`) |
 
 arm 정의: `A3full` = `uniform-generic-m1-state-aware-escape-hardlink-v1`; `A3blind` =
-`...-state-aware-escape-hardlink-blind-v1`(관찰 이름에서 EXTERNAL region 제외); `A1` = 무작위 바닥
+`...-state-aware-escape-hardlink-blind-v1`(관찰 이름에서 EXTERNAL region 제외); `A1` = generic 어휘, effect retention; 이름 철자 불가
 (token-clean, state-aware 외부 주소지정 없음). search = `effect-feedback-v2-or-violation-v1-boundary-attempt-v1-adaptive-mutation-v1`.
 
 ## 대조표 (observed, raw step 로그 재집계)

@@ -12,6 +12,8 @@ the benchmark's selection rules. A pilot verdict is not changed by anything here
 
 Sealed raw: from step records only ``index`` and ``case_id`` are taken, and a report is opened only
 for a cell that exited nonzero, for its ``aborted`` stub. No oracle field reaches the output.
+Run it once at the end of a stage, not per block. Do not join the common prefix with the pilot's
+event positions to count re-run events before EXP-3 is frozen.
 """
 
 from __future__ import annotations
@@ -456,6 +458,9 @@ def render_markdown(report: Mapping[str, Any]) -> str:
         "",
         "경로 일치는 `case_id` 순서의 일치이고 같은 결과라는 뜻이 아니다. "
         "경로가 갈라진 원인은 이 보고서로 말할 수 없다.",
+        "",
+        "경로 일치 구간의 값은 파일럿에서 추론 가능하다. "
+        "EXP-3 동결 전에는 공통 앞부분을 파일럿 사건 위치와 결합해 재실행 사건 수를 만들지 않는다.",
         "",
         f"- 파일럿 엔진: `{report['pilot_head']}`, 재실행 엔진: {report['rerun_heads']}",
         f"- 입력 종속 신호: **{report['input_dependence_signal']}** "

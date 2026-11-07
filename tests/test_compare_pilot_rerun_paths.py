@@ -272,6 +272,15 @@ def test_oracle_values_do_not_reach_the_output(tmp_path: Path) -> None:
     assert ORACLE_SECRET not in render_markdown(report)
 
 
+def test_report_states_what_a_matching_path_implies(tmp_path: Path) -> None:
+    pilot = pilot_map(tmp_path)
+    cell = make_cell(rerun_dir(tmp_path), "r", ["c0", "c1", "c2", "c3"])
+    result = compare(pilot, [RerunBlock("b1", 2, (cell,))], 5)
+    text = render_markdown({"label": "t", "pilot_head": "h", "rerun_heads": [], **result})
+    assert "경로 일치 구간의 값은 파일럿에서 추론 가능하다" in text
+    assert "재실행 사건 수를 만들지 않는다" in text
+
+
 def test_the_arm_is_matched_by_policy_not_label(tmp_path: Path) -> None:
     pilot = pilot_map(tmp_path)
     cell = make_cell(rerun_dir(tmp_path), "r", ["c0", "c1", "c2", "c3"], label="renamed")

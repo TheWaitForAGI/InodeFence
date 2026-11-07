@@ -133,13 +133,16 @@ def _risk_table(arms: Sequence[list[Observation]]) -> list[_RiskRow]:
     return rows
 
 
+SINGULAR_PIVOT = 1e-12
+
+
 def _invert(matrix: list[list[float]]) -> list[list[float]]:
     """Invert a small square matrix by Gauss-Jordan elimination (pure Python)."""
     n = len(matrix)
     aug = [list(row) + [1.0 if i == j else 0.0 for j in range(n)] for i, row in enumerate(matrix)]
     for col in range(n):
         pivot = max(range(col, n), key=lambda r: abs(aug[r][col]))
-        if abs(aug[pivot][col]) < 1e-12:
+        if abs(aug[pivot][col]) < SINGULAR_PIVOT:
             raise ValueError("log-rank covariance matrix is singular; check for empty arms")
         aug[col], aug[pivot] = aug[pivot], aug[col]
         pivot_value = aug[col][col]
@@ -191,10 +194,15 @@ def logrank_test(arms: Mapping[str, Sequence[Observation]]) -> dict:
                 covariance[g][h] += term
                 covariance[h][g] += term
     deviation = [observed[g] - expected[g] for g in range(k - 1)]
-    inverse = _invert(covariance)
-    statistic = sum(
-        deviation[i] * inverse[i][j] * deviation[j] for i in range(k - 1) for j in range(k - 1)
-    )
+    if k == 2 and abs(covariance[0][0]) < SINGULAR_PIVOT:
+        # No event carries variance: a lone arm at risk, or every member of a risk set failing
+        # together. Nothing separates the arms, which is chi-square 0 and not an error.
+        statistic = 0.0
+    else:
+        inverse = _invert(covariance)
+        statistic = sum(
+            deviation[i] * inverse[i][j] * deviation[j] for i in range(k - 1) for j in range(k - 1)
+        )
     statistic = max(0.0, statistic)
     df = k - 1
     return {

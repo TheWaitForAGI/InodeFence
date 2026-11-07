@@ -1,45 +1,35 @@
-# InodeFence 시연 영상 대본 (초안)
+# InodeFence 소개 영상 대본
 
-**범위.** 구현된 기능을 실제 명령으로 보여 주는 영상이다. 가설을 지지한다고 주장하지 않는다. 핵심 RQ는 미판정이고
-EXP-3 결과는 없다.
+**범위.** 구현된 기능을 실제 실행 기록으로 보여 주는 영상이다. 가설을 지지한다고 주장하지 않는다. 핵심 RQ는 미판정이고
+EXP-3·EXP-2 결과는 없다.
 
-**길이.** 본편 4:55. 확장 장면 4개를 넣으면 6:55다. 이전 세션이 붙임에서 옮겨 적은 기록은 소개영상 5분 이하이고, 작업
-지시는 5–7분이다. **서식을 대조(UNVERIFIED)해 길이를 정하기 전까지는 5분 안에 드는 본편을 기본으로 한다.**
+**길이.** 서식 기준은 5분 이내다(붙임1 표 3 ②). 본편 배정은 4:55이고 낭독 길이는 실측 전이다.
 
-## 명령 검증 기록
+## 실행 기록
 
-호스트: WSL2 x86_64, Docker 29.8.0, Python 3.12.3, main `23e5c66`. 검증일: 2026-11-06. 소요 시간은 이 호스트 clock 기준의
-대략값이다(이 clock은 실제보다 빠르게 간다).
+터미널 장면은 새로 실행하지 않고 W2 기록을 재생한다. 기록은 `~/inodefence-evidence/demo-recordings-20261107/`에 있고
+(README, `SHA256SUMS`), main `f36a1ce`에서 2026-11-07 13:24–13:25 KST에 각 장면을 1회 실행한 `demo run`이다. 결과 주장이 아니다.
 
-| 장면 | 명령 | 결과 |
-| --- | --- | --- |
-| 3 | `PYTHONPATH=src python3 -m scripts.oracle_fixture_check` | exit 0, fixture 4종 모두 `(expected)` |
-| 4 | `SKIP_BUILD=1 INODEFENCE_EVIDENCE_DIR=... make demo` | exit 0, 약 34초, `PASSED: node-tar demo` |
-| 5 | `python3 experiments/repro/cross_release_identity.py --out ...` | exit 0, 약 5초, `summary.json`이 저장소 raw와 동일 |
-| 7 | `python3 scripts/make_raw_manifest.py --verify ... --root ...` | exit 0, `66 ok, 0 mismatched, 0 missing, 0 extra` |
-| 6, 7, E1–E4 | `grep`, `sed`, `jq` 표시 명령 | 출력 확인 |
+```bash
+scriptreplay --log-timing sceneN-take1.timing --log-out sceneN-take1.typescript
+```
 
-**검증하지 않은 것.** `SKIP_BUILD=1` 없는 `make demo`(이미지 재빌드 포함)는 이번에 돌리지 않았다. 공유 태그
-`inodefence-controller:local` 등을 다시 만들기 때문이다. 이 호스트에서 통과한 이전 기록은 LOG 10/27에 있다.
+| 장면 | 파일 | 재생 길이 | 배정 | 기대 출력 |
+| --- | --- | --- | --- | --- |
+| 3 | `scene3-take1.*` | 0.14 s | 0:35 | fixture 4종 모두 `(expected)` |
+| 4 | `scene4-take1.*` | 34.49 s | 1:10 | `steps=20`, `oracle violations: 0`, `PASSED` |
+| 5 | `scene5-take1.*` | 4.69 s | 0:50 | `IDENTICAL` |
+| 7 | `scene7-take1.*` | 1.12 s | 0:35 | `verify OK: 66 ok`, EXP-0 표 |
 
-## 녹화 전 준비 (화면 밖)
+**편집 규칙.**
 
-1. **EXP-3 등록 실행 중에는 녹화하지 않는다.** 처리량 측정이 호스트 상태에 민감하고 등록 실행 중에는 호스트를 동결한다.
-2. `docker info`에서 엔진을 확인한다. native dockerd가 소켓을 잡으면 `make demo`가 격리 정책 검사에서 실패할 수 있다.
-3. 이미지를 확인한다: `docker images inodefence-node-tar-effect`에 7.5.2, 7.5.3, 7.5.6, 7.5.7, 7.5.8이 있어야 한다. 없는
-   릴리스만 아래처럼 빌드한다. **7.5.2는 동결 이미지이므로 다시 빌드하지 않는다.**
+1. 재생 장면마다 자막 "실행 기록 재생(2026-11-07)"을 넣는다.
+2. 출력 내용을 편집으로 고치지 않는다. 시간은 정지 화면과 스크롤로 채운다. 재생 속도를 바꾸면 자막에 배속을 적고, 잘라내면 잘라낸 구간을 표시한다.
+3. `typescript`를 `cat`으로 보여 주지 않는다. 1행의 내부 세션 경로가 나온다. `scriptreplay` 출력에는 머리 줄과 끝 줄이 없음을 확인했다(4장면 모두 0건).
+4. 숫자 자막은 W3 검증 뒤 확정한다. 편집본은 W4가 검수한다.
+5. 렌더링 판을 기본으로 쓰고, 사람이 Windows 터미널 창을 녹화하면 그것으로 교체한다. 자막은 같다.
 
-   ```bash
-   BUILDX_NO_DEFAULT_ATTESTATIONS=1 docker build -q -f tools/node-tar/effect/Dockerfile \
-     --build-arg TAR_VERSION=7.5.3 -t inodefence-node-tar-effect:7.5.3 .
-   ```
-
-4. 장면 7의 raw는 실험 호스트에만 있으므로 그 호스트에서 찍는다. 매니페스트(#262)와 공식 리포트(#268)는 저장소에 있다.
-5. 이 호스트에는 `python`이 없다. 대본의 `python3`를 그대로 쓴다.
-6. 터미널 글꼴을 키우고, 프롬프트와 환경변수에 토큰이나 개인정보가 보이지 않는지 확인한다.
-7. 찍기 전에 `rm -rf /tmp/inodefence-video`로 이전 결과를 지운다(장면 4와 E1의 파일 glob이 1개만 잡히도록).
-
-**쓰지 않는 화면.** 생존 곡선과 dense 신호는 올리지 않는다. M3 그림은 2026-11-06에 재렌더한 판만 쓴다(제목이 "name-acquisition
+**쓰지 않는 화면.** 생존 곡선, dense 신호, 파일럿 콘솔, 벤치마크 raw. M3 그림은 2026-11-06에 재렌더한 판만 쓴다(제목이 "name-acquisition
 condition"인 판). 그 전 판은 철회한 인과 문구를 담고 있다.
 
 ## 본편
@@ -48,18 +38,18 @@ condition"인 판). 그 전 판은 철회한 인과 문구를 담고 있다.
 
 - **화면:** 제목 슬라이드 "InodeFence: TAR 추출 경계위반 탐색 프로토타입" + 자막 "구현 시연 · 가설 검정 결과 아님".
 - **내레이션:** InodeFence는 TAR 추출의 보안 경계위반을 탐색하는 연구 프로토타입입니다. 이 영상은 지금까지 구현한 기능을
-  실제 명령으로 보여 줍니다. 핵심 가설의 검정 결과는 아직 없습니다.
+  실행 기록으로 보여 줍니다. 핵심 가설의 검정 결과는 아직 없습니다.
 
 ### 장면 2 (0:25–1:00) 문제와 판정 기준
 
-- **화면:** 슬라이드 또는 `docs/research/design/security-contracts.md`의 C0/C1/C2 정의.
+- **화면:** 슬라이드 2장. 하드링크로 inode를 공유하는 관계, C0/C1/C2 정의(`docs/research/design/security-contracts.md`).
 - **내레이션:** 아카이브의 하드링크 하나로, 추출된 객체가 폴더 밖 파일과 같은 inode를 공유할 수 있습니다. 경로 문자열만
   보면 놓칠 수 있는 관계입니다. 그래서 세 규칙으로 판정합니다. C0은 추출 폴더 밖의 경로 변화, C1은 보호 대상과의 inode
   공유, C2는 보호 대상의 내용이나 메타데이터 변화입니다. 판정 조건에 CVE 번호나 릴리스 번호는 없습니다.
 
 ### 장면 3 (1:00–1:35) Oracle 판정 확인
 
-- **명령:**
+- **기록한 명령:**
 
   ```bash
   PYTHONPATH=src python3 -m scripts.oracle_fixture_check
@@ -81,13 +71,14 @@ condition"인 판). 그 전 판은 철회한 인과 문구를 담고 있다.
 
 ### 장면 4 (1:35–2:45) 실제 node-tar 루프 (M1, TESTED)
 
-- **명령:**
+- **화면:** 구성도 슬라이드(`paper/figures/system-architecture.png`), 이어서 실행 기록 재생.
+- **기록한 명령:**
 
   ```bash
   SKIP_BUILD=1 INODEFENCE_EVIDENCE_DIR=/tmp/inodefence-video make demo
   ```
 
-- **기대 출력** (약 34초, 끝부분):
+- **기대 출력** (끝부분):
 
   ```text
   step 20/20  duplicate_entry  success  ...  C0 ok C1 ok C2 ok  new-keys 2  reward 1  corpus 6->7  weight duplicate_entry 1->2
@@ -99,14 +90,15 @@ condition"인 판). 그 전 판은 철회한 인과 문구를 담고 있다.
   PASSED: node-tar demo (context=default)
   ```
 
-- **내레이션:** 이제 실제 node-tar 7.5.22로 루프를 돌립니다. 명령 하나로 입력 생성, 실행, entry별 상태 관찰, 판정, 피드백,
-  다음 mutation 선택이 이어집니다. 각 줄이 한 번의 실행이고, 스무 번 모두 C0, C1, C2 위반은 없습니다. 새 상태 키가 나오면
-  그 입력을 corpus에 남기고 해당 연산의 가중치를 올립니다. 이것은 피드백이 다음 선택에 연결된다는 동작 확인입니다. 탐색
-  성능을 뜻하지 않고, 취약점 발견을 주장하지도 않습니다.
+- **내레이션:** 다음은 실제 node-tar 7.5.22의 실행 기록입니다. seed 123, budget 20입니다. 명령 하나로 입력 생성, 실행, entry별
+  상태 관찰, 판정, 피드백, 다음 mutation 선택이 이어집니다. 각 줄이 한 번의 실행이고, 스무 번 모두 C0, C1, C2 위반은 없습니다.
+  위반 0은 안전성을 뜻하지 않습니다. 새 상태 키가 나오면 그 입력을 corpus에 남기고 해당 연산의 가중치를 올립니다. 이것은
+  피드백이 다음 선택에 연결된다는 동작 확인입니다. 탐색 성능을 뜻하지 않고, 취약점 발견을 주장하지도 않습니다.
 
 ### 장면 5 (2:45–3:35) 통제 재현 (M2, TESTED)
 
-- **명령:**
+- **화면:** 실행 기록 재생, 이어서 `paper/figures/m2-cross-release-evidence.png`.
+- **기록한 명령:**
 
   ```bash
   python3 experiments/repro/cross_release_identity.py --out /tmp/inodefence-video/repro
@@ -114,7 +106,7 @@ condition"인 판). 그 전 판은 철회한 인과 문구를 담고 있다.
   diff /tmp/inodefence-video/repro/summary.json experiments/repro/evidence/summary.json && echo IDENTICAL
   ```
 
-- **기대 출력** (약 5초):
+- **기대 출력:**
 
   ```text
   "toplevel_hardlink": { "fixed_pair": ["7.5.2","7.5.3"], "boundary_ok": true, ... }
@@ -124,30 +116,21 @@ condition"인 판). 그 전 판은 철회한 인과 문구를 담고 있다.
   IDENTICAL
   ```
 
-- **내레이션:** 다음은 통제 재현입니다. 손으로 만든 하드링크 fixture 두 개를 node-tar 릴리스 다섯 개에 넣습니다. 최상위
-  fixture에서 7.5.2는 외부 참조 파일과 inode를 공유하고 nlink가 1에서 2로 늘어납니다. 7.5.3은 거부합니다. 중첩 fixture는
-  7.5.6이 공유하고 7.5.7이 거부합니다. 판정 조건에 릴리스 번호나 정답 경로는 없습니다. 고정 쌍과 CVE의 대응은 추론이고,
-  이것은 퍼저가 스스로 찾은 결과가 아닙니다.
+- **내레이션:** 다음은 통제 재현의 실행 기록입니다. 손으로 만든 하드링크 fixture 두 개를 node-tar 릴리스 다섯 개에 넣었습니다.
+  최상위 fixture에서 7.5.2는 외부 참조 파일과 inode를 공유하고 nlink가 1에서 2로 늘어납니다. 7.5.3은 거부합니다. 중첩
+  fixture는 7.5.6이 공유하고 7.5.7이 거부합니다. 판정 조건에 릴리스 번호나 정답 경로는 없습니다. 고정 쌍과 CVE의 대응은
+  추론이고, 이것은 퍼저가 스스로 찾은 결과가 아닙니다.
 
 ### 장면 6 (3:35–4:05) 자력 발견의 현재 판정 (M3)
 
-- **명령:**
-
-  ```bash
-  grep '^| 퍼저가' docs/STATUS.md | cut -d'|' -f2-3
-  ```
-
-- **기대 출력:** `퍼저가 **자력으로** 경계위반을 발견 | 이름 획득 조건의 관찰(피드백 인과 미입증): 외부 객체 이름을 어휘에
-  획득한 조건에서 자율 C1 관찰 (A3 21 vs A1 0 vs identity-blind 0); 어휘 미통제라 retention·effect 피드백 인과는 미입증 *(구: 입증(인과), 2026-11-03 정정; 비고 끝에 상세)*`
-  (끝의 "구:" 부분은 옛 표현이 정정됐다는 기록이다.)
-- **화면:** 이어서 `paper/figures/m3-blind-ablation.png`(재렌더 판).
+- **화면:** Ledger 문구(`docs/STATUS.md`, main `f36a1ce`)를 인용한 슬라이드와 `paper/figures/m3-blind-ablation.png`(재렌더 판). STATUS를 고쳐도 영상이 바뀌지 않도록 명령 출력 대신 슬라이드로 인용한다.
 - **내레이션:** 퍼저의 자력 발견에 대한 현재 판정은 Ledger 문구 그대로, 이름 획득 조건의 관찰, 피드백 인과 미입증입니다.
   외부 객체 이름을 어휘에 넣은 조건에서 자율 C1이 관찰됐지만, 이 대조는 어휘(이름 포함 여부)를 달리한 것이라 피드백의 효과로 읽지
   않습니다. blind 발견도 아닙니다.
 
 ### 장면 7 (4:05–4:40) EXP-0 인프라 측정
 
-- **명령:**
+- **기록한 명령:**
 
   ```bash
   python3 scripts/make_raw_manifest.py --verify experiments/summaries/raw-manifest-win-20261105-20261105.sha256 --root ~/inodefence-evidence/exp0-20261105
@@ -167,68 +150,19 @@ condition"인 판). 그 전 판은 철회한 인과 문구를 담고 있다.
   ```
 
   공식 리포트(#268)의 생성기 출력 원문이다. 편차 11건은 같은 파일 §3에 있다.
-- **자막:** "화면 값 = monotonic clock 기록값. 실시간 환산: p95 1.419 s · 스트림당 2650 exec/h · 호스트 전체 ≈4760 exec/h (실시간 기준,
+- **자막:** "화면 값 = monotonic clock 기록값. `Summed 2428`은 스트림당 값. 실시간 환산: p95 1.419 s · 호스트 집계 약 4760 exec/h (실시간 기준,
   장기 편차 검증 중)".
 - **내레이션:** 이어서 EXP-0 등록 실행의 증거입니다. 세 arm, seed 다섯 개, budget 200의 15셀을 모두 완주했고 abort는 0입니다.
   C1과 C2 hit도 0인데, 사전등록에서 기본 결과로 예상한 값입니다. 화면의 시간과 처리량은 기록값이고, 자막이 실시간 환산값입니다.
   당시 이 호스트의 clock이 실제보다 빠르게 갔기 때문입니다. 인프라 측정이며 가설 검정이 아닙니다.
 
-### 장면 8 (4:40–4:55) 다음 단계
+### 장면 8 (4:40–4:55) 본실험과 맺음
 
-- **화면:** `paper/deliverables/capstone-report-draft.md` §7.6의 TBD 표.
-- **내레이션:** 본실험 EXP-3은 11월 18일 사전등록 뒤 실행할 예정이고 아직 결과가 없습니다. 탐색 파일럿 40캠페인은 설계
+**최종 실험값 반영 대기.** 등록 실행과 W3 검증이 끝나면 이 장면의 화면과 내레이션을 그 값으로 다시 쓴다. 결과가 없으면 아래 판을 쓴다.
+
+- **화면:** 본실험 구조 슬라이드(탐색용 EXP-3 → 확증용 EXP-2, "최종 실험값 반영 대기"), 끝에 출처 문구 "본 결과물은 상명대학교 대학혁신지원사업비의 지원을 받아 제작되었습니다."
+- **내레이션:** 본실험은 탐색용 EXP-3과 확증용 EXP-2로 나뉘고, 결과는 아직 반영되지 않았습니다. 탐색 파일럿 40캠페인은 설계
   입력일 뿐 우위의 근거가 아닙니다. 감사합니다.
-
-## 확장 장면 (선택, 서식이 허용할 때만)
-
-### E1 (장면 4 뒤, +40초) 선택 근거
-
-- **명령:**
-
-  ```bash
-  jq '.steps[5] | {oracle, retained: .selection.corpus_admission, operator: .selection.selected_operator_id, reward: .selection.operator_weights.reward}' /tmp/inodefence-video/inodefence-effect-demo-native-*.json
-  ```
-
-- **기대 출력:** `oracle` C0/C1/C2 모두 false, `retained.corpus_size_before` 4, `retained.retained` true, `operator`
-  `add_entry`, `reward` 1.
-- **내레이션:** 결과 파일에는 step마다 선택 근거가 남습니다. 이 step은 새 상태 키가 나와 입력이 corpus에 남았고, add_entry의
-  보상이 1입니다. 실제로 적용된 feedback만 기록합니다.
-
-### E2 (E1 뒤, +25초) 중간 상태 기록
-
-- **명령:**
-
-  ```bash
-  jq '.steps[5].trace | {synthetic, first_event: (.effect_events[0] | {operation, evidence_strength, path: .paths[0].path, after: .paths[0].after})}' /tmp/inodefence-video/inodefence-effect-demo-native-*.json
-  ```
-
-- **기대 출력:** `synthetic` false, `operation` `mkdir`, `evidence_strength` `state_change_verified`, `path` `extract/a.txt`,
-  `after`의 `st_dev`·`st_ino`·`st_nlink` (값은 실행마다 다르다).
-- **내레이션:** 중간 상태는 entry별로 기록하고, 합성 데이터가 아님을 표시합니다.
-
-### E3 (장면 5 뒤, +30초) 비단조 분포
-
-- **명령:**
-
-  ```bash
-  jq '.nested_hardlink.per_release_shared' /tmp/inodefence-video/repro/summary.json
-  ```
-
-- **기대 출력:** 7.5.2 `true`, 7.5.3 `false`, 7.5.6 `true`, 7.5.7 `false`, 7.5.8 `false`.
-- **내레이션:** 중첩 fixture의 공유 여부는 릴리스가 올라가면서 단조롭게 바뀌지 않습니다. 관찰된 것은 이 분포이고, 원인에 대한
-  서술은 추론입니다.
-
-### E4 (장면 6 뒤, +25초) M4 범위
-
-- **명령:**
-
-  ```bash
-  grep '^| cross-implementation' docs/STATUS.md | cut -d'|' -f2-3
-  ```
-
-- **기대 출력:** `cross-implementation(2번째 extractor에 generic oracle 적용) | 일부 TESTED(oracle 수준)`
-- **내레이션:** 같은 oracle을 python-tarfile, oras-go, decompress 세 extractor에 adapter로 적용했습니다. oracle 수준의 일반성이며,
-  자력 발견이나 효과의 일반성이 아닙니다.
 
 ## 말하지 않는 것
 
@@ -238,3 +172,5 @@ condition"인 판). 그 전 판은 철회한 인과 문구를 담고 있다.
 - 새 상태 키 수나 dense 신호를 효과의 근거로 드는 말(EN-008).
 - `make demo`의 위반 0을 node-tar의 안전성으로 읽는 말.
 - EXP-0의 기록값(1.549 s, 2428 exec/h)을 실시간 값이나 호스트 전체 처리량처럼 읽는 말.
+- docker events 발췌를 "데몬 정지"나 원인으로 읽는 말. 파일럿의 S-u 사건 수를 우위로 읽는 말.
+- 장면 4의 실행 시간("약 34초").

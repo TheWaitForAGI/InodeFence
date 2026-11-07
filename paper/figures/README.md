@@ -18,6 +18,8 @@ InodeFence commit / target version
 
 설명용 개념도와 측정 결과 그래프를 구분한다.
 
+시스템 구성도 [`system-architecture.png`](system-architecture.png)는 설명용 개념도이고 측정값이 없다. 생성 소스: [`render_system_architecture.py`](render_system_architecture.py).
+
 ## 렌더된 그림 (observed only)
 
 | 그림 | PNG | 생성 소스 | 데이터 근거(observed) |

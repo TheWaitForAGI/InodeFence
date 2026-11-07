@@ -238,6 +238,7 @@ class RunClock:
     gap_seconds: float  # Resumed stops only, inside the first start to last end span.
     stops: int
     last_activity: float  # The later of the last end and the last resume.
+    attempted_cells: int  # Run ids with a start line.
     unresumed: bool
 
     @property
@@ -252,6 +253,7 @@ def _run_clock(records: Sequence[Mapping[str, Any]]) -> RunClock:
     after the stop adds steps, so its time stays in r's denominator.
     """
     starts: list[float] = []
+    attempted: set[str] = set()
     ends: list[float] = []
     resumes: list[float] = []
     pairs: list[tuple[float, float]] = []
@@ -265,6 +267,7 @@ def _run_clock(records: Sequence[Mapping[str, Any]]) -> RunClock:
         stamp = float(_field(row, "clocks", "realtime"))
         if event == "start":
             starts.append(stamp)
+            attempted.add(str(_field(row, "run_id")))
         elif event == "end":
             ends.append(stamp)
         elif event == "infrastructure-stop":
@@ -287,6 +290,7 @@ def _run_clock(records: Sequence[Mapping[str, Any]]) -> RunClock:
         ),
         stops=stops,
         last_activity=max([last_end, *resumes]),
+        attempted_cells=len(attempted),
         unresumed=last_infrastructure == "infrastructure-stop",
     )
 
@@ -312,15 +316,17 @@ def t_exp3_2(inputs: "Inputs") -> list[str]:
         _field(_t_first(section, arm), "number_observed")
         for arm in _field(section, "item5_first_contract_index", "by_arm")
     )
-    # Every attempted cell, not only analysed ones: an invalid cell ran and used host time. A cell
-    # never started did not, so it stays out of the plan (exp3 section 5).
+    # Every cell with a start line, not only analysed ones: an invalid cell and a first attempt cut
+    # by a stop ran and used host time. A cell never started did not (exp3 section 5).
     completeness = _field(report, "cell_completeness")
     registered = _field(report, "registered")
     budget = _nullable(target.registered, "budget") or _field(registered, "budget")
-    unattempted = _field(completeness, "unattempted")
     recorded = _field(completeness, "recorded_steps")
-    planned = (_field(completeness, "cells") - unattempted) * budget
     clock = _run_clock(_result_lines(inputs.cell_results))
+    planned = clock.attempted_cells * budget
+    not_started = _field(completeness, "cells") - clock.attempted_cells
+    if not_started < 0:
+        raise TableInputError("more cells started than the report's cells: not the same run")
     if clock.t_wall <= 0 or clock.t_up <= 0 or not recorded or not planned:
         raise TableInputError("the run span and step counts must be positive")
     rate_wall = recorded / (clock.t_wall / 3600)
@@ -348,7 +354,7 @@ def t_exp3_2(inputs: "Inputs") -> list[str]:
         ["H_rem: GO 판정 시점부터 실행 마감까지 호스트 시간(실시간, h)", remaining_text, "입력"],
         ["용량 ⌊H_rem·r÷(6000·e)⌋", capacity_text, "≥ 76"],
         ["인프라 실패 비율 (abort + 기록 어긋남)/전체 셀", _ratio(failure_rate), "≤ .45"],
-        ["시작하지 않은 셀", unattempted, "기록"],
+        ["시작하지 않은 셀", not_started, "기록"],
         ["결과", result, "W3가 적용해 LOG에 남긴다"],
     ]
     return [

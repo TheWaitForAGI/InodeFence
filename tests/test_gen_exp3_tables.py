@@ -207,12 +207,17 @@ def _add_timing(report: dict[str, Any]) -> None:
     }
 
 
+def _starts(realtime: float, count: int = 9) -> list[dict[str, Any]]:
+    """Nine started cells by default: with budget 200 they plan the fixtures' 1800 steps."""
+    return [
+        {"event": "start", "run_id": f"cell-{i}", "clocks": {"realtime": realtime}}
+        for i in range(count)
+    ]
+
+
 def _inputs(report: dict[str, Any], tmp_path: Path, *, hand: Any = None) -> Inputs:
     results = tmp_path / "cell-results.jsonl"
-    rows = [
-        {"event": "start", "clocks": {"realtime": 1000.0}},
-        {"event": "end", "clocks": {"realtime": 8200.0}},
-    ]
+    rows = [*_starts(1000.0), {"event": "end", "clocks": {"realtime": 8200.0}}]
     results.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
     hand_path = tmp_path / "hand.json"
     if hand is not None:
@@ -326,7 +331,7 @@ def test_ratio_and_median_format() -> None:
         ("T-EXP3-1", ("by_target", "t", "record_states")),
         ("T-EXP3-2", ("cell_completeness", "infrastructure_failure_rate")),
         ("T-EXP3-2", ("cell_completeness", "recorded_steps")),
-        ("T-EXP3-2", ("cell_completeness", "unattempted")),
+        ("T-EXP3-2", ("cell_completeness", "cells")),
         ("T-EXP3-3", ("by_target", "t", "dense_signals_registered")),
     ],
 )
@@ -431,9 +436,10 @@ def _stamp(event: str, realtime: float) -> dict[str, Any]:
 
 STOP = {"event": "infrastructure-stop", "reason": "why", "clocks": {"realtime": 1000.0}}
 RESUME = {"event": "infrastructure-resume", "approval_ref": "ok", "clocks": {"realtime": 4600.0}}
-NO_GAP_ROWS = [_stamp("start", 0.0), _stamp("end", 1000.0)]
-NO_GAP_ROWS += [_stamp("start", 4600.0), _stamp("end", 7200.0)]
-GAP_ROWS = [*NO_GAP_ROWS[:2], STOP, RESUME, *NO_GAP_ROWS[2:]]
+SECOND_ATTEMPT = {**_starts(4600.0)[0]}
+NO_GAP_ROWS = [*_starts(0.0), _stamp("end", 1000.0), SECOND_ATTEMPT, _stamp("end", 7200.0)]
+GAP_ROWS = [*_starts(0.0), _stamp("end", 1000.0), STOP, RESUME, SECOND_ATTEMPT]
+GAP_ROWS += [_stamp("end", 7200.0)]
 R_WALL_NOTE = "r_wall(참고, GO 입력 아님): 900 exec/h. 정지 공백을 포함한 값이고 판정을 뒤집는 데"
 
 
@@ -453,8 +459,8 @@ def test_a_resumed_stop_raises_r_and_keeps_r_wall_as_a_reference(tmp_path: Path)
 
 def test_a_cell_running_after_the_stop_keeps_its_time_in_r(tmp_path: Path) -> None:
     """The gap opens at the last end before the resume, not at the stop line."""
-    rows = [_stamp("start", 0.0), _stamp("start", 0.0), _stamp("end", 1000.0), STOP]
-    rows += [_stamp("end", 3000.0), RESUME, _stamp("start", 4600.0), _stamp("end", 7200.0)]
+    rows = [*_starts(0.0), _stamp("end", 1000.0), STOP]
+    rows += [_stamp("end", 3000.0), RESUME, SECOND_ATTEMPT, _stamp("end", 7200.0)]
     text = gen.render("T-EXP3-2", _write_results(tmp_path, rows))
     # 1600 s gap: 1800 steps over 5600 s. Counting from the stop would give 1800.
     assert _go_row(text, "r:") == "1157"
@@ -464,7 +470,7 @@ def test_a_cell_running_after_the_stop_keeps_its_time_in_r(tmp_path: Path) -> No
 def test_a_resume_after_the_last_end_adds_no_gap_and_moves_h_rem(tmp_path: Path) -> None:
     stop = {**STOP, "clocks": {"realtime": 8300.0}}
     resume = {**RESUME, "clocks": {"realtime": 9000.0}}
-    rows = [_stamp("start", 1000.0), _stamp("end", 8200.0), stop, resume]
+    rows = [*_starts(1000.0), _stamp("end", 8200.0), stop, resume]
     inputs = _write_results(tmp_path, rows)
     inputs.report["deadline"]["execution_deadline"] = "1970-01-01T12:00:00+00:00"
     text = gen.render("T-EXP3-2", inputs)
@@ -548,22 +554,45 @@ def test_a_resume_after_an_unresumed_stop_brings_the_go_cells_back(tmp_path: Pat
 
 
 def test_only_a_cut_last_line_of_the_exit_record_is_forgiven(tmp_path: Path) -> None:
-    rows = [_stamp("start", 1000.0), _stamp("end", 8200.0)]
+    rows = [*_starts(1000.0), _stamp("end", 8200.0)]
     text = gen.render("T-EXP3-2", _write_results(tmp_path, rows, tail='{"event": "st'))
     assert _go_row(text, "r:") == "900"
-    inputs = _write_results(tmp_path, [_stamp("start", 1000.0)], tail="cut\n" + json.dumps(rows[1]))
+    inputs = _write_results(tmp_path, _starts(1000.0, 1), tail="cut\n" + json.dumps(rows[-1]))
     with pytest.raises(TableInputError, match="unreadable line 2"):
         gen.render("T-EXP3-2", inputs)
 
 
-def test_the_step_ratio_plans_only_attempted_cells_and_counts_invalid_ones(tmp_path: Path) -> None:
-    report = _train_report()
-    # 12 cells, 2 never started: 10 attempted × budget 200 against 1500 recorded.
-    report["cell_completeness"].update(cells=12, unattempted=2, recorded_steps=1500)
-    assert report["registered"]["budget"] == 200
-    text = gen.render("T-EXP3-2", _inputs(report, tmp_path))
+def test_the_step_ratio_plans_every_cell_with_a_start_line(tmp_path: Path) -> None:
+    inputs = _write_results(tmp_path, [*_starts(1000.0, 10), _stamp("end", 8200.0)])
+    # 12 cells, 10 with a start line × budget 200 against 1500 recorded. The report's unattempted
+    # count is not used: it also holds a cell whose first attempt ran before a stop.
+    inputs.report["cell_completeness"].update(cells=12, unattempted=3, recorded_steps=1500)
+    assert inputs.report["registered"]["budget"] == 200
+    text = gen.render("T-EXP3-2", inputs)
     assert _go_row(text, "e:") == ".750"
     assert "| 시작하지 않은 셀 | 2 | 기록 |" in text
+
+
+def test_a_second_attempt_is_not_a_second_cell_in_the_plan(tmp_path: Path) -> None:
+    text = gen.render("T-EXP3-2", _write_results(tmp_path, NO_GAP_ROWS))
+    assert _go_row(text, "e:") == "1.000"  # nine cells, ten start lines
+
+
+def test_a_first_attempt_cut_by_a_stop_stays_in_the_plan(tmp_path: Path) -> None:
+    # The stop came while cell-8's first attempt ran: it has a start line and no record, and is
+    # "unattempted" by state. Its time is in T, so it stays in the plan and is not "not started".
+    rows = [*_starts(1000.0), _stamp("end", 8200.0), {**STOP, "clocks": {"realtime": 8200.0}}]
+    inputs = _write_results(tmp_path, [*rows, {**RESUME, "clocks": {"realtime": 8300.0}}])
+    inputs.report["cell_completeness"].update(cells=10, unattempted=2)
+    text = gen.render("T-EXP3-2", inputs)
+    assert _go_row(text, "e:") == "1.000"
+    assert "| 시작하지 않은 셀 | 1 | 기록 |" in text
+
+
+def test_more_started_cells_than_the_report_has_stops_the_table(tmp_path: Path) -> None:
+    inputs = _write_results(tmp_path, [*_starts(1000.0, 11), _stamp("end", 8200.0)])
+    with pytest.raises(TableInputError, match="not the same run"):
+        gen.render("T-EXP3-2", inputs)
 
 
 def test_the_empty_table_sentence_needs_every_seed_excluded(tmp_path: Path) -> None:

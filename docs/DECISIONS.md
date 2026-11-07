@@ -834,17 +834,17 @@ E 기준은 Schoenfeld 80%, 양측 α .025 계획값이다(HR 5/4/3/2 = 14.7/19.
 
 **abort 집계.** D040-D11의 GO와 운영 중단 abort 집계에 "abort + 기록 어긋남(record-inconsistent)"을 합산한다. D040-D11 식 자체는 그대로이고 입력 정의만 구체화한다.
 
-W3 판단: 2안 민감도를 함께 읽는다. 첫 어긋남 앞 prefix를 쓴 값과 비교해 판정이 갈리면 "기록 손상 가정에 좌우됨"으로 적는다. watchdog 셀은 abort로 분류한다(종료 코드 watchdog + step index 연속; 사유 watchdog 별도 표, 우측절단, 재시도 없음). 판정표 입력을 구체화한 것이다. 용어: 인프라 실패 비율 = (abort + record-inconsistent)/전체 셀.
+W3 판단: `record-inconsistent` 셀은 재시도하지 않고 그 arm이 든 대비에서 블록을 뺀다. abort 표에는 넣지 않고 수를 따로 내며 1건부터 보고한다. 결과 가림 사유가 아니다. 어긋남 민감도(첫 어긋남 앞 prefix 사용)와 판정이 갈리면 "기록 손상 가정에 좌우됨"으로 적는다. watchdog 셀은 abort로 분류한다(종료 코드 watchdog + step index 연속; 사유 watchdog 별도 표, 우측절단, 재시도 없음). 판정표 입력을 구체화한 것이다. 용어: 인프라 실패 비율 = (abort + record-inconsistent)/전체 셀.
 
 ### 정지 컨테이너 격리 (지웅 승인 A안, 2026-11-07)
 
-10/14 정지 컨테이너 4개를 `archive-20261014-*`로 이름 변경했다(id `a1e2ba9d6481`, `6c853b5abed2`, `93432fe314e3`, `1fef558df758`). 볼륨·증거는 보존했고 삭제·열람은 없다. 격리 뒤 드라이버 필터(컨테이너 `inodefence-`, 볼륨 `inodefence-local-`) 잔여는 0건이다. 이름 없는 정지 컨테이너 3개는 건드리지 않았다. **`docker system/container/volume prune`은 금지한다.** 이 자원이 유일한 증거 사본일 수 있다.
+10/14 정지 컨테이너 4개를 `archive-20261014-*`로 이름 변경했다(id `a1e2ba9d6481`, `6c853b5abed2`, `93432fe314e3`, `1fef558df758`). 볼륨·증거는 보존했고 삭제·열람은 없다. 격리 뒤 드라이버 필터(컨테이너 `inodefence-`, 볼륨 `inodefence-local-`) 잔여는 0건이다. 임의 이름의 정지 컨테이너 3개는 건드리지 않았다. **`docker system/container/volume prune`은 금지한다.** 이 자원이 유일한 증거 사본일 수 있다.
 
 대응표: `~/inodefence-evidence/prereg-verification/stale-docker-resources.md`(sha256 `e98d5100…`). 전후 기록: `~/inodefence-evidence/prereg-verification/container-isolation-20261107/`(`SHA256SUMS` sha256 `8404d220…`).
 
 ### 운영 중단 규칙 구체화 (W3 권고 수용)
 
-[D040](#d040--exp-3-동결-전-재판정-위험도-파일럿-4040-반영)의 운영 중단 조건을 다음처럼 구체화한다. 최근 24시간에 종료한 셀이 20개 이상일 때 캠페인 abort ≥ .60이면 멈춘다. W2가 6시간마다 확인해 LOG에 남긴다. 재개는 지웅 결정으로, 같은 설정 또는 jobs=2로만 한다(`concurrency-scaling-v1.md:343,348`). `run_exp0`에 자동 정지는 없다.
+[D040](#d040--exp-3-동결-전-재판정-위험도-파일럿-4040-반영)의 운영 중단 조건을 다음처럼 구체화한다. 최근 24시간에 종료한 셀이 20개 이상일 때 인프라 실패 비율 ≥ .60이면 멈춘다. W2가 6시간마다 확인해 LOG에 남긴다. 재개는 지웅 결정으로, 같은 설정 또는 jobs=2로만 한다(`concurrency-scaling-v1.md:343,348`). `run_exp0`에 자동 정지는 없다.
 
 W3 판단: `concurrency-scaling-v1.md:348`의 "15캠페인 8건"은 D040으로 대체됐다.
 

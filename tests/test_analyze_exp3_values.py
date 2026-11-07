@@ -1,4 +1,4 @@
-"""PR-D: values the registered tables read. I, abort policies, U_viol, dense, unknown steps, damage."""
+"""PR-D: values the registered tables read: I, abort policies, U_viol, dense, lost steps, damage."""
 
 import json
 from typing import Any

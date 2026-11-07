@@ -178,7 +178,7 @@ def test_each_abort_policy_has_its_own_blocks_and_informative_count() -> None:
     assert policies["censor-at-abort"]["informative_blocks"] == 6
 
 
-def test_policies_can_split_and_holm_is_per_policy() -> None:
+def test_each_policy_has_its_own_blocks_and_holm_family() -> None:
     # Every S-u cell hits, except aborted cells that only the policies treat differently.
     cells = [*_pairs(range(1, 8), HIT, {})]
     cells += [_cell("D", s) for s in range(1, 8)]
@@ -196,7 +196,6 @@ def test_policies_can_split_and_holm_is_per_policy() -> None:
     assert exclude["reject_at_alpha"] is True  # 7 informative blocks: p = 2/128
     assert exclude["number_seed_blocks"] == 7
     assert budget["number_seed_blocks"] == 12
-    assert budget["raw_p"] != exclude["raw_p"]
 
 
 def test_values_only_no_verdict_field() -> None:

@@ -791,6 +791,46 @@ def _index_plan(index_file: Path) -> dict | None:
     return None
 
 
+def _has_contrasts(analysis_plan: Mapping[str, object] | None) -> bool:
+    """Whether a plan registers a confirmatory test (a one-target file can, D040 condition 5)."""
+    return bool(analysis_plan and analysis_plan.get("confirmatory_contrasts"))
+
+
+def _index_deadline(index_file: Path) -> dict | None:
+    """Read the launcher's ``deadline`` record from an index, if the registration has a deadline."""
+    data = read_json(index_file.read_bytes())
+    if isinstance(data, dict):
+        deadline = data.get("deadline")
+        if isinstance(deadline, dict):
+            return deadline
+    return None
+
+
+def _apply_deadline(
+    cells: Sequence[CellSummary | InvalidCell], deadline: Mapping[str, object] | None
+) -> tuple[list[CellSummary | InvalidCell], dict | None]:
+    """Drop the seed blocks the deadline excluded, whole, and say what was dropped (D041).
+
+    A seed with one cell unfinished at the deadline leaves every arm, so it cannot come back into
+    a contrast's pairs. This differs from an invalid cell, which leaves only the contrasts that use
+    its arm. The launcher decides the exclusion from the clock and cell states, never from outcomes.
+    """
+    if deadline is None:
+        return list(cells), None
+    raw = deadline.get("excluded_seeds")
+    excluded = raw if isinstance(raw, Mapping) else {}
+    kept = [c for c in cells if c.seed not in excluded.get(c.target_id, ())]
+    summary = {
+        "execution_deadline": deadline.get("execution_deadline"),
+        "passed": deadline.get("passed"),
+        "excluded_seeds": {key: list(value) for key, value in excluded.items()},
+        "number_excluded_seeds": sum(len(value) for value in excluded.values()),
+        "number_excluded_cells": len(cells) - len(kept),
+        "causes": deadline.get("causes"),
+    }
+    return kept, summary
+
+
 def _confirmatory_section(
     valid: Sequence[CellSummary], analysis_plan: Mapping[str, object], *, alpha: float = 0.05
 ) -> dict | None:
@@ -922,6 +962,7 @@ def build_multitarget_report(
     independence: dict | None = None,
     field_map: Mapping[str, str],
     sources: Sequence[str],
+    deadline: dict | None = None,
 ) -> dict:
     """Per-target, per-role EXP-3 sections (no cross-target pooling).
 
@@ -931,8 +972,8 @@ def build_multitarget_report(
     The frozen ``analysis_plan`` (ordered ``confirmatory_contrasts`` on holdout&H-A,
     ``multiplicity``, ``primary_endpoint``, ``event_threshold``) is echoed verbatim -- this builder
     derives no family membership and runs no confirmatory test (that is the exact-log-rank step).
-    Single-target input uses :func:`build_report` (byte-identical to the EXP-0 output); this path
-    is for >1 target_id.
+    Single-target input without registered contrasts uses :func:`build_report` (byte-identical to
+    the EXP-0 output); this path is for >1 target_id or a plan with contrasts.
     """
     if not cells:
         raise ValueError("no cells to summarize")
@@ -991,6 +1032,8 @@ def build_multitarget_report(
     }
     if independence is not None:
         report["arm_abort_independence"] = independence
+    if deadline is not None:
+        report["deadline"] = deadline
     return report
 
 
@@ -1013,6 +1056,29 @@ def _multitarget_markdown(report: dict) -> str:
         "Targets are not pooled._",
         "",
     ]
+    deadline = report.get("deadline")
+    if isinstance(deadline, dict):
+        lines += [
+            "## Execution deadline",
+            "",
+            f"deadline={deadline['execution_deadline']} · passed={deadline['passed']} · "
+            f"excluded seeds {deadline['number_excluded_seeds']} · "
+            f"excluded cells {deadline['number_excluded_cells']}",
+            "",
+        ]
+        causes = deadline.get("causes") or {}
+        excluded = deadline["excluded_seeds"]
+        if excluded:
+            lines += _md_table(
+                ["target_id", "excluded seeds"],
+                [[tid, ", ".join(str(s) for s in seeds)] for tid, seeds in sorted(excluded.items())],
+            )
+            lines.append("")
+        if causes:
+            lines += _md_table(
+                ["unfinished cell", "cause"], [[k, causes[k]] for k in sorted(causes)]
+            )
+            lines.append("")
     plan = report.get("analysis_plan")
     if isinstance(plan, dict):
         lines += [
@@ -1385,10 +1451,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             parser.error(f"--contingency: {error}")
 
     try:
-        cells = load_cells(items, field_map)
+        cells, deadline = _apply_deadline(
+            load_cells(items, field_map),
+            _index_deadline(args.index) if args.index is not None else None,
+        )
         sources = [str(p) for p, _ in items]
-        if len({c.target_id for c in cells}) > 1:
-            analysis_plan = _index_plan(args.index) if args.index is not None else None
+        analysis_plan = _index_plan(args.index) if args.index is not None else None
+        if len({c.target_id for c in cells}) > 1 or _has_contrasts(analysis_plan):
             report = build_multitarget_report(
                 cells,
                 analysis_plan=analysis_plan,
@@ -1396,6 +1465,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 independence=independence,
                 field_map=field_map,
                 sources=sources,
+                deadline=deadline,
             )
         else:
             report = build_report(

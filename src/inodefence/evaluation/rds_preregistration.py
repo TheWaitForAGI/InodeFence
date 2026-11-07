@@ -56,6 +56,7 @@ when both sides give a value. Keys this module does not know are kept in
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from types import MappingProxyType
 
@@ -129,6 +130,7 @@ _JOBS_MAX = "jobs_max"
 _WATCHDOG = "campaign_watchdog_seconds"
 _DISK_PAUSE = "disk_pause_fraction"
 _INTERIM = "interim_analysis"
+_EXECUTION_DEADLINE = "execution_deadline"
 EXECUTION_MODES = ("per-case-container", "worker-pool")
 INTERIM_ANALYSIS_VALUES = ("forbidden", "allowed")
 # The measurement rules this engine implements (rds.py); a block may restate them
@@ -163,6 +165,7 @@ KNOWN_KEYS = frozenset(
         _WATCHDOG,
         _DISK_PAUSE,
         _INTERIM,
+        _EXECUTION_DEADLINE,
         *RULE_CONSTANTS,
     )
 )
@@ -234,6 +237,8 @@ class Preregistration:
     multiplicity: str | None = None
     primary_endpoint: str | None = None
     event_threshold: int | None = None
+    # D041 end-of-run rule, read by the launcher. See _execution_deadline.
+    execution_deadline: datetime | None = None
 
     def target(self, target_id: str) -> TargetSpec | None:
         for item in self.targets:
@@ -457,6 +462,9 @@ def parse_preregistration(text: str) -> Preregistration:
     interim = values.get(_INTERIM)
     if interim is not None and interim not in INTERIM_ANALYSIS_VALUES:
         raise PreregistrationFormatError(f"{_INTERIM} must be one of {INTERIM_ANALYSIS_VALUES}")
+    deadline = _execution_deadline(values)
+    if deadline is not None and not targets:
+        raise PreregistrationFormatError(f"{_EXECUTION_DEADLINE} requires targets.<id>.* keys")
     return Preregistration(
         values["engine_sha"],
         image_digest,
@@ -485,7 +493,26 @@ def parse_preregistration(text: str) -> Preregistration:
         multiplicity=values.get(_MULTIPLICITY),
         primary_endpoint=values.get(_PRIMARY_ENDPOINT),
         event_threshold=event_threshold,
+        execution_deadline=deadline,
     )
+
+
+def _execution_deadline(values: Mapping[str, str]) -> datetime | None:
+    """The registered end of execution; an offset is required so the instant is unambiguous.
+
+    After it no new cell starts, and unfinished-cell reasons stop hiding outcomes. A cell not
+    finished by then excludes its seed block (D041). Only the clock releases this, no flag.
+    """
+    text = values.get(_EXECUTION_DEADLINE)
+    if text is None:
+        return None
+    try:
+        deadline = datetime.fromisoformat(text)
+    except ValueError as error:
+        raise PreregistrationFormatError(f"{_EXECUTION_DEADLINE}: {error}") from error
+    if deadline.utcoffset() is None:
+        raise PreregistrationFormatError(f"{_EXECUTION_DEADLINE} must carry a UTC offset")
+    return deadline
 
 
 def _parse_targets(

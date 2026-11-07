@@ -320,7 +320,8 @@ N01 human correspondence, N03/N04 NOT_AUTHORIZED 서술)은 LOG·diagnostics에 
      다시 낸 n/arm 약 76~80은 **계획 입력**이고 결과가 아니다. 확증 검정력 주장이 아니며 holdout 전이는 미검증 가정이다.
      [결과 메모](../experiments/summaries/exp3-hazard-pilot-v1-result.md).
    - 1b. **동시 실행 벤치마크** — [설계](../experiments/configs/concurrency-scaling-v1.md)(#270, §6 동결). 도구만 머지, **미실행**.
-     실행은 단계별 지웅 승인. 선행: 기록 전용 PR 3건. D21이 실행 경로를 바꾸면 그 뒤로 밀린다.
+     실행은 단계별 지웅 승인. 선행: 기록 전용 PR 3건(#274~#276). D6에서 R-walk를 빼면 설계 새 버전 파일과 W3 재검증이 먼저다.
+     D21은 W3 권고상 지금 안 하며, 벤치마크 1단계 결과로 재개 여부를 본다. 실행 경로가 바뀌면 jobs 2·j* 각 1블록을 다시 잰다(설계 :335).
 2. **11/18 사전등록 고정** — EXP-3 본실험 + EXP-2 GO/NO-GO 규칙(x·n은 EXP-0 숫자로 11/14 확정).
 3. **EXP-3** — 20 seed × budget 2000 × R/D/S, 다수 sentinel. 1차 지표 T_first(우측중도절단)·U_viol.
 4. **11/20 규칙 기계 적용** — EXP-3 결과에 사전등록된 GO/NO-GO 규칙을 그대로 적용.
@@ -338,7 +339,7 @@ N01 human correspondence, N03/N04 NOT_AUTHORIZED 서술)은 LOG·diagnostics에 
 
 **게이트 상태(2026-11-07).**
 
-- **G1:** 조건 1~3 PASS(2026-11-04, demo run, 비등록, R/D/S-u, budget 50: completion 3/3, smoke 12/12, abort 0, 어휘 동등 true; `~/inodefence-evidence/g1-20261104/{completion,smoke}/`). 조건 4 parity PASS(도구 검증, 비등록: R-walk, seed 9001, budget 50 1셀, 4차원 일치, 재시도 0, self-determinism PASS; `~/inodefence-evidence/wp-parity-20261104/{workerpool,selfdet}/wp-parity-result.json`). 범위 한계: R-walk 1 arm, seed 1, 50 step이며 D·S-u는 미측정. 단 배선(#233, 열림, 배선 미도달)이 main에 없어 현재 main에서는 재현할 수 없고, 등록 실행은 per-case만 쓴다.
+- **G1:** 조건 1~3 PASS(2026-11-04, demo run, 비등록, R/D/S-u, budget 50: completion 3/3, smoke 12/12, abort 0, 어휘 동등 true; `~/inodefence-evidence/g1-20261104/{completion,smoke}/`). 조건 4 parity PASS(도구 검증, 비등록: R-walk, seed 9001, budget 50 3런(a1, a2, b), 4차원 일치, 재시도 0, self-determinism PASS; `~/inodefence-evidence/wp-parity-20261104/{workerpool,selfdet}/wp-parity-result.json`). 범위 한계: R-walk 1 arm, seed 1, 50 step이며 D·S-u는 미측정. 단 배선(#233, 열림, 배선 미도달)이 main에 없어 현재 main에서는 재현할 수 없고, 등록 실행은 per-case만 쓴다.
 - **EXP-0:** "파일럿 완료"는 충족, "GO/NO-GO x·n 확정"은 **미완**(지웅 결정 대기).
 
 ### 산출물 체크리스트 (감사 Report 2 꼭지 15 확정 조건)
@@ -355,7 +356,7 @@ N01 human correspondence, N03/N04 NOT_AUTHORIZED 서술)은 LOG·diagnostics에 
 | ⑥ | 결과 — KM 곡선·표(표본·중도절단·abort 분리) | `paper/figures/render_exp0_survival.py`(#219) + `scripts/analyze_exp0.py`(#209) | ✓ main(#202 `884dc78`, #209 `a4f2a1c`, #219 `347a273`); 재생성 그림·표 #272 `e17bfc3` | ✓ 리허설 체인 결함 0(레인 6) | ◑ EXP-0 리포트(#268, 가설 검정 아님). 표본 곡선은 EXP-3 대기 |
 | ⑦ | 증거 — raw 압축본 + SHA-256 목록 + 재생 스크립트 | `experiments/summaries/raw-manifest-*.sha256`; `make replay`(#208); `scripts/make_evidence_bundle.py`(#215) | ✓ main(#208, #215 `5b82624`, #251 `1a00828`) | ✓ #251 verifier PASS(2026-11-06 재판정, PR 코멘트; 282항목 `raw-manifest-win-20261104-2317.sha256`); 141은 레인 8 `--verify` + 번들 round-trip 218/218 | 부분(Mac 1,614 raw 미이관). EXP-0 66항목, hazard 파일럿 123항목(비등록) |
 | ⑧ | 통계 — 스크립트 하나가 모든 표·그림을 raw에서 생성 | `make paper-artifacts --verify`(#232·#256) | ◑ main(#232 `4d6f4c0`, #256 `01a913d`; M2/M3 표 BYTE-MATCH, 그림 size-only, ledger exists-only) | ✓ #256 PASS (2026-11-06 재판정, PR 코멘트, head 7dfd21f) | — |
-| ⑨ | 한계·실패 — abort 사유 표, 음성 결과 전부 | `scripts/analyze_abort_rollup.py`(#210·#227); `paper/sections/06-results.md` §5.3.3·§5.4 | ✓ main(#210 `d07d547`, #227 `c21e22f`) | ✓ PASS | ✓ EXP-0 abort 0/15. hazard 파일럿 abort 11/40(비등록, 첫 실패 경로 미확인) |
+| ⑨ | 한계·실패 — abort 사유 표, 음성 결과 전부 | `scripts/analyze_abort_rollup.py`(#210·#227); `paper/sections/06-results.md` §5.3.3·§5.4 | ✓ main(#210 `d07d547`, #227 `c21e22f`) | ✓ PASS | ✓ EXP-0 abort 0/15(budget 200). hazard 파일럿 abort 11/40(비등록, 첫 실패 경로 미확인) |
 | ⑩ | 문서 — STATUS 1페이지 현황 | 이 파일 | ✗ 미축소(수술 종료 후) | — | — |
 | ⑪ | 논문 — 영문 6–8쪽 + AI 도구 사용 절 | `paper/sections/05-method.md` §4.7(#216) | ◑ 초안 main(#216 `36b251d`, #225 `0ba50c0`, #247 `9bc8600`, #253 `86c617d`), §5.6 EXP-0 수치(#269), EXP-3 결과 TBD | ◑ verifier 판정은 각 PR 코멘트 기준(2026-11-06 재판정: #216 · #225 · #253 · #247) | 대기 |
 | ⑫ | 유지보수자용 회귀 명령 | `make regression TAR_VERSION=7.5.2` (#218) | ✓ main(#218 `d7ab2a6`, 2026-11-05 머지) | ✓ #218 PASS | ✓ 고정 fixture native(M2.1) |

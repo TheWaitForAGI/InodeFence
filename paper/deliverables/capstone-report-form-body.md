@@ -1,6 +1,6 @@
 # 결과보고서 칸별 본문 (붙임3 서식 9 입력용, 작업 중)
 
-**이 파일은 제출본이 아니다.** 서식 칸에 넣을 글과 그 근거를 둔다. 분량 기준은 사진 포함 5장 내외다. `[사람]`은 사람이 기입할 값이고, `[대기]`는 최종 실험값 반영 대기다. 결과 수치는 W3 검증 뒤에만 넣는다. 서식 구조는 2026-11-04 세션의 분석에서 옮겼고 원본과 아직 대조하지 못했다. 맨 끝 근거표는 제출본에 넣지 않는다.
+**이 파일은 제출본이 아니다.** 서식 칸에 넣을 글과 그 근거를 둔다. 분량 기준은 사진 포함 5장 내외다. `[사람]`은 사람이 기입할 값이고, `[대기]`는 최종 실험값 반영 대기다. 결과 수치는 W3 검증 뒤에만 넣는다. 칸과 순서는 `~/capstone-reference/03_붙임3_결과보고서_서식_전문.md`와 대조했다(2026-11-07). 맨 끝 근거표는 제출본에 넣지 않는다.
 
 ## 머리 정보
 
@@ -42,10 +42,10 @@
 | --- | --- | --- |
 | 루프 동작 | 실제 node-tar 7.5.22에서 `make demo` 20회 실행 완주, 위반 0건. 입력 보관함 4→7개, 피드백에 따라 연산 가중치 변화 | 동작 확인. 탐색 성능이나 안전성을 뜻하지 않음 |
 | 통제 재현 | 같은 판정기가 릴리스 번호 없이 구분. 최상위 입력: 7.5.2 공유(nlink 1→2), 7.5.3 거부. 중첩 입력: 7.5.6 공유, 7.5.7 거부 | 손으로 만든 입력의 재현. 퍼저가 찾은 것이 아님 |
-| 자력 발견 | 이름 획득 조건의 관찰(피드백 인과 미입증). 외부 이름을 어휘에 넣은 조건에서 예산 1500, 65 seed 중 1개가 자율 위반에 도달 | 어휘를 통제한 대조이고 드문 사례. blind 발견 아님. 비교 실험에서 비율 차이는 구간이 겹쳐 미입증 |
+| 자력 발견 | 이름 획득 조건의 관찰(피드백 인과 미입증). 외부 이름을 어휘에 넣은 조건에서 예산 1500, 자율 C1은 65 seed 중 1개에서 관찰 | 어휘를 통제한 대조이고 드문 사례. blind 발견 아님. 비교 실험에서 비율 차이는 구간이 겹쳐 미입증. 여기서 위반은 C1이고, 아래 파일럿의 사건은 C1 또는 C2다 |
 | 일반성 | 같은 판정기가 python-tarfile, oras-go, decompress에 adapter 수준으로 적용 | 판정기 수준. decompress와 oras-go의 자력 발견은 C1/C2에 도달하지 못함 |
 | EXP-0(인프라 측정) | 15셀 3,000회 실행 완주, abort 0, C1/C2 0건 | 가설 검정 아님. 0건은 위험이 0이라는 뜻이 아님 |
-| 위험도 파일럿(탐색) | 40캠페인. 첫 위반 사건 R 변형 1·4건, D 4건, S-u 6건, abort 11건 | 설계 입력. 구간이 크게 겹치고 어떤 값도 확증 검정력을 뜻하지 않음 |
+| 위험도 파일럿(탐색) | 40캠페인. 첫 C1 또는 C2 사건 R 변형 1·4건, D 4건, S-u 6건, abort 11건 | 설계 입력. 구간이 크게 겹치고 어떤 값도 확증 검정력을 뜻하지 않음 |
 | 회귀 검사 명령 | `make regression TAR_VERSION=<x>` | 고정 입력 범위. 통과가 안전을 뜻하지 않음 |
 
 **핵심 질문의 판정: `[대기]` 최종 실험값 반영 대기.** EXP-3 train과 EXP-2 holdout의 실행 수, 사건 수, 검정 결과는 등록 실행이 끝나고 수치 검증을 거친 뒤 넣는다. 지금까지의 결과는 핵심 질문에 답하지 않는다.
@@ -72,8 +72,8 @@
 
 | 순서 | 사진 | 제목(안) | 상태 |
 | --- | --- | --- | --- |
-| 1 | `paper/figures/m2-cross-release-evidence.png` | 릴리스별 하드링크 입력 판정(통제 재현) | W3 검증 요청 중 |
-| 2 | `paper/figures/m3-blind-ablation.png` | 어휘 조건별 자율 위반 관찰(피드백 인과 미입증) | W3 검증 요청 중 |
+| 1 | `paper/figures/m2-cross-release-evidence.png` | 릴리스별 하드링크 입력 판정(통제 재현) | W3 PASS |
+| 2 | `paper/figures/m3-blind-ablation.png` | 어휘 조건별 자율 C1 관찰(피드백 인과 미입증) | W3 PASS |
 | 3 | `make demo` 실행 화면 | 실제 node-tar 탐색 루프 실행 화면 | 촬영 대기 |
 
 ## ■ 생성형 AI 사용 결과
@@ -115,8 +115,8 @@
 | 목적 3) | 7.5.3 거부 → 7.5.6 공유 → 7.5.7 거부, 대응·원인 추론 | `experiments/summaries/cross-release-identity-repro-v1.md`, `paper/tables/m2-cross-release-evidence.md` | 요청 |
 | 수행 ③ | R/D/S-u, 등록 파일 2개 | `docs/research/design/research-questions.md`, D040(#282, 머지 전) | 요청 |
 | 루프 동작 | 7.5.22, 20 step, 위반 0, corpus 4→7 | `~/inodefence-evidence/w4-script-verification-20261106/stdout/make_demo.out` | 요청 |
-| 통제 재현 | nlink 1→2, 거부 | `experiments/repro/evidence/summary.json`, 표 M2 | 요청 |
-| 자력 발견 | 65 seed 중 s11, 이름 획득 조건 문구 | `docs/STATUS.md` Ledger, 표 M3, `experiments/summaries/m3-powered-matched-verdict-v2.md` | 요청 |
+| 통제 재현 | nlink 1→2, 거부 | `experiments/repro/evidence/summary.json`, 표 M2 | 표·그림 PASS |
+| 자력 발견 | 자율 C1은 65 seed 중 s11, 이름 획득 조건 문구. hit는 C1 ∧ contract_violated이고 A3full-s60의 C2만 위반 step 14개는 세지 않았다 | `docs/STATUS.md` Ledger, 표 M3, `experiments/summaries/m3-powered-matched-verdict-v2.md`. raw는 Mac 호스트 보관, 체크섬 `raw-manifest-mac-20261103.sha256`, 2026-11-03 감사 재집계. 표는 요약에서 생성 | 표·그림 PASS, 문구는 이 칸 반영 후 확인 |
 | 일반성 | 3 extractor, decompress·oras-go 자력 발견 미도달 | `docs/STATUS.md` Ledger, `experiments/summaries/m4-5-decompress-selfdiscover-unified-v1.md`, `m4-7-oras-go-selfdiscover-v1.md` | 요청 |
 | EXP-0 | 15셀, 3,000, abort 0, hit 0 | `experiments/summaries/exp0-20261105-report.md` | PASS(#268) |
 | 파일럿 | 사건 1/4/4/6, abort 11/40 | `experiments/summaries/exp3-hazard-pilot-v1-result.md` | PASS(#267) |

@@ -49,6 +49,10 @@ Scale controls (all from the file; the launcher only enforces them):
   abort point and kept in the denominator (the preregistered abort rule); a final
   abort is never re-run. ``registration.json`` is updated before the manifest so the
   manifest covers its final bytes.
+* ``execution_deadline`` (ISO 8601 with an offset, ``targets.<id>`` form only): no new
+  cell starts after it, a running cell finishes, and only the clock lifts the
+  unfinished-cell reasons for redaction. Every cell of a seed with a cell unfinished at
+  the deadline is excluded; the index ``deadline`` record names the seeds and causes.
 
 Idempotent: a rerun skips cells whose report is complete and conformant (budget
 reached, no abort, planned config, preregistered image id and sentinel set) and
@@ -127,6 +131,7 @@ INTERIM_RULE = (
 ABORT_DECISIONS_FILE = "abort-decisions.json"
 VERIFICATION_FILE = "manifest-verification.json"
 CELL_STATES = ("complete", "abort-final", "abort-pending", "unattempted")
+DEADLINE_UNFINISHED_STATES = ("abort-pending", "unattempted")
 WORKER_POOL_MODE = "worker-pool"
 # Fallbacks when lane 4's module is not importable (its constants are preferred).
 DEFAULT_WATCHDOG_SECONDS = 2 * 60 * 60.0
@@ -508,6 +513,46 @@ def recorded_terminations(output: Path) -> set[str]:
     return {c["run_id"] for c in cells if isinstance(c, Mapping) and "run_id" in c}
 
 
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
+def deadline_passed(plan: Exp0Plan) -> bool:
+    """Whether the registered ``execution_deadline`` is behind us; the instant itself is not."""
+    deadline = plan.preregistration.execution_deadline
+    return deadline is not None and _now() > deadline
+
+
+def deadline_record(
+    plan: Exp0Plan, states: Mapping[str, str], ended_late: Collection[str]
+) -> dict[str, Any]:
+    """What the registered deadline excludes: every cell of a seed with one unfinished cell (D041).
+
+    The inputs are the clock and cell states, never an outcome, so the exclusion cannot follow the
+    results. Blocks are per target, as the contrasts are. Before the deadline nothing is excluded.
+    """
+    deadline = plan.preregistration.execution_deadline
+    assert deadline is not None
+    passed = deadline_passed(plan)
+    causes: dict[str, str] = {}
+    excluded: dict[str, set[int]] = {}
+    for cell in plan.cells() if passed else ():
+        cause = states[cell.run_id] if states[cell.run_id] in DEADLINE_UNFINISHED_STATES else None
+        if cell.run_id in ended_late:
+            cause = "ended-after-deadline"
+        if cause is not None:
+            causes[cell.run_id] = cause
+            # A deadline requires the targets form, so every cell is a TargetCell.
+            assert isinstance(cell, TargetCell)
+            excluded.setdefault(cell.target_id, set()).add(cell.seed)
+    return {
+        "execution_deadline": deadline.isoformat(),
+        "passed": passed,
+        "excluded_seeds": {target: sorted(seeds) for target, seeds in excluded.items()},
+        "causes": causes,
+    }
+
+
 def load_abort_decisions(output: Path) -> dict[str, dict[str, Any]]:
     """``abort-decisions.json``: run id -> {final, note, abort_reason, recorded_at}."""
     path = output / ABORT_DECISIONS_FILE
@@ -782,6 +827,9 @@ def write_registration(
         "analysis_plan": plan.analysis_plan(),
         "cells": [cell.run_id for cell in plan.cells()],
     }
+    deadline = plan.preregistration.execution_deadline
+    if deadline is not None:
+        record["execution_deadline"] = deadline.isoformat()
     if path.is_file():
         existing = json.loads(path.read_text(encoding="utf-8"))
         for key in ("preregistration_sha256", "engine_sha", "image_digest"):
@@ -952,6 +1000,8 @@ def _print_dry_run(
         f"disk_pause_fraction={plan.disk_pause_fraction} "
         f"interim_analysis={prereg.interim_analysis or 'unspecified'}"
     )
+    if prereg.execution_deadline is not None:
+        print(f"execution_deadline={prereg.execution_deadline.isoformat()}")
     print(f"warmup: BUILD_ONLY=1 bash {SCRIPT} demo-historical")
     pending_ids = {cell.run_id for cell in pending}
     for cell in cells:
@@ -1144,6 +1194,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  - {item}", file=sys.stderr)
         return 2
 
+    ended_late: set[str] = set()
+
     def finish(results: list[CellResult] | None) -> int:
         terminated = recorded_terminations(output) | {r.cell.run_id for r in results or ()}
         decisions = load_abort_decisions(output)
@@ -1155,9 +1207,12 @@ def main(argv: list[str] | None = None) -> int:
         pending_now = sum(1 for s in states.values() if s != "complete")
         problems = evidence_integrity(plan, output, states)
         reasons: list[str] = []
-        if counts["unattempted"]:
+        # Unfinished cells hide outcomes only until the deadline; then their seeds are excluded.
+        # Integrity problems and a missing manifest keep hiding them after it too.
+        passed = deadline_passed(plan)
+        if counts["unattempted"] and not passed:
             reasons.append(f"{counts['unattempted']} cell(s) unattempted (no record on disk)")
-        if counts["abort-pending"]:
+        if counts["abort-pending"] and not passed:
             reasons.append(
                 f"{counts['abort-pending']} abort record(s) not final "
                 "(classify with --finalize-abort or re-run)"
@@ -1187,6 +1242,11 @@ def main(argv: list[str] | None = None) -> int:
                     },
                     "targets": [target_record(target) for target in plan.targets()],
                     "analysis_plan": plan.analysis_plan(),
+                    **(
+                        {"deadline": deadline_record(plan, states, ended_late)}
+                        if prereg.execution_deadline is not None
+                        else {}
+                    ),
                     "interim": {
                         "analysis": prereg.interim_analysis,
                         "redacted": redact,
@@ -1312,6 +1372,11 @@ def main(argv: list[str] | None = None) -> int:
     if bash is None:
         raise SystemExit("bash not found: the native launcher runs only on the host terminal")
     pending, skipped, skipped_final = _pending_cells(plan, output)
+    not_started: list[str] = []
+    if deadline_passed(plan):
+        # No new cell after the deadline, and nothing to re-run: attempts stay where they are.
+        not_started = [cell.run_id for cell in pending]
+        pending = []
     archived = {cell.run_id: archive_attempt(cell, output) for cell in pending}
     if pending and not args.skip_build:
         code = _warmup("demo-historical", output, base_env, bash)
@@ -1322,22 +1387,29 @@ def main(argv: list[str] | None = None) -> int:
             return code
     disk_pauses: dict[str, int] = {}
 
-    def run_one(cell: Cell) -> CellResult:
+    def run_one(cell: Cell) -> CellResult | None:
         pauses = wait_for_disk(output, plan.disk_pause_fraction)
         if pauses:
             disk_pauses[cell.run_id] = pauses
-        return run_cell_with_watchdog(
+        if deadline_passed(plan):
+            not_started.append(cell.run_id)
+            return None
+        result = run_cell_with_watchdog(
             cell,
             output,
             exp0_cell_env(plan, cell, output, base_env),
             bash,
             limit_seconds=plan.watchdog_seconds,
         )
+        # A running cell is never killed for the deadline: its record is kept, its seed excluded.
+        if deadline_passed(plan):
+            ended_late.add(cell.run_id)
+        return result
 
     results: list[CellResult] = []
     if pending:
         with ThreadPoolExecutor(max_workers=args.jobs) as pool:
-            results = list(pool.map(run_one, pending))
+            results = [result for result in pool.map(run_one, pending) if result is not None]
     (output / "matrix.json").write_text(
         json.dumps(
             {
@@ -1358,6 +1430,11 @@ def main(argv: list[str] | None = None) -> int:
                 "skipped_complete": skipped,
                 "skipped_final_aborts": skipped_final,
                 "archived_attempts": {k: v for k, v in archived.items() if v is not None},
+                **(
+                    {"deadline_not_started": sorted(not_started)}
+                    if prereg.execution_deadline is not None
+                    else {}
+                ),
                 "cells": [
                     {
                         "run_id": r.cell.run_id,

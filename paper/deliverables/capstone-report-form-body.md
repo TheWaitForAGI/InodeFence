@@ -56,7 +56,7 @@
 
 **EXP-0(인프라 측정).** 15셀 3,000회 실행을 완주했고 abort는 0, C1/C2는 0건이었다. 가설 검정이 아니며 0건은 위험이 0이라는 뜻이 아니다.
 
-**위험도 파일럿(탐색).** 40캠페인에서 첫 C1 또는 C2 사건은 R 변형 1·4건, D 4건, S-u 6건이었고 abort는 11건이었다. 설계 입력으로 쓴 값이며, 구간이 크게 겹치고 어떤 값도 확증 검정력을 뜻하지 않는다.
+**위험도 파일럿(탐색).** 40캠페인에서 첫 C1 또는 C2 사건은 R의 두 변형(이어 걷기 1건, 시드 재시작 4건), D 4건, S-u 6건이었고 abort는 11건이었다. 설계 입력으로 쓴 값이며, 구간이 크게 겹치고 어떤 값도 확증 검정력을 뜻하지 않는다.
 
 **회귀 검사 명령.** `make regression TAR_VERSION=<x>`는 고정 입력 범위를 검사한다. 통과가 안전을 뜻하지 않는다.
 
@@ -142,7 +142,7 @@
 | 수행 ① | 모든 실험은 일회용 샌드박스·sentinel, node-tar 실행은 격리 컨테이너. python-tarfile은 프로세스 안 실행 | `tests/test_python_tarfile_generality.py`, `docs/research/design/security-contracts.md` | 재확인 요청(W4 지적 반영) |
 | 결과 줄글 | 최종 결과물 항목의 문장화. 숫자와 고정 문구는 그대로 | 아래 각 행과 같음 | 재확인 요청(문구 delta만) |
 | 목적 3) | 7.5.3 거부 → 7.5.6 공유 → 7.5.7 거부, 대응·원인 추론 | `experiments/summaries/cross-release-identity-repro-v1.md`, `paper/tables/m2-cross-release-evidence.md` | PASS(01cceeb) |
-| 수행 ③ | R/D/S-u, 등록 파일 2개 | `docs/research/design/research-questions.md`, D040(#282, `05b26a9` 머지), R 표기는 D040-D6(seed-restart) | 재확인 요청(R 표기만 바뀜, 나머지 PASS(01cceeb)) |
+| 수행 ③ | R/D/S-u, 등록 파일 2개 | `docs/research/design/research-questions.md`, D040(#282, 머지됨 `05b26a9`), R 표기는 D040-D6(seed-restart) | 재확인 요청(R 표기만 바뀜, 나머지 PASS(01cceeb)) |
 | 목적 2) | 7.5.3 거부 → 7.5.6 공유로 재검사 필요를 말함. "알려진 입력 재실행으로는 부족" 주장 삭제 | 목적 3)과 같은 출처, `scripts/regression_check.py` | 재확인 요청(수정 2) |
 | 루프 동작 | `make demo` 1회에 7.5.22, 20 step, 위반 0, corpus 4→7 | `~/inodefence-evidence/w4-script-verification-20261106/stdout/make_demo.out` | 재확인 요청(수정 1) |
 | 통제 재현 | nlink 1→2, 거부 | `experiments/repro/evidence/summary.json`, 표 M2 | 표·그림 PASS |

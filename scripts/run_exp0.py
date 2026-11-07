@@ -273,6 +273,14 @@ class Exp0Plan:
         )
 
     def cells(self) -> list[Cell]:
+        """Targets in order. A ``targets.<id>`` plan (even one target) rotates arms by seed block.
+
+        Then every arm runs at about the same time on each seed, so a slow host or a change over
+        the run does not fall on one arm, and a campaign stopped early leaves only later seed blocks
+        unfinished. The concurrency benchmark measures this same order
+        (``run_concurrency_benchmark.planned_cells``). A single-key registration (EXP-0) keeps its
+        recorded arm-then-seed order.
+        """
         prereg = self.preregistration
         cells: list[Cell] = []
         for target in self.targets():
@@ -282,24 +290,32 @@ class Exp0Plan:
                 if target.arms is None or RdsArm(arm.label) in target.arms
             ]
             budget = target.budget if target.budget is not None else prereg.budget
-            for arm in arms:
-                for seed in prereg.seeds:
-                    cells.append(
-                        TargetCell(
-                            "demo-historical",
-                            target.version,
-                            arm,
-                            seed,
-                            budget,
-                            target_id=target.target_id,
-                            extractor=target.extractor,
-                            role=target.role,
-                            hypothesis=target.hypothesis,
-                            digest=target.digest,
-                            digest_kind=target.digest_kind,
-                            subdir=target.target_id if self.multi_target else None,
-                        )
+            order = (
+                [
+                    (arms[(position + offset) % len(arms)], seed)
+                    for position, seed in enumerate(prereg.seeds)
+                    for offset in range(len(arms))
+                ]
+                if self.multi_target
+                else [(arm, seed) for arm in arms for seed in prereg.seeds]
+            )
+            for arm, seed in order:
+                cells.append(
+                    TargetCell(
+                        "demo-historical",
+                        target.version,
+                        arm,
+                        seed,
+                        budget,
+                        target_id=target.target_id,
+                        extractor=target.extractor,
+                        role=target.role,
+                        hypothesis=target.hypothesis,
+                        digest=target.digest,
+                        digest_kind=target.digest_kind,
+                        subdir=target.target_id if self.multi_target else None,
                     )
+                )
         return cells
 
     def analysis_plan(self) -> dict[str, Any]:

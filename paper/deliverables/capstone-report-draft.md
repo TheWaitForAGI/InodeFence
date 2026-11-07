@@ -9,7 +9,7 @@
 > - **일정.** 결과보고서·영상 제출 2026-11-26, 최종발표 2026-11-30(오케스트레이터가 사용자 확정 일정으로 전달). 위 붙임 기록의
 >   "결과물 기한 11-30"과 다르므로 서식을 대조할 때 함께 확인한다.
 > - **수치 규칙.** 정량 문장 끝에 증거 각주를 둔다. 미머지 PR을 가리키는 각주는 머지 후 경로를 다시 확인한다.
-> - **미실행.** EXP-3과 EXP-2는 실행 전이다. §7.6과 §7.7은 자리만 있다.
+> - **미실행.** EXP-3 본실험과 EXP-2는 실행 전이다. §7.6의 표 7-A~C와 §7.7은 자리만 있다. 표 7-P는 동결 전 탐색 파일럿의 실측값이다.
 > - **표·그림 요구 사항**은 [표·그림 요구 목록](results-artifact-requirements.md)에 있다.
 
 | 항목 | 내용 |
@@ -91,6 +91,7 @@ Seed Generator -> Structure Mutator -> TAR Builder -> Target Adapter
 | 실험 | 목적 | 상태 |
 | --- | --- | --- |
 | EXP-0 | 인프라 측정(처리량, abort, dense 신호). H-A 검정 아님 | 등록 실행 완료 |
+| EXP-3 동결 전 위험도 파일럿 | 규모·R 변형 결정의 입력(탐색, 비등록). H-A 검정 아님 | 실행 완료(40캠페인) |
 | EXP-3 | H-A 본실험(R/D/S-u, 동일 어휘·동일 예산) | **사전등록 예정(11/18), 실행 예정** |
 | EXP-2 | EXP-3 결과에 사전등록 규칙을 적용해 GO일 때만 수행 | 조건부, 미정 |
 
@@ -189,7 +190,37 @@ hazard proxy는 실행 수로 세므로 시계와 무관하다(관찰). oracle�
 
 ### 7.6 EXP-3 본실험: 사전등록 예정(11/18), 실행 예정
 
-**아직 실행하지 않았다. 아래 값은 모두 자리다.** 타깃 역할을 섞지 않고 역할별로 보고한다.[^exp3-draft] *(역할 구성은 초안 기준이다. 실험 구조와
+**동결 전 위험도 파일럿 (탐색 · 비등록 · 확증 아님).** 본실험 규모와 R 변형을 정할 입력을 얻으려고 40캠페인을 돌렸다. 대상은 train 타깃
+node-tar 7.5.2뿐이고 holdout은 실행하지 않았다. 설계는 seed 8101–8110 × {R-walk, R-restart, D, S-u}, budget 2000, sentinel k=5, 동일 어휘이고,
+실행 전에 판정 규칙을 고정했다.[^pilot-design] 결과는 EXP-0·EXP-3 추정에 합치지 않는다.
+
+**어떤 값도 확증 검정력을 뜻하지 않는다.** 아래 표는 설계 입력이며 arm 우위의 근거가 아니다.
+
+**표 7-P. 위험도 파일럿 (탐색, node-tar 7.5.2, k=5)**[^pilot-report]
+
+| arm | 캠페인 | 완주 | abort | 첫 C1∨C2 사건 | 95% CI (양측, 계획 분모) | 노출 (캠페인분) | 점추정 (노출 기준) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| R-walk | 10 | 7 | 3 | 1 | .003–.445 | 8.89 | .106 |
+| R-restart | 10 | 8 | 2 | 4 | .122–.738 | 7.51 | .413 |
+| D | 10 | 7 | 3 | 4 | .122–.738 | 7.81 | .401 |
+| S-u | 10 | 7 | 3 | 6 | .262–.878 | 5.41 | .670 |
+
+읽는 법:
+
+- **우위를 주장하지 않는다.** S-u의 사건 수가 가장 많지만 CI가 크게 겹치고 이 표본에서 검정을 하지 않았다. abort 가정에 따라 순서도 바뀐다. 비교
+  arm의 무사건 abort만 사건으로 치면 S-u 6 대 D 7이다.[^pilot-rule-c]
+- **`R=D=0` 가정은 폐기했다.** R-walk, R-restart, D 모두 사건이 나와 사전 규칙 A대로 이 가정을 버리고 필요 n을 다시 계산했다.[^pilot-report]
+- **규칙 C 기계 출력은 "가능", n/arm 114다.** 8호스트-일 용량은 n/arm 151이다(holdout 1타깃, 3 arm, 호스트 1대 기준). 이는 사전 고정 규칙의 출력이고 규모 결정의 입력일 뿐이다.
+  규칙의 "S-u가 앞선다"는 점추정 비교이지 유의한 차이가 아니다. 규칙의 검정력 모델은 등록 검정의 근사이고, 등록 통계량으로 다시 계산한 값은 약 76~80이다.
+  어느 값도 확증 검정력을 뜻하지 않는다.[^pilot-rule-c] train의 hazard가 holdout에도 같다는 것은 미검증 가정이다.
+- **abort는 11/40 = .275다.** 전부 컨테이너 런타임 inspect 실패로 멈췄고, 같은 순간에 난 2건을 묶으면 10회차다. 컨테이너 상태를 보면 6건은 create 뒤 start
+  없이 destroy됐고, 2건은 마지막 컨테이너가 종료된 뒤 멈췄으며(그 step의 결과는 기록이 없다), 3건은 기록기 시작 전이라 상태를 모른다.[^pilot-aborts]
+  abort 시점이 사건 시점과 독립이라는 비정보적 중도절단 가정은 입증되지 않았다. 첫 실패 경로도 확인하지 못했다.
+- **시간 값은 실행마다 시계가 다르다.** 셀별 monotonic/실시간 배율은 1.00~1.10이었다(합산 1.051). 처리량 약 4750 exec/h는 실시간에서 직접
+  계산했다(실경과 15.17 h, jobs 2). 사건까지의 실행 수는 시계와 무관하다.[^pilot-clock]
+- **집계 제외.** 리허설과 사전점검은 40캠페인에 넣지 않았다(S-u s8001 k=3 사건 없음, S-u s8002 k=5 T_first 685, R-restart s8003 budget 20 사건 없음).[^pilot-preflight]
+
+**본실험은 아직 실행하지 않았다. 표 7-A~C의 값은 모두 자리다.** 타깃 역할을 섞지 않고 역할별로 보고한다.[^exp3-draft] *(역할 구성은 초안 기준이다. 실험 구조와
 대상 타깃 범위는 파일럿 후 재판정 대기)*
 
 **표 7-A. `role=holdout` (확증)**
@@ -230,8 +261,9 @@ EXP-3 결과에 사전등록 GO/NO-GO 규칙을 적용해 GO일 때만 수행한
 ## 8. 한계
 
 - **핵심 RQ 미판정.** EXP-3 전이므로 피드백의 효과에 대해 어떤 주장도 하지 않는다.
-- **검정력.** 사전 규모 산정상 현재 hazard에서는 T_first 사건 수가 적을 수 있어, 전 arm 위반 0(시나리오 ⑤)이나
-  검정력 부족 판정도 가능한 결과다.[^exp3-sizing]
+- **검정력.** 파일럿의 사건 수는 탐색 입력이고 train 7.5.2, k=5에서만 측정됐다. holdout에서 hazard가 다르면 전 arm 위반 0(시나리오 ⑤)이나
+  검정력 부족 판정도 가능한 결과다.[^exp3-sizing] [^pilot-report]
+- **파일럿 abort.** 11/40이 컨테이너 런타임 inspect 실패로 멈췄고 비정보적 중도절단은 입증되지 않았다. 원인을 고치면 파일럿과 실행 경로가 달라진다.[^pilot-aborts]
 - **판정의 범위.** snapshot 기반 oracle은 중간 변화, transient 생성 후 삭제, 외부 경로 직접 사용을 복구하지 못한다.
   `violated=False`는 관찰 범위에서 위반 증거가 없다는 뜻이지 안전 증명이 아니다.[^contracts]
 - **M2.** 손 fixture 범위의 통제 재현이며 CVE 대응은 추론이다.[^m2]
@@ -315,5 +347,11 @@ TAR fuzzing, hardlink·symlink 공격, entry 순서, 파일 상태 기반 fuzzin
 [^exp0-manifest]: evidence: `experiments/summaries/raw-manifest-win-20261105-20261105.sha256`(PR #262, sha256 `a9dc149c…`), `scripts/make_raw_manifest.py --verify` 2026-11-06 재실행.
 [^exp3-draft]: evidence: PR #239→#263→#264의 `experiments/preregistration/exp3-v1.md`(head e11d302, 미머지·미동결), PR #248과 #257의 confirmatory 출력.
 [^exp3-sizing]: evidence: [§4.6.3](../sections/05-method.md) "계획 단계 검정력 한계"(PR #216), PR #263 '규모 산정 입력' 절(미머지).
+[^pilot-design]: evidence: [exp3-hazard-pilot-v1](../../experiments/preregistration/exp3-hazard-pilot-v1.md)(PR #267, 설계 sha256 `06b3408c…`) §1 구속 조건, §6 판정 규칙.
+[^pilot-report]: evidence: [파일럿 결과 메모](../../experiments/summaries/exp3-hazard-pilot-v1-result.md) §1·§2. raw 체크섬은 [raw-manifest-exp3-hazard-pilot-v1](../../experiments/summaries/raw-manifest-exp3-hazard-pilot-v1.sha256)(123개). 분석 산출물은 매니페스트 밖의 `~/inodefence-evidence/exp3-hazard-pilot-20261106/analysis/pilot-report.json`(sha256 `2a94bf3c…`)이다.
+[^pilot-rule-c]: evidence: [파일럿 결과 메모](../../experiments/summaries/exp3-hazard-pilot-v1-result.md) §3(기계 출력 114, 용량 151, 양쪽 가정 민감도, 등록 통계량 재계산). 재계산 스크립트 `exp3_power_registered.py`(sha256 `5f02b06b…`)는 후속 PR로 수록 예정이다.
+[^pilot-aborts]: evidence: [파일럿 결과 메모](../../experiments/summaries/exp3-hazard-pilot-v1-result.md) §4(§4.2 abort율, §4.5 첫 실패 경로).
+[^pilot-clock]: evidence: [파일럿 결과 메모](../../experiments/summaries/exp3-hazard-pilot-v1-result.md) §5·§6.
+[^pilot-preflight]: evidence: [파일럿 결과 메모](../../experiments/summaries/exp3-hazard-pilot-v1-result.md) §8.
 [^related]: evidence: [related-work-positioning](../../docs/research/design/related-work-positioning.md), [§3](../sections/04-related-work.md).
 [^ai]: evidence: `git rev-list --count 24867be` = 414, `git log 24867be --grep='Co-Authored-By: Claude' --format=%H | wc -l` = 96 (2026-11-06 재실행). [§4.7](../sections/05-method.md)(PR #216).

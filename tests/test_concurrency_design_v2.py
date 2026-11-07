@@ -151,7 +151,8 @@ def test_jobs_max_comes_from_this_benchmark() -> None:
 def test_operating_stop_points_to_the_adopted_rule() -> None:
     assert "처음 15캠페인에서 8건" not in V2_TEXT
     row = _row(V2_TEXT, "| **실행 중 중단** |")
-    assert "D040" in row and "24시간 창" in row and ".60" in row
+    assert "D040과 D041" in row and "최근 24시간 종료 셀 20개 이상일 때 abort ≥ .60" in row
+    assert "재개는 지웅 결정으로 같은 설정 또는 jobs=2로만" in row
 
 
 def test_pilot_comparison_is_reported_not_a_halt() -> None:

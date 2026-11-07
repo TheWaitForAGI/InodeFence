@@ -143,10 +143,10 @@
 | 결과 줄글 | 최종 결과물 항목의 문장화. 숫자와 고정 문구는 그대로 | 아래 각 행과 같음 | PASS(9eafebd). 파일럿 "R의 두 변형" 문구는 재확인 대기(`79ce477`) |
 | 목적 3) | 7.5.3 거부 → 7.5.6 공유 → 7.5.7 거부, 대응·원인 추론 | `experiments/summaries/cross-release-identity-repro-v1.md`, `paper/tables/m2-cross-release-evidence.md` | PASS(01cceeb) |
 | 수행 ③ | R/D/S-u, 등록 파일 2개 | `docs/research/design/research-questions.md`, D040(#282, 머지됨 `05b26a9`), R 표기는 D040-D6(seed-restart) | PASS(9eafebd) |
-| 목적 2) | 7.5.3 거부 → 7.5.6 공유로 재검사 필요를 말함. "알려진 입력 재실행으로는 부족" 주장 삭제 | 목적 3)과 같은 출처, `scripts/regression_check.py` | PASS(d22577b), W3 문구 정정 `c50118a`, PASS(9eafebd) |
+| 목적 2) | 7.5.3 거부 → 7.5.6 공유로 재검사 필요를 말함. "알려진 입력 재실행으로는 부족" 주장 삭제 | 목적 3)과 같은 출처, `scripts/regression_check.py` | W3 정정 문구 반영(`c50118a`), PASS(9eafebd) |
 | 루프 동작 | `make demo` 1회에 7.5.22, 20 step, 위반 0, corpus 4→7 | `~/inodefence-evidence/w4-script-verification-20261106/stdout/make_demo.out` | PASS(d22577b) |
 | 통제 재현 | nlink 1→2, 거부 | `experiments/repro/evidence/summary.json`, 표 M2 | 표·그림 PASS |
-| 자력 발견 | 자율 C1은 65 seed 중 s11, 이름 획득 조건 문구. hit는 C1 ∧ contract_violated이고 A3full-s60의 C2만 위반 step 14개는 세지 않았다 | `docs/STATUS.md` Ledger, 표 M3, `experiments/summaries/m3-powered-matched-verdict-v2.md`. raw는 Mac 호스트 보관, 체크섬 `raw-manifest-mac-20261103.sha256`, 2026-11-03 감사 재집계. 표는 요약에서 생성 M3 raw 재집계는 11/03 감사 기록에 의존(제출 차단 아님) | 표 수치·그림·hit 문구 PASS. "어휘(이름 포함 여부)를 달리한 대조" PASS(d22577b) |
+| 자력 발견 | 자율 C1은 65 seed 중 s11, 이름 획득 조건 문구. hit는 C1 ∧ contract_violated이고 A3full-s60의 C2만 위반 step 14개는 세지 않았다 | `docs/STATUS.md` Ledger, 표 M3, `experiments/summaries/m3-powered-matched-verdict-v2.md`. raw는 Mac 호스트 보관, 체크섬 `raw-manifest-mac-20261103.sha256`, 2026-11-03 감사 재집계. 표는 요약에서 생성. M3 raw 재집계는 11/03 감사 기록에 의존(제출 차단 아님) | 표 수치·그림·hit 문구 PASS. "어휘(이름 포함 여부)를 달리한 대조" PASS(d22577b) |
 | 일반성 | 3 extractor, decompress(사후 분석)·oras-go(1 seed) 자력 실행에서 C1/C2 미관찰 | `docs/STATUS.md` Ledger, `experiments/summaries/m4-5-decompress-selfdiscover-unified-v1.md`, `m4-7-oras-go-selfdiscover-v1.md` | PASS(d22577b) |
 | EXP-0 | 15셀, 3,000, abort 0, hit 0 | `experiments/summaries/exp0-20261105-report.md` | PASS(#268) |
 | 파일럿 | 사건 R-walk 1, R-restart 4, D 4, S-u 6, abort 11/40 | `experiments/summaries/exp3-hazard-pilot-v1-result.md` | PASS(#267), PASS(9eafebd). "R의 두 변형" 문구는 재확인 대기(`79ce477`) |

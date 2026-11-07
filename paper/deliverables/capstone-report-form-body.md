@@ -1,6 +1,6 @@
 # 결과보고서 칸별 본문 (붙임3 서식 9 입력용, 작업 중)
 
-**이 파일은 제출본이 아니다.** 서식 칸에 넣을 글과 그 근거를 둔다. 분량 기준은 사진 포함 5장 내외다. `[사람]`은 사람이 기입할 값이고, `[대기]`는 최종 실험값 반영 대기다. 결과 수치는 W3 검증 뒤에만 넣는다. 칸과 순서는 `~/capstone-reference/03_붙임3_결과보고서_서식_전문.md`와 대조했다(2026-11-07). 맨 끝 근거표는 제출본에 넣지 않는다.
+**이 파일은 제출본이 아니다.** 서식 칸에 넣을 글과 그 근거를 둔다. 분량 기준은 사진 포함 5장 내외다. `[사람]`은 사람이 기입할 값이고, `[대기]`는 최종 실험값 반영 대기다. 결과 수치는 W3 검증 뒤에만 넣는다. 칸과 순서는 `~/capstone-reference/03_붙임3_결과보고서_서식_전문.md`와 대조했다(2026-11-07). 입력 대상 서식은 2026-11-07 재저장본(SHA-256 `deea5752…`)이고 메모 포함 텍스트는 11/04 기록과 같다. 맨 끝 근거표는 제출본에 넣지 않는다.
 
 ## 머리 정보
 
@@ -18,7 +18,7 @@
 
 **1) 해결하려는 문제.** 소프트웨어는 내려받은 TAR 파일을 풀 때 추출 라이브러리를 믿는다. 그런데 악의적인 TAR의 하드링크 하나로, 추출된 파일이 추출 폴더 밖의 파일과 같은 실체(inode)를 공유할 수 있다. 경로 문자열만 검사하면 이 관계를 놓칠 수 있다. 이 문제를 겪는 사람은 추출 라이브러리 유지보수자와 그 라이브러리를 쓰는 서비스 운영자다.
 
-**2) 해결 필요성.** 한 릴리스에서 거부된 입력이 이후 릴리스에서 다시 경계위반이 될 수 있어, 알려진 공격 입력만 다시 돌리는 점검으로는 부족하다. 특정 취약점 번호가 아니라 "추출 결과가 폴더 밖 보호 대상에 닿았는가"라는 일반 규칙으로 릴리스마다 검사할 도구가 필요하다.
+**2) 해결 필요성.** 한 번 고쳐진 입력이 이후 릴리스에서 다시 위반이 될 수 있어, 릴리스마다 같은 규칙으로 다시 검사해야 한다. 특정 취약점 번호가 아니라 "추출 결과가 폴더 밖 보호 대상에 닿았는가"라는 일반 규칙으로 검사할 도구가 필요하다.
 
 **3) 문제 근거.** node-tar 릴리스 5개에 손으로 만든 하드링크 입력을 넣어 확인했다. 중첩 하드링크 입력은 7.5.3에서 거부되고 7.5.6에서 다시 외부 파일과 공유되며 7.5.7에서 다시 거부됐다(관찰). 알려진 CVE와의 대응과 회귀 원인은 추론이다. 아카이브 추출 공격과 퍼징은 기존 연구(Jana & Shmatikov, ZIPDiff, LinkZard, Wormholes)가 이미 다뤘으며, 이 과제는 일반 TAR 변형과 파일시스템 보안 상태 피드백의 조합을 검증할 가설로 둔다.
 
@@ -40,10 +40,10 @@
 
 | 항목 | 결과 | 읽는 법 |
 | --- | --- | --- |
-| 루프 동작 | 실제 node-tar 7.5.22에서 `make demo` 20회 실행 완주, 위반 0건. 입력 보관함 4→7개, 피드백에 따라 연산 가중치 변화 | 동작 확인. 탐색 성능이나 안전성을 뜻하지 않음 |
+| 루프 동작 | 실제 node-tar 7.5.22에서 `make demo` 1회에 20 step 완주, 위반 0건. 입력 보관함 4→7개, 피드백에 따라 연산 가중치 변화 | 동작 확인. 탐색 성능이나 안전성을 뜻하지 않음 |
 | 통제 재현 | 같은 판정기가 릴리스 번호 없이 구분. 최상위 입력: 7.5.2 공유(nlink 1→2), 7.5.3 거부. 중첩 입력: 7.5.6 공유, 7.5.7 거부 | 손으로 만든 입력의 재현. 퍼저가 찾은 것이 아님 |
-| 자력 발견 | 이름 획득 조건의 관찰(피드백 인과 미입증). 외부 이름을 어휘에 넣은 조건에서 예산 1500, 자율 C1은 65 seed 중 1개에서 관찰 | 어휘를 통제한 대조이고 드문 사례. blind 발견 아님. 비교 실험에서 비율 차이는 구간이 겹쳐 미입증. 여기서 위반은 C1이고, 아래 파일럿의 사건은 C1 또는 C2다 |
-| 일반성 | 같은 판정기가 python-tarfile, oras-go, decompress에 adapter 수준으로 적용 | 판정기 수준. decompress와 oras-go의 자력 발견은 C1/C2에 도달하지 못함 |
+| 자력 발견 | 이름 획득 조건의 관찰(피드백 인과 미입증). 외부 이름을 어휘에 넣은 조건에서 예산 1500, 자율 C1은 65 seed 중 1개에서 관찰 | 어휘(이름 포함 여부)를 달리한 대조이고 드문 사례. blind 발견 아님. 비교 실험에서 비율 차이는 구간이 겹쳐 미입증. 여기서 위반은 C1이고, 아래 파일럿의 사건은 C1 또는 C2다 |
+| 일반성 | 같은 판정기가 python-tarfile, oras-go, decompress에 adapter 수준으로 적용 | 판정기 수준. decompress(사후 분석)와 oras-go(1 seed)의 자력 실행에서 C1/C2는 관찰되지 않았다 |
 | EXP-0(인프라 측정) | 15셀 3,000회 실행 완주, abort 0, C1/C2 0건 | 가설 검정 아님. 0건은 위험이 0이라는 뜻이 아님 |
 | 위험도 파일럿(탐색) | 40캠페인. 첫 C1 또는 C2 사건 R 변형 1·4건, D 4건, S-u 6건, abort 11건 | 설계 입력. 구간이 크게 겹치고 어떤 값도 확증 검정력을 뜻하지 않음 |
 | 회귀 검사 명령 | `make regression TAR_VERSION=<x>` | 고정 입력 범위. 통과가 안전을 뜻하지 않음 |
@@ -52,7 +52,7 @@
 
 ## ■ 활용방안 및 기대효과
 
-**1) 활용방안.** node-tar 유지보수자가 릴리스 전에 회귀 검사 명령 하나로 고정 입력의 경계 위반 여부를 확인한다. 다른 추출 라이브러리는 실행 부분(adapter)만 추가해 같은 판정기를 적용할 수 있다. 판정 규칙과 실험 절차는 재현 가능한 형태로 저장소에 남긴다. 결과가 부정적이어도 피드백 설계의 판단 자료로 쓴다.
+**1) 활용방안.** node-tar 유지보수자가 릴리스 전에 해당 버전 이미지를 만든 뒤 회귀 검사 명령으로 고정 입력의 경계 위반 여부를 확인한다. 다른 추출 라이브러리는 실행 부분(adapter)만 추가해 같은 판정기를 적용할 수 있다. 판정 규칙과 실험 절차는 재현 가능한 형태로 저장소에 남긴다. 결과가 부정적이어도 피드백 설계의 판단 자료로 쓴다.
 
 **2) 기대효과.**
 
@@ -112,14 +112,15 @@
 
 | 칸 | 값 | 출처 | W3 |
 | --- | --- | --- | --- |
-| 목적 3) | 7.5.3 거부 → 7.5.6 공유 → 7.5.7 거부, 대응·원인 추론 | `experiments/summaries/cross-release-identity-repro-v1.md`, `paper/tables/m2-cross-release-evidence.md` | 요청 |
-| 수행 ③ | R/D/S-u, 등록 파일 2개 | `docs/research/design/research-questions.md`, D040(#282, 머지 전) | 요청 |
-| 루프 동작 | 7.5.22, 20 step, 위반 0, corpus 4→7 | `~/inodefence-evidence/w4-script-verification-20261106/stdout/make_demo.out` | 요청 |
+| 목적 3) | 7.5.3 거부 → 7.5.6 공유 → 7.5.7 거부, 대응·원인 추론 | `experiments/summaries/cross-release-identity-repro-v1.md`, `paper/tables/m2-cross-release-evidence.md` | PASS(01cceeb) |
+| 수행 ③ | R/D/S-u, 등록 파일 2개 | `docs/research/design/research-questions.md`, D040(#282, 머지 전) | PASS(01cceeb) |
+| 목적 2) | 7.5.3 거부 → 7.5.6 공유로 재검사 필요를 말함. "알려진 입력 재실행으로는 부족" 주장 삭제 | 목적 3)과 같은 출처, `scripts/regression_check.py` | 재확인 요청(수정 2) |
+| 루프 동작 | `make demo` 1회에 7.5.22, 20 step, 위반 0, corpus 4→7 | `~/inodefence-evidence/w4-script-verification-20261106/stdout/make_demo.out` | 재확인 요청(수정 1) |
 | 통제 재현 | nlink 1→2, 거부 | `experiments/repro/evidence/summary.json`, 표 M2 | 표·그림 PASS |
-| 자력 발견 | 자율 C1은 65 seed 중 s11, 이름 획득 조건 문구. hit는 C1 ∧ contract_violated이고 A3full-s60의 C2만 위반 step 14개는 세지 않았다 | `docs/STATUS.md` Ledger, 표 M3, `experiments/summaries/m3-powered-matched-verdict-v2.md`. raw는 Mac 호스트 보관, 체크섬 `raw-manifest-mac-20261103.sha256`, 2026-11-03 감사 재집계. 표는 요약에서 생성 | 표·그림 PASS, 문구는 이 칸 반영 후 확인 |
-| 일반성 | 3 extractor, decompress·oras-go 자력 발견 미도달 | `docs/STATUS.md` Ledger, `experiments/summaries/m4-5-decompress-selfdiscover-unified-v1.md`, `m4-7-oras-go-selfdiscover-v1.md` | 요청 |
+| 자력 발견 | 자율 C1은 65 seed 중 s11, 이름 획득 조건 문구. hit는 C1 ∧ contract_violated이고 A3full-s60의 C2만 위반 step 14개는 세지 않았다 | `docs/STATUS.md` Ledger, 표 M3, `experiments/summaries/m3-powered-matched-verdict-v2.md`. raw는 Mac 호스트 보관, 체크섬 `raw-manifest-mac-20261103.sha256`, 2026-11-03 감사 재집계. 표는 요약에서 생성 M3 raw 재집계는 11/03 감사 기록에 의존(제출 차단 아님) | 표 수치·그림·hit 문구 PASS. "어휘(이름 포함 여부)를 달리한 대조" 재확인 요청(수정 3) |
+| 일반성 | 3 extractor, decompress(사후 분석)·oras-go(1 seed) 자력 실행에서 C1/C2 미관찰 | `docs/STATUS.md` Ledger, `experiments/summaries/m4-5-decompress-selfdiscover-unified-v1.md`, `m4-7-oras-go-selfdiscover-v1.md` | 재확인 요청(수정 4) |
 | EXP-0 | 15셀, 3,000, abort 0, hit 0 | `experiments/summaries/exp0-20261105-report.md` | PASS(#268) |
 | 파일럿 | 사건 1/4/4/6, abort 11/40 | `experiments/summaries/exp3-hazard-pilot-v1-result.md` | PASS(#267) |
-| 회귀 명령 | 고정 fixture 범위 | `scripts/regression_check.py` | 요청 |
-| 학기 일정 | 단계와 날짜 | `docs/LOG.md`, D038, D040. 첫 단계 시작일은 사람 확인 | 해당 없음 |
-| AI 증빙 | 484, 146 | main `f36a1ce`: `git rev-list --count`, `git log --grep='Co-Authored-By: Claude'` | 해당 없음 |
+| 회귀 명령 | 고정 fixture 범위. 해당 버전 이미지를 만든 뒤 실행 | `scripts/regression_check.py`, `Makefile` `regression` | 재확인 요청(수정 5) |
+| 학기 일정 | 단계와 날짜 | `docs/LOG.md`, D038, D040. 첫 단계 시작일은 사람 확인 | 해당 없음(미검증, 제출 직전 사람 확인) |
+| AI 증빙 | 484, 146 | main `f36a1ce`: `git rev-list --count`, `git log --grep='Co-Authored-By: Claude'` | 해당 없음(미검증, 제출 직전 재집계 때 사람 확인) |

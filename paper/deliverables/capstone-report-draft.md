@@ -152,7 +152,7 @@ retention·effect 피드백 인과는 미입증.[^m3]
 
 *그림 7-2. 이름 획득 조건의 관찰(피드백 인과 미입증). 어휘가 다른 셀의 대조이며 rate 비교가 아니다.*
 
-- 이 대조는 피드백이 아니라 **어휘**를 통제했다. 피드백의 기여는 어휘를 맞춘 R/D/S-u 비교(EXP-3)로 아직 분리되지
+- 이 대조는 피드백이 아니라 **어휘**(이름 포함 여부)를 달리했다. 피드백의 기여는 어휘를 맞춘 R/D/S-u 비교(EXP-3)로 아직 분리되지
   않았다.[^m3]
 - **blind 발견이 아니다.** 기존 외부 객체에 하드링크하려면 이름이 필요하고 퍼저는 그것을 관찰로 얻는다.[^m3]
 - **seed-rare다.** 예산 1500에서 자율 C1은 65 seed 중 s11 1개였다. 21건은 그 run의 1 lineage이고, run은 step 416에서 abort했다.
@@ -163,8 +163,8 @@ retention·effect 피드백 인과는 미입증.[^m3]
 ### 7.4 M4: oracle 수준 일반성
 
 동일 generic C0/C1/C2 oracle(코드 불변)이 python-tarfile, oras-go, decompress 3개 extractor에서 통제 차분을 구분했다
-(일부 TESTED, oracle·adapter 수준).[^m4] 이는 fuzzer 자력 발견의 일반성이나 효과 주장이 아니다. decompress와 oras-go의
-자력발견 실행은 C1/C2에 도달하지 못했다.[^m4-neg]
+(일부 TESTED, oracle·adapter 수준).[^m4] 이는 fuzzer 자력 발견의 일반성이나 효과 주장이 아니다. decompress(사후 분석)와 oras-go(1 seed)의
+자력 실행에서 C1/C2는 관찰되지 않았다.[^m4-neg]
 
 ### 7.5 EXP-0 등록 실행: 인프라 측정
 

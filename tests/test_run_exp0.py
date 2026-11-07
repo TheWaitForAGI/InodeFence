@@ -1203,7 +1203,6 @@ def test_no_deadline_leaves_every_record_as_it_was(
     assert main(args) == 0
     assert "deadline" not in _index(out)
     assert "execution_deadline" not in json.loads((out / "registration.json").read_text())
-    assert "deadline_not_started" not in json.loads((out / "matrix.json").read_text())
 
 
 def test_dry_run_shows_the_deadline(
@@ -1311,7 +1310,7 @@ def test_no_cell_starts_after_the_deadline_and_records_stay_in_place(
     assert late_runner.calls == []  # type: ignore[attr-defined]
     assert report.read_bytes() == before  # the abort record was not moved or replaced
     assert not (out / "attempts").exists()
-    assert json.loads((out / "matrix.json").read_text())["deadline_not_started"] == [unfinished]
+    assert json.loads((out / "matrix.json").read_text())["cells_not_started"] == [unfinished]
     deadline = _index(out)["deadline"]
     # An abort that ended in time is finished: only the cell with no record excludes its seed.
     assert deadline["causes"] == {unfinished: "unattempted"}
@@ -1437,6 +1436,7 @@ def test_single_key_form_keeps_its_records_and_states(
     index = _index(out)
     assert "cell_completeness" not in index
     assert set(index["interim"]["states"]) == set(run_exp0.CELL_STATES)
+    assert "cells_not_started" not in json.loads((out / "matrix.json").read_text())
 
 
 def test_a_record_is_final_across_two_restarts(
@@ -1466,27 +1466,41 @@ def test_a_record_is_final_across_two_restarts(
     assert _state(out, inconsistent) == "record-inconsistent"
 
 
-def test_a_cell_with_no_record_runs_once_more_and_then_is_no_record(
+def test_a_cell_with_no_record_retries_at_once_in_its_place_and_then_is_no_record(
     tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch
 ) -> None:
-    out, args, _clock = _deadline_setup(tmp_path, monkeypatch, BEFORE)
+    out, args, _clock = _deadline_setup(tmp_path, monkeypatch, BEFORE, jobs="1")
     runner = _runner_with({VICTIM: _dies_without_a_record})
     monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", runner)
     assert main(args) == 1
-    assert _state(out) == "unattempted"
-    assert main(args) == 1
-    assert _state(out) == "no-record"
+    assert _state(out) == "no-record"  # one call: no later invocation is needed
+    position = runner.calls.index(VICTIM)
+    assert runner.calls[position + 1] == VICTIM  # the retry comes before the next cell
     assert main(args) == 1  # no third start
     assert runner.calls.count(VICTIM) == 2
     starts = [r for r in _result_lines(out) if r["run_id"] == VICTIM and r["event"] == "start"]
     assert [row["attempt"] for row in starts] == [1, 2]
-    assert (
-        out / "attempts" / f"{VICTIM}.attempt1.log"
-    ).is_file()  # the first attempt's file is kept
+    assert (out / "attempts" / f"{VICTIM}.attempt1.log").is_file()  # the first attempt's file
     summary = _index(out)["cell_completeness"]
     assert summary["no_record"] == 1 and summary["aborts"] == 1
+    assert summary["infrastructure_stops"] == []
     entry = next(c for c in _index(out)["cells"] if c["run_id"] == VICTIM)
     assert entry["invalid"] is True  # T_first: leaves the contrast; counted as an abort
+
+
+def test_a_retry_that_leaves_a_record_ends_the_cell(
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch
+) -> None:
+    out, args, _clock = _deadline_setup(tmp_path, monkeypatch, BEFORE)
+    actions = [_dies_without_a_record]
+
+    def first_attempt_only(cell: Any, output: Path, result: Any) -> Any:
+        return actions.pop()(cell, output, result) if actions else result
+
+    runner = _runner_with({VICTIM: first_attempt_only})
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", runner)
+    assert main(args) == 0
+    assert _state(out) == "complete" and runner.calls.count(VICTIM) == 2
 
 
 def test_a_start_without_an_end_counts_as_an_attempt(
@@ -1503,6 +1517,60 @@ def test_a_start_without_an_end_counts_as_an_attempt(
     assert main(args) == 1
     assert VICTIM not in runner.calls  # type: ignore[attr-defined]
     assert _state(out) == "no-record"
+
+
+def test_one_earlier_attempt_leaves_exactly_one_more(
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch
+) -> None:
+    out, args, _clock = _deadline_setup(tmp_path, monkeypatch, BEFORE)
+    out.mkdir()
+    _rewrite_results(out, [{"event": "start", "run_id": VICTIM, "attempt": 1, "clocks": {}}])
+    runner = _runner_with({VICTIM: _dies_without_a_record})
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", runner)
+    assert main(args) == 1
+    assert runner.calls.count(VICTIM) == 1 and _state(out) == "no-record"
+
+
+def test_three_cells_in_a_row_with_no_record_stop_new_cells(
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch
+) -> None:
+    """A dead Docker must not use up every waiting cell's attempts within minutes."""
+    out, args, _clock = _deadline_setup(tmp_path, monkeypatch, BEFORE, jobs="1")
+    cells = [cell.run_id for cell in _deadline_plan(args).cells()]
+    runner = _runner_with(dict.fromkeys(cells, _dies_without_a_record))
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", runner)
+    assert main(args) == 1
+    assert runner.calls == [run_id for run_id in cells[:3] for _ in range(2)]
+    lines = _result_lines(out)
+    started = {row["run_id"] for row in lines if row["event"] == "start"}
+    assert started == set(cells[:3])  # a cell not started uses no attempt
+    assert json.loads((out / "matrix.json").read_text())["cells_not_started"] == sorted(cells[3:])
+    index = _index(out)
+    states = index["interim"]["cell_states"]
+    assert [states[run_id] for run_id in cells[:3]] == ["no-record"] * 3
+    assert {states[run_id] for run_id in cells[3:]} == {"unattempted"}
+    stops = index["cell_completeness"]["infrastructure_stops"]
+    assert len(stops) == 1 and "3 consecutive cells left no record" in stops[0]["reason"]
+    assert set(stops[0]["clocks"]) == {"realtime", "monotonic", "monotonic_raw"}
+    assert index["outcomes_redacted"] is True  # the waiting cells still hide outcomes
+    # A later call finds its own streak: waiting cells still have both attempts.
+    fresh = _fake_runner(TARGET_IMAGES)
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", fresh)
+    assert main(args) == 1
+    assert sorted(fresh.calls) == sorted(cells[3:])  # type: ignore[attr-defined]
+
+
+def test_a_recorded_cell_resets_the_no_record_streak(
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch
+) -> None:
+    out, args, _clock = _deadline_setup(tmp_path, monkeypatch, BEFORE, jobs="1")
+    cells = [cell.run_id for cell in _deadline_plan(args).cells()]
+    dying = [cells[0], cells[1], cells[3], cells[4]]  # never three in a row
+    runner = _runner_with(dict.fromkeys(dying, _dies_without_a_record))
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", runner)
+    assert main(args) == 1
+    assert set(runner.calls) == set(cells)
+    assert _index(out)["cell_completeness"]["infrastructure_stops"] == []
 
 
 def test_a_record_without_an_exit_line_is_inconsistent_and_not_rerun(
@@ -1572,15 +1640,42 @@ def test_a_watchdog_cell_with_no_whole_line_has_no_record_and_keeps_its_file(
     tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch
 ) -> None:
     out, args, _clock = _deadline_setup(tmp_path, monkeypatch, BEFORE)
-    runner = _runner_with({VICTIM: _killed(0, torn=1)})
+    actions = [_killed(0, torn=1)]
+    originals: list[bytes] = []
+
+    def first_attempt_only(cell: Any, output: Path, result: Any) -> Any:
+        if not actions:
+            return result
+        killed = actions.pop()(cell, output, result)
+        originals.append(cell_paths(cell, output)["steps_jsonl"].read_bytes())
+        return killed
+
+    runner = _runner_with({VICTIM: first_attempt_only})
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", runner)
+    assert main(args) == 0  # the retry in the same call completes
+    assert _state(out) == "complete"
+    assert (out / "attempts" / f"{VICTIM}.attempt1.steps.jsonl").read_bytes() == originals[0]
+
+
+def test_a_cut_line_alone_without_the_watchdog_is_inconsistent_and_not_retried(
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch
+) -> None:
+    out, args, _clock = _deadline_setup(tmp_path, monkeypatch, BEFORE)
+    runner = _runner_with({VICTIM: _killed(0, torn=1, flag=False)})
     monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", runner)
     assert main(args) == 1
-    assert _state(out) == "unattempted"
-    original = _cell(args, VICTIM, out)["steps_jsonl"].read_bytes()
-    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", _fake_runner(TARGET_IMAGES))
-    assert main(args) == 0  # the retry completes
-    assert _state(out) == "complete"
-    assert (out / "attempts" / f"{VICTIM}.attempt1.steps.jsonl").read_bytes() == original
+    assert _state(out) == "record-inconsistent" and runner.calls.count(VICTIM) == 1
+
+
+def test_two_cut_lines_alone_with_the_watchdog_are_inconsistent_and_not_retried(
+    tmp_path: Path, clean_engine: None, admit_fixture_holdout: None, monkeypatch
+) -> None:
+    out, args, _clock = _deadline_setup(tmp_path, monkeypatch, BEFORE)
+    runner = _runner_with({VICTIM: _killed(0, torn=2)})
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", runner)
+    assert main(args) == 1
+    assert _state(out) == "record-inconsistent" and runner.calls.count(VICTIM) == 1
+    assert _index(out)["cell_completeness"]["watchdog"] == 0
 
 
 def test_an_outside_sigterm_is_inconsistent_not_a_watchdog_abort(
@@ -1653,7 +1748,7 @@ def test_a_cell_running_across_the_deadline_finishes_and_excludes_its_seed(
     assert inner.calls == [first.run_id]  # type: ignore[attr-defined]
     assert cell_paths(first, out)["report"].is_file()  # finished, not killed, record kept
     matrix = json.loads((out / "matrix.json").read_text())
-    assert matrix["deadline_not_started"] == sorted(c.run_id for c in cells[1:])
+    assert matrix["cells_not_started"] == sorted(c.run_id for c in cells[1:])
     deadline = _index(out)["deadline"]
     assert deadline["causes"][first.run_id] == "ended-after-deadline"
     assert deadline["excluded_seeds"] == {

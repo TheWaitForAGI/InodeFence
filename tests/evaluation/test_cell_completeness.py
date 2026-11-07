@@ -17,6 +17,7 @@ from inodefence.evaluation.cell_completeness import (
     classify_cell,
     infrastructure_summary,
     read_cell_results,
+    read_infrastructure_stops,
     scan_steps,
 )
 
@@ -170,9 +171,26 @@ def test_no_record_is_unattempted_until_the_attempts_are_used_up(tmp_path: Path)
     assert _classify(tmp_path, attempts=_attempts(None, None)).state == NO_RECORD
 
 
-def test_a_single_cut_line_alone_is_no_record(tmp_path: Path) -> None:
+def test_a_single_cut_line_alone_is_no_record_only_for_a_watchdog_cell(tmp_path: Path) -> None:
     attempts = _attempts(_end(-15, watchdog=True))
     assert _classify(tmp_path, lines=["cut"], attempts=attempts).state == UNATTEMPTED
+    used_up = _attempts(_end(-15, watchdog=True), _end(-15, watchdog=True))
+    assert _classify(tmp_path, lines=["cut"], attempts=used_up).state == NO_RECORD
+    without = _classify(tmp_path, lines=["cut"], attempts=_attempts(_end(-15)))
+    assert without.state == RECORD_INCONSISTENT
+    assert "unparsable-last-line-without-the-watchdog" in without.problems
+    no_exit = _classify(tmp_path, lines=["cut"], attempts=_attempts(None))
+    assert no_exit.state == RECORD_INCONSISTENT
+
+
+def test_two_cut_lines_alone_are_inconsistent_even_with_the_watchdog(tmp_path: Path) -> None:
+    attempts = _attempts(_end(-15, watchdog=True))
+    check = _classify(tmp_path, lines=["cut", "cut"], attempts=attempts)
+    assert check.state == RECORD_INCONSISTENT
+
+
+def test_an_empty_steps_file_is_no_record(tmp_path: Path) -> None:
+    assert _classify(tmp_path, lines=[], attempts=_attempts(_end(1))).state == UNATTEMPTED
 
 
 def test_watchdog_cell_rules_read_only_the_flag(tmp_path: Path) -> None:
@@ -208,6 +226,21 @@ def test_a_watchdog_flag_does_not_excuse_a_report_that_disagrees(tmp_path: Path)
     check = _classify(tmp_path, lines=_steps(2), report=_abort_report(step_index=9), attempts=fired)
     assert check.state == RECORD_INCONSISTENT
     assert check.problems == ("abort-step-index-differs-from-the-record-count",)
+    assert check.watchdog is True  # the mark stays for the separate watchdog line
+    holds = _classify(tmp_path, lines=_steps(2), report=_abort_report(), attempts=fired)
+    assert holds.state == ABORT_FINAL and holds.watchdog is True
+
+
+def test_infrastructure_stops_are_read_and_reported(tmp_path: Path) -> None:
+    path = tmp_path / "cell-results.jsonl"
+    stop = {"event": "infrastructure-stop", "reason": "why", "clocks": {"realtime": 1.0}}
+    start = {"event": "start", "run_id": "a", "attempt": 1}
+    path.write_text(f"{json.dumps(start)}\n{json.dumps(stop)}\ncut", encoding="utf-8")
+    stops = read_infrastructure_stops(path)
+    assert stops == [{"reason": "why", "clocks": {"realtime": 1.0}}]
+    assert list(read_cell_results(path)) == ["a"]  # a stop line is not an attempt
+    assert read_infrastructure_stops(tmp_path / "missing") == []
+    assert infrastructure_summary({}, stops)["infrastructure_stops"] == stops
 
 
 def test_only_the_last_attempt_decides(tmp_path: Path) -> None:

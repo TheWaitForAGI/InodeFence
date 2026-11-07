@@ -834,7 +834,7 @@ E 기준은 Schoenfeld 80%, 양측 α .025 계획값이다(HR 5/4/3/2 = 14.7/19.
 
 **abort 집계.** D040-D11의 GO와 운영 중단 abort 집계에 "abort + 기록 어긋남(record-inconsistent)"을 합산한다. D040-D11 식 자체는 그대로이고 입력 정의만 구체화한다.
 
-W3 판단: `record-inconsistent` 셀은 재시도하지 않고 그 arm이 든 대비에서 블록을 뺀다. abort 표에는 넣지 않고 수를 따로 내며 1건부터 보고한다. 결과 가림 사유가 아니다. 어긋남 민감도(첫 어긋남 앞 prefix 사용)와 판정이 갈리면 "기록 손상 가정에 좌우됨"으로 적는다. watchdog 셀은 abort로 분류한다(종료 코드 watchdog + step index 연속; 사유 watchdog 별도 표, 우측절단, 재시도 없음). 판정표 입력을 구체화한 것이다. 용어: 인프라 실패 비율 = (abort + record-inconsistent)/전체 셀.
+W3 판단: `record-inconsistent` 셀은 재시도하지 않고 그 arm이 든 대비에서 블록을 뺀다. abort 표에는 넣지 않고 수를 따로 내며 1건부터 보고한다. 결과 가림 사유가 아니다. 어긋남 민감도(첫 어긋남 앞 prefix 사용)와 판정이 갈리면 "기록 손상 가정에 좌우됨"으로 적는다. watchdog 셀은 abort로 분류한다(런처 기록(`cell-results.jsonl`)의 watchdog 여부 + step index 연속; step 기록 0이면 재시도 규칙; 사유 watchdog 별도 표, 우측절단, 재시도 없음). *(2026-11-07 정정: 구 문구 '종료 코드 watchdog + step index 연속'은 W3 오류다. 코드값 -15는 외부 SIGTERM과 구별되지 않는다. 이 문장을 쓴 실행은 없다.)* 판정표 입력을 구체화한 것이다. 용어: 인프라 실패 비율 = (abort + record-inconsistent)/전체 셀.
 
 ### 정지 컨테이너 격리 (지웅 승인 A안, 2026-11-07)
 
@@ -883,6 +883,7 @@ W3 판단: `concurrency-scaling-v1.md:348`의 "15캠페인 8건"은 D040으로 �
 - **계획 a:** 파일럿 .275, 상한 .43. 벤치마크 a는 계획에 넣지 않는다. seed를 abort 이력으로 골랐기 때문이며, `concurrency-scaling-v1.md` §9의 max(파일럿 a, 벤치마크 a)를 대체한다. 용량 판단은 train 실측 e와 abort(GO)로 한다.
 - **§6 H1·V3:** 벤치마크 a를 그대로 쓴다.
 - **D040-D21 재개 조건의 a:** jobs=2 24셀 전체 값에, 파일럿에서 abort한 6개 조합(2블록 12셀)을 뺀 12셀 값을 병기한다. 전체 > .30인데 제외값 ≤ .30이면 입력 쪽을 먼저 본다.
+- D040-D21의 재측정 규칙 참조는 `concurrency-scaling-v2.md` §9(규칙 줄 `:349`)로 읽는다.
 
 ### 머지 순서와 PR 처리
 

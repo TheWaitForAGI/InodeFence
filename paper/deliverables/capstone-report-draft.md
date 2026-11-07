@@ -146,7 +146,7 @@ inferred는 추론한 것이다.
 ### 7.3 M3: 이름 획득 조건의 관찰(피드백 인과 미입증)
 
 Ledger 판정: 외부 객체 이름을 어휘에 획득한 조건에서 자율 C1 관찰 (A3 21 vs A1 0 vs identity-blind 0); 어휘 미통제라
-retention·effect 피드백 인과는 미입증.[^m3]
+retention·effect 피드백 인과는 미입증.[^m3] 인용의 A1은 generic 어휘에 effect retention을 쓰는 셀로 이름을 철자할 수 없고, 표 M3의 "A1 random floor"는 기존 셀 이름이다.
 
 ![M3 대조 막대그래프: 외부 이름을 어휘에 넣은 A3full s11 21 hits, 이름을 뺀 A3blind s11 0, 이름을 철자할 수 없는 A1 0](../figures/m3-blind-ablation.png)
 

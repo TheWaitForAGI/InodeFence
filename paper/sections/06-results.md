@@ -98,7 +98,7 @@ s11 run은 step 416에서 evidence-integrity 검사로 abort(returncode 1)하지
 
 **관찰된 조건 차이(observed):** 자율 C1은 **BEFORE snapshot의 EXTERNAL 이름을 mutation 어휘에 넣은
 A3full s11에서만** 관찰됐고(21), 그 이름을 뺀 A3blind s11은 1475 step에도 0, generic 어휘로 이름을 철자할 수
-없는 무작위 바닥 A1은 33,005 step에도 0이었다. 즉 **EXTERNAL 이름을 어휘에 넣은 A3full에서만 관찰됐고,
+없는 A1(generic 어휘, effect retention)은 33,005 step에도 0이었다. 즉 **EXTERNAL 이름을 어휘에 넣은 A3full에서만 관찰됐고,
 이름을 뺀 A3blind·철자 불가 A1에서는 미관찰**이다. (이 드래프트 v1은 이를 "feedback(identity 관찰)이 발견을
 가능케 한다 — 없으면 도달 불가"라는 인과 확정으로 적었으나, 아래 2026-11-03 정정대로 그 해석은 철회한다.)
 

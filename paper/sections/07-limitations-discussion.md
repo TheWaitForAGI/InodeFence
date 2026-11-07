@@ -7,14 +7,14 @@
 - **rate 우위 CI 미분리.** 이 드래프트의 M3 주장은 **이름 획득 조건의 관찰**("외부 객체 이름을 어휘에 획득한
   조건에서만 자율 C1이 관찰됨"; retention·effect 피드백 자체의 인과는 미입증) *(구: "인과 — object-identity 관찰이 발견을 가능케 함", 2026-11-03 정정)*이고,
   "상태-인지 feedback이 무작위보다 빠르다/많이 찾는다"는 **rate 우위는 CI로 분리되지 않았다**(§5.3.3).
-  동일 budget powered matched A1 vs A3full(disjoint seed {100..129}, 풀링 판정이 canonical)을 사전등록 후 판정한 결과 A3full
+  동일 budget powered matched A1(generic 어휘, effect retention; 이름 철자 불가) vs A3full(disjoint seed {100..129}, 풀링 판정이 canonical)을 사전등록 후 판정한 결과 A3full
   1/17 vs A1 0/19로 매칭 Wilson CI가 겹친다(~0.06 효과 검정력 부족). CI 분리는 사람-게이트 대예산
   pilot(M3.4)이 필요하다.
   (2026-11-03 정정: 이 어휘 제거 대조는 피드백이 아니라 **어휘**를 통제한 실험이다. 관찰된 것은 외부 객체 이름을 어휘에 넣은 조건에서 자율 C1이 나왔고 그 조건 밖에서는 관찰되지 않았다는 것이다(구조적 불가로 단정하지 않는다). 이는 (st_dev, st_ino) retention·스케줄링 피드백의 기여를 보인 것이 아니며, 그 기여는 어휘를 맞춘 R/D/S-u 비교(research-questions v2 H-A)로 미분리다. 수치·서술은 보존한다. 상세: §5.3.2 정정.)
 - **seed-rare.** 자율 C1 트리거는 budget 1500·65 seed 중 s11 하나뿐이다(재현 0/30). 정답이 사실상
   한 점(좁은 구성)이고 final-state C1/C2 oracle이 all-or-nothing이라 adaptive 탐색에 gradient가 거의
   없기 때문이다. 따라서 정책 간 rate 차이를 검출할 **검정력이 현재 없다.**
-- **abort로 줄어든 denominator.** powered v2 {100..129}에서 A1 random floor는 30 seed 중 abort 11
+- **abort로 줄어든 denominator.** powered v2 {100..129}에서 A1(기존 셀 이름 "A1 random floor")은 30 seed 중 abort 11
   (완주 19), A3full은 abort 13(완주 17)으로, fail-closed abort를 no-hit로 세지 않는 프로토콜 때문에
   denominator가 줄고 CI가 넓어진다(A1 0/19 [0, 0.1682], A3full 1/17 [0.0105, 0.2698]). abort 사유는
   observer "evidence integrity failed(malformed_identity)"가 대부분(100–149 92셀 기준 A1 19/A3full 18)이고

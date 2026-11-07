@@ -37,9 +37,13 @@ Cells: 15 (valid 15, invalid 0); arms: D, R, S-u.
 | R | 2 | 0.4 | 976 | 1000 | 0.976 | 0 | 0 | 0 |
 | S-u | 9 | 1.8 | 360 | 1000 | 0.36 | 0 | 0 | 3 |
 
+_boundary_keys is a per-cell sum, not a count of unique keys (deviation 4 of experiments/summaries/exp0-20261105-report.md)._
+
 ## Full-step time distribution (pooled, seconds; nearest-rank)
 
 p50 1.4880454699996335 | p95 1.5489997629993013 | max 1.7028755140017893 over 3000 steps.
+
+_p50, p95 and max are monotonic-clock recorded values; real-time conversions are in deviation 1 of experiments/summaries/exp0-20261105-report.md._
 
 ## Hazard proxy (reference value only, not a verdict)
 

@@ -38,6 +38,17 @@ _DISCLAIMER = (
     "Infrastructure measurement only (prereg v2); observed counts, not an H-A test or an "
     "effectiveness claim. An unregistered G1-smoke run is tool verification, not a paper claim."
 )
+# How to read two table values. The numbers stay as analyze_exp0 emits them; the official EXP-0
+# report's deviations hold the converted and de-duplicated values.
+_OFFICIAL_REPORT = "experiments/summaries/exp0-20261105-report.md"
+_BOUNDARY_KEYS_NOTE = (
+    "boundary_keys is a per-cell sum, not a count of unique keys "
+    f"(deviation 4 of {_OFFICIAL_REPORT})."
+)
+_TIMING_CLOCK_NOTE = (
+    "p50, p95 and max are monotonic-clock recorded values; real-time conversions are in "
+    f"deviation 1 of {_OFFICIAL_REPORT}."
+)
 
 
 def has_results(report: dict | None) -> bool:
@@ -149,6 +160,7 @@ def render_summary_table(report: dict | None) -> str:
             for arm, s in report["item6_dense_signals"]["by_arm"].items()
         ],
     )
+    lines += ["", f"_{_BOUNDARY_KEYS_NOTE}_"]
 
     p95 = report["item2_p95_full_step"]
     if p95.get("available"):
@@ -159,6 +171,8 @@ def render_summary_table(report: dict | None) -> str:
             "",
             f"p50 {pooled['p50_seconds']} | p95 {pooled['p95_seconds']} | "
             f"max {pooled['max_seconds']} over {pooled['number_steps']} steps.",
+            "",
+            f"_{_TIMING_CLOCK_NOTE}_",
         ]
 
     hazard = report["item7_hazard_proxy"]

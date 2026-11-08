@@ -11,41 +11,70 @@ def _write(path: Path, data: object) -> None:
     path.write_text(json.dumps(data), encoding="utf-8")
 
 
-def _broker(path: Path, seconds: list[float], *, timeout_last: bool = False) -> None:
+def _broker(
+    path: Path,
+    seconds: list[float],
+    *,
+    timeout_last: bool = False,
+    total_invocations: int | None = None,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    rows = [{"kind": "header"}]
+    rows: list[dict[str, object]] = [{"kind": "header", "format": 1, "file": path.name}]
     for i, duration in enumerate(seconds):
-        rows.append({
-            "kind": "call",
-            "op": "container inspect",
-            "seconds_monotonic": duration,
-            "timed_out": timeout_last and i == len(seconds) - 1,
-            "stderr": "not to be emitted",
-        })
-    rows.append({
-        "kind": "summary", "recorded": len(seconds), "dropped": 0, "write_failures": 0,
-        "calls": {"container inspect": len(seconds)}
-    })
+        rows.append(
+            {
+                "kind": "call",
+                "op": "container inspect",
+                "seconds_monotonic": duration,
+                "timed_out": timeout_last and i == len(seconds) - 1,
+                "stderr": "not to be emitted",
+            }
+        )
+    rows.append(
+        {
+            "kind": "summary",
+            "recorded": len(seconds),
+            "dropped": 0,
+            "write_failures": 0,
+            "calls": {"container inspect": total_invocations or len(seconds)},
+        }
+    )
     path.write_text("\n".join(json.dumps(row) for row in rows), encoding="utf-8")
 
 
 def test_compare_normal_and_abort_without_opening_oracle(tmp_path: Path) -> None:
     root = tmp_path / "bench"
     block = root / "A" / "block-1-j2"
-    _write(root / "concurrency-report.json", {
-        "design_id": "concurrency-scaling-v2",
-        "decision": {"status": "halted", "selected_jobs": None},
-        "stages": {"A": {"blocks": [{
-            "index": 1, "jobs": 2, "cells": [
-                {"run_id": "normal", "disposition": "normal"},
-                {"run_id": "abort", "disposition": "abort"},
+    _write(
+        root / "concurrency-report.json",
+        {
+            "design_id": "concurrency-scaling-v2",
+            "decision": {"status": "halted", "selected_jobs": None},
+            "stages": {
+                "A": {
+                    "blocks": [
+                        {
+                            "index": 1,
+                            "jobs": 2,
+                            "cells": [
+                                {"run_id": "normal", "disposition": "normal"},
+                                {"run_id": "abort", "disposition": "abort"},
+                            ],
+                        }
+                    ]
+                }
+            },
+        },
+    )
+    _write(
+        block / "block.json",
+        {
+            "cells": [
+                {"run_id": "normal", "report": "normal.json"},
+                {"run_id": "abort", "report": "abort.json"},
             ]
-        }]}}
-    })
-    _write(block / "block.json", {"cells": [
-        {"run_id": "normal", "report": "normal.json"},
-        {"run_id": "abort", "report": "abort.json"},
-    ]})
+        },
+    )
     _broker(block / "raw" / "normal.calls.jsonl", [0.1, 0.2])
     _broker(block / "raw" / "abort.calls.jsonl", [0.1, 10.0], timeout_last=True)
     # If an oracle file is accidentally opened, decoding would fail.
@@ -86,7 +115,74 @@ def test_missing_and_partial_are_excluded_not_counted_as_zero(tmp_path: Path) ->
     assert _read_broker(bad) == ("partial", [], None)
 
 
+def test_duplicate_or_mismatched_broker_envelope_is_partial(tmp_path: Path) -> None:
+    path = tmp_path / "record.calls.jsonl"
+    _broker(path, [2.5])
+    original = [json.loads(line) for line in path.read_text().splitlines()]
+
+    for rows in (
+        [original[0], original[0], *original[1:]],
+        [*original[:-1], original[-1], original[-1]],
+        [original[0], original[-1], *original[1:]],
+    ):
+        path.write_text("\n".join(json.dumps(row) for row in rows))
+        assert _read_broker(path) == ("partial", [], None)
+
+    for key, value in (("format", 99), ("file", "other.calls.jsonl")):
+        rows = [dict(row) for row in original]
+        rows[0][key] = value
+        path.write_text("\n".join(json.dumps(row) for row in rows))
+        assert _read_broker(path) == ("partial", [], None)
+
+
 def test_percentiles_are_descriptive_and_nonempty() -> None:
     assert _percentile([], 0.95) is None
     assert _percentile([2.0], 0.99) == 2.0
     assert _percentile([0.1, 10.0], 0.5) == 5.05
+
+
+def test_summary_denominators_do_not_impute_unrecorded_durations(tmp_path: Path) -> None:
+    root = tmp_path / "bench"
+    block = root / "A" / "block-1-j2"
+    _write(
+        root / "concurrency-report.json",
+        {
+            "design_id": "concurrency-scaling-v2",
+            "stages": {
+                "A": {
+                    "blocks": [
+                        {
+                            "index": 1,
+                            "jobs": 2,
+                            "cells": [
+                                {"run_id": "normal", "disposition": "normal"},
+                                {"run_id": "abort", "disposition": "abort"},
+                            ],
+                        }
+                    ]
+                }
+            },
+        },
+    )
+    _write(
+        block / "block.json",
+        {
+            "cells": [
+                {"run_id": "normal", "report": "normal.json"},
+                {"run_id": "abort", "report": "abort.json"},
+            ]
+        },
+    )
+    _broker(block / "raw" / "normal.calls.jsonl", [], total_invocations=100)
+    _broker(block / "raw" / "abort.calls.jsonl", [2.5, 10.0], total_invocations=200)
+
+    rows = {
+        row["disposition"]: row for row in analyze(root)["latency_by_jobs_disposition_operation"]
+    }
+    assert rows["normal"]["all_invocations_from_summary"] == 100
+    assert rows["normal"]["logged_unusual_calls"] == 0
+    assert rows["normal"]["p99_logged_seconds"] is None
+    assert rows["abort"]["all_invocations_from_summary"] == 200
+    assert rows["abort"]["logged_unusual_calls"] == 2
+    assert rows["abort"]["logged_unusual_fraction"] == 0.01
+    assert rows["abort"]["p50_logged_seconds"] == 6.25

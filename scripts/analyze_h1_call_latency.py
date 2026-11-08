@@ -55,7 +55,7 @@ def _read_broker(path: Path) -> tuple[str, list[dict[str, Any]], dict[str, int] 
     except (OSError, ValueError, UnicodeError):
         return "unreadable", [], None
     if not rows or any(not isinstance(row, dict) for row in rows):
-        return "unreadable", []
+        return "unreadable", [], None
     header, summary = rows[0], rows[-1]
     calls = [row for row in rows if row.get("kind") == "call"]
     totals = summary.get("calls")

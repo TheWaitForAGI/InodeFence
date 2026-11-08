@@ -1,9 +1,10 @@
 """Read-only H1 abort correlation from the sealed concurrency benchmark.
 
 Only ``concurrency-report.json``, ``block.json``, broker ``*.calls.jsonl`` and host
-``events.jsonl`` are opened.  Campaign ``*.json`` and ``*.steps.jsonl`` (which hold
-oracle outcomes) are never opened.  This is descriptive evidence, not a second
-selection rule or a replacement for the registered benchmark analyzer.
+``events.jsonl``/``samples.jsonl`` are opened.  Campaign ``*.json`` and
+``*.steps.jsonl`` (which hold oracle outcomes) are never opened. This is
+descriptive evidence, not a second selection rule or a replacement for the
+registered benchmark analyzer.
 
 Usage::
 
@@ -35,6 +36,8 @@ PILOT_ABORT_COMBINATIONS = frozenset(
     }
 )
 NEAR_END_SECONDS = 60.0
+SIMULTANEOUS_SECONDS = 0.15  # descriptive clock alignment, not an H1/D21 threshold
+SLOW_DOCKER_PS_SECONDS = 10.0  # diagnostic listing threshold; not a selection rule
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -47,13 +50,13 @@ def _read_json(path: Path) -> dict[str, Any]:
 def _broker_calls(path: Path, ended_real: float) -> dict[str, Any]:
     """Read host broker metadata only; never follow paths named inside this file."""
     if not path.is_file():
-        return {"coverage": "missing", "call_count": None, "near_end": []}
+        return {"coverage": "missing", "call_count": None, "near_end": [], "timeout_calls": []}
     try:
         rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
         if any(not isinstance(row, dict) for row in rows):
             raise ValueError("non-object row")
     except (OSError, ValueError, json.JSONDecodeError):
-        return {"coverage": "unreadable", "call_count": None, "near_end": []}
+        return {"coverage": "unreadable", "call_count": None, "near_end": [], "timeout_calls": []}
     header = rows[0] if rows else {}
     summary = rows[-1] if rows else {}
     calls = [row for row in rows if row.get("kind") == "call"]
@@ -67,6 +70,7 @@ def _broker_calls(path: Path, ended_real: float) -> dict[str, Any]:
     flags = Counter()
     operations = Counter()
     near_end: list[dict[str, Any]] = []
+    timeout_calls: list[dict[str, Any]] = []
     for call in calls:
         operations[str(call.get("op"))] += 1
         for flag in ("timed_out", "truncated"):
@@ -75,6 +79,16 @@ def _broker_calls(path: Path, ended_real: float) -> dict[str, Any]:
         if call.get("returncode") not in (0, None):
             flags["nonzero"] += 1
         when = call.get("started_real")
+        if call.get("timed_out") is True:
+            timeout_calls.append(
+                {
+                    "op": call.get("op"),
+                    "started_real": when if isinstance(when, (int, float)) else None,
+                    "seconds_monotonic": call.get("seconds_monotonic"),
+                    "returncode": call.get("returncode"),
+                    "truncated": call.get("truncated"),
+                }
+            )
         if isinstance(when, (int, float)) and abs(when - ended_real) <= NEAR_END_SECONDS:
             near_end.append(
                 {
@@ -96,7 +110,92 @@ def _broker_calls(path: Path, ended_real: float) -> dict[str, Any]:
         "operations": dict(sorted(operations.items())),
         "flags": dict(sorted(flags.items())),
         "near_end": near_end,
+        "timeout_calls": timeout_calls,
     }
+
+
+def _host_samples(path: Path) -> dict[str, Any]:
+    """Read sampled Docker CLI responsiveness; sample realtime marks probe start."""
+    if not path.is_file():
+        return {"coverage": "missing", "slow_docker_ps": []}
+    slow: list[dict[str, Any]] = []
+    bad_rows = 0
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return {"coverage": "unreadable", "slow_docker_ps": []}
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            sample = json.loads(line)
+            if not isinstance(sample, Mapping):
+                raise ValueError("not an object")
+            elapsed = sample.get("docker_ps_seconds")
+            if elapsed is None:
+                continue
+            when = sample["realtime"]
+            if not isinstance(elapsed, (int, float)) or not isinstance(when, (int, float)):
+                raise ValueError("invalid Docker probe clock or duration")
+            if elapsed >= SLOW_DOCKER_PS_SECONDS:
+                slow.append({"started_real": when, "seconds": elapsed})
+        except (ValueError, KeyError, TypeError, json.JSONDecodeError):
+            bad_rows += 1
+    return {
+        "coverage": "partial" if bad_rows else "present",
+        "bad_rows": bad_rows,
+        "slow_docker_ps": sorted(slow, key=lambda item: item["started_real"]),
+    }
+
+
+def _timeout_clusters(calls: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Find co-starting calls from distinct campaigns in the same benchmark block.
+
+    This is clock correlation only, not proof of a shared Docker daemon fault.
+    Calls with absent realtime timestamps are excluded and remain separately visible.
+    """
+    groups: dict[tuple[str, int, int], list[Mapping[str, Any]]] = {}
+    for call in calls:
+        if isinstance(call["started_real"], (int, float)):
+            key = (str(call["stage"]), int(call["block"]), int(call["jobs"]))
+            groups.setdefault(key, []).append(call)
+    clusters: list[dict[str, Any]] = []
+    for (stage, block, jobs), group in sorted(groups.items()):
+        ordered = sorted(group, key=lambda call: (call["started_real"], call["run_id"]))
+        # Anchor each cluster on its first timestamp: no transitive widening.
+        index = 0
+        while index < len(ordered):
+            first = ordered[index]["started_real"]
+            end = index + 1
+            while (
+                end < len(ordered) and ordered[end]["started_real"] - first <= SIMULTANEOUS_SECONDS
+            ):
+                end += 1
+            window = ordered[index:end]
+            if len({call["run_id"] for call in window}) >= 2:
+                clusters.append(
+                    {
+                        "stage": stage,
+                        "block": block,
+                        "jobs": jobs,
+                        "first_started_real": first,
+                        "last_started_real": window[-1]["started_real"],
+                        "distinct_campaigns": len({call["run_id"] for call in window}),
+                        "calls": [
+                            {
+                                "run_id": call["run_id"],
+                                "op": call["op"],
+                                "started_real": call["started_real"],
+                            }
+                            for call in window
+                        ],
+                    }
+                )
+            index = end
+    return sorted(
+        clusters,
+        key=lambda cluster: (cluster["first_started_real"], cluster["stage"], cluster["block"]),
+    )
 
 
 def _docker_events(path: Path, ended_real: float) -> dict[str, Any]:
@@ -149,6 +248,8 @@ def diagnose(root: Path) -> dict[str, Any]:
         raise ValueError("not a concurrency-scaling-v2 report")
     decision = report["decision"]
     cells: list[dict[str, Any]] = []
+    all_timeouts: list[dict[str, Any]] = []
+    host_samples: list[dict[str, Any]] = []
     for stage, stage_record in sorted(report["stages"].items()):
         for block in stage_record["blocks"]:
             index, jobs = int(block["index"]), int(block["jobs"])
@@ -156,6 +257,14 @@ def diagnose(root: Path) -> dict[str, Any]:
             original = _read_json(block_dir / "block.json")
             by_run = {cell["run_id"]: cell for cell in original["cells"]}
             raw = block_dir / "raw"
+            host_samples.append(
+                {
+                    "stage": stage,
+                    "block": index,
+                    "jobs": jobs,
+                    **_host_samples(block_dir / "host" / "samples.jsonl"),
+                }
+            )
             for cell in block["cells"]:
                 run_id = cell["run_id"]
                 original_cell = by_run[run_id]
@@ -179,6 +288,17 @@ def diagnose(root: Path) -> dict[str, Any]:
                         block_dir / "host" / "events.jsonl", float(cell["ended_real"])
                     )
                 cells.append(item)
+                all_timeouts.extend(
+                    {
+                        "stage": stage,
+                        "block": index,
+                        "jobs": jobs,
+                        "run_id": run_id,
+                        "broker_coverage": item["broker"]["coverage"],
+                        **call,
+                    }
+                    for call in item["broker"]["timeout_calls"]
+                )
     jobs2 = [cell for cell in cells if cell["jobs"] == 2]
     excluded = [cell for cell in jobs2 if not cell["pilot_abort_history"]]
     by_jobs = {
@@ -198,6 +318,17 @@ def diagnose(root: Path) -> dict[str, Any]:
         "broker_coverage": dict(
             sorted(Counter(cell["broker"]["coverage"] for cell in cells).items())
         ),
+        "docker_timeouts": sorted(
+            all_timeouts,
+            key=lambda call: (
+                call["started_real"] if call["started_real"] is not None else float("inf"),
+                call["stage"],
+                call["block"],
+                call["run_id"],
+            ),
+        ),
+        "simultaneous_docker_timeout_clusters": _timeout_clusters(all_timeouts),
+        "host_docker_probe": host_samples,
         "aborts": [cell for cell in cells if cell["disposition"] == "abort"],
     }
 

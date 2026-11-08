@@ -122,6 +122,10 @@ def test_missing_truncated_and_dropped_logs_are_not_treated_as_success(tmp_path:
     assert _broker_calls(path, 0)["coverage"] == "partial"
     path.write_text('{"kind":"header"}\n{"kind":"summary","dropped":1,"write_failures":0}')
     assert _broker_calls(path, 0)["coverage"] == "partial"
+    path.write_text(
+        '{"kind":"header"}\n{"kind":"summary","recorded":1,"dropped":0,"write_failures":0}'
+    )
+    assert _broker_calls(path, 0)["coverage"] == "partial"  # declared call is absent
     path.write_text("BAD JSON")
     assert _broker_calls(path, 0)["coverage"] == "unreadable"
 

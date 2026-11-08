@@ -63,10 +63,16 @@ def _broker_calls(path: Path, ended_real: float) -> dict[str, Any]:
     valid_summary = (
         header.get("kind") == "header"
         and summary.get("kind") == "summary"
+        and isinstance(summary.get("recorded"), int)
         and isinstance(summary.get("dropped"), int)
         and isinstance(summary.get("write_failures"), int)
     )
-    complete = valid_summary and summary["dropped"] == 0 and summary["write_failures"] == 0
+    complete = (
+        valid_summary
+        and summary["recorded"] == len(calls)
+        and summary["dropped"] == 0
+        and summary["write_failures"] == 0
+    )
     flags = Counter()
     operations = Counter()
     near_end: list[dict[str, Any]] = []

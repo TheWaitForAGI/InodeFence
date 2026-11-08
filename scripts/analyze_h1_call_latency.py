@@ -1,5 +1,8 @@
-"""Oracle-blind comparison of Docker broker latency in all H1 benchmark campaigns.
+"""Oracle-blind comparison of abnormal Docker broker calls in all H1 campaigns.
 
+The broker records only unusual calls (slow >=2 s, timeout, truncation, and
+nonroutine nonzero). Every invocation is counted in its summary.calls. Thus
+latency quantiles of logged calls are *not* quantiles of all Docker calls.
 This is descriptive host-call timing, not a new concurrency selection criterion.
 Only reads concurrency-report.json, each block.json, and raw/*.calls.jsonl.
 Never opens campaign reports, *.steps.jsonl, or any oracle outcome.
@@ -42,21 +45,38 @@ def _valid_duration(value: object) -> bool:
     )
 
 
-def _read_broker(path: Path) -> tuple[str, list[dict[str, Any]]]:
+def _read_broker(path: Path) -> tuple[str, list[dict[str, Any]], dict[str, int] | None]:
     """Reject incomplete logs rather than treating missing calls as healthy."""
     if not path.is_file():
-        return "missing", []
+        return "missing", [], None
     try:
         with path.open(encoding="utf-8") as handle:
             rows = [json.loads(line) for line in handle if line.strip()]
     except (OSError, ValueError, UnicodeError):
-        return "unreadable", []
+        return "unreadable", [], None
     if not rows or any(not isinstance(row, dict) for row in rows):
         return "unreadable", []
     header, summary = rows[0], rows[-1]
     calls = [row for row in rows if row.get("kind") == "call"]
+    totals = summary.get("calls")
+    totals_valid = (
+        isinstance(totals, dict)
+        and all(
+            isinstance(op, str)
+            and bool(op)
+            and type(count) is int
+            and count >= 0
+            for op, count in totals.items()
+        )
+        and all(
+            sum(1 for call in calls if call.get("op") == op) <= count
+            for op, count in totals.items()
+        )
+        and all(call.get("op") in totals for call in calls)
+    )
     complete = (
-        header.get("kind") == "header"
+        totals_valid
+        and header.get("kind") == "header"
         and summary.get("kind") == "summary"
         and isinstance(summary.get("recorded"), int)
         and not isinstance(summary.get("recorded"), bool)
@@ -75,35 +95,45 @@ def _read_broker(path: Path) -> tuple[str, list[dict[str, Any]]]:
         and all(row.get("kind") in {"header", "call", "summary"} for row in rows)
     )
     if not complete:
-        return "partial", []
+        return "partial", [], None
     # Permit only host metadata; strip potentially sensitive stdout/stderr.
-    return "complete", [
-        {
-            "op": call["op"],
-            "seconds": float(call["seconds_monotonic"]),
-            "timed_out": call["timed_out"],
-        }
-        for call in calls
-    ]
+    return (
+        "complete",
+        [
+            {
+                "op": call["op"],
+                "seconds": float(call["seconds_monotonic"]),
+                "timed_out": call["timed_out"],
+            }
+            for call in calls
+        ],
+        dict(totals),
+    )
 
 
 def _summarize(
-    groups: dict[tuple[Any, ...], list[dict[str, Any]]], labels: tuple[str, ...]
+    groups: dict[tuple[Any, ...], list[dict[str, Any]]],
+    totals: Counter[tuple[Any, ...]],
+    labels: tuple[str, ...],
 ) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
-    for key, calls in sorted(groups.items(), key=lambda item: item[0]):
+    for key in sorted(set(groups) | set(totals)):
+        calls = groups.get(key, [])
         values = [call["seconds"] for call in calls]
+        total = totals.get(key, 0)
         results.append({
             **dict(zip(labels, key, strict=True)),
-            "calls": len(calls),
+            "all_invocations_from_summary": total,
+            "logged_unusual_calls": len(calls),
+            "logged_unusual_fraction": round(len(calls) / total, 8) if total else None,
             "timed_out": sum(call["timed_out"] for call in calls),
-            "at_least_1s": sum(value >= 1 for value in values),
-            "at_least_5s": sum(value >= 5 for value in values),
-            "at_least_10s": sum(value >= 10 for value in values),
-            "p50_seconds": _percentile(values, 0.50),
-            "p95_seconds": _percentile(values, 0.95),
-            "p99_seconds": _percentile(values, 0.99),
-            "max_seconds": round(max(values), 6) if values else None,
+            "at_least_2s_logged": sum(value >= 2 for value in values),
+            "at_least_5s_logged": sum(value >= 5 for value in values),
+            "at_least_10s_logged": sum(value >= 10 for value in values),
+            "p50_logged_seconds": _percentile(values, 0.50),
+            "p95_logged_seconds": _percentile(values, 0.95),
+            "p99_logged_seconds": _percentile(values, 0.99),
+            "max_logged_seconds": round(max(values), 6) if values else None,
         })
     return results
 
@@ -117,6 +147,8 @@ def analyze(root: Path) -> dict[str, Any]:
         raise ValueError("invalid stages")
     by_outcome: dict[tuple[Any, ...], list[dict[str, Any]]] = defaultdict(list)
     by_block: dict[tuple[Any, ...], list[dict[str, Any]]] = defaultdict(list)
+    totals_outcome: Counter[tuple[Any, ...]] = Counter()
+    totals_block: Counter[tuple[Any, ...]] = Counter()
     coverage: Counter[str] = Counter()
     dispositions: Counter[str] = Counter()
     timeout_campaigns: list[dict[str, Any]] = []
@@ -136,10 +168,14 @@ def analyze(root: Path) -> dict[str, Any]:
                 disposition = str(cell["disposition"])
                 dispositions[disposition] += 1
                 broker_path = _call_path(block_dir / "raw", original_by_id[run_id]["report"])
-                state, calls = _read_broker(broker_path)
+                state, calls, totals = _read_broker(broker_path)
                 coverage[state] += 1
                 if state != "complete":
                     continue
+                assert totals is not None
+                for op, invocations in totals.items():
+                    totals_outcome[(jobs, disposition, op)] += invocations
+                    totals_block[(str(stage), index, jobs, op)] += invocations
                 count = 0
                 for call in calls:
                     by_outcome[(jobs, disposition, call["op"])].append(call)
@@ -156,7 +192,8 @@ def analyze(root: Path) -> dict[str, Any]:
                     })
     return {
         "scope": (
-            "all recorded benchmark campaigns; host Docker broker latency only; "
+            "all recorded benchmark campaigns; only unusual Docker broker calls are timed; "
+            "all-invocation denominators use summary.calls; "
             "oracle sealed; descriptive, not H1/D21 or experiment-selection evidence"
         ),
         "design_id": report["design_id"],
@@ -167,13 +204,17 @@ def analyze(root: Path) -> dict[str, Any]:
             value for name, value in coverage.items() if name != "complete"
         ),
         "latency_by_jobs_disposition_operation": _summarize(
-            by_outcome, ("jobs", "disposition", "operation")
+            by_outcome, totals_outcome, ("jobs", "disposition", "operation")
         ),
         "latency_by_stage_block_jobs_operation": _summarize(
-            by_block, ("stage", "block", "jobs", "operation")
+            by_block, totals_block, ("stage", "block", "jobs", "operation")
         ),
         "timeout_campaigns": timeout_campaigns,
         "limitations": [
+            "BrokerCallLog records only unusual calls: >=2s or anomalous status; "
+            "normal container start calls are excluded even when slow. "
+            "p50/p95/p99_logged_seconds are conditional on recording and are NOT "
+            "whole-operation latency quantiles.",
             "The same 'container inspect' operation occurs in runtime and cleanup; "
             "broker op strings alone cannot reliably identify each call site.",
             "Host-call timing does not establish Docker daemon/WSL2 root cause.",

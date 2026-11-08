@@ -48,7 +48,9 @@ class Run:
 
     def complete(self, when: datetime = INSIDE) -> None:
         name = f"cell-{len(self.cells)}"
-        self._step_lines(self._files(name), BUDGET)
+        files = self._files(name)
+        self._step_lines(files, BUDGET)
+        files.report.write_text("report contents must not be read", encoding="utf-8")
         self._attempt(name, 1, when, 0, False)
 
     def aborted(self, when: datetime = INSIDE, reason: str = f"broker {SECRET}") -> None:
@@ -66,7 +68,9 @@ class Run:
 
     def inconsistent(self, when: datetime = INSIDE) -> None:
         name = f"cell-{len(self.cells)}"
-        self._step_lines(self._files(name), 1)  # exit 0 with too few steps
+        files = self._files(name)
+        self._step_lines(files, 1)  # exit 0 with too few steps
+        files.report.write_text("report contents must not be read", encoding="utf-8")
         self._attempt(name, 1, when, 0, False)
 
     def no_record(self, when: datetime = INSIDE) -> None:
@@ -171,6 +175,17 @@ def test_a_cell_that_exited_zero_is_read_only_by_its_step_indexes(run: Run) -> N
     assert run.result()["complete"] == 1
 
 
+def test_exit_zero_with_all_steps_but_no_report_is_record_inconsistent(run: Run) -> None:
+    run.complete()
+    files = next(iter(run.cells.values()))
+    files.report.unlink()
+    result = run.result()
+    assert result["ended_cells"] == 1
+    assert result["complete"] == 0
+    assert result["record_inconsistent"] == 1
+    assert result["infrastructure_failure_rate"] == 1
+
+
 def test_a_stop_in_the_record_is_shown(run: Run) -> None:
     run.complete()
     run.stop()
@@ -195,7 +210,9 @@ def test_no_cell_name_or_outcome_reaches_the_output(run: Run, after_stop: bool) 
 
 def test_reason_categories_appear_only_after_a_stop(run: Run) -> None:
     run.aborted(reason="container runtime cleanup inspect failed")
-    run.aborted(reason="container runtime cleanup inspect failed")
+    run.aborted(
+        when=INSIDE - timedelta(minutes=20), reason="container runtime cleanup inspect failed"
+    )
     run.aborted(reason="something unrecognised")
     run.watchdog()
     run.no_record()
@@ -209,7 +226,17 @@ def test_reason_categories_appear_only_after_a_stop(run: Run) -> None:
         "no-record": 1,
         "record-inconsistent": 1,
     }
-    assert result["other"]["end_times"] == [INSIDE.isoformat()]
+    assert result["other"] == {
+        "total": 1,
+        "first_end_time": INSIDE.isoformat(),
+        "last_end_time": INSIDE.isoformat(),
+    }
+    assert result["cleanup_inspect"] == {
+        "total": 2,
+        "first_end_time": (INSIDE - timedelta(minutes=20)).isoformat(),
+        "last_end_time": INSIDE.isoformat(),
+    }
+    assert "end_times" not in json.dumps(result)
 
 
 def test_a_cached_cell_is_not_read_again_until_its_files_change(run: Run, monkeypatch) -> None:
@@ -230,6 +257,24 @@ def test_a_cached_cell_is_not_read_again_until_its_files_change(run: Run, monkey
     files.steps.write_text('{"index": 0}\n', encoding="utf-8")
     assert run.result(cache=cache)["record_inconsistent"] == 1
     assert len(calls) == 2
+
+
+def test_cache_keys_hide_run_ids_and_reject_legacy_plaintext_keys(run: Run, tmp_path: Path) -> None:
+    run.complete()
+    run.aborted()
+    cache: dict[str, Any] = {}
+    run.result(cache=cache)
+    serialized = json.dumps(cache)
+    assert len(cache) == 2
+    assert all(key.startswith("sha256:") and len(key) == 71 for key in cache)
+    assert "cell-0" not in serialized and "cell-1" not in serialized
+    assert SECRET not in serialized
+
+    old = tmp_path / "old-cache.json"
+    old.write_text(json.dumps({"cell-0": {"key": "old"}, **cache}), encoding="utf-8")
+    loaded = check._load_cache(old)
+    assert loaded == cache
+    assert "cell-0" not in json.dumps(loaded)
 
 
 def test_a_cell_the_registration_does_not_plan_is_refused_without_its_name(run: Run) -> None:

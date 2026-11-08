@@ -8,14 +8,14 @@ The run is still sealed, so the output is pooled counts and clock values. No run
 or case id goes to the output, and the rule looks at no arm. Files it reads:
 
 * ``cell-results.jsonl``, for every cell;
-* for a cell ended in the window, the ``index`` of each step line;
+* for a cell ended in the window, the ``index`` of each step line and whether its report exists;
 * for a cell with a nonzero exit, its report, for the abort stub.
 
-A cell that exited 0 has only its step lines checked, so no complete report is read. The launcher
-checks it fully at ``finish``. Oracle values are never kept.
+A cell that exited 0 needs a report file to exist, but its contents are never read. The launcher
+checks the report fully at ``finish``. Oracle values are never kept.
 
 ``--after-stop`` is for after a stop has really been called, and its use goes in ``docs/LOG.md``. It
-adds reason category totals and end times, still without a cell's name.
+adds reason category totals and the first/last end time, still without a cell's name.
 
     python -m scripts.exp_operating_check --preregistration <file> --output <run dir>
 
@@ -63,6 +63,7 @@ WINDOW = timedelta(hours=24)
 MIN_ENDED_CELLS = 20
 STOP_RATE = 0.60
 WATCHDOG_CATEGORY = "watchdog"
+CACHE_KEY_PREFIX = "sha256:"
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,7 +106,7 @@ def _classify(files: CellFiles, attempts: Sequence[Attempt]) -> WindowCell:
     returncode, watchdog = ended.get("returncode"), ended.get("watchdog_fired") is True
     if returncode == 0 and not watchdog:
         scan = scan_steps(files.steps)
-        whole = scan.indexes == tuple(range(files.budget))
+        whole = files.report.is_file() and scan.indexes == tuple(range(files.budget))
         whole = whole and not scan.torn_last_line and not scan.torn_inner_line
         return WindowCell(COMPLETE if whole else RECORD_INCONSISTENT, False, None)
     check = classify_cell(
@@ -127,13 +128,17 @@ def _cached_classify(
     attempts: Sequence[Attempt],
     cache: dict[str, Any],
 ) -> WindowCell:
-    """Reuse a verdict while the cell's files and its attempt count are unchanged."""
+    """Reuse a verdict without storing a reversible cell identifier in the cache."""
     key = [len(attempts), _stat(files.report), _stat(files.steps)]
-    entry = cache.get(run_id)
+    cache_key = (
+        CACHE_KEY_PREFIX
+        + sha256(b"inodefence-operating-check-v2\0" + run_id.encode("utf-8")).hexdigest()
+    )
+    entry = cache.get(cache_key)
     if isinstance(entry, Mapping) and entry.get("key") == key:
         return WindowCell(**entry["cell"])
     cell = _classify(files, attempts)
-    cache[run_id] = {"key": key, "cell": asdict(cell)}
+    cache[cache_key] = {"key": key, "cell": asdict(cell)}
     return cell
 
 
@@ -202,7 +207,11 @@ def check_window(
     }
     if after_stop:
         report["after_stop"] = {
-            category: {"total": len(stamps), "end_times": [_iso(s) for s in sorted(stamps)]}
+            category: {
+                "total": len(stamps),
+                "first_end_time": _iso(min(stamps)),
+                "last_end_time": _iso(max(stamps)),
+            }
             for category, stamps in sorted(categories.items())
         }
     return report
@@ -243,7 +252,18 @@ def _load_cache(path: Path | None) -> dict[str, Any]:
         data = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError:
         return {}
-    return data if isinstance(data, dict) else {}
+    if not isinstance(data, dict):
+        return {}
+    # Drop legacy plaintext run_id keys when rewriting a pre-fix cache file.
+    return {
+        key: value
+        for key, value in data.items()
+        if isinstance(key, str)
+        and key.startswith(CACHE_KEY_PREFIX)
+        and len(key) == len(CACHE_KEY_PREFIX) + 64
+        and all(digit in "0123456789abcdef" for digit in key[len(CACHE_KEY_PREFIX) :])
+        and isinstance(value, dict)
+    }
 
 
 def main(argv: list[str] | None = None) -> int:

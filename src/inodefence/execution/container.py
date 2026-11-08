@@ -19,6 +19,8 @@ from .docker_client import CommandResult, DockerClient
 
 OWNER_LABEL = "org.inodefence.execution-owner"
 IMPLEMENTATION = "docker-volume-subpath-v1"
+CLEANUP_INSPECT_TIMEOUT_SECONDS = 10
+CLEANUP_INSPECT_TIMEOUT_RETRIES = 1
 
 
 def _expected_environment(image: dict) -> tuple[str, ...]:
@@ -36,16 +38,32 @@ def checked(result: CommandResult, operation: str) -> bytes:
     return result.stdout
 
 
+def _cleanup_inspect(client: DockerClient, identity: str) -> CommandResult:
+    """Retry only an inconclusive, read-only *cleanup* inspect timeout.
+
+    Runtime inspection remains fail-closed on its first failure. This never
+    retries creation, start, kill, or removal; cleanup still verifies owner
+    before removal and absence afterward. Two timeouts remain an error.
+    """
+    args = ("container", "inspect", identity)
+    result = client.run(args, CLEANUP_INSPECT_TIMEOUT_SECONDS)
+    for _ in range(CLEANUP_INSPECT_TIMEOUT_RETRIES):
+        if not result.timed_out:
+            break
+        result = client.run(args, CLEANUP_INSPECT_TIMEOUT_SECONDS)
+    return result
+
+
 def remove_owned(client: DockerClient, name: str, owner: str) -> None:
     """Remove only an invocation-owned identity; verify absence, never prune."""
-    result = client.run(("container", "inspect", name), 10)
+    result = _cleanup_inspect(client, name)
     if _container_absent(result, name):
         return
     info = json.loads(checked(result, "cleanup inspect"))[0]
     if (info["Config"].get("Labels") or {}).get(OWNER_LABEL) != owner:
         raise BackendError("refusing to remove a container owned by another invocation")
     checked(client.run(("container", "rm", "--force", "--volumes", info["Id"]), 10), "remove")
-    remaining = client.run(("container", "inspect", info["Id"]), 10)
+    remaining = _cleanup_inspect(client, info["Id"])
     if not _container_absent(remaining, info["Id"]):
         raise BackendError("container removal could not be verified")
 

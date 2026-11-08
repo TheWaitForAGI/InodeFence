@@ -23,7 +23,8 @@ def _broker(path: Path, seconds: list[float], *, timeout_last: bool = False) -> 
             "stderr": "not to be emitted",
         })
     rows.append({
-        "kind": "summary", "recorded": len(seconds), "dropped": 0, "write_failures": 0
+        "kind": "summary", "recorded": len(seconds), "dropped": 0, "write_failures": 0,
+        "calls": {"container inspect": len(seconds)}
     })
     path.write_text("\n".join(json.dumps(row) for row in rows), encoding="utf-8")
 
@@ -57,10 +58,11 @@ def test_compare_normal_and_abort_without_opening_oracle(tmp_path: Path) -> None
         (row["disposition"], row["operation"]): row
         for row in result["latency_by_jobs_disposition_operation"]
     }
-    assert rows[("normal", "container inspect")]["calls"] == 2
+    assert rows[("normal", "container inspect")]["logged_unusual_calls"] == 2
+    assert rows[("normal", "container inspect")]["all_invocations_from_summary"] == 2
     assert rows[("normal", "container inspect")]["timed_out"] == 0
     assert rows[("abort", "container inspect")]["timed_out"] == 1
-    assert rows[("abort", "container inspect")]["p50_seconds"] == 5.05
+    assert rows[("abort", "container inspect")]["p50_logged_seconds"] == 5.05
     assert result["timeout_campaigns"][0]["run_id"] == "abort"
     assert result["original_decision"]["status"] == "halted"
     assert "PRIVATE" not in json.dumps(result)
@@ -68,20 +70,20 @@ def test_compare_normal_and_abort_without_opening_oracle(tmp_path: Path) -> None
 
 def test_missing_and_partial_are_excluded_not_counted_as_zero(tmp_path: Path) -> None:
     absent = tmp_path / "absent.calls.jsonl"
-    assert _read_broker(absent) == ("missing", [])
+    assert _read_broker(absent) == ("missing", [], None)
     bad = tmp_path / "bad.calls.jsonl"
     bad.write_text("BAD JSON")
-    assert _read_broker(bad) == ("unreadable", [])
+    assert _read_broker(bad) == ("unreadable", [], None)
     _broker(bad, [0.1])
     assert _read_broker(bad)[0] == "complete"
     rows = [json.loads(line) for line in bad.read_text().splitlines()]
     rows[-1]["dropped"] = 1
     bad.write_text("\n".join(json.dumps(row) for row in rows))
-    assert _read_broker(bad) == ("partial", [])
+    assert _read_broker(bad) == ("partial", [], None)
     rows[-1]["dropped"] = 0
     rows[1]["seconds_monotonic"] = None
     bad.write_text("\n".join(json.dumps(row) for row in rows))
-    assert _read_broker(bad) == ("partial", [])
+    assert _read_broker(bad) == ("partial", [], None)
 
 
 def test_percentiles_are_descriptive_and_nonempty() -> None:

@@ -24,6 +24,10 @@ from typing import Any
 
 from scripts.diagnose_concurrency_h1 import _call_path, _read_json
 
+# Frozen host-side broker schema for the H1 dataset (scripts/broker_call_log.py).
+# Deliberately reject a future format until its semantics have been reviewed.
+BROKER_FORMAT_VERSION = 1
+
 
 def _percentile(values: list[float], fraction: float) -> float | None:
     """Linear interpolation of the empirical sample; purely descriptive."""
@@ -62,10 +66,7 @@ def _read_broker(path: Path) -> tuple[str, list[dict[str, Any]], dict[str, int] 
     totals_valid = (
         isinstance(totals, dict)
         and all(
-            isinstance(op, str)
-            and bool(op)
-            and type(count) is int
-            and count >= 0
+            isinstance(op, str) and bool(op) and type(count) is int and count >= 0
             for op, count in totals.items()
         )
         and all(
@@ -77,6 +78,8 @@ def _read_broker(path: Path) -> tuple[str, list[dict[str, Any]], dict[str, int] 
     complete = (
         totals_valid
         and header.get("kind") == "header"
+        and header.get("format") == BROKER_FORMAT_VERSION
+        and header.get("file") == path.name
         and summary.get("kind") == "summary"
         and isinstance(summary.get("recorded"), int)
         and not isinstance(summary.get("recorded"), bool)
@@ -92,7 +95,7 @@ def _read_broker(path: Path) -> tuple[str, list[dict[str, Any]], dict[str, int] 
             and isinstance(call.get("timed_out"), bool)
             for call in calls
         )
-        and all(row.get("kind") in {"header", "call", "summary"} for row in rows)
+        and all(row.get("kind") == "call" for row in rows[1:-1])
     )
     if not complete:
         return "partial", [], None
@@ -121,20 +124,22 @@ def _summarize(
         calls = groups.get(key, [])
         values = [call["seconds"] for call in calls]
         total = totals.get(key, 0)
-        results.append({
-            **dict(zip(labels, key, strict=True)),
-            "all_invocations_from_summary": total,
-            "logged_unusual_calls": len(calls),
-            "logged_unusual_fraction": round(len(calls) / total, 8) if total else None,
-            "timed_out": sum(call["timed_out"] for call in calls),
-            "at_least_2s_logged": sum(value >= 2 for value in values),
-            "at_least_5s_logged": sum(value >= 5 for value in values),
-            "at_least_10s_logged": sum(value >= 10 for value in values),
-            "p50_logged_seconds": _percentile(values, 0.50),
-            "p95_logged_seconds": _percentile(values, 0.95),
-            "p99_logged_seconds": _percentile(values, 0.99),
-            "max_logged_seconds": round(max(values), 6) if values else None,
-        })
+        results.append(
+            {
+                **dict(zip(labels, key, strict=True)),
+                "all_invocations_from_summary": total,
+                "logged_unusual_calls": len(calls),
+                "logged_unusual_fraction": round(len(calls) / total, 8) if total else None,
+                "timed_out": sum(call["timed_out"] for call in calls),
+                "at_least_2s_logged": sum(value >= 2 for value in values),
+                "at_least_5s_logged": sum(value >= 5 for value in values),
+                "at_least_10s_logged": sum(value >= 10 for value in values),
+                "p50_logged_seconds": _percentile(values, 0.50),
+                "p95_logged_seconds": _percentile(values, 0.95),
+                "p99_logged_seconds": _percentile(values, 0.99),
+                "max_logged_seconds": round(max(values), 6) if values else None,
+            }
+        )
     return results
 
 
@@ -182,14 +187,16 @@ def analyze(root: Path) -> dict[str, Any]:
                     by_block[(str(stage), index, jobs, call["op"])].append(call)
                     count += int(call["timed_out"])
                 if count:
-                    timeout_campaigns.append({
-                        "stage": stage,
-                        "block": index,
-                        "jobs": jobs,
-                        "run_id": run_id,
-                        "disposition": disposition,
-                        "timeout_calls": count,
-                    })
+                    timeout_campaigns.append(
+                        {
+                            "stage": stage,
+                            "block": index,
+                            "jobs": jobs,
+                            "run_id": run_id,
+                            "disposition": disposition,
+                            "timeout_calls": count,
+                        }
+                    )
     return {
         "scope": (
             "all recorded benchmark campaigns; only unusual Docker broker calls are timed; "

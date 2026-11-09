@@ -1,0 +1,29 @@
+{
+  "schema": "inodefence-host-evidence-v1",
+  "host_id": null,
+  "windows_inventory": {},
+  "linux_inventory": {},
+  "measured": {
+    "memory_available_bytes": null,
+    "docker_cpus": null,
+    "docker_memory_bytes": null,
+    "cgroup_memory_limit_bytes": null,
+    "cgroup_cpu_limit": null,
+    "disk_available_bytes": null,
+    "docker_data_root": null,
+    "docker_context": null,
+    "output_path": null,
+    "runtime_path": null,
+    "qualification_ref": null,
+    "qualification_execution_sha": null,
+    "qualified_jobs": null,
+    "target_version": null,
+    "docker_engine": null,
+    "image_id": null,
+    "docker_available": null,
+    "wsl2_verified": null,
+    "remaining_containers": null,
+    "remaining_experiment_volumes": null,
+    "docker_windows_data_path": null
+  }
+}

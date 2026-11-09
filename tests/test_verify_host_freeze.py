@@ -6,6 +6,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from scripts.make_raw_manifest import manifest_lines
 from scripts.verify_host_freeze import differences, digest, main, validate
 
 
@@ -210,8 +211,20 @@ jobs_max = 2
         (tmp_path / name).write_text(json.dumps(value))
     (tmp_path / "prereg").write_bytes(prereg)
     (tmp_path / "design").write_bytes(b"design")
+    raw_manifest = tmp_path / "h1-raw-manifest"
+    raw_manifest.write_text("".join(manifest_lines(tmp_path / "h1-run")))
     argv = ["verify"]
-    for name in ("plan", "host1", "host2", "h1", "h1-run", "prereg", "design", "output"):
+    for name in (
+        "plan",
+        "host1",
+        "host2",
+        "h1",
+        "h1-run",
+        "h1-raw-manifest",
+        "prereg",
+        "design",
+        "output",
+    ):
         argv += [f"--{name}", str(tmp_path / name)]
     monkeypatch.setattr("sys.argv", argv)
     assert main() == 0
@@ -234,8 +247,18 @@ jobs_max = 2
     block.write_text(json.dumps(preflight))
     argv[-1] = str(tmp_path / "other-output")
     assert main() == 1
+    assert "raw manifest incomplete or mismatched" in capsys.readouterr().err
+    raw_manifest.write_text("".join(manifest_lines(tmp_path / "h1-run")))
+    assert main() == 1
     assert not (tmp_path / "other-output").exists()
     assert "H1 block preflight mismatch" in capsys.readouterr().err
+    preflight["preflight"]["checkout_head"] = plan["execution_sha"]
+    block.write_text(json.dumps(preflight))
+    raw_manifest.write_text("".join(manifest_lines(tmp_path / "h1-run")))
+    monkeypatch.setattr("scripts.verify_host_freeze.analyze", lambda *_: {"different": True})
+    assert main() == 1
+    assert not (tmp_path / "other-output").exists()
+    assert "does not match reanalysis" in capsys.readouterr().err
 
 
 def test_duplicate_json_is_rejected(tmp_path):

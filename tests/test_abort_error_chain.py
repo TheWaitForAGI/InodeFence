@@ -159,11 +159,17 @@ def test_call_sites_with_the_same_message_are_told_apart() -> None:
     kill_race = _failing_execute(_ScriptedClient({2}, running_first=True, stuck=True))
     errors = (after_start, after_wait, kill_race)
     # The record's reason cannot tell these three apart.
-    assert {str(error) for error in errors} == {"container runtime inspect failed: "}
+    assert {str(error) for error in errors} == {"container runtime inspect failed: timed out"}
     callers = [_caller_of_inspect(error) for error in errors]
     assert {caller["function"] for caller in callers} == {"PreparedContainer.execute"}
     assert {caller["file"] for caller in callers} == {"inodefence/execution/container.py"}
     assert len({caller["line"] for caller in callers}) == 3
+
+
+def test_runtime_error_retains_timeout_and_truncation_flags() -> None:
+    result = CommandResult(1, b"", b"daemon error", timed_out=True, truncated=True)
+    with pytest.raises(BackendError, match="timed out.*output truncated.*daemon error"):
+        backend_module.checked(result, "inspect")
 
 
 def test_failure_right_after_create_names_prepare(

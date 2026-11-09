@@ -236,6 +236,12 @@ jobs_max = 2
     assert main() == 1
     assert not (tmp_path / "other-output").exists()
     assert "H1 block preflight mismatch" in capsys.readouterr().err
+    preflight["preflight"]["checkout_head"] = plan["execution_sha"]
+    block.write_text(json.dumps(preflight))
+    monkeypatch.setattr("scripts.verify_host_freeze.analyze", lambda *_: {"different": True})
+    assert main() == 1
+    assert not (tmp_path / "other-output").exists()
+    assert "does not match reanalysis" in capsys.readouterr().err
 
 
 def test_duplicate_json_is_rejected(tmp_path):

@@ -330,13 +330,14 @@ OS·CPU·메모리·전원·WSL 버전과 Linux의 SHA·dirty·filesystem·가�
 각 호스트 `measured` 객체에는 `memory_available_bytes`, `docker_cpus`, `docker_memory_bytes`,
 `cgroup_memory_limit_bytes`, `cgroup_cpu_limit`, `disk_available_bytes`, `docker_data_root`,
 `docker_context`, `docker_windows_data_path`, `output_path`, `runtime_path`, `qualification_ref`, `qualification_execution_sha`,
-`qualified_jobs`, `target_version`, `docker_engine`, `image_id`, `docker_available`, `wsl2_verified`,
+`qualified_jobs`, `target_version`, `docker_engine`, `image_id`, `controller_image_id`,
+`helper_image_id`, `runtime_policy_id`, `docker_available`, `wsl2_verified`,
 `remaining_containers`, `remaining_experiment_volumes`를 적는다. 숫자는 실효 값이고 용량은 byte다.
 `qualification_ref`는 단순 성공 표시가 아닌 해당 host의 실제 smoke 및 동시성 검증 증거를 가리켜야 한다.
 
 별도 승인된 계획 JSON의 schema는 `inodefence-host-freeze-plan-v1`이다. 필수 항목은
 `execution_sha`, `approval_ref`, `prereg_sha256`, `design_sha256`, `target_version`, `image_id`,
-`engine_version`, `execution_mode`, `stop_rule`, `seed_allocation_ref`, `budget_ref`, `backup_ref`,
+`engine_version`, `controller_image_id`, `helper_image_id`, `runtime_policy_id`, `execution_mode`, `stop_rule`, `seed_allocation_ref`, `budget_ref`, `backup_ref`,
 `minimum_available_bytes`, `minimum_memory_bytes`, `minimum_cpus`, `hosts`다. `hosts.HOST1`과
 `hosts.HOST2` 각각에 `jobs`, `output_path`, `runtime_path`, `assignment_ref`, `cells`를 둔다. `cells`는 각각 `target_id`(단일 대상이면 null), `seed`, `arm`, `budget` 객체의 목록이다. 등록 gate가 각 셀을 검증하고 호스트 간 중복을 거부한다. 실제 jobs,
 자원 하한, 할당은 승인·실측 전 비워 두며 예제값을 실제 값으로 쓰지 않는다. 각 host의 출력 경로는

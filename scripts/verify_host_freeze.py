@@ -81,6 +81,9 @@ def validate(plan: dict[str, Any], hosts: list[dict[str, Any]], h1: dict[str, An
         "design_sha256",
         "target_version",
         "image_id",
+        "controller_image_id",
+        "helper_image_id",
+        "runtime_policy_id",
         "engine_version",
         "execution_mode",
         "stop_rule",
@@ -94,11 +97,12 @@ def validate(plan: dict[str, Any], hosts: list[dict[str, Any]], h1: dict[str, An
         require(
             isinstance(value, str) and HEX64.fullmatch(value) is not None, f"plan: {key} invalid"
         )
-    require(
-        isinstance(plan.get("image_id"), str)
-        and re.fullmatch(r"sha256:[0-9a-f]{64}", plan["image_id"]) is not None,
-        "plan: image_id invalid",
-    )
+    for image_field in ("image_id", "controller_image_id", "helper_image_id"):
+        require(
+            isinstance(plan.get(image_field), str)
+            and re.fullmatch(r"sha256:[0-9a-f]{64}", plan[image_field]) is not None,
+            f"plan: {image_field} invalid",
+        )
     require(plan.get("execution_mode") == "per-case-container", "plan: unsupported execution mode")
     for key in ("minimum_available_bytes", "minimum_memory_bytes", "minimum_cpus"):
         require(integer(plan.get(key)), f"plan: {key} invalid")
@@ -228,6 +232,11 @@ def validate(plan: dict[str, Any], hosts: list[dict[str, Any]], h1: dict[str, An
             measured.get("image_id") == plan.get("image_id") and nonempty(measured.get("image_id")),
             f"{label}: image mismatch",
         )
+        for field in ("controller_image_id", "helper_image_id", "runtime_policy_id"):
+            require(
+                nonempty(measured.get(field)) and measured.get(field) == plan.get(field),
+                f"{label}: {field} mismatch or UNKNOWN",
+            )
         require(
             measured.get("target_version") == plan.get("target_version")
             and nonempty(measured.get("target_version")),
@@ -434,6 +443,9 @@ def main() -> int:
                         preflight, preflight_hash = read_json(path)
                         preflight_hashes[str(path.relative_to(args.h1_run))] = preflight_hash
                         facts = preflight.get("preflight", {})
+                        local_images = (
+                            facts.get("local_images", {}) if isinstance(facts, dict) else {}
+                        )
                         if not isinstance(facts, dict) or not (
                             preflight.get("design_sha256") == design_hash
                             and isinstance(preflight.get("approval_ref"), str)
@@ -442,6 +454,11 @@ def main() -> int:
                             and facts.get("checkout_dirty") is False
                             and facts.get("docker_server") == plan["engine_version"]
                             and facts.get("image_id") == plan["image_id"]
+                            and isinstance(local_images, dict)
+                            and local_images.get("inodefence-controller:local")
+                            == plan["controller_image_id"]
+                            and local_images.get("inodefence-helper:local")
+                            == plan["helper_image_id"]
                         ):
                             issues.append(f"H1 block preflight mismatch: {path}")
                 if not issues and analyze(args.h1_run, design) != h1:

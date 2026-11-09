@@ -287,3 +287,23 @@ target에서 `archive_write_finish_entry()`와 final writer close의 syscall 순
 정상 mixed-effect/directory-child fixture만 사용하고 marker 없는 baseline과 strace run의 최종
 semantic state를 함께 기록한다. [qualification tool](../tools/libarchive/README.md)의 exact
 package와 isolation 조건이 필요하며 결과는 raw boundary evidence다.
+
+## 본실험 호스트 환경 수집
+
+Windows PowerShell에서 저장소로 이동해 다음을 실행한다. 실행 정책 옵션은 이 프로세스에만
+적용된다. 출력을 보낼 때 배포판 이름 등 식별 정보가 들어 있는지 먼저 확인해 가린다.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts/host_inventory.ps1
+```
+
+WSL 배포판이 **이미 실행 중**이면 그 배포판의 기존 터미널에서 저장소로 이동해 실행한다.
+정지 상태라면 시작하지 않고 Linux 항목을 UNKNOWN으로 남긴다.
+
+```bash
+python3 scripts/host_inventory_linux.py
+```
+
+두 출력은 특정 시점의 환경 관찰이다. Docker daemon·CLI를 호출하지 않고, 이미지 ID,
+Engine, 잔존 자원과 미확인 저장 위치는 UNKNOWN이다. 외부 백업·실제 데이터 저장 위치는
+별도로 확인해야 하며, 출력은 smoke·동시성 측정 또는 본실험의 승인이 아니다.

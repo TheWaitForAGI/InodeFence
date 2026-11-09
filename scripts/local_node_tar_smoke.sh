@@ -122,6 +122,7 @@ host() {
 
 cleanup() {
   local status=$?
+  local cleanup_status
   set +e
   if [ "$status" -ne 0 ]; then
     echo "FAILED at step: $STEP (exit $status)" >&2
@@ -149,9 +150,19 @@ cleanup() {
   fi
   if [ "$CREATED_CONTROLLER" -eq 1 ]; then
     dk rm -f "$CONTROLLER" >/dev/null
+    cleanup_status=$?
+    if [ "$cleanup_status" -ne 0 ]; then
+      echo "FAILED cleanup: controller $CONTROLLER (exit $cleanup_status)" >&2
+      [ "$status" -ne 0 ] || status=$cleanup_status
+    fi
   fi
   if [ "$CREATED_VOLUME" -eq 1 ]; then
     dk volume rm "$VOLUME" >/dev/null
+    cleanup_status=$?
+    if [ "$cleanup_status" -ne 0 ]; then
+      echo "FAILED cleanup: volume $VOLUME (exit $cleanup_status)" >&2
+      [ "$status" -ne 0 ] || status=$cleanup_status
+    fi
   fi
   if [ "$status" -eq 0 ]; then
     echo "PASSED: node-tar $MODE (context=$CONTEXT)"

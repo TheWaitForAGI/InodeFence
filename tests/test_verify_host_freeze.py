@@ -177,7 +177,12 @@ jobs_max = 2
     plan["hosts"]["HOST2"]["cells"] = [{"target_id": None, "seed": 9002, "arm": "D", "budget": 200}]
     monkeypatch.setattr(
         "scripts.verify_host_freeze.load_design",
-        lambda _: SimpleNamespace(stages={"A": (2, 4, 4, 2)}),
+        lambda _: SimpleNamespace(
+            stages={"A": (2, 4, 4, 2)},
+            target_version=plan["target_version"],
+            image_digest=plan["image_id"],
+            docker_engine=plan["engine_version"],
+        ),
     )
     monkeypatch.setattr("scripts.verify_host_freeze.analyze", lambda *_: h1)
     for index, jobs in enumerate((2, 4, 4, 2), 1):

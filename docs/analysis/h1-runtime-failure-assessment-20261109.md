@@ -135,3 +135,90 @@ retry, 제한시간, cleanup 순서 또는 오류 처리 변경 시 jobs=2와 �
 
 H1은 halted이며 벤치마크 재실행, EXP-3/EXP-2 시작, runtime retry, PR 병합은 이 문서로
 승인되지 않는다. 향후 측정은 별도 승인과 새 출력 경로가 필요하다.
+
+## 2026-11-09 Windows 원본 재분석 — #306/#310
+
+### 범위와 입력
+
+실제 Windows 11 / WSL2 Ubuntu 24.04 호스트에서 기존 `concurrency-scaling-v2`
+원본의 **비-oracle host/broker 메타데이터만** 대상으로 #306/#310 분석기를 실행했다.
+분석 코드 revision은 `0274b95a69396bb247cb084fb6e272a7b69169e9`이며 입력 원본은
+`/home/linux/inodefence-benchmarks/concurrency-scaling-v2`, 진단 출력은
+`/home/linux/inodefence-h1-diagnostics-20261109`였다. 원본 캠페인/oracle/steps 및 oracle
+상태는 열람하거나 변경하지 않았고, Docker 및 벤치마크도 재실행하지 않았다.
+
+위의 MacBook 분석은 GitHub 코드와 기존 보고만 읽었고 원본을 직접 읽지 않은 분석이었다.
+이번 Windows 재분석은 허용된 host/broker 메타데이터를 실제 원본에서 읽어 검증한 후속
+분석이다. 따라서 위의 기존 수치 재인용·독립 미검증 진술은 당시 MacBook 분석 범위로
+유지하며, 아래 수치에 소급 적용하지 않는다.
+
+### 원본 완전성 및 캠페인 결과
+
+- 캠페인 48개: abort 17, normal 31.
+- Broker log coverage: 48/48 complete.
+- 분석 JSON 유효성 검사: PASS.
+- #306과 #310의 캠페인별 timeout 횟수는 전부 일치했다.
+- jobs=2: 8/24 abort (33.33%); jobs=4: 9/24 abort (37.50%).
+- jobs=2 중 파일럿 abort 이력 조합을 제외한 집합: 6/12 abort (50.00%).
+
+이 재분석으로 H1 판정은 바뀌지 않는다: `status=halted`, `selected_jobs=null`,
+`fallback_jobs=null`.
+
+### Docker 호출 및 동시 timeout
+
+전체 Docker 호출 1,631,478회 중 조건부 기록된 비정상·지연 호출은 41회였다. 기록된
+timeout은 Docker CLI 40회(그중 container inspect 30, container start 10)이며, timeout이
+기록된 abort 캠페인은 17/17, 정상 완료 캠페인에서 기록된 비정상 호출은 0/31이었다.
+
+broker는 정상 호출의 모든 지연을 기록하지 않는다. 따라서 이 조건부 표본의 p50/p95/p99를
+전체 Docker 호출의 지연 분위수로 해석할 수 없으며, 이 집계만으로 원인과 결과의 인과관계를
+확정하지 않는다.
+
+KST 기준 동시 Docker timeout 군집 4개:
+
+1. 2026-11-07 18:02:58 — block 1, jobs=2; 서로 다른 캠페인 2개에서 start/inspect timeout.
+2. 2026-11-07 21:32:08 — block 3, jobs=4; 서로 다른 캠페인 4개에서 inspect timeout.
+3. 2026-11-07 21:32:18 — block 3, jobs=4; 앞서 언급한 네 캠페인에서 inspect timeout 재발.
+4. 2026-11-08 03:02:07 — block 4, jobs=2; 서로 다른 캠페인 2개에서 inspect timeout.
+
+block 4에서는 2026-11-08 03:02:22 KST경 시작한 host `docker ps`가 23.0356초 지연됐다.
+이는 공통 Docker 호출 경로의 응답 정체를 뒷받침하지만 Docker CLI, daemon, Desktop, WSL2 중
+최초 장애 계층을 특정하지 않는다.
+
+### Docker events와 해석 한계
+
+17개 abort 모두 events coverage가 present였고 `bad_rows=0`이었다. 그러나 `near_end`는 각
+abort 종료 시각 전후 60초의 **호스트 이벤트 집계**다. 집계를 더하거나 단순 비교해 개별
+컨테이너의 최종 제거 성공 여부를 판정할 수 없다. 각 컨테이너의 최종 cleanup 상태와 최초
+장애 계층은 여전히 미확정이다.
+
+이 관찰은 복수 캠페인에서 동시 timeout이 나타나고 독립 host `docker ps` 지연도 기록됐다는
+점에서 공통 Docker 호출 경로 정체와 부합한다. 인과관계, 최초 실패 계층, 개별 컨테이너의
+최종 상태를 증명하지는 않는다.
+
+### 출력 무결성
+
+아래 SHA-256은 Windows WSL2 원본 측 계산값과 전달된 JSON의 계산값이 일치했다.
+
+| 출력 | SHA-256 |
+| --- | --- |
+| `h1-host-correlation.json` | `6700187b534925b23e8c2681a912da2fe6c661d9f9225d34995eec4bc4e6ed1d` |
+| `h1-call-latency.json` | `b09e61c65f044ec1f45aae0c391cf35f92cb1549ad87d3ac8ff0c32cea71d2c2` |
+
+요청된 Google Drive 보존 위치는 `2026-2학기/캡스톤디자인/InodeFence-handoff-20261108/`
+`h1-windows-reanalysis-20261109`이다. 백업 성공 여부는 확인되지 않았으므로 이 문서는 Drive
+저장 완료를 주장하지 않는다.
+
+### 남은 원인과 후속 Windows 호스트 진단
+
+아직 미확정인 것은 최초 장애 계층(CLI, daemon, Docker Desktop, WSL2 또는 호스트 자원), 각
+컨테이너의 최종 cleanup 상태, 그리고 기록된 timeout과 abort 사이의 인과관계다. H1은 계속
+halted이며 이 재분석은 안전한 jobs 값 선택, H1 해결 선언, 벤치마크 재실행 또는 EXP-3/EXP-2
+실행을 정당화하지 않는다.
+
+다음 진단은 실행 중 실험이 없는 시점에 읽기 전용으로 진행한다: 해당 시점의 Docker Desktop·
+WSL 로그 및 Windows 이벤트 로그를 보존 여부와 함께 대조하고, WSL/호스트 CPU·메모리·I/O
+pressure 및 Docker daemon 응답 시각을 상관시킨다. 과거 로그가 없으면 최초 장애 계층은
+미확인으로 남긴다. 현재 Docker 상태를 조회할 필요가 있으면 daemon 부하를 고려해 별도 운영
+승인을 받고 읽기 전용 명령만 수행하며, 실패를 부재로 간주하거나 항목을 제거하지 않는다.
+새 측정은 별도 승인 및 새 출력 경로를 사용하고 기존 48개 결과에 합산하지 않는다.

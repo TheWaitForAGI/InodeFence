@@ -430,6 +430,12 @@ def main() -> int:
             issues.extend(validate_assignments(plan, registration))
         if not issues:
             design = load_design(args.design)
+            if (
+                design.target_version != plan["target_version"]
+                or design.image_digest != plan["image_id"]
+                or design.docker_engine != plan["engine_version"]
+            ):
+                issues.append("H1 design target, image, or engine mismatch")
             stages = h1.get("stages", {})
             if not isinstance(stages, dict) or "A" not in stages:
                 issues.append("H1 stage A evidence missing")

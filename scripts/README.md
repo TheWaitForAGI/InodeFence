@@ -313,7 +313,7 @@ Engine, 잔존 자원과 미확인 저장 위치는 UNKNOWN이다. 외부 백업
 `scripts/verify_host_freeze.py`는 #313 Windows·WSL 인벤토리 두 쌍과 별도로 수집한 Docker·자원
 값을 승인된 계획과 대조한다. 실행·Docker 접근·jobs 선택을 하지 않는다. 값이 없거나 UNKNOWN이면
 거부하고, 결과 파일은 기존 파일을 덮어쓰지 않는다. **이 도구만으로 동결이나 실험 GO를 선언하지
-않는다.** 특히 입력의 진위, HOST 2의 jobs별 실측 적격성, 등록 seed/arm 할당의 중복 및
+않는다.** 특히 입력의 진위, HOST 2의 jobs별 실측 적격성, 계획 배정이 해당 실험 단계의 모든 필수 셀을 빠짐없이 포함하는지와
 등록 파서의 모든 의미론은 독립 검증이 필요하다. H1은 원본을 봉인 분석기로 다시 계산하고
 블록 preflight의 SHA·이미지·엔진을 대조한다.
 이 항목들은 자동 검증이 완성될 때까지 동결 차단 사항이다.
@@ -338,9 +338,9 @@ OS·CPU·메모리·전원·WSL 버전과 Linux의 SHA·dirty·filesystem·가�
 `execution_sha`, `approval_ref`, `prereg_sha256`, `design_sha256`, `target_version`, `image_id`,
 `engine_version`, `execution_mode`, `stop_rule`, `seed_allocation_ref`, `budget_ref`, `backup_ref`,
 `minimum_available_bytes`, `minimum_memory_bytes`, `minimum_cpus`, `hosts`다. `hosts.HOST1`과
-`hosts.HOST2` 각각에 `jobs`, `output_path`, `runtime_path`, `assignment_ref`를 둔다. 실제 jobs,
+`hosts.HOST2` 각각에 `jobs`, `output_path`, `runtime_path`, `assignment_ref`, `cells`를 둔다. `cells`는 각각 `target_id`(단일 대상이면 null), `seed`, `arm`, `budget` 객체의 목록이다. 등록 gate가 각 셀을 검증하고 호스트 간 중복을 거부한다. 실제 jobs,
 자원 하한, 할당은 승인·실측 전 비워 두며 예제값을 실제 값으로 쓰지 않는다. 각 host의 출력 경로는
-구분하고 seed/arm 배정표에서 중복이 없는지 별도로 검증한다.
+구분하고 배정표가 해당 단계의 모든 셀을 포함하는지 별도로 검증한다.
 
 ```bash
 PYTHONPATH=src python -m scripts.verify_host_freeze \

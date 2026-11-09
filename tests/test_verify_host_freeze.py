@@ -157,6 +157,8 @@ jobs_max = 2
 ```
 """.encode()
     plan["prereg_sha256"] = digest(prereg)
+    plan["hosts"]["HOST1"]["cells"] = [{"target_id": None, "seed": 9001, "arm": "R", "budget": 200}]
+    plan["hosts"]["HOST2"]["cells"] = [{"target_id": None, "seed": 9002, "arm": "D", "budget": 200}]
     monkeypatch.setattr(
         "scripts.verify_host_freeze.load_design",
         lambda _: SimpleNamespace(stages={"A": (2, 4, 4, 2)}),
@@ -193,6 +195,14 @@ jobs_max = 2
     assert json.loads(original)["status"] == "inputs-consistent"
     assert main() == 1
     assert (tmp_path / "output").read_bytes() == original
+    duplicated = copy.deepcopy(plan)
+    duplicated["hosts"]["HOST2"]["cells"] = duplicated["hosts"]["HOST1"]["cells"]
+    (tmp_path / "plan").write_text(json.dumps(duplicated))
+    argv[-1] = str(tmp_path / "duplicate-output")
+    assert main() == 1
+    assert "duplicate assigned cell" in capsys.readouterr().err
+    assert not (tmp_path / "duplicate-output").exists()
+    (tmp_path / "plan").write_text(json.dumps(plan))
     block = tmp_path / "h1-run" / "A" / "block-1-j2" / "preflight.json"
     preflight = json.loads(block.read_text())
     preflight["preflight"]["checkout_head"] = "b" * 40

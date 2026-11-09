@@ -17,7 +17,13 @@ from typing import Any
 from scripts.analyze_concurrency_benchmark import analyze
 from scripts.run_concurrency_benchmark import load_design
 
-from inodefence.evaluation.rds_preregistration import load_preregistration
+from inodefence.evaluation.rds import RdsArm
+from inodefence.evaluation.rds_preregistration import (
+    CellRequest,
+    Preregistration,
+    load_preregistration,
+    preregistration_mismatches,
+)
 
 HEX40 = re.compile(r"[0-9a-f]{40}\Z")
 HEX64 = re.compile(r"[0-9a-f]{64}\Z")
@@ -300,6 +306,63 @@ def differences(host1: dict[str, Any], host2: dict[str, Any]) -> dict[str, dict[
     return result
 
 
+def validate_assignments(plan: dict[str, Any], registration: Preregistration) -> list[str]:
+    """Check each assigned cell against the registered gate and reject duplicates."""
+    issues: list[str] = []
+    seen: set[tuple[str | None, int, str]] = set()
+    for host_id in ("HOST1", "HOST2"):
+        host = plan["hosts"][host_id]
+        cells = host.get("cells")
+        if not isinstance(cells, list) or not cells:
+            issues.append(f"{host_id}: explicit assigned cells missing")
+            continue
+        for cell in cells:
+            if not isinstance(cell, dict):
+                issues.append(f"{host_id}: invalid cell")
+                continue
+            seed, budget, target = cell.get("seed"), cell.get("budget"), cell.get("target_id")
+            try:
+                arm = RdsArm(cell.get("arm"))
+            except (ValueError, TypeError):
+                issues.append(f"{host_id}: unknown arm")
+                continue
+            if (
+                type(seed) is not int
+                or type(budget) is not int
+                or not (target is None or isinstance(target, str))
+            ):
+                issues.append(f"{host_id}: invalid cell seed, budget or target")
+                continue
+            identity = (target, seed, arm.value)
+            if identity in seen:
+                issues.append(f"{host_id}: duplicate assigned cell {identity}")
+            seen.add(identity)
+            sentinel = {
+                "generator_id": registration.sentinel_generator_id,
+                "generator_seed": registration.sentinel_generator_seed,
+                "count": registration.sentinel_count,
+            }
+            request = CellRequest(
+                arm,
+                seed,
+                budget,
+                plan["execution_sha"],
+                False,
+                plan["image_id"],
+                sentinel,
+                registration.observer_integrity_policy,
+                registration.experiment_id,
+                plan["execution_mode"],
+                host["jobs"],
+                target,
+            )
+            issues.extend(
+                f"{host_id}: {reason}"
+                for reason in preregistration_mismatches(registration, request)
+            )
+    return issues
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ("plan", "host1", "host2", "h1", "h1-run", "prereg", "design", "output"):
@@ -333,6 +396,7 @@ def main() -> int:
             for host_settings in plan["hosts"].values():
                 if registration.jobs_max is None or host_settings["jobs"] > registration.jobs_max:
                     issues.append("host jobs exceed or lack registered jobs_max")
+            issues.extend(validate_assignments(plan, registration))
         if not issues:
             design = load_design(args.design)
             stages = h1.get("stages", {})

@@ -20,13 +20,15 @@
       "jobs": null,
       "output_path": null,
       "runtime_path": null,
-      "assignment_ref": null
+      "assignment_ref": null,
+      "cells": null
     },
     "HOST2": {
       "jobs": null,
       "output_path": null,
       "runtime_path": null,
-      "assignment_ref": null
+      "assignment_ref": null,
+      "cells": null
     }
   }
 }

@@ -346,12 +346,13 @@ OS·CPU·메모리·전원·WSL 버전과 Linux의 SHA·dirty·filesystem·가�
 ```bash
 PYTHONPATH=src python -m scripts.verify_host_freeze \
   --plan /safe/approved-plan.json --host1 /safe/host1.json --host2 /safe/host2.json \
-  --h1 /safe/concurrency-report.json --h1-run /safe/h1-output --prereg /safe/prereg.md \
+  --h1 /safe/concurrency-report.json --h1-run /safe/h1-output \
+  --h1-raw-manifest /safe/h1-raw-manifest.sha256 --prereg /safe/prereg.md \
   --design experiments/configs/concurrency-scaling-v2.md --output /safe/new-manifest.json
 sha256sum /safe/new-manifest.json
 ```
 
-파일 해시는 바이트 기준이다. PASS는 입력값 대조 결과일 뿐이며, H1 `selected` 판정과 각 입력이
+H1 raw manifest는 출력 트리 밖에 두고 전체 파일을 빠짐없이 기록한다. 누락·불일치·추가 파일이 있으면 거부한다. 파일 해시는 바이트 기준이다. PASS는 입력값 대조 결과일 뿐이며, H1 `selected` 판정과 각 입력이
 실제 실행 SHA 및 원본에 묶이는지 따로 확인한다. H1 단계 A는 동결 설계의 jobs 2·4·4·2,
 블록당 12캠페인·budget 2000이며 기존 raw와 분리된 경로에서 돌린다. HOST 2도 등록된 별도
 smoke와 jobs 2·j* 각 1블록 검증이 필요하다. 승인되지 않은 설정이나 H1 halted면 실행하지 않는다.

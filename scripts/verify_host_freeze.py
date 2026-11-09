@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from scripts.analyze_concurrency_benchmark import analyze
+from scripts.make_raw_manifest import parse_manifest, verify_manifest
 from scripts.run_concurrency_benchmark import load_design
 
 from inodefence.evaluation.rds import RdsArm
@@ -396,7 +397,17 @@ def validate_assignments(plan: dict[str, Any], registration: Preregistration) ->
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    for name in ("plan", "host1", "host2", "h1", "h1-run", "prereg", "design", "output"):
+    for name in (
+        "plan",
+        "host1",
+        "host2",
+        "h1",
+        "h1-run",
+        "h1-raw-manifest",
+        "prereg",
+        "design",
+        "output",
+    ):
         parser.add_argument(f"--{name}", type=Path, required=True)
     args = parser.parse_args()
     try:
@@ -405,11 +416,31 @@ def main() -> int:
         issues = validate(plan, [host1, host2], h1)
         prereg_hash = digest(args.prereg.read_bytes())
         design_hash = digest(args.design.read_bytes())
+        raw_manifest_hash = digest(args.h1_raw_manifest.read_bytes())
         preflight_hashes: dict[str, str] = {}
         if prereg_hash != plan.get("prereg_sha256"):
             issues.append("preregistration file digest mismatch")
         if design_hash != plan.get("design_sha256"):
             issues.append("benchmark design file digest mismatch")
+        if not issues:
+            entries = parse_manifest(args.h1_raw_manifest.read_text(encoding="utf-8"))
+            names = [name for _, name in entries]
+            root = args.h1_run.resolve()
+            if (
+                not names
+                or len(names) != len(set(names))
+                or any(
+                    Path(name).is_absolute()
+                    or ".." in Path(name).parts
+                    or not (root / name).resolve().is_relative_to(root)
+                    for name in names
+                )
+            ):
+                issues.append("H1 raw manifest contains invalid or duplicate paths")
+            else:
+                checked = verify_manifest(args.h1_raw_manifest, root)
+                if checked.failed or checked.extra:
+                    issues.append("H1 raw manifest incomplete or mismatched")
         if not issues:
             registration = load_preregistration(args.prereg)
             if registration.engine_sha != plan["execution_sha"]:
@@ -490,6 +521,7 @@ def main() -> int:
             "prereg_sha256": prereg_hash,
             "design_sha256": design_hash,
             "h1_preflight_sha256": preflight_hashes,
+            "h1_raw_manifest_sha256": raw_manifest_hash,
         }
         payload = (
             json.dumps(result, sort_keys=True, ensure_ascii=False, indent=2, allow_nan=False) + "\n"

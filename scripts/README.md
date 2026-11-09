@@ -307,3 +307,53 @@ python3 scripts/host_inventory_linux.py
 두 출력은 특정 시점의 환경 관찰이다. Docker daemon·CLI를 호출하지 않고, 이미지 ID,
 Engine, 잔존 자원과 미확인 저장 위치는 UNKNOWN이다. 외부 백업·실제 데이터 저장 위치는
 별도로 확인해야 하며, 출력은 smoke·동시성 측정 또는 본실험의 승인이 아니다.
+
+## 호스트 동결 입력 점검 (개발 후보)
+
+`scripts/verify_host_freeze.py`는 #313 Windows·WSL 인벤토리 두 쌍과 별도로 수집한 Docker·자원
+값을 승인된 계획과 대조한다. 실행·Docker 접근·jobs 선택을 하지 않는다. 값이 없거나 UNKNOWN이면
+거부하고, 결과 파일은 기존 파일을 덮어쓰지 않는다. **이 도구만으로 동결이나 실험 GO를 선언하지
+않는다.** 특히 입력의 진위, HOST 2의 jobs별 실측 적격성, 등록 seed/arm 할당의 중복 및
+등록 파서의 모든 의미론은 독립 검증이 필요하다. H1은 원본을 봉인 분석기로 다시 계산하고
+블록 preflight의 SHA·이미지·엔진을 대조한다.
+이 항목들은 자동 검증이 완성될 때까지 동결 차단 사항이다.
+
+Windows 팀원은 #313 안내에 따라 PowerShell에서 `host_inventory.ps1`을 실행하고, 이미 실행 중인
+WSL에서는 `python3 scripts/host_inventory_linux.py`를 별도로 실행한다. 이 출력에서 Windows의
+OS·CPU·메모리·전원·WSL 버전과 Linux의 SHA·dirty·filesystem·가용 자원을 읽는다. Docker Engine,
+이미지, 실제 Docker 저장소와 출력 파일시스템 여유, cgroup v2 `cpu.max`/`memory.max` 및 프로세스
+실효 제한, 잔여 리소스는 #313이 수집하지 않으므로 **별도 실측·검증**한다. 무제한인 cgroup은
+상위 cgroup/호스트 제한까지 확인하여 실효 정수 값을 기록한다. Windows 수집 실패는 UNKNOWN이다.
+두 JSON은 원본을 보존하고 `inodefence-host-evidence-v1` 객체의 `windows_inventory`,
+`linux_inventory`에 각각 넣으며 `host_id`는 `HOST1` 또는 `HOST2`로 지정한다.
+
+각 호스트 `measured` 객체에는 `memory_available_bytes`, `docker_cpus`, `docker_memory_bytes`,
+`cgroup_memory_limit_bytes`, `cgroup_cpu_limit`, `disk_available_bytes`, `docker_data_root`,
+`docker_context`, `output_path`, `runtime_path`, `qualification_ref`, `qualification_execution_sha`,
+`qualified_jobs`, `target_version`, `docker_engine`, `image_id`, `docker_available`, `wsl2_verified`,
+`remaining_containers`, `remaining_experiment_volumes`를 적는다. 숫자는 실효 값이고 용량은 byte다.
+`qualification_ref`는 단순 성공 표시가 아닌 해당 host의 실제 smoke 및 동시성 검증 증거를 가리켜야 한다.
+
+별도 승인된 계획 JSON의 schema는 `inodefence-host-freeze-plan-v1`이다. 필수 항목은
+`execution_sha`, `approval_ref`, `prereg_sha256`, `design_sha256`, `target_version`, `image_id`,
+`engine_version`, `execution_mode`, `stop_rule`, `seed_allocation_ref`, `budget_ref`, `backup_ref`,
+`minimum_available_bytes`, `minimum_memory_bytes`, `minimum_cpus`, `hosts`다. `hosts.HOST1`과
+`hosts.HOST2` 각각에 `jobs`, `output_path`, `runtime_path`, `assignment_ref`를 둔다. 실제 jobs,
+자원 하한, 할당은 승인·실측 전 비워 두며 예제값을 실제 값으로 쓰지 않는다. 각 host의 출력 경로는
+구분하고 seed/arm 배정표에서 중복이 없는지 별도로 검증한다.
+
+```bash
+PYTHONPATH=src python -m scripts.verify_host_freeze \
+  --plan /safe/approved-plan.json --host1 /safe/host1.json --host2 /safe/host2.json \
+  --h1 /safe/concurrency-report.json --h1-run /safe/h1-output --prereg /safe/prereg.md \
+  --design experiments/configs/concurrency-scaling-v2.md --output /safe/new-manifest.json
+sha256sum /safe/new-manifest.json
+```
+
+파일 해시는 바이트 기준이다. PASS는 입력값 대조 결과일 뿐이며, H1 `selected` 판정과 각 입력이
+실제 실행 SHA 및 원본에 묶이는지 따로 확인한다. H1 단계 A는 동결 설계의 jobs 2·4·4·2,
+블록당 12캠페인·budget 2000이며 기존 raw와 분리된 경로에서 돌린다. HOST 2도 등록된 별도
+smoke와 jobs 2·j* 각 1블록 검증이 필요하다. 승인되지 않은 설정이나 H1 halted면 실행하지 않는다.
+
+필드 틀은 `scripts/host_freeze_plan.template.json`과
+`scripts/host_freeze_evidence.template.json`이다. null은 미확인이며 자동 승인되지 않는다.

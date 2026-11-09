@@ -222,3 +222,68 @@ pressure 및 Docker daemon 응답 시각을 상관시킨다. 과거 로그가 �
 미확인으로 남긴다. 현재 Docker 상태를 조회할 필요가 있으면 daemon 부하를 고려해 별도 운영
 승인을 받고 읽기 전용 명령만 수행하며, 실패를 부재로 간주하거나 항목을 제거하지 않는다.
 새 측정은 별도 승인 및 새 출력 경로를 사용하고 기존 48개 결과에 합산하지 않는다.
+
+## 2026-11-09 Windows 후속 호스트 진단 — Hyper-V 이벤트·PSI·Docker 로그
+
+이 절은 위 Windows 원본 재분석 이후 사용자가 제공한 **Windows PowerShell의 읽기 전용 진단
+출력**을 근거로 한다. Windows 이벤트 로그, Docker Desktop 로그 파일 목록 및 벤치마크
+`host/samples.jsonl`의 해당 시간 주변 샘플만 조사했다. 원본 캠페인·steps·oracle은 열람하지
+않았고, Docker 시작·재설정, 벤치마크 재실행, runtime 코드 변경은 하지 않았다. 여기에 기재한
+시간 일치와 자원 지표는 원인 계층의 확정이나 H1 해소 증명이 아니다.
+
+### Hyper-V Event 285: 발생 시각은 일치하지만 배경 빈도가 높음
+
+Windows `Microsoft-Windows-Hyper-V-VmSwitch-Operational`에서 `OID_GEN_STATISTICS`에
+관한 경고 Event 285가 2026-11-07 18:03:46 KST와 2026-11-08 03:02:36 KST에 기록됐다.
+후자는 같은 날 03:02:22경 시작해 23.0356초 소요된 독립 `docker ps` 구간에 포함된다.
+그러나 21:32의 네 캠페인 동시 inspect timeout 시각에는 직접 일치하는 Hyper-V 이벤트가
+관찰되지 않았다.
+
+2026-11-06~09 조회 범위에서 Event 285는 총 1,668건이었고 일별 집계는 각각
+366·603·589·110건이었다(11/06 및 11/09의 기록·관찰 시간은 온전한 24시간이라는 보장이
+없음). 11/07~08에는 매시간 대체로 20~40건으로 **장애 외 시점에도 상시 발생**했다.
+따라서 장애 시각의 두 이벤트는 특이적 인과 증거가 아니며, 이 경고만으로 가상 스위치나
+NIC 드라이버를 H1 원인이라고 판단할 수 없다. 메시지의 `NicFriendlyName`은
+`Default Switch`였지만 현재 별도 `WSL (Hyper-V firewall)` 스위치도 존재하고,
+이름·현재 어댑터 목록만으로 과거 Docker/WSL 호출이 어느 스위치를 통과했는지는 알 수 없다.
+
+### 사고 주변 host samples 및 같은 블록 비교 구간
+
+| 구간 (KST) | host 관찰 | 해석 한계 |
+| --- | --- | --- |
+| block 1, 11/07 18:01~18:04 (jobs=2) | CPU PSI some avg10 약 0.75~3.24%, 메모리 가용 약 22GB, 인근 독립 `docker ps` 약 0.04~0.07초 | start/inspect timeout 전후에 지속적인 CPU·메모리 압박이 뚜렷하지 않음; 정상 `ps`가 다른 Docker 요청의 성공을 뜻하지는 않음 |
+| block 3, 11/07 21:24~21:27 (jobs=4, 비교) | CPU PSI some avg10 12.80~15.03%, 메모리 가용 약 21.73~21.92GB, 독립 `docker ps` 약 0.05~0.074초 | 장애 이전부터 CPU 대기가 높았으므로 21:32의 약 14%를 사고 시점의 고유 급증으로 볼 수 없음 |
+| block 3, 11/07 21:30~21:34 (jobs=4, 사고) | 사고 직전 CPU PSI some avg10 최대 14.70%, 이후 7.49→0.91%, 메모리 PSI 0%, `docker ps` 최대 0.703초 | CPU 경쟁의 기여 가능성은 있으나 inspect timeout의 최초 원인 증거는 아님 |
+| block 4, 11/08 02:45~02:48 (jobs=2, 비교) | CPU PSI some avg10 약 2.72~3.10%, 독립 `docker ps` 약 0.037~0.078초 | 같은 블록의 평상시 비교값 |
+| block 4, 11/08 03:02 (jobs=2, 사고) | CPU PSI some avg10 0.80%, I/O PSI 0.42%, 메모리 PSI 0%, 가용 메모리 약 21.96GB, 독립 `docker ps` **23.036초** | 긴 Docker 지연이 지속적인 Linux PSI 상승과 함께 나타나지는 않음; 샘플 간 짧은 spike는 배제 불가 |
+
+PSI `some avg10`은 최근 10초 동안 적어도 일부 작업에 자원 대기가 발생한 시간의
+비율이지 CPU 사용률이 아니다. `DockerPsSec=0` 샘플은 샘플러의 미조회 표기일 수 있으므로
+실측 0초 응답으로 간주하지 않는다. 표의 값은 약 27~30초 간격 샘플에서 추출한 것으로,
+Docker daemon 내부 잠금·Desktop IPC·CLI 파이프 지연을 직접 관측한 것은 아니다.
+
+### Docker Desktop 진단 로그의 보존 범위
+
+Windows `%LOCALAPPDATA%\Docker\log`가 존재했고, `vm/init.log`(약 962KB),
+`host/com.docker.backend.exe.log*`, `host/monitor.log*`, 11/07 `electron` 로그 등을
+확인했다. 약 1MB 크기의 회전 로그 다수가 존재한다. 관련 로그 29개에 대해 장애 시각의
+UTC/KST 문자열을 검색했으나 **일치하는 줄은 0개**였다. 이는 지정된 문자열에 관한
+음성 결과일 뿐, 로그 포맷의 차이·회전·소실 가능성을 구분하지 못하므로 해당 시각의
+daemon 로그가 완전히 없었다고 확정하지 않는다. 원본 로그 파일은 GitHub에 올리지 않았다.
+
+### 종합 판단 및 다음 게이트
+
+세 장애 블록에서 공통된 지속적 CPU·메모리·I/O 자원 고갈은 관찰되지 않았고,
+block 3의 CPU PSI 상승은 사고 전에도 있었다. 여러 캠페인에서 동시 발생한 Docker CLI
+start/inspect timeout과 독립 `docker ps` 지연은 공유 Docker 호출 경로의 일시적 정체와
+계속 부합하지만, **Docker CLI·daemon·Desktop·WSL2·호스트 중 최초 실패 계층은 미확정**이다.
+Event 285는 높은 배경 빈도 때문에 원인 증거로 채택하지 않는다. 개별 컨테이너 최종
+cleanup 상태도 여전히 미확정이다.
+
+추가 조사가 필요하면 각 Docker 로그의 실제 타임스탬프 형식·보존 시작/끝을 먼저
+확인하고, 확보 가능한 시간 일치 daemon/Desktop 오류만 상관분석한다. 원본이 회전되어
+검증 불가하면 `미확인`으로 남기고 **별도 승인된 호스트 조건의 새 출력 경로**에서
+재검증 절차를 결정해야 한다. 원래 48개 결과와 새 측정은 합산하지 않는다.
+
+**H1은 계속 `halted`, `selected_jobs=null`, `fallback_jobs=null`이다.**
+이 절은 runtime retry 도입, #307 병합, 벤치마크 또는 EXP-3/EXP-2 실행을 승인하지 않는다.

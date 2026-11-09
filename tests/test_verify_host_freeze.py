@@ -21,6 +21,9 @@ def evidence():
         "design_sha256": digest(b"design"),
         "target_version": "7.5.2",
         "image_id": image,
+        "controller_image_id": image,
+        "helper_image_id": image,
+        "runtime_policy_id": "policy-v1",
         "engine_version": "29.8.0",
         "execution_mode": "per-case-container",
         "stop_rule": "registered-rule",
@@ -92,6 +95,9 @@ def evidence():
                     "target_version": "7.5.2",
                     "docker_engine": "29.8.0",
                     "image_id": image,
+                    "controller_image_id": image,
+                    "helper_image_id": image,
+                    "runtime_policy_id": "policy-v1",
                     "docker_available": True,
                     "wsl2_verified": True,
                     "remaining_containers": [],
@@ -124,6 +130,10 @@ def test_consistent_synthetic_evidence(evidence):
         (lambda p, h, d: h[1]["windows_inventory"].pop("os"), "Windows os UNKNOWN"),
         (lambda p, h, d: h[1]["linux_inventory"].update(git_head="bad"), "Git SHA mismatch"),
         (lambda p, h, d: h[1]["measured"].update(image_id="unknown"), "image mismatch"),
+        (
+            lambda p, h, d: h[1]["measured"].update(helper_image_id="unknown"),
+            "helper_image_id mismatch",
+        ),
         (lambda p, h, d: h[1]["measured"].update(docker_memory_bytes=1), "below requirement"),
         (
             lambda p, h, d: h[1]["measured"].update(qualified_jobs=4),
@@ -183,6 +193,10 @@ jobs_max = 2
                         "checkout_dirty": False,
                         "docker_server": plan["engine_version"],
                         "image_id": plan["image_id"],
+                        "local_images": {
+                            "inodefence-controller:local": plan["controller_image_id"],
+                            "inodefence-helper:local": plan["helper_image_id"],
+                        },
                     },
                 }
             )

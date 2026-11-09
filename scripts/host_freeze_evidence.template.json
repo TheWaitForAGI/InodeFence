@@ -24,6 +24,9 @@
     "wsl2_verified": null,
     "remaining_containers": null,
     "remaining_experiment_volumes": null,
-    "docker_windows_data_path": null
+    "docker_windows_data_path": null,
+    "controller_image_id": null,
+    "helper_image_id": null,
+    "runtime_policy_id": null
   }
 }

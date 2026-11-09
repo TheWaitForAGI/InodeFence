@@ -30,5 +30,8 @@
       "assignment_ref": null,
       "cells": null
     }
-  }
+  },
+  "controller_image_id": null,
+  "helper_image_id": null,
+  "runtime_policy_id": null
 }

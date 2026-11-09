@@ -3,6 +3,7 @@
 import copy
 import json
 from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from scripts.verify_host_freeze import differences, digest, main, validate
@@ -39,7 +40,7 @@ def evidence():
             for name, jobs in (("HOST1", 2), ("HOST2", 1))
         },
     }
-    windows = {
+    windows: dict[str, dict[str, Any]] = {
         name: {"status": "VERIFIED", "value": "observed"}
         for name in (
             "os",
@@ -52,6 +53,10 @@ def evidence():
             "wsl_distributions",
         )
     }
+    windows["os"]["value"] = {"Caption": "Windows", "Version": "10", "BuildNumber": "1"}
+    windows["cpu"]["value"] = {"Name": "CPU", "NumberOfCores": 4, "NumberOfLogicalProcessors": 8}
+    windows["memory"]["value"] = 1024
+    windows["docker_desktop"]["value"] = {"ProductVersion": "4.0"}
     linux = {
         "os_release": "Ubuntu",
         "kernel": "WSL2",
@@ -78,6 +83,7 @@ def evidence():
                     "cgroup_cpu_limit": 8,
                     "disk_available_bytes": 1000,
                     "docker_data_root": "/docker",
+                    "docker_windows_data_path": "C:/Docker/data.vhdx",
                     "docker_context": "desktop",
                     "output_path": f"/output/{name}",
                     "runtime_path": f"/runtime/{name}",

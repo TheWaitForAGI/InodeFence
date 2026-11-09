@@ -329,7 +329,7 @@ OS·CPU·메모리·전원·WSL 버전과 Linux의 SHA·dirty·filesystem·가�
 
 각 호스트 `measured` 객체에는 `memory_available_bytes`, `docker_cpus`, `docker_memory_bytes`,
 `cgroup_memory_limit_bytes`, `cgroup_cpu_limit`, `disk_available_bytes`, `docker_data_root`,
-`docker_context`, `output_path`, `runtime_path`, `qualification_ref`, `qualification_execution_sha`,
+`docker_context`, `docker_windows_data_path`, `output_path`, `runtime_path`, `qualification_ref`, `qualification_execution_sha`,
 `qualified_jobs`, `target_version`, `docker_engine`, `image_id`, `docker_available`, `wsl2_verified`,
 `remaining_containers`, `remaining_experiment_volumes`를 적는다. 숫자는 실효 값이고 용량은 byte다.
 `qualification_ref`는 단순 성공 표시가 아닌 해당 host의 실제 smoke 및 동시성 검증 증거를 가리켜야 한다.
@@ -357,3 +357,13 @@ smoke와 jobs 2·j* 각 1블록 검증이 필요하다. 승인되지 않은 설�
 
 필드 틀은 `scripts/host_freeze_plan.template.json`과
 `scripts/host_freeze_evidence.template.json`이다. null은 미확인이며 자동 승인되지 않는다.
+
+인벤토리 원본을 수동 복사하지 않으려면 아래처럼 조립한다. `measured.json`은
+`host_freeze_evidence.template.json`의 `measured` 객체를 별도 파일로 저장해 작성한다.
+세 입력 원본의 SHA-256이 결과에 보존되며 원본과 기존 결과를 덮어쓰지 않는다.
+
+```bash
+PYTHONPATH=src python -m scripts.assemble_host_evidence --host-id HOST2 \
+  --windows /safe/host2-windows.json --linux /safe/host2-linux.json \
+  --measured /safe/host2-measured.json --output /safe/host2.json
+```

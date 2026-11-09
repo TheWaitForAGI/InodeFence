@@ -23,6 +23,7 @@
     "docker_available": null,
     "wsl2_verified": null,
     "remaining_containers": null,
-    "remaining_experiment_volumes": null
+    "remaining_experiment_volumes": null,
+    "docker_windows_data_path": null
   }
 }

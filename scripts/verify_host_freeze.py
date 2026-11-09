@@ -134,6 +134,27 @@ def validate(plan: dict[str, Any], hosts: list[dict[str, Any]], h1: dict[str, An
                 and item.get("value") not in (None, "", [], {}, "UNKNOWN"),
                 f"{label}: Windows {field} UNKNOWN",
             )
+        os_info = obj(obj(win.get("os")).get("value"))
+        for field in ("Caption", "Version", "BuildNumber"):
+            require(nonempty(os_info.get(field)), f"{label}: Windows OS {field} UNKNOWN")
+        processors = obj(win.get("cpu")).get("value")
+        if isinstance(processors, dict):
+            processors = [processors]
+        require(
+            isinstance(processors, list)
+            and bool(processors)
+            and all(
+                isinstance(cpu, dict)
+                and nonempty(cpu.get("Name"))
+                and integer(cpu.get("NumberOfCores"))
+                and integer(cpu.get("NumberOfLogicalProcessors"))
+                for cpu in processors
+            ),
+            f"{label}: Windows CPU detail UNKNOWN",
+        )
+        require(integer(obj(win.get("memory")).get("value")), f"{label}: Windows memory UNKNOWN")
+        desktop = obj(obj(win.get("docker_desktop")).get("value"))
+        require(nonempty(desktop.get("ProductVersion")), f"{label}: Docker Desktop version UNKNOWN")
         for field in ("os_release", "kernel", "cpu_model", "filesystem_type"):
             require(nonempty(inv.get(field)), f"{label}: Linux {field} missing")
         require(
@@ -186,6 +207,7 @@ def validate(plan: dict[str, Any], hosts: list[dict[str, Any]], h1: dict[str, An
         )
         for field in (
             "docker_data_root",
+            "docker_windows_data_path",
             "docker_context",
             "output_path",
             "runtime_path",

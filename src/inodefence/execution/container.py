@@ -32,9 +32,15 @@ def _expected_environment(image: dict) -> tuple[str, ...]:
 
 def checked(result: CommandResult, operation: str) -> bytes:
     if result.returncode != 0 or result.timed_out or result.truncated:
-        raise BackendError(
-            f"container runtime {operation} failed: {result.stderr.decode(errors='replace')}"
-        )
+        details = []
+        if result.timed_out:
+            details.append("timed out")
+        if result.truncated:
+            details.append("output truncated")
+        stderr = result.stderr.decode(errors="replace")
+        if stderr:
+            details.append(stderr)
+        raise BackendError(f"container runtime {operation} failed: {'; '.join(details)}")
     return result.stdout
 
 

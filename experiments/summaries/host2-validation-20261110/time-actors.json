@@ -1,0 +1,153 @@
+{
+  "collection_utc": "2026-11-10T15:05:15.446421+00:00",
+  "duration_requested_seconds": 40,
+  "runner_exit_code": 0,
+  "runner_timeout": false,
+  "trace_buffer_summary": "28 entries in buffer / 28 entries written",
+  "original_trace_sha256": "f182729939d527497a65e6bc808fbc83cc145c10090712272e2f12ebf922d78e",
+  "original_script_sha256": "06b7a1bc87ec10c310c3c7325e34527d85332c3a425d0fb147c396543ccb1ea1",
+  "method": "Created a unique isolated tracefs instance, enabled syscall entry events for adjtimex, clock_adjtime and clock_settime, and removed the instance on exit; runner stderr empty.",
+  "transformation": "Entry records omit process IDs, CPU numbers, kernel flags and pointer values; original trace is private. Entry trace has no access to syscall modes or result.",
+  "entries": [
+    {
+      "task": "systemd-timesyn",
+      "trace_time_seconds": 2049.57341,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "chronyd",
+      "trace_time_seconds": 2049.601321,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "chronyd",
+      "trace_time_seconds": 2052.857107,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "chronyd",
+      "trace_time_seconds": 2052.85712,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "chronyd",
+      "trace_time_seconds": 2052.857123,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "chronyd",
+      "trace_time_seconds": 2052.85713,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "chronyd",
+      "trace_time_seconds": 2057.422195,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "chronyd",
+      "trace_time_seconds": 2061.249415,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "chronyd",
+      "trace_time_seconds": 2061.249423,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "chronyd",
+      "trace_time_seconds": 2061.249425,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "chronyd",
+      "trace_time_seconds": 2061.249428,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "chronyd",
+      "trace_time_seconds": 2064.994244,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "chronyd",
+      "trace_time_seconds": 2069.572097,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "chronyd",
+      "trace_time_seconds": 2069.572115,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "chronyd",
+      "trace_time_seconds": 2069.572119,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "chronyd",
+      "trace_time_seconds": 2069.572126,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "chronyd",
+      "trace_time_seconds": 2073.288607,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "chronyd",
+      "trace_time_seconds": 2077.815053,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "chronyd",
+      "trace_time_seconds": 2077.815068,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "chronyd",
+      "trace_time_seconds": 2077.815071,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "chronyd",
+      "trace_time_seconds": 2077.815077,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "systemd-timesyn",
+      "trace_time_seconds": 2083.153334,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "chronyd",
+      "trace_time_seconds": 2083.226723,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "chronyd",
+      "trace_time_seconds": 2085.981328,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "chronyd",
+      "trace_time_seconds": 2085.981343,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "chronyd",
+      "trace_time_seconds": 2085.981348,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "chronyd",
+      "trace_time_seconds": 2085.981354,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "chronyd",
+      "trace_time_seconds": 2090.209216,
+      "event": "sys_clock_adjtime"
+    }
+  ]
+}

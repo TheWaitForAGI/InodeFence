@@ -214,3 +214,9 @@ Activate it using `source ~/.local/share/inodefence/host2-dev-venv/bin/activate`
 ## 36. Project Node version
 
 At 2026-11-10T15:59:36.906672+00:00, Node 22.22.0 was installed under the user's existing nvm installation with `nvm install 22.22.0 --no-use`; nvm reported the distribution checksum matched. Direct version checks returned Node v22.22.0 and npm 10.9.4. A fresh shell still selected the existing default Node v24.22.1. To use the project version in a terminal, run `nvm use 22.22.0` after loading nvm. This is a development tool installation, not evidence of the fixed experiment image or runtime compatibility.
+
+## 37. Development tool check on the existing checkout
+
+On the clean `minchan/p0-2-observation-capture` checkout at `1f6ca9022fda4d468d7b6ead2f0644f2cf5d9e09`, `source ~/.local/share/inodefence/host2-dev-venv/bin/activate && make lint format-check typecheck` completed with exit 0: Ruff lint passed, format check reported 389 files unchanged, and Pyright reported 0 errors and 0 warnings. This checks development tools and source analysis; it is not `make check`, a target smoke, or an experiment. The worktree remained unchanged.
+
+An initial attempt passed `PYTHON=<venv>/bin/python` without activating the environment. Ruff checks passed, but Pyright used the system interpreter and failed with 90 missing `pytest` import errors (exit 2). Activating the venv put its interpreter on PATH and resolved those errors in the subsequent check.

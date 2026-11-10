@@ -160,6 +160,54 @@ def test_simultaneous_nonzero_results_commit_single_threshold_stop(tmp_path: Pat
     assert run.records[-1]["state"] == "not-run"
 
 
+@pytest.mark.parametrize("source", ["watchdog", "threshold"])
+def test_stop_commit_blocks_competing_launch(tmp_path: Path, monkeypatch: Any, source: str) -> None:
+    design = bench.load_design(Path("experiments/configs/concurrency-scaling-v2.md"))
+    block = bench.planned_blocks(design, "A")[0]
+    committing, release, competing = (threading.Event() for _ in range(3))
+    launches: list[str] = []
+    next_cell = block.cells[7]
+    original_env = bench.cell_env
+
+    def cell_env(cell: Cell, *args: Any) -> dict[str, str]:
+        if cell == next_cell:
+            competing.set()
+        return original_env(cell, *args)
+
+    def run_cell(cell: Cell, raw: Path, _env: dict[str, str], launch: Any) -> CellResult:
+        launch(lambda: launches.append(cell.run_id))
+        code = bench.WATCHDOG_RETURNCODE if source == "watchdog" else 1
+        return CellResult(cell, code, 0.01, raw / "e.json", False, raw / "log")
+
+    monkeypatch.setattr(bench, "cell_env", cell_env)
+    run = bench.BlockRun(design, block, tmp_path, run_cell)
+    if source == "threshold":
+        for cell in block.cells[:5]:
+            run.run_one(cell)
+    original_stop = run._stop_locked
+
+    def paused_stop(reason: str, kind: str) -> None:
+        committing.set()
+        assert release.wait(5)
+        original_stop(reason, kind)
+
+    monkeypatch.setattr(run, "_stop_locked", paused_stop)
+    finishing = threading.Thread(target=run.run_one, args=(block.cells[5],))
+    finishing.start()
+    assert committing.wait(5)
+    contender = threading.Thread(target=run.run_one, args=(next_cell,))
+    contender.start()
+    assert competing.wait(5)
+    release.set()
+    finishing.join(5)
+    contender.join(5)
+    assert not finishing.is_alive() and not contender.is_alive()
+    assert next_cell.run_id not in launches
+    denied = next(r for r in run.records if r["run_id"] == next_cell.run_id)
+    assert denied["state"] == "not-run"
+    assert run.stop_order < denied["decision_order"]
+
+
 def test_real_watchdog_launch_wiring_denies_popen_after_sampler_stop(
     tmp_path: Path, monkeypatch: Any
 ) -> None:

@@ -2,6 +2,8 @@
 
 ## 1. Executive Summary
 
+**Update:** Docker and WSL were subsequently updated; the later state and pending WSL memory configuration are recorded in section 17. The earlier sections retain the original observations.
+
 **PARTIAL / host qualification UNKNOWN.** Read-only inventory at 2026-11-10 14:17–14:20 UTC (23:17–23:20 KST) found Docker Engine 29.9.2 instead of the design's 29.8.0, and the exact target image is absent. Available WSL memory was below the proposed 15 GiB preflight threshold. No smoke, concurrency test, or formal experiment was run. Observations are time-specific and self-reported, not authenticated attestation.
 
 ## 2. Hardware Inventory
@@ -74,3 +76,15 @@ Resolve the blockers with the research owner, record a new preflight and indepen
 ## 16. Evidence Manifest and SHA-256
 
 `SHA256SUMS` covers the public files alongside this report. The original read-only collector bundle is retained locally, unmodified, outside the repository; it contains machine-identifying paths and process details and must be reviewed before sharing. Its `collection.json` SHA-256 is `f699ea2aec9a6a602c65e8cda03ad5f4a59c7136faf8330d736f0e593029ad7e`. `verifier.json` is the unmodified output of the documented verifier with the proposed jobs=2, memory=16106127360, disk=20000000000 thresholds. The collector records per-command timestamps, argv, exit codes, timeout and stdout/stderr hashes in that private bundle. Linux and Docker extracts are byte-identical; Windows disk and clock outputs have CRLF normalized to LF, and the Linux command path is redacted. The public extracts are not a complete bundle. Hashes detect alteration, not machine identity or authenticity. No Oracle or feedback raw data was accessed or published. `make check` was attempted on this WSL host and stopped at lint because the `python` executable was absent (exit 2); the required Dev Container validation was not performed. The public manifest was independently checked with `sha256sum -c`, and the staged diff passed `git diff --cached --check`.
+
+## 17. Subsequent changes and post-change inventory
+
+The user initially requested general updates, then clarified that changes should serve HOST2 experiment readiness. Docker Desktop was updated from 4.96.2 to 4.99.0 using `winget.exe upgrade --id Docker.DockerDesktop --exact --accept-source-agreements --disable-interactivity`; the installer reported hash verification and successful installation. Docker restarted with no running containers observed beforehand. Engine changed from 29.9.2 to 29.9.3; it still does not satisfy the frozen 29.8.0 contract. The subsequent read-only collection observed the same four stopped container IDs and three volume names as before; this comparison does not establish volume content integrity.
+
+`wsl.exe --update` changed WSL 2.7.14.0 / kernel 6.18.33.2 to WSL 3.0.5.0 / running kernel 6.18.58.1. Its process handle was lost during the update, so the exit code was not recovered; installed and running versions were checked afterward. The WSL environment restarted during the update. No Windows reboot was initiated. The post-update collector still found the target, controller, and helper image tags absent, and the verifier still returned UNKNOWN for host qualification and freeze eligibility. Post-update available WSL memory was 14,288,360 KiB, still below the proposed 15 GiB threshold. These measurements do not qualify a smoke or experiment.
+
+At 14:35 UTC, the previously absent Windows user `.wslconfig` was created with `[wsl2]` and `memory=20GB`. The exact content and hash are in `wsl-memory-change.json`. This sets a maximum, not a reservation; host availability and memory pressure still need measurement. No WSL shutdown was requested after this change, so application of the new cap is **pending**, not PASS. Avoid interrupting other work; recheck the actual limit and preflight after a coordinated restart.
+
+A later non-elevated registry query found pending file-rename operations; this is evidence of pending operations, not proof that Windows Update requires a reboot. It narrows the earlier negative reboot probe and leaves restart protection UNKNOWN. No firmware, drivers, Windows Update, image, or Docker downgrade was applied. The exact target image and compatible execution engine remain prerequisites; PR #325 is review-only and #328 reports an unresolved stop/start defect, so neither indicates execution approval.
+
+The post-update collector bundle is retained locally; its collection.json SHA-256 is `6b173bc5b4b2f9df6002fbaa19a59a26de90fe8f642aa0d256c98c5ad4d2d3d0`. Post-update Linux, Docker version and verifier outputs are included here.

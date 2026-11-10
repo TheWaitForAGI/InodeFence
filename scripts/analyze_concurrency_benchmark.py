@@ -1063,11 +1063,15 @@ def analyze(output: Path, design: Design) -> dict[str, Any]:
         if stage == SMOKE_STAGE:
             for index, jobs in enumerate(design.stages[stage], start=1):
                 directory = output / stage / f"block-{index}-j{jobs}"
+                record_path = directory / BLOCK_FILE
                 if directory.exists() and (
-                    (directory / INCOMPLETE_BLOCK_FILE).exists()
-                    or not (directory / BLOCK_FILE).is_file()
+                    (directory / INCOMPLETE_BLOCK_FILE).exists() or not record_path.is_file()
                 ):
                     incomplete.append(f"{stage}/{directory.name}")
+                elif record_path.is_file():
+                    record = json.loads(record_path.read_text(encoding="utf-8"))
+                    if record.get("finished") is not True:
+                        incomplete.append(f"{stage}/{directory.name}")
             continue
         blocks: list[dict[str, Any]] = []
         targets_by_jobs: dict[int, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))

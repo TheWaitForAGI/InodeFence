@@ -302,6 +302,12 @@ def test_stage_gate_follows_the_decision(design: bench.Design, tmp_path: Path) -
     report = tmp_path / bench.REPORT_JSON
     _write_report(report, design, passed=False)
     assert "did not pass" in (bench.stage_gate_problem(design, "B", tmp_path) or "")
+    for block in bench.planned_blocks(design, "A"):
+        path = tmp_path / block.stage / block.name
+        path.mkdir(parents=True)
+        (path / bench.BLOCK_FILE).write_text(
+            json.dumps({"stopped_reason": None, "finished": True}), encoding="utf-8"
+        )
     _write_report(report, design, passed=True)
     assert bench.stage_gate_problem(design, "B", tmp_path) is None
     _write_report(report, design, passed=True, halts=[{"rule": "H2"}])

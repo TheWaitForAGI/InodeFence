@@ -118,6 +118,21 @@ def test_incomplete_directory_halts_analysis_even_without_evidence_file(tmp_path
     assert decision["halts"][0]["rule"] == "incomplete-block"
 
 
+def test_stale_pass_report_cannot_authorize_after_incomplete_block(tmp_path: Path) -> None:
+    design = bench.load_design(Path("experiments/configs/concurrency-scaling-v2.md"))
+    block = bench.planned_blocks(design, "A")[0]
+    (tmp_path / block.stage / block.name).mkdir(parents=True)
+    (tmp_path / bench.REPORT_JSON).write_text(
+        json.dumps(
+            {
+                "design_sha256": design.sha256,
+                "decision": {"halts": [], "stages": {"A": {"passed": True}}},
+            }
+        )
+    )
+    assert bench.stage_gate_problem(design, "B", tmp_path) is not None
+
+
 def test_keyboard_interrupt_commits_stop_before_waiting_for_workers(
     tmp_path: Path, monkeypatch: Any
 ) -> None:

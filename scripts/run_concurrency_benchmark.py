@@ -894,6 +894,10 @@ def stage_gate_problem(design: Design, stage: str, output: Path) -> str | None:
     verdict = (decision.get("stages") or {}).get(previous) or {}
     if not verdict.get("passed"):
         return f"stage {previous} did not pass the decision rule; {stage} may not start"
+    for earlier in order[: order.index(stage)]:
+        states = [stage_state(output, block) for block in planned_blocks(design, earlier)]
+        if any(state != "clean" for state in states):
+            return f"stage {earlier} is not clean ({states}); {stage} may not start"
     return None
 
 

@@ -613,6 +613,8 @@ class BlockRun:
                     self._stop_locked(f"{cell.run_id} hit the campaign watchdog", STOP_LEVEL)
                 elif self.nonzero_cells >= self.design.stop_nonzero_cells:
                     self._stop_locked(f"{self.nonzero_cells} cells exited nonzero", STOP_LEVEL)
+            if cleanup_unknown:
+                raise RuntimeError(f"{cell.run_id} cleanup resource state unknown")
         except BaseException as error:
             self.request_stop(
                 f"{cell.run_id} result recording failed: {type(error).__name__}: {error}",

@@ -86,7 +86,8 @@ def test_unknown_cleanup_stops_waiting_cells(tmp_path: Path) -> None:
         return CellResult(cell, 37, 1, raw / "e.json", False, log)
 
     run = bench.BlockRun(design, block, tmp_path, runner)
-    run.run_one(block.cells[0])
+    with pytest.raises(RuntimeError, match="cleanup resource state unknown"):
+        run.run_one(block.cells[0])
     run.run_one(block.cells[1])
     assert launched == [block.cells[0].run_id]
     assert run.stop_kind == bench.STOP_EXTERNAL
@@ -115,7 +116,12 @@ def test_cleanup_unknown_blocks_launch_before_runner_returns(tmp_path: Path) -> 
         return CellResult(cell, 0, 1, raw / "e.json", False, log)
 
     run = bench.BlockRun(design, block, tmp_path, runner)
-    first = threading.Thread(target=run.run_one, args=(block.cells[0],))
+
+    def run_first() -> None:
+        with pytest.raises(RuntimeError, match="cleanup resource state unknown"):
+            run.run_one(block.cells[0])
+
+    first = threading.Thread(target=run_first)
     first.start()
     try:
         assert unknown.wait(5)

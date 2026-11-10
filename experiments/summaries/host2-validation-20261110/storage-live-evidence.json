@@ -1,0 +1,201 @@
+{
+  "note": "Raw Windows handle output and paths retained privately; excerpts below contain only selected mapping values. Device ID correlation is an inference across independent reported identifiers, not an authenticated attestation.",
+  "windows_vhd": {
+    "path": "%LOCALAPPDATA%/Docker/wsl/disk/docker_data.vhdx",
+    "disk_identifier": "c696f686-5f6d-4804-a876-9ac1aacaad8f",
+    "attached_get_vhd": true,
+    "size_bytes": 1099511627776,
+    "file_size_bytes": 29126295552,
+    "windows_handle": "wslservice.exe had the VHDX open"
+  },
+  "wsl_bootstrap_data_disk_uuid": "86f696c6-6d5f-0448-a876-9ac1aacaad8f",
+  "windows_guid_little_endian_equals_bootstrap_uuid": true,
+  "docker_info": "\"/var/lib/docker\" \"overlayfs\" \"29.9.3\"",
+  "docker_mountinfo_selected": [
+    "253 243 8:48 / /mnt/docker-desktop-disk rw,relatime shared:29 - ext4 /dev/sdd rw",
+    "272 271 8:48 /data /var/lib rw,relatime shared:29 - ext4 /dev/sdd rw"
+  ],
+  "wsl_disk_by_id_selected": [
+    "lrwxrwxrwx    1 root     root             9 Nov 10 14:31 scsi-36002248086f696c66d5f9ac1aacaad8f -> ../../sdd",
+    "lrwxrwxrwx    1 root     root             9 Nov 10 14:31 wwn-0x6002248086f696c66d5f9ac1aacaad8f -> ../../sdd"
+  ],
+  "docker_virtual_free_df": "Filesystem           1-blocks       Used Available Use% Mounted on\n/dev/sdd             1081101176832 26845962240 999262859264   3% /mnt/docker-desktop-disk\n",
+  "windows_volume_observation": "{\n    \"DiskNumber\":  0,\n    \"DriveLetter\":  \"C\",\n    \"Size\":  999128301568\n}\n{\n    \"FriendlyName\":  \"CT1000E100SSD8\",\n    \"BusType\":  \"NVMe\",\n    \"Size\":  1000204886016\n}\n{\n    \"FileSystem\":  \"NTFS\",\n    \"Size\":  999128297472,\n    \"SizeRemaining\":  107862671360\n}\n",
+  "binary_signature": {
+    "Status": 0,
+    "Signer": "CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US"
+  },
+  "handle_eula_before": "ABSENT",
+  "handle_eula_after": 1,
+  "sysinternals_sha256": {
+    "vhd-transcript.txt": "59a3d08d1c98e63a5975d58ae1344210fa6e3629366df48aa743036f7b253217",
+    "handles-transcript.txt": "99b112a4f8d42ebd8661fddf92e5234cd50704155eb8a099e8d47413b8008393",
+    "vhd-admin.ps1": "f92c6e609710a2465c7e561fe76c0411ed6c9c350f69a1673871605b3b6d67a0",
+    "handles-admin.ps1": "0ba226f91111820989a0c0493fbcb439fcd781fd666cf8d0d7340d23d2ba679d",
+    "handle64.exe": "24bafcc570cc9bbb6b6e6652a57a519e0464e3996891aaba6f55299cce20b04f",
+    "Handle.zip": "279aaf8eccb6f79147f4dcc6ba091fb895c4cb8b199a0dd186a4c76bc519d2cd",
+    "download.json": "da6324b79ba8f75777956a03c4d53aa1a8e640a54fcfe389c482294dc2658545"
+  },
+  "collection_commands": {
+    "docker-info": {
+      "started_utc": "2026-11-10T15:31:17.576744+00:00",
+      "duration_monotonic_seconds": 0.12130332400010957,
+      "argv": [
+        "docker",
+        "info",
+        "--format",
+        "{{json .DockerRootDir}} {{json .Driver}} {{json .ServerVersion}}"
+      ],
+      "exit_code": 0,
+      "timeout": false,
+      "sha256": {
+        "stdout": "ffe40f8435ef6e7bae5a5c8145b9814ba7111278eab75fd39c82a6eeddff79f0",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "bootstrap": {
+      "started_utc": "2026-11-10T15:31:17.698162+00:00",
+      "duration_monotonic_seconds": 0.11476436500015552,
+      "argv": [
+        "wsl.exe",
+        "-d",
+        "docker-desktop",
+        "-u",
+        "root",
+        "--cd",
+        "/",
+        "--",
+        "ps",
+        "-ef"
+      ],
+      "exit_code": 0,
+      "timeout": false,
+      "sha256": {
+        "stdout": "fb01220b9c99d3bd8788a0985993e4cbddb444c8ac756507f2126ff75016d068",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "dockerd-mountinfo": {
+      "started_utc": "2026-11-10T15:31:17.813040+00:00",
+      "duration_monotonic_seconds": 0.10419155299996419,
+      "argv": [
+        "wsl.exe",
+        "-d",
+        "docker-desktop",
+        "-u",
+        "root",
+        "--cd",
+        "/",
+        "--",
+        "cat",
+        "/proc/140/mountinfo"
+      ],
+      "exit_code": 0,
+      "timeout": false,
+      "sha256": {
+        "stdout": "2d3ea02d445da0c7a72bbf7e7bd6a5e06e17cabacf23391bbbd8d929e5b1c009",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "disk-by-id": {
+      "started_utc": "2026-11-10T15:31:17.917335+00:00",
+      "duration_monotonic_seconds": 0.11146653700006937,
+      "argv": [
+        "wsl.exe",
+        "-d",
+        "docker-desktop",
+        "-u",
+        "root",
+        "--cd",
+        "/",
+        "--",
+        "ls",
+        "-l",
+        "/dev/disk/by-id"
+      ],
+      "exit_code": 0,
+      "timeout": false,
+      "sha256": {
+        "stdout": "65eba9995a2a5b958d785ba57ec50e42541a945493fc5e7d88716987074cac15",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "disk-free": {
+      "started_utc": "2026-11-10T15:31:18.028906+00:00",
+      "duration_monotonic_seconds": 0.10733970599994791,
+      "argv": [
+        "wsl.exe",
+        "-d",
+        "docker-desktop",
+        "-u",
+        "root",
+        "--cd",
+        "/",
+        "--",
+        "df",
+        "-B1",
+        "/mnt/docker-desktop-disk"
+      ],
+      "exit_code": 0,
+      "timeout": false,
+      "sha256": {
+        "stdout": "6211289d3333b4e370da5e99bb1c6f5fa346bd3fa7d534652afd3d993c9d344d",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "dockerd-pid": {
+      "started_utc": "2026-11-10T15:31:18.136334+00:00",
+      "duration_monotonic_seconds": 0.10054365799987863,
+      "argv": [
+        "wsl.exe",
+        "-d",
+        "docker-desktop",
+        "-u",
+        "root",
+        "--cd",
+        "/",
+        "--",
+        "pidof",
+        "dockerd"
+      ],
+      "exit_code": 0,
+      "timeout": false,
+      "sha256": {
+        "stdout": "251afbc1fe2e0118f21efcd99a65edefb597b294c5b10ed79b7c46017614e8db",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "windows-c": {
+      "started_utc": "2026-11-10T15:31:18.236966+00:00",
+      "duration_monotonic_seconds": 1.7919113519997154,
+      "argv": [
+        "powershell.exe",
+        "-NoProfile",
+        "-Command",
+        "Get-Partition -DriveLetter C | Select DiskNumber,DriveLetter,Size | ConvertTo-Json; Get-Disk -Number 0 | Select FriendlyName,BusType,Size | ConvertTo-Json; Get-Volume -DriveLetter C | Select FileSystem,Size,SizeRemaining | ConvertTo-Json"
+      ],
+      "exit_code": 0,
+      "timeout": false,
+      "sha256": {
+        "stdout": "420e22cfa0bca89e2c46c9166f18ca55db997f1181f77f83cb8967eb940c0d9c",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "signature": {
+      "started_utc": "2026-11-10T15:31:20.028977+00:00",
+      "duration_monotonic_seconds": 0.2593899350003994,
+      "argv": [
+        "powershell.exe",
+        "-NoProfile",
+        "-Command",
+        "$p=Join-Path $env:LOCALAPPDATA 'Temp\\inodefence-host2-validation-20261110\\sysinternals\\handle64.exe'; Get-AuthenticodeSignature -LiteralPath $p | Select Status,@{Name='Signer';Expression={$_.SignerCertificate.Subject}} | ConvertTo-Json"
+      ],
+      "exit_code": 0,
+      "timeout": false,
+      "sha256": {
+        "stdout": "1ba08a91f9c54a9c03659ef6c10672d8049e00c46a640ed38a0042f8c30962fb",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  }
+}

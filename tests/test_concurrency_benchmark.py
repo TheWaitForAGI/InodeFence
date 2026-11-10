@@ -227,12 +227,12 @@ def test_residual_resources_after_a_block_are_a_level_stop(
         lambda c, r, _e, _b, limit_seconds, popen: (popen(["true"]), _fake_result(c, r, 0))[1],
     )
     block = bench.planned_blocks(design, "A")[0]
-    with pytest.raises(RuntimeError, match="block stopped"):
-        bench.run_block(design, block, tmp_path, "bash")
-    record = json.loads((tmp_path / bench.INCOMPLETE_BLOCK_FILE).read_text("utf-8"))
+    record = bench.run_block(design, block, tmp_path, "bash")
     assert "residual" in (record["stopped_reason"] or "")
     assert record["stop_kind"] == bench.STOP_LEVEL
     assert record["finished"] is False
+    assert (tmp_path / bench.BLOCK_FILE).is_file()
+    assert not (tmp_path / bench.INCOMPLETE_BLOCK_FILE).exists()
 
 
 def test_a_stop_after_the_last_cell_keeps_its_kind(
@@ -259,12 +259,11 @@ def test_a_stop_after_the_last_cell_keeps_its_kind(
         lambda c, r, _e, _b, limit_seconds, popen: (popen(["true"]), _fake_result(c, r, 0))[1],
     )
     block = bench.planned_blocks(design, "A")[0]
-    with pytest.raises(RuntimeError, match="block stopped"):
-        bench.run_block(design, block, tmp_path, "bash")
-    record = json.loads((tmp_path / bench.INCOMPLETE_BLOCK_FILE).read_text("utf-8"))
+    record = bench.run_block(design, block, tmp_path, "bash")
     assert "foreign" in (record["stopped_reason"] or "")
     assert record["stop_kind"] == bench.STOP_EXTERNAL
     assert record["finished"] is False
+    assert (tmp_path / bench.BLOCK_FILE).is_file()
 
 
 def test_a_failed_sampler_stops_the_block(
@@ -888,7 +887,7 @@ def _write_stage(
                 _write_cell(raw, design, run_id, seed, arm=arm, duration=duration, steps=steps)
             )
         record = {
-            "finished": True,
+            "finished": not (stop is not None and stop[0] == index),
             "stage": stage,
             "index": index,
             "jobs": jobs,
@@ -899,6 +898,8 @@ def _write_stage(
             "residual_after_block": [],
             "cells": cells,
         }
+        if stop is not None and stop[0] == index:
+            record["state"] = "stopped"
         (directory / bench.BLOCK_FILE).write_text(json.dumps(record), encoding="utf-8")
 
 
@@ -1311,6 +1312,31 @@ def test_stop_kind_reaches_the_decision_from_the_block_file(
     # The driver's gate refuses the next stage on this report.
     (tmp_path / bench.REPORT_JSON).write_text(json.dumps(report), encoding="utf-8")
     assert "did not pass" in (bench.stage_gate_problem(design, "B", tmp_path) or "")
+
+
+@pytest.mark.parametrize(
+    ("index", "kind", "status", "selected", "invalid"),
+    [
+        (1, LEVEL_STOP, "halted", None, None),
+        (2, LEVEL_STOP, "selected", 2, None),
+        (2, EXTERNAL_STOP, "provisional", None, "A"),
+    ],
+)
+def test_stopped_block_file_preserves_design_decision(
+    design: bench.Design,
+    tmp_path: Path,
+    index: int,
+    kind: str,
+    status: str,
+    selected: int | None,
+    invalid: str | None,
+) -> None:
+    _write_stage(tmp_path, design, "A", stop=(index, kind))
+    decision = analysis.analyze(tmp_path, design)["decision"]
+    assert decision["status"] == status
+    assert decision["selected_jobs"] == selected
+    assert decision["stage_invalid"] == invalid
+    assert all(halt["rule"] != "incomplete-block" for halt in decision["halts"])
 
 
 def test_one_sided_congestion_cell_is_not_normal_for_g(design: bench.Design) -> None:

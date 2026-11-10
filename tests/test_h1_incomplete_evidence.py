@@ -152,6 +152,25 @@ def test_incomplete_directory_halts_analysis_even_without_evidence_file(tmp_path
     assert decision["halts"][0]["rule"] == "incomplete-block"
 
 
+def test_designed_stop_is_not_classified_as_incomplete(tmp_path: Path) -> None:
+    design = bench.load_design(Path("experiments/configs/concurrency-scaling-v2.md"))
+    block = bench.planned_blocks(design, "A")[0]
+    directory = tmp_path / block.stage / block.name
+    directory.mkdir(parents=True)
+    (directory / bench.BLOCK_FILE).write_text(
+        json.dumps(
+            {
+                "finished": False,
+                "state": "stopped",
+                "stop_kind": bench.STOP_LEVEL,
+                "stopped_reason": "watchdog",
+                "cells": [],
+            }
+        )
+    )
+    assert bench.stage_state(tmp_path, block) == "stopped"
+
+
 def test_stale_pass_report_cannot_authorize_after_incomplete_block(tmp_path: Path) -> None:
     design = bench.load_design(Path("experiments/configs/concurrency-scaling-v2.md"))
     block = bench.planned_blocks(design, "A")[0]

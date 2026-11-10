@@ -760,8 +760,8 @@ def _run_block(
     try:
         sampler.start()
         record = run.execute()
-        if any(cell.get("state") == "not-run" for cell in record["cells"]):
-            raise RuntimeError("block stopped before all cells started")
+        if any(cell.get("start_error") for cell in record["cells"]):
+            raise RuntimeError("a cell failed to start")
     finally:
         active_error = sys.exception()
         stop_sampling.set()
@@ -798,7 +798,8 @@ def _run_block(
         record["stop_kind"] = run.stop_kind
         record["stop_order"] = run.stop_order
     if run.stopped_reason is not None:
-        raise RuntimeError(f"block stopped: {run.stopped_reason}")
+        record["finished"] = False
+        record["state"] = "stopped"
     _publish_json(directory / BLOCK_FILE, record)
     return record
 
@@ -879,10 +880,24 @@ def stage_state(output: Path, block: Block) -> str:
         return "incomplete"
     if record_path.is_file():
         record = json.loads(record_path.read_text(encoding="utf-8"))
+        if planned_stop(record):
+            return "stopped"
         if record.get("finished") is not True:
             return "incomplete"
         return "stopped" if record.get("stopped_reason") else "clean"
     return "incomplete" if directory.exists() else "pending"
+
+
+def planned_stop(record: Mapping[str, Any]) -> bool:
+    """A complete schedule record of a designed stop, not an exception artifact."""
+    return (
+        record.get("state") == "stopped"
+        and record.get("finished") is False
+        and isinstance(record.get("stopped_reason"), str)
+        and bool(record["stopped_reason"])
+        and record.get("stop_kind") in (STOP_LEVEL, STOP_EXTERNAL)
+        and isinstance(record.get("cells"), list)
+    )
 
 
 def stage_gate_problem(design: Design, stage: str, output: Path) -> str | None:

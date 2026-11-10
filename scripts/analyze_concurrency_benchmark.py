@@ -44,6 +44,7 @@ from scripts.run_concurrency_benchmark import (
     Design,
     load_design,
     measured_stages,
+    planned_stop,
 )
 
 from inodefence.evaluation.abort_classification import InvalidReason, classify_abort_reason
@@ -1070,7 +1071,7 @@ def analyze(output: Path, design: Design) -> dict[str, Any]:
                     incomplete.append(f"{stage}/{directory.name}")
                 elif record_path.is_file():
                     record = json.loads(record_path.read_text(encoding="utf-8"))
-                    if record.get("finished") is not True:
+                    if record.get("finished") is not True and not planned_stop(record):
                         incomplete.append(f"{stage}/{directory.name}")
             continue
         blocks: list[dict[str, Any]] = []
@@ -1088,7 +1089,7 @@ def analyze(output: Path, design: Design) -> dict[str, Any]:
             if not record_path.is_file():
                 continue
             record = json.loads(record_path.read_text(encoding="utf-8"))
-            if record.get("finished") is not True:
+            if record.get("finished") is not True and not planned_stop(record):
                 incomplete.append(f"{stage}/{directory.name}")
                 continue
             block, paths, targets = summarize_block(directory, record, design)

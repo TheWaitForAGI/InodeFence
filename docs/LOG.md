@@ -290,3 +290,5 @@ append-only. 실행 시도 1건 = 1줄. 실패해도 기록한다.
 - 2026-11-07 | 지웅 (Claude Code, W4 Paper & Deliverables, 오케스트레이터 전달 W3 지적) | **표 M3 hit 정의와 초안 자력 발견 문구 정렬.** 표 M3와 `gen_table_m3.py`에 hit 정의 문장(C1 ∧ contract_violated, 위험도 파일럿·EXP-3의 사건 정의 C1 ∨ C2와 다름, A3full-s60의 C2만 위반 step 14개 제외)을 넣고 "자율 트리거"를 "자율 C1"로 고쳤다. 보고서 초안 §7.3·§7.4와 각주 `[^m3]`를 W3 문구로 맞췄다. 수치와 셀 이름은 그대로다. | 벤치마크 단계 A 호스트 동결로 로컬 `gen_table_m3 --check`, `check_docs`, pytest를 돌리지 않았다. CI로 검증한다. | paper/tables/m3-blind-ablation.md · scripts/gen_table_m3.py · paper/deliverables/capstone-report-draft.md · docs/LOG.md |
 
 - 2026-11-10 | Codex (M3 H1) | cleanup CLI deadline·소유권 확인 및 미완료 블록 증거 후보 구현. 검증과 병합 전 후보이며 정식 H1·등록 실험은 실행하지 않음. | scripts/README.md · 관련 H1 테스트 |
+
+- 2026-11-10 | Codex (M3 H1) | #328 후속: §6.3 설계된 수준·외부 stop의 분석 분류 복구 후보. UNKNOWN/start 프로세스 간 게이트는 미해결이며 실측하지 않음. | scripts/README.md · H1 회귀 테스트 |

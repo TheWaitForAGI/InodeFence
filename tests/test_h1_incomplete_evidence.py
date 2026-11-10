@@ -123,7 +123,11 @@ def test_keyboard_interrupt_commits_stop_before_waiting_for_workers(
 ) -> None:
     design = bench.load_design(Path("experiments/configs/concurrency-scaling-v2.md"))
     block = bench.planned_blocks(design, "smoke")[0]
-    run = bench.BlockRun(design, block, tmp_path, lambda *_args: None)
+
+    def never_run(*_args: Any) -> CellResult:
+        raise AssertionError("worker must not run")
+
+    run = bench.BlockRun(design, block, tmp_path, never_run)
     observed: list[str | None] = []
 
     class Pool:

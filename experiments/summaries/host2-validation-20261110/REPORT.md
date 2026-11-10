@@ -63,6 +63,7 @@ The v2 design specifies Engine 29.8.0 and target image above, while HOST2 observ
 | Sleep and restart | UNKNOWN | AC timers checked; restart protection not established |
 | Other users / load | UNKNOWN | instantaneous process list is not a sustained host-wide exclusivity check |
 | HOST1 contract | FAIL | Engine mismatch and target image absent |
+| Clock / watchdog timing | UNKNOWN | bracketed follow-up indicates a time-dependent monotonic rate discrepancy; see section 19 |
 | Qualification / freeze | UNKNOWN | verifier does not grant either |
 
 ## 14. Remaining Blockers
@@ -100,3 +101,9 @@ A subsequent Windows query identified the active Ubuntu-24.04 registration's ext
 An **elevated** read-only Windows policy and scheduled-task diagnostic at 14:42:58 UTC returned `ADMIN=True`. The queried policy and reboot-required keys were not found or not accessible; pending rename operations were present. The UpdateOrchestrator tasks and their reported next-run values are in the redacted excerpt. This does not prove a reboot is pending due to Windows Update or that all automatic restarts are prevented. No Windows policy was changed; restart protection remains UNKNOWN.
 
 An additional four-sample Windows Stopwatch/WSL clock comparison over approximately 30 seconds yielded Windows Stopwatch 30.039 seconds and WSL monotonic 29.194 seconds between received markers. Windows and Linux UTC samples also showed varying apparent offsets. Variable cross-process output propagation and scheduling are not bounded, so this observation is **not** a calibrated rate or a PASS/FAIL; the discrepancy warrants a controlled independent clock-rate check before using elapsed-time-sensitive watchdogs. `clock-repeat.json` contains the samples and exact command. No experiment was run.
+
+## 19. Bracketed clock follow-up
+
+A read-only request/response measurement at 14:46 UTC brackets every Windows Stopwatch sample with WSL clock reads, limiting interop latency uncertainty. Between requests 1 and 4, Windows Stopwatch advanced 30.992023 seconds; WSL `CLOCK_MONOTONIC_RAW` advanced between 30.991349 and 30.992525 seconds, whereas `CLOCK_MONOTONIC` advanced between 30.001609 and 30.002757 seconds. This sample indicates approximately 3.2% slower monotonic progression relative to Windows Stopwatch, within the measured request brackets. It is a short engineering observation, not a calibrated long-duration guarantee. The source and raw samples are provided; the public script changes only its output path to avoid disclosing a local path.
+
+A separate read-only `adjtimex` query reported `tick_us=9686` with `CLK_TCK=100`; an earlier query reported 9662. The tick adjustment is consistent with a shortened adjusted-clock interval but its cause and persistence are not established. At approximately the same time, systemd-timesyncd reported an offset of +1.052 seconds; this is the Linux service's estimate, not a Windows measurement. Neither a clock adjustment nor a service restart was performed. Treat clock-rate adequacy as UNKNOWN and investigate before a watchdog-sensitive experiment; no threshold has been silently changed.

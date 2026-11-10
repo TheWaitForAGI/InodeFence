@@ -1,0 +1,13 @@
+{
+  "utc": "2026-11-10T14:48:08.881889+00:00",
+  "argv": [
+    "timedatectl",
+    "timesync-status"
+  ],
+  "exit_code": 0,
+  "timeout": false,
+  "sha256": {
+    "stdout": "baeab3e31ec4a222317896f73e9c3bf440098d50a98656a49328243634b5fc38",
+    "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

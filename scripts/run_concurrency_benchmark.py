@@ -427,15 +427,25 @@ def host_stop_reason(sample: Mapping[str, Any], design: Design) -> tuple[str, st
     return None
 
 
+class StartDenied(Exception):
+    """A block stop was committed before this cell could start."""
+
+
 class BlockRun:
-    """Runs one block's cells at its concurrency; records schedule and clocks, no outcomes."""
+    """Run a block and record start/stop order without recording oracle outcomes.
+
+    ``start_order``, ``stop_order`` and rejected ``decision_order`` are a
+    block-local sequence, persisted with the existing block record on completion.
+    Launch and stop commit under one lock; a launch commits only after Popen
+    succeeds. Waiting for the child never holds the lock.
+    """
 
     def __init__(
         self,
         design: Design,
         block: Block,
         directory: Path,
-        run_cell: Callable[[Cell, Path, dict[str, str]], CellResult],
+        run_cell: Callable[[Cell, Path, dict[str, str], Callable[..., Any]], CellResult],
     ) -> None:
         self.design = design
         self.block = block
@@ -448,21 +458,47 @@ class BlockRun:
         self.stopped_reason: str | None = None
         self.stop_kind: str | None = None
         self.records: list[dict[str, Any]] = []
+        self.event_order = 0
+        self.stop_order: int | None = None
+
+    def _stop_locked(self, reason: str, kind: str) -> None:
+        if self.stopped_reason is None:
+            self.event_order += 1
+            self.stop_order = self.event_order
+            self.stopped_reason = reason
+            self.stop_kind = kind
 
     def request_stop(self, reason: str, kind: str) -> None:
         """The first reason is the block's reason: what came after it may be its consequence."""
         with self.lock:
-            if self.stopped_reason is None:
-                self.stopped_reason = reason
-                self.stop_kind = kind
+            self._stop_locked(reason, kind)
 
     def run_one(self, cell: Cell) -> None:
-        if self.stopped_reason is not None:
+        started: dict[str, Any] = {}
+        start_order: int | None = None
+
+        def launch(start: Callable[[], Any]) -> Any:
+            nonlocal started, start_order
             with self.lock:
-                self.records.append({"run_id": cell.run_id, "state": "not-run"})
+                if self.stopped_reason is not None:
+                    raise StartDenied
+                # Popen itself is the start boundary. Do not hold this lock while
+                # the child runs or while the watchdog waits for it.
+                started = clock_stamp()
+                process = start()
+                self.event_order += 1
+                start_order = self.event_order
+                return process
+
+        try:
+            result = self.run_cell(cell, self.raw, cell_env(cell, self.raw, self.base_env), launch)
+        except StartDenied:
+            with self.lock:
+                self.event_order += 1
+                self.records.append(
+                    {"run_id": cell.run_id, "state": "not-run", "decision_order": self.event_order}
+                )
             return
-        started = clock_stamp()
-        result = self.run_cell(cell, self.raw, cell_env(cell, self.raw, self.base_env))
         ended = clock_stamp()
         paths = cell_paths(cell, self.raw)
         with self.lock:
@@ -477,6 +513,7 @@ class BlockRun:
                     "watchdog_killed": result.returncode == WATCHDOG_RETURNCODE,
                     "launcher_wall_seconds": result.wall_seconds,
                     "started": started,
+                    "start_order": start_order,
                     "ended": ended,
                     "report": paths["report"].name,
                     "steps": paths["steps_jsonl"].name,
@@ -485,10 +522,10 @@ class BlockRun:
             )
             if result.returncode != 0:
                 self.nonzero_cells += 1
-        if result.returncode == WATCHDOG_RETURNCODE:
-            self.request_stop(f"{cell.run_id} hit the campaign watchdog", STOP_LEVEL)
-        elif self.nonzero_cells >= self.design.stop_nonzero_cells:
-            self.request_stop(f"{self.nonzero_cells} cells exited nonzero", STOP_LEVEL)
+            if result.returncode == WATCHDOG_RETURNCODE:
+                self._stop_locked(f"{cell.run_id} hit the campaign watchdog", STOP_LEVEL)
+            elif self.nonzero_cells >= self.design.stop_nonzero_cells:
+                self._stop_locked(f"{self.nonzero_cells} cells exited nonzero", STOP_LEVEL)
 
     def execute(self) -> dict[str, Any]:
         self.raw.mkdir(parents=True, exist_ok=True)
@@ -508,6 +545,7 @@ class BlockRun:
             "ended": ended,
             "stopped_reason": self.stopped_reason,
             "stop_kind": self.stop_kind,
+            "stop_order": self.stop_order,
             "finished": True,
             "cells": sorted(self.records, key=lambda record: order[record["run_id"]]),
         }
@@ -561,9 +599,16 @@ def _start_events(path: Path) -> subprocess.Popen[bytes]:
 
 
 def run_block(design: Design, block: Block, directory: Path, bash: str) -> dict[str, Any]:
-    def run_cell(cell: Cell, raw: Path, env: dict[str, str]) -> CellResult:
+    def run_cell(
+        cell: Cell, raw: Path, env: dict[str, str], launch: Callable[..., Any]
+    ) -> CellResult:
         return run_cell_with_watchdog(
-            cell, raw, env, bash, limit_seconds=design.campaign_watchdog_seconds
+            cell,
+            raw,
+            env,
+            bash,
+            limit_seconds=design.campaign_watchdog_seconds,
+            popen=lambda *args, **kwargs: launch(lambda: subprocess.Popen(*args, **kwargs)),
         )
 
     host = directory / "host"
@@ -585,11 +630,14 @@ def run_block(design: Design, block: Block, directory: Path, bash: str) -> dict[
     # A sampler stop that came after the last cell started is still a reason to end the stage.
     record["stopped_reason"] = run.stopped_reason
     record["stop_kind"] = run.stop_kind
+    record["stop_order"] = run.stop_order
     residual = residual_resources()
     record["residual_after_block"] = residual
     if residual and record["stopped_reason"] is None:
-        record["stopped_reason"] = f"residual resources after the block: {residual}"
-        record["stop_kind"] = STOP_LEVEL
+        run.request_stop(f"residual resources after the block: {residual}", STOP_LEVEL)
+        record["stopped_reason"] = run.stopped_reason
+        record["stop_kind"] = run.stop_kind
+        record["stop_order"] = run.stop_order
     (directory / BLOCK_FILE).write_text(
         json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )

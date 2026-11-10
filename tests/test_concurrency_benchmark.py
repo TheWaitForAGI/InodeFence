@@ -106,7 +106,8 @@ def test_block_run_honors_jobs_and_records_no_outcome(design: bench.Design, tmp_
     running = 0
     peak = 0
 
-    def run_cell(cell: Cell, raw: Path, _env: dict[str, str]) -> CellResult:
+    def run_cell(cell: Cell, raw: Path, _env: dict[str, str], launch: Any) -> CellResult:
+        launch(lambda: None)
         nonlocal running, peak
         with lock:
             running += 1
@@ -127,7 +128,12 @@ def test_block_run_honors_jobs_and_records_no_outcome(design: bench.Design, tmp_
 
 def test_block_stops_starting_cells_after_half_fail(design: bench.Design, tmp_path: Path) -> None:
     block = bench.planned_blocks(design, "A")[0]
-    run = bench.BlockRun(design, block, tmp_path, lambda c, r, _e: _fake_result(c, r, 1))
+    run = bench.BlockRun(
+        design,
+        block,
+        tmp_path,
+        lambda c, r, _e, launch: (launch(lambda: None), _fake_result(c, r, 1))[1],
+    )
     record = run.execute()
     states = [cell["state"] for cell in record["cells"]]
     assert "not-run" in states
@@ -141,7 +147,8 @@ def test_five_failures_do_not_stop_a_block(design: bench.Design, tmp_path: Path)
     block = bench.planned_blocks(design, "A")[0]
     failing = {cell.run_id for cell in block.cells[:5]}
 
-    def run_cell(cell: Cell, raw: Path, _env: dict[str, str]) -> CellResult:
+    def run_cell(cell: Cell, raw: Path, _env: dict[str, str], launch: Any) -> CellResult:
+        launch(lambda: None)
         return _fake_result(cell, raw, 1 if cell.run_id in failing else 0)
 
     record = bench.BlockRun(design, block, tmp_path, run_cell).execute()
@@ -155,7 +162,10 @@ def test_watchdog_kill_stops_the_block(design: bench.Design, tmp_path: Path) -> 
         design,
         block,
         tmp_path,
-        lambda c, r, _e: _fake_result(c, r, bench.WATCHDOG_RETURNCODE),
+        lambda c, r, _e, launch: (
+            launch(lambda: None),
+            _fake_result(c, r, bench.WATCHDOG_RETURNCODE),
+        )[1],
     )
     record = run.execute()
     assert "watchdog" in (record["stopped_reason"] or "")
@@ -184,7 +194,12 @@ def test_host_stop_reasons(design: bench.Design) -> None:
 
 def test_the_first_stop_names_the_block(design: bench.Design, tmp_path: Path) -> None:
     block = bench.planned_blocks(design, "A")[0]
-    run = bench.BlockRun(design, block, tmp_path, lambda c, r, _e: _fake_result(c, r, 0))
+    run = bench.BlockRun(
+        design,
+        block,
+        tmp_path,
+        lambda c, r, _e, launch: (launch(lambda: None), _fake_result(c, r, 0))[1],
+    )
     run.request_stop("foreign container", bench.STOP_EXTERNAL)
     run.request_stop("watchdog", bench.STOP_LEVEL)
     assert (run.stopped_reason, run.stop_kind) == ("foreign container", bench.STOP_EXTERNAL)
@@ -201,10 +216,13 @@ def test_residual_resources_after_a_block_are_a_level_stop(
             return 0
 
     monkeypatch.setattr(bench, "_start_events", lambda _path: FakeEvents())
+    monkeypatch.setattr(bench.subprocess, "Popen", lambda *args, **kwargs: object())
     monkeypatch.setattr(bench, "_sample_host", lambda *_args: None)
     monkeypatch.setattr(bench, "residual_resources", lambda: ["left-over"])
     monkeypatch.setattr(
-        bench, "run_cell_with_watchdog", lambda c, r, _e, _b, limit_seconds: _fake_result(c, r, 0)
+        bench,
+        "run_cell_with_watchdog",
+        lambda c, r, _e, _b, limit_seconds, popen: (popen(["true"]), _fake_result(c, r, 0))[1],
     )
     block = bench.planned_blocks(design, "A")[0]
     record = bench.run_block(design, block, tmp_path, "bash")
@@ -228,10 +246,13 @@ def test_a_stop_after_the_last_cell_keeps_its_kind(
         run.request_stop("foreign containers appeared", bench.STOP_EXTERNAL)
 
     monkeypatch.setattr(bench, "_start_events", lambda _path: FakeEvents())
+    monkeypatch.setattr(bench.subprocess, "Popen", lambda *args, **kwargs: object())
     monkeypatch.setattr(bench, "_sample_host", late_sampler)
     monkeypatch.setattr(bench, "residual_resources", list)
     monkeypatch.setattr(
-        bench, "run_cell_with_watchdog", lambda c, r, _e, _b, limit_seconds: _fake_result(c, r, 0)
+        bench,
+        "run_cell_with_watchdog",
+        lambda c, r, _e, _b, limit_seconds, popen: (popen(["true"]), _fake_result(c, r, 0))[1],
     )
     block = bench.planned_blocks(design, "A")[0]
     record = bench.run_block(design, block, tmp_path, "bash")
@@ -247,7 +268,12 @@ def test_a_failed_sampler_stops_the_block(
 
     monkeypatch.setattr(bench, "read_host_counters", broken)
     block = bench.planned_blocks(design, "A")[0]
-    run = bench.BlockRun(design, block, tmp_path, lambda c, r, _e: _fake_result(c, r, 0))
+    run = bench.BlockRun(
+        design,
+        block,
+        tmp_path,
+        lambda c, r, _e, launch: (launch(lambda: None), _fake_result(c, r, 0))[1],
+    )
     bench._sample_host(run, tmp_path / "samples.jsonl", threading.Event(), seconds=0.01)
     assert "sampler failed" in (run.stopped_reason or "")
     assert run.stop_kind == bench.STOP_EXTERNAL

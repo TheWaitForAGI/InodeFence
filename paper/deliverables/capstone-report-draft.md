@@ -9,7 +9,7 @@
 > - **일정.** 결과보고서·영상 제출 2026-11-26, 최종발표 2026-11-30(오케스트레이터가 사용자 확정 일정으로 전달). 위 붙임 기록의
 >   "결과물 기한 11-30"과 다르므로 서식을 대조할 때 함께 확인한다.
 > - **수치 규칙.** 정량 문장 끝에 증거 각주를 둔다. 미머지 PR을 가리키는 각주는 머지 후 경로를 다시 확인한다.
-> - **미실행.** EXP-3 본실험과 EXP-2는 실행 전이다. §7.6의 표 7-A~C와 §7.7은 자리만 있다. 표 7-P는 동결 전 탐색 파일럿의 실측값이다.
+> - **미실행.** EXP-3 본실험과 EXP-2는 실행 전이다. §7.6의 표 7-B와 §7.7의 표 7-A는 자리만 있다. 표 7-P는 동결 전 탐색 파일럿의 실측값이다.
 > - **표·그림 요구 사항**은 [표·그림 요구 목록](results-artifact-requirements.md)에 있다.
 
 | 항목 | 내용 |
@@ -33,7 +33,7 @@ InodeFence는 TAR 아카이브 추출 과정의 보안 경계위반을 탐색하
 3. 퍼저의 자력 경계위반은 **이름 획득 조건의 관찰(피드백 인과 미입증)** 수준이다(M3).[^m3]
 4. 같은 generic oracle이 3개 extractor에 adapter 수준으로 적용된다(M4, oracle 수준 일반성).[^m4]
 
-**이 보고서는 핵심 연구 질문에 아직 답하지 않는다.** 동일 어휘·동일 예산 비교(EXP-3)는 2026-11-18 사전등록 예정이며
+**이 보고서는 핵심 연구 질문에 아직 답하지 않는다.** 동일 어휘·동일 예산 비교(EXP-3 train, EXP-2 holdout)는 2026-11-18 사전등록 예정이며
 실행 전이다. EXP-0 등록 실행은 15셀을 모두 완주했지만 인프라 측정이고 가설 검정이 아니다.[^exp0-run]
 
 ## 2. 연구 배경과 필요성
@@ -92,18 +92,18 @@ Seed Generator -> Structure Mutator -> TAR Builder -> Target Adapter
 | --- | --- | --- |
 | EXP-0 | 인프라 측정(처리량, abort, dense 신호). H-A 검정 아님 | 등록 실행 완료 |
 | EXP-3 동결 전 위험도 파일럿 | 규모·R 변형 결정의 입력(탐색, 비등록). H-A 검정 아님 | 실행 완료(40캠페인) |
-| EXP-3 | H-A 본실험(R/D/S-u, 동일 어휘·동일 예산) | **사전등록 예정(11/18), 실행 예정** |
-| EXP-2 | EXP-3 결과에 사전등록 규칙을 적용해 GO일 때만 수행 | 조건부, 미정 |
+| EXP-3 (train) | 탐색과 인프라 게이트. node-tar 7.5.2, 20 seed, R/D/S-u. 확증이 아니다 | **사전등록 예정(11/18), 실행 예정** |
+| EXP-2 (holdout) | H-A 확증. 미노출 릴리스, arm당 최대 120 seed. GO일 때만 수행 | **사전등록 예정(11/18), 조건부** |
 
-- **비교 arm.** R(retention 없음), D(구조 커버리지), S-u(identity/effect/boundary-attempt 상태 키). 어휘, seed, 예산,
+- **비교 arm.** R(입력을 유지하지 않고 매번 시드에서 변형), D(구조 커버리지), S-u(identity/effect/boundary-attempt 상태 키). 어휘, seed, 예산,
   이미지, oracle, operator 선택은 같고 retention 정책만 다르다.[^rq]
 - **지표.** T_first는 첫 `C1 ∨ C2`까지의 실행 수이고 우측중도절단한다(무hit는 예산에서, abort는 abort 시점에서).
   U_viol은 고유 위반 입력 수다. C0만 나온 step은 hit가 아니다.[^rq]
 - **판정.** 결과를 본 뒤 규칙을 바꾸지 않고 [판정 시나리오 표](../../docs/research/design/research-questions.md)를 그대로
   적용한다. 전 arm 위반 0(⑤)이나 S ≤ R(⑧)도 그대로 보고한다.
-- **EXP-3 초안 설계.** 예산 2000, 1차 지표 T_first, 확증 검정은 seed-block 순열 로그랭크와 holdout 패밀리의 Holm
-  보정이다. 동결 전 초안 기준이며 seed 수와 hold-out 정체는 11/18에 확정한다.[^exp3-draft] *(실험 구조(2단계 여부), 대상 타깃 범위,
-  비기각 판정 규칙, U_viol 지위는 파일럿 후 재판정 대기)*
+- **규모와 구조.** 예산 2000, sentinel k=5, 1차 지표 T_first, 확증 검정은 합동 로그랭크의 seed 블록 내 라벨 순열과 holdout 패밀리의 Holm
+  보정이다. 등록 파일은 `exp3-v1`(train, seed 9006–9025)과 `exp2-v1`(holdout, seed 9026–9145, arm당 120 상한) 2개이고 11/18에 함께
+  동결한다. n=120은 상한이라 실행 마감(11/25 12:00 KST)에 닿으면 완료된 블록으로 분석한다.[^exp3-draft]
 
 ## 7. 결과
 
@@ -189,9 +189,9 @@ hazard proxy는 실행 수로 세므로 시계와 무관하다(관찰). oracle�
 
 위 수치의 기준은 공식 리포트이고, 사전등록 대비 편차 11건도 그 리포트에 공개돼 있다.[^exp0-analysis]
 
-### 7.6 EXP-3 본실험: 사전등록 예정(11/18), 실행 예정
+### 7.6 EXP-3 (train, 탐색): 사전등록 예정(11/18), 실행 예정
 
-**동결 전 위험도 파일럿 (탐색 · 비등록 · 확증 아님).** 본실험 규모와 R 변형을 정할 입력을 얻으려고 40캠페인을 돌렸다. 대상은 train 타깃
+**동결 전 위험도 파일럿 (탐색 · 비등록 · 확증 아님).** 규모와 R 변형을 정할 입력을 얻으려고 40캠페인을 돌렸다(결정은 n=120 상한, k=5, R seed-restart).[^exp3-sizing] 대상은 train 타깃
 node-tar 7.5.2뿐이고 holdout은 실행하지 않았다. 설계는 seed 8101–8110 × {R-walk, R-restart, D, S-u}, budget 2000, sentinel k=5, 동일 어휘이고,
 실행 전에 판정 규칙을 고정했다.[^pilot-design] 결과는 EXP-0·EXP-3 추정에 합치지 않는다.
 
@@ -221,49 +221,75 @@ node-tar 7.5.2뿐이고 holdout은 실행하지 않았다. 설계는 seed 8101�
   계산했다(실경과 15.17 h, jobs 2). 사건까지의 실행 수는 시계와 무관하다.[^pilot-clock]
 - **집계 제외.** 리허설과 사전점검은 40캠페인에 넣지 않았다(S-u s8001 k=3 사건 없음, S-u s8002 k=5 T_first 685, R-restart s8003 budget 20 사건 없음).[^pilot-preflight]
 
-**본실험은 아직 실행하지 않았다. 표 7-A~C의 값은 모두 자리다.** 타깃 역할을 섞지 않고 역할별로 보고한다.[^exp3-draft] *(역할 구성은 초안 기준이다. 실험 구조와
-대상 타깃 범위는 파일럿 후 재판정 대기)*
+**본실험은 아직 실행하지 않았다. 표 7-B, 7-B2, 7-A, 7-A2의 `{ }`는 모두 자리이고, 값은 W3 검증을 통과한 뒤 넣는다.** train과 holdout은 등록 파일이 다르고 합치지 않는다.[^exp3-draft]
 
-**표 7-A. `role=holdout` (확증)**
+**표 7-B. EXP-3 `role=train` arm별 (탐색, 기노출, 확증 아님)**
 
-| arm | n | T_first 중앙값 | U_viol | p(Holm) |
-| --- | --- | --- | --- | --- |
-| R | TBD | TBD | TBD | S-u vs R: TBD |
-| D | TBD | TBD | TBD | S-u vs D: TBD |
-| S-u | TBD | TBD | TBD | 기준 arm |
+대상 node-tar 7.5.2, k=5, budget 2000. 등록 seed 블록 20, 분석 블록 {n}, 미완주 제외 {m}({원인}).
 
-**표 7-B. `role=train` (탐색적, 기노출)**
+| arm | 분석 캠페인 | 완주 | abort | 기록 어긋남 | 첫 C1∨C2 사건 | T_first KM 중앙값 | U_viol 평균(합) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| R | {값} | {값} | {값} | {값} | {값} | {값} | {값} |
+| D | {값} | {값} | {값} | {값} | {값} | {값} | {값} |
+| S-u | {값} | {값} | {값} | {값} | {값} | {값} | {값} |
 
-| arm | n | T_first 중앙값 | U_viol | p(Holm) |
-| --- | --- | --- | --- | --- |
-| R | TBD | TBD | TBD | 해당 없음 |
-| D | TBD | TBD | TBD | 해당 없음 |
-| S-u | TBD | TBD | TBD | 해당 없음 |
+**표 7-B2. GO 판정 입력**
 
-**표 7-C. `role=fix-verification` (기노출, 확증 아님)**
-
-| arm | n | T_first 중앙값 | U_viol | p(Holm) |
-| --- | --- | --- | --- | --- |
-| R | TBD | TBD | TBD | 해당 없음 |
-| D | TBD | TBD | TBD | 해당 없음 |
-| S-u | TBD | TBD | TBD | 해당 없음 |
+| 입력 | 값 | 기준 |
+| --- | --- | --- |
+| E: train 첫 C1∨C2 캠페인(3 arm 합산, abort 포함, invalid 제외) | {값} | ≥ 1 |
+| r: EXP-3 실경과 처리량(실시간, exec/h) | {값} | 입력 |
+| e: 기록/계획 step 비율 | {값} | 입력 |
+| H_rem: EXP-3 종료부터 11/25 12:00 KST까지 호스트 시간 | {값} | 입력 |
+| 용량 ⌊H_rem·r÷(6000·e)⌋ | {값} | ≥ 76 |
+| 인프라 실패 비율 (abort + 기록 어긋남)/전체 셀 | {값} | ≤ .45 |
+| 결과 | {GO 또는 NO-GO} | W3가 적용해 LOG에 남긴다 |
 
 읽는 법:
 
-- 확증 결과는 holdout 패밀리의 Holm 판정뿐이다. 나머지 역할은 확증이 아니다.
-- 검정은 양측이다. 기각되어도 어느 arm이 빠른지(`faster_arm`)를 함께 읽는다. 비기각 판정 규칙은 파일럿 후 재판정 대기다.
-- T_first 중앙값은 Kaplan–Meier 중앙값이고, 사건이 절반에 못 미치면 "미도달"로 적는다.
-- 전 arm 위반 0이면 미관찰로 보고하고 캠페인 단위 rule-of-three 상한을 참고로 병기한다.
+- **train은 탐색이다.** p, 기각, 빠른 쪽을 내지 않는다. arm 차이를 효과로 쓰지 않고 "빠르다", "우위"를 쓰지 않는다.
+- **결합 검정력은 약 .17이다.** n=20은 확증 규모가 아니다.[^exp3-sizing]
+- 각 값은 시계와 무관한 실행 수이고, r만 실시간에서 직접 계산한다. T_first 중앙값은 Kaplan–Meier 중앙값이고, 사건이 절반에 못 미치면 "미도달"로 적는다.
 
-### 7.7 EXP-2: 조건부
+### 7.7 EXP-2 (holdout, 확증): 조건부
 
-EXP-3 결과에 사전등록 GO/NO-GO 규칙을 적용해 GO일 때만 수행한다. 현재 TBD다.
+EXP-3 결과에 사전등록 GO 규칙(표 7-B2)을 적용해 GO일 때만 수행한다. 시작하지 않으면 이 절에는 사유만 적고 아래 표를 지운다.
+
+**표 7-A. EXP-2 `role=holdout` arm별**
+
+대상 node-tar {버전}, k=5, budget 2000. 등록 seed 블록 {등록 n}, 분석 블록 {n}, 미완주 제외 {m}({원인}).
+
+| arm | 분석 캠페인 | 완주 | abort | 사건 전 abort | 기록 어긋남 | 첫 C1∨C2 사건 | T_first KM 중앙값 | U_viol 평균(합) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| R | {값} | {값} | {값} | {값} | {값} | {값} | {값} | {값} |
+| D | {값} | {값} | {값} | {값} | {값} | {값} | {값} | {값} |
+| S-u | {값} | {값} | {값} | {값} | {값} | {값} | {값} | {값} |
+
+**표 7-A2. 대비별 확증 결과** (Holm 순서, 1차 정책 censor-at-abort)
+
+| 대비 | seed 블록 | I (정보 블록) | E (사건) | 순열 p | Holm p | 기각 | 빠른 쪽 | U_viol 방향 | exclude 기각 | censor-at-budget 기각 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| S-u vs R | {값} | {값} | {값} | {값} | {값} | {값} | {값} | {값} | {값} | {값} |
+| S-u vs D | {값} | {값} | {값} | {값} | {값} | {값} | {값} | {값} | {값} | {값} |
+
+**판정:** {D040-D12 표의 행 이름}. 판정은 사람이 표를 읽어 고르고, 문구는 결과 전에 쓴 W3 판 문구를 그대로 쓴다. 두 대비의 I, E가 다르면 작은 쪽을 쓴다.
+
+표 아래 병기(0이어도 적는다): 미완주 제외 seed 수와 셀별 원인, 기록 어긋남 수와 어긋남 민감도, abort 3분할(target 미시작, 실행 후 소실, 첫 오류 미확인)과 watchdog 사유 별도 줄, 결과 미상 step 수, 대비별 invalid 제외 수, 운영 중단 발동 여부와 시각.
+
+읽는 법:
+
+- **확증 결과는 표 7-A2의 Holm 판정뿐이다.** 범위는 같은 제품의 미노출 릴리스 하나이고 새 extractor로 일반화하지 않는다.
+- **검정은 양측이다.** 기각되어도 어느 arm이 빠른지를 함께 읽는다. U_viol 방향은 arm 평균의 차로 읽는다. 사건 전 abort는 abort 셀 중 abort 전 사건이 없는 수다.
+- **세 abort 정책의 기각이 갈리면** 판정은 1차 정책의 칸이고 옆에 "abort 가정에 좌우됨"을 적는다.
+- **비기각은 차이 없음이 아니다.** E와 I에 따라 D040-D12 표가 반증, 배제 범위, 미검정을 가른다. 사건 0은 안전이 아니다.
+- T_first 중앙값은 Kaplan–Meier 중앙값이고, 사건이 절반에 못 미치면 "미도달"로 적는다. 예측은 HR로 평가하지만(D040-D12) 이 표에 HR 값은 넣지 않는다.
 
 ## 8. 한계
 
 - **핵심 RQ 미판정.** EXP-3 전이므로 피드백의 효과에 대해 어떤 주장도 하지 않는다.
-- **검정력.** 파일럿의 사건 수는 탐색 입력이고 train 7.5.2, k=5에서만 측정됐다. holdout에서 hazard가 다르면 전 arm 위반 0(시나리오 ⑤)이나
-  검정력 부족 판정도 가능한 결과다.[^exp3-sizing] [^pilot-report]
+- **검정력.** n=120/arm은 상한이고 k=5다. 파일럿의 사건 수는 탐색 입력이고 train 7.5.2, k=5에서만 측정됐다. holdout hazard가 절반이거나 HR이 1.75여도
+  n=120에서 약 .76~.79지만(χ² 근사), HR 1.5나 hazard 1/4이면 어떤 n도 창 안에서 80%가 안 된다. 어떤 값도 확증 검정력을 뜻하지 않는다.
+  전 arm 위반 0(시나리오 ⑤)이나 비기각도 가능한 결과이고 D040-D12 표가 처리한다.[^exp3-sizing] [^pilot-report]
 - **파일럿 abort.** 11/40이 컨테이너 런타임 inspect 실패로 멈췄고 비정보적 중도절단은 입증되지 않았다. 원인을 고치면 파일럿과 실행 경로가 달라진다.[^pilot-aborts]
 - **판정의 범위.** snapshot 기반 oracle은 중간 변화, transient 생성 후 삭제, 외부 경로 직접 사용을 복구하지 못한다.
   `violated=False`는 관찰 범위에서 위반 증거가 없다는 뜻이지 안전 증명이 아니다.[^contracts]
@@ -290,7 +316,8 @@ extractor에 적용된다(M4). 피드백 정책의 효과는 아직 판정하지
 | 다음 단계 | 내부 일정 |
 | --- | --- |
 | EXP-3·EXP-2 규칙 사전등록 고정 | 11/18 |
-| EXP-3 실행과 분석, 논문 반영 (G2) | 11/26 |
+| EXP-3·EXP-2 실행 마감 | 11/25 12:00 KST |
+| 분석과 결과보고서 반영 (G2) | 11/25 |
 | 결과보고서·영상 제출 | 11/26 |
 | 최종발표 | 11/30 |
 
@@ -346,11 +373,11 @@ TAR fuzzing, hardlink·symlink 공격, entry 순서, 파일 상태 기반 fuzzin
 [^exp0-analysis]: evidence: `experiments/summaries/exp0-20261105-report.md`와 `.json`(PR #268)의 §2 측정 상태, §3 편차 2·3·9. 분석 코드는 main `f3e6035`의 `scripts/analyze_exp0.py`.
 [^exp0-clock]: evidence: `experiments/summaries/exp0-20261105-report.md` 편차 1(합산 1.0914, 셀별 1.0855~1.0964; 표기 1.091). 다른 실행에서는 이 배율이 1.00~1.10으로 변했다([파일럿 결과 메모](../../experiments/summaries/exp3-hazard-pilot-v1-result.md) §5). p95 환산값 1.419 s는 셀 안에서 배율이 일정하다고 가정한다. 셀 안 변동은 측정하지 않았고, EXP-0 셀은 짧고 셀별 범위가 좁아 영향은 작을 것으로 본다(추론). 호스트 전체 처리량은 셀 구간 4763, 해시 고정 타임스탬프 4758 exec/h. 실시간 기준, 장기 편차 검증 중.
 [^exp0-manifest]: evidence: `experiments/summaries/raw-manifest-win-20261105-20261105.sha256`(PR #262, sha256 `a9dc149c…`), `scripts/make_raw_manifest.py --verify` 2026-11-06 재실행.
-[^exp3-draft]: evidence: PR #239→#263→#264의 `experiments/preregistration/exp3-v1.md`(head e11d302, 미머지·미동결), PR #248과 #257의 confirmatory 출력.
-[^exp3-sizing]: evidence: [§4.6.3](../sections/05-method.md) "계획 단계 검정력 한계"(PR #216), PR #263 '규모 산정 입력' 절(미머지).
+[^exp3-draft]: evidence: [D040](../../docs/DECISIONS.md) D1·D3·D6·D7·D8·D10·D11·D12·D14, D041, PR #248과 #257의 confirmatory 출력. 등록 파일 `exp3-v1`, `exp2-v1`은 미동결이다.
+[^exp3-sizing]: evidence: [§4.6.3](../sections/05-method.md) "계획 단계 검정력 한계", [규모 산정 폴더](../../experiments/preregistration/exp3-sizing-20261107/README.md), [D040](../../docs/DECISIONS.md) D1·D7.
 [^pilot-design]: evidence: [exp3-hazard-pilot-v1](../../experiments/preregistration/exp3-hazard-pilot-v1.md)(PR #267, 설계 sha256 `06b3408c…`) §1 구속 조건, §6 판정 규칙.
 [^pilot-report]: evidence: [파일럿 결과 메모](../../experiments/summaries/exp3-hazard-pilot-v1-result.md) §1·§2. raw 체크섬은 [raw-manifest-exp3-hazard-pilot-v1](../../experiments/summaries/raw-manifest-exp3-hazard-pilot-v1.sha256)(123개). 분석 산출물은 매니페스트 밖의 `~/inodefence-evidence/exp3-hazard-pilot-20261106/analysis/pilot-report.json`(sha256 `2a94bf3c…`)이다.
-[^pilot-rule-c]: evidence: [파일럿 결과 메모](../../experiments/summaries/exp3-hazard-pilot-v1-result.md) §3(기계 출력 114, 용량 151, 양쪽 가정 민감도, 등록 통계량 재계산). 재계산 스크립트 `exp3_power_registered.py`(sha256 `5f02b06b…`)는 후속 PR로 수록 예정이다.
+[^pilot-rule-c]: evidence: [파일럿 결과 메모](../../experiments/summaries/exp3-hazard-pilot-v1-result.md) §3(기계 출력 114, 용량 151, 양쪽 가정 민감도, 등록 통계량 재계산). 재계산 스크립트 `exp3_power_registered.py`는 [규모 산정 폴더](../../experiments/preregistration/exp3-sizing-20261107/README.md)에 수록했다.
 [^pilot-aborts]: evidence: [파일럿 결과 메모](../../experiments/summaries/exp3-hazard-pilot-v1-result.md) §4(§4.2 abort율, §4.5 첫 실패 경로).
 [^pilot-clock]: evidence: [파일럿 결과 메모](../../experiments/summaries/exp3-hazard-pilot-v1-result.md) §5·§6.
 [^pilot-preflight]: evidence: [파일럿 결과 메모](../../experiments/summaries/exp3-hazard-pilot-v1-result.md) §8.

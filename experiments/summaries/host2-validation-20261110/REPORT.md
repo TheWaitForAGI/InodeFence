@@ -210,3 +210,7 @@ The memory result is an instantaneous preflight failure and does not determine w
 At 2026-11-10T15:58:39.531205+00:00, a separate WSL Python 3.12 virtual environment was created at `~/.local/share/inodefence/host2-dev-venv` for immediate source development. It contains pytest 9.2.0, Ruff 0.17.4 and Pyright 1.1.414, matching the versions used in the earlier candidate checks. A `.pth` file links `~/projects/InodeFence/src`; a fresh Python process imported the project from that checkout. Tool version commands and `pip check` are recorded in `host2-dev-venv.json`. The existing project worktree stayed clean.
 
 Activate it using `source ~/.local/share/inodefence/host2-dev-venv/bin/activate`. This supplementary host environment does not replace the specified Dev Container, its Python environment, locked node-tar tools or formal execution contract. HOST2's installed Node version was 24.22.1, while the Dev Container specifies 22.22.0. No experiment, target-image build or WSL restart was performed.
+
+## 36. Project Node version
+
+At 2026-11-10T15:59:36.906672+00:00, Node 22.22.0 was installed under the user's existing nvm installation with `nvm install 22.22.0 --no-use`; nvm reported the distribution checksum matched. Direct version checks returned Node v22.22.0 and npm 10.9.4. A fresh shell still selected the existing default Node v24.22.1. To use the project version in a terminal, run `nvm use 22.22.0` after loading nvm. This is a development tool installation, not evidence of the fixed experiment image or runtime compatibility.

@@ -1,0 +1,29 @@
+{
+  "start_utc": "2026-11-10T15:39:00.268841+00:00",
+  "elapsed_monotonic_seconds": 0.16861577300005592,
+  "argv": [
+    "python3.12",
+    "-m",
+    "scripts.run_concurrency_benchmark",
+    "--design",
+    "experiments/configs/concurrency-scaling-v2.md",
+    "--output",
+    "<HOME>/inodefence-benchmarks/host2-validation-smoke-plan-only-20261111",
+    "--stage",
+    "smoke",
+    "--dry-run"
+  ],
+  "execution_sha": "afdc720da6eb6ae143bd4754cb39d6dd34ea8f16",
+  "design_sha256": "b2c09c703f4914ac095f8e39f56d1f0efef38c70a96828b84779fe74a3eea6cb",
+  "output_existed_before": false,
+  "output_exists_after": false,
+  "exit_code": 0,
+  "timeout": false,
+  "files_sha256": {
+    "stdout": "f40dbf755092f66ab579a38bd372d6f2561d8557777030a2429f4212b6eb0524",
+    "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "scope": "No Docker or experiment; planned output path is a placeholder, not an approved run destination.",
+  "argv_redaction": "HOME path replaced; original metadata retained privately",
+  "original_metadata_sha256": "341e518bc9316fef26d44f42fd913b589ceaf123f076eb2479813c7008e1ee09"
+}

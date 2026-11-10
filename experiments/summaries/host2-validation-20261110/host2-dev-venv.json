@@ -1,0 +1,51 @@
+{
+  "commands": {
+    "pip_check": {
+      "argv": [
+        "<host2-venv-python>",
+        "-m",
+        "pip",
+        "check"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "No broken requirements found.\n"
+    },
+    "pyright": {
+      "argv": [
+        "<host2-venv-python>",
+        "-m",
+        "pyright",
+        "--version"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "pyright 1.1.414\n"
+    },
+    "pytest": {
+      "argv": [
+        "<host2-venv-python>",
+        "-m",
+        "pytest",
+        "--version"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "pytest 9.2.0\n"
+    },
+    "ruff": {
+      "argv": [
+        "<host2-venv-python>",
+        "-m",
+        "ruff",
+        "--version"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "ruff 0.17.4\n"
+    }
+  },
+  "location": "~/.local/share/inodefence/host2-dev-venv",
+  "observed_at_utc": "2026-11-10T15:58:39.531205+00:00",
+  "source_link": "~/projects/InodeFence/src via .pth"
+}

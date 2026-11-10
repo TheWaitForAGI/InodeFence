@@ -226,3 +226,7 @@ An initial attempt passed `PYTHON=<venv>/bin/python` without activating the envi
 On 2026-11-10 16:01 UTC, a disposable container from development image `sha256:b22a052837402b1b6fceb23d8c3048748db2af8117756447c816881c67ac93a2` ran `make check` on a Git archive of `1f6ca9022fda4d468d7b6ead2f0644f2cf5d9e09`. The command exited 0: **1,766 pytest tests passed**, and lint, formatting, Pyright, environment and documentation checks passed. The container used no network or Docker socket, a private tmpfs runtime, 4 GiB memory and 512 PID limits. It was removed after completion.
 
 A synthetic Git commit was created inside the container, so checks depending on original commit identity were not exercised against the real commit object. The source checkout and existing Docker volumes were not mounted for the check. This validates development checks on that branch snapshot; it does not qualify HOST2 for formal experiments or validate the missing target image. Commands, archive and original log hashes are in `dev-branch-check.json`; original logs remain in the private local collection.
+
+## 39. Locked development dependency check
+
+At 2026-11-10T16:06:13.266945+00:00, the existing `tools/node-tar` development dependency was inspected using Node 22.22.0 and npm 10.9.4. `npm ls --prefix tools/node-tar --offline --depth=0` exited 0 and reported tar 7.5.22, matching that directory's `package.json`. No dependency installation or target execution was performed. This benign development dependency does not establish the pinned 7.5.2 experiment image.

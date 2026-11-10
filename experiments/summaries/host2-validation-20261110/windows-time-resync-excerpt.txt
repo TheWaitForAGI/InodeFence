@@ -1,0 +1,16 @@
+UTC_BEFORE=2026-11-10T14:52:33.0289761Z
+ADMIN=True
+BEFORE_SOURCE
+Local CMOS Clock
+EXIT=0
+COMMAND=w32tm /resync
+로컬 컴퓨터에 다시 동기화 명령을 보내는 중
+시간 서비스가 종료중이기 때문에 컴퓨터가 동기화되지 않았습니다.
+EXIT=0
+AFTER_SOURCE
+다음 오류가 발생했습니다. 서비스가 시작되지 않았습니다. (0x80070426)
+EXIT=-2147023834
+AFTER_STATUS
+다음 오류가 발생했습니다. 서비스가 시작되지 않았습니다. (0x80070426)
+EXIT=-2147023834
+UTC_AFTER=2026-11-10T14:52:33.1275146Z

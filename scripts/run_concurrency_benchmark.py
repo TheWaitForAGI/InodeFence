@@ -699,6 +699,20 @@ def _start_events(path: Path) -> subprocess.Popen[bytes]:
         )
 
 
+def _stop_events(events: subprocess.Popen[bytes]) -> None:
+    """Stop the event collector, preserving any failure and bounding the reap."""
+    try:
+        events.terminate()
+        events.wait(timeout=30)
+    except Exception as error:
+        try:
+            events.kill()
+            events.wait(timeout=30)
+        except Exception as cleanup_error:
+            error.add_note(f"event collector cleanup failed: {cleanup_error}")
+        raise
+
+
 def _publish_json(path: Path, value: Mapping[str, Any]) -> None:
     """Publish once without exposing a partial file or replacing existing evidence."""
     payload = json.dumps(value, indent=2, sort_keys=True) + "\n"
@@ -761,8 +775,7 @@ def _run_block(
             cleanup_failure = cleanup_error
         finally:
             try:
-                events.terminate()
-                events.wait(timeout=30)
+                _stop_events(events)
             except Exception as cleanup_error:
                 if cleanup_failure is None:
                     cleanup_failure = cleanup_error

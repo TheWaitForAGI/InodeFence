@@ -1,6 +1,7 @@
 """Incomplete H1 runs must retain the stop decision without becoming clean blocks."""
 
 import json
+import subprocess
 import threading
 from pathlib import Path
 from typing import Any
@@ -178,3 +179,25 @@ def test_keyboard_interrupt_publishes_incomplete(tmp_path: Path, monkeypatch: An
     record = json.loads((tmp_path / bench.INCOMPLETE_BLOCK_FILE).read_text())
     assert record["finished"] is False
     assert "KeyboardInterrupt" in record["stopped_reason"]
+
+
+def test_stuck_event_collector_is_killed_and_failure_retained() -> None:
+    calls: list[str] = []
+
+    class Events:
+        def terminate(self) -> None:
+            calls.append("terminate")
+
+        def kill(self) -> None:
+            calls.append("kill")
+
+        def wait(self, timeout: float) -> int:
+            calls.append("wait")
+            if "kill" not in calls:
+                raise subprocess.TimeoutExpired("docker events", timeout)
+            return -9
+
+    events: Any = Events()
+    with pytest.raises(subprocess.TimeoutExpired):
+        bench._stop_events(events)
+    assert calls == ["terminate", "wait", "kill", "wait"]

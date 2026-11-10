@@ -3,6 +3,7 @@
 from pathlib import Path
 from typing import Any
 
+import pytest
 from scripts import run_concurrency_benchmark as bench
 
 
@@ -42,3 +43,23 @@ def test_environment_failure_stops_without_launch(tmp_path: Path, monkeypatch: A
     assert launched == []
     assert run.stop_kind == bench.STOP_EXTERNAL
     assert "ValueError: bad environment" in run.records[0]["start_error"]
+
+
+def test_error_after_start_stops_further_launches_and_keeps_block_incomplete(
+    tmp_path: Path,
+) -> None:
+    design = bench.load_design(Path("experiments/configs/concurrency-scaling-v2.md"))
+    block = bench.planned_blocks(design, "smoke")[0]
+    launched: list[str] = []
+
+    def run_cell(cell: Any, _raw: Any, _env: Any, launch: Any) -> Any:
+        launch(lambda: launched.append(cell.run_id))
+        raise OSError("wait failed")
+
+    run = bench.BlockRun(design, block, tmp_path, run_cell)
+    with pytest.raises(OSError, match="wait failed"):
+        run.run_one(block.cells[0])
+    run.run_one(block.cells[1])
+    assert launched == [block.cells[0].run_id]
+    assert run.stop_kind == bench.STOP_EXTERNAL
+    assert run.records[0]["state"] == "not-run"

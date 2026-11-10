@@ -508,6 +508,10 @@ class BlockRun:
             return
         except Exception as error:
             if start_order is not None:
+                self.request_stop(
+                    f"{cell.run_id} runner failed after start: {type(error).__name__}: {error}",
+                    STOP_EXTERNAL,
+                )
                 raise
             with self.lock:
                 self._stop_locked(

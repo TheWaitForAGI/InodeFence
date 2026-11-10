@@ -1,0 +1,37 @@
+{
+  "execution_sha": null,
+  "approval_ref": null,
+  "prereg_sha256": null,
+  "design_sha256": null,
+  "target_version": null,
+  "image_id": null,
+  "engine_version": null,
+  "execution_mode": null,
+  "stop_rule": null,
+  "seed_allocation_ref": null,
+  "budget_ref": null,
+  "backup_ref": null,
+  "minimum_available_bytes": null,
+  "minimum_memory_bytes": null,
+  "minimum_cpus": null,
+  "schema": "inodefence-host-freeze-plan-v1",
+  "hosts": {
+    "HOST1": {
+      "jobs": null,
+      "output_path": null,
+      "runtime_path": null,
+      "assignment_ref": null,
+      "cells": null
+    },
+    "HOST2": {
+      "jobs": null,
+      "output_path": null,
+      "runtime_path": null,
+      "assignment_ref": null,
+      "cells": null
+    }
+  },
+  "controller_image_id": null,
+  "helper_image_id": null,
+  "runtime_policy_id": null
+}

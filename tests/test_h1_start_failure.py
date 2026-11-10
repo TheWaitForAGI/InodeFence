@@ -36,8 +36,12 @@ def test_environment_failure_stops_without_launch(tmp_path: Path, monkeypatch: A
     def fail_env(*_args: Any) -> Any:
         raise ValueError("bad environment")
 
+    def never_launch(*_args: Any) -> Any:
+        launched.append("started")
+        raise AssertionError("launch should not occur")
+
     monkeypatch.setattr(bench, "cell_env", fail_env)
-    run = bench.BlockRun(design, block, tmp_path, lambda *args: launched.append("started"))
+    run = bench.BlockRun(design, block, tmp_path, never_launch)
     run.run_one(block.cells[0])
     assert launched == []
     assert run.stop_kind == bench.STOP_EXTERNAL

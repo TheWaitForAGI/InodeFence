@@ -28,6 +28,14 @@ generate_tar_fixtures.py는 4종 TAR baseline과 C0/C1/C2 oracle-check fixture 3
 
 [Dev Container](../.devcontainer/README.md) 안에서 python scripts/check_dev_env.py로 실행한다. 환경 기준은 [환경 설계](../docs/research/design/development-environment.md)를 따른다.
 
+H1 controller와 host broker의 cleanup inspect에 timeout·출력 잘림·오류가 있으면
+`inodefence-cleanup-attempt` JSON을 stderr에 즉시 출력하고, cleanup이 끝나거나 실패하면
+`inodefence-cleanup-diagnostic` JSON에 각 조회와 최종 결과를 함께 남긴다. H1의 기존 캠페인
+로그가 이 stderr를 받으며 broker stdout 프로토콜과 보고서/abort 분류는 바뀌지 않는다.
+이상 없는 cleanup은 추가 로그가 없다. 레코드에는 명령 출력 원문 대신 return code, timeout,
+truncation 및 부재 확인이 들어간다. stderr 전달·저장 실패나 첫 응답 전 강제 종료에서는
+기록이 보장되지 않으며, 기록이 없다는 것을 timeout이 없었다는 증거로 해석하지 않는다.
+
 ## 현재 상태
 
 환경 확인과 [TAR baseline 예제](../docs/examples/tar-baseline.md)의 fixture 생성·수동 관찰 명령이 있다. Safe reference의 bounded campaign 개발 pilot과 strict config CLI가 있다. 일반 target 선택/benchmark CLI는 없다.

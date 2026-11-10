@@ -181,6 +181,7 @@ def test_existing_volume_with_different_owner_is_never_used_or_removed(tmp_path:
     assert result.returncode != 0
     assert "INODEFENCE_CLEANUP_UNKNOWN" in result.stderr
     assert not any(call.startswith(("run -d", "volume rm")) for call in calls)
+    assert sum(call.startswith("volume inspect ") for call in calls) >= 3
 
 
 def test_replaced_controller_is_not_removed(tmp_path: Path) -> None:

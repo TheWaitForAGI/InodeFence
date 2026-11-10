@@ -292,7 +292,6 @@ CREATED_VOLUME=1
 volume_owner="$(cleanup_dk 30 volume inspect --format \
   '{{index .Labels "org.inodefence.smoke-owner"}}' "$VOLUME")" || volume_owner=""
 if [ "$volume_owner" != "$OWNER_TOKEN" ] || [ -z "$OWNER_TOKEN" ]; then
-  CREATED_VOLUME=0
   echo "INODEFENCE_CLEANUP_UNKNOWN: volume creation ownership could not be verified" >&2
   exit 1
 fi

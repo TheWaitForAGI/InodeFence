@@ -230,3 +230,9 @@ A synthetic Git commit was created inside the container, so checks depending on 
 ## 39. Locked development dependency check
 
 At 2026-11-10T16:06:13.266945+00:00, the existing `tools/node-tar` development dependency was inspected using Node 22.22.0 and npm 10.9.4. `npm ls --prefix tools/node-tar --offline --depth=0` exited 0 and reported tar 7.5.22, matching that directory's `package.json`. No dependency installation or target execution was performed. This benign development dependency does not establish the pinned 7.5.2 experiment image.
+
+## 40. WSL development runtime root
+
+At 2026-11-10T16:08:08.691196+00:00, `/var/lib/inodefence` was absent in the Ubuntu distribution. It was created as an ext4 runtime root owned by UID/GID 1000 with mode 0700 using WSL's root user. From the existing development checkout, the dedicated Python 3.12 environment ran `python scripts/check_dev_env.py` successfully: hardlink, symlink and shared-object effect checks passed using a newly created temporary sentinel, and the check removed its temporary directory. A repeated recorded check also exited 0; 0 entries remained in the new root afterward. Output and metadata are in `host-wsl-runtime.json`.
+
+This enables the documented environment check in WSL; the Dev Container has its own separate runtime volume. It does not approve an experiment or qualify HOST2.

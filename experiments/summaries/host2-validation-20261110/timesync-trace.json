@@ -1,0 +1,28 @@
+{
+  "started_utc": "2026-11-10T15:00:42.341445+00:00",
+  "argv": [
+    "timeout",
+    "45s",
+    "wsl.exe",
+    "-d",
+    "Ubuntu-24.04",
+    "-u",
+    "root",
+    "--cd",
+    "/",
+    "--",
+    "strace",
+    "-f",
+    "-ttt",
+    "-e",
+    "trace=adjtimex,clock_adjtime",
+    "-p",
+    "4957"
+  ],
+  "exit_code": 124,
+  "outer_timeout": false,
+  "sha256": {
+    "stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stderr": "fe8e46996a90dbc71abfeeb55cb3220ac23de0234ee16d2ebce332c65d36723c"
+  }
+}

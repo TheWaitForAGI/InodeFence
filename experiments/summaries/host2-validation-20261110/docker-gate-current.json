@@ -57,10 +57,11 @@
       "server={{.Server.Version}}"
     ]
   },
+  "correction": "The inspected 7.5.22 tag is not the design target. See docker-images-corrected.json for the 7.5.2 target and helper images.",
   "docker_server": "server=29.9.3",
+  "inspected_7_5_22_tag_present": false,
   "observed_at_utc": "2026-11-10T15:48:09.511367+00:00",
   "pinned_id_present": false,
-  "pinned_tag_present": false,
   "private_raw_path": "not published; retained in local collection-post-update directory",
   "private_raw_sha256": "191249e18a4dc40eb62cd2957efa7fc9c57473e77d3d22e7b42df1b2abb0c485",
   "running_container_count": 0

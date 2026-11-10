@@ -55,7 +55,7 @@ The v2 design specifies Engine 29.8.0 and the target image above. The initial HO
 | Available memory | FAIL | 14,288,360 KiB after update, below proposed 15 GiB; pending cap not yet applied |
 | Docker CPU and memory | UNKNOWN | 24 CPUs and 16,437,137,408 total bytes; workload headroom unverified |
 | Effective cgroups | UNKNOWN | process and ancestors do not establish per-job limits |
-| Output space and inodes | UNKNOWN | virtual ext4 free exceeds proposed threshold; backing physical capacity must be evaluated |
+| Output space and inodes | UNKNOWN | planned parent and backing C: free exceed 20 GB at one observation; final destination and inode budget remain unapproved (section 30) |
 | Docker storage | UNKNOWN | follow-up strongly supports C: backing; dynamic shared capacity and workload sufficiency remain unverified (section 27) |
 | Resource conflicts | UNKNOWN | existing stopped containers and volumes need ownership review |
 | Sleep and restart | UNKNOWN | AC timers checked; restart protection not established |
@@ -161,3 +161,9 @@ For cross-host review, the frozen v2 design is a contract reference, not a fresh
 At candidate SHA `afdc720da6eb6ae143bd4754cb39d6dd34ea8f16`, `python3.12 -m scripts.run_concurrency_benchmark --design experiments/configs/concurrency-scaling-v2.md --output <new-path> --stage smoke --dry-run` exited 0. Inspection of the candidate's `main` shows that this branch prints a plan and returns before Docker access or live-run gates. It printed jobs=2, three cells, seed 6100, budget 20, five sentinels and per-case-container mode for the design. The placeholder output path did not exist before or after; the checkout remained clean. The dry-run output and redacted command metadata are included.
 
 This is the existing design's plan, **not** evidence of a HOST2-specific approved execution, seed authorization or successful preflight. The live path separately requires an expected HEAD, an approval reference, and additional gates. No output archive, container, target execution or exposure was generated, and the existing H1 decision is unchanged.
+
+## 30. Prospective output parent preparation
+
+At 2026-11-10 15:40 UTC (2026-11-11 00:40 KST), the previously absent `~/inodefence-benchmarks` parent was created with mode 0700. A prospective child `~/inodefence-benchmarks/host2-validation-smoke-20261111` was absent before and after. It is a placeholder, not an approved execution destination. The candidate's `output_problem` path-boundary check returned no path error; this checks neither execution approval nor other preflight conditions.
+
+`findmnt`, `df -B1`, and `df -i` on the parent returned ext4, 1,013,000,617,984 virtual bytes available and 66,882,531 free inodes. The Windows C: backing volume reported 107,854,536,704 bytes available at the same observation; both byte values exceed the proposed 20,000,000,000-byte smoke threshold, but the shared physical volume, future usage, inode budget, and final output path must be reviewed again before execution. Command outputs and hashes are included in `output-prep.json`; HOME paths are redacted in public metadata. Creating the parent did not start an experiment or create a final result directory.

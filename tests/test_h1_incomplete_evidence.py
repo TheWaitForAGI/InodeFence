@@ -101,3 +101,46 @@ def test_incomplete_directory_halts_analysis_even_without_evidence_file(tmp_path
     assert decision["selected_jobs"] is None
     assert decision["fallback_jobs"] is None
     assert decision["halts"][0]["rule"] == "incomplete-block"
+
+
+def test_keyboard_interrupt_commits_stop_before_waiting_for_workers(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    design = bench.load_design(Path("experiments/configs/concurrency-scaling-v2.md"))
+    block = bench.planned_blocks(design, "smoke")[0]
+    run = bench.BlockRun(design, block, tmp_path, lambda *_args: None)
+    observed: list[str | None] = []
+
+    class Pool:
+        def __init__(self, max_workers: int) -> None:
+            pass
+
+        def __enter__(self) -> "Pool":
+            return self
+
+        def __exit__(self, *_args: Any) -> None:
+            observed.append(run.stopped_reason)
+
+        def map(self, *_args: Any) -> Any:
+            raise KeyboardInterrupt
+
+    monkeypatch.setattr(bench, "ThreadPoolExecutor", Pool)
+    with pytest.raises(KeyboardInterrupt):
+        run.execute()
+    assert observed[0] is not None
+
+
+def test_keyboard_interrupt_publishes_incomplete(tmp_path: Path, monkeypatch: Any) -> None:
+    design = bench.load_design(Path("experiments/configs/concurrency-scaling-v2.md"))
+    block = bench.planned_blocks(design, "smoke")[0]
+
+    def interrupt(*_args: Any) -> Any:
+        raise KeyboardInterrupt("operator")
+
+    monkeypatch.setattr(bench, "_run_block", interrupt)
+    monkeypatch.setattr(bench, "residual_resources", list)
+    with pytest.raises(KeyboardInterrupt):
+        bench.run_block(design, block, tmp_path, "bash")
+    record = json.loads((tmp_path / bench.INCOMPLETE_BLOCK_FILE).read_text())
+    assert record["finished"] is False
+    assert "KeyboardInterrupt" in record["stopped_reason"]

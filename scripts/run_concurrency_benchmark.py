@@ -478,7 +478,7 @@ class BlockRun:
         with self.lock:
             self._stop_locked(reason, kind)
 
-    def record_failure(self, where: str, error: Exception) -> None:
+    def record_failure(self, where: str, error: BaseException) -> None:
         with self.lock:
             self.failures.append(
                 {
@@ -504,7 +504,7 @@ class BlockRun:
                 try:
                     started = clock_stamp()
                     process = start()
-                except Exception as error:
+                except BaseException as error:
                     self._stop_locked(
                         f"{cell.run_id} launch failed: {type(error).__name__}: {error}",
                         STOP_EXTERNAL,
@@ -524,7 +524,7 @@ class BlockRun:
                     {"run_id": cell.run_id, "state": "not-run", "decision_order": self.event_order}
                 )
             return
-        except Exception as error:
+        except BaseException as error:
             if start_order is not None:
                 self.request_stop(
                     f"{cell.run_id} runner failed after start: {type(error).__name__}: {error}",
@@ -549,6 +549,13 @@ class BlockRun:
                             f"started process cleanup failed: {type(cleanup_error).__name__}: "
                             f"{cleanup_error}; process and resources may remain"
                         )
+                raise
+            if not isinstance(error, Exception):
+                self.request_stop(
+                    f"{cell.run_id} interrupted before start: {type(error).__name__}: {error}",
+                    STOP_EXTERNAL,
+                )
+                self.record_failure(f"cell {cell.run_id}", error)
                 raise
             with self.lock:
                 self._stop_locked(
@@ -603,7 +610,7 @@ class BlockRun:
                     self._stop_locked(f"{cell.run_id} hit the campaign watchdog", STOP_LEVEL)
                 elif self.nonzero_cells >= self.design.stop_nonzero_cells:
                     self._stop_locked(f"{self.nonzero_cells} cells exited nonzero", STOP_LEVEL)
-        except Exception as error:
+        except BaseException as error:
             self.request_stop(
                 f"{cell.run_id} result recording failed: {type(error).__name__}: {error}",
                 STOP_EXTERNAL,
@@ -615,7 +622,13 @@ class BlockRun:
         self.raw.mkdir(parents=True, exist_ok=True)
         started = clock_stamp()
         with ThreadPoolExecutor(max_workers=self.block.jobs) as pool:
-            list(pool.map(self.run_one, self.block.cells))
+            try:
+                list(pool.map(self.run_one, self.block.cells))
+            except BaseException as error:
+                self.request_stop(
+                    f"block interrupted: {type(error).__name__}: {error}", STOP_EXTERNAL
+                )
+                raise
         ended = clock_stamp()
         order = {cell.run_id: position for position, cell in enumerate(self.block.cells)}
         return {
@@ -781,7 +794,7 @@ def run_block(design: Design, block: Block, directory: Path, bash: str) -> dict[
     run = BlockRun(design, block, directory, unavailable)
     try:
         return _run_block(design, block, directory, bash, run)
-    except Exception as error:
+    except BaseException as error:
         observed_at = datetime.now(UTC).isoformat()
         run.request_stop(f"block failed: {type(error).__name__}: {error}", STOP_EXTERNAL)
         try:

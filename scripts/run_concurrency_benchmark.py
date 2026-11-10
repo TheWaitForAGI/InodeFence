@@ -484,8 +484,15 @@ class BlockRun:
                     raise StartDenied
                 # Popen itself is the start boundary. Do not hold this lock while
                 # the child runs or while the watchdog waits for it.
-                started = clock_stamp()
-                process = start()
+                try:
+                    started = clock_stamp()
+                    process = start()
+                except Exception as error:
+                    self._stop_locked(
+                        f"{cell.run_id} launch failed: {type(error).__name__}: {error}",
+                        STOP_EXTERNAL,
+                    )
+                    raise
                 self.event_order += 1
                 start_order = self.event_order
                 return process
@@ -497,6 +504,23 @@ class BlockRun:
                 self.event_order += 1
                 self.records.append(
                     {"run_id": cell.run_id, "state": "not-run", "decision_order": self.event_order}
+                )
+            return
+        except Exception as error:
+            if start_order is not None:
+                raise
+            with self.lock:
+                self._stop_locked(
+                    f"{cell.run_id} launch failed: {type(error).__name__}: {error}", STOP_EXTERNAL
+                )
+                self.event_order += 1
+                self.records.append(
+                    {
+                        "run_id": cell.run_id,
+                        "state": "not-run",
+                        "decision_order": self.event_order,
+                        "start_error": f"{type(error).__name__}: {error}",
+                    }
                 )
             return
         ended = clock_stamp()

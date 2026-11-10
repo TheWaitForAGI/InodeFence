@@ -865,6 +865,9 @@ def run_block(design: Design, block: Block, directory: Path, bash: str) -> dict[
             _publish_json(directory / INCOMPLETE_BLOCK_FILE, evidence)
         except Exception as publish_error:
             error.add_note(f"incomplete evidence publication failed: {publish_error}")
+            error.add_note(
+                f"first stop: {run.stopped_reason}; kind={run.stop_kind}; order={run.stop_order}"
+            )
         raise
 
 

@@ -251,7 +251,8 @@ def test_failed_incomplete_publication_preserves_first_exception(
     directory = tmp_path / block.stage / block.name
     directory.mkdir(parents=True)
 
-    def fail_run(*_args: Any) -> Any:
+    def fail_run(_design: Any, _block: Any, _directory: Any, _bash: Any, run: Any) -> Any:
+        run.request_stop("sampler first", bench.STOP_EXTERNAL)
         raise OSError("original failure")
 
     def fail_write(*_args: Any) -> Any:
@@ -262,5 +263,7 @@ def test_failed_incomplete_publication_preserves_first_exception(
     monkeypatch.setattr(bench, "residual_resources", list)
     with pytest.raises(OSError, match="original failure") as error:
         bench.run_block(design, block, directory, "bash")
-    assert "write failure" in error.value.__notes__[0]
+    notes = " ".join(error.value.__notes__)
+    assert "write failure" in notes
+    assert "sampler first" in notes
     assert bench.stage_state(tmp_path, block) == "incomplete"

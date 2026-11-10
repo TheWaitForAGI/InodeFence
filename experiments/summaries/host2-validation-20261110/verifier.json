@@ -1,0 +1,13 @@
+{
+  "inputs-consistent": "UNKNOWN",
+  "host-qualified": "UNKNOWN",
+  "configuration-freeze-eligible": "UNKNOWN",
+  "issues": [],
+  "unknown": [
+    "docker_images: command failed, timed out, or truncated",
+    "automatic restart protection is not independently verified",
+    "Docker backing VHDX and physical disk mapping not independently verified",
+    "effective per-job cgroup and workload qualification not independently verified",
+    "collection provenance is not authenticated and current state may differ"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "argv": [
+    "python3",
+    "<tool-checkout>/scripts/host_inventory_linux.py"
+  ],
+  "exit_code": 0,
+  "files_sha256": {
+    "linux.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "linux.stdout": "27c027cebd56764c6eca22681f47f186287bb093f459bccf77711df27ac20f3f"
+  },
+  "started_at_utc": "2026-11-10T14:17:38.762023+00:00",
+  "status": "measured",
+  "timeout": false,
+  "truncated": false,
+  "redaction": "Tool checkout path replaced for public release; original retained locally."
+}

@@ -1,0 +1,18 @@
+{
+  "argv": [
+    "powershell.exe",
+    "-NoProfile",
+    "-Command",
+    "Get-PhysicalDisk | Select FriendlyName,MediaType,BusType,Size | ConvertTo-Json; Get-Disk | Select Number,FriendlyName,BusType,Size | ConvertTo-Json; Get-Partition | Select DiskNumber,DriveLetter,Size | ConvertTo-Json; Get-CimInstance Win32_LogicalDisk | Select DeviceID,Size,FreeSpace,DriveType | ConvertTo-Json"
+  ],
+  "start_utc": "2026-11-10T14:18:42.174211+00:00",
+  "duration_seconds": 2.009093770000618,
+  "exit_code": 0,
+  "timeout": false,
+  "sha256": {
+    "stdout": "03cbc720a79f9ea18e7b8f2d036ed6d149c602404ecae569e7402ad6f0bde426",
+    "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "public_stdout_sha256": "2f4f30677ffb11932d29da01f9e99b61c2b47499d5864387a5880e9bbce96279",
+  "public_stdout_transformation": "CRLF normalized to LF; original hash and bytes retained locally."
+}

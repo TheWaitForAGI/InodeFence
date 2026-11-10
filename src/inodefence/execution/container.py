@@ -38,7 +38,21 @@ def checked(result: CommandResult, operation: str) -> bytes:
     return result.stdout
 
 
-def _cleanup_inspect(client: DockerClient, identity: str) -> CommandResult:
+def _cleanup_diagnostic(prefix: str, record: dict[str, object]) -> None:
+    """Use stderr, without changing cleanup semantics if the diagnostic sink fails."""
+    try:
+        print(prefix + " " + json.dumps(record), file=sys.stderr, flush=True)
+    except Exception:
+        pass
+
+
+def _cleanup_inspect(
+    client: DockerClient,
+    identity: str,
+    *,
+    phase: str = "inspect",
+    attempts: list[dict[str, object]] | None = None,
+) -> CommandResult:
     """Retry only an inconclusive, read-only *cleanup* inspect timeout.
 
     Runtime inspection remains fail-closed on its first failure. This never
@@ -46,26 +60,92 @@ def _cleanup_inspect(client: DockerClient, identity: str) -> CommandResult:
     before removal and absence afterward. Two timeouts remain an error.
     """
     args = ("container", "inspect", identity)
-    result = client.run(args, CLEANUP_INSPECT_TIMEOUT_SECONDS)
-    for _ in range(CLEANUP_INSPECT_TIMEOUT_RETRIES):
-        if not result.timed_out:
+    for index in range(CLEANUP_INSPECT_TIMEOUT_RETRIES + 1):
+        try:
+            result = client.run(args, CLEANUP_INSPECT_TIMEOUT_SECONDS)
+        except Exception as error:
+            if attempts is not None:
+                attempt = {"phase": phase, "attempt": index + 1, "exception": type(error).__name__}
+                attempts.append(attempt)
+                _cleanup_diagnostic(
+                    "inodefence-cleanup-attempt", {"container": identity, **attempt}
+                )
+            raise
+        if attempts is not None:
+            attempt = {
+                "phase": phase,
+                "attempt": index + 1,
+                "returncode": result.returncode,
+                "timed_out": result.timed_out,
+                "truncated": result.truncated,
+                "absent": _container_absent(result, identity),
+            }
+            attempts.append(attempt)
+            if (
+                index
+                or result.timed_out
+                or result.truncated
+                or (result.returncode and not attempt["absent"])
+            ):
+                _cleanup_diagnostic(
+                    "inodefence-cleanup-attempt", {"container": identity, **attempt}
+                )
+        if not result.timed_out or index == CLEANUP_INSPECT_TIMEOUT_RETRIES:
             break
-        result = client.run(args, CLEANUP_INSPECT_TIMEOUT_SECONDS)
     return result
 
 
 def remove_owned(client: DockerClient, name: str, owner: str) -> None:
     """Remove only an invocation-owned identity; verify absence, never prune."""
-    result = _cleanup_inspect(client, name)
-    if _container_absent(result, name):
-        return
-    info = json.loads(checked(result, "cleanup inspect"))[0]
-    if (info["Config"].get("Labels") or {}).get(OWNER_LABEL) != owner:
-        raise BackendError("refusing to remove a container owned by another invocation")
-    checked(client.run(("container", "rm", "--force", "--volumes", info["Id"]), 10), "remove")
-    remaining = _cleanup_inspect(client, info["Id"])
-    if not _container_absent(remaining, info["Id"]):
-        raise BackendError("container removal could not be verified")
+    attempts: list[dict[str, object]] = []
+    removal: dict[str, object] | None = None
+    error_type: str | None = None
+    outcome = "inspection_failed"
+    try:
+        result = _cleanup_inspect(client, name, phase="ownership", attempts=attempts)
+        if _container_absent(result, name):
+            outcome = "already_absent"
+            return
+        info = json.loads(checked(result, "cleanup inspect"))[0]
+        outcome = "owner_mismatch"
+        if (info["Config"].get("Labels") or {}).get(OWNER_LABEL) != owner:
+            raise BackendError("refusing to remove a container owned by another invocation")
+        outcome = "remove_failed"
+        removed = client.run(("container", "rm", "--force", "--volumes", info["Id"]), 10)
+        removal = {
+            "returncode": removed.returncode,
+            "timed_out": removed.timed_out,
+            "truncated": removed.truncated,
+        }
+        checked(removed, "remove")
+        outcome = "verification_failed"
+        remaining = _cleanup_inspect(client, info["Id"], phase="verification", attempts=attempts)
+        if not _container_absent(remaining, info["Id"]):
+            raise BackendError("container removal could not be verified")
+        outcome = "removed"
+    except Exception as error:
+        error_type = type(error).__name__
+        raise
+    finally:
+        anomalous = outcome not in ("removed", "already_absent") or any(
+            attempt.get("timed_out")
+            or attempt.get("truncated")
+            or "exception" in attempt
+            or (attempt.get("returncode") != 0 and not attempt.get("absent"))
+            for attempt in attempts
+        )
+        if anomalous:
+            # Stderr reaches the campaign log in the H1 controller/broker path;
+            # never put diagnostics on the broker's stdout protocol channel.
+            record = {
+                "schema": "inodefence-cleanup-diagnostic-v1",
+                "container": name,
+                "outcome": outcome,
+                "inspections": attempts,
+                "removal": removal,
+                "error_type": error_type,
+            }
+            _cleanup_diagnostic("inodefence-cleanup-diagnostic", record)
 
 
 def _container_absent(result: CommandResult, identity: str) -> bool:

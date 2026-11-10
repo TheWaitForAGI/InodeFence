@@ -92,6 +92,21 @@ def test_unknown_cleanup_stops_waiting_cells(tmp_path: Path) -> None:
     assert "cleanup resource state unknown" in (run.stopped_reason or "")
 
 
+def test_missing_cell_log_cannot_be_treated_as_clean(tmp_path: Path) -> None:
+    design = bench.load_design(Path("experiments/configs/concurrency-scaling-v2.md"))
+    block = bench.planned_blocks(design, "smoke")[0]
+
+    def runner(cell: Any, raw: Path, _env: Any, launch: Any) -> CellResult:
+        launch(lambda: None)
+        return CellResult(cell, 0, 1, raw / "e.json", False, raw / "missing-log")
+
+    run = bench.BlockRun(design, block, tmp_path, runner)
+    run.require_logs = True
+    with pytest.raises(OSError, match="cell log"):
+        run.run_one(block.cells[0])
+    assert run.stop_kind == bench.STOP_EXTERNAL
+
+
 def test_incomplete_directory_halts_analysis_even_without_evidence_file(tmp_path: Path) -> None:
     design = bench.load_design(Path("experiments/configs/concurrency-scaling-v2.md"))
     block = bench.planned_blocks(design, "A")[0]

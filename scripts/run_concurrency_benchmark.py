@@ -465,6 +465,7 @@ class BlockRun:
         self.started_cells: dict[str, int] = {}
         self.completed_cells: set[str] = set()
         self.failures: list[dict[str, str]] = []
+        self.require_logs = False
 
     def _stop_locked(self, reason: str, kind: str) -> None:
         if self.stopped_reason is None:
@@ -578,6 +579,8 @@ class BlockRun:
             ended = clock_stamp()
             paths = cell_paths(cell, self.raw)
             cleanup_unknown = False
+            if self.require_logs and not result.log.is_file():
+                raise OSError(f"cell log unavailable: {result.log}")
             if result.log.is_file():
                 with result.log.open(encoding="utf-8", errors="replace") as stream:
                     cleanup_unknown = any("INODEFENCE_CLEANUP_UNKNOWN:" in line for line in stream)
@@ -792,6 +795,7 @@ def run_block(design: Design, block: Block, directory: Path, bash: str) -> dict[
         raise RuntimeError("block runner is not initialized")
 
     run = BlockRun(design, block, directory, unavailable)
+    run.require_logs = True
     try:
         return _run_block(design, block, directory, bash, run)
     except BaseException as error:

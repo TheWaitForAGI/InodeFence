@@ -96,7 +96,9 @@ def test_output_must_stay_apart_from_evidence_and_repository(tmp_path: Path) -> 
 
 def _fake_result(cell: Cell, raw: Path, returncode: int) -> CellResult:
     raw.mkdir(parents=True, exist_ok=True)
-    return CellResult(cell, returncode, 0.01, raw / "e.json", False, raw / f"{cell.run_id}.log")
+    log = raw / f"{cell.run_id}.log"
+    log.touch()
+    return CellResult(cell, returncode, 0.01, raw / "e.json", False, log)
 
 
 def test_block_run_honors_jobs_and_records_no_outcome(design: bench.Design, tmp_path: Path) -> None:

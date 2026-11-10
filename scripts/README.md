@@ -32,7 +32,7 @@ H1 controller와 host broker의 cleanup inspect에 timeout·출력 잘림·오�
 `inodefence-cleanup-attempt` JSON을 stderr에 즉시 출력하고, cleanup이 끝나거나 실패하면
 `inodefence-cleanup-diagnostic` JSON에 각 조회와 최종 결과를 함께 남긴다. H1의 기존 캠페인
 로그가 이 stderr를 받으며 broker stdout 프로토콜과 보고서/abort 분류는 바뀌지 않는다.
-정상 cleanup은 추가 로그가 없다. 레코드에는 명령 출력 원문 대신 return code, timeout,
+이상 없는 cleanup은 추가 로그가 없다. 레코드에는 명령 출력 원문 대신 return code, timeout,
 truncation 및 부재 확인이 들어간다. stderr 전달·저장 실패나 첫 응답 전 강제 종료에서는
 기록이 보장되지 않으며, 기록이 없다는 것을 timeout이 없었다는 증거로 해석하지 않는다.
 

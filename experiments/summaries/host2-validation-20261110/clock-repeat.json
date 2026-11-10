@@ -1,0 +1,40 @@
+{
+  "utc_start": "2026-11-10T14:42:02.014079+00:00",
+  "argv": [
+    "powershell.exe",
+    "-NoProfile",
+    "-Command",
+    "$s=[Diagnostics.Stopwatch]::StartNew(); for($i=0; $i -lt 4; $i++){[Console]::WriteLine(([string]$i)+' '+[DateTime]::UtcNow.ToString('o')+' '+$s.Elapsed.TotalSeconds.ToString([Globalization.CultureInfo]::InvariantCulture)); [Console]::Out.Flush(); if($i -lt 3){Start-Sleep -Seconds 10}}"
+  ],
+  "exit_code": 0,
+  "timeout": false,
+  "samples": [
+    {
+      "windows": "0 2026-11-10T14:42:01.5406691Z 0.007049",
+      "linux_monotonic": 638.629517394,
+      "linux_utc": "2026-11-10T14:42:02.192740+00:00",
+      "linux_realtime": 1794321722.1927543
+    },
+    {
+      "windows": "1 2026-11-10T14:42:11.5820655Z 10.0449855",
+      "linux_monotonic": 648.426202858,
+      "linux_utc": "2026-11-10T14:42:11.989427+00:00",
+      "linux_realtime": 1794321731.989442
+    },
+    {
+      "windows": "2 2026-11-10T14:42:21.5831152Z 20.0454012",
+      "linux_monotonic": 658.127195594,
+      "linux_utc": "2026-11-10T14:42:21.690419+00:00",
+      "linux_realtime": 1794321741.690433
+    },
+    {
+      "windows": "3 2026-11-10T14:42:31.5839731Z 30.0462498",
+      "linux_monotonic": 667.823805344,
+      "linux_utc": "2026-11-10T14:42:32.298188+00:00",
+      "linux_realtime": 1794321752.2982016
+    }
+  ],
+  "trailing_stdout": "",
+  "stderr": "",
+  "note": "Samples include variable output propagation and scheduling latency; not a calibrated clock-rate test."
+}

@@ -93,6 +93,39 @@ def test_unknown_cleanup_stops_waiting_cells(tmp_path: Path) -> None:
     assert "cleanup resource state unknown" in (run.stopped_reason or "")
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason="cleanup UNKNOWN reaches the start gate only after the runner returns",
+)
+def test_cleanup_unknown_blocks_launch_before_runner_returns(tmp_path: Path) -> None:
+    design = bench.load_design(Path("experiments/configs/concurrency-scaling-v2.md"))
+    block = bench.planned_blocks(design, "smoke")[0]
+    unknown, resume = threading.Event(), threading.Event()
+    launches: list[str] = []
+
+    def runner(cell: Any, raw: Path, _env: Any, launch: Any) -> CellResult:
+        launch(lambda: launches.append(cell.run_id))
+        log = tmp_path / f"{cell.run_id}.log"
+        if cell == block.cells[0]:
+            log.write_text("INODEFENCE_CLEANUP_UNKNOWN: test\n")
+            unknown.set()
+            assert resume.wait(5)
+        else:
+            log.write_text("")
+        return CellResult(cell, 0, 1, raw / "e.json", False, log)
+
+    run = bench.BlockRun(design, block, tmp_path, runner)
+    first = threading.Thread(target=run.run_one, args=(block.cells[0],))
+    first.start()
+    try:
+        assert unknown.wait(5)
+        run.run_one(block.cells[1])
+    finally:
+        resume.set()
+        first.join(5)
+    assert launches == [block.cells[0].run_id]
+
+
 def test_missing_cell_log_cannot_be_treated_as_clean(tmp_path: Path) -> None:
     design = bench.load_design(Path("experiments/configs/concurrency-scaling-v2.md"))
     block = bench.planned_blocks(design, "smoke")[0]

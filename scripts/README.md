@@ -41,8 +41,9 @@ H1 호스트 smoke 종료 시 Docker CLI에 엔지니어링 deadline을 둔다: 
 종료하며 daemon 작업 완료를 뜻하지 않는다. 이 값은 정상 호출의 전체 지연 분포가 아닌 기존
 10초 broker 제한과 70–108 MB 복사 규모에 근거한 후보이며, 측정 조건이 바뀌므로 과거 결과와
 동등하다고 가정하지 않는다. 삭제 후 부재를 확정하지 못하면 `INODEFENCE_CLEANUP_UNKNOWN`을
-남기고 H1은 추가 시작을 중단한다. 종료 전의 build, create, setup 호출에는 이 cleanup deadline이
-적용되지 않는다. 기존 증거 경로를 덮어쓰지 않는다.
+남긴다. 현재 H1은 셀 종료 뒤 이 표식을 읽으므로, 표식 발생과 셀 종료 사이에 다른 셀이 시작될
+수 있다. 이것은 미해결 차단 결함이며 이 후보는 실측에 사용하지 않는다. 종료 전의 build, create,
+setup 호출에는 이 cleanup deadline이 적용되지 않는다. 기존 증거 경로를 덮어쓰지 않는다.
 
 H1 블록이 stop되거나 runner·기록 경로가 예외를 내면 별도
 `block.incomplete.json` (`inodefence-h1-incomplete-v1`, `finished=false`)을 게시한다. 최초 stop,

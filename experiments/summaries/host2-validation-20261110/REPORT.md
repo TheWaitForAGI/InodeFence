@@ -2,9 +2,7 @@
 
 ## 1. Executive Summary
 
-**Update:** Docker and WSL were subsequently updated; the later state and pending WSL memory configuration are recorded in section 17. The earlier sections retain the original observations.
-
-**PARTIAL / host qualification UNKNOWN.** Read-only inventory at 2026-11-10 14:17–14:20 UTC (23:17–23:20 KST) found Docker Engine 29.9.2 instead of the design's 29.8.0, and the exact target image is absent. Available WSL memory was below the proposed 15 GiB preflight threshold. No smoke, concurrency test, or formal experiment was run. Observations are time-specific and self-reported, not authenticated attestation.
+**PARTIAL / host qualification UNKNOWN.** The post-update inventory on 2026-11-10 found Docker Engine 29.9.3 instead of the design's 29.8.0, the exact target image absent, and available WSL memory below the proposed 15 GiB preflight threshold. The WSL 20 GB cap is configured but has not been applied by a coordinated restart. Short independent comparisons found a monotonic-clock rate discrepancy; restart protection remains UNKNOWN. No smoke, concurrency test, or formal experiment was run. The dated follow-ups below preserve earlier observations, configuration changes and their limits. These self-reported observations are not authenticated attestation.
 
 ## 2. Hardware Inventory
 
@@ -12,19 +10,19 @@ Windows reports Intel Core Ultra 7 270K Plus, 24 cores / 24 logical processors, 
 
 ## 3. Windows Configuration
 
-Windows 11 Pro build 26200; WSL reports build 26200.9711. The collector reported active hours 16–05, no configured Windows Update/AU policy found, effective MDM policy UNKNOWN, and no reboot-required flag in the probes used. Its reboot-name task enumeration is not exhaustive proof that no restart can occur. Measurements were under a non-elevated Windows account; no elevated check was performed.
+Windows 11 Pro build 26200; WSL reports build 26200.9711. The collector reported active hours 16–05, no configured Windows Update/AU policy found, effective MDM policy UNKNOWN, and no reboot-required flag in the probes used. Its reboot-name task enumeration is not exhaustive proof that no restart can occur. The initial collection used a non-elevated Windows account. A later elevated policy and task inspection is recorded in section 18; it did not establish comprehensive restart protection.
 
 ## 4. WSL2 Configuration
 
-WSL 2.7.14.0, Ubuntu 24.04.5 LTS, kernel 6.18.33.2; affinity CPUs 0–23. `/etc/wsl.conf` enables systemd and interop. The probe could not read `.wslconfig` because the file was absent; defaults and other host limits still apply. Linux total memory 16,051,892 KiB and available 14,082,420 KiB in the collection, swap 4,194,304 KiB. Open-file limit 1,048,576 and process limit 62,659 were observed separately. Root filesystem is ext4. A Windows 10.033-second sleep corresponded to 10.160 seconds of Linux monotonic time including process startup; this coarse observation does not establish clock-rate accuracy. See clock records.
+The initial collection observed WSL 2.7.14.0, Ubuntu 24.04.5 LTS and kernel 6.18.33.2; affinity CPUs 0–23. A later update changed WSL to 3.0.5.0 and the running kernel to 6.18.58.1 (section 17). `/etc/wsl.conf` enables systemd and interop. The initial probe found no `.wslconfig`; a 20 GB memory cap was later configured but awaits a coordinated WSL restart (section 17). Host limits still apply. Linux total memory 16,051,892 KiB and available 14,082,420 KiB in the collection, swap 4,194,304 KiB. Open-file limit 1,048,576 and process limit 62,659 were observed separately. Root filesystem is ext4. A Windows 10.033-second sleep corresponded to 10.160 seconds of Linux monotonic time including process startup; this coarse observation does not establish clock-rate accuracy. See clock records.
 
 ## 5. Docker Configuration
 
-Desktop 4.96.2 (244353), CLI and Engine 29.9.2, context `default`, 24 CPUs and 16,437,137,408 bytes VM memory; cgroup v2, overlayfs using containerd snapshotter, Docker root `/var/lib/docker`. The earlier 11:00 UTC collection could not access Docker; the later collection did. This change is an observation, not an attributed configuration change. Exact target image `sha256:22c8734f141d91b333ba37c7fe6a9a7547d7abfab487fa028da2053bed6f3dbb` was separately inspected and absent; the collector's target, controller and helper tags were also absent. No image was built or changed.
+The initial inventory observed Desktop 4.96.2 (244353), CLI and Engine 29.9.2; the post-update inventory observed Desktop 4.99.0 (245822), CLI and Engine 29.9.3 (section 17). The initial context was `default`, with 24 CPUs and 16,437,137,408 bytes VM memory; cgroup v2, overlayfs using containerd snapshotter, Docker root `/var/lib/docker`. The earlier 11:00 UTC collection could not access Docker; the later collection did. This change is an observation, not an attributed configuration change. Exact target image `sha256:22c8734f141d91b333ba37c7fe6a9a7547d7abfab487fa028da2053bed6f3dbb` was separately inspected and absent; the collector's target, controller and helper tags were also absent. No image was built or changed.
 
 ## 6. Storage and VHDX Mapping
 
-The proposed output's nearest existing parent reported ext4 1,013,508,923,392 available bytes and 66,893,114 free inodes. This is virtual filesystem capacity, not guaranteed physical free space. Windows C: on disk 0 reported 99,427,897,344 bytes free. WSL registration places the Ubuntu-24.04 distro on C:, while the default Docker data VHDX candidate was found on C:; effective Docker backing VHDX identity and actual physical usage remain UNKNOWN. No external drive was enumerated. Docker VM virtual free space alone does not establish backing-store capacity.
+The proposed output's nearest existing parent reported ext4 1,013,508,923,392 available bytes and 66,893,114 free inodes. This is virtual filesystem capacity, not guaranteed physical free space. Windows C: on disk 0 reported 99,427,897,344 bytes free. WSL registration places the Ubuntu-24.04 distro on C:, while the default Docker data VHDX candidate was found on C:; subsequent corroborating evidence strongly supports the active Docker VHDX being on C:; an API discrepancy remains (section 27). No external drive was enumerated. Docker VM virtual free space alone does not establish backing-store capacity.
 
 ## 7. Resource and cgroup Limits
 
@@ -32,7 +30,7 @@ At collection, 14,082,420 KiB available WSL RAM is below the proposed 15 GiB min
 
 ## 8. Power and Restart Protection
 
-AC sleep and hibernate timeouts were both zero in the measured active power plan. Update AU and MDM effective policies were not established, and no automatic restart policy was verified. A negative pending-reboot probe does not guarantee no reboot. Restart protection **UNKNOWN**; no settings were modified.
+AC sleep and hibernate timeouts were both zero in the measured active power plan. Update AU and MDM effective policies were not established, and no automatic restart policy was verified. A negative pending-reboot probe does not guarantee no reboot. Restart protection remains **UNKNOWN**; no Windows restart policy was modified. Other configuration and time-service changes are recorded in sections 17 and 20.
 
 ## 9. Image / Execution SHA Consistency
 
@@ -44,7 +42,7 @@ The separate execution checkout was clean at `afdc720da6eb6ae143bd4754cb39d6dd34
 
 ## 11. Container / Volume Cleanup
 
-The later inventory reported four stopped containers and three volumes, including existing InodeFence volumes. They predate this inspection; ownership and experiment relevance require review. No container or volume was removed or created. This is not a clean-runtime qualification.
+The later inventory reported four stopped containers and three volumes, including existing InodeFence volumes. They predate this inspection; ownership and experiment relevance require review. No pre-existing container or volume was removed. Later isolated engineering checks created and automatically removed their own disposable containers (sections 24–26). This is not a clean-runtime qualification.
 
 ## 12. HOST1 vs HOST2 Comparison
 
@@ -54,7 +52,7 @@ The v2 design specifies Engine 29.8.0 and the target image above. The initial HO
 
 | Condition | Result | Basis / limit |
 | --- | --- | --- |
-| Available memory | FAIL | 14,082,420 KiB at collection, below proposed 15 GiB |
+| Available memory | FAIL | 14,288,360 KiB after update, below proposed 15 GiB; pending cap not yet applied |
 | Docker CPU and memory | UNKNOWN | 24 CPUs and 16,437,137,408 total bytes; workload headroom unverified |
 | Effective cgroups | UNKNOWN | process and ancestors do not establish per-job limits |
 | Output space and inodes | UNKNOWN | virtual ext4 free exceeds proposed threshold; backing physical capacity must be evaluated |
@@ -68,7 +66,7 @@ The v2 design specifies Engine 29.8.0 and the target image above. The initial HO
 
 ## 14. Remaining Blockers
 
-Obtain an approved compatible engine/image path without rebuilding or changing versions until comparability is decided; verify runtime and parent cgroups, real backing disks and capacity; establish sufficient available memory, restart protection and exclusive host usage; resolve existing resource ownership; establish HOST2-specific smoke approval, seed exposure and exact command. Treat failed or inaccessible probes as UNKNOWN. The collector's target-image inspection failed; its verifier accordingly returns inputs-consistent UNKNOWN, while independent image inspection confirmed absence on this daemon at that time.
+Obtain an approved compatible engine/image path without rebuilding or changing versions until comparability is decided; verify workload cgroups, resolve the VHD API discrepancy and recheck shared backing capacity; establish sufficient available memory, restart protection and exclusive host usage; resolve existing resource ownership; establish HOST2-specific smoke approval, seed exposure and exact command. Treat failed or inaccessible probes as UNKNOWN. The collector's target-image inspection failed; its verifier accordingly returns inputs-consistent UNKNOWN, while independent image inspection confirmed absence on this daemon at that time.
 
 ## 15. Recommended HOST2 Qualification Steps
 
@@ -76,7 +74,7 @@ Resolve the blockers with the research owner, record a new preflight and indepen
 
 ## 16. Evidence Manifest and SHA-256
 
-`SHA256SUMS` covers the public files alongside this report. The original read-only collector bundle is retained locally, unmodified, outside the repository; it contains machine-identifying paths and process details and must be reviewed before sharing. Its `collection.json` SHA-256 is `f699ea2aec9a6a602c65e8cda03ad5f4a59c7136faf8330d736f0e593029ad7e`. `verifier.json` is the unmodified output of the documented verifier with the proposed jobs=2, memory=16106127360, disk=20000000000 thresholds. The collector records per-command timestamps, argv, exit codes, timeout and stdout/stderr hashes in that private bundle. Linux and Docker extracts are byte-identical; Windows disk and clock outputs have CRLF normalized to LF, and the Linux command path is redacted. The public extracts are not a complete bundle. Hashes detect alteration, not machine identity or authenticity. No Oracle or feedback raw data was accessed or published. `make check` was attempted on this WSL host and stopped at lint because the `python` executable was absent (exit 2); the required Dev Container validation was not performed. The public manifest was independently checked with `sha256sum -c`, and the staged diff passed `git diff --cached --check`.
+`SHA256SUMS` covers the public files alongside this report. The original read-only collector bundle is retained locally, unmodified, outside the repository; it contains machine-identifying paths and process details and must be reviewed before sharing. Its `collection.json` SHA-256 is `f699ea2aec9a6a602c65e8cda03ad5f4a59c7136faf8330d736f0e593029ad7e`. `verifier.json` is the unmodified output of the documented verifier with the proposed jobs=2, memory=16106127360, disk=20000000000 thresholds. The collector records per-command timestamps, argv, exit codes, timeout and stdout/stderr hashes in that private bundle. Linux and Docker extracts are byte-identical; Windows disk and clock outputs have CRLF normalized to LF, and the Linux command path is redacted. The public extracts are not a complete bundle. Hashes detect alteration, not machine identity or authenticity. No Oracle or feedback raw data was accessed or published. `make check` on the WSL host initially stopped because `python` was absent. Later disposable Dev Container checks of an evidence snapshot and the candidate source archive passed with six skips each; scope and synthetic Git limitations are in sections 25–26. The public manifest was independently checked with `sha256sum -c`, and the staged diff passed `git diff --cached --check`.
 
 ## 17. Subsequent changes and post-change inventory
 

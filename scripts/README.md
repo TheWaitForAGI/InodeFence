@@ -341,7 +341,9 @@ OS·CPU·메모리·전원·WSL 버전과 Linux의 SHA·dirty·filesystem·가�
 `minimum_available_bytes`, `minimum_memory_bytes`, `minimum_cpus`, `hosts`다. `hosts.HOST1`과
 `hosts.HOST2` 각각에 `jobs`, `output_path`, `runtime_path`, `assignment_ref`, `cells`를 둔다. `cells`는 각각 `target_id`(단일 대상이면 null), `seed`, `arm`, `budget` 객체의 목록이다. 등록 gate가 각 셀을 검증하고 호스트 간 중복을 거부한다. 실제 jobs,
 자원 하한, 할당은 승인·실측 전 비워 두며 예제값을 실제 값으로 쓰지 않는다. 각 host의 출력 경로는
-구분하고 배정표가 해당 단계의 모든 셀을 포함하는지 별도로 검증한다.
+구분한다. 검증기는 사전등록의 전체 대상·arm·seed·budget 조합을 독립 생성해 누락과 초과를
+거부한다. 전체 등록의 일부 단계만 배정하는 경우에는 단계의 독립적인 권위 있는 정의가 없어
+이 검사로 승인할 수 없다.
 
 ```bash
 PYTHONPATH=src python -m scripts.verify_host_freeze \
@@ -363,6 +365,7 @@ smoke와 jobs 2·j* 각 1블록 검증이 필요하다. 승인되지 않은 설�
 인벤토리 원본을 수동 복사하지 않으려면 아래처럼 조립한다. `measured.json`은
 `host_freeze_evidence.template.json`의 `measured` 객체를 별도 파일로 저장해 작성한다.
 세 입력 원본의 SHA-256이 결과에 보존되며 원본과 기존 결과를 덮어쓰지 않는다.
+WSL에서 Windows와 Docker 원본을 함께 수집하는 별도 절차는 [HOST_COLLECTION.md](HOST_COLLECTION.md)이다.
 
 ```bash
 PYTHONPATH=src python -m scripts.assemble_host_evidence --host-id HOST2 \

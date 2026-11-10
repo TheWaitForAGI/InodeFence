@@ -174,8 +174,11 @@ jobs_max = 2
 ```
 """.encode()
     plan["prereg_sha256"] = digest(prereg)
-    plan["hosts"]["HOST1"]["cells"] = [{"target_id": None, "seed": 9001, "arm": "R", "budget": 200}]
-    plan["hosts"]["HOST2"]["cells"] = [{"target_id": None, "seed": 9002, "arm": "D", "budget": 200}]
+    for host, seed in (("HOST1", 9001), ("HOST2", 9002)):
+        plan["hosts"][host]["cells"] = [
+            {"target_id": None, "seed": seed, "arm": arm, "budget": 200}
+            for arm in ("R", "D", "S-u")
+        ]
     monkeypatch.setattr(
         "scripts.verify_host_freeze.load_design",
         lambda _: SimpleNamespace(
@@ -233,6 +236,12 @@ jobs_max = 2
     assert json.loads(original)["status"] == "inputs-consistent"
     assert main() == 1
     assert (tmp_path / "output").read_bytes() == original
+    incomplete = copy.deepcopy(plan)
+    incomplete["hosts"]["HOST2"]["cells"].pop()
+    (tmp_path / "plan").write_text(json.dumps(incomplete))
+    argv[-1] = str(tmp_path / "missing-output")
+    assert main() == 1
+    assert "missing registered cell" in capsys.readouterr().err
     duplicated = copy.deepcopy(plan)
     duplicated["hosts"]["HOST2"]["cells"] = duplicated["hosts"]["HOST1"]["cells"]
     (tmp_path / "plan").write_text(json.dumps(duplicated))

@@ -341,7 +341,21 @@ def differences(host1: dict[str, Any], host2: dict[str, Any]) -> dict[str, dict[
 def validate_assignments(plan: dict[str, Any], registration: Preregistration) -> list[str]:
     """Check each assigned cell against the registered gate and reject duplicates."""
     issues: list[str] = []
-    seen: set[tuple[str | None, int, str]] = set()
+    seen: set[tuple[str | None, str, int, int]] = set()
+    targets = registration.targets or (None,)
+    expected = {
+        (
+            target.target_id if target else None,
+            arm.value,
+            seed,
+            target.budget if target and target.budget is not None else registration.budget,
+        )
+        for target in targets
+        for arm in (
+            target.arms if target and target.arms is not None else registration.arm_policies
+        )
+        for seed in registration.seeds
+    }
     for host_id in ("HOST1", "HOST2"):
         host = plan["hosts"][host_id]
         cells = host.get("cells")
@@ -365,7 +379,7 @@ def validate_assignments(plan: dict[str, Any], registration: Preregistration) ->
             ):
                 issues.append(f"{host_id}: invalid cell seed, budget or target")
                 continue
-            identity = (target, seed, arm.value)
+            identity = (target, arm.value, seed, budget)
             if identity in seen:
                 issues.append(f"{host_id}: duplicate assigned cell {identity}")
             seen.add(identity)
@@ -392,6 +406,10 @@ def validate_assignments(plan: dict[str, Any], registration: Preregistration) ->
                 f"{host_id}: {reason}"
                 for reason in preregistration_mismatches(registration, request)
             )
+    for cell in sorted(expected - seen, key=str):
+        issues.append(f"missing registered cell {cell}")
+    for cell in sorted(seen - expected, key=str):
+        issues.append(f"unregistered cell {cell}")
     return issues
 
 
@@ -507,6 +525,8 @@ def main() -> int:
         result = {
             "schema": "inodefence-host-freeze-manifest-v1",
             "status": "inputs-consistent",
+            "host-qualified": "UNKNOWN",
+            "configuration-freeze-eligible": "UNKNOWN",
             "limitation": (
                 "Supplied evidence compared; independent verification and execution "
                 "authorization remain required."

@@ -220,3 +220,9 @@ At 2026-11-10T15:59:36.906672+00:00, Node 22.22.0 was installed under the user's
 On the clean `minchan/p0-2-observation-capture` checkout at `1f6ca9022fda4d468d7b6ead2f0644f2cf5d9e09`, `source ~/.local/share/inodefence/host2-dev-venv/bin/activate && make lint format-check typecheck` completed with exit 0: Ruff lint passed, format check reported 389 files unchanged, and Pyright reported 0 errors and 0 warnings. This checks development tools and source analysis; it is not `make check`, a target smoke, or an experiment. The worktree remained unchanged.
 
 An initial attempt passed `PYTHON=<venv>/bin/python` without activating the environment. Ruff checks passed, but Pyright used the system interpreter and failed with 90 missing `pytest` import errors (exit 2). Activating the venv put its interpreter on PATH and resolved those errors in the subsequent check.
+
+## 38. Full check on HOST2's current development branch
+
+On 2026-11-10 16:01 UTC, a disposable container from development image `sha256:b22a052837402b1b6fceb23d8c3048748db2af8117756447c816881c67ac93a2` ran `make check` on a Git archive of `1f6ca9022fda4d468d7b6ead2f0644f2cf5d9e09`. The command exited 0: **1,766 pytest tests passed**, and lint, formatting, Pyright, environment and documentation checks passed. The container used no network or Docker socket, a private tmpfs runtime, 4 GiB memory and 512 PID limits. It was removed after completion.
+
+A synthetic Git commit was created inside the container, so checks depending on original commit identity were not exercised against the real commit object. The source checkout and existing Docker volumes were not mounted for the check. This validates development checks on that branch snapshot; it does not qualify HOST2 for formal experiments or validate the missing target image. Commands, archive and original log hashes are in `dev-branch-check.json`; original logs remain in the private local collection.

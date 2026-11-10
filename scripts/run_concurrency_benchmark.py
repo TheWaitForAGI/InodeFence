@@ -476,9 +476,10 @@ class BlockRun:
     def run_one(self, cell: Cell) -> None:
         started: dict[str, Any] = {}
         start_order: int | None = None
+        process: Any = None
 
         def launch(start: Callable[[], Any]) -> Any:
-            nonlocal started, start_order
+            nonlocal started, start_order, process
             with self.lock:
                 if self.stopped_reason is not None:
                     raise StartDenied
@@ -512,6 +513,24 @@ class BlockRun:
                     f"{cell.run_id} runner failed after start: {type(error).__name__}: {error}",
                     STOP_EXTERNAL,
                 )
+                if process is not None:
+                    try:
+                        if process.poll() is None:
+                            process.terminate()
+                            try:
+                                process.wait(timeout=30)
+                            except subprocess.TimeoutExpired:
+                                process.kill()
+                                process.wait(timeout=30)
+                        error.add_note(
+                            f"started process {process.pid} exited with {process.returncode}; "
+                            "container and volume cleanup still requires verification"
+                        )
+                    except Exception as cleanup_error:
+                        error.add_note(
+                            f"started process cleanup failed: {type(cleanup_error).__name__}: "
+                            f"{cleanup_error}; process and resources may remain"
+                        )
                 raise
             with self.lock:
                 self._stop_locked(
@@ -527,33 +546,40 @@ class BlockRun:
                     }
                 )
             return
-        ended = clock_stamp()
-        paths = cell_paths(cell, self.raw)
-        with self.lock:
-            self.records.append(
-                {
-                    "run_id": cell.run_id,
-                    "state": "ran",
-                    "arm": cell.arm.label,
-                    "seed": cell.seed,
-                    "budget": cell.budget,
-                    "returncode": result.returncode,
-                    "watchdog_killed": result.returncode == WATCHDOG_RETURNCODE,
-                    "launcher_wall_seconds": result.wall_seconds,
-                    "started": started,
-                    "start_order": start_order,
-                    "ended": ended,
-                    "report": paths["report"].name,
-                    "steps": paths["steps_jsonl"].name,
-                    "log": paths["log"].name,
-                }
+        try:
+            ended = clock_stamp()
+            paths = cell_paths(cell, self.raw)
+            with self.lock:
+                self.records.append(
+                    {
+                        "run_id": cell.run_id,
+                        "state": "ran",
+                        "arm": cell.arm.label,
+                        "seed": cell.seed,
+                        "budget": cell.budget,
+                        "returncode": result.returncode,
+                        "watchdog_killed": result.returncode == WATCHDOG_RETURNCODE,
+                        "launcher_wall_seconds": result.wall_seconds,
+                        "started": started,
+                        "start_order": start_order,
+                        "ended": ended,
+                        "report": paths["report"].name,
+                        "steps": paths["steps_jsonl"].name,
+                        "log": paths["log"].name,
+                    }
+                )
+                if result.returncode != 0:
+                    self.nonzero_cells += 1
+                if result.returncode == WATCHDOG_RETURNCODE:
+                    self._stop_locked(f"{cell.run_id} hit the campaign watchdog", STOP_LEVEL)
+                elif self.nonzero_cells >= self.design.stop_nonzero_cells:
+                    self._stop_locked(f"{self.nonzero_cells} cells exited nonzero", STOP_LEVEL)
+        except Exception as error:
+            self.request_stop(
+                f"{cell.run_id} result recording failed: {type(error).__name__}: {error}",
+                STOP_EXTERNAL,
             )
-            if result.returncode != 0:
-                self.nonzero_cells += 1
-            if result.returncode == WATCHDOG_RETURNCODE:
-                self._stop_locked(f"{cell.run_id} hit the campaign watchdog", STOP_LEVEL)
-            elif self.nonzero_cells >= self.design.stop_nonzero_cells:
-                self._stop_locked(f"{self.nonzero_cells} cells exited nonzero", STOP_LEVEL)
+            raise
 
     def execute(self) -> dict[str, Any]:
         self.raw.mkdir(parents=True, exist_ok=True)

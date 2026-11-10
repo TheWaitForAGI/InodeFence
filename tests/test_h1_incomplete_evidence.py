@@ -201,3 +201,66 @@ def test_stuck_event_collector_is_killed_and_failure_retained() -> None:
     with pytest.raises(subprocess.TimeoutExpired):
         bench._stop_events(events)
     assert calls == ["terminate", "wait", "kill", "wait"]
+
+
+def test_failed_block_publication_writes_incomplete_evidence(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    design = bench.load_design(Path("experiments/configs/concurrency-scaling-v2.md"))
+    block = bench.planned_blocks(design, "smoke")[0]
+
+    class Events:
+        def terminate(self) -> None:
+            pass
+
+        def wait(self, timeout: float) -> int:
+            return 0
+
+    def cell_runner(cell: Any, raw: Path, _env: Any, _bash: Any, **kwargs: Any) -> CellResult:
+        kwargs["popen"]()
+        log = raw / f"{cell.run_id}.log"
+        log.write_text("")
+        return CellResult(cell, 0, 0.01, raw / "e.json", False, log)
+
+    publish = bench._publish_json
+
+    def fail_completed(path: Path, value: Any) -> None:
+        if path.name == bench.BLOCK_FILE:
+            raise OSError("injected completed record failure")
+        publish(path, value)
+
+    monkeypatch.setattr(bench, "_start_events", lambda _path: Events())
+    monkeypatch.setattr(bench, "_sample_host", lambda *_args: None)
+    monkeypatch.setattr(bench, "run_cell_with_watchdog", cell_runner)
+    monkeypatch.setattr(bench.subprocess, "Popen", lambda *a, **k: object())
+    monkeypatch.setattr(bench, "residual_resources", list)
+    monkeypatch.setattr(bench, "_publish_json", fail_completed)
+    with pytest.raises(OSError, match="injected completed record failure"):
+        bench.run_block(design, block, tmp_path, "bash")
+    record = json.loads((tmp_path / bench.INCOMPLETE_BLOCK_FILE).read_text())
+    assert record["finished"] is False
+    assert len(record["completed_cells"]) == len(block.cells)
+    assert not (tmp_path / bench.BLOCK_FILE).exists()
+
+
+def test_failed_incomplete_publication_preserves_first_exception(
+    tmp_path: Path, monkeypatch: Any
+) -> None:
+    design = bench.load_design(Path("experiments/configs/concurrency-scaling-v2.md"))
+    block = bench.planned_blocks(design, "smoke")[0]
+    directory = tmp_path / block.stage / block.name
+    directory.mkdir(parents=True)
+
+    def fail_run(*_args: Any) -> Any:
+        raise OSError("original failure")
+
+    def fail_write(*_args: Any) -> Any:
+        raise OSError("write failure")
+
+    monkeypatch.setattr(bench, "_run_block", fail_run)
+    monkeypatch.setattr(bench, "_publish_json", fail_write)
+    monkeypatch.setattr(bench, "residual_resources", list)
+    with pytest.raises(OSError, match="original failure") as error:
+        bench.run_block(design, block, directory, "bash")
+    assert "write failure" in error.value.__notes__[0]
+    assert bench.stage_state(tmp_path, block) == "incomplete"

@@ -44,11 +44,13 @@ H1 호스트 smoke 종료 시 Docker CLI에 엔지니어링 deadline을 둔다: 
 남기고 H1은 추가 시작을 중단한다. 종료 전의 build, create, setup 호출에는 이 cleanup deadline이
 적용되지 않는다. 기존 증거 경로를 덮어쓰지 않는다.
 
-H1 블록에 시작되지 않은 셀이 있거나 runner·기록 경로가 예외를 내면 별도
+H1 블록이 stop되거나 runner·기록 경로가 예외를 내면 별도
 `block.incomplete.json` (`inodefence-h1-incomplete-v1`, `finished=false`)을 게시한다. 최초 stop,
 시작·종료 확인·미확인 셀, 예외, 잔여 자원 조회 및 확인 필요 상태를 기록한다. 분석기는 이를
 정상 블록에 합산하지 않고 선택 및 fallback을 null로 중단한다. 원자적 이름 게시와 파일 fsync는
 시도하지만 SIGKILL, 전원 장애, 저장소 오류 시 기록의 존재나 디렉터리 내구성은 보장하지 않는다.
+이는 종전 level stop의 정상 `block.json`을 분석하던 분류와 다르므로, 해당 실패 실행의 수준 선택을
+이전 결과와 동등하게 비교하지 않는다. budget·watchdog·stop 임계값은 바꾸지 않는다.
 기록 자체가 실패해도 디렉터리만 존재하는 블록은 미완료로 남아 재실행을 거부한다.
 이후 단계는 기존 통과 보고서뿐 아니라 선행 블록의 현재 상태도 확인한다.
 Ctrl-C는 워커 종료를 기다리기 전에 stop을 확정하지만, 반복 중단이나 SIGTERM·SIGKILL은

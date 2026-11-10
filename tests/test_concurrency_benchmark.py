@@ -227,10 +227,12 @@ def test_residual_resources_after_a_block_are_a_level_stop(
         lambda c, r, _e, _b, limit_seconds, popen: (popen(["true"]), _fake_result(c, r, 0))[1],
     )
     block = bench.planned_blocks(design, "A")[0]
-    record = bench.run_block(design, block, tmp_path, "bash")
+    with pytest.raises(RuntimeError, match="block stopped"):
+        bench.run_block(design, block, tmp_path, "bash")
+    record = json.loads((tmp_path / bench.INCOMPLETE_BLOCK_FILE).read_text("utf-8"))
     assert "residual" in (record["stopped_reason"] or "")
     assert record["stop_kind"] == bench.STOP_LEVEL
-    assert json.loads((tmp_path / bench.BLOCK_FILE).read_text("utf-8"))["stop_kind"] == "level"
+    assert record["finished"] is False
 
 
 def test_a_stop_after_the_last_cell_keeps_its_kind(
@@ -257,9 +259,12 @@ def test_a_stop_after_the_last_cell_keeps_its_kind(
         lambda c, r, _e, _b, limit_seconds, popen: (popen(["true"]), _fake_result(c, r, 0))[1],
     )
     block = bench.planned_blocks(design, "A")[0]
-    record = bench.run_block(design, block, tmp_path, "bash")
+    with pytest.raises(RuntimeError, match="block stopped"):
+        bench.run_block(design, block, tmp_path, "bash")
+    record = json.loads((tmp_path / bench.INCOMPLETE_BLOCK_FILE).read_text("utf-8"))
     assert "foreign" in (record["stopped_reason"] or "")
     assert record["stop_kind"] == bench.STOP_EXTERNAL
+    assert record["finished"] is False
 
 
 def test_a_failed_sampler_stops_the_block(

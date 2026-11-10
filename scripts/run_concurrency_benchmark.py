@@ -797,6 +797,8 @@ def _run_block(
         record["stopped_reason"] = run.stopped_reason
         record["stop_kind"] = run.stop_kind
         record["stop_order"] = run.stop_order
+    if run.stopped_reason is not None:
+        raise RuntimeError(f"block stopped: {run.stopped_reason}")
     _publish_json(directory / BLOCK_FILE, record)
     return record
 

@@ -53,3 +53,39 @@ def test_result_recording_failure_stops_later_launches(tmp_path: Path, monkeypat
     run.run_one(block.cells[1])
     assert launched == [block.cells[0].run_id]
     assert "injected record failure" in (run.stopped_reason or "")
+
+
+def test_runner_cleanup_escalates_and_preserves_exception(tmp_path: Path) -> None:
+    design = bench.load_design(Path("experiments/configs/concurrency-scaling-v2.md"))
+    block = bench.planned_blocks(design, "smoke")[0]
+    calls: list[str] = []
+
+    class Process:
+        pid = 123
+        returncode: int | None = None
+
+        def poll(self) -> None:
+            return None
+
+        def terminate(self) -> None:
+            calls.append("terminate")
+
+        def kill(self) -> None:
+            calls.append("kill")
+            self.returncode = -9
+
+        def wait(self, timeout: int) -> int:
+            calls.append("wait")
+            if self.returncode is None:
+                raise subprocess.TimeoutExpired("child", timeout)
+            return self.returncode
+
+    def runner(_cell: Any, _raw: Any, _env: Any, launch: Any) -> Any:
+        launch(Process)
+        raise OSError("original error")
+
+    run = bench.BlockRun(design, block, tmp_path, runner)
+    with pytest.raises(OSError, match="original error") as exc:
+        run.run_one(block.cells[0])
+    assert calls == ["terminate", "wait", "kill", "wait"]
+    assert "cleanup still requires verification" in exc.value.__notes__[0]

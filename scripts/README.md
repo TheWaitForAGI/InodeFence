@@ -32,9 +32,24 @@ H1 controller와 host broker의 cleanup inspect에 timeout·출력 잘림·오�
 `inodefence-cleanup-attempt` JSON을 stderr에 즉시 출력하고, cleanup이 끝나거나 실패하면
 `inodefence-cleanup-diagnostic` JSON에 각 조회와 최종 결과를 함께 남긴다. H1의 기존 캠페인
 로그가 이 stderr를 받으며 broker stdout 프로토콜과 보고서/abort 분류는 바뀌지 않는다.
-이상 없는 cleanup은 추가 로그가 없다. 레코드에는 명령 출력 원문 대신 return code, timeout,
-truncation 및 부재 확인이 들어간다. stderr 전달·저장 실패나 첫 응답 전 강제 종료에서는
+이상 없는 cleanup은 추가 로그가 없다. 진단에는 return code, timeout, truncation, 부재 확인과
+사용 가능한 stderr가 들어간다. stderr 전달·저장 실패나 첫 응답 전 강제 종료에서는
 기록이 보장되지 않으며, 기록이 없다는 것을 timeout이 없었다는 증거로 해석하지 않는다.
+
+H1 호스트 smoke 종료 시 Docker CLI에 엔지니어링 deadline을 둔다: evidence 존재 확인 및
+자원 inspect 30초, `cp` 300초, controller/volume 삭제 60초. 각 timeout은 CLI 프로세스 그룹을
+종료하며 daemon 작업 완료를 뜻하지 않는다. 이 값은 정상 호출의 전체 지연 분포가 아닌 기존
+10초 broker 제한과 70–108 MB 복사 규모에 근거한 후보이며, 측정 조건이 바뀌므로 과거 결과와
+동등하다고 가정하지 않는다. 삭제 후 부재를 확정하지 못하면 `INODEFENCE_CLEANUP_UNKNOWN`을
+남기고 H1은 추가 시작을 중단한다. 종료 전의 build, create, setup 호출에는 이 cleanup deadline이
+적용되지 않는다. 기존 증거 경로를 덮어쓰지 않는다.
+
+H1 블록에 시작되지 않은 셀이 있거나 runner·기록 경로가 예외를 내면 별도
+`block.incomplete.json` (`inodefence-h1-incomplete-v1`, `finished=false`)을 게시한다. 최초 stop,
+시작·종료 확인·미확인 셀, 예외, 잔여 자원 조회 및 확인 필요 상태를 기록한다. 분석기는 이를
+정상 블록에 합산하지 않고 선택 및 fallback을 null로 중단한다. 원자적 이름 게시와 파일 fsync는
+시도하지만 SIGKILL, 전원 장애, 저장소 오류 시 기록의 존재나 디렉터리 내구성은 보장하지 않는다.
+기록 자체가 실패해도 디렉터리만 존재하는 블록은 미완료로 남아 재실행을 거부한다.
 
 ## 현재 상태
 

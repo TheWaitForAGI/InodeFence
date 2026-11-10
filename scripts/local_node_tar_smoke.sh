@@ -105,6 +105,7 @@ esac
 STEP="setup"
 CREATED_VOLUME=0
 CREATED_CONTROLLER=0
+OWNER_TOKEN=""
 
 dk() {
   docker --context "$CONTEXT" "$@"
@@ -120,48 +121,123 @@ host() {
     --context "$CONTEXT" --controller "$CONTROLLER" --volume "$VOLUME" "$@")
 }
 
+# Engineering deadlines, in seconds: metadata/exec 30, evidence copy 300,
+# removal 60. They bound client time, not the daemon's completion.
+cleanup_dk() {
+  local deadline="$1"
+  shift
+  "$PYTHON" "$REPO_ROOT/scripts/bounded_cleanup_command.py" "$deadline" \
+    docker --context "$CONTEXT" "$@"
+}
+
 cleanup() {
-  local status=$?
-  local cleanup_status
+  local status=$? rc inspection temporary source destination container_id label controller_owned=0
   set +e
   if [ "$status" -ne 0 ]; then
     echo "FAILED at step: $STEP (exit $status)" >&2
   fi
-  if [ "$CREATED_CONTROLLER" -eq 1 ] && [ "$MODE" != effect ] &&
-    dk exec "$CONTROLLER" test -e "$CONTROLLER_EVIDENCE"; then
-    mkdir -p "$EVIDENCE_DIR"
-    # docker cp prints "Successfully copied" only on a TTY; the evidence line below says it.
-    if dk cp "$CONTROLLER:$CONTROLLER_EVIDENCE" "$HOST_EVIDENCE" >/dev/null; then
-      echo "evidence: $HOST_EVIDENCE"
+  if [ "$CREATED_CONTROLLER" -eq 1 ]; then
+    inspection=$(cleanup_dk 30 container inspect --format \
+      '{{.Id}} {{index .Config.Labels "org.inodefence.smoke-owner"}}' "$CONTROLLER" 2>&1)
+    rc=$?
+    read -r container_id label <<< "$inspection"
+    if [ "$rc" -ne 0 ] || [ "$label" != "$OWNER_TOKEN" ] ||
+       ! [[ "$container_id" =~ ^[0-9a-f]{64}$ ]]; then
+      echo "INODEFENCE_CLEANUP_UNKNOWN: controller ownership: $inspection" >&2
+      [ "$status" -ne 0 ] || status=125
     else
-      echo "evidence copy failed: $CONTROLLER_EVIDENCE" >&2
+      controller_owned=1
     fi
   fi
-  # demo / demo-historical: the per-step JSONL written before each next case
-  # (scripts/container_controller.py), kept even when the campaign aborts.
-  if [ "$CREATED_CONTROLLER" -eq 1 ] && { [ "$MODE" = demo ] || [ "$MODE" = demo-historical ]; } &&
-    dk exec "$CONTROLLER" test -e "${CONTROLLER_EVIDENCE%.json}.steps.jsonl"; then
-    mkdir -p "$EVIDENCE_DIR"
-    if dk cp "$CONTROLLER:${CONTROLLER_EVIDENCE%.json}.steps.jsonl" "${HOST_EVIDENCE%.json}.steps.jsonl" >/dev/null; then
-      echo "completed steps: ${HOST_EVIDENCE%.json}.steps.jsonl"
-    else
-      echo "steps copy failed: ${CONTROLLER_EVIDENCE%.json}.steps.jsonl" >&2
-    fi
+  if [ "$controller_owned" -eq 1 ] && [ "$MODE" != effect ]; then
+    for source in "$CONTROLLER_EVIDENCE" "${CONTROLLER_EVIDENCE%.json}.steps.jsonl"; do
+      if [ "$source" != "$CONTROLLER_EVIDENCE" ] && [ "$MODE" != demo ] &&
+         [ "$MODE" != demo-historical ]; then
+        continue
+      fi
+      inspection=$(cleanup_dk 30 exec "$container_id" sh -c \
+        'if test -e "$1"; then printf PRESENT; else printf ABSENT; fi' sh "$source")
+      rc=$?
+      if [ "$rc" -ne 0 ] || { [ "$inspection" != PRESENT ] && [ "$inspection" != ABSENT ]; }; then
+        echo "FAILED cleanup evidence inspection: $source (exit $rc)" >&2
+        [ "$rc" -ne 0 ] || rc=125
+        [ "$status" -ne 0 ] || status=$rc
+        continue
+      fi
+      [ "$inspection" = PRESENT ] || continue
+      destination="$HOST_EVIDENCE"
+      [ "$source" = "$CONTROLLER_EVIDENCE" ] || destination="${HOST_EVIDENCE%.json}.steps.jsonl"
+      if ! mkdir -p "$EVIDENCE_DIR"; then
+        [ "$status" -ne 0 ] || status=125
+        continue
+      fi
+      temporary=$(mktemp "$EVIDENCE_DIR/.inodefence-copy.XXXXXXXX")
+      rc=$?
+      if [ "$rc" -ne 0 ]; then
+        [ "$status" -ne 0 ] || status=$rc
+        continue
+      fi
+      cleanup_dk 300 cp "$container_id:$source" "$temporary" >/dev/null
+      rc=$?
+      if [ "$rc" -eq 0 ]; then
+        ln "$temporary" "$destination"
+        rc=$?
+      fi
+      rm -f "$temporary"
+      if [ "$rc" -ne 0 ]; then
+        echo "FAILED cleanup evidence copy: $source (exit $rc)" >&2
+        [ "$status" -ne 0 ] || status=$rc
+      else
+        echo "evidence: $destination"
+      fi
+    done
   fi
   if [ "$CREATED_CONTROLLER" -eq 1 ]; then
-    dk rm -f "$CONTROLLER" >/dev/null
-    cleanup_status=$?
-    if [ "$cleanup_status" -ne 0 ]; then
-      echo "FAILED cleanup: controller $CONTROLLER (exit $cleanup_status)" >&2
-      [ "$status" -ne 0 ] || status=$cleanup_status
+    if [ "$controller_owned" -eq 1 ]; then
+      cleanup_dk 60 rm -f "$container_id" >/dev/null
+      rc=$?
+      if [ "$rc" -ne 0 ]; then
+        echo "FAILED cleanup: controller $CONTROLLER (exit $rc)" >&2
+        [ "$status" -ne 0 ] || status=$rc
+      fi
+    fi
+    inspection=$(cleanup_dk 30 container inspect "$CONTROLLER" 2>&1)
+    rc=$?
+    case "$inspection" in
+      "Error: No such object: $CONTROLLER"|"Error: No such container: $CONTROLLER"|"Error response from daemon: No such container: $CONTROLLER"|$'[]\n'"Error response from daemon: No such container: $CONTROLLER")
+        [ "$rc" -eq 1 ] || rc=125 ;;
+      *) rc=125 ;;
+    esac
+    if [ "$rc" -ne 1 ]; then
+      echo "INODEFENCE_CLEANUP_UNKNOWN: controller $CONTROLLER: $inspection" >&2
+      [ "$status" -ne 0 ] || status=125
     fi
   fi
   if [ "$CREATED_VOLUME" -eq 1 ]; then
-    dk volume rm "$VOLUME" >/dev/null
-    cleanup_status=$?
-    if [ "$cleanup_status" -ne 0 ]; then
-      echo "FAILED cleanup: volume $VOLUME (exit $cleanup_status)" >&2
-      [ "$status" -ne 0 ] || status=$cleanup_status
+    inspection=$(cleanup_dk 30 volume inspect --format \
+      '{{index .Labels "org.inodefence.smoke-owner"}}' "$VOLUME" 2>&1)
+    rc=$?
+    if [ "$rc" -ne 0 ] || [ "$inspection" != "$OWNER_TOKEN" ]; then
+      echo "INODEFENCE_CLEANUP_UNKNOWN: volume ownership: $inspection" >&2
+      [ "$status" -ne 0 ] || status=125
+    else
+      cleanup_dk 60 volume rm "$VOLUME" >/dev/null
+      rc=$?
+      if [ "$rc" -ne 0 ]; then
+        echo "FAILED cleanup: volume $VOLUME (exit $rc)" >&2
+        [ "$status" -ne 0 ] || status=$rc
+      fi
+    fi
+    inspection=$(cleanup_dk 30 volume inspect "$VOLUME" 2>&1)
+    rc=$?
+    case "$inspection" in
+      "Error: No such volume: $VOLUME"|"Error: No such object: $VOLUME"|"Error response from daemon: get $VOLUME: no such volume"|$'[]\n'"Error response from daemon: get $VOLUME: no such volume")
+        [ "$rc" -eq 1 ] || rc=125 ;;
+      *) rc=125 ;;
+    esac
+    if [ "$rc" -ne 1 ]; then
+      echo "INODEFENCE_CLEANUP_UNKNOWN: volume $VOLUME: $inspection" >&2
+      [ "$status" -ne 0 ] || status=125
     fi
   fi
   if [ "$status" -eq 0 ]; then
@@ -210,9 +286,18 @@ if [ "$BUILD_ONLY" = 1 ]; then
 fi
 
 step "prepare controller"
-dk volume create "$VOLUME" >/dev/null
+OWNER_TOKEN="$("$PYTHON" -c 'import secrets; print(secrets.token_hex(16))')"
+dk volume create --label "org.inodefence.smoke-owner=$OWNER_TOKEN" "$VOLUME" >/dev/null
 CREATED_VOLUME=1
-dk run -d --name "$CONTROLLER" --user vscode --workdir /workspaces/InodeFence \
+volume_owner="$(cleanup_dk 30 volume inspect --format \
+  '{{index .Labels "org.inodefence.smoke-owner"}}' "$VOLUME")" || volume_owner=""
+if [ "$volume_owner" != "$OWNER_TOKEN" ] || [ -z "$OWNER_TOKEN" ]; then
+  CREATED_VOLUME=0
+  echo "INODEFENCE_CLEANUP_UNKNOWN: volume creation ownership could not be verified" >&2
+  exit 1
+fi
+dk run -d --name "$CONTROLLER" --label "org.inodefence.smoke-owner=$OWNER_TOKEN" \
+  --user vscode --workdir /workspaces/InodeFence \
   --env PYTHONPATH=/workspaces/InodeFence/src \
   --mount "type=bind,src=$REPO_ROOT,dst=/workspaces/InodeFence,readonly" \
   --mount "type=volume,src=$VOLUME,dst=/var/lib/inodefence" \

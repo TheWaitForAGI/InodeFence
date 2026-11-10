@@ -1,5 +1,6 @@
 """Deterministic H1 stop/start ordering checks without Docker."""
 
+import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -238,8 +239,10 @@ def test_real_watchdog_launch_wiring_denies_popen_after_sampler_stop(
     monkeypatch.setattr(bench, "residual_resources", list)
     monkeypatch.setattr(bench, "cell_env", cell_env)
     monkeypatch.setattr(bench.subprocess, "Popen", lambda *a, **k: launches.append((a, k)))
-    record = bench.run_block(design, block, tmp_path, "bash")
+    with pytest.raises(RuntimeError, match="block stopped before all cells started"):
+        bench.run_block(design, block, tmp_path, "bash")
+    record = json.loads((tmp_path / bench.INCOMPLETE_BLOCK_FILE).read_text())
     assert launches == []
     assert record["stopped_reason"] == "sampler"
-    assert all(cell["state"] == "not-run" for cell in record["cells"])
-    assert all(record["stop_order"] < cell["decision_order"] for cell in record["cells"])
+    assert all(cell["state"] == "not-run" for cell in record["cell_records"])
+    assert all(record["stop_order"] < cell["decision_order"] for cell in record["cell_records"])

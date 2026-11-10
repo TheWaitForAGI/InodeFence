@@ -292,7 +292,9 @@ def test_stage_gate_follows_the_decision(design: bench.Design, tmp_path: Path) -
     for block in bench.planned_blocks(design, bench.SMOKE_STAGE):
         path = tmp_path / block.stage / block.name
         path.mkdir(parents=True)
-        (path / bench.BLOCK_FILE).write_text(json.dumps({"stopped_reason": None}), encoding="utf-8")
+        (path / bench.BLOCK_FILE).write_text(
+            json.dumps({"stopped_reason": None, "finished": True}), encoding="utf-8"
+        )
     assert bench.stage_gate_problem(design, "A", tmp_path) is None
     assert "no analysis report" in (bench.stage_gate_problem(design, "B", tmp_path) or "")
     report = tmp_path / bench.REPORT_JSON
@@ -873,6 +875,7 @@ def _write_stage(
                 _write_cell(raw, design, run_id, seed, arm=arm, duration=duration, steps=steps)
             )
         record = {
+            "finished": True,
             "stage": stage,
             "index": index,
             "jobs": jobs,

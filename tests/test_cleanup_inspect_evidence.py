@@ -69,6 +69,14 @@ def test_successful_retry_preserves_both_inspect_attempts(capsys):
     assert len(client.calls) == 4
 
 
+def test_successful_retry_preserves_first_timeout_stderr(capsys):
+    first = CommandResult(-9, b"", b"initial diagnostic", timed_out=True)
+    client = Docker([first, present(), CommandResult(0, b"", b""), absent()])
+    remove_owned(client, "owned", "owner")
+    record = read_diagnostic(capsys)
+    assert record["inspections"][0]["stderr"] == "initial diagnostic"
+
+
 def test_timeout_is_flushed_before_retry_starts(capsys):
     class InspectDuringRetry(Docker):
         def run(self, args, timeout):

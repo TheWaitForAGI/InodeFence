@@ -1,0 +1,46 @@
+### ls /mnt; at 2026-11-11T14:08:49+09:00
+c
+d
+wsl
+wslg
+### Google Drive install
+ls: cannot access '/mnt/c/Program Files/Google/Drive File Stream': No such file or directory
+ls: cannot access '/mnt/c/Users/<winuser>/AppData/Local/Google/DriveFS': No such file or directory
+### tailscale status
+<tailscale-ip>   <host2>            <tailnet-account>@     windows  -
+<tailscale-ip>     <peer-a>            <tailnet-account>@     windows  -
+<tailscale-ip>  <peer-b>  <tailnet-account>@  linux    -
+rc=0
+### ssh client WSL
+/usr/bin/ssh
+/usr/bin/scp
+/usr/bin/rsync
+<ssh-key-file>
+<ssh-key-file>
+known_hosts
+known_hosts.old
+### rclone/gdrive
+### /mnt/d at 2026-11-11T14:09:02+09:00
+C:\ on /mnt/c type 9p (rw,noatime,aname=drvfs;path=C:\;uid=1000;gid=1000;symlinkroot=/mnt/,cache=0x5,access=client,msize=65536,trans=fd,rfd=6,wfd=6)
+### tailscale ping <peer-b>
+pong from <peer-b> (<tailscale-ip>) via DERP(tok) in 67ms
+pong from <peer-b> (<tailscale-ip>) via DERP(tok) in 67ms
+pong from <peer-b> (<tailscale-ip>) via DERP(tok) in 66ms
+direct connection not established
+### tcp22 probe
+tcp/22 open
+SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13.2
+### known_hosts entries (hashed?)
+<hashed-known-host>
+<hashed-known-host>
+<hashed-known-host>
+### LAN neighbors
+172.29.96.1 dev eth0 lladdr <mac> REACHABLE
+인터페이스: <lan-ip> --- 0x10
+  <lan-ip>           <mac>     동적
+### known_hosts lookup at 2026-11-11T14:09:10+09:00
+<tailscale-ip>: not in known_hosts
+<peer-b>: not in known_hosts
+<peer-b>: not in known_hosts
+### ssh config
+ls: cannot access '/home/<user>/.ssh/config': No such file or directory

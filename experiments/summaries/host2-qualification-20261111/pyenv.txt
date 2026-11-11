@@ -1,0 +1,18 @@
+### check_dev_env at 2026-11-11T14:09:43+09:00 cwd-sha 9c5c98138f2a1c618eb4711832ae27afdfbc0857
+drwx------ 2 <user> <user> 4096 Nov 11 01:08 /var/lib/inodefence
+Python 3.12.3
+=== InodeFence Environment Check ===
+OS: Linux 6.18.58.1-microsoft-standard-WSL2
+Architecture: x86_64
+Python: 3.12.3
+Interpreter: /home/<user>/.local/share/inodefence/host2-dev-venv/bin/python
+Runtime root: /var/lib/inodefence
+Hardlink device: 2096
+Hardlink inode: 241315
+Link count: 2
+Hardlink semantics: PASS
+Symlink semantics: PASS
+Shared-object effect: PASS
+Environment check: PASS
+rc=0
+0

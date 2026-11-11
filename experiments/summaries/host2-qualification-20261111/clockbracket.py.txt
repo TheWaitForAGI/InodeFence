@@ -1,0 +1,22 @@
+import subprocess, time, sys, json
+dur = float(sys.argv[1])
+ps = subprocess.Popen(["powershell.exe","-NoProfile","-Command",
+  "$f=[Diagnostics.Stopwatch]::Frequency; while(($l=[Console]::In.ReadLine()) -ne $null){ [Console]::Out.WriteLine(\"$([Diagnostics.Stopwatch]::GetTimestamp()) $f\"); [Console]::Out.Flush() }"],
+  stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
+def q():
+    best=None
+    for _ in range(15):
+        m0=time.clock_gettime(time.CLOCK_MONOTONIC); r0=time.clock_gettime(time.CLOCK_MONOTONIC_RAW)
+        ps.stdin.write("x\n"); ps.stdin.flush(); line=ps.stdout.readline()
+        m1=time.clock_gettime(time.CLOCK_MONOTONIC); r1=time.clock_gettime(time.CLOCK_MONOTONIC_RAW)
+        t,f=map(int,line.split()); w=m1-m0
+        if best is None or w<best["w"]: best=dict(w=w,m=(m0+m1)/2,r=(r0+r1)/2,sw=t/f,f=f)
+    return best
+q()
+a=q(); time.sleep(dur); b=q()
+dsw=b["sw"]-a["sw"]; dm=b["m"]-a["m"]; dr=b["r"]-a["r"]
+out=dict(target_s=dur,stopwatch_freq=a["f"],d_stopwatch_s=dsw,d_mono_s=dm,d_mono_raw_s=dr,
+ mono_rate_vs_sw_ppm=(dm/dsw-1)*1e6, raw_rate_vs_sw_ppm=(dr/dsw-1)*1e6,
+ bracket_width_s=[a["w"],b["w"]], uncertainty_ppm=(a["w"]+b["w"])/dsw*1e6)
+ps.stdin.close(); ps.wait()
+print(json.dumps(out,indent=1))

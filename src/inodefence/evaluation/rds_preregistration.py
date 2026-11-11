@@ -130,6 +130,15 @@ _WATCHDOG = "campaign_watchdog_seconds"
 _DISK_PAUSE = "disk_pause_fraction"
 _INTERIM = "interim_analysis"
 _EXECUTION_DEADLINE = "execution_deadline"
+# Two-host runs (one file, one sha256): ``host.<id>.jobs``, ``host.<id>.docker_engine`` and the
+# sha256 of the seed assignment file. The launcher refuses a host whose values differ.
+_HOST_KEY = "host."
+HOST_FIELDS = ("jobs", "docker_engine")
+REGISTERED_HOST_IDS = ("HOST1", "HOST2")
+_SEED_ASSIGNMENT_SHA = "seed_assignment_sha256"
+_SEED_ASSIGNMENT_RULE = "seed_assignment_rule"
+# Same strings as inodefence.evaluation.seed_assignment (train first; it registers a sha256).
+SEED_ASSIGNMENT_RULES = ("alternate-v1", "rh-proportional-v1")
 EXECUTION_MODES = ("per-case-container", "worker-pool")
 INTERIM_ANALYSIS_VALUES = ("forbidden", "allowed")
 # The measurement rules this engine implements (rds.py); a block may restate them
@@ -165,6 +174,8 @@ KNOWN_KEYS = frozenset(
         _DISK_PAUSE,
         _INTERIM,
         _EXECUTION_DEADLINE,
+        _SEED_ASSIGNMENT_SHA,
+        _SEED_ASSIGNMENT_RULE,
         *RULE_CONSTANTS,
     )
 )
@@ -209,6 +220,15 @@ class TargetSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class HostSpec:
+    """One host of a two-host run (``host.<id>.*``): its ``--jobs`` and Docker Engine version."""
+
+    host_id: str
+    jobs: int
+    docker_engine: str
+
+
+@dataclass(frozen=True, slots=True)
 class Preregistration:
     engine_sha: str
     image_digest: str | None
@@ -239,6 +259,16 @@ class Preregistration:
     event_threshold: int | None = None
     # D041 end-of-run rule, read by the launcher. See _execution_deadline.
     execution_deadline: datetime | None = None
+    # Two-host runs; empty for a one-host registration. See _parse_hosts.
+    hosts: tuple[HostSpec, ...] = ()
+    seed_assignment_rule: str | None = None
+    seed_assignment_sha256: str | None = None
+
+    def host(self, host_id: str) -> HostSpec | None:
+        for item in self.hosts:
+            if item.host_id == host_id:
+                return item
+        return None
 
     def target(self, target_id: str) -> TargetSpec | None:
         for item in self.targets:
@@ -446,6 +476,7 @@ def parse_preregistration(text: str) -> Preregistration:
         if key not in KNOWN_KEYS
         and not key.startswith(_ARM_KEY)
         and not key.startswith(_TARGET_KEY)
+        and not key.startswith(_HOST_KEY)
     )
     execution_mode = values.get(_EXECUTION_MODE)
     if execution_mode is not None and execution_mode not in EXECUTION_MODES:
@@ -465,6 +496,7 @@ def parse_preregistration(text: str) -> Preregistration:
     deadline = _execution_deadline(values)
     if deadline is not None and not targets:
         raise PreregistrationFormatError(f"{_EXECUTION_DEADLINE} requires targets.<id>.* keys")
+    hosts, assignment_rule, assignment_sha = _parse_hosts(values, jobs_max, bool(targets))
     return Preregistration(
         values["engine_sha"],
         image_digest,
@@ -494,7 +526,74 @@ def parse_preregistration(text: str) -> Preregistration:
         primary_endpoint=values.get(_PRIMARY_ENDPOINT),
         event_threshold=event_threshold,
         execution_deadline=deadline,
+        hosts=hosts,
+        seed_assignment_rule=assignment_rule,
+        seed_assignment_sha256=assignment_sha,
     )
+
+
+def _parse_hosts(
+    values: Mapping[str, str], jobs_max: int | None, multi_target: bool
+) -> tuple[tuple[HostSpec, ...], str | None, str | None]:
+    """``host.<id>.<field>`` groups, the assignment rule and its sha256 (fail-closed).
+
+    A file with host keys names both hosts, every field of each, ``seed_assignment_rule`` and a
+    ``jobs_max`` equal to the larger host ``jobs``; it uses the ``targets.<id>`` form.
+    ``alternate-v1`` (train) also registers ``seed_assignment_sha256``, fixed at freeze;
+    ``rh-proportional-v1`` (holdout) must not, because its file is made at GO. A file with none of
+    these keys is a one-host registration and parses as before.
+    """
+    keys = [key for key in values if key.startswith(_HOST_KEY)]
+    rule = values.get(_SEED_ASSIGNMENT_RULE)
+    sha = values.get(_SEED_ASSIGNMENT_SHA)
+    if not keys and rule is None and sha is None:
+        return (), None, None
+    if not keys or rule is None:
+        raise PreregistrationFormatError(
+            f"host.<id>.* keys and {_SEED_ASSIGNMENT_RULE} must be declared together"
+        )
+    if not multi_target:
+        raise PreregistrationFormatError("host.<id>.* keys require targets.<id>.* keys")
+    if rule not in SEED_ASSIGNMENT_RULES:
+        raise PreregistrationFormatError(
+            f"{_SEED_ASSIGNMENT_RULE} must be one of {SEED_ASSIGNMENT_RULES}"
+        )
+    if rule == SEED_ASSIGNMENT_RULES[0]:
+        if sha is None or re.fullmatch(r"[0-9a-f]{64}", sha) is None:
+            raise PreregistrationFormatError(
+                f"{_SEED_ASSIGNMENT_RULE} = {rule} needs {_SEED_ASSIGNMENT_SHA} (64 lowercase hex)"
+            )
+    elif sha is not None:
+        raise PreregistrationFormatError(
+            f"{_SEED_ASSIGNMENT_RULE} = {rule} is made at GO: no {_SEED_ASSIGNMENT_SHA} here"
+        )
+    fields: dict[str, dict[str, str]] = {}
+    for key in keys:
+        parts = key.split(".")
+        if len(parts) != 3 or parts[1] not in REGISTERED_HOST_IDS or parts[2] not in HOST_FIELDS:
+            raise PreregistrationFormatError(
+                f"{key}: expected host.<{'|'.join(REGISTERED_HOST_IDS)}>.<{'|'.join(HOST_FIELDS)}>"
+            )
+        fields.setdefault(parts[1], {})[parts[2]] = values[key]
+    hosts: list[HostSpec] = []
+    for host_id in REGISTERED_HOST_IDS:
+        declared = fields.get(host_id, {})
+        missing = [name for name in HOST_FIELDS if name not in declared]
+        if missing:
+            raise PreregistrationFormatError(f"host.{host_id}: missing {missing}")
+        jobs = _int(declared, "jobs")
+        if jobs < 1:
+            raise PreregistrationFormatError(f"host.{host_id}.jobs must be >= 1")
+        engine = declared["docker_engine"]
+        if not engine:
+            raise PreregistrationFormatError(f"host.{host_id}.docker_engine must not be empty")
+        hosts.append(HostSpec(host_id, jobs, engine))
+    if jobs_max != max(host.jobs for host in hosts):
+        raise PreregistrationFormatError(
+            f"{_JOBS_MAX} must equal the larger host.<id>.jobs "
+            f"({max(host.jobs for host in hosts)}), got {jobs_max}"
+        )
+    return tuple(hosts), rule, sha
 
 
 def _execution_deadline(values: Mapping[str, str]) -> datetime | None:

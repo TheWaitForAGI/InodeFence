@@ -1720,9 +1720,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             _index_mapping(args.index, "deadline") if args.index is not None else None,
         )
         # Records of the launcher that the result tables read; absent from older indexes.
+        # ``seed_assignment`` and ``hosts`` come from a two-host run (merge_host_indexes).
         registration = {
             key: value
-            for key in ("registered", "cell_completeness")
+            for key in ("registered", "cell_completeness", "seed_assignment", "hosts")
             if args.index is not None and (value := _index_mapping(args.index, key)) is not None
         }
         sources = [str(p) for p, _ in items]

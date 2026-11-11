@@ -217,6 +217,99 @@ def check_window(
     return report
 
 
+POOLED_COUNTS = (
+    "ended_cells",
+    "complete",
+    "abort",
+    "abort_watchdog",
+    "no_record",
+    "record_inconsistent",
+    "running_cells",
+    "awaiting_retry",
+)
+
+
+def _last_realtime(output: Path) -> float | None:
+    """The last whole line's realtime stamp in a host's exit record (clock reference only)."""
+    path = output / CELL_RESULTS_FILE
+    if not path.is_file():
+        return None
+    last = None
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            clocks = json.loads(line).get("clocks")
+        except (json.JSONDecodeError, AttributeError):
+            continue
+        if isinstance(clocks, Mapping) and isinstance(clocks.get("realtime"), int | float):
+            last = float(clocks["realtime"])
+    return last
+
+
+def pool_hosts(
+    reports: Mapping[str, Mapping[str, Any]], outputs: Mapping[str, Path], now: datetime
+) -> dict[str, Any]:
+    """Two hosts as one run (the D041 rule), plus a per-host alarm line; nothing stops a run.
+
+    The pooled counts are sums and the rate is recomputed from them. A host whose own counts meet
+    the same condition gets an alarm line, because the pool can hide one host failing outright.
+    Each host's last stamp against this checker's clock is shown as a reference, never used.
+    """
+    pooled: dict[str, Any] = {
+        key: sum(int(r[key]) for r in reports.values()) for key in POOLED_COUNTS
+    }
+    failed = pooled["abort"] + pooled["record_inconsistent"]
+    rate = failed / pooled["ended_cells"] if pooled["ended_cells"] else None
+    enough = pooled["ended_cells"] >= MIN_ENDED_CELLS
+    first = next(iter(reports.values()))
+    report: dict[str, Any] = {
+        "classification": first["classification"],
+        "now": first["now"],
+        "window_start": first["window_start"],
+        **pooled,
+        "infrastructure_failure_rate": rate,
+        "min_ended_cells_met": enough,
+        "stop_rate_reached": enough and rate is not None and rate >= STOP_RATE,
+        "infrastructure_stopped": any(r["infrastructure_stopped"] for r in reports.values()),
+        "hosts": {
+            host: {
+                "ended_cells": r["ended_cells"],
+                "infrastructure_failure_rate": r["infrastructure_failure_rate"],
+                "condition_met": bool(r["stop_rate_reached"]),
+                "infrastructure_stopped": r["infrastructure_stopped"],
+            }
+            for host, r in sorted(reports.items())
+        },
+        "host_alarms": [
+            f"경보: {host} 단독으로 종료 셀 {r['ended_cells']} ≥ {MIN_ENDED_CELLS}, "
+            f"실패율 {r['infrastructure_failure_rate']:.2f} ≥ {STOP_RATE:.2f} "
+            "(자동 정지 아님, 지웅 결정)"
+            for host, r in sorted(reports.items())
+            if r["stop_rate_reached"]
+        ],
+        "clock_reference": {
+            host: {
+                "last_realtime": None
+                if (last := _last_realtime(outputs[host])) is None
+                else _iso(last),
+                "checker_now_minus_last_seconds": None
+                if last is None
+                else round(now.timestamp() - last, 3),
+            }
+            for host in sorted(reports)
+        },
+    }
+    if all("after_stop" in r for r in reports.values()):
+        categories: dict[str, dict[str, Any]] = {}
+        for r in reports.values():
+            for category, value in r["after_stop"].items():
+                merged = categories.setdefault(category, {"total": 0})
+                merged["total"] += value["total"]
+                for key, pick in (("first_end_time", min), ("last_end_time", max)):
+                    merged[key] = pick(filter(None, (merged.get(key), value[key])))
+        report["after_stop"] = dict(sorted(categories.items()))
+    return report
+
+
 def _plan_cells(preregistration: Path, output: Path) -> dict[str, CellFiles]:
     prereg = load_preregistration(preregistration)
     if not prereg.targets:
@@ -269,23 +362,55 @@ def _load_cache(path: Path | None) -> dict[str, Any]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--preregistration", type=Path, required=True)
-    parser.add_argument("--output", type=Path, required=True, help="the run's output directory")
+    parser.add_argument("--output", type=Path, help="the run's output directory")
+    parser.add_argument(
+        "--host-output",
+        action="append",
+        default=[],
+        metavar="HOST=DIR",
+        help="two-host run: each host's output directory (replaces --output)",
+    )
     parser.add_argument("--after-stop", action="store_true", help="only after a stop was called")
     parser.add_argument("--out", type=Path, help="also write the result here")
     parser.add_argument("--cache", type=Path, help="verdicts by file size and time, for reruns")
     args = parser.parse_args(argv)
+    outputs: dict[str, Path] = {}
+    for item in args.host_output:
+        host, sep, path = item.partition("=")
+        if not sep or not host or not path or host in outputs:
+            parser.error(f"--host-output expects HOST=DIR once per host, got {item!r}")
+        outputs[host] = Path(path)
+    if (args.output is None) == (not outputs):
+        parser.error("give --output, or --host-output for each host, not both")
+    run_dirs = [args.output] if args.output is not None else list(outputs.values())
     for path in (args.out, args.cache):
-        problem = None if path is None else _write_problem(path, args.output)
-        if problem is not None:
-            print(f"{path}: {problem}", file=sys.stderr)
-            return 2
+        for run_dir in run_dirs:
+            problem = None if path is None else _write_problem(path, run_dir)
+            if problem is not None:
+                print(f"{path}: {problem}", file=sys.stderr)
+                return 2
     os.nice(19)  # this runs on the measured host
     cache = _load_cache(args.cache)
     try:
-        cells = _plan_cells(args.preregistration, args.output)
-        report = check_window(
-            args.output, cells, datetime.now(UTC), after_stop=args.after_stop, cache=cache
-        )
+        now = datetime.now(UTC)
+        if args.output is not None:
+            cells = _plan_cells(args.preregistration, args.output)
+            report = check_window(args.output, cells, now, after_stop=args.after_stop, cache=cache)
+        else:
+            report = pool_hosts(
+                {
+                    host: check_window(
+                        output,
+                        _plan_cells(args.preregistration, output),
+                        now,
+                        after_stop=args.after_stop,
+                        cache=cache,
+                    )
+                    for host, output in outputs.items()
+                },
+                outputs,
+                now,
+            )
     except (PreregistrationFormatError, OSError, ValueError) as error:
         print(str(error), file=sys.stderr)
         return 2

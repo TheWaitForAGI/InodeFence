@@ -135,6 +135,7 @@ from inodefence.evaluation.cell_completeness import (
 from inodefence.evaluation.cell_completeness import CELL_STATES as TARGET_CELL_STATES
 from inodefence.evaluation.rds import VOCABULARY_MUTATION_POLICY, RdsArm, RdsCellConfig
 from inodefence.evaluation.rds_preregistration import (
+    REGISTERED_HOST_IDS,
     CellRequest,
     Preregistration,
     PreregistrationFormatError,
@@ -144,6 +145,12 @@ from inodefence.evaluation.rds_preregistration import (
     preregistration_mismatches,
 )
 from inodefence.evaluation.rds_report import ReportFormatError, load_cell_files
+from inodefence.evaluation.seed_assignment import (
+    SeedAssignment,
+    SeedAssignmentError,
+    load_seed_assignment,
+    rule_problems,
+)
 from inodefence.provenance import capture_source
 
 DEFAULT_EXPERIMENT_ID = "exp0"
@@ -244,6 +251,9 @@ class Exp0Plan:
     version: str
     include_s_a: bool
     execution_mode: str = DEFAULT_EXECUTION_MODE
+    # Two-host runs: this host's share of the registered seeds (``seed_assignment``).
+    assignment: SeedAssignment | None = None
+    host_id: str | None = None
 
     @property
     def plan(self) -> str:
@@ -264,6 +274,22 @@ class Exp0Plan:
             return declared
         module = _worker_pool_module()
         return float(getattr(module, "DISK_PAUSE_FRACTION", DEFAULT_DISK_PAUSE_FRACTION))
+
+    @property
+    def run_seeds(self) -> tuple[int, ...]:
+        """Seeds this launcher runs: the host's assigned seeds, else every registered seed.
+
+        Every target and arm of a seed runs here, so a seed never spans two hosts.
+        """
+        if self.assignment is None or self.host_id is None:
+            return tuple(self.preregistration.seeds)
+        return self.assignment.seeds_for(self.host_id)
+
+    def host_fields(self) -> dict[str, Any]:
+        """Host id and assignment sha256 for every exit-record line of a two-host run."""
+        if self.assignment is None:
+            return {}
+        return {"host_id": self.host_id, "seed_assignment_sha256": self.assignment.sha256}
 
     @property
     def interim_forbidden(self) -> bool:
@@ -329,11 +355,11 @@ class Exp0Plan:
             order = (
                 [
                     (arms[(position + offset) % len(arms)], seed)
-                    for position, seed in enumerate(prereg.seeds)
+                    for position, seed in enumerate(self.run_seeds)
                     for offset in range(len(arms))
                 ]
                 if self.multi_target
-                else [(arm, seed) for arm in arms for seed in prereg.seeds]
+                else [(arm, seed) for arm in arms for seed in self.run_seeds]
             )
             for arm, seed in order:
                 cells.append(
@@ -452,6 +478,68 @@ def gate_mismatches(
             if item not in problems:
                 problems.append(item)
     return tuple(problems)
+
+
+def docker_engine_version(context: str | None) -> str:
+    """The Docker Engine (server) version this host would run cells on. Read-only."""
+    command = ["docker", *(["--context", context] if context else []), "version"]
+    done = subprocess.run(
+        [*command, "--format", "{{.Server.Version}}"],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    if done.returncode != 0 or not done.stdout.strip():
+        raise RuntimeError(done.stderr.strip() or f"exit {done.returncode}")
+    return done.stdout.strip()
+
+
+def host_mismatches(
+    plan: Exp0Plan,
+    *,
+    jobs: int,
+    engine_version: Callable[[], str],
+    go_decision: Mapping[str, Any] | None = None,
+) -> list[str]:
+    """A two-host registration's per-host values against this launcher call (fail-closed).
+
+    ``--jobs`` and the Docker Engine version must equal what the file registers for ``--host-id``,
+    and the assignment file must be the bytes the registered ``seed_assignment_rule`` gives
+    (``alternate-v1``: also the registered sha256; ``rh-proportional-v1``: from the GO decision
+    file's ``r_h``). A one-host registration returns nothing and queries nothing.
+    """
+    prereg = plan.preregistration
+    if not prereg.hosts:
+        return []
+    if plan.assignment is None or plan.host_id is None:
+        return ["two-host registration: --seed-assignment and --host-id are required"]
+    host = prereg.host(plan.host_id)
+    if host is None:
+        return [f"host {plan.host_id} is not registered"]
+    problems: list[str] = []
+    if jobs != host.jobs:
+        problems.append(f"jobs {jobs} != registered host.{host.host_id}.jobs {host.jobs}")
+    try:
+        engine = engine_version()
+    except (RuntimeError, OSError, subprocess.SubprocessError) as error:
+        problems.append(f"docker engine version unreadable: {error}")
+    else:
+        if engine != host.docker_engine:
+            problems.append(
+                f"docker engine {engine} != registered host.{host.host_id}.docker_engine "
+                f"{host.docker_engine}"
+            )
+    problems.extend(
+        rule_problems(
+            plan.assignment.data,
+            rule=prereg.seed_assignment_rule or "",
+            registered_seeds=prereg.seeds,
+            registered_sha256=prereg.seed_assignment_sha256,
+            go_decision=go_decision,
+        )
+    )
+    return problems
 
 
 def read_ledger(path: Path | None) -> tuple[str | None, str | None]:
@@ -920,16 +1008,18 @@ def write_registration(
         "analysis_plan": plan.analysis_plan(),
         "cells": [cell.run_id for cell in plan.cells()],
     }
+    if plan.assignment is not None:
+        record["seed_assignment"] = plan.assignment.record(plan.host_id)
     deadline = plan.preregistration.execution_deadline
     if deadline is not None:
         record["execution_deadline"] = deadline.isoformat()
     if path.is_file():
         existing = json.loads(path.read_text(encoding="utf-8"))
-        for key in ("preregistration_sha256", "engine_sha", "image_digest"):
-            if existing.get(key) != record[key]:
+        for key in ("preregistration_sha256", "engine_sha", "image_digest", "seed_assignment"):
+            if existing.get(key) != record.get(key):
                 raise SystemExit(
                     f"{output} was registered under a different {key} "
-                    f"({existing.get(key)!r} != {record[key]!r}); use a new directory"
+                    f"({existing.get(key)!r} != {record.get(key)!r}); use a new directory"
                 )
         record["created_at"] = existing.get("created_at")
         record["invocations"] = int(existing.get("invocations", 0)) + 1
@@ -1089,7 +1179,7 @@ def _print_dry_run(
     cells = plan.cells()
     prereg = plan.preregistration
     print(
-        f"plan={plan.plan} cells={len(cells)} pending={len(pending)} seeds={list(prereg.seeds)} "
+        f"plan={plan.plan} cells={len(cells)} pending={len(pending)} seeds={list(plan.run_seeds)} "
         f"budget={prereg.budget} arms={[a.label for a in plan.arms()]} "
         f"vocabulary={prereg.vocabulary_mode.value} execution_mode={plan.execution_mode} "
         f"watchdog_seconds={plan.watchdog_seconds:.0f} "
@@ -1098,6 +1188,11 @@ def _print_dry_run(
     )
     if prereg.execution_deadline is not None:
         print(f"execution_deadline={prereg.execution_deadline.isoformat()}")
+    if plan.assignment is not None:
+        print(
+            f"seed_assignment host={plan.host_id} sha256={plan.assignment.sha256} "
+            f"rule={plan.assignment.rule} registered_seeds={len(prereg.seeds)}"
+        )
     print(f"warmup: BUILD_ONLY=1 bash {SCRIPT} demo-historical")
     pending_ids = {cell.run_id for cell in pending}
     for cell in cells:
@@ -1198,6 +1293,24 @@ def main(argv: list[str] | None = None) -> int:
         help="defaults to the file's execution_mode (else per-case-container); must match it",
     )
     parser.add_argument("--jobs", type=int, default=DEFAULT_JOBS, help="<= the file's jobs_max")
+    parser.add_argument(
+        "--seed-assignment",
+        type=Path,
+        default=None,
+        help="two-host runs: the frozen seed assignment file (its sha256 is registered)",
+    )
+    parser.add_argument(
+        "--go-decision",
+        type=Path,
+        default=None,
+        help="holdout two-host runs: the GO decision file whose r_h made the assignment",
+    )
+    parser.add_argument(
+        "--host-id",
+        choices=REGISTERED_HOST_IDS,
+        default=None,
+        help="two-host runs: which host this is; runs only its assigned seeds",
+    )
     parser.add_argument("--skip-build", action="store_true")
     parser.add_argument("--python", default=None)
     parser.add_argument("--context", default=None)
@@ -1245,8 +1358,39 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--include-s-a requested but the preregistration declares no arm.S-a")
     execution_mode = args.execution_mode or prereg.execution_mode or DEFAULT_EXECUTION_MODE
     file_sha = sha256(args.preregistration.read_bytes()).hexdigest()
+    if (args.seed_assignment is None) != (args.host_id is None):
+        parser.error("--seed-assignment and --host-id go together")
+    assignment: SeedAssignment | None = None
+    if args.seed_assignment is not None:
+        if not prereg.hosts:
+            print(
+                "--seed-assignment needs a registration with host.<id>.* keys and "
+                "seed_assignment_sha256",
+                file=sys.stderr,
+            )
+            return 2
+        try:
+            assignment = load_seed_assignment(args.seed_assignment, prereg.seeds)
+        except (SeedAssignmentError, OSError) as error:
+            print(f"seed assignment unusable: {error}", file=sys.stderr)
+            return 2
+    go_decision: dict[str, Any] | None = None
+    if args.go_decision is not None:
+        try:
+            loaded = json.loads(args.go_decision.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            print(f"GO decision file unusable: {error}", file=sys.stderr)
+            return 2
+        go_decision = loaded if isinstance(loaded, dict) else {}
     plan = Exp0Plan(
-        prereg, args.preregistration, file_sha, args.version, args.include_s_a, execution_mode
+        prereg,
+        args.preregistration,
+        file_sha,
+        args.version,
+        args.include_s_a,
+        execution_mode,
+        assignment=assignment,
+        host_id=args.host_id,
     )
     source = capture_source()
     target_digests: dict[str, str] = {}
@@ -1282,6 +1426,15 @@ def main(argv: list[str] | None = None) -> int:
         target_digests=target_digests,
         ledger=read_ledger(ledger_path),
     )
+    mismatches = [
+        *mismatches,
+        *host_mismatches(
+            plan,
+            jobs=args.jobs,
+            engine_version=lambda: docker_engine_version(args.context),
+            go_decision=go_decision,
+        ),
+    ]
     if prereg.unknown_keys:
         print(
             "warning: unknown preregistration keys (not compared): "
@@ -1377,6 +1530,11 @@ def main(argv: list[str] | None = None) -> int:
                     },
                     "targets": [target_record(target) for target in plan.targets()],
                     "analysis_plan": plan.analysis_plan(),
+                    **(
+                        {"seed_assignment": plan.assignment.record(plan.host_id)}
+                        if plan.assignment is not None
+                        else {}
+                    ),
                     **(
                         {
                             "deadline": deadline_record(
@@ -1574,6 +1732,7 @@ def main(argv: list[str] | None = None) -> int:
                 "event": INFRASTRUCTURE_RESUME_EVENT,
                 "approval_ref": args.resume_after_stop,
                 "clocks": _clock_stamp(),
+                **plan.host_fields(),
             },
         )
     disk_pauses: dict[str, int] = {}
@@ -1626,6 +1785,7 @@ def main(argv: list[str] | None = None) -> int:
                         "attempt": next_attempt,
                         "jobs": args.jobs,  # matrix.json is overwritten on resume
                         "clocks": _clock_stamp(),
+                        **plan.host_fields(),
                     },
                 )
             ):
@@ -1643,6 +1803,7 @@ def main(argv: list[str] | None = None) -> int:
                     "returncode": result.returncode,
                     "watchdog_fired": result.watchdog_fired,
                     "wall_seconds": round(result.wall_seconds, 3),
+                    **plan.host_fields(),
                 },
             )
             check = target_cell_check(plan, cell, output, read_cell_results(path))
@@ -1653,7 +1814,12 @@ def main(argv: list[str] | None = None) -> int:
         if reason is not None:
             append_cell_result(
                 output,
-                {"event": INFRASTRUCTURE_STOP_EVENT, "reason": reason, "clocks": _clock_stamp()},
+                {
+                    "event": INFRASTRUCTURE_STOP_EVENT,
+                    "reason": reason,
+                    "clocks": _clock_stamp(),
+                    **plan.host_fields(),
+                },
             )
         return result
 
@@ -1679,6 +1845,11 @@ def main(argv: list[str] | None = None) -> int:
                     "system": os.uname().sysname,
                     "release": os.uname().release,
                 },
+                **(
+                    {"seed_assignment": plan.assignment.record(plan.host_id)}
+                    if plan.assignment is not None
+                    else {}
+                ),
                 "skipped_complete": skipped,
                 "skipped_final_aborts": skipped_final,
                 "archived_attempts": {k: v for k, v in archived.items() if v is not None},

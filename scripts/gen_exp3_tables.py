@@ -26,6 +26,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 REPO = Path(__file__).resolve().parents[1]
@@ -306,6 +307,83 @@ def _go_decision_time(path: Path) -> tuple[str, float]:
     return text, decided_at.timestamp()
 
 
+@dataclass(frozen=True, slots=True)
+class GoClock:
+    """D043 values over one or two hosts: ``r`` sums each host's ``recorded_h / T_up,h``.
+
+    Each host keeps its own span and its own registered stop gaps, so a stop on one host never
+    removes the other host's running time. ``H_rem`` starts at the later host's last activity.
+    One host gives exactly the one-host values.
+    """
+
+    attempted_cells: int
+    unresumed: bool
+    rates: Mapping[str, float]  # r_h, exec/h (realtime); key "" for a one-host run.
+    rate_wall: float
+    last_activity: float
+    stops: int
+    gap_seconds: float
+
+    @property
+    def rate(self) -> float:
+        return sum(self.rates.values())
+
+
+def _go_clock(inputs: "Inputs", report: Mapping[str, Any], recorded: int) -> GoClock:
+    if not inputs.host_cell_results:
+        clock = _run_clock(_result_lines(inputs.cell_results))
+        if clock.t_wall <= 0 or clock.t_up <= 0 or not recorded:
+            raise TableInputError("the run span and step counts must be positive")
+        return GoClock(
+            clock.attempted_cells,
+            clock.unresumed,
+            {"": recorded / (clock.t_up / 3600)},
+            recorded / (clock.t_wall / 3600),
+            clock.last_activity,
+            clock.stops,
+            clock.gap_seconds,
+        )
+    hosts = _field(report, "hosts")
+    if not isinstance(hosts, Mapping) or set(hosts) != set(inputs.host_cell_results):
+        raise TableInputError("cell results hosts differ from the report's merged hosts")
+    clocks: dict[str, RunClock] = {}
+    host_recorded: dict[str, int] = {}
+    for host, path in sorted(inputs.host_cell_results.items()):
+        lines = _result_lines(path)
+        if any(row.get("host_id") not in (None, host) for row in lines):
+            raise TableInputError(f"{path}: lines from another host than {host}")
+        clocks[host] = _run_clock(lines)
+        host_recorded[host] = _field(hosts, host, "cell_completeness", "recorded_steps")
+        if clocks[host].t_wall <= 0 or clocks[host].t_up <= 0 or not host_recorded[host]:
+            raise TableInputError(f"{host}: the run span and step counts must be positive")
+    if sum(host_recorded.values()) != recorded:
+        raise TableInputError("per-host recorded steps do not add up to the pooled count")
+    return GoClock(
+        sum(c.attempted_cells for c in clocks.values()),
+        any(c.unresumed for c in clocks.values()),
+        {h: host_recorded[h] / (c.t_up / 3600) for h, c in clocks.items()},
+        sum(host_recorded[h] / (c.t_wall / 3600) for h, c in clocks.items()),
+        max(c.last_activity for c in clocks.values()),
+        sum(c.stops for c in clocks.values()),
+        sum(c.gap_seconds for c in clocks.values()),
+    )
+
+
+def go_rates(inputs: "Inputs") -> dict[str, str]:
+    """Per-host ``r_h`` as fixed decimal text, the input of the holdout seed split.
+
+    Refused when GO has no value: an unresumed stop on any host, or a one-host run.
+    """
+    report = inputs.report
+    recorded = _field(report, "cell_completeness", "recorded_steps")
+    clock = _go_clock(inputs, report, recorded)
+    if clock.unresumed:
+        raise TableInputError(f"{GO_NOT_COMPUTED}: 인프라 정지 미재개. 할당을 만들지 않는다")
+    if "" in clock.rates:
+        raise TableInputError("a seed split needs per-host cell results (--host-cell-results)")
+    return {host: f"{rate:.6f}" for host, rate in clock.rates.items()}
+
+
 def t_exp3_2(inputs: "Inputs") -> list[str]:
     report = inputs.report
     target = _train_target(report)
@@ -322,15 +400,19 @@ def t_exp3_2(inputs: "Inputs") -> list[str]:
     registered = _field(report, "registered")
     budget = _nullable(target.registered, "budget") or _field(registered, "budget")
     recorded = _field(completeness, "recorded_steps")
-    clock = _run_clock(_result_lines(inputs.cell_results))
+    clock = _go_clock(inputs, report, recorded)
     planned = clock.attempted_cells * budget
     not_started = _field(completeness, "cells") - clock.attempted_cells
     if not_started < 0:
         raise TableInputError("more cells started than the report's cells: not the same run")
-    if clock.t_wall <= 0 or clock.t_up <= 0 or not recorded or not planned:
+    if not planned:
         raise TableInputError("the run span and step counts must be positive")
-    rate_wall = recorded / (clock.t_wall / 3600)
+    rate_wall = clock.rate_wall
     ratio = recorded / planned
+    # D045: the GO abort input is over attempted cells (a start line), unstarted cells out of both
+    # sides; aborts include no-record cells. The whole-registration rate stays as a reference row.
+    failures = _field(completeness, "aborts") + _field(completeness, "record_inconsistent")
+    attempted_rate = failures / clock.attempted_cells
     failure_rate = _field(completeness, "infrastructure_failure_rate")
     if clock.unresumed:
         # D043 condition 6: no normal resume is assumed, so these cells have no value.
@@ -338,7 +420,7 @@ def t_exp3_2(inputs: "Inputs") -> list[str]:
         decision_lines: list[str] = []
         result = f"{GO_NOT_COMPUTED}: 인프라 정지 미재개. GO 미적용, EXP-2 미시작"
     else:
-        rate = recorded / (clock.t_up / 3600)
+        rate = clock.rate
         deadline = datetime.fromisoformat(_field(report, "deadline", "execution_deadline"))
         decided_text, decided_at = _go_decision_time(inputs.go_decision)
         remaining = (deadline.timestamp() - max(clock.last_activity, decided_at)) / 3600
@@ -353,10 +435,20 @@ def t_exp3_2(inputs: "Inputs") -> list[str]:
         ["e: 기록/계획 step 비율", _ratio(ratio), "입력"],
         ["H_rem: GO 판정 시점부터 실행 마감까지 호스트 시간(실시간, h)", remaining_text, "입력"],
         ["용량 ⌊H_rem·r÷(6000·e)⌋", capacity_text, "≥ 76"],
-        ["인프라 실패 비율 (abort + 기록 어긋남)/전체 셀", _ratio(failure_rate), "≤ .45"],
+        [
+            "인프라 실패 비율 (abort + 기록 어긋남 + 무기록)/시도한 셀",
+            _ratio(attempted_rate),
+            "≤ .45",
+        ],
+        ["참고: 인프라 실패 비율/등록 전체 셀(판정 입력 아님)", _ratio(failure_rate), "기록"],
         ["시작하지 않은 셀", not_started, "기록"],
         ["결과", result, "W3가 적용해 LOG에 남긴다"],
     ]
+    if "" not in clock.rates and not clock.unresumed:
+        rows[1:1] = [
+            [f"r_{host}: {host} 처리량(실시간, exec/h)", f"{value:.0f}", "r = Σ r_h"]
+            for host, value in sorted(clock.rates.items())
+        ]
     return [
         "# 표 7-B2. GO 판정 입력",
         "",
@@ -590,8 +682,16 @@ def t_exp2_4(inputs: "Inputs") -> list[str]:
 
 
 def t_exp2_5(inputs: "Inputs") -> list[str]:
+    # monotonic runs at a different rate on each host, so a two-host run gets one table per host
+    # from that host's own index; a merged report is refused.
+    hosts = inputs.report.get("hosts")
+    if isinstance(hosts, Mapping) and len(hosts) > 1:
+        raise TableInputError("T-EXP2-5 is per host: analyse each host's own index")
     target = _target(inputs.report, "holdout")
-    lines = ["# EXP-2 holdout 인프라 측정", "", MONOTONIC_NOTE, ""]
+    assignment = inputs.report.get("seed_assignment")
+    host = assignment.get("host_id") if isinstance(assignment, Mapping) else None
+    title = "# EXP-2 holdout 인프라 측정" + (f" ({host})" if host else "")
+    lines = [title, "", MONOTONIC_NOTE, ""]
     if target.section is None:
         return [*lines, *_no_cells_line(inputs.report)]
     section = target.section
@@ -628,6 +728,8 @@ class Inputs:
     cell_results: Path
     hand_input: Path
     go_decision: Path
+    # Two-host runs: each host's exit record, keyed by host id (merge_host_indexes).
+    host_cell_results: Mapping[str, Path] = MappingProxyType({})
 
 
 @dataclass(frozen=True, slots=True)
@@ -659,6 +761,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--artifact", required=True, choices=sorted(TABLES))
     parser.add_argument("--report", type=Path, help="analyze_exp0 --index --format json output")
     parser.add_argument("--cell-results", type=Path, default=TRAIN_CELL_RESULTS)
+    parser.add_argument(
+        "--host-cell-results",
+        action="append",
+        default=[],
+        metavar="HOST=PATH",
+        help="two-host run: each host's cell-results.jsonl (replaces --cell-results)",
+    )
+    parser.add_argument(
+        "--go-rates-out",
+        type=Path,
+        help="T-EXP3-2, two hosts: write the per-host r_h text that splits the holdout seeds",
+    )
     parser.add_argument("--hand-input", type=Path, default=HOLDOUT_HAND_INPUT)
     parser.add_argument("--go-decision", type=Path, default=GO_DECISION)
     parser.add_argument("--out", type=Path)
@@ -666,8 +780,25 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         report = _load_report(args.report or TABLES[args.artifact].report)
-        inputs = Inputs(report, args.cell_results, args.hand_input, args.go_decision)
+        host_files: dict[str, Path] = {}
+        for item in args.host_cell_results:
+            host, sep, path = item.partition("=")
+            if not sep or not host or not path or host in host_files:
+                raise TableInputError(
+                    f"--host-cell-results expects HOST=PATH once per host: {item}"
+                )
+            host_files[host] = Path(path)
+        inputs = Inputs(report, args.cell_results, args.hand_input, args.go_decision, host_files)
         text = render(args.artifact, inputs)
+        if args.go_rates_out is not None:
+            if args.artifact != "T-EXP3-2":
+                raise TableInputError("--go-rates-out goes with T-EXP3-2")
+            args.go_rates_out.parent.mkdir(parents=True, exist_ok=True)
+            args.go_rates_out.write_text(
+                json.dumps({"rates_exec_per_hour": go_rates(inputs)}, indent=2, sort_keys=True)
+                + "\n",
+                encoding="utf-8",
+            )
     except TableInputError as error:
         print(f"{args.artifact}: {error}", file=sys.stderr)
         return 2

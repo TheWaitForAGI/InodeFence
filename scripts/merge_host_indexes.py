@@ -1,0 +1,325 @@
+"""Merge the two hosts' run directories of one two-host registration into one analysable index.
+
+Each host runs ``run_exp0 --seed-assignment FILE --host-id HOSTn`` into its own directory. This tool
+checks that the two directories are halves of the same registered run, then writes one index that
+``analyze_exp0 --index`` reads like a one-host index:
+
+    python -m scripts.merge_host_indexes --preregistration exp2-v1.md \\
+        --seed-assignment exp2-v1.assignment.json \\
+        --host HOST1=<run dir> --host HOST2=<run dir> --output <merged dir>
+
+Refused (exit 2, nothing written): an assignment file that is not what the registered
+``seed_assignment_rule`` gives (``--go-decision`` for ``rh-proportional-v1``), a different
+preregistration sha256 or assignment sha256 in a
+directory, a directory recorded under another host id, a seed in both directories or outside its
+host's assignment, a run id in both, an exit-record line without this host's id and assignment
+sha256, or launcher records that differ where the registration fixes them.
+
+Incomplete (exit 1, written with ``merge.complete = false`` and ``g1_verdict.pass = false``): a host
+directory not given yet, or the hosts' seeds not covering the assignment. Seeds are never moved
+from one host to the other here.
+
+Pooled records follow the one-host definitions over the union of cells: cell completeness counts
+are sums and the failure rate is recomputed from the sums; a registered deadline excludes the union
+of the hosts' excluded seed blocks. Each host's own records stay under ``hosts.<id>``.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from collections.abc import Mapping, Sequence
+from hashlib import sha256
+from pathlib import Path
+from typing import Any
+
+from inodefence.evaluation.cell_completeness import CELL_RESULTS_FILE
+from inodefence.evaluation.rds_preregistration import (
+    PreregistrationFormatError,
+    load_preregistration,
+)
+from inodefence.evaluation.seed_assignment import (
+    HOST_IDS,
+    SeedAssignment,
+    SeedAssignmentError,
+    load_seed_assignment,
+    rule_problems,
+)
+
+REGISTRATION_FILE = "registration.json"
+INDEX_PATH = Path("summaries") / "index.json"
+# Launcher records that must be byte-equal across the hosts (they come from the registration).
+SHARED_KEYS = ("preregistration", "targets", "analysis_plan", "registered", "plan")
+COUNT_KEYS = (
+    "cells",
+    "complete",
+    "aborts",
+    "watchdog",
+    "no_record",
+    "record_inconsistent",
+    "unattempted",
+    "aborts_plus_inconsistent",
+    "unknown_outcome_steps",
+    "recorded_steps",
+)
+
+
+class MergeRefused(ValueError):
+    """The directories are not two halves of one registered two-host run."""
+
+
+def _read_json(path: Path) -> Any:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise MergeRefused(f"{path}: {error}") from error
+
+
+def _check_lines(run_dir: Path, host_id: str, assignment: SeedAssignment) -> None:
+    """Every exit-record line names this host and the assignment it ran under."""
+    path = run_dir / CELL_RESULTS_FILE
+    if not path.is_file():
+        return
+    lines = path.read_text(encoding="utf-8").splitlines()
+    for number, line in enumerate(lines, 1):
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            if number == len(lines):
+                continue  # The launcher forgives only a cut last line; so does this check.
+            raise MergeRefused(f"{path}:{number}: unreadable line") from None
+        if row.get("host_id") != host_id or row.get("seed_assignment_sha256") != (
+            assignment.sha256
+        ):
+            raise MergeRefused(
+                f"{path}:{number}: line is not from {host_id} under assignment "
+                f"{assignment.sha256[:12]}…"
+            )
+
+
+def load_host(
+    run_dir: Path, host_id: str, prereg_sha: str, assignment: SeedAssignment
+) -> dict[str, Any]:
+    """One host's index, after checking it belongs to this registration, host and assignment."""
+    registration = _read_json(run_dir / REGISTRATION_FILE)
+    index = _read_json(run_dir / INDEX_PATH)
+    for name, record in (("registration", registration), ("index", index)):
+        recorded = record.get("seed_assignment") if isinstance(record, dict) else None
+        if not isinstance(recorded, dict):
+            raise MergeRefused(f"{run_dir}: {name} has no seed_assignment record")
+        if recorded.get("sha256") != assignment.sha256:
+            raise MergeRefused(f"{run_dir}: {name} ran under another seed assignment")
+        if recorded.get("host_id") != host_id:
+            raise MergeRefused(
+                f"{run_dir}: {name} is from host {recorded.get('host_id')!r}, not {host_id}"
+            )
+    if registration.get("preregistration_sha256") != prereg_sha:
+        raise MergeRefused(f"{run_dir}: registered under another preregistration sha256")
+    if index.get("preregistration", {}).get("sha256") != prereg_sha:
+        raise MergeRefused(f"{run_dir}: index is from another preregistration sha256")
+    assigned = set(assignment.seeds_for(host_id))
+    cells = index.get("cells")
+    if not isinstance(cells, list):
+        raise MergeRefused(f"{run_dir}: index has no cell list")
+    seeds = {cell.get("seed") for cell in cells}
+    if not seeds <= assigned:
+        stray = sorted(seeds - assigned, key=str)
+        raise MergeRefused(f"{run_dir}: seeds {stray} are not assigned to {host_id}")
+    _check_lines(run_dir, host_id, assignment)
+    return index
+
+
+def _absolute(entry: Mapping[str, Any], run_dir: Path) -> dict[str, Any]:
+    pointer = entry.get("summary")
+    merged = dict(entry)
+    if isinstance(pointer, str):
+        merged["summary"] = str((run_dir / pointer).resolve())
+    return merged
+
+
+def _merge_completeness(parts: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
+    merged: dict[str, Any] = {
+        key: sum(int(p.get(key) or 0) for p in parts.values()) for key in COUNT_KEYS
+    }
+    merged["infrastructure_failure_rate"] = (
+        merged["aborts_plus_inconsistent"] / merged["cells"] if merged["cells"] else None
+    )
+    merged["infrastructure_stopped"] = any(p.get("infrastructure_stopped") for p in parts.values())
+    for key in ("infrastructure_stops", "infrastructure_resumes"):
+        merged[key] = [
+            {**event, "host_id": host} for host, p in parts.items() for event in p.get(key) or ()
+        ]
+    merged["inconsistent_checks"] = {
+        run_id: problems
+        for p in parts.values()
+        for run_id, problems in (p.get("inconsistent_checks") or {}).items()
+    }
+    return merged
+
+
+def _merge_deadline(parts: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
+    instants = {p.get("execution_deadline") for p in parts.values()}
+    if len(instants) != 1:
+        raise MergeRefused(
+            f"hosts recorded different execution deadlines {sorted(map(str, instants))}"
+        )
+    excluded: dict[str, set[int]] = {}
+    causes: dict[str, str] = {}
+    for p in parts.values():
+        for target, seeds in (p.get("excluded_seeds") or {}).items():
+            excluded.setdefault(target, set()).update(seeds)
+        causes.update(p.get("causes") or {})
+    return {
+        "execution_deadline": instants.pop(),
+        "passed": all(p.get("passed") for p in parts.values()),
+        "excluded_seeds": {target: sorted(seeds) for target, seeds in sorted(excluded.items())},
+        "causes": dict(sorted(causes.items())),
+    }
+
+
+def merge(
+    indexes: Mapping[str, Mapping[str, Any]],
+    run_dirs: Mapping[str, Path],
+    assignment: SeedAssignment,
+) -> dict[str, Any]:
+    """The merged index document. ``indexes`` holds the hosts given so far (one or both)."""
+    first = next(iter(indexes.values()))
+    for key in SHARED_KEYS:
+        values = {json.dumps(index.get(key), sort_keys=True) for index in indexes.values()}
+        if len(values) != 1:
+            raise MergeRefused(f"hosts differ in the registered record {key!r}")
+    cells: list[dict[str, Any]] = []
+    owner: dict[str, str] = {}
+    seed_host: dict[int, str] = {}
+    for host, index in indexes.items():
+        for entry in index["cells"]:
+            run_id, seed = entry.get("run_id"), entry.get("seed")
+            if run_id in owner:
+                raise MergeRefused(f"run id {run_id} is in {owner[run_id]} and {host}")
+            if seed_host.setdefault(seed, host) != host:
+                raise MergeRefused(f"seed {seed} has cells on {seed_host[seed]} and {host}")
+            owner[run_id] = host
+            cells.append(_absolute(entry, run_dirs[host]))
+    missing_hosts = [host for host in HOST_IDS if host not in indexes]
+    missing_seeds = sorted(set(assignment.all_seeds()) - set(seed_host))
+    reasons = [f"host {host} not merged yet" for host in missing_hosts]
+    if missing_seeds and not missing_hosts:
+        reasons.append(f"assigned seeds without cells: {missing_seeds}")
+    complete = not reasons
+    host_verdicts = {host: index.get("g1_verdict") or {} for host, index in indexes.items()}
+    verdict = {
+        "plan": first.get("plan"),
+        "cells": sum(int(v.get("cells") or 0) for v in host_verdicts.values()),
+        "complete": sum(int(v.get("complete") or 0) for v in host_verdicts.values()),
+        "aborts": sum(int(v.get("aborts") or 0) for v in host_verdicts.values()),
+        "invalid": sum(int(v.get("invalid") or 0) for v in host_verdicts.values()),
+        "vocabulary_equal_across_arms": all(
+            v.get("vocabulary_equal_across_arms") for v in host_verdicts.values()
+        ),
+        "pass": complete and all(v.get("pass") is True for v in host_verdicts.values()),
+        "rule": "both hosts merged, every assigned seed present, each host's own verdict passes",
+    }
+    document: dict[str, Any] = {
+        "schema_version": 1,
+        "label": first.get("label"),
+        **{key: first.get(key) for key in SHARED_KEYS if key in first},
+        "execution_mode": first.get("execution_mode"),
+        "seed_assignment": {**assignment.record(), "host_of_seed_checked": True},
+        "merge": {
+            "complete": complete,
+            "reasons": reasons,
+            "hosts": sorted(indexes),
+            "run_dirs": {host: str(path.resolve()) for host, path in run_dirs.items()},
+        },
+        "hosts": {
+            host: {
+                key: index.get(key)
+                for key in ("g1_verdict", "deadline", "cell_completeness", "interim")
+                if key in index
+            }
+            for host, index in indexes.items()
+        },
+        "cells": cells,
+        "outcomes_redacted": any(index.get("outcomes_redacted") for index in indexes.values()),
+        "g1_verdict": verdict,
+    }
+    completeness = {
+        host: index["cell_completeness"]
+        for host, index in indexes.items()
+        if isinstance(index.get("cell_completeness"), dict)
+    }
+    if completeness:
+        document["cell_completeness"] = _merge_completeness(completeness)
+    deadlines = {
+        host: index["deadline"]
+        for host, index in indexes.items()
+        if isinstance(index.get("deadline"), dict)
+    }
+    if deadlines:
+        document["deadline"] = _merge_deadline(deadlines)
+    return document
+
+
+def _host_arg(text: str) -> tuple[str, Path]:
+    host, sep, path = text.partition("=")
+    if not sep or host not in HOST_IDS or not path:
+        raise argparse.ArgumentTypeError(f"expected HOST1=<dir> or HOST2=<dir>, got {text!r}")
+    return host, Path(path)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
+    parser.add_argument("--preregistration", type=Path, required=True)
+    parser.add_argument("--seed-assignment", type=Path, required=True)
+    parser.add_argument("--go-decision", type=Path, help="holdout: the GO decision file (r_h)")
+    parser.add_argument("--host", type=_host_arg, action="append", required=True)
+    parser.add_argument("--output", type=Path, required=True, help="directory for summaries/")
+    args = parser.parse_args(argv)
+    run_dirs = dict(args.host)
+    if len(run_dirs) != len(args.host):
+        parser.error("each host may be given once")
+    try:
+        prereg = load_preregistration(args.preregistration)
+        prereg_sha = sha256(args.preregistration.read_bytes()).hexdigest()
+        assignment = load_seed_assignment(args.seed_assignment, prereg.seeds)
+        go_decision = (
+            None
+            if args.go_decision is None
+            else json.loads(args.go_decision.read_text(encoding="utf-8"))
+        )
+        problems = rule_problems(
+            assignment.data,
+            rule=prereg.seed_assignment_rule or "",
+            registered_seeds=prereg.seeds,
+            registered_sha256=prereg.seed_assignment_sha256,
+            go_decision=go_decision if isinstance(go_decision, dict) else None,
+        )
+        if problems:
+            raise MergeRefused("; ".join(problems))
+        indexes = {
+            host: load_host(run_dirs[host], host, prereg_sha, assignment)
+            for host in HOST_IDS
+            if host in run_dirs
+        }
+        document = merge(indexes, run_dirs, assignment)
+    except (
+        MergeRefused,
+        SeedAssignmentError,
+        PreregistrationFormatError,
+        OSError,
+        json.JSONDecodeError,
+    ) as error:
+        print(f"merge refused: {error}", file=sys.stderr)
+        return 2
+    target = args.output / INDEX_PATH
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        json.dumps(document, indent=2, sort_keys=True, ensure_ascii=True) + "\n", encoding="ascii"
+    )
+    print(json.dumps({"index": str(target), **document["merge"]}, sort_keys=True))
+    return 0 if document["merge"]["complete"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

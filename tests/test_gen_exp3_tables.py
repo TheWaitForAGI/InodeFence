@@ -276,7 +276,10 @@ def test_go_inputs_are_computed_and_the_result_stays_empty(tmp_path: Path) -> No
     # 1800 recorded steps over the two hours between the first start and the last end, no stop.
     assert row["r: 정지 공백을 뺀 처리량(실시간, exec/h)"] == "900"
     assert row["e: 기록/계획 step 비율"] == "1.000"
-    assert row["인프라 실패 비율 (abort + 기록 어긋남)/전체 셀"] == ".125"
+    # D045: over the 9 attempted cells (1 of 10 never started), not the reference's 10 cells.
+    assert row["인프라 실패 비율 (abort + 기록 어긋남 + 무기록)/시도한 셀"] == ".222"
+    assert row["참고: 인프라 실패 비율/등록 전체 셀(판정 입력 아님)"] == ".125"
+    assert row["시작하지 않은 셀"] == "1"
     assert "| 결과 |  | W3가 적용해 LOG에 남긴다 |" in lines
 
 
@@ -543,7 +546,8 @@ def test_an_unresumed_stop_leaves_the_go_cells_not_computed(
     # Measured values stay: E, e, the failure rate, r_wall, stops, resumed gaps.
     assert _go_row(text, "E:") == "2"
     assert _go_row(text, "e:") == "1.000"
-    assert _go_row(text, "인프라 실패 비율") == ".125"
+    assert _go_row(text, "인프라 실패 비율") == ".222"
+    assert _go_row(text, "참고: 인프라 실패 비율") == ".125"
     assert R_WALL_NOTE in text
     assert f"정지 {stops}회, 누적 공백 {gap} h(실시간)." in text
 

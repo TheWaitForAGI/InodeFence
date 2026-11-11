@@ -26,8 +26,9 @@ arm.S-u = effect-feedback-v2-or-violation-v1-boundary-attempt-v1-uniform-mutatio
 targets.node-tar-holdout.extractor = node-tar
 # D4·D045 상태 확인 결과(2026-11-11 HOST1): 후보 5개 모두 위반 ∧ 호환 → 최고 버전 7.4.4.
 targets.node-tar-holdout.version = 7.4.4
-# 동결 시 image id 고정(현재 빌드 id f5d3e9a999cf…, D18: 이 빌드를 docker save로 보관·전송, 재빌드 금지).
-targets.node-tar-holdout.image_digest = TBD-FREEZE
+# D18: 빌드 1회 id 고정(HOST1 docker image inspect, linux/amd64, 208585417 B; lock sha256 38b636640f941953189084d01a37db2f919049d6e0c7388cf86af1bc07e19c84;
+# docker save 아카이브 sha256 2adaefb2b13365ae653341ac3ded1f412aa19875f57e3ccdb7118dd6ca8763cc로 보관·전송, 재빌드 금지). HOST2에서도 같은 id여야 한다.
+targets.node-tar-holdout.image_digest = sha256:f5d3e9a999cfad0a5f37002bf36802378b20777646be3684eb97baeaa4080421
 targets.node-tar-holdout.role = holdout
 targets.node-tar-holdout.hypothesis = H-A
 targets.node-tar-holdout.exposure = qualification-only
@@ -168,7 +169,7 @@ seed_assignment_rule = rh-proportional-v1
 
 - [x] D4 상태 확인 완료(2026-11-11, 7.4.4 선정, §3).
 - [ ] 원장 행 6개(후보 5개와 7.5.2 기준) PR 머지(W3 작성, W4 검증).
-- [ ] 7.4.4 image id 고정(빌드 `f5d3e9a999cf…`, docker save 보관, 두 호스트 같은 id).
+- [x] 7.4.4 image id 기입(`sha256:f5d3e9a9…0421`, HOST1). [ ] HOST2에서 docker load 뒤 같은 id 확인.
 - [ ] `engine_sha`와 공통값이 exp3-v1과 같음.
 - [ ] `exposure_ledger_sha256`이 exp3-v1과 같음.
 - [ ] 할당 강제 (a) 재생성 일치 검사 게이트 구현·검증(W3, §2).

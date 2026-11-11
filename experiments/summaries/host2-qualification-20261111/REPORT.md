@@ -439,3 +439,17 @@ Not done (outside the instruction or needs a decision): qualification §3 step 3
 - **Qualification copy `13ab8c9f…` is PROVISIONAL** (renamed `…filled.PROVISIONAL-deadline.md`, kept). Its deadline is set when HOST1 prepares qualification.
 - **Stage A key file:** fetched with the transfer key (rsync, BatchMode, host key pinned) from the HOST1 read-only folder `stage-a-keys-20261111/`. `stage-a-j2-abort-keys-v3.json` 4589 B, sha256 `3e6c734c…22b` = expected, `sha256sum -c SHA256SUMS` OK (`exec_bed077a_stage_a_transfer.txt`). Stored outside the worktree; for `qualify_host --check-environment` at qualification preparation.
 - **SNTP drift: record only** (Jiwoong's policy). W2 reports if the offset passes 0.5 s or the trend steepens.
+
+### 33b. Pre-run fixed record for the HOST2 launcher smoke and qualification (22:27 KST; push time = evidence of pre-fixing)
+
+Approval: Jiwoong approved the HOST2 launcher smoke and qualification at 2026-11-11 22:2x KST, as relayed by ORCH ("host2도 마찬가지로 다 승인한다 smoke 등등 다 진행해라", i.e. "same for host2: everything is approved, smoke and the rest, go ahead"). Resume or ack after a stop or anomaly still needs Jiwoong's separate approval (fail-closed). **Not started:** the owner has not yet confirmed a time window (ORCH condition 3).
+
+| Item | Value |
+| --- | --- |
+| Execution SHA E | `bed077af62b1cdd5cc8dec96eb9cbe93ba542f1d`, worktree `~/inodefence-host2-20261111/execution` clean |
+| Criteria file | `criteria-HOST2.json` sha256 `8c73611c9343101bec161cc16ef451053787b1e3b826d970a7943e8f7f8bb16f` (= HOST1) |
+| Images | 7.5.2 `22c8734f…`, controller `d44900e1…`, helper `9b9dd606…` |
+| Smoke registration copy | sha256 `87a69e728de62df3af2ca9b529355830d345e46b3c34e2916bea22dfbb701d0a` (= HOST1), deadline 2026-11-12T23:00:00+09:00. Dry-run PASS, 6 cells, seeds [6301, 6303] |
+| Qualification registration copy | sha256 `81f56d43be14374855aee8f350186583493aaa4d7db687436143bf6c8ff559c0` (= HOST1; source `a549ee98…`), deadline 2026-11-14T12:00:00+09:00. Dry-run PASS, 12 cells, seeds [8110, 8102, 8103, 8106] (`exec_bed077a_dryrun2_qual.txt`) |
+| Stage A keys | sha256 `3e6c734c…22b`. `qualify_host --check-environment`: rc 0, `input_dependence_test_valid: true`, problems [] (`exec_bed077a_check-environment-HOST2.json`) |
+| Assignment files (E tree) | smoke `a395367b…`, qualification `e81d5fcf…` |

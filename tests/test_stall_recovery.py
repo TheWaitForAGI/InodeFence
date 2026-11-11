@@ -379,6 +379,26 @@ def run_case(stall: StallRecovery, attempt) -> ContainerOutcome:
     )
 
 
+def base_failure(plans: list[str], *, probe: bool = False) -> BaseException:
+    """The exception the same stall raises on the base path (no stall recovery).
+
+    Tests compare against this instead of spelling the backend's message, so they hold
+    whatever wording and cleanup retry behavior the protected backend currently has.
+    Needs the ``host`` fixture (directly or through ``world``).
+    """
+    _, backend = plain_backend(plans)
+    with pytest.raises(Exception) as raised:
+        target_attempt(backend, [], probe=probe)()
+    return raised.value
+
+
+def assert_same_failure(actual: BaseException, expected: BaseException) -> None:
+    assert type(actual) is type(expected)
+    assert str(actual) == str(expected)
+    assert type(actual.__context__) is type(expected.__context__)
+    assert str(actual.__context__) == str(expected.__context__)
+
+
 def first_absent_answer(daemon: StallDaemon, tokens: set[str]) -> int:
     for index, (args, result) in enumerate(daemon.log):
         if (
@@ -433,7 +453,11 @@ def test_class_s_start_hang_reexecutes_in_a_new_container_after_absence(world, h
     assert daemon.ops().count("container start") == 2  # once per container
     [event] = stall.events
     assert event["action"] == "reexecuted"
-    assert event["invalid_reason"] == InvalidReason.CLEANUP_INSPECT.value
+    base = base_failure([f"hang:{hang}"])
+    assert (
+        event["invalid_reason"]
+        == classify_abort_reason(f"{type(base).__module__}.{type(base).__qualname__}: {base}").value
+    )
     assert cast(dict, event["stall_call"])["op"] == "container start"
     assert cast(dict, event["absence"])["confirmed"] is True
     assert cast(dict, event["absence"])["seconds"] <= STALL_ABSENCE_CONFIRM_SECONDS + 50
@@ -549,12 +573,9 @@ def test_case_bound_exhaustion_raises_the_backend_failure_unchanged(world) -> No
     with pytest.raises(BackendError) as raised:
         run_case(stall, target_attempt(backend, []))
 
-    # A raised stall re-raises the backend's own exception (type, message, chain).
-    assert str(raised.value) == "container runtime cleanup inspect failed: timed out"
-    assert isinstance(raised.value.__context__, BackendError)
-    assert classify_abort_reason(f"x.BackendError: {raised.value}") == (
-        InvalidReason.CLEANUP_INSPECT
-    )
+    # A raised stall re-raises exactly the exception the base path raises for the same
+    # stall (type, message, chained cause), i.e. what the campaign aborts with today.
+    assert_same_failure(raised.value, base_failure(["hang:25"]))
     assert [event["action"] for event in stall.events] == [
         "reexecuted",
         "reexecuted",
@@ -663,9 +684,10 @@ def test_unconfirmed_absence_aborts_without_a_second_container(world) -> None:
     _, build = world
     daemon, backend, stall, _ = build(["hang:1000", "normal"])
 
-    with pytest.raises(BackendError, match="cleanup inspect failed"):
+    with pytest.raises(BackendError) as raised:
         run_case(stall, target_attempt(backend, []))
 
+    assert_same_failure(raised.value, base_failure(["hang:1000"]))
     assert len(daemon.create_names()) == 1
     [event] = stall.events
     absence = cast(dict, event["absence"])
@@ -678,10 +700,11 @@ def test_unexpected_exception_during_absence_keeps_the_original_failure(world) -
     _, build = world
     daemon, backend, stall, _ = build(["hangbad:25"])
 
-    with pytest.raises(BackendError, match="cleanup inspect failed: timed out") as raised:
+    with pytest.raises(BackendError) as raised:
         run_case(stall, target_attempt(backend, []))
 
-    assert not isinstance(raised.value, ValueError)
+    # The original stall failure survives the JSONDecodeError raised while confirming.
+    assert_same_failure(raised.value, base_failure(["hangbad:25"]))
     [event] = stall.events
     assert event["action"] == "abort_absence_unconfirmed"
     assert cast(dict, event["absence"])["stopped_by"] == "exception:JSONDecodeError"

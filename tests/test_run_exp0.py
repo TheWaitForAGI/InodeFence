@@ -2061,8 +2061,8 @@ def test_controller_refusals_stop_dry_run_and_live_run_before_warmup(
     text = capsys.readouterr().out
     assert "gate: PASS" in text  # the registration itself is fine; the controller is not
     assert "- wiring: target node-tar-7.9.9:" in text and "'7.9.9'" in text
-    # An empty holdout constant refuses the holdout target by name (D040-D2, before D4).
-    assert "run_effect_demo.HOLDOUT_TARGET (empty;" in text
+    # A holdout other than the D4 selection is refused by name (D040-D2).
+    assert "run_effect_demo.HOLDOUT_TARGET (7.4.4;" in text
     assert "node-tar-7.5.2:" not in text.split("would be refused at live run:")[1].split("plan=")[0]
     assert not out.exists()
 

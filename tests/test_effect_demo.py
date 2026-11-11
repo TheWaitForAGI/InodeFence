@@ -120,16 +120,24 @@ def test_pinned_node_tar_version_reads_the_repository_pin() -> None:
 def test_historical_target_versions_match_frozen_catalog_and_locks() -> None:
     allowed = historical_target_versions()
 
-    assert allowed == {target.tar_version: target.lock_sha256 for target in FROZEN_TARGETS}
-    assert set(allowed) == {"7.5.2", "7.5.3"}
+    frozen = {target.tar_version: target.lock_sha256 for target in FROZEN_TARGETS}
+    # The frozen pair, plus exactly the D4 holdout row (D040-D2), nothing else.
+    assert set(frozen) == {"7.5.2", "7.5.3"}
+    assert allowed == {**frozen, "7.4.4": HOLDOUT_LOCK_SHA256}
 
 
-def test_the_holdout_constant_is_empty_until_d4(monkeypatch: pytest.MonkeyPatch) -> None:
+HOLDOUT_LOCK_SHA256 = "38b636640f941953189084d01a37db2f919049d6e0c7388cf86af1bc07e19c84"
+
+
+def test_the_holdout_constant_is_the_d4_selection(monkeypatch: pytest.MonkeyPatch) -> None:
     import hashlib
 
     from scripts import run_effect_demo
 
-    assert run_effect_demo.HOLDOUT_TARGET is None
+    # D4 (2026-11-11, PR #338): every candidate qualified; 7.4.4 is the highest.
+    assert run_effect_demo.HOLDOUT_TARGET == ("7.4.4", HOLDOUT_LOCK_SHA256)
+    holdout_lock = run_effect_demo.HISTORICAL_LOCKS_DIR / "node-tar-7.4.4.package-lock.json"
+    assert hashlib.sha256(holdout_lock.read_bytes()).hexdigest() == HOLDOUT_LOCK_SHA256
     lock = run_effect_demo.HISTORICAL_LOCKS_DIR / "node-tar-7.5.6.package-lock.json"
     digest = hashlib.sha256(lock.read_bytes()).hexdigest()
     # One row admits exactly one more version, checked against its lock; FROZEN stays as is.

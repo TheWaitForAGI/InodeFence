@@ -80,7 +80,10 @@ HISTORICAL_BENCHMARK_ID = "node-link-sanitize"
 # catalog stay as they are). (node-tar version, sha256 of its wrapper lock in
 # HISTORICAL_LOCKS_DIR), set from the D4 qualification result as the last engine diff before
 # freeze. None: no holdout version is admitted, so a holdout registration is refused at dry-run.
-HOLDOUT_TARGET: tuple[str, str] | None = None
+HOLDOUT_TARGET: tuple[str, str] | None = (
+    "7.4.4",
+    "38b636640f941953189084d01a37db2f919049d6e0c7388cf86af1bc07e19c84",
+)
 HISTORICAL_DEMO_MODE = "effect-demo-historical"
 # M4 self-discovery: the effect campaign over a second extractor (decompress). Shares the
 # --seed/--budget/--mutation-policy demo arguments. --policy (EffectSearchPolicy) now selects the

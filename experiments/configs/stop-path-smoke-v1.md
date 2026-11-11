@@ -45,7 +45,7 @@ D042 원문의 주입 수단은 셀 프로세스에 존재하지 않는 docker c
 
 ## 3. 실행 구성
 
-- **등록 파일:** targets 형식(InfrastructureGuard와 StartGate는 이 형식에서만 돈다), target 1개(node-tar 7.5.2, 등록 digest), arm R-restart·D·S-u, seed 6101~6104, budget 20. 파일 이름은 `experiments/preregistration/stop-path-smoke-<차수>-v1.md`(차수별, D042 :932). R arm은 D040-D6대로 seed-restart(`arm.R = unretained-seed-restart-v1-uniform-mutation-v1`)다. EXP-3 등록과 같은 값이다(D042는 R 변형을 따로 정하지 않는다).
+- **등록 파일:** targets 형식(InfrastructureGuard와 StartGate는 이 형식에서만 돈다), target 1개(node-tar 7.5.2, 등록 digest), arm R-restart·D·S-u, seed 6101~6104, budget 20. 파일 이름은 `experiments/preregistration/stop-path-smoke-<차수>-v1.md`(차수별, D042 :932). R arm은 `arm.R = unretained-seed-restart-v1-uniform-mutation-v1`(D040-D6, exp3-v1 등록 :30-31, 코드 상수 `src/inodefence/feedback/effect_search.py:62` `R_UNRETAINED_SEED_RESTART`)이다. EXP-3 등록과 같은 값이다(D042는 R 변형을 따로 정하지 않는다).
 - **런처 인자(양 시나리오 공통):** `--jobs 2 --output <전용 출력> --skip-build --expected-images <기준 파일>`. `--host-id`는 쓰지 않는다(2호스트 실행이 아니다). `--expected-images`는 넘겨서 이미지 거부 경로도 함께 확인한다.
 - **기대 이미지 파일:** 저장소에 커밋하지 않고 각 출력 폴더에 둔다(`<출력>/expected-images.json`). 내용은 `expected_image_ids` 3개(대상·controller·helper)이고, 값은 실행 직전 읽기 전용 `docker image inspect`로 확인한다. 파일의 sha256은 preflight 기록의 `expected_images`에 남는다.
 
@@ -121,7 +121,6 @@ B-2·B-4·B-5 각 호출 직전에 `env | grep -c '^HISTORICAL_IMAGE='`의 결�
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | node-tar | 7.5.2 | 정지·재개 smoke `demo run`(1차, D042) — 정지 구간(주입)은 대상 미실행, 재개 뒤 실행 셀만 노출 | W2(D042 smoke 1차) | 6101~6104 중 재개 뒤 실행된 셀의 seed(budget 20) | `<날짜>` | `<출력>/stop-path-smoke-1-<날짜>/` | 등록 digest |
 | node-tar | 7.5.2 | 같음(2차) | W2(D042 smoke 2차) | 같음 | `<날짜>` | `<출력>/stop-path-smoke-2-<날짜>/` | 등록 digest |
-
 | node-tar | 7.5.2 | 정지·재개 smoke 시나리오 A `demo run`(차수별) — 게이트 정지 구간은 대상 미실행, ack 재개 뒤 실행 셀만 노출 | W2(D042 smoke 시나리오 A) | 6101~6104 중 ack 재개 뒤 실행된 셀의 seed(budget 20) | `<날짜>` | `<출력>/stop-path-smoke-<차수>-A-<날짜>/` | 등록 digest |
 
 시나리오 A와 B는 별도 출력 폴더, 별도 원장 행이다.

@@ -1,10 +1,12 @@
 # 동시 실행 벤치마크 설계 v3 (2호스트)
 
+> **D047로 본실험 선행 조건에서 제외, 문서는 보존(2026-11-11, 측정 전, 초안 D047 머지 시 적용).** 이 설계는 실행하지 않았다. 본실험의 동시 실행 수는 두 호스트 모두 jobs=2로 고정했고(사람 결정, 이 설계의 선정 결과가 아니다), 선행 조건은 [호스트별 적격성 검증 v1](host-qualification-v1.md)이다. 아래 본문은 머지된 v3 그대로이며 규칙을 고치지 않았다. 결정 기록은 [D044](../../docs/DECISIONS.md#d044--2호스트-동시-실행-벤치마크-설계-v3)와 [D047](../../docs/DECISIONS.md#d047--본실험-선행-조건-단순화-jobs2-고정과-호스트별-적격성-검증-초안)이다.
+
 > **비등록·비합산 도구 측정.** 라벨은 `demo run`이다. 가설 검정이 아니고 EXP-0·파일럿·EXP-2·EXP-3 데이터에 합치지 않는다.
 > raw의 oracle 값은 봉인한다(v2 §6.6, 두 호스트 모두). 결정 대상은 **호스트별** 본실험 동시 실행 수다. 효과 주장이 아니다.
 >
 > **상태:** 측정 전 설계 초안(Draft PR). 지웅 승인과 §8 점검표 충족 전에는 실행하지 않는다. 이 파일이 머지된 커밋에서 동결하고, 동결 후 변경은 새 버전 파일로만 한다.
-> 결정 기록은 [D044](../../docs/DECISIONS.md#d044--2호스트-동시-실행-벤치마크-설계-v3)이다.
+> 결정 기록은 [D044 초안](../../docs/DECISIONS.md#d044--2호스트-동시-실행-벤치마크-설계-v3-초안)이다.
 > 과거 Stage A(68af9b4)와 파일럿의 oracle 값은 이 설계를 쓰는 동안 보지 않았다. 임계는 과거 결과를 보고 다시 정하지 않았다.
 
 **나눠 돌리기(48 = 24 + 24)를 쓰지 않은 이유.** 한 집합을 HOST1(2→4)과 HOST2(4→2)로 나누면, 각 호스트에는 수준마다 블록이 1개씩만 남는다. 그러면 v2 §6.4의 ρ1·ρ2·드리프트 d와 §6.1의 기준 바닥값 F를 정의할 수 없고, 규칙대로 두 호스트 모두 `H3-unmeasured`(`selected_jobs=null`)가 된다. 호스트를 가로질러 비교하면 jobs 효과가 호스트와 블록 순서에 완전히 섞여, 호스트별 jobs 선정도 합산 선정도 할 수 없다. 원래 요청이 "불충분하면 표본 배분을 수정하라"를 허용했으므로, 호스트마다 v2의 ABBA 48셀을 그대로 돌리는 배분(총 96셀)으로 바꿨다. 벽시계는 두 호스트가 동시에 돌므로 단일 호스트 단계 A와 같은 수준이고, 두 호스트를 차례로 재는 것의 약 절반이다.
@@ -59,7 +61,7 @@ x1_incomparable_cells = 2
 probe_seeds = 6200, 6201, 6202, 6203, 6204, 6205, 6206, 6207
 probe_budget = 1000
 probe_jobs = 4
-probe_retry_max_attempts = 1
+probe_retry_max_attempts = 2
 hosts = HOST1, HOST2
 host.HOST1.run_prefix = h1
 host.HOST1.docker_engine = TBD-PREFLIGHT
@@ -112,7 +114,7 @@ stage.C = 6,8,8,6
 | 설정 | 벤치마크 | 본실험 | 근거 |
 | --- | --- | --- | --- |
 | 정지 정책 | v2 §5(비정상 종료 6/12, watchdog 1, 메모리, 잔존 리소스, 외부 탓 3종) | 기록 없는 셀 연속 3개면 인프라 정지, 승인 재개 | 벤치마크 정지는 "수준 탓" 판정의 입력이고, 본실험 정지는 인프라 보호다 |
-| 재시도 | 0(`retry_max_attempts = 1`) | 기록 없는 시도만, 최대 2회 | 재시도는 같은 슬롯을 점유해 X(b)의 정의를 바꾼다. v2 §4와 X(b)를 그대로 두기 위해 0으로 주입한다. 재시도 경로 자체는 단위·합성 e2e 테스트와 run_exp0 엔지니어링 smoke(비등록, W3, seed 6300–6303)에서 검증한다. **이 키는 런처 수준의 셀 재시도(run_exp0 MAX_ATTEMPTS, 무기록 시도 재시도)만 뜻한다.** #335의 case 단위 인프라 재실행(D046)은 셀 내부 경로에 항상 켜져 있어 이 키와 무관하며 벤치마크·probe·본실험에서 같다 |
+| 재시도 | 0(`retry_max_attempts = 1`) | 기록 없는 시도만, 최대 2회 | 재시도는 같은 슬롯을 점유해 X(b)의 정의를 바꾼다. v2 §4와 X(b)를 그대로 두기 위해 0으로 주입한다. 재시도 경로 자체는 단위·합성 e2e 테스트와 probe(§5, 본실험 값 2)에서 검증한다 |
 | 디스크 | 90%에서 정지(대기 없음) | 비율 도달 시 새 셀 대기 | 대기는 처리량을 오염시킨다(v2 §3.5) |
 | watchdog 한계값 출처 | 이 파일 `campaign_watchdog_seconds` | 본실험 사전등록 값 | preflight에서 두 값이 같은지 확인한다. 다르면 벤치마크는 대표성이 없다(§4.3) |
 | 원장 형식 | `block.json`·`block.incomplete.json` | `cell_results.jsonl` start/end/정지 이벤트 | 통일하지 않는다. 판정은 각자의 형식으로 한다 |
@@ -138,46 +140,23 @@ stage.C = 6,8,8,6
 
 ## 5. 단계 순서와 엔지니어링 probe
 
-**순서(고정):** 근본 원인 수정 → 통합 head 독립 검증(경쟁 조건 테스트, xfail·skip 잔존, 데이터·로그 보존, 경로 동일성) → 호스트별 probe → 호스트별 run_exp0 엔지니어링 smoke(§5.1) → 호스트별 드라이버 smoke → 호스트별 단계 A. run_exp0 엔지니어링 smoke는 EXP-3 동결의 선행 조건이기도 하다(exp3-v1 §8).
+**순서(고정):** 근본 원인 수정 → 통합 head 독립 검증(경쟁 조건 테스트, xfail·skip 잔존, 데이터·로그 보존, 경로 동일성) → 호스트별 probe → 호스트별 smoke → 호스트별 단계 A.
 
 **probe는 비등록이고 판정 입력이 아니다.** 라벨은 `demo run`이고, 노출 원장에 기재하며, oracle을 봉인한다.
 
 | 항목 | 값 |
 | --- | --- |
-| 목적 | 근본 원인 수정이 inspect/start timeout을 줄이는지, 부작용이 없는지 확인한다. 런처 셀 재시도 경로의 실제 docker 확인은 run_exp0 엔지니어링 smoke로 옮겼다(2026-11-11 정정) |
-| 실행기 | 벤치마크 드라이버(본실험과 공유하는 실행 계층: StartGate, launcher_guards, `run_cell_with_watchdog`). 런처 수준 셀 재시도 없음(`probe_retry_max_attempts = 1`). 드라이버에 런처와 다른 재시도 코드를 새로 만들지 않기 위해서다(경로 동일성). #335 case 단위 인프라 재실행은 셀 내부 경로에 항상 켜져 있고 이 키와 무관하다. (2026-11-11 정정: 머지본의 "본실험 런처(`run_exp0 --jobs`)"는 8셀 arm 회전 구조와 양립하지 않아 공유 실행 계층으로 바로잡았다. ORCH 결정, 지웅 승인 = 문서 PR 머지) |
+| 목적 | 근본 원인 수정이 inspect/start timeout을 줄이는지, 부작용이 없는지, 재시도 경로가 실제 docker에서 도는지 확인한다 |
+| 실행기 | 본실험 런처(`run_exp0 --jobs`)와 공유 실행기, 재시도 본실험 값(2) |
 | 셀 | 8셀, 호스트당. seed 6200–6207 각 1셀, arm은 R-restart, D, S-u 순서로 회전(6200 R-restart, 6201 D, 6202 S-u, 6203 R-restart, 6204 D, 6205 S-u, 6206 R-restart, 6207 D) |
 | budget, jobs | 1000, 4. 혼잡을 재현하고 캠페인 끝의 보고서 복사·정리를 두 wave에 걸쳐 8회 거친다 |
 | 예상 | 8,000 실행. HOST1 jobs 2 실측 약 4,760 exec/h에서 가속이 없으면 약 1.7 h, 선형 가속이면 약 0.9 h(추정). HOST2는 미측정 |
 | 통과 조건(사전 고정) | cleanup UNKNOWN 0, 잔존 리소스 0, 러너 실패 0, 시작 실패 0 |
-| 보고만 하는 값 | docker 호출별 timeout 수(출처: broker `.calls.jsonl`의 호출별 returncode·timeout 기록(main #275), #335 `infra_reexecutions`의 `anomalous_calls`, smoke 스크립트 cleanup CLI의 timeout 진단 줄. 보호 파일 원복(#340)으로 사라진 cleanup-attempt stderr 줄은 출처가 아니다), case 단위 인프라 재실행 수(`infra_reexecutions`), 처분 집계. timeout에는 임계를 두지 않는다 |
+| 보고만 하는 값 | docker 호출별 timeout 수, 진단 줄(`inodefence-cleanup-*`) 수, 재시도 수, 처분 집계. timeout에는 임계를 두지 않는다 |
 | 금지 | probe 결과로 §6 임계, seed, 블록 구조, jobs 후보를 바꾸지 않는다. oracle 필드를 읽지 않는다 |
 | 실패 시 | 보고하고 그 호스트의 벤치마크를 시작하지 않는다. 수정 후 probe부터 다시 한다 |
 
 **probe seed 6200–6207의 근거.** 노출 원장(`experiments/preregistration/exposure-ledger.md`)과 v1·v2 설계, 드라이버의 `RESERVED_SEED_RANGES`를 대조했다. 기존 노출 ≤1415, v1 벤치마크 6100–6103(6100은 2026-11-10 engineering smoke에서 실행됨), 7001–7002, 파일럿 8001–8003·8101–8110, EXP-0 9001–9005, EXP-3 제안 블록 9006~(9001–9999 예약)과 겹치지 않는다. main의 configs·preregistration·DECISIONS에서 6200–6999를 seed로 쓴 곳도 없다(2026-11-11 확인). 실행하면 원장에 행을 추가하고, EXP-3 seed 제외 목록에 6200–6207을 넣는다.
-
-### 5.1 run_exp0 엔지니어링 smoke (2026-11-11 신설, 측정 전, ORCH 결정, 지웅 승인 = 문서 PR 머지)
-
-**비등록이고 판정 입력이 아니다.** 라벨은 `demo run`, oracle 봉인, 노출 원장 기재. 벤치마크 판정(§6)이나 EXP-3·EXP-2 데이터에 쓰지 않는다.
-
-| 항목 | 값 |
-| --- | --- |
-| 목적 | 본실험 런처 경로가 실 docker에서 도는지 확인한다: 게이트 배선, InfrastructureGuard, 재시도·`attempts/` 보존 경로의 기록, 호스트 키 게이트(`host.<id>.*`, `seed_assignment_*`), seed 할당, `cell-results.jsonl` 기록, 두 호스트 병합 도구, 운영 점검(`exp_operating_check`) |
-| 실행기 | `run_exp0 --jobs`(본실험 런처 그대로), 재시도 본실험 값(MAX_ATTEMPTS 2), #335 case 재실행 켜짐 |
-| seed와 할당 | 6300–6303, 본실험과 같은 `alternate-v1` 규칙으로 할당(6300·6302 → HOST1, 6301·6303 → HOST2). seed 블록마다 R(seed-restart)·D·S-u 3셀 |
-| 셀, budget, jobs | 호스트당 2 seed × 3 arm = 6셀, budget 300, jobs 2. 1,800 실행, HOST1 jobs 2 실측 약 4,760 exec/h 기준 약 25분 + 시작·정리 오버헤드로 호스트당 30~60분 목표(추정, HOST2 미측정) |
-| 통과 조건(사전 고정) | probe의 4개(cleanup UNKNOWN 0, 잔존 리소스 0, 러너 실패 0, 시작 실패 0) + 기록 완전성 pass(모든 셀이 `cell_completeness`에서 complete 또는 abort-final, record-inconsistent·no-record 0) + 병합 검사 pass(두 호스트 `cell-results`가 할당 파일과 일치, 중복·누락 0) + 호스트 키 게이트가 등록값으로 통과(일부러 틀린 값으로 거부되는지는 테스트 몫) + 게이트 거부(start_denied) 0 + 인프라 정지 0 |
-| 보고만 하는 값 | `infra_reexecutions` 수, 재시도 수, docker 호출별 timeout 수(출처: broker `.calls.jsonl`의 호출별 returncode·timeout 기록(main #275), #335 `infra_reexecutions`의 `anomalous_calls`, smoke 스크립트 cleanup CLI의 timeout 진단 줄. 보호 파일 원복(#340)으로 사라진 cleanup-attempt stderr 줄은 출처가 아니다), 처분 집계, 운영 점검 출력(수만) |
-| 결정론 검사(보고만, D046) | `infra_reexecutions`가 0보다 큰 셀은 같은 seed·arm·budget으로 한 번 더 돌린다. 수단은 (a) 그 seed·arm만 담은 별도 등록 파일과 새 출력 폴더로 `run_exp0`를 돌리는 것이다(런처 경로 유지). 등록 sha와 회전 순서는 원 실행과 다를 수 있다. 이것은 동시 실행 맥락이 다른 조건에서 같은 셀 입력을 반복하는 것이어서 결정론 검사로는 더 강하다. 그래서 "같은 설정"은 seed·arm·budget·정책·sentinel·이미지·engine_sha·셀 env가 같은 것으로 정의하고, 달라진 등록 sha와 순서는 기록한다. smoke 스크립트를 직접 실행하는 (b)는 런처 경로가 아니므로 쓰지 않는다. 그 두 보고서를 `scripts/check_native_determinism.py`의 `compare_report_pair`(EN-008 네이티브 per-case 결정론 프로브)로 비교한다. 출력은 `case_sequence`와 `oracle_and_feedback` 차원의 일치 여부(불리언)뿐이고, 판정값 자체는 내보내지 않는다(봉인 유지). 재실행이 0이면 "재실행 0, 결정론 미검정"(UNKNOWN)으로 적는다. 추가 실행은 같은 seed라 새 노출이 아니며, 원장 행에 횟수를 적는다 |
-| 한계(공개) | **실 docker에서의 런처 재시도 경로와 InfrastructureGuard 정지 경로는 미검증이다(테스트로만 검증).** 재시도는 무기록 시도에서만 작동하고, 결함 주입은 하지 않기 때문이다. 정지·재개 경로는 D042 정지·재개 smoke가 별도로 다룬다 |
-| 금지 | 결과로 §6 임계, seed, 블록 구조, jobs 후보, 사전등록 값을 바꾸지 않는다. oracle 필드를 읽지 않는다 |
-| 실패 시 | 보고하고 그 호스트의 드라이버 smoke·단계 A를 시작하지 않는다. 수정 후 probe부터 다시 한다(§4.4) |
-
-**실행 등록 파일(W3가 작성, 비등록 라벨).** 사전등록 형식을 쓰되 `experiments/preregistration/` 밖(예: `experiments/configs/run-exp0-eng-smoke-v1.md`)에 둔다. 필요한 키: `experiment_id`(예: `exp3-eng-smoke`), `engine_sha`, `seeds = 6300, 6301, 6302, 6303`, `budget = 300`, `vocabulary = observed-names`, `arm.R`·`arm.D`·`arm.S-u`(exp3-v1과 같은 정책 ID), `targets.node-tar-7.5.2.*`(exp3-v1과 같음, `exposure = pre-exposed`), `exposure_ledger`·`exposure_ledger_sha256`, `sentinel_generator_id`, `sentinel_generator_seed = 20261104`, `sentinel_count = 5`, `observer_integrity_policy = invalid-continue`, 규칙 상수 5개, `primary_endpoint = t_first`(확증 키 없음), `execution_mode = per-case-container`, `jobs_max = 2`, `campaign_watchdog_seconds = 10800`, `disk_pause_fraction = 0.9`, `interim_analysis = forbidden`, `execution_deadline`(실행 전 고정, 예상 종료 + 여유), `host.HOST1.jobs = 2`, `host.HOST2.jobs = 2`, `host.<id>.docker_engine`(preflight 고정값), `seed_assignment_rule = alternate-v1`, `seed_assignment_sha256`. exp3-v1과 다른 값은 `experiment_id`, `seeds`, `budget`, `jobs`, `execution_deadline`뿐이어야 한다.
-
-**실행 조건(2026-11-11, W3 질의 답).** ① smoke는 launcher_guards 배선(#336)이 들어간 통합 head에서만 실행한다. 그래서 통과 조건은 사람이 기록을 보고 판정하지 않고 기계로 판정한다. ② HOST2의 `host.HOST2.docker_engine`은 등록 파일을 쓰기 전에 HOST2 preflight(읽기 전용 `docker version`)로 값을 얻어 고정한다(Engine B안: HOST2는 29.9.3 유지). ③ smoke 등록 파일의 `exposure_ledger_sha256`은 smoke 직전 원장 값이다. smoke 행은 실행 뒤에 넣는다. exp3-v1·exp2-v1의 동결 sha는 smoke 행까지 들어간 뒤의 값이다. ④ seed 충돌 검사는 문서 대조만으로 끝내지 않는다. `run_exp0`는 `RESERVED_SEED_RANGES`를 검사하지 않으므로, 실행 전에 seed 6300–6303이 드라이버의 `RESERVED_SEED_RANGES`와 원장의 seed 서술에 없는지 기계적으로 대조하고 그 결과를 LOG에 한 줄 남긴다(W3).
-
-**seed 6300–6303의 근거.** 원장, v1·v2·v3, `RESERVED_SEED_RANGES`, probe 6200–6207, v1 6100–6103, D042 정지·재개 smoke 6101–6104와 겹치지 않는다. main의 configs·preregistration·DECISIONS에 6300–6399 사용처가 없다(2026-11-11 확인).
 
 ## 6. 판정 기준 (호스트별, 실행 전 고정)
 
@@ -195,20 +174,8 @@ v2 §6.1~§6.6(입력, V1~V10, H1~H5, H3-unmeasured, 멈춘 블록 처리, 기�
 | V10′ | watchdog 여유, 이중 시계 | 어느 arm이든 셀 시간이 monotonic 7200 s **또는** 실시간 7200 s를 넘으면 배제 | monotonic 속도가 호스트마다 반대로 어긋난다(HOST1 7–9% 빠름, HOST2 약 3.2% 느림, 관찰). monotonic만 쓰면 HOST2는 실시간 약 7440 s까지 통과한다. 둘 중 엄한 쪽을 쓴다 |
 | X1 | 교차 호스트 경로 일치 | 같은 (arm, seed)의 HOST1 block-1-j2와 HOST2 block-1-j2를 V9와 같은 방식(경로와 step별 판정값 해시)으로 비교한다. 불일치 셀 수 m_x에 대해 m_x − max(F_HOST1, F_HOST2) ≥ 2, **또는** 첫 불일치 step이 한쪽에서만 `timed_out`·`failed`인 셀 ≥ 2, **또는** 비교 불가 셀 ≥ 2(1개면 보고)이면 발동한다. block-4-j2 쌍은 보고만 한다 | 아래 6.3 |
 | H2′ | 입력 종속, 교차 호스트 | 어느 호스트에서든 H2가 걸리면 **두 호스트 모두** 정지한다 | 입력(seed·arm·budget)이 두 호스트에서 같으므로 입력 종속은 호스트의 문제가 아니다 |
-| V7′ | timed_out과 인프라 재실행 (2026-11-11 추가, 측정 전 초안, 지웅 승인 = PR 머지, D046) | v2 V7의 분자를 "timed_out step + case 단위 인프라 재실행(폐기 시도) 수"로 바꾼다. arm별 절대 기준(1,000 step당 1건 초과)과 ref 대비 상대 기준(V4와 같은 표)에 같은 분자를 쓴다. 임계와 표는 v2 그대로 둔다. 재실행 수는 따로도 보고한다. 필드 출처: 보고서 `infra_reexecutions`(키가 없으면 0), abort 스텁 `infra_reexecution_count`. V3·V4(abort)는 바꾸지 않는다 | #335가 들어간 뒤에는 혼잡이 만들던 timed_out과 abort가 재실행 수로 옮겨 간다. 분자를 그대로 두면 같은 혼잡에서 더 높은 jobs가 통과할 수 있다. 임계를 유지한 채 분자가 줄면 판정이 완화되므로, 재실행을 분자에 넣는 쪽이 강화 방향이다. 재실행은 캠페인 손실이 아니므로 V3·V4에는 넣지 않는다 |
 
 **X1은 jobs 배제 규칙이 아니다.** 결과는 본실험 분석에만 영향을 준다(§10). 비교는 분석기 메모리 안에서 해시 일치만 보고, 값은 내보내지 않는다(v2 §6.6).
-
-**판정 불가와 계수 정의(2026-11-11, #339 구현 확인, 측정 전 초안, 지웅 승인 = PR 머지).**
-
-- **X1 평가 불가:** 어느 한 호스트의 F를 잴 수 없으면(그 호스트에 jobs=2 block-4가 없거나 H3-unmeasured) X1 첫 조항을 계산하지 않는다. 다른 조항도 걸리지 않으면 X1은 `not evaluated`이며 **통과가 아니다**. 이 상태에서 본실험 합산 처리는 X1이 발동한 경우와 같이 한다(§10).
-- **X1 비교 불가 셀:** 비교 불가 셀은 설계상 12셀 전체를 분모로 센다. 실행하지 않은 셀도 포함한다. X1 둘째 조항의 값 2는 V9와 같다.
-- **V7′ 재실행 수:** abort 스텁에서는 `infra_reexecution_count`를 쓴다. 상한을 소진해 캠페인을 끝낸 마지막 시도는 abort이지 폐기 시도가 아니므로 V3에서 센다. 목록 `infra_reexecutions`의 길이는 쓰지 않는다. 보고서는 있는데 이 값을 읽을 수 없으면 그 셀은 V7′ 배제 쪽으로 처리한다.
-- **대체 관계:** V7′는 V7을, V10′는 V10을 대체한다. 같은 판정에 둘이 함께 나오지 않는다.
-- **새 정지 종류:** 엔진 불일치·미확인(`engine-unverified`)과 호스트 불일치(`host-mismatch`)는 동시 실행 수와 무관한 외부 탓 정지다(`stop_kind = external`, v2 §6.3에 따라 그 단계 측정 무효). TBD- 값은 언제나 불일치로 본다.
-- **"재실행이 있었던 셀":** 비교하는 두 쪽 중 어느 한쪽이라도 재실행 수가 1 이상인 셀을 말한다.
-
-**재실행 표시(2026-11-11, D046).** V9와 X1 보고에서 case 단위 인프라 재실행이 있었던 셀의 불일치를 따로 센다. 임계는 바꾸지 않는다. 재실행은 새 run root에서 돌기 때문에, 비결정 성분이 있으면 불일치가 늘어날 수 있다. 그래서 원인을 구분해 읽기 위한 표시다.
 
 ### 6.3 X1 임계의 정당화와 오탐 확률
 
@@ -232,12 +199,6 @@ V9가 "다른 jobs 블록과의 불일치에서 같은 수준 반복 사이의 �
   - 벤치마크 시작부터 본실험 끝까지 그 호스트의 엔진·Docker Desktop·WSL 버전 변경을 금지한다.
   - 선정된 jobs는 그 호스트·그 엔진에서만 유효하다.
   - 대상 이미지 id `22c8734f…`는 두 호스트에서 같아야 한다(필수). 다른 id면 시작하지 않는다.
-- **엔진 B안(지웅 조건부 승인 2026-11-11, 문서 반영은 측정 전 초안, 지웅 승인 = PR 머지).** HOST1 29.8.0과 HOST2 29.9.3을 그대로 유지한다. HOST2 다운그레이드는 금지하고, native 전환도 하지 않는다. jobs는 호스트별로 독립 선정한다. **HOST1과 HOST2의 성능·효과 차이를 Engine 버전만의 영향으로 해석하지 않는다.** Engine과 하드웨어는 호스트에 종속된 교란요인이다. 아래 기준 ①~⑤를 모두 적용한다. 실행 전에 고정하고 결과값은 쓰지 않는다. 다섯 가지를 모두 충족할 때만 "Docker 실행 환경의 중대한 불일치"가 해소된 것으로 본다.
-  - ① 두 호스트의 대상 이미지 Id, local 이미지 Id, 공유 실행 경로 해시가 같다.
-  - ② jobs=2 블록에서 X1이 발동하지 않는다.
-  - ③ 두 호스트 모두 probe 통과 조건 4개를 충족한다.
-  - ④ 각 호스트의 단계 A가 v2 §6의 V1~V10(V7′ 포함)을 통과한다.
-  - ⑤ 벤치마크 시작부터 본실험 끝까지 엔진·Desktop·WSL 버전 변경이 0건이다. preflight 기록을 시작과 끝 2회 남겨 증명한다.
 
 ## 8. 실행 전 점검표 (v2 §7에 더함, 호스트마다)
 
@@ -251,12 +212,6 @@ V9가 "다른 jobs 블록과의 불일치에서 같은 수준 반복 사이의 �
 - [ ] 두 호스트 모두에 봉인(§6.6)과 다른 docker 작업 금지를 통지.
 - [ ] 노출 원장 계획 1줄을 LOG에(호스트, seed, budget, 수준, 봉인).
 - [ ] 지웅 승인: 호스트별, 단계별.
-- [ ] (2026-11-11 보강) controller·helper local 이미지 Id가 두 호스트에서 같다(preflight `local_images`).
-- [ ] (보강) 실행 SHA와 §4.1 경로 해시가 두 호스트에서 같다(교차 대조).
-- [ ] (보강) Docker Desktop·WSL 버전을 단계 시작과 끝에 2회 기록하고 변경 0을 확인한다.
-- [ ] (보강) 호스트 간 realtime 차를 단계 시작 시점에 기록한다.
-- [ ] (보강) `.wslconfig` 값(메모리·프로세서 상한)을 기록한다.
-- [ ] (보강) 재시작 보호 설정의 캡처를 남기고, 부팅 시각을 시작과 끝에 기록해 같음을 확인한다.
 
 ## 9. 도구 변경 목록 (측정 전에 필요)
 

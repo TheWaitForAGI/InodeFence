@@ -196,8 +196,9 @@ B-2·B-4·B-5 각 호출 직전에 `env | grep -c '^HISTORICAL_IMAGE='`의 결�
 - **명령(B-5와 `verify-tools` 뒤):** `python3 <evidence>/tools/b9_keys.py <E worktree> <S>/out/summaries/index.json > <S>/b9-keys-<차수>.txt`
 - **판정식:** 출력 첫 줄이 `analyze rc 0`이어야 한다. `number_invalid_cells` 값은 A2의 no-record 셀 수와 같아야 한다. `…item5_first_contract_index.by_arm.<arm>.number_invalid_excluded` 값은 arm마다 그 arm의 no-record 셀 수와 같아야 한다(snaps-b `b5b.json`의 `index.invalid_run_ids`에서 arm별로 센다). 확증 대비가 있는 등록이면 `number_blocks_invalid_excluded` 줄도 대비마다 있어야 한다. 하나라도 어긋나면 B9 불충족이다. 결과는 판정 도구 출력(정정 전 (iii)로 판정한 B9)과 함께 기록한다.
 - **봉인:** 분석기 출력은 임시 폴더에만 쓰이고 스크립트가 끝나면 지워진다. 스크립트는 네 이름의 정수 키만 출력한다.
+- **표기:** 아래 코드 블록은 ruff 포맷 대상에서 빼려고 `text`로 표기했다(본문 sha 보존). 블록 내용(펜스 줄 제외)의 sha256이 위 값과 같다.
 
-```python
+```text
 """Run analyze_exp0 on an index into a temp dir and print ONLY invalid-count keys (no outcome values)."""
 
 import json

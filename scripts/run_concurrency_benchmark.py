@@ -340,8 +340,14 @@ def residual_resources() -> list[str]:
     return guards.residual_resources(_docker)
 
 
-def preflight(design: Design, expected_head: str) -> tuple[dict[str, Any], list[str]]:
-    """Facts the run stands on, and the problems that refuse it."""
+def preflight(
+    design: Design, expected_head: str, repo_root: Path | None = None
+) -> tuple[dict[str, Any], list[str]]:
+    """Facts the run stands on, and the problems that refuse it.
+
+    Besides v2's checks this records ``shared_path_sha256`` (design v3 section
+    4.1) and refuses a run when one of those files is missing.
+    """
     source = capture_source()
     problems: list[str] = []
     if source.revision != expected_head:
@@ -360,29 +366,26 @@ def preflight(design: Design, expected_head: str) -> tuple[dict[str, Any], list[
         "system": os.uname().sysname,
         "release": os.uname().release,
         "machine": os.uname().machine,
-        # Design v3 section 4.1: the run's shared execution path, by file hash.
-        "shared_path_sha256": guards.shared_path_sha256(Path(__file__).resolve().parents[1]),
     }
-    missing = sorted(name for name, digest in facts["shared_path_sha256"].items() if digest is None)
-    if missing:
-        problems.append(f"shared execution path files missing: {missing}")
     image = f"inodefence-node-tar-effect:{design.target_version}"
     # Cells run with SKIP_BUILD=1, so the local images must exist before the first cell.
-    docker_facts, docker_problems = guards.docker_preflight(
+    host_facts, host_problems = guards.host_preflight(
+        repo_root=repo_root or Path(__file__).resolve().parents[1],
         engine=design.docker_engine,
         images={image: design.image_digest, **dict.fromkeys(LOCAL_IMAGES)},
         docker=_docker,
         residual=residual_resources,
     )
-    if not docker_facts:
-        return facts, [*problems, *docker_problems]
-    image_ids = docker_facts["image_ids"]
+    facts["shared_path_sha256"] = host_facts["shared_path_sha256"]
+    if "image_ids" not in host_facts:
+        return facts, [*problems, *host_problems]
+    image_ids = host_facts["image_ids"]
     facts.update(
-        docker_server=docker_facts["docker_server"],
+        docker_server=host_facts["docker_server"],
         image_id=image_ids[image],
         local_images={name: image_ids[name] for name in LOCAL_IMAGES},
     )
-    return facts, [*problems, *docker_problems]
+    return facts, [*problems, *host_problems]
 
 
 def base_environment(design: Design) -> dict[str, str]:
@@ -742,9 +745,11 @@ def _run_block(
         target=_sample_host, args=(run, host / "samples.jsonl", stop_sampling), daemon=True
     )
     events = _start_events(host / "events.jsonl")
-    # Record-only stall instruments (off unless asked for); they never stop a block.
-    recorder_threads = guards.start_recorders(host, run.recorders, stop_sampling)
+    recorder_threads: list[threading.Thread] = []
     try:
+        # Record-only stall instruments (off unless asked for); they never stop a
+        # block. Started inside the try so a failure still reaps the event collector.
+        recorder_threads = guards.start_recorders(host, run.recorders, stop_sampling)
         sampler.start()
         record = run.execute()
         if any(cell.get("start_error") for cell in record["cells"]):
@@ -1012,6 +1017,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         if state == "clean":
             continue
         facts, problems = preflight(design, args.expected_head)
+        recorders = guards.Recorders(ping_socket=args.ping_socket, desktop_log=args.desktop_log)
+        facts["recorders"] = guards.recorder_settings(recorders)
         if problems:
             print(f"refusing to start {block.name}:", file=sys.stderr)
             for item in problems:
@@ -1040,7 +1047,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             directory,
             bash,
             args.output / START_GATE_DIR,
-            guards.Recorders(ping_socket=args.ping_socket, desktop_log=args.desktop_log),
+            recorders,
         )
         print(f"{block.name}: stopped={record['stopped_reason']}")
         if record["stopped_reason"]:

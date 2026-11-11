@@ -1,4 +1,8 @@
-"""Shared launcher guards: the pieces run_exp0 --jobs imports from the benchmark path."""
+"""Shared launcher guards extracted from the benchmark driver.
+
+The benchmark driver uses them now; run_exp0 --jobs is wired to them in the
+integration branch (its own lane), through the entry points tested here.
+"""
 
 from __future__ import annotations
 
@@ -288,15 +292,196 @@ def test_recorders_are_off_by_default_and_record_when_enabled(tmp_path: Path) ->
     assert (tmp_path / "desktop.log").read_bytes() == b"line\n"
 
 
-def test_shared_path_hashes_cover_the_v3_list_and_this_checkout() -> None:
+EXPECTED_SHARED_PATHS = (
+    # design v3 section 4.1
+    "scripts/local_node_tar_smoke.sh",
+    "scripts/bounded_cleanup_command.py",
+    "src/inodefence/execution/container.py",
+    "src/inodefence/execution/docker_client.py",
+    "scripts/container_host.py",
+    "scripts/container_controller.py",
+    "scripts/run_exp0.py",
+    "scripts/run_parallel_native.py",
+    "src/inodefence/execution/start_gate.py",
+    "scripts/launcher_guards.py",
+    # D047 additions (W4 review of #336)
+    "src/inodefence/execution/stall_recovery.py",
+    "scripts/run_effect_demo.py",
+    "scripts/run_g1_smoke.py",
+    "src/inodefence/execution/__init__.py",
+    "src/inodefence/execution/base.py",
+    "src/inodefence/model/isolation.py",
+)
+
+
+def fake_tree(root: Path, skip: str | None = None) -> Path:
+    """Every shared-path file as small distinct content (the real tree may lack some)."""
+    for relative in guards.SHARED_PATH_FILES:
+        if relative == skip:
+            continue
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"content of {relative}\n")
+    return root
+
+
+def test_shared_path_list_is_exactly_the_agreed_set() -> None:
+    assert sorted(guards.SHARED_PATH_FILES) == sorted(EXPECTED_SHARED_PATHS)
+    assert len(set(guards.SHARED_PATH_FILES)) == len(guards.SHARED_PATH_FILES)
+
+
+def test_shared_path_hashes_are_file_sha256(tmp_path: Path) -> None:
     import hashlib
 
-    root = Path(__file__).resolve().parents[1]
+    root = fake_tree(tmp_path)
     hashes = guards.shared_path_sha256(root)
     assert tuple(hashes) == guards.SHARED_PATH_FILES
-    assert len(guards.SHARED_PATH_FILES) == 10
     for relative, digest in hashes.items():
         assert digest == hashlib.sha256((root / relative).read_bytes()).hexdigest(), relative
+
+
+IMAGES_OK = {"target:1": "sha256:t", "local:1": None}
+
+
+def test_host_preflight_on_a_complete_tree_has_no_problems(tmp_path: Path) -> None:
+    facts, problems = guards.host_preflight(
+        repo_root=fake_tree(tmp_path),
+        engine="29.8.0",
+        images=IMAGES_OK,
+        docker=fake_docker(OK),
+        residual=list,
+    )
+    assert problems == []
+    assert guards.missing_shared_paths(facts["shared_path_sha256"]) == []
+    assert facts["docker_server"] == "29.8.0"
+
+
+@pytest.mark.parametrize("missing", guards.SHARED_PATH_FILES)
+def test_a_missing_shared_path_file_refuses_the_run(tmp_path: Path, missing: str) -> None:
+    facts, problems = guards.host_preflight(
+        repo_root=fake_tree(tmp_path, skip=missing),
+        engine="29.8.0",
+        images=IMAGES_OK,
+        docker=fake_docker(OK),
+        residual=list,
+    )
+    assert problems == [f"shared execution path files missing: {[missing]}"]
+    assert facts["shared_path_sha256"][missing] is None
+
+
+def test_shared_path_is_recorded_even_when_docker_fails(tmp_path: Path) -> None:
+    facts, problems = guards.host_preflight(
+        repo_root=fake_tree(tmp_path),
+        engine="29.8.0",
+        images=IMAGES_OK,
+        docker=fake_docker(OK, failing=("version",)),
+    )
+    assert "shared_path_sha256" in facts
+    assert problems and problems[0].startswith("docker: ")
+
+
+def test_host_postflight_reports_what_changed(tmp_path: Path) -> None:
+    root = fake_tree(tmp_path)
+    kwargs: dict[str, Any] = {
+        "repo_root": root,
+        "engine": "29.8.0",
+        "images": IMAGES_OK,
+        "docker": fake_docker(OK),
+        "residual": list,
+    }
+    before, problems = guards.host_preflight(**kwargs)
+    assert problems == []
+    assert guards.host_postflight(before, **kwargs)[1] == []
+    (root / guards.SHARED_PATH_FILES[3]).write_text("changed during the run\n")
+    after = guards.host_postflight(
+        before, **{**kwargs, "residual": lambda: ["inodefence-local-runtime-x"]}
+    )[1]
+    assert "shared_path_sha256 changed during the run" in after
+    assert "residual benchmark resources exist: ['inodefence-local-runtime-x']" in after
+
+
+def test_benchmark_preflight_records_and_refuses_missing_shared_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from scripts import run_concurrency_benchmark as bench
+
+    class Source:
+        revision = "abc"
+        dirty = False
+
+    monkeypatch.setattr(bench, "capture_source", lambda: Source())
+    monkeypatch.setattr(bench, "residual_resources", list)
+    monkeypatch.setattr(bench.os, "getloadavg", lambda: (0.0, 0.0, 0.0))
+    design = bench.load_design(Path("experiments/configs/concurrency-scaling-v2.md"))
+    image = f"inodefence-node-tar-effect:{design.target_version}"
+    responses = {
+        ("version", "--format", "{{.Server.Version}}"): design.docker_engine,
+        ("image", "inspect", image, "--format", "{{.Id}}"): design.image_digest,
+        **{
+            ("image", "inspect", name, "--format", "{{.Id}}"): "sha256:l"
+            for name in bench.LOCAL_IMAGES
+        },
+    }
+    monkeypatch.setattr(bench, "_docker", fake_docker(responses))
+    missing = "src/inodefence/execution/stall_recovery.py"
+    facts, problems = bench.preflight(design, "abc", fake_tree(tmp_path, skip=missing))
+    assert problems == [f"shared execution path files missing: {[missing]}"]
+    assert facts["shared_path_sha256"][missing] is None
+    assert facts["image_id"] == design.image_digest
+    facts, problems = bench.preflight(design, "abc", fake_tree(tmp_path))
+    assert problems == []
+
+
+def test_recorder_failure_is_kept_as_evidence(tmp_path: Path) -> None:
+    def broken(*_args: Any) -> None:
+        raise OSError("socket vanished")
+
+    guards._record_quietly(broken, tmp_path, "x")
+    (line,) = (tmp_path / guards.RECORDER_FAILURES).read_text().splitlines()
+    record = json.loads(line)
+    assert (record["recorder"], record["type"], record["message"]) == (
+        "broken",
+        "OSError",
+        "socket vanished",
+    )
+
+
+def test_recorder_settings_say_what_was_enabled(tmp_path: Path) -> None:
+    assert guards.recorder_settings(guards.Recorders()) == {
+        "ping_socket": None,
+        "desktop_log": None,
+    }
+    assert guards.recorder_settings(guards.Recorders(ping_socket=tmp_path / "d.sock")) == {
+        "ping_socket": str(tmp_path / "d.sock"),
+        "desktop_log": None,
+    }
+
+
+def test_recorder_start_failure_still_reaps_the_event_collector(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from scripts import run_concurrency_benchmark as bench
+
+    reaped: list[str] = []
+
+    class Events:
+        def terminate(self) -> None:
+            reaped.append("terminate")
+
+        def wait(self, timeout: float) -> int:
+            return 0
+
+    def broken_recorders(*_args: Any) -> list[threading.Thread]:
+        raise OSError("recorder could not start")
+
+    monkeypatch.setattr(bench, "_start_events", lambda _path: Events())
+    monkeypatch.setattr(bench.guards, "start_recorders", broken_recorders)
+    monkeypatch.setattr(bench, "residual_resources", list)
+    design = bench.load_design(Path("experiments/configs/concurrency-scaling-v2.md"))
+    block = bench.planned_blocks(design, "smoke")[0]
+    with pytest.raises(OSError, match="recorder could not start"):
+        bench.run_block(design, block, tmp_path / "block", "bash")
+    assert reaped == ["terminate"]
 
 
 def test_shared_path_hashes_mark_a_missing_file(tmp_path: Path) -> None:

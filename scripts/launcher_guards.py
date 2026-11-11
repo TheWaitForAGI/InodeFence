@@ -1,11 +1,14 @@
-"""Host-side guards shared by the concurrent launchers.
+"""Host-side guards for concurrent launchers, extracted from the benchmark driver.
 
-The concurrency benchmark (``scripts/run_concurrency_benchmark.py``) and the
-registered launcher (``scripts/run_exp0.py --jobs``) must run cells under the
-same protections, so these live here instead of inside one driver:
+The concurrency benchmark (``scripts/run_concurrency_benchmark.py``) uses this
+module. The registered launcher (``scripts/run_exp0.py --jobs``) does **not**
+import it yet; its wiring is done in the integration branch by its own lane.
+The entry points meant for that wiring are :func:`host_preflight`,
+:func:`host_postflight`, :func:`terminate_started` and :func:`sample_host`.
 
 * docker preflight: engine version, image identities, running containers and
-  leftover InodeFence resources before the first cell (:func:`docker_preflight`);
+  leftover InodeFence resources before the first cell (:func:`docker_preflight`),
+  plus the shared execution path by file hash (:func:`host_preflight`);
 * leftover resources after a block (:func:`residual_resources`,
   :func:`residual_status`);
 * a started child whose runner failed is terminated, then killed
@@ -40,16 +43,24 @@ PROC_SAMPLE_SECONDS = 30.0
 DOCKER_PROBE_SECONDS = 60.0
 EVENT_ACTIONS = ("create", "start", "die", "destroy")
 TERMINATE_GRACE_SECONDS = 30.0
-#: The execution path both launchers must share (concurrency design v3 section 4.1).
-#: Recorded by sha256 before a run; if the benchmark's and the registration's
-#: lists differ, benchmark results do not transfer.
+#: The execution path a run's results depend on (concurrency design v3 section
+#: 4.1, extended for D047). Every file is required: :func:`host_preflight`
+#: records each sha256 and refuses the run when one is missing. A run's results
+#: transfer to another run only when these hashes match. Read and hashed only;
+#: listing a file here never changes it.
 SHARED_PATH_FILES = (
     "scripts/local_node_tar_smoke.sh",
     "scripts/bounded_cleanup_command.py",
+    "src/inodefence/execution/__init__.py",
+    "src/inodefence/execution/base.py",
     "src/inodefence/execution/container.py",
     "src/inodefence/execution/docker_client.py",
+    "src/inodefence/execution/stall_recovery.py",
+    "src/inodefence/model/isolation.py",
     "scripts/container_host.py",
     "scripts/container_controller.py",
+    "scripts/run_effect_demo.py",
+    "scripts/run_g1_smoke.py",
     "scripts/run_exp0.py",
     "scripts/run_parallel_native.py",
     "src/inodefence/execution/start_gate.py",
@@ -86,6 +97,63 @@ def shared_path_sha256(repo_root: Path) -> dict[str, str | None]:
         path = repo_root / relative
         hashes[relative] = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
     return hashes
+
+
+def missing_shared_paths(hashes: Mapping[str, str | None]) -> list[str]:
+    """The shared-path files that could not be hashed (each one refuses a run)."""
+    return sorted(name for name, digest in hashes.items() if digest is None)
+
+
+def host_preflight(
+    *,
+    repo_root: Path,
+    engine: str,
+    images: Mapping[str, str | None],
+    docker: Docker = docker_cli,
+    residual: Callable[[], list[str]] | None = None,
+) -> tuple[dict[str, Any], list[str]]:
+    """Facts before a run's first cell, and the problems that refuse it.
+
+    Records ``shared_path_sha256`` (a missing file refuses), the docker engine
+    (must equal ``engine``), image ids (each must equal its required id, or
+    exist when the requirement is ``None``), no running containers and no
+    leftover InodeFence resources. A launcher runs this before its first cell
+    and :func:`host_postflight` after its last.
+    """
+    hashes = shared_path_sha256(repo_root)
+    facts: dict[str, Any] = {"shared_path_sha256": hashes}
+    problems: list[str] = []
+    missing = missing_shared_paths(hashes)
+    if missing:
+        problems.append(f"shared execution path files missing: {missing}")
+    docker_facts, docker_problems = docker_preflight(
+        engine=engine, images=images, docker=docker, residual=residual
+    )
+    facts.update(docker_facts)
+    return facts, [*problems, *docker_problems]
+
+
+def host_postflight(
+    before: Mapping[str, Any],
+    *,
+    repo_root: Path,
+    engine: str,
+    images: Mapping[str, str | None],
+    docker: Docker = docker_cli,
+    residual: Callable[[], list[str]] | None = None,
+) -> tuple[dict[str, Any], list[str]]:
+    """The same checks once at the end, plus "nothing changed since ``before``".
+
+    ``before`` is :func:`host_preflight`'s facts. A changed engine, image id or
+    shared-path hash, or containers or resources left at the end, is a problem.
+    """
+    facts, problems = host_preflight(
+        repo_root=repo_root, engine=engine, images=images, docker=docker, residual=residual
+    )
+    for key in ("shared_path_sha256", "docker_server", "image_ids"):
+        if key in before and key in facts and before[key] != facts[key]:
+            problems.append(f"{key} changed during the run")
+    return facts, problems
 
 
 def residual_resources(docker: Docker = docker_cli) -> list[str]:
@@ -379,13 +447,33 @@ class Recorders:
     desktop_log: Path | None = None
 
 
-def _record_quietly(function: Callable[..., None], *args: Any) -> None:
+#: Recorder failures are kept here, next to the recordings (never only on stderr).
+RECORDER_FAILURES = "recorder-failures.jsonl"
+
+
+def _record_quietly(function: Callable[..., None], directory: Path, *args: Any) -> None:
     try:
         function(*args)
-    except Exception as error:  # a recorder never stops a run
-        print(
-            f"recorder {function.__name__} failed: {type(error).__name__}: {error}", file=sys.stderr
-        )
+    except Exception as error:  # a recorder never stops a run, but its failure is evidence
+        record = {
+            **clock_stamp(),
+            "recorder": function.__name__,
+            "type": type(error).__name__,
+            "message": str(error),
+        }
+        try:
+            with (directory / RECORDER_FAILURES).open("a", encoding="utf-8") as stream:
+                stream.write(json.dumps(record, sort_keys=True) + "\n")
+        finally:
+            print(f"recorder {function.__name__} failed: {record['message']}", file=sys.stderr)
+
+
+def recorder_settings(recorders: Recorders) -> dict[str, str | None]:
+    """What a run's preflight record should say about the optional recorders."""
+    return {
+        "ping_socket": None if recorders.ping_socket is None else str(recorders.ping_socket),
+        "desktop_log": None if recorders.desktop_log is None else str(recorders.desktop_log),
+    }
 
 
 def start_recorders(
@@ -398,7 +486,7 @@ def start_recorders(
     if recorders.desktop_log is not None:
         jobs.append((tail_log, (recorders.desktop_log, directory / "desktop.log", stop)))
     threads = [
-        threading.Thread(target=_record_quietly, args=(function, *args), daemon=True)
+        threading.Thread(target=_record_quietly, args=(function, directory, *args), daemon=True)
         for function, args in jobs
     ]
     for thread in threads:

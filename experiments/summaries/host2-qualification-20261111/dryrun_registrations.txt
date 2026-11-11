@@ -1,0 +1,115 @@
+### smoke-asis 2026-11-11T17:23:16+09:00
+# python -m scripts.run_exp0 --preregistration experiments/configs/run-exp0-eng-smoke-v1.md --output <scratch>/out-smoke-asis --target-digest node-tar-7.5.2=sha256:22c8...0bb --observer-integrity-policy invalid-continue --seed-assignment experiments/configs/run-exp0-eng-smoke-v1.assignment.json --host-id HOST2 --jobs 2 --manifest-host host2-eng-smoke --skip-build --dry-run
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/<user>/inodefence-host2-20261111/check-129324d/scripts/run_exp0.py", line 101, in <module>
+    from scripts.run_g1_smoke import (
+  File "/home/<user>/inodefence-host2-20261111/check-129324d/scripts/run_g1_smoke.py", line 67, in <module>
+    from inodefence.evaluation.cell_completeness import WATCHDOG_ABORT_REASON
+ModuleNotFoundError: No module named 'inodefence.evaluation.cell_completeness'
+# rc=1
+# output dir exists after: no
+### qual-asis 2026-11-11T17:23:17+09:00
+# python -m scripts.run_exp0 --preregistration experiments/configs/host-qualification-v1-run.md --output <scratch>/out-qual-asis --target-digest node-tar-7.5.2=sha256:22c8...0bb --observer-integrity-policy invalid-continue --seed-assignment experiments/configs/host-qualification-v1-run.assignment.json --host-id HOST2 --jobs 2 --manifest-host host2-qual --skip-build --dry-run
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/<user>/inodefence-host2-20261111/check-129324d/scripts/run_exp0.py", line 101, in <module>
+    from scripts.run_g1_smoke import (
+  File "/home/<user>/inodefence-host2-20261111/check-129324d/scripts/run_g1_smoke.py", line 67, in <module>
+    from inodefence.evaluation.cell_completeness import WATCHDOG_ABORT_REASON
+ModuleNotFoundError: No module named 'inodefence.evaluation.cell_completeness'
+# rc=1
+# output dir exists after: no
+# git status after: 0
+### smoke-asis 2026-11-11T17:23:30+09:00
+# PYTHONPATH=src python -m scripts.run_exp0 --preregistration experiments/configs/run-exp0-eng-smoke-v1.md --output <scratch>/out-smoke-asis --target-digest node-tar-7.5.2=sha256:22c8734f…6f3dbb --observer-integrity-policy invalid-continue --seed-assignment experiments/configs/run-exp0-eng-smoke-v1.assignment.json --host-id HOST2 --jobs 2 --manifest-host host2-eng-smoke --skip-build --dry-run
+preregistration unusable: engine_sha must be a 40-hex git commit
+# rc=2
+# output dir exists after: no
+### qual-asis 2026-11-11T17:23:30+09:00
+# PYTHONPATH=src python -m scripts.run_exp0 --preregistration experiments/configs/host-qualification-v1-run.md --output <scratch>/out-qual-asis --target-digest node-tar-7.5.2=sha256:22c8734f…6f3dbb --observer-integrity-policy invalid-continue --seed-assignment experiments/configs/host-qualification-v1-run.assignment.json --host-id HOST2 --jobs 2 --manifest-host host2-qual --skip-build --dry-run
+preregistration unusable: engine_sha must be a 40-hex git commit
+# rc=2
+# output dir exists after: no
+# git status after: 0
+### smoke-testfill 2026-11-11T17:23:43+09:00
+# PYTHONPATH=src python -m scripts.run_exp0 --preregistration <scratch>/run-exp0-eng-smoke-v1.TESTFILL.md --output <scratch>/out-smoke-testfill --target-digest node-tar-7.5.2=sha256:22c8734f…6f3dbb --observer-integrity-policy invalid-continue --seed-assignment experiments/configs/run-exp0-eng-smoke-v1.assignment.json --host-id HOST2 --jobs 2 --manifest-host host2-eng-smoke --skip-build --dry-run
+gate: PASS (preregistration gate on: run-exp0-eng-smoke-v1.TESTFILL.md (sha256 1854943fc08e…))
+target node-tar-7.5.2: node-tar 7.5.2 role=train hypothesis=H-A exposure=pre-exposed image_digest=sha256:22c8734f141d…
+would be refused at live run:
+  (nothing)
+plan=exp3-eng-smoke cells=6 pending=6 seeds=[6301, 6303] budget=300 arms=['R', 'D', 'S-u'] vocabulary=observed-names execution_mode=per-case-container watchdog_seconds=10800 disk_pause_fraction=0.9 interim_analysis=forbidden
+execution_deadline=2026-11-18T17:23:43+09:00
+seed_assignment host=HOST2 sha256=a395367b5a617a63ba92bd04183b45e8a79d33885eed81096d4bd2c7a537accc rule=alternate-v1 registered_seeds=4
+warmup: BUILD_ONLY=1 bash /home/<user>/inodefence-host2-20261111/check-129324d/scripts/local_node_tar_smoke.sh demo-historical
+  node-tar-7.5.2-R-s6301 [pending]: bash /home/<user>/inodefence-host2-20261111/check-129324d/scripts/local_node_tar_smoke.sh demo-historical
+    env: {"DEMO_BUDGET": "300", "DEMO_MUTATION_POLICY": "uniform-generic-m1-state-aware-escape-hardlink-fixed-baseline-v1", "DEMO_OBSERVER_INTEGRITY_POLICY": "invalid-continue", "DEMO_POLICY": "unretained-seed-restart-v1-uniform-mutation-v1", "DEMO_SEED": "6301", "DEMO_SENTINEL_COUNT": "5", "DEMO_SENTINEL_SEED": "20261104", "INODEFENCE_EVIDENCE_DIR": "<scratch>/out-smoke-testfill/node-tar-7.5.2", "RUN_ID": "node-tar-7.5.2-R-s6301", "SKIP_BUILD": "1", "TAR_VERSION": "7.5.2"}
+    report=<scratch>/out-smoke-testfill/node-tar-7.5.2/inodefence-effect-demo-historical-node-tar-7.5.2-R-s6301.json summary=<scratch>/out-smoke-testfill/summaries/node-tar-7.5.2-R-s6301.summary.json
+  node-tar-7.5.2-D-s6301 [pending]: bash /home/<user>/inodefence-host2-20261111/check-129324d/scripts/local_node_tar_smoke.sh demo-historical
+    env: {"DEMO_BUDGET": "300", "DEMO_MUTATION_POLICY": "uniform-generic-m1-state-aware-escape-hardlink-fixed-baseline-v1", "DEMO_OBSERVER_INTEGRITY_POLICY": "invalid-continue", "DEMO_POLICY": "structure-coverage-v1-uniform-mutation-v1", "DEMO_SEED": "6301", "DEMO_SENTINEL_COUNT": "5", "DEMO_SENTINEL_SEED": "20261104", "INODEFENCE_EVIDENCE_DIR": "<scratch>/out-smoke-testfill/node-tar-7.5.2", "RUN_ID": "node-tar-7.5.2-D-s6301", "SKIP_BUILD": "1", "TAR_VERSION": "7.5.2"}
+    report=<scratch>/out-smoke-testfill/node-tar-7.5.2/inodefence-effect-demo-historical-node-tar-7.5.2-D-s6301.json summary=<scratch>/out-smoke-testfill/summaries/node-tar-7.5.2-D-s6301.summary.json
+  node-tar-7.5.2-S-u-s6301 [pending]: bash /home/<user>/inodefence-host2-20261111/check-129324d/scripts/local_node_tar_smoke.sh demo-historical
+    env: {"DEMO_BUDGET": "300", "DEMO_MUTATION_POLICY": "uniform-generic-m1-state-aware-escape-hardlink-fixed-baseline-v1", "DEMO_OBSERVER_INTEGRITY_POLICY": "invalid-continue", "DEMO_POLICY": "effect-feedback-v2-or-violation-v1-boundary-attempt-v1-uniform-mutation-v1", "DEMO_SEED": "6301", "DEMO_SENTINEL_COUNT": "5", "DEMO_SENTINEL_SEED": "20261104", "INODEFENCE_EVIDENCE_DIR": "<scratch>/out-smoke-testfill/node-tar-7.5.2", "RUN_ID": "node-tar-7.5.2-S-u-s6301", "SKIP_BUILD": "1", "TAR_VERSION": "7.5.2"}
+    report=<scratch>/out-smoke-testfill/node-tar-7.5.2/inodefence-effect-demo-historical-node-tar-7.5.2-S-u-s6301.json summary=<scratch>/out-smoke-testfill/summaries/node-tar-7.5.2-S-u-s6301.summary.json
+  node-tar-7.5.2-D-s6303 [pending]: bash /home/<user>/inodefence-host2-20261111/check-129324d/scripts/local_node_tar_smoke.sh demo-historical
+    env: {"DEMO_BUDGET": "300", "DEMO_MUTATION_POLICY": "uniform-generic-m1-state-aware-escape-hardlink-fixed-baseline-v1", "DEMO_OBSERVER_INTEGRITY_POLICY": "invalid-continue", "DEMO_POLICY": "structure-coverage-v1-uniform-mutation-v1", "DEMO_SEED": "6303", "DEMO_SENTINEL_COUNT": "5", "DEMO_SENTINEL_SEED": "20261104", "INODEFENCE_EVIDENCE_DIR": "<scratch>/out-smoke-testfill/node-tar-7.5.2", "RUN_ID": "node-tar-7.5.2-D-s6303", "SKIP_BUILD": "1", "TAR_VERSION": "7.5.2"}
+    report=<scratch>/out-smoke-testfill/node-tar-7.5.2/inodefence-effect-demo-historical-node-tar-7.5.2-D-s6303.json summary=<scratch>/out-smoke-testfill/summaries/node-tar-7.5.2-D-s6303.summary.json
+  node-tar-7.5.2-S-u-s6303 [pending]: bash /home/<user>/inodefence-host2-20261111/check-129324d/scripts/local_node_tar_smoke.sh demo-historical
+    env: {"DEMO_BUDGET": "300", "DEMO_MUTATION_POLICY": "uniform-generic-m1-state-aware-escape-hardlink-fixed-baseline-v1", "DEMO_OBSERVER_INTEGRITY_POLICY": "invalid-continue", "DEMO_POLICY": "effect-feedback-v2-or-violation-v1-boundary-attempt-v1-uniform-mutation-v1", "DEMO_SEED": "6303", "DEMO_SENTINEL_COUNT": "5", "DEMO_SENTINEL_SEED": "20261104", "INODEFENCE_EVIDENCE_DIR": "<scratch>/out-smoke-testfill/node-tar-7.5.2", "RUN_ID": "node-tar-7.5.2-S-u-s6303", "SKIP_BUILD": "1", "TAR_VERSION": "7.5.2"}
+    report=<scratch>/out-smoke-testfill/node-tar-7.5.2/inodefence-effect-demo-historical-node-tar-7.5.2-S-u-s6303.json summary=<scratch>/out-smoke-testfill/summaries/node-tar-7.5.2-S-u-s6303.summary.json
+  node-tar-7.5.2-R-s6303 [pending]: bash /home/<user>/inodefence-host2-20261111/check-129324d/scripts/local_node_tar_smoke.sh demo-historical
+    env: {"DEMO_BUDGET": "300", "DEMO_MUTATION_POLICY": "uniform-generic-m1-state-aware-escape-hardlink-fixed-baseline-v1", "DEMO_OBSERVER_INTEGRITY_POLICY": "invalid-continue", "DEMO_POLICY": "unretained-seed-restart-v1-uniform-mutation-v1", "DEMO_SEED": "6303", "DEMO_SENTINEL_COUNT": "5", "DEMO_SENTINEL_SEED": "20261104", "INODEFENCE_EVIDENCE_DIR": "<scratch>/out-smoke-testfill/node-tar-7.5.2", "RUN_ID": "node-tar-7.5.2-R-s6303", "SKIP_BUILD": "1", "TAR_VERSION": "7.5.2"}
+    report=<scratch>/out-smoke-testfill/node-tar-7.5.2/inodefence-effect-demo-historical-node-tar-7.5.2-R-s6303.json summary=<scratch>/out-smoke-testfill/summaries/node-tar-7.5.2-R-s6303.summary.json
+# rc=0
+# output dir exists after: no
+### qual-testfill 2026-11-11T17:23:44+09:00
+# PYTHONPATH=src python -m scripts.run_exp0 --preregistration <scratch>/host-qualification-v1-run.TESTFILL.md --output <scratch>/out-qual-testfill --target-digest node-tar-7.5.2=sha256:22c8734f…6f3dbb --observer-integrity-policy invalid-continue --seed-assignment experiments/configs/host-qualification-v1-run.assignment.json --host-id HOST2 --jobs 2 --manifest-host host2-qual --skip-build --dry-run
+gate: PASS (preregistration gate on: host-qualification-v1-run.TESTFILL.md (sha256 399a8703ea58…))
+target node-tar-7.5.2: node-tar 7.5.2 role=train hypothesis=H-A exposure=pre-exposed image_digest=sha256:22c8734f141d…
+would be refused at live run:
+  (nothing)
+plan=host-qual cells=12 pending=12 seeds=[8110, 8102, 8103, 8106] budget=2000 arms=['R', 'D', 'S-u'] vocabulary=observed-names execution_mode=per-case-container watchdog_seconds=10800 disk_pause_fraction=0.9 interim_analysis=forbidden
+execution_deadline=2026-11-18T17:23:43+09:00
+seed_assignment host=HOST2 sha256=e81d5fcff7976fe4527da62303bb66e728eb86f7c672dc8556a800562e7d29b3 rule=replicate-v1 registered_seeds=4
+warmup: BUILD_ONLY=1 bash /home/<user>/inodefence-host2-20261111/check-129324d/scripts/local_node_tar_smoke.sh demo-historical
+  node-tar-7.5.2-R-s8110 [pending]: bash /home/<user>/inodefence-host2-20261111/check-129324d/scripts/local_node_tar_smoke.sh demo-historical
+    env: {"DEMO_BUDGET": "2000", "DEMO_MUTATION_POLICY": "uniform-generic-m1-state-aware-escape-hardlink-fixed-baseline-v1", "DEMO_OBSERVER_INTEGRITY_POLICY": "invalid-continue", "DEMO_POLICY": "unretained-seed-restart-v1-uniform-mutation-v1", "DEMO_SEED": "8110", "DEMO_SENTINEL_COUNT": "5", "DEMO_SENTINEL_SEED": "20261104", "INODEFENCE_EVIDENCE_DIR": "<scratch>/out-qual-testfill/node-tar-7.5.2", "RUN_ID": "node-tar-7.5.2-R-s8110", "SKIP_BUILD": "1", "TAR_VERSION": "7.5.2"}
+    report=<scratch>/out-qual-testfill/node-tar-7.5.2/inodefence-effect-demo-historical-node-tar-7.5.2-R-s8110.json summary=<scratch>/out-qual-testfill/summaries/node-tar-7.5.2-R-s8110.summary.json
+  node-tar-7.5.2-D-s8110 [pending]: bash /home/<user>/inodefence-host2-20261111/check-129324d/scripts/local_node_tar_smoke.sh demo-historical
+    env: {"DEMO_BUDGET": "2000", "DEMO_MUTATION_POLICY": "uniform-generic-m1-state-aware-escape-hardlink-fixed-baseline-v1", "DEMO_OBSERVER_INTEGRITY_POLICY": "invalid-continue", "DEMO_POLICY": "structure-coverage-v1-uniform-mutation-v1", "DEMO_SEED": "8110", "DEMO_SENTINEL_COUNT": "5", "DEMO_SENTINEL_SEED": "20261104", "INODEFENCE_EVIDENCE_DIR": "<scratch>/out-qual-testfill/node-tar-7.5.2", "RUN_ID": "node-tar-7.5.2-D-s8110", "SKIP_BUILD": "1", "TAR_VERSION": "7.5.2"}
+    report=<scratch>/out-qual-testfill/node-tar-7.5.2/inodefence-effect-demo-historical-node-tar-7.5.2-D-s8110.json summary=<scratch>/out-qual-testfill/summaries/node-tar-7.5.2-D-s8110.summary.json
+  node-tar-7.5.2-S-u-s8110 [pending]: bash /home/<user>/inodefence-host2-20261111/check-129324d/scripts/local_node_tar_smoke.sh demo-historical
+    env: {"DEMO_BUDGET": "2000", "DEMO_MUTATION_POLICY": "uniform-generic-m1-state-aware-escape-hardlink-fixed-baseline-v1", "DEMO_OBSERVER_INTEGRITY_POLICY": "invalid-continue", "DEMO_POLICY": "effect-feedback-v2-or-violation-v1-boundary-attempt-v1-uniform-mutation-v1", "DEMO_SEED": "8110", "DEMO_SENTINEL_COUNT": "5", "DEMO_SENTINEL_SEED": "20261104", "INODEFENCE_EVIDENCE_DIR": "<scratch>/out-qual-testfill/node-tar-7.5.2", "RUN_ID": "node-tar-7.5.2-S-u-s8110", "SKIP_BUILD": "1", "TAR_VERSION": "7.5.2"}
+    report=<scratch>/out-qual-testfill/node-tar-7.5.2/inodefence-effect-demo-historical-node-tar-7.5.2-S-u-s8110.json summary=<scratch>/out-qual-testfill/summaries/node-tar-7.5.2-S-u-s8110.summary.json
+  node-tar-7.5.2-D-s8102 [pending]: bash /home/<user>/inodefence-host2-20261111/check-129324d/scripts/local_node_tar_smoke.sh demo-historical
+    env: {"DEMO_BUDGET": "2000", "DEMO_MUTATION_POLICY": "uniform-generic-m1-state-aware-escape-hardlink-fixed-baseline-v1", "DEMO_OBSERVER_INTEGRITY_POLICY": "invalid-continue", "DEMO_POLICY": "structure-coverage-v1-uniform-mutation-v1", "DEMO_SEED": "8102", "DEMO_SENTINEL_COUNT": "5", "DEMO_SENTINEL_SEED": "20261104", "INODEFENCE_EVIDENCE_DIR": "<scratch>/out-qual-testfill/node-tar-7.5.2", "RUN_ID": "node-tar-7.5.2-D-s8102", "SKIP_BUILD": "1", "TAR_VERSION": "7.5.2"}
+    report=<scratch>/out-qual-testfill/node-tar-7.5.2/inodefence-effect-demo-historical-node-tar-7.5.2-D-s8102.json summary=<scratch>/out-qual-testfill/summaries/node-tar-7.5.2-D-s8102.summary.json
+  node-tar-7.5.2-S-u-s8102 [pending]: bash /home/<user>/inodefence-host2-20261111/check-129324d/scripts/local_node_tar_smoke.sh demo-historical
+    env: {"DEMO_BUDGET": "2000", "DEMO_MUTATION_POLICY": "uniform-generic-m1-state-aware-escape-hardlink-fixed-baseline-v1", "DEMO_OBSERVER_INTEGRITY_POLICY": "invalid-continue", "DEMO_POLICY": "effect-feedback-v2-or-violation-v1-boundary-attempt-v1-uniform-mutation-v1", "DEMO_SEED": "8102", "DEMO_SENTINEL_COUNT": "5", "DEMO_SENTINEL_SEED": "20261104", "INODEFENCE_EVIDENCE_DIR": "<scratch>/out-qual-testfill/node-tar-7.5.2", "RUN_ID": "node-tar-7.5.2-S-u-s8102", "SKIP_BUILD": "1", "TAR_VERSION": "7.5.2"}
+    report=<scratch>/out-qual-testfill/node-tar-7.5.2/inodefence-effect-demo-historical-node-tar-7.5.2-S-u-s8102.json summary=<scratch>/out-qual-testfill/summaries/node-tar-7.5.2-S-u-s8102.summary.json
+  node-tar-7.5.2-R-s8102 [pending]: bash /home/<user>/inodefence-host2-20261111/check-129324d/scripts/local_node_tar_smoke.sh demo-historical
+    env: {"DEMO_BUDGET": "2000", "DEMO_MUTATION_POLICY": "uniform-generic-m1-state-aware-escape-hardlink-fixed-baseline-v1", "DEMO_OBSERVER_INTEGRITY_POLICY": "invalid-continue", "DEMO_POLICY": "unretained-seed-restart-v1-uniform-mutation-v1", "DEMO_SEED": "8102", "DEMO_SENTINEL_COUNT": "5", "DEMO_SENTINEL_SEED": "20261104", "INODEFENCE_EVIDENCE_DIR": "<scratch>/out-qual-testfill/node-tar-7.5.2", "RUN_ID": "node-tar-7.5.2-R-s8102", "SKIP_BUILD": "1", "TAR_VERSION": "7.5.2"}
+    report=<scratch>/out-qual-testfill/node-tar-7.5.2/inodefence-effect-demo-historical-node-tar-7.5.2-R-s8102.json summary=<scratch>/out-qual-testfill/summaries/node-tar-7.5.2-R-s8102.summary.json
+  node-tar-7.5.2-S-u-s8103 [pending]: bash /home/<user>/inodefence-host2-20261111/check-129324d/scripts/local_node_tar_smoke.sh demo-historical
+    env: {"DEMO_BUDGET": "2000", "DEMO_MUTATION_POLICY": "uniform-generic-m1-state-aware-escape-hardlink-fixed-baseline-v1", "DEMO_OBSERVER_INTEGRITY_POLICY": "invalid-continue", "DEMO_POLICY": "effect-feedback-v2-or-violation-v1-boundary-attempt-v1-uniform-mutation-v1", "DEMO_SEED": "8103", "DEMO_SENTINEL_COUNT": "5", "DEMO_SENTINEL_SEED": "20261104", "INODEFENCE_EVIDENCE_DIR": "<scratch>/out-qual-testfill/node-tar-7.5.2", "RUN_ID": "node-tar-7.5.2-S-u-s8103", "SKIP_BUILD": "1", "TAR_VERSION": "7.5.2"}
+    report=<scratch>/out-qual-testfill/node-tar-7.5.2/inodefence-effect-demo-historical-node-tar-7.5.2-S-u-s8103.json summary=<scratch>/out-qual-testfill/summaries/node-tar-7.5.2-S-u-s8103.summary.json
+  node-tar-7.5.2-R-s8103 [pending]: bash /home/<user>/inodefence-host2-20261111/check-129324d/scripts/local_node_tar_smoke.sh demo-historical
+    env: {"DEMO_BUDGET": "2000", "DEMO_MUTATION_POLICY": "uniform-generic-m1-state-aware-escape-hardlink-fixed-baseline-v1", "DEMO_OBSERVER_INTEGRITY_POLICY": "invalid-continue", "DEMO_POLICY": "unretained-seed-restart-v1-uniform-mutation-v1", "DEMO_SEED": "8103", "DEMO_SENTINEL_COUNT": "5", "DEMO_SENTINEL_SEED": "20261104", "INODEFENCE_EVIDENCE_DIR": "<scratch>/out-qual-testfill/node-tar-7.5.2", "RUN_ID": "node-tar-7.5.2-R-s8103", "SKIP_BUILD": "1", "TAR_VERSION": "7.5.2"}
+    report=<scratch>/out-qual-testfill/node-tar-7.5.2/inodefence-effect-demo-historical-node-tar-7.5.2-R-s8103.json summary=<scratch>/out-qual-testfill/summaries/node-tar-7.5.2-R-s8103.summary.json
+  node-tar-7.5.2-D-s8103 [pending]: bash /home/<user>/inodefence-host2-20261111/check-129324d/scripts/local_node_tar_smoke.sh demo-historical
+    env: {"DEMO_BUDGET": "2000", "DEMO_MUTATION_POLICY": "uniform-generic-m1-state-aware-escape-hardlink-fixed-baseline-v1", "DEMO_OBSERVER_INTEGRITY_POLICY": "invalid-continue", "DEMO_POLICY": "structure-coverage-v1-uniform-mutation-v1", "DEMO_SEED": "8103", "DEMO_SENTINEL_COUNT": "5", "DEMO_SENTINEL_SEED": "20261104", "INODEFENCE_EVIDENCE_DIR": "<scratch>/out-qual-testfill/node-tar-7.5.2", "RUN_ID": "node-tar-7.5.2-D-s8103", "SKIP_BUILD": "1", "TAR_VERSION": "7.5.2"}
+    report=<scratch>/out-qual-testfill/node-tar-7.5.2/inodefence-effect-demo-historical-node-tar-7.5.2-D-s8103.json summary=<scratch>/out-qual-testfill/summaries/node-tar-7.5.2-D-s8103.summary.json
+  node-tar-7.5.2-R-s8106 [pending]: bash /home/<user>/inodefence-host2-20261111/check-129324d/scripts/local_node_tar_smoke.sh demo-historical
+    env: {"DEMO_BUDGET": "2000", "DEMO_MUTATION_POLICY": "uniform-generic-m1-state-aware-escape-hardlink-fixed-baseline-v1", "DEMO_OBSERVER_INTEGRITY_POLICY": "invalid-continue", "DEMO_POLICY": "unretained-seed-restart-v1-uniform-mutation-v1", "DEMO_SEED": "8106", "DEMO_SENTINEL_COUNT": "5", "DEMO_SENTINEL_SEED": "20261104", "INODEFENCE_EVIDENCE_DIR": "<scratch>/out-qual-testfill/node-tar-7.5.2", "RUN_ID": "node-tar-7.5.2-R-s8106", "SKIP_BUILD": "1", "TAR_VERSION": "7.5.2"}
+    report=<scratch>/out-qual-testfill/node-tar-7.5.2/inodefence-effect-demo-historical-node-tar-7.5.2-R-s8106.json summary=<scratch>/out-qual-testfill/summaries/node-tar-7.5.2-R-s8106.summary.json
+  node-tar-7.5.2-D-s8106 [pending]: bash /home/<user>/inodefence-host2-20261111/check-129324d/scripts/local_node_tar_smoke.sh demo-historical
+    env: {"DEMO_BUDGET": "2000", "DEMO_MUTATION_POLICY": "uniform-generic-m1-state-aware-escape-hardlink-fixed-baseline-v1", "DEMO_OBSERVER_INTEGRITY_POLICY": "invalid-continue", "DEMO_POLICY": "structure-coverage-v1-uniform-mutation-v1", "DEMO_SEED": "8106", "DEMO_SENTINEL_COUNT": "5", "DEMO_SENTINEL_SEED": "20261104", "INODEFENCE_EVIDENCE_DIR": "<scratch>/out-qual-testfill/node-tar-7.5.2", "RUN_ID": "node-tar-7.5.2-D-s8106", "SKIP_BUILD": "1", "TAR_VERSION": "7.5.2"}
+    report=<scratch>/out-qual-testfill/node-tar-7.5.2/inodefence-effect-demo-historical-node-tar-7.5.2-D-s8106.json summary=<scratch>/out-qual-testfill/summaries/node-tar-7.5.2-D-s8106.summary.json
+  node-tar-7.5.2-S-u-s8106 [pending]: bash /home/<user>/inodefence-host2-20261111/check-129324d/scripts/local_node_tar_smoke.sh demo-historical
+    env: {"DEMO_BUDGET": "2000", "DEMO_MUTATION_POLICY": "uniform-generic-m1-state-aware-escape-hardlink-fixed-baseline-v1", "DEMO_OBSERVER_INTEGRITY_POLICY": "invalid-continue", "DEMO_POLICY": "effect-feedback-v2-or-violation-v1-boundary-attempt-v1-uniform-mutation-v1", "DEMO_SEED": "8106", "DEMO_SENTINEL_COUNT": "5", "DEMO_SENTINEL_SEED": "20261104", "INODEFENCE_EVIDENCE_DIR": "<scratch>/out-qual-testfill/node-tar-7.5.2", "RUN_ID": "node-tar-7.5.2-S-u-s8106", "SKIP_BUILD": "1", "TAR_VERSION": "7.5.2"}
+    report=<scratch>/out-qual-testfill/node-tar-7.5.2/inodefence-effect-demo-historical-node-tar-7.5.2-S-u-s8106.json summary=<scratch>/out-qual-testfill/summaries/node-tar-7.5.2-S-u-s8106.summary.json
+# rc=0
+# output dir exists after: no
+# git status after: 0; docker containers: 4

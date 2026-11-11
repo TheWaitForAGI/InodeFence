@@ -146,7 +146,7 @@ Native docker (read-only, `native_docker.txt`): no docker-ce/containerd packages
 | Disk | PASS (capacity) | §2, C: 86 GB |
 | Images | FAIL | not yet transferred (§14) |
 | Engine | FAIL | 29.9.3 ≠ 29.8.0, §13 pending decision |
-| Clock | FAIL (fixed criteria) / stable phase observed | §11; permanent change pending approval |
+| Clock | FAIL (fixed criteria) / stable phase observed | §11; permanent change pending approval. **Update 17:22: confirmation test PASS (§23)**; W32Time sync pending |
 | Restart protection | FAIL | §6, §12 not applied by the owner; even once applied, "configuration compliant, effect not observed" |
 | Leftover resources | PASS | §7 |
 | Load | UNKNOWN | §12 item 7 |
@@ -166,7 +166,7 @@ Scope note (ORCH): the owner's blanket approval covers HOST2 machine settings. C
 | --- | --- | --- |
 | Load 4 images and match Ids | Not started | Owner accepting the Tailscale share invite (HOST1 not visible at 15:29) |
 | Restart protection applied | Not applied | Owner clicking "Yes" in UAC. Verdict will be "configuration compliant / effect not observed". Recheck the pause expiry on 11/18. After the main run, revert per §12 |
-| Clock confirmation test PASS | Running (ends about 17:20) | W2 verdict. After a WSL restart, recheck the tick and timesyncd state |
+| Clock confirmation test PASS | **PASS** 17:22 (§23) | After a WSL restart, recheck the tick and timesyncd state. Next: W32Time sync (owner) → criteria (a)(b)(c) |
 | Clean up user apps | Not done | Owner's call (list in §12 item 7, AnyDesk is the owner's decision) |
 | Docker Desktop auto-update off | Unconfirmed | Owner turning it off in the GUI and recording the value |
 | Execution SHA checkout | Not done | ORCH delivering the SHA (`~/inodefence-host2-20261111/execution`) |
@@ -176,3 +176,106 @@ Scope note (ORCH): the owner's blanket approval covers HOST2 machine settings. C
 ## 18. Evidence manifest
 
 `SHA256SUMS` covers every public file in this directory. Raw probe files are redacted copies. CRLF was converted to LF, and trailing whitespace and blank lines at end of file were removed. The original unredacted outputs are kept only in the session-local scratch area.
+
+## 19. Cross-check against main `c159406` `experiments/configs/host-qualification-v1.md` §4 preflight and §12 checklist (read-only, 17:01 KST)
+
+Values measured 2026-11-11 17:01 KST with read-only commands (`docker version`, `docker context show`, `docker info`, `docker images`, `docker ps -a`, `docker volume ls`, `.wslconfig`, `wsl.exe --version`, `uptime -s`, `/proc/loadavg`, `free`, `df`). Nothing was changed.
+
+### 19.1 §4 preflight
+
+| §4 item | HOST2 expected | HOST2 measured now | Met now? | Waiting on / who |
+| --- | --- | --- | --- | --- |
+| Execution SHA clean, detached worktree, venv python, no `uv.lock` | the candidate SHA ORCH sends | not delivered. venv `~/.local/share/inodefence/host2-dev-venv` (Python 3.12.3) ready | No | ORCH sends the SHA → W2 creates `~/inodefence-host2-20261111/execution` |
+| Target image id | `sha256:22c8734f…6f3dbb` (node-tar 7.5.2) | absent | No | owner accepts the Tailscale invite → W2 transfers, loads, compares ids (§14) |
+| Controller image id | `sha256:d44900e1…91d7a4` | absent | No | same |
+| Helper image id | `sha256:9b9dd606…81cc27` | absent | No | same |
+| Holdout image (EXP-2) | `sha256:f5d3e9a9…080421` (node-tar 7.4.4) | absent | No | same (not a §4 item, but part of the same transfer) |
+| Engine `Server.Version` | 29.9.3 (option B) | 29.9.3, client 29.9.3, context `default`, daemon Docker Desktop (`OperatingSystem=Docker Desktop`) | **Yes** | keep unchanged until the main run ends (owner turns off Desktop auto-update, §21) |
+| Shared-path hash, 16 files | equal to HOST1 at the execution SHA | not computed (no execution SHA). A preview at the integration head is in §22 | No | execution SHA (ORCH) |
+| Running containers 0 | 0 | 0 running. `inodefence-` containers: 0 | **Yes** | — |
+| Leftover volumes 0 | 0 | code filter `name=inodefence-local-` (`scripts/launcher_guards.py:162` @ `129324d`): 0. **However**, the §4 text says "`inodefence-` prefix containers and volumes". Under that wording the two dev-container volumes `inodefence-codex` and `inodefence-runtime` match | Yes (code) / **No (text)** | ORCH/W3 decide whether the §4 wording or the code filter governs. Not deleted (deletion prohibited) |
+| Disk ≥ 20 GB | ≥ 20 GB | WSL `/` 944 GB free. C: (holds the VHDX) about 87 GB free | **Yes** | recheck after the image load |
+| Available memory ≥ 15 GiB | ≥ 15 GiB | 18 GiB available (WSL total 19.5 GiB) | **Yes** | — |
+| load < 3 and < 25% of cores (6) | < 3 | 0.22 (24 cores) | **Yes (instant)** | over 24 h: owner closes background apps (§21) |
+| Restart protection capture | captured at start | elevated script waiting for UAC since 15:18 | No | owner clicks "Yes" (§21) |
+| Boot time (start and end) | recorded | Windows boot 2026-11-11 10:03 KST, WSL start 13:31:40 KST | recordable | record again at start and end of the qualification run |
+| Docker Desktop version | 4.99.0 (245822) | 4.99.0 (245822) (§2) | **Yes** | auto-update off (owner) |
+| WSL version | 3.0.5.0 | WSL 3.0.5.0, kernel 6.18.58.1-1, WSLg 1.0.79 | **Yes** | — |
+| `.wslconfig` | memory and processor caps recorded | `[wsl2] memory=20GB`; no `processors` key (24 visible) | recordable | — |
+| Realtime sync state | timesyncd off + W32Time synced to NTP (Jiwoong) | timesyncd inactive/disabled, tick 10000. W32Time not started | partly | confirmation verdict (W2, about 17:22) → owner starts/resyncs W32Time → W2 checks criteria (a)(b)(c) |
+| Cross-host realtime difference (record only) | SNTP offset difference measured on both hosts | HOST2 side measured: +1.572 s (time.windows.com), +1.575 s (pool.ntp.org) (§20) | HOST2 half done | HOST1 measures with the same servers (ORCH/HOST1). Remeasure after W32Time sync |
+| jobs | `host.HOST2.jobs = 2` | registration file check: §22 | see §22 | — |
+
+### 19.2 §12 pre-run checklist (for HOST2)
+
+| §12 item | Status | Who |
+| --- | --- | --- |
+| D047 and the qualification file on main; "provisional" values fixed in a commit | D047 merged (`c159406`). Whether the provisional values are fixed: UNKNOWN to W2 | W4 review → Jiwoong |
+| Candidate SHA with #340, #335, #334, #336 wiring, `replicate-v1`, 3-image-id recording; independent verification PASS | not delivered (integration head under fixes after the W4 FAIL) | W1/W3 → W4 → ORCH |
+| Stage 0 smoke PASS (HOST2) | not run (prohibited) | needs SHA, images and Jiwoong approval; W2 runs it |
+| All §4 preflight items, record path in LOG | see 19.1 | W2 records; owner items in §21 |
+| Verdict tool and cross-host comparator at that SHA | not present per §13 | W3 |
+| Cell env key/value check, `observer_integrity_policy = invalid-continue` | not checked (no SHA) | W2 at the execution SHA, or W3 |
+| Exposure ledger plan line, seed-collision machine check | not done | ORCH/W3 |
+| Notify other sessions: sealing, no other docker or `make check` | not done | ORCH |
+| Jiwoong approval per host and stage | not given | Jiwoong |
+
+## 20. SNTP clock offset (first real-network run of the integration script, 17:01 KST)
+
+Script `scripts/measure_clock_offset.py` from `origin/claude/p0-331-exp3-control-integration` @ `129324d` (file sha256 `4d5ccf5e…7328af5`), extracted to the session scratch area and run with `python3 -I` inside WSL. Usage (`--help`): `--server SERVER --host-id {HOST1,HOST2} [--samples SAMPLES] --out OUT`. Both runs rc=0. The clock was not touched.
+
+| Server | Samples ok / taken | Chosen | offset_s | RTT_s | uncertainty_s (= RTT/2) | measured_at (UTC) |
+| --- | --- | --- | --- | --- | --- | --- |
+| time.windows.com | **3 / 5** (samples 1 and 2: `TimeoutError: timed out`) | index 0 | +1.5723 | 0.0138 | 0.0069 | 08:01:15.03 |
+| pool.ntp.org | 5 / 5 | index 1 | +1.5746 | 0.0177 | 0.0089 | 08:01:15.96 |
+
+- Sign (script docstring): `offset_s` = server − this host, so the **WSL REALTIME clock is about 1.57 s behind NTP**. The two servers agree within 2.3 ms. With WSL REALTIME − Windows UTC ≈ −0.19 s (tickmon, same hour), Windows is about 1.38 s behind NTP. This matches the step of about 1.36 s expected when W32Time is synced.
+- Format: per-host file `{schema: inodefence-clock-offset-v1, host_id, server, method: sntp-v1, samples[5], chosen{index, offset_s, rtt_s}, offset_s, uncertainty_s, measured_at}`. The design's `{method, samples, chosen, diff_s, uncertainty_s, measured_at}` belongs to the two-host combined record. `diff_s` comes from the script's `combine` step, which this one-host run cannot produce. Failed samples stay in `samples` with an `error` field and are excluded from `chosen`.
+- Observation: 2 of 5 time.windows.com queries timed out. The script still chose a sample, but HOST1 should use the same server pair. pool.ntp.org answered 5/5 here.
+- Evidence: `sntp_offset_time_windows_com.txt`, `sntp_offset_pool_ntp_org.txt`.
+
+## 21. Owner one-pass task sheet (HOST2 owner, in this order)
+
+| # | Task | How | Expected time | Why it is needed |
+| --- | --- | --- | --- | --- |
+| 1 | Accept the Tailscale share invite | Open the invite link (email or Tailscale admin) while signed in to the HOST2 tailnet account, then accept. W2 then checks that HOST1 `100.69.212.56` appears | 2 min | The three experiment images and the holdout image come from HOST1 through this share, and W2 checks they keep the same ids. No rebuild is allowed |
+| 2 | Approve the restart-protection UAC prompt | Click "Yes" on the UAC window that has been open since 15:18. If it closed, tell W2 and it relaunches it | 1 min | Pauses Windows Update for 35 days and blocks automatic restarts while logged on. Windows restarted HOST2 automatically at 10:02 today, and one restart ends a 24 h unattended run |
+| 3 | Turn off Docker Desktop auto-update and report Resource Saver | Docker Desktop > Settings > Software updates: turn off "Automatically check/download updates". Settings > Resources > Advanced: tell W2 the "Resource Saver" state and its timeout. Change nothing else | 3 min | Engine 29.9.3 and Desktop 4.99.0 must stay unchanged from the qualification start to the end of the main run (§11 ⑤). Resource Saver can stop the engine VM when idle |
+| 4 | Close background programs during measurement | Quit, and turn off at startup: Discord, Steam, Riot Client, Battle.net, Overwolf, OP.GG, KakaoTalk, LG HUB, INZONE Hub, Samsung Magician, Notion, Adobe Acrobat Synchronizer, NAVER MYBOX, Edge auto-launch (AnyDesk is the owner's decision). **Keep Docker Desktop and Tailscale running** | 5–10 min | The load criterion (< 3) must hold for 24 h. Game launchers and updaters cause CPU and disk spikes |
+| 5 | (After W2 reports the clock verdict) Start W32Time and resync | Admin PowerShell: `Start-Service W32Time; w32tm /resync /force; Set-Service W32Time -StartupType Automatic` (or run `if_host2_w32time.ps1` when W2 asks). Revert: `Set-Service W32Time -StartupType Manual; Stop-Service W32Time` | 2 min, plus a 30-minute check by W2 | Windows is about 1.4 s behind NTP (§20). Jiwoong approved syncing Windows to NTP with WSL timesyncd off. W2 then checks the (a)(b)(c) criteria |
+
+## 22. Code portability (docker-free tests) and registration dry-run (17:22–17:24 KST)
+
+Separate detached worktree `~/inodefence-host2-20261111/check-129324d` at the integration head `origin/claude/p0-331-exp3-control-integration` = `129324de3841e56b81fe7d22e81d41fb856ead64` (clean). **This is for checking only and is not an execution candidate.** Kernel `6.18.58.1-microsoft-standard-WSL2`, WSL 3.0.5.0, Python 3.12.3 (venv `~/.local/share/inodefence/host2-dev-venv`). Docker container count was 4 before and after (unchanged), and `git status` stayed clean afterwards.
+
+### 22.1 Tests
+
+`python -m pytest tests/test_start_gate.py tests/test_h1_incomplete_evidence.py tests/test_run_exp0.py tests/test_two_host_split.py tests/test_stall_recovery.py tests/test_host_qualification_assignment.py tests/test_run_exp0_host_guards.py tests/test_qualify_host.py tests/test_launcher_guards.py -q -p no:cacheprovider`: all 9 files present, **293 passed, 0 failed, 0 skipped, 7.0 s**, rc=0. This includes the start gate (flock, fd inheritance, process termination) on the HOST2 kernel. pytest's `pythonpath = ["src"]` made `inodefence` import from the worktree (checked) (`portability_pytest.txt`).
+
+### 22.2 Dry-run of `run-exp0-eng-smoke-v1.md` and `host-qualification-v1-run.md` with `--host-id HOST2 --jobs 2 --skip-build --dry-run`
+
+| Run | Result |
+| --- | --- |
+| venv python, as in the registration files' procedure | **rc=1 ImportError**: `No module named 'inodefence.evaluation.cell_completeness'`. The venv's `inodefence-host2.pth` points to the main checkout `~/projects/InodeFence/src` (an older branch), not to the worktree, so `python -m scripts.run_exp0` loads stale library code. **Finding:** with this venv, execution from a detached worktree needs `PYTHONPATH=src` (or a `.pth` that points to the execution worktree). Otherwise the wrong code runs or fails. Nothing was changed. The fix is to be decided before the execution SHA (ORCH) |
+| `PYTHONPATH=src`, files as committed | both rc=2 `preregistration unusable: engine_sha must be a 40-hex git commit`. **This is the intended refusal** (`TBD-FREEZE` is still in place) |
+| `PYTHONPATH=src`, a **scratch test copy** with TBD values filled (engine_sha = 129324d, ledger sha from the worktree file, deadline +7 d, HOST1 29.8.0, HOST2 29.9.3). For parser checking only, not a value proposal (`dryrun_testfill_*.diff.txt`) | both rc=0, `gate: PASS`, `would be refused at live run: (nothing)`. Smoke: cells 6, seeds [6301, 6303] (alternate-v1, HOST2 share), budget 300. Qualification: cells 12, seeds [8110, 8102, 8103, 8106] (replicate-v1), budget 2000. Engine gate read `docker version` = 29.9.3 and matched. The output directory was not created |
+
+- Paths: no breakage. The cell command and report paths derive from the worktree and `--output` (lowercase `projects` and a different account are fine). `git grep '/home/linux|Projects/InodeFence'` over scripts, src and configs finds hits only off the main-run path: `concurrency-scaling-v1.md:283`, `concurrency-scaling-v2.md:297` (doc examples), and `src/inodefence/evaluation/n04_preflight.py:66-76` (older N04 macOS paths). `run_exp0.py`, `launcher_guards.py`, `local_node_tar_smoke.sh` and the two registration files have none.
+- Observation 1: the dry-run returned `gate: PASS` with **no target, controller or helper image present** on HOST2. The dry-run does not inspect images (the `--target-digest` value is compared with the registration only). The existence check on `LOCAL_IMAGES` (`scripts/run_exp0.py:614,627`) happens only in a live run. Image-id comparison is a separate code item (§13 of the qualification file), so a dry-run PASS does not cover the image preflight.
+- Observation 2: the dry-run prints `warmup: BUILD_ONLY=1 …` even with `--skip-build` (`scripts/run_exp0.py:1414`). A live run skips it (`:1995`, `if pending and not args.skip_build`). The output is misleading but the behaviour is correct.
+- Evidence: `dryrun_registrations.txt`, `dryrun_testfill_run-exp0-eng-smoke-v1.diff.txt`, `dryrun_testfill_host-qualification-v1-run.diff.txt`.
+
+## 23. Clock confirmation test verdict (fixed criteria): **PASS**
+
+Run 14:57:25–17:22:28 KST (`clock_confirm.txt`, scripts `confirm_run.sh.txt`, `clockbracket2.py.txt`, `tickmon2.py.txt`). timesyncd inactive (enabled at start, disabled at 15:23 with no running-state change). W32Time not running. No transfer or other heavy I/O ran during the brackets.
+
+| Criterion (fixed before measurement) | Measured | Result |
+| --- | --- | --- |
+| Bracket ① 600 s (14:57–15:07): \|MONO\| ≤ 500 ppm | MONO −0.067 ppm, REALTIME −0.067 ppm, RAW −0.054 ppm (±0.23 ppm) | PASS |
+| Bracket ② 600 s (17:12–17:22): \|MONO\| ≤ 500 ppm | MONO +0.012 ppm, REALTIME +0.013 ppm, RAW −0.041 ppm (±0.39 ppm) | PASS |
+| tick = 10000 throughout | 763 records (10 s change detection + 10-minute samples + adjtimex at start and end): tick ∈ {10000} only | PASS |
+| REALTIME − Windows UTC change over 2 h ≤ 0.5 s | −0.192 s (15:07) → −0.190 s (17:22 region); range of 14 samples 0.011 s | PASS |
+
+- freq kept being rewritten every 10 s (−9.0 to +19.2 ppm, mostly near 0). Its source is still unidentified. This is not a criterion and is reported only.
+- The first test's transient (tick 9093–9559 while timesyncd was running) is kept separate from this verdict (§11).
+- Absolute offset (not a criterion): WSL is about 1.57 s behind NTP (§20). W32Time sync comes next (owner, §21 item 5), then criteria (a)(b)(c).

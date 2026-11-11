@@ -1,0 +1,35 @@
+--- check-129324d/experiments/configs/host-qualification-v1-run.md	2026-11-11 17:22:47.056171565 +0900
++++ <scratch>/host-qualification-v1-run.TESTFILL.md	2026-11-11 17:23:43.940469247 +0900
+@@ -17,7 +17,7 @@
+ ```preregistration
+ # host qualification v1 (demo run, not registered). Fill TBD-FREEZE per section 3 step 1.
+ experiment_id = host-qual
+-engine_sha = TBD-FREEZE
++engine_sha = 129324de3841e56b81fe7d22e81d41fb856ead64
+ seeds = 8110, 8102, 8103, 8106
+ budget = 2000
+ vocabulary = observed-names
+@@ -32,7 +32,7 @@
+ targets.node-tar-7.5.2.exposure = pre-exposed
+ targets.node-tar-7.5.2.exposure_ref = experiments/preregistration/exposure-ledger.md
+ exposure_ledger = experiments/preregistration/exposure-ledger.md
+-exposure_ledger_sha256 = TBD-FREEZE
++exposure_ledger_sha256 = 8a832e19b7826de3f3dcfe95a667cb82df91eb6d6e7a5fc0b55649a56565a508
+ sentinel_generator_id = sentinel-names/seed-random-v1
+ sentinel_generator_seed = 20261104
+ sentinel_count = 5
+@@ -48,11 +48,11 @@
+ campaign_watchdog_seconds = 10800
+ disk_pause_fraction = 0.9
+ interim_analysis = forbidden
+-execution_deadline = TBD-FREEZE
++execution_deadline = 2026-11-18T17:23:43+09:00
+ host.HOST1.jobs = 2
+-host.HOST1.docker_engine = TBD-FREEZE
++host.HOST1.docker_engine = 29.8.0
+ host.HOST2.jobs = 2
+-host.HOST2.docker_engine = TBD-FREEZE
++host.HOST2.docker_engine = 29.9.3
+ seed_assignment_rule = replicate-v1
+ seed_assignment_sha256 = e81d5fcff7976fe4527da62303bb66e728eb86f7c672dc8556a800562e7d29b3
+ ```

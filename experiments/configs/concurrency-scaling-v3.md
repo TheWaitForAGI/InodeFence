@@ -150,7 +150,7 @@ stage.C = 6,8,8,6
 | budget, jobs | 1000, 4. 혼잡을 재현하고 캠페인 끝의 보고서 복사·정리를 두 wave에 걸쳐 8회 거친다 |
 | 예상 | 8,000 실행. HOST1 jobs 2 실측 약 4,760 exec/h에서 가속이 없으면 약 1.7 h, 선형 가속이면 약 0.9 h(추정). HOST2는 미측정 |
 | 통과 조건(사전 고정) | cleanup UNKNOWN 0, 잔존 리소스 0, 러너 실패 0, 시작 실패 0 |
-| 보고만 하는 값 | docker 호출별 timeout 수, 진단 줄(`inodefence-cleanup-*`) 수, case 단위 인프라 재실행 수(`infra_reexecutions`), 처분 집계. timeout에는 임계를 두지 않는다 |
+| 보고만 하는 값 | docker 호출별 timeout 수(출처: broker `.calls.jsonl`의 호출별 returncode·timeout 기록(main #275), #335 `infra_reexecutions`의 `anomalous_calls`, smoke 스크립트 cleanup CLI의 timeout 진단 줄. 보호 파일 원복(#340)으로 사라진 cleanup-attempt stderr 줄은 출처가 아니다), case 단위 인프라 재실행 수(`infra_reexecutions`), 처분 집계. timeout에는 임계를 두지 않는다 |
 | 금지 | probe 결과로 §6 임계, seed, 블록 구조, jobs 후보를 바꾸지 않는다. oracle 필드를 읽지 않는다 |
 | 실패 시 | 보고하고 그 호스트의 벤치마크를 시작하지 않는다. 수정 후 probe부터 다시 한다 |
 
@@ -167,13 +167,15 @@ stage.C = 6,8,8,6
 | seed와 할당 | 6300–6303, 본실험과 같은 `alternate-v1` 규칙으로 할당(6300·6302 → HOST1, 6301·6303 → HOST2). seed 블록마다 R(seed-restart)·D·S-u 3셀 |
 | 셀, budget, jobs | 호스트당 2 seed × 3 arm = 6셀, budget 300, jobs 2. 1,800 실행, HOST1 jobs 2 실측 약 4,760 exec/h 기준 약 25분 + 시작·정리 오버헤드로 호스트당 30~60분 목표(추정, HOST2 미측정) |
 | 통과 조건(사전 고정) | probe의 4개(cleanup UNKNOWN 0, 잔존 리소스 0, 러너 실패 0, 시작 실패 0) + 기록 완전성 pass(모든 셀이 `cell_completeness`에서 complete 또는 abort-final, record-inconsistent·no-record 0) + 병합 검사 pass(두 호스트 `cell-results`가 할당 파일과 일치, 중복·누락 0) + 호스트 키 게이트가 등록값으로 통과(일부러 틀린 값으로 거부되는지는 테스트 몫) + 게이트 거부(start_denied) 0 + 인프라 정지 0 |
-| 보고만 하는 값 | `infra_reexecutions` 수, 재시도 수, docker 호출별 timeout 수, 처분 집계, 운영 점검 출력(수만) |
-| 결정론 검사(보고만, D046) | `infra_reexecutions`가 0보다 큰 셀은 같은 seed·arm·budget으로 한 번 더 돌린다. 그 두 보고서를 `scripts/check_native_determinism.py`의 `compare_report_pair`(EN-008 네이티브 per-case 결정론 프로브)로 비교한다. 출력은 `case_sequence`와 `oracle_and_feedback` 차원의 일치 여부(불리언)뿐이고, 판정값 자체는 내보내지 않는다(봉인 유지). 재실행이 0이면 "재실행 0, 결정론 미검정"(UNKNOWN)으로 적는다. 추가 실행은 같은 seed라 새 노출이 아니며, 원장 행에 횟수를 적는다 |
+| 보고만 하는 값 | `infra_reexecutions` 수, 재시도 수, docker 호출별 timeout 수(출처: broker `.calls.jsonl`의 호출별 returncode·timeout 기록(main #275), #335 `infra_reexecutions`의 `anomalous_calls`, smoke 스크립트 cleanup CLI의 timeout 진단 줄. 보호 파일 원복(#340)으로 사라진 cleanup-attempt stderr 줄은 출처가 아니다), 처분 집계, 운영 점검 출력(수만) |
+| 결정론 검사(보고만, D046) | `infra_reexecutions`가 0보다 큰 셀은 같은 seed·arm·budget으로 한 번 더 돌린다. 수단은 (a) 그 seed·arm만 담은 별도 등록 파일과 새 출력 폴더로 `run_exp0`를 돌리는 것이다(런처 경로 유지). 등록 sha와 회전 순서는 원 실행과 다를 수 있다. 이것은 동시 실행 맥락이 다른 조건에서 같은 셀 입력을 반복하는 것이어서 결정론 검사로는 더 강하다. 그래서 "같은 설정"은 seed·arm·budget·정책·sentinel·이미지·engine_sha·셀 env가 같은 것으로 정의하고, 달라진 등록 sha와 순서는 기록한다. smoke 스크립트를 직접 실행하는 (b)는 런처 경로가 아니므로 쓰지 않는다. 그 두 보고서를 `scripts/check_native_determinism.py`의 `compare_report_pair`(EN-008 네이티브 per-case 결정론 프로브)로 비교한다. 출력은 `case_sequence`와 `oracle_and_feedback` 차원의 일치 여부(불리언)뿐이고, 판정값 자체는 내보내지 않는다(봉인 유지). 재실행이 0이면 "재실행 0, 결정론 미검정"(UNKNOWN)으로 적는다. 추가 실행은 같은 seed라 새 노출이 아니며, 원장 행에 횟수를 적는다 |
 | 한계(공개) | **실 docker에서의 런처 재시도 경로와 InfrastructureGuard 정지 경로는 미검증이다(테스트로만 검증).** 재시도는 무기록 시도에서만 작동하고, 결함 주입은 하지 않기 때문이다. 정지·재개 경로는 D042 정지·재개 smoke가 별도로 다룬다 |
 | 금지 | 결과로 §6 임계, seed, 블록 구조, jobs 후보, 사전등록 값을 바꾸지 않는다. oracle 필드를 읽지 않는다 |
 | 실패 시 | 보고하고 그 호스트의 드라이버 smoke·단계 A를 시작하지 않는다. 수정 후 probe부터 다시 한다(§4.4) |
 
 **실행 등록 파일(W3가 작성, 비등록 라벨).** 사전등록 형식을 쓰되 `experiments/preregistration/` 밖(예: `experiments/configs/run-exp0-eng-smoke-v1.md`)에 둔다. 필요한 키: `experiment_id`(예: `exp3-eng-smoke`), `engine_sha`, `seeds = 6300, 6301, 6302, 6303`, `budget = 300`, `vocabulary = observed-names`, `arm.R`·`arm.D`·`arm.S-u`(exp3-v1과 같은 정책 ID), `targets.node-tar-7.5.2.*`(exp3-v1과 같음, `exposure = pre-exposed`), `exposure_ledger`·`exposure_ledger_sha256`, `sentinel_generator_id`, `sentinel_generator_seed = 20261104`, `sentinel_count = 5`, `observer_integrity_policy = invalid-continue`, 규칙 상수 5개, `primary_endpoint = t_first`(확증 키 없음), `execution_mode = per-case-container`, `jobs_max = 2`, `campaign_watchdog_seconds = 10800`, `disk_pause_fraction = 0.9`, `interim_analysis = forbidden`, `execution_deadline`(실행 전 고정, 예상 종료 + 여유), `host.HOST1.jobs = 2`, `host.HOST2.jobs = 2`, `host.<id>.docker_engine`(preflight 고정값), `seed_assignment_rule = alternate-v1`, `seed_assignment_sha256`. exp3-v1과 다른 값은 `experiment_id`, `seeds`, `budget`, `jobs`, `execution_deadline`뿐이어야 한다.
+
+**실행 조건(2026-11-11, W3 질의 답).** ① smoke는 launcher_guards 배선(#336)이 들어간 통합 head에서만 실행한다. 그래서 통과 조건은 사람이 기록을 보고 판정하지 않고 기계로 판정한다. ② HOST2의 `host.HOST2.docker_engine`은 등록 파일을 쓰기 전에 HOST2 preflight(읽기 전용 `docker version`)로 값을 얻어 고정한다(Engine B안: HOST2는 29.9.3 유지). ③ smoke 등록 파일의 `exposure_ledger_sha256`은 smoke 직전 원장 값이다. smoke 행은 실행 뒤에 넣는다. exp3-v1·exp2-v1의 동결 sha는 smoke 행까지 들어간 뒤의 값이다. ④ seed 충돌 검사는 문서 대조만으로 끝내지 않는다. `run_exp0`는 `RESERVED_SEED_RANGES`를 검사하지 않으므로, 실행 전에 seed 6300–6303이 드라이버의 `RESERVED_SEED_RANGES`와 원장의 seed 서술에 없는지 기계적으로 대조하고 그 결과를 LOG에 한 줄 남긴다(W3).
 
 **seed 6300–6303의 근거.** 원장, v1·v2·v3, `RESERVED_SEED_RANGES`, probe 6200–6207, v1 6100–6103, D042 정지·재개 smoke 6101–6104와 겹치지 않는다. main의 configs·preregistration·DECISIONS에 6300–6399 사용처가 없다(2026-11-11 확인).
 
@@ -230,7 +232,7 @@ V9가 "다른 jobs 블록과의 불일치에서 같은 수준 반복 사이의 �
   - 벤치마크 시작부터 본실험 끝까지 그 호스트의 엔진·Docker Desktop·WSL 버전 변경을 금지한다.
   - 선정된 jobs는 그 호스트·그 엔진에서만 유효하다.
   - 대상 이미지 id `22c8734f…`는 두 호스트에서 같아야 한다(필수). 다른 id면 시작하지 않는다.
-- **(b) "기록만"을 택할 때의 인정 기준(초안, 미채택. 지웅이 (a) 복구와 (b) 중에서 선택).** 아래를 실행 전에 고정하며, 결과값은 쓰지 않는다. 다섯 가지를 모두 충족할 때만 "Docker 실행 환경의 중대한 불일치"가 해소된 것으로 본다.
+- **엔진 B안(지웅 조건부 승인 2026-11-11, 문서 반영은 측정 전 초안, 지웅 승인 = PR 머지).** HOST1 29.8.0과 HOST2 29.9.3을 그대로 유지한다. HOST2 다운그레이드는 금지하고, native 전환도 하지 않는다. jobs는 호스트별로 독립 선정한다. **HOST1과 HOST2의 성능·효과 차이를 Engine 버전만의 영향으로 해석하지 않는다.** Engine과 하드웨어는 호스트에 종속된 교란요인이다. 아래 기준 ①~⑤를 모두 적용한다. 실행 전에 고정하고 결과값은 쓰지 않는다. 다섯 가지를 모두 충족할 때만 "Docker 실행 환경의 중대한 불일치"가 해소된 것으로 본다.
   - ① 두 호스트의 대상 이미지 Id, local 이미지 Id, 공유 실행 경로 해시가 같다.
   - ② jobs=2 블록에서 X1이 발동하지 않는다.
   - ③ 두 호스트 모두 probe 통과 조건 4개를 충족한다.

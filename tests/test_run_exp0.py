@@ -94,9 +94,11 @@ class AlwaysCleanGate:
         return None
 
 
-def clean_host_preflight(plan: Any, *, engine: str, docker: Any) -> tuple[dict[str, Any], list]:
-    """Host guard stand-in: every image at its registered id, nothing left over, no docker."""
-    images = run_exp0.guard_images(plan)
+def clean_host_preflight(
+    plan: Any, *, engine: str, docker: Any, expected: Any = None
+) -> tuple[dict[str, Any], list]:
+    """Host guard stand-in: every image at its registered (or expected) id, no docker."""
+    images = run_exp0.guard_images(plan, expected)
     return {
         "docker_server": engine,
         "image_ids": {name: (want or f"sha256:{name}") for name, want in images.items()},
@@ -105,9 +107,9 @@ def clean_host_preflight(plan: Any, *, engine: str, docker: Any) -> tuple[dict[s
 
 
 def clean_host_postflight(
-    plan: Any, before: Any, *, engine: str, docker: Any
+    plan: Any, before: Any, *, engine: str, docker: Any, expected: Any = None
 ) -> tuple[dict[str, Any], list]:
-    return clean_host_preflight(plan, engine=engine, docker=docker)
+    return clean_host_preflight(plan, engine=engine, docker=docker, expected=expected)
 
 
 @pytest.fixture

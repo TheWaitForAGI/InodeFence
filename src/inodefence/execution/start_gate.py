@@ -455,8 +455,17 @@ class StartGate:
         return start
 
     def mark_unknown(self, cell: str, reason: str) -> None:
-        """Launcher-side ``U``."""
-        record_verdict(self.directory, cell, UNKNOWN, reason, lock_seconds=self.lock_seconds)
+        """Launcher-side ``U``, visible to every later scan.
+
+        A Popen that failed before the fork leaves no registration (nothing started), so
+        the cell is registered here first; otherwise the scan would never see this ``U``.
+        """
+        _check_cell(cell)
+        with _locked(self.directory / GATE_LOCK, self.lock_seconds):
+            session = self.directory / f"{cell}.session"
+            if not session.exists():
+                _write_atomic(session, self.session + "\n")
+            _commit_locked(self.directory / f"{cell}.verdict", cell, UNKNOWN, reason)
 
     def mark_watchdog(self, cell: str) -> None:
         """Call just before terminating ``cell`` on a watchdog.

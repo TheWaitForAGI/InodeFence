@@ -162,10 +162,41 @@ def _setup(
     return out, args, assignment
 
 
+#: Controller and helper ids a two-host run is told to expect (--expected-images).
+EXPECTED_CONTROLLER_ID = "sha256:" + "c" * 64
+EXPECTED_HELPER_ID = "sha256:" + "d" * 64
+
+
+def expected_images_file(args: list[str], directory: Path) -> Path:
+    """An --expected-images file (criteria format) naming every guarded image of the plan."""
+    from test_run_exp0 import _plan
+
+    plan = _plan(Path(args[args.index("--preregistration") + 1]))
+    local = {
+        "inodefence-controller:local": EXPECTED_CONTROLLER_ID,
+        "inodefence-helper:local": EXPECTED_HELPER_ID,
+    }
+    ids = {name: want or local[name] for name, want in run_exp0.guard_images(plan).items()}
+    path = directory / "expected-images.json"
+    path.write_text(json.dumps({"expected_image_ids": ids}), encoding="utf-8")
+    return path
+
+
 def _host_args(args: list[str], out: Path, host: str, assignment: Path, jobs: str) -> list[str]:
     host_out = out.parent / f"{out.name}-{host}"
     replaced = [str(host_out) if a == str(out) else a for a in args]
-    return [*replaced, "--seed-assignment", str(assignment), "--host-id", host, "--jobs", jobs]
+    expected = expected_images_file(args, out.parent)
+    return [
+        *replaced,
+        "--seed-assignment",
+        str(assignment),
+        "--host-id",
+        host,
+        "--jobs",
+        jobs,
+        "--expected-images",
+        str(expected),
+    ]
 
 
 def test_host_keys_parse_and_stay_out_of_one_host_files(

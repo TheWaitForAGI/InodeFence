@@ -198,26 +198,55 @@ def test_cleanup_unknown_blocks_launch_before_runner_returns(tmp_path: Path) -> 
     assert len(errors) == 1 and "cleanup resource state unknown" in str(errors[0])
 
 
-def test_watchdog_gate_reason_keeps_level_stop(tmp_path: Path) -> None:
-    design = bench.load_design(Path("experiments/configs/concurrency-scaling-v2.md"))
-    block = bench.planned_blocks(design, "smoke")[0]
-    gate = start_gate.StartGate(tmp_path / "start-gate")
-
+def _watchdog_runner(gate: Any, tmp_path: Path, *, trap_verifies: bool) -> Any:
     def runner(cell: Any, raw: Path, _env: Any, launch: Any) -> CellResult:
-        process = launch(lambda: gate.try_start(cell.run_id, subprocess.Popen, (["true"],), {}))
+        process = launch(
+            lambda: gate.try_start(
+                cell.run_id, subprocess.Popen, (["cat"],), {"stdin": subprocess.PIPE}
+            )
+        )
+        gate.mark_watchdog(cell.run_id)  # what on_timeout does before terminate
+        if trap_verifies:
+            # The child's own trap verified ownership and absence (W -> S).
+            start_gate.record_verdict(gate.directory, cell.run_id, "S")
+        process.stdin.close()
         process.wait(timeout=30)
-        gate.mark_unknown(cell.run_id, bench.WATCHDOG_GATE_REASON)
         log = tmp_path / f"{cell.run_id}.log"
         log.write_text("")
         return CellResult(cell, bench.WATCHDOG_RETURNCODE, 1, raw / "e.json", False, log)
 
-    run = bench.BlockRun(design, block, tmp_path, runner)
+    return runner
+
+
+def test_watchdog_without_verified_cleanup_is_level_stop_and_closes_gate(tmp_path: Path) -> None:
+    design = bench.load_design(Path("experiments/configs/concurrency-scaling-v2.md"))
+    block = bench.planned_blocks(design, "smoke")[0]
+    gate = start_gate.StartGate(tmp_path / "start-gate")
+    run = bench.BlockRun(
+        design, block, tmp_path, _watchdog_runner(gate, tmp_path, trap_verifies=False)
+    )
     run.gate = gate
-    with pytest.raises(RuntimeError, match="watchdog terminated"):
+    with pytest.raises(RuntimeError, match=r"terminated by the watchdog.*\(after watchdog\)"):
         run.run_one(block.cells[0])
     assert run.stop_kind == bench.STOP_LEVEL
     run.run_one(block.cells[1])
     assert run.records[-1]["state"] == "not-run"
+    # The next block must not start until a person acknowledges the cell.
+    assert "after watchdog" in (start_gate.StartGate(gate.directory).problem() or "")
+
+
+def test_watchdog_with_verified_cleanup_is_level_stop_and_keeps_gate_open(tmp_path: Path) -> None:
+    design = bench.load_design(Path("experiments/configs/concurrency-scaling-v2.md"))
+    block = bench.planned_blocks(design, "smoke")[0]
+    gate = start_gate.StartGate(tmp_path / "start-gate")
+    run = bench.BlockRun(
+        design, block, tmp_path, _watchdog_runner(gate, tmp_path, trap_verifies=True)
+    )
+    run.gate = gate
+    run.run_one(block.cells[0])
+    assert run.stop_kind == bench.STOP_LEVEL
+    assert "watchdog" in (run.stopped_reason or "")
+    assert gate.problem() is None  # the next block may start
 
 
 def test_cell_without_verdict_is_an_external_stop(tmp_path: Path) -> None:

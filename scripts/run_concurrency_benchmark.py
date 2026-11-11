@@ -53,7 +53,12 @@ from scripts.run_g1_smoke import cell_paths
 from scripts.run_parallel_native import Arm, Cell, CellResult, cell_env
 
 from inodefence.evaluation.rds import RdsArm, RdsCellConfig, RVariant, VocabularyMode
-from inodefence.execution.start_gate import CleanupPending, StartGate, VerdictMissing
+from inodefence.execution.start_gate import (
+    WATCHDOG_TAG,
+    CleanupPending,
+    StartGate,
+    VerdictMissing,
+)
 from inodefence.execution.start_gate import StartDenied as GateDenied
 from inodefence.provenance import capture_source
 
@@ -432,17 +437,19 @@ def host_stop_reason(sample: Mapping[str, Any], design: Design) -> tuple[str, st
 
 
 START_GATE_DIR = "start-gate"
-WATCHDOG_GATE_REASON = "launcher: watchdog terminated the cell before cleanup was verified"
 
 
 def gate_stop_kind(reason: str) -> str:
-    """A watchdog kill stays a designed level stop whichever thread sees it first.
+    """A watchdog cell stays a designed level stop whichever thread sees it first.
 
-    Every other closed-gate reason (UNKNOWN cleanup, a cell that exited without
-    a verdict, unreadable gate state) is external. Either way the gate keeps
-    later starts, including later blocks, denied until ``start_gate.py ack``.
+    The gate tags every denial caused by a watchdog-terminated cell. Every other
+    closed-gate reason (UNKNOWN cleanup, a cell that exited without a verdict,
+    unreadable gate state) is external. The stop kind is the block's policy;
+    the gate decides separately whether later blocks may start: a watchdog cell
+    whose cleanup committed S lets them start, a U keeps them denied until
+    ``start_gate.py ack``.
     """
-    return STOP_LEVEL if WATCHDOG_GATE_REASON in reason else STOP_EXTERNAL
+    return STOP_LEVEL if WATCHDOG_TAG in reason else STOP_EXTERNAL
 
 
 class StartDenied(Exception):
@@ -645,11 +652,14 @@ class BlockRun:
                 if result.returncode != 0:
                     self.nonzero_cells += 1
                 if gate_problem is not None:
-                    # Before the watchdog rule: a killed child that never verified
-                    # cleanup is an external stop whichever thread notices first.
-                    self._stop_locked(
-                        f"start gate closed: {gate_problem}", gate_stop_kind(gate_problem)
+                    # Before the watchdog rule so the reason names the gate; the
+                    # kind is level for a watchdog cell, external otherwise.
+                    kind = (
+                        STOP_LEVEL
+                        if result.returncode == WATCHDOG_RETURNCODE
+                        else gate_stop_kind(gate_problem)
                     )
+                    self._stop_locked(f"start gate closed: {gate_problem}", kind)
                 elif cleanup_unknown:
                     self._stop_locked(
                         f"{cell.run_id} cleanup resource state unknown", STOP_EXTERNAL
@@ -806,7 +816,7 @@ def _run_block(
             bash,
             limit_seconds=design.campaign_watchdog_seconds,
             popen=lambda *args, **kwargs: launch(lambda: start(*args, **kwargs)),
-            on_timeout=lambda: gate.mark_unknown(cell.run_id, WATCHDOG_GATE_REASON),
+            on_timeout=lambda: gate.mark_watchdog(cell.run_id),
         )
 
     host = directory / "host"

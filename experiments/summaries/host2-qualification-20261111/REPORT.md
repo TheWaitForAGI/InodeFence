@@ -155,10 +155,12 @@ Native docker (read-only, `native_docker.txt`): no docker-ce/containerd packages
 
 ## 17. Changes after 14:55, and prerequisites (as of 15:30 KST)
 
-- 15:23:36 `wsl.exe -u root -d Ubuntu-24.04 -- systemctl disable systemd-timesyncd`, rc=0. Before: inactive/enabled; after: inactive/disabled. Basis: the HOST2 user's message "다 승인" ("everything approved"), which approved all pending items. ORCH had treated permanent disable as an approval item, so this is reported to ORCH. The running state is unchanged (it was already stopped), so the confirmation test is not affected. Revert: `wsl.exe -u root -d Ubuntu-24.04 -- systemctl enable --now systemd-timesyncd` (`timesyncd_disable.txt`).
+- 15:23:36 `wsl.exe -u root -d Ubuntu-24.04 -- systemctl disable systemd-timesyncd`, rc=0. Before: inactive/enabled; after: inactive/disabled. Basis: the HOST2 user's message "다 승인" ("everything approved"), which approved all pending items. ORCH had treated permanent disable as an approval item, so this is reported to ORCH. The running state is unchanged (it was already stopped), so the confirmation test is not affected (ORCH accepted that the test conditions were maintained; the state is left as is, neither reverted nor changed further). Revert: `wsl.exe -u root -d Ubuntu-24.04 -- systemctl enable --now systemd-timesyncd` (`timesyncd_disable.txt`).
 - 15:18 the elevated restart-protection script was started via `Start-Process -Verb RunAs`. The UAC prompt is waiting for the owner's click, so it is **not applied yet**. Contents: Pause 35 days (UX Settings Pause* values), AU NoAutoRebootWithLoggedOnUsers=1 and AUOptions=2, powercfg AC 0/0, before/after reads, R6 admin query, systeminfo.
 - W32Time start/resync: **not applied.** A clock step (about 1.36 s) during the confirmation test (ending about 17:20) would invalidate the REALTIME−WinUTC criterion. Since then Jiwoong decided environment changes remain prohibited, so it is held. Owner commands (admin): `Start-Service W32Time; w32tm /resync /force; Set-Service W32Time -StartupType Automatic`. Revert: `Set-Service W32Time -StartupType Manual; Stop-Service W32Time`.
 - Engine: Jiwoong conditionally approved option B. Keep 4.99.0 / 29.9.3 and do not change versions until the main run ends. Docker Desktop automatic updates: `settings-store.json` has no update or Resource Saver key (defaults apply; the GUI value has not been confirmed by the owner).
+
+Scope note (ORCH): the owner's blanket approval covers HOST2 machine settings. Changes that touch experiment conditions (Docker, Engine or WSL versions; context, storage, network, `.wslconfig`; image rebuild or deletion; smoke or experiment runs) are reported to ORCH before being applied.
 
 | Prerequisite | Status | Waiting on |
 | --- | --- | --- |

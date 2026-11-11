@@ -46,6 +46,7 @@ def _gated_runner(
     *,
     deny: frozenset[str] | set[str] = frozenset(),
     fail: frozenset[str] | set[str] = frozenset(),
+    watchdog: frozenset[str] | set[str] = frozenset(),
 ):
     """Fake cells whose child process goes through the gate's Popen and records a verdict.
 
@@ -70,7 +71,18 @@ def _gated_runner(
             argv += list(verdict)
         else:
             argv.append(verdict)
+        if cell.run_id in watchdog:
+            # The child outlives the limit: the launcher marks W, then the trap records (or not).
+            argv = [
+                sys.executable,
+                "-c",
+                "import subprocess,sys,time; time.sleep(0.3); "
+                "sys.exit(subprocess.call(sys.argv[1:]))",
+                *argv,
+            ]
         process = popen(argv, env=dict(env))
+        if cell.run_id in watchdog and on_timeout is not None:
+            on_timeout()
         process.wait()
         if cell.run_id in fail:
             raise RuntimeError("runner broke after the start")
@@ -181,12 +193,15 @@ def test_resume_needs_acks_tied_to_the_approval(
     approval = "W2-2026-11-11-2"
     assert run_exp0.main([*args, "--resume-after-stop", approval]) == 2
     assert "start gate still closed" in capsys.readouterr().err
-    acknowledge(gate_dir, VICTIM, "someone else: looked at it")
+    acknowledge(gate_dir, VICTIM, "approval=someone-else; by=x; reason=looked at it")
     assert run_exp0.main([*args, "--resume-after-stop", approval]) == 2
-    assert "does not start with" in capsys.readouterr().err
+    assert f"does not name approval={approval}" in capsys.readouterr().err
     # Before a resume lists it, the note can still be corrected; after, its sha256 is on record.
     [stray] = (gate_dir / "acknowledged").iterdir()
-    note = f"{approval}: volume inodefence-local-runtime-x removed by hand, docker ps clean"
+    note = (
+        f"approval={approval}; checked_at=2026-11-11T15:00+09:00; by=W2; "
+        "residual=docker ps -a --filter name=inodefence- -> none; reason=volume removed by hand"
+    )
     (stray / "note.txt").write_text(note + "\n", encoding="utf-8")
     monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", _gated_runner({}))
     assert run_exp0.main([*args, "--resume-after-stop", approval]) == 0
@@ -247,3 +262,20 @@ def test_go_attempted_cells_leave_out_denied_only_cells() -> None:
     assert gen_exp3_tables._run_clock(rows).attempted_cells == 1
     rows.append({"event": "start", "run_id": "b", "attempt": 2, "clocks": {"realtime": 11.0}})
     assert gen_exp3_tables._run_clock(rows).attempted_cells == 2
+
+
+@pytest.mark.usefixtures("real_gate", "admit_fixture_holdout")
+@pytest.mark.parametrize(("verdict", "stops"), [("S", 0), (None, 1)])
+def test_watchdog_waits_for_the_trap_verdict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, verdict: Any, stops: int
+) -> None:
+    out, args, _ = _deadline_setup(tmp_path, monkeypatch, BEFORE, jobs="1")
+    runner = _gated_runner({VICTIM: verdict}, watchdog={VICTIM})
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", runner)
+    run_exp0.main(args)
+    found = _events(out, INFRASTRUCTURE_STOP_EVENT)
+    assert len(found) == stops
+    if stops:
+        assert start_gate.WATCHDOG_TAG in found[0]["reason"]
+    else:
+        assert len(runner.calls) == len(_index(out)["interim"]["cell_states"])

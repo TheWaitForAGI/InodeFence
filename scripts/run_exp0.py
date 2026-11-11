@@ -576,6 +576,15 @@ def gate_acks_new(gate_dir: Path, recorded: Collection[str]) -> list[dict[str, A
     return acks
 
 
+def ack_approval(note: str) -> str | None:
+    """The ``approval=`` field of a gate ack note (``approval=…; checked_at=…; by=…; …``)."""
+    for field in note.split(";"):
+        key, sep, value = field.strip().partition("=")
+        if sep and key == "approval":
+            return value.strip()
+    return None
+
+
 def resume_gate_problems(
     gate: StartGate, approval_ref: str, recorded: Collection[str]
 ) -> list[str]:
@@ -585,11 +594,12 @@ def resume_gate_problems(
     if problem is not None:
         problems.append(
             f"start gate still closed: {problem}. Check the resources, then run "
-            f'start_gate.py ack {gate.directory} <cell> "{approval_ref}: <what was checked>"'
+            f'start_gate.py ack {gate.directory} <cell> "approval={approval_ref}; '
+            'checked_at=...; by=...; residual=<read-only command -> result>; reason=..."'
         )
     for ack in gate_acks_new(gate.directory, recorded):
-        if not ack["note"].startswith(approval_ref):
-            problems.append(f"gate ack {ack['path']} does not start with {approval_ref!r}")
+        if ack_approval(ack["note"]) != approval_ref:
+            problems.append(f"gate ack {ack['path']} does not name approval={approval_ref}")
     return problems
 
 
@@ -1855,8 +1865,8 @@ def main(argv: list[str] | None = None) -> int:
             bash,
             limit_seconds=plan.watchdog_seconds,
             popen=cell_gate.popen(cell.run_id),
-            # W1's current head; the W -> S/U watchdog meaning (D041) replaces this call.
-            on_timeout=lambda: cell_gate.mark_unknown(cell.run_id, "launcher: watchdog terminate"),
+            # W (pending) before the terminate: the trap's verified cleanup gives S, else U.
+            on_timeout=lambda: cell_gate.mark_watchdog(cell.run_id),
         )
 
     def gate_stop(reason: str) -> None:

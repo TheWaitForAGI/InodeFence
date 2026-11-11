@@ -70,7 +70,7 @@ HOST1, 6301·6303 → HOST2). `python -m scripts.make_seed_assignment --rule alt
 | 조건 | 판정 근거(기록) |
 | --- | --- |
 | cleanup UNKNOWN 0 | 호스트별 `<out>/start-gate/*.verdict`에 `U` 0, `acknowledged/` 비어 있음 |
-| 잔존 리소스 0 | 실행 뒤 `docker ps -a`·`docker volume ls`의 `inodefence-` 접두 대조(실행 전 목록과 차이 0) |
+| 잔존 리소스 0 | 실행 뒤 컨테이너 `docker ps -a --filter name=inodefence-`와 볼륨 `docker volume ls --filter name=inodefence-local-`(적격성 검증 v1 §4, 런처 가드와 같은 필터; 개발 컨테이너 볼륨은 대상 아님) 목록 대조(실행 전 목록과 차이 0) |
 | 러너 실패 0 | `cell-results.jsonl` end 줄에 `runner_error` 0 |
 | 시작 실패 0 | end 줄에 `start_denied` 0 |
 | 기록 완전성 | index `cell_completeness`: 모든 셀이 complete 또는 abort-final, `record_inconsistent` 0, `no_record` 0 |
@@ -97,8 +97,8 @@ HOST1, 6301·6303 → HOST2). `python -m scripts.make_seed_assignment --rule alt
    **원장 sha:** 실행 뒤 원장 행은 `E` 뒤 커밋에 들어가므로, 같은 `E`에서 도는 실행들의 `exposure_ledger_sha256`은
    `E` 트리의 원장 sha 그대로다(a76ffee에서는 `8a832e19…`).
 2. **preflight(호스트별):** detached worktree `E`, `git status` 깨끗, venv python(uv.lock 생성 금지), `docker context
-   show`, Server 버전, 이미지 id(`22c8734f…`, controller, helper; HOST2는 load 직후 대조), `docker ps -a`·`docker volume
-   ls`의 `inodefence-` 접두 목록을 `<out>/preflight/`에 저장. dry-run:
+   show`, Server 버전, 이미지 id(`22c8734f…`, controller, helper; HOST2는 load 직후 대조), 컨테이너 `docker ps -a --filter name=inodefence-`와 볼륨 `docker volume ls --filter name=inodefence-local-`(적격성 검증 v1 §4, 런처 가드와 같은 필터; 개발 컨테이너 볼륨은 대상 아님)
+   목록을 `<out>/preflight/`에 저장. dry-run:
 
    ```bash
    PYTHONPATH=src python -m scripts.run_exp0 --preregistration <filled.md> --output <out-HOSTn> \
@@ -134,7 +134,7 @@ HOST1, 6301·6303 → HOST2). `python -m scripts.make_seed_assignment --rule alt
    `ENGSMOKE-<HOSTn>-<YYYYMMDD>-<HHMM>`를 요청합니다."로 승인을 요청한다. 승인되면 같은 명령에
    `--resume-after-stop ENGSMOKE-<HOSTn>-<YYYYMMDD>-<HHMM>`을 붙인다. 정지가 있었으면 이 smoke는 불통과다(인프라 정지 0
    조건).
-4. **실행 뒤(호스트별):** `docker ps -a`·`docker volume ls`를 다시 저장해 1단계 목록과 대조, `start-gate/` 상태 확인,
+4. **실행 뒤(호스트별):** 같은 필터로 컨테이너·볼륨 목록을 다시 저장해 2단계 목록과 대조, `start-gate/` 상태 확인,
    index `cell_completeness`와 `cell-results.jsonl`의 `runner_error`·`start_denied`·`infrastructure-stop` 수 확인.
 5. **병합(한 곳):**
 

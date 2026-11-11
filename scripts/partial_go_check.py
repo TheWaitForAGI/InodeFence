@@ -69,6 +69,7 @@ GATE_STOP_MARKERS = ("start gate", "cleanup unknown")
 #: The guard stops after this many consecutive cells without a record.
 TRIGGER_CELLS = 3
 INDEPENDENCE_FLAG = "report_sensitivity"
+NOT_ASSESSABLE = "not_assessable"
 RECORD_KEYS = ("excluded_hosts", "exclusions", "partial_completion")
 
 
@@ -79,6 +80,24 @@ class PartialGoInputError(ValueError):
 def _realtime(row: Mapping[str, Any] | None) -> float | None:
     value = (row or {}).get("clocks", {}).get("realtime")
     return float(value) if isinstance(value, int | float) else None
+
+
+def table_shape_problem(by_arm: Mapping[str, Sequence[int]]) -> str | None:
+    """Why the arm x abort table cannot be tested, from its shape alone; ``None`` when it can.
+
+    Each row is ``[complete, abort-final, invalid]`` cells of one arm. The test needs at least
+    two arms, at least one abort-final cell and at least one complete cell. No cell-count floor
+    is registered (D047), so none is added here.
+    """
+    if not by_arm:
+        return "no complete or abort-final cell"
+    if len(by_arm) < 2:
+        return "fewer than two arms"
+    if sum(row[1] for row in by_arm.values()) == 0:
+        return "no abort-final cell"
+    if sum(row[0] for row in by_arm.values()) == 0:
+        return "no complete cell"
+    return None
 
 
 def attempt_stub(
@@ -238,16 +257,30 @@ def host_check(
         if count >= 2
     ]
     arms = sorted(by_arm)
-    independence = arm_abort_independence([by_arm[arm] for arm in arms], arms)
+    # The table's shape decides, before any test, whether the independence test can run
+    # (table_shape_problem). Not assessable is not a hold reason: section 9.1 (ii) holds when an
+    # input-dependence pattern is seen, and no data is not evidence of one; (i), (iii) and (iv)
+    # still apply, the repeated-key check above always runs, and the reason stays visible in the
+    # GO file and the T-EXP3-2 table. An error the test raises on a well-shaped table is not
+    # caught: the tool refuses.
+    shape = table_shape_problem(by_arm)
+    notes: list[str] = []
+    if shape is None:
+        independence = arm_abort_independence([by_arm[arm] for arm in arms], arms)
+        flag, p_value = independence["flag"], independence["primary_arm_vs_abort"].get("p_value")
+    else:
+        flag, p_value = NOT_ASSESSABLE, None
+        notes.append(f"(ii) 검정 불가: {shape}")
     checks["ii_input_dependence"] = {
         "repeated_abort_keys": repeated,
         "arm_abort_table": {arm: by_arm[arm][:2] for arm in arms},
-        "independence_flag": independence["flag"],
-        "independence_p": independence["primary_arm_vs_abort"].get("p_value"),
+        "independence_flag": flag,
+        "independence_p": p_value,
+        "not_assessable_reason": shape,
     }
     if repeated:
         hold.append(f"(ii) the same abort input in {len(repeated)} cells")
-    if independence["flag"] == INDEPENDENCE_FLAG:
+    if flag == INDEPENDENCE_FLAG:
         hold.append("(ii) arm x abort independence flagged (p <= .10)")
 
     # (iii) Record completeness and evidence hashes.
@@ -281,6 +314,7 @@ def host_check(
         "stopped_at_realtime": stop_at,
         "checks": checks,
         "hold_reasons": hold,
+        "notes": notes,
     }
     return document
 

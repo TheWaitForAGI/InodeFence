@@ -315,7 +315,7 @@ def test_one_participant_runs_alone_and_the_other_host_is_refused(
 
 
 def test_one_participant_holdout_is_regenerated_from_its_own_r_h(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     from test_two_host_split import _setup, train_files
 
@@ -350,6 +350,16 @@ def test_one_participant_holdout_is_regenerated_from_its_own_r_h(
     ]
     # --participants HOST2 contradicts the frozen set less the excluded host.
     assert make_seed_assignment.main([*base, "--participants", "HOST2"]) == 2
+    # Every frozen host excluded: the generator itself refuses, before any split.
+    one_host = go.read_text()
+    every = json.loads(one_host)
+    every["excluded_hosts"] = ["HOST1", "HOST2"]
+    every["exclusions"] = {"HOST1": checked([]), "HOST2": checked([])}
+    go.write_text(json.dumps(every))
+    capsys.readouterr()
+    assert make_seed_assignment.main(base) == 2
+    assert "every frozen participant is excluded" in capsys.readouterr().err
+    go.write_text(one_host)
     without_train = base[: base.index("--train-preregistration")] + base[-2:]
     assert (
         make_seed_assignment.main([*without_train, "--participants", "HOST1"]) == 2

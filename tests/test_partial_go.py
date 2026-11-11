@@ -37,13 +37,27 @@ def _run(
     return out.parent / f"{out.name}-{host}"
 
 
+class ArmOnly:
+    """Abort only the cells of one arm (run id ``<target>-<arm>-s<seed>``)."""
+
+    def __init__(self, arm: str) -> None:
+        self.marker = f"-{arm}-s"
+
+    def __contains__(self, item: object) -> bool:
+        return self.marker in str(item)
+
+
 @pytest.fixture
 def stopped(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
-    """HOST1 ran clean; every HOST2 cell aborted twice, then HOST2 stopped unresumed."""
+    """HOST1 ran clean; every HOST2 cell aborted, then HOST2 stopped unresumed."""
+    return _build(tmp_path, monkeypatch, Everything())
+
+
+def _build(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, abort: Any) -> dict[str, Any]:
     out, args, assignment = _setup(tmp_path, monkeypatch)
     prereg = Path(args[args.index("--preregistration") + 1])
     host1 = _run(args, out, "HOST1", assignment, (), monkeypatch)
-    host2 = _run(args, out, "HOST2", assignment, Everything(), monkeypatch)
+    host2 = _run(args, out, "HOST2", assignment, abort, monkeypatch)
     # The fake stub's reason text classifies as "other"; record the category the launcher would.
     for report in host2.rglob("*.json"):
         data = json.loads(report.read_text())
@@ -249,3 +263,183 @@ def test_a_stop_after_complete_cells_is_held_and_all_stopped_is_not_computed(
     assert document["status"].startswith("not computed")
     reasons = document["exclusions"]["HOST1"]["hold_reasons"]
     assert "(i) the cells that ended the run are not found" in reasons
+
+
+# ---- each hold branch and input range on its own (W4 flips_pgo survivors) ----------------------
+
+
+def _host2_reasons(run: dict[str, Any]) -> list[str]:
+    return list(_check(run)["exclusions"]["HOST2"]["hold_reasons"])
+
+
+def test_i_a_trigger_cell_without_its_report_is_unconfirmed(stopped: dict[str, Any]) -> None:
+    """A Guard stop's no-record cells have no report: Q8 calls them unconfirmed, so GO holds."""
+    first = _check(stopped)["exclusions"]["HOST2"]["checks"]["i_stop_cause"]["trigger_cells"]
+    for trigger in first:
+        for report in stopped["host2"].rglob(f"*{trigger['run_id']}*.json"):
+            report.unlink()
+    assert any(r.startswith("(i) unconfirmed abort cause") for r in _host2_reasons(stopped))
+
+
+def test_i_a_non_infrastructure_category_holds(stopped: dict[str, Any]) -> None:
+    for report in stopped["host2"].rglob("*.json"):
+        data = json.loads(report.read_text())
+        if isinstance(data, dict) and isinstance(data.get("aborted"), dict):
+            data["aborted"]["category"] = "observer_integrity"
+            report.write_text(json.dumps(data))
+    reasons = _host2_reasons(stopped)
+    assert any(r.startswith("(i) not an infrastructure cause") for r in reasons)
+    assert not any(r.startswith("(i) unconfirmed") for r in reasons)
+
+
+def test_ii_aborts_on_one_arm_only_flag_the_independence_test(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = _build(tmp_path, monkeypatch, ArmOnly("D"))
+    document = _check(run)
+    checks = document["exclusions"]["HOST2"]["checks"]["ii_input_dependence"]
+    assert checks["independence_flag"] == partial_go_check.INDEPENDENCE_FLAG
+    assert (
+        "(ii) arm x abort independence flagged (p <= .10)"
+        in (document["exclusions"]["HOST2"]["hold_reasons"])
+    )
+
+
+def _open_attempt(run: dict[str, Any]) -> tuple[str, int]:
+    """A third start line for a cell, with no end line, before the stop."""
+    results = run["host2"] / "cell-results.jsonl"
+    rows = [json.loads(line) for line in results.read_text().splitlines()]
+    start = next(r for r in rows if r.get("event") == "start")
+    stop = next(i for i, r in enumerate(rows) if r.get("event") == "infrastructure-stop")
+    rows.insert(stop, {**start, "attempt": 3})
+    results.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    return str(start["run_id"]), int(str(start["run_id"]).rsplit("-s", 1)[1])
+
+
+def test_iii_a_start_without_its_end_holds_and_leaves_the_block_unfinished(
+    stopped: dict[str, Any],
+) -> None:
+    run_id, seed = _open_attempt(stopped)
+    document = _check(stopped)
+    reasons = document["exclusions"]["HOST2"]["hold_reasons"]
+    assert "(iii) starts without an end line: 1" in reasons
+    assert document["hosts"]["HOST2"]["unfinished_causes"][run_id] == "started-without-end"
+    blocks = document["partial_completion"]["HOST2"]
+    assert any(seed in b["unfinished_seeds"] for b in blocks.values())
+
+
+def test_iii_a_gate_cell_not_verified_clean_holds(stopped: dict[str, Any]) -> None:
+    gate = stopped["host2"] / run_exp0.START_GATE_DIR
+    gate.mkdir(exist_ok=True)
+    (gate / "cell-x.session").write_text("s\n")
+    (gate / "cell-x.verdict").write_text("U reason\n")
+    assert any(
+        r.startswith("(iii) start-gate cells not verified clean") for r in _host2_reasons(stopped)
+    )
+
+
+def test_a_stop_after_the_go_decision_time_does_not_count(stopped: dict[str, Any]) -> None:
+    stopped["go"].write_text(json.dumps({"decided_at": "2000-01-01T00:00:00+00:00"}))
+    document = _check(stopped)
+    assert document["excluded_hosts"] == [] and document["status"].startswith("full")
+
+
+def test_the_merge_refuses_an_exclusion_without_its_completion(stopped: dict[str, Any]) -> None:
+    stopped["go"].write_text(json.dumps({"decided_at": DECIDED, "excluded_hosts": ["HOST2"]}))
+    argv = [
+        "--preregistration",
+        str(stopped["prereg"]),
+        "--seed-assignment",
+        str(stopped["assignment"]),
+        "--host",
+        f"HOST1={stopped['host1']}",
+        "--host",
+        f"HOST2={stopped['host2']}",
+        "--go-decision",
+        str(stopped["go"]),
+        "--output",
+        str(stopped["tmp"] / "merged"),
+    ]
+    assert merge_host_indexes.main(argv) == 2
+
+
+# ---- (ii) on a table that cannot be tested: not assessable, shown, not a hold -----------------
+
+
+def _ii(document: dict[str, Any]) -> dict[str, Any]:
+    return dict(document["exclusions"]["HOST2"]["checks"]["ii_input_dependence"])
+
+
+def test_a_guard_stop_with_no_recorded_cell_is_held_by_i_and_ii_is_not_assessable(
+    stopped: dict[str, Any],
+) -> None:
+    """Guard stop (consecutive cells without a record): every trigger cell lacks its report, so (i)
+    always holds; with no complete or abort-final cell (ii) is not assessable, not a hold."""
+    for report in stopped["host2"].rglob("*.json"):
+        if "summaries" not in report.parts and report.name != "matrix.json":
+            report.unlink()
+    document = _check(stopped)  # exit 0, not a refusal
+    exclusion = document["exclusions"]["HOST2"]
+    ii = _ii(document)
+    assert ii["independence_flag"] == partial_go_check.NOT_ASSESSABLE
+    assert ii["not_assessable_reason"] == "no complete or abort-final cell"
+    assert ii["independence_p"] is None
+    assert exclusion["notes"] == ["(ii) 검정 불가: no complete or abort-final cell"]
+    assert any(r.startswith("(i) unconfirmed abort cause") for r in exclusion["hold_reasons"])
+    assert not any(r.startswith("(ii)") for r in exclusion["hold_reasons"])
+
+
+def test_one_arm_is_not_assessable_and_the_repeated_key_check_still_runs(
+    stopped: dict[str, Any],
+) -> None:
+    retried = _retry_same_input(stopped)
+    arm = retried.split("-s")[0].rsplit("-", 1)[-1]
+    for report in stopped["host2"].rglob("*.json"):
+        if f"-{arm}-s" not in report.name and "summaries" not in report.parts:
+            if report.name != "matrix.json":
+                report.unlink()
+    document = _check(stopped)
+    ii = _ii(document)
+    assert ii["not_assessable_reason"] == "fewer than two arms"
+    reasons = document["exclusions"]["HOST2"]["hold_reasons"]
+    assert "(ii) the same abort input in 1 cells" in reasons
+    assert "(ii) arm x abort independence flagged (p <= .10)" not in reasons
+
+
+def test_an_error_from_the_test_on_a_well_shaped_table_is_a_refusal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Not caught and turned into "not assessable": a broken input must stop the tool."""
+    run = _build(tmp_path, monkeypatch, ArmOnly("D"))
+
+    def broken(*args: Any, **kwargs: Any) -> Any:
+        raise ValueError("damaged table")
+
+    monkeypatch.setattr(partial_go_check, "arm_abort_independence", broken)
+    assert partial_go_check.main(run["base"]) == 2
+
+
+def test_no_abort_final_cell_is_not_assessable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run = _build(tmp_path, monkeypatch, ())
+    document = _check(run)
+    assert _ii(document)["not_assessable_reason"] == "no abort-final cell"
+    assert not any(r.startswith("(ii)") for r in document["exclusions"]["HOST2"]["hold_reasons"])
+
+
+@pytest.mark.parametrize(
+    ("table", "reason"),
+    [
+        ({}, "no complete or abort-final cell"),
+        ({"D": [3, 2, 0]}, "fewer than two arms"),
+        ({"D": [3, 0, 0], "R": [4, 0, 0]}, "no abort-final cell"),
+        ({"D": [0, 3, 0], "R": [0, 4, 0]}, "no complete cell"),
+        ({"D": [1, 0, 0], "R": [0, 1, 0]}, None),  # two cells: tested (exact p = 1)
+        ({"D": [0, 4, 0], "R": [4, 0, 0], "S-u": [4, 0, 0]}, None),
+    ],
+)
+def test_the_table_shape_alone_decides_whether_the_test_runs(
+    table: dict[str, list[int]], reason: str | None
+) -> None:
+    assert partial_go_check.table_shape_problem(table) == reason

@@ -160,6 +160,11 @@ HOST1, 6301·6303 → HOST2). `python -m scripts.make_seed_assignment --rule alt
 
    기대값: exit 0, 정지가 없었으면 `status`가 `full`이고, 두 호스트의 `seed_blocks`에 smoke seed가 모두 완주로 나온다.
    exit 2이거나 seed 블록이 기대와 다르면 GO 산출 전에 도구를 고쳐야 하므로 보고한다.
+   **읽는 법(GO 산출 때):** Guard 정지(연속 무기록)로 미재개된 호스트는 trigger 셀에 보고서가 없어 (i)에서 항상
+   미확인 → GO 보류(지웅 판단). 자동 부분 GO는 확인(ack)까지 마친 게이트 정지에서만 나온다. (ii)의 arm×abort 검정은
+   표 모양(arm 2개 이상, abort-final 1셀 이상, complete 1셀 이상)이 갖춰질 때만 돌고, 아니면 GO 파일과 T-EXP3-2에
+   "(ii) 검정 불가: <사유>"로 남는다. 이것은 보류 사유가 아니다: D047 §9.1 (ii)는 입력 종속 패턴이 **보이면**
+   보류이고, 판정할 자료가 없는 것은 패턴의 증거가 아니다. 같은 셀 입력 재발 검사와 (i)·(iii)·(iv)는 그대로 적용된다.
 6. **결정론 검사(재실행이 있었던 셀만, D046, 적격성 검증 v1 §2):** `infra_reexecutions`가 0보다 큰 셀마다 그 seed와
    arm만 담은 별도 등록 파일(이 파일 사본에 `seeds = <그 seed>`, `targets.node-tar-7.5.2.arms = <그 arm>`, 그 seed만 담은
    할당 파일과 sha)을 만들고 **새 출력 폴더**로 run_exp0를 그 호스트에서 다시 돌린다. "같은 설정"은 seed, arm, budget,

@@ -393,3 +393,19 @@ def test_m2_a_go_file_with_another_frozen_set_is_refused(holdout: dict[str, Any]
     go = json.loads(holdout["go"].read_text())
     holdout["go"].write_text(json.dumps({**go, "frozen_participants": ["HOST1"]}))
     assert make_seed_assignment.main(holdout["argv"]) == 2
+
+
+def test_ms_every_host_excluded_is_refused_by_the_generator_itself(
+    holdout: dict[str, Any], capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The generator says "GO not computed" before any split is tried (W4 C-iii)."""
+    go = json.loads(holdout["go"].read_text())
+    checked = {"stop_reason": "x", "checks": {}, "hold_reasons": []}
+    go.update(
+        excluded_hosts=["HOST1", "HOST2"],
+        exclusions={"HOST1": checked, "HOST2": checked},
+    )
+    holdout["go"].write_text(json.dumps(go))
+    capsys.readouterr()
+    assert make_seed_assignment.main(holdout["argv"]) == 2
+    assert "every frozen participant is excluded" in capsys.readouterr().err

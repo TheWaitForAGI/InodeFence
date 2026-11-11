@@ -522,6 +522,14 @@ def test_go_rate_is_the_sum_of_host_rates(tmp_path: Path) -> None:
     assert row["r_HOST2: HOST2 처리량(실시간, exec/h)"] == "600"
     assert row["r: 정지 공백을 뺀 처리량(실시간, exec/h)"] == "1200"
     assert gen_exp3_tables.go_rates(two) == {"HOST1": "600.000000", "HOST2": "600.000000"}
+    # A GO file that excludes a host no record shows stopped is refused.
+    clean_decision = two.go_decision.read_text()
+    two.go_decision.write_text(
+        json.dumps({**json.loads(clean_decision), "excluded_hosts": ["HOST2"]})
+    )
+    with pytest.raises(gen_exp3_tables.TableInputError, match="no host stopped unresumed"):
+        gen_exp3_tables.render("T-EXP3-2", two)
+    two.go_decision.write_text(clean_decision)
     # An unresumed stop on one host: partial GO (D047 section 9.1) once the check is recorded.
     files["HOST2"].write_text(
         files["HOST2"].read_text()
@@ -543,7 +551,13 @@ def test_go_rate_is_the_sum_of_host_rates(tmp_path: Path) -> None:
                 {
                     **decision,
                     "excluded_hosts": listed,
-                    "exclusions": {host: {"hold_reasons": hold} for host in listed},
+                    "exclusions": {
+                        host: {
+                            "hold_reasons": hold,
+                            "notes": ["(ii) 검정 불가: no abort-final cell"],
+                        }
+                        for host in listed
+                    },
                     "partial_completion": completion,
                 }
             )
@@ -561,6 +575,7 @@ def test_go_rate_is_the_sum_of_host_rates(tmp_path: Path) -> None:
     assert row["결과"][0].startswith("부분 완료(호스트 HOST2 미재개 정지)")
     assert "HOST2 (제외: 미재개 정지) node-tar-7.5.2: 완주 seed 블록 1개 [9002], 미완주 1개" in text
     assert "holdout 전체 완료 여부는 EXP-2 결과에서 따로" in text
+    assert "- 참고 HOST2: (ii) 검정 불가: no abort-final cell" in text
     assert gen_exp3_tables.go_rates(two) == {"HOST1": "600.000000"}
     # A hold condition: no GO, no split.
     record(["(iv) no recorded statement that the stop preceded any oracle reading"])

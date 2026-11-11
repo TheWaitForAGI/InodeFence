@@ -23,7 +23,7 @@ import math
 import sys
 from collections import Counter
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from types import MappingProxyType
@@ -345,6 +345,7 @@ class PartialGo:
     excluded: tuple[str, ...]
     hold_reasons: Mapping[str, Sequence[str]]
     completion: Mapping[str, Any]
+    notes: Mapping[str, Sequence[str]] = field(default_factory=dict)
 
     @property
     def held(self) -> bool:
@@ -378,12 +379,15 @@ def _partial_go(inputs: "Inputs", clock: GoClock) -> PartialGo | None:
     if not isinstance(exclusions, Mapping) or not isinstance(completion, Mapping):
         raise TableInputError("the GO file has no exclusions or partial_completion")
     hold: dict[str, Sequence[str]] = {}
+    notes: dict[str, Sequence[str]] = {}
     for host in listed:
         reasons = (exclusions.get(host) or {}).get("hold_reasons")
         if not isinstance(reasons, list):
             raise TableInputError(f"the GO file has no hold_reasons for {host}")
         hold[host] = reasons
-    return PartialGo(tuple(sorted(listed)), hold, completion)
+        # Not hold reasons but shown: e.g. "(ii) 검정 불가: <reason>" (D047 section 9.1 (ii)).
+        notes[host] = list((exclusions.get(host) or {}).get("notes") or [])
+    return PartialGo(tuple(sorted(listed)), hold, completion, notes)
 
 
 def _go_clock(inputs: "Inputs", report: Mapping[str, Any], recorded: int) -> GoClock:
@@ -577,6 +581,9 @@ def _partial_lines(partial: PartialGo) -> list[str]:
     for host, reasons in sorted(partial.hold_reasons.items()):
         for reason in reasons:
             lines.append(f"- 보류 사유 {host}: {reason}")
+    for host, host_notes in sorted(partial.notes.items()):
+        for note in host_notes:
+            lines.append(f"- 참고 {host}: {note}")
     lines += [
         "",
         "EXP-2 진행 가능(GO) 여부는 위 결과 칸이다. holdout 전체 완료 여부는 EXP-2 결과에서 따로 "

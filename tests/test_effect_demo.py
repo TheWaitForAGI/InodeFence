@@ -124,6 +124,25 @@ def test_historical_target_versions_match_frozen_catalog_and_locks() -> None:
     assert set(allowed) == {"7.5.2", "7.5.3"}
 
 
+def test_the_holdout_constant_is_empty_until_d4(monkeypatch: pytest.MonkeyPatch) -> None:
+    import hashlib
+
+    from scripts import run_effect_demo
+
+    assert run_effect_demo.HOLDOUT_TARGET is None
+    lock = run_effect_demo.HISTORICAL_LOCKS_DIR / "node-tar-7.5.6.package-lock.json"
+    digest = hashlib.sha256(lock.read_bytes()).hexdigest()
+    # One row admits exactly one more version, checked against its lock; FROZEN stays as is.
+    monkeypatch.setattr(run_effect_demo, "HOLDOUT_TARGET", ("7.5.6", digest))
+    assert set(historical_target_versions()) == {"7.5.2", "7.5.3", "7.5.6"}
+    monkeypatch.setattr(run_effect_demo, "HOLDOUT_TARGET", ("7.5.6", "0" * 64))
+    with pytest.raises(ValueError, match="differs from HOLDOUT_TARGET"):
+        historical_target_versions()
+    monkeypatch.setattr(run_effect_demo, "HOLDOUT_TARGET", ("7.5.2", digest))
+    with pytest.raises(ValueError, match="frozen train/fixed target"):
+        historical_target_versions()
+
+
 @pytest.mark.parametrize("budget", (0, MAX_NATIVE_BUDGET + 1, -1))
 def test_historical_demo_budget_cap_is_enforced_before_any_target_binding(budget) -> None:
     with pytest.raises(ValueError, match="budget"):

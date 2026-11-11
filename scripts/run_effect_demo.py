@@ -75,6 +75,11 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 CATALOG_PATH = _REPO_ROOT / "experiments" / "benchmarks" / "catalog-v1.json"
 HISTORICAL_LOCKS_DIR = _REPO_ROOT / "experiments" / "benchmarks" / "locks"
 HISTORICAL_BENCHMARK_ID = "node-link-sanitize"
+# EXP-2 holdout (D040-D2: this one row is the human-approved extension; FROZEN_TARGETS and the
+# catalog stay as they are). (node-tar version, sha256 of its wrapper lock in
+# HISTORICAL_LOCKS_DIR), set from the D4 qualification result as the last engine diff before
+# freeze. None: no holdout version is admitted, so a holdout registration is refused at dry-run.
+HOLDOUT_TARGET: tuple[str, str] | None = None
 HISTORICAL_DEMO_MODE = "effect-demo-historical"
 # M4 self-discovery: the effect campaign over a second extractor (decompress). Shares the
 # --seed/--budget/--mutation-policy demo arguments. --policy (EffectSearchPolicy) now selects the
@@ -543,6 +548,14 @@ def historical_target_versions() -> dict[str, str]:
         allowed[frozen.tar_version] = frozen.lock_sha256
     if set(allowed) != catalog_versions:
         raise ValueError("catalog historical pair differs from the frozen targets")
+    if HOLDOUT_TARGET is not None:
+        version, lock_sha256 = HOLDOUT_TARGET
+        if version in allowed:
+            raise ValueError(f"holdout version {version} is a frozen train/fixed target")
+        lock_path = HISTORICAL_LOCKS_DIR / f"node-tar-{version}.package-lock.json"
+        if sha256(lock_path.read_bytes()).hexdigest() != lock_sha256:
+            raise ValueError(f"wrapper lock for holdout {version} differs from HOLDOUT_TARGET")
+        allowed[version] = lock_sha256
     return allowed
 
 

@@ -980,6 +980,7 @@ def _controller_request_problems(plan: Exp0Plan) -> list[str]:
     cannot run would otherwise look fine until earlier targets have spent their budget.
     Calling the same function keeps one definition of what is admitted.
     """
+    from scripts import run_effect_demo
     from scripts.run_effect_demo import _require_historical_request, historical_target_versions
 
     targets = [target for target in plan.targets() if target.extractor == "node-tar"]
@@ -992,6 +993,13 @@ def _controller_request_problems(plan: Exp0Plan) -> list[str]:
     problems: list[str] = []
     for target in targets:
         budget = target.budget if target.budget is not None else plan.preregistration.budget
+        holdout = run_effect_demo.HOLDOUT_TARGET
+        if target.role == "holdout" and (holdout is None or holdout[0] != target.version):
+            problems.append(
+                f"target {target.target_id}: holdout {target.version!r} is not "
+                f"run_effect_demo.HOLDOUT_TARGET ({holdout[0] if holdout else 'empty'}; "
+                "set it from the D4 result, D040-D2)"
+            )
         try:
             _require_historical_request(target.version, budget, allowed)
         except ValueError as error:

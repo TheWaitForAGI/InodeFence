@@ -2,7 +2,7 @@
 
 > **상태: 동결 전 초안 (2026-11-11).** 아직 실행할 수 없다. `TBD-FREEZE` 값이 남아 있는 동안 파서가 거부한다(의도된 동작). 11/18에 [exp3-v1](exp3-v1.md)과 **함께** 동결한다(D040-D1). 실행은 exp3-v1 §5의 GO가 성립한 뒤에만 한다.
 >
-> **기준.** [D040](../../docs/DECISIONS.md#d040--exp-3-동결-전-재판정-위험도-파일럿-4040-반영), [D041](../../docs/DECISIONS.md#d041--동시-실행-벤치마크-단계-a-승인과-파일럿-seed-재사용), [D042](../../docs/DECISIONS.md#d042--인프라-정지-규칙-연속-3셀-기록-없음)·[D043](../../docs/DECISIONS.md#d043--go-입력-r에서-등록된-인프라-정지-공백을-뺀다), [D045](../../docs/DECISIONS.md#d045--holdout-상태-확인의-위반어댑터-호환-정의와-train-abort-분모), [D046](../../docs/DECISIONS.md#d046--인프라-정지-대응case-단위-재실행과-d040-d21-재개-판정-초안)·[D047](../../docs/DECISIONS.md#d047--본실험-선행-조건-단순화-jobs2-고정과-호스트별-적격성-검증-초안)(#342로 main 반영), [노출 원장](exposure-ledger.md), [호스트별 적격성 검증 v1](../configs/host-qualification-v1.md). 동시 실행 벤치마크 v3(`experiments/configs/concurrency-scaling-v3.md`)는 본실험 선행 조건이 아니다(D047). 이 초안과 D040이 다르면 D040이 맞다. **"ORCH 결정 2026-11-11"** 표시는 오케스트레이터가 데이터 이전에 정한 실행 세부이고, 지웅 승인은 이 PR의 머지로 한다.
+> **기준.** [D040](../../docs/DECISIONS.md#d040--exp-3-동결-전-재판정-위험도-파일럿-4040-반영), [D041](../../docs/DECISIONS.md#d041--동시-실행-벤치마크-단계-a-승인과-파일럿-seed-재사용), [D042](../../docs/DECISIONS.md#d042--인프라-정지-규칙-연속-3셀-기록-없음)·[D043](../../docs/DECISIONS.md#d043--go-입력-r에서-등록된-인프라-정지-공백을-뺀다), [D045](../../docs/DECISIONS.md#d045--holdout-상태-확인의-위반어댑터-호환-정의와-train-abort-분모), [D046](../../docs/DECISIONS.md#d046--인프라-정지-대응case-단위-재실행과-d040-d21-재개-판정)·[D047](../../docs/DECISIONS.md#d047--본실험-선행-조건-단순화-jobs2-고정과-호스트별-적격성-검증)(#342로 main 반영), [노출 원장](exposure-ledger.md), [호스트별 적격성 검증 v1](../configs/host-qualification-v1.md). 동시 실행 벤치마크 v3(`experiments/configs/concurrency-scaling-v3.md`)는 본실험 선행 조건이 아니다(D047). 이 초안과 D040이 다르면 D040이 맞다. **"ORCH 결정 2026-11-11"** 표시는 오케스트레이터가 데이터 이전에 정한 실행 세부이고, 지웅 승인은 이 PR의 머지로 한다.
 
 ## 1. 목적
 
@@ -179,3 +179,4 @@ seed_assignment_rule = rh-proportional-v1
 - [ ] 분석기 상수(§5 D10) 재확인.
 - [ ] 임시값 사본으로 `run_exp0 --dry-run`과 holdout 버전 allowlist 확인(W3).
 - [ ] 참여 호스트의 적격성 PASS 기록과 Engine B안 기술 조건(적격성 검증 v1 §11) 충족.
+- [ ] D042 정지·재개 smoke 1차·2차 PASS(exp3-v1 §8과 같은 항목, 같은 `engine_sha`).

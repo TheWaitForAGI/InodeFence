@@ -2,7 +2,7 @@
 
 > **상태: 동결 전 초안 (2026-11-11).** 아직 실행할 수 없다. 블록의 `TBD-FREEZE` 값이 남아 있는 동안 파서(`src/inodefence/evaluation/rds_preregistration.py`)가 `engine_sha`와 digest 형식 오류로 거부한다. 의도된 동작이다. 11/18에 [exp2-v1](exp2-v1.md)과 **함께** 동결한다(D040-D1).
 >
-> **기준.** [D040](../../docs/DECISIONS.md#d040--exp-3-동결-전-재판정-위험도-파일럿-4040-반영)(D1~D21), [D041](../../docs/DECISIONS.md#d041--동시-실행-벤치마크-단계-a-승인과-파일럿-seed-재사용)(마감·abort 집계·운영 중단·a 정의), [D042](../../docs/DECISIONS.md#d042--인프라-정지-규칙-연속-3셀-기록-없음)·[D043](../../docs/DECISIONS.md#d043--go-입력-r에서-등록된-인프라-정지-공백을-뺀다)(#331로 main 반영), [D044](../../docs/DECISIONS.md#d044--2호스트-동시-실행-벤치마크-설계-v3)·[D045](../../docs/DECISIONS.md#d045--holdout-상태-확인의-위반어댑터-호환-정의와-train-abort-분모), [D046](../../docs/DECISIONS.md#d046--인프라-정지-대응case-단위-재실행과-d040-d21-재개-판정-초안)(#342로 main 반영), [노출 원장](exposure-ledger.md), [규모 산정](exp3-sizing-20261107/README.md), [D047](../../docs/DECISIONS.md#d047--본실험-선행-조건-단순화-jobs2-고정과-호스트별-적격성-검증-초안), [호스트별 적격성 검증 v1](../configs/host-qualification-v1.md). 동시 실행 벤치마크 v3(`experiments/configs/concurrency-scaling-v3.md`)는 본실험 선행 조건이 아니다(D047). 이 초안과 D040이 다르면 D040이 맞다.
+> **기준.** [D040](../../docs/DECISIONS.md#d040--exp-3-동결-전-재판정-위험도-파일럿-4040-반영)(D1~D21), [D041](../../docs/DECISIONS.md#d041--동시-실행-벤치마크-단계-a-승인과-파일럿-seed-재사용)(마감·abort 집계·운영 중단·a 정의), [D042](../../docs/DECISIONS.md#d042--인프라-정지-규칙-연속-3셀-기록-없음)·[D043](../../docs/DECISIONS.md#d043--go-입력-r에서-등록된-인프라-정지-공백을-뺀다)(#331로 main 반영), [D044](../../docs/DECISIONS.md#d044--2호스트-동시-실행-벤치마크-설계-v3)·[D045](../../docs/DECISIONS.md#d045--holdout-상태-확인의-위반어댑터-호환-정의와-train-abort-분모), [D046](../../docs/DECISIONS.md#d046--인프라-정지-대응case-단위-재실행과-d040-d21-재개-판정)(#342로 main 반영), [노출 원장](exposure-ledger.md), [규모 산정](exp3-sizing-20261107/README.md), [D047](../../docs/DECISIONS.md#d047--본실험-선행-조건-단순화-jobs2-고정과-호스트별-적격성-검증), [호스트별 적격성 검증 v1](../configs/host-qualification-v1.md). 동시 실행 벤치마크 v3(`experiments/configs/concurrency-scaling-v3.md`)는 본실험 선행 조건이 아니다(D047). 이 초안과 D040이 다르면 D040이 맞다.
 > 이전 초안(#264 `e11d302`, 11/05판)은 D040 이전 구조라 대체한다. 그 판의 한 파일 다중 타깃 구조, 7.5.6/7.5.7·py-tarfile 타깃, S-a, `sentinel_count = 3`, `event_threshold = 5`는 쓰지 않는다.
 >
 > **"ORCH 결정 2026-11-11"** 표시는 D040에 없던 실행 세부를 오케스트레이터가 데이터 이전에 정한 것이다. 지웅 승인은 이 PR의 머지로 한다. 이 표시에 해당하는 항목은 모두 **동결 전 초안이며, 지웅 승인 = PR 머지**다: 호스트 키(`host.<id>.*`), 할당 규칙(`seed_assignment_*`), sentinel seed 재사용, start_denied 제외, 인프라 정지 case 재실행(D046), watchdog 뒤 정지, train abort 분모(D045).
@@ -114,6 +114,7 @@ GO는 자동이 아니다. EXP-2 시작 전에 W3가 train 리포트 값으로 �
 - **train abort(분모는 D045, ORCH 결정 2026-11-11, 엄격한 쪽):** 분모는 시도한 셀(`start` 줄이 있는 run id)이고, 분자는 그중 abort + record-inconsistent + no-record다. 미시작 셀은 분모와 분자 모두에서 빼고 그 수를 병기한다. 등록 전체 셀 기준 값도 참고 줄로 함께 내며, GO 입력은 아니다.
 - **미재개 정지 호스트(D047, 지웅 결정 1, D043 조건 6 개정):** GO 판정 시각에 미재개 정지 상태(마지막 인프라 사건이 미재개 `infrastructure-stop`)인 참여 호스트는 GO 산식의 r과 holdout 할당에서 제외한다. r은 가동 중인 참여 호스트의 train r_h 합이다. 제외된 호스트의 완료된 train 셀은 E, train abort, e, train 탐색 결과에 그대로 남고 r에서만 빠진다. 그 호스트의 미완주 train seed는 GO 판정 시각에 끝나지 않은 seed 블록이며, D041 마감 규칙을 준용해 train 분석에서 빼고 그 수를 보고한다. 제외된 호스트는 GO 뒤 train을 재개하지 않는다. GO 기준은 완화하지 않는다: 용량 ≥ 76(가동 호스트의 r), E ≥ 1, train abort ≤ .45(제외된 호스트의 시도 셀 포함), 가동 호스트의 train 기록 완전성 pass. 모든 참여 호스트가 미재개 정지면 GO는 미산출이고 W3는 EXP-2를 시작하지 않는다. 이 규칙은 train 결과 확인 전에 고정했다(D047, 지웅 결정 2026-11-11). "사전등록된 최소 seed 수·유효 표본 수·품질 기준"은 위 기존 GO 기준으로 읽는다(해석 (가) 확정, 지웅 #342 머지 2026-11-11).
 - **GO 보류·보고(D047, 지웅 결정 1):** 다음 중 하나라도 해당하면 GO를 내지 않고 지웅 판단으로 올린다: (i) 정지 원인이 미확인이거나 인프라·외부 원인으로 분류되지 않음 (ii) 그 호스트의 train abort 전체가 입력 종속 패턴(같은 (arm, seed, step, case_id) 재발, 또는 그 호스트의 arm×abort 표에 대한 `arm_abort_independence` p ≤ .10)을 보임 (iii) 그 호스트의 cell-results·시작 게이트 상태·로그가 기록 완전성 검사를 통과하지 못하거나 증거 해시 대조가 안 됨 (iv) 정지가 oracle 값 열람 이후의 사람 판단으로 일어남. 판정 입력은 인프라 값과 기록 상태뿐이다. 보고에는 미완료 seed 수, 완주 seed 블록 수, 중단 원인, 호스트별 실제 완료 seed 목록을 적고, '부분 완료(호스트 X 미재개 정지)'로 표기하며, 'EXP-2 진행 가능(GO)'과 'holdout 전체 완료'를 따로 적는다.
+- **유효 표본 기준(해석 (가) 확정, 지웅 #342 머지 2026-11-11):** 부분 GO에서 "사전등록된 최소 seed 수·유효 표본 수·품질 기준"은 이 등록의 기존 기준(GO 식, E ≥ 1, train abort ≤ .45, 기록 완전성, D041 마감 규칙)을 완화 없이 그대로 적용한다는 뜻이다. 별도의 최소 유효 표본 숫자는 등록하지 않는다. 완주 seed 블록 수는 언제나 보고한다([적격성 설계 §9.1](../configs/host-qualification-v1.md)).
 - **NO-GO면** 규칙을 바꿔 다시 적용하지 않는다. EXP-3 train만 탐색 결과로 보고한다.
 - 표 7-B2: r, r_wall, 정지 횟수, 누적 공백 시간, 호스트별 r_h(D043).
 
@@ -152,7 +153,8 @@ GO는 자동이 아니다. EXP-2 시작 전에 W3가 train 리포트 값으로 �
 
 - [ ] `engine_sha`(exp2-v1과 같음). D042·D043 결정 커밋과 host 키 게이트 구현(W3)이 그 SHA에 포함되고 검증 PASS.
 - [ ] `image_digest`(D18 id, docker save 보관, 두 호스트 같은 id).
-- [ ] `exposure_ledger_sha256`. smoke·적격성·D4 상태 확인 행을 먼저 반영하고, 그 뒤 11/25까지 원장 변경 금지.
+- [ ] [D042 정지·재개 smoke](../configs/stop-path-smoke-v1.md) 1차·2차 PASS와 차수별 원장 행. 순서는 런처 smoke → 정지·재개 smoke 1차 → 적격성 → 2차(최종 `engine_sha` 후보, 동결 직전) → 원장 sha 고정 → 동결이다. 1차 뒤 실행 경로가 바뀌면 2차는 필수이고 적격성도 무효다. 기준 파일의 sha256을 D042의 "sha `[동결 시 기입]`" 자리에 적는다.
+- [ ] `exposure_ledger_sha256`. smoke·정지·재개 smoke(1차·2차)·적격성·D4 상태 확인 행을 먼저 반영하고(D042: 원장 sha는 2차 뒤 고정), 그 뒤 11/25까지 원장 변경 금지.
 - [ ] `host.<id>.jobs = 2`(D047), `host.<id>.docker_engine`(적격성 preflight 고정값), `jobs_max = 2`. 참여 호스트 집합(적격성 PASS 기록 경로)과 그에 맞춘 할당 파일.
 - [ ] 할당 파일과 `seed_assignment_sha256`.
 - [ ] 임시값 사본으로 `run_exp0 --dry-run`(gate, wiring, 셀 순서) 확인(W3).

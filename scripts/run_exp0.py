@@ -617,15 +617,58 @@ HOST_SAMPLE_SECONDS = guards.PROC_SAMPLE_SECONDS
 HOST_PROBE_SECONDS = guards.DOCKER_PROBE_SECONDS
 
 
-def guard_images(plan: Exp0Plan) -> dict[str, str | None]:
-    """Images the host guards check: each target at its registered id, local images recorded."""
+def guard_images(
+    plan: Exp0Plan, expected: Mapping[str, str] | None = None
+) -> dict[str, str | None]:
+    """Images the host guards check: each target at its registered id; the local images at
+    their ``expected`` ids when given (refused when different), else only recorded."""
     images: dict[str, str | None] = {
         f"inodefence-node-tar-effect:{target.version}": target.digest
         for target in plan.targets()
         if target.extractor == "node-tar"
     }
     images.update(dict.fromkeys(LOCAL_IMAGES))
+    if expected is not None:
+        images.update(expected)
     return images
+
+
+#: The key read from an ``--expected-images`` file (the host-qualification criteria file).
+EXPECTED_IMAGES_KEY = "expected_image_ids"
+
+
+class ExpectedImagesError(ValueError):
+    """An ``--expected-images`` file is unusable for this registration."""
+
+
+def load_expected_images(path: Path, plan: Exp0Plan) -> dict[str, str]:
+    """Expected image ids for every image the guards check, from ``expected_image_ids``.
+
+    The file has the host-qualification criteria format; only ``expected_image_ids`` is
+    read. It must name exactly the guarded images (each node-tar target, the controller
+    and the helper), and a target's id must equal the id the registration pins.
+    """
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ExpectedImagesError(f"{path}: {error}") from error
+    ids = data.get(EXPECTED_IMAGES_KEY) if isinstance(data, Mapping) else None
+    if not isinstance(ids, Mapping) or not all(
+        isinstance(key, str) and isinstance(value, str) and value for key, value in ids.items()
+    ):
+        raise ExpectedImagesError(f"{path}: {EXPECTED_IMAGES_KEY} must map image names to ids")
+    registered = guard_images(plan)
+    if set(ids) != set(registered):
+        raise ExpectedImagesError(
+            f"{path}: {EXPECTED_IMAGES_KEY} names {sorted(ids)}, the guarded images are "
+            f"{sorted(registered)}"
+        )
+    for name, want in registered.items():
+        if want is not None and ids[name] != want:
+            raise ExpectedImagesError(
+                f"{path}: {name} is expected as {ids[name]}, the registration pins {want}"
+            )
+    return dict(ids)
 
 
 def guard_docker(context: str | None) -> Callable[..., str]:
@@ -639,27 +682,36 @@ def guard_docker(context: str | None) -> Callable[..., str]:
 
 
 def host_preflight(
-    plan: Exp0Plan, *, engine: str, docker: Callable[..., str]
+    plan: Exp0Plan,
+    *,
+    engine: str,
+    docker: Callable[..., str],
+    expected: Mapping[str, str] | None = None,
 ) -> tuple[dict[str, Any], list[str]]:
     """Shared launcher guard before the first cell (#336): refuses on any problem."""
     return guards.host_preflight(
         repo_root=Path(__file__).resolve().parents[1],
         engine=engine,
-        images=guard_images(plan),
+        images=guard_images(plan, expected),
         docker=docker,
         residual=lambda: guards.residual_resources(docker),
     )
 
 
 def host_postflight(
-    plan: Exp0Plan, before: Mapping[str, Any], *, engine: str, docker: Callable[..., str]
+    plan: Exp0Plan,
+    before: Mapping[str, Any],
+    *,
+    engine: str,
+    docker: Callable[..., str],
+    expected: Mapping[str, str] | None = None,
 ) -> tuple[dict[str, Any], list[str]]:
     """The same checks once after the last cell, plus "nothing changed since the preflight"."""
     return guards.host_postflight(
         before,
         repo_root=Path(__file__).resolve().parents[1],
         engine=engine,
-        images=guard_images(plan),
+        images=guard_images(plan, expected),
         docker=docker,
         residual=lambda: guards.residual_resources(docker),
     )
@@ -1548,6 +1600,14 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="two-host runs: which host this is; runs only its assigned seeds",
     )
+    parser.add_argument(
+        "--expected-images",
+        type=Path,
+        default=None,
+        help="targets form: a file whose expected_image_ids (the host-qualification criteria "
+        "format) gives the target, controller and helper ids; a run whose images differ is "
+        "refused before anything starts. Required with --host-id",
+    )
     parser.add_argument("--skip-build", action="store_true")
     parser.add_argument("--python", default=None)
     parser.add_argument("--context", default=None)
@@ -1992,14 +2052,8 @@ def main(argv: list[str] | None = None) -> int:
         if plan.multi_target
         else {cell.run_id: archive_attempt(cell, output) for cell in pending}
     )
-    if pending and not args.skip_build:
-        code = _warmup("demo-historical", output, base_env, bash)
-        if code != 0:
-            print(
-                f"image warmup failed (exit {code}); see {output / 'warmup.log'}", file=sys.stderr
-            )
-            return code
-    # The targets form runs the shared host guards (#336) around its cells: a preflight refusal
+    # The targets form runs the shared host guards (#336) around its cells, and the preflight
+    # runs before any warmup build, so it records the host as found. A preflight refusal
     # starts nothing; the postflight is recorded after the last cell. A host's records name the
     # same record-only instrument settings so two hosts can be compared.
     host_records: dict[str, Any] = {}
@@ -2007,7 +2061,21 @@ def main(argv: list[str] | None = None) -> int:
     recorders = guards.Recorders(ping_socket=args.ping_socket, desktop_log=args.desktop_log)
     docker = guard_docker(args.context)
     host_engine: str | None = None
+    expected_images: dict[str, str] | None = None
     if plan.multi_target and pending:
+        if args.expected_images is None and plan.host_id is not None:
+            print(
+                "refusing to run: a two-host run needs --expected-images (the controller, helper "
+                "and target ids it must find)",
+                file=sys.stderr,
+            )
+            return 2
+        if args.expected_images is not None:
+            try:
+                expected_images = load_expected_images(args.expected_images, plan)
+            except ExpectedImagesError as error:
+                print(f"--expected-images unusable: {error}", file=sys.stderr)
+                return 2
         registered_host = prereg.host(plan.host_id) if plan.host_id else None
         try:
             host_engine = (
@@ -2018,7 +2086,9 @@ def main(argv: list[str] | None = None) -> int:
         except (RuntimeError, OSError, subprocess.SubprocessError) as error:
             print(f"host preflight: docker engine unreadable: {error}", file=sys.stderr)
             return 2
-        facts, problems = host_preflight(plan, engine=host_engine, docker=docker)
+        facts, problems = host_preflight(
+            plan, engine=host_engine, docker=docker, expected=expected_images
+        )
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S.%fZ")
         clock_reference: dict[str, Any] | None = None
         if args.clock_reference is not None:
@@ -2034,6 +2104,14 @@ def main(argv: list[str] | None = None) -> int:
                 return 2
         facts = {
             **facts,
+            # The code this call runs; the engine_sha gate compares the same value.
+            "execution_sha": {"revision": source.revision, "dirty": source.dirty},
+            "expected_images": None
+            if args.expected_images is None
+            else {
+                "file": args.expected_images.name,
+                "sha256": sha256(args.expected_images.read_bytes()).hexdigest(),
+            },
             "clocks": _clock_stamp(),
             **({"clock_reference": clock_reference} if clock_reference is not None else {}),
             "recording": recording_settings(recorders),
@@ -2051,6 +2129,25 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         host_records["stamp"] = stamp
         host_records["facts"] = facts
+    if pending and not args.skip_build:
+        code = _warmup("demo-historical", output, base_env, bash)
+        if code != 0:
+            print(
+                f"image warmup failed (exit {code}); see {output / 'warmup.log'}", file=sys.stderr
+            )
+            return code
+        if "facts" in host_records and host_engine is not None:
+            # A warmup build must not change what the preflight recorded and checked.
+            rebuilt, _ = host_preflight(
+                plan, engine=host_engine, docker=docker, expected=expected_images
+            )
+            if rebuilt.get("image_ids") != host_records["facts"].get("image_ids"):
+                print(
+                    "refusing to run: the warmup build changed image ids "
+                    f"{host_records['facts'].get('image_ids')} -> {rebuilt.get('image_ids')}",
+                    file=sys.stderr,
+                )
+                return 2
     # Only now: a failed warmup leaves the stop in force, so the next call still needs the flag.
     if args.resume_after_stop is not None:
         append_cell_result(
@@ -2110,6 +2207,21 @@ def main(argv: list[str] | None = None) -> int:
         return run_attempt(cell)
 
     def run_target_cell(cell: Cell) -> CellResult | None:
+        """``attempt_target_cell``, but an error escaping it stops every later start first.
+
+        Without this, an end-line write failure or ``DiskUsageUnavailable`` would end this
+        worker silently while up to ``--jobs`` other cells could still start.
+        """
+        try:
+            return attempt_target_cell(cell)
+        except BaseException as error:
+            try:
+                gate_stop(f"launcher error on {cell.run_id}: {type(error).__name__}: {error}")
+            except Exception as recorded:
+                error.add_note(f"stop event not recorded: {type(recorded).__name__}: {recorded}")
+            raise
+
+    def attempt_target_cell(cell: Cell) -> CellResult | None:
         """Attempts of one cell, in its place in the queue: a retry never waits for a later call.
 
         The retry happens only when the attempt left no record, its files kept under ``attempts/``.
@@ -2189,6 +2301,14 @@ def main(argv: list[str] | None = None) -> int:
                 )
                 gate_stop(f"runner error on {cell.run_id}: {note}")
                 return result
+            # The gate verdict first: a missing S is committed as U before the end line, so no
+            # other worker can start while a descendant still holds the cell's lock.
+            unclean: str | None = None
+            if gate is not None:
+                try:
+                    gate.require_clean(cell.run_id)
+                except VerdictMissing as error:
+                    unclean = str(error)
             append_cell_result(
                 output,
                 {
@@ -2202,12 +2322,6 @@ def main(argv: list[str] | None = None) -> int:
                     **plan.host_fields(),
                 },
             )
-            unclean: str | None = None
-            if gate is not None:
-                try:
-                    gate.require_clean(cell.run_id)
-                except VerdictMissing as error:
-                    unclean = str(error)
             check = target_cell_check(plan, cell, output, read_cell_results(path))
             recorded = check.state not in (UNATTEMPTED, NO_RECORD)
             if unclean is not None:
@@ -2245,7 +2359,11 @@ def main(argv: list[str] | None = None) -> int:
                 host_records["recording_notes"] = stop_recording()
             if "facts" in host_records and host_engine is not None:
                 after, after_problems = host_postflight(
-                    plan, host_records.pop("facts"), engine=host_engine, docker=docker
+                    plan,
+                    host_records.pop("facts"),
+                    engine=host_engine,
+                    docker=docker,
+                    expected=expected_images,
                 )
                 after = {
                     **after,

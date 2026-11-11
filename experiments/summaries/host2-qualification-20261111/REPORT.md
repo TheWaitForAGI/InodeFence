@@ -279,3 +279,13 @@ Run 14:57:25–17:22:28 KST (`clock_confirm.txt`, scripts `confirm_run.sh.txt`, 
 - freq kept being rewritten every 10 s (−9.0 to +19.2 ppm, mostly near 0). Its source is still unidentified. This is not a criterion and is reported only.
 - The first test's transient (tick 9093–9559 while timesyncd was running) is kept separate from this verdict (§11).
 - Absolute offset (not a criterion): WSL is about 1.57 s behind NTP (§20). W32Time sync comes next (owner, §21 item 5), then criteria (a)(b)(c).
+
+## 24. ORCH decisions on the §22 findings (17:26 KST) and how they enter the checklist
+
+| Topic | Decision (ORCH) | HOST2 checklist entry |
+| --- | --- | --- |
+| venv `.pth` points to the main checkout | Do not change the `.pth`. Set `PYTHONPATH=src` explicitly in the execution worktree command (passed to W3 for the runbook) | Pre-run check: in the execution worktree, `PYTHONPATH=src <venv>/bin/python -c "import inodefence, sys; print(inodefence.__file__)"` must print a path under `~/inodefence-host2-20261111/execution/src/`. Otherwise do not start |
+| Leftover-resource criterion | **The code governs:** containers `name=inodefence-`, volumes `name=inodefence-local-` (same as the driver filter since D041). The §4 wording is inaccurate and will be corrected (methodology owner) | Dev-container volumes `inodefence-codex` and `inodefence-runtime` do not count as leftovers. Do not delete them. §19.1 row "Leftover volumes 0" → **Yes** |
+| Dry-run observations (no image check, misleading `warmup` line) | Passed to W3 | **A dry-run PASS does not replace the image preflight.** Before the run, compare the ids of the target, controller, helper and holdout images separately with `docker image inspect` |
+| SNTP | HOST1 measured at 17:26 KST with the same script: time.windows.com −0.5196 s (2/5 timeouts), pool.ntp.org −0.7273 s (5/5). HOST1 has timesyncd running and tick 10398. The difference from HOST2 is about 2.1–2.3 s (record only) | Remeasure HOST2 after the W32Time sync (built into `post_w32.sh`) |
+| Check worktree `check-129324d` | Keep it. It is not an execution candidate. The integration head has moved to `a76ffee` | Execution SHA and criteria file (3 expected image ids, Engine 29.9.3, 16 shared-path hashes, execution SHA) will come from ORCH |

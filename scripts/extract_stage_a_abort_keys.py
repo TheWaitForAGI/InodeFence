@@ -101,6 +101,17 @@ def extract(blocks: Sequence[Path], design_path: Path) -> dict[str, Any]:
         "mutation_policy": design.mutation_policy,
         "image_digest": design.image_digest,
         "budget": design.budget,
+        # The cell environment a qualification run must share for the recurrence test to hold.
+        "environment": {
+            "search_policies": sorted(policies.values()),
+            "mutation_policy": design.mutation_policy,
+            "vocabulary": design.vocabulary.value,
+            "sentinel_generator_id": design.sentinel_generator_id,
+            "sentinel_generator_seed": design.sentinel_generator_seed,
+            "sentinel_count": design.sentinel_count,
+            "budget": design.budget,
+            "seeds": sorted(design.seeds),
+        },
         "blocks": sources,
         "aborts": sorted(aborts, key=lambda a: (a["search_policy"], a["seed"], a["block"])),
     }

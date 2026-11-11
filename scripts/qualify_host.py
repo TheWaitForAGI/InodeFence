@@ -32,6 +32,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 from collections.abc import Mapping, Sequence
 from fractions import Fraction
@@ -63,11 +64,77 @@ CRITERIA_KEYS = frozenset(
         "max_first_attempt_abort_ratio",
         "max_unstable_steps_per_1000",
         "max_cell_seconds",
-        "unknown_abort_categories",
         "expected_cells",
         "expected_image_ids",
     }
 )
+
+
+#: #343 appends this to an abort reason; the category is the original reason's.
+ANOMALY_SUFFIX = re.compile(r"\s*\[last anomalous docker call: .*\]\s*$", re.DOTALL)
+
+
+def abort_category(stub: Mapping[str, Any]) -> str:
+    """The stub's recorded category, else the original reason's (the #343 suffix removed)."""
+    recorded = stub.get("category")
+    if isinstance(recorded, str) and recorded:
+        return recorded
+    reason = stub.get("reason")
+    if not isinstance(reason, str):
+        return "none"
+    return classify_abort_reason(ANOMALY_SUFFIX.sub("", reason)).value
+
+
+def unconfirmed_abort(stub: Mapping[str, Any] | None) -> bool:
+    """D047 Q8, W4's definition (2026-11-11), applied to an abort cell.
+
+    Unconfirmed when (i) there is no report or no ``aborted`` object, (ii) ``error_chain`` is
+    missing, empty or ends with a truncation mark, or (iii) there is no ``error_chain`` and the
+    original reason classifies as ``cleanup_inspect`` or ``cleanup_remove``. A whole chain counts
+    as confirmed even when its innermost (last) element is a cleanup error.
+    """
+    if stub is None:
+        return True
+    chain = stub.get("error_chain")
+    if not isinstance(chain, list) or not chain:
+        return True  # (ii); (iii) is the cleanup subset of a missing chain
+    last = chain[-1]
+    return not isinstance(last, Mapping) or bool(last.get("truncated"))
+
+
+def stage_a_environment_problems(plan: Exp0Plan, keys: Mapping[str, Any]) -> list[str]:
+    """Why a recurrence test against these Stage A keys would not hold for this plan (pre-run).
+
+    The qualification cells must share the Stage A cell environment: search policies, mutation
+    policy, vocabulary, sentinel set and budget, and every key seed must be planned.
+    """
+    prereg = plan.preregistration
+    stage = keys.get("environment")
+    if not isinstance(stage, Mapping):
+        return ["the Stage A key file has no environment record"]
+    mine = {
+        "search_policies": sorted({str(arm.search) for arm in plan.arms()}),
+        "mutation_policy": plan.arms()[0].mutation,
+        "vocabulary": prereg.vocabulary_mode.value,
+        "sentinel_generator_id": prereg.sentinel_generator_id,
+        "sentinel_generator_seed": prereg.sentinel_generator_seed,
+        "sentinel_count": prereg.sentinel_count,
+        "budget": prereg.budget,
+    }
+    problems = [
+        f"{key}: qualification {mine[key]!r} != Stage A {stage.get(key)!r}"
+        for key in mine
+        if mine[key] != stage.get(key)
+    ]
+    if len({arm.mutation for arm in plan.arms()}) != 1:
+        problems.append("arms use different mutation policies")
+    planned = set(plan.run_seeds)
+    missing = sorted({int(key["seed"]) for key in keys.get("aborts", ())} - planned)
+    if missing:
+        problems.append(f"Stage A abort seeds not planned here: {missing}")
+    if keys.get("image_digest") not in {target.digest for target in plan.targets()}:
+        problems.append("Stage A image is not a target image here")
+    return problems
 
 
 class QualificationInputError(ValueError):
@@ -255,8 +322,7 @@ def judge(
     categories: dict[str, int] = {}
     longest = {"realtime": 0.0, "monotonic": 0.0}
     per_arm: dict[str, dict[str, int]] = {}
-    unknown_categories = set(criteria["unknown_abort_categories"])
-    unknown_aborts = 0
+    unconfirmed = 0
     aborts_at: dict[tuple[str, int], tuple[int, str]] = {}
     paths: dict[tuple[str, int], list[str]] = {}
     policy_of = {arm.label: str(arm.search) for arm in plan.arms()}
@@ -288,11 +354,11 @@ def judge(
         arm["reexecutions"] += reexecutions
         key = (policy_of[cell.arm.label], cell.seed)
         paths[key] = case_ids
+        if check.state != COMPLETE:
+            unconfirmed += unconfirmed_abort(stub)
         if stub is not None:
-            reason = stub.get("reason")
-            category = classify_abort_reason(reason).value if isinstance(reason, str) else "none"
+            category = abort_category(stub)
             categories[category] = categories.get(category, 0) + 1
-            unknown_aborts += category in unknown_categories
             if isinstance(stub.get("step_index"), int):
                 aborts_at[key] = (stub["step_index"], str(stub.get("case_id")))
     counts = {
@@ -317,7 +383,7 @@ def judge(
         },
         str(criteria["max_first_attempt_abort_ratio"]),
     )
-    put("unknown_aborts", unknown_aborts == 0, unknown_aborts, 0)
+    put("unconfirmed_aborts", unconfirmed == 0, unconfirmed, 0)
     step_limit = Fraction(str(criteria["max_unstable_steps_per_1000"]))
     unstable_ok = all(
         arm["steps"] > 0
@@ -342,9 +408,8 @@ def judge(
     if stage_a is None:
         put("stage_a_recurrence", False, "no Stage A key file given")
     else:
-        comparable = stage_a.get("budget") == plan.preregistration.budget and stage_a.get(
-            "image_digest"
-        ) in {t.digest for t in plan.targets()}
+        environment = stage_a_environment_problems(plan, stage_a)
+        comparable = not environment
         recurrences = []
         same_path_to_abort = 0
         for key in stage_a.get("aborts", ()):
@@ -364,6 +429,7 @@ def judge(
             comparable and not recurrences,
             {
                 "comparable": comparable,
+                "environment_problems": environment,
                 "recurrences": recurrences,
                 "keys": len(stage_a.get("aborts", ())),
                 "same_path_to_abort": same_path_to_abort,
@@ -383,16 +449,24 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--preregistration", type=Path, required=True)
     parser.add_argument("--seed-assignment", type=Path, required=True)
     parser.add_argument("--host-id", required=True)
-    parser.add_argument("--output", type=Path, required=True, help="this host's run directory")
-    parser.add_argument("--criteria", type=Path, required=True)
-    parser.add_argument("--criteria-sha256", required=True)
+    parser.add_argument("--output", type=Path, help="this host's run directory")
+    parser.add_argument("--criteria", type=Path)
+    parser.add_argument("--criteria-sha256")
     parser.add_argument("--stage-a-keys", type=Path)
     parser.add_argument("--stage-a-keys-sha256")
     parser.add_argument("--peer", type=Path, help="the other host's run directory")
+    parser.add_argument(
+        "--check-environment",
+        action="store_true",
+        help="before the run: is the Stage A recurrence test valid for these cells? (no run read)",
+    )
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
+    if not args.check_environment and None in (args.output, args.criteria, args.criteria_sha256):
+        parser.error("a judgement needs --output, --criteria and --criteria-sha256")
+    if args.check_environment and args.stage_a_keys is None:
+        parser.error("--check-environment needs --stage-a-keys")
     try:
-        criteria = load_criteria(args.criteria, args.criteria_sha256)
         stage_a = None
         if args.stage_a_keys is not None:
             data = args.stage_a_keys.read_bytes()
@@ -410,9 +484,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             assignment=assignment,
             host_id=args.host_id,
         )
-        document = judge(
-            plan=plan, output=args.output, criteria=criteria, stage_a=stage_a, peer=args.peer
-        )
+        if args.check_environment:
+            assert stage_a is not None
+            problems = stage_a_environment_problems(plan, stage_a)
+            document: dict[str, Any] = {
+                "classification": "pre-run Stage A environment check (no run record is read)",
+                "input_dependence_test_valid": not problems,
+                "problems": problems,
+            }
+        else:
+            criteria = load_criteria(args.criteria, args.criteria_sha256)
+            document = judge(
+                plan=plan, output=args.output, criteria=criteria, stage_a=stage_a, peer=args.peer
+            )
     except (QualificationInputError, OSError, ValueError, KeyError) as error:
         print(f"qualification refused: {type(error).__name__}: {error}", file=sys.stderr)
         return 2
@@ -423,6 +507,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    if args.check_environment:
+        valid = document["input_dependence_test_valid"]
+        print(json.dumps({"input_dependence_test_valid": valid, "out": str(args.out)}))
+        return 0 if valid else 1
     print(json.dumps({"verdict": document["verdict"], "out": str(args.out)}))
     return 0 if document["verdict"] == "PASS" else 1
 

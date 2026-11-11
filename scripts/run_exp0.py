@@ -1518,6 +1518,13 @@ def main(argv: list[str] | None = None) -> int:
         help="two-host runs: the frozen seed assignment file (its sha256 is registered)",
     )
     parser.add_argument(
+        "--clock-reference",
+        type=Path,
+        default=None,
+        help="JSON with the measured realtime offset to the other host, kept in the preflight "
+        "record with its sha256 (D047: recorded when a qualification run starts)",
+    )
+    parser.add_argument(
         "--ping-socket",
         type=Path,
         default=None,
@@ -2013,9 +2020,22 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         facts, problems = host_preflight(plan, engine=host_engine, docker=docker)
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S.%fZ")
+        clock_reference: dict[str, Any] | None = None
+        if args.clock_reference is not None:
+            try:
+                raw = args.clock_reference.read_bytes()
+                clock_reference = {
+                    "file": args.clock_reference.name,
+                    "sha256": sha256(raw).hexdigest(),
+                    "measurement": json.loads(raw),
+                }
+            except (OSError, json.JSONDecodeError) as error:
+                print(f"--clock-reference unusable: {error}", file=sys.stderr)
+                return 2
         facts = {
             **facts,
             "clocks": _clock_stamp(),
+            **({"clock_reference": clock_reference} if clock_reference is not None else {}),
             "recording": recording_settings(recorders),
             "problems": problems,
             **plan.host_fields(),

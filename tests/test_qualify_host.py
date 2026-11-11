@@ -26,7 +26,6 @@ def _criteria(tmp_path: Path, cells: int, **over: Any) -> tuple[Path, str]:
         "max_first_attempt_abort_ratio": "0.30",
         "max_unstable_steps_per_1000": "1",
         "max_cell_seconds": 7200,
-        "unknown_abort_categories": ["other"],
         "expected_cells": cells,
         "expected_image_ids": {
             "inodefence-node-tar-effect:7.5.2": DIGEST,
@@ -40,11 +39,30 @@ def _criteria(tmp_path: Path, cells: int, **over: Any) -> tuple[Path, str]:
     return path, hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _keys(tmp_path: Path, aborts: list[dict[str, Any]]) -> tuple[Path, str]:
+def _environment(prereg: Path) -> dict[str, Any]:
+    """The Stage A environment record a key file would carry for this registration's cells."""
+    registration = run_exp0.load_preregistration(prereg)
+    plan = run_exp0.Exp0Plan(registration, prereg, "x", "7.5.2", False)
+    return {
+        "search_policies": sorted({str(arm.search) for arm in plan.arms()}),
+        "mutation_policy": plan.arms()[0].mutation,
+        "vocabulary": registration.vocabulary_mode.value,
+        "sentinel_generator_id": registration.sentinel_generator_id,
+        "sentinel_generator_seed": registration.sentinel_generator_seed,
+        "sentinel_count": registration.sentinel_count,
+        "budget": registration.budget,
+        "seeds": sorted(registration.seeds),
+    }
+
+
+def _keys(
+    tmp_path: Path, aborts: list[dict[str, Any]], prereg: Path, **environment: Any
+) -> tuple[Path, str]:
     document = {
         "schema": extract_stage_a_abort_keys.SCHEMA,
         "budget": 6,
         "image_digest": DIGEST,
+        "environment": {**_environment(prereg), **environment},
         "aborts": aborts,
     }
     path = tmp_path / "keys.json"
@@ -106,7 +124,7 @@ def test_a_clean_host_passes_and_no_oracle_value_leaves(
     _, prereg, assignment, host1, cells = _run_host1(
         tmp_path, monkeypatch, _fake_runner(TARGET_IMAGES)
     )
-    keys = _keys(tmp_path, [])
+    keys = _keys(tmp_path, [], prereg)
     code, report, text = _judge(
         prereg, assignment, host1, _criteria(tmp_path, cells), keys, tmp_path / "q.json"
     )
@@ -118,7 +136,7 @@ def test_a_clean_host_passes_and_no_oracle_value_leaves(
         "record_completeness",
         "watchdog",
         "first_attempt_abort_ratio",
-        "unknown_aborts",
+        "unconfirmed_aborts",
         "unstable_steps_per_1000_by_arm",
         "longest_attempt_seconds",
         "start_denied",
@@ -142,7 +160,12 @@ def test_criteria_fixed_before_measurement_cannot_move(
     criteria = _criteria(tmp_path, cells)
     moved = _criteria(tmp_path, cells, max_first_attempt_abort_ratio="0.50")[0]
     code, _, _ = _judge(
-        prereg, assignment, host1, (moved, criteria[1]), _keys(tmp_path, []), tmp_path / "q.json"
+        prereg,
+        assignment,
+        host1,
+        (moved, criteria[1]),
+        _keys(tmp_path, [], prereg),
+        tmp_path / "q.json",
     )
     assert code == 2
 
@@ -176,7 +199,7 @@ def test_a_retried_first_attempt_still_counts_as_an_abort(
         assignment,
         host1,
         _criteria(tmp_path, cells),
-        _keys(tmp_path, []),
+        _keys(tmp_path, [], prereg),
         tmp_path / "q.json",
     )
     ratio = report["criteria"]["first_attempt_abort_ratio"]["value"]
@@ -211,7 +234,7 @@ def test_a_stage_a_abort_recurrence_fails_the_host(
         assignment,
         host1,
         _criteria(tmp_path, cells),
-        _keys(tmp_path, [key]),
+        _keys(tmp_path, [key], prereg),
         tmp_path / "q.json",
     )
     recurrence = report["criteria"]["stage_a_recurrence"]
@@ -288,3 +311,143 @@ def test_stage_a_keys_keep_input_identifiers_only(tmp_path: Path) -> None:
         )
         == 2
     )  # never inside the repository
+
+
+@pytest.mark.usefixtures("admit_fixture_holdout")
+def test_an_abort_without_a_whole_error_chain_is_unconfirmed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, real_guards: FakeDocker
+) -> None:
+    behaviour: dict[str, Any] = {**TARGET_IMAGES, "abort": {VICTIM}}
+    _, prereg, assignment, host1, cells = _run_host1(tmp_path, monkeypatch, _fake_runner(behaviour))
+    _, report, _ = _judge(
+        prereg,
+        assignment,
+        host1,
+        _criteria(tmp_path, cells),
+        _keys(tmp_path, [], prereg),
+        tmp_path / "q.json",
+    )
+    assert report["criteria"]["unconfirmed_aborts"] == {
+        "result": "FAIL",
+        "value": 1,
+        "threshold": 0,
+    }
+
+
+@pytest.mark.parametrize(
+    ("stub", "unconfirmed"),
+    [
+        (None, True),
+        ({"reason": "x"}, True),
+        ({"reason": "x", "error_chain": []}, True),
+        ({"reason": "x", "error_chain": [{"type": "A"}, {"truncated": True}]}, True),
+        (
+            {"reason": "container cleanup inspect failed", "error_chain": [{"type": "Cleanup"}]},
+            False,
+        ),
+        ({"reason": "broker", "error_chain": [{"type": "A"}, {"type": "B"}]}, False),
+    ],
+)
+def test_q8_unconfirmed_abort_definition(stub: Any, unconfirmed: bool) -> None:
+    assert qualify_host.unconfirmed_abort(stub) is unconfirmed
+
+
+def test_the_category_comes_from_the_original_reason() -> None:
+    suffixed = {"reason": "broker: lost [last anomalous docker call: inspect timed out]"}
+    assert qualify_host.abort_category(suffixed) == qualify_host.abort_category(
+        {"reason": "broker: lost"}
+    )
+    assert qualify_host.abort_category({"reason": "anything", "category": "broker"}) == "broker"
+
+
+@pytest.mark.usefixtures("admit_fixture_holdout")
+def test_a_different_cell_environment_invalidates_the_recurrence_test_before_the_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, args, assignment = _replicate_setup(tmp_path, monkeypatch)
+    prereg = Path(args[args.index("--preregistration") + 1])
+    base = [
+        "--preregistration",
+        str(prereg),
+        "--seed-assignment",
+        str(assignment),
+        "--host-id",
+        "HOST1",
+        "--check-environment",
+    ]
+    keys = _keys(tmp_path, [], prereg)
+    good = tmp_path / "env.json"
+    assert (
+        qualify_host.main(
+            [
+                *base,
+                "--stage-a-keys",
+                str(keys[0]),
+                "--stage-a-keys-sha256",
+                keys[1],
+                "--out",
+                str(good),
+            ]
+        )
+        == 0
+    )
+    assert json.loads(good.read_text())["input_dependence_test_valid"] is True
+    other = _keys(tmp_path, [], prereg, mutation_policy="uniform-generic-m1-escape-hardlink-v1")
+    bad = tmp_path / "env-bad.json"
+    assert (
+        qualify_host.main(
+            [
+                *base,
+                "--stage-a-keys",
+                str(other[0]),
+                "--stage-a-keys-sha256",
+                other[1],
+                "--out",
+                str(bad),
+            ]
+        )
+        == 1
+    )
+    result = json.loads(bad.read_text())
+    assert result["input_dependence_test_valid"] is False
+    assert any(problem.startswith("mutation_policy") for problem in result["problems"])
+
+
+def test_cell_path_pairs_count_m_x_and_flag_reexecutions(tmp_path: Path) -> None:
+    from scripts import compare_cell_paths
+
+    def write(name: str, ids: list[str], reexecutions: int | None = None) -> Path:
+        steps = tmp_path / f"{name}.steps.jsonl"
+        steps.write_text(
+            "".join(
+                json.dumps({"index": i, "case_id": c, "oracle": {"hit": 1}}) + "\n"
+                for i, c in enumerate(ids)
+            )
+        )
+        if reexecutions is not None:
+            (tmp_path / f"{name}.json").write_text(
+                json.dumps({"infra_reexecutions": [{}] * reexecutions, "oracle_summary": {"c1": 1}})
+            )
+        return steps
+
+    pairs = {
+        "same": (write("a1", ["x", "y"]), write("a2", ["x", "y"])),
+        "diff": (write("b1", ["x", "y"], 1), write("b2", ["x", "z"], 0)),
+        "gone": (write("c1", ["x"]), tmp_path / "missing.steps.jsonl"),
+    }
+    out = tmp_path / "pairs.json"
+    argv = ["--budget", "2", "--out", str(out)]
+    for label, (left, right) in pairs.items():
+        argv += ["--pair", f"{label}={left},{right}"]
+    assert compare_cell_paths.main(argv) == 0
+    text = out.read_text()
+    summary = json.loads(text)["summary"]
+    assert summary == {
+        "pairs": 3,
+        "identical": 1,
+        "m_x": 1,
+        "incomparable": 1,
+        "with_reexecutions": ["diff"],
+    }
+    for word in ('"x"', "oracle", "c1"):
+        assert word not in text

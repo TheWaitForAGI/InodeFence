@@ -297,11 +297,12 @@ def compare_replicates(
 ) -> dict[str, Any]:
     """``replicate-v1``: the same cell on each host, path against path. Never pooled.
 
-    Per run id, only whether the two ``case_id`` sequences are byte-equal, their common prefix
-    and lengths. From the steps files only ``index`` and ``case_id`` are read (no oracle field),
-    and no case id or hash is written out.
+    The pairs go through ``compare_cell_paths.compare_pairs`` (the same comparison a host's
+    original-versus-re-run check uses): per run id whether the two ``case_id`` sequences are
+    equal, their common prefix and lengths, and each side's infrastructure re-executions; then
+    ``m_x``, ``incomparable`` and ``identical``. Report only.
     """
-    from scripts.compare_pilot_rerun_paths import UnreadableSteps, compare_paths, read_case_ids
+    from scripts.compare_cell_paths import compare_pairs
 
     hosts = sorted(indexes)
     if len(hosts) != 2:
@@ -309,32 +310,26 @@ def compare_replicates(
     by_host = {host: {entry["run_id"]: entry for entry in indexes[host]["cells"]} for host in hosts}
     shared = sorted(set(by_host[hosts[0]]) & set(by_host[hosts[1]]))
     only = sorted(set(by_host[hosts[0]]) ^ set(by_host[hosts[1]]))
-    cells: dict[str, Any] = {}
-    for run_id in shared:
-        paths = {}
-        try:
-            for host in hosts:
-                paths[host] = read_case_ids(steps[host][run_id])
-        except (UnreadableSteps, OSError, KeyError) as error:
-            cells[run_id] = {"comparable": False, "reason": type(error).__name__}
-            continue
-        budget = int(by_host[hosts[0]][run_id].get("budget") or 0)
-        result = compare_paths(paths[hosts[0]], paths[hosts[1]], budget)
-        cells[run_id] = {
-            "comparable": True,
-            "path_identical": paths[hosts[0]] == paths[hosts[1]],
-            "common_prefix": result["common_prefix"],
-            "steps": {host: len(paths[host]) for host in hosts},
-            "limit": result["limit"],
-        }
+    missing = [run_id for run_id in shared if any(run_id not in steps[h] for h in hosts)]
+    if missing:
+        raise MergeRefused(f"cells not in the plan: {missing}")
+    budgets = {int(by_host[hosts[0]][run_id].get("budget") or 0) for run_id in shared}
+    if len(budgets) > 1:
+        raise MergeRefused(f"replicate cells with different budgets: {sorted(budgets)}")
+    compared = compare_pairs(
+        {run_id: (steps[hosts[0]][run_id], steps[hosts[1]][run_id]) for run_id in shared},
+        budgets.pop() if budgets else 0,
+        (hosts[0], hosts[1]),
+    )
     return {
         "classification": "replicate-v1 cross-host path comparison: report only, never pooled",
         "hosts": hosts,
         "run_ids_on_one_host_only": only,
-        "cells": cells,
-        "all_identical": bool(cells)
+        **compared,
+        "all_identical": bool(compared["cells"])
         and not only
-        and all(cell.get("path_identical") is True for cell in cells.values()),
+        and compared["summary"]["m_x"] == 0
+        and compared["summary"]["incomparable"] == 0,
     }
 
 

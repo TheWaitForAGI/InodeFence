@@ -619,15 +619,31 @@ def test_cleanup_marker_alone_keeps_starts_waiting_then_denies(tmp_path: Path) -
         start_cell(gate, "b")
 
 
-def test_cleanup_marker_is_cleared_on_rerun_and_moved_on_ack(tmp_path: Path) -> None:
+def test_cleanup_marker_is_cleared_on_rerun(tmp_path: Path) -> None:
     gate = gate_at(tmp_path)
     first = start_cell(gate, "a")
     assert first.send("mark") == 0
     assert first.send("record S") == 0
     first.finish()
+    assert (gate.directory / "a.cleanup").exists()
     gate.popen("a")(["true"]).wait(timeout=30)  # rerun of a clean cell
     assert not (gate.directory / "a.cleanup").exists()
-    sg.acknowledge(gate.directory, "a", "test: rerun had no verdict")
+
+
+def test_ack_moves_the_cleanup_marker_with_the_records(tmp_path: Path) -> None:
+    gate = gate_at(tmp_path)
+    first = start_cell(gate, "a")
+    assert first.send("mark") == 0
+    first.kill()  # exits inside cleanup without a verdict: the marker is still there
+    assert (gate.directory / "a.cleanup").exists()
+    moved = sg.acknowledge(gate.directory, "a", "test: resources checked")
+    assert (moved / "a.cleanup").is_file()
+    assert sorted(p.name for p in moved.iterdir()) == [
+        "a.cleanup",
+        "a.lock",
+        "a.session",
+        "note.txt",
+    ]
     assert not any(gate.directory.glob("a.*"))
 
 

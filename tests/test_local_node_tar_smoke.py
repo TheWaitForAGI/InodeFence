@@ -140,7 +140,9 @@ exit 0
     python.write_text(
         '#!/bin/bash\ncase "$1" in -c) echo test-owner; exit 0;; '
         '*/bounded_cleanup_command.py) exec /usr/bin/python3 "$@";; '
-        '-I) echo "GATE RECORD ${*:4}" >&2; exec /usr/bin/python3 "$@";; '
+        '-I) [ ! -e "$INODEFENCE_START_GATE_DIR/$INODEFENCE_START_GATE_CELL.cleanup" ] || '
+        'echo "GATE MARKER present at ${*:4}" >&2; '
+        'echo "GATE RECORD ${*:4}" >&2; exec /usr/bin/python3 "$@";; '
         'esac\nexit "$HOST_ERROR"\n'
     )
     python.chmod(0o755)
@@ -316,6 +318,23 @@ def test_gated_clean_cleanup_records_cleanup_then_clean(tmp_path: Path) -> None:
     records = [line for line in result.stderr.splitlines() if line.startswith("GATE RECORD")]
     assert records == ["GATE RECORD C", "GATE RECORD S"]
     assert (gate / "cell.verdict").read_text() == "S\n"
+
+
+def test_gated_cleanup_creates_its_marker_before_the_first_record(tmp_path: Path) -> None:
+    gate = tmp_path / "gate"
+    gate.mkdir()
+    result, _ = run_fake_docker(tmp_path, extra_env=gate_env(gate))
+    assert result.returncode == 0, result.stderr
+    assert (gate / "cell.cleanup").is_file()
+    lines = [line for line in result.stderr.splitlines() if line.startswith("GATE ")]
+    # The marker already exists when C (the first lock-based record) is made.
+    assert lines[:2] == ["GATE MARKER present at C", "GATE RECORD C"]
+
+
+def test_ungated_cleanup_creates_no_marker(tmp_path: Path) -> None:
+    result, _ = run_fake_docker(tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert not list(tmp_path.rglob("*.cleanup"))
 
 
 def test_gated_unknown_is_recorded_before_the_marker(tmp_path: Path) -> None:

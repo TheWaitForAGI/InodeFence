@@ -110,23 +110,25 @@ HOST1, 6301·6303 → HOST2). `python -m scripts.make_seed_assignment --rule alt
      --host-output HOST1=<out-HOST1> --host-output HOST2=<out-HOST2>
    ```
 
-6. **결정론 검사(재실행이 있었던 셀만):** 미정 — 아래 §4 1번.
+6. **결정론 검사(재실행이 있었던 셀만, D046, v3 §5.1 `fd08c3a`):** `infra_reexecutions`가 0보다 큰 셀마다 그 seed와
+   arm만 담은 별도 등록 파일(이 파일 사본에 `seeds = <그 seed>`, `targets.node-tar-7.5.2.arms = <그 arm>`, 그 seed만 담은
+   할당 파일과 sha)을 만들고 **새 출력 폴더**로 run_exp0를 그 호스트에서 다시 돌린다. "같은 설정"은 seed, arm, budget,
+   정책, sentinel, 이미지, `engine_sha`, 셀 env가 같다는 뜻이다. 등록 sha와 회전 순서는 원 실행과 달라지며, 그 값을
+   기록한다. 두 보고서를 `scripts/check_native_determinism.py`의 `compare_report_pair`로 비교해 `case_sequence`와
+   `oracle_and_feedback` 일치 여부(불리언)만 남긴다. 재실행이 0이면 "재실행 0, 결정론 미검정"(UNKNOWN)이다.
 7. **기록:** 원장에 smoke 행(호스트, seed, budget, 셀 수, 결정론 재실행 횟수, 봉인), LOG 1줄, raw manifest.
 
-## 4. 구현상 불가능하거나 모호한 항목 (W4·오케스트레이터 결정 필요)
+## 4. 결정된 사항 (v3 §5.1 `fd08c3a`, W4 답)과 남은 조건
 
-1. **결정론 재실행 방법이 정해지지 않았다.** run_exp0는 기록이 있는 셀을 다시 돌리지 않는다(기록은 최종). 같은
-   seed·arm·budget을 한 번 더 돌리려면 (a) 그 seed·arm만 담은 별도 등록 파일(`targets.<id>.arms`)과 새 출력 폴더로
-   run_exp0를 돌리거나 (b) `local_node_tar_smoke.sh demo-historical`을 같은 env로 직접 돌려야 한다. (a)는 등록 sha가
-   달라지고 셀 순서·회전이 원 실행과 다르다. (b)는 런처 경로가 아니다. 어느 쪽이 "같은 설정"인지 정해야 한다.
-2. **"잔존 리소스 0"·"cleanup UNKNOWN 0"은 지금 사람이 기록으로 판정한다.** run_exp0의 잔존 리소스 확인과 preflight는
-   W1 `launcher_guards`(#336) 배선 뒤에 런처가 한다. #336 전에 smoke를 돌리면 위 2·4단계의 수동 대조가 판정 근거다.
-3. **"docker 호출별 timeout 수"는 보호 파일 원복 뒤 기록이 사라진다.** 그 수는 `container.py`의
-   `inodefence-cleanup-attempt` stderr 줄에서 나오는데, 이 변경은 지웅 A안으로 원복된다. 원복 뒤에는 #335의
-   `infra_reexecutions`와 smoke.sh 진단만 남는다. 이 항목을 빼거나 출처를 바꿔야 한다.
-4. **`docker_engine` 고정 시점:** HOST2 Engine 버전을 모르는 채로 파일을 채울 수 없다. HOST2 preflight 값이
-   1단계보다 먼저 와야 한다.
-5. **원장 sha 시점:** smoke 결과 행을 원장에 넣으면 sha가 바뀐다. 이 파일의 `exposure_ledger_sha256`은 실행 직전
-   원장 값이고, smoke 행은 실행 뒤에 넣는다. exp3-v1·exp2-v1의 동결 sha는 smoke 행까지 넣은 뒤 정한다.
-6. **seed 6300–6303은 벤치마크 `RESERVED_SEED_RANGES` 밖이다.** run_exp0는 그 목록을 검사하지 않으므로 충돌 검사는
-   문서 대조뿐이다(v3 §5.1 확인).
+1. **결정론 재실행:** 위 6단계의 (a) 방식이다.
+2. **실행 조건:** 이 smoke는 W1 `launcher_guards`(#336) 배선이 들어간 통합 head에서만 실행한다(오케스트레이터
+   방침). 그래서 잔존 리소스와 cleanup UNKNOWN은 런처가 판정하고, 위 2·4단계의 수동 대조는 보조 기록이 된다.
+3. **docker 호출 timeout 수의 출처:** broker `.calls.jsonl`, #335 `anomalous_calls`, smoke cleanup CLI 진단 줄이다.
+   보호 파일 원복 뒤에는 그 파일의 cleanup 재조회 진단 줄이 없으므로 출처로 쓰지 않는다.
+4. **`host.<id>.docker_engine`:** 등록 파일을 채우기 전에 각 호스트의 `docker version --format
+   '{{.Server.Version}}'`로 정한다. 지웅 결정(Engine B안)으로 HOST1 29.8.0, HOST2 29.9.3을 유지한다. HOST2 값은
+   HOST2에서 확인한 뒤 고정한다.
+5. **원장 sha:** smoke 직전 원장 값을 쓴다. smoke 행은 실행 뒤에 넣고, exp3-v1·exp2-v1의 동결 sha는 그 뒤에 정한다.
+6. **seed 충돌 검사:** 실행 전에 `RESERVED_SEED_RANGES`(`scripts/run_concurrency_benchmark.py:106`)와 원장의 seed
+   서술(4자리 숫자와 `a–b` 범위)을 기계로 대조하고 LOG에 1줄 남긴다. 2026-11-11 원장 `9947d662…` 기준 6300–6303은
+   예약 범위·원장 숫자·원장 범위·configs·preregistration·DECISIONS 어디에도 없다(충돌 0).

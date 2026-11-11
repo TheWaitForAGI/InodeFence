@@ -271,8 +271,6 @@ def steps_paths(
     from scripts.run_exp0 import DEFAULT_VERSION, Exp0Plan
     from scripts.run_g1_smoke import cell_paths
 
-    from inodefence.evaluation.rds import RdsArm
-
     prereg = load_preregistration(preregistration)
     digest = sha256(preregistration.read_bytes()).hexdigest()
     found: dict[str, dict[str, Path]] = {}
@@ -282,7 +280,7 @@ def steps_paths(
             preregistration,
             digest,
             DEFAULT_VERSION,
-            RdsArm.S_A in prereg.arm_policies,
+            False,  # as run_exp0 without --include-s-a: S-a never runs in EXP-3, EXP-2 or D047
             assignment=assignment,
             host_id=host,
         )

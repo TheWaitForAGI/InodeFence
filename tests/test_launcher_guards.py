@@ -286,3 +286,25 @@ def test_recorders_are_off_by_default_and_record_when_enabled(tmp_path: Path) ->
     (ping,) = [json.loads(line) for line in (tmp_path / "ping.jsonl").read_text().splitlines()]
     assert ping["ok"] is False
     assert (tmp_path / "desktop.log").read_bytes() == b"line\n"
+
+
+def test_shared_path_hashes_cover_the_v3_list_and_this_checkout() -> None:
+    import hashlib
+
+    root = Path(__file__).resolve().parents[1]
+    hashes = guards.shared_path_sha256(root)
+    assert tuple(hashes) == guards.SHARED_PATH_FILES
+    assert len(guards.SHARED_PATH_FILES) == 10
+    for relative, digest in hashes.items():
+        assert digest == hashlib.sha256((root / relative).read_bytes()).hexdigest(), relative
+
+
+def test_shared_path_hashes_mark_a_missing_file(tmp_path: Path) -> None:
+    present = tmp_path / guards.SHARED_PATH_FILES[0]
+    present.parent.mkdir(parents=True)
+    present.write_bytes(b"x")
+    hashes = guards.shared_path_sha256(tmp_path)
+    assert hashes[guards.SHARED_PATH_FILES[0]] is not None
+    assert [name for name, digest in hashes.items() if digest is None] == list(
+        guards.SHARED_PATH_FILES[1:]
+    )

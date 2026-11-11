@@ -521,7 +521,12 @@ def preflight(
         "system": os.uname().sysname,
         "release": os.uname().release,
         "machine": os.uname().machine,
+        # Design v3 section 4.1: the run's shared execution path, by file hash.
+        "shared_path_sha256": guards.shared_path_sha256(Path(__file__).resolve().parents[1]),
     }
+    missing = sorted(name for name, digest in facts["shared_path_sha256"].items() if digest is None)
+    if missing:
+        problems.append(f"shared execution path files missing: {missing}")
     image = f"inodefence-node-tar-effect:{design.target_version}"
     # Cells run with SKIP_BUILD=1, so the local images must exist before the first cell.
     docker_facts, docker_problems = guards.docker_preflight(

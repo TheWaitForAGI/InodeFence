@@ -116,6 +116,7 @@ printf '%s\\n' "$*" >> "$FAKE_LOG"
 case "$1 $2" in
   "container inspect")
     [ "$INSPECT_UNKNOWN" != 1 ] || { echo daemon-unreachable >&2; exit 1; }
+    [ "$CONTAINER_ABSENT" != 1 ] || { echo "Error: No such object: ${!#}" >&2; exit 1; }
     if [ "$3" = --format ]; then
       printf '%064d %s\n' 0 "$CONTAINER_OWNER" | /usr/bin/tr 0 a; exit 0
     fi
@@ -163,6 +164,7 @@ exit 0
         "CONTAINER_OWNER": "test-owner",
         "VOLUME_OWNER": "test-owner",
         "VOLUME_ABSENT": "0",
+        "CONTAINER_ABSENT": "0",
         "TIMEOUT_OPERATION": "",
         **(extra_env or {}),
     }
@@ -224,7 +226,7 @@ def test_copy_never_replaces_existing_evidence(tmp_path: Path) -> None:
     [
         # A failed create that the daemon did not perform: nothing to remove.
         ("volume", 43, [], {"VOLUME_ABSENT": "1"}),
-        ("controller", 44, ["volume rm inodefence-local-runtime-test"], {}),
+        ("controller", 44, ["volume rm inodefence-local-runtime-test"], {"CONTAINER_ABSENT": "1"}),
     ],
 )
 def test_cleanup_only_removes_created_resources(
@@ -265,6 +267,41 @@ def test_failed_volume_create_with_unanswered_inspect_is_unknown(tmp_path: Path)
     assert "INODEFENCE_CLEANUP_UNKNOWN: volume creation outcome: daemon-unreachable" in (
         result.stderr
     )
+
+
+def test_failed_controller_run_that_the_daemon_performed_is_removed(tmp_path: Path) -> None:
+    # `docker run -d` reported failure, but a container with this run's label exists.
+    result, calls = run_fake_docker(tmp_path, create_error="controller")
+    assert result.returncode == 44
+    assert f"rm -f {'a' * 64}" in calls
+    assert "volume rm inodefence-local-runtime-test" in calls
+    assert "INODEFENCE_CLEANUP_UNKNOWN" not in result.stderr
+
+
+def test_failed_controller_run_with_a_foreign_owner_is_unknown_and_kept(tmp_path: Path) -> None:
+    gate = tmp_path / "gate"
+    gate.mkdir()
+    result, calls = run_fake_docker(
+        tmp_path,
+        create_error="controller",
+        extra_env={"CONTAINER_OWNER": "other", **gate_env(gate)},
+    )
+    assert result.returncode == 44
+    assert not any(call.startswith("rm -f ") for call in calls)
+    assert "INODEFENCE_CLEANUP_UNKNOWN: controller creation outcome:" in result.stderr
+    assert (gate / "cell.verdict").read_text().startswith("U controller creation outcome")
+
+
+def test_failed_controller_run_with_unanswered_inspect_is_unknown(tmp_path: Path) -> None:
+    # Only the container inspects go unanswered; the volume path still works.
+    result, calls = run_fake_docker(
+        tmp_path,
+        create_error="controller",
+        extra_env={"TIMEOUT_OPERATION": "container inspect"},
+    )
+    assert result.returncode == 44
+    assert not any(call.startswith("rm -f ") for call in calls)
+    assert "INODEFENCE_CLEANUP_UNKNOWN: controller creation outcome:" in result.stderr
 
 
 def gate_env(directory: Path) -> dict[str, str]:

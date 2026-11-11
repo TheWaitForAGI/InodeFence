@@ -251,7 +251,7 @@ def test_abort_stub_names_the_last_anomalous_call() -> None:
     container_controller.apply_last_anomalous_call(report, StallRecovery(client, "owner"))
     aborted = report["aborted"]
     assert aborted["reason"] == (
-        "container runtime cleanup inspect failed:  [last anomalous docker call: "
+        "container runtime cleanup inspect failed: ; [last anomalous docker call: "
         "op=container inspect timed_out=true truncated=false returncode=-9]"
     )
     assert aborted["category"] == classify_abort_reason(aborted["reason"]).value
@@ -329,3 +329,80 @@ def test_controller_abort_paths_write_the_last_anomalous_call(
     assert aborted["category"] == InvalidReason.CLEANUP_INSPECT.value
     assert "op=container inspect timed_out=true" in aborted["reason"]
     assert aborted["last_anomalous_docker_call"]["op"] == "container inspect"
+
+
+# ---- W4 review of #343: separator boundary, last-vs-first, interrupt order -------------------
+
+
+def _signature_prefix_reasons() -> list[str]:
+    """Reasons ending in every prefix of every abort signature, with any lead-in."""
+    from inodefence.evaluation.abort_classification import _SIGNATURES
+
+    reasons: list[str] = []
+    for phrase, _category in _SIGNATURES:
+        for end in range(1, len(phrase) + 1):
+            for lead in ("", "x ", "builtins.OSError: "):
+                reasons.append(lead + phrase[:end])
+    return reasons
+
+
+@pytest.mark.parametrize("reason", _signature_prefix_reasons())
+def test_the_separator_never_completes_a_signature(reason: str) -> None:
+    calls = [diag.CallObservation("container inspect", "c", -9, True, False, 0.0, 0.0, 10.0)]
+    annotated = diag.annotate_reason(reason, calls)
+    assert annotated != reason  # the suffix is applied, not suppressed by the fallback
+    assert classify_abort_reason(annotated) == classify_abort_reason(reason)
+    assert diag.strip_annotation(annotated) == reason
+
+
+def test_strip_annotation_leaves_plain_reasons_alone() -> None:
+    for reason in ("", "x", "a ] b", "container runtime inspect failed: ", "; [", "x]"):
+        assert diag.strip_annotation(reason) == reason
+
+
+def test_the_fallback_keeps_the_reason_when_a_suffix_would_change_the_category() -> None:
+    # An error name that is itself a signature must not reclassify the abort.
+    call = diag.CallObservation(
+        "container inspect", "c", -1, False, False, 0.0, 0.0, 1.0, error="ObservationError"
+    )
+    assert diag.annotate_reason("plain failure", [call]) == "plain failure"
+
+
+def test_the_last_anomalous_call_is_named_not_the_first() -> None:
+    client, _ = observed([timeout(), CommandResult(2, b"", b"rm error")])
+    client.run(("container", "inspect", "owned"), 10)
+    client.run(("container", "rm", "--force", "--volumes", "owned"), 10)
+    assert [call.anomalous for call in client.calls] == [True, True]
+    assert diag.last_anomaly(client.calls) is client.calls[1]
+    report = _stub("container runtime remove failed: rm error")
+    container_controller.apply_last_anomalous_call(report, StallRecovery(client, "owner"))
+    assert report["aborted"]["last_anomalous_docker_call"]["op"] == "container rm"
+    assert report["aborted"]["reason"].endswith(
+        "op=container rm timed_out=false truncated=false returncode=2]"
+    )
+
+
+def test_interrupted_host_cleanup_writes_diagnostics_before_the_unknown(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    gate_dir = tmp_path / "gate"
+    gate_dir.mkdir()
+    monkeypatch.setenv(start_gate.GATE_DIR_ENV, str(gate_dir))
+    monkeypatch.setenv(start_gate.GATE_CELL_ENV, "a")
+
+    class TimeoutThenInterrupt(Scripted):
+        def run(self, args: tuple[str, ...], timeout: float) -> CommandResult:
+            if self.calls:
+                raise KeyboardInterrupt
+            return super().run(args, timeout)
+
+    inner = TimeoutThenInterrupt([timeout()])
+    with pytest.raises(KeyboardInterrupt):
+        container_host.cleanup_targets(inner, ["first", "second"], "owner")  # type: ignore[arg-type]
+    err = capsys.readouterr().err.splitlines()
+    diagnostics = [i for i, line in enumerate(err) if line.startswith(diag.DIAGNOSTIC_PREFIX + " ")]
+    marker = next(i for i, line in enumerate(err) if line.startswith("INODEFENCE_CLEANUP_UNKNOWN:"))
+    assert diagnostics and max(diagnostics) < marker, err
+    verdict = (gate_dir / "a.verdict").read_text()
+    assert verdict.startswith("U host target cleanup interrupted: KeyboardInterrupt")
+    assert "op=container inspect timed_out=true" in verdict

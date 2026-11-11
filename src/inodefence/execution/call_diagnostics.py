@@ -1,17 +1,21 @@
 """Caller-side diagnostics of Docker calls, from the stall-recovery call journal.
 
 The container backend is protected and stays as it is: a failed runtime or cleanup
-call raises ``BackendError`` with the daemon's stderr, which is empty for a
-time-out or a truncated answer. These helpers recover what the backend message
-cannot say, from :class:`~inodefence.execution.stall_recovery.ObservedDockerClient`,
+call raises ``BackendError`` carrying only the daemon's stderr, so the message does
+not say whether the call timed out or its answer was truncated (for a time-out the
+stderr is usually empty). These helpers recover what the backend message cannot
+say, from :class:`~inodefence.execution.stall_recovery.ObservedDockerClient`,
 which already journals every call of the current attempt (operation, container,
 return code, timed-out and truncated flags, time; no argv and no output).
 
 * :func:`annotate_reason` appends the last anomalous call to an abort reason as
-  ``[last anomalous docker call: op=... timed_out=... truncated=... returncode=...]``.
-  The suffix contains no abort-signature phrase, so
+  ``; [last anomalous docker call: op=... timed_out=... truncated=... returncode=...]``.
+  No abort signature contains ``;``, so the separator cannot complete a signature
+  the reason ends with, and the suffix itself contains none; should a suffix ever
+  change the category anyway, the reason is returned unchanged. So
   :func:`~inodefence.evaluation.abort_classification.classify_abort_reason` gives the
-  same category with or without it.
+  same category with or without it. :func:`strip_annotation` returns the original
+  reason.
 * :func:`emit_anomalies` writes one ``inodefence-docker-call`` JSON line per
   anomalous call to stderr (the campaign log; never the broker's stdout protocol),
   and never lets a failing sink change the caller's result.
@@ -26,11 +30,15 @@ import sys
 from collections.abc import Sequence
 from typing import Any, TextIO
 
+from inodefence.evaluation.abort_classification import classify_abort_reason
+
 from .stall_recovery import CallObservation
 
 DIAGNOSTIC_PREFIX = "inodefence-docker-call"
 DIAGNOSTIC_SCHEMA = "inodefence-docker-call-v1"
-SUFFIX_OPEN = "[last anomalous docker call: "
+#: Starts with a character no abort signature contains (see the module docstring).
+SUFFIX_OPEN = "; [last anomalous docker call: "
+SUFFIX_CLOSE = "]"
 
 
 def last_anomaly(calls: Sequence[CallObservation]) -> CallObservation | None:
@@ -47,11 +55,26 @@ def summary(call: CallObservation) -> str:
 
 
 def annotate_reason(reason: str, calls: Sequence[CallObservation]) -> str:
-    """``reason`` plus the last anomalous call; unchanged when there is none."""
+    """``reason`` plus the last anomalous call; unchanged when there is none.
+
+    Never changes the abort category: if the annotated text would classify
+    differently, the reason is returned as it was.
+    """
     anomaly = last_anomaly(calls)
     if anomaly is None:
         return reason
-    return f"{reason} {SUFFIX_OPEN}{summary(anomaly)}]"
+    annotated = f"{reason}{SUFFIX_OPEN}{summary(anomaly)}{SUFFIX_CLOSE}"
+    if classify_abort_reason(annotated) != classify_abort_reason(reason):
+        return reason
+    return annotated
+
+
+def strip_annotation(reason: str) -> str:
+    """The reason as it was before :func:`annotate_reason` (unchanged if not annotated)."""
+    start = reason.rfind(SUFFIX_OPEN)
+    if start < 0 or not reason.endswith(SUFFIX_CLOSE):
+        return reason
+    return reason[:start]
 
 
 def anomaly_record(call: CallObservation) -> dict[str, Any]:

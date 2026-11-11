@@ -45,8 +45,11 @@ H1 호스트 smoke 종료 시 Docker CLI에 엔지니어링 deadline을 둔다: 
 증거 경로를 덮어쓰지 않는다.
 
 셀 시작은 프로세스 간 시작 게이트(`src/inodefence/execution/start_gate.py`, 상태는
-`<출력 루트>/start-gate/`)를 거친다. smoke cleanup은 진입 시 `C`를, 표식 출력 **전에** `U`를,
-확인을 마치면 `S`를 게이트에 기록한다. 런처는 전역 `flock` 아래에서 모든 셀을 검사하고 바로
+`<출력 루트>/start-gate/`)를 거친다. smoke cleanup은 진입하자마자 잠금 없이 `O_EXCL`로
+`<cell>.cleanup` 표식을 만들고(게이트는 이를 `C`로 읽는다) `C`를, 표식 출력 **전에** `U`를,
+확인을 마치면 `S`를 게이트에 기록한다. `volume create`는 시도 플래그를 먼저 세운다. CLI가
+실패했는데 데몬이 볼륨을 만든 경우, 이 실행의 owner 라벨이면 제거하고 부재를 확인하며, 다른
+owner이거나 확인하지 못하면 `U`다. 런처는 전역 `flock` 아래에서 모든 셀을 검사하고 바로
 Popen한다. `U`, 판정 없는 종료(자식에 상속된 수명 잠금 해제), 이전 런처 세션의 미판정 셀,
 상태 읽기·잠금 실패 중 하나라도 있으면 시작하지 않는다. watchdog은 terminate 직전에 그 셀을
 `W`(미정)로 표시한다. SIGTERM을 받은 trap cleanup이 확인을 마치면 `S`, 못 마치면 `U`가 되고,

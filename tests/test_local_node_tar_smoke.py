@@ -122,6 +122,7 @@ case "$1 $2" in
     echo "Error: No such object: $3" >&2; exit 1 ;;
   "volume inspect")
     [ "$INSPECT_UNKNOWN" != 1 ] || { echo daemon-unreachable >&2; exit 1; }
+    [ "$VOLUME_ABSENT" != 1 ] || { echo "Error: No such volume: ${!#}" >&2; exit 1; }
     if [ "$3" = --format ]; then printf '%s\n' "$VOLUME_OWNER"; exit 0; fi
     echo "Error: No such volume: $3" >&2; exit 1 ;;
   "volume create") [ "$CREATE_ERROR" != volume ] || exit 43 ;;
@@ -161,6 +162,7 @@ exit 0
         "COPY_ERROR": "0",
         "CONTAINER_OWNER": "test-owner",
         "VOLUME_OWNER": "test-owner",
+        "VOLUME_ABSENT": "0",
         "TIMEOUT_OPERATION": "",
         **(extra_env or {}),
     }
@@ -218,18 +220,51 @@ def test_copy_never_replaces_existing_evidence(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    ("failure", "expected", "removals"),
+    ("failure", "expected", "removals", "env"),
     [
-        ("volume", 43, []),
-        ("controller", 44, ["volume rm inodefence-local-runtime-test"]),
+        # A failed create that the daemon did not perform: nothing to remove.
+        ("volume", 43, [], {"VOLUME_ABSENT": "1"}),
+        ("controller", 44, ["volume rm inodefence-local-runtime-test"], {}),
     ],
 )
 def test_cleanup_only_removes_created_resources(
-    tmp_path: Path, failure: str, expected: int, removals: list[str]
+    tmp_path: Path, failure: str, expected: int, removals: list[str], env: dict[str, str]
 ) -> None:
-    result, calls = run_fake_docker(tmp_path, create_error=failure)
+    result, calls = run_fake_docker(tmp_path, create_error=failure, extra_env=env)
     assert result.returncode == expected
     assert [call for call in calls if call.startswith(("rm -f ", "volume rm "))] == removals
+    assert "INODEFENCE_CLEANUP_UNKNOWN" not in result.stderr
+
+
+def test_failed_volume_create_that_the_daemon_performed_is_removed(tmp_path: Path) -> None:
+    # The CLI reported failure, but a volume with this run's owner label exists.
+    result, calls = run_fake_docker(tmp_path, create_error="volume")
+    assert result.returncode == 43
+    assert "volume rm inodefence-local-runtime-test" in calls
+    assert "INODEFENCE_CLEANUP_UNKNOWN" not in result.stderr
+
+
+def test_failed_volume_create_with_a_foreign_owner_is_unknown_and_kept(tmp_path: Path) -> None:
+    gate = tmp_path / "gate"
+    gate.mkdir()
+    result, calls = run_fake_docker(
+        tmp_path, create_error="volume", extra_env={"VOLUME_OWNER": "other", **gate_env(gate)}
+    )
+    assert result.returncode == 43
+    assert "volume rm inodefence-local-runtime-test" not in calls
+    assert "INODEFENCE_CLEANUP_UNKNOWN: volume creation outcome: other" in result.stderr
+    assert (gate / "cell.verdict").read_text().startswith("U volume creation outcome")
+
+
+def test_failed_volume_create_with_unanswered_inspect_is_unknown(tmp_path: Path) -> None:
+    result, calls = run_fake_docker(
+        tmp_path, create_error="volume", extra_env={"INSPECT_UNKNOWN": "1"}
+    )
+    assert result.returncode == 43
+    assert "volume rm inodefence-local-runtime-test" not in calls
+    assert "INODEFENCE_CLEANUP_UNKNOWN: volume creation outcome: daemon-unreachable" in (
+        result.stderr
+    )
 
 
 def gate_env(directory: Path) -> dict[str, str]:

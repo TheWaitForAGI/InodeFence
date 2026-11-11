@@ -34,7 +34,11 @@ change and compares the raw manifest without those three lines. Two more of the 
 the same day: A7(ii)'s ``--verify`` runs on a copy of the manifest without the
 ``manifest-verification.json`` line (rewritten after the manifest), and N1 accepts exit 0 or 1
 (a stopped call exits 1). tests/test_stop_path_smoke_end_to_end.py runs the procedure with the
-real launcher and fixes that a correct run passes every criterion. Pass ``--manifest`` (the
+real launcher and fixes that a correct run passes every criterion.
+SA1 (scenario A) is judged by the structure the launcher guarantees, not by a count:
+the starts before the stop are the U cell, cells that ended S and at most jobs - 1 starts
+the gate denied (proposed 2026-11-11 after a CI run showed 3 starts with jobs 2; the doc
+wording follows once the verifier confirms). Pass ``--manifest`` (the
 ``--manifest-out`` path, outside the output and the checkout) to the ``pre-b5b`` and ``b5b``
 snapshots.
 """
@@ -58,6 +62,7 @@ INDEX = Path("summaries/index.json")
 VERIFICATION = "manifest-verification.json"
 OUTCOME_KEYS = ("hit", "t_first", "t_first_event", "t_first_censored")
 STOP, RESUME = "infrastructure-stop", "infrastructure-resume"
+START_DENIED = "start_denied"
 RECORDED_STATES = ("complete", "abort-final")
 APPROVAL = re.compile(r"D042-smoke-[12]-[AB]-\d{8}-\d{4}")
 LOG_MARKERS = {
@@ -706,13 +711,45 @@ def judge_a(snaps: Mapping[str, Mapping[str, Any]]) -> dict[str, dict[str, Any]]
     resumes = [e for e in ev2 if e.get("event") == RESUME]
     acks = (resumes[0].get("gate_acks") or []) if resumes else []
     refused = snaps["a-refused"]
+    # SA1 (corrected 2026-11-11): the gate admits starts while the U cell still runs (its
+    # lifetime lock is held, no verdict yet), so how many cells start before the U is timing.
+    # What holds by code: every start before the stop line is the U cell, a cell that ran and
+    # ended S, or an attempt the gate denied (end line with start_denied, target never ran);
+    # after the U each other worker writes at most one denied start before the stop
+    # (gate_stop -> guard.force_stop, then authorize_attempt refuses), so denied <= jobs - 1.
+    gate = snaps["a1"].get("gate") or {}
+    before = ev1[: stop_at[0]] if stop_at else []
+    denied = {
+        (e.get("run_id"), e.get("attempt"))
+        for e in before
+        if e.get("event") == "end" and e.get(START_DENIED) is not None
+    }
+    unknown = sorted(cell for cell, verdict in gate.items() if verdict == "U")
+    kinds: dict[str, int] = {"unknown": 0, "ran_clean": 0, "denied": 0, "other": 0}
+    for start in _starts(before):
+        run, attempt = start.get("run_id"), start.get("attempt")
+        if (run, attempt) in denied:
+            kinds["denied"] += 1
+        elif run in unknown:
+            kinds["unknown"] += 1
+        elif gate.get(str(run)) == "S":
+            kinds["ran_clean"] += 1
+        else:
+            kinds["other"] += 1
     return {
         "SA1": _result(
             len(stop_at) == 1
-            and ("cleanup unknown" in reason or "start gate" in reason)
-            and len(_starts(ev1[: stop_at[0]])) <= jobs,
+            and ("cleanup unknown" in reason or "start gate denied" in reason)
+            and len(unknown) == 1
+            and kinds["unknown"] == 1
+            and kinds["other"] == 0
+            and kinds["denied"] <= jobs - 1,
             stop_lines=len(stop_at),
-            starts_before_stop=len(_starts(ev1[: stop_at[0]])) if stop_at else None,
+            starts_before_stop=kinds,
+            unknown_cells=len(unknown),
+            jobs=jobs,
+            reading="starts before the stop: the U cell, cells ended S, <= jobs-1 denied "
+            "(corrected 2026-11-11)",
         ),
         "SA2": _result(
             bool(stop_at) and not _starts(ev1[stop_at[0] + 1 :]),

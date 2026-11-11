@@ -383,7 +383,11 @@ def scenario_a() -> dict[str, dict[str, Any]]:
     a1_events = [
         _ev("start", "c1", attempt=1, jobs=2),
         _ev("start", "c2", attempt=1, jobs=2),
-        _ev(check.STOP, reason="start gate: cleanup unknown for c1"),
+        _ev("end", "c2", attempt=1, returncode=0),
+        _ev("start", "c3", attempt=1, jobs=2),
+        _ev("end", "c3", attempt=1, start_denied="c1: U cleanup: test"),
+        _ev(check.STOP, reason="start gate denied c3: c1: U cleanup: test"),
+        _ev("end", "c1", attempt=1, returncode=0),
     ]
     ack = {"path": "start-gate/acknowledged/c1", "cell": "c1", "note_sha256": "a" * 64}
     a2_events = [
@@ -391,7 +395,7 @@ def scenario_a() -> dict[str, dict[str, Any]]:
         _ev(check.RESUME, approval_ref="D042-smoke-1-A-20261112-1100", gate_acks=[ack]),
     ]
     return {
-        "a1": _snap("a1", a1_events, exit_code=1),
+        "a1": _snap("a1", a1_events, exit_code=1, gate={"c1": "U", "c2": "S"}),
         "a-refused": _snap(
             "a-refused",
             a1_events,
@@ -412,8 +416,18 @@ def test_a_correct_scenario_a_passes() -> None:
 
 def _a_reason(snaps: Snaps) -> None:
     events = check._events(snaps["a1"]["cell_results_text"])
-    events[-1]["reason"] = "3 consecutive cells without a record"
+    next(e for e in events if e.get("event") == check.STOP)["reason"] = "3 consecutive cells"
     snaps["a1"]["cell_results_text"] = _text(events)
+
+
+def _a_two_denied(snaps: Snaps) -> None:
+    events = check._events(snaps["a1"]["cell_results_text"])
+    stop = next(n for n, e in enumerate(events) if e.get("event") == check.STOP)
+    extra = [
+        _ev("start", "c4", attempt=1, jobs=2),
+        _ev("end", "c4", attempt=1, start_denied="c1: U"),
+    ]
+    snaps["a1"]["cell_results_text"] = _text([*events[:stop], *extra, *events[stop:]])
 
 
 def _a_late_start(snaps: Snaps) -> None:
@@ -431,6 +445,9 @@ def _a_ack_without_note(snaps: Snaps) -> None:
     ("criterion", "mutate"),
     [
         ("SA1", _a_reason),
+        ("SA1", lambda s: s["a1"]["gate"].update(c2="C")),  # a start of no allowed kind
+        ("SA1", lambda s: s["a1"]["gate"].update(c1="S")),  # no U cell
+        ("SA1", _a_two_denied),  # more denied starts than jobs - 1
         ("SA2", _a_late_start),
         ("SA3", lambda s: s["a-refused"].update(exit_code=0)),
         ("SA3", lambda s: s["a-refused"]["stderr"].update(gate_closed=False)),

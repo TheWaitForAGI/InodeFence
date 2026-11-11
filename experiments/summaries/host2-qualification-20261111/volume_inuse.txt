@@ -1,0 +1,21 @@
+### 2026-11-11T17:39:18+09:00 engine 29.9.3
+### docker volume create w2-volprobe-20261111
+w2-volprobe-20261111
+rc=0
+### docker create (not started) --name w2-volprobe-ctr-20261111 -v w2-volprobe-20261111:/data alpine:3.20 true
+adf22b2606fbf7cd1f08b785779485abde827be2a94d7522e08041e5dcd4b8b2
+rc=0
+### docker ps -a filter
+w2-volprobe-ctr-20261111 Created
+### docker volume rm w2-volprobe-20261111 (expect refusal)
+Error response from daemon: remove w2-volprobe-20261111: volume is in use - [adf22b2606fbf7cd1f08b785779485abde827be2a94d7522e08041e5dcd4b8b2]
+rc=1
+### docker volume ls filter
+w2-volprobe-20261111
+### cleanup: docker rm w2-volprobe-ctr-20261111
+w2-volprobe-ctr-20261111
+rc=0
+### cleanup: docker volume rm w2-volprobe-20261111
+w2-volprobe-20261111
+rc=0
+### after: containers 0, volumes 0, total containers 4, total volumes 3

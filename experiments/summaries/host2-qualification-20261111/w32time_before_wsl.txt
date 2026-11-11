@@ -1,0 +1,11 @@
+### W32Time BEFORE (WSL side) 2026-11-11T17:25:35+09:00; timesyncd: inactive/disabled
+{'rc': 0, 'offset': 0, 'freq_raw': 5127, 'freq_ppm': 0.0782318115234375, 'maxerror': 2018, 'esterror': 8, 'status': 8192, 'constant': 2, 'precision': 1, 'tolerance': 32768000, 'tick': 10000}
+{'realtime_minus_windows_s': -0.198, 'bracket_s': 0.504}
+
+
+Status    : Stopped
+StartType : Manual
+
+
+
+다음 오류가 발생했습니다. 서비스가 시작되지 않았습니다. (0x80070426)

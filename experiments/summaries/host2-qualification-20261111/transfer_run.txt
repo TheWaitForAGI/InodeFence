@@ -1,0 +1,90 @@
+### 2026-11-11T17:37:42+09:00 tailscale status (HOST1 line)
+<tailscale-ip>   desktop-wsl.<tailnet>.ts.net  <tailnet-account>@  linux    -
+### ping
+pong from desktop-wsl (<tailscale-ip>) via DERP(tok) in 71ms
+pong from desktop-wsl (<tailscale-ip>) via DERP(tok) in 70ms
+pong from desktop-wsl (<tailscale-ip>) via DERP(tok) in 71ms
+direct connection not established
+### host key
+256 SHA256:LHkKFflNNKPIzTB/ljwOuInFGX1OjSCs6ZRqRtLEiuM [<tailscale-ip>]:2222 (ED25519)
+### restriction 1: shell 2026-11-11T17:37:54+09:00
+/usr/bin/rrsync error: SSH_ORIGINAL_COMMAND does not run rsync
+rc=1
+### restriction 2: write 2026-11-11T17:37:55+09:00
+/usr/bin/rrsync error: sending to read-only server is not allowed
+rsync: connection unexpectedly closed (0 bytes received so far) [sender]
+rsync error: error in rsync protocol data stream (code 12) at io.c(232) [sender=3.2.7]
+rc=12
+### restriction 3: outside path 2026-11-11T17:37:55+09:00
+/usr/bin/rrsync error: do not use .. in arg (anchor the path at the root of your restricted dir)
+rsync: connection unexpectedly closed (0 bytes received so far) [Receiver]
+rsync error: error in rsync protocol data stream (code 12) at io.c(232) [Receiver=3.2.7]
+rc=12
+rsync: [sender] change_dir "/home/linux/inodefence-transfer/etc" failed: No such file or directory (2)
+rsync error: some files/attrs were not transferred (see previous errors) (code 23) at main.c(1887) [Receiver=3.2.7]
+rsync: [Receiver] write error: Broken pipe (32)
+rc=23
+### listing 2026-11-11T17:37:56+09:00
+drwxr-xr-x          4,096 2026/11/11 15:08:18 .
+-rw-r--r--            354 2026/11/11 15:08:18 SHA256SUMS
+-rw-r--r--            127 2026/11/11 15:08:18 SIZES.txt
+-rw-------    309,895,168 2026/11/11 14:38:08 controller-local.tar
+-rw-r--r--             28 2026/11/11 14:38:03 docker-version.txt
+-rw-r--r--            112 2026/11/11 15:08:18 finished.txt
+-rw-------     45,441,536 2026/11/11 14:38:09 helper-local.tar
+-rw-r--r--            503 2026/11/11 15:08:17 image-ids.txt
+-rw-------     54,282,240 2026/11/11 15:08:18 node-tar-effect-7.4.4.tar
+-rw-------     54,267,392 2026/11/11 14:38:03 node-tar-effect-7.5.2.tar
+-rw-r--r--             24 2026/11/11 14:38:03 started.txt
+rc=0
+### transfer start 2026-11-11T17:38:04+09:00 route: pong from desktop-wsl (<tailscale-ip>) via <public-ip>:<port> in 9ms
+controller-local.tar
+docker-version.txt
+finished.txt
+helper-local.tar
+image-ids.txt
+node-tar-effect-7.4.4.tar
+node-tar-effect-7.5.2.tar
+started.txt
+
+Number of files: 11 (reg: 10, dir: 1)
+Number of created files: 10 (reg: 10)
+Number of deleted files: 0
+Number of regular files transferred: 10
+Total file size: 463,887,484 bytes
+Total transferred file size: 463,887,484 bytes
+Literal data: 463,887,484 bytes
+Matched data: 0 bytes
+File list size: 349
+File list generation time: 0.001 seconds
+File list transfer time: 0.000 seconds
+Total bytes sent: 217
+Total bytes received: 464,001,517
+
+sent 217 bytes  received 464,001,517 bytes  10,197,840.31 bytes/sec
+total size is 463,887,484  speedup is 1.00
+rc=0
+### transfer end 2026-11-11T17:38:50+09:00 elapsed_s=45
+### route after: pong from desktop-wsl (<tailscale-ip>) via <public-ip>:<port> in 9ms
+### sha256sum -c
+controller-local.tar: OK
+helper-local.tar: OK
+node-tar-effect-7.5.2.tar: OK
+node-tar-effect-7.4.4.tar: OK
+rc=0
+4d2570f4f33beddec9020dead236e7e4568ff3f78447e232a998d9b134db076d  controller-local.tar
+c9b36013ae677f42c47abbda51bae71d5a6a59897082db42bf1b89a657c38d7d  helper-local.tar
+ebd80de8a50350bd9a576c7d7051f413d7c32289a4fce95e2a07c7568bc00e61  node-tar-effect-7.5.2.tar
+2adaefb2b13365ae653341ac3ded1f412aa19875f57e3ccdb7118dd6ca8763cc  node-tar-effect-7.4.4.tar
+309895168 controller-local.tar
+45441536 helper-local.tar
+54267392 node-tar-effect-7.5.2.tar
+54282240 node-tar-effect-7.4.4.tar
+[inodefence-node-tar-effect:7.5.2] sha256:22c8734f141d91b333ba37c7fe6a9a7547d7abfab487fa028da2053bed6f3dbb amd64 linux 208521414
+[inodefence-controller:local] sha256:d44900e13ed5083db54cefda8833328d4da61148f62213d86f07afa78191d7a4 amd64 linux 1170824979
+[inodefence-helper:local] sha256:9b9dd606c49ff0051465fe9e435351f33623d949f360d6518580855e3781cc27 amd64 linux 186050178
+[inodefence-node-tar-effect:7.4.4] sha256:f5d3e9a999cfad0a5f37002bf36802378b20777646be3684eb97baeaa4080421 amd64 linux 208585417
+client=29.8.1 server=29.8.0
+2026-11-11 14:38:03 KST
+2026-11-11 14:38:09 KST
+added 2026-11-11 15:08:18 KST holdout candidate 7.4.4 (D4 selection, pending ledger PR)

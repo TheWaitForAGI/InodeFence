@@ -289,3 +289,55 @@ Run 14:57:25–17:22:28 KST (`clock_confirm.txt`, scripts `confirm_run.sh.txt`, 
 | Dry-run observations (no image check, misleading `warmup` line) | Passed to W3 | **A dry-run PASS does not replace the image preflight.** Before the run, compare the ids of the target, controller, helper and holdout images separately with `docker image inspect` |
 | SNTP | HOST1 measured at 17:26 KST with the same script: time.windows.com −0.5196 s (2/5 timeouts), pool.ntp.org −0.7273 s (5/5). HOST1 has timesyncd running and tick 10398. The difference from HOST2 is about 2.1–2.3 s (record only) | Remeasure HOST2 after the W32Time sync (built into `post_w32.sh`) |
 | Check worktree `check-129324d` | Keep it. It is not an execution candidate. The integration head has moved to `a76ffee` | Execution SHA and criteria file (3 expected image ids, Engine 29.9.3, 16 shared-path hashes, execution SHA) will come from ORCH |
+
+## 25. Restart protection applied (owner UAC approval 17:33:55 KST): **configuration compliant / effect not observed**
+
+The elevated script started at 15:18 (`if_host2_elevated.ps1.txt` = `if_host2_pause.ps1.txt` then `if_host2_restart_apply.ps1.txt`) ran after the owner clicked "Yes". Log: `restart_protection_apply.txt`, transcript header `restart_protection_transcript.txt`, both redacted (host name, account, registered owner, product id).
+
+| Item | Before (`restart-protection-before.txt`, 14:xx, and log BEFORE) | After (17:33:57) |
+| --- | --- | --- |
+| Update pause (UX Settings) | none | `PauseUpdatesStartTime` 2026-11-11T08:33:55Z, `PauseUpdatesExpiryTime`/`Pause{Feature,Quality}UpdatesEndTime` **2026-12-16T08:33:55Z (17:33 KST)**, 35 days. The log's BEFORE block already shows the pause because the pause script runs first |
+| AU policy `NoAutoRebootWithLoggedOnUsers` | key absent | 1 |
+| AU policy `AUOptions` | key absent | 2 (notify before download) |
+| powercfg AC standby / hibernate | 0 / 0 | 0 / 0 (unchanged) |
+| Pending reboot WU / CBS / PFRO | False / False / False | False / False / False |
+| UpdateOrchestrator scheduled tasks (R6, admin) | listed | listed (not changed; `Schedule Scan` next run 19:16 KST today) |
+
+- Verdict: **configuration compliant.** "Restart prevention effective" stays UNKNOWN until an automatic restart is observed being withheld.
+- Rechecks: the pause expiry (12/16) is after the main run window (11/18–11/25). Recheck it on 11/18 before the run. Revert after the main run per §12 (Resume updates; `reg delete` both AU values).
+
+## 26. Image transfer, identity, volume in-use test (17:37–17:39 KST)
+
+**Transfer verification: PASS.** (`transfer_run.txt`)
+- HOST1 appeared on the tailnet (shared node). Host key fingerprint `SHA256:LHkKFflNNKPIzTB/ljwOuInFGX1OjSCs6ZRqRtLEiuM` (ED25519, port 2222). Recorded at first contact (TOFU). HOST1 should confirm it matches its `/etc/ssh` key.
+- rrsync restriction, once each: shell command refused (`SSH_ORIGINAL_COMMAND does not run rsync`, rc=1); write refused (`sending to read-only server is not allowed`, rc=12); `..` refused (`do not use .. in arg`, rc=12); `/etc/` was anchored inside the restricted dir (`/home/linux/inodefence-transfer/etc` not found, rc=23).
+- `rsync -av --partial` of `images-20261111/`: 10 files, 463,887,484 bytes in 45 s (10.2 MB/s), rc=0. Route: direct (Tailscale ping 9 ms via a public endpoint; earlier pings at 17:37 went through DERP tok, 71 ms).
+- `sha256sum -c SHA256SUMS`: 4/4 OK, sizes equal the expected values.
+
+**Image identity: PASS.** (`image_load.txt`) `docker load -i` for each tar, rc=0, about 1 s each. `docker image inspect`:
+
+| Tag | Id | Expected | Match |
+| --- | --- | --- | --- |
+| inodefence-node-tar-effect:7.5.2 | sha256:22c8734f141d91b333ba37c7fe6a9a7547d7abfab487fa028da2053bed6f3dbb | same | yes, amd64/linux |
+| inodefence-node-tar-effect:7.4.4 | sha256:f5d3e9a999cfad0a5f37002bf36802378b20777646be3684eb97baeaa4080421 | same | yes, amd64/linux |
+| inodefence-controller:local | sha256:d44900e13ed5083db54cefda8833328d4da61148f62213d86f07afa78191d7a4 | same | yes, amd64/linux |
+| inodefence-helper:local | sha256:9b9dd606c49ff0051465fe9e435351f33623d949f360d6518580855e3781cc27 | same | yes, amd64/linux |
+
+`docker system df` images 8 → 12 (9.353 → 9.881 GB). Containers 4 and volumes 3 unchanged, running 0. The tars are kept at `~/inodefence-host2-20261111/images-20261111/` (not inside the repo). Transfer and load finished before the W32Time (c) bracket.
+
+**Volume in-use test (Engine 29.9.3): refusal confirmed.** (`volume_inuse.txt`) `docker volume create w2-volprobe-20261111` → `docker create` (not started) `alpine:3.20` mounting it → `docker volume rm` refused with `volume is in use - [adf22b26…]`, rc=1. Then only the self-created container and volume were removed (rc=0). After: total containers 4 and volumes 3, the same as before.
+
+## 27. W32Time sync (owner UAC 17:33:53 and retry 17:37:41): criteria (a)(b)(c) in progress
+
+`w32time_before_wsl.txt`, `w32time_apply.txt` (Korean w32tm text in the log is mojibake from code-page mixing, but numbers and English fields are intact), scripts `if_host2_w32time.ps1.txt`, `if_host2_w32resync2.ps1.txt`.
+
+| Time | Event |
+| --- | --- |
+| 17:25:35 | BEFORE (WSL side): timesyncd inactive/disabled, tick 10000, freq +0.08 ppm, REALTIME − WinUTC −0.198 s. W32Time Stopped/Manual |
+| 17:33:54 | BEFORE (Windows): stripchart vs time.windows.com +1.622 s (Windows behind) |
+| 17:34 | `Start-Service` True. `w32tm /resync /force`: "no time data was available" (sync failed). Startup type → Automatic. AFTER: Running/Automatic, leap 3 (unsynchronized), source Local CMOS Clock, stripchart +1.6235 s |
+| 17:37:41 | Retry (owner UAC; no config change; `NtpServer` was already `time.windows.com,0x9`, Type NTP): `/resync /rediscover` and `/resync /force` print the same message, but **last sync 17:38:08, source time.windows.com,0x9**, peer state active. Stripchart −0.0001 / +0.0017 / +0.0003 s. `/query /status` still shows leap 3 / stratum 0 (it updates on the next poll) |
+
+- **(a) Windows↔NTP |offset| ≤ 0.5 s: PASS** (max 0.0017 s, 17:38:15–19).
+- (b) WSL REALTIME − WinUTC ≤ 0.5 s within 30 min, and (c) one 600 s bracket with |MONO| ≤ 500 ppm and tick 10000: running (`post_w32.sh`: 1-minute samples 17:34–18:04, bracket about 18:04–18:14, then SNTP remeasure). The effective sync time is 17:38:08, so the 30-minute window for (b) is counted from then.
+- Startup type changed Manual → Automatic. Revert: `Set-Service W32Time -StartupType Manual; Stop-Service W32Time`.

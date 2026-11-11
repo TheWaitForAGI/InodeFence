@@ -53,7 +53,13 @@ def test_shell_diagnostics_reach_launcher_records(
     run_fake_docker(shell_dir)  # prepare inert binaries; never reaches real Docker
     bin_dir = shell_dir / "bin"
     if watchdog:
-        (bin_dir / "fake-python").write_text("#!/bin/bash\nexec /bin/sleep 1\n")
+        # Only the campaign step sleeps; the owner token and H1's bounded cleanup still answer, so
+        # the trap after the watchdog's SIGTERM reaches the fake docker as before H1.
+        (bin_dir / "fake-python").write_text(
+            '#!/bin/bash\ncase "$1" in -c) echo test-owner; exit 0;; '
+            '*/bounded_cleanup_command.py) exec /usr/bin/python3 "$@";; '
+            "esac\nexec /bin/sleep 1\n"
+        )
     overrides = {
         "PATH": str(bin_dir),
         "HOME": str(shell_dir),
@@ -105,11 +111,9 @@ def test_shell_diagnostics_reach_launcher_records(
     log = _cell(args, VICTIM, out)["log"].read_text()
     assert end["returncode"] == expected and end["watchdog_fired"] is watchdog
     assert _index(out)["interim"]["cell_states"][VICTIM] == state
-    # With the watchdog row's sleeping fake python, H1 cleanup (bounded_cleanup_command.py runs
-    # under $PYTHON) never reaches docker, so only the watchdog code is checked there.
-    if controller and not watchdog:
+    if controller:
         assert "FAILED cleanup: controller" in log
-    if volume and not watchdog:
+    if volume:
         assert "FAILED cleanup: volume" in log
     if host:
         assert "FAILED at step: effect-demo-historical (exit 37)" in log

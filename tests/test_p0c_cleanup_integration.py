@@ -56,9 +56,20 @@ def test_shell_exit_and_launcher_classification(
         assert "FAILED cleanup: controller" in shell.stderr
     if volume:
         assert "FAILED cleanup: volume" in shell.stderr
-    # H1 cleanup removes by container id and re-inspects afterwards, so order is not last-two.
-    assert any(c.startswith("rm -f ") for c in calls)
-    assert any(c.startswith("volume rm ") for c in calls)
+    # H1 cleanup order (#317-#329): controller removed by id, then confirmed absent; then the
+    # volume's owner checked, removed, confirmed absent. Removal stays the last mutating calls.
+    assert [call.split(" {{")[0].rsplit(" ", 1)[0] for call in calls[-5:]] == [
+        "rm -f",
+        "container inspect",
+        "volume inspect",
+        "volume rm",
+        "volume inspect",
+    ]
+    assert calls[-4] == "container inspect inodefence-local-controller-test"
+    assert calls[-3].startswith("volume inspect --format ")
+    assert calls[-1] == "volume inspect inodefence-local-runtime-test"
+    assert calls[-5] == f"rm -f {'a' * 64}"
+    assert calls[-2] == "volume rm inodefence-local-runtime-test"
 
     out, args, _clock = _deadline_setup(tmp_path, monkeypatch, BEFORE, jobs="1")
     behavior: dict[str, Any] = dict(TARGET_IMAGES)

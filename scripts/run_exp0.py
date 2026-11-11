@@ -526,6 +526,11 @@ def host_mismatches(
     if host is None:
         return [f"host {plan.host_id} is not registered"]
     problems: list[str] = []
+    if not plan.assignment.seeds_for(plan.host_id):
+        problems.append(
+            f"host {plan.host_id} takes no part in this assignment "
+            f"(participants {', '.join(plan.assignment.participants)}): 0 seeds, nothing to run"
+        )
     if jobs != host.jobs:
         problems.append(f"jobs {jobs} != registered host.{host.host_id}.jobs {host.jobs}")
     try:

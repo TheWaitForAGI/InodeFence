@@ -2,7 +2,7 @@
 
 > **상태: 동결 전 초안 (2026-11-11).** 아직 실행할 수 없다. `TBD-FREEZE` 값이 남아 있는 동안 파서가 거부한다(의도된 동작). 11/18에 [exp3-v1](exp3-v1.md)과 **함께** 동결한다(D040-D1). 실행은 exp3-v1 §5의 GO가 성립한 뒤에만 한다.
 >
-> **기준.** [D040](../../docs/DECISIONS.md#d040--exp-3-동결-전-재판정-위험도-파일럿-4040-반영), [D041](../../docs/DECISIONS.md#d041--동시-실행-벤치마크-단계-a-승인과-파일럿-seed-재사용), D042·D043(미머지 초안), [노출 원장](exposure-ledger.md), 동시 실행 벤치마크 v3(`experiments/configs/concurrency-scaling-v3.md`, #331 미머지). 이 초안과 D040이 다르면 D040이 맞다. **"ORCH 결정 2026-11-11"** 표시는 오케스트레이터가 데이터 이전에 정한 실행 세부이고, 지웅 승인은 이 PR의 머지로 한다.
+> **기준.** [D040](../../docs/DECISIONS.md#d040--exp-3-동결-전-재판정-위험도-파일럿-4040-반영), [D041](../../docs/DECISIONS.md#d041--동시-실행-벤치마크-단계-a-승인과-파일럿-seed-재사용), [D042](../../docs/DECISIONS.md#d042--인프라-정지-규칙-연속-3셀-기록-없음)·[D043](../../docs/DECISIONS.md#d043--go-입력-r에서-등록된-인프라-정지-공백을-뺀다), [D045](../../docs/DECISIONS.md#d045--holdout-상태-확인의-위반어댑터-호환-정의와-train-abort-분모), D046(초안, #337), [노출 원장](exposure-ledger.md), [동시 실행 벤치마크 v3](../configs/concurrency-scaling-v3.md). 이 초안과 D040이 다르면 D040이 맞다. **"ORCH 결정 2026-11-11"** 표시는 오케스트레이터가 데이터 이전에 정한 실행 세부이고, 지웅 승인은 이 PR의 머지로 한다.
 
 ## 1. 목적
 
@@ -24,7 +24,9 @@ arm.D = structure-coverage-v1-uniform-mutation-v1
 arm.S-u = effect-feedback-v2-or-violation-v1-boundary-attempt-v1-uniform-mutation-v1
 # D4 규칙으로 고른 버전(§3). 게이트는 이 버전의 원장 행이 전부 qualification-only일 때만 허용(D5).
 targets.node-tar-holdout.extractor = node-tar
-targets.node-tar-holdout.version = TBD-FREEZE
+# D4·D045 상태 확인 결과(2026-11-11 HOST1): 후보 5개 모두 위반 ∧ 호환 → 최고 버전 7.4.4.
+targets.node-tar-holdout.version = 7.4.4
+# 동결 시 image id 고정(현재 빌드 id f5d3e9a999cf…, D18: 이 빌드를 docker save로 보관·전송, 재빌드 금지).
 targets.node-tar-holdout.image_digest = TBD-FREEZE
 targets.node-tar-holdout.role = holdout
 targets.node-tar-holdout.hypothesis = H-A
@@ -86,12 +88,28 @@ seed_assignment_rule = rh-proportional-v1
 
 > holdout은 미리 고정한 규칙으로, 후보 5개의 고정 fixture 상태 확인 결과를 보고 골랐다. 규칙 입력은 버전 번호와 fixture 결과뿐이고 advisory는 쓰지 않았다. 다만 공개 advisory로 결과를 일부 예측할 수 있으므로 결과에 blind한 선택은 아니다. 후보 버전에서 탐색 실행은 하지 않았다.
 
-**절차 세부(실행 방법, "어댑터 호환"의 판정, 이미지 빌드·allowlist 확장, 원장 행 형식)는 W3 조사 결과로 이 절에 반영한다(ORCH 2026-11-11).** 지금 저장소에서 확인된 사실은 다음뿐이다.
+**판정 정의와 순서는 [D045](../../docs/DECISIONS.md#d045--holdout-상태-확인의-위반어댑터-호환-정의와-train-abort-분모)(main 머지, 지웅 승인 = #331)를 따른다.**
 
-- 상태 확인 명령은 `make regression TAR_VERSION=<v>`다(`Makefile:95-102`, 고정 경계 fixture, 퍼징 없음).
-- 후보 5개의 버전 디렉터리(`tools/node-tar/versions/`)와 이미지는 아직 없다. 지금은 7.5.2, 7.5.3, 7.5.6, 7.5.7, 7.5.8만 있다.
-- 컨트롤러 버전 allowlist 확장이 필요할 수 있다(W3 확인 예정).
-- "어댑터 호환"을 판정할 때 후보 버전에서 탐색(퍼징) 실행을 하면 안 된다. 하면 D5-4 공개 문구가 거짓이 된다.
+- **fixture:** `make regression TAR_VERSION=<v>`(`Makefile:95-102`)의 고정 fixture 5개다. 손 하드링크 2개와 symlink-write 3개이며 퍼징은 하지 않는다.
+- **어댑터 호환:** 5개 모두 ERROR 없이 PASS 또는 FAIL 판정이 나와야 한다. ERROR가 나면 1회 재실행하고 그 결과를 별도 행으로 남긴다. 재실행도 ERROR이면 부적격이다. 후보 버전에서 탐색 실행은 하지 않는다.
+- **위반(같은 위반 계열):** 후보에서 FAIL인 fixture 중 하나 이상이 기준 집합 F_train(7.5.2에서 FAIL인 fixture)에 속해야 한다. F_train은 후보보다 먼저 같은 명령으로 7.5.2를 1회 돌려 정한다. 하드링크 결과가 M2 기록과 다르거나 F_train이 비어 있으면 하네스 불일치로 보고하고 중단한다. 이때 후보는 실행하지 않는다.
+- **선정과 대가:** 위반이면서 호환인 후보 중 최고 버전을 고른다. 하나도 없으면 D1(D)로 자동 전환한다. **이 정의는 (i) "아무 FAIL이나"보다 후보를 좁히므로 D1(D)로 자동 전환될 확률이 더 높다.** 이 점을 공개한다.
+- **순서:** D045 머지 → lock·이미지 준비 → 7.5.2 기준 실행 → 후보 5개(버전 오름차순, 후보당 1회) → 원장 행 PR. 실행은 W3, 승인은 오케스트레이터, 행 PR 검증은 W4가 맡는다. lock 생성은 선정 규칙의 입력이 아니다.
+- **allowlist:** D040-D2 "불변 표 1줄"(사람 승인 완료)을 근거로 한다.
+
+**상태 확인 결과(관찰, 2026-11-11 15:06~15:08 KST, HOST1, Engine 29.8.0, 기존 `make regression` 수정 없음, 증거 `~/inodefence-evidence/d4-holdout-20261111/`, manifest sha `f0a57729…`, 오케스트레이터 확인).**
+
+- 7.5.2 기준: 하드링크 2개는 C1 공유 true로 M2 기록과 같았고, symlink-write 3개는 PASS였다. 따라서 F_train = {`toplevel_hardlink`, `nested_hardlink`}이다.
+- 후보 5개(7.0.1, 7.1.0, 7.2.0, 7.3.0, 7.4.4): 모두 하드링크 2개 FAIL, symlink-write 3개 PASS였다. ERROR 0, 재실행 0, 잔존 컨테이너 0이다. 다섯 후보 모두 위반이면서 호환이므로 규칙에 따라 최고 버전 **7.4.4**를 선정한다(빌드 이미지 id `f5d3e9a999cf…`, lock sha `38b636640f94…`).
+- 원장 행 6개(후보 5개와 7.5.2 기준)는 W3의 PR로 추가하고 W4가 검증한다.
+
+**선정의 성격(공개).**
+
+- D5-4 공개 문구는 위에 적은 그대로다.
+- 다섯 후보는 다섯 fixture에서 결과가 모두 같았다. 그래서 선정은 fixture 결과로 갈리지 않았고, "최고 버전" 규칙만으로 7.4.4가 정해졌다.
+- 7.4.4는 train 타깃 7.5.2보다 앞선 버전이고, D045 (ii)가 의도한 대로 같은 위반 계열(하드링크 identity 공유)을 가진다. 따라서 이 holdout이 검정하는 것은 "피드백 탐색이 다른 버전·다른 seed에서도 같은 계열의 경계위반을 더 빨리 찾는가"다. **새로운 결함 계열의 발견이나 결함 계열을 넘어선 일반성은 이 실험의 주장 범위가 아니다.**
+- 의존성 차이(관찰): 후보 5개의 lock은 모두 minipass 7.1.3이고, 7.5.2는 7.1.2다. 7.0.1~7.3.0에는 mkdirp 3.0.1이 추가로 있다. lock 생성 절차도 다르다. 후보는 일회용 컨테이너 안의 npm 10.9.4로 만들었고, 기존 7.5.x lock은 호스트 npm으로 만들었다. 이 차이가 탐색 hazard에 주는 영향은 미검증이다.
+- 상태 확인 경로의 격리 한계(관찰): 회귀 명령의 repro 경로는 컨테이너 안에서 root로, 기본 bridge 네트워크에서, cap과 자원 제한 없이 돈다. 이번이 #218 이후 그 경로의 첫 docker 실행이다. 고정 fixture만 쓰고 호스트는 추출 대상이 아니다. 캠페인 실행 경로의 격리 계약(per-case 컨테이너 정책)과는 별개이며, 그 계약은 바뀌지 않았다.
 
 이미지는 빌드 1회 뒤 id를 고정하고 docker save로 보관한다(D18). 두 호스트에서 같은 id여야 한다.
 
@@ -144,11 +162,13 @@ seed_assignment_rule = rh-proportional-v1
 - sentinel seed 20261104 재사용은 exp3-v1 §7과 같은 이유로 공개한다. 세 arm에 같은 어휘로 들어가므로 arm 간 비대칭은 없다.
 - **검정력:** n=120/arm(상한)은 holdout hazard가 train의 절반(s=.5)이거나 HR이 1.75여도 약 .76~.79다(`run-grid.log`, χ² 근사; D7). HR 1.5나 s=.25에서는 어떤 n도 창 안에서 80%가 안 되며, 그 경우는 D12 표가 처리한다. 마감 절단으로 n이 줄면 그만큼 낮아진다.
 - train에서 holdout으로의 전이와 k=5 밖의 hazard는 미검증이다.
-- 확증은 node-tar 한 계보의 미노출 버전에 대한 것이다. 새 계보 extractor 일반성 주장이 아니다.
+- 확증 범위는 node-tar 한 계보의 미노출 버전 7.4.4, 그리고 train과 같은 위반 계열(하드링크 identity 공유)이다(§3 "선정의 성격"). 새 계보 extractor로의 일반성이나 새로운 결함 계열의 발견은 주장하지 않는다.
 
 ## 7. 동결 체크리스트 (11/18)
 
-- [ ] D4 상태 확인 완료, 원장 행 5개 이상(ERROR 재실행 행 포함) 머지, holdout version과 image_digest 확정(W3 절차, §3).
+- [x] D4 상태 확인 완료(2026-11-11, 7.4.4 선정, §3).
+- [ ] 원장 행 6개(후보 5개와 7.5.2 기준) PR 머지(W3 작성, W4 검증).
+- [ ] 7.4.4 image id 고정(빌드 `f5d3e9a999cf…`, docker save 보관, 두 호스트 같은 id).
 - [ ] `engine_sha`와 공통값이 exp3-v1과 같음.
 - [ ] `exposure_ledger_sha256`이 exp3-v1과 같음.
 - [ ] 할당 강제 (a) 재생성 일치 검사 게이트 구현·검증(W3, §2).

@@ -2,10 +2,10 @@
 
 > **상태: 동결 전 초안 (2026-11-11).** 아직 실행할 수 없다. 블록의 `TBD-FREEZE` 값이 남아 있는 동안 파서(`src/inodefence/evaluation/rds_preregistration.py`)가 `engine_sha`와 digest 형식 오류로 거부한다. 의도된 동작이다. 11/18에 [exp2-v1](exp2-v1.md)과 **함께** 동결한다(D040-D1).
 >
-> **기준.** [D040](../../docs/DECISIONS.md#d040--exp-3-동결-전-재판정-위험도-파일럿-4040-반영)(D1~D21), [D041](../../docs/DECISIONS.md#d041--동시-실행-벤치마크-단계-a-승인과-파일럿-seed-재사용)(마감·abort 집계·운영 중단·a 정의), D042·D043(미머지 초안, `origin/claude/w4-decisions-d043`), [노출 원장](exposure-ledger.md), [규모 산정](exp3-sizing-20261107/README.md), 동시 실행 벤치마크 v3(`experiments/configs/concurrency-scaling-v3.md`, #331 미머지). 이 초안과 D040이 다르면 D040이 맞다.
+> **기준.** [D040](../../docs/DECISIONS.md#d040--exp-3-동결-전-재판정-위험도-파일럿-4040-반영)(D1~D21), [D041](../../docs/DECISIONS.md#d041--동시-실행-벤치마크-단계-a-승인과-파일럿-seed-재사용)(마감·abort 집계·운영 중단·a 정의), [D042](../../docs/DECISIONS.md#d042--인프라-정지-규칙-연속-3셀-기록-없음)·[D043](../../docs/DECISIONS.md#d043--go-입력-r에서-등록된-인프라-정지-공백을-뺀다)(#331로 main 반영), [D044](../../docs/DECISIONS.md#d044--2호스트-동시-실행-벤치마크-설계-v3)·[D045](../../docs/DECISIONS.md#d045--holdout-상태-확인의-위반어댑터-호환-정의와-train-abort-분모), D046(초안, #337), [노출 원장](exposure-ledger.md), [규모 산정](exp3-sizing-20261107/README.md), [동시 실행 벤치마크 v3](../configs/concurrency-scaling-v3.md). 이 초안과 D040이 다르면 D040이 맞다.
 > 이전 초안(#264 `e11d302`, 11/05판)은 D040 이전 구조라 대체한다. 그 판의 한 파일 다중 타깃 구조, 7.5.6/7.5.7·py-tarfile 타깃, S-a, `sentinel_count = 3`, `event_threshold = 5`는 쓰지 않는다.
 >
-> **"ORCH 결정 2026-11-11"** 표시는 D040에 없던 실행 세부를 오케스트레이터가 데이터 이전에 정한 것이다. 지웅 승인은 이 PR의 머지로 한다.
+> **"ORCH 결정 2026-11-11"** 표시는 D040에 없던 실행 세부를 오케스트레이터가 데이터 이전에 정한 것이다. 지웅 승인은 이 PR의 머지로 한다. 이 표시에 해당하는 항목은 모두 **동결 전 초안이며, 지웅 승인 = PR 머지**다: 호스트 키(`host.<id>.*`), 할당 규칙(`seed_assignment_*`), sentinel seed 재사용, start_denied 제외, 인프라 정지 case 재실행(D046), watchdog 뒤 정지, train abort 분모(D045).
 
 ## 1. 목적과 성격
 
@@ -76,7 +76,7 @@ seed_assignment_sha256 = TBD-FREEZE
 **블록 밖 규칙.**
 
 - `host.<id>.jobs`, `host.<id>.docker_engine`, `seed_assignment_rule`, `seed_assignment_sha256`은 **게이트가 강제한다**(W3 구현, 검증 후 동결; ORCH 결정 #1·2026-11-11 할당 결정). 해당 호스트의 `--jobs`, 실제 Engine 버전, 할당 파일 sha 중 하나라도 등록값과 다르거나, 할당 파일이 `alternate-v1` 규칙으로 재생성한 결과와 바이트 동일하지 않으면 런처가 실행을 거부한다. 강제 구현이 검증되기 전에는 동결하지 않는다.
-- `host.<id>.jobs`와 `docker_engine`은 벤치마크 v3(`experiments/configs/concurrency-scaling-v3.md`)의 호스트별 선정값과 preflight 고정값이다. 선정된 jobs는 그 호스트·그 엔진에서만 유효하다. 벤치마크 시작부터 EXP-2 끝까지 엔진·Docker Desktop·WSL 버전을 바꾸지 않는다.
+- `host.<id>.jobs`와 `docker_engine`은 [벤치마크 v3](../configs/concurrency-scaling-v3.md)의 호스트별 선정값과 preflight 고정값이다. 선정된 jobs는 그 호스트·그 엔진에서만 유효하다. 벤치마크 시작부터 EXP-2 끝까지 엔진·Docker Desktop·WSL 버전을 바꾸지 않는다.
 - `campaign_watchdog_seconds = 10800`은 벤치마크 v3와 같아야 한다(v3 §4.2 preflight 일치 검사).
 
 ## 3. 호스트 할당 (ORCH 결정 #5)
@@ -91,7 +91,8 @@ seed_assignment_sha256 = TBD-FREEZE
 
 | 항목 | 규칙 | 출처 |
 | --- | --- | --- |
-| 재시도 | 레코드 없는 셀만 그 자리에서 즉시 1회, 셀당 최대 2회. `start`만 남은 시도도 1회로 센다. 앞 시도 파일은 `attempts/`에 보존한다 | D042 1항 |
+| 재시도 | 레코드 없는 셀만 그 자리에서 즉시 1회, 셀당 최대 2회. `start`만 남은 시도도 1회로 센다. 앞 시도 파일은 `attempts/`에 보존한다. **시작 게이트가 거부한 시도(start_denied)는 실행되지 않은 것이므로 재시도 횟수에 세지 않고, 그 수를 따로 적는다**(ORCH 결정 2026-11-11, W3 배선 설계) | D042 1항 |
+| case 단위 인프라 재실행 | 셀 내부 경로에서 항상 켜져 있고, 런처 셀 재시도와는 별개다. ① 첫 비정상 Docker 호출이 timeout인 시도는 폐기한다. 데몬이 180초 안에 양성 응답으로 그 시도 컨테이너의 부재를 확인한 뒤에만, 새 컨테이너와 새 run root로 같은 case를 다시 실행한다. 예산·RNG·step은 소비하지 않는다. 확인하지 못하면 원래 예외로 abort한다. ② timed_out 재분류는 정지의 양성 증거가 있을 때만 한다. target start timeout 뒤 첫 inspect가 Running이면 base대로 TIMED_OUT이다. created이거나, 스스로 exited이고 데몬 실행시간이 0~5.0초이면 재실행한다. 그 밖은 base 동작이다. ③ 상한은 케이스당 2회, 캠페인당 8회, 부재 확인 180초이고, 넘으면 abort한다. ④ 기록 결과는 마지막 시도의 것이다. 폐기 시도는 arm별로 집계하고(보고서 `infra_reexecutions`, abort 스텁 `infra_reexecution_count`), 폐기 시도의 oracle 결과는 기록하지 않는다. 재실행이 있었던 캠페인을 뺀 민감도를 함께 내며, arm별 제외 수를 적고 확증 판정에는 쓰지 않는다. ⑤ 정지 시간은 벽시계(H_rem·처리량)에 포함한다 | D046(초안), ORCH 결정 2026-11-11 |
 | 인프라 정지 | 레코드 없이 끝난 셀이 연속 3개면 새 셀과 새 재시도를 시작하지 않는다. 셀이 끝나는 순서로, 런처 잠금 안에서 센다. 레코드가 있는 셀이 끝나면 0으로 돌아간다. **호스트별 런처 단위로 독립**이다 | D042 2·3항, ORCH |
 | 재개 | W2가 원인을 LOG에 적고(oracle 값 없이) 지웅이 별도 승인한다. `--resume-after-stop <승인 참조>` 필수. `--skip-build`와 W2 읽기 검증(Docker 응답, 세 이미지 id 일치)으로 하고, 같은 출력 폴더·`engine_sha`·이미지, 같은 설정 또는 jobs=2로 재개한다. `no-record`로 확정된 셀은 다시 돌리지 않는다 | D042 4항, D043 |
 | 마감 | 2026-11-25 12:00 KST 뒤 새 셀 금지. 실행 중 셀은 끝까지 보존. 12:00까지 끝나지 않은 셀이 있는 seed는 블록 전체를 미완주로 제외하고, 제외 수와 원인을 보고한다. **호스트별로 독립 적용** | D041, D040-D20 |
@@ -123,7 +124,7 @@ GO는 자동이 아니다. EXP-2 시작 전에 W3가 train 리포트 값으로 �
 - **abort 3분할(D040-D20):** [파일럿 결과 메모](../summaries/exp3-hazard-pilot-v1-result.md) §4의 세 묶음으로 수를 낸다: (1) 컨테이너 create 뒤 start 없음, (2) 실행·종료 뒤 소실, (3) 이벤트 기록 범위 밖(미관찰). abort 정책 세 가지(`censor-at-abort` 기본, `censor-at-budget`, `exclude`; `src/inodefence/evaluation/survival.py:379-381` @bce75a2)의 민감도를 병기한다.
 - **결과 미상 step(D040-D20):** 잘린 마지막 줄과 소실 step 수를 arm별로 병기한다. T_first에 영향이 있는지 셀마다 표시한다.
 - **invalid:** `record-inconsistent` 셀은 재시도하지 않고, 그 arm이 든 대비에서 블록을 뺀다. 수를 따로 내며 1건부터 보고한다(D041).
-- **dense 지표(EN-008, 설명용):** 새 state key 수는 효과 지표가 아니다. arm별 거부 비율, 변이 성공률, 시드 직속 부모 비율, 평균 entry, invalid trace step을 [파일럿 결과 메모](../summaries/exp3-hazard-pilot-v1-result.md) §7 표와 같은 정의·집계로 낸다(집계 코드 위치는 동결 전 W3가 file:line으로 확정).
+- **dense 지표(EN-008, 설명용, D040-D20 "dense 지표 고정(집계 방식 포함)"):** 새 state key 수는 효과 지표가 아니다. 정의는 PR-D(#299)의 W3 정의를 따른다. arm별로 내고 합치지 않는다. 분석 셀만 쓴다(마감 제외 seed와 invalid 제외). 분모는 기록 step이다. boundary 키는 온전한 trace 기준이다(`new_effect_keys`). 고유 키는 arm 안의 합집합이다. 관찰 실패는 종류별 step 수로 세고 합산하지 않으며, 한 step이 여러 종류면 각 종류에 1회씩 센다. feedback-ineligible 비율과 rejected_ratio도 낸다. 구현은 `scripts/analyze_exp0.py`의 `_dense_registered`·`_dense_signals`와 `src/inodefence/evaluation/rds_report.py`의 `registered_dense_detail`이고, file:line은 동결 engine_sha에서 W3가 다시 확인한다. [파일럿 결과 메모](../summaries/exp3-hazard-pilot-v1-result.md) §7의 5개 지표는 R 변형 선택 근거(D6)이며 등록 지표가 아니다.
 - **시계(D040-D20 "단일 시계 배율 금지"):** 처리량과 시간은 realtime 타임스탬프로 계산한다. monotonic 배율 하나로 환산하지 않는다. 호스트별 mono/real 배율은 기록만 한다.
 - **호스트:** 호스트별 민감도 표(§3)를 낸다. 확증이 아니므로 호스트 간 검정은 하지 않는다.
 

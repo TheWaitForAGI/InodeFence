@@ -71,12 +71,7 @@ def _cleanup_inspect(
             result = client.run(args, CLEANUP_INSPECT_TIMEOUT_SECONDS)
         except Exception as error:
             if attempts is not None:
-                attempt = {
-                    "phase": phase,
-                    "attempt": index + 1,
-                    "exception": type(error).__name__,
-                    "exception_message": str(error),
-                }
+                attempt = {"phase": phase, "attempt": index + 1, "exception": type(error).__name__}
                 attempts.append(attempt)
                 _cleanup_diagnostic(
                     "inodefence-cleanup-attempt", {"container": identity, **attempt}
@@ -91,8 +86,6 @@ def _cleanup_inspect(
                 "truncated": result.truncated,
                 "absent": _container_absent(result, identity),
             }
-            if result.stderr:
-                attempt["stderr"] = result.stderr.decode(errors="replace")
             attempts.append(attempt)
             if (
                 index
@@ -130,8 +123,6 @@ def remove_owned(client: DockerClient, name: str, owner: str) -> None:
             "timed_out": removed.timed_out,
             "truncated": removed.truncated,
         }
-        if removed.stderr:
-            removal["stderr"] = removed.stderr.decode(errors="replace")
         checked(removed, "remove")
         outcome = "verification_failed"
         remaining = _cleanup_inspect(client, info["Id"], phase="verification", attempts=attempts)

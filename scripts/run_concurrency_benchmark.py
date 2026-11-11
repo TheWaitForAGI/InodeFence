@@ -53,6 +53,8 @@ from scripts.run_g1_smoke import cell_paths
 from scripts.run_parallel_native import Arm, Cell, CellResult, cell_env
 
 from inodefence.evaluation.rds import RdsArm, RdsCellConfig, RVariant, VocabularyMode
+from inodefence.execution.start_gate import CleanupPending, StartGate, VerdictMissing
+from inodefence.execution.start_gate import StartDenied as GateDenied
 from inodefence.provenance import capture_source
 
 LABELS = ("demo run", "concurrency benchmark (unregistered, not pooled, no oracle analysis)")
@@ -429,6 +431,20 @@ def host_stop_reason(sample: Mapping[str, Any], design: Design) -> tuple[str, st
     return None
 
 
+START_GATE_DIR = "start-gate"
+WATCHDOG_GATE_REASON = "launcher: watchdog terminated the cell before cleanup was verified"
+
+
+def gate_stop_kind(reason: str) -> str:
+    """A watchdog kill stays a designed level stop whichever thread sees it first.
+
+    Every other closed-gate reason (UNKNOWN cleanup, a cell that exited without
+    a verdict, unreadable gate state) is external. Either way the gate keeps
+    later starts, including later blocks, denied until ``start_gate.py ack``.
+    """
+    return STOP_LEVEL if WATCHDOG_GATE_REASON in reason else STOP_EXTERNAL
+
+
 class StartDenied(Exception):
     """A block stop was committed before this cell could start."""
 
@@ -466,6 +482,9 @@ class BlockRun:
         self.completed_cells: set[str] = set()
         self.failures: list[dict[str, str]] = []
         self.require_logs = False
+        # Cross-process start gate (src/inodefence/execution/start_gate.py).
+        # ``run_block`` always sets one; unit tests with fake runners may not.
+        self.gate: StartGate | None = None
 
     def _stop_locked(self, reason: str, kind: str) -> None:
         if self.stopped_reason is None:
@@ -497,24 +516,38 @@ class BlockRun:
 
         def launch(start: Callable[[], Any]) -> Any:
             nonlocal started, start_order, process
-            with self.lock:
-                if self.stopped_reason is not None:
-                    raise StartDenied
-                # Popen itself is the start boundary. Do not hold this lock while
-                # the child runs or while the watchdog waits for it.
-                try:
-                    started = clock_stamp()
-                    process = start()
-                except BaseException as error:
-                    self._stop_locked(
-                        f"{cell.run_id} launch failed: {type(error).__name__}: {error}",
-                        STOP_EXTERNAL,
-                    )
-                    raise
-                self.event_order += 1
-                start_order = self.event_order
-                self.started_cells[cell.run_id] = start_order
-                return process
+            began = time.monotonic()
+            while True:
+                with self.lock:
+                    if self.stopped_reason is not None:
+                        raise StartDenied
+                    # Popen itself is the start boundary. Do not hold this lock while
+                    # the child runs, while the watchdog waits for it, or while the
+                    # gate waits for another cell's cleanup.
+                    try:
+                        started = clock_stamp()
+                        process = start()
+                    except CleanupPending as pending:
+                        deadline = pending.deadline
+                    except GateDenied as error:
+                        self._stop_locked(f"start gate closed: {error}", gate_stop_kind(str(error)))
+                        raise StartDenied from error
+                    except BaseException as error:
+                        self._stop_locked(
+                            f"{cell.run_id} launch failed: {type(error).__name__}: {error}",
+                            STOP_EXTERNAL,
+                        )
+                        raise
+                    else:
+                        self.event_order += 1
+                        start_order = self.event_order
+                        self.started_cells[cell.run_id] = start_order
+                        if self.gate is not None:
+                            self.gate.note_wait(time.monotonic() - began)
+                        return process
+                if self.gate is None:
+                    raise RuntimeError("cleanup pending without a start gate")
+                self.gate.wait_for_cleanups(deadline)
 
         try:
             result = self.run_cell(cell, self.raw, cell_env(cell, self.raw, self.base_env), launch)
@@ -584,6 +617,12 @@ class BlockRun:
             if result.log.is_file():
                 with result.log.open(encoding="utf-8", errors="replace") as stream:
                     cleanup_unknown = any("INODEFENCE_CLEANUP_UNKNOWN:" in line for line in stream)
+            gate_problem: str | None = None
+            if self.gate is not None:
+                try:
+                    self.gate.require_clean(cell.run_id)
+                except VerdictMissing as missing:
+                    gate_problem = str(missing)
             with self.lock:
                 self.records.append(
                     {
@@ -605,7 +644,13 @@ class BlockRun:
                 )
                 if result.returncode != 0:
                     self.nonzero_cells += 1
-                if cleanup_unknown:
+                if gate_problem is not None:
+                    # Before the watchdog rule: a killed child that never verified
+                    # cleanup is an external stop whichever thread notices first.
+                    self._stop_locked(
+                        f"start gate closed: {gate_problem}", gate_stop_kind(gate_problem)
+                    )
+                elif cleanup_unknown:
                     self._stop_locked(
                         f"{cell.run_id} cleanup resource state unknown", STOP_EXTERNAL
                     )
@@ -613,6 +658,8 @@ class BlockRun:
                     self._stop_locked(f"{cell.run_id} hit the campaign watchdog", STOP_LEVEL)
                 elif self.nonzero_cells >= self.design.stop_nonzero_cells:
                     self._stop_locked(f"{self.nonzero_cells} cells exited nonzero", STOP_LEVEL)
+            if gate_problem is not None:
+                raise RuntimeError(gate_problem)
             if cleanup_unknown:
                 raise RuntimeError(f"{cell.run_id} cleanup resource state unknown")
         except BaseException as error:
@@ -742,13 +789,24 @@ def _run_block(
     def run_cell(
         cell: Cell, raw: Path, env: dict[str, str], launch: Callable[..., Any]
     ) -> CellResult:
+        gate = run.gate
+        if gate is None:
+            raise RuntimeError("block runner has no start gate")
+        deadline = time.monotonic() + gate.cleanup_wait_seconds
+
+        def start(*args: Any, **kwargs: Any) -> Any:
+            # One attempt under BlockRun.lock; CleanupPending makes launch() wait
+            # outside that lock and come back.
+            return gate.try_start(cell.run_id, subprocess.Popen, args, kwargs, deadline=deadline)
+
         return run_cell_with_watchdog(
             cell,
             raw,
             env,
             bash,
             limit_seconds=design.campaign_watchdog_seconds,
-            popen=lambda *args, **kwargs: launch(lambda: subprocess.Popen(*args, **kwargs)),
+            popen=lambda *args, **kwargs: launch(lambda: start(*args, **kwargs)),
+            on_timeout=lambda: gate.mark_unknown(cell.run_id, WATCHDOG_GATE_REASON),
         )
 
     host = directory / "host"
@@ -792,6 +850,8 @@ def _run_block(
     record["stopped_reason"] = run.stopped_reason
     record["stop_kind"] = run.stop_kind
     record["stop_order"] = run.stop_order
+    # Seconds each admitted start waited for other cells' cleanup (gate 'C').
+    record["start_gate_waits_seconds"] = list(run.gate.waits) if run.gate is not None else None
     residual = residual_resources()
     record["residual_after_block"] = residual
     if residual and record["stopped_reason"] is None:
@@ -806,7 +866,13 @@ def _run_block(
     return record
 
 
-def run_block(design: Design, block: Block, directory: Path, bash: str) -> dict[str, Any]:
+def run_block(
+    design: Design,
+    block: Block,
+    directory: Path,
+    bash: str,
+    gate_directory: Path | None = None,
+) -> dict[str, Any]:
     """Publish exceptional exits separately; never turn an incomplete block into a result."""
 
     def unavailable(*_args: Any) -> CellResult:
@@ -815,6 +881,10 @@ def run_block(design: Design, block: Block, directory: Path, bash: str) -> dict[
     run = BlockRun(design, block, directory, unavailable)
     run.require_logs = True
     try:
+        # main() passes one gate per output root, shared by every block: an
+        # unverified cleanup in any earlier block keeps later blocks from
+        # starting until someone acknowledges it (start_gate.py ack).
+        run.gate = StartGate(gate_directory or directory / START_GATE_DIR)
         return _run_block(design, block, directory, bash, run)
     except BaseException as error:
         observed_at = datetime.now(UTC).isoformat()
@@ -1029,7 +1099,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             + "\n",
             encoding="utf-8",
         )
-        record = run_block(design, block, directory, bash)
+        record = run_block(design, block, directory, bash, args.output / START_GATE_DIR)
         print(f"{block.name}: stopped={record['stopped_reason']}")
         if record["stopped_reason"]:
             return 1

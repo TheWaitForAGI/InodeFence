@@ -41,9 +41,17 @@ H1 호스트 smoke 종료 시 Docker CLI에 엔지니어링 deadline을 둔다: 
 종료하며 daemon 작업 완료를 뜻하지 않는다. 이 값은 정상 호출의 전체 지연 분포가 아닌 기존
 10초 broker 제한과 70–108 MB 복사 규모에 근거한 후보이며, 측정 조건이 바뀌므로 과거 결과와
 동등하다고 가정하지 않는다. 삭제 후 부재를 확정하지 못하면 `INODEFENCE_CLEANUP_UNKNOWN`을
-남긴다. 현재 H1은 셀 종료 뒤 이 표식을 읽으므로, 표식 발생과 셀 종료 사이에 다른 셀이 시작될
-수 있다. 이것은 미해결 차단 결함이며 이 후보는 실측에 사용하지 않는다. 종료 전의 build, create,
-setup 호출에는 이 cleanup deadline이 적용되지 않는다. 기존 증거 경로를 덮어쓰지 않는다.
+남긴다. 종료 전의 build, create, setup 호출에는 이 cleanup deadline이 적용되지 않는다. 기존
+증거 경로를 덮어쓰지 않는다.
+
+셀 시작은 프로세스 간 시작 게이트(`src/inodefence/execution/start_gate.py`, 상태는
+`<출력 루트>/start-gate/`)를 거친다. smoke cleanup은 진입 시 `C`를, 표식 출력 **전에** `U`를,
+확인을 마치면 `S`를 게이트에 기록한다. 런처는 전역 `flock` 아래에서 모든 셀을 검사하고 바로
+Popen한다. `U`, 판정 없는 종료(자식에 상속된 수명 잠금 해제), 이전 런처 세션의 미판정 셀,
+상태 읽기·잠금 실패 중 하나라도 있으면 시작하지 않는다. 다른 셀이 `C`이면 최대 1000초를
+잠금 없이 기다린다. `S`만 깨끗한 것으로 본다. 거부 상태는 디스크에 남으므로, 사람이 자원을
+확인한 뒤 `python src/inodefence/execution/start_gate.py ack <dir> <cell> "<확인 내용>"`으로
+기록을 옆으로 옮겨야 다시 시작할 수 있다. 남은 창은 PR #330 본문에 있다.
 
 H1의 설계된 수준 stop과 외부 stop은 `block.json`에 `state=stopped`, `finished=false`로
 기록하고 기존 §6.3의 수준 배제·외부 단계 무효 판정에 사용한다. runner·기록 경로의 예외는 별도

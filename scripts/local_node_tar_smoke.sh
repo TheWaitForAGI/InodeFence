@@ -130,9 +130,34 @@ cleanup_dk() {
     docker --context "$CONTEXT" "$@"
 }
 
+# Start gate (src/inodefence/execution/start_gate.py). A launcher that runs cells
+# concurrently injects INODEFENCE_START_GATE_DIR/_CELL; without them these are
+# no-ops. C = cleanup entered, U = resource state unknown (recorded before the
+# marker is printed), S = cleanup verified. S is written only when no U was
+# seen and every earlier record succeeded; anything else leaves no S, which the
+# launcher reads as "do not start".
+GATE_UNKNOWN=0
+GATE_RECORD_FAILED=0
+gate_record() {
+  [ -n "${INODEFENCE_START_GATE_DIR:-}" ] || return 0
+  if ! "$PYTHON" -I "$REPO_ROOT/src/inodefence/execution/start_gate.py" record "$@"; then
+    GATE_RECORD_FAILED=1
+    echo "start gate: $1 not recorded" >&2
+  fi
+}
+
+# The marker is printed even when the record fails; a log with the marker
+# therefore never precedes the U record when the record succeeds.
+cleanup_unknown() {
+  GATE_UNKNOWN=1
+  gate_record U "$1"
+  echo "INODEFENCE_CLEANUP_UNKNOWN: $1" >&2
+}
+
 cleanup() {
   local status=$? rc inspection temporary source destination container_id label controller_owned=0
   set +e
+  gate_record C
   if [ "$status" -ne 0 ]; then
     echo "FAILED at step: $STEP (exit $status)" >&2
   fi
@@ -143,7 +168,7 @@ cleanup() {
     read -r container_id label <<< "$inspection"
     if [ "$rc" -ne 0 ] || [ "$label" != "$OWNER_TOKEN" ] ||
        ! [[ "$container_id" =~ ^[0-9a-f]{64}$ ]]; then
-      echo "INODEFENCE_CLEANUP_UNKNOWN: controller ownership: $inspection" >&2
+      cleanup_unknown "controller ownership: $inspection"
       [ "$status" -ne 0 ] || status=125
     else
       controller_owned=1
@@ -209,7 +234,7 @@ cleanup() {
       *) rc=125 ;;
     esac
     if [ "$rc" -ne 1 ]; then
-      echo "INODEFENCE_CLEANUP_UNKNOWN: controller $CONTROLLER: $inspection" >&2
+      cleanup_unknown "controller $CONTROLLER: $inspection"
       [ "$status" -ne 0 ] || status=125
     fi
   fi
@@ -218,7 +243,7 @@ cleanup() {
       '{{index .Labels "org.inodefence.smoke-owner"}}' "$VOLUME" 2>&1)
     rc=$?
     if [ "$rc" -ne 0 ] || [ "$inspection" != "$OWNER_TOKEN" ]; then
-      echo "INODEFENCE_CLEANUP_UNKNOWN: volume ownership: $inspection" >&2
+      cleanup_unknown "volume ownership: $inspection"
       [ "$status" -ne 0 ] || status=125
     else
       cleanup_dk 60 volume rm "$VOLUME" >/dev/null
@@ -236,9 +261,15 @@ cleanup() {
       *) rc=125 ;;
     esac
     if [ "$rc" -ne 1 ]; then
-      echo "INODEFENCE_CLEANUP_UNKNOWN: volume $VOLUME: $inspection" >&2
+      cleanup_unknown "volume $VOLUME: $inspection"
       [ "$status" -ne 0 ] || status=125
     fi
+  fi
+  if [ "$GATE_UNKNOWN" -eq 0 ] && [ "$GATE_RECORD_FAILED" -eq 0 ]; then
+    gate_record S
+  fi
+  if [ "$GATE_RECORD_FAILED" -ne 0 ] && [ "$status" -eq 0 ]; then
+    status=125
   fi
   if [ "$status" -eq 0 ]; then
     echo "PASSED: node-tar $MODE (context=$CONTEXT)"
@@ -292,7 +323,7 @@ CREATED_VOLUME=1
 volume_owner="$(cleanup_dk 30 volume inspect --format \
   '{{index .Labels "org.inodefence.smoke-owner"}}' "$VOLUME")" || volume_owner=""
 if [ "$volume_owner" != "$OWNER_TOKEN" ] || [ -z "$OWNER_TOKEN" ]; then
-  echo "INODEFENCE_CLEANUP_UNKNOWN: volume creation ownership could not be verified" >&2
+  cleanup_unknown "volume creation ownership could not be verified"
   exit 1
 fi
 dk run -d --name "$CONTROLLER" --label "org.inodefence.smoke-owner=$OWNER_TOKEN" \

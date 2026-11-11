@@ -1,7 +1,9 @@
 """Incomplete H1 runs must retain the stop decision without becoming clean blocks."""
 
 import json
+import os
 import subprocess
+import sys
 import threading
 from pathlib import Path
 from typing import Any
@@ -10,6 +12,19 @@ import pytest
 from scripts import analyze_concurrency_benchmark as analysis
 from scripts import run_concurrency_benchmark as bench
 from scripts.run_parallel_native import CellResult
+
+from inodefence.execution import start_gate
+
+
+def clean_fake_popen(*_args: Any, **kwargs: Any) -> object:
+    """A fake cell child whose cleanup was verified: its S verdict is already on disk.
+
+    It is called under the gate lock (as Popen is), so it writes the verdict
+    file directly instead of taking the lock like a real child does later.
+    """
+    directory = Path(kwargs["env"][start_gate.GATE_DIR_ENV])
+    (directory / f"{kwargs['env'][start_gate.GATE_CELL_ENV]}.verdict").write_text("S\n")
+    return object()
 
 
 def test_runner_exception_publishes_incomplete_record(tmp_path: Path, monkeypatch: Any) -> None:
@@ -39,13 +54,25 @@ def test_runner_exception_publishes_incomplete_record(tmp_path: Path, monkeypatc
         def poll(self) -> int:
             return 0
 
+    # The started "child" stays alive: it keeps the inherited lifetime lock, as a
+    # real child does until the runner's exception path terminates it.
+    held: list[int] = []
+
+    def live_child(*_args: Any, **kwargs: Any) -> Process:
+        held.append(os.dup(kwargs["pass_fds"][-1]))
+        return Process()
+
     monkeypatch.setattr(bench, "_start_events", lambda _path: Events())
     monkeypatch.setattr(bench, "_sample_host", sample)
     monkeypatch.setattr(bench, "run_cell_with_watchdog", fail)
-    monkeypatch.setattr(bench.subprocess, "Popen", lambda *args, **kwargs: Process())
+    monkeypatch.setattr(bench.subprocess, "Popen", live_child)
     monkeypatch.setattr(bench, "residual_resources", list)
-    with pytest.raises(OSError, match="injected runner failure"):
-        bench.run_block(design, block, directory, "bash")
+    try:
+        with pytest.raises(OSError, match="injected runner failure"):
+            bench.run_block(design, block, directory, "bash")
+    finally:
+        for fd in held:
+            os.close(fd)
     record = json.loads((directory / "block.incomplete.json").read_text())
     assert record["finished"] is False
     assert "injected runner failure" in record["stopped_reason"]
@@ -94,42 +121,124 @@ def test_unknown_cleanup_stops_waiting_cells(tmp_path: Path) -> None:
     assert "cleanup resource state unknown" in (run.stopped_reason or "")
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="cleanup UNKNOWN reaches the start gate only after the runner returns",
-)
 def test_cleanup_unknown_blocks_launch_before_runner_returns(tmp_path: Path) -> None:
+    """The first cell's child commits U through the gate and keeps running.
+
+    The child is a real process started through ``StartGate``; it records U the
+    way local_node_tar_smoke.sh does (start_gate.py record U, then the marker),
+    reports over a pipe and then blocks until released. The second cell is
+    attempted while the first runner is still waiting for its child.
+    """
     design = bench.load_design(Path("experiments/configs/concurrency-scaling-v2.md"))
     block = bench.planned_blocks(design, "smoke")[0]
-    unknown, resume = threading.Event(), threading.Event()
+    gate_script = Path(start_gate.__file__).resolve()
+    child = (
+        "import subprocess, sys\n"
+        "rc = subprocess.call([sys.executable, '-I', sys.argv[1], 'record', 'U', 'test'])\n"
+        "print('INODEFENCE_CLEANUP_UNKNOWN: test', file=sys.stderr, flush=True)\n"
+        "print('recorded', rc, flush=True)\n"
+        "sys.stdin.read()\n"
+    )
+    recorded = threading.Event()
     launches: list[str] = []
+    gate = start_gate.StartGate(tmp_path / "start-gate")
 
     def runner(cell: Any, raw: Path, _env: Any, launch: Any) -> CellResult:
-        launch(lambda: launches.append(cell.run_id))
         log = tmp_path / f"{cell.run_id}.log"
-        if cell == block.cells[0]:
-            log.write_text("INODEFENCE_CLEANUP_UNKNOWN: test\n")
-            unknown.set()
-            assert resume.wait(5)
-        else:
-            log.write_text("")
-        return CellResult(cell, 0, 1, raw / "e.json", False, log)
+        with log.open("w") as stream:
+            process = launch(
+                lambda: gate.try_start(
+                    cell.run_id,
+                    subprocess.Popen,
+                    ([sys.executable, "-I", "-c", child, str(gate_script)],),
+                    {
+                        "stdin": subprocess.PIPE,
+                        "stdout": subprocess.PIPE,
+                        "stderr": stream,
+                        "text": True,
+                    },
+                )
+            )
+            launches.append(cell.run_id)
+            assert process.stdout.readline() == "recorded 0\n"
+            recorded.set()
+            assert release.wait(30)
+            process.stdin.close()
+            process.wait(timeout=30)
+        return CellResult(cell, process.returncode, 1, raw / "e.json", False, log)
 
+    release = threading.Event()
     run = bench.BlockRun(design, block, tmp_path, runner)
+    run.gate = gate
+    errors: list[BaseException] = []
 
     def run_first() -> None:
-        with pytest.raises(RuntimeError, match="cleanup resource state unknown"):
+        try:
             run.run_one(block.cells[0])
+        except BaseException as error:
+            errors.append(error)
 
     first = threading.Thread(target=run_first)
     first.start()
     try:
-        assert unknown.wait(5)
-        run.run_one(block.cells[1])
+        assert recorded.wait(30)
+        run.run_one(block.cells[1])  # the first runner has not returned
     finally:
-        resume.set()
-        first.join(5)
+        release.set()
+        first.join(30)
     assert launches == [block.cells[0].run_id]
+    assert run.records[0] == {
+        "run_id": block.cells[1].run_id,
+        "state": "not-run",
+        "decision_order": 3,
+    }
+    assert run.stop_kind == bench.STOP_EXTERNAL
+    assert run.stop_order == 2
+    assert "cleanup resource state unknown: test" in (run.stopped_reason or "")
+    assert len(errors) == 1 and "cleanup resource state unknown" in str(errors[0])
+
+
+def test_watchdog_gate_reason_keeps_level_stop(tmp_path: Path) -> None:
+    design = bench.load_design(Path("experiments/configs/concurrency-scaling-v2.md"))
+    block = bench.planned_blocks(design, "smoke")[0]
+    gate = start_gate.StartGate(tmp_path / "start-gate")
+
+    def runner(cell: Any, raw: Path, _env: Any, launch: Any) -> CellResult:
+        process = launch(lambda: gate.try_start(cell.run_id, subprocess.Popen, (["true"],), {}))
+        process.wait(timeout=30)
+        gate.mark_unknown(cell.run_id, bench.WATCHDOG_GATE_REASON)
+        log = tmp_path / f"{cell.run_id}.log"
+        log.write_text("")
+        return CellResult(cell, bench.WATCHDOG_RETURNCODE, 1, raw / "e.json", False, log)
+
+    run = bench.BlockRun(design, block, tmp_path, runner)
+    run.gate = gate
+    with pytest.raises(RuntimeError, match="watchdog terminated"):
+        run.run_one(block.cells[0])
+    assert run.stop_kind == bench.STOP_LEVEL
+    run.run_one(block.cells[1])
+    assert run.records[-1]["state"] == "not-run"
+
+
+def test_cell_without_verdict_is_an_external_stop(tmp_path: Path) -> None:
+    design = bench.load_design(Path("experiments/configs/concurrency-scaling-v2.md"))
+    block = bench.planned_blocks(design, "smoke")[0]
+    gate = start_gate.StartGate(tmp_path / "start-gate")
+
+    def runner(cell: Any, raw: Path, _env: Any, launch: Any) -> CellResult:
+        process = launch(lambda: gate.try_start(cell.run_id, subprocess.Popen, (["true"],), {}))
+        process.wait(timeout=30)
+        log = tmp_path / f"{cell.run_id}.log"
+        log.write_text("")
+        return CellResult(cell, 0, 1, raw / "e.json", False, log)
+
+    run = bench.BlockRun(design, block, tmp_path, runner)
+    run.gate = gate
+    with pytest.raises(RuntimeError, match="exited without a cleanup verdict"):
+        run.run_one(block.cells[0])
+    assert run.stop_kind == bench.STOP_EXTERNAL
+    assert gate.verdict(block.cells[0].run_id) is not None
+    assert gate.verdict(block.cells[0].run_id)[0] == "U"
 
 
 def test_missing_cell_log_cannot_be_treated_as_clean(tmp_path: Path) -> None:
@@ -290,7 +399,7 @@ def test_failed_block_publication_writes_incomplete_evidence(
     monkeypatch.setattr(bench, "_start_events", lambda _path: Events())
     monkeypatch.setattr(bench, "_sample_host", lambda *_args: None)
     monkeypatch.setattr(bench, "run_cell_with_watchdog", cell_runner)
-    monkeypatch.setattr(bench.subprocess, "Popen", lambda *a, **k: object())
+    monkeypatch.setattr(bench.subprocess, "Popen", clean_fake_popen)
     monkeypatch.setattr(bench, "residual_resources", list)
     monkeypatch.setattr(bench, "_publish_json", fail_completed)
     with pytest.raises(OSError, match="injected completed record failure"):

@@ -47,6 +47,7 @@ from scripts.run_concurrency_benchmark import (
     REPORT_JSON,
     SMOKE_STAGE,
     STOP_EXTERNAL,
+    UNRESOLVED_PREFIX,
     Design,
     load_design,
     measured_stages,
@@ -1161,7 +1162,12 @@ def decide(design: Design, stages: Mapping[str, Mapping[str, Any]]) -> dict[str,
         stopped_blocks = [block for block in blocks if block["stopped_reason"]]
         if len(blocks) < len(order) and not stopped_blocks:
             break
-        external = any(block["stop_kind"] == STOP_EXTERNAL for block in stopped_blocks)
+        # Design v3: record facts that void the stage as an external stop does (host identity,
+        # engine, shared path). They name no block stop, so H5 does not read them.
+        external_problems = stage.get("external_problems")
+        external = any(block["stop_kind"] == STOP_EXTERNAL for block in stopped_blocks) or bool(
+            external_problems
+        )
         ref_stopped = any(block["jobs"] == ref_jobs for block in stopped_blocks)
         # The first reference did not finish: not "failed to pass" but "could not measure".
         if first_stage and ref_stopped:
@@ -1233,6 +1239,8 @@ def decide(design: Design, stages: Mapping[str, Mapping[str, Any]]) -> dict[str,
             "throughput_judgement_invalid": ratios["drift"] is not None and not ratios["valid"],
             "passed": passed and not halts,
         }
+        if external_problems is not None:
+            verdicts[name]["external_problems"] = list(external_problems)
         if halts:
             break
         if invalid:
@@ -1297,8 +1305,16 @@ def analyze(output: Path, design: Design) -> dict[str, Any]:
     return _analyze(output, design)[0]
 
 
-def _analyze(output: Path, design: Design) -> tuple[dict[str, Any], BlockPaths]:
-    """One output tree (v2: the run; v3: one host). Paths are returned for X1, never written."""
+def _analyze(
+    output: Path,
+    design: Design,
+    external: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
+) -> tuple[dict[str, Any], BlockPaths]:
+    """One output tree (v2: the run; v3: one host). Paths are returned for X1, never written.
+
+    ``external`` (design v3) maps a measured stage to record problems that void it as an
+    external stop does (v2 section 6.3): the stage is ``stage_invalid`` and no rule reads it.
+    """
     stages: dict[str, Any] = {}
     every_block: list[dict[str, Any]] = []
     every_path: list[dict[str, CellPath]] = []
@@ -1368,7 +1384,17 @@ def _analyze(output: Path, design: Design) -> tuple[dict[str, Any], BlockPaths]:
         stages[stage] = {"levels": levels, "blocks": blocks}
     # Every stage repeats the same seeds, so a case can pass again in any of them.
     fill_abort_operators(every_block, every_path)
+    if external is not None:
+        for name, content in stages.items():
+            content["external_problems"] = list(external.get(name, ()))
     decision = decide(design, stages)
+    if external is not None:
+        # Every problem, also of a stage with no usable block yet (it is pending or halted).
+        decision["external_problems"] = [
+            {"stage": name, **problem}
+            for name, problems in external.items()
+            for problem in problems
+        ]
     if incomplete:
         decision["status"] = "halted"
         decision["selected_jobs"] = None
@@ -1401,7 +1427,8 @@ X1_CONSEQUENCE = (
     "호스트 제외나 단일 호스트 전환은 지웅이 결정하며, 이 결정은 EXP-3 train 첫 셀 "
     "시작 전에 하고 그 시각과 근거를 docs/LOG.md에 기록한다. 그 뒤에는 X1을 근거로 "
     "호스트를 제외하거나 바꾸지 않는다. X1이 발동하지 않았어도 호스트는 기록 요인으로 "
-    "남는다(v3 §10)."
+    "남는다(v3 §10). X1이 not evaluated이면 본실험 합산 처리는 X1 발동과 같이 한다"
+    "(호스트별 민감도 표, 호스트 제외·전환은 지웅 결정)."
 )
 V3_RULES_EVALUATED = (
     "v2 §6 (V1-V10, H1-H5, H3-unmeasured, selection) per host on that host's blocks only; "
@@ -1413,11 +1440,23 @@ V3_RULES_EVALUATED = (
     "X1 (v3 §6.2, §6.3): first-stage block 1 across hosts, three clauses; not a jobs exclusion; "
     "block-4 pair reported only",
     "H2' (v3 §6.2): H2 on any host halts every host",
-    "host identity and Docker engine per host against the design (halt on mismatch or missing)",
+    "host-mismatch, engine-mismatch, engine-unverified: external stops (v2 §6.3) that void the "
+    "block's stage (smoke: the first measured stage); no rule reads a voided stage",
+    "shared-path-mismatch, shared-path-unverified (v3 §4.1, §4.4): shared path sha256 differs "
+    "between a host's blocks or is missing; external stop voiding the first measured stage",
+    "shared path and image id across hosts (v3 §4.3 condition 1, §7, §8): a mismatch or an "
+    "unverified host leaves X1 not evaluated",
     "infrastructure re-executions per cell: report column and V7' numerator; differences in "
     "re-executed cells reported for V9 and X1, judging nothing",
-    "not evaluated here: probe/probe.json (not a decision input, v3 §5), shared path hashes "
-    "(v3 §11 table; no record field to read yet)",
+    "not evaluated here: probe/probe.json (not a decision input, v3 §5)",
+)
+#: Record problems that void a stage as an external stop does (v2 section 6.3).
+EXTERNAL_RECORD_RULES = (
+    "host-mismatch",
+    "engine-mismatch",
+    "engine-unverified",
+    "shared-path-mismatch",
+    "shared-path-unverified",
 )
 
 
@@ -1446,15 +1485,28 @@ def _read_json(path: Path) -> Any:
         return None
 
 
+def _preflight_facts(directory: Path) -> tuple[Mapping[str, Any] | None, Mapping[str, Any] | None]:
+    """A block's ``preflight.json`` and its ``preflight`` object (the driver's facts)."""
+    preflight = _read_json(directory / PREFLIGHT_FILE)
+    if not isinstance(preflight, Mapping):
+        return None, None
+    facts = preflight.get("preflight")
+    return preflight, facts if isinstance(facts, Mapping) else None
+
+
 def host_identity_problems(output: Path, design: Design, host: str) -> list[str]:
     """Block records under ``output`` that do not name this host and its run prefix (fail closed).
 
     A record without ``host`` is a problem too: the v3 driver writes it, so its absence means the
-    block cannot be attributed to this host.
+    block cannot be attributed to this host. So is a preflight file naming another host or none.
     """
     prefix = design.hosts[host].run_prefix
     problems = []
     for name, directory in _block_directories(output, design):
+        preflight, _facts = _preflight_facts(directory)
+        if preflight is not None and preflight.get("host") != host:
+            problems.append(name)
+            continue
         record = _read_json(directory / BLOCK_FILE)
         if not isinstance(record, Mapping):
             continue  # Missing or unreadable records are the incomplete-block halt already.
@@ -1469,20 +1521,125 @@ def host_identity_problems(output: Path, design: Design, host: str) -> list[str]
     return problems
 
 
+def _valid_hashes(value: object) -> bool:
+    return (
+        isinstance(value, Mapping)
+        and bool(value)
+        and all(isinstance(k, str) and isinstance(v, str) and v for k, v in value.items())
+    )
+
+
+def shared_path_check(output: Path, design: Design) -> dict[str, Any]:
+    """``preflight.shared_path_sha256`` of every block of one host (v3 sections 4.1 and 4.4).
+
+    The host's value is the one every block recorded. A block without it is unverified, and a
+    block with another value is mismatched (against the first block in design order).
+    """
+    by_block: dict[str, dict[str, str]] = {}
+    unverified: list[str] = []
+    for name, directory in _block_directories(output, design):
+        _preflight, facts = _preflight_facts(directory)
+        value = facts.get("shared_path_sha256") if facts is not None else None
+        if not _valid_hashes(value):
+            unverified.append(name)
+            continue
+        assert isinstance(value, Mapping)
+        by_block[name] = dict(value)
+    first = next(iter(by_block.values()), None)
+    mismatched = [name for name, value in by_block.items() if value != first]
+    consistent = not unverified and not mismatched and first is not None
+    return {
+        "value": first if consistent else None,
+        "blocks": len(by_block) + len(unverified),
+        "mismatched": mismatched,
+        "unverified": unverified,
+    }
+
+
+def image_id_check(output: Path, design: Design) -> dict[str, Any]:
+    """``preflight.image_id`` of every block of one host; one value, or None if not one."""
+    values: dict[str, Any] = {}
+    unverified: list[str] = []
+    for name, directory in _block_directories(output, design):
+        _preflight, facts = _preflight_facts(directory)
+        value = facts.get("image_id") if facts is not None else None
+        if not isinstance(value, str) or not value:
+            unverified.append(name)
+            continue
+        values[name] = value
+    distinct = sorted(set(values.values()))
+    return {
+        "value": distinct[0] if len(distinct) == 1 and not unverified else None,
+        "distinct": distinct,
+        "unverified": unverified,
+    }
+
+
+def _stage_of(design: Design, block_name: str) -> str:
+    """The measured stage a block's record problem voids (smoke voids the first one)."""
+    stage = block_name.split("/", 1)[0]
+    return measured_stages(design)[0] if stage == SMOKE_STAGE else stage
+
+
+def record_problems(
+    output: Path, design: Design, host: str
+) -> tuple[dict[str, list[dict[str, Any]]], dict[str, Any]]:
+    """External record problems by measured stage, and the facts they came from.
+
+    Host identity and engine void the stage of the block concerned. A shared path difference or
+    gap voids the first measured stage: a path change after any block makes the host's stage
+    measurement invalid from stage A on (v3 section 4.4).
+    """
+    identity = host_identity_problems(output, design, host)
+    engine = engine_check(output, design, host)
+    shared = shared_path_check(output, design)
+    first = measured_stages(design)[0]
+    by_stage: dict[str, list[dict[str, Any]]] = defaultdict(list)
+
+    def add(rule: str, blocks: Sequence[str], *, stage: str | None = None, **extra: Any) -> None:
+        grouped: dict[str, list[str]] = defaultdict(list)
+        for name in blocks:
+            grouped[stage or _stage_of(design, name)].append(name)
+        for name, items in grouped.items():
+            by_stage[name].append({"rule": rule, "blocks": items, **extra})
+
+    add("host-mismatch", identity)
+    add("engine-mismatch", engine["mismatched"], expected=engine["expected"])
+    add("engine-unverified", engine["unverified"])
+    add("shared-path-mismatch", shared["mismatched"], stage=first)
+    add("shared-path-unverified", shared["unverified"], stage=first)
+    facts = {
+        "engine": engine,
+        "shared_path": shared,
+        "image_id": image_id_check(output, design),
+    }
+    return dict(by_stage), facts
+
+
+def cross_host_value(values: Mapping[str, Any], hosts: Sequence[str]) -> str:
+    """``match``, ``mismatch``, ``unverified`` (a host has no single value) or ``not evaluated``."""
+    if any(host not in values for host in hosts):
+        return "not evaluated"
+    if any(values[host] is None for host in hosts):
+        return "unverified"
+    first = values[hosts[0]]
+    return "match" if all(values[host] == first for host in hosts) else "mismatch"
+
+
 def engine_check(output: Path, design: Design, host: str) -> dict[str, Any]:
     """The Docker server each block's preflight found, against ``host.<id>.docker_engine``.
 
-    The v2 driver refuses to run on a different engine; here a mismatch halts the host. A block
-    whose preflight (or its block record's own ``docker_engine``, if any) cannot be read is
-    unverified, which halts too.
+    The v2 driver refuses to run on a different engine; here a mismatch is an external stop that
+    voids the block's stage. A block whose preflight ``preflight.docker_server`` cannot be read is
+    unverified, which voids it too. A ``TBD-`` design value never matches (the driver refuses to
+    run with one; this is the second line).
     """
     expected = design.engine_for(host)
     observed: dict[str, Any] = {}
     unverified: list[str] = []
     for name, directory in _block_directories(output, design):
-        preflight = _read_json(directory / PREFLIGHT_FILE)
-        facts = preflight.get("preflight") if isinstance(preflight, Mapping) else None
-        server = facts.get("docker_server") if isinstance(facts, Mapping) else None
+        _preflight, facts = _preflight_facts(directory)
+        server = facts.get("docker_server") if facts is not None else None
         record = _read_json(directory / BLOCK_FILE)
         recorded = record.get("docker_engine") if isinstance(record, Mapping) else None
         if not isinstance(server, str):
@@ -1491,7 +1648,8 @@ def engine_check(output: Path, design: Design, host: str) -> dict[str, Any]:
         observed[name] = server
         if recorded is not None and recorded != server:
             observed[f"{name} (block record)"] = recorded
-    mismatched = sorted(name for name, value in observed.items() if value != expected)
+    unpinned = expected.startswith(UNRESOLVED_PREFIX)
+    mismatched = sorted(name for name, value in observed.items() if unpinned or value != expected)
     return {
         "expected": expected,
         "observed": observed,
@@ -1581,12 +1739,18 @@ def host_floor(design: Design, stage: str, report: Mapping[str, Any]) -> int | N
     return last["determinism"]["m"]
 
 
-def evaluate_x1(design: Design, analyses: Mapping[str, HostAnalysis]) -> dict[str, Any]:
+def evaluate_x1(
+    design: Design, analyses: Mapping[str, HostAnalysis], blockers: Sequence[str] = ()
+) -> dict[str, Any]:
     """X1, cross-host path agreement (v3 sections 6.2 and 6.3). Not a jobs exclusion.
 
     Fires on any clause: m_x - max(F) >= x1_margin; one-sided timed_out/failed first differences
     >= 2; incomparable cells >= x1_incomparable_cells. The first clause needs both floors; when one
     is not measured and no other clause fires, X1 is "not evaluated" (not "not fired").
+
+    ``blockers`` are reasons a cross-host comparison means nothing (different shared paths or
+    images); with any, or with the stage voided on a host, X1 is "not evaluated" whatever the
+    clauses say. The counts are still reported.
     """
     hosts = list(design.hosts)
     stage = measured_stages(design)[0]
@@ -1644,6 +1808,16 @@ def evaluate_x1(design: Design, analyses: Mapping[str, HostAnalysis]) -> dict[st
     result["one_incomparable_reported"] = (
         0 < pair["incomparable_cells"] < (design.x1_incomparable_cells)
     )
+    voided = sorted(
+        host
+        for host in hosts
+        if ((analyses[host].report["decision"]["stages"].get(stage) or {}).get("stage_invalid"))
+    )
+    if voided:
+        reasons.append(f"stage {stage} is voided (external stop) on {voided}")
+    reasons.extend(blockers)
+    if reasons:
+        return result
     if any(value is True for value in clauses.values()):
         result["status"] = "fired"
     elif clauses["excess_over_floor"] is None:
@@ -1699,26 +1873,27 @@ def analyze_v3(
     if missing and not partial:
         raise ValueError(f"no output for hosts {missing}; pass --partial to analyze without them")
     analyses: dict[str, HostAnalysis] = {}
-    engines: dict[str, Any] = {}
+    facts: dict[str, dict[str, Any]] = {}
     for host, output in outputs.items():
-        report, paths = _analyze(output, design)
+        # Record problems are external stops: they void a stage before the decision reads it.
+        problems, facts[host] = record_problems(output, design, host)
+        report, paths = _analyze(output, design, problems)
         report["host"] = host
         report["run_prefix"] = design.hosts[host].run_prefix
-        decision = report["decision"]
-        identity = host_identity_problems(output, design, host)
-        if identity:
-            _halt(decision, "host-mismatch", identity)
-        engine = engine_check(output, design, host)
-        engines[host] = engine
-        if engine["mismatched"]:
-            _halt(
-                decision,
-                "engine-mismatch",
-                {"expected": engine["expected"], "blocks": engine["mismatched"]},
-            )
-        if engine["unverified"]:
-            _halt(decision, "engine-unverified", engine["unverified"])
+        report["records"] = facts[host]
         analyses[host] = HostAnalysis(report, paths)
+    hosts = list(design.hosts)
+    shared_cross = cross_host_value(
+        {host: item["shared_path"]["value"] for host, item in facts.items()}, hosts
+    )
+    image_cross = cross_host_value(
+        {host: item["image_id"]["value"] for host, item in facts.items()}, hosts
+    )
+    blockers = [
+        f"{name} across hosts is {state}"
+        for name, state in (("shared path sha256", shared_cross), ("image id", image_cross))
+        if state in ("mismatch", "unverified")
+    ]
     decisions: dict[str, dict[str, Any]] = {
         host: analyses[host].report["decision"] if host in analyses else _pending_host()
         for host in design.hosts
@@ -1732,7 +1907,7 @@ def analyze_v3(
         if h2_sources and host not in h2_sources:
             _halt(decision, "H2'", {"source_hosts": h2_sources})
     # A missing host leaves X1 "not evaluated" (never "not fired").
-    x1 = evaluate_x1(design, analyses)
+    x1 = evaluate_x1(design, analyses, blockers)
     if partial:
         for decision in decisions.values():
             decision["partial_input"] = True
@@ -1756,7 +1931,14 @@ def analyze_v3(
         "common_jobs_if_needed": min(chosen) if len(chosen) == len(design.hosts) else None,
         "x1": x1,
         "h2_joint": {"fired": bool(h2_sources), "source_hosts": h2_sources},
-        "engines": engines,
+        "engines": {host: item["engine"] for host, item in facts.items()},
+        "shared_path": {host: item["shared_path"] for host, item in facts.items()},
+        "shared_path_cross_host": shared_cross,
+        "image_id": {host: item["image_id"] for host, item in facts.items()},
+        "image_id_cross_host": image_cross,
+        "stage_invalid": {
+            host: decision.get("stage_invalid") for host, decision in decisions.items()
+        },
         "clocks": {
             host: {
                 f"{stage}/{block['index']}": block["monotonic_over_real"]
@@ -1786,15 +1968,18 @@ def render_markdown_v3(combined: Mapping[str, Any]) -> str:
         "",
         "## 호스트별 판정",
         "",
-        "| 호스트 | 상태 | 선택 jobs | 대체값 | 중단 조건 | 재실행 합계 | 재실행 셀 |",
-        "| --- | --- | --- | --- | --- | --- | --- |",
+        "| 호스트 | 상태 | 선택 jobs | 대체값 | 중단 조건 | 측정 무효 단계(외부 탓) | "
+        "기록 문제 | 재실행 합계 | 재실행 셀 |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for host, decision in combined["decisions"].items():
         infra = combined["infra_reexecutions"].get(host) or {}
+        problems = sorted({item["rule"] for item in decision.get("external_problems") or ()})
         lines.append(
             f"| {host} | {decision['status']} | {_fmt(decision['selected_jobs'])} | "
             f"{_fmt(decision['fallback_jobs'])} | "
             f"{[item['rule'] for item in decision['halts']] or '없음'} | "
+            f"{_fmt(decision.get('stage_invalid'))} | {problems or '없음'} | "
             f"{_fmt(infra.get('total'))} | {_fmt(infra.get('cells_with_reexecution'))} |"
         )
     inputs = x1["inputs"] or {}
@@ -1803,6 +1988,8 @@ def render_markdown_v3(combined: Mapping[str, Any]) -> str:
         f"- 공통 jobs가 필요할 때(작은 값): {_fmt(combined['common_jobs_if_needed'])}",
         f"- H2′(합동 정지): {combined['h2_joint']['fired']}, "
         f"출처 {combined['h2_joint']['source_hosts']}",
+        f"- 공유 경로 해시 호스트 간: {combined['shared_path_cross_host']}, "
+        f"대상 이미지 id 호스트 간: {combined['image_id_cross_host']}",
         "",
         "## X1 교차 호스트 경로 일치 (jobs 배제 아님)",
         "",

@@ -77,6 +77,13 @@ stage.C = 6,8,8,6
 ```
 """
 
+#: A stand-in for the driver's shared path hashes (repository-relative path -> sha256 hex).
+SHARED_PATHS = {
+    "scripts/local_node_tar_smoke.sh": "a" * 64,
+    "src/inodefence/execution/start_gate.py": "b" * 64,
+}
+IMAGE_ID = "sha256:22c8734f141d91b333ba37c7fe6a9a7547d7abfab487fa028da2053bed6f3dbb"
+
 #: (block index, run id without prefix) -> changes for that cell.
 CellChanges = Mapping[tuple[int, str], Mapping[str, Any]]
 
@@ -211,11 +218,16 @@ def write_stage(
     record_extra: Mapping[str, Any] | None = None,
     not_run: Mapping[int, tuple[str, ...]] | None = None,
     record_hook: Callable[[int, dict[str, Any]], None] | None = None,
+    shared_paths: Mapping[str, str] | None = SHARED_PATHS,
+    image_id: str | None = IMAGE_ID,
+    preflight_hook: Callable[[int, dict[str, Any]], None] | None = None,
 ) -> None:
     """A stage's blocks under ``root`` (one host's output tree), every cell normal by default.
 
     ``host`` names a v3 host: run ids get its prefix and the block record carries ``host`` and
-    ``run_prefix``, as the v3 driver writes them. ``engine`` is the preflight's Docker server.
+    ``run_prefix``, as the v3 driver writes them. ``engine`` is the preflight's Docker server;
+    without it no preflight file is written. ``shared_paths`` and ``image_id`` go in the same
+    ``preflight`` object (None leaves the field out).
     """
     prefix = design.hosts[host].run_prefix if host is not None else None
     order = design.stages[stage]
@@ -259,16 +271,32 @@ def write_stage(
         directory.mkdir(parents=True, exist_ok=True)
         (directory / bench.BLOCK_FILE).write_text(json.dumps(record), encoding="utf-8")
         if engine is not None:
-            (directory / "preflight.json").write_text(
-                json.dumps({"preflight": {"docker_server": engine}}), encoding="utf-8"
-            )
+            facts: dict[str, Any] = {"docker_server": engine}
+            if image_id is not None:
+                facts["image_id"] = image_id
+            if shared_paths is not None:
+                facts["shared_path_sha256"] = dict(shared_paths)
+            # The driver's layout: the engine and hashes sit inside "preflight".
+            preflight: dict[str, Any] = {
+                "label": list(bench.LABELS),
+                "design_sha256": design.sha256,
+                "approval_ref": "test",
+                "host": host,
+                "preflight": facts,
+                "written_at": "2026-11-11T00:00:00+00:00",
+            }
+            if preflight_hook is not None:
+                preflight_hook(index, preflight)
+            (directory / "preflight.json").write_text(json.dumps(preflight), encoding="utf-8")
 
 
-def write_v2_golden_tree(root: Path, design: bench.Design) -> None:
+def write_v2_golden_tree(root: Path, design: bench.Design, *, null_host: bool = False) -> None:
     """The v2 regression input: a smoke block and stage A with an abort, a path change, a stall.
 
-    No host, no prefix: exactly what the v2 driver writes.
+    No host, no prefix: what the v2 driver writes. ``null_host`` adds the v3 driver's
+    ``"host": null`` and ``"run_prefix": null`` to every block record, as it writes them for v2.
     """
+    nulls = {"host": None, "run_prefix": None} if null_host else {}
     smoke = bench.planned_cells(design, bench.SMOKE_STAGE)
     directory = root / bench.SMOKE_STAGE / f"block-1-j{design.stages[bench.SMOKE_STAGE][0]}"
     entries = [
@@ -287,6 +315,7 @@ def write_v2_golden_tree(root: Path, design: bench.Design) -> None:
                 "stop_kind": None,
                 "finished": True,
                 "cells": entries,
+                **nulls,
             }
         ),
         encoding="utf-8",
@@ -304,6 +333,7 @@ def write_v2_golden_tree(root: Path, design: bench.Design) -> None:
             (4, third): {"case_at": {1: "case-other"}},
             (4, first): {"verdict_at": {0: "SENTINEL-ORACLE-VERDICT-7f3a-other"}},
         },
+        record_extra=nulls,
     )
 
 
@@ -360,10 +390,14 @@ def violation_rules(combined: Mapping[str, Any], host: str, *, ref: bool = False
 # ---- v2 stays byte-identical ---------------------------------------------------------------
 
 
-def test_v2_design_output_is_byte_identical_to_the_analyzer_before_v3(tmp_path: Path) -> None:
+@pytest.mark.parametrize("null_host", [False, True])
+def test_v2_design_output_is_byte_identical_to_the_analyzer_before_v3(
+    tmp_path: Path, null_host: bool
+) -> None:
     design = bench.load_design(DESIGN_V2_PATH)
     assert not design.is_v3
-    write_v2_golden_tree(tmp_path, design)
+    # With and without the v3 driver's "host": null, "run_prefix": null in the block records.
+    write_v2_golden_tree(tmp_path, design, null_host=null_host)
     assert analysis.main(["--design", str(DESIGN_V2_PATH), "--output", str(tmp_path)]) == 0
     report_json = (tmp_path / bench.REPORT_JSON).read_bytes()
     report_md = (tmp_path / analysis.REPORT_MD).read_bytes()
@@ -772,38 +806,203 @@ def test_h2_on_one_host_halts_both(
 # ---- engine and host identity ----------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    ("engine", "rule"),
-    [("29.8.0", "engine-mismatch"), ("29.9.3", None), (None, "engine-unverified")],
-)
-def test_engine_differing_from_the_design_halts_that_host(
-    design: bench.Design, tmp_path: Path, engine: str | None, rule: str | None
+def _on_block(index: int, change: Callable[[dict[str, Any]], None]) -> Any:
+    def hook(at: int, value: dict[str, Any]) -> None:
+        if at == index:
+            change(value)
+
+    return hook
+
+
+def _drop_fact(key: str) -> Callable[[dict[str, Any]], None]:
+    return lambda preflight: preflight["preflight"].pop(key)
+
+
+def _other_hash(preflight: dict[str, Any]) -> None:
+    preflight["preflight"]["shared_path_sha256"]["scripts/local_node_tar_smoke.sh"] = "c" * 64
+
+
+def _set(key: str, value: Any) -> Callable[[dict[str, Any]], None]:
+    return lambda record: record.__setitem__(key, value)
+
+
+EXTERNAL_CASES = [
+    ("engine-mismatch", {"engine": "29.8.0"}),
+    ("engine-unverified", {"preflight_hook": _on_block(2, _drop_fact("docker_server"))}),
+    ("host-mismatch", {"record_hook": _on_block(2, _set("host", "HOST1"))}),
+    ("host-mismatch", {"preflight_hook": _on_block(2, _set("host", "HOST1"))}),
+    ("shared-path-mismatch", {"preflight_hook": _on_block(3, _other_hash)}),
+    ("shared-path-unverified", {"preflight_hook": _on_block(3, _drop_fact("shared_path_sha256"))}),
+    (None, {}),
+]
+
+
+@pytest.mark.parametrize(("rule", "host2"), EXTERNAL_CASES)
+def test_record_problems_void_the_stage_as_an_external_stop(
+    design: bench.Design, tmp_path: Path, rule: str | None, host2: dict[str, Any]
 ) -> None:
-    combined = analyze(design, two_hosts(tmp_path, design, host2={"engine": engine}))
-    rules = host_rules(combined, "HOST2")
-    assert rules == ([rule] if rule else [])
-    assert host_rules(combined, "HOST1") == []
-    assert combined["decisions"]["HOST2"]["selected_jobs"] == (None if rule else 4)
+    combined = analyze(design, two_hosts(tmp_path, design, host2=host2))
+    decision = combined["decisions"]["HOST2"]
+    verdict = decision["stages"]["A"]
+    # Never a halt and never an exclusion: the stage's measurement is void (v2 section 6.3).
+    assert decision["halts"] == []
+    assert verdict["violations"] == [] and verdict["ref_violations"] == []
+    assert [item["rule"] for item in verdict["external_problems"]] == ([rule] if rule else [])
+    if rule:
+        assert decision["stage_invalid"] == "A" and verdict["stage_invalid"] is True
+        assert decision["status"] == "provisional"
+        assert decision["selected_jobs"] is None and decision["fallback_jobs"] is None
+        assert verdict["passed"] is False
+        assert combined["x1"]["status"] == "not evaluated"
+    else:
+        assert decision["stage_invalid"] is None
+        assert decision["selected_jobs"] == 4
+        assert combined["x1"]["status"] == "not fired"
     assert combined["decisions"]["HOST1"]["selected_jobs"] == 4
+    assert combined["stage_invalid"]["HOST1"] is None
 
 
 def test_an_unpinned_design_engine_never_matches(tmp_path: Path) -> None:
     design = v3_design(tmp_path, **{"host.HOST2.docker_engine": "TBD-PREFLIGHT"})
-    outputs = two_hosts(tmp_path, design, host2={"engine": "29.9.3"})
+    outputs = two_hosts(tmp_path, design, host2={"engine": "TBD-PREFLIGHT"})
     combined = analyze(design, outputs)
-    assert host_rules(combined, "HOST2") == ["engine-mismatch"]
+    problems = combined["decisions"]["HOST2"]["stages"]["A"]["external_problems"]
+    assert [item["rule"] for item in problems] == ["engine-mismatch"]
 
 
-@pytest.mark.parametrize(("recorded", "rule"), [("HOST1", "host-mismatch"), ("HOST2", None)])
-def test_a_block_of_another_host_halts(
-    design: bench.Design, tmp_path: Path, recorded: str, rule: str | None
+def _voided_stage_inputs(design: bench.Design) -> dict[tuple[int, str], dict[str, Any]]:
+    """Inputs that trip H1 (8/24 aborts at jobs 2), H3 (F = 3) and V10' at jobs 4."""
+    ids = run_ids(design)
+    cells: dict[tuple[int, str], dict[str, Any]] = {}
+    for run_id in ids[:4]:
+        cells[(1, run_id)] = {"abort_at": 2, "abort_case": "case-b1"}
+    for run_id in ids[4:8]:
+        cells[(4, run_id)] = {"abort_at": 2, "abort_case": "case-b4"}
+    for run_id in ids[8:11]:
+        cells[(4, run_id)] = {"case_at": {1: "case-late"}}
+    cells[(2, ids[11])] = {"duration": 7300.0, "clock_ratio": 0.97}
+    return cells
+
+
+@pytest.mark.parametrize(("engine", "voided"), [("29.8.0", True), ("29.9.3", False)])
+def test_no_rule_reads_a_voided_stage(
+    design: bench.Design, tmp_path: Path, engine: str, voided: bool
 ) -> None:
-    def hook(index: int, record: dict[str, Any]) -> None:
-        if index == 2:
-            record["host"] = recorded
+    host2 = {"cells": _voided_stage_inputs(design), "engine": engine}
+    combined = analyze(design, two_hosts(tmp_path, design, host2=host2))
+    decision = combined["decisions"]["HOST2"]
+    verdict = decision["stages"]["A"]
+    if voided:
+        assert decision["halts"] == []
+        assert verdict["violations"] == [] and verdict["ref_violations"] == []
+        assert decision["stage_invalid"] == "A"
+    else:
+        assert {"H1", "H3"} <= set(host_rules(combined, "HOST2"))
+        assert "V10'" in {item["rule"] for item in verdict["violations"]}
+        assert decision["stage_invalid"] is None
 
-    combined = analyze(design, two_hosts(tmp_path, design, host2={"record_hook": hook}))
-    assert host_rules(combined, "HOST2") == ([rule] if rule else [])
+
+@pytest.mark.parametrize(("engine", "voided"), [("29.8.0", True), ("29.9.3", False)])
+def test_a_voided_later_stage_keeps_the_passed_level_and_skips_the_reference_recheck(
+    design: bench.Design, tmp_path: Path, engine: str, voided: bool
+) -> None:
+    outputs = two_hosts(tmp_path, design)
+
+    def watchdog(record: dict[str, Any]) -> None:
+        record["cells"][0]["watchdog_killed"] = True
+
+    write_stage(
+        outputs["HOST2"],
+        design,
+        "B",
+        host="HOST2",
+        engine=engine,
+        record_hook=_on_block(1, watchdog),
+    )
+    combined = analyze(design, outputs)
+    decision = combined["decisions"]["HOST2"]
+    verdict = decision["stages"]["B"]
+    if voided:
+        assert decision["stage_invalid"] == "B"
+        assert decision["status"] == "provisional"
+        assert decision["selected_jobs"] == 4
+        assert verdict["ref_violations"] == [] and verdict["ref_cancelled"] is False
+    else:
+        assert verdict["ref_cancelled"] is True
+        assert "V1" in {item["rule"] for item in verdict["ref_violations"]}
+        assert decision["status"] == "selected" and decision["selected_jobs"] == 2
+
+
+@pytest.mark.parametrize(("engine", "voided"), [("29.8.0", True), ("29.9.3", False)])
+def test_a_smoke_record_problem_voids_the_first_measured_stage(
+    design: bench.Design, tmp_path: Path, engine: str, voided: bool
+) -> None:
+    outputs = two_hosts(tmp_path, design)
+    write_stage(outputs["HOST2"], design, bench.SMOKE_STAGE, host="HOST2", engine=engine)
+    combined = analyze(design, outputs)
+    decision = combined["decisions"]["HOST2"]
+    assert (decision["stage_invalid"] == "A") is voided
+    blocks = [block for item in decision["external_problems"] for block in item["blocks"]]
+    assert blocks == (["smoke/block-1-j2"] if voided else [])
+
+
+def _other_paths(preflight: dict[str, Any]) -> None:
+    preflight["preflight"]["shared_path_sha256"] = {**SHARED_PATHS, "scripts/extra.py": "d" * 64}
+
+
+@pytest.mark.parametrize(
+    ("host2", "field", "state"),
+    [
+        (
+            {"shared_paths": {**SHARED_PATHS, "scripts/local_node_tar_smoke.sh": "e" * 64}},
+            "shared_path_cross_host",
+            "mismatch",
+        ),
+        (
+            {"preflight_hook": lambda _index, preflight: _other_paths(preflight)},
+            "shared_path_cross_host",
+            "mismatch",
+        ),
+        ({}, "shared_path_cross_host", "match"),
+        ({"image_id": "sha256:" + "f" * 64}, "image_id_cross_host", "mismatch"),
+        ({"image_id": None}, "image_id_cross_host", "unverified"),
+        ({}, "image_id_cross_host", "match"),
+    ],
+)
+def test_cross_host_paths_and_image_gate_x1(
+    design: bench.Design, tmp_path: Path, host2: dict[str, Any], field: str, state: str
+) -> None:
+    combined = analyze(design, two_hosts(tmp_path, design, host2=host2))
+    assert combined[field] == state
+    # A cross-host difference stops no host: each host is consistent with itself.
+    assert combined["selected_jobs"] == {"HOST1": 4, "HOST2": 4}
+    if state == "match":
+        assert combined["x1"]["status"] == "not fired"
+    else:
+        assert combined["x1"]["status"] == "not evaluated"
+        reasons = combined["x1"]["reasons_not_evaluated"]
+        assert any(reason.endswith(f"across hosts is {state}") for reason in reasons)
+
+
+def test_x1_consequence_covers_not_evaluated(design: bench.Design, tmp_path: Path) -> None:
+    combined = analyze(design, two_hosts(tmp_path, design))
+    assert (
+        "X1이 not evaluated이면 본실험 합산 처리는 X1 발동과 같이 한다"
+        in (combined["x1"]["consequence"])
+    )
+
+
+@pytest.mark.parametrize(("state", "fires"), [("not-run", False), ("ran", True)])
+def test_a_cell_that_never_started_is_not_a_missing_stamp(
+    design: bench.Design, tmp_path: Path, state: str, fires: bool
+) -> None:
+    first = run_ids(design)[0]
+    if state == "not-run":
+        host2: dict[str, Any] = {"not_run": {2: (first,)}}
+    else:
+        host2 = {"cells": {(2, first): {"drop_stamp": ("started", "realtime")}}}
+    combined = analyze(design, two_hosts(tmp_path, design, host2=host2))
+    assert ("V10'" in violation_rules(combined, "HOST2")) is fires
 
 
 # ---- partial input and the CLI ---------------------------------------------------------------

@@ -107,6 +107,8 @@ CREATED_VOLUME=0
 # Set before `volume create`: the CLI can fail after the daemon created the volume.
 VOLUME_ATTEMPTED=0
 CREATED_CONTROLLER=0
+# Set before `docker run -d`: the CLI can fail after the daemon created the container.
+CONTROLLER_ATTEMPTED=0
 OWNER_TOKEN=""
 
 dk() {
@@ -173,6 +175,25 @@ cleanup() {
   gate_record C
   if [ "$status" -ne 0 ]; then
     echo "FAILED at step: $STEP (exit $status)" >&2
+  fi
+  if [ "$CONTROLLER_ATTEMPTED" -eq 1 ] && [ "$CREATED_CONTROLLER" -eq 0 ]; then
+    # The run did not report success. Absent is the expected outcome; a container
+    # carrying this run's owner label was created anyway and is removed below;
+    # anything else (another owner, an unanswered inspect) is unknown.
+    inspection=$(cleanup_dk 30 container inspect --format \
+      '{{.Id}} {{index .Config.Labels "org.inodefence.smoke-owner"}}' "$CONTROLLER" 2>&1)
+    rc=$?
+    read -r container_id label <<< "$inspection"
+    if [ "$rc" -eq 0 ] && [ -n "$OWNER_TOKEN" ] && [ "$label" = "$OWNER_TOKEN" ] &&
+       [[ "$container_id" =~ ^[0-9a-f]{64}$ ]]; then
+      CREATED_CONTROLLER=1
+    else
+      case "$inspection" in
+        "Error: No such object: $CONTROLLER"|"Error: No such container: $CONTROLLER"|"Error response from daemon: No such container: $CONTROLLER"|$'[]\n'"Error response from daemon: No such container: $CONTROLLER")
+          [ "$rc" -eq 1 ] || cleanup_unknown "controller creation outcome: $inspection" ;;
+        *) cleanup_unknown "controller creation outcome: $inspection" ;;
+      esac
+    fi
   fi
   if [ "$CREATED_CONTROLLER" -eq 1 ]; then
     inspection=$(cleanup_dk 30 container inspect --format \
@@ -357,6 +378,7 @@ if [ "$volume_owner" != "$OWNER_TOKEN" ] || [ -z "$OWNER_TOKEN" ]; then
   cleanup_unknown "volume creation ownership could not be verified"
   exit 1
 fi
+CONTROLLER_ATTEMPTED=1
 dk run -d --name "$CONTROLLER" --label "org.inodefence.smoke-owner=$OWNER_TOKEN" \
   --user vscode --workdir /workspaces/InodeFence \
   --env PYTHONPATH=/workspaces/InodeFence/src \

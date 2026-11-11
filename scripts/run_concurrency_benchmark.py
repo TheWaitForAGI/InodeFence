@@ -41,7 +41,7 @@ import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
@@ -76,6 +76,10 @@ FENCE_CLOSE = "```"
 ARM_PREFIX = "arm."
 STAGE_PREFIX = "stage."
 SMOKE_STAGE = "smoke"
+#: Design v3 engineering probe: unregistered, not a decision input, before smoke.
+PROBE_STAGE = "probe"
+PROBE_FILE = "probe.json"
+PROBE_SCHEMA = "inodefence-h1-probe-v1"
 ARM_CONFIG: Mapping[str, tuple[RdsArm, RVariant]] = {
     "R-walk": (RdsArm.R, RVariant.WALK),
     "R-restart": (RdsArm.R, RVariant.SEED_RESTART),
@@ -115,7 +119,29 @@ RESERVED_SEED_RANGES: tuple[tuple[int, int], ...] = (
     (8001, 8003),
     (8101, 8110),
     (9001, 9999),
+    # v3 engineering probe (design v3 section 5): usable only as a v3 design's probe_seeds.
+    (6200, 6207),
 )
+PROBE_SEED_RANGE = (6200, 6207)
+#: Design v3 (two hosts). ``docker_engine`` moves to ``host.<id>.docker_engine``.
+V3_KEYS = (REQUIRED_KEYS - {"docker_engine"}) | {
+    "hosts",
+    "retry_max_attempts",
+    "v10_monotonic_seconds",
+    "v10_realtime_seconds",
+    "x1_margin",
+    "x1_incomparable_cells",
+    "probe_seeds",
+    "probe_budget",
+    "probe_jobs",
+    "probe_retry_max_attempts",
+}
+HOST_PREFIX = "host."
+HOST_KEYS = frozenset({"run_prefix", "docker_engine"})
+#: A value the design file says must be filled in from a preflight before any live run.
+UNRESOLVED_PREFIX = "TBD-"
+HOST_ID = re.compile(r"[A-Za-z][A-Za-z0-9]{0,15}")
+RUN_PREFIX = re.compile(r"[a-z][a-z0-9]{0,7}")
 #: The pilot seeds a design may measure again on purpose: an abort's input comes round again, which
 #: tests recurrence (design v2). Measured seeds only, and only these four; the range stays reserved.
 PILOT_RERUN_SEEDS = frozenset({8102, 8103, 8106, 8110})
@@ -133,6 +159,24 @@ STOP_EXTERNAL = "external"
 
 class DesignError(ValueError):
     """The design file is unusable; nothing runs."""
+
+
+@dataclass(frozen=True, slots=True)
+class HostSpec:
+    """One host of a v3 design: its run_id prefix and its pinned Docker engine."""
+
+    run_prefix: str
+    docker_engine: str
+
+
+@dataclass(frozen=True, slots=True)
+class ProbeSpec:
+    """The v3 engineering probe (unregistered, not a decision input)."""
+
+    seeds: tuple[int, ...]
+    budget: int
+    jobs: int
+    retry_max_attempts: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,6 +204,26 @@ class Design:
     cooldown_seconds: float
     stages: Mapping[str, tuple[int, ...]]
     sha256: str
+    # Design v3 only; a v2 design keeps these defaults.
+    hosts: Mapping[str, HostSpec] = field(default_factory=dict)
+    retry_max_attempts: int = 1
+    probe: ProbeSpec | None = None
+    v10_monotonic_seconds: float | None = None
+    v10_realtime_seconds: float | None = None
+    x1_margin: int | None = None
+    x1_incomparable_cells: int | None = None
+
+    @property
+    def is_v3(self) -> bool:
+        return bool(self.hosts)
+
+    def engine_for(self, host: str | None) -> str:
+        """The Docker engine a live run on ``host`` must find (v2: the design's one)."""
+        if not self.is_v3:
+            return self.docker_engine
+        if host is None or host not in self.hosts:
+            raise DesignError(f"--host must be one of {sorted(self.hosts)} for {self.design_id}")
+        return self.hosts[host].docker_engine
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,6 +232,8 @@ class Block:
     index: int
     jobs: int
     cells: tuple[Cell, ...]
+    #: v3 host id; ``None`` for a v2 design (and for a v3 plan printed without --host).
+    host: str | None = None
 
     @property
     def name(self) -> str:
@@ -221,19 +287,73 @@ def _parse_stages(values: Mapping[str, str]) -> dict[str, tuple[int, ...]]:
     return stages
 
 
+def _parse_hosts(plain: Mapping[str, str], host_values: Mapping[str, str]) -> dict[str, HostSpec]:
+    names = tuple(item.strip() for item in plain["hosts"].split(","))
+    if not names or len(set(names)) != len(names) or any(not HOST_ID.fullmatch(n) for n in names):
+        raise DesignError(f"hosts must be distinct identifiers: {plain['hosts']!r}")
+    seen: dict[str, dict[str, str]] = {}
+    for key, value in host_values.items():
+        host, _, sub_key = key[len(HOST_PREFIX) :].partition(".")
+        if host not in names or sub_key not in HOST_KEYS:
+            raise DesignError(f"unknown host key: {key}")
+        seen.setdefault(host, {})[sub_key] = value
+    hosts: dict[str, HostSpec] = {}
+    for name in names:
+        keys = seen.get(name, {})
+        if set(keys) != HOST_KEYS:
+            raise DesignError(f"host {name} needs {sorted(HOST_KEYS)}, has {sorted(keys)}")
+        if not RUN_PREFIX.fullmatch(keys["run_prefix"]):
+            raise DesignError(
+                f"host {name}: run_prefix {keys['run_prefix']!r} is not [a-z][a-z0-9]*"
+            )
+        hosts[name] = HostSpec(keys["run_prefix"], keys["docker_engine"])
+    prefixes = [spec.run_prefix for spec in hosts.values()]
+    if len(set(prefixes)) != len(prefixes):
+        raise DesignError("hosts must not share a run_prefix")
+    return hosts
+
+
+def _single_attempt(plain: Mapping[str, str], key: str) -> int:
+    # This driver has no cell retry: a value other than 1 would claim one it does not do.
+    value = int(plain[key])
+    if value != 1:
+        raise DesignError(f"{key} = {value}: this driver runs each cell once; only 1 is accepted")
+    return value
+
+
+def _parse_probe(plain: Mapping[str, str], measured: set[int]) -> ProbeSpec:
+    seeds = _int_list(plain["probe_seeds"])
+    low, high = PROBE_SEED_RANGE
+    if len(set(seeds)) != len(seeds) or any(not low <= seed <= high for seed in seeds):
+        raise DesignError(f"probe_seeds must be distinct and inside {low}-{high}")
+    if measured & set(seeds):
+        raise DesignError("probe_seeds must differ from the measured and smoke seeds")
+    jobs = int(plain["probe_jobs"])
+    if jobs < 1:
+        raise DesignError("probe_jobs must be positive")
+    return ProbeSpec(
+        seeds, int(plain["probe_budget"]), jobs, _single_attempt(plain, "probe_retry_max_attempts")
+    )
+
+
 def parse_design(text: str) -> Design:
-    """Parse and validate the design block; every arm must realize its named policy."""
+    """Parse and validate the design block; every arm must realize its named policy.
+
+    A block with ``hosts`` is design v3 (two hosts, probe, V10', X1 keys); any
+    other block is parsed exactly as v2.
+    """
     values = _parse_block(text)
     arm_values = {k[len(ARM_PREFIX) :]: v for k, v in values.items() if k.startswith(ARM_PREFIX)}
     stage_values = {k: v for k, v in values.items() if k.startswith(STAGE_PREFIX)}
+    host_values = {k: v for k, v in values.items() if k.startswith(HOST_PREFIX)}
     plain = {
-        k: v
-        for k, v in values.items()
-        if not k.startswith(ARM_PREFIX) and not k.startswith(STAGE_PREFIX)
+        k: v for k, v in values.items() if not k.startswith((ARM_PREFIX, STAGE_PREFIX, HOST_PREFIX))
     }
-    if set(plain) != REQUIRED_KEYS:
-        missing = sorted(REQUIRED_KEYS - set(plain))
-        unknown = sorted(set(plain) - REQUIRED_KEYS)
+    v3 = "hosts" in plain
+    expected = V3_KEYS if v3 else REQUIRED_KEYS
+    if set(plain) != expected or (host_values and not v3):
+        missing = sorted(expected - set(plain))
+        unknown = sorted(set(plain) - expected) + (sorted(host_values) if not v3 else [])
         raise DesignError(f"design keys differ: missing {missing}, unknown {unknown}")
     unknown_arms = sorted(set(arm_values) - set(ARM_CONFIG))
     if unknown_arms or not arm_values:
@@ -250,6 +370,17 @@ def parse_design(text: str) -> Design:
         raise DesignError("seeds must be unique and differ from smoke_seed")
     for seed in (*(item for item in seeds if item not in PILOT_RERUN_SEEDS), smoke_seed):
         _check_seed(seed)
+    v3_fields: dict[str, Any] = {}
+    if v3:
+        v3_fields = {
+            "hosts": _parse_hosts(plain, host_values),
+            "retry_max_attempts": _single_attempt(plain, "retry_max_attempts"),
+            "probe": _parse_probe(plain, {*seeds, smoke_seed}),
+            "v10_monotonic_seconds": float(plain["v10_monotonic_seconds"]),
+            "v10_realtime_seconds": float(plain["v10_realtime_seconds"]),
+            "x1_margin": int(plain["x1_margin"]),
+            "x1_incomparable_cells": int(plain["x1_incomparable_cells"]),
+        }
     vocabulary = VocabularyMode(plain["vocabulary"])
     budget = int(plain["budget"])
     arms: list[Arm] = []
@@ -265,7 +396,8 @@ def parse_design(text: str) -> Design:
         design_id=plain["design_id"],
         target_version=plain["target_version"],
         image_digest=plain["image_digest"],
-        docker_engine=plain["docker_engine"],
+        # v3: per host (Design.engine_for); this field stays empty there.
+        docker_engine=plain.get("docker_engine", ""),
         budget=budget,
         seeds=seeds,
         smoke_budget=int(plain["smoke_budget"]),
@@ -285,32 +417,83 @@ def parse_design(text: str) -> Design:
         cooldown_seconds=float(plain["cooldown_seconds"]),
         stages=_parse_stages(stage_values),
         sha256=sha256(text.encode("utf-8")).hexdigest(),
+        **v3_fields,
     )
+
+
+def unresolved_values(design: Design, host: str | None) -> list[str]:
+    """Values a live run on ``host`` must not start with (``TBD-``, design v3 section 2)."""
+    if not design.is_v3:
+        return []
+    engine = design.engine_for(host)
+    if engine.startswith(UNRESOLVED_PREFIX):
+        return [f"host.{host}.docker_engine = {engine}: pin it from a preflight first"]
+    return []
 
 
 def load_design(path: Path) -> Design:
     return parse_design(path.read_text(encoding="utf-8"))
 
 
-def planned_cells(design: Design, stage: str) -> tuple[Cell, ...]:
-    """Seed blocks with the arm order rotated per seed; identical for every block of a stage."""
+def run_prefix(design: Design, host: str | None) -> str:
+    """The run-id prefix of ``host`` (v3); empty for v2 or without a host."""
+    if not design.is_v3 or host is None:
+        return ""
+    design.engine_for(host)  # refuses an unknown host
+    return design.hosts[host].run_prefix
+
+
+def planned_cells(design: Design, stage: str, host: str | None = None) -> tuple[Cell, ...]:
+    """Seed blocks with the arm order rotated per seed; identical for every block of a stage.
+
+    Both v3 hosts run the same cells in the same order; only the run-id prefix differs.
+    """
+    count = len(design.arms)
+    prefix = run_prefix(design, host)
+    if stage == PROBE_STAGE:
+        # One cell per probe seed, arms in rotation (v3 section 5: 6200 R-restart, 6201 D, ...).
+        if design.probe is None:
+            raise DesignError(f"{design.design_id} has no probe stage")
+        return tuple(
+            Cell(
+                MODE,
+                design.target_version,
+                design.arms[position % count],
+                seed,
+                design.probe.budget,
+                run_prefix=prefix,
+            )
+            for position, seed in enumerate(design.probe.seeds)
+        )
     smoke = stage == SMOKE_STAGE
     seeds = (design.smoke_seed,) if smoke else design.seeds
     budget = design.smoke_budget if smoke else design.budget
-    count = len(design.arms)
     return tuple(
-        Cell(MODE, design.target_version, design.arms[(position + offset) % count], seed, budget)
+        Cell(
+            MODE,
+            design.target_version,
+            design.arms[(position + offset) % count],
+            seed,
+            budget,
+            run_prefix=prefix,
+        )
         for position, seed in enumerate(seeds)
         for offset in range(count)
     )
 
 
-def planned_blocks(design: Design, stage: str) -> tuple[Block, ...]:
+def planned_blocks(design: Design, stage: str, host: str | None = None) -> tuple[Block, ...]:
+    if stage == PROBE_STAGE:
+        if design.probe is None:
+            raise DesignError(f"{design.design_id} has no probe stage")
+        # One block; the crossed jobs order applies to measured stages only.
+        return (Block(PROBE_STAGE, 1, design.probe.jobs, planned_cells(design, stage, host), host),)
     if stage not in design.stages:
         raise DesignError(f"unknown stage {stage!r}; design has {sorted(design.stages)}")
-    cells = planned_cells(design, stage)
+    cells = planned_cells(design, stage, host)
     return tuple(
-        Block(stage, index, jobs, cells) for index, jobs in enumerate(design.stages[stage], start=1)
+        Block(stage, index, jobs, cells, host)
+        for index, jobs in enumerate(design.stages[stage], start=1)
     )
 
 
@@ -340,10 +523,12 @@ def residual_resources() -> list[str]:
     return guards.residual_resources(_docker)
 
 
-def preflight(design: Design, expected_head: str) -> tuple[dict[str, Any], list[str]]:
-    """Facts the run stands on, and the problems that refuse it."""
+def preflight(
+    design: Design, expected_head: str, host: str | None = None
+) -> tuple[dict[str, Any], list[str]]:
+    """Facts the run stands on, and the problems that refuse it (v3: on ``host``)."""
     source = capture_source()
-    problems: list[str] = []
+    problems: list[str] = list(unresolved_values(design, host))
     if source.revision != expected_head:
         problems.append(f"checkout HEAD {source.revision} != expected {expected_head}")
     if source.dirty is not False:
@@ -369,7 +554,7 @@ def preflight(design: Design, expected_head: str) -> tuple[dict[str, Any], list[
     image = f"inodefence-node-tar-effect:{design.target_version}"
     # Cells run with SKIP_BUILD=1, so the local images must exist before the first cell.
     docker_facts, docker_problems = guards.docker_preflight(
-        engine=design.docker_engine,
+        engine=design.engine_for(host),
         images={image: design.image_digest, **dict.fromkeys(LOCAL_IMAGES)},
         docker=_docker,
         residual=residual_resources,
@@ -658,6 +843,8 @@ class BlockRun:
             "stage": self.block.stage,
             "index": self.block.index,
             "jobs": self.block.jobs,
+            "host": self.block.host,
+            "run_prefix": run_prefix(self.design, self.block.host) or None,
             "started": started,
             "ended": ended,
             "stopped_reason": self.stopped_reason,
@@ -838,6 +1025,8 @@ def run_block(
                 "block": block.name,
                 "index": block.index,
                 "jobs": block.jobs,
+                "host": block.host,
+                "run_prefix": run_prefix(design, block.host) or None,
                 "execution_sha": revision,
                 "stopped_reason": run.stopped_reason,
                 "stop_kind": run.stop_kind,
@@ -897,18 +1086,124 @@ def planned_stop(record: Mapping[str, Any]) -> bool:
     )
 
 
-def stage_gate_problem(design: Design, stage: str, output: Path) -> str | None:
+def probe_gate_problem(design: Design, output: Path, host: str | None) -> str | None:
+    """A v3 smoke starts only after this design's probe passed on this host."""
+    path = output / PROBE_STAGE / PROBE_FILE
+    if not path.is_file():
+        return f"no {PROBE_STAGE}/{PROBE_FILE}; run --stage {PROBE_STAGE} first"
+    try:
+        probe = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        return f"{PROBE_FILE} unreadable: {error}"
+    if probe.get("schema") != PROBE_SCHEMA or probe.get("design_sha256") != design.sha256:
+        return f"{PROBE_FILE} was not written for this design"
+    if probe.get("host") != host:
+        return f"{PROBE_FILE} is for host {probe.get('host')}, not {host}"
+    if probe.get("passed") is not True:
+        return f"the probe did not pass: {probe.get('conditions')}"
+    return None
+
+
+def _count_lines(paths: Sequence[Path], match: Callable[[str], bool]) -> int:
+    total = 0
+    for path in paths:
+        with path.open(encoding="utf-8", errors="replace") as stream:
+            total += sum(1 for line in stream if match(line))
+    return total
+
+
+def _timed_out_call(line: str) -> bool:
+    try:
+        return bool(json.loads(line).get("timed_out"))
+    except ValueError:
+        return False
+
+
+def summarize_probe(
+    design: Design,
+    block: Block,
+    directory: Path,
+    gate_directory: Path,
+    record: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """The probe's fixed pass conditions and its report-only counts (v3 section 5).
+
+    Reads block records, gate verdicts, cell logs and host call logs only; never a
+    campaign report. ``record`` is ``None`` when the block raised; the incomplete
+    evidence is used instead and an unknown count fails the probe.
+    """
+    evidence = record
+    if evidence is None and (directory / INCOMPLETE_BLOCK_FILE).is_file():
+        evidence = json.loads((directory / INCOMPLETE_BLOCK_FILE).read_text(encoding="utf-8"))
+    raw = directory / "raw"
+    logs = sorted(raw.glob("*.log")) if raw.is_dir() else []
+    calls = sorted(raw.glob("*.calls.jsonl")) if raw.is_dir() else []
+    gate = StartGate(gate_directory, check_filesystem=False)
+    unknown_cells = set()
+    for cell in block.cells:
+        try:
+            verdict = gate.verdict(cell.run_id)
+        except Exception:
+            verdict = ("U", "unreadable")
+        if verdict is not None and verdict[0] == "U":
+            unknown_cells.add(cell.run_id)
+    for log in logs:
+        if _count_lines([log], lambda line: "INODEFENCE_CLEANUP_UNKNOWN:" in line):
+            unknown_cells.add(log.name.removesuffix(".log"))
+    conditions: dict[str, int | None] = {"cleanup_unknown": len(unknown_cells)}
+    cell_records: list[Mapping[str, Any]] = []
+    if evidence is None:
+        conditions.update(residual_resources=None, runner_failures=None, start_failures=None)
+    else:
+        cell_records = evidence.get("cells") or evidence.get("cell_records") or []
+        residual = evidence.get("residual_after_block")
+        if record is None:
+            status = evidence.get("residual_resources") or {}
+            residual = status.get("resources") if status.get("status") == "observed" else None
+        conditions["residual_resources"] = None if residual is None else len(residual)
+        conditions["runner_failures"] = len(evidence.get("failures") or [])
+        conditions["start_failures"] = sum(1 for cell in cell_records if cell.get("start_error"))
+    return {
+        "schema": PROBE_SCHEMA,
+        "label": list(LABELS),
+        "design_id": design.design_id,
+        "design_sha256": design.sha256,
+        "host": block.host,
+        "block": block.name,
+        "passed": all(value == 0 for value in conditions.values()),
+        "conditions": conditions,
+        "report_only": {
+            "calls_timeouts": _count_lines(calls, _timed_out_call),
+            "cleanup_diagnostic_lines": _count_lines(
+                logs, lambda line: line.startswith("inodefence-cleanup-")
+            ),
+            "infra_reexecutions": _count_lines(
+                logs, lambda line: "inodefence-infra-reexecution" in line
+            ),
+            "start_gate_waits_seconds": (record or {}).get("start_gate_waits_seconds"),
+            "not_run_cells": sum(1 for cell in cell_records if cell.get("state") == "not-run"),
+            "stopped_reason": (evidence or {}).get("stopped_reason"),
+        },
+        "written_at": datetime.now(UTC).isoformat(),
+    }
+
+
+def stage_gate_problem(
+    design: Design, stage: str, output: Path, host: str | None = None
+) -> str | None:
     """Stages run in design order. A measured stage follows only a passed mechanical decision.
 
     Smoke must finish without a stop before the first measured stage. A later stage needs the
     analysis report of this design to say the previous stage passed and nothing halted.
     """
-    if stage == SMOKE_STAGE:
+    if stage == PROBE_STAGE:
         return None
+    if stage == SMOKE_STAGE:
+        return probe_gate_problem(design, output, host) if design.is_v3 else None
     order = (SMOKE_STAGE, *measured_stages(design))
     previous = order[order.index(stage) - 1]
     if previous == SMOKE_STAGE:
-        states = [stage_state(output, block) for block in planned_blocks(design, previous)]
+        states = [stage_state(output, block) for block in planned_blocks(design, previous, host)]
         if any(state != "clean" for state in states):
             return f"stage {previous} is not clean ({states}); {stage} may not start"
         return None
@@ -925,14 +1220,14 @@ def stage_gate_problem(design: Design, stage: str, output: Path) -> str | None:
     if not verdict.get("passed"):
         return f"stage {previous} did not pass the decision rule; {stage} may not start"
     for earlier in order[: order.index(stage)]:
-        states = [stage_state(output, block) for block in planned_blocks(design, earlier)]
+        states = [stage_state(output, block) for block in planned_blocks(design, earlier, host)]
         if any(state != "clean" for state in states):
             return f"stage {earlier} is not clean ({states}); {stage} may not start"
     return None
 
 
-def print_plan(design: Design, stage: str) -> None:
-    blocks = planned_blocks(design, stage)
+def print_plan(design: Design, stage: str, host: str | None = None) -> None:
+    blocks = planned_blocks(design, stage, host)
     cells = blocks[0].cells
     print(
         f"{design.design_id} sha256={design.sha256[:12]}… stage={stage} "
@@ -944,9 +1239,9 @@ def print_plan(design: Design, stage: str) -> None:
         print(f"  {cell.run_id}: search={cell.arm.search}")
 
 
-def print_status(design: Design, stage: str, output: Path) -> None:
+def print_status(design: Design, stage: str, output: Path, host: str | None = None) -> None:
     """Schedule state only: reads block records, never a cell file."""
-    for block in planned_blocks(design, stage):
+    for block in planned_blocks(design, stage, host):
         record_path = output / block.stage / block.name / BLOCK_FILE
         state = stage_state(output, block)
         detail = ""
@@ -967,6 +1262,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--stage", required=True, help="smoke, then the design's measured stages")
     parser.add_argument("--expected-head", help="commit this checkout must be at (live run)")
     parser.add_argument("--approval-ref", help="who approved this stage, recorded (live run)")
+    parser.add_argument(
+        "--host", help="v3 design: the host id this machine runs as (engine and run-id prefix)"
+    )
     parser.add_argument("--dry-run", action="store_true", help="print the plan; no Docker")
     parser.add_argument("--status", action="store_true", help="schedule state only; no outcomes")
     parser.add_argument(
@@ -982,22 +1280,28 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     design = load_design(args.design)
+    if design.is_v3 and args.host is None:
+        parser.error(f"{design.design_id} has hosts {sorted(design.hosts)}: --host is required")
+    if not design.is_v3 and args.host is not None:
+        parser.error(f"{design.design_id} has no hosts: --host does not apply")
     try:
-        blocks = planned_blocks(design, args.stage)
+        blocks = planned_blocks(design, args.stage, args.host)
     except DesignError as error:
         parser.error(str(error))
     if args.dry_run:
-        print_plan(design, args.stage)
+        print_plan(design, args.stage, args.host)
+        for item in unresolved_values(design, args.host):
+            print(f"note: a live run would refuse: {item}")
         return 0
     if args.status:
-        print_status(design, args.stage, args.output)
+        print_status(design, args.stage, args.output, args.host)
         return 0
     if not args.expected_head or not args.approval_ref:
         parser.error("a live run needs --expected-head and --approval-ref")
     repo_root = Path(__file__).resolve().parents[1]
     problem = output_problem(args.output, repo_root, Path.home())
     if problem is None:
-        problem = stage_gate_problem(design, args.stage, args.output)
+        problem = stage_gate_problem(design, args.stage, args.output, args.host)
     if problem is not None:
         print(f"refusing to run: {problem}", file=sys.stderr)
         return 2
@@ -1011,7 +1315,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     for block, state in zip(blocks, states, strict=True):
         if state == "clean":
             continue
-        facts, problems = preflight(design, args.expected_head)
+        facts, problems = preflight(design, args.expected_head, args.host)
         if problems:
             print(f"refusing to start {block.name}:", file=sys.stderr)
             for item in problems:
@@ -1025,6 +1329,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "label": list(LABELS),
                     "design_sha256": design.sha256,
                     "approval_ref": args.approval_ref,
+                    "host": args.host,
                     "preflight": facts,
                     "written_at": datetime.now(UTC).isoformat(),
                 },
@@ -1034,15 +1339,34 @@ def main(argv: Sequence[str] | None = None) -> int:
             + "\n",
             encoding="utf-8",
         )
-        record = run_block(
-            design,
-            block,
-            directory,
-            bash,
-            args.output / START_GATE_DIR,
-            guards.Recorders(ping_socket=args.ping_socket, desktop_log=args.desktop_log),
-        )
+        gate_directory = args.output / START_GATE_DIR
+        probe = block.stage == PROBE_STAGE
+        try:
+            record = run_block(
+                design,
+                block,
+                directory,
+                bash,
+                gate_directory,
+                guards.Recorders(ping_socket=args.ping_socket, desktop_log=args.desktop_log),
+            )
+        except BaseException as error:
+            if probe:
+                try:
+                    _publish_json(
+                        directory.parent / PROBE_FILE,
+                        summarize_probe(design, block, directory, gate_directory, None),
+                    )
+                except Exception as summary_error:
+                    error.add_note(f"probe summary not written: {summary_error}")
+            raise
         print(f"{block.name}: stopped={record['stopped_reason']}")
+        if probe:
+            summary = summarize_probe(design, block, directory, gate_directory, record)
+            _publish_json(directory.parent / PROBE_FILE, summary)
+            print(f"probe: passed={summary['passed']} {summary['conditions']}")
+            if not summary["passed"]:
+                return 1
         if record["stopped_reason"]:
             return 1
         time.sleep(design.cooldown_seconds)

@@ -79,10 +79,15 @@ class Cell:
     arm: Arm
     seed: int
     budget: int
+    #: Host prefix for a multi-host design (concurrency v3: ``h1``/``h2``). Empty keeps the
+    #: run id, and every name derived from it, exactly as before.
+    run_prefix: str = ""
 
     @property
     def run_id(self) -> str:
         token = f"{self.version or 'native'}-{self.arm.label}-s{self.seed}"
+        if self.run_prefix:
+            token = f"{self.run_prefix}-{token}"
         if not TOKEN.fullmatch(token):
             raise ValueError(f"run id is not a valid resource name: {token!r}")
         return token

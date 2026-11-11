@@ -296,3 +296,5 @@ append-only. 실행 시도 1건 = 1줄. 실패해도 기록한다.
 - 2026-11-11 | Claude W1 (M3 H1) | #334(p0-330) 프로세스 간 시작 게이트(src/inodefence/execution/start_gate.py) 추가 및 벤치마크·smoke cleanup 배선. strict xfail 제거, 다중 프로세스 결정적 테스트로 검증. docker·정식 H1은 실행하지 않음. | tests/test_start_gate.py · H1 테스트 |
 
 - 2026-11-11 | Claude W1 (M3 H1) | 벤치마크·본실험 공유 호스트 보호를 scripts/launcher_guards.py로 분리(동작 불변, 기존 테스트 무수정 통과) 및 기록 전용 _ping·Desktop 로그 계측(기본 꺼짐) 추가. docker는 실행하지 않음. | tests/test_launcher_guards.py |
+
+- 2026-11-11 | Claude (M3 H1, 분석기) | 동시 실행 벤치마크 v3 분석기 후보: 호스트별 v2 §6 판정, V10′(monotonic·실시간, 스탬프 없음=배제), V7′(timed_out+인프라 재실행, 방법론 담당 결정, v3 문서 정정 전제), X1(3조항, jobs 배제 아님, 값 미출력), H2′ 합동 정지, 엔진·호스트 불일치 정지, --host-output·--partial CLI. v2 설계 출력은 바이트 동일(골든 해시 테스트). 합성 fixture만 사용, 실제 raw·docker는 열거나 실행하지 않음. | tests/test_v3_analyzer.py |

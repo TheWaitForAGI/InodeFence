@@ -915,3 +915,26 @@ W3 판단: `concurrency-scaling-v1.md:348`의 "15캠페인 8건"은 D040으로 �
 | seed | 측정 seed는 D041의 4개를 두 호스트에서 재사용한다(새 노출 아님). 원장은 호스트별 행을 쓰고, 봉인은 두 호스트 raw 모두에 적용한다 | |
 
 **바뀌지 않는 것:** v2 §6의 모든 임계값, D041의 V9 fail-closed와 H3-unmeasured, 봉인(§6.6), 벤치마크 a를 EXP-3 추정에 쓰지 않는다는 규칙, D038 안전경계, oracle 정의.
+
+## D045 — holdout 상태 확인의 "위반"·"어댑터 호환" 정의와 train abort 분모 (초안)
+
+**상태:** 초안 (ORCH 결정 2026-11-11, 지웅 승인은 PR 머지). 데이터 이전 결정이다. holdout 후보의 상태 확인은 실행하지 않았고, 7.5.2 기준 실행도 하지 않았다. D040-D4의 규칙("위반 ∧ 어댑터 호환 중 최고 버전")을 바꾸지 않고, 원문에 정의가 없던 두 낱말과 실행 순서를 정한다. **D040-D5 조건 1에 따라 이 기록이 main에 머지된 뒤에만 상태 확인을 실행한다.**
+
+### 결정
+
+| 항목 | 결정 | 이유·근거 |
+| --- | --- | --- |
+| fixture 집합 | `make regression TAR_VERSION=<v>`(`Makefile:95-102` → `scripts/regression_check.py`)의 고정 fixture 5개다. 손 하드링크 2개(`toplevel_hardlink`, `nested_hardlink`)와 symlink-write 3개(`toplevel_symlink_write`, `nested_symlink_write`, `dir_symlink_write`). 퍼징은 하지 않는다 | 기존 유지보수자 회귀 명령이다(#218). fixture 판정은 C1(외부 reference inode 공유)과 C2(reference의 ino·nlink·size·type 변화)다 |
+| 어댑터 호환 | 5개 fixture가 **모두 ERROR 없이** PASS 또는 FAIL 판정을 낸다. ERROR면 1회 재실행하고 별도 원장 행으로 남긴다(D5 조건 3). 재실행도 ERROR면 부적격이다. **후보 버전에서 탐색(퍼징) 실행은 하지 않는다** | 탐색 실행은 D5-4 공개 문구("후보 버전에서 탐색 실행은 하지 않았다")를 거짓으로 만든다 |
+| 위반 | **(ii) 같은 위반 계열.** 후보에서 FAIL(C1∨C2)인 fixture 중 하나 이상이 기준 집합 F_train에 속하면 위반이다. F_train은 train 타깃 7.5.2에서 FAIL인 fixture 집합이다. (i) "5개 중 1개 이상 FAIL"은 채택하지 않는다 | D040-D7의 검정력(.76~.79)은 holdout hazard가 train의 절반 이상(s ≥ .5)이라는 가정 위에 있다. train에서 hazard가 측정되지 않은 계열(예: symlink-write만 깨지는 후보)을 고르면 "I < 7 미검정"으로 끝날 위험이 크다. 변이 정책(`…-escape-hardlink-…`)도 hardlink 계열을 겨냥한다. 규칙 입력은 여전히 버전 번호와 fixture 결과뿐이라 D5-4 공개 문구가 유지된다 |
+| 기준 집합 F_train | 후보보다 **먼저** 같은 명령으로 7.5.2를 1회 실행해 정한다. 그 결과의 손 하드링크 2개가 M2 기록(`experiments/repro/evidence/summary.json`, `per_release_shared["7.5.2"]` = true, toplevel·nested)과 다르면 하네스 불일치로 보고 중단한다. **F_train이 비어 있으면**(7.5.2에서 FAIL 0개) 역시 하네스 불일치로 중단·보고하고 후보를 실행하지 않는다. 7.5.2 실행은 원장에 행을 추가한다(train 타깃이라 자격에 영향 없음) | 저장소에는 7.5.2의 symlink-write 3개 결과 기록이 없다(#218 LOG: docker 미실행, `breached_fixtures` 기록 없음, 2026-11-11 확인). 고정 fixture 결과라 봉인 대상이 아니다 |
+| 선정 | 위반 ∧ 호환인 후보 중 **최고 버전**. 전부 부적격이면 **D1(D)로 자동 전환**한다(holdout 포기, 탐색 등록만, exp2-v1 미실행) | D040-D4 원문 그대로 |
+| 대가 공개 | (ii)는 후보를 좁히므로 D1(D) 자동 전환 확률이 (i)보다 높다. 이 점을 exp2-v1 §3에 공개한다 | 결과 전 선택의 비용을 숨기지 않는다 |
+| 후보 | {7.0.1, 7.1.0, 7.2.0, 7.3.0, 7.4.4}(D040-D4), **버전 오름차순 고정, 후보당 1회** | 순서를 결과와 무관하게 고정한다 |
+| allowlist | holdout 버전 허용은 D040-D2 "(a) 불변 표 1줄"로 이미 사람 승인됐다. FROZEN과 분리된 상수 1줄과 lock 해시 대조로 구현한다 | D040-D2 |
+| lock·이미지 | 절차 문장은 W3 확인 결과로 채운다(자리만 둠). 이미지는 빌드 1회 뒤 id를 고정하고 docker save로 보관한다(D18) | W3 확인 중 |
+| 실행 순서 | ① D045 main 머지 → ② lock·이미지 준비 → ③ 7.5.2 기준 실행 → ④ 후보 5개(오름차순, 후보당 1회) → ⑤ 원장 행 PR(후보 5개 전부와 7.5.2, ERROR 재실행 행 포함; `exposure_kind = qualification-only`는 후보 행만) | D5 조건 1~3 |
+| 역할 | 실행 W3, 실행 승인 오케스트레이터, 원장 행 PR 검증 W4 | |
+| train abort 분모 | **분모 = 시도한 셀**(`start` 줄이 있는 run id). **분자 = 그중 abort + record-inconsistent + no-record.** 미시작 셀은 분모·분자 모두에서 빼고 수를 병기한다. 등록 전체 셀 기준 값도 참고 줄로 함께 내며 GO 입력은 아니다 | D040-D11·D041·D043(#303) 어디에도 분모가 없었다. 미시작 셀을 분모에 넣으면 비율이 낮아져 GO가 쉬워지므로 엄격한 쪽을 택했다. exp3-v1 §5가 이 정의를 쓰고, 구현(`cell_completeness.py:298-314` @`bce75a2`, 현재 등록 전체 셀 분모)은 W3가 맞춘다 |
+
+**바뀌지 않는 것:** D040-D4의 후보 집합과 선정 규칙, D5 조건 4개와 공개 문구, D1(D) 자동 전환, GO 식과 .45 임계, oracle 정의(C0/C1/C2).

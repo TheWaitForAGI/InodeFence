@@ -1,6 +1,7 @@
 """Preregistration gate: block parsing and refusal on any mismatch."""
 
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -364,6 +365,27 @@ TARGET_EDITS: list[tuple[tuple[str, str], str]] = [
     ),
     (("targets.node-tar-7.5.2.exposure_ref = node-tar@7.5.2\n", ""), "requires exposure_ref"),
     (
+        (
+            "targets.node-tar-7.9.9.exposure = none",
+            "targets.node-tar-7.9.9.exposure = qualification-only",
+        ),
+        "qualification-only requires exposure_ref",
+    ),
+    (
+        (
+            "targets.node-tar-7.5.2.exposure = pre-exposed",
+            "targets.node-tar-7.5.2.exposure = qualification-only",
+        ),
+        "qualification-only is for holdout targets only",
+    ),
+    (
+        (
+            "targets.node-tar-7.9.9.exposure = none",
+            "targets.node-tar-7.9.9.exposure = Qualification-Only",
+        ),
+        "exposure must be one of",
+    ),
+    (
         ("targets.node-tar-7.9.9.budget = 7", "targets.node-tar-7.9.9.colour = red"),
         "unknown target field",
     ),
@@ -477,3 +499,163 @@ def test_exposure_ledger_guard_refuses_listed_holdouts() -> None:
         "holdout target node-tar-7.9.9 (node-tar 7.9.9) is in the exposure ledger",
     )
     assert ledger_problems(parse_preregistration(BLOCK), None, None) == ()  # no holdout
+
+
+HOLDOUT_NONE = "targets.node-tar-7.9.9.exposure = none\n"
+HOLDOUT_QUALIFIED = (
+    "targets.node-tar-7.9.9.exposure = qualification-only\n"
+    "targets.node-tar-7.9.9.exposure_ref = node-tar@7.9.9\n"
+)
+NOT_ONLY_QUALIFICATION = (
+    "target node-tar-7.9.9 (node-tar 7.9.9) declares exposure = qualification-only but has "
+    "other ledger rows",
+)
+HOLDOUT_LISTED = ("holdout target node-tar-7.9.9 (node-tar 7.9.9) is in the exposure ledger",)
+
+
+def _problems(ledger_text: str, block: str = TARGETS_BLOCK) -> tuple[str, ...]:
+    from hashlib import sha256
+
+    from inodefence.evaluation.rds_preregistration import ledger_problems
+
+    digest = sha256(ledger_text.encode()).hexdigest()
+    pinned = parse_preregistration(block.replace(LEDGER_SHA, digest))
+    return ledger_problems(pinned, ledger_text, digest)
+
+
+def _qualified_problems(ledger_text: str) -> tuple[str, ...]:
+    return _problems(ledger_text, TARGETS_BLOCK.replace(HOLDOUT_NONE, HOLDOUT_QUALIFIED))
+
+
+def test_qualification_only_holdout_agrees_with_its_rows() -> None:
+    check = "| node-tar | 7.9.9 | qualification-only | D4 check |\n"
+    assert _qualified_problems(LEDGER + check) == ()
+    # Several status-check rows (an ERROR rerun has its own row) still agree.
+    rerun = "| node-tar | 7.9.9 | qualification-only | D4 rerun |\n"
+    assert _qualified_problems(LEDGER + check + rerun) == ()
+
+
+@pytest.mark.parametrize(
+    "row",
+    [
+        # Any other row for the same version refuses it, in either order.
+        "| node-tar | 7.9.9 | qualification-only | D4 |\n| node-tar | 7.9.9 | fuzzing | run |\n",
+        "| node-tar | 7.9.9 | fuzzing | run |\n| node-tar | 7.9.9 | qualification-only | D4 |\n",
+        # The kind must match exactly.
+        "| node-tar | 7.9.9 | Qualification-Only | D4 |\n",
+        "| node-tar | 7.9.9 | qualification-only (D4) | D4 |\n",
+        "| node-tar | 7.9.9 | qualification | D4 |\n",
+        "| node-tar | 7.9.9 |  | D4 |\n",
+        # A row too short to reach the kind column has no kind.
+        "| node-tar | 7.9.9 |\n",
+    ],
+)
+def test_qualification_only_refuses_any_other_row(row: str) -> None:
+    assert _qualified_problems(LEDGER + row) == NOT_ONLY_QUALIFICATION
+
+
+def test_qualification_only_refuses_a_table_without_a_kind_column() -> None:
+    table = "\n\n| extractor | version |\n| --- | --- |\n| node-tar | 7.9.9 |\n"
+    assert _qualified_problems(LEDGER + table) == NOT_ONLY_QUALIFICATION
+
+
+def test_qualification_only_needs_a_row_of_its_own_pair() -> None:
+    missing = (
+        "target node-tar-7.9.9 (node-tar 7.9.9) declares exposure = qualification-only but is "
+        "not in the ledger",
+    )
+    assert _qualified_problems(LEDGER) == missing
+    assert _qualified_problems(LEDGER + "| node-tar | 7.9.8 | qualification-only |\n") == missing
+    assert _qualified_problems(LEDGER + "| decompress | 7.9.9 | qualification-only |\n") == missing
+
+
+def test_none_means_not_listed_even_as_a_status_check() -> None:
+    assert _problems(LEDGER + "| node-tar | 7.9.9 | qualification-only | D4 |\n") == HOLDOUT_LISTED
+    assert _problems(LEDGER + "| python-tarfile | 3.12 | probe | x |\n") == (
+        "target py-tarfile-3.12 (python-tarfile 3.12) declares exposure = none but is in the "
+        "exposure ledger",
+    )
+    assert _problems(LEDGER + "| node-tar | 7.9.8 | fuzzing | x |\n") == ()
+
+
+def test_pre_exposed_must_be_listed() -> None:
+    without_train = LEDGER.replace("| node-tar | 7.5.2 | design-input | G1 2026-11-04 |\n", "")
+    assert _problems(without_train) == (
+        "target node-tar-7.5.2 (node-tar 7.5.2) declares exposure = pre-exposed but is not in "
+        "the ledger",
+    )
+    # Any kind satisfies pre-exposed: the listing is the fact it declares.
+    listed = LEDGER.replace("design-input", "qualification-only")
+    assert _problems(listed) == ()
+
+
+def test_the_ledger_check_applies_only_to_a_registration_that_names_a_ledger() -> None:
+    from inodefence.evaluation.rds_preregistration import ledger_problems
+
+    assert ledger_problems(parse_preregistration(BLOCK), None, None) == ()
+    assert ledger_problems(parse_preregistration(BLOCK), "not a ledger", "0" * 64) == ()
+    # A targets file without a holdout that names a ledger is still checked.
+    no_holdout = "\n".join(
+        line
+        for line in TARGETS_BLOCK.splitlines()
+        if "7.9.9" not in line
+        and not line.startswith(
+            ("confirmatory_", "multiplicity", "primary_endpoint", "event_threshold")
+        )
+    )
+    prereg = parse_preregistration(no_holdout + "\n")
+    assert ledger_problems(prereg, None, None) == (
+        "exposure ledger experiments/preregistration/exposure-ledger.md not readable",
+    )
+
+
+def test_listed_pairs_are_unchanged_by_the_kinds() -> None:
+    from inodefence.evaluation.rds_preregistration import (
+        parse_exposure_ledger,
+        parse_exposure_ledger_kinds,
+    )
+
+    text = LEDGER + "| node-tar | 7.9.9 | qualification-only | D4 |\n"
+    assert parse_exposure_ledger(text) == {
+        ("node-tar", "7.5.2"),
+        ("node-tar", "7.5.6"),
+        ("node-tar", "7.9.9"),
+    }
+    assert parse_exposure_ledger_kinds(text)[("node-tar", "7.9.9")] == {"qualification-only"}
+
+
+def _with_deadline(value: str) -> str:
+    return TARGETS_BLOCK.replace(
+        "event_threshold = 5\n", f"event_threshold = 5\nexecution_deadline = {value}\n"
+    )
+
+
+def test_execution_deadline_is_an_instant_with_an_offset() -> None:
+    prereg = parse_preregistration(_with_deadline("2026-11-25T12:00:00+09:00"))
+    assert prereg.execution_deadline == datetime(2026, 11, 25, 3, 0, tzinfo=UTC)
+    assert prereg.unknown_keys == parse_preregistration(TARGETS_BLOCK).unknown_keys
+    assert parse_preregistration(TARGETS_BLOCK).execution_deadline is None
+    assert parse_preregistration(BLOCK).execution_deadline is None
+
+
+@pytest.mark.parametrize(
+    ("value", "fragment"),
+    [
+        ("2026-11-25T12:00:00", "must carry a UTC offset"),
+        ("2026-11-25", "must carry a UTC offset"),
+        ("soon", "execution_deadline"),
+        ("11/25 12:00 KST", "execution_deadline"),
+    ],
+)
+def test_execution_deadline_refuses_an_ambiguous_value(value: str, fragment: str) -> None:
+    with pytest.raises(PreregistrationFormatError, match=fragment):
+        parse_preregistration(_with_deadline(value))
+
+
+def test_execution_deadline_needs_the_targets_form() -> None:
+    block = BLOCK.replace(
+        "```preregistration\n",
+        "```preregistration\nexecution_deadline = 2026-11-25T12:00:00+09:00\n",
+    )
+    with pytest.raises(PreregistrationFormatError, match="requires targets"):
+        parse_preregistration(block)

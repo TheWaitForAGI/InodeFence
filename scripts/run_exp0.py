@@ -1799,10 +1799,10 @@ def main(argv: list[str] | None = None) -> int:
         base_env["INODEFENCE_DOCKER_CONTEXT"] = args.context
     wiring = wiring_problems(plan)
 
-    # A targets-form host run records the checkout before and after (execution_sha); its own
+    # A targets-form run records the checkout before and after (execution_sha); its own
     # output and raw manifest must not land in the checkout and make it dirty (#347).
     write_problems: list[str] = []
-    if plan.multi_target and plan.host_id is not None:
+    if plan.multi_target:
         writes = {"--output": output}
         if not args.no_manifest:
             writes["raw manifest"] = args.manifest_out or default_manifest_path(

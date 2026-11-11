@@ -59,17 +59,18 @@ execution_deadline = TBD-FREEZE
 `<E>`는 실행 SHA, `<S>`는 worktree **밖**의 작업 폴더다. 출력·raw manifest·채운 사본·스냅샷은 모두 `<S>` 아래에 둔다.
 저장소 안에 쓰면 checkout이 dirty가 되어 postflight가 문제로 기록하고, 호스트 실행은 시작 전에 거부된다.
 
+0. **실행 코드 확인:** 모든 명령은 실행 worktree에서 `PYTHONPATH=src` 접두로 부른다(venv의 .pth가 다른 체크아웃을 가리킬 수 있다). 먼저 `PYTHONPATH=src python -c "import inodefence; print(inodefence.__file__)"`가 이 worktree의 `src/inodefence/__init__.py`인지 확인한다.
 1. **값 채우기:** `sha256sum experiments/preregistration/exposure-ledger.md`로 원장 sha를 얻고 기준 파일과 사본을 만든다.
    ```bash
-   python -m scripts.make_run_criteria --execution-sha <E> --host HOST1 --out <S>/criteria-HOST1.json
-   python -m scripts.fill_run_registration experiments/configs/stop-path-smoke-1-v1.md \
+   PYTHONPATH=src python -m scripts.make_run_criteria --execution-sha <E> --host HOST1 --out <S>/criteria-HOST1.json
+   PYTHONPATH=src python -m scripts.fill_run_registration experiments/configs/stop-path-smoke-1-v1.md \
      --set engine_sha=<E> --set exposure_ledger_sha256=<원장 sha> \
      --set execution_deadline=<예상 종료+여유, +09:00> --out <S>/stop-path-smoke-1-filled.md
    ```
 2. **dry-run:** 아래 공통 인자에 `--dry-run`을 붙여 gate PASS, 12셀, "would be refused: (nothing)"을 확인한다.
 3. **B-0~B-5 실행:** 공통 인자는 다음과 같다.
    ```bash
-   python -m scripts.run_exp0 --preregistration <S>/stop-path-smoke-1-filled.md --output <S>/out \
+   PYTHONPATH=src python -m scripts.run_exp0 --preregistration <S>/stop-path-smoke-1-filled.md --output <S>/out \
      --target-digest node-tar-7.5.2=sha256:22c8734f141d91b333ba37c7fe6a9a7547d7abfab487fa028da2053bed6f3dbb \
      --observer-integrity-policy invalid-continue --jobs 2 --skip-build \
      --expected-images <S>/criteria-HOST1.json --manifest-out <S>/raw-manifest.sha256 --manifest-host host1-spsmoke
@@ -78,12 +79,12 @@ execution_deadline = TBD-FREEZE
    B-4는 원인 LOG 1줄과 지웅 승인 뒤 `--resume-after-stop D042-smoke-1-B-<YYYYMMDD>-<HHMM>`로 실행한다.
 4. **스냅샷(판정 입력):** 각 호출 직후와, B-2·B-4·B-5 각 호출 직전에 다음을 한 번씩 남긴다. 호출의 exit code와 stderr 파일도 넘긴다.
    ```bash
-   python -m scripts.check_stop_path_smoke snapshot --output <S>/out --snapshots <S>/snaps \
+   PYTHONPATH=src python -m scripts.check_stop_path_smoke snapshot --output <S>/out --snapshots <S>/snaps \
      --stage <b0|b1|pre-b2|b2|pre-b4|b4|pre-b5a|b5a|pre-b5b|b5b> --exit-code <rc> --stderr <S>/stderr-<stage>.txt \
      [--manifest <S>/raw-manifest.sha256]   # pre-b5b와 b5b에서
-   python -m scripts.check_stop_path_smoke verify-tools --output <S>/out --snapshots <S>/snaps \
+   PYTHONPATH=src python -m scripts.check_stop_path_smoke verify-tools --output <S>/out --snapshots <S>/snaps \
      --manifest <S>/raw-manifest.sha256    # B-5 뒤
-   python -m scripts.check_stop_path_smoke judge --snapshots <S>/snaps --round 1 \
+   PYTHONPATH=src python -m scripts.check_stop_path_smoke judge --snapshots <S>/snaps --round 1 \
      --cause-logged-at <원인 LOG 줄의 epoch 초> --out <S>/judgement-1.json \
      [--scenario-a-snapshots <S>/snaps-a]  # 시나리오 A(a1, a-refused, a2, a-final)는 합격에 넣지 않는다
    ```

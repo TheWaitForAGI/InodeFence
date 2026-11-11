@@ -220,3 +220,26 @@ def test_a_host_run_refuses_writes_into_the_checkout(
     assert "inside the checkout and not ignored" in captured.out + captured.err
     assert runner.calls == []  # type: ignore[attr-defined]
     assert not inside.exists()
+
+
+@pytest.mark.usefixtures("clean_engine", "admit_fixture_holdout")
+@pytest.mark.parametrize("mode", ["dry-run", "live"])
+def test_a_single_host_targets_run_also_refuses_writes_into_the_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], mode: str
+) -> None:
+    """The stop/resume smoke runs the targets form without --host-id; it is guarded too."""
+    from test_run_exp0 import BEFORE, _deadline_setup
+
+    _out, args, _ = _deadline_setup(tmp_path, monkeypatch, BEFORE)
+    assert "--host-id" not in args
+    inside = REPO / "experiments" / "summaries" / "w1-347-never-written"
+    argv = _replace(args, "--output", str(inside))
+    runner = _fake_runner(TARGET_IMAGES)
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", runner)
+    if mode == "dry-run":
+        argv.append("--dry-run")
+    assert run_exp0.main(argv) == 2
+    captured = capsys.readouterr()
+    assert "inside the checkout and not ignored" in captured.out + captured.err
+    assert runner.calls == []  # type: ignore[attr-defined]
+    assert not inside.exists()

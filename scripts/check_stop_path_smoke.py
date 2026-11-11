@@ -30,7 +30,11 @@ agreed): A7(ii) reads the manifest result from ``manifest-verification.json`` (t
 keeps ``{generated: null, verified: null}`` on success); F1 expects invalid cells to have a
 summary file without ``dense_detail`` whose ``invalid_reason`` contains ``no-record:``; C1
 allows exactly ``registration.json``, ``matrix.json`` and ``manifest-verification.json`` to
-change and compares the raw manifest without those three lines. Pass ``--manifest`` (the
+change and compares the raw manifest without those three lines. Two more of the same kind followed
+the same day: A7(ii)'s ``--verify`` runs on a copy of the manifest without the
+``manifest-verification.json`` line (rewritten after the manifest), and N1 accepts exit 0 or 1
+(a stopped call exits 1). tests/test_stop_path_smoke_end_to_end.py runs the procedure with the
+real launcher and fixes that a correct run passes every criterion. Pass ``--manifest`` (the
 ``--manifest-out`` path, outside the output and the checkout) to the ``pre-b5b`` and ``b5b``
 snapshots.
 """
@@ -61,7 +65,10 @@ LOG_MARKERS = {
     "no_such_image": "No such image: inodefence-node-tar-effect:does-not-exist",
     "unknown_marker": "INODEFENCE_CLEANUP_UNKNOWN:",
 }
-STDERR_MARKERS = {"stop_in_effect": "infrastructure stop in effect", "gate_closed": "start gate"}
+STDERR_MARKERS = {
+    "stop_in_effect": "infrastructure stop in effect",
+    "gate_closed": "start gate still closed",
+}
 #: C1 (corrected 2026-11-11): files every call rewrites; the only exceptions allowed.
 C1_EXCEPTIONS = ("registration.json", "matrix.json", "manifest-verification.json")
 B_STAGES = ("b0", "b1", "pre-b2", "b2", "pre-b4", "b4", "pre-b5a", "b5a", "pre-b5b", "b5b")
@@ -156,7 +163,8 @@ def summary_facts(output: Path) -> dict[str, dict[str, bool]]:
 
 def log_facts(output: Path) -> dict[str, dict[str, bool]]:
     facts = {}
-    for path in sorted([*output.glob("*.log"), *(output / "attempts").glob("*.log")]):
+    # Cell logs live under <output>/<target>/..., earlier attempts under attempts/.
+    for path in sorted(output.rglob("*.log")):
         text = path.read_text(encoding="utf-8", errors="replace")
         entry = {name: marker in text for name, marker in LOG_MARKERS.items()}
         entry["engine_set"] = re.search(r"engine=\S", text) is not None
@@ -279,6 +287,24 @@ def _has_key(value: Any, key: str) -> bool:
     return False
 
 
+REPO = Path(__file__).resolve().parents[1]
+#: Rewritten by the launcher after the manifest is made and verified, so A7(ii) verifies a
+#: copy of the manifest without its line (corrected 2026-11-11). registration.json and
+#: matrix.json are written before the manifest and stay in the comparison.
+REWRITTEN_AFTER_MANIFEST = "manifest-verification.json"
+
+
+def manifest_without_rewritten(manifest: Path, copy: Path) -> Path:
+    lines = manifest.read_text(encoding="utf-8").splitlines(keepends=True)
+    kept = [
+        line
+        for line in lines
+        if line.rstrip("\n").split("  ", 1)[-1] != f"./{REWRITTEN_AFTER_MANIFEST}"
+    ]
+    copy.write_text("".join(kept), encoding="utf-8")
+    return copy
+
+
 def verify_tools(output: Path, manifest: Path, python: str = sys.executable) -> dict[str, Any]:
     """Exit codes and key presence only; the analyzer output is deleted unread."""
     with tempfile.TemporaryDirectory() as scratch:
@@ -297,13 +323,22 @@ def verify_tools(output: Path, manifest: Path, python: str = sys.executable) -> 
             ],
             capture_output=True,
             check=False,
+            cwd=REPO,
         )
         has_key = analysis.is_file() and _has_key(_json(analysis), "number_blocks_invalid_excluded")
-    verify = subprocess.run(
-        [python, "scripts/make_raw_manifest.py", "--verify", str(manifest), "--root", str(output)],
-        capture_output=True,
-        check=False,
-    )
+        copy = manifest_without_rewritten(manifest, Path(scratch) / "manifest.sha256")
+        verify = subprocess.run(
+            [
+                python,
+                str(REPO / "scripts" / "make_raw_manifest.py"),
+                "--verify",
+                str(copy),
+                "--root",
+                str(output),
+            ],
+            capture_output=True,
+            check=False,
+        )
     return {
         "stage": "tools",
         "analyze_rc": analyze.returncode,
@@ -400,12 +435,6 @@ def judge_b(
         if not first or first != _attempt_files(b5b["files"], run, 1):
             a3_problems.append(f"{run}: attempt-1 files missing or changed")
     out["A3"] = _result(not a3_problems and bool(no_record), problems=a3_problems)
-    not_started = [run for run in planned if run not in started1]
-    out["A4"] = _result(
-        len(started1) in (3, 4) and b1["matrix_not_started"] == not_started,
-        started=len(started1),
-        not_started_listed=b1["matrix_not_started"] == not_started,
-    )
     first_only = [
         run
         for run in started1
@@ -413,6 +442,18 @@ def judge_b(
         and any(e.get("event") == "end" and e.get("run_id") == run for e in ev["b1"])
     ]
     out["A5"] = _result(len(first_only) in (0, 1), first_attempt_only=len(first_only))
+    # A4: the cells with no start line are all in cells_not_started. The launcher also lists
+    # there a cell whose first attempt ended at the stop (its retry did not start, the A5 cell).
+    not_started = [run for run in planned if run not in started1]
+    listed = set(b1["matrix_not_started"] or ())
+    out["A4"] = _result(
+        len(started1) in (3, 4)
+        and set(not_started) <= listed
+        and listed - set(not_started) <= set(first_only),
+        started=len(started1),
+        unstarted_listed=set(not_started) <= listed,
+        also_listed=sorted(listed - set(not_started)),
+    )
 
     # X1: every no-record attempt verified clean. Attempt 1: the gate let attempt 2 start
     # and no stop names the gate; attempt 2: the gate verdict is S. Each attempt destroyed
@@ -489,9 +530,11 @@ def judge_b(
             ):
                 a8_problems.append(name)
     out["A8"] = _result(not a8_problems and bool(no_record), problems=a8_problems)
+    # N1 (corrected 2026-11-11): exit 0 or 1, not a signal; a stopped call exits 1 while the
+    # no-record cells keep the G1 verdict from passing.
     out["N1"] = _result(
         len(_starts(ev["b2"])) == len(_starts(ev["b1"]))
-        and b2["exit_code"] == 0
+        and b2["exit_code"] in (0, 1)
         and bool(b2["stderr"] and b2["stderr"]["stop_in_effect"]),
         new_starts=len(_starts(ev["b2"])) - len(_starts(ev["b1"])),
         exit_code=b2["exit_code"],

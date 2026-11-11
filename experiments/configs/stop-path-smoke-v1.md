@@ -20,7 +20,7 @@
 
 **시점 읽기.** D042 원문의 "벤치마크 종료와 동결 해제 뒤"(:924, :930)는 "통합 후보 확정 뒤"로 읽는다. D047로 동시 실행 벤치마크가 본실험 선행 조건에서 빠졌기 때문이다.
 
-**확인 필요.** D042 :928은 "원본은 설계 §5 표, 다르면 표가 맞다"라고 하지만, 그 표는 저장소의 어느 커밋에도 없다(`git log --all -S`로 확인, 2026-11-11). 따라서 이 파일은 D042 :928의 짧은 이름을 원문으로 삼는다. 이름만으로 판정식이 정해지지 않는 기준은 §6에서 "확인 필요"로 둔다.
+**원문 표 부재.** D042 :928은 "원본은 설계 §5 표, 다르면 표가 맞다"라고 하지만, 그 표는 저장소의 어느 커밋에도 없다(`git log --all -S`로 확인, 2026-11-11). 따라서 이 파일은 D042 :928의 짧은 이름을 원문으로 삼는다. 이름만으로 판정식이 정해지지 않던 4건(A3·A7·B9·C1, F1 적용 범위)은 W4 검증(2026-11-11)과 오케스트레이터 확정 문장으로 §6에 고정했다.
 
 ## 2. 주입 수단 변경 (D042 원문 → 이 파일)
 
@@ -31,6 +31,8 @@ D042 원문의 주입 수단은 셀 프로세스에 존재하지 않는 docker c
 3. **`INODEFENCE_EVIDENCE_DIR`을 쓰기 불가 경로로(오케스트레이터 1차 채택안):** `scripts/run_parallel_native.py`의 `cell_env`가 셀마다 `INODEFENCE_EVIDENCE_DIR=<출력 경로>`로 덮어쓴다. 그래서 런처 환경 변수로 준 값이 셀에 닿지 않는다. 또 단일 target인 targets 형식에서는 증거 경로가 출력 루트(런처가 `cell-results.jsonl`을 쓰는 곳)라 디렉터리를 쓰기 불가로 만들 수도 없다.
 
 **채택 수단(시나리오 B): 런처 환경 변수 `HISTORICAL_IMAGE=inodefence-node-tar-effect:does-not-exist`**(`--context` 없음). 동작은 다음과 같다.
+
+**D042 :925 사전 확인(W1)의 대응 문장:** HISTORICAL_IMAGE가 셀 단계에 전달되고, 셀 프로세스에 한정되며, 전역 context와 preflight 대상이 바뀌지 않는다(근거: 아래 "전달 범위"·"host 가드", 코드 읽기).
 
 - **전달 범위:** 이 변수는 `scripts/local_node_tar_smoke.sh`만 읽는다(:403). `run_exp0.py`·`cell_env`·host preflight·`--expected-images`는 읽지 않는다(저장소 검색 결과 smoke 외 사용 없음). `base_env = dict(os.environ)`으로 셀 프로세스에만 전달되며, 전역·런처 docker context는 바뀌지 않는다(docker CLI는 `DOCKER_CONTEXT`만 읽는다).
 - **실패 지점:** `local_node_tar_smoke.sh:404` `IF_HISTORICAL_IMAGE="$(dk image inspect "$HISTORICAL_IMAGE" ...)"`. 이것은 **로컬 조회**다. `docker image inspect`는 레지스트리 pull을 하지 않고 네트워크 호출도 없다. 이 태그로 `create`·`run`·`pull`을 하는 코드는 없다(실패가 먼저 난다). 이 줄은 `prepare controller`(:370) 다음 단계인 `effect-demo-historical`에 있다.
@@ -45,7 +47,7 @@ D042 원문의 주입 수단은 셀 프로세스에 존재하지 않는 docker c
 
 - **등록 파일:** targets 형식(InfrastructureGuard와 StartGate는 이 형식에서만 돈다), target 1개(node-tar 7.5.2, 등록 digest), arm R-restart·D·S-u, seed 6101~6104, budget 20. 파일 이름은 `experiments/preregistration/stop-path-smoke-<차수>-v1.md`(차수별, D042 :932). **확인 필요:** R arm 변형(R-restart인지 R-walk인지)은 D042가 정하지 않는다. EXP-3 등록과 같은 값을 쓴다.
 - **런처 인자(양 시나리오 공통):** `--jobs 2 --output <전용 출력> --skip-build --expected-images <기준 파일>`. `--host-id`는 쓰지 않는다(2호스트 실행이 아니다). `--expected-images`는 넘겨서 이미지 거부 경로도 함께 확인한다.
-- **기준 파일:** 차수별 `experiments/configs/stop-path-smoke-v1-expected-images.json`. 내용은 `expected_image_ids` 3개(대상·controller·helper)이고, 값은 실행 직전 읽기 전용 `docker image inspect`로 확인한다.
+- **기대 이미지 파일:** 저장소에 커밋하지 않고 각 출력 폴더에 둔다(`<출력>/expected-images.json`). 내용은 `expected_image_ids` 3개(대상·controller·helper)이고, 값은 실행 직전 읽기 전용 `docker image inspect`로 확인한다. 파일의 sha256은 preflight 기록의 `expected_images`에 남는다.
 
 ## 4. 시나리오 B (D042 본래 목적, Guard 경로)
 
@@ -58,12 +60,16 @@ D042 원문의 주입 수단은 셀 프로세스에 존재하지 않는 docker c
 | B-4 승인 재개 | 주입 없이 `… --resume-after-stop <승인 참조>` | `infrastructure-resume` 줄(approval_ref)과 나머지 셀 진행. no-record 셀은 다시 돌리지 않음 |
 | B-5 완주·멱등 | 같은 인자로 한 번 더(재개 플래그 없음), 그리고 `--summarize-only` | 새 시작 0, 기록 불변 |
 
+B-2·B-4·B-5 각 호출 직전에 `env | grep -c '^HISTORICAL_IMAGE='`의 결과(0이어야 함)를 실행 기록에 남긴다(§6 X3).
+
 ## 5. 시나리오 A (추가 확인, D042 기준 밖 — 게이트 정지와 ack 재개)
 
 목적: 2026-11-11에 생긴 경로("cleanup unknown → 게이트 U → 정지 → `approval=` ack → 승인 재개")가 실 docker에서 도는지 확인한다. 이 시나리오의 결과는 D042 21개 판정에 넣지 않는다. 방법론상 문제가 없는지는 W4 검증에서 본다.
 
 - **주입:** 런처 환경 변수로만 `INODEFENCE_DOCKER_CONTEXT=does-not-exist`를 주고 `--context`는 생략한다. 셀 수를 최소로 하기 위해 별도 출력 폴더를 쓰고, 등록은 시나리오 B와 같다(budget 20).
-- **원장 구분:** 정지 구간에서는 셀이 대상을 실행하지 않는다(volume 생성 실패). 재개 뒤 구간은 실행된 셀만 해당 seed를 노출한다. 원장 행은 실행된 셀의 seed만 적는다(§9).
+- **원장 구분:** 시나리오 A는 별도 출력 폴더와 별도 원장 행을 쓴다. 정지 구간에서는 셀이 대상을 실행하지 않는다(volume 생성 실패, 노출 없음). ack 재개 뒤 실행된 셀만 seed 6101~6104를 노출한다. A와 B는 원장에 따로 적는다(§7).
+- **판정상 위치:** A의 결과는 21개 판정과 합격에 넣지 않는다. 다만 A가 FAIL이면(특히 SA3: U 상태에서 재개가 거부되지 않음, SA6: 잔존 리소스) 본실험 금지 사유로 올린다.
+- **ack 전 잔존 확인:** ack 전에 읽기 전용 잔존 확인(`docker ps -a --filter name=inodefence-`, `docker volume ls --filter name=inodefence-local-`)의 결과를 ack note `residual=`에 반드시 남긴다.
 
 | # | 확인 | 판정 근거 |
 | --- | --- | --- |
@@ -74,19 +80,19 @@ D042 원문의 주입 수단은 셀 프로세스에 존재하지 않는 docker c
 | SA5 | 재개 기록 | `infrastructure-resume` 줄에 `approval_ref`와 `gate_acks`(path, cell, note_sha256) |
 | SA6 | 잔존 리소스 0 | 각 호출 뒤 `docker ps -a --filter name=inodefence-`, `docker volume ls --filter name=inodefence-local-` 비어 있음, host postflight `problems` 비어 있음 |
 
-## 6. 판정 기준 대응표 (D042 :928의 21개 + 이 주입에 따른 추가 2개)
+## 6. 판정 기준 대응표 (D042 :928의 21개 + 이 주입에 따른 추가 3개)
 
-표기: **그대로**는 원문 의미를 그대로 적용, **대체**는 (주입 변경에 맞게) 대체 문구 적용, **확인 필요**는 원문만으로 판정식이 정해지지 않음. 기준을 빼지 않는다. 근거 파일은 시나리오 B 출력 폴더 기준이다.
+표기: **그대로**는 원문 의미를 그대로 적용(판정식이 원문 이름만으로 정해지지 않던 기준은 "해석 확정"·"판정식 확정"으로 표시), **대체**는 주입 변경에 맞게 대체 문구 적용, **추가**는 이 주입 때문에 새로 둔 기준. 기준을 빼지 않는다. 근거 파일은 시나리오 B 출력 폴더 기준이다.
 
 | # | D042 원문(:928) | 적용 | 판정식(근거 파일·필드) |
 | --- | --- | --- | --- |
 | A1 | 정지 기록과 스스로 종료 | 그대로 | B-1 호출의 `cell-results.jsonl`에 `event = infrastructure-stop` 정확히 1줄. 호출 exit가 정상 종료(0 또는 1, 신호 아님). `summaries/index.json` `cell_completeness.infrastructure_stopped = true` |
 | A2 | no-record 3 또는 4 | 그대로 | B-1 뒤 `cell_completeness.no_record ∈ {3, 4}` |
-| A3 | 각 2시도·즉시 재시도·파일 보존 | 그대로 | no-record 셀마다 `start` 줄 2개(attempt 1, 2), 두 번째 `start`가 첫 `end` 바로 뒤(다른 셀의 `start`가 사이에 없음 — **확인 필요:** jobs 2에서 "즉시"를 같은 worker 연속으로 읽을지), `attempts/<run_id>.attempt1.*` 존재 |
+| A3 | 각 2시도·즉시 재시도·파일 보존 | 그대로(해석 확정) | no-record 셀 X마다 (i) attempt 1·2의 `start` 줄이 같은 호출 안에 있음 (ii) attempt 2 `start`가 X의 attempt 1 `end` 뒤이고, 그 사이 다른 셀의 `start` 줄이 jobs−1 = 1개 이하(시간 상한 없음 — `wait_for_cleanups` 대기는 정상) (iii) `attempts/<X>.attempt1.*`의 sha256이 B-1 직후와 B-5 뒤에 같음 |
 | A4 | 시작 셀 3 또는 4, 나머지 시작 줄 없음 | 그대로 | `start` 줄이 있는 셀 수 ∈ {3, 4}. 나머지 셀은 `start` 줄 0이고 `matrix.json` `cells_not_started`에 있음 |
 | A5 | 첫 시도만 끝난 셀 0 또는 1 | 그대로 | `start` 줄이 정확히 1개이고 `end`가 있는 셀 수 ∈ {0, 1} |
-| A6 | 컨테이너·볼륨 생성 0, context 불변 | **대체** | 원문은 `prepare controller` 실패를 전제로 한다. 이 주입에서는 volume과 controller가 생성된 뒤 정리된다. 대체: "B-1 뒤 잔존 리소스 0(§6 X2)이고, 전역 docker context 불변(`docker context show`가 실행 전후로 같음)" |
-| A7 | 결과 가림과 manifest | 확인 필요 | 후보: B-5 뒤 raw manifest 생성(`--manifest-out`), 요약에 oracle 값 미출력. "결과 가림"의 대상 필드를 W3가 지정해야 한다 |
+| A6 | 컨테이너·볼륨 생성 0, context 불변 | **대체** | 원문은 `prepare controller` 실패를 전제로 한다. 이 주입에서는 volume과 controller가 생성된 뒤 정리된다. 대체: "B-1 뒤 잔존 리소스 0(X2), 전역 docker context 불변(`docker context show`가 실행 전후로 같음), 그리고 모든 no-record **시도**(셀이 아니라 시도마다)의 게이트 판정이 S이고 각 시도 로그에 정리 trap 실행 흔적(controller·volume 제거)이 있음(X1 포함)" |
+| A7 | 결과 가림과 manifest | 그대로(판정식 확정) | (i) B-1·B-2 뒤, 그리고 정지 중 모든 호출 뒤: `summaries/index.json`에서 `outcomes_redacted = true`, `interim.redacted = true`, `interim.reasons`가 비어 있지 않음. `cells[]` 어느 항목에도 `hit`·`t_first`·`t_first_event`·`t_first_censored` 키가 없고 모든 `summary`가 null. `summaries/*.summary.json` 파일 0개(근거: `run_exp0.py` 가림 사유와 `_remove_summaries`, `run_g1_smoke.py` 요약기). (ii) B-5 뒤: `interim.manifest.generated = true`, `verified = true`, 같은 manifest에 `scripts/make_raw_manifest.py --verify`를 다시 돌려 exit 0. (iii) 확인은 키 존재·개수만 출력하는 스크립트로 하고, 값(hit·T_first)은 사람이 열람하지 않음 |
 | A8 | 로그 `FAILED at step: prepare controller`, `engine=` 빈 값 | **대체** | 대체: no-record 시도의 셀 로그에 `FAILED at step: effect-demo-historical`과 `No such image: inodefence-node-tar-effect:does-not-exist`가 있음. `engine=` 값은 비어 있지 않음(context가 정상) |
 | N1 | 플래그 없는 호출은 시작 없음 | 그대로 | B-2 호출 전후로 `start` 줄 수 불변, exit 0, stderr에 `infrastructure stop in effect` |
 | P1 | 재개 전 W2 원인 LOG와 지웅 승인 | 그대로 | `docs/LOG.md`에 원인 줄(oracle 값 없음)이 있고, 그 커밋 시각이 B-4 `infrastructure-resume` `clocks.realtime`보다 앞섬. 지웅 승인 참조가 존재 |
@@ -98,13 +104,14 @@ D042 원문의 주입 수단은 셀 프로세스에 존재하지 않는 docker c
 | B6 | `.calls.jsonl`과 시계 | 그대로(범위 주석) | B-4에서 실행된 셀마다 `<evidence>.calls.jsonl` 존재. `start`·`end` 줄에 `clocks`(realtime·monotonic) 존재. no-record 시도는 host broker를 실행하지 않으므로 `.calls.jsonl`이 없는 것이 정상 |
 | B7 | append-only | 그대로 | 단계마다 `cell-results.jsonl`의 앞부분 바이트가 이전 단계 파일과 같음(접두 일치) |
 | B8 | `cell_completeness` 집계 | 그대로 | B-5 index의 `cell_completeness` 수치(complete·aborts·no_record·unattempted)를 `cell-results.jsonl`과 셀 파일에서 다시 계산한 값과 일치 |
-| B9 | invalid 경로와 분석기 정상 종료 | 확인 필요 | 후보: `analyze_exp0`를 B-5 출력에 돌려 exit 0. "invalid 경로"가 무엇을 가리키는지 W3가 지정해야 한다 |
-| C1 | 멱등 | 그대로 | B-5 두 번째 호출 전후로 `cell-results.jsonl`·셀 파일 바이트 동일(`summaries/`는 재생성 허용 — 확인 필요) |
-| F1 | PR-D 요약 필드(1차 해당 없음, 2차에 없으면 FAIL) | 그대로 | 2차만 적용. **확인 필요:** "PR-D 요약 필드"의 필드 이름 목록 |
-| X1 | (추가) 주입 셀의 정리 확인 S | 추가 | 게이트 디렉터리의 no-record 셀 판정이 모두 `S`(U 0) |
+| B9 | invalid 경로와 분석기 정상 종료 | 그대로(판정식 확정) | "invalid 경로" = no-record 셀이 invalid로 처리되는 경로(런처가 no-record·record-inconsistent 셀을 `invalid_cells`로 넘기고, 요약기가 `invalid = true`, `invalid_reason`이 `no-record`로 시작, summary 없음으로 기록). 판정식: (i) B-5 index에서 `invalid = true`인 셀 집합이 A2의 no-record 셀 집합과 정확히 같고 `invalid_count`도 그 수 (ii) `interim.integrity_problems`가 비어 있음 (iii) `scripts/analyze_exp0.py --index <B-5 index> --format json --output <파일>`이 exit 0이고 출력에 대비별 `number_blocks_invalid_excluded` 키가 있음(값은 열람하지 않고 키 존재만) |
+| C1 | 멱등 | 그대로(판정식 확정) | B-5의 두 번째 호출 전후로 `cell-results.jsonl`, 셀 증거 파일(report·steps·calls·log), `attempts/`, 시작 게이트 디렉터리, raw manifest, `summaries/index.json`, `summaries/*.summary.json`이 **모두 바이트 동일**하고 새 `start` 줄 0. 예외는 "마지막 호출 기록"인 `registration.json`의 `last_status`와 `matrix.json`뿐이다. 다르면 FAIL이고 다른 키 경로를 기록하며, 사후에 허용 목록을 늘리지 않음 |
+| F1 | PR-D 요약 필드 | 그대로(**매 차수 적용**, 확정) | D042의 "1차 해당 없음"은 삭제한다(PR-D가 이미 통합 트리에 있다). B-5 뒤(가림 해제): invalid가 아닌 모든 셀의 `summaries/<run_id>.summary.json`에 `dense_detail` 키가 있음, invalid 셀에는 summary 파일이 없음, `record_inconsistent_prefix`는 record-inconsistent 셀에만 있음(0개 예상). 어긋나면 해당 차수 FAIL(1차 FAIL이면 원인 수정 뒤 2차 필수). 키 존재만 확인 |
+| X1 | (추가) 주입 시도의 정리 확인 S | 추가(A6에 포함) | no-record **시도**마다 게이트 판정이 `S`(U 0)이고 시도 로그에 정리 trap 흔적이 있음 |
 | X2 | (추가) 잔존 리소스 0 | 추가 | 각 단계 뒤 `docker ps -a --filter name=inodefence-`와 `docker volume ls --filter name=inodefence-local-`가 비어 있고, host postflight `problems`가 비어 있음 |
+| X3 | (추가) 주입 해제 확인 | 추가 | B-2·B-4·B-5 각 호출 직전 `env`에 `HISTORICAL_IMAGE` 없음(기록). 재개 뒤 실행된 셀의 로그·report가 등록 대상 이미지를 쓰고, 그 호출의 preflight `image_ids`가 기대값과 같음 |
 
-**합격:** 위 표의 "그대로·대체·추가"가 모두 PASS다. "확인 필요" 4건(A7·B9·F1 필드, A3·C1 해석)은 이 파일을 고정하기 전에 W3·W4가 확정한다. 확정되지 않으면 실행하지 않는다.
+**합격:** 위 표의 21개와 추가 3개(X1~X3)가 모두 PASS다. 표에 "확인 필요"로 남은 기준은 없다(A3·A7·B9·C1·F1은 W4 검증과 오케스트레이터 확정 문장으로 고정, 2026-11-11). 시나리오 A(§5)는 합격에 넣지 않는다.
 
 ## 7. 원장(exposure ledger) 행 초안
 
@@ -115,7 +122,9 @@ D042 원문의 주입 수단은 셀 프로세스에 존재하지 않는 docker c
 | node-tar | 7.5.2 | 정지·재개 smoke `demo run`(1차, D042) — 정지 구간(주입)은 대상 미실행, 재개 뒤 실행 셀만 노출 | W2(D042 smoke 1차) | 6101~6104 중 재개 뒤 실행된 셀의 seed(budget 20) | `<날짜>` | `<출력>/stop-path-smoke-1-<날짜>/` | 등록 digest |
 | node-tar | 7.5.2 | 같음(2차) | W2(D042 smoke 2차) | 같음 | `<날짜>` | `<출력>/stop-path-smoke-2-<날짜>/` | 등록 digest |
 
-시나리오 A를 실행하면 그 폴더도 같은 방식으로 한 행을 둔다(재개 뒤 실행 셀만).
+| node-tar | 7.5.2 | 정지·재개 smoke 시나리오 A `demo run`(차수별) — 게이트 정지 구간은 대상 미실행, ack 재개 뒤 실행 셀만 노출 | W2(D042 smoke 시나리오 A) | 6101~6104 중 ack 재개 뒤 실행된 셀의 seed(budget 20) | `<날짜>` | `<출력>/stop-path-smoke-<차수>-A-<날짜>/` | 등록 digest |
+
+시나리오 A와 B는 별도 출력 폴더, 별도 원장 행이다.
 
 ## 8. 지웅에게 요청할 재개 승인과 승인 참조 형식
 
@@ -130,12 +139,29 @@ D042 원문의 주입 수단은 셀 프로세스에 존재하지 않는 docker c
 
 - 시나리오 B 주입 구간: 무기록 시도 1회는 controller·volume 생성과 정리에 수십 초가 걸린다. 셀 3~4개 × 2시도이고 jobs 2이므로 약 3~6분이다.
 - 재개 구간: 남은 8~9셀 × budget 20. HOST1의 jobs 2 실측 약 4,760 exec/h이면 실행 자체는 약 2~3분이고, 셀당 준비·정리를 더하면 약 5~10분이다.
-- 시나리오 A: 5분 이내. 그 밖에 지웅 승인 대기 시간이 붙는다.
+- 시나리오 A: 정지 구간은 1분 이내이고, ack 재개 뒤 남은 약 11셀 × budget 20이 실행되므로 B 재개 구간과 같은 약 5~10분이다. 그 밖에 지웅 승인 대기 시간이 붙는다.
 - 차수당 합계는 승인 대기를 빼고 약 20~30분이다.
 
-## 10. 실행 전 점검(오케스트레이터 승인 조건)
+## 10. 횟수·순서와 실행 전 점검
 
-1. "확인 필요" 4건 확정과 이 파일 머지(지웅 승인)
+**횟수:** 2회(D042 문구 그대로).
+
+**순서(오케스트레이터 결정, W4 권고 채택):** 런처 smoke → **정지·재개 smoke 1차** → 적격성(약 5시간) → **2차**(동결 직전) → 원장 sha 고정 → 동결.
+
+- 1차를 적격성 앞에 두는 이유: 약 30분짜리 smoke로 정지 경로의 결함을 먼저 걸러, 그 수정이 5시간짜리 적격성 실행을 무효로 만드는 일을 막는다.
+- 1차 뒤 실행 경로(`SHARED_PATH_FILES` 해시 또는 실행 SHA)가 바뀌면 2차는 필수이고 적격성도 무효다.
+- 같은 SHA에서 하는 2차는 회귀 확인이 아니라 반복 재현이다.
+- HOST2는 D042 요구 밖이다. HOST2(Engine 29.9.3)의 정지 경로 동작은 UNKNOWN이고, 이 한계를 결과 보고에 적는다.
+
+**실행 전 점검(오케스트레이터 승인 조건):**
+
+1. 이 파일 머지(지웅 승인)
 2. HOST1에 다른 실험·테스트가 없음. 잔존 리소스 0
-3. 기준 파일의 기대 id를 읽기 전용으로 확인
+3. 출력 폴더의 기대 이미지 파일 값을 읽기 전용으로 확인
 4. 1차는 통합 후보 확정 뒤 HEAD, 2차는 최종 `engine_sha` 후보
+
+**다른 문서에 넣을 제안 문장(#330·#332 담당 W3·W4에게 전달):**
+
+- 본실험 금지 조건(#330 점검표, exp3-v1 체크리스트): "D042 정지·재개 smoke 1차·2차 PASS(`experiments/configs/stop-path-smoke-v1.md` sha256 `<동결 시 기입>`)와 원장 행 반영 전에는 본실험을 시작하지 않는다."
+- Code Freeze 선행 조건: "D042 정지·재개 smoke 1차 PASS."
+- 호스트 적격성 §12: 넣지 않는다.

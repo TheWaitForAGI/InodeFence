@@ -78,8 +78,8 @@ the harness-generated message *substring*, never an exact string.
    wait``). Origin: ``checked`` (``execution/container.py``). It says that a harness call to the
    runtime failed outside cleanup, not that the case was harmless or that the abort carries no
    information. It is not in :data:`INFRASTRUCTURE_REASONS`, so the worker pool never retries
-   it (D21). The one exception is a Docker stall: when the attempt failed because of an
-   unrecovered Docker time-out and no other kind of Docker failure,
+   it (D21). The one exception is a Docker stall: when every anomalous Docker call of the
+   failed attempt timed out (at least one, and no other kind of Docker failure),
    ``execution/stall_recovery.py`` re-executes the case under the stall constants below.
    A cleanup error replacing one of these still
    classifies as cleanup, because the reason names only the last error; ``error_chain`` keeps the
@@ -131,17 +131,21 @@ RETRY_BACKOFF_BASE_SECONDS: float = 0.5
 RETRY_BACKOFF_CAP_SECONDS: float = 4.0
 
 # Docker infrastructure stalls (execution/stall_recovery.py). This reopens D040-D21 only for
-# stalls, and only on positive stall evidence: a case attempt that raised because of an
-# unrecovered Docker time-out (and no other kind of Docker failure), or whose TIMED_OUT
-# outcome the daemon's state shows to be a stall, is discarded and the same case is
+# stalls, and only on positive stall evidence: a case attempt that raised with at least one
+# anomalous Docker call, all of them time-outs (no other kind of Docker failure), or whose
+# TIMED_OUT outcome the daemon's state shows to be a stall, is discarded and the same case is
 # re-executed in a new container and run root once the daemon reports every container of
 # the attempt absent. INFRASTRUCTURE_REASONS above is unchanged: a runtime_call failure that
 # is not such a stall is still never retried. Per case the bound is MAX_INFRA_RETRIES; these
 # are the campaign bound and the two stall-specific limits.
-MAX_INFRA_RETRIES_PER_CAMPAIGN: int = 8
+# One re-execution can add about 220 s (absence confirmation up to 180 s plus the time-outs
+# before it). 8 per campaign could add about 29 minutes, enough to reach the V10' slack
+# (7200 s) and the watchdog (10800 s monotonic); 4 bounds it at about 15 minutes. Beyond the
+# bound the campaign aborts as before.
+MAX_INFRA_RETRIES_PER_CAMPAIGN: int = 4
 # Observed stalls (HOST1 benchmark 2026-11-07/08) lasted 24-143 s; confirmation starts about
-# 40 s after a stall begins (start 10 s + inspect 10 s + two cleanup inspects), so 180 s
-# covers more than 1.5x the longest observed stall.
+# 30 s after a stall begins (start 10 s + runtime inspect 10 s + one 10 s cleanup inspect in
+# the backend's own removal), so 180 s covers more than 1.5x the longest observed stall.
 STALL_ABSENCE_CONFIRM_SECONDS: float = 180.0
 # A start time-out whose container had already *exited on its own* (the backend did not kill
 # it) is a stall (the attach did not return) only when the daemon's FinishedAt - StartedAt is

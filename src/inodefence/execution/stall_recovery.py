@@ -25,9 +25,8 @@ behavior the backend already has.**
   daemon run time in ``[0, TARGET_TIMEOUT_STALL_MAX_RUNTIME_SECONDS]`` (the attach did not
   return). A target still running at the deadline, which the backend then killed, stays
   TIMED_OUT without any time comparison, and so does every other or unreadable state.
-* :func:`is_stall_failure` treats a raised ``BackendError`` as a stall only when every
-  anomalous Docker call of the attempt timed out and the first of them was not recovered
-  by an immediate successful retry of the same call.
+* :func:`is_stall_failure` treats a raised ``BackendError`` as a stall only when the
+  attempt has at least one anomalous Docker call and every anomalous call timed out.
 * :class:`StallRecovery` discards such an attempt and waits, at most
   ``STALL_ABSENCE_CONFIRM_SECONDS``, until the daemon answers "no such container" for every
   container the attempt created, using the backend's own owner-checked ``remove_owned``.
@@ -318,31 +317,25 @@ def _reason(error: BaseException) -> str:
     return f"{type(error).__module__}.{type(error).__qualname__}: {error}"
 
 
-def _recovered(calls: Sequence[CallObservation], index: int) -> bool:
-    """The timed-out call at ``index`` was retried at once, with success (the H1 pattern)."""
-    if index + 1 >= len(calls):
-        return False
-    call, retry = calls[index], calls[index + 1]
-    return retry.op == call.op and retry.container == call.container and not retry.anomalous
-
-
 def is_stall_failure(error: BaseException, calls: Sequence[CallObservation]) -> bool:
-    """A backend failure caused by an unrecovered Docker time-out, and by nothing else.
+    """A backend failure caused by Docker time-outs and by nothing else.
 
-    True only when ``error`` is a ``BackendError`` (not an output-limit error), the
-    attempt's first anomalous call timed out without being recovered by an immediate
-    successful retry of the same call, and no anomalous call of the attempt failed in any
-    other way (a daemon error, truncation, a broker exception). A failure that merely
-    follows an earlier, already recovered time-out is not a stall.
+    True only when ``error`` is a ``BackendError`` (not an output-limit error), the attempt
+    has at least one anomalous Docker call, and every anomalous call of the attempt timed
+    out. Any anomaly of another kind (a nonzero answer that is not "no such container", a
+    truncation, a broker exception) makes it no stall, so the failure propagates as before.
+    A ``BackendError`` raised without any anomalous call (for example a policy mismatch)
+    is no stall either. The backend retries no call itself, so a time-out it hit is never
+    silently recovered inside the attempt. Evidence: in the 48 Stage A call logs of the
+    HOST1 benchmark, 40 of the 41 anomalous calls were time-outs (container start 10,
+    container inspect 30) and the remaining one was a slow (4.1 s) inspect with return code 0;
+    no nonzero answer other than "no such container" occurred, so this rule misses none of
+    the observed stalls.
     """
     if not isinstance(error, BackendError) or isinstance(error, OutputLimitError):
         return False
-    anomalies = [index for index, call in enumerate(calls) if call.anomalous]
-    if not anomalies:
-        return False
-    if any(not calls[index].timed_out or calls[index].error for index in anomalies):
-        return False
-    return not _recovered(calls, anomalies[0])
+    anomalies = [call for call in calls if call.anomalous]
+    return bool(anomalies) and all(call.timed_out and call.error is None for call in anomalies)
 
 
 @dataclass(frozen=True, slots=True)

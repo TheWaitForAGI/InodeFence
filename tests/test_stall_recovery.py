@@ -13,6 +13,7 @@ import json
 import re
 from collections.abc import Callable
 from datetime import UTC, datetime
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, cast
 
@@ -61,6 +62,7 @@ from inodefence.model import ExecutionStatus
 from inodefence.mutator import MutationPolicy
 from inodefence.runtime import RUNTIME_BASE, disposable_sandbox
 from inodefence.targets.isolated import identify_image
+from inodefence.targets.node_tar_effect import PROTOCOL_ID, PROTOCOL_VERSION, SOURCE_ID
 
 IMAGE = "sha256:" + "a" * 64
 CONTROLLER = "b" * 64
@@ -112,14 +114,26 @@ class StallDaemon:
     timestamps); ``genuine`` (target runs until killed); ``late:<s>`` (start overhead <s>,
     then runs until killed); ``global:<s>`` (normal start, then every daemon call times out
     for <s> seconds, Class G); ``foreign`` (owned by another invocation); ``hangbad:<s>``
-    (like ``hang``, then inspect by name answers malformed JSON).
+    (like ``hang``, then inspect by name answers malformed JSON); ``hangrmerr:<s>`` (like
+    ``hang``, then ``rm --force`` answers a daemon error); ``createstall`` (create times
+    out but the container exists); ``ginspecterr`` (normal start, then one inspect times out
+    and the next answers a nonzero daemon error that is not "no such container").
+
+    With ``frames`` a normal effect target prints a valid, empty transport frame.
 
     A started command containing ``--identify`` prints the node-tar identity JSON; other
     targets exit with ``target_exit`` and print ``b"out"``.
     """
 
-    def __init__(self, clock: Clock, plans: list[str] | None = None, target_exit: int = 0):
+    def __init__(
+        self,
+        clock: Clock,
+        plans: list[str] | None = None,
+        target_exit: int = 0,
+        frames: bool = False,
+    ):
         self.clock = clock
+        self.frames = frames
         self.plans = list(plans or [])
         self.target_exit = target_exit
         self.log: list[tuple[tuple[str, ...], CommandResult]] = []
@@ -191,6 +205,11 @@ class StallDaemon:
             return CommandResult(1, b"", f"Error: No such object: {token}\n".encode())
         if self.clock.now < container["locked_until"]:
             return self._timeout(timeout)
+        if args[:2] == ("container", "inspect") and container["inspect_script"]:
+            outcome = container["inspect_script"].pop(0)
+            if outcome == "timeout":
+                return self._timeout(timeout)
+            return CommandResult(1, b"", b"Error response from daemon: internal error\n")
         if args[:2] == ("container", "inspect"):
             if container["plan"].startswith("hangbad") and token == container["name"]:
                 return CommandResult(0, b"not json", b"")
@@ -208,6 +227,8 @@ class StallDaemon:
         if args[:2] == ("container", "wait"):
             return CommandResult(0, f"{container['exit_code']}\n".encode(), b"")
         if args[:2] == ("container", "rm"):
+            if container["plan"].startswith("hangrmerr"):
+                return CommandResult(1, b"", b"Error response from daemon: removal in progress\n")
             del self.containers[container["id"]]
             del self.names[container["name"]]
             return CommandResult(0, b"", b"")
@@ -277,8 +298,12 @@ class StallDaemon:
             "locked_until": -1.0,
             "exit_code": 0 if identify else self.target_exit,
             "stdout": (json.dumps(IDENTITY) + "\n").encode() if identify else b"out",
+            "command": command,
+            "inspect_script": [],
         }
         self.names[name] = identity
+        if plan == "createstall":
+            return self._timeout(20)
         return CommandResult(0, identity.encode(), b"")
 
     def _exit_on_own(self, container: dict[str, Any], seconds: float) -> None:
@@ -288,13 +313,18 @@ class StallDaemon:
 
     def _start(self, container: dict[str, Any], timeout: float) -> CommandResult:
         plan, _, argument = container["plan"].partition(":")
-        if plan in ("normal", "foreign", "global"):
+        if plan in ("normal", "foreign", "global", "createstall", "ginspecterr"):
             self._exit_on_own(container, 0.1)
             self.clock.advance(0.2)
             if plan == "global":
                 self.global_until = self.clock.now + float(argument)
-            return CommandResult(container["exit_code"], container["stdout"], b"err")
-        if plan in ("hang", "hangbad"):
+            if plan == "ginspecterr":
+                container["inspect_script"] = ["timeout", "error"]
+            stdout = container["stdout"]
+            if self.frames and "--identify" not in container["command"]:
+                stdout = transport_frame(container["command"])
+            return CommandResult(container["exit_code"], stdout, b"err")
+        if plan in ("hang", "hangbad", "hangrmerr"):
             result = self._timeout(timeout)
             container["locked_until"] = self.clock.now + float(argument)
             return result
@@ -711,7 +741,7 @@ def test_unexpected_exception_during_absence_keeps_the_original_failure(world) -
     assert len(daemon.create_names()) == 1
 
 
-# 8. Failures that are not an unrecovered time-out are never retried ------------------------
+# 8. Failures that are not pure Docker time-outs are never retried --------------------------
 
 
 class RaisingDaemon(JournalOnlyDaemon):
@@ -739,14 +769,14 @@ def test_non_backend_failures_propagate_even_after_a_timeout(error) -> None:
     assert stall.events == []
 
 
-def test_failure_after_a_recovered_timeout_is_not_a_stall() -> None:
-    """F10: an H1-style recovered time-out does not turn a later daemon error into a stall."""
+def test_daemon_error_after_a_timeout_is_not_a_stall() -> None:
+    """F10: an earlier time-out does not turn a later daemon error into a stall."""
     stall, observed = journal_recovery()
     daemon = cast(JournalOnlyDaemon, observed._inner)
 
     def attempt():
         observed.run(("container", "inspect", "flaky"), TIMEOUT)  # times out
-        observed.run(("container", "inspect", "flaky"), TIMEOUT)  # immediate retry succeeds
+        observed.run(("container", "inspect", "flaky"), TIMEOUT)  # answers normally
         daemon.fail_create = True
         observed.run(("container", "create", "--name", "inodefence-x", IMAGE), 20)
         raise BackendError("container runtime create failed: conflict")
@@ -756,14 +786,67 @@ def test_failure_after_a_recovered_timeout_is_not_a_stall() -> None:
     assert stall.events == []
 
 
-def test_policy_violation_after_a_recovered_timeout_is_not_a_stall() -> None:
-    calls = [
-        CallObservation("container inspect", "n", -9, True, False, 0.0, 0.0, 10.0),
-        CallObservation("container inspect", "n", 0, False, False, 10.0, 0.0, 0.1),
-    ]
-    policy = BackendError("created container differs from required execution policy")
-    assert not is_stall_failure(policy, calls)
-    assert is_stall_failure(policy, calls[:1])
+def test_stall_rule_on_observation_lists() -> None:
+    """At least one anomalous call, and every anomalous call a time-out."""
+
+    def call(returncode, timed_out=False, absent=False, error=None):
+        return CallObservation(
+            "container inspect", "n", returncode, timed_out, False, 0.0, 0.0, 0.0, absent, error
+        )
+
+    failure = BackendError("container runtime inspect failed: ")
+    timeout, ok, absent = call(-9, timed_out=True), call(0), call(1, absent=True)
+    assert is_stall_failure(failure, [ok, timeout, absent, timeout])
+    assert not is_stall_failure(failure, [ok, absent])  # e.g. a policy mismatch: no anomaly
+    assert not is_stall_failure(failure, [timeout, call(1)])  # plus a daemon error
+    assert not is_stall_failure(failure, [timeout, call(-1, error="BackendError")])
+
+
+@pytest.mark.parametrize(
+    ("plan", "stall"),
+    (
+        ("hang:1000", True),  # Class S: every anomalous call is a time-out
+        ("global:1000", True),  # Class G after attach: inspect and cleanup time out
+        ("createstall", True),  # Class G hitting create
+        ("exited:0.107", True),  # the 0.107 s target whose attach timed out
+        ("hangrmerr:10", False),  # Class S, then rm --force answers a daemon error
+        ("ginspecterr", False),  # Class G, then cleanup inspect answers nonzero, not absent
+    ),
+)
+def test_stall_verdict_table_on_the_base_path(host, plan, stall) -> None:
+    """The reviewer's verdict table, from the fake daemon's behavior only (no messages)."""
+    clock = Clock()
+    daemon = StallDaemon(clock, [plan])
+    observed = ObservedDockerClient(daemon, monotonic=clock.monotonic, realtime=clock.realtime)
+    backend = ContainerExecutionBackend(observed, CONTROLLER, "inodefence-runtime", OWNER)
+    observed.begin_attempt()
+    try:
+        outcome = target_attempt(backend, [])()
+    except Exception as error:
+        verdict = is_stall_failure(error, observed.calls)
+    else:
+        assert outcome.exit_code is None
+        verdict = classify_target_timeout(observed.calls)[0].is_stall
+    assert verdict is stall
+
+
+def test_each_attempt_starts_with_an_empty_journal(world) -> None:
+    _, build = world
+    daemon, backend, stall, _ = build(["hang:30", "normal"])
+    seen: list[int] = []
+    inner = target_attempt(backend, [])
+
+    def attempt() -> ContainerOutcome:
+        seen.append(len(stall.client.calls))
+        return inner()
+
+    run_case(stall, attempt)
+
+    assert seen == [0, 0]  # attempt 2 does not see attempt 1 or the absence probes
+    [event] = stall.events
+    attempt_one = cast(dict, event["attempt"])["docker_calls"]
+    first_create = create_indexes(daemon)[0]
+    assert 0 < attempt_one < len(daemon.log) - first_create
 
 
 def test_non_timeout_failure_of_the_reexecution_propagates() -> None:
@@ -898,7 +981,7 @@ def test_no_stall_keeps_the_docker_call_sequence(world) -> None:
     assert stall.events == [] and emitted == []
 
 
-def real_demo(backend, recovery: StallRecovery | None) -> tuple[dict, list[str]]:
+def real_demo(backend, recovery: StallRecovery | None, **options: Any) -> tuple[dict, list[str]]:
     """The real native_demo_report path: real bind and run_node_tar_effect_case, fake daemon."""
     lines: list[str] = []
     report = run_effect_demo.native_demo_report(
@@ -907,8 +990,58 @@ def real_demo(backend, recovery: StallRecovery | None) -> tuple[dict, list[str]]
         budget=4,
         step_sink=lambda record: lines.append(render_effect_step_line(record)),
         stall_recovery=recovery,
+        **options,
     )
     return report, lines
+
+
+def transport_frame(command: list[str]) -> bytes:
+    """A valid, empty node-tar effect frame for the archive named in the target command."""
+    archive, profile, bound = command[3], command[5], int(command[6])
+    canonical = json.dumps([], sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    frame = {
+        "format": PROTOCOL_ID,
+        "schema_version": 1,
+        "profile": profile,
+        "event_bound": bound,
+        "source": {
+            "source_id": SOURCE_ID,
+            "protocol_id": PROTOCOL_ID,
+            "protocol_version": PROTOCOL_VERSION,
+            **IDENTITY,
+        },
+        "input": {"archive_sha256": sha256(Path(archive).read_bytes()).hexdigest()},
+        "records": [],
+        "terminal": {
+            "records_sha256": sha256(canonical.encode()).hexdigest(),
+            "record_count": 0,
+            "flush": "synchronous_stdout_write",
+            "last_produced_sequence": -1,
+        },
+    }
+    return json.dumps(frame).encode() + b"\n"
+
+
+def test_real_success_path_without_stall_is_byte_identical(host) -> None:
+    """Target exit 0 with a verified frame: SUCCESS steps through the real path."""
+    clock = Clock()
+    daemon = StallDaemon(clock, frames=True)
+    observed = ObservedDockerClient(daemon, monotonic=clock.monotonic, realtime=clock.realtime)
+    backend = ContainerExecutionBackend(observed, CONTROLLER, "inodefence-runtime", OWNER)
+    stall = StallRecovery(observed, OWNER, monotonic=clock.monotonic, emit=lambda _r: None)
+    plain = StallDaemon(Clock(), frames=True)
+    backend_without = ContainerExecutionBackend(plain, CONTROLLER, "inodefence-runtime", OWNER)
+
+    report, lines = real_demo(backend, stall, observer_integrity_continue=True)
+    plain_report, plain_lines = real_demo(backend_without, None, observer_integrity_continue=True)
+
+    checks = cast(list[dict], report["native_checks"])
+    assert {check["status"] for check in checks} == {ExecutionStatus.SUCCESS.value}
+    assert all(check["controller_flush_verified"] for check in checks)
+    assert normalize(lines) == normalize(plain_lines)
+    assert comparable(report) == comparable(plain_report)
+    assert calls_of(daemon) == calls_of(plain)
+    assert "infra_reexecutions" not in report and "infra_reexecution_count" not in report
 
 
 def comparable(report: dict) -> list[str]:

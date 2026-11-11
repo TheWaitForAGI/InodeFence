@@ -153,6 +153,24 @@ Native docker (read-only, `native_docker.txt`): no docker-ce/containerd packages
 | Execution SHA | UNKNOWN | not yet delivered; worktree location `~/inodefence-host2-20261111/execution` |
 | smoke | NOT RUN | prohibited |
 
-## 16. Evidence manifest
+## 17. Changes after 14:55, and prerequisites (as of 15:30 KST)
+
+- 15:23:36 `wsl.exe -u root -d Ubuntu-24.04 -- systemctl disable systemd-timesyncd`, rc=0. Before: inactive/enabled; after: inactive/disabled. Basis: the HOST2 user's message "다 승인" ("everything approved"), which approved all pending items. ORCH had treated permanent disable as an approval item, so this is reported to ORCH. The running state is unchanged (it was already stopped), so the confirmation test is not affected. Revert: `wsl.exe -u root -d Ubuntu-24.04 -- systemctl enable --now systemd-timesyncd` (`timesyncd_disable.txt`).
+- 15:18 the elevated restart-protection script was started via `Start-Process -Verb RunAs`. The UAC prompt is waiting for the owner's click, so it is **not applied yet**. Contents: Pause 35 days (UX Settings Pause* values), AU NoAutoRebootWithLoggedOnUsers=1 and AUOptions=2, powercfg AC 0/0, before/after reads, R6 admin query, systeminfo.
+- W32Time start/resync: **not applied.** A clock step (about 1.36 s) during the confirmation test (ending about 17:20) would invalidate the REALTIME−WinUTC criterion. Since then Jiwoong decided environment changes remain prohibited, so it is held. Owner commands (admin): `Start-Service W32Time; w32tm /resync /force; Set-Service W32Time -StartupType Automatic`. Revert: `Set-Service W32Time -StartupType Manual; Stop-Service W32Time`.
+- Engine: Jiwoong conditionally approved option B. Keep 4.99.0 / 29.9.3 and do not change versions until the main run ends. Docker Desktop automatic updates: `settings-store.json` has no update or Resource Saver key (defaults apply; the GUI value has not been confirmed by the owner).
+
+| Prerequisite | Status | Waiting on |
+| --- | --- | --- |
+| Load 4 images and match Ids | Not started | Owner accepting the Tailscale share invite (HOST1 not visible at 15:29) |
+| Restart protection applied | Not applied | Owner clicking "Yes" in UAC. Verdict will be "configuration compliant / effect not observed". Recheck the pause expiry on 11/18. After the main run, revert per §12 |
+| Clock confirmation test PASS | Running (ends about 17:20) | W2 verdict. After a WSL restart, recheck the tick and timesyncd state |
+| Clean up user apps | Not done | Owner's call (list in §12 item 7, AnyDesk is the owner's decision) |
+| Docker Desktop auto-update off | Unconfirmed | Owner turning it off in the GUI and recording the value |
+| Execution SHA checkout | Not done | ORCH delivering the SHA (`~/inodefence-host2-20261111/execution`) |
+| Volume in-use deletion refusal check | Not done | After transfer and load (W2) |
+| Launcher smoke 6 cells / qualification 12 campaigns | Prohibited | ORCH delivering the SHA and commands |
+
+## 18. Evidence manifest
 
 `SHA256SUMS` covers every public file in this directory. Raw probe files are redacted copies. CRLF was converted to LF, and trailing whitespace and blank lines at end of file were removed. The original unredacted outputs are kept only in the session-local scratch area.

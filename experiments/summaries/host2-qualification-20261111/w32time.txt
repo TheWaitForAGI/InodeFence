@@ -1,0 +1,16 @@
+at 2026-11-11T14:57:29.6425424+09:00
+Status    : Stopped
+StartType : Manual
+$ w32tm /stripchart /computer:time.windows.com /samples:5 /dataonly
+time.windows.com[52.231.114.183:123] 추적 중
+5개 샘플 수집 중
+현재 시간은 2026-11-11 오후 2:57:29입니다.
+14:57:29, +01.3647219s
+14:57:31, 오류: 0x800705B4
+14:57:34, 오류: 0x800705B4
+14:57:37, +01.3651686s
+14:57:39, +01.3642055s
+rc=0
+$ w32tm /query /configuration
+다음 오류가 발생했습니다. 서비스가 시작되지 않았습니다. (0x80070426)
+rc=-2147023834

@@ -400,3 +400,16 @@ HOST1 side (ORCH): 17:40:20–17:40:36 KST, source 100.100.95.17:56661 (HOST2), 
 | Code portability (docker-free tests at 129324d) | PASS (293 passed) | §22 |
 | Registration dry-run | intended refusal (TBD); test copy gate PASS; needs `PYTHONPATH=src` | §22, §24 |
 | Environment changes | timesyncd disabled; W32Time Running/Automatic; restart protection applied; 4 images loaded. Revert commands in §12, §17, §27 | — |
+
+## 32. ORCH decisions (18:40 KST) and the freq-rewrite source (read-only investigation)
+
+- No second W32Time peer and no further Windows time-service changes (same policy as Jiwoong's for HOST1). The absolute offset is a record, not a verdict input. Continued leap 3 is reported as UNKNOWN.
+- **Added to the pre-run check (record only, not a gate):** right before each qualification or main run, record `w32tm /query /status` (last sync time, source, leap) and the SNTP offset (`scripts/measure_clock_offset.py`, time.windows.com and pool.ntp.org).
+- Wait-loop lesson: waits get an upper time limit, and Windows tool output goes through `iconv -f utf-16` or `tr -d '\0'` before matching (§29 defect).
+
+**Who rewrites freq every 10 s (HOST2, WSL 3.0.5, kernel 6.18.58.1):** not identified. What is known:
+- The kernel has `CONFIG_HYPERV_UTILS=y`, and the `hv_utils` vmbus driver is bound. It exposes the Hyper-V time source as PTP device `/dev/ptp0` (`/dev/ptp_hyperv`, `clock_name` = `hyperv`).
+- A root scan of every process visible in the Ubuntu-24.04 distro (46 PIDs, `ptpholders.sh.txt`) found **no process holding `/dev/ptp*`, `/dev/rtc*` or a vmbus/hv device**. timesyncd is disabled. No chrony or ntpd is present.
+- So the writer is outside this distro's PID namespace: the WSL VM-level init or a service in the `docker-desktop` distro (both share the one WSL2 kernel), or the kernel itself. In-kernel `hv_utils` timesync steps the clock (on SYNC messages) rather than writing `freq` periodically. That points to a userspace agent in another namespace, which is not proven.
+- The same pattern on HOST1 (WSL 2.7.14), with tick oscillating even with timesyncd off, fits a shared WSL/Docker Desktop component rather than the WSL 3.0.5 build.
+- Identification method (not applied: it changes kernel tracing state, so it needs ORCH approval): as root, enable the tracepoint `syscalls/sys_enter_clock_adjtime` (and `sys_enter_adjtimex`) in tracefs for 60 s. Each event shows the caller's comm and pid, even from other namespaces. Then disable it. No persistent change.

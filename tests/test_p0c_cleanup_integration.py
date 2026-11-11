@@ -56,7 +56,9 @@ def test_shell_exit_and_launcher_classification(
         assert "FAILED cleanup: controller" in shell.stderr
     if volume:
         assert "FAILED cleanup: volume" in shell.stderr
-    assert calls[-2].startswith("rm -f ") and calls[-1].startswith("volume rm ")
+    # H1 cleanup removes by container id and re-inspects afterwards, so order is not last-two.
+    assert any(c.startswith("rm -f ") for c in calls)
+    assert any(c.startswith("volume rm ") for c in calls)
 
     out, args, _clock = _deadline_setup(tmp_path, monkeypatch, BEFORE, jobs="1")
     behavior: dict[str, Any] = dict(TARGET_IMAGES)

@@ -81,10 +81,8 @@ def test_cleanup_reports_failures(
     result, calls = run_fake_docker(tmp_path, controller_error, volume_error, host_error)
     assert result.returncode == expected, (result.stdout, result.stderr)
     assert ("PASSED:" in result.stdout) == (expected == 0)
-    assert calls[-2:] == [
-        "rm -f inodefence-local-controller-test",
-        "volume rm inodefence-local-runtime-test",
-    ]
+    assert f"rm -f {'a' * 64}" in calls
+    assert "volume rm inodefence-local-runtime-test" in calls
     if host_error:
         assert "FAILED at step: effect-demo (exit 37)" in result.stderr
     if controller_error:
@@ -99,24 +97,37 @@ def run_fake_docker(
     volume_error: int = 0,
     host_error: int = 0,
     create_error: str = "",
+    extra_env: dict[str, str] | None = None,
 ) -> tuple[subprocess.CompletedProcess[str], list[str]]:
     """Execute the complete host script with a closed PATH and inert executables."""
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    for name in ("dirname", "date"):
+    for name in ("dirname", "date", "rm", "mkdir", "mktemp", "ln"):
         (bin_dir / name).symlink_to(Path("/usr/bin") / name)
     docker = bin_dir / "docker"
     docker.write_text("""#!/bin/bash
 [ "$1" = --context ] || exit 99
 shift 2
+if { [ "$TIMEOUT_OPERATION" = "$1 $2" ] || [ "$TIMEOUT_OPERATION" = "$1" ]; } &&
+   { [ "$1" != exec ] || [ "$3" = sh ]; }; then
+  exit 124
+fi
 printf '%s\\n' "$*" >> "$FAKE_LOG"
-case "$*" in
-  "exec "*" test -e "*) exit 1 ;;
-esac
 case "$1 $2" in
-  "container inspect"|"volume inspect") exit 1 ;;
+  "container inspect")
+    [ "$INSPECT_UNKNOWN" != 1 ] || { echo daemon-unreachable >&2; exit 1; }
+    if [ "$3" = --format ]; then
+      printf '%064d %s\n' 0 "$CONTAINER_OWNER" | /usr/bin/tr 0 a; exit 0
+    fi
+    echo "Error: No such object: $3" >&2; exit 1 ;;
+  "volume inspect")
+    [ "$INSPECT_UNKNOWN" != 1 ] || { echo daemon-unreachable >&2; exit 1; }
+    if [ "$3" = --format ]; then printf '%s\n' "$VOLUME_OWNER"; exit 0; fi
+    echo "Error: No such volume: $3" >&2; exit 1 ;;
   "volume create") [ "$CREATE_ERROR" != volume ] || exit 43 ;;
   "run -d") [ "$CREATE_ERROR" != controller ] || exit 44 ;;
+  "exec "*) if [ "$EVIDENCE_PRESENT" = 1 ]; then printf PRESENT; else printf ABSENT; fi; exit 0 ;;
+  "cp "*) [ "$COPY_ERROR" = 0 ] || exit "$COPY_ERROR"; printf evidence > "$3" ;;
   "rm -f") exit "$CONTROLLER_ERROR" ;;
   "volume rm") exit "$VOLUME_ERROR" ;;
 esac
@@ -124,7 +135,11 @@ exit 0
 """)
     docker.chmod(0o755)
     python = bin_dir / "fake-python"
-    python.write_text('#!/bin/bash\nexit "$HOST_ERROR"\n')
+    python.write_text(
+        '#!/bin/bash\ncase "$1" in -c) echo test-owner; exit 0;; '
+        '*/bounded_cleanup_command.py) exec /usr/bin/python3 "$@";; '
+        'esac\nexit "$HOST_ERROR"\n'
+    )
     python.chmod(0o755)
     log = tmp_path / "calls"
     env = {
@@ -140,11 +155,65 @@ exit 0
         "VOLUME_ERROR": str(volume_error),
         "HOST_ERROR": str(host_error),
         "CREATE_ERROR": create_error,
+        "INSPECT_UNKNOWN": "0",
+        "EVIDENCE_PRESENT": "0",
+        "COPY_ERROR": "0",
+        "CONTAINER_OWNER": "test-owner",
+        "VOLUME_OWNER": "test-owner",
+        "TIMEOUT_OPERATION": "",
+        **(extra_env or {}),
     }
     result = subprocess.run(
         ["/bin/bash", str(SCRIPT), "demo"], env=env, text=True, capture_output=True, check=False
     )
     return result, log.read_text().splitlines()
+
+
+def test_cleanup_unknown_fails_closed(tmp_path: Path) -> None:
+    result, _ = run_fake_docker(tmp_path, extra_env={"INSPECT_UNKNOWN": "1"})
+    assert result.returncode != 0
+    assert "INODEFENCE_CLEANUP_UNKNOWN" in result.stderr
+    assert "PASSED:" not in result.stdout
+
+
+def test_existing_volume_with_different_owner_is_never_used_or_removed(tmp_path: Path) -> None:
+    result, calls = run_fake_docker(tmp_path, extra_env={"VOLUME_OWNER": "other-owner"})
+    assert result.returncode != 0
+    assert "INODEFENCE_CLEANUP_UNKNOWN" in result.stderr
+    assert not any(call.startswith(("run -d", "volume rm")) for call in calls)
+    assert sum(call.startswith("volume inspect ") for call in calls) >= 3
+
+
+def test_replaced_controller_is_not_removed(tmp_path: Path) -> None:
+    result, calls = run_fake_docker(tmp_path, extra_env={"CONTAINER_OWNER": "other-owner"})
+    assert result.returncode != 0
+    assert "INODEFENCE_CLEANUP_UNKNOWN: controller ownership" in result.stderr
+    assert not any(call.startswith(("rm -f ", "cp ")) for call in calls)
+
+
+@pytest.mark.parametrize("operation", ["exec", "cp", "rm -f", "volume rm"])
+def test_cleanup_cli_timeout_never_reports_success(tmp_path: Path, operation: str) -> None:
+    result, _ = run_fake_docker(
+        tmp_path, extra_env={"TIMEOUT_OPERATION": operation, "EVIDENCE_PRESENT": "1"}
+    )
+    assert result.returncode == 124
+    assert "PASSED:" not in result.stdout
+
+
+def test_copy_failure_preserves_original_exit(tmp_path: Path) -> None:
+    result, _ = run_fake_docker(
+        tmp_path, host_error=37, extra_env={"EVIDENCE_PRESENT": "1", "COPY_ERROR": "42"}
+    )
+    assert result.returncode == 37
+    assert "FAILED cleanup evidence copy" in result.stderr
+
+
+def test_copy_never_replaces_existing_evidence(tmp_path: Path) -> None:
+    evidence = tmp_path / "inodefence-effect-demo-native-test.json"
+    evidence.write_text("existing")
+    result, _ = run_fake_docker(tmp_path, extra_env={"EVIDENCE_PRESENT": "1"})
+    assert result.returncode != 0
+    assert evidence.read_text() == "existing"
 
 
 @pytest.mark.parametrize(

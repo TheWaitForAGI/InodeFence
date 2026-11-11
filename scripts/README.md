@@ -28,6 +28,34 @@ generate_tar_fixtures.py는 4종 TAR baseline과 C0/C1/C2 oracle-check fixture 3
 
 [Dev Container](../.devcontainer/README.md) 안에서 python scripts/check_dev_env.py로 실행한다. 환경 기준은 [환경 설계](../docs/research/design/development-environment.md)를 따른다.
 
+H1 controller와 host broker의 cleanup inspect에 timeout·출력 잘림·오류가 있으면
+`inodefence-cleanup-attempt` JSON을 stderr에 즉시 출력하고, cleanup이 끝나거나 실패하면
+`inodefence-cleanup-diagnostic` JSON에 각 조회와 최종 결과를 함께 남긴다. H1의 기존 캠페인
+로그가 이 stderr를 받으며 broker stdout 프로토콜과 보고서/abort 분류는 바뀌지 않는다.
+이상 없는 cleanup은 추가 로그가 없다. 진단에는 return code, timeout, truncation, 부재 확인과
+사용 가능한 stderr가 들어간다. stderr 전달·저장 실패나 첫 응답 전 강제 종료에서는
+기록이 보장되지 않으며, 기록이 없다는 것을 timeout이 없었다는 증거로 해석하지 않는다.
+
+H1 호스트 smoke 종료 시 Docker CLI에 엔지니어링 deadline을 둔다: evidence 존재 확인 및
+자원 inspect 30초, `cp` 300초, controller/volume 삭제 60초. 각 timeout은 CLI 프로세스 그룹을
+종료하며 daemon 작업 완료를 뜻하지 않는다. 이 값은 정상 호출의 전체 지연 분포가 아닌 기존
+10초 broker 제한과 70–108 MB 복사 규모에 근거한 후보이며, 측정 조건이 바뀌므로 과거 결과와
+동등하다고 가정하지 않는다. 삭제 후 부재를 확정하지 못하면 `INODEFENCE_CLEANUP_UNKNOWN`을
+남긴다. 현재 H1은 셀 종료 뒤 이 표식을 읽으므로, 표식 발생과 셀 종료 사이에 다른 셀이 시작될
+수 있다. 이것은 미해결 차단 결함이며 이 후보는 실측에 사용하지 않는다. 종료 전의 build, create,
+setup 호출에는 이 cleanup deadline이 적용되지 않는다. 기존 증거 경로를 덮어쓰지 않는다.
+
+H1의 설계된 수준 stop과 외부 stop은 `block.json`에 `state=stopped`, `finished=false`로
+기록하고 기존 §6.3의 수준 배제·외부 단계 무효 판정에 사용한다. runner·기록 경로의 예외는 별도
+`block.incomplete.json` (`inodefence-h1-incomplete-v1`, `finished=false`)을 게시한다. 최초 stop,
+시작·종료 확인·미확인 셀, 예외, 잔여 자원 조회 및 확인 필요 상태를 기록한다. 분석기는 이를
+정상 블록에 합산하지 않고 선택 및 fallback을 null로 중단한다. 원자적 이름 게시와 파일 fsync는
+시도하지만 SIGKILL, 전원 장애, 저장소 오류 시 기록의 존재나 디렉터리 내구성은 보장하지 않는다.
+기록 자체가 실패해도 디렉터리만 존재하는 블록은 미완료로 남아 재실행을 거부한다.
+이후 단계는 기존 통과 보고서뿐 아니라 선행 블록의 현재 상태도 확인한다.
+Ctrl-C는 워커 종료를 기다리기 전에 stop을 확정하지만, 반복 중단이나 SIGTERM·SIGKILL은
+프로세스와 증거의 정리를 보장하지 않는다.
+
 ## 현재 상태
 
 환경 확인과 [TAR baseline 예제](../docs/examples/tar-baseline.md)의 fixture 생성·수동 관찰 명령이 있다. Safe reference의 bounded campaign 개발 pilot과 strict config CLI가 있다. 일반 target 선택/benchmark CLI는 없다.

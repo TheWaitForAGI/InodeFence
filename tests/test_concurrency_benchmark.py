@@ -96,7 +96,9 @@ def test_output_must_stay_apart_from_evidence_and_repository(tmp_path: Path) -> 
 
 def _fake_result(cell: Cell, raw: Path, returncode: int) -> CellResult:
     raw.mkdir(parents=True, exist_ok=True)
-    return CellResult(cell, returncode, 0.01, raw / "e.json", False, raw / f"{cell.run_id}.log")
+    log = raw / f"{cell.run_id}.log"
+    log.touch()
+    return CellResult(cell, returncode, 0.01, raw / "e.json", False, log)
 
 
 def test_block_run_honors_jobs_and_records_no_outcome(design: bench.Design, tmp_path: Path) -> None:
@@ -106,7 +108,8 @@ def test_block_run_honors_jobs_and_records_no_outcome(design: bench.Design, tmp_
     running = 0
     peak = 0
 
-    def run_cell(cell: Cell, raw: Path, _env: dict[str, str]) -> CellResult:
+    def run_cell(cell: Cell, raw: Path, _env: dict[str, str], launch: Any) -> CellResult:
+        launch(lambda: None)
         nonlocal running, peak
         with lock:
             running += 1
@@ -127,7 +130,12 @@ def test_block_run_honors_jobs_and_records_no_outcome(design: bench.Design, tmp_
 
 def test_block_stops_starting_cells_after_half_fail(design: bench.Design, tmp_path: Path) -> None:
     block = bench.planned_blocks(design, "A")[0]
-    run = bench.BlockRun(design, block, tmp_path, lambda c, r, _e: _fake_result(c, r, 1))
+    run = bench.BlockRun(
+        design,
+        block,
+        tmp_path,
+        lambda c, r, _e, launch: (launch(lambda: None), _fake_result(c, r, 1))[1],
+    )
     record = run.execute()
     states = [cell["state"] for cell in record["cells"]]
     assert "not-run" in states
@@ -141,7 +149,8 @@ def test_five_failures_do_not_stop_a_block(design: bench.Design, tmp_path: Path)
     block = bench.planned_blocks(design, "A")[0]
     failing = {cell.run_id for cell in block.cells[:5]}
 
-    def run_cell(cell: Cell, raw: Path, _env: dict[str, str]) -> CellResult:
+    def run_cell(cell: Cell, raw: Path, _env: dict[str, str], launch: Any) -> CellResult:
+        launch(lambda: None)
         return _fake_result(cell, raw, 1 if cell.run_id in failing else 0)
 
     record = bench.BlockRun(design, block, tmp_path, run_cell).execute()
@@ -155,7 +164,10 @@ def test_watchdog_kill_stops_the_block(design: bench.Design, tmp_path: Path) -> 
         design,
         block,
         tmp_path,
-        lambda c, r, _e: _fake_result(c, r, bench.WATCHDOG_RETURNCODE),
+        lambda c, r, _e, launch: (
+            launch(lambda: None),
+            _fake_result(c, r, bench.WATCHDOG_RETURNCODE),
+        )[1],
     )
     record = run.execute()
     assert "watchdog" in (record["stopped_reason"] or "")
@@ -184,7 +196,12 @@ def test_host_stop_reasons(design: bench.Design) -> None:
 
 def test_the_first_stop_names_the_block(design: bench.Design, tmp_path: Path) -> None:
     block = bench.planned_blocks(design, "A")[0]
-    run = bench.BlockRun(design, block, tmp_path, lambda c, r, _e: _fake_result(c, r, 0))
+    run = bench.BlockRun(
+        design,
+        block,
+        tmp_path,
+        lambda c, r, _e, launch: (launch(lambda: None), _fake_result(c, r, 0))[1],
+    )
     run.request_stop("foreign container", bench.STOP_EXTERNAL)
     run.request_stop("watchdog", bench.STOP_LEVEL)
     assert (run.stopped_reason, run.stop_kind) == ("foreign container", bench.STOP_EXTERNAL)
@@ -201,16 +218,21 @@ def test_residual_resources_after_a_block_are_a_level_stop(
             return 0
 
     monkeypatch.setattr(bench, "_start_events", lambda _path: FakeEvents())
+    monkeypatch.setattr(bench.subprocess, "Popen", lambda *args, **kwargs: object())
     monkeypatch.setattr(bench, "_sample_host", lambda *_args: None)
     monkeypatch.setattr(bench, "residual_resources", lambda: ["left-over"])
     monkeypatch.setattr(
-        bench, "run_cell_with_watchdog", lambda c, r, _e, _b, limit_seconds: _fake_result(c, r, 0)
+        bench,
+        "run_cell_with_watchdog",
+        lambda c, r, _e, _b, limit_seconds, popen: (popen(["true"]), _fake_result(c, r, 0))[1],
     )
     block = bench.planned_blocks(design, "A")[0]
     record = bench.run_block(design, block, tmp_path, "bash")
     assert "residual" in (record["stopped_reason"] or "")
     assert record["stop_kind"] == bench.STOP_LEVEL
-    assert json.loads((tmp_path / bench.BLOCK_FILE).read_text("utf-8"))["stop_kind"] == "level"
+    assert record["finished"] is False
+    assert (tmp_path / bench.BLOCK_FILE).is_file()
+    assert not (tmp_path / bench.INCOMPLETE_BLOCK_FILE).exists()
 
 
 def test_a_stop_after_the_last_cell_keeps_its_kind(
@@ -228,15 +250,20 @@ def test_a_stop_after_the_last_cell_keeps_its_kind(
         run.request_stop("foreign containers appeared", bench.STOP_EXTERNAL)
 
     monkeypatch.setattr(bench, "_start_events", lambda _path: FakeEvents())
+    monkeypatch.setattr(bench.subprocess, "Popen", lambda *args, **kwargs: object())
     monkeypatch.setattr(bench, "_sample_host", late_sampler)
     monkeypatch.setattr(bench, "residual_resources", list)
     monkeypatch.setattr(
-        bench, "run_cell_with_watchdog", lambda c, r, _e, _b, limit_seconds: _fake_result(c, r, 0)
+        bench,
+        "run_cell_with_watchdog",
+        lambda c, r, _e, _b, limit_seconds, popen: (popen(["true"]), _fake_result(c, r, 0))[1],
     )
     block = bench.planned_blocks(design, "A")[0]
     record = bench.run_block(design, block, tmp_path, "bash")
     assert "foreign" in (record["stopped_reason"] or "")
     assert record["stop_kind"] == bench.STOP_EXTERNAL
+    assert record["finished"] is False
+    assert (tmp_path / bench.BLOCK_FILE).is_file()
 
 
 def test_a_failed_sampler_stops_the_block(
@@ -247,7 +274,12 @@ def test_a_failed_sampler_stops_the_block(
 
     monkeypatch.setattr(bench, "read_host_counters", broken)
     block = bench.planned_blocks(design, "A")[0]
-    run = bench.BlockRun(design, block, tmp_path, lambda c, r, _e: _fake_result(c, r, 0))
+    run = bench.BlockRun(
+        design,
+        block,
+        tmp_path,
+        lambda c, r, _e, launch: (launch(lambda: None), _fake_result(c, r, 0))[1],
+    )
     bench._sample_host(run, tmp_path / "samples.jsonl", threading.Event(), seconds=0.01)
     assert "sampler failed" in (run.stopped_reason or "")
     assert run.stop_kind == bench.STOP_EXTERNAL
@@ -266,12 +298,20 @@ def test_stage_gate_follows_the_decision(design: bench.Design, tmp_path: Path) -
     for block in bench.planned_blocks(design, bench.SMOKE_STAGE):
         path = tmp_path / block.stage / block.name
         path.mkdir(parents=True)
-        (path / bench.BLOCK_FILE).write_text(json.dumps({"stopped_reason": None}), encoding="utf-8")
+        (path / bench.BLOCK_FILE).write_text(
+            json.dumps({"stopped_reason": None, "finished": True}), encoding="utf-8"
+        )
     assert bench.stage_gate_problem(design, "A", tmp_path) is None
     assert "no analysis report" in (bench.stage_gate_problem(design, "B", tmp_path) or "")
     report = tmp_path / bench.REPORT_JSON
     _write_report(report, design, passed=False)
     assert "did not pass" in (bench.stage_gate_problem(design, "B", tmp_path) or "")
+    for block in bench.planned_blocks(design, "A"):
+        path = tmp_path / block.stage / block.name
+        path.mkdir(parents=True)
+        (path / bench.BLOCK_FILE).write_text(
+            json.dumps({"stopped_reason": None, "finished": True}), encoding="utf-8"
+        )
     _write_report(report, design, passed=True)
     assert bench.stage_gate_problem(design, "B", tmp_path) is None
     _write_report(report, design, passed=True, halts=[{"rule": "H2"}])
@@ -847,6 +887,7 @@ def _write_stage(
                 _write_cell(raw, design, run_id, seed, arm=arm, duration=duration, steps=steps)
             )
         record = {
+            "finished": not (stop is not None and stop[0] == index),
             "stage": stage,
             "index": index,
             "jobs": jobs,
@@ -857,6 +898,8 @@ def _write_stage(
             "residual_after_block": [],
             "cells": cells,
         }
+        if stop is not None and stop[0] == index:
+            record["state"] = "stopped"
         (directory / bench.BLOCK_FILE).write_text(json.dumps(record), encoding="utf-8")
 
 
@@ -1269,6 +1312,31 @@ def test_stop_kind_reaches_the_decision_from_the_block_file(
     # The driver's gate refuses the next stage on this report.
     (tmp_path / bench.REPORT_JSON).write_text(json.dumps(report), encoding="utf-8")
     assert "did not pass" in (bench.stage_gate_problem(design, "B", tmp_path) or "")
+
+
+@pytest.mark.parametrize(
+    ("index", "kind", "status", "selected", "invalid"),
+    [
+        (1, LEVEL_STOP, "halted", None, None),
+        (2, LEVEL_STOP, "selected", 2, None),
+        (2, EXTERNAL_STOP, "provisional", None, "A"),
+    ],
+)
+def test_stopped_block_file_preserves_design_decision(
+    design: bench.Design,
+    tmp_path: Path,
+    index: int,
+    kind: str,
+    status: str,
+    selected: int | None,
+    invalid: str | None,
+) -> None:
+    _write_stage(tmp_path, design, "A", stop=(index, kind))
+    decision = analysis.analyze(tmp_path, design)["decision"]
+    assert decision["status"] == status
+    assert decision["selected_jobs"] == selected
+    assert decision["stage_invalid"] == invalid
+    assert all(halt["rule"] != "incomplete-block" for halt in decision["halts"])
 
 
 def test_one_sided_congestion_cell_is_not_normal_for_g(design: bench.Design) -> None:

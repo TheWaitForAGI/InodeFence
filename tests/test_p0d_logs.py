@@ -23,6 +23,16 @@ from test_run_exp0 import clean_engine as clean_engine
 
 pytestmark = pytest.mark.usefixtures("clean_engine", "admit_fixture_holdout")
 
+# Defaults the H1 cleanup fake (#317-#329) reads: owned resources, no evidence, no timeouts.
+H1_FAKE_DOCKER_ENV = {
+    "INSPECT_UNKNOWN": "0",
+    "EVIDENCE_PRESENT": "0",
+    "COPY_ERROR": "0",
+    "CONTAINER_OWNER": "test-owner",
+    "VOLUME_OWNER": "test-owner",
+    "TIMEOUT_OPERATION": "",
+}
+
 
 @pytest.mark.parametrize(
     ("controller", "volume", "host", "watchdog", "expected", "state"),
@@ -57,6 +67,7 @@ def test_shell_diagnostics_reach_launcher_records(
         "VOLUME_ERROR": str(volume),
         "HOST_ERROR": str(host),
         "CREATE_ERROR": "",
+        **H1_FAKE_DOCKER_ENV,
     }
     out, args, _ = _deadline_setup(tmp_path, monkeypatch, BEFORE, jobs="1")
     behavior: dict[str, Any] = dict(TARGET_IMAGES)
@@ -94,9 +105,11 @@ def test_shell_diagnostics_reach_launcher_records(
     log = _cell(args, VICTIM, out)["log"].read_text()
     assert end["returncode"] == expected and end["watchdog_fired"] is watchdog
     assert _index(out)["interim"]["cell_states"][VICTIM] == state
-    if controller:
+    # With the watchdog row's sleeping fake python, H1 cleanup (bounded_cleanup_command.py runs
+    # under $PYTHON) never reaches docker, so only the watchdog code is checked there.
+    if controller and not watchdog:
         assert "FAILED cleanup: controller" in log
-    if volume:
+    if volume and not watchdog:
         assert "FAILED cleanup: volume" in log
     if host:
         assert "FAILED at step: effect-demo-historical (exit 37)" in log
@@ -134,6 +147,7 @@ def test_watchdog_kill_can_skip_cleanup(tmp_path):
         "VOLUME_ERROR": "0",
         "HOST_ERROR": "0",
         "CREATE_ERROR": "",
+        **H1_FAKE_DOCKER_ENV,
         "FAKE_READY_FD": str(write_fd),
         "TAR_VERSION": "7.5.2",
     }
@@ -223,6 +237,7 @@ def test_no_record_retry_preserves_each_log(tmp_path, monkeypatch):
             "VOLUME_ERROR": "0" if count == 1 else "42",
             "HOST_ERROR": "0",
             "CREATE_ERROR": "",
+            **H1_FAKE_DOCKER_ENV,
         }
 
         def popen(cmd, **kwargs):

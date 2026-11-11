@@ -89,4 +89,5 @@ execution_deadline = TBD-FREEZE
      [--scenario-a-snapshots <S>/snaps-a]  # 시나리오 A(a1, a-refused, a2, a-final)는 합격에 넣지 않는다
    ```
    스냅샷과 판정 출력에는 키·개수·해시만 있고 oracle 값은 없다.
+   시나리오 A(별도 출력 폴더): 지웅의 재개 승인은 1회다. 그 참조 `D042-smoke-1-A-<YYYYMMDD>-<HHMM>` 하나로 게이트 판정 U인 셀을 **모두** ack한 뒤(`PYTHONPATH=src python src/inodefence/execution/start_gate.py ack <S>/out-a/start-gate <cell> "approval=<참조>; checked_at=…; by=…; residual=<읽기 전용 잔존 확인 → 결과>; reason=…"`, U 셀마다), `--resume-after-stop <참조>`로 재개한다.
 5. **원장:** 실행 뒤 stop-path-smoke-v1 §7의 행 초안을 실제 셀 수로 채워 1행씩 추가한다.

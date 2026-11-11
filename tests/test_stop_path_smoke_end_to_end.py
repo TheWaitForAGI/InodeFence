@@ -111,7 +111,10 @@ os.execv(sys.executable, [sys.executable, gate, "record", *verdict])
 
 
 def _cell_runner(
-    out: Path, unknown: str | None = None, clean_after_unknown: str | None = None
+    out: Path,
+    unknown: str | None = None,
+    clean_after_unknown: str | None = None,
+    both_unknown: tuple[str, str] | None = None,
 ) -> Any:
     """A cell that records its gate verdict, then a record (or none under the injection).
 
@@ -120,6 +123,10 @@ def _cell_runner(
     which then records S only after that U; ``unknown`` returns only after the stop line. So:
     the U cell, one cell that ran clean, the next start denied by the gate, then the stop
     ("start gate denied") — a shape the launcher can produce on any machine (SA1 corrected).
+
+    ``both_unknown`` is the real injection's shape (a bad docker context for the whole
+    launcher, jobs 2): each child is admitted, marks it, waits for the other's mark, then both
+    record U. Two U cells, no clean cell, no denied start, the stop "cleanup unknown".
     """
     inner = _fake_runner(TARGET_IMAGES)
     lockstep = _Lockstep(out)
@@ -130,7 +137,14 @@ def _cell_runner(
         injected = env.get("HISTORICAL_IMAGE") == MISSING_IMAGE
         gate_dir = output / run_exp0.START_GATE_DIR
         touch, wait, prefix, verdict = "", "", "", ["S"]
-        if cell.run_id == unknown:
+        if both_unknown is not None and cell.run_id in both_unknown:
+            other = both_unknown[1 - both_unknown.index(cell.run_id)]
+            touch, wait = (
+                str(out.parent / f"admitted-{cell.run_id}"),
+                str(out.parent / f"admitted-{other}"),
+            )
+            verdict = ["U", "cleanup: test"]
+        elif cell.run_id == unknown:
             wait, verdict = str(admitted), ["U", "cleanup: test"]
         elif cell.run_id == clean_after_unknown and unknown is not None:
             touch, wait, prefix = str(admitted), str(gate_dir / f"{unknown}.verdict"), "U"
@@ -274,18 +288,56 @@ def test_scenario_a_by_the_procedure_passes_every_check(
     run = _Run(tmp_path, monkeypatch, capsys, "a")
     first, second = (cell.run_id for cell in _deadline_plan(run.args).cells()[:2])
     runner = _cell_runner(run.out, unknown=first, clean_after_unknown=second)
+    result = _scenario_a(run, monkeypatch, runner)
+    # The shape the corrected SA1 allows and the literal "starts <= jobs" did not.
+    assert result["SA1"]["evidence"]["starts_before_stop"] == {
+        "unknown": 1,
+        "ran_clean": 1,
+        "denied": 1,
+        "other": 0,
+    }
+
+
+@pytest.mark.usefixtures("end_to_end")
+def test_scenario_a_with_both_first_cells_unknown_passes_every_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The real injection's shape: a bad context fails every cell, so with jobs 2 both first
+    cells start before any U and both record U. One approval reference acks both."""
+    run = _Run(tmp_path, monkeypatch, capsys, "a2u")
+    first, second = (cell.run_id for cell in _deadline_plan(run.args).cells()[:2])
+    runner = _cell_runner(run.out, both_unknown=(first, second))
+    result = _scenario_a(run, monkeypatch, runner)
+    assert result["SA1"]["evidence"]["starts_before_stop"] == {
+        "unknown": 2,
+        "ran_clean": 0,
+        "denied": 0,
+        "other": 0,
+    }
+    assert result["SA5"]["evidence"]["gate_acks"] == 2
+
+
+def _scenario_a(run: "_Run", monkeypatch: pytest.MonkeyPatch, runner: Any) -> dict[str, Any]:
+    """Scenario A by the procedure: stop, refused resume, ack every U cell, approved resume."""
     monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", runner)
-    code, err = run.call()  # the first cell's cleanup is unknown: the gate stops the run
+    code, err = run.call()  # the gate stops the run
     run.snapshot("a1", code, err)
     code, err = run.call("--resume-after-stop", REF_A)  # refused while U
     run.snapshot("a-refused", code, err)
-    cell = first
-    acknowledge(
-        run.out / run_exp0.START_GATE_DIR,
-        cell,
-        f"approval={REF_A}; checked_at=2026-11-12T11:00:00+09:00; by=test; "
-        "residual=docker ps -a --filter name=inodefence- -> (none); reason=test",
+    gate_dir = run.out / run_exp0.START_GATE_DIR
+    unknown = sorted(
+        path.name.removesuffix(".verdict")
+        for path in gate_dir.glob("*.verdict")
+        if path.read_text(encoding="utf-8").startswith("U")
     )
+    assert unknown
+    for cell in unknown:  # one approval (REF_A) for scenario A; every U cell acked with it
+        acknowledge(
+            gate_dir,
+            cell,
+            f"approval={REF_A}; checked_at=2026-11-12T11:00:00+09:00; by=test; "
+            "residual=docker ps -a --filter name=inodefence- -> (none); reason=test",
+        )
     monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", _cell_runner(run.out))
     code, err = run.call("--resume-after-stop", REF_A)
     run.snapshot("a2", code, err)
@@ -294,10 +346,4 @@ def test_scenario_a_by_the_procedure_passes_every_check(
     result = check.judge_a(check.load_snapshots(run.snaps))
     assert len(result) == 6
     assert _failures(result) == {}
-    # The shape the corrected SA1 allows and the literal "starts <= jobs" did not.
-    assert result["SA1"]["evidence"]["starts_before_stop"] == {
-        "unknown": 1,
-        "ran_clean": 1,
-        "denied": 1,
-        "other": 0,
-    }
+    return result

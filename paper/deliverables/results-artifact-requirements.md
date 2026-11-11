@@ -44,7 +44,7 @@ python -m scripts.gen_exp3_tables --artifact <ID> --report <report.json> --check
 **보고서 표 대응.** 표 7-A = T-EXP2-1, 표 7-A2 = T-EXP2-2, 표 7-B = T-EXP3-1, 표 7-B2 = T-EXP3-2.
 D12 판정 칸을 고르는 근거는 T-EXP2-2(대비별 확증 결과)와 T-EXP2-4(abort 민감도)다. T-EXP3-2는 GO 입력표이고 판정 근거가 아니다.
 확증은 holdout 대비의 Holm 결과뿐이고, train 표에는 검정값이 없다(규칙 2). 옛 표 7-C(fix-verification)는 D040-D3으로 없앴다.
-NO-GO나 GO 미산출이면 EXP-2를 실행하지 않으므로 T-EXP2-* 와 F-EXP2는 만들지 않는다(exp2-v1 §6 "연장 금지").
+NO-GO나 GO 미산출이면 EXP-2를 실행하지 않으므로 T-EXP2-* 와 F-EXP2는 만들지 않는다(exp2-v1 §5 "연장 금지").
 
 ## EXP-0·기존 산출물
 

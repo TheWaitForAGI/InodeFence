@@ -2,7 +2,7 @@
 
 > **상태: 동결 전 초안 (2026-11-11).** 아직 실행할 수 없다. `TBD-FREEZE` 값이 남아 있는 동안 파서가 거부한다(의도된 동작). 11/18에 [exp3-v1](exp3-v1.md)과 **함께** 동결한다(D040-D1). 실행은 exp3-v1 §5의 GO가 성립한 뒤에만 한다.
 >
-> **기준.** [D040](../../docs/DECISIONS.md#d040--exp-3-동결-전-재판정-위험도-파일럿-4040-반영), [D041](../../docs/DECISIONS.md#d041--동시-실행-벤치마크-단계-a-승인과-파일럿-seed-재사용), [D042](../../docs/DECISIONS.md#d042--인프라-정지-규칙-연속-3셀-기록-없음)·[D043](../../docs/DECISIONS.md#d043--go-입력-r에서-등록된-인프라-정지-공백을-뺀다), [D045](../../docs/DECISIONS.md#d045--holdout-상태-확인의-위반어댑터-호환-정의와-train-abort-분모), D046(초안, #337), [노출 원장](exposure-ledger.md), [동시 실행 벤치마크 v3](../configs/concurrency-scaling-v3.md). 이 초안과 D040이 다르면 D040이 맞다. **"ORCH 결정 2026-11-11"** 표시는 오케스트레이터가 데이터 이전에 정한 실행 세부이고, 지웅 승인은 이 PR의 머지로 한다.
+> **기준.** [D040](../../docs/DECISIONS.md#d040--exp-3-동결-전-재판정-위험도-파일럿-4040-반영), [D041](../../docs/DECISIONS.md#d041--동시-실행-벤치마크-단계-a-승인과-파일럿-seed-재사용), [D042](../../docs/DECISIONS.md#d042--인프라-정지-규칙-연속-3셀-기록-없음)·[D043](../../docs/DECISIONS.md#d043--go-입력-r에서-등록된-인프라-정지-공백을-뺀다), [D045](../../docs/DECISIONS.md#d045--holdout-상태-확인의-위반어댑터-호환-정의와-train-abort-분모), D046(초안, #342), D047(초안, #342), [노출 원장](exposure-ledger.md), 호스트별 적격성 검증 v1(`experiments/configs/host-qualification-v1.md`, D047, #342). 동시 실행 벤치마크 v3(`experiments/configs/concurrency-scaling-v3.md`)는 본실험 선행 조건이 아니다(D047). 이 초안과 D040이 다르면 D040이 맞다. **"ORCH 결정 2026-11-11"** 표시는 오케스트레이터가 데이터 이전에 정한 실행 세부이고, 지웅 승인은 이 PR의 머지로 한다.
 
 ## 1. 목적
 
@@ -52,15 +52,16 @@ multiplicity = holm-fwer-v1
 # D14: 7, 정보 블록(I) 기준.
 event_threshold = 7
 execution_mode = per-case-container
-jobs_max = TBD-FREEZE
+# D047: 두 호스트 모두 jobs=2 고정(사람 결정, 벤치마크 선정값 아님).
+jobs_max = 2
 campaign_watchdog_seconds = 10800
 disk_pause_fraction = 0.9
 interim_analysis = forbidden
 execution_deadline = 2026-11-25T12:00:00+09:00
-# 2호스트(ORCH 결정 #1). 게이트 강제: W3 구현, 검증 후 동결.
-host.HOST1.jobs = TBD-FREEZE
+# 호스트 키(D047). 현재 파서(fa8ccb4)는 두 호스트 키를 모두 요구한다. 참여 집합은 exp3-v1 §3에서 동결 때 고정하고 할당 파일(make_seed_assignment.py --participants)에 기록한다. 게이트 강제.
+host.HOST1.jobs = 2
 host.HOST1.docker_engine = TBD-FREEZE
-host.HOST2.jobs = TBD-FREEZE
+host.HOST2.jobs = 2
 host.HOST2.docker_engine = TBD-FREEZE
 # §4 규칙. 할당 파일은 GO 시점에 생기므로 sha 키를 두지 않는다(ORCH 결정 2026-11-11).
 seed_assignment_rule = rh-proportional-v1
@@ -117,14 +118,15 @@ seed_assignment_rule = rh-proportional-v1
 ## 4. 호스트 할당 (ORCH 결정 #6)
 
 - 한 seed의 세 arm은 같은 호스트에서 돈다.
+- **참여 호스트(D047):** 참여 호스트는 exp3-v1 §3에서 동결 때 고정한 집합이다. r_h는 각 참여 호스트의 train 값(exp3-v1 §5)이다. 참여 호스트가 하나면 등록 seed 120개 전부를 그 호스트에 둔다. exp3-v1 §5의 미재개 정지 규칙(D047, 지웅 결정 1)이 적용되면 여기서 "참여 호스트"는 "GO 판정 시각에 재개·가동 중인 참여 호스트"를 뜻한다.
 - **N = 등록 seed 120개 전부**다. GO 시점의 r_h(exp3-v1 §5의 호스트별 r)에 비례해 나눈다. N=min(120, 용량) 같은 규칙은 쓰지 않는다.
   - N_HOST1 = round_half_down(N·r_HOST1 / (r_HOST1 + r_HOST2)), N_HOST2 = N − N_HOST1. 정수·`Fraction` 산술로 계산한다(부동소수 금지).
   - 등록 seed 순서(9026→9145)에서 앞 N_HOST1개는 HOST1, 뒤 N_HOST2개는 HOST2다.
-  - 어느 r_h가 0이거나 미산출이면 할당 파일을 만들지 않고 EXP-2를 시작하지 않는다.
+  - **참여 호스트 중** 어느 r_h가 0이거나 미산출이면 할당 파일을 만들지 않고 EXP-2를 시작하지 않는다.
   - 할당 파일에 r_h, N, 분할, 생성 시각, 생성 코드 SHA를 기록하고 sha256을 GO 결정 파일과 LOG에 남긴다(§2 할당 강제 (b)). 입력은 인프라 값뿐이고 oracle 값은 쓰지 않는다.
 - **마감 절단은 호스트별이다.** 각 호스트는 자기 할당 seed를 오름차순으로 돈다. 마감(2026-11-25 12:00 KST)에 끝나지 않은 셀이 있는 seed는 블록 전체를 미완주로 제외한다(D041). 남는 것은 각 호스트의 뒤쪽 블록뿐이다. 시점이 결과와 무관하게 사전 고정이므로 선택 편향은 없다(D040 운영 조건).
 - 재시도, 인프라 정지, 재개, 운영 중단은 exp3-v1 §4와 같다. Guard와 마감은 호스트별 런처 단위로 독립이다. 운영 점검은 두 호스트 합산으로 판정하고 호스트별 비율은 경보로 따로 낸다.
-- 호스트는 기록 요인이다. 벤치마크 v3의 X1에 따른 호스트 제외·전환 결정은 **train 첫 셀 시작 전**에 끝났어야 하며(exp3-v1 §3), EXP-2에서 새로 하지 않는다.
+- 호스트는 기록 요인이다. 호스트 참여는 동결 때 고정한 참여 집합으로만 정한다(exp3-v1 §3: 적격성 통과 ∧ 투입 보류 아님). EXP-2에서 새로 정하지 않는다.
 - 호스트 간 realtime 시계 차는 GO 시점에 기록한다.
 
 ## 5. 확증 분석
@@ -176,3 +178,4 @@ seed_assignment_rule = rh-proportional-v1
 - [ ] 할당 강제 (a) 재생성 일치 검사 게이트 구현·검증(W3, §2).
 - [ ] 분석기 상수(§5 D10) 재확인.
 - [ ] 임시값 사본으로 `run_exp0 --dry-run`과 holdout 버전 allowlist 확인(W3).
+- [ ] 참여 호스트의 적격성 PASS 기록과 Engine B안 기술 조건(적격성 검증 v1 §11) 충족.

@@ -37,7 +37,6 @@ import re
 import shutil
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
@@ -48,6 +47,13 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
+from scripts import launcher_guards as guards
+from scripts.launcher_guards import (
+    EVENT_ACTIONS,
+    PROC_SAMPLE_SECONDS,
+    clock_stamp,
+    read_host_counters,
+)
 from scripts.run_exp0 import WATCHDOG_RETURNCODE, disk_usage_fraction, run_cell_with_watchdog
 from scripts.run_g1_smoke import cell_paths
 from scripts.run_parallel_native import Arm, Cell, CellResult, cell_env
@@ -113,9 +119,6 @@ RESERVED_SEED_RANGES: tuple[tuple[int, int], ...] = (
 #: The pilot seeds a design may measure again on purpose: an abort's input comes round again, which
 #: tests recurrence (design v2). Measured seeds only, and only these four; the range stays reserved.
 PILOT_RERUN_SEEDS = frozenset({8102, 8103, 8106, 8110})
-PROC_SAMPLE_SECONDS = 30.0
-DOCKER_PROBE_SECONDS = 60.0
-EVENT_ACTIONS = ("create", "start", "die", "destroy")
 LOCAL_IMAGES = ("inodefence-controller:local", "inodefence-helper:local")
 OWN_CONTAINER = re.compile(r"inodefence-(local-controller-|[0-9a-f]{32}$)")
 BLOCK_FILE = "block.json"
@@ -316,21 +319,8 @@ def measured_stages(design: Design) -> tuple[str, ...]:
     return tuple(name for name in design.stages if name != SMOKE_STAGE)
 
 
-def clock_stamp() -> dict[str, float]:
-    return {
-        "realtime": time.clock_gettime(time.CLOCK_REALTIME),
-        "monotonic": time.clock_gettime(time.CLOCK_MONOTONIC),
-        "monotonic_raw": time.clock_gettime(time.CLOCK_MONOTONIC_RAW),
-    }
-
-
 def _docker(*args: str) -> str:
-    done = subprocess.run(
-        ["docker", *args], capture_output=True, text=True, timeout=60, check=False
-    )
-    if done.returncode != 0:
-        raise RuntimeError(f"docker {' '.join(args)}: {done.stderr.strip()}")
-    return done.stdout.strip()
+    return guards.docker_cli(*args)
 
 
 def output_problem(output: Path, repo_root: Path, home: Path) -> str | None:
@@ -347,9 +337,7 @@ def output_problem(output: Path, repo_root: Path, home: Path) -> str | None:
 
 def residual_resources() -> list[str]:
     """Benchmark-path containers or volumes left behind; a stale one blocks the next cell."""
-    containers = _docker("ps", "-a", "--filter", "name=inodefence-", "--format", "{{.Names}}")
-    volumes = _docker("volume", "ls", "--filter", "name=inodefence-local-", "--format", "{{.Name}}")
-    return [*containers.split(), *volumes.split()]
+    return guards.residual_resources(_docker)
 
 
 def preflight(design: Design, expected_head: str) -> tuple[dict[str, Any], list[str]]:
@@ -373,28 +361,23 @@ def preflight(design: Design, expected_head: str) -> tuple[dict[str, Any], list[
         "release": os.uname().release,
         "machine": os.uname().machine,
     }
-    try:
-        server = _docker("version", "--format", "{{.Server.Version}}")
-        image = f"inodefence-node-tar-effect:{design.target_version}"
-        image_id = _docker("image", "inspect", image, "--format", "{{.Id}}")
-        running = _docker("ps", "--format", "{{.Names}}").split()
-        residual = residual_resources()
-        # Cells run with SKIP_BUILD=1, so these must exist before the first cell.
-        local = {
-            name: _docker("image", "inspect", name, "--format", "{{.Id}}") for name in LOCAL_IMAGES
-        }
-    except (RuntimeError, OSError, subprocess.SubprocessError) as error:
-        return facts, [*problems, f"docker: {error}"]
-    facts.update(docker_server=server, image_id=image_id, local_images=local)
-    if server != design.docker_engine:
-        problems.append(f"docker engine {server} != {design.docker_engine}")
-    if image_id != design.image_digest:
-        problems.append(f"{image} is {image_id}, not {design.image_digest}")
-    if running:
-        problems.append(f"other containers are running: {running}")
-    if residual:
-        problems.append(f"residual benchmark resources exist: {residual}")
-    return facts, problems
+    image = f"inodefence-node-tar-effect:{design.target_version}"
+    # Cells run with SKIP_BUILD=1, so the local images must exist before the first cell.
+    docker_facts, docker_problems = guards.docker_preflight(
+        engine=design.docker_engine,
+        images={image: design.image_digest, **dict.fromkeys(LOCAL_IMAGES)},
+        docker=_docker,
+        residual=residual_resources,
+    )
+    if not docker_facts:
+        return facts, [*problems, *docker_problems]
+    image_ids = docker_facts["image_ids"]
+    facts.update(
+        docker_server=docker_facts["docker_server"],
+        image_id=image_ids[image],
+        local_images={name: image_ids[name] for name in LOCAL_IMAGES},
+    )
+    return facts, [*problems, *docker_problems]
 
 
 def base_environment(design: Design) -> dict[str, str]:
@@ -403,22 +386,6 @@ def base_environment(design: Design) -> dict[str, str]:
     env["DEMO_SENTINEL_COUNT"] = str(design.sentinel_count)
     env["DEMO_OBSERVER_INTEGRITY_POLICY"] = design.observer_integrity_policy
     return env
-
-
-def read_host_counters(proc: Path = Path("/proc")) -> dict[str, Any]:
-    """Cheap kernel counters. In WSL2 every distro shares one VM, so these cover Docker's work."""
-    memory: dict[str, int] = {}
-    for line in (proc / "meminfo").read_text(encoding="ascii").splitlines():
-        name, _, rest = line.partition(":")
-        if name in ("MemTotal", "MemAvailable", "SwapTotal", "SwapFree"):
-            memory[name] = int(rest.split()[0]) * 1024
-    cpu = (proc / "stat").read_text(encoding="ascii").splitlines()[0].split()[1:]
-    pressure: dict[str, str] = {}
-    for name in ("cpu", "io", "memory"):
-        path = proc / "pressure" / name
-        if path.is_file():
-            pressure[name] = path.read_text(encoding="ascii").splitlines()[0]
-    return {"memory": memory, "cpu_jiffies": [int(item) for item in cpu], "pressure": pressure}
 
 
 def host_stop_reason(sample: Mapping[str, Any], design: Design) -> tuple[str, str] | None:
@@ -573,23 +540,7 @@ class BlockRun:
                 )
                 self.record_failure(f"cell {cell.run_id}", error)
                 if process is not None:
-                    try:
-                        if process.poll() is None:
-                            process.terminate()
-                            try:
-                                process.wait(timeout=30)
-                            except subprocess.TimeoutExpired:
-                                process.kill()
-                                process.wait(timeout=30)
-                        error.add_note(
-                            f"started process {process.pid} exited with {process.returncode}; "
-                            "container and volume cleanup still requires verification"
-                        )
-                    except Exception as cleanup_error:
-                        error.add_note(
-                            f"started process cleanup failed: {type(cleanup_error).__name__}: "
-                            f"{cleanup_error}; process and resources may remain"
-                        )
+                    error.add_note(guards.terminate_started(process))
                 raise
             if not isinstance(error, Exception):
                 self.request_stop(
@@ -714,83 +665,40 @@ def _sample_host(
     run: BlockRun, path: Path, stop: threading.Event, seconds: float = PROC_SAMPLE_SECONDS
 ) -> None:
     """Sample until told to stop. A sampler failure stops the block: its guards would be off."""
-    next_probe = 0.0
-    try:
-        with path.open("a", encoding="utf-8") as stream:
-            while True:
-                sample: dict[str, Any] = {
-                    **clock_stamp(),
-                    "loadavg": os.getloadavg(),
-                    "disk_fraction": disk_usage_fraction(run.directory),
-                    **read_host_counters(),
-                }
-                if sample["monotonic"] >= next_probe:
-                    # Daemon responsiveness at a fixed low rate: the same load at every level.
-                    probe_started = time.clock_gettime(time.CLOCK_REALTIME)
-                    try:
-                        names = _docker("ps", "--format", "{{.Names}}").split()
-                        sample["containers"] = names
-                        sample["docker_ps_seconds"] = (
-                            time.clock_gettime(time.CLOCK_REALTIME) - probe_started
-                        )
-                    except (RuntimeError, OSError, subprocess.SubprocessError) as error:
-                        sample["docker_ps_error"] = str(error)
-                    next_probe = sample["monotonic"] + DOCKER_PROBE_SECONDS
-                stream.write(json.dumps(sample, sort_keys=True) + "\n")
-                stream.flush()
-                host_stop = host_stop_reason(sample, run.design)
-                if host_stop is not None:
-                    run.request_stop(*host_stop)
-                if stop.wait(seconds):
-                    return
-    except Exception as error:
+
+    def stop_on_host_pressure(sample: dict[str, Any]) -> None:
+        host_stop = host_stop_reason(sample, run.design)
+        if host_stop is not None:
+            run.request_stop(*host_stop)
+
+    def stop_on_failure(error: Exception) -> None:
         run.request_stop(f"host sampler failed: {type(error).__name__}: {error}", STOP_EXTERNAL)
         run.record_failure("host sampler", error)
 
+    guards.sample_host(
+        path,
+        stop,
+        disk_fraction=lambda: disk_usage_fraction(run.directory),
+        on_sample=stop_on_host_pressure,
+        on_failure=stop_on_failure,
+        counters=lambda: read_host_counters(),
+        docker=_docker,
+        seconds=seconds,
+    )
+
 
 def _start_events(path: Path) -> subprocess.Popen[bytes]:
-    filters = [item for action in EVENT_ACTIONS for item in ("--filter", f"event={action}")]
-    with path.open("wb") as stream:
-        return subprocess.Popen(
-            ["docker", "events", "--format", "{{json .}}", "--filter", "type=container", *filters],
-            stdout=stream,
-            stderr=subprocess.DEVNULL,
-        )
+    return guards.start_docker_events(path, EVENT_ACTIONS)
 
 
 def _stop_events(events: subprocess.Popen[bytes]) -> None:
     """Stop the event collector, preserving any failure and bounding the reap."""
-    try:
-        events.terminate()
-        events.wait(timeout=30)
-    except Exception as error:
-        try:
-            events.kill()
-            events.wait(timeout=30)
-        except Exception as cleanup_error:
-            error.add_note(f"event collector cleanup failed: {cleanup_error}")
-        raise
+    guards.stop_docker_events(events)
 
 
 def _publish_json(path: Path, value: Mapping[str, Any]) -> None:
     """Publish once without exposing a partial file or replacing existing evidence."""
-    payload = json.dumps(value, indent=2, sort_keys=True) + "\n"
-    temporary: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            mode="w", encoding="utf-8", dir=path.parent, prefix=".block-", delete=False
-        ) as stream:
-            temporary = Path(stream.name)
-            stream.write(payload)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.link(temporary, path)
-    finally:
-        if temporary is not None:
-            try:
-                temporary.unlink(missing_ok=True)
-            except OSError as error:
-                print(f"temporary block file could not be removed: {error}", file=sys.stderr)
+    guards.publish_json_once(path, value)
 
 
 def _run_block(
@@ -899,13 +807,7 @@ def run_block(
     except BaseException as error:
         observed_at = datetime.now(UTC).isoformat()
         run.request_stop(f"block failed: {type(error).__name__}: {error}", STOP_EXTERNAL)
-        try:
-            residual = {"status": "observed", "resources": residual_resources()}
-        except Exception as residual_error:
-            residual = {
-                "status": "unknown",
-                "error": f"{type(residual_error).__name__}: {residual_error}",
-            }
+        residual = guards.residual_status(lambda: residual_resources())
         try:
             preflight = json.loads((directory / "preflight.json").read_text(encoding="utf-8"))
             revision = preflight.get("preflight", {}).get("checkout_head")

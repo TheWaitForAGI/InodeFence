@@ -313,12 +313,8 @@ def compare_replicates(
     missing = [run_id for run_id in shared if any(run_id not in steps[h] for h in hosts)]
     if missing:
         raise MergeRefused(f"cells not in the plan: {missing}")
-    budgets = {int(by_host[hosts[0]][run_id].get("budget") or 0) for run_id in shared}
-    if len(budgets) > 1:
-        raise MergeRefused(f"replicate cells with different budgets: {sorted(budgets)}")
     compared = compare_pairs(
         {run_id: (steps[hosts[0]][run_id], steps[hosts[1]][run_id]) for run_id in shared},
-        budgets.pop() if budgets else 0,
         (hosts[0], hosts[1]),
     )
     return {

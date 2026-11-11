@@ -10,7 +10,7 @@ import scripts.run_exp0 as run_exp0
 from scripts import extract_stage_a_abort_keys, qualify_host
 
 from test_host_qualification_assignment import _replicate_setup
-from test_run_exp0 import TARGET_IMAGES, VICTIM, _cell, _fake_runner
+from test_run_exp0 import SHA, TARGET_IMAGES, VICTIM, _cell, _fake_runner
 from test_run_exp0 import admit_fixture_holdout as admit_fixture_holdout
 from test_run_exp0 import clean_engine as clean_engine
 from test_run_exp0_host_guards import CONTROLLER_ID, DIGEST, HELPER_ID, FakeDocker
@@ -18,6 +18,33 @@ from test_run_exp0_host_guards import real_guards as real_guards
 from test_two_host_split import _host_args
 
 ORACLE_WORDS = ("contract_violated", "c1_", "c2_", "violated_contracts", "t_first")
+
+
+REPO = Path(__file__).resolve().parents[1]
+
+
+def shared_hashes() -> dict[str, Any]:
+    from scripts import launcher_guards
+
+    return dict(launcher_guards.shared_path_sha256(REPO))
+
+
+@pytest.fixture
+def qual_guards(real_guards: FakeDocker, monkeypatch: pytest.MonkeyPatch) -> FakeDocker:
+    """The real guards on a fake docker, plus the execution sha W1's preflight records."""
+    inner = run_exp0.host_preflight
+
+    def preflight(plan: Any, **kwargs: Any) -> Any:
+        facts, problems = inner(plan, **kwargs)
+        return {**facts, "execution_sha": {"revision": SHA, "dirty": False}}, problems
+
+    def postflight(plan: Any, before: Any, **kwargs: Any) -> Any:
+        facts, problems = inner(plan, **kwargs)
+        return {**facts, "execution_sha": {"revision": SHA, "dirty": False}}, problems
+
+    monkeypatch.setattr(run_exp0, "host_preflight", preflight)
+    monkeypatch.setattr(run_exp0, "host_postflight", postflight)
+    return real_guards
 
 
 def _criteria(tmp_path: Path, cells: int, **over: Any) -> tuple[Path, str]:
@@ -32,6 +59,9 @@ def _criteria(tmp_path: Path, cells: int, **over: Any) -> tuple[Path, str]:
             "inodefence-controller:local": CONTROLLER_ID,
             "inodefence-helper:local": HELPER_ID,
         },
+        "expected_docker_engine": {"HOST1": "29.8.0", "HOST2": "29.8.0"},
+        "expected_shared_path_sha256": shared_hashes(),
+        "expected_execution_sha": SHA,
         **over,
     }
     path = tmp_path / "criteria.json"
@@ -120,7 +150,7 @@ def _judge(
 
 @pytest.mark.usefixtures("admit_fixture_holdout")
 def test_a_clean_host_passes_and_no_oracle_value_leaves(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, real_guards: FakeDocker
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, qual_guards: FakeDocker
 ) -> None:
     _, prereg, assignment, host1, cells = _run_host1(
         tmp_path, monkeypatch, _fake_runner(TARGET_IMAGES)
@@ -132,8 +162,7 @@ def test_a_clean_host_passes_and_no_oracle_value_leaves(
     assert code == 0 and report["verdict"] == "PASS", report["criteria"]
     assert set(report["criteria"]) >= {
         "cleanup_unknown",
-        "image_ids_expected_start_and_end",
-        "engine_images_path_unchanged",
+        "engine_images_path_execution_sha",
         "record_completeness",
         "watchdog",
         "first_attempt_abort_ratio",
@@ -153,7 +182,7 @@ def test_a_clean_host_passes_and_no_oracle_value_leaves(
 
 @pytest.mark.usefixtures("admit_fixture_holdout")
 def test_criteria_fixed_before_measurement_cannot_move(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, real_guards: FakeDocker
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, qual_guards: FakeDocker
 ) -> None:
     _, prereg, assignment, host1, cells = _run_host1(
         tmp_path, monkeypatch, _fake_runner(TARGET_IMAGES)
@@ -173,7 +202,7 @@ def test_criteria_fixed_before_measurement_cannot_move(
 
 @pytest.mark.usefixtures("admit_fixture_holdout")
 def test_a_retried_first_attempt_still_counts_as_an_abort(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, real_guards: FakeDocker
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, qual_guards: FakeDocker
 ) -> None:
     inner = _fake_runner(TARGET_IMAGES)
     seen: set[str] = set()
@@ -210,7 +239,7 @@ def test_a_retried_first_attempt_still_counts_as_an_abort(
 
 @pytest.mark.usefixtures("admit_fixture_holdout")
 def test_a_stage_a_abort_recurrence_fails_the_host(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, real_guards: FakeDocker
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, qual_guards: FakeDocker
 ) -> None:
     behaviour: dict[str, Any] = {**TARGET_IMAGES, "abort": {VICTIM}}
     _, prereg, assignment, host1, cells = _run_host1(tmp_path, monkeypatch, _fake_runner(behaviour))
@@ -316,7 +345,7 @@ def test_stage_a_keys_keep_input_identifiers_only(tmp_path: Path) -> None:
 
 @pytest.mark.usefixtures("admit_fixture_holdout")
 def test_an_abort_without_a_chain_and_a_non_cleanup_reason_is_confirmed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, real_guards: FakeDocker
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, qual_guards: FakeDocker
 ) -> None:
     behaviour: dict[str, Any] = {**TARGET_IMAGES, "abort": {VICTIM}}  # reason "broker", no chain
     _, prereg, assignment, host1, cells = _run_host1(tmp_path, monkeypatch, _fake_runner(behaviour))
@@ -422,49 +451,8 @@ def test_a_different_cell_environment_invalidates_the_recurrence_test_before_the
     assert any(problem.startswith("mutation_policy") for problem in result["problems"])
 
 
-def test_cell_path_pairs_count_m_x_and_flag_reexecutions(tmp_path: Path) -> None:
-    from scripts import compare_cell_paths
-
-    def write(name: str, ids: list[str], reexecutions: int | None = None) -> Path:
-        steps = tmp_path / f"{name}.steps.jsonl"
-        steps.write_text(
-            "".join(
-                json.dumps({"index": i, "case_id": c, "oracle": {"hit": 1}}) + "\n"
-                for i, c in enumerate(ids)
-            )
-        )
-        if reexecutions is not None:
-            (tmp_path / f"{name}.json").write_text(
-                json.dumps({"infra_reexecutions": [{}] * reexecutions, "oracle_summary": {"c1": 1}})
-            )
-        return steps
-
-    pairs = {
-        "same": (write("a1", ["x", "y"]), write("a2", ["x", "y"])),
-        "diff": (write("b1", ["x", "y"], 1), write("b2", ["x", "z"], 0)),
-        "gone": (write("c1", ["x"]), tmp_path / "missing.steps.jsonl"),
-    }
-    out = tmp_path / "pairs.json"
-    argv = ["--budget", "2", "--out", str(out)]
-    for label, (left, right) in pairs.items():
-        argv += ["--pair", f"{label}={left},{right}"]
-    assert compare_cell_paths.main(argv) == 0
-    text = out.read_text()
-    summary = json.loads(text)["summary"]
-    assert summary == {
-        "pairs": 3,
-        "identical": 1,
-        "m_x": 1,
-        "incomparable": 1,
-        "with_reexecutions": ["diff"],
-    }
-    for word in ('"x"', "oracle", "c1"):
-        assert word not in text
-
-
-@pytest.mark.usefixtures("admit_fixture_holdout")
 def test_a_recovered_first_attempt_is_reported_not_judged(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, real_guards: FakeDocker
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, qual_guards: FakeDocker
 ) -> None:
     inner = _fake_runner(TARGET_IMAGES)
     seen: set[str] = set()

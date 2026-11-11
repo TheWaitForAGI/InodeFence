@@ -56,7 +56,7 @@ from inodefence.evaluation.cell_completeness import (
 from inodefence.evaluation.rds_preregistration import load_preregistration
 from inodefence.evaluation.seed_assignment import load_seed_assignment
 from inodefence.execution.call_diagnostics import strip_annotation
-from inodefence.execution.start_gate import ACKNOWLEDGED, UNKNOWN
+from inodefence.execution.start_gate import ACKNOWLEDGED, CLEAN
 
 CRITERIA_SCHEMA = "inodefence-host-qualification-criteria-v1"
 CRITERIA_KEYS = frozenset(
@@ -67,8 +67,18 @@ CRITERIA_KEYS = frozenset(
         "max_cell_seconds",
         "expected_cells",
         "expected_image_ids",
+        "expected_docker_engine",
+        "expected_shared_path_sha256",
+        "expected_execution_sha",
     }
 )
+#: The three image references a run uses (D047 section 4, Q6). The run_exp0 --expected-images file
+#: uses the same ``expected_image_ids`` key.
+LOCAL_IMAGE_NAMES = ("inodefence-controller:local", "inodefence-helper:local")
+TARGET_IMAGE_PREFIX = "inodefence-node-tar-effect:"
+SHA256_ID = re.compile(r"sha256:[0-9a-f]{64}")
+HEX64 = re.compile(r"[0-9a-f]{64}")
+HEX40 = re.compile(r"[0-9a-f]{40}")
 
 
 def abort_category(stub: Mapping[str, Any]) -> str:
@@ -198,7 +208,59 @@ def load_criteria(path: Path, expected_sha256: str) -> dict[str, Any]:
         raise QualificationInputError(f"criteria schema must be {CRITERIA_SCHEMA}")
     if set(criteria) != CRITERIA_KEYS:
         raise QualificationInputError(f"criteria keys must be exactly {sorted(CRITERIA_KEYS)}")
+    problems = criteria_problems(criteria)
+    if problems:
+        raise QualificationInputError("criteria file refused: " + "; ".join(problems))
     return criteria
+
+
+def criteria_problems(criteria: Mapping[str, Any]) -> list[str]:
+    """Every missing, empty or malformed criterion. A judgement never runs on a partial file."""
+    problems: list[str] = []
+    for key in ("max_first_attempt_abort_ratio", "max_unstable_steps_per_1000"):
+        try:
+            if Fraction(str(criteria[key])) < 0:
+                problems.append(f"{key} must not be negative")
+        except (ValueError, ZeroDivisionError):
+            problems.append(f"{key} must be a decimal number")
+    seconds = criteria["max_cell_seconds"]
+    if isinstance(seconds, bool) or not isinstance(seconds, int | float) or seconds <= 0:
+        problems.append("max_cell_seconds must be a positive number")
+    cells = criteria["expected_cells"]
+    if isinstance(cells, bool) or not isinstance(cells, int) or cells <= 0:
+        problems.append("expected_cells must be a positive integer")
+    images = criteria["expected_image_ids"]
+    if not isinstance(images, Mapping):
+        problems.append("expected_image_ids must be an object")
+    else:
+        targets = [name for name in images if str(name).startswith(TARGET_IMAGE_PREFIX)]
+        if len(images) != 3 or len(targets) != 1 or not set(LOCAL_IMAGE_NAMES) <= set(images):
+            problems.append(
+                "expected_image_ids must name exactly one target image and "
+                f"{', '.join(LOCAL_IMAGE_NAMES)}"
+            )
+        for name, image_id in images.items():
+            if not isinstance(image_id, str) or SHA256_ID.fullmatch(image_id) is None:
+                problems.append(f"expected_image_ids[{name}] must be sha256:<64 hex>")
+    engines = criteria["expected_docker_engine"]
+    if (
+        not isinstance(engines, Mapping)
+        or not engines
+        or not set(engines) <= {"HOST1", "HOST2"}
+        or not all(isinstance(v, str) and v for v in engines.values())
+    ):
+        problems.append("expected_docker_engine must map HOST1/HOST2 to non-empty versions")
+    shared = criteria["expected_shared_path_sha256"]
+    if (
+        not isinstance(shared, Mapping)
+        or not shared
+        or not all(isinstance(v, str) and HEX64.fullmatch(v) for v in shared.values())
+    ):
+        problems.append("expected_shared_path_sha256 must map every shared file to a sha256")
+    execution = criteria["expected_execution_sha"]
+    if not isinstance(execution, str) or HEX40.fullmatch(execution) is None:
+        problems.append("expected_execution_sha must be a 40-hex git commit")
+    return problems
 
 
 class Reader:
@@ -247,24 +309,83 @@ def _verdict(ok: bool) -> str:
     return "PASS" if ok else "FAIL"
 
 
-def _host_records(output: Path, reader: Reader) -> tuple[dict | None, dict | None]:
+def host_pairs(
+    output: Path, reader: Reader
+) -> list[tuple[str, dict[str, Any] | None, dict[str, Any] | None]]:
+    """Every launcher call's (stamp, preflight, postflight); a resume adds a pair, none is dropped.
+
+    A preflight without its postflight (a call that never reached the end) keeps ``None``.
+    """
     host = output / HOST_RECORD_DIR
-    pre = sorted(host.glob("preflight-*.json"))
-    post = sorted(host.glob("postflight-*.json"))
-    return (
-        reader.record(pre[-1]) if pre else None,
-        reader.record(post[-1]) if post else None,
+    stamps = sorted(
+        {p.name[len("preflight-") : -len(".json")] for p in host.glob("preflight-*.json")}
+        | {p.name[len("postflight-") : -len(".json")] for p in host.glob("postflight-*.json")}
     )
+    pairs = []
+    for stamp in stamps:
+        pre, post = host / f"preflight-{stamp}.json", host / f"postflight-{stamp}.json"
+        pairs.append(
+            (
+                stamp,
+                reader.record(pre) if pre.is_file() else None,
+                reader.record(post) if post.is_file() else None,
+            )
+        )
+    return pairs
 
 
-def _gate_unknowns(output: Path) -> tuple[int, int]:
+def record_problems(
+    record: Mapping[str, Any] | None, criteria: Mapping[str, Any], host_id: str, where: str
+) -> list[str]:
+    """One pre- or postflight against the expected values (D047 Q6)."""
+    if record is None:
+        return [f"{where}: missing"]
+    problems = [f"{where}: {problem}" for problem in record.get("problems") or ()]
+    ids = record.get("image_ids") or {}
+    for name, want in criteria["expected_image_ids"].items():
+        if ids.get(name) != want:
+            problems.append(f"{where}: image {name} is {ids.get(name)}, expected {want}")
+    want_engine = criteria["expected_docker_engine"].get(host_id)
+    if want_engine is None or record.get("docker_server") != want_engine:
+        problems.append(
+            f"{where}: docker engine {record.get('docker_server')}, expected {want_engine}"
+        )
+    hashes = record.get("shared_path_sha256") or {}
+    expected = criteria["expected_shared_path_sha256"]
+    differing = sorted(
+        name for name in set(hashes) | set(expected) if hashes.get(name) != expected.get(name)
+    )
+    if differing:
+        problems.append(f"{where}: shared path files differ from expected: {differing}")
+    execution = record.get("execution_sha")
+    revision = execution.get("revision") if isinstance(execution, Mapping) else None
+    dirty = execution.get("dirty") if isinstance(execution, Mapping) else None
+    if revision != criteria["expected_execution_sha"] or dirty is not False:
+        problems.append(
+            f"{where}: execution sha {revision} (dirty {dirty}), "
+            f"expected {criteria['expected_execution_sha']} clean"
+        )
+    return problems
+
+
+def gate_state(output: Path) -> dict[str, Any]:
+    """Start-gate cells whose cleanup is not verified clean (D047 Q1).
+
+    Every registered cell (``<cell>.session``) must end with ``S``. ``U``, a pending ``W`` or
+    ``C``, or no verdict at all counts, and so does any acknowledgement (a person cleared a U).
+    """
     gate = output / START_GATE_DIR
-    unknown = 0
-    for verdict in gate.glob("*.verdict"):
-        if verdict.read_text(encoding="utf-8").startswith(UNKNOWN):
-            unknown += 1
+    states: dict[str, int] = {}
+    cells = {p.name[: -len(".session")] for p in gate.glob("*.session")}
+    cells |= {p.name[: -len(".verdict")] for p in gate.glob("*.verdict")}
+    for cell in sorted(cells):
+        verdict = gate / f"{cell}.verdict"
+        text = verdict.read_text(encoding="utf-8").strip() if verdict.is_file() else ""
+        state = text.split(maxsplit=1)[0] if text else "none"
+        if state != CLEAN:
+            states[state] = states.get(state, 0) + 1
     acknowledged = len([p for p in (gate / ACKNOWLEDGED).glob("*") if p.is_dir()])
-    return unknown, acknowledged
+    return {"not_clean": states, "acknowledged": acknowledged}
 
 
 def judge(
@@ -283,66 +404,49 @@ def judge(
     def put(name: str, ok: bool, value: Any, threshold: Any = None) -> None:
         results[name] = {"result": _verdict(ok), "value": value, "threshold": threshold}
 
-    # Host guard records (start and end).
-    pre, post = _host_records(output, reader)
-    expected_ids = dict(criteria["expected_image_ids"])
+    # Q6: every launcher call's pre- and postflight against the expected values.
+    host_id = plan.host_id or ""
+    pairs = host_pairs(output, reader)
+    q6: list[str] = [] if pairs else ["no host preflight record"]
+    for stamp, pre, post in pairs:
+        q6 += record_problems(pre, criteria, host_id, f"preflight-{stamp}")
+        q6 += record_problems(post, criteria, host_id, f"postflight-{stamp}")
     put(
-        "host_preflight_recorded",
-        pre is not None and not pre.get("problems"),
-        None if pre is None else pre.get("problems"),
-    )
-    put(
-        "host_postflight_recorded",
-        post is not None and not post.get("problems"),
-        None if post is None else post.get("problems"),
-    )
-    ids_ok = (
-        pre is not None
-        and post is not None
-        and all(
-            pre.get("image_ids", {}).get(name) == want
-            and post.get("image_ids", {}).get(name) == want
-            for name, want in expected_ids.items()
-        )
-    )
-    put(
-        "image_ids_expected_start_and_end",
-        ids_ok,
-        None if pre is None else pre.get("image_ids"),
-        expected_ids,
-    )
-    unchanged = (
-        pre is not None
-        and post is not None
-        and all(
-            pre.get(key) == post.get(key)
-            for key in ("docker_server", "image_ids", "shared_path_sha256")
-        )
-    )
-    put(
-        "engine_images_path_unchanged",
-        unchanged,
-        None if pre is None else {"docker_server": pre.get("docker_server")},
+        "engine_images_path_execution_sha",
+        not q6,
+        {"calls": len(pairs), "problems": q6},
+        {
+            "image_ids": criteria["expected_image_ids"],
+            "docker_engine": criteria["expected_docker_engine"].get(host_id),
+            "execution_sha": criteria["expected_execution_sha"],
+            "shared_path_files": len(criteria["expected_shared_path_sha256"]),
+        },
     )
     if peer is not None:
-        peer_pre, _ = _host_records(peer, reader)
-        same = (
-            peer_pre is not None
-            and pre is not None
-            and all(
-                peer_pre.get("image_ids", {}).get(name) == pre.get("image_ids", {}).get(name)
-                for name in expected_ids
-            )
+        peer_pairs = host_pairs(peer, reader)
+        peer_problems: list[str] = [] if peer_pairs else ["peer has no host preflight record"]
+        for stamp, peer_pre, peer_post in peer_pairs:
+            for where, record in (
+                (f"peer preflight-{stamp}", peer_pre),
+                (f"peer postflight-{stamp}", peer_post),
+            ):
+                peer_host = str((record or {}).get("host_id") or "")
+                peer_problems += record_problems(record, criteria, peer_host, where)
+                for _, mine, _ in pairs[:1]:
+                    for key in ("image_ids", "shared_path_sha256"):
+                        if (
+                            mine is not None
+                            and record is not None
+                            and mine.get(key) != record.get(key)
+                        ):
+                            peer_problems.append(f"{where}: {key} differs from this host")
+        put("equal_to_peer", not peer_problems, peer_problems)
+        reports["clock_difference"] = clock_difference(
+            pairs[0][1] if pairs else None, peer_pairs[0][1] if peer_pairs else None
         )
-        put("image_ids_equal_to_peer", same, None)
-        reports["clock_difference"] = clock_difference(pre, peer_pre)
-    unknown, acknowledged = _gate_unknowns(output)
-    put(
-        "cleanup_unknown",
-        unknown == 0 and acknowledged == 0,
-        {"unknown_verdicts": unknown, "acknowledged": acknowledged},
-        0,
-    )
+    # Q1: every gate cell verified clean.
+    gate = gate_state(output)
+    put("cleanup_unknown", not gate["not_clean"] and gate["acknowledged"] == 0, gate, 0)
 
     # Exit records and cells.
     results_path = output / CELL_RESULTS_FILE
@@ -378,8 +482,13 @@ def judge(
         files = cell_paths(cell, output)
         check = target_cell_check(plan, cell, output, attempts_by_cell)
         states[cell.run_id] = check.state
-        watchdog += bool(check.watchdog and check.state == ABORT_FINAL)
         tried = counted_attempts(attempts_by_cell.get(cell.run_id, ()))
+        # Q3: every attempt the watchdog ended, the retried ones too, not only the last.
+        watchdog += sum(
+            1
+            for attempt in tried
+            if attempt.ended is not None and attempt.ended.get("watchdog_fired") is True
+        )
         if not tried:
             continue
         attempted += 1

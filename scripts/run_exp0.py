@@ -122,11 +122,13 @@ from inodefence.evaluation.cell_completeness import (
     MAX_ATTEMPTS,
     NO_RECORD,
     RECORD_INCONSISTENT,
+    START_DENIED_FIELD,
     UNATTEMPTED,
     Attempt,
     CellCheck,
     InfrastructureGuard,
     classify_cell,
+    counted_attempts,
     infrastructure_stopped,
     infrastructure_summary,
     read_cell_results,
@@ -150,6 +152,12 @@ from inodefence.evaluation.seed_assignment import (
     SeedAssignmentError,
     load_seed_assignment,
     rule_problems,
+)
+from inodefence.execution.start_gate import (
+    ACKNOWLEDGED,
+    StartDenied,
+    StartGate,
+    VerdictMissing,
 )
 from inodefence.provenance import capture_source
 
@@ -539,6 +547,49 @@ def host_mismatches(
             go_decision=go_decision,
         )
     )
+    return problems
+
+
+START_GATE_DIR = "start-gate"
+
+
+def gate_acks_new(gate_dir: Path, recorded: Collection[str]) -> list[dict[str, Any]]:
+    """Gate acknowledgements no earlier resume line names, each with its note's sha256.
+
+    "New" is by record, not by clock: an ack belongs to the first resume that lists it.
+    """
+    acks: list[dict[str, Any]] = []
+    for entry in sorted((gate_dir / ACKNOWLEDGED).glob("*")):
+        if not entry.is_dir() or str(entry.relative_to(gate_dir)) in recorded:
+            continue
+        cell = entry.name.partition("-")[2]
+        note = entry / "note.txt"
+        data = note.read_bytes() if note.is_file() else b""
+        acks.append(
+            {
+                "path": str(entry.relative_to(gate_dir)),
+                "cell": cell,
+                "note": data.decode("utf-8", "replace").strip(),
+                "note_sha256": sha256(data).hexdigest(),
+            }
+        )
+    return acks
+
+
+def resume_gate_problems(
+    gate: StartGate, approval_ref: str, recorded: Collection[str]
+) -> list[str]:
+    """Why a resume may not start: an open gate state, or an ack not tied to this approval."""
+    problems: list[str] = []
+    problem = gate.problem()
+    if problem is not None:
+        problems.append(
+            f"start gate still closed: {problem}. Check the resources, then run "
+            f'start_gate.py ack {gate.directory} <cell> "{approval_ref}: <what was checked>"'
+        )
+    for ack in gate_acks_new(gate.directory, recorded):
+        if not ack["note"].startswith(approval_ref):
+            problems.append(f"gate ack {ack['path']} does not start with {approval_ref!r}")
     return problems
 
 
@@ -1557,7 +1608,9 @@ def main(argv: list[str] | None = None) -> int:
                     **(
                         {
                             "cell_completeness": infrastructure_summary(
-                                checks, read_infrastructure_events(output / CELL_RESULTS_FILE)
+                                checks,
+                                read_infrastructure_events(output / CELL_RESULTS_FILE),
+                                read_cell_results(output / CELL_RESULTS_FILE),
                             ),
                             "registered": {
                                 "seeds": list(prereg.seeds),
@@ -1701,7 +1754,25 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit("bash not found: the native launcher runs only on the host terminal")
     pending, skipped, skipped_final = _pending_cells(plan, output)
     not_started: list[str] = []
-    stopped = infrastructure_stopped(read_infrastructure_events(output / CELL_RESULTS_FILE))
+    events = read_infrastructure_events(output / CELL_RESULTS_FILE)
+    stopped = infrastructure_stopped(events)
+    # The targets form starts every cell through the start gate (one per output directory, so one
+    # per host). A gate closed by an earlier call becomes a recorded stop before anything starts.
+    gate = StartGate(output / START_GATE_DIR) if plan.multi_target else None
+    if gate is not None and not stopped and args.resume_after_stop is None:
+        problem = gate.problem()
+        if problem is not None:
+            append_cell_result(
+                output,
+                {
+                    "event": INFRASTRUCTURE_STOP_EVENT,
+                    "reason": f"start gate closed before this call: {problem}",
+                    "clocks": _clock_stamp(),
+                    **plan.host_fields(),
+                },
+            )
+            stopped = True
+    gate_acks: list[dict[str, Any]] = []
     if args.resume_after_stop is not None:
         if not stopped or not args.resume_after_stop.strip():
             print(
@@ -1710,6 +1781,24 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 2
+        if gate is not None:
+            recorded = {
+                str(ack.get("path"))
+                for event in events
+                if event.get("event") == INFRASTRUCTURE_RESUME_EVENT
+                for ack in event.get("gate_acks") or ()
+                if isinstance(ack, Mapping)
+            }
+            problems = resume_gate_problems(gate, args.resume_after_stop.strip(), recorded)
+            if problems:
+                print("refusing to resume:", file=sys.stderr)
+                for item in problems:
+                    print(f"  - {item}", file=sys.stderr)
+                return 2
+            gate_acks = [
+                {key: ack[key] for key in ("path", "cell", "note_sha256")}
+                for ack in gate_acks_new(gate.directory, recorded)
+            ]
         stopped = False
     if stopped:
         print(
@@ -1742,6 +1831,7 @@ def main(argv: list[str] | None = None) -> int:
                 "event": INFRASTRUCTURE_RESUME_EVENT,
                 "approval_ref": args.resume_after_stop,
                 "clocks": _clock_stamp(),
+                **({"gate_acks": gate_acks} if gate is not None else {}),
                 **plan.host_fields(),
             },
         )
@@ -1749,13 +1839,38 @@ def main(argv: list[str] | None = None) -> int:
     guard = InfrastructureGuard()
 
     def run_attempt(cell: Cell) -> CellResult:
+        if gate is None:
+            return run_cell_with_watchdog(
+                cell,
+                output,
+                exp0_cell_env(plan, cell, output, base_env),
+                bash,
+                limit_seconds=plan.watchdog_seconds,
+            )
+        cell_gate = gate
         return run_cell_with_watchdog(
             cell,
             output,
             exp0_cell_env(plan, cell, output, base_env),
             bash,
             limit_seconds=plan.watchdog_seconds,
+            popen=cell_gate.popen(cell.run_id),
+            # W1's current head; the W -> S/U watchdog meaning (D041) replaces this call.
+            on_timeout=lambda: cell_gate.mark_unknown(cell.run_id, "launcher: watchdog terminate"),
         )
+
+    def gate_stop(reason: str) -> None:
+        """Stop new attempts for a gate reason; the first stop of this call is recorded (D042)."""
+        if guard.force_stop():
+            append_cell_result(
+                output,
+                {
+                    "event": INFRASTRUCTURE_STOP_EVENT,
+                    "reason": reason,
+                    "clocks": _clock_stamp(),
+                    **plan.host_fields(),
+                },
+            )
 
     def run_one(cell: Cell) -> CellResult | None:
         pauses = wait_for_disk(output, plan.disk_pause_fraction)
@@ -1774,8 +1889,10 @@ def main(argv: list[str] | None = None) -> int:
         """
         path = output / CELL_RESULTS_FILE
         result: CellResult | None = None
-        used = len(read_cell_results(path).get(cell.run_id, ()))
-        while used < MAX_ATTEMPTS:
+        tried = read_cell_results(path).get(cell.run_id, ())
+        # Attempt numbers count every start line; MAX_ATTEMPTS counts only attempts that ran.
+        used, counted = len(tried), len(counted_attempts(tried))
+        while counted < MAX_ATTEMPTS:
             number = archive_attempt(cell, output)
             if number is not None:
                 archived[cell.run_id] = number
@@ -1801,8 +1918,49 @@ def main(argv: list[str] | None = None) -> int:
             ):
                 not_started.append(cell.run_id)
                 return result
-            used = next_attempt
-            result = run_attempt(cell)
+            used, counted = next_attempt, counted + 1
+            try:
+                result = run_attempt(cell)
+            except StartDenied as error:
+                # The target never ran: the attempt keeps its lines but does not count.
+                append_cell_result(
+                    output,
+                    {
+                        "event": "end",
+                        "run_id": cell.run_id,
+                        "attempt": used,
+                        "clocks": _clock_stamp(),
+                        "returncode": None,
+                        "watchdog_fired": False,
+                        START_DENIED_FIELD: str(error),
+                        **plan.host_fields(),
+                    },
+                )
+                gate_stop(f"start gate denied {cell.run_id}: {error}")
+                not_started.append(cell.run_id)
+                return result
+            except Exception as error:  # A runner failure after the start: never silent.
+                note = f"launcher: runner error: {type(error).__name__}: {error}"
+                if gate is not None:
+                    try:
+                        gate.mark_unknown(cell.run_id, note)
+                    except Exception as marked:
+                        note += f" (gate U record failed: {type(marked).__name__}: {marked})"
+                append_cell_result(
+                    output,
+                    {
+                        "event": "end",
+                        "run_id": cell.run_id,
+                        "attempt": used,
+                        "clocks": _clock_stamp(),
+                        "returncode": None,
+                        "watchdog_fired": False,
+                        "runner_error": note,
+                        **plan.host_fields(),
+                    },
+                )
+                gate_stop(f"runner error on {cell.run_id}: {note}")
+                return result
             append_cell_result(
                 output,
                 {
@@ -1816,8 +1974,20 @@ def main(argv: list[str] | None = None) -> int:
                     **plan.host_fields(),
                 },
             )
+            unclean: str | None = None
+            if gate is not None:
+                try:
+                    gate.require_clean(cell.run_id)
+                except VerdictMissing as error:
+                    unclean = str(error)
             check = target_cell_check(plan, cell, output, read_cell_results(path))
-            if check.state not in (UNATTEMPTED, NO_RECORD):
+            recorded = check.state not in (UNATTEMPTED, NO_RECORD)
+            if unclean is not None:
+                # The cell's record stands as classified; no new attempt starts in this call.
+                guard.note_cell_end(recorded=recorded)
+                gate_stop(f"cleanup unknown: {unclean}")
+                return result
+            if recorded:
                 guard.note_cell_end(recorded=True)
                 return result
         reason = guard.note_cell_end(recorded=False)

@@ -239,7 +239,7 @@ class RunClock:
     gap_seconds: float  # Resumed stops only, inside the first start to last end span.
     stops: int
     last_activity: float  # The later of the last end and the last resume.
-    attempted_cells: int  # Run ids with a start line.
+    attempted_cells: int  # Run ids with an attempt that ran (D045: start_denied excluded).
     unresumed: bool
 
     @property
@@ -254,7 +254,8 @@ def _run_clock(records: Sequence[Mapping[str, Any]]) -> RunClock:
     after the stop adds steps, so its time stays in r's denominator.
     """
     starts: list[float] = []
-    attempted: set[str] = set()
+    started: set[tuple[str, object]] = set()
+    denied: set[tuple[str, object]] = set()
     ends: list[float] = []
     resumes: list[float] = []
     pairs: list[tuple[float, float]] = []
@@ -268,9 +269,12 @@ def _run_clock(records: Sequence[Mapping[str, Any]]) -> RunClock:
         stamp = float(_field(row, "clocks", "realtime"))
         if event == "start":
             starts.append(stamp)
-            attempted.add(str(_field(row, "run_id")))
+            started.add((str(_field(row, "run_id")), row.get("attempt")))
         elif event == "end":
             ends.append(stamp)
+            # D045: an attempt the start gate refused never ran (explicit field only).
+            if isinstance(row.get("start_denied"), str):
+                denied.add((str(_field(row, "run_id")), row.get("attempt")))
         elif event == "infrastructure-stop":
             stops += 1
             stopped_at = stamp if stopped_at is None else stopped_at
@@ -291,7 +295,7 @@ def _run_clock(records: Sequence[Mapping[str, Any]]) -> RunClock:
         ),
         stops=stops,
         last_activity=max([last_end, *resumes]),
-        attempted_cells=len(attempted),
+        attempted_cells=len({run_id for run_id, _ in started - denied}),
         unresumed=last_infrastructure == "infrastructure-stop",
     )
 

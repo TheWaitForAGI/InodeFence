@@ -49,6 +49,10 @@ STOP_AFTER_NO_RECORD = 3
 INFRASTRUCTURE_STOP_EVENT = "infrastructure-stop"
 INFRASTRUCTURE_RESUME_EVENT = "infrastructure-resume"
 WATCHDOG_ABORT_REASON = "campaign watchdog terminated the cell"
+# The end-line field the launcher writes when the start gate refused an authorized attempt, so
+# the target never ran. Only this explicit field excludes an attempt from MAX_ATTEMPTS (never a
+# null exit code alone). A denial always stops the launcher, so this cannot retry for ever.
+START_DENIED_FIELD = "start_denied"
 
 
 @dataclass(frozen=True, slots=True)
@@ -105,6 +109,16 @@ def read_cell_results(path: Path) -> dict[str, tuple[Attempt, ...]]:
         )
         for run_id, by_number in starts.items()
     }
+
+
+def start_denied(attempt: Attempt) -> bool:
+    """Whether the start gate refused this attempt before the target ran (explicit field only)."""
+    return attempt.ended is not None and isinstance(attempt.ended.get(START_DENIED_FIELD), str)
+
+
+def counted_attempts(attempts: Sequence[Attempt]) -> tuple[Attempt, ...]:
+    """Attempts that count toward MAX_ATTEMPTS: all but the gate-refused ones, whose lines stay."""
+    return tuple(attempt for attempt in attempts if not start_denied(attempt))
 
 
 def scan_steps(path: Path) -> StepScan:
@@ -172,12 +186,13 @@ def classify_cell(
     scan = scan_steps(steps_path)
     count = len(scan.indexes)
     has_report = report_path.is_file()
-    ended = attempts[-1].ended if attempts else None
+    counted = counted_attempts(attempts)
+    ended = counted[-1].ended if counted else None
     watchdog = ended is not None and ended.get("watchdog_fired") is True
     # No whole line is no record, unless a cut line shows a run the watchdog does not explain.
     only_a_watchdog_cut = scan.torn_last_line and not scan.torn_inner_line and watchdog
     if not has_report and not count and (not scan.torn_last_line or only_a_watchdog_cut):
-        return CellCheck(UNATTEMPTED if len(attempts) < MAX_ATTEMPTS else NO_RECORD)
+        return CellCheck(UNATTEMPTED if len(counted) < MAX_ATTEMPTS else NO_RECORD)
     problems: list[str] = []
     if ended is None:
         problems.append("no-exit-record")
@@ -255,6 +270,14 @@ class InfrastructureGuard:
                 raise
             return True
 
+    def force_stop(self) -> bool:
+        """Stop for a reason other than the streak (start gate). True only for the first stop."""
+        with self._lock:
+            if self.stopped:
+                return False
+            self.stopped = True
+            return True
+
     def note_cell_end(self, *, recorded: bool) -> str | None:
         """Note one ended cell. Returns the stop reason once, when this end triggers the stop."""
         with self._lock:
@@ -292,7 +315,9 @@ def infrastructure_stopped(events: Sequence[Mapping[str, Any]]) -> bool:
 
 
 def infrastructure_summary(
-    checks: Mapping[str, CellCheck], events: Sequence[Mapping[str, Any]] = ()
+    checks: Mapping[str, CellCheck],
+    events: Sequence[Mapping[str, Any]] = (),
+    attempts: Mapping[str, Sequence[Attempt]] | None = None,
 ) -> dict[str, Any]:
     """Counts and the infrastructure failure rate: (aborts + inconsistent records) / all cells.
 
@@ -331,4 +356,18 @@ def infrastructure_summary(
             for run_id, check in sorted(checks.items())
             if check.state == RECORD_INCONSISTENT
         },
+        **(
+            {}
+            if attempts is None
+            else {
+                "start_denied_attempts": sum(
+                    start_denied(attempt) for tried in attempts.values() for attempt in tried
+                ),
+                "start_denied_by_cell": {
+                    run_id: denied
+                    for run_id, tried in sorted(attempts.items())
+                    if (denied := sum(start_denied(attempt) for attempt in tried))
+                },
+            }
+        ),
     }

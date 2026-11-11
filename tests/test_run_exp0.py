@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from collections.abc import Sequence
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta, timezone
@@ -71,10 +72,33 @@ def prereg_file(tmp_path: Path) -> Path:
     return path
 
 
+class AlwaysCleanGate:
+    """Start gate stand-in for fake runners that never run the smoke script's verdict records.
+
+    The real gate's wiring is tested in tests/test_run_exp0_start_gate.py.
+    """
+
+    def __init__(self, directory: Path) -> None:
+        self.directory = Path(directory)
+
+    def problem(self) -> str | None:
+        return None
+
+    def popen(self, cell: str, popen: Any = subprocess.Popen) -> Any:
+        return popen
+
+    def mark_unknown(self, cell: str, reason: str) -> None:
+        return None
+
+    def require_clean(self, cell: str) -> None:
+        return None
+
+
 @pytest.fixture
 def clean_engine(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(run_exp0, "capture_source", lambda: SourceProvenance(SHA, False))
     monkeypatch.setattr(run_exp0, "_script_has", lambda variable: True)
+    monkeypatch.setattr(run_exp0, "StartGate", AlwaysCleanGate)
 
 
 def _plan(path: Path, include_s_a: bool = False) -> Exp0Plan:

@@ -28,14 +28,6 @@ generate_tar_fixtures.py는 4종 TAR baseline과 C0/C1/C2 oracle-check fixture 3
 
 [Dev Container](../.devcontainer/README.md) 안에서 python scripts/check_dev_env.py로 실행한다. 환경 기준은 [환경 설계](../docs/research/design/development-environment.md)를 따른다.
 
-H1 controller와 host broker의 cleanup inspect에 timeout·출력 잘림·오류가 있으면
-`inodefence-cleanup-attempt` JSON을 stderr에 즉시 출력하고, cleanup이 끝나거나 실패하면
-`inodefence-cleanup-diagnostic` JSON에 각 조회와 최종 결과를 함께 남긴다. H1의 기존 캠페인
-로그가 이 stderr를 받으며 broker stdout 프로토콜과 보고서/abort 분류는 바뀌지 않는다.
-이상 없는 cleanup은 추가 로그가 없다. 진단에는 return code, timeout, truncation, 부재 확인과
-사용 가능한 stderr가 들어간다. stderr 전달·저장 실패나 첫 응답 전 강제 종료에서는
-기록이 보장되지 않으며, 기록이 없다는 것을 timeout이 없었다는 증거로 해석하지 않는다.
-
 H1 호스트 smoke 종료 시 Docker CLI에 엔지니어링 deadline을 둔다: evidence 존재 확인 및
 자원 inspect 30초, `cp` 300초, controller/volume 삭제 60초. 각 timeout은 CLI 프로세스 그룹을
 종료하며 daemon 작업 완료를 뜻하지 않는다. 이 값은 정상 호출의 전체 지연 분포가 아닌 기존

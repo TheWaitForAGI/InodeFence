@@ -16,7 +16,9 @@ single source of truth for the cross-lane vocabulary that distinguishes them:
 * :class:`ResetFailureDetail` -- finer detail for the ``cleanup_reset`` category,
   used by the worker-pool reset verification (parallels the observer lane's
   ``observation_failures[].kind`` sub-reason).
-* retry-policy constants -- ``MAX_INFRA_RETRIES`` and the backoff schedule.
+* retry-policy constants -- ``MAX_INFRA_RETRIES`` and the backoff schedule, plus the
+  Docker-stall bounds (``MAX_INFRA_RETRIES_PER_CAMPAIGN``, ``STALL_ABSENCE_CONFIRM_SECONDS``,
+  ``TARGET_TIMEOUT_DAEMON_MARGIN_SECONDS``).
 
 Everything here is pure and read-only. It makes no runtime decision and changes no
 behavior, and nothing here relaxes the isolation contract.
@@ -75,8 +77,10 @@ the harness-generated message *substring*, never an exact string.
    (``create``, ``inspect``, ``image inspect``, ``wait``, ``version``, ``timeout kill``, ``timeout
    wait``). Origin: ``checked`` (``execution/container.py``). It says that a harness call to the
    runtime failed outside cleanup, not that the case was harmless or that the abort carries no
-   information. It is not in :data:`INFRASTRUCTURE_REASONS`, so nothing retries it: whether it
-   should be retried is a separate decision (D21). A cleanup error replacing one of these still
+   information. It is not in :data:`INFRASTRUCTURE_REASONS`, so the worker pool never retries
+   it (D21). The one exception is a Docker stall: when the attempt's first anomalous Docker
+   call timed out, ``execution/stall_recovery.py`` re-executes the case under the stall
+   constants below. A cleanup error replacing one of these still
    classifies as cleanup, because the reason names only the last error; ``error_chain`` keeps the
    first one.
 """
@@ -122,6 +126,23 @@ MAX_INFRA_RETRIES: int = 2
 # attempt i+1 (i from 0). Kept small so a stuck host cannot stall a campaign.
 RETRY_BACKOFF_BASE_SECONDS: float = 0.5
 RETRY_BACKOFF_CAP_SECONDS: float = 4.0
+
+# Docker infrastructure stalls (execution/stall_recovery.py). This reopens D040-D21 only for
+# stalls: a case attempt whose *first* anomalous Docker call timed out, or whose TIMED_OUT
+# verdict the daemon's own run time does not confirm, is discarded and the same case is
+# re-executed in a new container and run root once the daemon reports every container of
+# the attempt absent. INFRASTRUCTURE_REASONS above is unchanged: a runtime_call failure that
+# did not start with a timeout is still never retried. Per case the bound is
+# MAX_INFRA_RETRIES; these are the campaign bound and the two stall-specific limits.
+MAX_INFRA_RETRIES_PER_CAMPAIGN: int = 8
+# Observed stalls (HOST1 benchmark 2026-11-07/08) lasted 24-143 s; confirmation starts about
+# 40 s after a stall begins (start 10 s + inspect 10 s + two cleanup inspects), so 180 s
+# covers more than 1.5x the longest observed stall.
+STALL_ABSENCE_CONFIRM_SECONDS: float = 180.0
+# A start timeout stays a target TIMED_OUT result only when the daemon measured at least
+# (target timeout - margin) seconds between StartedAt and FinishedAt. With the 10 s target
+# timeout, a daemon run time in [9.0, 10.0) s stays TIMED_OUT exactly as before.
+TARGET_TIMEOUT_DAEMON_MARGIN_SECONDS: float = 1.0
 
 # Ordered (harness message substring, category); first containment match wins.
 # The phrases are the harness-generated messages from execution/docker_client.py and

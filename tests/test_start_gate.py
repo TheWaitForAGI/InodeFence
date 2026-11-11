@@ -66,6 +66,12 @@ class Cell:
         self.process.send_signal(signal.SIGKILL)
         self.process.wait(timeout=30)
 
+    def finish(self) -> None:
+        assert self.process.stdin is not None
+        self.process.stdin.write("exit\n")
+        self.process.stdin.flush()
+        self.process.wait(timeout=30)
+
     def close(self) -> None:
         if self.process.poll() is None:
             self.process.kill()
@@ -435,3 +441,125 @@ def test_lock_fd_is_not_leaked_to_unrelated_children(tmp_path: Path, cells: Any)
         and os.stat(f"/proc/self/fd/{fd}").st_ino == lock_inode
         for fd in range(3, 256)
     )
+
+
+def test_watchdog_then_trap_verifies_cleanup_allows_next_start(tmp_path: Path, cells: Any) -> None:
+    gate = gate_at(tmp_path)
+    first = start_cell(gate, "a")
+    cells.append(first)
+    gate.mark_watchdog("a")
+    with pytest.raises(sg.CleanupPending):
+        gate.try_start("b", subprocess.Popen, (["true"],), {}, deadline=time.monotonic() + 1e6)
+    assert first.send("record C") == 0  # the trap enters cleanup: still pending as W
+    assert gate.verdict("a") == ("W", "")
+    assert first.send("record S") == 0  # ownership and absence verified by the trap
+    first.finish()
+    gate.require_clean("a")
+    cells.append(start_cell(gate, "b"))
+
+
+def test_watchdog_then_child_killed_is_unknown_and_denies(tmp_path: Path, cells: Any) -> None:
+    gate = gate_at(tmp_path)
+    first = start_cell(gate, "a")
+    cells.append(first)
+    gate.mark_watchdog("a")
+    first.kill()  # terminate ignored, killed after the grace: the trap never ran
+    with pytest.raises(
+        sg.StartDenied, match=r"a exited without a cleanup verdict \(after watchdog\)"
+    ):
+        start_cell(gate, "b")
+    with pytest.raises(sg.VerdictMissing, match=r"terminated by the watchdog.*\(after watchdog\)"):
+        gate.require_clean("a")
+    verdict = gate.verdict("a")
+    assert verdict is not None and verdict[0] == "U"
+
+
+def test_watchdog_then_trap_records_unknown_denies(tmp_path: Path, cells: Any) -> None:
+    gate = gate_at(tmp_path)
+    first = start_cell(gate, "a")
+    cells.append(first)
+    gate.mark_watchdog("a")
+    assert first.send("record U volume ownership: daemon-unreachable") == 0
+    with pytest.raises(
+        sg.StartDenied, match=r"a cleanup resource state unknown: volume.*\(after watchdog\)"
+    ):
+        start_cell(gate, "b")
+
+
+def test_watchdog_wait_bound_denies(tmp_path: Path, cells: Any) -> None:
+    gate = gate_at(tmp_path, cleanup_wait_seconds=0)
+    first = start_cell(gate, "a")
+    cells.append(first)
+    gate.mark_watchdog("a")
+    with pytest.raises(sg.StartDenied, match="cleanup still pending after 0s: a"):
+        start_cell(gate, "b")
+
+
+def test_watchdog_mark_after_clean_verdict_keeps_clean(tmp_path: Path, cells: Any) -> None:
+    gate = gate_at(tmp_path)
+    first = start_cell(gate, "a")
+    cells.append(first)
+    assert first.send("record S") == 0
+    gate.mark_watchdog("a")
+    assert gate.verdict("a") == ("S", "")
+
+
+def test_child_cannot_record_watchdog_state(tmp_path: Path, cells: Any) -> None:
+    gate = gate_at(tmp_path)
+    first = start_cell(gate, "a")
+    cells.append(first)
+    assert first.send("record W") == 2  # usage error: W is launcher-only
+    with pytest.raises(ValueError):
+        sg.record_verdict(gate.directory, "a", "W")
+
+
+def test_real_watchdog_path_sigterm_trap_commits_clean(tmp_path: Path) -> None:
+    """run_exp0.run_cell_with_watchdog with a 0 s limit: W, SIGTERM, trap S."""
+    from scripts import run_concurrency_benchmark as bench
+    from scripts.run_exp0 import WATCHDOG_RETURNCODE, run_cell_with_watchdog
+
+    gate = gate_at(tmp_path)
+    design = bench.load_design(Path("experiments/configs/concurrency-scaling-v2.md"))
+    cell = bench.planned_blocks(design, "smoke")[0].cells[0]
+    fake_bash = tmp_path / "fake-bash"
+    record = f"{sys.executable} -I {GATE_SCRIPT} record"
+    fake_bash.write_text(
+        f"#!/bin/bash\ntrap '{record} C; {record} S; exit 0' TERM\n"
+        'echo ready >&"$READY_FD"\nread -r _\n'
+    )
+    fake_bash.chmod(0o755)
+    observed: list[tuple[str, str] | None] = []
+
+    def on_timeout() -> None:
+        gate.mark_watchdog(cell.run_id)
+        observed.append(gate.verdict(cell.run_id))
+
+    output = tmp_path / "out"
+    output.mkdir()
+    ready_read, ready_write = os.pipe()
+
+    def launch_when_trap_installed(*args: Any, **kwargs: Any) -> Any:
+        # The 0 s limit fires right after Popen returns, so return only once the
+        # child reports its TERM trap is installed.
+        kwargs["env"] = {**kwargs["env"], "READY_FD": str(ready_write)}
+        process = gate.popen(cell.run_id)(
+            *args, stdin=subprocess.PIPE, pass_fds=(ready_write,), **kwargs
+        )
+        os.close(ready_write)
+        with os.fdopen(ready_read) as ready:
+            assert ready.readline() == "ready\n"
+        return process
+
+    result = run_cell_with_watchdog(
+        cell,
+        output,
+        {"PATH": "/usr/bin:/bin"},
+        str(fake_bash),
+        limit_seconds=0,
+        popen=launch_when_trap_installed,
+        on_timeout=on_timeout,
+    )
+    assert result.returncode == WATCHDOG_RETURNCODE
+    assert observed == [("W", "")]
+    gate.require_clean(cell.run_id)
+    assert gate.problem() is None

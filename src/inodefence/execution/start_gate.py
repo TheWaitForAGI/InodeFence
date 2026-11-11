@@ -22,12 +22,18 @@ acquisition opens a fresh file description, so threads exclude each other too):
   "maybe still running", never "clean".
 * ``<cell>.verdict``: ``C`` when the child's cleanup starts (outcome pending),
   then ``S`` (cleanup verified) or ``U <reason>`` (resource state unknown).
-  ``U`` is final. The launcher writes ``U`` itself when a reaped cell left no
-  ``S`` and before it terminates a cell on its watchdog.
+  ``U`` is final. ``W`` (pending, like ``C``) is written by the launcher just
+  before it terminates a cell on its watchdog; only the child's own cleanup can
+  turn it into ``S``. The launcher never writes ``S``. It writes ``U`` when a
+  reaped cell left no ``S`` (including a watchdog cell killed before its trap
+  verified cleanup).
+* ``<cell>.watchdog`` marks a cell the watchdog terminated. It survives verdict
+  changes, so every denial caused by that cell names the watchdog and callers
+  can classify it the same way whichever thread sees it first.
 * ``<cell>.session`` names the launcher session that started the cell.
 
 Before a start the launcher waits, holding no lock, while any live cell is in
-``C`` (at most ``cleanup_wait_seconds``; past it the start is denied). Under the
+``C`` or ``W`` (at most ``cleanup_wait_seconds``; past it the start is denied). Under the
 gate lock it then denies the start when any registered cell has ``U``, has no
 final verdict while its lifetime lock is free (it exited without verifying its
 cleanup), has no final verdict and belongs to another launcher session (that
@@ -70,8 +76,12 @@ GATE_CELL_ENV = "INODEFENCE_START_GATE_CELL"
 GATE_LOCK = "gate.lock"
 ACKNOWLEDGED = "acknowledged"
 CLEANUP = "C"
+WATCHDOG = "W"
 CLEAN = "S"
 UNKNOWN = "U"
+PENDING = (CLEANUP, WATCHDOG)
+#: Appended to every denial caused by a watchdog-terminated cell.
+WATCHDOG_TAG = "(after watchdog)"
 _CELL = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,200}$")
 #: Longest wait for ``gate.lock``. Its holders only scan small files, rename one
 #: or call Popen, so reaching this means a holder is stuck; the caller then fails
@@ -147,7 +157,7 @@ def _read_verdict(path: Path) -> tuple[str, str] | None:
     except FileNotFoundError:
         return None
     kind, _, reason = text.rstrip("\n").partition(" ")
-    if kind not in (CLEANUP, CLEAN, UNKNOWN) or (kind != UNKNOWN and reason):
+    if kind not in (CLEANUP, WATCHDOG, CLEAN, UNKNOWN) or (kind != UNKNOWN and reason):
         raise ValueError(f"unreadable verdict {path.name}: {text[:80]!r}")
     return kind, reason
 
@@ -175,7 +185,9 @@ def _commit_locked(path: Path, cell: str, verdict: str, reason: str) -> None:
     if current is not None and current[0] == CLEAN and verdict != UNKNOWN:
         if verdict == CLEANUP:
             raise RuntimeError(f"{cell}: cleanup was already verified")
-        return
+        return  # S stays S; a late watchdog mark changes nothing
+    if current is not None and current[0] == WATCHDOG and verdict == CLEANUP:
+        return  # the trap entering cleanup after SIGTERM: still pending as W
     _write_atomic(path, line + "\n")
 
 
@@ -194,6 +206,7 @@ def record_verdict(
     """
     _check_cell(cell)
     if verdict not in (CLEANUP, CLEAN, UNKNOWN):
+        # W is launcher-only (StartGate.mark_watchdog).
         raise ValueError(f"verdict must be {CLEANUP}, {CLEAN} or {UNKNOWN}: {verdict!r}")
     with _locked(Path(directory) / GATE_LOCK, lock_seconds):
         _commit_locked(Path(directory) / f"{cell}.verdict", cell, verdict, reason)
@@ -268,20 +281,24 @@ class StartGate:
     def _cells(self) -> list[str]:
         return sorted(p.name[: -len(".session")] for p in self.directory.glob("*.session"))
 
+    def _tag(self, cell: str) -> str:
+        return f" {WATCHDOG_TAG}" if (self.directory / f"{cell}.watchdog").exists() else ""
+
     def _scan_locked(self) -> tuple[str | None, list[str]]:
-        """(first denial reason, live cells inside cleanup). Caller holds the lock."""
+        """(first denial reason, live cells with a pending outcome). Caller holds the lock."""
         pending: list[str] = []
         for cell in self._cells():
             verdict = _read_verdict(self.directory / f"{cell}.verdict")
+            tag = self._tag(cell)
             if verdict is not None and verdict[0] == UNKNOWN:
-                return f"{cell} cleanup resource state unknown: {verdict[1]}", []
+                return f"{cell} cleanup resource state unknown: {verdict[1]}{tag}", []
             if verdict is not None and verdict[0] == CLEAN:
                 continue
             owner = (self.directory / f"{cell}.session").read_text(encoding="utf-8").strip()
             if owner != self.session:
-                return f"{cell} has no cleanup verdict from launcher session {owner}", []
+                return f"{cell} has no cleanup verdict from launcher session {owner}{tag}", []
             if _lock_is_free(self.directory / f"{cell}.lock"):
-                return f"{cell} exited without a cleanup verdict", []
+                return f"{cell} exited without a cleanup verdict{tag}", []
             if verdict is not None:
                 pending.append(cell)
         return None, pending
@@ -362,6 +379,7 @@ class StartGate:
             # Only reached when the scan found no U: an old verdict is S (a clean
             # rerun under run_exp0 resume), or this session's own unfinished cell.
             Path(f"{base}.verdict").unlink(missing_ok=True)
+            Path(f"{base}.watchdog").unlink(missing_ok=True)
             _write_atomic(session, self.session + "\n")
             fd = os.open(lock, os.O_RDWR | os.O_CREAT | os.O_CLOEXEC, 0o600)
         except StartDenied:
@@ -432,8 +450,20 @@ class StartGate:
         return start
 
     def mark_unknown(self, cell: str, reason: str) -> None:
-        """Launcher-side ``U`` (for example before a watchdog terminate)."""
+        """Launcher-side ``U``."""
         record_verdict(self.directory, cell, UNKNOWN, reason, lock_seconds=self.lock_seconds)
+
+    def mark_watchdog(self, cell: str) -> None:
+        """Call just before terminating ``cell`` on a watchdog.
+
+        Other starts then wait (bounded) instead of running beside a cell whose
+        resources are being torn down. Only the child's cleanup can still
+        commit ``S``; if it is killed first, :meth:`require_clean` commits ``U``.
+        """
+        _check_cell(cell)
+        with _locked(self.directory / GATE_LOCK, self.lock_seconds):
+            _write_atomic(self.directory / f"{cell}.watchdog", "watchdog\n")
+            _commit_locked(self.directory / f"{cell}.verdict", cell, WATCHDOG, "")
 
     def verdict(self, cell: str) -> tuple[str, str] | None:
         return _read_verdict(self.directory / f"{_check_cell(cell)}.verdict")
@@ -455,8 +485,11 @@ class StartGate:
             reason = "launcher: exited without a cleanup verdict"
         elif verdict[0] == CLEANUP:
             reason = "launcher: exited inside cleanup without a verdict"
+        elif verdict[0] == WATCHDOG:
+            reason = "launcher: terminated by the watchdog before cleanup was verified"
         else:
             reason = verdict[1]
+        reason += self._tag(cell)
         try:
             self.mark_unknown(cell, reason)
         except Exception as error:
@@ -481,7 +514,7 @@ def acknowledge(directory: Path, cell: str, note: str) -> Path:
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S.%fZ")
         target = directory / ACKNOWLEDGED / f"{stamp}-{cell}"
         target.mkdir(parents=True)
-        for suffix in (".verdict", ".session", ".lock"):
+        for suffix in (".verdict", ".watchdog", ".session", ".lock"):
             source = directory / f"{cell}{suffix}"
             if source.exists():
                 os.replace(source, target / source.name)

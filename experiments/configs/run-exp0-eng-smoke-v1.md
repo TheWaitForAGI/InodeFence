@@ -1,6 +1,6 @@
 # run_exp0 엔지니어링 smoke v1 — 실행 등록 파일 (비등록, `demo run`)
 
-> **상태: 초안(2026-11-11, W3).** 설계는 [동시 실행 벤치마크 v3](concurrency-scaling-v3.md) §5.1(#337)을 따른다.
+> **상태: 초안(2026-11-11, W3).** 설계는 [호스트별 적격성 검증 v1](host-qualification-v1.md) §2(#342)를 따른다.
 > **비등록이고 판정 입력이 아니다.** EXP-3·EXP-2 데이터, 벤치마크 §6 판정, 사전등록 값에 쓰지 않는다. oracle은
 > 봉인한다(`interim_analysis = forbidden`). 이 파일은 사전등록 *형식*을 빌려 런처의 등록 게이트를 실제로 통과시키려는
 > 것일 뿐이며, `experiments/preregistration/` 밖에 둔다.
@@ -58,7 +58,7 @@ seed_assignment_sha256 = a395367b5a617a63ba92bd04183b45e8a79d33885eed81096d4bd2c
 할당 파일은 [`run-exp0-eng-smoke-v1.assignment.json`](run-exp0-eng-smoke-v1.assignment.json)이다(6300·6302 →
 HOST1, 6301·6303 → HOST2). `python -m scripts.make_seed_assignment --rule alternate-v1`이 같은 바이트를 다시 만든다.
 
-## 2. 통과 조건 (v3 §5.1, 실행 전 고정)
+## 2. 통과 조건 (적격성 검증 v1 §2, 실행 전 고정)
 
 | 조건 | 판정 근거(기록) |
 | --- | --- |
@@ -67,7 +67,7 @@ HOST1, 6301·6303 → HOST2). `python -m scripts.make_seed_assignment --rule alt
 | 러너 실패 0 | `cell-results.jsonl` end 줄에 `runner_error` 0 |
 | 시작 실패 0 | end 줄에 `start_denied` 0 |
 | 기록 완전성 | index `cell_completeness`: 모든 셀이 complete 또는 abort-final, `record_inconsistent` 0, `no_record` 0 |
-| 병합 검사 | `merge_host_indexes` exit 0(`merge.complete = true`) |
+| 병합 검사 | `merge_host_indexes` exit 0(`merge.complete = true`). 두 호스트 smoke가 모두 끝났을 때만 판정하며, 호스트별 smoke 통과에는 넣지 않는다(잠정, D047 호스트 독립 판정) |
 | 호스트 키 게이트 | 두 호스트의 실제 실행이 게이트를 통과(exit 2 거부 없음) |
 | 인프라 정지 0 | `infrastructure-stop` 줄 0 |
 
@@ -110,7 +110,7 @@ HOST1, 6301·6303 → HOST2). `python -m scripts.make_seed_assignment --rule alt
      --host-output HOST1=<out-HOST1> --host-output HOST2=<out-HOST2>
    ```
 
-6. **결정론 검사(재실행이 있었던 셀만, D046, v3 §5.1 `fd08c3a`):** `infra_reexecutions`가 0보다 큰 셀마다 그 seed와
+6. **결정론 검사(재실행이 있었던 셀만, D046, 적격성 검증 v1 §2):** `infra_reexecutions`가 0보다 큰 셀마다 그 seed와
    arm만 담은 별도 등록 파일(이 파일 사본에 `seeds = <그 seed>`, `targets.node-tar-7.5.2.arms = <그 arm>`, 그 seed만 담은
    할당 파일과 sha)을 만들고 **새 출력 폴더**로 run_exp0를 그 호스트에서 다시 돌린다. "같은 설정"은 seed, arm, budget,
    정책, sentinel, 이미지, `engine_sha`, 셀 env가 같다는 뜻이다. 등록 sha와 회전 순서는 원 실행과 달라지며, 그 값을
@@ -118,7 +118,7 @@ HOST1, 6301·6303 → HOST2). `python -m scripts.make_seed_assignment --rule alt
    `oracle_and_feedback` 일치 여부(불리언)만 남긴다. 재실행이 0이면 "재실행 0, 결정론 미검정"(UNKNOWN)이다.
 7. **기록:** 원장에 smoke 행(호스트, seed, budget, 셀 수, 결정론 재실행 횟수, 봉인), LOG 1줄, raw manifest.
 
-## 4. 결정된 사항 (v3 §5.1 `fd08c3a`, W4 답)과 남은 조건
+## 4. 결정된 사항 (적격성 검증 v1 §2, W4 답)과 남은 조건
 
 1. **결정론 재실행:** 위 6단계의 (a) 방식이다.
 2. **실행 조건:** 이 smoke는 W1 `launcher_guards`(#336) 배선이 들어간 통합 head에서만 실행한다(오케스트레이터

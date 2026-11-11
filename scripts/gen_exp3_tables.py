@@ -1,0 +1,949 @@
+"""Generate the EXP-3 (train) and EXP-2 (holdout) result tables from ``analyze_exp0`` reports.
+
+The output specification is ``paper/deliverables/results-artifact-requirements.md``. Its rules:
+
+1. No verdict: the verdict line and the GO result stay for people to fill in.
+2. No test value on train: a train report carrying a confirmatory section is refused.
+3. No pooling: one report, one role, one target per table.
+4. A missing field stops the table. Zero is written only when the value is zero. The only defined
+   "no value" words are "미도달" for a null KM median and "없음" for no faster arm at zero events.
+5. Fixed header wording goes with each table.
+6. The same inputs give the same bytes (``--check``).
+7. Time values name their clock.
+
+    python -m scripts.gen_exp3_tables --artifact T-EXP3-1 --report <report.json> --out <table.md>
+    python -m scripts.gen_exp3_tables --artifact T-EXP3-1 --report <report.json> --check <table.md>
+
+Standard library only: ``regenerate_paper_artifacts`` runs this file by path.
+"""
+
+import argparse
+import json
+import math
+import sys
+from collections import Counter
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
+from datetime import datetime
+from pathlib import Path
+from types import MappingProxyType
+from typing import Any
+
+REPO = Path(__file__).resolve().parents[1]
+SUMMARIES = REPO / "experiments/summaries"
+TRAIN_REPORT = SUMMARIES / "exp3-train-report.json"
+HOLDOUT_REPORT = SUMMARIES / "exp2-holdout-report.json"
+TRAIN_CELL_RESULTS = SUMMARIES / "exp3-train-cell-results.jsonl"
+HOLDOUT_HAND_INPUT = SUMMARIES / "exp2-holdout-hand-input.json"
+GO_DECISION = SUMMARIES / "exp3-train-go-decision.json"
+MULTITARGET_CLASSIFICATION = "exp3-multitarget-measurement"
+ARM_ORDER = ("R", "D", "S-u")
+GO_STEP_DIVISOR = 6000  # D040-D11: capacity = floor(H_rem * r / (6000 * e)).
+MONOTONIC_NOTE = "시계: monotonic 기록값이다. 이 호스트의 monotonic은 실시간이 아니다."
+GO_NOT_COMPUTED = "미산출"
+
+
+class TableInputError(ValueError):
+    """The inputs cannot produce this table; rule 4 says stop rather than fill in."""
+
+
+def _field(source: object, *path: str) -> Any:
+    """A required value: a missing key or a null stops the table and names the path."""
+    value = _nullable(source, *path)
+    if value is None:
+        raise TableInputError(f"missing value: {'.'.join(path)}")
+    return value
+
+
+def _nullable(source: object, *path: str) -> Any:
+    """A required key whose value may be null. Only a missing key stops the table."""
+    current = source
+    for position, key in enumerate(path):
+        if not isinstance(current, Mapping) or key not in current:
+            raise TableInputError(f"missing field: {'.'.join(path[: position + 1])}")
+        current = current[key]
+    return current
+
+
+def _p(value: float) -> str:
+    """p and Holm p: four places, "< .0001" below that (rule 6)."""
+    return "< .0001" if value < 0.0001 else _decimal(value, 4)
+
+
+def _decimal(value: float, places: int) -> str:
+    text = f"{value:.{places}f}"
+    return text[1:] if text.startswith("0.") else text
+
+
+def _ratio(value: float) -> str:
+    return _decimal(value, 3)
+
+
+def _median(value: object) -> str:
+    return "미도달" if value is None else f"{value:g}"
+
+
+def _md_table(headers: Sequence[str], rows: Sequence[Sequence[object]]) -> list[str]:
+    return [
+        "| " + " | ".join(headers) + " |",
+        "| " + " | ".join("---" for _ in headers) + " |",
+        *("| " + " | ".join(str(cell) for cell in row) + " |" for row in rows),
+    ]
+
+
+def _arm_key(arm: str) -> tuple[int, str]:
+    return (ARM_ORDER.index(arm) if arm in ARM_ORDER else len(ARM_ORDER), arm)
+
+
+@dataclass(frozen=True, slots=True)
+class Target:
+    """The one analysed target of a report; ``section`` is ``None`` when no cell is left."""
+
+    target_id: str | None
+    section: Mapping[str, Any] | None
+    registered: Mapping[str, Any]
+
+
+def _load_report(path: Path) -> dict[str, Any]:
+    if not path.is_file():
+        raise TableInputError(f"report not found: {path}")
+    report = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(report, dict) or report.get("classification") != MULTITARGET_CLASSIFICATION:
+        raise TableInputError(f"{path}: not a registered multi-target report (use --index)")
+    return report
+
+
+def _target(report: Mapping[str, Any], role: str) -> Target:
+    """The report's only target, which must have ``role``; several targets are never pooled."""
+    registered = _field(report, "registered", "targets")
+    if len(registered) != 1 or registered[0].get("role") != role:
+        raise TableInputError(f"expected exactly one registered target, with role {role}")
+    target_id = _field(registered[0], "target_id")
+    by_target = _field(report, "by_target")
+    if not by_target:
+        return Target(target_id, None, registered[0])  # the deadline excluded every seed
+    if set(by_target) != {target_id}:
+        raise TableInputError(f"report targets {sorted(by_target)} are not {target_id}")
+    return Target(target_id, by_target[target_id], registered[0])
+
+
+def _train_target(report: Mapping[str, Any]) -> Target:
+    if _nullable(report, "confirmatory") is not None:
+        raise TableInputError("a train report must not carry a confirmatory section")
+    return _target(report, "train")
+
+
+def _cause_text(causes: Mapping[str, str]) -> str:
+    if not causes:
+        return "없음"
+    counts = Counter(causes.values())
+    return ", ".join(f"{cause} {counts[cause]}" for cause in sorted(counts))
+
+
+def _scope_line(report: Mapping[str, Any], target: Target) -> str:
+    registered = _field(report, "registered")
+    deadline = _field(report, "deadline")
+    analysed = len(_field(target.section, "seeds")) if target.section is not None else 0
+    budget = _nullable(target.registered, "budget") or _field(registered, "budget")
+    return (
+        f"대상 {_field(target.registered, 'extractor')} {_field(target.registered, 'version')}, "
+        f"k={_field(registered, 'sentinel_count')}, budget {budget}. "
+        f"등록 seed 블록 {len(_field(registered, 'seeds'))}, 분석 블록 {analysed}, "
+        f"미완주 제외 {_field(deadline, 'number_excluded_seeds')}"
+        f"({_cause_text(_field(deadline, 'causes'))})."
+    )
+
+
+def _t_first(section: Mapping[str, Any], arm: str) -> Mapping[str, Any]:
+    return _field(section, "item5_first_contract_index", "by_arm", arm, "t_first_combined_c1_or_c2")
+
+
+def _arm_rows(section: Mapping[str, Any], *, before_event: bool) -> list[list[object]]:
+    rows: list[list[object]] = []
+    for arm in sorted(_field(section, "item1_aborts", "by_arm"), key=_arm_key):
+        aborts = _field(section, "item1_aborts", "by_arm", arm)
+        states = _field(section, "record_states", "by_arm", arm)
+        t_first = _t_first(section, arm)
+        u_viol = _field(section, "item6_dense_signals", "by_arm", arm, "u_viol")
+        row: list[object] = [
+            arm,
+            _field(t_first, "denominator_cells_in_risk_set"),
+            _field(aborts, "number_complete"),
+            _field(aborts, "number_abort") + _field(states, "no_record"),
+        ]
+        if before_event:
+            row.append(_field(aborts, "number_abort_before_event"))
+        row += [
+            _field(states, "record_inconsistent"),
+            _field(t_first, "number_observed"),
+            _median(_nullable(t_first, "km_median_executions")),
+            f"{_field(u_viol, 'mean_per_cell'):.2f}"
+            f"({_field(u_viol, 'total_unique_c1_c2_fingerprints')})",
+        ]
+        rows.append(row)
+    return rows
+
+
+def _no_cells_line(report: Mapping[str, Any]) -> list[str]:
+    """The empty table's sentence, true only when the deadline excluded every registered seed."""
+    excluded = _field(report, "deadline", "number_excluded_seeds")
+    registered = len(_field(report, "registered", "seeds"))
+    if excluded != registered:
+        raise TableInputError(f"no analysed cell, but {excluded} of {registered} seeds excluded")
+    return ["분석 캠페인 0: 마감으로 모든 seed가 제외됐다."]
+
+
+def t_exp3_1(inputs: "Inputs") -> list[str]:
+    target = _train_target(inputs.report)
+    lines = [
+        "# 표 7-B. EXP-3 `role=train` arm별 (탐색, 기노출, 확증 아님)",
+        "",
+        _scope_line(inputs.report, target),
+        "",
+    ]
+    if target.section is None:
+        return [*lines, *_no_cells_line(inputs.report)]
+    headers = [
+        "arm",
+        "분석 캠페인",
+        "완주",
+        "abort",
+        "기록 어긋남",
+        "첫 C1∨C2 사건",
+        "T_first KM 중앙값",
+        "U_viol 평균(합)",
+    ]
+    return [*lines, *_md_table(headers, _arm_rows(target.section, before_event=False))]
+
+
+def _result_lines(cell_results: Path) -> list[Mapping[str, Any]]:
+    """Whole lines of the exit record. Only a cut last line is forgiven; anything else stops."""
+    if not cell_results.is_file():
+        raise TableInputError(f"cell results not found: {cell_results}")
+    lines = cell_results.read_text(encoding="utf-8").splitlines()
+    records: list[Mapping[str, Any]] = []
+    for position, line in enumerate(lines):
+        try:
+            records.append(json.loads(line))
+        except json.JSONDecodeError as error:
+            if position != len(lines) - 1:
+                raise TableInputError(f"{cell_results}: unreadable line {position + 1}") from error
+    return records
+
+
+@dataclass(frozen=True, slots=True)
+class RunClock:
+    """The D043 clock values of one run, all ``realtime`` from whole lines of the exit record."""
+
+    t_wall: float
+    gap_seconds: float  # Resumed stops only, inside the first start to last end span.
+    stops: int
+    last_activity: float  # The later of the last end and the last resume.
+    attempted_cells: int  # Run ids with an attempt that ran (D045: start_denied excluded).
+    unresumed: bool
+
+    @property
+    def t_up(self) -> float:
+        return self.t_wall - self.gap_seconds
+
+
+def _run_clock(records: Sequence[Mapping[str, Any]]) -> RunClock:
+    """Only a registered stop-to-resume gap leaves r; a slow host or a dead launcher stays in.
+
+    A gap opens at the later of the stop and the last end before the resume: a cell still running
+    after the stop adds steps, so its time stays in r's denominator.
+    """
+    starts: list[float] = []
+    started: set[tuple[str, object]] = set()
+    denied: set[tuple[str, object]] = set()
+    ends: list[float] = []
+    resumes: list[float] = []
+    pairs: list[tuple[float, float]] = []
+    stops = 0
+    stopped_at: float | None = None
+    last_infrastructure = ""
+    for row in records:
+        event = row.get("event")
+        if event not in ("start", "end", "infrastructure-stop", "infrastructure-resume"):
+            continue
+        stamp = float(_field(row, "clocks", "realtime"))
+        if event == "start":
+            starts.append(stamp)
+            started.add((str(_field(row, "run_id")), row.get("attempt")))
+        elif event == "end":
+            ends.append(stamp)
+            # D045: an attempt the start gate refused never ran (explicit field only).
+            if isinstance(row.get("start_denied"), str):
+                denied.add((str(_field(row, "run_id")), row.get("attempt")))
+        elif event == "infrastructure-stop":
+            stops += 1
+            stopped_at = stamp if stopped_at is None else stopped_at
+            last_infrastructure = str(event)
+        else:
+            resumes.append(stamp)
+            if stopped_at is not None:
+                pairs.append((max([stopped_at, *ends]), stamp))
+            stopped_at = None
+            last_infrastructure = str(event)
+    if not starts or not ends:
+        raise TableInputError("cell results need start and end lines")
+    first_start, last_end = min(starts), max(ends)
+    return RunClock(
+        t_wall=last_end - first_start,
+        gap_seconds=sum(
+            max(0.0, min(resume, last_end) - max(opened, first_start)) for opened, resume in pairs
+        ),
+        stops=stops,
+        last_activity=max([last_end, *resumes]),
+        attempted_cells=len({run_id for run_id, _ in started - denied}),
+        unresumed=last_infrastructure == "infrastructure-stop",
+    )
+
+
+def _go_decision_time(path: Path) -> tuple[str, float]:
+    """The recorded GO decision time. A file, not this call's clock: rule 6 needs the same bytes."""
+    if not path.is_file():
+        raise TableInputError(f"GO decision time not found: {path}")
+    text = _field(json.loads(path.read_text(encoding="utf-8")), "decided_at")
+    decided_at = datetime.fromisoformat(text)
+    if decided_at.tzinfo is None:
+        raise TableInputError(f"{path}: decided_at needs a UTC offset")
+    return text, decided_at.timestamp()
+
+
+@dataclass(frozen=True, slots=True)
+class GoClock:
+    """D043 values over one or two hosts: ``r`` sums each host's ``recorded_h / T_up,h``.
+
+    Each host keeps its own span and its own registered stop gaps, so a stop on one host never
+    removes the other host's running time. ``H_rem`` starts at the later host's last activity.
+    One host gives exactly the one-host values.
+    """
+
+    attempted_cells: int
+    unresumed: bool
+    rates: Mapping[str, float]  # r_h, exec/h (realtime); key "" for a one-host run.
+    rate_wall: float
+    last_activity: float
+    stops: int
+    gap_seconds: float
+    unresumed_hosts: tuple[str, ...] = ()
+
+    @property
+    def rate(self) -> float:
+        return sum(self.rates.values())
+
+
+@dataclass(frozen=True, slots=True)
+class PartialGo:
+    """D047 section 9.1: unresumed-stop participants left out of r, from the GO decision file.
+
+    ``partial_go_check --record-in-go-decision`` writes ``excluded_hosts``, ``exclusions`` (with
+    ``hold_reasons``) and ``partial_completion``; the cell results must name the same hosts.
+    """
+
+    excluded: tuple[str, ...]
+    hold_reasons: Mapping[str, Sequence[str]]
+    completion: Mapping[str, Any]
+    notes: Mapping[str, Sequence[str]] = field(default_factory=dict)
+
+    @property
+    def held(self) -> bool:
+        return any(self.hold_reasons.values())
+
+
+def _partial_go(inputs: "Inputs", clock: GoClock) -> PartialGo | None:
+    """``None`` when every participant runs; refused when the records and the GO file disagree.
+
+    Raises :class:`TableInputError` with ``GO_NOT_COMPUTED`` when no running participant is left
+    (a one-host run that stopped, or every participant stopped).
+    """
+    recorded: Mapping[str, Any] = {}
+    if inputs.go_decision.is_file():
+        loaded = json.loads(inputs.go_decision.read_text(encoding="utf-8"))
+        recorded = loaded if isinstance(loaded, Mapping) else {}
+    listed = recorded.get("excluded_hosts") or []
+    if not clock.unresumed:
+        if listed:
+            raise TableInputError(f"the GO file excludes {listed}, but no host stopped unresumed")
+        return None
+    if "" in clock.rates or set(clock.unresumed_hosts) == set(clock.rates):
+        raise TableInputError(GO_NOT_COMPUTED)
+    if sorted(listed) != sorted(clock.unresumed_hosts):
+        raise TableInputError(
+            f"hosts stopped unresumed {sorted(clock.unresumed_hosts)}, the GO file excludes "
+            f"{sorted(listed)}: run partial_go_check --record-in-go-decision first"
+        )
+    exclusions = recorded.get("exclusions")
+    completion = recorded.get("partial_completion")
+    if not isinstance(exclusions, Mapping) or not isinstance(completion, Mapping):
+        raise TableInputError("the GO file has no exclusions or partial_completion")
+    hold: dict[str, Sequence[str]] = {}
+    notes: dict[str, Sequence[str]] = {}
+    for host in listed:
+        reasons = (exclusions.get(host) or {}).get("hold_reasons")
+        if not isinstance(reasons, list):
+            raise TableInputError(f"the GO file has no hold_reasons for {host}")
+        hold[host] = reasons
+        # Not hold reasons but shown: e.g. "(ii) 검정 불가: <reason>" (D047 section 9.1 (ii)).
+        notes[host] = list((exclusions.get(host) or {}).get("notes") or [])
+    return PartialGo(tuple(sorted(listed)), hold, completion, notes)
+
+
+def _go_clock(inputs: "Inputs", report: Mapping[str, Any], recorded: int) -> GoClock:
+    if not inputs.host_cell_results:
+        clock = _run_clock(_result_lines(inputs.cell_results))
+        if clock.t_wall <= 0 or clock.t_up <= 0 or not recorded:
+            raise TableInputError("the run span and step counts must be positive")
+        return GoClock(
+            clock.attempted_cells,
+            clock.unresumed,
+            {"": recorded / (clock.t_up / 3600)},
+            recorded / (clock.t_wall / 3600),
+            clock.last_activity,
+            clock.stops,
+            clock.gap_seconds,
+        )
+    hosts = _field(report, "hosts")
+    if not isinstance(hosts, Mapping) or set(hosts) != set(inputs.host_cell_results):
+        raise TableInputError("cell results hosts differ from the report's merged hosts")
+    clocks: dict[str, RunClock] = {}
+    host_recorded: dict[str, int] = {}
+    for host, path in sorted(inputs.host_cell_results.items()):
+        lines = _result_lines(path)
+        if any(row.get("host_id") not in (None, host) for row in lines):
+            raise TableInputError(f"{path}: lines from another host than {host}")
+        clocks[host] = _run_clock(lines)
+        host_recorded[host] = _field(hosts, host, "cell_completeness", "recorded_steps")
+        if clocks[host].t_wall <= 0 or clocks[host].t_up <= 0 or not host_recorded[host]:
+            raise TableInputError(f"{host}: the run span and step counts must be positive")
+    if sum(host_recorded.values()) != recorded:
+        raise TableInputError("per-host recorded steps do not add up to the pooled count")
+    return GoClock(
+        sum(c.attempted_cells for c in clocks.values()),
+        any(c.unresumed for c in clocks.values()),
+        {h: host_recorded[h] / (c.t_up / 3600) for h, c in clocks.items()},
+        sum(host_recorded[h] / (c.t_wall / 3600) for h, c in clocks.items()),
+        max(c.last_activity for c in clocks.values()),
+        sum(c.stops for c in clocks.values()),
+        sum(c.gap_seconds for c in clocks.values()),
+        tuple(sorted(h for h, c in clocks.items() if c.unresumed)),
+    )
+
+
+def go_rates(inputs: "Inputs") -> dict[str, str]:
+    """Per-host ``r_h`` as fixed decimal text, the input of the holdout seed split.
+
+    Refused when GO has no value (every participant stopped unresumed, or a one-host run that
+    did), when a partial GO is held (D047 section 9.1 item 3), or for a one-host run. An excluded
+    host has no ``r_h``: the holdout goes to the running participants only.
+    """
+    report = inputs.report
+    recorded = _field(report, "cell_completeness", "recorded_steps")
+    clock = _go_clock(inputs, report, recorded)
+    try:
+        partial = _partial_go(inputs, clock)
+    except TableInputError as error:
+        if str(error) == GO_NOT_COMPUTED:
+            raise TableInputError(
+                f"{GO_NOT_COMPUTED}: 인프라 정지 미재개. 할당을 만들지 않는다"
+            ) from error
+        raise
+    if "" in clock.rates:
+        raise TableInputError("a seed split needs per-host cell results (--host-cell-results)")
+    if partial is not None and partial.held:
+        raise TableInputError("GO 보류(지웅 판단): 할당을 만들지 않는다")
+    excluded = () if partial is None else partial.excluded
+    return {host: f"{rate:.6f}" for host, rate in clock.rates.items() if host not in excluded}
+
+
+def t_exp3_2(inputs: "Inputs") -> list[str]:
+    report = inputs.report
+    target = _train_target(report)
+    if target.section is None:
+        raise TableInputError("no analysed cell: the GO inputs cannot be computed")
+    section = target.section
+    events = sum(
+        _field(_t_first(section, arm), "number_observed")
+        for arm in _field(section, "item5_first_contract_index", "by_arm")
+    )
+    # Every cell with a start line, not only analysed ones: an invalid cell and a first attempt cut
+    # by a stop ran and used host time. A cell never started did not (exp3 section 5).
+    completeness = _field(report, "cell_completeness")
+    registered = _field(report, "registered")
+    budget = _nullable(target.registered, "budget") or _field(registered, "budget")
+    recorded = _field(completeness, "recorded_steps")
+    clock = _go_clock(inputs, report, recorded)
+    planned = clock.attempted_cells * budget
+    not_started = _field(completeness, "cells") - clock.attempted_cells
+    if not_started < 0:
+        raise TableInputError("more cells started than the report's cells: not the same run")
+    if not planned:
+        raise TableInputError("the run span and step counts must be positive")
+    rate_wall = clock.rate_wall
+    ratio = recorded / planned
+    # D045: the GO abort input is over attempted cells (a start line), unstarted cells out of both
+    # sides; aborts include no-record cells. The whole-registration rate stays as a reference row.
+    failures = _field(completeness, "aborts") + _field(completeness, "record_inconsistent")
+    attempted_rate = failures / clock.attempted_cells
+    failure_rate = _field(completeness, "infrastructure_failure_rate")
+    try:
+        partial = _partial_go(inputs, clock)
+        not_computed = False
+    except TableInputError as error:
+        if str(error) != GO_NOT_COMPUTED:
+            raise
+        partial, not_computed = None, True
+    excluded = () if partial is None else partial.excluded
+    partial_lines: list[str] = []
+    if not_computed:
+        # No running participant is left (D043 condition 6 as amended by D047 section 9.1).
+        rate_text = remaining_text = capacity_text = GO_NOT_COMPUTED
+        decision_lines: list[str] = []
+        result = f"{GO_NOT_COMPUTED}: 인프라 정지 미재개. GO 미적용, EXP-2 미시작"
+    else:
+        # D047 section 9.1: an excluded host leaves r only.
+        rate = sum(value for host, value in clock.rates.items() if host not in excluded)
+        deadline = datetime.fromisoformat(_field(report, "deadline", "execution_deadline"))
+        decided_text, decided_at = _go_decision_time(inputs.go_decision)
+        remaining = (deadline.timestamp() - max(clock.last_activity, decided_at)) / 3600
+        decision_lines = ["", f"GO 판정 시각(실시간): {decided_text}"]
+        rate_text = f"{rate:.0f}"
+        remaining_text = f"{remaining:.1f}"
+        capacity_text = str(math.floor(remaining * rate / (GO_STEP_DIVISOR * ratio)))
+        result = ""
+        if partial is not None:
+            label = ", ".join(partial.excluded)
+            result = (
+                f"GO 보류(지웅 판단): 호스트 {label} 미재개 정지, 보류 조건 해당"
+                if partial.held
+                else f"부분 완료(호스트 {label} 미재개 정지): GO는 가동 호스트의 r로 판정"
+            )
+            partial_lines = _partial_lines(partial)
+    rows = [
+        ["E: train 첫 C1∨C2 캠페인(3 arm 합산, abort 포함, invalid 제외)", events, "≥ 1"],
+        ["r: 정지 공백을 뺀 처리량(실시간, exec/h)", rate_text, "입력"],
+        ["e: 기록/계획 step 비율", _ratio(ratio), "입력"],
+        ["H_rem: GO 판정 시점부터 실행 마감까지 호스트 시간(실시간, h)", remaining_text, "입력"],
+        ["용량 ⌊H_rem·r÷(6000·e)⌋", capacity_text, "≥ 76"],
+        [
+            "인프라 실패 비율 (abort + 기록 어긋남 + 무기록)/시도한 셀",
+            _ratio(attempted_rate),
+            "≤ .45",
+        ],
+        ["참고: 인프라 실패 비율/등록 전체 셀(판정 입력 아님)", _ratio(failure_rate), "기록"],
+        ["시작하지 않은 셀", not_started, "기록"],
+        ["결과", result, "W3가 적용해 LOG에 남긴다"],
+    ]
+    if "" not in clock.rates and not not_computed:
+        rows[1:1] = [
+            [f"r_{host}: {host} 처리량(실시간, exec/h)", f"{value:.0f}", "r = Σ r_h"]
+            if host not in excluded
+            else [
+                f"r_{host}: {host} 처리량(실시간, exec/h)",
+                f"{value:.0f}",
+                "제외(미재개 정지): r에 넣지 않음",
+            ]
+            for host, value in sorted(clock.rates.items())
+        ]
+    return [
+        "# 표 7-B2. GO 판정 입력",
+        "",
+        *_md_table(["입력", "값", "기준"], rows),
+        "",
+        f"r_wall(참고, GO 입력 아님): {rate_wall:.0f} exec/h. "
+        "정지 공백을 포함한 값이고 판정을 뒤집는 데 쓰지 않는다.",
+        "",
+        f"정지 {clock.stops}회, 누적 공백 {clock.gap_seconds / 3600:.1f} h(실시간). "
+        "원인은 docs/LOG.md의 W2 기록.",
+        *decision_lines,
+        *partial_lines,
+    ]
+
+
+def _partial_lines(partial: PartialGo) -> list[str]:
+    """The D047 section 9.1 item 4 report: completion per host, hold reasons, the two outcomes."""
+    lines = ["", "## 부분 완료 (D047 §9.1)", ""]
+    for host, targets in sorted(partial.completion.items()):
+        mark = " (제외: 미재개 정지)" if host in partial.excluded else ""
+        for target, blocks in sorted(targets.items()):
+            finished = list(blocks.get("finished_seeds") or [])
+            unfinished = list(blocks.get("unfinished_seeds") or [])
+            lines.append(
+                f"- {host}{mark} {target}: 완주 seed 블록 {len(finished)}개 {finished}, "
+                f"미완주 {len(unfinished)}개 {unfinished}"
+            )
+    lines += [
+        "",
+        "미완주 seed 블록은 train 분석에서 뺀다(D041 마감 규칙 준용). 제외된 호스트의 완료 셀은 "
+        "E, abort, e에 남고 r에서만 빠진다. 'EXP-3 train 완료'로 쓰지 않는다.",
+    ]
+    for host, reasons in sorted(partial.hold_reasons.items()):
+        for reason in reasons:
+            lines.append(f"- 보류 사유 {host}: {reason}")
+    for host, host_notes in sorted(partial.notes.items()):
+        for note in host_notes:
+            lines.append(f"- 참고 {host}: {note}")
+    lines += [
+        "",
+        "EXP-2 진행 가능(GO) 여부는 위 결과 칸이다. holdout 전체 완료 여부는 EXP-2 결과에서 따로 "
+        "보고한다.",
+    ]
+    return lines
+
+
+def _dense_table(title: str, report: Mapping[str, Any], target: Target) -> list[str]:
+    lines = [title, "", _scope_line(report, target), ""]
+    if target.section is None:
+        return [*lines, *_no_cells_line(report)]
+    section = target.section
+    rows: list[list[object]] = []
+    for arm in sorted(_field(section, "dense_signals_registered", "by_arm"), key=_arm_key):
+        dense = _field(section, "dense_signals_registered", "by_arm", arm)
+        rejected = _field(section, "item6_dense_signals", "by_arm", arm, "rejected_ratio", "value")
+        failures = _field(dense, "observation_failures_by_kind")
+        rows.append(
+            [
+                arm,
+                f"{_field(dense, 'new_boundary_keys_per_cell', 'mean'):.2f}",
+                f"{_field(dense, 'new_boundary_keys_per_cell', 'median'):g}",
+                _field(dense, "unique_boundary_keys_in_arm"),
+                _ratio(rejected),
+                "; ".join(
+                    f"{kind} {_field(failures, kind, 'total')}"
+                    f"({_field(failures, kind, 'per_1000_steps'):.2f}/1000)"
+                    for kind in sorted(failures)
+                )
+                or "0",
+                _ratio(_field(dense, "feedback_ineligible_ratio", "value")),
+            ]
+        )
+    headers = [
+        "arm",
+        "셀별 새 키 평균(온전한 trace 기준)",
+        "셀별 새 키 중앙값(온전한 trace 기준)",
+        "arm 안 고유 키(온전한 trace 기준)",
+        "rejected 비율",
+        "관찰 실패 종류별 step 수(1000 step당, 합계 아님)",
+        "feedback_eligible=false 비율",
+    ]
+    return [*lines, *_md_table(headers, rows)]
+
+
+def t_exp3_3(inputs: "Inputs") -> list[str]:
+    target = _train_target(inputs.report)
+    title = "# EXP-3 train dense 지표 (탐색, effectiveness 아님)"
+    return _dense_table(title, inputs.report, target)
+
+
+def t_exp2_1(inputs: "Inputs") -> list[str]:
+    target = _target(inputs.report, "holdout")
+    lines = ["# 표 7-A. EXP-2 `role=holdout` arm별", "", _scope_line(inputs.report, target), ""]
+    if target.section is None:
+        return [*lines, *_no_cells_line(inputs.report)]
+    headers = [
+        "arm",
+        "분석 캠페인",
+        "완주",
+        "abort",
+        "사건 전 abort",
+        "기록 어긋남",
+        "첫 C1∨C2 사건",
+        "T_first KM 중앙값",
+        "U_viol 평균(합)",
+    ]
+    return [*lines, *_md_table(headers, _arm_rows(target.section, before_event=True))]
+
+
+def _rejected(value: object) -> str:
+    if not isinstance(value, bool):
+        raise TableInputError(f"reject_at_alpha must be true or false, not {value!r}")
+    return "기각" if value else "비기각"
+
+
+def _faster(contrast: Mapping[str, Any]) -> str:
+    faster = _nullable(contrast, "faster_arm")
+    if faster is not None:
+        return faster
+    return "없음" if _field(contrast, "total_events") == 0 else "동률"
+
+
+def _permutation_p(contrast: Mapping[str, Any]) -> str:
+    value = _nullable(contrast, "permutation", "p_value")
+    return "미검정" if value is None else _p(value)
+
+
+def _contrasts(report: Mapping[str, Any]) -> list[Mapping[str, Any]]:
+    contrasts = _field(report, "confirmatory", "contrasts")
+    return sorted(contrasts, key=lambda contrast: _field(contrast, "order"))
+
+
+def t_exp2_2(inputs: "Inputs") -> list[str]:
+    _target(inputs.report, "holdout")
+    rows = [
+        [
+            _field(contrast, "contrast"),
+            _field(contrast, "number_seed_blocks"),
+            _field(contrast, "informative_blocks"),
+            _field(contrast, "total_events"),
+            _permutation_p(contrast),
+            _p(_field(contrast, "holm_adjusted_p")),
+            _rejected(_field(contrast, "reject_at_alpha")),
+            _faster(contrast),
+            _field(contrast, "u_viol_direction"),
+            _rejected(_field(contrast, "abort_policy_results", "exclude", "reject_at_alpha")),
+            _rejected(
+                _field(contrast, "abort_policy_results", "censor-at-budget", "reject_at_alpha")
+            ),
+        ]
+        for contrast in _contrasts(inputs.report)
+    ]
+    headers = [
+        "대비",
+        "seed 블록",
+        "I (정보 블록)",
+        "E (사건)",
+        "순열 p",
+        "Holm p",
+        "기각",
+        "빠른 쪽",
+        "U_viol 방향",
+        "exclude 기각",
+        "censor-at-budget 기각",
+    ]
+    return [
+        "# 표 7-A2. 대비별 확증 결과 (Holm 순서, 1차 정책 censor-at-abort)",
+        "",
+        *_md_table(headers, rows),
+        "",
+        "**판정:** (사람이 D040-D12 표를 읽어 고른다. 생성기는 채우지 않는다.)",
+    ]
+
+
+def _hand_input(path: Path) -> Mapping[str, Any]:
+    if not path.is_file():
+        raise TableInputError(f"hand input not found: {path}")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def t_exp2_3(inputs: "Inputs") -> list[str]:
+    report = inputs.report
+    _target(report, "holdout")
+    hand = _hand_input(inputs.hand_input)
+    completeness = _field(report, "cell_completeness")
+    deadline = _field(report, "deadline")
+    unknown = _field(report, "unknown_outcome_steps")
+    sensitivity = _field(report, "record_inconsistent_sensitivity")
+    stop = _field(hand, "operating_stop")
+    # The stub sees only a target whose result was dropped; docker events see the rest.
+    lost = _field(hand, "abort_split", "lost_after_execution")
+    lower_bound = _field(unknown, "lost_after_execution_lower_bound")
+    if lost < lower_bound:
+        raise TableInputError(f"hand lost_after_execution {lost} is below the stubs' {lower_bound}")
+    cut = _field(unknown, "watchdog_cut_line")
+    lines = [
+        "# EXP-2 holdout 표 아래 병기 (0이어도 적는다)",
+        "",
+        f"- 미완주 제외 seed {_field(deadline, 'number_excluded_seeds')}, "
+        f"셀별 원인: {_cause_text(_field(deadline, 'causes'))}",
+        *(f"  - {run_id}: {cause}" for run_id, cause in sorted(_field(deadline, "causes").items())),
+        f"- 기록 어긋남 {_field(completeness, 'record_inconsistent')}, "
+        f"민감도: {_field(sensitivity, 'summary')}",
+        "- abort 3분할(W2 손 입력, 분석기 값 아님): "
+        f"target 미시작 {_field(hand, 'abort_split', 'target_not_started')}, "
+        f"실행 후 소실 {lost}, "
+        f"첫 오류 미확인 {_field(hand, 'abort_split', 'first_error_unconfirmed')}",
+        f"- no-record {_field(completeness, 'no_record')}",
+        f"- watchdog 사유 {_field(completeness, 'watchdog')}",
+        f"- 결과 미상 step: 실행 후 소실 {lost}(스텁 하한 {lower_bound}), "
+        f"watchdog 잘린 줄 {cut}, 합계 {lost + cut}",
+        f"- 인프라 정지 {len(_field(completeness, 'infrastructure_stops'))}, "
+        f"재개 {len(_field(completeness, 'infrastructure_resumes'))}",
+        "- 대비별 invalid 제외: "
+        + ", ".join(
+            f"{_field(contrast, 'contrast')} {_field(contrast, 'number_blocks_invalid_excluded')}"
+            for contrast in _contrasts(report)
+        ),
+        f"- 운영 중단: {'발동' if _field(stop, 'fired') else '발동 없음'}"
+        + (f", 시각 {_field(stop, 'time')}" if _field(stop, "fired") else ""),
+    ]
+    return lines
+
+
+def t_exp2_4(inputs: "Inputs") -> list[str]:
+    target = _target(inputs.report, "holdout")
+    lines = ["# EXP-2 holdout abort 정책 민감도", ""]
+    if target.section is None:
+        return [*lines, *_no_cells_line(inputs.report)]
+    section = target.section
+    sensitivity = _field(section, "item5_first_contract_index", "sensitivity")
+    rows: list[list[object]] = []
+    for arm in sorted(_field(section, "item5_first_contract_index", "by_arm"), key=_arm_key):
+        t_first = _t_first(section, arm)
+        rows.append(
+            [
+                arm,
+                _field(sensitivity, "primary_policy"),
+                _field(t_first, "number_observed"),
+                _field(t_first, "number_right_censored"),
+                _field(t_first, "denominator_cells_in_risk_set"),
+                _median(_nullable(t_first, "km_median_executions")),
+            ]
+        )
+        for policy in ("exclude", "censor-at-budget"):
+            values = _field(sensitivity, "policies", policy, "by_arm", arm)
+            rows.append(
+                [
+                    arm,
+                    policy,
+                    _field(values, "number_observed"),
+                    _field(values, "number_right_censored"),
+                    _field(values, "number_in_risk_set"),
+                    _median(_nullable(values, "km_median_executions")),
+                ]
+            )
+    headers = ["arm", "정책", "관찰 사건", "우측절단", "위험 집합", "T_first KM 중앙값"]
+    lines += _md_table(headers, rows)
+    independence = inputs.report.get("arm_abort_independence")
+    if independence is not None:
+        lines += ["", f"arm·abort 독립성: {json.dumps(independence, sort_keys=True)}"]
+    return lines
+
+
+def t_exp2_5(inputs: "Inputs") -> list[str]:
+    # monotonic runs at a different rate on each host, so a two-host run gets one table per host
+    # from that host's own index; a merged report is refused.
+    hosts = inputs.report.get("hosts")
+    if isinstance(hosts, Mapping) and len(hosts) > 1:
+        raise TableInputError("T-EXP2-5 is per host: analyse each host's own index")
+    target = _target(inputs.report, "holdout")
+    assignment = inputs.report.get("seed_assignment")
+    host = assignment.get("host_id") if isinstance(assignment, Mapping) else None
+    title = "# EXP-2 holdout 인프라 측정" + (f" ({host})" if host else "")
+    lines = [title, "", MONOTONIC_NOTE, ""]
+    if target.section is None:
+        return [*lines, *_no_cells_line(inputs.report)]
+    section = target.section
+    pooled = _field(section, "item2_p95_full_step", "pooled")
+    summed = _field(section, "item3_throughput", "summed")
+    environment = _field(section, "environment")
+    rows = [
+        ["full step p50 (monotonic s)", f"{_field(pooled, 'p50_seconds'):.3f}"],
+        ["full step p95 (monotonic s)", f"{_field(pooled, 'p95_seconds'):.3f}"],
+        ["full step 최대 (monotonic s)", f"{_field(pooled, 'max_seconds'):.3f}"],
+        ["step 수", _field(pooled, "number_steps")],
+        ["셀 수", _field(summed, "number_cells")],
+        ["실행 수", _field(summed, "executions")],
+        ["스트림당 exec/h (monotonic)", f"{_field(summed, 'exec_per_hour'):.0f}"],
+        ["환경 동일", _field(environment, "homogeneous")],
+    ]
+    return [
+        *lines,
+        *_md_table(["항목", "값"], rows),
+        "",
+        f"환경: {json.dumps(_field(environment, 'distinct'), sort_keys=True, ensure_ascii=False)}",
+    ]
+
+
+def t_exp2_6(inputs: "Inputs") -> list[str]:
+    target = _target(inputs.report, "holdout")
+    title = "# EXP-2 holdout dense 지표 (탐색, effectiveness 아님)"
+    return _dense_table(title, inputs.report, target)
+
+
+@dataclass(frozen=True, slots=True)
+class Inputs:
+    report: Mapping[str, Any]
+    cell_results: Path
+    hand_input: Path
+    go_decision: Path
+    # Two-host runs: each host's exit record, keyed by host id (merge_host_indexes).
+    host_cell_results: Mapping[str, Path] = MappingProxyType({})
+
+
+@dataclass(frozen=True, slots=True)
+class Table:
+    render: Callable[[Inputs], list[str]]
+    report: Path
+    output: str
+
+
+TABLES: Mapping[str, Table] = {
+    "T-EXP3-1": Table(t_exp3_1, TRAIN_REPORT, "paper/tables/exp3-train-arms.md"),
+    "T-EXP3-2": Table(t_exp3_2, TRAIN_REPORT, "paper/tables/exp3-go-inputs.md"),
+    "T-EXP3-3": Table(t_exp3_3, TRAIN_REPORT, "paper/tables/exp3-dense-signals.md"),
+    "T-EXP2-1": Table(t_exp2_1, HOLDOUT_REPORT, "paper/tables/exp2-holdout-arms.md"),
+    "T-EXP2-2": Table(t_exp2_2, HOLDOUT_REPORT, "paper/tables/exp2-holdout-contrasts.md"),
+    "T-EXP2-3": Table(t_exp2_3, HOLDOUT_REPORT, "paper/tables/exp2-holdout-notes.md"),
+    "T-EXP2-4": Table(t_exp2_4, HOLDOUT_REPORT, "paper/tables/exp2-abort-sensitivity.md"),
+    "T-EXP2-5": Table(t_exp2_5, HOLDOUT_REPORT, "paper/tables/exp2-infra.md"),
+    "T-EXP2-6": Table(t_exp2_6, HOLDOUT_REPORT, "paper/tables/exp2-dense-signals.md"),
+}
+
+
+def render(artifact: str, inputs: Inputs) -> str:
+    return "\n".join(TABLES[artifact].render(inputs)) + "\n"
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--artifact", required=True, choices=sorted(TABLES))
+    parser.add_argument("--report", type=Path, help="analyze_exp0 --index --format json output")
+    parser.add_argument("--cell-results", type=Path, default=TRAIN_CELL_RESULTS)
+    parser.add_argument(
+        "--host-cell-results",
+        action="append",
+        default=[],
+        metavar="HOST=PATH",
+        help="two-host run: each host's cell-results.jsonl (replaces --cell-results)",
+    )
+    parser.add_argument(
+        "--go-rates-out",
+        type=Path,
+        help="T-EXP3-2, two hosts: write the per-host r_h text that splits the holdout seeds",
+    )
+    parser.add_argument("--hand-input", type=Path, default=HOLDOUT_HAND_INPUT)
+    parser.add_argument("--go-decision", type=Path, default=GO_DECISION)
+    parser.add_argument("--out", type=Path)
+    parser.add_argument("--check", type=Path)
+    args = parser.parse_args(argv)
+    try:
+        report = _load_report(args.report or TABLES[args.artifact].report)
+        host_files: dict[str, Path] = {}
+        for item in args.host_cell_results:
+            host, sep, path = item.partition("=")
+            if not sep or not host or not path or host in host_files:
+                raise TableInputError(
+                    f"--host-cell-results expects HOST=PATH once per host: {item}"
+                )
+            host_files[host] = Path(path)
+        inputs = Inputs(report, args.cell_results, args.hand_input, args.go_decision, host_files)
+        text = render(args.artifact, inputs)
+        if args.go_rates_out is not None:
+            if args.artifact != "T-EXP3-2":
+                raise TableInputError("--go-rates-out goes with T-EXP3-2")
+            args.go_rates_out.parent.mkdir(parents=True, exist_ok=True)
+            args.go_rates_out.write_text(
+                json.dumps({"rates_exec_per_hour": go_rates(inputs)}, indent=2, sort_keys=True)
+                + "\n",
+                encoding="utf-8",
+            )
+    except TableInputError as error:
+        print(f"{args.artifact}: {error}", file=sys.stderr)
+        return 2
+    if args.check is not None:
+        if args.check.read_text(encoding="utf-8") == text:
+            print(f"{args.artifact} byte-identical: {args.check}")
+            return 0
+        print(f"{args.artifact} DIFFERS from generated: {args.check}", file=sys.stderr)
+        return 1
+    if args.out is not None:
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        args.out.write_text(text, encoding="utf-8")
+    else:
+        sys.stdout.write(text)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

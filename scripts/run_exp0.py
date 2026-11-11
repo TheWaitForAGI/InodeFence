@@ -29,7 +29,8 @@ Scale controls (all from the file; the launcher only enforces them):
   is refused when it or the wiring is absent).
 * ``jobs_max``: upper bound on ``--jobs``.
 * ``campaign_watchdog_seconds``: a cell running longer is terminated and counted as
-  an abort (``watchdog``); its completed steps stay on disk and it reruns next time.
+  an abort (``watchdog``); its completed steps stay on disk. In the single-key form it
+  reruns next time; in the ``targets.<id>`` form a record is final (see below).
 * ``disk_pause_fraction``: a new cell waits while the output filesystem is at least
   this full (lane 4 ``should_pause_for_disk``), logged in ``matrix.json``.
 * ``interim_analysis = forbidden``: the index carries completion state only (no
@@ -49,6 +50,19 @@ Scale controls (all from the file; the launcher only enforces them):
   abort point and kept in the denominator (the preregistered abort rule); a final
   abort is never re-run. ``registration.json`` is updated before the manifest so the
   manifest covers its final bytes.
+* ``execution_deadline`` (ISO 8601 with an offset, ``targets.<id>`` form only): no new
+  cell starts after it, a running cell finishes, and only the clock lifts the
+  unfinished-cell reasons for redaction. Every cell of a seed with a cell unfinished at
+  the deadline is excluded; the index ``deadline`` record names the seeds and causes.
+* ``targets.<id>`` form: every attempt appends ``start`` and ``end`` lines to
+  ``cell-results.jsonl`` (exit code, ``watchdog_fired``, clocks, no outcome). A cell with
+  a record is final and never re-run; the record is checked by
+  ``evaluation.cell_completeness``. Only a cell with no record runs again, once, in its
+  place in the queue, its files kept under ``attempts/`` (at most two attempts). Three
+  cells in a row with no record stop new cells (``cell_completeness.InfrastructureGuard``
+  fixes the counting; ``infrastructure-stop`` line, index ``cell_completeness``). Running
+  cells finish, nothing is deleted, a cell not started uses no attempt, and later calls
+  start no cell until ``--resume-after-stop APPROVAL_REF``. ``--finalize-abort`` is refused.
 
 Idempotent: a rerun skips cells whose report is complete and conformant (budget
 reached, no abort, planned config, preregistered image id and sentinel set) and
@@ -72,15 +86,18 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 from collections.abc import Callable, Collection, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
-from time import monotonic, sleep
+from threading import Lock
+from time import CLOCK_MONOTONIC, CLOCK_MONOTONIC_RAW, clock_gettime, monotonic, sleep
 from typing import Any
 
+from scripts import launcher_guards as guards
 from scripts.run_g1_smoke import (
     DEFAULT_EXECUTION_MODE,
     EXECUTION_MODES,
@@ -98,8 +115,31 @@ from scripts.run_parallel_native import (
     cell_env,
 )
 
+from inodefence.evaluation.cell_completeness import (
+    ABORT_FINAL,
+    CELL_RESULTS_FILE,
+    COMPLETE,
+    INFRASTRUCTURE_RESUME_EVENT,
+    INFRASTRUCTURE_STOP_EVENT,
+    MAX_ATTEMPTS,
+    NO_RECORD,
+    RECORD_INCONSISTENT,
+    START_DENIED_FIELD,
+    UNATTEMPTED,
+    Attempt,
+    CellCheck,
+    InfrastructureGuard,
+    classify_cell,
+    counted_attempts,
+    infrastructure_stopped,
+    infrastructure_summary,
+    read_cell_results,
+    read_infrastructure_events,
+)
+from inodefence.evaluation.cell_completeness import CELL_STATES as TARGET_CELL_STATES
 from inodefence.evaluation.rds import VOCABULARY_MUTATION_POLICY, RdsArm, RdsCellConfig
 from inodefence.evaluation.rds_preregistration import (
+    REGISTERED_HOST_IDS,
     CellRequest,
     Preregistration,
     PreregistrationFormatError,
@@ -109,7 +149,19 @@ from inodefence.evaluation.rds_preregistration import (
     preregistration_mismatches,
 )
 from inodefence.evaluation.rds_report import ReportFormatError, load_cell_files
-from inodefence.provenance import capture_source
+from inodefence.evaluation.seed_assignment import (
+    SeedAssignment,
+    SeedAssignmentError,
+    load_seed_assignment,
+    rule_problems,
+)
+from inodefence.execution.start_gate import (
+    ACKNOWLEDGED,
+    StartDenied,
+    StartGate,
+    VerdictMissing,
+)
+from inodefence.provenance import SourceProvenance, capture_source
 
 DEFAULT_EXPERIMENT_ID = "exp0"
 REGISTERED_LABEL = "registered run"
@@ -127,6 +179,7 @@ INTERIM_RULE = (
 ABORT_DECISIONS_FILE = "abort-decisions.json"
 VERIFICATION_FILE = "manifest-verification.json"
 CELL_STATES = ("complete", "abort-final", "abort-pending", "unattempted")
+_CELL_RESULTS_LOCK = Lock()
 WORKER_POOL_MODE = "worker-pool"
 # Fallbacks when lane 4's module is not importable (its constants are preferred).
 DEFAULT_WATCHDOG_SECONDS = 2 * 60 * 60.0
@@ -208,6 +261,9 @@ class Exp0Plan:
     version: str
     include_s_a: bool
     execution_mode: str = DEFAULT_EXECUTION_MODE
+    # Two-host runs: this host's share of the registered seeds (``seed_assignment``).
+    assignment: SeedAssignment | None = None
+    host_id: str | None = None
 
     @property
     def plan(self) -> str:
@@ -228,6 +284,22 @@ class Exp0Plan:
             return declared
         module = _worker_pool_module()
         return float(getattr(module, "DISK_PAUSE_FRACTION", DEFAULT_DISK_PAUSE_FRACTION))
+
+    @property
+    def run_seeds(self) -> tuple[int, ...]:
+        """Seeds this launcher runs: the host's assigned seeds, else every registered seed.
+
+        Every target and arm of a seed runs here, so a seed never spans two hosts.
+        """
+        if self.assignment is None or self.host_id is None:
+            return tuple(self.preregistration.seeds)
+        return self.assignment.seeds_for(self.host_id)
+
+    def host_fields(self) -> dict[str, Any]:
+        """Host id and assignment sha256 for every exit-record line of a two-host run."""
+        if self.assignment is None:
+            return {}
+        return {"host_id": self.host_id, "seed_assignment_sha256": self.assignment.sha256}
 
     @property
     def interim_forbidden(self) -> bool:
@@ -273,6 +345,14 @@ class Exp0Plan:
         )
 
     def cells(self) -> list[Cell]:
+        """Targets in order. A ``targets.<id>`` plan (even one target) rotates arms by seed block.
+
+        Then every arm runs at about the same time on each seed, so a slow host or a change over
+        the run does not fall on one arm, and a campaign stopped early leaves only later seed blocks
+        unfinished. The concurrency benchmark measures this same order
+        (``run_concurrency_benchmark.planned_cells``). A single-key registration (EXP-0) keeps its
+        recorded arm-then-seed order.
+        """
         prereg = self.preregistration
         cells: list[Cell] = []
         for target in self.targets():
@@ -282,24 +362,32 @@ class Exp0Plan:
                 if target.arms is None or RdsArm(arm.label) in target.arms
             ]
             budget = target.budget if target.budget is not None else prereg.budget
-            for arm in arms:
-                for seed in prereg.seeds:
-                    cells.append(
-                        TargetCell(
-                            "demo-historical",
-                            target.version,
-                            arm,
-                            seed,
-                            budget,
-                            target_id=target.target_id,
-                            extractor=target.extractor,
-                            role=target.role,
-                            hypothesis=target.hypothesis,
-                            digest=target.digest,
-                            digest_kind=target.digest_kind,
-                            subdir=target.target_id if self.multi_target else None,
-                        )
+            order = (
+                [
+                    (arms[(position + offset) % len(arms)], seed)
+                    for position, seed in enumerate(self.run_seeds)
+                    for offset in range(len(arms))
+                ]
+                if self.multi_target
+                else [(arm, seed) for arm in arms for seed in self.run_seeds]
+            )
+            for arm, seed in order:
+                cells.append(
+                    TargetCell(
+                        "demo-historical",
+                        target.version,
+                        arm,
+                        seed,
+                        budget,
+                        target_id=target.target_id,
+                        extractor=target.extractor,
+                        role=target.role,
+                        hypothesis=target.hypothesis,
+                        digest=target.digest,
+                        digest_kind=target.digest_kind,
+                        subdir=target.target_id if self.multi_target else None,
                     )
+                )
         return cells
 
     def analysis_plan(self) -> dict[str, Any]:
@@ -402,6 +490,344 @@ def gate_mismatches(
     return tuple(problems)
 
 
+def docker_engine_version(context: str | None) -> str:
+    """The Docker Engine (server) version this host would run cells on. Read-only."""
+    command = ["docker", *(["--context", context] if context else []), "version"]
+    done = subprocess.run(
+        [*command, "--format", "{{.Server.Version}}"],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    if done.returncode != 0 or not done.stdout.strip():
+        raise RuntimeError(done.stderr.strip() or f"exit {done.returncode}")
+    return done.stdout.strip()
+
+
+def host_mismatches(
+    plan: Exp0Plan,
+    *,
+    jobs: int,
+    engine_version: Callable[[], str],
+    go_decision: Mapping[str, Any] | None = None,
+) -> list[str]:
+    """A two-host registration's per-host values against this launcher call (fail-closed).
+
+    ``--jobs`` and the Docker Engine version must equal what the file registers for ``--host-id``,
+    and the assignment file must be the bytes the registered ``seed_assignment_rule`` gives
+    (``alternate-v1``: also the registered sha256; ``rh-proportional-v1``: from the GO decision
+    file's ``r_h``). A one-host registration returns nothing and queries nothing.
+    """
+    prereg = plan.preregistration
+    if not prereg.hosts:
+        return []
+    if plan.assignment is None or plan.host_id is None:
+        return ["two-host registration: --seed-assignment and --host-id are required"]
+    host = prereg.host(plan.host_id)
+    if host is None:
+        return [f"host {plan.host_id} is not registered"]
+    problems: list[str] = []
+    if not plan.assignment.seeds_for(plan.host_id):
+        problems.append(
+            f"host {plan.host_id} takes no part in this assignment "
+            f"(participants {', '.join(plan.assignment.participants)}): 0 seeds, nothing to run"
+        )
+    if jobs != host.jobs:
+        problems.append(f"jobs {jobs} != registered host.{host.host_id}.jobs {host.jobs}")
+    try:
+        engine = engine_version()
+    except (RuntimeError, OSError, subprocess.SubprocessError) as error:
+        problems.append(f"docker engine version unreadable: {error}")
+    else:
+        if engine != host.docker_engine:
+            problems.append(
+                f"docker engine {engine} != registered host.{host.host_id}.docker_engine "
+                f"{host.docker_engine}"
+            )
+    problems.extend(
+        rule_problems(
+            plan.assignment.data,
+            rule=prereg.seed_assignment_rule or "",
+            registered_seeds=prereg.seeds,
+            registered_sha256=prereg.seed_assignment_sha256,
+            go_decision=go_decision,
+        )
+    )
+    return problems
+
+
+START_GATE_DIR = "start-gate"
+
+
+def gate_acks_new(gate_dir: Path, recorded: Collection[str]) -> list[dict[str, Any]]:
+    """Gate acknowledgements no earlier resume line names, each with its note's sha256.
+
+    "New" is by record, not by clock: an ack belongs to the first resume that lists it.
+    """
+    acks: list[dict[str, Any]] = []
+    for entry in sorted((gate_dir / ACKNOWLEDGED).glob("*")):
+        if not entry.is_dir() or str(entry.relative_to(gate_dir)) in recorded:
+            continue
+        cell = entry.name.partition("-")[2]
+        note = entry / "note.txt"
+        data = note.read_bytes() if note.is_file() else b""
+        acks.append(
+            {
+                "path": str(entry.relative_to(gate_dir)),
+                "cell": cell,
+                "note": data.decode("utf-8", "replace").strip(),
+                "note_sha256": sha256(data).hexdigest(),
+            }
+        )
+    return acks
+
+
+def ack_approval(note: str) -> str | None:
+    """The ``approval=`` field of a gate ack note (``approval=…; checked_at=…; by=…; …``)."""
+    for field in note.split(";"):
+        key, sep, value = field.strip().partition("=")
+        if sep and key == "approval":
+            return value.strip()
+    return None
+
+
+def resume_gate_problems(
+    gate: StartGate, approval_ref: str, recorded: Collection[str]
+) -> list[str]:
+    """Why a resume may not start: an open gate state, or an ack not tied to this approval."""
+    problems: list[str] = []
+    problem = gate.problem()
+    if problem is not None:
+        problems.append(
+            f"start gate still closed: {problem}. Check the resources, then run "
+            f'start_gate.py ack {gate.directory} <cell> "approval={approval_ref}; '
+            'checked_at=...; by=...; residual=<read-only command -> result>; reason=..."'
+        )
+    for ack in gate_acks_new(gate.directory, recorded):
+        if ack_approval(ack["note"]) != approval_ref:
+            problems.append(f"gate ack {ack['path']} does not name approval={approval_ref}")
+    return problems
+
+
+#: Local images every cell uses (SKIP_BUILD=1): their ids are recorded at start and end.
+LOCAL_IMAGES = ("inodefence-controller:local", "inodefence-helper:local")
+HOST_RECORD_DIR = "host"
+HOST_SAMPLE_SECONDS = guards.PROC_SAMPLE_SECONDS
+HOST_PROBE_SECONDS = guards.DOCKER_PROBE_SECONDS
+
+
+def guard_images(
+    plan: Exp0Plan, expected: Mapping[str, str] | None = None
+) -> dict[str, str | None]:
+    """Images the host guards check: each target at its registered id; the local images at
+    their ``expected`` ids when given (refused when different), else only recorded."""
+    images: dict[str, str | None] = {
+        f"inodefence-node-tar-effect:{target.version}": target.digest
+        for target in plan.targets()
+        if target.extractor == "node-tar"
+    }
+    images.update(dict.fromkeys(LOCAL_IMAGES))
+    if expected is not None:
+        images.update(expected)
+    return images
+
+
+#: The key read from an ``--expected-images`` file (the host-qualification criteria file).
+EXPECTED_IMAGES_KEY = "expected_image_ids"
+
+
+class ExpectedImagesError(ValueError):
+    """An ``--expected-images`` file is unusable for this registration."""
+
+
+def load_expected_images(path: Path, plan: Exp0Plan) -> dict[str, str]:
+    """Expected image ids for every image the guards check, from ``expected_image_ids``.
+
+    The file has the host-qualification criteria format; only ``expected_image_ids`` is
+    read. It must name exactly the guarded images (each node-tar target, the controller
+    and the helper), and a target's id must equal the id the registration pins.
+    """
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise ExpectedImagesError(f"{path}: {error}") from error
+    ids = data.get(EXPECTED_IMAGES_KEY) if isinstance(data, Mapping) else None
+    if not isinstance(ids, Mapping) or not all(
+        isinstance(key, str) and isinstance(value, str) and value for key, value in ids.items()
+    ):
+        raise ExpectedImagesError(f"{path}: {EXPECTED_IMAGES_KEY} must map image names to ids")
+    registered = guard_images(plan)
+    if set(ids) != set(registered):
+        raise ExpectedImagesError(
+            f"{path}: {EXPECTED_IMAGES_KEY} names {sorted(ids)}, the guarded images are "
+            f"{sorted(registered)}"
+        )
+    for name, want in registered.items():
+        if want is not None and ids[name] != want:
+            raise ExpectedImagesError(
+                f"{path}: {name} is expected as {ids[name]}, the registration pins {want}"
+            )
+    return dict(ids)
+
+
+def guard_docker(context: str | None) -> Callable[..., str]:
+    """The guards' docker CLI, on this launcher's ``--context``."""
+    prefix = ("--context", context) if context else ()
+
+    def run(*args: str, timeout: float = guards.DOCKER_TIMEOUT_SECONDS) -> str:
+        return guards.docker_cli(*prefix, *args, timeout=timeout)
+
+    return run
+
+
+def host_preflight(
+    plan: Exp0Plan,
+    *,
+    engine: str,
+    docker: Callable[..., str],
+    expected: Mapping[str, str] | None = None,
+) -> tuple[dict[str, Any], list[str]]:
+    """Shared launcher guard before the first cell (#336): refuses on any problem."""
+    return guards.host_preflight(
+        repo_root=Path(__file__).resolve().parents[1],
+        engine=engine,
+        images=guard_images(plan, expected),
+        docker=docker,
+        residual=lambda: guards.residual_resources(docker),
+    )
+
+
+def host_postflight(
+    plan: Exp0Plan,
+    before: Mapping[str, Any],
+    *,
+    engine: str,
+    docker: Callable[..., str],
+    expected: Mapping[str, str] | None = None,
+) -> tuple[dict[str, Any], list[str]]:
+    """The same checks once after the last cell, plus "nothing changed since the preflight"."""
+    return guards.host_postflight(
+        before,
+        repo_root=Path(__file__).resolve().parents[1],
+        engine=engine,
+        images=guard_images(plan, expected),
+        docker=docker,
+        residual=lambda: guards.residual_resources(docker),
+    )
+
+
+def source_postflight(
+    before: Mapping[str, Any] | None, now: SourceProvenance
+) -> tuple[dict[str, Any], list[str]]:
+    """Record the checkout again after the last cell (#347).
+
+    The controller runs the checkout's code in every cell (read-only bind mount), so a
+    revision change or a dirty tree during the run means cells may have run other code
+    than the preflight recorded; the shared-path hashes cover only the execution layer.
+    """
+    record = {"revision": now.revision, "dirty": now.dirty}
+    problems = []
+    if now.revision is None:
+        problems.append("execution_sha unavailable after the run")
+    elif not isinstance(before, Mapping) or before.get("revision") != now.revision:
+        revision = before.get("revision") if isinstance(before, Mapping) else None
+        problems.append(f"execution revision changed during the run: {revision} -> {now.revision}")
+    if now.dirty is not False:
+        problems.append("the source checkout is dirty after the run")
+    return record, problems
+
+
+def worktree_write_problems(paths: Mapping[str, Path], root: Path) -> list[str]:
+    """Paths this call writes that would dirty the checkout (inside it and not ignored)."""
+    problems = []
+    for name, path in paths.items():
+        resolved = path.resolve()
+        if resolved != root and root not in resolved.parents:
+            continue
+        ignored = subprocess.run(
+            ["git", "-C", str(root), "check-ignore", "-q", "--no-index", str(resolved)],
+            capture_output=True,
+            check=False,
+        )
+        if ignored.returncode != 0:
+            problems.append(
+                f"{name} {path} is inside the checkout and not ignored; "
+                "it would make the tree dirty (write it outside the worktree)"
+            )
+    return problems
+
+
+def start_host_recording(
+    directory: Path, recorders: Any, docker: Callable[..., str]
+) -> Callable[[], list[str]]:
+    """Record-only host instruments; they never stop a cell. Returns the stopper.
+
+    The host sampler (memory, pressure, disk, docker responsiveness) and the docker event
+    collector always run; the ping and Desktop-log recorders only when asked. A failure is
+    written to ``recorder-failures.jsonl`` and is never a stop.
+    """
+    directory.mkdir(parents=True, exist_ok=True)
+    stop = threading.Event()
+
+    def failed(error: Exception) -> None:
+        with (directory / guards.RECORDER_FAILURES).open("a", encoding="utf-8") as stream:
+            record = {**guards.clock_stamp(), "recorder": "sample_host", "message": str(error)}
+            stream.write(json.dumps(record, sort_keys=True) + "\n")
+
+    sampler = threading.Thread(
+        target=guards.sample_host,
+        args=(directory / "samples.jsonl", stop),
+        kwargs={
+            "disk_fraction": lambda: disk_usage_fraction(directory),
+            "on_sample": None,
+            "on_failure": failed,
+            "docker": docker,
+            "seconds": HOST_SAMPLE_SECONDS,
+            "probe_seconds": HOST_PROBE_SECONDS,
+        },
+        daemon=True,
+    )
+    notes: list[str] = []
+    try:
+        events = guards.start_docker_events(directory / "events.jsonl", guards.EVENT_ACTIONS)
+    except Exception as error:
+        events = None
+        notes.append(f"docker events not started: {type(error).__name__}: {error}")
+    threads = guards.start_recorders(directory, recorders, stop)
+    sampler.start()
+
+    def stopper() -> list[str]:
+        stop.set()
+        for thread in threads:
+            thread.join(timeout=30)
+        sampler.join(timeout=60)
+        if sampler.is_alive():
+            notes.append("host sampler did not stop")
+        if events is not None:
+            try:
+                guards.stop_docker_events(events)
+            except Exception as error:
+                notes.append(f"docker events cleanup failed: {type(error).__name__}: {error}")
+        return notes
+
+    return stopper
+
+
+def recording_settings(recorders: Any) -> dict[str, Any]:
+    """What both hosts' records must agree on for the record-only instruments."""
+    return {
+        "host_sampler": {
+            "enabled": True,
+            "stop_policy": None,
+            "seconds": HOST_SAMPLE_SECONDS,
+            "probe_seconds": HOST_PROBE_SECONDS,
+        },
+        "docker_events": {"enabled": True, "actions": list(guards.EVENT_ACTIONS)},
+        **guards.recorder_settings(recorders),
+    }
+
+
 def read_ledger(path: Path | None) -> tuple[str | None, str | None]:
     """(text, sha256) of the exposure ledger file, or (None, None) when unreadable."""
     if path is None or not path.is_file():
@@ -492,6 +918,102 @@ def recorded_terminations(output: Path) -> set[str]:
     return {c["run_id"] for c in cells if isinstance(c, Mapping) and "run_id" in c}
 
 
+def _now() -> datetime:
+    return datetime.now(UTC)
+
+
+def deadline_passed(plan: Exp0Plan) -> bool:
+    """Whether the registered ``execution_deadline`` is behind us; the instant itself is not."""
+    deadline = plan.preregistration.execution_deadline
+    return deadline is not None and _now() > deadline
+
+
+def _clock_stamp() -> dict[str, float]:
+    """All three clocks: this host's monotonic clock is not real time; its wall clock steps back."""
+    return {
+        "realtime": _now().timestamp(),
+        "monotonic": clock_gettime(CLOCK_MONOTONIC),
+        "monotonic_raw": clock_gettime(CLOCK_MONOTONIC_RAW),
+    }
+
+
+def append_cell_result(output: Path, record: Mapping[str, Any]) -> None:
+    """One line, written at once: the record must outlive a launcher that dies. No outcome in it."""
+    with _CELL_RESULTS_LOCK, (output / CELL_RESULTS_FILE).open("a", encoding="utf-8") as stream:
+        stream.write(json.dumps(record, sort_keys=True) + "\n")
+
+
+def target_cell_check(
+    plan: Exp0Plan, cell: Cell, output: Path, attempts: Mapping[str, Sequence[Attempt]]
+) -> CellCheck:
+    paths = cell_paths(cell, output)
+    return classify_cell(
+        report_path=paths["report"],
+        steps_path=paths["steps_jsonl"],
+        budget=cell.budget,
+        attempts=attempts.get(cell.run_id, ()),
+        complete_and_conformant=cell_is_complete(plan, cell, output),
+    )
+
+
+def target_cell_checks(plan: Exp0Plan, output: Path) -> dict[str, CellCheck]:
+    """Record checks of every planned cell of a ``targets.<id>`` registration."""
+    attempts = read_cell_results(output / CELL_RESULTS_FILE)
+    return {cell.run_id: target_cell_check(plan, cell, output, attempts) for cell in plan.cells()}
+
+
+def deadline_late_cells(plan: Exp0Plan, output: Path) -> dict[str, str]:
+    """Cells whose last attempt did not end by the deadline, from the exit record on disk.
+
+    Reading the file keeps the answer the same across restarts and repeated summaries: a cell still
+    running at one summary and ended at the next is late both times.
+    """
+    deadline = plan.preregistration.execution_deadline
+    assert deadline is not None
+    late: dict[str, str] = {}
+    for run_id, attempts in read_cell_results(output / CELL_RESULTS_FILE).items():
+        ended = attempts[-1].ended
+        clocks = ended.get("clocks") if ended is not None else None
+        ended_at = clocks.get("realtime") if isinstance(clocks, Mapping) else None
+        if not isinstance(ended_at, int | float):
+            late[run_id] = "not-ended-by-deadline"
+        elif ended_at > deadline.timestamp():
+            late[run_id] = "ended-after-deadline"
+    return late
+
+
+def deadline_record(
+    plan: Exp0Plan, states: Mapping[str, str], late: Mapping[str, str]
+) -> dict[str, Any]:
+    """What the registered deadline excludes: every cell of a seed with one unfinished cell (D041).
+
+    The inputs are the clock, the exit record and cell states, never an outcome, so the exclusion
+    cannot follow the results. Blocks are per target, as the contrasts are. An abort, a no-record
+    cell or an inconsistent record that ended in time is finished, and its seed stays. Before the
+    deadline nothing is excluded.
+    """
+    deadline = plan.preregistration.execution_deadline
+    assert deadline is not None
+    passed = deadline_passed(plan)
+    causes: dict[str, str] = {}
+    excluded: dict[str, set[int]] = {}
+    for cell in plan.cells() if passed else ():
+        cause = late.get(cell.run_id)
+        if cause is None and states[cell.run_id] == UNATTEMPTED:
+            cause = UNATTEMPTED
+        if cause is not None:
+            causes[cell.run_id] = cause
+            # A deadline requires the targets form, so every cell is a TargetCell.
+            assert isinstance(cell, TargetCell)
+            excluded.setdefault(cell.target_id, set()).add(cell.seed)
+    return {
+        "execution_deadline": deadline.isoformat(),
+        "passed": passed,
+        "excluded_seeds": {target: sorted(seeds) for target, seeds in excluded.items()},
+        "causes": causes,
+    }
+
+
 def load_abort_decisions(output: Path) -> dict[str, dict[str, Any]]:
     """``abort-decisions.json``: run id -> {final, note, abort_reason, recorded_at}."""
     path = output / ABORT_DECISIONS_FILE
@@ -531,6 +1053,11 @@ def cell_state(
 
 def record_abort_final(plan: Exp0Plan, output: Path, run_id: str, note: str | None) -> None:
     """Mark a cell's abort record final (a result, not a retry candidate); fail-closed."""
+    if plan.multi_target:
+        raise SystemExit(
+            f"--finalize-abort {run_id}: refused for a targets.<id> registration, whose records "
+            "are classified from the exit record and never marked by hand"
+        )
     cells = {cell.run_id: cell for cell in plan.cells()}
     if run_id not in cells:
         raise SystemExit(f"--finalize-abort {run_id}: not a planned cell")
@@ -580,7 +1107,8 @@ def evidence_integrity(plan: Exp0Plan, output: Path, states: Mapping[str, str]) 
     problems: list[str] = []
     for cell in plan.cells():
         state = states.get(cell.run_id, "unattempted")
-        if state == "unattempted":
+        # An inconsistent record is reported and leaves the analysis; it does not hide outcomes.
+        if state in ("unattempted", RECORD_INCONSISTENT, NO_RECORD):
             continue
         paths = cell_paths(cell, output)
         if not paths["steps_jsonl"].is_file():
@@ -677,6 +1205,7 @@ def _controller_request_problems(plan: Exp0Plan) -> list[str]:
     cannot run would otherwise look fine until earlier targets have spent their budget.
     Calling the same function keeps one definition of what is admitted.
     """
+    from scripts import run_effect_demo
     from scripts.run_effect_demo import _require_historical_request, historical_target_versions
 
     targets = [target for target in plan.targets() if target.extractor == "node-tar"]
@@ -689,6 +1218,13 @@ def _controller_request_problems(plan: Exp0Plan) -> list[str]:
     problems: list[str] = []
     for target in targets:
         budget = target.budget if target.budget is not None else plan.preregistration.budget
+        holdout = run_effect_demo.HOLDOUT_TARGET
+        if target.role == "holdout" and (holdout is None or holdout[0] != target.version):
+            problems.append(
+                f"target {target.target_id}: holdout {target.version!r} is not "
+                f"run_effect_demo.HOLDOUT_TARGET ({holdout[0] if holdout else 'empty'}; "
+                "set it from the D4 result, D040-D2)"
+            )
         try:
             _require_historical_request(target.version, budget, allowed)
         except ValueError as error:
@@ -766,13 +1302,18 @@ def write_registration(
         "analysis_plan": plan.analysis_plan(),
         "cells": [cell.run_id for cell in plan.cells()],
     }
+    if plan.assignment is not None:
+        record["seed_assignment"] = plan.assignment.record(plan.host_id)
+    deadline = plan.preregistration.execution_deadline
+    if deadline is not None:
+        record["execution_deadline"] = deadline.isoformat()
     if path.is_file():
         existing = json.loads(path.read_text(encoding="utf-8"))
-        for key in ("preregistration_sha256", "engine_sha", "image_digest"):
-            if existing.get(key) != record[key]:
+        for key in ("preregistration_sha256", "engine_sha", "image_digest", "seed_assignment"):
+            if existing.get(key) != record.get(key):
                 raise SystemExit(
                     f"{output} was registered under a different {key} "
-                    f"({existing.get(key)!r} != {record[key]!r}); use a new directory"
+                    f"({existing.get(key)!r} != {record.get(key)!r}); use a new directory"
                 )
         record["created_at"] = existing.get("created_at")
         record["invocations"] = int(existing.get("invocations", 0)) + 1
@@ -783,17 +1324,17 @@ def write_registration(
     return record
 
 
+def default_manifest_path(host: str, date: str) -> Path:
+    return Path("experiments/summaries") / f"raw-manifest-{host}-{date}.sha256"
+
+
 def write_raw_manifest(
     output: Path, *, script: Path, python: str, host: str, date: str, out: Path | None
 ) -> dict[str, Any]:
     """Run make_raw_manifest over the output tree (completion condition 8)."""
     if not script.is_file():
         return {"generated": False, "reason": f"manifest script missing: {script}", "path": None}
-    manifest = (
-        out
-        if out is not None
-        else Path("experiments/summaries") / f"raw-manifest-{host}-{date}.sha256"
-    )
+    manifest = out if out is not None else default_manifest_path(host, date)
     command = [
         python,
         str(script),
@@ -872,6 +1413,7 @@ def run_cell_with_watchdog(
     *,
     limit_seconds: float,
     popen: Callable[..., Any] = subprocess.Popen,
+    on_timeout: Callable[[], None] | None = None,
 ) -> CellResult:
     """``run_parallel_native._run_cell`` plus a wall-clock limit.
 
@@ -881,8 +1423,9 @@ def run_cell_with_watchdog(
     complete and reruns on the next invocation.
     """
     evidence = output / f"{cell.evidence_basename}.json"
-    log = output / f"{cell.run_id}.log"
+    log = cell_paths(cell, output)["log"]
     started = monotonic()
+    watchdog_fired = False
     with log.open("w", encoding="utf-8") as stream:
         process = popen(
             [bash, str(SCRIPT), cell.mode],
@@ -892,16 +1435,33 @@ def run_cell_with_watchdog(
             text=True,
         )
         try:
-            returncode = process.wait(timeout=limit_seconds)
-        except subprocess.TimeoutExpired:
-            process.terminate()
             try:
-                process.wait(timeout=30)
+                returncode = process.wait(timeout=limit_seconds)
             except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait()
-            returncode = WATCHDOG_RETURNCODE
-            stream.write(f"\n[watchdog] terminated after {limit_seconds:.0f} s\n")
+                watchdog_fired = True
+                if on_timeout is not None:
+                    # Before the signal: a start gate must stop new starts first.
+                    # A failure here is logged; the kill below still happens.
+                    try:
+                        on_timeout()
+                    except Exception as error:
+                        stream.write(
+                            f"\n[watchdog] on_timeout failed: {type(error).__name__}: {error}\n"
+                        )
+                process.terminate()
+                try:
+                    process.wait(timeout=30)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+                returncode = WATCHDOG_RETURNCODE
+                stream.write(f"\n[watchdog] terminated after {limit_seconds:.0f} s\n")
+        except BaseException as error:
+            # The runner failed with the child started: terminate, then kill it (#336), and say so.
+            note = guards.terminate_started(process)
+            stream.write(f"\n[runner] {type(error).__name__}: {error}; {note}\n")
+            error.add_note(note)
+            raise
     return CellResult(
         cell=cell,
         returncode=returncode,
@@ -909,34 +1469,54 @@ def run_cell_with_watchdog(
         evidence=evidence,
         evidence_exists=evidence.is_file(),
         log=log,
+        watchdog_fired=watchdog_fired,
     )
 
 
-def _refusal_preview(mismatches: Sequence[str], wiring: Sequence[str]) -> list[str]:
+def _refusal_preview(
+    mismatches: Sequence[str], wiring: Sequence[str], inputs: Sequence[str] = ()
+) -> list[str]:
     lines = ["would be refused at live run:"]
-    if not mismatches and not wiring:
+    if not mismatches and not wiring and not inputs:
         lines.append("  (nothing)")
     for item in mismatches:
         lines.append(f"  - gate: {item}")
     for item in wiring:
         lines.append(f"  - wiring: {item}")
+    for item in inputs:
+        lines.append(f"  - input: {item}")
     return lines
 
 
 def _print_dry_run(
-    plan: Exp0Plan, output: Path, base_env: dict[str, str], pending: list[Cell]
+    plan: Exp0Plan,
+    output: Path,
+    base_env: dict[str, str],
+    pending: list[Cell],
+    skip_build: bool = False,
 ) -> None:
     cells = plan.cells()
     prereg = plan.preregistration
     print(
-        f"plan={plan.plan} cells={len(cells)} pending={len(pending)} seeds={list(prereg.seeds)} "
+        f"plan={plan.plan} cells={len(cells)} pending={len(pending)} seeds={list(plan.run_seeds)} "
         f"budget={prereg.budget} arms={[a.label for a in plan.arms()]} "
         f"vocabulary={prereg.vocabulary_mode.value} execution_mode={plan.execution_mode} "
         f"watchdog_seconds={plan.watchdog_seconds:.0f} "
         f"disk_pause_fraction={plan.disk_pause_fraction} "
         f"interim_analysis={prereg.interim_analysis or 'unspecified'}"
     )
-    print(f"warmup: BUILD_ONLY=1 bash {SCRIPT} demo-historical")
+    if prereg.execution_deadline is not None:
+        print(f"execution_deadline={prereg.execution_deadline.isoformat()}")
+    if plan.assignment is not None:
+        print(
+            f"seed_assignment host={plan.host_id} sha256={plan.assignment.sha256} "
+            f"rule={plan.assignment.rule} registered_seeds={len(prereg.seeds)}"
+        )
+    if skip_build and plan.multi_target:
+        # The targets form with --skip-build runs no warmup (the EXP-0 output stays as it was).
+        print("warmup: skipped (--skip-build)")
+    else:
+        print(f"warmup: BUILD_ONLY=1 bash {SCRIPT} demo-historical")
     pending_ids = {cell.run_id for cell in pending}
     for cell in cells:
         env = exp0_cell_env(plan, cell, output, base_env)
@@ -966,7 +1546,23 @@ def _print_dry_run(
 
 
 def _pending_cells(plan: Exp0Plan, output: Path) -> tuple[list[Cell], list[str], list[str]]:
-    """Cells to (re-)run, complete cells skipped, final aborts skipped (never re-run)."""
+    """Cells to (re-)run, complete cells skipped, final aborts skipped (never re-run).
+
+    In the ``targets.<id>`` form a cell runs again only when it has no record and attempts left:
+    a record is final, so a restart never replaces one.
+    """
+    if plan.multi_target:
+        checks = target_cell_checks(plan, output)
+        cells = plan.cells()
+        return (
+            [cell for cell in cells if checks[cell.run_id].state == UNATTEMPTED],
+            [cell.run_id for cell in cells if checks[cell.run_id].state == COMPLETE],
+            [
+                cell.run_id
+                for cell in cells
+                if checks[cell.run_id].state in (ABORT_FINAL, RECORD_INCONSISTENT, NO_RECORD)
+            ],
+        )
     decisions = load_abort_decisions(output)
     terminated = recorded_terminations(output)
     pending: list[Cell] = []
@@ -1020,6 +1616,51 @@ def main(argv: list[str] | None = None) -> int:
         help="defaults to the file's execution_mode (else per-case-container); must match it",
     )
     parser.add_argument("--jobs", type=int, default=DEFAULT_JOBS, help="<= the file's jobs_max")
+    parser.add_argument(
+        "--seed-assignment",
+        type=Path,
+        default=None,
+        help="two-host runs: the frozen seed assignment file (its sha256 is registered)",
+    )
+    parser.add_argument(
+        "--clock-reference",
+        type=Path,
+        default=None,
+        help="JSON with the measured realtime offset to the other host, kept in the preflight "
+        "record with its sha256 (D047: recorded when a qualification run starts)",
+    )
+    parser.add_argument(
+        "--ping-socket",
+        type=Path,
+        default=None,
+        help="record-only: ping this docker socket during the run (off by default)",
+    )
+    parser.add_argument(
+        "--desktop-log",
+        type=Path,
+        default=None,
+        help="record-only: tail this Docker Desktop log during the run (off by default)",
+    )
+    parser.add_argument(
+        "--go-decision",
+        type=Path,
+        default=None,
+        help="holdout two-host runs: the GO decision file whose r_h made the assignment",
+    )
+    parser.add_argument(
+        "--host-id",
+        choices=REGISTERED_HOST_IDS,
+        default=None,
+        help="two-host runs: which host this is; runs only its assigned seeds",
+    )
+    parser.add_argument(
+        "--expected-images",
+        type=Path,
+        default=None,
+        help="targets form: a file whose expected_image_ids (the host-qualification criteria "
+        "format) gives the target, controller and helper ids; a run whose images differ is "
+        "refused before anything starts. Required with --host-id",
+    )
     parser.add_argument("--skip-build", action="store_true")
     parser.add_argument("--python", default=None)
     parser.add_argument("--context", default=None)
@@ -1045,9 +1686,18 @@ def main(argv: list[str] | None = None) -> int:
         help="mark a cell's abort record final (a result, right-censored, kept in the "
         "denominator; never re-run); the manual classification step until #203 lands",
     )
+    parser.add_argument(
+        "--resume-after-stop",
+        default=None,
+        metavar="APPROVAL_REF",
+        help="after the cause of an infrastructure stop was found: start cells again and record "
+        "this approval reference; nothing resumes without it",
+    )
     args = parser.parse_args(argv)
     if args.jobs < 1:
         parser.error("--jobs must be >= 1")
+    if args.resume_after_stop is not None and (args.summarize_only or args.dry_run):
+        parser.error("--resume-after-stop starts cells; it cannot go with a mode that runs none")
 
     try:
         prereg = load_preregistration(args.preregistration)
@@ -1058,8 +1708,39 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--include-s-a requested but the preregistration declares no arm.S-a")
     execution_mode = args.execution_mode or prereg.execution_mode or DEFAULT_EXECUTION_MODE
     file_sha = sha256(args.preregistration.read_bytes()).hexdigest()
+    if (args.seed_assignment is None) != (args.host_id is None):
+        parser.error("--seed-assignment and --host-id go together")
+    assignment: SeedAssignment | None = None
+    if args.seed_assignment is not None:
+        if not prereg.hosts:
+            print(
+                "--seed-assignment needs a registration with host.<id>.* keys and "
+                "seed_assignment_sha256",
+                file=sys.stderr,
+            )
+            return 2
+        try:
+            assignment = load_seed_assignment(args.seed_assignment, prereg.seeds)
+        except (SeedAssignmentError, OSError) as error:
+            print(f"seed assignment unusable: {error}", file=sys.stderr)
+            return 2
+    go_decision: dict[str, Any] | None = None
+    if args.go_decision is not None:
+        try:
+            loaded = json.loads(args.go_decision.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as error:
+            print(f"GO decision file unusable: {error}", file=sys.stderr)
+            return 2
+        go_decision = loaded if isinstance(loaded, dict) else {}
     plan = Exp0Plan(
-        prereg, args.preregistration, file_sha, args.version, args.include_s_a, execution_mode
+        prereg,
+        args.preregistration,
+        file_sha,
+        args.version,
+        args.include_s_a,
+        execution_mode,
+        assignment=assignment,
+        host_id=args.host_id,
     )
     source = capture_source()
     target_digests: dict[str, str] = {}
@@ -1095,6 +1776,15 @@ def main(argv: list[str] | None = None) -> int:
         target_digests=target_digests,
         ledger=read_ledger(ledger_path),
     )
+    mismatches = [
+        *mismatches,
+        *host_mismatches(
+            plan,
+            jobs=args.jobs,
+            engine_version=lambda: docker_engine_version(args.context),
+            go_decision=go_decision,
+        ),
+    ]
     if prereg.unknown_keys:
         print(
             "warning: unknown preregistration keys (not compared): "
@@ -1109,7 +1799,28 @@ def main(argv: list[str] | None = None) -> int:
         base_env["INODEFENCE_DOCKER_CONTEXT"] = args.context
     wiring = wiring_problems(plan)
 
+    # A targets-form run records the checkout before and after (execution_sha); its own
+    # output and raw manifest must not land in the checkout and make it dirty (#347).
+    write_problems: list[str] = []
+    if plan.multi_target:
+        writes = {"--output": output}
+        if not args.no_manifest:
+            writes["raw manifest"] = args.manifest_out or default_manifest_path(
+                args.manifest_host or os.uname().nodename.split(".")[0],
+                datetime.now(UTC).strftime("%Y%m%d"),
+            )
+        write_problems = worktree_write_problems(writes, Path(__file__).resolve().parents[1])
+
     if args.dry_run:
+        # The --expected-images file is checked here too, so a bad file is found before the run.
+        expected_problems: list[str] = list(write_problems)
+        if args.expected_images is not None:
+            try:
+                load_expected_images(args.expected_images, plan)
+            except ExpectedImagesError as error:
+                expected_problems.append(f"--expected-images unusable: {error}")
+        elif plan.multi_target and plan.host_id is not None:
+            expected_problems.append("a two-host run needs --expected-images")
         print("gate: PASS" if not mismatches else "gate: FAIL", f"({plan.gate_text()})")
         for target in plan.targets():
             print(
@@ -1117,31 +1828,55 @@ def main(argv: list[str] | None = None) -> int:
                 f"role={target.role} hypothesis={target.hypothesis} exposure={target.exposure} "
                 f"{target.digest_kind}_digest={target.digest[:19]}…"
             )
-        for line in _refusal_preview(mismatches, wiring):
+        for line in _refusal_preview(mismatches, wiring, expected_problems):
             print(line)
         pending = _pending_cells(plan, output)[0]
-        _print_dry_run(plan, output, base_env, pending)
-        return 0 if not mismatches and not wiring else 2
+        _print_dry_run(plan, output, base_env, pending, skip_build=args.skip_build)
+        return 0 if not mismatches and not wiring and not expected_problems else 2
     if mismatches:
         print("refusing to run (preregistration gate):", file=sys.stderr)
         for item in mismatches:
+            print(f"  - {item}", file=sys.stderr)
+        return 2
+    if write_problems:
+        print("refusing to run (checkout writes):", file=sys.stderr)
+        for item in write_problems:
             print(f"  - {item}", file=sys.stderr)
         return 2
 
     def finish(results: list[CellResult] | None) -> int:
         terminated = recorded_terminations(output) | {r.cell.run_id for r in results or ()}
         decisions = load_abort_decisions(output)
-        states = {
-            cell.run_id: cell_state(plan, cell, output, decisions, terminated)
-            for cell in plan.cells()
+        checks = target_cell_checks(plan, output) if plan.multi_target else None
+        states = (
+            {run_id: check.state for run_id, check in checks.items()}
+            if checks is not None
+            else {
+                cell.run_id: cell_state(plan, cell, output, decisions, terminated)
+                for cell in plan.cells()
+            }
+        )
+        known_states = TARGET_CELL_STATES if checks is not None else CELL_STATES
+        counts = {state: sum(1 for s in states.values() if s == state) for state in known_states}
+        invalid_cells = {
+            run_id: f"{check.state}: {', '.join(check.problems) or 'no record after the retry'}"
+            for run_id, check in (checks or {}).items()
+            if check.state in (RECORD_INCONSISTENT, NO_RECORD)
         }
-        counts = {state: sum(1 for s in states.values() if s == state) for state in CELL_STATES}
+        watchdog_cells = {
+            run_id
+            for run_id, check in (checks or {}).items()
+            if check.watchdog and check.state == ABORT_FINAL
+        }
         pending_now = sum(1 for s in states.values() if s != "complete")
         problems = evidence_integrity(plan, output, states)
         reasons: list[str] = []
-        if counts["unattempted"]:
+        # Unfinished cells hide outcomes only until the deadline; then their seeds are excluded.
+        # Integrity problems and a missing manifest keep hiding them after it too.
+        passed = deadline_passed(plan)
+        if counts["unattempted"] and not passed:
             reasons.append(f"{counts['unattempted']} cell(s) unattempted (no record on disk)")
-        if counts["abort-pending"]:
+        if counts.get("abort-pending") and not passed:
             reasons.append(
                 f"{counts['abort-pending']} abort record(s) not final "
                 "(classify with --finalize-abort or re-run)"
@@ -1171,6 +1906,37 @@ def main(argv: list[str] | None = None) -> int:
                     },
                     "targets": [target_record(target) for target in plan.targets()],
                     "analysis_plan": plan.analysis_plan(),
+                    **(
+                        {"seed_assignment": plan.assignment.record(plan.host_id)}
+                        if plan.assignment is not None
+                        else {}
+                    ),
+                    **(
+                        {
+                            "deadline": deadline_record(
+                                plan, states, deadline_late_cells(plan, output)
+                            )
+                        }
+                        if prereg.execution_deadline is not None
+                        else {}
+                    ),
+                    **(
+                        {
+                            "cell_completeness": infrastructure_summary(
+                                checks,
+                                read_infrastructure_events(output / CELL_RESULTS_FILE),
+                                read_cell_results(output / CELL_RESULTS_FILE),
+                            ),
+                            "registered": {
+                                "seeds": list(prereg.seeds),
+                                "budget": prereg.budget,
+                                "sentinel_count": prereg.sentinel_count,
+                                "targets": [target_record(target) for target in plan.targets()],
+                            },
+                        }
+                        if checks is not None
+                        else {}
+                    ),
                     "interim": {
                         "analysis": prereg.interim_analysis,
                         "redacted": redact,
@@ -1184,6 +1950,12 @@ def main(argv: list[str] | None = None) -> int:
                     },
                 },
                 redact_outcomes=redact,
+                invalid_cells=invalid_cells,
+                watchdog_cells=watchdog_cells,
+                inconsistent_cells=[
+                    run_id for run_id, state in states.items() if state == RECORD_INCONSISTENT
+                ],
+                dense_detail=checks is not None,
             )
 
         def update_registration(status: Mapping[str, Any]) -> None:
@@ -1296,7 +2068,146 @@ def main(argv: list[str] | None = None) -> int:
     if bash is None:
         raise SystemExit("bash not found: the native launcher runs only on the host terminal")
     pending, skipped, skipped_final = _pending_cells(plan, output)
-    archived = {cell.run_id: archive_attempt(cell, output) for cell in pending}
+    not_started: list[str] = []
+    events = read_infrastructure_events(output / CELL_RESULTS_FILE)
+    stopped = infrastructure_stopped(events)
+    # The targets form starts every cell through the start gate (one per output directory, so one
+    # per host). A gate closed by an earlier call becomes a recorded stop before anything starts.
+    gate = StartGate(output / START_GATE_DIR) if plan.multi_target else None
+    if gate is not None and not stopped and args.resume_after_stop is None:
+        problem = gate.problem()
+        if problem is not None:
+            append_cell_result(
+                output,
+                {
+                    "event": INFRASTRUCTURE_STOP_EVENT,
+                    "reason": f"start gate closed before this call: {problem}",
+                    "clocks": _clock_stamp(),
+                    **plan.host_fields(),
+                },
+            )
+            stopped = True
+    gate_acks: list[dict[str, Any]] = []
+    if args.resume_after_stop is not None:
+        if not stopped or not args.resume_after_stop.strip():
+            print(
+                "--resume-after-stop needs an approval reference and an unresumed "
+                "infrastructure stop in this directory",
+                file=sys.stderr,
+            )
+            return 2
+        if gate is not None:
+            recorded = {
+                str(ack.get("path"))
+                for event in events
+                if event.get("event") == INFRASTRUCTURE_RESUME_EVENT
+                for ack in event.get("gate_acks") or ()
+                if isinstance(ack, Mapping)
+            }
+            problems = resume_gate_problems(gate, args.resume_after_stop.strip(), recorded)
+            if problems:
+                print("refusing to resume:", file=sys.stderr)
+                for item in problems:
+                    print(f"  - {item}", file=sys.stderr)
+                return 2
+            gate_acks = [
+                {key: ack[key] for key in ("path", "cell", "note_sha256")}
+                for ack in gate_acks_new(gate.directory, recorded)
+            ]
+        stopped = False
+    if stopped:
+        print(
+            "infrastructure stop in effect: no new cell starts. Find the cause, then resume with "
+            "--resume-after-stop <approval reference>",
+            file=sys.stderr,
+        )
+    if deadline_passed(plan) or stopped:
+        # No new cell, and nothing to re-run: attempts stay where they are.
+        not_started = [cell.run_id for cell in pending]
+        pending = []
+    # The targets form archives right before each attempt, so a cell that never starts stays as is.
+    archived = (
+        {}
+        if plan.multi_target
+        else {cell.run_id: archive_attempt(cell, output) for cell in pending}
+    )
+    # The targets form runs the shared host guards (#336) around its cells, and the preflight
+    # runs before any warmup build, so it records the host as found. A preflight refusal
+    # starts nothing; the postflight is recorded after the last cell. A host's records name the
+    # same record-only instrument settings so two hosts can be compared.
+    host_records: dict[str, Any] = {}
+    host_dir = output / HOST_RECORD_DIR
+    recorders = guards.Recorders(ping_socket=args.ping_socket, desktop_log=args.desktop_log)
+    docker = guard_docker(args.context)
+    host_engine: str | None = None
+    expected_images: dict[str, str] | None = None
+    if plan.multi_target and pending:
+        if args.expected_images is None and plan.host_id is not None:
+            print(
+                "refusing to run: a two-host run needs --expected-images (the controller, helper "
+                "and target ids it must find)",
+                file=sys.stderr,
+            )
+            return 2
+        if args.expected_images is not None:
+            try:
+                expected_images = load_expected_images(args.expected_images, plan)
+            except ExpectedImagesError as error:
+                print(f"--expected-images unusable: {error}", file=sys.stderr)
+                return 2
+        registered_host = prereg.host(plan.host_id) if plan.host_id else None
+        try:
+            host_engine = (
+                registered_host.docker_engine
+                if registered_host is not None
+                else docker_engine_version(args.context)
+            )
+        except (RuntimeError, OSError, subprocess.SubprocessError) as error:
+            print(f"host preflight: docker engine unreadable: {error}", file=sys.stderr)
+            return 2
+        facts, problems = host_preflight(
+            plan, engine=host_engine, docker=docker, expected=expected_images
+        )
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S.%fZ")
+        clock_reference: dict[str, Any] | None = None
+        if args.clock_reference is not None:
+            try:
+                raw = args.clock_reference.read_bytes()
+                clock_reference = {
+                    "file": args.clock_reference.name,
+                    "sha256": sha256(raw).hexdigest(),
+                    "measurement": json.loads(raw),
+                }
+            except (OSError, json.JSONDecodeError) as error:
+                print(f"--clock-reference unusable: {error}", file=sys.stderr)
+                return 2
+        facts = {
+            **facts,
+            # The code this call runs; the engine_sha gate compares the same value.
+            "execution_sha": {"revision": source.revision, "dirty": source.dirty},
+            "expected_images": None
+            if args.expected_images is None
+            else {
+                "file": args.expected_images.name,
+                "sha256": sha256(args.expected_images.read_bytes()).hexdigest(),
+            },
+            "clocks": _clock_stamp(),
+            **({"clock_reference": clock_reference} if clock_reference is not None else {}),
+            "recording": recording_settings(recorders),
+            "problems": problems,
+            **plan.host_fields(),
+        }
+        host_dir.mkdir(parents=True, exist_ok=True)
+        preflight_path = host_dir / f"preflight-{stamp}.json"
+        guards.publish_json_once(preflight_path, facts, prefix=".preflight-")
+        host_records = {"preflight": preflight_path.name, "preflight_problems": problems}
+        if problems:
+            print("refusing to run (host preflight):", file=sys.stderr)
+            for item in problems:
+                print(f"  - {item}", file=sys.stderr)
+            return 2
+        host_records["stamp"] = stamp
+        host_records["facts"] = facts
     if pending and not args.skip_build:
         code = _warmup("demo-historical", output, base_env, bash)
         if code != 0:
@@ -1304,24 +2215,252 @@ def main(argv: list[str] | None = None) -> int:
                 f"image warmup failed (exit {code}); see {output / 'warmup.log'}", file=sys.stderr
             )
             return code
+        if "facts" in host_records and host_engine is not None:
+            # A warmup build must not change what the preflight recorded and checked.
+            rebuilt, _ = host_preflight(
+                plan, engine=host_engine, docker=docker, expected=expected_images
+            )
+            if rebuilt.get("image_ids") != host_records["facts"].get("image_ids"):
+                print(
+                    "refusing to run: the warmup build changed image ids "
+                    f"{host_records['facts'].get('image_ids')} -> {rebuilt.get('image_ids')}",
+                    file=sys.stderr,
+                )
+                return 2
+    # Only now: a failed warmup leaves the stop in force, so the next call still needs the flag.
+    if args.resume_after_stop is not None:
+        append_cell_result(
+            output,
+            {
+                "event": INFRASTRUCTURE_RESUME_EVENT,
+                "approval_ref": args.resume_after_stop,
+                "clocks": _clock_stamp(),
+                **({"gate_acks": gate_acks} if gate is not None else {}),
+                **plan.host_fields(),
+            },
+        )
     disk_pauses: dict[str, int] = {}
+    guard = InfrastructureGuard()
 
-    def run_one(cell: Cell) -> CellResult:
-        pauses = wait_for_disk(output, plan.disk_pause_fraction)
-        if pauses:
-            disk_pauses[cell.run_id] = pauses
+    def run_attempt(cell: Cell) -> CellResult:
+        if gate is None:
+            return run_cell_with_watchdog(
+                cell,
+                output,
+                exp0_cell_env(plan, cell, output, base_env),
+                bash,
+                limit_seconds=plan.watchdog_seconds,
+            )
+        cell_gate = gate
         return run_cell_with_watchdog(
             cell,
             output,
             exp0_cell_env(plan, cell, output, base_env),
             bash,
             limit_seconds=plan.watchdog_seconds,
+            popen=cell_gate.popen(cell.run_id),
+            # W (pending) before the terminate: the trap's verified cleanup gives S, else U.
+            on_timeout=lambda: cell_gate.mark_watchdog(cell.run_id),
         )
+
+    def gate_stop(reason: str) -> None:
+        """Stop new attempts for a gate reason; the first stop of this call is recorded (D042)."""
+        if guard.force_stop():
+            append_cell_result(
+                output,
+                {
+                    "event": INFRASTRUCTURE_STOP_EVENT,
+                    "reason": reason,
+                    "clocks": _clock_stamp(),
+                    **plan.host_fields(),
+                },
+            )
+
+    def run_one(cell: Cell) -> CellResult | None:
+        pauses = wait_for_disk(output, plan.disk_pause_fraction)
+        if pauses:
+            disk_pauses[cell.run_id] = pauses
+        if deadline_passed(plan):
+            not_started.append(cell.run_id)
+            return None
+        return run_attempt(cell)
+
+    def run_target_cell(cell: Cell) -> CellResult | None:
+        """``attempt_target_cell``, but an error escaping it stops every later start first.
+
+        Without this, an end-line write failure or ``DiskUsageUnavailable`` would end this
+        worker silently while up to ``--jobs`` other cells could still start.
+        """
+        try:
+            return attempt_target_cell(cell)
+        except BaseException as error:
+            try:
+                gate_stop(f"launcher error on {cell.run_id}: {type(error).__name__}: {error}")
+            except Exception as recorded:
+                error.add_note(f"stop event not recorded: {type(recorded).__name__}: {recorded}")
+            raise
+
+    def attempt_target_cell(cell: Cell) -> CellResult | None:
+        """Attempts of one cell, in its place in the queue: a retry never waits for a later call.
+
+        The retry happens only when the attempt left no record, its files kept under ``attempts/``.
+        Neither the deadline nor an infrastructure stop kills a running cell.
+        """
+        path = output / CELL_RESULTS_FILE
+        result: CellResult | None = None
+        tried = read_cell_results(path).get(cell.run_id, ())
+        # Attempt numbers count every start line; MAX_ATTEMPTS counts only attempts that ran.
+        used, counted = len(tried), len(counted_attempts(tried))
+        while counted < MAX_ATTEMPTS:
+            number = archive_attempt(cell, output)
+            if number is not None:
+                archived[cell.run_id] = number
+            pauses = wait_for_disk(output, plan.disk_pause_fraction)
+            if pauses:
+                disk_pauses[cell.run_id] = pauses
+            if deadline_passed(plan):
+                not_started.append(cell.run_id)
+                return result
+            next_attempt = used + 1
+            if not guard.authorize_attempt(
+                lambda next_attempt=next_attempt: append_cell_result(
+                    output,
+                    {
+                        "event": "start",
+                        "run_id": cell.run_id,
+                        "attempt": next_attempt,
+                        "jobs": args.jobs,  # matrix.json is overwritten on resume
+                        "clocks": _clock_stamp(),
+                        **plan.host_fields(),
+                    },
+                )
+            ):
+                not_started.append(cell.run_id)
+                return result
+            used, counted = next_attempt, counted + 1
+            try:
+                result = run_attempt(cell)
+            except StartDenied as error:
+                # The target never ran: the attempt keeps its lines but does not count.
+                append_cell_result(
+                    output,
+                    {
+                        "event": "end",
+                        "run_id": cell.run_id,
+                        "attempt": used,
+                        "clocks": _clock_stamp(),
+                        "returncode": None,
+                        "watchdog_fired": False,
+                        START_DENIED_FIELD: str(error),
+                        **plan.host_fields(),
+                    },
+                )
+                gate_stop(f"start gate denied {cell.run_id}: {error}")
+                not_started.append(cell.run_id)
+                return result
+            except Exception as error:  # A runner failure after the start: never silent.
+                note = f"launcher: runner error: {type(error).__name__}: {error}"
+                if gate is not None:
+                    try:
+                        gate.mark_unknown(cell.run_id, note)
+                    except Exception as marked:
+                        note += f" (gate U record failed: {type(marked).__name__}: {marked})"
+                append_cell_result(
+                    output,
+                    {
+                        "event": "end",
+                        "run_id": cell.run_id,
+                        "attempt": used,
+                        "clocks": _clock_stamp(),
+                        "returncode": None,
+                        "watchdog_fired": False,
+                        "runner_error": note,
+                        **plan.host_fields(),
+                    },
+                )
+                gate_stop(f"runner error on {cell.run_id}: {note}")
+                return result
+            # The gate verdict first: a missing S is committed as U before the end line, so no
+            # other worker can start while a descendant still holds the cell's lock.
+            unclean: str | None = None
+            if gate is not None:
+                try:
+                    gate.require_clean(cell.run_id)
+                except VerdictMissing as error:
+                    unclean = str(error)
+            append_cell_result(
+                output,
+                {
+                    "event": "end",
+                    "run_id": cell.run_id,
+                    "attempt": used,
+                    "clocks": _clock_stamp(),
+                    "returncode": result.returncode,
+                    "watchdog_fired": result.watchdog_fired,
+                    "wall_seconds": round(result.wall_seconds, 3),
+                    **plan.host_fields(),
+                },
+            )
+            check = target_cell_check(plan, cell, output, read_cell_results(path))
+            recorded = check.state not in (UNATTEMPTED, NO_RECORD)
+            if unclean is not None:
+                # The cell's record stands as classified; no new attempt starts in this call.
+                guard.note_cell_end(recorded=recorded)
+                gate_stop(f"cleanup unknown: {unclean}")
+                return result
+            if recorded:
+                guard.note_cell_end(recorded=True)
+                return result
+        reason = guard.note_cell_end(recorded=False)
+        if reason is not None:
+            append_cell_result(
+                output,
+                {
+                    "event": INFRASTRUCTURE_STOP_EVENT,
+                    "reason": reason,
+                    "clocks": _clock_stamp(),
+                    **plan.host_fields(),
+                },
+            )
+        return result
 
     results: list[CellResult] = []
     if pending:
-        with ThreadPoolExecutor(max_workers=args.jobs) as pool:
-            results = list(pool.map(run_one, pending))
+        run_cell = run_target_cell if plan.multi_target else run_one
+        stop_recording = (
+            start_host_recording(host_dir, recorders, docker) if "facts" in host_records else None
+        )
+        try:
+            with ThreadPoolExecutor(max_workers=args.jobs) as pool:
+                results = [result for result in pool.map(run_cell, pending) if result is not None]
+        finally:
+            if stop_recording is not None:
+                host_records["recording_notes"] = stop_recording()
+            if "facts" in host_records and host_engine is not None:
+                before_facts = host_records.pop("facts")
+                after, after_problems = host_postflight(
+                    plan,
+                    before_facts,
+                    engine=host_engine,
+                    docker=docker,
+                    expected=expected_images,
+                )
+                source_after, source_problems = source_postflight(
+                    before_facts.get("execution_sha"), capture_source()
+                )
+                after_problems = [*after_problems, *source_problems]
+                after = {
+                    **after,
+                    "execution_sha": source_after,
+                    "clocks": _clock_stamp(),
+                    "problems": after_problems,
+                    **plan.host_fields(),
+                }
+                postflight_path = host_dir / f"postflight-{host_records['stamp']}.json"
+                guards.publish_json_once(postflight_path, after, prefix=".postflight-")
+                host_records.update(
+                    postflight=postflight_path.name, postflight_problems=after_problems
+                )
     (output / "matrix.json").write_text(
         json.dumps(
             {
@@ -1339,9 +2478,20 @@ def main(argv: list[str] | None = None) -> int:
                     "system": os.uname().sysname,
                     "release": os.uname().release,
                 },
+                **(
+                    {"seed_assignment": plan.assignment.record(plan.host_id)}
+                    if plan.assignment is not None
+                    else {}
+                ),
+                **(
+                    {"host_guards": {k: v for k, v in host_records.items() if k != "facts"}}
+                    if host_records
+                    else {}
+                ),
                 "skipped_complete": skipped,
                 "skipped_final_aborts": skipped_final,
                 "archived_attempts": {k: v for k, v in archived.items() if v is not None},
+                **({"cells_not_started": sorted(not_started)} if plan.multi_target else {}),
                 "cells": [
                     {
                         "run_id": r.cell.run_id,

@@ -237,8 +237,8 @@ def test_cell_without_verdict_is_an_external_stop(tmp_path: Path) -> None:
     with pytest.raises(RuntimeError, match="exited without a cleanup verdict"):
         run.run_one(block.cells[0])
     assert run.stop_kind == bench.STOP_EXTERNAL
-    assert gate.verdict(block.cells[0].run_id) is not None
-    assert gate.verdict(block.cells[0].run_id)[0] == "U"
+    verdict = gate.verdict(block.cells[0].run_id)
+    assert verdict is not None and verdict[0] == "U"
 
 
 def test_missing_cell_log_cannot_be_treated_as_clean(tmp_path: Path) -> None:

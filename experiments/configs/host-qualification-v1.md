@@ -32,7 +32,7 @@
 | 통과 조건(사전 고정) | cleanup UNKNOWN 0, 잔존 리소스 0, 러너 실패 0, 시작 실패(start_denied) 0, 기록 완전성 pass(모든 셀이 `cell_completeness`에서 complete 또는 abort-final, record-inconsistent·no-record 0), 호스트 키 게이트가 등록값으로 통과, 인프라 정지(`infrastructure-stop`) 0. **병합 검사**(두 호스트 `cell-results`가 할당 파일과 일치, 중복·누락 0)는 두 호스트 smoke가 모두 끝났을 때만 판정하고, 한 호스트의 smoke 통과에는 넣지 않는다(**잠정**, D047 호스트 독립 판정에 맞춘 변경, W4 확인) |
 | 보고만 하는 값 | `infra_reexecutions` 수, 재시도 수, docker 호출별 timeout 수(출처: broker `.calls.jsonl`의 호출별 returncode·timeout 기록(main #275), #335 `infra_reexecutions`의 `anomalous_calls`, smoke 스크립트 cleanup CLI의 timeout 진단 줄. 보호 파일 원복(#340)으로 사라진 cleanup-attempt stderr 줄은 출처가 아니다), 처분 집계, 운영 점검 출력(수만) |
 | 결정론 검사(보고만, D046) | `infra_reexecutions`가 0보다 큰 셀은 같은 seed·arm·budget으로 한 번 더 돌린다. 그 seed·arm만 담은 별도 등록 파일과 새 출력 폴더로 `run_exp0`를 돌린다(런처 경로 유지). "같은 설정"은 seed·arm·budget·정책·sentinel·이미지·engine_sha·셀 env가 같은 것이고, 달라진 등록 sha와 회전 순서는 기록한다. 두 보고서를 `scripts/check_native_determinism.py`의 `compare_report_pair`로 비교해 `case_sequence`와 `oracle_and_feedback` 일치 여부(불리언)만 남긴다. 재실행이 0이면 "재실행 0, 결정론 미검정"(UNKNOWN)이다. 같은 seed라 새 노출이 아니며, 원장 행에 횟수를 적는다 |
-| 한계(공개) | 실 docker에서의 런처 재시도 경로와 InfrastructureGuard 정지 경로는 미검증이다(테스트로만 검증). 재시도는 무기록 시도에서만 작동하고 결함 주입은 하지 않는다. 정지·재개 경로는 D042 정지·재개 smoke가 따로 다룬다 |
+| 한계(공개) | 실 docker에서의 런처 재시도 경로와 InfrastructureGuard 정지 경로는 미검증이다(테스트로만 검증). 재시도는 무기록 시도에서만 작동하고 결함 주입은 하지 않는다. 정지·재개 경로는 [D042 정지·재개 smoke](stop-path-smoke-v1.md)가 따로 다룬다. 순서는 이 smoke → 정지·재개 smoke 1차 → 적격성(§3) → 정지·재개 smoke 2차(동결 직전) → 원장 sha 고정 → 동결이다(그 파일 §10) |
 | 금지 | 결과로 이 파일의 기준, seed, 사전등록 값을 바꾸지 않는다. oracle 필드를 읽지 않는다 |
 | 실패 시 | 보고하고 그 호스트의 적격성 실행(§3)을 시작하지 않는다. 원인을 기록한 수정 뒤 smoke부터 다시 한다 |
 
@@ -64,12 +64,12 @@
 
 ## 4. preflight (호스트별, 시작 전 모두 충족; 하나라도 어긋나면 시작하지 않는다)
 
-- 실행 SHA가 clean이고 기록한 후보 SHA와 같다(깨끗한 detached worktree, venv python, `uv.lock` 생성 없음).
-- 대상·controller·helper local 이미지 id가 기대값과 같다: 대상 `sha256:22c8734f141d91b333ba37c7fe6a9a7547d7abfab487fa028da2053bed6f3dbb`, controller `sha256:d44900e13ed5083db54cefda8833328d4da61148f62213d86f07afa78191d7a4`, helper `sha256:9b9dd606c49ff0051465fe9e435351f33623d949f360d6518580855e3781cc27`. 본실험 런처가 세 id를 시작과 끝에 기록하고, 판정(§5 Q6)이 기대 id와 대조한다. 지금 런처는 controller·helper local 이미지의 **존재만** 확인한다(방법론 담당 지적). 세 id 기록·대조는 측정 전에 들어가야 하는 코드 항목이다(§13). HOST2는 `docker save`/`load`로 옮긴 경우 id 보존을 확인한다.
+- 실행 SHA가 clean이고 기록한 후보 SHA와 같다(깨끗한 detached worktree, venv python, `uv.lock` 생성 없음). **실행이 끝날 때도 실행 SHA(revision·dirty)를 다시 기록해 시작 값과 대조한다.** controller는 저장소 체크아웃 전체를 읽기 전용으로 마운트해 셀마다 그 코드(oracle·observer·feedback·mutator·evaluation 포함)를 실행하는데, 공유 실행 경로 해시(아래 16개)는 실행 계층만 덮기 때문이다. 잔여 위험: 실행 중 바뀌었다가 끝나기 전에 원래대로 돌아온 변경은 시작·끝 대조로 잡히지 않는다. 호스트 동결 규칙(실행 중 체크아웃 변경 금지)으로 완화한다.
+- 대상·controller·helper local 이미지 id가 기대값과 같다: 대상 `sha256:22c8734f141d91b333ba37c7fe6a9a7547d7abfab487fa028da2053bed6f3dbb`, controller `sha256:d44900e13ed5083db54cefda8833328d4da61148f62213d86f07afa78191d7a4`, helper `sha256:9b9dd606c49ff0051465fe9e435351f33623d949f360d6518580855e3781cc27`. 본실험 런처가 세 id를 시작과 끝에 기록하고, 판정(§5 Q6)이 기대 id와 대조한다. 지금 런처는 controller·helper local 이미지의 **존재만** 확인한다(방법론 담당 지적). 세 id 기록·대조는 측정 전에 들어가야 하는 코드 항목이다(§13). HOST2는 `docker save`/`load`로 옮긴 경우 id 보존을 확인한다. **`run_exp0 --dry-run`의 PASS는 이 이미지 preflight를 대신하지 않는다.** dry-run은 실행 호스트의 이미지 id를 실제로 대조하는 단계가 아니므로, 이미지는 실행 전에 미리 load하고 세 id를 읽기 전용 `docker image inspect`로 대조한 뒤 `--skip-build --expected-images`로 실행한다(런북).
 - Dockerfile은 해시 대상이 아니다. 셀은 빌드를 건너뛰고(`SKIP_BUILD=1`) 이미지 id가 고정되어 있으므로, 실행을 정하는 것은 Dockerfile이 아니라 이미지 id다.
 - Docker Engine(Server.Version)이 그 호스트의 기록값과 같다: HOST1 29.8.0, HOST2 29.9.3. `docker context show`와 소켓을 서빙하는 daemon을 기록한다.
 - 공유 실행 경로 해시: #336 `b7baf3a`의 `SHARED_PATH_FILES` **16개 파일**(`scripts/launcher_guards.py`, `host_preflight`가 하나라도 없으면 거부)의 sha256을 기록한다. 두 호스트에서 같아야 한다. 이 목록에는 보호 파일도 들어 있으나 읽고 해시만 낸다.
-- 실행 중 컨테이너 0, 잔존 리소스 0(`inodefence-` 접두 컨테이너·볼륨).
+- 실행 중 컨테이너 0, 잔존 리소스 0. 잔존 리소스의 기준은 런처 가드와 같다(D041 이래의 필터, `scripts/launcher_guards.py` `residual_resources`): 이름이 `inodefence-`로 시작하는 컨테이너(`docker ps -a --filter name=inodefence-`)와 이름이 `inodefence-local-`로 시작하는 볼륨(`docker volume ls --filter name=inodefence-local-`). 개발 컨테이너 볼륨(예: HOST2의 `inodefence-codex`·`inodefence-runtime`, HOST1의 `inodefence-h1-gate-…`·`inodefence-integration-…`)은 실험 자원이 아니므로 잔존으로 세지 않는다.
 - 디스크·메모리·부하: v2 §7과 같다(디스크 여유 20 GB 이상, 가용 메모리 15 GiB 이상, load < 3, 그리고 v2 §5의 load < 코어의 25%).
 - 호스트 재시작 보호 설정의 캡처, 부팅 시각, Docker Desktop·WSL 버전, `.wslconfig` 값(메모리·프로세서 상한), 실시간 동기 상태(`adjtimex` 또는 `timedatectl`)를 기록한다. 부팅 시각과 버전은 끝에 다시 기록해 같음을 확인한다.
   - HOST2 시계: WSL의 timesyncd는 꺼 둔 상태로 유지하고, Windows 시간 서비스(W32Time)를 NTP에 동기화하는 방식을 지웅이 승인했다. 적용은 확인 시험 뒤이며, 결과는 미정이다.
@@ -86,7 +86,7 @@
 | # | 기준 | 통과 조건 | 판정 근거(기록) |
 | --- | --- | --- | --- |
 | Q1 | cleanup UNKNOWN | 0. StartGate 판정이 전부 S이고 `INODEFENCE_CLEANUP_UNKNOWN`이 없다 | `<out>/start-gate/*.verdict`, `acknowledged/` |
-| Q2 | 잔존 리소스 | 실행 뒤 0 | 공유 가드 잔존 확인, 실행 전후 `inodefence-` 접두 목록 대조 |
+| Q2 | 잔존 리소스 | 실행 뒤 0 | 공유 가드 잔존 확인, 실행 전후 §4와 같은 필터(컨테이너 `name=inodefence-`, 볼륨 `name=inodefence-local-`)의 목록 대조 |
 | Q3 | watchdog | 종료 0 | `cell-results.jsonl`의 watchdog 기록 |
 | Q4 | 실행 기록 완전성 | 12셀 모두 `cell_completeness`에서 complete 또는 abort-final | index `cell_completeness` |
 | Q5 | 시작 거부·인프라 정지 | start_denied 0, `infrastructure-stop`(D042) 0 | `cell-results.jsonl` |
@@ -259,6 +259,7 @@ HOST1 29.8.0과 HOST2 29.9.3을 그대로 유지한다(다운그레이드·nativ
 - [ ] D047과 이 파일이 main에 머지됨(W4 독립 검증, 지웅 승인). "잠정" 값 확정 커밋.
 - [ ] 후보 실행 SHA에 #340·#335(`95e25b6` 이후)·#334(`4ce6b0b`)·#336(`b7baf3a`) 배선, `replicate-v1`, 이미지 id 3개 기록이 들어 있고 통합 head 독립 검증 PASS.
 - [ ] 단계 0 smoke PASS(그 호스트).
+- [ ] [D042 정지·재개 smoke](stop-path-smoke-v1.md) 1차 PASS(HOST1, 같은 후보 실행 SHA). 2차는 적격성 뒤 동결 직전이다. 이 항목은 적격성 기준이 아니라 순서 참조다.
 - [ ] §4 preflight 전 항목(기록 파일 경로를 LOG에).
 - [ ] 판정 도구와 교차 비교기가 그 SHA에 있다(§13).
 - [ ] 적격성 셀 env(정책 문자열, mutation policy, sentinel, budget, seed, `observer_integrity_policy`)와 Stage A 셀 env의 키·값 대조. 적격성 등록 파일의 `observer_integrity_policy`는 `invalid-continue`(v2와 같음)여야 한다. 다르면 입력 종속 검사(§5)는 무효이며 그 사실을 실행 전에 LOG에 기록한다.

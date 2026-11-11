@@ -355,10 +355,17 @@ def test_q8_unconfirmed_abort_definition(stub: Any, unconfirmed: bool) -> None:
 
 
 def test_the_category_comes_from_the_original_reason() -> None:
-    suffixed = {"reason": "broker: lost [last anomalous docker call: inspect timed out]"}
-    assert qualify_host.abort_category(suffixed) == qualify_host.abort_category(
-        {"reason": "broker: lost"}
-    )
+    from inodefence.execution.call_diagnostics import annotate_reason
+    from inodefence.execution.stall_recovery import CallObservation
+
+    call = CallObservation("container inspect", "c", -9, True, False, 0.0, 0.0, 10.0)
+    # Includes a reason that ends with a signature prefix (W4 Low 1 on #343).
+    for original in ("broker: lost", "x container runtime", "container runtime inspect failed: "):
+        suffixed = {"reason": annotate_reason(original, [call])}
+        assert suffixed["reason"] != original
+        assert qualify_host.abort_category(suffixed) == qualify_host.abort_category(
+            {"reason": original}
+        )
     assert qualify_host.abort_category({"reason": "anything", "category": "broker"}) == "broker"
 
 

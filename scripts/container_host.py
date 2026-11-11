@@ -34,8 +34,10 @@ from scripts.run_effect_demo import (
 )
 
 from inodefence.execution import start_gate
+from inodefence.execution.call_diagnostics import annotate_reason, emit_anomalies
 from inodefence.execution.container import OWNER_LABEL, checked, remove_owned
 from inodefence.execution.docker_client import OUTPUT_LIMIT, BackendError, CommandResult, DockerCLI
+from inodefence.execution.stall_recovery import ObservedDockerClient
 
 _ACTIVE_N04_LEDGER: "N04HostLedger | None" = None
 
@@ -493,10 +495,13 @@ def cleanup_targets(client: Any, names: set[str], owner: str) -> None:
     error propagates (:func:`report_target_cleanup_unknown`).
     """
     errors = []
+    # Journal the cleanup calls (unchanged pass-through) so a failure can name the
+    # call that failed: the backend's message is empty for a time-out.
+    observed = ObservedDockerClient(client)
     try:
         for name in names:
             try:
-                remove_owned(client, name, owner)
+                remove_owned(observed, name, owner)
             except Exception as error:
                 errors.append(error)
                 if _ACTIVE_N04_LEDGER is not None:
@@ -505,18 +510,26 @@ def cleanup_targets(client: Any, names: set[str], owner: str) -> None:
                     )
     except BaseException as interrupted:
         # An interrupt mid-loop skips the remaining names: their state is unknown.
+        emit_anomalies(observed.calls, "host-target-cleanup")
         report_target_cleanup_unknown(
-            f"host target cleanup interrupted: {type(interrupted).__name__}: {interrupted}"
+            annotate_reason(
+                f"host target cleanup interrupted: {type(interrupted).__name__}: {interrupted}",
+                observed.calls,
+            )
         )
         raise
+    emit_anomalies(observed.calls, "host-target-cleanup")
     if _ACTIVE_N04_LEDGER is not None:
         _ACTIVE_N04_LEDGER.cleanup_status = (
             "failed" if errors else "complete" if names else "not_needed"
         )
     if errors:
         report_target_cleanup_unknown(
-            "host target cleanup failed: "
-            + "; ".join(f"{type(error).__name__}: {error}" for error in errors)
+            annotate_reason(
+                "host target cleanup failed: "
+                + "; ".join(f"{type(error).__name__}: {error}" for error in errors),
+                observed.calls,
+            )
         )
         raise ExceptionGroup("host target cleanup failed", errors)
 

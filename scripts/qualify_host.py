@@ -55,6 +55,7 @@ from inodefence.evaluation.cell_completeness import (
 )
 from inodefence.evaluation.rds_preregistration import load_preregistration
 from inodefence.evaluation.seed_assignment import load_seed_assignment
+from inodefence.execution.call_diagnostics import strip_annotation
 from inodefence.execution.start_gate import ACKNOWLEDGED, UNKNOWN
 
 CRITERIA_SCHEMA = "inodefence-host-qualification-criteria-v1"
@@ -70,19 +71,20 @@ CRITERIA_KEYS = frozenset(
 )
 
 
-#: #343 appends this to an abort reason; the category is the original reason's.
-ANOMALY_SUFFIX = re.compile(r"\s*\[last anomalous docker call: .*\]\s*$", re.DOTALL)
-
-
 def abort_category(stub: Mapping[str, Any]) -> str:
-    """The stub's recorded category, else the original reason's (the #343 suffix removed)."""
+    """The stub's recorded category, else the original reason's.
+
+    #343 appends "; [last anomalous docker call: ...]" to an abort reason;
+    :func:`~inodefence.execution.call_diagnostics.strip_annotation` removes it, so
+    the category is the original reason's.
+    """
     recorded = stub.get("category")
     if isinstance(recorded, str) and recorded:
         return recorded
     reason = stub.get("reason")
     if not isinstance(reason, str):
         return "none"
-    return classify_abort_reason(ANOMALY_SUFFIX.sub("", reason)).value
+    return classify_abort_reason(strip_annotation(reason)).value
 
 
 def unconfirmed_abort(stub: Mapping[str, Any] | None) -> bool:

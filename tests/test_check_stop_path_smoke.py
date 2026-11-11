@@ -93,6 +93,7 @@ LOG_OK = {
     "failed_effect_demo_historical": True,
     "no_such_image": True,
     "unknown_marker": False,
+    "failed_cleanup": False,
     "engine_set": True,
 }
 CLEAN_LOG = {**LOG_OK, "failed_effect_demo_historical": False, "no_such_image": False}
@@ -383,7 +384,11 @@ def scenario_a() -> dict[str, dict[str, Any]]:
     a1_events = [
         _ev("start", "c1", attempt=1, jobs=2),
         _ev("start", "c2", attempt=1, jobs=2),
-        _ev(check.STOP, reason="start gate: cleanup unknown for c1"),
+        _ev("end", "c2", attempt=1, returncode=0),
+        _ev("start", "c3", attempt=1, jobs=2),
+        _ev("end", "c3", attempt=1, start_denied="c1: U cleanup: test"),
+        _ev(check.STOP, reason="start gate denied c3: c1: U cleanup: test"),
+        _ev("end", "c1", attempt=1, returncode=0),
     ]
     ack = {"path": "start-gate/acknowledged/c1", "cell": "c1", "note_sha256": "a" * 64}
     a2_events = [
@@ -391,7 +396,7 @@ def scenario_a() -> dict[str, dict[str, Any]]:
         _ev(check.RESUME, approval_ref="D042-smoke-1-A-20261112-1100", gate_acks=[ack]),
     ]
     return {
-        "a1": _snap("a1", a1_events, exit_code=1),
+        "a1": _snap("a1", a1_events, exit_code=1, gate={"c1": "U", "c2": "S"}),
         "a-refused": _snap(
             "a-refused",
             a1_events,
@@ -412,8 +417,40 @@ def test_a_correct_scenario_a_passes() -> None:
 
 def _a_reason(snaps: Snaps) -> None:
     events = check._events(snaps["a1"]["cell_results_text"])
-    events[-1]["reason"] = "3 consecutive cells without a record"
+    next(e for e in events if e.get("event") == check.STOP)["reason"] = "3 consecutive cells"
     snaps["a1"]["cell_results_text"] = _text(events)
+
+
+def _a_two_denied(snaps: Snaps) -> None:
+    events = check._events(snaps["a1"]["cell_results_text"])
+    stop = next(n for n, e in enumerate(events) if e.get("event") == check.STOP)
+    extra = [
+        _ev("start", "c4", attempt=1, jobs=2),
+        _ev("end", "c4", attempt=1, start_denied="c1: U"),
+    ]
+    snaps["a1"]["cell_results_text"] = _text([*events[:stop], *extra, *events[stop:]])
+
+
+def _a_u_started_twice(snaps: Snaps) -> None:
+    events = check._events(snaps["a1"]["cell_results_text"])
+    snaps["a1"]["cell_results_text"] = _text([_ev("start", "c1", attempt=0, jobs=2), *events])
+
+
+def _a_two_u_and_a_denied(snaps: Snaps) -> None:
+    snaps["a1"]["gate"]["c2"] = "U"
+
+
+def _a_clean_start_after_u_end(snaps: Snaps) -> None:
+    events = check._events(snaps["a1"]["cell_results_text"])
+    stop = next(n for n, e in enumerate(events) if e.get("event") == check.STOP)
+    moved = [
+        _ev("end", "c1", attempt=1, returncode=0),
+        _ev("start", "c5", attempt=1, jobs=2),
+        _ev("end", "c5", attempt=1, returncode=0),
+    ]
+    rest = [e for e in events[stop:] if not (e.get("event") == "end" and e.get("run_id") == "c1")]
+    snaps["a1"]["cell_results_text"] = _text([*events[:stop], *moved, *rest])
+    snaps["a1"]["gate"]["c5"] = "S"
 
 
 def _a_late_start(snaps: Snaps) -> None:
@@ -431,6 +468,13 @@ def _a_ack_without_note(snaps: Snaps) -> None:
     ("criterion", "mutate"),
     [
         ("SA1", _a_reason),
+        ("SA1", lambda s: s["a1"]["gate"].update(c2="C")),  # a start of no allowed kind
+        ("SA1", lambda s: s["a1"]["gate"].update(c1="S")),  # no U cell
+        ("SA1", _a_two_denied),  # more denied starts than jobs - 1
+        ("SA1", _a_u_started_twice),
+        ("SA1", _a_two_u_and_a_denied),  # U cells + denied > jobs
+        ("SA1", _a_clean_start_after_u_end),
+        ("SA5", lambda s: s["a1"]["gate"].update(c2="U")),  # a U cell left unacknowledged
         ("SA2", _a_late_start),
         ("SA3", lambda s: s["a-refused"].update(exit_code=0)),
         ("SA3", lambda s: s["a-refused"]["stderr"].update(gate_closed=False)),
@@ -637,3 +681,102 @@ def test_verify_tools_passes_after_the_launcher_rewrites_its_verification_record
     assert check.verify_tools(out, manifest)["manifest_verify_rc"] == 0
     (out / "registration.json").write_text('{"changed": true}', encoding="utf-8")
     assert check.verify_tools(out, manifest)["manifest_verify_rc"] != 0
+
+
+def scenario_a_two_unknown() -> dict[str, dict[str, Any]]:
+    """The real injection (a bad docker context for the whole launcher) with jobs 2: both first
+    cells start before any U, both record U, no clean cell, no denied start."""
+    a1_events = [
+        _ev("start", "c1", attempt=1, jobs=2),
+        _ev("start", "c2", attempt=1, jobs=2),
+        _ev("end", "c1", attempt=1, returncode=1),
+        _ev(check.STOP, reason="cleanup unknown: c1 resource state unknown"),
+        _ev("end", "c2", attempt=1, returncode=1),
+    ]
+    acks = [
+        {"path": f"start-gate/acknowledged/{cell}", "cell": cell, "note_sha256": "a" * 64}
+        for cell in ("c1", "c2")
+    ]
+    a2_events = [
+        *a1_events,
+        _ev(check.RESUME, approval_ref="D042-smoke-1-A-20261112-1100", gate_acks=acks),
+    ]
+    return {
+        "a1": _snap("a1", a1_events, exit_code=1, gate={"c1": "U", "c2": "U"}),
+        "a-refused": _snap(
+            "a-refused",
+            a1_events,
+            exit_code=2,
+            stderr={"stop_in_effect": True, "gate_closed": True},
+        ),
+        "a2": _snap("a2", a2_events),
+        "a-final": _snap("a-final", a2_events, postflight=[{"file": "p", "problems": 0}]),
+    }
+
+
+def test_two_unknown_cells_pass_and_need_both_acks() -> None:
+    snaps = scenario_a_two_unknown()
+    result = check.judge_a(snaps)
+    assert {name: item["result"] for name, item in result.items()} == {
+        f"SA{n}": "PASS" for n in range(1, 7)
+    }
+    assert result["SA1"]["evidence"]["unknown_cells"] == 2
+    events = check._events(snaps["a2"]["cell_results_text"])
+    events[-1]["gate_acks"] = events[-1]["gate_acks"][:1]
+    snaps["a2"]["cell_results_text"] = _text(events)
+    assert check.judge_a(snaps)["SA5"]["result"] == "FAIL"
+
+
+def _crowd_the_retry(snaps: Snaps) -> None:
+    """Three other starts between c1's attempt-1 end and its retry (jobs 2 allows one)."""
+    events = check._events(snaps["b1"]["cell_results_text"])
+    at = next(
+        n
+        for n, e in enumerate(events)
+        if e.get("event") == "start" and e.get("run_id") == "c1" and e.get("attempt") == 2
+    )
+    extra = [_ev("start", "c2", attempt=1, jobs=2) for _ in range(3)]
+    snaps["b1"]["cell_results_text"] = _text([*events[:at], *extra, *events[at:]])
+
+
+@pytest.mark.parametrize("paused", [False, True])
+def test_a3_ii_does_not_apply_to_a_cell_that_waited_for_disk(paused: bool) -> None:
+    snaps, tools = scenario()
+    _crowd_the_retry(snaps)
+    if paused:
+        snaps["b1"]["disk_paused"] = ["c1"]
+    a3 = _judge(snaps, tools)["A3"]
+    problems = [p for p in a3["evidence"]["problems"] if p.startswith("c1:")]
+    assert bool(problems) is not paused
+    assert a3["evidence"]["ii_not_applicable"] == (["c1"] if paused else [])
+
+
+@pytest.mark.parametrize("trace_ok", [True, False])
+def test_x1_falls_back_to_the_logs_when_the_event_collector_failed(trace_ok: bool) -> None:
+    snaps, tools = scenario()
+    snaps["b1"]["events_recorder_failed"] = True
+    snaps["b1"]["destroy_events"] = {}
+    if not trace_ok:
+        snaps["b1"]["logs"]["c2.log"]["failed_cleanup"] = True
+    x1 = _judge(snaps, tools)["X1"]
+    assert x1["result"] == ("PASS" if trace_ok else "FAIL")
+    assert x1["evidence"]["cleanup_source"] == "attempt logs (events recorder failed)"
+
+
+def test_x1_needs_destroy_events_while_the_collector_worked() -> None:
+    snaps, tools = scenario()
+    snaps["b1"]["destroy_events"] = {}
+    x1 = _judge(snaps, tools)["X1"]
+    assert x1["result"] == "FAIL" and x1["evidence"]["cleanup_source"] == "events"
+
+
+def test_the_event_collector_failure_is_read_from_both_places(tmp_path: Path) -> None:
+    out = tmp_path / "out"
+    (out / "host").mkdir(parents=True)
+    assert check.events_recorder_failed(out, {}) is False
+    notes = {"host_guards": {"recording_notes": ["docker events not started: OSError: x"]}}
+    assert check.events_recorder_failed(out, notes) is True
+    (out / "host" / "recorder-failures.jsonl").write_text(
+        json.dumps({"recorder": "docker_events", "message": "gone"}) + "\n", encoding="utf-8"
+    )
+    assert check.events_recorder_failed(out, {}) is True

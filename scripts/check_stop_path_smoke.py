@@ -34,7 +34,12 @@ change and compares the raw manifest without those three lines. Two more of the 
 the same day: A7(ii)'s ``--verify`` runs on a copy of the manifest without the
 ``manifest-verification.json`` line (rewritten after the manifest), and N1 accepts exit 0 or 1
 (a stopped call exits 1). tests/test_stop_path_smoke_end_to_end.py runs the procedure with the
-real launcher and fixes that a correct run passes every criterion. Pass ``--manifest`` (the
+real launcher and fixes that a correct run passes every criterion.
+SA1 (scenario A) is judged by the structure the launcher guarantees, not by a count (W4
+wording, 2026-11-11): the starts before the stop are U cells (one or more, once each), cells
+that ended S before the earliest U cell's end line, and starts the gate denied; U cells plus
+denied starts are at most jobs. SA5 needs an ack for every U cell. X1 falls back to the
+attempt logs when the docker event collector failed (F-3). Pass ``--manifest`` (the
 ``--manifest-out`` path, outside the output and the checkout) to the ``pre-b5b`` and ``b5b``
 snapshots.
 """
@@ -58,12 +63,15 @@ INDEX = Path("summaries/index.json")
 VERIFICATION = "manifest-verification.json"
 OUTCOME_KEYS = ("hit", "t_first", "t_first_event", "t_first_censored")
 STOP, RESUME = "infrastructure-stop", "infrastructure-resume"
+START_DENIED = "start_denied"
 RECORDED_STATES = ("complete", "abort-final")
 APPROVAL = re.compile(r"D042-smoke-[12]-[AB]-\d{8}-\d{4}")
 LOG_MARKERS = {
     "failed_effect_demo_historical": "FAILED at step: effect-demo-historical",
     "no_such_image": "No such image: inodefence-node-tar-effect:does-not-exist",
     "unknown_marker": "INODEFENCE_CLEANUP_UNKNOWN:",
+    # The smoke script's cleanup trap logs nothing on success; a failed step logs this.
+    "failed_cleanup": "FAILED cleanup",
 }
 STDERR_MARKERS = {
     "stop_in_effect": "infrastructure stop in effect",
@@ -198,6 +206,16 @@ def flight_facts(output: Path, kind: str) -> list[dict[str, Any]]:
     return facts
 
 
+def events_recorder_failed(output: Path, matrix: Any) -> bool:
+    """True when the docker event collector failed: a recorder-failures.jsonl line naming the
+    events, or a recording note of the host records (matrix.json host_guards)."""
+    failures = output / "host" / "recorder-failures.jsonl"
+    text = failures.read_text(encoding="utf-8", errors="replace") if failures.is_file() else ""
+    lines = [e for e in _events(text) if "event" in f"{e.get('recorder')} {e.get('message')}"]
+    notes = _map(_map(matrix).get("host_guards")).get("recording_notes") or []
+    return bool(lines) or any("docker events" in str(note) for note in notes)
+
+
 def docker_state(docker: Docker) -> dict[str, Any]:
     return {
         "containers": docker(
@@ -265,6 +283,8 @@ def take_snapshot(
         "matrix_not_started": sorted(matrix.get("cells_not_started") or ())
         if isinstance(matrix, Mapping)
         else None,
+        "disk_paused": sorted(_map(_map(matrix).get("disk_pauses"))),
+        "events_recorder_failed": events_recorder_failed(output, matrix),
         "gate": {
             path.name.removesuffix(".verdict"): path.read_text(encoding="utf-8")[:1]
             for path in sorted(gate_dir.glob("*.verdict"))
@@ -429,12 +449,18 @@ def judge_b(
             for e in lines[ends[0] + 1 : starts[1]]
             if e.get("event") == "start" and e.get("run_id") != run
         ]
-        if starts[1] < ends[0] or len(between) > jobs - 1:
+        # A3(ii) is not applicable to a cell that waited for disk (matrix.json disk_pauses).
+        paused = run in (b1.get("disk_paused") or ())
+        if starts[1] < ends[0] or (len(between) > jobs - 1 and not paused):
             a3_problems.append(f"{run}: {len(between)} other starts before the retry")
         first = _attempt_files(b1["files"], run, 1)
         if not first or first != _attempt_files(b5b["files"], run, 1):
             a3_problems.append(f"{run}: attempt-1 files missing or changed")
-    out["A3"] = _result(not a3_problems and bool(no_record), problems=a3_problems)
+    out["A3"] = _result(
+        not a3_problems and bool(no_record),
+        problems=a3_problems,
+        ii_not_applicable=sorted(set(no_record) & set(b1.get("disk_paused") or ())),
+    )
     first_only = [
         run
         for run in started1
@@ -467,12 +493,25 @@ def judge_b(
     x1_problems = [
         f"{run}: verdict {b1['gate'].get(run)}" for run in no_record if b1["gate"].get(run) != "S"
     ]
+    # F-3: the destroy events come from a record-only collector. When it failed, judge each
+    # no-record attempt's log instead: no failed cleanup step and no unknown marker (the trap
+    # logs nothing on success; S itself is written only after the trap verified cleanup).
+    events_failed = bool(b1.get("events_recorder_failed"))
     for run in no_record:
+        if events_failed:
+            for name in (f"attempts/{run}.attempt1.log", f"{run}.log"):
+                facts = next((v for k, v in b1["logs"].items() if k.endswith(name)), None)
+                if not facts or facts.get("failed_cleanup") or facts.get("unknown_marker"):
+                    x1_problems.append(f"{name}: cleanup trace")
+            continue
         destroyed = sum(count for name, count in b1["destroy_events"].items() if name.endswith(run))
         if destroyed < 2:
             x1_problems.append(f"{run}: {destroyed} controller destroy events for 2 attempts")
     out["X1"] = _result(
-        not x1_problems and not gate_stops, problems=x1_problems, gate_stops=len(gate_stops)
+        not x1_problems and not gate_stops,
+        problems=x1_problems,
+        gate_stops=len(gate_stops),
+        cleanup_source="attempt logs (events recorder failed)" if events_failed else "events",
     )
     out["X2"] = _result(
         all(_residual_free(snaps[stage]) for stage in ("b1", "b2", "b4", "b5a", "b5b"))
@@ -576,9 +615,13 @@ def judge_b(
     out["B4"] = _result(not b4_problems, problems=b4_problems)
     states5 = i5.get("cell_states") or {}
     others = [run for run in planned if run not in no_record]
+    pending_abort = [run for run in others if states5.get(run) == "abort-pending"]
     out["B5"] = _result(
         bool(others) and all(states5.get(run) in RECORDED_STATES for run in others),
         not_recorded=[run for run in others if states5.get(run) not in RECORDED_STATES],
+        # The targets form has no abort-pending state (cell_completeness.CELL_STATES) and
+        # refuses --finalize-abort; if one appears, the run is not the targets form.
+        **({"abort_pending_not_targets_form": pending_abort} if pending_abort else {}),
     )
     resumed_at = next((n for n, e in enumerate(ev["b4"]) if e.get("event") == RESUME), None)
     ran_after = (
@@ -706,13 +749,70 @@ def judge_a(snaps: Mapping[str, Mapping[str, Any]]) -> dict[str, dict[str, Any]]
     resumes = [e for e in ev2 if e.get("event") == RESUME]
     acks = (resumes[0].get("gate_acks") or []) if resumes else []
     refused = snaps["a-refused"]
+    # SA1 (corrected 2026-11-11): the gate admits starts while the U cell still runs (its
+    # lifetime lock is held, no verdict yet), so how many cells start before the U is timing.
+    # What holds by code: every start before the stop line is the U cell, a cell that ran and
+    # ended S, or an attempt the gate denied (end line with start_denied, target never ran);
+    # after the U each other worker writes at most one denied start before the stop
+    # (gate_stop -> guard.force_stop, then authorize_attempt refuses), so denied <= jobs - 1.
+    gate = snaps["a1"].get("gate") or {}
+    before = ev1[: stop_at[0]] if stop_at else []
+    denied = {
+        (e.get("run_id"), e.get("attempt"))
+        for e in before
+        if e.get("event") == "end" and e.get(START_DENIED) is not None
+    }
+    unknown = sorted(cell for cell, verdict in gate.items() if verdict == "U")
+    kinds: dict[str, int] = {"unknown": 0, "ran_clean": 0, "denied": 0, "other": 0}
+    unknown_starts = {cell: len(_starts(before, cell)) for cell in unknown}
+    # A U is committed before its cell's end line (the child records it; the launcher writes
+    # the end line after require_clean), so the earliest U cell's end line is an upper bound
+    # for the U commit in the file order.
+    u_ends = [
+        n
+        for n, e in enumerate(ev1)
+        if e.get("event") == "end" and e.get("run_id") in unknown and e.get(START_DENIED) is None
+    ]
+    first_u_end = min(u_ends) if u_ends else len(ev1)
+    clean_after = 0
+    not_denied_after = 0
+    for n, start in enumerate(before):
+        if start.get("event") != "start":
+            continue
+        is_denied = (start.get("run_id"), start.get("attempt")) in denied
+        if n > first_u_end and not is_denied:
+            not_denied_after += 1
+        if gate.get(str(start.get("run_id"))) == "S" and not is_denied and n > first_u_end:
+            clean_after += 1
+    for start in _starts(before):
+        run, attempt = start.get("run_id"), start.get("attempt")
+        if (run, attempt) in denied:
+            kinds["denied"] += 1
+        elif run in unknown:
+            kinds["unknown"] += 1
+        elif gate.get(str(run)) == "S":
+            kinds["ran_clean"] += 1
+        else:
+            kinds["other"] += 1
     return {
         "SA1": _result(
             len(stop_at) == 1
-            and ("cleanup unknown" in reason or "start gate" in reason)
-            and len(_starts(ev1[: stop_at[0]])) <= jobs,
+            and ("cleanup unknown" in reason or "start gate denied" in reason)
+            and len(unknown) >= 1
+            and all(count == 1 for count in unknown_starts.values())
+            and kinds["other"] == 0
+            and len(unknown) + kinds["denied"] <= jobs
+            and clean_after == 0
+            and not_denied_after == 0,
             stop_lines=len(stop_at),
-            starts_before_stop=len(_starts(ev1[: stop_at[0]])) if stop_at else None,
+            starts_before_stop=kinds,
+            unknown_cells=len(unknown),
+            unknown_starts=unknown_starts,
+            clean_starts_after_first_u_end=clean_after,
+            non_denied_starts_after_first_u_end=not_denied_after,
+            jobs=jobs,
+            reading="starts before the stop: U cells (>= 1, once each), cells ended S before "
+            "the earliest U end line, denied starts; U cells + denied <= jobs (W4 2026-11-11)",
         ),
         "SA2": _result(
             bool(stop_at) and not _starts(ev1[stop_at[0] + 1 :]),
@@ -727,10 +827,12 @@ def judge_a(snaps: Mapping[str, Mapping[str, Any]]) -> dict[str, dict[str, Any]]
         "SA5": _result(
             len(resumes) == 1
             and bool(resumes[0].get("approval_ref"))
-            and bool(acks)
+            and len(acks) >= max(len(unknown), 1)
+            and set(unknown) <= {ack.get("cell") for ack in acks}
             and all({"path", "cell", "note_sha256"} <= set(ack) for ack in acks),
             resumes=len(resumes),
             gate_acks=len(acks),
+            unknown_cells=len(unknown),
         ),
         "SA6": _result(
             all(_residual_free(snaps[stage]) for stage in A_STAGES)

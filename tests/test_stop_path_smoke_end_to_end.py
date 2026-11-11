@@ -17,8 +17,13 @@ Stand-ins (the criteria they touch also use the stand-in value):
 """
 
 import json
+import os
+import random
 import subprocess
 import sys
+import threading
+import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -43,15 +48,112 @@ REF_B = "D042-smoke-1-B-20261112-1000"
 REF_A = "D042-smoke-1-A-20261112-1100"
 
 
-def _cell_runner(out: Path, unknown: set[str] | None = None) -> Any:
-    """A cell that records its gate verdict, then a record (or none under the injection)."""
+WAIT_SECONDS = 120.0
+#: Optional random delay (seconds, upper bound) at the stand-in's steps, to check that the
+#: tests do not depend on timing: INODEFENCE_TEST_STANDIN_JITTER=0.05 pytest ...
+JITTER = float(os.environ.get("INODEFENCE_TEST_STANDIN_JITTER", "0") or 0)
+
+
+def _jitter() -> None:
+    if JITTER > 0:
+        time.sleep(random.uniform(0, JITTER))
+
+
+def _wait_for(condition: Callable[[], bool], what: str) -> None:
+    deadline = time.monotonic() + WAIT_SECONDS
+    while not condition():
+        assert time.monotonic() < deadline, f"stand-in waited too long for {what}"
+        time.sleep(0.01)
+
+
+def _stopped(out: Path) -> bool:
+    path = out / run_exp0.CELL_RESULTS_FILE
+    return path.is_file() and f'"{check.STOP}"' in path.read_text(encoding="utf-8")
+
+
+class _Lockstep:
+    """Injected attempts end in pairs (jobs 2), whatever the machine's speed.
+
+    An attempt returns only when the other worker's attempt has also arrived (or the run has
+    stopped, so no partner will come). Between a cell's attempt-1 end and its retry start, the
+    other worker can then write at most one start: the order a real run has because an attempt
+    takes seconds while the launcher's gap between end and retry takes milliseconds. It also
+    fixes the B-1 shape: cells 1-2 and 3-4 each fail twice in parallel, 4 no-record cells, the
+    stop on the third end, no first-attempt-only cell.
+    """
+
+    def __init__(self, out: Path) -> None:
+        self.out = out
+        self.arrived = 0
+        self.lock = threading.Lock()
+
+    def meet(self) -> None:
+        with self.lock:
+            self.arrived += 1
+            target = self.arrived + self.arrived % 2
+        _wait_for(lambda: self.arrived >= target or _stopped(self.out), "the paired attempt")
+
+
+#: A gate child that first touches a file and/or waits for a file (with a prefix), then
+#: becomes ``start_gate.py record <verdict>`` (exec keeps the lifetime lock descriptor).
+CHILD = """
+import os, sys, time
+touch, wait, prefix, gate, *verdict = sys.argv[1:]
+if touch:
+    open(touch, "w").close()
+deadline = time.monotonic() + 120
+while wait and not (os.path.isfile(wait) and open(wait).read().startswith(prefix)):
+    if time.monotonic() > deadline:
+        sys.exit("stand-in child waited too long")
+    time.sleep(0.01)
+os.execv(sys.executable, [sys.executable, gate, "record", *verdict])
+"""
+
+
+def _cell_runner(
+    out: Path,
+    unknown: str | None = None,
+    clean_after_unknown: str | None = None,
+    both_unknown: tuple[str, str] | None = None,
+) -> Any:
+    """A cell that records its gate verdict, then a record (or none under the injection).
+
+    Scenario A, made deterministic: both first cells are admitted while neither has a verdict;
+    ``unknown``'s child records U only after ``clean_after_unknown``'s child has been admitted,
+    which then records S only after that U; ``unknown`` returns only after the stop line. So:
+    the U cell, one cell that ran clean, the next start denied by the gate, then the stop
+    ("start gate denied") — a shape the launcher can produce on any machine (SA1 corrected).
+
+    ``both_unknown`` is the real injection's shape (a bad docker context for the whole
+    launcher, jobs 2): each child is admitted, marks it, waits for the other's mark, then both
+    record U. Two U cells, no clean cell, no denied start, the stop "cleanup unknown".
+    """
     inner = _fake_runner(TARGET_IMAGES)
+    lockstep = _Lockstep(out)
+    admitted = out.parent / "second-cell-admitted"
 
     def run(cell, output, env, bash, *, limit_seconds, popen=subprocess.Popen, on_timeout=None):
+        _jitter()
         injected = env.get("HISTORICAL_IMAGE") == MISSING_IMAGE
-        verdict = ["U", "cleanup: test"] if cell.run_id in (unknown or set()) else ["S"]
-        process = popen([sys.executable, str(GATE_SCRIPT), "record", *verdict], env=dict(env))
-        process.wait()
+        gate_dir = output / run_exp0.START_GATE_DIR
+        touch, wait, prefix, verdict = "", "", "", ["S"]
+        if both_unknown is not None and cell.run_id in both_unknown:
+            other = both_unknown[1 - both_unknown.index(cell.run_id)]
+            touch, wait = (
+                str(out.parent / f"admitted-{cell.run_id}"),
+                str(out.parent / f"admitted-{other}"),
+            )
+            verdict = ["U", "cleanup: test"]
+        elif cell.run_id == unknown:
+            wait, verdict = str(admitted), ["U", "cleanup: test"]
+        elif cell.run_id == clean_after_unknown and unknown is not None:
+            touch, wait, prefix = str(admitted), str(gate_dir / f"{unknown}.verdict"), "U"
+        child = [sys.executable, "-c", CHILD, touch, wait, prefix, str(GATE_SCRIPT), *verdict]
+        process = popen(child, env=dict(env))
+        assert process.wait() == 0
+        _jitter()
+        if cell.run_id == unknown:
+            _wait_for(lambda: _stopped(output), "the stop line")
         host = output / run_exp0.HOST_RECORD_DIR
         host.mkdir(exist_ok=True)
         with (host / "events.jsonl").open("a", encoding="utf-8") as events:
@@ -69,6 +171,8 @@ def _cell_runner(out: Path, unknown: set[str] | None = None) -> Any:
                 "FAILED at step: effect-demo-historical\n",
                 encoding="utf-8",
             )
+            _jitter()
+            lockstep.meet()
             return CellResult(cell, 1, 1.0, paths["report"], True, paths["log"])
         result = inner(cell, output, env, bash, limit_seconds=limit_seconds)
         cell_paths(cell, output)["calls"].write_text("{}\n", encoding="utf-8")
@@ -171,6 +275,10 @@ def test_scenario_b_by_the_procedure_passes_every_criterion(
     )
     assert len(result) == 24
     assert _failures(result) == {}
+    # The lockstep fixes B-1's shape: 4 cells fail twice, none first-attempt-only.
+    b1 = snaps["b1"]["index"]
+    assert b1["completeness"]["no_record"] == 4
+    assert result["A5"]["evidence"]["first_attempt_only"] == 0
 
 
 @pytest.mark.usefixtures("end_to_end")
@@ -178,19 +286,58 @@ def test_scenario_a_by_the_procedure_passes_every_check(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     run = _Run(tmp_path, monkeypatch, capsys, "a")
-    unknown = {_deadline_plan(run.args).cells()[0].run_id}
-    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", _cell_runner(run.out, unknown))
-    code, err = run.call()  # the first cell's cleanup is unknown: the gate stops the run
+    first, second = (cell.run_id for cell in _deadline_plan(run.args).cells()[:2])
+    runner = _cell_runner(run.out, unknown=first, clean_after_unknown=second)
+    result = _scenario_a(run, monkeypatch, runner)
+    # The shape the corrected SA1 allows and the literal "starts <= jobs" did not.
+    assert result["SA1"]["evidence"]["starts_before_stop"] == {
+        "unknown": 1,
+        "ran_clean": 1,
+        "denied": 1,
+        "other": 0,
+    }
+
+
+@pytest.mark.usefixtures("end_to_end")
+def test_scenario_a_with_both_first_cells_unknown_passes_every_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """The real injection's shape: a bad context fails every cell, so with jobs 2 both first
+    cells start before any U and both record U. One approval reference acks both."""
+    run = _Run(tmp_path, monkeypatch, capsys, "a2u")
+    first, second = (cell.run_id for cell in _deadline_plan(run.args).cells()[:2])
+    runner = _cell_runner(run.out, both_unknown=(first, second))
+    result = _scenario_a(run, monkeypatch, runner)
+    assert result["SA1"]["evidence"]["starts_before_stop"] == {
+        "unknown": 2,
+        "ran_clean": 0,
+        "denied": 0,
+        "other": 0,
+    }
+    assert result["SA5"]["evidence"]["gate_acks"] == 2
+
+
+def _scenario_a(run: "_Run", monkeypatch: pytest.MonkeyPatch, runner: Any) -> dict[str, Any]:
+    """Scenario A by the procedure: stop, refused resume, ack every U cell, approved resume."""
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", runner)
+    code, err = run.call()  # the gate stops the run
     run.snapshot("a1", code, err)
     code, err = run.call("--resume-after-stop", REF_A)  # refused while U
     run.snapshot("a-refused", code, err)
-    (cell,) = unknown
-    acknowledge(
-        run.out / run_exp0.START_GATE_DIR,
-        cell,
-        f"approval={REF_A}; checked_at=2026-11-12T11:00:00+09:00; by=test; "
-        "residual=docker ps -a --filter name=inodefence- -> (none); reason=test",
+    gate_dir = run.out / run_exp0.START_GATE_DIR
+    unknown = sorted(
+        path.name.removesuffix(".verdict")
+        for path in gate_dir.glob("*.verdict")
+        if path.read_text(encoding="utf-8").startswith("U")
     )
+    assert unknown
+    for cell in unknown:  # one approval (REF_A) for scenario A; every U cell acked with it
+        acknowledge(
+            gate_dir,
+            cell,
+            f"approval={REF_A}; checked_at=2026-11-12T11:00:00+09:00; by=test; "
+            "residual=docker ps -a --filter name=inodefence- -> (none); reason=test",
+        )
     monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", _cell_runner(run.out))
     code, err = run.call("--resume-after-stop", REF_A)
     run.snapshot("a2", code, err)
@@ -199,3 +346,4 @@ def test_scenario_a_by_the_procedure_passes_every_check(
     result = check.judge_a(check.load_snapshots(run.snaps))
     assert len(result) == 6
     assert _failures(result) == {}
+    return result

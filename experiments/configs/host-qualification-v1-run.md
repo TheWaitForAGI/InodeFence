@@ -85,10 +85,15 @@ seed_assignment_sha256 = e81d5fcff7976fe4527da62303bb66e728eb86f7c672dc8556a8005
      --target-digest node-tar-7.5.2=sha256:22c8734f141d91b333ba37c7fe6a9a7547d7abfab487fa028da2053bed6f3dbb \
      --observer-integrity-policy invalid-continue \
      --seed-assignment experiments/configs/host-qualification-v1-run.assignment.json --host-id HOSTn \
-     --jobs 2 --clock-reference <offset-HOSTn.json> --manifest-host hostn-qual
+     --jobs 2 --clock-reference <offset-HOSTn.json> --manifest-host hostn-qual \
+     --expected-images <criteria.json> --skip-build
    ```
 
-   먼저 `--dry-run`으로 `gate: PASS`, cells 12를 확인한다. HOST2는 `--skip-build`.
+   **이미지는 미리 준비한다(#345):** 런처의 preflight가 warmup보다 먼저 돌며 target·controller·helper id를
+   `--expected-images`(기준 파일의 `expected_image_ids`)와 대조해 불일치면 시작 전에 거부한다. 그래서 HOST1은 이미지를
+   확인만 하고 HOST2는 `docker load`로 미리 넣은 뒤 `docker image inspect`로 3개 id를 대조한다. **두 호스트 모두
+   `--skip-build`로 실행**한다(빌드 캐시가 같은 id를 낼지 실 docker에서 확인하지 않았다).
+   먼저 `--dry-run`으로 `gate: PASS`, cells 12를 확인한다.
 4. **판정(호스트별):** `qualify_host --output <out-HOSTn> --criteria <criteria.json> --criteria-sha256 <고정값>
    --stage-a-keys <v3> --stage-a-keys-sha256 <v3 sha> [--peer <out-다른 호스트>] --out qualification-HOSTn.json`.
 5. **기록:** 원장 행(호스트별, 적격성 §3 형식), LOG 1줄, raw manifest.

@@ -92,11 +92,16 @@ HOST1, 6301·6303 → HOST2). `python -m scripts.make_seed_assignment --rule alt
      --target-digest node-tar-7.5.2=sha256:22c8734f141d91b333ba37c7fe6a9a7547d7abfab487fa028da2053bed6f3dbb \
      --observer-integrity-policy invalid-continue \
      --seed-assignment experiments/configs/run-exp0-eng-smoke-v1.assignment.json --host-id HOSTn \
-     --jobs 2 --manifest-host hostn-eng-smoke --dry-run
+     --jobs 2 --manifest-host hostn-eng-smoke --expected-images <criteria.json> --skip-build --dry-run
    ```
 
+   **이미지는 미리 준비한다(#345):** 런처의 preflight가 warmup보다 먼저 돌며 target·controller·helper id를
+   `--expected-images`(기준 파일의 `expected_image_ids`)와 대조해 불일치면 시작 전에 거부한다. 그래서 HOST1은 이미지를
+   확인만 하고 HOST2는 `docker load`로 미리 넣은 뒤 `docker image inspect`로 3개 id를 대조한다. **두 호스트 모두
+   `--skip-build`로 실행**한다(빌드 캐시가 같은 id를 낼지 실 docker에서 확인하지 않았다).
+
    `gate: PASS`, wiring 거부 없음, cells 6, seeds 두 개를 확인한다.
-3. **실행:** 같은 명령에서 `--dry-run`을 뺀다(HOST2는 `--skip-build`). 실행 중 운영 점검은 다른 터미널에서
+3. **실행:** 같은 명령에서 `--dry-run`을 뺀다(`--skip-build`는 두 호스트 모두 유지). 실행 중 운영 점검은 다른 터미널에서
    `python -m scripts.exp_operating_check --preregistration <filled.md> --output <out-HOSTn>`(출력은 수만).
 4. **실행 뒤(호스트별):** `docker ps -a`·`docker volume ls`를 다시 저장해 1단계 목록과 대조, `start-gate/` 상태 확인,
    index `cell_completeness`와 `cell-results.jsonl`의 `runner_error`·`start_denied`·`infrastructure-stop` 수 확인.

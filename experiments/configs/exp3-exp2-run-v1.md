@@ -53,7 +53,10 @@ PYTHONPATH=src python -m scripts.run_exp0 --preregistration <F의 exp3-v1 채운
 
 1. **GO 판정 시각을 먼저 적는다**: `experiments/summaries/exp3-train-go-decision.json`의 `decided_at`과 LOG 한 줄. 적은 뒤 고치지 않는다(D043). 그 전에는 GO 입력을 보지 않는다.
 2. `partial_go_check --record-in-go-decision`(두 호스트 출력, raw manifest, 정지 진술). 상태가 held면 지웅 판단으로 올리고 멈춘다.
-3. `merge_host_indexes`(train) → `analyze_exp0` → `gen_exp3_tables --artifact T-EXP3-2`(GO 입력 표). 판정 줄은 사람이 쓴다.
+3. `merge_host_indexes`(train) → `analyze_exp0 --format json --output <파일>` → `gen_exp3_tables --artifact T-EXP3-2`(GO 입력 표). 판정 줄은 사람이 쓴다. **arm별 train 결과는 holdout 해제 때까지 열지 않는다(동결 묶음 항목 5):**
+   - `analyze_exp0` 출력은 파일로만 낸다. 화면 출력과 열람은 금지다. 그 파일은 생성기만 읽는다.
+   - T-EXP3-2는 arm 합산 E만 낸다(`gen_exp3_tables.py` `t_exp3_2`: E는 `by_arm`의 `number_observed`를 더한 한 값이고, 다른 행은 r·e·H_rem·용량·abort 비율·셀 수다). 이 표만 만든다. T-EXP3-1(train arm 표)과 T-EXP3-3(dense)은 holdout 해제 때 함께 만든다.
+   - GO를 내는 사람(세션)은 holdout 운영 결정(정지·재개·중단)을 내리는 세션과 분리한다. 분리할 수 없으면 그 세션이 arm별 값을 보지 않았다는 것을 LOG에 적는다. 해제 뒤 도구 호출 기록에서 train report 경로의 열람이 0인지 확인한다.
 4. GO면 holdout 할당: `make_seed_assignment --rule rh-proportional-v1 --go-decision <GO 파일> --train-preregistration <exp3 사본> --train-assignment <train 할당>`. 할당 파일 sha를 LOG에 고정한다(게이트가 GO 파일 r_h로 재생성해 바이트 대조한다).
 
 ## 5. holdout 실행

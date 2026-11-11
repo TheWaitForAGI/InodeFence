@@ -50,6 +50,7 @@ def _environment(prereg: Path) -> dict[str, Any]:
         "sentinel_generator_id": registration.sentinel_generator_id,
         "sentinel_generator_seed": registration.sentinel_generator_seed,
         "sentinel_count": registration.sentinel_count,
+        "observer_integrity_policy": registration.observer_integrity_policy,
         "budget": registration.budget,
         "seeds": sorted(registration.seeds),
     }
@@ -314,10 +315,10 @@ def test_stage_a_keys_keep_input_identifiers_only(tmp_path: Path) -> None:
 
 
 @pytest.mark.usefixtures("admit_fixture_holdout")
-def test_an_abort_without_a_whole_error_chain_is_unconfirmed(
+def test_an_abort_without_a_chain_and_a_non_cleanup_reason_is_confirmed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, real_guards: FakeDocker
 ) -> None:
-    behaviour: dict[str, Any] = {**TARGET_IMAGES, "abort": {VICTIM}}
+    behaviour: dict[str, Any] = {**TARGET_IMAGES, "abort": {VICTIM}}  # reason "broker", no chain
     _, prereg, assignment, host1, cells = _run_host1(tmp_path, monkeypatch, _fake_runner(behaviour))
     _, report, _ = _judge(
         prereg,
@@ -328,24 +329,25 @@ def test_an_abort_without_a_whole_error_chain_is_unconfirmed(
         tmp_path / "q.json",
     )
     assert report["criteria"]["unconfirmed_aborts"] == {
-        "result": "FAIL",
-        "value": 1,
+        "result": "PASS",
+        "value": 0,
         "threshold": 0,
     }
+
+
+CLEANUP_INSPECT = "container runtime cleanup inspect failed: timed out"
+CLEANUP_REMOVE = "container runtime remove failed: busy"
 
 
 @pytest.mark.parametrize(
     ("stub", "unconfirmed"),
     [
-        (None, True),
-        ({"reason": "x"}, True),
-        ({"reason": "x", "error_chain": []}, True),
-        ({"reason": "x", "error_chain": [{"type": "A"}, {"truncated": True}]}, True),
-        (
-            {"reason": "container cleanup inspect failed", "error_chain": [{"type": "Cleanup"}]},
-            False,
-        ),
-        ({"reason": "broker", "error_chain": [{"type": "A"}, {"type": "B"}]}, False),
+        (None, True),  # (i) no report or no aborted object
+        ({"reason": "x", "error_chain": [{"type": "A"}, {"truncated": True}]}, True),  # (ii)
+        ({"reason": CLEANUP_INSPECT}, True),  # (iii) no chain, cleanup inspect
+        ({"reason": CLEANUP_REMOVE, "error_chain": []}, True),  # (iii) empty chain, cleanup remove
+        ({"reason": "trusted Docker broker disconnected"}, False),  # no chain, not cleanup
+        ({"reason": CLEANUP_INSPECT, "error_chain": [{"type": "A"}, {"type": "Cleanup"}]}, False),
     ],
 )
 def test_q8_unconfirmed_abort_definition(stub: Any, unconfirmed: bool) -> None:
@@ -451,3 +453,158 @@ def test_cell_path_pairs_count_m_x_and_flag_reexecutions(tmp_path: Path) -> None
     }
     for word in ('"x"', "oracle", "c1"):
         assert word not in text
+
+
+@pytest.mark.usefixtures("admit_fixture_holdout")
+def test_a_recovered_first_attempt_is_reported_not_judged(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, real_guards: FakeDocker
+) -> None:
+    inner = _fake_runner(TARGET_IMAGES)
+    seen: set[str] = set()
+    captured: dict[str, Any] = {}
+
+    def runner(cell: Any, output: Path, env: Any, bash: str, **limits: Any) -> Any:
+        result = inner(cell, output, env, bash, **limits)
+        if cell.run_id == VICTIM and VICTIM not in seen:
+            seen.add(VICTIM)
+            paths = _cell(captured["args"], VICTIM, output)
+            paths["report"].unlink()
+            paths["steps_jsonl"].unlink()
+            paths["log"].write_text(
+                "==> [preflight]\nError: daemon not reachable\n"
+                "FAILED at step: effect-demo-historical (exit 37)\n"
+            )
+        return result
+
+    out, args, assignment = _replicate_setup(tmp_path, monkeypatch)
+    captured["args"] = args
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", runner)
+    run_exp0.main(_host_args(args, out, "HOST1", assignment, "2"))
+    host1 = out.parent / f"{out.name}-HOST1"
+    prereg = Path(args[args.index("--preregistration") + 1])
+    cells = len(json.loads((host1 / "summaries" / "index.json").read_text())["cells"])
+    _, report, _ = _judge(
+        prereg,
+        assignment,
+        host1,
+        _criteria(tmp_path, cells),
+        _keys(tmp_path, [], prereg),
+        tmp_path / "q.json",
+    )
+    [recovered] = report["reports"]["recovered_first_attempts"]
+    assert recovered["run_id"] == VICTIM
+    assert recovered["failed_at"] == "FAILED at step: effect-demo-historical (exit 37)"
+    assert recovered["first_error"] == "Error: daemon not reachable"
+    assert "recovered" not in " ".join(report["criteria"])  # never a criterion
+
+
+def test_the_environment_check_compares_the_observer_policy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, args, assignment = _replicate_setup(tmp_path, monkeypatch)
+    prereg = Path(args[args.index("--preregistration") + 1])
+    keys = _keys(tmp_path, [], prereg, observer_integrity_policy="stop")
+    out = tmp_path / "env.json"
+    assert (
+        qualify_host.main(
+            [
+                "--preregistration",
+                str(prereg),
+                "--seed-assignment",
+                str(assignment),
+                "--host-id",
+                "HOST1",
+                "--check-environment",
+                "--stage-a-keys",
+                str(keys[0]),
+                "--stage-a-keys-sha256",
+                keys[1],
+                "--out",
+                str(out),
+            ]
+        )
+        == 1
+    )
+    assert any(
+        p.startswith("observer_integrity_policy") for p in json.loads(out.read_text())["problems"]
+    )
+
+
+def test_sntp_offsets_combine_into_a_difference() -> None:
+    from scripts import measure_clock_offset as clock
+
+    answers = iter(
+        [
+            {"offset_s": 0.5, "rtt_s": 0.04},
+            {"offset_s": 0.4, "rtt_s": 0.02},
+            {"offset_s": 0.6, "rtt_s": 0.08},
+        ]
+    )
+
+    def ask(server: str) -> dict[str, float]:
+        try:
+            return next(answers)
+        except StopIteration:
+            raise OSError("timed out") from None
+
+    h1 = clock.measure("ntp.example", "HOST1", samples=5, ask=ask, pause=lambda s: None)
+    assert h1["chosen"]["offset_s"] == 0.4 and h1["uncertainty_s"] == 0.01
+    assert sum("error" in sample for sample in h1["samples"]) == 2
+    h2 = {**h1, "host_id": "HOST2", "offset_s": 1.4, "uncertainty_s": 0.03}
+    both = clock.combine(h2, h1)
+    assert both["diff_s"] == pytest.approx(1.0) and both["uncertainty_s"] == pytest.approx(0.04)
+    assert set(both) == {
+        "method",
+        "server",
+        "samples",
+        "chosen",
+        "diff_s",
+        "uncertainty_s",
+        "measured_at",
+    }
+    with pytest.raises(ValueError, match="different NTP servers"):
+        clock.combine(h1, {**h2, "server": "other"})
+    with pytest.raises(RuntimeError, match="no NTP reply"):
+        clock.measure(
+            "ntp.example",
+            "HOST1",
+            samples=2,
+            ask=lambda s: (_ for _ in ()).throw(OSError("x")),
+            pause=lambda s: None,
+        )
+
+
+def test_sntp_query_decodes_the_reply(monkeypatch: pytest.MonkeyPatch) -> None:
+    import struct
+
+    from scripts import measure_clock_offset as clock
+
+    def stamp(seconds: float) -> bytes:
+        whole = int(seconds) + clock.NTP_EPOCH_OFFSET
+        return struct.pack("!II", whole, int((seconds % 1) * 2**32))
+
+    class Sock:
+        def __init__(self, *a: Any) -> None:
+            pass
+
+        def __enter__(self) -> "Sock":
+            return self
+
+        def __exit__(self, *a: Any) -> None:
+            return None
+
+        def settimeout(self, value: float) -> None:
+            pass
+
+        def sendto(self, data: bytes, address: Any) -> None:
+            assert address == ("ntp.example", 123) and data[0] == 0x23
+
+        def recvfrom(self, size: int) -> tuple[bytes, Any]:
+            # server receive 100.5, server transmit 100.6
+            return (40 * b"\0")[:32] + stamp(100.5) + stamp(100.6), None
+
+    monkeypatch.setattr(clock.socket, "socket", Sock)
+    times = iter([100.0, 100.2])  # local send, local receive
+    result = clock.query("ntp.example", clock=lambda: next(times))
+    assert result["offset_s"] == pytest.approx(0.45, abs=1e-6)
+    assert result["rtt_s"] == pytest.approx(0.1, abs=1e-6)

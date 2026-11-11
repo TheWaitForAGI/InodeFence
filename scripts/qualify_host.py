@@ -86,20 +86,62 @@ def abort_category(stub: Mapping[str, Any]) -> str:
 
 
 def unconfirmed_abort(stub: Mapping[str, Any] | None) -> bool:
-    """D047 Q8, W4's definition (2026-11-11), applied to an abort cell.
+    """D047 Q8 (W4, corrected 2026-11-11), applied to an abort cell: the benchmark's H4 test.
 
-    Unconfirmed when (i) there is no report or no ``aborted`` object, (ii) ``error_chain`` is
-    missing, empty or ends with a truncation mark, or (iii) there is no ``error_chain`` and the
-    original reason classifies as ``cleanup_inspect`` or ``cleanup_remove``. A whole chain counts
-    as confirmed even when its innermost (last) element is a cleanup error.
+    Unconfirmed when (i) there is no report or no ``aborted`` object, (ii) ``error_chain`` ends with
+    a truncation mark, or (iii) ``error_chain`` is missing or empty and the reason classifies as
+    ``cleanup_inspect`` or ``cleanup_remove``. No chain with a non-cleanup reason is confirmed; a
+    whole chain is confirmed even when its innermost (last) element is a cleanup error. The one
+    definition lives in ``analyze_concurrency_benchmark.first_error``.
     """
-    if stub is None:
-        return True
-    chain = stub.get("error_chain")
-    if not isinstance(chain, list) or not chain:
-        return True  # (ii); (iii) is the cleanup subset of a missing chain
-    last = chain[-1]
-    return not isinstance(last, Mapping) or bool(last.get("truncated"))
+    from scripts.analyze_concurrency_benchmark import first_error
+
+    return first_error(stub)["status"] == "unconfirmed"
+
+
+#: ``local_node_tar_smoke.sh``'s failure line in a cell log.
+FAILED_STEP = re.compile(r"FAILED at step: .*")
+FIRST_ERROR = re.compile(r"(Traceback|Error|error:|FAILED cleanup|INODEFENCE_CLEANUP_UNKNOWN)")
+LOG_LINE_LIMIT = 300
+
+
+def recovered_first_attempt(output: Path, run_id: str, reader: Reader) -> dict[str, Any]:
+    """A retried cell's first attempt (``attempts/<run_id>.attempt1.log``): report only.
+
+    Only the shell's ``FAILED at step`` line and the first error line are kept, cut short.
+    """
+    log = output / "attempts" / f"{run_id}.attempt1.log"
+    found: dict[str, Any] = {
+        "run_id": run_id,
+        "log": log.name,
+        "failed_at": None,
+        "first_error": None,
+    }
+    if not log.is_file():
+        found["log"] = None
+        return found
+    reader.files.append(str(log))
+    for line in log.read_text(encoding="utf-8", errors="replace").splitlines():
+        failed = FAILED_STEP.search(line)
+        if found["failed_at"] is None and failed is not None:
+            found["failed_at"] = failed.group(0)[:LOG_LINE_LIMIT]
+        elif found["first_error"] is None and FIRST_ERROR.search(line):
+            found["first_error"] = line.strip()[:LOG_LINE_LIMIT]
+    return found
+
+
+def clock_difference(pre: Mapping[str, Any] | None, peer_pre: Mapping[str, Any] | None) -> Any:
+    """Cross-host realtime difference from both preflights' SNTP measurements: report only."""
+    from scripts.measure_clock_offset import combine
+
+    mine = (pre or {}).get("clock_reference", {}).get("measurement")
+    theirs = (peer_pre or {}).get("clock_reference", {}).get("measurement")
+    if not isinstance(mine, Mapping) or not isinstance(theirs, Mapping):
+        return "not measured on both hosts (--clock-reference)"
+    try:
+        return combine(mine, theirs)
+    except (KeyError, TypeError, ValueError) as error:
+        return f"unusable: {type(error).__name__}: {error}"
 
 
 def stage_a_environment_problems(plan: Exp0Plan, keys: Mapping[str, Any]) -> list[str]:
@@ -119,6 +161,7 @@ def stage_a_environment_problems(plan: Exp0Plan, keys: Mapping[str, Any]) -> lis
         "sentinel_generator_id": prereg.sentinel_generator_id,
         "sentinel_generator_seed": prereg.sentinel_generator_seed,
         "sentinel_count": prereg.sentinel_count,
+        "observer_integrity_policy": prereg.observer_integrity_policy,
         "budget": prereg.budget,
     }
     problems = [
@@ -232,6 +275,8 @@ def judge(
 ) -> dict[str, Any]:
     reader = Reader()
     results: dict[str, dict[str, Any]] = {}
+    reports: dict[str, Any] = {}
+    recovered: list[dict[str, Any]] = []
 
     def put(name: str, ok: bool, value: Any, threshold: Any = None) -> None:
         results[name] = {"result": _verdict(ok), "value": value, "threshold": threshold}
@@ -288,6 +333,7 @@ def judge(
             )
         )
         put("image_ids_equal_to_peer", same, None)
+        reports["clock_difference"] = clock_difference(pre, peer_pre)
     unknown, acknowledged = _gate_unknowns(output)
     put(
         "cleanup_unknown",
@@ -338,6 +384,8 @@ def judge(
         retries += len(tried) - 1
         if len(tried) > 1 or check.state != COMPLETE:
             first_attempt_failures += 1
+        if len(tried) > 1 and check.state == COMPLETE:
+            recovered.append(recovered_first_attempt(output, cell.run_id, reader))
         for attempt in tried:
             if attempt.ended is None:
                 continue
@@ -438,6 +486,8 @@ def judge(
         )
     return {
         "classification": "host qualification judgement: counts and identifiers only, no oracle",
+        # Report only, never a criterion: retry-recovered first attempts, the clock difference.
+        "reports": {"recovered_first_attempts": recovered, **reports},
         "verdict": _verdict(all(r["result"] == "PASS" for r in results.values())),
         "criteria": results,
         "files_read": sorted(set(reader.files)),

@@ -109,6 +109,7 @@ def extract(blocks: Sequence[Path], design_path: Path) -> dict[str, Any]:
             "sentinel_generator_id": design.sentinel_generator_id,
             "sentinel_generator_seed": design.sentinel_generator_seed,
             "sentinel_count": design.sentinel_count,
+            "observer_integrity_policy": design.observer_integrity_policy,
             "budget": design.budget,
             "seeds": sorted(design.seeds),
         },

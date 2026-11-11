@@ -431,3 +431,11 @@ ORCH delivered E = `bed077af62b1cdd5cc8dec96eb9cbe93ba542f1d` (origin/main, PR #
 | 6 | Owner time window | asked; pending |
 
 Not done (outside the instruction or needs a decision): qualification §3 step 3 `qualify_host --check-environment` (the Stage A key file `~/inodefence-evidence/stage-a-j2-abort-keys-20261111/…v3.json` is not on HOST2), `measure_clock_offset` for `--clock-reference`, seed collision line.
+
+### 33a. ORCH decisions applied (20:05–20:07 KST)
+
+- **Criteria sha equals HOST1** (`8c73611c…`, per ORCH): image Ids, Engine, the 16 shared-path hashes and the execution SHA are the same on both hosts.
+- **Smoke registration refilled with the common deadline `2026-11-12T23:00:00+09:00`:** copy sha256 **`87a69e728de62df3af2ca9b529355830d345e46b3c34e2916bea22dfbb701d0a`** = ORCH's expected value (source `a943ce5c…`). Dry-run on this copy: `gate: PASS`, nothing refused, cells 6, seeds [6301, 6303] (`exec_bed077a_dryrun2_smoke.txt`); worktree still clean. The previous copy (`92ad9a64…`, deadline 11/20) was renamed `…filled.SUPERSEDED-deadline-20261120.md` and kept.
+- **Qualification copy `13ab8c9f…` is PROVISIONAL** (renamed `…filled.PROVISIONAL-deadline.md`, kept). Its deadline is set when HOST1 prepares qualification.
+- **Stage A key file:** fetched with the transfer key (rsync, BatchMode, host key pinned) from the HOST1 read-only folder `stage-a-keys-20261111/`. `stage-a-j2-abort-keys-v3.json` 4589 B, sha256 `3e6c734c…22b` = expected, `sha256sum -c SHA256SUMS` OK (`exec_bed077a_stage_a_transfer.txt`). Stored outside the worktree; for `qualify_host --check-environment` at qualification preparation.
+- **SNTP drift: record only** (Jiwoong's policy). W2 reports if the offset passes 0.5 s or the trend steepens.

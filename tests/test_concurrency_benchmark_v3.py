@@ -7,10 +7,13 @@ design correction goes through its own documentation PR).
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 from scripts import run_concurrency_benchmark as bench
+
+from inodefence.execution import start_gate
 
 V3_BLOCK = """\
 ```concurrency-benchmark
@@ -162,3 +165,265 @@ def test_v2_block_with_host_keys_is_refused() -> None:
     broken = v2.replace("stage.smoke", "host.HOST1.run_prefix = h1\nstage.smoke", 1)
     with pytest.raises(bench.DesignError, match="unknown \\['host.HOST1.run_prefix'\\]"):
         bench.parse_design(broken)
+
+
+# ---- --host and run-id prefixes -------------------------------------------------------------
+
+
+def test_hosts_run_the_same_cells_with_their_own_prefix() -> None:
+    design = bench.parse_design(V3_BLOCK)
+    one = bench.planned_blocks(design, "A", "HOST1")
+    two = bench.planned_blocks(design, "A", "HOST2")
+    assert [block.host for block in one] == ["HOST1"] * 4
+    assert [(c.arm.label, c.seed) for c in one[0].cells] == [
+        (c.arm.label, c.seed) for c in two[0].cells
+    ]
+    assert one[0].cells[0].run_id == "h1-7.5.2-R-restart-s8110"
+    assert two[0].cells[0].run_id == "h2-7.5.2-R-restart-s8110"
+    with pytest.raises(bench.DesignError, match="--host must be one of"):
+        bench.planned_blocks(design, "A", "HOST3")
+
+
+def test_v2_plan_has_no_host_and_no_prefix() -> None:
+    design = bench.load_design(Path("experiments/configs/concurrency-scaling-v2.md"))
+    block = bench.planned_blocks(design, "A")[0]
+    assert block.host is None
+    assert block.cells[0].run_id == "7.5.2-R-restart-s8110"
+
+
+def _v3_file(tmp_path: Path) -> Path:
+    path = tmp_path / "v3.md"
+    path.write_text("# test design\n\n" + V3_BLOCK)
+    return path
+
+
+def test_cli_requires_host_for_v3_and_refuses_it_for_v2(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    out = tmp_path / "out"
+    with pytest.raises(SystemExit):
+        bench.main(
+            ["--design", str(_v3_file(tmp_path)), "--output", str(out), "--stage", "A", "--dry-run"]
+        )
+    assert "--host is required" in capsys.readouterr().err
+    v2 = "experiments/configs/concurrency-scaling-v2.md"
+    with pytest.raises(SystemExit):
+        bench.main(
+            ["--design", v2, "--output", str(out), "--stage", "A", "--host", "HOST1", "--dry-run"]
+        )
+    assert "--host does not apply" in capsys.readouterr().err
+
+
+def test_dry_run_prints_prefixed_cells_and_the_unresolved_engine(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    args = ["--design", str(_v3_file(tmp_path)), "--output", str(tmp_path / "o"), "--stage", "A"]
+    assert bench.main([*args, "--host", "HOST2", "--dry-run"]) == 0
+    printed = capsys.readouterr().out
+    assert "  h2-7.5.2-D-s8102: " in printed
+    assert "note: a live run would refuse: host.HOST2.docker_engine = TBD-PREFLIGHT" in printed
+
+
+# ---- probe stage ------------------------------------------------------------------------------
+
+
+def test_probe_plan_is_one_block_of_eight_rotated_cells() -> None:
+    design = bench.parse_design(V3_BLOCK)
+    (block,) = bench.planned_blocks(design, bench.PROBE_STAGE, "HOST1")
+    assert (block.stage, block.index, block.jobs, block.host) == ("probe", 1, 4, "HOST1")
+    assert block.name == "block-1-j4"
+    assert [(c.seed, c.arm.label, c.budget) for c in block.cells] == [
+        (6200, "R-restart", 1000),
+        (6201, "D", 1000),
+        (6202, "S-u", 1000),
+        (6203, "R-restart", 1000),
+        (6204, "D", 1000),
+        (6205, "S-u", 1000),
+        (6206, "R-restart", 1000),
+        (6207, "D", 1000),
+    ]
+    assert block.cells[0].run_id == "h1-7.5.2-R-restart-s6200"
+    assert bench.PROBE_STAGE not in bench.measured_stages(design)
+
+
+def test_v2_design_has_no_probe() -> None:
+    design = bench.load_design(Path("experiments/configs/concurrency-scaling-v2.md"))
+    with pytest.raises(bench.DesignError, match="has no probe stage"):
+        bench.planned_blocks(design, bench.PROBE_STAGE)
+
+
+def _write_probe(output: Path, design: bench.Design, **fields: object) -> None:
+    (output / "probe").mkdir(parents=True, exist_ok=True)
+    value = {
+        "schema": bench.PROBE_SCHEMA,
+        "design_sha256": design.sha256,
+        "host": "HOST1",
+        "passed": True,
+        "conditions": {},
+        **fields,
+    }
+    (output / "probe" / bench.PROBE_FILE).write_text(json.dumps(value))
+
+
+def test_v3_smoke_needs_a_passed_probe_for_this_design_and_host(tmp_path: Path) -> None:
+    design = bench.parse_design(V3_BLOCK)
+    gate = bench.stage_gate_problem
+    assert "run --stage probe first" in (gate(design, "smoke", tmp_path, "HOST1") or "")
+    _write_probe(tmp_path, design, passed=False, conditions={"cleanup_unknown": 1})
+    assert "did not pass" in (gate(design, "smoke", tmp_path, "HOST1") or "")
+    _write_probe(tmp_path, design, host="HOST2")
+    assert "is for host HOST2" in (gate(design, "smoke", tmp_path, "HOST1") or "")
+    _write_probe(tmp_path, design, design_sha256="0" * 64)
+    assert "not written for this design" in (gate(design, "smoke", tmp_path, "HOST1") or "")
+    _write_probe(tmp_path, design)
+    assert gate(design, "smoke", tmp_path, "HOST1") is None
+    assert gate(design, bench.PROBE_STAGE, tmp_path, "HOST1") is None
+
+
+def test_v2_smoke_has_no_probe_requirement(tmp_path: Path) -> None:
+    design = bench.load_design(Path("experiments/configs/concurrency-scaling-v2.md"))
+    assert bench.stage_gate_problem(design, "smoke", tmp_path) is None
+
+
+def _probe_block(tmp_path: Path) -> tuple[bench.Design, bench.Block, Path, Path]:
+    design = bench.parse_design(V3_BLOCK)
+    (block,) = bench.planned_blocks(design, bench.PROBE_STAGE, "HOST1")
+    directory = tmp_path / "probe" / block.name
+    (directory / "raw").mkdir(parents=True)
+    return design, block, directory, tmp_path / "start-gate"
+
+
+def _clean_record(block: bench.Block) -> dict[str, object]:
+    return {
+        "cells": [{"run_id": c.run_id, "state": "ran"} for c in block.cells],
+        "residual_after_block": [],
+        "start_gate_waits_seconds": [0.0, 1.5],
+        "stopped_reason": None,
+    }
+
+
+def test_probe_summary_passes_only_when_all_four_conditions_are_zero(tmp_path: Path) -> None:
+    design, block, directory, gate = _probe_block(tmp_path)
+    raw = directory / "raw"
+    (raw / f"{block.cells[0].run_id}.log").write_text(
+        "inodefence-cleanup-attempt {}\ninodefence-infra-reexecution {}\nok\n"
+    )
+    (raw / "x.calls.jsonl").write_text(
+        '{"timed_out": true}\n{"timed_out": false}\nnot json\n{"timed_out": true}\n'
+    )
+    summary = bench.summarize_probe(design, block, directory, gate, _clean_record(block))
+    assert summary["passed"] is True
+    assert summary["conditions"] == {
+        "cleanup_unknown": 0,
+        "residual_resources": 0,
+        "runner_failures": 0,
+        "start_failures": 0,
+    }
+    assert summary["report_only"]["calls_timeouts"] == 2
+    assert summary["report_only"]["cleanup_diagnostic_lines"] == 1
+    assert summary["report_only"]["infra_reexecutions"] == 1
+    assert summary["report_only"]["start_gate_waits_seconds"] == [0.0, 1.5]
+    assert (summary["schema"], summary["host"], summary["design_sha256"]) == (
+        bench.PROBE_SCHEMA,
+        "HOST1",
+        design.sha256,
+    )
+
+
+@pytest.mark.parametrize("failure", ["verdict", "marker", "residual", "start"])
+def test_probe_summary_fails_on_each_condition(tmp_path: Path, failure: str) -> None:
+    design, block, directory, gate = _probe_block(tmp_path)
+    record = _clean_record(block)
+    cell = block.cells[2].run_id
+    if failure == "verdict":
+        gate.mkdir()
+        start_gate.record_verdict(gate, cell, "U", "test")
+    elif failure == "marker":
+        (directory / "raw" / f"{cell}.log").write_text("INODEFENCE_CLEANUP_UNKNOWN: test\n")
+    elif failure == "residual":
+        record["residual_after_block"] = ["inodefence-local-runtime-x"]
+    else:
+        record["cells"] = [{"run_id": cell, "state": "not-run", "start_error": "OSError: x"}]
+    summary = bench.summarize_probe(design, block, directory, gate, record)
+    assert summary["passed"] is False
+    key = {
+        "verdict": "cleanup_unknown",
+        "marker": "cleanup_unknown",
+        "residual": "residual_resources",
+        "start": "start_failures",
+    }[failure]
+    assert summary["conditions"][key] == 1
+
+
+def test_probe_summary_after_an_exception_uses_incomplete_evidence(tmp_path: Path) -> None:
+    design, block, directory, gate = _probe_block(tmp_path)
+    assert bench.summarize_probe(design, block, directory, gate, None)["conditions"] == {
+        "cleanup_unknown": 0,
+        "residual_resources": None,
+        "runner_failures": None,
+        "start_failures": None,
+    }
+    (directory / bench.INCOMPLETE_BLOCK_FILE).write_text(
+        json.dumps(
+            {
+                "cell_records": [],
+                "failures": [{"where": "cell x", "type": "OSError"}],
+                "residual_resources": {"status": "unknown", "error": "x"},
+            }
+        )
+    )
+    summary = bench.summarize_probe(design, block, directory, gate, None)
+    assert summary["passed"] is False
+    assert summary["conditions"]["runner_failures"] == 1
+    assert summary["conditions"]["residual_resources"] is None
+
+
+def _live_probe(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, run_block: object) -> list[str]:
+    seen: list[str] = []
+
+    def fake_preflight(design: bench.Design, head: str, host: str | None) -> tuple[dict, list]:
+        seen.append(f"preflight {host}")
+        return {"docker_server": "29.8.0"}, []
+
+    monkeypatch.setattr(bench, "preflight", fake_preflight)
+    monkeypatch.setattr(bench, "run_block", run_block)
+    monkeypatch.setattr(bench.time, "sleep", lambda _s: None)
+    return seen
+
+
+def test_live_probe_writes_probe_json_and_opens_smoke(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "out"
+
+    def clean(design: bench.Design, block: bench.Block, directory: Path, *_a: object) -> dict:
+        return {**_clean_record(block), "stopped_reason": None}
+
+    seen = _live_probe(tmp_path, monkeypatch, clean)
+    args = ["--design", str(_v3_file(tmp_path)), "--output", str(output), "--host", "HOST1"]
+    live = ["--expected-head", "x", "--approval-ref", "test"]
+    assert bench.main([*args, "--stage", "probe", *live]) == 0
+    assert seen == ["preflight HOST1"]
+    probe = json.loads((output / "probe" / bench.PROBE_FILE).read_text())
+    assert probe["passed"] is True and probe["host"] == "HOST1"
+    preflight = json.loads((output / "probe" / "block-1-j4" / "preflight.json").read_text())
+    assert preflight["host"] == "HOST1"
+    design = bench.load_design(_v3_file(tmp_path))
+    assert bench.stage_gate_problem(design, "smoke", output, "HOST1") is None
+    assert "is for host HOST1" in (bench.stage_gate_problem(design, "smoke", output, "HOST2") or "")
+
+
+def test_live_probe_that_raises_still_writes_a_failed_probe_json(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    output = tmp_path / "out"
+
+    def broken(*_a: object) -> dict:
+        raise OSError("injected block failure")
+
+    _live_probe(tmp_path, monkeypatch, broken)
+    args = ["--design", str(_v3_file(tmp_path)), "--output", str(output), "--host", "HOST1"]
+    with pytest.raises(OSError, match="injected block failure"):
+        bench.main([*args, "--stage", "probe", "--expected-head", "x", "--approval-ref", "t"])
+    probe = json.loads((output / "probe" / bench.PROBE_FILE).read_text())
+    assert probe["passed"] is False

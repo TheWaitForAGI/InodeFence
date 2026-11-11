@@ -76,6 +76,10 @@ FENCE_CLOSE = "```"
 ARM_PREFIX = "arm."
 STAGE_PREFIX = "stage."
 SMOKE_STAGE = "smoke"
+#: Design v3 engineering probe: unregistered, not a decision input, before smoke.
+PROBE_STAGE = "probe"
+PROBE_FILE = "probe.json"
+PROBE_SCHEMA = "inodefence-h1-probe-v1"
 ARM_CONFIG: Mapping[str, tuple[RdsArm, RVariant]] = {
     "R-walk": (RdsArm.R, RVariant.WALK),
     "R-restart": (RdsArm.R, RVariant.SEED_RESTART),
@@ -444,11 +448,26 @@ def planned_cells(design: Design, stage: str, host: str | None = None) -> tuple[
 
     Both v3 hosts run the same cells in the same order; only the run-id prefix differs.
     """
+    count = len(design.arms)
+    prefix = run_prefix(design, host)
+    if stage == PROBE_STAGE:
+        # One cell per probe seed, arms in rotation (v3 section 5: 6200 R-restart, 6201 D, ...).
+        if design.probe is None:
+            raise DesignError(f"{design.design_id} has no probe stage")
+        return tuple(
+            Cell(
+                MODE,
+                design.target_version,
+                design.arms[position % count],
+                seed,
+                design.probe.budget,
+                run_prefix=prefix,
+            )
+            for position, seed in enumerate(design.probe.seeds)
+        )
     smoke = stage == SMOKE_STAGE
     seeds = (design.smoke_seed,) if smoke else design.seeds
     budget = design.smoke_budget if smoke else design.budget
-    count = len(design.arms)
-    prefix = run_prefix(design, host)
     return tuple(
         Cell(
             MODE,
@@ -464,6 +483,11 @@ def planned_cells(design: Design, stage: str, host: str | None = None) -> tuple[
 
 
 def planned_blocks(design: Design, stage: str, host: str | None = None) -> tuple[Block, ...]:
+    if stage == PROBE_STAGE:
+        if design.probe is None:
+            raise DesignError(f"{design.design_id} has no probe stage")
+        # One block; the crossed jobs order applies to measured stages only.
+        return (Block(PROBE_STAGE, 1, design.probe.jobs, planned_cells(design, stage, host), host),)
     if stage not in design.stages:
         raise DesignError(f"unknown stage {stage!r}; design has {sorted(design.stages)}")
     cells = planned_cells(design, stage, host)
@@ -1062,6 +1086,108 @@ def planned_stop(record: Mapping[str, Any]) -> bool:
     )
 
 
+def probe_gate_problem(design: Design, output: Path, host: str | None) -> str | None:
+    """A v3 smoke starts only after this design's probe passed on this host."""
+    path = output / PROBE_STAGE / PROBE_FILE
+    if not path.is_file():
+        return f"no {PROBE_STAGE}/{PROBE_FILE}; run --stage {PROBE_STAGE} first"
+    try:
+        probe = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as error:
+        return f"{PROBE_FILE} unreadable: {error}"
+    if probe.get("schema") != PROBE_SCHEMA or probe.get("design_sha256") != design.sha256:
+        return f"{PROBE_FILE} was not written for this design"
+    if probe.get("host") != host:
+        return f"{PROBE_FILE} is for host {probe.get('host')}, not {host}"
+    if probe.get("passed") is not True:
+        return f"the probe did not pass: {probe.get('conditions')}"
+    return None
+
+
+def _count_lines(paths: Sequence[Path], match: Callable[[str], bool]) -> int:
+    total = 0
+    for path in paths:
+        with path.open(encoding="utf-8", errors="replace") as stream:
+            total += sum(1 for line in stream if match(line))
+    return total
+
+
+def _timed_out_call(line: str) -> bool:
+    try:
+        return bool(json.loads(line).get("timed_out"))
+    except ValueError:
+        return False
+
+
+def summarize_probe(
+    design: Design,
+    block: Block,
+    directory: Path,
+    gate_directory: Path,
+    record: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    """The probe's fixed pass conditions and its report-only counts (v3 section 5).
+
+    Reads block records, gate verdicts, cell logs and host call logs only; never a
+    campaign report. ``record`` is ``None`` when the block raised; the incomplete
+    evidence is used instead and an unknown count fails the probe.
+    """
+    evidence = record
+    if evidence is None and (directory / INCOMPLETE_BLOCK_FILE).is_file():
+        evidence = json.loads((directory / INCOMPLETE_BLOCK_FILE).read_text(encoding="utf-8"))
+    raw = directory / "raw"
+    logs = sorted(raw.glob("*.log")) if raw.is_dir() else []
+    calls = sorted(raw.glob("*.calls.jsonl")) if raw.is_dir() else []
+    gate = StartGate(gate_directory, check_filesystem=False)
+    unknown_cells = set()
+    for cell in block.cells:
+        try:
+            verdict = gate.verdict(cell.run_id)
+        except Exception:
+            verdict = ("U", "unreadable")
+        if verdict is not None and verdict[0] == "U":
+            unknown_cells.add(cell.run_id)
+    for log in logs:
+        if _count_lines([log], lambda line: "INODEFENCE_CLEANUP_UNKNOWN:" in line):
+            unknown_cells.add(log.name.removesuffix(".log"))
+    conditions: dict[str, int | None] = {"cleanup_unknown": len(unknown_cells)}
+    cell_records: list[Mapping[str, Any]] = []
+    if evidence is None:
+        conditions.update(residual_resources=None, runner_failures=None, start_failures=None)
+    else:
+        cell_records = evidence.get("cells") or evidence.get("cell_records") or []
+        residual = evidence.get("residual_after_block")
+        if record is None:
+            status = evidence.get("residual_resources") or {}
+            residual = status.get("resources") if status.get("status") == "observed" else None
+        conditions["residual_resources"] = None if residual is None else len(residual)
+        conditions["runner_failures"] = len(evidence.get("failures") or [])
+        conditions["start_failures"] = sum(1 for cell in cell_records if cell.get("start_error"))
+    return {
+        "schema": PROBE_SCHEMA,
+        "label": list(LABELS),
+        "design_id": design.design_id,
+        "design_sha256": design.sha256,
+        "host": block.host,
+        "block": block.name,
+        "passed": all(value == 0 for value in conditions.values()),
+        "conditions": conditions,
+        "report_only": {
+            "calls_timeouts": _count_lines(calls, _timed_out_call),
+            "cleanup_diagnostic_lines": _count_lines(
+                logs, lambda line: line.startswith("inodefence-cleanup-")
+            ),
+            "infra_reexecutions": _count_lines(
+                logs, lambda line: "inodefence-infra-reexecution" in line
+            ),
+            "start_gate_waits_seconds": (record or {}).get("start_gate_waits_seconds"),
+            "not_run_cells": sum(1 for cell in cell_records if cell.get("state") == "not-run"),
+            "stopped_reason": (evidence or {}).get("stopped_reason"),
+        },
+        "written_at": datetime.now(UTC).isoformat(),
+    }
+
+
 def stage_gate_problem(
     design: Design, stage: str, output: Path, host: str | None = None
 ) -> str | None:
@@ -1070,8 +1196,10 @@ def stage_gate_problem(
     Smoke must finish without a stop before the first measured stage. A later stage needs the
     analysis report of this design to say the previous stage passed and nothing halted.
     """
-    if stage == SMOKE_STAGE:
+    if stage == PROBE_STAGE:
         return None
+    if stage == SMOKE_STAGE:
+        return probe_gate_problem(design, output, host) if design.is_v3 else None
     order = (SMOKE_STAGE, *measured_stages(design))
     previous = order[order.index(stage) - 1]
     if previous == SMOKE_STAGE:
@@ -1211,15 +1339,34 @@ def main(argv: Sequence[str] | None = None) -> int:
             + "\n",
             encoding="utf-8",
         )
-        record = run_block(
-            design,
-            block,
-            directory,
-            bash,
-            args.output / START_GATE_DIR,
-            guards.Recorders(ping_socket=args.ping_socket, desktop_log=args.desktop_log),
-        )
+        gate_directory = args.output / START_GATE_DIR
+        probe = block.stage == PROBE_STAGE
+        try:
+            record = run_block(
+                design,
+                block,
+                directory,
+                bash,
+                gate_directory,
+                guards.Recorders(ping_socket=args.ping_socket, desktop_log=args.desktop_log),
+            )
+        except BaseException as error:
+            if probe:
+                try:
+                    _publish_json(
+                        directory.parent / PROBE_FILE,
+                        summarize_probe(design, block, directory, gate_directory, None),
+                    )
+                except Exception as summary_error:
+                    error.add_note(f"probe summary not written: {summary_error}")
+            raise
         print(f"{block.name}: stopped={record['stopped_reason']}")
+        if probe:
+            summary = summarize_probe(design, block, directory, gate_directory, record)
+            _publish_json(directory.parent / PROBE_FILE, summary)
+            print(f"probe: passed={summary['passed']} {summary['conditions']}")
+            if not summary["passed"]:
+                return 1
         if record["stopped_reason"]:
             return 1
         time.sleep(design.cooldown_seconds)

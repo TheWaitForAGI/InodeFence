@@ -1,0 +1,20 @@
+2026-11-11T14:35:24+09:00
+{
+ "target_s": 600.0,
+ "stopwatch_freq": 10000000,
+ "d_stopwatch_s": 600.0051381000012,
+ "d_mono_s": 600.0051242040004,
+ "d_mono_raw_s": 600.005107637,
+ "d_realtime_s": 600.0051245689392,
+ "realtime_rate_vs_sw_ppm": -0.0225515768281781,
+ "mono_rate_vs_sw_ppm": -0.023159803075323282,
+ "raw_rate_vs_sw_ppm": -0.05077123388375071,
+ "bracket_width_s": [
+  7.483199988200795e-05,
+  0.0001139839996540104
+ ],
+ "uncertainty_ppm": 0.314690637706754
+}
+rc=0
+2026-11-11T14:45:25+09:00
+{'rc': 0, 'offset': 0, 'freq_raw': -1804, 'freq_ppm': -0.02752685546875, 'maxerror': 4015, 'esterror': 7, 'status': 8192, 'constant': 2, 'precision': 1, 'tolerance': 32768000, 'tick': 10000}

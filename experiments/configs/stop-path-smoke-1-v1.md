@@ -88,6 +88,7 @@ execution_deadline = TBD-FREEZE
      --cause-logged-at <원인 LOG 줄의 epoch 초> --out <S>/judgement-1.json \
      [--scenario-a-snapshots <S>/snaps-a]  # 시나리오 A(a1, a-refused, a2, a-final)는 합격에 넣지 않는다
    ```
-   스냅샷과 판정 출력에는 키·개수·해시만 있고 oracle 값은 없다.
+   스냅샷과 판정 출력에는 키·개수·해시만 있고 oracle 값은 없다. 각 호출의 stderr는 `2> <S>/stderr-<stage>.txt`로 받아 스냅샷에 넘긴다.
+   시나리오 A는 출력·manifest·스냅샷을 모두 따로 둔다(같은 `--manifest-out`을 쓰면 B의 raw manifest를 덮어쓴다). 공통 인자에서 `--output <S>/out-a --manifest-out <S>/raw-manifest-a.sha256 --manifest-host host1-spsmoke-a`로 바꾼다. 주입 `INODEFENCE_DOCKER_CONTEXT=does-not-exist`는 첫 호출(a1)의 런처 환경에만 둔다. 거부 확인(a-refused), ack 뒤 재개(a2), 마지막 호출(a-final)에는 두지 않는다. 스냅샷은 `snapshot --output <S>/out-a --snapshots <S>/snaps-a --stage <a1|a-refused|a2|a-final>`로 각 호출 직후에 남긴다.
    시나리오 A(별도 출력 폴더): 지웅의 재개 승인은 1회다. 그 참조 `D042-smoke-1-A-<YYYYMMDD>-<HHMM>` 하나로 게이트 판정 U인 셀을 **모두** ack한 뒤(`PYTHONPATH=src python src/inodefence/execution/start_gate.py ack <S>/out-a/start-gate <cell> "approval=<참조>; checked_at=…; by=…; residual=<읽기 전용 잔존 확인 → 결과>; reason=…"`, U 셀마다), `--resume-after-stop <참조>`로 재개한다.
 5. **원장:** 실행 뒤 stop-path-smoke-v1 §7의 행 초안을 실제 셀 수로 채워 1행씩 추가한다.

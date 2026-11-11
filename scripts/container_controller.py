@@ -35,6 +35,7 @@ from inodefence.effect_demo import (
 )
 from inodefence.evaluation.abort_classification import classify_abort_reason
 from inodefence.execution import ContainerExecutionBackend, StdioDockerClient
+from inodefence.execution.stall_recovery import ObservedDockerClient, StallRecovery
 
 
 def demo_steps_path(evidence: Path) -> Path:
@@ -47,13 +48,32 @@ def _announce(text: str) -> None:
     print(text, file=sys.stderr, flush=True)
 
 
+def apply_aborted_infra_reexecutions(
+    report: dict[str, object], stall_recovery: StallRecovery | None
+) -> None:
+    """Keep the discarded attempts and the re-execution count in an abort stub.
+
+    Absent when there was no stall, so a stall-free abort stub is unchanged.
+    """
+    if stall_recovery is None or not stall_recovery.events:
+        return
+    aborted = report["aborted"]
+    assert isinstance(aborted, dict)
+    aborted["infra_reexecution_count"] = stall_recovery.reexecution_count
+    report["infra_reexecutions"] = list(stall_recovery.events)
+
+
 def _announce_demo_start(mode: str, options: dict) -> None:
     shown = " ".join(f"{key}={getattr(value, 'value', value)}" for key, value in options.items())
     _announce(f"{mode}: {shown or 'in-code defaults'}")
 
 
 def run_native_effect_demo(
-    backend: ContainerExecutionBackend, image: str, evidence: Path, args: argparse.Namespace
+    backend: ContainerExecutionBackend,
+    image: str,
+    evidence: Path,
+    args: argparse.Namespace,
+    stall_recovery: StallRecovery | None = None,
 ) -> int:
     """Feedback loop on real node-tar; an infrastructure abort still leaves evidence.
 
@@ -79,6 +99,7 @@ def run_native_effect_demo(
                 image,
                 step_sink=persist_step,
                 sentinel_set=sentinel_set_from_args(args),
+                stall_recovery=stall_recovery,
                 **options,
             )
             _announce(render_effect_campaign_summary(report))
@@ -97,6 +118,7 @@ def run_native_effect_demo(
                     "case_shape": error.case_shape,
                 },
             }
+            apply_aborted_infra_reexecutions(report, stall_recovery)
             print(f"effect-demo aborted: {error}", file=sys.stderr)
             returncode = 1
     with evidence.open("x", encoding="ascii") as stream:
@@ -107,7 +129,11 @@ def run_native_effect_demo(
 
 
 def run_native_historical_demo(
-    backend: ContainerExecutionBackend, image: str, evidence: Path, args: argparse.Namespace
+    backend: ContainerExecutionBackend,
+    image: str,
+    evidence: Path,
+    args: argparse.Namespace,
+    stall_recovery: StallRecovery | None = None,
 ) -> int:
     """State-aware feedback loop on a frozen historical node-tar; abort still leaves evidence.
 
@@ -135,6 +161,7 @@ def run_native_historical_demo(
                 args.tar_version,
                 step_sink=persist_step,
                 sentinel_set=sentinel_set_from_args(args),
+                stall_recovery=stall_recovery,
                 **options,
             )
             _announce(render_effect_campaign_summary(report))
@@ -155,6 +182,7 @@ def run_native_historical_demo(
                     "case_shape": error.case_shape,
                 },
             }
+            apply_aborted_infra_reexecutions(report, stall_recovery)
             print(f"effect-demo-historical aborted: {error}", file=sys.stderr)
             returncode = 1
     with evidence.open("x", encoding="ascii") as stream:
@@ -580,13 +608,17 @@ def main() -> int:
             print(verified.stdout, end="")
             print(verified.stderr, end="", file=sys.stderr)
             return verified.returncode
+        if args.mode in ("effect-demo", HISTORICAL_DEMO_MODE):
+            # Node-tar effect campaigns re-execute a case after a Docker stall; the
+            # journaling client passes every call through unchanged.
+            observed = ObservedDockerClient(client)
+            backend = ContainerExecutionBackend(observed, args.controller, args.volume, args.owner)
+            recovery = StallRecovery(observed, args.owner)
+            assert args.evidence is not None
+            if args.mode == "effect-demo":
+                return run_native_effect_demo(backend, args.image[0], args.evidence, args, recovery)
+            return run_native_historical_demo(backend, args.image[0], args.evidence, args, recovery)
         backend = ContainerExecutionBackend(client, args.controller, args.volume, args.owner)
-        if args.mode == "effect-demo":
-            assert args.evidence is not None
-            return run_native_effect_demo(backend, args.image[0], args.evidence, args)
-        if args.mode == HISTORICAL_DEMO_MODE:
-            assert args.evidence is not None
-            return run_native_historical_demo(backend, args.image[0], args.evidence, args)
         if args.mode == DECOMPRESS_CAMPAIGN_MODE:
             assert args.evidence is not None
             return run_native_decompress_campaign(backend, args.image[0], args.evidence, args)

@@ -228,6 +228,8 @@ class Block:
     index: int
     jobs: int
     cells: tuple[Cell, ...]
+    #: v3 host id; ``None`` for a v2 design (and for a v3 plan printed without --host).
+    host: str | None = None
 
     @property
     def name(self) -> str:
@@ -429,25 +431,45 @@ def load_design(path: Path) -> Design:
     return parse_design(path.read_text(encoding="utf-8"))
 
 
-def planned_cells(design: Design, stage: str) -> tuple[Cell, ...]:
-    """Seed blocks with the arm order rotated per seed; identical for every block of a stage."""
+def run_prefix(design: Design, host: str | None) -> str:
+    """The run-id prefix of ``host`` (v3); empty for v2 or without a host."""
+    if not design.is_v3 or host is None:
+        return ""
+    design.engine_for(host)  # refuses an unknown host
+    return design.hosts[host].run_prefix
+
+
+def planned_cells(design: Design, stage: str, host: str | None = None) -> tuple[Cell, ...]:
+    """Seed blocks with the arm order rotated per seed; identical for every block of a stage.
+
+    Both v3 hosts run the same cells in the same order; only the run-id prefix differs.
+    """
     smoke = stage == SMOKE_STAGE
     seeds = (design.smoke_seed,) if smoke else design.seeds
     budget = design.smoke_budget if smoke else design.budget
     count = len(design.arms)
+    prefix = run_prefix(design, host)
     return tuple(
-        Cell(MODE, design.target_version, design.arms[(position + offset) % count], seed, budget)
+        Cell(
+            MODE,
+            design.target_version,
+            design.arms[(position + offset) % count],
+            seed,
+            budget,
+            run_prefix=prefix,
+        )
         for position, seed in enumerate(seeds)
         for offset in range(count)
     )
 
 
-def planned_blocks(design: Design, stage: str) -> tuple[Block, ...]:
+def planned_blocks(design: Design, stage: str, host: str | None = None) -> tuple[Block, ...]:
     if stage not in design.stages:
         raise DesignError(f"unknown stage {stage!r}; design has {sorted(design.stages)}")
-    cells = planned_cells(design, stage)
+    cells = planned_cells(design, stage, host)
     return tuple(
-        Block(stage, index, jobs, cells) for index, jobs in enumerate(design.stages[stage], start=1)
+        Block(stage, index, jobs, cells, host)
+        for index, jobs in enumerate(design.stages[stage], start=1)
     )
 
 
@@ -477,10 +499,12 @@ def residual_resources() -> list[str]:
     return guards.residual_resources(_docker)
 
 
-def preflight(design: Design, expected_head: str) -> tuple[dict[str, Any], list[str]]:
-    """Facts the run stands on, and the problems that refuse it."""
+def preflight(
+    design: Design, expected_head: str, host: str | None = None
+) -> tuple[dict[str, Any], list[str]]:
+    """Facts the run stands on, and the problems that refuse it (v3: on ``host``)."""
     source = capture_source()
-    problems: list[str] = []
+    problems: list[str] = list(unresolved_values(design, host))
     if source.revision != expected_head:
         problems.append(f"checkout HEAD {source.revision} != expected {expected_head}")
     if source.dirty is not False:
@@ -501,7 +525,7 @@ def preflight(design: Design, expected_head: str) -> tuple[dict[str, Any], list[
     image = f"inodefence-node-tar-effect:{design.target_version}"
     # Cells run with SKIP_BUILD=1, so the local images must exist before the first cell.
     docker_facts, docker_problems = guards.docker_preflight(
-        engine=design.docker_engine,
+        engine=design.engine_for(host),
         images={image: design.image_digest, **dict.fromkeys(LOCAL_IMAGES)},
         docker=_docker,
         residual=residual_resources,
@@ -790,6 +814,8 @@ class BlockRun:
             "stage": self.block.stage,
             "index": self.block.index,
             "jobs": self.block.jobs,
+            "host": self.block.host,
+            "run_prefix": run_prefix(self.design, self.block.host) or None,
             "started": started,
             "ended": ended,
             "stopped_reason": self.stopped_reason,
@@ -970,6 +996,8 @@ def run_block(
                 "block": block.name,
                 "index": block.index,
                 "jobs": block.jobs,
+                "host": block.host,
+                "run_prefix": run_prefix(design, block.host) or None,
                 "execution_sha": revision,
                 "stopped_reason": run.stopped_reason,
                 "stop_kind": run.stop_kind,
@@ -1029,7 +1057,9 @@ def planned_stop(record: Mapping[str, Any]) -> bool:
     )
 
 
-def stage_gate_problem(design: Design, stage: str, output: Path) -> str | None:
+def stage_gate_problem(
+    design: Design, stage: str, output: Path, host: str | None = None
+) -> str | None:
     """Stages run in design order. A measured stage follows only a passed mechanical decision.
 
     Smoke must finish without a stop before the first measured stage. A later stage needs the
@@ -1040,7 +1070,7 @@ def stage_gate_problem(design: Design, stage: str, output: Path) -> str | None:
     order = (SMOKE_STAGE, *measured_stages(design))
     previous = order[order.index(stage) - 1]
     if previous == SMOKE_STAGE:
-        states = [stage_state(output, block) for block in planned_blocks(design, previous)]
+        states = [stage_state(output, block) for block in planned_blocks(design, previous, host)]
         if any(state != "clean" for state in states):
             return f"stage {previous} is not clean ({states}); {stage} may not start"
         return None
@@ -1057,14 +1087,14 @@ def stage_gate_problem(design: Design, stage: str, output: Path) -> str | None:
     if not verdict.get("passed"):
         return f"stage {previous} did not pass the decision rule; {stage} may not start"
     for earlier in order[: order.index(stage)]:
-        states = [stage_state(output, block) for block in planned_blocks(design, earlier)]
+        states = [stage_state(output, block) for block in planned_blocks(design, earlier, host)]
         if any(state != "clean" for state in states):
             return f"stage {earlier} is not clean ({states}); {stage} may not start"
     return None
 
 
-def print_plan(design: Design, stage: str) -> None:
-    blocks = planned_blocks(design, stage)
+def print_plan(design: Design, stage: str, host: str | None = None) -> None:
+    blocks = planned_blocks(design, stage, host)
     cells = blocks[0].cells
     print(
         f"{design.design_id} sha256={design.sha256[:12]}… stage={stage} "
@@ -1076,9 +1106,9 @@ def print_plan(design: Design, stage: str) -> None:
         print(f"  {cell.run_id}: search={cell.arm.search}")
 
 
-def print_status(design: Design, stage: str, output: Path) -> None:
+def print_status(design: Design, stage: str, output: Path, host: str | None = None) -> None:
     """Schedule state only: reads block records, never a cell file."""
-    for block in planned_blocks(design, stage):
+    for block in planned_blocks(design, stage, host):
         record_path = output / block.stage / block.name / BLOCK_FILE
         state = stage_state(output, block)
         detail = ""
@@ -1099,6 +1129,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--stage", required=True, help="smoke, then the design's measured stages")
     parser.add_argument("--expected-head", help="commit this checkout must be at (live run)")
     parser.add_argument("--approval-ref", help="who approved this stage, recorded (live run)")
+    parser.add_argument(
+        "--host", help="v3 design: the host id this machine runs as (engine and run-id prefix)"
+    )
     parser.add_argument("--dry-run", action="store_true", help="print the plan; no Docker")
     parser.add_argument("--status", action="store_true", help="schedule state only; no outcomes")
     parser.add_argument(
@@ -1114,22 +1147,28 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     design = load_design(args.design)
+    if design.is_v3 and args.host is None:
+        parser.error(f"{design.design_id} has hosts {sorted(design.hosts)}: --host is required")
+    if not design.is_v3 and args.host is not None:
+        parser.error(f"{design.design_id} has no hosts: --host does not apply")
     try:
-        blocks = planned_blocks(design, args.stage)
+        blocks = planned_blocks(design, args.stage, args.host)
     except DesignError as error:
         parser.error(str(error))
     if args.dry_run:
-        print_plan(design, args.stage)
+        print_plan(design, args.stage, args.host)
+        for item in unresolved_values(design, args.host):
+            print(f"note: a live run would refuse: {item}")
         return 0
     if args.status:
-        print_status(design, args.stage, args.output)
+        print_status(design, args.stage, args.output, args.host)
         return 0
     if not args.expected_head or not args.approval_ref:
         parser.error("a live run needs --expected-head and --approval-ref")
     repo_root = Path(__file__).resolve().parents[1]
     problem = output_problem(args.output, repo_root, Path.home())
     if problem is None:
-        problem = stage_gate_problem(design, args.stage, args.output)
+        problem = stage_gate_problem(design, args.stage, args.output, args.host)
     if problem is not None:
         print(f"refusing to run: {problem}", file=sys.stderr)
         return 2
@@ -1143,7 +1182,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     for block, state in zip(blocks, states, strict=True):
         if state == "clean":
             continue
-        facts, problems = preflight(design, args.expected_head)
+        facts, problems = preflight(design, args.expected_head, args.host)
         if problems:
             print(f"refusing to start {block.name}:", file=sys.stderr)
             for item in problems:
@@ -1157,6 +1196,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     "label": list(LABELS),
                     "design_sha256": design.sha256,
                     "approval_ref": args.approval_ref,
+                    "host": args.host,
                     "preflight": facts,
                     "written_at": datetime.now(UTC).isoformat(),
                 },

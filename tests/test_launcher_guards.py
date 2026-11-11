@@ -267,3 +267,22 @@ def test_tail_log_copies_appends_and_survives_rotation(tmp_path: Path) -> None:
         b"one\ntwo\n\n[inodefence-log-tail: source rotated or truncated]\nthree\nfour\n"
     )
     assert source.read_bytes() == b"four\n"  # read-only on the source
+
+
+def test_recorders_are_off_by_default_and_record_when_enabled(tmp_path: Path) -> None:
+    stop = threading.Event()
+    assert guards.start_recorders(tmp_path, guards.Recorders(), stop) == []
+    log = tmp_path / "source.log"
+    log.write_bytes(b"line\n")
+    stop.set()  # each recorder makes one pass, then returns
+    threads = guards.start_recorders(
+        tmp_path,
+        guards.Recorders(ping_socket=tmp_path / "absent.sock", desktop_log=log),
+        stop,
+    )
+    for thread in threads:
+        thread.join(30)
+    assert len(threads) == 2
+    (ping,) = [json.loads(line) for line in (tmp_path / "ping.jsonl").read_text().splitlines()]
+    assert ping["ok"] is False
+    assert (tmp_path / "desktop.log").read_bytes() == b"line\n"

@@ -459,6 +459,8 @@ class BlockRun:
         # Cross-process start gate (src/inodefence/execution/start_gate.py).
         # ``run_block`` always sets one; unit tests with fake runners may not.
         self.gate: StartGate | None = None
+        # Record-only stall instruments for this block (off by default).
+        self.recorders = guards.Recorders()
 
     def _stop_locked(self, reason: str, kind: str) -> None:
         if self.stopped_reason is None:
@@ -702,12 +704,7 @@ def _publish_json(path: Path, value: Mapping[str, Any]) -> None:
 
 
 def _run_block(
-    design: Design,
-    block: Block,
-    directory: Path,
-    bash: str,
-    run: BlockRun,
-    recorders: guards.Recorders | None = None,
+    design: Design, block: Block, directory: Path, bash: str, run: BlockRun
 ) -> dict[str, Any]:
     def run_cell(
         cell: Cell, raw: Path, env: dict[str, str], launch: Callable[..., Any]
@@ -741,7 +738,7 @@ def _run_block(
     )
     events = _start_events(host / "events.jsonl")
     # Record-only stall instruments (off unless asked for); they never stop a block.
-    recorder_threads = guards.start_recorders(host, recorders or guards.Recorders(), stop_sampling)
+    recorder_threads = guards.start_recorders(host, run.recorders, stop_sampling)
     try:
         sampler.start()
         record = run.execute()
@@ -808,12 +805,13 @@ def run_block(
 
     run = BlockRun(design, block, directory, unavailable)
     run.require_logs = True
+    run.recorders = recorders or guards.Recorders()
     try:
         # main() passes one gate per output root, shared by every block: an
         # unverified cleanup in any earlier block keeps later blocks from
         # starting until someone acknowledges it (start_gate.py ack).
         run.gate = StartGate(gate_directory or directory / START_GATE_DIR)
-        return _run_block(design, block, directory, bash, run, recorders)
+        return _run_block(design, block, directory, bash, run)
     except BaseException as error:
         observed_at = datetime.now(UTC).isoformat()
         run.request_stop(f"block failed: {type(error).__name__}: {error}", STOP_EXTERNAL)

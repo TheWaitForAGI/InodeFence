@@ -55,6 +55,13 @@ Popen한다. `U`, 판정 없는 종료(자식에 상속된 수명 잠금 해제)
 확인한 뒤 `python src/inodefence/execution/start_gate.py ack <dir> <cell> "<확인 내용>"`으로
 기록을 옆으로 옮겨야 다시 시작할 수 있다. 남은 창은 PR #334 본문에 있다.
 
+벤치마크 드라이버와 본실험 런처가 함께 쓰는 호스트 쪽 보호는 `scripts/launcher_guards.py`에 있다:
+docker preflight(engine·이미지 id·실행 중 컨테이너·잔존 리소스), 블록 뒤 잔존 리소스 확인,
+러너가 실패한 시작된 자식의 terminate→kill, 증거 1회 게시, 기록 전용 호스트 샘플러와 docker
+events. 정지 정책은 호출자가 주입한다. 기록 전용 정지 계측 두 가지(`--ping-socket`: 1 Hz
+`GET /_ping` → `host/ping.jsonl`, `--desktop-log`: 읽기 전용 연속 복사 → `host/desktop.log`)는
+기본으로 꺼져 있고, 켜도 블록을 멈추지 않는다.
+
 H1의 설계된 수준 stop과 외부 stop은 `block.json`에 `state=stopped`, `finished=false`로
 기록하고 기존 §6.3의 수준 배제·외부 단계 무효 판정에 사용한다. runner·기록 경로의 예외는 별도
 `block.incomplete.json` (`inodefence-h1-incomplete-v1`, `finished=false`)을 게시한다. 최초 stop,

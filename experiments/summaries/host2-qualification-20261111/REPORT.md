@@ -350,3 +350,53 @@ The elevated script started at 15:18 (`if_host2_elevated.ps1.txt` = `if_host2_pa
   - **`AutoStart=False`:** Docker Desktop does not start at Windows sign-in. If Windows restarts during an unattended run, the engine does not come back on its own. Report only. Changing it is an experiment-condition question (ORCH/Jiwoong).
 - ORCH (17:41): Docker Desktop settings changes (auto-update off and similar) go to Jiwoong for approval first. Only values are recorded until then.
 - The HOST1 sshd password-auth `linux` login from HOST2's Tailscale address at 17:40:20–17:40:36 KST was **not made by this W2 session**. Every W2 ssh/rsync call used `-i ~/.ssh/inodefence_transfer -o BatchMode=yes` (password prompts disabled): 6 key logins at 17:37:54–17:38:50 (`transfer_run.txt`). At 17:39–17:40 W2 was running `docker load` and the volume test only. HOST1 access stays limited to the transfer key.
+
+## 29. W32Time post-sync WSL clock check: final verdict (18:19–18:30 KST)
+
+**Method deviation (disclosed):** the planned monitor `post_w32.sh` (`post_w32.sh.txt`) waited for the word `AFTER` in the W32Time log with `grep`. The log is UTF-16, so the wait never ended and **no 1-minute series was recorded for 17:38–18:19** (`w32time_post_waiter.txt` shows only the waiting line). W2 found this at 18:19, stopped it, and measured directly (`w32time_post_check.txt`, scripts `tickpoll.py.txt`, `clockbracket2.py.txt`, `tickmon3.py.txt`).
+
+| Criterion (fixed before apply) | Measured | Result |
+| --- | --- | --- |
+| (a) Windows↔NTP \|offset\| ≤ 0.5 s | stripchart −0.0001 / +0.0017 / +0.0003 s right after the 17:38:08 sync (§27). WSL SNTP at 18:29 plus WSL−Windows −0.065 s gives Windows about 0.024 s behind NTP | **PASS** |
+| (b) WSL REALTIME − WinUTC converges to ≤ 0.5 s within 30 min | Before −0.198 s (17:25). Windows stepped about +1.62 s at 17:38:08. At 18:19:31–32 (sync +41 min) −0.067/−0.063/−0.063 s; at 18:29:52 −0.071/−0.063/−0.065 s (each bracket about 0.16 s). Without convergence WSL would sit at about −1.8 s, so WSL followed the step | **PASS on the value (≤ 0.5 s at +41 min); "within 30 min" not directly observed (UNKNOWN), because the series is missing** |
+| (c) one 600 s bracket, \|MONO\| ≤ 500 ppm and tick 10000 | 18:19:32–18:29:52: MONO +0.035 ppm, REALTIME +0.037 ppm, RAW −0.060 ppm (±0.65 ppm). 62 adjtimex polls at 10 s during the bracket: tick ∈ {10000}, freq −0.30 … +0.65 ppm. adjtimex tick 10000 at start and end. timesyncd inactive/disabled | **PASS** |
+
+SNTP remeasure (same script, `sntp_offset_post_w32time_*.txt`): time.windows.com **+0.0886 s** ±0.0070 (5/5 answered), pool.ntp.org **+0.0898 s** ±0.0075 (5/5). Before the sync both were +1.57 s (§20). Against HOST1's 17:26 values (−0.52/−0.73 s, timesyncd running and tick 10398) the difference is about 0.6–0.8 s. HOST1 has applied the same clock measure since then, so remeasure both hosts at the same time.
+
+Observation (risk): `w32tm /query /status` at 18:29 still shows leap 3 (unsynchronized), stratum 0, root dispersion 9.398 s, last sync **17:38:08** and poll interval 1024 s. No further successful sync has been recorded in 50 minutes (about 3 poll intervals). Earlier stripcharts had intermittent `0x800705B4` timeouts to time.windows.com. If W32Time does not keep syncing, Windows (and WSL with it) will drift again. Recheck `w32tm /query /status` (last sync time) and SNTP before the qualification run. Adding a second peer (for example pool.ntp.org) is a configuration change: decide it with ORCH/Jiwoong first. Not applied.
+
+## 30. HOST2-side information about the 17:40 KST password-auth login to HOST1
+
+HOST1 side (ORCH): 17:40:20–17:40:36 KST, source 100.100.95.17:56661 (HOST2), user `linux`, password auth. Jiwoong confirmed it was "tried together with a teammate", so it is closed on the HOST1 side. HOST2 traces (read-only, facts only):
+
+- Windows PowerShell (PSReadLine) interactive history `ConsoleHost_history.txt` (last written 17:40:45 KST) has the entry `ssh -o ConnectTimeout=5 -p 2222 linux@100.69.212.56`, followed by `tailscale ping 100.69.212.56` and `Test-NetConnection 100.69.212.56 -Port 2222`. The history file has no timestamps per line.
+- The Windows user's `%USERPROFILE%\.ssh\known_hosts` was modified at **17:40:21.16 KST** (`known_hosts.old` 17:39:54). This matches the HOST1 login start (17:40:20), so the connection came from the Windows OpenSSH client in an interactive PowerShell window. It did not come from WSL. W2's WSL `~/.ssh/known_hosts` is unchanged (2026-09-21), and W2 used a separate scratch known_hosts file with `BatchMode=yes`.
+- Nothing else is recorded on the HOST2 side (the Windows OpenSSH client keeps no log).
+
+## 31. #333 status table (for the PR description; W2 cannot edit the PR: no `gh`, no API token, GitHub MCP failed to connect)
+
+**Qualification run: NOT RUN. Waiting for the execution SHA (ORCH, after Code Freeze).** No smoke, qualification or main-run work has been started.
+
+| Item | Status | Evidence |
+| --- | --- | --- |
+| Qualification run (12 campaigns) / launcher smoke (6 cells) | **NOT RUN**: execution SHA pending | §17, §19 |
+| WSL memory (20 GB cap, 18 GiB available) | PASS | §2 |
+| Docker CPU / disk | PASS (capacity) | §2, §19 |
+| Engine 29.9.3 (option B), Desktop 4.99.0, WSL 3.0.5.0 | PASS (equal to the HOST2 recorded values) | §19 |
+| Clock confirmation test (2 × 600 s, tick 10000, 2 h REALTIME drift) | PASS | §23 |
+| W32Time (a) Windows↔NTP ≤ 0.5 s | PASS | §27, §29 |
+| W32Time (b) WSL−Windows ≤ 0.5 s within 30 min | PASS on the value at +41 min; within-30-min path UNKNOWN (series missing) | §29 |
+| W32Time (c) 600 s bracket | PASS | §29 |
+| W32Time keeps syncing | UNKNOWN (no sync recorded after 17:38:08) | §29 |
+| SNTP offset (WSL vs NTP) | +0.089 s (after sync) | §29 |
+| Images 4 (7.5.2, 7.4.4, controller, helper) Id match | PASS | §26 |
+| Transfer verification (rrsync read-only, sha256 4/4) | PASS. HOST1 host key cross-checked | §26 |
+| Volume in-use deletion refusal (29.9.3) | PASS | §26 |
+| Restart protection | configuration compliant (pause to 12/16, AU 1/2); effect UNKNOWN | §25 |
+| Docker Desktop auto-update / Resource Saver | UNKNOWN (no keys in settings-store, defaults; GUI value not yet read by the owner; no changes) | §28 |
+| Docker Desktop `AutoStart` | False (kept as is per Jiwoong/ORCH) | §28 |
+| Leftover resources (code filter) | PASS (0) | §19, §24 |
+| Background load over 24 h | UNKNOWN (owner closing apps) | §21 |
+| Code portability (docker-free tests at 129324d) | PASS (293 passed) | §22 |
+| Registration dry-run | intended refusal (TBD); test copy gate PASS; needs `PYTHONPATH=src` | §22, §24 |
+| Environment changes | timesyncd disabled; W32Time Running/Automatic; restart protection applied; 4 images loaded. Revert commands in §12, §17, §27 | — |

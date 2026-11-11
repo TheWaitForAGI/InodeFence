@@ -1,0 +1,134 @@
+### post-W32Time check (rerun; post_w32.sh waiter never fired: it grepped a UTF-16 log) start 2026-11-11T18:19:31+09:00; timesyncd: inactive/disabled
+{'rc': 0, 'offset': 0, 'freq_raw': -1975, 'freq_ppm': -0.0301361083984375, 'maxerror': 3518, 'esterror': 8, 'status': 8192, 'constant': 2, 'precision': 1, 'tolerance': 32768000, 'tick': 10000}
+{'t': '2026-11-11T18:19:31', 'realtime_minus_windows_s': -0.067, 'bracket_s': 0.165}
+{'t': '2026-11-11T18:19:32', 'realtime_minus_windows_s': -0.063, 'bracket_s': 0.156}
+{'t': '2026-11-11T18:19:32', 'realtime_minus_windows_s': -0.063, 'bracket_s': 0.156}
+### bracket (c) start 2026-11-11T18:19:32+09:00
+{
+ "target_s": 600.0,
+ "stopwatch_freq": 10000000,
+ "d_stopwatch_s": 600.0057871999998,
+ "d_mono_s": 600.0058083124968,
+ "d_mono_raw_s": 600.0057510695005,
+ "d_realtime_s": 600.005809545517,
+ "realtime_rate_vs_sw_ppm": 0.03724216957046167,
+ "mono_rate_vs_sw_ppm": 0.0351871556336647,
+ "raw_rate_vs_sw_ppm": -0.06021691789648287,
+ "bracket_width_s": [
+  7.397499939543195e-05,
+  0.0003140199987683445
+ ],
+ "uncertainty_ppm": 0.6466520930979724
+}
+rc=0
+[1]+  Done                    python3 -I ../tickpoll.py 62 > tickpoll_c.json
+### bracket (c) end 2026-11-11T18:29:52+09:00
+tickpoll during bracket:
+{"end": "2026-11-11T18:29:52", "polls": 62, "ticks": [10000], "freq_min": -0.2978515625, "freq_max": 0.6495819091796875}
+{'rc': 0, 'offset': 0, 'freq_raw': 1704, 'freq_ppm': 0.0260009765625, 'maxerror': 1510, 'esterror': 3, 'status': 8192, 'constant': 2, 'precision': 1, 'tolerance': 32768000, 'tick': 10000}
+{'t': '2026-11-11T18:29:52', 'realtime_minus_windows_s': -0.071, 'bracket_s': 0.173}
+{'t': '2026-11-11T18:29:52', 'realtime_minus_windows_s': -0.063, 'bracket_s': 0.157}
+{'t': '2026-11-11T18:29:52', 'realtime_minus_windows_s': -0.065, 'bracket_s': 0.158}
+### sntp time.windows.com 2026-11-11T18:29:52+09:00
+{"offset_s": 0.08855020999908447, "uncertainty_s": 0.007045865058898926, "measured_at": "2026-11-11T09:29:53.839859+00:00"}
+rc=0
+{
+  "chosen": {
+    "index": 2,
+    "offset_s": 0.08855020999908447,
+    "rtt_s": 0.014091730117797852
+  },
+  "host_id": "HOST2",
+  "measured_at": "2026-11-11T09:29:53.839859+00:00",
+  "method": "sntp-v1",
+  "offset_s": 0.08855020999908447,
+  "samples": [
+    {
+      "index": 0,
+      "offset_s": 0.09479808807373047,
+      "rtt_s": 0.02490997314453125
+    },
+    {
+      "index": 1,
+      "offset_s": 0.09139740467071533,
+      "rtt_s": 0.01866888999938965
+    },
+    {
+      "index": 2,
+      "offset_s": 0.08855020999908447,
+      "rtt_s": 0.014091730117797852
+    },
+    {
+      "index": 3,
+      "offset_s": 0.09056460857391357,
+      "rtt_s": 0.017839670181274414
+    },
+    {
+      "index": 4,
+      "offset_s": 0.0908052921295166,
+      "rtt_s": 0.018156051635742188
+    }
+  ],
+  "schema": "inodefence-clock-offset-v1",
+  "server": "time.windows.com",
+  "uncertainty_s": 0.007045865058898926
+}
+
+### sntp pool.ntp.org 2026-11-11T18:29:53+09:00
+{"offset_s": 0.0897679328918457, "uncertainty_s": 0.007490396499633789, "measured_at": "2026-11-11T09:29:54.769761+00:00"}
+rc=0
+{
+  "chosen": {
+    "index": 3,
+    "offset_s": 0.0897679328918457,
+    "rtt_s": 0.014980792999267578
+  },
+  "host_id": "HOST2",
+  "measured_at": "2026-11-11T09:29:54.769761+00:00",
+  "method": "sntp-v1",
+  "offset_s": 0.0897679328918457,
+  "samples": [
+    {
+      "index": 0,
+      "offset_s": 0.0901801586151123,
+      "rtt_s": 0.021947860717773438
+    },
+    {
+      "index": 1,
+      "offset_s": 0.0903317928314209,
+      "rtt_s": 0.02455282211303711
+    },
+    {
+      "index": 2,
+      "offset_s": 0.09176003932952881,
+      "rtt_s": 0.025594472885131836
+    },
+    {
+      "index": 3,
+      "offset_s": 0.0897679328918457,
+      "rtt_s": 0.014980792999267578
+    },
+    {
+      "index": 4,
+      "offset_s": 0.091866135597229,
+      "rtt_s": 0.01764655113220215
+    }
+  ],
+  "schema": "inodefence-clock-offset-v1",
+  "server": "pool.ntp.org",
+  "uncertainty_s": 0.007490396499633789
+}
+
+### W32Time status (non-elevated)
+Status    : Running
+StartType : Automatic
+윤초 조정: 3(동기화되지 않음)
+계층: 0(지정되지 않음)
+정밀도: -23(틱당 119.209ns)
+루트 지연: 0.0071358s
+루트 분산: 9.3984370s
+참조 ID: 0x00000000(지정되지 않음)
+마지막으로 동기화한 시간: 2026-11-11 오후 5:38:08
+원본: time.windows.com,0x9
+폴링 간격: 10(1024s)
+### done 2026-11-11T18:29:55+09:00

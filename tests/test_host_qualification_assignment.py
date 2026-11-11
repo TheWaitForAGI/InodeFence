@@ -252,7 +252,7 @@ def test_one_participant_runs_alone_and_the_other_host_is_refused(
     assert _index(merged)["merge"]["complete"] is True
 
 
-def test_holdout_generator_needs_an_explicit_rate_source(
+def test_one_participant_holdout_is_regenerated_from_its_own_r_h(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from test_two_host_split import _setup
@@ -269,19 +269,16 @@ def test_holdout_generator_needs_an_explicit_rate_source(
         RULE_RH_PROPORTIONAL,
         "--go-decision",
         str(go),
-        "--participants",
-        "HOST1",
         "--out",
         str(out),
     ]
-    assert make_seed_assignment.main(base) == 2  # no --rate-source
+    assert make_seed_assignment.main(base) == 2  # both hosts by default; HOST2 has no r_h
     assert (
-        make_seed_assignment.main(
-            [*base, "--rate-source", "HOST1=qualification-throughput", "--record-in-go-decision"]
-        )
+        make_seed_assignment.main([*base, "--participants", "HOST1", "--record-in-go-decision"])
         == 0
     )
     recorded = json.loads(go.read_text())
-    assert recorded["participants"] == ["HOST1"]
-    assert recorded["rate_sources"] == {"HOST1": "qualification-throughput"}
+    assert recorded["participants"] == ["HOST1"] and "rate_sources" not in recorded
     assert json.loads(out.read_text())["hosts"]["HOST2"] == []
+    kwargs = {"rule": RULE_RH_PROPORTIONAL, "registered_seeds": SEEDS, "registered_sha256": None}
+    assert rule_problems(out.read_bytes(), go_decision=recorded, **kwargs) == []

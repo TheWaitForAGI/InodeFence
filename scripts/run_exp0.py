@@ -86,6 +86,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 from collections.abc import Callable, Collection, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -96,6 +97,7 @@ from threading import Lock
 from time import CLOCK_MONOTONIC, CLOCK_MONOTONIC_RAW, clock_gettime, monotonic, sleep
 from typing import Any
 
+from scripts import launcher_guards as guards
 from scripts.run_g1_smoke import (
     DEFAULT_EXECUTION_MODE,
     EXECUTION_MODES,
@@ -606,6 +608,131 @@ def resume_gate_problems(
         if ack_approval(ack["note"]) != approval_ref:
             problems.append(f"gate ack {ack['path']} does not name approval={approval_ref}")
     return problems
+
+
+#: Local images every cell uses (SKIP_BUILD=1): their ids are recorded at start and end.
+LOCAL_IMAGES = ("inodefence-controller:local", "inodefence-helper:local")
+HOST_RECORD_DIR = "host"
+HOST_SAMPLE_SECONDS = guards.PROC_SAMPLE_SECONDS
+HOST_PROBE_SECONDS = guards.DOCKER_PROBE_SECONDS
+
+
+def guard_images(plan: Exp0Plan) -> dict[str, str | None]:
+    """Images the host guards check: each target at its registered id, local images recorded."""
+    images: dict[str, str | None] = {
+        f"inodefence-node-tar-effect:{target.version}": target.digest
+        for target in plan.targets()
+        if target.extractor == "node-tar"
+    }
+    images.update(dict.fromkeys(LOCAL_IMAGES))
+    return images
+
+
+def guard_docker(context: str | None) -> Callable[..., str]:
+    """The guards' docker CLI, on this launcher's ``--context``."""
+    prefix = ("--context", context) if context else ()
+
+    def run(*args: str, timeout: float = guards.DOCKER_TIMEOUT_SECONDS) -> str:
+        return guards.docker_cli(*prefix, *args, timeout=timeout)
+
+    return run
+
+
+def host_preflight(
+    plan: Exp0Plan, *, engine: str, docker: Callable[..., str]
+) -> tuple[dict[str, Any], list[str]]:
+    """Shared launcher guard before the first cell (#336): refuses on any problem."""
+    return guards.host_preflight(
+        repo_root=Path(__file__).resolve().parents[1],
+        engine=engine,
+        images=guard_images(plan),
+        docker=docker,
+        residual=lambda: guards.residual_resources(docker),
+    )
+
+
+def host_postflight(
+    plan: Exp0Plan, before: Mapping[str, Any], *, engine: str, docker: Callable[..., str]
+) -> tuple[dict[str, Any], list[str]]:
+    """The same checks once after the last cell, plus "nothing changed since the preflight"."""
+    return guards.host_postflight(
+        before,
+        repo_root=Path(__file__).resolve().parents[1],
+        engine=engine,
+        images=guard_images(plan),
+        docker=docker,
+        residual=lambda: guards.residual_resources(docker),
+    )
+
+
+def start_host_recording(
+    directory: Path, recorders: Any, docker: Callable[..., str]
+) -> Callable[[], list[str]]:
+    """Record-only host instruments; they never stop a cell. Returns the stopper.
+
+    The host sampler (memory, pressure, disk, docker responsiveness) and the docker event
+    collector always run; the ping and Desktop-log recorders only when asked. A failure is
+    written to ``recorder-failures.jsonl`` and is never a stop.
+    """
+    directory.mkdir(parents=True, exist_ok=True)
+    stop = threading.Event()
+
+    def failed(error: Exception) -> None:
+        with (directory / guards.RECORDER_FAILURES).open("a", encoding="utf-8") as stream:
+            record = {**guards.clock_stamp(), "recorder": "sample_host", "message": str(error)}
+            stream.write(json.dumps(record, sort_keys=True) + "\n")
+
+    sampler = threading.Thread(
+        target=guards.sample_host,
+        args=(directory / "samples.jsonl", stop),
+        kwargs={
+            "disk_fraction": lambda: disk_usage_fraction(directory),
+            "on_sample": None,
+            "on_failure": failed,
+            "docker": docker,
+            "seconds": HOST_SAMPLE_SECONDS,
+            "probe_seconds": HOST_PROBE_SECONDS,
+        },
+        daemon=True,
+    )
+    notes: list[str] = []
+    try:
+        events = guards.start_docker_events(directory / "events.jsonl", guards.EVENT_ACTIONS)
+    except Exception as error:
+        events = None
+        notes.append(f"docker events not started: {type(error).__name__}: {error}")
+    threads = guards.start_recorders(directory, recorders, stop)
+    sampler.start()
+
+    def stopper() -> list[str]:
+        stop.set()
+        for thread in threads:
+            thread.join(timeout=30)
+        sampler.join(timeout=60)
+        if sampler.is_alive():
+            notes.append("host sampler did not stop")
+        if events is not None:
+            try:
+                guards.stop_docker_events(events)
+            except Exception as error:
+                notes.append(f"docker events cleanup failed: {type(error).__name__}: {error}")
+        return notes
+
+    return stopper
+
+
+def recording_settings(recorders: Any) -> dict[str, Any]:
+    """What both hosts' records must agree on for the record-only instruments."""
+    return {
+        "host_sampler": {
+            "enabled": True,
+            "stop_policy": None,
+            "seconds": HOST_SAMPLE_SECONDS,
+            "probe_seconds": HOST_PROBE_SECONDS,
+        },
+        "docker_events": {"enabled": True, "actions": list(guards.EVENT_ACTIONS)},
+        **guards.recorder_settings(recorders),
+    }
 
 
 def read_ledger(path: Path | None) -> tuple[str | None, str | None]:
@@ -1215,26 +1342,33 @@ def run_cell_with_watchdog(
             text=True,
         )
         try:
-            returncode = process.wait(timeout=limit_seconds)
-        except subprocess.TimeoutExpired:
-            watchdog_fired = True
-            if on_timeout is not None:
-                # Before the signal: a start gate must stop new starts first.
-                # A failure here is logged; the kill below still happens.
-                try:
-                    on_timeout()
-                except Exception as error:
-                    stream.write(
-                        f"\n[watchdog] on_timeout failed: {type(error).__name__}: {error}\n"
-                    )
-            process.terminate()
             try:
-                process.wait(timeout=30)
+                returncode = process.wait(timeout=limit_seconds)
             except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait()
-            returncode = WATCHDOG_RETURNCODE
-            stream.write(f"\n[watchdog] terminated after {limit_seconds:.0f} s\n")
+                watchdog_fired = True
+                if on_timeout is not None:
+                    # Before the signal: a start gate must stop new starts first.
+                    # A failure here is logged; the kill below still happens.
+                    try:
+                        on_timeout()
+                    except Exception as error:
+                        stream.write(
+                            f"\n[watchdog] on_timeout failed: {type(error).__name__}: {error}\n"
+                        )
+                process.terminate()
+                try:
+                    process.wait(timeout=30)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+                returncode = WATCHDOG_RETURNCODE
+                stream.write(f"\n[watchdog] terminated after {limit_seconds:.0f} s\n")
+        except BaseException as error:
+            # The runner failed with the child started: terminate, then kill it (#336), and say so.
+            note = guards.terminate_started(process)
+            stream.write(f"\n[runner] {type(error).__name__}: {error}; {note}\n")
+            error.add_note(note)
+            raise
     return CellResult(
         cell=cell,
         returncode=returncode,
@@ -1382,6 +1516,18 @@ def main(argv: list[str] | None = None) -> int:
         type=Path,
         default=None,
         help="two-host runs: the frozen seed assignment file (its sha256 is registered)",
+    )
+    parser.add_argument(
+        "--ping-socket",
+        type=Path,
+        default=None,
+        help="record-only: ping this docker socket during the run (off by default)",
+    )
+    parser.add_argument(
+        "--desktop-log",
+        type=Path,
+        default=None,
+        help="record-only: tail this Docker Desktop log during the run (off by default)",
     )
     parser.add_argument(
         "--go-decision",
@@ -1846,6 +1992,45 @@ def main(argv: list[str] | None = None) -> int:
                 f"image warmup failed (exit {code}); see {output / 'warmup.log'}", file=sys.stderr
             )
             return code
+    # The targets form runs the shared host guards (#336) around its cells: a preflight refusal
+    # starts nothing; the postflight is recorded after the last cell. A host's records name the
+    # same record-only instrument settings so two hosts can be compared.
+    host_records: dict[str, Any] = {}
+    host_dir = output / HOST_RECORD_DIR
+    recorders = guards.Recorders(ping_socket=args.ping_socket, desktop_log=args.desktop_log)
+    docker = guard_docker(args.context)
+    host_engine: str | None = None
+    if plan.multi_target and pending:
+        registered_host = prereg.host(plan.host_id) if plan.host_id else None
+        try:
+            host_engine = (
+                registered_host.docker_engine
+                if registered_host is not None
+                else docker_engine_version(args.context)
+            )
+        except (RuntimeError, OSError, subprocess.SubprocessError) as error:
+            print(f"host preflight: docker engine unreadable: {error}", file=sys.stderr)
+            return 2
+        facts, problems = host_preflight(plan, engine=host_engine, docker=docker)
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S.%fZ")
+        facts = {
+            **facts,
+            "clocks": _clock_stamp(),
+            "recording": recording_settings(recorders),
+            "problems": problems,
+            **plan.host_fields(),
+        }
+        host_dir.mkdir(parents=True, exist_ok=True)
+        preflight_path = host_dir / f"preflight-{stamp}.json"
+        guards.publish_json_once(preflight_path, facts, prefix=".preflight-")
+        host_records = {"preflight": preflight_path.name, "preflight_problems": problems}
+        if problems:
+            print("refusing to run (host preflight):", file=sys.stderr)
+            for item in problems:
+                print(f"  - {item}", file=sys.stderr)
+            return 2
+        host_records["stamp"] = stamp
+        host_records["facts"] = facts
     # Only now: a failed warmup leaves the stop in force, so the next call still needs the flag.
     if args.resume_after_stop is not None:
         append_cell_result(
@@ -2029,8 +2214,30 @@ def main(argv: list[str] | None = None) -> int:
     results: list[CellResult] = []
     if pending:
         run_cell = run_target_cell if plan.multi_target else run_one
-        with ThreadPoolExecutor(max_workers=args.jobs) as pool:
-            results = [result for result in pool.map(run_cell, pending) if result is not None]
+        stop_recording = (
+            start_host_recording(host_dir, recorders, docker) if "facts" in host_records else None
+        )
+        try:
+            with ThreadPoolExecutor(max_workers=args.jobs) as pool:
+                results = [result for result in pool.map(run_cell, pending) if result is not None]
+        finally:
+            if stop_recording is not None:
+                host_records["recording_notes"] = stop_recording()
+            if "facts" in host_records and host_engine is not None:
+                after, after_problems = host_postflight(
+                    plan, host_records.pop("facts"), engine=host_engine, docker=docker
+                )
+                after = {
+                    **after,
+                    "clocks": _clock_stamp(),
+                    "problems": after_problems,
+                    **plan.host_fields(),
+                }
+                postflight_path = host_dir / f"postflight-{host_records['stamp']}.json"
+                guards.publish_json_once(postflight_path, after, prefix=".postflight-")
+                host_records.update(
+                    postflight=postflight_path.name, postflight_problems=after_problems
+                )
     (output / "matrix.json").write_text(
         json.dumps(
             {
@@ -2051,6 +2258,11 @@ def main(argv: list[str] | None = None) -> int:
                 **(
                     {"seed_assignment": plan.assignment.record(plan.host_id)}
                     if plan.assignment is not None
+                    else {}
+                ),
+                **(
+                    {"host_guards": {k: v for k, v in host_records.items() if k != "facts"}}
+                    if host_records
                     else {}
                 ),
                 "skipped_complete": skipped,

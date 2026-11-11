@@ -104,6 +104,8 @@ esac
 
 STEP="setup"
 CREATED_VOLUME=0
+# Set before `volume create`: the CLI can fail after the daemon created the volume.
+VOLUME_ATTEMPTED=0
 CREATED_CONTROLLER=0
 OWNER_TOKEN=""
 
@@ -154,9 +156,20 @@ cleanup_unknown() {
   echo "INODEFENCE_CLEANUP_UNKNOWN: $1" >&2
 }
 
+# First act of cleanup, before any lock: an exclusive create the gate reads as C.
+# It keeps other cells waiting even if both lock-based records (C, U) fail.
+gate_mark_cleanup() {
+  [ -n "${INODEFENCE_START_GATE_DIR:-}" ] || return 0
+  if ! (set -C; : > "$INODEFENCE_START_GATE_DIR/$INODEFENCE_START_GATE_CELL.cleanup") 2>/dev/null; then
+    GATE_RECORD_FAILED=1
+    echo "start gate: cleanup marker not created" >&2
+  fi
+}
+
 cleanup() {
   local status=$? rc inspection temporary source destination container_id label controller_owned=0
   set +e
+  gate_mark_cleanup
   gate_record C
   if [ "$status" -ne 0 ]; then
     echo "FAILED at step: $STEP (exit $status)" >&2
@@ -236,6 +249,23 @@ cleanup() {
     if [ "$rc" -ne 1 ]; then
       cleanup_unknown "controller $CONTROLLER: $inspection"
       [ "$status" -ne 0 ] || status=125
+    fi
+  fi
+  if [ "$VOLUME_ATTEMPTED" -eq 1 ] && [ "$CREATED_VOLUME" -eq 0 ]; then
+    # The create did not report success. Absent is the expected outcome; a volume
+    # carrying this run's owner label was created anyway and is removed below;
+    # anything else (another owner, an unanswered inspect) is unknown.
+    inspection=$(cleanup_dk 30 volume inspect --format \
+      '{{index .Labels "org.inodefence.smoke-owner"}}' "$VOLUME" 2>&1)
+    rc=$?
+    if [ "$rc" -eq 0 ] && [ -n "$OWNER_TOKEN" ] && [ "$inspection" = "$OWNER_TOKEN" ]; then
+      CREATED_VOLUME=1
+    else
+      case "$inspection" in
+        "Error: No such volume: $VOLUME"|"Error: No such object: $VOLUME"|"Error response from daemon: get $VOLUME: no such volume"|$'[]\n'"Error response from daemon: get $VOLUME: no such volume")
+          [ "$rc" -eq 1 ] || cleanup_unknown "volume creation outcome: $inspection" ;;
+        *) cleanup_unknown "volume creation outcome: $inspection" ;;
+      esac
     fi
   fi
   if [ "$CREATED_VOLUME" -eq 1 ]; then
@@ -318,6 +348,7 @@ fi
 
 step "prepare controller"
 OWNER_TOKEN="$("$PYTHON" -c 'import secrets; print(secrets.token_hex(16))')"
+VOLUME_ATTEMPTED=1
 dk volume create --label "org.inodefence.smoke-owner=$OWNER_TOKEN" "$VOLUME" >/dev/null
 CREATED_VOLUME=1
 volume_owner="$(cleanup_dk 30 volume inspect --format \

@@ -27,6 +27,10 @@ acquisition opens a fresh file description, so threads exclude each other too):
   turn it into ``S``. The launcher never writes ``S``. It writes ``U`` when a
   reaped cell left no ``S`` (including a watchdog cell killed before its trap
   verified cleanup).
+* ``<cell>.cleanup`` is created by the child with ``O_EXCL`` and no lock as the
+  first act of its cleanup, before it records ``C``. The scan treats it as ``C``
+  (pending). It narrows the window in which both lock-based records fail: an
+  unlocked create still linearizes, since a scan that did not see it ran before it.
 * ``<cell>.watchdog`` marks a cell the watchdog terminated. It survives verdict
   changes, so every denial caused by that cell names the watchdog and callers
   can classify it the same way whichever thread sees it first.
@@ -299,7 +303,7 @@ class StartGate:
                 return f"{cell} has no cleanup verdict from launcher session {owner}{tag}", []
             if _lock_is_free(self.directory / f"{cell}.lock"):
                 return f"{cell} exited without a cleanup verdict{tag}", []
-            if verdict is not None:
+            if verdict is not None or (self.directory / f"{cell}.cleanup").exists():
                 pending.append(cell)
         return None, pending
 
@@ -380,6 +384,7 @@ class StartGate:
             # rerun under run_exp0 resume), or this session's own unfinished cell.
             Path(f"{base}.verdict").unlink(missing_ok=True)
             Path(f"{base}.watchdog").unlink(missing_ok=True)
+            Path(f"{base}.cleanup").unlink(missing_ok=True)
             _write_atomic(session, self.session + "\n")
             fd = os.open(lock, os.O_RDWR | os.O_CREAT | os.O_CLOEXEC, 0o600)
         except StartDenied:
@@ -514,7 +519,7 @@ def acknowledge(directory: Path, cell: str, note: str) -> Path:
         stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S.%fZ")
         target = directory / ACKNOWLEDGED / f"{stamp}-{cell}"
         target.mkdir(parents=True)
-        for suffix in (".verdict", ".watchdog", ".session", ".lock"):
+        for suffix in (".verdict", ".watchdog", ".cleanup", ".session", ".lock"):
             source = directory / f"{cell}{suffix}"
             if source.exists():
                 os.replace(source, target / source.name)

@@ -132,6 +132,12 @@ seed_assignment_sha256 = e81d5fcff7976fe4527da62303bb66e728eb86f7c672dc8556a8005
    재개 승인 참조 `QUAL-<HOSTn>-<YYYYMMDD>-<HHMM>`를 요청합니다." 승인되면 같은 명령에
    `--resume-after-stop QUAL-<HOSTn>-<YYYYMMDD>-<HHMM>`을 붙여 실행한다. 정지가 있었던 호스트는 Q5로 FAIL이다(재개는
    기록 완성용이고 판정을 바꾸지 않는다).
+   **events 기록 보존(2026-11-11 추가):** 재개(`--resume-after-stop`) 전, 그리고 미완 호출 다음의 호출 전에
+   `<out>/host/events.jsonl`을 출력 폴더 밖 `<evidence>/host-events/events-<UTC stamp>-before-<step>.jsonl`로 복사하고
+   sha256을 실행 기록에 남긴다. 런처가 pending 셀이 있는 호출마다 이 파일을 `"wb"`로 다시 연다
+   (`scripts/launcher_guards.py:330`, `scripts/run_exp0.py:793`). 원본은 지우거나 옮기지 않는다. 기록 전용 계측이며
+   판정 입력이 아니다. 실행 트리 E 뒤의 문서 변경이므로 실행 절차는 이 최신 문서를 따르고 코드는 E를 쓴다
+   ([정지·재개 smoke v1 부록 C](stop-path-smoke-v1.md)).
 8. **판정(호스트별, 호스트 독립):**
 
    ```bash

@@ -220,6 +220,21 @@ def test_the_operating_check_marks_an_excluded_host_without_an_alarm(tmp_path: P
     assert marked["abort"] == plain["abort"]  # its attempted cells stay in the pool
 
 
+def test_without_a_stop_the_check_is_full_and_every_block_finished(
+    stopped: dict[str, Any],
+) -> None:
+    """The smoke-output format check (runbook): no stop, every seed block finished."""
+    results = stopped["host2"] / "cell-results.jsonl"
+    rows = [json.loads(line) for line in results.read_text().splitlines()]
+    kept = [r for r in rows if r.get("event") != "infrastructure-stop"]
+    results.write_text("".join(json.dumps(r) + "\n" for r in kept))
+    document = _check(stopped)
+    assert document["status"].startswith("full") and document["excluded_hosts"] == []
+    for host in ("HOST1", "HOST2"):
+        for blocks in document["partial_completion"][host].values():
+            assert blocks["unfinished_seeds"] == [] and blocks["finished_seeds"]
+
+
 def test_a_stop_after_complete_cells_is_held_and_all_stopped_is_not_computed(
     stopped: dict[str, Any],
 ) -> None:

@@ -146,6 +146,20 @@ HOST1, 6301·6303 → HOST2). `python -m scripts.make_seed_assignment --rule alt
      --host-output HOST1=<out-HOST1> --host-output HOST2=<out-HOST2>
    ```
 
+   **부분 GO 도구 형식 점검(보고만, 판정 아님):** 부분 GO 경로(D047 §9.1)는 실 데이터로 돈 적이 없다. 그래서 두 호스트
+   smoke가 끝나면 그 출력으로 한 번 돌려 입력 형식 문제를 미리 잡는다. 이 도구는 cell-results, 셀 상태, abort 스텁, 파일
+   해시만 읽고 oracle 필드는 읽지 않는다. GO 파일은 worktree 밖의 임시 파일(`{"decided_at": "<지금, UTC 오프셋>"}`)이고,
+   `--record-in-go-decision`은 쓰지 않는다:
+
+   ```bash
+   PYTHONPATH=src python -m scripts.partial_go_check --preregistration <filled.md> \
+     --seed-assignment experiments/configs/run-exp0-eng-smoke-v1.assignment.json \
+     --host HOST1=<out-HOST1> --host HOST2=<out-HOST2> \
+     --go-decision <worktree 밖>/go-format-check.json --out <worktree 밖>/partial-go-format-check.json
+   ```
+
+   기대값: exit 0, 정지가 없었으면 `status`가 `full`이고, 두 호스트의 `seed_blocks`에 smoke seed가 모두 완주로 나온다.
+   exit 2이거나 seed 블록이 기대와 다르면 GO 산출 전에 도구를 고쳐야 하므로 보고한다.
 6. **결정론 검사(재실행이 있었던 셀만, D046, 적격성 검증 v1 §2):** `infra_reexecutions`가 0보다 큰 셀마다 그 seed와
    arm만 담은 별도 등록 파일(이 파일 사본에 `seeds = <그 seed>`, `targets.node-tar-7.5.2.arms = <그 arm>`, 그 seed만 담은
    할당 파일과 sha)을 만들고 **새 출력 폴더**로 run_exp0를 그 호스트에서 다시 돌린다. "같은 설정"은 seed, arm, budget,

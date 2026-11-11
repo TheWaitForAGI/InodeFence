@@ -40,7 +40,7 @@
 
 **② 탐색 루프 구현.** 입력 생성 → 변형 → TAR 생성 → 실제 extractor 실행 → 중간 상태 관찰 → 판정 → 피드백 → 다음 변형 선택을 하나로 연결했다. 대상과 무관한 부분과 extractor별 부분을 분리했다.
 
-**③ 실험 설계와 사전등록.** 세 방식을 같은 어휘·seed·예산으로 비교한다: R(입력을 유지하지 않고 매번 시드에서 변형), D(구조 커버리지), S-u(파일시스템 보안 상태). 1차 지표는 첫 경계위반까지의 실행 수다. 규칙과 분석 방법은 결과를 보기 전에 Git에 고정한다. 탐색용 EXP-3(train, 기노출 릴리스 7.5.2)으로 인프라를 확인한 뒤 확증용 EXP-2(holdout, 미노출 릴리스 7.4.4)를 조건부로 수행한다. 두 호스트 모두 동시 실행 2로 고정했고 사전 고정 기준의 적격성을 통과한 호스트만 참여한다.
+**③ 실험 설계와 사전등록.** 세 방식을 같은 어휘·seed·예산으로 비교한다: R(입력을 유지하지 않고 매번 시드에서 변형), D(구조 커버리지), S-u(파일시스템 보안 상태, 정의는 동결 때 확정). 1차 지표는 첫 경계위반까지의 실행 수다. 규칙과 분석 방법은 결과를 보기 전에 Git에 고정한다. 탐색용 EXP-3(train, 기노출 릴리스 7.5.2)으로 인프라를 확인한 뒤 확증용 EXP-2(holdout, 미노출 릴리스 7.4.4)를 조건부로 수행한다. 두 호스트 모두 동시 실행 2로 고정했고 사전 고정 기준의 적격성을 통과한 호스트만 참여한다.
 
 **④ 동결 전 측정.** EXP-0으로 인프라를, 위험도 파일럿으로 규모 입력을 측정했다. 동시 실행 점검, holdout 후보 상태 확인, 정지·재개 점검, 호스트 적격성 검증을 더 했다. 모두 가설 검정이 아니다.
 
@@ -50,7 +50,7 @@
 
 **통제 재현.** 같은 판정기가 릴리스 번호 없이 공유와 거부를 구분했다. 최상위 입력은 7.5.2에서 공유되고(nlink 1→2) 7.5.3에서 거부됐으며, 중첩 입력은 7.5.6에서 공유되고 7.5.7에서 거부됐다. 손으로 만든 입력의 재현이며 퍼저가 찾은 것이 아니다.
 
-**자율 관찰.** 현재 판정은 이름 획득 조건의 관찰(피드백 인과 미입증)이다. 외부 이름을 어휘에 넣은 조건에서 예산 1500으로 실행했을 때 자율 C1은 65 seed 중 1개에서 관찰됐다. 어휘(이름 포함 여부)를 달리한 대조이고 드문 사례이며 blind 발견이 아니다. 비교 실험에서 비율 차이는 구간이 겹쳐 미입증이다. 여기서 위반은 C1이고, 아래 파일럿의 사건은 C1 또는 C2다.
+**자율 관찰.** 현재 판정은 이름 획득 조건의 관찰(피드백 인과 미입증)이다. 외부 이름을 어휘에 넣은 조건에서 자율 C1은 두 seed에서 관찰됐다: 예산 1500의 65 seed 중 1개(s11), 별도 매칭 실행(예산 2000, 새 seed 100–119)의 완주 10개 중 1개(s101). 어휘(이름 포함 여부)를 달리한 대조이고 드문 사례이며 blind 발견이 아니다. 비교 실험에서 비율 차이는 구간이 겹쳐 미입증이다. 여기서 위반은 C1이고, 아래 파일럿의 사건은 C1 또는 C2다.
 
 **일반성.** 같은 판정기를 python-tarfile, oras-go, decompress에 adapter 수준으로 적용했다. 이는 판정기 수준의 일반성이다. decompress(사후 분석)와 oras-go(1 seed)의 자력 실행에서 C1/C2는 관찰되지 않았다.
 
@@ -150,7 +150,7 @@
 | 루프 동작 | `make demo` 1회에 7.5.22, 20 step, 위반 0, corpus 4→7 | `~/inodefence-evidence/w4-script-verification-20261106/stdout/make_demo.out`. 그림 3의 2026-11-07 실행 기록은 `~/inodefence-evidence/demo-recordings-20261107/scene4-take1.typescript`(sha256 `91608744…`) | PASS(d22577b) |
 | 사진 3 | `make demo` 끝 화면 1프레임, 실행 기록 재생(2026-11-07). 새 실행 없음, 출력 편집 없음, 줄바꿈 폭만 156열. PNG sha256 `6d1c318c5d5872e9d5d6caa78f7cc89e7a4a111e9377207548a432b061b5a893` | `~/inodefence-evidence/demo-recordings-20261107/scene4-take1.typescript`(sha256 `916087442b27743c8c141f33371a88e5c8a368d8e67a14fd18ac73026b447fa1`, `SHA256SUMS`와 일치), `paper/figures/render_make_demo_screen.py` | W4 PASS(`959e845`), W3 PASS |
 | 통제 재현 | nlink 1→2, 거부 | `experiments/repro/evidence/summary.json`, 표 M2 | 표·그림 PASS |
-| 자율 관찰 | 자율 C1은 65 seed 중 s11, 이름 획득 조건 문구. hit는 C1 ∧ contract_violated이고 A3full-s60의 C2만 위반 step 14개는 세지 않았다 | `docs/STATUS.md` Ledger, 표 M3, `experiments/summaries/m3-powered-matched-verdict-v2.md`. raw는 Mac 호스트 보관, 체크섬 `raw-manifest-mac-20261103.sha256`, 2026-11-03 감사 재집계. 표는 요약에서 생성. M3 raw 재집계는 11/03 감사 기록에 의존(제출 차단 아님) | 표 수치·그림·hit 문구 PASS. "어휘(이름 포함 여부)를 달리한 대조" PASS(d22577b) |
+| 자율 관찰 | 자율 C1은 65 seed 중 s11, 매칭 실행(#196, budget 2000, seed 100–119) 완주 10 중 s101, 이름 획득 조건 문구. hit는 C1 ∧ contract_violated이고 A3full-s60의 C2만 위반 step 14개는 세지 않았다 | `docs/STATUS.md` Ledger, 표 M3, `experiments/summaries/m3-powered-matched-verdict-v2.md`. raw는 Mac 호스트 보관, 체크섬 `raw-manifest-mac-20261103.sha256`, 2026-11-03 감사 재집계. 표는 요약에서 생성. M3 raw 재집계는 11/03 감사 기록에 의존(제출 차단 아님) | 표 수치·그림·hit 문구 PASS. "어휘(이름 포함 여부)를 달리한 대조" PASS(d22577b) |
 | 일반성 | 3 extractor, decompress(사후 분석)·oras-go(1 seed) 자력 실행에서 C1/C2 미관찰 | `docs/STATUS.md` Ledger, `experiments/summaries/m4-5-decompress-selfdiscover-unified-v1.md`, `m4-7-oras-go-selfdiscover-v1.md` | PASS(d22577b) |
 | EXP-0 | 15셀, 3,000, abort 0, hit 0 | `experiments/summaries/exp0-20261105-report.md` | PASS(#268) |
 | 파일럿 | 사건 R-walk 1, R-restart 4, D 4, S-u 6, abort 11/40 | `experiments/summaries/exp3-hazard-pilot-v1-result.md` | PASS(#267), PASS(9eafebd). "R의 두 변형" 문구는 재확인 대기(`79ce477`) |

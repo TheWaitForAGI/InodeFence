@@ -453,3 +453,24 @@ Approval: Jiwoong approved the HOST2 launcher smoke and qualification at 2026-11
 | Qualification registration copy | sha256 `81f56d43be14374855aee8f350186583493aaa4d7db687436143bf6c8ff559c0` (= HOST1; source `a549ee98…`), deadline 2026-11-14T12:00:00+09:00. Dry-run PASS, 12 cells, seeds [8110, 8102, 8103, 8106] (`exec_bed077a_dryrun2_qual.txt`) |
 | Stage A keys | sha256 `3e6c734c…22b`. `qualify_host --check-environment`: rc 0, `input_dependence_test_valid: true`, problems [] (`exec_bed077a_check-environment-HOST2.json`) |
 | Assignment files (E tree) | smoke `a395367b…`, qualification `e81d5fcf…` |
+
+## 34. HOST2 launcher smoke at E (22:28:05–22:42:09 KST): observations
+
+Owner confirmed the window ("start now, both"); Jiwoong's approval was relayed by ORCH. Command: runbook §3 step 2 without `--dry-run` (`--host-id HOST2 --jobs 2 --skip-build --expected-images criteria-HOST2.json`, output and manifest outside the worktree, `PYTHONPATH=src`; script `eng-smoke-HOST2/run_smoke.sh.txt` is the same as `exec-bed077a/run_smoke.sh`). Only infrastructure keys, gate letters and index status/count keys were read; no summaries, reports, steps or stdout were opened.
+
+| Runbook §2 condition | Observation |
+| --- | --- |
+| cleanup UNKNOWN 0 | 6 verdict files, all `S`; `acknowledged/` does not exist |
+| Leftovers 0 | containers `name=inodefence-` 0 → 0, volumes `name=inodefence-local-` 0 → 0 |
+| Runner failure 0 / start failure 0 | 6 `start` + 6 `end` lines, all `attempt` 1, `returncode` 0, `watchdog_fired` false; no `runner_error`, `start_denied`, `infra_reexecutions` |
+| Record completeness | index `cell_completeness`: cells 6, complete 6, aborts 0, no_record 0, record_inconsistent 0, unattempted 0, unknown_outcome_steps 0, recorded_steps 1800 |
+| Infrastructure stop 0 | `infrastructure-stop` lines 0; `infrastructure_stopped` false |
+| Key gate | no exit 2; launcher rc 0 |
+| Pre/postflight | `problems: []` both; execution SHA E, `dirty: false` both |
+| Manifest | 63 entries, verify OK (0 mismatched/missing/extra); `raw-manifest-host2-eng-smoke.sha256` sha256 `6dc15ca6…` |
+| Merge check (two hosts) | not run (needs HOST1 output; ORCH decides the transfer) |
+| Determinism re-run | `infra_reexecutions` 0 → "0 re-runs, determinism not tested" (UNKNOWN) |
+
+Throughput: cells 280.2–281.5 s wall each (HOST1: 487–501 s); whole run 844 s for 1800 steps ≈ 7,680 exec/h realtime (HOST1 ≈ 4,349). Clock at start: SNTP +0.472 s (22:28), w32tm last sync 22:11:14 leap 0. `host/events.jsonl` copied after the end, outside the run folder: sha256 `6a865cf8…b1d7a8` (7.2 MB, kept in `exec-bed077a/smoke-evidence/`, not committed). The index has `outcomes_redacted: false` because all cells finished (README note in the evidence folder). Verdict wording: "observation"; PASS is not declared before ORCH/W4 review.
+
+Qualification started right after, at 22:42:42 KST (start SNTP +0.386 s ±0.006, w32tm last sync 22:11:14 leap 0).

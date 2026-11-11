@@ -1,0 +1,51 @@
+### 2026-11-11T22:27:47+09:00 host recheck
+pause:
+
+
+PauseUpdatesExpiryTime : 2026-12-16T08:33:55Z
+
+
+
+AU:
+
+
+NoAutoRebootWithLoggedOnUsers : 1
+AUOptions                     : 2
+
+
+
+RebootRequired:False
+RebootPending:False
+PFRO:False
+DockerDesktop:True
+power:
+전원 구성표 GUID: 381b4222-f694-41f0-9685-ff5bb260df2e  (균형 조정)uptime:12:24:44.2853951
+      가능한 최소 설정: 0x00000000
+      가능한 최대 설정: 0xffffffff
+      가능한 설정 증가: 0x00000001
+    현재 AC 전원 설정 색인: 0x00000000
+    현재 DC 전원 설정 색인: 0x00000258
+    전원 설정 GUID: 94ac6d29-73ce-41a6-809f-6363ba21b47e  (하이브리드 절전 모드 허용)
+    현재 AC 전원 설정 색인: 0x00000001
+    현재 DC 전원 설정 색인: 0x00000001
+      가능한 최소 설정: 0x00000000
+      가능한 최대 설정: 0xffffffff
+      가능한 설정 증가: 0x00000001
+    현재 AC 전원 설정 색인: 0x00000000
+    현재 DC 전원 설정 색인: 0x00000000
+    전원 설정 GUID: bd3b718a-0680-4d9d-8ab2-e1d2b4ac806d  (절전 모드 해제 타이머 허용)
+    현재 AC 전원 설정 색인: 0x00000001
+    현재 DC 전원 설정 색인: 0x00000000
+## w32tm
+윤초 조정: 0(경고 없음)
+참조 ID: 0x34E772B7(원본 IP:  52.231.114.183)
+마지막으로 동기화한 시간: 2026-11-11 오후 10:11:14
+원본: time.windows.com,0x9 
+## docker
+default
+29.9.3
+cpus=24 mem=20970418176
+## load
+ 22:27:48 up  8:56,  2 users,  load average: 1.30, 0.36, 0.17
+               total        used        free      shared  buff/cache   available
+Mem:              19           1          15           0           3          18

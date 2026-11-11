@@ -93,11 +93,11 @@ seed_assignment_sha256 = e81d5fcff7976fe4527da62303bb66e728eb86f7c672dc8556a8005
 | 5 | 적격성 실행 중 정지 뒤 재개 | 같은 형식, 재개마다 새 참조 |
 
 1. **실행 SHA와 기준 파일(순서 고정):** (a) 실행 SHA `E`를 정한다. (b) `E`에서 기준 파일을 만든다(임계, 셀 수 12,
-   이미지 id 3개, 호스트별 Engine, 공유 경로 16개 해시, `expected_execution_sha = E`). 생성 도구는 W1의
-   `scripts/make_run_criteria.py`(브랜치 `claude/p0-347-run-tooling`, 머지 뒤 이름 확정)다. (c) 기준 파일 sha256을
+   이미지 id 3개, 호스트별 Engine, 공유 경로 16개 해시, `expected_execution_sha = E`). 생성 명령(`E`의 깨끗한
+   detached worktree에서, 읽기만 한다): `PYTHONPATH=src python -m scripts.make_run_criteria --execution-sha <E> --host HOST1 --engine HOST2=29.9.3 --out <worktree 밖>/criteria.json`. (c) 기준 파일 sha256을
    LOG에 고정한다. (d) 그 뒤에 실행한다. 기준 파일은 worktree 밖에 둔다.
 2. **등록 값 채움:** `engine_sha = E`, `execution_deadline`, `host.<id>.docker_engine`(HOST1 29.8.0, HOST2 29.9.3; 각
-   호스트 preflight `docker version`으로 확인 뒤)을 채운 사본을 worktree 밖에 만든다(W1의 채움 도구를 쓰면 그 도구로).
+   호스트 preflight `docker version`으로 확인 뒤)을 채운 사본을 worktree 밖에 만든다: `PYTHONPATH=src python -m scripts.fill_run_registration <이 파일> --set engine_sha=<E> --set exposure_ledger_sha256=<E 트리의 원장 sha> --set execution_deadline=<UTC 오프셋 포함> --set host.HOST1.docker_engine=29.8.0 --set host.HOST2.docker_engine=29.9.3 --out <worktree 밖>/<이름>-filled.md`. 이 도구는 worktree 안 출력과 남은 `TBD-FREEZE`를 거부한다.
    **원장 sha:** 실행 뒤의 원장 행은 `E` **뒤** 커밋에 들어가므로, 같은 `E`에서 도는 실행들의
    `exposure_ledger_sha256`은 `E` 트리의 원장 sha 그대로다(a76ffee에서는 `8a832e19…`). 본실험 동결 sha는 정지·재개
    smoke 2차 뒤에 고정한다.

@@ -69,6 +69,17 @@ def test_q6n_no_launcher_record_fails(clean_run: dict[str, Any]) -> None:
     assert result(judge(clean_run), Q6) == "FAIL"
 
 
+def test_q6_reads_the_execution_sha_the_launcher_wrote(clean_run: dict[str, Any]) -> None:
+    """No stand-in: run_exp0 itself records ``execution_sha`` before and after (#345, #348)."""
+    post = next(records(clean_run).glob("postflight-*.json"))
+    for record in (preflight(clean_run), post):
+        written = json.loads(record.read_text())["execution_sha"]
+        assert set(written) == {"revision", "dirty"} and written["dirty"] is False
+    assert result(judge(clean_run), Q6) == "PASS"
+    rewrite_json(post, lambda r: r.update(execution_sha={**r["execution_sha"], "dirty": True}))
+    assert result(judge(clean_run), Q6) == "FAIL"
+
+
 def test_q6_postflight_without_an_execution_sha_fails(clean_run: dict[str, Any]) -> None:
     post = next(records(clean_run).glob("postflight-*.json"))
     rewrite_json(post, lambda r: r.pop("execution_sha"))

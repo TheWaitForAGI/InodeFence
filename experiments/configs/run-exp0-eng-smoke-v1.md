@@ -91,10 +91,9 @@ HOST1, 6301·6303 → HOST2). `python -m scripts.make_seed_assignment --rule alt
    sha, `execution_deadline =` 예상 종료 + 여유(UTC 오프셋 포함), `host.<id>.docker_engine =` 각 호스트 preflight
    `docker version --format '{{.Server.Version}}'`를 채운다. 채운 파일은 `E` **뒤** 커밋에 있어도 된다. 런처는
    checkout HEAD를 `engine_sha`와 비교하므로, 실행은 `E`의 깨끗한 detached worktree에서 하고 `--preregistration`에는
-   그 worktree 밖의 채운 파일 사본을 준다(EXP-0와 같은 방식).
+   그 worktree 밖의 채운 파일 사본을 준다(EXP-0와 같은 방식). 채움 명령: `PYTHONPATH=src python -m scripts.fill_run_registration <이 파일> --set engine_sha=<E> --set exposure_ledger_sha256=<E 트리의 원장 sha> --set execution_deadline=<UTC 오프셋 포함> --set host.HOST1.docker_engine=29.8.0 --set host.HOST2.docker_engine=29.9.3 --out <worktree 밖>/<이름>-filled.md`.
    **기준 파일(순서 고정):** `E` 확정 → `E`에서 기준 파일 생성(이미지 id 3개, 호스트별 Engine, 공유 경로 16개 해시,
-   `expected_execution_sha = E`; W1의 `scripts/make_run_criteria.py`, 브랜치 `claude/p0-347-run-tooling`, 머지 뒤 이름
-   확정) → 기준 파일 sha256을 LOG에 고정 → 실행. `--expected-images`에 이 파일을 준다.
+   `expected_execution_sha = E`; 생성 명령 `PYTHONPATH=src python -m scripts.make_run_criteria --execution-sha <E> --host HOST1 --engine HOST2=29.9.3 --out <worktree 밖>/criteria.json`) → 기준 파일 sha256을 LOG에 고정 → 실행. `--expected-images`에 이 파일을 준다.
    **원장 sha:** 실행 뒤 원장 행은 `E` 뒤 커밋에 들어가므로, 같은 `E`에서 도는 실행들의 `exposure_ledger_sha256`은
    `E` 트리의 원장 sha 그대로다(a76ffee에서는 `8a832e19…`).
 2. **preflight(호스트별):** detached worktree `E`, `git status` 깨끗, venv python(uv.lock 생성 금지), `docker context

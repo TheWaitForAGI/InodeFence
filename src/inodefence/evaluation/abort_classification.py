@@ -18,7 +18,7 @@ single source of truth for the cross-lane vocabulary that distinguishes them:
   ``observation_failures[].kind`` sub-reason).
 * retry-policy constants -- ``MAX_INFRA_RETRIES`` and the backoff schedule, plus the
   Docker-stall bounds (``MAX_INFRA_RETRIES_PER_CAMPAIGN``, ``STALL_ABSENCE_CONFIRM_SECONDS``,
-  ``TARGET_TIMEOUT_DAEMON_MARGIN_SECONDS``).
+  ``TARGET_TIMEOUT_STALL_MAX_RUNTIME_SECONDS``).
 
 Everything here is pure and read-only. It makes no runtime decision and changes no
 behavior, and nothing here relaxes the isolation contract.
@@ -78,9 +78,10 @@ the harness-generated message *substring*, never an exact string.
    wait``). Origin: ``checked`` (``execution/container.py``). It says that a harness call to the
    runtime failed outside cleanup, not that the case was harmless or that the abort carries no
    information. It is not in :data:`INFRASTRUCTURE_REASONS`, so the worker pool never retries
-   it (D21). The one exception is a Docker stall: when the attempt's first anomalous Docker
-   call timed out, ``execution/stall_recovery.py`` re-executes the case under the stall
-   constants below. A cleanup error replacing one of these still
+   it (D21). The one exception is a Docker stall: when the attempt failed because of an
+   unrecovered Docker time-out and no other kind of Docker failure,
+   ``execution/stall_recovery.py`` re-executes the case under the stall constants below.
+   A cleanup error replacing one of these still
    classifies as cleanup, because the reason names only the last error; ``error_chain`` keeps the
    first one.
 """
@@ -122,27 +123,37 @@ INFRASTRUCTURE_REASONS: frozenset[InvalidReason] = frozenset(
 # K retries => up to K+1 attempts per case. Two retries clears the transient WSL2
 # daemon pressure that produces most cleanup aborts without masking a persistent break.
 MAX_INFRA_RETRIES: int = 2
-# Bounded exponential backoff with full jitter: wait in [0, min(cap, base*2**i)] before
-# attempt i+1 (i from 0). Kept small so a stuck host cannot stall a campaign.
+# Bounded exponential backoff schedule min(cap, base*2**i) before attempt i+1 (i from 0).
+# The worker pool draws a full-jitter wait in [0, that value] from its worker-local RNG;
+# execution/stall_recovery.py waits exactly that value between absence probes (no RNG).
+# Kept small so a stuck host cannot stall a campaign.
 RETRY_BACKOFF_BASE_SECONDS: float = 0.5
 RETRY_BACKOFF_CAP_SECONDS: float = 4.0
 
 # Docker infrastructure stalls (execution/stall_recovery.py). This reopens D040-D21 only for
-# stalls: a case attempt whose *first* anomalous Docker call timed out, or whose TIMED_OUT
-# verdict the daemon's own run time does not confirm, is discarded and the same case is
+# stalls, and only on positive stall evidence: a case attempt that raised because of an
+# unrecovered Docker time-out (and no other kind of Docker failure), or whose TIMED_OUT
+# outcome the daemon's state shows to be a stall, is discarded and the same case is
 # re-executed in a new container and run root once the daemon reports every container of
 # the attempt absent. INFRASTRUCTURE_REASONS above is unchanged: a runtime_call failure that
-# did not start with a timeout is still never retried. Per case the bound is
-# MAX_INFRA_RETRIES; these are the campaign bound and the two stall-specific limits.
+# is not such a stall is still never retried. Per case the bound is MAX_INFRA_RETRIES; these
+# are the campaign bound and the two stall-specific limits.
 MAX_INFRA_RETRIES_PER_CAMPAIGN: int = 8
 # Observed stalls (HOST1 benchmark 2026-11-07/08) lasted 24-143 s; confirmation starts about
 # 40 s after a stall begins (start 10 s + inspect 10 s + two cleanup inspects), so 180 s
 # covers more than 1.5x the longest observed stall.
 STALL_ABSENCE_CONFIRM_SECONDS: float = 180.0
-# A start timeout stays a target TIMED_OUT result only when the daemon measured at least
-# (target timeout - margin) seconds between StartedAt and FinishedAt. With the 10 s target
-# timeout, a daemon run time in [9.0, 10.0) s stays TIMED_OUT exactly as before.
-TARGET_TIMEOUT_DAEMON_MARGIN_SECONDS: float = 1.0
+# A start time-out whose container had already *exited on its own* (the backend did not kill
+# it) is a stall (the attach did not return) only when the daemon's FinishedAt - StartedAt is
+# in [0, this]; otherwise the TIMED_OUT result stays. A target still running at the deadline
+# stays TIMED_OUT without any time comparison. 5.0 s is half the 10 s target timeout, chosen
+# so that clock error cannot move a case across it in either direction: the client deadline
+# runs on the host monotonic clock (7-9 % fast on HOST1, so it fires after about 9.2 real
+# seconds) and daemon timestamps come from the Docker VM wall clock, observed stepping back
+# 0.1-2.5 s about every 29 s. A target that finished just before the deadline therefore
+# measures >= 7.5 s, and a fast exit whose attach stalled measures <= 2.6 s (0.107 s
+# observed).
+TARGET_TIMEOUT_STALL_MAX_RUNTIME_SECONDS: float = 5.0
 
 # Ordered (harness message substring, category); first containment match wins.
 # The phrases are the harness-generated messages from execution/docker_client.py and

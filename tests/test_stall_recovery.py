@@ -1,11 +1,12 @@
 """Docker infrastructure stalls re-execute a case instead of aborting or faking a timeout.
 
 Deterministic fault injection without Docker: a scripted fake daemon drives the real
-``ContainerExecutionBackend`` code path, and a virtual clock stands in for every wait
-(a timed-out call advances it by its timeout; nothing sleeps). The stall shapes follow the
-HOST1 benchmark of 2026-11-07/08: Class S (one container's start never completes and holds
-its lock), Class G (every call stalls for about a minute) and the 0.107 s target whose
-attach timed out.
+``ContainerExecutionBackend`` code path (and, for the end-to-end tests, the real
+``NodeTarEffectTarget`` and ``run_node_tar_effect_case``), and a virtual clock stands in for
+every wait (a timed-out call advances it by its timeout; nothing sleeps). The stall shapes
+follow the HOST1 benchmark of 2026-11-07/08: Class S (one container's start never completes
+and holds its lock), Class G (every call stalls for about a minute) and the 0.107 s target
+whose attach timed out.
 """
 
 import json
@@ -20,12 +21,17 @@ import scripts.run_effect_demo as run_effect_demo
 from scripts.container_controller import apply_aborted_infra_reexecutions
 
 from inodefence.effect_campaign import EffectCampaignConfig, run_effect_campaign
-from inodefence.effect_demo import EffectStepReporter, render_effect_step_line
+from inodefence.effect_demo import (
+    EffectStepReporter,
+    render_effect_campaign_report,
+    render_effect_step_line,
+)
 from inodefence.effect_synthetic import synthetic_effect_result
 from inodefence.evaluation.abort_classification import (
     MAX_INFRA_RETRIES,
     MAX_INFRA_RETRIES_PER_CAMPAIGN,
     STALL_ABSENCE_CONFIRM_SECONDS,
+    TARGET_TIMEOUT_STALL_MAX_RUNTIME_SECONDS,
     InvalidReason,
     classify_abort_reason,
 )
@@ -38,13 +44,16 @@ from inodefence.execution.base import (
 from inodefence.execution.container import OWNER_LABEL, ContainerExecutionBackend
 from inodefence.execution.docker_client import CommandResult
 from inodefence.execution.stall_recovery import (
+    MAX_RECORDED_CALLS,
     STDERR_PREFIX,
+    CallObservation,
     ObservedDockerClient,
     StallRecovery,
     TimeoutVerdict,
     classify_target_timeout,
     confirm_absent,
     daemon_runtime_seconds,
+    is_stall_failure,
 )
 from inodefence.feedback import EffectSearchPolicy
 from inodefence.generator import minimal_seed_corpus
@@ -58,6 +67,15 @@ CONTROLLER = "b" * 64
 OWNER = "c" * 32
 REALTIME_BASE = 1_794_000_000.0
 TIMEOUT = 10
+NEVER = "0001-01-01T00:00:00Z"
+IDENTITY = {
+    "node_version": "22.22.0",
+    "tar_version": run_effect_demo.pinned_node_tar_version(),
+    "producer_sha256": "1" * 64,
+    "package_lock_sha256": "2" * 64,
+    "package_entrypoint_sha256": "3" * 64,
+    "unpack_sha256": "4" * 64,
+}
 
 
 class Clock:
@@ -74,32 +92,36 @@ class Clock:
         self.now += seconds
 
 
-def rfc3339(clock_time: float) -> str:
-    epoch = REALTIME_BASE + clock_time
-    whole = int(epoch)
-    nanos = round((epoch - whole) * 1e9)
-    moment = datetime.fromtimestamp(whole, UTC)
-    return moment.strftime("%Y-%m-%dT%H:%M:%S") + f".{nanos:09d}Z"
+def ns_of(clock_time: float) -> int:
+    return round((REALTIME_BASE + clock_time) * 1e9)
 
 
-NEVER = "0001-01-01T00:00:00Z"
+def rfc3339(nanoseconds: int) -> str:
+    whole, fraction = divmod(nanoseconds, 1_000_000_000)
+    return datetime.fromtimestamp(whole, UTC).strftime("%Y-%m-%dT%H:%M:%S") + f".{fraction:09d}Z"
 
 
 class StallDaemon:
     """Scripted daemon. ``plans`` gives each created container's start behavior, in order.
 
-    Plans: ``normal`` (runs 0.1 s, exit 0); ``hang:<s>`` (Class S: start never completes,
-    every call on the container times out for <s> seconds after the start deadline);
-    ``created`` (start times out, container stays created, inspect works); ``attach_late``
-    (target exits after 0.107 s, attach times out); ``genuine`` (target runs until killed);
-    ``late:<s>`` (start overhead <s>, then runs until killed); ``global:<s>`` (normal start,
-    then every daemon call times out for <s> seconds, Class G); ``foreign`` (owned by
-    another invocation).
+    Plans: ``normal`` (runs 0.1 s); ``hang:<s>`` (Class S: start never completes, every call
+    on the container times out for <s> seconds after the start deadline); ``created``
+    (start times out, container stays created, inspect works); ``exited:<s>`` (the target
+    exits on its own after <s> daemon seconds, possibly negative, but the attach times
+    out); ``exited_missing`` / ``exited_garbage`` (same, with absent or unparsable
+    timestamps); ``genuine`` (target runs until killed); ``late:<s>`` (start overhead <s>,
+    then runs until killed); ``global:<s>`` (normal start, then every daemon call times out
+    for <s> seconds, Class G); ``foreign`` (owned by another invocation); ``hangbad:<s>``
+    (like ``hang``, then inspect by name answers malformed JSON).
+
+    A started command containing ``--identify`` prints the node-tar identity JSON; other
+    targets exit with ``target_exit`` and print ``b"out"``.
     """
 
-    def __init__(self, clock: Clock, plans: list[str] | None = None) -> None:
+    def __init__(self, clock: Clock, plans: list[str] | None = None, target_exit: int = 0):
         self.clock = clock
         self.plans = list(plans or [])
+        self.target_exit = target_exit
         self.log: list[tuple[tuple[str, ...], CommandResult]] = []
         self.containers: dict[str, dict[str, Any]] = {}
         self.names: dict[str, str] = {}
@@ -117,8 +139,26 @@ class StallDaemon:
         return CommandResult(-9, b"", b"", True)
 
     def _resolve(self, token: str) -> dict[str, Any] | None:
-        identity = self.names.get(token, token)
-        return self.containers.get(identity)
+        return self.containers.get(self.names.get(token, token))
+
+    def _state(self, container: dict[str, Any]) -> dict[str, object]:
+        status = container["status"]
+        state: dict[str, object] = {
+            "Status": status,
+            "Running": status == "running",
+            "Pid": 42 if status == "running" else 0,
+            "StartedAt": NEVER
+            if container["started_ns"] is None
+            else rfc3339(container["started_ns"]),
+            "FinishedAt": NEVER
+            if container["finished_ns"] is None
+            else rfc3339(container["finished_ns"]),
+        }
+        if container["plan"] == "exited_missing":
+            del state["StartedAt"], state["FinishedAt"]
+        if container["plan"] == "exited_garbage":
+            state["StartedAt"] = "yesterday"
+        return state
 
     def _run(self, args: tuple[str, ...], timeout: float) -> CommandResult:
         if args[0] == "version":
@@ -152,18 +192,10 @@ class StallDaemon:
         if self.clock.now < container["locked_until"]:
             return self._timeout(timeout)
         if args[:2] == ("container", "inspect"):
+            if container["plan"].startswith("hangbad") and token == container["name"]:
+                return CommandResult(0, b"not json", b"")
             info = dict(container["info"])
-            info["State"] = {
-                "Status": container["status"],
-                "Running": container["status"] == "running",
-                "Pid": 42 if container["status"] == "running" else 0,
-                "StartedAt": NEVER
-                if container["started_at"] is None
-                else rfc3339(container["started_at"]),
-                "FinishedAt": NEVER
-                if container["finished_at"] is None
-                else rfc3339(container["finished_at"]),
-            }
+            info["State"] = self._state(container)
             return CommandResult(0, json.dumps([info]).encode(), b"")
         if args[:2] == ("container", "start"):
             return self._start(container, timeout)
@@ -171,10 +203,10 @@ class StallDaemon:
             if container["status"] != "running":
                 return CommandResult(1, b"", b"Error: container is not running\n")
             container["status"] = "exited"
-            container["finished_at"] = self.clock.now
+            container["finished_ns"] = ns_of(self.clock.now)
             return CommandResult(0, b"", b"")
         if args[:2] == ("container", "wait"):
-            return CommandResult(0, b"0\n", b"")
+            return CommandResult(0, f"{container['exit_code']}\n".encode(), b"")
         if args[:2] == ("container", "rm"):
             del self.containers[container["id"]]
             del self.names[container["name"]]
@@ -186,6 +218,7 @@ class StallDaemon:
         identity = f"{self.created:064x}"
         name = args[args.index("--name") + 1]
         root = args[args.index("--workdir") + 1].removesuffix("/extract")
+        command = list(args[args.index(IMAGE) + 1 :])
         plan = self.plans.pop(0) if self.plans else "normal"
         owner = "f" * 32 if plan == "foreign" else OWNER
         info = {
@@ -195,7 +228,7 @@ class StallDaemon:
                 "Labels": {OWNER_LABEL: owner},
                 "User": "1000:1000",
                 "Entrypoint": [args[args.index("--entrypoint") + 1]],
-                "Cmd": list(args[args.index(IMAGE) + 1 :]) or None,
+                "Cmd": command or None,
                 "WorkingDir": root + "/extract",
                 "Env": [args[index + 1] for index, arg in enumerate(args) if arg == "--env"],
             },
@@ -232,43 +265,48 @@ class StallDaemon:
             },
             "Mounts": [{"Destination": root}],
         }
+        identify = "--identify" in command
         self.containers[identity] = {
             "id": identity,
             "name": name,
-            "root": root,
             "plan": plan,
             "info": info,
             "status": "created",
-            "started_at": None,
-            "finished_at": None,
+            "started_ns": None,
+            "finished_ns": None,
             "locked_until": -1.0,
+            "exit_code": 0 if identify else self.target_exit,
+            "stdout": (json.dumps(IDENTITY) + "\n").encode() if identify else b"out",
         }
         self.names[name] = identity
         return CommandResult(0, identity.encode(), b"")
 
+    def _exit_on_own(self, container: dict[str, Any], seconds: float) -> None:
+        container["started_ns"] = ns_of(self.clock.now + 0.02)
+        container["finished_ns"] = container["started_ns"] + round(seconds * 1e9)
+        container["status"] = "exited"
+
     def _start(self, container: dict[str, Any], timeout: float) -> CommandResult:
         plan, _, argument = container["plan"].partition(":")
         if plan in ("normal", "foreign", "global"):
-            container["started_at"] = self.clock.now + 0.02
-            container["finished_at"] = container["started_at"] + 0.1
-            container["status"] = "exited"
+            self._exit_on_own(container, 0.1)
             self.clock.advance(0.2)
             if plan == "global":
                 self.global_until = self.clock.now + float(argument)
-            return CommandResult(0, b"out", b"err")
-        if plan == "hang":
+            return CommandResult(container["exit_code"], container["stdout"], b"err")
+        if plan in ("hang", "hangbad"):
             result = self._timeout(timeout)
             container["locked_until"] = self.clock.now + float(argument)
             return result
         if plan == "created":
             return self._timeout(timeout)
-        if plan == "attach_late":
-            container["started_at"] = self.clock.now + 0.02
-            container["finished_at"] = container["started_at"] + 0.107
-            container["status"] = "exited"
+        if plan in ("exited", "exited_missing", "exited_garbage"):
+            self._exit_on_own(container, float(argument) if argument else 0.107)
             return self._timeout(timeout)
         if plan in ("genuine", "late"):
-            container["started_at"] = self.clock.now + (float(argument) if argument else 0.02)
+            container["started_ns"] = ns_of(
+                self.clock.now + (float(argument) if argument else 0.02)
+            )
             container["status"] = "running"
             return self._timeout(timeout)
         raise AssertionError(f"unknown plan {plan}")
@@ -283,14 +321,18 @@ class StallDaemon:
 
 
 @pytest.fixture
-def world(monkeypatch):
+def host(monkeypatch):
     monkeypatch.setattr("inodefence.execution.container.os.getuid", lambda: 1000)
     monkeypatch.setattr("inodefence.execution.container.os.getgid", lambda: 1000)
     monkeypatch.setattr("socket.gethostname", lambda: CONTROLLER[:12])
+
+
+@pytest.fixture
+def world(host):
     clock = Clock()
 
-    def build(plans: list[str] | None = None, **recovery: Any):
-        daemon = StallDaemon(clock, plans)
+    def build(plans: list[str] | None = None, target_exit: int = 0, **recovery: Any):
+        daemon = StallDaemon(clock, plans, target_exit)
         observed = ObservedDockerClient(daemon, monotonic=clock.monotonic, realtime=clock.realtime)
         backend = ContainerExecutionBackend(observed, CONTROLLER, "inodefence-runtime", OWNER)
         emitted: list[dict[str, object]] = []
@@ -308,12 +350,17 @@ def world(monkeypatch):
     return clock, build
 
 
+def plain_backend(plans: list[str] | None = None, target_exit: int = 0):
+    daemon = StallDaemon(Clock(), plans, target_exit)
+    return daemon, ContainerExecutionBackend(daemon, CONTROLLER, "inodefence-runtime", OWNER)
+
+
 def target_attempt(backend, roots: list[Path], *, probe: bool = False):
     """One case attempt shaped like run_node_tar_effect_case: [probe container,] target."""
 
     def attempt() -> ContainerOutcome:
         if probe:
-            identify_image(backend, IMAGE, ("/identify",))
+            identify_image(backend, IMAGE, ("/identify", "--identify"))
         with disposable_sandbox() as sandbox:
             roots.append(sandbox.root)
             request = ContainerRequest(IMAGE, ("/helper", "case"), sandbox.root, TIMEOUT)
@@ -327,7 +374,6 @@ def run_case(stall: StallRecovery, attempt) -> ContainerOutcome:
     return stall.run(
         attempt,
         timed_out=lambda outcome: outcome.exit_code is None,
-        timeout_seconds=TIMEOUT,
         step_index=3,
         case_id="case-3",
     )
@@ -349,12 +395,29 @@ def create_indexes(daemon: StallDaemon) -> list[int]:
     return [index for index, (args, _) in enumerate(daemon.log) if args[1] == "create"]
 
 
+_TOKENS = re.compile(r"inodefence-[0-9a-f]{32}|core-run-[A-Za-z0-9_]+")
+
+
+def normalize(values: list[str]) -> list[str]:
+    """Replace random container names and run roots by their order of appearance."""
+    seen: dict[str, str] = {}
+
+    def token(match: re.Match[str]) -> str:
+        return seen.setdefault(match.group(0), f"<{len(seen)}>")
+
+    return [_TOKENS.sub(token, value) for value in values]
+
+
+def calls_of(daemon: StallDaemon) -> list[str]:
+    return normalize(["\0".join(args) for args, _ in daemon.log])
+
+
 # 1. Class S --------------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("hang", (60.0, 140.0))
 def test_class_s_start_hang_reexecutes_in_a_new_container_after_absence(world, hang) -> None:
-    clock, build = world
+    _, build = world
     daemon, backend, stall, emitted = build([f"hang:{hang}", "normal"])
     roots: list[Path] = []
 
@@ -367,32 +430,96 @@ def test_class_s_start_hang_reexecutes_in_a_new_container_after_absence(world, h
     # first container, so the stalled start cannot run after the re-execution began.
     absent = first_absent_answer(daemon, {first, f"{1:064x}"})
     assert absent < create_indexes(daemon)[1]
-    # The target ran exactly once per container.
-    assert daemon.ops().count("container start") == 2
+    assert daemon.ops().count("container start") == 2  # once per container
     [event] = stall.events
     assert event["action"] == "reexecuted"
     assert event["invalid_reason"] == InvalidReason.CLEANUP_INSPECT.value
     assert cast(dict, event["stall_call"])["op"] == "container start"
     assert cast(dict, event["absence"])["confirmed"] is True
     assert cast(dict, event["absence"])["seconds"] <= STALL_ABSENCE_CONFIRM_SECONDS + 50
+    assert event["anomalous_calls_dropped"] == 0
     assert emitted == stall.events
     assert stall.reexecution_count == 1
 
 
-# 2. Class S variant: the start never completed but inspect answers "created" --------------
+# 2-4. TIMED_OUT outcomes: reclassified only on positive stall evidence ---------------------
 
 
-def test_start_timeout_in_created_state_is_not_recorded_as_target_timeout(world) -> None:
+@pytest.mark.parametrize(
+    ("plan", "verdict"),
+    (
+        ("created", TimeoutVerdict.START_NOT_COMPLETED),
+        ("exited:0.107", TimeoutVerdict.ATTACH_NOT_RETURNED),
+        ("exited:0", TimeoutVerdict.ATTACH_NOT_RETURNED),
+        (f"exited:{TARGET_TIMEOUT_STALL_MAX_RUNTIME_SECONDS}", TimeoutVerdict.ATTACH_NOT_RETURNED),
+    ),
+)
+def test_stall_states_are_reexecuted_not_recorded_as_target_timeout(world, plan, verdict) -> None:
     _, build = world
-    daemon, backend, stall, _ = build(["created", "normal"])
+    daemon, backend, stall, _ = build([plan, "normal"])
 
     outcome = run_case(stall, target_attempt(backend, []))
 
     assert outcome.exit_code == 0
     [event] = stall.events
-    assert event["timeout_reclassified"] == TimeoutVerdict.START_NOT_COMPLETED.value
+    assert event["timeout_reclassified"] == verdict.value
     assert event["invalid_reason"] == InvalidReason.RUNTIME_CALL.value
     assert event["action"] == "reexecuted"
+    assert len(daemon.create_names()) == 2
+
+
+@pytest.mark.parametrize(
+    "plan",
+    (
+        "genuine",  # running at the deadline -> killed: no time comparison at all
+        "late:3.0",  # start overhead ate part of the budget, still running -> killed
+        "late:9.9",
+        "exited:7.5",  # exited on its own near the deadline
+        "exited:5.000000001",  # just above the stall bound
+        "exited:-1.0",  # daemon clock stepped back
+        "exited_missing",  # timestamps absent
+        "exited_garbage",  # timestamps unparsable
+    ),
+)
+def test_other_timeouts_stay_timed_out_with_no_extra_docker_call(world, plan) -> None:
+    _, build = world
+    daemon, backend, stall, _ = build([plan])
+    plain, backend_without = plain_backend([plan])
+
+    outcome = run_case(stall, target_attempt(backend, []))
+    expected = target_attempt(backend_without, [])()
+
+    assert outcome.exit_code is None and expected.exit_code is None  # TIMED_OUT, as before
+    assert stall.events == []
+    assert calls_of(daemon) == calls_of(plain)
+    verdict, _ = classify_target_timeout(stall.client.calls)
+    assert not verdict.is_stall
+
+
+def test_running_target_is_a_target_timeout_without_reading_timestamps() -> None:
+    def call(op, state=None, timed_out=False):
+        return CallObservation(op, "d" * 64, 0, timed_out, False, 0.0, 0.0, 0.0, state=state)
+
+    calls = [
+        call("container start", timed_out=True),
+        call("container inspect", {"Status": "running", "Running": True}),
+        call("container kill"),
+        call("container wait"),
+        call("container inspect", {"Status": "exited", "StartedAt": "x", "FinishedAt": "y"}),
+    ]
+    assert classify_target_timeout(calls) == (TimeoutVerdict.TARGET_TIMEOUT, None)
+    no_timeout = [call("container start"), *calls[1:]]
+    assert classify_target_timeout(no_timeout) == (TimeoutVerdict.UNDETERMINED, None)
+
+
+def test_daemon_runtime_reads_nanosecond_and_offset_timestamps() -> None:
+    state = {
+        "StartedAt": "2026-11-08T01:02:03.123456789Z",
+        "FinishedAt": "2026-11-08T10:02:13.123456790+09:00",
+    }
+    assert daemon_runtime_seconds(state) == pytest.approx(10.000000001, abs=1e-9)
+    assert daemon_runtime_seconds({"StartedAt": NEVER, "FinishedAt": NEVER}) is None
+    assert daemon_runtime_seconds({"StartedAt": "garbage", "FinishedAt": NEVER}) is None
 
 
 # 3. Class G --------------------------------------------------------------------------------
@@ -412,77 +539,17 @@ def test_class_g_global_stall_after_a_normal_attach_reexecutes(world) -> None:
     assert cast(dict, event["absence"])["probes"] >= 2
 
 
-# 4. The misclassification case and the genuine-timeout boundary ---------------------------
-
-
-def test_attach_stall_after_a_fast_target_exit_is_not_a_target_timeout(world) -> None:
-    _, build = world
-    daemon, backend, stall, _ = build(["attach_late", "normal"])
-
-    outcome = run_case(stall, target_attempt(backend, []))
-
-    assert outcome.exit_code == 0
-    [event] = stall.events
-    assert event["timeout_reclassified"] == TimeoutVerdict.DAEMON_RUNTIME_SHORT.value
-    assert event["daemon_runtime_seconds"] == pytest.approx(0.107, abs=1e-6)
-
-
-@pytest.mark.parametrize("plan", ("genuine", "late:0.5"))
-def test_genuine_timeout_stays_timed_out_without_extra_calls(world, plan) -> None:
-    """Daemon run time >= 9.0 s keeps TIMED_OUT, including the [9.0, 10.0) s band."""
-    _, build = world
-    daemon, backend, stall, _ = build([plan])
-    plain_clock = Clock()
-    plain = StallDaemon(plain_clock, [plan])
-    plain_backend = ContainerExecutionBackend(plain, CONTROLLER, "inodefence-runtime", OWNER)
-
-    outcome = run_case(stall, target_attempt(backend, []))
-    expected = target_attempt(plain_backend, [])()
-
-    assert outcome.exit_code is None and expected.exit_code is None
-    assert stall.events == []
-    assert normalized(daemon) == normalized(plain)
-    verdict, runtime = classify_target_timeout(stall.client.calls, TIMEOUT)
-    assert verdict == TimeoutVerdict.GENUINE
-    assert runtime is not None and runtime >= 9.0
-    if plan.startswith("late"):
-        assert runtime < 10.0
-
-
-def test_start_overhead_that_cut_the_target_budget_is_reexecuted(world) -> None:
-    _, build = world
-    _, backend, stall, _ = build(["late:3.0", "normal"])
-
-    outcome = run_case(stall, target_attempt(backend, []))
-
-    assert outcome.exit_code == 0
-    [event] = stall.events
-    assert event["timeout_reclassified"] == TimeoutVerdict.DAEMON_RUNTIME_SHORT.value
-    assert cast(float, event["daemon_runtime_seconds"]) < 9.0
-
-
-def test_daemon_runtime_reads_nanosecond_and_offset_timestamps() -> None:
-    state = {
-        "StartedAt": "2026-11-08T01:02:03.123456789Z",
-        "FinishedAt": "2026-11-08T10:02:13.123456790+09:00",
-    }
-    assert daemon_runtime_seconds(state) == pytest.approx(10.000000001, abs=1e-9)
-    assert daemon_runtime_seconds({"StartedAt": NEVER, "FinishedAt": NEVER}) is None
-    assert daemon_runtime_seconds({"StartedAt": "garbage", "FinishedAt": NEVER}) is None
-
-
 # 5. Per-case bound -------------------------------------------------------------------------
 
 
-def test_case_bound_exhaustion_raises_the_original_failure(world) -> None:
+def test_case_bound_exhaustion_raises_the_backend_failure_unchanged(world) -> None:
     _, build = world
-    plans = ["hang:25"] * (MAX_INFRA_RETRIES + 1)
-    daemon, backend, stall, _ = build(plans)
+    daemon, backend, stall, _ = build(["hang:25"] * (MAX_INFRA_RETRIES + 1))
 
     with pytest.raises(BackendError) as raised:
         run_case(stall, target_attempt(backend, []))
 
-    # The same exception (type, message, chain) the campaign aborts with today.
+    # A raised stall re-raises the backend's own exception (type, message, chain).
     assert str(raised.value) == "container runtime cleanup inspect failed: timed out"
     assert isinstance(raised.value.__context__, BackendError)
     assert classify_abort_reason(f"x.BackendError: {raised.value}") == (
@@ -497,18 +564,42 @@ def test_case_bound_exhaustion_raises_the_original_failure(world) -> None:
     assert len(daemon.create_names()) == MAX_INFRA_RETRIES + 1
 
 
+def test_reclassified_timeout_beyond_the_bound_aborts_where_base_recorded_timed_out(
+    world,
+) -> None:
+    """Documented difference: base would have kept TIMED_OUT; past the bound this aborts."""
+    _, build = world
+    _, backend, stall, _ = build(["exited:0.107"] * (MAX_INFRA_RETRIES + 1))
+    _, backend_without = plain_backend(["exited:0.107"])
+
+    assert target_attempt(backend_without, [])().exit_code is None  # base: TIMED_OUT result
+    with pytest.raises(BackendError, match="start stalled") as raised:
+        run_case(stall, target_attempt(backend, []))
+    assert classify_abort_reason(f"x.BackendError: {raised.value}") == InvalidReason.RUNTIME_CALL
+    assert stall.events[-1]["action"] == "abort_case_bound"
+
+
 # 6. Per-campaign bound ---------------------------------------------------------------------
 
 
 class JournalOnlyDaemon:
-    """Answers routine calls; ``container start`` times out (a stall journal entry)."""
+    """Answers routine calls; ``container start`` times out; ``create`` may fail."""
 
     def __init__(self) -> None:
         self.calls: list[tuple[str, ...]] = []
+        self.fail_create = False
 
     def run(self, args: tuple[str, ...], timeout: float) -> CommandResult:
         self.calls.append(args)
         if args[:2] == ("container", "start"):
+            return CommandResult(-9, b"", b"", True)
+        if args[:2] == ("container", "create") and self.fail_create:
+            return CommandResult(1, b"", b"Error response from daemon: conflict\n")
+        if (
+            args[:2] == ("container", "inspect")
+            and args[-1] == "flaky"
+            and self.calls.count(args) == 1
+        ):
             return CommandResult(-9, b"", b"", True)
         return CommandResult(0, b"", b"")
 
@@ -550,7 +641,6 @@ def test_campaign_bound_exhaustion_aborts() -> None:
         value = stall.run(
             stalling_once(observed, index, stalls, f"case-{index}"),
             timed_out=lambda _value: False,
-            timeout_seconds=TIMEOUT,
             step_index=index,
             case_id=f"case-{index}",
         )
@@ -559,7 +649,6 @@ def test_campaign_bound_exhaustion_aborts() -> None:
         stall.run(
             stalling_once(observed, "late", stalls, "case-late"),
             timed_out=lambda _value: False,
-            timeout_seconds=TIMEOUT,
             step_index=MAX_INFRA_RETRIES_PER_CAMPAIGN,
             case_id="case-late",
         )
@@ -571,7 +660,7 @@ def test_campaign_bound_exhaustion_aborts() -> None:
 
 
 def test_unconfirmed_absence_aborts_without_a_second_container(world) -> None:
-    clock, build = world
+    _, build = world
     daemon, backend, stall, _ = build(["hang:1000", "normal"])
 
     with pytest.raises(BackendError, match="cleanup inspect failed"):
@@ -585,7 +674,21 @@ def test_unconfirmed_absence_aborts_without_a_second_container(world) -> None:
     assert STALL_ABSENCE_CONFIRM_SECONDS <= absence["seconds"] <= STALL_ABSENCE_CONFIRM_SECONDS + 50
 
 
-# 8. Failures that did not start with a timeout are never retried -------------------------
+def test_unexpected_exception_during_absence_keeps_the_original_failure(world) -> None:
+    _, build = world
+    daemon, backend, stall, _ = build(["hangbad:25"])
+
+    with pytest.raises(BackendError, match="cleanup inspect failed: timed out") as raised:
+        run_case(stall, target_attempt(backend, []))
+
+    assert not isinstance(raised.value, ValueError)
+    [event] = stall.events
+    assert event["action"] == "abort_absence_unconfirmed"
+    assert cast(dict, event["absence"])["stopped_by"] == "exception:JSONDecodeError"
+    assert len(daemon.create_names()) == 1
+
+
+# 8. Failures that are not an unrecovered time-out are never retried ------------------------
 
 
 class RaisingDaemon(JournalOnlyDaemon):
@@ -596,31 +699,75 @@ class RaisingDaemon(JournalOnlyDaemon):
 @pytest.mark.parametrize(
     "error",
     (
-        BackendError("container runtime create failed: daemon error"),
         OutputLimitError(ContainerOutcome(0, b"", b"", 0.1, True)),
         RuntimeError("node-tar effect identity changed after setup"),
     ),
 )
-def test_non_stall_failures_propagate_unchanged(error) -> None:
+def test_non_backend_failures_propagate_even_after_a_timeout(error) -> None:
     stall, observed = journal_recovery()
 
     def attempt():
-        if not isinstance(error, BackendError) or isinstance(error, OutputLimitError):
-            observed.run(("container", "start", "--attach", "d" * 64), TIMEOUT)
+        observed.run(("container", "start", "--attach", "d" * 64), TIMEOUT)
         raise error
 
     with pytest.raises(type(error)) as raised:
-        stall.run(
-            attempt, timed_out=lambda _v: False, timeout_seconds=TIMEOUT, step_index=0, case_id="c"
-        )
+        stall.run(attempt, timed_out=lambda _v: False, step_index=0, case_id="c")
     assert raised.value is error
     assert stall.events == []
 
 
+def test_failure_after_a_recovered_timeout_is_not_a_stall() -> None:
+    """F10: an H1-style recovered time-out does not turn a later daemon error into a stall."""
+    stall, observed = journal_recovery()
+    daemon = cast(JournalOnlyDaemon, observed._inner)
+
+    def attempt():
+        observed.run(("container", "inspect", "flaky"), TIMEOUT)  # times out
+        observed.run(("container", "inspect", "flaky"), TIMEOUT)  # immediate retry succeeds
+        daemon.fail_create = True
+        observed.run(("container", "create", "--name", "inodefence-x", IMAGE), 20)
+        raise BackendError("container runtime create failed: conflict")
+
+    with pytest.raises(BackendError, match="create failed"):
+        stall.run(attempt, timed_out=lambda _v: False, step_index=0, case_id="c")
+    assert stall.events == []
+
+
+def test_policy_violation_after_a_recovered_timeout_is_not_a_stall() -> None:
+    calls = [
+        CallObservation("container inspect", "n", -9, True, False, 0.0, 0.0, 10.0),
+        CallObservation("container inspect", "n", 0, False, False, 10.0, 0.0, 0.1),
+    ]
+    policy = BackendError("created container differs from required execution policy")
+    assert not is_stall_failure(policy, calls)
+    assert is_stall_failure(policy, calls[:1])
+
+
+def test_non_timeout_failure_of_the_reexecution_propagates() -> None:
+    """F10: attempt 2 fails without a time-out -> raised unchanged, not retried again."""
+    stall, observed = journal_recovery()
+    daemon = cast(JournalOnlyDaemon, observed._inner)
+    attempts = 0
+
+    def attempt():
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            observed.run(("container", "start", "--attach", "d" * 64), TIMEOUT)
+            raise BackendError("container runtime inspect failed: timed out")
+        daemon.fail_create = True
+        observed.run(("container", "create", "--name", "inodefence-x", IMAGE), 20)
+        raise BackendError("container runtime create failed: conflict")
+
+    with pytest.raises(BackendError, match="create failed"):
+        stall.run(attempt, timed_out=lambda _v: False, step_index=0, case_id="c")
+    assert attempts == 2
+    assert [event["action"] for event in stall.events] == ["reexecuted"]
+
+
 def test_daemon_error_before_any_timeout_is_not_a_stall(world) -> None:
-    clock, build = world
+    _, build = world
     daemon, backend, stall, _ = build(["normal"])
-    original = daemon._create
 
     def failing_create(args):
         return CommandResult(1, b"", b"Error response from daemon: conflict\n")
@@ -628,7 +775,6 @@ def test_daemon_error_before_any_timeout_is_not_a_stall(world) -> None:
     daemon._create = failing_create  # type: ignore[method-assign]
     with pytest.raises(BackendError, match="create failed"):
         run_case(stall, target_attempt(backend, []))
-    daemon._create = original  # type: ignore[method-assign]
     assert stall.events == []
 
 
@@ -641,34 +787,24 @@ def test_broker_disconnect_is_not_a_stall() -> None:
         observed.run(("container", "inspect", "d" * 64), TIMEOUT)
 
     with pytest.raises(BackendError, match="broker disconnected"):
-        stall.run(
-            attempt, timed_out=lambda _v: False, timeout_seconds=TIMEOUT, step_index=0, case_id="c"
-        )
+        stall.run(attempt, timed_out=lambda _v: False, step_index=0, case_id="c")
     assert stall.events == []
     assert observed.calls[-1].error == "BackendError"
 
 
 def test_owner_mismatch_stops_absence_confirmation(world) -> None:
     clock, build = world
-    daemon, backend, stall, _ = build(["foreign"])
+    daemon, _, stall, _ = build(["foreign"])
+    name = "inodefence-" + "e" * 32
+    workdir = str(RUNTIME_BASE / "core-run-x" / "extract")
     daemon.run(
-        (
-            "container",
-            "create",
-            "--name",
-            "inodefence-" + "e" * 32,
-            "--workdir",
-            str(RUNTIME_BASE / "core-run-x" / "extract"),
-            "--entrypoint",
-            "/h",
-            IMAGE,
-        ),
+        ("container", "create", "--name", name, "--workdir", workdir, "--entrypoint", "/h", IMAGE),
         20,
     )
 
     result = confirm_absent(
         stall.client,
-        ["inodefence-" + "e" * 32],
+        [name],
         OWNER,
         monotonic=clock.monotonic,
         realtime=clock.realtime,
@@ -699,7 +835,6 @@ def test_campaign_with_stalls_matches_the_campaign_without() -> None:
     baseline = run_effect_campaign(minimal_seed_corpus(), synthetic_effect_result, CONFIG)
     stall, observed = journal_recovery()
     stalls: set[str] = set()
-
     calls = 0
 
     def produce(case):
@@ -710,7 +845,6 @@ def test_campaign_with_stalls_matches_the_campaign_without() -> None:
         return stall.run(
             stalling_once(observed, synthetic_effect_result(case), stalls, case.case_id),
             timed_out=lambda _value: False,
-            timeout_seconds=TIMEOUT,
             step_index=0,
             case_id=case.case_id,
         )
@@ -726,31 +860,75 @@ def test_campaign_with_stalls_matches_the_campaign_without() -> None:
 
 # 10. No stall: identical report, steps and Docker call order -----------------------------
 
-_TOKENS = re.compile(r"inodefence-[0-9a-f]{32}|core-run-[A-Za-z0-9_]+")
-
-
-def normalized(daemon: StallDaemon) -> list[tuple[str, ...]]:
-    seen: dict[str, str] = {}
-
-    def token(match: re.Match[str]) -> str:
-        return seen.setdefault(match.group(0), f"<{len(seen)}>")
-
-    return [tuple(_TOKENS.sub(token, arg) for arg in args) for args, _ in daemon.log]
-
 
 def test_no_stall_keeps_the_docker_call_sequence(world) -> None:
     _, build = world
     daemon, backend, stall, emitted = build(["normal", "normal"])
-    plain = StallDaemon(Clock(), ["normal", "normal"])
-    plain_backend = ContainerExecutionBackend(plain, CONTROLLER, "inodefence-runtime", OWNER)
+    plain, backend_without = plain_backend(["normal", "normal"])
 
     outcome = run_case(stall, target_attempt(backend, [], probe=True))
-    expected = target_attempt(plain_backend, [], probe=True)()
+    expected = target_attempt(backend_without, [], probe=True)()
 
     assert outcome == ContainerOutcome(0, b"out", b"err", outcome.duration_seconds, False)
     assert expected.exit_code == 0
-    assert normalized(daemon) == normalized(plain)
+    assert calls_of(daemon) == calls_of(plain)
     assert stall.events == [] and emitted == []
+
+
+def real_demo(backend, recovery: StallRecovery | None) -> tuple[dict, list[str]]:
+    """The real native_demo_report path: real bind and run_node_tar_effect_case, fake daemon."""
+    lines: list[str] = []
+    report = run_effect_demo.native_demo_report(
+        backend,
+        IMAGE,
+        budget=4,
+        step_sink=lambda record: lines.append(render_effect_step_line(record)),
+        stall_recovery=recovery,
+    )
+    return report, lines
+
+
+def comparable(report: dict) -> list[str]:
+    """The rendered report without its per-run wall-clock timing."""
+    return normalize(
+        [render_effect_campaign_report({k: v for k, v in report.items() if k != "timing"})]
+    )
+
+
+def test_real_path_without_stall_is_byte_identical(world) -> None:
+    """Rec. 5: no monkeypatched bind or case runner; only the daemon and the clock are fake."""
+    _, build = world
+    daemon, backend, stall, emitted = build(target_exit=2)
+    plain, backend_without = plain_backend(target_exit=2)
+
+    report, lines = real_demo(backend, stall)
+    plain_report, plain_lines = real_demo(backend_without, None)
+
+    assert normalize(lines) == normalize(plain_lines)
+    assert comparable(report) == comparable(plain_report)
+    assert calls_of(daemon) == calls_of(plain)
+    assert "infra_reexecutions" not in report and "infra_reexecution_count" not in report
+    assert stall.events == [] and emitted == []
+    assert len(lines) == 4
+
+
+def test_real_path_with_a_class_s_stall_keeps_steps_and_records_it(world) -> None:
+    _, build = world
+    # bind probe, then per case: probe + target; the second case's target start hangs.
+    plans = ["normal", "normal", "normal", "normal", "hang:40"]
+    daemon, backend, stall, _ = build(plans, target_exit=2)
+    _, backend_without = plain_backend(target_exit=2)
+
+    report, lines = real_demo(backend, stall)
+    plain_report, plain_lines = real_demo(backend_without, None)
+
+    assert normalize(lines) == normalize(plain_lines)
+    assert report["native_checks"] == plain_report["native_checks"]
+    assert report["infra_reexecution_count"] == 1
+    [event] = cast(list[dict], report["infra_reexecutions"])
+    assert event["action"] == "reexecuted" and event["step_index"] == 1
+    assert set(event) >= {"case_id", "stall_call", "absence", "attempt"}
+    assert "oracle" not in json.dumps(event)  # outcome-blind
 
 
 class _FakeTarget:
@@ -779,43 +957,6 @@ def _demo(monkeypatch, recovery: StallRecovery | None, fake_run) -> tuple[dict, 
         stall_recovery=recovery,
     )
     return report, lines
-
-
-def _without_timing(report: dict) -> str:
-    return json.dumps({k: v for k, v in report.items() if k != "timing"}, sort_keys=True)
-
-
-def test_no_stall_keeps_the_report_and_steps_byte_identical(monkeypatch) -> None:
-    def fake_run(case, target, **kwargs):
-        return _FakeRun(synthetic_effect_result(case))
-
-    plain_report, plain_lines = _demo(monkeypatch, None, fake_run)
-    stall, _ = journal_recovery()
-    report, lines = _demo(monkeypatch, stall, fake_run)
-
-    assert lines == plain_lines
-    assert _without_timing(report) == _without_timing(plain_report)
-    assert "infra_reexecutions" not in report
-
-
-def test_stalled_case_is_reexecuted_inside_the_demo_and_recorded(monkeypatch) -> None:
-    stall, observed = journal_recovery()
-    stalls: set[str] = set()
-
-    def fake_run(case, target, **kwargs):
-        return stalling_once(
-            observed, _FakeRun(synthetic_effect_result(case)), stalls, "only-once"
-        )()
-
-    plain_report, plain_lines = _demo(
-        monkeypatch, None, lambda case, target, **k: _FakeRun(synthetic_effect_result(case))
-    )
-    report, lines = _demo(monkeypatch, stall, fake_run)
-
-    assert lines == plain_lines
-    assert report["native_checks"] == plain_report["native_checks"]
-    [event] = cast(list[dict], report["infra_reexecutions"])
-    assert event["action"] == "reexecuted" and event["step_index"] == 0
 
 
 def test_case_bound_abort_keeps_todays_reason_and_records_the_count(monkeypatch) -> None:
@@ -849,8 +990,8 @@ def test_case_bound_abort_keeps_todays_reason_and_records_the_count(monkeypatch)
 
 
 def test_event_record_has_monotonic_and_realtime_stamps_and_a_stderr_line(world, capsys) -> None:
-    clock, build = world
-    daemon, backend, stall, _ = build(["hang:30", "normal"])
+    _, build = world
+    _, backend, stall, _ = build(["hang:30", "normal"])
     stall.emit = StallRecovery.__dataclass_fields__["emit"].default  # the real stderr writer
 
     run_case(stall, target_attempt(backend, []))
@@ -874,6 +1015,25 @@ def test_event_record_has_monotonic_and_realtime_stamps_and_a_stderr_line(world,
     assert json.loads(line.removeprefix(STDERR_PREFIX + " ")) == json.loads(
         json.dumps(event, sort_keys=True)
     )
+
+
+def test_anomalous_call_list_is_bounded_and_counts_what_it_dropped() -> None:
+    stall, observed = journal_recovery()
+    total = MAX_RECORDED_CALLS + 5
+    stalls: set[str] = set()
+
+    def attempt():
+        if "once" not in stalls:
+            stalls.add("once")
+            for _ in range(total):
+                observed.run(("container", "start", "--attach", "d" * 64), TIMEOUT)
+            raise BackendError("container runtime inspect failed: timed out")
+        return "ok"
+
+    assert stall.run(attempt, timed_out=lambda _v: False, step_index=0, case_id="c") == "ok"
+    [event] = stall.events
+    assert len(cast(list, event["anomalous_calls"])) == MAX_RECORDED_CALLS
+    assert event["anomalous_calls_dropped"] == 5
 
 
 # 12. Stall in the identity-probe container -------------------------------------------------

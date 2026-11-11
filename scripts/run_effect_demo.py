@@ -404,7 +404,6 @@ def _run_native_case(
     return stall_recovery.run(
         attempt,
         timed_out=_target_timed_out,
-        timeout_seconds=target.timeout_seconds,
         step_index=index,
         case_id=case.case_id,
     )
@@ -413,8 +412,13 @@ def _run_native_case(
 def apply_infra_reexecutions(
     report: dict[str, object], stall_recovery: StallRecovery | None
 ) -> None:
-    """Add the discarded-attempt records only when there are any (key absent otherwise)."""
+    """Add the re-execution count and discarded-attempt records only when there are any.
+
+    Both keys are absent when nothing stalled, so a stall-free report is unchanged. A
+    discarded attempt's oracle result is never recorded (outcome-blind).
+    """
     if stall_recovery is not None and stall_recovery.events:
+        report["infra_reexecution_count"] = stall_recovery.reexecution_count
         report["infra_reexecutions"] = list(stall_recovery.events)
 
 
@@ -455,8 +459,8 @@ def native_demo_report(
     `stall_recovery` (built by the controller over the backend's client) re-executes a
     case after a Docker infrastructure stall instead of aborting or recording the stall
     as a target timeout (`inodefence.execution.stall_recovery`). Discarded attempts
-    appear as the report's `infra_reexecutions`, a key that is absent when there were
-    none; steps and native_checks are unchanged.
+    appear as the report's `infra_reexecution_count` and `infra_reexecutions`, keys that are
+    absent when there were none; steps and native_checks are unchanged.
     """
     if type(budget) is not int or not 1 <= budget <= MAX_NATIVE_BUDGET:
         raise ValueError(f"native demo budget must be in 1..{MAX_NATIVE_BUDGET}")

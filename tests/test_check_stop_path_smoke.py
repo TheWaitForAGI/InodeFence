@@ -313,7 +313,8 @@ FAILURES: list[tuple[str, Any, bool]] = [
     ("A7", _tool("manifest_verify_rc", 1), False),
     ("A8", _set("b1", "logs", "c1.log", "unknown_marker", value=True), False),
     ("A8", _set("b1", "logs", "attempts/c2.attempt1.log", "no_such_image", value=False), False),
-    ("N1", _set("b2", "exit_code", value=1), False),
+    ("N1", _set("b2", "exit_code", value=2), False),
+    ("N1", _set("b2", "exit_code", value=-15), False),
     ("N1", _set("b2", "stderr", "stop_in_effect", value=False), False),
     ("P1", None, False),
     ("B1", _set("b4", "index", "resume_approval_refs", value=[]), False),
@@ -592,3 +593,47 @@ def test_judge_cli_writes_the_report_and_fails_on_missing_stages(
     report.unlink()
     assert check.main([*argv, "--cause-logged-at", "500"]) == 1
     assert "passed: False" in capsys.readouterr().out
+
+
+def test_verify_tools_passes_after_the_launcher_rewrites_its_verification_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A7(ii) with the real make_raw_manifest: manifest made, then manifest-verification.json
+    rewritten (as the launcher does), and the verify still passes; any other change fails."""
+    import subprocess
+    import sys
+
+    monkeypatch.setenv("PYTHONPATH", f"{check.REPO / 'src'}:{check.REPO}")
+    out = tmp_path / "out"
+    (out / "summaries").mkdir(parents=True)
+    (out / "summaries" / "index.json").write_text(json.dumps({"cells": []}), encoding="utf-8")
+    (out / "registration.json").write_text("{}", encoding="utf-8")
+    (out / check.VERIFICATION).write_text('{"checked_at": "first"}', encoding="utf-8")
+    manifest = tmp_path / "raw.sha256"
+    script = check.REPO / "scripts" / "make_raw_manifest.py"
+    made = subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--root",
+            str(out),
+            "--host",
+            "t",
+            "--date",
+            "20261111",
+            "--out",
+            str(manifest),
+        ],
+        check=False,
+    )
+    assert made.returncode == 0 and manifest.is_file()
+    (out / check.VERIFICATION).write_text('{"checked_at": "second"}', encoding="utf-8")
+    plain = subprocess.run(
+        [sys.executable, str(script), "--verify", str(manifest), "--root", str(out)],
+        capture_output=True,
+        check=False,
+    )
+    assert plain.returncode != 0  # why the copy without that line is needed
+    assert check.verify_tools(out, manifest)["manifest_verify_rc"] == 0
+    (out / "registration.json").write_text('{"changed": true}', encoding="utf-8")
+    assert check.verify_tools(out, manifest)["manifest_verify_rc"] != 0

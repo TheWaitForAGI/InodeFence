@@ -36,6 +36,19 @@ H1 호스트 smoke 종료 시 Docker CLI에 엔지니어링 deadline을 둔다: 
 남긴다. 종료 전의 build, create, setup 호출에는 이 cleanup deadline이 적용되지 않는다. 기존
 증거 경로를 덮어쓰지 않는다.
 
+Docker 호출 진단은 호출자 계층에서 한다(`src/inodefence/execution/call_diagnostics.py`). 보호
+파일인 컨테이너 백엔드는 바꾸지 않는다. 그래서 timeout이나 출력 잘림은 stderr가 빈
+`BackendError`로만 드러나고, cleanup inspect는 재시도하지 않는다(한 번 실패하면 실패).
+node-tar 캠페인(effect-demo, demo-historical)은 stall 재실행이 쓰는 호출 일지(`ObservedDockerClient`)를
+그대로 읽는다. abort 기록에는 마지막 비정상 호출이 `aborted.last_anomalous_docker_call`(op,
+container, returncode, timed_out, truncated, error, 시각)로 남고, `reason` 끝에
+`[last anomalous docker call: op=… timed_out=… truncated=… returncode=…]`가 붙는다. `category`는
+원래 메시지로 매기며, 덧붙인 문구는 어떤 abort 서명과도 겹치지 않는다. 호스트 broker의 최종
+target cleanup은 비정상 호출마다 `inodefence-docker-call` JSON 한 줄을 stderr(셀 로그)에 쓰고,
+게이트의 U 사유에도 같은 문구를 붙인다. 일지는 argv·stdout·stderr를 저장하지 않으므로 daemon의
+stderr 문구는 이 진단에 남지 않는다. controller 경로의 호출별 기록은 호스트 쪽 `.calls.jsonl`에
+있다.
+
 셀 시작은 프로세스 간 시작 게이트(`src/inodefence/execution/start_gate.py`, 상태는
 `<출력 루트>/start-gate/`)를 거친다. smoke cleanup은 진입 시 `C`를, 표식 출력 **전에** `U`를,
 확인을 마치면 `S`를 게이트에 기록한다. 런처는 전역 `flock` 아래에서 모든 셀을 검사하고 바로

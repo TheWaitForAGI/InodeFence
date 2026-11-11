@@ -35,6 +35,11 @@ from inodefence.effect_demo import (
 )
 from inodefence.evaluation.abort_classification import classify_abort_reason
 from inodefence.execution import ContainerExecutionBackend, StdioDockerClient
+from inodefence.execution.call_diagnostics import (
+    annotate_reason,
+    anomaly_record,
+    last_anomaly,
+)
 from inodefence.execution.stall_recovery import ObservedDockerClient, StallRecovery
 
 
@@ -61,6 +66,31 @@ def apply_aborted_infra_reexecutions(
     assert isinstance(aborted, dict)
     aborted["infra_reexecution_count"] = stall_recovery.reexecution_count
     report["infra_reexecutions"] = list(stall_recovery.events)
+
+
+def apply_last_anomalous_call(
+    report: dict[str, object], stall_recovery: StallRecovery | None
+) -> None:
+    """Name the attempt's last anomalous Docker call in an abort stub.
+
+    The backend's message for a timed-out or truncated call carries no stderr, so
+    the stub could not say why the call failed. From the stall-recovery journal it
+    now records ``aborted.last_anomalous_docker_call`` (op, container, returncode,
+    timed_out, truncated, error, times) and appends the same facts to ``reason``.
+    ``category`` was classified from the original reason, and the suffix matches no
+    abort signature, so the category is the same either way. Absent when the
+    journal has no anomalous call, so such a stub is unchanged.
+    """
+    if stall_recovery is None:
+        return
+    calls = stall_recovery.client.calls
+    anomaly = last_anomaly(calls)
+    if anomaly is None:
+        return
+    aborted = report["aborted"]
+    assert isinstance(aborted, dict)
+    aborted["last_anomalous_docker_call"] = anomaly_record(anomaly)
+    aborted["reason"] = annotate_reason(str(aborted["reason"]), calls)
 
 
 def _announce_demo_start(mode: str, options: dict) -> None:
@@ -119,6 +149,7 @@ def run_native_effect_demo(
                 },
             }
             apply_aborted_infra_reexecutions(report, stall_recovery)
+            apply_last_anomalous_call(report, stall_recovery)
             print(f"effect-demo aborted: {error}", file=sys.stderr)
             returncode = 1
     with evidence.open("x", encoding="ascii") as stream:
@@ -183,6 +214,7 @@ def run_native_historical_demo(
                 },
             }
             apply_aborted_infra_reexecutions(report, stall_recovery)
+            apply_last_anomalous_call(report, stall_recovery)
             print(f"effect-demo-historical aborted: {error}", file=sys.stderr)
             returncode = 1
     with evidence.open("x", encoding="ascii") as stream:

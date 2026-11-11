@@ -1038,7 +1038,7 @@ def run_cell_with_watchdog(
     complete and reruns on the next invocation.
     """
     evidence = output / f"{cell.evidence_basename}.json"
-    log = output / f"{cell.run_id}.log"
+    log = cell_paths(cell, output)["log"]
     started = monotonic()
     watchdog_fired = False
     with log.open("w", encoding="utf-8") as stream:
@@ -1613,20 +1613,25 @@ def main(argv: list[str] | None = None) -> int:
             pauses = wait_for_disk(output, plan.disk_pause_fraction)
             if pauses:
                 disk_pauses[cell.run_id] = pauses
-            if deadline_passed(plan) or guard.stopped:
+            if deadline_passed(plan):
                 not_started.append(cell.run_id)
                 return result
-            used += 1
-            append_cell_result(
-                output,
-                {
-                    "event": "start",
-                    "run_id": cell.run_id,
-                    "attempt": used,
-                    "jobs": args.jobs,  # matrix.json is overwritten; a resume must be comparable
-                    "clocks": _clock_stamp(),
-                },
-            )
+            next_attempt = used + 1
+            if not guard.authorize_attempt(
+                lambda next_attempt=next_attempt: append_cell_result(
+                    output,
+                    {
+                        "event": "start",
+                        "run_id": cell.run_id,
+                        "attempt": next_attempt,
+                        "jobs": args.jobs,  # matrix.json is overwritten on resume
+                        "clocks": _clock_stamp(),
+                    },
+                )
+            ):
+                not_started.append(cell.run_id)
+                return result
+            used = next_attempt
             result = run_attempt(cell)
             append_cell_result(
                 output,

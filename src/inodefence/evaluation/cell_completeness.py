@@ -27,7 +27,7 @@ With a report, a watchdog cell takes the ordinary checks and keeps its watchdog 
 
 import json
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from threading import Lock
@@ -231,16 +231,29 @@ class InfrastructureGuard:
     * **Reset:** any cell that leaves a record sets the count to 0, whatever the record says
       (complete, abort or inconsistent). A cell not started changes nothing.
     * **Scope:** one launcher call, starting at 0. A resume is a new call and starts at 0.
-    * **After the stop:** no new attempt starts, retries included. Running cells finish and keep
-      their records; nothing is deleted or overwritten. A cell ending after the stop does not undo
-      it. A later call refuses to start cells until an operator resumes with an approval reference
-      (``--resume-after-stop``). Nothing resumes by itself.
+    * **After the stop:** no new attempt is authorized, retries included. A successfully written
+      start record authorizes an attempt even if its process starts after the stop. Authorized
+      cells finish and keep their records; nothing is deleted or overwritten. A cell ending after
+      the stop does not undo it. A later call refuses to start cells until an operator resumes
+      with an approval reference (``--resume-after-stop``). Nothing resumes by itself.
     """
 
     def __init__(self) -> None:
         self._lock = Lock()
         self._streak = 0
         self.stopped = False
+
+    def authorize_attempt(self, record_start: Callable[[], None]) -> bool:
+        """Serialize stop with the start record; a failed write never authorizes execution."""
+        with self._lock:
+            if self.stopped:
+                return False
+            try:
+                record_start()
+            except BaseException:
+                self.stopped = True
+                raise
+            return True
 
     def note_cell_end(self, *, recorded: bool) -> str | None:
         """Note one ended cell. Returns the stop reason once, when this end triggers the stop."""

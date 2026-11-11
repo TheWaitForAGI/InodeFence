@@ -54,19 +54,23 @@ campaign_watchdog_seconds = 10800
 disk_pause_fraction = 0.9
 interim_analysis = forbidden
 execution_deadline = 2026-11-25T12:00:00+09:00
-# 2호스트(ORCH 결정 #1). 게이트 강제: W3 구현, 검증 후 동결. seed_assignment_sha256은 GO 시점 생성 파일의 sha(§4)를 실행 전 커밋으로 기록.
+# 2호스트(ORCH 결정 #1). 게이트 강제: W3 구현, 검증 후 동결.
 host.HOST1.jobs = TBD-FREEZE
 host.HOST1.docker_engine = TBD-FREEZE
 host.HOST2.jobs = TBD-FREEZE
 host.HOST2.docker_engine = TBD-FREEZE
-seed_assignment_sha256 = TBD-GO
+# §4 규칙. 할당 파일은 GO 시점에 생기므로 sha 키를 두지 않는다(ORCH 결정 2026-11-11).
+seed_assignment_rule = rh-proportional-v1
 ```
 
 **블록 밖 규칙.**
 
 - 공통값(`engine_sha`, k, sentinel generator, budget, arm, `campaign_watchdog_seconds`, `host.<id>.*`)은 exp3-v1과 같아야 한다. 어긋나면 train이 인프라 게이트 역할을 못 한다(D040-D1 2항).
-- `host.<id>.*`와 `seed_assignment_sha256`은 게이트가 강제한다(W3 구현, 검증 후 동결). 등록값과 다른 호스트 `--jobs`, Engine 버전, 할당 파일 sha로는 실행하지 않는다.
-- **`seed_assignment_sha256 = TBD-GO`(결정 필요 표시):** 이 값은 동결 시점이 아니라 GO 시점에 생기는 파일의 sha다. 동결 파일을 GO 뒤에 고치면 등록 sha가 바뀐다. 처리 방식은 동결 전에 W3·오케스트레이터가 정한다. 후보는 둘이다: (a) 게이트가 이 키 대신 "할당 파일이 §4 규칙과 GO 기록의 r_h로 재생성한 결과와 바이트 동일한지"를 검사, (b) 할당 파일을 별도 커밋으로 남기고 그 sha를 LOG와 GO 결정 파일에 기록. 어느 쪽이든 할당 입력은 인프라 값뿐이다.
+- `host.<id>.*`는 게이트가 강제한다(W3 구현, 검증 후 동결). 등록값과 다른 호스트 `--jobs`나 Engine 버전으로는 실행하지 않는다.
+- **할당 강제(ORCH 결정 2026-11-11, (a)+(b)).** holdout 할당 파일은 GO 시점에 생기므로 등록 파일에 sha를 두지 않는다. 대신 다음 두 가지를 한다.
+  - (a) 게이트는 제출된 할당 파일이 등록 규칙 `rh-proportional-v1`(§4)과 GO 결정 파일(`experiments/summaries/exp3-train-go-decision.json`)의 r_h로 재생성한 결과와 **바이트 동일**할 때만 실행을 허용한다.
+  - (b) 생성된 할당 파일의 sha256을 GO 결정 파일과 `docs/LOG.md`에 기록한다.
+  - 할당 입력은 인프라 값뿐이다. 동결본에는 GO 시점 값을 기다리는 토큰을 남기지 않는다.
 - 원장은 11/18~25에 고치지 않는다. train(exp3) 행은 holdout 완료 뒤에 넣는다(D040-D1 3항).
 
 ## 3. holdout 선정 (D4·D5)
@@ -98,7 +102,7 @@ seed_assignment_sha256 = TBD-GO
   - N_HOST1 = round_half_down(N·r_HOST1 / (r_HOST1 + r_HOST2)), N_HOST2 = N − N_HOST1. 정수·`Fraction` 산술로 계산한다(부동소수 금지).
   - 등록 seed 순서(9026→9145)에서 앞 N_HOST1개는 HOST1, 뒤 N_HOST2개는 HOST2다.
   - 어느 r_h가 0이거나 미산출이면 할당 파일을 만들지 않고 EXP-2를 시작하지 않는다.
-  - 할당 파일에 r_h, N, 분할, 생성 시각, 생성 코드 SHA를 기록하고 sha256을 남긴다(§2의 `TBD-GO` 처리). 입력은 인프라 값뿐이고 oracle 값은 쓰지 않는다.
+  - 할당 파일에 r_h, N, 분할, 생성 시각, 생성 코드 SHA를 기록하고 sha256을 GO 결정 파일과 LOG에 남긴다(§2 할당 강제 (b)). 입력은 인프라 값뿐이고 oracle 값은 쓰지 않는다.
 - **마감 절단은 호스트별이다.** 각 호스트는 자기 할당 seed를 오름차순으로 돈다. 마감(2026-11-25 12:00 KST)에 끝나지 않은 셀이 있는 seed는 블록 전체를 미완주로 제외한다(D041). 남는 것은 각 호스트의 뒤쪽 블록뿐이다. 시점이 결과와 무관하게 사전 고정이므로 선택 편향은 없다(D040 운영 조건).
 - 재시도, 인프라 정지, 재개, 운영 중단은 exp3-v1 §4와 같다. Guard와 마감은 호스트별 런처 단위로 독립이다. 운영 점검은 두 호스트 합산으로 판정하고 호스트별 비율은 경보로 따로 낸다.
 - 호스트는 기록 요인이다. 벤치마크 v3의 X1에 따른 호스트 제외·전환 결정은 **train 첫 셀 시작 전**에 끝났어야 하며(exp3-v1 §3), EXP-2에서 새로 하지 않는다.
@@ -147,6 +151,6 @@ seed_assignment_sha256 = TBD-GO
 - [ ] D4 상태 확인 완료, 원장 행 5개 이상(ERROR 재실행 행 포함) 머지, holdout version과 image_digest 확정(W3 절차, §3).
 - [ ] `engine_sha`와 공통값이 exp3-v1과 같음.
 - [ ] `exposure_ledger_sha256`이 exp3-v1과 같음.
-- [ ] `seed_assignment_sha256 = TBD-GO`의 처리 방식 확정(§2).
+- [ ] 할당 강제 (a) 재생성 일치 검사 게이트 구현·검증(W3, §2).
 - [ ] 분석기 상수(§5 D10) 재확인.
 - [ ] 임시값 사본으로 `run_exp0 --dry-run`과 holdout 버전 allowlist 확인(W3).

@@ -68,12 +68,14 @@ host.HOST1.jobs = TBD-FREEZE
 host.HOST1.docker_engine = TBD-FREEZE
 host.HOST2.jobs = TBD-FREEZE
 host.HOST2.docker_engine = TBD-FREEZE
+# §3 교대 규칙. 할당 파일은 동결 커밋에 넣고 sha도 동결 시 고정(규칙과 sha 둘 다).
+seed_assignment_rule = alternate-v1
 seed_assignment_sha256 = TBD-FREEZE
 ```
 
 **블록 밖 규칙.**
 
-- `host.<id>.jobs`, `host.<id>.docker_engine`, `seed_assignment_sha256`은 **게이트가 강제한다**(W3 구현, 검증 후 동결; ORCH 결정 #1). 해당 호스트의 `--jobs`, 실제 Engine 버전, 할당 파일 sha 중 하나라도 등록값과 다르면 런처가 실행을 거부한다. 강제 구현이 검증되기 전에는 동결하지 않는다.
+- `host.<id>.jobs`, `host.<id>.docker_engine`, `seed_assignment_rule`, `seed_assignment_sha256`은 **게이트가 강제한다**(W3 구현, 검증 후 동결; ORCH 결정 #1·2026-11-11 할당 결정). 해당 호스트의 `--jobs`, 실제 Engine 버전, 할당 파일 sha 중 하나라도 등록값과 다르거나, 할당 파일이 `alternate-v1` 규칙으로 재생성한 결과와 바이트 동일하지 않으면 런처가 실행을 거부한다. 강제 구현이 검증되기 전에는 동결하지 않는다.
 - `host.<id>.jobs`와 `docker_engine`은 벤치마크 v3(`experiments/configs/concurrency-scaling-v3.md`)의 호스트별 선정값과 preflight 고정값이다. 선정된 jobs는 그 호스트·그 엔진에서만 유효하다. 벤치마크 시작부터 EXP-2 끝까지 엔진·Docker Desktop·WSL 버전을 바꾸지 않는다.
 - `campaign_watchdog_seconds = 10800`은 벤치마크 v3와 같아야 한다(v3 §4.2 preflight 일치 검사).
 
@@ -107,7 +109,7 @@ GO는 자동이 아니다. EXP-2 시작 전에 W3가 train 리포트 값으로 �
 - **r (2호스트, ORCH):** r = Σ_h r_h. r_h는 호스트 h의 `cell-results.jsonl` realtime으로 D043 산식을 따른다. T_up,h = T_wall,h − (그 호스트의 등록 정지 공백 g_i). 정지 공백은 **정지가 난 호스트에서만** 뺀다. 뺄 수 있는 공백은 `infrastructure-stop`·`infrastructure-resume` 기록으로 확인되는 구간뿐이다. r_wall(공백 포함)은 참고로 병기하며 GO 입력이 아니다.
 - **e:** 시도한 모든 셀(두 호스트 합집합)의 기록 step ÷ (시도한 셀 수 × budget).
 - **H_rem:** 실행 마감 − max(마지막 `end`, 마지막 `infrastructure-resume`, GO 판정 시각). 실제 벽시계 값이다. GO 판정 시각은 W3가 GO 입력을 보기 전에 `experiments/summaries/exp3-train-go-decision.json`과 LOG에 적고, 적은 뒤에는 고치지 않는다(D043). 2호스트에서는 두 호스트 중 가장 늦은 시각을 쓴다.
-- **train abort:** (abort + record-inconsistent) ÷ 시도한 셀(D041 분모).
+- **train abort(분모는 D045, ORCH 결정 2026-11-11, 엄격한 쪽):** 분모는 시도한 셀(`start` 줄이 있는 run id)이고, 분자는 그중 abort + record-inconsistent + no-record다. 미시작 셀은 분모와 분자 모두에서 빼고 그 수를 병기한다. 등록 전체 셀 기준 값도 참고 줄로 함께 내며, GO 입력은 아니다.
 - **미산출:** 어느 한 호스트라도 마지막 인프라 줄이 `infrastructure-stop`(미재개)이면 GO 칸은 "미산출"이다. W3는 GO를 적용하지 않고 EXP-2를 시작하지 않는다(D043 조건 6).
 - **NO-GO면** 규칙을 바꿔 다시 적용하지 않는다. EXP-3 train만 탐색 결과로 보고한다.
 - 표 7-B2: r, r_wall, 정지 횟수, 누적 공백 시간, 호스트별 r_h(D043).

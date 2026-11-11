@@ -702,7 +702,12 @@ def _publish_json(path: Path, value: Mapping[str, Any]) -> None:
 
 
 def _run_block(
-    design: Design, block: Block, directory: Path, bash: str, run: BlockRun
+    design: Design,
+    block: Block,
+    directory: Path,
+    bash: str,
+    run: BlockRun,
+    recorders: guards.Recorders | None = None,
 ) -> dict[str, Any]:
     def run_cell(
         cell: Cell, raw: Path, env: dict[str, str], launch: Callable[..., Any]
@@ -735,6 +740,8 @@ def _run_block(
         target=_sample_host, args=(run, host / "samples.jsonl", stop_sampling), daemon=True
     )
     events = _start_events(host / "events.jsonl")
+    # Record-only stall instruments (off unless asked for); they never stop a block.
+    recorder_threads = guards.start_recorders(host, recorders or guards.Recorders(), stop_sampling)
     try:
         sampler.start()
         record = run.execute()
@@ -743,6 +750,8 @@ def _run_block(
     finally:
         active_error = sys.exception()
         stop_sampling.set()
+        for thread in recorder_threads:
+            thread.join(timeout=30)
         cleanup_failure: Exception | None = None
         try:
             if sampler.ident is not None:
@@ -790,6 +799,7 @@ def run_block(
     directory: Path,
     bash: str,
     gate_directory: Path | None = None,
+    recorders: guards.Recorders | None = None,
 ) -> dict[str, Any]:
     """Publish exceptional exits separately; never turn an incomplete block into a result."""
 
@@ -803,7 +813,7 @@ def run_block(
         # unverified cleanup in any earlier block keeps later blocks from
         # starting until someone acknowledges it (start_gate.py ack).
         run.gate = StartGate(gate_directory or directory / START_GATE_DIR)
-        return _run_block(design, block, directory, bash, run)
+        return _run_block(design, block, directory, bash, run, recorders)
     except BaseException as error:
         observed_at = datetime.now(UTC).isoformat()
         run.request_stop(f"block failed: {type(error).__name__}: {error}", STOP_EXTERNAL)
@@ -956,6 +966,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--approval-ref", help="who approved this stage, recorded (live run)")
     parser.add_argument("--dry-run", action="store_true", help="print the plan; no Docker")
     parser.add_argument("--status", action="store_true", help="schedule state only; no outcomes")
+    parser.add_argument(
+        "--ping-socket",
+        type=Path,
+        help="record a 1 Hz GET /_ping on this daemon socket into host/ping.jsonl (record only)",
+    )
+    parser.add_argument(
+        "--desktop-log",
+        type=Path,
+        help="copy this log continuously into host/desktop.log (read-only; record only)",
+    )
     args = parser.parse_args(argv)
 
     design = load_design(args.design)
@@ -1011,7 +1031,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             + "\n",
             encoding="utf-8",
         )
-        record = run_block(design, block, directory, bash, args.output / START_GATE_DIR)
+        record = run_block(
+            design,
+            block,
+            directory,
+            bash,
+            args.output / START_GATE_DIR,
+            guards.Recorders(ping_socket=args.ping_socket, desktop_log=args.desktop_log),
+        )
         print(f"{block.name}: stopped={record['stopped_reason']}")
         if record["stopped_reason"]:
             return 1

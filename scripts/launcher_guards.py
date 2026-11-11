@@ -31,6 +31,7 @@ import tempfile
 import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -252,3 +253,128 @@ def stop_docker_events(events: subprocess.Popen[bytes]) -> None:
         except Exception as cleanup_error:
             error.add_note(f"event collector cleanup failed: {cleanup_error}")
         raise
+
+
+# ---- read-only stall instrumentation (records only; never stops anything) ----
+
+PING_SECONDS = 1.0
+PING_TIMEOUT_SECONDS = 10.0
+DEFAULT_DOCKER_SOCKET = Path("/var/run/docker.sock")
+LOG_TAIL_SECONDS = 1.0
+LOG_TAIL_CHUNK = 1 << 20
+
+
+def ping_daemon(socket_path: Path, timeout: float = PING_TIMEOUT_SECONDS) -> dict[str, Any]:
+    """One ``GET /_ping`` on the daemon socket: latency and status, never raises.
+
+    Lighter than any CLI call, so a stall shows up as the daemon's, not the CLI's.
+    """
+    import socket
+
+    record: dict[str, Any] = clock_stamp()
+    started = time.monotonic()
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+            connection.settimeout(timeout)
+            connection.connect(str(socket_path))
+            connection.sendall(b"GET /_ping HTTP/1.0\r\nHost: docker\r\n\r\n")
+            response = b""
+            while chunk := connection.recv(4096):
+                response += chunk
+                if len(response) > 65536:
+                    break
+        status_line = response.split(b"\r\n", 1)[0].decode("ascii", errors="replace")
+        record["status"] = status_line
+        record["ok"] = status_line.split(" ")[1:2] == ["200"] and response.endswith(b"OK")
+    except Exception as error:
+        record["ok"] = False
+        record["error"] = f"{type(error).__name__}: {error}"
+    record["seconds"] = time.monotonic() - started
+    return record
+
+
+def ping_loop(
+    path: Path,
+    stop: threading.Event,
+    socket_path: Path = DEFAULT_DOCKER_SOCKET,
+    seconds: float = PING_SECONDS,
+    ping: Callable[[Path], dict[str, Any]] = ping_daemon,
+) -> None:
+    """Append one ping record per ``seconds`` to ``path`` until ``stop`` is set."""
+    with path.open("a", encoding="utf-8") as stream:
+        while True:
+            stream.write(json.dumps(ping(socket_path), sort_keys=True) + "\n")
+            stream.flush()
+            if stop.wait(seconds):
+                return
+
+
+def tail_log(
+    source: Path,
+    destination: Path,
+    stop: threading.Event,
+    seconds: float = LOG_TAIL_SECONDS,
+) -> None:
+    """Copy what is appended to ``source`` into ``destination`` until ``stop`` is set.
+
+    Read-only on ``source``. For logs that keep only seconds of history (Docker
+    Desktop's), copied continuously so a stall's surroundings survive. A
+    truncated or replaced source is reopened from its start and marked.
+    """
+    position = 0
+    identity: tuple[int, int] | None = None
+    with destination.open("ab") as out:
+        while True:
+            try:
+                status = source.stat()
+                current = (status.st_dev, status.st_ino)
+                if identity is not None and (current != identity or status.st_size < position):
+                    out.write(b"\n[inodefence-log-tail: source rotated or truncated]\n")
+                    position = 0
+                identity = current
+                with source.open("rb") as stream:
+                    stream.seek(position)
+                    while chunk := stream.read(LOG_TAIL_CHUNK):
+                        out.write(chunk)
+                        position += len(chunk)
+            except FileNotFoundError:
+                identity = None
+                position = 0
+            out.flush()
+            if stop.wait(seconds):
+                return
+
+
+@dataclass(frozen=True)
+class Recorders:
+    """Optional record-only instruments; all off by default."""
+
+    ping_socket: Path | None = None
+    desktop_log: Path | None = None
+
+
+def _record_quietly(function: Callable[..., None], *args: Any) -> None:
+    try:
+        function(*args)
+    except Exception as error:  # a recorder never stops a run
+        print(
+            f"recorder {function.__name__} failed: {type(error).__name__}: {error}", file=sys.stderr
+        )
+
+
+def start_recorders(
+    directory: Path, recorders: Recorders, stop: threading.Event
+) -> list[threading.Thread]:
+    """Start the enabled recorders into ``directory``; join them after setting ``stop``."""
+    jobs: list[tuple[Callable[..., None], tuple[Any, ...]]] = []
+    if recorders.ping_socket is not None:
+        jobs.append((ping_loop, (directory / "ping.jsonl", stop, recorders.ping_socket)))
+    if recorders.desktop_log is not None:
+        jobs.append((tail_log, (recorders.desktop_log, directory / "desktop.log", stop)))
+    threads = [
+        threading.Thread(target=_record_quietly, args=(function, *args), daemon=True)
+        for function, args in jobs
+    ]
+    for thread in threads:
+        thread.start()
+    return threads

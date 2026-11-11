@@ -187,3 +187,83 @@ def test_sample_host_failure_goes_to_the_failure_hook_or_raises(tmp_path: Path) 
         guards.sample_host(
             tmp_path / "t.jsonl", threading.Event(), disk_fraction=broken, counters=dict
         )
+
+
+def _serve_once(path: Path, reply: bytes) -> threading.Thread:
+    import socket
+
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    server.bind(str(path))
+    server.listen(1)
+
+    def handle() -> None:
+        with server:
+            connection, _ = server.accept()
+            with connection:
+                connection.recv(4096)
+                connection.sendall(reply)
+
+    thread = threading.Thread(target=handle)
+    thread.start()
+    return thread
+
+
+def test_ping_daemon_reports_ok_and_latency(tmp_path: Path) -> None:
+    sock = tmp_path / "d.sock"
+    server = _serve_once(sock, b"HTTP/1.0 200 OK\r\nContent-Length: 2\r\n\r\nOK")
+    record = guards.ping_daemon(sock)
+    server.join(30)
+    assert record["ok"] is True
+    assert record["status"] == "HTTP/1.0 200 OK"
+    assert record["seconds"] >= 0 and "realtime" in record
+
+
+def test_ping_daemon_never_raises(tmp_path: Path) -> None:
+    record = guards.ping_daemon(tmp_path / "absent.sock")
+    assert record["ok"] is False
+    assert record["error"].startswith(("FileNotFoundError", "ConnectionRefusedError"))
+
+
+def test_ping_loop_records_until_stopped(tmp_path: Path) -> None:
+    stop = threading.Event()
+    stop.set()
+    path = tmp_path / "ping.jsonl"
+    guards.ping_loop(path, stop, tmp_path / "s", ping=lambda _p: {"ok": True})
+    assert [json.loads(line) for line in path.read_text().splitlines()] == [{"ok": True}]
+
+
+class ScriptedStop:
+    """``wait`` runs the next step between iterations; the last step ends the loop."""
+
+    def __init__(self, *steps: Any) -> None:
+        self.steps = list(steps)
+
+    def wait(self, _seconds: float) -> bool:
+        self.steps.pop(0)()
+        return not self.steps
+
+
+def test_tail_log_copies_appends_and_survives_rotation(tmp_path: Path) -> None:
+    source, copy = tmp_path / "desktop.log", tmp_path / "copy.log"
+    source.write_bytes(b"one\n")
+
+    def append() -> None:
+        with source.open("ab") as stream:
+            stream.write(b"two\n")
+
+    def rotate() -> None:
+        source.unlink()
+        source.write_bytes(b"three\n")
+
+    def vanish() -> None:
+        source.unlink()
+
+    def reappear() -> None:
+        source.write_bytes(b"four\n")
+
+    stop = ScriptedStop(append, rotate, vanish, reappear, lambda: None)
+    guards.tail_log(source, copy, stop)  # type: ignore[arg-type]
+    assert copy.read_bytes() == (
+        b"one\ntwo\n\n[inodefence-log-tail: source rotated or truncated]\nthree\nfour\n"
+    )
+    assert source.read_bytes() == b"four\n"  # read-only on the source

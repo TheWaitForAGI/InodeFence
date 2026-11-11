@@ -161,7 +161,7 @@ from inodefence.execution.start_gate import (
     StartGate,
     VerdictMissing,
 )
-from inodefence.provenance import capture_source
+from inodefence.provenance import SourceProvenance, capture_source
 
 DEFAULT_EXPERIMENT_ID = "exp0"
 REGISTERED_LABEL = "registered run"
@@ -715,6 +715,47 @@ def host_postflight(
         docker=docker,
         residual=lambda: guards.residual_resources(docker),
     )
+
+
+def source_postflight(
+    before: Mapping[str, Any] | None, now: SourceProvenance
+) -> tuple[dict[str, Any], list[str]]:
+    """Record the checkout again after the last cell (#347).
+
+    The controller runs the checkout's code in every cell (read-only bind mount), so a
+    revision change or a dirty tree during the run means cells may have run other code
+    than the preflight recorded; the shared-path hashes cover only the execution layer.
+    """
+    record = {"revision": now.revision, "dirty": now.dirty}
+    problems = []
+    if now.revision is None:
+        problems.append("execution_sha unavailable after the run")
+    elif not isinstance(before, Mapping) or before.get("revision") != now.revision:
+        revision = before.get("revision") if isinstance(before, Mapping) else None
+        problems.append(f"execution revision changed during the run: {revision} -> {now.revision}")
+    if now.dirty is not False:
+        problems.append("the source checkout is dirty after the run")
+    return record, problems
+
+
+def worktree_write_problems(paths: Mapping[str, Path], root: Path) -> list[str]:
+    """Paths this call writes that would dirty the checkout (inside it and not ignored)."""
+    problems = []
+    for name, path in paths.items():
+        resolved = path.resolve()
+        if resolved != root and root not in resolved.parents:
+            continue
+        ignored = subprocess.run(
+            ["git", "-C", str(root), "check-ignore", "-q", "--no-index", str(resolved)],
+            capture_output=True,
+            check=False,
+        )
+        if ignored.returncode != 0:
+            problems.append(
+                f"{name} {path} is inside the checkout and not ignored; "
+                "it would make the tree dirty (write it outside the worktree)"
+            )
+    return problems
 
 
 def start_host_recording(
@@ -1283,17 +1324,17 @@ def write_registration(
     return record
 
 
+def default_manifest_path(host: str, date: str) -> Path:
+    return Path("experiments/summaries") / f"raw-manifest-{host}-{date}.sha256"
+
+
 def write_raw_manifest(
     output: Path, *, script: Path, python: str, host: str, date: str, out: Path | None
 ) -> dict[str, Any]:
     """Run make_raw_manifest over the output tree (completion condition 8)."""
     if not script.is_file():
         return {"generated": False, "reason": f"manifest script missing: {script}", "path": None}
-    manifest = (
-        out
-        if out is not None
-        else Path("experiments/summaries") / f"raw-manifest-{host}-{date}.sha256"
-    )
+    manifest = out if out is not None else default_manifest_path(host, date)
     command = [
         python,
         str(script),
@@ -1432,19 +1473,27 @@ def run_cell_with_watchdog(
     )
 
 
-def _refusal_preview(mismatches: Sequence[str], wiring: Sequence[str]) -> list[str]:
+def _refusal_preview(
+    mismatches: Sequence[str], wiring: Sequence[str], inputs: Sequence[str] = ()
+) -> list[str]:
     lines = ["would be refused at live run:"]
-    if not mismatches and not wiring:
+    if not mismatches and not wiring and not inputs:
         lines.append("  (nothing)")
     for item in mismatches:
         lines.append(f"  - gate: {item}")
     for item in wiring:
         lines.append(f"  - wiring: {item}")
+    for item in inputs:
+        lines.append(f"  - input: {item}")
     return lines
 
 
 def _print_dry_run(
-    plan: Exp0Plan, output: Path, base_env: dict[str, str], pending: list[Cell]
+    plan: Exp0Plan,
+    output: Path,
+    base_env: dict[str, str],
+    pending: list[Cell],
+    skip_build: bool = False,
 ) -> None:
     cells = plan.cells()
     prereg = plan.preregistration
@@ -1463,7 +1512,11 @@ def _print_dry_run(
             f"seed_assignment host={plan.host_id} sha256={plan.assignment.sha256} "
             f"rule={plan.assignment.rule} registered_seeds={len(prereg.seeds)}"
         )
-    print(f"warmup: BUILD_ONLY=1 bash {SCRIPT} demo-historical")
+    if skip_build and plan.multi_target:
+        # The targets form with --skip-build runs no warmup (the EXP-0 output stays as it was).
+        print("warmup: skipped (--skip-build)")
+    else:
+        print(f"warmup: BUILD_ONLY=1 bash {SCRIPT} demo-historical")
     pending_ids = {cell.run_id for cell in pending}
     for cell in cells:
         env = exp0_cell_env(plan, cell, output, base_env)
@@ -1746,7 +1799,28 @@ def main(argv: list[str] | None = None) -> int:
         base_env["INODEFENCE_DOCKER_CONTEXT"] = args.context
     wiring = wiring_problems(plan)
 
+    # A targets-form host run records the checkout before and after (execution_sha); its own
+    # output and raw manifest must not land in the checkout and make it dirty (#347).
+    write_problems: list[str] = []
+    if plan.multi_target and plan.host_id is not None:
+        writes = {"--output": output}
+        if not args.no_manifest:
+            writes["raw manifest"] = args.manifest_out or default_manifest_path(
+                args.manifest_host or os.uname().nodename.split(".")[0],
+                datetime.now(UTC).strftime("%Y%m%d"),
+            )
+        write_problems = worktree_write_problems(writes, Path(__file__).resolve().parents[1])
+
     if args.dry_run:
+        # The --expected-images file is checked here too, so a bad file is found before the run.
+        expected_problems: list[str] = list(write_problems)
+        if args.expected_images is not None:
+            try:
+                load_expected_images(args.expected_images, plan)
+            except ExpectedImagesError as error:
+                expected_problems.append(f"--expected-images unusable: {error}")
+        elif plan.multi_target and plan.host_id is not None:
+            expected_problems.append("a two-host run needs --expected-images")
         print("gate: PASS" if not mismatches else "gate: FAIL", f"({plan.gate_text()})")
         for target in plan.targets():
             print(
@@ -1754,14 +1828,19 @@ def main(argv: list[str] | None = None) -> int:
                 f"role={target.role} hypothesis={target.hypothesis} exposure={target.exposure} "
                 f"{target.digest_kind}_digest={target.digest[:19]}…"
             )
-        for line in _refusal_preview(mismatches, wiring):
+        for line in _refusal_preview(mismatches, wiring, expected_problems):
             print(line)
         pending = _pending_cells(plan, output)[0]
-        _print_dry_run(plan, output, base_env, pending)
-        return 0 if not mismatches and not wiring else 2
+        _print_dry_run(plan, output, base_env, pending, skip_build=args.skip_build)
+        return 0 if not mismatches and not wiring and not expected_problems else 2
     if mismatches:
         print("refusing to run (preregistration gate):", file=sys.stderr)
         for item in mismatches:
+            print(f"  - {item}", file=sys.stderr)
+        return 2
+    if write_problems:
+        print("refusing to run (checkout writes):", file=sys.stderr)
+        for item in write_problems:
             print(f"  - {item}", file=sys.stderr)
         return 2
 
@@ -2358,15 +2437,21 @@ def main(argv: list[str] | None = None) -> int:
             if stop_recording is not None:
                 host_records["recording_notes"] = stop_recording()
             if "facts" in host_records and host_engine is not None:
+                before_facts = host_records.pop("facts")
                 after, after_problems = host_postflight(
                     plan,
-                    host_records.pop("facts"),
+                    before_facts,
                     engine=host_engine,
                     docker=docker,
                     expected=expected_images,
                 )
+                source_after, source_problems = source_postflight(
+                    before_facts.get("execution_sha"), capture_source()
+                )
+                after_problems = [*after_problems, *source_problems]
                 after = {
                     **after,
+                    "execution_sha": source_after,
                     "clocks": _clock_stamp(),
                     "problems": after_problems,
                     **plan.host_fields(),

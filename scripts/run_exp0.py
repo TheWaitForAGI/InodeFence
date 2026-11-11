@@ -1119,6 +1119,7 @@ def run_cell_with_watchdog(
     *,
     limit_seconds: float,
     popen: Callable[..., Any] = subprocess.Popen,
+    on_timeout: Callable[[], None] | None = None,
 ) -> CellResult:
     """``run_parallel_native._run_cell`` plus a wall-clock limit.
 
@@ -1143,6 +1144,15 @@ def run_cell_with_watchdog(
             returncode = process.wait(timeout=limit_seconds)
         except subprocess.TimeoutExpired:
             watchdog_fired = True
+            if on_timeout is not None:
+                # Before the signal: a start gate must stop new starts first.
+                # A failure here is logged; the kill below still happens.
+                try:
+                    on_timeout()
+                except Exception as error:
+                    stream.write(
+                        f"\n[watchdog] on_timeout failed: {type(error).__name__}: {error}\n"
+                    )
             process.terminate()
             try:
                 process.wait(timeout=30)

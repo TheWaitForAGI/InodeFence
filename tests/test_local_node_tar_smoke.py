@@ -138,6 +138,7 @@ exit 0
     python.write_text(
         '#!/bin/bash\ncase "$1" in -c) echo test-owner; exit 0;; '
         '*/bounded_cleanup_command.py) exec /usr/bin/python3 "$@";; '
+        '-I) echo "GATE RECORD ${*:4}" >&2; exec /usr/bin/python3 "$@";; '
         'esac\nexit "$HOST_ERROR"\n'
     )
     python.chmod(0o755)
@@ -229,3 +230,50 @@ def test_cleanup_only_removes_created_resources(
     result, calls = run_fake_docker(tmp_path, create_error=failure)
     assert result.returncode == expected
     assert [call for call in calls if call.startswith(("rm -f ", "volume rm "))] == removals
+
+
+def gate_env(directory: Path) -> dict[str, str]:
+    return {"INODEFENCE_START_GATE_DIR": str(directory), "INODEFENCE_START_GATE_CELL": "cell"}
+
+
+def test_gated_clean_cleanup_records_cleanup_then_clean(tmp_path: Path) -> None:
+    gate = tmp_path / "gate"
+    gate.mkdir()
+    result, _ = run_fake_docker(tmp_path, extra_env=gate_env(gate))
+    assert result.returncode == 0, result.stderr
+    records = [line for line in result.stderr.splitlines() if line.startswith("GATE RECORD")]
+    assert records == ["GATE RECORD C", "GATE RECORD S"]
+    assert (gate / "cell.verdict").read_text() == "S\n"
+
+
+def test_gated_unknown_is_recorded_before_the_marker(tmp_path: Path) -> None:
+    gate = tmp_path / "gate"
+    gate.mkdir()
+    result, _ = run_fake_docker(tmp_path, extra_env={"INSPECT_UNKNOWN": "1", **gate_env(gate)})
+    assert result.returncode != 0
+    lines = result.stderr.splitlines()
+    first_record = next(i for i, line in enumerate(lines) if line.startswith("GATE RECORD U"))
+    first_marker = next(
+        i for i, line in enumerate(lines) if line.startswith("INODEFENCE_CLEANUP_UNKNOWN:")
+    )
+    assert first_record < first_marker
+    assert "GATE RECORD S" not in lines
+    assert (gate / "cell.verdict").read_text().startswith("U volume creation ownership")
+
+
+def test_gated_record_failure_still_prints_marker_and_never_passes(tmp_path: Path) -> None:
+    missing = tmp_path / "missing-gate"  # the record cannot reach the gate
+    clean, _ = run_fake_docker(tmp_path, extra_env=gate_env(missing))
+    assert clean.returncode == 125
+    assert "PASSED:" not in clean.stdout
+    assert "start gate: C not recorded" in clean.stderr
+    assert "GATE RECORD S" not in clean.stderr
+    assert not missing.exists()
+
+
+def test_gated_record_failure_with_unknown_keeps_marker(tmp_path: Path) -> None:
+    missing = tmp_path / "missing-gate"
+    result, _ = run_fake_docker(tmp_path, extra_env={"INSPECT_UNKNOWN": "1", **gate_env(missing)})
+    assert result.returncode != 0
+    assert "INODEFENCE_CLEANUP_UNKNOWN: volume creation ownership" in result.stderr
+    assert "start gate: U not recorded" in result.stderr

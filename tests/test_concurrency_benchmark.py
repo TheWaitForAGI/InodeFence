@@ -14,6 +14,8 @@ from scripts import analyze_concurrency_benchmark as analysis
 from scripts import run_concurrency_benchmark as bench
 from scripts.run_parallel_native import Cell, CellResult
 
+from inodefence.execution import start_gate
+
 REPO = Path(__file__).resolve().parents[1]
 DESIGN_PATH = REPO / "experiments" / "configs" / "concurrency-scaling-v1.md"
 ARMS = ("D", "R-restart", "R-walk", "S-u")
@@ -22,6 +24,17 @@ ARMS = ("D", "R-restart", "R-walk", "S-u")
 @pytest.fixture(scope="module")
 def design() -> bench.Design:
     return bench.load_design(DESIGN_PATH)
+
+
+def clean_fake_popen(*_args: Any, **kwargs: Any) -> object:
+    """A fake cell child whose cleanup was verified: its S verdict is already on disk.
+
+    It is called under the gate lock (as Popen is), so it writes the verdict
+    file directly instead of taking the lock like a real child does later.
+    """
+    directory = Path(kwargs["env"][start_gate.GATE_DIR_ENV])
+    (directory / f"{kwargs['env'][start_gate.GATE_CELL_ENV]}.verdict").write_text("S\n")
+    return object()
 
 
 def _replace_line(key: str, value: str) -> str:
@@ -218,13 +231,16 @@ def test_residual_resources_after_a_block_are_a_level_stop(
             return 0
 
     monkeypatch.setattr(bench, "_start_events", lambda _path: FakeEvents())
-    monkeypatch.setattr(bench.subprocess, "Popen", lambda *args, **kwargs: object())
+    monkeypatch.setattr(bench.subprocess, "Popen", clean_fake_popen)
     monkeypatch.setattr(bench, "_sample_host", lambda *_args: None)
     monkeypatch.setattr(bench, "residual_resources", lambda: ["left-over"])
     monkeypatch.setattr(
         bench,
         "run_cell_with_watchdog",
-        lambda c, r, _e, _b, limit_seconds, popen: (popen(["true"]), _fake_result(c, r, 0))[1],
+        lambda c, r, _e, _b, limit_seconds, popen, on_timeout: (
+            popen(["true"]),
+            _fake_result(c, r, 0),
+        )[1],
     )
     block = bench.planned_blocks(design, "A")[0]
     record = bench.run_block(design, block, tmp_path, "bash")
@@ -250,13 +266,16 @@ def test_a_stop_after_the_last_cell_keeps_its_kind(
         run.request_stop("foreign containers appeared", bench.STOP_EXTERNAL)
 
     monkeypatch.setattr(bench, "_start_events", lambda _path: FakeEvents())
-    monkeypatch.setattr(bench.subprocess, "Popen", lambda *args, **kwargs: object())
+    monkeypatch.setattr(bench.subprocess, "Popen", clean_fake_popen)
     monkeypatch.setattr(bench, "_sample_host", late_sampler)
     monkeypatch.setattr(bench, "residual_resources", list)
     monkeypatch.setattr(
         bench,
         "run_cell_with_watchdog",
-        lambda c, r, _e, _b, limit_seconds, popen: (popen(["true"]), _fake_result(c, r, 0))[1],
+        lambda c, r, _e, _b, limit_seconds, popen, on_timeout: (
+            popen(["true"]),
+            _fake_result(c, r, 0),
+        )[1],
     )
     block = bench.planned_blocks(design, "A")[0]
     record = bench.run_block(design, block, tmp_path, "bash")

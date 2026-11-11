@@ -41,7 +41,7 @@ import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
@@ -115,7 +115,29 @@ RESERVED_SEED_RANGES: tuple[tuple[int, int], ...] = (
     (8001, 8003),
     (8101, 8110),
     (9001, 9999),
+    # v3 engineering probe (design v3 section 5): usable only as a v3 design's probe_seeds.
+    (6200, 6207),
 )
+PROBE_SEED_RANGE = (6200, 6207)
+#: Design v3 (two hosts). ``docker_engine`` moves to ``host.<id>.docker_engine``.
+V3_KEYS = (REQUIRED_KEYS - {"docker_engine"}) | {
+    "hosts",
+    "retry_max_attempts",
+    "v10_monotonic_seconds",
+    "v10_realtime_seconds",
+    "x1_margin",
+    "x1_incomparable_cells",
+    "probe_seeds",
+    "probe_budget",
+    "probe_jobs",
+    "probe_retry_max_attempts",
+}
+HOST_PREFIX = "host."
+HOST_KEYS = frozenset({"run_prefix", "docker_engine"})
+#: A value the design file says must be filled in from a preflight before any live run.
+UNRESOLVED_PREFIX = "TBD-"
+HOST_ID = re.compile(r"[A-Za-z][A-Za-z0-9]{0,15}")
+RUN_PREFIX = re.compile(r"[a-z][a-z0-9]{0,7}")
 #: The pilot seeds a design may measure again on purpose: an abort's input comes round again, which
 #: tests recurrence (design v2). Measured seeds only, and only these four; the range stays reserved.
 PILOT_RERUN_SEEDS = frozenset({8102, 8103, 8106, 8110})
@@ -133,6 +155,24 @@ STOP_EXTERNAL = "external"
 
 class DesignError(ValueError):
     """The design file is unusable; nothing runs."""
+
+
+@dataclass(frozen=True, slots=True)
+class HostSpec:
+    """One host of a v3 design: its run_id prefix and its pinned Docker engine."""
+
+    run_prefix: str
+    docker_engine: str
+
+
+@dataclass(frozen=True, slots=True)
+class ProbeSpec:
+    """The v3 engineering probe (unregistered, not a decision input)."""
+
+    seeds: tuple[int, ...]
+    budget: int
+    jobs: int
+    retry_max_attempts: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,6 +200,26 @@ class Design:
     cooldown_seconds: float
     stages: Mapping[str, tuple[int, ...]]
     sha256: str
+    # Design v3 only; a v2 design keeps these defaults.
+    hosts: Mapping[str, HostSpec] = field(default_factory=dict)
+    retry_max_attempts: int = 1
+    probe: ProbeSpec | None = None
+    v10_monotonic_seconds: float | None = None
+    v10_realtime_seconds: float | None = None
+    x1_margin: int | None = None
+    x1_incomparable_cells: int | None = None
+
+    @property
+    def is_v3(self) -> bool:
+        return bool(self.hosts)
+
+    def engine_for(self, host: str | None) -> str:
+        """The Docker engine a live run on ``host`` must find (v2: the design's one)."""
+        if not self.is_v3:
+            return self.docker_engine
+        if host is None or host not in self.hosts:
+            raise DesignError(f"--host must be one of {sorted(self.hosts)} for {self.design_id}")
+        return self.hosts[host].docker_engine
 
 
 @dataclass(frozen=True, slots=True)
@@ -221,19 +281,73 @@ def _parse_stages(values: Mapping[str, str]) -> dict[str, tuple[int, ...]]:
     return stages
 
 
+def _parse_hosts(plain: Mapping[str, str], host_values: Mapping[str, str]) -> dict[str, HostSpec]:
+    names = tuple(item.strip() for item in plain["hosts"].split(","))
+    if not names or len(set(names)) != len(names) or any(not HOST_ID.fullmatch(n) for n in names):
+        raise DesignError(f"hosts must be distinct identifiers: {plain['hosts']!r}")
+    seen: dict[str, dict[str, str]] = {}
+    for key, value in host_values.items():
+        host, _, sub_key = key[len(HOST_PREFIX) :].partition(".")
+        if host not in names or sub_key not in HOST_KEYS:
+            raise DesignError(f"unknown host key: {key}")
+        seen.setdefault(host, {})[sub_key] = value
+    hosts: dict[str, HostSpec] = {}
+    for name in names:
+        keys = seen.get(name, {})
+        if set(keys) != HOST_KEYS:
+            raise DesignError(f"host {name} needs {sorted(HOST_KEYS)}, has {sorted(keys)}")
+        if not RUN_PREFIX.fullmatch(keys["run_prefix"]):
+            raise DesignError(
+                f"host {name}: run_prefix {keys['run_prefix']!r} is not [a-z][a-z0-9]*"
+            )
+        hosts[name] = HostSpec(keys["run_prefix"], keys["docker_engine"])
+    prefixes = [spec.run_prefix for spec in hosts.values()]
+    if len(set(prefixes)) != len(prefixes):
+        raise DesignError("hosts must not share a run_prefix")
+    return hosts
+
+
+def _single_attempt(plain: Mapping[str, str], key: str) -> int:
+    # This driver has no cell retry: a value other than 1 would claim one it does not do.
+    value = int(plain[key])
+    if value != 1:
+        raise DesignError(f"{key} = {value}: this driver runs each cell once; only 1 is accepted")
+    return value
+
+
+def _parse_probe(plain: Mapping[str, str], measured: set[int]) -> ProbeSpec:
+    seeds = _int_list(plain["probe_seeds"])
+    low, high = PROBE_SEED_RANGE
+    if len(set(seeds)) != len(seeds) or any(not low <= seed <= high for seed in seeds):
+        raise DesignError(f"probe_seeds must be distinct and inside {low}-{high}")
+    if measured & set(seeds):
+        raise DesignError("probe_seeds must differ from the measured and smoke seeds")
+    jobs = int(plain["probe_jobs"])
+    if jobs < 1:
+        raise DesignError("probe_jobs must be positive")
+    return ProbeSpec(
+        seeds, int(plain["probe_budget"]), jobs, _single_attempt(plain, "probe_retry_max_attempts")
+    )
+
+
 def parse_design(text: str) -> Design:
-    """Parse and validate the design block; every arm must realize its named policy."""
+    """Parse and validate the design block; every arm must realize its named policy.
+
+    A block with ``hosts`` is design v3 (two hosts, probe, V10', X1 keys); any
+    other block is parsed exactly as v2.
+    """
     values = _parse_block(text)
     arm_values = {k[len(ARM_PREFIX) :]: v for k, v in values.items() if k.startswith(ARM_PREFIX)}
     stage_values = {k: v for k, v in values.items() if k.startswith(STAGE_PREFIX)}
+    host_values = {k: v for k, v in values.items() if k.startswith(HOST_PREFIX)}
     plain = {
-        k: v
-        for k, v in values.items()
-        if not k.startswith(ARM_PREFIX) and not k.startswith(STAGE_PREFIX)
+        k: v for k, v in values.items() if not k.startswith((ARM_PREFIX, STAGE_PREFIX, HOST_PREFIX))
     }
-    if set(plain) != REQUIRED_KEYS:
-        missing = sorted(REQUIRED_KEYS - set(plain))
-        unknown = sorted(set(plain) - REQUIRED_KEYS)
+    v3 = "hosts" in plain
+    expected = V3_KEYS if v3 else REQUIRED_KEYS
+    if set(plain) != expected or (host_values and not v3):
+        missing = sorted(expected - set(plain))
+        unknown = sorted(set(plain) - expected) + (sorted(host_values) if not v3 else [])
         raise DesignError(f"design keys differ: missing {missing}, unknown {unknown}")
     unknown_arms = sorted(set(arm_values) - set(ARM_CONFIG))
     if unknown_arms or not arm_values:
@@ -250,6 +364,17 @@ def parse_design(text: str) -> Design:
         raise DesignError("seeds must be unique and differ from smoke_seed")
     for seed in (*(item for item in seeds if item not in PILOT_RERUN_SEEDS), smoke_seed):
         _check_seed(seed)
+    v3_fields: dict[str, Any] = {}
+    if v3:
+        v3_fields = {
+            "hosts": _parse_hosts(plain, host_values),
+            "retry_max_attempts": _single_attempt(plain, "retry_max_attempts"),
+            "probe": _parse_probe(plain, {*seeds, smoke_seed}),
+            "v10_monotonic_seconds": float(plain["v10_monotonic_seconds"]),
+            "v10_realtime_seconds": float(plain["v10_realtime_seconds"]),
+            "x1_margin": int(plain["x1_margin"]),
+            "x1_incomparable_cells": int(plain["x1_incomparable_cells"]),
+        }
     vocabulary = VocabularyMode(plain["vocabulary"])
     budget = int(plain["budget"])
     arms: list[Arm] = []
@@ -265,7 +390,8 @@ def parse_design(text: str) -> Design:
         design_id=plain["design_id"],
         target_version=plain["target_version"],
         image_digest=plain["image_digest"],
-        docker_engine=plain["docker_engine"],
+        # v3: per host (Design.engine_for); this field stays empty there.
+        docker_engine=plain.get("docker_engine", ""),
         budget=budget,
         seeds=seeds,
         smoke_budget=int(plain["smoke_budget"]),
@@ -285,7 +411,18 @@ def parse_design(text: str) -> Design:
         cooldown_seconds=float(plain["cooldown_seconds"]),
         stages=_parse_stages(stage_values),
         sha256=sha256(text.encode("utf-8")).hexdigest(),
+        **v3_fields,
     )
+
+
+def unresolved_values(design: Design, host: str | None) -> list[str]:
+    """Values a live run on ``host`` must not start with (``TBD-``, design v3 section 2)."""
+    if not design.is_v3:
+        return []
+    engine = design.engine_for(host)
+    if engine.startswith(UNRESOLVED_PREFIX):
+        return [f"host.{host}.docker_engine = {engine}: pin it from a preflight first"]
+    return []
 
 
 def load_design(path: Path) -> Design:

@@ -40,6 +40,21 @@ PROC_SAMPLE_SECONDS = 30.0
 DOCKER_PROBE_SECONDS = 60.0
 EVENT_ACTIONS = ("create", "start", "die", "destroy")
 TERMINATE_GRACE_SECONDS = 30.0
+#: The execution path both launchers must share (concurrency design v3 section 4.1).
+#: Recorded by sha256 before a run; if the benchmark's and the registration's
+#: lists differ, benchmark results do not transfer.
+SHARED_PATH_FILES = (
+    "scripts/local_node_tar_smoke.sh",
+    "scripts/bounded_cleanup_command.py",
+    "src/inodefence/execution/container.py",
+    "src/inodefence/execution/docker_client.py",
+    "scripts/container_host.py",
+    "scripts/container_controller.py",
+    "scripts/run_exp0.py",
+    "scripts/run_parallel_native.py",
+    "src/inodefence/execution/start_gate.py",
+    "scripts/launcher_guards.py",
+)
 
 Docker = Callable[..., str]
 
@@ -60,6 +75,17 @@ def docker_cli(*args: str, timeout: float = DOCKER_TIMEOUT_SECONDS) -> str:
     if done.returncode != 0:
         raise RuntimeError(f"docker {' '.join(args)}: {done.stderr.strip()}")
     return done.stdout.strip()
+
+
+def shared_path_sha256(repo_root: Path) -> dict[str, str | None]:
+    """sha256 of every shared-path file at ``repo_root``; ``None`` for a missing file."""
+    import hashlib
+
+    hashes: dict[str, str | None] = {}
+    for relative in SHARED_PATH_FILES:
+        path = repo_root / relative
+        hashes[relative] = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
+    return hashes
 
 
 def residual_resources(docker: Docker = docker_cli) -> list[str]:

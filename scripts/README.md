@@ -52,8 +52,11 @@ stderr 문구는 이 진단에 남지 않는다. controller 경로의 호출별 
 있다.
 
 셀 시작은 프로세스 간 시작 게이트(`src/inodefence/execution/start_gate.py`, 상태는
-`<출력 루트>/start-gate/`)를 거친다. smoke cleanup은 진입 시 `C`를, 표식 출력 **전에** `U`를,
-확인을 마치면 `S`를 게이트에 기록한다. 런처는 전역 `flock` 아래에서 모든 셀을 검사하고 바로
+`<출력 루트>/start-gate/`)를 거친다. smoke cleanup은 진입하자마자 잠금 없이 `O_EXCL`로
+`<cell>.cleanup` 표식을 만들고(게이트는 이를 `C`로 읽는다) `C`를, 표식 출력 **전에** `U`를,
+확인을 마치면 `S`를 게이트에 기록한다. `volume create`는 시도 플래그를 먼저 세운다. CLI가
+실패했는데 데몬이 볼륨을 만든 경우, 이 실행의 owner 라벨이면 제거하고 부재를 확인하며, 다른
+owner이거나 확인하지 못하면 `U`다. 런처는 전역 `flock` 아래에서 모든 셀을 검사하고 바로
 Popen한다. `U`, 판정 없는 종료(자식에 상속된 수명 잠금 해제), 이전 런처 세션의 미판정 셀,
 상태 읽기·잠금 실패 중 하나라도 있으면 시작하지 않는다. watchdog은 terminate 직전에 그 셀을
 `W`(미정)로 표시한다. SIGTERM을 받은 trap cleanup이 확인을 마치면 `S`, 못 마치면 `U`가 되고,
@@ -61,6 +64,22 @@ Popen한다. `U`, 판정 없는 종료(자식에 상속된 수명 잠금 해제)
 다른 셀이 `C`나 `W`이면 최대 1000초를 잠금 없이 기다린다. `S`만 깨끗한 것으로 본다. 거부 상태는 디스크에 남으므로, 사람이 자원을
 확인한 뒤 `python src/inodefence/execution/start_gate.py ack <dir> <cell> "<확인 내용>"`으로
 기록을 옆으로 옮겨야 다시 시작할 수 있다. 남은 창은 PR #334 본문에 있다.
+
+벤치마크 드라이버에서 뽑아낸 호스트 쪽 보호는 `scripts/launcher_guards.py`에 있다. 지금은
+벤치마크 드라이버가 쓰고, 본실험 런처(`run_exp0 --jobs`) 배선은 통합 브랜치에서 한다. 내용은
+docker preflight(engine·이미지 id·실행 중 컨테이너·잔존 리소스), 블록 뒤 잔존 리소스 확인,
+러너가 실패한 시작된 자식의 terminate→kill, 증거 1회 게시, 기록 전용 호스트 샘플러와 docker
+events다. 정지 정책은 호출자가 주입한다.
+
+**v2 대비 새 기본 동작:** preflight는 `SHARED_PATH_FILES`(실행 결과가 의존하는 16개 파일)의
+sha256을 `preflight.json`의 `preflight.shared_path_sha256`에 기록하고, 그중 하나라도 없으면
+실행을 거부한다(`shared execution path files missing`). 두 실행의 결과를 서로 옮길 수 있는
+조건은 이 해시의 일치다.
+
+기록 전용 정지 계측 두 가지(`--ping-socket`: 1 Hz `GET /_ping` → `host/ping.jsonl`,
+`--desktop-log`: 읽기 전용 연속 복사 → `host/desktop.log`)는 기본으로 꺼져 있고, 켜도 블록을
+멈추지 않는다. 켰는지 여부는 `preflight.recorders`에, 실패는 `host/recorder-failures.jsonl`에
+남는다.
 
 H1의 설계된 수준 stop과 외부 stop은 `block.json`에 `state=stopped`, `finished=false`로
 기록하고 기존 §6.3의 수준 배제·외부 단계 무효 판정에 사용한다. runner·기록 경로의 예외는 별도

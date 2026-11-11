@@ -27,6 +27,7 @@ GATE_SCRIPT = Path(sg.__file__).resolve()
 #   record ARGS  -> run start_gate.py record ARGS (a separate process, like bash)
 #   spawn FIFO   -> start a grandchild that inherits every fd and blocks on FIFO
 #   closefds     -> close every descriptor above 2 (drops the lifetime lock)
+#   mark         -> create <cell>.cleanup with O_EXCL and no lock, as the smoke trap does
 #   exit         -> exit 0
 CHILD = textwrap.dedent(
     """
@@ -38,6 +39,10 @@ CHILD = textwrap.dedent(
         rc = 0
         if command == "record":
             rc = subprocess.call([sys.executable, "-I", gate, "record", *rest.split(" ", 1)])
+        elif command == "mark":
+            directory = os.environ["INODEFENCE_START_GATE_DIR"]
+            cell = os.environ["INODEFENCE_START_GATE_CELL"]
+            os.close(os.open(os.path.join(directory, cell + ".cleanup"), os.O_CREAT | os.O_EXCL))
         elif command == "spawn":
             code = "import sys; open(sys.argv[1]).read()"
             keep.append(subprocess.Popen([sys.executable, "-I", "-c", code, rest], close_fds=False))
@@ -78,6 +83,11 @@ class Cell:
         self.process.wait(timeout=30)
 
 
+#: Every cell this module started, so a start that a broken gate wrongly allows
+#: (and that the test then never keeps) is still reaped at teardown.
+_STARTED: list[Cell] = []
+
+
 def start_cell(gate: sg.StartGate, name: str, **options: Any) -> Cell:
     process = gate.popen(name)(
         [sys.executable, "-I", "-c", CHILD, str(GATE_SCRIPT)],
@@ -86,7 +96,16 @@ def start_cell(gate: sg.StartGate, name: str, **options: Any) -> Cell:
         text=True,
         **options,
     )
-    return Cell(process)
+    cell = Cell(process)
+    _STARTED.append(cell)
+    return cell
+
+
+@pytest.fixture(autouse=True)
+def _reap_started_cells() -> Any:
+    yield
+    while _STARTED:
+        _STARTED.pop().close()
 
 
 @pytest.fixture
@@ -95,6 +114,33 @@ def cells() -> Any:
     yield started
     for cell in started:
         cell.close()
+
+
+#: Upper bound for waiting on a lock release that the protocol guarantees; a
+#: broken gate then fails the test instead of hanging the run.
+RELEASE_SECONDS = 30.0
+
+
+def release(fifo: Path) -> None:
+    """Open the FIFO for writing once; fail (ENXIO) instead of hanging if no reader exists."""
+    deadline = time.monotonic() + RELEASE_SECONDS
+    while True:
+        try:
+            os.close(os.open(fifo, os.O_WRONLY | os.O_NONBLOCK))
+            return
+        except OSError as error:
+            # The grandchild may still be starting; past the bound there is no reader.
+            assert time.monotonic() < deadline, f"no reader on {fifo.name}: {error}"
+            time.sleep(0.01)
+
+
+def wait_until_free(path: Path, alive: subprocess.Popen[Any] | None = None) -> None:
+    deadline = time.monotonic() + RELEASE_SECONDS
+    while not sg._lock_is_free(path):
+        if alive is not None:
+            assert alive.poll() is None, "the process exited before releasing as expected"
+        assert time.monotonic() < deadline, f"{path.name} still held after {RELEASE_SECONDS}s"
+        time.sleep(0.01)
 
 
 def gate_at(tmp_path: Path, **options: Any) -> sg.StartGate:
@@ -214,8 +260,7 @@ def test_descendant_keeps_lock_but_only_s_counts_as_clean(tmp_path: Path, cells:
         with pytest.raises(sg.StartDenied, match="a cleanup resource state unknown"):
             start_cell(gate, "b")
     finally:
-        with fifo.open("w"):
-            pass
+        release(fifo)
 
 
 def test_descendant_after_clean_verdict_is_clean(tmp_path: Path, cells: Any) -> None:
@@ -231,8 +276,7 @@ def test_descendant_after_clean_verdict_is_clean(tmp_path: Path, cells: Any) -> 
         gate.require_clean("a")
         cells.append(start_cell(gate, "b"))
     finally:
-        with fifo.open("w"):
-            pass
+        release(fifo)
 
 
 def test_bash_closing_the_lock_fd_reads_as_exit_without_verdict(tmp_path: Path) -> None:
@@ -245,8 +289,7 @@ def test_bash_closing_the_lock_fd_reads_as_exit_without_verdict(tmp_path: Path) 
     try:
         # Wait until bash has closed its descriptors: probe until the lock is free.
         # The probe is the gate's own check, so no timing assumption is made.
-        while not sg._lock_is_free(gate.directory / "a.lock"):
-            assert process.poll() is None
+        wait_until_free(gate.directory / "a.lock", alive=process)
         with pytest.raises(sg.StartDenied, match="a exited without a cleanup verdict"):
             gate.popen("b")(["true"])
     finally:
@@ -320,10 +363,8 @@ def test_earlier_launcher_session_denies_until_acknowledged(tmp_path: Path) -> N
         with pytest.raises(RuntimeError, match="still held"):
             sg.acknowledge(directory, "a", "checked")
     finally:
-        with fifo.open("w"):
-            pass
-    while not sg._lock_is_free(directory / "a.lock"):
-        pass  # the orphan exits after the FIFO opens; the probe is the gate's own
+        release(fifo)
+    wait_until_free(directory / "a.lock")  # the orphan exits once the FIFO opens
     with pytest.raises(sg.StartDenied):
         gate.popen("b")(["true"])
     moved = sg.acknowledge(directory, "a", "operator: docker ps -a and volume ls showed nothing")
@@ -563,3 +604,151 @@ def test_real_watchdog_path_sigterm_trap_commits_clean(tmp_path: Path) -> None:
     assert observed == [("W", "")]
     gate.require_clean(cell.run_id)
     assert gate.problem() is None
+
+
+def test_cleanup_marker_alone_keeps_starts_waiting_then_denies(tmp_path: Path) -> None:
+    """Both lock-based records fail; the unlocked O_EXCL marker still holds starts back."""
+    gate = gate_at(tmp_path)
+    first = start_cell(gate, "a")
+    assert first.send("mark") == 0  # cleanup entered; C and U never get recorded
+    assert gate.verdict("a") is None
+    with pytest.raises(sg.CleanupPending, match="a"):
+        gate.try_start("b", subprocess.Popen, (["true"],), {}, deadline=time.monotonic() + 1e6)
+    first.kill()  # exits without any verdict
+    with pytest.raises(sg.StartDenied, match="a exited without a cleanup verdict"):
+        start_cell(gate, "b")
+
+
+def test_cleanup_marker_is_cleared_on_rerun(tmp_path: Path) -> None:
+    gate = gate_at(tmp_path)
+    first = start_cell(gate, "a")
+    assert first.send("mark") == 0
+    assert first.send("record S") == 0
+    first.finish()
+    assert (gate.directory / "a.cleanup").exists()
+    gate.popen("a")(["true"]).wait(timeout=30)  # rerun of a clean cell
+    assert not (gate.directory / "a.cleanup").exists()
+
+
+def test_ack_moves_the_cleanup_marker_with_the_records(tmp_path: Path) -> None:
+    gate = gate_at(tmp_path)
+    first = start_cell(gate, "a")
+    assert first.send("mark") == 0
+    first.kill()  # exits inside cleanup without a verdict: the marker is still there
+    assert (gate.directory / "a.cleanup").exists()
+    moved = sg.acknowledge(gate.directory, "a", "test: resources checked")
+    assert (moved / "a.cleanup").is_file()
+    assert sorted(p.name for p in moved.iterdir()) == [
+        "a.cleanup",
+        "a.lock",
+        "a.session",
+        "note.txt",
+    ]
+    assert not any(gate.directory.glob("a.*"))
+
+
+class SmokeShapedProcess:
+    """The real smoke script's shape seen by the watchdog: bash with an EXIT trap
+    waiting on a foreground child (``cat`` on its stdin, standing in for the
+    ``docker exec`` campaign). bash defers SIGTERM until that child exits.
+
+    ``ends_in_grace``: terminate() also ends the foreground child, as a campaign
+    that finishes inside the 30 s grace does. Otherwise the child never ends, so
+    the grace wait certainly expires; it is shortened to keep the test fast.
+    """
+
+    def __init__(self, process: subprocess.Popen[str], ends_in_grace: bool) -> None:
+        self.process = process
+        self.ends_in_grace = ends_in_grace
+        self.pid = process.pid
+
+    @property
+    def returncode(self) -> int | None:
+        return self.process.returncode
+
+    def poll(self) -> int | None:
+        return self.process.poll()
+
+    def terminate(self) -> None:
+        self.process.terminate()
+        if self.ends_in_grace:
+            assert self.process.stdin is not None
+            self.process.stdin.close()
+
+    def wait(self, timeout: float | None = None) -> int:
+        if not self.ends_in_grace and timeout == 30:
+            timeout = 0.2  # the child cannot end: the expiry is certain, only faster
+        return self.process.wait(timeout=timeout)
+
+    def kill(self) -> None:
+        self.process.kill()
+
+
+@pytest.mark.parametrize("ends_in_grace", [True, False])
+def test_watchdog_on_the_real_smoke_shape(tmp_path: Path, ends_in_grace: bool) -> None:
+    """EXIT trap + foreground child: S if cleanup finishes inside the grace, else kill -> U."""
+    from scripts import run_concurrency_benchmark as bench
+    from scripts.run_exp0 import WATCHDOG_RETURNCODE, run_cell_with_watchdog
+
+    gate = gate_at(tmp_path)
+    design = bench.load_design(Path("experiments/configs/concurrency-scaling-v2.md"))
+    cell = bench.planned_blocks(design, "smoke")[0].cells[0]
+    record = f"{sys.executable} -I {GATE_SCRIPT} record"
+    # bash 5.2 with an EXIT trap may run the trap at once on SIGTERM (leaving the
+    # foreground child running) or only after the child ends; both were observed on
+    # this host. The two outcomes below hold either way: a trap that verifies
+    # quickly commits S; a trap whose cleanup outlasts the grace (it blocks here, as
+    # a slow docker removal would) is killed first, and the launcher commits U.
+    slow = tmp_path / "slow-cleanup"
+    os.mkfifo(slow)
+    work = "" if ends_in_grace else f"read -r _ < {slow}; "
+    fake_bash = tmp_path / "fake-bash"
+    fake_bash.write_text(
+        # "ready" comes from the foreground child itself, so bash is already waiting
+        # on it when the watchdog's SIGTERM arrives.
+        f"#!/bin/bash\ntrap '{record} C; {work}{record} S' EXIT\n"
+        "/bin/bash -c 'echo ready >&\"$READY_FD\"; exec cat'\n"
+    )
+    fake_bash.chmod(0o755)
+    ready_read, ready_write = os.pipe()
+    shaped: list[SmokeShapedProcess] = []
+
+    def launch(*args: Any, **kwargs: Any) -> Any:
+        kwargs["env"] = {**kwargs["env"], "READY_FD": str(ready_write)}
+        process = gate.popen(cell.run_id)(
+            *args, stdin=subprocess.PIPE, pass_fds=(ready_write,), **kwargs
+        )
+        os.close(ready_write)
+        with os.fdopen(ready_read) as ready:
+            assert ready.readline() == "ready\n"
+        shaped.append(SmokeShapedProcess(process, ends_in_grace))
+        return shaped[-1]
+
+    output = tmp_path / "out"
+    output.mkdir()
+    result = run_cell_with_watchdog(
+        cell,
+        output,
+        {"PATH": "/usr/bin:/bin"},
+        str(fake_bash),
+        limit_seconds=0,
+        popen=launch,
+        on_timeout=lambda: gate.mark_watchdog(cell.run_id),
+    )
+    assert result.returncode == WATCHDOG_RETURNCODE
+    try:
+        if ends_in_grace:
+            assert shaped[0].returncode == -15  # SIGTERM, after the trap committed S
+            gate.require_clean(cell.run_id)
+            assert gate.problem() is None
+        else:
+            assert shaped[0].returncode == -9  # killed inside its trap, before S
+            with pytest.raises(
+                sg.VerdictMissing, match=r"terminated by the watchdog.*after watchdog"
+            ):
+                gate.require_clean(cell.run_id)
+            assert "after watchdog" in (gate.problem() or "")
+    finally:
+        stdin = shaped[0].process.stdin
+        if stdin is not None and not stdin.closed:
+            stdin.close()  # ends the orphaned foreground child

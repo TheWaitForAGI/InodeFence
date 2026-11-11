@@ -1,14 +1,20 @@
 """Write the seed assignment file of a two-host run from a registration's seeds.
 
-The two registered rules (``seed_assignment_rule``; ``inodefence.evaluation.seed_assignment``),
-both over every registered seed:
+The registered rules (``seed_assignment_rule``; ``inodefence.evaluation.seed_assignment``), all
+over every registered seed and the participating hosts (``--participants``, default both):
 
-* ``alternate-v1`` (train, fixed at freeze): registered order, 1st, 3rd, ... to HOST1 and 2nd,
-  4th, ... to HOST2. No measured input. Its sha256 goes into the registration.
+* ``alternate-v1`` (train, fixed at freeze): registered order, alternating over the participants.
+  No measured input. Its sha256 goes into the registration.
+* ``replicate-v1`` (host qualification only): every participant gets every seed; compared across
+  hosts, never pooled. Its sha256 goes into the registration.
 * ``rh-proportional-v1`` (holdout, made at GO): HOST1 the first ``round_half_down(N·r1/(r1+r2))``
-  seeds, HOST2 the rest, from ``rates_exec_per_hour`` in the GO decision file (the per-host
-  ``r_h`` text ``gen_exp3_tables --go-rates-out`` writes). Only infrastructure values go in.
-  ``--record-in-go-decision`` then adds the file's sha256 to the GO decision file.
+  seeds, HOST2 the rest, from ``rates_exec_per_hour`` in the GO decision file (the per-host ``r_h``
+  text ``gen_exp3_tables --go-rates-out`` writes from the participants' train cell results). With
+  one participant it gets all seeds. Only infrastructure values go in. ``--record-in-go-decision``
+  then adds the participants and the file's sha256 to the GO decision file.
+
+The participating hosts are fixed once at freeze and hold for train and holdout alike (D047), so
+the holdout ``r_h`` always comes from the participants' own train results.
 
     python -m scripts.make_seed_assignment --preregistration exp3-v1.md --rule alternate-v1 --out A
     python -m scripts.make_seed_assignment --preregistration exp2-v1.md \\
@@ -33,7 +39,9 @@ from inodefence.evaluation.rds_preregistration import (
     load_preregistration,
 )
 from inodefence.evaluation.seed_assignment import (
+    HOST_IDS,
     RULE_ALTERNATE,
+    RULE_REPLICATE,
     RULE_RH_PROPORTIONAL,
     RULES,
     SeedAssignmentError,
@@ -42,6 +50,7 @@ from inodefence.evaluation.seed_assignment import (
     rule_problems,
     split_alternate,
     split_by_rate,
+    split_replicate,
 )
 
 
@@ -49,11 +58,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument("--preregistration", type=Path, required=True)
     parser.add_argument("--rule", choices=RULES, required=True)
+    parser.add_argument(
+        "--participants",
+        default=None,
+        help="comma-separated participating hosts (default: both; written only when given)",
+    )
     parser.add_argument("--go-decision", type=Path, help="rh-proportional-v1: GO decision file")
     parser.add_argument(
         "--record-in-go-decision",
         action="store_true",
-        help="rh-proportional-v1: add seed_assignment_sha256 to the GO decision file",
+        help="rh-proportional-v1: add the participants and the sha256 to the GO file",
     )
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
@@ -62,6 +76,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.error(f"--go-decision goes with --rule {RULE_RH_PROPORTIONAL}, and only with it")
     if args.record_in_go_decision and not holdout:
         parser.error("--record-in-go-decision goes with --go-decision")
+    participants = None if args.participants is None else args.participants.split(",")
     try:
         prereg = load_preregistration(args.preregistration)
         seeds = prereg.seeds
@@ -71,11 +86,23 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         go_decision = None
         if args.rule == RULE_ALTERNATE:
-            document = split_alternate(seeds)
+            document = split_alternate(seeds, participants)
+        elif args.rule == RULE_REPLICATE:
+            document = split_replicate(seeds, participants)
         else:
             go_decision = json.loads(args.go_decision.read_text(encoding="utf-8"))
+            members = list(HOST_IDS) if participants is None else participants
+            recorded = go_decision.get("participants")
+            if recorded is not None and recorded != participants:
+                raise SeedAssignmentError(
+                    f"the GO decision file names participants {recorded}, not {participants}"
+                )
             rates = go_decision["rates_exec_per_hour"]
-            document = split_by_rate(seeds, len(seeds), rates)
+            document = split_by_rate(
+                seeds, len(seeds), {host: rates[host] for host in members}, participants
+            )
+            if participants is not None:
+                go_decision["participants"] = participants
         data = assignment_bytes(document)
         parse_seed_assignment(data, seeds)  # The written file must load as the launcher loads it.
         if go_decision is not None:
@@ -104,9 +131,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     args.out.write_bytes(data)
     if args.record_in_go_decision:
         assert go_decision is not None
-        recorded = go_decision.get("seed_assignment_sha256")
-        if recorded not in (None, digest):
-            print(f"GO decision already names assignment {recorded}", file=sys.stderr)
+        recorded_sha = go_decision.get("seed_assignment_sha256")
+        if recorded_sha not in (None, digest):
+            print(f"GO decision already names assignment {recorded_sha}", file=sys.stderr)
             return 2
         go_decision["seed_assignment_sha256"] = digest
         args.go_decision.write_text(

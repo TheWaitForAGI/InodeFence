@@ -138,7 +138,9 @@ REGISTERED_HOST_IDS = ("HOST1", "HOST2")
 _SEED_ASSIGNMENT_SHA = "seed_assignment_sha256"
 _SEED_ASSIGNMENT_RULE = "seed_assignment_rule"
 # Same strings as inodefence.evaluation.seed_assignment (train first; it registers a sha256).
-SEED_ASSIGNMENT_RULES = ("alternate-v1", "rh-proportional-v1")
+SEED_ASSIGNMENT_RULES = ("alternate-v1", "rh-proportional-v1", "replicate-v1")
+# Rules whose file is fixed at freeze, so its sha256 is registered with it.
+SEED_ASSIGNMENT_RULES_WITH_SHA = ("alternate-v1", "replicate-v1")
 EXECUTION_MODES = ("per-case-container", "worker-pool")
 INTERIM_ANALYSIS_VALUES = ("forbidden", "allowed")
 # The measurement rules this engine implements (rds.py); a block may restate them
@@ -497,6 +499,13 @@ def parse_preregistration(text: str) -> Preregistration:
     if deadline is not None and not targets:
         raise PreregistrationFormatError(f"{_EXECUTION_DEADLINE} requires targets.<id>.* keys")
     hosts, assignment_rule, assignment_sha = _parse_hosts(values, jobs_max, bool(targets))
+    if assignment_rule == "replicate-v1" and (
+        family is not None or any(target.role == "holdout" for target in targets)
+    ):
+        raise PreregistrationFormatError(
+            "seed_assignment_rule = replicate-v1 is for host qualification: a registration with "
+            "a holdout target or a confirmatory_family cannot use it"
+        )
     return Preregistration(
         values["engine_sha"],
         image_digest,
@@ -558,7 +567,7 @@ def _parse_hosts(
         raise PreregistrationFormatError(
             f"{_SEED_ASSIGNMENT_RULE} must be one of {SEED_ASSIGNMENT_RULES}"
         )
-    if rule == SEED_ASSIGNMENT_RULES[0]:
+    if rule in SEED_ASSIGNMENT_RULES_WITH_SHA:
         if sha is None or re.fullmatch(r"[0-9a-f]{64}", sha) is None:
             raise PreregistrationFormatError(
                 f"{_SEED_ASSIGNMENT_RULE} = {rule} needs {_SEED_ASSIGNMENT_SHA} (64 lowercase hex)"

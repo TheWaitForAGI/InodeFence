@@ -201,7 +201,7 @@ def merge(
                 raise MergeRefused(f"seed {seed} has cells on {seed_host[seed]} and {host}")
             owner[run_id] = host
             cells.append(_absolute(entry, run_dirs[host]))
-    missing_hosts = [host for host in HOST_IDS if host not in indexes]
+    missing_hosts = [host for host in assignment.participants if host not in indexes]
     missing_seeds = sorted(set(assignment.all_seeds()) - set(seed_host))
     reasons = [f"host {host} not merged yet" for host in missing_hosts]
     if missing_seeds and not missing_hosts:
@@ -261,6 +261,78 @@ def merge(
     return document
 
 
+def steps_paths(
+    preregistration: Path, assignment: SeedAssignment, run_dirs: Mapping[str, Path]
+) -> dict[str, dict[str, Path]]:
+    """Per host, run id -> steps file, named exactly as the launcher names it (``cell_paths``).
+
+    No summary or report is opened to find a file.
+    """
+    from scripts.run_exp0 import DEFAULT_VERSION, Exp0Plan
+    from scripts.run_g1_smoke import cell_paths
+
+    prereg = load_preregistration(preregistration)
+    digest = sha256(preregistration.read_bytes()).hexdigest()
+    found: dict[str, dict[str, Path]] = {}
+    for host, run_dir in run_dirs.items():
+        plan = Exp0Plan(
+            prereg,
+            preregistration,
+            digest,
+            DEFAULT_VERSION,
+            False,  # as run_exp0 without --include-s-a: S-a never runs in EXP-3, EXP-2 or D047
+            assignment=assignment,
+            host_id=host,
+        )
+        found[host] = {
+            cell.run_id: cell_paths(cell, run_dir)["steps_jsonl"] for cell in plan.cells()
+        }
+    return found
+
+
+def compare_replicates(
+    indexes: Mapping[str, Mapping[str, Any]],
+    run_dirs: Mapping[str, Path],
+    steps: Mapping[str, Mapping[str, Path]],
+) -> dict[str, Any]:
+    """``replicate-v1``: the same cell on each host, path against path. Never pooled.
+
+    The pairs go through ``compare_cell_paths.compare_pairs`` (the same comparison a host's
+    original-versus-re-run check uses): per run id whether the two ``case_id`` sequences are
+    equal, their common prefix and lengths, and each side's infrastructure re-executions; then
+    ``m_x``, ``incomparable`` and ``identical``. Report only.
+    """
+    from scripts.compare_cell_paths import compare_pairs
+
+    hosts = sorted(indexes)
+    if len(hosts) != 2:
+        raise MergeRefused("--compare needs both hosts' directories")
+    by_host = {host: {entry["run_id"]: entry for entry in indexes[host]["cells"]} for host in hosts}
+    shared = sorted(set(by_host[hosts[0]]) & set(by_host[hosts[1]]))
+    only = sorted(set(by_host[hosts[0]]) ^ set(by_host[hosts[1]]))
+    missing = [run_id for run_id in shared if any(run_id not in steps[h] for h in hosts)]
+    if missing:
+        raise MergeRefused(f"cells not in the plan: {missing}")
+    budgets = {int(by_host[hosts[0]][run_id].get("budget") or 0) for run_id in shared}
+    if len(budgets) > 1:
+        raise MergeRefused(f"replicate cells with different budgets: {sorted(budgets)}")
+    compared = compare_pairs(
+        {run_id: (steps[hosts[0]][run_id], steps[hosts[1]][run_id]) for run_id in shared},
+        budgets.pop() if budgets else 0,
+        (hosts[0], hosts[1]),
+    )
+    return {
+        "classification": "replicate-v1 cross-host path comparison: report only, never pooled",
+        "hosts": hosts,
+        "run_ids_on_one_host_only": only,
+        **compared,
+        "all_identical": bool(compared["cells"])
+        and not only
+        and compared["summary"]["m_x"] == 0
+        and compared["summary"]["incomparable"] == 0,
+    }
+
+
 def _host_arg(text: str) -> tuple[str, Path]:
     host, sep, path = text.partition("=")
     if not sep or host not in HOST_IDS or not path:
@@ -275,6 +347,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--go-decision", type=Path, help="holdout: the GO decision file (r_h)")
     parser.add_argument("--host", type=_host_arg, action="append", required=True)
     parser.add_argument("--output", type=Path, required=True, help="directory for summaries/")
+    parser.add_argument(
+        "--compare",
+        action="store_true",
+        help="replicate-v1 only: compare the hosts' paths (written as compare.json), never pool",
+    )
     args = parser.parse_args(argv)
     run_dirs = dict(args.host)
     if len(run_dirs) != len(args.host):
@@ -297,11 +374,31 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         if problems:
             raise MergeRefused("; ".join(problems))
+        strangers = sorted(set(run_dirs) - set(assignment.participants))
+        if strangers:
+            raise MergeRefused(f"hosts {strangers} take no part in this assignment")
+        if assignment.replicated != args.compare:
+            raise MergeRefused(
+                "replicate-v1 runs are compared, never pooled: use --compare"
+                if assignment.replicated
+                else "--compare is only for replicate-v1 assignments"
+            )
         indexes = {
             host: load_host(run_dirs[host], host, prereg_sha, assignment)
             for host in HOST_IDS
             if host in run_dirs
         }
+        if args.compare:
+            comparison = compare_replicates(
+                indexes, run_dirs, steps_paths(args.preregistration, assignment, run_dirs)
+            )
+            args.output.mkdir(parents=True, exist_ok=True)
+            out = args.output / "compare.json"
+            out.write_text(
+                json.dumps(comparison, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+            )
+            print(json.dumps({"compare": str(out), "all_identical": comparison["all_identical"]}))
+            return 0 if comparison["all_identical"] else 1
         document = merge(indexes, run_dirs, assignment)
     except (
         MergeRefused,

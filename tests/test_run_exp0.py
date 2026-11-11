@@ -94,11 +94,32 @@ class AlwaysCleanGate:
         return None
 
 
+def clean_host_preflight(plan: Any, *, engine: str, docker: Any) -> tuple[dict[str, Any], list]:
+    """Host guard stand-in: every image at its registered id, nothing left over, no docker."""
+    images = run_exp0.guard_images(plan)
+    return {
+        "docker_server": engine,
+        "image_ids": {name: (want or f"sha256:{name}") for name, want in images.items()},
+        "shared_path_sha256": {},
+    }, []
+
+
+def clean_host_postflight(
+    plan: Any, before: Any, *, engine: str, docker: Any
+) -> tuple[dict[str, Any], list]:
+    return clean_host_preflight(plan, engine=engine, docker=docker)
+
+
 @pytest.fixture
 def clean_engine(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(run_exp0, "capture_source", lambda: SourceProvenance(SHA, False))
     monkeypatch.setattr(run_exp0, "_script_has", lambda variable: True)
     monkeypatch.setattr(run_exp0, "StartGate", AlwaysCleanGate)
+    # The shared host guards (#336) talk to docker; tests of their wiring replace these.
+    monkeypatch.setattr(run_exp0, "host_preflight", clean_host_preflight)
+    monkeypatch.setattr(run_exp0, "host_postflight", clean_host_postflight)
+    monkeypatch.setattr(run_exp0, "start_host_recording", lambda *a, **k: lambda: [])
+    monkeypatch.setattr(run_exp0, "docker_engine_version", lambda context: "29.8.0")
 
 
 def _plan(path: Path, include_s_a: bool = False) -> Exp0Plan:

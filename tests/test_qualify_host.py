@@ -30,20 +30,8 @@ def shared_hashes() -> dict[str, Any]:
 
 
 @pytest.fixture
-def qual_guards(real_guards: FakeDocker, monkeypatch: pytest.MonkeyPatch) -> FakeDocker:
-    """The real guards on a fake docker, plus the execution sha W1's preflight records."""
-    inner = run_exp0.host_preflight
-
-    def preflight(plan: Any, **kwargs: Any) -> Any:
-        facts, problems = inner(plan, **kwargs)
-        return {**facts, "execution_sha": {"revision": SHA, "dirty": False}}, problems
-
-    def postflight(plan: Any, before: Any, **kwargs: Any) -> Any:
-        facts, problems = inner(plan, **kwargs)
-        return {**facts, "execution_sha": {"revision": SHA, "dirty": False}}, problems
-
-    monkeypatch.setattr(run_exp0, "host_preflight", preflight)
-    monkeypatch.setattr(run_exp0, "host_postflight", postflight)
+def qual_guards(real_guards: FakeDocker) -> FakeDocker:
+    """The real guards on a fake docker; run_exp0 (#345) records the execution sha itself."""
     return real_guards
 
 

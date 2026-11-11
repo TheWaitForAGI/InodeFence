@@ -94,7 +94,11 @@ def test_rule_problems_regenerate_with_participants() -> None:
     assert rule_problems(rep, rule=RULE_REPLICATE, registered_sha256=rep_sha, **ok) == []
     assert rule_problems(rep, rule=RULE_REPLICATE, registered_sha256=sha, **ok)
     holdout = assignment_bytes(split_by_rate(SEEDS, 4, {"HOST1": "50"}, ["HOST1"]))
-    go = {"participants": ["HOST1"], "rates_exec_per_hour": {"HOST1": "50"}}
+    go = {
+        "participants": ["HOST1"],
+        "rates_exec_per_hour": {"HOST1": "50"},
+        "frozen_participants": ["HOST1"],
+    }
     kwargs: dict[str, Any] = {
         "rule": RULE_RH_PROPORTIONAL,
         "registered_seeds": SEEDS,
@@ -102,14 +106,24 @@ def test_rule_problems_regenerate_with_participants() -> None:
     }
     assert rule_problems(holdout, go_decision=go, **kwargs) == []
     # Without the participants field the GO file means both hosts, and HOST2's rate is missing.
-    assert rule_problems(holdout, go_decision={"rates_exec_per_hour": {"HOST1": "50"}}, **kwargs)
+    assert rule_problems(
+        holdout, go_decision={k: v for k, v in go.items() if k != "participants"}, **kwargs
+    )
+    # Frozen with both hosts: HOST1 alone needs HOST2 recorded as excluded (partial GO).
+    both = {**go, "frozen_participants": ["HOST1", "HOST2"]}
+    assert rule_problems(holdout, go_decision=both, **kwargs)
+    assert rule_problems(holdout, go_decision={**both, "excluded_hosts": ["HOST2"]}, **kwargs) == []
 
 
 # ---- registration --------------------------------------------------------------------------
 
 
-def _train_only(prereg: Path) -> None:
-    lines = prereg.read_text(encoding="utf-8").splitlines(keepends=True)
+def _train_only(prereg: Path, experiment_id: str = "host-qual") -> None:
+    lines = (
+        prereg.read_text(encoding="utf-8")
+        .replace("experiment_id = exp3\n", f"experiment_id = {experiment_id}\n")
+        .splitlines(keepends=True)
+    )
     keep = [
         line
         for line in lines
@@ -141,6 +155,21 @@ def test_replicate_is_refused_in_an_exp_registration(
         load_preregistration(Path(args[args.index("--preregistration") + 1]))
 
 
+def test_replicate_is_refused_in_a_train_only_exp_registration(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """exp3-v1 has no holdout and no confirmatory family: only the experiment id refuses it."""
+    _, args, _ = _deadline_setup(tmp_path, monkeypatch, BEFORE)
+    prereg = Path(args[args.index("--preregistration") + 1])
+    _train_only(prereg, experiment_id="exp3")
+    data = assignment_bytes(split_replicate(SEEDS))
+    _two_host_file(prereg, _host_keys(RULE_REPLICATE, parse_seed_assignment(data, SEEDS).sha256))
+    with pytest.raises(
+        PreregistrationFormatError, match="allowed only for experiment_id host-qual"
+    ):
+        load_preregistration(prereg)
+
+
 def test_replicate_needs_a_registered_sha(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _, args, _ = _deadline_setup(tmp_path, monkeypatch, BEFORE)
     prereg = Path(args[args.index("--preregistration") + 1])
@@ -165,7 +194,7 @@ def _run(
 
 @pytest.mark.usefixtures("clean_engine", "admit_fixture_holdout")
 def test_both_hosts_run_every_seed_and_are_compared_never_pooled(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     out, args, assignment = _replicate_setup(tmp_path, monkeypatch)
     prereg = Path(args[args.index("--preregistration") + 1])
@@ -185,7 +214,9 @@ def test_both_hosts_run_every_seed_and_are_compared_never_pooled(
         "--output",
         str(tmp_path / "m"),
     ]
-    assert merge_host_indexes.main(base) == 2  # pooling refused
+    capsys.readouterr()
+    assert merge_host_indexes.main(base) == 2  # pooling refused, by the explicit rule
+    assert "replicate-v1 runs are compared, never pooled" in capsys.readouterr().err
     assert not (tmp_path / "m" / "summaries" / "index.json").exists()
     assert merge_host_indexes.main([*base, "--compare"]) == 0
     text = (tmp_path / "m" / "compare.json").read_text(encoding="utf-8")
@@ -255,12 +286,16 @@ def test_one_participant_runs_alone_and_the_other_host_is_refused(
 def test_one_participant_holdout_is_regenerated_from_its_own_r_h(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from test_two_host_split import _setup
+    from test_two_host_split import _setup, train_files
 
     _, args, _ = _setup(tmp_path, monkeypatch, rule=RULE_RH_PROPORTIONAL)
     prereg = Path(args[args.index("--preregistration") + 1])
+    train_prereg, train_assignment = train_files(tmp_path, monkeypatch)
     go = tmp_path / "go1.json"
-    go.write_text(json.dumps({"rates_exec_per_hour": {"HOST1": "42"}}), encoding="utf-8")
+    go.write_text(
+        json.dumps({"rates_exec_per_hour": {"HOST1": "42"}, "excluded_hosts": ["HOST2"]}),
+        encoding="utf-8",
+    )
     out = tmp_path / "a.json"
     base = [
         "--preregistration",
@@ -269,10 +304,18 @@ def test_one_participant_holdout_is_regenerated_from_its_own_r_h(
         RULE_RH_PROPORTIONAL,
         "--go-decision",
         str(go),
+        "--train-preregistration",
+        str(train_prereg),
+        "--train-assignment",
+        str(train_assignment),
         "--out",
         str(out),
     ]
     assert make_seed_assignment.main(base) == 2  # both hosts by default; HOST2 has no r_h
+    without_train = base[: base.index("--train-preregistration")] + base[-2:]
+    assert (
+        make_seed_assignment.main([*without_train, "--participants", "HOST1"]) == 2
+    )  # the frozen participant set is required
     assert (
         make_seed_assignment.main([*base, "--participants", "HOST1", "--record-in-go-decision"])
         == 0

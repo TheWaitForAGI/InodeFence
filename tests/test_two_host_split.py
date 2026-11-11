@@ -108,7 +108,7 @@ def test_rule_problems_regenerate_bytes() -> None:
     )
     rates = {"HOST1": "3", "HOST2": "1"}
     holdout = assignment_bytes(split_by_rate(SEEDS, 4, rates))
-    go = {"rates_exec_per_hour": rates}
+    go = {"rates_exec_per_hour": rates, "frozen_participants": ["HOST1", "HOST2"]}
     kwargs: dict[str, Any] = {
         "rule": RULES[1],
         "registered_seeds": SEEDS,
@@ -118,8 +118,13 @@ def test_rule_problems_regenerate_bytes() -> None:
     assert rule_problems(holdout, go_decision=None, **kwargs)
     assert rule_problems(holdout, go_decision={"decided_at": "x"}, **kwargs)
     assert rule_problems(
-        holdout, go_decision={"rates_exec_per_hour": {"HOST1": "1", "HOST2": "1"}}, **kwargs
+        holdout, go_decision={**go, "rates_exec_per_hour": {"HOST1": "1", "HOST2": "1"}}, **kwargs
     )
+    # Holdout participants are the frozen train set less the recorded exclusions only.
+    assert rule_problems(holdout, go_decision={**go, "frozen_participants": ["HOST1"]}, **kwargs)
+    assert rule_problems(holdout, go_decision={**go, "excluded_hosts": ["HOST2"]}, **kwargs)
+    no_frozen = {k: v for k, v in go.items() if k != "frozen_participants"}
+    assert rule_problems(holdout, go_decision=no_frozen, **kwargs)
     assert rule_problems(holdout, go_decision={**go, "seed_assignment_sha256": "0" * 64}, **kwargs)
 
 
@@ -153,13 +158,22 @@ def _setup(
     else:
         rates = {"HOST1": "3", "HOST2": "1"}
         (tmp_path / "go.json").write_text(
-            json.dumps({"rates_exec_per_hour": rates}), encoding="utf-8"
+            json.dumps({"rates_exec_per_hour": rates, "frozen_participants": ["HOST1", "HOST2"]}),
+            encoding="utf-8",
         )
         data = assignment_bytes(split_by_rate(SEEDS, len(SEEDS), rates))
         _two_host_file(prereg, _host_keys(rule, None))
     assignment.write_bytes(data)
     monkeypatch.setattr(run_exp0, "docker_engine_version", lambda context: ENGINE)
     return out, args, assignment
+
+
+def train_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[Path, Path]:
+    """A frozen two-host train registration and its alternate-v1 assignment."""
+    train = tmp_path / "train"
+    train.mkdir()
+    _, args, assignment = _setup(train, monkeypatch, rule=RULES[0])
+    return Path(args[args.index("--preregistration") + 1]), assignment
 
 
 #: Controller and helper ids a two-host run is told to expect (--expected-images).
@@ -412,6 +426,7 @@ def test_holdout_assignment_comes_from_the_go_rates(
     prereg = Path(args[args.index("--preregistration") + 1])
     go = tmp_path / "go.json"
     made = tmp_path / "made.json"
+    train_prereg, train_assignment = train_files(tmp_path, monkeypatch)
     assert (
         make_seed_assignment.main(
             [
@@ -421,6 +436,10 @@ def test_holdout_assignment_comes_from_the_go_rates(
                 RULES[1],
                 "--go-decision",
                 str(go),
+                "--train-preregistration",
+                str(train_prereg),
+                "--train-assignment",
+                str(train_assignment),
                 "--record-in-go-decision",
                 "--out",
                 str(made),
@@ -438,7 +457,13 @@ def test_holdout_assignment_comes_from_the_go_rates(
     assert run_exp0.main([*dry, "--go-decision", str(go)]) == 0
     assert "seed_assignment host=HOST1" in capsys.readouterr().out
     go.write_text(
-        json.dumps({"rates_exec_per_hour": {"HOST1": "1", "HOST2": "3"}}), encoding="utf-8"
+        json.dumps(
+            {
+                "rates_exec_per_hour": {"HOST1": "1", "HOST2": "3"},
+                "frozen_participants": ["HOST1", "HOST2"],
+            }
+        ),
+        encoding="utf-8",
     )
     assert run_exp0.main([*dry, "--go-decision", str(go)]) == 2
     go.write_text(json.dumps({"decided_at": "2026-11-20T00:00:00+09:00"}), encoding="utf-8")

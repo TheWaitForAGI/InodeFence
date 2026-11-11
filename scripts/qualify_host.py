@@ -358,6 +358,10 @@ def record_problems(
     if differing:
         problems.append(f"{where}: shared path files differ from expected: {differing}")
     execution = record.get("execution_sha")
+    if execution is None and where.startswith(("postflight", "peer postflight")):
+        # The launcher records the execution sha at the preflight; the postflight's shared-path
+        # hashes above already catch a checkout that changed during the run.
+        return problems
     revision = execution.get("revision") if isinstance(execution, Mapping) else None
     dirty = execution.get("dirty") if isinstance(execution, Mapping) else None
     if revision != criteria["expected_execution_sha"] or dirty is not False:

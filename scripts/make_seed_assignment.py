@@ -14,12 +14,16 @@ over every registered seed and the participating hosts (``--participants``, defa
   then adds the participants and the file's sha256 to the GO decision file.
 
 The participating hosts are fixed once at freeze and hold for train and holdout alike (D047), so
-the holdout ``r_h`` always comes from the participants' own train results.
+the holdout ``r_h`` always comes from the participants' own train results. ``rh-proportional-v1``
+therefore reads the train registration and its assignment (``--train-preregistration``,
+``--train-assignment``, checked against the train rule) and writes ``frozen_participants`` and
+``train_assignment_sha256`` into the GO file. The holdout participants must be that set less the
+hosts the GO file lists in ``excluded_hosts`` (partial GO); every regeneration checks it.
 
     python -m scripts.make_seed_assignment --preregistration exp3-v1.md --rule alternate-v1 --out A
     python -m scripts.make_seed_assignment --preregistration exp2-v1.md \\
         --rule rh-proportional-v1 --go-decision exp3-train-go-decision.json \\
-        --record-in-go-decision --out B
+        --train-preregistration exp3-v1.md --train-assignment A --record-in-go-decision --out B
 
 The bytes are canonical, so the launcher and the merge tool regenerate them and accept only the
 same file. The sha256 is printed.
@@ -54,6 +58,30 @@ from inodefence.evaluation.seed_assignment import (
 )
 
 
+def frozen_participants(
+    train_preregistration: Path | None, train_assignment: Path | None
+) -> tuple[list[str], str]:
+    """The participant set frozen with train: the train assignment, checked against its rule."""
+    if train_preregistration is None or train_assignment is None:
+        raise SeedAssignmentError(
+            "rh-proportional-v1 needs --train-preregistration and --train-assignment "
+            "(the participants are fixed at freeze)"
+        )
+    train = load_preregistration(train_preregistration)
+    data = train_assignment.read_bytes()
+    parsed = parse_seed_assignment(data, train.seeds)
+    problems = rule_problems(
+        data,
+        rule=train.seed_assignment_rule or "",
+        registered_seeds=train.seeds,
+        registered_sha256=train.seed_assignment_sha256,
+        go_decision=None,
+    )
+    if problems:
+        raise SeedAssignmentError("train assignment refused: " + "; ".join(problems))
+    return list(parsed.participants), parsed.sha256
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument("--preregistration", type=Path, required=True)
@@ -65,9 +93,19 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--go-decision", type=Path, help="rh-proportional-v1: GO decision file")
     parser.add_argument(
+        "--train-preregistration",
+        type=Path,
+        help="rh-proportional-v1: the train registration whose assignment fixed the participants",
+    )
+    parser.add_argument(
+        "--train-assignment",
+        type=Path,
+        help="rh-proportional-v1: the train assignment file (its participants are the frozen set)",
+    )
+    parser.add_argument(
         "--record-in-go-decision",
         action="store_true",
-        help="rh-proportional-v1: add the participants and the sha256 to the GO file",
+        help="rh-proportional-v1: record participants, frozen set and sha256 in the GO file",
     )
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
@@ -91,6 +129,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             document = split_replicate(seeds, participants)
         else:
             go_decision = json.loads(args.go_decision.read_text(encoding="utf-8"))
+            frozen, train_sha = frozen_participants(
+                args.train_preregistration, args.train_assignment
+            )
+            for key, value in (
+                ("frozen_participants", frozen),
+                ("train_assignment_sha256", train_sha),
+            ):
+                if go_decision.get(key) not in (None, value):
+                    raise SeedAssignmentError(
+                        f"the GO decision file names {key} {go_decision[key]}, not {value}"
+                    )
+                go_decision[key] = value
             members = list(HOST_IDS) if participants is None else participants
             recorded = go_decision.get("participants")
             if recorded is not None and recorded != participants:

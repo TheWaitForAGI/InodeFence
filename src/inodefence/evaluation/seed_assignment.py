@@ -308,6 +308,18 @@ def rule_problems(
         return ["rh-proportional-v1 needs the GO decision file (--go-decision)"]
     participants = go_decision.get("participants")
     members = HOST_IDS if participants is None else tuple(participants)
+    # The participants are fixed once at freeze (D047 section 9): the holdout set must be the
+    # frozen train set, less only the hosts the GO decision records as excluded.
+    frozen = go_decision.get("frozen_participants")
+    if not isinstance(frozen, list) or not frozen:
+        return ["GO decision file has no frozen_participants (the train assignment's set)"]
+    excluded = go_decision.get("excluded_hosts") or []
+    expected_members = tuple(host for host in HOST_IDS if host in frozen and host not in excluded)
+    if members != expected_members:
+        return [
+            f"holdout participants {list(members)} are not the frozen set {frozen} "
+            f"less the excluded hosts {excluded}"
+        ]
     rates = go_decision.get("rates_exec_per_hour")
     if not isinstance(rates, Mapping) or not all(
         isinstance(rates.get(host), str) for host in members

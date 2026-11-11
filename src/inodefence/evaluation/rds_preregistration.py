@@ -141,6 +141,8 @@ _SEED_ASSIGNMENT_RULE = "seed_assignment_rule"
 SEED_ASSIGNMENT_RULES = ("alternate-v1", "rh-proportional-v1", "replicate-v1")
 # Rules whose file is fixed at freeze, so its sha256 is registered with it.
 SEED_ASSIGNMENT_RULES_WITH_SHA = ("alternate-v1", "replicate-v1")
+#: The only registrations replicate-v1 may serve: host qualification runs (D047), never an EXP.
+REPLICATE_EXPERIMENT_IDS = ("host-qual",)
 EXECUTION_MODES = ("per-case-container", "worker-pool")
 INTERIM_ANALYSIS_VALUES = ("forbidden", "allowed")
 # The measurement rules this engine implements (rds.py); a block may restate them
@@ -505,6 +507,14 @@ def parse_preregistration(text: str) -> Preregistration:
         raise PreregistrationFormatError(
             "seed_assignment_rule = replicate-v1 is for host qualification: a registration with "
             "a holdout target or a confirmatory_family cannot use it"
+        )
+    if assignment_rule == "replicate-v1" and values.get(_EXPERIMENT_ID) not in (
+        REPLICATE_EXPERIMENT_IDS
+    ):
+        raise PreregistrationFormatError(
+            "seed_assignment_rule = replicate-v1 is allowed only for experiment_id "
+            f"{', '.join(REPLICATE_EXPERIMENT_IDS)} (host qualification, D047), "
+            f"not {values.get(_EXPERIMENT_ID)!r}"
         )
     return Preregistration(
         values["engine_sha"],

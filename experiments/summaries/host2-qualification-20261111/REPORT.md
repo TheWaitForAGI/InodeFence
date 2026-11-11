@@ -309,7 +309,7 @@ The elevated script started at 15:18 (`if_host2_elevated.ps1.txt` = `if_host2_pa
 ## 26. Image transfer, identity, volume in-use test (17:37–17:39 KST)
 
 **Transfer verification: PASS.** (`transfer_run.txt`)
-- HOST1 appeared on the tailnet (shared node). Host key fingerprint `SHA256:LHkKFflNNKPIzTB/ljwOuInFGX1OjSCs6ZRqRtLEiuM` (ED25519, port 2222). Recorded at first contact (TOFU). HOST1 should confirm it matches its `/etc/ssh` key.
+- HOST1 appeared on the tailnet (shared node). Host key fingerprint `SHA256:LHkKFflNNKPIzTB/ljwOuInFGX1OjSCs6ZRqRtLEiuM` (ED25519, port 2222). Recorded at first contact (TOFU). **Checked against HOST1 (ORCH, 17:41 KST): matches** HOST1 `/etc/ssh/ssh_host_ed25519_key.pub`.
 - rrsync restriction, once each: shell command refused (`SSH_ORIGINAL_COMMAND does not run rsync`, rc=1); write refused (`sending to read-only server is not allowed`, rc=12); `..` refused (`do not use .. in arg`, rc=12); `/etc/` was anchored inside the restricted dir (`/home/linux/inodefence-transfer/etc` not found, rc=23).
 - `rsync -av --partial` of `images-20261111/`: 10 files, 463,887,484 bytes in 45 s (10.2 MB/s), rc=0. Route: direct (Tailscale ping 9 ms via a public endpoint; earlier pings at 17:37 went through DERP tok, 71 ms).
 - `sha256sum -c SHA256SUMS`: 4/4 OK, sizes equal the expected values.
@@ -341,3 +341,12 @@ The elevated script started at 15:18 (`if_host2_elevated.ps1.txt` = `if_host2_pa
 - **(a) Windows↔NTP |offset| ≤ 0.5 s: PASS** (max 0.0017 s, 17:38:15–19).
 - (b) WSL REALTIME − WinUTC ≤ 0.5 s within 30 min, and (c) one 600 s bracket with |MONO| ≤ 500 ppm and tick 10000: running (`post_w32.sh`: 1-minute samples 17:34–18:04, bracket about 18:04–18:14, then SNTP remeasure). The effective sync time is 17:38:08, so the 30-minute window for (b) is counted from then.
 - Startup type changed Manual → Automatic. Revert: `Set-Service W32Time -StartupType Manual; Stop-Service W32Time`.
+
+## 28. Docker Desktop settings (read-only, 17:45 KST) and a HOST1 access question
+
+- Docker Desktop **4.99.0 (245822)** (`Uninstall` registry DisplayVersion 4.99.0, `docker version` Platform.Name). Engine 29.9.3.
+- `%APPDATA%\Docker\settings-store.json` has 13 keys: `AutoStart=False`, `DisplayedOnboarding=True`, `EnableDockerAI=True`, `EngineTypeWindows=wsl2`, `InferenceCanUseGPUVariant=True`, `IntegratedWslDistros=['Ubuntu-24.04']`, `LastContainerdSnapshotterEnable`, `LicenseTermsVersion=2`, `SettingsVersion=48`, `UpdateInstallTime=0`, `UpdatePreviousVersion=''`, `UseContainerdSnapshotter=True`, `WslEngineEnabled=True`.
+  - No auto-update key and no Resource Saver key, so both are at the product defaults. The effective GUI values have not been confirmed (the owner reads them, nothing changed).
+  - **`AutoStart=False`:** Docker Desktop does not start at Windows sign-in. If Windows restarts during an unattended run, the engine does not come back on its own. Report only. Changing it is an experiment-condition question (ORCH/Jiwoong).
+- ORCH (17:41): Docker Desktop settings changes (auto-update off and similar) go to Jiwoong for approval first. Only values are recorded until then.
+- The HOST1 sshd password-auth `linux` login from HOST2's Tailscale address at 17:40:20–17:40:36 KST was **not made by this W2 session**. Every W2 ssh/rsync call used `-i ~/.ssh/inodefence_transfer -o BatchMode=yes` (password prompts disabled): 6 key logins at 17:37:54–17:38:50 (`transfer_run.txt`). At 17:39–17:40 W2 was running `docker load` and the volume test only. HOST1 access stays limited to the transfer key.

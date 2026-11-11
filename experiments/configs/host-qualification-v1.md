@@ -73,7 +73,11 @@
 - 디스크·메모리·부하: v2 §7과 같다(디스크 여유 20 GB 이상, 가용 메모리 15 GiB 이상, load < 3, 그리고 v2 §5의 load < 코어의 25%).
 - 호스트 재시작 보호 설정의 캡처, 부팅 시각, Docker Desktop·WSL 버전, `.wslconfig` 값(메모리·프로세서 상한), 실시간 동기 상태(`adjtimex` 또는 `timedatectl`)를 기록한다. 부팅 시각과 버전은 끝에 다시 기록해 같음을 확인한다.
   - HOST2 시계: WSL의 timesyncd는 꺼 둔 상태로 유지하고, Windows 시간 서비스(W32Time)를 NTP에 동기화하는 방식을 지웅이 승인했다. 적용은 확인 시험 뒤이며, 결과는 미정이다.
-- 적격성 실행 시작 시점에 호스트 간 realtime 시계 차를 기록한다(v3 정정 초안 §8 보강 6항목 가운데 옮기지 않았던 1건).
+- 호스트 간 realtime 시계 차를 기록한다(v3 정정 초안 §8 보강 6항목 가운데 옮기지 않았던 1건). 판정 입력이 아니라 기록만이다. HOST2가 불참이면 "해당 없음"이다.
+  - **측정 시점:** 적격성 시작과 끝, 동결 시점, GO 시점.
+  - **기본(2차 방법): SNTP 오프셋 차.** 각 호스트의 WSL 안에서 같은 NTP 서버에 5회 질의해 지연이 가장 짧은 표본을 쓴다. 차 = offset_H2 − offset_H1, 불확실성 = 두 쪽 RTT/2의 합. 서버 이름을 기록한다.
+  - **1차 방법(SSH 셸 접근이 따로 승인된 경우만): Tailscale SSH 왕복 괄호 측정.** HOST1에서 t0 = CLOCK_REALTIME, ssh로 HOST2의 CLOCK_REALTIME t2, t1 = CLOCK_REALTIME을 잰다. 차 = t2 − (t0+t1)/2, 불확실성 ±(t1−t0)/2. 5회 중 왕복이 가장 짧은 표본을 쓰고 5회 모두 기록한다. 두 호스트 모두 WSL 안의 CLOCK_REALTIME(기록 파일이 쓰는 시계)이다. 현재 HOST1→HOST2 방향 SSH는 열려 있지 않다(전송용 HOST2→HOST1 읽기 전용 rrsync 키만 있고 셸은 막혀 있음). 그래서 이 방법이 가능한지는 미확인이다.
+  - **출력:** `--clock-reference`에 {method, samples, chosen, diff_s, uncertainty_s, measured_at}.
 
 ## 5. 통과 기준 (호스트별, 측정 전 고정)
 
@@ -102,7 +106,9 @@
 - Stage A 수준(a = .333, D046)이면 약 60% 확률로 불통과다. 즉 이 게이트는 #335 등 수정의 효과를 요구한다.
 - 2/12 이하 안은 a = .20에서 통과 확률 .558이고 사전 근거가 없어 채택하지 않았다.
 
-**Q8 미확인 abort의 기계 판정.** abort 셀 가운데 (i) 보고서나 `aborted` 객체가 없거나, (ii) `aborted.error_chain`이 없거나 비었거나 잘림 표시가 있거나, (iii) error_chain이 없는데 `invalid_reason`(분류기, 원래 reason 기준)이 `cleanup_inspect`·`cleanup_remove`인 셀. 체인이 끝까지 있으면 가장 안쪽(마지막 원소)이 cleanup이어도 확인으로 센다(v2 §6.3 H4). 분류는 호출자 진단(#343)의 reason 접미가 붙기 전의 원래 reason으로 한다. **watchdog 셀은 보고서가 없으므로 Q3(watchdog 0)와 Q8에 함께 걸린다.**
+**Q8 미확인 abort의 기계 판정(2026-11-11 검증자 정정, v2 §6.3 H4 원문에 맞춤).** abort 셀 가운데 (i) 보고서나 `aborted` 객체가 없거나, (ii) `aborted.error_chain`에 잘림 표시가 있거나, (iii) `error_chain`이 없거나 비었는데 `invalid_reason`(분류기, 호출자 진단 접미가 붙기 전의 원래 reason 기준)이 `cleanup_inspect`·`cleanup_remove`인 셀은 미확인이다. 체인이 없어도 cleanup이 아닌 사유면 확인으로 센다(덮는 경로가 아니므로). 체인이 끝까지 있으면 가장 안쪽(마지막 원소)이 cleanup이어도 확인이다. 이전 문구(`741b9bb`)의 "error_chain이 없거나 비었으면 미확인"은 v2 H4보다 엄격한 근거 없는 강화여서 교체했다. **watchdog 셀은 보고서가 없으므로 Q3(watchdog 0)와 Q8에 함께 걸린다.**
+
+**Q8 적용 범위.** Q8은 최종 상태가 abort-final인 셀에만 적용한다. 첫 시도가 무기록이고 재시도가 성공한 셀은 Q7(첫 시도 기준 abort 비율)의 분자에는 들어가지만 Q8 대상이 아니다. 그 첫 시도의 `attempts/` 로그에 있는 `FAILED at step` 줄과 첫 오류는 "재시도로 복구된 첫 시도 실패" 목록으로 보고만 한다(게이트 아님).
 
 **입력 종속 검사(통과가 아니라 정지).** abort가 HOST1 Stage A jobs=2 abort와 같은 (arm, seed, step index, case id)에서 다시 나면 입력 종속으로 보고 그 호스트의 실행을 멈춘다(v2 §6.5의 재발 규칙). 보고하고, 적격 판정을 내지 않는다. 정지 규칙의 범위는 **Stage A jobs=2만**이다. Stage A 쪽 입력은 `~/inodefence-benchmarks/concurrency-scaling-v2/A/`의 jobs=2 블록 abort 스텁(`step_index`, case id)만이다. 경로가 Stage A와 갈라진 셀은 이 검사가 시험하지 못한 것이며, "시험 안 됨" 수를 적는다. **전제:** 적격성 셀 env와 Stage A 셀 env가 같아야 한다(§12 점검표). 다르면 이 검사는 무효이며, 그 사실을 실행 전에 기록한다.
 
@@ -255,7 +261,7 @@ HOST1 29.8.0과 HOST2 29.9.3을 그대로 유지한다(다운그레이드·nativ
 - [ ] 단계 0 smoke PASS(그 호스트).
 - [ ] §4 preflight 전 항목(기록 파일 경로를 LOG에).
 - [ ] 판정 도구와 교차 비교기가 그 SHA에 있다(§13).
-- [ ] 적격성 셀 env(정책 문자열, mutation policy, sentinel, budget, seed)와 Stage A 셀 env의 키·값 대조. 다르면 입력 종속 검사(§5)는 무효이며 그 사실을 실행 전에 LOG에 기록한다.
+- [ ] 적격성 셀 env(정책 문자열, mutation policy, sentinel, budget, seed, `observer_integrity_policy`)와 Stage A 셀 env의 키·값 대조. 적격성 등록 파일의 `observer_integrity_policy`는 `invalid-continue`(v2와 같음)여야 한다. 다르면 입력 종속 검사(§5)는 무효이며 그 사실을 실행 전에 LOG에 기록한다.
 - [ ] 노출 원장 계획 1줄을 LOG에(호스트, seed, budget, jobs, 봉인). seed 충돌 기계 대조 1줄.
 - [ ] 봉인과 다른 docker·`make check` 금지를 다른 세션에 통지.
 - [ ] 지웅 승인: 호스트별, 단계별(smoke, 적격성).

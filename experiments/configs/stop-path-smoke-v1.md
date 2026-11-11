@@ -45,7 +45,7 @@ D042 원문의 주입 수단은 셀 프로세스에 존재하지 않는 docker c
 
 ## 3. 실행 구성
 
-- **등록 파일:** targets 형식(InfrastructureGuard와 StartGate는 이 형식에서만 돈다), target 1개(node-tar 7.5.2, 등록 digest), arm R-restart·D·S-u, seed 6101~6104, budget 20. 파일 이름은 `experiments/preregistration/stop-path-smoke-<차수>-v1.md`(차수별, D042 :932). **확인 필요:** R arm 변형(R-restart인지 R-walk인지)은 D042가 정하지 않는다. EXP-3 등록과 같은 값을 쓴다.
+- **등록 파일:** targets 형식(InfrastructureGuard와 StartGate는 이 형식에서만 돈다), target 1개(node-tar 7.5.2, 등록 digest), arm R-restart·D·S-u, seed 6101~6104, budget 20. 파일 이름은 `experiments/preregistration/stop-path-smoke-<차수>-v1.md`(차수별, D042 :932). R arm은 D040-D6대로 seed-restart(`arm.R = unretained-seed-restart-v1-uniform-mutation-v1`)다. EXP-3 등록과 같은 값이다(D042는 R 변형을 따로 정하지 않는다).
 - **런처 인자(양 시나리오 공통):** `--jobs 2 --output <전용 출력> --skip-build --expected-images <기준 파일>`. `--host-id`는 쓰지 않는다(2호스트 실행이 아니다). `--expected-images`는 넘겨서 이미지 거부 경로도 함께 확인한다.
 - **기대 이미지 파일:** 저장소에 커밋하지 않고 각 출력 폴더에 둔다(`<출력>/expected-images.json`). 내용은 `expected_image_ids` 3개(대상·controller·helper)이고, 값은 실행 직전 읽기 전용 `docker image inspect`로 확인한다. 파일의 sha256은 preflight 기록의 `expected_images`에 남는다.
 

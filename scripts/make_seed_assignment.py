@@ -141,6 +141,16 @@ def main(argv: Sequence[str] | None = None) -> int:
                         f"the GO decision file names {key} {go_decision[key]}, not {value}"
                     )
                 go_decision[key] = value
+            if participants is None:
+                # D047 section 9.1: the frozen set less the hosts the partial GO check excluded.
+                excluded = go_decision.get("excluded_hosts") or []
+                running = [host for host in HOST_IDS if host in frozen and host not in excluded]
+                if not running:
+                    raise SeedAssignmentError(
+                        "GO not computed: every frozen participant is excluded (D047 section 9.1)"
+                    )
+                if running != list(HOST_IDS):
+                    participants = running
             members = list(HOST_IDS) if participants is None else participants
             recorded = go_decision.get("participants")
             if recorded is not None and recorded != participants:

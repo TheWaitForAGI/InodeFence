@@ -245,14 +245,27 @@ def _last_realtime(output: Path) -> float | None:
     return last
 
 
+def _excluded_hosts(go_decision: Path | None) -> tuple[str, ...]:
+    if go_decision is None:
+        return ()
+    listed = json.loads(go_decision.read_text(encoding="utf-8")).get("excluded_hosts") or []
+    return tuple(str(host) for host in listed)
+
+
 def pool_hosts(
-    reports: Mapping[str, Mapping[str, Any]], outputs: Mapping[str, Path], now: datetime
+    reports: Mapping[str, Mapping[str, Any]],
+    outputs: Mapping[str, Path],
+    now: datetime,
+    excluded: Sequence[str] = (),
 ) -> dict[str, Any]:
     """Two hosts as one run (the D041 rule), plus a per-host alarm line; nothing stops a run.
 
     The pooled counts are sums and the rate is recomputed from them. A host whose own counts meet
     the same condition gets an alarm line, because the pool can hide one host failing outright.
     Each host's last stamp against this checker's clock is shown as a reference, never used.
+    A host the partial GO excluded (``excluded``, D047 section 9.1) stays in the pooled counts,
+    since its attempted cells stay in the abort denominator; it is marked, and it gets no alarm
+    line because it runs no further cell.
     """
     pooled: dict[str, Any] = {
         key: sum(int(r[key]) for r in reports.values()) for key in POOLED_COUNTS
@@ -276,6 +289,7 @@ def pool_hosts(
                 "infrastructure_failure_rate": r["infrastructure_failure_rate"],
                 "condition_met": bool(r["stop_rate_reached"]),
                 "infrastructure_stopped": r["infrastructure_stopped"],
+                **({"excluded_by_partial_go": True} if host in excluded else {}),
             }
             for host, r in sorted(reports.items())
         },
@@ -284,7 +298,7 @@ def pool_hosts(
             f"실패율 {r['infrastructure_failure_rate']:.2f} ≥ {STOP_RATE:.2f} "
             "(자동 정지 아님, 지웅 결정)"
             for host, r in sorted(reports.items())
-            if r["stop_rate_reached"]
+            if r["stop_rate_reached"] and host not in excluded
         ],
         "clock_reference": {
             host: {
@@ -371,6 +385,11 @@ def main(argv: list[str] | None = None) -> int:
         help="two-host run: each host's output directory (replaces --output)",
     )
     parser.add_argument("--after-stop", action="store_true", help="only after a stop was called")
+    parser.add_argument(
+        "--go-decision",
+        type=Path,
+        help="two-host run after GO: mark the hosts the partial GO excluded (D047 section 9.1)",
+    )
     parser.add_argument("--out", type=Path, help="also write the result here")
     parser.add_argument("--cache", type=Path, help="verdicts by file size and time, for reruns")
     args = parser.parse_args(argv)
@@ -410,6 +429,7 @@ def main(argv: list[str] | None = None) -> int:
                 },
                 outputs,
                 now,
+                _excluded_hosts(args.go_decision),
             )
     except (PreregistrationFormatError, OSError, ValueError) as error:
         print(str(error), file=sys.stderr)

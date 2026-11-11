@@ -178,6 +178,36 @@ def _merge_deadline(parts: Mapping[str, Mapping[str, Any]]) -> dict[str, Any]:
     }
 
 
+#: The cause recorded for a seed block left unfinished by an unresumed stop (D047 section 9.1).
+PARTIAL_GO_CAUSE = "unresumed-stop-partial-go"
+
+
+def exclude_unfinished_blocks(document: dict[str, Any], go_decision: Mapping[str, Any]) -> None:
+    """D047 section 9.1 (b): an excluded host's unfinished train seed blocks leave the analysis.
+
+    They join the index ``deadline`` record's ``excluded_seeds`` (the D041 rule the analysis
+    already applies), with the cause keyed ``<host>/<target>/s<seed>``. The seeds come from the
+    GO decision file that ``partial_go_check --record-in-go-decision`` wrote, never from outcomes.
+    """
+    excluded = go_decision.get("excluded_hosts") or []
+    completion = go_decision.get("partial_completion")
+    if not isinstance(completion, Mapping) or any(h not in completion for h in excluded):
+        raise MergeRefused("the GO file excludes hosts without their partial_completion")
+    empty: dict[str, Any] = {"execution_deadline": None, "passed": None}
+    deadline: dict[str, Any] = dict(document.get("deadline") or empty)
+    seeds = {t: set(v) for t, v in (deadline.get("excluded_seeds") or {}).items()}
+    causes = dict(deadline.get("causes") or {})
+    for host in excluded:
+        for target, blocks in completion[host].items():
+            for seed in blocks.get("unfinished_seeds") or []:
+                seeds.setdefault(target, set()).add(int(seed))
+                causes[f"{host}/{target}/s{seed}"] = PARTIAL_GO_CAUSE
+    deadline["excluded_seeds"] = {t: sorted(v) for t, v in sorted(seeds.items())}
+    deadline["causes"] = dict(sorted(causes.items()))
+    deadline["partial_go_excluded_hosts"] = sorted(excluded)
+    document["deadline"] = deadline
+
+
 def merge(
     indexes: Mapping[str, Mapping[str, Any]],
     run_dirs: Mapping[str, Path],
@@ -313,6 +343,15 @@ def compare_replicates(
     missing = [run_id for run_id in shared if any(run_id not in steps[h] for h in hosts)]
     if missing:
         raise MergeRefused(f"cells not in the plan: {missing}")
+    # Both indexes carry the same preregistration sha (load_host), so the budget is equal by the
+    # registration; a per-cell budget that differs still means the indexes are not comparable.
+    unequal = [
+        run_id
+        for run_id in shared
+        if by_host[hosts[0]][run_id].get("budget") != by_host[hosts[1]][run_id].get("budget")
+    ]
+    if unequal:
+        raise MergeRefused(f"replicate cells with different budgets: {unequal}")
     compared = compare_pairs(
         {run_id: (steps[hosts[0]][run_id], steps[hosts[1]][run_id]) for run_id in shared},
         (hosts[0], hosts[1]),
@@ -396,6 +435,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(json.dumps({"compare": str(out), "all_identical": comparison["all_identical"]}))
             return 0 if comparison["all_identical"] else 1
         document = merge(indexes, run_dirs, assignment)
+        if isinstance(go_decision, dict) and go_decision.get("excluded_hosts"):
+            exclude_unfinished_blocks(document, go_decision)
     except (
         MergeRefused,
         SeedAssignmentError,

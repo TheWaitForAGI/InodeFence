@@ -327,10 +327,63 @@ class GoClock:
     last_activity: float
     stops: int
     gap_seconds: float
+    unresumed_hosts: tuple[str, ...] = ()
 
     @property
     def rate(self) -> float:
         return sum(self.rates.values())
+
+
+@dataclass(frozen=True, slots=True)
+class PartialGo:
+    """D047 section 9.1: unresumed-stop participants left out of r, from the GO decision file.
+
+    ``partial_go_check --record-in-go-decision`` writes ``excluded_hosts``, ``exclusions`` (with
+    ``hold_reasons``) and ``partial_completion``; the cell results must name the same hosts.
+    """
+
+    excluded: tuple[str, ...]
+    hold_reasons: Mapping[str, Sequence[str]]
+    completion: Mapping[str, Any]
+
+    @property
+    def held(self) -> bool:
+        return any(self.hold_reasons.values())
+
+
+def _partial_go(inputs: "Inputs", clock: GoClock) -> PartialGo | None:
+    """``None`` when every participant runs; refused when the records and the GO file disagree.
+
+    Raises :class:`TableInputError` with ``GO_NOT_COMPUTED`` when no running participant is left
+    (a one-host run that stopped, or every participant stopped).
+    """
+    recorded: Mapping[str, Any] = {}
+    if inputs.go_decision.is_file():
+        loaded = json.loads(inputs.go_decision.read_text(encoding="utf-8"))
+        recorded = loaded if isinstance(loaded, Mapping) else {}
+    listed = recorded.get("excluded_hosts") or []
+    if not clock.unresumed:
+        if listed:
+            raise TableInputError(f"the GO file excludes {listed}, but no host stopped unresumed")
+        return None
+    if "" in clock.rates or set(clock.unresumed_hosts) == set(clock.rates):
+        raise TableInputError(GO_NOT_COMPUTED)
+    if sorted(listed) != sorted(clock.unresumed_hosts):
+        raise TableInputError(
+            f"hosts stopped unresumed {sorted(clock.unresumed_hosts)}, the GO file excludes "
+            f"{sorted(listed)}: run partial_go_check --record-in-go-decision first"
+        )
+    exclusions = recorded.get("exclusions")
+    completion = recorded.get("partial_completion")
+    if not isinstance(exclusions, Mapping) or not isinstance(completion, Mapping):
+        raise TableInputError("the GO file has no exclusions or partial_completion")
+    hold: dict[str, Sequence[str]] = {}
+    for host in listed:
+        reasons = (exclusions.get(host) or {}).get("hold_reasons")
+        if not isinstance(reasons, list):
+            raise TableInputError(f"the GO file has no hold_reasons for {host}")
+        hold[host] = reasons
+    return PartialGo(tuple(sorted(listed)), hold, completion)
 
 
 def _go_clock(inputs: "Inputs", report: Mapping[str, Any], recorded: int) -> GoClock:
@@ -370,22 +423,34 @@ def _go_clock(inputs: "Inputs", report: Mapping[str, Any], recorded: int) -> GoC
         max(c.last_activity for c in clocks.values()),
         sum(c.stops for c in clocks.values()),
         sum(c.gap_seconds for c in clocks.values()),
+        tuple(sorted(h for h, c in clocks.items() if c.unresumed)),
     )
 
 
 def go_rates(inputs: "Inputs") -> dict[str, str]:
     """Per-host ``r_h`` as fixed decimal text, the input of the holdout seed split.
 
-    Refused when GO has no value: an unresumed stop on any host, or a one-host run.
+    Refused when GO has no value (every participant stopped unresumed, or a one-host run that
+    did), when a partial GO is held (D047 section 9.1 item 3), or for a one-host run. An excluded
+    host has no ``r_h``: the holdout goes to the running participants only.
     """
     report = inputs.report
     recorded = _field(report, "cell_completeness", "recorded_steps")
     clock = _go_clock(inputs, report, recorded)
-    if clock.unresumed:
-        raise TableInputError(f"{GO_NOT_COMPUTED}: 인프라 정지 미재개. 할당을 만들지 않는다")
+    try:
+        partial = _partial_go(inputs, clock)
+    except TableInputError as error:
+        if str(error) == GO_NOT_COMPUTED:
+            raise TableInputError(
+                f"{GO_NOT_COMPUTED}: 인프라 정지 미재개. 할당을 만들지 않는다"
+            ) from error
+        raise
     if "" in clock.rates:
         raise TableInputError("a seed split needs per-host cell results (--host-cell-results)")
-    return {host: f"{rate:.6f}" for host, rate in clock.rates.items()}
+    if partial is not None and partial.held:
+        raise TableInputError("GO 보류(지웅 판단): 할당을 만들지 않는다")
+    excluded = () if partial is None else partial.excluded
+    return {host: f"{rate:.6f}" for host, rate in clock.rates.items() if host not in excluded}
 
 
 def t_exp3_2(inputs: "Inputs") -> list[str]:
@@ -418,13 +483,23 @@ def t_exp3_2(inputs: "Inputs") -> list[str]:
     failures = _field(completeness, "aborts") + _field(completeness, "record_inconsistent")
     attempted_rate = failures / clock.attempted_cells
     failure_rate = _field(completeness, "infrastructure_failure_rate")
-    if clock.unresumed:
-        # D043 condition 6: no normal resume is assumed, so these cells have no value.
+    try:
+        partial = _partial_go(inputs, clock)
+        not_computed = False
+    except TableInputError as error:
+        if str(error) != GO_NOT_COMPUTED:
+            raise
+        partial, not_computed = None, True
+    excluded = () if partial is None else partial.excluded
+    partial_lines: list[str] = []
+    if not_computed:
+        # No running participant is left (D043 condition 6 as amended by D047 section 9.1).
         rate_text = remaining_text = capacity_text = GO_NOT_COMPUTED
         decision_lines: list[str] = []
         result = f"{GO_NOT_COMPUTED}: 인프라 정지 미재개. GO 미적용, EXP-2 미시작"
     else:
-        rate = clock.rate
+        # D047 section 9.1: an excluded host leaves r only.
+        rate = sum(value for host, value in clock.rates.items() if host not in excluded)
         deadline = datetime.fromisoformat(_field(report, "deadline", "execution_deadline"))
         decided_text, decided_at = _go_decision_time(inputs.go_decision)
         remaining = (deadline.timestamp() - max(clock.last_activity, decided_at)) / 3600
@@ -433,6 +508,14 @@ def t_exp3_2(inputs: "Inputs") -> list[str]:
         remaining_text = f"{remaining:.1f}"
         capacity_text = str(math.floor(remaining * rate / (GO_STEP_DIVISOR * ratio)))
         result = ""
+        if partial is not None:
+            label = ", ".join(partial.excluded)
+            result = (
+                f"GO 보류(지웅 판단): 호스트 {label} 미재개 정지, 보류 조건 해당"
+                if partial.held
+                else f"부분 완료(호스트 {label} 미재개 정지): GO는 가동 호스트의 r로 판정"
+            )
+            partial_lines = _partial_lines(partial)
     rows = [
         ["E: train 첫 C1∨C2 캠페인(3 arm 합산, abort 포함, invalid 제외)", events, "≥ 1"],
         ["r: 정지 공백을 뺀 처리량(실시간, exec/h)", rate_text, "입력"],
@@ -448,9 +531,15 @@ def t_exp3_2(inputs: "Inputs") -> list[str]:
         ["시작하지 않은 셀", not_started, "기록"],
         ["결과", result, "W3가 적용해 LOG에 남긴다"],
     ]
-    if "" not in clock.rates and not clock.unresumed:
+    if "" not in clock.rates and not not_computed:
         rows[1:1] = [
             [f"r_{host}: {host} 처리량(실시간, exec/h)", f"{value:.0f}", "r = Σ r_h"]
+            if host not in excluded
+            else [
+                f"r_{host}: {host} 처리량(실시간, exec/h)",
+                f"{value:.0f}",
+                "제외(미재개 정지): r에 넣지 않음",
+            ]
             for host, value in sorted(clock.rates.items())
         ]
     return [
@@ -464,7 +553,36 @@ def t_exp3_2(inputs: "Inputs") -> list[str]:
         f"정지 {clock.stops}회, 누적 공백 {clock.gap_seconds / 3600:.1f} h(실시간). "
         "원인은 docs/LOG.md의 W2 기록.",
         *decision_lines,
+        *partial_lines,
     ]
+
+
+def _partial_lines(partial: PartialGo) -> list[str]:
+    """The D047 section 9.1 item 4 report: completion per host, hold reasons, the two outcomes."""
+    lines = ["", "## 부분 완료 (D047 §9.1)", ""]
+    for host, targets in sorted(partial.completion.items()):
+        mark = " (제외: 미재개 정지)" if host in partial.excluded else ""
+        for target, blocks in sorted(targets.items()):
+            finished = list(blocks.get("finished_seeds") or [])
+            unfinished = list(blocks.get("unfinished_seeds") or [])
+            lines.append(
+                f"- {host}{mark} {target}: 완주 seed 블록 {len(finished)}개 {finished}, "
+                f"미완주 {len(unfinished)}개 {unfinished}"
+            )
+    lines += [
+        "",
+        "미완주 seed 블록은 train 분석에서 뺀다(D041 마감 규칙 준용). 제외된 호스트의 완료 셀은 "
+        "E, abort, e에 남고 r에서만 빠진다. 'EXP-3 train 완료'로 쓰지 않는다.",
+    ]
+    for host, reasons in sorted(partial.hold_reasons.items()):
+        for reason in reasons:
+            lines.append(f"- 보류 사유 {host}: {reason}")
+    lines += [
+        "",
+        "EXP-2 진행 가능(GO) 여부는 위 결과 칸이다. holdout 전체 완료 여부는 EXP-2 결과에서 따로 "
+        "보고한다.",
+    ]
+    return lines
 
 
 def _dense_table(title: str, report: Mapping[str, Any], target: Target) -> list[str]:

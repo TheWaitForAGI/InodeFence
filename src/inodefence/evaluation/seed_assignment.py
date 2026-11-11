@@ -314,12 +314,30 @@ def rule_problems(
     if not isinstance(frozen, list) or not frozen:
         return ["GO decision file has no frozen_participants (the train assignment's set)"]
     excluded = go_decision.get("excluded_hosts") or []
+    if not set(excluded) <= set(frozen):
+        return [f"excluded hosts {excluded} are not all in the frozen set {frozen}"]
     expected_members = tuple(host for host in HOST_IDS if host in frozen and host not in excluded)
+    if not expected_members:
+        return ["GO not computed: every frozen participant is excluded (D047 section 9.1)"]
     if members != expected_members:
         return [
             f"holdout participants {list(members)} are not the frozen set {frozen} "
             f"less the excluded hosts {excluded}"
         ]
+    # D047 section 9.1: an excluded host needs its recorded check, and a hold means no GO.
+    exclusions = go_decision.get("exclusions") or {}
+    # The check's own record: the stop it found and the evidence, not a hand-written list.
+    if any(
+        not isinstance(exclusions.get(host), Mapping)
+        or not isinstance(exclusions[host].get("stop_reason"), str)
+        or not isinstance(exclusions[host].get("checks"), Mapping)
+        or not isinstance(exclusions[host].get("hold_reasons"), list)
+        for host in excluded
+    ):
+        return [f"excluded hosts {excluded} have no recorded partial GO check"]
+    held = sorted(host for host in excluded if exclusions[host].get("hold_reasons"))
+    if held:
+        return [f"GO is held for {held} (D047 section 9.1 item 3): no holdout assignment"]
     rates = go_decision.get("rates_exec_per_hour")
     if not isinstance(rates, Mapping) or not all(
         isinstance(rates.get(host), str) for host in members

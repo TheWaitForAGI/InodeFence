@@ -58,6 +58,13 @@ seed_assignment_sha256 = a395367b5a617a63ba92bd04183b45e8a79d33885eed81096d4bd2c
 할당 파일은 [`run-exp0-eng-smoke-v1.assignment.json`](run-exp0-eng-smoke-v1.assignment.json)이다(6300·6302 →
 HOST1, 6301·6303 → HOST2). `python -m scripts.make_seed_assignment --rule alternate-v1`이 같은 바이트를 다시 만든다.
 
+**호스트 키와 참여(ORCH 결정 (b)).** 파서는 참여 호스트가 하나여도 `host.HOST1.*`·`host.HOST2.*` 키를 모두
+요구한다. 참여하지 않는 호스트의 키는 형식상 기재일 뿐이고, 참여 여부는 할당 파일의 `participants`(와 holdout은 GO
+파일)가 정한다. 비참여 호스트의 키를 참여로 읽지 않는다.
+**할당 파일을 만드는 순서(W4).** `make_seed_assignment`는 `TBD`가 남은 등록 파일을 거부한다. 그래서 다른 값을 모두
+채우고 `seed_assignment_sha256`만 임시값(64자리 hex)으로 둔 사본에서 할당 파일을 만든 뒤, 출력된 sha를 그 칸에
+채운다.
+
 ## 2. 통과 조건 (적격성 검증 v1 §2, 실행 전 고정)
 
 | 조건 | 판정 근거(기록) |
@@ -76,42 +83,67 @@ HOST1, 6301·6303 → HOST2). `python -m scripts.make_seed_assignment --rule alt
 
 ## 3. 실행·병합·운영 점검 절차 (초안)
 
-실행은 통합 후보 HOLD 해제 뒤 오케스트레이터 승인으로만 한다. 호스트마다 같은 절차다.
+실행은 통합 후보 HOLD 해제 뒤 지웅 승인으로만 한다(사람 승인 게이트; 승인 지점 표는 [적격성 실행 등록
+파일](host-qualification-v1-run.md) §3). 승인 참조 형식은 `ENGSMOKE-<HOSTn>-<YYYYMMDD>-<HHMM>`이다. 호스트마다
+같은 절차다.
 
 1. **값 고정(한 번, 두 호스트 공통):** 실행 SHA `E`를 정하고, `engine_sha = E`, `exposure_ledger_sha256 =` 그 시점 원장
    sha, `execution_deadline =` 예상 종료 + 여유(UTC 오프셋 포함), `host.<id>.docker_engine =` 각 호스트 preflight
    `docker version --format '{{.Server.Version}}'`를 채운다. 채운 파일은 `E` **뒤** 커밋에 있어도 된다. 런처는
    checkout HEAD를 `engine_sha`와 비교하므로, 실행은 `E`의 깨끗한 detached worktree에서 하고 `--preregistration`에는
    그 worktree 밖의 채운 파일 사본을 준다(EXP-0와 같은 방식).
+   **기준 파일(순서 고정):** `E` 확정 → `E`에서 기준 파일 생성(이미지 id 3개, 호스트별 Engine, 공유 경로 16개 해시,
+   `expected_execution_sha = E`; W1의 `scripts/make_run_criteria.py`, 브랜치 `claude/p0-347-run-tooling`, 머지 뒤 이름
+   확정) → 기준 파일 sha256을 LOG에 고정 → 실행. `--expected-images`에 이 파일을 준다.
+   **원장 sha:** 실행 뒤 원장 행은 `E` 뒤 커밋에 들어가므로, 같은 `E`에서 도는 실행들의 `exposure_ledger_sha256`은
+   `E` 트리의 원장 sha 그대로다(a76ffee에서는 `8a832e19…`).
 2. **preflight(호스트별):** detached worktree `E`, `git status` 깨끗, venv python(uv.lock 생성 금지), `docker context
    show`, Server 버전, 이미지 id(`22c8734f…`, controller, helper; HOST2는 load 직후 대조), `docker ps -a`·`docker volume
    ls`의 `inodefence-` 접두 목록을 `<out>/preflight/`에 저장. dry-run:
 
    ```bash
-   python -m scripts.run_exp0 --preregistration <filled.md> --output <out-HOSTn> \
+   PYTHONPATH=src python -m scripts.run_exp0 --preregistration <filled.md> --output <out-HOSTn> \
      --target-digest node-tar-7.5.2=sha256:22c8734f141d91b333ba37c7fe6a9a7547d7abfab487fa028da2053bed6f3dbb \
      --observer-integrity-policy invalid-continue \
      --seed-assignment experiments/configs/run-exp0-eng-smoke-v1.assignment.json --host-id HOSTn \
-     --jobs 2 --manifest-host hostn-eng-smoke --expected-images <criteria.json> --skip-build --dry-run
+     --jobs 2 --manifest-host hostn-eng-smoke \
+     --manifest-out <worktree 밖>/raw-manifest-hostn-eng-smoke.sha256 \
+     --expected-images <criteria.json> --skip-build --dry-run
    ```
+
+   **`--manifest-out`은 반드시 worktree 밖이다:** 기본 경로가 저장소 안(`experiments/summaries/`)이라 실행 worktree를
+   더럽히고, postflight의 실행 SHA 검사가 dirty로 실패한다.
 
    **이미지는 미리 준비한다(#345):** 런처의 preflight가 warmup보다 먼저 돌며 target·controller·helper id를
    `--expected-images`(기준 파일의 `expected_image_ids`)와 대조해 불일치면 시작 전에 거부한다. 그래서 HOST1은 이미지를
    확인만 하고 HOST2는 `docker load`로 미리 넣은 뒤 `docker image inspect`로 3개 id를 대조한다. **두 호스트 모두
    `--skip-build`로 실행**한다(빌드 캐시가 같은 id를 낼지 실 docker에서 확인하지 않았다).
 
+   **코드 경로 점검(두 호스트 공통):** 모든 명령은 실행 worktree `E`에서 `PYTHONPATH=src`를 붙여 실행한다. venv의
+   `.pth`가 다른 체크아웃의 `src`를 가리킬 수 있기 때문이다(HOST2에서 `No module named
+   inodefence.evaluation.cell_completeness`로 확인). 실행 전에
+   `PYTHONPATH=src python -c "import inodefence; print(inodefence.__file__)"`의 출력이 실행 worktree의 `src/` 아래인지
+   확인하고, 아니면 시작하지 않는다.
+   **dry-run PASS는 이미지 preflight를 대신하지 않는다:** dry-run은 이미지가 하나도 없어도 `gate: PASS`이다(로컬
+   이미지 존재와 id 대조는 live preflight에서만 한다). 이미지 id는 위 대조로 따로 확인한다.
    `gate: PASS`, wiring 거부 없음, cells 6, seeds 두 개를 확인한다.
-3. **실행:** 같은 명령에서 `--dry-run`을 뺀다(`--skip-build`는 두 호스트 모두 유지). 실행 중 운영 점검은 다른 터미널에서
-   `python -m scripts.exp_operating_check --preregistration <filled.md> --output <out-HOSTn>`(출력은 수만).
+3. **실행:** 같은 명령에서 `--dry-run`을 뺀다(`--skip-build`·`--manifest-out`은 두 호스트 모두 유지). 실행 중 운영
+   점검은 다른 터미널에서
+   `PYTHONPATH=src python -m scripts.exp_operating_check --preregistration <filled.md> --output <out-HOSTn>`(출력은 수만).
+   **정지 시 재개:** 인프라 정지가 나면 원인을 기록하고 지웅에게 "런처 smoke <HOSTn> 실행이 <시각>에 인프라
+   정지했습니다. 원인: <원인 기록 경로·요약>. 잔존 리소스: <0 또는 목록>. 재개 승인 참조
+   `ENGSMOKE-<HOSTn>-<YYYYMMDD>-<HHMM>`를 요청합니다."로 승인을 요청한다. 승인되면 같은 명령에
+   `--resume-after-stop ENGSMOKE-<HOSTn>-<YYYYMMDD>-<HHMM>`을 붙인다. 정지가 있었으면 이 smoke는 불통과다(인프라 정지 0
+   조건).
 4. **실행 뒤(호스트별):** `docker ps -a`·`docker volume ls`를 다시 저장해 1단계 목록과 대조, `start-gate/` 상태 확인,
    index `cell_completeness`와 `cell-results.jsonl`의 `runner_error`·`start_denied`·`infrastructure-stop` 수 확인.
 5. **병합(한 곳):**
 
    ```bash
-   python -m scripts.merge_host_indexes --preregistration <filled.md> \
+   PYTHONPATH=src python -m scripts.merge_host_indexes --preregistration <filled.md> \
      --seed-assignment experiments/configs/run-exp0-eng-smoke-v1.assignment.json \
      --host HOST1=<out-HOST1> --host HOST2=<out-HOST2> --output <out-merged>
-   python -m scripts.exp_operating_check --preregistration <filled.md> \
+   PYTHONPATH=src python -m scripts.exp_operating_check --preregistration <filled.md> \
      --host-output HOST1=<out-HOST1> --host-output HOST2=<out-HOST2>
    ```
 
@@ -133,7 +165,12 @@ HOST1, 6301·6303 → HOST2). `python -m scripts.make_seed_assignment --rule alt
 4. **`host.<id>.docker_engine`:** 등록 파일을 채우기 전에 각 호스트의 `docker version --format
    '{{.Server.Version}}'`로 정한다. 지웅 결정(Engine B안)으로 HOST1 29.8.0, HOST2 29.9.3을 유지한다. HOST2 값은
    HOST2에서 확인한 뒤 고정한다.
-5. **원장 sha:** smoke 직전 원장 값을 쓴다. smoke 행은 실행 뒤에 넣고, exp3-v1·exp2-v1의 동결 sha는 그 뒤에 정한다.
+5. **원장 sha:** 같은 `E`에서 도는 실행은 `E` 트리의 원장 sha를 쓴다(§3 1단계). smoke 행은 실행 뒤 `E` 뒤 커밋에
+   넣고, exp3-v1·exp2-v1의 동결 sha는 정지·재개 smoke 2차 뒤에 고정한다.
 6. **seed 충돌 검사:** 실행 전에 `RESERVED_SEED_RANGES`(`scripts/run_concurrency_benchmark.py:106`)와 원장의 seed
    서술(4자리 숫자와 `a–b` 범위)을 기계로 대조하고 LOG에 1줄 남긴다. 2026-11-11 원장 `9947d662…` 기준 6300–6303은
    예약 범위·원장 숫자·원장 범위·configs·preregistration·DECISIONS 어디에도 없다(충돌 0).
+   **예외 1건(2026-11-11, ORCH 지시):** 정지·재개 smoke(D042, #346)의 6101–6104는 원장 :49(main 기준 :42)의
+   벤치마크 v1 seed 예정 산문 "6100–6103"과 겹쳐 대조에 걸린다. 6101–6103은 LOG에도 원장 표에도 실행 행이 없다(원장
+   :56은 6101–6103의 실행 여부를 확인하지 않았다고 적는다). D042가 6101–6104를 지정했으므로 이 겹침은 충돌로 보지
+   않는다. 근거는 LOG에 한 줄로 남겼다. 다른 겹침은 예외가 아니다.

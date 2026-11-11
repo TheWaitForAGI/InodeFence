@@ -522,10 +522,60 @@ def test_go_rate_is_the_sum_of_host_rates(tmp_path: Path) -> None:
     assert row["r_HOST2: HOST2 처리량(실시간, exec/h)"] == "600"
     assert row["r: 정지 공백을 뺀 처리량(실시간, exec/h)"] == "1200"
     assert gen_exp3_tables.go_rates(two) == {"HOST1": "600.000000", "HOST2": "600.000000"}
-    # An unresumed stop on one host leaves GO and the split without a value.
+    # An unresumed stop on one host: partial GO (D047 section 9.1) once the check is recorded.
     files["HOST2"].write_text(
         files["HOST2"].read_text()
         + json.dumps({"event": "infrastructure-stop", "clocks": {"realtime": 5500.0}})
+        + "\n"
+    )
+    with pytest.raises(gen_exp3_tables.TableInputError, match="partial_go_check"):
+        gen_exp3_tables.render("T-EXP3-2", two)
+    decision = json.loads(two.go_decision.read_text())
+    completion = {
+        "HOST1": {"node-tar-7.5.2": {"finished_seeds": [9001, 9003], "unfinished_seeds": []}},
+        "HOST2": {"node-tar-7.5.2": {"finished_seeds": [9002], "unfinished_seeds": [9004]}},
+    }
+
+    def record(hold: list[str], excluded: list[str] | None = None) -> None:
+        listed = ["HOST2"] if excluded is None else excluded
+        two.go_decision.write_text(
+            json.dumps(
+                {
+                    **decision,
+                    "excluded_hosts": listed,
+                    "exclusions": {host: {"hold_reasons": hold} for host in listed},
+                    "partial_completion": completion,
+                }
+            )
+        )
+
+    record([])
+    text = gen_exp3_tables.render("T-EXP3-2", two)
+    row = {
+        line.split(" | ")[0].removeprefix("| "): line.split(" | ")[1:]
+        for line in text.splitlines()
+        if line.startswith("| ")
+    }
+    assert row["r: 정지 공백을 뺀 처리량(실시간, exec/h)"][0] == "600"  # HOST1 only
+    assert row["r_HOST2: HOST2 처리량(실시간, exec/h)"][1].startswith("제외(미재개 정지)")
+    assert row["결과"][0].startswith("부분 완료(호스트 HOST2 미재개 정지)")
+    assert "HOST2 (제외: 미재개 정지) node-tar-7.5.2: 완주 seed 블록 1개 [9002], 미완주 1개" in text
+    assert "holdout 전체 완료 여부는 EXP-2 결과에서 따로" in text
+    assert gen_exp3_tables.go_rates(two) == {"HOST1": "600.000000"}
+    # A hold condition: no GO, no split.
+    record(["(iv) no recorded statement that the stop preceded any oracle reading"])
+    held = gen_exp3_tables.render("T-EXP3-2", two)
+    assert "| 결과 | GO 보류(지웅 판단)" in held and "보류 사유 HOST2: (iv)" in held
+    with pytest.raises(gen_exp3_tables.TableInputError, match="보류"):
+        gen_exp3_tables.go_rates(two)
+    # The GO file must name exactly the stopped hosts.
+    record([], ["HOST1"])
+    with pytest.raises(gen_exp3_tables.TableInputError, match="excludes"):
+        gen_exp3_tables.render("T-EXP3-2", two)
+    # Every participant stopped: GO not computed.
+    files["HOST1"].write_text(
+        files["HOST1"].read_text()
+        + json.dumps({"event": "infrastructure-stop", "clocks": {"realtime": 7300.0}})
         + "\n"
     )
     assert "| 결과 | 미산출" in gen_exp3_tables.render("T-EXP3-2", two)

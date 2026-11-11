@@ -263,6 +263,25 @@ def criteria_problems(criteria: Mapping[str, Any]) -> list[str]:
     return problems
 
 
+def reexecution_count(report: Mapping[str, Any], stub: Mapping[str, Any] | None) -> int:
+    """Case re-executions (D047 Q9): the recorded count, not the length of the event list.
+
+    ``infra_reexecutions`` lists every stall event, including the one that gave up and ended in
+    the abort; ``infra_reexecution_count`` (report, or the abort stub) counts only the events
+    whose ``action`` is ``reexecuted``. Without a count, those events are counted.
+    """
+    for source in (report, stub or {}):
+        count = source.get("infra_reexecution_count")
+        if isinstance(count, int) and not isinstance(count, bool):
+            return count
+    events = report.get("infra_reexecutions")
+    if not isinstance(events, list):
+        return 0
+    return sum(
+        1 for event in events if isinstance(event, Mapping) and event.get("action") == "reexecuted"
+    )
+
+
 class Reader:
     """Reads only the fields named in the module docstring and lists every file it opens."""
 
@@ -297,12 +316,16 @@ class Reader:
             return None, 0
         report = self._json(path)
         stub = report.get("aborted") if isinstance(report, Mapping) else None
-        reexecutions = report.get("infra_reexecutions") if isinstance(report, Mapping) else None
-        count = len(reexecutions) if isinstance(reexecutions, list) else 0
-        return (stub if isinstance(stub, Mapping) else None), count
+        stub = stub if isinstance(stub, Mapping) else None
+        return stub, reexecution_count(report if isinstance(report, Mapping) else {}, stub)
 
     def record(self, path: Path) -> Any:
         return self._json(path)
+
+
+#: D047 section 6 labels beside PASS and FAIL.
+STOPPED_INPUT_DEPENDENT = "STOPPED-INPUT-DEPENDENT"
+NOT_RUN = "NOT-RUN"
 
 
 def _verdict(ok: bool) -> str:
@@ -358,10 +381,9 @@ def record_problems(
     if differing:
         problems.append(f"{where}: shared path files differ from expected: {differing}")
     execution = record.get("execution_sha")
-    if execution is None and where.startswith(("postflight", "peer postflight")):
-        # The launcher records the execution sha at the preflight; the postflight's shared-path
-        # hashes above already catch a checkout that changed during the run.
-        return problems
+    # Required on the postflight too (W1 records capture_source() again there): the controller
+    # runs the checkout's code, which the 16 shared-path hashes do not cover. A change reverted
+    # before the postflight is not seen (limit; the host-only, detached-worktree rule covers it).
     revision = execution.get("revision") if isinstance(execution, Mapping) else None
     dirty = execution.get("dirty") if isinstance(execution, Mapping) else None
     if revision != criteria["expected_execution_sha"] or dirty is not False:
@@ -501,6 +523,8 @@ def judge(
             first_attempt_failures += 1
         if len(tried) > 1 and check.state == COMPLETE:
             recovered.append(recovered_first_attempt(output, cell.run_id, reader))
+        # Q10 is per cell: its attempts' durations added up on each clock.
+        cell_seconds = dict.fromkeys(longest, 0.0)
         for attempt in tried:
             if attempt.ended is None:
                 continue
@@ -508,7 +532,9 @@ def judge(
                 start = attempt.started.get("clocks", {}).get(clock)
                 end = attempt.ended.get("clocks", {}).get(clock)
                 if isinstance(start, int | float) and isinstance(end, int | float):
-                    longest[clock] = max(longest[clock], end - start)
+                    cell_seconds[clock] += end - start
+        for clock in longest:
+            longest[clock] = max(longest[clock], cell_seconds[clock])
         case_ids, timed_out = reader.steps(files["steps_jsonl"])
         stub, reexecutions = reader.report_fields(files["report"])
         arm = per_arm.setdefault(cell.arm.label, {"steps": 0, "timed_out": 0, "reexecutions": 0})
@@ -561,7 +587,7 @@ def judge(
     )
     seconds = float(criteria["max_cell_seconds"])
     put(
-        "longest_attempt_seconds",
+        "longest_cell_seconds",
         all(v <= seconds for v in longest.values()),
         {k: round(v, 3) for k, v in longest.items()},
         seconds,
@@ -599,11 +625,20 @@ def judge(
             },
             0,
         )
+    stage_a_value = results.get("stage_a_recurrence", {}).get("value")
+    recurred = isinstance(stage_a_value, Mapping) and bool(stage_a_value.get("recurrences"))
+    if not attempted:
+        verdict = NOT_RUN
+    elif recurred:
+        # D047 section 5: input dependence stops the host and gives no qualification verdict.
+        verdict = STOPPED_INPUT_DEPENDENT
+    else:
+        verdict = _verdict(all(r["result"] == "PASS" for r in results.values()))
     return {
         "classification": "host qualification judgement: counts and identifiers only, no oracle",
         # Report only, never a criterion: retry-recovered first attempts, the clock difference.
         "reports": {"recovered_first_attempts": recovered, **reports},
-        "verdict": _verdict(all(r["result"] == "PASS" for r in results.values())),
+        "verdict": verdict,
         "criteria": results,
         "files_read": sorted(set(reader.files)),
     }

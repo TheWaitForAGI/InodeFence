@@ -84,6 +84,11 @@ def test_participants_are_checked() -> None:
         split_by_rate(SEEDS, 4, {"HOST1": "1", "HOST2": "1"}, ["HOST1"])
 
 
+def checked(hold: list[str]) -> dict[str, Any]:
+    """An exclusion as partial_go_check records it."""
+    return {"stop_reason": "3 cells without a record", "checks": {}, "hold_reasons": hold}
+
+
 def test_rule_problems_regenerate_with_participants() -> None:
     one = assignment_bytes(split_alternate(SEEDS, ["HOST2"]))
     sha = parse_seed_assignment(one, SEEDS).sha256
@@ -112,7 +117,25 @@ def test_rule_problems_regenerate_with_participants() -> None:
     # Frozen with both hosts: HOST1 alone needs HOST2 recorded as excluded (partial GO).
     both = {**go, "frozen_participants": ["HOST1", "HOST2"]}
     assert rule_problems(holdout, go_decision=both, **kwargs)
-    assert rule_problems(holdout, go_decision={**both, "excluded_hosts": ["HOST2"]}, **kwargs) == []
+    partial = {**both, "excluded_hosts": ["HOST2"], "exclusions": {"HOST2": checked([])}}
+    assert rule_problems(holdout, go_decision=partial, **kwargs) == []
+    # Without the recorded check, or with a hold reason, there is no holdout assignment.
+    assert rule_problems(holdout, go_decision={**partial, "exclusions": {}}, **kwargs)
+    held = {**partial, "exclusions": {"HOST2": checked(["(iv) no statement"])}}
+    assert rule_problems(holdout, go_decision=held, **kwargs)
+    # A hand-written exclusion without the check's record, an outsider, or nobody left.
+    bare = {**partial, "exclusions": {"HOST2": {"hold_reasons": []}}}
+    assert rule_problems(holdout, go_decision=bare, **kwargs)
+    outsider = {**partial, "frozen_participants": ["HOST1"]}
+    found = rule_problems(holdout, go_decision=outsider, **kwargs)
+    assert any("not all in the frozen set" in problem for problem in found)
+    nobody = {
+        **both,
+        "excluded_hosts": ["HOST1", "HOST2"],
+        "exclusions": {"HOST1": checked([]), "HOST2": checked([])},
+    }
+    found = rule_problems(holdout, go_decision=nobody, **kwargs)
+    assert any("GO not computed" in problem for problem in found)
 
 
 # ---- registration --------------------------------------------------------------------------
@@ -230,6 +253,14 @@ def test_both_hosts_run_every_seed_and_are_compared_never_pooled(
         for line in next(host1.rglob("*.steps.jsonl")).read_text().splitlines()
     }:
         assert case_id not in text  # no input identifier leaves the steps files either
+    # A cell budget that differs between the hosts' indexes is not comparable.
+    index_path = host2 / "summaries" / "index.json"
+    index = json.loads(index_path.read_text())
+    index["cells"][0]["budget"] = int(index["cells"][0].get("budget") or 0) + 1
+    index_path.write_text(json.dumps(index))
+    capsys.readouterr()
+    assert merge_host_indexes.main([*base, "--compare"]) == 2
+    assert "different budgets" in capsys.readouterr().err
 
 
 @pytest.mark.usefixtures("clean_engine", "admit_fixture_holdout")
@@ -293,7 +324,13 @@ def test_one_participant_holdout_is_regenerated_from_its_own_r_h(
     train_prereg, train_assignment = train_files(tmp_path, monkeypatch)
     go = tmp_path / "go1.json"
     go.write_text(
-        json.dumps({"rates_exec_per_hour": {"HOST1": "42"}, "excluded_hosts": ["HOST2"]}),
+        json.dumps(
+            {
+                "rates_exec_per_hour": {"HOST1": "42"},
+                "excluded_hosts": ["HOST2"],
+                "exclusions": {"HOST2": checked([])},
+            }
+        ),
         encoding="utf-8",
     )
     out = tmp_path / "a.json"
@@ -311,15 +348,15 @@ def test_one_participant_holdout_is_regenerated_from_its_own_r_h(
         "--out",
         str(out),
     ]
-    assert make_seed_assignment.main(base) == 2  # both hosts by default; HOST2 has no r_h
+    # --participants HOST2 contradicts the frozen set less the excluded host.
+    assert make_seed_assignment.main([*base, "--participants", "HOST2"]) == 2
     without_train = base[: base.index("--train-preregistration")] + base[-2:]
     assert (
         make_seed_assignment.main([*without_train, "--participants", "HOST1"]) == 2
     )  # the frozen participant set is required
     assert (
-        make_seed_assignment.main([*base, "--participants", "HOST1", "--record-in-go-decision"])
-        == 0
-    )
+        make_seed_assignment.main([*base, "--record-in-go-decision"]) == 0
+    )  # the default is the frozen set less the excluded host: HOST1
     recorded = json.loads(go.read_text())
     assert recorded["participants"] == ["HOST1"] and "rate_sources" not in recorded
     assert json.loads(out.read_text())["hosts"]["HOST2"] == []

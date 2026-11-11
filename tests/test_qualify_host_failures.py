@@ -327,4 +327,4 @@ def test_q9_timed_out_steps_above_the_threshold_fail(clean_run: dict[str, Any]) 
 
 
 def test_q10_a_cell_over_the_time_limit_fails(clean_run: dict[str, Any]) -> None:
-    assert result(judge(clean_run, max_cell_seconds=1e-9), "longest_attempt_seconds") == "FAIL"
+    assert result(judge(clean_run, max_cell_seconds=1e-9), "longest_cell_seconds") == "FAIL"

@@ -30,8 +30,19 @@ def shared_hashes() -> dict[str, Any]:
 
 
 @pytest.fixture
-def qual_guards(real_guards: FakeDocker) -> FakeDocker:
-    """The real guards on a fake docker; run_exp0 (#345) records the execution sha itself."""
+def qual_guards(real_guards: FakeDocker, monkeypatch: pytest.MonkeyPatch) -> FakeDocker:
+    """The real guards on a fake docker, the postflight with an execution sha.
+
+    run_exp0 (#345) records the execution sha at the preflight; W1 (p0-347) records it again at
+    the postflight. Until then this adds it, only when the launcher did not.
+    """
+    inner = run_exp0.host_postflight
+
+    def postflight(plan: Any, before: Any, **kwargs: Any) -> Any:
+        facts, problems = inner(plan, before, **kwargs)
+        return {"execution_sha": {"revision": SHA, "dirty": False}, **facts}, problems
+
+    monkeypatch.setattr(run_exp0, "host_postflight", postflight)
     return real_guards
 
 
@@ -156,7 +167,7 @@ def test_a_clean_host_passes_and_no_oracle_value_leaves(
         "first_attempt_abort_ratio",
         "unconfirmed_aborts",
         "unstable_steps_per_1000_by_arm",
-        "longest_attempt_seconds",
+        "longest_cell_seconds",
         "start_denied",
         "infrastructure_stops",
         "stage_a_recurrence",

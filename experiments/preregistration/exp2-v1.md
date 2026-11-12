@@ -1,6 +1,6 @@
 # EXP-2 사전등록 v1 — holdout 확증 (train GO 조건부)
 
-> **상태: 동결 전 초안 (2026-11-11).** 아직 실행할 수 없다. `TBD-FREEZE` 값이 남아 있는 동안 파서가 거부한다(의도된 동작). 동결 시각에 [exp3-v1](exp3-v1.md)과 **함께** 동결한다(D040-D1). 실행은 exp3-v1 §5의 GO가 성립한 뒤에만 한다.
+> **상태: 동결 값 기입 완료 (2026-11-13).** 등록 블록의 값을 모두 채웠다. 동결은 이 파일을 담은 push된 커밋에 대해 §7의 선행 조건, W4 최종 검증, 검증 24 h가 끝나고 `docs/LOG.md`에 동결 기록 줄이 push된 시각에 성립한다. [exp3-v1](exp3-v1.md)과 **함께** 동결한다(D040-D1). 동결 뒤 이 파일은 바꾸지 않는다. 실행은 exp3-v1 §5의 GO가 성립한 뒤에만 한다.
 >
 > **기준.** [D040](../../docs/DECISIONS.md#d040--exp-3-동결-전-재판정-위험도-파일럿-4040-반영), [D041](../../docs/DECISIONS.md#d041--동시-실행-벤치마크-단계-a-승인과-파일럿-seed-재사용), [D042](../../docs/DECISIONS.md#d042--인프라-정지-규칙-연속-3셀-기록-없음)·[D043](../../docs/DECISIONS.md#d043--go-입력-r에서-등록된-인프라-정지-공백을-뺀다), [D045](../../docs/DECISIONS.md#d045--holdout-상태-확인의-위반어댑터-호환-정의와-train-abort-분모), [D046](../../docs/DECISIONS.md#d046--인프라-정지-대응case-단위-재실행과-d040-d21-재개-판정)·[D047](../../docs/DECISIONS.md#d047--본실험-선행-조건-단순화-jobs2-고정과-호스트별-적격성-검증)(#342로 main 반영), [노출 원장](exposure-ledger.md), [호스트별 적격성 검증 v1](../configs/host-qualification-v1.md). 동시 실행 벤치마크 v3(`experiments/configs/concurrency-scaling-v3.md`)는 본실험 선행 조건이 아니다(D047). 이 초안과 D040이 다르면 D040이 맞다. **"ORCH 결정 2026-11-11"** 표시는 오케스트레이터가 데이터 이전에 정한 실행 세부이고, 승인 근거는 §7 「동결의 근거와 진행 방식」이다(2026-11-12 결과 전 개정, 동결 묶음 A~E, §8 변경 이력 포함).
 
@@ -34,7 +34,7 @@ targets.node-tar-holdout.hypothesis = H-A
 targets.node-tar-holdout.exposure = qualification-only
 targets.node-tar-holdout.exposure_ref = experiments/preregistration/exposure-ledger.md
 exposure_ledger = experiments/preregistration/exposure-ledger.md
-exposure_ledger_sha256 = TBD-FREEZE
+exposure_ledger_sha256 = dd64c3861666787af24b9bfccff6ff47583125503ae6cc5a05c9c22605a22da2
 sentinel_generator_id = sentinel-names/seed-random-v1
 sentinel_generator_seed = 20261104
 sentinel_count = 5

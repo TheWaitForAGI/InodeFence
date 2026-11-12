@@ -119,7 +119,7 @@ seed_assignment_rule = rh-proportional-v1
 
 - 한 seed의 세 arm은 같은 호스트에서 돈다.
 - **참여 호스트(D047):** 참여 호스트는 exp3-v1 §3에서 동결 때 고정한 집합이다. r_h는 각 참여 호스트의 train 값(exp3-v1 §5)이다. 참여 호스트가 하나면 등록 seed 120개 전부를 그 호스트에 둔다. exp3-v1 §5의 미재개 정지 규칙(D047, 지웅 결정 1)이 적용되면 여기서 "참여 호스트"는 "GO 판정 시각에 재개·가동 중인 참여 호스트"를 뜻한다.
-- **N = 등록 seed 전부**다. N은 동결 때 하나로 정해 seeds 목록에 적는다: 동결이 2026-11-14이고 두 호스트가 참여하면 160(9026–9185), 그 밖은 120(9026–9145). 근거는 일정 조건(적격성 실측 r의 절반에서도 마감 −72 h 전 완주)과 검정력 이득(+.11~.15)이다(동결 묶음 C). 용량에 연동하는 규칙이 아니다. GO 시점의 r_h(exp3-v1 §5의 호스트별 r)에 비례해 나눈다. N=min(120, 용량) 같은 규칙은 쓰지 않는다.
+- **N = 등록 seed 전부**다. N은 동결 때 하나로 정해 seeds 목록에 적는다: 동결이 2026-11-14이고 **동결 시점의 참여 집합(exp3-v1 §3)이 두 호스트**이면 160(9026–9185), 그 밖은 120(9026–9145). 동결 뒤에 참여 호스트가 바뀌어도(§9.1 제외 포함) N은 다시 정하지 않는다. 근거는 일정 조건(적격성 실측 r의 절반에서도 마감 −72 h 전 완주)과 검정력 이득(+.11~.15)이다(동결 묶음 C). 용량에 연동하는 규칙이 아니다. GO 시점의 r_h(exp3-v1 §5의 호스트별 r)에 비례해 나눈다. N=min(120, 용량) 같은 규칙은 쓰지 않는다.
   - N_HOST1 = round_half_down(N·r_HOST1 / (r_HOST1 + r_HOST2)), N_HOST2 = N − N_HOST1. 정수·`Fraction` 산술로 계산한다(부동소수 금지).
   - 등록 seed 순서(9026→9145)에서 앞 N_HOST1개는 HOST1, 뒤 N_HOST2개는 HOST2다.
   - **참여 호스트 중** 어느 r_h가 0이거나 미산출이면 할당 파일을 만들지 않고 EXP-2를 시작하지 않는다.
@@ -193,7 +193,7 @@ seed_assignment_rule = rh-proportional-v1
 - [ ] D042 정지·재개 smoke 1차·2차 PASS(exp3-v1 §8과 같은 항목, 같은 `engine_sha`).
 - [ ] 측정 사슬 검증 (가)·(나1) PASS(§6). 음성이 하나라도 있으면 원인 확정 전에 동결하지 않는다.
 - [ ] N 확정(§4 규칙)과 seeds 목록 반영.
-- [ ] 등록 스크립트 sha256 기입: HR 추정량·부트스트랩 `exp2_hr_ci.py` `<동결 때 확정, 초안 f6581476…>`, 재표집 RNG seed `<값>`, 첫 hit 출처 표 `<sha>`, 접은 U_viol `<sha>`, 문법 MC `grammar_mc.py` `6aa8fd81e8d6dee68d2d0c58cfd97d0163c4bf4341be8f0b001c7a82c26eaad4`.
+- [ ] 등록 스크립트 sha256 기입: HR 추정량·부트스트랩 `~/inodefence-evidence/registered-tools-20261112/exp2_hr_ci.py` `f6581476129ac10698d5d790e99cfb6122ea01ba573bea255f185ee9d851afbb`(같은 폴더 `SHA256SUMS`, selftest 출력 `exp2_hr_ci-selftest.txt`. 동결 전에 바뀌면 새 sha로 고친다), 재표집 RNG seed `<값>`, 첫 hit 출처 표 `<sha>`, 접은 U_viol `<sha>`, 문법 MC `~/inodefence-evidence/registered-tools-20261112/grammar_mc.py` `6aa8fd81e8d6dee68d2d0c58cfd97d0163c4bf4341be8f0b001c7a82c26eaad4`.
 - [ ] 동결 커밋에서 `git diff --stat bed077a -- src scripts`가 빈 출력(E 코드 불변).
 - [ ] **동결일 정의:** 위 선행 조건이 모두 끝난 시각 + 검증 24 h. 목표는 2026-11-14~15다.
 

@@ -1143,7 +1143,7 @@ def main() -> None:
     parser.add_argument("--incoming", type=Path, help="folder of recorded takes <block>-t<n>.<ext>")
     parser.add_argument("--takes", type=Path, help='JSON {"s03": "s03-t2.wav"} to pin takes')
     parser.add_argument(
-        "--freeze", choices=("ga", "na"), default="ga", help="s07c variant: 가 fixed, 나 planned"
+        "--freeze", choices=("ga", "na"), default="na", help="s07c variant: 가 fixed, 나 planned"
     )
     parser.add_argument(
         "--s10-before-freeze", action="store_true", help="s10 was read in its pre-freeze form"

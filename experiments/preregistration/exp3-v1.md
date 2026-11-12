@@ -154,7 +154,7 @@ GO는 자동이 아니다. EXP-2 시작 전에 W3가 train 리포트 값으로 �
 - [ ] `engine_sha`(exp2-v1과 같음). D042·D043 결정 커밋과 host 키 게이트 구현(W3)이 그 SHA에 포함되고 검증 PASS.
 - [ ] `image_digest`(D18 id, docker save 보관, 두 호스트 같은 id).
 - [ ] [D042 정지·재개 smoke](../configs/stop-path-smoke-v1.md) 1차·2차 PASS와 차수별 원장 행. 순서는 런처 smoke → 정지·재개 smoke 1차 → 적격성 → 2차(최종 `engine_sha` 후보, 동결 직전) → 원장 sha 고정 → 동결이다. 1차 뒤 실행 경로가 바뀌면 2차는 필수이고 적격성도 무효다. 기준 파일의 sha256을 D042의 "sha `[동결 시 기입]`" 자리에 적는다.
-- [ ] `exposure_ledger_sha256`. smoke·정지·재개 smoke(1차·2차)·적격성·D4 상태 확인 행을 먼저 반영하고(D042: 원장 sha는 2차 뒤 고정), 그 뒤 11/25까지 원장 변경 금지.
+- [ ] `exposure_ledger_sha256`은 **마지막 원장 변경이 머지된 뒤의 값**이다: HOST1 적격성 행(#351), 측정 사슬 검증 7.4.4 픽스처 행(#355), HOST2 적격성 행, D042 2차 행, 양성 대조 (가) 행. 그 머지들이 끝난 main에서 원장 파일의 sha256을 계산해 적는다. smoke·정지·재개 smoke(1차·2차)·적격성·D4 상태 확인 행을 먼저 반영하고(D042: 원장 sha는 2차 뒤 고정), 그 뒤 11/25까지 원장 변경 금지.
 - [ ] `host.<id>.jobs = 2`(D047), `host.<id>.docker_engine`(적격성 preflight 고정값), `jobs_max = 2`. 참여 호스트 집합(적격성 PASS 기록 경로)과 그에 맞춘 할당 파일.
 - [ ] 할당 파일과 `seed_assignment_sha256`.
 - [ ] 임시값 사본으로 `run_exp0 --dry-run`(gate, wiring, 셀 순서) 확인(W3).

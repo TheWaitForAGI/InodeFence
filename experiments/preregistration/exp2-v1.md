@@ -121,7 +121,7 @@ seed_assignment_rule = rh-proportional-v1
 - **참여 호스트(D047):** 참여 호스트는 exp3-v1 §3에서 동결 때 고정한 집합이다. r_h는 각 참여 호스트의 train 값(exp3-v1 §5)이다. 참여 호스트가 하나면 등록 seed 120개 전부를 그 호스트에 둔다. exp3-v1 §5의 미재개 정지 규칙(D047, 지웅 결정 1)이 적용되면 여기서 "참여 호스트"는 "GO 판정 시각에 재개·가동 중인 참여 호스트"를 뜻한다.
 - **N = 등록 seed 전부**다. N은 동결 때 하나로 정해 seeds 목록에 적는다: 동결이 2026-11-14이고 **동결 시점의 참여 집합(exp3-v1 §3)이 두 호스트**이면 160(9026–9185), 그 밖은 120(9026–9145). 동결 뒤에 참여 호스트가 바뀌어도(§9.1 제외 포함) N은 다시 정하지 않는다. 근거는 일정 조건(적격성 실측 r의 절반에서도 마감 −72 h 전 완주)과 검정력 이득(+.11~.15)이다(동결 묶음 C). 용량에 연동하는 규칙이 아니다. GO 시점의 r_h(exp3-v1 §5의 호스트별 r)에 비례해 나눈다. N=min(120, 용량) 같은 규칙은 쓰지 않는다.
   - N_HOST1 = round_half_down(N·r_HOST1 / (r_HOST1 + r_HOST2)), N_HOST2 = N − N_HOST1. 정수·`Fraction` 산술로 계산한다(부동소수 금지).
-  - 등록 seed 순서(9026→9145)에서 앞 N_HOST1개는 HOST1, 뒤 N_HOST2개는 HOST2다.
+  - 등록 seed 순서(9026→마지막 등록 seed)에서 앞 N_HOST1개는 HOST1, 뒤 N_HOST2개는 HOST2다.
   - **참여 호스트 중** 어느 r_h가 0이거나 미산출이면 할당 파일을 만들지 않고 EXP-2를 시작하지 않는다.
   - **holdout 도중 한 호스트가 멈추면(2026-11-12 공개, HOST2 전원 끄기 사례):** 할당은 바꾸지 않는다. 다른 호스트가 대신 돌리지 않는다. 멈춘 호스트는 원인 기록과 승인 뒤 같은 명령으로 재개하고, 정지 공백은 마감 안의 시간을 쓴다. 마감까지 끝내지 못한 그 호스트의 뒤쪽 seed는 블록 전체 제외다(위 마감 절단). 그래서 정지는 재개되면 '지연'이고, 재개되지 않으면 '그 호스트 몫의 미완 블록 손실'이다. N은 바뀌지 않고 분석 n이 줄 뿐이다.
   - 할당 파일에 r_h, N, 분할, 생성 시각, 생성 코드 SHA를 기록하고 sha256을 GO 결정 파일과 LOG에 남긴다(§2 할당 강제 (b)). 입력은 인프라 값뿐이고 oracle 값은 쓰지 않는다.
@@ -193,7 +193,7 @@ seed_assignment_rule = rh-proportional-v1
 - [ ] D042 정지·재개 smoke 1차·2차 PASS(exp3-v1 §8과 같은 항목, 같은 `engine_sha`).
 - [ ] 측정 사슬 검증 (가)·(나1) PASS(§6). 음성이 하나라도 있으면 원인 확정 전에 동결하지 않는다.
 - [ ] N 확정(§4 규칙)과 seeds 목록 반영.
-- [ ] 등록 스크립트 sha256 기입: HR 추정량·부트스트랩 `~/inodefence-evidence/registered-tools-20261112/exp2_hr_ci.py` `f6581476129ac10698d5d790e99cfb6122ea01ba573bea255f185ee9d851afbb`(같은 폴더 `SHA256SUMS`, selftest 출력 `exp2_hr_ci-selftest.txt`. 동결 전에 바뀌면 새 sha로 고친다), 재표집 RNG seed `<값>`, 첫 hit 출처 표 `<sha>`, 접은 U_viol `<sha>`, 문법 MC `~/inodefence-evidence/registered-tools-20261112/grammar_mc.py` `6aa8fd81e8d6dee68d2d0c58cfd97d0163c4bf4341be8f0b001c7a82c26eaad4`.
+- [ ] 등록 스크립트 sha256 기입: HR 추정량·부트스트랩 `~/inodefence-evidence/registered-tools-20261112/exp2_hr_ci.py` `3565ea1f86c7d4a187323604e68b6495c678cfc3e22f1f8249c912c172511577`(같은 폴더 `SHA256SUMS`. selftest 출력 `exp2_hr_ci-selftest.txt`. 합성 holdout index 끝단 실행 `exp2_hr_ci-e2e-check.txt` `55692e02ca83487636be275ddb5a5affa9d9dec951a52242aee32f190c6da906`: 대비 2 × 정책 3, 블록 수가 분석기 확증 절과 `_policy_blocks`와 일치. 동결 전에 바뀌면 새 sha로 고친다), 재표집 RNG seed `<값>`, 첫 hit 출처 표 `<sha>`, 접은 U_viol `<sha>`, 문법 MC `~/inodefence-evidence/registered-tools-20261112/grammar_mc.py` `6aa8fd81e8d6dee68d2d0c58cfd97d0163c4bf4341be8f0b001c7a82c26eaad4`.
 - [ ] 동결 커밋에서 `git diff --stat bed077a -- src scripts`가 빈 출력(E 코드 불변).
 - [ ] **동결일 정의:** 위 선행 조건이 모두 끝난 시각 + 검증 24 h. 목표는 2026-11-14~15다.
 
@@ -202,5 +202,5 @@ seed_assignment_rule = rh-proportional-v1
 - **2026-11-12 결과 전 개정(동결 묶음 A~E, W3 작성·W4 서명, 이 PR 머지가 지웅 승인).**
   - 이유: 외부 검토(F1: 위반이 seed에서 변이 1회 거리. F3: HR ≥ 2에 추정량이 없고 비기각을 반증으로 읽음)와, E 변이기로 돌린 문법 몬테카를로.
   - 바뀐 것: 예측 문장(§1), HR 추정량·구간과 D12 비기각 행(§5), U_viol은 보고만(§5), 첫 hit 출처 표, holdout 결과 가림 해제(§5), N 결정 규칙(§4), 범위 문구·측정 사슬 검증(§6), 동결일 정의(§7).
-  - 결과 전 변경인 근거: 지금까지 본 결과는 공개값뿐이다(EXP-0, 파일럿 메모 §2·§8). EXP-3·EXP-2 등록 실행은 시작되지 않았다. 적격성·smoke 출력은 인프라 키만 읽었다. 실행 코드(E `bed077a`)와 분석기는 바뀌지 않는다.
+  - 결과 전 변경인 근거: 지금까지 본 결과 값은 공개값(EXP-0, 파일럿 메모 §2·§8)과 측정 사슬 대조 결과(양성 대조 (가) 공개 셀, E′ 픽스처 7.5.2·7.5.3·7.4.4 판정)뿐이다. 측정 사슬 대조는 가설 결과가 아니다. EXP-3·EXP-2 등록 실행은 시작되지 않았다. 적격성·smoke 출력은 인프라 키만 읽었다. 실행 코드(E `bed077a`)와 분석기는 바뀌지 않는다.
   - 근거 문서(저장소 밖): 외부 검토 보고서, 팀 응답, 동결 묶음(`~/capstone-work/review-external-20261112/`).

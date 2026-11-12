@@ -25,9 +25,10 @@ from inodefence.effect_demo import (
     effect_campaign_report,
     render_effect_campaign_report,
 )
-from inodefence.effect_pipeline import run_node_tar_effect_case
+from inodefence.effect_pipeline import NativeEffectRun, run_node_tar_effect_case
 from inodefence.effect_synthetic import synthetic_effect_result
 from inodefence.execution.base import ExecutionBackend
+from inodefence.execution.stall_recovery import StallRecovery
 from inodefence.feedback import EffectSearchPolicy
 from inodefence.generator import minimal_seed_corpus
 from inodefence.model import (
@@ -75,6 +76,14 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 CATALOG_PATH = _REPO_ROOT / "experiments" / "benchmarks" / "catalog-v1.json"
 HISTORICAL_LOCKS_DIR = _REPO_ROOT / "experiments" / "benchmarks" / "locks"
 HISTORICAL_BENCHMARK_ID = "node-link-sanitize"
+# EXP-2 holdout (D040-D2: this one row is the human-approved extension; FROZEN_TARGETS and the
+# catalog stay as they are). (node-tar version, sha256 of its wrapper lock in
+# HISTORICAL_LOCKS_DIR), set from the D4 qualification result as the last engine diff before
+# freeze. None: no holdout version is admitted, so a holdout registration is refused at dry-run.
+HOLDOUT_TARGET: tuple[str, str] | None = (
+    "7.4.4",
+    "38b636640f941953189084d01a37db2f919049d6e0c7388cf86af1bc07e19c84",
+)
 HISTORICAL_DEMO_MODE = "effect-demo-historical"
 # M4 self-discovery: the effect campaign over a second extractor (decompress). Shares the
 # --seed/--budget/--mutation-policy demo arguments. --policy (EffectSearchPolicy) now selects the
@@ -378,6 +387,49 @@ def _native_check(case: ArchiveCase, result: EffectRunResult, flush: bool, error
     }
 
 
+def _target_timed_out(run: NativeEffectRun) -> bool:
+    return run.result.base_result.execution.status == ExecutionStatus.TIMED_OUT
+
+
+def _run_native_case(
+    case: ArchiveCase,
+    target: NodeTarEffectTarget,
+    sentinels: tuple[SentinelSpec, ...],
+    stall_recovery: StallRecovery | None,
+    index: int,
+) -> NativeEffectRun:
+    """One case; with ``stall_recovery`` a Docker stall re-executes it in a new container.
+
+    Each attempt is a whole ``run_node_tar_effect_case`` call (new sandbox, run root and
+    containers). Without ``stall_recovery`` this is exactly the single call it replaces.
+    """
+
+    def attempt() -> NativeEffectRun:
+        return run_node_tar_effect_case(case, target, sentinels=sentinels)
+
+    if stall_recovery is None:
+        return attempt()
+    return stall_recovery.run(
+        attempt,
+        timed_out=_target_timed_out,
+        step_index=index,
+        case_id=case.case_id,
+    )
+
+
+def apply_infra_reexecutions(
+    report: dict[str, object], stall_recovery: StallRecovery | None
+) -> None:
+    """Add the re-execution count and discarded-attempt records only when there are any.
+
+    Both keys are absent when nothing stalled, so a stall-free report is unchanged. A
+    discarded attempt's oracle result is never recorded (outcome-blind).
+    """
+    if stall_recovery is not None and stall_recovery.events:
+        report["infra_reexecution_count"] = stall_recovery.reexecution_count
+        report["infra_reexecutions"] = list(stall_recovery.events)
+
+
 def native_demo_report(
     backend: ExecutionBackend,
     image_id: str,
@@ -389,6 +441,7 @@ def native_demo_report(
     step_sink: Callable[[dict[str, object]], None] | None = None,
     sentinel_set: GeneratedSentinelSet | None = None,
     observer_integrity_continue: bool = False,
+    stall_recovery: StallRecovery | None = None,
 ) -> dict[str, object]:
     """Run the effect loop on real node-tar (FULL profile); label the result a demo run.
 
@@ -410,6 +463,12 @@ def native_demo_report(
     (`invalid_reason=observer_integrity`) in the report, and the loop continues.
     The snapshot C0/C1/C2 oracle verdict is independent of the trace and is
     recorded either way, so the preregistration hit count is unchanged.
+
+    `stall_recovery` (built by the controller over the backend's client) re-executes a
+    case after a Docker infrastructure stall instead of aborting or recording the stall
+    as a target timeout (`inodefence.execution.stall_recovery`). Discarded attempts
+    appear as the report's `infra_reexecution_count` and `infra_reexecutions`, keys that are
+    absent when there were none; steps and native_checks are unchanged.
     """
     if type(budget) is not int or not 1 <= budget <= MAX_NATIVE_BUDGET:
         raise ValueError(f"native demo budget must be in 1..{MAX_NATIVE_BUDGET}")
@@ -433,7 +492,7 @@ def native_demo_report(
         index = len(checks)
         started = perf_counter()
         try:
-            run = run_node_tar_effect_case(case, target, sentinels=sentinels)
+            run = _run_native_case(case, target, sentinels, stall_recovery, index)
         except Exception as error:
             reason = f"{type(error).__module__}.{type(error).__qualname__}: {error}"
             raise NativeDemoAborted(
@@ -512,6 +571,7 @@ def native_demo_report(
         timing={"total_seconds": total, "per_case": timing},
     )
     apply_sentinel_set_record(report, sentinel_set)
+    apply_infra_reexecutions(report, stall_recovery)
     return report
 
 
@@ -543,6 +603,14 @@ def historical_target_versions() -> dict[str, str]:
         allowed[frozen.tar_version] = frozen.lock_sha256
     if set(allowed) != catalog_versions:
         raise ValueError("catalog historical pair differs from the frozen targets")
+    if HOLDOUT_TARGET is not None:
+        version, lock_sha256 = HOLDOUT_TARGET
+        if version in allowed:
+            raise ValueError(f"holdout version {version} is a frozen train/fixed target")
+        lock_path = HISTORICAL_LOCKS_DIR / f"node-tar-{version}.package-lock.json"
+        if sha256(lock_path.read_bytes()).hexdigest() != lock_sha256:
+            raise ValueError(f"wrapper lock for holdout {version} differs from HOLDOUT_TARGET")
+        allowed[version] = lock_sha256
     return allowed
 
 
@@ -600,6 +668,7 @@ def historical_demo_report(
     step_sink: Callable[[dict[str, object]], None] | None = None,
     sentinel_set: GeneratedSentinelSet | None = None,
     observer_integrity_continue: bool = False,
+    stall_recovery: StallRecovery | None = None,
 ) -> dict[str, object]:
     """Run the state-aware effect loop on a frozen historical node-tar; label it a demo run.
 
@@ -617,6 +686,8 @@ def historical_demo_report(
     campaigns run on this path, so the step-level policy is wired here too: a
     successful target run with an untrustworthy trace is kept as an
     observer-integrity invalid step and the loop continues.
+
+    `stall_recovery` has the same meaning as in native_demo_report.
     """
     allowed = historical_target_versions()
     _require_historical_request(tar_version, budget, allowed)
@@ -636,7 +707,7 @@ def historical_demo_report(
         index = len(checks)
         started = perf_counter()
         try:
-            run = run_node_tar_effect_case(case, target, sentinels=sentinels)
+            run = _run_native_case(case, target, sentinels, stall_recovery, index)
         except Exception as error:
             reason = f"{type(error).__module__}.{type(error).__qualname__}: {error}"
             raise NativeDemoAborted(
@@ -716,6 +787,7 @@ def historical_demo_report(
         timing={"total_seconds": total, "per_case": timing},
     )
     apply_sentinel_set_record(report, sentinel_set)
+    apply_infra_reexecutions(report, stall_recovery)
     return report
 
 

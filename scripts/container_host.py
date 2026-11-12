@@ -13,13 +13,14 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import threading
 from collections.abc import Callable
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
 from time import monotonic, time
-from typing import BinaryIO, Protocol
+from typing import Any, BinaryIO, Protocol
 from uuid import uuid4
 
 from scripts.broker_call_log import BrokerCallLog
@@ -32,8 +33,11 @@ from scripts.run_effect_demo import (
     check_demo_arguments,
 )
 
+from inodefence.execution import start_gate
+from inodefence.execution.call_diagnostics import annotate_reason, emit_anomalies
 from inodefence.execution.container import OWNER_LABEL, checked, remove_owned
 from inodefence.execution.docker_client import OUTPUT_LIMIT, BackendError, CommandResult, DockerCLI
+from inodefence.execution.stall_recovery import ObservedDockerClient
 
 _ACTIVE_N04_LEDGER: "N04HostLedger | None" = None
 
@@ -456,6 +460,78 @@ def verify_n04_host_ledger(
         "overall_status": expected,
         "raw_manifest_sha256": linux_terminal["raw_manifest_sha256"],
     }
+
+
+def report_target_cleanup_unknown(reason: str) -> None:
+    """Tell the start gate, then the log, that target containers may remain.
+
+    Only under a start gate (``start_gate.GATE_DIR_ENV`` set by the launcher):
+    the U verdict is committed first, so a log that shows the marker never
+    precedes it. If the record fails, the marker is still printed and the cell
+    is left without a clean verdict, which the gate reads as "do not start".
+    Without a gate the broker's output is unchanged.
+    """
+    directory = os.environ.get(start_gate.GATE_DIR_ENV)
+    cell = os.environ.get(start_gate.GATE_CELL_ENV)
+    if not directory or not cell:
+        return
+    reason = " ".join(reason.split())[:2000]
+    try:
+        start_gate.record_verdict(Path(directory), cell, start_gate.UNKNOWN, reason)
+    except Exception as error:
+        print(
+            f"start gate: U not recorded: {type(error).__name__}: {error}",
+            file=sys.stderr,
+            flush=True,
+        )
+    print(f"INODEFENCE_CLEANUP_UNKNOWN: {reason}", file=sys.stderr, flush=True)
+
+
+def cleanup_targets(client: Any, names: set[str], owner: str) -> None:
+    """Remove every target container this invocation created; never prune.
+
+    A failure on any name, or an interrupt that skips the rest, leaves target
+    resources unknown: under a start gate that is reported as U before the
+    error propagates (:func:`report_target_cleanup_unknown`).
+    """
+    errors = []
+    # Journal the cleanup calls (unchanged pass-through) so a failure can name the
+    # call that failed: the backend's message is empty for a time-out.
+    observed = ObservedDockerClient(client)
+    try:
+        for name in names:
+            try:
+                remove_owned(observed, name, owner)
+            except Exception as error:
+                errors.append(error)
+                if _ACTIVE_N04_LEDGER is not None:
+                    _ACTIVE_N04_LEDGER.cleanup_errors.append(
+                        f"{type(error).__module__}.{type(error).__qualname__}: {error}"
+                    )
+    except BaseException as interrupted:
+        # An interrupt mid-loop skips the remaining names: their state is unknown.
+        emit_anomalies(observed.calls, "host-target-cleanup")
+        report_target_cleanup_unknown(
+            annotate_reason(
+                f"host target cleanup interrupted: {type(interrupted).__name__}: {interrupted}",
+                observed.calls,
+            )
+        )
+        raise
+    emit_anomalies(observed.calls, "host-target-cleanup")
+    if _ACTIVE_N04_LEDGER is not None:
+        _ACTIVE_N04_LEDGER.cleanup_status = (
+            "failed" if errors else "complete" if names else "not_needed"
+        )
+    if errors:
+        report_target_cleanup_unknown(
+            annotate_reason(
+                "host target cleanup failed: "
+                + "; ".join(f"{type(error).__name__}: {error}" for error in errors),
+                observed.calls,
+            )
+        )
+        raise ExceptionGroup("host target cleanup failed", errors)
 
 
 class _DeadlineDockerClient:
@@ -950,22 +1026,7 @@ def main() -> int:
     finally:
         # Covers controller interruption/crash and uncertain create responses.
         # Inspect only names created by this invocation, and verify ownership.
-        errors = []
-        for name in names:
-            try:
-                remove_owned(_DeadlineDockerClient(client, bounded_timeout), name, owner)
-            except Exception as error:
-                errors.append(error)
-                if _ACTIVE_N04_LEDGER is not None:
-                    _ACTIVE_N04_LEDGER.cleanup_errors.append(
-                        f"{type(error).__module__}.{type(error).__qualname__}: {error}"
-                    )
-        if _ACTIVE_N04_LEDGER is not None:
-            _ACTIVE_N04_LEDGER.cleanup_status = (
-                "failed" if errors else "complete" if names else "not_needed"
-            )
-        if errors:
-            raise ExceptionGroup("host target cleanup failed", errors)
+        cleanup_targets(_DeadlineDockerClient(client, bounded_timeout), names, owner)
 
 
 if __name__ == "__main__":

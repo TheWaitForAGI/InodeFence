@@ -42,7 +42,7 @@ targets.node-tar-7.5.2.exposure = pre-exposed
 targets.node-tar-7.5.2.exposure_ref = experiments/preregistration/exposure-ledger.md
 # 두 파일 대칭(ORCH 결정 2026-11-11 #7). 11/18~25 원장 변경 금지(D040-D1 3항).
 exposure_ledger = experiments/preregistration/exposure-ledger.md
-exposure_ledger_sha256 = dd64c3861666787af24b9bfccff6ff47583125503ae6cc5a05c9c22605a22da2
+exposure_ledger_sha256 = 5f6b80f365085adc7c7abb80859f083af0b4a4b48f2319e0297dd3417683169c
 sentinel_generator_id = sentinel-names/seed-random-v1
 # ORCH 결정 #3: EXP-0·파일럿·벤치마크와 같은 값(§7 공개).
 sentinel_generator_seed = 20261104
@@ -151,12 +151,12 @@ GO는 자동이 아니다. EXP-2 시작 전에 W3가 train 리포트 값으로 �
 
 ## 8. 동결 체크리스트
 
-동결일은 "선행 조건 완료 + 검증 24 h"(exp2-v1 §7, 목표 2026-11-14~15)이다. 등록 블록 주석의 "11/18~25 원장 변경 금지"는 "동결 시각~마감(2026-11-25 12:00) 원장 변경 금지"로 읽는다(블록 바이트를 바꾸지 않으려고 주석은 그대로 둔다).
+동결일은 "선행 조건 완료 + 검증 24 h"(exp2-v1 §7, 목표 2026-11-14~15)이다. 등록 블록 주석의 "11/18~25 원장 변경 금지"는 "동결 시각~마감(2026-11-25 12:00) 원장 변경 금지"로 읽는다(블록 바이트를 바꾸지 않으려고 주석은 그대로 둔다). 등록 원장은 동결 커밋(F)의 원장 파일이며 main의 원장과 다를 수 있다(D-ORCH-1113-30 LM). 동결 뒤 생긴 노출(train·holdout 실행 등)은 F의 원장에 넣지 않고, 마감 뒤 main 원장에 행으로 추가한다.
 
 - [ ] `engine_sha`(exp2-v1과 같음). D042·D043 결정 커밋과 host 키 게이트 구현(W3)이 그 SHA에 포함되고 검증 PASS.
 - [ ] `image_digest`(D18 id, docker save 보관, 두 호스트 같은 id).
 - [ ] [D042 정지·재개 smoke](../configs/stop-path-smoke-v1.md) 1차·2차 PASS와 차수별 원장 행. 순서는 런처 smoke → 정지·재개 smoke 1차 → 적격성 → 2차(최종 `engine_sha` 후보, 동결 직전) → 원장 sha 고정 → 동결이다. 1차 뒤 실행 경로가 바뀌면 2차는 필수이고 적격성도 무효다. 기준 파일의 sha256을 D042의 "sha `[동결 시 기입]`" 자리에 적는다.
-- [ ] `exposure_ledger_sha256`은 **마지막 원장 변경이 머지된 뒤의 값**이다: HOST1 적격성 행(#351), 측정 사슬 검증 7.4.4 픽스처 행(#355), HOST2 적격성 행, D042 2차 행, 양성 대조 (가) 행. 그 머지들이 끝난 main에서 원장 파일의 sha256을 계산해 적는다. smoke·정지·재개 smoke(1차·2차)·적격성·D4 상태 확인 행을 먼저 반영하고(D042: 원장 sha는 2차 뒤 고정), 그 뒤 11/25까지 원장 변경 금지.
+- [ ] `exposure_ledger_sha256`은 **마지막 원장 변경이 머지된 뒤의 값**이다: HOST1 적격성 행(#351), 측정 사슬 검증 7.4.4 픽스처 행(#355), HOST2 적격성 행, D042 2차 행, 양성 대조 (가) 행. 이 행들이 들어간 동결 커밋(F, #332 스택 head)의 원장 파일 sha256을 적는다(LM: main 머지를 기다리지 않는다. 각 실행은 F의 원장을 `git show F:…`로 꺼낸 고정 사본을 `--exposure-ledger`로 받는다). smoke·정지·재개 smoke(1차·2차)·적격성·D4 상태 확인 행을 먼저 반영하고(D042: 원장 sha는 2차 뒤 고정), 그 뒤 11/25까지 원장 변경 금지.
 - [ ] `host.<id>.jobs = 2`(D047), `host.<id>.docker_engine`(적격성 preflight 고정값), `jobs_max = 2`. 참여 호스트 집합(적격성 PASS 기록 경로)과 그에 맞춘 할당 파일.
 - [ ] 할당 파일과 `seed_assignment_sha256`.
 - [ ] 임시값 사본으로 `run_exp0 --dry-run`(gate, wiring, 셀 순서) 확인(W3).

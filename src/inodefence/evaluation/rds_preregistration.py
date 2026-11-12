@@ -56,6 +56,7 @@ when both sides give a value. Keys this module does not know are kept in
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from types import MappingProxyType
 
@@ -92,7 +93,9 @@ TARGET_FIELDS = frozenset(
 _TARGET_REQUIRED = ("extractor", "version", "role", "hypothesis", "exposure")
 TARGET_ROLES = ("train", "fix-verification", "holdout")
 TARGET_HYPOTHESES = ("H-A", "H-B")
-TARGET_EXPOSURES = ("none", "pre-exposed")
+# Both the target exposure value and the ledger kind of a fixed-fixture status check (D040-D5).
+QUALIFICATION_ONLY = "qualification-only"
+TARGET_EXPOSURES = ("none", "pre-exposed", QUALIFICATION_ONLY)
 _EXPOSURE_LEDGER = "exposure_ledger"
 _EXPOSURE_LEDGER_SHA = "exposure_ledger_sha256"
 _SHA256_HEX = re.compile(r"[0-9a-f]{64}")
@@ -126,6 +129,20 @@ _JOBS_MAX = "jobs_max"
 _WATCHDOG = "campaign_watchdog_seconds"
 _DISK_PAUSE = "disk_pause_fraction"
 _INTERIM = "interim_analysis"
+_EXECUTION_DEADLINE = "execution_deadline"
+# Two-host runs (one file, one sha256): ``host.<id>.jobs``, ``host.<id>.docker_engine`` and the
+# sha256 of the seed assignment file. The launcher refuses a host whose values differ.
+_HOST_KEY = "host."
+HOST_FIELDS = ("jobs", "docker_engine")
+REGISTERED_HOST_IDS = ("HOST1", "HOST2")
+_SEED_ASSIGNMENT_SHA = "seed_assignment_sha256"
+_SEED_ASSIGNMENT_RULE = "seed_assignment_rule"
+# Same strings as inodefence.evaluation.seed_assignment (train first; it registers a sha256).
+SEED_ASSIGNMENT_RULES = ("alternate-v1", "rh-proportional-v1", "replicate-v1")
+# Rules whose file is fixed at freeze, so its sha256 is registered with it.
+SEED_ASSIGNMENT_RULES_WITH_SHA = ("alternate-v1", "replicate-v1")
+#: The only registrations replicate-v1 may serve: host qualification runs (D047), never an EXP.
+REPLICATE_EXPERIMENT_IDS = ("host-qual",)
 EXECUTION_MODES = ("per-case-container", "worker-pool")
 INTERIM_ANALYSIS_VALUES = ("forbidden", "allowed")
 # The measurement rules this engine implements (rds.py); a block may restate them
@@ -160,6 +177,9 @@ KNOWN_KEYS = frozenset(
         _WATCHDOG,
         _DISK_PAUSE,
         _INTERIM,
+        _EXECUTION_DEADLINE,
+        _SEED_ASSIGNMENT_SHA,
+        _SEED_ASSIGNMENT_RULE,
         *RULE_CONSTANTS,
     )
 )
@@ -185,7 +205,8 @@ class TargetSpec:
     (in-process targets: sha256 of ``python -VV`` + the tarfile.py file hash +
     ``uname -sr``; filesystem semantics are host-fixed and shared by every arm).
     ``role``: train (design input, exploratory), fix-verification (negative control,
-    hit expected 0) or holdout (the only confirmatory test; must not be pre-exposed).
+    hit expected 0) or holdout (the only confirmatory test; must not be pre-exposed, though a
+    registered status check may list it as ``qualification-only``).
     """
 
     target_id: str
@@ -200,6 +221,15 @@ class TargetSpec:
     exclusion_ref: str | None
     arms: tuple[RdsArm, ...] | None
     budget: int | None
+
+
+@dataclass(frozen=True, slots=True)
+class HostSpec:
+    """One host of a two-host run (``host.<id>.*``): its ``--jobs`` and Docker Engine version."""
+
+    host_id: str
+    jobs: int
+    docker_engine: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -231,6 +261,18 @@ class Preregistration:
     multiplicity: str | None = None
     primary_endpoint: str | None = None
     event_threshold: int | None = None
+    # D041 end-of-run rule, read by the launcher. See _execution_deadline.
+    execution_deadline: datetime | None = None
+    # Two-host runs; empty for a one-host registration. See _parse_hosts.
+    hosts: tuple[HostSpec, ...] = ()
+    seed_assignment_rule: str | None = None
+    seed_assignment_sha256: str | None = None
+
+    def host(self, host_id: str) -> HostSpec | None:
+        for item in self.hosts:
+            if item.host_id == host_id:
+                return item
+        return None
 
     def target(self, target_id: str) -> TargetSpec | None:
         for item in self.targets:
@@ -438,6 +480,7 @@ def parse_preregistration(text: str) -> Preregistration:
         if key not in KNOWN_KEYS
         and not key.startswith(_ARM_KEY)
         and not key.startswith(_TARGET_KEY)
+        and not key.startswith(_HOST_KEY)
     )
     execution_mode = values.get(_EXECUTION_MODE)
     if execution_mode is not None and execution_mode not in EXECUTION_MODES:
@@ -454,6 +497,25 @@ def parse_preregistration(text: str) -> Preregistration:
     interim = values.get(_INTERIM)
     if interim is not None and interim not in INTERIM_ANALYSIS_VALUES:
         raise PreregistrationFormatError(f"{_INTERIM} must be one of {INTERIM_ANALYSIS_VALUES}")
+    deadline = _execution_deadline(values)
+    if deadline is not None and not targets:
+        raise PreregistrationFormatError(f"{_EXECUTION_DEADLINE} requires targets.<id>.* keys")
+    hosts, assignment_rule, assignment_sha = _parse_hosts(values, jobs_max, bool(targets))
+    if assignment_rule == "replicate-v1" and (
+        family is not None or any(target.role == "holdout" for target in targets)
+    ):
+        raise PreregistrationFormatError(
+            "seed_assignment_rule = replicate-v1 is for host qualification: a registration with "
+            "a holdout target or a confirmatory_family cannot use it"
+        )
+    if assignment_rule == "replicate-v1" and values.get(_EXPERIMENT_ID) not in (
+        REPLICATE_EXPERIMENT_IDS
+    ):
+        raise PreregistrationFormatError(
+            "seed_assignment_rule = replicate-v1 is allowed only for experiment_id "
+            f"{', '.join(REPLICATE_EXPERIMENT_IDS)} (host qualification, D047), "
+            f"not {values.get(_EXPERIMENT_ID)!r}"
+        )
     return Preregistration(
         values["engine_sha"],
         image_digest,
@@ -482,7 +544,93 @@ def parse_preregistration(text: str) -> Preregistration:
         multiplicity=values.get(_MULTIPLICITY),
         primary_endpoint=values.get(_PRIMARY_ENDPOINT),
         event_threshold=event_threshold,
+        execution_deadline=deadline,
+        hosts=hosts,
+        seed_assignment_rule=assignment_rule,
+        seed_assignment_sha256=assignment_sha,
     )
+
+
+def _parse_hosts(
+    values: Mapping[str, str], jobs_max: int | None, multi_target: bool
+) -> tuple[tuple[HostSpec, ...], str | None, str | None]:
+    """``host.<id>.<field>`` groups, the assignment rule and its sha256 (fail-closed).
+
+    A file with host keys names both hosts, every field of each, ``seed_assignment_rule`` and a
+    ``jobs_max`` equal to the larger host ``jobs``; it uses the ``targets.<id>`` form.
+    ``alternate-v1`` (train) also registers ``seed_assignment_sha256``, fixed at freeze;
+    ``rh-proportional-v1`` (holdout) must not, because its file is made at GO. A file with none of
+    these keys is a one-host registration and parses as before.
+    """
+    keys = [key for key in values if key.startswith(_HOST_KEY)]
+    rule = values.get(_SEED_ASSIGNMENT_RULE)
+    sha = values.get(_SEED_ASSIGNMENT_SHA)
+    if not keys and rule is None and sha is None:
+        return (), None, None
+    if not keys or rule is None:
+        raise PreregistrationFormatError(
+            f"host.<id>.* keys and {_SEED_ASSIGNMENT_RULE} must be declared together"
+        )
+    if not multi_target:
+        raise PreregistrationFormatError("host.<id>.* keys require targets.<id>.* keys")
+    if rule not in SEED_ASSIGNMENT_RULES:
+        raise PreregistrationFormatError(
+            f"{_SEED_ASSIGNMENT_RULE} must be one of {SEED_ASSIGNMENT_RULES}"
+        )
+    if rule in SEED_ASSIGNMENT_RULES_WITH_SHA:
+        if sha is None or re.fullmatch(r"[0-9a-f]{64}", sha) is None:
+            raise PreregistrationFormatError(
+                f"{_SEED_ASSIGNMENT_RULE} = {rule} needs {_SEED_ASSIGNMENT_SHA} (64 lowercase hex)"
+            )
+    elif sha is not None:
+        raise PreregistrationFormatError(
+            f"{_SEED_ASSIGNMENT_RULE} = {rule} is made at GO: no {_SEED_ASSIGNMENT_SHA} here"
+        )
+    fields: dict[str, dict[str, str]] = {}
+    for key in keys:
+        parts = key.split(".")
+        if len(parts) != 3 or parts[1] not in REGISTERED_HOST_IDS or parts[2] not in HOST_FIELDS:
+            raise PreregistrationFormatError(
+                f"{key}: expected host.<{'|'.join(REGISTERED_HOST_IDS)}>.<{'|'.join(HOST_FIELDS)}>"
+            )
+        fields.setdefault(parts[1], {})[parts[2]] = values[key]
+    hosts: list[HostSpec] = []
+    for host_id in REGISTERED_HOST_IDS:
+        declared = fields.get(host_id, {})
+        missing = [name for name in HOST_FIELDS if name not in declared]
+        if missing:
+            raise PreregistrationFormatError(f"host.{host_id}: missing {missing}")
+        jobs = _int(declared, "jobs")
+        if jobs < 1:
+            raise PreregistrationFormatError(f"host.{host_id}.jobs must be >= 1")
+        engine = declared["docker_engine"]
+        if not engine:
+            raise PreregistrationFormatError(f"host.{host_id}.docker_engine must not be empty")
+        hosts.append(HostSpec(host_id, jobs, engine))
+    if jobs_max != max(host.jobs for host in hosts):
+        raise PreregistrationFormatError(
+            f"{_JOBS_MAX} must equal the larger host.<id>.jobs "
+            f"({max(host.jobs for host in hosts)}), got {jobs_max}"
+        )
+    return tuple(hosts), rule, sha
+
+
+def _execution_deadline(values: Mapping[str, str]) -> datetime | None:
+    """The registered end of execution; an offset is required so the instant is unambiguous.
+
+    After it no new cell starts, and unfinished-cell reasons stop hiding outcomes. A cell not
+    finished by then excludes its seed block (D041). Only the clock releases this, no flag.
+    """
+    text = values.get(_EXECUTION_DEADLINE)
+    if text is None:
+        return None
+    try:
+        deadline = datetime.fromisoformat(text)
+    except ValueError as error:
+        raise PreregistrationFormatError(f"{_EXECUTION_DEADLINE}: {error}") from error
+    if deadline.utcoffset() is None:
+        raise PreregistrationFormatError(f"{_EXECUTION_DEADLINE} must carry a UTC offset")
+    return deadline
 
 
 def _parse_targets(
@@ -520,13 +668,17 @@ def _parse_targets(
                 raise PreregistrationFormatError(
                     f"targets.{target_id}.{name} must be one of {allowed}"
                 )
-        if fields["exposure"] == "pre-exposed" and not fields.get("exposure_ref"):
+        if fields["exposure"] != "none" and not fields.get("exposure_ref"):
             raise PreregistrationFormatError(
-                f"targets.{target_id}: exposure = pre-exposed requires exposure_ref"
+                f"targets.{target_id}: exposure = {fields['exposure']} requires exposure_ref"
             )
         if fields["role"] == "holdout" and fields["exposure"] == "pre-exposed":
             raise PreregistrationFormatError(
                 f"targets.{target_id}: a holdout target cannot be pre-exposed"
+            )
+        if fields["role"] != "holdout" and fields["exposure"] == QUALIFICATION_ONLY:
+            raise PreregistrationFormatError(
+                f"targets.{target_id}: exposure = {QUALIFICATION_ONLY} is for holdout targets only"
             )
         arms: tuple[RdsArm, ...] | None = None
         if "arms" in fields:
@@ -565,14 +717,16 @@ def _parse_targets(
     return tuple(targets)
 
 
-def parse_exposure_ledger(text: str) -> frozenset[tuple[str, str]]:
-    """(extractor, version) pairs listed in an exposure ledger (markdown pipe tables).
+def parse_exposure_ledger_kinds(text: str) -> dict[tuple[str, str], frozenset[str]]:
+    """``exposure_kind`` values per (extractor, version) in an exposure ledger.
 
     Every pipe table whose header has ``extractor`` and ``version`` columns
-    (case-insensitive) contributes its rows; prose and other tables are ignored.
+    (case-insensitive) contributes its rows; prose and other tables are ignored. A row
+    with no ``exposure_kind`` cell has the kind ``""``, which admits nothing.
     """
-    listed: set[tuple[str, str]] = set()
+    kinds: dict[tuple[str, str], set[str]] = {}
     columns: dict[str, int] | None = None
+    kind_at: int | None = None
     for raw in text.splitlines():
         line = raw.strip()
         if not line.startswith("|"):
@@ -582,24 +736,56 @@ def parse_exposure_ledger(text: str) -> frozenset[tuple[str, str]]:
         lowered = [cell.lower() for cell in cells]
         if "extractor" in lowered and "version" in lowered:
             columns = {"extractor": lowered.index("extractor"), "version": lowered.index("version")}
+            kind_at = lowered.index("exposure_kind") if "exposure_kind" in lowered else None
             continue
         if columns is None or all(set(cell) <= set("-: ") for cell in cells):
             continue
         if max(columns.values()) < len(cells):
-            listed.add((cells[columns["extractor"]], cells[columns["version"]]))
-    return frozenset(listed)
+            pair = (cells[columns["extractor"]], cells[columns["version"]])
+            kind = cells[kind_at] if kind_at is not None and kind_at < len(cells) else ""
+            kinds.setdefault(pair, set()).add(kind)
+    return {pair: frozenset(values) for pair, values in kinds.items()}
+
+
+def parse_exposure_ledger(text: str) -> frozenset[tuple[str, str]]:
+    """(extractor, version) pairs listed in an exposure ledger (markdown pipe tables)."""
+    return frozenset(parse_exposure_ledger_kinds(text))
+
+
+def _exposure_problem(target: TargetSpec, kinds: frozenset[str] | None) -> str | None:
+    """Whether a target's declared exposure agrees with its ledger rows (``None``: no rows)."""
+    name = f"{target.target_id} ({target.extractor} {target.version})"
+    if target.exposure == "none":
+        if kinds is None:
+            return None
+        if target.role == "holdout":
+            return f"holdout target {name} is in the exposure ledger"
+        return f"target {name} declares exposure = none but is in the exposure ledger"
+    if kinds is None:
+        return f"target {name} declares exposure = {target.exposure} but is not in the ledger"
+    if target.exposure == QUALIFICATION_ONLY and kinds != {QUALIFICATION_ONLY}:
+        return f"target {name} declares exposure = {QUALIFICATION_ONLY} but has other ledger rows"
+    return None
 
 
 def ledger_problems(
     preregistration: Preregistration, ledger_text: str | None, ledger_sha256: str | None
 ) -> tuple[str, ...]:
-    """Holdout guard against the committed exposure ledger (the single source of truth).
+    """Guard against the committed exposure ledger (the single source of truth).
 
-    The ledger must exist and hash to the registered sha256; a holdout target whose
-    (extractor, version) the ledger lists is refused.
+    Applies to a registration that names a ledger; a holdout must, and the single-key form
+    does not. The ledger must exist and hash to the registered sha256, and each target's
+    declared exposure must agree with the table in both directions (D040-D15):
+
+    * ``none``: not listed.
+    * ``pre-exposed``: listed. A holdout cannot declare this (the parser refuses it).
+    * ``qualification-only``: listed, every row with exactly that kind (D040-D5: a
+      fixed-fixture status check under a rule committed beforehand).
+
+    The gate cannot tell whether that kind is used honestly: the D5 conditions are kept by
+    the record and W3 review.
     """
-    holdouts = [target for target in preregistration.targets if target.role == "holdout"]
-    if not holdouts:
+    if preregistration.exposure_ledger is None:
         return ()
     if ledger_text is None:
         return (f"exposure ledger {preregistration.exposure_ledger} not readable",)
@@ -608,13 +794,12 @@ def ledger_problems(
             f"exposure ledger sha256 {ledger_sha256} != preregistered "
             f"{preregistration.exposure_ledger_sha256}",
         )
-    listed = parse_exposure_ledger(ledger_text)
-    return tuple(
-        f"holdout target {target.target_id} ({target.extractor} {target.version}) is in the "
-        "exposure ledger"
-        for target in holdouts
-        if (target.extractor, target.version) in listed
+    listed = parse_exposure_ledger_kinds(ledger_text)
+    problems = (
+        _exposure_problem(target, listed.get((target.extractor, target.version)))
+        for target in preregistration.targets
     )
+    return tuple(problem for problem in problems if problem is not None)
 
 
 def load_preregistration(path: Path) -> Preregistration:

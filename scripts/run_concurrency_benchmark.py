@@ -47,11 +47,25 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
+from scripts import launcher_guards as guards
+from scripts.launcher_guards import (
+    EVENT_ACTIONS,
+    PROC_SAMPLE_SECONDS,
+    clock_stamp,
+    read_host_counters,
+)
 from scripts.run_exp0 import WATCHDOG_RETURNCODE, disk_usage_fraction, run_cell_with_watchdog
 from scripts.run_g1_smoke import cell_paths
 from scripts.run_parallel_native import Arm, Cell, CellResult, cell_env
 
 from inodefence.evaluation.rds import RdsArm, RdsCellConfig, RVariant, VocabularyMode
+from inodefence.execution.start_gate import (
+    WATCHDOG_TAG,
+    CleanupPending,
+    StartGate,
+    VerdictMissing,
+)
+from inodefence.execution.start_gate import StartDenied as GateDenied
 from inodefence.provenance import capture_source
 
 LABELS = ("demo run", "concurrency benchmark (unregistered, not pooled, no oracle analysis)")
@@ -105,12 +119,10 @@ RESERVED_SEED_RANGES: tuple[tuple[int, int], ...] = (
 #: The pilot seeds a design may measure again on purpose: an abort's input comes round again, which
 #: tests recurrence (design v2). Measured seeds only, and only these four; the range stays reserved.
 PILOT_RERUN_SEEDS = frozenset({8102, 8103, 8106, 8110})
-PROC_SAMPLE_SECONDS = 30.0
-DOCKER_PROBE_SECONDS = 60.0
-EVENT_ACTIONS = ("create", "start", "die", "destroy")
 LOCAL_IMAGES = ("inodefence-controller:local", "inodefence-helper:local")
 OWN_CONTAINER = re.compile(r"inodefence-(local-controller-|[0-9a-f]{32}$)")
 BLOCK_FILE = "block.json"
+INCOMPLETE_BLOCK_FILE = "block.incomplete.json"
 #: Written by the analysis script; the next stage's gate reads its mechanical decision.
 REPORT_JSON = "concurrency-report.json"
 # Why a block stopped (design file, section 6.3). A load the level may have caused, or a fact about
@@ -307,21 +319,8 @@ def measured_stages(design: Design) -> tuple[str, ...]:
     return tuple(name for name in design.stages if name != SMOKE_STAGE)
 
 
-def clock_stamp() -> dict[str, float]:
-    return {
-        "realtime": time.clock_gettime(time.CLOCK_REALTIME),
-        "monotonic": time.clock_gettime(time.CLOCK_MONOTONIC),
-        "monotonic_raw": time.clock_gettime(time.CLOCK_MONOTONIC_RAW),
-    }
-
-
 def _docker(*args: str) -> str:
-    done = subprocess.run(
-        ["docker", *args], capture_output=True, text=True, timeout=60, check=False
-    )
-    if done.returncode != 0:
-        raise RuntimeError(f"docker {' '.join(args)}: {done.stderr.strip()}")
-    return done.stdout.strip()
+    return guards.docker_cli(*args)
 
 
 def output_problem(output: Path, repo_root: Path, home: Path) -> str | None:
@@ -338,13 +337,17 @@ def output_problem(output: Path, repo_root: Path, home: Path) -> str | None:
 
 def residual_resources() -> list[str]:
     """Benchmark-path containers or volumes left behind; a stale one blocks the next cell."""
-    containers = _docker("ps", "-a", "--filter", "name=inodefence-", "--format", "{{.Names}}")
-    volumes = _docker("volume", "ls", "--filter", "name=inodefence-local-", "--format", "{{.Name}}")
-    return [*containers.split(), *volumes.split()]
+    return guards.residual_resources(_docker)
 
 
-def preflight(design: Design, expected_head: str) -> tuple[dict[str, Any], list[str]]:
-    """Facts the run stands on, and the problems that refuse it."""
+def preflight(
+    design: Design, expected_head: str, repo_root: Path | None = None
+) -> tuple[dict[str, Any], list[str]]:
+    """Facts the run stands on, and the problems that refuse it.
+
+    Besides v2's checks this records ``shared_path_sha256`` (design v3 section
+    4.1) and refuses a run when one of those files is missing.
+    """
     source = capture_source()
     problems: list[str] = []
     if source.revision != expected_head:
@@ -364,28 +367,25 @@ def preflight(design: Design, expected_head: str) -> tuple[dict[str, Any], list[
         "release": os.uname().release,
         "machine": os.uname().machine,
     }
-    try:
-        server = _docker("version", "--format", "{{.Server.Version}}")
-        image = f"inodefence-node-tar-effect:{design.target_version}"
-        image_id = _docker("image", "inspect", image, "--format", "{{.Id}}")
-        running = _docker("ps", "--format", "{{.Names}}").split()
-        residual = residual_resources()
-        # Cells run with SKIP_BUILD=1, so these must exist before the first cell.
-        local = {
-            name: _docker("image", "inspect", name, "--format", "{{.Id}}") for name in LOCAL_IMAGES
-        }
-    except (RuntimeError, OSError, subprocess.SubprocessError) as error:
-        return facts, [*problems, f"docker: {error}"]
-    facts.update(docker_server=server, image_id=image_id, local_images=local)
-    if server != design.docker_engine:
-        problems.append(f"docker engine {server} != {design.docker_engine}")
-    if image_id != design.image_digest:
-        problems.append(f"{image} is {image_id}, not {design.image_digest}")
-    if running:
-        problems.append(f"other containers are running: {running}")
-    if residual:
-        problems.append(f"residual benchmark resources exist: {residual}")
-    return facts, problems
+    image = f"inodefence-node-tar-effect:{design.target_version}"
+    # Cells run with SKIP_BUILD=1, so the local images must exist before the first cell.
+    host_facts, host_problems = guards.host_preflight(
+        repo_root=repo_root or Path(__file__).resolve().parents[1],
+        engine=design.docker_engine,
+        images={image: design.image_digest, **dict.fromkeys(LOCAL_IMAGES)},
+        docker=_docker,
+        residual=residual_resources,
+    )
+    facts["shared_path_sha256"] = host_facts["shared_path_sha256"]
+    if "image_ids" not in host_facts:
+        return facts, [*problems, *host_problems]
+    image_ids = host_facts["image_ids"]
+    facts.update(
+        docker_server=host_facts["docker_server"],
+        image_id=image_ids[image],
+        local_images={name: image_ids[name] for name in LOCAL_IMAGES},
+    )
+    return facts, [*problems, *host_problems]
 
 
 def base_environment(design: Design) -> dict[str, str]:
@@ -394,22 +394,6 @@ def base_environment(design: Design) -> dict[str, str]:
     env["DEMO_SENTINEL_COUNT"] = str(design.sentinel_count)
     env["DEMO_OBSERVER_INTEGRITY_POLICY"] = design.observer_integrity_policy
     return env
-
-
-def read_host_counters(proc: Path = Path("/proc")) -> dict[str, Any]:
-    """Cheap kernel counters. In WSL2 every distro shares one VM, so these cover Docker's work."""
-    memory: dict[str, int] = {}
-    for line in (proc / "meminfo").read_text(encoding="ascii").splitlines():
-        name, _, rest = line.partition(":")
-        if name in ("MemTotal", "MemAvailable", "SwapTotal", "SwapFree"):
-            memory[name] = int(rest.split()[0]) * 1024
-    cpu = (proc / "stat").read_text(encoding="ascii").splitlines()[0].split()[1:]
-    pressure: dict[str, str] = {}
-    for name in ("cpu", "io", "memory"):
-        path = proc / "pressure" / name
-        if path.is_file():
-            pressure[name] = path.read_text(encoding="ascii").splitlines()[0]
-    return {"memory": memory, "cpu_jiffies": [int(item) for item in cpu], "pressure": pressure}
 
 
 def host_stop_reason(sample: Mapping[str, Any], design: Design) -> tuple[str, str] | None:
@@ -427,15 +411,41 @@ def host_stop_reason(sample: Mapping[str, Any], design: Design) -> tuple[str, st
     return None
 
 
+START_GATE_DIR = "start-gate"
+
+
+def gate_stop_kind(reason: str) -> str:
+    """A watchdog cell stays a designed level stop whichever thread sees it first.
+
+    The gate tags every denial caused by a watchdog-terminated cell. Every other
+    closed-gate reason (UNKNOWN cleanup, a cell that exited without a verdict,
+    unreadable gate state) is external. The stop kind is the block's policy;
+    the gate decides separately whether later blocks may start: a watchdog cell
+    whose cleanup committed S lets them start, a U keeps them denied until
+    ``start_gate.py ack``.
+    """
+    return STOP_LEVEL if WATCHDOG_TAG in reason else STOP_EXTERNAL
+
+
+class StartDenied(Exception):
+    """A block stop was committed before this cell could start."""
+
+
 class BlockRun:
-    """Runs one block's cells at its concurrency; records schedule and clocks, no outcomes."""
+    """Run a block and record start/stop order without recording oracle outcomes.
+
+    ``start_order``, ``stop_order`` and rejected ``decision_order`` are a
+    block-local sequence, persisted with the existing block record on completion.
+    Launch and stop commit under one lock; a launch commits only after Popen
+    succeeds. Waiting for the child never holds the lock.
+    """
 
     def __init__(
         self,
         design: Design,
         block: Block,
         directory: Path,
-        run_cell: Callable[[Cell, Path, dict[str, str]], CellResult],
+        run_cell: Callable[[Cell, Path, dict[str, str], Callable[..., Any]], CellResult],
     ) -> None:
         self.design = design
         self.block = block
@@ -448,53 +458,200 @@ class BlockRun:
         self.stopped_reason: str | None = None
         self.stop_kind: str | None = None
         self.records: list[dict[str, Any]] = []
+        self.event_order = 0
+        self.stop_order: int | None = None
+        self.started_cells: dict[str, int] = {}
+        self.completed_cells: set[str] = set()
+        self.failures: list[dict[str, str]] = []
+        self.require_logs = False
+        # Cross-process start gate (src/inodefence/execution/start_gate.py).
+        # ``run_block`` always sets one; unit tests with fake runners may not.
+        self.gate: StartGate | None = None
+        # Record-only stall instruments for this block (off by default).
+        self.recorders = guards.Recorders()
+
+    def _stop_locked(self, reason: str, kind: str) -> None:
+        if self.stopped_reason is None:
+            self.event_order += 1
+            self.stop_order = self.event_order
+            self.stopped_reason = reason
+            self.stop_kind = kind
 
     def request_stop(self, reason: str, kind: str) -> None:
         """The first reason is the block's reason: what came after it may be its consequence."""
         with self.lock:
-            if self.stopped_reason is None:
-                self.stopped_reason = reason
-                self.stop_kind = kind
+            self._stop_locked(reason, kind)
 
-    def run_one(self, cell: Cell) -> None:
-        if self.stopped_reason is not None:
-            with self.lock:
-                self.records.append({"run_id": cell.run_id, "state": "not-run"})
-            return
-        started = clock_stamp()
-        result = self.run_cell(cell, self.raw, cell_env(cell, self.raw, self.base_env))
-        ended = clock_stamp()
-        paths = cell_paths(cell, self.raw)
+    def record_failure(self, where: str, error: BaseException) -> None:
         with self.lock:
-            self.records.append(
+            self.failures.append(
                 {
-                    "run_id": cell.run_id,
-                    "state": "ran",
-                    "arm": cell.arm.label,
-                    "seed": cell.seed,
-                    "budget": cell.budget,
-                    "returncode": result.returncode,
-                    "watchdog_killed": result.returncode == WATCHDOG_RETURNCODE,
-                    "launcher_wall_seconds": result.wall_seconds,
-                    "started": started,
-                    "ended": ended,
-                    "report": paths["report"].name,
-                    "steps": paths["steps_jsonl"].name,
-                    "log": paths["log"].name,
+                    "where": where,
+                    "type": type(error).__name__,
+                    "message": str(error),
+                    "observed_at": datetime.now(UTC).isoformat(),
                 }
             )
-            if result.returncode != 0:
-                self.nonzero_cells += 1
-        if result.returncode == WATCHDOG_RETURNCODE:
-            self.request_stop(f"{cell.run_id} hit the campaign watchdog", STOP_LEVEL)
-        elif self.nonzero_cells >= self.design.stop_nonzero_cells:
-            self.request_stop(f"{self.nonzero_cells} cells exited nonzero", STOP_LEVEL)
+
+    def run_one(self, cell: Cell) -> None:
+        started: dict[str, Any] = {}
+        start_order: int | None = None
+        process: Any = None
+
+        def launch(start: Callable[[], Any]) -> Any:
+            nonlocal started, start_order, process
+            began = time.monotonic()
+            while True:
+                with self.lock:
+                    if self.stopped_reason is not None:
+                        raise StartDenied
+                    # Popen itself is the start boundary. Do not hold this lock while
+                    # the child runs, while the watchdog waits for it, or while the
+                    # gate waits for another cell's cleanup.
+                    try:
+                        started = clock_stamp()
+                        process = start()
+                    except CleanupPending as pending:
+                        deadline = pending.deadline
+                    except GateDenied as error:
+                        self._stop_locked(f"start gate closed: {error}", gate_stop_kind(str(error)))
+                        raise StartDenied from error
+                    except BaseException as error:
+                        self._stop_locked(
+                            f"{cell.run_id} launch failed: {type(error).__name__}: {error}",
+                            STOP_EXTERNAL,
+                        )
+                        raise
+                    else:
+                        self.event_order += 1
+                        start_order = self.event_order
+                        self.started_cells[cell.run_id] = start_order
+                        if self.gate is not None:
+                            self.gate.note_wait(time.monotonic() - began)
+                        return process
+                if self.gate is None:
+                    raise RuntimeError("cleanup pending without a start gate")
+                self.gate.wait_for_cleanups(deadline)
+
+        try:
+            result = self.run_cell(cell, self.raw, cell_env(cell, self.raw, self.base_env), launch)
+        except StartDenied:
+            with self.lock:
+                self.event_order += 1
+                self.records.append(
+                    {"run_id": cell.run_id, "state": "not-run", "decision_order": self.event_order}
+                )
+            return
+        except BaseException as error:
+            if start_order is not None:
+                self.request_stop(
+                    f"{cell.run_id} runner failed after start: {type(error).__name__}: {error}",
+                    STOP_EXTERNAL,
+                )
+                self.record_failure(f"cell {cell.run_id}", error)
+                if process is not None:
+                    error.add_note(guards.terminate_started(process))
+                raise
+            if not isinstance(error, Exception):
+                self.request_stop(
+                    f"{cell.run_id} interrupted before start: {type(error).__name__}: {error}",
+                    STOP_EXTERNAL,
+                )
+                self.record_failure(f"cell {cell.run_id}", error)
+                raise
+            with self.lock:
+                self._stop_locked(
+                    f"{cell.run_id} launch failed: {type(error).__name__}: {error}", STOP_EXTERNAL
+                )
+                self.event_order += 1
+                self.records.append(
+                    {
+                        "run_id": cell.run_id,
+                        "state": "not-run",
+                        "decision_order": self.event_order,
+                        "start_error": f"{type(error).__name__}: {error}",
+                    }
+                )
+            self.record_failure(f"cell {cell.run_id}", error)
+            return
+        try:
+            with self.lock:
+                self.completed_cells.add(cell.run_id)
+            ended = clock_stamp()
+            paths = cell_paths(cell, self.raw)
+            cleanup_unknown = False
+            if self.require_logs and not result.log.is_file():
+                raise OSError(f"cell log unavailable: {result.log}")
+            if result.log.is_file():
+                with result.log.open(encoding="utf-8", errors="replace") as stream:
+                    cleanup_unknown = any("INODEFENCE_CLEANUP_UNKNOWN:" in line for line in stream)
+            gate_problem: str | None = None
+            if self.gate is not None:
+                try:
+                    self.gate.require_clean(cell.run_id)
+                except VerdictMissing as missing:
+                    gate_problem = str(missing)
+            with self.lock:
+                self.records.append(
+                    {
+                        "run_id": cell.run_id,
+                        "state": "ran",
+                        "arm": cell.arm.label,
+                        "seed": cell.seed,
+                        "budget": cell.budget,
+                        "returncode": result.returncode,
+                        "watchdog_killed": result.returncode == WATCHDOG_RETURNCODE,
+                        "launcher_wall_seconds": result.wall_seconds,
+                        "started": started,
+                        "start_order": start_order,
+                        "ended": ended,
+                        "report": paths["report"].name,
+                        "steps": paths["steps_jsonl"].name,
+                        "log": paths["log"].name,
+                    }
+                )
+                if result.returncode != 0:
+                    self.nonzero_cells += 1
+                if gate_problem is not None:
+                    # Before the watchdog rule so the reason names the gate; the
+                    # kind is level for a watchdog cell, external otherwise.
+                    kind = (
+                        STOP_LEVEL
+                        if result.returncode == WATCHDOG_RETURNCODE
+                        else gate_stop_kind(gate_problem)
+                    )
+                    self._stop_locked(f"start gate closed: {gate_problem}", kind)
+                elif cleanup_unknown:
+                    self._stop_locked(
+                        f"{cell.run_id} cleanup resource state unknown", STOP_EXTERNAL
+                    )
+                elif result.returncode == WATCHDOG_RETURNCODE:
+                    self._stop_locked(f"{cell.run_id} hit the campaign watchdog", STOP_LEVEL)
+                elif self.nonzero_cells >= self.design.stop_nonzero_cells:
+                    self._stop_locked(f"{self.nonzero_cells} cells exited nonzero", STOP_LEVEL)
+            if gate_problem is not None:
+                raise RuntimeError(gate_problem)
+            if cleanup_unknown:
+                raise RuntimeError(f"{cell.run_id} cleanup resource state unknown")
+        except BaseException as error:
+            self.request_stop(
+                f"{cell.run_id} result recording failed: {type(error).__name__}: {error}",
+                STOP_EXTERNAL,
+            )
+            self.record_failure(f"cell {cell.run_id} result recording", error)
+            raise
 
     def execute(self) -> dict[str, Any]:
         self.raw.mkdir(parents=True, exist_ok=True)
         started = clock_stamp()
         with ThreadPoolExecutor(max_workers=self.block.jobs) as pool:
-            list(pool.map(self.run_one, self.block.cells))
+            try:
+                list(pool.map(self.run_one, self.block.cells))
+            except BaseException as error:
+                self.request_stop(
+                    f"block interrupted: {type(error).__name__}: {error}", STOP_EXTERNAL
+                )
+                raise
         ended = clock_stamp()
         order = {cell.run_id: position for position, cell in enumerate(self.block.cells)}
         return {
@@ -508,6 +665,7 @@ class BlockRun:
             "ended": ended,
             "stopped_reason": self.stopped_reason,
             "stop_kind": self.stop_kind,
+            "stop_order": self.stop_order,
             "finished": True,
             "cells": sorted(self.records, key=lambda record: order[record["run_id"]]),
         }
@@ -517,93 +675,231 @@ def _sample_host(
     run: BlockRun, path: Path, stop: threading.Event, seconds: float = PROC_SAMPLE_SECONDS
 ) -> None:
     """Sample until told to stop. A sampler failure stops the block: its guards would be off."""
-    next_probe = 0.0
-    try:
-        with path.open("a", encoding="utf-8") as stream:
-            while True:
-                sample: dict[str, Any] = {
-                    **clock_stamp(),
-                    "loadavg": os.getloadavg(),
-                    "disk_fraction": disk_usage_fraction(run.directory),
-                    **read_host_counters(),
-                }
-                if sample["monotonic"] >= next_probe:
-                    # Daemon responsiveness at a fixed low rate: the same load at every level.
-                    probe_started = time.clock_gettime(time.CLOCK_REALTIME)
-                    try:
-                        names = _docker("ps", "--format", "{{.Names}}").split()
-                        sample["containers"] = names
-                        sample["docker_ps_seconds"] = (
-                            time.clock_gettime(time.CLOCK_REALTIME) - probe_started
-                        )
-                    except (RuntimeError, OSError, subprocess.SubprocessError) as error:
-                        sample["docker_ps_error"] = str(error)
-                    next_probe = sample["monotonic"] + DOCKER_PROBE_SECONDS
-                stream.write(json.dumps(sample, sort_keys=True) + "\n")
-                stream.flush()
-                host_stop = host_stop_reason(sample, run.design)
-                if host_stop is not None:
-                    run.request_stop(*host_stop)
-                if stop.wait(seconds):
-                    return
-    except Exception as error:
+
+    def stop_on_host_pressure(sample: dict[str, Any]) -> None:
+        host_stop = host_stop_reason(sample, run.design)
+        if host_stop is not None:
+            run.request_stop(*host_stop)
+
+    def stop_on_failure(error: Exception) -> None:
         run.request_stop(f"host sampler failed: {type(error).__name__}: {error}", STOP_EXTERNAL)
+        run.record_failure("host sampler", error)
+
+    guards.sample_host(
+        path,
+        stop,
+        disk_fraction=lambda: disk_usage_fraction(run.directory),
+        on_sample=stop_on_host_pressure,
+        on_failure=stop_on_failure,
+        counters=lambda: read_host_counters(),
+        docker=_docker,
+        seconds=seconds,
+    )
 
 
 def _start_events(path: Path) -> subprocess.Popen[bytes]:
-    filters = [item for action in EVENT_ACTIONS for item in ("--filter", f"event={action}")]
-    with path.open("wb") as stream:
-        return subprocess.Popen(
-            ["docker", "events", "--format", "{{json .}}", "--filter", "type=container", *filters],
-            stdout=stream,
-            stderr=subprocess.DEVNULL,
-        )
+    return guards.start_docker_events(path, EVENT_ACTIONS)
 
 
-def run_block(design: Design, block: Block, directory: Path, bash: str) -> dict[str, Any]:
-    def run_cell(cell: Cell, raw: Path, env: dict[str, str]) -> CellResult:
+def _stop_events(events: subprocess.Popen[bytes]) -> None:
+    """Stop the event collector, preserving any failure and bounding the reap."""
+    guards.stop_docker_events(events)
+
+
+def _publish_json(path: Path, value: Mapping[str, Any]) -> None:
+    """Publish once without exposing a partial file or replacing existing evidence."""
+    guards.publish_json_once(path, value)
+
+
+def _run_block(
+    design: Design, block: Block, directory: Path, bash: str, run: BlockRun
+) -> dict[str, Any]:
+    def run_cell(
+        cell: Cell, raw: Path, env: dict[str, str], launch: Callable[..., Any]
+    ) -> CellResult:
+        gate = run.gate
+        if gate is None:
+            raise RuntimeError("block runner has no start gate")
+        deadline = time.monotonic() + gate.cleanup_wait_seconds
+
+        def start(*args: Any, **kwargs: Any) -> Any:
+            # One attempt under BlockRun.lock; CleanupPending makes launch() wait
+            # outside that lock and come back.
+            return gate.try_start(cell.run_id, subprocess.Popen, args, kwargs, deadline=deadline)
+
         return run_cell_with_watchdog(
-            cell, raw, env, bash, limit_seconds=design.campaign_watchdog_seconds
+            cell,
+            raw,
+            env,
+            bash,
+            limit_seconds=design.campaign_watchdog_seconds,
+            popen=lambda *args, **kwargs: launch(lambda: start(*args, **kwargs)),
+            on_timeout=lambda: gate.mark_watchdog(cell.run_id),
         )
 
     host = directory / "host"
     host.mkdir(parents=True, exist_ok=True)
-    run = BlockRun(design, block, directory, run_cell)
+    run.run_cell = run_cell
     stop_sampling = threading.Event()
     sampler = threading.Thread(
         target=_sample_host, args=(run, host / "samples.jsonl", stop_sampling), daemon=True
     )
     events = _start_events(host / "events.jsonl")
-    sampler.start()
+    recorder_threads: list[threading.Thread] = []
     try:
+        # Record-only stall instruments (off unless asked for); they never stop a
+        # block. Started inside the try so a failure still reaps the event collector.
+        recorder_threads = guards.start_recorders(host, run.recorders, stop_sampling)
+        sampler.start()
         record = run.execute()
+        if any(cell.get("start_error") for cell in record["cells"]):
+            raise RuntimeError("a cell failed to start")
     finally:
+        active_error = sys.exception()
         stop_sampling.set()
-        sampler.join(timeout=60)
-        events.terminate()
-        events.wait(timeout=30)
+        for thread in recorder_threads:
+            thread.join(timeout=30)
+        cleanup_failure: Exception | None = None
+        try:
+            if sampler.ident is not None:
+                sampler.join(timeout=60)
+                if sampler.is_alive():
+                    raise RuntimeError("host sampler did not stop")
+        except Exception as cleanup_error:
+            cleanup_failure = cleanup_error
+        finally:
+            try:
+                _stop_events(events)
+            except Exception as cleanup_error:
+                if cleanup_failure is None:
+                    cleanup_failure = cleanup_error
+                else:
+                    cleanup_failure.add_note(f"events cleanup failed: {cleanup_error}")
+        if cleanup_failure is not None:
+            if active_error is not None:
+                active_error.add_note(f"block cleanup failed: {cleanup_failure}")
+            else:
+                raise cleanup_failure
     # A sampler stop that came after the last cell started is still a reason to end the stage.
     record["stopped_reason"] = run.stopped_reason
     record["stop_kind"] = run.stop_kind
+    record["stop_order"] = run.stop_order
+    # Seconds each admitted start waited for other cells' cleanup (gate 'C').
+    record["start_gate_waits_seconds"] = list(run.gate.waits) if run.gate is not None else None
     residual = residual_resources()
     record["residual_after_block"] = residual
     if residual and record["stopped_reason"] is None:
-        record["stopped_reason"] = f"residual resources after the block: {residual}"
-        record["stop_kind"] = STOP_LEVEL
-    (directory / BLOCK_FILE).write_text(
-        json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-    )
+        run.request_stop(f"residual resources after the block: {residual}", STOP_LEVEL)
+        record["stopped_reason"] = run.stopped_reason
+        record["stop_kind"] = run.stop_kind
+        record["stop_order"] = run.stop_order
+    if run.stopped_reason is not None:
+        record["finished"] = False
+        record["state"] = "stopped"
+    _publish_json(directory / BLOCK_FILE, record)
     return record
+
+
+def run_block(
+    design: Design,
+    block: Block,
+    directory: Path,
+    bash: str,
+    gate_directory: Path | None = None,
+    recorders: guards.Recorders | None = None,
+) -> dict[str, Any]:
+    """Publish exceptional exits separately; never turn an incomplete block into a result."""
+
+    def unavailable(*_args: Any) -> CellResult:
+        raise RuntimeError("block runner is not initialized")
+
+    run = BlockRun(design, block, directory, unavailable)
+    run.require_logs = True
+    run.recorders = recorders or guards.Recorders()
+    try:
+        # main() passes one gate per output root, shared by every block: an
+        # unverified cleanup in any earlier block keeps later blocks from
+        # starting until someone acknowledges it (start_gate.py ack).
+        run.gate = StartGate(gate_directory or directory / START_GATE_DIR)
+        return _run_block(design, block, directory, bash, run)
+    except BaseException as error:
+        observed_at = datetime.now(UTC).isoformat()
+        run.request_stop(f"block failed: {type(error).__name__}: {error}", STOP_EXTERNAL)
+        residual = guards.residual_status(lambda: residual_resources())
+        try:
+            preflight = json.loads((directory / "preflight.json").read_text(encoding="utf-8"))
+            revision = preflight.get("preflight", {}).get("checkout_head")
+        except (OSError, ValueError, AttributeError):
+            revision = None
+        with run.lock:
+            started = dict(run.started_cells)
+            completed = sorted(run.completed_cells)
+            evidence = {
+                "schema": "inodefence-h1-incomplete-v1",
+                "finished": False,
+                "design_id": design.design_id,
+                "design_sha256": design.sha256,
+                "stage": block.stage,
+                "block": block.name,
+                "index": block.index,
+                "jobs": block.jobs,
+                "execution_sha": revision,
+                "stopped_reason": run.stopped_reason,
+                "stop_kind": run.stop_kind,
+                "stop_order": run.stop_order,
+                "started_cells": started,
+                "completed_cells": completed,
+                "unknown_cells": sorted(set(started) - run.completed_cells),
+                "cell_records": list(run.records),
+                "failures": list(run.failures),
+                "exception": {
+                    "type": type(error).__name__,
+                    "message": str(error),
+                    "notes": getattr(error, "__notes__", []),
+                },
+                "exception_observed_at": observed_at,
+                "recorded_at": datetime.now(UTC).isoformat(),
+                "watchdog_cells": [r["run_id"] for r in run.records if r.get("watchdog_killed")],
+                "sampler_status": "requires_review",
+                "residual_resources": residual,
+                "follow_up_required": True,
+            }
+        try:
+            _publish_json(directory / INCOMPLETE_BLOCK_FILE, evidence)
+        except Exception as publish_error:
+            error.add_note(f"incomplete evidence publication failed: {publish_error}")
+            error.add_note(
+                f"first stop: {run.stopped_reason}; kind={run.stop_kind}; order={run.stop_order}"
+            )
+        raise
 
 
 def stage_state(output: Path, block: Block) -> str:
     """``pending``, ``clean``, ``stopped``, or ``incomplete`` (started without a block record)."""
     directory = output / block.stage / block.name
     record_path = directory / BLOCK_FILE
+    if (directory / INCOMPLETE_BLOCK_FILE).exists():
+        return "incomplete"
     if record_path.is_file():
         record = json.loads(record_path.read_text(encoding="utf-8"))
+        if planned_stop(record):
+            return "stopped"
+        if record.get("finished") is not True:
+            return "incomplete"
         return "stopped" if record.get("stopped_reason") else "clean"
     return "incomplete" if directory.exists() else "pending"
+
+
+def planned_stop(record: Mapping[str, Any]) -> bool:
+    """A complete schedule record of a designed stop, not an exception artifact."""
+    return (
+        record.get("state") == "stopped"
+        and record.get("finished") is False
+        and isinstance(record.get("stopped_reason"), str)
+        and bool(record["stopped_reason"])
+        and record.get("stop_kind") in (STOP_LEVEL, STOP_EXTERNAL)
+        and isinstance(record.get("cells"), list)
+    )
 
 
 def stage_gate_problem(design: Design, stage: str, output: Path) -> str | None:
@@ -633,6 +929,10 @@ def stage_gate_problem(design: Design, stage: str, output: Path) -> str | None:
     verdict = (decision.get("stages") or {}).get(previous) or {}
     if not verdict.get("passed"):
         return f"stage {previous} did not pass the decision rule; {stage} may not start"
+    for earlier in order[: order.index(stage)]:
+        states = [stage_state(output, block) for block in planned_blocks(design, earlier)]
+        if any(state != "clean" for state in states):
+            return f"stage {earlier} is not clean ({states}); {stage} may not start"
     return None
 
 
@@ -674,6 +974,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--approval-ref", help="who approved this stage, recorded (live run)")
     parser.add_argument("--dry-run", action="store_true", help="print the plan; no Docker")
     parser.add_argument("--status", action="store_true", help="schedule state only; no outcomes")
+    parser.add_argument(
+        "--ping-socket",
+        type=Path,
+        help="record a 1 Hz GET /_ping on this daemon socket into host/ping.jsonl (record only)",
+    )
+    parser.add_argument(
+        "--desktop-log",
+        type=Path,
+        help="copy this log continuously into host/desktop.log (read-only; record only)",
+    )
     args = parser.parse_args(argv)
 
     design = load_design(args.design)
@@ -707,6 +1017,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         if state == "clean":
             continue
         facts, problems = preflight(design, args.expected_head)
+        recorders = guards.Recorders(ping_socket=args.ping_socket, desktop_log=args.desktop_log)
+        facts["recorders"] = guards.recorder_settings(recorders)
         if problems:
             print(f"refusing to start {block.name}:", file=sys.stderr)
             for item in problems:
@@ -729,7 +1041,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             + "\n",
             encoding="utf-8",
         )
-        record = run_block(design, block, directory, bash)
+        record = run_block(
+            design,
+            block,
+            directory,
+            bash,
+            args.output / START_GATE_DIR,
+            recorders,
+        )
         print(f"{block.name}: stopped={record['stopped_reason']}")
         if record["stopped_reason"]:
             return 1

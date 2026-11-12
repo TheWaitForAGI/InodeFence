@@ -37,12 +37,14 @@ from typing import Any
 from scripts.check_native_determinism import subject_from_report
 from scripts.run_concurrency_benchmark import (
     BLOCK_FILE,
+    INCOMPLETE_BLOCK_FILE,
     REPORT_JSON,
     SMOKE_STAGE,
     STOP_EXTERNAL,
     Design,
     load_design,
     measured_stages,
+    planned_stop,
 )
 
 from inodefence.evaluation.abort_classification import InvalidReason, classify_abort_reason
@@ -1055,8 +1057,22 @@ def analyze(output: Path, design: Design) -> dict[str, Any]:
     stages: dict[str, Any] = {}
     every_block: list[dict[str, Any]] = []
     every_path: list[dict[str, CellPath]] = []
+    incomplete: list[str] = []
     for stage in design.stages:
-        if stage == SMOKE_STAGE or not (output / stage).is_dir():
+        if not (output / stage).is_dir():
+            continue
+        if stage == SMOKE_STAGE:
+            for index, jobs in enumerate(design.stages[stage], start=1):
+                directory = output / stage / f"block-{index}-j{jobs}"
+                record_path = directory / BLOCK_FILE
+                if directory.exists() and (
+                    (directory / INCOMPLETE_BLOCK_FILE).exists() or not record_path.is_file()
+                ):
+                    incomplete.append(f"{stage}/{directory.name}")
+                elif record_path.is_file():
+                    record = json.loads(record_path.read_text(encoding="utf-8"))
+                    if record.get("finished") is not True and not planned_stop(record):
+                        incomplete.append(f"{stage}/{directory.name}")
             continue
         blocks: list[dict[str, Any]] = []
         targets_by_jobs: dict[int, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
@@ -1064,9 +1080,18 @@ def analyze(output: Path, design: Design) -> dict[str, Any]:
         for index, jobs in enumerate(design.stages[stage], start=1):
             directory = output / stage / f"block-{index}-j{jobs}"
             record_path = directory / BLOCK_FILE
+            if (directory / INCOMPLETE_BLOCK_FILE).exists():
+                incomplete.append(f"{stage}/{directory.name}")
+                continue
+            if directory.exists() and not record_path.is_file():
+                incomplete.append(f"{stage}/{directory.name}")
+                continue
             if not record_path.is_file():
                 continue
             record = json.loads(record_path.read_text(encoding="utf-8"))
+            if record.get("finished") is not True and not planned_stop(record):
+                incomplete.append(f"{stage}/{directory.name}")
+                continue
             block, paths, targets = summarize_block(directory, record, design)
             if index == 1:
                 reference = paths
@@ -1086,12 +1111,18 @@ def analyze(output: Path, design: Design) -> dict[str, Any]:
         stages[stage] = {"levels": levels, "blocks": blocks}
     # Every stage repeats the same seeds, so a case can pass again in any of them.
     fill_abort_operators(every_block, every_path)
+    decision = decide(design, stages)
+    if incomplete:
+        decision["status"] = "halted"
+        decision["selected_jobs"] = None
+        decision["fallback_jobs"] = None
+        decision["halts"].append({"rule": "incomplete-block", "detail": incomplete})
     return {
         "label": LABEL,
         "design_id": design.design_id,
         "design_sha256": design.sha256,
         "execution_mode": "per-case-container",
-        "decision": decide(design, stages),
+        "decision": decision,
         "stages": stages,
     }
 

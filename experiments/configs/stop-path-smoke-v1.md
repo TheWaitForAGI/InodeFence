@@ -45,7 +45,7 @@ D042 원문의 주입 수단은 셀 프로세스에 존재하지 않는 docker c
 
 ## 3. 실행 구성
 
-- **등록 파일:** targets 형식(InfrastructureGuard와 StartGate는 이 형식에서만 돈다), target 1개(node-tar 7.5.2, 등록 digest), arm R-restart·D·S-u, seed 6101~6104, budget 20. 파일 이름은 `experiments/preregistration/stop-path-smoke-<차수>-v1.md`(차수별, D042 :932). R arm은 `arm.R = unretained-seed-restart-v1-uniform-mutation-v1`(D040-D6, exp3-v1 등록 :30-31, 코드 상수 `src/inodefence/feedback/effect_search.py:62` `R_UNRETAINED_SEED_RESTART`)이다. EXP-3 등록과 같은 값이다(D042는 R 변형을 따로 정하지 않는다).
+- **등록 파일:** targets 형식(InfrastructureGuard와 StartGate는 이 형식에서만 돈다), target 1개(node-tar 7.5.2, 등록 digest), arm R-restart·D·S-u, seed 6101~6104, budget 20. 파일 이름은 `experiments/configs/stop-path-smoke-<차수>-v1.md`(차수별, D042 :932; D042는 위치를 정하지 않고, 비등록 실행은 `experiments/configs`에 두는 관례를 따른다. 2c60d49의 `experiments/preregistration/`에서 2026-11-11 실행 전 변경). R arm은 `arm.R = unretained-seed-restart-v1-uniform-mutation-v1`(D040-D6, exp3-v1 등록 :30-31, 코드 상수 `src/inodefence/feedback/effect_search.py:62` `R_UNRETAINED_SEED_RESTART`)이다. EXP-3 등록과 같은 값이다(D042는 R 변형을 따로 정하지 않는다).
 - **런처 인자(양 시나리오 공통):** `--jobs 2 --output <전용 출력> --skip-build --expected-images <기준 파일>`. `--host-id`는 쓰지 않는다(2호스트 실행이 아니다). `--expected-images`는 넘겨서 이미지 거부 경로도 함께 확인한다.
 - **기대 이미지 파일:** 저장소에 커밋하지 않고 각 출력 폴더에 둔다(`<출력>/expected-images.json`). 내용은 `expected_image_ids` 3개(대상·controller·helper)이고, 값은 실행 직전 읽기 전용 `docker image inspect`로 확인한다. 파일의 sha256은 preflight 기록의 `expected_images`에 남는다.
 
@@ -60,7 +60,11 @@ D042 원문의 주입 수단은 셀 프로세스에 존재하지 않는 docker c
 | B-4 승인 재개 | 주입 없이 `… --resume-after-stop <승인 참조>` | `infrastructure-resume` 줄(approval_ref)과 나머지 셀 진행. no-record 셀은 다시 돌리지 않음 |
 | B-5 완주·멱등 | 같은 인자로 한 번 더(재개 플래그 없음), 그리고 `--summarize-only` | 새 시작 0, 기록 불변 |
 
+**abort-pending 없음:** targets 형식에는 `abort-pending` 상태가 없고(셀 상태는 complete·abort-final·record-inconsistent·unattempted·no-record, `cell_completeness.py:42`), `--finalize-abort`는 targets 등록에서 거부된다(`run_exp0.py:1056-1059`). abort 기록은 종료 기록으로 바로 분류된다. 따라서 B-5 전 finalize 단계는 없다. 판정 도구는 B5에서 `abort-pending`을 보면 targets 형식 실행이 아니라고 근거 키로 알린다.
+
 B-2·B-4·B-5 각 호출 직전에 `env | grep -c '^HISTORICAL_IMAGE='`의 결과(0이어야 함)를 실행 기록에 남긴다(§6 X3).
+
+**events 기록 보존(B-4 전, 2026-11-11 추가).** 재개(`--resume-after-stop`) 전, 그리고 미완 호출 다음의 호출 전에 `<out>/host/events.jsonl`을 출력 폴더 밖 `<evidence>/host-events/events-<UTC stamp>-before-<step>.jsonl`로 복사하고 sha256을 실행 기록에 남긴다. 런처가 pending 셀이 있는 호출마다 이 파일을 `"wb"`로 다시 연다(`scripts/launcher_guards.py:330`, `scripts/run_exp0.py:793`). 원본은 지우거나 옮기지 않는다. 기록 전용 계측이며 판정 입력이 아니다(X1은 덮어쓰기 전 스냅샷으로 판정된다).
 
 ## 5. 시나리오 A (추가 확인, D042 기준 밖 — 게이트 정지와 ack 재개)
 
@@ -69,15 +73,17 @@ B-2·B-4·B-5 각 호출 직전에 `env | grep -c '^HISTORICAL_IMAGE='`의 결�
 - **주입:** 런처 환경 변수로만 `INODEFENCE_DOCKER_CONTEXT=does-not-exist`를 주고 `--context`는 생략한다. 셀 수를 최소로 하기 위해 별도 출력 폴더를 쓰고, 등록은 시나리오 B와 같다(budget 20).
 - **원장 구분:** 시나리오 A는 별도 출력 폴더와 별도 원장 행을 쓴다. 정지 구간에서는 셀이 대상을 실행하지 않는다(volume 생성 실패, 노출 없음). ack 재개 뒤 실행된 셀만 seed 6101~6104를 노출한다. A와 B는 원장에 따로 적는다(§7).
 - **판정상 위치:** A의 결과는 21개 판정과 합격에 넣지 않는다. 다만 A가 FAIL이면(특히 SA3: U 상태에서 재개가 거부되지 않음, SA6: 잔존 리소스) 본실험 금지 사유로 올린다.
+- **승인과 ack:** 지웅의 재개 승인은 시나리오 A에 1회다. 그 승인 참조 하나로 게이트 판정 U인 셀을 **모두** ack한다(각 ack note의 `approval=`에 같은 참조). 이 주입(`INODEFENCE_DOCKER_CONTEXT=does-not-exist`)은 모든 셀을 같은 이유로 실패시키므로, jobs 2에서는 두 worker의 첫 셀이 모두 U가 되는 것이 보통이다.
 - **ack 전 잔존 확인:** ack 전에 읽기 전용 잔존 확인(`docker ps -a --filter name=inodefence-`, `docker volume ls --filter name=inodefence-local-`)의 결과를 ack note `residual=`에 반드시 남긴다.
+- **events 기록 보존(재개 a2 전, 2026-11-11 추가):** §4의 "events 기록 보존"과 같은 절차로 `<out-a>/host/events.jsonl`을 출력 폴더 밖으로 복사하고 sha256을 남긴다.
 
 | # | 확인 | 판정 근거 |
 | --- | --- | --- |
-| SA1 | 첫 셀에서 정지 | `cell-results.jsonl` `infrastructure-stop` 1줄, reason에 `cleanup unknown` 또는 `start gate denied`. 그 전 `start` 줄은 jobs 수 이하 |
+| SA1 | 첫 셀에서 정지 | `infrastructure-stop` 1줄, reason에 `cleanup unknown` 또는 `start gate denied`. 정지 줄 앞의 start 줄은 (a) 게이트 판정 U인 셀(1개 이상, 각 1회), (b) 게이트 판정 S로 끝난 셀, (c) 끝 줄에 `start_denied`가 있는 시도뿐이다. U 셀 수와 (c)의 수의 합은 jobs 이하다. (b)의 start 줄은 가장 이른 U 셀의 end 줄보다 앞에 있고, 그 end 줄 뒤의 start 줄은 모두 (c)다. 시작한 셀의 총수에는 상한을 두지 않는다. U 커밋과 그 end 줄 사이의 시작 거부는 게이트 lock으로 보장되며 줄 순서로는 확인되지 않는다. |
 | SA2 | 이후 시작 0 | 정지 줄 뒤 `start` 줄 0 |
 | SA3 | U 상태에서 재개 거부 | `--resume-after-stop <ref>`가 exit 2이고 stderr에 `start gate still closed` |
-| SA4 | ack 뒤 재개 허용 | `start_gate.py ack <dir> <cell> "approval=<ref>; checked_at=…; by=…; residual=<읽기 전용 명령 → 결과>; reason=…"` 뒤 재개 exit 0 |
-| SA5 | 재개 기록 | `infrastructure-resume` 줄에 `approval_ref`와 `gate_acks`(path, cell, note_sha256) |
+| SA4 | ack 뒤 재개 허용 | 게이트 판정 U인 셀 **각각**에 `start_gate.py ack <dir> <cell> "approval=<ref>; checked_at=…; by=…; residual=<읽기 전용 명령 → 결과>; reason=…"`(모든 ack에 같은 승인 참조) 뒤 재개 exit 0 |
+| SA5 | 재개 기록 | `infrastructure-resume` 줄에 `approval_ref`와 `gate_acks`(path, cell, note_sha256). `gate_acks` 수 ≥ U 셀 수이고 모든 U 셀이 들어 있음 |
 | SA6 | 잔존 리소스 0 | 각 호출 뒤 `docker ps -a --filter name=inodefence-`, `docker volume ls --filter name=inodefence-local-` 비어 있음, host postflight `problems` 비어 있음 |
 
 ## 6. 판정 기준 대응표 (D042 :928의 21개 + 이 주입에 따른 추가 3개)
@@ -88,13 +94,13 @@ B-2·B-4·B-5 각 호출 직전에 `env | grep -c '^HISTORICAL_IMAGE='`의 결�
 | --- | --- | --- | --- |
 | A1 | 정지 기록과 스스로 종료 | 그대로 | B-1 호출의 `cell-results.jsonl`에 `event = infrastructure-stop` 정확히 1줄. 호출 exit가 정상 종료(0 또는 1, 신호 아님). `summaries/index.json` `cell_completeness.infrastructure_stopped = true` |
 | A2 | no-record 3 또는 4 | 그대로 | B-1 뒤 `cell_completeness.no_record ∈ {3, 4}` |
-| A3 | 각 2시도·즉시 재시도·파일 보존 | 그대로(해석 확정) | no-record 셀 X마다 (i) attempt 1·2의 `start` 줄이 같은 호출 안에 있음 (ii) attempt 2 `start`가 X의 attempt 1 `end` 뒤이고, 그 사이 다른 셀의 `start` 줄이 jobs−1 = 1개 이하(시간 상한 없음 — `wait_for_cleanups` 대기는 정상) (iii) `attempts/<X>.attempt1.*`의 sha256이 B-1 직후와 B-5 뒤에 같음 |
-| A4 | 시작 셀 3 또는 4, 나머지 시작 줄 없음 | 그대로 | `start` 줄이 있는 셀 수 ∈ {3, 4}. 나머지 셀은 `start` 줄 0이고 `matrix.json` `cells_not_started`에 있음 |
+| A3 | 각 2시도·즉시 재시도·파일 보존 | 그대로(해석 확정) | no-record 셀 X마다 (i) attempt 1·2의 `start` 줄이 같은 호출 안에 있음 (ii) attempt 2 `start`가 X의 attempt 1 `end` 뒤이고, 그 사이 다른 셀의 `start` 줄이 jobs−1 = 1개 이하(시간 상한 없음 — `wait_for_cleanups` 대기는 정상). 그 셀이 `matrix.json` `disk_pauses`에 있으면 (ii)는 해당 없음으로 보고한다(디스크 대기는 재시도 전 간격을 늘린다) (iii) `attempts/<X>.attempt1.*`의 sha256이 B-1 직후와 B-5 뒤에 같음 |
+| A4 | 시작 셀 3 또는 4, 나머지 시작 줄 없음 | 그대로 | `start` 줄이 있는 셀 수 ∈ {3, 4}. 나머지 셀은 `start` 줄 0이고 `matrix.json` `cells_not_started`에 있음. 런처는 첫 시도만 끝난 A5 셀도 `cells_not_started`에 넣는다(판정 도구는 이미 그렇게 판정한다) |
 | A5 | 첫 시도만 끝난 셀 0 또는 1 | 그대로 | `start` 줄이 정확히 1개이고 `end`가 있는 셀 수 ∈ {0, 1} |
-| A6 | 컨테이너·볼륨 생성 0, context 불변 | **대체** | 원문은 `prepare controller` 실패를 전제로 한다. 이 주입에서는 volume과 controller가 생성된 뒤 정리된다. 대체: "B-1 뒤 잔존 리소스 0(X2), 전역 docker context 불변(`docker context show`가 실행 전후로 같음), 그리고 모든 no-record **시도**(셀이 아니라 시도마다)의 게이트 판정이 S이고 각 시도 로그에 정리 trap 실행 흔적(controller·volume 제거)이 있음(X1 포함)" |
-| A7 | 결과 가림과 manifest | 그대로(판정식 확정) | (i) B-1·B-2 뒤, 그리고 정지 중 모든 호출 뒤: `summaries/index.json`에서 `outcomes_redacted = true`, `interim.redacted = true`, `interim.reasons`가 비어 있지 않음. `cells[]` 어느 항목에도 `hit`·`t_first`·`t_first_event`·`t_first_censored` 키가 없고 모든 `summary`가 null. `summaries/*.summary.json` 파일 0개(근거: `run_exp0.py` 가림 사유와 `_remove_summaries`, `run_g1_smoke.py` 요약기). (ii) B-5 뒤: `interim.manifest.generated = true`, `verified = true`, 같은 manifest에 `scripts/make_raw_manifest.py --verify`를 다시 돌려 exit 0. (iii) 확인은 키 존재·개수만 출력하는 스크립트로 하고, 값(hit·T_first)은 사람이 열람하지 않음 |
+| A6 | 컨테이너·볼륨 생성 0, context 불변 | **대체** | 원문은 `prepare controller` 실패를 전제로 한다. 이 주입에서는 volume과 controller가 생성된 뒤 정리된다. 대체: "B-1 뒤 잔존 리소스 0(X2), 전역 docker context 불변(`docker context show`가 실행 전후로 같음), 그리고 모든 no-record **시도**의 정리 확인(X1). 정리 확인의 양성 증거는 게이트 판정 S다. smoke 스크립트의 정리 trap은 controller·volume의 부재를 inspect로 확인한 뒤에만 S를 기록하고, 확인하지 못하면 U를 기록한다(`local_node_tar_smoke.sh` 정리 trap). 첫 시도의 S는 둘째 시도가 게이트를 통과한 것으로 확인된다. 보조 증거는 docker events의 controller destroy 수(시도 수 이상)이고, events 수집기가 실패했으면 시도 로그에 `FAILED cleanup`·`INODEFENCE_CLEANUP_UNKNOWN:`이 없는 것으로 대신한다. 정리 trap은 성공 때 로그를 남기지 않으므로 로그상 '제거 흔적'은 요구하지 않는다." |
+| A7 | 결과 가림과 manifest | 그대로(판정식 확정) | (i) B-1·B-2 뒤, 그리고 정지 중 모든 호출 뒤: `summaries/index.json`에서 `outcomes_redacted = true`, `interim.redacted = true`, `interim.reasons`가 비어 있지 않음. `cells[]` 어느 항목에도 `hit`·`t_first`·`t_first_event`·`t_first_censored` 키가 없고 모든 `summary`가 null. `summaries/*.summary.json` 파일 0개(근거: `run_exp0.py` 가림 사유와 `_remove_summaries`, `run_g1_smoke.py` 요약기). (ii) B-5 뒤: `manifest-verification.json`의 `raw_manifest.generated = true`, `verification.verified = true`, 그리고 index의 `interim.manifest`가 `{generated: null, verified: null}`(성공 경로; 런처는 index를 manifest 생성 전에 null로 쓰고 실패 때만 다시 쓴다, `run_exp0.py:1972`, `:2005`, `:2008-2022`), B-5 뒤 같은 manifest에서 `manifest-verification.json` 줄을 뺀 사본으로 `make_raw_manifest.py --verify`를 돌려 exit 0. 그 파일은 manifest 생성 뒤 런처가 다시 쓰는 기록이라 비교에서 뺀다(C1 예외 3개 중 생성 뒤 바뀌는 유일한 파일). (iii) 확인은 키 존재·개수만 출력하는 스크립트(`scripts/check_stop_path_smoke.py`)로 하고, 값(hit·T_first)은 사람이 열람하지 않음 |
 | A8 | 로그 `FAILED at step: prepare controller`, `engine=` 빈 값 | **대체** | 대체: no-record 시도의 셀 로그에 `FAILED at step: effect-demo-historical`과 `No such image: inodefence-node-tar-effect:does-not-exist`가 있음. `engine=` 값은 비어 있지 않음(context가 정상) |
-| N1 | 플래그 없는 호출은 시작 없음 | 그대로 | B-2 호출 전후로 `start` 줄 수 불변, exit 0, stderr에 `infrastructure stop in effect` |
+| N1 | 플래그 없는 호출은 시작 없음 | 그대로 | B-2 호출 전후로 `start` 줄 수 불변, exit 0 또는 1(신호 아님; 정지 중에는 no-record 셀 때문에 G1 판정이 통과하지 못해 1이 정상), stderr에 `infrastructure stop in effect` |
 | P1 | 재개 전 W2 원인 LOG와 지웅 승인 | 그대로 | `docs/LOG.md`에 원인 줄(oracle 값 없음)이 있고, 그 커밋 시각이 B-4 `infrastructure-resume` `clocks.realtime`보다 앞섬. 지웅 승인 참조가 존재 |
 | B1 | 승인 참조 기록 | 그대로 | `infrastructure-resume.approval_ref`가 §8 형식이고 index `cell_completeness.infrastructure_resumes`에 같은 값 |
 | B2 | 재개 뒤 정지 해제·정지 기록 유지 | 그대로 | B-4 뒤 `infrastructure_stopped = false`, B-1의 `infrastructure-stop` 줄이 그대로 남음(줄 수·내용 동일) |
@@ -104,14 +110,32 @@ B-2·B-4·B-5 각 호출 직전에 `env | grep -c '^HISTORICAL_IMAGE='`의 결�
 | B6 | `.calls.jsonl`과 시계 | 그대로(범위 주석) | B-4에서 실행된 셀마다 `<evidence>.calls.jsonl` 존재. `start`·`end` 줄에 `clocks`(realtime·monotonic) 존재. no-record 시도는 host broker를 실행하지 않으므로 `.calls.jsonl`이 없는 것이 정상 |
 | B7 | append-only | 그대로 | 단계마다 `cell-results.jsonl`의 앞부분 바이트가 이전 단계 파일과 같음(접두 일치) |
 | B8 | `cell_completeness` 집계 | 그대로 | B-5 index의 `cell_completeness` 수치(complete·aborts·no_record·unattempted)를 `cell-results.jsonl`과 셀 파일에서 다시 계산한 값과 일치 |
-| B9 | invalid 경로와 분석기 정상 종료 | 그대로(판정식 확정) | "invalid 경로" = no-record 셀이 invalid로 처리되는 경로(런처가 no-record·record-inconsistent 셀을 `invalid_cells`로 넘기고, 요약기가 `invalid = true`, `invalid_reason`이 `no-record`로 시작, summary 없음으로 기록). 판정식: (i) B-5 index에서 `invalid = true`인 셀 집합이 A2의 no-record 셀 집합과 정확히 같고 `invalid_count`도 그 수 (ii) `interim.integrity_problems`가 비어 있음 (iii) `scripts/analyze_exp0.py --index <B-5 index> --format json --output <파일>`이 exit 0이고 출력에 대비별 `number_blocks_invalid_excluded` 키가 있음(값은 열람하지 않고 키 존재만) |
-| C1 | 멱등 | 그대로(판정식 확정) | B-5의 두 번째 호출 전후로 `cell-results.jsonl`, 셀 증거 파일(report·steps·calls·log), `attempts/`, 시작 게이트 디렉터리, raw manifest, `summaries/index.json`, `summaries/*.summary.json`이 **모두 바이트 동일**하고 새 `start` 줄 0. 예외는 "마지막 호출 기록"인 `registration.json`의 `last_status`와 `matrix.json`뿐이다. 다르면 FAIL이고 다른 키 경로를 기록하며, 사후에 허용 목록을 늘리지 않음 |
-| F1 | PR-D 요약 필드 | 그대로(**매 차수 적용**, 확정) | D042의 "1차 해당 없음"은 삭제한다(PR-D가 이미 통합 트리에 있다). B-5 뒤(가림 해제): invalid가 아닌 모든 셀의 `summaries/<run_id>.summary.json`에 `dense_detail` 키가 있음, invalid 셀에는 summary 파일이 없음, `record_inconsistent_prefix`는 record-inconsistent 셀에만 있음(0개 예상). 어긋나면 해당 차수 FAIL(1차 FAIL이면 원인 수정 뒤 2차 필수). 키 존재만 확인 |
-| X1 | (추가) 주입 시도의 정리 확인 S | 추가(A6에 포함) | no-record **시도**마다 게이트 판정이 `S`(U 0)이고 시도 로그에 정리 trap 흔적이 있음 |
+| B9 | invalid 경로와 분석기 정상 종료 | 그대로(판정식 확정; **(iii) 사후 정정** 2026-11-11, 아래 이력) | "invalid 경로" = no-record 셀이 invalid로 처리되는 경로(런처가 no-record·record-inconsistent 셀을 `invalid_cells`로 넘기고, 요약기가 index 항목에 `invalid = true`, summary 파일에 `invalid_reason`이 `no-record:`를 포함(실제 값은 `ReportFormatError: no-record: …`)하고 `summary = null`로 기록). 판정식: (i) B-5 index에서 `invalid = true`인 셀 집합이 A2의 no-record 셀 집합과 정확히 같고 `invalid_count`도 그 수 (ii) `interim.integrity_problems`가 비어 있음 (iii) 실행 SHA E의 `scripts/analyze_exp0.py --index <B-5 index> --format json --output <임시 파일>`이 exit 0이고, 출력의 `number_invalid_cells`(최상위, 등록 전체의 no-record 수; 출력 형식과 무관하게 최상위에만 있다)가 A2의 no-record 셀 수와 같으며, `item5_first_contract_index.by_arm.<arm>.number_invalid_excluded`(다중형 출력이면 `by_target.<tid>` 아래; 분석기는 타깃 2개 이상·확증 대비 있음·등록 deadline 있음 중 하나일 때 다중형을 낸다, `analyze_exp0.py:1731-1737`)가 arm마다 그 arm의 no-record 셀 수와 같음. 확증 대비가 있는 등록에서는 추가로 대비마다 `number_blocks_invalid_excluded` 키가 있음. 키와 개수만 확인하고 다른 분석기 값은 열람하지 않는다. **판정 도구(E)의 B9는 정정 전 (iii)("대비별 `number_blocks_invalid_excluded` 키 있음")를 출력하므로, B9는 부록 B의 보조 확인으로 판정하고 판정 도구 출력과 함께 기록한다** |
+| C1 | 멱등 | 그대로(판정식 확정) | B-5 두 번째 호출 전후로 `cell-results.jsonl`, 셀 증거 파일, `attempts/`, 시작 게이트 디렉터리, `host/` 기록, `summaries/index.json`, `summaries/*.summary.json`이 바이트 동일하고 새 `start` 줄이 0이다. raw manifest는 `registration.json`·`matrix.json`·`manifest-verification.json` 세 줄을 뺀 나머지 줄이 동일하다. 예외 파일은 이 세 개뿐이다. 할 일이 없는 호출은 host preflight·postflight를 쓰지 않으므로 `host/`에 새 기록이 생기면 FAIL. 다르면 FAIL이고 다른 파일을 기록하며, 사후에 허용 목록을 늘리지 않음 |
+| F1 | PR-D 요약 필드 | 그대로(**매 차수 적용**, 확정) | D042의 "1차 해당 없음"은 삭제한다(PR-D가 이미 통합 트리에 있다). B-5 뒤(가림 해제): invalid가 아닌 모든 셀의 `summaries/<run_id>.summary.json`에 `dense_detail` 키가 있음, invalid 셀의 summary에는 `dense_detail` 키가 없고 `invalid_reason`에 `no-record:`가 들어 있음(요약기는 가림이 아니면 invalid 셀을 포함한 모든 셀의 summary를 쓰고 `dense_detail`은 정상 적재 뒤에만 붙인다, `run_g1_smoke.py:367`, `:409-413`), `record_inconsistent_prefix`는 record-inconsistent 셀에만 있음(0개 예상). 어긋나면 해당 차수 FAIL(1차 FAIL이면 원인 수정 뒤 2차 필수). 키 존재만 확인 |
+| X1 | (추가) 주입 시도의 정리 확인 S | 추가(A6에 포함) | no-record **시도**마다 게이트 판정이 `S`(U 0)이고, 셀마다 controller destroy 이벤트가 시도 수(2) 이상(`host/events.jsonl`). `host/recorder-failures.jsonl`이나 `matrix.json` `host_guards.recording_notes`에 events 수집기 실패가 있으면 destroy 수 대신 시도 로그로 판정하고 그 사실을 보고한다: 로그에 `FAILED cleanup`과 `INODEFENCE_CLEANUP_UNKNOWN:`이 없음(정리 trap은 성공 때 로그를 남기지 않고, S는 trap이 정리를 확인한 뒤에만 쓴다) |
 | X2 | (추가) 잔존 리소스 0 | 추가 | 각 단계 뒤 `docker ps -a --filter name=inodefence-`와 `docker volume ls --filter name=inodefence-local-`가 비어 있고, host postflight `problems`가 비어 있음 |
 | X3 | (추가) 주입 해제 확인 | 추가 | B-2·B-4·B-5 각 호출 직전 `env`에 `HISTORICAL_IMAGE` 없음(기록). 재개 뒤 실행된 셀의 로그·report가 등록 대상 이미지를 쓰고, 그 호출의 preflight `image_ids`가 기대값과 같음 |
 
-**합격:** 위 표의 21개와 추가 3개(X1~X3)가 모두 PASS다. 표에 "확인 필요"로 남은 기준은 없다(A3·A7·B9·C1·F1은 W4 검증과 오케스트레이터 확정 문장으로 고정, 2026-11-11). 시나리오 A(§5)는 합격에 넣지 않는다.
+**합격:** 위 표의 21개와 추가 3개(X1~X3)가 모두 PASS다. 표에 "확인 필요"로 남은 기준은 없다(A3·A7·B9·C1·F1은 W4 검증과 오케스트레이터 확정 문장으로 고정, 2026-11-11). 시나리오 A(§5)는 합격에 넣지 않는다. 판정은 `scripts/check_stop_path_smoke.py`(snapshot·verify-tools·judge)로 한다.
+
+**정정 이력(2026-11-11, 실행 전).** 2c60d49(#346 머지본)의 A7(ii)·F1·B9 문구와 C1 문구는 코드 읽기 오류였다. 문구대로면 정상 실행에서도 항상 FAIL이었다(A7(ii): index는 성공 때 manifest 결과를 다시 쓰지 않는다. F1: invalid 셀에도 summary 파일이 있다. B9: `invalid_reason`은 예외 이름으로 시작한다. C1: raw manifest는 매 호출 바뀌는 세 파일을 포함한다). 실행 전에 정정했고 판정의 의도·임계는 바꾸지 않았다. 검증자 동의 2026-11-11. 같은 날 같은 유형 두 건을 더 실행 전에 정정했다: A7(ii)의 `--verify` 재실행(런처가 manifest 생성 뒤 `manifest-verification.json`을 다시 써서 그대로 돌리면 항상 rc 1, W4 재현)과 N1의 exit 0(정지 중 호출은 1). 재발 방지로 `tests/test_stop_path_smoke_end_to_end.py`가 실제 `run_exp0`로 시나리오 B·A 절차를 끝까지 돌리고 실제 판정 도구로 24개 기준과 SA1~SA6이 모두 PASS함을 고정한다(셀 실행·docker 잔존·destroy 이벤트·셀 로그 문구만 대역). 같은 날 SA1을 두 번 정정했다(실행 전): 처음 문구 "정지 전 start ≤ jobs"는 코드상 보장되지 않았고(게이트는 U 셀이 실행 중인 동안 다른 시작을 허용, CI에서 start 4), 다음 판정 도구의 "U 셀 1개"도 실제 주입(모든 셀 같은 실패)에서 U 셀 2개가 되는 경로를 막았다. 위 SA1 문장은 W4가 확정했다. SA4·SA5는 U 셀 각각의 ack로 맞췄다. A3(ii)에 디스크 대기 단서를, X1에 events 수집기 실패 때의 판정 경로를 더했다(F-3). F-2(B-5 전 `--finalize-abort`)는 targets 형식에 해당 상태와 명령이 없어 절차 대신 그 사실을 §4에 적었다. A6의 '시도 로그의 정리 trap 흔적'은 성공 시 로그가 없어 판정 불가 → 게이트 S(trap의 부재 확인)를 양성 증거로.
+
+**사후 정정(2026-11-11, 1차 실행 뒤 — 위 실행 전 정정들과 구분한다).**
+
+- **원 판정은 바꾸지 않는다.** 1차(실행 SHA E `bed077af62b1cdd5cc8dec96eb9cbe93ba542f1d`, 2026-11-11 21:12–21:43 KST)의 판정 도구 출력은 "시나리오 B 24개 중 23개 충족, B9 불충족, `passed: False`; 시나리오 A SA1~SA6 충족"이며 그대로 기록에 남는다(`~/inodefence-evidence/stop-path-smoke-1-20261111/judgement-1.json`, sha256 `2ae4bb38…`).
+- **원인.** 정정 전 B9(iii) 문구 "출력에 대비별 `number_blocks_invalid_excluded` 키가 있음"(W4가 확정)은 분석기가 그 키를 확증 대비 절에서만 쓰고(`scripts/analyze_exp0.py:977`), 그 절은 `analysis_plan.confirmatory_contrasts`가 비면 만들지 않는다는 점(`:921-923`)을 놓쳤다. 이 smoke 등록은 타깃이 node-tar-7.5.2 `role = train` 하나뿐이라 대비가 없다(1차 index의 `confirmatory_contrasts = []`). 그래서 올바른 실행도 정정 전 (iii)를 통과할 수 없었다. 끝단 테스트는 holdout fixture로 대비를 만들어 통과해, 실제 등록과의 이 차이를 드러내지 못했다.
+- **시점.** 1차 결과(판정 도구 출력) 확인 뒤, 2차 실행 전.
+- **변경 전후.** 전: (iii) "`analyze_exp0` exit 0이고 출력에 대비별 `number_blocks_invalid_excluded` 키가 있음". 후: 위 B9 행의 (iii)(exit 0 + `number_invalid_cells` = no-record 수 + arm별 `number_invalid_excluded` = arm별 no-record 수, 확증 대비가 있으면 기존 키도). (i)·(ii)는 그대로다.
+- **성격.** 판정 대상은 oracle이 아닌 인프라 개수다. 새 (iii)는 정정 전 문구(키 존재)보다 엄격하다(분석기가 센 수까지 대조한다). 판정의 의도("invalid 경로가 분석기를 정상 통과")는 바뀌지 않았다. 완화가 아니다.
+- **W4 확인(지웅 조건 3).** B9 불충족은 실제 안전성 요구의 위반이 아니라 판정·관찰 기준 문구의 문제다. 근거: 1차에서 (i) `invalid = true` 셀 집합 = no-record 4셀(D-s6101, D-s6102, R-s6101, S-u-s6101), `invalid_count` 4; (ii) `integrity_problems` 비어 있음; 분석기 exit 0; 분석기 출력의 개수 키만 꺼낸 보조 확인(부록 B)에서 `number_invalid_cells` 4, `item5_first_contract_index.by_arm.<arm>.number_invalid_excluded` D 2·R 1·S-u 1로 no-record 셀의 arm 분포와 일치(`~/inodefence-evidence/stop-path-smoke-1-20261111/tools/b9-keys-round1.txt`, sha256 `b44b71ee…`). invalid 경로는 런처·요약기·분석기를 정상으로 지났다.
+- **승인.** 지웅 2026-11-11 22:20 KST 결정 1((가′) 문서 사후 정정 + 보조 확인, 실행 SHA bed077a 유지). 조건:
+  1. smoke 1차의 원래 판정 "23/24, B9 불충족, passed: False"를 변경하지 않는다.
+  2. 사후 정정의 원인, 시점, 변경 전후 기준을 추적 가능하게 기록한다.
+  3. B9가 실제 안전성 요구 위반이 아닌 판정·관찰 기준 문제임을 W4가 명시적으로 확인한다.
+  4. 2차 smoke에서 보조 확인을 수행한다.
+  5. 2차 결과와 독립 검증 전까지 전체 PASS나 최종 적격성을 선언하지 않는다.
+  6. B9가 실제 안전성 결함으로 판명되면 실행을 중지하고 재동결을 요청한다.
 
 ## 7. 원장(exposure ledger) 행 초안
 
@@ -164,3 +188,54 @@ B-2·B-4·B-5 각 호출 직전에 `env | grep -c '^HISTORICAL_IMAGE='`의 결�
 - 본실험 금지 조건(#330 점검표, exp3-v1 체크리스트): "D042 정지·재개 smoke 1차·2차 PASS(`experiments/configs/stop-path-smoke-v1.md` sha256 `<동결 시 기입>`)와 원장 행 반영 전에는 본실험을 시작하지 않는다."
 - Code Freeze 선행 조건: "D042 정지·재개 smoke 1차 PASS."
 - 호스트 적격성 §12: 넣지 않는다.
+
+## 부록 B. B9 보조 확인 (사후 정정, 2차부터 실행 전 고정 절차)
+
+- **스크립트:** 아래 본문과 바이트가 같은 파일을 `<evidence>/tools/b9_keys.py`로 둔다. sha256은 `4e74ab999136b8b3230930acde5454827dce7b63bc7e4a31b79116bdee35bc72`다(1차 사본 `~/inodefence-evidence/stop-path-smoke-1-20261111/tools/b9_keys.py`, `tools/SHA256SUMS`). **저장소에는 넣지 않는다.** 실행 트리 E는 바뀌지 않고, 분석기는 E의 것을 쓴다(명령의 첫 인자가 E worktree다).
+- **실행 전 고정:** 2차 실행 전 고정 LOG 줄에 이 스크립트의 sha256을 적는다. 다르면 실행하지 않는다.
+- **명령(B-5와 `verify-tools` 뒤):** `python3 <evidence>/tools/b9_keys.py <E worktree> <S>/out/summaries/index.json > <S>/b9-keys-<차수>.txt`
+- **판정식:** 출력 첫 줄이 `analyze rc 0`이어야 한다. `number_invalid_cells` 값은 A2의 no-record 셀 수와 같아야 한다. `…item5_first_contract_index.by_arm.<arm>.number_invalid_excluded` 값은 arm마다 그 arm의 no-record 셀 수와 같아야 한다(snaps-b `b5b.json`의 `index.invalid_run_ids`에서 arm별로 센다). 확증 대비가 있는 등록이면 `number_blocks_invalid_excluded` 줄도 대비마다 있어야 한다. 하나라도 어긋나면 B9 불충족이다. 결과는 판정 도구 출력(정정 전 (iii)로 판정한 B9)과 함께 기록한다.
+- **봉인:** 분석기 출력은 임시 폴더에만 쓰이고 스크립트가 끝나면 지워진다. 스크립트는 네 이름의 정수 키만 출력한다.
+- **표기:** 아래 코드 블록은 ruff 포맷 대상에서 빼려고 `text`로 표기했다(본문 sha 보존). 블록 내용(펜스 줄 제외)의 sha256이 위 값과 같다.
+
+```text
+"""Run analyze_exp0 on an index into a temp dir and print ONLY invalid-count keys (no outcome values)."""
+
+import json
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+tree, index = Path(sys.argv[1]), sys.argv[2]
+WANT = {"number_invalid_cells", "number_invalid_excluded", "number_invalid_nonconformant", "number_blocks_invalid_excluded"}
+
+
+def walk(value, path=""):
+    if isinstance(value, dict):
+        for k, v in value.items():
+            p = f"{path}.{k}" if path else k
+            if k in WANT and isinstance(v, int) and not isinstance(v, bool):
+                yield p, v
+            yield from walk(v, p)
+    elif isinstance(value, list):
+        for n, v in enumerate(value):
+            yield from walk(v, f"{path}[{n}]")
+
+
+with tempfile.TemporaryDirectory() as tmp:
+    out = Path(tmp) / "a.json"
+    r = subprocess.run(
+        [sys.executable, "-m", "scripts.analyze_exp0", "--index", index, "--format", "json", "--output", str(out)],
+        cwd=tree, env={"PYTHONPATH": "src:.", "PATH": "/usr/bin:/bin", "PYTHONDONTWRITEBYTECODE": "1"},
+        capture_output=True, text=True,
+    )
+    print("analyze rc", r.returncode)
+    if out.is_file():
+        for p, v in walk(json.loads(out.read_text())):
+            print(p, v)
+```
+
+## 부록 C. E 뒤 문서 변경의 적용 (2026-11-11 추가)
+
+실행 트리는 실행 SHA E로 고정되고, E 뒤 main에 들어간 커밋은 실행 트리를 바꾸지 않는다. E 트리의 런북·기준 문서와 main의 최신 문서가 다르면, **실행 절차와 판정 기준 문구는 main의 최신 문서(지웅 승인 머지분)를 따르고, 판정 도구·런처·분석기 코드는 E를 쓴다.** 문서와 E의 판정 도구 출력이 다르면 둘을 함께 기록하고 문서의 판정식으로 판정한다. 그 차이는 문서의 정정 이력에 이미 있어야 한다. 등록·기준 파일·원장 sha처럼 E 트리에서 생성해 sha로 고정하는 실행 입력은 E의 것을 쓴다.

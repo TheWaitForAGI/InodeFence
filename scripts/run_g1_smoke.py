@@ -45,7 +45,7 @@ import platform
 import re
 import shutil
 import sys
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -64,12 +64,15 @@ from scripts.run_parallel_native import (
     cell_env,
 )
 
+from inodefence.evaluation.cell_completeness import WATCHDOG_ABORT_REASON
 from inodefence.evaluation.rds import RdsArm, RdsCellConfig, RVariant, VocabularyMode
 from inodefence.evaluation.rds_report import (
     ReportFormatError,
     check_report_config,
+    consistent_prefix,
     environment_record,
     load_cell_files,
+    registered_dense_detail,
     summarize_report_records,
     timing_record,
 )
@@ -281,8 +284,18 @@ def summarize_output(
     post_check: PostCheck | None = None,
     extra: Mapping[str, Any] | None = None,
     redact_outcomes: bool = False,
+    invalid_cells: Mapping[str, str] | None = None,
+    watchdog_cells: Collection[str] = (),
+    inconsistent_cells: Collection[str] = (),
+    dense_detail: bool = False,
 ) -> dict[str, Any]:
     """(Re)build ``summaries/`` from the cell files in ``output``; returns the index.
+
+    ``invalid_cells`` (run id -> reason) and ``watchdog_cells`` come from a launcher that has
+    an exit record: the first are not read and take the invalid bucket; the second are aborts
+    named as such, and one cut last line is dropped and counted as a step of unknown outcome.
+    ``inconsistent_cells`` also get their consistent prefix, and ``dense_detail`` adds the inputs
+    of the registered dense table, both from this same pass over the cell's files.
 
     A cell whose report records a different config than planned (or fails
     ``post_check``) is not folded into complete/abort: it is the third bucket,
@@ -328,7 +341,12 @@ def summarize_output(
             **cell_target(cell),
         }
         try:
-            loaded = load_cell_files(paths["report"], paths["steps_jsonl"])
+            if invalid_cells is not None and cell.run_id in invalid_cells:
+                raise ReportFormatError(invalid_cells[cell.run_id])
+            watchdog = cell.run_id in watchdog_cells
+            loaded = load_cell_files(
+                paths["report"], paths["steps_jsonl"], drop_torn_last_line=watchdog
+            )
             if loaded.report is not None:
                 check_report_config(loaded.report, config)
             if post_check is not None:
@@ -336,18 +354,25 @@ def summarize_output(
                 if problem is not None:
                     raise ReportFormatError(problem)
             aborted_at, reason = loaded.aborted_at_step, loaded.abort_reason
+            if watchdog:
+                reason = WATCHDOG_ABORT_REASON
+                record["unknown_outcome_steps"] = int(loaded.torn_last_line)
             if aborted_at is None and len(loaded.records) < config.execution_budget:
                 aborted_at = len(loaded.records)
                 reason = "report has fewer steps than the budget and no abort record"
             report_summary = summarize_report_records(
                 loaded.records, config, aborted_at_step=aborted_at, abort_reason=reason
             )
+            if dense_detail:
+                record["dense_detail"] = registered_dense_detail(loaded.records, loaded.report)
         except (ReportFormatError, ValueError, json.JSONDecodeError) as error:
             record.update(
                 config_nonconformant=True,
                 invalid_reason=f"{type(error).__name__}: {error}",
                 summary=None,
             )
+            if cell.run_id in inconsistent_cells:
+                record["record_inconsistent_prefix"] = consistent_prefix(paths["steps_jsonl"])
             entry.update(
                 complete=False,
                 aborted=False,

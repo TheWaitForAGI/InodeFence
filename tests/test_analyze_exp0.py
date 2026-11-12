@@ -693,9 +693,10 @@ def test_confirmatory_permutation_and_holm():
     assert all(c["permutation"]["p_value"] == pytest.approx(0.25) for c in cr)
     assert all(c["holm_adjusted_p"] == pytest.approx(0.5) for c in cr)
     assert all(c["reject_at_alpha"] is False for c in cr)
-    # events 3 < threshold 5 -> underpowered + descriptive rule-of-three (6 cells in the contrast)
-    assert all(c["underpowered"] is True for c in cr)
-    assert cr[0]["campaign_unit_rule_of_three_upper95"] == pytest.approx(0.5)  # 3 / 6
+    # 3 informative blocks < threshold 5 -> underpowered. With events there is no rule-of-three.
+    assert all(c["underpowered"] is True and c["informative_blocks"] == 3 for c in cr)
+    assert all("campaign_unit_rule_of_three_upper95" not in c for c in cr)
+    assert all("zero_event_bound" not in c for c in cr)
 
 
 def test_build_multitarget_confirmatory_is_none_without_plan():
@@ -934,3 +935,212 @@ def test_fix_verification_role_label_makes_no_hit_count_prediction():
     rendered = json_bytes(report).decode("ascii") + report_markdown(report)
     assert "negative control" not in rendered and "expected 0 hits" not in rendered
     assert "no hit-count prediction" in report["purpose"]
+
+
+# --- one-target confirmatory section and the execution deadline ---------------------------
+
+
+ONE_CONTRAST_PLAN = {
+    "confirmatory_family": "holdout:S-u-vs-R",
+    "confirmatory_test": "exact-logrank-permutation-v1",
+    "multiplicity": "holm-fwer-v1",
+    "primary_endpoint": "t_first",
+    "event_threshold": 5,
+    "confirmatory_targets": ["h"],
+    "confirmatory_contrasts": [
+        {"order": 1, "target_id": "h", "arm_a": "S-u", "arm_b": "R", "contrast": "S-u-vs-R"}
+    ],
+}
+
+
+def _write_index(tmp_path, *, seeds=(1, 2, 3), targets=(("h", "holdout"),), **top):
+    """A launcher-shaped index: S-u hits at step 20, R is censored, on each target and seed."""
+    summaries = tmp_path / "summaries"
+    summaries.mkdir(parents=True, exist_ok=True)
+    cells = []
+    for target_id, role in targets:
+        for seed in seeds:
+            for arm, over in (("S-u", _SU_HIT), ("R", {})):
+                run_id = f"{target_id}-{arm}-s{seed}"
+                rec = _rec(arm=arm, random_seed=seed, **over)
+                (summaries / f"{run_id}.summary.json").write_text(
+                    json.dumps({"summary": rec, "schema_version": 1})
+                )
+                cells.append(
+                    {
+                        "run_id": run_id,
+                        "arm": arm,
+                        "seed": seed,
+                        "budget": rec["execution_budget"],
+                        "summary": f"summaries/{run_id}.summary.json",
+                        "target_id": target_id,
+                        "role": role,
+                        "hypothesis": "H-A",
+                    }
+                )
+    index = summaries / "index.json"
+    index.write_text(json.dumps({"cells": cells, **top}))
+    return index
+
+
+def _json_report(index, capsys):
+    capsys.readouterr()
+    assert main(["--index", str(index), "--format", "json"]) == 0
+    return json.loads(capsys.readouterr().out)
+
+
+def test_one_target_with_contrasts_runs_the_confirmatory_family(tmp_path, capsys):
+    report = _json_report(_write_index(tmp_path, analysis_plan=ONE_CONTRAST_PLAN), capsys)
+    assert report["target_ids"] == ["h"] and "by_target" in report
+    contrast = report["confirmatory"]["contrasts"][0]
+    assert contrast["contrast"] == "S-u-vs-R" and contrast["number_seed_blocks"] == 3
+    assert contrast["reject_at_alpha"] is False  # p = 2/8 with three blocks
+
+
+@pytest.mark.parametrize(
+    "plan",
+    [
+        {"confirmatory_contrasts": []},
+        {"confirmatory_contrasts": None},
+        {"multiplicity": "holm-fwer-v1"},
+    ],
+)
+def test_one_target_without_contrasts_keeps_the_flat_report_bytes(tmp_path, capsys, plan):
+    without = _json_report(_write_index(tmp_path), capsys)
+    assert "by_target" not in without and "confirmatory" not in without
+    assert _json_report(_write_index(tmp_path, analysis_plan=plan), capsys) == without
+
+
+def test_several_targets_still_use_the_multitarget_report_without_a_plan(tmp_path, capsys):
+    targets = (("h", "holdout"), ("t", "train"))
+    report = _json_report(_write_index(tmp_path, targets=targets), capsys)
+    assert report["target_ids"] == ["h", "t"] and report["confirmatory"] is None
+    assert "deadline" not in report
+
+
+def _deadline(excluded, causes=None, passed=True):
+    return {
+        "execution_deadline": "2026-11-25T12:00:00+09:00",
+        "passed": passed,
+        "excluded_seeds": excluded,
+        "causes": causes or {},
+    }
+
+
+def test_a_deadline_excluded_seed_leaves_every_arm_and_cannot_come_back(tmp_path, capsys):
+    causes = {"h-R-s2": "unattempted"}
+    index = _write_index(
+        tmp_path, analysis_plan=ONE_CONTRAST_PLAN, deadline=_deadline({"h": [2]}, causes)
+    )
+    report = _json_report(index, capsys)
+    contrast = report["confirmatory"]["contrasts"][0]
+    assert contrast["number_seed_blocks"] == 2 and contrast["total_events"] == 2
+    assert report["seeds"] == [1, 3] and report["by_target"]["h"]["seeds"] == [1, 3]
+    assert report["deadline"] == {
+        "execution_deadline": "2026-11-25T12:00:00+09:00",
+        "passed": True,
+        "excluded_seeds": {"h": [2]},
+        "number_excluded_seeds": 1,
+        "number_excluded_cells": 2,
+        "causes": causes,
+    }
+
+
+def test_one_target_without_contrasts_still_reports_what_the_deadline_excluded(tmp_path, capsys):
+    """EXP-3's train file has one target and no contrasts; the exclusion must not be silent."""
+    causes = {"h-R-s2": "unattempted"}
+    report = _json_report(_write_index(tmp_path, deadline=_deadline({"h": [2]}, causes)), capsys)
+    assert report["classification"] == "exp3-multitarget-measurement"
+    assert report["deadline"]["number_excluded_cells"] == 2
+    assert report["deadline"]["excluded_seeds"] == {"h": [2]}
+    assert report["deadline"]["causes"] == causes
+    assert report["by_target"]["h"]["seeds"] == [1, 3]
+
+
+def test_a_deadline_with_no_exclusion_still_uses_the_report_that_names_it(tmp_path, capsys):
+    report = _json_report(_write_index(tmp_path, deadline=_deadline({}, passed=False)), capsys)
+    assert report["classification"] == "exp3-multitarget-measurement"
+    assert report["deadline"]["number_excluded_seeds"] == 0
+
+
+def test_a_deadline_may_exclude_every_seed_and_the_report_still_says_so(tmp_path, capsys):
+    index = _write_index(
+        tmp_path, analysis_plan=ONE_CONTRAST_PLAN, deadline=_deadline({"h": [1, 2, 3]})
+    )
+    report = _json_report(index, capsys)
+    contrast = report["confirmatory"]["contrasts"][0]
+    assert contrast["number_seed_blocks"] == 0 and contrast["permutation"]["p_value"] is None
+    assert contrast["reject_at_alpha"] is False
+    assert report["number_cells"] == 0 and report["by_target"] == {}
+    assert report["deadline"]["number_excluded_seeds"] == 3
+    assert report["deadline"]["number_excluded_cells"] == 6
+    capsys.readouterr()
+    assert main(["--index", str(index), "--format", "markdown"]) == 0
+    assert "excluded seeds 3 · excluded cells 6" in capsys.readouterr().out
+
+
+def test_no_cells_without_a_deadline_is_still_an_error():
+    with pytest.raises(ValueError, match="no cells to summarize"):
+        build_multitarget_report([], field_map=DEFAULT_MAP, sources=[])
+
+
+def test_a_deadline_exclusion_stays_in_its_own_target(tmp_path, capsys):
+    targets = (("h", "holdout"), ("t", "train"))
+    index = _write_index(
+        tmp_path, targets=targets, analysis_plan=ONE_CONTRAST_PLAN, deadline=_deadline({"h": [1]})
+    )
+    report = _json_report(index, capsys)
+    assert report["by_target"]["h"]["seeds"] == [2, 3]
+    assert report["by_target"]["t"]["seeds"] == [1, 2, 3]
+
+
+def test_a_deadline_not_yet_passed_excludes_nothing(tmp_path, capsys):
+    index = _write_index(
+        tmp_path, analysis_plan=ONE_CONTRAST_PLAN, deadline=_deadline({}, passed=False)
+    )
+    report = _json_report(index, capsys)
+    assert report["confirmatory"]["contrasts"][0]["number_seed_blocks"] == 3
+    assert report["deadline"]["passed"] is False
+    assert report["deadline"]["number_excluded_seeds"] == 0
+
+
+def test_an_invalid_cell_leaves_only_the_contrasts_that_use_its_arm():
+    cells = [
+        _mt_cell(arm, seed, "h", "holdout", **(_SU_HIT if arm == "S-u" else {}))
+        for arm in ("S-u", "R", "D")
+        for seed in (1, 2, 3)
+        if (arm, seed) != ("D", 2)
+    ]
+    cells.append(
+        cell_from_row(
+            _wrap(invalid=True, invalid_reason="record"),
+            DEFAULT_MAP,
+            entry={"arm": "D", "seed": 2, "target_id": "h", "role": "holdout"},
+        )
+    )
+    contrast = {"target_id": "h", "arm_a": "S-u"}
+    plan = {
+        "confirmatory_contrasts": [
+            {**contrast, "order": 1, "arm_b": "R", "contrast": "S-u-vs-R"},
+            {**contrast, "order": 2, "arm_b": "D", "contrast": "S-u-vs-D"},
+        ],
+    }
+    report = build_multitarget_report(
+        cells, analysis_plan=plan, field_map=DEFAULT_MAP, sources=["t"]
+    )
+    by_contrast = {c["contrast"]: c for c in report["confirmatory"]["contrasts"]}
+    assert by_contrast["S-u-vs-R"]["number_seed_blocks"] == 3
+    assert by_contrast["S-u-vs-D"]["number_seed_blocks"] == 2
+
+
+def test_markdown_names_the_excluded_seeds_and_causes(tmp_path, capsys):
+    causes = {"h-R-s2": "ended-after-deadline"}
+    index = _write_index(
+        tmp_path, analysis_plan=ONE_CONTRAST_PLAN, deadline=_deadline({"h": [2]}, causes)
+    )
+    capsys.readouterr()
+    assert main(["--index", str(index), "--format", "markdown"]) == 0
+    text = capsys.readouterr().out
+    assert "## Execution deadline" in text
+    assert "excluded seeds 1 · excluded cells 2" in text
+    assert "| h | 2 |" in text and "| h-R-s2 | ended-after-deadline |" in text

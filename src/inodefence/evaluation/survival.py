@@ -29,9 +29,11 @@ Honest framing (fixed before running, audit EN-008):
 
 import math
 import random
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
+
+from inodefence.evaluation.right_censored import wilson_interval
 
 
 @dataclass(frozen=True, slots=True)
@@ -133,13 +135,16 @@ def _risk_table(arms: Sequence[list[Observation]]) -> list[_RiskRow]:
     return rows
 
 
+SINGULAR_PIVOT = 1e-12
+
+
 def _invert(matrix: list[list[float]]) -> list[list[float]]:
     """Invert a small square matrix by Gauss-Jordan elimination (pure Python)."""
     n = len(matrix)
     aug = [list(row) + [1.0 if i == j else 0.0 for j in range(n)] for i, row in enumerate(matrix)]
     for col in range(n):
         pivot = max(range(col, n), key=lambda r: abs(aug[r][col]))
-        if abs(aug[pivot][col]) < 1e-12:
+        if abs(aug[pivot][col]) < SINGULAR_PIVOT:
             raise ValueError("log-rank covariance matrix is singular; check for empty arms")
         aug[col], aug[pivot] = aug[pivot], aug[col]
         pivot_value = aug[col][col]
@@ -191,10 +196,15 @@ def logrank_test(arms: Mapping[str, Sequence[Observation]]) -> dict:
                 covariance[g][h] += term
                 covariance[h][g] += term
     deviation = [observed[g] - expected[g] for g in range(k - 1)]
-    inverse = _invert(covariance)
-    statistic = sum(
-        deviation[i] * inverse[i][j] * deviation[j] for i in range(k - 1) for j in range(k - 1)
-    )
+    if k == 2 and abs(covariance[0][0]) < SINGULAR_PIVOT:
+        # No event carries variance: a lone arm at risk, or every member of a risk set failing
+        # together. Nothing separates the arms, which is chi-square 0 and not an error.
+        statistic = 0.0
+    else:
+        inverse = _invert(covariance)
+        statistic = sum(
+            deviation[i] * inverse[i][j] * deviation[j] for i in range(k - 1) for j in range(k - 1)
+        )
     statistic = max(0.0, statistic)
     df = k - 1
     return {
@@ -647,6 +657,19 @@ def rule_of_three(n: int) -> float:
     return 3.0 / n
 
 
+def informative_blocks(blocks: Sequence[tuple[Observation, Observation]]) -> int:
+    """I: seed blocks whose two arms differ, the blocks a label swap can change (D040-D14).
+
+    The smallest permutation p is ``2^(1-I)``, so this decides whether a contrast can reject. The
+    total event count does not: many events in blocks where both arms agree add no information.
+    """
+    return len(_informative_indices(blocks))
+
+
+def _informative_indices(blocks: Sequence[tuple[Observation, Observation]]) -> list[int]:
+    return [index for index, (first, second) in enumerate(blocks) if first != second]
+
+
 def zero_event_summary(arms: Mapping[str, Sequence[Observation]]) -> dict:
     """Campaign-unit rule-of-three fallback for the all-arms-zero-event scenario (judgment 5).
 
@@ -752,8 +775,8 @@ def seed_block_logrank_permutation(
     blocks: Sequence[tuple[Observation, Observation]],
     *,
     seed: int = 0,
-    max_exact_blocks: int = 12,
-    resamples: int = 10000,
+    max_exact_informative: int = 16,
+    resamples: int = 100_000,
 ) -> dict:
     """Stratified seed-block arm-label permutation log-rank -- ``exact-logrank-permutation-v1``.
 
@@ -761,13 +784,19 @@ def seed_block_logrank_permutation(
     two arms are exchangeable WITHIN a seed, so the reference distribution permutes arm labels
     block-by-block (never across seeds); this respects the paired design that the ordinary
     two-sample log-rank's independence assumption violates. The statistic is the two-arm
-    log-rank chi-square and the p-value is ``P(chi2_permuted >= chi2_observed)``. For up to
-    ``max_exact_blocks`` blocks all ``2^n`` label assignments are enumerated EXACTLY; above that
-    a ``seed``-fixed Monte-Carlo sample of ``resamples`` draws is used with a 95% binomial CI on
-    the p-value. Valid at any n (no asymptotic assumption): with few/no events it correctly
-    returns p near 1. ``total_events`` is the observed event count over both arms -- the caller
-    flags underpowered and adds the rule-of-three bound below the registered ``event_threshold``;
-    this function never switches the test.
+    log-rank chi-square and the p-value is ``P(chi2_permuted >= chi2_observed)``.
+
+    Only informative blocks (I: the two observations differ) swap labels, because swapping an
+    identical block changes nothing. The statistic is always computed over ALL blocks: dropping
+    the identical ones would change the risk sets and so the value (D040-D10).
+
+    * ``I <= max_exact_informative``: all ``2^I`` assignments are enumerated and
+      ``p = ge / 2^I``, the identity included. ``I = 0`` gives ``p = 1``.
+    * Above that: ``resamples`` ``seed``-fixed draws over the informative blocks and
+      ``p = (ge + 1) / (resamples + 1)``, so p is never 0, with a Wilson 95% interval on ``ge``.
+
+    Valid at any n (no asymptotic assumption). ``total_events`` is the observed event count over
+    both arms. The caller flags underpowered from I; this function never switches the test.
     """
     blocks = list(blocks)
     n = len(blocks)
@@ -778,6 +807,7 @@ def seed_block_logrank_permutation(
             "p_value": None,
             "observed_chi_square": None,
             "number_blocks": 0,
+            "informative_blocks": 0,
             "total_events": 0,
             "note": "no paired seed blocks (no seed observed in both arms)",
         }
@@ -785,19 +815,22 @@ def seed_block_logrank_permutation(
     group_b = [b for _, b in blocks]
     observed, observed_oe_a = _two_arm_logrank_observed(group_a, group_b)
     total_events = sum(1 for obs in [*group_a, *group_b] if obs.event)
+    informative = _informative_indices(blocks)
+    number_informative = len(informative)
     eps = 1e-9
 
-    def stat_for(bits: Sequence[int]) -> float:
-        a = [blocks[i][1] if bit else blocks[i][0] for i, bit in enumerate(bits)]
-        b = [blocks[i][0] if bit else blocks[i][1] for i, bit in enumerate(bits)]
+    def stat_for(swapped: Collection[int]) -> float:
+        a = [blocks[i][1] if i in swapped else blocks[i][0] for i in range(n)]
+        b = [blocks[i][0] if i in swapped else blocks[i][1] for i in range(n)]
         return _two_arm_logrank_chi2(a, b)
 
-    if n <= max_exact_blocks:
-        total = 1 << n
+    if number_informative <= max_exact_informative:
+        total = 1 << number_informative
         ge = sum(
             1
             for mask in range(total)
-            if stat_for([(mask >> i) & 1 for i in range(n)]) >= observed - eps
+            if stat_for({informative[j] for j in range(number_informative) if (mask >> j) & 1})
+            >= observed - eps
         )
         return {
             "test": "exact-logrank-permutation-v1",
@@ -806,29 +839,33 @@ def seed_block_logrank_permutation(
             "observed_chi_square": observed,
             "observed_minus_expected_a": observed_oe_a,
             "number_blocks": n,
+            "informative_blocks": number_informative,
             "number_permutations": total,
             "total_events": total_events,
-            "note": "exact: all 2^n within-seed arm-label assignments enumerated",
+            "note": "exact: all 2^I label assignments of the informative blocks enumerated",
         }
     rng = random.Random(seed)
-    ge = 0
-    for _ in range(resamples):
-        if stat_for([rng.getrandbits(1) for _ in range(n)]) >= observed - eps:
-            ge += 1
-    p = ge / resamples
-    half = 1.96 * math.sqrt(max(p * (1.0 - p), 0.0) / resamples)
+    ge = sum(
+        1
+        for _ in range(resamples)
+        if stat_for({index for index in informative if rng.getrandbits(1)}) >= observed - eps
+    )
     return {
         "test": "exact-logrank-permutation-v1",
         "exact": False,
-        "p_value": p,
-        "p_value_mc_ci95": [max(0.0, p - half), min(1.0, p + half)],
+        "p_value": (ge + 1) / (resamples + 1),
+        "p_value_mc_ci95": list(wilson_interval(ge, resamples)),
         "observed_chi_square": observed,
         "observed_minus_expected_a": observed_oe_a,
         "number_blocks": n,
+        "informative_blocks": number_informative,
         "resamples": resamples,
         "seed": seed,
         "total_events": total_events,
-        "note": f"monte-carlo: 2^{n} too large to enumerate; seed-fixed {resamples} draws",
+        "note": (
+            f"monte-carlo: 2^{number_informative} too large to enumerate; seed-fixed {resamples} "
+            "draws over the informative blocks; p = (ge + 1) / (N + 1)"
+        ),
     }
 
 

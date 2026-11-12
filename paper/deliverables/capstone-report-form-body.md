@@ -160,7 +160,7 @@
 | 파일럿 | 사건 R-walk 1, R-restart 4, D 4, S-u 6, abort 11/40 | `experiments/summaries/exp3-hazard-pilot-v1-result.md` | PASS(#267), PASS(9eafebd). "R의 두 변형" 문구는 재확인 대기(`79ce477`) |
 | 회귀 명령 | 고정 fixture 범위. 해당 버전 이미지를 만든 뒤 실행 | `scripts/regression_check.py`, `Makefile` `regression` | PASS(d22577b) |
 | 양성 대조 | 주장 원장 C15 문장 그대로. (가) 7.5.2 S-u s8002 캠페인 1셀 사건(첫 사건 C2만), E′ 고정 fixture 7.5.2·7.4.4 C1∧C2, 7.5.3 거부·비위반 | `~/capstone-work/paper-w4/claim-ledger.md` C15(W4), `docs/LOG.md` 2026-11-12 양성 대조 줄, `experiments/configs/positive-control-a-v1.md`(#354), #355 | 대기(W4 C15 문장 대조) |
-| 적격성·정지 점검 | 호스트 1 적격성 판정 도구 PASS(12셀, 기준 12개). D042 2차 원판정 23/24(B9 불충족), 정정 기준(#352)·보조 확인으로 B9 충족(W4 독립 검증) | `docs/LOG.md` 2026-11-12 HOST1 적격성 결과 줄(`qualification-HOST1.json` `282cccad…`), 2026-11-13 D042 2차 결과 줄(#357) | 대기(W3 수치) |
+| 적격성·정지 점검 | 호스트 1 적격성 판정 도구 PASS(12셀, 기준 12개). D042 2차 원판정 23/24(B9 불충족), 정정 기준(#352)·보조 확인으로 B9 충족(W4 독립 검증) | `docs/LOG.md` 2026-11-12 HOST1 적격성 결과 줄(`qualification-HOST1.json` `282cccad…`), 2026-11-13 D042 2차 결과 줄(#357) | W3 PASS(#358 코멘트) |
 | arm 정의·holdout 문구 | 등록 범위 문구(F2), holdout = 같은 결함 계열 재현 반복(외부 검토 M2) | `~/capstone-work/paper-w4/d12-conclusions.md` 공통 머리(sha256 `16065671…`), #332 exp2-v1 §6 | 대기(W4) |
 | 결과 칸 안전판 | d12 "칸 밖: 제출 시점에 실행 중" 문어 판 그대로 | `~/capstone-work/paper-w4/d12-conclusions.md`(sha256 `78537f5c…`) | W4 승인(11/13) |
 | holdout 정체 | holdout은 미노출 릴리스 7.4.4, 고정 입력 점검으로 선정(탐색 아님) | `docs/DECISIONS.md` D045(#338) | 대기 |

@@ -159,3 +159,5 @@ GO는 자동이 아니다. EXP-2 시작 전에 W3가 train 리포트 값으로 �
 - [ ] 할당 파일과 `seed_assignment_sha256`.
 - [ ] 임시값 사본으로 `run_exp0 --dry-run`(gate, wiring, 셀 순서) 확인(W3).
 - [ ] 동결 시점의 호스트 간 realtime 시계 차 기록.
+- [ ] 동결일 정의·측정 사슬 검증·E 코드 불변 확인은 [exp2-v1](exp2-v1.md) §7과 같다(2026-11-12 결과 전 개정, exp2-v1 §8).
+- [ ] GO는 T-EXP3-2(arm 합산 E)만으로 낸다. train의 arm별 결과(T-EXP3-1·T-EXP3-3)는 holdout 결과 가림 해제 때까지 열지 않는다(exp2-v1 §5).

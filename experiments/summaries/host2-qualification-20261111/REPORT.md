@@ -504,3 +504,26 @@ Qualification started right after, at 22:42:42 KST (start SNTP +0.386 s ±0.006,
 | Pre-run record (00:11 KST) | w32tm last sync 2026-11-12 20:45:22, source time.windows.com, leap 0. SNTP +0.2014 s (time.windows.com) / +0.2017 s (pool.ntp.org), ±0.007. pypi.org resolves (151.101.128.223). Power events since 11-12 14:00: none |
 | Owner notice | an on-screen note before start: "experiment running: no power button / shutdown / sleep; expected end about 04:30" |
 | After | index, manifest, `qualify_host`, throughput, fingerprint v2, events copy, ledger row → positive control (a) (S-u seed 8002, 1 cell) |
+
+## 36. Qualification attempt 2 result; HOST2 manifest pre-fixed; positive control (a) pre-run record (2026-11-13 03:3x KST)
+
+Attempt 2 (`runs/out-HOST2-qual-r2`, approval `jiwoong-20261113-host2-qual-r2`): wrapper ran 00:12:03 → **03:26:09 KST, launcher rc 0**. Only infrastructure keys, gate letters, index status/count keys and `qualify_host` criteria results were read. No summaries, reports, steps or stdout were opened.
+
+| Item | Value |
+| --- | --- |
+| cell-results | 12 start / 12 end, all rc 0, attempt 1. infrastructure-stop 0 |
+| Gate | 12 × `S`, `acknowledged/` none |
+| index `cell_completeness` | cells 12, complete 12, aborts 0, no_record 0, record_inconsistent 0, unattempted 0, unknown_outcome_steps 0, watchdog 0, start_denied 0, recorded_steps 24000, infrastructure_stopped false |
+| Pre/postflight | `problems: []` both; revision E, dirty false |
+| Manifest | 117 entries, verify OK (0 mismatched/missing/extra). **`raw-manifest-host2-qual-r2.sha256` sha256 `3f6b12f82c5e6eb4e02e34fc484e0c328cf9fc4c9e287fe3c377d29097636c07`** (pre-fixed here before transfer) |
+| Leftovers after | containers 0, volumes 0; worktree porcelain 0 |
+| **`qualify_host` (host-independent, no `--peer`)** | **PASS**. All 11 criteria PASS: cleanup_unknown 0, engine/images/path/execution SHA, first-attempt abort ratio 0/12, infrastructure stops 0, longest cell 2151.2 s (< 7200), record completeness 12, Stage A recurrence 0 (8 keys comparable, 8 same path to abort), start denied 0, unconfirmed aborts 0, unstable steps per 1000 (R 0, D 0, S-u 1 re-execution / 8000; threshold 1), watchdog 0. `qualification-HOST2.json` sha256 `1c593003…1cd1e` |
+| Throughput | cell wall 1839.6–2151.2 s (mean 1935.8). First start to last end 11,631 s for 24,000 steps ≈ **7,428 exec/h realtime** (jobs 2) |
+| Fingerprint v2 (end) | `fingerprint-HOST2-qual-r2-end.json` sha256 `5e4539d4…f2de81`, unknown_probes 0 |
+| events.jsonl copy | sha256 `9611653c26c3c018f5a063b8dc91ad1627d6e5c459954055b516241c548a7b5e` (`exec-bed077a-r2/evidence/`, not committed) |
+| Ledger rows | attempt 1: incomplete, host event (manual row; `harness_ledger.py` needs an index). Attempt 2: `harness_ledger.py` row, sha256 `36f78ba5…9630` (12/12 complete, S 12, infra_reexecutions 1, outcomes_read false) |
+| Clock | SNTP +0.204 s at start, +0.112 s at 03:24. WSL freq +121.7 ppm at the end (record only) |
+
+HOST2 dedicated operation: owner consent (relayed by Jiwoong, 2026-11-13). Power/sleep settings were not changed by W2.
+
+**Positive control (a) pre-run record** (same approval; D-ORCH-1112-22): registration copy `positive-control-a-HOST2-filled.md` sha256 `f47faf6d9e9820aa9ec5c94174c1bc1db2c6c48a15fa435fd111df3a96ea1a8c`, assignment `58e0807e…589b`, **`pc_keys.py` sha256 `74171bb03b160408546b7b3457884580abd46e11c7aa151f153a4e1ae9a87e13`**, criteria `8c73611c…`. Output `runs/out-HOST2-pc-a`, jobs 1. Dry-run: gate PASS, nothing refused, 1 cell (S-u seed 8002), budget 2000 (`dryrun_pc_a.txt` `ce5d1059…`). Read values are only those fixed in the registration §2 (via `pc_keys.py`).

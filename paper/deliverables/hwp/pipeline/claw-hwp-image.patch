@@ -1,0 +1,168 @@
+--- a/plugins/claw-hwp/skills/hwp/scripts/cell-patch.js
++++ b/plugins/claw-hwp/skills/hwp/scripts/cell-patch.js
+@@ -4360,6 +4360,34 @@
+ const IMG_CTRL_DATA_HEX = '0000000000000000000000000000000000000000701700000000000070170000a60e000000000000a60e0000000000000000000070170000c40e0000000000000000000000000001000066969a020000000070170000c40e000000';
+ const TAG_CTRL_DATA = 0x55;
+ 
++// LOCAL PATCH (InodeFence, 2026-11-13) — see the call site in insertImageInPlace.
++// Reads the display size from the gso CTRL_HEADER (W@16, H@20, already set by
++// applyGsoSize) and rewrites the picture record (tag 0x55): the four border
++// rectangle corners (@12..@40) to the display size, the crop box (@44..@56) and
++// the trailing original-size pair (@82, @86) to the native image size in HWPUNIT
++// (96 dpi: 1 px = 75 HWPUNIT).
++function applyPictureGeometry(cluster, px) {
++  let W = null, H = null, p = 0;
++  const recs = [];
++  while (p + 4 <= cluster.length) {
++    const h = cluster.readUInt32LE(p); p += 4;
++    const tag = h & 0x3FF; let sz = (h >> 20) & 0xFFF;
++    if (sz === 0xFFF) { sz = cluster.readUInt32LE(p); p += 4; }
++    recs.push({ tag, d: p, sz });
++    p += sz;
++  }
++  const ctrl = recs.find((r) => r.tag === 0x47 && cluster.slice(r.d, r.d + 4).toString('latin1') === ' osg');
++  const pic = recs.find((r) => r.tag === TAG_CTRL_DATA);
++  if (!ctrl || !pic || pic.sz < 90) return cluster;
++  W = cluster.readUInt32LE(ctrl.d + 16); H = cluster.readUInt32LE(ctrl.d + 20);
++  const d = pic.d, nW = Math.round(px.w * 75), nH = Math.round(px.h * 75);
++  const corners = [[0, 0], [W, 0], [W, H], [0, H]];
++  corners.forEach(([x, y], i) => { cluster.writeInt32LE(x, d + 12 + i * 8); cluster.writeInt32LE(y, d + 16 + i * 8); });
++  cluster.writeInt32LE(0, d + 44); cluster.writeInt32LE(0, d + 48); cluster.writeInt32LE(nW, d + 52); cluster.writeInt32LE(nH, d + 56);
++  cluster.writeUInt32LE(nW, d + 82); cluster.writeUInt32LE(nH, d + 86);
++  return cluster;
++}
++
+ // Build the image's new-paragraph gso "$pic" cluster (6 records).
+ function buildImagePicCluster(storageId, paraInstanceId, gsoInstanceId) {
+   const ph = Buffer.alloc(24);
+@@ -4405,7 +4433,11 @@
+     const imgBuf = readFileSync(op.path);
+     const ext = (op.path.split('.').pop() || 'png').toLowerCase();
+     const stored = deflateRawSync(imgBuf, { level: 9 });
+-    if (stored.length >= 4096) throw new Error(`insert_image: image too large for mini-stream (${stored.length} deflated bytes)`);
++    // LOCAL PATCH (InodeFence, 2026-11-13): upstream refuses images whose deflated
++    // size is >= 4096 bytes because it only wrote the mini-stream. CFB routes a
++    // stream of >= 4096 bytes to the regular FAT, and insert_chart already stores
++    // large OLE objects there (allocRegularChain). Mirror that branch for images.
++    const imageInMini = stored.length < 4096;
+ 
+     // ── Step 1: CFB — ensure BinData folder, add the image stream ──────────
+     let buf = readFileSync(filePath);
+@@ -4436,12 +4468,21 @@
+     binDataIdx = dir.entries.findIndex((e) => e.type === 1 && e.name === 'BinData');
+     const streamSlot = findUnusedDirSlot(dir.entries);
+     if (streamSlot < 0) throw new Error('insert_image: no free directory slot for the image stream');
+-    const alloc = allocMiniChain({ buf, ssz, mssz, fat, fatAddrs, minifat, minifatStart, rootChain, rootEntry: dir.entries[0] }, stored.length);
+-    buf = alloc.buf; fat = alloc.fat; minifat = alloc.minifat; minifatStart = alloc.minifatStart; rootChain = alloc.rootChain;
+-    writeMiniChainBytes(buf, alloc.chain, rootChain, ssz, mssz, stored);
++    let imgStartSec;
++    if (imageInMini) {
++      const alloc = allocMiniChain({ buf, ssz, mssz, fat, fatAddrs, minifat, minifatStart, rootChain, rootEntry: dir.entries[0] }, stored.length);
++      buf = alloc.buf; fat = alloc.fat; minifat = alloc.minifat; minifatStart = alloc.minifatStart; rootChain = alloc.rootChain;
++      writeMiniChainBytes(buf, alloc.chain, rootChain, ssz, mssz, stored);
++      imgStartSec = alloc.chain[0];
++    } else {
++      const ra = allocRegularChain(buf, ssz, fat, fatAddrs, stored.length); // LOCAL PATCH: regular-FAT image stream
++      buf = ra.buf; fat = ra.fat;
++      writeChainBytes(buf, ra.chain, ssz, stored);
++      imgStartSec = ra.chain[0];
++    }
+     dir = readDirectory(buf, fat, ssz, dirStart);
+     binDataIdx = dir.entries.findIndex((e) => e.type === 1 && e.name === 'BinData');
+-    writeDirEntry(buf, dir.entries[streamSlot], newName, 2, alloc.chain[0], stored.length, 0);
++    writeDirEntry(buf, dir.entries[streamSlot], newName, 2, imgStartSec, stored.length, 0);
+     insertEntryIntoTree(buf, dir.entries, binDataIdx, streamSlot);
+     const storageId = parseInt(newName.match(/BIN(\d{4})\./)[1], 10);
+     writeFileSync(filePath, buf);
+@@ -4474,6 +4515,14 @@
+       // axis → the other follows; give both → explicit squeeze).
+       const px = readImagePixelSize(imgBuf);
+       applyGsoSize(cluster, resolveAspectSize(op, px && px.w > 0 && px.h > 0 ? px.w / px.h : gsoCtrlRatio(cluster)));
++      // LOCAL PATCH (InodeFence, 2026-11-13): make the picture record agree with the
++      // object size. The template's picture record is for a 6000x3750 HWPUNIT image:
++      // its border rectangle stays that small (a renderer that draws from the
++      // rectangle shows a thumbnail inside a large empty frame) and its crop box
++      // stays 6000x3780 (a renderer that honours the crop would show a corner of a
++      // large image). Write what Hancom's own output carries: border rectangle =
++      // display size, crop box and original-size fields = native image size.
++      if (px && px.w > 0 && px.h > 0) applyPictureGeometry(cluster, px);
+       // Placement: inline (글자처럼, default — back-compat) or a floating wrap
+       // (front/behind/square/topbottom) + optional pos_x_mm/pos_y_mm. Lets an image
+       // float "앞으로" at an absolute position (seal/도장 placement) — same gso
+@@ -4492,7 +4541,16 @@
+         const cellCluster = relevelCluster(cluster, 2);
+         cellCluster.writeUInt16LE(centerPsId & 0xFFFF, 12); // PARA_HEADER body off8 = para_shape_id (centered)
+         setGsoOutMarginTopBottom(cellCluster, CELL_OBJ_VMARGIN_HU); // top/bottom breathing room
+-        raw = Buffer.concat([raw.slice(0, target.endByte), cellCluster, raw.slice(target.endByte)]);
++        // LOCAL PATCH (InodeFence, 2026-11-13): optional cell.before_para = N puts the
++        // image paragraph BEFORE the cell's Nth paragraph (0-based) instead of at the
++        // cell's end, so a figure can sit directly above its caption line.
++        let cellInsertAt = target.endByte;
++        if (Number.isInteger(op.cell.before_para)) {
++          const cellParaHeads = records.filter((r) => r.tag === TAG_PARA_HEADER && r.level === 2 && r.headOff > target.startByte && r.headOff < target.endByte);
++          if (op.cell.before_para < 0 || op.cell.before_para >= cellParaHeads.length) throw new Error(`insert_image: cell.before_para ${op.cell.before_para} out of range (cell has ${cellParaHeads.length} paragraphs)`);
++          cellInsertAt = cellParaHeads[op.cell.before_para].headOff;
++        }
++        raw = Buffer.concat([raw.slice(0, cellInsertAt), cellCluster, raw.slice(cellInsertAt)]);
+         const t2 = tableCellRecords(parseRecords(raw), raw, para, control)
+           .find((c) => c.row === op.cell.row && c.col === op.cell.col);
+         const lhDataOff = t2.startByte + 4; // LIST_HEADER header = 4 bytes (body < 0xFFF)
+@@ -4594,6 +4652,58 @@
+   return result;
+ }
+ 
++// LOCAL PATCH (InodeFence, 2026-11-13): duplicate one text paragraph of a table
++// cell `copies` times (the copies follow the original). Lets a cell that holds one
++// caption paragraph become N caption paragraphs whose text is then rewritten with
++// the tool's own set_cell_text {cell_para}. Refuses a paragraph that hosts controls
++// (an inline object would be duplicated with it). Section 0 only.
++export function duplicateCellParagraphInPlace(filePath, spec) {
++  const { para = 0, control = 0, row, col, cell_para = 0, copies = 1 } = spec;
++  let b2 = readFileSync(filePath);
++  let h = parseCfbHeader(b2);
++  let f2 = readFat(b2, h.fatAddrs, h.ssz);
++  const { entries } = readDirectory(b2, f2, h.ssz, h.dirStart);
++  let mf2 = readMinifat(b2, f2, h.ssz, h.minifatStart);
++  const secEntry = findStreamEntry(entries, ['BodyText', 'Section0']);
++  const secInMini = secEntry.size < 4096;
++  let sChain, sComp;
++  const rootChain = walkChain(f2, entries[0].start);
++  if (secInMini) { sChain = walkChain(mf2, secEntry.start); sComp = readMiniChainBytes(b2, sChain, rootChain, h.ssz, h.mssz, secEntry.size); }
++  else { sChain = walkChain(f2, secEntry.start); sComp = readChainBytes(b2, sChain, h.ssz, secEntry.size); }
++  let raw = Buffer.from(inflateRawSync(sComp));
++  const records = parseRecords(raw);
++  const target = tableCellRecords(records, raw, para, control).find((c) => c.row === row && c.col === col);
++  if (!target) throw new Error(`duplicate_cell_paragraph: cell (row=${row}, col=${col}) not found`);
++  const heads = records.filter((r) => r.tag === TAG_PARA_HEADER && r.level === 2 && r.headOff > target.startByte && r.headOff < target.endByte);
++  if (cell_para < 0 || cell_para >= heads.length) throw new Error(`duplicate_cell_paragraph: cell_para ${cell_para} out of range (cell has ${heads.length})`);
++  const pStart = heads[cell_para].headOff;
++  const pEnd = cell_para + 1 < heads.length ? heads[cell_para + 1].headOff : target.endByte;
++  const inPara = records.filter((r) => r.headOff > pStart && r.headOff < pEnd);
++  if (inPara.some((r) => r.tag === TAG_CTRL_HEADER)) throw new Error('duplicate_cell_paragraph: paragraph hosts a control; refusing to duplicate it');
++  const block = raw.slice(pStart, pEnd);
++  const clones = [];
++  for (let i = 0; i < copies; i++) clones.push(Buffer.from(block));
++  raw = Buffer.concat([raw.slice(0, pEnd), ...clones, raw.slice(pEnd)]);
++  const t2 = tableCellRecords(parseRecords(raw), raw, para, control).find((c) => c.row === row && c.col === col);
++  const lhDataOff = t2.startByte + 4;
++  raw.writeUInt16LE((raw.readUInt16LE(lhDataOff) + copies) & 0xFFFF, lhDataOff);
++  normalizeCellLastParaFlag(raw, t2.startByte, t2.endByte, 2);
++  let newComp;
++  if (secInMini) {
++    const e = deflateMiniChainWithExpansion({ buf: b2, ssz: h.ssz, mssz: h.mssz, fat: f2, fatAddrs: h.fatAddrs, minifat: mf2, minifatStart: h.minifatStart, rootChain, rootEntry: entries[0] }, raw, sChain);
++    b2 = e.buf; newComp = e.compressed;
++    if (e.promoted) { writeChainBytes(b2, e.newRegularChain, h.ssz, newComp); b2.writeInt32LE(e.newRegularChain[0], secEntry.entryFileOffset + 0x74); }
++    else { writeMiniChainBytes(b2, e.miniChain, e.rootChain, h.ssz, h.mssz, newComp); }
++  } else {
++    const e = deflateAndFitWithExpansion(raw, sChain.length * h.ssz, h.ssz, f2, h.fatAddrs, sChain, b2, false);
++    b2 = e.buf; newComp = e.compressed; writeChainBytes(b2, e.chain, h.ssz, newComp);
++  }
++  b2.writeUInt32LE(newComp.length, secEntry.entryFileOffset + 0x78);
++  b2.writeUInt32LE(0, secEntry.entryFileOffset + 0x7C);
++  writeFileSync(filePath, b2);
++  return { mode: 'in-place', cell_paragraphs: heads.length + copies };
++}
++
+ 
+ // ── place_seal: font-metric seal/signature placement ──────────────────────
+ // HWP PARA_TEXT mixes glyphs with inline control chars. A control char occupies

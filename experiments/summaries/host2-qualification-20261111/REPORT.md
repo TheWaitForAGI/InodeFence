@@ -474,3 +474,33 @@ Owner confirmed the window ("start now, both"); Jiwoong's approval was relayed b
 Throughput: cells 280.2–281.5 s wall each (HOST1: 487–501 s); whole run 844 s for 1800 steps ≈ 7,680 exec/h realtime (HOST1 ≈ 4,349). Clock at start: SNTP +0.472 s (22:28), w32tm last sync 22:11:14 leap 0. `host/events.jsonl` copied after the end, outside the run folder: sha256 `6a865cf8…b1d7a8` (7.2 MB, kept in `exec-bed077a/smoke-evidence/`, not committed). The index has `outcomes_redacted: false` because all cells finished (README note in the evidence folder). Verdict wording: "observation"; PASS is not declared before ORCH/W4 review.
 
 Qualification started right after, at 22:42:42 KST (start SNTP +0.386 s ±0.006, w32tm last sync 22:11:14 leap 0).
+
+## 35. Qualification attempt 1 stopped by a host event; attempt 2 pre-run fixed record (2026-11-13 00:1x KST; push time = evidence of pre-fixing)
+
+**Attempt 1** (`runs/out-HOST2-qual`, start 2026-11-11 22:42:42 KST, E `bed077af…`, registration copy `81f56d43…`, criteria `8c73611c…`, seeds 8110/8102/8103/8106 × R/D/S-u, budget 2000, jobs 2) **did not finish: host event.**
+
+| Item | Observation (read-only diagnosis 2026-11-12 14:06–14:25 KST) |
+| --- | --- |
+| Cause | 2026-11-12 01:30:12 KST System event 1074: `winlogon.exe` on behalf of NT AUTHORITY\SYSTEM, "power off", reason 0x500ff, no comment. Fast startup on (HiberbootEnabled=1), so it is logged as 42/107. No 41/6008/6006/6005 (not a crash or power loss). It fits the power-button setting (power button = shut down); **who pressed it is not confirmed.** The PC came back at 01:30:53, went off again at 03:08:16 and came back at 11:38:34 (Windows LastBootUpTime unchanged at 11-11 10:03:03) |
+| WSL / launcher | The WSL VM powered off at 01:30:14 (`systemd-logind: The system will power off now!`), which killed the launcher and wrapper (`qual_run.status` has no `end` line). The last Docker event was at 01:30:12.800; the 10 min before it ran at a normal rate |
+| Cells | `cell-results.jsonl`: 12 start / 10 end / 0 infrastructure-stop. All 10 ended with rc 0, attempt 1, watchdog false, gate `S`. **D-s8106 and S-u-s8106** started at 01:13:09 and were cut off: `.cleanup` with no verdict (01:30:14.89). 0 cells never started. No index, summaries or manifest. Outcome values were not opened |
+| Leftovers | 4 containers (2 controllers + 2 step containers, owner labels tied to the two s8106 cells) and 2 volumes (`inodefence-local-runtime-…-{D,S-u}-s8106`). Removed by name on 2026-11-13 00:10:49–50 KST (approved), then 0/0 |
+| Evidence (`incident-20261112/`, not committed) | events.jsonl `7f8bba6aa4418029cdf6b9e1049b3dc4d2886e0ab67b588f8fea8a2cef27073d`; cell-results.jsonl `8b054e9e6325ee2f434bcb888e96d1b73cf7adb338cb17402c02e97c06db5fa6`; windows_events_and_state.txt `e873c320…`; leftovers_20261112T1411.txt `d834fbac…`; before-delete `0c24bc82…`; delete log `e4222555…` |
+| Classification | (a) host event (ORCH D-ORCH-1112-58). Attempt 1's folder is kept unchanged and disclosed as "incomplete: host event" |
+
+**Why not resume (A):** two gates are left without a verdict and would need an ack, so Q1 (all S, no `acknowledged`) and Q5 (infrastructure-stop 0) cannot be met. **Qualification criteria §8** (rerun only after a recorded external cause, same criteria and same seeds, every attempt disclosed, stage approval obtained again) → **(B) attempt 2 from scratch in a new folder.**
+
+**Approval:** `jiwoong-20261113-host2-qual-r2`. Jiwoong 2026-11-13 00:0x KST, relayed by ORCH (D-ORCH-1113-01), received by W2 at 00:10 KST. Covers the HOST2 qualification rerun, leftover cleanup, and the positive control (a) that follows.
+
+**Attempt 2 fixed values:**
+
+| Item | Value |
+| --- | --- |
+| Output | `runs/out-HOST2-qual-r2`; wrapper and by-products in `exec-bed077a-r2/` (attempt-1 files are not overwritten) |
+| E / criteria / registration copy / assignment | `bed077af62b1cdd5cc8dec96eb9cbe93ba542f1d` / `8c73611c…` / `81f56d43…` / `e81d5fcf…` (re-checked 00:10 KST) |
+| Engine / images | 29.9.3; `d44900e1…`, `9b9dd606…`, `22c8734f…` = criteria |
+| Launcher cwd | worktree (ORCH D-ORCH-1112-61), `PYTHONDONTWRITEBYTECODE=1`, porcelain 0 before and after. Clock logger and outputs stay outside the worktree |
+| Dry-run (2026-11-12) | gate PASS, nothing refused, 12 cells, seeds [8110, 8102, 8103, 8106], budget 2000 (`dryrun2_qual_r2.txt` `30081e9b…`) |
+| Pre-run record (00:11 KST) | w32tm last sync 2026-11-12 20:45:22, source time.windows.com, leap 0. SNTP +0.2014 s (time.windows.com) / +0.2017 s (pool.ntp.org), ±0.007. pypi.org resolves (151.101.128.223). Power events since 11-12 14:00: none |
+| Owner notice | an on-screen note before start: "experiment running: no power button / shutdown / sleep; expected end about 04:30" |
+| After | index, manifest, `qualify_host`, throughput, fingerprint v2, events copy, ledger row → positive control (a) (S-u seed 8002, 1 cell) |

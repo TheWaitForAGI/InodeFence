@@ -17,7 +17,7 @@
 2. #332 `TBD-FREEZE`를 채운 커밋을 push하고 검증 24 h 뒤 동결 기록(LOG)을 push한다. F = 그 스택 머리 커밋(squash 머지는 사후 확인, 머지 뒤에도 등록 파일 sha256이 같아야 한다). 실행 등록 파일은 F의 경로, 코드는 E. 동결에 쓰는 원장은 F의 원장 파일이다.
 3. train 할당 파일(`alternate-v1`, 동결 참여 집합 P) 생성·sha 기입(적격성 런북 §1의 "할당 파일을 만드는 순서"와 같다).
 4. 호스트별 기준 파일(`make_run_criteria`, E)과 그 sha를 LOG에 고정. **실험마다 따로 만든다.** `--expected-images`는 그 등록의 모든 node-tar 타깃 이미지 + controller + helper와 정확히 같은 집합이어야 한다(`run_exp0.py:644-670`, 다르면 거부). train(타깃 7.5.2 하나)은 적격성 기준 파일과 같은 이미지 집합이다. holdout(타깃 7.4.4 하나)은 `make_run_criteria --target-image inodefence-node-tar-effect:7.4.4`(`make_run_criteria.py:145`)로 새로 만든다. exp3-v1·exp2-v1은 각각 타깃이 하나다(#332 `bf0dc2e`).
-5. 호스트별 `--dry-run`: `gate: PASS`, 셀 수 = 그 호스트 seed 수 × 3.
+5. 호스트별 `--dry-run`(§2 인자 그대로, `--exposure-ledger` 포함): `gate: PASS`, 셀 수 = 그 호스트 seed 수 × 3.
 6. **네트워크 의존 점검(읽기 전용, 실행 직전과 매 재개 직전).** 셀마다 컨트롤러 준비 단계에서 `python -m pip install --quiet --disable-pip-version-check pytest`를 PyPI에서 받는다(`scripts/local_node_tar_smoke.sh:390`, 버전 미고정). 이름 해석이나 도달이 실패하면 셀이 무기록으로 끝나고, 3연속이면 Guard 정지다. 다음 결과를 실행 기록에 남기고, 실패하면 시작·재개하지 않는다:
    - `getent hosts pypi.org files.pythonhosted.org`
    - `curl -sS -o /dev/null -w '%{http_code}' --max-time 10 https://pypi.org/simple/pytest/`(200)
@@ -32,8 +32,11 @@ PYTHONPATH=src python -m scripts.run_exp0 --preregistration <F의 exp3-v1 채운
   --seed-assignment <train 할당 파일> --host-id HOSTn \
   --jobs 2 --clock-reference <offset-HOSTn.json> --manifest-host hostn-exp3 \
   --manifest-out <worktree 밖>/raw-manifest-hostn-exp3.sha256 \
-  --expected-images <criteria-HOSTn.json> --skip-build
+  --expected-images <criteria-HOSTn.json> --skip-build \
+  --exposure-ledger <F 원장의 고정 사본(worktree 밖)>
 ```
+
+- **원장(LM, D-ORCH-1113-30):** 등록의 `exposure_ledger_sha256`은 F의 원장 파일 sha다. E worktree의 원장(`8a832e19…`, E 이후 노출 행 없음)은 쓰지 않는다. 각 호스트는 저장소를 fetch해 `git show <F>:experiments/preregistration/exposure-ledger.md > <worktree 밖 고정 사본>`으로 F에서 직접 뽑는다(다른 호스트에서 복사하지 않는다). 실행 전 고정에 사본 sha256을 적고, 이 값이 F의 원장 sha·등록 값과 같은지, 두 호스트의 사본 sha가 같은지 pre-run에서 대조한다. 인자를 빼면 게이트는 E의 원장을 읽어 거부한다(`run_exp0.py:1600-1606`, `1766-1768`).
 
 - `--target-digest`는 타깃마다 한 번씩 반복한다(`action="append"`, `run_exp0.py:1593-1598`). train·holdout은 타깃이 하나라 한 줄이다.
 - `--clock-reference`는 실행 직전에 새로 잰 오프셋 파일이다. 끝날 때도 따로 재서 별도 파일로 남긴다(적격성과 같다).
@@ -73,6 +76,7 @@ PYTHONPATH=src python -m scripts.run_exp0 --preregistration <F의 exp3-v1 채운
 - `--target-digest node-tar-holdout=sha256:f5d3e9a999cfad0a5f37002bf36802378b20777646be3684eb97baeaa4080421`
 - `--expected-images`: §1.4의 **holdout 기준 파일**(7.4.4 이미지 포함). train 기준 파일은 게이트에서 거부된다.
 - manifest 이름: `hostn-exp2`
+- `--exposure-ledger`: train과 같은 F 원장 고정 사본(§2). holdout 게이트는 이 사본에서 7.4.4 행을 모두 `qualification-only`로 읽어야 한다(동결 전 dry-run으로 확인).
 
  각 호스트는 자기 seed를 오름차순으로 돈다. 마감(2026-11-25 12:00 KST)에 끝나지 않은 셀이 있는 seed는 블록 전체 제외다. **봉인 해제:** 규칙은 exp2-v1 §5(#332, holdout에 한해 D041 분석 수정 2번 대체)다. 참여 호스트 전부의 할당 seed가 최종 상태이고 무결성이 확인되면 마감 전에 풀고, 부분 GO·운영 중단·미재개 정지가 있으면 마감 시각에 푼다. E의 run_exp0는 호스트별로 모든 셀이 끝나면 index를 가리지 않으므로(`scripts/run_exp0.py:1874-1883`) 금지는 절차로 지킨다. 해제는 **해제 기록 PR의 머지**(지웅)다. 그 PR 본문에는 다음을 적는다:
 - 참여 호스트 전부의 할당 seed 최종 상태(`cell-results.jsonl` 상태 키로 센 호스트별 assigned/final, oracle 값 없음)와 raw manifest verify 결과·sha.

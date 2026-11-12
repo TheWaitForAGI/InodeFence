@@ -1,0 +1,14 @@
+{
+  "hosts": {
+    "HOST1": [],
+    "HOST2": [
+      8002
+    ]
+  },
+  "n": 1,
+  "participants": [
+    "HOST2"
+  ],
+  "rule": "alternate-v1",
+  "schema": "inodefence-seed-assignment-v1"
+}

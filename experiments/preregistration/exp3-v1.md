@@ -1,6 +1,6 @@
 # EXP-3 사전등록 v1 — train (탐색, 인프라 게이트)
 
-> **상태: 동결 전 초안 (2026-11-11).** 아직 실행할 수 없다. 블록의 `TBD-FREEZE` 값이 남아 있는 동안 파서(`src/inodefence/evaluation/rds_preregistration.py`)가 `engine_sha`와 digest 형식 오류로 거부한다. 의도된 동작이다. 동결 시각에 [exp2-v1](exp2-v1.md)과 **함께** 동결한다(D040-D1).
+> **상태: 동결 값 기입 완료 (2026-11-13).** 등록 블록의 값을 모두 채웠다. 동결은 이 파일을 담은 push된 커밋에 대해 [exp2-v1](exp2-v1.md) §7의 선행 조건, W4 최종 검증, 검증 24 h가 끝나고 `docs/LOG.md`에 동결 기록 줄(커밋 sha, 두 파일과 원장의 sha256)이 push된 시각에 성립한다. 그 전에는 실행하지 않는다. exp2-v1과 **함께** 동결한다(D040-D1). 동결 뒤 이 파일은 바꾸지 않는다.
 >
 > **기준.** [D040](../../docs/DECISIONS.md#d040--exp-3-동결-전-재판정-위험도-파일럿-4040-반영)(D1~D21), [D041](../../docs/DECISIONS.md#d041--동시-실행-벤치마크-단계-a-승인과-파일럿-seed-재사용)(마감·abort 집계·운영 중단·a 정의), [D042](../../docs/DECISIONS.md#d042--인프라-정지-규칙-연속-3셀-기록-없음)·[D043](../../docs/DECISIONS.md#d043--go-입력-r에서-등록된-인프라-정지-공백을-뺀다)(#331로 main 반영), [D044](../../docs/DECISIONS.md#d044--2호스트-동시-실행-벤치마크-설계-v3)·[D045](../../docs/DECISIONS.md#d045--holdout-상태-확인의-위반어댑터-호환-정의와-train-abort-분모), [D046](../../docs/DECISIONS.md#d046--인프라-정지-대응case-단위-재실행과-d040-d21-재개-판정)(#342로 main 반영), [노출 원장](exposure-ledger.md), [규모 산정](exp3-sizing-20261107/README.md), [D047](../../docs/DECISIONS.md#d047--본실험-선행-조건-단순화-jobs2-고정과-호스트별-적격성-검증), [호스트별 적격성 검증 v1](../configs/host-qualification-v1.md). 동시 실행 벤치마크 v3(`experiments/configs/concurrency-scaling-v3.md`)는 본실험 선행 조건이 아니다(D047). 이 초안과 D040이 다르면 D040이 맞다.
 > 이전 초안(#264 `e11d302`, 11/05판)은 D040 이전 구조라 대체한다. 그 판의 한 파일 다중 타깃 구조, 7.5.6/7.5.7·py-tarfile 타깃, S-a, `sentinel_count = 3`, `event_threshold = 5`는 쓰지 않는다.
@@ -22,7 +22,7 @@ RQ 문장은 [research-questions v2](../../docs/research/design/research-questio
 ```preregistration
 # EXP-3 train v1. TBD-FREEZE를 모두 채워 커밋해야 실행 유효(파서가 형식 오류로 거부).
 experiment_id = exp3
-engine_sha = TBD-FREEZE
+engine_sha = bed077af62b1cdd5cc8dec96eb9cbe93ba542f1d
 # D040-D1 1항: train {9006..9025}. RESERVED·기존 노출(≤1415, 6100–6103, 6200–6207(예약), 6300–6303, 7001–7002, 8001–8003, 8101–8110, 9001–9005)과 겹치지 않음.
 seeds = 9006, 9007, 9008, 9009, 9010, 9011, 9012, 9013, 9014, 9015, 9016, 9017, 9018, 9019, 9020, 9021, 9022, 9023, 9024, 9025
 budget = 2000
@@ -35,14 +35,14 @@ arm.S-u = effect-feedback-v2-or-violation-v1-boundary-attempt-v1-uniform-mutatio
 targets.node-tar-7.5.2.extractor = node-tar
 targets.node-tar-7.5.2.version = 7.5.2
 # D18: 빌드 1회 뒤 이미지 id 고정, docker save 보관. 적격성 실행과 같은 id여야 한다.
-targets.node-tar-7.5.2.image_digest = TBD-FREEZE
+targets.node-tar-7.5.2.image_digest = sha256:22c8734f141d91b333ba37c7fe6a9a7547d7abfab487fa028da2053bed6f3dbb
 targets.node-tar-7.5.2.role = train
 targets.node-tar-7.5.2.hypothesis = H-A
 targets.node-tar-7.5.2.exposure = pre-exposed
 targets.node-tar-7.5.2.exposure_ref = experiments/preregistration/exposure-ledger.md
 # 두 파일 대칭(ORCH 결정 2026-11-11 #7). 11/18~25 원장 변경 금지(D040-D1 3항).
 exposure_ledger = experiments/preregistration/exposure-ledger.md
-exposure_ledger_sha256 = TBD-FREEZE
+exposure_ledger_sha256 = 5f6b80f365085adc7c7abb80859f083af0b4a4b48f2319e0297dd3417683169c
 sentinel_generator_id = sentinel-names/seed-random-v1
 # ORCH 결정 #3: EXP-0·파일럿·벤치마크와 같은 값(§7 공개).
 sentinel_generator_seed = 20261104
@@ -65,12 +65,12 @@ interim_analysis = forbidden
 execution_deadline = 2026-11-25T12:00:00+09:00
 # --- 호스트 키(D047, §3). 현재 파서(fa8ccb4)는 두 호스트 키를 모두 요구한다. 참여 집합 P(1~2개)는 할당 파일(make_seed_assignment.py --participants)에 기록되고 그 sha로 고정된다. 게이트 강제. ---
 host.HOST1.jobs = 2
-host.HOST1.docker_engine = TBD-FREEZE
+host.HOST1.docker_engine = 29.8.0
 host.HOST2.jobs = 2
-host.HOST2.docker_engine = TBD-FREEZE
+host.HOST2.docker_engine = 29.9.3
 # §3: 두 호스트면 alternate-v1, 한 호스트면 20 seed 전부 그 호스트. 할당 파일과 sha는 동결 시 고정.
 seed_assignment_rule = alternate-v1
-seed_assignment_sha256 = TBD-FREEZE
+seed_assignment_sha256 = 06f4c7e0398cd788fa8dfb2f9db0087be273d16f2d668d5e784823a86eb27ad5
 ```
 
 **블록 밖 규칙.**
@@ -151,12 +151,12 @@ GO는 자동이 아니다. EXP-2 시작 전에 W3가 train 리포트 값으로 �
 
 ## 8. 동결 체크리스트
 
-동결일은 "선행 조건 완료 + 검증 24 h"(exp2-v1 §7, 목표 2026-11-14~15)이다. 등록 블록 주석의 "11/18~25 원장 변경 금지"는 "동결 시각~마감(2026-11-25 12:00) 원장 변경 금지"로 읽는다(블록 바이트를 바꾸지 않으려고 주석은 그대로 둔다).
+동결일은 "선행 조건 완료 + 검증 24 h"(exp2-v1 §7, 목표 2026-11-14~15)이다. 등록 블록 주석의 "11/18~25 원장 변경 금지"는 "동결 시각~마감(2026-11-25 12:00) 원장 변경 금지"로 읽는다(블록 바이트를 바꾸지 않으려고 주석은 그대로 둔다). 등록 원장은 동결 커밋(F)의 원장 파일이며 main의 원장과 다를 수 있다(D-ORCH-1113-30 LM). 동결 뒤 생긴 노출(train·holdout 실행 등)은 F의 원장에 넣지 않고, 마감 뒤 main 원장에 행으로 추가한다.
 
 - [ ] `engine_sha`(exp2-v1과 같음). D042·D043 결정 커밋과 host 키 게이트 구현(W3)이 그 SHA에 포함되고 검증 PASS.
 - [ ] `image_digest`(D18 id, docker save 보관, 두 호스트 같은 id).
 - [ ] [D042 정지·재개 smoke](../configs/stop-path-smoke-v1.md) 1차·2차 PASS와 차수별 원장 행. 순서는 런처 smoke → 정지·재개 smoke 1차 → 적격성 → 2차(최종 `engine_sha` 후보, 동결 직전) → 원장 sha 고정 → 동결이다. 1차 뒤 실행 경로가 바뀌면 2차는 필수이고 적격성도 무효다. 기준 파일의 sha256을 D042의 "sha `[동결 시 기입]`" 자리에 적는다.
-- [ ] `exposure_ledger_sha256`은 **마지막 원장 변경이 머지된 뒤의 값**이다: HOST1 적격성 행(#351), 측정 사슬 검증 7.4.4 픽스처 행(#355), HOST2 적격성 행, D042 2차 행, 양성 대조 (가) 행. 그 머지들이 끝난 main에서 원장 파일의 sha256을 계산해 적는다. smoke·정지·재개 smoke(1차·2차)·적격성·D4 상태 확인 행을 먼저 반영하고(D042: 원장 sha는 2차 뒤 고정), 그 뒤 11/25까지 원장 변경 금지.
+- [ ] `exposure_ledger_sha256`은 **마지막 원장 변경이 머지된 뒤의 값**이다: HOST1 적격성 행(#351), 측정 사슬 검증 7.4.4 픽스처 행(#355), HOST2 적격성 행, D042 2차 행, 양성 대조 (가) 행. 이 행들이 들어간 동결 커밋(F, #332 스택 head)의 원장 파일 sha256을 적는다(LM: main 머지를 기다리지 않는다. 각 실행은 F의 원장을 `git show F:…`로 꺼낸 고정 사본을 `--exposure-ledger`로 받는다). smoke·정지·재개 smoke(1차·2차)·적격성·D4 상태 확인 행을 먼저 반영하고(D042: 원장 sha는 2차 뒤 고정), 그 뒤 11/25까지 원장 변경 금지.
 - [ ] `host.<id>.jobs = 2`(D047), `host.<id>.docker_engine`(적격성 preflight 고정값), `jobs_max = 2`. 참여 호스트 집합(적격성 PASS 기록 경로)과 그에 맞춘 할당 파일.
 - [ ] 할당 파일과 `seed_assignment_sha256`.
 - [ ] 임시값 사본으로 `run_exp0 --dry-run`(gate, wiring, 셀 순서) 확인(W3).

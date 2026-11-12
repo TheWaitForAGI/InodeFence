@@ -22,7 +22,7 @@ RQ 문장은 [research-questions v2](../../docs/research/design/research-questio
 ```preregistration
 # EXP-3 train v1. TBD-FREEZE를 모두 채워 커밋해야 실행 유효(파서가 형식 오류로 거부).
 experiment_id = exp3
-engine_sha = TBD-FREEZE
+engine_sha = bed077af62b1cdd5cc8dec96eb9cbe93ba542f1d
 # D040-D1 1항: train {9006..9025}. RESERVED·기존 노출(≤1415, 6100–6103, 6200–6207(예약), 6300–6303, 7001–7002, 8001–8003, 8101–8110, 9001–9005)과 겹치지 않음.
 seeds = 9006, 9007, 9008, 9009, 9010, 9011, 9012, 9013, 9014, 9015, 9016, 9017, 9018, 9019, 9020, 9021, 9022, 9023, 9024, 9025
 budget = 2000
@@ -35,7 +35,7 @@ arm.S-u = effect-feedback-v2-or-violation-v1-boundary-attempt-v1-uniform-mutatio
 targets.node-tar-7.5.2.extractor = node-tar
 targets.node-tar-7.5.2.version = 7.5.2
 # D18: 빌드 1회 뒤 이미지 id 고정, docker save 보관. 적격성 실행과 같은 id여야 한다.
-targets.node-tar-7.5.2.image_digest = TBD-FREEZE
+targets.node-tar-7.5.2.image_digest = sha256:22c8734f141d91b333ba37c7fe6a9a7547d7abfab487fa028da2053bed6f3dbb
 targets.node-tar-7.5.2.role = train
 targets.node-tar-7.5.2.hypothesis = H-A
 targets.node-tar-7.5.2.exposure = pre-exposed
@@ -65,12 +65,12 @@ interim_analysis = forbidden
 execution_deadline = 2026-11-25T12:00:00+09:00
 # --- 호스트 키(D047, §3). 현재 파서(fa8ccb4)는 두 호스트 키를 모두 요구한다. 참여 집합 P(1~2개)는 할당 파일(make_seed_assignment.py --participants)에 기록되고 그 sha로 고정된다. 게이트 강제. ---
 host.HOST1.jobs = 2
-host.HOST1.docker_engine = TBD-FREEZE
+host.HOST1.docker_engine = 29.8.0
 host.HOST2.jobs = 2
-host.HOST2.docker_engine = TBD-FREEZE
+host.HOST2.docker_engine = 29.9.3
 # §3: 두 호스트면 alternate-v1, 한 호스트면 20 seed 전부 그 호스트. 할당 파일과 sha는 동결 시 고정.
 seed_assignment_rule = alternate-v1
-seed_assignment_sha256 = TBD-FREEZE
+seed_assignment_sha256 = 06f4c7e0398cd788fa8dfb2f9db0087be273d16f2d668d5e784823a86eb27ad5
 ```
 
 **블록 밖 규칙.**

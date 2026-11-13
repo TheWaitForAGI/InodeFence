@@ -1,0 +1,5 @@
+0::/init.scope
+max 100000
+max
+/sys/fs/cgroup/cpu.max absent
+/sys/fs/cgroup/memory.max absent

@@ -1,0 +1,28 @@
+ADMIN=True
+UTC=2026-11-10T14:42:58.2863977Z
+REGISTRY=HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate
+NOT_FOUND_OR_INACCESSIBLE
+REGISTRY=HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU
+NOT_FOUND_OR_INACCESSIBLE
+REGISTRY=HKLM:\SOFTWARE\Microsoft\PolicyManager\current\device\Update
+NOT_FOUND_OR_INACCESSIBLE
+REGISTRY=HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired
+NOT_FOUND_OR_INACCESSIBLE
+REGISTRY=HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending
+NOT_FOUND_OR_INACCESSIBLE
+PENDING_RENAME_PRESENT=True
+
+Name                                 State NextRunTime
+----                                 ----- -----------
+Report policies                      Ready
+Schedule Maintenance Work         Disabled
+Schedule Scan                        Ready 2026-11-11 오전 12:34:13
+Schedule Scan Static Task            Ready
+Schedule Wake To Work             Disabled
+Schedule Work                        Ready 2026-11-13 오후 7:25:03
+Start Oobe Expedite Work             Ready
+StartOobeAppsScanAfterUpdate         Ready
+StartOobeAppsScan_LicenseAccepted    Ready
+UIEOrchestrator                      Ready 2026-11-11 오후 9:25:05
+USO_UxBroker                         Ready 2026-11-11 오후 1:03:43
+UUS Failover Task                    Ready

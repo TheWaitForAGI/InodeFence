@@ -1,0 +1,6 @@
+# Pause Windows Update 35 days (max) via UX Settings; revert: Settings > Windows Update > Resume updates (or delete these Pause* values)
+$s=(Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ'); $e=(Get-Date).AddDays(35).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+$k='HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings'
+foreach($n in 'PauseFeatureUpdatesStartTime','PauseQualityUpdatesStartTime','PauseUpdatesStartTime'){ Set-ItemProperty $k $n $s }
+foreach($n in 'PauseFeatureUpdatesEndTime','PauseQualityUpdatesEndTime','PauseUpdatesExpiryTime'){ Set-ItemProperty $k $n $e }
+"pause set start=$s end=$e"

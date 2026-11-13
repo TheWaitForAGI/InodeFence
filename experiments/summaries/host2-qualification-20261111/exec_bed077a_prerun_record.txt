@@ -1,0 +1,50 @@
+### pre-run record 2026-11-11T20:03:14+09:00
+## w32tm /query /status
+윤초 조정: 3(동기화되지 않음)
+계층: 0(지정되지 않음)
+정밀도: -23(틱당 119.209ns)
+루트 지연: 0.0071358s
+루트 분산: 9.3984370s
+참조 ID: 0x00000000(지정되지 않음)
+마지막으로 동기화한 시간: 2026-11-11 오후 5:38:08
+원본: time.windows.com,0x9 
+폴링 간격: 10(1024s)
+
+## SNTP
+{"offset_s": 0.23830461502075195, "uncertainty_s": 0.0051229000091552734, "measured_at": "2026-11-11T11:03:20.483481+00:00"}
+{"offset_s": 0.24124431610107422, "uncertainty_s": 0.007456541061401367, "measured_at": "2026-11-11T11:03:21.424119+00:00"}
+## adjtimex
+{'rc': 0, 'freq_ppm': 0.1526336669921875, 'tick': 10000, 'status': 8192}
+## timesyncd
+inactive
+disabled
+## docker
+default
+Client 29.9.3 Server 29.9.3
+## images
+inodefence-node-tar-effect:7.5.2 sha256:22c8734f141d91b333ba37c7fe6a9a7547d7abfab487fa028da2053bed6f3dbb
+inodefence-node-tar-effect:7.4.4 sha256:f5d3e9a999cfad0a5f37002bf36802378b20777646be3684eb97baeaa4080421
+inodefence-controller:local sha256:d44900e13ed5083db54cefda8833328d4da61148f62213d86f07afa78191d7a4
+inodefence-helper:local sha256:9b9dd606c49ff0051465fe9e435351f33623d949f360d6518580855e3781cc27
+## leftovers containers name=inodefence-
+(count 0)
+## leftovers volumes name=inodefence-local-
+(count 0)
+## disk
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/sdd       1007G   14G  943G   2% /
+/dev/sdd       1007G   14G  943G   2% /
+/dev/sdd       1007G   14G  943G   2% /
+TYPE            TOTAL     ACTIVE    SIZE      RECLAIMABLE
+Images          12        4         9.881GB   335.5MB (3%)
+Containers      4         0         8.729GB   8.729GB (100%)
+Local Volumes   3         3         5.678GB   0B (0%)
+Build Cache     111       0         4.452GB   2.875MB
+## WSL
+WSL ���: 3.0.5.0
+��� ���: 6.18.58.1-1
+WSLg ���: 1.0.79
+6.18.58.1-microsoft-standard-WSL2
+## git
+bed077af62b1cdd5cc8dec96eb9cbe93ba542f1d
+0

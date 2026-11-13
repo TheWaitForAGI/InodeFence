@@ -1,0 +1,22 @@
+**********************
+Windows PowerShell 기록 시작
+시작 시간: 20261111173356
+사용자 이름: <host2>\<winuser>
+RunAs 사용자: <host2>\<winuser>
+구성 이름:
+Machine: <host2> (Microsoft Windows NT 10.0.26200.0)
+호스트 응용 프로그램: C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\Users\<winuser>\AppData\Local\Temp\if_host2_elevated.ps1
+프로세스 ID: 30064
+PSVersion: 5.1.26100.9818
+PSEdition: Desktop
+PSCompatibleVersions: 1.0, 2.0, 3.0, 4.0, 5.0, 5.1.26100.9818
+BuildVersion: 10.0.26100.9818
+CLRVersion: 4.0.30319.42000
+WSManStackVersion: 3.0
+PSRemotingProtocolVersion: 2.3
+SerializationVersion: 1.1.0.1
+**********************
+**********************
+Windows PowerShell 기록 끝
+종료 시간: 20261111173400
+**********************

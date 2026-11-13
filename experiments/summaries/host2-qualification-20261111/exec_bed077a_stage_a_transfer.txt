@@ -1,0 +1,15 @@
+### 2026-11-11T20:06:47+09:00 rsync stage-a-keys
+File list size: 109
+File list generation time: 0.001 seconds
+File list transfer time: 0.000 seconds
+Total bytes sent: 65
+Total bytes received: 4,898
+
+sent 65 bytes  received 4,898 bytes  3,308.67 bytes/sec
+total size is 4,685  speedup is 0.94
+rc=0
+total 12
+-rw-r--r-- 1 <user> <user>   96 Nov 11 20:05 SHA256SUMS
+-rw-r--r-- 1 <user> <user> 4589 Nov 11 20:05 stage-a-j2-abort-keys-v3.json
+stage-a-j2-abort-keys-v3.json: OK
+3e6c734cf5a87865b7627165a8e1aafffd10685553000499630f9194fc56322b  stage-a-j2-abort-keys-v3.json

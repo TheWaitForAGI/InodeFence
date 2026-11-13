@@ -1,0 +1,35 @@
+--- check-129324d/experiments/configs/run-exp0-eng-smoke-v1.md	2026-11-11 17:22:47.056171565 +0900
++++ <scratch>/run-exp0-eng-smoke-v1.TESTFILL.md	2026-11-11 17:23:43.935538919 +0900
+@@ -15,7 +15,7 @@
+ ```preregistration
+ # run_exp0 engineering smoke v1 (demo run, not registered). Fill TBD-FREEZE per section 3 step 1.
+ experiment_id = exp3-eng-smoke
+-engine_sha = TBD-FREEZE
++engine_sha = 129324de3841e56b81fe7d22e81d41fb856ead64
+ seeds = 6300, 6301, 6302, 6303
+ budget = 300
+ vocabulary = observed-names
+@@ -30,7 +30,7 @@
+ targets.node-tar-7.5.2.exposure = pre-exposed
+ targets.node-tar-7.5.2.exposure_ref = experiments/preregistration/exposure-ledger.md
+ exposure_ledger = experiments/preregistration/exposure-ledger.md
+-exposure_ledger_sha256 = TBD-FREEZE
++exposure_ledger_sha256 = 8a832e19b7826de3f3dcfe95a667cb82df91eb6d6e7a5fc0b55649a56565a508
+ sentinel_generator_id = sentinel-names/seed-random-v1
+ sentinel_generator_seed = 20261104
+ sentinel_count = 5
+@@ -46,11 +46,11 @@
+ campaign_watchdog_seconds = 10800
+ disk_pause_fraction = 0.9
+ interim_analysis = forbidden
+-execution_deadline = TBD-FREEZE
++execution_deadline = 2026-11-18T17:23:43+09:00
+ host.HOST1.jobs = 2
+-host.HOST1.docker_engine = TBD-FREEZE
++host.HOST1.docker_engine = 29.8.0
+ host.HOST2.jobs = 2
+-host.HOST2.docker_engine = TBD-FREEZE
++host.HOST2.docker_engine = 29.9.3
+ seed_assignment_rule = alternate-v1
+ seed_assignment_sha256 = a395367b5a617a63ba92bd04183b45e8a79d33885eed81096d4bd2c7a537accc
+ ```

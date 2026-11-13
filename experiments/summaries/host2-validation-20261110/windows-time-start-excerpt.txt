@@ -1,0 +1,37 @@
+UTC_BEFORE=2026-11-10T14:53:09.6121156Z
+ADMIN=True
+BEFORE_SERVICE
+
+
+Name      : W32Time
+Status    : Stopped
+StartType : Manual
+
+
+
+START_SERVICE=OK
+COMMAND=w32tm /resync
+로컬 컴퓨터에 다시 동기화 명령을 보내는 중
+명령이 성공적으로 완료되었습니다.
+EXIT=0
+AFTER_STATUS
+윤초 조정: 0(경고 없음)
+계층: 5(보조 참조 - (S)NTP로 동기화됨)
+정밀도: -23(틱당 119.209ns)
+루트 지연: 0.0066266s
+루트 분산: 8.5255050s
+참조 ID: 0x34E772B7(원본 IP:  52.231.114.183)
+마지막으로 동기화한 시간: 2026-11-10 오후 11:53:09
+원본: time.windows.com,0x9
+폴링 간격: 10(1024s)
+EXIT=0
+AFTER_SERVICE
+
+
+Name      : W32Time
+Status    : Running
+StartType : Manual
+
+
+
+UTC_AFTER=2026-11-10T14:53:10.0170333Z

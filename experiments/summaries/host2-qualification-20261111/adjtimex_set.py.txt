@@ -1,0 +1,7 @@
+import ctypes,struct
+libc=ctypes.CDLL(None,use_errno=True)
+buf=ctypes.create_string_buffer(208)
+struct.pack_into("I",buf,0,0x4000|0x0002)  # ADJ_TICK|ADJ_FREQUENCY
+struct.pack_into("q",buf,16,0)              # freq=0
+struct.pack_into("q",buf,88,10000)          # tick=10000
+rc=libc.adjtimex(buf); print("set rc",rc,"errno",ctypes.get_errno())

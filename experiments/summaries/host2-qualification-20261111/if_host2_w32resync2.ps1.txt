@@ -1,0 +1,15 @@
+# InodeFence HOST2: W32Time resync retry (config unchanged). Log: if_host2_w32resync2_log.txt
+[Console]::OutputEncoding=[Text.Encoding]::UTF8
+$log="$env:LOCALAPPDATA\Temp\if_host2_w32resync2_log.txt"
+& {
+ "===== RETRY $(Get-Date -Format o) ====="
+ w32tm /query /status; "rc=$LASTEXITCODE"
+ w32tm /resync /rediscover; "rediscover rc=$LASTEXITCODE"
+ Start-Sleep 10
+ w32tm /resync /force; "resync rc=$LASTEXITCODE"
+ Start-Sleep 5
+ "===== AFTER $(Get-Date -Format o) ====="
+ w32tm /query /status; "rc=$LASTEXITCODE"
+ w32tm /query /peers; "rc=$LASTEXITCODE"
+ w32tm /stripchart /computer:time.windows.com /samples:3 /dataonly; "rc=$LASTEXITCODE"
+} *> $log

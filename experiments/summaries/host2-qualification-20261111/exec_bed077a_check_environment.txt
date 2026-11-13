@@ -1,0 +1,2 @@
+{"input_dependence_test_valid": true, "out": "/home/<user>/inodefence-host2-20261111/exec-bed077a/check-environment-HOST2.json"}
+rc=0

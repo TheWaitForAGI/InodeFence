@@ -1,0 +1,24 @@
+### native docker probe at 2026-11-11T14:23:05+09:00
+$ dpkg -l | grep -E "docker|containerd"
+rc=1
+$ systemctl status docker --no-pager
+Unit docker.service could not be found.
+$ systemctl status containerd
+Unit containerd.service could not be found.
+$ apt sources docker
+$ apt-cache madison docker-ce
+$ which docker; readlink -f
+/usr/bin/docker
+/bin/docker
+/mnt/c/Program Files/Docker/Docker/resources/bin/docker
+/mnt/wsl/docker-desktop/cli-tools/usr/bin/docker
+srw-rw---- 1 root docker 0 Nov 11 13:33 /var/run/docker.sock
+none on /mnt/wsl/docker-desktop/shared-sockets/guest-services type tmpfs (rw,nosuid,nodev,mode=755)
+none on /mnt/wsl/docker-desktop/shared-sockets/host-services type tmpfs (rw,nosuid,nodev,mode=755)
+/mnt/docker-desktop-disk/isocache/entries/docker-wsl-cli.iso/088fba78db1002688f30b332ea5b2a99b724e793b319407fd7fdafc71a0bfdc5 on /mnt/wsl/docker-desktop/cli-tools type iso9660 (ro,relatime,nojoliet,check=s,map=n,blocksize=2048,iocharset=utf8)
+none on /mnt/wsl/docker-desktop-bind-mounts/Ubuntu-24.04/docker.sock type tmpfs (rw,nosuid,nodev,mode=755)
+/dev/sdd on /mnt/wsl/docker-desktop-bind-mounts/Ubuntu-24.04/98e8d37245cee16d12d8f3385df39b5ce6532ac020968ee74ba08c373550dd2e type ext4 (rw,relatime,discard,errors=remount-ro,data=ordered)
+$ /mnt/wsl/docker-desktop*
+docker-desktop
+docker-desktop-bind-mounts
+resolv.conf

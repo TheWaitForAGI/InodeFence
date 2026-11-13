@@ -1,0 +1,119 @@
+{
+  "total_enumerated": 1079,
+  "filter": [
+    "image",
+    "docker",
+    "node-tar",
+    "host2"
+  ],
+  "matches": [
+    {
+      "name": "n01-node-tar-qualification",
+      "expired": false,
+      "size_bytes": 20733,
+      "head_sha": "0b10886144dd741a189caf895171f20968c772cb"
+    }
+  ],
+  "pages": [
+    {
+      "page": 1,
+      "start_utc": "2026-11-10T15:35:09.995355+00:00",
+      "url": "https://api.github.com/repos/TheWaitForAGI/InodeFence/actions/artifacts?per_page=100&page=1",
+      "http_status": 200,
+      "count": 100,
+      "sha256": "8666b13a77cecf17c7a5943e51facc9fd5a7defc62969d40a5719aee730f6649",
+      "timeout": false
+    },
+    {
+      "page": 2,
+      "start_utc": "2026-11-10T15:35:10.050581+00:00",
+      "url": "https://api.github.com/repos/TheWaitForAGI/InodeFence/actions/artifacts?per_page=100&page=2",
+      "http_status": 200,
+      "count": 100,
+      "sha256": "85c2ddeffdffcde7b49dd7e586050052ae6a4933c3b119d9768df1a40229adeb",
+      "timeout": false
+    },
+    {
+      "page": 3,
+      "start_utc": "2026-11-10T15:35:10.111196+00:00",
+      "url": "https://api.github.com/repos/TheWaitForAGI/InodeFence/actions/artifacts?per_page=100&page=3",
+      "http_status": 200,
+      "count": 100,
+      "sha256": "894193c78261ce5366e403c5cce217b853cd0a50133912523dfad6b16397a9ad",
+      "timeout": false
+    },
+    {
+      "page": 4,
+      "start_utc": "2026-11-10T15:35:10.157565+00:00",
+      "url": "https://api.github.com/repos/TheWaitForAGI/InodeFence/actions/artifacts?per_page=100&page=4",
+      "http_status": 200,
+      "count": 100,
+      "sha256": "6ad8b09c04f5a01849b302a44a405f50227d954dde924d9b8843cd2ebe14cbb8",
+      "timeout": false
+    },
+    {
+      "page": 5,
+      "start_utc": "2026-11-10T15:35:10.202945+00:00",
+      "url": "https://api.github.com/repos/TheWaitForAGI/InodeFence/actions/artifacts?per_page=100&page=5",
+      "http_status": 200,
+      "count": 100,
+      "sha256": "c2dd3cbbe0c5b8961a5caf05f45705b412171f5674f12b69a73ec00ec6000c2e",
+      "timeout": false
+    },
+    {
+      "page": 6,
+      "start_utc": "2026-11-10T15:35:10.258316+00:00",
+      "url": "https://api.github.com/repos/TheWaitForAGI/InodeFence/actions/artifacts?per_page=100&page=6",
+      "http_status": 200,
+      "count": 100,
+      "sha256": "27d712466b47d073fb2a4ee05f4c10302fd36f428693b4847bce89ae427fb7db",
+      "timeout": false
+    },
+    {
+      "page": 7,
+      "start_utc": "2026-11-10T15:35:10.306435+00:00",
+      "url": "https://api.github.com/repos/TheWaitForAGI/InodeFence/actions/artifacts?per_page=100&page=7",
+      "http_status": 200,
+      "count": 100,
+      "sha256": "84b1e8f8a7d90f1a4c0fcb10240715bf0b1dad02ffea92c03fac4df8195660f7",
+      "timeout": false
+    },
+    {
+      "page": 8,
+      "start_utc": "2026-11-10T15:35:10.366257+00:00",
+      "url": "https://api.github.com/repos/TheWaitForAGI/InodeFence/actions/artifacts?per_page=100&page=8",
+      "http_status": 200,
+      "count": 100,
+      "sha256": "1f46cc9adce6fe01cba9774f559eec0a918fb3d6d30c505e0c884095f2f176b5",
+      "timeout": false
+    },
+    {
+      "page": 9,
+      "start_utc": "2026-11-10T15:35:10.413299+00:00",
+      "url": "https://api.github.com/repos/TheWaitForAGI/InodeFence/actions/artifacts?per_page=100&page=9",
+      "http_status": 200,
+      "count": 100,
+      "sha256": "9a1d5f27e442c132adbd7c9f70ad5fb395d843acb17cf5c0f7f9976e97bb026c",
+      "timeout": false
+    },
+    {
+      "page": 10,
+      "start_utc": "2026-11-10T15:35:10.460303+00:00",
+      "url": "https://api.github.com/repos/TheWaitForAGI/InodeFence/actions/artifacts?per_page=100&page=10",
+      "http_status": 200,
+      "count": 100,
+      "sha256": "04022efe0dd6afba41c236a61c6809cd47e4483456a550e10313617db70cb615",
+      "timeout": false
+    },
+    {
+      "page": 11,
+      "start_utc": "2026-11-10T15:35:10.516214+00:00",
+      "url": "https://api.github.com/repos/TheWaitForAGI/InodeFence/actions/artifacts?per_page=100&page=11",
+      "http_status": 200,
+      "count": 79,
+      "sha256": "d3f9de3157e06bc054f424548975654f77776fa696835bb0e3c514010bea4956",
+      "timeout": false
+    }
+  ],
+  "limitation": "Name-based search of CI artifact metadata only. No artifact content accessed; a lack of matching names does not prove an image archive does not exist."
+}

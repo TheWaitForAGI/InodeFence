@@ -1,0 +1,40 @@
+{
+    "FriendlyName":  "CT1000E100SSD8",
+    "MediaType":  "SSD",
+    "BusType":  "NVMe",
+    "Size":  1000204886016
+}
+{
+    "Number":  0,
+    "FriendlyName":  "CT1000E100SSD8",
+    "BusType":  "NVMe",
+    "Size":  1000204886016
+}
+[
+    {
+        "DiskNumber":  0,
+        "DriveLetter":  null,
+        "Size":  104857600
+    },
+    {
+        "DiskNumber":  0,
+        "DriveLetter":  null,
+        "Size":  16777216
+    },
+    {
+        "DiskNumber":  0,
+        "DriveLetter":  "C",
+        "Size":  999128301568
+    },
+    {
+        "DiskNumber":  0,
+        "DriveLetter":  null,
+        "Size":  952107008
+    }
+]
+{
+    "DeviceID":  "C:",
+    "Size":  999128297472,
+    "FreeSpace":  99427643392,
+    "DriveType":  3
+}

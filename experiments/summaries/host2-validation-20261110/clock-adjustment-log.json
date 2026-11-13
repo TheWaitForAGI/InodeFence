@@ -1,0 +1,228 @@
+{
+  "records": [
+    {
+      "utc": "2026-11-10T14:54:15.055900+00:00",
+      "argv": [
+        "systemctl",
+        "is-active",
+        "systemd-timesyncd"
+      ],
+      "exit_code": 0,
+      "timeout": false,
+      "sha256": {
+        "stdout": "45df5ad5e0ecfa54d3226343e0e6857337494ba6e32f189d1174070665d8c659",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stdout": "active\n",
+      "stderr": "",
+      "label": "before-active"
+    },
+    {
+      "utc": "2026-11-10T14:54:15.057964+00:00",
+      "argv": [
+        "systemctl",
+        "is-enabled",
+        "systemd-timesyncd"
+      ],
+      "exit_code": 0,
+      "timeout": false,
+      "sha256": {
+        "stdout": "e056a35db086947e2f5969d747f0a7517bff00c7ffff1f9e7b47b72bfac9d948",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stdout": "enabled\n",
+      "stderr": "",
+      "label": "before-enabled"
+    },
+    {
+      "utc": "2026-11-10T14:54:15.060091+00:00",
+      "argv": [
+        "<private-evidence>/clock-1446/adjtimex-read"
+      ],
+      "exit_code": 0,
+      "timeout": false,
+      "sha256": {
+        "stdout": "5ad148a4ea41abaa62f25290af889f3a338d772a58ae894c93d465f5bf25afd7",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stdout": "state=0 status=8192 offset_us=0 frequency_scaled_ppm=-1850880 maxerror_us=365924 esterror_us=233459 tick_us=9651\n",
+      "stderr": "",
+      "label": "before-timex"
+    },
+    {
+      "utc": "2026-11-10T14:54:15.060529+00:00",
+      "argv": [
+        "wsl.exe",
+        "-d",
+        "Ubuntu-24.04",
+        "-u",
+        "root",
+        "--cd",
+        "/",
+        "--",
+        "systemctl",
+        "disable",
+        "--now",
+        "systemd-timesyncd.service"
+      ],
+      "exit_code": 0,
+      "timeout": false,
+      "sha256": {
+        "stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr": "ad5511a6008d50815328f6e79ab60a3d9a2aa36e6b56265c14e869b5719c348d"
+      },
+      "stdout": "",
+      "stderr": "Removed \"/etc/systemd/system/sysinit.target.wants/systemd-timesyncd.service\".\nRemoved \"/etc/systemd/system/dbus-org.freedesktop.timesync1.service\".\n",
+      "label": "disable"
+    },
+    {
+      "utc": "2026-11-10T14:54:15.325249+00:00",
+      "argv": [
+        "systemctl",
+        "is-active",
+        "systemd-timesyncd"
+      ],
+      "exit_code": 3,
+      "timeout": false,
+      "sha256": {
+        "stdout": "cb6f82a52d11c260ee6936511d22d5a7db55f8e7c5afe9f03ea847350ce860c5",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stdout": "inactive\n",
+      "stderr": "",
+      "label": "after-active"
+    },
+    {
+      "utc": "2026-11-10T14:54:15.328595+00:00",
+      "argv": [
+        "systemctl",
+        "is-enabled",
+        "systemd-timesyncd"
+      ],
+      "exit_code": 1,
+      "timeout": false,
+      "sha256": {
+        "stdout": "b5ea375becd3088862c16fc97fe379532c583079829fcf1fdcb549e6808262fb",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stdout": "disabled\n",
+      "stderr": "",
+      "label": "after-enabled"
+    },
+    {
+      "utc": "2026-11-10T14:54:15.331933+00:00",
+      "argv": [
+        "<private-evidence>/clock-1446/adjtimex-read"
+      ],
+      "exit_code": 0,
+      "timeout": false,
+      "sha256": {
+        "stdout": "5ad148a4ea41abaa62f25290af889f3a338d772a58ae894c93d465f5bf25afd7",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stdout": "state=0 status=8192 offset_us=0 frequency_scaled_ppm=-1850880 maxerror_us=365924 esterror_us=233459 tick_us=9651\n",
+      "stderr": "",
+      "label": "after-timex"
+    },
+    {
+      "utc": "2026-11-10T14:55:49.889482+00:00",
+      "argv": [
+        "wsl.exe",
+        "-d",
+        "Ubuntu-24.04",
+        "-u",
+        "root",
+        "--cd",
+        "/",
+        "--",
+        "<private-evidence>/clock-adjustment/reset-rate"
+      ],
+      "exit_code": 0,
+      "timeout": false,
+      "sha256": {
+        "stdout": "8cf449ade460165cf40b9b65f223e6743bce60dcdbcfdd97c21455314782c3af",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stdout": "before status=8192 tick_us=9665 freq_scaled_ppm=1465180\nafter status=8192 tick_us=10000 freq_scaled_ppm=0\n",
+      "stderr": "",
+      "label": "reset-rate"
+    },
+    {
+      "utc": "2026-11-10T14:57:27.313200+00:00",
+      "argv": [
+        "wsl.exe",
+        "-d",
+        "Ubuntu-24.04",
+        "-u",
+        "root",
+        "--cd",
+        "/",
+        "--",
+        "systemctl",
+        "enable",
+        "--now",
+        "systemd-timesyncd.service"
+      ],
+      "exit_code": 0,
+      "timeout": false,
+      "sha256": {
+        "stdout": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr": "7f35654a79970828b89afc0d5af6762eda97d3449dc9e1b2a9d5cbb72f82e424"
+      },
+      "stdout": "",
+      "stderr": "Created symlink /etc/systemd/system/dbus-org.freedesktop.timesync1.service → /usr/lib/systemd/system/systemd-timesyncd.service.\nCreated symlink /etc/systemd/system/sysinit.target.wants/systemd-timesyncd.service → /usr/lib/systemd/system/systemd-timesyncd.service.\n",
+      "label": "restore"
+    },
+    {
+      "utc": "2026-11-10T14:57:27.601415+00:00",
+      "argv": [
+        "systemctl",
+        "is-active",
+        "systemd-timesyncd"
+      ],
+      "exit_code": 0,
+      "timeout": false,
+      "sha256": {
+        "stdout": "45df5ad5e0ecfa54d3226343e0e6857337494ba6e32f189d1174070665d8c659",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stdout": "active\n",
+      "stderr": "",
+      "label": "restored-active"
+    },
+    {
+      "utc": "2026-11-10T14:57:27.603770+00:00",
+      "argv": [
+        "systemctl",
+        "is-enabled",
+        "systemd-timesyncd"
+      ],
+      "exit_code": 0,
+      "timeout": false,
+      "sha256": {
+        "stdout": "e056a35db086947e2f5969d747f0a7517bff00c7ffff1f9e7b47b72bfac9d948",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stdout": "enabled\n",
+      "stderr": "",
+      "label": "restored-enabled"
+    },
+    {
+      "utc": "2026-11-10T14:57:27.605888+00:00",
+      "argv": [
+        "<private-evidence>/clock-1446/adjtimex-read"
+      ],
+      "exit_code": 0,
+      "timeout": false,
+      "sha256": {
+        "stdout": "f9dfae7d00b610e8d5295c987fc75835ea4b247352ba1becaace7f0eab70a6f0",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "stdout": "state=0 status=8192 offset_us=0 frequency_scaled_ppm=-5214 maxerror_us=12490 esterror_us=3 tick_us=10000\n",
+      "stderr": "",
+      "label": "restored-timex"
+    }
+  ],
+  "redaction": "Private evidence path redacted in argv; original files remain local",
+  "rollback": "systemctl enable --now systemd-timesyncd.service"
+}

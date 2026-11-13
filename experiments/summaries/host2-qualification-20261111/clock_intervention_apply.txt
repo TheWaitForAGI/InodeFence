@@ -1,0 +1,12 @@
+### intervention at 2026-11-11T14:24:52+09:00
+$ wsl.exe -u root -d Ubuntu-24.04 -- systemctl stop systemd-timesyncd
+rc=0
+inactive
+enabled
+before set:
+{'rc': 0, 'offset': 0, 'freq_raw': 2195890, 'freq_ppm': 33.506622314453125, 'maxerror': 896398, 'esterror': 557611, 'status': 8192, 'constant': 2, 'precision': 1, 'tolerance': 32768000, 'tick': 9093}
+$ wsl.exe -u root -- python3 -I adjtimex_set.py (ADJ_TICK=10000|ADJ_FREQUENCY=0)
+set rc 0 errno 0
+rc=0
+after set at 2026-11-11T14:24:52+09:00:
+{'rc': 0, 'offset': 0, 'freq_raw': 0, 'freq_ppm': 0.0, 'maxerror': 896398, 'esterror': 557611, 'status': 8192, 'constant': 2, 'precision': 1, 'tolerance': 32768000, 'tick': 10000}

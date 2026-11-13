@@ -1,0 +1,23 @@
+# InodeFence HOST2 restart protection - run by the OWNER in an ADMIN PowerShell, after setting "Pause updates" in the Settings app.
+# Changes: AU policy NoAutoRebootWithLoggedOnUsers=1, AUOptions=2; powercfg AC standby/hibernate = 0 (already 0).
+# Revert: reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU" /v NoAutoRebootWithLoggedOnUsers /f ; reg delete "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU" /v AUOptions /f ; Settings > Windows Update > Resume updates
+[Console]::OutputEncoding=[Text.Encoding]::UTF8
+$log="$env:LOCALAPPDATA\Temp\if_host2_restart_apply_transcript.txt"
+Start-Transcript -Path $log -Force
+function Reads($label){
+  "===== $label $(Get-Date -Format o) ====="
+  "IsAdmin: " + ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+  "R1:"; Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings' | Format-List Pause*,ActiveHours* | Out-String
+  "R2:"; Get-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU' -EA SilentlyContinue | Format-List * | Out-String
+  "R4:"; powercfg /query SCHEME_CURRENT SUB_SLEEP STANDBYIDLE; powercfg /query SCHEME_CURRENT SUB_SLEEP HIBERNATEIDLE
+  "R5:"; [pscustomobject]@{WU=(Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired'); CBS=(Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending'); PFRO=[bool](Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager' -Name PendingFileRenameOperations -EA SilentlyContinue)} | Format-List | Out-String
+  "R6:"; Get-ScheduledTask -TaskPath '\Microsoft\Windows\UpdateOrchestrator\' -EA SilentlyContinue | ForEach-Object { $i = $_ | Get-ScheduledTaskInfo; [pscustomobject]@{Task=$_.TaskName;State=$_.State;Next=$i.NextRunTime;Last=$i.LastRunTime} } | Format-Table -AutoSize | Out-String
+}
+Reads "BEFORE"
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU" /v NoAutoRebootWithLoggedOnUsers /t REG_DWORD /d 1 /f; "rc=$LASTEXITCODE"
+reg add "HKLM\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU" /v AUOptions /t REG_DWORD /d 2 /f; "rc=$LASTEXITCODE"
+powercfg /change standby-timeout-ac 0; "rc=$LASTEXITCODE"
+powercfg /change hibernate-timeout-ac 0; "rc=$LASTEXITCODE"
+Reads "AFTER"
+"systeminfo:"; systeminfo
+Stop-Transcript

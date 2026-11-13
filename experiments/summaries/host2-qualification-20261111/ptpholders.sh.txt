@@ -1,0 +1,3 @@
+for p in /proc/[0-9]*; do for f in $p/fd/*; do t=$(readlink $f 2>/dev/null); case "$t" in /dev/ptp*|/dev/rtc*|*vmbus*|*hv_*) echo "${p#/proc/} $(cat $p/comm) -> $t";; esac; done; done
+echo "--- pid namespaces visible: $(ls -d /proc/[0-9]* | wc -l)"
+echo "--- /init (pid 2) cmdline: $(tr '\0' ' ' < /proc/2/cmdline)"

@@ -1,0 +1,22 @@
+import ctypes,struct,subprocess,time,json,datetime
+libc=ctypes.CDLL(None)
+def tx():
+    b=ctypes.create_string_buffer(208); libc.adjtimex(b); r=b.raw
+    return struct.unpack_from("q",r,88)[0], struct.unpack_from("q",r,16)[0]/65536
+def off():
+    w0=time.clock_gettime(time.CLOCK_REALTIME)
+    o=subprocess.run(["powershell.exe","-NoProfile","-Command","[DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()"],capture_output=True,text=True).stdout.strip()
+    w1=time.clock_gettime(time.CLOCK_REALTIME)
+    return dict(realtime_minus_windows_s=round((w0+w1)/2-int(o)/1000,3), bracket_s=round(w1-w0,3))
+t0=time.clock_gettime(time.CLOCK_MONOTONIC_RAW); last=None
+while True:
+    el=time.clock_gettime(time.CLOCK_MONOTONIC_RAW)-t0
+    tk,fr=tx()
+    if last is not None and (tk,fr)!=last:
+        ps=subprocess.run(["ps","-eo","pid,comm","--sort=-start_time"],capture_output=True,text=True).stdout.splitlines()[:8]
+        print(json.dumps(dict(event="tick/freq changed",t=datetime.datetime.now().isoformat(timespec="seconds"),raw_elapsed_s=round(el),tick=tk,freq_ppm=fr,recent_procs=ps)),flush=True)
+    last=(tk,fr)
+    if int(el)%600 < 10 or el>=7500:
+        print(json.dumps(dict(t=datetime.datetime.now().isoformat(timespec="seconds"),raw_elapsed_s=round(el),tick=tk,freq_ppm=fr,**off())),flush=True)
+    if el>=7500: break
+    time.sleep(10)

@@ -1,0 +1,68 @@
+{
+  "all_stopped_container_count": 4,
+  "benchmark_named_container_count": 0,
+  "benchmark_named_volume_count": 0,
+  "commands": {
+    "benchmark_containers": [
+      "docker",
+      "ps",
+      "-a",
+      "--filter",
+      "name=inodefence-",
+      "--format",
+      "{{.Names}}"
+    ],
+    "benchmark_volumes": [
+      "docker",
+      "volume",
+      "ls",
+      "--filter",
+      "name=inodefence-local-",
+      "--format",
+      "{{.Name}}"
+    ],
+    "containers": [
+      "docker",
+      "ps",
+      "-a",
+      "--format",
+      "{{.Names}}\t{{.Status}}"
+    ],
+    "pinned_id": [
+      "docker",
+      "image",
+      "inspect",
+      "sha256:22c8734f141d91b333ba37c7fe6a9a7547d7abfab487fa028da2053bed6f3dbb",
+      "--format",
+      "{{.Id}}"
+    ],
+    "pinned_tag": [
+      "docker",
+      "image",
+      "inspect",
+      "inodefence-node-tar-effect:7.5.22",
+      "--format",
+      "{{.Id}}"
+    ],
+    "running": [
+      "docker",
+      "ps",
+      "--format",
+      "{{.Names}}"
+    ],
+    "version": [
+      "docker",
+      "version",
+      "--format",
+      "server={{.Server.Version}}"
+    ]
+  },
+  "correction": "The inspected 7.5.22 tag is not the design target. See docker-images-corrected.json for the 7.5.2 target and helper images.",
+  "docker_server": "server=29.9.3",
+  "inspected_7_5_22_tag_present": false,
+  "observed_at_utc": "2026-11-10T15:48:09.511367+00:00",
+  "pinned_id_present": false,
+  "private_raw_path": "not published; retained in local collection-post-update directory",
+  "private_raw_sha256": "191249e18a4dc40eb62cd2957efa7fc9c57473e77d3d22e7b42df1b2abb0c485",
+  "running_container_count": 0
+}

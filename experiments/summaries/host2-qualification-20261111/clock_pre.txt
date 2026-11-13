@@ -1,0 +1,14 @@
+2026-11-11T14:06:24+09:00
+/bin/bash: line 49: adjtimex: command not found
+adjtimex binary missing
+tsc
+{'rc': 0, 'offset': 0, 'freq_raw': -2083918, 'freq_ppm': -31.798065185546875, 'maxerror': 613226, 'esterror': 292504, 'status': 8192, 'constant': 2, 'precision': 1, 'tolerance': 32768000, 'tick': 9559}
+               Local time: Wed 2026-11-11 14:06:31 KST
+           Universal time: Wed 2026-11-11 05:06:31 UTC
+                 RTC time: Wed 2026-11-11 05:06:32
+                Time zone: Asia/Seoul (KST, +0900)
+System clock synchronized: yes
+              NTP service: active
+          RTC in local TZ: no
+inactive
+active

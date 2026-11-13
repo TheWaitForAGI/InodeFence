@@ -1,0 +1,44 @@
+# command: python3 -I measure_clock_offset.py --server pool.ntp.org --host-id HOST2 --samples 5 --out sntp_pool.ntp.org.json
+# script: scripts/measure_clock_offset.py @ origin/claude/p0-331-exp3-control-integration 129324de3841e56b81fe7d22e81d41fb856ead64, sha256 4d5ccf5e7bd4e855f5d033181aac280ff6effdde828f1760a892e85f57328af5
+# run inside WSL (Ubuntu-24.04), rc=0
+{
+  "chosen": {
+    "index": 1,
+    "offset_s": 1.5746418237686157,
+    "rtt_s": 0.01773524284362793
+  },
+  "host_id": "HOST2",
+  "measured_at": "2026-11-11T08:01:15.955105+00:00",
+  "method": "sntp-v1",
+  "offset_s": 1.5746418237686157,
+  "samples": [
+    {
+      "index": 0,
+      "offset_s": 1.5716201066970825,
+      "rtt_s": 0.021620512008666992
+    },
+    {
+      "index": 1,
+      "offset_s": 1.5746418237686157,
+      "rtt_s": 0.01773524284362793
+    },
+    {
+      "index": 2,
+      "offset_s": 1.5746488571166992,
+      "rtt_s": 0.025071144104003906
+    },
+    {
+      "index": 3,
+      "offset_s": 1.5752389430999756,
+      "rtt_s": 0.01858377456665039
+    },
+    {
+      "index": 4,
+      "offset_s": 1.5725542306900024,
+      "rtt_s": 0.0205080509185791
+    }
+  ],
+  "schema": "inodefence-clock-offset-v1",
+  "server": "pool.ntp.org",
+  "uncertainty_s": 0.008867621421813965
+}

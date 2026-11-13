@@ -1,0 +1,120 @@
+{
+  "start_utc": "2026-11-10T15:40:54.703389+00:00",
+  "parent": "<HOME>/inodefence-benchmarks",
+  "parent_existed_before": false,
+  "parent_created": true,
+  "parent_mode": "0o700",
+  "proposed_destination": "<HOME>/inodefence-benchmarks/host2-validation-smoke-20261111",
+  "destination_exists_after": false,
+  "records": {
+    "mount": {
+      "start_utc": "2026-11-10T15:40:54.703602+00:00",
+      "duration_monotonic_seconds": 0.001927893000356562,
+      "argv": [
+        "findmnt",
+        "-T",
+        "<HOME>/inodefence-benchmarks",
+        "-o",
+        "TARGET,SOURCE,FSTYPE"
+      ],
+      "exit_code": 0,
+      "timeout": false,
+      "sha256": {
+        "stdout": "80072e7fdeae5cf39a6217d49255f8651584cf17633e997ca868537f52b9c2ae",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "space": {
+      "start_utc": "2026-11-10T15:40:54.705550+00:00",
+      "duration_monotonic_seconds": 0.0006672769995930139,
+      "argv": [
+        "df",
+        "-B1",
+        "<HOME>/inodefence-benchmarks"
+      ],
+      "exit_code": 0,
+      "timeout": false,
+      "sha256": {
+        "stdout": "9c2970f458df212b62a752a95ae42eca3cefd80cea306c37fbfe6f3a5a1eb22c",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "inodes": {
+      "start_utc": "2026-11-10T15:40:54.706229+00:00",
+      "duration_monotonic_seconds": 0.0016552870001760311,
+      "argv": [
+        "df",
+        "-i",
+        "<HOME>/inodefence-benchmarks"
+      ],
+      "exit_code": 0,
+      "timeout": false,
+      "sha256": {
+        "stdout": "fdeebfb69a7163af620a2d7ce457d38dcaa69ae152eee5476e37bea9207cd0bd",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "windows-volume": {
+      "start_utc": "2026-11-10T15:40:54.707894+00:00",
+      "duration_monotonic_seconds": 0.8160551890000534,
+      "argv": [
+        "powershell.exe",
+        "-NoProfile",
+        "-Command",
+        "Get-Volume -DriveLetter C | Select FileSystem,Size,SizeRemaining | ConvertTo-Json"
+      ],
+      "exit_code": 0,
+      "timeout": false,
+      "sha256": {
+        "stdout": "7525336911ee99ad896fb0a5c85505f2fdc6af18426a1da510ea1585681362c1",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "path-policy": {
+      "start_utc": "2026-11-10T15:40:55.523971+00:00",
+      "duration_monotonic_seconds": 0.1409052439998959,
+      "argv": [
+        "python3.12",
+        "-c",
+        "from pathlib import Path; from scripts.run_concurrency_benchmark import output_problem; import sys; print(output_problem(Path(sys.argv[1]), Path.cwd(), Path.home()) or 'no-path-error')",
+        "<HOME>/inodefence-benchmarks/host2-validation-smoke-20261111"
+      ],
+      "exit_code": 0,
+      "timeout": false,
+      "sha256": {
+        "stdout": "7ed60f6f441b22622b9b9e3851ea2136be80ad17bfdddc5d8146160b12d75c5f",
+        "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    }
+  },
+  "scope": "Parent only; proposed destination is not approved and was not created. Path-policy check does not execute preflight or approve any run.",
+  "path_redaction": "HOME path replaced; original metadata retained privately",
+  "original_summary_sha256": "654db7e612aae4776ebc174f631597063c0fd16ebe9b2c8ad8b3e0db0223796a",
+  "output_files": {
+    "mount": {
+      "original_stdout_sha256": "80072e7fdeae5cf39a6217d49255f8651584cf17633e997ca868537f52b9c2ae",
+      "published_stdout_sha256": "80072e7fdeae5cf39a6217d49255f8651584cf17633e997ca868537f52b9c2ae",
+      "transformation": "none"
+    },
+    "space": {
+      "original_stdout_sha256": "9c2970f458df212b62a752a95ae42eca3cefd80cea306c37fbfe6f3a5a1eb22c",
+      "published_stdout_sha256": "9c2970f458df212b62a752a95ae42eca3cefd80cea306c37fbfe6f3a5a1eb22c",
+      "transformation": "none"
+    },
+    "inodes": {
+      "original_stdout_sha256": "fdeebfb69a7163af620a2d7ce457d38dcaa69ae152eee5476e37bea9207cd0bd",
+      "published_stdout_sha256": "fdeebfb69a7163af620a2d7ce457d38dcaa69ae152eee5476e37bea9207cd0bd",
+      "transformation": "none"
+    },
+    "windows-volume": {
+      "original_stdout_sha256": "7525336911ee99ad896fb0a5c85505f2fdc6af18426a1da510ea1585681362c1",
+      "published_stdout_sha256": "449eb86fdef695e1243e4f60a2b8ae66fdd810c7516fb93c291cf186d5bcdf29",
+      "transformation": "CRLF normalized to LF"
+    },
+    "path-policy": {
+      "original_stdout_sha256": "7ed60f6f441b22622b9b9e3851ea2136be80ad17bfdddc5d8146160b12d75c5f",
+      "published_stdout_sha256": "7ed60f6f441b22622b9b9e3851ea2136be80ad17bfdddc5d8146160b12d75c5f",
+      "transformation": "none"
+    }
+  }
+}

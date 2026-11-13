@@ -1,0 +1,77 @@
+{
+  "local_probe_output": "local_pid=5910\nNSpid:\t5910\n",
+  "entries": [
+    {
+      "task": "id-wait-probe",
+      "trace_pid": 6968,
+      "trace_time_seconds": 2398.619885,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "chronyd",
+      "trace_pid": 223,
+      "trace_time_seconds": 2400.397723,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "chronyd",
+      "trace_pid": 223,
+      "trace_time_seconds": 2400.397755,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "chronyd",
+      "trace_pid": 223,
+      "trace_time_seconds": 2400.397763,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "chronyd",
+      "trace_pid": 223,
+      "trace_time_seconds": 2400.397777,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "systemd-timesyn",
+      "trace_pid": 5929,
+      "trace_time_seconds": 2400.629638,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "chronyd",
+      "trace_pid": 223,
+      "trace_time_seconds": 2408.058732,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "chronyd",
+      "trace_pid": 223,
+      "trace_time_seconds": 2408.62113,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "chronyd",
+      "trace_pid": 223,
+      "trace_time_seconds": 2408.62114,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "chronyd",
+      "trace_pid": 223,
+      "trace_time_seconds": 2408.621141,
+      "event": "sys_clock_adjtime"
+    },
+    {
+      "task": "chronyd",
+      "trace_pid": 223,
+      "trace_time_seconds": 2408.621145,
+      "event": "sys_clock_adjtime"
+    }
+  ],
+  "trace_original_sha256": "31adc589d5ebda52efaec728ef93d06394af1a36dd10dd23691cec9b7b699f30",
+  "probe_output_original_sha256": "e7f5445375de52899955c7e687ff6db275618c7918ff593dde137cd8d8d5559d",
+  "probe_source_sha256": "228fd8b5f55339025b85cff9de5f23cf51eb0dcb2bb759f10f59ed9388c91146",
+  "trace_script_sha256": "93464879b307762dd0afbe09d4dbd7fe227bb850d75b1eee170ccd25ad7fbd3e",
+  "redaction": "Kernel trace pointer values, CPU IDs and flags removed; local source and raw trace retained privately.",
+  "limitation": "The mapping demonstrates non-equivalent PID representations. It does not identify the namespace or owner of other tasks."
+}

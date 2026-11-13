@@ -1,0 +1,25 @@
+### clock intervention pre-record at 2026-11-11T14:23:14+09:00
+{'rc': 0, 'offset': 0, 'freq_raw': -3059014, 'freq_ppm': -46.676849365234375, 'maxerror': 1146196, 'esterror': 479704, 'status': 8192, 'constant': 2, 'precision': 1, 'tolerance': 32768000, 'tick': 9367}
+active
+enabled
+       Server: 185.125.190.57 (ntp.ubuntu.com)
+Poll interval: 32s (min: 32s; max 34min 8s)
+       Offset: +1.823282s
+    Frequency: -30.933ppm
+### hv timesync
+dxgkrnl hv_balloon hv_netvsc hv_pci hv_sock hv_storvsc hv_utils hyperv_keyboard
+Y
+### W32Time
+
+
+Status    : Stopped
+StartType : Manual
+
+
+
+다음 오류가 발생했습니다. 서비스가 시작되지 않았습니다. (0x80070426)
+rc=-2147023834
+### REALTIME vs Windows UTC
+2026-11-11T05:23:15.510733668
+2026-11-11T05:23:15.6322384Z
+2026-11-11T05:23:15.996472649

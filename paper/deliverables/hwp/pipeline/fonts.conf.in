@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+<!-- Rasterizer-only font lookup for the approximate PDF (no system font config is changed).
+     @FONTDIR@ and @CACHEDIR@ are filled in by render.sh. -->
+<fontconfig>
+  <dir>@FONTDIR@</dir>
+  <cachedir>@CACHEDIR@</cachedir>
+  <alias><family>sans-serif</family><prefer><family>Malgun Gothic</family></prefer></alias>
+  <alias><family>serif</family><prefer><family>Batang</family><family>Malgun Gothic</family></prefer></alias>
+  <alias><family>monospace</family><prefer><family>GulimChe</family><family>Malgun Gothic</family></prefer></alias>
+  <match target="pattern"><edit name="family" mode="append_last"><string>Malgun Gothic</string></edit></match>
+</fontconfig>

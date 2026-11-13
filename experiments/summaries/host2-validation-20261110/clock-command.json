@@ -1,0 +1,19 @@
+{
+  "argv": [
+    "powershell.exe",
+    "-NoProfile",
+    "-Command",
+    "$a=[DateTime]::UtcNow; Start-Sleep -Seconds 10; $b=[DateTime]::UtcNow; @{start=$a.ToString('o'); end=$b.ToString('o'); seconds=($b-$a).TotalSeconds} | ConvertTo-Json"
+  ],
+  "start_utc": "2026-11-10T14:20:00.964950+00:00",
+  "exit_code": 0,
+  "timeout": false,
+  "linux_monotonic_seconds": 10.159727662001387,
+  "linux_wall_seconds": 10.159728765487671,
+  "sha256": {
+    "stdout": "1ebd6490ddf1896e4f73ceefe80b1856a852ed058457285c25e7807c076b0efb",
+    "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "public_stdout_sha256": "4042fe9610b0fe5a4dbdab9203b4e94ae8dd5b95f0c774bcd332dd5c16cbe7ab",
+  "public_stdout_transformation": "CRLF normalized to LF; original hash and bytes retained locally."
+}

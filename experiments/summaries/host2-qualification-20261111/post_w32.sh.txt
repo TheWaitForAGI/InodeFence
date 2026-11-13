@@ -1,0 +1,12 @@
+#!/bin/bash
+SP=<scratch>; cd $SP/ev
+LOG=/mnt/c/Users/User/AppData/Local/Temp/if_host2_w32time_log.txt
+echo "### waiting for W32Time log $(date -Is)"
+until [ -f $LOG ] && grep -q 'AFTER' $LOG && grep -c 'rc=' $LOG | grep -q '^[4-9]'; do sleep 5; done
+echo "### W32Time log complete $(date -Is)"
+python3 -I ../adjtimex.py
+echo "### 30-min convergence monitor start $(date -Is)"; python3 -I ../tickmon3.py 1800; echo "### monitor end $(date -Is)"
+echo "### bracket (c) start $(date -Is); timesyncd: $(systemctl is-active systemd-timesyncd)"; python3 -I ../clockbracket2.py 600; echo "rc=$?"; echo "### bracket (c) end $(date -Is)"
+python3 -I ../adjtimex.py
+for s in time.windows.com pool.ntp.org; do echo "### sntp $s $(date -Is)"; python3 -I ../sntp/measure_clock_offset.py --server $s --host-id HOST2 --samples 5 --out $SP/ev/sntp_post_$s.json; echo "rc=$?"; cat $SP/ev/sntp_post_$s.json; echo; done
+echo "### done $(date -Is)"

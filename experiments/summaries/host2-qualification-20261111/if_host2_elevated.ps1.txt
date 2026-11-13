@@ -1,0 +1,4 @@
+$log="$env:LOCALAPPDATA\Temp\if_host2_elevated_log.txt"
+& { "elevated run $(Get-Date -Format o)"; & "$env:LOCALAPPDATA\Temp\if_host2_pause.ps1"; "--- apply script ---" } *> $log
+& "$env:LOCALAPPDATA\Temp\if_host2_restart_apply.ps1" *>> $log
+"done $(Get-Date -Format o)" | Out-File -Append $log

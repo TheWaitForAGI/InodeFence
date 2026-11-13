@@ -1,0 +1,9 @@
+{
+  "original_script_sha256": "53380d8898fd252d22adc3c80917baf7dc13f18b4b32955df0c20e26ad2984a2",
+  "published_script_sha256": "e176456a4cf07bf7ef2d91e41479ae5188f93c27ebb1c636014e5fbd00856d7c",
+  "transformation": "Output path changed to relative path for publication and rerun",
+  "source_result_sha256": "ea305db1540168d31f0810d5dbef78c978912b07b400be32c364ebf2c6261cca",
+  "method": "adjtimex-read.c was built with gcc -Wall -Wextra -O2 and invoked without privilege; zero modes requests no adjustment",
+  "published_script_file": "clock_check.py.txt",
+  "file_note": "Evidence is stored as text without changing bytes to avoid treating an archived script as project source."
+}

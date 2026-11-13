@@ -1,0 +1,9 @@
+{
+  "time_utc": "2026-11-10T14:35:11.245548+00:00",
+  "path": "%UserProfile%/.wslconfig",
+  "before": "absent",
+  "after": "[wsl2]\nmemory=20GB\n",
+  "after_sha256": "43d5e2d399178eaf16cafab5a7fb57b8d91250ef383989776adfc56c7be928d4",
+  "reason": "Raise WSL VM maximum to allow the proposed 15 GiB available-memory preflight on 32 GiB host; cap is not a reservation. Requires WSL shutdown/restart to take effect. No WSL shutdown requested.",
+  "restart_performed": false
+}

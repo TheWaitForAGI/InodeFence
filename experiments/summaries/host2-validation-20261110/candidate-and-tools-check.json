@@ -1,0 +1,94 @@
+{
+  "candidate_check": {
+    "start_utc": "2026-11-10T15:24:19.741658+00:00",
+    "elapsed_monotonic_seconds": 91.39560425799982,
+    "argv": [
+      "docker",
+      "run",
+      "--rm",
+      "--name",
+      "inodefence-host2-candidate-check-20261111-1527",
+      "--network",
+      "none",
+      "--user",
+      "0:0",
+      "--pids-limit",
+      "512",
+      "--memory",
+      "4g",
+      "--tmpfs",
+      "/tmp:rw,exec,nosuid,nodev,size=2g,mode=1777",
+      "--tmpfs",
+      "/var/lib/inodefence:rw,exec,nosuid,nodev,size=1g,mode=1777",
+      "--mount",
+      "type=bind,src=<private-evidence>/check-deps,dst=/deps,readonly",
+      "--env",
+      "HOME=/tmp",
+      "--env",
+      "PYTHONPATH=/deps",
+      "--env",
+      "PYTHONDONTWRITEBYTECODE=1",
+      "--env",
+      "INODEFENCE_RUNTIME_ROOT=/var/lib/inodefence",
+      "--entrypoint",
+      "/bin/sh",
+      "-i",
+      "sha256:b22a052837402b1b6fceb23d8c3048748db2af8117756447c816881c67ac93a2",
+      "-c",
+      "set -eu; mkdir -p /tmp/source; cd /tmp/source; tar -xf -; chown -R 1000:1000 /tmp/source; su -s /bin/sh vscode -c \"git init -q && git add -A && git -c user.name=HOST2-check -c user.email=host2-check@invalid commit -qm snapshot\"; python -m pip install --no-build-isolation --no-deps .; su -s /bin/sh vscode -c \"export PATH=/opt/venv/bin:/usr/local/share/nvm/current/bin:/usr/local/bin:/usr/bin:/bin; cd /tmp/source && make check\""
+    ],
+    "source_commit": "afdc720da6eb6ae143bd4754cb39d6dd34ea8f16",
+    "source_archive_sha256": "81f929343a8cf40700b568a4a54da3d705eb7d071eea0b537abcebc78134bd64",
+    "exit_code": 0,
+    "timeout": false,
+    "sha256": {
+      "stdout": "a557d5dbf6551c1c7c58f7a3ad7ad0a565934891f6810d61e627a97fb2136c36",
+      "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "log_note": "Original stdout and stderr retained privately; hashes refer to original bytes."
+  },
+  "candidate_summary": {
+    "exit_code": 0,
+    "passed": 3143,
+    "skipped": 6,
+    "skip_reasons": [
+      "one absent G1 host-local raw evidence",
+      "four absent locked node-tar module",
+      "one absent matplotlib"
+    ],
+    "lint": "PASS",
+    "format": "PASS",
+    "pyright": "PASS",
+    "environment": "PASS",
+    "docs": "PASS",
+    "evidence_chain": "PASS"
+  },
+  "tool_synthetic_tests": {
+    "start_utc": "2026-11-10T15:26:26.754377+00:00",
+    "elapsed_monotonic_seconds": 0.38117628899999545,
+    "argv": [
+      "python3.12",
+      "-m",
+      "pytest",
+      "-q",
+      "-p",
+      "no:cacheprovider",
+      "tests/test_host_collection.py",
+      "tests/test_verify_host_freeze.py"
+    ],
+    "source_commit": "6dddb7568ff3101a30eeba93cdabac5fccdfd369",
+    "exit_code": 0,
+    "timeout": false,
+    "sha256": {
+      "stdout": "f9ba2517a203bd1f83ac893e84af2305c6bb508e195223e3d99bb9d23e7495cf",
+      "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "execution_environment": "WSL Ubuntu 24.04; Python 3.12; temporary pytest dependencies; cache provider disabled; synthetic fixtures",
+    "log_note": "Original stdout and stderr retained privately; hashes refer to original bytes."
+  },
+  "tool_summary": {
+    "exit_code": 0,
+    "passed": 26
+  },
+  "scope": "Candidate source came from git archive; a synthetic Git commit was created within the disposable container. Tests did not execute the authorized target campaign, approve an experiment, validate HOST1/2 compatibility or establish Code Freeze."
+}

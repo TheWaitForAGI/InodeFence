@@ -1,0 +1,10 @@
+{
+  "classification": "pre-run Stage A environment check (no run record is read)",
+  "input_dependence_test_valid": true,
+  "inputs": {
+    "criteria_sha256": "8c73611c9343101bec161cc16ef451053787b1e3b826d970a7943e8f7f8bb16f",
+    "host_id": "HOST2",
+    "stage_a_keys_sha256": "3e6c734cf5a87865b7627165a8e1aafffd10685553000499630f9194fc56322b"
+  },
+  "problems": []
+}

@@ -1,0 +1,6 @@
+import ctypes,struct,time,json,datetime,sys
+libc=ctypes.CDLL(None); n=int(sys.argv[1]); seen=set(); fr=[]
+for i in range(n):
+    b=ctypes.create_string_buffer(208); libc.adjtimex(b); r=b.raw
+    tk=struct.unpack_from("q",r,88)[0]; f=struct.unpack_from("q",r,16)[0]/65536; seen.add(tk); fr.append(f); time.sleep(10)
+print(json.dumps(dict(end=datetime.datetime.now().isoformat(timespec="seconds"),polls=n,ticks=sorted(seen),freq_min=min(fr),freq_max=max(fr))))

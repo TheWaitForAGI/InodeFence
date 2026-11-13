@@ -1,0 +1,238 @@
+# HOST2 Validation Report
+
+## 1. Executive Summary
+
+**PARTIAL / host qualification UNKNOWN.** The post-update inventory on 2026-11-10 found Docker Engine 29.9.3 instead of the design's 29.8.0, the exact target image absent, and available WSL memory below the proposed 15 GiB preflight threshold. The WSL 20 GB cap is configured but has not been applied by a coordinated restart. Short independent comparisons found a monotonic-clock rate discrepancy; restart protection remains UNKNOWN. No smoke, concurrency test, or formal experiment was run. The dated follow-ups below preserve earlier observations, configuration changes and their limits. These self-reported observations are not authenticated attestation.
+
+## 2. Hardware Inventory
+
+Windows reports Intel Core Ultra 7 270K Plus, 24 cores / 24 logical processors, 33,693,589,504 bytes RAM and AC online. A later Windows query reports 13,173,928 KiB free physical memory. One NVMe SSD, CT1000E100SSD8, 1,000,204,886,016 bytes, was enumerated; no external SSD was enumerated at that time. This does not establish whether one is normally connected. See `windows-disks.stdout` and its command record.
+
+## 3. Windows Configuration
+
+Windows 11 Pro build 26200; WSL reports build 26200.9711. The collector reported active hours 16–05, no configured Windows Update/AU policy found, effective MDM policy UNKNOWN, and no reboot-required flag in the probes used. Its reboot-name task enumeration is not exhaustive proof that no restart can occur. The initial collection used a non-elevated Windows account. A later elevated policy and task inspection is recorded in section 18; it did not establish comprehensive restart protection.
+
+## 4. WSL2 Configuration
+
+The initial collection observed WSL 2.7.14.0, Ubuntu 24.04.5 LTS and kernel 6.18.33.2; affinity CPUs 0–23. A later update changed WSL to 3.0.5.0 and the running kernel to 6.18.58.1 (section 17). `/etc/wsl.conf` enables systemd and interop. The initial probe found no `.wslconfig`; a 20 GB memory cap was later configured but awaits a coordinated WSL restart (section 17). Host limits still apply. Linux total memory 16,051,892 KiB and available 14,082,420 KiB in the collection, swap 4,194,304 KiB. Open-file limit 1,048,576 and process limit 62,659 were observed separately. Root filesystem is ext4. A Windows 10.033-second sleep corresponded to 10.160 seconds of Linux monotonic time including process startup; this coarse observation does not establish clock-rate accuracy. See clock records.
+
+## 5. Docker Configuration
+
+The initial inventory observed Desktop 4.96.2 (244353), CLI and Engine 29.9.2; the post-update inventory observed Desktop 4.99.0 (245822), CLI and Engine 29.9.3 (section 17). The initial context was `default`, with 24 CPUs and 16,437,137,408 bytes VM memory; cgroup v2, overlayfs using containerd snapshotter, Docker root `/var/lib/docker`. The earlier 11:00 UTC collection could not access Docker; the later collection did. This change is an observation, not an attributed configuration change. Exact target image `sha256:22c8734f141d91b333ba37c7fe6a9a7547d7abfab487fa028da2053bed6f3dbb` was separately inspected and absent; the collector's target, controller and helper tags were also absent. No image was built or changed.
+
+## 6. Storage and VHDX Mapping
+
+The proposed output's nearest existing parent reported ext4 1,013,508,923,392 available bytes and 66,893,114 free inodes. This is virtual filesystem capacity, not guaranteed physical free space. Windows C: on disk 0 reported 99,427,897,344 bytes free. WSL registration places the Ubuntu-24.04 distro on C:, while the default Docker data VHDX candidate was found on C:; subsequent corroborating evidence strongly supports the active Docker VHDX being on C:; an API discrepancy remains (section 27). No external drive was enumerated. Docker VM virtual free space alone does not establish backing-store capacity.
+
+## 7. Resource and cgroup Limits
+
+At collection, 14,082,420 KiB available WSL RAM is below the proposed 15 GiB minimum (15,728,640 KiB); instantaneous result **FAIL**, not a permanent hardware conclusion. Docker VM total memory exceeds 15 GiB but available VM memory and per-job effective limits are distinct. The current process cgroup `/init.scope` reports `cpu.max` = `max 100000` and `memory.max` = `max`; root cgroup does not expose these controller files. This does not rule out WSL or host limits. CPU/memory pressure was zero in the collected short averages; IO pressure varied later. Workload-specific cgroup and sustained load remain UNKNOWN.
+
+## 8. Power and Restart Protection
+
+AC sleep and hibernate timeouts were both zero in the measured active power plan. Update AU and MDM effective policies were not established, and no automatic restart policy was verified. A negative pending-reboot probe does not guarantee no reboot. Restart protection remains **UNKNOWN**; no Windows restart policy was modified. Other configuration and time-service changes are recorded in sections 17 and 20.
+
+## 9. Image / Execution SHA Consistency
+
+The separate execution checkout was clean at `afdc720da6eb6ae143bd4754cb39d6dd34ea8f16`; the collector checkout was `6dddb7568ff3101a30eeba93cdabac5fccdfd369`. On 2026-11-10 GitHub API showed PR #325 open at that candidate SHA and #316 open at the tool SHA; neither represents a newly established freeze. The pinned image is absent and Engine mismatches the design, so the execution contract is **FAIL** on the observed prerequisites; transferability of another engine has not been established. No rebuild or downgrade was performed.
+
+## 10. Engineering Smoke Results
+
+**NOT RUN / BLOCKED.** The required image and exact engine prerequisites are not met; HOST2-specific approval and execution conditions have not been established. No seeds, sentinel or budgets were executed. Formal EXP-2/EXP-3, H1 reruns and Stage A were not run.
+
+## 11. Container / Volume Cleanup
+
+The later inventory reported four stopped containers and three volumes, including existing InodeFence volumes. They predate this inspection; ownership and experiment relevance require review. No pre-existing container or volume was removed. Later isolated engineering checks created and automatically removed their own disposable containers (sections 24–26). This is not a clean-runtime qualification.
+
+## 12. HOST1 vs HOST2 Comparison
+
+The v2 design specifies Engine 29.8.0 and the target image above. The initial HOST2 collection observed 29.9.2 and the later collection observed 29.9.3, with the pinned image absent. PR #325 reports a HOST1 engineering smoke as 3/3 PASS, but describes that as a delivered report rather than independently re-executed evidence; this session did not independently verify its raw evidence. HOST2 smoke is NOT RUN. Direct HOST1 measured hardware, current free capacity, and host-specific runtime values were not obtained here and are UNKNOWN. H1 remains `halted` / `selected_jobs=null`; these observations cannot change it.
+
+## 13. PASS / FAIL / UNKNOWN Matrix
+
+| Condition | Result | Basis / limit |
+| --- | --- | --- |
+| Available memory | FAIL | 14,288,360 KiB after update, below proposed 15 GiB; pending cap not yet applied |
+| Docker CPU and memory | UNKNOWN | 24 CPUs and 16,437,137,408 total bytes; workload headroom unverified |
+| Effective cgroups | UNKNOWN | process and ancestors do not establish per-job limits |
+| Output space and inodes | UNKNOWN | planned parent and backing C: free exceed 20 GB at one observation; final destination and inode budget remain unapproved (section 30) |
+| Docker storage | UNKNOWN | follow-up strongly supports C: backing; dynamic shared capacity and workload sufficiency remain unverified (section 27) |
+| Resource conflicts | UNKNOWN | existing stopped containers and volumes need ownership review |
+| Sleep and restart | UNKNOWN | AC timers checked; restart protection not established |
+| Other users / load | UNKNOWN | instantaneous process list is not a sustained host-wide exclusivity check |
+| HOST1 contract | FAIL | Engine mismatch and target image absent |
+| Clock / watchdog timing | UNKNOWN | bracketed follow-up indicates a time-dependent monotonic rate discrepancy; see section 19 |
+| Qualification / freeze | UNKNOWN | verifier does not grant either |
+
+## 14. Remaining Blockers
+
+Obtain an approved compatible engine/image path without rebuilding or changing versions until comparability is decided; verify workload cgroups, resolve the VHD API discrepancy and recheck shared backing capacity; establish sufficient available memory, restart protection and exclusive host usage; resolve existing resource ownership; establish HOST2-specific smoke approval, seed exposure and exact command. Treat failed or inaccessible probes as UNKNOWN. The collector's target-image inspection failed; its verifier accordingly returns inputs-consistent UNKNOWN, while independent image inspection confirmed absence on this daemon at that time.
+
+## 15. Recommended HOST2 Qualification Steps
+
+Resolve the blockers with the research owner, record a new preflight and independently verify any changed settings. Use a new output path and explicitly approved HOST2-specific execution contract and exposure procedure before any smoke. Run only separately authorized concurrency checks, then assess host transferability and freeze independently. Do not infer qualification from this report or change H1's existing decision.
+
+## 16. Evidence Manifest and SHA-256
+
+`SHA256SUMS` covers the public files alongside this report. The original read-only collector bundle is retained locally, unmodified, outside the repository; it contains machine-identifying paths and process details and must be reviewed before sharing. Its `collection.json` SHA-256 is `f699ea2aec9a6a602c65e8cda03ad5f4a59c7136faf8330d736f0e593029ad7e`. `verifier.json` is the unmodified output of the documented verifier with the proposed jobs=2, memory=16106127360, disk=20000000000 thresholds. The collector records per-command timestamps, argv, exit codes, timeout and stdout/stderr hashes in that private bundle. Linux and Docker extracts are byte-identical; Windows disk and clock outputs have CRLF normalized to LF, and the Linux command path is redacted. The public extracts are not a complete bundle. Hashes detect alteration, not machine identity or authenticity. No Oracle or feedback raw data was accessed or published. `make check` on the WSL host initially stopped because `python` was absent. Later disposable Dev Container checks of an evidence snapshot and the candidate source archive passed with six skips each; scope and synthetic Git limitations are in sections 25–26. The public manifest was independently checked with `sha256sum -c`, and the staged diff passed `git diff --cached --check`.
+
+## 17. Subsequent changes and post-change inventory
+
+The user initially requested general updates, then clarified that changes should serve HOST2 experiment readiness. Docker Desktop was updated from 4.96.2 to 4.99.0 using `winget.exe upgrade --id Docker.DockerDesktop --exact --accept-source-agreements --disable-interactivity`; the installer reported hash verification and successful installation. Docker restarted with no running containers observed beforehand. Engine changed from 29.9.2 to 29.9.3; it still does not satisfy the frozen 29.8.0 contract. The subsequent read-only collection observed the same four stopped container IDs and three volume names as before; this comparison does not establish volume content integrity.
+
+`wsl.exe --update` changed WSL 2.7.14.0 / kernel 6.18.33.2 to WSL 3.0.5.0 / running kernel 6.18.58.1. Its process handle was lost during the update, so the exit code was not recovered; installed and running versions were checked afterward. The WSL environment restarted during the update. No Windows reboot was initiated. The post-update collector still found the target, controller, and helper image tags absent, and the verifier still returned UNKNOWN for host qualification and freeze eligibility. Post-update available WSL memory was 14,288,360 KiB, still below the proposed 15 GiB threshold. These measurements do not qualify a smoke or experiment.
+
+At 14:35 UTC, the previously absent Windows user `.wslconfig` was created with `[wsl2]` and `memory=20GB`. The exact content and hash are in `wsl-memory-change.json`. This sets a maximum, not a reservation; host availability and memory pressure still need measurement. No WSL shutdown was requested after this change, so application of the new cap is **pending**, not PASS. Avoid interrupting other work; recheck the actual limit and preflight after a coordinated restart.
+
+A later non-elevated registry query found pending file-rename operations; this is evidence of pending operations, not proof that Windows Update requires a reboot. It narrows the earlier negative reboot probe and leaves restart protection UNKNOWN. No firmware, drivers, Windows Update, image, or Docker downgrade was applied. The exact target image and compatible execution engine remain prerequisites; PR #325 is review-only and #328 reports an unresolved stop/start defect, so neither indicates execution approval.
+
+The post-update collector bundle is retained locally; its collection.json SHA-256 is `6b173bc5b4b2f9df6002fbaa19a59a26de90fe8f642aa0d256c98c5ad4d2d3d0`. Post-update Linux, Docker version and verifier outputs are included here.
+
+Docker documentation identifies Desktop 4.91.0 as including Engine 29.8.0 ([release notes](https://docs.docker.com/desktop/release-notes/#4910)). This is a candidate for investigation, not evidence that downgrading preserves this installation, is compatible with WSL 3.0.5, or is safe. The [Engine 29 release notes](https://docs.docker.com/engine/release-notes/29/) identify security fixes in releases later than 29.8.0. The tradeoff and reproducibility must be resolved before any version change; no downgrade or image rebuild was performed.
+
+## 18. Follow-up: image custody, storage, administrator policies and clock
+
+Decision D18 in `docs/DECISIONS.md` specifies retaining a single built image using `docker save`; the fixed ID is host-built and a rebuild is not assumed to reproduce it. A filename-only search of this user's Linux home found no matching image archive, and the first page of repository CI artifacts did not expose an obvious image archive. Neither search proves that no copy exists elsewhere. The HOST1 image archive and trusted transport/checksum remain to be located; no image was rebuilt or loaded.
+
+A subsequent Windows query identified the active Ubuntu-24.04 registration's ext4 VHDX on C: and Windows mapped C: to NVMe disk 0, with 107,948,929,024 bytes available at the query time. A candidate Docker data VHDX also exists on C: (29,126,295,552 bytes), but `Get-DiskImage` returned `Attached=false` and no device path. That API result does not establish which file Docker's WSL backend actively uses; Docker backing mapping remains UNKNOWN. The public excerpt redacts user-specific paths, and the original output and hash remain in private local evidence.
+
+An **elevated** read-only Windows policy and scheduled-task diagnostic at 14:42:58 UTC returned `ADMIN=True`. The queried policy and reboot-required keys were not found or not accessible; pending rename operations were present. The UpdateOrchestrator tasks and their reported next-run values are in the redacted excerpt. This does not prove a reboot is pending due to Windows Update or that all automatic restarts are prevented. No Windows policy was changed; restart protection remains UNKNOWN.
+
+An additional four-sample Windows Stopwatch/WSL clock comparison over approximately 30 seconds yielded Windows Stopwatch 30.039 seconds and WSL monotonic 29.194 seconds between received markers. Windows and Linux UTC samples also showed varying apparent offsets. Variable cross-process output propagation and scheduling are not bounded, so this observation is **not** a calibrated rate or a PASS/FAIL; the discrepancy warrants a controlled independent clock-rate check before using elapsed-time-sensitive watchdogs. `clock-repeat.json` contains the samples and exact command. No experiment was run.
+
+## 19. Bracketed clock follow-up
+
+A read-only request/response measurement at 14:46 UTC brackets every Windows Stopwatch sample with WSL clock reads, limiting interop latency uncertainty. Between requests 1 and 4, Windows Stopwatch advanced 30.992023 seconds; WSL `CLOCK_MONOTONIC_RAW` advanced between 30.991349 and 30.992525 seconds, whereas `CLOCK_MONOTONIC` advanced between 30.001609 and 30.002757 seconds. This sample indicates approximately 3.2% slower monotonic progression relative to Windows Stopwatch, within the measured request brackets. It is a short engineering observation, not a calibrated long-duration guarantee. The source and raw samples are provided; the public script changes only its output path to avoid disclosing a local path.
+
+A separate read-only `adjtimex` query reported `tick_us=9686` with `CLK_TCK=100`; an earlier query reported 9662. The tick adjustment is consistent with a shortened adjusted-clock interval but its cause and persistence are not established. At approximately the same time, systemd-timesyncd reported an offset of +1.052 seconds; this is the Linux service's estimate, not a Windows measurement. Neither a clock adjustment nor a service restart was performed. Treat clock-rate adequacy as UNKNOWN and investigate before a watchdog-sensitive experiment; no threshold has been silently changed.
+
+## 20. Time synchronization intervention and rollback
+
+A subsequent elevated Windows diagnostic found W32Time using `Local CMOS Clock` and reporting unsynchronized status. The configured peer was `time.windows.com`. A first `w32tm /resync` attempt reported that the service was stopping; the command's exit code alone was misleading and the follow-up status query failed. An elevated operator then started the existing **Manual** W32Time service and issued `w32tm /resync` again; the command reported success and its immediate status identified `time.windows.com,0x9` as source and stratum 5. This is a point-in-time observation, not proof of sustained synchronization or a permanent startup-policy change. Both attempts and their original transcript hashes are retained.
+
+Ubuntu's [WSL time synchronization guidance](https://ubuntu.com/wsl/docs/latest/explanation/time-sync/) notes that Ubuntu 24.04 `systemd-timesyncd` may conflict with implicit Hyper-V synchronization. With both enabled and after the Windows resync, an authorized reversible test stopped and disabled `systemd-timesyncd`; Hyper-V `timesync_implicit` remained enabled. Its previous state was active/enabled. A 30-second bracketed comparison still showed Windows Stopwatch 31.031397 seconds vs WSL monotonic 30.001285–30.002607 seconds. The adjusted kernel tick was then reset from 9665 to 10000 microseconds and scaled frequency from 1465180 to 0 using `adjtimex`, with no explicit wall-clock step. The rate setting subsequently changed again, and the next comparison still showed Windows 30.613345 seconds vs WSL monotonic 30.001713–30.003384 seconds.
+
+Because normal behavior was not demonstrated, the service was restored using `systemctl enable --now systemd-timesyncd.service`, returning it to **active/enabled**, its original persistent state. A further comparison after restoration found Windows 30.895992 seconds vs WSL monotonic 30.002180–30.004089 seconds. These short observations indicate a persistent discrepancy; they do not identify the component responsible. The experimental tick reset is not a persistent configuration and was subsequently overwritten. Windows W32Time was started and resynchronized; no Windows reboot, WSL shutdown, or Docker restart was initiated during this intervention. Further investigation and a sustained independent timing check remain necessary before watchdog-sensitive execution.
+
+`clock-adjustment-log.json`, the three clock samples, `reset-rate.c`, and the redacted Windows admin transcripts preserve commands, before/after states, statuses and source hashes. The Windows transcripts contain Korean text; NUL bytes introduced by native command output and identifying transcript headers were removed from public excerpts, and their original bytes are retained privately. No experiment was run.
+
+## 21. Time-service syscall observation
+
+A bounded read-only `strace` attached to the running `systemd-timesyncd` process and observed two `clock_adjtime(CLOCK_REALTIME, ...)` calls with `ADJ_SETOFFSET` during the observation. The `timeout` command exited 124 as intended; its outer Python timeout did not trigger. Afterward the service was still active/running and no `strace` process remained. This establishes that this service issued realtime-offset adjustment calls in the observed interval. The trace does **not** identify the actor changing `tick`, establish the magnitude of either adjustment, prove the source of the monotonic-rate discrepancy, or show whether other components also adjust the clock. The original trace and command/exit/hash metadata are included. No experiment was run.
+
+## 22. Time syscall trace and attribution limitation
+
+A separate tracefs instance observed syscall entry events for 40 seconds at approximately 15:05 UTC and was removed afterward; the runner exited 0 with no timeout. The trace reported 28 entries in its buffer and 28 written: 26 `clock_adjtime` entries by a task named `chronyd` and two by a task named `systemd-timesyn`. It recorded syscall entry only: arguments were pointers, so the modes and results cannot be inferred. Later process listings in the Ubuntu, Docker Desktop, and WSL system views did not identify the `chronyd` task; its namespace, owner, ongoing state and effect remain UNKNOWN. Do not stop an unidentified service. A subsequent controlled probe demonstrated that the trace PID differs from the PID visible in the Ubuntu distribution (section 23). Consequently the chronyd event cannot be attributed to HOST2 or treated as evidence of its effect on HOST2 clocks. This discovery does not establish the cause of the observed monotonic behavior. The public trace summary removes PIDs, CPU numbers and pointers; its original trace and collector script hashes are recorded and the originals are retained locally.
+
+## 23. Trace PID calibration
+
+A benign program queried `adjtimex` with zero modes and then waited; it reported Ubuntu-local PID 5910, while the isolated tracefs instance recorded that same probe as PID 6968. The trace also contained other tasks. This confirms that the tracer can report task identities outside the PID view used by the Ubuntu process listing. It does not identify where any other task ran, whether it was part of HOST2, or whether its clock calls modified HOST2. In particular, the `chronyd` entries in section 22 are not HOST2-attributed evidence and must not be used as the basis for disabling a service. The trace instance was removed; the source trace remains private because it contains pointer values. `trace-pid-calibration.json` preserves redacted entries and source hashes.
+
+## 24. Dev Container check, first attempt
+
+A disposable container from the locally available development image was used with no network during checks, no Docker socket, a fresh source snapshot, and a private `/var/lib/inodefence` tmpfs. The test dependencies were installed separately into a temporary directory. The first `make check` on snapshot `563531daf9065f5cdc99a0eaf2a26cdd7646816f` stopped at lint: the archived clock measurement script in this evidence bundle had nine style errors. No tests ran. The archived script was renamed from `.py` to `.py.txt` without changing its bytes; its provenance file records the new name. The raw first attempt log is retained locally. This attempt is not an experiment or a qualification result.
+
+## 25. Dev Container check follow-up
+
+On evidence-branch snapshot `b0ba5e0` (full source SHA and archive hash in `dev-container-check.json`), a disposable development-image container completed `make check` with exit 0: Ruff lint and format passed, Pyright had zero errors, pytest reported **3103 passed, 6 skipped**, and environment, documentation and evidence-chain checks passed. The six skips were one unavailable G1 host-local evidence input, four missing locked node-tar package tests and one missing matplotlib. They are not passes. The container had no network and no Docker socket during the checks, used a synthetic Git commit of the archived source tree, tmpfs for the runtime, 4 GiB memory and 512 PID limits; uid 1000 ran the checks after root installed the local project package in its disposable overlay. This is engineering validation of that snapshot, not validation of execution candidate `afdc720` or HOST2 qualification. No formal experiment or target campaign was run.
+
+Two intermediate attempts are retained as failures: the first synthetic container run after the archived script rename reported 30 failed / 3073 passed / 6 skipped, with missing installed package and a `noexec` tmpfs accounting for many failures. A following bootstrap attempt stopped because `su` reset PATH and `python` was unavailable. The successful run installed the local package, enabled tmpfs execution and restored the development image's Python path. Logs, command metadata and hashes for all attempts and dependency installation are retained outside the repo; the public summary includes hashes and sanitized arguments. The check container was automatically removed; existing containers and volumes were not removed. `make check` preceded this report-only addition, so its exact source SHA is the snapshot rather than the final report commit.
+
+## 26. Candidate and verifier test follow-up
+
+A disposable development-image container ran `make check` on a `git archive` of execution candidate `afdc720da6eb6ae143bd4754cb39d6dd34ea8f16`. The container had no network or Docker socket, used private tmpfs for runtime, and ran tests as uid 1000 after a root bootstrap installed the local project package. A synthetic Git commit was used for Git-aware checks, so Git identity-sensitive behavior was not tested against the original commit object. The command exited 0: lint, format, Pyright, environment, documentation and evidence-chain checks passed; pytest reported **3143 passed, 6 skipped**. Skips were one unavailable G1 host-local raw evidence, four missing locked node-tar module tests and one missing matplotlib. The container was removed after completion.
+
+Separately, `tests/test_host_collection.py` and `tests/test_verify_host_freeze.py` at tool SHA `6dddb7568ff3101a30eeba93cdabac5fccdfd369` ran with synthetic fixtures in WSL: **26 passed**, exit 0. These tests validate selected verifier behaviors and do not qualify a host. Both local checkouts remained clean. At this check, GitHub API still reported #316 and #325 open at those respective SHAs. Neither result grants a smoke, H1 rerun, EXP run, or freeze approval; target image, engine, memory, clock and restart issues remain. Command metadata, archive hash and original log hashes are in `candidate-and-tools-check.json`; complete logs remain private.
+
+## 27. Docker backing VHDX follow-up
+
+A read-only administrator investigation at approximately 15:29–15:31 UTC produced corroborating evidence linking the running Docker storage to the internal C: drive. Microsoft-signed Sysinternals Handle showed `wslservice.exe` holding `%LOCALAPPDATA%/Docker/wsl/disk/docker_data.vhdx` open. `Get-VHD` reported that file attached and supplied its disk identifier; after Windows GUID byte-order conversion, the identifier matched the Docker WSL bootstrap `--data-disk` UUID. The Docker daemon reported root `/var/lib/docker`; its mount namespace showed `/var/lib` on ext4 `/dev/sdd`, and the WSL disk identifier alias for that device was consistent with the bootstrap identifier. Windows mapped C: to the CT1000E100SSD8 NVMe disk 0. Together these observations strongly support this mapping; they are local unauthenticated observations and the earlier `Get-DiskImage` `Attached=false` result remains an unexplained API discrepancy. No external SSD was enumerated at collection.
+
+The Docker ext4 filesystem reported 999,262,859,264 bytes virtually available, while its C: backing volume reported 107,862,671,360 bytes free. The latter is the relevant shared physical-capacity constraint at that instant, not a guarantee of future usable space. No VHDX, volume or container was moved, deleted or restarted. Running the signed Handle tool with `-accepteula` changed its per-user Sysinternals EULA acceptance from absent to 1; no handles were closed. `storage-live-evidence.json` records selected observations, command timestamps/status/hash metadata, identifier comparison and original Windows transcript and binary hashes. Full transcripts and any identifying paths are retained privately.
+
+## 28. Image archive discovery and comparison sources
+
+The GitHub Actions artifact metadata API returned 1,079 entries across 11 pages. Filtering names for `image`, `docker`, `node-tar`, or `host2` returned only `n01-node-tar-qualification`; it is not named as the pinned image archive and its content was not opened. This search does not prove that no image archive exists, and it does not examine registries, private channels, other repositories, or differently named artifacts. Page hashes, timestamps, response statuses and match metadata are in `image-artifact-search.json`; original API response bodies remain local. HOST1's approved `docker save` artifact and trusted digest still need to be located and transferred without rebuilding.
+
+For cross-host review, the frozen v2 design is a contract reference, not a fresh HOST1 measurement. PR #325's 3/3 HOST1 smoke is explicitly described there as a delivered report, not this session's independently verified run. These data cannot establish HOST2 concurrency or change H1's halted decision.
+
+## 29. Candidate smoke plan, dry-run only
+
+At candidate SHA `afdc720da6eb6ae143bd4754cb39d6dd34ea8f16`, `python3.12 -m scripts.run_concurrency_benchmark --design experiments/configs/concurrency-scaling-v2.md --output <new-path> --stage smoke --dry-run` exited 0. Inspection of the candidate's `main` shows that this branch prints a plan and returns before Docker access or live-run gates. It printed jobs=2, three cells, seed 6100, budget 20, five sentinels and per-case-container mode for the design. The placeholder output path did not exist before or after; the checkout remained clean. The dry-run output and redacted command metadata are included.
+
+This is the existing design's plan, **not** evidence of a HOST2-specific approved execution, seed authorization or successful preflight. The live path separately requires an expected HEAD, an approval reference, and additional gates. No output archive, container, target execution or exposure was generated, and the existing H1 decision is unchanged.
+
+## 30. Prospective output parent preparation
+
+At 2026-11-10 15:40 UTC (2026-11-11 00:40 KST), the previously absent `~/inodefence-benchmarks` parent was created with mode 0700. A prospective child `~/inodefence-benchmarks/host2-validation-smoke-20261111` was absent before and after. It is a placeholder, not an approved execution destination. The candidate's `output_problem` path-boundary check returned no path error; this checks neither execution approval nor other preflight conditions.
+
+`findmnt`, `df -B1`, and `df -i` on the parent returned ext4, 1,013,000,617,984 virtual bytes available and 66,882,531 free inodes. The Windows C: backing volume reported 107,854,536,704 bytes available at the same observation; both byte values exceed the proposed 20,000,000,000-byte smoke threshold, but the shared physical volume, future usage, inode budget, and final output path must be reviewed again before execution. Command outputs and hashes are included in `output-prep.json`; HOME paths are redacted in public metadata. Creating the parent did not start an experiment or create a final result directory.
+
+## 31. Later independent clock sample
+
+At 15:42 UTC, approximately 45 minutes after the prior post-restoration sample, the same bracketed Windows Stopwatch/WSL comparison was repeated without configuration changes. Between requests 1 and 4, Windows Stopwatch advanced 30.924136 seconds, WSL `CLOCK_MONOTONIC_RAW` advanced between 30.923615 and 30.924682 seconds, and `CLOCK_MONOTONIC` advanced between 30.000920 and 30.001962 seconds. A subsequent read-only `adjtimex` query reported `tick_us=9700`. The new observations confirm a discrepancy at this later sampled interval; they do not prove uninterrupted drift between samples or establish its cause. Watchdog timing remains UNKNOWN and no target execution was performed. Raw sample, derived bounds, command and output hash are in `clock-later.json`, `clock-later-summary.json` and `clock-later-timex.stdout`; the previously published clock-check source applies with only its output directory changed.
+
+## 32. D041 execution-gate audit and current Docker state
+
+At 15:47 UTC on 2026-11-10 (00:47 KST on 2026-11-11), the six D041 prerequisites were checked against the current repository decisions, candidate runner, current Docker daemon and current GitHub PR metadata. This is a read-only gate audit; it did not run the smoke or modify Docker resources.
+
+| D041 prerequisite | Current evidence | State for HOST2 smoke |
+| --- | --- | --- |
+| 1. v2 design, V9/seed-exception changes verified and merged in order | GitHub reports #285 merged, then #287 merged, then #282 merged; D041 records this order. | PASS |
+| 2. D040 (#282) W3/W1 validation and merge | #282 is merged; D041 and the merge record say W3/W1 review was completed before merge. | PASS |
+| 3. Confirm final main execution SHA, approval SHA and runbook SHA immediately before execution | #325 remains a draft review-only integration at `afdc720da6eb6ae143bd4754cb39d6dd34ea8f16`, not final main or a frozen execution candidate. No HOST2 approval artifact or separately fixed runbook SHA is recorded here. | FAIL |
+| 4. Check engine-path diff, expected HEAD, approval reference and dry-run | Candidate dry-run was previously recorded in §29. It is a plan only. No final main SHA or HOST2 approval reference exists. The runner accepts `--expected-head` and `--approval-ref`, but the latter is only written into `preflight.json`; the runner does not authenticate or validate approval authority. | FAIL |
+| 5. Meet approval's host resource, disk, memory, load and container conditions | Current server is Engine 29.9.3, not required 29.8.0; required image ID is absent. The previous Docker observation had memory/capacity concerns and restart/clock UNKNOWN. This read-only sample found zero running containers and no containers matching `inodefence-` or volumes matching `inodefence-local-`; four stopped containers with unrelated-looking names remain untouched. Output destination is still only a prepared parent, not an approved final path. | FAIL / UNKNOWN |
+| 6. Notify other sessions of exclusive host use and experiment freeze; record in LOG | No coordination notice or contemporaneous LOG entry authorizing HOST2 execution is present in the evidence. | FAIL |
+
+The runner's live smoke path requires `--expected-head` and `--approval-ref`, an output path outside the repository and evidence tree, and a clean stage directory. Its preflight requires exact Engine 29.8.0, exact pinned image ID, no running containers at all, no benchmark-prefixed residual resources, and a sufficiently quiet host. The smoke stage itself has no prior-stage gate; passing `--dry-run` returns before any of these live checks. A nonempty approval string is therefore not a substitute for D041 authorization.
+
+The current GitHub review state adds a separate execution-safety blocker: #325 is explicitly draft/review-only; #328 reports an unresolved cleanup-UNKNOWN-to-next-worker-start race; #329 retains that fail-open start-gate defect and explicitly prohibits merge and measurement. #328 also says HOST1 exclusivity and the new smoke exposure-ledger check were not complete. These are not resolved by HOST2 having no currently running containers. The stopped containers were not removed, and no global resource cleanup was attempted.
+
+**Decision:** D041's prerequisites 3–6 are not established, and the execution candidate itself still has an explicitly unresolved safety defect. HOST2 smoke is therefore **NOT RUN / BLOCKED**. Reassess after an approved final main SHA, the cleanup/start-gate defect is fixed and independently checked, the exact approved image is transferred and verified, host resource/restart/clock conditions meet the approval, and exclusive-use plus exposure-ledger coordination is recorded. No H1 decision, selected job count, preregistration, exposure ledger, or raw result was changed.
+
+Evidence basis: D041 in `docs/DECISIONS.md`; `scripts/run_concurrency_benchmark.py` at `afdc720da6eb6ae143bd4754cb39d6dd34ea8f16` (SHA-256 `f6711acb0ba9b3e56d2cb3fdc855d5820ac6c1a81a9a00ea8b6558e60f5b3036`); `experiments/configs/concurrency-scaling-v2.md` (SHA-256 `b2c09c703f4914ac095f8e39f56d1f0efef38c70a96828b84779fe74a3eea6cb`); and read-only GitHub metadata for #282, #285, #287, #325, #328 and #329 retrieved at the time above. Docker output showed server 29.9.3, zero running containers, no matching benchmark residual resource names, and the fixed image ID lookup failing with `No such image`. The accompanying tag lookup used 7.5.22 in error; see the correction in §33. The redacted summary is `docker-gate-current.json`; command output including container names remains private in the local collection and is bound by SHA-256 `191249e18a4dc40eb62cd2957efa7fc9c57473e77d3d22e7b42df1b2abb0c485`. Read-only PR state is retained in `github-gate-current.json`. Existing Docker state was not cleaned or restarted.
+
+## 33. Correction: target and helper image lookups
+
+The tag query recorded in §32 and `docker-gate-current.json` used `inodefence-node-tar-effect:7.5.22`; the v2 design actually requires **7.5.2**. At 2026-11-10 15:50:23 UTC (2026-11-11 00:50:23 KST), a corrected read-only Docker image inspection returned `No such image` for `inodefence-node-tar-effect:7.5.2` and for the fixed image ID `sha256:22c8734f141d91b333ba37c7fe6a9a7547d7abfab487fa028da2053bed6f3dbb`. The candidate runner also requires `inodefence-controller:local` and `inodefence-helper:local`; both tag lookups returned `No such image`. All four commands exited 1. These are point-in-time observations. No image was pulled or built.
+
+`docker-images-corrected.json` records the commands' results and the SHA-256 of the private raw record. The earlier 7.5.22 lookup and raw bytes are retained; its summary field was renamed to identify the actual tag queried. The original fixed-ID absence remains independently supported. Smoke remains blocked.
+
+## 34. Current qualification preconditions
+
+On 2026-11-10T15:54:45.440329+00:00 (2026-11-11 00:54 KST), a read-only check found available WSL memory 14,305,992 KiB, below the concurrency design's 15 GiB (15,728,640 KiB) minimum; one-minute load was 0.13, below its limit of 3. Docker reported Engine 29.9.3, while the design specifies 29.8.0, and inspection of the pinned target image ID again returned `No such image`. `memory.max` and `cpu.max` for the current cgroup were `max` and `max 100000` respectively; these do not eliminate WSL or host limits. Commands, exit codes and outputs are in `qualification-current.json`.
+
+The memory result is an instantaneous preflight failure and does not determine whether the hardware can meet the threshold after coordinated configuration and restart. The configured 20 GB WSL cap has not yet been applied. The engine and image mismatches independently prevent the design's live preflight from passing. The prior time-rate discrepancy, restart protection, execution candidate and HOST2-specific authorization also remain unresolved. Therefore the design's preconditions are not met at this observation; overall HOST2 formal-experiment qualification remains UNKNOWN, and smoke and concurrency validation remain NOT RUN.
+
+## 35. HOST2 development tools
+
+At 2026-11-10T15:58:39.531205+00:00, a separate WSL Python 3.12 virtual environment was created at `~/.local/share/inodefence/host2-dev-venv` for immediate source development. It contains pytest 9.2.0, Ruff 0.17.4 and Pyright 1.1.414, matching the versions used in the earlier candidate checks. A `.pth` file links `~/projects/InodeFence/src`; a fresh Python process imported the project from that checkout. Tool version commands and `pip check` are recorded in `host2-dev-venv.json`. The existing project worktree stayed clean.
+
+Activate it using `source ~/.local/share/inodefence/host2-dev-venv/bin/activate`. This supplementary host environment does not replace the specified Dev Container, its Python environment, locked node-tar tools or formal execution contract. HOST2's installed Node version was 24.22.1, while the Dev Container specifies 22.22.0. No experiment, target-image build or WSL restart was performed.
+
+## 36. Project Node version
+
+At 2026-11-10T15:59:36.906672+00:00, Node 22.22.0 was installed under the user's existing nvm installation with `nvm install 22.22.0 --no-use`; nvm reported the distribution checksum matched. Direct version checks returned Node v22.22.0 and npm 10.9.4. A fresh shell still selected the existing default Node v24.22.1. To use the project version in a terminal, run `nvm use 22.22.0` after loading nvm. This is a development tool installation, not evidence of the fixed experiment image or runtime compatibility.
+
+## 37. Development tool check on the existing checkout
+
+On the clean `minchan/p0-2-observation-capture` checkout at `1f6ca9022fda4d468d7b6ead2f0644f2cf5d9e09`, `source ~/.local/share/inodefence/host2-dev-venv/bin/activate && make lint format-check typecheck` completed with exit 0: Ruff lint passed, format check reported 389 files unchanged, and Pyright reported 0 errors and 0 warnings. This checks development tools and source analysis; it is not `make check`, a target smoke, or an experiment. The worktree remained unchanged.
+
+An initial attempt passed `PYTHON=<venv>/bin/python` without activating the environment. Ruff checks passed, but Pyright used the system interpreter and failed with 90 missing `pytest` import errors (exit 2). Activating the venv put its interpreter on PATH and resolved those errors in the subsequent check.
+
+## 38. Full check on HOST2's current development branch
+
+On 2026-11-10 16:01 UTC, a disposable container from development image `sha256:b22a052837402b1b6fceb23d8c3048748db2af8117756447c816881c67ac93a2` ran `make check` on a Git archive of `1f6ca9022fda4d468d7b6ead2f0644f2cf5d9e09`. The command exited 0: **1,766 pytest tests passed**, and lint, formatting, Pyright, environment and documentation checks passed. The container used no network or Docker socket, a private tmpfs runtime, 4 GiB memory and 512 PID limits. It was removed after completion.
+
+A synthetic Git commit was created inside the container, so checks depending on original commit identity were not exercised against the real commit object. The source checkout and existing Docker volumes were not mounted for the check. This validates development checks on that branch snapshot; it does not qualify HOST2 for formal experiments or validate the missing target image. Commands, archive and original log hashes are in `dev-branch-check.json`; original logs remain in the private local collection.
+
+## 39. Locked development dependency check
+
+At 2026-11-10T16:06:13.266945+00:00, the existing `tools/node-tar` development dependency was inspected using Node 22.22.0 and npm 10.9.4. `npm ls --prefix tools/node-tar --offline --depth=0` exited 0 and reported tar 7.5.22, matching that directory's `package.json`. No dependency installation or target execution was performed. This benign development dependency does not establish the pinned 7.5.2 experiment image.
+
+## 40. WSL development runtime root
+
+At 2026-11-10T16:08:08.691196+00:00, `/var/lib/inodefence` was absent in the Ubuntu distribution. It was created as an ext4 runtime root owned by UID/GID 1000 with mode 0700 using WSL's root user. From the existing development checkout, the dedicated Python 3.12 environment ran `python scripts/check_dev_env.py` successfully: hardlink, symlink and shared-object effect checks passed using a newly created temporary sentinel, and the check removed its temporary directory. A repeated recorded check also exited 0; 0 entries remained in the new root afterward. Output and metadata are in `host-wsl-runtime.json`.
+
+This enables the documented environment check in WSL; the Dev Container has its own separate runtime volume. It does not approve an experiment or qualify HOST2.

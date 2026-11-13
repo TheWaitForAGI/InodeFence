@@ -1,0 +1,410 @@
+### OS
+# at 2026-11-11T14:08:31.9356092+09:00
+
+
+Caption                : Microsoft Windows 11 Pro
+Version                : 10.0.26200
+BuildNumber            : 26200
+LastBootUpTime         : 2026-11-11 오전 10:03:03
+TotalVisibleMemorySize : 32903896
+FreePhysicalMemory     : 17378184
+
+
+
+
+
+### CPU
+# at 2026-11-11T14:08:32.1750747+09:00
+
+Name                                NumberOfCores NumberOfLogicalProcessors
+----                                ------------- -------------------------
+Intel(R) Core(TM) Ultra 7 270K Plus            24                        24
+
+
+
+
+### Volumes
+# at 2026-11-11T14:08:33.2663954+09:00
+
+
+Name        : C
+Root        : C:\
+FreeGB      : 86.3
+UsedGB      : 844.2
+Description :
+DisplayRoot :
+
+
+
+
+
+### LogicalDisk
+# at 2026-11-11T14:08:33.4583692+09:00
+
+
+DeviceID     : C:
+DriveType    : 3
+FileSystem   : NTFS
+VolumeName   :
+ProviderName :
+FreeGB       : 86.3
+SizeGB       : 930.5
+
+
+
+
+
+### PendingReboot
+# at 2026-11-11T14:08:33.4908915+09:00
+
+  CBS    WU  PFRO
+  ---    --  ----
+False False False
+
+
+
+
+### WU UX Settings
+# at 2026-11-11T14:08:33.5437455+09:00
+
+ActiveHoursStart ActiveHoursEnd
+---------------- --------------
+              16              5
+
+
+
+
+### WU Policy
+# at 2026-11-11T14:08:33.5556967+09:00
+
+
+### WU services
+# at 2026-11-11T14:08:33.5722270+09:00
+
+Name      Status StartType
+----      ------ ---------
+BITS     Stopped    Manual
+UsoSvc   Running Automatic
+wuauserv Stopped    Manual
+
+
+
+
+### WU last results
+# at 2026-11-11T14:08:33.5847097+09:00
+
+LastSearchSuccessDate  LastInstallationSuccessDate
+---------------------  ---------------------------
+2026-11-10 오후 11:29:54 2026-11-11 오전 1:20:30
+
+
+
+
+### Hotfix recent
+# at 2026-11-11T14:08:34.1221930+09:00
+
+HotFixID  InstalledOn            Description
+--------  -----------            -----------
+KB5132061 2026-11-11 오전 12:00:00 Security Update
+KB5132688 2026-11-10 오전 12:00:00 Security Update
+KB5127690 2026-10-14 오전 12:00:00 Update
+KB5127647 2026-10-14 오전 12:00:00 Security Update
+KB5054156 2025-10-09 오전 12:00:00 Update
+
+
+
+
+### Power active scheme
+# at 2026-11-11T14:08:34.8790945+09:00
+전원 구성표 GUID: 381b4222-f694-41f0-9685-ff5bb260df2e  (균형 조정)
+
+
+### Power sleep/hibernate
+# at 2026-11-11T14:08:34.9089401+09:00
+전원 구성표 GUID: 381b4222-f694-41f0-9685-ff5bb260df2e  (균형 조정)
+  GUID 별칭: SCHEME_BALANCED
+  하위 그룹 GUID: 238c9fa8-0aad-41ed-83f4-97be242c8f20  (절전)
+    GUID 별칭: SUB_SLEEP
+    전원 설정 GUID: 29f6c1db-86da-48c5-9fdb-f2b67b1f44da  (다음 시간 후 절전 모드로 전환)
+      GUID 별칭: STANDBYIDLE
+      가능한 최소 설정: 0x00000000
+      가능한 최대 설정: 0xffffffff
+      가능한 설정 증가: 0x00000001
+      가능한 설정 단위: 초
+    현재 AC 전원 설정 색인: 0x00000000
+    현재 DC 전원 설정 색인: 0x00000258
+
+    전원 설정 GUID: 94ac6d29-73ce-41a6-809f-6363ba21b47e  (하이브리드 절전 모드 허용)
+      GUID 별칭: HYBRIDSLEEP
+      가능한 설정 색인: 000
+      가능한 설정 이름: 해제
+      가능한 설정 색인: 001
+      가능한 설정 이름: 설정
+    현재 AC 전원 설정 색인: 0x00000001
+    현재 DC 전원 설정 색인: 0x00000001
+
+    전원 설정 GUID: 9d7815a6-7ee4-497e-8888-515a05f02364  (다음 시간 이후에 최대 절전 모드로 전환)
+      GUID 별칭: HIBERNATEIDLE
+      가능한 최소 설정: 0x00000000
+      가능한 최대 설정: 0xffffffff
+      가능한 설정 증가: 0x00000001
+      가능한 설정 단위: 초
+    현재 AC 전원 설정 색인: 0x00000000
+    현재 DC 전원 설정 색인: 0x00000000
+
+    전원 설정 GUID: bd3b718a-0680-4d9d-8ab2-e1d2b4ac806d  (절전 모드 해제 타이머 허용)
+      GUID 별칭: RTCWAKE
+      가능한 설정 색인: 000
+      가능한 설정 이름: 사용 안 함
+      가능한 설정 색인: 001
+      가능한 설정 이름: 사용
+      가능한 설정 색인: 002
+      가능한 설정 이름: 중요 절전 모드 해제 타이머만
+    현재 AC 전원 설정 색인: 0x00000001
+    현재 DC 전원 설정 색인: 0x00000000
+
+
+
+### Power video/disk
+# at 2026-11-11T14:08:34.9320607+09:00
+전원 구성표 GUID: 381b4222-f694-41f0-9685-ff5bb260df2e  (균형 조정)
+  GUID 별칭: SCHEME_BALANCED
+  하위 그룹 GUID: 7516b95f-f776-4464-8c53-06167f40cc99  (디스플레이)
+    GUID 별칭: SUB_VIDEO
+    전원 설정 GUID: 3c0bc021-c8a8-4e07-a973-6b14cbcb2b7e  (다음 시간 이후에 끄기)
+      GUID 별칭: VIDEOIDLE
+      가능한 최소 설정: 0x00000000
+      가능한 최대 설정: 0xffffffff
+      가능한 설정 증가: 0x00000001
+      가능한 설정 단위: 초
+    현재 AC 전원 설정 색인: 0x00000000
+    현재 DC 전원 설정 색인: 0x000000b4
+
+    전원 설정 GUID: aded5e82-b909-4619-9949-f5d71dac0bcb  (디스플레이 밝기)
+      GUID 별칭: VIDEONORMALLEVEL
+      가능한 최소 설정: 0x00000000
+      가능한 최대 설정: 0x00000064
+      가능한 설정 증가: 0x00000001
+      가능한 설정 단위: %
+    현재 AC 전원 설정 색인: 0x00000064
+    현재 DC 전원 설정 색인: 0x00000064
+
+    전원 설정 GUID: f1fbfde2-a960-4165-9f88-50667911ce96  (디스플레이가 어두워질 때의 밝기)
+      가능한 최소 설정: 0x00000000
+      가능한 최대 설정: 0x00000064
+      가능한 설정 증가: 0x00000001
+      가능한 설정 단위: %
+    현재 AC 전원 설정 색인: 0x00000032
+    현재 DC 전원 설정 색인: 0x00000032
+
+    전원 설정 GUID: fbd9aa66-9553-4097-ba44-ed6e9d65eab8  (자동 밝기 조정 사용)
+      GUID 별칭: ADAPTBRIGHT
+      가능한 설정 색인: 000
+      가능한 설정 이름: 해제
+      가능한 설정 색인: 001
+      가능한 설정 이름: 설정
+    현재 AC 전원 설정 색인: 0x00000000
+    현재 DC 전원 설정 색인: 0x00000000
+
+전원 구성표 GUID: 381b4222-f694-41f0-9685-ff5bb260df2e  (균형 조정)
+  GUID 별칭: SCHEME_BALANCED
+  하위 그룹 GUID: 0012ee47-9041-4b5d-9b77-535fba8b1442  (하드 디스크)
+    GUID 별칭: SUB_DISK
+    전원 설정 GUID: 6738e2c4-e8a5-4a42-b16a-e040e769756e  (다음 시간 이후에 하드 디스크 끄기)
+      GUID 별칭: DISKIDLE
+      가능한 최소 설정: 0x00000000
+      가능한 최대 설정: 0xffffffff
+      가능한 설정 증가: 0x00000001
+      가능한 설정 단위: 초
+    현재 AC 전원 설정 색인: 0x000004b0
+    현재 DC 전원 설정 색인: 0x00000258
+
+
+
+### Power availablestates
+# at 2026-11-11T14:08:34.9669782+09:00
+이 시스템에서 다음 절전 모드를 사용할 수 있습니다.
+    대기 모드 (S3)
+    최대 절전 모드
+    빠른 시작
+
+이 시스템에서 다음 절전 모드를 사용할 수 없습니다.
+    대기 모드(S1)
+	시스템 펌웨어에서 이 대기 모드를 지원하지 않습니다.
+
+    대기 모드(S2)
+	시스템 펌웨어에서 이 대기 모드를 지원하지 않습니다.
+
+    대기 모드(S0 저 전원 유휴)
+	시스템 펌웨어에서 이 대기 모드를 지원하지 않습니다.
+
+    하이브리드 절전 모드
+	하이퍼바이저가 이 대기 모드를 지원하지 않습니다.
+
+
+
+### Top CPU processes
+# at 2026-11-11T14:08:34.9822900+09:00
+
+Name                    Id        CPU WS_MB
+----                    --        --- -----
+INZONEHub            26584 448.484375   156
+SamsungMagician      20916        404    50
+OP.GG                25484 152.046875   106
+Discord              22128    106.125   402
+Discord              13676  79.296875   242
+lghub_system_tray    25456  34.484375    70
+explorer              6380   33.40625   274
+vgtray               17816  28.609375    39
+lghub_agent          24588   26.96875    72
+MYBOXExplorer_x64_MT 25992  23.078125    39
+OP.GG                23416  22.328125   147
+SamsungMagician      27184  18.984375    36
+tailscale-ipn        27600   16.28125    38
+OP.GG                24420  14.765625   133
+KakaoTalk            27564  14.421875   132
+
+
+
+
+### Top mem processes
+# at 2026-11-11T14:08:35.0268416+09:00
+
+Name                  Id WS_MB
+----                  -- -----
+vmmemWSL           11732  4886
+Memory Compression  4152   885
+oracle              7428   700
+Discord            22128   402
+MsMpEng             6676   335
+explorer            6380   274
+Discord            13676   242
+svchost             5376   199
+Docker Desktop     22392   159
+Discord            13580   158
+INZONEHub          26584   156
+com.docker.backend  7008   155
+
+
+
+
+### CPU load
+# at 2026-11-11T14:08:35.0394376+09:00
+
+LoadPercentage
+--------------
+             3
+
+
+
+
+### Scheduled tasks enabled with UpdateOrchestrator
+# at 2026-11-11T14:08:36.0857654+09:00
+
+
+### Net adapters
+# at 2026-11-11T14:08:37.1465665+09:00
+
+InterfaceAlias                     IPAddress     PrefixLength
+--------------                     ---------     ------------
+vEthernet (WSL (Hyper-V firewall)) 172.29.96.1             20
+vEthernet (Default Switch)         172.23.96.1             20
+VMware Network Adapter VMnet8      <lan-ip>           24
+VMware Network Adapter VMnet1      <lan-ip>           24
+Tailscale                          <tailscale-ip>           32
+이더넷                                <lan-ip>             24
+Loopback Pseudo-Interface 1        127.0.0.1                8
+
+
+
+
+### Net connection profile
+# at 2026-11-11T14:08:37.7593195+09:00
+
+Name      InterfaceAlias NetworkCategory
+----      -------------- ---------------
+네트워크 3    이더넷                     Public
+Tailscale Tailscale              Private
+
+
+
+
+### SMB shares
+# at 2026-11-11T14:08:37.8934416+09:00
+
+Name   Path
+----   ----
+ADMIN$ C:\Windows
+C$     C:\
+IPC$
+
+
+
+
+### SMB mappings
+# at 2026-11-11T14:08:38.4193023+09:00
+
+
+### OpenSSH
+# at 2026-11-11T14:08:38.4328151+09:00
+
+Name       Status StartType
+----       ------ ---------
+ssh-agent Stopped  Disabled
+
+
+
+
+
+
+### Google Drive process
+# at 2026-11-11T14:08:38.4550470+09:00
+
+
+### Docker Desktop settings
+# at 2026-11-11T14:08:38.4665548+09:00
+{
+  "AutoStart": false,
+  "DisplayedOnboarding": true,
+  "EnableDockerAI": true,
+  "EngineTypeWindows": "wsl2",
+  "InferenceCanUseGPUVariant": true,
+  "IntegratedWslDistros": [
+    "Ubuntu-24.04"
+  ],
+  "LastContainerdSnapshotterEnable": 1780412976,
+  "LicenseTermsVersion": 2,
+  "SettingsVersion": 48,
+  "UpdateInstallTime": 0,
+  "UpdatePreviousVersion": "",
+  "UseContainerdSnapshotter": true,
+  "WslEngineEnabled": true
+}
+
+
+
+### Docker Desktop autostart
+# at 2026-11-11T14:08:38.4884436+09:00
+
+
+Discord                                                  : "C:\Users\<winuser>\AppData\Local\Discord\Update.exe" --processStart Discord.exe
+RiotClient                                               : C:\Riot Games\Riot Client\RiotClientServices.exe --launch-background-mode
+KakaoTalk                                                : "C:\Program Files\Kakao\KakaoTalk\KakaoTalk.exe" -bystartup
+electron.app.OP.GG                                       : "C:\Users\<winuser>\AppData\Local\Programs\OP.GG\OP.GG.exe"
+LGHUB                                                    : "C:\Program Files\LGHUB\system_tray\lghub_system_tray.exe" --minimized
+Steam                                                    : "C:\Program Files (x86)\Steam\steam.exe" -silent
+Overwolf                                                 : C:\Program Files (x86)\Overwolf\OverwolfLauncher.exe -overwolfsilent
+electron.app.Notion                                      : "C:\Users\<winuser>\AppData\Local\Programs\Notion\Notion.exe" --open-at-login
+Adobe Acrobat Synchronizer                               : "C:\Program Files\Adobe\Acrobat DC\Acrobat\AdobeCollabSync.exe"
+MYBOX                                                    : C:\Program Files\NAVER Cloud\MYBOX\MYBOXLauncher_x64_MT.exe
+Battle.net                                               : "C:\Program Files (x86)\Battle.net\Battle.net.exe" --autostarted
+MicrosoftEdgeAutoLaunch_<id> : "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --no-startup-window --win-session-start
+Docker Desktop                                           : C:\Program Files\Docker\Docker\Docker Desktop.exe
+
+
+
+
+
+### Admin?
+# at 2026-11-11T14:08:38.4959650+09:00
+False

@@ -1,0 +1,272 @@
+elevated run 2026-11-11T17:33:55.9120970+09:00
+pause set start=2026-11-11T08:33:55Z end=2026-12-16T08:33:55Z
+--- apply script ---
+기록이 시작되었습니다. 출력 파일은 C:\Users\<winuser>\AppData\Local\Temp\if_host2_restart_apply_transcript.txt입니다.
+===== BEFORE 2026-11-11T17:33:56.0807016+09:00 =====
+IsAdmin: True
+R1:
+
+
+PauseFeatureUpdatesStartTime : 2026-11-11T08:33:55Z
+PauseQualityUpdatesStartTime : 2026-11-11T08:33:55Z
+PauseUpdatesStartTime        : 2026-11-11T08:33:55Z
+PauseFeatureUpdatesEndTime   : 2026-12-16T08:33:55Z
+PauseQualityUpdatesEndTime   : 2026-12-16T08:33:55Z
+PauseUpdatesExpiryTime       : 2026-12-16T08:33:55Z
+ActiveHoursStart             : 16
+ActiveHoursEnd               : 5
+
+
+
+
+R2:
+
+R4:
+전원 구성표 GUID: 381b4222-f694-41f0-9685-ff5bb260df2e  (균형 조정)
+  GUID 별칭: SCHEME_BALANCED
+  하위 그룹 GUID: 238c9fa8-0aad-41ed-83f4-97be242c8f20  (절전)
+    GUID 별칭: SUB_SLEEP
+    전원 설정 GUID: 29f6c1db-86da-48c5-9fdb-f2b67b1f44da  (다음 시간 후 절전 모드로 전환)
+      GUID 별칭: STANDBYIDLE
+      가능한 최소 설정: 0x00000000
+      가능한 최대 설정: 0xffffffff
+      가능한 설정 증가: 0x00000001
+      가능한 설정 단위: 초
+    현재 AC 전원 설정 색인: 0x00000000
+    현재 DC 전원 설정 색인: 0x00000258
+
+전원 구성표 GUID: 381b4222-f694-41f0-9685-ff5bb260df2e  (균형 조정)
+  GUID 별칭: SCHEME_BALANCED
+  하위 그룹 GUID: 238c9fa8-0aad-41ed-83f4-97be242c8f20  (절전)
+    GUID 별칭: SUB_SLEEP
+    전원 설정 GUID: 9d7815a6-7ee4-497e-8888-515a05f02364  (다음 시간 이후에 최대 절전 모드로 전환)
+      GUID 별칭: HIBERNATEIDLE
+      가능한 최소 설정: 0x00000000
+      가능한 최대 설정: 0xffffffff
+      가능한 설정 증가: 0x00000001
+      가능한 설정 단위: 초
+    현재 AC 전원 설정 색인: 0x00000000
+    현재 DC 전원 설정 색인: 0x00000000
+
+R5:
+
+
+WU   : False
+CBS  : False
+PFRO : False
+
+
+
+
+R6:
+
+Task                                 State Next                   Last
+----                                 ----- ----                   ----
+Report policies                      Ready                        2026-11-09 오전 3:10:13
+Schedule Maintenance Work         Disabled                        1999-11-30 오전 12:00:00
+Schedule Scan                        Ready 2026-11-11 오후 7:08:21  2026-11-11 오후 12:40:29
+Schedule Scan Static Task            Ready                        2026-11-11 오후 12:08:23
+Schedule Wake To Work             Disabled                        2026-06-11 오전 7:32:55
+Schedule Work                     Disabled                        2026-11-11 오전 9:46:00
+Start Oobe Expedite Work             Ready                        2026-11-11 오전 10:18:22
+StartOobeAppsScanAfterUpdate         Ready                        1999-11-30 오전 12:00:00
+StartOobeAppsScan_LicenseAccepted    Ready                        2026-05-07 오전 6:10:18
+UIEOrchestrator                      Ready 2026-11-12 오후 7:25:38  2026-11-11 오전 10:12:08
+USO_UxBroker                         Ready 2026-11-12 오후 11:31:59 2026-11-11 오전 10:00:06
+UUS Failover Task                    Ready                        1999-11-30 오전 12:00:00
+
+
+
+The operation completed successfully.
+
+rc=0
+The operation completed successfully.
+
+rc=0
+rc=0
+rc=0
+===== AFTER 2026-11-11T17:33:57.4764405+09:00 =====
+IsAdmin: True
+R1:
+
+
+PauseFeatureUpdatesStartTime : 2026-11-11T08:33:55Z
+PauseQualityUpdatesStartTime : 2026-11-11T08:33:55Z
+PauseUpdatesStartTime        : 2026-11-11T08:33:55Z
+PauseFeatureUpdatesEndTime   : 2026-12-16T08:33:55Z
+PauseQualityUpdatesEndTime   : 2026-12-16T08:33:55Z
+PauseUpdatesExpiryTime       : 2026-12-16T08:33:55Z
+ActiveHoursStart             : 16
+ActiveHoursEnd               : 5
+
+
+
+
+R2:
+
+
+NoAutoRebootWithLoggedOnUsers : 1
+AUOptions                     : 2
+PSPath                        : Microsoft.PowerShell.Core\Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Wind
+                                ows\WindowsUpdate\AU
+PSParentPath                  : Microsoft.PowerShell.Core\Registry::HKEY_LOCAL_MACHINE\SOFTWARE\Policies\Microsoft\Wind
+                                ows\WindowsUpdate
+PSChildName                   : AU
+PSDrive                       : HKLM
+PSProvider                    : Microsoft.PowerShell.Core\Registry
+
+
+
+
+R4:
+전원 구성표 GUID: 381b4222-f694-41f0-9685-ff5bb260df2e  (균형 조정)
+  GUID 별칭: SCHEME_BALANCED
+  하위 그룹 GUID: 238c9fa8-0aad-41ed-83f4-97be242c8f20  (절전)
+    GUID 별칭: SUB_SLEEP
+    전원 설정 GUID: 29f6c1db-86da-48c5-9fdb-f2b67b1f44da  (다음 시간 후 절전 모드로 전환)
+      GUID 별칭: STANDBYIDLE
+      가능한 최소 설정: 0x00000000
+      가능한 최대 설정: 0xffffffff
+      가능한 설정 증가: 0x00000001
+      가능한 설정 단위: 초
+    현재 AC 전원 설정 색인: 0x00000000
+    현재 DC 전원 설정 색인: 0x00000258
+
+전원 구성표 GUID: 381b4222-f694-41f0-9685-ff5bb260df2e  (균형 조정)
+  GUID 별칭: SCHEME_BALANCED
+  하위 그룹 GUID: 238c9fa8-0aad-41ed-83f4-97be242c8f20  (절전)
+    GUID 별칭: SUB_SLEEP
+    전원 설정 GUID: 9d7815a6-7ee4-497e-8888-515a05f02364  (다음 시간 이후에 최대 절전 모드로 전환)
+      GUID 별칭: HIBERNATEIDLE
+      가능한 최소 설정: 0x00000000
+      가능한 최대 설정: 0xffffffff
+      가능한 설정 증가: 0x00000001
+      가능한 설정 단위: 초
+    현재 AC 전원 설정 색인: 0x00000000
+    현재 DC 전원 설정 색인: 0x00000000
+
+R5:
+
+
+WU   : False
+CBS  : False
+PFRO : False
+
+
+
+
+R6:
+
+Task                                 State Next                  Last
+----                                 ----- ----                  ----
+Report policies                      Ready                       2026-11-09 오전 3:10:13
+Schedule Maintenance Work         Disabled                       1999-11-30 오전 12:00:00
+Schedule Scan                        Ready 2026-11-11 오후 7:16:39 2026-11-11 오후 12:40:29
+Schedule Scan Static Task            Ready                       2026-11-11 오후 12:08:23
+Schedule Wake To Work             Disabled                       2026-06-11 오전 7:32:55
+Schedule Work                     Disabled                       2026-11-11 오전 9:46:00
+Start Oobe Expedite Work             Ready                       2026-11-11 오전 10:18:22
+StartOobeAppsScanAfterUpdate         Ready                       1999-11-30 오전 12:00:00
+StartOobeAppsScan_LicenseAccepted    Ready                       2026-05-07 오전 6:10:18
+UIEOrchestrator                      Ready 2026-11-12 오전 3:28:17 2026-11-11 오전 10:12:08
+USO_UxBroker                         Ready 2026-11-12 오전 6:47:08 2026-11-11 오전 10:00:06
+UUS Failover Task                    Ready                       1999-11-30 오전 12:00:00
+
+
+
+systeminfo:
+
+Host Name:                     <host2>
+OS Name:                       Microsoft Windows 11 Pro
+OS Version:                    10.0.26200 N/A Build 26200
+OS Manufacturer:               Microsoft Corporation
+OS Configuration:              Standalone Workstation
+OS Build Type:                 Multiprocessor Free
+Registered Owner:              <redacted>
+Registered Organization:
+Product ID:                    <redacted>
+Original Install Date:         2026-05-07, 오전 6:11:23
+System Boot Time:              2026-11-11, 오전 10:03:03
+System Manufacturer:           Micro-Star International Co., Ltd.
+System Model:                  MS-7E42
+System Type:                   x64-based PC
+Processor(s):                  1 Processor(s) Installed.
+                               [01]: Intel64 Family 6 Model 198 Stepping 2 GenuineIntel ~3700 Mhz
+BIOS Version:                  American Megatrends International, LLC. 1.A70, 2025-12-23
+Windows Directory:             C:\Windows
+System Directory:              C:\Windows\system32
+Boot Device:                   \Device\HarddiskVolume1
+System Locale:                 ko;Korean
+Input Locale:                  ko;Korean
+Time Zone:                     (UTC+09:00) Seoul
+Total Physical Memory:         32,133 MB
+Available Physical Memory:     19,645 MB
+Virtual Memory: Max Size:      43,397 MB
+Virtual Memory: Available:     24,729 MB
+Virtual Memory: In Use:        18,668 MB
+Page File Location(s):         C:\pagefile.sys
+Domain:                        WORKGROUP
+Logon Server:                  \\<host2>
+Hotfix(s):                     5 Hotfix(s) Installed.
+                               [01]: KB5127690
+                               [02]: KB5054156
+                               [03]: KB5132061
+                               [04]: KB5127647
+                               [05]: KB5132688
+Network Card(s):               6 NIC(s) Installed.
+                               [01]: Realtek(R) PCI(e) Ethernet Controller
+                                     Connection Name: 이더넷
+                                     DHCP Enabled:    Yes
+                                     DHCP Server:     <lan-ip>
+                                     IP address(es)
+                                     [01]: <lan-ip>
+                                     [02]: fe80::7a18:8e3b:11af:6798
+                               [02]: Killer(TM) Wi-Fi 7 BE1750x 320MHz Wireless Network Adapter (BE200NGW)
+                                     Connection Name: Wi-Fi
+                                     Status:          Media disconnected
+                               [03]: Bluetooth Device (Personal Area Network)
+                                     Connection Name: Bluetooth 네트워크 연결
+                                     Status:          Media disconnected
+                               [04]: VMware Virtual Ethernet Adapter for VMnet1
+                                     Connection Name: VMware Network Adapter VMnet1
+                                     DHCP Enabled:    Yes
+                                     DHCP Server:     <lan-ip>
+                                     IP address(es)
+                                     [01]: <lan-ip>
+                                     [02]: fe80::d1f5:8d63:71ce:216a
+                               [05]: VMware Virtual Ethernet Adapter for VMnet8
+                                     Connection Name: VMware Network Adapter VMnet8
+                                     DHCP Enabled:    Yes
+                                     DHCP Server:     <lan-ip>
+                                     IP address(es)
+                                     [01]: <lan-ip>
+                                     [02]: fe80::f2fc:fd1f:ebcc:be70
+                               [06]: Wintun Userspace Tunnel
+                                     Connection Name: Tailscale
+                                     DHCP Enabled:    No
+                                     IP address(es)
+                                     [01]: <tailscale-ip>
+                                     [02]: fe80::ca8d:dc28:39a2:1fe7
+                                     [03]: fd7a:115c:a1e0::bf2d:5f12
+Virtualization-based security: Status: Running
+                               Required Security Properties:
+                                     Base Virtualization Support
+                               Available Security Properties:
+                                     Base Virtualization Support
+                                     Secure Boot
+                                     DMA Protection
+                                     Secure Memory Overwrite
+                                     UEFI Code Readonly
+                                     SMM Security Mitigations 1.0
+                                     Mode Based Execution Control
+                                     APIC Virtualization
+                               Services Configured:
+                                     Hypervisor enforced Code Integrity
+                               Services Running:
+                                     Hypervisor enforced Code Integrity
+                               App Control for Business policy: Enforced
+                               App Control for Business user mode policy: Off
+                               Security Features Enabled:
+Hyper-V Requirements:          A hypervisor has been detected. Features required for Hyper-V will not be displayed.
+기록이 중지되었습니다. 출력 파일은 C:\Users\<winuser>\AppData\Local\Temp\if_host2_restart_apply_transcript.txt입니다.
+done 2026-11-11T17:34:00.5384990+09:00

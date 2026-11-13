@@ -1,0 +1,23 @@
+### smoke post-run check 2026-11-11T22:42:33+09:00
+## gate verdict letters
+node-tar-7.5.2-D-s6301.verdict: S 
+node-tar-7.5.2-D-s6303.verdict: S 
+node-tar-7.5.2-R-s6301.verdict: S 
+node-tar-7.5.2-R-s6303.verdict: S 
+node-tar-7.5.2-S-u-s6301.verdict: S 
+node-tar-7.5.2-S-u-s6303.verdict: S 
+## acknowledged/
+ls: cannot access '/home/<user>/inodefence-host2-20261111/runs/out-HOST2-eng-smoke/start-gate/acknowledged': No such file or directory
+## cell-results event counts / infra keys
+{'start': 6, 'end': 6}
+nonzero infra keys: {}
+0
+## index status keys
+{'cell_completeness': {'aborts': 0, 'aborts_plus_inconsistent': 0, 'cells': 6, 'complete': 6, 'inconsistent_checks': {}, 'infrastructure_failure_rate': 0.0, 'infrastructure_resumes': [], 'infrastructure_stopped': False, 'infrastructure_stops': [], 'no_record': 0, 'record_inconsistent': 0, 'recorded_steps': 1800, 'start_denied_attempts': 0, 'start_denied_by_cell': {}, 'unattempted': 0, 'unknown_outcome_steps': 0, 'watchdog': 0}, 'outcomes_redacted': False}
+## preflight/postflight problems
+postflight-20261111T132806.102441Z.json {'execution_sha': {'dirty': False, 'revision': 'bed077af62b1cdd5cc8dec96eb9cbe93ba542f1d'}, 'problems': []}
+preflight-20261111T132806.102441Z.json {'execution_sha': {'dirty': False, 'revision': 'bed077af62b1cdd5cc8dec96eb9cbe93ba542f1d'}, 'problems': []}
+## leftovers after
+containers 0 volumes 0
+## worktree
+0

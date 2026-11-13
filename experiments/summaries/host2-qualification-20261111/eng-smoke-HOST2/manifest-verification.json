@@ -1,0 +1,18 @@
+{
+  "checked_at": "2026-11-11T13:42:09.332589+00:00",
+  "outcomes_redacted": false,
+  "raw_manifest": {
+    "generated": true,
+    "path": "/home/<user>/inodefence-host2-20261111/exec-bed077a/raw-manifest-host2-eng-smoke.sha256",
+    "returncode": 0,
+    "stderr": "",
+    "stdout": "wrote 63 entries to /home/<user>/inodefence-host2-20261111/exec-bed077a/raw-manifest-host2-eng-smoke.sha256 (root /home/<user>/inodefence-host2-20261111/runs/out-HOST2-eng-smoke)"
+  },
+  "redaction_reasons": [],
+  "verification": {
+    "returncode": 0,
+    "stderr": "",
+    "stdout": "verify OK: 63 ok, 0 mismatched, 0 missing, 0 extra (root /home/<user>/inodefence-host2-20261111/runs/out-HOST2-eng-smoke)",
+    "verified": true
+  }
+}

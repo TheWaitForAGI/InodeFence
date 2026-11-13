@@ -1,0 +1,24 @@
+### at 2026-11-11T14:17:17+09:00
+{'rc': 0, 'offset': 0, 'freq_raw': 2743052, 'freq_ppm': 41.85565185546875, 'maxerror': 579520, 'esterror': 330342, 'status': 8192, 'constant': 2, 'precision': 1, 'tolerance': 32768000, 'tick': 9095}
+       Server: 185.125.190.57 (ntp.ubuntu.com)
+Poll interval: 32s (min: 32s; max 34min 8s)
+         Leap: normal
+      Version: 4
+      Stratum: 2
+    Reference: 1D586304
+    Precision: 1us (-25)
+Root distance: 4.447ms (max: 5s)
+       Offset: +1.784776s
+        Delay: 245.161ms
+       Jitter: 115.053ms
+ Packet count: 91
+    Frequency: -36.905ppm
+rc=0
+### windows UTC vs linux UTC
+2026-11-11T05:17:17.955577766
+2026-11-11T05:17:18.4356877Z
+2026-11-11T05:17:18.425377876
+Nov 11 13:29:05 <host2> systemd[1]: Starting systemd-timesyncd.service - Network Time Synchronization...
+Nov 11 13:29:05 <host2> systemd[1]: Started systemd-timesyncd.service - Network Time Synchronization.
+Nov 11 13:29:06 <host2> systemd-timesyncd[159]: Contacted time server 185.125.190.57:123 (ntp.ubuntu.com).
+Nov 11 13:29:06 <host2> systemd-timesyncd[159]: Initial clock synchronization to Wed 2026-11-11 13:29:06.754274 KST.

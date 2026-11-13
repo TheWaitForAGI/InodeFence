@@ -1,0 +1,106 @@
+### $ wsl.exe --version
+# at 2026-11-11T14:07:59+09:00
+WSL Ñº»: 3.0.5.0
+‰Œ± Ñº»: 6.18.58.1-1
+WSLg Ñº»: 1.0.79
+MSRDC Ñº»: 1.2.7391
+Direct3D Ñº»: 1.611.1-81528511
+DXCore Ñº»: 10.0.26100.1-240331-1435.ge-release
+Windows Ñº»: 10.0.26200.9974
+# rc=0
+
+### $ wsl.exe -l -v
+# at 2026-11-11T14:07:59+09:00
+  NAME              STATE           VERSION
+* Ubuntu-24.04      Running         2
+  docker-desktop    Running         2
+  Ubuntu            Stopped         2
+# rc=0
+
+### $ cat /mnt/c/Users/<winuser>/.wslconfig
+# at 2026-11-11T14:07:59+09:00
+[wsl2]
+memory=20GB
+# rc=0
+
+### $ free -b
+# at 2026-11-11T14:07:59+09:00
+               total        used        free      shared  buff/cache   available
+Mem:     20970418176  1614299136 15786967040    52318208  3909550080 19356119040
+Swap:     5368709120           0  5368709120
+# rc=0
+
+### $ nproc
+# at 2026-11-11T14:07:59+09:00
+24
+# rc=0
+
+### $ df -hT / /mnt/c /mnt/wsl
+# at 2026-11-11T14:07:59+09:00
+Filesystem     Type   Size  Used Avail Use% Mounted on
+/dev/sdd       ext4  1007G   13G  944G   2% /
+C:\            9p     931G  845G   87G  91% /mnt/c
+none           tmpfs  9.8G   23M  9.8G   1% /mnt/wsl
+# rc=0
+
+### $ uptime
+# at 2026-11-11T14:07:59+09:00
+ 14:07:59 up 37 min,  2 users,  load average: 0.30, 0.25, 0.18
+# rc=0
+
+### $ cat /proc/meminfo
+# at 2026-11-11T14:07:59+09:00
+MemTotal:       20478924 kB
+MemFree:        15415664 kB
+MemAvailable:   18901172 kB
+Buffers:          244500 kB
+Cached:          3270896 kB
+SwapCached:            0 kB
+Active:           544092 kB
+Inactive:        3572432 kB
+Active(anon):      43304 kB
+Inactive(anon):   608576 kB
+Active(file):     500788 kB
+Inactive(file):  2963856 kB
+Unevictable:           0 kB
+Mlocked:               0 kB
+SwapTotal:       5242880 kB
+SwapFree:        5242880 kB
+Dirty:               404 kB
+Writeback:             0 kB
+AnonPages:        601436 kB
+Mapped:           439820 kB
+Shmem:             51092 kB
+KReclaimable:     302532 kB
+Slab:             415332 kB
+SReclaimable:     302532 kB
+SUnreclaim:       112800 kB
+KernelStack:       10044 kB
+PageTables:        12232 kB
+SecPageTables:         0 kB
+NFS_Unstable:          0 kB
+Bounce:                0 kB
+WritebackTmp:          0 kB
+CommitLimit:    15482340 kB
+Committed_AS:    2929508 kB
+VmallocTotal:   34359738367 kB
+VmallocUsed:       43464 kB
+VmallocChunk:          0 kB
+Percpu:            11136 kB
+HardwareCorrupted:     0 kB
+AnonHugePages:         0 kB
+ShmemHugePages:        0 kB
+ShmemPmdMapped:        0 kB
+FileHugePages:    151552 kB
+FilePmdMapped:         0 kB
+Balloon:               0 kB
+HugePages_Total:       0
+HugePages_Free:        0
+HugePages_Rsvd:        0
+HugePages_Surp:        0
+Hugepagesize:       2048 kB
+Hugetlb:               0 kB
+DirectMap4k:       93184 kB
+DirectMap2M:    10391552 kB
+DirectMap1G:    19922944 kB
+# rc=0

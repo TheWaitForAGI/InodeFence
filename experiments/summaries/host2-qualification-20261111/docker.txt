@@ -1,0 +1,190 @@
+### $ docker version
+# at 2026-11-11T14:07:49+09:00
+Client:
+ Version:           29.9.3
+ API version:       1.56
+ Go version:        go1.26.10
+ Git commit:        5457199
+ Built:             Tue Nov  3 21:42:08 2026
+ OS/Arch:           linux/amd64
+ Context:           default
+
+Server: Docker Desktop 4.99.0 (245822)
+ Engine:
+  Version:          29.9.3
+  API version:      1.56 (minimum version 1.40)
+  Go version:       go1.26.10
+  Git commit:       70efc0e
+  Built:            Tue Nov  3 21:41:42 2026
+  OS/Arch:          linux/amd64
+  Experimental:     false
+ containerd:
+  Version:          v2.4.2
+  GitCommit:        b7a25261e029d68978bbf290df0a62fc819b3c51
+ runc:
+  Version:          1.5.2
+  GitCommit:        v1.5.2-0-g29dd3dc2
+ docker-init:
+  Version:          0.19.0
+  GitCommit:        de40ad0
+# rc=0
+
+### $ docker context ls
+# at 2026-11-11T14:07:49+09:00
+NAME            DESCRIPTION                               DOCKER ENDPOINT                             ERROR
+default *       Current DOCKER_HOST based configuration   unix:///var/run/docker.sock
+desktop-linux   Docker Desktop                            npipe:////./pipe/dockerDesktopLinuxEngine
+# rc=0
+
+### $ docker info
+# at 2026-11-11T14:07:49+09:00
+Client:
+ Version:    29.9.3
+ Context:    default
+ Debug Mode: false
+ Plugins:
+  agent: Docker AI Agent Runner (Docker Inc.)
+    Version:  v1.153.0
+    Path:     /usr/local/lib/docker/cli-plugins/docker-agent
+  ai: Docker AI Agent - Ask Gordon (Docker Inc.)
+    Version:  v1.33.0
+    Path:     /usr/local/lib/docker/cli-plugins/docker-ai
+  buildx: Docker Buildx (Docker Inc.)
+    Version:  v0.38.1
+    Path:     /usr/local/lib/docker/cli-plugins/docker-buildx
+  compose: Docker Compose (Docker Inc.)
+    Version:  v5.7.0
+    Path:     /usr/local/lib/docker/cli-plugins/docker-compose
+  debug: Get a shell into any image or container (Docker Inc.)
+    Version:  0.49.0
+    Path:     /usr/local/lib/docker/cli-plugins/docker-debug
+  desktop: Docker Desktop commands (Docker Inc.)
+    Version:  4.99.0
+    Path:     /usr/local/lib/docker/cli-plugins/docker-desktop
+  dhi: CLI for managing Docker Hardened Images (Docker Inc.)
+    Version:  v0.0.10
+    Path:     /usr/local/lib/docker/cli-plugins/docker-dhi
+  extension: Manages Docker extensions (Docker Inc.)
+    Version:  v0.2.32
+    Path:     /usr/local/lib/docker/cli-plugins/docker-extension
+  init: Creates Docker-related starter files for your project (Docker Inc.)
+    Version:  v1.4.1
+    Path:     /usr/local/lib/docker/cli-plugins/docker-init
+  mcp: Docker MCP Plugin (Docker Inc.)
+    Version:  v0.44.3
+    Path:     /usr/local/lib/docker/cli-plugins/docker-mcp
+  model: Docker Model Runner (Docker Inc.)
+    Version:  v1.2.9
+    Path:     /usr/local/lib/docker/cli-plugins/docker-model
+  offload: Docker Offload (Docker Inc.)
+    Version:  v0.7.36
+    Path:     /usr/local/lib/docker/cli-plugins/docker-offload
+  pass: Docker Pass Secrets Manager Plugin (beta) (Docker Inc.)
+    Version:  v0.3.2
+    Path:     /usr/local/lib/docker/cli-plugins/docker-pass
+  sandbox: "docker sandbox" is deprecated, use Docker Sandboxes instead (Docker Inc.)
+    Version:  v0.13.0
+    Path:     /usr/local/lib/docker/cli-plugins/docker-sandbox
+  scout: Docker Scout (Docker Inc.)
+    Version:  v1.28.0
+    Path:     /usr/local/lib/docker/cli-plugins/docker-scout
+
+Server:
+ Containers: 4
+  Running: 0
+  Paused: 0
+  Stopped: 4
+ Images: 8
+ Server Version: 29.9.3
+ Storage Driver: overlayfs
+  driver-type: io.containerd.snapshotter.v1
+ Logging Driver: local
+ Cgroup Driver: cgroupfs
+ Cgroup Version: 2
+ Plugins:
+  Volume: local
+  Network: bridge host ipvlan macvlan null overlay
+  Log: awslogs fluentd gcplogs gelf journald json-file local splunk syslog
+ CDI spec directories:
+  /etc/cdi
+  /var/run/cdi
+ Discovered Devices:
+  cdi: docker.com/gpu=webgpu
+ Swarm: inactive
+ Runtimes: io.containerd.runc.v2 nvidia runc
+ Default Runtime: runc
+ Init Binary: docker-init
+ containerd version: b7a25261e029d68978bbf290df0a62fc819b3c51
+ runc version: v1.5.2-0-g29dd3dc2
+ init version: de40ad0
+ Security Options:
+  seccomp
+   Profile: builtin
+  cgroupns
+ Kernel Version: 6.18.58.1-microsoft-standard-WSL2
+ Operating System: Docker Desktop
+ OSType: linux
+ Architecture: x86_64
+ CPUs: 24
+ Total Memory: 19.53GiB
+ Name: docker-desktop
+ ID: 53ea9955-d48b-4d02-b16c-d743079eb17c
+ Docker Root Dir: /var/lib/docker
+ Debug Mode: false
+ HTTP Proxy: http.docker.internal:3128
+ HTTPS Proxy: http.docker.internal:3128
+ No Proxy: hubproxy.docker.internal
+ Labels:
+  com.docker.desktop.address=unix:///var/run/docker-cli.sock
+ Experimental: false
+ Insecure Registries:
+  hubproxy.docker.internal:5555
+  127.0.0.0/8
+  ::1/128
+ Live Restore Enabled: false
+ Firewall Backend: iptables
+
+# rc=0
+
+### $ docker image ls --digests --no-trunc
+# at 2026-11-11T14:07:49+09:00
+REPOSITORY                                                                               TAG       DIGEST                                                                    IMAGE ID                                                                  CREATED        SIZE
+vsc-inodefence-98e8d37245cee16d12d8f3385df39b5ce6532ac020968ee74ba08c373550dd2e-uid      latest    sha256:b22a052837402b1b6fceb23d8c3048748db2af8117756447c816881c67ac93a2   sha256:b22a052837402b1b6fceb23d8c3048748db2af8117756447c816881c67ac93a2   2 weeks ago    1.69GB
+vsc-inodefence-98e8d37245cee16d12d8f3385df39b5ce6532ac020968ee74ba08c373550dd2e          latest    sha256:64cf1ec54a15479e8a339b75350fc414b00a99675336ab56c2bb3f861bb0ba02   sha256:64cf1ec54a15479e8a339b75350fc414b00a99675336ab56c2bb3f861bb0ba02   2 weeks ago    1.69GB
+vsc-thewaitforagi-379196e0bf79a92366fd5e40d13e17791bedfc83cd02dabae85791275123b584-uid   latest    sha256:9de0c715159a390fb592d7d9f803f8d2e4a190b2eb91939558d6dc6ac5cb73ca   sha256:9de0c715159a390fb592d7d9f803f8d2e4a190b2eb91939558d6dc6ac5cb73ca   7 weeks ago    2.73GB
+vsc-thewaitforagi-379196e0bf79a92366fd5e40d13e17791bedfc83cd02dabae85791275123b584       latest    sha256:0577bddf9418a6b752e17fcf40f768bd68b2bc0b58e5e66599c2e13e51577468   sha256:0577bddf9418a6b752e17fcf40f768bd68b2bc0b58e5e66599c2e13e51577468   7 weeks ago    2.73GB
+sagemath/sagemath                                                                        latest    sha256:e068670ae5863b54b2550e72437ec637b0283acb0dc712c8584c124dbf44e667   sha256:e068670ae5863b54b2550e72437ec637b0283acb0dc712c8584c124dbf44e667   5 months ago   4.76GB
+ubuntu                                                                                   latest    sha256:f3d28607ddd78734bb7f71f117f3c6706c666b8b76cbff7c9ff6e5718d46ff64   sha256:f3d28607ddd78734bb7f71f117f3c6706c666b8b76cbff7c9ff6e5718d46ff64   6 months ago   160MB
+alpine                                                                                   3.20      sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc   sha256:d9e853e87e55526f6b2917df91a2115c36dd7c696a35be12163d44e6e2a4b6bc   6 months ago   12.2MB
+hello-world                                                                              latest    sha256:5e23090353324d887c48ad5e5c56d294eab81588df9605b07d1afe895f9cc8f8   sha256:5e23090353324d887c48ad5e5c56d294eab81588df9605b07d1afe895f9cc8f8   7 months ago   25.9kB
+# rc=0
+
+### $ docker ps -a --no-trunc --format {{.ID}}\t{{.Names}}\t{{.Image}}\t{{.CreatedAt}}\t{{.Status}}\t{{.Labels}}
+# at 2026-11-11T14:07:50+09:00
+5ff9707480beb4b0464fc111389fa5e0a6ef6cf241b45de2e96f3fb874cc6156	agitated_aryabhata	vsc-inodefence-98e8d37245cee16d12d8f3385df39b5ce6532ac020968ee74ba08c373550dd2e-uid	2026-10-24 14:09:08 +0900 KST	Exited (0) 2 weeks ago	desktop.docker.io/mounts/0/Source=/home/<user>/projects/InodeFence,desktop.docker.io/mounts/0/SourceKind=wsl2DistroFile,desktop.docker.io/mounts/0/Target=/workspaces/InodeFence,desktop.docker.io/mounts/4/Source=/run/user/1000/wayland-0,desktop.docker.io/mounts/4/SourceKind=wsl2DistroFile,desktop.docker.io/mounts/4/Target=/tmp/vscode-wayland-93f3cede-7c7f-4e52-833e-0ca0478a9690.sock,desktop.docker.io/ports.scheme=v2,desktop.docker.io/wsl-distro=Ubuntu-24.04,dev.containers.features=common,dev.containers.id=base-ubuntu,dev.containers.release=v0.4.19,dev.containers.source=https://github.com/devcontainers/images,dev.containers.timestamp=Thu, 16 Oct 2025 10:43:54 GMT,dev.containers.variant=noble,devcontainer.config_file=/home/<user>/projects/InodeFence/.devcontainer/devcontainer.json,devcontainer.local_folder=\\wsl.localhost\Ubuntu-24.04\home\<user>\projects\InodeFence,devcontainer.metadata=[ {"id":"ghcr.io/devcontainers/features/common-utils:2"}, {"id":"ghcr.io/devcontainers/features/git:1","customizations":{"vscode":{"settings":{"github.copilot.chat.codeGeneration.instructions":[{"text":"This dev container includes an up-to-date version of Git, built from source as needed, pre-installed and available on the `PATH`."}]}}}}, {"remoteUser":"vscode"}, {"id":"ghcr.io/devcontainers/features/node:2","customizations":{"vscode":{"extensions":["dbaeumer.vscode-eslint"],"settings":{"github.copilot.chat.codeGeneration.instructions":[{"text":"This dev container includes `node`, `npm` and `eslint` pre-installed and available on the `PATH` for Node.js and JavaScript development."}]}}}}, {"postCreateCommand":"bash .devcontainer/post-create.sh","customizations":{"vscode":{"extensions":["ms-python.python","ms-python.vscode-pylance","charliermarsh.ruff","ms-azuretools.vscode-containers"],"settings":{"python.defaultInterpreterPath":"/opt/venv/bin/python","python.testing.pytestEnabled":true,"python.testing.unittestEnabled":false,"editor.formatOnSave":true}}},"mounts":["source=inodefence-runtime,target=/var/lib/inodefence,type=volume","source=inodefence-codex,target=/home/vscode/.codex,type=volume"],"remoteUser":"vscode"} ],org.opencontainers.image.ref.name=ubuntu,org.opencontainers.image.version=24.04,version=2.0.5
+3e8f6d23a5104fecec36c63e460ae6e2b5977f192d00eb89c9d58b9c86e49d93	gracious_margulis	vsc-thewaitforagi-379196e0bf79a92366fd5e40d13e17791bedfc83cd02dabae85791275123b584-uid	2026-10-05 19:50:16 +0900 KST	Exited (0) 5 weeks ago	desktop.docker.io/mounts/0/Source=/home/<user>/projects/TheWaitForAGI,desktop.docker.io/mounts/0/SourceKind=wsl2DistroFile,desktop.docker.io/mounts/0/Target=/workspaces/TheWaitForAGI,desktop.docker.io/mounts/1/Source=/var/run/docker.sock,desktop.docker.io/mounts/1/SourceKind=dockerSocketProxied,desktop.docker.io/mounts/1/Target=/var/run/docker-host.sock,desktop.docker.io/mounts/3/Source=/run/user/1000/wayland-0,desktop.docker.io/mounts/3/SourceKind=wsl2DistroFile,desktop.docker.io/mounts/3/Target=/tmp/vscode-wayland-7059cf49-19e5-4537-ac4b-221c940cbd97.sock,desktop.docker.io/ports.scheme=v2,desktop.docker.io/wsl-distro=Ubuntu-24.04,dev.containers.id=python,dev.containers.release=v0.4.33,dev.containers.source=https://github.com/devcontainers/images,dev.containers.timestamp=Thu, 10 Sep 2026 12:14:06 GMT,dev.containers.variant=3.12-bookworm,devcontainer.config_file=/home/<user>/projects/TheWaitForAGI/.devcontainer/devcontainer.json,devcontainer.local_folder=\\wsl.localhost\Ubuntu-24.04\home\<user>\projects\TheWaitForAGI,devcontainer.metadata=[ {"id":"ghcr.io/devcontainers/features/common-utils:2"}, {"id":"ghcr.io/devcontainers/features/git:1","customizations":{"vscode":{"settings":{"github.copilot.chat.codeGeneration.instructions":[{"text":"This dev container includes an up-to-date version of Git, built from source as needed, pre-installed and available on the `PATH`."}]}}}}, {"id":"ghcr.io/devcontainers/features/node:2","customizations":{"vscode":{"extensions":["dbaeumer.vscode-eslint"],"settings":{"github.copilot.chat.codeGeneration.instructions":[{"text":"This dev container includes `node`, `npm` and `eslint` pre-installed and available on the `PATH` for Node.js and JavaScript development."}]}}}}, {"id":"ghcr.io/devcontainers/features/python:1","customizations":{"vscode":{"extensions":["ms-python.python","ms-python.vscode-pylance","ms-python.autopep8"],"settings":{"github.copilot.chat.codeGeneration.instructions":[{"text":"This dev container includes `python3` and `pip3` pre-installed and available on the `PATH`, along with the Python language extensions for Python development."}],"python.defaultInterpreterPath":"/usr/local/python/current/bin/python","[python]":{"editor.defaultFormatter":"ms-python.autopep8"}}}}}, {"customizations":{"vscode":{"settings":{"python.defaultInterpreterPath":"/usr/local/bin/python"}}},"remoteUser":"vscode"}, {"id":"ghcr.io/devcontainers/features/common-utils:2"}, {"id":"ghcr.io/devcontainers/features/docker-outside-of-docker:1","securityOpt":["label=disable"],"entrypoint":"/usr/local/share/docker-init.sh","mounts":[{"source":"/var/run/docker.sock","target":"/var/run/docker-host.sock","type":"bind"}],"customizations":{"vscode":{"extensions":["ms-azuretools.vscode-containers"],"settings":{"github.copilot.chat.codeGeneration.instructions":[{"text":"This dev container includes the Docker CLI (`docker`) pre-installed and available on the `PATH` for running and managing containers using the Docker daemon on the host machine."}]}}}}, {"postCreateCommand":"python -m pip install -e '.[dev]' -c requirements.lock && python scripts/verify_dependency_lock.py","customizations":{"vscode":{"extensions":["ms-python.python","ms-python.vscode-pylance","charliermarsh.ruff","ms-azuretools.vscode-docker","eamodio.gitlens","github.vscode-pull-request-github","redhat.vscode-yaml","tamasfe.even-better-toml"],"settings":{"python.testing.pytestEnabled":true,"python.testing.unittestEnabled":false,"editor.formatOnSave":true}}},"containerEnv":{"PYTHONDONTWRITEBYTECODE":"1","PYTHONUNBUFFERED":"1","PIP_DISABLE_PIP_VERSION_CHECK":"1","THEWAITFORAGI_DEVCONTAINER":"1"},"init":true,"remoteUser":"vscode"} ],version=3.2.3
+c3bffbfbafd237f4ec751825a16fa8846b59ded7b3e54a8f8a707f05743cf646	hspase-fast	sagemath/sagemath:latest	2026-06-07 16:28:21 +0900 KST	Exited (1) 5 months ago	desktop.docker.io/binds/0/Source=C:\Users\<winuser>\Desktop\hspase,desktop.docker.io/binds/0/SourceKind=hostFile,desktop.docker.io/binds/0/Target=/workspace,desktop.docker.io/ports.scheme=v2,maintainer=Erik M. Bray <erik.bray@lri.fr>, Julian Rüth <julian.rueth@fsfe.org>, Sebastian Oehms <seb.oehms@gmail.com>,org.opencontainers.image.version=24.04
+3fc73ced4d71ceddaca40c78387f57ef5bff0a13f35bee051ca88f04c9bed87f	webgoat	ubuntu	2026-06-03 00:12:28 +0900 KST	Exited (255) 5 months ago	desktop.docker.io/ports.scheme=v2,desktop.docker.io/ports/8080/tcp=:8080,desktop.docker.io/ports/9090/tcp=:9090,org.opencontainers.image.created=2026-04-21T17:23:54.324551+00:00,org.opencontainers.image.description=The Ubuntu container image maintained by Canonical
+
+Ubuntu is a Debian-based Linux operating system that runs from the desktop to the cloud, to all your internet connected things.
+It is the world's most popular operating system across public clouds and OpenStack clouds.
+It is the number one platform for containers; from Docker to Kubernetes to LXD, Ubuntu can run your containers at scale.
+Fast, secure and simple, Ubuntu powers millions of PCs worldwide.
+,org.opencontainers.image.title=ubuntu,org.opencontainers.image.version=26.04
+# rc=0
+
+### $ docker volume ls --format {{.Name}}\t{{.Driver}}\t{{.Labels}}
+# at 2026-11-11T14:07:50+09:00
+inodefence-codex	local
+inodefence-runtime	local
+vscode	local
+# rc=0
+
+### $ docker system df
+# at 2026-11-11T14:07:50+09:00
+TYPE            TOTAL     ACTIVE    SIZE      RECLAIMABLE
+Images          8         4         9.353GB   12.27MB (0%)
+Containers      4         0         8.729GB   8.729GB (100%)
+Local Volumes   3         3         5.678GB   0B (0%)
+Build Cache     111       0         4.452GB   2.875MB
+# rc=0

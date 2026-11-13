@@ -1,0 +1,13 @@
+{
+ "table_para": 9,
+ "row": 29,
+ "last_col": 15,
+ "width_mm": 150,
+ "cell_width_hwpunit": 48054,
+ "caption_allowance_mm": 13,
+ "figures": [
+  {"path": "paper/figures/m2-cross-release-evidence.png", "caption": "그림 1. 릴리스별 하드링크 입력 판정(통제 재현)"},
+  {"path": "paper/figures/m3-blind-ablation.png", "caption": "그림 2. 어휘 조건별 자율 C1 관찰(피드백 인과 미입증)"},
+  {"path": "paper/figures/make-demo-screen.png", "caption": "그림 3. 실제 node-tar 탐색 루프 실행 화면(2026-11-07 실행 기록)"}
+ ]
+}

@@ -1,0 +1,8 @@
+#!/bin/bash
+cd <scratchpad>/ev
+echo "### confirm test start $(date -Is); timesyncd: $(systemctl is-active systemd-timesyncd)/$(systemctl is-enabled systemd-timesyncd)"
+python3 -I ../adjtimex.py
+echo "### bracket 1 start $(date -Is)"; python3 -I ../clockbracket2.py 600; echo "rc=$?"; echo "### bracket 1 end $(date -Is)"
+python3 -I ../tickmon2.py
+echo "### bracket 2 start $(date -Is); timesyncd: $(systemctl is-active systemd-timesyncd)"; python3 -I ../clockbracket2.py 600; echo "rc=$?"; echo "### bracket 2 end $(date -Is)"
+python3 -I ../adjtimex.py

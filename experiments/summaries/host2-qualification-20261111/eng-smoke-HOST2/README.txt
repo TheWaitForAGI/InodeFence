@@ -1,0 +1,1 @@
+Caution: all cells finished, so summaries/index.json in the run output has outcomes_redacted: false. Do not open summaries, reports, steps or stdout (oracle seal). This folder holds infrastructure files only.

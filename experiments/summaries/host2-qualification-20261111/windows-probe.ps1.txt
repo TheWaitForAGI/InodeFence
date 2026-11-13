@@ -1,0 +1,30 @@
+[Console]::OutputEncoding=[Text.Encoding]::UTF8
+$ErrorActionPreference='Continue'
+function Probe($n,[scriptblock]$b){ "### $n"; "# at $(Get-Date -Format o)"; try { & $b | Out-String -Width 250 } catch { "ERROR: $_" }; "" }
+Probe 'OS' { Get-CimInstance Win32_OperatingSystem | select Caption,Version,BuildNumber,LastBootUpTime,TotalVisibleMemorySize,FreePhysicalMemory }
+Probe 'CPU' { Get-CimInstance Win32_Processor | select Name,NumberOfCores,NumberOfLogicalProcessors }
+Probe 'Volumes' { Get-PSDrive -PSProvider FileSystem | select Name,Root,@{n='FreeGB';e={[math]::Round($_.Free/1GB,1)}},@{n='UsedGB';e={[math]::Round($_.Used/1GB,1)}},Description,DisplayRoot }
+Probe 'LogicalDisk' { Get-CimInstance Win32_LogicalDisk | select DeviceID,DriveType,FileSystem,VolumeName,ProviderName,@{n='FreeGB';e={[math]::Round($_.FreeSpace/1GB,1)}},@{n='SizeGB';e={[math]::Round($_.Size/1GB,1)}} }
+Probe 'PendingReboot' { [pscustomobject]@{ CBS=(Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Component Based Servicing\RebootPending'); WU=(Test-Path 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\WindowsUpdate\Auto Update\RebootRequired'); PFRO=[bool](Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager' -Name PendingFileRenameOperations -EA SilentlyContinue) } }
+Probe 'WU UX Settings' { Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\WindowsUpdate\UX\Settings' -EA SilentlyContinue | select * -Exclude PS* }
+Probe 'WU Policy' { Get-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate\AU' -EA SilentlyContinue | select * -Exclude PS*; Get-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\WindowsUpdate' -EA SilentlyContinue | select * -Exclude PS* }
+Probe 'WU services' { Get-Service wuauserv,UsoSvc,BITS -EA SilentlyContinue | select Name,Status,StartType }
+Probe 'WU last results' { (New-Object -ComObject Microsoft.Update.AutoUpdate).Results | select LastSearchSuccessDate,LastInstallationSuccessDate }
+Probe 'Hotfix recent' { Get-HotFix | sort InstalledOn -Desc | select -First 5 HotFixID,InstalledOn,Description }
+Probe 'Power active scheme' { powercfg /getactivescheme }
+Probe 'Power sleep/hibernate' { powercfg /query SCHEME_CURRENT SUB_SLEEP }
+Probe 'Power video/disk' { powercfg /query SCHEME_CURRENT SUB_VIDEO; powercfg /query SCHEME_CURRENT SUB_DISK }
+Probe 'Power availablestates' { powercfg /a }
+Probe 'Top CPU processes' { Get-Process | sort CPU -Desc | select -First 15 Name,Id,CPU,@{n='WS_MB';e={[math]::Round($_.WorkingSet64/1MB)}} }
+Probe 'Top mem processes' { Get-Process | sort WorkingSet64 -Desc | select -First 12 Name,Id,@{n='WS_MB';e={[math]::Round($_.WorkingSet64/1MB)}} }
+Probe 'CPU load' { Get-CimInstance Win32_Processor | select LoadPercentage }
+Probe 'Scheduled tasks enabled with UpdateOrchestrator' { Get-ScheduledTask -TaskPath '\Microsoft\Windows\UpdateOrchestrator\' -EA SilentlyContinue | select TaskName,State }
+Probe 'Net adapters' { Get-NetIPAddress -AddressFamily IPv4 | ? { $_.IPAddress -notlike '169.*' } | select InterfaceAlias,IPAddress,PrefixLength }
+Probe 'Net connection profile' { Get-NetConnectionProfile | select Name,InterfaceAlias,NetworkCategory }
+Probe 'SMB shares' { Get-SmbShare -EA SilentlyContinue | select Name,Path }
+Probe 'SMB mappings' { Get-SmbMapping -EA SilentlyContinue }
+Probe 'OpenSSH' { Get-Service sshd,ssh-agent -EA SilentlyContinue | select Name,Status,StartType; Get-Command ssh.exe,scp.exe -EA SilentlyContinue | select Source }
+Probe 'Google Drive process' { Get-Process GoogleDriveFS -EA SilentlyContinue | select Name,Id,Path }
+Probe 'Docker Desktop settings' { $p="$env:APPDATA\Docker\settings-store.json"; if(Test-Path $p){ Get-Content $p -Raw } else { $p2="$env:APPDATA\Docker\settings.json"; if(Test-Path $p2){Get-Content $p2 -Raw} else {'no settings file'} } }
+Probe 'Docker Desktop autostart' { Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run' | select * -Exclude PS* }
+Probe 'Admin?' { ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator) }

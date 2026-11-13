@@ -1,0 +1,50 @@
+### BEFORE 2026-11-11T17:39:05+09:00
+vsc-inodefence-98e8d37245cee16d12d8f3385df39b5ce6532ac020968ee74ba08c373550dd2e-uid:latest b22a05283740 1.69GB
+vsc-inodefence-98e8d37245cee16d12d8f3385df39b5ce6532ac020968ee74ba08c373550dd2e:latest 64cf1ec54a15 1.69GB
+vsc-thewaitforagi-379196e0bf79a92366fd5e40d13e17791bedfc83cd02dabae85791275123b584-uid:latest 9de0c715159a 2.73GB
+vsc-thewaitforagi-379196e0bf79a92366fd5e40d13e17791bedfc83cd02dabae85791275123b584:latest 0577bddf9418 2.73GB
+sagemath/sagemath:latest e068670ae586 4.76GB
+ubuntu:latest f3d28607ddd7 160MB
+alpine:3.20 d9e853e87e55 12.2MB
+hello-world:latest 5e2309035332 25.9kB
+TYPE            TOTAL     ACTIVE    SIZE      RECLAIMABLE
+Images          8         4         9.353GB   12.27MB (0%)
+Containers      4         0         8.729GB   8.729GB (100%)
+Local Volumes   3         3         5.678GB   0B (0%)
+Build Cache     111       0         4.452GB   2.875MB
+### docker load -i node-tar-effect-7.5.2.tar 2026-11-11T17:39:07+09:00
+Loaded image: inodefence-node-tar-effect:7.5.2
+rc=0
+### docker load -i node-tar-effect-7.4.4.tar 2026-11-11T17:39:08+09:00
+Loaded image: inodefence-node-tar-effect:7.4.4
+rc=0
+### docker load -i controller-local.tar 2026-11-11T17:39:09+09:00
+Loaded image: inodefence-controller:local
+rc=0
+### docker load -i helper-local.tar 2026-11-11T17:39:10+09:00
+Loaded image: inodefence-helper:local
+rc=0
+### inspect 2026-11-11T17:39:11+09:00
+[inodefence-node-tar-effect:7.5.2] sha256:22c8734f141d91b333ba37c7fe6a9a7547d7abfab487fa028da2053bed6f3dbb amd64 linux
+[inodefence-node-tar-effect:7.4.4] sha256:f5d3e9a999cfad0a5f37002bf36802378b20777646be3684eb97baeaa4080421 amd64 linux
+[inodefence-controller:local] sha256:d44900e13ed5083db54cefda8833328d4da61148f62213d86f07afa78191d7a4 amd64 linux
+[inodefence-helper:local] sha256:9b9dd606c49ff0051465fe9e435351f33623d949f360d6518580855e3781cc27 amd64 linux
+### AFTER 2026-11-11T17:39:11+09:00
+inodefence-node-tar-effect:7.4.4 f5d3e9a999cf 209MB
+inodefence-node-tar-effect:7.5.2 22c8734f141d 209MB
+vsc-inodefence-98e8d37245cee16d12d8f3385df39b5ce6532ac020968ee74ba08c373550dd2e-uid:latest b22a05283740 1.69GB
+vsc-inodefence-98e8d37245cee16d12d8f3385df39b5ce6532ac020968ee74ba08c373550dd2e:latest 64cf1ec54a15 1.69GB
+inodefence-helper:local 9b9dd606c49f 186MB
+inodefence-controller:local d44900e13ed5 1.17GB
+vsc-thewaitforagi-379196e0bf79a92366fd5e40d13e17791bedfc83cd02dabae85791275123b584-uid:latest 9de0c715159a 2.73GB
+vsc-thewaitforagi-379196e0bf79a92366fd5e40d13e17791bedfc83cd02dabae85791275123b584:latest 0577bddf9418 2.73GB
+sagemath/sagemath:latest e068670ae586 4.76GB
+ubuntu:latest f3d28607ddd7 160MB
+alpine:3.20 d9e853e87e55 12.2MB
+hello-world:latest 5e2309035332 25.9kB
+TYPE            TOTAL     ACTIVE    SIZE      RECLAIMABLE
+Images          12        4         9.881GB   335.5MB (3%)
+Containers      4         0         8.729GB   8.729GB (100%)
+Local Volumes   3         3         5.678GB   0B (0%)
+Build Cache     111       0         4.452GB   2.875MB
+running=0

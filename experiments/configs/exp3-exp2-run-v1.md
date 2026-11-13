@@ -7,14 +7,14 @@
 - 실행 트리: 호스트별 E의 detached worktree. 모든 명령은 그 worktree에서 `PYTHONPATH=src`로 실행한다. 실행 전 `PYTHONPATH=src python -c "import inodefence; print(inodefence.__file__)"`가 그 worktree의 `src/` 아래인지 확인한다.
 - 출력·manifest·기준 파일·채운 등록 사본은 모두 worktree 밖(`~/inodefence-evidence/<실험>-<host>-<날짜>/`)에 둔다.
 - 봉인: 실행 중 결과 값(oracle·steps·summary 값) 열람 금지. 운영 점검(`exp_operating_check`)과 인프라 값만 본다.
-- **진행 방식(지웅 지시 2026-11-13 02:05·02:15 KST, D-ORCH-1113-26·27; exp2-v1 §7):** 동결·train 시작·GO는 사람 승인(채팅·머지 클릭)을 기다리지 않는다. 등록된 선행 조건이 모두 차고 W4 최종 검증이 통과하고 등록된 검증 24 h가 지나면 진행한다. 동결 시점 = 스택 머리의 push된 커밋이고, #332 squash 머지는 사후 확인이다. GO는 §4 규칙을 기계적으로 적용하고 W4가 확인하면 holdout을 시작한다. 미충족이면 등록대로 멈추고 보고한다.
+- **진행 방식(지웅 지시 2026-11-13 02:05·02:15 KST, D-ORCH-1113-26·27; exp2-v1 §7):** 동결·train 시작·GO는 사람 승인(채팅·머지 클릭)을 기다리지 않는다. 등록된 선행 조건이 모두 차고 독립 검증(W4 최종 검증 PASS와 참여 호스트의 후보 대조)이 끝나면 진행한다(지웅 결정 2026-11-13 10:10 KST로 검증 24 h 대기를 없앴다, exp2-v1 §7·§8). 동결 시점 = 스택 머리의 push된 커밋이고, #332 squash 머지는 사후 확인이다. GO는 §4 규칙을 기계적으로 적용하고 W4가 확인하면 holdout을 시작한다. 미충족이면 등록대로 멈추고 보고한다.
 - **남는 사람 게이트 = PR 머지:** 예정에 없던 정지 뒤 재개 = 원인 기록 PR 머지(§3) · holdout 결과 가림 해제 = 해제 기록 PR 머지(§5) · 동결 뒤 등록 규칙 변경 · R4·호스트·Docker 설정. 승인 참조 = 그 PR의 머지 커밋 sha, 승인 시각 = 머지 시각(`gh pr view <n> --json mergeCommit,mergedAt`). `--resume-after-stop`에는 `<EXP3|EXP2>-<HOSTn>-<머지 커밋 sha>`를 넣는다. 재개마다 새 원인 기록 PR이므로 새 참조다.
 - 본실험 주간 HOST1 전원 유지(야간 수동 종료 금지)는 지웅 결정 사항이다. 결정 전에는 시작하지 않는다.
 
 ## 1. 동결 당일 (상세는 #332 동결 체크리스트)
 
 1. 선행: 런처 smoke, D042 1·2차, 두 호스트 적격성 판정, 교차 비교 보고, 원장 행 머지, 원장 sha 확정.
-2. #332 `TBD-FREEZE`를 채운 커밋을 push하고 검증 24 h 뒤 동결 기록(LOG)을 push한다. F = 그 스택 머리 커밋(squash 머지는 사후 확인, 머지 뒤에도 등록 파일 sha256이 같아야 한다). 실행 등록 파일은 F의 경로, 코드는 E. 동결에 쓰는 원장은 F의 원장 파일이다.
+2. #332 `TBD-FREEZE`를 채운 커밋을 push하고 독립 검증 완료 뒤 동결 기록(LOG)을 push한다(2026-11-13 실행: F = `72de299`, 동결 기록 커밋 `5b2abde`). 등록 파일이나 원장이 바뀌면 W4 재검증과 참여 호스트 재대조 뒤에만 동결한다. F = 그 스택 머리 커밋(squash 머지는 사후 확인, 머지 뒤에도 등록 파일 sha256이 같아야 한다). 실행 등록 파일은 F의 경로, 코드는 E. 동결에 쓰는 원장은 F의 원장 파일이다.
 3. train 할당 파일(`alternate-v1`, 동결 참여 집합 P) 생성·sha 기입(적격성 런북 §1의 "할당 파일을 만드는 순서"와 같다).
 4. 호스트별 기준 파일(`make_run_criteria`, E)과 그 sha를 LOG에 고정. **실험마다 따로 만든다.** `--expected-images`는 그 등록의 모든 node-tar 타깃 이미지 + controller + helper와 정확히 같은 집합이어야 한다(`run_exp0.py:644-670`, 다르면 거부). train(타깃 7.5.2 하나)은 적격성 기준 파일과 같은 이미지 집합이다. holdout(타깃 7.4.4 하나)은 `make_run_criteria --target-image inodefence-node-tar-effect:7.4.4`(`make_run_criteria.py:145`)로 새로 만든다. exp3-v1·exp2-v1은 각각 타깃이 하나다(#332 `bf0dc2e`).
 5. 호스트별 `--dry-run`(§2 인자 그대로, `--exposure-ledger` 포함): `gate: PASS`, 셀 수 = 그 호스트 seed 수 × 3.

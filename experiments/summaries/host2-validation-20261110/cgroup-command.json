@@ -1,0 +1,12 @@
+{
+  "argv": [
+    "bash",
+    "-c",
+    "cat /proc/self/cgroup; cat /sys/fs/cgroup/init.scope/cpu.max /sys/fs/cgroup/init.scope/memory.max; for f in /sys/fs/cgroup/cpu.max /sys/fs/cgroup/memory.max; do if test -e \"$f\"; then cat \"$f\"; else echo \"$f absent\"; fi; done"
+  ],
+  "start_utc": "2026-11-10T14:22:48.213848+00:00",
+  "exit_code": 0,
+  "timeout": false,
+  "stdout_sha256": "6f4bc21d51f4e50de386c862096d48b58452cb66958e7d8088001d6cf4915746",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+}

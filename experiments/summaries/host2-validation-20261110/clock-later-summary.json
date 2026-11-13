@@ -1,0 +1,17 @@
+{
+  "time_utc": "2026-11-10T15:43:29.030266+00:00",
+  "command": "<private-evidence>/clock-1446/adjtimex-read",
+  "exit_code": 0,
+  "timeout": false,
+  "stdout_sha256": "598152187bd3428f599b485f3b0a886a824a4ee535157858a90e98d8df72521b",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "windows_elapsed_seconds": 30.9241361,
+  "linux_monotonic_elapsed_bounds_seconds": [
+    30.000919977000194,
+    30.001962282000022
+  ],
+  "linux_raw_elapsed_bounds_seconds": [
+    30.92361466500006,
+    30.924681507999594
+  ]
+}

@@ -1,0 +1,4 @@
+concurrency-scaling-v2 sha256=b2c09c703f49… stage=smoke jobs order=[2] cells/block=3 seeds=[6100] budget=20 k=5 mode=per-case-container image=sha256:22c8734f141d…
+  7.5.2-R-restart-s6100: search=unretained-seed-restart-v1-uniform-mutation-v1
+  7.5.2-D-s6100: search=structure-coverage-v1-uniform-mutation-v1
+  7.5.2-S-u-s6100: search=effect-feedback-v2-or-violation-v1-boundary-attempt-v1-uniform-mutation-v1

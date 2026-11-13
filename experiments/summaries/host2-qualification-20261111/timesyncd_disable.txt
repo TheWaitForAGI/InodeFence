@@ -1,0 +1,9 @@
+### timesyncd disable at 2026-11-11T15:23:36+09:00 (user: 다 승인)
+before: inactive/enabled
+$ wsl.exe -u root -d Ubuntu-24.04 -- systemctl disable systemd-timesyncd
+Removed "/etc/systemd/system/sysinit.target.wants/systemd-timesyncd.service".
+Removed "/etc/systemd/system/dbus-org.freedesktop.timesync1.service".
+rc=0
+after: inactive/disabled
+revert: wsl.exe -u root -d Ubuntu-24.04 -- systemctl enable --now systemd-timesyncd
+{'rc': 0, 'offset': 0, 'freq_raw': 9797, 'freq_ppm': 0.1494903564453125, 'maxerror': 2518, 'esterror': 9, 'status': 8192, 'constant': 2, 'precision': 1, 'tolerance': 32768000, 'tick': 10000}

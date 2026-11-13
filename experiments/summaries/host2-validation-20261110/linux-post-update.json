@@ -1,0 +1,22 @@
+{
+  "purpose": "environment inventory only; no execution approval",
+  "os_release": "PRETTY_NAME=\"Ubuntu 24.04.5 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"24.04\"\nVERSION=\"24.04.5 LTS (Noble Numbat)\"\nVERSION_CODENAME=noble\nID=ubuntu\nID_LIKE=debian\nHOME_URL=\"https://www.ubuntu.com/\"\nSUPPORT_URL=\"https://help.ubuntu.com/\"\nBUG_REPORT_URL=\"https://bugs.launchpad.net/ubuntu/\"\nPRIVACY_POLICY_URL=\"https://www.ubuntu.com/legal/terms-and-policies/privacy-policy\"\nUBUNTU_CODENAME=noble\nLOGO=ubuntu-logo",
+  "kernel": "6.18.58.1-microsoft-standard-WSL2",
+  "cpu_model": "Intel(R) Core(TM) Ultra 7 270K Plus",
+  "cpu_affinity_count": 24,
+  "memory": "MemTotal:       16053208 kB\nMemAvailable:   14288360 kB",
+  "filesystem_type": "ext4",
+  "available_bytes": 1013487005696,
+  "available_inodes": 66892913,
+  "psi": {
+    "cpu": "some avg10=0.00 avg60=0.00 avg300=0.00 total=116344\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+    "memory": "some avg10=0.00 avg60=0.00 avg300=0.00 total=0\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0",
+    "io": "some avg10=0.00 avg60=0.11 avg300=0.08 total=481264\nfull avg10=0.00 avg60=0.10 avg300=0.08 total=477627"
+  },
+  "wsl_config": "[boot]\nsystemd=true\n[user]\n[interop]\nenabled=true\nappendWindowsPath=true",
+  "git_head": "afdc720da6eb6ae143bd4754cb39d6dd34ea8f16",
+  "git_dirty": false,
+  "docker_engine": null,
+  "image_id": null,
+  "remaining_resources": null
+}

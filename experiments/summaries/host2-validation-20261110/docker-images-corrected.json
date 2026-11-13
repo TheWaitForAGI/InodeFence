@@ -1,0 +1,30 @@
+{
+  "observed_at_utc": "2026-11-10T15:50:23.288133+00:00",
+  "private_raw_sha256": "1dbddcbcf973a05945cc31fe1ff741f864695cfc18eccf5e8900c569efdb467b",
+  "results": [
+    {
+      "error": "Error response from daemon: No such image: inodefence-node-tar-effect:7.5.2",
+      "image": "inodefence-node-tar-effect:7.5.2",
+      "image_id": null,
+      "returncode": 1
+    },
+    {
+      "error": "Error response from daemon: No such image: sha256:22c8734f141d91b333ba37c7fe6a9a7547d7abfab487fa028da2053bed6f3dbb",
+      "image": "sha256:22c8734f141d91b333ba37c7fe6a9a7547d7abfab487fa028da2053bed6f3dbb",
+      "image_id": null,
+      "returncode": 1
+    },
+    {
+      "error": "Error response from daemon: No such image: inodefence-controller:local",
+      "image": "inodefence-controller:local",
+      "image_id": null,
+      "returncode": 1
+    },
+    {
+      "error": "Error response from daemon: No such image: inodefence-helper:local",
+      "image": "inodefence-helper:local",
+      "image_id": null,
+      "returncode": 1
+    }
+  ]
+}

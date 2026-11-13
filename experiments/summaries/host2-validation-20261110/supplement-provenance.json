@@ -1,0 +1,21 @@
+{
+  "original_mapping_command": [
+    "powershell.exe",
+    "-NoProfile",
+    "-Command",
+    "$p=Get-ItemProperty 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Lxss\\*' | Where-Object {$_.DistributionName -eq 'Ubuntu-24.04'}; $w=Join-Path $p.BasePath 'ext4.vhdx'; Write-Output ('Distro: '+$p.DistributionName); Get-Item -LiteralPath $w | Select-Object FullName,Length | ConvertTo-Json; $f=Join-Path $env:LOCALAPPDATA 'Docker\\wsl\\disk\\docker_data.vhdx'; Get-Item -LiteralPath $f | Select-Object FullName,Length | ConvertTo-Json; Get-DiskImage -ImagePath $f | Select-Object Attached,DevicePath,Size,FileSize | ConvertTo-Json; Get-Partition -DriveLetter C | Select-Object DiskNumber,DriveLetter,Size | ConvertTo-Json; Get-Disk -Number 0 | Select-Object FriendlyName,BusType,Size | ConvertTo-Json; Get-Volume -DriveLetter C | Select-Object FileSystem,Size,SizeRemaining | ConvertTo-Json"
+  ],
+  "original_mapping_utc": "2026-11-10T14:41:02.848992+00:00",
+  "original_mapping_exit_code": 0,
+  "original_mapping_timeout": false,
+  "original_mapping_stdout_sha256": "89b9f5c3b78738b121627be967858a948279c44aebfa6f7a3413fa9734daf022",
+  "published_mapping_sha256": "9ef85662d78d697f27c0587e90210ebfc9be83fe22a71f901798322e4acb3c16",
+  "mapping_transformation": "CRLF normalized to LF; paths redacted",
+  "admin_utc": "2026-11-10T14:42:58.2863977Z",
+  "admin_exit_code": 0,
+  "admin_elevated": true,
+  "original_admin_transcript_sha256": "b859c352201dffb2304c5cc4d694b69a780e18d13b58f2ffee89ff2c0e038bcf",
+  "published_admin_excerpt_sha256": "3467a7475b0828eb7fd80abe18f67cde88875ca3df9038fd526876686297a6a1",
+  "admin_transformation": "transcript header and footer removed; CRLF normalized to LF; trailing blank lines removed",
+  "admin_command": "Start-Process powershell.exe -NoProfile -ExecutionPolicy Bypass -File admin-diagnostics.ps1 -Verb RunAs -PassThru -Wait"
+}

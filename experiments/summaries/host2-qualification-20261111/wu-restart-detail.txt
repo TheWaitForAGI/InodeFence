@@ -1,0 +1,25 @@
+# 2026-11-11T14:10:27+09:00 powershell: WU UX settings, WindowsStore policy, System Event 1074
+ActiveHoursStart : 16
+ActiveHoursEnd   : 5
+WindowsStore policy:
+Event 1074 (last 3):
+TimeCreated : 2026-11-11 오전 10:02:30
+Message     : The process C:\Windows\servicing\TrustedInstaller.exe (<host2>) has initiated the 다시 시작 of comput
+              er <host2> on behalf of user NT AUTHORITY\SYSTEM for the following reason: 운영 체제: 업그레이드(계획됨)
+               Reason Code: 0x80020003
+               Shutdown Type: 다시 시작
+               Comment:
+TimeCreated : 2026-11-07 오전 4:31:19
+Message     : The process C:\Windows\SystemApps\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\StartMenuExperi
+              enceHost.exe (<host2>) has initiated the 전원 끄기 of computer <host2> on behalf of user <host2>
+              \<winuser> for the following reason: 기타(계획되지 않음)
+               Reason Code: 0x0
+               Shutdown Type: 전원 끄기
+               Comment:
+TimeCreated : 2026-11-05 오후 7:58:54
+Message     : The process C:\Windows\SystemApps\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\StartMenuExperi
+              enceHost.exe (<host2>) has initiated the 전원 끄기 of computer <host2> on behalf of user <host2>
+              \<winuser> for the following reason: 기타(계획되지 않음)
+               Reason Code: 0x0
+               Shutdown Type: 전원 끄기
+               Comment:

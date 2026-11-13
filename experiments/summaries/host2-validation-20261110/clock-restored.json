@@ -1,0 +1,86 @@
+{
+  "started_utc": "2026-11-10T14:57:39.951677+00:00",
+  "command": [
+    "powershell.exe",
+    "-NoProfile",
+    "-Command",
+    "$s=[Diagnostics.Stopwatch]::StartNew(); while(($line=[Console]::ReadLine()) -ne $null){ if($line -eq 'end'){break}; [Console]::WriteLine($line+' '+$s.Elapsed.TotalSeconds.ToString([Globalization.CultureInfo]::InvariantCulture)+' '+[DateTime]::UtcNow.ToString('o')); [Console]::Out.Flush() }"
+  ],
+  "samples": [
+    {
+      "request": 0,
+      "before": {
+        "monotonic": 1548.78763899,
+        "raw": 1592.620592249,
+        "realtime": 1794322659.955729
+      },
+      "windows_reply": "0 0.0038997 2026-11-10T14:57:39.5431769Z",
+      "after": {
+        "monotonic": 1548.938090224,
+        "raw": 1592.784721495,
+        "realtime": 1794322660.1061807
+      }
+    },
+    {
+      "request": 1,
+      "before": {
+        "monotonic": 1558.938217221,
+        "raw": 1603.273211505,
+        "realtime": 1794322670.106312
+      },
+      "windows_reply": "1 10.4979942 2026-11-10T14:57:50.0359755Z",
+      "after": {
+        "monotonic": 1558.939394999,
+        "raw": 1603.274423028,
+        "realtime": 1794322670.1074855
+      }
+    },
+    {
+      "request": 2,
+      "before": {
+        "monotonic": 1568.939627709,
+        "raw": 1613.447734787,
+        "realtime": 1794322680.1077232
+      },
+      "windows_reply": "2 20.6726381 2026-11-10T14:58:00.2097340Z",
+      "after": {
+        "monotonic": 1568.940819721,
+        "raw": 1613.448933714,
+        "realtime": 1794322680.1089108
+      }
+    },
+    {
+      "request": 3,
+      "before": {
+        "monotonic": 1578.940927244,
+        "raw": 1623.513364408,
+        "realtime": 1794322690.9760518
+      },
+      "windows_reply": "3 30.7378266 2026-11-10T14:58:10.2748284Z",
+      "after": {
+        "monotonic": 1578.94147969,
+        "raw": 1623.513963613,
+        "realtime": 1794322690.9766004
+      }
+    },
+    {
+      "request": 4,
+      "before": {
+        "monotonic": 1588.941574682,
+        "raw": 1634.169570373,
+        "realtime": 1794322700.9766982
+      },
+      "windows_reply": "4 41.393986 2026-11-10T14:58:20.9318476Z",
+      "after": {
+        "monotonic": 1588.942305996,
+        "raw": 1634.170318288,
+        "realtime": 1794322700.9774256
+      }
+    }
+  ],
+  "exit_code": 0,
+  "timeout": false,
+  "trailing_stdout": "",
+  "stderr": "",
+  "method": "Each Windows stopwatch observation occurred between the Linux before and after timestamps; variable interop latency is bounded by these intervals."
+}

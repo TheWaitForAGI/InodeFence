@@ -1,0 +1,20 @@
+18c18
+< engine_sha = TBD-FREEZE
+---
+> engine_sha = bed077af62b1cdd5cc8dec96eb9cbe93ba542f1d
+33c33
+< exposure_ledger_sha256 = TBD-FREEZE
+---
+> exposure_ledger_sha256 = 8a832e19b7826de3f3dcfe95a667cb82df91eb6d6e7a5fc0b55649a56565a508
+49c49
+< execution_deadline = TBD-FREEZE
+---
+> execution_deadline = 2026-11-20T12:00:00+09:00
+51c51
+< host.HOST1.docker_engine = TBD-FREEZE
+---
+> host.HOST1.docker_engine = 29.8.0
+53c53
+< host.HOST2.docker_engine = TBD-FREEZE
+---
+> host.HOST2.docker_engine = 29.9.3

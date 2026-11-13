@@ -1,0 +1,76 @@
+{
+  "available_memory_kib": 14305992,
+  "commands": {
+    "cgroup_cpu": {
+      "argv": [
+        "cat",
+        "/sys/fs/cgroup/cpu.max"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "max 100000\n"
+    },
+    "cgroup_memory": {
+      "argv": [
+        "cat",
+        "/sys/fs/cgroup/memory.max"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "max\n"
+    },
+    "docker_version": {
+      "argv": [
+        "docker",
+        "version",
+        "--format",
+        "{{.Server.Version}}"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "29.9.3\n"
+    },
+    "load": {
+      "argv": [
+        "cat",
+        "/proc/loadavg"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "0.13 0.11 0.14 1/771 9535\n"
+    },
+    "memory": {
+      "argv": [
+        "cat",
+        "/proc/meminfo"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "MemTotal:       16053208 kB\nMemFree:        11982916 kB\nMemAvailable:   14305992 kB\nBuffers:           25964 kB\nCached:          2514424 kB\nSwapCached:            0 kB\nActive:           871348 kB\nInactive:        2587640 kB\nActive(anon):      19328 kB\nInactive(anon):   950512 kB\nActive(file):     852020 kB\nInactive(file):  1637128 kB\nUnevictable:           0 kB\nMlocked:               0 kB\nSwapTotal:       4194304 kB\nSwapFree:        4194304 kB\nDirty:               868 kB\nWriteback:             0 kB\nAnonPages:        919320 kB\nMapped:           725572 kB\nShmem:             51088 kB\nKReclaimable:      38748 kB\nSlab:             144808 kB\nSReclaimable:      38748 kB\nSUnreclaim:       106060 kB\nKernelStack:       12624 kB\nPageTables:        20820 kB\nSecPageTables:         0 kB\nNFS_Unstable:          0 kB\nBounce:                0 kB\nWritebackTmp:          0 kB\nCommitLimit:    12220908 kB\nCommitted_AS:    5059120 kB\nVmallocTotal:   34359738367 kB\nVmallocUsed:       45620 kB\nVmallocChunk:          0 kB\nPercpu:            11520 kB\nHardwareCorrupted:     0 kB\nAnonHugePages:         0 kB\nShmemHugePages:        0 kB\nShmemPmdMapped:        0 kB\nFileHugePages:    264192 kB\nFilePmdMapped:    229376 kB\nBalloon:               0 kB\nHugePages_Total:       0\nHugePages_Free:        0\nHugePages_Rsvd:        0\nHugePages_Surp:        0\nHugepagesize:       2048 kB\nHugetlb:               0 kB\nDirectMap4k:       95232 kB\nDirectMap2M:     9015296 kB\nDirectMap1G:    15728640 kB\n"
+    },
+    "memory_pressure": {
+      "argv": [
+        "cat",
+        "/proc/pressure/memory"
+      ],
+      "returncode": 0,
+      "stderr": "",
+      "stdout": "some avg10=0.00 avg60=0.00 avg300=0.00 total=0\nfull avg10=0.00 avg60=0.00 avg300=0.00 total=0\n"
+    },
+    "target_image": {
+      "argv": [
+        "docker",
+        "image",
+        "inspect",
+        "sha256:22c8734f141d91b333ba37c7fe6a9a7547d7abfab487fa028da2053bed6f3dbb",
+        "--format",
+        "{{.Id}}"
+      ],
+      "returncode": 1,
+      "stderr": "Error response from daemon: No such image: sha256:22c8734f141d91b333ba37c7fe6a9a7547d7abfab487fa028da2053bed6f3dbb\n",
+      "stdout": "\n"
+    }
+  },
+  "observed_at_utc": "2026-11-10T15:54:45.440329+00:00",
+  "required_memory_kib": 15728640
+}

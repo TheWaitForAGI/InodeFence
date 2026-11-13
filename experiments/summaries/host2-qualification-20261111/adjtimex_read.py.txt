@@ -1,0 +1,5 @@
+import ctypes,struct
+libc=ctypes.CDLL(None,use_errno=True); buf=ctypes.create_string_buffer(208)
+rc=libc.adjtimex(buf); b=buf.raw
+g=lambda o:struct.unpack_from("q",b,o)[0]
+print(dict(rc=rc,offset=g(8),freq_raw=g(16),freq_ppm=g(16)/65536,maxerror=g(24),esterror=g(32),status=struct.unpack_from("i",b,40)[0],constant=g(48),precision=g(56),tolerance=g(64),tick=g(88)))

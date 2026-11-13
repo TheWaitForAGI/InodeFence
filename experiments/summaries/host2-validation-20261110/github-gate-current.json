@@ -1,0 +1,13 @@
+{
+  "observed_at_utc": "2026-11-10T15:47:05Z",
+  "repository": "TheWaitForAGI/InodeFence",
+  "pull_requests": [
+    {"number": 285, "state": "closed", "merged": true, "head_sha": "ccaef3b419a0d2c707c5f67768d5e88b75f95cef"},
+    {"number": 287, "state": "closed", "merged": true, "head_sha": "507ffd0bb0bce3a8c6eb6fc6d638b309a019ccb1"},
+    {"number": 282, "state": "closed", "merged": true, "head_sha": "5b3cd935caa569d81036c7d8d05d8656d6da6967"},
+    {"number": 325, "state": "open", "merged": false, "draft": true, "head_sha": "afdc720da6eb6ae143bd4754cb39d6dd34ea8f16"},
+    {"number": 328, "state": "open", "merged": false, "draft": true, "head_sha": "a76abe46c3fc44a9aeb70849641e1f3c1bf73e52"},
+    {"number": 329, "state": "open", "merged": false, "draft": true, "head_sha": "f0d0822e5c55fda4a0207ded9c17167f87c8e9b2"}
+  ],
+  "scope": "Read-only PR metadata; detailed review text was checked from the returned PR descriptions."
+}

@@ -1,0 +1,12 @@
+# InodeFence HOST2: start and resync W32Time (owner, admin). Revert: Set-Service W32Time -StartupType Manual; Stop-Service W32Time
+[Console]::OutputEncoding=[Text.Encoding]::UTF8
+$log="$env:LOCALAPPDATA\Temp\if_host2_w32time_log.txt"
+& {
+ function St($l){ "===== $l $(Get-Date -Format o) ====="; Get-Service W32Time | Format-List Status,StartType | Out-String; w32tm /query /status; "rc=$LASTEXITCODE"; w32tm /stripchart /computer:time.windows.com /samples:5 /dataonly; "rc=$LASTEXITCODE" }
+ St "BEFORE"
+ Start-Service W32Time; "start rc=$?"
+ w32tm /resync /force; "resync rc=$LASTEXITCODE"
+ Set-Service W32Time -StartupType Automatic; "starttype rc=$?"
+ Start-Sleep 5
+ St "AFTER"
+} *> $log

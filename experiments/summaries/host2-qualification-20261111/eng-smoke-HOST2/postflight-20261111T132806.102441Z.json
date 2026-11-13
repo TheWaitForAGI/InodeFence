@@ -1,0 +1,38 @@
+{
+  "clocks": {
+    "monotonic": 33026.448448618,
+    "monotonic_raw": 33183.266826425,
+    "realtime": 1794404528.909662
+  },
+  "docker_server": "29.9.3",
+  "execution_sha": {
+    "dirty": false,
+    "revision": "bed077af62b1cdd5cc8dec96eb9cbe93ba542f1d"
+  },
+  "host_id": "HOST2",
+  "image_ids": {
+    "inodefence-controller:local": "sha256:d44900e13ed5083db54cefda8833328d4da61148f62213d86f07afa78191d7a4",
+    "inodefence-helper:local": "sha256:9b9dd606c49ff0051465fe9e435351f33623d949f360d6518580855e3781cc27",
+    "inodefence-node-tar-effect:7.5.2": "sha256:22c8734f141d91b333ba37c7fe6a9a7547d7abfab487fa028da2053bed6f3dbb"
+  },
+  "problems": [],
+  "seed_assignment_sha256": "a395367b5a617a63ba92bd04183b45e8a79d33885eed81096d4bd2c7a537accc",
+  "shared_path_sha256": {
+    "scripts/bounded_cleanup_command.py": "682f66e115447772627f6b64e69d8c905a843f3880d984fbfd0d21312f98a72b",
+    "scripts/container_controller.py": "a715f9cf16268cb1c0bcd9044bea588c09731d7efeb39754cb199afcf37ba682",
+    "scripts/container_host.py": "60de5f8684b285269b1034465efe9aa8a693c580ad4501ee987dcd2adbbed03d",
+    "scripts/launcher_guards.py": "6f4b50b388cac0ab1747dbfcea1339b897fe6fcc7c09dee65d768db62c25dbbf",
+    "scripts/local_node_tar_smoke.sh": "9f5135c37236c8405548ad5af6f45ecc1140f0f7806c215e5245fba42e08b201",
+    "scripts/run_effect_demo.py": "43a4cc6c80358944ff8d488142ebf6ada315f6677ad2b43a27df1c3d62a4e6b6",
+    "scripts/run_exp0.py": "7c589cb63c60596f6fd310fcc2ad32e657851eb7f462b4aa84d4ed63c95a167f",
+    "scripts/run_g1_smoke.py": "9121714e831c1582c26a03ee0ec1091f41eae7e19a433f6a0302336f74dc9e11",
+    "scripts/run_parallel_native.py": "05c87fd07a6ce9d962d688835e3eab1557d1e52b48af86d7b1a8906464713bd2",
+    "src/inodefence/execution/__init__.py": "ccaccf828229b4deaa2b8acb7683f2499348aa3868cc329648ff5cf36d3c84aa",
+    "src/inodefence/execution/base.py": "d50afbde878d30f10d1779382967337ba8ad8094898f4d5874f8d7e9ad4e5040",
+    "src/inodefence/execution/container.py": "f064d66994e245efc9ead7c1fd07d27ae0b992e87485a43e655d5d600dc6b25e",
+    "src/inodefence/execution/docker_client.py": "a501f1e3f442c9ba4a560acb969957ce9cd3e504167a86cb5fb174fef3c062dc",
+    "src/inodefence/execution/stall_recovery.py": "b0ec83b1c832c3d4b141dc00c7d2fc4e577514ba3b7d11cd2fd157cd4ea514f6",
+    "src/inodefence/execution/start_gate.py": "6311d3864bb49221d4331c807c2430da30bee14fa7d789986a1b9802c2fa869e",
+    "src/inodefence/model/isolation.py": "e746a333c30ef3e80faf10ddadca84e58587f42cedec133a313a4eeb07dd6547"
+  }
+}

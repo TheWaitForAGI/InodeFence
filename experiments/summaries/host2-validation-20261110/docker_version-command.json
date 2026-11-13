@@ -1,0 +1,17 @@
+{
+  "argv": [
+    "docker",
+    "version",
+    "--format",
+    "{{json .}}"
+  ],
+  "exit_code": 0,
+  "files_sha256": {
+    "docker_version.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "docker_version.stdout": "8c4d45e567a69b5871914995fac6ad220952f3fa6e59a8534e264dd67cc725b2"
+  },
+  "started_at_utc": "2026-11-10T14:17:38.800654+00:00",
+  "status": "measured",
+  "timeout": false,
+  "truncated": false
+}

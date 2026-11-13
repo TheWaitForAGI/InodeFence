@@ -1,0 +1,30 @@
+Distro: Ubuntu-24.04
+{
+    "FullName":  "<WSL VHDX on C:>",
+    "Length":  14922285056
+}
+{
+    "FullName":  "<Docker candidate VHDX on C:>",
+    "Length":  29126295552
+}
+{
+    "Attached":  false,
+    "DevicePath":  null,
+    "Size":  1099511627776,
+    "FileSize":  29126295552
+}
+{
+    "DiskNumber":  0,
+    "DriveLetter":  "C",
+    "Size":  999128301568
+}
+{
+    "FriendlyName":  "CT1000E100SSD8",
+    "BusType":  "NVMe",
+    "Size":  1000204886016
+}
+{
+    "FileSystem":  "NTFS",
+    "Size":  999128297472,
+    "SizeRemaining":  107948929024
+}

@@ -1,0 +1,15 @@
+{
+  "command": [
+    "<host2-venv-python>",
+    "scripts/check_dev_env.py"
+  ],
+  "observed_at_utc": "2026-11-10T16:08:08.691196+00:00",
+  "prior_state": "absent; created with mode 0700 and owner UID/GID 1000 via WSL root",
+  "remaining_entries": 0,
+  "returncode": 0,
+  "runtime_gid": 1000,
+  "runtime_mode": "0o700",
+  "runtime_uid": 1000,
+  "stderr": "",
+  "stdout": "=== InodeFence Environment Check ===\nOS: Linux 6.18.58.1-microsoft-standard-WSL2\nArchitecture: x86_64\nPython: 3.12.3\nInterpreter: <host2-venv-python>\nRuntime root: /var/lib/inodefence\nHardlink device: 2128\nHardlink inode: 242046\nLink count: 2\nHardlink semantics: PASS\nSymlink semantics: PASS\nShared-object effect: PASS\nEnvironment check: PASS\n"
+}

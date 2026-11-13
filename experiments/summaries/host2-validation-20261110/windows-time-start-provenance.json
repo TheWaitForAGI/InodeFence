@@ -1,0 +1,7 @@
+{
+  "original_transcript_sha256": "e6e74d8ad8fba826dd32650e2e9125efda7c41458ead7a684e9ef7ef21dd9f24",
+  "excerpt_sha256": "4cb49cd6f37fca371dd45db12ffae74b4b2c06edbea6659b57ca043e647b8545",
+  "transformation": "transcript header/footer and NULs removed; CRLF normalized; no fields intentionally omitted from body",
+  "elevation": "Windows UAC Start-Process -Verb RunAs -Wait",
+  "outer_process_exit_code": 0
+}

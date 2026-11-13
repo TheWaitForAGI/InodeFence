@@ -1,0 +1,12 @@
+{
+  "utc": "2026-11-10T14:48:08.879748+00:00",
+  "argv": [
+    "./adjtimex-read"
+  ],
+  "exit_code": 0,
+  "timeout": false,
+  "sha256": {
+    "stdout": "2d91fda975e8c24f6d0d241df7c77a7d488e28615215aaf2212eb7713836f63d",
+    "stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  }
+}

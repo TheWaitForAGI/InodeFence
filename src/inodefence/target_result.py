@@ -27,6 +27,12 @@ the worker's SHA-256 and the build recipe; for a symbolic request (``latest``) a
 and when it was resolved; and dependencies not seen in committed locks and packages whose install
 scripts were disabled (recorded, not refused). A ``registry`` record is labelled
 ``exploratory demo run`` instead of ``demo run``; the reader enforces that pairing.
+
+A ``mode=campaign`` result (a bounded feedback search, not a fixed fixture set) may also carry an
+optional ``campaign`` block: the RNG seed, the execution budget, and the 1-based run index of the
+first observed-contract violation (``None`` if the budget ran out with none). Run count and
+violation count stay derivable from ``cases``; the block adds only what the cases cannot show. The
+block is absent on ``fixture-regression`` results, which serialize exactly as before.
 """
 
 from __future__ import annotations
@@ -138,6 +144,22 @@ class Preparation:
 
 
 @dataclass(frozen=True, slots=True)
+class CampaignInfo:
+    """Search bookkeeping for a ``mode=campaign`` result; absent on fixture-regression.
+
+    ``seed`` and ``budget`` are the free inputs of the search (RNG seed, execution budget).
+    ``runs_to_first_violation`` is the 1-based run index of the first case that violated an
+    observed contract, or ``None`` when the budget ran out with none; it is tied to the cases
+    (``None`` exactly when nothing violated, else within ``1..runs``). Run count and violation
+    count are not stored here: they are already derivable from ``cases``.
+    """
+
+    seed: int
+    budget: int
+    runs_to_first_violation: int | None
+
+
+@dataclass(frozen=True, slots=True)
 class TargetResult:
     target: str
     axes: TargetAxes
@@ -147,6 +169,8 @@ class TargetResult:
     repro_inputs: tuple[ReproInput, ...]
     provenance: Provenance
     preparation: Preparation | None = None
+    #: Optional; only a campaign (feedback search) sets it. Absent (``None``) for regression.
+    campaign: CampaignInfo | None = None
 
     def __post_init__(self) -> None:
         _validate(self)
@@ -228,6 +252,12 @@ class TargetResult:
                 "producer_sha256": p.producer_sha256,
                 "producer_check": p.producer_check,
             }
+        if self.campaign is not None:
+            data["campaign"] = {
+                "seed": self.campaign.seed,
+                "budget": self.campaign.budget,
+                "runs_to_first_violation": self.campaign.runs_to_first_violation,
+            }
         return data
 
     def dumps(self) -> str:
@@ -277,9 +307,32 @@ def _validate(result: TargetResult) -> None:
         if _SHA256_RE.fullmatch(item.tar_sha256) is None:
             raise TargetResultError(f"tar_sha256 must be 64 lowercase hex: {item.tar_sha256!r}")
     _validate_preparation(result.preparation)
+    _validate_campaign(result)
     sha = result.provenance.engine_sha
     if sha is not None and _GIT_SHA_RE.fullmatch(sha) is None:
         raise TargetResultError(f"engine_sha must be a 40-hex git commit or null: {sha!r}")
+
+
+def _validate_campaign(result: TargetResult) -> None:
+    campaign = result.campaign
+    if campaign is None:
+        return
+    if result.mode is not ResultMode.CAMPAIGN:
+        raise TargetResultError("campaign block is only valid when mode is campaign")
+    if type(campaign.seed) is not int:
+        raise TargetResultError("campaign.seed must be an integer")
+    if type(campaign.budget) is not int or campaign.budget < 1 or campaign.budget < result.executed:
+        raise TargetResultError("campaign.budget must be an integer >= the number of runs")
+    first = campaign.runs_to_first_violation
+    has_violation = bool(result.violating_cases)
+    if first is None:
+        if has_violation:
+            raise TargetResultError("runs_to_first_violation must be set when a case violated")
+    else:
+        if not has_violation:
+            raise TargetResultError("runs_to_first_violation must be null when nothing violated")
+        if type(first) is not int or not 1 <= first <= result.executed:
+            raise TargetResultError("runs_to_first_violation must be an integer in 1..runs")
 
 
 def _validate_preparation(prep: Preparation | None) -> None:
@@ -325,6 +378,8 @@ _PREPARATION_KEYS = {
     "producer_check",
 }
 
+_CAMPAIGN_KEYS = {"seed", "budget", "runs_to_first_violation"}
+
 _TOP_KEYS = {
     "schema",
     "label",
@@ -355,7 +410,7 @@ def _keys(obj: object, expected: set[str], where: str) -> Mapping[str, Any]:
 
 def from_json_dict(data: object) -> TargetResult:
     """Strict reader: exact keys, and the derived fields must match what the cases imply."""
-    optional = {"preparation"} & set(data) if isinstance(data, Mapping) else set()
+    optional = {"preparation", "campaign"} & set(data) if isinstance(data, Mapping) else set()
     top = _keys(data, _TOP_KEYS | optional, "result")
     if top["schema"] != SCHEMA:
         raise TargetResultError(f"schema must be {SCHEMA!r}, got {top['schema']!r}")
@@ -369,6 +424,10 @@ def from_json_dict(data: object) -> TargetResult:
             _as_list(prep["install_scripts_disabled"], "install_scripts_disabled")
         )
         preparation = Preparation(**prep)
+    campaign = None
+    if "campaign" in top:
+        block = _keys(top["campaign"], _CAMPAIGN_KEYS, "campaign")
+        campaign = CampaignInfo(block["seed"], block["budget"], block["runs_to_first_violation"])
     axes = _keys(top["axes"], {"target_version", "runtime_version", "extraction_filter"}, "axes")
     prov = _keys(
         top["provenance"], {"engine_sha", "engine_dirty", "image_ref", "image_id"}, "provenance"
@@ -395,6 +454,7 @@ def from_json_dict(data: object) -> TargetResult:
             prov["engine_sha"], prov["engine_dirty"], prov["image_ref"], prov["image_id"]
         ),
         preparation=preparation,
+        campaign=campaign,
     )
     expected = result.to_json_dict()
     for derived in ("label", "runs", "verdict", "violating_cases"):

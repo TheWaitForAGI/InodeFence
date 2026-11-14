@@ -10,6 +10,7 @@ import pytest
 from inodefence.target_result import (
     LABEL,
     SCHEMA,
+    CampaignInfo,
     CaseVerdict,
     Provenance,
     ResultMode,
@@ -143,3 +144,93 @@ def test_load_rehashes_saved_inputs(tmp_path: Path) -> None:
     tar.unlink()
     with pytest.raises(TargetResultError, match="missing"):
         load_target_result(out)
+
+
+def _campaign_result(
+    *cases: CaseVerdict,
+    seed: int = 1234,
+    budget: int = 20,
+    runs_to_first_violation: int | None = None,
+) -> TargetResult:
+    cases = cases or (
+        CaseVerdict("step-0", "declined", None, False, False),
+        CaseVerdict("step-1", "resolved", None, True, True),
+    )
+    return TargetResult(
+        target="node-tar",
+        axes=TargetAxes(target_version="7.5.1"),
+        mode=ResultMode.CAMPAIGN,
+        observed_contracts=("C1", "C2"),
+        cases=cases,
+        repro_inputs=(repro_input(cases[-1].case_id, f"inputs/{cases[-1].case_id}.tar", TAR_B),),
+        provenance=Provenance("b" * 40, False, "inodefence-node-tar-effect:7.5.1-dev", None),
+        campaign=CampaignInfo(
+            seed=seed, budget=budget, runs_to_first_violation=runs_to_first_violation
+        ),
+    )
+
+
+def test_regression_result_has_no_campaign_key_and_stays_backward_compatible() -> None:
+    data = _result().to_json_dict()
+    assert "campaign" not in data
+    # A reader that predates the campaign block round-trips a regression file unchanged.
+    assert from_json_dict(json.loads(_result().dumps())).campaign is None
+
+
+def test_campaign_block_round_trips_and_serializes_only_when_present() -> None:
+    result = _campaign_result(runs_to_first_violation=2)
+    data = result.to_json_dict()
+    assert data["mode"] == "campaign"
+    assert data["campaign"] == {"seed": 1234, "budget": 20, "runs_to_first_violation": 2}
+    assert from_json_dict(json.loads(result.dumps())) == result
+
+
+def test_campaign_none_first_violation_when_all_pass() -> None:
+    result = _campaign_result(
+        CaseVerdict("only", "declined", None, False, False),
+        runs_to_first_violation=None,
+    )
+    assert result.verdict is Verdict.PASS
+    assert from_json_dict(json.loads(result.dumps())) == result
+
+
+def test_campaign_block_rejected_on_fixture_regression() -> None:
+    with pytest.raises(TargetResultError, match="only valid when mode is campaign"):
+        replace(_campaign_result(runs_to_first_violation=2), mode=ResultMode.FIXTURE_REGRESSION)
+
+
+def test_campaign_budget_must_cover_runs() -> None:
+    with pytest.raises(TargetResultError, match="budget must be an integer >= the number of runs"):
+        _campaign_result(runs_to_first_violation=2, budget=1)
+
+
+def test_runs_to_first_violation_must_be_set_when_a_case_violated() -> None:
+    with pytest.raises(TargetResultError, match="must be set when a case violated"):
+        _campaign_result(runs_to_first_violation=None)
+
+
+def test_runs_to_first_violation_must_be_null_when_nothing_violated() -> None:
+    with pytest.raises(TargetResultError, match="must be null when nothing violated"):
+        _campaign_result(
+            CaseVerdict("only", "declined", None, False, False),
+            runs_to_first_violation=1,
+        )
+
+
+def test_runs_to_first_violation_out_of_range_rejected() -> None:
+    with pytest.raises(TargetResultError, match="in 1..runs"):
+        _campaign_result(runs_to_first_violation=9)
+
+
+def test_reader_still_rejects_unknown_top_level_keys() -> None:
+    data = _result().to_json_dict()
+    data["surprise"] = 1
+    with pytest.raises(TargetResultError, match="unexpected \\['surprise'\\]"):
+        from_json_dict(data)
+
+
+def test_reader_rejects_campaign_block_with_wrong_keys() -> None:
+    data = _campaign_result(runs_to_first_violation=2).to_json_dict()
+    data["campaign"]["extra"] = 1
+    with pytest.raises(TargetResultError, match="campaign keys mismatch"):
+        from_json_dict(data)

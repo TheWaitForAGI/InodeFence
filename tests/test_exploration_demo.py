@@ -26,12 +26,25 @@ class _FakeTarget:
         self.node_version = "22.22.0"
 
 
+class _FakeResult:
+    """Enough of a campaign result for the report assembly (streaming reads executed/retained)."""
+
+    def __init__(self, executed: int = 0) -> None:
+        self.executed = executed
+        self.retained_case_ids: tuple[str, ...] = ()
+        self.steps: list[Any] = []
+
+
 def _stub_campaign(monkeypatch: pytest.MonkeyPatch, tar_version: str) -> None:
     """Make bind/campaign/report cheap so only the report-assembly wrapper runs."""
     monkeypatch.setattr(
         rd.NodeTarEffectTarget, "bind", classmethod(lambda cls, b, i, **k: _FakeTarget(tar_version))
     )
-    monkeypatch.setattr(rd, "run_effect_campaign", lambda cases, produce, config, on_step: object())
+    monkeypatch.setattr(
+        rd,
+        "run_effect_campaign",
+        lambda cases, produce, config, on_step=None, hooks=None: _FakeResult(),
+    )
     base = {"demo_report_schema": 4, "steps": [], "retained_case_ids": [], "final_search_stats": {}}
     monkeypatch.setattr(rd, "effect_campaign_report", lambda result, producer: dict(base))
     monkeypatch.setattr(rd, "_historical_oracle_events", lambda result: [])
@@ -45,9 +58,11 @@ def test_exploration_defaults_to_the_registered_su_arm(monkeypatch: pytest.Monke
         rd.NodeTarEffectTarget, "bind", classmethod(lambda cls, b, i, **k: _FakeTarget("7.5.23"))
     )
 
-    def fake_campaign(cases: Any, produce: Any, config: Any, on_step: Any) -> Any:
+    def fake_campaign(
+        cases: Any, produce: Any, config: Any, on_step: Any = None, hooks: Any = None
+    ) -> Any:
         captured["config"] = config
-        return object()
+        return _FakeResult()
 
     monkeypatch.setattr(rd, "run_effect_campaign", fake_campaign)
     monkeypatch.setattr(
@@ -91,7 +106,9 @@ def test_exploration_matches_historical_except_the_labelling(
     # same stubbed loop; the reports must then differ only by the exploration labelling.
     _stub_campaign(monkeypatch, "7.5.2")
     hist = historical_demo_report(BACKEND, IMAGE, "7.5.2", seed=1, budget=5)
-    expl = exploration_demo_report(BACKEND, IMAGE, "7.5.2", seed=1, budget=5)
+    # Compare the per-case (streaming off) explore report against historical; streaming's aggregate
+    # shape is a deliberate difference covered by its own tests.
+    expl = exploration_demo_report(BACKEND, IMAGE, "7.5.2", seed=1, budget=5, stream=False)
     only_in_explore = {
         "qualification",
         "requested_spec",
@@ -99,6 +116,7 @@ def test_exploration_matches_historical_except_the_labelling(
         "violation_inputs",
         "vocabulary_mode",  # exploration records its vocabulary mode; historical does not
         "observer_integrity_policy",  # and its observer policy
+        "streaming",  # and whether the result streamed (aggregate) or listed every case
     }
     assert set(expl) - set(hist) == only_in_explore
     # timing is wall-clock and differs run-to-run by design; everything else is deterministic.
@@ -142,6 +160,7 @@ def _violation_capture_report(
     violating: bool,
     status: Any = None,
     integrity_valid: bool = True,
+    stream: bool = False,
 ) -> dict:
     """Drive exploration_demo_report with a fake run whose oracle verdict we control."""
 
@@ -159,9 +178,11 @@ def _violation_capture_report(
     fake_run = type("R", (), {"base_result": base, "trace": trace})()
     monkeypatch.setattr(rd, "_native_effect_producer", lambda *a, **k: lambda case: fake_run)
 
-    def fake_campaign(cases: Any, produce: Any, config: object, on_step: object = None) -> object:
+    def fake_campaign(
+        cases: Any, produce: Any, config: object, on_step: object = None, hooks: object = None
+    ) -> object:
         produce(list(cases)[0])  # one real seed case, so build_tar produces real bytes
-        return object()
+        return _FakeResult(executed=1)
 
     monkeypatch.setattr(rd, "run_effect_campaign", fake_campaign)
     monkeypatch.setattr(rd, "effect_campaign_report", lambda r, p: {"demo_report_schema": 4})
@@ -169,7 +190,7 @@ def _violation_capture_report(
     monkeypatch.setattr(
         rd.NodeTarEffectTarget, "bind", classmethod(lambda cls, b, i, **k: _FakeTarget("7.5.23"))
     )
-    return exploration_demo_report(BACKEND, IMAGE, "7.5.23", seed=1, budget=5)
+    return exploration_demo_report(BACKEND, IMAGE, "7.5.23", seed=1, budget=5, stream=stream)
 
 
 def test_exploration_records_all_cases_but_saves_only_violating_inputs(
@@ -230,7 +251,11 @@ def test_live_dir_records_run_settings_from_actual_values(
     monkeypatch.setattr(
         rd.NodeTarEffectTarget, "bind", classmethod(lambda cls, b, i, **k: _FakeTarget("7.5.23"))
     )
-    monkeypatch.setattr(rd, "run_effect_campaign", lambda cases, produce, config, on_step: object())
+    monkeypatch.setattr(
+        rd,
+        "run_effect_campaign",
+        lambda cases, produce, config, on_step=None, hooks=None: _FakeResult(),
+    )
     monkeypatch.setattr(
         rd,
         "effect_campaign_report",
@@ -258,3 +283,24 @@ def test_live_dir_records_run_settings_from_actual_values(
     assert rs["sentinel_count"] == 5 and rs["sentinel_seed"] == 20261104
     assert rs["observer_integrity_policy"] == "invalid-continue" and rs["profile"] == "full"
     assert prog["state"] == "finished"  # the try/else path closed it cleanly
+
+
+def test_streaming_report_is_aggregate_plus_only_violating_cases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    report = _violation_capture_report(monkeypatch, violating=True, stream=True)
+    assert report["streaming"] is True
+    assert "case_records" not in report  # streaming keeps aggregate counts, not every case
+    agg = report["aggregate"]
+    assert agg["runs_executed"] == 1 and agg["terminations"].get("success") == 1
+    assert agg["unjudged_steps"] == 0 and agg["errors"] == 0
+    (case,) = report["violation_cases"]  # only the violating case is listed
+    assert case["c1"] is True and case["outcome"] == "judged"
+    (saved,) = report["violation_inputs"]
+    assert saved["run_index"] == case["run_index"]
+
+
+def test_streaming_off_keeps_the_full_per_case_report(monkeypatch: pytest.MonkeyPatch) -> None:
+    report = _violation_capture_report(monkeypatch, violating=True, stream=False)
+    assert report["streaming"] is False
+    assert len(report["case_records"]) == 1 and "aggregate" not in report

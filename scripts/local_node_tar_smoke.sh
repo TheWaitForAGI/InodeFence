@@ -431,6 +431,19 @@ if [ "$MODE" = explore ]; then
   [ -n "${DEMO_ENGINE_COMMIT:-}" ] && DEMO_ARGS+=(--engine-commit "$DEMO_ENGINE_COMMIT")
   host --image "$IF_EXPLORE_IMAGE" --tar-version "$TAR_VERSION" --call-log "$HOST_CALL_LOG" \
     --evidence "$CONTROLLER_EVIDENCE" ${DEMO_ARGS[@]+"${DEMO_ARGS[@]}"} effect-demo-explore
+  # Copy the controller's live folder to the host BEFORE the exit trap removes the controller, so
+  # the final (state=finished) snapshot reaches the host -- a post-removal pull would fail. The
+  # loop wrote progress.json atomically (temp file -> os.replace) and closed it finished before the
+  # controller stops, so a raw copy never catches a half-written file; in-progress ".tmp-*"
+  # violation dirs are ignored by the reader. A copy failure must not pass silently (the live folder
+  # is the only off-result home of a large run's violation inputs).
+  if [ -n "${DEMO_HOST_LIVE_DIR:-}" ]; then
+    mkdir -p "$DEMO_HOST_LIVE_DIR"
+    dk cp "$CONTROLLER:$DEMO_LIVE_DIR/." "$DEMO_HOST_LIVE_DIR/" || {
+      echo "FAILED to copy live folder from $CONTROLLER:$DEMO_LIVE_DIR to $DEMO_HOST_LIVE_DIR" >&2
+      exit 1
+    }
+  fi
   exit 0
 fi
 

@@ -31,10 +31,19 @@ def build_campaign_result(
 ) -> tuple[TargetResult, dict[str, bytes]]:
     """Convert the loop report into the common campaign result, plus the violating TARs to save.
 
-    ``cases[]`` lists every run with its C0/C1/C2 verdict (the schema ties
-    ``runs_to_first_violation`` and ``budget`` to the run count). Only violating cases get a saved
-    input; ``repro_inputs`` is that subset. ``target`` comes from ``prepared.target``.
+    A streaming report (``aggregate`` present) lists only the violating cases and carries the rest
+    as aggregate counts (``runs_executed`` / ``terminations`` / ``unjudged_steps`` / ``errors``); a
+    non-streaming report lists every case. Either way the verdict, run count and violation count are
+    the same -- the common campaign block derives what the listed cases cannot show. Only violating
+    cases get a saved input; ``repro_inputs`` is that subset. ``target`` comes from
+    ``prepared.target``.
     """
+    aggregate = report.get("aggregate")
+    listed = (
+        report.get("violation_cases", [])
+        if aggregate is not None
+        else report.get("case_records", [])
+    )
     cases = tuple(
         CaseVerdict(
             f"step-{r['run_index']}",
@@ -45,7 +54,7 @@ def build_campaign_result(
             termination=r.get("termination"),
             observation_complete=r.get("observation_complete"),
         )
-        for r in report.get("case_records", [])
+        for r in listed
     )
     repro = []
     tar_files: dict[str, bytes] = {}
@@ -64,6 +73,18 @@ def build_campaign_result(
     provenance = type(base)(
         base.engine_sha, base.engine_dirty, prepared.image_ref, prepared.image_id
     )
+    if aggregate is not None:
+        campaign = CampaignInfo(
+            seed=seed,
+            budget=budget,
+            runs_to_first_violation=first_violation,
+            runs_executed=aggregate.get("runs_executed"),
+            errors=aggregate.get("errors"),
+            unjudged_steps=aggregate.get("unjudged_steps"),
+            terminations=aggregate.get("terminations"),
+        )
+    else:
+        campaign = CampaignInfo(seed=seed, budget=budget, runs_to_first_violation=first_violation)
     result = TargetResult(
         target=prepared.target,
         axes=TargetAxes(target_version=prepared.version),
@@ -72,7 +93,7 @@ def build_campaign_result(
         cases=cases,
         repro_inputs=tuple(repro),
         provenance=provenance,
-        campaign=CampaignInfo(seed=seed, budget=budget, runs_to_first_violation=first_violation),
+        campaign=campaign,
     )
     return result, tar_files
 

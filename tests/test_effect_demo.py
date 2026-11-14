@@ -110,6 +110,25 @@ def test_demo_argument_budget_cap(budget) -> None:
         check_demo_arguments(parser, parser.parse_args(["--budget", budget, "effect-demo"]))
 
 
+def test_exploration_has_no_upper_budget_cap_but_keeps_the_lower_bound() -> None:
+    parser = _demo_parser()
+    over = str(MAX_NATIVE_BUDGET + 1)
+    # Exploration streams (retain_steps=False), so a long single campaign above the cap is allowed.
+    check_demo_arguments(
+        parser,
+        parser.parse_args(["--budget", over, "--tar-version", "7.5.23", "effect-demo-explore"]),
+    )
+    # The lower bound still holds for exploration ...
+    with pytest.raises(SystemExit):
+        check_demo_arguments(
+            parser,
+            parser.parse_args(["--budget", "0", "--tar-version", "7.5.23", "effect-demo-explore"]),
+        )
+    # ... and every other mode keeps the full cap.
+    with pytest.raises(SystemExit):
+        check_demo_arguments(parser, parser.parse_args(["--budget", over, "effect-demo"]))
+
+
 def test_pinned_node_tar_version_reads_the_repository_pin() -> None:
     assert pinned_node_tar_version() == "7.5.22"
 

@@ -239,12 +239,54 @@ def main(argv: list[str] | None = None) -> int:
     return worst
 
 
+# ---- target options: declared once, read by fixture regression and by exploration ----
+
+
+@dataclass(frozen=True, slots=True)
+class TargetOptionDeclaration:
+    """One target-specific option, declared by the adapter for the common driver and commands.
+
+    ``choices`` are the values the target accepts at all (fixture regression may vary them, one
+    axis per run); ``explore_choices`` the subset exploration accepts now, and ``explore_single``
+    that one exploration takes exactly one value. The common layer (IF-MAC-A driver, IF-MAC-C
+    commands) is to read this declaration for validation and help; until then this module checks
+    it itself.
+    """
+
+    name: str
+    choices: tuple[str, ...]
+    required: bool
+    help: str
+    explore_choices: tuple[str, ...]
+    explore_single: bool = True
+    explore_held: str = ""  # why the values outside ``explore_choices`` are not explored yet
+
+
+EXTRACTION_FILTER_OPTION = TargetOptionDeclaration(
+    name="extraction_filter",
+    choices=pti.FILTERS,
+    required=True,
+    help=(
+        "tarfile extraction filter. One value per exploration; fixture regression may compare "
+        "several on one runtime (a setting comparison, not a version comparison)"
+    ),
+    explore_choices=("data",),
+    explore_held=(
+        "fully_trusted exploration is not approved yet (D022: binding an untrusted target to a "
+        "campaign awaits a decision); only data is explored for now"
+    ),
+)
+#: Every option this target declares (the common layer reads this).
+TARGET_OPTIONS = (EXTRACTION_FILTER_OPTION,)
+
+
 # ---- registration in the common command (scripts.run_target TARGETS) ----
 
 
 def _adapter_cells(versions: list[str], filters: list[str]) -> list[RunCell]:
-    if not filters:
-        raise ValueError(f"python-tarfile needs --extraction-filter, one of {pti.FILTERS}")
+    option = EXTRACTION_FILTER_OPTION
+    if option.required and not filters:
+        raise ValueError(f"python-tarfile needs --extraction-filter, one of {option.choices}")
     for runtime in versions:
         if pti.RUNTIME_RE.fullmatch(runtime) is None and not is_symbolic(runtime):
             raise ValueError(
@@ -252,8 +294,8 @@ def _adapter_cells(versions: list[str], filters: list[str]) -> list[RunCell]:
                 f"or {LATEST}: {runtime!r}"
             )
     for extraction_filter in filters:
-        if extraction_filter not in pti.FILTERS:
-            raise ValueError(f"--extraction-filter must be one of {pti.FILTERS}")
+        if extraction_filter not in option.choices:
+            raise ValueError(f"--extraction-filter must be one of {option.choices}")
     cells = []
     for runtime in versions:
         for extraction_filter in filters:

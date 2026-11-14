@@ -54,10 +54,36 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 LAUNCHER = REPO_ROOT / "scripts" / "local_python_tarfile_explore.sh"
 OBSERVED_CONTRACTS = ("C0", "C1", "C2")  # the effect path takes a full before/after snapshot
 MIN_BUDGET = len(minimal_seed_corpus())
-#: Filters exploration accepts now; ``fully_trusted`` is held until that use is approved.
-EXPLORE_FILTERS = ("data",)
 
 Runner = Callable[..., subprocess.CompletedProcess[Any]]
+
+
+def explore_option(options: ExploreOptions, declared: rpt.TargetOptionDeclaration) -> str:
+    """The ONE value of a declared target option from ``options``' target-option bundle.
+
+    The common driver carries target options as a name -> value bundle (``target_options``; a
+    value may be one string or a sequence of strings). Missing, empty, several values, a value
+    the target does not know, or one exploration does not accept yet is a ``ValueError``.
+    """
+    bundle = getattr(options, "target_options", None) or {}
+    raw = bundle.get(declared.name)
+    values = [raw] if isinstance(raw, str) else list(raw or ())
+    if not values:
+        raise ValueError(
+            f"python-tarfile exploration needs --{declared.name.replace('_', '-')} "
+            f"(one of {', '.join(declared.explore_choices)})"
+        )
+    if declared.explore_single and len(values) > 1:
+        raise ValueError(
+            f"one {declared.name} per exploration, got {values}: settings are explored in "
+            "separate campaigns, never mixed in one"
+        )
+    (value,) = values
+    if value not in declared.choices:
+        raise ValueError(f"{declared.name} must be one of {declared.choices}, got {value!r}")
+    if value not in declared.explore_choices:
+        raise ValueError(f"{declared.name}={value} is not explored: {declared.explore_held}")
+    return value
 
 
 def report_path(out: Path, run_id: str) -> Path:
@@ -192,14 +218,7 @@ def explore(
     ensure: Callable[..., producer.ProducerImage] | None = None,
 ) -> ExploreOutcome:
     """``TargetAdapter.explore`` for python-tarfile (one runtime image, one filter)."""
-    extraction_filter = options.extraction_filter
-    if extraction_filter is None:
-        raise ValueError("python-tarfile exploration needs one --extraction-filter (data)")
-    if extraction_filter not in EXPLORE_FILTERS:
-        raise ValueError(
-            f"extraction filter {extraction_filter!r} is not explored yet "
-            f"(allowed: {', '.join(EXPLORE_FILTERS)}; fully_trusted is held until approved)"
-        )
+    extraction_filter = explore_option(options, rpt.EXTRACTION_FILTER_OPTION)
     if options.budget < MIN_BUDGET:
         raise ValueError(f"budget must be >= {MIN_BUDGET} (the loop's seed count)")
     ensure = ensure or producer.ensure_producer_image

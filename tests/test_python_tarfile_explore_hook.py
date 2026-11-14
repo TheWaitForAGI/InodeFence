@@ -10,18 +10,18 @@ from __future__ import annotations
 import json
 import platform
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 import scripts.python_tarfile_explore as pte
 import scripts.run_python_tarfile_target as rpt
-import scripts.run_target_explore as rte
 from scripts.python_tarfile_producer import ProducerImage
 from scripts.run_target import ExploreOptions, PreparedTargetImage
 from tests.test_python_tarfile_contained import IMAGE, _LocalBackend
 
 from inodefence.python_tarfile_explore import python_tarfile_exploration_report
-from inodefence.target_result import ResultMode, Verdict, load_target_result
+from inodefence.target_result import ResultMode, load_target_result
 
 RUNTIME = platform.python_version()
 PREPARED = PreparedTargetImage(
@@ -71,15 +71,12 @@ def _controller(mutate: dict[str, Any] | None = None, *, backend: Any = None):
     return runner, calls
 
 
-def _options(tmp_path: Path, **kw: Any) -> ExploreOptions:
-    base: dict[str, Any] = {
-        "budget": pte.MIN_BUDGET + 1,
-        "seed": 5,
-        "out": tmp_path,
-        "extraction_filter": "data",
-    }
+def _options(tmp_path: Path, target_options: Any = None, **kw: Any) -> Any:
+    """ExploreOptions plus the target-option bundle the common driver is to carry."""
+    base: dict[str, Any] = {"budget": pte.MIN_BUDGET + 1, "seed": 5, "out": tmp_path}
     base.update(kw)
-    return ExploreOptions(**base)
+    bundle = {"extraction_filter": "data"} if target_options is None else target_options
+    return SimpleNamespace(**base, image_tag_suffix="", target_options=bundle)
 
 
 def test_hook_writes_a_common_campaign_result_for_one_runtime_and_one_filter(
@@ -107,21 +104,23 @@ def test_hook_writes_a_common_campaign_result_for_one_runtime_and_one_filter(
 
 
 @pytest.mark.parametrize(
-    ("kw", "message"),
+    ("bundle", "kw", "message"),
     [
-        ({"extraction_filter": None}, "needs one --extraction-filter"),
-        ({"extraction_filter": "fully_trusted"}, "held until approved"),
-        ({"budget": 1}, "budget must be"),
+        ({}, {}, "needs --extraction-filter"),
+        ({"extraction_filter": ["data", "fully_trusted"]}, {}, "one extraction_filter per"),
+        ({"extraction_filter": "tar"}, {}, "must be one of"),
+        ({"extraction_filter": "fully_trusted"}, {}, "not approved yet .D022"),
+        ({"extraction_filter": ("data",)}, {"budget": 1}, "budget must be"),
     ],
 )
 def test_hook_refuses_before_preparing_anything(
-    tmp_path: Path, kw: dict[str, Any], message: str
+    tmp_path: Path, bundle: dict[str, Any], kw: dict[str, Any], message: str
 ) -> None:
     def no_ensure(*_: Any, **__: Any) -> ProducerImage:
         raise AssertionError("must not prepare")
 
     with pytest.raises(ValueError, match=message):
-        pte.explore(PREPARED, _options(tmp_path, **kw), ensure=no_ensure)
+        pte.explore(PREPARED, _options(tmp_path, bundle, **kw), ensure=no_ensure)
 
 
 @pytest.mark.parametrize(
@@ -147,31 +146,24 @@ def test_steps_without_verdict_make_the_result_error_not_pass(tmp_path: Path) ->
         pte.explore(PREPARED, _options(tmp_path), runner=runner, ensure=_ensure)
 
 
-def test_driver_reaches_the_hook_with_the_one_filter(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+def test_options_without_a_target_option_bundle_are_refused_not_defaulted(
+    tmp_path: Path,
 ) -> None:
-    seen: dict[str, Any] = {}
-
-    def fake_prepare(adapter: Any, target: str, spec: str, **kw: Any) -> PreparedTargetImage:
-        seen["filter"] = kw["extraction_filter"]
-        return PREPARED
-
-    runner, _ = _controller()
-    monkeypatch.setattr(rte, "prepare_target_image", fake_prepare)
-    monkeypatch.setattr(pte.producer, "ensure_producer_image", _ensure)
-    original = pte.run_controller
-    monkeypatch.setattr(
-        pte, "run_controller", lambda *a, **k: original(*a, **{**k, "runner": runner})
-    )
-    argv = ["--target", "python-tarfile", "--version", "latest", "--auto-prepare"]
-    argv += ["--extraction-filter", "data", "--budget", str(pte.MIN_BUDGET), "--out", str(tmp_path)]
-    assert rte.main(argv) in (0, 1)
-    assert seen["filter"] == "data"
-    out = capsys.readouterr().out
-    assert f"TARGET-EXPLORE {Verdict.PASS.value}" in out or "TARGET-EXPLORE FAIL" in out
+    # Today's common ExploreOptions has no target-option bundle yet (IF-MAC-A adds it); the hook
+    # must refuse rather than fall back to a default filter.
+    options = ExploreOptions(budget=pte.MIN_BUDGET, seed=1, out=tmp_path)
+    with pytest.raises(ValueError, match="needs --extraction-filter"):
+        pte.explore(PREPARED, options, ensure=lambda *a, **k: pytest.fail("no prepare"))
 
 
-def test_python_adapter_registers_the_hook_and_keeps_axes_separate() -> None:
+def test_python_adapter_registers_the_hook_and_declares_its_filter_option() -> None:
     assert rpt.ADAPTER.explore is not None
+    (option,) = rpt.TARGET_OPTIONS
+    assert option.name == "extraction_filter" and option.required
+    assert option.choices == ("fully_trusted", "data")
+    assert option.explore_choices == ("data",) and option.explore_single
+    assert "D022" in option.explore_held
     with pytest.raises(ValueError):
         rpt.ADAPTER.cells(["3.14.10"], [])  # the filter axis is required, never defaulted
+    with pytest.raises(ValueError, match="one of"):  # regression reads the same declaration
+        rpt.ADAPTER.cells(["3.14.10"], ["tar"])

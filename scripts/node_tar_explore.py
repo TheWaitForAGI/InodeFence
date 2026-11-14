@@ -22,6 +22,7 @@ from pathlib import Path
 from scripts.explore_result import build_campaign_result, write_result
 from scripts.run_target import ExploreOptions, ExploreOutcome, PreparedTargetImage
 
+from inodefence.evaluation.rds_preregistration import parse_preregistration
 from inodefence.generator import minimal_seed_corpus
 from inodefence.target_result_summary import write_cell_summaries
 
@@ -30,6 +31,22 @@ SMOKE = REPO_ROOT / "scripts" / "local_node_tar_smoke.sh"
 OBSERVED_CONTRACTS = ("C0", "C1", "C2")  # the effect path takes a full before/after snapshot
 # One campaign must cover all initial seed cases, so a budget below the seed count is refused.
 MIN_BUDGET = len(minimal_seed_corpus())
+# Exploration matches the registered S-u sandbox: the same generated sentinel set and observer
+# policy the confirmatory EXP-2 holdout uses, so the observed-names vocabulary pool and the
+# invalid-trace handling are the experiment's, not a demo default. The values are READ from the
+# frozen preregistration (never copied here), so the two cannot drift; the operator can still
+# override them, and the run records what it actually used.
+REGISTERED_PREREG = REPO_ROOT / "experiments" / "preregistration" / "exp2-v1.md"
+
+
+def registered_sandbox_defaults() -> tuple[str, str, str]:
+    """``(sentinel_seed, sentinel_count, observer_integrity_policy)`` of the registered S-u arm."""
+    prereg = parse_preregistration(REGISTERED_PREREG.read_text(encoding="utf-8"))
+    return (
+        str(prereg.sentinel_generator_seed),
+        str(prereg.sentinel_count),
+        prereg.observer_integrity_policy or "invalid-continue",
+    )
 
 
 def controller_report_path(out: Path, run_id: str) -> Path:
@@ -53,12 +70,19 @@ def run_controller(
     creates the disposable controller, and drives ``effect-demo-explore``. The target containers'
     isolation is the controller's, unchanged.
     """
+    sentinel_seed, sentinel_count, observer_policy = registered_sandbox_defaults()
     env = {
         **os.environ,
         "EXPLORE_IMAGE": prepared.image_ref,
         "TAR_VERSION": prepared.version,
         "DEMO_BUDGET": str(budget),
         "DEMO_SEED": str(seed),
+        # Registered S-u sandbox defaults (overridable by the operator's own DEMO_* env).
+        "DEMO_SENTINEL_SEED": os.environ.get("DEMO_SENTINEL_SEED", sentinel_seed),
+        "DEMO_SENTINEL_COUNT": os.environ.get("DEMO_SENTINEL_COUNT", sentinel_count),
+        "DEMO_OBSERVER_INTEGRITY_POLICY": os.environ.get(
+            "DEMO_OBSERVER_INTEGRITY_POLICY", observer_policy
+        ),
         "INODEFENCE_EVIDENCE_DIR": str(out),
         "RUN_ID": run_id,
         "PYTHON": python,

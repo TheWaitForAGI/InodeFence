@@ -434,7 +434,9 @@ def test_package_that_refuses_the_internal_link_is_still_worker_compatible() -> 
     docker = FakeDocker(fail="link-refused")
     reg.prepare(SPEC, IMAGE, runner=docker, log=lines.append)
     assert docker.images == {IMAGE}
-    assert any("internal link not created (exit 2)" in line for line in lines)
+    assert any(
+        "exit 2, regular file extracted, internal link not created" in line for line in lines
+    )
 
 
 def test_harness_accepts_a_package_that_refuses_the_internal_link() -> None:

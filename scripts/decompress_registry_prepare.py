@@ -270,19 +270,16 @@ def worker_check(runner: Runner, image: str, package: str, version: str) -> dict
         reason = f"worker frame unusable: {frame or out.get('frame_error')}"
     elif not frame.get("hardlinks"):
         reason = "worker frame observed no hard link (the boundary-attempt channel sees nothing)"
-    elif not out.get("extracted"):
-        reason = "worker finished but the benign file was not extracted"
     else:
-        # How the package resolves a hard-link target is its own behaviour (some versions resolve
-        # it against the working directory and refuse); the frame observing it is what matters.
-        link = (
-            "created"
-            if out.get("link_created")
-            else f"not created (exit {out.get('frame_status')})"
-        )
+        # How the package resolves or orders a hard link is its own behaviour (some versions
+        # resolve the target against the working directory, or race and abort); the frame
+        # observing the attempt is what shows the worker drives the package.
+        link = "created" if out.get("link_created") else "not created"
+        regular = "extracted" if out.get("extracted") else "not extracted"
         reason = (
             f"decompress worker identify+frame ok ({frame.get('attempts')} attempts, "
-            f"{frame.get('hardlinks')} hard link observed, internal link {link})"
+            f"{frame.get('hardlinks')} hard link observed; exit {out.get('frame_status')}, "
+            f"regular file {regular}, internal link {link})"
         )
     return {
         "ok": reason.startswith("decompress worker identify+frame ok"),

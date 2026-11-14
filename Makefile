@@ -112,6 +112,7 @@ regression:
 #   make target-run TARGET=python-tarfile TARGET_VERSIONS=3.12.16 TARGET_FILTERS="fully_trusted data"
 #   make target-run TARGET=python-tarfile TARGET_VERSIONS="3.12.3 3.12.16" TARGET_FILTERS=data
 #   make target-run TARGET=oras-go TARGET_VERSIONS="2.6.1 2.6.2"
+#   make target-run TARGET=decompress TARGET_VERSIONS="decompress@4.2.1 @xhmikosr/decompress@11.1.4"
 TARGET ?= node-tar
 TARGET_VERSIONS ?= $(TAR_VERSION)
 TARGET_FILTERS ?=

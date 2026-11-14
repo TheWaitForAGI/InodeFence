@@ -1,4 +1,4 @@
-# 3. Related Work (드래프트 v1)
+# 3. Related Work (드래프트 v2)
 
 이 절은 InodeFence가 가장 가까운 선행연구와 어떤 관계에 있는지, 이미 알려진 아이디어를 실수로
 신규 기여처럼 표현하지 않도록 정리한다. 전체 기준과 서지는
@@ -117,13 +117,13 @@ state(C1 identity·C2 effect) retention을 더한 탐색이 무작위 탐색과 
   초록은 오류 없는 campaign에도 잔여 위험(residual risk)이 남으며 greybox에서는 이를 직접 추정할 수 없어
   discovery probability(다음 입력이 커버리지를 늘릴 확률)를 상한으로 쓰고 campaign 중 추정해 중단 시점을
   정한다고 밝힌다(초록에서 읽음; reachability 주장은 초록에 없음). 우리 설계의 우측중도절단과 zero-hit
-  rule-of-three 상한(§4.6.2, 판정표 ⑤ 행 §7.2)도 '위반 0 = 안전'으로 읽지 않는다는 취지는 같지만, 우리 상한은 캠페인 단위 hit 확률이지 잔여 위험
+  rule-of-three 상한(판정표 ⑤ 행, §7.2)도 '위반 0 = 안전'으로 읽지 않는다는 취지는 같지만, 우리 상한은 캠페인 단위 hit 확률이지 잔여 위험
   추정이 아니다.
 - **Schloegel et al., "SoK: Prudent Evaluation Practices for Fuzzing," IEEE S&P 2024**
   (DOI [10.1109/SP54263.2024.00137](https://doi.org/10.1109/SP54263.2024.00137); arXiv [2405.10220](https://arxiv.org/abs/2405.10220)).
   2018–2023 top-venue 150편을 분석해 통계 검정 권고의 광범위한 미준수를 보고하고, baseline 비교·충분한 trial
   수와 통계 검정·효과크기·문서화된 seed·버그 기준 지표(fuzzer 고유 proxy 지양)를 갱신 guideline으로 제시한다
-  (초록·§II 권고 목록에서 읽음). 우리 설계의 R/D baseline·paired seed·로그랭크+A12 효과크기·EN-008(중간상태는
+  (초록·§II 권고 목록에서 읽음). 우리 설계의 R/D baseline·paired seed·로그랭크 검정과 Peto HR 효과크기(A12는 train 탐색 보조로만 등록)·EN-008(중간상태는
   search behavior이지 effectiveness 아님)이 이에 대응한다.
 
 > **아직 적지 않는 것(TBD).** 위 논문들의 **본문 설문 통계(논문 수·비율 분해 등)** 중 이번에 원문에서 직접

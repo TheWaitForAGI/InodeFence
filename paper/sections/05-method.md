@@ -48,7 +48,8 @@ object identity(§2.1)와 보호된 외부 sentinel에 대한 external effect(§
 밖에 새 네임스페이스 객체/identity 관계가 생기려는 시도"). 거부된 외부-하드링크 시도도 valid
 trace로 관찰(producer abort-drain)해 이 키로 기록한다.
 sentinel 경로·CVE를 feedback에 심지 않으며, EXTERNAL 판정은 region 기준 target-agnostic이다. 이
-신호는 M1 경로에 additive로 들어가며 기존 C0/C1/C2 판정·fixture 경로를 바꾸지 않는다.
+신호는 M1 경로에 additive로 들어가며 기존 C0/C1/C2 판정·fixture 경로를 바꾸지 않는다. 이 boundary 키는 특정 패턴이나
+경로를 담지 않지만 결함 계열 수준의 사전 지식이다(exp2-v1 §6) [C-DESIGN].
 
 > **EN-008 준수:** "새 state/fingerprint 수"는 진척·effectiveness의 척도가 아니다. boundary-attempt
 > 키 수나 unique state 수를 effectiveness 결론으로 옮기지 않는다(중간상태는 search behavior로만 서술).
@@ -126,8 +127,9 @@ holdout 확증 분석은 exp2-v1 §5를 따른다 [C-DESIGN].
   쪽 기각), ②(S-u vs R만), 분리 실패(HR 2 배제 / 판단 유보), 미검정, ⑤(사건 0), ⑧(R 쪽 기각, 반증) 등의 행 하나를
   고른다. 결과 문장은 이 표의 문장만 쓴다.
 
-**사전등록 예측(결과 아님).** 문법 몬테카를로로 계산한 R의 캠페인당 사건 확률은 .445(.38–.50)이고, retention 효과의
-해석적 낙관 상한은 HR 약 1.1–1.3이다. 등록된 기대 결말은 비기각과 HR 2 배제다(exp2-v1 §1) [C-DESIGN] [C-LIM1].
+**사전등록 예측(결과 아님).** 등록은 예측 하나를 고정한다. 문법 몬테카를로로 계산한 retention 효과의 해석적 낙관 상한은
+U_sim ≈ HR 1.1–1.3이고, 등록된 기대 결말은 비기각과 HR 2 배제다(exp2-v1 §1). 같은 계산의 R 캠페인당 사건 확률은
+.445(.38–.50)다(exp2-v1 §6) [C-DESIGN].
 
 ### 4.6.5 본실험 결과 자리
 
@@ -141,7 +143,6 @@ holdout 확증 분석은 exp2-v1 §5를 따른다 [C-DESIGN].
 
 - **검토 게이트.** 모든 코드 변경은 브랜치 → PR → CI → 검토(verifier 또는 사람) → squash 머지 경로를 거친다.
   안전경계와 연구 불변식(disposable sandbox + sentinel, 격리 완화 0, CVE-specific oracle 금지, known PoC seed 금지,
-  oracle C0/C1/C2 정의 불변)은 에이전트가 바꾸지 못한다. 동결·GO·재개·해제 같은 실험 절차의 결정은 사람이 하거나
-  사람이 위임한 규칙으로 한다.
+  oracle C0/C1/C2 정의 불변)은 에이전트가 바꾸지 못하게 절차로 묶었다. 재개·해제·동결 뒤 규칙 변경은 사람 승인으로 한다.
 - **증거 규율.** 에이전트 산출물과 사람 검증을 구분하며, raw 결과 → validated summary → finding → 이 드래프트의
   증거 사슬(§4.5)과 observed/inferred 구분을 유지한다. 에이전트가 생성한 수치가 자동으로 논문 주장이 되지 않는다.

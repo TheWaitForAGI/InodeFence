@@ -1,4 +1,4 @@
-# 2. Background & Threat Model (드래프트 v1)
+# 2. Background & Threat Model (드래프트 v2)
 
 ## 2.1 Linux filesystem semantics (필요 범위)
 

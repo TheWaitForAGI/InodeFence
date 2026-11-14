@@ -11,6 +11,7 @@ from inodefence.target_result import (
     ResultMode,
     TargetAxes,
     TargetResult,
+    Verdict,
     repro_input,
 )
 from inodefence.target_result_summary import (
@@ -152,3 +153,116 @@ def test_write_cell_summaries_writes_beside_each_result_and_never_overwrites(
     with pytest.raises(FileExistsError):
         write_cell_summaries([path])
     assert write_cell_summaries([]) == []
+
+
+def test_campaign_summary_shows_aggregates_and_violations_not_per_case(tmp_path) -> None:
+    from inodefence.target_result import CampaignInfo
+
+    result = TargetResult(
+        target="node-tar",
+        axes=TargetAxes(target_version="7.5.8"),
+        mode=ResultMode.CAMPAIGN,
+        observed_contracts=("C0", "C1", "C2"),
+        cases=(CaseVerdict("step-742", "extracted", False, True, True),),  # violations only
+        repro_inputs=(repro_input("step-742", "inputs/step-742.tar", b"viol"),),
+        provenance=Provenance("a" * 40, False, "inodefence-node-tar-registry:7.5.8", None),
+        campaign=CampaignInfo(
+            seed=123,
+            budget=None,
+            runs_to_first_violation=742,
+            runs_executed=1000,
+            errors=2,
+            unjudged_steps=2,
+            stopped_early=True,
+        ),
+    )
+    text = render_summary(result, source_name="result.json", inputs_verified=True)
+    assert "## 탐색 결과 (집계와 위반 케이스)" in text
+    assert "## 케이스별 결과" not in text  # no per-case table for a campaign
+    assert "1000번 실행해 1건에서 위반" in text
+    assert "멈출 때까지 (상한 없음)" in text
+    assert "742번째" in text
+    assert "사람이 예산 소진 전에 멈춤" in text
+    assert "| `step-742` | 이상 없음 | **위반** | **위반** | `inputs/step-742.tar` |" in text
+
+
+def test_campaign_summary_surfaces_unjudged_count_and_ceiling(tmp_path) -> None:
+    from inodefence.target_result import CampaignInfo
+
+    result = TargetResult(
+        target="node-tar",
+        axes=TargetAxes(target_version="7.5.8"),
+        mode=ResultMode.CAMPAIGN,
+        observed_contracts=("C0", "C1", "C2"),
+        cases=(),  # every run went un-judged: no violations kept
+        repro_inputs=(),
+        provenance=Provenance("a" * 40, False, "inodefence-node-tar-registry:7.5.8", None),
+        campaign=CampaignInfo(
+            seed=123,
+            budget=None,
+            runs_to_first_violation=None,
+            runs_executed=8,
+            errors=0,
+            unjudged_steps=6,
+            max_unjudged_ratio=0.5,
+        ),
+    )
+    assert result.verdict is Verdict.ERROR  # 6/8 = 0.75 over the 0.5 ceiling
+    text = render_summary(result, source_name="result.json", inputs_verified=True)
+    assert "미판정 실행 | 6건 (비율 0.75)" in text
+    assert "미판정 상한 | 0.5" in text
+    # The narrative must say an un-judged run is not a clean one.
+    assert "‘위반 없음’이 아니라 ‘보지 못함’" in text
+    assert "미판정 8건·비율" not in text  # count is 6, not the run total
+
+
+def test_campaign_summary_separates_termination_and_marks_repro_checks() -> None:
+    from inodefence.target_result import JUDGED, CampaignInfo
+
+    timeout_hit = CaseVerdict("step-9", JUDGED, None, True, False, "timed_out", True)
+    clean_hit = CaseVerdict("step-12", JUDGED, None, False, True, "success", True)
+    result = TargetResult(
+        target="node-tar",
+        axes=TargetAxes(target_version="7.5.1"),
+        mode=ResultMode.CAMPAIGN,
+        observed_contracts=("C0", "C1", "C2"),
+        cases=(timeout_hit, clean_hit),
+        repro_inputs=(
+            repro_input("step-9", "inputs/step-9.tar", b"t"),
+            repro_input("step-12", "inputs/step-12.tar", b"s"),
+        ),
+        provenance=Provenance("a" * 40, False, "inodefence-node-tar-registry:7.5.1", None),
+        campaign=CampaignInfo(
+            seed=1,
+            budget=40,
+            runs_to_first_violation=10,
+            runs_executed=40,
+            terminations={"success": 20, "rejected": 15, "failed": 2, "timed_out": 3},
+        ),
+    )
+    assert result.verdict is Verdict.FAIL  # 15 rejections + 3 timeouts do not make it ERROR
+    text = render_summary(result, source_name="result.json", inputs_verified=True)
+    assert "| 종료 상태 | 성공 20건 · 거절 15건 · 실패(비정상 종료) 2건 · 시간 초과 3건 |" in text
+    assert "| 시간 초과 | 완결 | **재현 확인 필요** |" in text
+    assert "| 성공 | 완결 | — |" in text
+    assert "**재현 확인 필요 1건:**" in text
+
+
+def test_campaign_error_headline_names_unjudged_not_terminations() -> None:
+    from inodefence.target_result import RUN_ERROR, CampaignInfo
+
+    blind = tuple(CaseVerdict(f"s{i}", RUN_ERROR, None, None, None) for i in range(4))
+    result = TargetResult(
+        target="node-tar",
+        axes=TargetAxes(target_version="7.5.1"),
+        mode=ResultMode.CAMPAIGN,
+        observed_contracts=("C0", "C1", "C2"),
+        cases=blind,
+        repro_inputs=(),
+        provenance=Provenance("a" * 40, False, "inodefence-node-tar-registry:7.5.1", None),
+        campaign=CampaignInfo(seed=1, budget=4, runs_to_first_violation=None),
+    )
+    assert result.verdict is Verdict.ERROR
+    text = render_summary(result, source_name="result.json", inputs_verified=True)
+    assert "**ERROR** — 4건 중 4건에서 오라클이 평가되지 못했다(미판정 비율 1.0)" in text
+    assert "기록 없음 4건" in text  # no termination recorded for runs the harness never observed

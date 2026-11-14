@@ -34,7 +34,7 @@ node-tar, and the feasible channel here is narrower than node-tar's ordered effe
 import random
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import ClassVar
+from typing import ClassVar, overload
 
 from inodefence.campaign import CampaignOrigin
 from inodefence.campaign_hooks import (
@@ -411,6 +411,27 @@ def _observed_name_segments(run: DecompressFrameRun, *, exclude_external: bool) 
                 if segment and segment not in (".", ".."):
                     names.add(segment)
     return names
+
+
+@overload
+def run_decompress_effect_campaign(
+    initial_cases: Sequence[ArchiveCase],
+    produce_result: DecompressResultProducer,
+    config: DecompressEffectCampaignConfig,
+    on_step: DecompressStepObserver | None = None,
+    hooks: None = None,
+) -> DecompressEffectCampaignResult: ...
+
+
+@overload
+def run_decompress_effect_campaign(
+    initial_cases: Sequence[ArchiveCase],
+    produce_result: DecompressResultProducer,
+    config: DecompressEffectCampaignConfig,
+    on_step: DecompressStepObserver | None = None,
+    *,
+    hooks: CampaignHooks,
+) -> DecompressEffectCampaignResult | LightCampaignResult: ...
 
 
 def run_decompress_effect_campaign(

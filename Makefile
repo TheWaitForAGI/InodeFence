@@ -10,7 +10,7 @@ DEMO_OUT ?= $(or $(INODEFENCE_RUNTIME_ROOT),/var/lib/inodefence)/demo/effect-dem
 TAR_VERSION ?= 7.5.2
 HISTORICAL_IMAGE ?= inodefence-node-tar-effect:$(TAR_VERSION)
 
-.PHONY: install target-tools lint format-check typecheck test env-check docs-check evidence-chain check fixtures probe isolation-support node-entry-timing-probe node-tar-smoke node-tar-effect-check demo demo-native demo-synthetic demo-native-historical regression replay paper-artifacts
+.PHONY: install target-tools lint format-check typecheck test env-check docs-check evidence-chain check fixtures probe isolation-support node-entry-timing-probe node-tar-smoke node-tar-effect-check demo demo-native demo-synthetic demo-native-historical regression target-run replay paper-artifacts
 
 target-tools:
 	npm ci --prefix tools/node-tar --ignore-scripts --no-audit --no-fund
@@ -100,6 +100,18 @@ demo-native-historical:
 #   make regression TAR_VERSION=7.5.2 REGRESSION_ARGS=--dry-run
 regression:
 	PYTHONPATH=src:. $(PYTHON) scripts/regression_check.py --tar-version $(TAR_VERSION) $(REGRESSION_ARGS)
+
+# One command per target (common result format inodefence-target-result-v1, label demo run):
+# isolated run -> C0/C1/C2 judgment -> DIR/<target>-<version>/{result.json,inputs/*.tar,raw/}.
+# node-tar mode is fixture-regression (the make regression fixtures; C0 not observed = null).
+# Host terminal only (docker). TARGET_VERSIONS takes several versions (e.g. a version pair);
+# TARGET_ARGS=--dry-run runs no container and writes nothing. Existing results are not overwritten.
+#   make target-run TARGET=node-tar TARGET_VERSIONS="7.5.2 7.5.3"
+TARGET ?= node-tar
+TARGET_VERSIONS ?= $(TAR_VERSION)
+TARGET_OUT ?= $(HOME)/inodefence-evidence/target-run
+target-run:
+	PYTHONPATH=src:. $(PYTHON) scripts/run_target.py --target $(TARGET) $(foreach v,$(TARGET_VERSIONS),--version $(v)) $(if $(filter --dry-run,$(TARGET_ARGS)),,--out $(TARGET_OUT)) $(TARGET_ARGS)
 
 # Offline replay planner: read a demo report (REPORT=<path>) and reproduce its run
 # command, binding the recorded image recipe to the committed one and checking the

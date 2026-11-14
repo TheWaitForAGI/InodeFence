@@ -114,6 +114,12 @@ def test_violating_run_writes_oras_go_campaign_result(
     assert result.provenance.image_id == IMAGE_ID
     assert (outcome.result_path.parent / "inputs" / "step-3.tar").read_bytes() == TAR
     assert (outcome.result_path.parent / "summary.md").is_file()
+    settings = json.loads((outcome.result_path.parent / "settings.json").read_text())
+    assert settings["mutation_policy"] == "uniform-generic-m1-state-aware-escape-hardlink-v1"
+    assert settings["registered_setting"] == "closest to S-u, not S-u"
+    assert "no selectable retention policy" in settings["registered_setting_gap"]
+    assert (settings["seed"], settings["budget"], settings["version"]) == (7, 5, "2.7.0")
+    assert settings["loop_report"].startswith("inodefence-oras-go-selfdiscover-")
     ((cmd, env),) = script.calls
     assert cmd[-1].endswith("local_oras_go_selfdiscover.sh")
     assert env["EXPLORE_IMAGE"] == "inodefence-oras-go-registry:2.7.0"

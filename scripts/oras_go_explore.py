@@ -127,6 +127,45 @@ def check_report(report: dict, prepared: PreparedTargetImage, budget: int | None
         raise RuntimeError(f"campaign report has {runs} run records, budget was {budget}")
 
 
+#: How the oras-go loop retains cases; fixed in ``OrasGoEffectSearchState`` (no selectable policy).
+RETENTION = (
+    "oras-go state retention (fixed): new boundary-attempt key OR new violation fingerprint "
+    "OR new full post-state"
+)
+#: Why the registered S-u arm cannot be run as-is on the oras-go loop (facts, recorded per run).
+S_U_GAP = (
+    "registered S-u = S_U_STATE_RETENTION_UNIFORM retention + uniform scheduler + observed-names "
+    "(fixed baseline) vocabulary; the oras-go loop has no selectable retention policy, its "
+    "observed-names vocabulary is the accumulated one only (FIXED_BASELINE is not a state-aware "
+    "policy there), and the controller does not expose the uniform scheduler"
+)
+SETTINGS_NAME = "settings.json"
+
+
+def settings_record(report: dict, prepared: PreparedTargetImage, options: ExploreOptions) -> dict:
+    """Which setting this run actually used, read from the loop report's own config."""
+    config = report.get("config") or {}
+    missing, runs = unjudged(report)
+    return {
+        "target": TARGET,
+        "requested": prepared.requested,
+        "version": prepared.version,
+        "image_ref": prepared.image_ref,
+        "image_id": prepared.image_id,
+        "exploratory_image": prepared.exploratory,
+        "seed": options.seed,
+        "budget": options.budget,
+        "mutation_policy": config.get("mutation_policy"),
+        "adaptive_scheduler": config.get("adaptive_scheduler"),
+        "retention": RETENTION,
+        "registered_setting": "closest to S-u, not S-u",
+        "registered_setting_gap": S_U_GAP,
+        "unjudged_runs": missing,
+        "runs": runs,
+        "loop_report": None,
+    }
+
+
 def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOutcome:
     """``TargetAdapter.explore`` for oras-go: run the campaign in the controller, write a result."""
     if options.budget < MIN_BUDGET:
@@ -149,17 +188,23 @@ def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOu
         report, prepared, seed=options.seed, budget=options.budget
     )
     result_path = write_result(report_path.parent / f"{run_id}-result", result, tar_files)
+    settings = settings_record(report, prepared, options)
+    settings["loop_report"] = report_path.name
+    (result_path.parent / SETTINGS_NAME).write_text(
+        json.dumps(settings, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     try:  # the result is written; a summary failure must not lose it
         write_cell_summaries([result_path])
     except Exception as error:  # noqa: BLE001
         print(f"TARGET-EXPLORE SUMMARY: summary.md not written ({error})", file=sys.stderr)
-    policy = (report.get("config") or {}).get("mutation_policy")
-    missing, runs = unjudged(report)
+    missing, runs = settings["unjudged_runs"], settings["runs"]
     # Any unjudged run makes the common verdict ERROR (never PASS); all unjudged is ERROR too.
     print(
-        f"loop report: {report_path} (mutation policy {policy}; unjudged runs {missing}/{runs}"
+        f"loop report: {report_path} (mutation policy {settings['mutation_policy']}; adaptive "
+        f"scheduler {settings['adaptive_scheduler']}; unjudged runs {missing}/{runs}"
         f" = {missing / max(runs, 1):.0%})"
     )
+    print(f"setting: closest to S-u, not S-u -- see {SETTINGS_NAME}")
     return ExploreOutcome(
         result_path=result_path,
         verdict=result.verdict.value,

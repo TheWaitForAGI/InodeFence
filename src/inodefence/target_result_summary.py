@@ -25,7 +25,6 @@ from pathlib import Path
 
 from inodefence.target_result import (
     CONTRACTS,
-    LABEL,
     RUN_ERROR,
     ResultMode,
     TargetResult,
@@ -101,7 +100,7 @@ def render_summary(result: TargetResult, *, source_name: str, inputs_verified: b
     add(f"# 결과 한 장 요약: {_cell(title)}")
     add("")
     add(
-        f"> 원본 결과 파일: {_code(source_name)} · 라벨: **{LABEL}** — 데모 실행 기록이며 "
+        f"> 원본 결과 파일: {_code(source_name)} · 라벨: **{result.label}** — 데모 실행 기록이며 "
         "자격 검증이나 사전등록 실험 결과가 아니다."
     )
     add("")
@@ -122,7 +121,51 @@ def render_summary(result: TargetResult, *, source_name: str, inputs_verified: b
         add(f"| {label} | {_code(value) if value is not None else NOT_APPLICABLE} |")
     add(f"| 실행 방식 | {MODE_PLAIN[result.mode]} |")
     add(f"| 실행 수 | {result.executed}건 (실행 오류 {result.errored}건) |")
+    prep = result.preparation
+    if prep is not None:
+        method = (
+            "공개 레지스트리에서 실행 중에 만든 lock으로 빌드(탐색용, 저장소에 커밋된 레시피 아님)"
+            if prep.method == "registry"
+            else "저장소에 커밋된 레시피로 빌드"
+        )
+        add(f"| 이미지 준비 방식 | {method} |")
+        add(
+            f"| 요청 버전 / 이미지 안 설치 버전 | {_code(prep.requested_version)} / "
+            f"{_code(prep.installed_version)} |"
+        )
+        if prep.requested_spec is not None:
+            add(
+                f"| 요청 값 | {_code(prep.requested_spec)} → {_code(prep.requested_version)} "
+                f"(해석 시각 {_code(prep.resolved_at or '')}) |"
+            )
+        for dep in prep.new_dependencies:
+            add(
+                f"| 커밋된 lock에 없던 의존(기록) | {_code(dep['name'] + '@' + dep['version'])} "
+                f"{_code(dep['integrity'])} |"
+            )
+        for package in prep.install_scripts_disabled:
+            add(f"| install script 비활성(기록) | {_code(package)} |")
+        for name, value in (
+            ("이미지 안 lock SHA-256", prep.lock_sha256),
+            ("이미지 안 worker SHA-256", prep.worker_sha256),
+            ("이미지 안 effect-producer SHA-256", prep.producer_sha256),
+            ("effect-producer 오프라인 호환 확인", prep.producer_check),
+            ("빌드 레시피", prep.recipe),
+        ):
+            add(f"| {name} | {_code(value) if value else NOT_APPLICABLE} |")
     add("")
+    if prep is not None and prep.method == "registry":
+        add(
+            "> **탐색용 실행(exploratory demo run).** 이 버전은 저장소에 고정 lock이 없어 실행 "
+            "시점의 공개 레지스트리 상태로 임시 lock을 만들고 그 lock으로 이미지를 빌드했다. "
+            "**임시 생성 lock이므로, 재현하려면 저장된 lock(`preparation/package-lock.json`)과 "
+            f"그 SHA-256({_code(prep.lock_sha256 or '기록 없음')})이 필요하다.** "
+            "커밋된 lock으로 같은 의존 구성을 다시 만드는 검증 경로(verified)와 다르다. "
+            "integrity 대조는 같은 실행에서 "
+            "레지스트리가 공표한 값과 일치한다는 것까지만 보이며, 레지스트리 자체가 바뀌었거나 "
+            "오염된 경우는 막지 못한다. 받은 패키지가 안전하다는 보증도 없다."
+        )
+        add("")
     add("## 무엇을 확인했나 (판정 기준)")
     add("")
     for name in CONTRACTS:

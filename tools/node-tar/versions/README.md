@@ -29,3 +29,19 @@ docker build -f tools/node-tar/effect/Dockerfile --build-arg TAR_VERSION=7.5.6 \
 
 이 디렉터리는 **빌드 입력일 뿐**이다. 어떤 버전을 실제 historical 데모에서 돌릴 수 있는지는 별도
 allowlist가 정하며, native 실행은 승인된 안전 범위(고정 버전, disposable sandbox + sentinel)에서만 한다.
+
+## 여기 없는 버전: 레지스트리 준비(exploratory)
+
+이 디렉터리는 재현성 기준선이지 허용 목록이 아니다. 여기 lock이 있는 버전은 그 lock으로 만든다.
+여기 없는 정확한 `X.Y.Z`(또는 `latest`: 레지스트리 dist-tag를 실행 때 정확한 버전으로 해석)는
+`make target-run TARGET=node-tar TARGET_VERSIONS=<X.Y.Z|latest> AUTO_PREPARE=1` 하나로 준비된다
+(`scripts/node_tar_registry_prepare.py`). 일회용 컨테이너에서 임시 lock을 만들어 검사한 뒤 같은
+Dockerfile로 `inodefence-node-tar-registry:<X.Y.Z>`를 빌드하고, 결과는 `exploratory demo run`으로
+표시된다. 커밋된 lock에 없던 의존이나 install script를 선언한 패키지는 막지 않고 기록한다(script는
+항상 비활성).
+
+한계: integrity 대조는 "생성한 lock이 같은 실행에서 레지스트리가 공표한 값과 일치한다"까지만
+보인다. 레지스트리 자체가 바뀌었거나 오염된 경우는 막지 못한다. 그래서 exploratory이고, 재현
+근거는 출력 폴더에 저장된 lock 파일과 그 SHA-256뿐이다. 받은 패키지의 안전성도 보증하지 않는다.
+이 경로는 이 디렉터리에 아무것도 쓰지 않는다. 버전을 verified로 올리려면 위 절차대로 lock을
+커밋하고 검토한다(자동 승격 없음).

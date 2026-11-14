@@ -86,9 +86,10 @@ def test_unobservable_case_is_error_not_pass(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     broken = {"_run_error": True, "_rc": 125, "_stderr": "no such image"}
-    monkeypatch.setattr(nt.cri, "run_one", _fake_run_one({"9.9.9": broken}))
-    assert rt.main(["--target", "node-tar", "--version", "9.9.9", "--out", str(tmp_path)]) == 2
-    result = load_target_result(tmp_path / "node-tar-9.9.9" / "result.json")
+    # 7.5.8 has a committed lock (a version without one needs --allow-registry-prepare).
+    monkeypatch.setattr(nt.cri, "run_one", _fake_run_one({"7.5.8": broken}))
+    assert rt.main(["--target", "node-tar", "--version", "7.5.8", "--out", str(tmp_path)]) == 2
+    result = load_target_result(tmp_path / "node-tar-7.5.8" / "result.json")
     assert result.verdict is Verdict.ERROR
     assert {(c.outcome, c.c1, c.c2) for c in result.cases} == {(RUN_ERROR, None, None)}
 
@@ -130,7 +131,7 @@ def test_dry_run_runs_and_writes_nothing(
 @pytest.mark.parametrize(
     "argv",
     [
-        ["--target", "node-tar", "--version", "latest", "--dry-run"],
+        ["--target", "node-tar", "--version", "next", "--dry-run"],  # only `latest` is resolved
         ["--target", "node-tar", "--version", "7.5.2", "--version", "7.5.2", "--dry-run"],
         ["--target", "gnu-tar", "--version", "1.35", "--dry-run"],
         ["--target", "node-tar", "--version", "7.5.2"],  # no --out
@@ -465,7 +466,7 @@ def test_env_check_names_missing_runtime_root_and_fix(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     "argv",
     [
-        ["--target", "node-tar", "--version", "latest", "--dry-run"],  # refused version
+        ["--target", "node-tar", "--version", "next", "--dry-run"],  # refused version
         ["--target", "python-tarfile", "--version", "3.12", "--extraction-filter", "data"],
         ["--target", "decompress", "--version", "decompress@4.2.0", "--dry-run"],  # not pinned
     ],

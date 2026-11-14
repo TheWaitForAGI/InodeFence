@@ -73,6 +73,7 @@ from scripts import regression_check as rc
 from inodefence.target_result import (
     RUN_ERROR,
     CaseVerdict,
+    Preparation,
     Provenance,
     ResultMode,
     TargetAxes,
@@ -101,6 +102,9 @@ class RunCell:
     dirname: str
     axes: TargetAxes
     image_ref: str | None
+    #: The image comes from the public registry, not a committed recipe: the run is labelled
+    #: "exploratory demo run" and is never mixed with committed-recipe cells in one run.
+    exploratory: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,6 +151,12 @@ class TargetAdapter:
     plan: Callable[[RunCell], list[dict[str, Any]]]
     run: Callable[[RunCell], list[CaseRun]]
     prepare: Callable[[RunCell], PrepareStep] = prepare_unsupported
+    #: Optional: after a run, record how the cell image was obtained (read from the image itself)
+    #: and save any evidence under the given cell directory. ``None`` adds no ``preparation``.
+    describe: Callable[[RunCell, Path], Preparation | None] | None = None
+    #: Optional: turn symbolic versions (e.g. ``latest``) into exact ones before ``cells``; may use
+    #: the network, so it is skipped by --dry-run (``ValueError(reason)`` refuses).
+    resolve: Callable[[list[str]], list[str]] | None = None
 
 
 def fixture_case(fixture: rc.RegressionFixture, raw: dict[str, Any]) -> CaseRun:
@@ -358,6 +368,7 @@ def build_result(
     cell: RunCell,
     runs: list[CaseRun],
     provenance: Provenance,
+    preparation: Preparation | None = None,
 ) -> TargetResult:
     return TargetResult(
         target=target,
@@ -370,6 +381,7 @@ def build_result(
             for run in runs
         ),
         provenance=provenance,
+        preparation=preparation,
     )
 
 
@@ -403,7 +415,7 @@ def summary_line(result: TargetResult) -> str:
         f"TARGET-RUN {result.verdict.value} target={result.target} {axis} "
         f"image={result.provenance.image_ref} "
         f"mode={result.mode.value} violating={len(result.violating_cases)}/{result.executed} "
-        f"errored={result.errored} (demo run)"
+        f"errored={result.errored} ({result.label})"
     )
 
 
@@ -455,10 +467,20 @@ def main(argv: list[str] | None = None) -> int:
         )
     adapter = load_adapter(args.target)
     try:
+        if adapter.resolve is not None and not args.dry_run:
+            versions = adapter.resolve(versions)
+            if len(set(versions)) != len(versions):
+                parser.error(f"versions resolve to duplicates: {versions}")
         cells = adapter.cells(versions, filters)
     except ValueError as error:
         parser.error(str(error))
     cells = [with_tag_suffix(cell, args.image_tag_suffix) for cell in cells]
+    exploratory = [c.dirname for c in cells if c.exploratory]
+    if exploratory and len(exploratory) != len(cells):
+        parser.error(
+            "run committed-recipe versions and registry-prepared (exploratory) versions "
+            "separately, so their results are never mixed in one run"
+        )
 
     if args.dry_run:
         docker_ok = docker_problem() is None
@@ -474,6 +496,7 @@ def main(argv: list[str] | None = None) -> int:
                         "extraction_filter": cell.axes.extraction_filter,
                     },
                     "image": cell.image_ref,
+                    "exploratory": cell.exploratory,
                     "image_plan": image_status(adapter, cell, docker_ok),
                     "would_run": adapter.plan(cell),
                 }
@@ -525,7 +548,15 @@ def main(argv: list[str] | None = None) -> int:
             worst = max(worst, SETUP_ERROR)
             continue
         provenance = dataclasses.replace(engine_provenance(ref), image_ref=ref, image_id=expected)
-        result = build_result(args.target, adapter, cell, runs, provenance)
+        try:
+            preparation = (
+                adapter.describe(cell, args.out / cell.dirname) if adapter.describe else None
+            )
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            print(f"TARGET-RUN PREPARE-ERROR {cell.dirname}: {error}; no verdict", file=sys.stderr)
+            worst = max(worst, SETUP_ERROR)
+            continue
+        result = build_result(args.target, adapter, cell, runs, provenance, preparation)
         path = write_result(args.out / cell.dirname, result, runs)
         written.append((cell, result, path))
         print(f"{summary_line(result)} -> {path}")

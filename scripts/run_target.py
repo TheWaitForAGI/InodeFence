@@ -155,6 +155,7 @@ NODE_TAR = TargetAdapter(
 TARGETS: dict[str, str] = {
     "node-tar": "scripts.run_target:NODE_TAR",
     "python-tarfile": "scripts.run_python_tarfile_target:ADAPTER",
+    "oras-go": "scripts.run_oras_go_target:ADAPTER",
 }
 
 

@@ -8,8 +8,14 @@ from pathlib import Path
 import pytest
 
 from inodefence.target_result import (
+    JUDGED,
     LABEL,
+    REJECTED,
+    RUN_ERROR,
     SCHEMA,
+    SUCCESS,
+    TERMINATIONS,
+    TIMED_OUT,
     CampaignInfo,
     CaseVerdict,
     Provenance,
@@ -181,7 +187,18 @@ def test_campaign_block_round_trips_and_serializes_only_when_present() -> None:
     result = _campaign_result(runs_to_first_violation=2)
     data = result.to_json_dict()
     assert data["mode"] == "campaign"
-    assert data["campaign"] == {"seed": 1234, "budget": 20, "runs_to_first_violation": 2}
+    assert data["campaign"] == {
+        "seed": 1234,
+        "budget": 20,
+        "runs_to_first_violation": 2,
+        "runs_executed": None,
+        "errors": None,
+        "stopped_early": False,
+        "unjudged_steps": None,
+        "max_unjudged_ratio": None,
+        "unjudged_ratio": 0.0,
+        "terminations": None,
+    }
     assert from_json_dict(json.loads(result.dumps())) == result
 
 
@@ -200,7 +217,7 @@ def test_campaign_block_rejected_on_fixture_regression() -> None:
 
 
 def test_campaign_budget_must_cover_runs() -> None:
-    with pytest.raises(TargetResultError, match="budget must be an integer >= the number of runs"):
+    with pytest.raises(TargetResultError, match="budget must be null or an integer"):
         _campaign_result(runs_to_first_violation=2, budget=1)
 
 
@@ -234,3 +251,276 @@ def test_reader_rejects_campaign_block_with_wrong_keys() -> None:
     data["campaign"]["extra"] = 1
     with pytest.raises(TargetResultError, match="campaign keys mismatch"):
         from_json_dict(data)
+
+
+def test_old_three_key_campaign_block_reads_with_defaults() -> None:
+    # A block written before the large-campaign fields must still parse (optional keys absent).
+    data = _campaign_result(runs_to_first_violation=2).to_json_dict()
+    data["campaign"] = {"seed": 1234, "budget": 20, "runs_to_first_violation": 2}
+    loaded = from_json_dict(data)
+    assert loaded.campaign is not None
+    assert loaded.campaign.runs_executed is None
+    assert loaded.campaign.errors is None
+    assert loaded.campaign.stopped_early is False
+    # Silent-voice fields are also optional: an old block means "nothing un-judged", no ceiling.
+    assert loaded.campaign.unjudged_steps is None and loaded.unjudged_steps == 0
+    assert loaded.campaign.max_unjudged_ratio is None
+    assert loaded.unjudged_ratio == 0.0
+
+
+def _aggregate_result(
+    *violations: CaseVerdict,
+    runs_executed: int,
+    errors: int = 0,
+    budget: int | None = None,
+    runs_to_first_violation: int | None = None,
+    stopped_early: bool = False,
+    unjudged_steps: int | None = None,
+    max_unjudged_ratio: float | None = None,
+) -> TargetResult:
+    # Large-campaign shape: cases hold only the violations (or none); counts live in the block.
+    return TargetResult(
+        target="node-tar",
+        axes=TargetAxes(target_version="7.5.1"),
+        mode=ResultMode.CAMPAIGN,
+        observed_contracts=("C1", "C2"),
+        cases=violations,
+        repro_inputs=tuple(
+            repro_input(v.case_id, f"inputs/{v.case_id}.tar", f"v-{v.case_id}".encode())
+            for v in violations
+        ),
+        provenance=Provenance("b" * 40, False, "inodefence-node-tar-registry:7.5.8", None),
+        campaign=CampaignInfo(
+            seed=7,
+            budget=budget,
+            runs_to_first_violation=runs_to_first_violation,
+            runs_executed=runs_executed,
+            errors=errors,
+            stopped_early=stopped_early,
+            unjudged_steps=unjudged_steps,
+            max_unjudged_ratio=max_unjudged_ratio,
+        ),
+    )
+
+
+def test_large_campaign_cases_are_violations_only_with_separate_run_count() -> None:
+    result = _aggregate_result(
+        CaseVerdict("step-14", "extracted", None, True, True),
+        CaseVerdict("step-800", "extracted", None, True, False),
+        runs_executed=1000,
+        errors=3,
+        unjudged_steps=3,
+        budget=None,  # run until stopped
+        runs_to_first_violation=15,
+        stopped_early=True,
+    )
+    assert result.executed == 1000  # from runs_executed, not len(cases)==2
+    assert result.errored == 3  # from the errors aggregate
+    assert result.verdict is Verdict.FAIL  # 3 harness errors in 1000 runs do not mask it
+    assert len(result.violating_cases) == 2
+    assert from_json_dict(json.loads(result.dumps())) == result
+
+
+def test_runs_executed_cannot_be_below_case_count() -> None:
+    with pytest.raises(TargetResultError, match="runs_executed must be an integer >= len"):
+        _aggregate_result(
+            CaseVerdict("step-0", "extracted", None, True, False),
+            runs_executed=0,
+            runs_to_first_violation=1,
+        )
+
+
+def test_errors_out_of_range_rejected() -> None:
+    with pytest.raises(TargetResultError, match="errors must be an integer in 0..runs"):
+        _aggregate_result(runs_executed=5, errors=6)
+
+
+def test_first_violation_bounded_by_runs_executed_not_case_count() -> None:
+    # 2 violation cases but 1000 runs: first violation at 999 is valid (<= executed).
+    result = _aggregate_result(
+        CaseVerdict("step-998", "extracted", None, True, False),
+        CaseVerdict("step-999", "extracted", None, False, True),
+        runs_executed=1000,
+        runs_to_first_violation=999,
+    )
+    assert result.campaign is not None and result.campaign.runs_to_first_violation == 999
+    with pytest.raises(TargetResultError, match="in 1..runs"):
+        _aggregate_result(
+            CaseVerdict("step-0", "extracted", None, True, False),
+            runs_executed=10,
+            runs_to_first_violation=11,
+        )
+
+
+def test_unjudged_fields_round_trip_and_derive_ratio() -> None:
+    # 1 un-judged run out of 4 -> ratio 0.25, stored threshold carried through unchanged.
+    result = _aggregate_result(
+        runs_executed=4,
+        unjudged_steps=1,
+        max_unjudged_ratio=0.5,
+    )
+    assert result.unjudged_steps == 1
+    assert result.unjudged_ratio == 0.25
+    assert result.verdict is Verdict.PASS  # under the ceiling, nothing violated
+    data = result.to_json_dict()
+    assert data["campaign"]["unjudged_steps"] == 1
+    assert data["campaign"]["max_unjudged_ratio"] == 0.5
+    assert data["campaign"]["unjudged_ratio"] == 0.25
+    assert from_json_dict(json.loads(result.dumps())) == result
+
+
+def test_unjudged_ratio_rounds_to_six_decimals() -> None:
+    result = _aggregate_result(runs_executed=3, unjudged_steps=1)
+    assert result.unjudged_ratio == 0.333333
+    assert from_json_dict(json.loads(result.dumps())) == result
+
+
+def test_all_runs_unjudged_is_error_not_silent_pass() -> None:
+    # Every run went un-judged: no violation, no error, yet the verdict must not be a quiet PASS.
+    result = _aggregate_result(runs_executed=4, unjudged_steps=4)
+    assert result.unjudged_ratio == 1.0
+    assert len(result.violating_cases) == 0 and result.errored == 0
+    assert result.verdict is Verdict.ERROR
+    assert from_json_dict(json.loads(result.dumps())) == result
+
+
+def test_unjudged_ratio_over_ceiling_is_error() -> None:
+    # 6/10 un-judged exceeds the 0.5 ceiling -> ERROR.
+    result = _aggregate_result(runs_executed=10, unjudged_steps=6, max_unjudged_ratio=0.5)
+    assert result.unjudged_ratio == 0.6
+    assert result.verdict is Verdict.ERROR
+    assert from_json_dict(json.loads(result.dumps())) == result
+
+
+def test_unjudged_ratio_exactly_at_ceiling_is_not_error() -> None:
+    # Strictly greater triggers: ratio == ceiling stays a (judged) PASS.
+    result = _aggregate_result(runs_executed=10, unjudged_steps=5, max_unjudged_ratio=0.5)
+    assert result.unjudged_ratio == 0.5
+    assert result.verdict is Verdict.PASS
+
+
+def test_unjudged_ceiling_outranks_a_violation() -> None:
+    # A real violation is present, but too much went un-judged to trust the run: ERROR, not FAIL.
+    result = _aggregate_result(
+        CaseVerdict("step-3", "extracted", None, True, False),
+        runs_executed=10,
+        runs_to_first_violation=3,
+        unjudged_steps=6,
+        max_unjudged_ratio=0.5,
+    )
+    assert len(result.violating_cases) == 1
+    assert result.verdict is Verdict.ERROR
+
+
+def test_unjudged_steps_out_of_range_rejected() -> None:
+    with pytest.raises(
+        TargetResultError, match="unjudged_steps must be null or an integer in 0..runs"
+    ):
+        _aggregate_result(runs_executed=5, unjudged_steps=6)
+    with pytest.raises(
+        TargetResultError, match="unjudged_steps must be null or an integer in 0..runs"
+    ):
+        _aggregate_result(runs_executed=5, unjudged_steps=-1)
+
+
+def test_max_unjudged_ratio_out_of_range_rejected() -> None:
+    with pytest.raises(TargetResultError, match="max_unjudged_ratio must be null or a number"):
+        _aggregate_result(runs_executed=5, max_unjudged_ratio=1.5)
+    with pytest.raises(TargetResultError, match="max_unjudged_ratio must be null or a number"):
+        _aggregate_result(runs_executed=5, max_unjudged_ratio=-0.1)
+    with pytest.raises(TargetResultError, match="max_unjudged_ratio must be null or a number"):
+        _aggregate_result(runs_executed=5, max_unjudged_ratio=True)  # type: ignore[arg-type]
+
+
+def test_reader_cross_checks_stored_unjudged_ratio() -> None:
+    data = _aggregate_result(runs_executed=4, unjudged_steps=1).to_json_dict()
+    assert data["campaign"]["unjudged_ratio"] == 0.25
+    data["campaign"]["unjudged_ratio"] = 0.99  # hand-edited to hide un-judged runs
+    with pytest.raises(TargetResultError, match="unjudged_ratio 0.99 does not match the runs"):
+        from_json_dict(data)
+
+
+def _judged(i: int, termination: str, c1: bool = False, **kw) -> CaseVerdict:
+    return CaseVerdict(f"step-{i}", JUDGED, None, c1, False, termination=termination, **kw)
+
+
+def test_terminations_are_a_separate_axis_and_never_make_a_campaign_error() -> None:
+    # Mostly rejected / crashed / timed out, all judged: no violation -> PASS, never ERROR.
+    cases = tuple(_judged(i, t) for i, t in enumerate(TERMINATIONS * 3))
+    result = replace(_aggregate_result(runs_executed=12), cases=cases, repro_inputs=())
+    assert result.unjudged_steps == 0 and result.errored == 0
+    assert result.termination_counts == {name: 3 for name in TERMINATIONS}
+    assert result.verdict is Verdict.PASS
+
+
+def test_violation_left_by_a_timeout_is_a_fail_marked_for_reproduction_check() -> None:
+    hit = _judged(3, TIMED_OUT, c1=True, observation_complete=True)
+    clean_hit = _judged(4, SUCCESS, c1=True, observation_complete=True)
+    partial_hit = _judged(5, SUCCESS, c1=True, observation_complete=False)
+    result = _aggregate_result(
+        hit, clean_hit, partial_hit, runs_executed=10, runs_to_first_violation=4
+    )
+    assert result.verdict is Verdict.FAIL
+    assert hit.needs_repro_check and partial_hit.needs_repro_check
+    assert not clean_hit.needs_repro_check
+    assert from_json_dict(json.loads(result.dumps())) == result
+
+
+def test_unjudged_means_the_oracle_was_not_evaluated() -> None:
+    assert CaseVerdict("a", RUN_ERROR, None, None, None, termination=SUCCESS).is_unjudged
+    assert CaseVerdict("a", JUDGED, None, None, None).is_unjudged  # no verdict at all
+    assert not CaseVerdict("a", JUDGED, None, False, None, termination=REJECTED).is_unjudged
+
+
+def test_campaign_error_comes_only_from_unjudged_steps() -> None:
+    # A few harness errors in a long campaign do not make it ERROR (no ceiling set).
+    few = _aggregate_result(runs_executed=50, errors=2, unjudged_steps=2)
+    assert few.errored == 2 and few.verdict is Verdict.PASS
+    # Above the stored ceiling, or every run un-judged -> ERROR.
+    assert (
+        _aggregate_result(
+            runs_executed=50, errors=2, unjudged_steps=10, max_unjudged_ratio=0.1
+        ).verdict
+        is Verdict.ERROR
+    )
+    blind = tuple(CaseVerdict(f"s{i}", RUN_ERROR, None, None, None) for i in range(3))
+    all_blind = replace(_aggregate_result(runs_executed=3), cases=blind, repro_inputs=())
+    assert all_blind.unjudged_steps == 3 and all_blind.verdict is Verdict.ERROR
+
+
+def test_fixture_regression_keeps_its_any_run_error_is_error_rule() -> None:
+    err = CaseVerdict("e", RUN_ERROR, None, None, None)
+    assert _result(CaseVerdict("a", "resolved", None, False, False), err).verdict is Verdict.ERROR
+
+
+def test_campaign_counts_must_cover_what_the_cases_show() -> None:
+    blind = CaseVerdict("step-1", JUDGED, None, None, None)
+    with pytest.raises(TargetResultError, match="below the 1 un-judged case"):
+        _aggregate_result(blind, runs_executed=5, unjudged_steps=0)
+    with pytest.raises(TargetResultError, match="run errors .* exceed unjudged_steps"):
+        _aggregate_result(runs_executed=5, errors=2, unjudged_steps=1)
+    with pytest.raises(TargetResultError, match="terminations"):
+        replace(
+            _aggregate_result(runs_executed=5),
+            campaign=CampaignInfo(7, None, None, runs_executed=5, terminations={"exploded": 1}),
+        )
+    with pytest.raises(TargetResultError, match="add up to more than the runs"):
+        replace(
+            _aggregate_result(runs_executed=5),
+            campaign=CampaignInfo(7, None, None, runs_executed=5, terminations={"success": 6}),
+        )
+
+
+def test_case_axis_keys_are_written_only_when_set_so_regression_output_is_unchanged() -> None:
+    plain = _result().to_json_dict()["cases"][0]
+    assert set(plain) == {"case_id", "outcome", "c0", "c1", "c2"}
+    case = _judged(0, REJECTED, observation_complete=True)
+    data = replace(
+        _aggregate_result(runs_executed=3), cases=(case,), repro_inputs=()
+    ).to_json_dict()
+    assert data["cases"][0]["termination"] == "rejected"
+    assert data["cases"][0]["observation_complete"] is True
+    with pytest.raises(TargetResultError, match="termination must be one of"):
+        replace(
+            _aggregate_result(runs_executed=1), cases=(_judged(0, "exploded"),), repro_inputs=()
+        )

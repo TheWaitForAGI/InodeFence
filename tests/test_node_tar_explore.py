@@ -26,14 +26,23 @@ def _prepared(version: str = "7.5.23", requested: str = "latest") -> PreparedTar
 
 def _report(*, runs: int, violating_index: int | None) -> dict:
     records = [
-        {"run_index": i, "outcome": "extracted", "c0": False, "c1": False, "c2": False}
+        {
+            "run_index": i,
+            "outcome": "judged",
+            "c0": False,
+            "c1": False,
+            "c2": False,
+            "termination": "success",
+            "observation_complete": True,
+        }  # fmt: skip
         for i in range(runs)
     ]
     violation_inputs: list[dict] = []
     if violating_index is not None:
         records[violating_index] = {
-            "run_index": violating_index, "outcome": "extracted",
+            "run_index": violating_index, "outcome": "judged",
             "c0": False, "c1": True, "c2": True,
+            "termination": "success", "observation_complete": True,
         }  # fmt: skip
         violation_inputs.append(
             {
@@ -124,3 +133,50 @@ def test_converter_uses_prepared_target_not_a_hardcoded_name() -> None:
         _report(runs=4, violating_index=1), oras, seed=1, budget=4
     )
     assert result2.target == "oras-go"
+
+
+def test_all_unjudged_campaign_is_error_not_pass() -> None:
+    # Every run observed but the oracle judged nothing (all run_error): the campaign is ERROR, not
+    # a silent PASS -- the #414 unjudged verdict rule, exercised through the common converter.
+    report = {
+        "demo_report_schema": 4,
+        "case_records": [
+            {"run_index": i, "outcome": "run_error", "c0": None, "c1": None, "c2": None}
+            for i in range(4)
+        ],
+        "violation_inputs": [],
+    }
+    result, _ = nte.build_campaign_result(report, _prepared(), seed=1, budget=4)
+    assert result.verdict is Verdict.ERROR
+
+
+def test_rejected_and_timed_out_terminations_reach_the_case_verdict() -> None:
+    # termination is carried through the converter onto each CaseVerdict (judged, not errored).
+    report = {
+        "demo_report_schema": 4,
+        "case_records": [
+            {
+                "run_index": 0,
+                "outcome": "judged",
+                "c0": False,
+                "c1": False,
+                "c2": False,
+                "termination": "rejected",
+                "observation_complete": True,
+            },
+            {
+                "run_index": 1,
+                "outcome": "judged",
+                "c0": False,
+                "c1": False,
+                "c2": False,
+                "termination": "timed_out",
+                "observation_complete": False,
+            },
+        ],  # fmt: skip
+        "violation_inputs": [],
+    }
+    result, _ = nte.build_campaign_result(report, _prepared(), seed=1, budget=2)
+    assert result.verdict is Verdict.PASS  # rejected/timed-out without violation is not an error
+    assert [c.termination for c in result.cases] == ["rejected", "timed_out"]
+    assert [c.observation_complete for c in result.cases] == [True, False]

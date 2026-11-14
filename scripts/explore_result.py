@@ -36,7 +36,15 @@ def build_campaign_result(
     input; ``repro_inputs`` is that subset. ``target`` comes from ``prepared.target``.
     """
     cases = tuple(
-        CaseVerdict(f"step-{r['run_index']}", r["outcome"], r["c0"], r["c1"], r["c2"])
+        CaseVerdict(
+            f"step-{r['run_index']}",
+            r["outcome"],
+            r["c0"],
+            r["c1"],
+            r["c2"],
+            termination=r.get("termination"),
+            observation_complete=r.get("observation_complete"),
+        )
         for r in report.get("case_records", [])
     )
     repro = []

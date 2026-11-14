@@ -46,6 +46,7 @@ from inodefence.target_result import (
     TargetResult,
     repro_input,
 )
+from inodefence.target_result_summary import write_cell_summaries
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SMOKE = REPO_ROOT / "scripts" / "local_node_tar_smoke.sh"
@@ -223,6 +224,10 @@ def main(argv: list[str] | None = None) -> int:
     result, tar_files = build_campaign_result(report, prepared, seed=args.seed, budget=args.budget)
     out_dir = report_path.parent / f"{run_id}-result"
     result_path = write_result(out_dir, result, tar_files)
+    try:
+        write_cell_summaries([result_path])
+    except Exception as error:  # noqa: BLE001 - the result is written; only the page is missing
+        print(f"TARGET-EXPLORE SUMMARY: summary.md not written ({error})", file=sys.stderr)
     _print_summary(result, prepared, report_path)
     print(f"result: {result_path}")
     return 1 if result.violating_cases else 0

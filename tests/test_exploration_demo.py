@@ -106,7 +106,7 @@ def _violation_capture_report(monkeypatch: pytest.MonkeyPatch, *, violating: boo
     fake_run = type("R", (), {"base_result": base})()
     monkeypatch.setattr(rd, "_native_effect_producer", lambda *a, **k: lambda case: fake_run)
 
-    def fake_campaign(cases: object, produce, config: object, on_step=None) -> object:  # noqa: ANN001
+    def fake_campaign(cases: Any, produce: Any, config: object, on_step: object = None) -> object:
         produce(list(cases)[0])  # one real seed case, so build_tar produces real bytes
         return object()
 

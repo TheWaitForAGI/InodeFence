@@ -138,3 +138,4 @@ def test_main_wires_prepare_controller_and_conversion(
     (result_json,) = tmp_path.rglob("result.json")
     assert load_target_result(result_json).verdict is Verdict.FAIL
     assert (result_json.parent / "inputs" / "step-0.tar").read_bytes() == TAR
+    assert (result_json.parent / "summary.md").is_file()  # make target-explore writes it too

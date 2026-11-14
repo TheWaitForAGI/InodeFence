@@ -259,7 +259,7 @@ N01 human correspondence, N03/N04 NOT_AUTHORIZED 서술)은 LOG·diagnostics에 
 
 - **타깃:** node-tar 7.5.2/7.5.3·7.5.6/7.5.7(취약/수정 쌍 2개) + Python tarfile `fully_trusted`/`data`.
 - **자력발견(H-A) 타깃은 node-tar 하나.** decompress는 확장, oras-go는 oracle 일반성(H-B) 증거로만 쓴다.
-- **범위 밖:** entry-transition 계열(v1/v2/v3·P0/P1/P2, BACKLOG M3.6 폐기), GNU tar, Windows.
+- **범위 밖:** entry-transition 계열(v1/v2/v3·P0/P1/P2, BACKLOG M3.6 폐기, 이전 기록은 [archive](archive/pre-20261103-results.md)), GNU tar, Windows.
 - **비교군(H-A):** R(무작위·uniform) / D(구조 커버리지 retention·uniform) / **S-u**(identity·effect·boundary-attempt
   retention·**uniform**) — operator 정책을 uniform으로 통제해 retention 효과만 분리한다. adaptive 스케줄러 S-a는
   탐색적 ablation(선택)이며 주 비교가 아니다.
@@ -331,7 +331,7 @@ N01 human correspondence, N03/N04 NOT_AUTHORIZED 서술)은 LOG·diagnostics에 
 | 1 | README·`src/inodefence/README.md`·STATUS Ledger(C3/C4 행)·architecture.md "ORAS adapter 없음" | `targets/oras_go*.py` 존재, Ledger M4 구현 완료(#176) | 완료(PR #221): README·`src/inodefence/README.md`·architecture.md 정정(oras-go adapter 구현 #176, Ledger M4; adapter 수준 일반성) |
 | 2 | Makefile·smoke 스크립트·experiment-fanout.yml "budget 상한 100" | `scripts/run_effect_demo.py` `MAX_NATIVE_BUDGET=2000` | 완료(PR #221): STATUS fanout 행 문장 정정(GHA fanout 하드캡 100 ≠ native MAX_NATIVE_BUDGET 2000 명시; 상한 값 불변) |
 | 4 | `src/inodefence/README.md` "native producer NOT_QUALIFIED라 캠페인에 안 씀" | `make demo`가 native producer로 돈다 | 완료(PR #221): `src/inodefence/README.md` 정정(M1 native effect producer가 make demo로 실행) |
-| 6 | STATUS "다음 연구 gate" entry-transition 재개 조건 | BACKLOG M3.6 폐기(honest negative) | 이 PR에서 해소(이 절 교체) |
+| 6 | STATUS "다음 연구 gate" entry-transition 재개 조건 | BACKLOG M3.6 폐기, 이전 기록은 [archive](archive/pre-20261103-results.md)(honest negative) | 이 PR에서 해소(이 절 교체) |
 | 11 | `src/inodefence/README.md` "Node campaign CLI 없음" | `container_host` 컨트롤러 모드로 실행됨 | 완료(PR #221): README 정정(실제 캠페인은 container_host 컨트롤러 모드) |
 | 12 | `evaluation/n04_preflight.py` L68–76 호스트 절대경로 하드코딩 | 이식 불가 | 5단계 |
 

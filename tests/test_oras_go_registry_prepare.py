@@ -480,6 +480,7 @@ def _fake_run_env(monkeypatch: pytest.MonkeyPatch, fake: FakeDocker, hit: bool =
     monkeypatch.setattr(rt, "engine_provenance", lambda image: rt.Provenance(None, True, image))
     monkeypatch.setattr(rt, "docker_problem", lambda: None)
     monkeypatch.setattr(rt, "image_id", lambda ref: "sha256:" + SHA if ref in fake.images else None)
+    monkeypatch.setattr(rog, "_verify_existing", lambda cell, image: None)  # tested on its own
 
 
 def test_latest_run_is_exploratory_and_records_preparation(
@@ -700,3 +701,78 @@ def test_selfdiscover_script_takes_a_prepared_image_without_building_it() -> Non
         check=False,
     )
     assert done.returncode == 2 and "plain image reference" in done.stderr
+
+
+# ---- verify_existing: a present image is reused only if its worker is current ----
+
+
+def _cell(version: str) -> Any:
+    (cell,) = rog.ADAPTER.cells([version], [])
+    return cell
+
+
+def test_verified_image_needs_the_recipe_version_and_a_working_frame_worker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    frames: list[tuple[str, str]] = []
+
+    def frame_check(runner, image, version):  # type: ignore[no-untyped-def]
+        frames.append((image, version))
+        return {"ok": True, "reason": "fine"}
+
+    monkeypatch.setattr(prep, "frame_check", frame_check)
+    monkeypatch.setattr(rog, "_recipe_verify", lambda cell, image: None)
+    assert rog.ADAPTER.verify_existing is not None
+    assert rog.ADAPTER.verify_existing(_cell("2.6.2"), "sha256:x") is None
+    assert frames == [("inodefence-oras-go:2.6.2", "2.6.2")]
+
+    monkeypatch.setattr(rog, "_recipe_verify", lambda cell, image: "reports v2.6.1")
+    assert rog.ADAPTER.verify_existing(_cell("2.6.2"), "sha256:x") == "reports v2.6.1"
+    assert len(frames) == 1  # a wrong version stops before the worker check
+
+
+def test_proxy_image_skips_the_recipe_and_checks_the_frame_worker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(rog, "_recipe_verify", lambda cell, image: pytest.fail("no recipe"))
+    monkeypatch.setattr(
+        prep, "frame_check", lambda runner, image, version: {"ok": True, "reason": "fine"}
+    )
+    assert rog.ADAPTER.verify_existing is not None
+    assert rog.ADAPTER.verify_existing(_cell("2.7.0"), "sha256:x") is None
+
+
+@pytest.mark.parametrize(
+    ("check", "message"),
+    [
+        (
+            lambda runner, image, version: {"ok": False, "reason": "unknown subcommand: frame"},
+            "worker incompatible (frame) in inodefence-oras-go-registry:2.7.0: unknown "
+            "subcommand: frame; rebuild it",
+        ),
+        (
+            lambda runner, image, version: (_ for _ in ()).throw(
+                prep.RegistryPrepareError("identify failed")
+            ),
+            "worker check failed in inodefence-oras-go-registry:2.7.0: identify failed; rebuild it",
+        ),
+    ],
+)
+def test_unusable_worker_refuses_reuse_with_a_reason(
+    monkeypatch: pytest.MonkeyPatch, check: Any, message: str
+) -> None:
+    monkeypatch.setattr(prep, "frame_check", check)
+    assert rog.ADAPTER.verify_existing is not None
+    assert rog.ADAPTER.verify_existing(_cell("2.7.0"), "sha256:x") == message
+
+
+def test_refused_reuse_gives_no_verdict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = FakeDocker()
+    fake.images["inodefence-oras-go:2.6.2"] = {}
+    _fake_run_env(monkeypatch, fake)
+    monkeypatch.setattr(rog, "_verify_existing", lambda cell, image: "stale worker; rebuild it")
+    assert rt.main(["--target", "oras-go", "--version", "2.6.2", "--out", str(tmp_path)]) == 3
+    assert "refused: stale worker; rebuild it" in capsys.readouterr().err
+    assert not list(tmp_path.rglob("result.json"))

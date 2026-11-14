@@ -18,7 +18,11 @@ propagates: the controller then reports the replay as incomplete, keeping the fi
 
 from __future__ import annotations
 
+import json
+import os
+import sys
 from collections.abc import Callable, Mapping
+from pathlib import Path
 from typing import Any
 
 from scripts.run_effect_demo import NativeDemoAborted, _native_effect_producer
@@ -29,9 +33,11 @@ from inodefence.live_effect import effect_verdict_fields
 from inodefence.model import ArchiveCase
 from inodefence.runtime import SentinelSpec
 from inodefence.sentinel_set import MAX_SENTINEL_COUNT, generate_sentinel_set
-from inodefence.targets.node_tar_effect import NativeEffectProfile
+from inodefence.targets.node_tar_effect import NativeEffectProfile, NodeTarEffectTarget
 
 REPLAY_RUN_SCHEMA = "inodefence-case-replay-run-v1"
+#: The controller mode that runs :func:`run_case_replay` (one input case, read from stdin).
+CASE_REPLAY_MODE = "effect-replay-case"
 #: The ``run_settings`` keys node-tar exploration records (and replay requires).
 NODE_TAR_SETTINGS = ("sentinel_count", "sentinel_seed", "observer_integrity_policy", "profile")
 OBSERVER_POLICIES = ("stop", "invalid-continue")
@@ -153,3 +159,63 @@ def replay_case_report(
         "native_checks": checks,
         "timing": timing,
     }
+
+
+def replay_rounds_path(evidence: Path) -> Path:
+    """Where the controller journals each finished round: ``<name>.rounds.jsonl`` beside the
+    report, like the other effect modes' ``<name>.steps.jsonl``."""
+    return evidence.with_suffix(".rounds.jsonl")
+
+
+def run_case_replay(
+    backend: Any,
+    image: str,
+    evidence: Path,
+    replay_input: ReplayInput,
+    stall_recovery: StallRecovery | None,
+) -> int:
+    """The ``effect-replay-case`` controller mode body: bind, run the rounds, write evidence.
+
+    Each finished round is appended to :func:`replay_rounds_path` and fsynced before the next
+    starts, so a replay that dies part-way still leaves its finished rounds. The report written to
+    ``evidence`` says ``complete: false`` and why when the rounds did not all finish.
+    """
+    _sentinels, _continue, profile = node_tar_conditions(replay_input.run_settings)
+    rounds_path = replay_rounds_path(evidence)
+    finished: list[dict[str, Any]] = []
+    with rounds_path.open("x", encoding="utf-8") as stream:
+
+        def persist(record: dict[str, Any]) -> None:
+            stream.write(json.dumps(record, sort_keys=True) + "\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+            finished.append(record)
+            print(
+                f"effect-replay-case round {record['round']}/{replay_input.rounds}: "
+                f"{record['outcome']} termination={record['termination']} "
+                f"c0={record['c0']} c1={record['c1']} c2={record['c2']}",
+                file=sys.stderr,
+            )
+
+        try:
+            target = NodeTarEffectTarget.bind(backend, image, profile=profile)
+            report = replay_case_report(
+                target, image, replay_input, stall_recovery=stall_recovery, round_sink=persist
+            )
+            returncode = 0 if report["complete"] else 1
+        except Exception as error:  # noqa: BLE001 -- keep the finished rounds, say why it stopped
+            report = {
+                "schema": REPLAY_RUN_SCHEMA,
+                "case_id": replay_input.case.case_id,
+                "tar_sha256": replay_input.tar_sha256,
+                "image_id": image,
+                "rounds_requested": replay_input.rounds,
+                "rounds": finished,
+                "complete": False,
+                "stop_reason": f"{type(error).__name__}: {error}",
+            }
+            returncode = 1
+    with evidence.open("x", encoding="utf-8") as out:
+        out.write(json.dumps(report, sort_keys=True, indent=2) + "\n")
+    print(f"effect-replay-case report: {evidence}", file=sys.stderr)
+    return returncode

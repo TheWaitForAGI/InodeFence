@@ -391,3 +391,67 @@ def test_cli_resolves_the_case_folder_before_forwarding(monkeypatch, tmp_path: P
     ((d, argv),) = calls
     assert d == cli.REPLAY_DRIVER
     assert argv == [str(tmp_path / "violations" / "run-000005"), "--rounds", "3", "--dry-run"]
+
+
+def _fake_bound(monkeypatch, results) -> None:
+    import scripts.effect_replay as er
+
+    calls = iter(results)
+
+    def fake_producer(target, sentinels, recovery, **kw):
+        def produce(case):
+            item = next(calls)
+            if isinstance(item, Exception):
+                raise item
+            return item
+
+        return produce
+
+    monkeypatch.setattr(er, "_native_effect_producer", fake_producer)
+    monkeypatch.setattr(
+        er.NodeTarEffectTarget,
+        "bind",
+        classmethod(lambda cls, backend, image, **kw: SimpleNamespace(tar_version="7.5.1")),
+    )
+
+
+def _result(status: str = "success"):
+    case = minimal_seed_corpus()[0]
+    return SimpleNamespace(
+        base_result=SimpleNamespace(
+            case=case, execution=SimpleNamespace(status=status), violations=()
+        ),
+        trace=SimpleNamespace(integrity_valid=True),
+    )
+
+
+def test_controller_entry_journals_every_round(tmp_path: Path, monkeypatch) -> None:
+    from scripts.effect_replay import replay_rounds_path, run_case_replay
+
+    request = load_replay_request(_case_folder(tmp_path), rounds=3)
+    replay_input = parse_replay_input(replay_input_line(request))
+    _fake_bound(monkeypatch, [_result(), _result("rejected"), _result()])
+    evidence = tmp_path / "ctrl" / "inodefence-replay-x.json"
+    evidence.parent.mkdir()
+    assert run_case_replay(object(), IMAGE, evidence, replay_input, None) == 0
+    report = json.loads(evidence.read_text())
+    assert report["complete"] is True and len(report["rounds"]) == 3
+    assert report["rounds"][1]["termination"] == "rejected"
+    lines = replay_rounds_path(evidence).read_text().splitlines()
+    assert replay_rounds_path(evidence).name == "inodefence-replay-x.rounds.jsonl"
+    assert [json.loads(line)["round"] for line in lines] == [1, 2, 3]
+
+
+def test_controller_entry_keeps_finished_rounds_when_it_dies(tmp_path: Path, monkeypatch) -> None:
+    from scripts.effect_replay import replay_rounds_path, run_case_replay
+
+    request = load_replay_request(_case_folder(tmp_path), rounds=3)
+    replay_input = parse_replay_input(replay_input_line(request))
+    _fake_bound(monkeypatch, [_result(), RuntimeError("docker daemon went away")])
+    evidence = tmp_path / "ctrl" / "inodefence-replay-y.json"
+    evidence.parent.mkdir()
+    assert run_case_replay(object(), IMAGE, evidence, replay_input, None) == 1
+    report = json.loads(evidence.read_text())
+    assert report["complete"] is False and len(report["rounds"]) == 1
+    assert "docker daemon went away" in report["stop_reason"]
+    assert len(replay_rounds_path(evidence).read_text().splitlines()) == 1

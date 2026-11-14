@@ -66,7 +66,7 @@ CVE 문자열·버전·PoC 바이트를 넣지 않은 generic C0/C1/C2가 **≥ 
 `COMPONENTS` 7토큰, `m1_addressing.py` 주석).
 외부 객체 이름이 어휘 토큰과 일치하는 설정에서는 도달할 수 있으므로 일반적
 "구조적 불가"로 단정하지 않는다.
-감사 이후 관찰은 없다: 감사 이후 실행(EXP-0·파일럿·적격성·EXP-3 train/holdout)은 모두 세 arm에 피해 경로 이름을 포함한 같은 어휘를 주므로 이 조건 밖이다. 이는 effectiveness 주장이 아니다.
+감사 이후 H-C를 검정한 실행은 없다: 감사 이후 실행(EXP-0·파일럿·적격성·EXP-3 train·EXP-2 holdout)은 모두 세 arm에 피해 경로 이름을 포함한 같은 어휘를 주므로 이 조건 밖이다. 이는 effectiveness 주장이 아니다.
 
 ## 판정 시나리오
 

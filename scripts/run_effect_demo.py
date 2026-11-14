@@ -272,6 +272,8 @@ DEMO_FORWARDED_ARGUMENTS = (
     "observer_integrity_policy",
     "sentinel_count",
     "sentinel_seed",
+    "live_dir",
+    "engine_commit",
 )
 
 
@@ -306,6 +308,14 @@ def add_demo_arguments(parser: argparse.ArgumentParser) -> None:
             "'stop' (default) aborts the campaign on a successful run with an untrustworthy "
             "trace; 'invalid-continue' keeps the step as validity=invalid and continues"
         ),
+    )
+    parser.add_argument(
+        "--live-dir",
+        help="exploration only: the controller writes live progress/violation snapshots here",
+    )
+    parser.add_argument(
+        "--engine-commit",
+        help="exploration only: host-side engine revision, recorded in the live meta for replay",
     )
 
 
@@ -563,6 +573,7 @@ def exploration_demo_report(
     stall_recovery: StallRecovery | None = None,
     requested_spec: str | None = None,
     live_dir: Path | None = None,
+    engine_commit: str | None = None,
 ) -> dict[str, object]:
     """Run the state-aware effect loop on an arbitrary caller-prepared node-tar image.
 
@@ -609,6 +620,7 @@ def exploration_demo_report(
                 image_id=image_id,
                 search_policy=policy.value,
                 vocab_mode=vocab_mode,
+                engine_commit=engine_commit,
                 replay_template=REPLAY_COMMAND_TEMPLATE,
                 # The conditions a single case depends on, so a saved violation can be replayed
                 # exactly (the same keys node-tar's replay accepts, with the values actually used).

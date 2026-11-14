@@ -134,12 +134,11 @@ target-run:
 # (AUTO_PREPARE=1 required; network) then runs the loop inside the isolated controller. Output is
 # OUTSIDE the repo (EXPLORE_OUT). Host terminal only (docker + controller build).
 #   make target-explore TARGET=node-tar TARGET_VERSIONS="latest" AUTO_PREPARE=1 BUDGET=20 SEED=123
-#   make target-explore TARGET=python-tarfile TARGET_VERSIONS="latest" TARGET_FILTERS=data AUTO_PREPARE=1
 BUDGET ?= 20
 SEED ?= 123
 EXPLORE_OUT ?= $(HOME)/inodefence-explore
 target-explore:
-	PYTHONPATH=src:. $(PYTHON) scripts/run_target_explore.py --target $(TARGET) $(foreach v,$(TARGET_VERSIONS),--version $(v)) --budget $(BUDGET) --seed $(SEED) $(foreach f,$(TARGET_FILTERS),--extraction-filter $(f)) $(if $(filter 1,$(AUTO_PREPARE)),--auto-prepare) $(if $(IMAGE_TAG_SUFFIX),--image-tag-suffix=$(IMAGE_TAG_SUFFIX)) --out $(EXPLORE_OUT) $(TARGET_ARGS)
+	PYTHONPATH=src:. $(PYTHON) scripts/run_target_explore.py --target $(TARGET) $(foreach v,$(TARGET_VERSIONS),--version $(v)) --budget $(BUDGET) --seed $(SEED) $(if $(filter 1,$(AUTO_PREPARE)),--auto-prepare) $(if $(IMAGE_TAG_SUFFIX),--image-tag-suffix=$(IMAGE_TAG_SUFFIX)) --out $(EXPLORE_OUT) $(TARGET_ARGS)
 
 # Offline replay planner: read a demo report (REPORT=<path>) and reproduce its run
 # command, binding the recorded image recipe to the committed one and checking the

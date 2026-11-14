@@ -50,11 +50,8 @@ def test_driver_prepares_then_calls_the_targets_explore_hook(
     outcome = ExploreOutcome(result_path=result_path, verdict="FAIL", runs=20, violations=3)
     seen: dict[str, Any] = {}
 
-    def fake_prepare(
-        adapter: Any, target: str, spec: str, *, image_tag_suffix: str, extraction_filter: Any
-    ) -> Any:
+    def fake_prepare(adapter: Any, target: str, spec: str, *, image_tag_suffix: str) -> Any:
         seen["prepared"] = (target, spec)
-        seen["filter"] = extraction_filter
         return PreparedTargetImage(target, spec, "7.5.23", "img:ref", "sha256:" + "c" * 64, True)
 
     monkeypatch.setattr(rte, "load_adapter", lambda t: _fake_adapter(outcome))
@@ -91,11 +88,3 @@ def test_setup_error_from_prepare_is_exit_3(
     monkeypatch.setattr(rte, "prepare_target_image", bad_prepare)
     assert rte.main(["--target", "node-tar", "--version", "nope", "--auto-prepare"]) == 3
     assert "TARGET-EXPLORE SETUP: version not found" in capsys.readouterr().err
-
-
-def test_more_than_one_extraction_filter_is_refused() -> None:
-    with pytest.raises(SystemExit):
-        rte.main(
-            ["--target", "python-tarfile", "--version", "latest", "--dry-run"]
-            + ["--extraction-filter", "data", "--extraction-filter", "fully_trusted"]
-        )

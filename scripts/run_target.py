@@ -154,9 +154,6 @@ class ExploreOptions:
     seed: int
     out: Path
     image_tag_suffix: str = ""
-    #: The target's extraction-filter axis, for targets that have one (python-tarfile); exactly one
-    #: value per campaign, so filter settings and versions are never mixed in one exploration.
-    extraction_filter: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

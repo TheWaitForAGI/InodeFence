@@ -132,6 +132,9 @@ class Preparation:
     new_dependencies: tuple[dict[str, str], ...] = ()
     #: Packages that declare install scripts; scripts are always disabled (recorded only).
     install_scripts_disabled: tuple[str, ...] = ()
+    #: The exploration path's effect producer inside the image, and its offline check result.
+    producer_sha256: str | None = None
+    producer_check: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -222,6 +225,8 @@ class TargetResult:
                 "resolved_at": p.resolved_at,
                 "new_dependencies": [dict(d) for d in p.new_dependencies],
                 "install_scripts_disabled": list(p.install_scripts_disabled),
+                "producer_sha256": p.producer_sha256,
+                "producer_check": p.producer_check,
             }
         return data
 
@@ -290,7 +295,7 @@ def _validate_preparation(prep: Preparation | None) -> None:
             f"preparation installed {prep.installed_version!r} != requested "
             f"{prep.requested_version!r}"
         )
-    for name in ("lock_sha256", "worker_sha256"):
+    for name in ("lock_sha256", "worker_sha256", "producer_sha256"):
         value = getattr(prep, name)
         if value is not None and _SHA256_RE.fullmatch(value) is None:
             raise TargetResultError(f"preparation.{name} must be 64 lowercase hex or null")
@@ -316,6 +321,8 @@ _PREPARATION_KEYS = {
     "resolved_at",
     "new_dependencies",
     "install_scripts_disabled",
+    "producer_sha256",
+    "producer_check",
 }
 
 _TOP_KEYS = {

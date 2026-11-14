@@ -97,6 +97,8 @@ class FakeDocker:
             return done(0, "sha256:x")
         if verb == "run":  # offline checks: installed version, then the harness smoke
             assert args[1:4] == ["--rm", "--network", "none"]
+            if "effect-producer" in args[-1]:
+                return done(0, json.dumps(self.producer_report()) + "\n")
             if "TAR_B64" in " ".join(args):
                 if self.fail == "harness":
                     return done(1, err="TypeError: tar.x is not a function")
@@ -110,6 +112,27 @@ class FakeDocker:
             self.images.discard(args[-1])
             return done()
         raise AssertionError(args)
+
+    def producer_report(self) -> dict[str, Any]:
+        report: dict[str, Any] = {
+            "present": self.fail != "producer-missing",
+            "producer_sha256": "b" * 64,
+            "identify_status": 0,
+            "identity_tar_version": self.installed,
+            "run_status": 0,
+            "frame": {
+                "format": "inodefence-node-tar-effect-stream",
+                "outcome": "success",
+                "records": 11,
+                "producer_failures": [],
+            },
+            "extracted": True,
+        }
+        if self.fail == "producer-api":  # the producer cannot hook this tar's internals
+            report["run_status"] = 1
+            report["frame"] = None
+            report["run_stderr"] = "expected exactly one checkFs2 and onError private symbol"
+        return report
 
     def verbs(self) -> list[str]:
         return [c[1] for c in self.calls]
@@ -186,6 +209,8 @@ def test_existing_image_is_not_rebuilt() -> None:
         ("integrity", "integrity differs"),
         ("build", "build failed"),
         ("harness", "harness incompatible"),
+        ("producer-missing", "worker incompatible.*effect-producer.cjs is missing"),
+        ("producer-api", "worker incompatible.*checkFs2"),
         ("docker", "docker image failed"),
     ],
 )
@@ -301,6 +326,30 @@ def _fake_evidence(installed: str = "9.9.9"):
     return evidence
 
 
+def _fake_producer(ok: bool = True):
+    def check(runner: Any, image: str, version: str) -> dict[str, Any]:
+        reason = (
+            "effect producer extracted a benign archive (11 records)"
+            if ok
+            else "producer run failed (exit 1): expected exactly one checkPath private symbol"
+        )
+        return {"ok": ok, "reason": reason, "producer_sha256": "c" * 64}
+
+    return check
+
+
+def test_producer_recorded_and_incompatibility_gives_no_verdict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    data = _result_dict(tmp_path / "ok", monkeypatch, exploratory=True)
+    assert data["preparation"]["producer_sha256"] == "c" * 64
+    assert data["preparation"]["producer_check"].startswith("effect producer extracted")
+    monkeypatch.setattr(nt.registry, "producer_check", _fake_producer(ok=False))
+    argv = ["--target", "node-tar", "--version", "9.9.9", "--out", str(tmp_path / "bad")]
+    assert rt.main(argv) == rt.SETUP_ERROR
+    assert not (tmp_path / "bad" / "node-tar-9.9.9-exploratory" / "result.json").exists()
+
+
 def _clean(version: str) -> dict[str, Any]:
     ref = {"ino": "5", "nlink": 1, "size": 10, "type": "reg"}
     return {
@@ -319,6 +368,7 @@ def test_exploratory_run_is_labelled_and_records_preparation(
     monkeypatch.setattr(rt, "engine_provenance", lambda image: rt.Provenance(None, True, image))
     monkeypatch.setattr(nt.cri, "run_one", lambda v, t, image=None, network_none=False: _clean(v))
     monkeypatch.setattr(nt.registry, "image_evidence", _fake_evidence())
+    monkeypatch.setattr(nt.registry, "producer_check", _fake_producer())
     argv = ["--target", "node-tar", "--version", "9.9.9"]
     assert rt.main([*argv, "--out", str(tmp_path)]) == 0
     cell = tmp_path / "node-tar-9.9.9-exploratory"
@@ -338,6 +388,7 @@ def test_installed_mismatch_at_describe_gives_no_verdict(
     monkeypatch.setattr(rt, "engine_provenance", lambda image: rt.Provenance(None, True, image))
     monkeypatch.setattr(nt.cri, "run_one", lambda v, t, image=None, network_none=False: _clean(v))
     monkeypatch.setattr(nt.registry, "image_evidence", _fake_evidence(installed="9.9.8"))
+    monkeypatch.setattr(nt.registry, "producer_check", _fake_producer())
     argv = ["--target", "node-tar", "--version", "9.9.9"]
     assert rt.main([*argv, "--out", str(tmp_path)]) == rt.SETUP_ERROR
     assert not (tmp_path / "node-tar-9.9.9-exploratory" / "result.json").exists()
@@ -352,6 +403,7 @@ def _result_dict(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, exploratory
     monkeypatch.setattr(rt, "engine_provenance", lambda image: rt.Provenance(None, True, image))
     monkeypatch.setattr(nt.cri, "run_one", lambda v, t, image=None, network_none=False: _clean(v))
     monkeypatch.setattr(nt.registry, "image_evidence", _fake_evidence())
+    monkeypatch.setattr(nt.registry, "producer_check", _fake_producer())
     cell = "node-tar-9.9.9-exploratory" if exploratory else "node-tar-7.5.3"
     version = "9.9.9" if exploratory else "7.5.3"
     argv = ["--target", "node-tar", "--version", version]
@@ -541,6 +593,7 @@ def test_latest_resolves_to_exact_and_is_recorded(
     monkeypatch.setattr(rt, "engine_provenance", lambda image: rt.Provenance(None, True, image))
     monkeypatch.setattr(nt.cri, "run_one", lambda v, t, image=None, network_none=False: _clean(v))
     monkeypatch.setattr(nt.registry, "image_evidence", _fake_evidence())
+    monkeypatch.setattr(nt.registry, "producer_check", _fake_producer())
     argv = ["--target", "node-tar", "--version", "latest", "--out", str(tmp_path)]
     assert rt.main(argv) == 0
     assert "RESOLVE node-tar latest -> 9.9.9" in capsys.readouterr().out

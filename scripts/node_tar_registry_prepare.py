@@ -18,9 +18,12 @@ same way the committed versions are built, except that the lock is generated now
    build).
 4. ``tools/node-tar/effect/Dockerfile`` (unchanged: pinned base digests, the committed worker
    files) is built from a temporary context outside the repository into ``<image>-unverified``.
-5. With ``--network none`` the staged image must report ``tar`` ``<v>`` installed, and the same
-   extraction program the run uses (``cross_release_identity.NODE_PROGRAM``) must extract a benign
-   one-file archive with that ``tar`` (harness/worker compatibility).
+5. With ``--network none`` the staged image must report ``tar`` ``<v>`` installed; the regression
+   run's extraction program (``cross_release_identity.NODE_PROGRAM``) must extract a benign
+   one-file archive with that ``tar``; and the exploration path's effect producer
+   (``/target/effect-producer.cjs``, run exactly as the controller runs it, ``full`` profile) must
+   be present, identify that ``tar`` and extract the same archive with a usable frame and no
+   producer failures. Otherwise: "worker incompatible" with the reason, fail-closed.
 6. Only then is ``<image>`` tagged; the staging tag and the temporary context are removed.
 
 Every failure (unknown version, registry/network error, integrity mismatch, non-registry source,
@@ -343,6 +346,100 @@ def harness_check(runner: Runner, image: str) -> None:
         raise RegistryPrepareError(f"harness incompatible with the tar in {image}: {detail}")
 
 
+#: Offline check that the exploration path's effect producer works with the installed tar: it
+#: fingerprints the module (``--identify``), then runs the producer exactly as the controller does
+#: (12 arguments, ``full`` profile) on a benign one-file archive and reports what happened.
+PRODUCER = "/target/effect-producer.cjs"
+_PRODUCER_PROGRAM = r"""
+const cp = require('child_process'), fs = require('fs'), path = require('path')
+const crypto = require('crypto')
+const P = '/target/effect-producer.cjs', M = '/target/node_modules/tar'
+const L = '/target/package-lock.json'
+const out = {present: fs.existsSync(P)}
+const done = () => { console.log(JSON.stringify(out)); process.exit(0) }
+if (!out.present) done()
+out.producer_sha256 = crypto.createHash('sha256').update(fs.readFileSync(P)).digest('hex')
+const id = cp.spawnSync(process.execPath, [P, '--identify', M, L], {encoding: 'utf8'})
+out.identify_status = id.status
+out.identify_stderr = (id.stderr || '').slice(-300)
+if (id.status !== 0) done()
+const ident = JSON.parse(id.stdout)
+out.identity_tar_version = ident.tar_version
+const dir = fs.mkdtempSync('/tmp/producer-check-')
+const archive = path.join(dir, 'input.tar'), dest = path.join(dir, 'extract')
+fs.writeFileSync(archive, Buffer.from(process.env.TAR_B64, 'base64'))
+fs.mkdirSync(dest)
+const r = cp.spawnSync(process.execPath, [P, M, L, archive, dest, 'full', '256',
+  ident.node_version, ident.tar_version, ident.producer_sha256, ident.package_lock_sha256,
+  ident.package_entrypoint_sha256, ident.unpack_sha256], {encoding: 'utf8', maxBuffer: 8e6})
+out.run_status = r.status
+out.run_stderr = (r.stderr || '').slice(-300)
+try {
+  const frame = JSON.parse((r.stdout || '').trim().split('\n').pop())
+  out.frame = {format: frame.format, outcome: frame.target.outcome,
+    error: frame.target.error, records: frame.records.length,
+    producer_failures: frame.terminal.producer_failures}
+} catch (e) { out.frame_error = String(e).slice(0, 200) }
+const extracted = path.join(dest, 'ok.txt')
+out.extracted = fs.existsSync(extracted) && fs.readFileSync(extracted, 'utf8') === 'ok\n'
+done()
+"""
+
+
+def producer_check(runner: Runner, image: str, version: str) -> dict[str, Any]:
+    """Run the effect producer offline in ``image``; ``ok`` plus the reason it is (not) usable."""
+    from experiments.repro import cross_release_identity as cri
+
+    tar = base64.b64encode(cri.build_tar([{"name": "ok.txt", "type": "reg", "content": b"ok\n"}]))
+    done = _docker(
+        runner,
+        [
+            "run",
+            "--rm",
+            "--network",
+            "none",
+            "-e",
+            f"TAR_B64={tar.decode()}",
+            "--entrypoint",
+            "/usr/local/bin/node",
+            image,
+            "-e",
+            _PRODUCER_PROGRAM,
+        ],
+        180,
+    )
+    try:
+        out = json.loads((done.stdout or "").strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return {
+            "ok": False,
+            "reason": f"producer check produced no report: {(done.stderr or '')[-200:]}",
+        }
+    frame = out.get("frame") or {}
+    if not out.get("present"):
+        reason = f"{PRODUCER} is missing from the image"
+    elif out.get("identify_status") != 0:
+        reason = f"producer --identify failed: {out.get('identify_stderr', '').strip()}"
+    elif out.get("identity_tar_version") != version:
+        reason = f"producer identifies tar {out.get('identity_tar_version')!r}, expected {version}"
+    elif out.get("run_status") != 0 or frame.get("outcome") != "success":
+        detail = out.get("run_stderr", "").strip() or frame.get("error") or out.get("frame_error")
+        reason = f"producer run failed (exit {out.get('run_status')}): {detail}"
+    elif frame.get("format") != "inodefence-node-tar-effect-stream" or not frame.get("records"):
+        reason = f"producer frame unusable: {frame}"
+    elif frame.get("producer_failures"):
+        reason = f"producer reported failures: {frame.get('producer_failures')}"
+    elif not out.get("extracted"):
+        reason = "producer finished but the benign file was not extracted"
+    else:
+        reason = f"effect producer extracted a benign archive ({frame.get('records')} records)"
+    return {
+        "ok": reason.startswith("effect producer extracted"),
+        "reason": reason,
+        "producer_sha256": out.get("producer_sha256"),
+    }
+
+
 def exists(runner: Runner, image: str) -> bool:
     return _docker(runner, ["image", "inspect", image], 60).returncode == 0
 
@@ -402,6 +499,12 @@ def prepare(
         if seen != version:
             raise RegistryPrepareError(f"{staging} has tar {seen!r} installed, expected {version}")
         harness_check(runner, staging)
+        producer = producer_check(runner, staging, version)
+        if not producer["ok"]:
+            raise RegistryPrepareError(
+                f"worker incompatible (effect-producer): {producer['reason']}"
+            )
+        log(f"REGISTRY-PREPARE {producer['reason']}; producer sha256={producer['producer_sha256']}")
         if _docker(runner, ["tag", staging, image], 60).returncode != 0:
             raise RegistryPrepareError(f"tag {staging} -> {image} failed")
         log(f"REGISTRY-PREPARE verified tar {seen} offline; tagged {image}")

@@ -143,6 +143,9 @@ def _describe(cell: RunCell, cell_dir: Path) -> Preparation | None:
     evidence.mkdir(parents=True, exist_ok=True)
     (evidence / "package-lock.json").write_bytes(found["lock"])
     findings = registry.lock_findings(json.loads(found["lock"]), registry.allowed_packages())
+    producer = registry.producer_check(registry.subprocess.run, image, version)
+    if not producer["ok"]:
+        raise ValueError(f"worker incompatible (effect-producer): {producer['reason']}")
     spec, resolved_at = _RESOLVED.get(version, (None, None))
     return Preparation(
         method="registry",
@@ -155,6 +158,8 @@ def _describe(cell: RunCell, cell_dir: Path) -> Preparation | None:
         resolved_at=resolved_at,
         new_dependencies=tuple(findings["new_dependencies"]),
         install_scripts_disabled=tuple(findings["install_scripts_disabled"]),
+        producer_sha256=producer["producer_sha256"],
+        producer_check=producer["reason"],
     )
 
 

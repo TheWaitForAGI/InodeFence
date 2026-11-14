@@ -123,11 +123,29 @@ regression:
 TARGET ?= node-tar
 TARGET_VERSIONS ?= $(TAR_VERSION)
 TARGET_FILTERS ?=
+TARGET_ARGS ?=
 AUTO_PREPARE ?= 0
 IMAGE_TAG_SUFFIX ?=
-TARGET_OUT ?= $(HOME)/inodefence-evidence/target-run
+# Default output is OUTSIDE the repo and OUTSIDE the experiment-evidence tree
+# (~/inodefence-evidence), so a demo run never lands beside confirmatory evidence.
+TARGET_OUT ?= $(HOME)/inodefence-target-run
+# User values reach the recipe through the environment (not the command text); the recipe
+# builds argv with double-quoted shell positionals under `set -f`, so a value containing
+# spaces, `;`, `$$(...)`, backticks, quotes or globs is one literal argument the shell never
+# re-parses or runs. TARGET_VERSIONS / TARGET_FILTERS / TARGET_ARGS are still split on
+# whitespace into separate arguments by design (several versions, several flags); each word
+# is a literal argument, never shell syntax. run_target.py and the format reader then reject
+# anything not a real target / version / flag. `make -n target-run ...` prints the invocation.
+export TARGET TARGET_VERSIONS TARGET_FILTERS TARGET_OUT IMAGE_TAG_SUFFIX AUTO_PREPARE TARGET_ARGS PYTHON
 target-run:
-	PYTHONPATH=src:. $(PYTHON) scripts/run_target.py --target $(TARGET) $(foreach v,$(TARGET_VERSIONS),--version $(v)) $(foreach f,$(TARGET_FILTERS),--extraction-filter $(f)) $(if $(filter 1,$(AUTO_PREPARE)),--auto-prepare) $(if $(IMAGE_TAG_SUFFIX),--image-tag-suffix=$(IMAGE_TAG_SUFFIX)) $(if $(filter --dry-run,$(TARGET_ARGS)),,--out $(TARGET_OUT)) $(TARGET_ARGS)
+	@set -euf; \
+	set -- --target "$$TARGET"; \
+	for v in $$TARGET_VERSIONS; do set -- "$$@" --version "$$v"; done; \
+	for f in $$TARGET_FILTERS; do set -- "$$@" --extraction-filter "$$f"; done; \
+	if [ "$$AUTO_PREPARE" = 1 ]; then set -- "$$@" --auto-prepare; fi; \
+	if [ -n "$$IMAGE_TAG_SUFFIX" ]; then set -- "$$@" --image-tag-suffix="$$IMAGE_TAG_SUFFIX"; fi; \
+	case " $$TARGET_ARGS " in *" --dry-run "*) ;; *) set -- "$$@" --out "$$TARGET_OUT" ;; esac; \
+	PYTHONPATH=src:. "$$PYTHON" scripts/run_target.py "$$@" $$TARGET_ARGS
 
 # Offline replay planner: read a demo report (REPORT=<path>) and reproduce its run
 # command, binding the recorded image recipe to the committed one and checking the

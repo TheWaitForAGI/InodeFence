@@ -188,6 +188,25 @@ def test_registered_sandbox_defaults_match_the_preregistration() -> None:
     assert seed == "20261104" and count == "5" and policy == "invalid-continue"
 
 
+def test_registered_sandbox_defaults_stop_when_a_field_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A preregistration that dropped a sandbox field must stop with the reason, not fall back to a
+    # hardcoded default (or the literal string "None") -- that would be a silent stale-config run.
+    from types import SimpleNamespace
+
+    def fake_parse(_text: str) -> Any:
+        return SimpleNamespace(
+            sentinel_generator_seed=20261104,
+            sentinel_count=5,
+            observer_integrity_policy=None,  # dropped from the preregistration
+        )
+
+    monkeypatch.setattr(nte, "parse_preregistration", fake_parse)
+    with pytest.raises(ValueError, match="observer_integrity_policy"):
+        nte.registered_sandbox_defaults()
+
+
 def test_run_controller_defaults_the_registered_sandbox_env(tmp_path: Path) -> None:
     captured: dict[str, Any] = {}
 

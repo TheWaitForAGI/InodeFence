@@ -48,12 +48,34 @@ REGISTERED_PREREG = REPO_ROOT / "experiments" / "preregistration" / "exp2-v1.md"
 
 
 def registered_sandbox_defaults() -> tuple[str, str, str]:
-    """``(sentinel_seed, sentinel_count, observer_integrity_policy)`` of the registered S-u arm."""
+    """``(sentinel_seed, sentinel_count, observer_integrity_policy)`` of the registered S-u arm.
+
+    The preregistration is the single source for these: if it does not carry one of the three
+    fields, stop with the reason instead of silently falling back to a hardcoded value (or the
+    literal string ``"None"``). A missing field means the preregistration changed and the
+    reference drifted -- running exploration on a stale default would be a silent mismatch.
+    """
     prereg = parse_preregistration(REGISTERED_PREREG.read_text(encoding="utf-8"))
+    missing = [
+        name
+        for name, value in (
+            ("sentinel_generator_seed", prereg.sentinel_generator_seed),
+            ("sentinel_count", prereg.sentinel_count),
+            ("observer_integrity_policy", prereg.observer_integrity_policy),
+        )
+        if value is None
+    ]
+    if missing:
+        raise ValueError(
+            f"{REGISTERED_PREREG.name} is missing registered sandbox field(s): "
+            f"{', '.join(missing)}. Exploration must not fall back to a hardcoded default -- "
+            f"update the preregistration (or its reference) so the field is present."
+        )
+    assert prereg.observer_integrity_policy is not None  # the check above guarantees this
     return (
         str(prereg.sentinel_generator_seed),
         str(prereg.sentinel_count),
-        prereg.observer_integrity_policy or "invalid-continue",
+        prereg.observer_integrity_policy,
     )
 
 

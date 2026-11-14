@@ -84,7 +84,7 @@ def test_unobservable_case_is_error_not_pass(
 
 def test_missing_reference_state_is_error() -> None:
     raw = {"declined": None, "shared_identity": [], "reference_before": None}
-    case = rt._node_tar_case(rc.build_fixtures()[0], raw)
+    case = rt.fixture_case(rc.build_fixtures()[0], raw)
     assert case.verdict.outcome == RUN_ERROR and case.verdict.c2 is None
 
 
@@ -105,8 +105,14 @@ def test_dry_run_runs_and_writes_nothing(
     monkeypatch.setattr(rt.cri, "run_one", forbidden)
     assert rt.main(["--target", "node-tar", "--version", "7.5.2", "--dry-run"]) == 0
     plan = json.loads(capsys.readouterr().out)
-    assert plan["versions"]["7.5.2"]["image"] == "inodefence-node-tar-effect:7.5.2"
-    assert len(plan["versions"]["7.5.2"]["would_run"]) == len(rc.build_fixtures())
+    cell = plan["cells"]["node-tar-7.5.2"]
+    assert cell["image"] == "inodefence-node-tar-effect:7.5.2"
+    assert cell["axes"] == {
+        "target_version": "7.5.2",
+        "runtime_version": None,
+        "extraction_filter": None,
+    }
+    assert len(cell["would_run"]) == len(rc.build_fixtures())
     assert list(tmp_path.iterdir()) == []
 
 
@@ -117,8 +123,95 @@ def test_dry_run_runs_and_writes_nothing(
         ["--target", "node-tar", "--version", "7.5.2", "--version", "7.5.2", "--dry-run"],
         ["--target", "gnu-tar", "--version", "1.35", "--dry-run"],
         ["--target", "node-tar", "--version", "7.5.2"],  # no --out
+        # node-tar has no filter axis
+        ["--target", "node-tar", "--version", "7.5.2", "--extraction-filter", "data", "--dry-run"],
+        # python-tarfile needs a filter, an exact runtime, a known filter, and one varied axis
+        ["--target", "python-tarfile", "--version", "3.12.16", "--dry-run"],
+        [
+            "--target",
+            "python-tarfile",
+            "--version",
+            "3.12",
+            "--extraction-filter",
+            "data",
+            "--dry-run",
+        ],
+        [
+            "--target",
+            "python-tarfile",
+            "--version",
+            "3.12.16",
+            "--extraction-filter",
+            "tar",
+            "--dry-run",
+        ],
+        [
+            "--target",
+            "python-tarfile",
+            "--version",
+            "3.12.3",
+            "--version",
+            "3.12.16",
+            "--extraction-filter",
+            "fully_trusted",
+            "--extraction-filter",
+            "data",
+            "--dry-run",
+        ],
     ],
 )
 def test_rejects_bad_arguments(argv: list[str]) -> None:
     with pytest.raises(SystemExit):
         rt.main(argv)
+
+
+def _fake_py_run_one(raw_by_cell: dict[tuple[str, str], dict[str, Any]]):
+    def run_one(runtime: str, extraction_filter: str, tar_b64: str, **_: Any) -> dict[str, Any]:
+        return raw_by_cell[(runtime, extraction_filter)]
+
+    return run_one
+
+
+def test_python_tarfile_filter_axis_through_common_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    import scripts.run_python_tarfile_target as pyt
+
+    monkeypatch.setattr(
+        pyt.pti,
+        "run_one",
+        _fake_py_run_one({("3.12.16", "fully_trusted"): SHARED, ("3.12.16", "data"): DECLINED}),
+    )
+    argv = ["--target", "python-tarfile", "--version", "3.12.16"]
+    argv += ["--extraction-filter", "fully_trusted", "--extraction-filter", "data"]
+    assert rt.main([*argv, "--out", str(tmp_path)]) == 1
+
+    trusted = load_target_result(
+        tmp_path / "python-tarfile-py3.12.16-fully_trusted" / "result.json"
+    )
+    data = load_target_result(tmp_path / "python-tarfile-py3.12.16-data" / "result.json")
+    assert trusted.target == "python-tarfile"
+    assert trusted.verdict is Verdict.FAIL and data.verdict is Verdict.PASS
+    # Filter and runtime are separate fields; the package-version field does not apply.
+    assert (trusted.axes.target_version, trusted.axes.runtime_version) == (None, "3.12.16")
+    assert (trusted.axes.extraction_filter, data.axes.extraction_filter) == (
+        "fully_trusted",
+        "data",
+    )
+    assert trusted.provenance.image_ref == "python:3.12.16-slim"
+    fixture = rc.build_fixtures()[0]
+    saved = tmp_path / "python-tarfile-py3.12.16-data" / "inputs" / f"{fixture.name}.tar"
+    assert saved.read_bytes() == fixture.tar
+    out = capsys.readouterr().out
+    assert "TARGET-RUN FAIL target=python-tarfile runtime=3.12.16,filter=fully_trusted" in out
+
+
+def test_python_tarfile_runtime_axis_dry_run(capsys: pytest.CaptureFixture[str]) -> None:
+    argv = ["--target", "python-tarfile", "--version", "3.12.3", "--version", "3.12.16"]
+    assert rt.main([*argv, "--extraction-filter", "data", "--dry-run"]) == 0
+    plan = json.loads(capsys.readouterr().out)
+    assert sorted(plan["cells"]) == [
+        "python-tarfile-py3.12.16-data",
+        "python-tarfile-py3.12.3-data",
+    ]
+    assert plan["cells"]["python-tarfile-py3.12.3-data"]["image"] == "python:3.12.3-slim"

@@ -102,16 +102,21 @@ regression:
 	PYTHONPATH=src:. $(PYTHON) scripts/regression_check.py --tar-version $(TAR_VERSION) $(REGRESSION_ARGS)
 
 # One command per target (common result format inodefence-target-result-v1, label demo run):
-# isolated run -> C0/C1/C2 judgment -> DIR/<target>-<version>/{result.json,inputs/*.tar,raw/}.
-# node-tar mode is fixture-regression (the make regression fixtures; C0 not observed = null).
-# Host terminal only (docker). TARGET_VERSIONS takes several versions (e.g. a version pair);
+# isolated run -> C0/C1/C2 judgment -> DIR/<cell>/{result.json,inputs/*.tar,raw/}.
+# Targets: node-tar, python-tarfile (both fixture-regression: the make regression fixtures;
+# C0 not observed = null). Host terminal only (docker). TARGET_VERSIONS is the target's version
+# axis (node-tar package; python-tarfile exact runtime X.Y.Z); TARGET_FILTERS is the
+# extraction-filter axis (python-tarfile: fully_trusted / data). Vary one axis per run.
 # TARGET_ARGS=--dry-run runs no container and writes nothing. Existing results are not overwritten.
 #   make target-run TARGET=node-tar TARGET_VERSIONS="7.5.2 7.5.3"
+#   make target-run TARGET=python-tarfile TARGET_VERSIONS=3.12.16 TARGET_FILTERS="fully_trusted data"
+#   make target-run TARGET=python-tarfile TARGET_VERSIONS="3.12.3 3.12.16" TARGET_FILTERS=data
 TARGET ?= node-tar
 TARGET_VERSIONS ?= $(TAR_VERSION)
+TARGET_FILTERS ?=
 TARGET_OUT ?= $(HOME)/inodefence-evidence/target-run
 target-run:
-	PYTHONPATH=src:. $(PYTHON) scripts/run_target.py --target $(TARGET) $(foreach v,$(TARGET_VERSIONS),--version $(v)) $(if $(filter --dry-run,$(TARGET_ARGS)),,--out $(TARGET_OUT)) $(TARGET_ARGS)
+	PYTHONPATH=src:. $(PYTHON) scripts/run_target.py --target $(TARGET) $(foreach v,$(TARGET_VERSIONS),--version $(v)) $(foreach f,$(TARGET_FILTERS),--extraction-filter $(f)) $(if $(filter --dry-run,$(TARGET_ARGS)),,--out $(TARGET_OUT)) $(TARGET_ARGS)
 
 # Offline replay planner: read a demo report (REPORT=<path>) and reproduce its run
 # command, binding the recorded image recipe to the committed one and checking the

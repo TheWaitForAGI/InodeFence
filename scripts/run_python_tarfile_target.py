@@ -25,9 +25,10 @@ is ``null`` ("not observed"). For each (runtime, filter) cell this writes, under
 ``raw/<case>.json``. Existing results are never overwritten. ``--dry-run`` runs nothing.
 
 The output layout, the no-overwrite rule and the provenance (engine HEAD, dirty flag, local image
-id) are the node-tar command's own (``scripts.run_target``), imported unchanged. ``run_target``
-takes one version per target, so Python's two axes run through this command until it grows a
-filter argument.
+id) are the node-tar command's own (``scripts.run_target``), imported unchanged. ``ADAPTER`` at the
+end registers this target in the common command, where ``--version`` is the runtime version:
+
+    make target-run TARGET=python-tarfile TARGET_VERSIONS=3.12.16 TARGET_FILTERS=data
 """
 
 from __future__ import annotations
@@ -42,7 +43,15 @@ from typing import Any
 
 from experiments.repro import python_tarfile_identity as pti
 from scripts import regression_check as rc
-from scripts.run_target import RESULT_NAME, CaseRun, engine_provenance, write_result
+from scripts.run_target import (
+    RESULT_NAME,
+    CaseRun,
+    RunCell,
+    TargetAdapter,
+    engine_provenance,
+    fixture_plan,
+    write_result,
+)
 
 from inodefence.target_result import (
     RUN_ERROR,
@@ -210,6 +219,37 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{summary_line(result)} -> {path}")
         worst = max(worst, {"PASS": 0, "FAIL": 1, "ERROR": 2}[result.verdict.value])
     return worst
+
+
+# ---- registration in the common command (scripts.run_target TARGETS) ----
+
+
+def _adapter_cells(versions: list[str], filters: list[str]) -> list[RunCell]:
+    if not filters:
+        raise ValueError(f"python-tarfile needs --extraction-filter, one of {pti.FILTERS}")
+    for runtime in versions:
+        if pti.RUNTIME_RE.fullmatch(runtime) is None:
+            raise ValueError(f"python-tarfile --version is the exact runtime X.Y.Z: {runtime!r}")
+    for extraction_filter in filters:
+        if extraction_filter not in pti.FILTERS:
+            raise ValueError(f"--extraction-filter must be one of {pti.FILTERS}")
+    cells = [Cell(r, f) for r in versions for f in filters]
+    return [RunCell(c.dirname, c.axes, pti.image_ref(c.runtime_version)) for c in cells]
+
+
+def _adapter_run(cell: RunCell) -> list[CaseRun]:
+    runtime, extraction_filter = cell.axes.runtime_version, cell.axes.extraction_filter
+    assert runtime is not None and extraction_filter is not None
+    return run_cell(Cell(runtime, extraction_filter))
+
+
+ADAPTER = TargetAdapter(
+    mode=MODE,
+    observed_contracts=OBSERVED,
+    cells=_adapter_cells,
+    plan=lambda cell: fixture_plan(),
+    run=_adapter_run,
+)
 
 
 if __name__ == "__main__":

@@ -10,13 +10,17 @@ same page.
 Usage::
 
     python -m inodefence.target_result_summary RESULT.json [-o SUMMARY.md] [--no-verify-inputs]
+
+``make target-run`` calls :func:`write_cell_summaries` after it has written the results, so each
+cell that got a verdict also has ``<cell>/summary.md`` next to its ``result.json``. A cell with no
+``result.json`` (image preparation failed, image changed) gets no summary.
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from pathlib import Path
 
 from inodefence.target_result import (
@@ -213,6 +217,25 @@ def summarize_file(path: Path, *, verify_inputs: bool = True) -> str:
     """Load ``path`` with the strict reader and render its one-page summary."""
     result = load_target_result(path, verify_inputs=verify_inputs)
     return render_summary(result, source_name=path.name, inputs_verified=verify_inputs)
+
+
+SUMMARY_NAME = "summary.md"
+
+
+def write_cell_summaries(result_paths: Iterable[Path]) -> list[Path]:
+    """Write ``summary.md`` beside each ``result.json``, re-read from that file alone.
+
+    Each summary comes from the strict reader with saved-input hashes checked, so it only says what
+    the written file holds. An existing ``summary.md`` is never overwritten (``FileExistsError``).
+    """
+    written: list[Path] = []
+    for result_path in result_paths:
+        text = summarize_file(result_path)
+        out = result_path.parent / SUMMARY_NAME
+        with out.open("x", encoding="utf-8") as handle:
+            handle.write(text)
+        written.append(out)
+    return written
 
 
 def main(argv: Sequence[str] | None = None) -> int:

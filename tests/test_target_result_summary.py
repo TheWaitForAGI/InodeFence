@@ -13,7 +13,12 @@ from inodefence.target_result import (
     TargetResult,
     repro_input,
 )
-from inodefence.target_result_summary import main, render_summary, summarize_file
+from inodefence.target_result_summary import (
+    main,
+    render_summary,
+    summarize_file,
+    write_cell_summaries,
+)
 
 TAR = b"saved-input"
 SHA = "a" * 40
@@ -136,3 +141,14 @@ def test_title_names_runtime_and_filter_axes() -> None:
     )
     text = render_summary(result, source_name="r.json", inputs_verified=True)
     assert text.startswith("# 결과 한 장 요약: python-tarfile 3.12.16 · data\n")
+
+
+def test_write_cell_summaries_writes_beside_each_result_and_never_overwrites(
+    tmp_path: Path,
+) -> None:
+    path = _write(tmp_path)
+    assert write_cell_summaries([path]) == [tmp_path / "summary.md"]
+    assert (tmp_path / "summary.md").read_text(encoding="utf-8") == summarize_file(path)
+    with pytest.raises(FileExistsError):
+        write_cell_summaries([path])
+    assert write_cell_summaries([]) == []

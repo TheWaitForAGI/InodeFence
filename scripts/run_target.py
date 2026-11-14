@@ -78,6 +78,7 @@ from inodefence.target_result import (
     TargetResult,
     repro_input,
 )
+from inodefence.target_result_summary import write_cell_summaries
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RESULT_NAME = "result.json"
@@ -522,6 +523,7 @@ def main(argv: list[str] | None = None) -> int:
         worst = max(worst, {"PASS": 0, "FAIL": 1, "ERROR": 2}[result.verdict.value])
     # summary.md hook (IF-MAC-C): one call here, from `written` (cell, result, result.json path),
     # writes args.out / "summary.md". Only cells with a verdict are in `written`.
+    write_cell_summaries(path for _, _, path in written)
     return worst
 
 

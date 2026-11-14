@@ -134,7 +134,13 @@ def test_historical_still_rejects_an_unregistered_version_but_exploration_binds(
     assert reached == [IMAGE]  # no allowlist rejection before binding
 
 
-def _violation_capture_report(monkeypatch: pytest.MonkeyPatch, *, violating: bool) -> dict:
+def _violation_capture_report(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    violating: bool,
+    status: Any = None,
+    integrity_valid: bool = True,
+) -> dict:
     """Drive exploration_demo_report with a fake run whose oracle verdict we control."""
 
     class _Verdict:
@@ -143,9 +149,12 @@ def _violation_capture_report(monkeypatch: pytest.MonkeyPatch, *, violating: boo
             self.violated = hit
 
     verdicts = [_Verdict("C0", False), _Verdict("C1", violating), _Verdict("C2", False)]
-    execution = type("E", (), {"status": rd.ExecutionStatus.SUCCESS})()
+    execution = type(
+        "E", (), {"status": status if status is not None else rd.ExecutionStatus.SUCCESS}
+    )()
     base = type("B", (), {"violations": verdicts, "execution": execution})()
-    fake_run = type("R", (), {"base_result": base})()
+    trace = type("T", (), {"integrity_valid": integrity_valid, "observation_failures": ()})()
+    fake_run = type("R", (), {"base_result": base, "trace": trace})()
     monkeypatch.setattr(rd, "_native_effect_producer", lambda *a, **k: lambda case: fake_run)
 
     def fake_campaign(cases: Any, produce: Any, config: object, on_step: object = None) -> object:
@@ -170,6 +179,31 @@ def test_exploration_records_all_cases_but_saves_only_violating_inputs(
     (saved,) = report["violation_inputs"]  # only the violating run's TAR is kept
     assert saved["run_index"] == case["run_index"]
     assert len(saved["tar_sha256"]) == 64 and saved["tar_b64"]
+
+
+def test_rejected_run_keeps_its_judgment_and_is_not_an_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A rejected extraction (extractor refused the archive) is a judged outcome, not run_error:
+    # the oracle ran on the snapshots, so C0/C1/C2 are kept and a violation is still captured.
+    report = _violation_capture_report(
+        monkeypatch, violating=True, status=rd.ExecutionStatus.REJECTED
+    )
+    (case,) = report["case_records"]
+    assert case["outcome"] == "rejected"  # not "run_error"
+    assert case["c1"] is True and case["c0"] is False  # judgment kept despite the non-SUCCESS exit
+    (saved,) = report["violation_inputs"]
+    assert saved["outcome"] == "rejected" and saved["needs_reproduction_check"] is True
+
+
+def test_incomplete_observation_flags_the_violation_for_reproduction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    report = _violation_capture_report(monkeypatch, violating=True, integrity_valid=False)
+    (saved,) = report["violation_inputs"]
+    # SUCCESS but the trace was not integrity-valid: judged, but flagged (past audits mis-read
+    # hits from invalid-trace runs as clean findings).
+    assert saved["observation_complete"] is False and saved["needs_reproduction_check"] is True
 
 
 def test_exploration_saves_no_input_when_no_violation(monkeypatch: pytest.MonkeyPatch) -> None:

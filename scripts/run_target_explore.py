@@ -187,7 +187,10 @@ def main(argv: list[str] | None = None) -> int:
         f"image={prepared.image_id} (exploration run)"
     )
     print(f"result: {outcome.result_path}")
-    return 1 if outcome.violations else 0
+    # Exit code from the verdict, same rule as target-run (0 PASS, 1 FAIL, 2 ERROR; setup/refusal
+    # exits 3 earlier). A campaign whose verdict is ERROR with zero violations must not exit 0, or
+    # automation reads "nothing extracted" as success.
+    return {"PASS": 0, "FAIL": 1, "ERROR": 2}.get(outcome.verdict, 2)
 
 
 if __name__ == "__main__":

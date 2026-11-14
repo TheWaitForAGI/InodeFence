@@ -34,6 +34,8 @@ from inodefence.execution.base import ExecutionBackend
 from inodefence.execution.stall_recovery import StallRecovery
 from inodefence.feedback import EffectSearchPolicy
 from inodefence.generator import minimal_seed_corpus
+from inodefence.live_effect import live_step_from_effect
+from inodefence.live_exploration import REPLAY_COMMAND_TEMPLATE, LiveRecorder, LiveRunMeta
 from inodefence.model import (
     ArchiveCase,
     EffectRunResult,
@@ -560,6 +562,7 @@ def exploration_demo_report(
     observer_integrity_continue: bool = False,
     stall_recovery: StallRecovery | None = None,
     requested_spec: str | None = None,
+    live_dir: Path | None = None,
 ) -> dict[str, object]:
     """Run the state-aware effect loop on an arbitrary caller-prepared node-tar image.
 
@@ -585,6 +588,40 @@ def exploration_demo_report(
         mutation_policy=mutation_policy,
     )
     target = NodeTarEffectTarget.bind(backend, image_id, profile=NativeEffectProfile.FULL)
+    vocab_mode = next(
+        (
+            mode.value
+            for mode, mp in _rds.VOCABULARY_MUTATION_POLICY.items()
+            if mp == mutation_policy
+        ),
+        None,
+    )
+    recorder: LiveRecorder | None = None
+    if live_dir is not None:
+        described = sentinel_set.describe() if sentinel_set is not None else {}
+        recorder = LiveRecorder(
+            live_dir,
+            LiveRunMeta(
+                target="node-tar",
+                version=target.tar_version,
+                seed=seed,
+                budget=budget,
+                image_id=image_id,
+                search_policy=policy.value,
+                vocab_mode=vocab_mode,
+                replay_template=REPLAY_COMMAND_TEMPLATE,
+                # The conditions a single case depends on, so a saved violation can be replayed
+                # exactly (the same keys node-tar's replay accepts, with the values actually used).
+                run_settings={
+                    "sentinel_count": described.get("count"),
+                    "sentinel_seed": described.get("generator_seed"),
+                    "observer_integrity_policy": (
+                        "invalid-continue" if observer_integrity_continue else "stop"
+                    ),
+                    "profile": "full",
+                },
+            ),
+        )
     checks: list[dict[str, object]] = []
     timing: list[dict[str, object]] = []
     base_produce = _native_effect_producer(
@@ -641,23 +678,33 @@ def exploration_demo_report(
         record = reporter.add(step)
         if step_sink is not None:
             step_sink(record)
+        if recorder is not None:
+            # Live progress + immediate violation capture; the C0/C1/C2 are the producer's own,
+            # so the live case.json never disagrees with the final result.json.
+            recorder.on_step(live_step_from_effect(step))
 
     started = perf_counter()
-    result = run_effect_campaign(minimal_seed_corpus(), produce, config, on_step=record_step)
+    try:
+        result = run_effect_campaign(minimal_seed_corpus(), produce, config, on_step=record_step)
+    except KeyboardInterrupt as error:
+        if recorder is not None:
+            recorder.close(state="stopped", stop_reason=repr(error))
+        raise
+    except BaseException as error:
+        if recorder is not None:
+            recorder.close(state="failed", stop_reason=repr(error))
+        raise
+    else:
+        if recorder is not None:
+            recorder.close(state="finished")
     total = perf_counter() - started
     report = effect_campaign_report(result, "native")
     report.update(
         label=EXPLORATION_LABEL,
         mode="exploration",
         qualification=False,
-        vocabulary_mode=next(
-            (
-                mode.value
-                for mode, mp in _rds.VOCABULARY_MUTATION_POLICY.items()
-                if mp == config.mutation_policy
-            ),
-            None,
-        ),
+        observer_integrity_policy="invalid-continue" if observer_integrity_continue else "stop",
+        vocabulary_mode=vocab_mode,
         node_tar_version=target.tar_version,
         requested_tar_version=tar_version,
         requested_spec=tar_version if requested_spec is None else requested_spec,

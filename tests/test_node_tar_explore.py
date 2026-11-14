@@ -180,3 +180,46 @@ def test_rejected_and_timed_out_terminations_reach_the_case_verdict() -> None:
     assert result.verdict is Verdict.PASS  # rejected/timed-out without violation is not an error
     assert [c.termination for c in result.cases] == ["rejected", "timed_out"]
     assert [c.observation_complete for c in result.cases] == [True, False]
+
+
+def test_registered_sandbox_defaults_match_the_preregistration() -> None:
+    # Read (not copied) from the frozen EXP-2 holdout preregistration.
+    seed, count, policy = nte.registered_sandbox_defaults()
+    assert seed == "20261104" and count == "5" and policy == "invalid-continue"
+
+
+def test_run_controller_defaults_the_registered_sandbox_env(tmp_path: Path) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_runner(cmd: Any, env: Any, cwd: Any) -> Any:
+        captured["env"] = env
+        rp = nte.controller_report_path(tmp_path, "rid")
+        rp.parent.mkdir(parents=True, exist_ok=True)
+        rp.write_text("{}", encoding="utf-8")
+        return type("R", (), {"returncode": 0})()
+
+    nte.run_controller(
+        _prepared(), out=tmp_path, run_id="rid", budget=20, seed=123, python="x", runner=fake_runner
+    )
+    env = captured["env"]
+    assert env["DEMO_SENTINEL_SEED"] == "20261104" and env["DEMO_SENTINEL_COUNT"] == "5"
+    assert env["DEMO_OBSERVER_INTEGRITY_POLICY"] == "invalid-continue"
+
+
+def test_run_controller_sandbox_env_is_overridable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DEMO_SENTINEL_COUNT", "3")
+    captured: dict[str, Any] = {}
+
+    def fake_runner(cmd: Any, env: Any, cwd: Any) -> Any:
+        captured["env"] = env
+        rp = nte.controller_report_path(tmp_path, "rid")
+        rp.parent.mkdir(parents=True, exist_ok=True)
+        rp.write_text("{}", encoding="utf-8")
+        return type("R", (), {"returncode": 0})()
+
+    nte.run_controller(
+        _prepared(), out=tmp_path, run_id="rid", budget=20, seed=123, python="x", runner=fake_runner
+    )
+    assert captured["env"]["DEMO_SENTINEL_COUNT"] == "3"  # operator override wins

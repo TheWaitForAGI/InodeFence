@@ -468,7 +468,7 @@ def test_env_check_names_missing_runtime_root_and_fix(tmp_path: Path) -> None:
     [
         ["--target", "node-tar", "--version", "next", "--dry-run"],  # refused version
         ["--target", "python-tarfile", "--version", "3.12-rc", "--extraction-filter", "data"],
-        ["--target", "decompress", "--version", "decompress@4.2.0", "--dry-run"],  # not pinned
+        ["--target", "decompress", "--version", "@someone/decompress@4.2.0", "--dry-run"],
     ],
 )
 def test_refusals_exit_3_not_the_error_verdict_code(argv: list[str]) -> None:

@@ -44,16 +44,26 @@ import base64
 import json
 import re
 import subprocess
+import sys
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from experiments.repro import decompress_hardlink as dh
 from scripts import decompress_image
+from scripts import decompress_registry_prepare as registry
 from scripts import regression_check as rc
-from scripts.run_target import CaseRun, RunCell, TargetAdapter, fixture_case, fixture_plan
+from scripts.run_target import (
+    CaseRun,
+    PrepareStep,
+    RunCell,
+    TargetAdapter,
+    fixture_case,
+    fixture_plan,
+)
 
-from inodefence.target_result import ResultMode, TargetAxes
+from inodefence.target_result import Preparation, ResultMode, TargetAxes
 
 TARGET = "decompress"
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -131,8 +141,8 @@ def parse_spec(spec: str) -> tuple[str, str]:
     match = SPEC_RE.fullmatch(spec)
     if match is None:
         raise ValueError(
-            f"decompress --version is <package>@<X.Y.Z>, e.g. decompress@4.2.1 or "
-            f"@xhmikosr/decompress@11.1.4: {spec!r}"
+            f"decompress --version is <package>@<X.Y.Z> or <package>@latest, e.g. "
+            f"decompress@4.2.1 or @xhmikosr/decompress@latest: {spec!r}"
         )
     return match["package"], match["version"]
 
@@ -231,24 +241,137 @@ def run_one(
 # ---- adapter ----
 
 
+# ---- registry preparation (exploratory): versions without a committed recipe, and @latest ----
+
+#: Registry-prepared images never share a name with committed-recipe images.
+REGISTRY_IMAGE = registry.REGISTRY_REPOSITORY + ":{slug}-{version}"
+#: exact spec -> (what was asked, UTC resolution time), filled by ``_resolve`` for ``_describe``.
+_RESOLVED: dict[str, tuple[str, str]] = {}
+
+
+def _slug(package: str) -> str:
+    return package.lstrip("@").replace("/", "-")
+
+
+def _resolve(versions: list[str]) -> list[str]:
+    """Resolve ``<package>@latest`` per package from the registry (not called by --dry-run)."""
+    exact = []
+    for spec in versions:
+        if not spec.endswith("@" + registry.LATEST):
+            exact.append(spec)
+            continue
+        try:
+            package, _ = registry.split_spec(spec)
+            resolved = f"{package}@{registry.resolve_latest(package)}"
+        except registry.RegistryPrepareError as error:
+            raise ValueError(f"cannot resolve {spec}: {error}") from error
+        _RESOLVED[resolved] = (spec, datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"))
+        print(f"TARGET-RUN RESOLVE {TARGET} {spec} -> {resolved}", flush=True)
+        exact.append(resolved)
+    return exact
+
+
 def _cells(versions: list[str], filters: list[str]) -> list[RunCell]:
     if filters:
         raise ValueError("decompress has no extraction-filter axis; drop --extraction-filter")
     cells = []
     for spec in versions:
-        package, version = parse_spec(spec)
-        if pinned_recipe(package, version) is None:
-            raise ValueError(
-                f"no tools/decompress/*/package.json pins {package}@{version}; add one first"
+        if spec.endswith("@" + registry.LATEST):  # only reached by --dry-run
+            try:
+                registry.split_spec(spec)
+            except registry.RegistryPrepareError as error:
+                raise ValueError(str(error)) from error
+            cells.append(
+                RunCell(
+                    f"{TARGET}-{_slug(spec)} (resolved at run time)",
+                    TargetAxes(target_version=spec),
+                    None,
+                    exploratory=True,
+                )
             )
-        cells.append(
-            RunCell(dirname(package, version), TargetAxes(target_version=spec), image_ref(version))
-        )
+            continue
+        package, version = parse_spec(spec)
+        if pinned_recipe(package, version) is not None:
+            cells.append(
+                RunCell(
+                    dirname(package, version), TargetAxes(target_version=spec), image_ref(version)
+                )
+            )
+        elif package in registry.PACKAGES:
+            cells.append(
+                RunCell(
+                    dirname(package, version) + "-exploratory",
+                    TargetAxes(target_version=spec),
+                    REGISTRY_IMAGE.format(slug=_slug(package), version=version),
+                    exploratory=True,
+                )
+            )
+        else:
+            raise ValueError(
+                f"{package} is not this target; the packages are {', '.join(registry.PACKAGES)}"
+            )
     return cells
+
+
+def _prepare(cell: RunCell) -> PrepareStep:
+    if not cell.exploratory:
+        return decompress_image.prepare(cell)
+    spec, image = cell.axes.target_version or "", cell.image_ref or ""
+    try:
+        package, version = registry.split_spec(spec)
+        registry.check_inputs(package, version, image)
+    except registry.RegistryPrepareError as error:
+        return PrepareStep(image_ref=image, commands=None, reason=str(error))
+    command = (sys.executable, "-m", "scripts.decompress_registry_prepare")
+    return PrepareStep(
+        image_ref=image,
+        commands=((*command, "--spec", spec, "--image", image),),
+        reason=f"exploratory: lock from {registry.REGISTRY}, checked, then the committed recipe",
+    )
+
+
+def _describe(cell: RunCell, cell_dir: Path) -> Preparation | None:
+    """Registry cells only: record what is inside the image and keep its lock as evidence."""
+    if not cell.exploratory:
+        return None
+    spec, image = cell.axes.target_version or "", cell.image_ref or ""
+    package, version = parse_spec(spec)
+    try:
+        found = registry.image_evidence(image)
+    except registry.RegistryPrepareError as error:
+        raise ValueError(str(error)) from error
+    installed = f"{found['package']}@{found['installed_version']}"
+    if installed != spec:
+        raise ValueError(f"{image} has {installed} installed, requested {spec}")
+    worker = registry.worker_check(registry.subprocess.run, image, package, version)
+    if not worker["ok"]:
+        raise ValueError(f"worker incompatible (decompress worker): {worker['reason']}")
+    findings = registry.npm.lock_findings(json.loads(found["lock"]), registry.allowed_packages())
+    evidence = cell_dir / "preparation"
+    evidence.mkdir(parents=True, exist_ok=True)
+    (evidence / "package-lock.json").write_bytes(found["lock"])
+    asked, resolved_at = _RESOLVED.get(spec, (None, None))
+    return Preparation(
+        method="registry",
+        requested_version=spec,
+        installed_version=installed,
+        lock_sha256=found["lock_sha256"],
+        worker_sha256=found["worker_sha256"],
+        recipe=registry.RECIPE.format(spec=spec),
+        requested_spec=asked,
+        resolved_at=resolved_at,
+        new_dependencies=tuple(findings["new_dependencies"]),
+        install_scripts_disabled=tuple(findings["install_scripts_disabled"]),
+        producer_check=worker["reason"],
+    )
 
 
 def _plan(cell: RunCell) -> list[dict[str, Any]]:
     assert cell.axes.target_version is not None
+    if cell.image_ref is None:
+        return [{"note": f"{cell.axes.target_version} is resolved from the registry at run time"}]
+    if cell.exploratory:
+        return [{"install_step": f"registry prepare ({registry.REGISTRY})"}, *fixture_plan()]
     package, version = parse_spec(cell.axes.target_version)
     recipe = pinned_recipe(package, version)
     build = (
@@ -276,5 +399,7 @@ ADAPTER = TargetAdapter(
     cells=_cells,
     plan=_plan,
     run=_run,
-    prepare=decompress_image.prepare,
+    prepare=_prepare,
+    describe=_describe,
+    resolve=_resolve,
 )

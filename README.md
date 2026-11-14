@@ -27,14 +27,16 @@ Historical vulnerability rediscovery(N01)는 성공 조건으로 실행·주장�
 TAR를 풀어 C1/C2를 판정한 뒤 셀마다 `result.json`·재현 TAR·`summary.md`를 남깁니다. 결과는 `demo run`이며 실험
 결과나 안전 보증이 아닙니다(한계와 대상별 지원 범위는 [CHANGELOG](CHANGELOG.md)).
 
-**확인한 환경.** macOS(arm64) + Docker Desktop, Windows + WSL2(x86_64) + Docker Desktop.
+**확인한 환경.** macOS(arm64) + Docker Desktop, Windows + WSL2(x86_64) + Docker Desktop. 두 환경 모두 `AUTO_PREPARE=1`로
+네 대상의 준비 → 버전 확인 → 실행 → 판정까지 돌렸고 판정이 같았습니다(demo run). 이미지를 준비하는 데는 빌드 캐시가
+있을 때 대상당 10초 안팎이었고, 처음 빌드는 더 걸립니다.
 
 **필요한 것**
 
 - **docker가 도는 셸.** macOS는 터미널, Windows는 WSL 셸(Docker Desktop의 WSL 연동 켜기)에서 실행합니다.
   Dev Container 안에는 docker가 없으므로 `make target-run`은 Dev Container가 아니라 이 셸에서 돌립니다.
 - **git**과 **Python 3.12.** `PYTHON`을 주지 않으면 `python`, 없으면 `python3`을 씁니다.
-  - Windows + WSL2(Ubuntu 24.04): 기본 `python3`이 3.12라 그대로 됩니다.
+  - Windows + WSL2(Ubuntu 24.04): 기본 `python3`이 3.12라 **`PYTHON`을 지정하지 않아도 됩니다**(`python3`을 자동으로 씀).
   - macOS: 기본 `python3`은 3.9라 돌지 않습니다(`ImportError`로 멈춤). `brew install python@3.12` 뒤 아래 명령마다
     **`PYTHON=python3.12`**를 붙입니다.
 - **네트워크(처음 한 번).** 이미지를 준비할 때 빌드·pull에 씁니다. 추출 실행은 네트워크 없이 합니다.
@@ -51,7 +53,7 @@ cd InodeFence
 ```
 
 **대상별 한 줄 실행.** `AUTO_PREPARE=1`이면 없는 이미지를 먼저 준비하고, 있으면 그대로 다시 씁니다(macOS 기준;
-WSL2에서는 `PYTHON=python3.12`를 빼거나 `PYTHON=python3`으로 씁니다).
+WSL2에서는 `PYTHON=python3.12`를 빼고 씁니다).
 
 ```bash
 make target-run TARGET=node-tar TARGET_VERSIONS="7.5.2 7.5.3" AUTO_PREPARE=1 PYTHON=python3.12
@@ -79,12 +81,23 @@ make target-run TARGET=decompress TARGET_VERSIONS="decompress@4.2.1 @xhmikosr/de
 | `inputs/*.tar` | 실제로 풀어 본 입력 TAR(SHA-256은 `result.json`에) |
 | `raw/*.json` | 대상별 원시 관찰 |
 
-마지막 줄들의 `TARGET-RUN PASS|FAIL|ERROR ...`가 셀별 판정입니다. 종료 코드는 0 PASS, 1 FAIL, 2 ERROR(셀 중 가장
-나쁜 판정), 3 일부 또는 모든 셀이 판정되지 않음(거부된 입력·이미 있는 결과·설정·준비·이미지 문제)입니다. `make`를
-거치면 이 코드는 `make: *** [target-run] Error N`의 N으로 보이고, `make` 자체의 종료 상태는 0이 아니면 언제나 2입니다
-(코드를 그대로 받아야 하면 같은 인자로 `make -n target-run …`을 돌려 출력된 명령을 직접 실행합니다).
-**판정이 FAIL이면 `Error 1`이 보이지만** 프로그램이 죽은 것이 아니라 위반을 찾았다는 신호이고, 결과 파일은 그대로
-남습니다. 요약은 결과 파일 하나로 다시 만들 수도 있습니다:
+마지막 줄들의 `TARGET-RUN PASS|FAIL|ERROR ...`가 셀별 판정입니다. 스크립트 종료 코드는 0 PASS, 1 FAIL(위반),
+2 ERROR(실행 오류; 셀 중 가장 나쁜 판정), 3 일부 또는 모든 셀이 판정되지 않음(거부된 입력·이미 있는 결과·설정·준비·
+이미지 문제)입니다.
+
+**종료 코드 주의.** `make`를 거치면 스크립트 코드는 `make: *** [target-run] Error N`의 **N**으로만 보이고, `make`
+자신의 종료 상태(`$?`)는 0이 아니면 언제나 **2**입니다. 판정은 N(또는 `TARGET-RUN` 줄)으로 읽습니다. FAIL이면
+`Error 1`이 보이지만 프로그램이 죽은 것이 아니라 위반을 찾았다는 신호이고, 결과 파일은 그대로 남습니다. 자동화에서
+코드를 그대로 받으려면 `make`가 부르는 형태 그대로 스크립트를 직접 부릅니다(`PYTHONPATH=src:.`가 필요합니다):
+
+```bash
+PYTHONPATH=src:. python3 scripts/run_target.py --target node-tar --version 7.5.2 --version 7.5.3 \
+  --auto-prepare --out ~/inodefence-evidence/target-run
+echo $?   # 0 PASS, 1 FAIL, 2 ERROR, 3 판정되지 않은 셀 있음
+```
+
+(macOS는 `python3` 대신 `python3.12`. `--image-tag-suffix=-x`, `--extraction-filter`, `--dry-run`도 같은 이름으로
+쓸 수 있습니다.) 요약은 결과 파일 하나로 다시 만들 수도 있습니다:
 `PYTHONPATH=src python3.12 -m inodefence.target_result_summary <셀>/result.json`.
 판정 기준(C0/C1/C2)의 정확한 정의는 [security-contracts](docs/research/design/security-contracts.md)에 있습니다.
 

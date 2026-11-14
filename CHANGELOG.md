@@ -39,16 +39,18 @@ make target-run TARGET=node-tar TARGET_VERSIONS="7.5.2 7.5.3" AUTO_PREPARE=1 PYT
 | `oras-go` | 대상 버전 | 2.6.1: 6건 중 1건 위반(작업 디렉터리 기준 하드링크 입력). 2.6.2: 위반 0 |
 | `decompress` | 버전 칸에 패키지까지(`decompress@4.2.1` 원본, `@xhmikosr/decompress@11.1.4` 유지보수 fork) | 원본 4.2.1: 5건 중 4건 위반(하드링크 2건 C1·C2, 심볼릭 링크 뒤 쓰기 C2). fork 11.1.4: 5건 모두 거부, 위반 0. 입력 1건은 실행마다 결과가 다름(한계 참고) |
 
-**확인한 환경.** macOS(arm64) + Docker Desktop과 Windows + WSL2(x86_64) + Docker Desktop. node-tar·python-tarfile·
-oras-go의 판정은 두 환경에서 모두 같았고, WSL2에서도 `make check`가 통과하고 한 장 요약이 정상으로 나왔다.
-decompress는 맥북에서만 확인했다.
+**확인한 환경.** macOS(arm64) + Docker Desktop과 Windows + WSL2(x86_64) + Docker Desktop.
+- WSL2(#405 브랜치 기준, 팀 확인): `AUTO_PREPARE=1`로 네 대상의 준비 → 버전 확인 → 실행 → 판정이 맥북(arm64)과 같은
+  결과였다. 다시 실행하면 이미지를 모두 재사용했고, 미지원 버전은 거부됐으며, `--dry-run`은 아무것도 바꾸지 않았다.
+  `make check`는 4874 passed, 8 skipped. 맨 WSL에서는 `PYTHON`을 지정하지 않아도 `python3`(3.12)을 자동으로 쓴다.
+- 이미지 준비는 빌드 캐시가 있을 때 대상당 10초 안팎이었고, 처음 빌드는 더 걸린다(성능 측정이 아니다).
 
 **독립 재현(맥북, 2026-11-14).** 새 폴더에 받은 깨끗한 클론에서 README에 적힌 것만 따라, 기존 태그를 건드리지 않도록
 `IMAGE_TAG_SUFFIX`로 이미지가 하나도 없는 상태를 만든 뒤 `AUTO_PREPARE=1` 한 줄씩으로 네 대상 여덟 셀을 준비→실행했다.
 여덟 셀 모두 위 표와 같은 판정이었고(decompress 4.2.1은 이번에 4/5), 셀마다 `result.json`(엄격한 읽기와 입력 TAR
 해시 재대조 통과), 입력 TAR 5~6개, 원시 기록, 결과 파일만으로 다시 만든 것과 같은 `summary.md`가 생겼다. 이미지를
 직접 빌드하던 이전 절차(빌드 6줄 + 실행 4줄 + 결과마다 요약 명령)는 대상당 한 줄, 모두 4줄이 됐다. 이 맥에는 빌드
-캐시가 남아 있어 준비는 대상당 수 초였다(캐시 없는 새 기계는 더 걸린다). python 이미지는 이미 받아 둔 공식 태그를
+캐시가 남아 있어 준비는 대상당 몇 초였다. python 이미지는 이미 받아 둔 공식 태그를
 다시 태그했다.
 
 ### 이미지 자동 준비 (`AUTO_PREPARE=1`)
@@ -86,6 +88,8 @@ decompress는 맥북에서만 확인했다.
   빌드 캐시 없이 처음부터 빌드할 때 걸리는 시간은 재지 않았다.
 - **이 기능은 취약점 자동 발견도, C0/C1/C2 전체 검증도 아니다.** 고정 입력에 대한 C1/C2 관찰이다.
 - **docker가 도는 셸(macOS 터미널 또는 WSL 셸)에서 실행한다.** Dev Container 안에는 docker가 없다.
+- **`make`의 종료 상태는 실패면 언제나 2다.** 판정 코드(0/1/2/3)는 `make: *** … Error N`의 N이거나, 스크립트를 직접
+  불렀을 때의 종료 코드다(README 참고).
 - **호스트에 Python 3.12가 필요하다.** `PYTHON`을 주지 않으면 `python`, 없으면 `python3`을 쓰는데, macOS 기본
   `python3`(3.9)은 실행 전 점검 없이 ImportError로 멈춘다. macOS에서는 `PYTHON=python3.12`를 준다(WSL2 Ubuntu 24.04의
   `python3`은 3.12).

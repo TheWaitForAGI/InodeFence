@@ -31,6 +31,7 @@ builder.build_tar → disposable runtime → before snapshot
 | [mutation_scheduler.py](mutation_scheduler.py) | 재현 가능한 mutation operator 선택 (mutation 함수와 분리) |
 | [transition_campaign.py](transition_campaign.py) | transition v1 P0/P1/P2 in-memory composition (현재 demo 경로 아님) |
 | [campaign_export.py](campaign_export.py) | 완료된 결과의 manifest JSON / canonical step JSONL |
+| [target_result.py](target_result.py) | 대상별 실행 명령의 공통 결과 형식 `inodefence-target-result-v1`(대상·축 3개·실행 수·C0/C1/C2 판정·재현 입력 sha256·엔진 SHA, `demo run`). 대상별 로직 없음 |
 | [provenance.py](provenance.py) | 실행 전 source/environment/target/sentinel configuration 고정 |
 | [experiment_config.py](experiment_config.py) | strict JSON config / SHA-256 ID / seed-target binding |
 | [generator](generator/README.md) | explicit deterministic minimal_seed_corpus |

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Local replay of the CI container-integration job (.github/workflows/ci.yml).
 #
-# Usage: scripts/local_node_tar_smoke.sh [smoke|effect|demo|demo-historical|explore]
+# Usage: scripts/local_node_tar_smoke.sh [smoke|effect|demo|demo-historical|explore|replay]
 #   smoke  (default) validate, validate-node-image, validate-node-target, benign-node-smoke
 #   effect           validate-node-effect-producer
 #   demo             effect-demo: feedback loop on real node-tar, JSON copied to the host
@@ -13,6 +13,11 @@
 #                    registry image (host-prepared out of band; TAR_VERSION = resolved version,
 #                    EXPLORE_IMAGE default inodefence-node-tar-registry:$TAR_VERSION). Labelled
 #                    an exploratory, non-qualification run; evidence under target-explore/.
+#   replay           effect-replay-case: re-run ONE recorded case N times on the exact image it
+#                    was explored on (REPLAY_IMAGE = sha256:... id, never built here; REPLAY_INPUT
+#                    = absolute path of the one-line input from inodefence.case_replay). Requires
+#                    INODEFENCE_EVIDENCE_DIR (never the confirmatory-evidence tree). Driven by
+#                    `inodefence replay`; JSON + <name>.steps.jsonl (rounds so far) copied back.
 #
 # The real target runs only inside the trusted non-root Linux controller; this host
 # script only builds images, prepares that controller and delegates through
@@ -44,9 +49,9 @@ set -euo pipefail
 
 MODE="${1:-smoke}"
 case "$MODE" in
-  smoke | effect | demo | demo-historical | explore) ;;
+  smoke | effect | demo | demo-historical | explore | replay) ;;
   *)
-    echo "usage: $0 [smoke|effect|demo|demo-historical|explore]" >&2
+    echo "usage: $0 [smoke|effect|demo|demo-historical|explore|replay]" >&2
     exit 2
     ;;
 esac
@@ -106,6 +111,18 @@ elif [ "$MODE" = demo-historical ]; then
 elif [ "$MODE" = explore ]; then
   CONTROLLER_EVIDENCE="/tmp/inodefence-effect-explore-$LABEL.json"
   HOST_EVIDENCE="$EVIDENCE_DIR/target-explore/inodefence-effect-explore-$LABEL.json"
+elif [ "$MODE" = replay ]; then
+  # A replay re-runs a possibly violating input: never default into ~/inodefence-evidence.
+  : "${INODEFENCE_EVIDENCE_DIR:?replay requires INODEFENCE_EVIDENCE_DIR (outside the evidence tree)}"
+  # Checked here, before any build or controller: the exact image and the input are required.
+  : "${REPLAY_IMAGE:?set REPLAY_IMAGE to the exact image id (sha256:...) the case was explored on}"
+  : "${REPLAY_INPUT:?set REPLAY_INPUT to the absolute path of the one-line replay input}"
+  case "$REPLAY_INPUT" in
+    /*) ;;
+    *) echo "REPLAY_INPUT must be an absolute path (got: $REPLAY_INPUT)" >&2; exit 2 ;;
+  esac
+  CONTROLLER_EVIDENCE="/tmp/inodefence-case-replay-$LABEL.json"
+  HOST_EVIDENCE="$EVIDENCE_DIR/inodefence-case-replay-$LABEL.json"
 else
   CONTROLLER_EVIDENCE="/tmp/inodefence-node-smoke-$LABEL"
   HOST_EVIDENCE="$EVIDENCE_DIR/inodefence-node-smoke-$LABEL"
@@ -225,7 +242,7 @@ cleanup() {
   if [ "$controller_owned" -eq 1 ] && [ "$MODE" != effect ]; then
     for source in "$CONTROLLER_EVIDENCE" "${CONTROLLER_EVIDENCE%.json}.steps.jsonl"; do
       if [ "$source" != "$CONTROLLER_EVIDENCE" ] && [ "$MODE" != demo ] &&
-         [ "$MODE" != demo-historical ] && [ "$MODE" != explore ]; then
+         [ "$MODE" != demo-historical ] && [ "$MODE" != explore ] && [ "$MODE" != replay ]; then
         continue
       fi
       inspection=$(cleanup_dk 30 exec "$container_id" sh -c \
@@ -371,7 +388,7 @@ else
   dk build "${BUILD_FLAGS[@]}" -f "$REPO_ROOT/.devcontainer/Dockerfile" -t "$CONTROLLER_IMAGE" "$REPO_ROOT"
   dk build "${BUILD_FLAGS[@]}" -f "$REPO_ROOT/tools/container-helper/Dockerfile" -t "$HELPER_IMAGE" "$REPO_ROOT"
   # The historical effect image is prebuilt and frozen out of band; never build it here.
-  if [ "$MODE" != demo-historical ] && [ "$MODE" != explore ]; then
+  if [ "$MODE" != demo-historical ] && [ "$MODE" != explore ] && [ "$MODE" != replay ]; then
     dk build "${BUILD_FLAGS[@]}" -f "$REPO_ROOT/tools/node-tar/Dockerfile" -t "$NODE_IMAGE" "$REPO_ROOT"
   fi
 fi
@@ -407,7 +424,7 @@ dk exec "$CONTROLLER" python -m pip install --quiet --disable-pip-version-check 
 dk exec --workdir / "$CONTROLLER" git config --global --add safe.directory /workspaces/InodeFence
 
 IF_HELPER_IMAGE="$(dk image inspect "$HELPER_IMAGE" --format '{{.Id}}')"
-if [ "$MODE" != demo-historical ] && [ "$MODE" != explore ]; then
+if [ "$MODE" != demo-historical ] && [ "$MODE" != explore ] && [ "$MODE" != replay ]; then
   IF_NODE_IMAGE="$(dk image inspect "$NODE_IMAGE" --format '{{.Id}}')"
 fi
 
@@ -431,6 +448,19 @@ if [ "$MODE" = explore ]; then
   [ -n "${DEMO_ENGINE_COMMIT:-}" ] && DEMO_ARGS+=(--engine-commit "$DEMO_ENGINE_COMMIT")
   host --image "$IF_EXPLORE_IMAGE" --tar-version "$TAR_VERSION" --call-log "$HOST_CALL_LOG" \
     --evidence "$CONTROLLER_EVIDENCE" ${DEMO_ARGS[@]+"${DEMO_ARGS[@]}"} effect-demo-explore
+  exit 0
+fi
+
+if [ "$MODE" = replay ]; then
+  step "effect-replay-case"
+  # The exact image only: a tag or another id would not be the same conditions.
+  IF_REPLAY_IMAGE="$(dk image inspect "$REPLAY_IMAGE" --format '{{.Id}}')"
+  if [ "$IF_REPLAY_IMAGE" != "$REPLAY_IMAGE" ]; then
+    echo "REPLAY_IMAGE $REPLAY_IMAGE resolves to $IF_REPLAY_IMAGE, not the same image id" >&2
+    exit 2
+  fi
+  host --image "$IF_REPLAY_IMAGE" --replay-input "$REPLAY_INPUT" \
+    --evidence "$CONTROLLER_EVIDENCE" effect-replay-case
   exit 0
 fi
 

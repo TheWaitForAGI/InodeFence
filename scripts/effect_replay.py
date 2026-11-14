@@ -162,9 +162,10 @@ def replay_case_report(
 
 
 def replay_rounds_path(evidence: Path) -> Path:
-    """Where the controller journals each finished round: ``<name>.rounds.jsonl`` beside the
-    report, like the other effect modes' ``<name>.steps.jsonl``."""
-    return evidence.with_suffix(".rounds.jsonl")
+    """Where the controller journals each finished round: ``<name>.steps.jsonl`` beside the
+    report -- the same name and meaning ("finished so far, kept even on abort") as the other
+    effect modes, so the smoke script's existing copy-out brings it to the host unchanged."""
+    return evidence.with_suffix(".steps.jsonl")
 
 
 def run_case_replay(

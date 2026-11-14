@@ -3,9 +3,15 @@
 import random
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import ClassVar
+from typing import ClassVar, overload
 
 from inodefence.campaign import CampaignOrigin
+from inodefence.campaign_hooks import (
+    CampaignHooks,
+    LightCampaignResult,
+    ensure_no_unwired_hooks,
+    resolve_on_step,
+)
 from inodefence.effect_scheduler import (
     EffectAdaptiveMutationScheduler,
     EffectMutationSchedulerEvidence,
@@ -163,18 +169,40 @@ def _observed_name_segments(
     return names
 
 
+@overload
 def run_effect_campaign(
     initial_cases: Sequence[ArchiveCase],
     produce_result: EffectResultProducer,
     config: EffectCampaignConfig,
     on_step: EffectStepObserver | None = None,
-) -> EffectCampaignResult:
+    hooks: None = None,
+) -> EffectCampaignResult: ...
+@overload
+def run_effect_campaign(
+    initial_cases: Sequence[ArchiveCase],
+    produce_result: EffectResultProducer,
+    config: EffectCampaignConfig,
+    on_step: EffectStepObserver | None = None,
+    *,
+    hooks: CampaignHooks,
+) -> EffectCampaignResult | LightCampaignResult: ...
+def run_effect_campaign(
+    initial_cases: Sequence[ArchiveCase],
+    produce_result: EffectResultProducer,
+    config: EffectCampaignConfig,
+    on_step: EffectStepObserver | None = None,
+    hooks: CampaignHooks | None = None,
+) -> EffectCampaignResult | LightCampaignResult:
     """Exercise v2 policy causality without claiming a qualified native producer.
 
     `on_step` receives each completed step right after feedback and scheduler
     bookkeeping, so a caller can persist the loop record incrementally; an
     aborting producer then leaves every finished step behind. It cannot change
     the loop: the step is already appended and the result is unaffected.
+
+    `hooks` (``CampaignHooks``) optionally streams steps instead of retaining them
+    (``retain_steps=False`` -> a ``LightCampaignResult``), stops early (``should_stop``)
+    and checkpoints; with ``hooks`` ``None`` the result and order are byte-identical to before.
     """
     if not callable(produce_result) or not isinstance(config, EffectCampaignConfig):
         raise ValueError("effect campaign requires a producer and typed config")
@@ -188,6 +216,12 @@ def run_effect_campaign(
     initial_ids = tuple(case.case_id for case in cases)
     if len(set(initial_ids)) != len(initial_ids):
         raise ValueError("initial cases contain duplicate case IDs")
+    ensure_no_unwired_hooks(hooks)
+    effective_on_step = resolve_on_step(hooks, on_step)
+    should_stop = hooks.should_stop if hooks is not None else None
+    retain = hooks is None or hooks.retain_steps
+    executed = 0
+    stop_reason: str | None = None
 
     state = EffectSearchState(cases, config.search_policy)
     steps: list[EffectCampaignStep] = []
@@ -230,11 +264,12 @@ def run_effect_campaign(
         attempt: MutationAttempt | None = None,
         selection: MutationSelection | None = None,
     ) -> None:
+        nonlocal executed
         result = produce_result(case)
         if not isinstance(result, EffectRunResult) or result.base_result.case != case:
             raise ValueError("producer must return EffectRunResult for the requested case")
         if fixed_baseline:
-            if not steps:
+            if executed == 0:
                 observed_names.update(_observed_name_segments(result, before_only=True))
         elif state_aware:
             observed_names.update(
@@ -252,7 +287,7 @@ def run_effect_campaign(
                 decision.new_violation_fingerprints,
             )
         step = EffectCampaignStep(
-            len(steps),
+            executed,
             origin,
             parent,
             result,
@@ -260,15 +295,22 @@ def run_effect_campaign(
             attempt,
             scheduler_evidence,
         )
-        steps.append(step)
-        if on_step is not None:
-            on_step(step)
+        if retain:
+            steps.append(step)
+        executed += 1
+        if effective_on_step is not None:
+            effective_on_step(step)
 
     for case in cases:
         observe(case, CampaignOrigin.SEED, None)
 
     rng = random.Random(config.random_seed)
-    while len(steps) < config.execution_budget:
+    while executed < config.execution_budget:
+        if should_stop is not None:
+            reason = should_stop(executed)
+            if reason is not None:
+                stop_reason = reason
+                break
         parent = state.select_case(rng)
         selection = scheduler.choose_operator(operator_ids(config.mutation_policy), rng)
         attempt = apply_operator(
@@ -286,10 +328,15 @@ def run_effect_campaign(
             selection,
         )
 
+    retained = tuple(entry.case.case_id for entry in state.entries)
+    # The full result type requires a complete run (len(steps) == budget), so a non-retaining
+    # run OR an early stop returns the lightweight aggregate instead.
+    if not retain or stop_reason is not None:
+        return LightCampaignResult(executed, config.execution_budget, stop_reason, retained)
     return EffectCampaignResult(
         config,
         initial_ids,
         tuple(steps),
         state.stats,
-        tuple(entry.case.case_id for entry in state.entries),
+        retained,
     )

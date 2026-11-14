@@ -39,7 +39,12 @@ DEFAULT_OUT = Path.home() / "inodefence-explore"
 
 
 def prepare_target_image(
-    adapter: TargetAdapter, target: str, spec: str, *, image_tag_suffix: str
+    adapter: TargetAdapter,
+    target: str,
+    spec: str,
+    *,
+    image_tag_suffix: str,
+    filters: list[str] | None = None,
 ) -> PreparedTargetImage:
     """Resolve the version and reuse or prepare its image, via the common prepare layer.
 
@@ -48,7 +53,7 @@ def prepare_target_image(
     versions = adapter.resolve([spec]) if adapter.resolve is not None else [spec]
     if len(versions) != 1:
         raise ValueError(f"explore takes one version, got {versions!r}")
-    (cell,) = adapter.cells(versions, [])
+    (cell,) = adapter.cells(versions, filters or [])
     cell = with_tag_suffix(cell, image_tag_suffix)
     if cell.image_ref is None:
         raise ValueError(f"{target} {spec}: no image for this version")
@@ -66,6 +71,15 @@ def prepare_target_image(
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Discover --target first with a help-free parser so it does NOT consume -h/--help: the real
+    # parser below is built with the target's declared options already added, so --help lists them
+    # and --dry-run can print them (the common driver stays target-agnostic -- it only reads the
+    # adapter's declarations).
+    target_parser = argparse.ArgumentParser(add_help=False)
+    target_parser.add_argument("--target", default="node-tar", choices=sorted(TARGETS))
+    pre, _ = target_parser.parse_known_args(argv)
+    adapter = load_adapter(pre.target)
+
     parser = argparse.ArgumentParser(
         description="prepare an extractor version and run the existing effect loop on it",
         epilog=__doc__,
@@ -87,9 +101,26 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--dry-run", action="store_true", help="print the plan; prepare/run nothing"
     )
+    # The target's declared options become the `filters` passed to `cells`, in declaration order.
+    # Exploration runs one configuration, so it takes one value per option: a multi-value option
+    # (``single=False``, a target-run concept) has no meaning here and is refused up front.
+    for opt in adapter.options:
+        if not opt.single:
+            parser.error(
+                f"--{opt.name} is declared multi-value (target-run only); "
+                "exploration takes one value per option"
+            )
+        parser.add_argument(
+            f"--{opt.name}", required=opt.required, choices=opt.choices, help=opt.description
+        )
     args = parser.parse_args(argv)
 
-    adapter = load_adapter(args.target)
+    target_options = {
+        opt.name: getattr(args, opt.name.replace("-", "_"))
+        for opt in adapter.options
+        if getattr(args, opt.name.replace("-", "_")) is not None
+    }
+
     if adapter.explore is None:
         print(
             f"TARGET-EXPLORE: exploration is not supported for {args.target} yet", file=sys.stderr
@@ -105,6 +136,7 @@ def main(argv: list[str] | None = None) -> int:
                     "seed": args.seed,
                     "budget": args.budget,
                     "out": str(args.out),
+                    "target_options": target_options,
                     "note": "dry-run: nothing resolved, prepared, run or written",
                 },
                 indent=2,
@@ -115,9 +147,14 @@ def main(argv: list[str] | None = None) -> int:
     if not args.auto_prepare:
         parser.error("pass AUTO_PREPARE=1 (--auto-prepare) to prepare the image and run")
 
+    filters = [target_options[opt.name] for opt in adapter.options if opt.name in target_options]
     try:
         prepared = prepare_target_image(
-            adapter, args.target, args.version, image_tag_suffix=args.image_tag_suffix
+            adapter,
+            args.target,
+            args.version,
+            image_tag_suffix=args.image_tag_suffix,
+            filters=filters,
         )
         outcome = adapter.explore(
             prepared,
@@ -126,6 +163,7 @@ def main(argv: list[str] | None = None) -> int:
                 seed=args.seed,
                 out=args.out,
                 image_tag_suffix=args.image_tag_suffix,
+                target_options=target_options,
             ),
         )
     except ValueError as error:

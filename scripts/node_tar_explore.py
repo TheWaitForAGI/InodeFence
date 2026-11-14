@@ -13,30 +13,16 @@ sinks are reused unchanged across targets.
 
 from __future__ import annotations
 
-import base64
 import json
 import os
 import subprocess
 import sys
-from hashlib import sha256
 from pathlib import Path
 
-from scripts.run_target import (
-    ExploreOptions,
-    ExploreOutcome,
-    PreparedTargetImage,
-    engine_provenance,
-)
+from scripts.explore_result import build_campaign_result, write_result
+from scripts.run_target import ExploreOptions, ExploreOutcome, PreparedTargetImage
 
 from inodefence.generator import minimal_seed_corpus
-from inodefence.target_result import (
-    CampaignInfo,
-    CaseVerdict,
-    ResultMode,
-    TargetAxes,
-    TargetResult,
-    repro_input,
-)
 from inodefence.target_result_summary import write_cell_summaries
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -84,61 +70,6 @@ def run_controller(
     if not report.is_file():
         raise RuntimeError(f"controller run produced no report at {report}")
     return report
-
-
-def build_campaign_result(
-    report: dict, prepared: PreparedTargetImage, *, seed: int, budget: int
-) -> tuple[TargetResult, dict[str, bytes]]:
-    """Convert the loop report into the common campaign result, plus the violating TARs to save.
-
-    ``cases[]`` lists every run with its C0/C1/C2 verdict (the schema ties
-    ``runs_to_first_violation`` and ``budget`` to the run count). Only violating cases get a saved
-    input; ``repro_inputs`` is that subset.
-    """
-    cases = tuple(
-        CaseVerdict(f"step-{r['run_index']}", r["outcome"], r["c0"], r["c1"], r["c2"])
-        for r in report.get("case_records", [])
-    )
-    repro = []
-    tar_files: dict[str, bytes] = {}
-    first_violation: int | None = None
-    for item in report.get("violation_inputs", []):
-        run_index = item["run_index"]
-        tar = base64.b64decode(item["tar_b64"])
-        if sha256(tar).hexdigest() != item["tar_sha256"]:
-            raise ValueError(f"violation input step-{run_index} failed its SHA-256 check")
-        tar_path = f"inputs/step-{run_index}.tar"
-        tar_files[tar_path] = tar
-        repro.append(repro_input(f"step-{run_index}", tar_path, tar))
-        rank = int(run_index) + 1
-        first_violation = rank if first_violation is None else min(first_violation, rank)
-    base = engine_provenance(prepared.image_ref)
-    provenance = type(base)(
-        base.engine_sha, base.engine_dirty, prepared.image_ref, prepared.image_id
-    )
-    result = TargetResult(
-        target="node-tar",
-        axes=TargetAxes(target_version=prepared.version),
-        mode=ResultMode.CAMPAIGN,
-        observed_contracts=OBSERVED_CONTRACTS,
-        cases=cases,
-        repro_inputs=tuple(repro),
-        provenance=provenance,
-        campaign=CampaignInfo(seed=seed, budget=budget, runs_to_first_violation=first_violation),
-    )
-    return result, tar_files
-
-
-def write_result(out_dir: Path, result: TargetResult, tar_files: dict[str, bytes]) -> Path:
-    """Write result.json and the violating TARs under ``out_dir``; refuse to overwrite."""
-    result_path = out_dir / "result.json"
-    if result_path.exists():
-        raise FileExistsError(f"refusing to overwrite {result_path}")
-    (out_dir / "inputs").mkdir(parents=True, exist_ok=True)
-    for tar_path, data in tar_files.items():
-        (out_dir / tar_path).write_bytes(data)
-    result_path.write_text(result.dumps(), encoding="utf-8")
-    return result_path
 
 
 def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOutcome:

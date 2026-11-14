@@ -169,7 +169,11 @@ def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOu
     )
     report = json.loads(report_path.read_text(encoding="utf-8"))
     result, tar_files = build_campaign_result(
-        report, prepared, seed=options.seed, budget=options.budget
+        report,
+        prepared,
+        seed=options.seed,
+        budget=options.budget,
+        max_unjudged_ratio=options.max_unjudged_ratio,
     )
     result_path = write_result(report_path.parent / f"{run_id}-result", result, tar_files)
     try:  # the result is written; a summary failure must not lose it

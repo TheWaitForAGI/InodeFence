@@ -147,6 +147,8 @@ def cmd_explore(args: argparse.Namespace) -> int:
         "--out",
         str(args.out),
     ]
+    if args.max_unjudged_ratio is not None:
+        argv += ["--max-unjudged-ratio", str(args.max_unjudged_ratio)]
     if args.auto_prepare:
         argv.append("--auto-prepare")
     if args.image_tag_suffix:
@@ -252,6 +254,12 @@ def build_parser() -> argparse.ArgumentParser:
     explore.add_argument("--version", required=True, help="latest or an exact version")
     explore.add_argument("--budget", type=int, default=20)
     explore.add_argument("--seed", type=int, default=123)
+    explore.add_argument(
+        "--max-unjudged-ratio",
+        type=float,
+        default=None,
+        help="ERROR ceiling for the un-judged ratio (default: the driver's)",
+    )
     explore.add_argument("--auto-prepare", action="store_true")
     explore.add_argument("--image-tag-suffix", default="")
     explore.add_argument("--out", type=Path, default=DEFAULT_EXPLORE_OUT)

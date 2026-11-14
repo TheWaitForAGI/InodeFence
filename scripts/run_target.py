@@ -159,6 +159,16 @@ class PreparedTargetImage:
     exploratory: bool  # True: registry-prepared (no committed recipe)
 
 
+# The ceiling an exploration's un-judged ratio is held to: above it the verdict is ERROR, not a
+# quiet PASS (an un-judged step is one the oracle never evaluated -- a run error or a missing
+# observation, not a rejection/crash/timeout the oracle judged). 0.2 is a generous default: a
+# healthy run is ~0 un-judged, so this tolerates occasional infra flakiness while still catching a
+# systemic observation failure that would otherwise read as PASS. Tighten it with
+# ``--max-unjudged-ratio`` for a stricter run; the chosen value is recorded in the result so the
+# verdict is reproducible from the file alone.
+DEFAULT_MAX_UNJUDGED_RATIO = 0.2
+
+
 @dataclass(frozen=True, slots=True)
 class ExploreOptions:
     """Target-agnostic exploration options. Later PRs extend this (search / mutation policy, stop
@@ -171,6 +181,8 @@ class ExploreOptions:
     image_tag_suffix: str = ""
     #: target-specific option values, by declared option name (see ``TargetAdapter.options``).
     target_options: dict[str, str] = field(default_factory=dict)
+    #: ERROR ceiling for the un-judged ratio (see ``DEFAULT_MAX_UNJUDGED_RATIO``).
+    max_unjudged_ratio: float = DEFAULT_MAX_UNJUDGED_RATIO
 
 
 @dataclass(frozen=True, slots=True)

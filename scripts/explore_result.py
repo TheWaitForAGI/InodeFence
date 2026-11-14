@@ -12,7 +12,11 @@ import base64
 from hashlib import sha256
 from pathlib import Path
 
-from scripts.run_target import PreparedTargetImage, engine_provenance
+from scripts.run_target import (
+    DEFAULT_MAX_UNJUDGED_RATIO,
+    PreparedTargetImage,
+    engine_provenance,
+)
 
 from inodefence.target_result import (
     CampaignInfo,
@@ -27,7 +31,12 @@ OBSERVED_CONTRACTS = ("C0", "C1", "C2")  # the effect path takes a full before/a
 
 
 def build_campaign_result(
-    report: dict, prepared: PreparedTargetImage, *, seed: int, budget: int
+    report: dict,
+    prepared: PreparedTargetImage,
+    *,
+    seed: int,
+    budget: int,
+    max_unjudged_ratio: float | None = DEFAULT_MAX_UNJUDGED_RATIO,
 ) -> tuple[TargetResult, dict[str, bytes]]:
     """Convert the loop report into the common campaign result, plus the violating TARs to save.
 
@@ -82,9 +91,15 @@ def build_campaign_result(
             errors=aggregate.get("errors"),
             unjudged_steps=aggregate.get("unjudged_steps"),
             terminations=aggregate.get("terminations"),
+            max_unjudged_ratio=max_unjudged_ratio,
         )
     else:
-        campaign = CampaignInfo(seed=seed, budget=budget, runs_to_first_violation=first_violation)
+        campaign = CampaignInfo(
+            seed=seed,
+            budget=budget,
+            runs_to_first_violation=first_violation,
+            max_unjudged_ratio=max_unjudged_ratio,
+        )
     result = TargetResult(
         target=prepared.target,
         axes=TargetAxes(target_version=prepared.version),

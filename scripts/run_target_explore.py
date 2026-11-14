@@ -25,6 +25,7 @@ import sys
 from pathlib import Path
 
 from scripts.run_target import (
+    DEFAULT_MAX_UNJUDGED_RATIO,
     TARGETS,
     ExploreOptions,
     PreparedTargetImage,
@@ -91,6 +92,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--version", required=True, help="latest or an exact version")
     parser.add_argument("--budget", type=int, default=20)
     parser.add_argument("--seed", type=int, default=123)
+    parser.add_argument(
+        "--max-unjudged-ratio",
+        type=float,
+        default=DEFAULT_MAX_UNJUDGED_RATIO,
+        help="ERROR ceiling for the un-judged ratio (above it the verdict is ERROR, not PASS)",
+    )
     parser.add_argument(
         "--out", type=Path, default=DEFAULT_OUT, help="output dir (outside the repo)"
     )
@@ -175,6 +182,7 @@ def main(argv: list[str] | None = None) -> int:
                 out=args.out,
                 image_tag_suffix=args.image_tag_suffix,
                 target_options=target_options,
+                max_unjudged_ratio=args.max_unjudged_ratio,
             ),
         )
     except ValueError as error:

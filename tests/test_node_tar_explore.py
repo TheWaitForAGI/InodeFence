@@ -150,6 +150,33 @@ def test_all_unjudged_campaign_is_error_not_pass() -> None:
     assert result.verdict is Verdict.ERROR
 
 
+def test_unjudged_ratio_above_the_ceiling_is_error_not_pass() -> None:
+    # Not every run un-judged (that is always ERROR), but enough that the PASS is untrustworthy:
+    # 2 of 5 un-judged = 0.4, above the 0.2 default ceiling -> ERROR, not a quiet PASS. The ceiling
+    # is recorded on the campaign so the verdict is reproducible from the file.
+    report = {
+        "demo_report_schema": 4,
+        "streaming": True,
+        "aggregate": {
+            "runs_executed": 5,
+            "terminations": {"success": 5},
+            "unjudged_steps": 2,
+            "errors": 0,
+        },
+        "violation_cases": [],
+        "violation_inputs": [],
+    }
+    result, _ = nte.build_campaign_result(report, _prepared(), seed=1, budget=5)
+    assert result.campaign is not None and result.campaign.max_unjudged_ratio == 0.2
+    assert result.unjudged_ratio == 0.4
+    assert result.verdict is Verdict.ERROR
+    # A looser ceiling lets the same run read PASS (the value is the operator's choice, recorded).
+    result2, _ = nte.build_campaign_result(
+        report, _prepared(), seed=1, budget=5, max_unjudged_ratio=0.5
+    )
+    assert result2.verdict is Verdict.PASS
+
+
 def test_rejected_and_timed_out_terminations_reach_the_case_verdict() -> None:
     # termination is carried through the converter onto each CaseVerdict (judged, not errored).
     report = {

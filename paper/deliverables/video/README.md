@@ -1,6 +1,6 @@
 # 소개 영상 파이프라인
 
-녹음 대본 블록 하나가 영상 한 구간이다. 블록 순서·목표 길이·화면은 콘티 [`../demo-video-script.md`](../demo-video-script.md)(정리 단계 B)와 `build_video.py`의 `PLAN`·`SLIDES`가 같다. 끝에 지원 문구 카드(4초)를 붙인다. 지원 문구는 공개 저장소에 두지 않고, 저장소 밖 `end-note.txt`에서 `--end-note`로 넘긴다.
+녹음 대본 블록 하나가 영상 한 구간이다. 블록 순서·목표 길이·화면은 콘티 [`../demo-video-script.md`](../demo-video-script.md)(정리 단계 B)와 `build_video.py`의 `PLAN`·`SLIDES`가 같다. 끝에 지원 문구 카드(4초)를 붙인다. 지원 문구는 공개 저장소에 두지 않고, 저장소 밖 파일에서 `--end-note`로 넘긴다.
 
 ## 실행
 

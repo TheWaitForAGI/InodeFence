@@ -25,7 +25,8 @@
 # same-host determinism only, not a cross-platform bit-for-bit claim.
 #
 # Overrides: INODEFENCE_DOCKER_CONTEXT (default: `docker context show`),
-# PYTHON (default: python3.12), INODEFENCE_EVIDENCE_DIR (default: ~/inodefence-evidence).
+# PYTHON (default: python3.12), INODEFENCE_EVIDENCE_DIR (default: ~/inodefence-evidence;
+# explore mode defaults to ~/inodefence-explore, outside the confirmatory-evidence tree).
 # demo only: DEMO_POLICY, DEMO_MUTATION_POLICY, DEMO_SEED, DEMO_BUDGET (controller defaults
 # P2 adaptive, M1, 123, 20; budget is capped at 100 in code).
 # demo-historical only: TAR_VERSION (required, 7.5.2|7.5.3), HISTORICAL_IMAGE (default
@@ -77,6 +78,12 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PYTHON="${PYTHON:-python3.12}"
 CONTEXT="${INODEFENCE_DOCKER_CONTEXT:-$(docker context show)}"
 EVIDENCE_DIR="${INODEFENCE_EVIDENCE_DIR:-$HOME/inodefence-evidence}"
+# explore evidence must not land inside the confirmatory-evidence tree; its default is a
+# separate folder (other modes keep ~/inodefence-evidence). An explicit
+# INODEFENCE_EVIDENCE_DIR still wins for every mode.
+if [ "$MODE" = explore ] && [ -z "${INODEFENCE_EVIDENCE_DIR:-}" ]; then
+  EVIDENCE_DIR="$HOME/inodefence-explore"
+fi
 
 CONTROLLER_IMAGE=inodefence-controller:local
 HELPER_IMAGE=inodefence-helper:local

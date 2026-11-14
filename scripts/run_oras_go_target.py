@@ -324,6 +324,13 @@ def ensure_image(spec: str, *, image_tag_suffix: str = "") -> PreparedOrasGo:
     return PreparedOrasGo(spec, version, ref, ready[ref], cell.exploratory)
 
 
+def _explore_hook(prepared, options):  # type: ignore[no-untyped-def]
+    """oras-go exploration (lazy import so the fixture-regression path has no extra deps)."""
+    from scripts.oras_go_explore import explore
+
+    return explore(prepared, options)
+
+
 ADAPTER = TargetAdapter(
     mode=ResultMode.FIXTURE_REGRESSION,
     observed_contracts=("C1", "C2"),
@@ -333,4 +340,5 @@ ADAPTER = TargetAdapter(
     prepare=_prepare,
     describe=_describe,
     resolve=_resolve,
+    explore=_explore_hook,
 )

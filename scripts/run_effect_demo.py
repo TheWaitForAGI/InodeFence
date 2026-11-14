@@ -15,14 +15,17 @@ from collections.abc import Callable, Mapping
 from hashlib import sha256
 from pathlib import Path, PurePosixPath
 from time import perf_counter
+from typing import cast
 
 from inodefence.builder import build_tar
+from inodefence.campaign_hooks import CampaignHooks, LightCampaignResult
 from inodefence.effect_campaign import (
     EffectCampaignConfig,
     EffectCampaignResult,
     run_effect_campaign,
 )
 from inodefence.effect_demo import (
+    DEMO_REPORT_SCHEMA,
     EffectStepReporter,
     effect_campaign_report,
     render_effect_campaign_report,
@@ -581,6 +584,7 @@ def exploration_demo_report(
     requested_spec: str | None = None,
     live_dir: Path | None = None,
     engine_commit: str | None = None,
+    stream: bool = True,
 ) -> dict[str, object]:
     """Run the state-aware effect loop on an arbitrary caller-prepared node-tar image.
 
@@ -643,6 +647,11 @@ def exploration_demo_report(
         )
     checks: list[dict[str, object]] = []
     timing: list[dict[str, object]] = []
+    # Streaming (the explore default) keeps memory O(1) in the run count: the producer drops the
+    # per-case check/timing (it uses ``run_counter`` for the index instead of ``len(checks)``), the
+    # loop retains no steps, and the report below carries only aggregate counts plus the violating
+    # cases. Streaming off reproduces the small-budget shape (every case listed) for a short run.
+    run_counter = [0]
     base_produce = _native_effect_producer(
         target,
         sentinels,
@@ -650,15 +659,21 @@ def exploration_demo_report(
         checks=checks,
         timing=timing,
         observer_integrity_continue=observer_integrity_continue,
+        run_counter=run_counter if stream else None,
     )
-    # Keep the input of every case the oracle flags as a violation so a maintainer can
-    # reproduce it off-repo; only violating cases are saved (a large budget makes keeping
-    # every case's TAR wasteful). The base producer, loop, feedback and oracle are unchanged.
+    # Keep the input of every case the oracle flags as a violation so a maintainer can reproduce it
+    # off-repo; only violating cases are saved (a large budget makes keeping every case's TAR
+    # wasteful). ``case_records`` lists every case only when streaming is off; when on, only the
+    # aggregate counters and the violating cases are kept. The loop/feedback/oracle are unchanged.
     case_records: list[dict[str, object]] = []
+    violation_cases: list[dict[str, object]] = []
     violation_inputs: list[dict[str, object]] = []
+    terminations: Counter[str] = Counter()
+    unjudged_steps = 0
 
     def produce(case: ArchiveCase) -> EffectRunResult:
-        run_index = len(checks)
+        nonlocal unjudged_steps
+        run_index = run_counter[0] if stream else len(checks)
         result = base_produce(case)
         base = result.base_result
         # Two independent axes (inodefence-target-result contract). Judgment: the oracle ran on the
@@ -677,10 +692,19 @@ def exploration_demo_report(
             "termination": base.execution.status.value,
             "observation_complete": bool(result.trace.integrity_valid),
         }
-        case_records.append(record)
-        if record["c0"] or record["c1"] or record["c2"]:
+        # Aggregates kept in O(1) whether or not every case is listed below.
+        terminations[str(record["termination"])] += 1
+        if (record["c0"], record["c1"], record["c2"]) == (None, None, None):
+            unjudged_steps += 1
+        is_violation = bool(record["c0"] or record["c1"] or record["c2"])
+        if stream:
+            if is_violation:
+                violation_cases.append(record)  # streaming lists only the violating cases
+        else:
+            case_records.append(record)  # streaming off: every case, like the small-budget shape
+        if is_violation:
             tar = build_tar(case)
-            # termination and observation_complete live on the case record above; the converter's
+            # termination and observation_complete live on the case record; the converter's
             # CaseVerdict.needs_repro_check flags a violation from a non-clean or incomplete run.
             violation_inputs.append(
                 {
@@ -704,7 +728,20 @@ def exploration_demo_report(
 
     started = perf_counter()
     try:
-        result = run_effect_campaign(minimal_seed_corpus(), produce, config, on_step=record_step)
+        # Streaming retains no steps, so memory stays O(1) in the run count; the report is then
+        # built from the aggregate counters, not from ``result.steps``. Streaming off keeps today's
+        # full per-step result for a short run.
+        if stream:
+            result = run_effect_campaign(
+                minimal_seed_corpus(),
+                produce,
+                config,
+                hooks=CampaignHooks(on_step=record_step, retain_steps=False),
+            )
+        else:
+            result = run_effect_campaign(
+                minimal_seed_corpus(), produce, config, on_step=record_step
+            )
     except KeyboardInterrupt as error:
         if recorder is not None:
             recorder.close(state="stopped", stop_reason=repr(error))
@@ -717,11 +754,36 @@ def exploration_demo_report(
         if recorder is not None:
             recorder.close(state="finished")
     total = perf_counter() - started
-    report = effect_campaign_report(result, "native")
+    if stream:
+        # retain_steps=False returns the lightweight result (aggregate counts, no steps).
+        light = cast(LightCampaignResult, result)
+        # Aggregate + violating cases only (the result's main off-report home for a large run's
+        # violation inputs is the live folder; ``violation_inputs`` here still carries the TARs).
+        report = {
+            "demo_report_schema": DEMO_REPORT_SCHEMA,
+            "producer": "native",
+            "retained_case_ids": list(light.retained_case_ids),
+            "aggregate": {
+                "runs_executed": light.executed,
+                "terminations": dict(terminations),
+                "unjudged_steps": unjudged_steps,
+                "errors": 0,  # run_error is the abort path (NativeDemoAborted), not a case here
+            },
+            "violation_cases": violation_cases,
+        }
+    else:
+        full = cast(EffectCampaignResult, result)  # on_step path keeps the full result
+        report = effect_campaign_report(full, "native")
+        report.update(
+            native_checks=checks,
+            oracle_detected_events=_historical_oracle_events(full),
+            case_records=case_records,
+        )
     report.update(
         label=EXPLORATION_LABEL,
         mode="exploration",
         qualification=False,
+        streaming=stream,
         observer_integrity_policy="invalid-continue" if observer_integrity_continue else "stop",
         vocabulary_mode=vocab_mode,
         node_tar_version=target.tar_version,
@@ -729,10 +791,7 @@ def exploration_demo_report(
         requested_spec=tar_version if requested_spec is None else requested_spec,
         node_version=target.node_version,
         image_id=image_id,
-        native_checks=checks,
-        oracle_detected_events=_historical_oracle_events(result),
         timing={"total_seconds": total, "per_case": timing},
-        case_records=case_records,
         violation_inputs=violation_inputs,
     )
     apply_sentinel_set_record(report, sentinel_set)
@@ -829,16 +888,23 @@ def _native_effect_producer(
     checks: list[dict[str, object]],
     timing: list[dict[str, object]],
     observer_integrity_continue: bool,
+    run_counter: list[int] | None = None,
 ) -> Callable[[ArchiveCase], EffectRunResult]:
     """Per-case producer shared by both node-tar effect demos (historical and exploration).
 
-    Runs the case, checks evidence integrity, appends the native check and per-case timing to
-    the caller's ``checks``/``timing`` lists, and returns the result or raises
+    Runs the case, checks evidence integrity, and returns the result or raises
     ``NativeDemoAborted``. This is the producer native_demo_report uses (historical_demo_report
-    keeps an equivalent inline copy); the loop, feedback, oracle and observer are unchanged."""
+    keeps an equivalent inline copy); the loop, feedback, oracle and observer are unchanged.
+
+    ``run_counter`` is the streaming escape hatch: when ``None`` (the demo/historical default) the
+    case index is ``len(checks)`` and each case's native check and timing are appended to the
+    caller's ``checks``/``timing`` lists -- byte-identical to before. When a one-element counter is
+    passed (exploration streaming), the index comes from it instead and the per-case check/timing
+    are NOT retained, so memory does not grow with the run count; the integrity decision below still
+    uses the check locally."""
 
     def produce(case: ArchiveCase) -> EffectRunResult:
-        index = len(checks)
+        index = run_counter[0] if run_counter is not None else len(checks)
         started = perf_counter()
         try:
             run = _run_native_case(case, target, sentinels, stall_recovery, index)
@@ -852,14 +918,17 @@ def _native_effect_producer(
                 case_shape=case_shape(case),
             ) from error
         check = _native_check(case, run.result, run.controller_flush_verified, run.transport_error)
-        checks.append(check)
-        timing.append(
-            {
-                "case_id": case.case_id,
-                "wall_seconds": perf_counter() - started,
-                "target_seconds": run.result.base_result.execution.duration_seconds,
-            }
-        )
+        if run_counter is None:
+            checks.append(check)
+            timing.append(
+                {
+                    "case_id": case.case_id,
+                    "wall_seconds": perf_counter() - started,
+                    "target_seconds": run.result.base_result.execution.duration_seconds,
+                }
+            )
+        else:
+            run_counter[0] += 1
         if run.result.base_result.execution.status == ExecutionStatus.SUCCESS and not (
             check["integrity_valid"]
             and run.result.trace.completeness == EffectStreamCompleteness.COMPLETE

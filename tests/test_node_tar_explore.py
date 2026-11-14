@@ -223,3 +223,49 @@ def test_run_controller_sandbox_env_is_overridable(
         _prepared(), out=tmp_path, run_id="rid", budget=20, seed=123, python="x", runner=fake_runner
     )
     assert captured["env"]["DEMO_SENTINEL_COUNT"] == "3"  # operator override wins
+
+
+def test_streaming_aggregate_and_per_case_reports_agree() -> None:
+    # The same run two ways -- per-case (streaming off) and aggregate + violations (streaming on) --
+    # builds to the same verdict, run count and violation set (orchestrator's parity requirement).
+    cr = lambda i, c1, term: {  # noqa: E731
+        "run_index": i, "outcome": "judged", "c0": False, "c1": c1, "c2": False,
+        "termination": term, "observation_complete": True,
+    }  # fmt: skip
+    vin = [
+        {
+            "run_index": 2,
+            "tar_sha256": sha256(TAR).hexdigest(),
+            "tar_b64": base64.b64encode(TAR).decode(),
+        }
+    ]
+    per_case = {
+        "demo_report_schema": 4,
+        "case_records": [
+            cr(0, False, "success"),
+            cr(1, False, "rejected"),
+            cr(2, True, "success"),
+            cr(3, False, "success"),
+        ],
+        "violation_inputs": vin,
+    }
+    aggregate = {
+        "demo_report_schema": 4,
+        "streaming": True,
+        "aggregate": {
+            "runs_executed": 4,
+            "terminations": {"success": 3, "rejected": 1},
+            "unjudged_steps": 0,
+            "errors": 0,
+        },
+        "violation_cases": [cr(2, True, "success")],
+        "violation_inputs": vin,
+    }
+    r1, _ = nte.build_campaign_result(per_case, _prepared(), seed=1, budget=4)
+    r2, _ = nte.build_campaign_result(aggregate, _prepared(), seed=1, budget=4)
+    assert r1.verdict is r2.verdict is Verdict.FAIL
+    assert r1.executed == r2.executed == 4  # aggregate's runs_executed, not len(cases)=1
+    assert r1.violating_cases == r2.violating_cases == ("step-2",)
+    assert r1.campaign is not None and r2.campaign is not None
+    assert r1.campaign.runs_to_first_violation == r2.campaign.runs_to_first_violation == 3
+    assert r2.campaign.terminations == {"success": 3, "rejected": 1}

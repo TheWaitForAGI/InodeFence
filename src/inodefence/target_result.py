@@ -18,6 +18,14 @@ must be ``None`` in every case.
 Overall verdict (same rule as ``make regression``): ``ERROR`` if any case is a run error, else
 ``FAIL`` if any case violated an observed contract, else ``PASS``. ``PASS`` is not a safety proof.
 Every record carries the label ``demo run``; it is not a qualification or experiment result.
+
+A ``mode=campaign`` result (a bounded feedback search, not a fixed fixture set) may also carry an
+optional ``campaign`` block: the RNG seed, the execution budget, and the 1-based run index of the
+first observed-contract violation (``None`` if the budget ran out with none). Run count and
+violation count stay derivable from ``cases``; the block adds only what the cases cannot show. Its
+presence marks the result as an exploratory developer search over a prepared image, never a
+qualification or confirmatory-experiment result. The block is absent on ``fixture-regression``
+results, which serialize exactly as before, so older readers and files are unaffected.
 """
 
 from __future__ import annotations
@@ -105,6 +113,23 @@ class Provenance:
 
 
 @dataclass(frozen=True, slots=True)
+class CampaignInfo:
+    """Search bookkeeping for a ``mode=campaign`` result; absent on fixture-regression.
+
+    ``seed`` and ``budget`` are the free inputs of the search (RNG seed, execution budget).
+    ``runs_to_first_violation`` is the 1-based run index of the first case that violated an
+    observed contract, or ``None`` when the budget ran out with none; it is tied to the cases
+    (``None`` exactly when nothing violated, else within ``1..runs``), so a reader can trust it
+    without recomputing. Run count and violation count are not stored here: they are already
+    derivable from ``cases``.
+    """
+
+    seed: int
+    budget: int
+    runs_to_first_violation: int | None
+
+
+@dataclass(frozen=True, slots=True)
 class TargetResult:
     target: str
     axes: TargetAxes
@@ -113,6 +138,8 @@ class TargetResult:
     cases: tuple[CaseVerdict, ...]
     repro_inputs: tuple[ReproInput, ...]
     provenance: Provenance
+    #: Optional; only a campaign (feedback search) sets it. Absent (``None``) for regression.
+    campaign: CampaignInfo | None = None
 
     def __post_init__(self) -> None:
         _validate(self)
@@ -138,7 +165,7 @@ class TargetResult:
         return tuple(case.case_id for case in self.cases if case.violated)
 
     def to_json_dict(self) -> dict[str, Any]:
-        return {
+        data: dict[str, Any] = {
             "schema": SCHEMA,
             "label": LABEL,
             "target": self.target,
@@ -173,6 +200,13 @@ class TargetResult:
                 "image_id": self.provenance.image_id,
             },
         }
+        if self.campaign is not None:
+            data["campaign"] = {
+                "seed": self.campaign.seed,
+                "budget": self.campaign.budget,
+                "runs_to_first_violation": self.campaign.runs_to_first_violation,
+            }
+        return data
 
     def dumps(self) -> str:
         return json.dumps(self.to_json_dict(), indent=2, sort_keys=True) + "\n"
@@ -223,6 +257,29 @@ def _validate(result: TargetResult) -> None:
     sha = result.provenance.engine_sha
     if sha is not None and _GIT_SHA_RE.fullmatch(sha) is None:
         raise TargetResultError(f"engine_sha must be a 40-hex git commit or null: {sha!r}")
+    _validate_campaign(result)
+
+
+def _validate_campaign(result: TargetResult) -> None:
+    campaign = result.campaign
+    if campaign is None:
+        return
+    if result.mode is not ResultMode.CAMPAIGN:
+        raise TargetResultError("campaign block is only valid when mode is campaign")
+    if type(campaign.seed) is not int:
+        raise TargetResultError("campaign.seed must be an integer")
+    if type(campaign.budget) is not int or campaign.budget < 1 or campaign.budget < result.executed:
+        raise TargetResultError("campaign.budget must be an integer >= the number of runs")
+    first = campaign.runs_to_first_violation
+    has_violation = bool(result.violating_cases)
+    if first is None:
+        if has_violation:
+            raise TargetResultError("runs_to_first_violation must be set when a case violated")
+    else:
+        if not has_violation:
+            raise TargetResultError("runs_to_first_violation must be null when nothing violated")
+        if type(first) is not int or not 1 <= first <= result.executed:
+            raise TargetResultError("runs_to_first_violation must be an integer in 1..runs")
 
 
 _TOP_KEYS = {
@@ -241,6 +298,11 @@ _TOP_KEYS = {
 }
 
 
+#: Keys a record may carry but need not; absent means the default. Everything else is rejected.
+_OPTIONAL_TOP_KEYS = {"campaign"}
+_CAMPAIGN_KEYS = {"seed", "budget", "runs_to_first_violation"}
+
+
 def _keys(obj: object, expected: set[str], where: str) -> Mapping[str, Any]:
     if not isinstance(obj, Mapping):
         raise TargetResultError(f"{where} must be an object")
@@ -253,9 +315,25 @@ def _keys(obj: object, expected: set[str], where: str) -> Mapping[str, Any]:
     return obj
 
 
+def _keys_optional(
+    obj: object, required: set[str], optional: set[str], where: str
+) -> Mapping[str, Any]:
+    """Like ``_keys`` but tolerant of named optional keys; unknown keys are still rejected."""
+    if not isinstance(obj, Mapping):
+        raise TargetResultError(f"{where} must be an object")
+    keys = set(obj)
+    missing = required - keys
+    unexpected = keys - required - optional
+    if missing or unexpected:
+        raise TargetResultError(
+            f"{where} keys mismatch: missing {sorted(missing)}, unexpected {sorted(unexpected)}"
+        )
+    return obj
+
+
 def from_json_dict(data: object) -> TargetResult:
     """Strict reader: exact keys, and the derived fields must match what the cases imply."""
-    top = _keys(data, _TOP_KEYS, "result")
+    top = _keys_optional(data, _TOP_KEYS, _OPTIONAL_TOP_KEYS, "result")
     if top["schema"] != SCHEMA:
         raise TargetResultError(f"schema must be {SCHEMA!r}, got {top['schema']!r}")
     if top["label"] != LABEL:
@@ -270,6 +348,10 @@ def from_json_dict(data: object) -> TargetResult:
         raise TargetResultError(f"unknown mode {top['mode']!r}") from error
     case_keys = {"case_id", "outcome", "c0", "c1", "c2"}
     repro_keys = {"case_id", "tar_path", "tar_sha256"}
+    campaign = None
+    if "campaign" in top:
+        block = _keys(top["campaign"], _CAMPAIGN_KEYS, "campaign")
+        campaign = CampaignInfo(block["seed"], block["budget"], block["runs_to_first_violation"])
     result = TargetResult(
         target=top["target"],
         axes=TargetAxes(axes["target_version"], axes["runtime_version"], axes["extraction_filter"]),
@@ -285,6 +367,7 @@ def from_json_dict(data: object) -> TargetResult:
         provenance=Provenance(
             prov["engine_sha"], prov["engine_dirty"], prov["image_ref"], prov["image_id"]
         ),
+        campaign=campaign,
     )
     expected = result.to_json_dict()
     for derived in ("runs", "verdict", "violating_cases"):

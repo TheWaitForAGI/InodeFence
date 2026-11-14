@@ -66,9 +66,6 @@ state(C1 identity·C2 effect) retention을 더한 탐색이 무작위 탐색과 
 > 피해 경로 이름 — 보호 대상 외부 객체의 추출 루트 기준 상대 경로 — 을 알며 세 arm 어휘에 동일하게 포함한다.
 > blind 발견을 주장하지 않는다.)
 
-*(구: "고정된 공격 recipe 없이 generic archive-entry mutation을 수행하면서 … corpus를 발전시킬 수 있는가?", v1 질문,
-2026-11-06 v2로 교체. research-questions v2 '폐기·대체 기록' 참조.)*
-
 ## 3.6 이 단계에서 하지 않는 주장 (엄수)
 
 선행연구 포지셔닝 문서의 금지 목록을 그대로 지킨다. 다음은 **쓰지 않는다.**
@@ -79,7 +76,7 @@ state(C1 identity·C2 effect) retention을 더한 탐색이 무작위 탐색과 
 - "제안 방법이 fixed strategy보다 우수하다 / 여러 extractor에 (effectiveness 수준으로) 일반화된다."
 
 일부는 선행연구와 충돌하고, 일부는 추가 문헌조사·실험이 필요하다. 이 드래프트가 방어하는 것은
-§5의 좁은 명제들(M1 동작, M2 통제 재현, M3 이름 획득 조건의 관찰(피드백 인과 미입증), M4 oracle/adapter 일반성)뿐이다 *(구: "M3 인과 입증", 2026-11-03 정정 — 상세 §5.3.2)*.
+§5의 좁은 명제들(M1 동작, M2 통제 재현, M4 oracle/adapter 일반성)뿐이다.
 
 ## 3.7 비교 축과 평가 방법론 (감사 03 권고)
 
@@ -96,10 +93,10 @@ state(C1 identity·C2 effect) retention을 더한 탐색이 무작위 탐색과 
 | ZIPDiff 2025 | archive-aware + byte-level mutation (ZIP) | extraction-output 비교 | parser 간 differential | feedback-guided corpus evolution + interesting-seed retention | 50 parser / 19개 언어 대규모 differential, 공개 아티팩트 |
 | LinkZard 2025 | Windows 파일 연산(링크 추종; archive corpus 아님) | file-operation sequence + hardlink/link-count state | link-following 취약점 탐지 | feedback-driven file-state fuzzing + state-query-driven mutation | 120개 상용 프로그램, 55 zero-day, 15 CVE |
 | Wormholes 2026 | archive extraction(symlink composition·entry order·dangling·update·extraction-root manipulation·symlink 경유 hardlink) | — (명시 없음) | arbitrary file read/write effect | — (명시 없음) | 85개 프로젝트, 16 arbitrary file write, 2 high-severity CVE |
-| InodeFence (현재) | generic archive-entry mutation (TAR; 8 generic operator + escape-hardlink 문법; 피해 경로 이름은 세 arm 어휘에 동일 포함, blind 아님) | object identity `(st_dev, st_ino)`·external effect·boundary-attempt | generic C0/C1/C2 Security Contract (CVE 비하드코딩) | S-u 입회: effect 키(boundary-attempt 포함) 신규 또는 새 위반 fingerprint. StateSignature 파생 구조 특징으로 입회하는 것은 대조군 D | 계획: R/D/S-u T_first·U_viol(§4.6); 현재: M1–M4 좁은 명제 |
+| InodeFence (현재) | generic archive-entry mutation (TAR; 8 generic operator + escape-hardlink 문법; 피해 경로 이름은 세 arm 어휘에 동일 포함, blind 아님) | object identity `(st_dev, st_ino)`·external effect·boundary-attempt | generic C0/C1/C2 Security Contract (CVE 비하드코딩) | S-u 입회: effect 키(boundary-attempt 포함) 신규 또는 새 위반 fingerprint. StateSignature 파생 구조 특징으로 입회하는 것은 대조군 D | 등록 실험: R/D/S-u T_first(§4.6, 결과는 봉인 해제 뒤 기입); 현재: M1·M2·M4 좁은 명제 |
 
-이 표는 신규성 주장이 아니라 **포지셔닝**이다(§3.6 금지 목록 준수). InodeFence 행의 평가 칸은 아직 계획이며,
-그 결과는 실험 후에만 채운다.
+이 표는 신규성 주장이 아니라 **포지셔닝**이다(§3.6 금지 목록 준수). InodeFence 행의 평가 칸 결과는
+봉인 해제 뒤에만 채운다.
 
 ### 3.7.2 평가 방법론 기준
 
@@ -111,9 +108,9 @@ state(C1 identity·C2 effect) retention을 더한 탐색이 무작위 탐색과 
   arXiv [1808.09700](https://arxiv.org/abs/1808.09700)). 이 논문은 복수 trial + 통계 검정(randomized algorithm에
   Mann-Whitney U), 서로 다른 seed, 더 긴 timeout(≥24h), "unique crashes" 같은 중복제거 heuristic 대신
   ground-truth 버그 기준 측정을 권고한다(초록·본문 §4–§8에서 읽음; 자체 실험은 ≥30 run 중앙값·95% CI). 우리
-  설계는 EXP-3에서 20 seed 복수 반복·로그랭크 검정·문서화된 seed를 쓰고(seed 수는 D7, 재판정 대기(파일럿 후)) hit을 generic
+  설계는 EXP-3에서 20 seed 복수 반복·로그랭크 검정·문서화된 seed를 쓰고hit을 generic
   C0/C1/C2 oracle 판정으로 둔다(§4.6.2). 다만 U_viol은 oracle fingerprint 중복제거로 세므로 이 논문이 경계한 중복제거 부류에
-  속하며, ground-truth 버그 수로 읽지 않는다 *(구: "중복제거 heuristic 아님", 2026-11-06 정정)*. 단 우리 1차 지표는 wall-time이 아니라 executions-to-first(T_first)이며 시간
+  속하며, ground-truth 버그 수로 읽지 않는다. 단 우리 1차 지표는 wall-time이 아니라 executions-to-first(T_first)이며 시간
   정규화는 보조로 병기한다(§4.6.4 ⑦).
 - **Böhme, Liyanage & Wüstholz, "Estimating Residual Risk in Greybox Fuzzing," ESEC/FSE 2021**
   (DOI [10.1145/3468264.3468570](https://doi.org/10.1145/3468264.3468570); [PDF](https://mboehme.github.io/paper/FSE21.pdf)).
@@ -121,7 +118,7 @@ state(C1 identity·C2 effect) retention을 더한 탐색이 무작위 탐색과 
   discovery probability(다음 입력이 커버리지를 늘릴 확률)를 상한으로 쓰고 campaign 중 추정해 중단 시점을
   정한다고 밝힌다(초록에서 읽음; reachability 주장은 초록에 없음). 우리 설계의 우측중도절단과 zero-hit
   rule-of-three 상한(§4.6.2·§5.6)도 '위반 0 = 안전'으로 읽지 않는다는 취지는 같지만, 우리 상한은 캠페인 단위 hit 확률이지 잔여 위험
-  추정이 아니다. *(구: "잔여 위험의 상한 보고라는 같은 입장", 2026-11-06 정정)*
+  추정이 아니다.
 - **Schloegel et al., "SoK: Prudent Evaluation Practices for Fuzzing," IEEE S&P 2024**
   (DOI [10.1109/SP54263.2024.00137](https://doi.org/10.1109/SP54263.2024.00137); arXiv [2405.10220](https://arxiv.org/abs/2405.10220)).
   2018–2023 top-venue 150편을 분석해 통계 검정 권고의 광범위한 미준수를 보고하고, baseline 비교·충분한 trial

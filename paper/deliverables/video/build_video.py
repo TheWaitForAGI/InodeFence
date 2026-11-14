@@ -95,7 +95,6 @@ PLAN = (
     Block("s03", "voice", 20, "replay3", "판정기 확인 · 통제용 추출기, node-tar 아님"),
     Block("s04", "voice", 40, "replay4", "demo run · node-tar 7.5.22 · 동작 확인, 탐색 성능 아님"),
     Block("s05", "voice", 35, "replay5+m2", "통제 재현 · 손으로 만든 입력, 퍼저 결과 아님"),
-    Block("s06", "voice", 20, "m3", "자율 관찰"),
     Block("s07a", "face", 5, "face"),
     Block("s07b", "voice", 30, "design"),
     Block("s07c", "voice", 5, "design"),
@@ -432,19 +431,6 @@ class Canvas:
             image,
             FIGURES / "m2-cross-release-evidence.png",
             (60, 120, WIDTH - 60, CONTENT_BOTTOM - 20),
-        )
-        return self.finish(image)
-
-    def m3(self, note: str, label: str) -> Image.Image:
-        image, draw = self.base("이름을 아는 조건의 자율 관찰", label)
-        y = 160
-        for part in note.split(" · "):
-            for line in wrap_pixels(part, self.fonts.bold(36), 620):
-                draw.text((80, y), line, font=self.fonts.bold(36), fill=INK)
-                y += 54
-            y += 22
-        self.figure(
-            image, FIGURES / "m3-blind-ablation.png", (760, 120, WIDTH - 50, CONTENT_BOTTOM - 20)
         )
         return self.finish(image)
 
@@ -846,8 +832,6 @@ def render_visual(block: Block, canvas: Canvas, ctx: dict, length: float, out: P
             encoder, canvas, recordings / "scene5-take1", first, block.label, True
         )
         encoder.hold(canvas.m2("통제 재현"), length - first)
-    elif block.visual == "m3":
-        encoder.hold(canvas.m3(ctx["m3_note"], block.label), length)
     elif block.visual == "design":
         encoder.hold(canvas.design(ctx["fixed"], ctx["c15"]), length)
     elif block.visual == "scene8":
@@ -875,13 +859,12 @@ def load_scene8(font_dir: Path):
     return module
 
 
-def script_extras(markdown: str) -> tuple[str, str]:
-    """The s06 on-screen caption and the C15 sentence, quoted in the script, never retyped."""
-    m3 = re.search(r'자막 "(자율 관찰 · [^"]+)"', markdown)
+def script_extras(markdown: str) -> str:
+    """The C15 sentence, quoted in the script, never retyped."""
     c15 = re.search(r"「(같은 실행 경로가[^」]+)」", markdown)
-    if not m3 or not c15:
-        raise SystemExit("script lacks the s06 caption or the C15 sentence")
-    return m3.group(1), c15.group(1)
+    if not c15:
+        raise SystemExit("script lacks the C15 sentence")
+    return c15.group(1)
 
 
 def build(args: argparse.Namespace) -> None:
@@ -890,7 +873,7 @@ def build(args: argparse.Namespace) -> None:
     work.mkdir(parents=True, exist_ok=True)
     markdown = args.script.read_text(encoding="utf-8")
     script = parse_script(markdown)
-    m3_note, c15 = script_extras(markdown)
+    c15 = script_extras(markdown)
     checker = load_checker()
     values = json.loads(args.values.read_text(encoding="utf-8"))
     got = checker.result_sentences(values, args.d12.read_text(encoding="utf-8"))
@@ -924,7 +907,6 @@ def build(args: argparse.Namespace) -> None:
     canvas = Canvas(fonts, args.draft_note, args.end_note)
     ctx = {
         "recordings": args.recordings,
-        "m3_note": m3_note,
         "c15": c15,
         "fixed": args.freeze == "ga",
         "scene8": load_scene8(args.font_dir),

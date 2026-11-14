@@ -9,6 +9,7 @@ hooks through their loops.
 
 from __future__ import annotations
 
+import hashlib
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -22,6 +23,95 @@ from inodefence.feedback import EffectSearchPolicy
 from inodefence.model import ArchiveCase, ArchiveEntry, EntryType
 from inodefence.mutator import MutationPolicy
 
+# The golden digests below were minted from the code at this commit -- the confirmatory-experiment
+# run SHA, the code the preregistered experiment runs. ``src/inodefence/effect_campaign.py`` is
+# byte-identical between this commit and the base of the CampaignHooks PR (verified with
+# ``git diff bed077a <base> -- src/inodefence/effect_campaign.py`` -> empty). The golden test
+# asserts the current code's hooks-free path reproduces that exact search/feedback/weight
+# trajectory, so "merged base path == registered-experiment code" is a test, not a manual check.
+GOLDEN_COMMIT = "bed077af62b1cdd5cc8dec96eb9cbe93ba542f1d"
+#: decompress loop golden, minted from GOLDEN_COMMIT with ``_decompress_trajectory_digest``.
+GOLDEN_DECOMPRESS = {
+    "123:16": "519c934c32c0f74eadcda0abdf00a74dad8b50d5f5c56e2041ae16f1d1c9d90c",
+    "7:24": "0eb797bb78fcdc464415ce9967d660a045b2aaf43900561055a500625d2601d6",
+    "999:32": "3258c8e355e6c8af1966815e3374f87888d5778151a7f3e74bd977069ac33b51",
+}
+# How to regenerate (no docker, no sealed evidence -- code only):
+#   git worktree add --detach /tmp/bed077a-wt bed077a
+#   PYTHONPATH=src:. python - <<'PY'  (the same _trajectory_digest below, over COMBOS)
+# then paste the printed {"seed:budget": sha256} map into each loop's ``golden``.
+
+
+def _trajectory_digest(result: Any) -> str:
+    """SHA-256 over the hooks-free run's full per-step search/feedback decision and the scheduler
+    weight trajectory, plus the retained corpus -- the base path's observable output for a seed."""
+    sha = hashlib.sha256()
+    for step in result.steps:
+        fb = step.feedback
+        weights = (
+            ""
+            if step.scheduler_evidence is None
+            else ",".join(f"{op.name}:{wt}" for op, wt in step.scheduler_evidence.weights_after)
+        )
+        row = "\x1f".join(
+            [
+                str(step.index),
+                step.origin.name,
+                step.parent_case_id or "",
+                fb.case_id,
+                str(fb.full_state_novel),
+                str(fb.effect_novel),
+                str(fb.contract_violated),
+                str(fb.observation_failure),
+                str(fb.feedback_eligible),
+                str(fb.already_retained),
+                str(fb.admission_eligible),
+                "|".join(str(x) for x in fb.new_violation_fingerprints),
+                "|".join(str(x) for x in fb.new_effect_keys),
+                str(fb.trace_completeness),
+                str(fb.trace_termination),
+                weights,
+            ]
+        )
+        sha.update((row + "\x1e").encode())
+    sha.update(("R:" + "|".join(result.retained_case_ids)).encode())
+    return sha.hexdigest()
+
+
+def _decompress_trajectory_digest(result: Any) -> str:
+    """The same digest for the decompress loop, over its own per-step decision type
+    (``DecompressEffectDecision``: frame-based keys instead of effect keys/trace fields)."""
+    sha = hashlib.sha256()
+    for step in result.steps:
+        d = step.decision
+        weights = (
+            ""
+            if step.scheduler_evidence is None
+            else ",".join(f"{op.name}:{wt}" for op, wt in step.scheduler_evidence.weights_after)
+        )
+        row = "\x1f".join(
+            [
+                str(step.index),
+                step.origin.name,
+                step.parent_case_id or "",
+                d.case_id,
+                str(d.full_state_novel),
+                str(d.contract_violated),
+                str(d.frame_observed),
+                str(d.frame_boundary_attempt_present),
+                str(d.frame_external_resolve_present),
+                str(d.eligible),
+                str(d.already_retained),
+                str(d.admission_eligible),
+                "|".join(str(x) for x in d.new_violation_fingerprints),
+                "|".join(str(x) for x in d.new_attempt_keys),
+                weights,
+            ]
+        )
+        sha.update((row + "\x1e").encode())
+    sha.update(("R:" + "|".join(result.retained_case_ids)).encode())
+    return sha.hexdigest()
+
 
 @dataclass(frozen=True)
 class LoopSpec:
@@ -33,45 +123,76 @@ class LoopSpec:
     producer: Callable[[Any], Any]
     budget: int
     config: Any
+    #: Build a config for an arbitrary (seed, budget); used by the golden test over several combos.
+    make_config: Callable[[int, int], Any] | None = None
+    #: ``"seed:budget" -> sha256`` minted at GOLDEN_COMMIT. Empty until the loop's owner adds it.
+    golden: dict[str, str] = field(default_factory=dict)
     #: The case id of a streamed step (the loops' step types differ; node-tar's is the default).
     case_id_of: Callable[[Any], str] = field(
         default=lambda step: step.result.base_result.case.case_id
+    )
+    #: The trajectory digest for this loop's step type (node-tar's is the default).
+    digest: Callable[[Any], str] = field(default=_trajectory_digest)
+
+
+def _node_tar_config(seed: int, budget: int) -> EffectCampaignConfig:
+    return EffectCampaignConfig(
+        random_seed=seed,
+        execution_budget=budget,
+        search_policy=EffectSearchPolicy.P2_EFFECT_ADAPTIVE,
+        mutation_policy=MutationPolicy.M1,
     )
 
 
 def _node_tar_spec() -> LoopSpec:
     seed = ArchiveCase((ArchiveEntry("seed", EntryType.REGULAR, b"seed"),))
-    config = EffectCampaignConfig(
-        random_seed=123,
-        execution_budget=16,
-        search_policy=EffectSearchPolicy.P2_EFFECT_ADAPTIVE,
-        mutation_policy=MutationPolicy.M1,
+    return LoopSpec(
+        "node-tar",
+        run_effect_campaign,
+        (seed,),
+        _node_tar_result,
+        16,
+        _node_tar_config(123, 16),
+        make_config=_node_tar_config,
+        # Minted from GOLDEN_COMMIT (see module header). Current code must reproduce these.
+        golden={
+            "123:16": "565d61a5f0ba8076b6fd138a44bf1d3a0a1641d4c6807759099c4790aeea8fa4",
+            "7:24": "921dbb0149246cab8ebce008222546e009655b8f3d5e00bb5efddf98cb967c8d",
+            "999:32": "2e86e3d72dac56192caccc062af3e984b08e947afb54ccf65a7398241fcb5292",
+        },
     )
-    return LoopSpec("node-tar", run_effect_campaign, (seed,), _node_tar_result, 16, config)
+
+
+def _decompress_config(seed: int, budget: int) -> Any:
+    from inodefence.decompress_effect_campaign import DecompressEffectCampaignConfig
+
+    return DecompressEffectCampaignConfig(random_seed=seed, execution_budget=budget)
 
 
 def _decompress_spec() -> LoopSpec:
     from tests.test_decompress_effect_campaign import _benign_run, _seeds
 
-    from inodefence.decompress_effect_campaign import (
-        DecompressEffectCampaignConfig,
-        run_decompress_effect_campaign,
-    )
+    from inodefence.decompress_effect_campaign import run_decompress_effect_campaign
 
-    seeds = _seeds()
-    config = DecompressEffectCampaignConfig(random_seed=123, execution_budget=16)
     return LoopSpec(
         "decompress",
         run_decompress_effect_campaign,
-        tuple(seeds),
+        tuple(_seeds()),
         _benign_run,
         16,
-        config,
+        _decompress_config(123, 16),
+        make_config=_decompress_config,
+        # Minted from GOLDEN_COMMIT with _decompress_trajectory_digest (same procedure as the module
+        # header; the loop, scheduler, mutator, feedback and the test producer are byte-identical
+        # between GOLDEN_COMMIT and this PR's base).
+        golden=GOLDEN_DECOMPRESS,
         case_id_of=lambda step: step.run.base_result.case.case_id,
+        digest=_decompress_trajectory_digest,
     )
 
 
-# IF-MAC-D adds oras-go once its loop accepts `hooks`.
+# IF-MAC-D adds oras-go once its loop accepts `hooks`, with its own ``golden`` minted from
+# GOLDEN_COMMIT the same way (see module header).
 LOOP_SPECS = [_node_tar_spec(), _decompress_spec()]
 IDS = [spec.name for spec in LOOP_SPECS]
 
@@ -88,7 +209,22 @@ def _case_ids(spec: LoopSpec, hooks: CampaignHooks | None) -> list[str]:
 
 
 @pytest.mark.parametrize("spec", LOOP_SPECS, ids=IDS)
-def test_no_hooks_is_byte_identical(spec: LoopSpec) -> None:
+def test_base_path_reproduces_registered_experiment_golden(spec: LoopSpec) -> None:
+    """The hooks-free path still produces the exact trajectory the code at GOLDEN_COMMIT did.
+
+    This is the one that pins "merged base path == the code the preregistered experiment runs":
+    the expected digests were minted from GOLDEN_COMMIT (see module header), not from the current
+    code, so a silent change to the base search/feedback/weight path fails here.
+    """
+    assert spec.make_config is not None and spec.golden, f"{spec.name}: golden not wired yet"
+    for combo, expected in spec.golden.items():
+        seed, budget = (int(part) for part in combo.split(":"))
+        result = spec.run(spec.seed_cases, spec.producer, spec.make_config(seed, budget))
+        assert spec.digest(result) == expected, f"{spec.name} {combo}: base path changed"
+
+
+@pytest.mark.parametrize("spec", LOOP_SPECS, ids=IDS)
+def test_hooks_absent_none_and_empty_bundle_all_agree(spec: LoopSpec) -> None:
     without = spec.run(spec.seed_cases, spec.producer, spec.config)
     none_bundle = spec.run(spec.seed_cases, spec.producer, spec.config, hooks=None)
     empty_bundle = spec.run(spec.seed_cases, spec.producer, spec.config, hooks=CampaignHooks())
@@ -121,3 +257,15 @@ def test_should_stop_ends_at_the_promised_boundary(spec: LoopSpec) -> None:
     assert result.executed == stop_at and result.stop_reason == "reached limit"
     # the step stream also stops at exactly that boundary
     assert len(_case_ids(spec, CampaignHooks(should_stop=should_stop))) == stop_at
+
+
+@pytest.mark.parametrize("spec", LOOP_SPECS, ids=IDS)
+def test_checkpoint_hook_is_refused_until_wired(spec: LoopSpec) -> None:
+    # checkpoint has no loop behind it yet; a loop must reject it, not silently persist nothing.
+    with pytest.raises(ValueError, match="checkpoint is not wired"):
+        spec.run(
+            spec.seed_cases,
+            spec.producer,
+            spec.config,
+            hooks=CampaignHooks(checkpoint=lambda state, executed: None),
+        )

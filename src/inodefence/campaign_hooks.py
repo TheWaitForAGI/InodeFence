@@ -61,10 +61,13 @@ class CampaignHooks:
       continue. ``budget`` remains an upper bound; ``should_stop`` can only end the loop earlier,
       never extend it past ``budget``. Stopping early returns the lightweight result (the full
       result type requires a complete run), even when ``retain_steps`` is True.
-    - ``checkpoint(state, executed)``: called on the SAME boundary as ``should_stop`` (after a
-      completed step), for periodic persistence. ``state`` is a ``CampaignState`` whose common part
-      is filled by the loop; the loop decides how often (the hook is called every step and may
-      itself rate-limit).
+    - ``checkpoint(state, executed)``: NOT WIRED YET. This slot is defined for the resume PR; no
+      loop calls it today, so passing it would silently do nothing. Until that PR connects it, a
+      loop given a ``checkpoint`` refuses (see ``ensure_no_unwired_hooks``) rather than look as if
+      it is persisting. The intended contract once wired: called on the SAME boundary as
+      ``should_stop`` (after a completed step) for periodic persistence, with a ``CampaignState``
+      whose common part the loop fills; the hook decides how often (called every step, may
+      rate-limit itself).
     - ``retain_steps``: when ``False`` the loop streams every completed step to ``on_step`` but does
       NOT keep it in memory, so an unbounded run stays O(1) in steps. The loop then returns a
       lightweight aggregate (execution/violation counts, stop reason) instead of the full result
@@ -79,6 +82,19 @@ class CampaignHooks:
 
 #: A hook bundle with no effect: every loop treats this exactly as "no hooks given".
 NO_HOOKS = CampaignHooks()
+
+
+def ensure_no_unwired_hooks(hooks: CampaignHooks | None) -> None:
+    """Refuse hooks whose slot no loop implements yet, so an unfinished feature never looks wired.
+
+    ``checkpoint`` is defined but not connected until the resume PR; passing it must be a loud
+    error, not a silent no-op. Every loop calls this once, before running, as it reads ``hooks``.
+    """
+    if hooks is not None and hooks.checkpoint is not None:
+        raise ValueError(
+            "CampaignHooks.checkpoint is not wired yet; the resume PR will connect it. "
+            "Remove it until then (passing it would persist nothing)."
+        )
 
 
 def resolve_on_step(

@@ -23,6 +23,11 @@ the same ``extract/`` + ``ext/reference.bin`` layout. That path observes C1 and 
 is ``null`` ("not observed"). For each (runtime, filter) cell this writes, under
 ``DIR/python-tarfile-py<runtime>-<filter>/``: ``result.json``, ``inputs/<case>.tar``,
 ``raw/<case>.json``. Existing results are never overwritten. ``--dry-run`` runs nothing.
+
+The output layout, the no-overwrite rule and the provenance (engine HEAD, dirty flag, local image
+id) are the node-tar command's own (``scripts.run_target``), imported unchanged. ``run_target``
+takes one version per target, so Python's two axes run through this command until it grows a
+filter argument.
 """
 
 from __future__ import annotations
@@ -37,6 +42,7 @@ from typing import Any
 
 from experiments.repro import python_tarfile_identity as pti
 from scripts import regression_check as rc
+from scripts.run_target import RESULT_NAME, CaseRun, engine_provenance, write_result
 
 from inodefence.target_result import (
     RUN_ERROR,
@@ -51,8 +57,6 @@ from inodefence.target_result import (
 TARGET = "python-tarfile"
 MODE = ResultMode.FIXTURE_REGRESSION
 OBSERVED = ("C1", "C2")
-RESULT_NAME = "result.json"
-REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,13 +77,6 @@ class Cell:
     @property
     def dirname(self) -> str:
         return f"{TARGET}-py{self.runtime_version}-{self.extraction_filter}"
-
-
-@dataclass(frozen=True, slots=True)
-class CaseRun:
-    verdict: CaseVerdict
-    tar: bytes
-    raw: dict[str, Any]
 
 
 def compared_axis(runtimes: list[str], filters: list[str]) -> str | None:
@@ -123,38 +120,6 @@ def run_cell(cell: Cell, *, runner: pti.Runner = subprocess.run) -> list[CaseRun
     return runs
 
 
-def _git(*args: str) -> str | None:
-    try:
-        done = subprocess.run(
-            ["git", *args], cwd=REPO_ROOT, capture_output=True, text=True, check=True, timeout=30
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return done.stdout.strip()
-
-
-def provenance(image_ref: str) -> Provenance:
-    sha = _git("rev-parse", "HEAD")
-    status = _git("status", "--porcelain", "--untracked-files=no")
-    try:
-        done = subprocess.run(
-            ["docker", "image", "inspect", "--format", "{{.Id}}", image_ref],
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=30,
-        )
-        image_id = done.stdout.strip() or None
-    except (OSError, subprocess.SubprocessError):
-        image_id = None
-    return Provenance(
-        engine_sha=sha or None,
-        engine_dirty=status is None or bool(status),
-        image_ref=image_ref,
-        image_id=image_id,
-    )
-
-
 def build_result(cell: Cell, runs: list[CaseRun], prov: Provenance) -> TargetResult:
     return TargetResult(
         target=TARGET,
@@ -168,21 +133,6 @@ def build_result(cell: Cell, runs: list[CaseRun], prov: Provenance) -> TargetRes
         ),
         provenance=prov,
     )
-
-
-def write_result(out_dir: Path, result: TargetResult, runs: list[CaseRun]) -> Path:
-    """Inputs and raw first, result.json last (its presence means the cell is complete)."""
-    result_path = out_dir / RESULT_NAME
-    if result_path.exists():
-        raise FileExistsError(f"refusing to overwrite {result_path}")
-    (out_dir / "inputs").mkdir(parents=True, exist_ok=True)
-    (out_dir / "raw").mkdir(parents=True, exist_ok=True)
-    for run, item in zip(runs, result.repro_inputs, strict=True):
-        (out_dir / item.tar_path).write_bytes(run.tar)
-        raw_path = out_dir / "raw" / f"{run.verdict.case_id}.json"
-        raw_path.write_text(json.dumps(run.raw, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    result_path.write_text(result.dumps(), encoding="utf-8")
-    return result_path
 
 
 def summary_line(result: TargetResult) -> str:
@@ -254,7 +204,7 @@ def main(argv: list[str] | None = None) -> int:
     for cell in cells:
         runs = run_cell(cell)
         # After the run, so image_id names the image that was pulled and actually used.
-        prov = provenance(pti.image_ref(cell.runtime_version))
+        prov = engine_provenance(pti.image_ref(cell.runtime_version))
         result = build_result(cell, runs, prov)
         path = write_result(args.out / cell.dirname, result, runs)
         print(f"{summary_line(result)} -> {path}")

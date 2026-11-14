@@ -18,6 +18,6 @@
 
 ## 조립본 드래프트 v1
 
-읽는 순서와 상태 범례(paper-ready / 판정 완료: 음성·미분리)는 [00-outline.md](00-outline.md)에 있다. 섹션 파일은
+읽는 순서와 상태 범례(paper-ready)는 [00-outline.md](00-outline.md)에 있다. 섹션 파일은
 `01-abstract.md`부터 `08-conclusion.md`까지이고, 주장↔증거 매핑은
 [claims-evidence-status-v1.md](claims-evidence-status-v1.md)다.

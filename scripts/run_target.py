@@ -64,7 +64,7 @@ import shutil
 import subprocess
 import sys
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, NoReturn
 
@@ -133,6 +133,20 @@ def prepare_unsupported(cell: RunCell) -> PrepareStep:
 
 
 @dataclass(frozen=True, slots=True)
+class TargetOption:
+    """A target-specific explore/run option an adapter declares (node-tar / oras-go declare
+    none; python-tarfile declares its extraction filter, decompress its package, etc.). The
+    common driver reads these to accept, validate and forward values without any target-specific
+    code; the declared options become the ``filters`` list passed to ``cells`` in order."""
+
+    name: str
+    description: str
+    required: bool = False
+    choices: tuple[str, ...] | None = None  # allowed values, or None for free-form
+    single: bool = True  # exploration takes one value; target-run may take several
+
+
+@dataclass(frozen=True, slots=True)
 class PreparedTargetImage:
     """A prepared, version-verified extractor image handed to a target's explore hook."""
 
@@ -154,6 +168,8 @@ class ExploreOptions:
     seed: int
     out: Path
     image_tag_suffix: str = ""
+    #: target-specific option values, by declared option name (see ``TargetAdapter.options``).
+    target_options: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -202,6 +218,15 @@ class TargetAdapter:
     #: write the common campaign result. ``None`` (default) means this target does not support
     #: exploration yet; the driver then reports that and stops.
     explore: ExploreHook | None = None
+    #: Target-specific options this target declares (default none). The common driver accepts
+    #: them as ``--<name>``, validates against the declaration, and passes them to ``cells`` as
+    #: the ``filters`` list in declaration order.
+    options: tuple[TargetOption, ...] = ()
+    #: Optional: before a present image is reused, confirm it really is the version it is tagged
+    #: for. ``(cell, image_id) -> None`` reuses it; a one-line reason refuses the reuse (no
+    #: verdict, like a failed prepare). ``None`` (default) reuses any present image by tag name,
+    #: unchanged. ``scripts.image_prepare.recipe_verify_existing`` builds one from a recipe.
+    verify_existing: Callable[[RunCell, str], str | None] | None = None
 
 
 def fixture_case(fixture: rc.RegressionFixture, raw: dict[str, Any]) -> CaseRun:
@@ -368,8 +393,16 @@ def resolve_images(
             continue
         present = image_id(ref)
         if present is not None:
-            print(f"TARGET-RUN IMAGE reuse {ref} {present}")
-            ready[ref] = present
+            reason = (
+                adapter.verify_existing(cell, present)
+                if adapter.verify_existing is not None
+                else None
+            )
+            if reason is None:
+                print(f"TARGET-RUN IMAGE reuse {ref} {present}")
+                ready[ref] = present
+                continue
+            errors[ref] = f"present image {ref} refused: {reason}"
             continue
         step = adapter.prepare(cell)
         if not auto_prepare:

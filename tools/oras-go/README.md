@@ -21,6 +21,18 @@ extraction source: it drives oras-go's `content/file` Store `Push` with the
 `io.deis.oras.content.unpack` annotation and reports raw bytes/outcome only — it
 imports none of InodeFence's generic model or oracle.
 
+## Other versions (exploratory)
+
+`make target-run TARGET=oras-go TARGET_VERSIONS=<X.Y.Z|latest> AUTO_PREPARE=1` prepares a version
+that no committed `go.mod`/`go.sum` pins (`scripts/oras_go_registry_prepare.py`): `go.mod`/`go.sum`
+are generated in a disposable container of the pinned Go image against `proxy.golang.org` with
+`GOSUMDB=sum.golang.org` (checksum verification is never turned off), this Dockerfile and
+`worker/main.go` are built unchanged from a temporary context, and the image is checked offline
+(`identify`, the probe and the campaign's `frame` subcommand) before it is tagged
+`inodefence-oras-go-registry:<X.Y.Z>`. Those runs are labelled `exploratory demo run` and keep
+the generated `go.mod`/`go.sum` under the cell's `preparation/`. The committed roles above stay the
+reproducibility baseline; nothing is promoted automatically.
+
 ## The controlled fixture and geometry
 
 One hardlink entry `d/evil` whose link target is `outside/sentinel.txt` (no `../`,

@@ -1,4 +1,4 @@
-"""Per-target image preparation (no docker: a fake runner plays the docker CLI)."""
+"""Image preparation: generic helper + each target's recipe (no docker: a fake CLI plays it)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,27 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import scripts.target_images as ti
+import scripts.decompress_image as dci
+import scripts.image_prepare as ip
+import scripts.node_tar_image as nti
+import scripts.run_oras_go_target as rog
+import scripts.run_python_tarfile_target as rpt
+
+PREPARE = {
+    "node-tar": nti.prepare,
+    "python-tarfile": rpt.prepare_image,
+    "oras-go": rog.prepare_image,
+    "decompress": dci.prepare,
+}
+
+
+class ti:  # noqa: N801 - test-local facade over the four target modules
+    UnsupportedVersionError = ip.UnsupportedVersionError
+    ImagePrepareError = ip.ImagePrepareError
+
+    @staticmethod
+    def prepare(target: str, version: str, image_ref: str, runner: Any) -> ip.PreparedImage:
+        return PREPARE[target](version, image_ref, runner)
 
 
 class FakeDocker:
@@ -85,7 +105,6 @@ def test_malformed_version_never_reaches_docker(target: str, version: str) -> No
         ("oras-go", "2.6.3", "buildable: 2.6.1, 2.6.2"),
         ("decompress", "decompress@11.1.4", "different packages"),
         ("decompress", "@xhmikosr/decompress@4.2.1", "not pinned"),
-        ("gnu-tar", "1.34", "no image recipe"),
     ],
 )
 def test_unsupported_version_is_refused_with_reason(target: str, version: str, reason: str) -> None:
@@ -96,29 +115,29 @@ def test_unsupported_version_is_refused_with_reason(target: str, version: str, r
 
 
 def test_supported_recipes_come_from_committed_files() -> None:
-    node = ti.node_tar_recipe("7.4.4")
+    node = nti.recipe("7.4.4")
     assert node.build == (
         "-f",
         "tools/node-tar/effect/Dockerfile",
         "--build-arg",
         "TAR_VERSION=7.4.4",
     )
-    assert ti.oras_go_recipe("2.6.1").build[-1] == "ROLE=affected"  # type: ignore[index]
-    assert ti.oras_go_recipe("2.6.2").expected == "v2.6.2"
-    fork = ti.decompress_recipe("@xhmikosr/decompress@11.1.4")
+    assert rog.image_recipe("2.6.1").build[-1] == "ROLE=affected"  # type: ignore[index]
+    assert rog.image_recipe("2.6.2").expected == "v2.6.2"
+    fork = dci.recipe("@xhmikosr/decompress@11.1.4")
     assert fork.build[-1] == "ROLE=fixed"  # type: ignore[index]
     assert fork.expected == "@xhmikosr/decompress 11.1.4"
-    assert ti.decompress_recipe("decompress@4.2.1").expected == "decompress 4.2.1"
-    assert ti.python_tarfile_recipe("3.12.16").pull == "python:3.12.16-slim"
+    assert dci.recipe("decompress@4.2.1").expected == "decompress 4.2.1"
+    assert rpt.image_recipe("3.12.16").pull == "python:3.12.16-slim"
 
 
 def test_node_tar_lock_must_pin_the_requested_version(tmp_path: Path) -> None:
-    version_dir = tmp_path / "node-tar" / "versions" / "9.9.9"
+    version_dir = tmp_path / "9.9.9"
     version_dir.mkdir(parents=True)
     (version_dir / "package.json").write_text(json.dumps({"dependencies": {"tar": "9.9.8"}}))
     (version_dir / "package-lock.json").write_text("{}")
-    with pytest.raises(ti.UnsupportedVersionError, match="pins '9.9.8'"):
-        ti.node_tar_recipe("9.9.9", tools=tmp_path)
+    with pytest.raises(ti.UnsupportedVersionError, match="9.9.8"):
+        nti.recipe("9.9.9", versions_dir=tmp_path)
 
 
 # ---- reuse, prepare, verify ----
@@ -184,3 +203,17 @@ def test_docker_unavailable_is_an_error() -> None:
 
     with pytest.raises(ti.ImagePrepareError, match="FileNotFoundError"):
         ti.prepare("oras-go", "2.6.1", "inodefence-oras-go:2.6.1", missing)
+
+
+def test_python_pull_is_only_the_official_repository(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(rpt.pti, "IMAGE", "evil.example/python:{runtime}-slim")
+    docker = FakeDocker()
+    with pytest.raises(ti.UnsupportedVersionError, match="not the official runtime tag"):
+        ti.prepare("python-tarfile", "3.12.16", "inodefence-dev/python:3.12.16-slim", docker)
+    assert docker.calls == []
+
+
+def test_generic_helper_names_no_target() -> None:
+    text = Path(ip.__file__).read_text(encoding="utf-8")
+    for name in ("node-tar", "node_tar", "python-tarfile", "oras", "decompress", "tarfile"):
+        assert name not in text

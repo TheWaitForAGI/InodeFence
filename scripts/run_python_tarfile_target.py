@@ -42,6 +42,7 @@ from pathlib import Path
 from typing import Any
 
 from experiments.repro import python_tarfile_identity as pti
+from scripts import image_prepare as ip
 from scripts import regression_check as rc
 from scripts.run_target import (
     RESULT_NAME,
@@ -241,6 +242,44 @@ def _adapter_run(cell: RunCell) -> list[CaseRun]:
     runtime, extraction_filter = cell.axes.runtime_version, cell.axes.extraction_filter
     assert runtime is not None and extraction_filter is not None
     return run_cell(Cell(runtime, extraction_filter))
+
+
+# ---- image preparation (pull the official runtime image; no build) ----
+
+#: Only the official Docker Hub ``python`` repository is ever pulled; the version is the only input.
+OFFICIAL_REPOSITORY = "python"
+
+
+def image_recipe(runtime_version: str) -> ip.Recipe:
+    """``python:<X.Y.Z>-slim`` from the official repository, checked offline for its version.
+
+    ``runtime_version`` is validated as exact ``X.Y.Z`` before it forms the reference, so no other
+    repository, registry or tag can be injected. The extraction filter plays no part: the image
+    is chosen by the runtime axis alone.
+    """
+    ip.exact_version(runtime_version, "python runtime")
+    pull = pti.image_ref(runtime_version)
+    repository, _, tag = pull.partition(":")
+    if repository != OFFICIAL_REPOSITORY or tag != f"{runtime_version}-slim":
+        raise ip.UnsupportedVersionError(f"refusing to pull {pull!r}: not the official runtime tag")
+    return ip.Recipe(
+        label=f"python-tarfile runtime {runtime_version}",
+        expected=runtime_version,
+        pull=pull,
+        check=(
+            "--entrypoint",
+            "python",
+            ip.IMAGE_SLOT,
+            "-c",
+            "import platform; print(platform.python_version())",
+        ),
+    )
+
+
+def prepare_image(
+    runtime_version: str, image_ref: str, runner: ip.Runner = subprocess.run
+) -> ip.PreparedImage:
+    return ip.ensure_image(image_recipe(runtime_version), image_ref, runner)
 
 
 ADAPTER = TargetAdapter(

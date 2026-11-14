@@ -264,7 +264,8 @@ make target-explore TARGET=node-tar TARGET_VERSIONS="latest" AUTO_PREPARE=1 BUDG
 - `TARGET_VERSIONS`: `latest`(레지스트리의 최신 dist-tag를 실행 시점에 정확한 버전으로 풀어 결과에 기록)
   또는 정확한 버전(예: `7.5.8`).
 - `BUDGET`은 실행 횟수(탐색 예산), `SEED`는 난수 seed. 둘 다 사용자가 정하며, 같은 seed·budget이면 같은
-  탐색이 재현된다.
+  탐색이 재현된다. `BUDGET`은 처음 넣는 seed 입력 수(현재 4)보다 작을 수 없다(작으면
+  `execution_budget must cover all initial cases`로 멈춘다).
 - `AUTO_PREPARE=1`이 있어야 이미지가 없을 때 커밋된 레시피 또는 레지스트리로 준비한다(이 단계만 네트워크를 쓴다).
 - 계획만 보려면 `TARGET_ARGS=--dry-run`을 붙인다(아무것도 준비·실행·기록하지 않는다).
 
@@ -297,7 +298,7 @@ summary.md는 결과 파일 하나로 다시 만들 수도 있다:
 - **회귀 확인(`make target-run`):** 미리 만든 **고정 입력 몇 개**를 버전마다 한 번씩 추출해 판정만 본다.
   준비가 됐는지 보는 앞 단계이지 탐색이 아니다. 고정 입력 실행을 "퍼징"이라고 부르지 않는다.
 - **탐색(`make target-explore`):** 입력을 변형하고 그 피드백으로 다음 입력을 골라 **능동적으로 위반을 찾는다.**
-  결과는 `mode=campaign`이고, 레지스트리에서 준비한 이미지면 결과 label이 `exploratory …`로 표시된다.
+  결과는 `mode=campaign`으로 회귀 확인(`fixture-regression`)과 구분된다.
 
 ### 미공개 문제를 찾으면 (발견 시 처리)
 

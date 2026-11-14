@@ -378,6 +378,53 @@ def run_native_decompress_campaign(
     return returncode
 
 
+def oras_go_recording_producer(produce):
+    """Wrap an oras-go case producer to keep a per-run verdict and the violating inputs.
+
+    Additive only: the wrapped producer returns ``produce(case)`` unchanged, so the loop, feedback
+    and oracle see exactly what they saw before. Every run gets a record ``{run_index, outcome,
+    c0, c1, c2}`` (a run that did not start cleanly -- neither success nor an explicit refusal --
+    is ``run_error`` with no verdict, the campaign's own eligibility rule). Only runs the oracle
+    flags keep their input TAR (base64 + SHA-256), the same shape node-tar's exploration report
+    uses, so one converter can read both.
+    """
+    from hashlib import sha256
+
+    from inodefence.builder import build_tar
+    from inodefence.model import ExecutionStatus
+
+    eligible = (ExecutionStatus.SUCCESS, ExecutionStatus.REJECTED)
+    case_records: list[dict[str, object]] = []
+    violation_inputs: list[dict[str, object]] = []
+
+    def recorded(case):
+        run_index = len(case_records)
+        run = produce(case)
+        base = run.base_result
+        clean = base.execution.status in eligible
+        hit = {v.contract_id.value: v.violated for v in base.violations} if clean else {}
+        record = {
+            "run_index": run_index,
+            "outcome": base.execution.status.value if clean else "run_error",
+            "c0": hit.get("C0"),
+            "c1": hit.get("C1"),
+            "c2": hit.get("C2"),
+        }
+        case_records.append(record)
+        if record["c0"] or record["c1"] or record["c2"]:
+            tar = build_tar(case)
+            violation_inputs.append(
+                {
+                    "run_index": run_index,
+                    "tar_sha256": sha256(tar).hexdigest(),
+                    "tar_b64": base64.b64encode(tar).decode("ascii"),
+                }
+            )
+        return run
+
+    return recorded, case_records, violation_inputs
+
+
 def run_native_oras_go_campaign(
     backend: ContainerExecutionBackend, image: str, evidence: Path, args: argparse.Namespace
 ) -> int:
@@ -420,12 +467,19 @@ def run_native_oras_go_campaign(
         f"policy={policy.value} extractor={target.provenance.target_version}"
     )
 
-    def produce(case: ArchiveCase):
+    def frame_case(case: ArchiveCase):
         return run_oras_go_frame_case(case, target)
 
+    produce, case_records, violation_inputs = oras_go_recording_producer(frame_case)
     try:
         result = run_oras_go_effect_campaign(minimal_seed_corpus(), produce, config)
         report = oras_go_effect_campaign_report(result, producer=producer, label="demo run")
+        report.update(
+            image_id=image,
+            oras_go_version=target.provenance.target_version,
+            case_records=case_records,
+            violation_inputs=violation_inputs,
+        )
         stats = result.final_stats
         _announce(
             f"oras-go self-discovery: discovered_violation={result.discovered_violation} "

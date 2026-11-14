@@ -246,6 +246,69 @@ interrupted evidence와 full-pipeline timing의 한계는 [STATUS](docs/STATUS.m
 GNU invocation은 benign fixture allowlist에 제한돼 있습니다. oras-go adapter는 구현됐습니다(#176, Ledger M4; adapter 수준 일반성).
 Canonical baseline 검증 근거는 [main CI](https://github.com/TheWaitForAGI/InodeFence/actions/runs/37248955432)입니다.
 
+## 압축 해제기의 최신 버전에 붙여 돌리기 (탐색)
+
+InodeFence의 본체는 고정 입력을 한 번 돌리는 회귀 확인이 아니라, 입력을 변형하고 그 입력이 만든
+파일시스템 상태를 피드백으로 써서 보안 경계 위반을 능동적으로 찾는 **탐색**이다. 압축 해제기(지금은
+node-tar)의 **원하는 버전을 가져와 자동으로 실행 환경을 꾸리고** 그 위에서 탐색 루프를 돌릴 수 있다.
+배포자가 **배포 전에 자기 버전을 스스로 시험하는** 용도다. 실제 탐색은 이 도구를 쓰는 사람이 한다.
+
+### 한 줄로 실행
+
+호스트 터미널에서(아래 "전제 조건"):
+
+```bash
+make target-explore TARGET=node-tar TARGET_VERSIONS="latest" AUTO_PREPARE=1 BUDGET=20 SEED=123
+```
+
+- `TARGET_VERSIONS`: `latest`(레지스트리의 최신 dist-tag를 실행 시점에 정확한 버전으로 풀어 결과에 기록)
+  또는 정확한 버전(예: `7.5.8`).
+- `BUDGET`은 실행 횟수(탐색 예산), `SEED`는 난수 seed. 둘 다 사용자가 정하며, 같은 seed·budget이면 같은
+  탐색이 재현된다.
+- `AUTO_PREPARE=1`이 있어야 이미지가 없을 때 커밋된 레시피 또는 레지스트리로 준비한다(이 단계만 네트워크를 쓴다).
+- 계획만 보려면 `TARGET_ARGS=--dry-run`을 붙인다(아무것도 준비·실행·기록하지 않는다).
+
+### 전제 조건
+
+- **호스트 터미널 + Docker.** 탐색은 격리된 컨트롤러 컨테이너 안에서 돌고, 처음에는 컨트롤러 이미지를
+  빌드한다. **Dev Container 안에서는 돌지 않는다**(그 안에는 docker가 없다).
+- **Python 3.12.** macOS 기본 `python3`(3.9)로는 안 되니 명령마다 `PYTHON=python3.12`를 붙인다
+  (`brew install python@3.12`). WSL2(Ubuntu 24.04)는 기본 `python3`이 3.12라 그대로 된다.
+- 처음 준비할 때만 네트워크가 필요하다. 추출 실행 자체는 네트워크 없이, 읽기 전용·권한 최소화된 일회용
+  컨테이너에서 한다.
+
+### 결과 읽는 법
+
+결과는 **저장소 밖** `~/inodefence-explore/target-explore/<버전>-<seed>-<budget>-result/`에 쌓인다(본실험
+증거 폴더 `~/inodefence-evidence`와도 분리된 곳이다).
+
+| 파일 | 내용 |
+| --- | --- |
+| `summary.md` | 비전공자용 한 장 요약: 대상·버전·판정·케이스별 결과·재현 방법. 먼저 이것을 읽는다 |
+| `result.json` | 공통 결과 형식 `inodefence-target-result-v1`, `mode=campaign`. 실행 수·위반 수·첫 위반까지의 실행 수·seed·budget |
+| `inputs/step-<i>.tar` | **위반으로 판정된 입력만** 저장한 TAR(큰 예산에서 전부 저장하지 않으려고). sha256은 `result.json`에 |
+
+마지막 줄의 `TARGET-EXPLORE PASS|FAIL|ERROR ... runs=N violations=M (exploration run)`이 한눈 요약이다.
+summary.md는 결과 파일 하나로 다시 만들 수도 있다:
+`PYTHONPATH=src python3.12 -m inodefence.target_result_summary <result.json>`.
+
+### 회귀 확인과 탐색은 다르다
+
+- **회귀 확인(`make target-run`):** 미리 만든 **고정 입력 몇 개**를 버전마다 한 번씩 추출해 판정만 본다.
+  준비가 됐는지 보는 앞 단계이지 탐색이 아니다. 고정 입력 실행을 "퍼징"이라고 부르지 않는다.
+- **탐색(`make target-explore`):** 입력을 변형하고 그 피드백으로 다음 입력을 골라 **능동적으로 위반을 찾는다.**
+  결과는 `mode=campaign`이고, 레지스트리에서 준비한 이미지면 결과 label이 `exploratory …`로 표시된다.
+
+### 미공개 문제를 찾으면 (발견 시 처리)
+
+이 도구로 **아직 공개되지 않은 결함**으로 보이는 위반을 찾으면, 공개하기 전에 다음 순서를 지킨다.
+
+1. 출력(원본·최소 입력, 관찰값, 판정, 재현 명령)은 **저장소 밖에만** 둔다. 어떤 브랜치·PR·이슈·커밋·로그에도
+   올리지 않는다.
+2. **같은 버전으로 두 번 더 재현**해 실제로 재현되는지 본다(재현되지 않는 후보는 위반으로 세지 않는다).
+3. **버전·위반 수·저장소 밖 폴더 경로**를 그 압축 해제기의 **유지보수자에게 먼저** 알린다.
+4. 공개는 유지보수자와 조율한 **그 다음**이다.
+
 ## 개발 환경과 현재 실행 가능한 명령
 
 macOS 또는 Windows + WSL2에서 저장소를 **VS Code Dev Container**로 엽니다.

@@ -22,7 +22,9 @@ Every record carries the label ``demo run``; it is not a qualification or experi
 Optional ``preparation`` (absent in older files, which still read unchanged) records how the cell
 image was obtained: ``method`` ``committed-lock`` (a recipe committed in this repository) or
 ``registry`` (an exploratory build from a lock generated against the public package registry at
-run time), the requested and actually installed versions, the SHA-256 of the lock inside the image,
+run time) or ``official-image`` (an official runtime image chosen by resolving a symbolic request
+such as ``latest`` at run time; its digests are in ``recipe``), the requested and actually
+installed versions, the SHA-256 of the lock inside the image,
 the worker's SHA-256 and the build recipe; for a symbolic request (``latest``) also what was asked
 and when it was resolved; and dependencies not seen in committed locks and packages whose install
 scripts were disabled (recorded, not refused). A ``registry`` record is labelled
@@ -50,7 +52,7 @@ SCHEMA = "inodefence-target-result-v1"
 LABEL = "demo run"
 #: Label of a run whose image was prepared from the public registry (``preparation.method``).
 EXPLORATORY_LABEL = "exploratory demo run"
-PREPARATION_METHODS = ("committed-lock", "registry")
+PREPARATION_METHODS = ("committed-lock", "registry", "official-image")
 CONTRACTS = ("C0", "C1", "C2")
 #: Case outcome that marks a failed run (no observation); any other outcome string is target text.
 RUN_ERROR = "run_error"

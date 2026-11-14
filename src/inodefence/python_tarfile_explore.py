@@ -162,7 +162,7 @@ def python_tarfile_exploration_report(
         requested_spec=requested_spec,
         search_policy=policy.value,
         # The registered vocabulary mode this mutation policy realizes, or None if none does.
-        vocabulary=next(
+        vocabulary_mode=next(
             (
                 mode.value
                 for mode, mp in VOCABULARY_MUTATION_POLICY.items()

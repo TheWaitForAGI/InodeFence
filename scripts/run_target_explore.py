@@ -36,6 +36,8 @@ from scripts.run_target import (
 
 # Outside the repo AND outside ~/inodefence-evidence (confirmatory evidence lives there).
 DEFAULT_OUT = Path.home() / "inodefence-explore"
+# This repository is public; a violating-case TAR written inside it could be committed and leak.
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def prepare_target_image(
@@ -146,6 +148,15 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if not args.auto_prepare:
         parser.error("pass AUTO_PREPARE=1 (--auto-prepare) to prepare the image and run")
+
+    out = args.out.expanduser().resolve()
+    if out.is_relative_to(REPO_ROOT):
+        print(
+            f"TARGET-EXPLORE SETUP: --out must be outside the repository (this repo is public and "
+            f"results may hold real violating inputs); {out} is inside {REPO_ROOT}",
+            file=sys.stderr,
+        )
+        return 3
 
     filters = [target_options[opt.name] for opt in adapter.options if opt.name in target_options]
     try:

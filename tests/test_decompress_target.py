@@ -30,10 +30,12 @@ def _raw(package: str, version: str, *, shared: bool) -> dict[str, Any]:
     }
 
 
+def test_registered_in_common_command() -> None:
+    assert rt.load_adapter("decompress") is dt.ADAPTER
+
+
 @pytest.fixture(autouse=True)
-def _registered(monkeypatch: pytest.MonkeyPatch) -> None:
-    # Registration in TARGETS is a later, separate change; tests register it locally.
-    monkeypatch.setitem(rt.TARGETS, "decompress", "scripts.run_decompress_target:ADAPTER")
+def _fixed_provenance(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         rt, "engine_provenance", lambda image: Provenance("c" * 40, False, image, "sha256:def")
     )

@@ -26,11 +26,14 @@ from inodefence.evaluation.rds import RdsArm, RdsCellConfig
 from inodefence.execution.base import ContainerOutcome, ExecutionBackend
 from inodefence.generator import minimal_seed_corpus
 from inodefence.model import (
+    ArchiveCase,
+    ArchiveEntry,
     EffectStreamCompleteness,
     EffectTargetTermination,
+    EntryType,
     ExecutionStatus,
 )
-from inodefence.python_tarfile_explore import python_tarfile_exploration_report
+from inodefence.python_tarfile_explore import case_record, python_tarfile_exploration_report
 from inodefence.targets.python_tarfile_contained import (
     CONTAINER_MECHANISM,
     PYTHON,
@@ -327,3 +330,40 @@ def test_producer_needs_exact_version_and_a_prepared_base() -> None:
         producer.ensure_producer_image(
             "python:3.13.18-slim", "3.13.18", runner=docker, present=docker.present
         )
+
+
+# ---- found in the first real run: extractor errors are outcomes, not undetermined steps ----
+
+_DANGLING_HARDLINK = ArchiveCase(
+    (
+        ArchiveEntry("dir", EntryType.DIRECTORY, mode=0o755),
+        ArchiveEntry("dir/link", EntryType.HARDLINK, link_target="a.txt"),
+    )
+)
+
+
+def test_worker_reports_a_non_tarerror_exception_instead_of_crashing() -> None:
+    # tarfile raises KeyError for a hard link whose target is not in the archive; the worker must
+    # report it (errored member line + final line), never crash without its report.
+    result = run_python_tarfile_contained_case(_DANGLING_HARDLINK, _target("data"))
+    execution = result.base_result.execution
+    assert execution.status is ExecutionStatus.FAILED
+    members, error = parse_worker_output(execution.stdout.encode(), False)
+    assert error is None
+    assert [m.succeeded for m in members] == [True, False]
+    assert members[1].error == "KeyError"
+    assert "Traceback" not in execution.stderr
+
+
+def test_a_reported_extraction_failure_keeps_its_oracle_verdict() -> None:
+    result = run_python_tarfile_contained_case(_DANGLING_HARDLINK, _target("data"))
+    record = case_record(0, result)
+    assert record["outcome"] == "failed"
+    assert (record["c0"], record["c1"], record["c2"]) == (False, False, False)
+
+
+def test_an_unreadable_report_is_still_undetermined() -> None:
+    result = run_python_tarfile_contained_case(
+        _FIX["normal"].case, _target("data", _LocalBackend(broken=True))
+    )
+    assert case_record(0, result)["outcome"] == "run_error"

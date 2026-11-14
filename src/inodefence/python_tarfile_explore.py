@@ -42,7 +42,10 @@ from inodefence.generator import minimal_seed_corpus
 from inodefence.model import ArchiveCase, EffectRunResult, ExecutionStatus
 from inodefence.mutator import MutationPolicy
 from inodefence.runtime import SentinelSpec
-from inodefence.targets.python_tarfile_contained import PythonTarfileContainedTarget
+from inodefence.targets.python_tarfile_contained import (
+    PythonTarfileContainedTarget,
+    worker_reported_status,
+)
 
 EXPLORATION_LABEL = "exploratory demo run"
 #: Defaults are the registered experiment's S-u arm, read from its definition (not copied):
@@ -53,14 +56,35 @@ DEFAULT_MUTATION_POLICY = VOCABULARY_MUTATION_POLICY[DEFAULT_VOCABULARY]
 
 
 def case_record(run_index: int, result: EffectRunResult) -> dict[str, object]:
-    """One step's verdict; a run that did not complete has no verdict (``run_error``)."""
+    """One step's verdict; only a run the extractor's report does not account for has none.
+
+    SUCCESS / REJECTED, and FAILED with a readable worker report (tarfile raised while
+    extracting), all have real host snapshots, so the oracle verdict stands. A timeout or a worker
+    report that cannot be read (crash, truncation) is ``run_error``: no verdict.
+    """
     base = result.base_result
-    if base.execution.status not in (ExecutionStatus.SUCCESS, ExecutionStatus.REJECTED):
+    status = base.execution.status
+    reported = worker_reported_status(base.execution.stdout)
+    outcome = {
+        ExecutionStatus.SUCCESS: "extracted",
+        ExecutionStatus.REJECTED: "declined",
+        ExecutionStatus.FAILED: "failed",
+    }.get(status)
+    if (
+        outcome is None
+        or reported is None
+        or reported
+        != {
+            "extracted": "success",
+            "declined": "rejected",
+            "failed": "failed",
+        }[outcome]
+    ):
         return {"run_index": run_index, "outcome": "run_error", "c0": None, "c1": None, "c2": None}
     hit = {v.contract_id.value: v.violated for v in base.violations}
     return {
         "run_index": run_index,
-        "outcome": "extracted" if base.execution.status is ExecutionStatus.SUCCESS else "declined",
+        "outcome": outcome,
         "c0": hit.get("C0"),
         "c1": hit.get("C1"),
         "c2": hit.get("C2"),

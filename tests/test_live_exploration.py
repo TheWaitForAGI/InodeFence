@@ -193,13 +193,13 @@ def test_replay_template_or_plain_note(tmp_path: Path) -> None:
     )
 
 
-def test_live_step_validation() -> None:
+def test_live_step_validation(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="tar_bytes"):
         LiveStep(index=0, case_id="a", status="success", c1=True)
     with pytest.raises(ValueError, match="status"):
         LiveStep(index=0, case_id="a", status="exploded")
     with pytest.raises(ValueError, match="close state"):
-        LiveRecorder(Path("/nonexistent-never-used"), META).close(state="running")
+        LiveRecorder(tmp_path / "live", META).close(state="running")
 
 
 # -- host pull ---------------------------------------------------------------------------------

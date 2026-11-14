@@ -50,9 +50,7 @@
 
 **통제 재현.** 같은 판정기가 릴리스 번호 없이 공유와 거부를 구분했다. 최상위 입력은 7.5.2에서 공유되고(nlink 1→2) 7.5.3에서 거부됐으며, 중첩 입력은 7.5.6에서 공유되고 7.5.7에서 거부됐다. 손으로 만든 입력의 재현이며 퍼저가 찾은 것이 아니다.
 
-**자율 관찰.** 현재 판정은 이름 획득 조건의 관찰(피드백 인과 미입증)이다. 외부 이름을 어휘에 넣은 조건에서 자율 C1은 두 seed에서 관찰됐다: 예산 1500의 65 seed 중 1개(s11), 별도 매칭 실행(예산 2000, 새 seed 100–119)의 완주 10개 중 1개(s101). 어휘(이름 포함 여부)를 달리한 대조이고 드문 사례이며 blind 발견이 아니다. 비교 실험에서 비율 차이는 구간이 겹쳐 미입증이다. 여기서 위반은 C1이고, 아래 파일럿의 사건은 C1 또는 C2다.
-
-**일반성.** 같은 판정기를 python-tarfile, oras-go, decompress에 adapter 수준으로 적용했다. 이는 판정기 수준의 일반성이다. decompress(사후 분석)와 oras-go(1 seed)의 자력 실행에서 C1/C2는 관찰되지 않았다.
+**일반성.** 같은 판정기를 python-tarfile, oras-go, decompress에 adapter 수준으로 적용했다. 이는 판정기 수준의 일반성이다.
 
 **EXP-0(인프라 측정).** 15셀 3,000회 실행을 완주했고 abort는 0, C1/C2는 0건이었다. 가설 검정이 아니며 0건은 위험이 0이라는 뜻이 아니다.
 
@@ -91,8 +89,7 @@
 | 순서 | 사진 | 제목(안) | 상태 |
 | --- | --- | --- | --- |
 | 1 | `paper/figures/m2-cross-release-evidence.png` | 릴리스별 하드링크 입력 판정(통제 재현) | W3 PASS |
-| 2 | `paper/figures/m3-blind-ablation.png` | 어휘 조건별 자율 C1 관찰(피드백 인과 미입증) | W3 PASS |
-| 3 | `paper/figures/make-demo-screen.png` | 실제 node-tar 탐색 루프 실행 화면(2026-11-07 실행 기록) | W4 PASS(`959e845`) |
+| 2 | `paper/figures/make-demo-screen.png` | 실제 node-tar 탐색 루프 실행 화면(2026-11-07 실행 기록) | W4 PASS(`959e845`) |
 
 ## ■ 생성형 AI 사용 결과
 
@@ -133,7 +130,7 @@
 **시간 제약.** 적격성 검증·EXP-3·EXP-2 실행 중에는 측정 교란을 피하려 실험 호스트 PC에서 한컴 작업을 하지 않는다. 동결일이 당겨질 수 있어 사람 단계는 다른 기기(맥북·한컴독스)에서 하는 것을 기준으로 한다(기기는 지웅 결정). 동결 전에 그림 삽입과 쪽수 리허설을 1회 한다. 쪽수 리허설은 `[대기]` 문단이 아니라 가장 긴 판정 문구(`d12-conclusions` 기준)를 넣은 판으로 잰다. 칸 길이 측정이고 결과를 보는 일이 아니다.
 
 1. 입력 파일을 한컴에서 연다. 표지와 서식 목록 처리는 지웅 결정에 따른다.
-2. ■ 결과물 사진 칸에 그림 3장을 넣는다. 각 그림은 해당 제목 줄 바로 위에 둔다. M3 그림은 재렌더 판(제목에 "name-acquisition condition"이 있는 판)만 쓴다.
+2. ■ 결과물 사진 칸에 그림 2장을 넣는다. 각 그림은 해당 제목 줄 바로 위에 둔다.
 3. 표 3의 메모 2개(라벨 칸 `팀명`, `결과물`)를 삭제한다.
 4. 작성일과 팀장 명을 적고 서명한다. 커밋 수(513, 161)와 학기 일정 날짜는 제출 직전에 사람이 다시 확인한다.
 5. 다른 이름으로 저장해 재저장본을 만들고 쪽수가 5장 내외인지 본다.
@@ -153,11 +150,10 @@
 | 목적 3) | 7.5.3 거부 → 7.5.6 공유 → 7.5.7 거부, 대응·원인 추론 | `experiments/summaries/cross-release-identity-repro-v1.md`, `paper/tables/m2-cross-release-evidence.md` | PASS(01cceeb) |
 | 수행 ③ | R/D/S-u, 등록 파일 2개 | `docs/research/design/research-questions.md`, D040(#282, 머지됨 `05b26a9`), R 표기는 D040-D6(seed-restart) | PASS(9eafebd) |
 | 목적 2) | 7.5.3 거부 → 7.5.6 공유로 재검사 필요를 말함. "알려진 입력 재실행으로는 부족" 주장 삭제 | 목적 3)과 같은 출처, `scripts/regression_check.py` | W3 정정 문구 반영(`c50118a`), PASS(9eafebd) |
-| 루프 동작 | `make demo` 1회에 7.5.22, 20 step, 위반 0, corpus 4→7 | `~/inodefence-evidence/w4-script-verification-20261106/stdout/make_demo.out`. 그림 3의 2026-11-07 실행 기록은 `~/inodefence-evidence/demo-recordings-20261107/scene4-take1.typescript`(sha256 `91608744…`) | PASS(d22577b) |
-| 사진 3 | `make demo` 끝 화면 1프레임, 실행 기록 재생(2026-11-07). 새 실행 없음, 출력 편집 없음, 줄바꿈 폭만 156열. PNG sha256 `6d1c318c5d5872e9d5d6caa78f7cc89e7a4a111e9377207548a432b061b5a893` | `~/inodefence-evidence/demo-recordings-20261107/scene4-take1.typescript`(sha256 `916087442b27743c8c141f33371a88e5c8a368d8e67a14fd18ac73026b447fa1`, `SHA256SUMS`와 일치), `paper/figures/render_make_demo_screen.py` | W4 PASS(`959e845`), W3 PASS |
+| 루프 동작 | `make demo` 1회에 7.5.22, 20 step, 위반 0, corpus 4→7 | `~/inodefence-evidence/w4-script-verification-20261106/stdout/make_demo.out`. 그림 2의 2026-11-07 실행 기록은 `~/inodefence-evidence/demo-recordings-20261107/scene4-take1.typescript`(sha256 `91608744…`) | PASS(d22577b) |
+| 사진 2 | `make demo` 끝 화면 1프레임, 실행 기록 재생(2026-11-07). 새 실행 없음, 출력 편집 없음, 줄바꿈 폭만 156열. PNG sha256 `6d1c318c5d5872e9d5d6caa78f7cc89e7a4a111e9377207548a432b061b5a893` | `~/inodefence-evidence/demo-recordings-20261107/scene4-take1.typescript`(sha256 `916087442b27743c8c141f33371a88e5c8a368d8e67a14fd18ac73026b447fa1`, `SHA256SUMS`와 일치), `paper/figures/render_make_demo_screen.py` | W4 PASS(`959e845`), W3 PASS |
 | 통제 재현 | nlink 1→2, 거부 | `experiments/repro/evidence/summary.json`, 표 M2 | 표·그림 PASS |
-| 자율 관찰 | 자율 C1은 65 seed 중 s11, 매칭 실행(#196, budget 2000, seed 100–119) 완주 10 중 s101, 이름 획득 조건 문구. hit는 C1 ∧ contract_violated이고 A3full-s60의 C2만 위반 step 14개는 세지 않았다 | `docs/STATUS.md` Ledger, 표 M3, `experiments/summaries/m3-powered-matched-verdict-v2.md`. raw는 Mac 호스트 보관, 체크섬 `raw-manifest-mac-20261103.sha256`, 2026-11-03 감사 재집계. 표는 요약에서 생성. M3 raw 재집계는 11/03 감사 기록에 의존(제출 차단 아님) | 표 수치·그림·hit 문구 PASS. "어휘(이름 포함 여부)를 달리한 대조" PASS(d22577b) |
-| 일반성 | 3 extractor, decompress(사후 분석)·oras-go(1 seed) 자력 실행에서 C1/C2 미관찰 | `docs/STATUS.md` Ledger, `experiments/summaries/m4-5-decompress-selfdiscover-unified-v1.md`, `m4-7-oras-go-selfdiscover-v1.md` | PASS(d22577b) |
+| 일반성 | 3 extractor, 판정기·adapter 수준 | `docs/STATUS.md` Ledger, `tests/test_python_tarfile_generality.py` | PASS(d22577b) |
 | EXP-0 | 15셀, 3,000, abort 0, hit 0 | `experiments/summaries/exp0-20261105-report.md` | PASS(#268) |
 | 파일럿 | 사건 R-walk 1, R-restart 4, D 4, S-u 6, abort 11/40 | `experiments/summaries/exp3-hazard-pilot-v1-result.md` | PASS(#267), PASS(9eafebd). "R의 두 변형" 문구는 재확인 대기(`79ce477`) |
 | 회귀 명령 | 고정 fixture 범위. 해당 버전 이미지를 만든 뒤 실행 | `scripts/regression_check.py`, `Makefile` `regression` | PASS(d22577b) |

@@ -2,7 +2,7 @@
 
 보고서 결과 칸과 논문 §5.6을 채우는 산출물이다. 표 번호와 파일 이름의 기준은 생성기다:
 `scripts/gen_exp3_tables.py`의 `TABLES`와 `scripts/regenerate_paper_artifacts.py`의 `_EXP3_TABLES`·`_EXP3_FIGURES`
-(실행 SHA E `bed077a`에 있다). 이 문서와 생성기가 다르면 생성기가 맞고 이 문서를 고친다. 실데이터 실행은 아직 없다.
+(실행 SHA E `bed077a`에 있다). 이 문서와 생성기가 다르면 생성기가 맞고 이 문서를 고친다. 실데이터 표는 T-EXP3-2(`paper/tables/exp3-go-inputs.md`, GO 입력 합산값, #368)뿐이고, 나머지는 봉인 해제 뒤 만든다.
 
 ## 생성기 규칙
 
@@ -52,15 +52,14 @@ NO-GO나 GO 미산출이면 EXP-2를 실행하지 않으므로 T-EXP2-* 와 F-EX
 | --- | --- | --- | --- |
 | T-EXP0 | `paper/tables/exp0-summary.md` | `paper/figures/render_exp0_survival.py --report <json> --no-figure` | 입력은 `experiments/summaries/exp0-20261105-report.json`(스키마 1). 2026-11-07 재생성 완료. `regenerate_paper_artifacts.py --regenerate`는 이 생성기를 실행하지 않으므로 직접 실행한다. 표의 p50·p95는 monotonic 기록값이다(공백 5) |
 | F-EXP0 | `paper/figures/exp0-survival.png` | 같은 스크립트 (matplotlib 임시 환경) | `item5_first_contract_index.by_arm.<arm>.t_first_combined_c1_or_c2.{km_curve,censored_times}`. 2026-11-07 생성 완료. hit 0이므로 곡선은 사건 없이 평평하고 세 arm이 겹쳐 맨 위 S-u만 보인다. 보고서에는 쓰지 않는다 |
-| T-M2, T-M3 | `paper/tables/m2-cross-release-evidence.md`, `m3-blind-ablation.md` | `scripts.gen_table_m2`, `scripts.gen_table_m3` (#256) | `experiments/repro/evidence/summary.json`, `node-self-discovery-mechanism-v1.md`. `--check`로 바이트 대조 |
-| F-M2, F-M3 | `paper/figures/m2-cross-release-evidence.png`, `m3-blind-ablation.png` | `render_m2_cross_release.py`, `render_m3_blind_ablation.py` | 2026-11-06 재렌더, 철회·혼동 문구 정정 완료 |
+| T-M2 | `paper/tables/m2-cross-release-evidence.md` | `scripts.gen_table_m2` (#256) | `experiments/repro/evidence/summary.json`. `--check`로 바이트 대조 |
+| F-M2 | `paper/figures/m2-cross-release-evidence.png` | `render_m2_cross_release.py` | 2026-11-06 재렌더 |
 
 ## 남은 공백과 주의
 
-1. **실데이터 실행이 없다.** EXP-3·EXP-2 생성기는 합성 입력(`tests/test_exp3_synthetic_e2e.py`)으로만 돌았다. 생성 표 → HWP 칸 → 영상 자막 경로는 아직 끝까지 돌려 보지 않았다.
+1. **봉인된 실데이터.** EXP-3·EXP-2 생성기는 T-EXP3-2를 빼면 합성 입력(`tests/test_exp3_synthetic_e2e.py`)으로만 돌았다. 나머지 실데이터 표는 봉인 해제 뒤 만든다. 생성 표 → HWP 칸 → 영상 자막 경로는 아직 끝까지 돌려 보지 않았다.
 2. **T-EXP2-3의 abort 3분할은 손 입력이다.** 생산 도구가 없다. 입력 절차는 본실험 런북을 따른다.
-3. **해소됨: 표 생성기의 옛 문구.** `gen_table_m2.py`·`gen_table_m3.py`는 2026-11-06 정정 문구로 맞춰 #256으로 머지됐다. T-M2·T-M3를 고칠 때는
-   생성기 리터럴도 함께 고친다. `tests/test_gen_tables.py`와 `--verify`가 바이트로 대조한다.
+3. **표 생성기 리터럴.** T-M2를 고칠 때는 `gen_table_m2.py` 리터럴도 함께 고친다. `tests/test_gen_tables.py`와 `--verify`가 바이트로 대조한다.
 4. **EXP-0 리포트의 타깃 필드.** JSON `targets`는 `["unspecified"]`이고 실제 타깃은 `7.5.2`다(공식 리포트 편차 5).
 5. **시간 값에는 clock을 표시한다.** `item2`·`item3`은 monotonic clock 기록이고 `summed.exec_per_hour`는 스트림당 값이다. 기록값과
    실시간 환산값을 나란히 적는다. 배율은 실행마다, 한 실행 안에서도 변하므로(파일럿 셀별 1.00~1.10) 단일 배율로 환산하지 않는다. EXP-0 배율

@@ -37,13 +37,16 @@ from __future__ import annotations
 
 import base64
 import io
+import re
 import subprocess
 import tarfile
+from pathlib import Path
 from typing import Any
 
 from experiments.repro import oras_go_cwd_hardlink as ogh
+from scripts import image_prepare as ip
 from scripts import regression_check as rc
-from scripts.run_target import CaseRun, RunCell, TargetAdapter, fixture_case
+from scripts.run_target import CaseRun, PrepareStep, RunCell, TargetAdapter, fixture_case
 
 from inodefence.target_result import ResultMode, TargetAxes
 
@@ -117,11 +120,57 @@ def _run(cell: RunCell) -> list[CaseRun]:
     for fixture in build_fixtures():
         tar_b64 = base64.b64encode(fixture.tar).decode()
         try:
-            raw = ogh.run_probe(version, tar_b64, sentinel_b64)
+            raw = ogh.run_probe(version, tar_b64, sentinel_b64, image=cell.image_ref)
         except (OSError, subprocess.SubprocessError) as error:  # docker missing / timeout
             raw = {"_run_error": True, "_reason": f"{type(error).__name__}: {error}"[:400]}
         runs.append(fixture_case(fixture, raw))
     return runs
+
+
+# ---- image preparation (build from the committed per-role go.mod/go.sum) ----
+
+TOOLS_DIR = Path(__file__).resolve().parents[1] / "tools" / "oras-go"
+_ORAS_REQUIRE = re.compile(r"^\s*oras\.land/oras-go/v2\s+v([0-9]+\.[0-9]+\.[0-9]+)\s*$", re.M)
+
+
+def pinned_versions(tools_dir: Path = TOOLS_DIR) -> dict[str, str]:
+    """oras-go version -> recipe role, from each committed ``<role>/go.mod`` with its ``go.sum``."""
+    pinned: dict[str, str] = {}
+    for role in sorted(p for p in tools_dir.iterdir() if p.is_dir()):
+        gomod = role / "go.mod"
+        if gomod.is_file() and (role / "go.sum").is_file():
+            found = _ORAS_REQUIRE.search(gomod.read_text(encoding="utf-8"))
+            if found:
+                pinned[found.group(1)] = role.name
+    return pinned
+
+
+def image_recipe(version: str, tools_dir: Path = TOOLS_DIR) -> ip.Recipe:
+    """Build ``tools/oras-go/Dockerfile`` with the role whose committed go.mod pins ``version``.
+
+    After the build the worker's offline ``identify`` must report ``v<version>``. Versions without
+    a committed go.mod/go.sum are refused; nothing is resolved from the network by version name.
+    """
+    ip.exact_version(version, "oras-go version")
+    pinned = pinned_versions(tools_dir)
+    if version not in pinned:
+        raise ip.UnsupportedVersionError(
+            f"oras-go {version}: no committed go.mod/go.sum pins it "
+            f"(buildable: {', '.join(sorted(pinned)) or 'none'})"
+        )
+    return ip.Recipe(
+        description=f"build tools/oras-go/Dockerfile ROLE={pinned[version]} (committed go.sum)",
+        expected=f"v{version}",
+        build=("-f", "tools/oras-go/Dockerfile", "--build-arg", f"ROLE={pinned[version]}"),
+        check=(ip.IMAGE_SLOT, "identify"),
+        json_key="oras_go_version",
+    )
+
+
+def _prepare(cell: RunCell) -> PrepareStep:
+    """``TargetAdapter.prepare``: build ``cell.image_ref`` from the committed recipe; verify it."""
+    version = cell.axes.target_version or ""
+    return ip.recipe_step(cell, lambda: image_recipe(version))
 
 
 ADAPTER = TargetAdapter(
@@ -130,4 +179,5 @@ ADAPTER = TargetAdapter(
     cells=_cells,
     plan=_plan,
     run=_run,
+    prepare=_prepare,
 )

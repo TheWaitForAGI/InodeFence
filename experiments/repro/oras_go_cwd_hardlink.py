@@ -110,7 +110,8 @@ def image_id(tag: str) -> str:
     return _docker("image", "inspect", IMAGE.format(tag=tag), "--format", "{{.Id}}").stdout.strip()
 
 
-def run_probe(tag: str, tar_b64: str, sentinel_b64: str) -> dict:
+def run_probe(tag: str, tar_b64: str, sentinel_b64: str, image: str | None = None) -> dict:
+    """Run the worker probe in a fresh container of ``image`` (default: the tag's own image)."""
     result = _docker(
         "run",
         "--rm",
@@ -127,7 +128,7 @@ def run_probe(tag: str, tar_b64: str, sentinel_b64: str) -> dict:
         f"TAR_B64={tar_b64}",
         "-e",
         f"SENTINEL_B64={sentinel_b64}",
-        IMAGE.format(tag=tag),
+        image or IMAGE.format(tag=tag),
         "probe",
         check=False,
     )

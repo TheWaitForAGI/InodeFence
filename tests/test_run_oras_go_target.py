@@ -60,7 +60,10 @@ def test_cells_reject_bad_axes(versions: list[str], filters: list[str], message:
 
 
 def _fake_probe(shared_on: set[str]):
-    def probe(tag: str, tar_b64: str, sentinel_b64: str) -> dict[str, Any]:
+    def probe(
+        tag: str, tar_b64: str, sentinel_b64: str, image: str | None = None
+    ) -> dict[str, Any]:
+        assert image == f"inodefence-oras-go:{tag}"  # the run uses cell.image_ref
         import base64
 
         names = [m.name for m in _members(base64.b64decode(tar_b64))]
@@ -82,6 +85,8 @@ def test_version_pair_writes_common_results(
 ) -> None:
     monkeypatch.setattr(rog.ogh, "run_probe", _fake_probe({"cwd_relative_hardlink"}))
     monkeypatch.setattr(rt, "engine_provenance", lambda image: rt.Provenance(None, True, image))
+    monkeypatch.setattr(rt, "docker_problem", lambda: None)  # no docker here; images "present"
+    monkeypatch.setattr(rt, "image_id", lambda ref: f"sha256:{ref}")
     argv = ["--target", "oras-go", "--version", "2.6.1", "--version", "2.6.2", "--out"]
     assert rt.main([*argv, str(tmp_path)]) == 1
 
@@ -103,7 +108,7 @@ def test_version_pair_writes_common_results(
 
 
 def test_probe_failure_is_run_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    def timeout(*args: Any) -> dict[str, Any]:
+    def timeout(*args: Any, **kwargs: Any) -> dict[str, Any]:
         raise subprocess.TimeoutExpired("docker", 600)
 
     monkeypatch.setattr(rog.ogh, "run_probe", timeout)

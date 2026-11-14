@@ -130,7 +130,8 @@ def build_tar(entries: list[dict]) -> bytes:
     return buf.getvalue()
 
 
-def run_one(release: str, tar_b64: str) -> dict:
+def run_one(release: str, tar_b64: str, image: str | None = None) -> dict:
+    """Extract one TAR in a fresh container of ``image`` (default: the release's own tag)."""
     cmd = [
         "docker",
         "run",
@@ -143,7 +144,7 @@ def run_one(release: str, tar_b64: str) -> dict:
         f"REF_B64={base64.b64encode(REFERENCE_CONTENT).decode()}",
         "--entrypoint",
         "node",
-        IMAGE.format(release=release),
+        image or IMAGE.format(release=release),
         "-e",
         NODE_PROGRAM,
     ]

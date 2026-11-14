@@ -21,30 +21,53 @@ mix in one run. For each cell this writes, under ``DIR/<cell dirname>/``:
 A cell directory that already has a ``result.json`` is refused; nothing is overwritten.
 
 Targets are registered in ``TARGETS`` as ``"module:ATTRIBUTE"`` and loaded on use. Each entry is
-a target-specific ``TargetAdapter`` that lives here or in its own module, never in the common
-format module. ``node-tar`` (below) and ``python-tarfile``
-(``scripts.run_python_tarfile_target.ADAPTER``) are registered. Both run in mode
+a target-specific ``TargetAdapter`` in its own module (``scripts/run_<target>_target.py``), never
+in this file or the common format module. All registered targets run in mode
 ``fixture-regression``: the same hand-built hard-link and symlink-write fixtures that
 ``make regression`` runs, each extracted in a disposable container (the host is never the
 extraction target) that observes the post-extraction state of an external reference file beside
 ``extract/``. That observes C1 (inode identity shared) and C2 (reference changed) but not C0, so
 C0 is ``null`` ("not observed", never "no violation"). Versions and filters are plain inputs; no
-release id or CVE id is a decision condition. ``--dry-run`` writes nothing and runs no container.
+release id or CVE id is a decision condition.
+
+Images (target-independent flow; ``AUTO_PREPARE`` / ``--auto-prepare``):
+
+1. validate target, versions and axes (``adapter.cells``; unsupported values are refused with the
+   adapter's reason);
+2. check docker, then each distinct cell image (``RunCell.image_ref``): present -> reuse;
+3. missing and no ``--auto-prepare`` (the default) -> one line per missing image, exit 3, nothing
+   runs; missing and ``--auto-prepare`` -> ``adapter.prepare(cell)`` gives a ``PrepareStep``,
+   run once per image; an unsupported step or a failed command is an explicit error and that
+   image's cells get no verdict (exit 3);
+4. run each cell; the image id is read before and after the run and must match the id that was
+   reused or prepared (else no verdict, exit 3); that id goes into ``provenance.image_id``.
+
+``--image-tag-suffix S`` (``IMAGE_TAG_SUFFIX``) appends ``S`` to every cell image tag, so a
+missing-image -> prepare -> run path can be shown without touching any existing tag; the suffixed
+tag is what ``provenance.image_ref`` records. Nothing here removes or retags an existing image.
+``--dry-run`` prints, per cell, whether its image would be reused or prepared (read-only image
+lookups only); it pulls, builds, runs and writes nothing.
+
+Exit codes: 0 PASS, 1 FAIL, 2 ERROR (worst verdict over cells), 3 nothing judged for some or all
+cells (refused input or existing result, setup, preparation or image problem).
 """
 
 from __future__ import annotations
 
 import argparse
-import base64
+import dataclasses
 import importlib
 import json
+import re
+import shlex
+import shutil
 import subprocess
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
-from experiments.repro import cross_release_identity as cri
 from scripts import regression_check as rc
 
 from inodefence.target_result import (
@@ -56,6 +79,7 @@ from inodefence.target_result import (
     TargetResult,
     repro_input,
 )
+from inodefence.target_result_summary import write_cell_summaries
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RESULT_NAME = "result.json"
@@ -80,14 +104,49 @@ class RunCell:
 
 
 @dataclass(frozen=True, slots=True)
+class PrepareStep:
+    """How a target would make one missing cell image exist (pull and/or build).
+
+    ``commands`` run in order from the repository root; ``None`` means automatic preparation is
+    not supported for this cell, and ``reason`` says why (printed to the user unchanged). When
+    supported, ``reason`` is a short description (e.g. "build from tools/x/Dockerfile"). The
+    commands must create exactly ``image_ref`` and must not retag, overwrite or remove any other
+    existing tag; they may use the network (the extraction run never does).
+    """
+
+    image_ref: str
+    commands: tuple[tuple[str, ...], ...] | None
+    reason: str
+
+
+def prepare_unsupported(cell: RunCell) -> PrepareStep:
+    """Default ``TargetAdapter.prepare``: no automatic preparation for this target yet."""
+    return PrepareStep(
+        image_ref=cell.image_ref or "",
+        commands=None,
+        reason="automatic image preparation is not implemented for this target yet",
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class TargetAdapter:
-    """What a target supplies. ``cells`` validates the axis values (``ValueError`` if invalid)."""
+    """What a target supplies.
+
+    - ``cells(versions, filters)``: validate the axis values and return the cells, each with the
+      image it needs (``RunCell.image_ref``); ``ValueError(reason)`` refuses unsupported values.
+    - ``plan(cell)``: what a run of the cell would execute (dry-run only).
+    - ``run(cell)``: execute the cell's cases in ``cell.image_ref`` (never an image name rebuilt
+      from the version, so a tag override reaches the run).
+    - ``prepare(cell)``: the ``PrepareStep`` that would create ``cell.image_ref`` when it is
+      missing; default ``prepare_unsupported``.
+    """
 
     mode: ResultMode
     observed_contracts: tuple[str, ...]
     cells: Callable[[list[str], list[str]], list[RunCell]]
     plan: Callable[[RunCell], list[dict[str, Any]]]
     run: Callable[[RunCell], list[CaseRun]]
+    prepare: Callable[[RunCell], PrepareStep] = prepare_unsupported
 
 
 def fixture_case(fixture: rc.RegressionFixture, raw: dict[str, Any]) -> CaseRun:
@@ -114,46 +173,9 @@ def fixture_plan() -> list[dict[str, Any]]:
     ]
 
 
-# ---- node-tar adapter (target-specific; reuses the make regression fixtures and engine) ----
-
-
-def _node_tar_cells(versions: list[str], filters: list[str]) -> list[RunCell]:
-    if filters:
-        raise ValueError("node-tar has no extraction-filter axis; drop --extraction-filter")
-    for version in versions:
-        if rc._VERSION_RE.fullmatch(version) is None:
-            raise ValueError(f"node-tar --version must be dotted numeric, e.g. 7.5.2: {version!r}")
-    return [
-        RunCell(
-            dirname=f"node-tar-{v}",
-            axes=TargetAxes(target_version=v),
-            image_ref=cri.IMAGE.format(release=v),
-        )
-        for v in versions
-    ]
-
-
-def _node_tar_run(cell: RunCell) -> list[CaseRun]:
-    version = cell.axes.target_version
-    assert version is not None
-    runs = []
-    for fixture in rc.build_fixtures():
-        raw = cri.run_one(version, base64.b64encode(fixture.tar).decode())
-        runs.append(fixture_case(fixture, raw))
-    return runs
-
-
-NODE_TAR = TargetAdapter(
-    mode=ResultMode.FIXTURE_REGRESSION,
-    observed_contracts=("C1", "C2"),
-    cells=_node_tar_cells,
-    plan=lambda cell: fixture_plan(),
-    run=_node_tar_run,
-)
-
 # Adding a target: write a module with a TargetAdapter, then add one line here.
 TARGETS: dict[str, str] = {
-    "node-tar": "scripts.run_target:NODE_TAR",
+    "node-tar": "scripts.run_node_tar_target:ADAPTER",
     "python-tarfile": "scripts.run_python_tarfile_target:ADAPTER",
     "oras-go": "scripts.run_oras_go_target:ADAPTER",
     "decompress": "scripts.run_decompress_target:ADAPTER",
@@ -162,8 +184,6 @@ TARGETS: dict[str, str] = {
 
 def load_adapter(target: str) -> TargetAdapter:
     module_name, _, attribute = TARGETS[target].partition(":")
-    if module_name == __name__ or (module_name == "scripts.run_target" and __name__ == "__main__"):
-        return globals()[attribute]
     return getattr(importlib.import_module(module_name), attribute)
 
 
@@ -203,6 +223,133 @@ def engine_provenance(image_ref: str | None) -> Provenance:
         image_ref=image_ref,
         image_id=image_id,
     )
+
+
+# ---- images: lookup, preparation, tag override (target-independent) ----
+
+SETUP_ERROR = 3  # nothing judged for the affected cells: refused input, setup, preparation, image
+_TAG_SUFFIX_RE = re.compile(r"[A-Za-z0-9_.-]{1,40}")
+
+
+def docker_problem() -> str | None:
+    """Why docker cannot run containers here, with the fix, or None if it can."""
+    if shutil.which("docker") is None:
+        return (
+            "docker not found on PATH; install Docker (Linux: Docker Engine; Windows: Docker "
+            "Desktop with WSL integration) and run target-run on that host "
+            "(the Dev Container has no docker)"
+        )
+    try:
+        done = subprocess.run(
+            ["docker", "info", "--format", "{{.ServerVersion}}"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        return f"docker daemon not reachable ({type(error).__name__}); start Docker and retry"
+    if done.returncode != 0:
+        return (
+            "docker daemon not reachable; start Docker (Docker Desktop, or "
+            "`sudo service docker start`) and make sure your user may use it, then retry"
+        )
+    return None
+
+
+def image_id(image_ref: str) -> str | None:
+    """The local image id for ``image_ref`` (read-only lookup), or None if it is not present."""
+    try:
+        done = subprocess.run(
+            ["docker", "image", "inspect", "--format", "{{.Id}}", image_ref],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return (done.stdout.strip() or None) if done.returncode == 0 else None
+
+
+def with_tag_suffix(cell: RunCell, suffix: str) -> RunCell:
+    """The same cell run on ``<image_ref><suffix>`` (development tag override)."""
+    if cell.image_ref is None or not suffix:
+        return cell
+    return dataclasses.replace(cell, image_ref=cell.image_ref + suffix)
+
+
+class PrepareError(Exception):
+    """An image could not be prepared; its cells get no verdict."""
+
+
+def prepare_image(step: PrepareStep) -> str:
+    """Run ``step``'s commands and return the prepared image's id (``PrepareError`` if not)."""
+    if step.commands is None:
+        raise PrepareError(f"cannot prepare {step.image_ref}: {step.reason}")
+    for command in step.commands:
+        print(f"TARGET-RUN PREPARE {step.image_ref}: {shlex.join(command)}", flush=True)
+        try:
+            done = subprocess.run(list(command), cwd=REPO_ROOT)
+        except OSError as error:
+            raise PrepareError(f"preparing {step.image_ref} failed: {error}") from error
+        if done.returncode != 0:
+            raise PrepareError(
+                f"preparing {step.image_ref} failed (exit {done.returncode}): {shlex.join(command)}"
+            )
+    prepared = image_id(step.image_ref)
+    if prepared is None:
+        raise PrepareError(f"preparing {step.image_ref} finished but the image is not present")
+    return prepared
+
+
+def resolve_images(
+    adapter: TargetAdapter, cells: list[RunCell], *, auto_prepare: bool
+) -> tuple[dict[str, str], dict[str, str]]:
+    """Each distinct cell image -> its id (reused or prepared once), and image -> error."""
+    ready: dict[str, str] = {}
+    errors: dict[str, str] = {}
+    for cell in cells:
+        ref = cell.image_ref
+        if ref is None or ref in ready or ref in errors:
+            continue
+        present = image_id(ref)
+        if present is not None:
+            print(f"TARGET-RUN IMAGE reuse {ref} {present}")
+            ready[ref] = present
+            continue
+        step = adapter.prepare(cell)
+        if not auto_prepare:
+            hint = (
+                "rerun with AUTO_PREPARE=1 (--auto-prepare) to prepare it"
+                if step.commands is not None
+                else f"automatic preparation unavailable: {step.reason}"
+            )
+            errors[ref] = f"missing image {ref}; {hint}"
+            continue
+        try:
+            ready[ref] = prepare_image(step)
+            print(f"TARGET-RUN IMAGE prepared {ref} {ready[ref]}")
+        except PrepareError as error:
+            errors[ref] = str(error)
+    return ready, errors
+
+
+def image_status(adapter: TargetAdapter, cell: RunCell, docker_ok: bool) -> dict[str, Any]:
+    """Dry-run view of a cell image: reuse, prepare (with commands) or why it cannot run."""
+    if cell.image_ref is None:
+        return {"action": "none"}
+    if not docker_ok:
+        return {"action": "unknown", "reason": "docker unavailable; image presence not checked"}
+    present = image_id(cell.image_ref)
+    if present is not None:
+        return {"action": "reuse", "image_id": present}
+    step = adapter.prepare(cell)
+    if step.commands is None:
+        return {"action": "missing-unsupported", "reason": step.reason}
+    return {
+        "action": "prepare (needs AUTO_PREPARE=1)",
+        "reason": step.reason,
+        "commands": [shlex.join(c) for c in step.commands],
+    }
 
 
 def build_result(
@@ -254,13 +401,22 @@ def summary_line(result: TargetResult) -> str:
     )
     return (
         f"TARGET-RUN {result.verdict.value} target={result.target} {axis} "
+        f"image={result.provenance.image_ref} "
         f"mode={result.mode.value} violating={len(result.violating_cases)}/{result.executed} "
         f"errored={result.errored} (demo run)"
     )
 
 
+class _Parser(argparse.ArgumentParser):
+    """Refusals exit 3, never argparse's 2, which is the ERROR verdict code of this command."""
+
+    def error(self, message: str) -> NoReturn:
+        self.print_usage(sys.stderr)
+        self.exit(SETUP_ERROR, f"{self.prog}: error: {message}\n")
+
+
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="run one target on fixed axes (demo run)")
+    parser = _Parser(description="run one target on fixed axes (demo run)")
     parser.add_argument("--target", required=True, choices=sorted(TARGETS))
     parser.add_argument(
         "--version",
@@ -276,7 +432,19 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--out", type=Path, help="output directory (required unless --dry-run)")
     parser.add_argument("--dry-run", action="store_true", help="print the plan, run nothing")
+    parser.add_argument(
+        "--auto-prepare",
+        action="store_true",
+        help="prepare (pull/build) missing cell images with the target's recipe before running",
+    )
+    parser.add_argument(
+        "--image-tag-suffix",
+        default="",
+        help="append this to every cell image tag (development; existing tags are untouched)",
+    )
     args = parser.parse_args(argv)
+    if args.image_tag_suffix and _TAG_SUFFIX_RE.fullmatch(args.image_tag_suffix) is None:
+        parser.error("--image-tag-suffix must be 1-40 characters of [A-Za-z0-9_.-]")
     versions, filters = args.version, args.extraction_filter
     if len(set(versions)) != len(versions) or len(set(filters)) != len(filters):
         parser.error("each --version / --extraction-filter may be given once")
@@ -290,8 +458,10 @@ def main(argv: list[str] | None = None) -> int:
         cells = adapter.cells(versions, filters)
     except ValueError as error:
         parser.error(str(error))
+    cells = [with_tag_suffix(cell, args.image_tag_suffix) for cell in cells]
 
     if args.dry_run:
+        docker_ok = docker_problem() is None
         plan = {
             "target": args.target,
             "mode": adapter.mode.value,
@@ -304,11 +474,13 @@ def main(argv: list[str] | None = None) -> int:
                         "extraction_filter": cell.axes.extraction_filter,
                     },
                     "image": cell.image_ref,
+                    "image_plan": image_status(adapter, cell, docker_ok),
                     "would_run": adapter.plan(cell),
                 }
                 for cell in cells
             },
-            "note": "dry-run: no container executed, nothing written",
+            "auto_prepare": args.auto_prepare,
+            "note": "dry-run: nothing pulled, built, run or written",
         }
         print(json.dumps(plan, indent=2, sort_keys=True))
         return 0
@@ -321,15 +493,46 @@ def main(argv: list[str] | None = None) -> int:
                 f"{args.out / cell.dirname / RESULT_NAME} already exists; choose another --out"
             )
 
+    problem = docker_problem()
+    if problem is not None:
+        print(f"TARGET-RUN SETUP: {problem}", file=sys.stderr)
+        return SETUP_ERROR
+    ready, image_errors = resolve_images(adapter, cells, auto_prepare=args.auto_prepare)
+    if image_errors and not args.auto_prepare:
+        for message in image_errors.values():
+            print(f"TARGET-RUN SETUP: {message}", file=sys.stderr)
+        return SETUP_ERROR
+
     worst = 0
+    written: list[tuple[RunCell, TargetResult, Path]] = []
     for cell in cells:
+        ref = cell.image_ref
+        if ref is not None and ref in image_errors:
+            print(f"TARGET-RUN PREPARE-ERROR {cell.dirname}: {image_errors[ref]}", file=sys.stderr)
+            worst = max(worst, SETUP_ERROR)
+            continue
+        expected = ready.get(ref) if ref is not None else None
+        if ref is not None and image_id(ref) != expected:
+            message = f"image {ref} changed before the run (expected {expected})"
+            print(f"TARGET-RUN IMAGE-MISMATCH {cell.dirname}: {message}", file=sys.stderr)
+            worst = max(worst, SETUP_ERROR)
+            continue
         runs = adapter.run(cell)
-        # After the run, so image_id names the image that was pulled and actually used.
-        provenance = engine_provenance(cell.image_ref)
+        after = image_id(ref) if ref is not None else None
+        if after != expected:
+            message = f"image {ref} is {after} after the run, expected {expected}; no verdict"
+            print(f"TARGET-RUN IMAGE-MISMATCH {cell.dirname}: {message}", file=sys.stderr)
+            worst = max(worst, SETUP_ERROR)
+            continue
+        provenance = dataclasses.replace(engine_provenance(ref), image_ref=ref, image_id=expected)
         result = build_result(args.target, adapter, cell, runs, provenance)
         path = write_result(args.out / cell.dirname, result, runs)
+        written.append((cell, result, path))
         print(f"{summary_line(result)} -> {path}")
         worst = max(worst, {"PASS": 0, "FAIL": 1, "ERROR": 2}[result.verdict.value])
+    # summary.md hook (IF-MAC-C): one call here, from `written` (cell, result, result.json path),
+    # writes args.out / "summary.md". Only cells with a verdict are in `written`.
+    write_cell_summaries(path for _, _, path in written)
     return worst
 
 

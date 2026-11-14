@@ -1,6 +1,7 @@
 """Build the capstone intro video from the recording script, recorded takes and verified slides.
 
-One block of the recording script = one segment of the video (storyboard v2 order, s01..s10).
+One block of the recording script = one segment of the video, in the order of the storyboard
+``paper/deliverables/demo-video-script.md`` (stage B, 2026-11-14; blocks s01..s10 and end).
 For each block the builder looks for a take named ``<block>-t<n>.<ext>`` in ``--incoming``
 (highest n wins unless ``--takes`` pins one). A face block takes a camera clip (mp4/mov/m4v with
 sound); a voice block takes audio (wav/m4a/mp3/flac) laid over the block's slides or terminal
@@ -11,10 +12,10 @@ with captions spread over the block by sentence length and a "무음 초안" cor
 block gets caption times from local speech recognition (``asr_align.py`` in its own venv, passed
 as ``--asr-python``); caption TEXT is always the script sentence.
 
-Scene 9 is chosen from the values file (W3, submission-values-v1): status 미해제 uses the
+Scenes 6 and 9 are result slots: their screen shows only ``RESULT_SLOT`` until the unseal. The
+scene 9 narration is chosen from the values file (W3, submission-values-v1): status 미해제 uses the
 ``s09-대기`` block and the d12 running sentence; any other status uses ``s09-결과`` with the
-spoken d12 sentence, and the slide shows the written sentence with its values. The slide is the
-only place values appear; narration and captions carry none.
+spoken d12 sentence. Narration and captions carry no values.
 
 Outputs in ``--out``: video.mp4 (1920x1080, 30 fps, H.264 + AAC 48 kHz, loudness -16 LUFS when any
 take exists), video.srt, video.ass (burned in) and build.json (blocks, takes with SHA-256, trims,
@@ -65,6 +66,12 @@ ARMS = (
     ("D", "출력 구조 키 기반 커버리지"),
     ("S-u", "파일시스템 identity·effect 상태와 하드링크 탈출 시도 모양을 보존하는 피드백"),
 )
+# Scope and limit lines under the design slide (claim list C-DESIGN, C-LIM1, C-LIM2).
+DESIGN_NOTES = (
+    "D는 구조 커버리지 유도 퍼징의 대리(코드 커버리지 기준선 아님) · S-u의 boundary 키는 결함 계열"
+    " 수준의 사전 지식",
+    "위반 입력은 seed에서 변이 1회 거리 · 확증 범위: node-tar 한 계보, 하드링크 identity 공유 계열",
+)
 # Reading hints in the script, e.g. "7.5.2(칠 점 오 점 이)", are spoken only.
 READING_HINT = re.compile(r"\((?:[영공일이삼사오육칠팔구십 ]+점)+[영공일이삼사오육칠팔구십 ]+\)")
 # Spoken spellings in the script and how captions show them.
@@ -91,18 +98,74 @@ class Block:
 
 PLAN = (
     Block("s01", "face", 20, "face-title"),
-    Block("s02", "voice", 30, "problem+contracts"),
-    Block("s03", "voice", 20, "replay3", "판정기 확인 · 통제용 추출기, node-tar 아님"),
-    Block("s04", "voice", 40, "replay4", "demo run · node-tar 7.5.22 · 동작 확인, 탐색 성능 아님"),
-    Block("s05", "voice", 35, "replay5+m2", "통제 재현 · 손으로 만든 입력, 퍼저 결과 아님"),
+    Block("s02", "voice", 25, "problem+contracts"),
+    Block("s03", "voice", 20, "slide:s03", "측정 사슬 점검 · 탐색 성능 아님"),
+    Block("s04", "voice", 30, "replay4", "demo run · 동작 확인, 탐색 성능 아님"),
+    Block(
+        "s05", "voice", 30, "replay5+m2", "통제 재현 · 사람이 만든 고정 입력, 퍼저의 탐색 결과 아님"
+    ),
+    Block("s05b", "voice", 20, "slide:s05b", "오라클·어댑터 수준"),
+    Block("s06", "card", 15, "result-slot"),
     Block("s07a", "face", 5, "face"),
     Block("s07b", "voice", 30, "design"),
     Block("s07c", "voice", 5, "design"),
-    Block("s08", "voice", 45, "scene8", "점검 기록 · 실험 결과 아님"),
-    Block("s09", "voice", 10, "verdict"),
+    Block("s07d", "voice", 20, "slide:s07d", "측정 사슬 점검 · 탐색 성능 아님"),
+    Block("s08", "voice", 35, "slide:s08", "합산값 · arm별 값은 봉인"),
+    Block("s09", "voice", 10, "result-slot"),
     Block("s10", "face", 20, "face"),
     Block("end", "card", 4, "end"),
 )
+
+#: The result-slot wording shared by the report, the paper and this video (claim list, stage B).
+RESULT_SLOT = "본실험 결과 자리(봉인 해제 뒤 기입)"
+
+#: Slide text of the storyboard scenes that have no recording: (heading, lines). Every line comes
+#: from the storyboard screen notes, which cite the claim IDs; values only from the claim list.
+SLIDES: dict[str, tuple[str, tuple[str, ...]]] = {
+    "s03": (
+        "고정 입력 점검",
+        (
+            "make regression TAR_VERSION=<x>",
+            "알려진 경계 고정 입력이 그 릴리스에서 아직 C1/C2를 내는지 확인",
+            "holdout 후보 7.0.1 · 7.1.0 · 7.2.0 · 7.3.0 · 7.4.4",
+            "하드링크 입력 2개 위반 · symlink 입력 3개 통과 · 오류 0 (다섯 후보 모두)",
+            "이 입력으로는 후보를 구분할 수 없어, 가장 높은 버전 규칙으로 7.4.4 선정",
+        ),
+    ),
+    "s05b": (
+        "다른 추출기 적용",
+        (
+            "python-tarfile: 추출 필터 설정 fully_trusted 대 data (설정 토글 비교)",
+            "oras-go: v2.6.1 대 v2.6.2 (릴리스 비교)",
+            "decompress: 4.2.1 대 유지보수 포크 11.1.4 (릴리스 비교)",
+            "세 경우 모두 영향 쪽 위반 · 대조 쪽 비위반",
+            "oras-go · decompress: 실제 추출기 동작은 프로브 기록, 오라클 판정은 그 사후 상태를"
+            " 일회용 샌드박스에서 재현한 것",
+            "Rust tar 0.4.35 · 0.4.36: 같은 방식의 고정 입력 프로브 적용",
+            "퍼저 탐색의 일반성이나 효과에 대한 주장이 아님",
+        ),
+    ),
+    "s07d": (
+        "측정 사슬 점검",
+        (
+            "EXP-0 (등록, 인프라 측정): 15셀 모두 유효 · abort 0 · 사건 0",
+            "양성 대조 (가): 7.5.2 S-u 1셀, 두 호스트 모두 위반 사건 기록 (첫 사건 step 685, C2)",
+            "위험도 파일럿 (비등록, 40 캠페인): 표본 수 산정 · R 변형 선택 · 예측 개정에 사용,"
+            " arm 순서 말하지 않음",
+        ),
+    ),
+    "s08": (
+        "진행 판정 (GO) 과 운영 기록",
+        (
+            "첫 C1∨C2 캠페인 (세 arm 합산) 31  ·  기준 1 이상",
+            "처리 용량 554  ·  기준 76 이상",
+            "인프라 실패 비율 .033  ·  기준 .45 이하",
+            "판정 시각 2026-11-13 23:37 KST",
+            "train 중 HOST2 정지 1회 → 원인 기록 → 재개",
+            "holdout 중 HOST2 정지 1회 → 원인 기록 → 재개 승인",
+        ),
+    ),
+}
 
 
 # ---------------------------------------------------------------- script and values
@@ -434,7 +497,7 @@ class Canvas:
         )
         return self.finish(image)
 
-    def design(self, fixed: bool, c15: str) -> Image.Image:
+    def design(self, fixed: bool) -> Image.Image:
         image, draw = self.base("핵심 질문의 검정 설계")
         draw.text(
             (90, 165), "같은 어휘 · 같은 예산", font=self.fonts.bold(36), fill=NAVY, anchor="ls"
@@ -471,19 +534,39 @@ class Canvas:
             if index < 2:
                 draw.polygon(((left + 300, 320), (left + 280, 302), (left + 280, 338)), fill=NAVY)
         fixed_text = (
-            "검정 방법 · 판정표 · 실행 마감: 결과 전 고정"
+            "가설 · 분석 · 판정표: 결과 전 Git 동결 (2026-11-13)"
             if fixed
-            else "검정 방법 · 판정표 · 실행 마감: 결과 전 고정 계획"
+            else "가설 · 분석 · 판정표: 결과 전 고정 계획"
         )
         draw.rounded_rectangle((840, 470, 1830, 560), radius=14, outline=ACCENT, width=3)
         draw.text((1335, 515), fixed_text, font=self.fonts.bold(34), fill=ACCENT, anchor="mm")
-        draw.text(
-            (90, 680), "측정 경로 양성 대조", font=self.fonts.bold(28), fill=MUTED, anchor="ls"
-        )
+        draw.text((90, 680), "범위와 한계", font=self.fonts.bold(28), fill=MUTED, anchor="ls")
         y = 700
-        for line in wrap_pixels(c15, self.fonts.body(27), WIDTH - 180):
-            draw.text((90, y), line, font=self.fonts.body(27), fill=MUTED)
-            y += 38
+        for note in DESIGN_NOTES:
+            for line in wrap_pixels(note, self.fonts.body(27), WIDTH - 180):
+                draw.text((90, y), line, font=self.fonts.body(27), fill=MUTED)
+                y += 38
+        return self.finish(image)
+
+    def text_slide(self, heading: str, label: str, lines: tuple[str, ...]) -> Image.Image:
+        image, draw = self.base(heading, label)
+        y = 170
+        for text in lines:
+            for line in wrap_pixels(text, self.fonts.body(34), WIDTH - 200):
+                draw.text((100, y), line, font=self.fonts.body(34), fill=INK)
+                y += 50
+            y += 18
+        return self.finish(image)
+
+    def result_slot(self) -> Image.Image:
+        image, draw = self.base("핵심 질문의 판정")
+        draw.text(
+            (WIDTH / 2, CONTENT_BOTTOM / 2 + 40),
+            RESULT_SLOT,
+            font=self.fonts.bold(64),
+            fill=NAVY,
+            anchor="mm",
+        )
         return self.finish(image)
 
     def verdict(self, status: str, written: str, source: str) -> Image.Image:
@@ -833,13 +916,12 @@ def render_visual(block: Block, canvas: Canvas, ctx: dict, length: float, out: P
         )
         encoder.hold(canvas.m2("통제 재현"), length - first)
     elif block.visual == "design":
-        encoder.hold(canvas.design(ctx["fixed"], ctx["c15"]), length)
-    elif block.visual == "scene8":
-        scene8 = ctx["scene8"]
-        encoder.hold(canvas.above_band(scene8.slide_stop()), length * 0.5)
-        encoder.hold(canvas.above_band(scene8.slide_resume()), length - length * 0.5)
-    elif block.visual == "verdict":
-        encoder.hold(canvas.verdict(ctx["status"], ctx["written"], ctx["source"]), length)
+        encoder.hold(canvas.design(ctx["fixed"]), length)
+    elif block.visual.startswith("slide:"):
+        heading, lines = SLIDES[block.visual.removeprefix("slide:")]
+        encoder.hold(canvas.text_slide(heading, block.label, lines), length)
+    elif block.visual == "result-slot":
+        encoder.hold(canvas.result_slot(), length)
     elif block.visual == "end":
         encoder.hold(canvas.end_card(), length)
     else:
@@ -848,32 +930,12 @@ def render_visual(block: Block, canvas: Canvas, ctx: dict, length: float, out: P
     return facts
 
 
-def load_scene8(font_dir: Path):
-    spec = importlib.util.spec_from_file_location("scene8_slides", HERE / "scene8_slides.py")
-    assert spec and spec.loader
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    if module.STRINGS_CHANGED:
-        raise SystemExit("scene 8 strings changed without W1 re-verification")
-    module.FONT_DIR = font_dir
-    return module
-
-
-def script_extras(markdown: str) -> str:
-    """The C15 sentence, quoted in the script, never retyped."""
-    c15 = re.search(r"「(같은 실행 경로가[^」]+)」", markdown)
-    if not c15:
-        raise SystemExit("script lacks the C15 sentence")
-    return c15.group(1)
-
-
 def build(args: argparse.Namespace) -> None:
     out: Path = args.out
     work = out / "segments"
     work.mkdir(parents=True, exist_ok=True)
     markdown = args.script.read_text(encoding="utf-8")
     script = parse_script(markdown)
-    c15 = script_extras(markdown)
     checker = load_checker()
     values = json.loads(args.values.read_text(encoding="utf-8"))
     got = checker.result_sentences(values, args.d12.read_text(encoding="utf-8"))
@@ -907,9 +969,7 @@ def build(args: argparse.Namespace) -> None:
     canvas = Canvas(fonts, args.draft_note, args.end_note)
     ctx = {
         "recordings": args.recordings,
-        "c15": c15,
         "fixed": args.freeze == "ga",
-        "scene8": load_scene8(args.font_dir),
         "status": status,
         "written": written,
         "source": (
@@ -1125,7 +1185,7 @@ def main() -> None:
     parser.add_argument("--incoming", type=Path, help="folder of recorded takes <block>-t<n>.<ext>")
     parser.add_argument("--takes", type=Path, help='JSON {"s03": "s03-t2.wav"} to pin takes')
     parser.add_argument(
-        "--freeze", choices=("ga", "na"), default="na", help="s07c variant: 가 fixed, 나 planned"
+        "--freeze", choices=("ga", "na"), default="ga", help="s07c variant: 가 fixed, 나 planned"
     )
     parser.add_argument(
         "--s10-before-freeze", action="store_true", help="s10 was read in its pre-freeze form"

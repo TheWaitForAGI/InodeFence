@@ -64,7 +64,7 @@ Archive extraction으로 생성되거나 직접 사용되는 path가 의도한 e
 
 InodeFence의 핵심은 object identity/effect지만, 가장 기본적인 path traversal을 먼저 잡지 못하면 observer/oracle 구현 자체를 신뢰하기 어렵다.
 
-C0는 oracle의 기본 boundary sanity 기준이다. RQ2 실행 비교는 B0/B1/B3이며 path-only feedback baseline은 구현되지 않았다. C0 contract와 feedback policy를 혼동하지 않는다.
+C0는 oracle의 기본 boundary sanity 기준이다. 비교 설계는 [research-questions v2](research-questions.md) H-A(R/D/S-u)와 동결된 사전등록 파일(`experiments/preregistration/`)을 따른다. C0 contract와 feedback policy를 혼동하지 않는다.
 
 ### 주의
 

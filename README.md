@@ -8,14 +8,14 @@ InodeFence는 TAR archive entry를 생성·변형하고, 실제 extractor(압축
 **지금 돌아가는 것 (2026-10-24):** `make demo` 한 명령으로 실제 node-tar **7.5.22**를 격리
 컨테이너에서 실행하며 "입력 생성 → 실행 → entry별 중간 상태 관찰 → C0/C1/C2 판정 → feedback →
 다음 mutation 선택" 루프를 돌립니다. 같은 seed·budget이면 같은 루프가 재현됩니다.
-11/2 중간발표 목표별 상태는 [STATUS](docs/STATUS.md) 맨 위 표, 목표 정의는
-[MIDTERM_GOALS](docs/MIDTERM_GOALS.md)를 봅니다.
+현재 능력은 [STATUS](docs/STATUS.md)의 Capability Ledger가 기준이고, 11/2 중간발표 목표는
+배경 문서 [MIDTERM_GOALS](docs/MIDTERM_GOALS.md)에 있습니다.
 
 연구 정의와 claim 범위는 [Research Contract v1](docs/research/design/research-contract-v1.md)이
 관리합니다. 2026-10-18 이전 Layer별 이력(capability baseline `8ad07b8`)은 STATUS 하단에 있습니다.
 
 **DESIGNED / IMPLEMENTED / TESTED / EXPERIMENTALLY VALIDATED는 서로 다릅니다.**
-Historical vulnerability rediscovery(N01)는 성공 조건으로 실행·주장하지 않고, formal comparison(A/B/C/D·powered matched)은 실행됐으나 effectiveness 우위를 보이지 않았습니다(rate CI 미분리·자력발견 음성; M3는 "이름 획득 조건의 관찰(피드백 인과 미입증)", Ledger M3·M4·claims 원장) *(2026-11-03 정정: 이전 "formal comparison NOT_RUN" 정정)*. 역사적 취약점을 재발견한 적이
+Historical vulnerability rediscovery(N01)는 성공 조건으로 실행·주장하지 않습니다. 초기 비교는 arm 간 어휘가 달라 폐기했고, 어휘를 맞춘 R/D/S-u 설계로 다시 실험했다. 역사적 취약점을 재발견한 적이
 없고 현재 취약점을 주장하지 않습니다. 첫 intended qualification pair는 **N01 node-tar
 7.5.2 / 7.5.3**입니다. 과거 감사·요약은 자체 revision의 기록이며 현재 capability baseline이 아닙니다.
 
@@ -97,7 +97,7 @@ Corpus는 다음 변형의 출발점으로 남기는 입력 모음입니다.
 `StateSignature = normalized security-state representation for feedback/corpus`입니다. `extract/**` 결과와 external 상태·effect, 보호 sentinel 및 내부↔sentinel identity 관계를 사용합니다. `.`과 `archive/**`는 `Region.HARNESS`로 제외하며, 그 외 extraction 밖 경로는 EXTERNAL이므로 root-level `escape.txt`도 유지합니다.
 
 **StateSignature는 ArchiveCase identity나 TAR artifact identity를 직접 포함하지 않습니다.** 서로 다른 case/TAR가 같은 의미의 filesystem/security state를 만들면 같은 signature여야 합니다. 실제 Python reference extraction에서 독립 regular entry의 순서를 바꾸는 E2E regression으로 이 invariant를 확인합니다.
-Schema v3는 정렬된 path/type/mode, regular nlink/size/content digest, scope 안의 same-object group, link text와 외부 변경 종류를 담습니다. Symlink target은 `run:<raw suffix>` 또는 `literal:<raw target>`으로 tag하며 반복 slash와 `..` spelling을 보존하고 referent를 resolve하지 않습니다. V2 key 호환성이나 migration은 제공하지 않습니다. Directory를 포함한 nonregular nlink는 `None`이며 raw inode·timestamp·ownership 값과 nonregular size를 제외합니다. Raw nlink와 외부 metadata-change labels는 보존하며, [B0/B1/B3와 A1/A2/A3](docs/research/benchmarks/baseline-and-ablation-v1.md)는 구현됐으며 효과는 후속 비교 실험에서 검증합니다.
+Schema v3는 정렬된 path/type/mode, regular nlink/size/content digest, scope 안의 same-object group, link text와 외부 변경 종류를 담습니다. Symlink target은 `run:<raw suffix>` 또는 `literal:<raw target>`으로 tag하며 반복 slash와 `..` spelling을 보존하고 referent를 resolve하지 않습니다. V2 key 호환성이나 migration은 제공하지 않습니다. Directory를 포함한 nonregular nlink는 `None`이며 raw inode·timestamp·ownership 값과 nonregular size를 제외합니다. Raw nlink와 외부 metadata-change labels는 보존합니다.
 
 **Region.HARNESS는 security trust boundary가 아닙니다.** Signature에서 HARNESS를 제외하는 것은 input/harness novelty 오염을 막기 위한 normalization 정책입니다. C0는 별도로 extraction root 밖의 persistent namespace 생성·삭제·identity/type 교체를 검사하므로 `archive/escaped.txt` 생성이나 기존 `archive/input.tar` 삭제·교체도 evidence입니다. Content/metadata-only 변화는 기존 C0/C2 구분에 따라 C0 조건으로 삼지 않습니다.
 
@@ -132,23 +132,20 @@ Oracle(계약 판정 모듈)은 특정 CVE 식별자나 알려진 PoC byte seque
 
 ## 연구 질문과 검증 기준
 
-핵심 가설은 다음과 같습니다.
+핵심 연구 질문은 다음과 같습니다([research-questions v2](docs/research/design/research-questions.md)).
 
-> 특정 CVE PoC나 고정된 공격 sequence를 하드코딩하지 않고,
-> **generic TAR-entry mutation + filesystem-security-state feedback**을 사용하면
-> archive extraction의 보안 경계 위반을 효과적으로 탐색할 수 있는가?
+> 피해 경로 이름을 아는 **동일 어휘·동일 예산** 아래서, filesystem security state(C1 identity·C2 effect)를
+> retention·스케줄링 피드백으로 쓰는 탐색이 **무작위 탐색**과 **구조 커버리지 탐색**보다 첫 경계위반까지의
+> 실행 수를 줄이고 고유 위반 입력을 더 많이 찾는가?
 
-**아직 검증 전인 연구 가설입니다.** 실행 가능한 비교는 B0/B1/B3와 A1/A2/A3이며, path-only나 fixed-recipe baseline은 구현되지 않았고 이 비교의 claim 범위가 아닙니다.
+**아직 검증 전인 연구 가설입니다.** 초기 비교는 arm 간 어휘가 달라 폐기했고, 어휘를 맞춘 R/D/S-u 설계로 다시 실험했다.
 
 | 연구 질문 | 확인할 내용 |
 | --- | --- |
 | 알려진 취약점 재발견 | 해당 CVE PoC를 기본 seed로 주지 않고도 알려진 보안 위반에 도달하는가? |
-| Feedback 효과 | B3가 B0 unretained walk / B1 state-only admission과 비교해 발견 효율이 달라지는가? |
-| Ablation | A1 identity-group key / A2 effect-label key / A3 reorder slot의 좁은 기여는 무엇인가? |
 | 여러 구현에 대한 적용 | 같은 상태 표현과 generic oracle을 여러 extractor에 적용할 수 있는가? |
 | 미지 상태 탐색 | patched/current target에서도 기존에 정의하지 않은 위반 후보를 찾는가? |
 
-Ablation은 구성 요소를 하나씩 빼서 어떤 부분이 효과에 기여하는지 확인하는 비교입니다.
 발견 성공률, 첫 위반까지의 시간·실행 수, 서로 다른 보안 상태 등을 측정 후보로 삼되, 정확한 지표와 benchmark version은 평가 전에 고정합니다.
 동일 initial corpus, 가능한 동일 mutation operator, 반복 실행과 기록된 random seed로 비교합니다.
 Zero-day 발견은 필수 성공 조건이 아닙니다.
@@ -227,8 +224,8 @@ Target-specific 실행 로직은 adapter에 두고, generic mutation·observer·
 실제 node-tar 루프는 `make demo`(호스트, docker 필요)로, node-tar 없는 synthetic 루프는
 `make demo-synthetic`(Dev Container)으로 돌립니다. 결과 JSON은 step마다 entry별 중간 상태(`trace`),
 C0/C1/C2 판정(`oracle`), 다음 mutation 선택 근거(`selection`)를 담습니다. 정상 입력에서 위반은
-0건이며, 취약점 발견이나 재발견을 주장하지 않습니다. P0-1~P0-5 상태는 [STATUS](docs/STATUS.md)
-맨 위 표가 기준입니다.
+0건이며, 취약점 발견이나 재발견을 주장하지 않습니다. M1~M4 상태는 [STATUS](docs/STATUS.md)
+Capability Ledger가 기준입니다.
 
 아래 표는 2026-10-18 기준 Layer별 이력입니다.
 
@@ -284,7 +281,7 @@ make probe CASE=hardlink
 
 Probe는 Python `tarfile`의 `data` filter를 사용하는 학습·관찰 도구입니다.
 임시 sandbox를 사용하고 실행 후 정리합니다. 기본 CASE는 `regular-file`이며 `directory`, `hardlink`, `symlink`도 지원합니다.
-이 명령은 node-tar/ oras-go adapter나 자동 security oracle을 실행하지 않습니다. 이 reference campaign CLI는 safe Python reference만 지원합니다. 실제 node-tar effect/자력발견 캠페인은 `container_host` 컨트롤러 모드(effect-campaign·effect-demo-historical)로 실행합니다(Ledger M1). [개발 pilot](scripts/reference_campaign_pilot.py)과 [설정 기반 CLI](scripts/run_configured_reference.py)가 있습니다.
+이 명령은 node-tar/ oras-go adapter나 자동 security oracle을 실행하지 않습니다. 이 reference campaign CLI는 safe Python reference만 지원합니다. 실제 node-tar effect 캠페인은 `container_host` 컨트롤러 모드(effect-campaign·effect-demo-historical)로 실행합니다(Ledger M1). [개발 pilot](scripts/reference_campaign_pilot.py)과 [설정 기반 CLI](scripts/run_configured_reference.py)가 있습니다.
 
 Exact Python version이 설정과 일치하는 Linux 환경에서 작은 설정 기반 실행을 기록합니다. 예제는 Python 3.12.3이며 다른 patch version에서는 [설정](experiments/configs/README.md)을 명시적으로 갱신해야 합니다.
 
@@ -422,7 +419,7 @@ paper/             논문용 자료와 검토된 evidence
 | --- | --- |
 | 처음 프로젝트 이해하기 | [START_HERE](docs/START_HERE.md) |
 | 현재 단계와 다음 작업 확인 | [STATUS](docs/STATUS.md) · [BACKLOG](docs/BACKLOG.md) |
-| 11/2 중간발표 목표와 완료 기준 | [MIDTERM_GOALS](docs/MIDTERM_GOALS.md) |
+| 11/2 중간발표 목표(배경 문서) | [MIDTERM_GOALS](docs/MIDTERM_GOALS.md) |
 | 실제 실행 기록 (무엇을 언제 돌려 어떤 결과였나) | [LOG](docs/LOG.md) |
 | G0 연구 계약과 evidence 수준 | [Research Contract v1](docs/research/design/research-contract-v1.md) |
 | 전체 시스템과 모듈 책임 | [architecture](docs/research/design/architecture.md) |

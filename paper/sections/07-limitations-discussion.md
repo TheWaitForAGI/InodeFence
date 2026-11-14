@@ -2,43 +2,10 @@
 
 이 절은 §5의 결과가 **무엇을 주장하지 않는지**를 명시한다. 한계를 숨기면 증거 사슬이 끊긴다.
 
-## 6.1 M3 rate 우위는 CI 미분리(사전등록 판정)
+## 6.2 M4 일반성의 범위
 
-- **rate 우위 CI 미분리.** 이 드래프트의 M3 주장은 **이름 획득 조건의 관찰**("외부 객체 이름을 어휘에 획득한
-  조건에서만 자율 C1이 관찰됨"; retention·effect 피드백 자체의 인과는 미입증) *(구: "인과 — object-identity 관찰이 발견을 가능케 함", 2026-11-03 정정)*이고,
-  "상태-인지 feedback이 무작위보다 빠르다/많이 찾는다"(v1 표현. 실제 대조 arm은 A1이고 무작위가 아니다)는 **rate 우위는 CI로 분리되지 않았다**(§5.3.3).
-  동일 budget powered matched A1(generic 어휘, effect retention; 이름 철자 불가) vs A3full(disjoint seed {100..129}, 풀링 판정이 canonical)을 사전등록 후 판정한 결과 A3full
-  1/17 vs A1 0/19로 매칭 Wilson CI가 겹친다(~0.06 효과 검정력 부족). CI 분리는 사람-게이트 대예산
-  pilot(M3.4)이 필요하다.
-  (2026-11-03 정정: 이 어휘 제거 대조는 피드백이 아니라 **어휘**를 통제한 실험이다. 관찰된 것은 외부 객체 이름을 어휘에 넣은 조건에서 자율 C1이 나왔고 그 조건 밖에서는 관찰되지 않았다는 것이다(구조적 불가로 단정하지 않는다). 이는 (st_dev, st_ino) retention·스케줄링 피드백의 기여를 보인 것이 아니며, 그 기여는 어휘를 맞춘 R/D/S-u 비교(research-questions v2 H-A)로 미분리다. 수치·서술은 보존한다. 상세: §5.3.2 정정.)
-- **seed-rare.** 자율 C1 트리거는 budget 1500·65 seed 중 s11 하나뿐이다(재현 0/30). 정답이 사실상
-  한 점(좁은 구성)이고 final-state C1/C2 oracle이 all-or-nothing이라 adaptive 탐색에 gradient가 거의
-  없기 때문이다. 따라서 정책 간 rate 차이를 검출할 **검정력이 현재 없다.**
-- **abort로 줄어든 denominator.** powered v2 {100..129}에서 A1(기존 셀 이름 "A1 random floor")은 30 seed 중 abort 11
-  (완주 19), A3full은 abort 13(완주 17)으로, fail-closed abort를 no-hit로 세지 않는 프로토콜 때문에
-  denominator가 줄고 CI가 넓어진다(A1 0/19 [0, 0.1682], A3full 1/17 [0.0105, 0.2698]). abort 사유는
-  observer "evidence integrity failed(malformed_identity)"가 대부분(100–149 92셀 기준 A1 19/A3full 18)이고
-  docker broker disconnected·container runtime cleanup inspect failed·remove failed가 나머지다. 이는 정직한
-  right-censored 보고이며 "위반 없음의 증명"이 아니다. 이 드래프트 v1이 여기 적었던 "12 seed 중 5 abort,
-  0/7 complete [0, 0.354]"는 powered run이 아니라 M3.3 A1 단독 대조 배치(seeds 11, 66–70 등)의 수치였다.
-
-## 6.2 M4 자력발견은 right-censored 음성
-
-- **oracle/adapter 일반성 ≠ 자력발견 일반성.** §5.4.1의 3-extractor 적용은 oracle/adapter 수준의
-  target-agnostic성 증거이지, 2번째 extractor에서 fuzzer가 스스로 위반을 찾는다는 주장이 아니다.
-- **자력발견 음성(2·3번째 extractor).** decompress 통합 판정(§5.4.3)은 맥+윈도우 pooled C1/C2 0/28
-  (Wilson≤0.121)로 **사후 분석(post-hoc by_contract) 기준 음성이며 사전등록 판정이 아니다**(등록 hit 정의는
-  discovered_violation = C0 포함; C1/C2 분리·0/28 합산은 사후 축), oras-go(§5.4.4)는 0/1로 **약한 음성**이다. 루프는 기능
-  작동하고 path-boundary(C0)는 자력도달하나 identity/effect 위반은 이 예산에서 미도달이다. 이는
-  generality≠self-discovery≠effectiveness 구분을 지킨 음성이다.
-
-## 6.3 blind 발견 아님 (반드시 disclose)
-
-M3의 자율 발견은 **blind 발견이 아니다.** 기존 외부 객체에 하드링크하려면 그 이름이 필요하고
-퍼저는 그것을 **관찰(어휘 획득)**로 얻는다(자율 C1은 이 이름 획득 조건에서 관찰됐고 구조적 불가로 단정하지는 않으며, retention·effect 피드백 자체의
-인과 기여는 어휘를 맞춘 R/D/S-u로 미분리) *(구: "관찰(가설이 지목한 object-identity feedback)로 얻는다", 2026-11-03 정정)*. oracle·feedback에 대상 경로·
-식별자·정답 seed·근접 보상은 넣지 않았으나, state-aware mutation 어휘 계열이
-`outside`/`sentinel.txt` 토큰을 포함할 수 있다. 어떤 rediscovery 프레이밍에서도 이 사실을 명시한다. *(구: "어휘·oracle에 … 하드코딩하지 않았으나", 2026-11-06 범위 정정)*
+- **oracle/adapter 수준 일반성.** §5.4.1의 3-extractor 적용은 oracle/adapter 수준의
+  target-agnostic성 증거이며, 퍼저 탐색의 일반성이나 효과에 대한 주장이 아니다.
 
 ## 6.4 snapshot oracle의 구조적 한계
 
@@ -59,29 +26,13 @@ M3의 자율 발견은 **blind 발견이 아니다.** 기존 외부 객체에 �
   benchmark ground truth·root-cause 분석에만 쓴다(§1.5). **Interesting ≠ Vulnerable.**
 - **참신성은 가설.** 참신성은 확정 사실이 아니라 검증 대상 가설이다(§3). "최초/기존연구에 없음" 류
   표현을 쓰지 않는다.
-- **synthetic ≠ native.** synthetic 하너스 결과(예: 단일경로 비교 하너스의 synthetic 검증)를 native
+- **synthetic ≠ native.** synthetic 하너스 결과를 native
   증거로 승격하지 않는다. 비교 없이 effectiveness를 주장하지 않는다.
 
-## 6.6 논의 — 중간 지점에서 방어 가능한 서사
-
-방어 가능한 서사는 다음이다: 하나의 outcome 기반 generic oracle이 CVE 식별자 없이 두 root-cause를
-통제 차분으로 포착하고(M2), 외부 객체 이름을 mutation 어휘에 넣지 **않은** 조건에서는 자율
-경계위반 발견이 관찰되지 않았다(M3 어휘 제거 대조; 구조적 불가로 단정하지 않는다). 이는 "filesystem-security-state를 feedback으로
-쓴다"는 가설에서 **외부 이름을 어휘에 넣은 조건에서 자율 발견을 관찰한 데까지** 왔다는 뜻이다
-*(구: "메커니즘이 실제로 발견을 구동함을 보이는 데까지 왔다", 2026-11-03 정정; retention·effect 피드백 자체의 인과는 R/D/S-u로 미분리)*. 그 feedback이
-무작위보다 **얼마나 효율적인가**(rate)와 여러 extractor로 **얼마나 일반화되는가**(자력발견
-effectiveness)는 powered 독립 반복으로 판정했고 **모두 효과 우위를 보이지 않았다**(rate CI 미분리·
-decompress·oras-go 자력발견 음성). 음성·미분리도 정직한 결과로 보고한다.
-
-(2026-11-03 정정: 이 어휘 제거 대조는 피드백이 아니라 **어휘**를 통제한 실험이다. 관찰된 것은 외부 객체 이름을 어휘에 넣은 조건에서 자율 C1이 나왔고 그 조건 밖에서는 관찰되지 않았다는 것이다(구조적 불가로 단정하지 않는다). 이는 (st_dev, st_ino) retention·스케줄링 피드백의 기여를 보인 것이 아니며, 그 기여는 어휘를 맞춘 R/D/S-u 비교(research-questions v2 H-A)로 미분리다. 수치·서술은 보존한다. 상세: §5.3.2 정정.) 따라서 위 "메커니즘이 실제로 발견을 구동함"은 "이름 획득 조건에서 자율 트리거가
-관찰됨"으로 읽는다.
-
-
-## 6.7 EXP-0/EXP-3 계획의 한계와 공개
+## 6.7 EXP-0·EXP-3·EXP-2 설계의 한계와 공개
 
 - **informative censoring.** abort(관찰 무결성 실패 등)가 arm마다 다른 비율로 일어나면 right-censoring이
-  **정보적**이 되어 arm 간 T_first 추정이 편향될 수 있다(기존 item-3에서 gradient arm C/D의 abort율이
-  A/B보다 높았던 관찰과 정합). 따라서 §4.6.2의 abort 민감도 **3정책**으로 결론 robustness를 보고한다 —
+  **정보적**이 되어 arm 간 T_first 추정이 편향될 수 있다. 따라서 §4.6.2의 abort 민감도 **3정책**으로 결론 robustness를 보고한다 —
   **right-censored(CENSOR_AT_ABORT) 1차 + 완주-only(exclude) · abort=no-hit(censor-at-budget)**를
   `item5_first_contract_index.sensitivity`(#243)로 **셀 summary 레벨에서 산출**한다(RdsCellSummary의
   `disposition · executions · t_first/t_first_event · budget`만 사용, raw `.steps.jsonl` 불요 → EXP-0 실행 시

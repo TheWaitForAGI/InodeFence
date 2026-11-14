@@ -13,21 +13,19 @@ from __future__ import annotations
 
 import json
 import re
-import subprocess
 from pathlib import Path
 
 from scripts.image_prepare import (
     IMAGE_SLOT,
-    REPO_ROOT,
-    PreparedImage,
     Recipe,
-    Runner,
     UnsupportedVersionError,
-    ensure_image,
+    recipe_step,
     single_dependency,
 )
+from scripts.run_target import PrepareStep, RunCell
 
-TOOLS_DIR = REPO_ROOT / "tools" / "decompress"
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+TOOLS_DIR = _REPO_ROOT / "tools" / "decompress"
 SPEC = re.compile(
     r"(?P<package>(?:@[a-z0-9][a-z0-9._-]*/)?decompress)@(?P<version>[0-9]+\.[0-9]+\.[0-9]+)"
 )
@@ -59,7 +57,7 @@ def recipe(spec: str, tools_dir: Path = TOOLS_DIR) -> Recipe:
             "maintained fork are different packages"
         )
     return Recipe(
-        label=f"decompress {spec}",
+        description=f"build tools/decompress/Dockerfile ROLE={pinned[spec]} (committed lock)",
         expected=f"{match['package']} {match['version']}",
         build=("-f", "tools/decompress/Dockerfile", "--build-arg", f"ROLE={pinned[spec]}"),
         check=(
@@ -73,5 +71,7 @@ def recipe(spec: str, tools_dir: Path = TOOLS_DIR) -> Recipe:
     )
 
 
-def prepare(spec: str, image_ref: str, runner: Runner = subprocess.run) -> PreparedImage:
-    return ensure_image(recipe(spec), image_ref, runner)
+def prepare(cell: RunCell) -> PrepareStep:
+    """``TargetAdapter.prepare``: build ``cell.image_ref`` from the committed recipe; verify it."""
+    spec = cell.axes.target_version or ""
+    return recipe_step(cell, lambda: recipe(spec))

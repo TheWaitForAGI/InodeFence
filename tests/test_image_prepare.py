@@ -1,4 +1,4 @@
-"""Image preparation: generic helper + each target's recipe (no docker: a fake CLI plays it)."""
+"""Image auto-prepare: generic step builder + offline check + each target's recipe (no docker)."""
 
 from __future__ import annotations
 
@@ -13,204 +13,203 @@ import scripts.image_prepare as ip
 import scripts.node_tar_image as nti
 import scripts.run_oras_go_target as rog
 import scripts.run_python_tarfile_target as rpt
+import scripts.run_target as rt
 
-PREPARE = {
-    "node-tar": nti.prepare,
-    "python-tarfile": rpt.prepare_image,
-    "oras-go": rog.prepare_image,
-    "decompress": dci.prepare,
+from inodefence.target_result import TargetAxes
+
+ADAPTERS = {
+    "node-tar": "scripts.run_node_tar_target:ADAPTER",
+    "python-tarfile": "scripts.run_python_tarfile_target:ADAPTER",
+    "oras-go": "scripts.run_oras_go_target:ADAPTER",
+    "decompress": "scripts.run_decompress_target:ADAPTER",
 }
 
 
-class ti:  # noqa: N801 - test-local facade over the four target modules
-    UnsupportedVersionError = ip.UnsupportedVersionError
-    ImagePrepareError = ip.ImagePrepareError
-
-    @staticmethod
-    def prepare(target: str, version: str, image_ref: str, runner: Any) -> ip.PreparedImage:
-        return PREPARE[target](version, image_ref, runner)
-
-
-class FakeDocker:
-    """Minimal docker CLI: images by ref, build/pull that may fail, a version per image."""
-
-    def __init__(self, images: dict[str, str] | None = None, *, reports: str = "", fail: str = ""):
-        self.images = dict(images or {})  # ref -> what the offline version check prints
-        self.reports = reports  # what a newly built/pulled image prints
-        self.fail = fail  # "build" | "pull" | "check"
-        self.calls: list[list[str]] = []
-
-    def __call__(self, cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
-        assert cmd[0] == "docker"
-        args = cmd[1:]
-        self.calls.append(args)
-        verb = args[0]
-
-        def done(code: int = 0, out: str = "", err: str = "") -> subprocess.CompletedProcess[str]:
-            return subprocess.CompletedProcess(cmd, code, out, err)
-
-        if verb == "image":
-            ref = args[-1]
-            return done(0, f"sha256:{abs(hash(ref)):x}\n") if ref in self.images else done(1)
-        if verb == "build":
-            if self.fail == "build":
-                return done(1, err="npm ERR! boom")
-            self.images[args[args.index("-t") + 1]] = self.reports
-            return done(0, "sha256:new\n")
-        if verb == "pull":
-            if self.fail == "pull":
-                return done(1, err="manifest unknown")
-            self.images[args[-1]] = self.reports
-            return done()
-        if verb == "tag":
-            self.images[args[2]] = self.images[args[1]]
-            return done()
-        if verb == "run":
-            assert args[1:4] == ["--rm", "--network", "none"]
-            ref = next(a for a in args if a in self.images)
-            if self.fail == "check":
-                return done(1, err="exec failed")
-            return done(0, self.images[ref] + "\n")
-        raise AssertionError(args)
-
-    def verbs(self) -> list[str]:
-        return [c[0] for c in self.calls]
+def _cell(target: str, version: str, image_ref: str, flt: str | None = None) -> rt.RunCell:
+    axes = (
+        TargetAxes(runtime_version=version, extraction_filter=flt)
+        if target == "python-tarfile"
+        else TargetAxes(target_version=version)
+    )
+    return rt.RunCell(dirname="x", axes=axes, image_ref=image_ref)
 
 
-# ---- version validation and supported range (read from committed recipes) ----
+def _step(target: str, version: str, image_ref: str = "inodefence-dev/x:1") -> rt.PrepareStep:
+    return rt.load_adapter(target).prepare(_cell(target, version, image_ref, "data"))
+
+
+# ---- every target is wired, and every supported step ends in a verified tag ----
+
+
+def test_all_four_targets_registered_with_their_prepare() -> None:
+    for target, entry in ADAPTERS.items():
+        assert rt.TARGETS[target] == entry
+        assert rt.load_adapter(target).prepare is not rt.prepare_unsupported
 
 
 @pytest.mark.parametrize(
-    ("target", "version"),
+    ("target", "version", "expect"),
     [
-        ("node-tar", "7.5"),
-        ("node-tar", "7.5.2; rm -rf /"),
-        ("python-tarfile", "3.12"),
-        ("oras-go", "v2.6.1"),
-        ("decompress", "4.2.1"),
-        ("decompress", "decompress@4.2.1 --build-arg X=1"),
+        ("node-tar", "7.4.4", "7.4.4"),
+        ("oras-go", "2.6.1", "v2.6.1"),
+        ("decompress", "@xhmikosr/decompress@11.1.4", "@xhmikosr/decompress 11.1.4"),
     ],
 )
-def test_malformed_version_never_reaches_docker(target: str, version: str) -> None:
-    docker = FakeDocker()
-    with pytest.raises(ti.UnsupportedVersionError):
-        ti.prepare(target, version, "inodefence-dev/x:1", docker)
-    assert docker.calls == []
+def test_build_step_builds_unverified_then_checks_then_tags(
+    target: str, version: str, expect: str
+) -> None:
+    ref = "inodefence-dev/t:1"
+    step = _step(target, version, ref)
+    assert step.image_ref == ref and step.commands is not None
+    build, check, tag, untag = step.commands
+    assert build[:3] == ("docker", "build", "-q") and build[-3:] == ("-t", f"{ref}-unverified", ".")
+    assert check[1:4] == ("-m", "scripts.image_prepare", "check")
+    assert check[check.index("--expect") + 1] == expect
+    assert f"{ref}-unverified" in check and ref not in check
+    assert tag == ("docker", "tag", f"{ref}-unverified", ref)
+    assert untag == ("docker", "rmi", "--no-prune", f"{ref}-unverified")
+    # nothing in the step touches a tag other than image_ref and its own staging tag
+    for command in step.commands:
+        refs = [a for a in command if a.startswith("inodefence")]
+        assert set(refs) <= {ref, f"{ref}-unverified"}
+
+
+def test_python_step_pulls_official_only_when_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+    recipe = rpt.image_recipe("3.12.10")
+    absent = ip.prepare_step(recipe, "inodefence-dev/py:1", present=lambda ref: None)
+    assert absent.commands is not None
+    assert absent.commands[0] == ("docker", "pull", "-q", "python:3.12.10-slim")
+    assert absent.commands[1] == (
+        "docker",
+        "tag",
+        "python:3.12.10-slim",
+        "inodefence-dev/py:1-unverified",
+    )
+
+    present = ip.prepare_step(recipe, "inodefence-dev/py:1", present=lambda ref: "sha256:x")
+    assert present.commands is not None
+    assert all(c[1] != "pull" for c in present.commands)  # a local official tag is never moved
+
+
+def test_python_filter_axis_does_not_change_the_image_step() -> None:
+    adapter = rt.load_adapter("python-tarfile")
+    data = adapter.prepare(_cell("python-tarfile", "3.12.16", "r:1", "data"))
+    trusted = adapter.prepare(_cell("python-tarfile", "3.12.16", "r:1", "fully_trusted"))
+    assert data.commands == trusted.commands
+
+
+def test_python_pull_is_only_the_official_repository(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(rpt.pti, "IMAGE", "evil.example/python:{runtime}-slim")
+    with pytest.raises(ip.UnsupportedVersionError, match="not the official runtime tag"):
+        rpt.image_recipe("3.12.16")
+
+
+# ---- refusals: malformed or without a committed recipe -> commands None + reason ----
 
 
 @pytest.mark.parametrize(
     ("target", "version", "reason"),
     [
         ("node-tar", "7.5.4", "no committed lock"),
+        ("node-tar", "7.5.2; rm -rf /", "exact X.Y.Z"),
+        ("python-tarfile", "3.12", "exact X.Y.Z"),
         ("oras-go", "2.6.3", "buildable: 2.6.1, 2.6.2"),
+        ("oras-go", "v2.6.1", "exact X.Y.Z"),
         ("decompress", "decompress@11.1.4", "different packages"),
         ("decompress", "@xhmikosr/decompress@4.2.1", "not pinned"),
+        ("decompress", "decompress@4.2.1 --build-arg X=1", "<package>@X.Y.Z"),
     ],
 )
-def test_unsupported_version_is_refused_with_reason(target: str, version: str, reason: str) -> None:
-    docker = FakeDocker()
-    with pytest.raises(ti.UnsupportedVersionError, match=reason):
-        ti.prepare(target, version, "inodefence-dev/x:1", docker)
-    assert docker.calls == []
+def test_unsupported_version_has_no_commands_and_a_reason(
+    target: str, version: str, reason: str
+) -> None:
+    step = _step(target, version)
+    assert step.commands is None
+    assert reason in step.reason
 
 
 def test_supported_recipes_come_from_committed_files() -> None:
-    node = nti.recipe("7.4.4")
-    assert node.build == (
+    assert nti.recipe("7.4.4").build == (
         "-f",
         "tools/node-tar/effect/Dockerfile",
         "--build-arg",
         "TAR_VERSION=7.4.4",
     )
     assert rog.image_recipe("2.6.1").build[-1] == "ROLE=affected"  # type: ignore[index]
-    assert rog.image_recipe("2.6.2").expected == "v2.6.2"
-    fork = dci.recipe("@xhmikosr/decompress@11.1.4")
-    assert fork.build[-1] == "ROLE=fixed"  # type: ignore[index]
-    assert fork.expected == "@xhmikosr/decompress 11.1.4"
+    assert rog.image_recipe("2.6.2").json_key == "oras_go_version"
+    assert dci.recipe("@xhmikosr/decompress@11.1.4").build[-1] == "ROLE=fixed"  # type: ignore[index]
     assert dci.recipe("decompress@4.2.1").expected == "decompress 4.2.1"
-    assert rpt.image_recipe("3.12.16").pull == "python:3.12.16-slim"
+    assert set(dci.pinned_specs()) == {"decompress@4.2.1", "@xhmikosr/decompress@11.1.4"}
 
 
 def test_node_tar_lock_must_pin_the_requested_version(tmp_path: Path) -> None:
     version_dir = tmp_path / "9.9.9"
-    version_dir.mkdir(parents=True)
+    version_dir.mkdir()
     (version_dir / "package.json").write_text(json.dumps({"dependencies": {"tar": "9.9.8"}}))
     (version_dir / "package-lock.json").write_text("{}")
-    with pytest.raises(ti.UnsupportedVersionError, match="9.9.8"):
+    with pytest.raises(ip.UnsupportedVersionError, match="9.9.8"):
         nti.recipe("9.9.9", versions_dir=tmp_path)
 
 
-# ---- reuse, prepare, verify ----
+# ---- the offline check command ----
 
 
-def test_existing_image_is_reused_without_build() -> None:
-    docker = FakeDocker({"inodefence-oras-go:2.6.1": json.dumps({"oras_go_version": "v2.6.1"})})
-    got = ti.prepare("oras-go", "2.6.1", "inodefence-oras-go:2.6.1", docker)
-    assert got.prepared is False and got.observed == "v2.6.1"
-    assert "build" not in docker.verbs() and "pull" not in docker.verbs()
+def _runner(code: int, out: str, err: str = ""):
+    calls: list[list[str]] = []
+
+    def run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        calls.append(cmd)
+        return subprocess.CompletedProcess(cmd, code, out, err)
+
+    return run, calls
 
 
-def test_missing_image_is_built_then_verified() -> None:
-    docker = FakeDocker(reports="7.4.4")
-    got = ti.prepare("node-tar", "7.4.4", "inodefence-dev/node-tar-effect:7.4.4", docker)
-    assert got.prepared is True and got.observed == "7.4.4"
-    build = next(c for c in docker.calls if c[0] == "build")
-    assert build[-3:] == ["-t", "inodefence-dev/node-tar-effect:7.4.4", "."]
-    assert docker.verbs().index("build") < docker.verbs().index("run")
+def test_check_passes_on_exact_version_and_runs_offline() -> None:
+    run, calls = _runner(0, "7.4.4\n")
+    assert ip.check(["--expect", "7.4.4", "--", "img", "-e", "x"], run) == 0
+    assert calls[0][:5] == ["docker", "run", "--rm", "--network", "none"]
 
 
-def test_version_mismatch_inside_image_is_an_error() -> None:
-    docker = FakeDocker(reports="decompress 4.2.0")
-    with pytest.raises(ti.ImagePrepareError, match="expected 'decompress 4.2.1'"):
-        ti.prepare("decompress", "decompress@4.2.1", "inodefence-dev/decompress:4.2.1", docker)
+@pytest.mark.parametrize(
+    ("code", "out", "args"),
+    [
+        (0, "7.4.3\n", ["--expect", "7.4.4"]),  # version mismatch inside the image
+        (1, "", ["--expect", "7.4.4"]),  # check program failed
+        (
+            0,
+            '{"oras_go_version":"v2.6.2"}',
+            ["--expect", "v2.6.1", "--json-key", "oras_go_version"],
+        ),
+        (0, "not json", ["--expect", "v2.6.1", "--json-key", "k"]),
+    ],
+)
+def test_check_fails_closed(code: int, out: str, args: list[str]) -> None:
+    run, _ = _runner(code, out)
+    assert ip.check([*args, "--", "img"], run) == 1
 
 
-def test_existing_image_with_wrong_contents_is_an_error_not_rebuilt() -> None:
-    docker = FakeDocker({"inodefence-dev/node-tar-effect:7.5.2": "7.5.3"})
-    with pytest.raises(ti.ImagePrepareError, match="contains '7.5.3'"):
-        ti.prepare("node-tar", "7.5.2", "inodefence-dev/node-tar-effect:7.5.2", docker)
-    assert "build" not in docker.verbs()
+def test_check_reads_json_version() -> None:
+    run, _ = _runner(0, 'noise\n{"oras_go_version":"v2.6.1","go_version":"go1"}\n')
+    assert ip.check(["--expect", "v2.6.1", "--json-key", "oras_go_version", "--", "img"], run) == 0
 
 
-@pytest.mark.parametrize("step", ["build", "check"])
-def test_build_or_check_failure_is_an_error(step: str) -> None:
-    docker = FakeDocker(reports=json.dumps({"oras_go_version": "v2.6.2"}), fail=step)
-    with pytest.raises(ti.ImagePrepareError, match="failed"):
-        ti.prepare("oras-go", "2.6.2", "inodefence-dev/oras-go:2.6.2", docker)
-
-
-def test_python_pull_only_when_official_tag_is_absent() -> None:
-    absent = FakeDocker(reports="3.12.10")
-    got = ti.prepare("python-tarfile", "3.12.10", "inodefence-dev/python:3.12.10-slim", absent)
-    assert got.prepared is True
-    assert ["pull", "-q", "python:3.12.10-slim"] in absent.calls
-    assert ["tag", "python:3.12.10-slim", "inodefence-dev/python:3.12.10-slim"] in absent.calls
-
-    present = FakeDocker({"python:3.12.16-slim": "3.12.16"})
-    ti.prepare("python-tarfile", "3.12.16", "inodefence-dev/python:3.12.16-slim", present)
-    assert "pull" not in present.verbs()  # a local official tag is never moved by a re-pull
-
-
-def test_python_pull_failure_is_an_error() -> None:
-    docker = FakeDocker(fail="pull")
-    with pytest.raises(ti.ImagePrepareError, match="pull python:3.99.0-slim failed"):
-        ti.prepare("python-tarfile", "3.99.0", "python:3.99.0-slim", docker)
-
-
-def test_docker_unavailable_is_an_error() -> None:
+def test_check_docker_unavailable_fails() -> None:
     def missing(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         raise FileNotFoundError("docker")
 
-    with pytest.raises(ti.ImagePrepareError, match="FileNotFoundError"):
-        ti.prepare("oras-go", "2.6.1", "inodefence-oras-go:2.6.1", missing)
+    assert ip.check(["--expect", "1.0.0", "--", "img"], missing) == 1
 
 
-def test_python_pull_is_only_the_official_repository(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(rpt.pti, "IMAGE", "evil.example/python:{runtime}-slim")
-    docker = FakeDocker()
-    with pytest.raises(ti.UnsupportedVersionError, match="not the official runtime tag"):
-        ti.prepare("python-tarfile", "3.12.16", "inodefence-dev/python:3.12.16-slim", docker)
-    assert docker.calls == []
+# ---- the common runner never builds an image that is present ----
+
+
+def test_present_image_is_reused_without_prepare(monkeypatch: pytest.MonkeyPatch) -> None:
+    adapter = rt.load_adapter("oras-go")
+    cells = adapter.cells(["2.6.1"], [])
+    monkeypatch.setattr(rt, "image_id", lambda ref: "sha256:present")
+    monkeypatch.setattr(rt, "prepare_image", lambda step: pytest.fail("must not prepare"))
+    ready, errors = rt.resolve_images(adapter, cells, auto_prepare=True)
+    assert ready == {"inodefence-oras-go:2.6.1": "sha256:present"} and errors == {}
 
 
 def test_generic_helper_names_no_target() -> None:

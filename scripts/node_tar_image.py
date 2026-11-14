@@ -11,22 +11,20 @@ refused: no lock is generated and nothing unpinned is installed.
 from __future__ import annotations
 
 import json
-import subprocess
 from pathlib import Path
 
 from scripts.image_prepare import (
     IMAGE_SLOT,
-    REPO_ROOT,
-    PreparedImage,
     Recipe,
-    Runner,
     UnsupportedVersionError,
-    ensure_image,
     exact_version,
+    recipe_step,
     single_dependency,
 )
+from scripts.run_target import PrepareStep, RunCell
 
-VERSIONS_DIR = REPO_ROOT / "tools" / "node-tar" / "versions"
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+VERSIONS_DIR = _REPO_ROOT / "tools" / "node-tar" / "versions"
 
 
 def recipe(version: str, versions_dir: Path = VERSIONS_DIR) -> Recipe:
@@ -43,7 +41,7 @@ def recipe(version: str, versions_dir: Path = VERSIONS_DIR) -> Recipe:
             f"node-tar {version}: committed package.json pins {dependency}"
         )
     return Recipe(
-        label=f"node-tar {version}",
+        description=f"build tools/node-tar/effect/Dockerfile TAR_VERSION={version}",
         expected=version,
         build=("-f", "tools/node-tar/effect/Dockerfile", "--build-arg", f"TAR_VERSION={version}"),
         check=(
@@ -56,5 +54,7 @@ def recipe(version: str, versions_dir: Path = VERSIONS_DIR) -> Recipe:
     )
 
 
-def prepare(version: str, image_ref: str, runner: Runner = subprocess.run) -> PreparedImage:
-    return ensure_image(recipe(version), image_ref, runner)
+def prepare(cell: RunCell) -> PrepareStep:
+    """``TargetAdapter.prepare``: build ``cell.image_ref`` from the committed recipe; verify it."""
+    version = cell.axes.target_version or ""
+    return recipe_step(cell, lambda: recipe(version))

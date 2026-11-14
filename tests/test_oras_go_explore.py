@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import scripts.node_tar_explore as nte
+import scripts.explore_result as er
 import scripts.oras_go_explore as oge
 import scripts.run_oras_go_target as rog
 import scripts.run_target as rt
@@ -63,7 +63,7 @@ def _report(*, runs: int, violating: int | None, image_id: str = IMAGE_ID) -> di
 @pytest.fixture(autouse=True)
 def _fixed_provenance(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        nte, "engine_provenance", lambda image: rt.Provenance("b" * 40, False, image, None)
+        er, "engine_provenance", lambda image: rt.Provenance("b" * 40, False, image, None)
     )
 
 
@@ -172,8 +172,8 @@ def test_driver_prepares_then_calls_the_oras_go_hook(
 ) -> None:
     seen: dict[str, Any] = {}
 
-    def prepare(adapter, target, spec, *, image_tag_suffix):  # type: ignore[no-untyped-def]
-        seen["prepare"] = (target, spec, image_tag_suffix)
+    def prepare(adapter, target, spec, *, image_tag_suffix, filters=()):  # type: ignore[no-untyped-def]
+        seen["prepare"] = (target, spec, image_tag_suffix, tuple(filters))
         return _prepared()
 
     def hook(prepared, options):  # type: ignore[no-untyped-def]
@@ -184,7 +184,7 @@ def test_driver_prepares_then_calls_the_oras_go_hook(
     monkeypatch.setattr(oge, "explore", hook)
     argv = ["--target", "oras-go", "--version", "latest", "--auto-prepare", "--budget", "6"]
     rte.main([*argv, "--seed", "9", "--out", str(tmp_path)])
-    assert seen == {"prepare": ("oras-go", "latest", ""), "hook": ("oras-go", 6, 9)}
+    assert seen == {"prepare": ("oras-go", "latest", "", ()), "hook": ("oras-go", 6, 9)}
 
 
 # ---- no silent negatives ----

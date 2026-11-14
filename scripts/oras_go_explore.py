@@ -11,27 +11,27 @@ Everything oras-go specific stays here: the host script (``local_oras_go_selfdis
 loop over the ``frame`` worker inside the controller's disposable sandbox and isolated target
 containers, unchanged), and the check that the run used exactly the prepared image. The report's
 ``case_records`` / ``violation_inputs`` have the shape node-tar's exploration report uses, so the
-common campaign converter turns them into ``inodefence-target-result-v1`` (``mode=campaign``) and
-saves only the violating inputs. Before the campaign, the (possibly reused) image's ``frame``
-worker is checked offline (``verify_existing``); after it, a report with fewer run records than
-the budget is refused, and any run the program did not judge makes the verdict ERROR, never PASS
+common converter ``scripts.explore_result`` (keyed on ``prepared.target``) turns them into
+``inodefence-target-result-v1`` (``mode=campaign``) and saves only the violating inputs.
+Before the campaign, the (possibly reused) image's ``frame`` worker is checked offline
+(``verify_existing``); after it, a report with fewer run records than the budget is refused, and any run the program did not judge makes the verdict ERROR, never PASS
 (its count and ratio are printed). The mutation policy is the campaign's default (unchanged); its
 name is printed with the result.
 """
 
 from __future__ import annotations
 
-import dataclasses
 import json
 import os
 import subprocess
 import sys
 from pathlib import Path
 
+from scripts.explore_result import build_campaign_result, write_result
 from scripts.run_target import ExploreOptions, ExploreOutcome, PreparedTargetImage
 
 from inodefence.generator import minimal_seed_corpus
-from inodefence.target_result import RUN_ERROR, TargetResult
+from inodefence.target_result import RUN_ERROR
 from inodefence.target_result_summary import write_cell_summaries
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -126,20 +126,8 @@ def check_report(report: dict, prepared: PreparedTargetImage, budget: int | None
         raise RuntimeError(f"campaign report has {runs} run records, budget was {budget}")
 
 
-def build_result(
-    report: dict, prepared: PreparedTargetImage, *, seed: int, budget: int
-) -> tuple[TargetResult, dict[str, bytes]]:
-    """The common campaign result for oras-go, from the shared exploration-report converter."""
-    from scripts.node_tar_explore import build_campaign_result
-
-    result, tar_files = build_campaign_result(report, prepared, seed=seed, budget=budget)
-    return dataclasses.replace(result, target=TARGET), tar_files
-
-
 def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOutcome:
     """``TargetAdapter.explore`` for oras-go: run the campaign in the controller, write a result."""
-    from scripts.node_tar_explore import write_result
-
     if options.budget < MIN_BUDGET:
         raise ValueError(f"budget must be >= {MIN_BUDGET} (the loop's seed count)")
     options.out.mkdir(parents=True, exist_ok=True)
@@ -156,7 +144,9 @@ def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOu
     )
     report = json.loads(report_path.read_text(encoding="utf-8"))
     check_report(report, prepared, options.budget)
-    result, tar_files = build_result(report, prepared, seed=options.seed, budget=options.budget)
+    result, tar_files = build_campaign_result(
+        report, prepared, seed=options.seed, budget=options.budget
+    )
     result_path = write_result(report_path.parent / f"{run_id}-result", result, tar_files)
     try:  # the result is written; a summary failure must not lose it
         write_cell_summaries([result_path])

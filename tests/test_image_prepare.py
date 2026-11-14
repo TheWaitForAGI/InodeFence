@@ -110,7 +110,7 @@ def test_python_pull_is_only_the_official_repository(monkeypatch: pytest.MonkeyP
 @pytest.mark.parametrize(
     ("target", "version", "reason"),
     [
-        ("node-tar", "7.5.4", "no committed lock"),
+        ("node-tar", "7.99.99", "no committed lock"),  # well-formed, never locked
         ("node-tar", "7.5.2; rm -rf /", "exact X.Y.Z"),
         ("python-tarfile", "3.12", "exact X.Y.Z"),
         ("oras-go", "2.6.3", "buildable: 2.6.1, 2.6.2"),

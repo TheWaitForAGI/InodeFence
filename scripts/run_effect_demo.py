@@ -323,8 +323,15 @@ def check_demo_arguments(parser: argparse.ArgumentParser, args: argparse.Namespa
     given = [name for name in DEMO_ARGUMENTS if getattr(args, name) is not None]
     if given and args.mode not in DEMO_MODES:
         parser.error("--seed/--budget/--policy/--mutation-policy are restricted to effect demos")
-    if args.budget is not None and not 1 <= args.budget <= MAX_NATIVE_BUDGET:
-        parser.error(f"effect demo budget must be in 1..{MAX_NATIVE_BUDGET}")
+    if args.budget is not None:
+        if args.budget < 1:
+            parser.error("effect demo budget must be >= 1")
+        # Exploration has NO upper budget cap: it streams steps (retain_steps=False) so memory does
+        # not grow with the run count, and a long single campaign is the point. Every other mode
+        # (demo, historical, qualification) keeps the cap so a bounded run cannot be asked for an
+        # unbounded one by mistake. This is the only budget rule the explore mode relaxes.
+        if args.mode != EXPLORE_DEMO_MODE and args.budget > MAX_NATIVE_BUDGET:
+            parser.error(f"effect demo budget must be in 1..{MAX_NATIVE_BUDGET}")
     tar_version = getattr(args, "tar_version", None)
     if tar_version is not None and args.mode not in (HISTORICAL_DEMO_MODE, EXPLORE_DEMO_MODE):
         parser.error("--tar-version is restricted to effect-demo-historical / effect-demo-explore")

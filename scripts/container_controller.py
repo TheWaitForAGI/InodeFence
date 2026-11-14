@@ -12,6 +12,7 @@ from contextlib import redirect_stdout
 from pathlib import Path
 
 import pytest
+from scripts.effect_replay import CASE_REPLAY_MODE, run_case_replay
 from scripts.run_effect_demo import (
     DECOMPRESS_CAMPAIGN_MODE,
     DEFAULT_NATIVE_BUDGET,
@@ -30,6 +31,7 @@ from scripts.run_effect_demo import (
     sentinel_set_from_args,
 )
 
+from inodefence.case_replay import MAX_INPUT_LINE_BYTES, parse_replay_input
 from inodefence.effect_demo import (
     render_effect_campaign_report,
     render_effect_campaign_summary,
@@ -496,6 +498,7 @@ def main() -> int:
             "effect-demo",
             HISTORICAL_DEMO_MODE,
             EXPLORE_DEMO_MODE,
+            CASE_REPLAY_MODE,
             DECOMPRESS_CAMPAIGN_MODE,
             ORAS_GO_CAMPAIGN_MODE,
         ),
@@ -509,6 +512,7 @@ def main() -> int:
         "effect-demo",
         HISTORICAL_DEMO_MODE,
         EXPLORE_DEMO_MODE,
+        CASE_REPLAY_MODE,
         DECOMPRESS_CAMPAIGN_MODE,
         ORAS_GO_CAMPAIGN_MODE,
     }
@@ -534,6 +538,11 @@ def main() -> int:
     if pair_mode:
         line = sys.stdin.readline(16 * 1024 * 1024)
         pair_initial_value = json.loads(line)
+    replay_input = None
+    if args.mode == CASE_REPLAY_MODE:
+        # Same input path as the pair modes: one JSON line on stdin before brokering starts. It is
+        # re-validated here (size, SHA-256 recomputed, byte-identical case with the same case_id).
+        replay_input = parse_replay_input(sys.stdin.readline(MAX_INPUT_LINE_BYTES))
     client = StdioDockerClient(sys.stdin, sys.stdout)
     with redirect_stdout(sys.stderr):
         if args.mode == "preflight-node-n04-5s":
@@ -711,7 +720,7 @@ def main() -> int:
             print(verified.stdout, end="")
             print(verified.stderr, end="", file=sys.stderr)
             return verified.returncode
-        if args.mode in ("effect-demo", HISTORICAL_DEMO_MODE, EXPLORE_DEMO_MODE):
+        if args.mode in ("effect-demo", HISTORICAL_DEMO_MODE, EXPLORE_DEMO_MODE, CASE_REPLAY_MODE):
             # Node-tar effect campaigns re-execute a case after a Docker stall; the
             # journaling client passes every call through unchanged.
             observed = ObservedDockerClient(client)
@@ -720,6 +729,11 @@ def main() -> int:
             assert args.evidence is not None
             if args.mode == "effect-demo":
                 return run_native_effect_demo(backend, args.image[0], args.evidence, args, recovery)
+            if args.mode == CASE_REPLAY_MODE:
+                assert replay_input is not None
+                return run_case_replay(
+                    backend, args.image[0], args.evidence, replay_input, recovery
+                )
             if args.mode == EXPLORE_DEMO_MODE:
                 return run_native_exploration_demo(
                     backend, args.image[0], args.evidence, args, recovery

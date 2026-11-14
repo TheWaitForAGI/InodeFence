@@ -14,13 +14,13 @@ train과 같은 계열의 위반을 내는 릴리스다 [C-LIM2]. 다른 추출�
 다른 추출기 3개에 대한 적용(§5.5)은 오라클·어댑터 수준이며, 퍼저 탐색의 일반성이나 효과에 대한 주장이 아니다 [C-M4a].
 Rust `tar` 프로브는 "적용된다"까지만 쓴다 [C-RUST].
 
-## 6.3 snapshot oracle의 구조적 한계
+## 6.3 snapshot oracle의 설계상 한계
 
-- `violated=False`는 "관찰 범위 안에서 위반 증거 없음"이지 모든 operation이 안전했다는 증명이
-  아니다. 관찰 실패는 오류로 올리며 nonviolation을 만들지 않는다.
-- 두 snapshot 사이 중간 변화, transient 생성 후 삭제, inode 번호 재사용, sandbox 밖 접근, 외부 path
-  direct-use, symlink referent는 현재 범위에서 판정하지 못한다. C3/C4와 full tracing은 후속 단계다.
-- entry checkpoint 사이의 transition은 feedback evidence일 뿐이고 confirmed verdict로 승격하지 않는다.
+- 오라클은 추출 전후 두 스냅숏을 비교하는 탐지기다. 위반 없음(`violated=False`)은 관찰 범위 안에서 위반 증거가 없다는
+  뜻일 뿐이며, 두 시점 사이에 생겼다 사라진 변화, inode 번호 재사용, 샌드박스 밖 접근은 판정하지 못한다 [C-LIM3].
+- entry 사이의 중간 상태 전이는 feedback 근거로만 쓰고 C0/C1/C2 판정으로 올리지 않는다. 관찰 실패는 위반 없음으로 세지
+  않는다 [C-LIM3].
+- 이것은 시험으로 확인한 성질이 아니라 오라클의 정의에서 나오는 설계상 한계다 [C-LIM3].
 
 ## 6.4 범위와 주장하지 않는 것
 

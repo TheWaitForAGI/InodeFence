@@ -247,3 +247,53 @@ def test_targets_is_the_real_registry_when_repo_is_present(monkeypatch, capsys) 
     # Every target reports its declared options (a list, read from the adapter); it fills in on its
     # own as owners declare them, so here we assert the mechanism, not a particular option.
     assert all(isinstance(feats["options"], list) for feats in support.values())
+
+
+def _write_result(folder, verdict_cases, campaign=None):
+    from inodefence.target_result import (
+        Provenance,
+        ResultMode,
+        TargetAxes,
+        TargetResult,
+        repro_input,
+    )
+
+    folder.mkdir(parents=True, exist_ok=True)
+    (folder / "inputs").mkdir(exist_ok=True)
+    (folder / "inputs" / "a.tar").write_bytes(b"x")
+    result = TargetResult(
+        target="node-tar",
+        axes=TargetAxes(target_version="7.5.2"),
+        mode=ResultMode.CAMPAIGN if campaign else ResultMode.FIXTURE_REGRESSION,
+        observed_contracts=("C1", "C2"),
+        cases=verdict_cases,
+        repro_inputs=(repro_input(verdict_cases[0].case_id, "inputs/a.tar", b"x"),)
+        if verdict_cases
+        else (),
+        provenance=Provenance("a" * 40, False, "img", None),
+        campaign=campaign,
+    )
+    (folder / "result.json").write_text(result.dumps(), encoding="utf-8")
+
+
+def test_status_reads_a_finished_result_folder(tmp_path, capsys) -> None:
+    from inodefence.target_result import CampaignInfo, CaseVerdict
+
+    folder = tmp_path / "7.5.2-123-2-result"
+    _write_result(
+        folder,
+        (
+            CaseVerdict("step-0", "declined", None, False, False),
+            CaseVerdict("step-1", "extracted", None, True, True),
+        ),
+        campaign=CampaignInfo(seed=123, budget=2, runs_to_first_violation=2),
+    )
+    assert cli.main(["status", str(folder)]) == 0
+    out = capsys.readouterr().out
+    assert "FAIL target=node-tar version=7.5.2 runs=2 violations=1" in out
+    assert "first-violation=2" in out
+
+
+def test_status_without_a_result_explains(tmp_path, capsys) -> None:
+    assert cli.main(["status", str(tmp_path)]) == 2
+    assert "no result.json" in capsys.readouterr().err

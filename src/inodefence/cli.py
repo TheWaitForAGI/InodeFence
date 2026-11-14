@@ -155,6 +155,42 @@ def cmd_explore(args: argparse.Namespace) -> int:
     return _forward(EXPLORE_DRIVER, argv + args.extra)
 
 
+def cmd_status(args: argparse.Namespace) -> int:
+    from inodefence.target_result import TargetResultError, load_target_result
+
+    folder = args.folder
+    results = (
+        [folder / "result.json"]
+        if (folder / "result.json").is_file()
+        else sorted(folder.glob("*/result.json"))
+    )
+    if not results:
+        print(
+            f"no result.json under {folder} (a finished run writes one). A live progress snapshot "
+            "of a running exploration is shown here once the exploration output sink is available.",
+            file=sys.stderr,
+        )
+        return 2
+    for result_path in results:
+        try:
+            result = load_target_result(result_path, verify_inputs=False)
+        except (TargetResultError, OSError, ValueError) as error:
+            print(f"{result_path}: unreadable ({error})", file=sys.stderr)
+            continue
+        line = f"{result_path.parent.name}: {result.verdict.value} target={result.target}"
+        if result.axes.target_version:
+            line += f" version={result.axes.target_version}"
+        line += f" runs={result.executed} violations={len(result.violating_cases)}"
+        campaign = result.campaign
+        if campaign is not None:
+            if campaign.runs_to_first_violation is not None:
+                line += f" first-violation={campaign.runs_to_first_violation}"
+            if getattr(campaign, "stopped_early", False):  # set once the large-campaign fields land
+                line += " (stopped early)"
+        print(line)
+    return 0
+
+
 def cmd_summary(args: argparse.Namespace) -> int:
     from inodefence.target_result import TargetResultError
     from inodefence.target_result_summary import summarize_file
@@ -204,6 +240,12 @@ def build_parser() -> argparse.ArgumentParser:
     explore.add_argument("--out", type=Path, default=DEFAULT_EXPLORE_OUT)
     explore.add_argument("--dry-run", action="store_true", help="print the plan; run nothing")
     explore.set_defaults(func=cmd_explore)
+
+    status = sub.add_parser(
+        "status", help="read a finished run's result folder (live progress follows the sink PR)"
+    )
+    status.add_argument("folder", type=Path, help="an output folder with result.json (or cells)")
+    status.set_defaults(func=cmd_status)
 
     summary = sub.add_parser("summary", help="render a result file as a one-page summary")
     summary.add_argument("result", type=Path, help="a result.json")

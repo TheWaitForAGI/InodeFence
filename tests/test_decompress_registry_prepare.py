@@ -104,6 +104,7 @@ class FakeDocker:
                     "package_version": V,
                     "declined": None,
                     "extract_tree": tree,
+                    "reference_after": {},
                 }
                 return done(0, json.dumps(raw) + "\n")
             return done(0, f"{self.installed[0]} {self.installed[1]}\n")
@@ -448,6 +449,7 @@ def test_harness_accepts_a_package_that_refuses_the_internal_link() -> None:
                     "package_version": V,
                     "declined": {"message": "ENOENT: no such file or directory, link"},
                     "extract_tree": {"a.txt": {}},
+                    "reference_after": {},
                 }
                 self.calls.append(cmd)
                 return subprocess.CompletedProcess(cmd, 0, json.dumps(raw) + "\n", "")
@@ -457,4 +459,7 @@ def test_harness_accepts_a_package_that_refuses_the_internal_link() -> None:
     docker = Refusing()
     reg.prepare(SPEC, IMAGE, runner=docker, log=lines.append)
     assert docker.images == {IMAGE}
-    assert any("regression program ok (internal link not created: ENOENT" in x for x in lines)
+    assert any(
+        "regression program ok (regular file extracted, internal link not created: ENOENT" in x
+        for x in lines
+    )

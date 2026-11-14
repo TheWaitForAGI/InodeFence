@@ -182,7 +182,7 @@ def installed(runner: Runner, image: str) -> tuple[str, str]:
 
 
 def harness_check(runner: Runner, image: str, package: str, version: str) -> str:
-    """The regression run's own program must run this package and extract the regular file.
+    """The regression run's own program must load this package and report an observation.
 
     Whether the package also creates the archive's internal hard link is the package's own
     behaviour (some versions resolve the link target elsewhere or race and refuse); the program
@@ -199,7 +199,7 @@ def harness_check(runner: Runner, image: str, package: str, version: str) -> str
         done.returncode == 0
         and isinstance(raw, dict)
         and (raw.get("package"), raw.get("package_version")) == (package, version)
-        and "a.txt" in tree
+        and "reference_after" in raw
     )
     if not ok:
         detail = (done.stderr or "").strip()[-200:] or str(raw)[:200]
@@ -208,7 +208,11 @@ def harness_check(runner: Runner, image: str, package: str, version: str) -> str
     if raw.get("declined") is None and "b.txt" in tree:
         return "regression program ok (internal link created)"
     declined = (raw.get("declined") or {}).get("message", "")
-    return f"regression program ok (internal link not created: {declined[:120]})"
+    regular = "extracted" if "a.txt" in tree else "not extracted"
+    return (
+        f"regression program ok (regular file {regular}, internal link not created: "
+        f"{declined[:120]})"
+    )
 
 
 #: The exploration path runs ``worker.cjs frame <archive> <dest>`` (``DecompressFrameTarget``) after

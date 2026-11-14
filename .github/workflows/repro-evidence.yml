@@ -155,7 +155,7 @@ jobs:
           } >> "$OUT/run-info.txt"
           echo "== exit codes"; cat "$OUT/exit-codes.txt" 2>/dev/null
           echo "== comparisons (report-only)"; cat "$OUT/comparisons.txt" 2>/dev/null
-          (cd "$OUT" && find . -type f ! -name SHA256SUMS | sort | xargs sha256sum > SHA256SUMS.tmp && mv SHA256SUMS.tmp SHA256SUMS)
+          (cd "$OUT" && find . -type f ! -name SHA256SUMS ! -name SHA256SUMS.tmp | sort | xargs sha256sum > SHA256SUMS.tmp && mv SHA256SUMS.tmp SHA256SUMS)
 
       - name: Upload repro evidence
         if: always()

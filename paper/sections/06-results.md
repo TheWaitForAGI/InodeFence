@@ -9,16 +9,31 @@ observed(실행 출력으로 확인)와 inferred(추론)를 소절마다 구분�
 실제 node-tar에서 입력 생성 → 실행 → entry별 중간 상태 관찰 → C0/C1/C2 판정 → feedback → 다음 변이 선택의 루프가
 한 명령(`make demo`)으로 반복 실행된다. 실행 기록은 `demo run`으로 라벨링하며, 끝 화면은
 [`make-demo-screen.png`](../figures/make-demo-screen.png)(2026-11-07 기록 재생)이고 결과 재생 검증은 `make replay`다 [C-M1].
+현재 main(`ff83fbe`)에서 `make demo`의 기본 입력(seed 123, 실행 20)으로 돌린 데모는 node-tar 7.5.22에서 20 step(성공 18,
+거부 2)을 실행했고 위반 0, 고유 effect 키 25, 보상 step 3회(데모가 찍는 번호로 step 6·13·20), 코퍼스 4 → 7이었다(GHA 실행 43565892214,
+아티팩트 `campaign-native-make-demo-s123`) [C-M1]. 위반 0은 이 데모 예산에서 관찰되지 않았다는 뜻이며 node-tar 7.5.22가
+안전하다는 근거가 아니다. 고유 effect 키, 보상 step, 코퍼스 크기는 비교 arm이 없는 seed 1개 데모의 값이므로 탐색 성능이나
+arm 비교의 수치가 아니다. 2026-11-06 기록과 같다고 말할 수 있는 것은 step 수 20과 위반 0뿐이고, 2026-11-07 화면 기록(위 끝 화면)과는 성공 18·거부 2,
+위반 0, 고유 effect 키 25, 보상 step 6·13·20, 코퍼스 4 → 7이 같다. step 번호는 데모가 찍는 번호(1부터)이며 리포트 JSON의
+`index`는 0부터 센다 [C-M1].
 이것은 루프가 돈다는 엔지니어링 증거이며 탐색 효과의 근거가 아니다 [C-M1].
 
-## 5.2 M2 — 두 결함의 통제 차분 (TESTED, observed)
+## 5.2 오라클 대조와 M2 통제 차분 (TESTED, observed)
 
-손으로 만든 결정론적 하드링크 고정 입력 2개(외부 참조파일 대상, 추출 디렉터리를 벗어나는 같은 상대 경로; 최상위와
+**오라클 대조(통제용 테스트 추출기).** 경계 검사 없이 entry를 그대로 따르는 통제용 테스트 추출기(in-process, 일회용
+샌드박스 안)에 고정 입력 4개를 넣어 오라클을 대조했다. 정상 입력은 위반 없음, 추출 루트를 벗어나는 경로의 파일은 C0,
+sentinel을 가리키는 하드링크는 C1과 C2, symlink를 만든 뒤 그 경로에 쓰는 입력은 C2로 판정된다(`scripts/oracle_fixture_check.py`,
+`tests/test_oracle_fixtures.py`; CI 실행 43565082671, main `d954387`의 check 작업). 오라클 검증이며 node-tar 결과가 아니고,
+고정 입력 4개에 대한 대조라 탐색 성능의 근거가 아니다 [C-ORACLE].
+
+**node-tar 통제 차분.** 손으로 만든 결정론적 하드링크 고정 입력 2개(외부 참조파일 대상, 추출 디렉터리를 벗어나는 같은 상대 경로; 최상위와
 중첩)를 node-tar 5개 릴리스(7.5.2 / 7.5.3 / 7.5.6 / 7.5.7 / 7.5.8)에 돌려, "추출된 객체가 외부 참조파일의
 `(st_dev, st_ino)`를 공유하는가"라는 C1 관찰로 판정했다. 릴리스 번호나 정답 경로를 판정 조건에 넣지 않았다 [C-M2].
 전체 표는 [M2 증거표](../tables/m2-cross-release-evidence.md), raw는
 [`../../experiments/repro/evidence/summary.json`](../../experiments/repro/evidence/summary.json), 검증 요약은
-[cross-release-identity-repro-v1](../../experiments/summaries/cross-release-identity-repro-v1.md)다.
+[cross-release-identity-repro-v1](../../experiments/summaries/cross-release-identity-repro-v1.md)다. raw는 2026-10-25(`86a4585`)에
+만들어졌고 같은 스크립트로 다시 실행할 수 있다(docker 필요). 2026-11-06 main `23e5c66`에서 다시 실행한 결과가 커밋된 raw와
+차이 0이었고, CI 실행 43565082671(main `d954387`)의 check 작업이 판정 일치 테스트를 통과했다 [C-M2].
 
 ![node-tar 릴리스별 하드링크 identity verdict 그리드: top-level와 nested fixture × 7.5.2–7.5.8](../figures/m2-cross-release-evidence.png)
 
@@ -68,6 +83,9 @@ observed(실행 출력으로 확인)와 inferred(추론)를 소절마다 구분�
   일회용 샌드박스에서 재현한 것에 내린 판정이다 [C-M4a].
 - **Rust `tar`.** 같은 방식의 고정 입력 프로브를 0.4.35와 0.4.36에도 적용했다(`experiments/repro/evidence/rust_tar_fixture_probe.json`).
   이 프로브는 main만으로는 다시 실행할 수 없어 감사 이후 기록으로만 쓴다 [C-RUST].
+
+테스트와 프로브 기록은 2026-10-27~30에 만들어졌고 다시 실행할 수 있으며, CI 실행 43565082671(main `d954387`)의 check 작업이
+세 일반성 테스트를 통과했다 [C-M4a].
 
 이는 오라클·어댑터 수준의 주장이며 **퍼저 탐색의 일반성이나 효과에 대한 주장이 아니다** [C-M4a].
 

@@ -67,7 +67,7 @@ def _cells(versions: list[str], filters: list[str]) -> list[RunCell]:
         else:
             cells.append(
                 RunCell(
-                    dirname=f"{TARGET}-{v}",
+                    dirname=f"{TARGET}-{v}-exploratory",
                     axes=TargetAxes(target_version=v),
                     image_ref=REGISTRY_IMAGE.format(version=v),
                     exploratory=True,

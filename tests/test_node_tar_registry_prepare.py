@@ -198,7 +198,7 @@ def test_installed_version_mismatch_leaves_no_image_and_no_staging() -> None:
 @pytest.mark.parametrize(
     ("lock", "message"),
     [
-        (_lock({"node_modules/evil-pkg": {"version": "1.0.0"}}), "unexpected package"),
+        (_lock({"node_modules/evil-pkg": {"version": "1.0.0"}}), "evil-pkg@1.0.0.*promote"),
         (
             _lock({"node_modules/chownr": {"resolved": "https://mirror.example/chownr.tgz"}}),
             "not resolved from",
@@ -264,7 +264,7 @@ def test_dry_run_contacts_no_registry(
     monkeypatch.setattr(reg, "prepare", lambda *a, **k: pytest.fail("dry-run must not prepare"))
     argv = ["--target", "node-tar", "--version", "9.9.9", "--allow-registry-prepare", "--dry-run"]
     assert rt.main(argv) == 0
-    plan = json.loads(capsys.readouterr().out)["cells"]["node-tar-9.9.9"]
+    plan = json.loads(capsys.readouterr().out)["cells"]["node-tar-9.9.9-exploratory"]
     assert plan["exploratory"] is True
     assert "scripts.node_tar_registry_prepare" in plan["image_plan"]["commands"][0]
 
@@ -305,7 +305,7 @@ def test_exploratory_run_is_labelled_and_records_preparation(
     monkeypatch.setattr(nt.registry, "image_evidence", _fake_evidence())
     argv = ["--target", "node-tar", "--version", "9.9.9", "--allow-registry-prepare"]
     assert rt.main([*argv, "--out", str(tmp_path)]) == 0
-    cell = tmp_path / "node-tar-9.9.9"
+    cell = tmp_path / "node-tar-9.9.9-exploratory"
     result = load_target_result(cell / "result.json")
     assert result.label == EXPLORATORY_LABEL
     assert result.preparation is not None and result.preparation.method == "registry"
@@ -324,7 +324,7 @@ def test_installed_mismatch_at_describe_gives_no_verdict(
     monkeypatch.setattr(nt.registry, "image_evidence", _fake_evidence(installed="9.9.8"))
     argv = ["--target", "node-tar", "--version", "9.9.9", "--allow-registry-prepare"]
     assert rt.main([*argv, "--out", str(tmp_path)]) == rt.SETUP_ERROR
-    assert not (tmp_path / "node-tar-9.9.9" / "result.json").exists()
+    assert not (tmp_path / "node-tar-9.9.9-exploratory" / "result.json").exists()
 
 
 # ---- result format: optional field, label pairing, old files still read ----
@@ -336,10 +336,11 @@ def _result_dict(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, exploratory
     monkeypatch.setattr(rt, "engine_provenance", lambda image: rt.Provenance(None, True, image))
     monkeypatch.setattr(nt.cri, "run_one", lambda v, t, image=None: _clean(v))
     monkeypatch.setattr(nt.registry, "image_evidence", _fake_evidence())
+    cell = "node-tar-9.9.9-exploratory" if exploratory else "node-tar-7.5.3"
     version = "9.9.9" if exploratory else "7.5.3"
     argv = ["--target", "node-tar", "--version", version, "--allow-registry-prepare"]
     rt.main([*argv, "--out", str(tmp_path)])
-    return json.loads((tmp_path / f"node-tar-{version}" / "result.json").read_text())
+    return json.loads((tmp_path / cell / "result.json").read_text())
 
 
 def test_verified_result_has_no_preparation_field(
@@ -369,3 +370,115 @@ def test_preparation_installed_must_equal_requested(
     with pytest.raises(TargetResultError, match="installed"):
         from_json_dict(bad)
     assert isinstance(from_json_dict(data).preparation, Preparation)
+
+
+# ---- the five separation rules between verified and exploratory ----
+
+
+def test_rule1_registry_result_is_never_tagged_with_a_verified_name() -> None:
+    for image in ("inodefence-node-tar-effect:7.5.23", "inodefence-node-tar-effect:7.5.23-r"):
+        docker = FakeDocker()
+        with pytest.raises(reg.RegistryPrepareError, match="tagged only as"):
+            _prepare(docker, image=image)
+        assert docker.calls == []
+    (cell,) = nt.ADAPTER.cells(["7.5.23"], [])
+    assert cell.image_ref is not None and cell.image_ref.startswith(reg.REGISTRY_REPOSITORY + ":")
+
+
+def test_rule2_committed_lock_always_takes_the_verified_path() -> None:
+    (cell,) = nt.ADAPTER.cells(["7.5.3"], [])  # even when --allow-registry-prepare is given
+    assert not cell.exploratory and cell.image_ref == "inodefence-node-tar-effect:7.5.3"
+    step = nt.ADAPTER.prepare(cell)
+    assert step.commands is not None and "node_tar_registry_prepare" not in " ".join(
+        " ".join(c) for c in step.commands
+    )
+    docker = FakeDocker()
+    with pytest.raises(reg.RegistryPrepareError, match="committed lock"):
+        _prepare(docker, version="7.5.3", image="inodefence-node-tar-registry:7.5.3")
+    assert docker.calls == []
+
+
+def test_rule2_exploratory_image_is_never_reused_as_verified(tmp_path: Path) -> None:
+    # Once a lock for 9.9.9 is committed, its cell asks for the verified name only, so an older
+    # inodefence-node-tar-registry:9.9.9 image can never stand in for it.
+    (versions := tmp_path / "9.9.9").mkdir()
+    (versions / "package-lock.json").write_text("{}")
+    original = nt.node_tar_image.VERSIONS_DIR
+    try:
+        nt.node_tar_image.VERSIONS_DIR = tmp_path
+        (cell,) = nt.ADAPTER.cells(["9.9.9"], [])
+    finally:
+        nt.node_tar_image.VERSIONS_DIR = original
+    assert (cell.image_ref, cell.exploratory) == ("inodefence-node-tar-effect:9.9.9", False)
+
+
+def test_rule3_preparation_shows_in_folder_terminal_file_and_summary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    data = _result_dict(tmp_path, monkeypatch, exploratory=True)
+    cell = tmp_path / "node-tar-9.9.9-exploratory"
+    assert data["label"] == EXPLORATORY_LABEL and data["preparation"]["method"] == "registry"
+    summary = (cell / "summary.md").read_text(encoding="utf-8")
+    assert "임시 생성 lock" in summary and "SHA-256" in summary
+    assert data["preparation"]["lock_sha256"] in summary
+    assert "(exploratory demo run)" in capsys.readouterr().out
+
+
+def test_rule4_verified_and_exploratory_never_share_one_run(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    argv = ["--target", "node-tar", "--version", "7.5.3", "--version", "9.9.9"]
+    with pytest.raises(SystemExit) as stop:
+        rt.main([*argv, "--allow-registry-prepare", "--dry-run"])
+    assert stop.value.code == rt.SETUP_ERROR
+    assert "separately" in capsys.readouterr().err
+
+
+def test_rule4_reproducibility_wording_differs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _result_dict(tmp_path, monkeypatch, exploratory=True)
+    summary = (tmp_path / "node-tar-9.9.9-exploratory" / "summary.md").read_text("utf-8")
+    assert "저장된 lock" in summary and "레지스트리 자체가 바뀌었거나" in summary
+    assert "커밋된 lock으로 같은" in summary  # contrasted with the verified path
+
+
+def test_rule5_no_automatic_promotion(tmp_path: Path) -> None:
+    before = sorted(p.name for p in reg.VERSIONS_DIR.iterdir())
+    docker = FakeDocker()
+    _prepare(docker)
+    assert sorted(p.name for p in reg.VERSIONS_DIR.iterdir()) == before
+    build = next(c for c in docker.calls if c[1] == "build")
+    assert not build[-1].startswith(str(reg.REPO_ROOT))
+    # the only writes go into the temporary build context (no path into tools/ or locks/)
+    source = Path(reg.__file__).read_text(encoding="utf-8")
+    assert source.count(".write_") == 2 and "benchmarks/locks" not in source
+
+
+# ---- containers: no mounts; leftovers from an interrupted run are never used ----
+
+
+def test_npm_and_check_containers_mount_nothing() -> None:
+    docker = FakeDocker()
+    _prepare(docker)
+    for call in docker.calls:
+        if call[1] == "run":
+            assert not {"-v", "--volume", "--mount"} & set(call)
+
+
+def test_each_run_uses_a_fresh_build_context() -> None:
+    contexts = []
+    for _ in range(2):
+        docker = FakeDocker()
+        _prepare(docker)
+        contexts.append(next(c for c in docker.calls if c[1] == "build")[-1])
+    assert contexts[0] != contexts[1]
+    assert not any(Path(c).exists() for c in contexts)  # removed after the build
+
+
+def test_future_version_with_a_new_dependency_is_refused_on_purpose() -> None:
+    lock = _lock({"node_modules/brand-new-dep": {"version": "0.1.0"}}, version=V)
+    docker = FakeDocker(lock=lock)
+    with pytest.raises(reg.RegistryPrepareError, match="brand-new-dep@0.1.0.*committed-lock"):
+        _prepare(docker)
+    assert docker.images == set()

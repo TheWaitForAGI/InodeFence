@@ -49,6 +49,14 @@ WORKER_FILES = (
     "src/inodefence/targets/_node_effect_producer.cjs",
 )
 REGISTRY = "https://registry.npmjs.org/"
+#: Registry-prepared images live only in this repository name, never a committed-recipe name.
+REGISTRY_REPOSITORY = "inodefence-node-tar-registry"
+LIMITS = (
+    "The integrity check shows only that the generated lock matches what the registry published "
+    "during this run; it cannot detect a registry that changed or was compromised. That is why "
+    "these runs are exploratory: they are reproducible only from the saved lock file and its "
+    "SHA-256, not from a committed recipe."
+)
 EXACT = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+")
 IMAGE_REF = re.compile(r"[a-z0-9][a-z0-9._/-]*:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}")
 STAGING = "-unverified"
@@ -73,12 +81,22 @@ def node_image(dockerfile: Path = DOCKERFILE) -> str:
     raise RegistryPrepareError(f"no pinned node image in {dockerfile}")
 
 
-def check_inputs(version: str, image: str) -> None:
-    """Exact X.Y.Z and a plain image reference, before any docker or npm call."""
+def check_inputs(version: str, image: str, versions_dir: Path = VERSIONS_DIR) -> None:
+    """Before any docker or npm call: exact X.Y.Z, an unregistered version, a registry-only name."""
     if EXACT.fullmatch(version) is None:
         raise RegistryPrepareError(f"node-tar version must be exact X.Y.Z: {version!r}")
     if IMAGE_REF.fullmatch(image) is None or image.endswith(STAGING):
         raise RegistryPrepareError(f"not a plain image reference: {image!r}")
+    if image.partition(":")[0] != REGISTRY_REPOSITORY:
+        raise RegistryPrepareError(
+            f"registry-prepared images are tagged only as {REGISTRY_REPOSITORY}:<tag>, "
+            f"not {image!r}"
+        )
+    if (versions_dir / version / "package-lock.json").exists():
+        raise RegistryPrepareError(
+            f"node-tar {version} has a committed lock; it uses the verified recipe, never the "
+            "registry path"
+        )
 
 
 def package_json(version: str) -> str:
@@ -174,7 +192,11 @@ def check_lock(
         name = key.split("node_modules/")[-1]
         spec = f"{name}@{entry.get('version')}"
         if name not in allowed:
-            raise RegistryPrepareError(f"unexpected package not in committed 7.5.x locks: {spec}")
+            raise RegistryPrepareError(
+                f"unexpected package {spec} (not in any committed 7.5.x lock); this is refused on "
+                "purpose. To use this version, promote it through the committed-lock procedure "
+                "(add and review tools/node-tar/versions/<version>/ and its lock)"
+            )
         if not str(entry.get("resolved", "")).startswith(REGISTRY):
             raise RegistryPrepareError(f"{spec} is not resolved from {REGISTRY}")
         if entry.get("integrity") != published.get(spec):

@@ -86,10 +86,10 @@ def test_unobservable_case_is_error_not_pass(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     broken = {"_run_error": True, "_rc": 125, "_stderr": "no such image"}
-    # 7.0.1 has a committed lock (a version without one needs --allow-registry-prepare).
-    monkeypatch.setattr(nt.cri, "run_one", _fake_run_one({"7.0.1": broken}))
-    assert rt.main(["--target", "node-tar", "--version", "7.0.1", "--out", str(tmp_path)]) == 2
-    result = load_target_result(tmp_path / "node-tar-7.0.1" / "result.json")
+    # 7.5.8 has a committed lock (a version without one needs --allow-registry-prepare).
+    monkeypatch.setattr(nt.cri, "run_one", _fake_run_one({"7.5.8": broken}))
+    assert rt.main(["--target", "node-tar", "--version", "7.5.8", "--out", str(tmp_path)]) == 2
+    result = load_target_result(tmp_path / "node-tar-7.5.8" / "result.json")
     assert result.verdict is Verdict.ERROR
     assert {(c.outcome, c.c1, c.c2) for c in result.cases} == {(RUN_ERROR, None, None)}
 

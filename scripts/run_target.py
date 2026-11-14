@@ -475,6 +475,11 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(str(error))
     cells = [with_tag_suffix(cell, args.image_tag_suffix) for cell in cells]
     unregistered = [c.dirname for c in cells if c.exploratory]
+    if unregistered and len(unregistered) != len(cells):
+        parser.error(
+            "run committed-recipe versions and registry-prepared (exploratory) versions "
+            "separately, so their results are never mixed in one run"
+        )
     if unregistered and not args.allow_registry_prepare:
         parser.error(
             f"{', '.join(unregistered)}: no committed recipe for this version; to prepare it from "

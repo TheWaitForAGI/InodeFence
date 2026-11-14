@@ -142,8 +142,14 @@ def render_summary(result: TargetResult, *, source_name: str, inputs_verified: b
     add("")
     if prep is not None and prep.method == "registry":
         add(
-            "> **탐색용 실행(exploratory demo run).** 이 버전은 저장소에 고정 lock이 없어 공개 "
-            "레지스트리에서 받은 패키지로 이미지를 만들었다. 받은 패키지가 안전하다는 보증은 없다."
+            "> **탐색용 실행(exploratory demo run).** 이 버전은 저장소에 고정 lock이 없어 실행 "
+            "시점의 공개 레지스트리 상태로 임시 lock을 만들고 그 lock으로 이미지를 빌드했다. "
+            "**임시 생성 lock이므로, 재현하려면 저장된 lock(`preparation/package-lock.json`)과 "
+            f"그 SHA-256({_code(prep.lock_sha256 or '기록 없음')})이 필요하다.** "
+            "커밋된 lock으로 같은 의존 구성을 다시 만드는 검증 경로(verified)와 다르다. "
+            "integrity 대조는 같은 실행에서 "
+            "레지스트리가 공표한 값과 일치한다는 것까지만 보이며, 레지스트리 자체가 바뀌었거나 "
+            "오염된 경우는 막지 못한다. 받은 패키지가 안전하다는 보증도 없다."
         )
         add("")
     add("## 무엇을 확인했나 (판정 기준)")

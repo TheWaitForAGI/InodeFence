@@ -460,6 +460,10 @@ ADAPTER = TargetAdapter(
     describe=_describe,
     resolve=_resolve,
     explore=lambda prepared, options: _explore(prepared, options),
+    # Reuse check (#435): the exploration worker's offline identify+frame check, which also
+    # compares the identified package and version; a version-only check would pass an image
+    # whose worker predates ``frame``.
+    verify_existing=lambda cell, image: verify_existing(cell, image),
 )
 
 

@@ -39,12 +39,7 @@ from inodefence.evaluation.rds import (
 from inodefence.execution.base import ExecutionBackend
 from inodefence.feedback import EffectSearchPolicy
 from inodefence.generator import minimal_seed_corpus
-from inodefence.model import (
-    ArchiveCase,
-    EffectRunResult,
-    EffectStreamCompleteness,
-    ExecutionStatus,
-)
+from inodefence.model import ArchiveCase, EffectRunResult, ExecutionStatus
 from inodefence.mutator import MutationPolicy
 from inodefence.runtime import SentinelSpec
 from inodefence.targets.python_tarfile_contained import (
@@ -73,19 +68,21 @@ def case_record(run_index: int, result: EffectRunResult) -> dict[str, object]:
 
     ``outcome`` is the judgment axis only: ``judged`` (C0/C1/C2 from the real host BEFORE/AFTER
     snapshots) or ``run_error`` (no verdict, all None). ``termination`` is the execution status
-    (``success`` / ``rejected`` / ``failed`` / ``timed_out``) and ``observation_complete`` whether
-    the effect trace is complete. Every status is judged, including an extractor failure (tarfile
-    raised; reported by the worker) and a timeout (the backend stopped the extractor). A
-    non-timeout run whose worker report cannot be read or contradicts the exit status (crash,
-    truncation) is ``run_error``: it cannot be told apart from a worker that never extracted, so
-    judging it could hide a silent negative.
+    (``success`` / ``rejected`` / ``failed`` / ``timed_out``); ``observation_complete`` is the
+    trace's ``integrity_valid``, as for node-tar.
+
+    Every status is judged, including an extractor failure (tarfile raised; the worker reported
+    it) and a timeout (the backend stopped the extractor). A non-timeout run whose worker report
+    cannot be read or contradicts the exit status (crash, truncation) is ``run_error``: it cannot
+    be told apart from a worker that never extracted, so judging it could hide a silent negative.
     """
     base = result.base_result
     status = base.execution.status
     record: dict[str, object] = {
         "run_index": run_index,
         "termination": status.value,
-        "observation_complete": result.trace.completeness is EffectStreamCompleteness.COMPLETE,
+        # Same definition as node-tar: complete, no observation failure, flushed to the end.
+        "observation_complete": result.trace.integrity_valid,
     }
     if status is not ExecutionStatus.TIMED_OUT and worker_reported_status(
         base.execution.stdout

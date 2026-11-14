@@ -206,7 +206,7 @@ def test_exploration_runs_the_shared_loop_on_one_runtime_and_one_filter() -> Non
     assert len(report["case_records"]) == budget == len(steps)
     assert report["undetermined_steps"] == 0 and report["all_undetermined"] is False
     for record in report["case_records"]:
-        assert record["outcome"] in ("extracted", "declined")
+        assert record["outcome"] in ("extracted", "rejected", "failed")
     assert len(report["violation_inputs"]) == sum(
         bool(r["c0"] or r["c1"] or r["c2"]) for r in report["case_records"]
     )
@@ -367,3 +367,15 @@ def test_an_unreadable_report_is_still_undetermined() -> None:
         _FIX["normal"].case, _target("data", _LocalBackend(broken=True))
     )
     assert case_record(0, result)["outcome"] == "run_error"
+
+
+def test_outcome_labels_follow_the_common_contract() -> None:
+    from inodefence.python_tarfile_explore import OBSERVED_OUTCOME
+
+    assert set(OBSERVED_OUTCOME.values()) == {"extracted", "rejected", "failed", "timed_out"}
+    declined = run_python_tarfile_contained_case(_FIX["c1"].case, _target("data"))
+    assert case_record(0, declined)["outcome"] == "rejected"
+    assert (
+        case_record(0, run_python_tarfile_contained_case(_FIX["normal"].case, _target()))["outcome"]
+        == "extracted"
+    )

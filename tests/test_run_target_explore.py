@@ -168,3 +168,41 @@ def test_targets_without_declared_options_are_unaffected() -> None:
 
     assert load_adapter("node-tar").options == ()
     assert load_adapter("oras-go").options == ()
+
+
+def test_dry_run_includes_declared_target_options(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    adapter, _ = _adapter_with_option()
+    monkeypatch.setattr(rte, "load_adapter", lambda t: adapter)
+    assert (
+        rte.main(
+            ["--target", "node-tar", "--version", "latest", "--dry-run", "--extraction-filter", "b"]
+        )
+        == 0
+    )
+    plan = json.loads(capsys.readouterr().out)
+    assert plan["target_options"] == {"extraction-filter": "b"}
+
+
+def test_help_lists_declared_target_options(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # --help is built AFTER the target's options are added, so they show up.
+    adapter, _ = _adapter_with_option()
+    monkeypatch.setattr(rte, "load_adapter", lambda t: adapter)
+    with pytest.raises(SystemExit):
+        rte.main(["--target", "node-tar", "--help"])
+    assert "--extraction-filter" in capsys.readouterr().out
+
+
+def test_multi_value_option_is_refused_in_explore(monkeypatch: pytest.MonkeyPatch) -> None:
+    from scripts.run_target import TargetOption
+
+    base, _ = _adapter_with_option()
+    import dataclasses
+
+    multi = dataclasses.replace(base, options=(TargetOption("many", "multi", single=False),))
+    monkeypatch.setattr(rte, "load_adapter", lambda t: multi)
+    with pytest.raises(SystemExit):  # exploration takes one value per option
+        rte.main(["--target", "node-tar", "--version", "latest", "--auto-prepare"])

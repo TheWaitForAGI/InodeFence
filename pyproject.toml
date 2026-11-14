@@ -9,6 +9,11 @@ description = "Filesystem-security-state-guided fuzzing for TAR extraction"
 requires-python = ">=3.12,<3.13"
 dependencies = []
 
+# The user-facing command. Today it needs an editable install from a clone (the drivers under
+# scripts/ and the build assets under tools/ are not packaged); it locates the repo explicitly.
+[project.scripts]
+inodefence = "inodefence.cli:main"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8",

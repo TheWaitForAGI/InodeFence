@@ -30,6 +30,12 @@ from inodefence.builder import build_tar
 from inodefence.effect_campaign import EffectCampaignConfig, run_effect_campaign
 from inodefence.effect_demo import EffectStepReporter, effect_campaign_report
 from inodefence.effect_pipeline_python_tarfile import run_python_tarfile_contained_case
+from inodefence.evaluation.rds import (
+    VOCABULARY_MUTATION_POLICY,
+    RdsArm,
+    VocabularyMode,
+    arm_search_policy,
+)
 from inodefence.execution.base import ExecutionBackend
 from inodefence.feedback import EffectSearchPolicy
 from inodefence.generator import minimal_seed_corpus
@@ -39,9 +45,11 @@ from inodefence.runtime import SentinelSpec
 from inodefence.targets.python_tarfile_contained import PythonTarfileContainedTarget
 
 EXPLORATION_LABEL = "exploratory demo run"
-#: Same defaults as node-tar exploration (``scripts.run_effect_demo``), so the loop runs alike.
-DEFAULT_SEARCH_POLICY = EffectSearchPolicy.P2_EFFECT_ADAPTIVE
-DEFAULT_MUTATION_POLICY = MutationPolicy.M1_PROTECTED_COMPONENTS_ESCAPE_HARDLINK
+#: Defaults are the registered experiment's S-u arm, read from its definition (not copied):
+#: state-retention uniform search over the observed-names (fixed-baseline) vocabulary.
+DEFAULT_VOCABULARY = VocabularyMode.OBSERVED_NAMES
+DEFAULT_SEARCH_POLICY = arm_search_policy(RdsArm.S_U)
+DEFAULT_MUTATION_POLICY = VOCABULARY_MUTATION_POLICY[DEFAULT_VOCABULARY]
 
 
 def case_record(run_index: int, result: EffectRunResult) -> dict[str, object]:
@@ -128,6 +136,16 @@ def python_tarfile_exploration_report(
         runtime_version=target.python_version,
         extraction_filter=extraction_filter,
         requested_spec=requested_spec,
+        search_policy=policy.value,
+        # The registered vocabulary mode this mutation policy realizes, or None if none does.
+        vocabulary=next(
+            (
+                mode.value
+                for mode, mp in VOCABULARY_MUTATION_POLICY.items()
+                if mp is mutation_policy
+            ),
+            None,
+        ),
         image_id=image_id,
         worker_sha256=target.worker_sha256,
         tarfile_sha256=target.tarfile_sha256,

@@ -652,3 +652,51 @@ def test_dockerfile_copy_takes_only_an_exact_release(toolchain: str) -> None:
 def test_go_script_refuses_any_other_gotoolchain_value() -> None:
     assert 'GOTOOLCHAIN="${TC:-local}"' in prep._ENV_GUARD
     assert "go1.[0-9]*.[0-9]*)" in prep._ENV_GUARD and "auto" not in prep._ENV_GUARD
+
+
+# ---- ensure_image: one call for the exploration driver ----
+
+
+def test_ensure_image_resolves_prepares_and_returns_the_id(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = []
+
+    def resolve_images(adapter, cells, *, auto_prepare):
+        (cell,) = cells
+        calls.append((cell.image_ref, cell.exploratory, auto_prepare))
+        return {cell.image_ref: "sha256:" + SHA}, {}
+
+    monkeypatch.setattr(prep, "resolve_latest", lambda *a, **k: "2.7.0")
+    monkeypatch.setattr(rt, "resolve_images", resolve_images)
+    got = rog.ensure_image("latest", image_tag_suffix="-t")
+    assert got == rog.PreparedOrasGo(
+        "latest", "2.7.0", "inodefence-oras-go-registry:2.7.0-t", "sha256:" + SHA, True
+    )
+    assert calls == [("inodefence-oras-go-registry:2.7.0-t", True, True)]
+    verified = rog.ensure_image("2.6.1")
+    assert verified.image_ref == "inodefence-oras-go:2.6.1" and not verified.exploratory
+
+
+def test_ensure_image_raises_the_preparation_reason(monkeypatch: pytest.MonkeyPatch) -> None:
+    def resolve_images(adapter, cells, *, auto_prepare):
+        return {}, {cells[0].image_ref: "preparing x failed (exit 1)"}
+
+    monkeypatch.setattr(rt, "resolve_images", resolve_images)
+    with pytest.raises(ValueError, match="preparing x failed"):
+        rog.ensure_image("2.6.4")
+    with pytest.raises(ValueError, match="dotted numeric"):
+        rog.ensure_image("v2.6.4")
+
+
+def test_selfdiscover_script_takes_a_prepared_image_without_building_it() -> None:
+    script = (prep.REPO_ROOT / "scripts" / "local_oras_go_selfdiscover.sh").read_text(
+        encoding="utf-8"
+    )
+    assert 'ORAS_GO_IMAGE="${EXPLORE_IMAGE:-inodefence-oras-go-selfdiscover:' in script
+    done = subprocess.run(
+        ["bash", str(prep.REPO_ROOT / "scripts" / "local_oras_go_selfdiscover.sh")],
+        env={"EXPLORE_IMAGE": "x;rm -rf /", "PATH": "/usr/bin:/bin"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert done.returncode == 2 and "plain image reference" in done.stderr

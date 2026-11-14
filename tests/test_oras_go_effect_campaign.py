@@ -7,14 +7,17 @@ interposed), so the escaping hardlink carries no raw target text and is credited
 region-based OBSERVED_EXTERNAL_RESOLVE key, exactly as the shared normalizer intends.
 """
 
+import base64
 import json
 import os
 from contextlib import contextmanager
 from hashlib import sha256
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+from inodefence.builder import build_tar
 from inodefence.effect_pipeline_oras_go import (
     OrasGoFrameRun,
     _parse_frame,
@@ -414,3 +417,86 @@ def test_run_oras_go_frame_case_end_to_end_hits_c1() -> None:
     state = OrasGoEffectSearchState((_ESCAPE_CASE,))
     decision = state.consider(run)
     assert decision.new_attempt_keys and decision.new_violation_fingerprints
+
+
+# --- controller report: per-run verdicts and violating inputs (exploration hookup) -----------
+
+
+class _Run:
+    """Just the attributes ``oras_go_recording_producer`` reads from an OrasGoFrameRun."""
+
+    def __init__(self, status: ExecutionStatus, c1: bool) -> None:
+        class _V:
+            def __init__(self, cid: str, violated: bool) -> None:
+                self.contract_id = type("C", (), {"value": cid})()
+                self.violated = violated
+
+        self.base_result = type(
+            "B",
+            (),
+            {
+                "execution": type("E", (), {"status": status})(),
+                "violations": (_V("C0", False), _V("C1", c1), _V("C2", c1)),
+            },
+        )()
+
+
+def test_recording_producer_is_additive_and_keeps_only_violating_inputs() -> None:
+    from scripts.container_controller import oras_go_recording_producer
+
+    runs = iter(
+        [
+            _Run(ExecutionStatus.SUCCESS, False),
+            _Run(ExecutionStatus.REJECTED, True),
+            _Run(ExecutionStatus.FAILED, True),
+        ]
+    )
+    seen = []
+
+    def produce(case: ArchiveCase) -> _Run:
+        run = next(runs)
+        seen.append(run)
+        return run
+
+    wrapped, records, inputs = oras_go_recording_producer(produce)
+    returned = [wrapped(_ESCAPE_CASE) for _ in range(3)]
+    assert returned == seen  # the loop sees exactly what the producer returned
+    assert records == [
+        {"run_index": 0, "outcome": "success", "c0": False, "c1": False, "c2": False},
+        {"run_index": 1, "outcome": "rejected", "c0": False, "c1": True, "c2": True},
+        {"run_index": 2, "outcome": "run_error", "c0": None, "c1": None, "c2": None},
+    ]
+    (saved,) = inputs
+    tar = base64.b64decode(str(saved["tar_b64"]))
+    assert saved["run_index"] == 1 and sha256(tar).hexdigest() == saved["tar_sha256"]
+    assert tar == build_tar(_ESCAPE_CASE)
+
+
+@pytest.mark.skipif(
+    not Path("/var/lib/inodefence").is_dir(),
+    reason="disposable sandbox requires the Linux runtime root (Dev Container)",
+)
+def test_controller_campaign_report_carries_case_records_and_violation_inputs(
+    tmp_path: Path,
+) -> None:
+    import argparse
+
+    from scripts.container_controller import run_native_oras_go_campaign
+
+    evidence = tmp_path / "report.json"
+    args = argparse.Namespace(seed=7, budget=4, mutation_policy=None)
+    backend: Any = _ExtractingBackend(_identity_bytes())  # stands in for the controller backend
+    assert run_native_oras_go_campaign(backend, _IMAGE, evidence, args) == 0
+    report = json.loads(evidence.read_text(encoding="ascii"))
+    assert report["image_id"] == _IMAGE and report["oras_go_version"].startswith("oras-go=v2.6.1")
+    records = report["case_records"]
+    assert (
+        [r["run_index"] for r in records] == list(range(4)) == [s["index"] for s in report["steps"]]
+    )
+    for record, step in zip(records, report["steps"], strict=True):
+        assert record["c1"] == step["oracle"]["C1"]
+    hits = [r["run_index"] for r in records if r["c0"] or r["c1"] or r["c2"]]
+    assert hits and [v["run_index"] for v in report["violation_inputs"]] == hits
+    for item in report["violation_inputs"]:
+        tar = base64.b64decode(item["tar_b64"])
+        assert sha256(tar).hexdigest() == item["tar_sha256"]

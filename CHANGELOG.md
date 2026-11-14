@@ -35,8 +35,9 @@ PYTHONPATH=src python3.12 -m inodefence.target_result_summary <결과 폴더>/no
 | `python-tarfile` | 추출 필터 또는 런타임 버전(한 번에 하나만) | 3.12.16 `fully_trusted`: 5건 모두 위반. 3.12.16 `data`: 위반 0. `data` 고정 3.12.3·3.12.16: 둘 다 위반 0 |
 | `oras-go` | 대상 버전 | 2.6.1: 6건 중 1건 위반(작업 디렉터리 기준 하드링크 입력). 2.6.2: 위반 0 |
 
-깨끗한 클론에서 node-tar 7.5.2, python-tarfile 3.12.16(두 필터), oras-go 2.6.1을 다시 돌려 같은 건수를 얻었다(이미지는
-이 맥에 이미 있던 것을 썼다. 같은 클론에서 node-tar 7.5.2·oras-go 2.6.1 이미지 빌드가 성공하는 것은 따로 확인했다).
+깨끗한 클론에서 README 빠른 시작 순서 그대로 위 표의 node-tar·oras-go 네 셀과 python-tarfile 3.12.16 두 필터를 다시
+돌려 같은 건수를 얻었다. 이미지는 이 맥에 이미 있던 것을 썼고, 같은 클론에서 README의 이미지 빌드 네 줄이 모두
+성공하는 것은 따로 확인했다(새로 빌드한 이미지의 image id는 기존 이미지와 달랐다).
 
 ### 알려진 한계
 

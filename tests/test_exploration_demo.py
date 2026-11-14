@@ -11,6 +11,9 @@ import pytest
 import scripts.run_effect_demo as rd
 from scripts.run_effect_demo import exploration_demo_report, historical_demo_report
 
+from inodefence.feedback import EffectSearchPolicy
+from inodefence.mutator import MutationPolicy
+
 IMAGE = "sha256:" + "0" * 64
 # Stand-in backend: only bind/campaign are exercised and they are stubbed.
 BACKEND: Any = object()
@@ -31,6 +34,39 @@ def _stub_campaign(monkeypatch: pytest.MonkeyPatch, tar_version: str) -> None:
     base = {"demo_report_schema": 4, "steps": [], "retained_case_ids": [], "final_search_stats": {}}
     monkeypatch.setattr(rd, "effect_campaign_report", lambda result, producer: dict(base))
     monkeypatch.setattr(rd, "_historical_oracle_events", lambda result: [])
+
+
+def test_exploration_defaults_to_the_registered_su_arm(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The explore default is the registered experiment's S-u arm, referenced from evaluation.rds:
+    # S_U_STATE_RETENTION_UNIFORM retention + observed-names vocabulary (FIXED_BASELINE mutation).
+    captured: dict[str, Any] = {}
+    monkeypatch.setattr(
+        rd.NodeTarEffectTarget, "bind", classmethod(lambda cls, b, i, **k: _FakeTarget("7.5.23"))
+    )
+
+    def fake_campaign(cases: Any, produce: Any, config: Any, on_step: Any) -> Any:
+        captured["config"] = config
+        return object()
+
+    monkeypatch.setattr(rd, "run_effect_campaign", fake_campaign)
+    monkeypatch.setattr(
+        rd,
+        "effect_campaign_report",
+        lambda result, producer: {
+            "demo_report_schema": 4,
+            "steps": [],
+            "retained_case_ids": [],
+            "final_search_stats": {},
+        },
+    )
+    monkeypatch.setattr(rd, "_historical_oracle_events", lambda result: [])
+    report = exploration_demo_report(BACKEND, IMAGE, "7.5.23", seed=1, budget=5)
+    assert captured["config"].search_policy is EffectSearchPolicy.S_U_STATE_RETENTION_UNIFORM
+    assert (
+        captured["config"].mutation_policy
+        is MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_FIXED_BASELINE
+    )
+    assert report["vocabulary_mode"] == "observed-names"
 
 
 def test_exploration_report_is_labelled_non_qualification(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -55,7 +91,13 @@ def test_exploration_matches_historical_except_the_labelling(
     _stub_campaign(monkeypatch, "7.5.2")
     hist = historical_demo_report(BACKEND, IMAGE, "7.5.2", seed=1, budget=5)
     expl = exploration_demo_report(BACKEND, IMAGE, "7.5.2", seed=1, budget=5)
-    only_in_explore = {"qualification", "requested_spec", "case_records", "violation_inputs"}
+    only_in_explore = {
+        "qualification",
+        "requested_spec",
+        "case_records",
+        "violation_inputs",
+        "vocabulary_mode",  # exploration records its vocabulary mode; historical does not
+    }
     assert set(expl) - set(hist) == only_in_explore
     # timing is wall-clock and differs run-to-run by design; everything else is deterministic.
     differ = {k for k in hist if hist[k] != expl.get(k)}

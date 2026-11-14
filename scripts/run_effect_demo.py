@@ -29,6 +29,7 @@ from inodefence.effect_demo import (
 )
 from inodefence.effect_pipeline import NativeEffectRun, run_node_tar_effect_case
 from inodefence.effect_synthetic import synthetic_effect_result
+from inodefence.evaluation import rds as _rds
 from inodefence.execution.base import ExecutionBackend
 from inodefence.execution.stall_recovery import StallRecovery
 from inodefence.feedback import EffectSearchPolicy
@@ -110,6 +111,14 @@ HISTORICAL_LABEL = "demo run"
 EXPLORATION_LABEL = "exploratory demo run"
 HISTORICAL_SEARCH_POLICY = EffectSearchPolicy.P2_EFFECT_ADAPTIVE
 HISTORICAL_MUTATION_POLICY = MutationPolicy.M1_PROTECTED_COMPONENTS_ESCAPE_HARDLINK
+
+# Exploration defaults to the registered experiment's S-u arm (state-retention + observed-names
+# vocabulary), taken from ``evaluation.rds`` by reference -- not copied values -- so the two can
+# never drift. The registered-experiment path (rds.py's arm/vocabulary definitions, run_exp0,
+# FROZEN_TARGETS) is only read here, never modified. The demo paths keep HISTORICAL_* above.
+EXPLORE_SEARCH_POLICY = _rds.arm_search_policy(_rds.RdsArm.S_U)
+EXPLORE_VOCABULARY_MODE = _rds.VocabularyMode.OBSERVED_NAMES
+EXPLORE_MUTATION_POLICY = _rds.VOCABULARY_MUTATION_POLICY[EXPLORE_VOCABULARY_MODE]
 
 
 #: An exception chain longer than this is cut; the record says so.
@@ -544,8 +553,8 @@ def exploration_demo_report(
     *,
     seed: int = 123,
     budget: int = DEFAULT_NATIVE_BUDGET,
-    policy: EffectSearchPolicy = HISTORICAL_SEARCH_POLICY,
-    mutation_policy: MutationPolicy = HISTORICAL_MUTATION_POLICY,
+    policy: EffectSearchPolicy = EXPLORE_SEARCH_POLICY,
+    mutation_policy: MutationPolicy = EXPLORE_MUTATION_POLICY,
     step_sink: Callable[[dict[str, object]], None] | None = None,
     sentinel_set: GeneratedSentinelSet | None = None,
     observer_integrity_continue: bool = False,
@@ -640,6 +649,14 @@ def exploration_demo_report(
         label=EXPLORATION_LABEL,
         mode="exploration",
         qualification=False,
+        vocabulary_mode=next(
+            (
+                mode.value
+                for mode, mp in _rds.VOCABULARY_MUTATION_POLICY.items()
+                if mp == config.mutation_policy
+            ),
+            None,
+        ),
         node_tar_version=target.tar_version,
         requested_tar_version=tar_version,
         requested_spec=tar_version if requested_spec is None else requested_spec,

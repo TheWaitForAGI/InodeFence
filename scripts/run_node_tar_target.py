@@ -220,6 +220,13 @@ def ensure_image(spec: str, *, image_tag_suffix: str = "") -> PreparedNodeTar:
     return PreparedNodeTar(spec, version, ref, ready[ref], cell.exploratory)
 
 
+def _explore_hook(prepared, options):  # type: ignore[no-untyped-def]
+    """node-tar exploration (lazy import so the fixture-regression path has no extra deps)."""
+    from scripts.node_tar_explore import explore
+
+    return explore(prepared, options)
+
+
 ADAPTER = TargetAdapter(
     mode=ResultMode.FIXTURE_REGRESSION,
     observed_contracts=("C1", "C2"),
@@ -229,4 +236,5 @@ ADAPTER = TargetAdapter(
     prepare=_prepare,
     describe=_describe,
     resolve=_resolve,
+    explore=_explore_hook,
 )

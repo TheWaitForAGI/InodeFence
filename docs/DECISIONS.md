@@ -437,7 +437,7 @@ Evaluation reader/journal/export binding은 해당 ownership의 새 schema 지�
 
 ## D030 — G0 documentation freeze anchors claims to an immutable capability baseline
 
-**상태:** user Task Contract에 따른 documentation freeze; PR review/acceptance 대상
+**상태:** user Task Contract에 따른 documentation freeze; PR review/acceptance 대상. v2(D038)로 대체된 역사 기록이다. 현재 비교 설계는 R/D/S-u다.
 
 Capability baseline은 main `8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`다.
 [Research Contract v1](research/design/research-contract-v1.md)은 G0 정의를 한 authority map에

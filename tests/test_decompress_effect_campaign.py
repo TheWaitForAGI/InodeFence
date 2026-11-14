@@ -560,3 +560,91 @@ def test_run_decompress_frame_case_end_to_end_hits_c1() -> None:
     state = DecompressEffectSearchState((_ESCAPE_CASE,))
     decision = state.consider(run)
     assert decision.new_attempt_keys and decision.new_violation_fingerprints
+
+
+# --- violation inputs (added for reproduction; existing report keys unchanged) ----------------
+
+
+def _real_digest(run: DecompressFrameRun) -> DecompressFrameRun:
+    import dataclasses
+    from hashlib import sha256
+
+    from inodefence.builder import build_tar
+
+    digest = sha256(build_tar(run.base_result.case)).hexdigest()
+    return dataclasses.replace(
+        run, base_result=dataclasses.replace(run.base_result, archive_sha256=digest)
+    )
+
+
+def _violating_produce(case: ArchiveCase) -> DecompressFrameRun:
+    if case == _ESCAPE_CASE:
+        after = (_obj(_SENTINEL, ino=9, nlink=2), _obj("extract/evil", ino=9, nlink=2))
+        return _real_digest(
+            _run(
+                case,
+                before=_SENTINEL_ONLY,
+                after=after,
+                frame=_frame((_external_hardlink_attempt(),)),
+            )
+        )
+    return _benign_run(case)
+
+
+_REPORT_KEYS_BEFORE = {
+    "decompress_campaign_schema",
+    "producer",
+    "label",
+    "config",
+    "initial_case_ids",
+    "discovered_violation",
+    "final_stats",
+    "steps",
+    "retained_case_ids",
+}
+
+
+def test_report_adds_only_violation_inputs_and_keeps_existing_keys() -> None:
+    config = DecompressEffectCampaignConfig(random_seed=1, execution_budget=len(_seeds()))
+    result = run_decompress_effect_campaign(_seeds(), _violating_produce, config)
+    report = decompress_effect_campaign_report(result, producer="unit-test", label="demo")
+    assert set(report) == _REPORT_KEYS_BEFORE | {"violation_inputs"}
+    inputs = report["violation_inputs"]
+    assert isinstance(inputs, list) and len(inputs) == 1
+    (item,) = inputs
+    import base64
+    from hashlib import sha256
+
+    from inodefence.builder import build_tar
+
+    assert item["case_id"] == _ESCAPE_CASE.case_id
+    archive = base64.b64decode(item["tar_b64"])
+    assert archive == build_tar(_ESCAPE_CASE)
+    assert item["tar_sha256"] == sha256(archive).hexdigest()
+    steps = report["steps"]
+    assert isinstance(steps, list)
+    assert [s["index"] for s in steps if s["contract_violated"]] == [item["index"]]
+    assert json.loads(json.dumps(report))["violation_inputs"] == inputs
+
+
+def test_benign_campaign_has_no_violation_inputs() -> None:
+    config = DecompressEffectCampaignConfig(random_seed=3, execution_budget=5)
+    result = run_decompress_effect_campaign(_seeds(), _benign_run, config)
+    report = decompress_effect_campaign_report(result, producer="unit-test")
+    assert report["violation_inputs"] == []
+
+
+def test_violation_input_must_match_the_archive_that_ran() -> None:
+    def produce(case: ArchiveCase) -> DecompressFrameRun:
+        run = _violating_produce(case)
+        if case != _ESCAPE_CASE:
+            return run
+        import dataclasses
+
+        wrong = dataclasses.replace(run.base_result, archive_sha256="0" * 64)
+        return dataclasses.replace(run, base_result=wrong)
+
+    config = DecompressEffectCampaignConfig(random_seed=1, execution_budget=len(_seeds()))
+    result = run_decompress_effect_campaign(_seeds(), produce, config)
+    with pytest.raises(ValueError, match="rebuilt archive differs"):
+        decompress_effect_campaign_report(result, producer="unit-test")

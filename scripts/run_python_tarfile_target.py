@@ -62,6 +62,7 @@ from scripts.run_target import (
     PrepareStep,
     RunCell,
     TargetAdapter,
+    TargetOption,
     engine_provenance,
     fixture_plan,
     write_result,
@@ -239,12 +240,34 @@ def main(argv: list[str] | None = None) -> int:
     return worst
 
 
+# ---- target option: declared once (TargetOption), read by fixture regression and exploration ----
+
+#: The extraction-filter axis, declared to the common driver (``scripts.run_target.TargetOption``).
+#: ``make target-run`` may compare several values on one runtime (a setting comparison, never a
+#: version comparison); one exploration takes exactly one value.
+EXTRACTION_FILTER_OPTION = TargetOption(
+    "extraction-filter",
+    "tarfile extraction filter (one value per exploration; target-run compares settings on one "
+    "runtime, never versions)",
+    required=True,
+    choices=pti.FILTERS,
+)
+#: Values exploration accepts now, and why the others are held.
+EXPLORE_FILTERS = ("data",)
+EXPLORE_HELD_REASON = (
+    "fully_trusted exploration is not approved yet (D022: binding an untrusted target to a "
+    "campaign awaits a decision); only data is explored for now"
+)
+
+
 # ---- registration in the common command (scripts.run_target TARGETS) ----
 
 
 def _adapter_cells(versions: list[str], filters: list[str]) -> list[RunCell]:
-    if not filters:
-        raise ValueError(f"python-tarfile needs --extraction-filter, one of {pti.FILTERS}")
+    option = EXTRACTION_FILTER_OPTION
+    assert option.choices is not None
+    if option.required and not filters:
+        raise ValueError(f"python-tarfile needs --extraction-filter, one of {option.choices}")
     for runtime in versions:
         if pti.RUNTIME_RE.fullmatch(runtime) is None and not is_symbolic(runtime):
             raise ValueError(
@@ -252,8 +275,8 @@ def _adapter_cells(versions: list[str], filters: list[str]) -> list[RunCell]:
                 f"or {LATEST}: {runtime!r}"
             )
     for extraction_filter in filters:
-        if extraction_filter not in pti.FILTERS:
-            raise ValueError(f"--extraction-filter must be one of {pti.FILTERS}")
+        if extraction_filter not in option.choices:
+            raise ValueError(f"--extraction-filter must be one of {option.choices}")
     cells = []
     for runtime in versions:
         for extraction_filter in filters:
@@ -498,6 +521,18 @@ def _adapter_plan(cell: RunCell) -> list[dict[str, Any]]:
     return fixture_plan()
 
 
+def _existing_recipe(cell: RunCell) -> ip.Recipe:
+    """The recipe whose offline check a present cell image must pass before it is reused."""
+    return image_recipe(cell.axes.runtime_version or "")
+
+
+def _explore_hook(prepared, options):  # type: ignore[no-untyped-def]
+    """python-tarfile exploration (lazy import so the fixture-regression path has no extra deps)."""
+    from scripts.python_tarfile_explore import explore
+
+    return explore(prepared, options)
+
+
 ADAPTER = TargetAdapter(
     mode=MODE,
     observed_contracts=OBSERVED,
@@ -507,6 +542,12 @@ ADAPTER = TargetAdapter(
     prepare=_adapter_prepare,
     describe=_describe,
     resolve=_resolve,
+    explore=_explore_hook,
+    options=(EXTRACTION_FILTER_OPTION,),
+    # Before a present runtime image is reused, it must still report its exact X.Y.Z offline.
+    # (The exploration producer image adds the worker on top; its reuse check -- version, worker
+    # SHA-256 and a self-test -- is in scripts.python_tarfile_producer.)
+    verify_existing=ip.recipe_verify_existing(_existing_recipe),
 )
 
 

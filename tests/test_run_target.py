@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+import scripts.image_prepare as ip
 import scripts.regression_check as rc
 import scripts.run_node_tar_target as nt
 import scripts.run_target as rt
@@ -41,8 +42,10 @@ REAL_PREPARE_IMAGE = rt.prepare_image
 
 @pytest.fixture(autouse=True)
 def _fixed_provenance(monkeypatch: pytest.MonkeyPatch) -> None:
-    # No docker in the test environment: docker "works" and every image is "present".
+    # No docker in the test environment: docker "works", every image is "present", and every
+    # present image passes its offline reuse check (adapters' verify_existing).
     monkeypatch.setattr(rt, "docker_problem", lambda: None)
+    monkeypatch.setattr(ip, "check", lambda argv, runner=None: 0)
     monkeypatch.setattr(rt, "image_id", lambda ref: f"sha256:{ref}")
     monkeypatch.setattr(
         rt, "engine_provenance", lambda image: Provenance("b" * 40, False, image, "sha256:abc")
@@ -468,7 +471,7 @@ def test_env_check_names_missing_runtime_root_and_fix(tmp_path: Path) -> None:
     [
         ["--target", "node-tar", "--version", "next", "--dry-run"],  # refused version
         ["--target", "python-tarfile", "--version", "3.12-rc", "--extraction-filter", "data"],
-        ["--target", "decompress", "--version", "decompress@4.2.0", "--dry-run"],  # not pinned
+        ["--target", "decompress", "--version", "@someone/decompress@4.2.0", "--dry-run"],
     ],
 )
 def test_refusals_exit_3_not_the_error_verdict_code(argv: list[str]) -> None:

@@ -59,12 +59,15 @@ def cmd_targets(args: argparse.Namespace) -> int:
 
         print(json.dumps(support, indent=2, sort_keys=True))
         return 0
-    header = f"{'target':16} {'regression':11} {'auto-prepare':13} explore"
+    header = f"{'target':16} {'regression':11} {'auto-prepare':13} {'explore':8} target options"
     print(header)
     print("-" * len(header))
     for name, feats in support.items():
         explore = "yes" if feats["explore"] else f"no ({feats['explore_reason']})"
-        print(f"{name:16} {'yes':11} {'yes':13} {explore}")
+        opts = feats.get("options") or []
+        names = ", ".join(f"--{o['name']}" + ("" if o["required"] else "?") for o in opts) or "—"
+        print(f"{name:16} {'yes':11} {'yes':13} {explore:8} {names}")
+    print("\ntarget options: a trailing '?' marks optional. Pass them to `verify` / `explore`.")
     return 0
 
 
@@ -127,7 +130,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
         argv.append("--dry-run")
     else:
         argv += ["--out", str(args.out)]
-    return _forward(VERIFY_DRIVER, argv)
+    return _forward(VERIFY_DRIVER, argv + args.extra)
 
 
 def cmd_explore(args: argparse.Namespace) -> int:
@@ -149,7 +152,7 @@ def cmd_explore(args: argparse.Namespace) -> int:
         argv += ["--image-tag-suffix", args.image_tag_suffix]
     if args.dry_run:
         argv.append("--dry-run")
-    return _forward(EXPLORE_DRIVER, argv)
+    return _forward(EXPLORE_DRIVER, argv + args.extra)
 
 
 def cmd_summary(args: argparse.Namespace) -> int:
@@ -215,8 +218,16 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+#: Subcommands that forward unknown flags to a driver (target-specific options the adapter declares).
+_FORWARDING = {"verify", "explore"}
+
+
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args, extra = parser.parse_known_args(argv)
+    if extra and args.command not in _FORWARDING:
+        parser.error(f"unrecognized arguments: {' '.join(extra)}")
+    args.extra = extra
     return int(args.func(args))
 
 

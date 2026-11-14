@@ -103,18 +103,70 @@ _FAKE_SUPPORT = {
         "auto_prepare": True,
         "explore": False,
         "explore_reason": "no exploration hook for this target yet",
+        "options": [],
     },
-    "node-tar": {"regression": True, "auto_prepare": True, "explore": True, "explore_reason": None},
+    "node-tar": {
+        "regression": True,
+        "auto_prepare": True,
+        "explore": True,
+        "explore_reason": None,
+        "options": [],
+    },
+    "python-tarfile": {
+        "regression": True,
+        "auto_prepare": True,
+        "explore": False,
+        "explore_reason": "no exploration hook for this target yet",
+        "options": [
+            {
+                "name": "extraction-filter",
+                "description": "filter",
+                "required": False,
+                "choices": ["data", "fully_trusted"],
+                "single": True,
+            }
+        ],
+    },
 }
 
 
-def test_targets_table_lists_support_and_reasons(monkeypatch, capsys) -> None:
+def test_targets_table_lists_support_reasons_and_options(monkeypatch, capsys) -> None:
     monkeypatch.setattr(cli, "repo_root", lambda: Path("/repo"))
     monkeypatch.setattr(cli, "target_support", lambda root: _FAKE_SUPPORT)
     assert cli.main(["targets"]) == 0
     out = capsys.readouterr().out
     assert "node-tar" in out and "decompress" in out
     assert "no (no exploration hook for this target yet)" in out
+    assert "--extraction-filter?" in out  # optional target option, shown with a trailing ?
+
+
+def test_explore_forwards_target_specific_options_as_extra(monkeypatch) -> None:
+    calls: list = []
+    monkeypatch.setattr(cli, "repo_root", lambda: Path("/repo"))
+    monkeypatch.setattr(cli, "run_driver", lambda root, driver, argv: calls.append(argv) or 0)
+    assert (
+        cli.main(
+            [
+                "explore",
+                "--target",
+                "python-tarfile",
+                "--version",
+                "latest",
+                "--dry-run",
+                "--extraction-filter",
+                "data",
+            ]
+        )
+        == 0
+    )
+    # The unknown target option flows through to the driver, which declares it from adapter.options.
+    assert calls[0][-2:] == ["--extraction-filter", "data"]
+
+
+def test_unknown_flag_on_a_non_forwarding_command_is_rejected(capsys) -> None:
+    with pytest.raises(SystemExit):
+        cli.main(["targets", "--bogus"])
+    assert "unrecognized arguments" in capsys.readouterr().err
 
 
 def test_targets_json_is_machine_readable(monkeypatch, capsys) -> None:
@@ -192,3 +244,6 @@ def test_targets_is_the_real_registry_when_repo_is_present(monkeypatch, capsys) 
     support = json.loads(capsys.readouterr().out)
     assert "node-tar" in support and support["node-tar"]["explore"] is True
     assert support["decompress"]["explore"] is False
+    # Every target reports its declared options (a list, read from the adapter); it fills in on its
+    # own as owners declare them, so here we assert the mechanism, not a particular option.
+    assert all(isinstance(feats["options"], list) for feats in support.values())

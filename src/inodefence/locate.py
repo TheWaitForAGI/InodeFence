@@ -87,10 +87,21 @@ def target_support(root: Path) -> dict[str, dict[str, Any]]:
     for name in sorted(targets):
         adapter = run_target.load_adapter(name)
         explores = getattr(adapter, "explore", None) is not None
+        options = [
+            {
+                "name": opt.name,
+                "description": opt.description,
+                "required": opt.required,
+                "choices": list(opt.choices) if opt.choices else None,
+                "single": opt.single,
+            }
+            for opt in getattr(adapter, "options", ())
+        ]
         support[name] = {
             "regression": True,
             "auto_prepare": True,
             "explore": explores,
             "explore_reason": None if explores else "no exploration hook for this target yet",
+            "options": options,
         }
     return support

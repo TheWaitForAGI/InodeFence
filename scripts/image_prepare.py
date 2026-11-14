@@ -167,6 +167,53 @@ def check(
     return 0
 
 
+# ---- verify an already-present image before it is reused ----
+
+
+def check_existing(
+    recipe: Recipe,
+    image_ref: str,
+    runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+) -> str | None:
+    """Run the recipe's offline check against an already-present ``image_ref``.
+
+    Unlike preparation this never builds, pulls or retags: it only runs the committed check
+    against the existing image. Returns ``None`` when the image reports exactly the expected
+    version, or a one-line reason when it does not -- so a caller can refuse to reuse an image
+    that carries the right tag but the wrong contents instead of trusting the tag name.
+    """
+    argv = ["--expect", recipe.expected]
+    if recipe.json_key:
+        argv += ["--json-key", recipe.json_key]
+    argv += ["--", *(image_ref if part == IMAGE_SLOT else part for part in recipe.check)]
+    if check(argv, runner) == 0:
+        return None
+    return f"present image does not report the expected version {recipe.expected!r}"
+
+
+def recipe_verify_existing(
+    make: Callable[[RunCell], Recipe],
+    runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+) -> Callable[[RunCell, str], str | None]:
+    """A ``TargetAdapter.verify_existing`` built from a target's recipe.
+
+    Before a present image is reused, run its recipe's offline check against it. A version with
+    no committed recipe (``UnsupportedVersionError``) or a failed check returns a reason so the
+    common runner refuses the reuse; a cell with no image is skipped (``None``).
+    """
+
+    def verify(cell: RunCell, image_id: str) -> str | None:
+        if cell.image_ref is None:
+            return None
+        try:
+            recipe = make(cell)
+        except UnsupportedVersionError as error:
+            return str(error)
+        return check_existing(recipe, cell.image_ref, runner)
+
+    return verify
+
+
 if __name__ == "__main__":
     if sys.argv[1:2] != ["check"]:
         raise SystemExit(

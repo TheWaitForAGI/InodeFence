@@ -22,6 +22,7 @@ from __future__ import annotations
 import base64
 import json
 import sys
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -182,6 +183,41 @@ def _run(cell: RunCell) -> list[CaseRun]:
             raw = cri.run_one(version, tar_b64, image=cell.image_ref)
         runs.append(fixture_case(fixture, raw))
     return runs
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedNodeTar:
+    """A node-tar image that exists locally and passed its offline checks."""
+
+    requested: str  # what the caller asked for (``latest`` or an exact version)
+    version: str  # the exact version inside the image
+    image_ref: str
+    image_id: str
+    exploratory: bool  # True: registry-prepared (no committed lock); False: committed recipe
+
+
+def ensure_image(spec: str, *, image_tag_suffix: str = "") -> PreparedNodeTar:
+    """One call for other commands: resolve ``spec``, reuse or prepare its image, return its id.
+
+    ``spec`` is ``latest`` or an exact/dotted version. A committed lock selects the verified recipe;
+    otherwise the image is prepared from the registry (``scripts.node_tar_registry_prepare``) with
+    all of its offline checks (installed version, harness, effect producer). This is the same path
+    ``make target-run ... AUTO_PREPARE=1`` takes; it may use the network. Raises ``ValueError`` with
+    the reason when the version is refused or preparation fails (no image is tagged then).
+    """
+    from scripts.run_target import resolve_images, with_tag_suffix
+
+    (version,) = _resolve([spec])
+    (cell,) = _cells([version], [])
+    if cell.image_ref is None:
+        raise ValueError(f"node-tar {spec}: no image for this version")
+    cell = with_tag_suffix(cell, image_tag_suffix)
+    ready, errors = resolve_images(ADAPTER, [cell], auto_prepare=True)
+    ref = cell.image_ref
+    assert ref is not None
+    if ref in errors:
+        raise ValueError(errors[ref])
+    return PreparedNodeTar(spec, version, ref, ready[ref], cell.exploratory)
 
 
 ADAPTER = TargetAdapter(

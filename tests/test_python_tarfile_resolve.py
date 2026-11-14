@@ -167,6 +167,7 @@ def _common_command(monkeypatch: pytest.MonkeyPatch, docker: FakeDocker) -> None
         return {**SHARED, "runtime": runtime, "extraction_filter": flt}
 
     monkeypatch.setattr(rpt.pti, "run_one", run_one)
+    monkeypatch.setattr(rpt.ip, "check", lambda argv, runner=None: 0)  # present images pass
     monkeypatch.setattr(rpt.subprocess, "run", docker)
     monkeypatch.setattr(rt, "docker_problem", lambda: None)
     monkeypatch.setattr(rt, "image_id", lambda ref: f"sha256:{ref}")
@@ -257,3 +258,29 @@ def test_resolved_image_is_still_pulled_only_from_the_official_repository() -> N
     assert recipe.pull == "python:3.14.2-slim"
     with pytest.raises(rpt.ip.UnsupportedVersionError):
         rpt.image_recipe("latest")
+
+
+# ---- reuse of a present runtime image is re-checked (common verify_existing hook) ----
+
+
+def test_present_runtime_image_must_still_report_its_version_before_reuse() -> None:
+    assert rpt.ADAPTER.verify_existing is not None
+    (cell,) = rpt._adapter_cells(["3.14.10"], ["data"])
+    calls: list[list[str]] = []
+
+    def reports(version: str):
+        def runner(cmd: list[str], **_: Any) -> subprocess.CompletedProcess[str]:
+            calls.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, version + "\n", "")
+
+        return runner
+
+    verify = rpt.ip.recipe_verify_existing(rpt._existing_recipe, reports("3.14.10"))
+    assert verify(cell, "sha256:" + "a" * 64) is None
+    assert calls[0][:5] == ["docker", "run", "--rm", "--network", "none"]
+    assert "python:3.14.10-slim" in calls[0]
+    wrong = rpt.ip.recipe_verify_existing(rpt._existing_recipe, reports("3.14.9"))
+    reason = wrong(cell, "sha256:" + "a" * 64)
+    assert reason is not None and "3.14.10" in reason
+    (symbolic,) = rpt._adapter_cells(["latest"], ["data"])  # dry-run cell: no image, skipped
+    assert verify(symbolic, "") is None

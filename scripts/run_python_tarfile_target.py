@@ -521,6 +521,11 @@ def _adapter_plan(cell: RunCell) -> list[dict[str, Any]]:
     return fixture_plan()
 
 
+def _existing_recipe(cell: RunCell) -> ip.Recipe:
+    """The recipe whose offline check a present cell image must pass before it is reused."""
+    return image_recipe(cell.axes.runtime_version or "")
+
+
 def _explore_hook(prepared, options):  # type: ignore[no-untyped-def]
     """python-tarfile exploration (lazy import so the fixture-regression path has no extra deps)."""
     from scripts.python_tarfile_explore import explore
@@ -539,6 +544,10 @@ ADAPTER = TargetAdapter(
     resolve=_resolve,
     explore=_explore_hook,
     options=(EXTRACTION_FILTER_OPTION,),
+    # Before a present runtime image is reused, it must still report its exact X.Y.Z offline.
+    # (The exploration producer image adds the worker on top; its reuse check -- version, worker
+    # SHA-256 and a self-test -- is in scripts.python_tarfile_producer.)
+    verify_existing=ip.recipe_verify_existing(_existing_recipe),
 )
 
 

@@ -86,6 +86,7 @@ class FakeScript:
 
 
 def _explore(tmp_path: Path, script: FakeScript, monkeypatch: pytest.MonkeyPatch, budget: int = 5):
+    monkeypatch.setattr(oge, "verify_existing", lambda prepared: "frame worker ok")
     real = oge.run_controller
     monkeypatch.setattr(
         oge, "run_controller", lambda prepared, **kw: real(prepared, **kw, runner=script)
@@ -184,3 +185,74 @@ def test_driver_prepares_then_calls_the_oras_go_hook(
     argv = ["--target", "oras-go", "--version", "latest", "--auto-prepare", "--budget", "6"]
     rte.main([*argv, "--seed", "9", "--out", str(tmp_path)])
     assert seen == {"prepare": ("oras-go", "latest", ""), "hook": ("oras-go", 6, 9)}
+
+
+# ---- no silent negatives ----
+
+
+def test_unjudged_runs_make_the_verdict_error_never_pass(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    report = _report(runs=5, violating=None)
+    report["case_records"][1] = {
+        "run_index": 1, "outcome": "run_error", "c0": None, "c1": None, "c2": None,
+    }  # fmt: skip
+    outcome = _explore(tmp_path, FakeScript(report), monkeypatch)
+    assert outcome.verdict == "ERROR"
+    assert "unjudged runs 1/5 = 20%" in capsys.readouterr().out
+
+
+def test_all_runs_unjudged_is_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    report = _report(runs=5, violating=None)
+    report["case_records"] = [
+        {"run_index": i, "outcome": "run_error", "c0": None, "c1": None, "c2": None}
+        for i in range(5)
+    ]
+    assert _explore(tmp_path, FakeScript(report), monkeypatch).verdict == "ERROR"
+    assert oge.unjudged(report) == (5, 5)
+
+
+def test_shortened_campaign_is_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    with pytest.raises(RuntimeError, match="3 run records, budget was 5"):
+        _explore(tmp_path, FakeScript(_report(runs=3, violating=None)), monkeypatch)
+    assert not list(tmp_path.rglob("result.json"))
+
+
+# ---- reused image: the campaign worker is checked offline before the campaign ----
+
+
+def test_reused_image_without_a_working_frame_worker_stops_before_the_campaign(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import scripts.oras_go_registry_prepare as proxy
+
+    monkeypatch.setattr(
+        proxy,
+        "frame_check",
+        lambda runner, image, version: {"ok": False, "reason": "frame run failed (exit 3)"},
+    )
+    script = FakeScript(_report(runs=5, violating=None))
+    real = oge.run_controller
+    monkeypatch.setattr(
+        oge, "run_controller", lambda prepared, **kw: real(prepared, **kw, runner=script)
+    )
+    with pytest.raises(RuntimeError, match="campaign worker unusable: frame run failed"):
+        oge.explore(_prepared(), ExploreOptions(budget=5, seed=1, out=tmp_path))
+    assert script.calls == []  # the controller never started
+
+
+def test_verify_existing_reports_a_docker_failure_as_the_reason(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.oras_go_registry_prepare as proxy
+
+    def broken(runner, image, version):  # type: ignore[no-untyped-def]
+        raise proxy.RegistryPrepareError("identify failed in x")
+
+    monkeypatch.setattr(proxy, "frame_check", broken)
+    with pytest.raises(RuntimeError, match="campaign worker check failed: identify failed"):
+        oge.verify_existing(_prepared())
+    monkeypatch.setattr(
+        proxy, "frame_check", lambda runner, image, version: {"ok": True, "reason": "fine"}
+    )
+    assert oge.verify_existing(_prepared()) == "fine"

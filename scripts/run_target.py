@@ -1,32 +1,42 @@
-"""One command per target: run it at a version, judge C0/C1/C2, save the result and the inputs.
+"""One command per target: run it on fixed axes, judge C0/C1/C2, save the result and the inputs.
 
-    make target-run TARGET=node-tar TAR_VERSION=7.5.2
+    make target-run TARGET=node-tar TARGET_VERSIONS="7.5.2 7.5.3"
+    make target-run TARGET=python-tarfile TARGET_VERSIONS=3.12.16 TARGET_FILTERS=data
     python scripts/run_target.py --target node-tar --version 7.5.2 --version 7.5.3 --out DIR
 
-For each version this writes, under ``DIR/<target>-<version>/``:
+A run is a list of cells. A cell is one fixed point on the target's axes
+(``inodefence.target_result.TargetAxes``: ``target_version`` / ``runtime_version`` /
+``extraction_filter``). ``--version`` is the target's version axis (node-tar: the package
+version -> ``target_version``; python-tarfile: the exact interpreter ``X.Y.Z`` ->
+``runtime_version``); ``--extraction-filter`` is the filter axis for targets that have one.
+One invocation varies at most one axis: several ``--version`` together with several
+``--extraction-filter`` is refused, so a configuration comparison and a version comparison never
+mix in one run. For each cell this writes, under ``DIR/<cell dirname>/``:
 
 - ``result.json``: the common ``inodefence-target-result-v1`` record
   (``inodefence.target_result``; label ``demo run``),
 - ``inputs/<case>.tar``: every TAR that was extracted, named in ``repro_inputs`` with its SHA-256,
 - ``raw/<case>.json``: the target's raw observation for that case, unchanged.
 
-A version directory that already has a ``result.json`` is refused; nothing is overwritten.
+A cell directory that already has a ``result.json`` is refused; nothing is overwritten.
 
-Targets are registered in ``TARGETS``. Each entry is a target-specific adapter that lives here or
-in its own repro module, never in the common format module. Only ``node-tar`` is registered so far.
-Its mode is ``fixture-regression``: the same hand-built hard-link and symlink-write fixtures that
-``make regression`` runs, sent through the same disposable-container path
-(``experiments.repro.cross_release_identity.run_one``; the host is never the extraction target).
-That path observes the post-extraction state of an external reference file beside ``extract/``.
-It observes C1 (inode identity shared) and C2 (reference changed) but not C0, so C0 is ``null``
-("not observed", never "no violation"). The version is a plain input; no release id or CVE id is
-a decision condition. ``--dry-run`` writes nothing and runs no container.
+Targets are registered in ``TARGETS`` as ``"module:ATTRIBUTE"`` and loaded on use. Each entry is
+a target-specific ``TargetAdapter`` that lives here or in its own module, never in the common
+format module. ``node-tar`` (below) and ``python-tarfile``
+(``scripts.run_python_tarfile_target.ADAPTER``) are registered. Both run in mode
+``fixture-regression``: the same hand-built hard-link and symlink-write fixtures that
+``make regression`` runs, each extracted in a disposable container (the host is never the
+extraction target) that observes the post-extraction state of an external reference file beside
+``extract/``. That observes C1 (inode identity shared) and C2 (reference changed) but not C0, so
+C0 is ``null`` ("not observed", never "no violation"). Versions and filters are plain inputs; no
+release id or CVE id is a decision condition. ``--dry-run`` writes nothing and runs no container.
 """
 
 from __future__ import annotations
 
 import argparse
 import base64
+import importlib
 import json
 import subprocess
 from collections.abc import Callable
@@ -61,22 +71,32 @@ class CaseRun:
 
 
 @dataclass(frozen=True, slots=True)
+class RunCell:
+    """One fixed point on the target's axes: where its result goes and which image runs it."""
+
+    dirname: str
+    axes: TargetAxes
+    image_ref: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class TargetAdapter:
+    """What a target supplies. ``cells`` validates the axis values (``ValueError`` if invalid)."""
+
     mode: ResultMode
     observed_contracts: tuple[str, ...]
-    image_ref: Callable[[str], str | None]
-    plan: Callable[[str], list[dict[str, Any]]]
-    run: Callable[[str], list[CaseRun]]
-    axes: Callable[[str], TargetAxes]
+    cells: Callable[[list[str], list[str]], list[RunCell]]
+    plan: Callable[[RunCell], list[dict[str, Any]]]
+    run: Callable[[RunCell], list[CaseRun]]
 
 
-# ---- node-tar adapter (target-specific; reuses the make regression fixtures and engine) ----
+def fixture_case(fixture: rc.RegressionFixture, raw: dict[str, Any]) -> CaseRun:
+    """Judge one regression fixture from a raw observation (shared by fixture-regression targets).
 
-
-def _node_tar_case(fixture: rc.RegressionFixture, raw: dict[str, Any]) -> CaseRun:
+    An unobservable C1/C2 is a failed observation, never a nonviolation.
+    """
     row = rc.evaluate_fixture(fixture, raw)
     c1, c2 = row["c1_identity_shared"], row["c2_reference_changed"]
-    # An unobservable C1/C2 is a failed observation, never a nonviolation.
     errored = row["outcome"] == "run_error" or c1 is None or c2 is None
     verdict = CaseVerdict(
         case_id=fixture.name,
@@ -88,24 +108,61 @@ def _node_tar_case(fixture: rc.RegressionFixture, raw: dict[str, Any]) -> CaseRu
     return CaseRun(verdict, fixture.tar, raw)
 
 
-def _node_tar_run(version: str) -> list[CaseRun]:
+def fixture_plan() -> list[dict[str, Any]]:
+    return [
+        {"fixture": f.name, "kind": f.kind, "tar_bytes": len(f.tar)} for f in rc.build_fixtures()
+    ]
+
+
+# ---- node-tar adapter (target-specific; reuses the make regression fixtures and engine) ----
+
+
+def _node_tar_cells(versions: list[str], filters: list[str]) -> list[RunCell]:
+    if filters:
+        raise ValueError("node-tar has no extraction-filter axis; drop --extraction-filter")
+    for version in versions:
+        if rc._VERSION_RE.fullmatch(version) is None:
+            raise ValueError(f"node-tar --version must be dotted numeric, e.g. 7.5.2: {version!r}")
+    return [
+        RunCell(
+            dirname=f"node-tar-{v}",
+            axes=TargetAxes(target_version=v),
+            image_ref=cri.IMAGE.format(release=v),
+        )
+        for v in versions
+    ]
+
+
+def _node_tar_run(cell: RunCell) -> list[CaseRun]:
+    version = cell.axes.target_version
+    assert version is not None
     runs = []
     for fixture in rc.build_fixtures():
         raw = cri.run_one(version, base64.b64encode(fixture.tar).decode())
-        runs.append(_node_tar_case(fixture, raw))
+        runs.append(fixture_case(fixture, raw))
     return runs
 
 
 NODE_TAR = TargetAdapter(
     mode=ResultMode.FIXTURE_REGRESSION,
     observed_contracts=("C1", "C2"),
-    image_ref=lambda version: cri.IMAGE.format(release=version),
-    plan=lambda version: rc.dry_run(version)["would_run"],
+    cells=_node_tar_cells,
+    plan=lambda cell: fixture_plan(),
     run=_node_tar_run,
-    axes=lambda version: TargetAxes(target_version=version),
 )
 
-TARGETS: dict[str, TargetAdapter] = {"node-tar": NODE_TAR}
+# Adding a target: write a module with a TargetAdapter, then add one line here.
+TARGETS: dict[str, str] = {
+    "node-tar": "scripts.run_target:NODE_TAR",
+    "python-tarfile": "scripts.run_python_tarfile_target:ADAPTER",
+}
+
+
+def load_adapter(target: str) -> TargetAdapter:
+    module_name, _, attribute = TARGETS[target].partition(":")
+    if module_name == __name__ or (module_name == "scripts.run_target" and __name__ == "__main__"):
+        return globals()[attribute]
+    return getattr(importlib.import_module(module_name), attribute)
 
 
 # ---- target-independent command ----
@@ -149,13 +206,13 @@ def engine_provenance(image_ref: str | None) -> Provenance:
 def build_result(
     target: str,
     adapter: TargetAdapter,
-    version: str,
+    cell: RunCell,
     runs: list[CaseRun],
     provenance: Provenance,
 ) -> TargetResult:
     return TargetResult(
         target=target,
-        axes=adapter.axes(version),
+        axes=cell.axes,
         mode=adapter.mode,
         observed_contracts=adapter.observed_contracts,
         cases=tuple(run.verdict for run in runs),
@@ -201,26 +258,53 @@ def summary_line(result: TargetResult) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="run one target at fixed versions (demo run)")
+    parser = argparse.ArgumentParser(description="run one target on fixed axes (demo run)")
     parser.add_argument("--target", required=True, choices=sorted(TARGETS))
-    parser.add_argument("--version", required=True, action="append", help="repeatable")
+    parser.add_argument(
+        "--version",
+        required=True,
+        action="append",
+        help="the target's version axis (node-tar package / python-tarfile runtime); repeatable",
+    )
+    parser.add_argument(
+        "--extraction-filter",
+        action="append",
+        default=[],
+        help="extraction-filter axis, for targets that have one; repeatable",
+    )
     parser.add_argument("--out", type=Path, help="output directory (required unless --dry-run)")
     parser.add_argument("--dry-run", action="store_true", help="print the plan, run nothing")
     args = parser.parse_args(argv)
-    for version in args.version:
-        rc._validate_version(parser, version)
-    if len(set(args.version)) != len(args.version):
-        parser.error("each --version may be given once")
-    adapter = TARGETS[args.target]
+    versions, filters = args.version, args.extraction_filter
+    if len(set(versions)) != len(versions) or len(set(filters)) != len(filters):
+        parser.error("each --version / --extraction-filter may be given once")
+    if len(versions) > 1 and len(filters) > 1:
+        parser.error(
+            "vary one axis per run: several --version with one --extraction-filter, "
+            "or one --version with several --extraction-filter"
+        )
+    adapter = load_adapter(args.target)
+    try:
+        cells = adapter.cells(versions, filters)
+    except ValueError as error:
+        parser.error(str(error))
 
     if args.dry_run:
         plan = {
             "target": args.target,
             "mode": adapter.mode.value,
             "observed_contracts": list(adapter.observed_contracts),
-            "versions": {
-                v: {"image": adapter.image_ref(v), "would_run": adapter.plan(v)}
-                for v in args.version
+            "cells": {
+                cell.dirname: {
+                    "axes": {
+                        "target_version": cell.axes.target_version,
+                        "runtime_version": cell.axes.runtime_version,
+                        "extraction_filter": cell.axes.extraction_filter,
+                    },
+                    "image": cell.image_ref,
+                    "would_run": adapter.plan(cell),
+                }
+                for cell in cells
             },
             "note": "dry-run: no container executed, nothing written",
         }
@@ -229,17 +313,19 @@ def main(argv: list[str] | None = None) -> int:
     if args.out is None:
         parser.error("--out is required unless --dry-run")
 
-    out_dirs = {v: args.out / f"{args.target}-{v}" for v in args.version}
-    for out_dir in out_dirs.values():
-        if (out_dir / RESULT_NAME).exists():
-            parser.error(f"{out_dir / RESULT_NAME} already exists; choose another --out")
+    for cell in cells:
+        if (args.out / cell.dirname / RESULT_NAME).exists():
+            parser.error(
+                f"{args.out / cell.dirname / RESULT_NAME} already exists; choose another --out"
+            )
 
     worst = 0
-    for version, out_dir in out_dirs.items():
-        provenance = engine_provenance(adapter.image_ref(version))
-        runs = adapter.run(version)
-        result = build_result(args.target, adapter, version, runs, provenance)
-        path = write_result(out_dir, result, runs)
+    for cell in cells:
+        runs = adapter.run(cell)
+        # After the run, so image_id names the image that was pulled and actually used.
+        provenance = engine_provenance(cell.image_ref)
+        result = build_result(args.target, adapter, cell, runs, provenance)
+        path = write_result(args.out / cell.dirname, result, runs)
         print(f"{summary_line(result)} -> {path}")
         worst = max(worst, {"PASS": 0, "FAIL": 1, "ERROR": 2}[result.verdict.value])
     return worst

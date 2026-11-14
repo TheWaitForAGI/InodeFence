@@ -48,7 +48,8 @@ tag is what ``provenance.image_ref`` records. Nothing here removes or retags an 
 ``--dry-run`` prints, per cell, whether its image would be reused or prepared (read-only image
 lookups only); it pulls, builds, runs and writes nothing.
 
-Exit codes: 0 PASS, 1 FAIL, 2 ERROR (worst verdict over cells), 3 setup or image problem.
+Exit codes: 0 PASS, 1 FAIL, 2 ERROR (worst verdict over cells), 3 nothing judged for some or all
+cells (refused input or existing result, setup, preparation or image problem).
 """
 
 from __future__ import annotations
@@ -65,7 +66,7 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 from scripts import regression_check as rc
 
@@ -226,7 +227,7 @@ def engine_provenance(image_ref: str | None) -> Provenance:
 
 # ---- images: lookup, preparation, tag override (target-independent) ----
 
-SETUP_ERROR = 3  # nothing judged for the affected cells: setup, preparation or image problem
+SETUP_ERROR = 3  # nothing judged for the affected cells: refused input, setup, preparation, image
 _TAG_SUFFIX_RE = re.compile(r"[A-Za-z0-9_.-]{1,40}")
 
 
@@ -406,8 +407,16 @@ def summary_line(result: TargetResult) -> str:
     )
 
 
+class _Parser(argparse.ArgumentParser):
+    """Refusals exit 3, never argparse's 2, which is the ERROR verdict code of this command."""
+
+    def error(self, message: str) -> NoReturn:
+        self.print_usage(sys.stderr)
+        self.exit(SETUP_ERROR, f"{self.prog}: error: {message}\n")
+
+
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="run one target on fixed axes (demo run)")
+    parser = _Parser(description="run one target on fixed axes (demo run)")
     parser.add_argument("--target", required=True, choices=sorted(TARGETS))
     parser.add_argument(
         "--version",

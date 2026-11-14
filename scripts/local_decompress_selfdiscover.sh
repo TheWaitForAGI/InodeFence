@@ -45,11 +45,20 @@ fi
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PYTHON="${PYTHON:-python3.12}"
 CONTEXT="${INODEFENCE_DOCKER_CONTEXT:-$(docker context show)}"
-EVIDENCE_DIR="${INODEFENCE_EVIDENCE_DIR:-$HOME/inodefence-evidence}"
+# EXPLORE_IMAGE=<ref>: exploration on an already prepared decompress image (e.g. from
+# `make target-run TARGET=decompress ... AUTO_PREPARE=1`); the role-based target image is neither
+# built nor used, and evidence defaults to ~/inodefence-explore/decompress (apart from experiment
+# evidence). The controller, its isolation and the campaign mode are unchanged.
+EXPLORE_IMAGE="${EXPLORE_IMAGE:-}"
+if [ -n "$EXPLORE_IMAGE" ]; then
+  EVIDENCE_DIR="${INODEFENCE_EVIDENCE_DIR:-$HOME/inodefence-explore/decompress}"
+else
+  EVIDENCE_DIR="${INODEFENCE_EVIDENCE_DIR:-$HOME/inodefence-evidence}"
+fi
 
 CONTROLLER_IMAGE=inodefence-controller:local
 HELPER_IMAGE=inodefence-helper:local
-DECOMPRESS_IMAGE="inodefence-decompress-selfdiscover:${DECOMPRESS_ROLE}"
+DECOMPRESS_IMAGE="${EXPLORE_IMAGE:-inodefence-decompress-selfdiscover:${DECOMPRESS_ROLE}}"
 CONTROLLER="inodefence-decompress-controller${RUN_ID:+-$RUN_ID}"
 VOLUME="inodefence-decompress-runtime${RUN_ID:+-$RUN_ID}"
 
@@ -116,8 +125,14 @@ else
   [ "${VERBOSE:-0}" = 1 ] && BUILD_FLAGS=()
   dk build "${BUILD_FLAGS[@]}" -f "$REPO_ROOT/.devcontainer/Dockerfile" -t "$CONTROLLER_IMAGE" "$REPO_ROOT"
   dk build "${BUILD_FLAGS[@]}" -f "$REPO_ROOT/tools/container-helper/Dockerfile" -t "$HELPER_IMAGE" "$REPO_ROOT"
-  dk build "${BUILD_FLAGS[@]}" --build-arg "ROLE=$DECOMPRESS_ROLE" \
-    -f "$REPO_ROOT/tools/decompress/Dockerfile" -t "$DECOMPRESS_IMAGE" "$REPO_ROOT"
+  if [ -z "$EXPLORE_IMAGE" ]; then
+    dk build "${BUILD_FLAGS[@]}" --build-arg "ROLE=$DECOMPRESS_ROLE" \
+      -f "$REPO_ROOT/tools/decompress/Dockerfile" -t "$DECOMPRESS_IMAGE" "$REPO_ROOT"
+  fi
+fi
+if [ -n "$EXPLORE_IMAGE" ] && ! dk image inspect "$EXPLORE_IMAGE" >/dev/null 2>&1; then
+  echo "EXPLORE_IMAGE $EXPLORE_IMAGE is not present; prepare it first (AUTO_PREPARE=1)" >&2
+  exit 1
 fi
 
 if [ "$BUILD_ONLY" = 1 ]; then

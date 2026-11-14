@@ -14,7 +14,8 @@ containers, unchanged), and the check that the run used exactly the prepared ima
 common converter ``scripts.explore_result`` (keyed on ``prepared.target``) turns them into
 ``inodefence-target-result-v1`` (``mode=campaign``) and saves only the violating inputs.
 Before the campaign, the (possibly reused) image's ``frame`` worker is checked offline
-(``verify_existing``); after it, a report with fewer run records than the budget is refused, and any run the program did not judge makes the verdict ERROR, never PASS
+(``verify_existing``); after it, a report with fewer run records than the budget is refused,
+and any run the program did not judge makes the verdict ERROR, never PASS
 (its count and ratio are printed). The mutation policy is the campaign's default (unchanged); its
 name is printed with the result.
 """

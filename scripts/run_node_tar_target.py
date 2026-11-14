@@ -10,8 +10,9 @@ image (``cell.image_ref``; by default ``inodefence-node-tar-effect:<version>``).
 observes C1 and C2, not C0 (``null``). The version is a plain input; no release id or CVE id is a
 decision condition.
 
-Image preparation (``ADAPTER.prepare``) is not implemented here yet: a missing image is reported
-with that reason and the run stops before any case.
+Image preparation (``ADAPTER.prepare``) is ``scripts.node_tar_image.prepare``: versions with a
+committed lock in ``tools/node-tar/versions/<v>/`` are built and checked offline; others are
+refused.
 
 (Moved out of ``scripts/run_target.py`` so the common command holds no target-specific code.)
 """
@@ -21,6 +22,7 @@ from __future__ import annotations
 import base64
 
 from experiments.repro import cross_release_identity as cri
+from scripts import node_tar_image
 from scripts import regression_check as rc
 from scripts.run_target import CaseRun, RunCell, TargetAdapter, fixture_case, fixture_plan
 
@@ -62,4 +64,5 @@ ADAPTER = TargetAdapter(
     cells=_cells,
     plan=lambda cell: fixture_plan(),
     run=_run,
+    prepare=node_tar_image.prepare,
 )

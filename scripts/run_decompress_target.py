@@ -20,8 +20,8 @@ Execution reuses the existing decompress path (``experiments.repro.decompress_ha
 
 - Install and run are separate steps. The pinned images ``inodefence-decompress:<X.Y.Z>`` are built
   beforehand from ``tools/decompress/Dockerfile`` (``npm ci`` from a committed, checksum-verified
-  ``package-lock.json``; the only step that uses the network). This adapter never builds or pulls
-  (``--pull never``).
+  ``package-lock.json``; the only step that uses the network), by hand or with ``AUTO_PREPARE=1``
+  (``scripts.decompress_image.prepare``). The run step never builds or pulls (``--pull never``).
 - Each fixture is extracted in a fresh container with the same flags as
   ``decompress_hardlink.run_probe``: ``--rm --network none --read-only``, tmpfs ``/work`` and
   ``/tmp`` only, ``--cap-drop ALL``, the image's non-root user, no mounts; inputs arrive in
@@ -49,6 +49,7 @@ from pathlib import Path
 from typing import Any
 
 from experiments.repro import decompress_hardlink as dh
+from scripts import decompress_image
 from scripts import regression_check as rc
 from scripts.run_target import CaseRun, RunCell, TargetAdapter, fixture_case, fixture_plan
 
@@ -275,4 +276,5 @@ ADAPTER = TargetAdapter(
     cells=_cells,
     plan=_plan,
     run=_run,
+    prepare=decompress_image.prepare,
 )

@@ -42,10 +42,12 @@ from pathlib import Path
 from typing import Any
 
 from experiments.repro import python_tarfile_identity as pti
+from scripts import image_prepare as ip
 from scripts import regression_check as rc
 from scripts.run_target import (
     RESULT_NAME,
     CaseRun,
+    PrepareStep,
     RunCell,
     TargetAdapter,
     engine_provenance,
@@ -116,13 +118,16 @@ def case_from_raw(fixture: rc.RegressionFixture, raw: dict[str, Any]) -> CaseRun
     return CaseRun(verdict, fixture.tar, raw)
 
 
-def run_cell(cell: Cell, *, runner: pti.Runner = subprocess.run) -> list[CaseRun]:
+def run_cell(
+    cell: Cell, *, image: str | None = None, runner: pti.Runner = subprocess.run
+) -> list[CaseRun]:
     runs = []
     for fixture in rc.build_fixtures():
         raw = pti.run_one(
             cell.runtime_version,
             cell.extraction_filter,
             base64.b64encode(fixture.tar).decode(),
+            image=image,
             runner=runner,
         )
         runs.append(case_from_raw(fixture, raw))
@@ -240,7 +245,45 @@ def _adapter_cells(versions: list[str], filters: list[str]) -> list[RunCell]:
 def _adapter_run(cell: RunCell) -> list[CaseRun]:
     runtime, extraction_filter = cell.axes.runtime_version, cell.axes.extraction_filter
     assert runtime is not None and extraction_filter is not None
-    return run_cell(Cell(runtime, extraction_filter))
+    return run_cell(Cell(runtime, extraction_filter), image=cell.image_ref)
+
+
+# ---- image preparation (pull the official runtime image; no build) ----
+
+#: Only the official Docker Hub ``python`` repository is ever pulled; the version is the only input.
+OFFICIAL_REPOSITORY = "python"
+
+
+def image_recipe(runtime_version: str) -> ip.Recipe:
+    """``python:<X.Y.Z>-slim`` from the official repository, checked offline for its version.
+
+    ``runtime_version`` is validated as exact ``X.Y.Z`` before it forms the reference, so no other
+    repository, registry or tag can be injected. The extraction filter plays no part: the image
+    is chosen by the runtime axis alone.
+    """
+    ip.exact_version(runtime_version, "python runtime")
+    pull = pti.image_ref(runtime_version)
+    repository, _, tag = pull.partition(":")
+    if repository != OFFICIAL_REPOSITORY or tag != f"{runtime_version}-slim":
+        raise ip.UnsupportedVersionError(f"refusing to pull {pull!r}: not the official runtime tag")
+    return ip.Recipe(
+        description=f"pull official {pull} (only if absent) and tag it",
+        expected=runtime_version,
+        pull=pull,
+        check=(
+            "--entrypoint",
+            "python",
+            ip.IMAGE_SLOT,
+            "-c",
+            "import platform; print(platform.python_version())",
+        ),
+    )
+
+
+def _adapter_prepare(cell: RunCell) -> PrepareStep:
+    """``TargetAdapter.prepare``: the runtime axis alone picks the image; the filter does not."""
+    runtime = cell.axes.runtime_version or ""
+    return ip.recipe_step(cell, lambda: image_recipe(runtime))
 
 
 ADAPTER = TargetAdapter(
@@ -249,6 +292,7 @@ ADAPTER = TargetAdapter(
     cells=_adapter_cells,
     plan=lambda cell: fixture_plan(),
     run=_adapter_run,
+    prepare=_adapter_prepare,
 )
 
 

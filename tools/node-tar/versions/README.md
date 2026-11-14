@@ -32,10 +32,13 @@ allowlist가 정하며, native 실행은 승인된 안전 범위(고정 버전, 
 
 ## 여기 없는 버전: 레지스트리 준비(exploratory)
 
-이 디렉터리에 lock이 없는 node-tar 버전은 `make target-run TARGET=node-tar TARGET_VERSIONS=<X.Y.Z>
-AUTO_PREPARE=1 ALLOW_REGISTRY_PREPARE=1`로만 돌릴 수 있다(`scripts/node_tar_registry_prepare.py`).
-실행 시점에 공개 npm 레지스트리로 임시 lock을 만들어 검사한 뒤 같은 Dockerfile로
-`inodefence-node-tar-registry:<X.Y.Z>`를 빌드하고, 결과는 `exploratory demo run`으로 표시된다.
+이 디렉터리는 재현성 기준선이지 허용 목록이 아니다. 여기 lock이 있는 버전은 그 lock으로 만든다.
+여기 없는 정확한 `X.Y.Z`(또는 `latest`: 레지스트리 dist-tag를 실행 때 정확한 버전으로 해석)는
+`make target-run TARGET=node-tar TARGET_VERSIONS=<X.Y.Z|latest> AUTO_PREPARE=1` 하나로 준비된다
+(`scripts/node_tar_registry_prepare.py`). 일회용 컨테이너에서 임시 lock을 만들어 검사한 뒤 같은
+Dockerfile로 `inodefence-node-tar-registry:<X.Y.Z>`를 빌드하고, 결과는 `exploratory demo run`으로
+표시된다. 커밋된 lock에 없던 의존이나 install script를 선언한 패키지는 막지 않고 기록한다(script는
+항상 비활성).
 
 한계: integrity 대조는 "생성한 lock이 같은 실행에서 레지스트리가 공표한 값과 일치한다"까지만
 보인다. 레지스트리 자체가 바뀌었거나 오염된 경우는 막지 못한다. 그래서 exploratory이고, 재현

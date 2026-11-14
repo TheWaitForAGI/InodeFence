@@ -182,7 +182,7 @@ def test_existing_image_is_not_rebuilt() -> None:
     ("fail", "message"),
     [
         ("missing", "registry has no integrity"),
-        ("network", "npm step failed"),
+        ("network", "registry unreachable"),
         ("integrity", "integrity differs"),
         ("build", "build failed"),
         ("harness", "harness incompatible"),
@@ -593,3 +593,11 @@ def test_exploratory_extraction_runs_offline(
     (verified,) = nt.ADAPTER.cells(["7.5.3"], [])
     nt.ADAPTER.run(verified)
     assert seen == [True] * 5 + [False] * 5  # committed-recipe runs keep the historical command
+
+
+def test_npm_failure_reasons_are_precise() -> None:
+    not_found = "npm error code E404\nnpm error 404 No match found for version 7.5.99\n"
+    assert reg.npm_failure(not_found).startswith("version not found on https://registry.npmjs.org/")
+    assert "7.5.99" in reg.npm_failure(not_found)
+    assert "registry unreachable (ENOTFOUND)" in reg.npm_failure("npm error code ENOTFOUND\n")
+    assert reg.npm_failure("npm error something else\n").startswith("npm step failed:")

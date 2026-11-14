@@ -136,8 +136,38 @@ def _npm(runner: Runner, node: str, script: str, env: dict[str, str]) -> str:
     except (OSError, subprocess.SubprocessError) as error:
         raise RegistryPrepareError(f"npm container failed: {type(error).__name__}") from error
     if done.returncode != 0:
-        raise RegistryPrepareError(f"npm step failed: {(done.stderr or '').strip()[-300:]}")
+        raise RegistryPrepareError(npm_failure(done.stderr or ""))
     return done.stdout or ""
+
+
+_NETWORK_CODES = (
+    "ENOTFOUND",
+    "EAI_AGAIN",
+    "ETIMEDOUT",
+    "ECONNREFUSED",
+    "ECONNRESET",
+    "ENETUNREACH",
+)
+
+
+def npm_failure(stderr: str) -> str:
+    """A precise reason from npm's error output: not found / registry unreachable / other."""
+    lines = [line.strip() for line in stderr.splitlines() if line.strip()]
+    detail = next(
+        (
+            line
+            for key in ("No match found", "not in this registry")
+            for line in lines
+            if key in line
+        ),
+        "",
+    )
+    if "E404" in stderr or "No match found" in stderr:
+        return f"version not found on {REGISTRY}: {detail or lines[0] if lines else ''}".strip()
+    if any(code in stderr for code in _NETWORK_CODES):
+        code = next(c for c in _NETWORK_CODES if c in stderr)
+        return f"registry unreachable ({code}); nothing was prepared"
+    return f"npm step failed: {(lines[0] if lines else 'no output')[:200]}"
 
 
 def registry_integrity(runner: Runner, node: str, specs: list[str]) -> dict[str, str]:

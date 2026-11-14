@@ -86,7 +86,9 @@ def _cells(versions: list[str], filters: list[str]) -> list[RunCell]:
         ]
     for version in versions:
         if rc._VERSION_RE.fullmatch(version) is None:
-            raise ValueError(f"node-tar --version must be dotted numeric, e.g. 7.5.2: {version!r}")
+            raise ValueError(
+                f"node-tar --version must be dotted numeric (e.g. 7.5.2) or latest: {version!r}"
+            )
     cells = []
     for v in versions:
         if _committed(v) or registry.EXACT.fullmatch(v) is None:

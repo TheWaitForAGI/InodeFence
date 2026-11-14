@@ -432,3 +432,7 @@ paper/             논문용 자료와 검토된 evidence
 | 논문용 근거와 자료 | [paper](paper/README.md) |
 
 README는 프로젝트의 입구입니다. 세부 정의는 각 canonical 문서를 따르며, 연구 메모나 계획을 검증된 성과로 취급하지 않습니다.
+
+## 라이선스
+
+[MIT License](LICENSE). 실험 대상 extractor(node-tar 등)와 의존성은 각자의 라이선스를 따릅니다.

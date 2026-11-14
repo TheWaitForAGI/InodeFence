@@ -7,6 +7,7 @@ name = "inodefence"
 version = "0.1.0"
 description = "Filesystem-security-state-guided fuzzing for TAR extraction"
 requires-python = ">=3.12,<3.13"
+license = { text = "MIT" }
 dependencies = []
 
 [project.optional-dependencies]

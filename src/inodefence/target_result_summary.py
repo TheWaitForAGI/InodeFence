@@ -69,9 +69,40 @@ def _contract_cell(value: bool | None) -> str:
     return "**위반**" if value else "이상 없음"
 
 
+TERMINATION_PLAIN = {
+    "success": "성공",
+    "rejected": "거절",
+    "failed": "실패(비정상 종료)",
+    "timed_out": "시간 초과",
+}
+
+
+def _termination_cell(value: str | None) -> str:
+    return TERMINATION_PLAIN.get(value, value) if value is not None else "기록 없음"
+
+
+def _observation_cell(value: bool | None) -> str:
+    return {True: "완결", False: "**불완전**", None: "기록 없음"}[value]
+
+
+def _termination_line(result: TargetResult) -> str:
+    counts = result.termination_counts
+    parts = [f"{TERMINATION_PLAIN[name]} {counts[name]}건" for name in TERMINATION_PLAIN]
+    unknown = result.executed - sum(counts.values())
+    if unknown > 0:
+        parts.append(f"기록 없음 {unknown}건")
+    return " · ".join(parts)
+
+
 def _headline(result: TargetResult) -> str:
     total, errored = result.executed, result.errored
     violating = len(result.violating_cases)
+    if result.verdict is Verdict.ERROR and result.campaign is not None:
+        return (
+            f"**ERROR** — {total}건 중 {result.unjudged_steps}건에서 오라클이 평가되지 못했다"
+            f"(미판정 비율 {result.unjudged_ratio}). 보지 못한 실행이 너무 많아 위반 없음으로 "
+            "읽을 수 없다. 거절·실패·시간 초과는 판정된 실행이라 이 수에 들지 않는다."
+        )
     if result.verdict is Verdict.ERROR:
         return (
             f"**ERROR** — {total}건 중 {errored}건이 실행 오류로 끝나 판정을 마치지 못했다. "
@@ -121,6 +152,26 @@ def render_summary(result: TargetResult, *, source_name: str, inputs_verified: b
         add(f"| {label} | {_code(value) if value is not None else NOT_APPLICABLE} |")
     add(f"| 실행 방식 | {MODE_PLAIN[result.mode]} |")
     add(f"| 실행 수 | {result.executed}건 (실행 오류 {result.errored}건) |")
+    campaign = result.campaign
+    if campaign is not None:
+        budget_txt = (
+            "멈출 때까지 (상한 없음)" if campaign.budget is None else f"{campaign.budget}건"
+        )
+        add(f"| 탐색 예산(budget) | {budget_txt} |")
+        add(f"| 난수 seed | {campaign.seed} |")
+        first = campaign.runs_to_first_violation
+        add(f"| 첫 위반까지 실행 | {f'{first}번째' if first is not None else '위반 없음'} |")
+        add(f"| 위반 수 | {len(result.violating_cases)}건 |")
+        add(f"| 종료 상태 | {_termination_line(result)} |")
+        add(
+            f"| 미판정 실행 | {result.unjudged_steps}건 (비율 {result.unjudged_ratio}) "
+            "— 오라클이 평가되지 못한 실행(실행 기반 오류·관찰 없음·사후 스냅샷 없음), "
+            "‘위반 없음’과 다름. 거절·실패·시간 초과는 판정된 실행이라 여기 들지 않음 |"
+        )
+        if campaign.max_unjudged_ratio is not None:
+            add(f"| 미판정 상한 | {campaign.max_unjudged_ratio} (넘으면 판정은 ERROR) |")
+        if campaign.stopped_early:
+            add("| 중단 | 사람이 예산 소진 전에 멈춤 (그때까지의 결과) |")
     prep = result.preparation
     if prep is not None:
         method = (
@@ -176,21 +227,80 @@ def render_summary(result: TargetResult, *, source_name: str, inputs_verified: b
         )
         add(f"- **{name}** {CONTRACT_PLAIN[name]}. _{observed}._")
     add("")
-    add("## 케이스별 결과")
-    add("")
-    if result.cases:
-        add("| 케이스 | 실행 결과 | C0 | C1 | C2 |")
-        add("| --- | --- | --- | --- | --- |")
-        for case in result.cases:
-            outcome = "실행 오류" if case.outcome == RUN_ERROR else _code(case.outcome)
+    if campaign is not None:
+        # A campaign may run far more cases than it keeps; show aggregates + the violations only.
+        add("## 탐색 결과 (집계와 위반 케이스)")
+        add("")
+        violations = len(result.violating_cases)
+        add(
+            f"{result.executed}번 실행해 {violations}건에서 위반을 관찰했다(미판정 "
+            f"{result.unjudged_steps}건·비율 {result.unjudged_ratio}, 그중 실행 기반 오류 "
+            f"{result.errored}건; 종료 상태 {_termination_line(result)}). 전 실행을 한 줄씩 담지 "
+            "않고, 위반 입력만 아래에 둔다. 위반은 위반 후보이며 확정 취약점이 아니다."
+        )
+        if result.unjudged_steps:
+            ceiling = campaign.max_unjudged_ratio
+            ceiling_txt = (
+                f" 미판정 비율이 상한 {ceiling}을 넘으면 판정은 자동으로 ERROR다."
+                if ceiling is not None
+                else ""
+            )
+            add("")
             add(
-                f"| {_code(case.case_id)} | {outcome} | {_contract_cell(case.c0)} | "
-                f"{_contract_cell(case.c1)} | {_contract_cell(case.c2)} |"
+                f"미판정 실행 {result.unjudged_steps}건은 오라클이 평가되지 못한 실행이다. "
+                "‘위반 없음’이 아니라 ‘보지 못함’이므로 조용한 PASS로 세지 않는다." + ceiling_txt
             )
         add("")
-        add("‘관찰 안 함’은 ‘위반 없음’이 아니다. 그 기준은 이 케이스에서 보지 않았다는 뜻이다.")
+        if result.repro_inputs:
+            by_id = {case.case_id: case for case in result.cases}
+            add("| 위반 케이스 | C0 | C1 | C2 | 입력 TAR | SHA-256 | 종료 상태 | 관찰 | 확인 |")
+            add("| --- | --- | --- | --- | --- | --- | --- | --- | --- |")
+            needs_check = 0
+            for item in result.repro_inputs:
+                case = by_id.get(item.case_id)
+                cells = (
+                    (_contract_cell(case.c0), _contract_cell(case.c1), _contract_cell(case.c2))
+                    if case is not None
+                    else ("?", "?", "?")
+                )
+                check = case is not None and case.needs_repro_check
+                needs_check += check
+                add(
+                    f"| {_code(item.case_id)} | {cells[0]} | {cells[1]} | {cells[2]} | "
+                    f"{_code(item.tar_path)} | {_code(item.tar_sha256)} | "
+                    f"{_termination_cell(case.termination if case else None)} | "
+                    f"{_observation_cell(case.observation_complete if case else None)} | "
+                    f"{'**재현 확인 필요**' if check else '—'} |"
+                )
+            add("")
+            if needs_check:
+                add(
+                    f"**재현 확인 필요 {needs_check}건:** 대상이 성공으로 끝나지 않았거나"
+                    "(거절·실패·시간 초과) 관찰이 완결되지 않은 상태에서 난 위반이다. "
+                    "위반은 위반이지만, 같은 입력을 다시 돌려 같은 위반이 나는지 먼저 확인한다."
+                )
+                add("")
+            add('위반 입력 TAR는 결과 폴더 `inputs/`에 있다. 재현은 아래 "다시 해 보려면".')
+        else:
+            add("저장된 위반 입력이 없다 (위반 0건).")
     else:
-        add("실행한 케이스가 없다.")
+        add("## 케이스별 결과")
+        add("")
+        if result.cases:
+            add("| 케이스 | 실행 결과 | C0 | C1 | C2 |")
+            add("| --- | --- | --- | --- | --- |")
+            for case in result.cases:
+                outcome = "실행 오류" if case.outcome == RUN_ERROR else _code(case.outcome)
+                add(
+                    f"| {_code(case.case_id)} | {outcome} | {_contract_cell(case.c0)} | "
+                    f"{_contract_cell(case.c1)} | {_contract_cell(case.c2)} |"
+                )
+            add("")
+            add(
+                "‘관찰 안 함’은 ‘위반 없음’이 아니다. 그 기준은 이 케이스에서 보지 않았다는 뜻이다."
+            )
+        else:
+            add("실행한 케이스가 없다.")
     add("")
     add("## 다시 해 보려면 (재현 방법)")
     add("")

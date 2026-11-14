@@ -435,3 +435,24 @@ def test_package_that_refuses_the_internal_link_is_still_worker_compatible() -> 
     reg.prepare(SPEC, IMAGE, runner=docker, log=lines.append)
     assert docker.images == {IMAGE}
     assert any("internal link not created (exit 2)" in line for line in lines)
+
+
+def test_harness_accepts_a_package_that_refuses_the_internal_link() -> None:
+    class Refusing(FakeDocker):
+        def __call__(self, cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            if cmd[1] == "run" and "shared_identity" in cmd[-1]:
+                raw = {
+                    "package": FORK,
+                    "package_version": V,
+                    "declined": {"message": "ENOENT: no such file or directory, link"},
+                    "extract_tree": {"a.txt": {}},
+                }
+                self.calls.append(cmd)
+                return subprocess.CompletedProcess(cmd, 0, json.dumps(raw) + "\n", "")
+            return super().__call__(cmd, **kwargs)
+
+    lines: list[str] = []
+    docker = Refusing()
+    reg.prepare(SPEC, IMAGE, runner=docker, log=lines.append)
+    assert docker.images == {IMAGE}
+    assert any("regression program ok (internal link not created: ENOENT" in x for x in lines)

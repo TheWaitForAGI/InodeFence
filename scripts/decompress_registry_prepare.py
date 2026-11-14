@@ -181,8 +181,13 @@ def installed(runner: Runner, image: str) -> tuple[str, str]:
     return name, version
 
 
-def harness_check(runner: Runner, image: str, package: str, version: str) -> None:
-    """The regression run's own program must extract the benign archive with this package."""
+def harness_check(runner: Runner, image: str, package: str, version: str) -> str:
+    """The regression run's own program must run this package and extract the regular file.
+
+    Whether the package also creates the archive's internal hard link is the package's own
+    behaviour (some versions resolve the link target elsewhere or race and refuse); the program
+    reporting it is what matters. Returns a one-line description.
+    """
     from scripts.run_decompress_target import JS_PROGRAM, REFERENCE_CONTENT
 
     ref = base64.b64encode(REFERENCE_CONTENT).decode()
@@ -194,13 +199,16 @@ def harness_check(runner: Runner, image: str, package: str, version: str) -> Non
         done.returncode == 0
         and isinstance(raw, dict)
         and (raw.get("package"), raw.get("package_version")) == (package, version)
-        and raw.get("declined") is None
         and "a.txt" in tree
-        and "b.txt" in tree
     )
     if not ok:
         detail = (done.stderr or "").strip()[-200:] or str(raw)[:200]
         raise RegistryPrepareError(f"harness incompatible with {package}@{version}: {detail}")
+    assert isinstance(raw, dict)
+    if raw.get("declined") is None and "b.txt" in tree:
+        return "regression program ok (internal link created)"
+    declined = (raw.get("declined") or {}).get("message", "")
+    return f"regression program ok (internal link not created: {declined[:120]})"
 
 
 #: The exploration path runs ``worker.cjs frame <archive> <dest>`` (``DecompressFrameTarget``) after
@@ -307,7 +315,7 @@ def prepare(
             raise RegistryPrepareError(
                 f"{staging} has {seen[0]}@{seen[1]} installed, expected {package}@{version}"
             )
-        harness_check(runner, staging, package, version)
+        log(f"REGISTRY-PREPARE {harness_check(runner, staging, package, version)}")
         worker = worker_check(runner, staging, package, version)
         if not worker["ok"]:
             raise RegistryPrepareError(

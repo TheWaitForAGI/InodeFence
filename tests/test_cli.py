@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from inodefence import cli
+from inodefence import cli, locate
 
 
 def _make_repo(tmp_path: Path) -> Path:
@@ -18,19 +18,83 @@ def _make_repo(tmp_path: Path) -> Path:
 def test_repo_root_honours_inodefence_home(tmp_path: Path, monkeypatch) -> None:
     repo = _make_repo(tmp_path)
     monkeypatch.setenv("INODEFENCE_HOME", str(repo))
-    assert cli.repo_root() == repo
+    assert locate.repo_root() == repo
 
 
 def test_repo_root_rejects_a_non_repository(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("INODEFENCE_HOME", str(tmp_path))  # no scripts/ or tools/
-    assert cli.repo_root() is None
+    assert locate.repo_root() is None
 
 
 def test_repo_root_is_none_without_markers(monkeypatch) -> None:
     monkeypatch.delenv("INODEFENCE_HOME", raising=False)
     # The installed-location path only resolves in an editable checkout; force the not-found path.
-    monkeypatch.setattr(cli, "_is_repo", lambda root: False)
-    assert cli.repo_root() is None
+    monkeypatch.setattr(locate, "_is_repo", lambda root: False)
+    assert locate.repo_root() is None
+
+
+def test_verify_forwards_the_regression_driver_argv(monkeypatch) -> None:
+    calls: list = []
+    monkeypatch.setattr(cli, "repo_root", lambda: Path("/repo"))
+    monkeypatch.setattr(
+        cli, "run_driver", lambda root, driver, argv: calls.append((driver, argv)) or 0
+    )
+    assert cli.main(["verify", "--target", "node-tar", "--version", "7.5.2", "--dry-run"]) == 0
+    driver, argv = calls[0]
+    assert driver == cli.VERIFY_DRIVER
+    assert argv == [
+        "--target",
+        "node-tar",
+        "--version",
+        "7.5.2",
+        "--dry-run",
+    ]  # no --out on dry-run
+
+
+def test_explore_forwards_the_exploration_driver_argv(monkeypatch, tmp_path: Path) -> None:
+    calls: list = []
+    monkeypatch.setattr(cli, "repo_root", lambda: Path("/repo"))
+    monkeypatch.setattr(
+        cli, "run_driver", lambda root, driver, argv: calls.append((driver, argv)) or 0
+    )
+    assert (
+        cli.main(
+            [
+                "explore",
+                "--version",
+                "latest",
+                "--budget",
+                "8",
+                "--seed",
+                "1",
+                "--auto-prepare",
+                "--out",
+                str(tmp_path),
+            ]
+        )
+        == 0
+    )
+    driver, argv = calls[0]
+    assert driver == cli.EXPLORE_DRIVER
+    assert argv == [
+        "--target",
+        "node-tar",
+        "--version",
+        "latest",
+        "--budget",
+        "8",
+        "--seed",
+        "1",
+        "--out",
+        str(tmp_path),
+        "--auto-prepare",
+    ]
+
+
+def test_explore_without_repo_explains_and_fails(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(cli, "repo_root", lambda: None)
+    assert cli.main(["explore", "--version", "latest"]) == 3
+    assert "repository not found" in capsys.readouterr().err
 
 
 _FAKE_SUPPORT = {

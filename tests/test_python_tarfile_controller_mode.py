@@ -87,3 +87,46 @@ def test_controller_abort_is_recorded_not_invented(tmp_path: Path) -> None:
     report = json.loads(evidence.read_text())
     assert "expected 0.0.1" in report["aborted"]["reason"]
     assert "case_records" not in report
+
+
+# ---- additive only: existing modes, their argument gates and forwarding are unchanged ----
+
+
+def test_exactly_one_mode_and_two_forwarded_arguments_were_added() -> None:
+    assert demo.DEMO_MODES == (
+        "effect-demo",
+        demo.HISTORICAL_DEMO_MODE,
+        demo.EXPLORE_DEMO_MODE,
+        demo.DECOMPRESS_CAMPAIGN_MODE,
+        demo.ORAS_GO_CAMPAIGN_MODE,
+        MODE,
+    )
+    assert demo.DEMO_FORWARDED_ARGUMENTS == (
+        *demo.DEMO_ARGUMENTS,
+        "tar_version",
+        "observer_integrity_policy",
+        "sentinel_count",
+        "sentinel_seed",
+        "runtime_version",
+        "extraction_filter",
+    )
+
+
+@pytest.mark.parametrize(
+    "mode", [demo.EXPLORE_DEMO_MODE, demo.HISTORICAL_DEMO_MODE, demo.DECOMPRESS_CAMPAIGN_MODE]
+)
+def test_existing_modes_refuse_the_new_arguments(mode: str) -> None:
+    extra = ["--tar-version", "7.5.2"] if mode != demo.DECOMPRESS_CAMPAIGN_MODE else []
+    _parse([*extra, mode])  # unchanged: still parses as before
+    with pytest.raises(SystemExit):
+        _parse([*extra, "--extraction-filter", "data", mode])
+
+
+def test_existing_gates_still_hold() -> None:
+    with pytest.raises(SystemExit):  # explore still requires the node-tar version
+        _parse([demo.EXPLORE_DEMO_MODE])
+    with pytest.raises(SystemExit):  # tar-version is still node-tar only
+        _parse(
+            ["--tar-version", "7.5.2", "--runtime-version", "3.14.10"]
+            + ["--extraction-filter", "data", MODE]
+        )

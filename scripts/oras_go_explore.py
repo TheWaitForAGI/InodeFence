@@ -31,7 +31,9 @@ from pathlib import Path
 from scripts.explore_result import build_campaign_result, write_result
 from scripts.run_target import ExploreOptions, ExploreOutcome, PreparedTargetImage
 
+from inodefence.feedback import EffectSearchPolicy
 from inodefence.generator import minimal_seed_corpus
+from inodefence.mutator import MutationPolicy
 from inodefence.target_result import RUN_ERROR
 from inodefence.target_result_summary import write_cell_summaries
 
@@ -55,6 +57,7 @@ def run_controller(
     budget: int,
     seed: int,
     python: str,
+    mutation_policy: str | None = None,
     runner=subprocess.run,
 ) -> Path:
     """Run the oras-go campaign in the controller on the prepared image; return the report path.
@@ -72,6 +75,8 @@ def run_controller(
         "RUN_ID": run_id,
         "PYTHON": python,
     }
+    if mutation_policy:
+        env["DEMO_MUTATION_POLICY"] = mutation_policy
     done = runner(["bash", str(SCRIPT)], env=env, cwd=str(REPO_ROOT))
     report = controller_report_path(out, run_id)
     if done.returncode != 0:
@@ -127,10 +132,107 @@ def check_report(report: dict, prepared: PreparedTargetImage, budget: int | None
         raise RuntimeError(f"campaign report has {runs} run records, budget was {budget}")
 
 
+#: How the oras-go loop retains cases; fixed in ``OrasGoEffectSearchState`` (no selectable policy).
+RETENTION = (
+    "oras-go state retention (fixed): new boundary-attempt key OR new violation fingerprint "
+    "OR new full post-state"
+)
+#: Why the registered S-u arm cannot be run as-is on the oras-go loop (facts, recorded per run).
+S_U_GAP = (
+    "registered S-u = S_U_STATE_RETENTION_UNIFORM retention + uniform scheduler + observed-names "
+    "(fixed baseline) vocabulary; the oras-go loop has no selectable retention policy, its "
+    "observed-names vocabulary is the accumulated one only (FIXED_BASELINE is not a state-aware "
+    "policy there), and the controller does not expose the uniform scheduler"
+)
+SETTINGS_NAME = "settings.json"
+
+# What oras-go exploration actually implements; anything else is refused before any run, never
+# silently run another way (same rule as decompress).
+#: The oras-go loop has NO selectable search (retention) policy: its retention is fixed
+#: (``RETENTION``) and its scheduler is the controller's adaptive default. So no named search
+#: policy is realized as named; a request for one is refused.
+SUPPORTED_SEARCH_POLICIES: tuple[str, ...] = ()
+#: Mutation vocabularies the oras-go loop realizes as named (its state-aware set is the
+#: accumulated observed-names pair; the fixed-baseline vocabulary is not in it).
+SUPPORTED_MUTATION_POLICIES = (
+    MutationPolicy.M1_GENERIC_ESCAPE_HARDLINK.value,
+    MutationPolicy.M1_PROTECTED_COMPONENTS_ESCAPE_HARDLINK.value,
+    MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK.value,
+    MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_BLIND.value,
+)
+#: The controller mode's default vocabulary (used when a request names none).
+DEFAULT_MUTATION_POLICY = MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK.value
+_UNSUPPORTED_WHY = {
+    EffectSearchPolicy.S_U_STATE_RETENTION_UNIFORM.value: (
+        "the oras-go loop has no selectable retention policy (its retention is fixed: "
+        "boundary-attempt key OR violation fingerprint OR full post-state), and the controller "
+        "does not expose the uniform scheduler (it runs adaptive)"
+    ),
+    MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_FIXED_BASELINE.value: (
+        "the oras-go loop's state-aware set does not include the fixed-baseline vocabulary "
+        "(it would add no observed names at all)"
+    ),
+}
+
+
+def check_policies(search_policy: str | None, mutation_policy: str | None) -> str:
+    """The mutation vocabulary oras-go exploration will run, or ``ValueError`` why not.
+
+    A named search policy is always refused (none is realized as named; see
+    ``SUPPORTED_SEARCH_POLICIES``); no search policy means the loop's fixed retention.
+    """
+    if search_policy:
+        why = _UNSUPPORTED_WHY.get(
+            search_policy,
+            "the oras-go loop has no selectable retention policy (its retention is fixed) and "
+            "runs the adaptive scheduler",
+        )
+        raise ValueError(
+            f"oras-go exploration does not implement search policy {search_policy!r}: {why}. "
+            "Supported: none (omit it to run the loop's fixed retention)"
+        )
+    mutation = mutation_policy or DEFAULT_MUTATION_POLICY
+    if mutation not in SUPPORTED_MUTATION_POLICIES:
+        why = _UNSUPPORTED_WHY.get(mutation, "not implemented by the oras-go loop")
+        raise ValueError(
+            f"oras-go exploration does not implement mutation vocabulary {mutation!r}: {why}. "
+            f"Supported: {', '.join(SUPPORTED_MUTATION_POLICIES)}"
+        )
+    return mutation
+
+
+def settings_record(report: dict, prepared: PreparedTargetImage, options: ExploreOptions) -> dict:
+    """Which setting this run actually used, read from the loop report's own config."""
+    config = report.get("config") or {}
+    missing, runs = unjudged(report)
+    return {
+        "target": TARGET,
+        "requested": prepared.requested,
+        "version": prepared.version,
+        "image_ref": prepared.image_ref,
+        "image_id": prepared.image_id,
+        "exploratory_image": prepared.exploratory,
+        "seed": options.seed,
+        "budget": options.budget,
+        "mutation_policy": config.get("mutation_policy"),
+        "adaptive_scheduler": config.get("adaptive_scheduler"),
+        "retention": RETENTION,
+        "search_policy": None,
+        "registered_setting": "closest to S-u, not S-u",
+        "registered_setting_gap": S_U_GAP,
+        "unjudged_runs": missing,
+        "runs": runs,
+        "loop_report": None,
+    }
+
+
 def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOutcome:
     """``TargetAdapter.explore`` for oras-go: run the campaign in the controller, write a result."""
     if options.budget < MIN_BUDGET:
         raise ValueError(f"budget must be >= {MIN_BUDGET} (the loop's seed count)")
+    mutation_policy = check_policies(
+        getattr(options, "search_policy", None), getattr(options, "mutation_policy", None)
+    )
     options.out.mkdir(parents=True, exist_ok=True)
     run_id = f"oras-go-{prepared.version}-{options.seed}-{options.budget}{options.image_tag_suffix}"
     python = os.environ.get("PYTHON", sys.executable)
@@ -142,24 +244,36 @@ def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOu
         budget=options.budget,
         seed=options.seed,
         python=python,
+        mutation_policy=mutation_policy,
     )
     report = json.loads(report_path.read_text(encoding="utf-8"))
     check_report(report, prepared, options.budget)
+    ran = (report.get("config") or {}).get("mutation_policy")
+    if ran != mutation_policy:
+        raise RuntimeError(
+            f"campaign ran mutation vocabulary {ran!r}, requested {mutation_policy!r}"
+        )
     result, tar_files = build_campaign_result(
         report, prepared, seed=options.seed, budget=options.budget
     )
     result_path = write_result(report_path.parent / f"{run_id}-result", result, tar_files)
+    settings = settings_record(report, prepared, options)
+    settings["loop_report"] = report_path.name
+    (result_path.parent / SETTINGS_NAME).write_text(
+        json.dumps(settings, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     try:  # the result is written; a summary failure must not lose it
         write_cell_summaries([result_path])
     except Exception as error:  # noqa: BLE001
         print(f"TARGET-EXPLORE SUMMARY: summary.md not written ({error})", file=sys.stderr)
-    policy = (report.get("config") or {}).get("mutation_policy")
-    missing, runs = unjudged(report)
+    missing, runs = settings["unjudged_runs"], settings["runs"]
     # Any unjudged run makes the common verdict ERROR (never PASS); all unjudged is ERROR too.
     print(
-        f"loop report: {report_path} (mutation policy {policy}; unjudged runs {missing}/{runs}"
+        f"loop report: {report_path} (mutation policy {settings['mutation_policy']}; adaptive "
+        f"scheduler {settings['adaptive_scheduler']}; unjudged runs {missing}/{runs}"
         f" = {missing / max(runs, 1):.0%})"
     )
+    print(f"setting: closest to S-u, not S-u -- see {SETTINGS_NAME}")
     return ExploreOutcome(
         result_path=result_path,
         verdict=result.verdict.value,

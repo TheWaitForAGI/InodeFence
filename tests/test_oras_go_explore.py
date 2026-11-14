@@ -114,6 +114,12 @@ def test_violating_run_writes_oras_go_campaign_result(
     assert result.provenance.image_id == IMAGE_ID
     assert (outcome.result_path.parent / "inputs" / "step-3.tar").read_bytes() == TAR
     assert (outcome.result_path.parent / "summary.md").is_file()
+    settings = json.loads((outcome.result_path.parent / "settings.json").read_text())
+    assert settings["mutation_policy"] == "uniform-generic-m1-state-aware-escape-hardlink-v1"
+    assert settings["registered_setting"] == "closest to S-u, not S-u"
+    assert "no selectable retention policy" in settings["registered_setting_gap"]
+    assert (settings["seed"], settings["budget"], settings["version"]) == (7, 5, "2.7.0")
+    assert settings["loop_report"].startswith("inodefence-oras-go-selfdiscover-")
     ((cmd, env),) = script.calls
     assert cmd[-1].endswith("local_oras_go_selfdiscover.sh")
     assert env["EXPLORE_IMAGE"] == "inodefence-oras-go-registry:2.7.0"
@@ -256,3 +262,66 @@ def test_verify_existing_reports_a_docker_failure_as_the_reason(
         proxy, "frame_check", lambda runner, image, version: {"ok": True, "reason": "fine"}
     )
     assert oge.verify_existing(_prepared()) == "fine"
+
+
+# ---- requested policies: run as named, or refuse before any run (never silently differ) ----
+
+
+def _options(tmp_path: Path, **policies: str) -> Any:
+    from types import SimpleNamespace
+
+    return SimpleNamespace(budget=5, seed=7, out=tmp_path, image_tag_suffix="", **policies)
+
+
+@pytest.mark.parametrize(
+    ("policies", "message"),
+    [
+        (
+            {"search_policy": "state-retention-uniform-v1-placeholder"},
+            "does not implement search policy",
+        ),
+        ({"mutation_policy": "uniform-generic-m1-v1"}, "does not implement mutation vocabulary"),
+    ],
+)
+def test_unsupported_request_is_refused_before_any_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, policies: dict[str, str], message: str
+) -> None:
+    script = FakeScript(_report(runs=5, violating=None))
+    monkeypatch.setattr(oge, "verify_existing", lambda prepared: pytest.fail("no check"))
+    with pytest.raises(ValueError, match=message):
+        oge.explore(_prepared(), _options(tmp_path, **policies))
+    assert script.calls == []
+
+
+def test_registered_s_u_pieces_are_refused_with_the_reason() -> None:
+    from inodefence.feedback import EffectSearchPolicy
+    from inodefence.mutator import MutationPolicy
+
+    with pytest.raises(ValueError, match="no selectable retention policy"):
+        oge.check_policies(EffectSearchPolicy.S_U_STATE_RETENTION_UNIFORM.value, None)
+    with pytest.raises(ValueError, match="does not include the fixed-baseline vocabulary"):
+        oge.check_policies(None, MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_FIXED_BASELINE.value)
+    assert oge.check_policies(None, None) == oge.DEFAULT_MUTATION_POLICY
+
+
+def test_supported_vocabulary_reaches_the_script_and_must_be_what_ran(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    blind = "uniform-generic-m1-state-aware-escape-hardlink-blind-v1"
+    assert blind in oge.SUPPORTED_MUTATION_POLICIES
+    report = _report(runs=5, violating=None)
+    report["config"]["mutation_policy"] = blind
+    script = FakeScript(report)
+    monkeypatch.setattr(oge, "verify_existing", lambda prepared: "ok")
+    real = oge.run_controller
+    monkeypatch.setattr(
+        oge, "run_controller", lambda prepared, **kw: real(prepared, **kw, runner=script)
+    )
+    oge.explore(_prepared(), _options(tmp_path, mutation_policy=blind))
+    ((_, env),) = script.calls
+    assert env["DEMO_MUTATION_POLICY"] == blind
+
+    # the controller ran something else -> no result
+    report["config"]["mutation_policy"] = oge.DEFAULT_MUTATION_POLICY
+    with pytest.raises(RuntimeError, match="campaign ran mutation vocabulary"):
+        oge.explore(_prepared(), _options(tmp_path / "b", mutation_policy=blind))

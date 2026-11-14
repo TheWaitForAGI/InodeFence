@@ -57,6 +57,8 @@ EVIDENCE_DIR="${INODEFENCE_EVIDENCE_DIR:-$HOME/inodefence-evidence}"
 CONTROLLER_IMAGE=inodefence-controller:local
 HELPER_IMAGE=inodefence-helper:local
 ORAS_GO_IMAGE="${EXPLORE_IMAGE:-inodefence-oras-go-selfdiscover:${ORAS_GO_ROLE}}"
+# What the run used, for the status lines: the prepared image, or the role built here.
+if [ -n "$EXPLORE_IMAGE" ]; then TARGET_DESC="image=$EXPLORE_IMAGE"; else TARGET_DESC="role=$ORAS_GO_ROLE"; fi
 CONTROLLER="inodefence-oras-go-controller${RUN_ID:+-$RUN_ID}"
 VOLUME="inodefence-oras-go-runtime${RUN_ID:+-$RUN_ID}"
 
@@ -97,14 +99,14 @@ cleanup() {
     dk volume rm "$VOLUME" >/dev/null
   fi
   if [ "$status" -eq 0 ]; then
-    echo "PASSED: oras-go self-discovery (context=$CONTEXT role=$ORAS_GO_ROLE)"
+    echo "PASSED: oras-go self-discovery (context=$CONTEXT $TARGET_DESC)"
   fi
   exit "$status"
 }
 trap cleanup EXIT
 
 step "preflight"
-echo "context=$CONTEXT engine=$(dk version --format '{{.Server.Version}}') role=$ORAS_GO_ROLE"
+echo "context=$CONTEXT engine=$(dk version --format '{{.Server.Version}}') $TARGET_DESC"
 command -v "$PYTHON" >/dev/null || { echo "host Python not found: $PYTHON" >&2; exit 1; }
 if [ "$BUILD_ONLY" != 1 ] && { dk container inspect "$CONTROLLER" >/dev/null 2>&1 ||
   dk volume inspect "$VOLUME" >/dev/null 2>&1; }; then
@@ -133,7 +135,7 @@ else
 fi
 
 if [ "$BUILD_ONLY" = 1 ]; then
-  echo "BUILD_ONLY=1: shared images ready (context=$CONTEXT role=$ORAS_GO_ROLE); no controller created"
+  echo "BUILD_ONLY=1: shared images ready (context=$CONTEXT $TARGET_DESC); no controller created"
   exit 0
 fi
 

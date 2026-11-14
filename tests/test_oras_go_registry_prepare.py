@@ -693,6 +693,9 @@ def test_selfdiscover_script_takes_a_prepared_image_without_building_it() -> Non
         encoding="utf-8"
     )
     assert 'ORAS_GO_IMAGE="${EXPLORE_IMAGE:-inodefence-oras-go-selfdiscover:' in script
+    # status lines name the prepared image, not the unused build role
+    assert 'TARGET_DESC="image=$EXPLORE_IMAGE"' in script
+    assert "role=$ORAS_GO_ROLE)" not in script
     done = subprocess.run(
         ["bash", str(prep.REPO_ROOT / "scripts" / "local_oras_go_selfdiscover.sh")],
         env={"EXPLORE_IMAGE": "x;rm -rf /", "PATH": "/usr/bin:/bin"},

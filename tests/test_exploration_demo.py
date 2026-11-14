@@ -5,6 +5,7 @@ are stubbed so only the entry wrapper is exercised)."""
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -216,3 +217,44 @@ def test_incomplete_observation_is_recorded_on_the_case(monkeypatch: pytest.Monk
 def test_exploration_saves_no_input_when_no_violation(monkeypatch: pytest.MonkeyPatch) -> None:
     report = _violation_capture_report(monkeypatch, violating=False)
     assert len(report["case_records"]) == 1 and report["violation_inputs"] == []
+
+
+def test_live_dir_records_run_settings_from_actual_values(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import json as _json
+
+    from inodefence.sentinel_set import generate_sentinel_set
+
+    sset = generate_sentinel_set(20261104, 5)
+    monkeypatch.setattr(
+        rd.NodeTarEffectTarget, "bind", classmethod(lambda cls, b, i, **k: _FakeTarget("7.5.23"))
+    )
+    monkeypatch.setattr(rd, "run_effect_campaign", lambda cases, produce, config, on_step: object())
+    monkeypatch.setattr(
+        rd,
+        "effect_campaign_report",
+        lambda r, p: {
+            "demo_report_schema": 4,
+            "steps": [],
+            "retained_case_ids": [],
+            "final_search_stats": {},
+        },
+    )
+    monkeypatch.setattr(rd, "_historical_oracle_events", lambda r: [])
+    live = tmp_path / "live"
+    rd.exploration_demo_report(
+        BACKEND,
+        IMAGE,
+        "7.5.23",
+        seed=1,
+        budget=5,
+        sentinel_set=sset,
+        observer_integrity_continue=True,
+        live_dir=live,
+    )
+    prog = _json.loads((live / "progress.json").read_text())
+    rs = prog["run_settings"]
+    assert rs["sentinel_count"] == 5 and rs["sentinel_seed"] == 20261104
+    assert rs["observer_integrity_policy"] == "invalid-continue" and rs["profile"] == "full"
+    assert prog["state"] == "finished"  # the try/else path closed it cleanly

@@ -425,6 +425,9 @@ if [ "$MODE" = explore ]; then
   [ -n "${DEMO_SENTINEL_SEED:-}" ] && DEMO_ARGS+=(--sentinel-seed "$DEMO_SENTINEL_SEED")
   [ -n "${DEMO_OBSERVER_INTEGRITY_POLICY:-}" ] &&
     DEMO_ARGS+=(--observer-integrity-policy "$DEMO_OBSERVER_INTEGRITY_POLICY")
+  # Explore only: the controller writes live progress/violation snapshots here (tmpfs, writable
+  # under the read-only root); the host pulls this folder with docker cp while the loop runs.
+  [ -n "${DEMO_LIVE_DIR:-}" ] && DEMO_ARGS+=(--live-dir "$DEMO_LIVE_DIR")
   host --image "$IF_EXPLORE_IMAGE" --tar-version "$TAR_VERSION" --call-log "$HOST_CALL_LOG" \
     --evidence "$CONTROLLER_EVIDENCE" ${DEMO_ARGS[@]+"${DEMO_ARGS[@]}"} effect-demo-explore
   exit 0

@@ -24,10 +24,13 @@ from scripts.run_target import ExploreOptions, ExploreOutcome, PreparedTargetIma
 
 from inodefence.evaluation.rds_preregistration import parse_preregistration
 from inodefence.generator import minimal_seed_corpus
+from inodefence.live_exploration import LivePuller
 from inodefence.target_result_summary import write_cell_summaries
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SMOKE = REPO_ROOT / "scripts" / "local_node_tar_smoke.sh"
+# Writable tmpfs path inside the controller (root is read-only); the host pulls it with docker cp.
+CONTROLLER_LIVE_DIR = "/tmp/inodefence-live"
 OBSERVED_CONTRACTS = ("C0", "C1", "C2")  # the effect path takes a full before/after snapshot
 # One campaign must cover all initial seed cases, so a budget below the seed count is refused.
 MIN_BUDGET = len(minimal_seed_corpus())
@@ -86,8 +89,20 @@ def run_controller(
         "INODEFENCE_EVIDENCE_DIR": str(out),
         "RUN_ID": run_id,
         "PYTHON": python,
+        # The controller writes live snapshots to this tmpfs path; the host pulls it below.
+        "DEMO_LIVE_DIR": CONTROLLER_LIVE_DIR,
     }
-    done = runner(["bash", str(SMOKE), "explore"], env=env, cwd=str(REPO_ROOT))
+    # Pull the controller's live folder to the host on a timer while the loop runs, so progress and
+    # violation cases appear during the run (and survive a forced stop). The controller name matches
+    # the smoke script's ``inodefence-local-controller[-RUN_ID]``; a pull before it exists or after
+    # it is gone fails quietly (recorded in fetch.json) and never stops the campaign.
+    controller_name = f"inodefence-local-controller{f'-{run_id}' if run_id else ''}"
+    host_live_dir = out / "target-explore" / f"{run_id}-live"
+    puller = LivePuller(controller_name, CONTROLLER_LIVE_DIR, host_live_dir).start()
+    try:
+        done = runner(["bash", str(SMOKE), "explore"], env=env, cwd=str(REPO_ROOT))
+    finally:
+        puller.stop()  # one last pull so the final snapshot reaches the host
     if done.returncode != 0:
         raise RuntimeError(f"controller run failed (exit {done.returncode}); see output above")
     report = controller_report_path(out, run_id)

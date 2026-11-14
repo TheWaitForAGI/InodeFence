@@ -172,7 +172,7 @@ class _Counters:
     runs: int = 0
     violation_steps: int = 0
     unjudged: int = 0
-    errors: int = 0
+    failed: int = 0
     timeouts: int = 0
     rejected: int = 0
     first_violation_run: int | None = None
@@ -234,7 +234,7 @@ class LiveRecorder:
         if step.unjudged:
             c.unjudged += 1
         if step.status == "failed":
-            c.errors += 1
+            c.failed += 1
         elif step.status == "timed_out":
             c.timeouts += 1
         elif step.status == "rejected":
@@ -300,7 +300,7 @@ class LiveRecorder:
                 "steps": c.unjudged,
                 "ratio": round(c.unjudged / c.runs, 6) if c.runs else 0.0,
             },
-            "errors": c.errors,
+            "failed": c.failed,
             "timeouts": c.timeouts,
             "rejected": c.rejected,
             "write_errors": c.write_errors,
@@ -615,7 +615,7 @@ def render_live_status(
             + (f" ({rate}/s)" if rate is not None else "")
             + f" violations={v.get('steps', 0)} steps / {v.get('unique_fingerprints', 0)} unique"
             + f" un-judged={u.get('steps', 0)} (ratio {u.get('ratio', 0.0)})"
-            + f" errors={progress.get('errors', 0)} timeouts={progress.get('timeouts', 0)}"
+            + f" failed={progress.get('failed', 0)} timeouts={progress.get('timeouts', 0)}"
             + f" rejected={progress.get('rejected', 0)}"
         )
         if v.get("first_at_run") is not None:

@@ -155,7 +155,7 @@ def test_counts_unjudged_errors_timeouts_rejected_separately(tmp_path: Path) -> 
     rec.on_step(_step(3, status="rejected"))
     progress = _p(live)
     assert progress["unjudged"] == {"steps": 1, "ratio": 0.25}
-    assert (progress["errors"], progress["timeouts"], progress["rejected"]) == (1, 1, 1)
+    assert (progress["failed"], progress["timeouts"], progress["rejected"]) == (1, 1, 1)
 
 
 def test_files_survive_a_crash_and_close_records_how_it_ended(tmp_path: Path) -> None:
@@ -365,12 +365,12 @@ def test_adapter_maps_verdicts_fingerprints_and_tar_like_the_report() -> None:
     assert live.observation == ("C1: shared identity",)
 
 
-def test_adapter_gives_no_verdict_for_a_run_that_did_not_succeed() -> None:
-    timed_out = _stand_in(ExecutionStatus.TIMED_OUT, (_identity_hit("extract/x"),))
-    live = live_step_from_effect(timed_out)
-    assert (live.c0, live.c1, live.c2) == (None, None, None)
-    assert live.status == "timed_out" and not live.violated and live.tar_bytes is None
-    assert live.fingerprints == ()
+def test_adapter_keeps_verdicts_for_a_timeout_rejection_or_crash() -> None:
+    # The oracle judges the snapshots whatever the exit status: a violation during a timeout counts.
+    for status in (ExecutionStatus.TIMED_OUT, ExecutionStatus.REJECTED, ExecutionStatus.FAILED):
+        hit = live_step_from_effect(_stand_in(status, (_identity_hit("extract/x"),)))
+        assert hit.status == status.value and hit.c1 is True and hit.violated
+        assert hit.tar_bytes is not None and hit.fingerprints and not hit.unjudged
 
 
 def test_progress_json_is_plain_json_on_disk(tmp_path: Path) -> None:
@@ -380,14 +380,10 @@ def test_progress_json_is_plain_json_on_disk(tmp_path: Path) -> None:
 
 
 def test_adapter_unjudged_uses_the_result_file_rule() -> None:
-    # Same rule as the result file: ran (SUCCESS) but no contract verdict at all.
-    no_verdict = live_step_from_effect(_stand_in(ExecutionStatus.SUCCESS, ()))
-    assert (no_verdict.c0, no_verdict.c1, no_verdict.c2) == (None, None, None)
-    assert no_verdict.unjudged is True and no_verdict.status == "success"
-    judged = live_step_from_effect(
-        _stand_in(ExecutionStatus.SUCCESS, (ViolationResult(ContractId.C0, False, (), "ok", ()),))
-    )
-    assert judged.unjudged is False
-    # A run that did not succeed is an error/timeout/rejection, never "un-judged".
-    for status in (ExecutionStatus.TIMED_OUT, ExecutionStatus.FAILED, ExecutionStatus.REJECTED):
-        assert live_step_from_effect(_stand_in(status, ())).unjudged is False
+    # Same rule as CaseVerdict.is_unjudged: observed, but no contract verdict at all.
+    clean = ViolationResult(ContractId.C0, False, (), "ok", ())
+    for status in (ExecutionStatus.SUCCESS, ExecutionStatus.REJECTED, ExecutionStatus.TIMED_OUT):
+        no_verdict = live_step_from_effect(_stand_in(status, ()))
+        assert (no_verdict.c0, no_verdict.c1, no_verdict.c2) == (None, None, None)
+        assert no_verdict.unjudged is True
+        assert live_step_from_effect(_stand_in(status, (clean,))).unjudged is False

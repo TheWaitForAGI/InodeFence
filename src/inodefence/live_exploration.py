@@ -56,6 +56,9 @@ CONTRACT_KEYS = ("c0", "c1", "c2")
 REPLAY_NOTE = (
     "no single-TAR replay entry exists yet; the input and its run identity are recorded here"
 )
+#: The replay command a target that supports ``inodefence replay`` puts in ``replay_template``.
+#: ``{case_dir}`` is the case folder relative to the live folder (run it from the live folder).
+REPLAY_COMMAND_TEMPLATE = "inodefence replay {case_dir}"
 
 
 def _iso(epoch: float) -> str:
@@ -143,10 +146,16 @@ class LiveStep:
 class LiveRunMeta:
     """Identity of the run, copied into every snapshot and case record.
 
-    ``replay_template`` is an optional one-line command with ``{tar}`` (path of the case's
-    ``input.tar`` relative to the live folder), ``{image_id}`` and ``{version}`` placeholders. It is
-    ``None`` until a target provides a single-TAR replay entry; case records then say so plainly
-    instead of inventing a command.
+    ``replay_template`` is an optional one-line command with ``{case_dir}`` (the case folder) and
+    ``{tar}`` (its ``input.tar``), both relative to the live folder, plus ``{image_id}`` and
+    ``{version}`` placeholders. It is ``None`` until the target supports ``inodefence replay``
+    (then :data:`REPLAY_COMMAND_TEMPLATE`); case records then say so plainly instead of inventing
+    a command.
+
+    ``run_settings`` are the target's run conditions that a single case depends on (for node-tar:
+    sentinel count/seed, observer-integrity policy, profile). They are copied into every case
+    record so a replay can run the case under the same conditions, and a replay refuses a case
+    without them.
     """
 
     target: str
@@ -158,6 +167,7 @@ class LiveRunMeta:
     vocab_mode: str | None = None
     engine_commit: str | None = None
     replay_template: str | None = None
+    run_settings: dict[str, Any] | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -169,6 +179,7 @@ class LiveRunMeta:
             "search_policy": self.search_policy,
             "vocab_mode": self.vocab_mode,
             "engine_commit": self.engine_commit,
+            "run_settings": None if self.run_settings is None else dict(self.run_settings),
         }
 
 
@@ -336,11 +347,15 @@ class LiveRecorder:
         if final.exists():
             return False
         tmp = violations / f".tmp-{name}-{os.getpid()}"
-        rel_tar = f"{VIOLATIONS_DIR}/{name}/{CASE_TAR}"
+        rel_dir = f"{VIOLATIONS_DIR}/{name}"
+        rel_tar = f"{rel_dir}/{CASE_TAR}"
         replay = None
         if self.meta.replay_template is not None:
             replay = self.meta.replay_template.format(
-                tar=rel_tar, image_id=self.meta.image_id or "", version=self.meta.version
+                case_dir=rel_dir,
+                tar=rel_tar,
+                image_id=self.meta.image_id or "",
+                version=self.meta.version,
             )
         record = {
             "schema": CASE_SCHEMA,
@@ -363,6 +378,7 @@ class LiveRecorder:
             "tar_sha256": sha256(step.tar_bytes).hexdigest(),
             "tar_bytes": len(step.tar_bytes),
             "replay": replay,
+            "replay_cwd": "live folder" if replay is not None else None,
             "replay_note": None if replay is not None else REPLAY_NOTE,
             "recorded_at": _iso(self._clock()),
             **self.meta.as_dict(),
@@ -650,6 +666,8 @@ def render_live_status(
         lines.append(
             f"  violation cases on disk: {len(cases)} (each folder: input.tar + case.json)"
         )
+        from inodefence.case_replay import read_replays, replay_brief  # lazy: no import cycle
+
         for record in cases[-max_cases:]:
             fps = record.get("fingerprints") or []
             lines.append(
@@ -660,6 +678,11 @@ def render_live_status(
                 f" sha256={str(record.get('tar_sha256', ''))[:16]}..."
                 f" {record['dir']}/"
             )
+            replays = read_replays(live_dir / record["dir"])
+            if replays:
+                lines.append(f"      {replay_brief(replays[-1])}  [{replays[-1]['dir']}/]")
+            elif record.get("replay"):
+                lines.append(f"      not replayed yet: {record['replay']}")
         if len(cases) > max_cases:
             lines.append(f"    ... {len(cases) - max_cases} earlier case(s) not listed")
     elif progress is not None:

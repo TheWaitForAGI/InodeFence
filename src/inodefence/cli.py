@@ -32,6 +32,7 @@ from pathlib import Path
 
 from inodefence.locate import (
     EXPLORE_DRIVER,
+    REPLAY_DRIVER,
     REPO_NOT_FOUND,
     VERIFY_DRIVER,
     repo_root,
@@ -155,6 +156,15 @@ def cmd_explore(args: argparse.Namespace) -> int:
     return _forward(EXPLORE_DRIVER, argv + args.extra)
 
 
+def cmd_replay(args: argparse.Namespace) -> int:
+    # The driver runs with the repository as its working directory, while the recorded command
+    # (``inodefence replay violations/run-NNNNNN``) is run from the live folder: resolve here.
+    argv = [str(args.case_dir.expanduser().resolve()), "--rounds", str(args.rounds)]
+    if args.dry_run:
+        argv.append("--dry-run")
+    return _forward(REPLAY_DRIVER, argv)
+
+
 def cmd_status(args: argparse.Namespace) -> int:
     from inodefence.live_exploration import live_dirs_status
     from inodefence.target_result import TargetResultError, load_target_result
@@ -247,6 +257,17 @@ def build_parser() -> argparse.ArgumentParser:
     explore.add_argument("--out", type=Path, default=DEFAULT_EXPLORE_OUT)
     explore.add_argument("--dry-run", action="store_true", help="print the plan; run nothing")
     explore.set_defaults(func=cmd_explore)
+
+    replay = sub.add_parser(
+        "replay",
+        help="re-run one violation case N times on the same image and record the reproduction rate",
+    )
+    replay.add_argument("case_dir", type=Path, help="a live/violations/run-NNNNNN folder")
+    replay.add_argument("--rounds", type=int, default=3, help="how many re-runs (default 3)")
+    replay.add_argument(
+        "--dry-run", action="store_true", help="check input, image and support; run nothing"
+    )
+    replay.set_defaults(func=cmd_replay)
 
     status = sub.add_parser(
         "status",

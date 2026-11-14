@@ -18,6 +18,7 @@ from typing import Any
 #: Drivers the CLI forwards to. The ONE place that knows the out-of-package ``scripts/`` layout.
 VERIFY_DRIVER = "scripts/run_target.py"
 EXPLORE_DRIVER = "scripts/run_target_explore.py"
+REPLAY_DRIVER = "scripts/run_target_replay.py"
 
 #: What marks a directory as the repository (a driver and the build assets must both be there).
 _MARKER_DRIVER = Path(VERIFY_DRIVER)

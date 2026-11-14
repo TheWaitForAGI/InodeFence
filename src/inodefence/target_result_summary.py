@@ -126,6 +126,8 @@ def render_summary(result: TargetResult, *, source_name: str, inputs_verified: b
         method = (
             "공개 레지스트리에서 실행 중에 만든 lock으로 빌드(탐색용, 저장소에 커밋된 레시피 아님)"
             if prep.method == "registry"
+            else "공식 런타임 이미지를 받음(요청 값을 실행 시점에 정확한 버전으로 해석)"
+            if prep.method == "official-image"
             else "저장소에 커밋된 레시피로 빌드"
         )
         add(f"| 이미지 준비 방식 | {method} |")

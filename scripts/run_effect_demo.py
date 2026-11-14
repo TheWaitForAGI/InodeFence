@@ -8,6 +8,7 @@ evidence. `native_demo_report` runs inside the trusted Linux controller
 import argparse
 import base64
 import json
+import re
 import sys
 import traceback
 from collections import Counter
@@ -99,13 +100,20 @@ DECOMPRESS_CAMPAIGN_MODE = "decompress-effect-campaign"
 # demo arguments; --policy (EffectSearchPolicy) does not apply (its own novelty channels) and is
 # ignored for this mode, exactly like the decompress campaign.
 ORAS_GO_CAMPAIGN_MODE = "oras-go-effect-campaign"
+# Exploration over python-tarfile on one caller-prepared runtime image (official python:X.Y.Z-slim
+# + the effect worker) and ONE extraction filter; the shared effect loop (run_effect_campaign),
+# unchanged. Requires --runtime-version and --extraction-filter; shares --seed/--budget/--policy/
+# --mutation-policy.
+PYTHON_TARFILE_CAMPAIGN_MODE = "python-tarfile-effect-campaign"
 DEMO_MODES = (
     "effect-demo",
     HISTORICAL_DEMO_MODE,
     EXPLORE_DEMO_MODE,
     DECOMPRESS_CAMPAIGN_MODE,
     ORAS_GO_CAMPAIGN_MODE,
+    PYTHON_TARFILE_CAMPAIGN_MODE,
 )
+PYTHON_TARFILE_FILTERS = ("data", "fully_trusted")
 HISTORICAL_LABEL = "demo run"
 EXPLORATION_LABEL = "exploratory demo run"
 HISTORICAL_SEARCH_POLICY = EffectSearchPolicy.P2_EFFECT_ADAPTIVE
@@ -261,6 +269,8 @@ DEMO_FORWARDED_ARGUMENTS = (
     "observer_integrity_policy",
     "sentinel_count",
     "sentinel_seed",
+    "runtime_version",
+    "extraction_filter",
 )
 
 
@@ -288,6 +298,15 @@ def add_demo_arguments(parser: argparse.ArgumentParser) -> None:
         help="opt-in: PRNG seed for generated sentinel names; requires --sentinel-count",
     )
     parser.add_argument(
+        "--runtime-version",
+        help="exact python runtime X.Y.Z of the prepared image; python-tarfile campaign only",
+    )
+    parser.add_argument(
+        "--extraction-filter",
+        choices=PYTHON_TARFILE_FILTERS,
+        help="the ONE tarfile extraction filter of this campaign; python-tarfile campaign only",
+    )
+    parser.add_argument(
         "--observer-integrity-policy",
         choices=("stop", "invalid-continue"),
         help=(
@@ -309,6 +328,15 @@ def check_demo_arguments(parser: argparse.ArgumentParser, args: argparse.Namespa
         parser.error("--tar-version is restricted to effect-demo-historical / effect-demo-explore")
     if args.mode in (HISTORICAL_DEMO_MODE, EXPLORE_DEMO_MODE) and tar_version is None:
         parser.error(f"{args.mode} requires --tar-version (the resolved node-tar version)")
+    runtime = getattr(args, "runtime_version", None)
+    extraction_filter = getattr(args, "extraction_filter", None)
+    python_mode = args.mode == PYTHON_TARFILE_CAMPAIGN_MODE
+    if (runtime is not None or extraction_filter is not None) and not python_mode:
+        parser.error("--runtime-version/--extraction-filter are restricted to the python campaign")
+    if python_mode and (runtime is None or extraction_filter is None):
+        parser.error(f"{args.mode} requires --runtime-version and --extraction-filter")
+    if runtime is not None and re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", runtime) is None:
+        parser.error(f"--runtime-version must be exact X.Y.Z, got {runtime!r}")
     count = getattr(args, "sentinel_count", None)
     seed = getattr(args, "sentinel_seed", None)
     if (count is None) != (seed is None):

@@ -507,19 +507,23 @@ def test_result_inputs_and_summary_agree_and_failed_cells_get_none(
     assert not (tmp_path / "fake-2.0.0").exists()  # no result.json, no summary.md, no verdict
 
 
-def test_summary_failure_is_exit_3_and_keeps_the_result_files(
+def test_summary_failure_is_exit_3_names_the_cell_and_keeps_the_rest(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    def broken(paths: object) -> list[Path]:
-        list(paths)  # type: ignore[call-overload]
-        raise OSError("disk full")
+    real = rt.write_cell_summaries
 
-    monkeypatch.setattr(rt, "write_cell_summaries", broken)
-    monkeypatch.setattr(nt.cri, "run_one", _fake_run_one({"7.5.2": SHARED}))
-    args = ["--target", "node-tar", "--version", "7.5.2", "--out", str(tmp_path)]
-    assert rt.main(args) == 3  # not the FAIL code 1, and no traceback
+    def broken_for_752(paths: list[Path]) -> list[Path]:
+        if any("7.5.2" in str(p) for p in paths):
+            raise OSError("disk full")
+        return real(paths)
+
+    monkeypatch.setattr(rt, "write_cell_summaries", broken_for_752)
+    monkeypatch.setattr(nt.cri, "run_one", _fake_run_one({"7.5.2": SHARED, "7.5.3": DECLINED}))
+    argv = ["--target", "node-tar", "--version", "7.5.2", "--version", "7.5.3"]
+    assert rt.main([*argv, "--out", str(tmp_path)]) == 3  # not the FAIL code 1, no traceback
     err = capsys.readouterr().err
-    assert "TARGET-RUN SUMMARY-ERROR: summary.md not written (OSError: disk full)" in err
-    result = load_target_result(tmp_path / "node-tar-7.5.2" / "result.json")
-    assert result.verdict is Verdict.FAIL  # the verdict file is kept as written
+    failed = tmp_path / "node-tar-7.5.2" / "result.json"
+    assert f"TARGET-RUN SUMMARY-ERROR {failed}: summary.md not written (OSError: disk full)" in err
+    assert load_target_result(failed).verdict is Verdict.FAIL  # verdict file kept as written
     assert not (tmp_path / "node-tar-7.5.2" / "summary.md").exists()
+    assert (tmp_path / "node-tar-7.5.3" / "summary.md").exists()  # the other cell still gets one

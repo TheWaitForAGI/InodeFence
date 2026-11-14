@@ -532,13 +532,18 @@ def main(argv: list[str] | None = None) -> int:
         worst = max(worst, {"PASS": 0, "FAIL": 1, "ERROR": 2}[result.verdict.value])
     # summary.md hook (IF-MAC-C): one call here, from `written` (cell, result, result.json path),
     # writes args.out / "summary.md". Only cells with a verdict are in `written`.
-    try:
-        write_cell_summaries(path for _, _, path in written)
-    except Exception as error:  # noqa: BLE001 - any summary failure must surface, not mask the code
-        # The verdict files stay as written; only the human-readable page is missing.
-        message = f"{type(error).__name__}: {error}"
-        print(f"TARGET-RUN SUMMARY-ERROR: summary.md not written ({message})", file=sys.stderr)
-        return max(worst, SETUP_ERROR)
+    # One call per cell, so a failure names its cell and does not stop the other summaries.
+    # The verdict files stay as written; only the human-readable page is missing.
+    summary_failed = False
+    for _, _, path in written:
+        try:
+            write_cell_summaries([path])
+        except Exception as error:  # noqa: BLE001 - must surface, never mask the exit code
+            summary_failed = True
+            message = f"summary.md not written ({type(error).__name__}: {error})"
+            print(f"TARGET-RUN SUMMARY-ERROR {path}: {message}", file=sys.stderr)
+    if summary_failed:
+        return SETUP_ERROR
     return worst
 
 

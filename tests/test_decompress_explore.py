@@ -170,3 +170,12 @@ def test_ensure_image_refuses_a_stale_worker_even_for_an_existing_image(
         dt.ensure_image(SPEC)
     (cell,) = dt.ADAPTER.cells([SPEC], [])
     assert "rebuild it" in (dt.verify_existing(cell, "img") or "")
+
+
+def test_selfdiscover_script_explore_branch_skips_target_build() -> None:
+    text = dx.SCRIPT.read_text(encoding="utf-8")
+    subprocess.run(["bash", "-n", str(dx.SCRIPT)], check=True)
+    assert 'DECOMPRESS_IMAGE="${EXPLORE_IMAGE:-inodefence-decompress-selfdiscover:' in text
+    assert 'if [ -z "$EXPLORE_IMAGE" ]; then' in text  # the role image is built only without it
+    assert "$HOME/inodefence-explore/decompress" in text
+    assert "decompress-effect-campaign" in text  # the unchanged controller mode

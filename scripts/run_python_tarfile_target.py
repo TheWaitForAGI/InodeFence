@@ -62,6 +62,7 @@ from scripts.run_target import (
     PrepareStep,
     RunCell,
     TargetAdapter,
+    TargetOption,
     engine_provenance,
     fixture_plan,
     write_result,
@@ -239,45 +240,24 @@ def main(argv: list[str] | None = None) -> int:
     return worst
 
 
-# ---- target options: declared once, read by fixture regression and by exploration ----
+# ---- target option: declared once (TargetOption), read by fixture regression and exploration ----
 
-
-@dataclass(frozen=True, slots=True)
-class TargetOptionDeclaration:
-    """One target-specific option, declared by the adapter for the common driver and commands.
-
-    ``choices`` are the values the target accepts at all (fixture regression may vary them, one
-    axis per run); ``explore_choices`` the subset exploration accepts now, and ``explore_single``
-    that one exploration takes exactly one value. The common layer (IF-MAC-A driver, IF-MAC-C
-    commands) is to read this declaration for validation and help; until then this module checks
-    it itself.
-    """
-
-    name: str
-    choices: tuple[str, ...]
-    required: bool
-    help: str
-    explore_choices: tuple[str, ...]
-    explore_single: bool = True
-    explore_held: str = ""  # why the values outside ``explore_choices`` are not explored yet
-
-
-EXTRACTION_FILTER_OPTION = TargetOptionDeclaration(
-    name="extraction_filter",
-    choices=pti.FILTERS,
+#: The extraction-filter axis, declared to the common driver (``scripts.run_target.TargetOption``).
+#: ``make target-run`` may compare several values on one runtime (a setting comparison, never a
+#: version comparison); one exploration takes exactly one value.
+EXTRACTION_FILTER_OPTION = TargetOption(
+    "extraction-filter",
+    "tarfile extraction filter (one value per exploration; target-run compares settings on one "
+    "runtime, never versions)",
     required=True,
-    help=(
-        "tarfile extraction filter. One value per exploration; fixture regression may compare "
-        "several on one runtime (a setting comparison, not a version comparison)"
-    ),
-    explore_choices=("data",),
-    explore_held=(
-        "fully_trusted exploration is not approved yet (D022: binding an untrusted target to a "
-        "campaign awaits a decision); only data is explored for now"
-    ),
+    choices=pti.FILTERS,
 )
-#: Every option this target declares (the common layer reads this).
-TARGET_OPTIONS = (EXTRACTION_FILTER_OPTION,)
+#: Values exploration accepts now, and why the others are held.
+EXPLORE_FILTERS = ("data",)
+EXPLORE_HELD_REASON = (
+    "fully_trusted exploration is not approved yet (D022: binding an untrusted target to a "
+    "campaign awaits a decision); only data is explored for now"
+)
 
 
 # ---- registration in the common command (scripts.run_target TARGETS) ----
@@ -285,6 +265,7 @@ TARGET_OPTIONS = (EXTRACTION_FILTER_OPTION,)
 
 def _adapter_cells(versions: list[str], filters: list[str]) -> list[RunCell]:
     option = EXTRACTION_FILTER_OPTION
+    assert option.choices is not None
     if option.required and not filters:
         raise ValueError(f"python-tarfile needs --extraction-filter, one of {option.choices}")
     for runtime in versions:
@@ -557,6 +538,7 @@ ADAPTER = TargetAdapter(
     describe=_describe,
     resolve=_resolve,
     explore=_explore_hook,
+    options=(EXTRACTION_FILTER_OPTION,),
 )
 
 

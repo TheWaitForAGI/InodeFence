@@ -1,88 +1,68 @@
 """python-tarfile's exploration hook: the shared effect loop on one prepared runtime + one filter.
 
 This is the python-tarfile implementation of ``TargetAdapter.explore`` (``scripts.run_target``).
-The common driver (``scripts.run_target_explore``) resolves ``latest`` / ``X.Y`` / ``X.Y.Z`` and
-prepares the official ``python:X.Y.Z-slim`` image (``scripts.run_python_tarfile_target``); this
-hook then
+The common driver (``scripts.run_target_explore``) resolves ``latest`` / ``X.Y`` / ``X.Y.Z``,
+validates the declared ``--extraction-filter`` option (``run_python_tarfile_target``), prepares
+the official ``python:X.Y.Z-slim`` image, and passes the option in
+``ExploreOptions.target_options``. This hook then
 
-1. builds or reuses the producer image on top of it (``scripts.python_tarfile_producer``: only the
-   worker file is added; checked offline before it is named and again before every reuse);
-2. runs the ``python-tarfile-effect-campaign`` controller mode through
+1. refuses a filter exploration does not take yet (``EXPLORE_FILTERS``; ``fully_trusted`` is held,
+   the reason is in the message);
+2. builds or reuses the producer image on top of the runtime image
+   (``scripts.python_tarfile_producer``: only the worker file is added; checked offline before it
+   is named and again before every reuse);
+3. runs the ``python-tarfile-effect-campaign`` controller mode through
    ``scripts/local_python_tarfile_explore.sh`` -- the target runs only inside the disposable
    controller via the common container backend;
-3. converts the loop report into the common ``inodefence-target-result-v1`` campaign result
-   (``axes.runtime_version`` + ``axes.extraction_filter``; one of each per campaign).
+4. converts the loop report with the common converter (``scripts.explore_result``) and only then
+   sets what is python-specific: the two axes (``runtime_version`` + ``extraction_filter``, one of
+   each), the producer image as the run image, and the ``preparation`` record.
 
 Silent negatives: any step without a verdict makes the result ERROR (the common verdict rule), and
-a report whose every step is undetermined or that aborted is an error, never a PASS.
+a report whose every step is undetermined, that aborted, or that is for another runtime or filter
+gives no result at all.
 """
 
 from __future__ import annotations
 
-import base64
+import dataclasses
 import json
 import os
 import subprocess
 import sys
 from collections.abc import Callable
-from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
+from scripts import explore_result
 from scripts import python_tarfile_producer as producer
 from scripts import run_python_tarfile_target as rpt
-from scripts.run_target import (
-    ExploreOptions,
-    ExploreOutcome,
-    PreparedTargetImage,
-    engine_provenance,
-)
+from scripts.run_target import ExploreOptions, ExploreOutcome, PreparedTargetImage
 
 from inodefence.generator import minimal_seed_corpus
-from inodefence.target_result import (
-    CampaignInfo,
-    CaseVerdict,
-    Preparation,
-    ResultMode,
-    TargetAxes,
-    TargetResult,
-    repro_input,
-)
+from inodefence.target_result import Preparation, TargetAxes, TargetResult
 from inodefence.target_result_summary import write_cell_summaries
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 LAUNCHER = REPO_ROOT / "scripts" / "local_python_tarfile_explore.sh"
-OBSERVED_CONTRACTS = ("C0", "C1", "C2")  # the effect path takes a full before/after snapshot
 MIN_BUDGET = len(minimal_seed_corpus())
 
 Runner = Callable[..., subprocess.CompletedProcess[Any]]
 
 
-def explore_option(options: ExploreOptions, declared: rpt.TargetOptionDeclaration) -> str:
-    """The ONE value of a declared target option from ``options``' target-option bundle.
-
-    The common driver carries target options as a name -> value bundle (``target_options``; a
-    value may be one string or a sequence of strings). Missing, empty, several values, a value
-    the target does not know, or one exploration does not accept yet is a ``ValueError``.
-    """
-    bundle = getattr(options, "target_options", None) or {}
-    raw = bundle.get(declared.name)
-    values = [raw] if isinstance(raw, str) else list(raw or ())
-    if not values:
+def explore_filter(options: ExploreOptions) -> str:
+    """The ONE extraction filter of this exploration, from the declared target option."""
+    declared = rpt.EXTRACTION_FILTER_OPTION
+    value = options.target_options.get(declared.name)
+    if not value:
         raise ValueError(
-            f"python-tarfile exploration needs --{declared.name.replace('_', '-')} "
-            f"(one of {', '.join(declared.explore_choices)})"
+            f"python-tarfile exploration needs --{declared.name} "
+            f"(one of {', '.join(rpt.EXPLORE_FILTERS)})"
         )
-    if declared.explore_single and len(values) > 1:
-        raise ValueError(
-            f"one {declared.name} per exploration, got {values}: settings are explored in "
-            "separate campaigns, never mixed in one"
-        )
-    (value,) = values
-    if value not in declared.choices:
-        raise ValueError(f"{declared.name} must be one of {declared.choices}, got {value!r}")
-    if value not in declared.explore_choices:
-        raise ValueError(f"{declared.name}={value} is not explored: {declared.explore_held}")
+    if declared.choices is not None and value not in declared.choices:
+        raise ValueError(f"--{declared.name} must be one of {declared.choices}, got {value!r}")
+    if value not in rpt.EXPLORE_FILTERS:
+        raise ValueError(f"--{declared.name} {value} is not explored: {rpt.EXPLORE_HELD_REASON}")
     return value
 
 
@@ -151,7 +131,7 @@ def build_campaign_result(
     seed: int,
     budget: int,
 ) -> tuple[TargetResult, dict[str, bytes]]:
-    """Loop report -> common campaign result plus the violating TARs (only those are saved)."""
+    """Common conversion, then the python-specific axes, run image and preparation record."""
     if "aborted" in report:
         raise ValueError(f"exploration aborted: {report['aborted'].get('reason')}")
     if report.get("all_undetermined"):
@@ -161,53 +141,18 @@ def build_campaign_result(
         extraction_filter,
     ):
         raise ValueError("loop report is for a different runtime or filter")
-    cases = tuple(
-        CaseVerdict(
-            f"step-{r['run_index']}",
-            "run_error" if r["outcome"] == "run_error" else r["outcome"],
-            r["c0"],
-            r["c1"],
-            r["c2"],
-        )
-        for r in report.get("case_records", [])
+    common, tar_files = explore_result.build_campaign_result(
+        report, prepared, seed=seed, budget=budget
     )
-    repro = []
-    tar_files: dict[str, bytes] = {}
-    first: int | None = None
-    for item in report.get("violation_inputs", []):
-        run_index = int(item["run_index"])
-        tar = base64.b64decode(item["tar_b64"])
-        if sha256(tar).hexdigest() != item["tar_sha256"]:
-            raise ValueError(f"violation input step-{run_index} failed its SHA-256 check")
-        tar_path = f"inputs/step-{run_index}.tar"
-        tar_files[tar_path] = tar
-        repro.append(repro_input(f"step-{run_index}", tar_path, tar))
-        first = run_index + 1 if first is None else min(first, run_index + 1)
-    base = engine_provenance(made.image_ref)
-    provenance = type(base)(base.engine_sha, base.engine_dirty, made.image_ref, made.image_id)
-    result = TargetResult(
-        target=rpt.TARGET,
+    result = dataclasses.replace(
+        common,
         axes=TargetAxes(runtime_version=prepared.version, extraction_filter=extraction_filter),
-        mode=ResultMode.CAMPAIGN,
-        observed_contracts=OBSERVED_CONTRACTS,
-        cases=cases,
-        repro_inputs=tuple(repro),
-        provenance=provenance,
+        provenance=dataclasses.replace(
+            common.provenance, image_ref=made.image_ref, image_id=made.image_id
+        ),
         preparation=_preparation(prepared, made),
-        campaign=CampaignInfo(seed=seed, budget=budget, runs_to_first_violation=first),
     )
     return result, tar_files
-
-
-def write_result(out_dir: Path, result: TargetResult, tar_files: dict[str, bytes]) -> Path:
-    result_path = out_dir / "result.json"
-    if result_path.exists():
-        raise FileExistsError(f"refusing to overwrite {result_path}")
-    (out_dir / "inputs").mkdir(parents=True, exist_ok=True)
-    for tar_path, data in tar_files.items():
-        (out_dir / tar_path).write_bytes(data)
-    result_path.write_text(result.dumps(), encoding="utf-8")
-    return result_path
 
 
 def explore(
@@ -218,7 +163,7 @@ def explore(
     ensure: Callable[..., producer.ProducerImage] | None = None,
 ) -> ExploreOutcome:
     """``TargetAdapter.explore`` for python-tarfile (one runtime image, one filter)."""
-    extraction_filter = explore_option(options, rpt.EXTRACTION_FILTER_OPTION)
+    extraction_filter = explore_filter(options)
     if options.budget < MIN_BUDGET:
         raise ValueError(f"budget must be >= {MIN_BUDGET} (the loop's seed count)")
     ensure = ensure or producer.ensure_producer_image
@@ -242,7 +187,7 @@ def explore(
     result, tar_files = build_campaign_result(
         report, prepared, made, extraction_filter, seed=options.seed, budget=options.budget
     )
-    result_path = write_result(path.parent / f"{run_id}-result", result, tar_files)
+    result_path = explore_result.write_result(path.parent / f"{run_id}-result", result, tar_files)
     try:  # the result is written; a summary failure must not lose it
         write_cell_summaries([result_path])
     except Exception as error:  # noqa: BLE001

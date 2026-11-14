@@ -15,14 +15,20 @@ name: repro-evidence
 #      C0 / C1+C2 / C2 on a controlled extractor (not node-tar).
 #   2. node-tar effect images 7.5.2, 7.5.3, 7.5.6, 7.5.7, 7.5.8 from
 #      tools/node-tar/effect/Dockerfile + tools/node-tar/versions/<v>/.
-#   3. experiments/repro/cross_release_identity.py --out scratch, diff vs
+#   3. experiments/repro/cross_release_identity.py --out scratch, compared with
 #      experiments/repro/evidence/{summary,toplevel_hardlink,nested_hardlink}.json.
-#   4. make regression TAR_VERSION=7.5.2. Verdict names: FAIL = a known C1/C2 fixture
-#      still breaches. On 7.5.2 FAIL is the EXPECTED verdict (exit 1), not a failure.
-#   5. oras-go and decompress native probes --out scratch, diff vs committed JSON.
+#   4. scripts/regression_check.py --tar-version 7.5.2 (what `make regression` runs, called
+#      directly so its own exit code is kept; make would turn every failure into 2).
+#      Verdict names: FAIL = a known C1/C2 fixture still breaches. On 7.5.2 FAIL is the
+#      EXPECTED verdict (exit 1 plus the line "REGRESSION FAIL node-tar=7.5.2").
+#   5. oras-go and decompress native probes --out scratch, compared with committed JSON.
+# Comparisons: summary.json and a verdict-only projection of each fixture/probe JSON are
+# the comparison. The full-file diffs are kept for reference; they normally differ because
+# they carry raw dev/ino values and runner-built image ids.
 # Output: artifact repro-evidence-<run_id> with every output, diff, exit code, image id
-# and SHA256SUMS. The job fails only when a command ends with an unexpected exit code;
-# a diff against the committed evidence is reported, not treated as failure.
+# and SHA256SUMS. The job fails when a command ends with an unexpected exit code, when the
+# regression line is not the expected FAIL line, or when a scratch output is missing; a
+# difference from the committed evidence is reported, not treated as failure.
 
 on:
   workflow_dispatch: {}
@@ -51,7 +57,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip setuptools wheel
           make install
-      - name: Prepare runtime directory and output folder
+      - name: Prepare runtime directory, output folder and comparison helper
         run: |
           sudo install -d -o "$(id -u)" -g "$(id -g)" -m 0755 "$INODEFENCE_RUNTIME_ROOT"
           mkdir -p "$OUT"
@@ -63,6 +69,36 @@ jobs:
             date -u '+started %Y-%m-%dT%H:%M:%SZ'
           } > "$OUT/run-info.txt"
           cat "$OUT/run-info.txt"
+          # compare <name> <committed json> <scratch json>: full diff (reference) + verdict-only projection diff (the comparison)
+          cat > "$RUNNER_TEMP/compare.sh" <<'SH'
+          name=$1; committed=$2; scratch=$3
+          if [ ! -f "$scratch" ]; then
+            echo "$name: MISSING scratch output $scratch" | tee -a "$OUT/comparisons.txt"
+            echo "$name missing" >> "$OUT/missing.txt"
+            exit 0
+          fi
+          diff -u "$committed" "$scratch" > "$OUT/$name.full.diff"
+          python "$RUNNER_TEMP/project.py" "$committed" > "$OUT/$name.verdict.committed.json"
+          python "$RUNNER_TEMP/project.py" "$scratch" > "$OUT/$name.verdict.rerun.json"
+          diff -u "$OUT/$name.verdict.committed.json" "$OUT/$name.verdict.rerun.json" > "$OUT/$name.verdict.diff"
+          v=$([ -s "$OUT/$name.verdict.diff" ] && echo DIFFERS || echo identical)
+          f=$([ -s "$OUT/$name.full.diff" ] && echo differs || echo identical)
+          echo "$name: verdict projection $v (comparison); full file $f (reference only, raw dev/ino/image ids)" | tee -a "$OUT/comparisons.txt"
+          SH
+          cat > "$RUNNER_TEMP/project.py" <<'PY'
+          """Keep only the fields that carry the judgement in a repro JSON (summary, fixture or probe)."""
+          import json, sys
+          d = json.load(open(sys.argv[1], encoding="utf-8"))
+          if "releases" in d:  # cross_release fixture file
+              out = {"fixture": d.get("fixture"), "fixed_pair": d.get("fixed_pair"),
+                     "verdicts": {r: v.get("verdict") for r, v in sorted(d["releases"].items())}}
+          elif "per_role" in d:  # oras-go / decompress probe
+              out = {k: d.get(k) for k in ("fixture", "affected_shared", "fixed_shared", "boundary_ok")}
+              out["verdicts"] = {r: v.get("verdict") for r, v in sorted(d["per_role"].items())}
+          else:  # summary.json is already verdict-level
+              out = d
+          print(json.dumps(out, indent=2, sort_keys=True))
+          PY
 
       - name: "1. Oracle fixture check (controlled extractor, not node-tar)"
         run: |
@@ -73,6 +109,7 @@ jobs:
 
       - name: "2. Build node-tar effect images from the committed recipes"
         run: |
+          echo "# runner-built image ids from the committed recipes; NOT the frozen registration digests" > "$OUT/image-ids.txt"
           for v in 7.5.2 7.5.3 7.5.6 7.5.7 7.5.8; do
             docker build -q -f tools/node-tar/effect/Dockerfile --build-arg "TAR_VERSION=$v" \
               -t "inodefence-node-tar-effect:$v" . > /dev/null
@@ -80,39 +117,34 @@ jobs:
               | tee -a "$OUT/image-ids.txt"
           done
 
-      - name: "3. Cross-release identity repro (diff vs committed evidence, report-only)"
+      - name: "3. Cross-release identity repro (compared with committed evidence, report-only)"
         run: |
           set +e
           python experiments/repro/cross_release_identity.py --out "$OUT/cross_release" > "$OUT/cross_release.stdout.txt" 2>&1
           echo "cross_release_identity rc=$? (expected 0)" | tee -a "$OUT/exit-codes.txt"
           for f in summary toplevel_hardlink nested_hardlink; do
-            diff -u "experiments/repro/evidence/$f.json" "$OUT/cross_release/$f.json" > "$OUT/cross_release.$f.diff"
-            echo "cross_release $f.json diff vs committed: $([ -s "$OUT/cross_release.$f.diff" ] && echo DIFFERS || echo identical)" \
-              | tee -a "$OUT/comparisons.txt"
+            bash "$RUNNER_TEMP/compare.sh" "cross_release.$f" "experiments/repro/evidence/$f.json" "$OUT/cross_release/$f.json"
           done
 
-      - name: "4. make regression TAR_VERSION=7.5.2 (FAIL = breach = expected on 7.5.2)"
+      - name: "4. Regression check 7.5.2 (FAIL = breach = expected on 7.5.2)"
         run: |
           set +e
-          echo "NOTE: regression verdict names are inverted for this use: FAIL means a known C1/C2 fixture still breaches. On 7.5.2 FAIL (rc 1) is the expected verdict." \
+          echo "NOTE: regression verdict names: FAIL means a known C1/C2 fixture still breaches. On 7.5.2 FAIL (rc 1 with the line 'REGRESSION FAIL node-tar=7.5.2') is the expected verdict. Called directly (same command as make regression) so the script's own exit code is kept." \
             | tee "$OUT/regression-7.5.2.note.txt"
-          make regression TAR_VERSION=7.5.2 REGRESSION_ARGS="--out $OUT/regression-7.5.2.json" > "$OUT/regression-7.5.2.stdout.txt" 2>&1
-          echo "make regression 7.5.2 rc=$? (expected 1 = FAIL = breach)" | tee -a "$OUT/exit-codes.txt"
+          PYTHONPATH=src:. python scripts/regression_check.py --tar-version 7.5.2 --out "$OUT/regression-7.5.2.json" \
+            > "$OUT/regression-7.5.2.stdout.txt" 2>&1
+          echo "regression_check 7.5.2 rc=$? (expected 1 = FAIL = breach)" | tee -a "$OUT/exit-codes.txt"
           cat "$OUT/regression-7.5.2.stdout.txt"
 
-      - name: "5. oras-go and decompress native probes (diff vs committed evidence, report-only)"
+      - name: "5. oras-go and decompress native probes (compared with committed evidence, report-only)"
         run: |
           set +e
           python experiments/repro/oras_go_cwd_hardlink.py --out "$OUT/oras_go" > "$OUT/oras_go.stdout.txt" 2>&1
           echo "oras_go_cwd_hardlink rc=$? (expected 0)" | tee -a "$OUT/exit-codes.txt"
           python experiments/repro/decompress_hardlink.py --out "$OUT/decompress" > "$OUT/decompress.stdout.txt" 2>&1
           echo "decompress_hardlink rc=$? (expected 0)" | tee -a "$OUT/exit-codes.txt"
-          diff -u experiments/repro/evidence/oras_go_cwd_hardlink.json "$OUT/oras_go/oras_go_cwd_hardlink.json" > "$OUT/oras_go.diff"
-          echo "oras_go_cwd_hardlink.json diff vs committed: $([ -s "$OUT/oras_go.diff" ] && echo DIFFERS || echo identical)" \
-            | tee -a "$OUT/comparisons.txt"
-          diff -u experiments/repro/evidence/decompress_hardlink.json "$OUT/decompress/decompress_hardlink.json" > "$OUT/decompress.diff"
-          echo "decompress_hardlink.json diff vs committed: $([ -s "$OUT/decompress.diff" ] && echo DIFFERS || echo identical)" \
-            | tee -a "$OUT/comparisons.txt"
+          bash "$RUNNER_TEMP/compare.sh" oras_go experiments/repro/evidence/oras_go_cwd_hardlink.json "$OUT/oras_go/oras_go_cwd_hardlink.json"
+          bash "$RUNNER_TEMP/compare.sh" decompress experiments/repro/evidence/decompress_hardlink.json "$OUT/decompress/decompress_hardlink.json"
 
       - name: Summary, residual check and SHA256SUMS
         if: always()
@@ -133,10 +165,12 @@ jobs:
           path: repro-out
           if-no-files-found: warn
 
-      - name: Fail only on unexpected exit codes
+      - name: Fail on unexpected exit codes, a non-FAIL regression line or a missing output
         run: |
           grep -q '^oracle_fixture_check rc=0 ' "$OUT/exit-codes.txt"
           grep -q '^cross_release_identity rc=0 ' "$OUT/exit-codes.txt"
-          grep -q '^make regression 7.5.2 rc=1 ' "$OUT/exit-codes.txt"
+          grep -q '^regression_check 7.5.2 rc=1 ' "$OUT/exit-codes.txt"
+          grep -q '^REGRESSION FAIL node-tar=7.5.2 ' "$OUT/regression-7.5.2.stdout.txt"
           grep -q '^oras_go_cwd_hardlink rc=0 ' "$OUT/exit-codes.txt"
           grep -q '^decompress_hardlink rc=0 ' "$OUT/exit-codes.txt"
+          [ ! -s "$OUT/missing.txt" ]

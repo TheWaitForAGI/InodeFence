@@ -18,9 +18,10 @@ the official ``python:X.Y.Z-slim`` image, and passes the option in
    sets what is python-specific: the two axes (``runtime_version`` + ``extraction_filter``, one of
    each), the producer image as the run image, and the ``preparation`` record.
 
-Silent negatives: any step without a verdict makes the result ERROR (the common verdict rule), and
-a report whose every step is undetermined, that aborted, or that is for another runtime or filter
-gives no result at all.
+Silent negatives: a step without a verdict is counted in ``runs.errored`` and makes the verdict
+ERROR (the common rule) -- a report whose every step is undetermined is still written, as ERROR, so
+the record stays; the terminal shows the undetermined count and ratio. A report that aborted, has
+no steps, or is for another runtime or filter gives no result.
 """
 
 from __future__ import annotations
@@ -134,8 +135,8 @@ def build_campaign_result(
     """Common conversion, then the python-specific axes, run image and preparation record."""
     if "aborted" in report:
         raise ValueError(f"exploration aborted: {report['aborted'].get('reason')}")
-    if report.get("all_undetermined"):
-        raise ValueError("every step was undetermined (no verdict); refusing to report a result")
+    if not report.get("case_records"):
+        raise ValueError("loop report has no steps; refusing to report a result")
     if (report.get("runtime_version"), report.get("extraction_filter")) != (
         prepared.version,
         extraction_filter,
@@ -192,6 +193,15 @@ def explore(
         write_cell_summaries([result_path])
     except Exception as error:  # noqa: BLE001
         print(f"TARGET-EXPLORE SUMMARY: summary.md not written ({error})", file=sys.stderr)
+    undetermined = result.errored
+    print(
+        f"settings: search={report.get('search_policy')} vocabulary={report.get('vocabulary')} "
+        f"filter={extraction_filter} runtime={prepared.version}"
+    )
+    print(
+        f"undetermined steps: {undetermined}/{result.executed} "
+        f"({undetermined / result.executed:.0%}); any undetermined step makes the verdict ERROR"
+    )
     print(f"loop report: {path}")
     return ExploreOutcome(
         result_path=result_path,

@@ -1,22 +1,30 @@
-# Abstract (드래프트 v1)
+# Abstract (드래프트 v2)
 
-InodeFence는 TAR archive extraction의 보안 경계위반 탐색에서, CVE 식별자·PoC·고정 공격 패턴·대상 경로·sentinel 이름을
-oracle과 feedback에 넣지 않고 **filesystem-security-state**(추출 객체와 외부 객체 사이의 object identity, 보호된
-외부 sentinel에 대한 external effect)를 feedback으로 사용하는 접근을 조사하는 연구 프로토타입이다.
-핵심 연구 질문은 "피해 경로 이름을 아는 동일 어휘·동일 예산 아래서, 이 상태를 retention·스케줄링 피드백으로 쓰는 탐색이 무작위 탐색과
-구조 커버리지 탐색보다 첫 경계위반까지의 실행 수를 줄이고 고유 위반 입력을 더 많이 찾는가"이고(research-questions v2; blind 발견 비주장), 참신성은 확정된 사실이 아니라 **검증 대상 가설**로 둔다.
+TAR 아카이브 추출은 공격자가 만든 입력이 추출 루트 밖의 파일시스템 객체와 연결되거나 그 객체를 바꾸는 경계위반의
+통로가 될 수 있다. InodeFence는 추출 중 관찰한 파일시스템 보안 상태(추출 객체와 외부 객체의 identity 공유, 보호된
+외부 sentinel의 변화)를 퍼저의 입력 보존 피드백으로 쓰는 접근을 조사하는 연구 프로토타입이다. CVE 식별자·PoC·대상
+경로·sentinel 이름은 oracle과 feedback에 넣지 않는다.
 
-이 드래프트가 **방어하는 주장은 좁다**:
+연구 질문은 피해 경로 이름을 아는 같은 어휘·같은 실행 예산 아래에서 상태 피드백 탐색(S-u)이 무작위 탐색(R)과 구조
+커버리지 탐색(D)보다 첫 경계위반까지의 실행 수를 줄이는가(H-A)이며, 등록 실험으로 판정한다 [C-HA]. 세 arm이 같은
+어휘와 예산을 쓰도록 설계했고, 가설·arm·표본 수·분석·판정표를 결과를 보기 전에 Git에 동결했으며(2026-11-13),
+train(node-tar 7.5.2, 탐색)과 holdout(7.4.4, 확증)을 나누고 결과는 해제 기록 전까지 가린다 [C-DESIGN].
 
-1. 입력 생성 → 실제 node-tar 실행 → entry별 중간 filesystem 상태 관찰 → generic C0/C1/C2 oracle →
-   feedback → 다음 mutation으로 이어지는 루프가 실제 extractor에서 반복 가능하게 동작한다
-   (M1, 증거 수준 TESTED).
-2. **하나의 generic identity oracle**(추출 객체가 외부 참조파일의 `(st_dev, st_ino)`를 공유 = C1;
-   보호된 외부 sentinel의 전후 metadata 변화 = C2)이 릴리스 id나 정답 경로를 판정 조건에 넣지
-   않고 서로 다른 두 root-cause(CVE-2026-23745와 CVE-2026-24842; CVE 대응과 회귀 원인은 추론)를
-   5개 고정 릴리스의 통제 차분으로 포착한다(M2, observed).
-3. 동일한 generic oracle(코드 불변)이 adapter 수준에서 3개 독립 extractor(python-tarfile · oras-go ·
-   decompress)에 target-agnostic하게 적용된다(M4, **oracle/adapter 수준** 일반성).
+이 드래프트가 지금 방어하는 주장은 다음이다.
 
-관련 선행연구(Jana & Shmatikov, ZIPDiff, LinkZard, Wormholes)와의 중첩을 명시하고
+1. 실제 node-tar에서 입력 생성 → 실행 → entry별 중간 상태 관찰 → C0/C1/C2 판정 → feedback → 다음 변이 선택의 루프가
+   한 명령(`make demo`)으로 반복 실행된다 [C-M1].
+2. 릴리스 번호나 정답 경로를 판정 조건에 넣지 않은 identity 오라클 하나가 node-tar 5개 릴리스와 고정 입력 2개의 통제
+   차분에서 서로 다른 두 결함(CVE-2026-23745, CVE-2026-24842)을 구분한다. 통제 재현이며 퍼저의 탐색 결과가 아니다 [C-M2].
+3. 같은 오라클을 코드 변경 없이 다른 추출기 3개(python-tarfile, oras-go, decompress)에 어댑터로 적용했고, 각 통제
+   차분에서 영향 쪽은 위반, 대조 쪽은 비위반으로 판정했다. 퍼저 탐색의 일반성이나 효과에 대한 주장이 아니다 [C-M4a].
+4. 측정 사슬은 양성·음성 대조로 확인했고 [C-PC], raw SHA-256 매니페스트·증거 사슬 점검·표 생성기 바이트 대조·호스트
+   적격성 검증을 갖췄다 [C-INFRA].
+
+등록 실행 EXP-0(인프라 측정)은 15셀이 모두 유효했고 경계위반 사건 0이었다 [C-EXP0]. EXP-3 train이 끝난 뒤 등록 규칙을
+기계적으로 적용해 GO를 냈다(세 arm 합산 첫 C1∨C2 캠페인 수 31) [C-GO]. 탐색 성능에 대한 결과는
+본실험 결과 자리(봉인 해제 뒤 기입)다 [S-HOLDOUT].
+
+한계: 현재 변이 문법에서 경계위반 입력은 seed에서 변이 1회 거리에 있고 [C-LIM1], 확증 범위는 node-tar 한 계보와 하드링크
+identity 공유 계열이다 [C-LIM2]. 관련 선행연구(Jana & Shmatikov, ZIPDiff, LinkZard, Wormholes)와의 중첩을 명시하며
 "최초 / 기존연구에 없음" 류 주장은 하지 않는다.

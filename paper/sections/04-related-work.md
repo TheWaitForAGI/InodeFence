@@ -49,7 +49,7 @@ order의 중요성, 실제 구현에서의 발생 규모는 이 연구의 기여
 state(C1 identity·C2 effect) retention을 더한 탐색이 무작위 탐색과 구조 커버리지 탐색보다 첫 경계위반까지의 실행 수를 줄이는가. Wormholes
 본문은 이런 arm 간 비교나 피드백 기반 탐색을 기술하지 않으며(아티팩트는 확인하지 않았다), 자동화 워크플로는 seed archive로 추출기 동작을
 확인한 뒤 설계된 우회 방식을 고른다(Wormholes §5.5). 이 차이는 우위를 뜻하지 않는다. Wormholes는 다수 구현에서 실제 취약점을 찾았고, 이 연구는
-소수 타깃의 알려진 클래스에 한정되며 blind 발견을 주장하지 않고, 효과도 아직 검증되지 않았다. 범용 변이도 Wormholes 저자들이 ZIPDiff에 대해
+소수 타깃의 알려진 클래스에 한정되며 피해 경로 이름을 모르는 조건(blind)의 결과를 주장하지 않으며, 효과도 아직 검증되지 않았다. 범용 변이도 Wormholes 저자들이 ZIPDiff에 대해
 평가한 한계(복잡한 symlink composition을 만들지 못함, Wormholes §5.6)를 똑같이 가질 수 있으며, 이는 이 가설이 시험해야 할 위험이다.[^wormholes-boundary]
 
 [^wormholes-boundary]: evidence: [Wormholes in the File System](https://www.usenix.org/conference/usenixsecurity26/presentation/liu-yongheng) 전문(pp. 5213–5226)을 2026-11-06 독립 심사(W3)가 정독했다. 아티팩트(Zenodo 20325582)는 열지 않았고 프로젝트명이 익명화돼 node-tar 포함 여부는 알 수 없다. 이 문단을 쓸 때 원문을 다시 대조하지 않았다.
@@ -64,7 +64,7 @@ state(C1 identity·C2 effect) retention을 더한 탐색이 무작위 탐색과 
 > 실행 수를 줄이고 고유 위반 입력을 더 많이 찾는가?
 > (핵심 RQ, [research-questions v2](../../docs/research/design/research-questions.md). 위협 모델 전제: 공격자는
 > 피해 경로 이름 — 보호 대상 외부 객체의 추출 루트 기준 상대 경로 — 을 알며 세 arm 어휘에 동일하게 포함한다.
-> blind 발견을 주장하지 않는다.)
+> 피해 경로 이름을 모르는 조건(blind)의 결과를 주장하지 않는다.)
 
 ## 3.6 이 단계에서 하지 않는 주장 (엄수)
 
@@ -76,7 +76,7 @@ state(C1 identity·C2 effect) retention을 더한 탐색이 무작위 탐색과 
 - "제안 방법이 fixed strategy보다 우수하다 / 여러 extractor에 (effectiveness 수준으로) 일반화된다."
 
 일부는 선행연구와 충돌하고, 일부는 추가 문헌조사·실험이 필요하다. 이 드래프트가 방어하는 것은
-§5의 좁은 명제들(M1 동작, M2 통제 재현, M4 oracle/adapter 일반성)뿐이다.
+§5의 좁은 명제들(M1 동작 [C-M1], M2 통제 재현 [C-M2], M4 오라클·어댑터 수준 적용 [C-M4a])뿐이다.
 
 ## 3.7 비교 축과 평가 방법론 (감사 03 권고)
 
@@ -93,7 +93,7 @@ state(C1 identity·C2 effect) retention을 더한 탐색이 무작위 탐색과 
 | ZIPDiff 2025 | archive-aware + byte-level mutation (ZIP) | extraction-output 비교 | parser 간 differential | feedback-guided corpus evolution + interesting-seed retention | 50 parser / 19개 언어 대규모 differential, 공개 아티팩트 |
 | LinkZard 2025 | Windows 파일 연산(링크 추종; archive corpus 아님) | file-operation sequence + hardlink/link-count state | link-following 취약점 탐지 | feedback-driven file-state fuzzing + state-query-driven mutation | 120개 상용 프로그램, 55 zero-day, 15 CVE |
 | Wormholes 2026 | archive extraction(symlink composition·entry order·dangling·update·extraction-root manipulation·symlink 경유 hardlink) | — (명시 없음) | arbitrary file read/write effect | — (명시 없음) | 85개 프로젝트, 16 arbitrary file write, 2 high-severity CVE |
-| InodeFence (현재) | generic archive-entry mutation (TAR; 8 generic operator + escape-hardlink 문법; 피해 경로 이름은 세 arm 어휘에 동일 포함, blind 아님) | object identity `(st_dev, st_ino)`·external effect·boundary-attempt | generic C0/C1/C2 Security Contract (CVE 비하드코딩) | S-u 입회: effect 키(boundary-attempt 포함) 신규 또는 새 위반 fingerprint. StateSignature 파생 구조 특징으로 입회하는 것은 대조군 D | 등록 실험: R/D/S-u T_first(§4.6, 결과는 봉인 해제 뒤 기입); 현재: M1·M2·M4 좁은 명제 |
+| InodeFence (현재) | generic archive-entry mutation (TAR; 8 generic operator + escape-hardlink 문법; 피해 경로 이름은 세 arm 어휘에 동일 포함, blind 아님) | object identity `(st_dev, st_ino)`·external effect·boundary-attempt | generic C0/C1/C2 Security Contract (CVE 비하드코딩) | S-u 입회: effect 키(boundary-attempt 포함) 신규 또는 새 위반 fingerprint. StateSignature 파생 구조 특징으로 입회하는 것은 대조군 D | 등록 실험: R/D/S-u T_first(§4.6) — 본실험 결과 자리(봉인 해제 뒤 기입); 현재: M1·M2·M4 좁은 명제 |
 
 이 표는 신규성 주장이 아니라 **포지셔닝**이다(§3.6 금지 목록 준수). InodeFence 행의 평가 칸 결과는
 봉인 해제 뒤에만 채운다.
@@ -108,16 +108,16 @@ state(C1 identity·C2 effect) retention을 더한 탐색이 무작위 탐색과 
   arXiv [1808.09700](https://arxiv.org/abs/1808.09700)). 이 논문은 복수 trial + 통계 검정(randomized algorithm에
   Mann-Whitney U), 서로 다른 seed, 더 긴 timeout(≥24h), "unique crashes" 같은 중복제거 heuristic 대신
   ground-truth 버그 기준 측정을 권고한다(초록·본문 §4–§8에서 읽음; 자체 실험은 ≥30 run 중앙값·95% CI). 우리
-  설계는 EXP-3에서 20 seed 복수 반복·로그랭크 검정·문서화된 seed를 쓰고hit을 generic
-  C0/C1/C2 oracle 판정으로 둔다(§4.6.2). 다만 U_viol은 oracle fingerprint 중복제거로 세므로 이 논문이 경계한 중복제거 부류에
+  설계는 EXP-3 train에서 20 seed를 반복하고, holdout 확증에 seed 블록 순열 로그랭크 검정을 쓰며, 문서화된 seed를 쓰고 hit을 generic
+  C0/C1/C2 oracle 판정으로 둔다(§4.6) [C-DESIGN]. 다만 U_viol은 oracle fingerprint 중복제거로 세므로 이 논문이 경계한 중복제거 부류에
   속하며, ground-truth 버그 수로 읽지 않는다. 단 우리 1차 지표는 wall-time이 아니라 executions-to-first(T_first)이며 시간
-  정규화는 보조로 병기한다(§4.6.4 ⑦).
+  값은 보조이며 실시간 타임스탬프로 계산한다(exp3-v1).
 - **Böhme, Liyanage & Wüstholz, "Estimating Residual Risk in Greybox Fuzzing," ESEC/FSE 2021**
   (DOI [10.1145/3468264.3468570](https://doi.org/10.1145/3468264.3468570); [PDF](https://mboehme.github.io/paper/FSE21.pdf)).
   초록은 오류 없는 campaign에도 잔여 위험(residual risk)이 남으며 greybox에서는 이를 직접 추정할 수 없어
   discovery probability(다음 입력이 커버리지를 늘릴 확률)를 상한으로 쓰고 campaign 중 추정해 중단 시점을
   정한다고 밝힌다(초록에서 읽음; reachability 주장은 초록에 없음). 우리 설계의 우측중도절단과 zero-hit
-  rule-of-three 상한(§4.6.2·§5.6)도 '위반 0 = 안전'으로 읽지 않는다는 취지는 같지만, 우리 상한은 캠페인 단위 hit 확률이지 잔여 위험
+  rule-of-three 상한(§4.6.2, 판정표 ⑤ 행 §7.2)도 '위반 0 = 안전'으로 읽지 않는다는 취지는 같지만, 우리 상한은 캠페인 단위 hit 확률이지 잔여 위험
   추정이 아니다.
 - **Schloegel et al., "SoK: Prudent Evaluation Practices for Fuzzing," IEEE S&P 2024**
   (DOI [10.1109/SP54263.2024.00137](https://doi.org/10.1109/SP54263.2024.00137); arXiv [2405.10220](https://arxiv.org/abs/2405.10220)).

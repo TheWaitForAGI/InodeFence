@@ -36,8 +36,8 @@ EXTERNAL   = 그 밖의 모든 sandbox-relative path   (extraction 밖, 보호 �
 
 Security Contract는 안전한 archive extraction이 지켜야 할 **일반화된 보안 규칙**이며 특정 CVE
 식별자와 독립적으로 정의한다(정의 원문: [`../../docs/research/design/security-contracts.md`](../../docs/research/design/security-contracts.md)).
-C0/C1/C2는 IMPLEMENTED / TESTED persistent-snapshot detector이고, C3(Extraction Root Integrity)·
-C4(Check/Use Coherence)는 DESIGNED 단계의 후속 계약이다. Oracle의 `violated=True`는 contract
+이 논문의 판정은 C0/C1/C2만 쓰고, C3(Extraction Root Integrity)·
+C4(Check/Use Coherence)는 정의만 있는 후속 계약이다. Oracle의 `violated=True`는 contract
 violation **후보**이며, confirmed vulnerability로 보려면 재현과 root-cause 검토가 따로 필요하다.
 
 - **C0 — Path Boundary Confinement.** extraction root 밖(`is_extraction_path`가 False)의 모든
@@ -55,7 +55,7 @@ violation **후보**이며, confirmed vulnerability로 보려면 재현과 root-
 
 - **대상.** 고정 버전의 TAR extractor(본문은 주로 node-tar). 공격면은 공격자 제어 아카이브 bytes다.
 - **공격자 지식(위협 모델 전제).** 공격자는 **피해 경로 이름**(보호 대상 외부 객체의 추출 루트 기준 상대 경로)을 안다고 가정하고,
-  그 이름을 세 arm(R/D/S-u)의 mutation 어휘에 **동일하게** 포함한다. 따라서 이 연구는 **blind 발견을 주장하지 않는다.** 비교 대상은
+  그 이름을 세 arm(R/D/S-u)의 mutation 어휘에 **동일하게** 포함한다. 따라서 이 연구는 **피해 경로 이름을 모르는 조건(blind)의 결과를 주장하지 않는다.** 비교 대상은
   이름을 아는 상태에서 어떤 피드백이 위반에 더 빨리·더 많이 도달시키는가다
   ([research-questions v2](../../docs/research/design/research-questions.md)).
 - **sentinel.** 실제 host의 민감 파일(`/etc/passwd`, SSH key 등)을 **대상으로 쓰지 않는다.** 각 run은

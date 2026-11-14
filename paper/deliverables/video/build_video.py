@@ -23,7 +23,7 @@ take exists), video.srt, video.ass (burned in) and build.json (blocks, takes wit
 ASR similarity, warnings). Never opens sealed experiment outputs. Run at low priority, e.g.
 
     nice -n 19 python3 paper/deliverables/video/build_video.py \\
-        --script ~/capstone-work/video-handoff/recording-script-v1.1.md \\
+        --script <recording-script-v2.md> \\
         --values <values.json> --d12 <d12-conclusions.md> --out <dir> [--incoming <dir>]
 """
 

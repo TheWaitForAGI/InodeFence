@@ -39,7 +39,12 @@ DEFAULT_OUT = Path.home() / "inodefence-explore"
 
 
 def prepare_target_image(
-    adapter: TargetAdapter, target: str, spec: str, *, image_tag_suffix: str
+    adapter: TargetAdapter,
+    target: str,
+    spec: str,
+    *,
+    image_tag_suffix: str,
+    filters: list[str] | None = None,
 ) -> PreparedTargetImage:
     """Resolve the version and reuse or prepare its image, via the common prepare layer.
 
@@ -48,7 +53,7 @@ def prepare_target_image(
     versions = adapter.resolve([spec]) if adapter.resolve is not None else [spec]
     if len(versions) != 1:
         raise ValueError(f"explore takes one version, got {versions!r}")
-    (cell,) = adapter.cells(versions, [])
+    (cell,) = adapter.cells(versions, filters or [])
     cell = with_tag_suffix(cell, image_tag_suffix)
     if cell.image_ref is None:
         raise ValueError(f"{target} {spec}: no image for this version")
@@ -87,9 +92,16 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--dry-run", action="store_true", help="print the plan; prepare/run nothing"
     )
+    # The target's own options are declared by its adapter; add them once the target is known
+    # so the common driver stays target-agnostic. They become the `filters` passed to `cells`.
+    pre, _ = parser.parse_known_args(argv)
+    adapter = load_adapter(pre.target)
+    for opt in adapter.options:
+        parser.add_argument(
+            f"--{opt.name}", required=opt.required, choices=opt.choices, help=opt.description
+        )
     args = parser.parse_args(argv)
 
-    adapter = load_adapter(args.target)
     if adapter.explore is None:
         print(
             f"TARGET-EXPLORE: exploration is not supported for {args.target} yet", file=sys.stderr
@@ -115,9 +127,19 @@ def main(argv: list[str] | None = None) -> int:
     if not args.auto_prepare:
         parser.error("pass AUTO_PREPARE=1 (--auto-prepare) to prepare the image and run")
 
+    target_options = {
+        opt.name: getattr(args, opt.name.replace("-", "_"))
+        for opt in adapter.options
+        if getattr(args, opt.name.replace("-", "_")) is not None
+    }
+    filters = [target_options[opt.name] for opt in adapter.options if opt.name in target_options]
     try:
         prepared = prepare_target_image(
-            adapter, args.target, args.version, image_tag_suffix=args.image_tag_suffix
+            adapter,
+            args.target,
+            args.version,
+            image_tag_suffix=args.image_tag_suffix,
+            filters=filters,
         )
         outcome = adapter.explore(
             prepared,
@@ -126,6 +148,7 @@ def main(argv: list[str] | None = None) -> int:
                 seed=args.seed,
                 out=args.out,
                 image_tag_suffix=args.image_tag_suffix,
+                target_options=target_options,
             ),
         )
     except ValueError as error:

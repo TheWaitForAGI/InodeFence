@@ -50,7 +50,9 @@ def test_driver_prepares_then_calls_the_targets_explore_hook(
     outcome = ExploreOutcome(result_path=result_path, verdict="FAIL", runs=20, violations=3)
     seen: dict[str, Any] = {}
 
-    def fake_prepare(adapter: Any, target: str, spec: str, *, image_tag_suffix: str) -> Any:
+    def fake_prepare(
+        adapter: Any, target: str, spec: str, *, image_tag_suffix: str, filters: Any = None
+    ) -> Any:
         seen["prepared"] = (target, spec)
         return PreparedTargetImage(target, spec, "7.5.23", "img:ref", "sha256:" + "c" * 64, True)
 
@@ -88,3 +90,74 @@ def test_setup_error_from_prepare_is_exit_3(
     monkeypatch.setattr(rte, "prepare_target_image", bad_prepare)
     assert rte.main(["--target", "node-tar", "--version", "nope", "--auto-prepare"]) == 3
     assert "TARGET-EXPLORE SETUP: version not found" in capsys.readouterr().err
+
+
+def _adapter_with_option() -> tuple[TargetAdapter, dict[str, Any]]:
+    from scripts.run_target import TargetOption
+
+    captured: dict[str, Any] = {}
+
+    def cells(versions: list[str], filters: list[str]) -> list[Any]:
+        captured["filters"] = filters
+        raise ValueError("stop after cells")  # we only check what reaches cells
+
+    return TargetAdapter(
+        mode=ResultMode.CAMPAIGN,
+        observed_contracts=("C0", "C1", "C2"),
+        cells=cells,
+        plan=lambda c: [],
+        run=lambda c: [],
+        resolve=lambda specs: specs,
+        explore=lambda prepared, options: ExploreOutcome(Path("x"), "PASS", 0, 0),
+        options=(
+            TargetOption("extraction-filter", "the filter", required=True, choices=("a", "b")),
+        ),
+    ), captured
+
+
+def test_declared_target_option_is_validated_and_passed_to_cells(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapter, captured = _adapter_with_option()
+    monkeypatch.setattr(rte, "load_adapter", lambda t: adapter)
+    # a valid value reaches cells as the filters list
+    rte.main(
+        [
+            "--target",
+            "node-tar",
+            "--version",
+            "latest",
+            "--auto-prepare",
+            "--extraction-filter",
+            "b",
+        ]
+    )
+    assert captured["filters"] == ["b"]
+
+
+def test_declared_option_rejects_missing_and_unknown_values(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    adapter, _ = _adapter_with_option()
+    monkeypatch.setattr(rte, "load_adapter", lambda t: adapter)
+    with pytest.raises(SystemExit):  # required option missing
+        rte.main(["--target", "node-tar", "--version", "latest", "--auto-prepare"])
+    with pytest.raises(SystemExit):  # value not in choices
+        rte.main(
+            [
+                "--target",
+                "node-tar",
+                "--version",
+                "latest",
+                "--auto-prepare",
+                "--extraction-filter",
+                "zzz",
+            ]
+        )
+
+
+def test_targets_without_declared_options_are_unaffected() -> None:
+    from scripts.run_target import load_adapter
+
+    assert load_adapter("node-tar").options == ()
+    assert load_adapter("oras-go").options == ()

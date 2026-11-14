@@ -32,6 +32,7 @@ builder.build_tar → disposable runtime → before snapshot
 | [transition_campaign.py](transition_campaign.py) | transition v1 P0/P1/P2 in-memory composition (현재 demo 경로 아님) |
 | [campaign_export.py](campaign_export.py) | 완료된 결과의 manifest JSON / canonical step JSONL |
 | [target_result.py](target_result.py) | 대상별 실행 명령의 공통 결과 형식 `inodefence-target-result-v1`(대상·축 3개·실행 수·C0/C1/C2 판정·재현 입력 sha256·엔진 SHA, `demo run`). 대상별 로직 없음 |
+| [target_result_summary.py](target_result_summary.py) | `inodefence-target-result-v1` 결과 파일 하나를 비전공자용 한 장 Markdown 요약(대상·버전·판정·케이스별 C0/C1/C2·재현 방법)으로 바꾼다. `python -m inodefence.target_result_summary RESULT.json`. 입력은 결과 파일뿐, 실행 없음, 같은 파일이면 같은 출력 |
 | [provenance.py](provenance.py) | 실행 전 source/environment/target/sentinel configuration 고정 |
 | [experiment_config.py](experiment_config.py) | strict JSON config / SHA-256 ID / seed-target binding |
 | [generator](generator/README.md) | explicit deterministic minimal_seed_corpus |

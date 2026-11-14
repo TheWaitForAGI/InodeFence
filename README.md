@@ -80,8 +80,10 @@ make target-run TARGET=decompress TARGET_VERSIONS="decompress@4.2.1 @xhmikosr/de
 | `raw/*.json` | 대상별 원시 관찰 |
 
 마지막 줄들의 `TARGET-RUN PASS|FAIL|ERROR ...`가 셀별 판정입니다. 종료 코드는 0 PASS, 1 FAIL, 2 ERROR(셀 중 가장
-나쁜 판정), 3 일부 또는 모든 셀이 판정되지 않음(거부된 입력·이미 있는 결과·설정·준비·이미지 문제)입니다. **판정이
-FAIL이면 `make`도 `Error 1`로 끝납니다.** 프로그램이 죽은 것이 아니라 위반을 찾았다는 신호이고, 결과 파일은 그대로
+나쁜 판정), 3 일부 또는 모든 셀이 판정되지 않음(거부된 입력·이미 있는 결과·설정·준비·이미지 문제)입니다. `make`를
+거치면 이 코드는 `make: *** [target-run] Error N`의 N으로 보이고, `make` 자체의 종료 상태는 0이 아니면 언제나 2입니다
+(코드를 그대로 받아야 하면 같은 인자로 `make -n target-run …`을 돌려 출력된 명령을 직접 실행합니다).
+**판정이 FAIL이면 `Error 1`이 보이지만** 프로그램이 죽은 것이 아니라 위반을 찾았다는 신호이고, 결과 파일은 그대로
 남습니다. 요약은 결과 파일 하나로 다시 만들 수도 있습니다:
 `PYTHONPATH=src python3.12 -m inodefence.target_result_summary <셀>/result.json`.
 판정 기준(C0/C1/C2)의 정확한 정의는 [security-contracts](docs/research/design/security-contracts.md)에 있습니다.

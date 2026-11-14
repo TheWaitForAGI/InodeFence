@@ -457,3 +457,51 @@ def test_env_check_names_missing_runtime_root_and_fix(tmp_path: Path) -> None:
     assert f"runtime root {missing} does not exist" in root_problem
     assert f"sudo mkdir -p {missing}" in root_problem
     assert not [p for p in check_dev_env.setup_problems(tmp_path) if "runtime root" in p]
+
+
+# ---- integration checks that need no docker (the rest ran on a real host; see the PR) ----
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["--target", "node-tar", "--version", "latest", "--dry-run"],  # refused version
+        ["--target", "python-tarfile", "--version", "3.12", "--extraction-filter", "data"],
+        ["--target", "decompress", "--version", "decompress@4.2.0", "--dry-run"],  # not pinned
+    ],
+)
+def test_refusals_exit_3_not_the_error_verdict_code(argv: list[str]) -> None:
+    with pytest.raises(SystemExit) as raised:
+        rt.main(argv)
+    assert raised.value.code == rt.SETUP_ERROR == 3
+
+
+def test_rerun_into_existing_results_exits_3_and_changes_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(nt.cri, "run_one", _fake_run_one({"7.5.3": DECLINED}))
+    args = ["--target", "node-tar", "--version", "7.5.3", "--out", str(tmp_path)]
+    assert rt.main(args) == 0
+    before = {p: p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()}
+    with pytest.raises(SystemExit) as raised:
+        rt.main(args)
+    assert raised.value.code == 3
+    assert {p: p.read_bytes() for p in tmp_path.rglob("*") if p.is_file()} == before
+
+
+def test_result_inputs_and_summary_agree_and_failed_cells_get_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import hashlib
+
+    from inodefence.target_result_summary import SUMMARY_NAME, summarize_file
+
+    _use(monkeypatch, _fake_adapter(prepare_supported=False), {"fake-image:1.0.0": "sha256:a"})
+    assert rt.main([*_argv(tmp_path, "1.0.0", "2.0.0"), "--auto-prepare"]) == 3
+    good = tmp_path / "fake-1.0.0"
+    result = load_target_result(good / "result.json")
+    for item in result.repro_inputs:
+        assert hashlib.sha256((good / item.tar_path).read_bytes()).hexdigest() == item.tar_sha256
+    # The page is a pure function of result.json: re-rendering from that file alone matches.
+    assert (good / SUMMARY_NAME).read_text(encoding="utf-8") == summarize_file(good / "result.json")
+    assert not (tmp_path / "fake-2.0.0").exists()  # no result.json, no summary.md, no verdict

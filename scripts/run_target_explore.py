@@ -39,7 +39,12 @@ DEFAULT_OUT = Path.home() / "inodefence-explore"
 
 
 def prepare_target_image(
-    adapter: TargetAdapter, target: str, spec: str, *, image_tag_suffix: str
+    adapter: TargetAdapter,
+    target: str,
+    spec: str,
+    *,
+    image_tag_suffix: str,
+    extraction_filter: str | None = None,
 ) -> PreparedTargetImage:
     """Resolve the version and reuse or prepare its image, via the common prepare layer.
 
@@ -48,7 +53,7 @@ def prepare_target_image(
     versions = adapter.resolve([spec]) if adapter.resolve is not None else [spec]
     if len(versions) != 1:
         raise ValueError(f"explore takes one version, got {versions!r}")
-    (cell,) = adapter.cells(versions, [])
+    (cell,) = adapter.cells(versions, [extraction_filter] if extraction_filter else [])
     cell = with_tag_suffix(cell, image_tag_suffix)
     if cell.image_ref is None:
         raise ValueError(f"{target} {spec}: no image for this version")
@@ -80,6 +85,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--image-tag-suffix", default="")
     parser.add_argument(
+        "--extraction-filter",
+        action="append",
+        default=[],
+        help="the ONE extraction filter of this campaign, for targets with a filter axis",
+    )
+    parser.add_argument(
         "--auto-prepare",
         action="store_true",
         help="prepare (resolve/build/verify) the image; required for a real run",
@@ -89,6 +100,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    if len(args.extraction_filter) > 1:
+        parser.error(
+            "one --extraction-filter per exploration: filter settings are explored in separate "
+            "campaigns, never mixed in one"
+        )
+    args.extraction_filter = args.extraction_filter[0] if args.extraction_filter else None
     adapter = load_adapter(args.target)
     if adapter.explore is None:
         print(
@@ -104,6 +121,7 @@ def main(argv: list[str] | None = None) -> int:
                     "version": args.version,
                     "seed": args.seed,
                     "budget": args.budget,
+                    "extraction_filter": args.extraction_filter,
                     "out": str(args.out),
                     "note": "dry-run: nothing resolved, prepared, run or written",
                 },
@@ -117,7 +135,11 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         prepared = prepare_target_image(
-            adapter, args.target, args.version, image_tag_suffix=args.image_tag_suffix
+            adapter,
+            args.target,
+            args.version,
+            image_tag_suffix=args.image_tag_suffix,
+            extraction_filter=args.extraction_filter,
         )
         outcome = adapter.explore(
             prepared,
@@ -126,6 +148,7 @@ def main(argv: list[str] | None = None) -> int:
                 seed=args.seed,
                 out=args.out,
                 image_tag_suffix=args.image_tag_suffix,
+                extraction_filter=args.extraction_filter,
             ),
         )
     except ValueError as error:

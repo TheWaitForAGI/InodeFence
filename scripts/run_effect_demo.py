@@ -708,8 +708,8 @@ def _native_effect_producer(
 
     Runs the case, checks evidence integrity, appends the native check and per-case timing to
     the caller's ``checks``/``timing`` lists, and returns the result or raises
-    ``NativeDemoAborted``. Extracted verbatim from the historical inline producer; the loop,
-    feedback, oracle and observer behaviour are unchanged."""
+    ``NativeDemoAborted``. This is the producer native_demo_report uses (historical_demo_report
+    keeps an equivalent inline copy); the loop, feedback, oracle and observer are unchanged."""
 
     def produce(case: ArchiveCase) -> EffectRunResult:
         index = len(checks)

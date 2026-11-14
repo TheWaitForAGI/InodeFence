@@ -96,6 +96,7 @@ def test_target_text_cannot_break_the_table() -> None:
         provenance=Provenance(None, False),
     )
     text = render_summary(result, source_name="r.json", inputs_verified=True)
+    assert text.startswith("# 결과 한 장 요약: x\n")
     assert "| `a\\|b` | `outʼcome` | 이상 없음 |" in text
     assert "엔진 커밋: 기록 없음" in text
     assert "저장된 입력 TAR가 없다" in text
@@ -121,3 +122,17 @@ def test_cli_rejects_invalid_result(tmp_path: Path, content: str, capsys) -> Non
     path.write_text(content, encoding="utf-8")
     assert main([str(path)]) == 2
     assert capsys.readouterr().err.startswith("error: ")
+
+
+def test_title_names_runtime_and_filter_axes() -> None:
+    result = TargetResult(
+        target="python-tarfile",
+        axes=TargetAxes(runtime_version="3.12.16", extraction_filter="data"),
+        mode=ResultMode.FIXTURE_REGRESSION,
+        observed_contracts=("C1", "C2"),
+        cases=(CaseVerdict("only", "declined", None, False, False),),
+        repro_inputs=(),
+        provenance=Provenance(None, False),
+    )
+    text = render_summary(result, source_name="r.json", inputs_verified=True)
+    assert text.startswith("# 결과 한 장 요약: python-tarfile 3.12.16 · data\n")

@@ -87,8 +87,14 @@ def render_summary(result: TargetResult, *, source_name: str, inputs_verified: b
     axes = result.axes
     lines: list[str] = []
     add = lines.append
-    title_version = f" {axes.target_version}" if axes.target_version else ""
-    add(f"# 결과 한 장 요약: {_cell(result.target)}{_cell(title_version)}")
+    # Title names every axis that applies, so a runtime-version or filter cell is not version-less.
+    title_axes = " · ".join(
+        value
+        for value in (axes.target_version, axes.runtime_version, axes.extraction_filter)
+        if value is not None
+    )
+    title = f"{result.target} {title_axes}" if title_axes else result.target
+    add(f"# 결과 한 장 요약: {_cell(title)}")
     add("")
     add(
         f"> 원본 결과 파일: {_code(source_name)} · 라벨: **{LABEL}** — 데모 실행 기록이며 "

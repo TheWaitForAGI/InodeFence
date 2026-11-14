@@ -24,6 +24,7 @@ from typing import Any, BinaryIO, Protocol
 from uuid import uuid4
 
 from scripts.broker_call_log import BrokerCallLog
+from scripts.effect_replay import CASE_REPLAY_MODE
 from scripts.run_effect_demo import (
     DECOMPRESS_CAMPAIGN_MODE,
     DEMO_FORWARDED_ARGUMENTS,
@@ -34,6 +35,7 @@ from scripts.run_effect_demo import (
     check_demo_arguments,
 )
 
+from inodefence.case_replay import MAX_INPUT_LINE_BYTES, CaseReplayError, parse_replay_input
 from inodefence.execution import start_gate
 from inodefence.execution.call_diagnostics import annotate_reason, emit_anomalies
 from inodefence.execution.container import OWNER_LABEL, checked, remove_owned
@@ -637,6 +639,11 @@ def main() -> int:
         type=Path,
         help="absolute host-side record of unusual Docker calls; effect campaigns only",
     )
+    parser.add_argument(
+        "--replay-input",
+        type=Path,
+        help="file holding the one-line case replay input; effect-replay-case only",
+    )
     add_demo_arguments(parser)
     parser.add_argument(
         "mode",
@@ -652,6 +659,7 @@ def main() -> int:
             "effect-demo",
             HISTORICAL_DEMO_MODE,
             EXPLORE_DEMO_MODE,
+            CASE_REPLAY_MODE,
             DECOMPRESS_CAMPAIGN_MODE,
             ORAS_GO_CAMPAIGN_MODE,
         ),
@@ -665,6 +673,7 @@ def main() -> int:
         "effect-demo",
         HISTORICAL_DEMO_MODE,
         EXPLORE_DEMO_MODE,
+        CASE_REPLAY_MODE,
         DECOMPRESS_CAMPAIGN_MODE,
         ORAS_GO_CAMPAIGN_MODE,
     }
@@ -676,6 +685,20 @@ def main() -> int:
     ):
         parser.error("--call-log needs an absolute path and an effect campaign mode")
     check_demo_arguments(parser, args)
+    replay_line = None
+    if (args.mode == CASE_REPLAY_MODE) != (args.replay_input is not None):
+        parser.error("--replay-input is required for effect-replay-case and accepted nowhere else")
+    if args.replay_input is not None:
+        # Validate before any container starts; the controller re-validates the same line.
+        if args.replay_input.stat().st_size > MAX_INPUT_LINE_BYTES:
+            parser.error("replay input is over the controller's input line limit")
+        replay_line = args.replay_input.read_text(encoding="utf-8")
+        if not replay_line.endswith("\n") or replay_line.count("\n") != 1:
+            parser.error("replay input must be exactly one line")
+        try:
+            parse_replay_input(replay_line)
+        except CaseReplayError as error:
+            parser.error(f"replay input refused: {error}")
     pair_mode = args.mode in {"qualify-node-n01", "preflight-node-n04-5s"}
     preflight_started = monotonic() if args.mode == "preflight-node-n04-5s" else None
     preflight_deadline = None
@@ -955,6 +978,10 @@ def main() -> int:
                         },
                     }
                 process.stdin.write((json.dumps(initial) + "\n").encode("utf-8"))
+                process.stdin.flush()
+            if replay_line is not None:
+                # Same path as the pair modes' initial line: written once before brokering.
+                process.stdin.write(replay_line.encode("utf-8"))
                 process.stdin.flush()
             expired = threading.Event()
             timer = None

@@ -76,9 +76,9 @@ Seed Generator -> Structure Mutator -> TAR Builder -> Target Adapter
   -> State Observer -> Security Oracle -> Feedback / Corpus -> 다음 mutation
 ```
 
-- **generic 부분**(mutator, observer, oracle, feedback)은 대상 extractor를 모른다. Observer는 사실만 기록하고,
-  Oracle은 계약을 적용할 뿐 파일시스템에 접근하지 않는다.
-- **target 부분**(adapter, worker, recipe)만 extractor별 실행 방법을 안다. node-tar는 격리된 컨테이너에서 실행한다.
+- **generic 부분**(mutator, observer, oracle, feedback)은 대상 extractor를 모르도록 나눴다. Observer는 관찰 사실을 기록하고,
+  Oracle은 그 기록에 계약을 적용하도록 설계했다.
+- **target 부분**(adapter, worker, recipe)에 extractor별 실행 방법을 두었다. node-tar는 격리된 컨테이너에서 실행한다.
 - **피드백**은 관찰된 상태의 정규화 키를 받아 새 상태나 새 위반이면 입력을 corpus에 남기고 다음 변이의 바탕으로 쓴다.
   새 상태 키의 수는 탐색 거동이며 효과의 척도가 아니다.
 
@@ -90,7 +90,7 @@ Seed Generator -> Structure Mutator -> TAR Builder -> Target Adapter
 판정표는 결과를 보기 전에 Git에 동결했다(2026-11-13, 동결 커밋 `72de299`). train(7.5.2, 탐색)과 holdout(7.4.4, 확증)을
 나눴고, 결과는 해제 기록 전까지 가린다. 표본 수는 동결 전 위험도 파일럿(§7.7)을 보고 정했고, holdout seed는 9026–9185(N=160)이다. [C-DESIGN]
 
-동결 전에 등록을 고친 내용(예측 문장, 판정표의 비기각 행, N 결정 규칙, 범위 문구, 동결일 정의)은 등록 실행을 시작하기 전의 개정이며 사전등록 변경 이력(exp2-v1 §8)에 공개돼 있다. 그 가운데 2026-11-13 개정은 팀 책임자의 결정(날짜는 일정 지침이므로 독립 검증이 끝나면 동결한다)으로 동결일 정의를 "선행 조건 완료 + 검증 24 h"에서 "선행 조건 완료 + 독립 검증 완료"로, N 규칙의 날짜 조건 "동결이 2026-11-14이고"를 "동결이 2026-11-14 이전(당일 포함)이고"로 바꿨다. 옛 문구대로 그날 동결했다면 N=120이었고, 이 개정으로 N=160이 유지됐다. 근거는 등록된 일정 조건이며 결과 정보는 쓰지 않았다. [C-DESIGN]
+동결 전에 등록을 고친 내용(예측 문장, 판정표의 비기각 행, N 결정 규칙, 범위 문구, 동결일 정의)은 등록 실행을 시작하기 전의 개정이며 사전등록 변경 이력(exp2-v1 §8)에 공개돼 있다. 그 가운데 2026-11-13 개정은 팀 책임자의 결정으로 동결일 정의를 "선행 조건 완료 + 검증 24 h"에서 "선행 조건 완료 + 독립 검증 완료"로, N 규칙의 날짜 조건 "동결이 2026-11-14이고"를 "동결이 2026-11-14 이전(당일 포함)이고"로 바꿨다. 옛 문구대로 그날 동결했다면 N=120이었고, 이 개정으로 N=160이 유지됐다. 근거는 등록된 일정 조건이며 결과 정보는 쓰지 않았다. [C-DESIGN]
 등록 파일은 [exp3-v1](../../experiments/preregistration/exp3-v1.md)(train)과
 [exp2-v1](../../experiments/preregistration/exp2-v1.md)(holdout)이다.
 

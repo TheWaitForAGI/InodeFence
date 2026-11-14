@@ -120,6 +120,18 @@ EXPLORE_SEARCH_POLICY = _rds.arm_search_policy(_rds.RdsArm.S_U)
 EXPLORE_VOCABULARY_MODE = _rds.VocabularyMode.OBSERVED_NAMES
 EXPLORE_MUTATION_POLICY = _rds.VOCABULARY_MUTATION_POLICY[EXPLORE_VOCABULARY_MODE]
 
+# The extractor's exit status and the oracle's verdict are independent axes. The oracle runs on the
+# before/after snapshots regardless of how the extractor exited, so C0/C1/C2 are kept for every
+# case where it was evaluated -- a rejection, crash or timeout is a legitimate judged outcome, and a
+# violation left by a run that died mid-extraction is still a violation. Only the producer-exception
+# abort path (no observation at all) is unjudged; it is recorded separately, not as a case record.
+_EXPLORE_OUTCOME: dict[ExecutionStatus, str] = {
+    ExecutionStatus.SUCCESS: "extracted",
+    ExecutionStatus.REJECTED: "rejected",
+    ExecutionStatus.FAILED: "failed",
+    ExecutionStatus.TIMED_OUT: "timed_out",
+}
+
 
 #: An exception chain longer than this is cut; the record says so.
 ERROR_CHAIN_LIMIT = 8
@@ -605,23 +617,18 @@ def exploration_demo_report(
         run_index = len(checks)
         result = base_produce(case)
         base = result.base_result
-        if base.execution.status is not ExecutionStatus.SUCCESS:
-            record = {
-                "run_index": run_index,
-                "outcome": "run_error",
-                "c0": None,
-                "c1": None,
-                "c2": None,
-            }
-        else:
-            hit = {v.contract_id.value: v.violated for v in base.violations}
-            record = {
-                "run_index": run_index,
-                "outcome": "extracted",
-                "c0": hit.get("C0"),
-                "c1": hit.get("C1"),
-                "c2": hit.get("C2"),
-            }
+        # Keep the oracle's judgment whatever the extractor's exit was (it ran on the snapshots).
+        hit = {v.contract_id.value: v.violated for v in base.violations}
+        observation_complete = (
+            result.trace.integrity_valid and not result.trace.observation_failures
+        )
+        record = {
+            "run_index": run_index,
+            "outcome": _EXPLORE_OUTCOME.get(base.execution.status, "failed"),
+            "c0": hit.get("C0"),
+            "c1": hit.get("C1"),
+            "c2": hit.get("C2"),
+        }
         case_records.append(record)
         if record["c0"] or record["c1"] or record["c2"]:
             tar = build_tar(case)
@@ -630,6 +637,13 @@ def exploration_demo_report(
                     "run_index": run_index,
                     "tar_sha256": sha256(tar).hexdigest(),
                     "tar_b64": base64.b64encode(tar).decode("ascii"),
+                    # A violation from a non-clean extraction (rejected/crashed/timed-out) or an
+                    # incomplete observation is kept, but flagged so it is not read as a violation
+                    # from a clean run without a reproduction check.
+                    "outcome": record["outcome"],
+                    "observation_complete": observation_complete,
+                    "needs_reproduction_check": record["outcome"] != "extracted"
+                    or not observation_complete,
                 }
             )
         return result

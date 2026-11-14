@@ -1,0 +1,140 @@
+"""python-tarfile exploration: the shared effect loop over the contained python-tarfile worker.
+
+There is no python-specific loop. ``python_tarfile_exploration_report`` binds one prepared runtime
+image with ONE extraction filter (``PythonTarfileContainedTarget``) and hands
+``run_python_tarfile_contained_case`` to ``effect_campaign.run_effect_campaign`` -- the loop
+node-tar's exploration uses -- with the same default search and mutation policies. The report has
+node-tar exploration's shape (``effect_campaign_report`` plus ``case_records`` and
+``violation_inputs``) so the host side converts both the same way.
+
+Axes: a campaign runs on one runtime version (the bound image, checked against
+``expected_python``) and one filter; comparing filters or runtimes means separate campaigns.
+
+``fully_trusted`` runs only when the caller passes ``allow_fully_trusted=True``. The extraction is
+inside the container boundary either way; the default is held until that use is approved.
+
+Silent negatives: a step whose run did not complete (run error) has no C0/C1/C2 verdict and is
+counted in ``undetermined_steps``; if every step is undetermined, ``all_undetermined`` is true and
+the host side must report ERROR, never PASS.
+"""
+
+from __future__ import annotations
+
+import base64
+from collections.abc import Callable
+from hashlib import sha256
+from time import perf_counter
+from typing import Any
+
+from inodefence.builder import build_tar
+from inodefence.effect_campaign import EffectCampaignConfig, run_effect_campaign
+from inodefence.effect_demo import EffectStepReporter, effect_campaign_report
+from inodefence.effect_pipeline_python_tarfile import run_python_tarfile_contained_case
+from inodefence.execution.base import ExecutionBackend
+from inodefence.feedback import EffectSearchPolicy
+from inodefence.generator import minimal_seed_corpus
+from inodefence.model import ArchiveCase, EffectRunResult, ExecutionStatus
+from inodefence.mutator import MutationPolicy
+from inodefence.runtime import SentinelSpec
+from inodefence.targets.python_tarfile_contained import PythonTarfileContainedTarget
+
+EXPLORATION_LABEL = "exploratory demo run"
+#: Same defaults as node-tar exploration (``scripts.run_effect_demo``), so the loop runs alike.
+DEFAULT_SEARCH_POLICY = EffectSearchPolicy.P2_EFFECT_ADAPTIVE
+DEFAULT_MUTATION_POLICY = MutationPolicy.M1_PROTECTED_COMPONENTS_ESCAPE_HARDLINK
+
+
+def case_record(run_index: int, result: EffectRunResult) -> dict[str, object]:
+    """One step's verdict; a run that did not complete has no verdict (``run_error``)."""
+    base = result.base_result
+    if base.execution.status not in (ExecutionStatus.SUCCESS, ExecutionStatus.REJECTED):
+        return {"run_index": run_index, "outcome": "run_error", "c0": None, "c1": None, "c2": None}
+    hit = {v.contract_id.value: v.violated for v in base.violations}
+    return {
+        "run_index": run_index,
+        "outcome": "extracted" if base.execution.status is ExecutionStatus.SUCCESS else "declined",
+        "c0": hit.get("C0"),
+        "c1": hit.get("C1"),
+        "c2": hit.get("C2"),
+    }
+
+
+def python_tarfile_exploration_report(
+    backend: ExecutionBackend,
+    image_id: str,
+    extraction_filter: str,
+    expected_python: str,
+    *,
+    seed: int = 123,
+    budget: int = 20,
+    policy: EffectSearchPolicy = DEFAULT_SEARCH_POLICY,
+    mutation_policy: MutationPolicy = DEFAULT_MUTATION_POLICY,
+    sentinels: tuple[SentinelSpec, ...] = (SentinelSpec(),),
+    allow_fully_trusted: bool = False,
+    step_sink: Callable[[dict[str, object]], None] | None = None,
+    requested_spec: str | None = None,
+) -> dict[str, Any]:
+    """Run the shared effect loop on one prepared python runtime image and one filter."""
+    if extraction_filter == "fully_trusted" and not allow_fully_trusted:
+        raise ValueError(
+            "fully_trusted exploration is held until approved; pass allow_fully_trusted=True "
+            "only with that approval (data is the default)"
+        )
+    target = PythonTarfileContainedTarget.bind(
+        backend, image_id, extraction_filter, expected_python=expected_python
+    )
+    config = EffectCampaignConfig(
+        random_seed=seed,
+        execution_budget=budget,
+        search_policy=policy,
+        mutation_policy=mutation_policy,
+    )
+    case_records: list[dict[str, object]] = []
+    violation_inputs: list[dict[str, object]] = []
+
+    def produce(case: ArchiveCase) -> EffectRunResult:
+        run_index = len(case_records)
+        result = run_python_tarfile_contained_case(case, target, sentinels=sentinels)
+        record = case_record(run_index, result)
+        case_records.append(record)
+        if record["c0"] or record["c1"] or record["c2"]:
+            tar = build_tar(case)
+            violation_inputs.append(
+                {
+                    "run_index": run_index,
+                    "tar_sha256": sha256(tar).hexdigest(),
+                    "tar_b64": base64.b64encode(tar).decode("ascii"),
+                }
+            )
+        return result
+
+    reporter = EffectStepReporter()
+
+    def record_step(step) -> None:  # type: ignore[no-untyped-def]
+        line = reporter.add(step)
+        if step_sink is not None:
+            step_sink(line)
+
+    started = perf_counter()
+    result = run_effect_campaign(minimal_seed_corpus(), produce, config, on_step=record_step)
+    total = perf_counter() - started
+    undetermined = sum(1 for record in case_records if record["outcome"] == "run_error")
+    report = effect_campaign_report(result, "native-python-tarfile-container")
+    report.update(
+        label=EXPLORATION_LABEL,
+        mode="exploration",
+        qualification=False,
+        target="python-tarfile",
+        runtime_version=target.python_version,
+        extraction_filter=extraction_filter,
+        requested_spec=requested_spec,
+        image_id=image_id,
+        worker_sha256=target.worker_sha256,
+        tarfile_sha256=target.tarfile_sha256,
+        timing={"total_seconds": total},
+        case_records=case_records,
+        violation_inputs=violation_inputs,
+        undetermined_steps=undetermined,
+        all_undetermined=bool(case_records) and undetermined == len(case_records),
+    )
+    return report

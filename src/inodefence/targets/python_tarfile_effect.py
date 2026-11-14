@@ -160,10 +160,10 @@ def _interval(sequence: int) -> MonotonicInterval:
     return MonotonicInterval(sequence * 10, sequence * 10 + 1)
 
 
-def _source() -> EvidenceSourceIdentity:
+def _source(mechanism: str = PYTHON_TARFILE_MECHANISM) -> EvidenceSourceIdentity:
     return EvidenceSourceIdentity(
         PYTHON_TARFILE_SOURCE_ID,
-        PYTHON_TARFILE_MECHANISM,
+        mechanism,
         "1",
         sha256(PYTHON_TARFILE_SOURCE_ID.encode()).hexdigest(),
     )
@@ -173,12 +173,14 @@ def _raw(record: str) -> RawEvidenceReference:
     return RawEvidenceReference(PYTHON_TARFILE_SOURCE_ID, record)
 
 
-def _provenance(stream_digest: str) -> EffectTraceProvenance:
+def _provenance(
+    stream_digest: str, mechanism: str = PYTHON_TARFILE_MECHANISM
+) -> EffectTraceProvenance:
     return EffectTraceProvenance(
         _TRACE_SCHEMA,
         "1",
         "python-tarfile-feedback",
-        (_source(),),
+        (_source(mechanism),),
         _EVENT_BOUND,
         _REQUIRED_LIFECYCLE,
         stream_digest,
@@ -323,6 +325,7 @@ def _build_trace(
     status: ExecutionStatus,
     root: Path,
     extraction_root: Path,
+    mechanism: str = PYTHON_TARFILE_MECHANISM,
 ) -> EffectEventTrace:
     # ``archive_entries`` is the FULL declared case structure (every entry by ordinal
     # + path, duplicates and order preserved), NOT only the entries reached before an
@@ -405,7 +408,7 @@ def _build_trace(
 
     last = seq - 1 if seq else 0
     stream_digest = sha256(
-        f"{PYTHON_TARFILE_MECHANISM}:{status.value}:{len(succeeded)}:{after.phase.value}".encode()
+        f"{mechanism}:{status.value}:{len(succeeded)}:{after.phase.value}".encode()
     ).hexdigest()
     return EffectEventTrace(
         before,
@@ -417,7 +420,7 @@ def _build_trace(
         after,
         completeness,
         terminated,
-        _provenance(stream_digest),
+        _provenance(stream_digest, mechanism),
         last,
         last,
         last,

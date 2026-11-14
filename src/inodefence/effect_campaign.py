@@ -9,6 +9,7 @@ from inodefence.campaign import CampaignOrigin
 from inodefence.campaign_hooks import (
     CampaignHooks,
     LightCampaignResult,
+    ensure_no_unwired_hooks,
     resolve_on_step,
 )
 from inodefence.effect_scheduler import (
@@ -215,6 +216,7 @@ def run_effect_campaign(
     initial_ids = tuple(case.case_id for case in cases)
     if len(set(initial_ids)) != len(initial_ids):
         raise ValueError("initial cases contain duplicate case IDs")
+    ensure_no_unwired_hooks(hooks)
     effective_on_step = resolve_on_step(hooks, on_step)
     should_stop = hooks.should_stop if hooks is not None else None
     retain = hooks is None or hooks.retain_steps

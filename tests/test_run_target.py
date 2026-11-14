@@ -505,3 +505,21 @@ def test_result_inputs_and_summary_agree_and_failed_cells_get_none(
     # The page is a pure function of result.json: re-rendering from that file alone matches.
     assert (good / SUMMARY_NAME).read_text(encoding="utf-8") == summarize_file(good / "result.json")
     assert not (tmp_path / "fake-2.0.0").exists()  # no result.json, no summary.md, no verdict
+
+
+def test_summary_failure_is_exit_3_and_keeps_the_result_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def broken(paths: object) -> list[Path]:
+        list(paths)  # type: ignore[call-overload]
+        raise OSError("disk full")
+
+    monkeypatch.setattr(rt, "write_cell_summaries", broken)
+    monkeypatch.setattr(nt.cri, "run_one", _fake_run_one({"7.5.2": SHARED}))
+    args = ["--target", "node-tar", "--version", "7.5.2", "--out", str(tmp_path)]
+    assert rt.main(args) == 3  # not the FAIL code 1, and no traceback
+    err = capsys.readouterr().err
+    assert "TARGET-RUN SUMMARY-ERROR: summary.md not written (OSError: disk full)" in err
+    result = load_target_result(tmp_path / "node-tar-7.5.2" / "result.json")
+    assert result.verdict is Verdict.FAIL  # the verdict file is kept as written
+    assert not (tmp_path / "node-tar-7.5.2" / "summary.md").exists()

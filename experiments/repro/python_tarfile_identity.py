@@ -117,8 +117,14 @@ def image_ref(runtime_version: str) -> str:
     return IMAGE.format(runtime=runtime_version)
 
 
-def docker_command(runtime_version: str, extraction_filter: str, tar_b64: str) -> list[str]:
-    """The disposable-container command: no network, removed on exit, nothing mounted."""
+def docker_command(
+    runtime_version: str, extraction_filter: str, tar_b64: str, image: str | None = None
+) -> list[str]:
+    """The disposable-container command: no network, removed on exit, nothing mounted.
+
+    ``image`` overrides the default ``python:<runtime_version>-slim`` (e.g. a development tag of
+    the same runtime); the in-container runtime check still compares against ``runtime_version``.
+    """
     if RUNTIME_RE.fullmatch(runtime_version) is None:
         raise ValueError(f"runtime_version must be exact X.Y.Z, got {runtime_version!r}")
     if extraction_filter not in FILTERS:
@@ -139,7 +145,7 @@ def docker_command(runtime_version: str, extraction_filter: str, tar_b64: str) -
         f"EXTRACTION_FILTER={extraction_filter}",
         "--entrypoint",
         "python",
-        image_ref(runtime_version),
+        image or image_ref(runtime_version),
         "-c",
         PY_PROGRAM,
     ]
@@ -171,10 +177,11 @@ def run_one(
     extraction_filter: str,
     tar_b64: str,
     *,
+    image: str | None = None,
     runner: Runner = subprocess.run,
 ) -> dict[str, Any]:
     """Extract one TAR in a fresh container; a failed or unverifiable run is ``_run_error``."""
-    cmd = docker_command(runtime_version, extraction_filter, tar_b64)
+    cmd = docker_command(runtime_version, extraction_filter, tar_b64, image)
     try:
         done = runner(cmd, capture_output=True, text=True, timeout=TIMEOUT_SECONDS)
     except (OSError, subprocess.SubprocessError) as error:

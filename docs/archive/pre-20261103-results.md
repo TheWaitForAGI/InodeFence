@@ -1,6 +1,6 @@
 # 2026-11-03 이전 결과 기록 (STATUS·BACKLOG에서 이동)
 
-이 파일은 2026-11-03 독립 감사 이전 설계의 결과 기록을 담는다. 2026-11-14 수술 5단계 저장소 정리(단계 A)에서 [STATUS](../STATUS.md)와 [BACKLOG](../BACKLOG.md)에서 옮겼다. 옮기기 전 상태는 커밋 `12fa02f`와 태그 `audit-baseline-20261103`에도 있다. 현재 능력의 기준이 아니며, 본문은 옮긴 그대로다(상대 링크만 이 폴더 기준으로 고쳤다).
+이 파일은 2026-11-03 독립 감사 이전 설계의 결과 기록을 담는다. 2026-11-14 수술 5단계 저장소 정리(단계 A)에서 [STATUS](../STATUS.md)와 [BACKLOG](../BACKLOG.md)에서 옮겼다. 옮기기 전 상태는 커밋 `12fa02f`와 태그 `audit-baseline-20261103`에도 있다. 현재 능력의 기준이 아니며, 본문은 옮긴 그대로다. 바꾼 것은 두 가지뿐이다: 상대 링크를 이 폴더 기준으로 고쳤고, 정리 뒤 사라진 paper 절을 가리키는 경로 뒤에 "(12fa02f 기준)"을 붙였다.
 
 초기 비교는 arm 간 어휘가 달라 폐기했고, 어휘를 맞춘 R/D/S-u 설계로 다시 실험했다.
 
@@ -127,3 +127,12 @@ NOT_IMPLEMENTED이라([transition-feedback-v1](../research/design/transition-fee
 | --- | --- | --- |
 | A/B/C/D(random / structure-aware / state-aware / coverage-guided) **정의와 공통 지표** 확정 — M3.2·M3.4·M3.5가 쓸 측정의 기준(D는 M3.5) | 진행(정의·공통지표 완료[머지됨 main #166]; 단일경로 A/B/C/D 비교 하너스+readout 구현: claude/m3-2-eval-d81a84 `evaluation/arm_comparison.py`; powered 통합 native run 대기 M3.3/M3.4) | 주언 |
 | (감사 제안 → **M3.5로 승격**) coverage-guided baseline(D) + A/B/C/D 공통지표 — 'identity feedback 특정 효과'를 'feedback 일반'과 분리(H1 판정용). **중간발표 포함 여부 확인필요** | 완료(M3.5: claude/m3-5-baseline-d-65d6ae) | 주언 |
+
+## STATUS 체크리스트 ⑧·⑨ 원문 (12fa02f 기준 358–359줄)
+
+STATUS에서는 옛 M3 표와 사라진 §5.3.3 포인터를 빼고 "M2 표"·"§5.4"로 줄였다. 아래는 #256 검증 기록이 가리킨 원래 칸이다(경로는 12fa02f 기준).
+
+| # | 산출물 | 확인 명령 / 경로 | 구현 | 검증 | 실험 |
+| --- | --- | --- | --- | --- | --- |
+| ⑧ | 통계 — 스크립트 하나가 모든 표·그림을 raw에서 생성 | `make paper-artifacts --verify`(#232·#256) | ◑ main(#232 `4d6f4c0`, #256 `01a913d`; M2/M3 표 BYTE-MATCH, 그림 size-only, ledger exists-only) | ✓ #256 PASS (2026-11-06 재판정, PR 코멘트, head 7dfd21f) | — |
+| ⑨ | 한계·실패 — abort 사유 표, 음성 결과 전부 | `scripts/analyze_abort_rollup.py`(#210·#227); `paper/sections/06-results.md` §5.3.3·§5.4 | ✓ main(#210 `d07d547`, #227 `c21e22f`) | ✓ PASS | ✓ EXP-0 abort 0/15(budget 200). hazard 파일럿 abort 11/40(비등록, 첫 실패 경로 미확인) |

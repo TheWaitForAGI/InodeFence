@@ -346,9 +346,10 @@ def _script() -> str:
 
 def test_harness_passes_the_log_only_to_effect_campaigns() -> None:
     lines = [line for line in _script().splitlines() if "--call-log" in line]
-    assert len(lines) == 2
+    assert len(lines) == 3  # effect-demo, effect-demo-historical, effect-demo-explore
     assert any("IF_HISTORICAL_IMAGE" in line for line in lines)
     assert any("IF_NODE_IMAGE" in line for line in lines)
+    assert any("IF_EXPLORE_IMAGE" in line for line in lines)
 
 
 @pytest.mark.parametrize(

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Local replay of the CI container-integration job (.github/workflows/ci.yml).
 #
-# Usage: scripts/local_node_tar_smoke.sh [smoke|effect|demo|demo-historical]
+# Usage: scripts/local_node_tar_smoke.sh [smoke|effect|demo|demo-historical|explore]
 #   smoke  (default) validate, validate-node-image, validate-node-target, benign-node-smoke
 #   effect           validate-node-effect-producer
 #   demo             effect-demo: feedback loop on real node-tar, JSON copied to the host
@@ -9,6 +9,10 @@
 #   demo-historical  effect-demo-historical: state-aware loop on a prebuilt frozen historical
 #                    node-tar effect image (catalog pair 7.5.2/7.5.3), JSON copied to the host
 #                    (plus <name>.steps.jsonl: steps finished so far, kept even on abort)
+#   explore          effect-demo-explore: state-aware loop on an arbitrary prebuilt node-tar
+#                    registry image (host-prepared out of band; TAR_VERSION = resolved version,
+#                    EXPLORE_IMAGE default inodefence-node-tar-registry:$TAR_VERSION). Labelled
+#                    an exploratory, non-qualification run; evidence under target-explore/.
 #
 # The real target runs only inside the trusted non-root Linux controller; this host
 # script only builds images, prepares that controller and delegates through
@@ -39,9 +43,9 @@ set -euo pipefail
 
 MODE="${1:-smoke}"
 case "$MODE" in
-  smoke | effect | demo | demo-historical) ;;
+  smoke | effect | demo | demo-historical | explore) ;;
   *)
-    echo "usage: $0 [smoke|effect|demo|demo-historical]" >&2
+    echo "usage: $0 [smoke|effect|demo|demo-historical|explore]" >&2
     exit 2
     ;;
 esac
@@ -92,6 +96,9 @@ if [ "$MODE" = demo ]; then
 elif [ "$MODE" = demo-historical ]; then
   CONTROLLER_EVIDENCE="/tmp/inodefence-effect-demo-historical-$LABEL.json"
   HOST_EVIDENCE="$EVIDENCE_DIR/inodefence-effect-demo-historical-$LABEL.json"
+elif [ "$MODE" = explore ]; then
+  CONTROLLER_EVIDENCE="/tmp/inodefence-effect-explore-$LABEL.json"
+  HOST_EVIDENCE="$EVIDENCE_DIR/target-explore/inodefence-effect-explore-$LABEL.json"
 else
   CONTROLLER_EVIDENCE="/tmp/inodefence-node-smoke-$LABEL"
   HOST_EVIDENCE="$EVIDENCE_DIR/inodefence-node-smoke-$LABEL"
@@ -211,7 +218,7 @@ cleanup() {
   if [ "$controller_owned" -eq 1 ] && [ "$MODE" != effect ]; then
     for source in "$CONTROLLER_EVIDENCE" "${CONTROLLER_EVIDENCE%.json}.steps.jsonl"; do
       if [ "$source" != "$CONTROLLER_EVIDENCE" ] && [ "$MODE" != demo ] &&
-         [ "$MODE" != demo-historical ]; then
+         [ "$MODE" != demo-historical ] && [ "$MODE" != explore ]; then
         continue
       fi
       inspection=$(cleanup_dk 30 exec "$container_id" sh -c \
@@ -357,7 +364,7 @@ else
   dk build "${BUILD_FLAGS[@]}" -f "$REPO_ROOT/.devcontainer/Dockerfile" -t "$CONTROLLER_IMAGE" "$REPO_ROOT"
   dk build "${BUILD_FLAGS[@]}" -f "$REPO_ROOT/tools/container-helper/Dockerfile" -t "$HELPER_IMAGE" "$REPO_ROOT"
   # The historical effect image is prebuilt and frozen out of band; never build it here.
-  if [ "$MODE" != demo-historical ]; then
+  if [ "$MODE" != demo-historical ] && [ "$MODE" != explore ]; then
     dk build "${BUILD_FLAGS[@]}" -f "$REPO_ROOT/tools/node-tar/Dockerfile" -t "$NODE_IMAGE" "$REPO_ROOT"
   fi
 fi
@@ -393,8 +400,27 @@ dk exec "$CONTROLLER" python -m pip install --quiet --disable-pip-version-check 
 dk exec --workdir / "$CONTROLLER" git config --global --add safe.directory /workspaces/InodeFence
 
 IF_HELPER_IMAGE="$(dk image inspect "$HELPER_IMAGE" --format '{{.Id}}')"
-if [ "$MODE" != demo-historical ]; then
+if [ "$MODE" != demo-historical ] && [ "$MODE" != explore ]; then
   IF_NODE_IMAGE="$(dk image inspect "$NODE_IMAGE" --format '{{.Id}}')"
+fi
+
+if [ "$MODE" = explore ]; then
+  step "effect-demo-explore"
+  : "${TAR_VERSION:?set TAR_VERSION to the resolved node-tar version of the prepared image}"
+  EXPLORE_IMAGE="${EXPLORE_IMAGE:-inodefence-node-tar-registry:$TAR_VERSION}"
+  IF_EXPLORE_IMAGE="$(dk image inspect "$EXPLORE_IMAGE" --format '{{.Id}}')"
+  DEMO_ARGS=()
+  [ -n "${DEMO_POLICY:-}" ] && DEMO_ARGS+=(--policy "$DEMO_POLICY")
+  [ -n "${DEMO_MUTATION_POLICY:-}" ] && DEMO_ARGS+=(--mutation-policy "$DEMO_MUTATION_POLICY")
+  [ -n "${DEMO_SEED:-}" ] && DEMO_ARGS+=(--seed "$DEMO_SEED")
+  [ -n "${DEMO_BUDGET:-}" ] && DEMO_ARGS+=(--budget "$DEMO_BUDGET")
+  [ -n "${DEMO_SENTINEL_COUNT:-}" ] && DEMO_ARGS+=(--sentinel-count "$DEMO_SENTINEL_COUNT")
+  [ -n "${DEMO_SENTINEL_SEED:-}" ] && DEMO_ARGS+=(--sentinel-seed "$DEMO_SENTINEL_SEED")
+  [ -n "${DEMO_OBSERVER_INTEGRITY_POLICY:-}" ] &&
+    DEMO_ARGS+=(--observer-integrity-policy "$DEMO_OBSERVER_INTEGRITY_POLICY")
+  host --image "$IF_EXPLORE_IMAGE" --tar-version "$TAR_VERSION" --call-log "$HOST_CALL_LOG" \
+    --evidence "$CONTROLLER_EVIDENCE" ${DEMO_ARGS[@]+"${DEMO_ARGS[@]}"} effect-demo-explore
+  exit 0
 fi
 
 if [ "$MODE" = demo-historical ]; then

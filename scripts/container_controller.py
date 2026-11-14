@@ -15,6 +15,8 @@ import pytest
 from scripts.run_effect_demo import (
     DECOMPRESS_CAMPAIGN_MODE,
     DEFAULT_NATIVE_BUDGET,
+    EXPLORATION_LABEL,
+    EXPLORE_DEMO_MODE,
     HISTORICAL_DEMO_MODE,
     HISTORICAL_LABEL,
     ORAS_GO_CAMPAIGN_MODE,
@@ -22,6 +24,7 @@ from scripts.run_effect_demo import (
     add_demo_arguments,
     check_demo_arguments,
     demo_options,
+    exploration_demo_report,
     historical_demo_report,
     native_demo_report,
     sentinel_set_from_args,
@@ -216,6 +219,72 @@ def run_native_historical_demo(
             apply_aborted_infra_reexecutions(report, stall_recovery)
             apply_last_anomalous_call(report, stall_recovery)
             print(f"effect-demo-historical aborted: {error}", file=sys.stderr)
+            returncode = 1
+    with evidence.open("x", encoding="ascii") as stream:
+        stream.write(render_effect_campaign_report(report))
+    print(f"effect demo report: {evidence}", file=sys.stderr)
+    print(f"effect demo completed steps: {steps_path}", file=sys.stderr)
+    return returncode
+
+
+def run_native_exploration_demo(
+    backend: ContainerExecutionBackend,
+    image: str,
+    evidence: Path,
+    args: argparse.Namespace,
+    stall_recovery: StallRecovery | None = None,
+) -> int:
+    """State-aware feedback loop on an arbitrary caller-prepared node-tar image (exploration).
+
+    Identical control flow to run_native_historical_demo (per-step JSONL journalling, abort still
+    leaves evidence), but calls exploration_demo_report: there is no version allowlist and the
+    report is labelled an exploratory, non-qualification run. The image was prepared and verified
+    host-side; args.tar_version is the version it resolved.
+    """
+    steps_path = demo_steps_path(evidence)
+    options = demo_options(args)
+    budget = int(options.get("budget", DEFAULT_NATIVE_BUDGET))
+    _announce_demo_start(f"effect-demo-explore tar-version={args.tar_version}", options)
+    with steps_path.open("x", encoding="ascii") as steps_stream:
+
+        def persist_step(record: dict[str, object]) -> None:
+            steps_stream.write(render_effect_step_line(record))
+            steps_stream.flush()
+            os.fsync(steps_stream.fileno())
+            _announce(render_effect_step_summary(record, budget))
+
+        try:
+            report = exploration_demo_report(
+                backend,
+                image,
+                args.tar_version,
+                step_sink=persist_step,
+                sentinel_set=sentinel_set_from_args(args),
+                stall_recovery=stall_recovery,
+                **options,
+            )
+            _announce(render_effect_campaign_summary(report))
+            returncode = 0
+        except NativeDemoAborted as error:
+            report = {
+                "label": EXPLORATION_LABEL,
+                "producer": "native",
+                "mode": "exploration",
+                "qualification": False,
+                "requested_tar_version": args.tar_version,
+                "aborted": {
+                    "step_index": error.step_index,
+                    "case_id": error.case_id,
+                    "reason": error.reason,
+                    "category": classify_abort_reason(error.reason).value,
+                    "observed": error.observed,
+                    "error_chain": error.error_chain,
+                    "case_shape": error.case_shape,
+                },
+            }
+            apply_aborted_infra_reexecutions(report, stall_recovery)
+            apply_last_anomalous_call(report, stall_recovery)
+            print(f"effect-demo-explore aborted: {error}", file=sys.stderr)
             returncode = 1
     with evidence.open("x", encoding="ascii") as stream:
         stream.write(render_effect_campaign_report(report))
@@ -426,6 +495,7 @@ def main() -> int:
             "preflight-node-n04-5s",
             "effect-demo",
             HISTORICAL_DEMO_MODE,
+            EXPLORE_DEMO_MODE,
             DECOMPRESS_CAMPAIGN_MODE,
             ORAS_GO_CAMPAIGN_MODE,
         ),
@@ -438,6 +508,7 @@ def main() -> int:
         "preflight-node-n04-5s",
         "effect-demo",
         HISTORICAL_DEMO_MODE,
+        EXPLORE_DEMO_MODE,
         DECOMPRESS_CAMPAIGN_MODE,
         ORAS_GO_CAMPAIGN_MODE,
     }
@@ -640,7 +711,7 @@ def main() -> int:
             print(verified.stdout, end="")
             print(verified.stderr, end="", file=sys.stderr)
             return verified.returncode
-        if args.mode in ("effect-demo", HISTORICAL_DEMO_MODE):
+        if args.mode in ("effect-demo", HISTORICAL_DEMO_MODE, EXPLORE_DEMO_MODE):
             # Node-tar effect campaigns re-execute a case after a Docker stall; the
             # journaling client passes every call through unchanged.
             observed = ObservedDockerClient(client)
@@ -649,6 +720,10 @@ def main() -> int:
             assert args.evidence is not None
             if args.mode == "effect-demo":
                 return run_native_effect_demo(backend, args.image[0], args.evidence, args, recovery)
+            if args.mode == EXPLORE_DEMO_MODE:
+                return run_native_exploration_demo(
+                    backend, args.image[0], args.evidence, args, recovery
+                )
             return run_native_historical_demo(backend, args.image[0], args.evidence, args, recovery)
         backend = ContainerExecutionBackend(client, args.controller, args.volume, args.owner)
         if args.mode == DECOMPRESS_CAMPAIGN_MODE:

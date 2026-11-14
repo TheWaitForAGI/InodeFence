@@ -14,6 +14,7 @@ from scripts.run_g1_smoke import (
     g1_verdict,
     main,
     summarize_output,
+    vocabulary_equality,
 )
 
 from inodefence.evaluation.rds import RdsArm, RVariant, VocabularyMode, arm_search_policy
@@ -48,6 +49,55 @@ def test_completion_plan_is_three_equal_vocabulary_cells() -> None:
 
 def test_smoke_plan_default_seeds_give_at_least_ten_cells() -> None:
     assert len(_plan("smoke", (9001, 9002, 9003, 9004)).cells()) == 12
+
+
+def test_vocabulary_equality_groups_the_same_seed_by_target() -> None:
+    cells = [
+        {
+            "target_id": target,
+            "seed": 42,
+            "arm": arm,
+            "vocabulary_pool_final": [pool],
+        }
+        for target, pool in (("target-a", "a"), ("target-b", "b"))
+        for arm in ("R", "S-u")
+    ]
+    expected = {"target-a": frozenset({"R", "S-u"}), "target-b": frozenset({"R", "S-u"})}
+    result = vocabulary_equality(cells, expected_arms_by_target=expected)
+    assert result["equal"] is True
+    assert set(result["per_seed"]) == {"target-a/42", "target-b/42"}
+    assert result["per_seed"]["target-a/42"]["pool_sizes"] == {"R": 1, "S-u": 1}
+
+
+def test_vocabulary_equality_requires_every_declared_arm_and_nonempty_pools() -> None:
+    cells = [
+        {"target_id": "one", "seed": 1, "arm": "R", "vocabulary_pool_final": ["a"]},
+        {"target_id": "one", "seed": 1, "arm": "S-u", "vocabulary_pool_final": ["a"]},
+    ]
+    expected = {"one": frozenset({"R", "S-u"})}
+    assert vocabulary_equality(cells, expected_arms_by_target=expected)["equal"] is True
+    assert vocabulary_equality(cells[:1], expected_arms_by_target=expected)["equal"] is False
+    assert (
+        vocabulary_equality(cells, expected_arms_by_target={"one": frozenset({"R", "D", "S-u"})})[
+            "equal"
+        ]
+        is False
+    )
+    duplicate = [*cells, dict(cells[1])]
+    assert vocabulary_equality(duplicate, expected_arms_by_target=expected)["equal"] is False
+    empty = [dict(cell, vocabulary_pool_final=[]) for cell in cells]
+    assert vocabulary_equality(empty, expected_arms_by_target=expected)["equal"] is False
+
+
+def test_legacy_single_target_vocabulary_result_shape_and_three_arm_gate() -> None:
+    cells = [
+        {"seed": 5, "arm": arm, "vocabulary_pool_final": ["outside"]} for arm in ("R", "D", "S-u")
+    ]
+    result = vocabulary_equality(cells)
+    assert set(result) == {"equal", "per_seed", "basis"}
+    assert set(result["per_seed"]) == {"5"}
+    assert result["equal"] is True
+    assert vocabulary_equality(cells[:2])["equal"] is False
 
 
 def test_dry_run_prints_commands_env_and_paths_without_docker(

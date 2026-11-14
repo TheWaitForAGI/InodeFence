@@ -193,32 +193,56 @@ def cell_target(cell: Cell) -> dict[str, Any]:
     }
 
 
-def vocabulary_equality(cells: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    """Per seed, the three arms' final token pools must be the same nonempty set.
+def vocabulary_equality(
+    cells: Sequence[Mapping[str, Any]],
+    *,
+    expected_arms_by_target: Mapping[str, frozenset[str]] | None = None,
+) -> dict[str, Any]:
+    """Per target and seed, all declared arms must have the same nonempty token pool.
 
     This is the native evidence for the G1 "vocabulary equality" test: the pools
     are reconstructed from each cell's recorded step name segments, so when the
     producer was native the equality was observed on node-tar, not assumed.
+
+    The optional expected-arm map comes from the preregistered plan, not from
+    whichever cells happened to produce usable reports. The legacy G1 direct
+    call still requires the three MAIN_ARMS and keeps its single-target schema.
     """
     per_seed: dict[str, dict[str, Any]] = {}
-    by_seed: dict[int, dict[str, frozenset[str]]] = {}
+    by_target: dict[str, dict[int, dict[str, frozenset[str]]]] = {}
+    duplicate_groups: set[tuple[str, int]] = set()
     for cell in cells:
-        by_seed.setdefault(int(cell["seed"]), {})[str(cell["arm"])] = frozenset(
-            cell.get("vocabulary_pool_final", ())
+        target = str(cell.get("target_id", "__single__"))
+        seed = int(cell["seed"])
+        arm = str(cell["arm"])
+        pools = by_target.setdefault(target, {}).setdefault(seed, {})
+        if arm in pools:
+            duplicate_groups.add((target, seed))
+        pools[arm] = frozenset(cell.get("vocabulary_pool_final", ()))
+    multiple_targets = len(by_target) > 1
+    for target, by_seed in sorted(by_target.items()):
+        expected = (
+            {arm.value for arm in MAIN_ARMS}
+            if expected_arms_by_target is None
+            else expected_arms_by_target.get(target)
         )
-    for seed, pools in sorted(by_seed.items()):
-        arms = sorted(pools)
-        distinct = set(pools.values())
-        equal = (
-            set(arms) >= {arm.value for arm in MAIN_ARMS}
-            and len(distinct) == 1
-            and bool(next(iter(distinct)))
-        )
-        per_seed[str(seed)] = {
-            "equal": equal,
-            "arms": arms,
-            "pool_sizes": {arm: len(pools[arm]) for arm in arms},
-        }
+        for seed, pools in sorted(by_seed.items()):
+            arms = sorted(pools)
+            distinct = set(pools.values())
+            equal = (
+                expected is not None
+                and set(arms) == set(expected)
+                and len(arms) >= 2
+                and len(distinct) == 1
+                and bool(next(iter(distinct)))
+                and (target, seed) not in duplicate_groups
+            )
+            key = f"{target}/{seed}" if multiple_targets else str(seed)
+            per_seed[key] = {
+                "equal": equal,
+                "arms": arms,
+                "pool_sizes": {arm: len(pools[arm]) for arm in arms},
+            }
     return {
         "equal": bool(per_seed) and all(item["equal"] for item in per_seed.values()),
         "per_seed": per_seed,
@@ -311,7 +335,11 @@ def summarize_output(
     summaries_dir.mkdir(parents=True, exist_ok=True)
     manifest_host = _manifest_host(output)
     index: list[dict[str, Any]] = []
+    expected_arms_by_target: dict[str, set[str]] = {}
     for cell in plan.cells():
+        expected_arms_by_target.setdefault(cell_target(cell)["target_id"], set()).add(
+            cell.arm.label
+        )
         paths = cell_paths(cell, output)
         config = plan.cell_config(cell)
         host = dict(manifest_host or {})
@@ -412,7 +440,12 @@ def summarize_output(
                 encoding="ascii",
             )
         index.append(entry)
-    equality = vocabulary_equality(index)
+    equality = vocabulary_equality(
+        index,
+        expected_arms_by_target={
+            target: frozenset(arms) for target, arms in expected_arms_by_target.items()
+        },
+    )
     verdict = verdict_fn(plan.plan, index, equality["equal"])
     document = {
         "schema_version": 1,

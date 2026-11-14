@@ -202,7 +202,7 @@ def test_exploration_runs_the_shared_loop_on_one_runtime_and_one_filter() -> Non
     assert report["search_policy"] == s_u.search_policy.value
     assert report["config"]["search_policy"] == s_u.search_policy.value
     assert report["config"]["mutation_policy"] == s_u.mutation_policy.value
-    assert report["vocabulary"] == "observed-names"
+    assert report["vocabulary_mode"] == "observed-names"
     assert len(report["case_records"]) == budget == len(steps)
     assert report["undetermined_steps"] == 0 and report["all_undetermined"] is False
     for record in report["case_records"]:

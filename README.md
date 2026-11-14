@@ -19,7 +19,55 @@ Historical vulnerability rediscovery(N01)는 성공 조건으로 실행·주장�
 없고 현재 취약점을 주장하지 않습니다. 첫 intended qualification pair는 **N01 node-tar
 7.5.2 / 7.5.3**입니다. 과거 감사·요약은 자체 revision의 기록이며 현재 capability baseline이 아닙니다.
 
-[현재 상태](docs/STATUS.md) · [시작 안내](docs/START_HERE.md) · [아키텍처](docs/research/design/architecture.md) · [Security Contracts](docs/research/design/security-contracts.md) · [개발 가이드](CONTRIBUTING.md)
+[현재 상태](docs/STATUS.md) · [시작 안내](docs/START_HERE.md) · [아키텍처](docs/research/design/architecture.md) · [Security Contracts](docs/research/design/security-contracts.md) · [개발 가이드](CONTRIBUTING.md) · [변경 기록](CHANGELOG.md)
+
+## 빠른 시작: 대상 하나를 돌려 보고 한 장 요약 보기 (맥북, demo run)
+
+대상 프로그램과 버전을 주면 격리 컨테이너에서 고정 입력 TAR를 풀어 보고 → C1/C2를 판정하고 → 결과 파일을
+남깁니다. 결과 파일 하나는 한 장 요약으로 바꿀 수 있습니다. 아래는 깨끗한 클론에서 그대로 따라 해 본 순서입니다.
+결과는 `demo run`이며 실험 결과나 안전 보증이 아닙니다(한계는 [CHANGELOG](CHANGELOG.md)).
+
+**필요한 것:** Docker Desktop(실행 중), git, **Python 3.12**. macOS 기본 `python3`은 3.9라 돌지 않고, `python`
+명령은 아예 없습니다. Homebrew라면 `brew install python@3.12`로 `python3.12`를 설치하고, 아래 `make`마다
+`PYTHON=python3.12`를 붙입니다. 이 명령들은 Dev Container가 아니라 **호스트 터미널**에서 실행합니다.
+
+```bash
+git clone https://github.com/TheWaitForAGI/InodeFence.git
+cd InodeFence
+```
+
+**대상 이미지 준비(처음 한 번).** node-tar와 oras-go는 저장소의 Dockerfile로 빌드합니다(npm·Go 모듈을 받으므로
+네트워크 필요). python-tarfile은 공식 `python:<버전>-slim` 이미지를 실행할 때 자동으로 받습니다.
+
+```bash
+docker build -f tools/node-tar/effect/Dockerfile --build-arg TAR_VERSION=7.5.2 -t inodefence-node-tar-effect:7.5.2 .
+docker build -f tools/node-tar/effect/Dockerfile --build-arg TAR_VERSION=7.5.3 -t inodefence-node-tar-effect:7.5.3 .
+docker build -f tools/oras-go/Dockerfile --build-arg ROLE=affected -t inodefence-oras-go:2.6.1 .
+docker build -f tools/oras-go/Dockerfile --build-arg ROLE=fixed -t inodefence-oras-go:2.6.2 .
+```
+
+**세 대상 한 줄 실행 예.** 결과는 기본으로 `~/inodefence-evidence/target-run/<셀>/`에 쌓이고(`TARGET_OUT=`으로 변경),
+이미 있는 폴더는 덮어쓰지 않습니다. 실행 전에 계획만 보려면 `TARGET_ARGS=--dry-run`을 붙입니다.
+
+```bash
+make target-run PYTHON=python3.12 TARGET=node-tar TARGET_VERSIONS="7.5.2 7.5.3"
+make target-run PYTHON=python3.12 TARGET=python-tarfile TARGET_VERSIONS=3.12.16 TARGET_FILTERS="fully_trusted data"
+make target-run PYTHON=python3.12 TARGET=oras-go TARGET_VERSIONS="2.6.1 2.6.2"
+```
+
+python-tarfile은 한 번에 축 하나만 바꿉니다: 같은 런타임에서 필터 비교(위 예) 또는 같은 필터에서 런타임 버전
+비교(`TARGET_VERSIONS="3.12.3 3.12.16" TARGET_FILTERS=data`). 마지막 줄 `TARGET-RUN PASS|FAIL|ERROR ...`가 판정입니다.
+**판정이 FAIL이나 ERROR면 `make`도 `Error 1`로 끝납니다.** 프로그램이 죽은 것이 아니라 위반(또는 실행 오류)을 찾았다는
+신호이고, 결과 파일은 그대로 남습니다.
+
+**한 장 요약 보기.** 결과 파일 하나를 넣으면 대상·버전·판정·케이스별 결과·재현 방법을 담은 Markdown이 나옵니다.
+같은 파일이면 같은 요약이 나오고, 저장된 입력 TAR의 SHA-256도 대조합니다.
+
+```bash
+PYTHONPATH=src python3.12 -m inodefence.target_result_summary ~/inodefence-evidence/target-run/node-tar-7.5.2/result.json -o summary.md
+```
+
+`-o`를 빼면 화면에 출력합니다. 판정 기준(C0/C1/C2)의 정확한 정의는 [security-contracts](docs/research/design/security-contracts.md)에 있습니다.
 
 ## 우리가 해결하려는 문제
 

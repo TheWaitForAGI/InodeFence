@@ -52,18 +52,23 @@ LABEL = "demo run"
 EXPLORATORY_LABEL = "exploratory demo run"
 PREPARATION_METHODS = ("committed-lock", "registry")
 CONTRACTS = ("C0", "C1", "C2")
-#: Case outcome that marks a run with NO valid observation (no before/after to judge); its
-#: contracts must all be null. Only this outcome counts as ``errored``. Any other outcome string is
-#: target text describing how a run the oracle DID observe ended.
+#: Two independent per-case axes.
+#:
+#: *Judgment* (``outcome``): did the oracle get evaluated? ``RUN_ERROR`` = it was NOT (harness or
+#: execution-infrastructure error, the run program produced no observation, no post-run snapshot);
+#: its contracts are null and the case is un-judged. Any other outcome means the oracle ran;
+#: campaigns write ``JUDGED``, fixture-regression results keep their target text (``resolved``,
+#: ``declined``, ...).
 RUN_ERROR = "run_error"
-#: Recommended outcomes for an observed exploration run, by how the target ended. Each keeps its
-#: C0/C1/C2 verdicts (the oracle judges the before/after snapshots whatever the exit status), so a
-#: violation during a rejection, crash or timeout is still a FAIL, and none of them is ``errored``.
-EXTRACTED = "extracted"
+JUDGED = "judged"
+#: *Termination* (``termination``): how the target process ended, independent of judgment. The
+#: oracle judges the before/after snapshots whatever the exit status, so a violation left by a
+#: rejected, crashed or timed-out extraction is still a violation.
+SUCCESS = "success"
 REJECTED = "rejected"
 FAILED = "failed"
 TIMED_OUT = "timed_out"
-OBSERVED_OUTCOMES = (EXTRACTED, REJECTED, FAILED, TIMED_OUT)
+TERMINATIONS = (SUCCESS, REJECTED, FAILED, TIMED_OUT)
 
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
 _GIT_SHA_RE = re.compile(r"[0-9a-f]{40}")
@@ -97,11 +102,20 @@ class TargetAxes:
 
 @dataclass(frozen=True, slots=True)
 class CaseVerdict:
+    """One case: the oracle's verdicts plus the two independent axes (judgment, termination).
+
+    ``termination`` (one of :data:`TERMINATIONS`, or ``None`` when unknown / no target ran) and
+    ``observation_complete`` (whether the observation behind the verdicts was complete) are
+    optional so fixture-regression results written before them read unchanged.
+    """
+
     case_id: str
     outcome: str
     c0: bool | None
     c1: bool | None
     c2: bool | None
+    termination: str | None = None
+    observation_complete: bool | None = None
 
     @property
     def is_run_error(self) -> bool:
@@ -109,12 +123,22 @@ class CaseVerdict:
 
     @property
     def is_unjudged(self) -> bool:
-        """Observed (not a run error) but the oracle gave no verdict on any contract.
+        """The oracle was not evaluated: a run error, or no verdict on any contract at all.
 
-        The one shared definition of an un-judged step: engines count ``unjudged_steps`` with it,
-        and a campaign may not report fewer than its listed cases show.
+        The one shared definition of an un-judged step. Only these feed ``unjudged_steps`` and the
+        campaign ERROR rule; a rejection, crash or timeout the oracle judged is NOT un-judged.
         """
-        return not self.is_run_error and (self.c0, self.c1, self.c2) == (None, None, None)
+        return self.is_run_error or (self.c0, self.c1, self.c2) == (None, None, None)
+
+    @property
+    def needs_repro_check(self) -> bool:
+        """A violation seen when the target did not succeed or the observation was not complete.
+
+        Still a violation, but shown apart in summaries as "reproduction check needed".
+        """
+        return self.violated and (
+            self.termination != SUCCESS or self.observation_complete is not True
+        )
 
     @property
     def violated(self) -> bool:
@@ -176,19 +200,23 @@ class CampaignInfo:
     older files, read unchanged:
 
     - ``runs_executed``: how many cases actually ran; ``None`` -> ``len(cases)``.
-    - ``errors``: ``run_error`` outcomes (no valid observation) across all executions; ``None`` ->
-      run errors in ``cases``. Rejections, crashes and timeouts the oracle observed are judged
-      outcomes, not errors.
+    - ``errors``: ``run_error`` cases (the oracle was not evaluated) across all executions;
+      ``None`` -> run errors in ``cases``. Always a subset of the un-judged steps.
     - ``stopped_early``: a person stopped the run before the budget or a natural end.
+    - ``terminations``: how many executions ended ``success`` / ``rejected`` / ``failed`` /
+      ``timed_out`` (the termination axis, independent of judgment); ``None`` -> counted from
+      ``cases``. Executions with no known termination are not counted, so the sum may be below the
+      number of runs.
 
-    The last two give the oracle a *silent voice* so an un-judged run is never read as a clean one:
+    The oracle has a *silent voice*, so an un-judged run is never read as a clean one:
 
-    - ``unjudged_steps``: how many executions produced no contract judgement at all (the observer
-      saw nothing it could rule on). Counted separately from ``errors``; ``0`` by default.
+    - ``unjudged_steps``: executions where the oracle was not evaluated (run error, no observation,
+      no post-run snapshot); ``None`` -> un-judged cases in ``cases``. Rejections, crashes and
+      timeouts the oracle judged are NOT un-judged. Only this count drives a campaign ``ERROR``.
     - ``max_unjudged_ratio``: the ceiling a run was held to, stored so the verdict is reproducible
       from the file alone. ``None`` means no ceiling was set. When the derived ``unjudged_ratio``
       (:attr:`TargetResult.unjudged_ratio`) rises above it -- or every run went un-judged -- the
-      verdict is ``ERROR``, not a quiet ``PASS``.
+      campaign verdict is ``ERROR``, not a quiet ``PASS``.
     """
 
     seed: int
@@ -197,8 +225,9 @@ class CampaignInfo:
     runs_executed: int | None = None
     errors: int | None = None
     stopped_early: bool = False
-    unjudged_steps: int = 0
+    unjudged_steps: int | None = None
     max_unjudged_ratio: float | None = None
+    terminations: dict[str, int] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -236,8 +265,18 @@ class TargetResult:
 
     @property
     def unjudged_steps(self) -> int:
-        """Executions the oracle could not judge at all; ``0`` outside a campaign."""
-        return self.campaign.unjudged_steps if self.campaign is not None else 0
+        """Executions where the oracle was not evaluated (aggregate, else counted from cases)."""
+        if self.campaign is not None and self.campaign.unjudged_steps is not None:
+            return self.campaign.unjudged_steps
+        return sum(case.is_unjudged for case in self.cases)
+
+    @property
+    def termination_counts(self) -> dict[str, int]:
+        """Executions per termination (aggregate, else counted from cases); every key present."""
+        if self.campaign is not None and self.campaign.terminations is not None:
+            stored = self.campaign.terminations
+            return {name: stored.get(name, 0) for name in TERMINATIONS}
+        return {name: sum(case.termination == name for case in self.cases) for name in TERMINATIONS}
 
     @property
     def unjudged_ratio(self) -> float:
@@ -249,11 +288,17 @@ class TargetResult:
 
     @property
     def verdict(self) -> Verdict:
-        executed = self.executed
-        all_unjudged = executed > 0 and self.unjudged_steps == executed
-        max_ratio = self.campaign.max_unjudged_ratio if self.campaign is not None else None
-        over_ratio = max_ratio is not None and self.unjudged_ratio > max_ratio
-        if self.errored or all_unjudged or over_ratio:
+        """Campaign: ERROR only from un-judged steps (all of them, or above the stored ceiling) --
+        rejections, crashes and timeouts the oracle judged never make it ERROR. Fixture-regression
+        keeps its rule unchanged: any run error is ERROR. Then any violation is FAIL, else PASS."""
+        if self.mode is ResultMode.CAMPAIGN:
+            executed = self.executed
+            all_unjudged = executed > 0 and self.unjudged_steps == executed
+            max_ratio = self.campaign.max_unjudged_ratio if self.campaign is not None else None
+            over_ratio = max_ratio is not None and self.unjudged_ratio > max_ratio
+            if all_unjudged or over_ratio:
+                return Verdict.ERROR
+        elif self.errored:
             return Verdict.ERROR
         if any(case.violated for case in self.cases):
             return Verdict.FAIL
@@ -278,16 +323,7 @@ class TargetResult:
             "runs": {"executed": self.executed, "errored": self.errored},
             "verdict": self.verdict.value,
             "violating_cases": list(self.violating_cases),
-            "cases": [
-                {
-                    "case_id": c.case_id,
-                    "outcome": c.outcome,
-                    "c0": c.c0,
-                    "c1": c.c1,
-                    "c2": c.c2,
-                }
-                for c in self.cases
-            ],
+            "cases": [_case_json(c) for c in self.cases],
             "repro_inputs": [
                 {"case_id": r.case_id, "tar_path": r.tar_path, "tar_sha256": r.tar_sha256}
                 for r in self.repro_inputs
@@ -324,6 +360,11 @@ class TargetResult:
                 "errors": self.campaign.errors,
                 "stopped_early": self.campaign.stopped_early,
                 "unjudged_steps": self.campaign.unjudged_steps,
+                "terminations": (
+                    None
+                    if self.campaign.terminations is None
+                    else dict(sorted(self.campaign.terminations.items()))
+                ),
                 "max_unjudged_ratio": self.campaign.max_unjudged_ratio,
                 "unjudged_ratio": self.unjudged_ratio,
             }
@@ -331,6 +372,23 @@ class TargetResult:
 
     def dumps(self) -> str:
         return json.dumps(self.to_json_dict(), indent=2, sort_keys=True) + "\n"
+
+
+def _case_json(case: CaseVerdict) -> dict[str, Any]:
+    """A case as JSON; the termination axis keys appear only when set, so results written before
+    them (fixture-regression) serialize byte-identically."""
+    data: dict[str, Any] = {
+        "case_id": case.case_id,
+        "outcome": case.outcome,
+        "c0": case.c0,
+        "c1": case.c1,
+        "c2": case.c2,
+    }
+    if case.termination is not None:
+        data["termination"] = case.termination
+    if case.observation_complete is not None:
+        data["observation_complete"] = case.observation_complete
+    return data
 
 
 def repro_input(case_id: str, tar_path: str, tar_bytes: bytes) -> ReproInput:
@@ -362,6 +420,12 @@ def _validate(result: TargetResult) -> None:
                 )
         if case.is_run_error and case.violated:
             raise TargetResultError(f"{case.case_id} is a run error but reports a violation")
+        if case.termination is not None and case.termination not in TERMINATIONS:
+            raise TargetResultError(
+                f"{case.case_id}.termination must be one of {TERMINATIONS} or null"
+            )
+        if case.observation_complete is not None and type(case.observation_complete) is not bool:
+            raise TargetResultError(f"{case.case_id}.observation_complete must be true/false/null")
     known = set(case_ids)
     seen_paths: set[str] = set()
     for item in result.repro_inputs:
@@ -401,14 +465,35 @@ def _validate_campaign(result: TargetResult) -> None:
         type(campaign.errors) is not int or not 0 <= campaign.errors <= executed
     ):
         raise TargetResultError("campaign.errors must be an integer in 0..runs")
-    if type(campaign.unjudged_steps) is not int or not 0 <= campaign.unjudged_steps <= executed:
-        raise TargetResultError("campaign.unjudged_steps must be an integer in 0..runs")
-    listed_unjudged = sum(case.is_unjudged for case in result.cases)
-    if campaign.unjudged_steps < listed_unjudged:
+    stored = campaign.unjudged_steps
+    if stored is not None:
+        if type(stored) is not int or not 0 <= stored <= executed:
+            raise TargetResultError("campaign.unjudged_steps must be null or an integer in 0..runs")
+        listed_unjudged = sum(case.is_unjudged for case in result.cases)
+        if stored < listed_unjudged:
+            raise TargetResultError(
+                f"campaign.unjudged_steps {stored} is below the {listed_unjudged} un-judged "
+                "case(s) listed (the oracle was not evaluated)"
+            )
+    if result.errored > result.unjudged_steps:
         raise TargetResultError(
-            f"campaign.unjudged_steps {campaign.unjudged_steps} is below the {listed_unjudged} "
-            "un-judged case(s) listed (observed, but no contract verdict)"
+            f"campaign run errors ({result.errored}) exceed unjudged_steps "
+            f"({result.unjudged_steps}); a run error is always un-judged"
         )
+    terminations = campaign.terminations
+    if terminations is not None:
+        if not isinstance(terminations, dict) or set(terminations) - set(TERMINATIONS):
+            raise TargetResultError(f"campaign.terminations keys must be from {TERMINATIONS}")
+        if not all(type(n) is int and n >= 0 for n in terminations.values()):
+            raise TargetResultError("campaign.terminations counts must be non-negative integers")
+        if sum(terminations.values()) > executed:
+            raise TargetResultError("campaign.terminations add up to more than the runs")
+        for name in TERMINATIONS:
+            listed = sum(case.termination == name for case in result.cases)
+            if terminations.get(name, 0) < listed:
+                raise TargetResultError(
+                    f"campaign.terminations[{name!r}] is below the {listed} listed case(s)"
+                )
     ratio = campaign.max_unjudged_ratio
     if ratio is not None and (type(ratio) not in (int, float) or not 0.0 <= ratio <= 1.0):
         raise TargetResultError("campaign.max_unjudged_ratio must be null or a number in 0.0..1.0")
@@ -482,6 +567,7 @@ _CAMPAIGN_OPTIONAL = {
     "unjudged_steps",
     "max_unjudged_ratio",
     "unjudged_ratio",
+    "terminations",
 }
 
 _TOP_KEYS = {
@@ -557,8 +643,9 @@ def from_json_dict(data: object) -> TargetResult:
             runs_executed=campaign_block.get("runs_executed"),
             errors=campaign_block.get("errors"),
             stopped_early=campaign_block.get("stopped_early", False),
-            unjudged_steps=campaign_block.get("unjudged_steps", 0),
+            unjudged_steps=campaign_block.get("unjudged_steps"),
             max_unjudged_ratio=campaign_block.get("max_unjudged_ratio"),
+            terminations=campaign_block.get("terminations"),
         )
     axes = _keys(top["axes"], {"target_version", "runtime_version", "extraction_filter"}, "axes")
     prov = _keys(
@@ -569,6 +656,7 @@ def from_json_dict(data: object) -> TargetResult:
     except ValueError as error:
         raise TargetResultError(f"unknown mode {top['mode']!r}") from error
     case_keys = {"case_id", "outcome", "c0", "c1", "c2"}
+    case_optional = {"termination", "observation_complete"}
     repro_keys = {"case_id", "tar_path", "tar_sha256"}
     result = TargetResult(
         target=top["target"],
@@ -576,7 +664,8 @@ def from_json_dict(data: object) -> TargetResult:
         mode=mode,
         observed_contracts=tuple(top["observed_contracts"]),
         cases=tuple(
-            CaseVerdict(**_keys(c, case_keys, "case")) for c in _as_list(top["cases"], "cases")
+            CaseVerdict(**_keys_optional(c, case_keys, case_optional, "case"))
+            for c in _as_list(top["cases"], "cases")
         ),
         repro_inputs=tuple(
             ReproInput(**_keys(r, repro_keys, "repro_input"))

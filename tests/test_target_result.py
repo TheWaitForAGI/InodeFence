@@ -8,11 +8,13 @@ from pathlib import Path
 import pytest
 
 from inodefence.target_result import (
+    JUDGED,
     LABEL,
-    OBSERVED_OUTCOMES,
     REJECTED,
     RUN_ERROR,
     SCHEMA,
+    SUCCESS,
+    TERMINATIONS,
     TIMED_OUT,
     CampaignInfo,
     CaseVerdict,
@@ -192,9 +194,10 @@ def test_campaign_block_round_trips_and_serializes_only_when_present() -> None:
         "runs_executed": None,
         "errors": None,
         "stopped_early": False,
-        "unjudged_steps": 0,
+        "unjudged_steps": None,
         "max_unjudged_ratio": None,
         "unjudged_ratio": 0.0,
+        "terminations": None,
     }
     assert from_json_dict(json.loads(result.dumps())) == result
 
@@ -260,7 +263,7 @@ def test_old_three_key_campaign_block_reads_with_defaults() -> None:
     assert loaded.campaign.errors is None
     assert loaded.campaign.stopped_early is False
     # Silent-voice fields are also optional: an old block means "nothing un-judged", no ceiling.
-    assert loaded.campaign.unjudged_steps == 0
+    assert loaded.campaign.unjudged_steps is None and loaded.unjudged_steps == 0
     assert loaded.campaign.max_unjudged_ratio is None
     assert loaded.unjudged_ratio == 0.0
 
@@ -272,7 +275,7 @@ def _aggregate_result(
     budget: int | None = None,
     runs_to_first_violation: int | None = None,
     stopped_early: bool = False,
-    unjudged_steps: int = 0,
+    unjudged_steps: int | None = None,
     max_unjudged_ratio: float | None = None,
 ) -> TargetResult:
     # Large-campaign shape: cases hold only the violations (or none); counts live in the block.
@@ -306,22 +309,16 @@ def test_large_campaign_cases_are_violations_only_with_separate_run_count() -> N
         CaseVerdict("step-800", "extracted", None, True, False),
         runs_executed=1000,
         errors=3,
+        unjudged_steps=3,
         budget=None,  # run until stopped
         runs_to_first_violation=15,
         stopped_early=True,
     )
     assert result.executed == 1000  # from runs_executed, not len(cases)==2
     assert result.errored == 3  # from the errors aggregate
-    assert result.verdict is Verdict.ERROR  # errors dominate
+    assert result.verdict is Verdict.FAIL  # 3 harness errors in 1000 runs do not mask it
     assert len(result.violating_cases) == 2
     assert from_json_dict(json.loads(result.dumps())) == result
-
-
-def test_aggregate_errors_drive_error_verdict_even_with_no_error_case() -> None:
-    result = _aggregate_result(runs_executed=50, errors=2)  # no cases at all
-    assert result.executed == 50 and result.errored == 2
-    assert result.verdict is Verdict.ERROR
-    assert result.campaign is not None and result.campaign.budget is None
 
 
 def test_runs_executed_cannot_be_below_case_count() -> None:
@@ -416,9 +413,13 @@ def test_unjudged_ceiling_outranks_a_violation() -> None:
 
 
 def test_unjudged_steps_out_of_range_rejected() -> None:
-    with pytest.raises(TargetResultError, match="unjudged_steps must be an integer in 0..runs"):
+    with pytest.raises(
+        TargetResultError, match="unjudged_steps must be null or an integer in 0..runs"
+    ):
         _aggregate_result(runs_executed=5, unjudged_steps=6)
-    with pytest.raises(TargetResultError, match="unjudged_steps must be an integer in 0..runs"):
+    with pytest.raises(
+        TargetResultError, match="unjudged_steps must be null or an integer in 0..runs"
+    ):
         _aggregate_result(runs_executed=5, unjudged_steps=-1)
 
 
@@ -439,33 +440,87 @@ def test_reader_cross_checks_stored_unjudged_ratio() -> None:
         from_json_dict(data)
 
 
-def test_observed_rejection_crash_timeout_keep_verdicts_and_are_not_errors() -> None:
-    assert OBSERVED_OUTCOMES == ("extracted", "rejected", "failed", "timed_out")
-    cases = tuple(
-        CaseVerdict(f"step-{i}", outcome, None, False, False)
-        for i, outcome in enumerate(OBSERVED_OUTCOMES)
+def _judged(i: int, termination: str, c1: bool = False, **kw) -> CaseVerdict:
+    return CaseVerdict(f"step-{i}", JUDGED, None, c1, False, termination=termination, **kw)
+
+
+def test_terminations_are_a_separate_axis_and_never_make_a_campaign_error() -> None:
+    # Mostly rejected / crashed / timed out, all judged: no violation -> PASS, never ERROR.
+    cases = tuple(_judged(i, t) for i, t in enumerate(TERMINATIONS * 3))
+    result = replace(_aggregate_result(runs_executed=12), cases=cases, repro_inputs=())
+    assert result.unjudged_steps == 0 and result.errored == 0
+    assert result.termination_counts == {name: 3 for name in TERMINATIONS}
+    assert result.verdict is Verdict.PASS
+
+
+def test_violation_left_by_a_timeout_is_a_fail_marked_for_reproduction_check() -> None:
+    hit = _judged(3, TIMED_OUT, c1=True, observation_complete=True)
+    clean_hit = _judged(4, SUCCESS, c1=True, observation_complete=True)
+    partial_hit = _judged(5, SUCCESS, c1=True, observation_complete=False)
+    result = _aggregate_result(
+        hit, clean_hit, partial_hit, runs_executed=10, runs_to_first_violation=4
     )
-    result = _aggregate_result(*(), runs_executed=4)
-    result = replace(result, cases=cases, repro_inputs=())
-    assert result.errored == 0  # campaign.errors=0, and none of these is a run error
-    assert result.verdict is Verdict.PASS  # one rejection no longer turns a campaign into ERROR
+    assert result.verdict is Verdict.FAIL
+    assert hit.needs_repro_check and partial_hit.needs_repro_check
+    assert not clean_hit.needs_repro_check
+    assert from_json_dict(json.loads(result.dumps())) == result
 
 
-def test_violation_during_a_timeout_is_a_fail_not_hidden() -> None:
-    hit = CaseVerdict("step-3", TIMED_OUT, None, True, False)
-    result = _aggregate_result(hit, runs_executed=10, runs_to_first_violation=4)
-    assert not hit.is_run_error and result.verdict is Verdict.FAIL
+def test_unjudged_means_the_oracle_was_not_evaluated() -> None:
+    assert CaseVerdict("a", RUN_ERROR, None, None, None, termination=SUCCESS).is_unjudged
+    assert CaseVerdict("a", JUDGED, None, None, None).is_unjudged  # no verdict at all
+    assert not CaseVerdict("a", JUDGED, None, False, None, termination=REJECTED).is_unjudged
 
 
-def test_is_unjudged_is_observed_but_no_verdict() -> None:
-    assert CaseVerdict("a", REJECTED, None, None, None).is_unjudged
-    assert not CaseVerdict("a", REJECTED, None, False, None).is_unjudged
-    assert not CaseVerdict("a", RUN_ERROR, None, None, None).is_unjudged  # an error, not un-judged
+def test_campaign_error_comes_only_from_unjudged_steps() -> None:
+    # A few harness errors in a long campaign do not make it ERROR (no ceiling set).
+    few = _aggregate_result(runs_executed=50, errors=2, unjudged_steps=2)
+    assert few.errored == 2 and few.verdict is Verdict.PASS
+    # Above the stored ceiling, or every run un-judged -> ERROR.
+    assert (
+        _aggregate_result(
+            runs_executed=50, errors=2, unjudged_steps=10, max_unjudged_ratio=0.1
+        ).verdict
+        is Verdict.ERROR
+    )
+    blind = tuple(CaseVerdict(f"s{i}", RUN_ERROR, None, None, None) for i in range(3))
+    all_blind = replace(_aggregate_result(runs_executed=3), cases=blind, repro_inputs=())
+    assert all_blind.unjudged_steps == 3 and all_blind.verdict is Verdict.ERROR
 
 
-def test_campaign_cannot_report_fewer_unjudged_steps_than_its_cases_show() -> None:
-    blind = CaseVerdict("step-1", "extracted", None, None, None)
+def test_fixture_regression_keeps_its_any_run_error_is_error_rule() -> None:
+    err = CaseVerdict("e", RUN_ERROR, None, None, None)
+    assert _result(CaseVerdict("a", "resolved", None, False, False), err).verdict is Verdict.ERROR
+
+
+def test_campaign_counts_must_cover_what_the_cases_show() -> None:
+    blind = CaseVerdict("step-1", JUDGED, None, None, None)
     with pytest.raises(TargetResultError, match="below the 1 un-judged case"):
         _aggregate_result(blind, runs_executed=5, unjudged_steps=0)
-    ok = _aggregate_result(blind, runs_executed=5, unjudged_steps=1)
-    assert ok.unjudged_steps == 1 and from_json_dict(json.loads(ok.dumps())) == ok
+    with pytest.raises(TargetResultError, match="run errors .* exceed unjudged_steps"):
+        _aggregate_result(runs_executed=5, errors=2, unjudged_steps=1)
+    with pytest.raises(TargetResultError, match="terminations"):
+        replace(
+            _aggregate_result(runs_executed=5),
+            campaign=CampaignInfo(7, None, None, runs_executed=5, terminations={"exploded": 1}),
+        )
+    with pytest.raises(TargetResultError, match="add up to more than the runs"):
+        replace(
+            _aggregate_result(runs_executed=5),
+            campaign=CampaignInfo(7, None, None, runs_executed=5, terminations={"success": 6}),
+        )
+
+
+def test_case_axis_keys_are_written_only_when_set_so_regression_output_is_unchanged() -> None:
+    plain = _result().to_json_dict()["cases"][0]
+    assert set(plain) == {"case_id", "outcome", "c0", "c1", "c2"}
+    case = _judged(0, REJECTED, observation_complete=True)
+    data = replace(
+        _aggregate_result(runs_executed=3), cases=(case,), repro_inputs=()
+    ).to_json_dict()
+    assert data["cases"][0]["termination"] == "rejected"
+    assert data["cases"][0]["observation_complete"] is True
+    with pytest.raises(TargetResultError, match="termination must be one of"):
+        replace(
+            _aggregate_result(runs_executed=1), cases=(_judged(0, "exploded"),), repro_inputs=()
+        )

@@ -70,6 +70,7 @@ from typing import Any, NoReturn
 
 from scripts import regression_check as rc
 
+from inodefence.case_replay import ReplayHook
 from inodefence.target_result import (
     RUN_ERROR,
     CaseVerdict,
@@ -227,6 +228,10 @@ class TargetAdapter:
     #: verdict, like a failed prepare). ``None`` (default) reuses any present image by tag name,
     #: unchanged. ``scripts.image_prepare.recipe_verify_existing`` builds one from a recipe.
     verify_existing: Callable[[RunCell, str], str | None] | None = None
+    #: Optional: re-run one recorded violation case on its exact image through the same isolation
+    #: path as exploration (``inodefence replay``; see ``inodefence.case_replay.ReplayHook``).
+    #: ``None`` (default) means this target does not support replay yet.
+    replay: ReplayHook | None = None
 
 
 def fixture_case(fixture: rc.RegressionFixture, raw: dict[str, Any]) -> CaseRun:

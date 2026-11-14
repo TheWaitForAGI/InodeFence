@@ -125,9 +125,22 @@ TARGET_VERSIONS ?= $(TAR_VERSION)
 TARGET_FILTERS ?=
 AUTO_PREPARE ?= 0
 IMAGE_TAG_SUFFIX ?=
-TARGET_OUT ?= $(HOME)/inodefence-evidence/target-run
+# Default output is OUTSIDE the repo and OUTSIDE the experiment-evidence tree.
+TARGET_OUT ?= $(HOME)/inodefence-target-run
+# The two targets below are thin shells over the `inodefence` command: user values go through
+# the environment and are placed as double-quoted shell positionals under `set -f`, so a value
+# with spaces, `;`, `$$(...)`, quotes or globs is one literal argument the command never
+# re-parses. `inodefence` passes argv straight to the driver (no shell string assembly).
+export TARGET TARGET_VERSIONS TARGET_FILTERS TARGET_OUT IMAGE_TAG_SUFFIX AUTO_PREPARE TARGET_ARGS PYTHON BUDGET SEED EXPLORE_OUT
 target-run:
-	PYTHONPATH=src:. $(PYTHON) scripts/run_target.py --target $(TARGET) $(foreach v,$(TARGET_VERSIONS),--version $(v)) $(foreach f,$(TARGET_FILTERS),--extraction-filter $(f)) $(if $(filter 1,$(AUTO_PREPARE)),--auto-prepare) $(if $(IMAGE_TAG_SUFFIX),--image-tag-suffix=$(IMAGE_TAG_SUFFIX)) $(if $(filter --dry-run,$(TARGET_ARGS)),,--out $(TARGET_OUT)) $(TARGET_ARGS)
+	@set -euf; \
+	set -- verify --target "$$TARGET"; \
+	for v in $$TARGET_VERSIONS; do set -- "$$@" --version "$$v"; done; \
+	for f in $$TARGET_FILTERS; do set -- "$$@" --extraction-filter "$$f"; done; \
+	if [ "$$AUTO_PREPARE" = 1 ]; then set -- "$$@" --auto-prepare; fi; \
+	if [ -n "$$IMAGE_TAG_SUFFIX" ]; then set -- "$$@" --image-tag-suffix "$$IMAGE_TAG_SUFFIX"; fi; \
+	case " $$TARGET_ARGS " in *" --dry-run "*) ;; *) set -- "$$@" --out "$$TARGET_OUT" ;; esac; \
+	PYTHONPATH=src:. "$$PYTHON" -m inodefence.cli "$$@" $$TARGET_ARGS
 
 # Point the fuzzer at a node-tar version (latest or exact) and run the existing effect loop on it,
 # so a distributor can try their version before release. Prepares the image host-side
@@ -138,7 +151,13 @@ BUDGET ?= 20
 SEED ?= 123
 EXPLORE_OUT ?= $(HOME)/inodefence-explore
 target-explore:
-	PYTHONPATH=src:. $(PYTHON) scripts/run_target_explore.py --target $(TARGET) $(foreach v,$(TARGET_VERSIONS),--version $(v)) --budget $(BUDGET) --seed $(SEED) $(if $(filter 1,$(AUTO_PREPARE)),--auto-prepare) $(if $(IMAGE_TAG_SUFFIX),--image-tag-suffix=$(IMAGE_TAG_SUFFIX)) --out $(EXPLORE_OUT) $(TARGET_ARGS)
+	@set -euf; \
+	set -- explore --target "$$TARGET"; \
+	for v in $$TARGET_VERSIONS; do set -- "$$@" --version "$$v"; done; \
+	set -- "$$@" --budget "$$BUDGET" --seed "$$SEED" --out "$$EXPLORE_OUT"; \
+	if [ "$$AUTO_PREPARE" = 1 ]; then set -- "$$@" --auto-prepare; fi; \
+	if [ -n "$$IMAGE_TAG_SUFFIX" ]; then set -- "$$@" --image-tag-suffix "$$IMAGE_TAG_SUFFIX"; fi; \
+	PYTHONPATH=src:. "$$PYTHON" -m inodefence.cli "$$@" $$TARGET_ARGS
 
 # Offline replay planner: read a demo report (REPORT=<path>) and reproduce its run
 # command, binding the recorded image recipe to the committed one and checking the

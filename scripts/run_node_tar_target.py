@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import base64
 import json
+import subprocess
 import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -227,6 +228,22 @@ def _explore_hook(prepared, options):  # type: ignore[no-untyped-def]
     return explore(prepared, options)
 
 
+def _verify_existing(cell: RunCell, image_id: str) -> str | None:
+    """Before the explore path reuses a prepared registry image, confirm its effect producer runs.
+
+    Checking only that the image's ``tar`` version string matches is not enough: a same-version
+    image whose committed effect producer is missing or incompatible would run but fail at every
+    step, a silent all-unjudged campaign. So re-run the producer offline against the image -- it
+    must identify the installed ``tar`` and extract a benign archive with a usable frame and no
+    failures (the same check preparation runs, at #409). Only the exploratory (registry) reuse path
+    is guarded; committed-recipe reuse (fixture regression) is unchanged.
+    """
+    if cell.image_ref is None or not cell.exploratory:
+        return None
+    result = registry.producer_check(subprocess.run, cell.image_ref, cell.axes.target_version or "")
+    return None if result["ok"] else result["reason"]
+
+
 ADAPTER = TargetAdapter(
     mode=ResultMode.FIXTURE_REGRESSION,
     observed_contracts=("C1", "C2"),
@@ -237,4 +254,5 @@ ADAPTER = TargetAdapter(
     describe=_describe,
     resolve=_resolve,
     explore=_explore_hook,
+    verify_existing=_verify_existing,
 )

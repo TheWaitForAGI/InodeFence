@@ -17,6 +17,7 @@ from inodefence.target_result import (
     EXPLORATORY_LABEL,
     LABEL,
     Preparation,
+    TargetAxes,
     TargetResultError,
     from_json_dict,
     load_target_result,
@@ -686,3 +687,51 @@ def test_ensure_image_raises_the_preparation_reason(monkeypatch: pytest.MonkeyPa
         nt.ensure_image("9.9.9")
     with pytest.raises(ValueError):
         nt.ensure_image("next")
+
+
+# ---- verify_existing: the explore path re-checks the effect producer before reusing an image ----
+
+
+def _exploratory_cell(version: str = V) -> rt.RunCell:
+    return rt.RunCell(
+        dirname="x",
+        axes=TargetAxes(target_version=version),
+        image_ref=f"inodefence-node-tar-registry:{version}",
+        exploratory=True,
+    )
+
+
+def test_verify_existing_exploratory_runs_the_producer_check(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cell = _exploratory_cell()
+    monkeypatch.setattr(
+        reg, "producer_check", lambda runner, image, version: {"ok": True, "reason": "fine"}
+    )
+    assert nt._verify_existing(cell, "sha256:x") is None  # producer runs -> reuse
+    monkeypatch.setattr(
+        reg,
+        "producer_check",
+        lambda runner, image, version: {"ok": False, "reason": "producer frame unusable"},
+    )
+    assert nt._verify_existing(cell, "sha256:x") == "producer frame unusable"  # refused
+
+
+def test_verify_existing_does_not_guard_committed_reuse(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Only the explore (exploratory/registry) reuse path is guarded; a committed-recipe image is
+    # reused unchanged, so the producer check must not run for it.
+    cell = rt.RunCell(
+        dirname="x",
+        axes=TargetAxes(target_version="7.5.3"),
+        image_ref="inodefence-node-tar-effect:7.5.3",
+        exploratory=False,
+    )
+    monkeypatch.setattr(
+        reg, "producer_check", lambda *a, **k: pytest.fail("committed reuse must not run producer")
+    )
+    assert nt._verify_existing(cell, "sha256:x") is None
+
+
+def test_verify_existing_skips_a_cell_with_no_image() -> None:
+    cell = rt.RunCell(dirname="x", axes=TargetAxes(target_version=V), image_ref=None)
+    assert nt._verify_existing(cell, "") is None

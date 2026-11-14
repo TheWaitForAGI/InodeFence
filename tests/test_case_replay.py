@@ -438,7 +438,7 @@ def test_controller_entry_journals_every_round(tmp_path: Path, monkeypatch) -> N
     assert report["complete"] is True and len(report["rounds"]) == 3
     assert report["rounds"][1]["termination"] == "rejected"
     lines = replay_rounds_path(evidence).read_text().splitlines()
-    assert replay_rounds_path(evidence).name == "inodefence-replay-x.rounds.jsonl"
+    assert replay_rounds_path(evidence).name == "inodefence-replay-x.steps.jsonl"
     assert [json.loads(line)["round"] for line in lines] == [1, 2, 3]
 
 
@@ -455,3 +455,96 @@ def test_controller_entry_keeps_finished_rounds_when_it_dies(tmp_path: Path, mon
     assert report["complete"] is False and len(report["rounds"]) == 1
     assert "docker daemon went away" in report["stop_reason"]
     assert len(replay_rounds_path(evidence).read_text().splitlines()) == 1
+
+
+# -- node-tar hook (fake smoke runner; no Docker) ----------------------------------------------
+
+
+def _fake_smoke(
+    rounds: list[dict], *, complete: bool, report: bool = True, rc: int = 0, **override
+):
+    seen: dict = {}
+
+    def run(argv, env, cwd):
+        import re
+
+        from scripts.node_tar_replay import report_paths
+
+        seen.update(argv=argv, env=env, cwd=cwd)
+        assert re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", env["RUN_ID"])
+        line = Path(env["REPLAY_INPUT"]).read_text()
+        parsed = parse_replay_input(line)  # the controller would accept exactly this
+        report_path, journal = report_paths(Path(env["INODEFENCE_EVIDENCE_DIR"]), env["RUN_ID"])
+        report_path.parent.mkdir(parents=True)
+        journal.write_text("".join(json.dumps(r) + "\n" for r in rounds))
+        if report:
+            report_path.write_text(
+                json.dumps(
+                    {
+                        "case_id": parsed.case.case_id,
+                        "tar_sha256": parsed.tar_sha256,
+                        "image_id": env["REPLAY_IMAGE"],
+                        "rounds": rounds,
+                        "complete": complete,
+                        "node_tar_version": "7.5.1",
+                        **override,
+                    }
+                )
+            )
+        return subprocess.CompletedProcess(argv, rc)
+
+    return run, seen
+
+
+def test_node_tar_hook_runs_the_smoke_replay_and_reads_the_report(tmp_path: Path) -> None:
+    from scripts.node_tar_replay import replay
+
+    request = load_replay_request(_case_folder(tmp_path), rounds=2)
+    work = tmp_path / "work"
+    work.mkdir()
+    run, seen = _fake_smoke([_round(round=1), _round(round=2)], complete=True)
+    result = replay(request, work, runner=run)
+    assert seen["argv"][-1] == "replay" and seen["argv"][1].endswith("local_node_tar_smoke.sh")
+    assert seen["env"]["REPLAY_IMAGE"] == IMAGE
+    assert Path(seen["env"]["REPLAY_INPUT"]).is_absolute()
+    assert Path(seen["env"]["INODEFENCE_EVIDENCE_DIR"]).is_relative_to(work)
+    assert result.complete and len(result.rounds) == 2
+    assert result.runner["node_tar_version"] == "7.5.1"
+
+
+def test_node_tar_hook_keeps_journal_rounds_when_the_controller_died(tmp_path: Path) -> None:
+    from scripts.node_tar_replay import replay
+
+    request = load_replay_request(_case_folder(tmp_path), rounds=3)
+    (tmp_path / "work").mkdir()
+    run, _ = _fake_smoke([_round(round=1)], complete=False, report=False, rc=1)
+    result = replay(request, tmp_path / "work", runner=run)
+    assert not result.complete and len(result.rounds) == 1
+    assert "1 finished round(s) read from the journal" in (result.stop_reason or "")
+
+
+def test_node_tar_hook_refuses_a_report_about_another_case(tmp_path: Path) -> None:
+    from scripts.node_tar_replay import replay
+
+    request = load_replay_request(_case_folder(tmp_path), rounds=1)
+    (tmp_path / "work").mkdir()
+    run, _ = _fake_smoke([_round()], complete=True, image_id="sha256:" + "d" * 64)
+    with pytest.raises(CaseReplayError, match="image_id"):
+        replay(request, tmp_path / "work", runner=run)
+
+
+def test_node_tar_adapter_replays_end_to_end_through_the_driver(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    import scripts.node_tar_replay as ntr
+
+    real = ntr.replay
+    run, _ = _fake_smoke([_round(round=i) for i in (1, 2, 3)], complete=True)
+    monkeypatch.setattr(ntr, "replay", lambda request, work: real(request, work, runner=run))
+    folder = _case_folder(tmp_path)
+    assert driver.main([str(folder)], runner=_docker(IMAGE)) == 0  # the real node-tar adapter
+    (record,) = read_replays(folder)
+    assert record["replay"]["complete"] is True
+    assert record["summary"]["same_contracts"] == 3
+    assert record["replay"]["runner"]["path"].endswith("effect-replay-case")
+    assert "replayed 3/3" in capsys.readouterr().out

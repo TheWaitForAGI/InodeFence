@@ -6,8 +6,11 @@ each contract's value is the oracle's ``violated`` flag for it. Using the same r
 violation records consistent with the final ``result.json`` built from that report. The input TAR
 is rebuilt with :func:`inodefence.builder.build_tar` only for violating steps, as the report does.
 
-"Un-judged" is the loop's own ``observation_failure`` (the trace reported observation failures or
-failed its integrity check), so the oracle had nothing trustworthy to rule on.
+"Un-judged" uses the same rule as the result file (so the live count equals the
+``unjudged_steps`` a campaign verdict is recomputed from): the target run succeeded but the oracle
+gave no verdict on any contract (C0, C1 and C2 all ``None``). A run that did not succeed is an
+error/timeout/rejection, never "un-judged". In the node-tar loop this coincides with the loop's
+``observation_failure`` signal (an observation failure leaves every contract unjudged).
 """
 
 from __future__ import annotations
@@ -50,7 +53,8 @@ def live_step_from_effect(step: Any) -> LiveStep:
         c0=contracts["C0"],
         c1=contracts["C1"],
         c2=contracts["C2"],
-        unjudged=bool(step.feedback.observation_failure),
+        unjudged=status is ExecutionStatus.SUCCESS
+        and all(value is None for value in contracts.values()),
         parent_case_id=step.parent_case_id,
         origin=str(getattr(step.origin, "value", step.origin)),
         mutation=None if attempt is None else attempt.operator_id.value,

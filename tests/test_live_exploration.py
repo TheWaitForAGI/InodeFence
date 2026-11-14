@@ -377,3 +377,17 @@ def test_progress_json_is_plain_json_on_disk(tmp_path: Path) -> None:
     _, _, live = _recorder(tmp_path)
     data = json.loads((live / "progress.json").read_text(encoding="utf-8"))
     assert data["budget"] == 100 and data["violations"]["per_fingerprint_cap"] == 3
+
+
+def test_adapter_unjudged_uses_the_result_file_rule() -> None:
+    # Same rule as the result file: ran (SUCCESS) but no contract verdict at all.
+    no_verdict = live_step_from_effect(_stand_in(ExecutionStatus.SUCCESS, ()))
+    assert (no_verdict.c0, no_verdict.c1, no_verdict.c2) == (None, None, None)
+    assert no_verdict.unjudged is True and no_verdict.status == "success"
+    judged = live_step_from_effect(
+        _stand_in(ExecutionStatus.SUCCESS, (ViolationResult(ContractId.C0, False, (), "ok", ()),))
+    )
+    assert judged.unjudged is False
+    # A run that did not succeed is an error/timeout/rejection, never "un-judged".
+    for status in (ExecutionStatus.TIMED_OUT, ExecutionStatus.FAILED, ExecutionStatus.REJECTED):
+        assert live_step_from_effect(_stand_in(status, ())).unjudged is False

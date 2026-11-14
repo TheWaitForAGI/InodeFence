@@ -18,6 +18,13 @@ must be ``None`` in every case.
 Overall verdict (same rule as ``make regression``): ``ERROR`` if any case is a run error, else
 ``FAIL`` if any case violated an observed contract, else ``PASS``. ``PASS`` is not a safety proof.
 Every record carries the label ``demo run``; it is not a qualification or experiment result.
+
+Optional ``preparation`` (absent in older files, which still read unchanged) records how the cell
+image was obtained: ``method`` ``committed-lock`` (a recipe committed in this repository) or
+``registry`` (an exploratory build from a lock generated against the public package registry at
+run time), the requested and actually installed versions, the SHA-256 of the lock inside the image,
+the worker's SHA-256 and the build recipe. A ``registry`` record is labelled
+``exploratory demo run`` instead of ``demo run``; the reader enforces that pairing.
 """
 
 from __future__ import annotations
@@ -33,6 +40,9 @@ from typing import Any
 
 SCHEMA = "inodefence-target-result-v1"
 LABEL = "demo run"
+#: Label of a run whose image was prepared from the public registry (``preparation.method``).
+EXPLORATORY_LABEL = "exploratory demo run"
+PREPARATION_METHODS = ("committed-lock", "registry")
 CONTRACTS = ("C0", "C1", "C2")
 #: Case outcome that marks a failed run (no observation); any other outcome string is target text.
 RUN_ERROR = "run_error"
@@ -105,6 +115,18 @@ class Provenance:
 
 
 @dataclass(frozen=True, slots=True)
+class Preparation:
+    """How the cell image was obtained; hashes are of the bytes found inside the image."""
+
+    method: str  # one of PREPARATION_METHODS
+    requested_version: str
+    installed_version: str
+    lock_sha256: str | None
+    worker_sha256: str | None
+    recipe: str
+
+
+@dataclass(frozen=True, slots=True)
 class TargetResult:
     target: str
     axes: TargetAxes
@@ -113,9 +135,15 @@ class TargetResult:
     cases: tuple[CaseVerdict, ...]
     repro_inputs: tuple[ReproInput, ...]
     provenance: Provenance
+    preparation: Preparation | None = None
 
     def __post_init__(self) -> None:
         _validate(self)
+
+    @property
+    def label(self) -> str:
+        registry = self.preparation is not None and self.preparation.method == "registry"
+        return EXPLORATORY_LABEL if registry else LABEL
 
     @property
     def executed(self) -> int:
@@ -138,9 +166,9 @@ class TargetResult:
         return tuple(case.case_id for case in self.cases if case.violated)
 
     def to_json_dict(self) -> dict[str, Any]:
-        return {
+        data: dict[str, Any] = {
             "schema": SCHEMA,
-            "label": LABEL,
+            "label": self.label,
             "target": self.target,
             "axes": {
                 "target_version": self.axes.target_version,
@@ -173,6 +201,17 @@ class TargetResult:
                 "image_id": self.provenance.image_id,
             },
         }
+        if self.preparation is not None:
+            p = self.preparation
+            data["preparation"] = {
+                "method": p.method,
+                "requested_version": p.requested_version,
+                "installed_version": p.installed_version,
+                "lock_sha256": p.lock_sha256,
+                "worker_sha256": p.worker_sha256,
+                "recipe": p.recipe,
+            }
+        return data
 
     def dumps(self) -> str:
         return json.dumps(self.to_json_dict(), indent=2, sort_keys=True) + "\n"
@@ -220,10 +259,39 @@ def _validate(result: TargetResult) -> None:
         seen_paths.add(item.tar_path)
         if _SHA256_RE.fullmatch(item.tar_sha256) is None:
             raise TargetResultError(f"tar_sha256 must be 64 lowercase hex: {item.tar_sha256!r}")
+    _validate_preparation(result.preparation)
     sha = result.provenance.engine_sha
     if sha is not None and _GIT_SHA_RE.fullmatch(sha) is None:
         raise TargetResultError(f"engine_sha must be a 40-hex git commit or null: {sha!r}")
 
+
+def _validate_preparation(prep: Preparation | None) -> None:
+    if prep is None:
+        return
+    if prep.method not in PREPARATION_METHODS:
+        raise TargetResultError(f"preparation.method must be one of {PREPARATION_METHODS}")
+    for name in ("requested_version", "installed_version", "recipe"):
+        if not isinstance(getattr(prep, name), str) or not getattr(prep, name):
+            raise TargetResultError(f"preparation.{name} must be a non-empty string")
+    if prep.installed_version != prep.requested_version:
+        raise TargetResultError(
+            f"preparation installed {prep.installed_version!r} != requested "
+            f"{prep.requested_version!r}"
+        )
+    for name in ("lock_sha256", "worker_sha256"):
+        value = getattr(prep, name)
+        if value is not None and _SHA256_RE.fullmatch(value) is None:
+            raise TargetResultError(f"preparation.{name} must be 64 lowercase hex or null")
+
+
+_PREPARATION_KEYS = {
+    "method",
+    "requested_version",
+    "installed_version",
+    "lock_sha256",
+    "worker_sha256",
+    "recipe",
+}
 
 _TOP_KEYS = {
     "schema",
@@ -255,11 +323,16 @@ def _keys(obj: object, expected: set[str], where: str) -> Mapping[str, Any]:
 
 def from_json_dict(data: object) -> TargetResult:
     """Strict reader: exact keys, and the derived fields must match what the cases imply."""
-    top = _keys(data, _TOP_KEYS, "result")
+    optional = {"preparation"} & set(data) if isinstance(data, Mapping) else set()
+    top = _keys(data, _TOP_KEYS | optional, "result")
     if top["schema"] != SCHEMA:
         raise TargetResultError(f"schema must be {SCHEMA!r}, got {top['schema']!r}")
-    if top["label"] != LABEL:
+    if top["label"] not in (LABEL, EXPLORATORY_LABEL):
         raise TargetResultError(f"label must be {LABEL!r}, got {top['label']!r}")
+    preparation = None
+    if "preparation" in top:
+        prep = _keys(top["preparation"], _PREPARATION_KEYS, "preparation")
+        preparation = Preparation(**prep)
     axes = _keys(top["axes"], {"target_version", "runtime_version", "extraction_filter"}, "axes")
     prov = _keys(
         top["provenance"], {"engine_sha", "engine_dirty", "image_ref", "image_id"}, "provenance"
@@ -285,9 +358,10 @@ def from_json_dict(data: object) -> TargetResult:
         provenance=Provenance(
             prov["engine_sha"], prov["engine_dirty"], prov["image_ref"], prov["image_id"]
         ),
+        preparation=preparation,
     )
     expected = result.to_json_dict()
-    for derived in ("runs", "verdict", "violating_cases"):
+    for derived in ("label", "runs", "verdict", "violating_cases"):
         if top[derived] != expected[derived]:
             raise TargetResultError(
                 f"{derived} {top[derived]!r} does not match the cases ({expected[derived]!r})"

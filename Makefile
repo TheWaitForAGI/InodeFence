@@ -124,10 +124,13 @@ TARGET ?= node-tar
 TARGET_VERSIONS ?= $(TAR_VERSION)
 TARGET_FILTERS ?=
 AUTO_PREPARE ?= 0
+# ALLOW_REGISTRY_PREPARE=1: node-tar versions without a committed lock are built from the public
+# registry (exploratory demo run; needs AUTO_PREPARE=1 when the image is missing).
+ALLOW_REGISTRY_PREPARE ?= 0
 IMAGE_TAG_SUFFIX ?=
 TARGET_OUT ?= $(HOME)/inodefence-evidence/target-run
 target-run:
-	PYTHONPATH=src:. $(PYTHON) scripts/run_target.py --target $(TARGET) $(foreach v,$(TARGET_VERSIONS),--version $(v)) $(foreach f,$(TARGET_FILTERS),--extraction-filter $(f)) $(if $(filter 1,$(AUTO_PREPARE)),--auto-prepare) $(if $(IMAGE_TAG_SUFFIX),--image-tag-suffix=$(IMAGE_TAG_SUFFIX)) $(if $(filter --dry-run,$(TARGET_ARGS)),,--out $(TARGET_OUT)) $(TARGET_ARGS)
+	PYTHONPATH=src:. $(PYTHON) scripts/run_target.py --target $(TARGET) $(foreach v,$(TARGET_VERSIONS),--version $(v)) $(foreach f,$(TARGET_FILTERS),--extraction-filter $(f)) $(if $(filter 1,$(AUTO_PREPARE)),--auto-prepare) $(if $(filter 1,$(ALLOW_REGISTRY_PREPARE)),--allow-registry-prepare) $(if $(IMAGE_TAG_SUFFIX),--image-tag-suffix=$(IMAGE_TAG_SUFFIX)) $(if $(filter --dry-run,$(TARGET_ARGS)),,--out $(TARGET_OUT)) $(TARGET_ARGS)
 
 # Offline replay planner: read a demo report (REPORT=<path>) and reproduce its run
 # command, binding the recorded image recipe to the committed one and checking the

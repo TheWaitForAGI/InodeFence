@@ -73,6 +73,7 @@ from scripts import regression_check as rc
 from inodefence.target_result import (
     RUN_ERROR,
     CaseVerdict,
+    Preparation,
     Provenance,
     ResultMode,
     TargetAxes,
@@ -101,6 +102,9 @@ class RunCell:
     dirname: str
     axes: TargetAxes
     image_ref: str | None
+    #: The image comes from the public registry, not a committed recipe: the run needs
+    #: --allow-registry-prepare and is labelled "exploratory demo run".
+    exploratory: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,6 +151,9 @@ class TargetAdapter:
     plan: Callable[[RunCell], list[dict[str, Any]]]
     run: Callable[[RunCell], list[CaseRun]]
     prepare: Callable[[RunCell], PrepareStep] = prepare_unsupported
+    #: Optional: after a run, record how the cell image was obtained (read from the image itself)
+    #: and save any evidence under the given cell directory. ``None`` adds no ``preparation``.
+    describe: Callable[[RunCell, Path], Preparation | None] | None = None
 
 
 def fixture_case(fixture: rc.RegressionFixture, raw: dict[str, Any]) -> CaseRun:
@@ -358,6 +365,7 @@ def build_result(
     cell: RunCell,
     runs: list[CaseRun],
     provenance: Provenance,
+    preparation: Preparation | None = None,
 ) -> TargetResult:
     return TargetResult(
         target=target,
@@ -370,6 +378,7 @@ def build_result(
             for run in runs
         ),
         provenance=provenance,
+        preparation=preparation,
     )
 
 
@@ -403,7 +412,7 @@ def summary_line(result: TargetResult) -> str:
         f"TARGET-RUN {result.verdict.value} target={result.target} {axis} "
         f"image={result.provenance.image_ref} "
         f"mode={result.mode.value} violating={len(result.violating_cases)}/{result.executed} "
-        f"errored={result.errored} (demo run)"
+        f"errored={result.errored} ({result.label})"
     )
 
 
@@ -438,6 +447,12 @@ def main(argv: list[str] | None = None) -> int:
         help="prepare (pull/build) missing cell images with the target's recipe before running",
     )
     parser.add_argument(
+        "--allow-registry-prepare",
+        action="store_true",
+        help="allow versions without a committed recipe (image from the public registry; "
+        "labelled exploratory demo run)",
+    )
+    parser.add_argument(
         "--image-tag-suffix",
         default="",
         help="append this to every cell image tag (development; existing tags are untouched)",
@@ -459,6 +474,13 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as error:
         parser.error(str(error))
     cells = [with_tag_suffix(cell, args.image_tag_suffix) for cell in cells]
+    unregistered = [c.dirname for c in cells if c.exploratory]
+    if unregistered and not args.allow_registry_prepare:
+        parser.error(
+            f"{', '.join(unregistered)}: no committed recipe for this version; to prepare it from "
+            "the public registry as an exploratory demo run, add ALLOW_REGISTRY_PREPARE=1 "
+            "(--allow-registry-prepare)"
+        )
 
     if args.dry_run:
         docker_ok = docker_problem() is None
@@ -474,6 +496,7 @@ def main(argv: list[str] | None = None) -> int:
                         "extraction_filter": cell.axes.extraction_filter,
                     },
                     "image": cell.image_ref,
+                    "exploratory": cell.exploratory,
                     "image_plan": image_status(adapter, cell, docker_ok),
                     "would_run": adapter.plan(cell),
                 }
@@ -525,7 +548,15 @@ def main(argv: list[str] | None = None) -> int:
             worst = max(worst, SETUP_ERROR)
             continue
         provenance = dataclasses.replace(engine_provenance(ref), image_ref=ref, image_id=expected)
-        result = build_result(args.target, adapter, cell, runs, provenance)
+        try:
+            preparation = (
+                adapter.describe(cell, args.out / cell.dirname) if adapter.describe else None
+            )
+        except (OSError, ValueError, subprocess.SubprocessError) as error:
+            print(f"TARGET-RUN PREPARE-ERROR {cell.dirname}: {error}; no verdict", file=sys.stderr)
+            worst = max(worst, SETUP_ERROR)
+            continue
+        result = build_result(args.target, adapter, cell, runs, provenance, preparation)
         path = write_result(args.out / cell.dirname, result, runs)
         written.append((cell, result, path))
         print(f"{summary_line(result)} -> {path}")

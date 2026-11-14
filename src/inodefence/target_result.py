@@ -159,6 +159,15 @@ class CampaignInfo:
     - ``runs_executed``: how many cases actually ran; ``None`` -> ``len(cases)``.
     - ``errors``: run errors / timeouts across all executions; ``None`` -> run errors in ``cases``.
     - ``stopped_early``: a person stopped the run before the budget or a natural end.
+
+    The last two give the oracle a *silent voice* so an un-judged run is never read as a clean one:
+
+    - ``unjudged_steps``: how many executions produced no contract judgement at all (the observer
+      saw nothing it could rule on). Counted separately from ``errors``; ``0`` by default.
+    - ``max_unjudged_ratio``: the ceiling a run was held to, stored so the verdict is reproducible
+      from the file alone. ``None`` means no ceiling was set. When the derived ``unjudged_ratio``
+      (:attr:`TargetResult.unjudged_ratio`) rises above it -- or every run went un-judged -- the
+      verdict is ``ERROR``, not a quiet ``PASS``.
     """
 
     seed: int
@@ -167,6 +176,8 @@ class CampaignInfo:
     runs_executed: int | None = None
     errors: int | None = None
     stopped_early: bool = False
+    unjudged_steps: int = 0
+    max_unjudged_ratio: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -203,8 +214,25 @@ class TargetResult:
         return sum(case.is_run_error for case in self.cases)
 
     @property
+    def unjudged_steps(self) -> int:
+        """Executions the oracle could not judge at all; ``0`` outside a campaign."""
+        return self.campaign.unjudged_steps if self.campaign is not None else 0
+
+    @property
+    def unjudged_ratio(self) -> float:
+        """Fraction of executions that went un-judged, to 6 decimals; ``0.0`` when none ran."""
+        executed = self.executed
+        if executed == 0:
+            return 0.0
+        return round(self.unjudged_steps / executed, 6)
+
+    @property
     def verdict(self) -> Verdict:
-        if self.errored:
+        executed = self.executed
+        all_unjudged = executed > 0 and self.unjudged_steps == executed
+        max_ratio = self.campaign.max_unjudged_ratio if self.campaign is not None else None
+        over_ratio = max_ratio is not None and self.unjudged_ratio > max_ratio
+        if self.errored or all_unjudged or over_ratio:
             return Verdict.ERROR
         if any(case.violated for case in self.cases):
             return Verdict.FAIL
@@ -274,6 +302,9 @@ class TargetResult:
                 "runs_executed": self.campaign.runs_executed,
                 "errors": self.campaign.errors,
                 "stopped_early": self.campaign.stopped_early,
+                "unjudged_steps": self.campaign.unjudged_steps,
+                "max_unjudged_ratio": self.campaign.max_unjudged_ratio,
+                "unjudged_ratio": self.unjudged_ratio,
             }
         return data
 
@@ -349,6 +380,11 @@ def _validate_campaign(result: TargetResult) -> None:
         type(campaign.errors) is not int or not 0 <= campaign.errors <= executed
     ):
         raise TargetResultError("campaign.errors must be an integer in 0..runs")
+    if type(campaign.unjudged_steps) is not int or not 0 <= campaign.unjudged_steps <= executed:
+        raise TargetResultError("campaign.unjudged_steps must be an integer in 0..runs")
+    ratio = campaign.max_unjudged_ratio
+    if ratio is not None and (type(ratio) not in (int, float) or not 0.0 <= ratio <= 1.0):
+        raise TargetResultError("campaign.max_unjudged_ratio must be null or a number in 0.0..1.0")
     # budget may be null ("run until stopped"); otherwise it must cover the runs that happened.
     if campaign.budget is not None and (
         type(campaign.budget) is not int or campaign.budget < 1 or campaign.budget < executed
@@ -411,7 +447,15 @@ _PREPARATION_KEYS = {
 
 _CAMPAIGN_KEYS = {"seed", "budget", "runs_to_first_violation"}
 #: Added for large/unbounded campaigns; absent in older or small-budget blocks (read as defaults).
-_CAMPAIGN_OPTIONAL = {"runs_executed", "errors", "stopped_early"}
+#: ``unjudged_ratio`` is derived (not a constructor arg): tolerated on read, then cross-checked.
+_CAMPAIGN_OPTIONAL = {
+    "runs_executed",
+    "errors",
+    "stopped_early",
+    "unjudged_steps",
+    "max_unjudged_ratio",
+    "unjudged_ratio",
+}
 
 _TOP_KEYS = {
     "schema",
@@ -474,15 +518,20 @@ def from_json_dict(data: object) -> TargetResult:
         )
         preparation = Preparation(**prep)
     campaign = None
+    campaign_block: Mapping[str, Any] | None = None
     if "campaign" in top:
-        block = _keys_optional(top["campaign"], _CAMPAIGN_KEYS, _CAMPAIGN_OPTIONAL, "campaign")
+        campaign_block = _keys_optional(
+            top["campaign"], _CAMPAIGN_KEYS, _CAMPAIGN_OPTIONAL, "campaign"
+        )
         campaign = CampaignInfo(
-            seed=block["seed"],
-            budget=block["budget"],
-            runs_to_first_violation=block["runs_to_first_violation"],
-            runs_executed=block.get("runs_executed"),
-            errors=block.get("errors"),
-            stopped_early=block.get("stopped_early", False),
+            seed=campaign_block["seed"],
+            budget=campaign_block["budget"],
+            runs_to_first_violation=campaign_block["runs_to_first_violation"],
+            runs_executed=campaign_block.get("runs_executed"),
+            errors=campaign_block.get("errors"),
+            stopped_early=campaign_block.get("stopped_early", False),
+            unjudged_steps=campaign_block.get("unjudged_steps", 0),
+            max_unjudged_ratio=campaign_block.get("max_unjudged_ratio"),
         )
     axes = _keys(top["axes"], {"target_version", "runtime_version", "extraction_filter"}, "axes")
     prov = _keys(
@@ -517,6 +566,15 @@ def from_json_dict(data: object) -> TargetResult:
         if top[derived] != expected[derived]:
             raise TargetResultError(
                 f"{derived} {top[derived]!r} does not match the cases ({expected[derived]!r})"
+            )
+    # ``unjudged_ratio`` is derived inside the campaign block; cross-check it when a file stored it
+    # (older files have no such key and are read unchanged).
+    if campaign_block is not None and "unjudged_ratio" in campaign_block:
+        stored_ratio = campaign_block["unjudged_ratio"]
+        if stored_ratio != result.unjudged_ratio:
+            raise TargetResultError(
+                f"campaign.unjudged_ratio {stored_ratio!r} does not match the runs "
+                f"({result.unjudged_ratio!r})"
             )
     return result
 

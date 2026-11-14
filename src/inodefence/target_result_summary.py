@@ -131,6 +131,12 @@ def render_summary(result: TargetResult, *, source_name: str, inputs_verified: b
         first = campaign.runs_to_first_violation
         add(f"| 첫 위반까지 실행 | {f'{first}번째' if first is not None else '위반 없음'} |")
         add(f"| 위반 수 | {len(result.violating_cases)}건 |")
+        add(
+            f"| 미판정 실행 | {result.unjudged_steps}건 (비율 {result.unjudged_ratio}) "
+            "— 오라클이 판정하지 못한 실행, ‘위반 없음’과 다름 |"
+        )
+        if campaign.max_unjudged_ratio is not None:
+            add(f"| 미판정 상한 | {campaign.max_unjudged_ratio} (넘으면 판정은 ERROR) |")
         if campaign.stopped_early:
             add("| 중단 | 사람이 예산 소진 전에 멈춤 (그때까지의 결과) |")
     prep = result.preparation
@@ -195,9 +201,23 @@ def render_summary(result: TargetResult, *, source_name: str, inputs_verified: b
         violations = len(result.violating_cases)
         add(
             f"{result.executed}번 실행해 {violations}건에서 위반을 관찰했다(실행 오류 "
-            f"{result.errored}건). 전 실행을 한 줄씩 담지 않고, 위반 입력만 아래에 둔다. "
+            f"{result.errored}건, 미판정 {result.unjudged_steps}건·비율 "
+            f"{result.unjudged_ratio}). 전 실행을 한 줄씩 담지 않고, 위반 입력만 아래에 둔다. "
             "위반은 위반 후보이며 확정 취약점이 아니다."
         )
+        if result.unjudged_steps:
+            ceiling = campaign.max_unjudged_ratio
+            ceiling_txt = (
+                f" 미판정 비율이 상한 {ceiling}을 넘으면 판정은 자동으로 ERROR다."
+                if ceiling is not None
+                else ""
+            )
+            add("")
+            add(
+                f"미판정 실행 {result.unjudged_steps}건은 오라클이 아무 기준도 판정하지 못한 "
+                "실행이다. ‘위반 없음’이 아니라 ‘보지 못함’이므로 조용한 PASS로 세지 않는다."
+                + ceiling_txt
+            )
         add("")
         if result.repro_inputs:
             by_id = {case.case_id: case for case in result.cases}

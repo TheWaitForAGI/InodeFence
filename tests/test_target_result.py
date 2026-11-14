@@ -188,6 +188,9 @@ def test_campaign_block_round_trips_and_serializes_only_when_present() -> None:
         "runs_executed": None,
         "errors": None,
         "stopped_early": False,
+        "unjudged_steps": 0,
+        "max_unjudged_ratio": None,
+        "unjudged_ratio": 0.0,
     }
     assert from_json_dict(json.loads(result.dumps())) == result
 
@@ -252,6 +255,10 @@ def test_old_three_key_campaign_block_reads_with_defaults() -> None:
     assert loaded.campaign.runs_executed is None
     assert loaded.campaign.errors is None
     assert loaded.campaign.stopped_early is False
+    # Silent-voice fields are also optional: an old block means "nothing un-judged", no ceiling.
+    assert loaded.campaign.unjudged_steps == 0
+    assert loaded.campaign.max_unjudged_ratio is None
+    assert loaded.unjudged_ratio == 0.0
 
 
 def _aggregate_result(
@@ -261,6 +268,8 @@ def _aggregate_result(
     budget: int | None = None,
     runs_to_first_violation: int | None = None,
     stopped_early: bool = False,
+    unjudged_steps: int = 0,
+    max_unjudged_ratio: float | None = None,
 ) -> TargetResult:
     # Large-campaign shape: cases hold only the violations (or none); counts live in the block.
     return TargetResult(
@@ -281,6 +290,8 @@ def _aggregate_result(
             runs_executed=runs_executed,
             errors=errors,
             stopped_early=stopped_early,
+            unjudged_steps=unjudged_steps,
+            max_unjudged_ratio=max_unjudged_ratio,
         ),
     )
 
@@ -338,3 +349,87 @@ def test_first_violation_bounded_by_runs_executed_not_case_count() -> None:
             runs_executed=10,
             runs_to_first_violation=11,
         )
+
+
+def test_unjudged_fields_round_trip_and_derive_ratio() -> None:
+    # 1 un-judged run out of 4 -> ratio 0.25, stored threshold carried through unchanged.
+    result = _aggregate_result(
+        runs_executed=4,
+        unjudged_steps=1,
+        max_unjudged_ratio=0.5,
+    )
+    assert result.unjudged_steps == 1
+    assert result.unjudged_ratio == 0.25
+    assert result.verdict is Verdict.PASS  # under the ceiling, nothing violated
+    data = result.to_json_dict()
+    assert data["campaign"]["unjudged_steps"] == 1
+    assert data["campaign"]["max_unjudged_ratio"] == 0.5
+    assert data["campaign"]["unjudged_ratio"] == 0.25
+    assert from_json_dict(json.loads(result.dumps())) == result
+
+
+def test_unjudged_ratio_rounds_to_six_decimals() -> None:
+    result = _aggregate_result(runs_executed=3, unjudged_steps=1)
+    assert result.unjudged_ratio == 0.333333
+    assert from_json_dict(json.loads(result.dumps())) == result
+
+
+def test_all_runs_unjudged_is_error_not_silent_pass() -> None:
+    # Every run went un-judged: no violation, no error, yet the verdict must not be a quiet PASS.
+    result = _aggregate_result(runs_executed=4, unjudged_steps=4)
+    assert result.unjudged_ratio == 1.0
+    assert len(result.violating_cases) == 0 and result.errored == 0
+    assert result.verdict is Verdict.ERROR
+    assert from_json_dict(json.loads(result.dumps())) == result
+
+
+def test_unjudged_ratio_over_ceiling_is_error() -> None:
+    # 6/10 un-judged exceeds the 0.5 ceiling -> ERROR.
+    result = _aggregate_result(runs_executed=10, unjudged_steps=6, max_unjudged_ratio=0.5)
+    assert result.unjudged_ratio == 0.6
+    assert result.verdict is Verdict.ERROR
+    assert from_json_dict(json.loads(result.dumps())) == result
+
+
+def test_unjudged_ratio_exactly_at_ceiling_is_not_error() -> None:
+    # Strictly greater triggers: ratio == ceiling stays a (judged) PASS.
+    result = _aggregate_result(runs_executed=10, unjudged_steps=5, max_unjudged_ratio=0.5)
+    assert result.unjudged_ratio == 0.5
+    assert result.verdict is Verdict.PASS
+
+
+def test_unjudged_ceiling_outranks_a_violation() -> None:
+    # A real violation is present, but too much went un-judged to trust the run: ERROR, not FAIL.
+    result = _aggregate_result(
+        CaseVerdict("step-3", "extracted", None, True, False),
+        runs_executed=10,
+        runs_to_first_violation=3,
+        unjudged_steps=6,
+        max_unjudged_ratio=0.5,
+    )
+    assert len(result.violating_cases) == 1
+    assert result.verdict is Verdict.ERROR
+
+
+def test_unjudged_steps_out_of_range_rejected() -> None:
+    with pytest.raises(TargetResultError, match="unjudged_steps must be an integer in 0..runs"):
+        _aggregate_result(runs_executed=5, unjudged_steps=6)
+    with pytest.raises(TargetResultError, match="unjudged_steps must be an integer in 0..runs"):
+        _aggregate_result(runs_executed=5, unjudged_steps=-1)
+
+
+def test_max_unjudged_ratio_out_of_range_rejected() -> None:
+    with pytest.raises(TargetResultError, match="max_unjudged_ratio must be null or a number"):
+        _aggregate_result(runs_executed=5, max_unjudged_ratio=1.5)
+    with pytest.raises(TargetResultError, match="max_unjudged_ratio must be null or a number"):
+        _aggregate_result(runs_executed=5, max_unjudged_ratio=-0.1)
+    with pytest.raises(TargetResultError, match="max_unjudged_ratio must be null or a number"):
+        _aggregate_result(runs_executed=5, max_unjudged_ratio=True)  # type: ignore[arg-type]
+
+
+def test_reader_cross_checks_stored_unjudged_ratio() -> None:
+    data = _aggregate_result(runs_executed=4, unjudged_steps=1).to_json_dict()
+    assert data["campaign"]["unjudged_ratio"] == 0.25
+    data["campaign"]["unjudged_ratio"] = 0.99  # hand-edited to hide un-judged runs
+    with pytest.raises(TargetResultError, match="unjudged_ratio 0.99 does not match the runs"):
+        from_json_dict(data)

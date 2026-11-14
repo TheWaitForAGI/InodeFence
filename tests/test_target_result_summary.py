@@ -11,6 +11,7 @@ from inodefence.target_result import (
     ResultMode,
     TargetAxes,
     TargetResult,
+    Verdict,
     repro_input,
 )
 from inodefence.target_result_summary import (
@@ -182,3 +183,33 @@ def test_campaign_summary_shows_aggregates_and_violations_not_per_case(tmp_path)
     assert "742번째" in text
     assert "사람이 예산 소진 전에 멈춤" in text
     assert "| `step-742` | 이상 없음 | **위반** | **위반** | `inputs/step-742.tar` |" in text
+
+
+def test_campaign_summary_surfaces_unjudged_count_and_ceiling(tmp_path) -> None:
+    from inodefence.target_result import CampaignInfo
+
+    result = TargetResult(
+        target="node-tar",
+        axes=TargetAxes(target_version="7.5.8"),
+        mode=ResultMode.CAMPAIGN,
+        observed_contracts=("C0", "C1", "C2"),
+        cases=(),  # every run went un-judged: no violations kept
+        repro_inputs=(),
+        provenance=Provenance("a" * 40, False, "inodefence-node-tar-registry:7.5.8", None),
+        campaign=CampaignInfo(
+            seed=123,
+            budget=None,
+            runs_to_first_violation=None,
+            runs_executed=8,
+            errors=0,
+            unjudged_steps=6,
+            max_unjudged_ratio=0.5,
+        ),
+    )
+    assert result.verdict is Verdict.ERROR  # 6/8 = 0.75 over the 0.5 ceiling
+    text = render_summary(result, source_name="result.json", inputs_verified=True)
+    assert "미판정 실행 | 6건 (비율 0.75)" in text
+    assert "미판정 상한 | 0.5" in text
+    # The narrative must say an un-judged run is not a clean one.
+    assert "‘위반 없음’이 아니라 ‘보지 못함’" in text
+    assert "미판정 8건·비율" not in text  # count is 6, not the run total

@@ -36,6 +36,8 @@ def test_registered_in_common_command() -> None:
 
 @pytest.fixture(autouse=True)
 def _fixed_provenance(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(rt, "docker_problem", lambda: None)  # no docker here; images "present"
+    monkeypatch.setattr(rt, "image_id", lambda ref: f"sha256:{ref}")
     monkeypatch.setattr(
         rt, "engine_provenance", lambda image: Provenance("c" * 40, False, image, "sha256:def")
     )

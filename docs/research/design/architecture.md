@@ -62,7 +62,7 @@ Research Plane(무엇을 위험으로 볼지 정의) → Runtime Engine(생성·
 현재 capability baseline은 main **`8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`**다.
 [Research Contract v1](research-contract-v1.md)은 G0 정의/claim scope를,
 [STATUS](../../STATUS.md)는 DESIGNED / IMPLEMENTED / TESTED / EXPERIMENTALLY VALIDATED를 구분한다.
-Core Layer 2–5와 Layer 6 evidence infrastructure가 구현됐지만 historical/formal research 결과는 없다.
+Core Layer 2–5와 Layer 6 evidence infrastructure가 구현됐다. 공개된 실험 결과는 EXP-0 등록 실행 리포트와 hazard 파일럿 메모이고([STATUS](../../STATUS.md) 실험 순서), 본실험 결과 자리(봉인 해제 뒤 기입)는 비어 있다.
 
 ArchiveCase → deterministic USTAR → fresh runtime/prepared target → BEFORE → target execution →
 AFTER → C0/C1/C2 → feedback pipeline과 minimal benign seeds가 구현됐다. `run_search_campaign`은 B0/B1/B3,
@@ -73,7 +73,7 @@ config/dataset/statistics도 있다. [Search 계약](search-policy-core-v1.md)�
 
 Contained node-tar **7.5.22 benign smoke**는 engineering TESTED evidence다. N01
 **7.5.2/7.5.3** pair의 automated replay는 완료됐지만 final human correspondence review가
-pending이고, known-case rediscovery는 NOT_RUN이고 현재 취약점을 주장하지 않는다. formal comparison(A/B/C/D·powered matched)은 실행됐으나 effectiveness 우위를 보이지 않았다(rate CI 미분리·자력발견 음성; M3="이름 획득 조건의 관찰(피드백 인과 미입증)", Ledger M3·M4·claims 원장) *(2026-11-03 정정: 이전 "formal comparison NOT_RUN" 정정)*.
+pending이고, known-case rediscovery는 NOT_RUN이고 현재 취약점을 주장하지 않는다. 초기 비교는 arm 간 어휘가 달라 폐기했고, 어휘를 맞춘 R/D/S-u 설계로 다시 실험했다.
 Protected-component policy의 logical generation은 TESTED이고 N01의 exact setup/artifacts/effect는
 automated evidence로 보존됐지만 fuzzing pilot authorization을 뜻하지 않는다. GNU evaluation
 route는 benign allowlist만, C3/C4는 미구현이다. oras-go adapter는 구현됐다(#176, Ledger M4; adapter 수준 일반성). Final-state policy runner에는 optional

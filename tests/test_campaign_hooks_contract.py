@@ -33,6 +33,8 @@ class LoopSpec:
     producer: Callable[[Any], Any]
     budget: int
     config: Any
+    #: The case id a completed step ran (each loop's step type names its run differently).
+    step_case_id: Callable[[Any], str] = lambda step: step.result.base_result.case.case_id
 
 
 def _node_tar_spec() -> LoopSpec:
@@ -46,15 +48,35 @@ def _node_tar_spec() -> LoopSpec:
     return LoopSpec("node-tar", run_effect_campaign, (seed,), _node_tar_result, 16, config)
 
 
-# IF-MAC-D adds oras-go, IF-MAC-B adds decompress, once their loops accept `hooks`.
-LOOP_SPECS = [_node_tar_spec()]
+def _oras_go_spec() -> LoopSpec:
+    from tests.test_oras_go_effect_campaign import _benign_run, _seeds
+
+    from inodefence.oras_go_effect_campaign import (
+        OrasGoEffectCampaignConfig,
+        run_oras_go_effect_campaign,
+    )
+
+    config = OrasGoEffectCampaignConfig(random_seed=7, execution_budget=12)
+    return LoopSpec(
+        "oras-go",
+        run_oras_go_effect_campaign,
+        _seeds(),
+        _benign_run,
+        12,
+        config,
+        step_case_id=lambda step: step.run.base_result.case.case_id,
+    )
+
+
+# IF-MAC-B adds decompress once its loop accepts `hooks`.
+LOOP_SPECS = [_node_tar_spec(), _oras_go_spec()]
 IDS = [spec.name for spec in LOOP_SPECS]
 
 
 def _case_ids(spec: LoopSpec, hooks: CampaignHooks | None) -> list[str]:
     seen: list[str] = []
     recorder = CampaignHooks(
-        on_step=lambda step: seen.append(step.result.base_result.case.case_id),
+        on_step=lambda step: seen.append(spec.step_case_id(step)),
         should_stop=None if hooks is None else hooks.should_stop,
         retain_steps=True if hooks is None else hooks.retain_steps,
     )

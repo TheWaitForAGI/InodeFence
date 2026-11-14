@@ -3,7 +3,7 @@
 import random
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import ClassVar
+from typing import ClassVar, overload
 
 from inodefence.campaign import CampaignOrigin
 from inodefence.campaign_hooks import (
@@ -168,6 +168,23 @@ def _observed_name_segments(
     return names
 
 
+@overload
+def run_effect_campaign(
+    initial_cases: Sequence[ArchiveCase],
+    produce_result: EffectResultProducer,
+    config: EffectCampaignConfig,
+    on_step: EffectStepObserver | None = None,
+    hooks: None = None,
+) -> EffectCampaignResult: ...
+@overload
+def run_effect_campaign(
+    initial_cases: Sequence[ArchiveCase],
+    produce_result: EffectResultProducer,
+    config: EffectCampaignConfig,
+    on_step: EffectStepObserver | None = None,
+    *,
+    hooks: CampaignHooks,
+) -> EffectCampaignResult | LightCampaignResult: ...
 def run_effect_campaign(
     initial_cases: Sequence[ArchiveCase],
     produce_result: EffectResultProducer,

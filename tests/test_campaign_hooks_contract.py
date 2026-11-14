@@ -10,7 +10,7 @@ hooks through their loops.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import pytest
@@ -33,6 +33,10 @@ class LoopSpec:
     producer: Callable[[Any], Any]
     budget: int
     config: Any
+    #: The case id of a streamed step (the loops' step types differ; node-tar's is the default).
+    case_id_of: Callable[[Any], str] = field(
+        default=lambda step: step.result.base_result.case.case_id
+    )
 
 
 def _node_tar_spec() -> LoopSpec:
@@ -46,15 +50,36 @@ def _node_tar_spec() -> LoopSpec:
     return LoopSpec("node-tar", run_effect_campaign, (seed,), _node_tar_result, 16, config)
 
 
-# IF-MAC-D adds oras-go, IF-MAC-B adds decompress, once their loops accept `hooks`.
-LOOP_SPECS = [_node_tar_spec()]
+def _decompress_spec() -> LoopSpec:
+    from tests.test_decompress_effect_campaign import _benign_run, _seeds
+
+    from inodefence.decompress_effect_campaign import (
+        DecompressEffectCampaignConfig,
+        run_decompress_effect_campaign,
+    )
+
+    seeds = _seeds()
+    config = DecompressEffectCampaignConfig(random_seed=123, execution_budget=16)
+    return LoopSpec(
+        "decompress",
+        run_decompress_effect_campaign,
+        tuple(seeds),
+        _benign_run,
+        16,
+        config,
+        case_id_of=lambda step: step.run.base_result.case.case_id,
+    )
+
+
+# IF-MAC-D adds oras-go once its loop accepts `hooks`.
+LOOP_SPECS = [_node_tar_spec(), _decompress_spec()]
 IDS = [spec.name for spec in LOOP_SPECS]
 
 
 def _case_ids(spec: LoopSpec, hooks: CampaignHooks | None) -> list[str]:
     seen: list[str] = []
     recorder = CampaignHooks(
-        on_step=lambda step: seen.append(step.result.base_result.case.case_id),
+        on_step=lambda step: seen.append(spec.case_id_of(step)),
         should_stop=None if hooks is None else hooks.should_stop,
         retain_steps=True if hooks is None else hooks.retain_steps,
     )

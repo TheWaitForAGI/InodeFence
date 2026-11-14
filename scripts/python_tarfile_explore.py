@@ -195,7 +195,8 @@ def explore(
         print(f"TARGET-EXPLORE SUMMARY: summary.md not written ({error})", file=sys.stderr)
     undetermined = result.errored
     print(
-        f"settings: search={report.get('search_policy')} vocabulary={report.get('vocabulary')} "
+        f"settings: search={report.get('search_policy')} "
+        f"vocabulary_mode={report.get('vocabulary_mode')} "
         f"filter={extraction_filter} runtime={prepared.version}"
     )
     print(

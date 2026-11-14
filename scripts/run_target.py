@@ -222,6 +222,11 @@ class TargetAdapter:
     #: them as ``--<name>``, validates against the declaration, and passes them to ``cells`` as
     #: the ``filters`` list in declaration order.
     options: tuple[TargetOption, ...] = ()
+    #: Optional: before a present image is reused, confirm it really is the version it is tagged
+    #: for. ``(cell, image_id) -> None`` reuses it; a one-line reason refuses the reuse (no
+    #: verdict, like a failed prepare). ``None`` (default) reuses any present image by tag name,
+    #: unchanged. ``scripts.image_prepare.recipe_verify_existing`` builds one from a recipe.
+    verify_existing: Callable[[RunCell, str], str | None] | None = None
 
 
 def fixture_case(fixture: rc.RegressionFixture, raw: dict[str, Any]) -> CaseRun:
@@ -388,8 +393,16 @@ def resolve_images(
             continue
         present = image_id(ref)
         if present is not None:
-            print(f"TARGET-RUN IMAGE reuse {ref} {present}")
-            ready[ref] = present
+            reason = (
+                adapter.verify_existing(cell, present)
+                if adapter.verify_existing is not None
+                else None
+            )
+            if reason is None:
+                print(f"TARGET-RUN IMAGE reuse {ref} {present}")
+                ready[ref] = present
+                continue
+            errors[ref] = f"present image {ref} refused: {reason}"
             continue
         step = adapter.prepare(cell)
         if not auto_prepare:

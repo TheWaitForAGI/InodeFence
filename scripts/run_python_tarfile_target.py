@@ -498,6 +498,13 @@ def _adapter_plan(cell: RunCell) -> list[dict[str, Any]]:
     return fixture_plan()
 
 
+def _explore_hook(prepared, options):  # type: ignore[no-untyped-def]
+    """python-tarfile exploration (lazy import so the fixture-regression path has no extra deps)."""
+    from scripts.python_tarfile_explore import explore
+
+    return explore(prepared, options)
+
+
 ADAPTER = TargetAdapter(
     mode=MODE,
     observed_contracts=OBSERVED,
@@ -507,6 +514,7 @@ ADAPTER = TargetAdapter(
     prepare=_adapter_prepare,
     describe=_describe,
     resolve=_resolve,
+    explore=_explore_hook,
 )
 
 

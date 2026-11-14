@@ -650,6 +650,7 @@ def exploration_demo_report(
         label=EXPLORATION_LABEL,
         mode="exploration",
         qualification=False,
+        observer_integrity_policy="invalid-continue" if observer_integrity_continue else "stop",
         vocabulary_mode=next(
             (
                 mode.value

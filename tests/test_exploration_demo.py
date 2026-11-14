@@ -97,6 +97,7 @@ def test_exploration_matches_historical_except_the_labelling(
         "case_records",
         "violation_inputs",
         "vocabulary_mode",  # exploration records its vocabulary mode; historical does not
+        "observer_integrity_policy",  # and its observer policy
     }
     assert set(expl) - set(hist) == only_in_explore
     # timing is wall-clock and differs run-to-run by design; everything else is deterministic.

@@ -181,7 +181,14 @@ def test_campaign_block_round_trips_and_serializes_only_when_present() -> None:
     result = _campaign_result(runs_to_first_violation=2)
     data = result.to_json_dict()
     assert data["mode"] == "campaign"
-    assert data["campaign"] == {"seed": 1234, "budget": 20, "runs_to_first_violation": 2}
+    assert data["campaign"] == {
+        "seed": 1234,
+        "budget": 20,
+        "runs_to_first_violation": 2,
+        "runs_executed": None,
+        "errors": None,
+        "stopped_early": False,
+    }
     assert from_json_dict(json.loads(result.dumps())) == result
 
 
@@ -200,7 +207,7 @@ def test_campaign_block_rejected_on_fixture_regression() -> None:
 
 
 def test_campaign_budget_must_cover_runs() -> None:
-    with pytest.raises(TargetResultError, match="budget must be an integer >= the number of runs"):
+    with pytest.raises(TargetResultError, match="budget must be null or an integer"):
         _campaign_result(runs_to_first_violation=2, budget=1)
 
 
@@ -234,3 +241,100 @@ def test_reader_rejects_campaign_block_with_wrong_keys() -> None:
     data["campaign"]["extra"] = 1
     with pytest.raises(TargetResultError, match="campaign keys mismatch"):
         from_json_dict(data)
+
+
+def test_old_three_key_campaign_block_reads_with_defaults() -> None:
+    # A block written before the large-campaign fields must still parse (optional keys absent).
+    data = _campaign_result(runs_to_first_violation=2).to_json_dict()
+    data["campaign"] = {"seed": 1234, "budget": 20, "runs_to_first_violation": 2}
+    loaded = from_json_dict(data)
+    assert loaded.campaign is not None
+    assert loaded.campaign.runs_executed is None
+    assert loaded.campaign.errors is None
+    assert loaded.campaign.stopped_early is False
+
+
+def _aggregate_result(
+    *violations: CaseVerdict,
+    runs_executed: int,
+    errors: int = 0,
+    budget: int | None = None,
+    runs_to_first_violation: int | None = None,
+    stopped_early: bool = False,
+) -> TargetResult:
+    # Large-campaign shape: cases hold only the violations (or none); counts live in the block.
+    return TargetResult(
+        target="node-tar",
+        axes=TargetAxes(target_version="7.5.1"),
+        mode=ResultMode.CAMPAIGN,
+        observed_contracts=("C1", "C2"),
+        cases=violations,
+        repro_inputs=tuple(
+            repro_input(v.case_id, f"inputs/{v.case_id}.tar", f"v-{v.case_id}".encode())
+            for v in violations
+        ),
+        provenance=Provenance("b" * 40, False, "inodefence-node-tar-registry:7.5.8", None),
+        campaign=CampaignInfo(
+            seed=7,
+            budget=budget,
+            runs_to_first_violation=runs_to_first_violation,
+            runs_executed=runs_executed,
+            errors=errors,
+            stopped_early=stopped_early,
+        ),
+    )
+
+
+def test_large_campaign_cases_are_violations_only_with_separate_run_count() -> None:
+    result = _aggregate_result(
+        CaseVerdict("step-14", "extracted", None, True, True),
+        CaseVerdict("step-800", "extracted", None, True, False),
+        runs_executed=1000,
+        errors=3,
+        budget=None,  # run until stopped
+        runs_to_first_violation=15,
+        stopped_early=True,
+    )
+    assert result.executed == 1000  # from runs_executed, not len(cases)==2
+    assert result.errored == 3  # from the errors aggregate
+    assert result.verdict is Verdict.ERROR  # errors dominate
+    assert len(result.violating_cases) == 2
+    assert from_json_dict(json.loads(result.dumps())) == result
+
+
+def test_aggregate_errors_drive_error_verdict_even_with_no_error_case() -> None:
+    result = _aggregate_result(runs_executed=50, errors=2)  # no cases at all
+    assert result.executed == 50 and result.errored == 2
+    assert result.verdict is Verdict.ERROR
+    assert result.campaign is not None and result.campaign.budget is None
+
+
+def test_runs_executed_cannot_be_below_case_count() -> None:
+    with pytest.raises(TargetResultError, match="runs_executed must be an integer >= len"):
+        _aggregate_result(
+            CaseVerdict("step-0", "extracted", None, True, False),
+            runs_executed=0,
+            runs_to_first_violation=1,
+        )
+
+
+def test_errors_out_of_range_rejected() -> None:
+    with pytest.raises(TargetResultError, match="errors must be an integer in 0..runs"):
+        _aggregate_result(runs_executed=5, errors=6)
+
+
+def test_first_violation_bounded_by_runs_executed_not_case_count() -> None:
+    # 2 violation cases but 1000 runs: first violation at 999 is valid (<= executed).
+    result = _aggregate_result(
+        CaseVerdict("step-998", "extracted", None, True, False),
+        CaseVerdict("step-999", "extracted", None, False, True),
+        runs_executed=1000,
+        runs_to_first_violation=999,
+    )
+    assert result.campaign is not None and result.campaign.runs_to_first_violation == 999
+    with pytest.raises(TargetResultError, match="in 1..runs"):
+        _aggregate_result(
+            CaseVerdict("step-0", "extracted", None, True, False),
+            runs_executed=10,
+            runs_to_first_violation=11,
+        )

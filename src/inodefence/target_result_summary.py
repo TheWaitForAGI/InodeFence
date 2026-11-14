@@ -121,6 +121,18 @@ def render_summary(result: TargetResult, *, source_name: str, inputs_verified: b
         add(f"| {label} | {_code(value) if value is not None else NOT_APPLICABLE} |")
     add(f"| 실행 방식 | {MODE_PLAIN[result.mode]} |")
     add(f"| 실행 수 | {result.executed}건 (실행 오류 {result.errored}건) |")
+    campaign = result.campaign
+    if campaign is not None:
+        budget_txt = (
+            "멈출 때까지 (상한 없음)" if campaign.budget is None else f"{campaign.budget}건"
+        )
+        add(f"| 탐색 예산(budget) | {budget_txt} |")
+        add(f"| 난수 seed | {campaign.seed} |")
+        first = campaign.runs_to_first_violation
+        add(f"| 첫 위반까지 실행 | {f'{first}번째' if first is not None else '위반 없음'} |")
+        add(f"| 위반 수 | {len(result.violating_cases)}건 |")
+        if campaign.stopped_early:
+            add("| 중단 | 사람이 예산 소진 전에 멈춤 (그때까지의 결과) |")
     prep = result.preparation
     if prep is not None:
         method = (
@@ -176,21 +188,54 @@ def render_summary(result: TargetResult, *, source_name: str, inputs_verified: b
         )
         add(f"- **{name}** {CONTRACT_PLAIN[name]}. _{observed}._")
     add("")
-    add("## 케이스별 결과")
-    add("")
-    if result.cases:
-        add("| 케이스 | 실행 결과 | C0 | C1 | C2 |")
-        add("| --- | --- | --- | --- | --- |")
-        for case in result.cases:
-            outcome = "실행 오류" if case.outcome == RUN_ERROR else _code(case.outcome)
-            add(
-                f"| {_code(case.case_id)} | {outcome} | {_contract_cell(case.c0)} | "
-                f"{_contract_cell(case.c1)} | {_contract_cell(case.c2)} |"
-            )
+    if campaign is not None:
+        # A campaign may run far more cases than it keeps; show aggregates + the violations only.
+        add("## 탐색 결과 (집계와 위반 케이스)")
         add("")
-        add("‘관찰 안 함’은 ‘위반 없음’이 아니다. 그 기준은 이 케이스에서 보지 않았다는 뜻이다.")
+        violations = len(result.violating_cases)
+        add(
+            f"{result.executed}번 실행해 {violations}건에서 위반을 관찰했다(실행 오류 "
+            f"{result.errored}건). 전 실행을 한 줄씩 담지 않고, 위반 입력만 아래에 둔다. "
+            "위반은 위반 후보이며 확정 취약점이 아니다."
+        )
+        add("")
+        if result.repro_inputs:
+            by_id = {case.case_id: case for case in result.cases}
+            add("| 위반 케이스 | C0 | C1 | C2 | 입력 TAR | SHA-256 |")
+            add("| --- | --- | --- | --- | --- | --- |")
+            for item in result.repro_inputs:
+                case = by_id.get(item.case_id)
+                cells = (
+                    (_contract_cell(case.c0), _contract_cell(case.c1), _contract_cell(case.c2))
+                    if case is not None
+                    else ("?", "?", "?")
+                )
+                add(
+                    f"| {_code(item.case_id)} | {cells[0]} | {cells[1]} | {cells[2]} | "
+                    f"{_code(item.tar_path)} | {_code(item.tar_sha256)} |"
+                )
+            add("")
+            add('위반 입력 TAR는 결과 폴더 `inputs/`에 있다. 재현은 아래 "다시 해 보려면".')
+        else:
+            add("저장된 위반 입력이 없다 (위반 0건).")
     else:
-        add("실행한 케이스가 없다.")
+        add("## 케이스별 결과")
+        add("")
+        if result.cases:
+            add("| 케이스 | 실행 결과 | C0 | C1 | C2 |")
+            add("| --- | --- | --- | --- | --- |")
+            for case in result.cases:
+                outcome = "실행 오류" if case.outcome == RUN_ERROR else _code(case.outcome)
+                add(
+                    f"| {_code(case.case_id)} | {outcome} | {_contract_cell(case.c0)} | "
+                    f"{_contract_cell(case.c1)} | {_contract_cell(case.c2)} |"
+                )
+            add("")
+            add(
+                "‘관찰 안 함’은 ‘위반 없음’이 아니다. 그 기준은 이 케이스에서 보지 않았다는 뜻이다."
+            )
+        else:
+            add("실행한 케이스가 없다.")
     add("")
     add("## 다시 해 보려면 (재현 방법)")
     add("")

@@ -147,16 +147,26 @@ class Preparation:
 class CampaignInfo:
     """Search bookkeeping for a ``mode=campaign`` result; absent on fixture-regression.
 
-    ``seed`` and ``budget`` are the free inputs of the search (RNG seed, execution budget).
-    ``runs_to_first_violation`` is the 1-based run index of the first case that violated an
-    observed contract, or ``None`` when the budget ran out with none; it is tied to the cases
-    (``None`` exactly when nothing violated, else within ``1..runs``). Run count and violation
-    count are not stored here: they are already derivable from ``cases``.
+    ``seed`` is the RNG seed. ``budget`` is the execution budget, or ``None`` for a run with no
+    fixed cap (``run until stopped``). ``runs_to_first_violation`` is the 1-based run index of the
+    first case that violated an observed contract, or ``None`` when none did.
+
+    The remaining fields let a large or unbounded campaign keep aggregates without listing every
+    run in ``cases`` (``cases`` may then hold only the violations, or be empty). All are optional
+    and fall back to what ``cases`` implies, so small-budget results that still list every run, and
+    older files, read unchanged:
+
+    - ``runs_executed``: how many cases actually ran; ``None`` -> ``len(cases)``.
+    - ``errors``: run errors / timeouts across all executions; ``None`` -> run errors in ``cases``.
+    - ``stopped_early``: a person stopped the run before the budget or a natural end.
     """
 
     seed: int
-    budget: int
+    budget: int | None
     runs_to_first_violation: int | None
+    runs_executed: int | None = None
+    errors: int | None = None
+    stopped_early: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -182,10 +192,14 @@ class TargetResult:
 
     @property
     def executed(self) -> int:
+        if self.campaign is not None and self.campaign.runs_executed is not None:
+            return self.campaign.runs_executed
         return len(self.cases)
 
     @property
     def errored(self) -> int:
+        if self.campaign is not None and self.campaign.errors is not None:
+            return self.campaign.errors
         return sum(case.is_run_error for case in self.cases)
 
     @property
@@ -257,6 +271,9 @@ class TargetResult:
                 "seed": self.campaign.seed,
                 "budget": self.campaign.budget,
                 "runs_to_first_violation": self.campaign.runs_to_first_violation,
+                "runs_executed": self.campaign.runs_executed,
+                "errors": self.campaign.errors,
+                "stopped_early": self.campaign.stopped_early,
             }
         return data
 
@@ -321,8 +338,22 @@ def _validate_campaign(result: TargetResult) -> None:
         raise TargetResultError("campaign block is only valid when mode is campaign")
     if type(campaign.seed) is not int:
         raise TargetResultError("campaign.seed must be an integer")
-    if type(campaign.budget) is not int or campaign.budget < 1 or campaign.budget < result.executed:
-        raise TargetResultError("campaign.budget must be an integer >= the number of runs")
+    if type(campaign.stopped_early) is not bool:
+        raise TargetResultError("campaign.stopped_early must be true/false")
+    if campaign.runs_executed is not None and (
+        type(campaign.runs_executed) is not int or campaign.runs_executed < len(result.cases)
+    ):
+        raise TargetResultError("campaign.runs_executed must be an integer >= len(cases)")
+    executed = result.executed
+    if campaign.errors is not None and (
+        type(campaign.errors) is not int or not 0 <= campaign.errors <= executed
+    ):
+        raise TargetResultError("campaign.errors must be an integer in 0..runs")
+    # budget may be null ("run until stopped"); otherwise it must cover the runs that happened.
+    if campaign.budget is not None and (
+        type(campaign.budget) is not int or campaign.budget < 1 or campaign.budget < executed
+    ):
+        raise TargetResultError("campaign.budget must be null or an integer >= the number of runs")
     first = campaign.runs_to_first_violation
     has_violation = bool(result.violating_cases)
     if first is None:
@@ -331,7 +362,7 @@ def _validate_campaign(result: TargetResult) -> None:
     else:
         if not has_violation:
             raise TargetResultError("runs_to_first_violation must be null when nothing violated")
-        if type(first) is not int or not 1 <= first <= result.executed:
+        if type(first) is not int or not 1 <= first <= executed:
             raise TargetResultError("runs_to_first_violation must be an integer in 1..runs")
 
 
@@ -379,6 +410,8 @@ _PREPARATION_KEYS = {
 }
 
 _CAMPAIGN_KEYS = {"seed", "budget", "runs_to_first_violation"}
+#: Added for large/unbounded campaigns; absent in older or small-budget blocks (read as defaults).
+_CAMPAIGN_OPTIONAL = {"runs_executed", "errors", "stopped_early"}
 
 _TOP_KEYS = {
     "schema",
@@ -408,6 +441,22 @@ def _keys(obj: object, expected: set[str], where: str) -> Mapping[str, Any]:
     return obj
 
 
+def _keys_optional(
+    obj: object, required: set[str], optional: set[str], where: str
+) -> Mapping[str, Any]:
+    """Like ``_keys`` but tolerant of named optional keys; unknown keys are still rejected."""
+    if not isinstance(obj, Mapping):
+        raise TargetResultError(f"{where} must be an object")
+    keys = set(obj)
+    missing = required - keys
+    unexpected = keys - required - optional
+    if missing or unexpected:
+        raise TargetResultError(
+            f"{where} keys mismatch: missing {sorted(missing)}, unexpected {sorted(unexpected)}"
+        )
+    return obj
+
+
 def from_json_dict(data: object) -> TargetResult:
     """Strict reader: exact keys, and the derived fields must match what the cases imply."""
     optional = {"preparation", "campaign"} & set(data) if isinstance(data, Mapping) else set()
@@ -426,8 +475,15 @@ def from_json_dict(data: object) -> TargetResult:
         preparation = Preparation(**prep)
     campaign = None
     if "campaign" in top:
-        block = _keys(top["campaign"], _CAMPAIGN_KEYS, "campaign")
-        campaign = CampaignInfo(block["seed"], block["budget"], block["runs_to_first_violation"])
+        block = _keys_optional(top["campaign"], _CAMPAIGN_KEYS, _CAMPAIGN_OPTIONAL, "campaign")
+        campaign = CampaignInfo(
+            seed=block["seed"],
+            budget=block["budget"],
+            runs_to_first_violation=block["runs_to_first_violation"],
+            runs_executed=block.get("runs_executed"),
+            errors=block.get("errors"),
+            stopped_early=block.get("stopped_early", False),
+        )
     axes = _keys(top["axes"], {"target_version", "runtime_version", "extraction_filter"}, "axes")
     prov = _keys(
         top["provenance"], {"engine_sha", "engine_dirty", "image_ref", "image_id"}, "provenance"

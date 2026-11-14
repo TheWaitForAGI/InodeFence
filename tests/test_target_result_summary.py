@@ -152,3 +152,33 @@ def test_write_cell_summaries_writes_beside_each_result_and_never_overwrites(
     with pytest.raises(FileExistsError):
         write_cell_summaries([path])
     assert write_cell_summaries([]) == []
+
+
+def test_campaign_summary_shows_aggregates_and_violations_not_per_case(tmp_path) -> None:
+    from inodefence.target_result import CampaignInfo
+
+    result = TargetResult(
+        target="node-tar",
+        axes=TargetAxes(target_version="7.5.8"),
+        mode=ResultMode.CAMPAIGN,
+        observed_contracts=("C0", "C1", "C2"),
+        cases=(CaseVerdict("step-742", "extracted", False, True, True),),  # violations only
+        repro_inputs=(repro_input("step-742", "inputs/step-742.tar", b"viol"),),
+        provenance=Provenance("a" * 40, False, "inodefence-node-tar-registry:7.5.8", None),
+        campaign=CampaignInfo(
+            seed=123,
+            budget=None,
+            runs_to_first_violation=742,
+            runs_executed=1000,
+            errors=2,
+            stopped_early=True,
+        ),
+    )
+    text = render_summary(result, source_name="result.json", inputs_verified=True)
+    assert "## 탐색 결과 (집계와 위반 케이스)" in text
+    assert "## 케이스별 결과" not in text  # no per-case table for a campaign
+    assert "1000번 실행해 1건에서 위반" in text
+    assert "멈출 때까지 (상한 없음)" in text
+    assert "742번째" in text
+    assert "사람이 예산 소진 전에 멈춤" in text
+    assert "| `step-742` | 이상 없음 | **위반** | **위반** | `inputs/step-742.tar` |" in text

@@ -104,13 +104,14 @@ class Block:
 PLAN = (
     Block("s01", "face", 20, "face-title"),
     Block("s02", "voice", 25, "problem+contracts"),
+    Block("s02b", "voice", 10, "slide:s02b", "판정기 검증 · node-tar 결과 아님"),
     Block("s03", "voice", 20, "slide:s03", "측정 사슬 점검 · 탐색 성능 아님"),
-    Block("s04", "voice", 30, "replay4", "demo run · 동작 확인, 탐색 성능 아님"),
+    Block("s04", "voice", 30, "replay4+demo", "demo run · 동작 확인, 탐색 성능 아님"),
     Block(
         "s05", "voice", 30, "replay5+m2", "통제 재현 · 사람이 만든 고정 입력, 퍼저의 탐색 결과 아님"
     ),
     Block("s05b", "voice", 20, "slide:s05b", "오라클·어댑터 수준"),
-    Block("s06", "card", 15, "result-slot"),
+    Block("s06", "card", 5, "result-slot"),
     Block("s07a", "face", 5, "face"),
     Block("s07b", "voice", 30, "design"),
     Block("s07c", "voice", 5, "design"),
@@ -127,6 +128,27 @@ RESULT_SLOT = "본실험 결과 자리(봉인 해제 뒤 기입)"
 #: Slide text of the storyboard scenes that have no recording: (heading, lines). Every line comes
 #: from the storyboard screen notes, which cite the claim IDs; values only from the claim list.
 SLIDES: dict[str, tuple[str, tuple[str, ...]]] = {
+    "s02b": (
+        "판정기 대조 (통제용 테스트 추출기)",
+        (
+            "경계 검사 없이 entry를 그대로 따르는 통제용 테스트 추출기, 일회용 샌드박스 안",
+            "정상 입력 → 위반 없음",
+            "추출 루트를 벗어나는 경로의 파일 → C0",
+            "sentinel을 가리키는 하드링크 → C1 · C2",
+            "symlink를 만든 뒤 그 경로에 쓰기 → C2",
+            "판정기 검증이며 node-tar 결과가 아님",
+        ),
+    ),
+    "s04demo": (
+        "현재 main 데모 (main ff83fbe, seed 123, 실행 20)",
+        (
+            "node-tar 7.5.22 · 20 step (성공 18, 거부 2) · 위반 0",
+            "고유 effect 키 25 · 보상 step 3회 · 코퍼스 4 → 7",
+            "비교 방식이 없는 seed 1개 데모: 탐색 성능이나 방식 비교의 수치가 아님",
+            "위반 0은 이 예산에서 관찰되지 않았다는 뜻: node-tar 7.5.22가 안전하다는 근거가 아님",
+            "앞의 화면은 2026-11-07 실행 기록의 재생",
+        ),
+    ),
     "s03": (
         "고정 입력 점검",
         (
@@ -154,7 +176,8 @@ SLIDES: dict[str, tuple[str, tuple[str, ...]]] = {
         "측정 사슬 점검",
         (
             "EXP-0 (등록, 인프라 측정): 15셀 모두 유효 · abort 0 · 사건 0",
-            "양성 대조 (가): 7.5.2 S-u 1셀, 두 호스트 모두 위반 사건 기록 (첫 사건 step 685, C2)",
+            "양성 대조 (캠페인 경로): 7.5.2 S-u 1셀, 두 호스트 모두 위반 사건 기록"
+            " (첫 사건 step 685, C2)",
             "위험도 파일럿 (비등록, 40 캠페인): 표본 수 산정 · R 변형 선택 · 예측 개정에 사용,"
             " arm 순서 말하지 않음",
         ),
@@ -884,10 +907,13 @@ def render_visual(block: Block, canvas: Canvas, ctx: dict, length: float, out: P
     if block.visual == "problem+contracts":
         encoder.hold(canvas.problem(), length * 0.45)
         encoder.hold(canvas.contracts(), length - length * 0.45)
-    elif block.visual == "replay4":
+    elif block.visual == "replay4+demo":
+        first = length * 0.7
         facts["replay"] = emit_replay(
-            encoder, canvas, recordings / "scene4-take1", length, block.label, False
+            encoder, canvas, recordings / "scene4-take1", first, block.label, False
         )
+        heading, lines = SLIDES["s04demo"]
+        encoder.hold(canvas.text_slide(heading, block.label, lines), length - first)
     elif block.visual == "replay5+m2":
         first = length * 0.55
         facts["replay"] = emit_replay(

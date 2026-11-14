@@ -262,6 +262,7 @@ def run_native_exploration_demo(
                 sentinel_set=sentinel_set_from_args(args),
                 stall_recovery=stall_recovery,
                 live_dir=Path(args.live_dir) if getattr(args, "live_dir", None) else None,
+                engine_commit=getattr(args, "engine_commit", None),
                 **options,
             )
             _announce(render_effect_campaign_summary(report))

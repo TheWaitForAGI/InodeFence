@@ -5,7 +5,7 @@
 InodeFence는 TAR archive entry를 생성·변형하고, 실제 extractor(압축 해제 프로그램)를 실행한 뒤, filesystem의 보안 관련 상태를 관찰해 archive extraction의 보안 경계 위반을 탐색하려는 프로젝트입니다.
 경로뿐 아니라 **파일 객체의 identity와 외부 상태 변화**를 다음 입력을 선택하는 feedback으로 활용할 가치가 있는지 연구합니다.
 
-**지금 돌아가는 것 (2026-10-24):** `make demo` 한 명령으로 실제 node-tar **7.5.22**를 격리
+**지금 돌아가는 것:** `make demo` 한 명령으로 실제 node-tar **7.5.22**를 격리
 컨테이너에서 실행하며 "입력 생성 → 실행 → entry별 중간 상태 관찰 → C0/C1/C2 판정 → feedback →
 다음 mutation 선택" 루프를 돌립니다. 같은 seed·budget이면 같은 루프가 재현됩니다.
 현재 능력은 [STATUS](docs/STATUS.md)의 Capability Ledger가 기준이고, 11/2 중간발표 목표는
@@ -251,6 +251,12 @@ Canonical baseline 검증 근거는 [main CI](https://github.com/TheWaitForAGI/I
 macOS 또는 Windows + WSL2에서 저장소를 **VS Code Dev Container**로 엽니다.
 기준 환경은 Ubuntu 24.04 + Python 3.12입니다.
 
+**필요한 것:** Docker와 Dev Container를 열 수 있는 편집기(VS Code + Dev Containers 확장).
+아래 `make` 명령은 Dev Container 안을 전제로 하며, `make demo`처럼 실제 node-tar를 돌리는 명령만
+호스트 터미널에서 docker로 실행합니다. 호스트 Python에서 바로 돌리는 경로는 지원하지 않습니다
+(`make check`의 환경 검사는 Python 3.12와 Linux runtime 디렉터리 `$INODEFENCE_RUNTIME_ROOT`의
+hardlink·symlink 의미론을 요구합니다).
+
 ```text
 macOS / Windows + WSL2
         ↓
@@ -291,7 +297,7 @@ python -m scripts.run_configured_reference experiments/configs/reference-smoke-v
 
 새 output에 `experiment.json`, `manifest.json`, `steps.jsonl`을 보존합니다. Existing output은 거부합니다. Portable Node invocation 검증은 `make check`에 포함되고 실제 fixture 검증은
 `container_host ... validate-node-target`와 별도 CI job에서 container로 실행합니다.
-Node campaign CLI는 아직 없습니다.
+이 설정 기반 CLI는 Python reference 전용이며, 실제 node-tar 캠페인은 위의 `container_host` 컨트롤러 모드로 돌립니다.
 
 최초 `make install` 후 Dev Container의 Python에서 내부 API를 실행할 수 있습니다.
 

@@ -22,6 +22,7 @@ import scripts.python_tarfile_producer as producer
 from scripts.oracle_fixture_check import ORACLE_FIXTURES
 
 from inodefence.effect_pipeline_python_tarfile import run_python_tarfile_contained_case
+from inodefence.evaluation.rds import RdsArm, RdsCellConfig
 from inodefence.execution.base import ContainerOutcome, ExecutionBackend
 from inodefence.generator import minimal_seed_corpus
 from inodefence.model import (
@@ -193,6 +194,12 @@ def test_exploration_runs_the_shared_loop_on_one_runtime_and_one_filter() -> Non
     )
     assert report["runtime_version"] == RUNTIME and report["extraction_filter"] == "data"
     assert report["label"] == "exploratory demo run" and report["qualification"] is False
+    # Defaults are the registered S-u arm with the observed-names vocabulary.
+    s_u = RdsCellConfig(RdsArm.S_U, 7, budget)
+    assert report["search_policy"] == s_u.search_policy.value
+    assert report["config"]["search_policy"] == s_u.search_policy.value
+    assert report["config"]["mutation_policy"] == s_u.mutation_policy.value
+    assert report["vocabulary"] == "observed-names"
     assert len(report["case_records"]) == budget == len(steps)
     assert report["undetermined_steps"] == 0 and report["all_undetermined"] is False
     for record in report["case_records"]:

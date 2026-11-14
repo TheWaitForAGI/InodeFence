@@ -654,3 +654,35 @@ def test_npm_failure_reasons_are_precise() -> None:
     assert "7.5.99" in reg.npm_failure(not_found)
     assert "registry unreachable (ENOTFOUND)" in reg.npm_failure("npm error code ENOTFOUND\n")
     assert reg.npm_failure("npm error something else\n").startswith("npm step failed:")
+
+
+def test_ensure_image_resolves_prepares_and_returns_the_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(nt.registry, "resolve_latest", lambda *a, **k: "9.9.9")
+    seen: list[str] = []
+    monkeypatch.setattr(rt, "image_id", lambda ref: None if not seen else "sha256:new")
+
+    def prepare_image(step: rt.PrepareStep) -> str:
+        seen.append(step.image_ref)
+        return "sha256:new"
+
+    monkeypatch.setattr(rt, "prepare_image", prepare_image)
+    got = nt.ensure_image("latest", image_tag_suffix="-t")
+    assert (got.requested, got.version, got.exploratory) == ("latest", "9.9.9", True)
+    assert got.image_ref == "inodefence-node-tar-registry:9.9.9-t" and got.image_id == "sha256:new"
+    assert seen == ["inodefence-node-tar-registry:9.9.9-t"]
+    nt._RESOLVED.clear()
+
+
+def test_ensure_image_raises_the_preparation_reason(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(rt, "image_id", lambda ref: None)
+
+    def fail(step: rt.PrepareStep) -> str:
+        raise rt.PrepareError("worker incompatible (effect-producer): missing")
+
+    monkeypatch.setattr(rt, "prepare_image", fail)
+    with pytest.raises(ValueError, match="worker incompatible"):
+        nt.ensure_image("9.9.9")
+    with pytest.raises(ValueError):
+        nt.ensure_image("next")

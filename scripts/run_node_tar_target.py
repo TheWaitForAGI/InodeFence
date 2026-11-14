@@ -20,7 +20,9 @@ refused.
 from __future__ import annotations
 
 import base64
+import json
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 from experiments.repro import cross_release_identity as cri
@@ -47,9 +49,41 @@ def _committed(version: str) -> bool:
     return (node_tar_image.VERSIONS_DIR / version / "package-lock.json").is_file()
 
 
+#: ``latest`` is the only symbolic version accepted; it becomes exact before any cell exists.
+LATEST = "latest"
+#: exact version -> (what was asked, UTC resolution time), filled by ``_resolve`` for ``describe``.
+_RESOLVED: dict[str, tuple[str, str]] = {}
+
+
+def _resolve(versions: list[str]) -> list[str]:
+    """Resolve ``latest`` from the registry's dist-tag (not called by --dry-run)."""
+    exact = []
+    for version in versions:
+        if version != LATEST:
+            exact.append(version)
+            continue
+        try:
+            resolved = registry.resolve_latest()
+        except registry.RegistryPrepareError as error:
+            raise ValueError(f"cannot resolve node-tar {LATEST}: {error}") from error
+        _RESOLVED[resolved] = (LATEST, datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"))
+        print(f"TARGET-RUN RESOLVE node-tar {LATEST} -> {resolved}", flush=True)
+        exact.append(resolved)
+    return exact
+
+
 def _cells(versions: list[str], filters: list[str]) -> list[RunCell]:
     if filters:
         raise ValueError("node-tar has no extraction-filter axis; drop --extraction-filter")
+    if LATEST in versions:  # only reached by --dry-run (a real run resolves first)
+        return [
+            RunCell(
+                dirname=f"{TARGET}-{LATEST} (resolved at run time)",
+                axes=TargetAxes(target_version=LATEST),
+                image_ref=None,
+                exploratory=True,
+            )
+        ]
     for version in versions:
         if rc._VERSION_RE.fullmatch(version) is None:
             raise ValueError(f"node-tar --version must be dotted numeric, e.g. 7.5.2: {version!r}")
@@ -106,6 +140,8 @@ def _describe(cell: RunCell, cell_dir: Path) -> Preparation | None:
     evidence = cell_dir / "preparation"
     evidence.mkdir(parents=True, exist_ok=True)
     (evidence / "package-lock.json").write_bytes(found["lock"])
+    findings = registry.lock_findings(json.loads(found["lock"]), registry.allowed_packages())
+    spec, resolved_at = _RESOLVED.get(version, (None, None))
     return Preparation(
         method="registry",
         requested_version=version,
@@ -113,7 +149,17 @@ def _describe(cell: RunCell, cell_dir: Path) -> Preparation | None:
         lock_sha256=found["lock_sha256"],
         worker_sha256=found["worker_sha256"],
         recipe=registry.RECIPE.format(version=version),
+        requested_spec=spec,
+        resolved_at=resolved_at,
+        new_dependencies=tuple(findings["new_dependencies"]),
+        install_scripts_disabled=tuple(findings["install_scripts_disabled"]),
     )
+
+
+def _plan(cell: RunCell) -> list[dict[str, object]]:
+    if cell.axes.target_version == LATEST:
+        return [{"note": f"{LATEST} is resolved from {registry.REGISTRY} at run time"}]
+    return fixture_plan()
 
 
 def _run(cell: RunCell) -> list[CaseRun]:
@@ -122,7 +168,11 @@ def _run(cell: RunCell) -> list[CaseRun]:
     runs = []
     for fixture in rc.build_fixtures():
         tar_b64 = base64.b64encode(fixture.tar).decode()
-        raw = cri.run_one(version, tar_b64, image=cell.image_ref)
+        # Registry-prepared images run offline; committed-recipe runs keep the historical command.
+        if cell.exploratory:
+            raw = cri.run_one(version, tar_b64, image=cell.image_ref, network_none=True)
+        else:
+            raw = cri.run_one(version, tar_b64, image=cell.image_ref)
         runs.append(fixture_case(fixture, raw))
     return runs
 
@@ -131,8 +181,9 @@ ADAPTER = TargetAdapter(
     mode=ResultMode.FIXTURE_REGRESSION,
     observed_contracts=("C1", "C2"),
     cells=_cells,
-    plan=lambda cell: fixture_plan(),
+    plan=_plan,
     run=_run,
     prepare=_prepare,
     describe=_describe,
+    resolve=_resolve,
 )

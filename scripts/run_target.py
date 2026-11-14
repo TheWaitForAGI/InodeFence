@@ -102,8 +102,8 @@ class RunCell:
     dirname: str
     axes: TargetAxes
     image_ref: str | None
-    #: The image comes from the public registry, not a committed recipe: the run needs
-    #: --allow-registry-prepare and is labelled "exploratory demo run".
+    #: The image comes from the public registry, not a committed recipe: the run is labelled
+    #: "exploratory demo run" and is never mixed with committed-recipe cells in one run.
     exploratory: bool = False
 
 
@@ -154,6 +154,9 @@ class TargetAdapter:
     #: Optional: after a run, record how the cell image was obtained (read from the image itself)
     #: and save any evidence under the given cell directory. ``None`` adds no ``preparation``.
     describe: Callable[[RunCell, Path], Preparation | None] | None = None
+    #: Optional: turn symbolic versions (e.g. ``latest``) into exact ones before ``cells``; may use
+    #: the network, so it is skipped by --dry-run (``ValueError(reason)`` refuses).
+    resolve: Callable[[list[str]], list[str]] | None = None
 
 
 def fixture_case(fixture: rc.RegressionFixture, raw: dict[str, Any]) -> CaseRun:
@@ -447,12 +450,6 @@ def main(argv: list[str] | None = None) -> int:
         help="prepare (pull/build) missing cell images with the target's recipe before running",
     )
     parser.add_argument(
-        "--allow-registry-prepare",
-        action="store_true",
-        help="allow versions without a committed recipe (image from the public registry; "
-        "labelled exploratory demo run)",
-    )
-    parser.add_argument(
         "--image-tag-suffix",
         default="",
         help="append this to every cell image tag (development; existing tags are untouched)",
@@ -470,21 +467,19 @@ def main(argv: list[str] | None = None) -> int:
         )
     adapter = load_adapter(args.target)
     try:
+        if adapter.resolve is not None and not args.dry_run:
+            versions = adapter.resolve(versions)
+            if len(set(versions)) != len(versions):
+                parser.error(f"versions resolve to duplicates: {versions}")
         cells = adapter.cells(versions, filters)
     except ValueError as error:
         parser.error(str(error))
     cells = [with_tag_suffix(cell, args.image_tag_suffix) for cell in cells]
-    unregistered = [c.dirname for c in cells if c.exploratory]
-    if unregistered and len(unregistered) != len(cells):
+    exploratory = [c.dirname for c in cells if c.exploratory]
+    if exploratory and len(exploratory) != len(cells):
         parser.error(
             "run committed-recipe versions and registry-prepared (exploratory) versions "
             "separately, so their results are never mixed in one run"
-        )
-    if unregistered and not args.allow_registry_prepare:
-        parser.error(
-            f"{', '.join(unregistered)}: no committed recipe for this version; to prepare it from "
-            "the public registry as an exploratory demo run, add ALLOW_REGISTRY_PREPARE=1 "
-            "(--allow-registry-prepare)"
         )
 
     if args.dry_run:

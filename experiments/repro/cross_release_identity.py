@@ -130,12 +130,19 @@ def build_tar(entries: list[dict]) -> bytes:
     return buf.getvalue()
 
 
-def run_one(release: str, tar_b64: str, image: str | None = None) -> dict:
-    """Extract one TAR in a fresh container of ``image`` (default: the release's own tag)."""
+def run_one(
+    release: str, tar_b64: str, image: str | None = None, *, network_none: bool = False
+) -> dict:
+    """Extract one TAR in a fresh container of ``image`` (default: the release's own tag).
+
+    ``network_none`` adds ``--network none`` (used for registry-prepared images; the default keeps
+    the historical command unchanged).
+    """
     cmd = [
         "docker",
         "run",
         "--rm",
+        *(["--network", "none"] if network_none else []),
         "--user",
         "0:0",
         "-e",

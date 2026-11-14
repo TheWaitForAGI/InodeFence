@@ -1,29 +1,33 @@
-"""Exploratory node-tar image from the public npm registry (``ALLOW_REGISTRY_PREPARE=1``).
+"""Exploratory node-tar image from the public npm registry (part of ``AUTO_PREPARE=1``).
 
-For a node-tar version that has **no** committed lock in ``tools/node-tar/versions/``, this builds
-``--image`` the same way the committed versions are built, except that the lock is generated now:
+For a node-tar version that has **no** committed lock in ``tools/node-tar/versions/`` (a committed
+lock always wins; it is the reproducibility baseline, not an allowlist), this builds ``--image`` the
+same way the committed versions are built, except that the lock is generated now:
 
-1. ``npm view tar@<v> version dist.integrity`` in a disposable container of the pinned Node image
-   (the ``FROM`` digest of ``tools/node-tar/effect/Dockerfile``): the version must exist.
-2. ``npm install --package-lock-only --ignore-scripts`` in another disposable container (no
-   install scripts, nothing installed); the lock comes back on stdout and is never written into
-   this repository.
-3. The lock is checked on the host: root depends on exactly ``tar@<v>``; ``tar`` resolves to
-   ``<v>``; every entry's ``resolved`` is on ``https://registry.npmjs.org/``; every ``integrity``
-   equals the one the registry publishes (``npm view <name>@<version> dist.integrity``); no entry
-   declares an install script; every package name already appears in a committed 7.5.x lock.
-4. ``tools/node-tar/effect/Dockerfile`` (unchanged: pinned base digests, ``npm ci
-   --ignore-scripts``, the committed worker files) is built from a temporary context outside the
-   repository that holds only that lock, its ``package.json`` and the two worker files, into
-   ``<image>-unverified``.
-5. The staged image runs with ``--network none`` and must report ``tar`` ``<v>`` installed.
+1. ``npm view tar@<v> dist.integrity`` in a disposable container of the pinned Node image (the
+   ``FROM`` digest of ``tools/node-tar/effect/Dockerfile``; nothing mounted): the version exists.
+2. ``npm install --package-lock-only --ignore-scripts`` in another disposable container (nothing
+   installed, no scripts run); the lock comes back on stdout and is never written into the
+   repository.
+3. The lock is checked on the host and **refused** unless: the root depends on exactly
+   ``tar@<v>``; ``tar`` resolves to ``<v>``; every entry is ``resolved`` from
+   ``https://registry.npmjs.org/``; every ``integrity`` equals what the registry publishes for that
+   ``name@version`` in this run. It is **recorded, not refused**: packages that appear in no
+   committed 7.5.x lock (name, version, integrity) and packages that declare install scripts
+   (scripts are always disabled: ``--ignore-scripts`` here and ``npm ci --ignore-scripts`` in the
+   build).
+4. ``tools/node-tar/effect/Dockerfile`` (unchanged: pinned base digests, the committed worker
+   files) is built from a temporary context outside the repository into ``<image>-unverified``.
+5. With ``--network none`` the staged image must report ``tar`` ``<v>`` installed, and the same
+   extraction program the run uses (``cross_release_identity.NODE_PROGRAM``) must extract a benign
+   one-file archive with that ``tar`` (harness/worker compatibility).
 6. Only then is ``<image>`` tagged; the staging tag and the temporary context are removed.
 
-Any failure (unknown version, registry/network error, integrity mismatch, unexpected package,
-build failure, wrong installed version) exits non-zero and leaves ``<image>`` absent, so no run,
-verdict or result file follows and a rerun starts over. An existing ``<image>`` is never rebuilt.
-This does **not** make a registry package safe: it only pins and checks what was downloaded. The
-extraction run itself stays offline in the usual isolated container.
+Every failure (unknown version, registry/network error, integrity mismatch, non-registry source,
+build failure, wrong installed version, incompatible harness) exits non-zero with its reason and
+leaves ``<image>`` absent: no run, verdict or result file, and a rerun starts over. An existing
+``<image>`` is never rebuilt. This does **not** make a registry package safe; it only pins and
+checks what was downloaded in this run. The extraction run itself is offline (``--network none``).
 """
 
 from __future__ import annotations
@@ -175,10 +179,8 @@ def lock_specs(lock: dict[str, Any]) -> list[str]:
     )
 
 
-def check_lock(
-    lock: dict[str, Any], version: str, published: dict[str, str], allowed: set[str]
-) -> None:
-    """Fail unless the lock pins exactly what the registry published, within the known closure."""
+def check_lock(lock: dict[str, Any], version: str, published: dict[str, str]) -> None:
+    """Fail unless the lock pins exactly ``tar@version`` and what the registry published."""
     packages = lock.get("packages")
     if not isinstance(packages, dict) or lock.get("lockfileVersion") != 3:
         raise RegistryPrepareError("unexpected lock format")
@@ -191,18 +193,39 @@ def check_lock(
             continue
         name = key.split("node_modules/")[-1]
         spec = f"{name}@{entry.get('version')}"
-        if name not in allowed:
-            raise RegistryPrepareError(
-                f"unexpected package {spec} (not in any committed 7.5.x lock); this is refused on "
-                "purpose. To use this version, promote it through the committed-lock procedure "
-                "(add and review tools/node-tar/versions/<version>/ and its lock)"
-            )
         if not str(entry.get("resolved", "")).startswith(REGISTRY):
             raise RegistryPrepareError(f"{spec} is not resolved from {REGISTRY}")
         if entry.get("integrity") != published.get(spec):
             raise RegistryPrepareError(f"{spec} integrity differs from the registry's")
+
+
+def lock_findings(lock: dict[str, Any], allowed: set[str]) -> dict[str, Any]:
+    """Recorded, not refused: packages new to the committed locks; packages with install scripts."""
+    new, scripts = [], []
+    for key, entry in lock.get("packages", {}).items():
+        if not key:
+            continue
+        name = key.split("node_modules/")[-1]
+        if name not in allowed:
+            new.append(
+                {
+                    "name": name,
+                    "version": str(entry.get("version")),
+                    "integrity": str(entry.get("integrity")),
+                }
+            )
         if entry.get("hasInstallScript"):
-            raise RegistryPrepareError(f"{spec} declares an install script")
+            scripts.append(name)
+    return {"new_dependencies": new, "install_scripts_disabled": sorted(scripts)}
+
+
+def resolve_latest(runner: Runner = subprocess.run, node: str | None = None) -> str:
+    """The registry's current ``latest`` dist-tag of ``tar`` as an exact version."""
+    out = _npm(runner, node or node_image(), "npm view tar dist-tags.latest", {})
+    version = out.strip().splitlines()[-1].strip() if out.strip() else ""
+    if EXACT.fullmatch(version) is None:
+        raise RegistryPrepareError(f"registry latest for tar is not an exact version: {version!r}")
+    return version
 
 
 def build_context(version: str, lock: bytes, root: Path) -> Path:
@@ -248,6 +271,48 @@ def installed_version(runner: Runner, image: str) -> str:
     return (done.stdout or "").strip().splitlines()[-1] if (done.stdout or "").strip() else ""
 
 
+def harness_check(runner: Runner, image: str) -> None:
+    """Offline: the run's own extraction program must extract a benign one-file archive."""
+    from experiments.repro import cross_release_identity as cri
+
+    tar = base64.b64encode(cri.build_tar([{"name": "ok.txt", "type": "reg", "content": b"ok\n"}]))
+    ref = base64.b64encode(cri.REFERENCE_CONTENT).decode()
+    done = _docker(
+        runner,
+        [
+            "run",
+            "--rm",
+            "--network",
+            "none",
+            "--user",
+            "0:0",
+            "-e",
+            f"TAR_B64={tar.decode()}",
+            "-e",
+            f"REF_B64={ref}",
+            "--entrypoint",
+            "node",
+            image,
+            "-e",
+            cri.NODE_PROGRAM,
+        ],
+        120,
+    )
+    try:
+        raw = json.loads((done.stdout or "").strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        raw = None
+    ok = (
+        done.returncode == 0
+        and isinstance(raw, dict)
+        and raw.get("declined") is None
+        and "ok.txt" in (raw.get("extract_tree") or {})
+    )
+    if not ok:
+        detail = (done.stderr or "").strip()[-200:] or str(raw)[:200]
+        raise RegistryPrepareError(f"harness incompatible with the tar in {image}: {detail}")
+
+
 def exists(runner: Runner, image: str) -> bool:
     return _docker(runner, ["image", "inspect", image], 60).returncode == 0
 
@@ -274,9 +339,17 @@ def prepare(
     except ValueError as error:
         raise RegistryPrepareError("npm lock is not JSON") from error
     published.update(registry_integrity(runner, node, lock_specs(lock)))
-    check_lock(lock, version, published, allowed)
+    check_lock(lock, version, published)
     lock_sha = hashlib.sha256(lock_bytes).hexdigest()
     log(f"REGISTRY-PREPARE lock ok sha256={lock_sha} packages={','.join(lock_specs(lock))}")
+    findings = lock_findings(lock, allowed)
+    for dep in findings["new_dependencies"]:
+        log(
+            "REGISTRY-PREPARE new dependency (recorded, not in committed locks): "
+            f"{dep['name']}@{dep['version']} {dep['integrity']}"
+        )
+    for name in findings["install_scripts_disabled"]:
+        log(f"REGISTRY-PREPARE {name} declares install scripts; they stay disabled")
     staging = f"{image}{STAGING}"
     with tempfile.TemporaryDirectory(prefix="inodefence-node-tar-registry-") as tmp:
         context = build_context(version, lock_bytes, Path(tmp))
@@ -298,6 +371,7 @@ def prepare(
         seen = installed_version(runner, staging)
         if seen != version:
             raise RegistryPrepareError(f"{staging} has tar {seen!r} installed, expected {version}")
+        harness_check(runner, staging)
         if _docker(runner, ["tag", staging, image], 60).returncode != 0:
             raise RegistryPrepareError(f"tag {staging} -> {image} failed")
         log(f"REGISTRY-PREPARE verified tar {seen} offline; tagged {image}")

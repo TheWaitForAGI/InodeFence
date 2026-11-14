@@ -23,7 +23,9 @@ Optional ``preparation`` (absent in older files, which still read unchanged) rec
 image was obtained: ``method`` ``committed-lock`` (a recipe committed in this repository) or
 ``registry`` (an exploratory build from a lock generated against the public package registry at
 run time), the requested and actually installed versions, the SHA-256 of the lock inside the image,
-the worker's SHA-256 and the build recipe. A ``registry`` record is labelled
+the worker's SHA-256 and the build recipe; for a symbolic request (``latest``) also what was asked
+and when it was resolved; and dependencies not seen in committed locks and packages whose install
+scripts were disabled (recorded, not refused). A ``registry`` record is labelled
 ``exploratory demo run`` instead of ``demo run``; the reader enforces that pairing.
 """
 
@@ -119,11 +121,17 @@ class Preparation:
     """How the cell image was obtained; hashes are of the bytes found inside the image."""
 
     method: str  # one of PREPARATION_METHODS
-    requested_version: str
+    requested_version: str  # the exact version the cell ran (after resolving ``requested_spec``)
     installed_version: str
     lock_sha256: str | None
     worker_sha256: str | None
     recipe: str
+    requested_spec: str | None = None  # what was asked, when not an exact version (``latest``)
+    resolved_at: str | None = None  # UTC time ``requested_spec`` was resolved
+    #: ``{"name", "version", "integrity"}`` of packages not in any committed lock (recorded only).
+    new_dependencies: tuple[dict[str, str], ...] = ()
+    #: Packages that declare install scripts; scripts are always disabled (recorded only).
+    install_scripts_disabled: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -210,6 +218,10 @@ class TargetResult:
                 "lock_sha256": p.lock_sha256,
                 "worker_sha256": p.worker_sha256,
                 "recipe": p.recipe,
+                "requested_spec": p.requested_spec,
+                "resolved_at": p.resolved_at,
+                "new_dependencies": [dict(d) for d in p.new_dependencies],
+                "install_scripts_disabled": list(p.install_scripts_disabled),
             }
         return data
 
@@ -282,6 +294,15 @@ def _validate_preparation(prep: Preparation | None) -> None:
         value = getattr(prep, name)
         if value is not None and _SHA256_RE.fullmatch(value) is None:
             raise TargetResultError(f"preparation.{name} must be 64 lowercase hex or null")
+    if (prep.requested_spec is None) != (prep.resolved_at is None):
+        raise TargetResultError("preparation.requested_spec and resolved_at go together")
+    for dep in prep.new_dependencies:
+        if not isinstance(dep, dict) or set(dep) != {"name", "version", "integrity"}:
+            raise TargetResultError(
+                "preparation.new_dependencies items need name/version/integrity"
+            )
+    if not all(isinstance(n, str) and n for n in prep.install_scripts_disabled):
+        raise TargetResultError("preparation.install_scripts_disabled must be package names")
 
 
 _PREPARATION_KEYS = {
@@ -291,6 +312,10 @@ _PREPARATION_KEYS = {
     "lock_sha256",
     "worker_sha256",
     "recipe",
+    "requested_spec",
+    "resolved_at",
+    "new_dependencies",
+    "install_scripts_disabled",
 }
 
 _TOP_KEYS = {
@@ -331,7 +356,11 @@ def from_json_dict(data: object) -> TargetResult:
         raise TargetResultError(f"label must be {LABEL!r}, got {top['label']!r}")
     preparation = None
     if "preparation" in top:
-        prep = _keys(top["preparation"], _PREPARATION_KEYS, "preparation")
+        prep = dict(_keys(top["preparation"], _PREPARATION_KEYS, "preparation"))
+        prep["new_dependencies"] = tuple(_as_list(prep["new_dependencies"], "new_dependencies"))
+        prep["install_scripts_disabled"] = tuple(
+            _as_list(prep["install_scripts_disabled"], "install_scripts_disabled")
+        )
         preparation = Preparation(**prep)
     axes = _keys(top["axes"], {"target_version", "runtime_version", "extraction_filter"}, "axes")
     prov = _keys(

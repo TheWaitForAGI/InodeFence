@@ -133,6 +133,18 @@ def render_summary(result: TargetResult, *, source_name: str, inputs_verified: b
             f"| 요청 버전 / 이미지 안 설치 버전 | {_code(prep.requested_version)} / "
             f"{_code(prep.installed_version)} |"
         )
+        if prep.requested_spec is not None:
+            add(
+                f"| 요청 값 | {_code(prep.requested_spec)} → {_code(prep.requested_version)} "
+                f"(해석 시각 {_code(prep.resolved_at or '')}) |"
+            )
+        for dep in prep.new_dependencies:
+            add(
+                f"| 커밋된 lock에 없던 의존(기록) | {_code(dep['name'] + '@' + dep['version'])} "
+                f"{_code(dep['integrity'])} |"
+            )
+        for package in prep.install_scripts_disabled:
+            add(f"| install script 비활성(기록) | {_code(package)} |")
         for name, value in (
             ("이미지 안 lock SHA-256", prep.lock_sha256),
             ("이미지 안 worker SHA-256", prep.worker_sha256),

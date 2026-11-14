@@ -131,7 +131,7 @@ def test_dry_run_runs_and_writes_nothing(
 @pytest.mark.parametrize(
     "argv",
     [
-        ["--target", "node-tar", "--version", "latest", "--dry-run"],
+        ["--target", "node-tar", "--version", "next", "--dry-run"],  # only `latest` is resolved
         ["--target", "node-tar", "--version", "7.5.2", "--version", "7.5.2", "--dry-run"],
         ["--target", "gnu-tar", "--version", "1.35", "--dry-run"],
         ["--target", "node-tar", "--version", "7.5.2"],  # no --out
@@ -466,7 +466,7 @@ def test_env_check_names_missing_runtime_root_and_fix(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     "argv",
     [
-        ["--target", "node-tar", "--version", "latest", "--dry-run"],  # refused version
+        ["--target", "node-tar", "--version", "next", "--dry-run"],  # refused version
         ["--target", "python-tarfile", "--version", "3.12", "--extraction-filter", "data"],
         ["--target", "decompress", "--version", "decompress@4.2.0", "--dry-run"],  # not pinned
     ],

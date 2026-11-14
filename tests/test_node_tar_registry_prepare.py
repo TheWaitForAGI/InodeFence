@@ -59,6 +59,7 @@ class FakeDocker:
         self.fail = fail
         self.lock = lock or _lock()
         self.installed = installed
+        self.latest = V
         self.images: set[str] = set()
         self.calls: list[list[str]] = []
 
@@ -78,6 +79,8 @@ class FakeDocker:
             env = dict(a.split("=", 1) for i, a in enumerate(args) if args[i - 1] == "-e")
             if self.fail == "network":
                 return done(1, err="npm ERR! network ENOTFOUND registry.npmjs.org")
+            if "dist-tags.latest" in args[-1]:
+                return done(0, self.latest + "\n")
             if "SPECS" in env:
                 lines = []
                 for spec in env["SPECS"].split():
@@ -92,8 +95,13 @@ class FakeDocker:
                 return done(1, err="npm ci failed")
             self.images.add(args[args.index("-t") + 1])
             return done(0, "sha256:x")
-        if verb == "run":  # offline version check
+        if verb == "run":  # offline checks: installed version, then the harness smoke
             assert args[1:4] == ["--rm", "--network", "none"]
+            if "TAR_B64" in " ".join(args):
+                if self.fail == "harness":
+                    return done(1, err="TypeError: tar.x is not a function")
+                tree = {"ok.txt": {"type": "reg"}}
+                return done(0, json.dumps({"declined": None, "extract_tree": tree}) + "\n")
             return done(0, self.installed + "\n")
         if verb == "tag":
             self.images.add(args[2])
@@ -177,6 +185,7 @@ def test_existing_image_is_not_rebuilt() -> None:
         ("network", "npm step failed"),
         ("integrity", "integrity differs"),
         ("build", "build failed"),
+        ("harness", "harness incompatible"),
         ("docker", "docker image failed"),
     ],
 )
@@ -198,12 +207,10 @@ def test_installed_version_mismatch_leaves_no_image_and_no_staging() -> None:
 @pytest.mark.parametrize(
     ("lock", "message"),
     [
-        (_lock({"node_modules/evil-pkg": {"version": "1.0.0"}}), "evil-pkg@1.0.0.*promote"),
         (
             _lock({"node_modules/chownr": {"resolved": "https://mirror.example/chownr.tgz"}}),
             "not resolved from",
         ),
-        (_lock({"node_modules/minipass": {"hasInstallScript": True}}), "install script"),
         (_lock({"node_modules/tar": {"version": "7.5.22"}}), "resolves tar"),
         (_lock({"": {"dependencies": {"tar": "^7.5.0"}}}), "exactly tar@"),
     ],
@@ -249,11 +256,20 @@ def test_unregistered_exact_version_is_an_exploratory_registry_cell() -> None:
     assert step.commands[0][1:3] == ("-m", "scripts.node_tar_registry_prepare")
 
 
-def test_unregistered_without_permission_is_refused(capsys: pytest.CaptureFixture[str]) -> None:
-    with pytest.raises(SystemExit) as stop:
-        rt.main(["--target", "node-tar", "--version", "9.9.9", "--dry-run"])
-    assert stop.value.code == rt.SETUP_ERROR
-    assert "ALLOW_REGISTRY_PREPARE=1" in capsys.readouterr().err
+def test_unregistered_without_auto_prepare_stops_with_the_hint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(rt, "docker_problem", lambda: None)
+    monkeypatch.setattr(rt, "image_id", lambda ref: None)
+    argv = ["--target", "node-tar", "--version", "9.9.9", "--out", str(tmp_path)]
+    assert rt.main(argv) == rt.SETUP_ERROR
+    assert "AUTO_PREPARE=1" in capsys.readouterr().err
+    assert not list(tmp_path.iterdir())
+
+
+def test_no_separate_permission_flag_exists() -> None:
+    with pytest.raises(SystemExit):
+        rt.main(["--target", "node-tar", "--version", "9.9.9", "--allow-registry-prepare"])
 
 
 def test_dry_run_contacts_no_registry(
@@ -262,7 +278,7 @@ def test_dry_run_contacts_no_registry(
     monkeypatch.setattr(rt, "docker_problem", lambda: None)
     monkeypatch.setattr(rt, "image_id", lambda ref: None)
     monkeypatch.setattr(reg, "prepare", lambda *a, **k: pytest.fail("dry-run must not prepare"))
-    argv = ["--target", "node-tar", "--version", "9.9.9", "--allow-registry-prepare", "--dry-run"]
+    argv = ["--target", "node-tar", "--version", "9.9.9", "--dry-run"]
     assert rt.main(argv) == 0
     plan = json.loads(capsys.readouterr().out)["cells"]["node-tar-9.9.9-exploratory"]
     assert plan["exploratory"] is True
@@ -301,9 +317,9 @@ def test_exploratory_run_is_labelled_and_records_preparation(
     monkeypatch.setattr(rt, "docker_problem", lambda: None)
     monkeypatch.setattr(rt, "image_id", lambda ref: "sha256:reg")
     monkeypatch.setattr(rt, "engine_provenance", lambda image: rt.Provenance(None, True, image))
-    monkeypatch.setattr(nt.cri, "run_one", lambda v, t, image=None: _clean(v))
+    monkeypatch.setattr(nt.cri, "run_one", lambda v, t, image=None, network_none=False: _clean(v))
     monkeypatch.setattr(nt.registry, "image_evidence", _fake_evidence())
-    argv = ["--target", "node-tar", "--version", "9.9.9", "--allow-registry-prepare"]
+    argv = ["--target", "node-tar", "--version", "9.9.9"]
     assert rt.main([*argv, "--out", str(tmp_path)]) == 0
     cell = tmp_path / "node-tar-9.9.9-exploratory"
     result = load_target_result(cell / "result.json")
@@ -320,9 +336,9 @@ def test_installed_mismatch_at_describe_gives_no_verdict(
     monkeypatch.setattr(rt, "docker_problem", lambda: None)
     monkeypatch.setattr(rt, "image_id", lambda ref: "sha256:reg")
     monkeypatch.setattr(rt, "engine_provenance", lambda image: rt.Provenance(None, True, image))
-    monkeypatch.setattr(nt.cri, "run_one", lambda v, t, image=None: _clean(v))
+    monkeypatch.setattr(nt.cri, "run_one", lambda v, t, image=None, network_none=False: _clean(v))
     monkeypatch.setattr(nt.registry, "image_evidence", _fake_evidence(installed="9.9.8"))
-    argv = ["--target", "node-tar", "--version", "9.9.9", "--allow-registry-prepare"]
+    argv = ["--target", "node-tar", "--version", "9.9.9"]
     assert rt.main([*argv, "--out", str(tmp_path)]) == rt.SETUP_ERROR
     assert not (tmp_path / "node-tar-9.9.9-exploratory" / "result.json").exists()
 
@@ -334,11 +350,11 @@ def _result_dict(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, exploratory
     monkeypatch.setattr(rt, "docker_problem", lambda: None)
     monkeypatch.setattr(rt, "image_id", lambda ref: "sha256:x")
     monkeypatch.setattr(rt, "engine_provenance", lambda image: rt.Provenance(None, True, image))
-    monkeypatch.setattr(nt.cri, "run_one", lambda v, t, image=None: _clean(v))
+    monkeypatch.setattr(nt.cri, "run_one", lambda v, t, image=None, network_none=False: _clean(v))
     monkeypatch.setattr(nt.registry, "image_evidence", _fake_evidence())
     cell = "node-tar-9.9.9-exploratory" if exploratory else "node-tar-7.5.3"
     version = "9.9.9" if exploratory else "7.5.3"
-    argv = ["--target", "node-tar", "--version", version, "--allow-registry-prepare"]
+    argv = ["--target", "node-tar", "--version", version]
     rt.main([*argv, "--out", str(tmp_path)])
     return json.loads((tmp_path / cell / "result.json").read_text())
 
@@ -386,7 +402,7 @@ def test_rule1_registry_result_is_never_tagged_with_a_verified_name() -> None:
 
 
 def test_rule2_committed_lock_always_takes_the_verified_path() -> None:
-    (cell,) = nt.ADAPTER.cells(["7.5.3"], [])  # even when --allow-registry-prepare is given
+    (cell,) = nt.ADAPTER.cells(["7.5.3"], [])  # a committed lock always wins
     assert not cell.exploratory and cell.image_ref == "inodefence-node-tar-effect:7.5.3"
     step = nt.ADAPTER.prepare(cell)
     assert step.commands is not None and "node_tar_registry_prepare" not in " ".join(
@@ -429,7 +445,7 @@ def test_rule4_verified_and_exploratory_never_share_one_run(
 ) -> None:
     argv = ["--target", "node-tar", "--version", "7.5.3", "--version", "9.9.9"]
     with pytest.raises(SystemExit) as stop:
-        rt.main([*argv, "--allow-registry-prepare", "--dry-run"])
+        rt.main([*argv, "--dry-run"])
     assert stop.value.code == rt.SETUP_ERROR
     assert "separately" in capsys.readouterr().err
 
@@ -476,9 +492,104 @@ def test_each_run_uses_a_fresh_build_context() -> None:
     assert not any(Path(c).exists() for c in contexts)  # removed after the build
 
 
-def test_future_version_with_a_new_dependency_is_refused_on_purpose() -> None:
-    lock = _lock({"node_modules/brand-new-dep": {"version": "0.1.0"}}, version=V)
+def test_new_dependency_and_install_script_are_recorded_not_refused() -> None:
+    lock = _lock(
+        {
+            "node_modules/brand-new-dep": {
+                "version": "0.1.0",
+                "resolved": "https://registry.npmjs.org/brand-new-dep/-/brand-new-dep-0.1.0.tgz",
+                "integrity": _integrity("brand-new-dep@0.1.0"),
+            },
+            "node_modules/minipass": {"hasInstallScript": True},
+        }
+    )
+    lines: list[str] = []
     docker = FakeDocker(lock=lock)
-    with pytest.raises(reg.RegistryPrepareError, match="brand-new-dep@0.1.0.*committed-lock"):
-        _prepare(docker)
-    assert docker.images == set()
+    reg.prepare(V, IMAGE, runner=docker, log=lines.append)
+    assert docker.images == {IMAGE}
+    assert any("new dependency" in line and "brand-new-dep@0.1.0" in line for line in lines)
+    assert any("minipass declares install scripts" in line for line in lines)
+    findings = reg.lock_findings(lock, reg.allowed_packages())
+    assert findings["new_dependencies"] == [
+        {
+            "name": "brand-new-dep",
+            "version": "0.1.0",
+            "integrity": _integrity("brand-new-dep@0.1.0"),
+        }
+    ]
+    assert findings["install_scripts_disabled"] == ["minipass"]
+
+
+def test_scripts_stay_disabled_in_lock_generation_and_build() -> None:
+    docker = FakeDocker()
+    _prepare(docker)
+    npm = [c for c in docker.calls if c[1] == "run" and "sh" in c]
+    assert any("--ignore-scripts" in c[-1] for c in npm if "package-lock-only" in c[-1])
+    dockerfile = reg.DOCKERFILE.read_text(encoding="utf-8")
+    assert "npm ci --ignore-scripts" in dockerfile
+
+
+# ---- latest ----
+
+
+def test_latest_resolves_to_exact_and_is_recorded(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(nt.registry, "resolve_latest", lambda *a, **k: "9.9.9")
+    monkeypatch.setattr(rt, "docker_problem", lambda: None)
+    monkeypatch.setattr(rt, "image_id", lambda ref: "sha256:reg")
+    monkeypatch.setattr(rt, "engine_provenance", lambda image: rt.Provenance(None, True, image))
+    monkeypatch.setattr(nt.cri, "run_one", lambda v, t, image=None, network_none=False: _clean(v))
+    monkeypatch.setattr(nt.registry, "image_evidence", _fake_evidence())
+    argv = ["--target", "node-tar", "--version", "latest", "--out", str(tmp_path)]
+    assert rt.main(argv) == 0
+    assert "RESOLVE node-tar latest -> 9.9.9" in capsys.readouterr().out
+    cell = tmp_path / "node-tar-9.9.9-exploratory"  # only the exact version in names
+    result = load_target_result(cell / "result.json")
+    assert result.axes.target_version == "9.9.9"
+    assert result.provenance.image_ref == "inodefence-node-tar-registry:9.9.9"
+    assert result.preparation is not None and result.preparation.requested_spec == "latest"
+    assert result.preparation.resolved_at is not None
+    assert "`latest` → `9.9.9`" in (cell / "summary.md").read_text("utf-8")
+    nt._RESOLVED.clear()
+
+
+def test_latest_dry_run_does_not_resolve(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(nt.registry, "resolve_latest", lambda *a, **k: pytest.fail("no lookup"))
+    monkeypatch.setattr(rt, "docker_problem", lambda: None)
+    assert rt.main(["--target", "node-tar", "--version", "latest", "--dry-run"]) == 0
+    cells = json.loads(capsys.readouterr().out)["cells"]
+    (name,) = cells
+    assert "resolved at run time" in name and cells[name]["image"] is None
+
+
+def test_latest_resolution_rejects_a_non_exact_tag() -> None:
+    docker = FakeDocker()
+    docker.latest = "8.0.0-beta.1"
+    with pytest.raises(reg.RegistryPrepareError, match="not an exact version"):
+        reg.resolve_latest(docker, node="node:x@sha256:" + "0" * 64)
+
+
+@pytest.mark.parametrize("version", ["next", "beta", "latest-7", "*"])
+def test_other_tags_are_refused(version: str) -> None:
+    with pytest.raises(ValueError):
+        nt.ADAPTER.cells([version], [])
+
+
+def test_exploratory_extraction_runs_offline(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: list[bool] = []
+
+    def run_one(v: str, t: str, image: str | None = None, network_none: bool = False) -> dict:
+        seen.append(network_none)
+        return _clean(v)
+
+    monkeypatch.setattr(nt.cri, "run_one", run_one)
+    (cell,) = nt.ADAPTER.cells(["9.9.9"], [])
+    nt.ADAPTER.run(cell)
+    (verified,) = nt.ADAPTER.cells(["7.5.3"], [])
+    nt.ADAPTER.run(verified)
+    assert seen == [True] * 5 + [False] * 5  # committed-recipe runs keep the historical command

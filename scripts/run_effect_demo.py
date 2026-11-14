@@ -272,6 +272,7 @@ DEMO_FORWARDED_ARGUMENTS = (
     "observer_integrity_policy",
     "sentinel_count",
     "sentinel_seed",
+    "live_dir",
 )
 
 
@@ -306,6 +307,10 @@ def add_demo_arguments(parser: argparse.ArgumentParser) -> None:
             "'stop' (default) aborts the campaign on a successful run with an untrustworthy "
             "trace; 'invalid-continue' keeps the step as validity=invalid and continues"
         ),
+    )
+    parser.add_argument(
+        "--live-dir",
+        help="exploration only: the controller writes live progress/violation snapshots here",
     )
 
 

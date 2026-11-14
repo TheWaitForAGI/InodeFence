@@ -482,10 +482,6 @@ def main() -> int:
     parser.add_argument("--owner", required=True)
     parser.add_argument("--image", required=True, action="append")
     parser.add_argument("--evidence", type=Path)
-    parser.add_argument(
-        "--live-dir",
-        help="exploration only: write live progress/violation snapshots here (the host pulls them)",
-    )
     add_demo_arguments(parser)
     parser.add_argument(
         "mode",

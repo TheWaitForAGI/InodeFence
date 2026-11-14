@@ -47,6 +47,8 @@ from scripts.run_target import (
     RunCell,
 )
 
+from inodefence.feedback import EffectSearchPolicy
+from inodefence.mutator import MutationPolicy
 from inodefence.target_result import (
     RUN_ERROR,
     Preparation,
@@ -61,6 +63,58 @@ RESULT_NAME = "result.json"
 EXPLORATION_NAME = "exploration.json"
 JUDGED = ("success", "rejected")
 DEFAULT_MAX_UNJUDGED_RATIO = 0.1
+
+# What decompress exploration actually implements (requests outside these are refused before any
+# run, never silently run another way). The decompress loop maps the P3 rungs onto its frame keys
+# (boundary-attempt, external-resolve) and always runs the adaptive scheduler the P3 names state.
+#: Search policies the decompress loop realizes as named.
+SUPPORTED_SEARCH_POLICIES = (
+    EffectSearchPolicy.P3_BOUNDARY_ATTEMPT_GRADIENT.value,
+    EffectSearchPolicy.P3_EXTERNAL_RESOLVE_GRADIENT.value,
+)
+#: Mutation vocabularies the decompress loop realizes as named (the fixed-baseline observed-names
+#: vocabulary is not: the loop's state-aware set does not include it).
+SUPPORTED_MUTATION_POLICIES = (
+    MutationPolicy.M1_GENERIC_ESCAPE_HARDLINK.value,
+    MutationPolicy.M1_PROTECTED_COMPONENTS_ESCAPE_HARDLINK.value,
+    MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK.value,
+    MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_BLIND.value,
+)
+#: The controller mode's defaults (used when a request names no policy).
+DEFAULT_SEARCH_POLICY = EffectSearchPolicy.P3_EXTERNAL_RESOLVE_GRADIENT.value
+DEFAULT_MUTATION_POLICY = MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK.value
+_UNSUPPORTED_WHY = {
+    EffectSearchPolicy.S_U_STATE_RETENTION_UNIFORM.value: (
+        "the decompress search state admits boundary-attempt keys only for the P3 policies "
+        "(it would retain on full-state novelty and violations alone), and its scheduler is a "
+        "separate adaptive flag the controller does not set (not uniform)"
+    ),
+    EffectSearchPolicy.P1_EFFECT_RETENTION.value: (
+        "the decompress scheduler is a separate adaptive flag the controller does not set, so a "
+        "uniform-scheduler policy would run adaptive"
+    ),
+    MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_FIXED_BASELINE.value: (
+        "the decompress loop's state-aware set does not include the fixed-baseline vocabulary "
+        "(it would add no observed names at all)"
+    ),
+}
+
+
+def check_policies(search_policy: str | None, mutation_policy: str | None) -> tuple[str, str]:
+    """The (search, mutation) policy decompress exploration will run, or ``ValueError`` why not."""
+    search = search_policy or DEFAULT_SEARCH_POLICY
+    mutation = mutation_policy or DEFAULT_MUTATION_POLICY
+    for kind, value, supported in (
+        ("search policy", search, SUPPORTED_SEARCH_POLICIES),
+        ("mutation vocabulary", mutation, SUPPORTED_MUTATION_POLICIES),
+    ):
+        if value not in supported:
+            why = _UNSUPPORTED_WHY.get(value, "not implemented by the decompress loop")
+            raise ValueError(
+                f"decompress exploration does not implement {kind} {value!r}: {why}. "
+                f"Supported: {', '.join(supported)}"
+            )
+    return search, mutation
 
 
 @dataclass(frozen=True, slots=True)
@@ -236,6 +290,9 @@ def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOu
     The worker check runs here on every image (also one the common layer reused unchecked), so an
     image whose worker cannot run ``frame`` is refused before any budget is spent.
     """
+    search_policy, mutation_policy = check_policies(
+        getattr(options, "search_policy", None), getattr(options, "mutation_policy", None)
+    )
     package, version = dt.parse_spec(prepared.version)
     check = dt.registry.worker_check(
         dt.registry.subprocess.run, prepared.image_ref, package, version
@@ -255,8 +312,8 @@ def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOu
         run_id,
         seed=options.seed,
         budget=options.budget,
-        mutation_policy=getattr(options, "mutation_policy", None),
-        search_policy=getattr(options, "search_policy", None),
+        mutation_policy=mutation_policy,
+        search_policy=search_policy,
     )
     report = json.loads(report_path.read_text(encoding="utf-8"))
     if "aborted" in report:

@@ -7,7 +7,7 @@ import json
 import subprocess
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 import scripts.decompress_explore as dx
@@ -311,3 +311,68 @@ def test_conversion_goes_through_the_shared_converter(monkeypatch: pytest.Monkey
     monkeypatch.setattr(er, "build_campaign_result", spy)
     _convert(_report([_step(i) for i in range(3)]))
     assert [r["run_index"] for r in seen[0]["case_records"]] == [0, 1, 2]
+
+
+# ---- policies: only what the decompress loop implements, never silently another way ----
+
+
+@pytest.mark.parametrize(
+    ("search", "mutation", "why"),
+    [
+        (
+            "effect-feedback-v2-or-violation-v1-boundary-attempt-v1-uniform-mutation-v1",  # S-u
+            None,
+            "boundary-attempt keys only for the P3 policies",
+        ),
+        ("effect-feedback-v2-or-violation-v1-uniform-mutation-v1", None, "adaptive"),  # P1
+        (
+            None,
+            "uniform-generic-m1-state-aware-escape-hardlink-fixed-baseline-v1",
+            "fixed-baseline",
+        ),
+        ("unretained-walk-v1-uniform-mutation-v1", None, "not implemented"),  # R arm
+    ],
+)
+def test_unsupported_policy_is_refused_before_anything_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, search: Any, mutation: Any, why: str
+) -> None:
+    import types
+
+    monkeypatch.setattr(dt.registry, "worker_check", lambda *a: pytest.fail("no worker check"))
+    monkeypatch.setattr(dx, "run_controller", lambda *a, **k: pytest.fail("no controller run"))
+    options = types.SimpleNamespace(
+        budget=5,
+        seed=1,
+        out=tmp_path,
+        image_tag_suffix="",
+        search_policy=search,
+        mutation_policy=mutation,
+    )
+    with pytest.raises(ValueError, match=f"does not implement.*{why}.*Supported:"):
+        # ExploreOptions has no policy fields yet (the common declaration is pending); the hook
+        # reads them by name, so a stand-in object carries them here.
+        dx.explore(_prepared(tmp_path), cast(Any, options))
+    assert not list(tmp_path.iterdir())
+
+
+def test_defaults_and_supported_values_reach_the_controller(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert dx.check_policies(None, None) == (dx.DEFAULT_SEARCH_POLICY, dx.DEFAULT_MUTATION_POLICY)
+    for search in dx.SUPPORTED_SEARCH_POLICIES:
+        for mutation in dx.SUPPORTED_MUTATION_POLICIES:
+            assert dx.check_policies(search, mutation) == (search, mutation)
+    seen: dict[str, Any] = {}
+
+    def controller(image_id: str, evidence: Path, run_id: str, **kwargs: Any) -> Path:
+        seen.update(kwargs)
+        raise RuntimeError("stop after recording")
+
+    monkeypatch.setattr(dt.registry, "worker_check", _ok_check)
+    monkeypatch.setattr(dx, "run_controller", controller)
+    from scripts.run_target import ExploreOptions
+
+    with pytest.raises(RuntimeError, match="stop after recording"):
+        dx.explore(_prepared(tmp_path), ExploreOptions(5, 1, tmp_path))
+    assert seen["search_policy"] == dx.DEFAULT_SEARCH_POLICY
+    assert seen["mutation_policy"] == dx.DEFAULT_MUTATION_POLICY

@@ -526,6 +526,9 @@ def decompress_effect_campaign_report(
                 "case_id": base.case.case_id,
                 "parent_case_id": step.parent_case_id,
                 "termination": base.execution.status.value,
+                # Whether the worker finished (succeeded or refused), so the post-state judgement
+                # is meaningful; a failed/timed-out step is unjudged, never a clean negative.
+                "judged": base.execution.status.value in ("success", "rejected"),
                 "oracle": {v.contract_id.value: v.violated for v in base.violations},
                 "frame_observed": decision.frame_observed,
                 "frame_attempts": len(step.run.frame["attempts"]) if step.run.frame else 0,
@@ -568,4 +571,27 @@ def decompress_effect_campaign_report(
         },
         "steps": steps,
         "retained_case_ids": list(result.retained_case_ids),
+        # Added for reproduction (existing keys unchanged): the exact archive of every step whose
+        # generic oracle reported a violation, built by the same ``build_tar`` the run used. Only
+        # violating steps are kept, so a large budget does not store every case.
+        "violation_inputs": [
+            _violation_input(step) for step in result.steps if step.decision.contract_violated
+        ],
+    }
+
+
+def _violation_input(step: DecompressEffectStep) -> dict[str, object]:
+    from base64 import b64encode
+    from hashlib import sha256
+
+    from inodefence.builder import build_tar
+
+    archive = build_tar(step.run.base_result.case)
+    if sha256(archive).hexdigest() != step.run.base_result.archive_sha256:
+        raise ValueError(f"step {step.index}: rebuilt archive differs from the one that ran")
+    return {
+        "index": step.index,
+        "case_id": step.run.base_result.case.case_id,
+        "tar_b64": b64encode(archive).decode("ascii"),
+        "tar_sha256": sha256(archive).hexdigest(),
     }

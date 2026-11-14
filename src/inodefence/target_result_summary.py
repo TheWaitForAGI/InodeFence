@@ -149,7 +149,12 @@ def render_summary(result: TargetResult, *, source_name: str, inputs_verified: b
             ("이미지 안 lock SHA-256", prep.lock_sha256),
             ("이미지 안 worker SHA-256", prep.worker_sha256),
             ("이미지 안 effect-producer SHA-256", prep.producer_sha256),
-            ("effect-producer 오프라인 호환 확인", prep.producer_check),
+            (
+                "effect-producer 오프라인 호환 확인"
+                if prep.producer_sha256
+                else "탐색 경로(worker) 오프라인 호환 확인",
+                prep.producer_check,
+            ),
             ("빌드 레시피", prep.recipe),
         ):
             add(f"| {name} | {_code(value) if value else NOT_APPLICABLE} |")

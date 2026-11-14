@@ -137,7 +137,8 @@ def test_dry_run_shows_install_step_and_runs_nothing(
     "argv",
     [
         ["--target", "decompress", "--version", "4.2.1", "--dry-run"],  # package missing
-        ["--target", "decompress", "--version", "decompress@9.9.9", "--dry-run"],  # not pinned
+        # not this target (unpinned versions of the two packages are prepared from the registry)
+        ["--target", "decompress", "--version", "@someone/decompress@9.9.9", "--dry-run"],
         ["--target", "decompress", "--version", ORIGINAL, "--extraction-filter", "data"],
     ],
 )

@@ -30,13 +30,12 @@ its policy name is recorded.
 from __future__ import annotations
 
 import argparse
-import base64
+import dataclasses
 import json
 import os
 import subprocess
 import sys
 from dataclasses import dataclass
-from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
@@ -46,19 +45,14 @@ from scripts.run_target import (
     ExploreOutcome,
     PreparedTargetImage,
     RunCell,
-    engine_provenance,
 )
 
 from inodefence.target_result import (
     RUN_ERROR,
-    CampaignInfo,
-    CaseVerdict,
     Preparation,
     Provenance,
-    ResultMode,
     TargetAxes,
     TargetResult,
-    repro_input,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -113,47 +107,56 @@ def build_campaign_result(
     budget: int,
     engine: Any = None,
 ) -> tuple[TargetResult, dict[str, bytes], dict[str, Any]]:
-    """Report -> (common result, saved input TARs by relative path, exploration summary)."""
+    """Report -> (common result, saved input TARs by relative path, exploration summary).
+
+    The decompress loop report (``steps`` / ``violation_inputs`` keyed by ``index``) is reshaped
+    into the target-agnostic loop shape (``case_records`` / ``violation_inputs`` keyed by
+    ``run_index``) and converted by the shared ``scripts.explore_result.build_campaign_result``.
+    Decompress-specific: unjudged steps carry no contract values (run errors when the gate trips),
+    and the image ``preparation`` is attached to the common record.
+    """
+    from scripts import explore_result
+
     counts = tally(report)
     stop = gate(counts, max_unjudged_ratio)
-    cases = []
+    records = []
     for step in report.get("steps") or []:
         oracle = step.get("oracle") or {}
-        judged = step.get("termination") in JUDGED
+        judged = bool(step.get("judged", step.get("termination") in JUDGED))
         outcome = str(step.get("termination"))
         if not judged and stop is not None:
             outcome = RUN_ERROR
-        cases.append(
-            CaseVerdict(
-                f"step-{step['index']}",
-                outcome,
-                oracle.get("C0") if judged else None,
-                oracle.get("C1") if judged else None,
-                oracle.get("C2") if judged else None,
-            )
+        records.append(
+            {
+                "run_index": step["index"],
+                "outcome": outcome,
+                "c0": oracle.get("C0") if judged else None,
+                "c1": oracle.get("C1") if judged else None,
+                "c2": oracle.get("C2") if judged else None,
+            }
         )
-    tars: dict[str, bytes] = {}
-    repro = []
-    for item in report.get("violation_inputs") or []:
-        archive = base64.b64decode(item["tar_b64"])
-        if sha256(archive).hexdigest() != item["tar_sha256"]:
-            raise ValueError(f"violation input for step {item['index']} fails its SHA-256")
-        path = f"inputs/step-{item['index']}.tar"
-        tars[path] = archive
-        repro.append(repro_input(f"step-{item['index']}", path, archive))
-    prov = engine if engine is not None else engine_provenance(image_ref)
-    first = next((i + 1 for i, case in enumerate(cases) if case.violated), None)
-    result = TargetResult(
+    inputs = [
+        {"run_index": item["index"], "tar_b64": item["tar_b64"], "tar_sha256": item["tar_sha256"]}
+        for item in report.get("violation_inputs") or []
+    ]
+    prepared = PreparedTargetImage(
         target="decompress",
-        axes=TargetAxes(target_version=spec),
-        mode=ResultMode.CAMPAIGN,
-        observed_contracts=("C0", "C1", "C2"),
-        cases=tuple(cases),
-        repro_inputs=tuple(repro),
+        requested=spec,
+        version=spec,
+        image_ref=image_ref,
+        image_id=image_id,
+        exploratory=preparation is not None,
+    )
+    shared, tars = explore_result.build_campaign_result(
+        {"case_records": records, "violation_inputs": inputs}, prepared, seed=seed, budget=budget
+    )
+    prov = engine if engine is not None else shared.provenance
+    result = dataclasses.replace(
+        shared,
         provenance=Provenance(prov.engine_sha, prov.engine_dirty, image_ref, image_id),
         preparation=preparation,
-        campaign=CampaignInfo(seed=seed, budget=budget, runs_to_first_violation=first),
     )
+    repro = result.repro_inputs
     config = report.get("config") or {}
     summary = {
         "label": "exploratory demo run",
@@ -181,19 +184,16 @@ def build_campaign_result(
 def write_outputs(
     out_dir: Path, result: TargetResult, tars: dict[str, bytes], summary: dict[str, Any]
 ) -> Path:
-    result_path = out_dir / RESULT_NAME
-    if result_path.exists():
-        raise FileExistsError(f"refusing to overwrite {result_path}")
+    from scripts import explore_result
+
+    if (out_dir / RESULT_NAME).exists():
+        raise FileExistsError(f"refusing to overwrite {out_dir / RESULT_NAME}")
     out_dir.mkdir(parents=True, exist_ok=True)
-    for relative, archive in tars.items():
-        target = out_dir / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(archive)
     (out_dir / EXPLORATION_NAME).write_text(
         json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
-    result_path.write_text(result.dumps(), encoding="utf-8")
-    return result_path
+    # The shared writer saves the violating inputs and writes result.json last.
+    return explore_result.write_result(out_dir, result, tars)
 
 
 def controller_report_path(evidence_dir: Path, run_id: str) -> Path:

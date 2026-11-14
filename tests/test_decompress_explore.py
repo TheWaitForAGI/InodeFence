@@ -250,7 +250,9 @@ def test_hook_runs_the_controller_and_writes_the_common_campaign_result(
 
     monkeypatch.setattr(dt.registry, "worker_check", _ok_check)
     monkeypatch.setattr(dx, "run_controller", controller)
-    monkeypatch.setattr(dx, "engine_provenance", lambda image: ENGINE)
+    import scripts.explore_result as er
+
+    monkeypatch.setattr(er, "engine_provenance", lambda image: ENGINE)
     outcome = dt.ADAPTER.explore(_prepared(tmp_path), ExploreOptions(5, 7, tmp_path))  # type: ignore[misc]
     assert (outcome.verdict, outcome.runs, outcome.violations) == ("FAIL", 5, 1)
     assert seen["image_id"] == "sha256:" + "b" * 64 and seen["seed"] == 7 and seen["budget"] == 5
@@ -276,3 +278,36 @@ def test_report_steps_carry_the_judged_flag() -> None:
     result = run_decompress_effect_campaign(_seeds(), _benign_run, config)
     steps = decompress_effect_campaign_report(result, producer="t")["steps"]
     assert isinstance(steps, list) and all(s["judged"] is True for s in steps)
+
+
+def test_decompress_registers_the_worker_check_as_its_reuse_check(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import scripts.run_target as rt
+
+    assert dt.ADAPTER.verify_existing is not None
+    (cell,) = dt.ADAPTER.cells([SPEC], [])
+    monkeypatch.setattr(rt, "image_id", lambda ref: "sha256:stale")
+    monkeypatch.setattr(
+        dt.registry,
+        "worker_check",
+        lambda *a: {"ok": False, "reason": "frame failed (exit 3): usage", "worker_sha256": None},
+    )
+    ready, errors = rt.resolve_images(dt.ADAPTER, [cell], auto_prepare=True)
+    assert ready == {} and "refused" in errors[cell.image_ref or ""]
+    assert "rebuild it" in errors[cell.image_ref or ""]
+
+
+def test_conversion_goes_through_the_shared_converter(monkeypatch: pytest.MonkeyPatch) -> None:
+    import scripts.explore_result as er
+
+    seen: list[dict] = []
+    original = er.build_campaign_result
+
+    def spy(report: dict, prepared: Any, **kwargs: Any) -> Any:
+        seen.append(report)
+        return original(report, prepared, **kwargs)
+
+    monkeypatch.setattr(er, "build_campaign_result", spy)
+    _convert(_report([_step(i) for i in range(3)]))
+    assert [r["run_index"] for r in seen[0]["case_records"]] == [0, 1, 2]

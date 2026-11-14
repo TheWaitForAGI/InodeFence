@@ -287,6 +287,38 @@ def _describe(cell: RunCell, cell_dir: Path) -> Preparation | None:
     )
 
 
+#: The recipe's own offline version check (``identify`` must report ``v<version>``).
+_recipe_verify = ip.recipe_verify_existing(
+    lambda cell: image_recipe(cell.axes.target_version or "")
+)
+
+
+def _verify_existing(cell: RunCell, image_id: str) -> str | None:
+    """``TargetAdapter.verify_existing``: refuse to reuse an image whose worker is not current.
+
+    A present image is otherwise reused unchecked. A committed-recipe image must first pass the
+    recipe's version check; every image (committed recipe or Go proxy) must then pass the offline
+    ``frame`` check (``--network none``, nothing mounted): ``identify`` reports ``v<version>``,
+    the identity binds as the campaign target, and ``frame`` extracts a benign archive. An image
+    built before the worker had ``frame`` has the right version but would fail every exploration
+    step; it is refused with "rebuild it" instead of being reused. ``None`` = reuse.
+    """
+    if cell.image_ref is None:
+        return None
+    version = cell.axes.target_version or ""
+    if not cell.exploratory:
+        reason = _recipe_verify(cell, image_id)
+        if reason is not None:
+            return reason
+    try:
+        check = proxy.frame_check(proxy.subprocess.run, cell.image_ref, version)
+    except proxy.RegistryPrepareError as error:
+        return f"worker check failed in {cell.image_ref}: {error}; rebuild it"
+    if check["ok"]:
+        return None
+    return f"worker incompatible (frame) in {cell.image_ref}: {check['reason']}; rebuild it"
+
+
 ADAPTER = TargetAdapter(
     mode=ResultMode.FIXTURE_REGRESSION,
     observed_contracts=("C1", "C2"),
@@ -296,4 +328,6 @@ ADAPTER = TargetAdapter(
     prepare=_prepare,
     describe=_describe,
     resolve=_resolve,
+    # Late-bound so a test (or a caller) can replace ``_verify_existing``.
+    verify_existing=lambda cell, image: _verify_existing(cell, image),
 )

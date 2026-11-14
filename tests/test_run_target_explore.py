@@ -32,6 +32,36 @@ def test_real_run_requires_auto_prepare() -> None:
         rte.main(["--target", "node-tar", "--version", "latest"])  # no --auto-prepare
 
 
+def test_out_inside_the_repository_is_refused(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # The repo is public; a violating-case TAR written into it could leak into a commit.
+    monkeypatch.setattr(rte, "prepare_target_image", lambda *a, **k: pytest.fail("no prepare"))
+    inside = str(rte.REPO_ROOT / "build" / "explore-out")
+    code = rte.main(
+        ["--target", "node-tar", "--version", "latest", "--auto-prepare", "--out", inside]
+    )
+    assert code == 3
+    err = capsys.readouterr().err
+    assert "outside the repository" in err and str(rte.REPO_ROOT) in err
+
+
+def test_out_outside_the_repository_passes_the_guard(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # tmp_path is outside the repo: the guard lets it through to prepare (faked to stop there).
+    def stop(*a: Any, **k: Any) -> Any:
+        raise ValueError("reached prepare")
+
+    monkeypatch.setattr(rte, "prepare_target_image", stop)
+    code = rte.main(
+        ["--target", "node-tar", "--version", "latest", "--auto-prepare", "--out", str(tmp_path)]
+    )
+    assert code == 3
+    err = capsys.readouterr().err
+    assert "reached prepare" in err and "outside the repository" not in err
+
+
 def _fake_adapter(outcome: ExploreOutcome) -> TargetAdapter:
     return TargetAdapter(
         mode=ResultMode.CAMPAIGN,

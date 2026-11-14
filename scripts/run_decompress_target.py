@@ -18,10 +18,11 @@ name, version, CVE id or reference-file name is a decision condition.
 
 Execution reuses the existing decompress path (``experiments.repro.decompress_hardlink``):
 
-- Install and run are separate steps. The pinned images ``inodefence-decompress:<X.Y.Z>`` are built
-  beforehand from ``tools/decompress/Dockerfile`` (``npm ci`` from a committed, checksum-verified
-  ``package-lock.json``; the only step that uses the network). This adapter never builds or pulls
-  (``--pull never``).
+- Install and run are separate steps. The pinned images ``inodefence-decompress:<X.Y.Z>`` are
+  built by ``make target-images TARGET=decompress ...`` (``ADAPTER.image_build``) from
+  ``tools/decompress/Dockerfile`` (``npm ci`` from a committed, checksum-verified
+  ``package-lock.json``; the only step that uses the network). The run step never builds or
+  pulls (``--pull never``).
 - Each fixture is extracted in a fresh container with the same flags as
   ``decompress_hardlink.run_probe``: ``--rm --network none --read-only``, tmpfs ``/work`` and
   ``/tmp`` only, ``--cap-drop ALL``, the image's non-root user, no mounts; inputs arrive in
@@ -43,6 +44,7 @@ from __future__ import annotations
 import base64
 import json
 import re
+import shlex
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
@@ -241,15 +243,29 @@ def _cells(versions: list[str], filters: list[str]) -> list[RunCell]:
     return cells
 
 
-def _plan(cell: RunCell) -> list[dict[str, Any]]:
+def _image_build(cell: RunCell) -> list[str] | None:
+    """Committed recipe: tools/decompress/Dockerfile with the dir pinning this package@version."""
     assert cell.axes.target_version is not None
     package, version = parse_spec(cell.axes.target_version)
     recipe = pinned_recipe(package, version)
-    build = (
-        f"docker build -f tools/decompress/Dockerfile --build-arg ROLE={recipe} "
-        f"-t {image_ref(version)} ."
-    )
-    return [{"install_step": build}, *fixture_plan()]
+    if recipe is None:
+        return None
+    return [
+        "docker",
+        "build",
+        "-f",
+        "tools/decompress/Dockerfile",
+        "--build-arg",
+        f"ROLE={recipe}",
+        "-t",
+        image_ref(version),
+        ".",
+    ]
+
+
+def _plan(cell: RunCell) -> list[dict[str, Any]]:
+    build = _image_build(cell)
+    return [{"install_step": shlex.join(build) if build else None}, *fixture_plan()]
 
 
 def _run(cell: RunCell) -> list[CaseRun]:
@@ -268,4 +284,5 @@ ADAPTER = TargetAdapter(
     cells=_cells,
     plan=_plan,
     run=_run,
+    image_build=_image_build,
 )

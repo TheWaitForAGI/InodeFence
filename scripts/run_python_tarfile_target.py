@@ -243,12 +243,19 @@ def _adapter_run(cell: RunCell) -> list[CaseRun]:
     return run_cell(Cell(runtime, extraction_filter))
 
 
+def _adapter_image_build(cell: RunCell) -> list[str] | None:
+    """Install step: pull the official ``python:<X.Y.Z>-slim`` image (no repo Dockerfile; the
+    run step re-checks the interpreter version inside the container)."""
+    return None if cell.image_ref is None else ["docker", "pull", cell.image_ref]
+
+
 ADAPTER = TargetAdapter(
     mode=MODE,
     observed_contracts=OBSERVED,
     cells=_adapter_cells,
     plan=lambda cell: fixture_plan(),
     run=_adapter_run,
+    image_build=_adapter_image_build,
 )
 
 

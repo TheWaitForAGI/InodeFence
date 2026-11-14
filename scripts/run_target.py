@@ -30,6 +30,11 @@ extraction target) that observes the post-extraction state of an external refere
 ``extract/``. That observes C1 (inode identity shared) and C2 (reference changed) but not C0, so
 C0 is ``null`` ("not observed", never "no violation"). Versions and filters are plain inputs; no
 release id or CVE id is a decision condition. ``--dry-run`` writes nothing and runs no container.
+
+Setup: ``--build-images`` (``make target-images``) installs each missing cell image from the
+target's own recipe (``TargetAdapter.image_build``; present images are skipped; the only step that
+may use the network). A run first checks docker and the images and, if one is missing, prints one
+``TARGET-RUN SETUP:`` line with the cause and the fix command and exits 3 without running a case.
 """
 
 from __future__ import annotations
@@ -38,7 +43,10 @@ import argparse
 import base64
 import importlib
 import json
+import shlex
+import shutil
 import subprocess
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -88,6 +96,10 @@ class TargetAdapter:
     cells: Callable[[list[str], list[str]], list[RunCell]]
     plan: Callable[[RunCell], list[dict[str, Any]]]
     run: Callable[[RunCell], list[CaseRun]]
+    # The install step for a cell's image (a committed Dockerfile build, or a pull of a pinned
+    # public image), or None if this target has no recipe for that cell. Used only by
+    # --build-images; the run step never builds or pulls.
+    image_build: Callable[[RunCell], list[str] | None] | None = None
 
 
 def fixture_case(fixture: rc.RegressionFixture, raw: dict[str, Any]) -> CaseRun:
@@ -143,12 +155,31 @@ def _node_tar_run(cell: RunCell) -> list[CaseRun]:
     return runs
 
 
+def _node_tar_image_build(cell: RunCell) -> list[str] | None:
+    """Committed recipe: tools/node-tar/effect/Dockerfile + the version's pinned lock."""
+    version = cell.axes.target_version
+    if version is None or not (REPO_ROOT / "tools/node-tar/versions" / version).is_dir():
+        return None
+    return [
+        "docker",
+        "build",
+        "-f",
+        "tools/node-tar/effect/Dockerfile",
+        "--build-arg",
+        f"TAR_VERSION={version}",
+        "-t",
+        cri.IMAGE.format(release=version),
+        ".",
+    ]
+
+
 NODE_TAR = TargetAdapter(
     mode=ResultMode.FIXTURE_REGRESSION,
     observed_contracts=("C1", "C2"),
     cells=_node_tar_cells,
     plan=lambda cell: fixture_plan(),
     run=_node_tar_run,
+    image_build=_node_tar_image_build,
 )
 
 # Adding a target: write a module with a TargetAdapter, then add one line here.
@@ -259,6 +290,95 @@ def summary_line(result: TargetResult) -> str:
     )
 
 
+# ---- setup checks and image install (target-independent) ----
+
+SETUP_ERROR = 3  # nothing ran: a setup problem (distinct from verdict exit codes 0/1/2)
+
+
+def docker_problem() -> str | None:
+    """Why docker cannot run containers here, with the fix, or None if it can."""
+    if shutil.which("docker") is None:
+        return (
+            "docker not found on PATH; install Docker (Linux: Docker Engine; Windows: Docker "
+            "Desktop with WSL integration) and run target-run on that host "
+            "(the Dev Container has no docker)"
+        )
+    try:
+        done = subprocess.run(
+            ["docker", "info", "--format", "{{.ServerVersion}}"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        return f"docker daemon not reachable ({type(error).__name__}); start Docker and retry"
+    if done.returncode != 0:
+        return (
+            "docker daemon not reachable; start Docker (Docker Desktop, or "
+            "`sudo service docker start`) and make sure your user may use it, then retry"
+        )
+    return None
+
+
+def image_present(image_ref: str) -> bool:
+    try:
+        done = subprocess.run(
+            ["docker", "image", "inspect", image_ref], capture_output=True, text=True, timeout=30
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return done.returncode == 0
+
+
+def images_command(target: str, versions: list[str], filters: list[str]) -> str:
+    """The make command that installs the images for exactly these cells."""
+    words = ["make", "target-images", f"TARGET={target}", f"TARGET_VERSIONS={' '.join(versions)}"]
+    if filters:
+        words.append(f"TARGET_FILTERS={' '.join(filters)}")
+    return shlex.join(words)
+
+
+def preflight(
+    target: str, versions: list[str], filters: list[str], cells: list[RunCell]
+) -> list[str]:
+    """Problems that would make every case a run error, each with its fix; empty if none."""
+    problem = docker_problem()
+    if problem is not None:
+        return [problem]
+    missing = [
+        c.image_ref for c in cells if c.image_ref is not None and not image_present(c.image_ref)
+    ]
+    if missing:
+        return [
+            f"missing image(s) {', '.join(missing)}; install them with: "
+            f"{images_command(target, versions, filters)}"
+        ]
+    return []
+
+
+def build_images(adapter: TargetAdapter, cells: list[RunCell]) -> int:
+    """Run each missing image's install step (network allowed here only); skip present ones."""
+    problem = docker_problem()
+    if problem is not None:
+        print(f"TARGET-IMAGES SETUP: {problem}", file=sys.stderr)
+        return SETUP_ERROR
+    for cell in cells:
+        if cell.image_ref is None:
+            continue
+        if image_present(cell.image_ref):
+            print(f"TARGET-IMAGES present {cell.image_ref} (skip)")
+            continue
+        command = adapter.image_build(cell) if adapter.image_build is not None else None
+        if command is None:
+            print(f"TARGET-IMAGES SETUP: no build recipe for {cell.image_ref}", file=sys.stderr)
+            return SETUP_ERROR
+        print(f"TARGET-IMAGES build {cell.image_ref}: {shlex.join(command)}", flush=True)
+        if subprocess.run(command, cwd=REPO_ROOT).returncode != 0:
+            print(f"TARGET-IMAGES SETUP: build failed for {cell.image_ref}", file=sys.stderr)
+            return SETUP_ERROR
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="run one target on fixed axes (demo run)")
     parser.add_argument("--target", required=True, choices=sorted(TARGETS))
@@ -276,6 +396,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--out", type=Path, help="output directory (required unless --dry-run)")
     parser.add_argument("--dry-run", action="store_true", help="print the plan, run nothing")
+    parser.add_argument(
+        "--build-images",
+        action="store_true",
+        help="install the missing images for these cells (committed recipes), run no case",
+    )
     args = parser.parse_args(argv)
     versions, filters = args.version, args.extraction_filter
     if len(set(versions)) != len(versions) or len(set(filters)) != len(filters):
@@ -312,8 +437,15 @@ def main(argv: list[str] | None = None) -> int:
         }
         print(json.dumps(plan, indent=2, sort_keys=True))
         return 0
+    if args.build_images:
+        return build_images(adapter, cells)
     if args.out is None:
         parser.error("--out is required unless --dry-run")
+    problems = preflight(args.target, versions, filters, cells)
+    for problem in problems:
+        print(f"TARGET-RUN SETUP: {problem}", file=sys.stderr)
+    if problems:
+        return SETUP_ERROR
 
     for cell in cells:
         if (args.out / cell.dirname / RESULT_NAME).exists():

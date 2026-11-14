@@ -1,4 +1,8 @@
-PYTHON ?= python
+# Default interpreter: `python`, else `python3` (plain Ubuntu/WSL ships only python3).
+# An explicit PYTHON=... (command line or environment) is used as given.
+ifeq ($(origin PYTHON),undefined)
+PYTHON := $(if $(shell command -v python 2>/dev/null),python,python3)
+endif
 CASE ?= regular-file
 BASELINE_CASES := regular-file directory hardlink symlink
 DEMO_POLICY ?= effect-feedback-v2-or-violation-v1-adaptive-mutation-v1
@@ -10,7 +14,7 @@ DEMO_OUT ?= $(or $(INODEFENCE_RUNTIME_ROOT),/var/lib/inodefence)/demo/effect-dem
 TAR_VERSION ?= 7.5.2
 HISTORICAL_IMAGE ?= inodefence-node-tar-effect:$(TAR_VERSION)
 
-.PHONY: install target-tools lint format-check typecheck test env-check docs-check evidence-chain check fixtures probe isolation-support node-entry-timing-probe node-tar-smoke node-tar-effect-check demo demo-native demo-synthetic demo-native-historical regression target-run replay paper-artifacts
+.PHONY: install target-tools lint format-check typecheck test env-check docs-check evidence-chain check fixtures probe isolation-support node-entry-timing-probe node-tar-smoke node-tar-effect-check demo demo-native demo-synthetic demo-native-historical regression target-run target-images replay paper-artifacts
 
 target-tools:
 	npm ci --prefix tools/node-tar --ignore-scripts --no-audit --no-fund
@@ -108,6 +112,9 @@ regression:
 # axis (node-tar package; python-tarfile exact runtime X.Y.Z); TARGET_FILTERS is the
 # extraction-filter axis (python-tarfile: fully_trusted / data). Vary one axis per run.
 # TARGET_ARGS=--dry-run runs no container and writes nothing. Existing results are not overwritten.
+# First time on a host: `make target-images` (same TARGET/TARGET_VERSIONS/TARGET_FILTERS) installs
+# the images from the committed recipes (the only step that uses the network; present images are
+# skipped). target-run checks docker and the images first and exits 3 with the fix if one is missing.
 #   make target-run TARGET=node-tar TARGET_VERSIONS="7.5.2 7.5.3"
 #   make target-run TARGET=python-tarfile TARGET_VERSIONS=3.12.16 TARGET_FILTERS="fully_trusted data"
 #   make target-run TARGET=python-tarfile TARGET_VERSIONS="3.12.3 3.12.16" TARGET_FILTERS=data
@@ -119,6 +126,9 @@ TARGET_FILTERS ?=
 TARGET_OUT ?= $(HOME)/inodefence-evidence/target-run
 target-run:
 	PYTHONPATH=src:. $(PYTHON) scripts/run_target.py --target $(TARGET) $(foreach v,$(TARGET_VERSIONS),--version $(v)) $(foreach f,$(TARGET_FILTERS),--extraction-filter $(f)) $(if $(filter --dry-run,$(TARGET_ARGS)),,--out $(TARGET_OUT)) $(TARGET_ARGS)
+
+target-images:
+	PYTHONPATH=src:. $(PYTHON) scripts/run_target.py --target $(TARGET) $(foreach v,$(TARGET_VERSIONS),--version $(v)) $(foreach f,$(TARGET_FILTERS),--extraction-filter $(f)) --build-images
 
 # Offline replay planner: read a demo report (REPORT=<path>) and reproduce its run
 # command, binding the recorded image recipe to the committed one and checking the

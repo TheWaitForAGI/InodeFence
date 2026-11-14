@@ -36,6 +36,8 @@ def test_registered_in_common_command() -> None:
 
 @pytest.fixture(autouse=True)
 def _fixed_provenance(monkeypatch: pytest.MonkeyPatch) -> None:
+    # No docker in the test environment: setup checks pass; the runner is faked per test.
+    monkeypatch.setattr(rt, "preflight", lambda *_: [])
     monkeypatch.setattr(
         rt, "engine_provenance", lambda image: Provenance("c" * 40, False, image, "sha256:def")
     )
@@ -142,3 +144,13 @@ def test_dry_run_shows_install_step_and_runs_nothing(
 def test_rejects_bad_arguments(argv: list[str]) -> None:
     with pytest.raises(SystemExit):
         rt.main(argv)
+
+
+def test_image_recipe_is_the_committed_package_pin() -> None:
+    assert dt.ADAPTER.image_build is not None
+    for spec in (ORIGINAL, FORK):
+        (cell,) = dt.ADAPTER.cells([spec], [])
+        cmd = dt.ADAPTER.image_build(cell)
+        assert cmd is not None
+        assert cmd[:4] == ["docker", "build", "-f", "tools/decompress/Dockerfile"]
+        assert cmd[-3:] == ["-t", cell.image_ref, "."]

@@ -82,6 +82,7 @@ def test_version_pair_writes_common_results(
 ) -> None:
     monkeypatch.setattr(rog.ogh, "run_probe", _fake_probe({"cwd_relative_hardlink"}))
     monkeypatch.setattr(rt, "engine_provenance", lambda image: rt.Provenance(None, True, image))
+    monkeypatch.setattr(rt, "preflight", lambda *_: [])  # no docker here; the runner is faked
     argv = ["--target", "oras-go", "--version", "2.6.1", "--version", "2.6.2", "--out"]
     assert rt.main([*argv, str(tmp_path)]) == 1
 
@@ -118,3 +119,14 @@ def test_dry_run_through_common_command(tmp_path: Path, capsys: pytest.CaptureFi
     assert plan["cells"]["oras-go-2.6.1"]["image"] == "inodefence-oras-go:2.6.1"
     assert len(plan["cells"]["oras-go-2.6.1"]["would_run"]) == len(rog.build_fixtures())
     assert not list(tmp_path.iterdir())
+
+
+def test_image_recipe_is_the_committed_go_mod_pin() -> None:
+    cells = rog.ADAPTER.cells(["2.6.1", "2.6.2"], [])
+    assert rog.ADAPTER.image_build is not None
+    for cell in cells:
+        cmd = rog.ADAPTER.image_build(cell)
+        assert cmd is not None and cmd[:4] == ["docker", "build", "-f", "tools/oras-go/Dockerfile"]
+        assert cmd[-3:] == ["-t", cell.image_ref, "."]
+    assert rog.pinned_recipe("2.6.1") != rog.pinned_recipe("2.6.2")
+    assert rog.ADAPTER.image_build(rog.ADAPTER.cells(["9.9.9"], [])[0]) is None

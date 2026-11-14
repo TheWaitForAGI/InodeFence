@@ -37,8 +37,10 @@ from __future__ import annotations
 
 import base64
 import io
+import re
 import subprocess
 import tarfile
+from pathlib import Path
 from typing import Any
 
 from experiments.repro import oras_go_cwd_hardlink as ogh
@@ -48,6 +50,8 @@ from scripts.run_target import CaseRun, RunCell, TargetAdapter, fixture_case
 from inodefence.target_result import ResultMode, TargetAxes
 
 TARGET = "oras-go"
+TOOLS_DIR = Path(__file__).resolve().parents[1] / "tools" / "oras-go"
+ORAS_MODULE = "oras.land/oras-go/v2"
 ARTIFACT_DIR = "d"  # oras-go unpacks a directory artifact under its title (worker artifactDir)
 # The make-regression layout (extract/ + ext/reference.bin) -> the probe layout
 # (extract/ + outside/sentinel.txt). Geometry only; never a verdict condition.
@@ -124,10 +128,39 @@ def _run(cell: RunCell) -> list[CaseRun]:
     return runs
 
 
+def pinned_recipe(version: str, tools_dir: Path = TOOLS_DIR) -> str | None:
+    """The ``tools/oras-go/<dir>`` whose go.mod requires exactly this oras-go release."""
+    wanted = re.compile(rf"^\s*{re.escape(ORAS_MODULE)}\s+v{re.escape(version)}\s*$", re.M)
+    for go_mod in sorted(tools_dir.glob("*/go.mod")):
+        if wanted.search(go_mod.read_text(encoding="utf-8")):
+            return go_mod.parent.name
+    return None
+
+
+def _image_build(cell: RunCell) -> list[str] | None:
+    """Committed recipe: tools/oras-go/Dockerfile with the dir whose go.mod pins this release."""
+    version = cell.axes.target_version
+    recipe = pinned_recipe(version) if version is not None else None
+    if recipe is None or cell.image_ref is None:
+        return None
+    return [
+        "docker",
+        "build",
+        "-f",
+        "tools/oras-go/Dockerfile",
+        "--build-arg",
+        f"ROLE={recipe}",
+        "-t",
+        cell.image_ref,
+        ".",
+    ]
+
+
 ADAPTER = TargetAdapter(
     mode=ResultMode.FIXTURE_REGRESSION,
     observed_contracts=("C1", "C2"),
     cells=_cells,
     plan=_plan,
     run=_run,
+    image_build=_image_build,
 )

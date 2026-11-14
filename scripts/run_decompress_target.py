@@ -459,4 +459,11 @@ ADAPTER = TargetAdapter(
     prepare=_prepare,
     describe=_describe,
     resolve=_resolve,
+    explore=lambda prepared, options: _explore(prepared, options),
 )
+
+
+def _explore(prepared: Any, options: Any) -> Any:
+    from scripts.decompress_explore import explore
+
+    return explore(prepared, options)

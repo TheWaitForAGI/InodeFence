@@ -41,10 +41,17 @@ from pathlib import Path
 from typing import Any
 
 from scripts import run_decompress_target as dt
-from scripts.run_target import RunCell, engine_provenance
+from scripts.run_target import (
+    ExploreOptions,
+    ExploreOutcome,
+    PreparedTargetImage,
+    RunCell,
+    engine_provenance,
+)
 
 from inodefence.target_result import (
     RUN_ERROR,
+    CampaignInfo,
     CaseVerdict,
     Preparation,
     Provenance,
@@ -75,7 +82,7 @@ class Tally:
 
 def tally(report: dict[str, Any]) -> Tally:
     steps = report.get("steps") or []
-    unjudged = sum(1 for s in steps if s.get("termination") not in JUDGED)
+    unjudged = sum(1 for s in steps if not s.get("judged", s.get("termination") in JUDGED))
     frame_errors = sum(1 for s in steps if s.get("frame_error"))
     return Tally(len(steps), unjudged, frame_errors)
 
@@ -102,6 +109,8 @@ def build_campaign_result(
     image_id: str,
     preparation: Preparation | None,
     max_unjudged_ratio: float,
+    seed: int,
+    budget: int,
     engine: Any = None,
 ) -> tuple[TargetResult, dict[str, bytes], dict[str, Any]]:
     """Report -> (common result, saved input TARs by relative path, exploration summary)."""
@@ -133,6 +142,7 @@ def build_campaign_result(
         tars[path] = archive
         repro.append(repro_input(f"step-{item['index']}", path, archive))
     prov = engine if engine is not None else engine_provenance(image_ref)
+    first = next((i + 1 for i, case in enumerate(cases) if case.violated), None)
     result = TargetResult(
         target="decompress",
         axes=TargetAxes(target_version=spec),
@@ -142,6 +152,7 @@ def build_campaign_result(
         repro_inputs=tuple(repro),
         provenance=Provenance(prov.engine_sha, prov.engine_dirty, image_ref, image_id),
         preparation=preparation,
+        campaign=CampaignInfo(seed=seed, budget=budget, runs_to_first_violation=first),
     )
     config = report.get("config") or {}
     summary = {
@@ -219,20 +230,84 @@ def run_controller(
     return path
 
 
+def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOutcome:
+    """``TargetAdapter.explore`` for decompress: worker check, controller campaign, common result.
+
+    The worker check runs here on every image (also one the common layer reused unchecked), so an
+    image whose worker cannot run ``frame`` is refused before any budget is spent.
+    """
+    package, version = dt.parse_spec(prepared.version)
+    check = dt.registry.worker_check(
+        dt.registry.subprocess.run, prepared.image_ref, package, version
+    )
+    if not check["ok"]:
+        raise ValueError(
+            f"worker incompatible (decompress worker) in {prepared.image_ref}: "
+            f"{check['reason']}; rebuild it"
+        )
+    ratio = getattr(options, "max_unjudged_ratio", DEFAULT_MAX_UNJUDGED_RATIO)
+    run_id = f"{dt._slug(package)}-{version}-{options.seed}-{options.budget}"
+    run_id += options.image_tag_suffix
+    options.out.mkdir(parents=True, exist_ok=True)
+    report_path = run_controller(
+        prepared.image_id,
+        options.out / "controller",
+        run_id,
+        seed=options.seed,
+        budget=options.budget,
+        mutation_policy=getattr(options, "mutation_policy", None),
+        search_policy=getattr(options, "search_policy", None),
+    )
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    if "aborted" in report:
+        raise RuntimeError(f"controller aborted: {report['aborted']}")
+    out_dir = options.out / f"{run_id}-result"
+    axes = TargetAxes(target_version=prepared.version)
+    cell = RunCell(out_dir.name, axes, prepared.image_ref, prepared.exploratory)
+    preparation = dt.ADAPTER.describe(cell, out_dir) if dt.ADAPTER.describe else None
+    result, tars, summary = build_campaign_result(
+        report,
+        spec=prepared.version,
+        image_ref=prepared.image_ref,
+        image_id=prepared.image_id,
+        preparation=preparation,
+        max_unjudged_ratio=ratio,
+        seed=options.seed,
+        budget=options.budget,
+    )
+    summary.update(
+        requested=prepared.requested,
+        worker_check=check["reason"],
+        controller_report=str(report_path),
+    )
+    path = write_outputs(out_dir, result, tars, summary)
+    try:  # the result is written; a summary failure must not lose it
+        from inodefence.target_result_summary import write_cell_summaries
+
+        write_cell_summaries([path])
+    except Exception as error:  # noqa: BLE001
+        print(f"TARGET-EXPLORE SUMMARY: summary.md not written ({error})", file=sys.stderr)
+    stop = summary["not_readable_as_pass"]
+    if stop:
+        print(f"TARGET-EXPLORE NOT-PASS {prepared.version}: {stop}", file=sys.stderr)
+    return ExploreOutcome(
+        result_path=path,
+        verdict=result.verdict.value,
+        runs=result.executed,
+        violations=len(result.violating_cases),
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
+    """Stand-alone use; ``make target-explore`` calls ``explore`` through the adapter."""
     parser = argparse.ArgumentParser(description="decompress exploration (exploratory demo run)")
     parser.add_argument("--version", required=True, help="<package>@<X.Y.Z|latest>")
     parser.add_argument("--budget", type=int, default=20)
     parser.add_argument("--seed", type=int, default=123)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--image-tag-suffix", default="")
-    parser.add_argument("--max-unjudged-ratio", type=float, default=DEFAULT_MAX_UNJUDGED_RATIO)
-    parser.add_argument("--mutation-policy")
-    parser.add_argument("--policy", help="search policy (EffectSearchPolicy value)")
     parser.add_argument("--dry-run", action="store_true", help="print the plan; no network/docker")
     args = parser.parse_args(argv)
-    if not 0.0 <= args.max_unjudged_ratio <= 1.0:
-        parser.error("--max-unjudged-ratio must be within 0..1")
     if args.budget < 1:
         parser.error("--budget must be positive")
     if args.dry_run:
@@ -241,56 +316,32 @@ def main(argv: list[str] | None = None) -> int:
             "steps": ["ensure_image (+ offline worker check)", "controller campaign", "convert"],
             "budget": args.budget,
             "seed": args.seed,
-            "max_unjudged_ratio": args.max_unjudged_ratio,
+            "max_unjudged_ratio": DEFAULT_MAX_UNJUDGED_RATIO,
             "note": "dry-run: nothing resolved, prepared, run or written",
         }
         print(json.dumps(plan, indent=2, sort_keys=True))
         return 0
     try:
-        prepared = dt.ensure_image(args.version, image_tag_suffix=args.image_tag_suffix)
+        ready = dt.ensure_image(args.version, image_tag_suffix=args.image_tag_suffix)
+        prepared = PreparedTargetImage(
+            target="decompress",
+            requested=ready.requested,
+            version=ready.spec,
+            image_ref=ready.image_ref,
+            image_id=ready.image_id,
+            exploratory=ready.exploratory,
+        )
+        outcome = explore(
+            prepared, ExploreOptions(args.budget, args.seed, args.out, args.image_tag_suffix)
+        )
     except ValueError as error:
         print(f"TARGET-EXPLORE SETUP: {error}", file=sys.stderr)
         return 3
-    print(f"TARGET-EXPLORE ready {prepared.spec} {prepared.image_ref} ({prepared.worker_check})")
-    out_dir = args.out / dt.dirname(*dt.parse_spec(prepared.spec))
-    token = f"{prepared.image_id}{args.seed}{args.budget}".encode()
-    run_id = f"explore-{sha256(token).hexdigest()[:12]}"
-    report_path = run_controller(
-        prepared.image_id,
-        args.out / "controller",
-        run_id,
-        seed=args.seed,
-        budget=args.budget,
-        mutation_policy=args.mutation_policy,
-        search_policy=args.policy,
-    )
-    report = json.loads(report_path.read_text(encoding="utf-8"))
-    if "aborted" in report:
-        print(f"TARGET-EXPLORE ERROR: controller aborted: {report['aborted']}", file=sys.stderr)
-        return 2
-    axes = TargetAxes(target_version=prepared.spec)
-    cell = RunCell(out_dir.name, axes, prepared.image_ref, prepared.exploratory)
-    preparation = dt.ADAPTER.describe(cell, out_dir) if dt.ADAPTER.describe else None
-    result, tars, summary = build_campaign_result(
-        report,
-        spec=prepared.spec,
-        image_ref=prepared.image_ref,
-        image_id=prepared.image_id,
-        preparation=preparation,
-        max_unjudged_ratio=args.max_unjudged_ratio,
-    )
-    summary["requested"] = prepared.requested
-    summary["worker_check"] = prepared.worker_check
-    summary["controller_report"] = str(report_path)
-    path = write_outputs(out_dir, result, tars, summary)
-    stop = summary["not_readable_as_pass"]
     print(
-        f"TARGET-EXPLORE {result.verdict.value} {prepared.spec} steps={summary['steps']} "
-        f"violating={len(result.violating_cases)} unjudged={summary['unjudged_steps']}"
-        + (f" NOT-PASS: {stop}" if stop else "")
-        + f" (exploratory demo run) -> {path}"
+        f"TARGET-EXPLORE {outcome.verdict} {prepared.version} runs={outcome.runs} "
+        f"violations={outcome.violations} (exploratory demo run) -> {outcome.result_path}"
     )
-    return {"PASS": 0, "FAIL": 1, "ERROR": 2}[result.verdict.value]
+    return {"PASS": 0, "FAIL": 1, "ERROR": 2}[outcome.verdict]
 
 
 if __name__ == "__main__":

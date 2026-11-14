@@ -51,6 +51,8 @@ def _convert(report: dict, ratio: float = 0.1):
         image_id="sha256:" + "a" * 64,
         preparation=None,
         max_unjudged_ratio=ratio,
+        seed=1,
+        budget=len(report["steps"]),
         engine=ENGINE,
     )
 
@@ -179,3 +181,98 @@ def test_selfdiscover_script_explore_branch_skips_target_build() -> None:
     assert 'if [ -z "$EXPLORE_IMAGE" ]; then' in text  # the role image is built only without it
     assert "$HOME/inodefence-explore/decompress" in text
     assert "decompress-effect-campaign" in text  # the unchanged controller mode
+
+
+# ---- the TargetAdapter.explore hook ----
+
+
+def _prepared(tmp_path: Path) -> Any:
+    from scripts.run_target import PreparedTargetImage
+
+    return PreparedTargetImage(
+        target="decompress",
+        requested="@xhmikosr/decompress@latest",
+        version=SPEC,
+        image_ref="inodefence-decompress:11.1.4-x",
+        image_id="sha256:" + "b" * 64,
+        exploratory=False,
+    )
+
+
+def _ok_check(*a: Any) -> dict[str, Any]:
+    return {"ok": True, "reason": "decompress worker identify+frame ok", "worker_sha256": "d" * 64}
+
+
+def test_hook_is_registered_on_the_adapter() -> None:
+    assert dt.ADAPTER.explore is not None
+
+
+def test_hook_refuses_a_stale_worker_before_any_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from scripts.run_target import ExploreOptions
+
+    monkeypatch.setattr(
+        dt.registry,
+        "worker_check",
+        lambda *a: {"ok": False, "reason": "frame failed (exit 3): usage", "worker_sha256": None},
+    )
+    monkeypatch.setattr(dx, "run_controller", lambda *a, **k: pytest.fail("must not run"))
+    with pytest.raises(ValueError, match="worker incompatible.*rebuild it"):
+        dx.explore(_prepared(tmp_path), ExploreOptions(5, 1, tmp_path))
+
+
+def test_hook_runs_the_controller_and_writes_the_common_campaign_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from scripts.run_target import ExploreOptions
+
+    archive = b"bytes"
+    report = _report(
+        [_step(i, violated=(i == 2)) for i in range(5)],
+        [
+            {
+                "index": 2,
+                "case_id": "c",
+                "tar_b64": base64.b64encode(archive).decode(),
+                "tar_sha256": sha256(archive).hexdigest(),
+            }
+        ],
+    )
+    seen: dict[str, Any] = {}
+
+    def controller(image_id: str, evidence: Path, run_id: str, **kwargs: Any) -> Path:
+        seen.update(image_id=image_id, run_id=run_id, **kwargs)
+        path = evidence / "r.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(report))
+        return path
+
+    monkeypatch.setattr(dt.registry, "worker_check", _ok_check)
+    monkeypatch.setattr(dx, "run_controller", controller)
+    monkeypatch.setattr(dx, "engine_provenance", lambda image: ENGINE)
+    outcome = dt.ADAPTER.explore(_prepared(tmp_path), ExploreOptions(5, 7, tmp_path))  # type: ignore[misc]
+    assert (outcome.verdict, outcome.runs, outcome.violations) == ("FAIL", 5, 1)
+    assert seen["image_id"] == "sha256:" + "b" * 64 and seen["seed"] == 7 and seen["budget"] == 5
+    result = load_target_result(outcome.result_path)
+    assert result.campaign is not None and result.campaign.runs_to_first_violation == 3
+    assert result.campaign.seed == 7 and result.campaign.budget == 5
+    summary = json.loads((outcome.result_path.parent / "exploration.json").read_text())
+    assert summary["requested"] == "@xhmikosr/decompress@latest"
+    assert summary["worker_check"].startswith("decompress worker identify+frame ok")
+    assert (outcome.result_path.parent / "summary.md").is_file()
+
+
+def test_report_steps_carry_the_judged_flag() -> None:
+    from tests.test_decompress_effect_campaign import _benign_run, _seeds
+
+    from inodefence.decompress_effect_campaign import (
+        DecompressEffectCampaignConfig,
+        decompress_effect_campaign_report,
+        run_decompress_effect_campaign,
+    )
+
+    config = DecompressEffectCampaignConfig(random_seed=3, execution_budget=5)
+    result = run_decompress_effect_campaign(_seeds(), _benign_run, config)
+    steps = decompress_effect_campaign_report(result, producer="t")["steps"]
+    assert isinstance(steps, list) and all(s["judged"] is True for s in steps)

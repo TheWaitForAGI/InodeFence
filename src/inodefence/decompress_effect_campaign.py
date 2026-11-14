@@ -526,6 +526,9 @@ def decompress_effect_campaign_report(
                 "case_id": base.case.case_id,
                 "parent_case_id": step.parent_case_id,
                 "termination": base.execution.status.value,
+                # Whether the worker finished (succeeded or refused), so the post-state judgement
+                # is meaningful; a failed/timed-out step is unjudged, never a clean negative.
+                "judged": base.execution.status.value in ("success", "rejected"),
                 "oracle": {v.contract_id.value: v.violated for v in base.violations},
                 "frame_observed": decision.frame_observed,
                 "frame_attempts": len(step.run.frame["attempts"]) if step.run.frame else 0,

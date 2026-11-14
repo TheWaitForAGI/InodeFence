@@ -47,10 +47,11 @@ def _report(*, runs: int, violating_index: int | None) -> dict:
 
 @pytest.fixture(autouse=True)
 def _fixed_provenance(monkeypatch: pytest.MonkeyPatch) -> None:
+    import scripts.explore_result as er
     import scripts.run_target as rt
 
     monkeypatch.setattr(
-        nte, "engine_provenance", lambda image: rt.Provenance("b" * 40, False, image, None)
+        er, "engine_provenance", lambda image: rt.Provenance("b" * 40, False, image, None)
     )
 
 
@@ -110,3 +111,16 @@ def test_hook_rejects_budget_below_the_seed_count(
     monkeypatch.setattr(nte, "run_controller", lambda *a, **k: pytest.fail("must not run"))
     with pytest.raises(ValueError, match="seed count"):
         nte.explore(_prepared(), ExploreOptions(budget=nte.MIN_BUDGET - 1, seed=1, out=tmp_path))
+
+
+def test_converter_uses_prepared_target_not_a_hardcoded_name() -> None:
+    # build_campaign_result is target-agnostic: the result target comes from prepared.target.
+    result, _ = nte.build_campaign_result(
+        _report(runs=4, violating_index=1), _prepared(), seed=1, budget=4
+    )
+    assert result.target == "node-tar"
+    oras = PreparedTargetImage("oras-go", "latest", "2.6.2", "img", "sha256:" + "a" * 64, True)
+    result2, _ = nte.build_campaign_result(
+        _report(runs=4, violating_index=1), oras, seed=1, budget=4
+    )
+    assert result2.target == "oras-go"

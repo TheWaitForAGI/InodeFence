@@ -312,6 +312,7 @@ def test_rule5_no_automatic_promotion() -> None:
 def test_verified_cells_are_unchanged(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(rt, "docker_problem", lambda: None)
     monkeypatch.setattr(rt, "image_id", lambda ref: "sha256:x")
+    monkeypatch.setattr(dt, "verify_existing", lambda cell, image: None)
     monkeypatch.setattr(rt, "engine_provenance", lambda image: rt.Provenance(None, True, image))
     monkeypatch.setattr(dt, "run_one", lambda p, v, t, image=None: _clean(p, v))
     argv = ["--target", "decompress", "--version", f"{FORK}@11.1.4", "--out", str(tmp_path)]

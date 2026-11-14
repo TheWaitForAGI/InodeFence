@@ -41,6 +41,8 @@ def _fixed_provenance(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         rt, "engine_provenance", lambda image: Provenance("c" * 40, False, image, "sha256:def")
     )
+    # "present" images pass the reuse check here (it runs the worker in docker otherwise)
+    monkeypatch.setattr(dt, "verify_existing", lambda cell, image: None)
 
 
 def test_spec_names_package_and_version() -> None:

@@ -1,0 +1,142 @@
+name: repro-evidence
+
+# Manually dispatched controlled re-runs of the committed M2/M4 evidence commands at
+# the dispatched commit, on a fresh GitHub-hosted runner (never on the experiment hosts).
+#
+# Label: controlled repro / controlled check. This is not a registered campaign; the
+# exposure ledger, preregistration files and committed evidence are not changed.
+# Every comparison is report-only: re-run output goes to a scratch folder and is diffed
+# against the committed JSON; nothing under the repository is overwritten, nothing is
+# pushed, published or released. Historical node-tar / oras-go / decompress images are
+# built on the runner from the committed hash-pinned recipes and discarded with it.
+#
+# Steps:
+#   1. oracle_fixture_check (no docker): normal input clean, c0/c1/c2 fixtures fire
+#      C0 / C1+C2 / C2 on a controlled extractor (not node-tar).
+#   2. node-tar effect images 7.5.2, 7.5.3, 7.5.6, 7.5.7, 7.5.8 from
+#      tools/node-tar/effect/Dockerfile + tools/node-tar/versions/<v>/.
+#   3. experiments/repro/cross_release_identity.py --out scratch, diff vs
+#      experiments/repro/evidence/{summary,toplevel_hardlink,nested_hardlink}.json.
+#   4. make regression TAR_VERSION=7.5.2. Verdict names: FAIL = a known C1/C2 fixture
+#      still breaches. On 7.5.2 FAIL is the EXPECTED verdict (exit 1), not a failure.
+#   5. oras-go and decompress native probes --out scratch, diff vs committed JSON.
+# Output: artifact repro-evidence-<run_id> with every output, diff, exit code, image id
+# and SHA256SUMS. The job fails only when a command ends with an unexpected exit code;
+# a diff against the committed evidence is reported, not treated as failure.
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  repro:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      INODEFENCE_RUNTIME_ROOT: /var/lib/inodefence
+      BUILDX_NO_DEFAULT_ATTESTATIONS: "1"
+      OUT: ${{ github.workspace }}/repro-out
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Python 3.12
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Install the package
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          make install
+      - name: Prepare runtime directory and output folder
+        run: |
+          sudo install -d -o "$(id -u)" -g "$(id -g)" -m 0755 "$INODEFENCE_RUNTIME_ROOT"
+          mkdir -p "$OUT"
+          {
+            echo "commit $GITHUB_SHA"
+            echo "run $GITHUB_RUN_ID attempt $GITHUB_RUN_ATTEMPT"
+            echo "label controlled repro (not a registered campaign; ledger unchanged)"
+            docker version --format 'docker server {{.Server.Version}}'
+            date -u '+started %Y-%m-%dT%H:%M:%SZ'
+          } > "$OUT/run-info.txt"
+          cat "$OUT/run-info.txt"
+
+      - name: "1. Oracle fixture check (controlled extractor, not node-tar)"
+        run: |
+          set +e
+          PYTHONPATH=src python -m scripts.oracle_fixture_check > "$OUT/oracle_fixture_check.txt" 2>&1
+          echo "oracle_fixture_check rc=$? (expected 0)" | tee -a "$OUT/exit-codes.txt"
+          cat "$OUT/oracle_fixture_check.txt"
+
+      - name: "2. Build node-tar effect images from the committed recipes"
+        run: |
+          for v in 7.5.2 7.5.3 7.5.6 7.5.7 7.5.8; do
+            docker build -q -f tools/node-tar/effect/Dockerfile --build-arg "TAR_VERSION=$v" \
+              -t "inodefence-node-tar-effect:$v" . > /dev/null
+            echo "inodefence-node-tar-effect:$v $(docker image inspect --format '{{.Id}}' "inodefence-node-tar-effect:$v")" \
+              | tee -a "$OUT/image-ids.txt"
+          done
+
+      - name: "3. Cross-release identity repro (diff vs committed evidence, report-only)"
+        run: |
+          set +e
+          python experiments/repro/cross_release_identity.py --out "$OUT/cross_release" > "$OUT/cross_release.stdout.txt" 2>&1
+          echo "cross_release_identity rc=$? (expected 0)" | tee -a "$OUT/exit-codes.txt"
+          for f in summary toplevel_hardlink nested_hardlink; do
+            diff -u "experiments/repro/evidence/$f.json" "$OUT/cross_release/$f.json" > "$OUT/cross_release.$f.diff"
+            echo "cross_release $f.json diff vs committed: $([ -s "$OUT/cross_release.$f.diff" ] && echo DIFFERS || echo identical)" \
+              | tee -a "$OUT/comparisons.txt"
+          done
+
+      - name: "4. make regression TAR_VERSION=7.5.2 (FAIL = breach = expected on 7.5.2)"
+        run: |
+          set +e
+          echo "NOTE: regression verdict names are inverted for this use: FAIL means a known C1/C2 fixture still breaches. On 7.5.2 FAIL (rc 1) is the expected verdict." \
+            | tee "$OUT/regression-7.5.2.note.txt"
+          make regression TAR_VERSION=7.5.2 REGRESSION_ARGS="--out $OUT/regression-7.5.2.json" > "$OUT/regression-7.5.2.stdout.txt" 2>&1
+          echo "make regression 7.5.2 rc=$? (expected 1 = FAIL = breach)" | tee -a "$OUT/exit-codes.txt"
+          cat "$OUT/regression-7.5.2.stdout.txt"
+
+      - name: "5. oras-go and decompress native probes (diff vs committed evidence, report-only)"
+        run: |
+          set +e
+          python experiments/repro/oras_go_cwd_hardlink.py --out "$OUT/oras_go" > "$OUT/oras_go.stdout.txt" 2>&1
+          echo "oras_go_cwd_hardlink rc=$? (expected 0)" | tee -a "$OUT/exit-codes.txt"
+          python experiments/repro/decompress_hardlink.py --out "$OUT/decompress" > "$OUT/decompress.stdout.txt" 2>&1
+          echo "decompress_hardlink rc=$? (expected 0)" | tee -a "$OUT/exit-codes.txt"
+          diff -u experiments/repro/evidence/oras_go_cwd_hardlink.json "$OUT/oras_go/oras_go_cwd_hardlink.json" > "$OUT/oras_go.diff"
+          echo "oras_go_cwd_hardlink.json diff vs committed: $([ -s "$OUT/oras_go.diff" ] && echo DIFFERS || echo identical)" \
+            | tee -a "$OUT/comparisons.txt"
+          diff -u experiments/repro/evidence/decompress_hardlink.json "$OUT/decompress/decompress_hardlink.json" > "$OUT/decompress.diff"
+          echo "decompress_hardlink.json diff vs committed: $([ -s "$OUT/decompress.diff" ] && echo DIFFERS || echo identical)" \
+            | tee -a "$OUT/comparisons.txt"
+
+      - name: Summary, residual check and SHA256SUMS
+        if: always()
+        run: |
+          {
+            date -u '+finished %Y-%m-%dT%H:%M:%SZ'
+            echo "residual containers $(docker ps -aq | wc -l)"
+          } >> "$OUT/run-info.txt"
+          echo "== exit codes"; cat "$OUT/exit-codes.txt" 2>/dev/null
+          echo "== comparisons (report-only)"; cat "$OUT/comparisons.txt" 2>/dev/null
+          (cd "$OUT" && find . -type f ! -name SHA256SUMS | sort | xargs sha256sum > SHA256SUMS.tmp && mv SHA256SUMS.tmp SHA256SUMS)
+
+      - name: Upload repro evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: repro-evidence-${{ github.run_id }}
+          path: repro-out
+          if-no-files-found: warn
+
+      - name: Fail only on unexpected exit codes
+        run: |
+          grep -q '^oracle_fixture_check rc=0 ' "$OUT/exit-codes.txt"
+          grep -q '^cross_release_identity rc=0 ' "$OUT/exit-codes.txt"
+          grep -q '^make regression 7.5.2 rc=1 ' "$OUT/exit-codes.txt"
+          grep -q '^oras_go_cwd_hardlink rc=0 ' "$OUT/exit-codes.txt"
+          grep -q '^decompress_hardlink rc=0 ' "$OUT/exit-codes.txt"

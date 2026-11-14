@@ -32,7 +32,7 @@ M1~M4와 같고, 날짜가 아니라 "증거가 모이면 찍는" 지점이다. 
 | 4c EXP-3 | ≈11/20 | EXP-3 train([exp3-v1](../experiments/preregistration/exp3-v1.md)); 규칙 기계 적용 | 4b | 완료(train 실행·GO/NO-GO 판정 기록 #368) |
 | 4d EXP-2 조건부 | ≈11/25 | EXP-2 holdout([exp2-v1](../experiments/preregistration/exp2-v1.md)), GO일 때만 실행 | 4c 규칙 | 진행(holdout 실행 중, LOG 2026-11-14) |
 | 5 저장소 정리 | 실험 중 (11/24 중단) | 모순 표 #1–#4·#11·#12 정정(README·src/README·architecture·Makefile/fanout 상한·n04_preflight 경로), 죽은 문서 정리 | 3단계 이후, 실험과 병행, 실험 코드 불변 | 진행(2026-11-14 정리 지시 단계 A: PR (1) A-repo-docs 진행 중) |
-| 6 최종 | 11/30 | 논문·Ledger·증거 사슬 최종, 제출 | G2 11/26 | 대기 |
+| 6 최종 | 11/26 | 결과보고서·영상 공식 제출(지웅 확인 2026-11-14, 개최 안내의 11/30은 실제 제출일이 아님), 논문·Ledger·증거 사슬 최종 | G2 11/26 | 대기 |
 
 ### 수술 보강 큐 (2026-11-04, 연속 운영 지시 — 머지 대기는 작업 중단 사유가 아님)
 

@@ -14,9 +14,9 @@ from inodefence.target_result import ResultMode
 
 
 def test_unsupported_target_reports_and_exits_3(capsys: pytest.CaptureFixture[str]) -> None:
-    # oras-go / python-tarfile / decompress have no explore hook yet: a real adapter, explore=None.
-    assert rte.main(["--target", "oras-go", "--version", "2.6.1"]) == 3
-    assert "exploration is not supported for oras-go" in capsys.readouterr().err
+    # python-tarfile / decompress have no explore hook yet: a real adapter, explore=None.
+    assert rte.main(["--target", "decompress", "--version", "decompress@4.2.1"]) == 3
+    assert "exploration is not supported for decompress" in capsys.readouterr().err
 
 
 def test_dry_run_prepares_and_runs_nothing(

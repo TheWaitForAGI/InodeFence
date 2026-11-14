@@ -218,7 +218,7 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-#: Subcommands that forward unknown flags to a driver (target-specific options the adapter declares).
+#: Subcommands that forward unknown flags to a driver (target options the adapter declares).
 _FORWARDING = {"verify", "explore"}
 
 

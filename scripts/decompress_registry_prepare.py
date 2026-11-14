@@ -231,7 +231,8 @@ try {
     hardlinks: Array.isArray(f.attempts)
       ? f.attempts.filter(a => a.operation === 'hardlink').length : 0}
 } catch (e) { out.frame_error = String(e).slice(0, 200) }
-out.extracted = fs.existsSync(path.join(dest, 'a.txt')) && fs.existsSync(path.join(dest, 'b.txt'))
+out.extracted = fs.existsSync(path.join(dest, 'a.txt'))
+out.link_created = fs.existsSync(path.join(dest, 'b.txt'))
 done()
 """
 
@@ -252,7 +253,9 @@ def worker_check(runner: Runner, image: str, package: str, version: str) -> dict
         reason = f"worker identify failed: {out.get('identify_stderr', '').strip()}"
     elif seen != (package, version):
         reason = f"worker identifies {seen[0]}@{seen[1]}, expected {package}@{version}"
-    elif out.get("frame_status") != 0:
+    elif out.get("frame_status") not in (0, 2):
+        # 0 = extracted, 2 = the package refused/failed (still an observed attempt); only a
+        # harness/IO failure (3) or a crash means the worker cannot drive this package.
         stderr = out.get("frame_stderr", "").strip()
         reason = f"worker frame failed (exit {out.get('frame_status')}): {stderr}"
     elif frame.get("schema_version") != 1 or frame.get("attempts") is None:
@@ -260,11 +263,18 @@ def worker_check(runner: Runner, image: str, package: str, version: str) -> dict
     elif not frame.get("hardlinks"):
         reason = "worker frame observed no hard link (the boundary-attempt channel sees nothing)"
     elif not out.get("extracted"):
-        reason = "worker finished but the benign files were not extracted"
+        reason = "worker finished but the benign file was not extracted"
     else:
+        # How the package resolves a hard-link target is its own behaviour (some versions resolve
+        # it against the working directory and refuse); the frame observing it is what matters.
+        link = (
+            "created"
+            if out.get("link_created")
+            else f"not created (exit {out.get('frame_status')})"
+        )
         reason = (
             f"decompress worker identify+frame ok ({frame.get('attempts')} attempts, "
-            f"{frame.get('hardlinks')} hard link)"
+            f"{frame.get('hardlinks')} hard link observed, internal link {link})"
         )
     return {
         "ok": reason.startswith("decompress worker identify+frame ok"),

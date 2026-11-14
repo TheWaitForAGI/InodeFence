@@ -141,8 +141,8 @@ def parse_spec(spec: str) -> tuple[str, str]:
     match = SPEC_RE.fullmatch(spec)
     if match is None:
         raise ValueError(
-            f"decompress --version is <package>@<X.Y.Z>, e.g. decompress@4.2.1 or "
-            f"@xhmikosr/decompress@11.1.4: {spec!r}"
+            f"decompress --version is <package>@<X.Y.Z> or <package>@latest, e.g. "
+            f"decompress@4.2.1 or @xhmikosr/decompress@latest: {spec!r}"
         )
     return match["package"], match["version"]
 

@@ -124,13 +124,20 @@ class FakeDocker:
             "frame_status": 0,
             "frame": {"schema_version": 1, "attempts": 1, "hardlinks": 1},
             "extracted": True,
+            "link_created": True,
         }
         if self.fail == "worker-identity":
             report["identity"] = {"decompress_module": "decompress", "decompress_version": "4.2.1"}
         if self.fail == "worker-api":  # e.g. a new major fork API the worker cannot drive
-            report["frame_status"] = 3
+            report["frame_status"] = 1
             report["frame"] = None
             report["frame_stderr"] = "TypeError: decompress is not a function"
+        if self.fail == "worker-crash":
+            report["frame_status"] = 3
+            report["frame_stderr"] = "harness IO failure"
+        if self.fail == "link-refused":  # package resolves the link elsewhere and refuses: still ok
+            report["frame_status"] = 2
+            report["link_created"] = False
         if self.fail == "worker-blind":  # extracts, but the frame channel sees no operation
             report["frame"] = {"schema_version": 1, "attempts": 0, "hardlinks": 0}
         return report
@@ -201,6 +208,7 @@ def test_existing_image_is_not_rebuilt() -> None:
         ("worker-missing", "worker incompatible.*worker.cjs is missing"),
         ("worker-identity", "worker incompatible.*identifies decompress@4.2.1"),
         ("worker-api", "worker incompatible.*not a function"),
+        ("worker-crash", "worker incompatible.*exit 3"),
         ("worker-blind", "worker incompatible.*observed no hard link"),
     ],
 )
@@ -419,3 +427,11 @@ def _exploratory_result(
     assert rt.main(argv) == 0
     cell = tmp_path / "decompress-xhmikosr-decompress-11.2.0-exploratory"
     return json.loads((cell / "result.json").read_text())
+
+
+def test_package_that_refuses_the_internal_link_is_still_worker_compatible() -> None:
+    lines: list[str] = []
+    docker = FakeDocker(fail="link-refused")
+    reg.prepare(SPEC, IMAGE, runner=docker, log=lines.append)
+    assert docker.images == {IMAGE}
+    assert any("internal link not created (exit 2)" in line for line in lines)

@@ -52,8 +52,18 @@ LABEL = "demo run"
 EXPLORATORY_LABEL = "exploratory demo run"
 PREPARATION_METHODS = ("committed-lock", "registry")
 CONTRACTS = ("C0", "C1", "C2")
-#: Case outcome that marks a failed run (no observation); any other outcome string is target text.
+#: Case outcome that marks a run with NO valid observation (no before/after to judge); its
+#: contracts must all be null. Only this outcome counts as ``errored``. Any other outcome string is
+#: target text describing how a run the oracle DID observe ended.
 RUN_ERROR = "run_error"
+#: Recommended outcomes for an observed exploration run, by how the target ended. Each keeps its
+#: C0/C1/C2 verdicts (the oracle judges the before/after snapshots whatever the exit status), so a
+#: violation during a rejection, crash or timeout is still a FAIL, and none of them is ``errored``.
+EXTRACTED = "extracted"
+REJECTED = "rejected"
+FAILED = "failed"
+TIMED_OUT = "timed_out"
+OBSERVED_OUTCOMES = (EXTRACTED, REJECTED, FAILED, TIMED_OUT)
 
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
 _GIT_SHA_RE = re.compile(r"[0-9a-f]{40}")
@@ -96,6 +106,15 @@ class CaseVerdict:
     @property
     def is_run_error(self) -> bool:
         return self.outcome == RUN_ERROR
+
+    @property
+    def is_unjudged(self) -> bool:
+        """Observed (not a run error) but the oracle gave no verdict on any contract.
+
+        The one shared definition of an un-judged step: engines count ``unjudged_steps`` with it,
+        and a campaign may not report fewer than its listed cases show.
+        """
+        return not self.is_run_error and (self.c0, self.c1, self.c2) == (None, None, None)
 
     @property
     def violated(self) -> bool:
@@ -157,7 +176,9 @@ class CampaignInfo:
     older files, read unchanged:
 
     - ``runs_executed``: how many cases actually ran; ``None`` -> ``len(cases)``.
-    - ``errors``: run errors / timeouts across all executions; ``None`` -> run errors in ``cases``.
+    - ``errors``: ``run_error`` outcomes (no valid observation) across all executions; ``None`` ->
+      run errors in ``cases``. Rejections, crashes and timeouts the oracle observed are judged
+      outcomes, not errors.
     - ``stopped_early``: a person stopped the run before the budget or a natural end.
 
     The last two give the oracle a *silent voice* so an un-judged run is never read as a clean one:
@@ -382,6 +403,12 @@ def _validate_campaign(result: TargetResult) -> None:
         raise TargetResultError("campaign.errors must be an integer in 0..runs")
     if type(campaign.unjudged_steps) is not int or not 0 <= campaign.unjudged_steps <= executed:
         raise TargetResultError("campaign.unjudged_steps must be an integer in 0..runs")
+    listed_unjudged = sum(case.is_unjudged for case in result.cases)
+    if campaign.unjudged_steps < listed_unjudged:
+        raise TargetResultError(
+            f"campaign.unjudged_steps {campaign.unjudged_steps} is below the {listed_unjudged} "
+            "un-judged case(s) listed (observed, but no contract verdict)"
+        )
     ratio = campaign.max_unjudged_ratio
     if ratio is not None and (type(ratio) not in (int, float) or not 0.0 <= ratio <= 1.0):
         raise TargetResultError("campaign.max_unjudged_ratio must be null or a number in 0.0..1.0")

@@ -9,7 +9,11 @@ import pytest
 
 from inodefence.target_result import (
     LABEL,
+    OBSERVED_OUTCOMES,
+    REJECTED,
+    RUN_ERROR,
     SCHEMA,
+    TIMED_OUT,
     CampaignInfo,
     CaseVerdict,
     Provenance,
@@ -433,3 +437,35 @@ def test_reader_cross_checks_stored_unjudged_ratio() -> None:
     data["campaign"]["unjudged_ratio"] = 0.99  # hand-edited to hide un-judged runs
     with pytest.raises(TargetResultError, match="unjudged_ratio 0.99 does not match the runs"):
         from_json_dict(data)
+
+
+def test_observed_rejection_crash_timeout_keep_verdicts_and_are_not_errors() -> None:
+    assert OBSERVED_OUTCOMES == ("extracted", "rejected", "failed", "timed_out")
+    cases = tuple(
+        CaseVerdict(f"step-{i}", outcome, None, False, False)
+        for i, outcome in enumerate(OBSERVED_OUTCOMES)
+    )
+    result = _aggregate_result(*(), runs_executed=4)
+    result = replace(result, cases=cases, repro_inputs=())
+    assert result.errored == 0  # campaign.errors=0, and none of these is a run error
+    assert result.verdict is Verdict.PASS  # one rejection no longer turns a campaign into ERROR
+
+
+def test_violation_during_a_timeout_is_a_fail_not_hidden() -> None:
+    hit = CaseVerdict("step-3", TIMED_OUT, None, True, False)
+    result = _aggregate_result(hit, runs_executed=10, runs_to_first_violation=4)
+    assert not hit.is_run_error and result.verdict is Verdict.FAIL
+
+
+def test_is_unjudged_is_observed_but_no_verdict() -> None:
+    assert CaseVerdict("a", REJECTED, None, None, None).is_unjudged
+    assert not CaseVerdict("a", REJECTED, None, False, None).is_unjudged
+    assert not CaseVerdict("a", RUN_ERROR, None, None, None).is_unjudged  # an error, not un-judged
+
+
+def test_campaign_cannot_report_fewer_unjudged_steps_than_its_cases_show() -> None:
+    blind = CaseVerdict("step-1", "extracted", None, None, None)
+    with pytest.raises(TargetResultError, match="below the 1 un-judged case"):
+        _aggregate_result(blind, runs_executed=5, unjudged_steps=0)
+    ok = _aggregate_result(blind, runs_executed=5, unjudged_steps=1)
+    assert ok.unjudged_steps == 1 and from_json_dict(json.loads(ok.dumps())) == ok

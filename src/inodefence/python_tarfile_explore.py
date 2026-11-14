@@ -55,36 +55,41 @@ DEFAULT_SEARCH_POLICY = arm_search_policy(RdsArm.S_U)
 DEFAULT_MUTATION_POLICY = VOCABULARY_MUTATION_POLICY[DEFAULT_VOCABULARY]
 
 
-def case_record(run_index: int, result: EffectRunResult) -> dict[str, object]:
-    """One step's verdict; only a run the extractor's report does not account for has none.
+#: Execution status -> outcome label of an observed step (the common result-format contract,
+#: ``target_result.OBSERVED_OUTCOMES`` in #414): each keeps its C0/C1/C2 verdict.
+OBSERVED_OUTCOME = {
+    ExecutionStatus.SUCCESS: "extracted",
+    ExecutionStatus.REJECTED: "rejected",
+    ExecutionStatus.FAILED: "failed",
+    ExecutionStatus.TIMED_OUT: "timed_out",
+}
+#: What the worker's own final line must say for the step to be attributed to the extractor.
+_WORKER_STATUS = {
+    ExecutionStatus.SUCCESS: "success",
+    ExecutionStatus.REJECTED: "rejected",
+    ExecutionStatus.FAILED: "failed",
+}
 
-    SUCCESS / REJECTED, and FAILED with a readable worker report (tarfile raised while
-    extracting), all have real host snapshots, so the oracle verdict stands. A timeout or a worker
-    report that cannot be read (crash, truncation) is ``run_error``: no verdict.
+
+def case_record(run_index: int, result: EffectRunResult) -> dict[str, object]:
+    """One step's outcome and verdict; ``run_error`` only when the run is not attributable.
+
+    Every status keeps its oracle verdict (the host BEFORE/AFTER snapshots are real): success,
+    a filter refusal, an extractor failure (tarfile raised; reported by the worker) and a timeout
+    (the backend stopped the extractor). A non-timeout run whose worker report cannot be read or
+    contradicts the exit status (crash, truncation) is ``run_error`` with no verdict: it cannot be
+    told apart from a worker that never extracted, so judging it could hide a silent negative.
     """
     base = result.base_result
     status = base.execution.status
-    reported = worker_reported_status(base.execution.stdout)
-    outcome = {
-        ExecutionStatus.SUCCESS: "extracted",
-        ExecutionStatus.REJECTED: "declined",
-        ExecutionStatus.FAILED: "failed",
-    }.get(status)
-    if (
-        outcome is None
-        or reported is None
-        or reported
-        != {
-            "extracted": "success",
-            "declined": "rejected",
-            "failed": "failed",
-        }[outcome]
-    ):
+    if status is not ExecutionStatus.TIMED_OUT and worker_reported_status(
+        base.execution.stdout
+    ) != _WORKER_STATUS.get(status):
         return {"run_index": run_index, "outcome": "run_error", "c0": None, "c1": None, "c2": None}
     hit = {v.contract_id.value: v.violated for v in base.violations}
     return {
         "run_index": run_index,
-        "outcome": outcome,
+        "outcome": OBSERVED_OUTCOME[status],
         "c0": hit.get("C0"),
         "c1": hit.get("C1"),
         "c2": hit.get("C2"),

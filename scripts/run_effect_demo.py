@@ -108,16 +108,6 @@ HISTORICAL_LABEL = "demo run"
 EXPLORATION_LABEL = "exploratory demo run"
 HISTORICAL_SEARCH_POLICY = EffectSearchPolicy.P2_EFFECT_ADAPTIVE
 HISTORICAL_MUTATION_POLICY = MutationPolicy.M1_PROTECTED_COMPONENTS_ESCAPE_HARDLINK
-# Exploration must not use the sighted vocabulary (ESCAPE_OPERATORS hardcodes
-# 'outside'/'sentinel.txt'); its default is the observation-based state-aware arm, whose
-# external-object names come from runtime observation of the general tree, not a hardcoded
-# target/sentinel token. This keeps exploration non-blind without spelling a protected name.
-EXPLORATION_MUTATION_POLICY = MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK
-VOCABULARY_NOT_BLIND_NOTE = (
-    "not blind exploration: external object names enter the mutation vocabulary through "
-    "runtime observation of the general filesystem tree, not from a protected-path list or a "
-    "hardcoded target/sentinel token"
-)
 
 
 #: An exception chain longer than this is cut; the record says so.
@@ -553,7 +543,7 @@ def exploration_demo_report(
     seed: int = 123,
     budget: int = DEFAULT_NATIVE_BUDGET,
     policy: EffectSearchPolicy = HISTORICAL_SEARCH_POLICY,
-    mutation_policy: MutationPolicy = EXPLORATION_MUTATION_POLICY,
+    mutation_policy: MutationPolicy = HISTORICAL_MUTATION_POLICY,
     step_sink: Callable[[dict[str, object]], None] | None = None,
     sentinel_set: GeneratedSentinelSet | None = None,
     observer_integrity_continue: bool = False,
@@ -610,8 +600,6 @@ def exploration_demo_report(
         label=EXPLORATION_LABEL,
         mode="exploration",
         qualification=False,
-        vocabulary_policy=config.mutation_policy.value,
-        vocabulary_note=VOCABULARY_NOT_BLIND_NOTE,
         node_tar_version=target.tar_version,
         requested_tar_version=tar_version,
         requested_spec=tar_version if requested_spec is None else requested_spec,

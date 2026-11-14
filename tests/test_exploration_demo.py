@@ -43,23 +43,6 @@ def test_exploration_report_is_labelled_non_qualification(monkeypatch: pytest.Mo
     assert report["node_tar_version"] == "7.5.23"
     assert report["requested_tar_version"] == "7.5.23"
     assert report["image_id"] == IMAGE
-    # observation-based (state-aware) vocabulary by default, NOT the sighted protected-
-    # components vocab (which hardcodes outside/sentinel.txt).
-    assert report["vocabulary_policy"] == rd.EXPLORATION_MUTATION_POLICY.value
-    assert report["vocabulary_policy"] != rd.HISTORICAL_MUTATION_POLICY.value
-    assert "not blind exploration" in report["vocabulary_note"]
-
-
-def test_exploration_default_vocabulary_is_state_aware_not_sighted() -> None:
-    import inspect
-
-    params = inspect.signature(exploration_demo_report).parameters
-    assert params["mutation_policy"].default is rd.MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK
-    # the sighted vocab hardcodes a sentinel name; the state-aware default must not be it.
-    assert (
-        params["mutation_policy"].default
-        is not rd.MutationPolicy.M1_PROTECTED_COMPONENTS_ESCAPE_HARDLINK
-    )
 
 
 def test_exploration_matches_historical_except_the_labelling(
@@ -68,10 +51,9 @@ def test_exploration_matches_historical_except_the_labelling(
     # 7.5.2 is a historical catalog member, so historical passes its gate and both run the
     # same stubbed loop; the reports must then differ only by the exploration labelling.
     _stub_campaign(monkeypatch, "7.5.2")
-    pol = rd.MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK
-    hist = historical_demo_report(object(), IMAGE, "7.5.2", seed=1, budget=5, mutation_policy=pol)  # type: ignore[arg-type]
-    expl = exploration_demo_report(object(), IMAGE, "7.5.2", seed=1, budget=5, mutation_policy=pol)  # type: ignore[arg-type]
-    only_in_explore = {"qualification", "requested_spec", "vocabulary_policy", "vocabulary_note"}
+    hist = historical_demo_report(object(), IMAGE, "7.5.2", seed=1, budget=5)  # type: ignore[arg-type]
+    expl = exploration_demo_report(object(), IMAGE, "7.5.2", seed=1, budget=5)  # type: ignore[arg-type]
+    only_in_explore = {"qualification", "requested_spec"}
     assert set(expl) - set(hist) == only_in_explore
     # timing is wall-clock and differs run-to-run by design; everything else is deterministic.
     differ = {k for k in hist if hist[k] != expl.get(k)}

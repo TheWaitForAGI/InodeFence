@@ -50,6 +50,7 @@ import re
 import subprocess
 import sys
 import tarfile
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -285,6 +286,42 @@ def _describe(cell: RunCell, cell_dir: Path) -> Preparation | None:
         producer_sha256=frame["worker_sha256"],
         producer_check=frame["reason"],
     )
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedOrasGo:
+    """An oras-go image that exists locally and passed its offline checks."""
+
+    requested: str  # what the caller asked for (``latest`` or an exact version)
+    version: str  # the exact oras-go version inside the image
+    image_ref: str
+    image_id: str
+    exploratory: bool  # True: Go-proxy-prepared; False: committed go.mod/go.sum recipe
+
+
+def ensure_image(spec: str, *, image_tag_suffix: str = "") -> PreparedOrasGo:
+    """One call for other commands: resolve ``spec``, reuse or prepare its image, return its id.
+
+    ``spec`` is ``latest`` or an exact version. A committed go.mod/go.sum selects the verified
+    recipe; otherwise the image is prepared from the Go module proxy
+    (``scripts.oras_go_registry_prepare``) with all of its offline checks (installed version, the
+    regression probe, the campaign's ``frame`` worker). This is the path
+    ``make target-run ... AUTO_PREPARE=1`` takes; it may use the network. Raises ``ValueError``
+    with the reason when the version is refused or preparation fails (no image is tagged then).
+    """
+    from scripts.run_target import resolve_images, with_tag_suffix
+
+    (version,) = _resolve([spec])
+    (cell,) = _cells([version], [])
+    if cell.image_ref is None:
+        raise ValueError(f"oras-go {spec}: no image for this version")
+    cell = with_tag_suffix(cell, image_tag_suffix)
+    ready, errors = resolve_images(ADAPTER, [cell], auto_prepare=True)
+    ref = cell.image_ref
+    assert ref is not None
+    if ref in errors:
+        raise ValueError(errors[ref])
+    return PreparedOrasGo(spec, version, ref, ready[ref], cell.exploratory)
 
 
 ADAPTER = TargetAdapter(

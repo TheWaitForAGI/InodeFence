@@ -11,18 +11,21 @@
 
 ### 할 수 있는 것
 
-대상 프로그램과 버전을 주면 한 명령으로 다음을 끝낸다(호스트 터미널, Docker 필요):
+대상 프로그램과 버전을 주면 한 명령으로 다음을 끝낸다(docker가 도는 셸, Docker 필요):
 
-1. 대상마다 일회용 격리 컨테이너에서 고정 입력 TAR를 하나씩 압축 해제한다.
-2. 보호 대상 외부 파일과의 객체 동일성(C1)과 외부 영향(C2)을 판정한다.
-3. 결과를 공통 형식 `inodefence-target-result-v1` 파일(`result.json`)과 입력 TAR(SHA-256 포함), 원시 기록으로 남긴다.
-   기존 결과는 덮어쓰지 않는다.
-4. 결과 파일 하나를 비전공자용 한 장 요약(Markdown: 대상·버전·판정·케이스별 결과·재현 방법)으로 바꾼다.
+1. 대상 이미지가 없으면 `AUTO_PREPARE=1`일 때 커밋된 레시피로 준비하고, 이미지 안의 설치 버전이 요청한 버전과 같은지
+   확인한다. 이미지가 있으면 그대로 다시 쓴다.
+2. 대상마다 일회용 격리 컨테이너에서 고정 입력 TAR를 하나씩 압축 해제한다.
+3. 보호 대상 외부 파일과의 객체 동일성(C1)과 외부 영향(C2)을 판정한다.
+4. 셀마다 공통 형식 `inodefence-target-result-v1` 파일(`result.json`), 입력 TAR(SHA-256 포함), 원시 기록, 비전공자용
+   한 장 요약 `summary.md`(대상·버전·판정·케이스별 결과·재현 방법)를 남긴다. 기존 결과는 덮어쓰지 않는다.
 
 ```bash
-make target-run TARGET=node-tar TARGET_VERSIONS="7.5.2 7.5.3" PYTHON=python3.12   # WSL2: PYTHON=python3
-PYTHONPATH=src python3.12 -m inodefence.target_result_summary <결과 폴더>/node-tar-7.5.2/result.json
+make target-run TARGET=node-tar TARGET_VERSIONS="7.5.2 7.5.3" AUTO_PREPARE=1 PYTHON=python3.12   # WSL2: PYTHON=python3
 ```
+
+종료 코드: 0 PASS, 1 FAIL, 2 ERROR(셀 중 가장 나쁜 판정), 3 일부 또는 모든 셀이 판정되지 않음(거부된 입력, 이미 있는 결과,
+설정·준비·이미지 문제).
 
 ### 지원 대상과 실제로 확인한 범위
 
@@ -40,9 +43,25 @@ PYTHONPATH=src python3.12 -m inodefence.target_result_summary <결과 폴더>/no
 oras-go의 판정은 두 환경에서 모두 같았고, WSL2에서도 `make check`가 통과하고 한 장 요약이 정상으로 나왔다.
 decompress는 맥북에서만 확인했다.
 
-맥북의 깨끗한 클론에서 README 빠른 시작 순서 그대로 위 표의 node-tar·oras-go·decompress 여섯 셀과 python-tarfile
-3.12.16 두 필터를 다시 돌려 같은 건수를 얻었다. 이미지는 이 맥에 이미 있던 것을 썼고, 같은 클론에서 README의 이미지
-빌드 여섯 줄이 모두 성공하는 것은 따로 확인했다(새로 빌드한 이미지의 image id는 기존 이미지와 달랐다).
+@@CLEAN_CLONE@@
+
+### 이미지 자동 준비 (`AUTO_PREPARE=1`)
+
+| 대상 | 자동 준비 지원 범위(커밋된 레시피가 있는 버전) | 이 릴리스에서 실제로 준비·실행까지 확인한 버전 |
+| --- | --- | --- |
+| node-tar | 커밋된 lock이 있는 10개: 7.0.1·7.1.0·7.2.0·7.3.0·7.4.4·7.5.2·7.5.3·7.5.6·7.5.7·7.5.8 | 7.5.2·7.5.3(준비→실행), 7.4.4(준비·버전 확인만). 나머지 7개(7.0.1·7.1.0·7.2.0·7.3.0·7.5.6·7.5.7·7.5.8)는 레시피가 있지만 이 릴리스에서 실행 확인 안 함 |
+| python-tarfile | 정확한 `X.Y.Z`의 공식 `python:X.Y.Z-slim`(다른 저장소는 거부) | 3.12.16(준비→실행, `fully_trusted`·`data`), 3.12.10(pull·버전 확인만) |
+| oras-go | 2.6.1·2.6.2(커밋된 `go.mod`·`go.sum`) | 2.6.1·2.6.2(준비→실행) |
+| decompress | 원본 `decompress@4.2.1`, fork `@xhmikosr/decompress@11.1.4`(패키지 이름까지 일치해야 함) | 둘 다(준비→실행) |
+
+표에 없는 버전은 거부되며(종료 코드 3), 지원한다고 하지 않는다.
+
+- 자동 준비한 이미지는 같은 버전을 같은 커밋된 레시피로 새로 빌드(python은 공식 이미지를 pull)한 것이다. 예전 증거
+  실행에 쓴 이미지와 같다고 하지 않는다. image id는 빌드마다 다르고, 결과 파일 `provenance.image_id`가 실제로 쓴
+  이미지를 남긴다. 준비 단계는 이미지 안의 설치 버전을 읽어 요청한 버전과 정확히 같을 때만 태그를 만든다.
+- node-tar의 새 버전은 자동으로 받지 않는다. 그 버전의 의존성 lock(`package-lock.json`)을 커밋하고 검토한 뒤 추가하는
+  절차다(lock이 없는 버전은 "커밋된 lock 없음"으로 거부).
+- 기존 이미지 태그는 항상 다시 쓰고, 자동 준비는 이미지가 없을 때만 한다.
 
 ### 알려진 한계
 
@@ -57,11 +76,13 @@ decompress는 맥북에서만 확인했다.
   후보이며, 확정 취약점으로 보려면 재현과 원인 분석이 따로 필요하다.
 - **C0(경로 경계)는 이 명령에서 관찰하지 않는다.** 결과 파일에 `null`(관찰 안 함)로 남고, "위반 없음"으로 읽으면 안 된다.
 - **실행은 `demo run` 수준이다.** 사전등록 실험이나 자격 검증 결과가 아니다.
-- **대상 이미지는 로컬에 있어야 한다.** node-tar·oras-go·decompress 이미지는 각 환경에서 저장소의 Dockerfile로 직접
-  빌드한다(arm64와 x86_64 사이에 옮겨 쓸 수 없다). 새로 빌드한
-  이미지는 팀이 기록에 쓴 이미지와 image id가 다를 수 있고, 결과 파일의 `provenance.image_id`가 그 차이를 남긴다.
+- **이미지는 환경마다 준비한다.** arm64와 x86_64 사이에 옮겨 쓸 수 없다. 처음 준비할 때는 네트워크가 필요하고(빌드·pull),
+  빌드 캐시 없이 처음부터 빌드할 때 걸리는 시간은 재지 않았다.
+- **이 기능은 취약점 자동 발견도, C0/C1/C2 전체 검증도 아니다.** 고정 입력에 대한 C1/C2 관찰이다.
 - **docker가 도는 셸(macOS 터미널 또는 WSL 셸)에서 실행한다.** Dev Container 안에는 docker가 없다.
-- **호스트에 Python 3.12가 필요하다.** macOS 기본 `python3`(3.9)로는 돌지 않는다(WSL2 Ubuntu 24.04의 `python3`은 3.12).
+- **호스트에 Python 3.12가 필요하다.** `PYTHON`을 주지 않으면 `python`, 없으면 `python3`을 쓰는데, macOS 기본
+  `python3`(3.9)은 실행 전 점검 없이 ImportError로 멈춘다. macOS에서는 `PYTHON=python3.12`를 준다(WSL2 Ubuntu 24.04의
+  `python3`은 3.12).
 - WSL2가 아닌 Linux 호스트에서는 따로 확인하지 않았다.
 
 ### 라이선스

@@ -21,27 +21,25 @@ Historical vulnerability rediscovery(N01)는 성공 조건으로 실행·주장�
 
 [현재 상태](docs/STATUS.md) · [시작 안내](docs/START_HERE.md) · [아키텍처](docs/research/design/architecture.md) · [Security Contracts](docs/research/design/security-contracts.md) · [개발 가이드](CONTRIBUTING.md) · [변경 기록](CHANGELOG.md)
 
-## 빠른 시작: 대상 하나를 돌려 보고 한 장 요약 보기 (demo run)
+## 빠른 시작: 한 명령으로 준비 → 실행 → 판정 → 결과·요약 (demo run)
 
-대상 프로그램과 버전을 주면 격리 컨테이너에서 고정 입력 TAR를 풀어 보고 → C1/C2를 판정하고 → 결과 파일을
-남깁니다. 결과 파일 하나는 한 장 요약으로 바꿀 수 있습니다. 결과는 `demo run`이며 실험 결과나 안전 보증이
-아닙니다(한계는 [CHANGELOG](CHANGELOG.md)).
+대상과 버전을 주면, 이미지가 없을 때는 커밋된 레시피로 준비하고(설치 버전 확인 포함), 격리 컨테이너에서 고정 입력
+TAR를 풀어 C1/C2를 판정한 뒤 셀마다 `result.json`·재현 TAR·`summary.md`를 남깁니다. 결과는 `demo run`이며 실험
+결과나 안전 보증이 아닙니다(한계와 대상별 지원 범위는 [CHANGELOG](CHANGELOG.md)).
 
-**확인한 환경.** macOS(arm64) + Docker Desktop, Windows + WSL2(x86_64) + Docker Desktop. 두 환경에서 node-tar,
-python-tarfile, oras-go의 demo run 판정이 모두 같았고 한 장 요약도 같은 방식으로 나왔습니다. 맥북에서는 깨끗한
-클론에서 이 절의 순서를 그대로 따라 했습니다. 다른 Linux 호스트는 따로 확인하지 않았습니다.
+**확인한 환경.** macOS(arm64) + Docker Desktop, Windows + WSL2(x86_64) + Docker Desktop.
 
 **필요한 것**
 
 - **docker가 도는 셸.** macOS는 터미널, Windows는 WSL 셸(Docker Desktop의 WSL 연동 켜기)에서 실행합니다.
   Dev Container 안에는 docker가 없으므로 `make target-run`은 Dev Container가 아니라 이 셸에서 돌립니다.
-- **git**과 **Python 3.12.** 아래 `make`마다 `PYTHON=`으로 3.12 인터프리터를 지정합니다. `python` 명령이 없고
-  `python3`만 있는 환경이 흔합니다.
-  - Windows + WSL2(Ubuntu 24.04): 기본 `python3`이 3.12이므로 `PYTHON=python3`.
-  - macOS: 기본 `python3`은 3.9라 돌지 않습니다. `brew install python@3.12` 뒤 `PYTHON=python3.12`.
-- **`/var/lib/inodefence`(셸에서 `make check`나 테스트를 돌릴 때만).** `make target-run` 자체는 이 폴더를 쓰지
-  않지만, 환경 검사와 테스트는 이 runtime 폴더(`$INODEFENCE_RUNTIME_ROOT`, 기본 `/var/lib/inodefence`)를
-  요구합니다. 없으면 만듭니다:
+- **git**과 **Python 3.12.** `PYTHON`을 주지 않으면 `python`, 없으면 `python3`을 씁니다.
+  - Windows + WSL2(Ubuntu 24.04): 기본 `python3`이 3.12라 그대로 됩니다.
+  - macOS: 기본 `python3`은 3.9라 돌지 않습니다(`ImportError`로 멈춤). `brew install python@3.12` 뒤 아래 명령마다
+    **`PYTHON=python3.12`**를 붙입니다.
+- **네트워크(처음 한 번).** 이미지를 준비할 때 빌드·pull에 씁니다. 추출 실행은 네트워크 없이 합니다.
+- **`/var/lib/inodefence`(셸에서 `make check`나 테스트를 돌릴 때만).** `make target-run`은 쓰지 않습니다. 없으면 환경
+  검사가 만드는 명령을 알려 줍니다:
 
   ```bash
   sudo mkdir -p /var/lib/inodefence && sudo chown "$(id -u):$(id -g)" /var/lib/inodefence
@@ -52,48 +50,41 @@ git clone https://github.com/TheWaitForAGI/InodeFence.git
 cd InodeFence
 ```
 
-**대상 이미지 준비(환경마다 처음 한 번).** 대상 이미지는 어디서 받는 것이 아니라 각 환경에서 커밋된
-Dockerfile로 직접 빌드합니다. arm64(맥북)와 x86_64(WSL2)는 이미지를 서로 옮겨 쓸 수 없습니다. 빌드는 npm·Go
-모듈을 받으므로 네트워크가 필요하고, 실행은 네트워크 없이 합니다. python-tarfile은 공식
-`python:<버전>-slim` 이미지를 실행할 때 자동으로 받습니다.
-
-<!-- 이미지 빌드와 실행 전 점검을 한 명령으로 묶는 make 대상이 #399 위 PR로 준비 중이다.
-     그 PR이 들어오면 아래 docker build 목록을 그 명령으로 바꾼다(명령 이름은 그때 확정). -->
+**대상별 한 줄 실행.** `AUTO_PREPARE=1`이면 없는 이미지를 먼저 준비하고, 있으면 그대로 다시 씁니다(macOS 기준;
+WSL2에서는 `PYTHON=python3.12`를 빼거나 `PYTHON=python3`으로 씁니다).
 
 ```bash
-docker build -f tools/node-tar/effect/Dockerfile --build-arg TAR_VERSION=7.5.2 -t inodefence-node-tar-effect:7.5.2 .
-docker build -f tools/node-tar/effect/Dockerfile --build-arg TAR_VERSION=7.5.3 -t inodefence-node-tar-effect:7.5.3 .
-docker build -f tools/oras-go/Dockerfile --build-arg ROLE=affected -t inodefence-oras-go:2.6.1 .
-docker build -f tools/oras-go/Dockerfile --build-arg ROLE=fixed -t inodefence-oras-go:2.6.2 .
-docker build -f tools/decompress/Dockerfile --build-arg ROLE=affected -t inodefence-decompress:4.2.1 .
-docker build -f tools/decompress/Dockerfile --build-arg ROLE=fixed -t inodefence-decompress:11.1.4 .
+make target-run TARGET=node-tar TARGET_VERSIONS="7.5.2 7.5.3" AUTO_PREPARE=1 PYTHON=python3.12
+make target-run TARGET=python-tarfile TARGET_VERSIONS=3.12.16 TARGET_FILTERS="fully_trusted data" AUTO_PREPARE=1 PYTHON=python3.12
+make target-run TARGET=oras-go TARGET_VERSIONS="2.6.1 2.6.2" AUTO_PREPARE=1 PYTHON=python3.12
+make target-run TARGET=decompress TARGET_VERSIONS="decompress@4.2.1 @xhmikosr/decompress@11.1.4" AUTO_PREPARE=1 PYTHON=python3.12
 ```
 
-**대상별 한 줄 실행 예.** 결과는 기본으로 `~/inodefence-evidence/target-run/<셀>/`에 쌓이고(`TARGET_OUT=`으로
-변경), 이미 있는 폴더는 덮어쓰지 않습니다. 실행 전에 계획만 보려면 `TARGET_ARGS=--dry-run`을 붙입니다.
-아래 예의 `PYTHON=python3.12`는 WSL2에서는 `PYTHON=python3`으로 바꿉니다.
+- **계획만 보기:** `TARGET_ARGS=--dry-run`을 붙이면 셀마다 `image_plan`(`reuse` / `prepare` /
+  `missing-unsupported` / `unknown`)을 보여 주고, 받기·빌드·실행·쓰기는 하지 않습니다.
+- **`AUTO_PREPARE=1` 없이** 이미지가 없으면 `TARGET-RUN SETUP: missing image …` 줄을 보여 주고 아무것도 실행하지
+  않습니다.
+- **기존 이미지 태그를 건드리지 않고** 준비부터 해 보려면 `IMAGE_TAG_SUFFIX=-x`를 붙입니다(태그 뒤에 `-x`를 붙인
+  이미지를 쓰고, 없으면 그 이름으로 준비).
+- python-tarfile은 한 번에 축 하나만 바꿉니다: 같은 런타임에서 필터 비교(위 예) 또는 같은 필터에서 런타임 버전 비교.
+  decompress는 버전 칸에 패키지 이름까지 적어 원본 `decompress`와 유지보수되는 fork `@xhmikosr/decompress`를 구분합니다.
 
-```bash
-make target-run PYTHON=python3.12 TARGET=node-tar TARGET_VERSIONS="7.5.2 7.5.3"
-make target-run PYTHON=python3.12 TARGET=python-tarfile TARGET_VERSIONS=3.12.16 TARGET_FILTERS="fully_trusted data"
-make target-run PYTHON=python3.12 TARGET=oras-go TARGET_VERSIONS="2.6.1 2.6.2"
-make target-run PYTHON=python3.12 TARGET=decompress TARGET_VERSIONS="decompress@4.2.1 @xhmikosr/decompress@11.1.4"
-```
+**결과 보기.** 결과는 `~/inodefence-evidence/target-run/<셀>/`에 쌓입니다(`TARGET_OUT=`으로 변경). 이미 있는 셀
+폴더는 덮어쓰지 않으므로, 같은 명령을 다시 돌리려면 `TARGET_OUT=`을 새 폴더로 바꿉니다.
 
-python-tarfile은 한 번에 축 하나만 바꿉니다: 같은 런타임에서 필터 비교(위 예) 또는 같은 필터에서 런타임 버전
-비교(`TARGET_VERSIONS="3.12.3 3.12.16" TARGET_FILTERS=data`). decompress는 버전 칸에 패키지 이름까지 적어 원본
-`decompress`(4.2.1, 유지보수 끊김)와 유지보수되는 fork `@xhmikosr/decompress`를 구분합니다.
-마지막 줄 `TARGET-RUN PASS|FAIL|ERROR ...`가 판정입니다. **판정이 FAIL이나 ERROR면 `make`도 `Error 1`로
-끝납니다.** 프로그램이 죽은 것이 아니라 위반(또는 실행 오류)을 찾았다는 신호이고, 결과 파일은 그대로 남습니다.
+| 파일 | 내용 |
+| --- | --- |
+| `summary.md` | 한 장 요약: 대상·버전·판정·케이스별 결과·재현 방법. 먼저 이것을 엽니다 |
+| `result.json` | 공통 결과 형식 `inodefence-target-result-v1` |
+| `inputs/*.tar` | 실제로 풀어 본 입력 TAR(SHA-256은 `result.json`에) |
+| `raw/*.json` | 대상별 원시 관찰 |
 
-**한 장 요약 보기.** 결과 파일 하나를 넣으면 대상·버전·판정·케이스별 결과·재현 방법을 담은 Markdown이 나옵니다.
-같은 파일이면 같은 요약이 나오고, 저장된 입력 TAR의 SHA-256도 대조합니다.
-
-```bash
-PYTHONPATH=src python3.12 -m inodefence.target_result_summary ~/inodefence-evidence/target-run/node-tar-7.5.2/result.json -o summary.md
-```
-
-`-o`를 빼면 화면에 출력합니다. 판정 기준(C0/C1/C2)의 정확한 정의는 [security-contracts](docs/research/design/security-contracts.md)에 있습니다.
+마지막 줄들의 `TARGET-RUN PASS|FAIL|ERROR ...`가 셀별 판정입니다. 종료 코드는 0 PASS, 1 FAIL, 2 ERROR(셀 중 가장
+나쁜 판정), 3 일부 또는 모든 셀이 판정되지 않음(거부된 입력·이미 있는 결과·설정·준비·이미지 문제)입니다. **판정이
+FAIL이면 `make`도 `Error 1`로 끝납니다.** 프로그램이 죽은 것이 아니라 위반을 찾았다는 신호이고, 결과 파일은 그대로
+남습니다. 요약은 결과 파일 하나로 다시 만들 수도 있습니다:
+`PYTHONPATH=src python3.12 -m inodefence.target_result_summary <셀>/result.json`.
+판정 기준(C0/C1/C2)의 정확한 정의는 [security-contracts](docs/research/design/security-contracts.md)에 있습니다.
 
 ## 우리가 해결하려는 문제
 

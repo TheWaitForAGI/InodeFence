@@ -2,6 +2,7 @@
 
 import json
 from types import SimpleNamespace
+from typing import cast
 
 import pytest
 from scripts.run_node_tar_explore import (
@@ -13,6 +14,7 @@ from scripts.run_node_tar_explore import (
     explore_case_from_run,
 )
 
+from inodefence.effect_pipeline import NativeEffectRun
 from inodefence.model import ExecutionStatus
 from inodefence.target_result import RUN_ERROR, ResultMode, Verdict, from_json_dict
 
@@ -51,13 +53,14 @@ def test_default_confirmatory_set_reads_from_historical_targets() -> None:
     assert excluded_explore_version("7.0.1") is not None  # floor, independent of the set
 
 
-def _fake_run(status: ExecutionStatus, c0: bool, c1: bool, c2: bool) -> SimpleNamespace:
+def _fake_run(status: ExecutionStatus, c0: bool, c1: bool, c2: bool) -> NativeEffectRun:
+    # A duck-typed stand-in: explore_case_from_run reads only status and the contract verdicts.
     violations = [
         SimpleNamespace(contract_id=SimpleNamespace(value=name), violated=flag)
         for name, flag in (("C0", c0), ("C1", c1), ("C2", c2))
     ]
     base = SimpleNamespace(execution=SimpleNamespace(status=status), violations=violations)
-    return SimpleNamespace(result=SimpleNamespace(base_result=base))
+    return cast(NativeEffectRun, SimpleNamespace(result=SimpleNamespace(base_result=base)))
 
 
 def test_explore_case_from_run_success_maps_the_oracle_tristate() -> None:

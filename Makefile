@@ -129,6 +129,17 @@ TARGET_OUT ?= $(HOME)/inodefence-evidence/target-run
 target-run:
 	PYTHONPATH=src:. $(PYTHON) scripts/run_target.py --target $(TARGET) $(foreach v,$(TARGET_VERSIONS),--version $(v)) $(foreach f,$(TARGET_FILTERS),--extraction-filter $(f)) $(if $(filter 1,$(AUTO_PREPARE)),--auto-prepare) $(if $(IMAGE_TAG_SUFFIX),--image-tag-suffix=$(IMAGE_TAG_SUFFIX)) $(if $(filter --dry-run,$(TARGET_ARGS)),,--out $(TARGET_OUT)) $(TARGET_ARGS)
 
+# Point the fuzzer at a node-tar version (latest or exact) and run the existing effect loop on it,
+# so a distributor can try their version before release. Prepares the image host-side
+# (AUTO_PREPARE=1 required; network) then runs the loop inside the isolated controller. Output is
+# OUTSIDE the repo (EXPLORE_OUT). Host terminal only (docker + controller build).
+#   make target-explore TARGET=node-tar TARGET_VERSIONS="latest" AUTO_PREPARE=1 BUDGET=20 SEED=123
+BUDGET ?= 20
+SEED ?= 123
+EXPLORE_OUT ?= $(HOME)/inodefence-explore
+target-explore:
+	PYTHONPATH=src:. $(PYTHON) scripts/run_target_explore.py --target $(TARGET) $(foreach v,$(TARGET_VERSIONS),--version $(v)) --budget $(BUDGET) --seed $(SEED) $(if $(filter 1,$(AUTO_PREPARE)),--auto-prepare) $(if $(IMAGE_TAG_SUFFIX),--image-tag-suffix=$(IMAGE_TAG_SUFFIX)) --out $(EXPLORE_OUT) $(TARGET_ARGS)
+
 # Offline replay planner: read a demo report (REPORT=<path>) and reproduce its run
 # command, binding the recorded image recipe to the committed one and checking the
 # recorded case_id sequence. Runs no docker; native re-execution is the Runtime lane.

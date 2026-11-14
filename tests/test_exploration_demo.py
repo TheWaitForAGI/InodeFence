@@ -55,7 +55,7 @@ def test_exploration_matches_historical_except_the_labelling(
     _stub_campaign(monkeypatch, "7.5.2")
     hist = historical_demo_report(BACKEND, IMAGE, "7.5.2", seed=1, budget=5)
     expl = exploration_demo_report(BACKEND, IMAGE, "7.5.2", seed=1, budget=5)
-    only_in_explore = {"qualification", "requested_spec"}
+    only_in_explore = {"qualification", "requested_spec", "case_records", "violation_inputs"}
     assert set(expl) - set(hist) == only_in_explore
     # timing is wall-clock and differs run-to-run by design; everything else is deterministic.
     differ = {k for k in hist if hist[k] != expl.get(k)}
@@ -90,3 +90,46 @@ def test_historical_still_rejects_an_unregistered_version_but_exploration_binds(
     with pytest.raises(RuntimeError, match="bind reached"):
         exploration_demo_report(BACKEND, IMAGE, "7.5.23", budget=5)
     assert reached == [IMAGE]  # no allowlist rejection before binding
+
+
+def _violation_capture_report(monkeypatch: pytest.MonkeyPatch, *, violating: bool) -> dict:
+    """Drive exploration_demo_report with a fake run whose oracle verdict we control."""
+
+    class _Verdict:
+        def __init__(self, cid: str, hit: bool) -> None:
+            self.contract_id = type("C", (), {"value": cid})()
+            self.violated = hit
+
+    verdicts = [_Verdict("C0", False), _Verdict("C1", violating), _Verdict("C2", False)]
+    execution = type("E", (), {"status": rd.ExecutionStatus.SUCCESS})()
+    base = type("B", (), {"violations": verdicts, "execution": execution})()
+    fake_run = type("R", (), {"base_result": base})()
+    monkeypatch.setattr(rd, "_native_effect_producer", lambda *a, **k: lambda case: fake_run)
+
+    def fake_campaign(cases: Any, produce: Any, config: object, on_step: object = None) -> object:
+        produce(list(cases)[0])  # one real seed case, so build_tar produces real bytes
+        return object()
+
+    monkeypatch.setattr(rd, "run_effect_campaign", fake_campaign)
+    monkeypatch.setattr(rd, "effect_campaign_report", lambda r, p: {"demo_report_schema": 4})
+    monkeypatch.setattr(rd, "_historical_oracle_events", lambda r: [])
+    monkeypatch.setattr(
+        rd.NodeTarEffectTarget, "bind", classmethod(lambda cls, b, i, **k: _FakeTarget("7.5.23"))
+    )
+    return exploration_demo_report(BACKEND, IMAGE, "7.5.23", seed=1, budget=5)
+
+
+def test_exploration_records_all_cases_but_saves_only_violating_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    report = _violation_capture_report(monkeypatch, violating=True)
+    (case,) = report["case_records"]  # every run is recorded with its verdict
+    assert case["outcome"] == "extracted" and case["c1"] is True and case["c0"] is False
+    (saved,) = report["violation_inputs"]  # only the violating run's TAR is kept
+    assert saved["run_index"] == case["run_index"]
+    assert len(saved["tar_sha256"]) == 64 and saved["tar_b64"]
+
+
+def test_exploration_saves_no_input_when_no_violation(monkeypatch: pytest.MonkeyPatch) -> None:
+    report = _violation_capture_report(monkeypatch, violating=False)
+    assert len(report["case_records"]) == 1 and report["violation_inputs"] == []

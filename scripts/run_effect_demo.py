@@ -6,6 +6,7 @@ evidence. `native_demo_report` runs inside the trusted Linux controller
 """
 
 import argparse
+import base64
 import json
 import sys
 import traceback
@@ -15,6 +16,7 @@ from hashlib import sha256
 from pathlib import Path, PurePosixPath
 from time import perf_counter
 
+from inodefence.builder import build_tar
 from inodefence.effect_campaign import (
     EffectCampaignConfig,
     EffectCampaignResult,
@@ -576,7 +578,7 @@ def exploration_demo_report(
     target = NodeTarEffectTarget.bind(backend, image_id, profile=NativeEffectProfile.FULL)
     checks: list[dict[str, object]] = []
     timing: list[dict[str, object]] = []
-    produce = _native_effect_producer(
+    base_produce = _native_effect_producer(
         target,
         sentinels,
         stall_recovery,
@@ -584,6 +586,44 @@ def exploration_demo_report(
         timing=timing,
         observer_integrity_continue=observer_integrity_continue,
     )
+    # Keep the input of every case the oracle flags as a violation so a maintainer can
+    # reproduce it off-repo; only violating cases are saved (a large budget makes keeping
+    # every case's TAR wasteful). The base producer, loop, feedback and oracle are unchanged.
+    case_records: list[dict[str, object]] = []
+    violation_inputs: list[dict[str, object]] = []
+
+    def produce(case: ArchiveCase) -> EffectRunResult:
+        run_index = len(checks)
+        result = base_produce(case)
+        base = result.base_result
+        if base.execution.status is not ExecutionStatus.SUCCESS:
+            record = {
+                "run_index": run_index,
+                "outcome": "run_error",
+                "c0": None,
+                "c1": None,
+                "c2": None,
+            }
+        else:
+            hit = {v.contract_id.value: v.violated for v in base.violations}
+            record = {
+                "run_index": run_index,
+                "outcome": "extracted",
+                "c0": hit.get("C0"),
+                "c1": hit.get("C1"),
+                "c2": hit.get("C2"),
+            }
+        case_records.append(record)
+        if record["c0"] or record["c1"] or record["c2"]:
+            tar = build_tar(case)
+            violation_inputs.append(
+                {
+                    "run_index": run_index,
+                    "tar_sha256": sha256(tar).hexdigest(),
+                    "tar_b64": base64.b64encode(tar).decode("ascii"),
+                }
+            )
+        return result
 
     reporter = EffectStepReporter()
 
@@ -608,6 +648,8 @@ def exploration_demo_report(
         native_checks=checks,
         oracle_detected_events=_historical_oracle_events(result),
         timing={"total_seconds": total, "per_case": timing},
+        case_records=case_records,
+        violation_inputs=violation_inputs,
     )
     apply_sentinel_set_record(report, sentinel_set)
     apply_infra_reexecutions(report, stall_recovery)

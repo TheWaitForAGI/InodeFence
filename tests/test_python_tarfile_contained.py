@@ -206,7 +206,8 @@ def test_exploration_runs_the_shared_loop_on_one_runtime_and_one_filter() -> Non
     assert len(report["case_records"]) == budget == len(steps)
     assert report["undetermined_steps"] == 0 and report["all_undetermined"] is False
     for record in report["case_records"]:
-        assert record["outcome"] in ("extracted", "rejected", "failed")
+        assert record["outcome"] == "judged"
+        assert record["termination"] in ("success", "rejected", "failed")
     assert len(report["violation_inputs"]) == sum(
         bool(r["c0"] or r["c1"] or r["c2"]) for r in report["case_records"]
     )
@@ -358,7 +359,7 @@ def test_worker_reports_a_non_tarerror_exception_instead_of_crashing() -> None:
 def test_a_reported_extraction_failure_keeps_its_oracle_verdict() -> None:
     result = run_python_tarfile_contained_case(_DANGLING_HARDLINK, _target("data"))
     record = case_record(0, result)
-    assert record["outcome"] == "failed"
+    assert (record["outcome"], record["termination"]) == ("judged", "failed")
     assert (record["c0"], record["c1"], record["c2"]) == (False, False, False)
 
 
@@ -369,13 +370,17 @@ def test_an_unreadable_report_is_still_undetermined() -> None:
     assert case_record(0, result)["outcome"] == "run_error"
 
 
-def test_outcome_labels_follow_the_common_contract() -> None:
-    from inodefence.python_tarfile_explore import OBSERVED_OUTCOME
-
-    assert set(OBSERVED_OUTCOME.values()) == {"extracted", "rejected", "failed", "timed_out"}
-    declined = run_python_tarfile_contained_case(_FIX["c1"].case, _target("data"))
-    assert case_record(0, declined)["outcome"] == "rejected"
-    assert (
-        case_record(0, run_python_tarfile_contained_case(_FIX["normal"].case, _target()))["outcome"]
-        == "extracted"
+def test_judgment_and_termination_are_separate_axes() -> None:
+    rejected = case_record(0, run_python_tarfile_contained_case(_FIX["c1"].case, _target("data")))
+    assert (rejected["outcome"], rejected["termination"]) == ("judged", "rejected")
+    extracted = case_record(0, run_python_tarfile_contained_case(_FIX["normal"].case, _target()))
+    assert (extracted["outcome"], extracted["termination"]) == ("judged", "success")
+    assert extracted["observation_complete"] is True
+    unread = case_record(
+        0,
+        run_python_tarfile_contained_case(
+            _FIX["normal"].case, _target("data", _LocalBackend(broken=True))
+        ),
     )
+    assert unread["outcome"] == "run_error" and unread["observation_complete"] is False
+    assert (unread["c0"], unread["c1"], unread["c2"]) == (None, None, None)

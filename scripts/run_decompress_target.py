@@ -46,6 +46,7 @@ import re
 import subprocess
 import sys
 from collections.abc import Callable
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -391,6 +392,62 @@ def _run(cell: RunCell) -> list[CaseRun]:
         raw = run_one(package, version, tar_b64, image=cell.image_ref)
         runs.append(fixture_case(fixture, raw))
     return runs
+
+
+# ---- one call for exploration: resolve, reuse-or-prepare, then check the exploration worker ----
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedDecompress:
+    """A decompress image that exists locally and whose exploration worker passed its check."""
+
+    requested: str  # what the caller asked for (``<package>@latest`` or an exact spec)
+    spec: str  # the exact ``<package>@<version>`` inside the image
+    image_ref: str
+    image_id: str
+    exploratory: bool  # True: registry-prepared; False: committed recipe
+    worker_check: str  # the offline identify+frame result
+
+
+def verify_existing(cell: RunCell, image_ref: str) -> str | None:
+    """Check a cell image before it is (re)used for exploration; ``None`` or the refusal reason.
+
+    Existing images are otherwise reused unchecked, and an image built before the worker had
+    ``frame`` binds fine (``identify`` exists) but then fails every step, which a campaign would
+    report as a clean negative. This runs the same offline identify+frame check as registry
+    preparation, for committed-recipe and registry images alike.
+    """
+    package, version = parse_spec(cell.axes.target_version or "")
+    check = registry.worker_check(registry.subprocess.run, image_ref, package, version)
+    if check["ok"]:
+        return None
+    return f"worker incompatible (decompress worker) in {image_ref}: {check['reason']}; rebuild it"
+
+
+def ensure_image(spec: str, *, image_tag_suffix: str = "") -> PreparedDecompress:
+    """Resolve ``spec``, reuse or prepare its image, and refuse it unless the worker check passes.
+
+    Same path as ``make target-run TARGET=decompress ... AUTO_PREPARE=1``; may use the network.
+    Raises ``ValueError`` with the reason (no image is tagged by a failed preparation).
+    """
+    from scripts.run_target import resolve_images, with_tag_suffix
+
+    (exact,) = _resolve([spec])
+    (cell,) = _cells([exact], [])
+    cell = with_tag_suffix(cell, image_tag_suffix)
+    ref = cell.image_ref
+    if ref is None:
+        raise ValueError(f"decompress {spec}: no image for this version")
+    ready, errors = resolve_images(ADAPTER, [cell], auto_prepare=True)
+    if ref in errors:
+        raise ValueError(errors[ref])
+    package, version = parse_spec(exact)
+    check = registry.worker_check(registry.subprocess.run, ref, package, version)
+    if not check["ok"]:
+        raise ValueError(
+            f"worker incompatible (decompress worker) in {ref}: {check['reason']}; rebuild it"
+        )
+    return PreparedDecompress(spec, exact, ref, ready[ref], cell.exploratory, check["reason"])
 
 
 ADAPTER = TargetAdapter(

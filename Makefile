@@ -136,7 +136,7 @@ target-run:
 #   make target-explore TARGET=node-tar TARGET_VERSIONS="latest" AUTO_PREPARE=1 BUDGET=20 SEED=123
 BUDGET ?= 20
 SEED ?= 123
-EXPLORE_OUT ?= $(HOME)/inodefence-evidence/target-explore
+EXPLORE_OUT ?= $(HOME)/inodefence-explore
 target-explore:
 	PYTHONPATH=src:. $(PYTHON) scripts/run_target_explore.py --target $(TARGET) $(foreach v,$(TARGET_VERSIONS),--version $(v)) --budget $(BUDGET) --seed $(SEED) $(if $(filter 1,$(AUTO_PREPARE)),--auto-prepare) $(if $(IMAGE_TAG_SUFFIX),--image-tag-suffix=$(IMAGE_TAG_SUFFIX)) --out $(EXPLORE_OUT) $(TARGET_ARGS)
 

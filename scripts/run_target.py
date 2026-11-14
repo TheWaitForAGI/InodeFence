@@ -133,6 +133,47 @@ def prepare_unsupported(cell: RunCell) -> PrepareStep:
 
 
 @dataclass(frozen=True, slots=True)
+class PreparedTargetImage:
+    """A prepared, version-verified extractor image handed to a target's explore hook."""
+
+    target: str
+    requested: str  # the spec asked for ("latest" or an exact version)
+    version: str  # the exact version inside the image
+    image_ref: str
+    image_id: str
+    exploratory: bool  # True: registry-prepared (no committed recipe)
+
+
+@dataclass(frozen=True, slots=True)
+class ExploreOptions:
+    """Target-agnostic exploration options. Later PRs extend this (search / mutation policy, stop
+    conditions, output sinks, mirror, poll interval); a hook reads the fields it supports and
+    records the chosen values in the result provenance, and ignores ones it has no use for."""
+
+    budget: int
+    seed: int
+    out: Path
+    image_tag_suffix: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class ExploreOutcome:
+    """What a target's explore hook reports back: where it wrote the common campaign result."""
+
+    result_path: Path
+    verdict: str  # PASS / FAIL / ERROR
+    runs: int
+    violations: int
+
+
+#: A target's exploration hook: open a campaign on an already-prepared image and write the common
+#: ``inodefence-target-result-v1`` campaign result. Everything target-specific (controller mode,
+#: run program, target-specific observation) lives behind this hook; the driver that prepares the
+#: image, the result format, the options, the output and the stop conditions are target-agnostic.
+ExploreHook = Callable[[PreparedTargetImage, ExploreOptions], ExploreOutcome]
+
+
+@dataclass(frozen=True, slots=True)
 class TargetAdapter:
     """What a target supplies.
 
@@ -157,6 +198,10 @@ class TargetAdapter:
     #: Optional: turn symbolic versions (e.g. ``latest``) into exact ones before ``cells``; may use
     #: the network, so it is skipped by --dry-run (``ValueError(reason)`` refuses).
     resolve: Callable[[list[str]], list[str]] | None = None
+    #: Optional: open an exploration campaign on a prepared image (``PreparedTargetImage``) and
+    #: write the common campaign result. ``None`` (default) means this target does not support
+    #: exploration yet; the driver then reports that and stops.
+    explore: ExploreHook | None = None
 
 
 def fixture_case(fixture: rc.RegressionFixture, raw: dict[str, Any]) -> CaseRun:

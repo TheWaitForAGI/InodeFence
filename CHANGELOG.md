@@ -37,7 +37,7 @@ make target-run TARGET=node-tar TARGET_VERSIONS="7.5.2 7.5.3" AUTO_PREPARE=1 PYT
 | `node-tar` | 대상 버전 | 7.5.2: 5건 중 2건 위반(하드링크 입력 2건, C1·C2). 7.5.3: 5건 모두 거부, 위반 0. 같은 시점 `make regression`과 입력별 결과 10/10 일치 |
 | `python-tarfile` | 추출 필터 또는 런타임 버전(한 번에 하나만) | 3.12.16 `fully_trusted`: 5건 모두 위반. 3.12.16 `data`: 위반 0. `data` 고정 3.12.3·3.12.16: 둘 다 위반 0 |
 | `oras-go` | 대상 버전 | 2.6.1: 6건 중 1건 위반(작업 디렉터리 기준 하드링크 입력). 2.6.2: 위반 0 |
-| `decompress` | 버전 칸에 패키지까지(`decompress@4.2.1` 원본, `@xhmikosr/decompress@11.1.4` 유지보수 fork) | 원본 4.2.1: 5건 중 4건 위반(하드링크 2건 C1·C2, 심볼릭 링크 뒤 쓰기 C2). fork 11.1.4: 5건 모두 거부, 위반 0. 입력 1건은 실행마다 결과가 다름(한계 참고) |
+| `decompress` | 버전 칸에 패키지까지(`decompress@4.2.1` 원본, `@xhmikosr/decompress@11.1.4` 유지보수 fork) | 원본 4.2.1: 5건 중 3~4건 위반(입력 1건은 실행마다 달라짐; 하드링크 2건 C1·C2와 심볼릭 링크 뒤 쓰기 C2). FAIL 판정 자체는 결정적인 하드링크 입력 2건 때문에 안정적이다. fork 11.1.4: 5건 모두 거부, 위반 0 |
 
 **확인한 환경.** macOS(arm64) + Docker Desktop과 Windows + WSL2(x86_64) + Docker Desktop.
 - WSL2(#405 브랜치 기준, 팀 확인): `AUTO_PREPARE=1`로 네 대상의 준비 → 버전 확인 → 실행 → 판정이 맥북(arm64)과 같은
@@ -63,6 +63,8 @@ make target-run TARGET=node-tar TARGET_VERSIONS="7.5.2 7.5.3" AUTO_PREPARE=1 PYT
 | decompress | 원본 `decompress@4.2.1`, fork `@xhmikosr/decompress@11.1.4`(패키지 이름까지 일치해야 함) | 둘 다(준비→실행) |
 
 표에 없는 버전은 거부되며(종료 코드 3), 지원한다고 하지 않는다.
+node-tar 7.0.1·7.1.0·7.2.0·7.3.0·7.4.4는 진행 중인 실험과 겹쳐, 이 릴리스 준비 기간에는 `make target-run`으로 실행하거나
+새로 준비하지 않는다(위의 7.4.4 준비·확인은 이 결정 전 기록이다). 예제와 재현은 7.5.x로만 한다.
 
 - 자동 준비한 이미지는 같은 버전을 같은 커밋된 레시피로 새로 빌드(python은 공식 이미지를 pull)한 것이다. 예전 증거
   실행에 쓴 이미지와 같다고 하지 않는다. image id는 빌드마다 다르고, 결과 파일 `provenance.image_id`가 실제로 쓴
@@ -75,7 +77,8 @@ make target-run TARGET=node-tar TARGET_VERSIONS="7.5.2 7.5.3" AUTO_PREPARE=1 PYT
 
 - **입력은 하드링크 중심이다.** 고정 입력은 하드링크 2건과 심볼릭 링크 뒤 쓰기 3건(oras-go는 하드링크 1건 추가)뿐이고,
   `make target-run`은 입력을 바꿔 가며 탐색하지 않는다. node-tar와 oras-go에서 나온 위반은 모두 하드링크 입력이다.
-- **decompress 4.2.1의 입력 1건(`nested_symlink_write`)은 실행마다 결과가 다르다.** 동시 쓰기 경쟁 때문이며, 같은
+- **decompress 4.2.1의 입력 1건(`nested_symlink_write`)은 실행마다 결과가 다르다.** 대상 프로그램 자체의 확인과 사용
+  사이 경쟁 때문이며(판정기의 비결정성이 아니다, #406), 같은
   조건 10회 중 8회 위반(C2)·2회 거부였다(fork는 10회 모두 거부, 나머지 입력은 안정). 그래서 4.2.1의 위반 건수는
   실행에 따라 4/5 또는 3/5가 될 수 있다.
 - **python-tarfile 결과는 필터 설정 비교다.** `fully_trusted`와 `data`의 차이는 같은 런타임 안의 설정 차이이고, Python

@@ -57,6 +57,11 @@ def identify():
 def extract(archive, root, policy):
     reached = 0
     status, code, error = "success", 0, None
+
+    def refused(ordinal, exc, kind):
+        print(json.dumps({"ordinal": ordinal, "status": "errored", "error": type(exc).__name__}))
+        return kind, 2 if kind == "rejected" else 3, f"{type(exc).__name__}: {exc}"
+
     try:
         with tarfile.open(archive, mode="r:") as tar:
             tar.errorlevel = 2
@@ -65,17 +70,17 @@ def extract(archive, root, policy):
                 try:
                     tar.extract(member, root, filter=policy)
                 except tarfile.FilterError as exc:
-                    print(
-                        json.dumps(
-                            {"ordinal": ordinal, "status": "errored", "error": type(exc).__name__}
-                        )
-                    )
-                    status, code, error = "rejected", 2, f"{type(exc).__name__}: {exc}"
+                    status, code, error = refused(ordinal, exc, "rejected")
+                    break
+                except Exception as exc:  # noqa: BLE001 - any extractor error ends the run
+                    # tarfile raises more than TarError/OSError (e.g. KeyError for a hard link
+                    # whose target is not in the archive); every one is the extractor's outcome.
+                    status, code, error = refused(ordinal, exc, "failed")
                     break
                 print(json.dumps({"ordinal": ordinal, "status": "succeeded", "error": None}))
     except tarfile.FilterError as exc:
         status, code, error = "rejected", 2, f"{type(exc).__name__}: {exc}"
-    except (tarfile.TarError, OSError) as exc:
+    except Exception as exc:  # noqa: BLE001 - opening/reading the archive failed
         status, code, error = "failed", 3, f"{type(exc).__name__}: {exc}"
     print(
         json.dumps(

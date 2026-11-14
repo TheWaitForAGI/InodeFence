@@ -12,6 +12,8 @@ import scripts.run_effect_demo as rd
 from scripts.run_effect_demo import exploration_demo_report, historical_demo_report
 
 IMAGE = "sha256:" + "0" * 64
+# Stand-in backend: only bind/campaign are exercised and they are stubbed.
+BACKEND: Any = object()
 
 
 class _FakeTarget:
@@ -34,8 +36,8 @@ def _stub_campaign(monkeypatch: pytest.MonkeyPatch, tar_version: str) -> None:
 def test_exploration_report_is_labelled_non_qualification(monkeypatch: pytest.MonkeyPatch) -> None:
     _stub_campaign(monkeypatch, "7.5.23")
     report = exploration_demo_report(
-        object(), IMAGE, "7.5.23", seed=1, budget=5, requested_spec="latest"
-    )  # type: ignore[arg-type]
+        BACKEND, IMAGE, "7.5.23", seed=1, budget=5, requested_spec="latest"
+    )
     assert report["label"] == "exploratory demo run"
     assert report["mode"] == "exploration"
     assert report["qualification"] is False
@@ -51,8 +53,8 @@ def test_exploration_matches_historical_except_the_labelling(
     # 7.5.2 is a historical catalog member, so historical passes its gate and both run the
     # same stubbed loop; the reports must then differ only by the exploration labelling.
     _stub_campaign(monkeypatch, "7.5.2")
-    hist = historical_demo_report(object(), IMAGE, "7.5.2", seed=1, budget=5)  # type: ignore[arg-type]
-    expl = exploration_demo_report(object(), IMAGE, "7.5.2", seed=1, budget=5)  # type: ignore[arg-type]
+    hist = historical_demo_report(BACKEND, IMAGE, "7.5.2", seed=1, budget=5)
+    expl = exploration_demo_report(BACKEND, IMAGE, "7.5.2", seed=1, budget=5)
     only_in_explore = {"qualification", "requested_spec"}
     assert set(expl) - set(hist) == only_in_explore
     # timing is wall-clock and differs run-to-run by design; everything else is deterministic.
@@ -75,7 +77,7 @@ def test_historical_still_rejects_an_unregistered_version_but_exploration_binds(
 ) -> None:
     # Historical keeps its allowlist: 7.5.23 is refused before binding.
     with pytest.raises(ValueError):
-        historical_demo_report(object(), IMAGE, "7.5.23", budget=5)  # type: ignore[arg-type]
+        historical_demo_report(BACKEND, IMAGE, "7.5.23", budget=5)
 
     # Exploration has no version gate: it reaches bind for the same version.
     reached: list[str] = []
@@ -86,5 +88,5 @@ def test_historical_still_rejects_an_unregistered_version_but_exploration_binds(
 
     monkeypatch.setattr(rd.NodeTarEffectTarget, "bind", classmethod(bind))
     with pytest.raises(RuntimeError, match="bind reached"):
-        exploration_demo_report(object(), IMAGE, "7.5.23", budget=5)  # type: ignore[arg-type]
+        exploration_demo_report(BACKEND, IMAGE, "7.5.23", budget=5)
     assert reached == [IMAGE]  # no allowlist rejection before binding

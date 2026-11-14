@@ -9,6 +9,23 @@ from pathlib import Path
 RUNTIME_ROOT = Path(os.environ.get("INODEFENCE_RUNTIME_ROOT", "/var/lib/inodefence"))
 
 
+def setup_problems(runtime_root: Path) -> list[str]:
+    """Missing prerequisites, each with the command that fixes it (empty if none)."""
+    problems = []
+    if sys.version_info[:2] != (3, 12):
+        found = f"{sys.version_info[0]}.{sys.version_info[1]}"
+        problems.append(
+            f"Python 3.12 required, found {found}; "
+            "use the Dev Container or run make with PYTHON=python3.12"
+        )
+    if not runtime_root.is_dir():
+        problems.append(
+            f"runtime root {runtime_root} does not exist; create it with: "
+            f'sudo mkdir -p {runtime_root} && sudo chown "$(id -u):$(id -g)" {runtime_root}'
+        )
+    return problems
+
+
 def main() -> None:
     print("=== InodeFence Environment Check ===")
     print(f"OS: {platform.system()} {platform.release()}")
@@ -17,9 +34,11 @@ def main() -> None:
     print(f"Interpreter: {sys.executable}")
     print(f"Runtime root: {RUNTIME_ROOT}")
 
-    assert sys.version_info[:2] == (3, 12)
-    assert RUNTIME_ROOT.exists()
-    assert RUNTIME_ROOT.is_dir()
+    problems = setup_problems(RUNTIME_ROOT)
+    for problem in problems:
+        print(f"ENV-CHECK SETUP: {problem}", file=sys.stderr)
+    if problems:
+        raise SystemExit(1)
 
     with tempfile.TemporaryDirectory(dir=RUNTIME_ROOT) as temp_dir:
         root = Path(temp_dir)

@@ -154,7 +154,7 @@ def dirname(package: str, version: str) -> str:
     return f"{TARGET}-{version}" if slug == TARGET else f"{TARGET}-{slug}-{version}"
 
 
-def docker_command(version: str, tar_b64: str) -> list[str]:
+def docker_command(version: str, tar_b64: str, image: str | None = None) -> list[str]:
     """Same isolation as ``decompress_hardlink.run_probe``; only the program differs.
 
     ``--pull never`` keeps the run step off the network for images too: a missing pinned image is a
@@ -181,7 +181,7 @@ def docker_command(version: str, tar_b64: str) -> list[str]:
         f"REF_B64={base64.b64encode(REFERENCE_CONTENT).decode()}",
         "--entrypoint",
         "/usr/local/bin/node",
-        image_ref(version),
+        image or image_ref(version),
         "-e",
         JS_PROGRAM,
     ]
@@ -204,12 +204,17 @@ def parse_output(stdout: str, package: str, version: str) -> dict[str, Any] | No
 
 
 def run_one(
-    package: str, version: str, tar_b64: str, *, runner: Runner = subprocess.run
+    package: str,
+    version: str,
+    tar_b64: str,
+    *,
+    image: str | None = None,
+    runner: Runner = subprocess.run,
 ) -> dict[str, Any]:
     """Extract one TAR in a fresh container; a failed or unverifiable run is ``_run_error``."""
     try:
         done = runner(
-            docker_command(version, tar_b64),
+            docker_command(version, tar_b64, image),
             capture_output=True,
             text=True,
             timeout=TIMEOUT_SECONDS,
@@ -256,8 +261,10 @@ def _run(cell: RunCell) -> list[CaseRun]:
     assert cell.axes.target_version is not None
     package, version = parse_spec(cell.axes.target_version)
     runs = []
+    assert cell.image_ref is not None
     for fixture in rc.build_fixtures():
-        raw = run_one(package, version, base64.b64encode(fixture.tar).decode())
+        tar_b64 = base64.b64encode(fixture.tar).decode()
+        raw = run_one(package, version, tar_b64, image=cell.image_ref)
         runs.append(fixture_case(fixture, raw))
     return runs
 

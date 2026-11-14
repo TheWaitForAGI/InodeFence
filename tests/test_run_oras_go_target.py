@@ -82,6 +82,8 @@ def test_version_pair_writes_common_results(
 ) -> None:
     monkeypatch.setattr(rog.ogh, "run_probe", _fake_probe({"cwd_relative_hardlink"}))
     monkeypatch.setattr(rt, "engine_provenance", lambda image: rt.Provenance(None, True, image))
+    monkeypatch.setattr(rt, "docker_problem", lambda: None)  # no docker here; images "present"
+    monkeypatch.setattr(rt, "image_id", lambda ref: f"sha256:{ref}")
     argv = ["--target", "oras-go", "--version", "2.6.1", "--version", "2.6.2", "--out"]
     assert rt.main([*argv, str(tmp_path)]) == 1
 

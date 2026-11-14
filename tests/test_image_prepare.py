@@ -216,3 +216,76 @@ def test_generic_helper_names_no_target() -> None:
     text = Path(ip.__file__).read_text(encoding="utf-8")
     for name in ("node-tar", "node_tar", "python-tarfile", "oras", "decompress", "tarfile"):
         assert name not in text
+
+
+# ---- verify an already-present image before reusing it ----
+
+
+def _recipe(expected: str = "7.4.4") -> ip.Recipe:
+    return ip.Recipe(
+        description="d", expected=expected, check=(ip.IMAGE_SLOT, "-e", "x"), build=("-f", "D")
+    )
+
+
+def test_check_existing_runs_the_recipe_check_against_the_image_and_passes() -> None:
+    run, calls = _runner(0, "7.4.4\n")
+    assert ip.check_existing(_recipe(), "img:ref", run) is None
+    # it runs the existing image offline, never builds/pulls/retags
+    assert calls[0][:5] == ["docker", "run", "--rm", "--network", "none"]
+    assert "img:ref" in calls[0] and all(c[0] != "docker" or c[1] != "build" for c in calls)
+
+
+@pytest.mark.parametrize(
+    ("code", "out"),
+    [(0, "7.4.3\n"), (1, ""), (0, "")],  # wrong version, check failed, empty output
+)
+def test_check_existing_returns_a_reason_when_the_image_is_wrong(code: int, out: str) -> None:
+    run, _ = _runner(code, out)
+    reason = ip.check_existing(_recipe("7.4.4"), "img:ref", run)
+    assert reason is not None and "7.4.4" in reason
+
+
+def test_recipe_verify_existing_passes_through_a_matching_image() -> None:
+    run, _ = _runner(0, "2.6.1\n")
+    verify = ip.recipe_verify_existing(lambda cell: _recipe("2.6.1"), run)
+    assert verify(_cell("oras-go", "2.6.1", "img:ref"), "sha256:present") is None
+
+
+def test_recipe_verify_existing_reports_an_unsupported_version() -> None:
+    def make(cell: rt.RunCell) -> ip.Recipe:
+        raise ip.UnsupportedVersionError("9.9.9 not pinned")
+
+    verify = ip.recipe_verify_existing(make)
+    assert verify(_cell("oras-go", "9.9.9", "img:ref"), "sha256:present") == "9.9.9 not pinned"
+
+
+def test_recipe_verify_existing_skips_a_cell_with_no_image() -> None:
+    verify = ip.recipe_verify_existing(lambda cell: pytest.fail("no image -> no check"))
+    cell = rt.RunCell(dirname="x", axes=TargetAxes(target_version="1"), image_ref=None)
+    assert verify(cell, "") is None
+
+
+def test_present_image_refused_when_verify_existing_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    import dataclasses
+
+    base = rt.load_adapter("oras-go")
+    adapter = dataclasses.replace(base, verify_existing=lambda cell, img: "reports 2.6.0")
+    cells = adapter.cells(["2.6.1"], [])
+    monkeypatch.setattr(rt, "image_id", lambda ref: "sha256:present")
+    monkeypatch.setattr(rt, "prepare_image", lambda step: pytest.fail("must not prepare over it"))
+    ready, errors = rt.resolve_images(adapter, cells, auto_prepare=True)
+    assert ready == {} and "inodefence-oras-go:2.6.1" in errors
+    assert "reports 2.6.0" in errors["inodefence-oras-go:2.6.1"]
+
+
+def test_present_image_reused_when_verify_existing_passes(monkeypatch: pytest.MonkeyPatch) -> None:
+    import dataclasses
+
+    base = rt.load_adapter("oras-go")
+    seen: list[str] = []
+    adapter = dataclasses.replace(base, verify_existing=lambda cell, img: seen.append(img) or None)
+    cells = adapter.cells(["2.6.1"], [])
+    monkeypatch.setattr(rt, "image_id", lambda ref: "sha256:present")
+    ready, errors = rt.resolve_images(adapter, cells, auto_prepare=True)
+    assert ready == {"inodefence-oras-go:2.6.1": "sha256:present"} and errors == {}
+    assert seen == ["sha256:present"]  # the hook saw the resolved id

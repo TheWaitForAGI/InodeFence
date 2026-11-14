@@ -155,7 +155,7 @@ def test_counts_unjudged_errors_timeouts_rejected_separately(tmp_path: Path) -> 
     rec.on_step(_step(3, status="rejected"))
     progress = _p(live)
     assert progress["unjudged"] == {"steps": 1, "ratio": 0.25}
-    assert (progress["failed"], progress["timeouts"], progress["rejected"]) == (1, 1, 1)
+    assert progress["terminations"] == {"success": 1, "rejected": 1, "failed": 1, "timed_out": 1}
 
 
 def test_files_survive_a_crash_and_close_records_how_it_ended(tmp_path: Path) -> None:
@@ -281,7 +281,9 @@ def test_status_view_shows_counts_cases_pull_and_staleness(tmp_path: Path) -> No
     assert text.startswith("live: running, snapshot 5s ago")
     assert "runs=2" in text and "violations=1 steps / 1 unique" in text
     assert "un-judged=1 (ratio 0.5)" in text
-    assert "run 1: C1 fp=C1-abc" in text and "violations/run-000001/" in text
+    assert "run 1: C1 ended=success REPRO-CHECK fp=C1-abc" in text  # observation not recorded
+    assert "violations/run-000001/" in text
+    assert "ended: success=2 rejected=0 failed=0 timed_out=0" in text
     assert "STALE" not in text
     assert "STALE" in render_live_status(live, now=clock.now + 3600)
 
@@ -327,13 +329,23 @@ def test_adapter_on_real_effect_loop_steps_feeds_the_recorder(tmp_path: Path) ->
     assert _p(tmp_path / "live")["state"] == "finished"
 
 
-def _stand_in(status: ExecutionStatus, violations: tuple[ViolationResult, ...]) -> SimpleNamespace:
+def _stand_in(
+    status: ExecutionStatus,
+    violations: tuple[ViolationResult, ...],
+    *,
+    observation_failure: bool = False,
+    completeness: str = "complete",
+) -> SimpleNamespace:
     case = ArchiveCase((ArchiveEntry("a", EntryType.REGULAR, b"x"),))
     base = SimpleNamespace(
         case=case, execution=SimpleNamespace(status=status), violations=violations
     )
     attempt = SimpleNamespace(operator_id=MutationOperatorId.ADD_ENTRY, applied=True)
-    feedback = SimpleNamespace(observation_failure=False, new_violation_fingerprints=())
+    feedback = SimpleNamespace(
+        observation_failure=observation_failure,
+        new_violation_fingerprints=(),
+        trace_completeness=completeness,
+    )
     return SimpleNamespace(
         index=4,
         origin=SimpleNamespace(value="mutation"),
@@ -387,3 +399,28 @@ def test_adapter_unjudged_uses_the_result_file_rule() -> None:
         assert (no_verdict.c0, no_verdict.c1, no_verdict.c2) == (None, None, None)
         assert no_verdict.unjudged is True
         assert live_step_from_effect(_stand_in(status, (clean,))).unjudged is False
+
+
+def test_repro_check_and_observation_completeness_reach_the_case_file(tmp_path: Path) -> None:
+    rec, _, live = _recorder(tmp_path)
+    rec.on_step(_step(0, c1=True, observation_complete=True))  # success + complete
+    rec.on_step(_step(1, c1=True, status="timed_out", observation_complete=True))
+    rec.on_step(_step(2, c2=True, observation_complete=False))
+    cases = {c["run"]: c for c in list_violation_cases(live)}
+    assert cases[1]["needs_repro_check"] is False and cases[1]["observation_complete"] is True
+    assert cases[2]["needs_repro_check"] is True and cases[2]["status"] == "timed_out"
+    assert cases[3]["needs_repro_check"] is True and cases[3]["observation_complete"] is False
+
+
+def test_adapter_observation_completeness_from_the_loop() -> None:
+    hit = (_identity_hit("extract/a"),)
+    complete = live_step_from_effect(_stand_in(ExecutionStatus.SUCCESS, hit))
+    assert complete.observation_complete is True and not complete.needs_repro_check
+    partial = live_step_from_effect(
+        _stand_in(ExecutionStatus.SUCCESS, hit, completeness="incomplete")
+    )
+    failed_obs = live_step_from_effect(
+        _stand_in(ExecutionStatus.SUCCESS, hit, observation_failure=True)
+    )
+    assert partial.observation_complete is False and partial.needs_repro_check
+    assert failed_obs.observation_complete is False and failed_obs.needs_repro_check

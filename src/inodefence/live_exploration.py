@@ -91,7 +91,10 @@ class LiveStep:
     means the observation was unusable, so the oracle could not rule at all (a silent negative, not
     a clean run). ``fingerprints`` are the ids of every violation class this step showed;
     ``new_fingerprints`` the ones first seen on this step. ``tar_bytes`` is the exact input and is
-    required when the step violated. ``observation`` holds short oracle explanations.
+    required when the step violated. ``observation`` holds short oracle explanations and
+    ``observation_complete`` whether the observation behind the verdicts was complete.
+    ``status`` (termination) and the verdicts are independent axes: a rejected, crashed or timed-out
+    run the oracle judged keeps its verdicts; ``unjudged`` means the oracle was not evaluated.
     """
 
     index: int
@@ -109,6 +112,7 @@ class LiveStep:
     new_fingerprints: tuple[str, ...] = ()
     tar_bytes: bytes | None = None
     observation: tuple[str, ...] = ()
+    observation_complete: bool | None = None
 
     def __post_init__(self) -> None:
         if type(self.index) is not int or self.index < 0:
@@ -123,6 +127,12 @@ class LiveStep:
     @property
     def violated(self) -> bool:
         return self.c0 is True or self.c1 is True or self.c2 is True
+
+    @property
+    def needs_repro_check(self) -> bool:
+        """A violation seen when the target did not succeed or the observation was incomplete
+        (same rule as ``CaseVerdict.needs_repro_check``): still a violation, check it first."""
+        return self.violated and (self.status != "success" or self.observation_complete is not True)
 
     @property
     def contracts(self) -> dict[str, bool | None]:
@@ -172,9 +182,7 @@ class _Counters:
     runs: int = 0
     violation_steps: int = 0
     unjudged: int = 0
-    failed: int = 0
-    timeouts: int = 0
-    rejected: int = 0
+    terminations: dict[str, int] = field(default_factory=lambda: {status: 0 for status in STATUSES})
     first_violation_run: int | None = None
     last_violation_run: int | None = None
     case_dirs_written: int = 0
@@ -233,12 +241,7 @@ class LiveRecorder:
         c.runs = max(c.runs, step.index + 1)
         if step.unjudged:
             c.unjudged += 1
-        if step.status == "failed":
-            c.failed += 1
-        elif step.status == "timed_out":
-            c.timeouts += 1
-        elif step.status == "rejected":
-            c.rejected += 1
+        c.terminations[step.status] += 1
         wrote_case = False
         if step.violated:
             run = step.index + 1
@@ -300,9 +303,9 @@ class LiveRecorder:
                 "steps": c.unjudged,
                 "ratio": round(c.unjudged / c.runs, 6) if c.runs else 0.0,
             },
-            "failed": c.failed,
-            "timeouts": c.timeouts,
-            "rejected": c.rejected,
+            # The termination axis, apart from judgment: "almost everything is rejected" and
+            # "nothing could be judged" must read differently at a glance.
+            "terminations": dict(c.terminations),
             "write_errors": c.write_errors,
             "last_write_error": c.last_write_error,
             "snapshot_every": {"runs": self.every_runs, "seconds": self.every_seconds},
@@ -354,6 +357,8 @@ class LiveRecorder:
             "fingerprints": list(step.fingerprints),
             "new_fingerprints": list(step.new_fingerprints),
             "observation": list(step.observation),
+            "observation_complete": step.observation_complete,
+            "needs_repro_check": step.needs_repro_check,
             "tar": CASE_TAR,
             "tar_sha256": sha256(step.tar_bytes).hexdigest(),
             "tar_bytes": len(step.tar_bytes),
@@ -615,8 +620,12 @@ def render_live_status(
             + (f" ({rate}/s)" if rate is not None else "")
             + f" violations={v.get('steps', 0)} steps / {v.get('unique_fingerprints', 0)} unique"
             + f" un-judged={u.get('steps', 0)} (ratio {u.get('ratio', 0.0)})"
-            + f" failed={progress.get('failed', 0)} timeouts={progress.get('timeouts', 0)}"
-            + f" rejected={progress.get('rejected', 0)}"
+        )
+        t = progress.get("terminations") or {}
+        lines.append(
+            "  ended: "
+            + " ".join(f"{name}={t.get(name, 0)}" for name in STATUSES)
+            + "  (termination is separate from judgment; un-judged = oracle not evaluated)"
         )
         if v.get("first_at_run") is not None:
             lines.append(
@@ -645,7 +654,9 @@ def render_live_status(
             fps = record.get("fingerprints") or []
             lines.append(
                 f"    run {record.get('run')}: {_contracts_hit(record)}"
-                f" fp={','.join(fps) if fps else '-'}"
+                f" ended={record.get('status')}"
+                + (" REPRO-CHECK" if record.get("needs_repro_check") else "")
+                + f" fp={','.join(fps) if fps else '-'}"
                 f" sha256={str(record.get('tar_sha256', ''))[:16]}..."
                 f" {record['dir']}/"
             )

@@ -4,13 +4,12 @@ Audit item (8) asks for a single script that produces every paper table/figure f
 raw. This orchestrates the generators that exist and is **honest about the gaps**:
 
   * Figures (`paper/figures/*.png`) have generators (`render_m2_cross_release.py`,
-    `render_m3_blind_ablation.py`). They render with matplotlib in an ephemeral env
+    `render_exp0_survival.py`). They render with matplotlib in an ephemeral env
     (`uv run --with matplotlib`), which this project's venv does not carry, and matplotlib
     PNG output is not bit-reproducible. So ``--verify`` checks a figure by existence and
     size, not byte-equality, and records that reason.
-  * The M2 and M3 tables now have generators (`gen_table_m2.py` from summary.json,
-    `gen_table_m3.py` from the validated summary table) that reproduce the committed tables
-    **byte-identically**, so ``--verify`` byte-compares them (``verify="byte"``). The
+  * The M2 table has a generator (`gen_table_m2.py` from summary.json) that reproduces the
+    committed table **byte-identically**, so ``--verify`` byte-compares it (``verify="byte"``). The
     capability-ledger summary is still hand-maintained (STATUS-derived, no raw generator),
     checked by existence only.
   * The EXP-0 survival figure's generator (#219) needs ``--report``. Its row is ``optional``:
@@ -99,18 +98,6 @@ ARTIFACTS: tuple[Artifact, ...] = (
         "matplotlib PNG not bit-reproducible; observed verdicts transcribed from raw",
     ),
     Artifact(
-        "paper/figures/m3-blind-ablation.png",
-        "figure",
-        "paper/figures/render_m3_blind_ablation.py",
-        "matplotlib-ephemeral",
-        (
-            "paper/tables/m3-blind-ablation.md",
-            "~/inodefence-evidence/m3-scale-full|m3-ablation (manifest mac-20261103)",
-        ),
-        "size",
-        "matplotlib PNG not bit-reproducible; observed counts transcribed from raw",
-    ),
-    Artifact(
         "paper/tables/m2-cross-release-evidence.md",
         "table",
         "scripts/gen_table_m2.py",
@@ -118,19 +105,6 @@ ARTIFACTS: tuple[Artifact, ...] = (
         ("experiments/repro/evidence/summary.json", "experiments/repro/cross_release_identity.py"),
         "byte",
         "grid derived from summary.json (per_release_shared + fixed_pair); reasons/prose literal",
-        out_flag=True,
-    ),
-    Artifact(
-        "paper/tables/m3-blind-ablation.md",
-        "table",
-        "scripts/gen_table_m3.py",
-        "project",
-        (
-            "experiments/summaries/node-self-discovery-mechanism-v1.md",
-            "raw m3-scale-full|m3-ablation|m3-repro (manifest mac-20261103, host-local)",
-        ),
-        "byte",
-        "data cols from validated summary table (raw mac-host-local); paper labels literal",
         out_flag=True,
     ),
     Artifact(

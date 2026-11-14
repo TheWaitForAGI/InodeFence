@@ -13,8 +13,15 @@ from scripts.run_target import ExploreOutcome, PreparedTargetImage, TargetAdapte
 from inodefence.target_result import ResultMode
 
 
-def test_unsupported_target_reports_and_exits_3(capsys: pytest.CaptureFixture[str]) -> None:
-    # python-tarfile / decompress have no explore hook yet: a real adapter, explore=None.
+def test_unsupported_target_reports_and_exits_3(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Every registered target now has an explore hook, so the "no hook" path is exercised on a
+    # real adapter with its hook removed (explore=None).
+    import dataclasses
+
+    real = rte.load_adapter("decompress")
+    monkeypatch.setattr(rte, "load_adapter", lambda target: dataclasses.replace(real, explore=None))
     assert rte.main(["--target", "decompress", "--version", "decompress@4.2.1"]) == 3
     assert "exploration is not supported for decompress" in capsys.readouterr().err
 

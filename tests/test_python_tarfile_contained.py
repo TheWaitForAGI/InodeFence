@@ -373,6 +373,8 @@ def test_an_unreadable_report_is_still_undetermined() -> None:
 def test_judgment_and_termination_are_separate_axes() -> None:
     rejected = case_record(0, run_python_tarfile_contained_case(_FIX["c1"].case, _target("data")))
     assert (rejected["outcome"], rejected["termination"]) == ("judged", "rejected")
+    # Refused at the first member: no entry was observed, so the trace is not integrity-valid.
+    assert rejected["observation_complete"] is False
     extracted = case_record(0, run_python_tarfile_contained_case(_FIX["normal"].case, _target()))
     assert (extracted["outcome"], extracted["termination"]) == ("judged", "success")
     assert extracted["observation_complete"] is True

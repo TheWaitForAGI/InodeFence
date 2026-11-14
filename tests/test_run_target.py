@@ -143,7 +143,7 @@ def test_dry_run_runs_and_writes_nothing(
             "--target",
             "python-tarfile",
             "--version",
-            "3.12",
+            "3.12-rc",
             "--extraction-filter",
             "data",
             "--dry-run",
@@ -467,7 +467,7 @@ def test_env_check_names_missing_runtime_root_and_fix(tmp_path: Path) -> None:
     "argv",
     [
         ["--target", "node-tar", "--version", "next", "--dry-run"],  # refused version
-        ["--target", "python-tarfile", "--version", "3.12", "--extraction-filter", "data"],
+        ["--target", "python-tarfile", "--version", "3.12-rc", "--extraction-filter", "data"],
         ["--target", "decompress", "--version", "decompress@4.2.0", "--dry-run"],  # not pinned
     ],
 )

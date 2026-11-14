@@ -240,7 +240,7 @@ train에서 사건이 난 캠페인이 1개 이상이고, 용량이 76 이상이
 
 - **핵심 RQ 미판정.** 본실험 결과가 봉인돼 있으므로 피드백의 효과에 대해 어떤 주장도 하지 않는다.
 - **검정력.** 파일럿의 사건 수는 탐색 입력이고 train 7.5.2, k=5에서만 측정됐다. holdout에서 hazard가 다르면 전 arm 위반 0(시나리오 ⑤)이나
-  검정력 부족 판정도 가능한 결과다.[^exp3-sizing] [^pilot-report]
+  검정력 부족 판정도 가능한 결과다.[^pilot-report]
 - **파일럿 abort.** 11/40이 컨테이너 런타임 inspect 실패로 멈췄고 비정보적 중도절단은 입증되지 않았다. 정지로 판정된 case를 버리고 다시 실행하는 통제(D046)와 시작 게이트를 넣었으므로 본실험 경로는 파일럿과 다르다.[^pilot-aborts]
 - **판정의 범위.** snapshot 기반 oracle은 중간 변화, transient 생성 후 삭제, 외부 경로 직접 사용을 복구하지 못한다.
   `violated=False`는 관찰 범위에서 위반 증거가 없다는 뜻이지 안전 증명이 아니다.[^contracts]
@@ -320,7 +320,6 @@ TAR fuzzing, hardlink·symlink 공격, entry 순서, 파일 상태 기반 fuzzin
 [^exp0-clock]: evidence: `experiments/summaries/exp0-20261105-report.md` 편차 1(합산 1.0914, 셀별 1.0855~1.0964; 표기 1.091). 다른 실행에서는 이 배율이 1.00~1.10으로 변했다([파일럿 결과 메모](../../experiments/summaries/exp3-hazard-pilot-v1-result.md) §5). p95 환산값 1.419 s는 셀 안에서 배율이 일정하다고 가정한다. 셀 안 변동은 측정하지 않았고, EXP-0 셀은 짧고 셀별 범위가 좁아 영향은 작을 것으로 본다(추론). 호스트 전체 처리량은 셀 구간 4763, 해시 고정 타임스탬프 4758 exec/h. 실시간 기준, 장기 편차 검증 중.
 [^exp0-manifest]: evidence: `experiments/summaries/raw-manifest-win-20261105-20261105.sha256`(PR #262, sha256 `a9dc149c…`), `scripts/make_raw_manifest.py --verify` 2026-11-06 재실행.
 [^exp3-draft]: evidence: [exp3-v1](../../experiments/preregistration/exp3-v1.md)·[exp2-v1](../../experiments/preregistration/exp2-v1.md)(동결 F `72de299`, #332), PR #248과 #257의 confirmatory 출력.
-[^exp3-sizing]: evidence: [§4.6.3](../sections/05-method.md) "계획 단계 검정력 한계"(PR #216), PR #263 '규모 산정 입력' 절(미머지).
 [^pilot-design]: evidence: [exp3-hazard-pilot-v1](../../experiments/preregistration/exp3-hazard-pilot-v1.md)(PR #267, 설계 sha256 `06b3408c…`) §1 구속 조건, §6 판정 규칙.
 [^pilot-report]: evidence: [파일럿 결과 메모](../../experiments/summaries/exp3-hazard-pilot-v1-result.md) §1·§2. raw 체크섬은 [raw-manifest-exp3-hazard-pilot-v1](../../experiments/summaries/raw-manifest-exp3-hazard-pilot-v1.sha256)(123개). 분석 산출물은 매니페스트 밖의 `~/inodefence-evidence/exp3-hazard-pilot-20261106/analysis/pilot-report.json`(sha256 `2a94bf3c…`)이다.
 [^pilot-rule-c]: evidence: [파일럿 결과 메모](../../experiments/summaries/exp3-hazard-pilot-v1-result.md) §3(기계 출력 114, 용량 151, 양쪽 가정 민감도, 등록 통계량 재계산). 재계산 스크립트 `exp3_power_registered.py`(sha256 `5f02b06b…`)는 후속 PR로 수록 예정이다.

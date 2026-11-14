@@ -17,9 +17,9 @@ SHA-256 목록이다. DESIGNED / IMPLEMENTED / TESTED / EXPERIMENTALLY VALIDATED
 
 - **SQ-a (oracle 일반성).** 같은 generic oracle(C0/C1/C2, CVE 문자열 없음)이 여러 extractor의 취약/수정 쌍을
   코드 변경 없이 구분하는가?
-- **SQ-b (피드백 분리).** identity/effect 피드백이 커버리지 피드백과 **다른 탐색 경로**를 만드는가? 현재
-  escape-hardlink 문법에서는 identity(C) ≡ coverage(D)가 operationally identical(4/4 짝 seed)인 **음성**이고,
-  symlink 계열 문법(M4.8)에서는 mechanistic distinctiveness만 관찰됐다(effectiveness 아님).
+- **SQ-b (피드백 분리).** identity/effect 피드백이 커버리지 피드백과 **다른 탐색 경로**를 만드는가?
+  초기 비교는 arm 간 어휘가 달라 폐기했고,
+  어휘를 맞춘 R/D/S-u 설계로 다시 실험했다.
 
 ## 위협 모델 (v2 추가)
 
@@ -49,7 +49,7 @@ SHA-256 목록이다. DESIGNED / IMPLEMENTED / TESTED / EXPERIMENTALLY VALIDATED
   시점에서 절단. 생존분석(Kaplan–Meier, 로그랭크, Vargha–Delaney A12)으로 비교한다.
 - **U_viol** — 고유 위반 입력 수(정규화 서명 기준; 같은 lineage·같은 fingerprint는 1).
 
-**예측.** S-u가 R보다 T_first 중앙값이 **2배 이상 빠르고**(로그랭크 p < 0.05, A12 ≥ 0.64) **S-u ≠ D**다.
+**예측.** 등록된 예측과 그 개정 이력은 동결된 사전등록 [exp2-v1](../../../experiments/preregistration/exp2-v1.md) §1·§8을 따른다.
 
 **반증.** S-u와 R의 생존곡선이 분리되지 않는다.
 
@@ -62,11 +62,11 @@ CVE 문자열·버전·PoC 바이트를 넣지 않은 generic C0/C1/C2가 **≥ 
 
 ## H-C (보조) — 어휘 음성 통제
 
-현재 generic 어휘로는 기본 sentinel 이름을 철자할 수 없고(코드상 사실: `src/inodefence/mutator/m1.py`의
-`COMPONENTS` 7토큰, `m1_addressing.py` 주석), 실험상 A1(generic 어휘, effect retention; 이름 철자 불가) 0/19 완주·A3blind 6셀 7,983 step에서 C1이 관찰되지
-않았다(음성 통제, observed). 외부 객체 이름이 어휘 토큰과 일치하는 설정에서는 도달할 수 있으므로 일반적
-"구조적 불가"로 단정하지 않는다. 이는 위협 모델 전제(이름을 알아야 도달)를 지지하는 **미관찰** 결과이지
-effectiveness 주장이 아니다.
+현재 generic 어휘로는 기본 sentinel 이름을 철자할 수 없다(코드상 사실: `src/inodefence/mutator/m1.py`의
+`COMPONENTS` 7토큰, `m1_addressing.py` 주석).
+외부 객체 이름이 어휘 토큰과 일치하는 설정에서는 도달할 수 있으므로 일반적
+"구조적 불가"로 단정하지 않는다.
+이는 effectiveness 주장이 아니다.
 
 ## 판정 시나리오
 
@@ -100,10 +100,10 @@ effectiveness 주장이 아니다.
 | --- | --- |
 | RQ1 Known Vulnerability Rediscovery | **EXP-5 산출물**(최소화·교차 replay)로 이동. 성공 조건이 아니라 산출물이다. |
 | RQ2 Feedback Effectiveness (B0/B1/B3) | **H-A R/D/S로 대체.** |
-| RQ3 Feedback/Mutation Ablation (A1/A2/A3 projection·reorder) | **H-A R/D/S로 대체.** 기호 **A1/A3**는 [baseline-and-ablation-v1](../benchmarks/baseline-and-ablation-v1.md)의 projection 의미와 M3 요약의 arm 이름(A1 random floor·A3full state-aware)이 충돌했으므로 **더 쓰지 않는다**. |
+| RQ3 Feedback/Mutation Ablation (A1/A2/A3 projection·reorder) | **H-A R/D/S로 대체.** 초기 비교는 arm 간 어휘가 달라 폐기했고, 어휘를 맞춘 R/D/S-u 설계로 다시 실험했다. |
 | RQ4 Cross-Implementation Generality | **H-B.** |
 | RQ5 Unknown-State Discovery | **D007 유지**(성공 조건 아님). |
-| RQ6 Entry-Transition Feedback · H3 Transition Retention · H4 Transition-Adaptive Mutation | **폐기.** BACKLOG M3.6: ordered entry-transition 경계는 현 extractor군에서 관찰 불가(honest negative, [transition-feedback-v1](transition-feedback-v1.md)). |
+| RQ6 Entry-Transition Feedback · H3 Transition Retention · H4 Transition-Adaptive Mutation | **폐기.** ordered entry-transition 경계는 현 extractor군에서 관찰 불가(honest negative, [transition-feedback-v1](transition-feedback-v1.md); 이전 BACKLOG M3.6 기록은 [archive](../../archive/pre-20261103-results.md)). |
 | H1 State-Guided Search | **H-A.** |
 | H2 Generic Security Contract | **H-B.** |
 
@@ -122,7 +122,7 @@ v1의 G0 freeze 기준(main `8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`, [Researc
 3. 이 프로젝트는 그 불변식을 **generic oracle로 구현**하고, 그 oracle이 **퍼징 탐색 신호로도 유효한지**(H-A)
    묻는다. 음성 결과도 지식으로 보고한다. 다만 "피드백이 무작위와 다르지 않다", "oracle은 유용하되 탐색 신호로는 약하다"로
    읽는 것은 사건 수가 검정이 기각할 수 있는 규모일 때만이다. 그에 못 미치는 미기각은 효과 없음도 반증도 아니다(기준은 파일럿 후
-   재판정 대기).
+   D040에서 재판정했다).
 
 **수혜자 산출물.** 1차 수혜자는 node-tar 유지보수자다 — 릴리스 전 회귀 검사 명령
 `make regression TAR_VERSION=<x>`([#218](https://github.com/TheWaitForAGI/InodeFence/pull/218), 감사 산출물 ⑫)로

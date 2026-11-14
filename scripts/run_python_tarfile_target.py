@@ -29,6 +29,16 @@ id) are the node-tar command's own (``scripts.run_target``), imported unchanged.
 end registers this target in the common command, where ``--version`` is the runtime version:
 
     make target-run TARGET=python-tarfile TARGET_VERSIONS=3.12.16 TARGET_FILTERS=data
+
+In the common command the runtime may also be symbolic: ``latest`` (newest stable CPython of the
+official ``python`` image) or a minor series ``X.Y`` (its newest patch). Before any cell exists it
+is resolved to an exact ``X.Y.Z`` (``_resolve``, skipped by ``--dry-run``); cell, image and folder
+names carry only that exact version, and the result's ``preparation`` records what was asked, the
+resolved version, when, and the image digests (``_describe``). An exact ``X.Y.Z`` request is
+unchanged and carries no ``preparation``.
+
+    make target-run TARGET=python-tarfile TARGET_VERSIONS=latest TARGET_FILTERS=data AUTO_PREPARE=1
+    make target-run TARGET=python-tarfile TARGET_VERSIONS=3.13 TARGET_FILTERS=data AUTO_PREPARE=1
 """
 
 from __future__ import annotations
@@ -36,8 +46,10 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import re
 import subprocess
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -58,6 +70,7 @@ from scripts.run_target import (
 from inodefence.target_result import (
     RUN_ERROR,
     CaseVerdict,
+    Preparation,
     Provenance,
     ResultMode,
     TargetAxes,
@@ -233,13 +246,31 @@ def _adapter_cells(versions: list[str], filters: list[str]) -> list[RunCell]:
     if not filters:
         raise ValueError(f"python-tarfile needs --extraction-filter, one of {pti.FILTERS}")
     for runtime in versions:
-        if pti.RUNTIME_RE.fullmatch(runtime) is None:
-            raise ValueError(f"python-tarfile --version is the exact runtime X.Y.Z: {runtime!r}")
+        if pti.RUNTIME_RE.fullmatch(runtime) is None and not is_symbolic(runtime):
+            raise ValueError(
+                "python-tarfile --version is the runtime: exact X.Y.Z, a minor series X.Y, "
+                f"or {LATEST}: {runtime!r}"
+            )
     for extraction_filter in filters:
         if extraction_filter not in pti.FILTERS:
             raise ValueError(f"--extraction-filter must be one of {pti.FILTERS}")
-    cells = [Cell(r, f) for r in versions for f in filters]
-    return [RunCell(c.dirname, c.axes, pti.image_ref(c.runtime_version)) for c in cells]
+    cells = []
+    for runtime in versions:
+        for extraction_filter in filters:
+            if is_symbolic(runtime):  # only reached by --dry-run (a real run resolves first)
+                cells.append(
+                    RunCell(
+                        dirname=f"{TARGET}-py{runtime}-{extraction_filter} (resolved at run time)",
+                        axes=TargetAxes(
+                            runtime_version=runtime, extraction_filter=extraction_filter
+                        ),
+                        image_ref=None,
+                    )
+                )
+                continue
+            cell = Cell(runtime, extraction_filter)
+            cells.append(RunCell(cell.dirname, cell.axes, pti.image_ref(cell.runtime_version)))
+    return cells
 
 
 def _adapter_run(cell: RunCell) -> list[CaseRun]:
@@ -286,13 +317,196 @@ def _adapter_prepare(cell: RunCell) -> PrepareStep:
     return ip.recipe_step(cell, lambda: image_recipe(runtime))
 
 
+# ---- symbolic runtime requests: ``latest`` and ``X.Y`` (official ``python`` repository only) ----
+
+#: The newest stable CPython of the official image (its ``slim`` tag).
+LATEST = "latest"
+#: A minor series, resolved to its newest patch (the official ``X.Y-slim`` tag).
+MINOR_RE = re.compile(r"[0-9]+\.[0-9]+")
+#: Moving official tag that names each symbolic request. Only these two shapes are ever pulled.
+ALIAS = {LATEST: "python:slim"}
+RESOLVE_TIMEOUT = 600
+_VERSION_PROGRAM = "import platform; print(platform.python_version())"
+#: exact runtime -> (what was asked, UTC resolution time, alias tag, alias digest); for describe.
+_RESOLVED: dict[str, tuple[str, str, str, str]] = {}
+
+
+def _docker(runner: pti.Runner | None) -> pti.Runner:
+    """The docker runner, looked up at call time so tests can replace ``subprocess.run`` here."""
+    return runner or subprocess.run
+
+
+def is_symbolic(runtime: str) -> bool:
+    return runtime == LATEST or MINOR_RE.fullmatch(runtime) is not None
+
+
+def alias_tag(spec: str) -> str:
+    """The official moving tag for a symbolic request; anything else is refused before docker."""
+    if spec == LATEST:
+        return ALIAS[LATEST]
+    if MINOR_RE.fullmatch(spec) is None:
+        raise ValueError(
+            f"python-tarfile runtime must be exact X.Y.Z, a minor series X.Y, or {LATEST}: {spec!r}"
+        )
+    return f"{OFFICIAL_REPOSITORY}:{spec}-slim"
+
+
+def _pull_failure(stderr: str) -> str:
+    text = stderr.strip().splitlines()[-1] if stderr.strip() else "no output"
+    lowered = stderr.lower()
+    if "not found" in lowered or "manifest unknown" in lowered:
+        return f"no such official image ({text[:200]})"
+    return f"registry unreachable or pull failed ({text[:200]})"
+
+
+def resolve_spec(spec: str, runner: pti.Runner | None = None) -> tuple[str, str]:
+    """``spec`` -> (exact stable ``X.Y.Z``, digest of the alias tag it was read from).
+
+    Pulls the official moving tag (``python:slim`` or ``python:X.Y-slim``; the pull refreshes that
+    local alias tag and nothing else) and reads ``platform.python_version()`` inside it with
+    ``--network none``. A pre-release (``3.15.0rc1``), a version outside the asked series, a
+    missing tag or an unreachable registry is a ``ValueError``: nothing runs, nothing is judged.
+    """
+    alias = alias_tag(spec)
+    runner = _docker(runner)
+    try:
+        pulled = runner(
+            ["docker", "pull", alias], capture_output=True, text=True, timeout=RESOLVE_TIMEOUT
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise ValueError(
+            f"cannot resolve python {spec}: {type(error).__name__}: {error}"
+        ) from error
+    if pulled.returncode != 0:
+        raise ValueError(f"cannot resolve python {spec}: {_pull_failure(pulled.stderr or '')}")
+    digest = next(
+        (
+            line.split(":", 1)[1].strip()
+            for line in (pulled.stdout or "").splitlines()
+            if line.startswith("Digest:")
+        ),
+        "",
+    )
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", digest) is None:
+        raise ValueError(f"cannot resolve python {spec}: pull of {alias} reported no digest")
+    try:
+        ran = runner(
+            ["docker", "run", "--rm", "--network", "none", "--entrypoint", "python", alias]
+            + ["-c", _VERSION_PROGRAM],
+            capture_output=True,
+            text=True,
+            timeout=RESOLVE_TIMEOUT,
+        )
+    except (OSError, subprocess.SubprocessError) as error:
+        raise ValueError(
+            f"cannot resolve python {spec}: {type(error).__name__}: {error}"
+        ) from error
+    lines = (ran.stdout or "").strip().splitlines()
+    version = lines[-1].strip() if ran.returncode == 0 and lines else ""
+    if pti.RUNTIME_RE.fullmatch(version) is None:
+        raise ValueError(
+            f"cannot resolve python {spec}: {alias} reports {version or ran.returncode!r}, "
+            "not a stable exact X.Y.Z (pre-releases are never resolved)"
+        )
+    if spec != LATEST and not version.startswith(f"{spec}."):
+        raise ValueError(f"cannot resolve python {spec}: {alias} reports {version}, outside {spec}")
+    return version, f"{OFFICIAL_REPOSITORY}@{digest}"
+
+
+def _resolve(versions: list[str], runner: pti.Runner | None = None) -> list[str]:
+    """``TargetAdapter.resolve``: symbolic runtimes -> exact ones (not called by --dry-run)."""
+    for spec in versions:  # refuse every malformed value before any docker call
+        if pti.RUNTIME_RE.fullmatch(spec) is None:
+            alias_tag(spec)
+    exact = []
+    for spec in versions:
+        if pti.RUNTIME_RE.fullmatch(spec) is not None:
+            exact.append(spec)
+            continue
+        version, alias_digest = resolve_spec(spec, runner)
+        resolved_at = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        _RESOLVED[version] = (spec, resolved_at, alias_tag(spec), alias_digest)
+        print(f"TARGET-RUN RESOLVE python-tarfile {spec} -> {version}", flush=True)
+        exact.append(version)
+    return exact
+
+
+def image_facts(image: str, runner: pti.Runner | None = None) -> tuple[str, list[str]]:
+    """Offline: the interpreter version inside ``image`` and its official repository digests."""
+    runner = _docker(runner)
+    ran = runner(
+        ["docker", "run", "--rm", "--network", "none", "--entrypoint", "python", image]
+        + ["-c", _VERSION_PROGRAM],
+        capture_output=True,
+        text=True,
+        timeout=RESOLVE_TIMEOUT,
+    )
+    lines = (ran.stdout or "").strip().splitlines()
+    version = lines[-1].strip() if ran.returncode == 0 and lines else ""
+    inspected = runner(
+        ["docker", "image", "inspect", "--format", "{{json .RepoDigests}}", image],
+        capture_output=True,
+        text=True,
+        timeout=RESOLVE_TIMEOUT,
+    )
+    digests = json.loads(inspected.stdout or "null") if inspected.returncode == 0 else None
+    official = sorted(
+        d for d in (digests or []) if isinstance(d, str) and d.startswith(f"{OFFICIAL_REPOSITORY}@")
+    )
+    return version, official
+
+
+def _describe(
+    cell: RunCell, cell_dir: Path, runner: pti.Runner | None = None
+) -> Preparation | None:
+    """Resolved cells only: re-read the version inside the image and record how it was chosen.
+
+    An exact ``X.Y.Z`` request returns ``None`` (its result is unchanged). A version mismatch is a
+    ``ValueError``, so the cell gets no verdict. ``cell_dir`` is unused (no extra evidence file).
+    """
+    del cell_dir
+    runtime, image = cell.axes.runtime_version or "", cell.image_ref or ""
+    if runtime not in _RESOLVED:
+        return None
+    spec, resolved_at, alias, alias_digest = _RESOLVED[runtime]
+    installed, digests = image_facts(image, runner)
+    if installed != runtime:
+        raise ValueError(f"{image} runs python {installed!r}, resolved {runtime}")
+    if not digests:
+        raise ValueError(f"{image} has no {OFFICIAL_REPOSITORY} repository digest")
+    recipe = (
+        f"official {pti.image_ref(runtime)} ({', '.join(digests)}); "
+        f"{spec} resolved via {alias} ({alias_digest}) by the interpreter's own version"
+    )
+    return Preparation(
+        method="official-image",
+        requested_version=runtime,
+        installed_version=installed,
+        lock_sha256=None,
+        worker_sha256=None,
+        recipe=recipe,
+        requested_spec=spec,
+        resolved_at=resolved_at,
+    )
+
+
+def _adapter_plan(cell: RunCell) -> list[dict[str, Any]]:
+    runtime = cell.axes.runtime_version or ""
+    if is_symbolic(runtime):
+        alias = alias_tag(runtime)
+        return [{"note": f"{runtime} is resolved at run time from the official {alias} tag"}]
+    return fixture_plan()
+
+
 ADAPTER = TargetAdapter(
     mode=MODE,
     observed_contracts=OBSERVED,
     cells=_adapter_cells,
-    plan=lambda cell: fixture_plan(),
+    plan=_adapter_plan,
     run=_adapter_run,
     prepare=_adapter_prepare,
+    describe=_describe,
+    resolve=_resolve,
 )
 
 

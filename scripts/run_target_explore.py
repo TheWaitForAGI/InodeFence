@@ -180,6 +180,12 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as error:
         print(f"TARGET-EXPLORE SETUP: {error}", file=sys.stderr)
         return 3
+    except RuntimeError as error:
+        # The controller aborted or failed to run (e.g. the loop could not finish). That is an
+        # ERROR, not a FAIL (no violation was judged), and it exits 2 like a worst-verdict ERROR --
+        # a one-line reason, not a traceback.
+        print(f"TARGET-EXPLORE ERROR: {error}", file=sys.stderr)
+        return 2
 
     print(
         f"TARGET-EXPLORE {outcome.verdict} {args.target} version={prepared.version} "

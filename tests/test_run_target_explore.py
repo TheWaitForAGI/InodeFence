@@ -229,3 +229,34 @@ def test_multi_value_option_is_refused_in_explore(monkeypatch: pytest.MonkeyPatc
     monkeypatch.setattr(rte, "load_adapter", lambda t: multi)
     with pytest.raises(SystemExit):  # exploration takes one value per option
         rte.main(["--target", "node-tar", "--version", "latest", "--auto-prepare"])
+
+
+def test_controller_abort_exits_error_2_with_a_reason(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # A controller abort/failure surfaces as RuntimeError; it is an ERROR (exit 2), not a FAIL,
+    # and prints a one-line reason instead of a traceback.
+    import dataclasses
+
+    def boom(prepared: Any, options: Any) -> Any:
+        raise RuntimeError("controller run failed (exit 1); see output above")
+
+    adapter = dataclasses.replace(
+        _fake_adapter(ExploreOutcome(Path("x"), "PASS", 0, 0)), explore=boom
+    )
+    monkeypatch.setattr(rte, "load_adapter", lambda t: adapter)
+    monkeypatch.setattr(
+        rte,
+        "prepare_target_image",
+        lambda *a, **k: PreparedTargetImage(
+            "node-tar", "latest", "7.5.23", "img", "sha256:" + "a" * 64, True
+        ),
+    )
+    code = rte.main(
+        ["--target", "node-tar", "--version", "latest", "--auto-prepare", "--out", "/tmp/if-x"]
+    )
+    assert code == 2
+    err = capsys.readouterr().err
+    assert (
+        "TARGET-EXPLORE ERROR" in err and "controller run failed" in err and "Traceback" not in err
+    )

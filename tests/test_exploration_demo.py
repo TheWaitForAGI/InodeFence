@@ -182,16 +182,23 @@ def test_exploration_records_all_cases_but_saves_only_violating_inputs(
     assert len(saved["tar_sha256"]) == 64 and saved["tar_b64"]
 
 
-def test_rejected_run_keeps_its_judgment_and_is_not_an_error(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize(
+    ("status", "termination"),
+    [
+        (lambda: rd.ExecutionStatus.REJECTED, "rejected"),
+        (lambda: rd.ExecutionStatus.FAILED, "failed"),
+        (lambda: rd.ExecutionStatus.TIMED_OUT, "timed_out"),
+    ],
+)
+def test_non_success_run_keeps_its_judgment_and_is_not_an_error(
+    monkeypatch: pytest.MonkeyPatch, status: Any, termination: str
 ) -> None:
-    # A rejected extraction is a judged outcome (oracle ran on the snapshots): outcome stays
-    # "judged" and C0/C1/C2 are kept; the exit lands in the separate termination column.
-    report = _violation_capture_report(
-        monkeypatch, violating=True, status=rd.ExecutionStatus.REJECTED
-    )
+    # A rejected / crashed / timed-out extraction is still a judged outcome (the oracle ran on the
+    # snapshots): outcome stays "judged" and C0/C1/C2 are kept; the exit lands in termination, and a
+    # violation left behind by a non-clean run is still captured.
+    report = _violation_capture_report(monkeypatch, violating=True, status=status())
     (case,) = report["case_records"]
-    assert case["outcome"] == "judged" and case["termination"] == "rejected"
+    assert case["outcome"] == "judged" and case["termination"] == termination
     assert case["c1"] is True and case["c0"] is False  # judgment kept despite the non-SUCCESS exit
     assert len(report["violation_inputs"]) == 1  # the violating input is still captured
 

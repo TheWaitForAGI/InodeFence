@@ -8,9 +8,10 @@ violating steps, as the report does.
 
 "Un-judged" follows ``CaseVerdict.is_unjudged``: the oracle was not evaluated, so C0, C1 and C2
 are all ``None``. That keeps the live count equal to the ``unjudged_steps`` a campaign verdict is
-recomputed from. ``observation_complete`` is the loop's own view: the effect trace is complete and
-reported no observation failure. A violation with an incomplete observation or a non-success end
-is marked "reproduction check needed" (still a violation).
+recomputed from. ``observation_complete`` is ``trace.integrity_valid`` (stream complete, no
+observation failure, fully flushed) -- the same definition the node-tar producer writes to the
+result. A violation with an incomplete observation or a non-success end is marked
+"reproduction check needed" (still a violation).
 """
 
 from __future__ import annotations
@@ -20,7 +21,6 @@ from typing import Any
 from inodefence.builder import build_tar
 from inodefence.feedback.fingerprint import ViolationFingerprint, violation_fingerprints
 from inodefence.live_exploration import LiveStep, fingerprint_id
-from inodefence.model.effect import EffectStreamCompleteness
 from inodefence.model.results import ExecutionStatus
 
 
@@ -64,9 +64,7 @@ def live_step_from_effect(step: Any) -> LiveStep:
         ),
         tar_bytes=build_tar(base.case) if violated else None,
         observation=observation,
-        observation_complete=(
-            not step.feedback.observation_failure
-            and EffectStreamCompleteness(step.feedback.trace_completeness)
-            is EffectStreamCompleteness.COMPLETE
-        ),
+        # Same definition the node-tar producer writes into the result's case records: the effect
+        # trace is integrity-valid (stream COMPLETE, no observation failure, fully flushed).
+        observation_complete=bool(step.result.trace.integrity_valid),
     )

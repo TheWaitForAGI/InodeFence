@@ -333,26 +333,22 @@ def _stand_in(
     status: ExecutionStatus,
     violations: tuple[ViolationResult, ...],
     *,
-    observation_failure: bool = False,
-    completeness: str = "complete",
+    integrity_valid: bool = True,
 ) -> SimpleNamespace:
     case = ArchiveCase((ArchiveEntry("a", EntryType.REGULAR, b"x"),))
     base = SimpleNamespace(
         case=case, execution=SimpleNamespace(status=status), violations=violations
     )
     attempt = SimpleNamespace(operator_id=MutationOperatorId.ADD_ENTRY, applied=True)
-    feedback = SimpleNamespace(
-        observation_failure=observation_failure,
-        new_violation_fingerprints=(),
-        trace_completeness=completeness,
-    )
+    feedback = SimpleNamespace(new_violation_fingerprints=())
+    trace = SimpleNamespace(integrity_valid=integrity_valid)
     return SimpleNamespace(
         index=4,
         origin=SimpleNamespace(value="mutation"),
         parent_case_id="parent-1",
         mutation_attempt=attempt,
         feedback=feedback,
-        result=SimpleNamespace(base_result=base),
+        result=SimpleNamespace(base_result=base, trace=trace),
     )
 
 
@@ -416,11 +412,5 @@ def test_adapter_observation_completeness_from_the_loop() -> None:
     hit = (_identity_hit("extract/a"),)
     complete = live_step_from_effect(_stand_in(ExecutionStatus.SUCCESS, hit))
     assert complete.observation_complete is True and not complete.needs_repro_check
-    partial = live_step_from_effect(
-        _stand_in(ExecutionStatus.SUCCESS, hit, completeness="incomplete")
-    )
-    failed_obs = live_step_from_effect(
-        _stand_in(ExecutionStatus.SUCCESS, hit, observation_failure=True)
-    )
+    partial = live_step_from_effect(_stand_in(ExecutionStatus.SUCCESS, hit, integrity_valid=False))
     assert partial.observation_complete is False and partial.needs_repro_check
-    assert failed_obs.observation_complete is False and failed_obs.needs_repro_check

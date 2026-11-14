@@ -156,18 +156,25 @@ def cmd_explore(args: argparse.Namespace) -> int:
 
 
 def cmd_status(args: argparse.Namespace) -> int:
+    from inodefence.live_exploration import live_dirs_status
     from inodefence.target_result import TargetResultError, load_target_result
 
     folder = args.folder
+    # A running (or finished) exploration's live folder: progress snapshot + violation cases.
+    live = live_dirs_status(folder)
+    for block in live:
+        print(block)
     results = (
         [folder / "result.json"]
         if (folder / "result.json").is_file()
         else sorted(folder.glob("*/result.json"))
     )
     if not results:
+        if live:
+            return 0  # still running (or stopped before writing result.json): live view only
         print(
-            f"no result.json under {folder} (a finished run writes one). A live progress snapshot "
-            "of a running exploration is shown here once the exploration output sink is available.",
+            f"no result.json and no live progress under {folder}. A running exploration writes "
+            "live/progress.json and live/violations/; a finished run writes result.json.",
             file=sys.stderr,
         )
         return 2
@@ -242,9 +249,12 @@ def build_parser() -> argparse.ArgumentParser:
     explore.set_defaults(func=cmd_explore)
 
     status = sub.add_parser(
-        "status", help="read a finished run's result folder (live progress follows the sink PR)"
+        "status",
+        help="show a run's live progress and violation cases while it runs, and its result after",
     )
-    status.add_argument("folder", type=Path, help="an output folder with result.json (or cells)")
+    status.add_argument(
+        "folder", type=Path, help="an exploration output folder (live/ and/or result.json)"
+    )
     status.set_defaults(func=cmd_status)
 
     summary = sub.add_parser("summary", help="render a result file as a one-page summary")

@@ -40,6 +40,8 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
+from inodefence.target_result import no_extraction_warning
+
 PROGRESS_SCHEMA = "inodefence-live-progress-v1"
 CASE_SCHEMA = "inodefence-live-violation-v1"
 FETCH_SCHEMA = "inodefence-live-fetch-v1"
@@ -343,6 +345,7 @@ class LiveRecorder:
             # The termination axis, apart from judgment: "almost everything is rejected" and
             # "nothing could be judged" must read differently at a glance.
             "terminations": dict(c.terminations),
+            "success_runs": int(c.terminations.get("success", 0)),
             "write_errors": c.write_errors,
             "last_write_error": c.last_write_error,
             "snapshot_every": {"runs": self.every_runs, "seconds": self.every_seconds},
@@ -715,6 +718,9 @@ def render_live_status(
             + " ".join(f"{name}={t.get(name, 0)}" for name in STATUSES)
             + "  (termination is separate from judgment; un-judged = oracle not evaluated)"
         )
+        warning = no_extraction_warning(t)
+        if warning:
+            lines.append(f"  ** {warning} **")
         if v.get("first_at_run") is not None:
             lines.append(
                 f"  first violation at run {v['first_at_run']}, last at run {v.get('last_at_run')}"

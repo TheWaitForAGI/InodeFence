@@ -37,6 +37,8 @@ from scripts.run_target import (
     with_tag_suffix,
 )
 
+from inodefence.target_result import load_target_result, no_extraction_warning
+
 # Outside the repo AND outside ~/inodefence-evidence (confirmatory evidence lives there).
 DEFAULT_OUT = Path.home() / "inodefence-explore"
 # This repository is public; a violating-case TAR written inside it could be committed and leak.
@@ -207,6 +209,12 @@ def main(argv: list[str] | None = None) -> int:
         f"image={prepared.image_id} (exploration run)"
     )
     print(f"result: {outcome.result_path}")
+    try:  # a summary line only; the verdict and exit code below are unchanged
+        warning = no_extraction_warning(load_target_result(outcome.result_path).termination_counts)
+    except Exception:  # noqa: BLE001 - never let the warning hide the result
+        warning = None
+    if warning:
+        print(f"TARGET-EXPLORE WARNING: {warning}")
     # Exit code from the verdict, same rule as target-run (0 PASS, 1 FAIL, 2 ERROR; setup/refusal
     # exits 3 earlier). A campaign whose verdict is ERROR with zero violations must not exit 0, or
     # automation reads "nothing extracted" as success.

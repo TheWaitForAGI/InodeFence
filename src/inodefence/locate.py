@@ -55,15 +55,26 @@ def _driver_env(root: Path) -> dict[str, str]:
     return env
 
 
-def run_driver(root: Path, driver: str, argv: list[str]) -> int:
+#: Environment variable naming the user-facing command (``inodefence verify``) for the driver's
+#: usage and error messages; unset when a driver is run directly.
+PROG_ENV = "INODEFENCE_PROG"
+
+
+def run_driver(root: Path, driver: str, argv: list[str], *, prog: str | None = None) -> int:
     """Run a repository driver (``scripts/…``) with the given argv and return its exit code.
+
+    ``prog`` is the command the user typed (e.g. ``inodefence verify``); the driver shows it in its
+    usage and error messages instead of its own file name.
 
     The driver runs in a subprocess with the repository on ``PYTHONPATH`` and as the working
     directory, so the driver's own ``REPO_ROOT`` and relative asset paths resolve. No shell: argv
     is passed as a list, so user values are never re-parsed as shell syntax.
     """
+    env = _driver_env(root)
+    if prog:
+        env[PROG_ENV] = prog
     completed = subprocess.run(
-        [sys.executable, str(root / driver), *argv], cwd=root, env=_driver_env(root), check=False
+        [sys.executable, str(root / driver), *argv], cwd=root, env=env, check=False
     )
     return completed.returncode
 

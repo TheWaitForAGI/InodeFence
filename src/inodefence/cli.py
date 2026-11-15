@@ -109,12 +109,12 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     return 0 if ok else 1
 
 
-def _forward(driver: str, argv: list[str]) -> int:
+def _forward(driver: str, argv: list[str], command: str) -> int:
     root = repo_root()
     if root is None:
         print(REPO_NOT_FOUND, file=sys.stderr)
         return 3
-    return run_driver(root, driver, argv)
+    return run_driver(root, driver, argv, prog=f"inodefence {command}")
 
 
 def cmd_verify(args: argparse.Namespace) -> int:
@@ -129,9 +129,8 @@ def cmd_verify(args: argparse.Namespace) -> int:
         argv += ["--image-tag-suffix", args.image_tag_suffix]
     if args.dry_run:
         argv.append("--dry-run")
-    else:
-        argv += ["--out", str(args.out)]
-    return _forward(VERIFY_DRIVER, argv + args.extra)
+    argv += ["--out", str(args.out)]  # also on --dry-run, so the plan shows where it would write
+    return _forward(VERIFY_DRIVER, argv + args.extra, "verify")
 
 
 def cmd_explore(args: argparse.Namespace) -> int:
@@ -155,7 +154,7 @@ def cmd_explore(args: argparse.Namespace) -> int:
         argv += ["--image-tag-suffix", args.image_tag_suffix]
     if args.dry_run:
         argv.append("--dry-run")
-    return _forward(EXPLORE_DRIVER, argv + args.extra)
+    return _forward(EXPLORE_DRIVER, argv + args.extra, "explore")
 
 
 def cmd_replay(args: argparse.Namespace) -> int:
@@ -164,7 +163,7 @@ def cmd_replay(args: argparse.Namespace) -> int:
     argv = [str(args.case_dir.expanduser().resolve()), "--rounds", str(args.rounds)]
     if args.dry_run:
         argv.append("--dry-run")
-    return _forward(REPLAY_DRIVER, argv)
+    return _forward(REPLAY_DRIVER, argv, "replay")
 
 
 def cmd_status(args: argparse.Namespace) -> int:

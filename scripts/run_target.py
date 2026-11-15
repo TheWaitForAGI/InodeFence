@@ -58,6 +58,7 @@ import argparse
 import dataclasses
 import importlib
 import json
+import os
 import re
 import shlex
 import shutil
@@ -514,8 +515,17 @@ def summary_line(result: TargetResult) -> str:
     )
 
 
-class _Parser(argparse.ArgumentParser):
-    """Refusals exit 3, never argparse's 2, which is the ERROR verdict code of this command."""
+class RefusalParser(argparse.ArgumentParser):
+    """Refusals exit 3, never argparse's 2, which is the ERROR verdict code of these commands.
+
+    Shared by the regression and exploration drivers. ``prog`` defaults to the user-facing command
+    from ``INODEFENCE_PROG`` (set by ``inodefence``), else argparse's own (the file name).
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        if kwargs.get("prog") is None and os.environ.get("INODEFENCE_PROG"):
+            kwargs["prog"] = os.environ["INODEFENCE_PROG"]
+        super().__init__(*args, **kwargs)
 
     def error(self, message: str) -> NoReturn:
         self.print_usage(sys.stderr)
@@ -523,7 +533,7 @@ class _Parser(argparse.ArgumentParser):
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = _Parser(description="run one target on fixed axes (demo run)")
+    parser = RefusalParser(description="run one target on fixed axes (demo run)")
     parser.add_argument("--target", required=True, choices=sorted(TARGETS))
     parser.add_argument(
         "--version",
@@ -598,6 +608,7 @@ def main(argv: list[str] | None = None) -> int:
                 for cell in cells
             },
             "auto_prepare": args.auto_prepare,
+            "out": None if args.out is None else str(args.out),
             "note": "dry-run: nothing pulled, built, run or written",
         }
         print(json.dumps(plan, indent=2, sort_keys=True))

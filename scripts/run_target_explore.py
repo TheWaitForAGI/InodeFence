@@ -29,6 +29,7 @@ from scripts.run_target import (
     TARGETS,
     ExploreOptions,
     PreparedTargetImage,
+    RefusalParser,
     TargetAdapter,
     load_adapter,
     resolve_images,
@@ -78,12 +79,12 @@ def main(argv: list[str] | None = None) -> int:
     # parser below is built with the target's declared options already added, so --help lists them
     # and --dry-run can print them (the common driver stays target-agnostic -- it only reads the
     # adapter's declarations).
-    target_parser = argparse.ArgumentParser(add_help=False)
+    target_parser = RefusalParser(add_help=False)
     target_parser.add_argument("--target", default="node-tar", choices=sorted(TARGETS))
     pre, _ = target_parser.parse_known_args(argv)
     adapter = load_adapter(pre.target)
 
-    parser = argparse.ArgumentParser(
+    parser = RefusalParser(
         description="prepare an extractor version and run the existing effect loop on it",
         epilog=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,

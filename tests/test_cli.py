@@ -37,25 +37,35 @@ def test_verify_forwards_the_regression_driver_argv(monkeypatch) -> None:
     calls: list = []
     monkeypatch.setattr(cli, "repo_root", lambda: Path("/repo"))
     monkeypatch.setattr(
-        cli, "run_driver", lambda root, driver, argv: calls.append((driver, argv)) or 0
+        cli,
+        "run_driver",
+        lambda root, driver, argv, prog: calls.append((driver, argv, prog)) or 0,
     )
-    assert cli.main(["verify", "--target", "node-tar", "--version", "7.5.2", "--dry-run"]) == 0
-    driver, argv = calls[0]
-    assert driver == cli.VERIFY_DRIVER
-    assert argv == [
+    out = Path("/elsewhere/verify-out")
+    argv_in = [
+        "verify",
         "--target",
         "node-tar",
         "--version",
         "7.5.2",
         "--dry-run",
-    ]  # no --out on dry-run
+        "--out",
+        str(out),
+    ]
+    assert cli.main(argv_in) == 0
+    driver, argv, prog = calls[0]
+    assert driver == cli.VERIFY_DRIVER and prog == "inodefence verify"
+    # --out is forwarded on --dry-run too, so the plan shows where it would write (as explore).
+    assert argv == ["--target", "node-tar", "--version", "7.5.2", "--dry-run", "--out", str(out)]
 
 
 def test_explore_forwards_the_exploration_driver_argv(monkeypatch, tmp_path: Path) -> None:
     calls: list = []
     monkeypatch.setattr(cli, "repo_root", lambda: Path("/repo"))
     monkeypatch.setattr(
-        cli, "run_driver", lambda root, driver, argv: calls.append((driver, argv)) or 0
+        cli,
+        "run_driver",
+        lambda root, driver, argv, prog: calls.append((driver, argv)) or 0,
     )
     assert (
         cli.main(
@@ -143,7 +153,7 @@ def test_targets_table_lists_support_reasons_and_options(monkeypatch, capsys) ->
 def test_explore_forwards_target_specific_options_as_extra(monkeypatch) -> None:
     calls: list = []
     monkeypatch.setattr(cli, "repo_root", lambda: Path("/repo"))
-    monkeypatch.setattr(cli, "run_driver", lambda root, driver, argv: calls.append(argv) or 0)
+    monkeypatch.setattr(cli, "run_driver", lambda root, driver, argv, prog: calls.append(argv) or 0)
     assert (
         cli.main(
             [
@@ -298,3 +308,29 @@ def test_status_reads_a_finished_result_folder(tmp_path, capsys) -> None:
 def test_status_without_a_result_explains(tmp_path, capsys) -> None:
     assert cli.main(["status", str(tmp_path)]) == 2
     assert "no result.json" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("command", ["verify", "explore"])
+def test_bad_target_is_a_refusal_named_after_the_command(command: str, capfd) -> None:
+    # Integration (real drivers): a usage error exits 3 (2 is the ERROR verdict code) for both
+    # commands, and the message names the command the user typed, not the driver file.
+    if cli.repo_root() is None:
+        pytest.skip("not an editable checkout")
+    argv = [command, "--target", "nope", "--version", "1.0.0", "--dry-run"]
+    assert cli.main(argv) == 3
+    err = capfd.readouterr().err
+    assert f"inodefence {command}: error: argument --target: invalid choice: 'nope'" in err
+    assert "run_target" not in err
+
+
+def test_verify_dry_run_plan_shows_the_out_folder(tmp_path: Path, capsys, monkeypatch) -> None:
+    from scripts import run_target
+
+    monkeypatch.setattr(run_target, "docker_problem", lambda: "docker not consulted in this test")
+
+    out = tmp_path / "verify-out"
+    argv = ["--target", "node-tar", "--version", "7.5.2", "--dry-run", "--out", str(out)]
+    assert run_target.main(argv) == 0
+    assert json.loads(capsys.readouterr().out)["out"] == str(out)
+    assert run_target.main(argv[:-2]) == 0  # still optional on --dry-run
+    assert json.loads(capsys.readouterr().out)["out"] is None

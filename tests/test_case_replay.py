@@ -385,11 +385,13 @@ def test_driver_refuses_a_case_inside_the_repository(monkeypatch, tmp_path: Path
 def test_cli_resolves_the_case_folder_before_forwarding(monkeypatch, tmp_path: Path) -> None:
     calls: list = []
     monkeypatch.setattr(cli, "repo_root", lambda: Path("/repo"))
-    monkeypatch.setattr(cli, "run_driver", lambda root, d, argv: calls.append((d, argv)) or 0)
+    monkeypatch.setattr(
+        cli, "run_driver", lambda root, d, argv, prog: calls.append((d, argv, prog)) or 0
+    )
     monkeypatch.chdir(tmp_path)
     assert cli.main(["replay", "violations/run-000005", "--dry-run"]) == 0
-    ((d, argv),) = calls
-    assert d == cli.REPLAY_DRIVER
+    ((d, argv, prog),) = calls
+    assert d == cli.REPLAY_DRIVER and prog == "inodefence replay"
     assert argv == [str(tmp_path / "violations" / "run-000005"), "--rounds", "3", "--dry-run"]
 
 

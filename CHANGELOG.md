@@ -41,19 +41,26 @@
 W2가 Docker로 이미지를 준비하거나 대상을 실행하지는 않았다.
 
 **HOST4 engineering 검증(demo run, 2026-11-16).** WSL2 Ubuntu 24.04, Docker Desktop 4.99.0 / Engine 29.9.3, seed 123,
-순차 실행. 모두 **D1 판정 규칙(아래) 반영 전 커밋**에서 돌렸다.
+순차 실행. **RC 이전 커밋 기준**(node-tar 61afb3f, 나머지 c55b7ef — 모두 D1 판정 규칙 반영 전)이며, RC 후보에서의
+Docker 회귀 수치로 바뀔 자리다. "실행 성공" = 하너스가 실행을 끝내고 결과를 남긴 수, "유효 추출" = 추출기가
+`success`로 끝난 수.
 
-| 대상·버전 | 엔진 | `verify` (고정 입력) | `explore` | 탐색 종료 상태 |
-| --- | --- | --- | --- | --- |
-| oras-go 2.6.2 | c55b7ef | PASS, 위반 0/6, 오류 0 | 20회 PASS, 위반 0, 미판정 0 | rejected 20, success 0 |
-| python-tarfile 3.12.16 `data` | c55b7ef | PASS, 위반 0/5, 오류 0 | 20회 PASS, 위반 0, 미판정 0 | success 12, failed 5, rejected 3 |
-| decompress `@xhmikosr/decompress@11.1.4` | c55b7ef | PASS, 위반 0/5, 오류 0 | 20회 PASS, 위반 0, 미판정 0 | success 11, rejected 9 |
-| node-tar 7.5.23 | 61afb3f | 이 후보에서 실행 안 함 | 20회·60회 PASS, 위반 0, 미판정 0 | (20회) success 17, rejected 3 |
+| 대상·버전 | 엔진 | 모드 | 실행 성공 | 유효 추출 | 미판정 | 위반 | replay | 지원 수준 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| oras-go 2.6.2 | c55b7ef | verify | 6/6 | 0/6 (전부 declined) | 0 | 0 | — | 고정 입력 회귀 |
+| oras-go 2.6.2 | c55b7ef | explore 20 | 20/20 | **0/20** (전부 rejected) | 0 | 0 | 미검증 | **실험적 — 유의미한 보안 커버리지를 주장하지 않음** |
+| python-tarfile 3.12.16 `data` | c55b7ef | verify | 5/5 | 0/5 (전부 declined) | 0 | 0 | — | 고정 입력 회귀 |
+| python-tarfile 3.12.16 `data` | c55b7ef | explore 20 | 20/20 | 12/20 | 0 | 0 | 미검증 | 탐색 |
+| decompress `@xhmikosr/decompress@11.1.4` | c55b7ef | verify | 5/5 | 0/5 (전부 declined) | 0 | 0 | — | 고정 입력 회귀 |
+| decompress `@xhmikosr/decompress@11.1.4` | c55b7ef | explore 20 | 20/20 | 11/20 | 0 | 0 | 미검증 | 탐색 |
+| node-tar 7.5.23 | — | verify | 실행 안 함 | — | — | — | — | — |
+| node-tar 7.5.23 | 61afb3f | explore 20 / 60 | 20/20 / 60/60 | 17/20 / 42/60 | 0 / 0 | 0 / 0 | 미검증 | 탐색 |
 
 실행 후 컨테이너·볼륨 잔여 0. 증거는 HOST4 로컬에 sha256 목록과 함께 보관(저장소 밖). **위반 0은 안전성 증명이
-아니다.** oras-go는 추출 성공 0건이라 근거가 특히 약하다(알려진 한계). 위반 케이스가 없어 **`replay`의 실제 위반
-재실행(E2E)은 검증하지 않았다.** **macOS는 이 후보에서 확인하지 않았다.** node-tar 산출물로 `inodefence status`·
-`summary`가 동작하는 것을 확인했고, README의 출력 폴더 구조는 그 산출물에 맞췄다.
+아니다.** 고정 입력 회귀에서는 세 대상 모두 모든 입력을 거부(declined)해 추출된 것이 없었다(관찰 사실). oras-go
+탐색은 추출 성공 0건이라 실험적 지원으로만 둔다(알려진 한계). **replay는 실제 위반 E2E를 검증하지 않았고, 합성
+사례 기능 테스트만 있다.** **macOS는 이 후보에서 확인하지 않았다.** node-tar 산출물로 `inodefence status`·`summary`가
+동작하는 것을 확인했고, README의 출력 폴더 구조는 그 산출물에 맞췄다.
 
 ### 탐색 결과의 판정 규칙(D1, 사용자 결정 2026-11-16)
 

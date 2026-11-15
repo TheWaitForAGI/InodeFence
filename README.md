@@ -427,18 +427,27 @@ wheel로 설치했다면 `INODEFENCE_HOME`(환경 변수 또는 아래 설정 �
 - **이 릴리스 후보에서 확인한 호스트:** Windows + WSL2(Ubuntu 24.04, x86_64) + Docker Desktop
   4.99.0 / Engine 29.9.3(HOST4). **macOS는 이 후보에서 확인하지 않았습니다**(아래 #400 기록만 있음).
   그 밖의 Linux 호스트도 확인하지 않았습니다.
-- **HOST4 engineering 검증(demo run, 2026-11-16, seed 123, 순차 실행):**
+- **대상별 검증 수준 (HOST4 engineering 검증, demo run, 2026-11-16, seed 123, 순차 실행).**
+  **RC 이전 커밋 기준**(node-tar 61afb3f, 나머지 c55b7ef — 모두 D1 판정 규칙 반영 전)이며, RC 후보에서의
+  Docker 회귀 수치로 바뀔 자리입니다. "실행 성공"은 하너스가 실행을 끝내고 결과를 남긴 수, "유효 추출"은
+  추출기가 `success`로 끝난 수입니다.
 
-  | 대상·버전 | `verify` (고정 입력) | `explore` (예산) | 탐색 종료 상태 |
-  | --- | --- | --- | --- |
-  | oras-go 2.6.2 | PASS, 위반 0/6 | PASS, 위반 0, 미판정 0 (20) | rejected 20, success 0 |
-  | python-tarfile 3.12.16 `data` | PASS, 위반 0/5 | PASS, 위반 0, 미판정 0 (20) | success 12, failed 5, rejected 3 |
-  | decompress `@xhmikosr/decompress@11.1.4` | PASS, 위반 0/5 | PASS, 위반 0, 미판정 0 (20) | success 11, rejected 9 |
-  | node-tar 7.5.23 | 이 후보에서 실행 안 함 | PASS, 위반 0 (20, 60) | (20회) success 17, rejected 3 |
+  | 대상·버전 | 모드 | 실행 성공 | 유효 추출 | 미판정 | 위반 | replay | 지원 수준 |
+  | --- | --- | --- | --- | --- | --- | --- | --- |
+  | oras-go 2.6.2 | verify | 6/6 | 0/6 (전부 declined) | 0 | 0 | — | 고정 입력 회귀 |
+  | oras-go 2.6.2 | explore 20 | 20/20 | **0/20** (전부 rejected) | 0 | 0 | 미검증 | **실험적 — 유의미한 보안 커버리지를 주장하지 않음**(공통 seed가 `d/` 접두 없이 생성돼 대부분 거부) |
+  | python-tarfile 3.12.16 `data` | verify | 5/5 | 0/5 (전부 declined) | 0 | 0 | — | 고정 입력 회귀 |
+  | python-tarfile 3.12.16 `data` | explore 20 | 20/20 | 12/20 | 0 | 0 | 미검증 | 탐색 |
+  | decompress `@xhmikosr/decompress@11.1.4` | verify | 5/5 | 0/5 (전부 declined) | 0 | 0 | — | 고정 입력 회귀 |
+  | decompress `@xhmikosr/decompress@11.1.4` | explore 20 | 20/20 | 11/20 | 0 | 0 | 미검증 | 탐색 |
+  | node-tar 7.5.23 | verify | 실행 안 함 | — | — | — | — | — |
+  | node-tar 7.5.23 | explore 20 / 60 | 20/20 / 60/60 | 17/20 / 42/60 | 0 / 0 | 0 / 0 | 미검증 | 탐색 |
 
-  엔진 커밋은 node-tar가 61afb3f, 나머지 셋이 c55b7ef로, **모두 D1 판정 규칙(위 표) 반영 전 커밋**입니다.
-  **위반 0은 안전성 증명이 아닙니다.** oras-go는 추출 성공이 0건이라 이 탐색의 근거가 특히 약합니다
-  (아래 한계). 위반 케이스가 없었으므로 **`replay`의 실제 위반 재실행(E2E)은 검증하지 않았습니다.**
+  - **위반 0은 안전성 증명이 아닙니다.** 고정 입력 회귀(`verify`)에서는 세 대상 모두 모든 입력을 거부(declined)해
+    추출된 것이 없었습니다(관찰 사실; 원인은 이 문서에서 단정하지 않음).
+  - **replay:** 실제 위반 케이스에 대한 E2E 재실행은 검증하지 않았습니다(이 검증에서 위반이 없었음). 합성 사례에
+    대한 기능 테스트만 있습니다.
+  - **macOS:** 이 후보에서는 확인하지 않았습니다.
 - **이전 기록:** #400 브랜치의 `make target-run`(같은 드라이버)으로 macOS(arm64)와 WSL2에서 네 대상 고정 입력
   결과를 확인한 기록이 [CHANGELOG](CHANGELOG.md)에 있습니다(2026-11-14, 이 후보에서 재실행 안 함).
 - 이 문서의 실행 예는 모두 `demo run` 수준이며 사전등록 실험이나 자격 검증 결과가 아닙니다.

@@ -429,22 +429,33 @@ if [ "$MODE" = explore ]; then
   # under the read-only root); the host pulls this folder with docker cp while the loop runs.
   [ -n "${DEMO_LIVE_DIR:-}" ] && DEMO_ARGS+=(--live-dir "$DEMO_LIVE_DIR")
   [ -n "${DEMO_ENGINE_COMMIT:-}" ] && DEMO_ARGS+=(--engine-commit "$DEMO_ENGINE_COMMIT")
+  # The loop may end abnormally (e.g. a Docker stall past the re-execution bounds); its live folder
+  # then holds the violations written so far and the final state=failed snapshot. Capture the exit
+  # code instead of letting `set -e` leave before the copy below, which would lose them when the
+  # exit trap removes the controller (the live folder is on its tmpfs).
+  explore_rc=0
   host --image "$IF_EXPLORE_IMAGE" --tar-version "$TAR_VERSION" --call-log "$HOST_CALL_LOG" \
-    --evidence "$CONTROLLER_EVIDENCE" ${DEMO_ARGS[@]+"${DEMO_ARGS[@]}"} effect-demo-explore
-  # Copy the controller's live folder to the host BEFORE the exit trap removes the controller, so
-  # the final (state=finished) snapshot reaches the host -- a post-removal pull would fail. The
-  # loop wrote progress.json atomically (temp file -> os.replace) and closed it finished before the
-  # controller stops, so a raw copy never catches a half-written file; in-progress ".tmp-*"
-  # violation dirs are ignored by the reader. A copy failure must not pass silently (the live folder
-  # is the only off-result home of a large run's violation inputs).
+    --evidence "$CONTROLLER_EVIDENCE" ${DEMO_ARGS[@]+"${DEMO_ARGS[@]}"} effect-demo-explore ||
+    explore_rc=$?
+  # Copy the controller's live folder to the host BEFORE the exit trap removes the controller,
+  # whether the loop finished or not, so the final snapshot (state=finished, or state=failed/stopped
+  # with what was written before the stop) reaches the host -- a post-removal pull would fail. The
+  # loop wrote progress.json atomically (temp file -> os.replace), so a raw copy never catches a
+  # half-written file; in-progress ".tmp-*" violation dirs are ignored by the reader. A copy failure
+  # must not pass silently (the live folder is the only off-result home of a large run's violation
+  # inputs), but it never hides the loop's own failure: that exit code wins.
   if [ -n "${DEMO_HOST_LIVE_DIR:-}" ]; then
-    mkdir -p "$DEMO_HOST_LIVE_DIR"
-    dk cp "$CONTROLLER:$DEMO_LIVE_DIR/." "$DEMO_HOST_LIVE_DIR/" || {
+    if ! { mkdir -p "$DEMO_HOST_LIVE_DIR" &&
+      dk cp "$CONTROLLER:$DEMO_LIVE_DIR/." "$DEMO_HOST_LIVE_DIR/"; }; then
       echo "FAILED to copy live folder from $CONTROLLER:$DEMO_LIVE_DIR to $DEMO_HOST_LIVE_DIR" >&2
+      if [ "$explore_rc" -ne 0 ]; then
+        echo "(the exploration itself already failed with exit $explore_rc; exiting with that)" >&2
+        exit "$explore_rc"
+      fi
       exit 1
-    }
+    fi
   fi
-  exit 0
+  exit "$explore_rc"
 fi
 
 if [ "$MODE" = demo-historical ]; then

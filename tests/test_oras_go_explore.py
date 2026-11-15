@@ -226,6 +226,32 @@ def test_records_use_the_common_judgment_and_termination_axes() -> None:
     assert oge.common_case_records(report)[2]["termination"] is None
 
 
+def test_frameless_clean_run_is_unjudged_and_the_verdict_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    # Same probe as decompress (W3): a finished run with no worker frame is not a clean negative.
+    report = _report(runs=5, violating=None)
+    report["steps"] = [
+        {"index": i, "termination": "success", "frame_error": "no stdout frame" if i == 2 else None}
+        for i in range(5)
+    ]
+    outcome = _explore(tmp_path, FakeScript(report), monkeypatch)
+    assert outcome.verdict == "ERROR"
+    assert "unjudged runs 1/5 = 20%" in capsys.readouterr().out
+    records = oge.common_case_records(report)
+    assert records[2]["outcome"] == "run_error" and records[2]["c1"] is None
+
+
+def test_frameless_run_keeps_an_observed_violation() -> None:
+    report = _report(runs=3, violating=1)
+    report["steps"] = [
+        {"index": i, "termination": "success", "frame_error": "no stdout frame"} for i in range(3)
+    ]
+    records = oge.common_case_records(report)
+    assert [r["outcome"] for r in records] == ["run_error", "judged", "run_error"]
+    assert records[1]["c1"] is True
+
+
 def test_all_runs_unjudged_is_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     report = _report(runs=5, violating=None)
     report["case_records"] = [

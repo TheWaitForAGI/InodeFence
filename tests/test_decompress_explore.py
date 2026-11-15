@@ -102,8 +102,9 @@ def test_no_frame_keeps_an_oracle_violation_recorded() -> None:
 
 
 @pytest.mark.parametrize("count", [0, 3])
-def test_report_short_of_the_budget_gives_no_result(count: int) -> None:
-    with pytest.raises(ValueError, match=f"has {count} steps, budget was 20"):
+def test_report_short_of_the_budget_is_an_error_with_no_result(count: int) -> None:
+    # RuntimeError -> the driver's ERROR exit (2), as oras-go's check_report.
+    with pytest.raises(RuntimeError, match=f"has {count} steps, budget was 20"):
         dx.build_campaign_result(
             _report([_step(i) for i in range(count)]),
             spec=SPEC,
@@ -137,10 +138,51 @@ def test_unjudged_under_the_limit_is_counted_and_not_observed() -> None:
     assert summary["unjudged_steps"] == 1 and summary["not_readable_as_pass"] is None
 
 
-def test_partial_frame_errors_with_judged_steps_are_not_a_gate() -> None:
+def test_frameless_steps_count_as_unjudged_against_the_ceiling() -> None:
+    # Changed (W1/ORCH 2026-11-16, was "partial frame errors are not a gate" -> PASS): a finished
+    # step with no worker frame and no observed violation is unjudged, so the ceiling decides.
     steps = [_step(i, frame_error="x" if i % 2 else None) for i in range(4)]
-    result, _, summary = _convert(_report(steps))
-    assert result.verdict is Verdict.PASS and summary["frame_error_steps"] == 2
+    result, _, summary = _convert(_report(steps))  # 2/4 unjudged > 0.1
+    assert result.verdict is Verdict.ERROR and summary["frame_error_steps"] == 2
+    assert summary["unjudged_steps"] == 2 and summary["not_readable_as_pass"]
+    assert [c.outcome for c in result.cases] == ["judged", RUN_ERROR, "judged", RUN_ERROR]
+
+
+def test_four_of_five_frameless_success_steps_is_error() -> None:
+    # W3 case 3: the gate used to stay silent when only some steps lacked a frame.
+    steps = [_step(0)] + [_step(i, frame_error="no stdout frame") for i in range(1, 5)]
+    result, _, summary = _convert(_report(steps), ratio=0.2)
+    assert result.verdict is Verdict.ERROR and summary["unjudged_steps"] == 4
+    assert "4/5 steps unjudged, 4 without a worker frame" in summary["not_readable_as_pass"]
+
+
+def test_one_frameless_step_under_the_ceiling_is_counted_not_error() -> None:
+    steps = [_step(i) for i in range(9)] + [_step(9, frame_error="no stdout frame")]
+    result, _, summary = _convert(_report(steps), ratio=0.2)
+    assert result.verdict is Verdict.PASS and summary["not_readable_as_pass"] is None
+    assert summary["unjudged_steps"] == 1 and result.cases[-1].outcome == RUN_ERROR
+
+
+def test_summary_and_result_never_disagree() -> None:
+    # not_readable_as_pass is set exactly when result.json is ERROR, for every shape tried.
+    shapes = [
+        [_step(i) for i in range(5)],
+        [_step(i, frame_error="x") for i in range(5)],
+        [_step(i, termination="timed_out") for i in range(5)],
+        [_step(0, violated=True, frame_error="x")] + [_step(i) for i in range(1, 5)],
+        [_step(i, frame_error="x" if i == 0 else None) for i in range(5)],
+    ]
+    tar = b"t" * 512
+    hit = {
+        "index": 0,
+        "tar_b64": base64.b64encode(tar).decode(),
+        "tar_sha256": sha256(tar).hexdigest(),
+    }
+    for steps in shapes:
+        inputs = [hit] if steps[0]["contract_violated"] else []
+        for ratio in (0.0, 0.2, 1.0):
+            result, _, summary = _convert(_report(steps, inputs), ratio=ratio)
+            assert (result.verdict is Verdict.ERROR) == bool(summary["not_readable_as_pass"])
 
 
 def test_violation_keeps_its_input_and_writes_result(tmp_path: Path) -> None:

@@ -56,6 +56,7 @@ from inodefence.target_result import (
     Provenance,
     TargetAxes,
     TargetResult,
+    Verdict,
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -129,23 +130,48 @@ class Tally:
         return self.unjudged / self.steps if self.steps else 1.0
 
 
+def step_judged(step: dict[str, Any]) -> bool:
+    """Whether a step counts as judged -- the ONE rule; the tally and the records both use it.
+
+    The worker finished (``success`` / ``rejected``) AND either it emitted its frame or the oracle
+    saw a violation in the real BEFORE/AFTER snapshots. A finished step with no frame and no
+    observed violation is NOT a clean negative (a worker that never produced its frame -- e.g. a
+    stale image -- would otherwise read as PASS), so it counts as unjudged and feeds the ceiling.
+    A violation the oracle saw stays judged: a run error cannot carry one, and hiding a hit is
+    worse than flagging the run (the frame never decides the oracle verdict, see
+    ``effect_pipeline_decompress``).
+    """
+    if not step.get("judged", step.get("termination") in JUDGED):
+        return False
+    if not step.get("frame_error"):
+        return True
+    oracle = step.get("oracle") or {}
+    return True in (oracle.get(name) for name in ("C0", "C1", "C2"))
+
+
 def tally(report: dict[str, Any]) -> Tally:
     steps = report.get("steps") or []
-    unjudged = sum(1 for s in steps if not s.get("judged", s.get("termination") in JUDGED))
+    unjudged = sum(1 for s in steps if not step_judged(s))
     frame_errors = sum(1 for s in steps if s.get("frame_error"))
     return Tally(len(steps), unjudged, frame_errors)
 
 
 def gate(counts: Tally, max_unjudged_ratio: float) -> str | None:
-    """Why the campaign cannot be read as PASS/FAIL, or ``None``."""
+    """Why the counts would make the campaign ERROR, in words (``None`` when they would not).
+
+    Explanatory only: ``not_readable_as_pass`` is set from the common verdict itself (see
+    ``build_campaign_result``), so the summary and ``result.json`` can never disagree.
+    """
     if counts.steps == 0:
         return "no step ran"
     if counts.frame_errors == counts.steps:
         return f"no step produced a worker frame ({counts.frame_errors}/{counts.steps})"
+    if counts.unjudged == counts.steps:
+        return f"no step was judged ({counts.unjudged}/{counts.steps})"
     if counts.unjudged_ratio > max_unjudged_ratio:
         return (
-            f"{counts.unjudged}/{counts.steps} steps unjudged "
-            f"(ratio {counts.unjudged_ratio:.3f} > {max_unjudged_ratio})"
+            f"{counts.unjudged}/{counts.steps} steps unjudged, {counts.frame_errors} without a "
+            f"worker frame (ratio {counts.unjudged_ratio:.3f} > {max_unjudged_ratio})"
         )
     return None
 
@@ -173,29 +199,25 @@ def build_campaign_result(
     ``observation_complete`` stays unknown (``None``), and a violation then reads as "reproduction
     check needed". Decompress-specific: the image ``preparation`` is attached to the common record.
 
-    Fail-closed on the gate's two whole-run conditions (the module docstring's contract):
-    a report with no step, or fewer/more steps than the budget, gives no result (``ValueError``,
-    as oras-go's ``check_report``), and when no step produced a
-    worker frame every frameless step without an observed violation becomes a run error, so the
-    verdict is ``ERROR``, never ``PASS``. A violation the oracle judged from the snapshots is kept
-    as a judged case with its saved input (a run error cannot carry one), so the hit is not hidden.
+    Fail-closed (the module docstring's contract): a report with no step, or with fewer/more steps
+    than the budget, gives no result and is an ERROR (``RuntimeError``, exit 2, as oras-go's
+    ``check_report``; the campaign always runs its whole budget). Each step is judged by
+    :func:`step_judged` -- a finished step without a worker frame and without an observed
+    violation is a run error -- and the common ceiling rule then decides ``ERROR``. The summary's
+    ``not_readable_as_pass`` is derived from that verdict, never decided separately.
     """
     from scripts import explore_result
 
     counts = tally(report)
-    stop = gate(counts, max_unjudged_ratio)
-    if counts.steps != budget:  # also "no step ran"; the campaign always runs the whole budget
-        raise ValueError(
+    if counts.steps != budget:  # also "no step ran"
+        raise RuntimeError(
             f"decompress campaign report has {counts.steps} steps, budget was {budget}"
-            + (f" ({stop})" if counts.steps == 0 else "")
+            + (" (no step ran)" if counts.steps == 0 else "")
         )
-    no_frame_at_all = counts.frame_errors == counts.steps
     records = []
     for step in report.get("steps") or []:
         oracle = step.get("oracle") or {}
-        judged = bool(step.get("judged", step.get("termination") in JUDGED))
-        if judged and no_frame_at_all and True not in (oracle.get(c) for c in ("C0", "C1", "C2")):
-            judged = False
+        judged = step_judged(step)
         records.append(
             {
                 "run_index": step["index"],
@@ -249,7 +271,12 @@ def build_campaign_result(
         "unjudged_ratio": round(counts.unjudged_ratio, 6),
         "frame_error_steps": counts.frame_errors,
         "max_unjudged_ratio": max_unjudged_ratio,
-        "not_readable_as_pass": stop,
+        # Derived from the common verdict (one decision): set exactly when result.json is ERROR.
+        "not_readable_as_pass": (
+            (gate(counts, max_unjudged_ratio) or "verdict ERROR")
+            if result.verdict is Verdict.ERROR
+            else None
+        ),
         "violation_inputs": len(repro),
         "controller_report_label": report.get("label"),
     }

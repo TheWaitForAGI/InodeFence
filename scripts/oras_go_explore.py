@@ -108,9 +108,9 @@ def verify_existing(prepared: PreparedTargetImage, runner=None) -> str:
 
 
 def unjudged(report: dict) -> tuple[int, int]:
-    """(runs with no verdict because the run program did not start cleanly, all runs)."""
-    records = report.get("case_records", [])
-    return sum(1 for r in records if r.get("outcome") == RUN_ERROR), len(records)
+    """(unjudged runs, all runs), by the same rule as the result (:func:`common_case_records`)."""
+    records = common_case_records(report)
+    return sum(1 for r in records if r["outcome"] == RUN_ERROR), len(records)
 
 
 def common_case_records(report: dict) -> list[dict]:
@@ -121,6 +121,11 @@ def common_case_records(report: dict) -> list[dict]:
     axis (``judged`` / ``run_error``) and ``termination`` the status: the judged run's own value, or
     the matching ``steps[].termination`` for a run error when the report carries steps. The report
     has no trace-integrity field, so ``observation_complete`` stays unknown (``None``).
+
+    Fail-closed, the same rule as decompress (``decompress_explore.step_judged``): a run whose
+    step has a ``frame_error`` (the worker emitted no frame) and no observed violation is a run
+    error, not a clean negative -- with this hook's 0.0 ceiling the verdict is then ERROR. A
+    violation the oracle saw in the snapshots is kept (a run error cannot carry one).
     """
     steps = {s.get("index"): s for s in report.get("steps") or []}
     records = []
@@ -128,6 +133,10 @@ def common_case_records(report: dict) -> list[dict]:
         run_error = record.get("outcome") == RUN_ERROR
         step = steps.get(record["run_index"]) or {}
         termination = step.get("termination") or (None if run_error else record.get("outcome"))
+        violated = True in (record.get("c0"), record.get("c1"), record.get("c2"))
+        if not run_error and step.get("frame_error") and not violated:
+            record = {**record, "c0": None, "c1": None, "c2": None}
+            run_error = True
         records.append(
             {**record, "outcome": RUN_ERROR if run_error else JUDGED, "termination": termination}
         )

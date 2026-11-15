@@ -4,7 +4,7 @@
 
 **HOST2 NOT QUALIFIED.** Re-measured on 2026-11-11 14:06–14:20 KST by the W2 session (IF-ORCH-20261111 instruction). Memory now **PASS** (the WSL 20 GB cap is already in effect, so no `wsl --shutdown` was needed). These remain **FAIL**: Engine contract (29.9.3 vs 29.8.0), target/controller/helper images absent, clock (`CLOCK_MONOTONIC` runs about 4.7% slow against Windows Stopwatch over 60 s and 600 s brackets) and restart protection (Windows Update restarted the host automatically at 2026-11-11 10:02 KST, and updates are not paused). No smoke, benchmark, experiment, image build, image load, prune or deletion was performed. Environment changes made in this session: **none** (section 9). Raw probe outputs are redacted copies. Hostname, account names, user paths, Tailscale/LAN addresses and MACs are replaced with `<...>`.
 
-The 11/10 report's repository path `/home/linux/projects/InodeFence` does not exist on this host. The actual checkout is `~/projects/InodeFence` (user redacted). The CPU (Intel Core Ultra 7 270K Plus, 24C/24T) and RAM (32 GB) match the HOST2 description.
+The 11/10 report's repository path `/home/[ssh-user-redacted]/projects/InodeFence` does not exist on this host. The actual checkout is `~/projects/InodeFence` (user redacted). The CPU (Intel Core Ultra 7 270K Plus, 24C/24T) and RAM (32 GB) match the HOST2 description.
 
 ## 2. PASS / FAIL / UNKNOWN Matrix
 
@@ -238,7 +238,7 @@ Script `scripts/measure_clock_offset.py` from `origin/claude/p0-331-exp3-control
 
 | # | Task | How | Expected time | Why it is needed |
 | --- | --- | --- | --- | --- |
-| 1 | Accept the Tailscale share invite | Open the invite link (email or Tailscale admin) while signed in to the HOST2 tailnet account, then accept. W2 then checks that HOST1 `100.69.212.56` appears | 2 min | The three experiment images and the holdout image come from HOST1 through this share, and W2 checks they keep the same ids. No rebuild is allowed |
+| 1 | Accept the Tailscale share invite | Open the invite link (email or Tailscale admin) while signed in to the HOST2 tailnet account, then accept. W2 then checks that HOST1 `[tailnet-addr-redacted-1]` appears | 2 min | The three experiment images and the holdout image come from HOST1 through this share, and W2 checks they keep the same ids. No rebuild is allowed |
 | 2 | Approve the restart-protection UAC prompt | Click "Yes" on the UAC window that has been open since 15:18. If it closed, tell W2 and it relaunches it | 1 min | Pauses Windows Update for 35 days and blocks automatic restarts while logged on. Windows restarted HOST2 automatically at 10:02 today, and one restart ends a 24 h unattended run |
 | 3 | Turn off Docker Desktop auto-update and report Resource Saver | Docker Desktop > Settings > Software updates: turn off "Automatically check/download updates". Settings > Resources > Advanced: tell W2 the "Resource Saver" state and its timeout. Change nothing else | 3 min | Engine 29.9.3 and Desktop 4.99.0 must stay unchanged from the qualification start to the end of the main run (§11 ⑤). Resource Saver can stop the engine VM when idle |
 | 4 | Close background programs during measurement | Quit, and turn off at startup: Discord, Steam, Riot Client, Battle.net, Overwolf, OP.GG, KakaoTalk, LG HUB, INZONE Hub, Samsung Magician, Notion, Adobe Acrobat Synchronizer, NAVER MYBOX, Edge auto-launch (AnyDesk is the owner's decision). **Keep Docker Desktop and Tailscale running** | 5–10 min | The load criterion (< 3) must hold for 24 h. Game launchers and updaters cause CPU and disk spikes |
@@ -260,7 +260,7 @@ Separate detached worktree `~/inodefence-host2-20261111/check-129324d` at the in
 | `PYTHONPATH=src`, files as committed | both rc=2 `preregistration unusable: engine_sha must be a 40-hex git commit`. **This is the intended refusal** (`TBD-FREEZE` is still in place) |
 | `PYTHONPATH=src`, a **scratch test copy** with TBD values filled (engine_sha = 129324d, ledger sha from the worktree file, deadline +7 d, HOST1 29.8.0, HOST2 29.9.3). For parser checking only, not a value proposal (`dryrun_testfill_*.diff.txt`) | both rc=0, `gate: PASS`, `would be refused at live run: (nothing)`. Smoke: cells 6, seeds [6301, 6303] (alternate-v1, HOST2 share), budget 300. Qualification: cells 12, seeds [8110, 8102, 8103, 8106] (replicate-v1), budget 2000. Engine gate read `docker version` = 29.9.3 and matched. The output directory was not created |
 
-- Paths: no breakage. The cell command and report paths derive from the worktree and `--output` (lowercase `projects` and a different account are fine). `git grep '/home/linux|Projects/InodeFence'` over scripts, src and configs finds hits only off the main-run path: `concurrency-scaling-v1.md:283`, `concurrency-scaling-v2.md:297` (doc examples), and `src/inodefence/evaluation/n04_preflight.py:66-76` (older N04 macOS paths). `run_exp0.py`, `launcher_guards.py`, `local_node_tar_smoke.sh` and the two registration files have none.
+- Paths: no breakage. The cell command and report paths derive from the worktree and `--output` (lowercase `projects` and a different account are fine). `git grep '/home/[ssh-user-redacted]|Projects/InodeFence'` over scripts, src and configs finds hits only off the main-run path: `concurrency-scaling-v1.md:283`, `concurrency-scaling-v2.md:297` (doc examples), and `src/inodefence/evaluation/n04_preflight.py:66-76` (older N04 macOS paths). `run_exp0.py`, `launcher_guards.py`, `local_node_tar_smoke.sh` and the two registration files have none.
 - Observation 1: the dry-run returned `gate: PASS` with **no target, controller or helper image present** on HOST2. The dry-run does not inspect images (the `--target-digest` value is compared with the registration only). The existence check on `LOCAL_IMAGES` (`scripts/run_exp0.py:614,627`) happens only in a live run. Image-id comparison is a separate code item (§13 of the qualification file), so a dry-run PASS does not cover the image preflight.
 - Observation 2: the dry-run prints `warmup: BUILD_ONLY=1 …` even with `--skip-build` (`scripts/run_exp0.py:1414`). A live run skips it (`:1995`, `if pending and not args.skip_build`). The output is misleading but the behaviour is correct.
 - Evidence: `dryrun_registrations.txt`, `dryrun_testfill_run-exp0-eng-smoke-v1.diff.txt`, `dryrun_testfill_host-qualification-v1-run.diff.txt`.
@@ -309,8 +309,8 @@ The elevated script started at 15:18 (`if_host2_elevated.ps1.txt` = `if_host2_pa
 ## 26. Image transfer, identity, volume in-use test (17:37–17:39 KST)
 
 **Transfer verification: PASS.** (`transfer_run.txt`)
-- HOST1 appeared on the tailnet (shared node). Host key fingerprint `SHA256:LHkKFflNNKPIzTB/ljwOuInFGX1OjSCs6ZRqRtLEiuM` (ED25519, port 2222). Recorded at first contact (TOFU). **Checked against HOST1 (ORCH, 17:41 KST): matches** HOST1 `/etc/ssh/ssh_host_ed25519_key.pub`.
-- rrsync restriction, once each: shell command refused (`SSH_ORIGINAL_COMMAND does not run rsync`, rc=1); write refused (`sending to read-only server is not allowed`, rc=12); `..` refused (`do not use .. in arg`, rc=12); `/etc/` was anchored inside the restricted dir (`/home/linux/inodefence-transfer/etc` not found, rc=23).
+- HOST1 appeared on the tailnet (shared node). Host key fingerprint `SHA256:LHkKFflNNKPIzTB/ljwOuInFGX1OjSCs6ZRqRtLEiuM` (ED25519, port [ssh-port-redacted]). Recorded at first contact (TOFU). **Checked against HOST1 (ORCH, 17:41 KST): matches** HOST1 `/etc/ssh/ssh_host_ed25519_key.pub`.
+- rrsync restriction, once each: shell command refused (`SSH_ORIGINAL_COMMAND does not run rsync`, rc=1); write refused (`sending to read-only server is not allowed`, rc=12); `..` refused (`do not use .. in arg`, rc=12); `/etc/` was anchored inside the restricted dir (`/home/[ssh-user-redacted]/inodefence-transfer/etc` not found, rc=23).
 - `rsync -av --partial` of `images-20261111/`: 10 files, 463,887,484 bytes in 45 s (10.2 MB/s), rc=0. Route: direct (Tailscale ping 9 ms via a public endpoint; earlier pings at 17:37 went through DERP tok, 71 ms).
 - `sha256sum -c SHA256SUMS`: 4/4 OK, sizes equal the expected values.
 
@@ -349,7 +349,7 @@ The elevated script started at 15:18 (`if_host2_elevated.ps1.txt` = `if_host2_pa
   - No auto-update key and no Resource Saver key, so both are at the product defaults. The effective GUI values have not been confirmed (the owner reads them, nothing changed).
   - **`AutoStart=False`:** Docker Desktop does not start at Windows sign-in. If Windows restarts during an unattended run, the engine does not come back on its own. Report only. Changing it is an experiment-condition question (ORCH/Jiwoong).
 - ORCH (17:41): Docker Desktop settings changes (auto-update off and similar) go to Jiwoong for approval first. Only values are recorded until then.
-- The HOST1 sshd password-auth `linux` login from HOST2's Tailscale address at 17:40:20–17:40:36 KST was **not made by this W2 session**. Every W2 ssh/rsync call used `-i ~/.ssh/inodefence_transfer -o BatchMode=yes` (password prompts disabled): 6 key logins at 17:37:54–17:38:50 (`transfer_run.txt`). At 17:39–17:40 W2 was running `docker load` and the volume test only. HOST1 access stays limited to the transfer key.
+- The HOST1 sshd password-auth `[ssh-user-redacted]` login from HOST2's Tailscale address at 17:40:20–17:40:36 KST was **not made by this W2 session**. Every W2 ssh/rsync call used `-i ~/.ssh/inodefence_transfer -o BatchMode=yes` (password prompts disabled): 6 key logins at 17:37:54–17:38:50 (`transfer_run.txt`). At 17:39–17:40 W2 was running `docker load` and the volume test only. HOST1 access stays limited to the transfer key.
 
 ## 29. W32Time post-sync WSL clock check: final verdict (18:19–18:30 KST)
 
@@ -367,9 +367,9 @@ Observation (risk): `w32tm /query /status` at 18:29 still shows leap 3 (unsynchr
 
 ## 30. HOST2-side information about the 17:40 KST password-auth login to HOST1
 
-HOST1 side (ORCH): 17:40:20–17:40:36 KST, source 100.100.95.17:56661 (HOST2), user `linux`, password auth. Jiwoong confirmed it was "tried together with a teammate", so it is closed on the HOST1 side. HOST2 traces (read-only, facts only):
+HOST1 side (ORCH): 17:40:20–17:40:36 KST, source [tailnet-addr-redacted-2]:56661 (HOST2), user `[ssh-user-redacted]`, password auth. Jiwoong confirmed it was "tried together with a teammate", so it is closed on the HOST1 side. HOST2 traces (read-only, facts only):
 
-- Windows PowerShell (PSReadLine) interactive history `ConsoleHost_history.txt` (last written 17:40:45 KST) has the entry `ssh -o ConnectTimeout=5 -p 2222 linux@100.69.212.56`, followed by `tailscale ping 100.69.212.56` and `Test-NetConnection 100.69.212.56 -Port 2222`. The history file has no timestamps per line.
+- Windows PowerShell (PSReadLine) interactive history `ConsoleHost_history.txt` (last written 17:40:45 KST) has the entry `ssh -o ConnectTimeout=5 -p [ssh-port-redacted] [ssh-user-redacted]@[tailnet-addr-redacted-1]`, followed by `tailscale ping [tailnet-addr-redacted-1]` and `Test-NetConnection [tailnet-addr-redacted-1] -Port [ssh-port-redacted]`. The history file has no timestamps per line.
 - The Windows user's `%USERPROFILE%\.ssh\known_hosts` was modified at **17:40:21.16 KST** (`known_hosts.old` 17:39:54). This matches the HOST1 login start (17:40:20), so the connection came from the Windows OpenSSH client in an interactive PowerShell window. It did not come from WSL. W2's WSL `~/.ssh/known_hosts` is unchanged (2026-09-21), and W2 used a separate scratch known_hosts file with `BatchMode=yes`.
 - Nothing else is recorded on the HOST2 side (the Windows OpenSSH client keeps no log).
 

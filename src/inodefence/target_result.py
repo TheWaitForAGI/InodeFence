@@ -72,6 +72,25 @@ FAILED = "failed"
 TIMED_OUT = "timed_out"
 TERMINATIONS = (SUCCESS, REJECTED, FAILED, TIMED_OUT)
 
+
+def no_extraction_warning(terminations: Mapping[str, int]) -> str | None:
+    """The one wording for "no run extracted successfully", or ``None``.
+
+    Shared by the summary page, the explore driver's output line and ``inodefence status``, so the
+    three never disagree. Shown when executions were recorded with their termination and none
+    ended in ``success`` (e.g. every run was rejected): a "no violation" then rests on runs that
+    never wrote the archive out, so it is weak evidence. It never changes the verdict or exit code.
+    """
+    known = {name: int(terminations.get(name, 0)) for name in TERMINATIONS}
+    if sum(known.values()) == 0 or known[SUCCESS] > 0:
+        return None
+    ended = " · ".join(f"{name} {count}" for name, count in known.items() if count)
+    return (
+        f"추출 성공 0건(전부 {ended}): 위반 없음의 근거가 제한적이다 "
+        "(no run extracted successfully; verdict unchanged)"
+    )
+
+
 _SHA256_RE = re.compile(r"[0-9a-f]{64}")
 _GIT_SHA_RE = re.compile(r"[0-9a-f]{40}")
 
@@ -279,6 +298,11 @@ class TargetResult:
         if self.campaign is not None and self.campaign.unjudged_steps is not None:
             return self.campaign.unjudged_steps
         return sum(case.is_unjudged for case in self.cases)
+
+    @property
+    def success_runs(self) -> int:
+        """Executions that ended in ``success`` (from :attr:`termination_counts`)."""
+        return self.termination_counts[SUCCESS]
 
     @property
     def termination_counts(self) -> dict[str, int]:

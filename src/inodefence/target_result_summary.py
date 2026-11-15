@@ -31,6 +31,7 @@ from inodefence.target_result import (
     TargetResultError,
     Verdict,
     load_target_result,
+    no_extraction_warning,
 )
 
 #: Plain-language meaning of each contract (from docs/research/design/security-contracts.md).
@@ -101,7 +102,8 @@ def _headline(result: TargetResult) -> str:
         return (
             f"**ERROR** — {total}건 중 {result.unjudged_steps}건에서 오라클이 평가되지 못했다"
             f"(미판정 비율 {result.unjudged_ratio}). 보지 못한 실행이 너무 많아 위반 없음으로 "
-            "읽을 수 없다. 거절·실패·시간 초과는 판정된 실행이라 이 수에 들지 않는다."
+            "읽을 수 없다. 정상 거절은 판정된 실행이라 이 수에 들지 않는다(탐색에서 위반이 "
+            "관찰되지 않은 실패·시간 초과는 미판정이다)."
         )
     if result.verdict is Verdict.ERROR:
         return (
@@ -139,6 +141,10 @@ def render_summary(result: TargetResult, *, source_name: str, inputs_verified: b
     add("")
     add(_headline(result))
     add("")
+    warning = no_extraction_warning(result.termination_counts) if result.campaign else None
+    if warning:
+        add(f"> **주의** — {warning}")
+        add("")
     add("## 무엇을 시험했나")
     add("")
     add("| 항목 | 값 |")
@@ -163,10 +169,12 @@ def render_summary(result: TargetResult, *, source_name: str, inputs_verified: b
         add(f"| 첫 위반까지 실행 | {f'{first}번째' if first is not None else '위반 없음'} |")
         add(f"| 위반 수 | {len(result.violating_cases)}건 |")
         add(f"| 종료 상태 | {_termination_line(result)} |")
+        add(f"| 추출 성공 | {result.success_runs}건 |")
         add(
             f"| 미판정 실행 | {result.unjudged_steps}건 (비율 {result.unjudged_ratio}) "
-            "— 오라클이 평가되지 못한 실행(실행 기반 오류·관찰 없음·사후 스냅샷 없음), "
-            "‘위반 없음’과 다름. 거절·실패·시간 초과는 판정된 실행이라 여기 들지 않음 |"
+            "— 오라클이 평가되지 못했거나 깨끗한 결과로 믿을 수 없는 실행(실행 기반 오류·관찰 "
+            "없음·사후 스냅샷 없음, 탐색에서 위반이 관찰되지 않은 실패·시간 초과), "
+            "‘위반 없음’과 다름. 정상 거절은 판정된 실행이라 여기 들지 않음 |"
         )
         if campaign.max_unjudged_ratio is not None:
             add(f"| 미판정 상한 | {campaign.max_unjudged_ratio} (넘으면 판정은 ERROR) |")

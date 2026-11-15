@@ -37,6 +37,8 @@ from scripts.run_target import (
     with_tag_suffix,
 )
 
+from inodefence.target_result import load_target_result, no_extraction_warning
+
 # Outside the repo AND outside ~/inodefence-evidence (confirmatory evidence lives there).
 DEFAULT_OUT = Path.home() / "inodefence-explore"
 # This repository is public; a violating-case TAR written inside it could be committed and leak.
@@ -138,6 +140,14 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 3
 
+    # The target's own version/option validation (the same ``cells`` verify uses), also on
+    # --dry-run, so a malformed version is refused (3) before a plan is printed.
+    filters = [target_options[opt.name] for opt in adapter.options if opt.name in target_options]
+    try:
+        adapter.cells([args.version], filters)
+    except ValueError as error:
+        print(f"TARGET-EXPLORE SETUP: {error}", file=sys.stderr)
+        return 3
     min_budget = adapter.explore_min_budget() if adapter.explore_min_budget else None
     if min_budget is not None and args.budget < min_budget:
         parser.error(f"--budget must be >= {min_budget} for {args.target} (the loop's seed count)")
@@ -171,7 +181,6 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 3
 
-    filters = [target_options[opt.name] for opt in adapter.options if opt.name in target_options]
     try:
         prepared = prepare_target_image(
             adapter,
@@ -207,6 +216,12 @@ def main(argv: list[str] | None = None) -> int:
         f"image={prepared.image_id} (exploration run)"
     )
     print(f"result: {outcome.result_path}")
+    try:  # a summary line only; the verdict and exit code below are unchanged
+        warning = no_extraction_warning(load_target_result(outcome.result_path).termination_counts)
+    except Exception:  # noqa: BLE001 - never let the warning hide the result
+        warning = None
+    if warning:
+        print(f"TARGET-EXPLORE WARNING: {warning}")
     # Exit code from the verdict, same rule as target-run (0 PASS, 1 FAIL, 2 ERROR; setup/refusal
     # exits 3 earlier). A campaign whose verdict is ERROR with zero violations must not exit 0, or
     # automation reads "nothing extracted" as success.

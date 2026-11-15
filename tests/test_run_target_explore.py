@@ -203,7 +203,13 @@ def test_targets_without_declared_options_are_unaffected() -> None:
 def test_dry_run_includes_declared_target_options(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    adapter, _ = _adapter_with_option()
+    import dataclasses
+
+    adapter, captured = _adapter_with_option()
+    # --dry-run now runs the target's own validation (cells); this fake accepts the input.
+    adapter = dataclasses.replace(
+        adapter, cells=lambda versions, filters: captured.update(filters=filters) or []
+    )
     monkeypatch.setattr(rte, "load_adapter", lambda t: adapter)
     assert (
         rte.main(
@@ -211,6 +217,7 @@ def test_dry_run_includes_declared_target_options(
         )
         == 0
     )
+    assert captured["filters"] == ["b"]
     plan = json.loads(capsys.readouterr().out)
     assert plan["target_options"] == {"extraction-filter": "b"}
 
@@ -326,3 +333,28 @@ def test_untracked_source_file_makes_the_engine_dirty(monkeypatch: pytest.Monkey
     assert run_target.engine_provenance(None).engine_dirty is False
     monkeypatch.setattr(run_target, "_git", fake_git("?? scripts/new_module.py"))
     assert run_target.engine_provenance(None).engine_dirty is True
+
+
+def test_dry_run_checks_the_version_format_like_verify(capsys) -> None:
+    # W3: explore --dry-run used to print a plan for "11.1.4"; verify refused it. Both now use
+    # the adapter's own validation (cells).
+    argv = ["--target", "decompress", "--version", "11.1.4", "--dry-run"]
+    assert rte.main(argv) == 3
+    assert "decompress --version is <package>@<X.Y.Z>" in capsys.readouterr().err
+    ok = ["--target", "decompress", "--version", "@xhmikosr/decompress@latest", "--dry-run"]
+    assert rte.main(ok) == 0
+
+
+def test_decompress_declares_its_campaign_floor(capsys) -> None:
+    from scripts import decompress_explore
+
+    from inodefence.generator import minimal_seed_corpus
+
+    floor = rte.load_adapter("decompress").explore_min_budget()  # type: ignore[misc]
+    assert floor == decompress_explore.MIN_BUDGET == len(minimal_seed_corpus())
+    spec = "@xhmikosr/decompress@latest"
+    argv = ["--target", "decompress", "--version", spec, "--budget", str(floor - 1), "--dry-run"]
+    with pytest.raises(SystemExit) as stopped:
+        rte.main(argv)
+    assert stopped.value.code == 3
+    assert f"--budget must be >= {floor} for decompress" in capsys.readouterr().err

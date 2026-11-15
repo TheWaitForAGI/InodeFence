@@ -72,9 +72,20 @@ def case_record(run_index: int, result: EffectRunResult) -> dict[str, object]:
     trace's ``integrity_valid``, as for node-tar.
 
     Every status is judged, including an extractor failure (tarfile raised; the worker reported
-    it) and a timeout (the backend stopped the extractor). A non-timeout run whose worker report
-    cannot be read or contradicts the exit status (crash, truncation) is ``run_error``: it cannot
-    be told apart from a worker that never extracted, so judging it could hide a silent negative.
+    it) and a timeout (the backend stopped the extractor). Exploration record only (the loop gets
+    the unchanged ``EffectRunResult``):
+
+    - A violation the oracle saw in the snapshots is always judged and its input kept, even when
+      the worker report is unreadable or the trace incomplete -- the effect is on disk, and a run
+      error cannot carry a violation (it then reads as "reproduction check needed").
+    - Without a violation, a non-timeout run whose worker report cannot be read or contradicts the
+      exit status (crash, truncation) is ``run_error``: it cannot be told apart from a worker that
+      never extracted, so judging it clean could hide a silent negative. So is a ``success`` run of
+      a non-empty archive whose trace is not intact (``integrity_valid`` False): the worker claims
+      it finished but its per-entry report does not show every entry. Incomplete by construction
+      (see ``_build_trace``) and so NOT unjudged: a rejected / failed / timed-out run (the
+      extractor stopped -- a rejection of the first entry is a clean negative) and an empty
+      archive (nothing to extract).
     """
     base = result.base_result
     status = base.execution.status
@@ -84,11 +95,17 @@ def case_record(run_index: int, result: EffectRunResult) -> dict[str, object]:
         # Same definition as node-tar: complete, no observation failure, flushed to the end.
         "observation_complete": result.trace.integrity_valid,
     }
-    if status is not ExecutionStatus.TIMED_OUT and worker_reported_status(
-        base.execution.stdout
-    ) != _WORKER_STATUS.get(status):
-        return {**record, "outcome": "run_error", "c0": None, "c1": None, "c2": None}
     hit = {v.contract_id.value: v.violated for v in base.violations}
+    report_mismatch = status is not ExecutionStatus.TIMED_OUT and worker_reported_status(
+        base.execution.stdout
+    ) != _WORKER_STATUS.get(status)
+    unobserved_success = (
+        status is ExecutionStatus.SUCCESS
+        and bool(base.case.entries)
+        and not result.trace.integrity_valid
+    )
+    if True not in hit.values() and (report_mismatch or unobserved_success):
+        return {**record, "outcome": "run_error", "c0": None, "c1": None, "c2": None}
     return {
         **record,
         "outcome": "judged",

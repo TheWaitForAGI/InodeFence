@@ -386,3 +386,45 @@ def test_judgment_and_termination_are_separate_axes() -> None:
     )
     assert unread["outcome"] == "run_error" and unread["observation_complete"] is False
     assert (unread["c0"], unread["c1"], unread["c2"]) == (None, None, None)
+
+
+# ---- exploration record: no lost violation, no unobserved success read as clean (W1, 2026-11-16)
+
+
+def test_a_violation_is_kept_even_when_the_worker_report_is_unreadable() -> None:
+    # Before: report mismatch -> run_error with C0/C1/C2 None and no saved input, so a real effect
+    # on disk vanished from the result (and could even end PASS under the 0.2 ceiling).
+    result = run_python_tarfile_contained_case(
+        _FIX["c1"].case, _target("fully_trusted", _LocalBackend(broken=True))
+    )
+    assert result.base_result.violations[1].violated  # the oracle saw the hardlink alias
+    record = case_record(0, result)
+    assert record["outcome"] == "judged" and record["c1"] is True
+    assert record["observation_complete"] is False  # reads as "reproduction check needed"
+
+
+def _with_trace(result, integrity_valid: bool):  # type: ignore[no-untyped-def]
+    trace = type("T", (), {"integrity_valid": integrity_valid})()
+    return type("R", (), {"base_result": result.base_result, "trace": trace})()
+
+
+def test_success_of_a_non_empty_archive_without_an_intact_trace_is_unjudged() -> None:
+    result = run_python_tarfile_contained_case(_FIX["normal"].case, _target())
+    assert result.base_result.execution.status.value == "success"
+    assert result.base_result.case.entries
+    record = case_record(0, _with_trace(result, integrity_valid=False))  # type: ignore[arg-type]
+    assert record["outcome"] == "run_error"
+    assert (record["c0"], record["c1"], record["c2"]) == (None, None, None)
+    assert case_record(0, result)["outcome"] == "judged"  # the intact trace stays judged
+
+
+def test_empty_archive_and_rejection_stay_judged_though_their_trace_is_incomplete() -> None:
+    from dataclasses import replace as dc_replace
+
+    empty_case = dc_replace(_FIX["normal"].case, entries=())
+    empty = run_python_tarfile_contained_case(empty_case, _target())
+    assert empty.trace.integrity_valid is False  # incomplete by construction: no entry
+    assert case_record(0, empty)["outcome"] == "judged"
+    rejected = run_python_tarfile_contained_case(_FIX["c1"].case, _target("data"))
+    assert rejected.trace.integrity_valid is False
+    assert case_record(0, rejected)["outcome"] == "judged"

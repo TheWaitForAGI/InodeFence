@@ -163,3 +163,5 @@ success 케이스(exit 0)에서 발생한 native 관찰 무결성 결함(malform
 - 통제 재현: fully_trusted → extract/alias가 sentinel inode 공유(C1+C2), data(PEP 706) → 거부. producer 경로에서 M4.1b 차분 재현 + summarize_report_records(레코드 스키마) 호환(#240 parity 자동 적용).
 - 안전 경계(보수): fully_trusted in-process는 `..` 탈출이 disposable sandbox(tempdir)를 넘어 호스트에 쓸 수 있어(컨테이너 경계 없음) trusted_fixture=True(고정 통제 fixture)에만 허용. 임의/퍼징 입력 + fully_trusted = ValueError fail-closed. 퍼징은 data 필터만 — 단 in-process data 필터의 confine 보장은 CPython 패치 수준에 의존(PEP 706 필터 우회 수정 upstream 3.12.11; lock은 인터프리터 버전 문자열·tarfile.py 해시만 기록하고 수정 포함 여부는 검증하지 않음)하므로 확정 안전이 아니며, 등록 캠페인 사용은 D022(컨테이너 경계)에 따른 지웅 승인 필요(미결정). fully_trusted 퍼징은 컨테이너 격리 경로로만(별도 설계·지웅 승인). 테스트로 거부 고정.
 - 인터페이스(PR-B/레인5): provenance에 lock 원재료(python_version·tarfile_sha256·uname_sr)만 노출, lock_digest 산출·report 기록·post_check 대조는 PR-B(execution_mode=per-case-subprocess, env DEMO_EXTRACTOR=python-tarfile). 레인4 가드레일: in-process는 ResettingProducer 미적용, parity same-mode만.
+
+- 2026-11-16 막힘(IF-H4-CORE W1): 가드 R4가 새 테스트 파일 이름의 부분 문자열로 셸 명령을 차단(오탐, 보호 파일 무변경). 이름 변경 허용 여부 사람 결정 대기. 스택 PR(탐색 결과 기록) 나머지는 그 파일 없이 진행 가능.

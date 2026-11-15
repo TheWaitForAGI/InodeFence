@@ -53,7 +53,7 @@ from inodefence.sentinel_set import (
     GeneratedSentinelSet,
     generate_sentinel_set,
 )
-from inodefence.target_result import JUDGED
+from inodefence.target_result import JUDGED, RUN_ERROR
 from inodefence.targets.node_tar_effect import (
     NativeEffectProfile,
     NodeTarEffectTarget,
@@ -698,9 +698,10 @@ def exploration_demo_report(
     violation_inputs: list[dict[str, object]] = []
     terminations: Counter[str] = Counter()
     unjudged_steps = 0
+    trace_run_errors = 0
 
     def produce(case: ArchiveCase) -> EffectRunResult:
-        nonlocal unjudged_steps
+        nonlocal unjudged_steps, trace_run_errors
         run_index = run_counter[0] if stream else len(checks)
         result = base_produce(case)
         base = result.base_result
@@ -710,13 +711,26 @@ def exploration_demo_report(
         # separately). Termination: how the extractor exited, its own column. observation_complete:
         # whether the trace behind the verdicts was whole (integrity_valid already subsumes
         # completeness, no observation failures and flush). The converter derives needs_repro_check.
+        # Exploration record only (the loop receives `result` unchanged): a case the extractor
+        # reports as a success but whose trace is not intact, and in which the oracle saw no
+        # violation, is NOT a clean negative -- it is recorded as run_error (unjudged), so the
+        # unjudged ceiling decides instead of a silent PASS. A rejected / failed / timed-out case
+        # keeps its snapshot verdict (its trace may end early by construction), and a violation is
+        # kept whatever the trace (shown as "reproduction check needed").
         hit = {v.contract_id.value: v.violated for v in base.violations}
+        unobserved = (
+            base.execution.status is ExecutionStatus.SUCCESS
+            and not result.trace.integrity_valid
+            and True not in hit.values()
+        )
+        if unobserved:
+            trace_run_errors += 1
         record = {
             "run_index": run_index,
-            "outcome": JUDGED,
-            "c0": hit.get("C0"),
-            "c1": hit.get("C1"),
-            "c2": hit.get("C2"),
+            "outcome": RUN_ERROR if unobserved else JUDGED,
+            "c0": None if unobserved else hit.get("C0"),
+            "c1": None if unobserved else hit.get("C1"),
+            "c2": None if unobserved else hit.get("C2"),
             "termination": base.execution.status.value,
             "observation_complete": bool(result.trace.integrity_valid),
         }
@@ -801,7 +815,9 @@ def exploration_demo_report(
                 "runs_executed": light.executed,
                 "terminations": dict(terminations),
                 "unjudged_steps": unjudged_steps,
-                "errors": 0,  # run_error is the abort path (NativeDemoAborted), not a case here
+                # run_error cases: an untrusted trace with no violation (an abort is
+                # NativeDemoAborted, not a case here)
+                "errors": trace_run_errors,
             },
             "violation_cases": violation_cases,
         }

@@ -425,7 +425,11 @@ def cmd_replay(args: argparse.Namespace) -> int:
 
 def cmd_status(args: argparse.Namespace) -> int:
     from inodefence.live_exploration import live_dirs_status
-    from inodefence.target_result import TargetResultError, load_target_result
+    from inodefence.target_result import (
+        TargetResultError,
+        load_target_result,
+        no_extraction_warning,
+    )
 
     folder = args.folder
     # `explore --out X` writes under X/target-explore/; accept X itself as well.
@@ -473,6 +477,11 @@ def cmd_status(args: argparse.Namespace) -> int:
             if getattr(campaign, "stopped_early", False):  # set once the large-campaign fields land
                 line += " (stopped early)"
         print(line)
+        # Same wording as summary.md, the explore output line and the live view (one function);
+        # for exploration results only, as in the summary. Verdict and exit code are unchanged.
+        warning = no_extraction_warning(result.termination_counts) if campaign else None
+        if warning:
+            print(f"  ** {warning} **")
     return 2 if unreadable else 0  # a result that could not be read is not a clean status
 
 

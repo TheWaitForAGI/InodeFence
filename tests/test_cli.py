@@ -471,6 +471,30 @@ def test_status_reads_a_finished_result_folder(tmp_path, capsys) -> None:
     assert "first-violation=2" in out
 
 
+@pytest.mark.parametrize(
+    ("statuses", "warned"),
+    [(("rejected",) * 20, True), (("rejected",) * 19 + ("success",), False)],
+)
+def test_status_result_line_carries_the_no_extraction_warning(
+    tmp_path, capsys, statuses: tuple[str, ...], warned: bool
+) -> None:
+    # A result-only folder (no live/): the result line gets the same warning as summary.md.
+    from inodefence.target_result import JUDGED, CampaignInfo, CaseVerdict
+
+    folder = tmp_path / "2.6.2-123-20-result"
+    cases = tuple(
+        CaseVerdict(f"step-{i}", JUDGED, None, False, False, status, True)
+        for i, status in enumerate(statuses)
+    )
+    _write_result(
+        folder, cases, campaign=CampaignInfo(seed=123, budget=20, runs_to_first_violation=None)
+    )
+    assert cli.main(["status", str(folder)]) == 0  # exit code unchanged
+    out = capsys.readouterr().out
+    assert " PASS " in out  # verdict unchanged
+    assert ("** 추출 성공 0건(전부 rejected 20)" in out) is warned
+
+
 def test_status_without_a_result_explains(tmp_path, capsys) -> None:
     assert cli.main(["status", str(tmp_path)]) == 2
     assert "no result.json" in capsys.readouterr().err

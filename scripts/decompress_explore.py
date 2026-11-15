@@ -202,7 +202,11 @@ def build_campaign_result(
         exploratory=preparation is not None,
     )
     shared, tars = explore_result.build_campaign_result(
-        {"case_records": records, "violation_inputs": inputs}, prepared, seed=seed, budget=budget
+        {"case_records": records, "violation_inputs": inputs},
+        prepared,
+        seed=seed,
+        budget=budget,
+        max_unjudged_ratio=max_unjudged_ratio,
     )
     prov = engine if engine is not None else shared.provenance
     result = dataclasses.replace(

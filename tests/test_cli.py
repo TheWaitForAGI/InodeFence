@@ -242,8 +242,9 @@ def test_targets_is_the_real_registry_when_repo_is_present(monkeypatch, capsys) 
         pytest.skip("not an editable checkout")
     assert cli.main(["targets", "--json"]) == 0
     support = json.loads(capsys.readouterr().out)
-    assert "node-tar" in support and support["node-tar"]["explore"] is True
-    assert support["decompress"]["explore"] is False
+    # All four registered targets now carry an explore hook (#440 four-target explore hooks).
+    assert set(support) >= {"node-tar", "decompress", "oras-go", "python-tarfile"}
+    assert all(support[name]["explore"] is True for name in support)
     # Every target reports its declared options (a list, read from the adapter); it fills in on its
     # own as owners declare them, so here we assert the mechanism, not a particular option.
     assert all(isinstance(feats["options"], list) for feats in support.values())

@@ -145,6 +145,10 @@ S_U_GAP = (
     "policy there), and the controller does not expose the uniform scheduler"
 )
 SETTINGS_NAME = "settings.json"
+#: oras-go's un-judged ceiling, stored in the result's campaign block: ANY run the program did not
+#: judge makes the verdict ERROR (the contract in the module docstring). It is deliberately stricter
+#: than the shared ``--max-unjudged-ratio`` default (0.2), and that option never loosens it.
+MAX_UNJUDGED_RATIO = 0.0
 
 # What oras-go exploration actually implements; anything else is refused before any run, never
 # silently run another way (same rule as decompress).
@@ -254,7 +258,13 @@ def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOu
             f"campaign ran mutation vocabulary {ran!r}, requested {mutation_policy!r}"
         )
     result, tar_files = build_campaign_result(
-        report, prepared, seed=options.seed, budget=options.budget
+        report,
+        prepared,
+        seed=options.seed,
+        budget=options.budget,
+        max_unjudged_ratio=min(
+            MAX_UNJUDGED_RATIO, getattr(options, "max_unjudged_ratio", MAX_UNJUDGED_RATIO)
+        ),
     )
     result_path = write_result(report_path.parent / f"{run_id}-result", result, tar_files)
     settings = settings_record(report, prepared, options)

@@ -107,6 +107,10 @@ def test_exactly_one_mode_and_two_forwarded_arguments_were_added() -> None:
         "observer_integrity_policy",
         "sentinel_count",
         "sentinel_seed",
+        # explore live wiring (3a38da9, 38ddf59), integrated alongside this mode in the RC: the
+        # tuple is the union of both lines; python-tarfile still adds exactly the last two.
+        "live_dir",
+        "engine_commit",
         "runtime_version",
         "extraction_filter",
     )

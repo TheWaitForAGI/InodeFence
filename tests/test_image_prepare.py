@@ -208,6 +208,10 @@ def test_present_image_is_reused_without_prepare(monkeypatch: pytest.MonkeyPatch
     cells = adapter.cells(["2.6.1"], [])
     monkeypatch.setattr(rt, "image_id", lambda ref: "sha256:present")
     monkeypatch.setattr(rt, "prepare_image", lambda step: pytest.fail("must not prepare"))
+    # oras-go's reuse check runs docker; stub it (tested in test_oras_go_registry_prepare.py).
+    import scripts.run_oras_go_target as rog
+
+    monkeypatch.setattr(rog, "_verify_existing", lambda cell, image: None)
     ready, errors = rt.resolve_images(adapter, cells, auto_prepare=True)
     assert ready == {"inodefence-oras-go:2.6.1": "sha256:present"} and errors == {}
 

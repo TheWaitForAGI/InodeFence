@@ -21,12 +21,20 @@
 # Parallel-safe: set RUN_ID to a unique token (e.g. m4sd-oras-<arm>-<seed>); the controller, volume
 # and evidence filename all carry that suffix, so concurrent arms never collide and each removes
 # only what it created. SKIP_BUILD=1 reuses prebuilt images; BUILD_ONLY=1 builds and exits.
+# EXPLORE_IMAGE=<ref> runs the campaign on an already prepared oras-go image (for example one made
+# by `make target-run TARGET=oras-go ... AUTO_PREPARE=1`, verified there offline) instead of
+# building ROLE; the oras-go image is then neither built nor retagged, and ORAS_GO_ROLE is unused.
 set -euo pipefail
 
 RUN_ID="${RUN_ID:-}"
 SKIP_BUILD="${SKIP_BUILD:-}"
 BUILD_ONLY="${BUILD_ONLY:-}"
 ORAS_GO_ROLE="${ORAS_GO_ROLE:-affected}"
+EXPLORE_IMAGE="${EXPLORE_IMAGE:-}"
+if [ -n "$EXPLORE_IMAGE" ] && ! [[ "$EXPLORE_IMAGE" =~ ^[a-z0-9][a-z0-9._/-]*:[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]]; then
+  echo "EXPLORE_IMAGE must be a plain image reference name:tag (got: $EXPLORE_IMAGE)" >&2
+  exit 2
+fi
 if [ -n "$RUN_ID" ] && ! [[ "$RUN_ID" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]; then
   echo "RUN_ID must match [A-Za-z0-9][A-Za-z0-9_.-]* (got: $RUN_ID)" >&2
   exit 2
@@ -48,7 +56,9 @@ EVIDENCE_DIR="${INODEFENCE_EVIDENCE_DIR:-$HOME/inodefence-evidence}"
 
 CONTROLLER_IMAGE=inodefence-controller:local
 HELPER_IMAGE=inodefence-helper:local
-ORAS_GO_IMAGE="inodefence-oras-go-selfdiscover:${ORAS_GO_ROLE}"
+ORAS_GO_IMAGE="${EXPLORE_IMAGE:-inodefence-oras-go-selfdiscover:${ORAS_GO_ROLE}}"
+# What the run used, for the status lines: the prepared image, or the role built here.
+if [ -n "$EXPLORE_IMAGE" ]; then TARGET_DESC="image=$EXPLORE_IMAGE"; else TARGET_DESC="role=$ORAS_GO_ROLE"; fi
 CONTROLLER="inodefence-oras-go-controller${RUN_ID:+-$RUN_ID}"
 VOLUME="inodefence-oras-go-runtime${RUN_ID:+-$RUN_ID}"
 
@@ -89,14 +99,14 @@ cleanup() {
     dk volume rm "$VOLUME" >/dev/null
   fi
   if [ "$status" -eq 0 ]; then
-    echo "PASSED: oras-go self-discovery (context=$CONTEXT role=$ORAS_GO_ROLE)"
+    echo "PASSED: oras-go self-discovery (context=$CONTEXT $TARGET_DESC)"
   fi
   exit "$status"
 }
 trap cleanup EXIT
 
 step "preflight"
-echo "context=$CONTEXT engine=$(dk version --format '{{.Server.Version}}') role=$ORAS_GO_ROLE"
+echo "context=$CONTEXT engine=$(dk version --format '{{.Server.Version}}') $TARGET_DESC"
 command -v "$PYTHON" >/dev/null || { echo "host Python not found: $PYTHON" >&2; exit 1; }
 if [ "$BUILD_ONLY" != 1 ] && { dk container inspect "$CONTROLLER" >/dev/null 2>&1 ||
   dk volume inspect "$VOLUME" >/dev/null 2>&1; }; then
@@ -115,12 +125,17 @@ else
   [ "${VERBOSE:-0}" = 1 ] && BUILD_FLAGS=()
   dk build "${BUILD_FLAGS[@]}" -f "$REPO_ROOT/.devcontainer/Dockerfile" -t "$CONTROLLER_IMAGE" "$REPO_ROOT"
   dk build "${BUILD_FLAGS[@]}" -f "$REPO_ROOT/tools/container-helper/Dockerfile" -t "$HELPER_IMAGE" "$REPO_ROOT"
-  dk build "${BUILD_FLAGS[@]}" --build-arg "ROLE=$ORAS_GO_ROLE" \
-    -f "$REPO_ROOT/tools/oras-go/Dockerfile" -t "$ORAS_GO_IMAGE" "$REPO_ROOT"
+  if [ -n "$EXPLORE_IMAGE" ]; then
+    dk image inspect "$EXPLORE_IMAGE" >/dev/null || {
+      echo "EXPLORE_IMAGE $EXPLORE_IMAGE is not present; prepare it first" >&2; exit 1; }
+  else
+    dk build "${BUILD_FLAGS[@]}" --build-arg "ROLE=$ORAS_GO_ROLE" \
+      -f "$REPO_ROOT/tools/oras-go/Dockerfile" -t "$ORAS_GO_IMAGE" "$REPO_ROOT"
+  fi
 fi
 
 if [ "$BUILD_ONLY" = 1 ]; then
-  echo "BUILD_ONLY=1: shared images ready (context=$CONTEXT role=$ORAS_GO_ROLE); no controller created"
+  echo "BUILD_ONLY=1: shared images ready (context=$CONTEXT $TARGET_DESC); no controller created"
   exit 0
 fi
 

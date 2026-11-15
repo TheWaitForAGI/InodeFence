@@ -31,6 +31,7 @@ from scripts.run_effect_demo import (
     EXPLORE_DEMO_MODE,
     HISTORICAL_DEMO_MODE,
     ORAS_GO_CAMPAIGN_MODE,
+    PYTHON_TARFILE_CAMPAIGN_MODE,
     add_demo_arguments,
     check_demo_arguments,
 )
@@ -662,6 +663,7 @@ def main() -> int:
             CASE_REPLAY_MODE,
             DECOMPRESS_CAMPAIGN_MODE,
             ORAS_GO_CAMPAIGN_MODE,
+            PYTHON_TARFILE_CAMPAIGN_MODE,
         ),
     )
     args = parser.parse_args()
@@ -676,6 +678,7 @@ def main() -> int:
         CASE_REPLAY_MODE,
         DECOMPRESS_CAMPAIGN_MODE,
         ORAS_GO_CAMPAIGN_MODE,
+        PYTHON_TARFILE_CAMPAIGN_MODE,
     }
     if (args.mode in evidence_modes) != (args.evidence is not None):
         parser.error("evidence mode requires --evidence; validation modes do not export")

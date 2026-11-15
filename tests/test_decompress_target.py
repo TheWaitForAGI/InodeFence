@@ -41,6 +41,8 @@ def _fixed_provenance(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         rt, "engine_provenance", lambda image: Provenance("c" * 40, False, image, "sha256:def")
     )
+    # "present" images pass the reuse check here (it runs the worker in docker otherwise)
+    monkeypatch.setattr(dt, "verify_existing", lambda cell, image: None)
 
 
 def test_spec_names_package_and_version() -> None:
@@ -137,7 +139,8 @@ def test_dry_run_shows_install_step_and_runs_nothing(
     "argv",
     [
         ["--target", "decompress", "--version", "4.2.1", "--dry-run"],  # package missing
-        ["--target", "decompress", "--version", "decompress@9.9.9", "--dry-run"],  # not pinned
+        # not this target (unpinned versions of the two packages are prepared from the registry)
+        ["--target", "decompress", "--version", "@someone/decompress@9.9.9", "--dry-run"],
         ["--target", "decompress", "--version", ORIGINAL, "--extraction-filter", "data"],
     ],
 )

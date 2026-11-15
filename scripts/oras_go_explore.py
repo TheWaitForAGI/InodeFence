@@ -1,0 +1,282 @@
+"""oras-go's exploration hook: open the existing oras-go campaign on a prepared oras-go image.
+
+This is the oras-go implementation of ``TargetAdapter.explore`` (``scripts.run_target``). The
+common driver (``scripts.run_target_explore``) prepares the image (``latest`` or an exact version,
+through the same prepare layer as ``make target-run``: a committed go.mod/go.sum or the Go module
+proxy with its offline checks, including the campaign's ``frame`` worker) and passes a
+``PreparedTargetImage`` plus target-agnostic ``ExploreOptions``.
+
+Everything oras-go specific stays here: the host script (``local_oras_go_selfdiscover.sh`` with
+``EXPLORE_IMAGE``), its controller mode (``oras-go-effect-campaign``: the oras-go mutation/feedback
+loop over the ``frame`` worker inside the controller's disposable sandbox and isolated target
+containers, unchanged), and the check that the run used exactly the prepared image. The report's
+``case_records`` / ``violation_inputs`` have the shape node-tar's exploration report uses, so the
+common converter ``scripts.explore_result`` (keyed on ``prepared.target``) turns them into
+``inodefence-target-result-v1`` (``mode=campaign``) and saves only the violating inputs.
+Before the campaign, the (possibly reused) image's ``frame`` worker is checked offline
+(``verify_existing``); after it, a report with fewer run records than the budget is refused,
+and any run the program did not judge makes the verdict ERROR, never PASS
+(its count and ratio are printed). The mutation policy is the campaign's default (unchanged); its
+name is printed with the result.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+from scripts.explore_result import build_campaign_result, write_result
+from scripts.run_target import ExploreOptions, ExploreOutcome, PreparedTargetImage
+
+from inodefence.feedback import EffectSearchPolicy
+from inodefence.generator import minimal_seed_corpus
+from inodefence.mutator import MutationPolicy
+from inodefence.target_result import RUN_ERROR
+from inodefence.target_result_summary import write_cell_summaries
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+SCRIPT = REPO_ROOT / "scripts" / "local_oras_go_selfdiscover.sh"
+TARGET = "oras-go"
+# One campaign must cover all initial seed cases, so a budget below the seed count is refused.
+MIN_BUDGET = len(minimal_seed_corpus())
+
+
+def controller_report_path(out: Path, run_id: str) -> Path:
+    """Where ``local_oras_go_selfdiscover.sh`` copies the campaign report for this run."""
+    return out / "target-explore" / f"inodefence-oras-go-selfdiscover-{run_id}.json"
+
+
+def run_controller(
+    prepared: PreparedTargetImage,
+    *,
+    out: Path,
+    run_id: str,
+    budget: int,
+    seed: int,
+    python: str,
+    mutation_policy: str | None = None,
+    runner=subprocess.run,
+) -> Path:
+    """Run the oras-go campaign in the controller on the prepared image; return the report path.
+
+    The image is already prepared host-side; the script builds only the controller/helper images,
+    never the oras-go image (``EXPLORE_IMAGE``), creates the disposable controller and drives the
+    existing ``oras-go-effect-campaign`` mode. Target isolation is the controller's, unchanged.
+    """
+    env = {
+        **os.environ,
+        "EXPLORE_IMAGE": prepared.image_ref,
+        "DEMO_BUDGET": str(budget),
+        "DEMO_SEED": str(seed),
+        "INODEFENCE_EVIDENCE_DIR": str(out / "target-explore"),
+        "RUN_ID": run_id,
+        "PYTHON": python,
+    }
+    if mutation_policy:
+        env["DEMO_MUTATION_POLICY"] = mutation_policy
+    done = runner(["bash", str(SCRIPT)], env=env, cwd=str(REPO_ROOT))
+    report = controller_report_path(out, run_id)
+    if done.returncode != 0:
+        raise RuntimeError(f"controller run failed (exit {done.returncode}); see output above")
+    if not report.is_file():
+        raise RuntimeError(f"controller run produced no report at {report}")
+    return report
+
+
+def verify_existing(prepared: PreparedTargetImage, runner=None) -> str:
+    """Offline, before the campaign: the image's ``frame`` worker (what the campaign runs) works.
+
+    A reused image skipped preparation's checks, and an older build may lack the ``frame``
+    subcommand; this runs it (``--network none``, nothing mounted) on a benign archive, checks the
+    reported oras-go version and that the identity binds as the campaign target. Raises
+    ``RuntimeError`` with the reason; returns the check's description.
+    """
+    from scripts import oras_go_registry_prepare as proxy
+
+    try:
+        check = proxy.frame_check(runner or subprocess.run, prepared.image_ref, prepared.version)
+    except proxy.RegistryPrepareError as error:
+        raise RuntimeError(
+            f"{prepared.image_ref}: campaign worker check failed: {error}"
+        ) from error
+    if not check["ok"]:
+        raise RuntimeError(f"{prepared.image_ref}: campaign worker unusable: {check['reason']}")
+    return str(check["reason"])
+
+
+def unjudged(report: dict) -> tuple[int, int]:
+    """(runs with no verdict because the run program did not start cleanly, all runs)."""
+    records = report.get("case_records", [])
+    return sum(1 for r in records if r.get("outcome") == RUN_ERROR), len(records)
+
+
+def check_report(report: dict, prepared: PreparedTargetImage, budget: int | None = None) -> None:
+    """Fail unless the report is a finished run on exactly the prepared image, with records.
+
+    A report with fewer (or more) run records than the budget is refused, so a shortened
+    campaign is never read as a clean one.
+    """
+    if "aborted" in report:
+        raise RuntimeError(f"campaign aborted: {report['aborted'].get('reason')}")
+    if report.get("image_id") != prepared.image_id:
+        raise RuntimeError(
+            f"campaign ran image {report.get('image_id')!r}, prepared {prepared.image_id!r}"
+        )
+    if "case_records" not in report or "violation_inputs" not in report:
+        raise RuntimeError("campaign report has no case_records / violation_inputs")
+    runs = len(report["case_records"])
+    if budget is not None and runs != budget:
+        raise RuntimeError(f"campaign report has {runs} run records, budget was {budget}")
+
+
+#: How the oras-go loop retains cases; fixed in ``OrasGoEffectSearchState`` (no selectable policy).
+RETENTION = (
+    "oras-go state retention (fixed): new boundary-attempt key OR new violation fingerprint "
+    "OR new full post-state"
+)
+#: Why the registered S-u arm cannot be run as-is on the oras-go loop (facts, recorded per run).
+S_U_GAP = (
+    "registered S-u = S_U_STATE_RETENTION_UNIFORM retention + uniform scheduler + observed-names "
+    "(fixed baseline) vocabulary; the oras-go loop has no selectable retention policy, its "
+    "observed-names vocabulary is the accumulated one only (FIXED_BASELINE is not a state-aware "
+    "policy there), and the controller does not expose the uniform scheduler"
+)
+SETTINGS_NAME = "settings.json"
+
+# What oras-go exploration actually implements; anything else is refused before any run, never
+# silently run another way (same rule as decompress).
+#: The oras-go loop has NO selectable search (retention) policy: its retention is fixed
+#: (``RETENTION``) and its scheduler is the controller's adaptive default. So no named search
+#: policy is realized as named; a request for one is refused.
+SUPPORTED_SEARCH_POLICIES: tuple[str, ...] = ()
+#: Mutation vocabularies the oras-go loop realizes as named (its state-aware set is the
+#: accumulated observed-names pair; the fixed-baseline vocabulary is not in it).
+SUPPORTED_MUTATION_POLICIES = (
+    MutationPolicy.M1_GENERIC_ESCAPE_HARDLINK.value,
+    MutationPolicy.M1_PROTECTED_COMPONENTS_ESCAPE_HARDLINK.value,
+    MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK.value,
+    MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_BLIND.value,
+)
+#: The controller mode's default vocabulary (used when a request names none).
+DEFAULT_MUTATION_POLICY = MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK.value
+_UNSUPPORTED_WHY = {
+    EffectSearchPolicy.S_U_STATE_RETENTION_UNIFORM.value: (
+        "the oras-go loop has no selectable retention policy (its retention is fixed: "
+        "boundary-attempt key OR violation fingerprint OR full post-state), and the controller "
+        "does not expose the uniform scheduler (it runs adaptive)"
+    ),
+    MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_FIXED_BASELINE.value: (
+        "the oras-go loop's state-aware set does not include the fixed-baseline vocabulary "
+        "(it would add no observed names at all)"
+    ),
+}
+
+
+def check_policies(search_policy: str | None, mutation_policy: str | None) -> str:
+    """The mutation vocabulary oras-go exploration will run, or ``ValueError`` why not.
+
+    A named search policy is always refused (none is realized as named; see
+    ``SUPPORTED_SEARCH_POLICIES``); no search policy means the loop's fixed retention.
+    """
+    if search_policy:
+        why = _UNSUPPORTED_WHY.get(
+            search_policy,
+            "the oras-go loop has no selectable retention policy (its retention is fixed) and "
+            "runs the adaptive scheduler",
+        )
+        raise ValueError(
+            f"oras-go exploration does not implement search policy {search_policy!r}: {why}. "
+            "Supported: none (omit it to run the loop's fixed retention)"
+        )
+    mutation = mutation_policy or DEFAULT_MUTATION_POLICY
+    if mutation not in SUPPORTED_MUTATION_POLICIES:
+        why = _UNSUPPORTED_WHY.get(mutation, "not implemented by the oras-go loop")
+        raise ValueError(
+            f"oras-go exploration does not implement mutation vocabulary {mutation!r}: {why}. "
+            f"Supported: {', '.join(SUPPORTED_MUTATION_POLICIES)}"
+        )
+    return mutation
+
+
+def settings_record(report: dict, prepared: PreparedTargetImage, options: ExploreOptions) -> dict:
+    """Which setting this run actually used, read from the loop report's own config."""
+    config = report.get("config") or {}
+    missing, runs = unjudged(report)
+    return {
+        "target": TARGET,
+        "requested": prepared.requested,
+        "version": prepared.version,
+        "image_ref": prepared.image_ref,
+        "image_id": prepared.image_id,
+        "exploratory_image": prepared.exploratory,
+        "seed": options.seed,
+        "budget": options.budget,
+        "mutation_policy": config.get("mutation_policy"),
+        "adaptive_scheduler": config.get("adaptive_scheduler"),
+        "retention": RETENTION,
+        "search_policy": None,
+        "registered_setting": "closest to S-u, not S-u",
+        "registered_setting_gap": S_U_GAP,
+        "unjudged_runs": missing,
+        "runs": runs,
+        "loop_report": None,
+    }
+
+
+def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOutcome:
+    """``TargetAdapter.explore`` for oras-go: run the campaign in the controller, write a result."""
+    if options.budget < MIN_BUDGET:
+        raise ValueError(f"budget must be >= {MIN_BUDGET} (the loop's seed count)")
+    mutation_policy = check_policies(
+        getattr(options, "search_policy", None), getattr(options, "mutation_policy", None)
+    )
+    options.out.mkdir(parents=True, exist_ok=True)
+    run_id = f"oras-go-{prepared.version}-{options.seed}-{options.budget}{options.image_tag_suffix}"
+    python = os.environ.get("PYTHON", sys.executable)
+    print(f"TARGET-EXPLORE CHECK {verify_existing(prepared)}")
+    report_path = run_controller(
+        prepared,
+        out=options.out,
+        run_id=run_id,
+        budget=options.budget,
+        seed=options.seed,
+        python=python,
+        mutation_policy=mutation_policy,
+    )
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    check_report(report, prepared, options.budget)
+    ran = (report.get("config") or {}).get("mutation_policy")
+    if ran != mutation_policy:
+        raise RuntimeError(
+            f"campaign ran mutation vocabulary {ran!r}, requested {mutation_policy!r}"
+        )
+    result, tar_files = build_campaign_result(
+        report, prepared, seed=options.seed, budget=options.budget
+    )
+    result_path = write_result(report_path.parent / f"{run_id}-result", result, tar_files)
+    settings = settings_record(report, prepared, options)
+    settings["loop_report"] = report_path.name
+    (result_path.parent / SETTINGS_NAME).write_text(
+        json.dumps(settings, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    try:  # the result is written; a summary failure must not lose it
+        write_cell_summaries([result_path])
+    except Exception as error:  # noqa: BLE001
+        print(f"TARGET-EXPLORE SUMMARY: summary.md not written ({error})", file=sys.stderr)
+    missing, runs = settings["unjudged_runs"], settings["runs"]
+    # Any unjudged run makes the common verdict ERROR (never PASS); all unjudged is ERROR too.
+    print(
+        f"loop report: {report_path} (mutation policy {settings['mutation_policy']}; adaptive "
+        f"scheduler {settings['adaptive_scheduler']}; unjudged runs {missing}/{runs}"
+        f" = {missing / max(runs, 1):.0%})"
+    )
+    print(f"setting: closest to S-u, not S-u -- see {SETTINGS_NAME}")
+    return ExploreOutcome(
+        result_path=result_path,
+        verdict=result.verdict.value,
+        runs=result.executed,
+        violations=len(result.violating_cases),
+    )

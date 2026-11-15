@@ -177,6 +177,8 @@ def render_summary(result: TargetResult, *, source_name: str, inputs_verified: b
         method = (
             "공개 레지스트리에서 실행 중에 만든 lock으로 빌드(탐색용, 저장소에 커밋된 레시피 아님)"
             if prep.method == "registry"
+            else "공식 런타임 이미지를 받음(요청 값을 실행 시점에 정확한 버전으로 해석)"
+            if prep.method == "official-image"
             else "저장소에 커밋된 레시피로 빌드"
         )
         add(f"| 이미지 준비 방식 | {method} |")
@@ -200,7 +202,12 @@ def render_summary(result: TargetResult, *, source_name: str, inputs_verified: b
             ("이미지 안 lock SHA-256", prep.lock_sha256),
             ("이미지 안 worker SHA-256", prep.worker_sha256),
             ("이미지 안 effect-producer SHA-256", prep.producer_sha256),
-            ("effect-producer 오프라인 호환 확인", prep.producer_check),
+            (
+                "effect-producer 오프라인 호환 확인"
+                if prep.producer_sha256
+                else "탐색 경로(worker) 오프라인 호환 확인",
+                prep.producer_check,
+            ),
             ("빌드 레시피", prep.recipe),
         ):
             add(f"| {name} | {_code(value) if value else NOT_APPLICABLE} |")

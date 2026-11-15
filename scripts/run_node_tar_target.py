@@ -228,6 +228,13 @@ def _explore_hook(prepared, options):  # type: ignore[no-untyped-def]
     return explore(prepared, options)
 
 
+def _replay_hook(request, work_dir):  # type: ignore[no-untyped-def]
+    """node-tar case replay (lazy import, like exploration)."""
+    from scripts.node_tar_replay import replay
+
+    return replay(request, work_dir)
+
+
 def _verify_existing(cell: RunCell, image_id: str) -> str | None:
     """Before the explore path reuses a prepared registry image, confirm its effect producer runs.
 
@@ -255,4 +262,5 @@ ADAPTER = TargetAdapter(
     resolve=_resolve,
     explore=_explore_hook,
     verify_existing=_verify_existing,
+    replay=_replay_hook,
 )

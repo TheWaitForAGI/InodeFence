@@ -350,6 +350,101 @@ Campaign은 실행 전 source revision/dirty, process 환경, target/version/tim
 Codex CLI는 exact version으로 고정하지 않는 **rolling latest** 정책입니다.
 설정·업데이트 방법은 [.devcontainer/README.md](.devcontainer/README.md), baseline 설명은 [TAR baseline 안내](docs/examples/tar-baseline.md)를 참고하세요.
 
+## 추출기를 골라 탐색·도중 확인·재실행하기 (`inodefence` 명령)
+
+`make install`로 editable 설치를 하면 `inodefence` 명령이 생깁니다. 추출기 하나를 골라 최신
+버전을 준비하고, 상태 기반 피드백 탐색을 돌리고, 산출물을 저장소 밖에 쓰는 사용자용 진입점입니다.
+실제 target 실행은 docker가 있는 호스트에서만 되고, Dev Container 안에서는 `--dry-run`으로
+계획만 볼 수 있습니다.
+
+```bash
+inodefence targets           # 추출기와 각 추출기가 지원하는 것(옵션·탐색·재실행) 표로 보기
+inodefence doctor            # Python·저장소·docker·런타임 폴더 점검과 고치는 법
+```
+
+### 탐색 돌리기
+
+```bash
+# node-tar의 최신 버전을 준비해 탐색. --out은 반드시 저장소 밖(위반 입력이 섞일 수 있어
+# 공개 저장소 안이면 실행 전 거부됩니다). --dry-run이면 계획만 출력하고 아무것도 실행하지 않습니다.
+inodefence explore --target node-tar --version latest --budget 400 --seed 7 \
+  --out ~/inodefence-explore --auto-prepare
+```
+
+`--version`은 `latest`나 정확한 버전, `--budget`은 실행 수(seed 케이스 수 이상), `--seed`는 난수
+seed입니다. 탐색 정책·sentinel 구성은 등록 실험 설정을 기본값으로 쓰며, 끝나면 공통 형식
+`result.json`(`inodefence-target-result-v1`, mode=campaign)과 한 장짜리 `summary.md`를 씁니다.
+
+### 도중 확인
+
+긴 탐색은 끝나기를 기다리지 않고 실행 중에 봅니다.
+
+```bash
+inodefence status ~/inodefence-explore/target-explore   # 진행 스냅샷 + 위반 케이스 목록
+```
+
+탐색은 실행 중에 출력 폴더의 `…/<run>/live/`에 두 가지를 씁니다.
+
+- `progress.json` — 주기적으로(실행 N회마다·일정 시간마다·위반 직후) 갱신되는 한 시점 스냅샷:
+  실행 수, 초당 실행, **종료 상태별 수(success·rejected·failed·timed_out)**, 미판정 수와 비율,
+  위반 step 수와 고유 fingerprint 수, 쓰기 오류. `status`는 갱신이 오래 멈추면 `STALE`로 경고합니다.
+- `violations/run-NNNNNN/` — 위반이 난 케이스를 **발생 즉시** 기록합니다(끝을 기다리지 않음).
+  같은 fingerprint의 반복은 개수만 세고 파일은 fingerprint당 처음 몇 개만 남깁니다. 탐색이
+  중간에 죽어도 그때까지 쓴 파일은 남습니다.
+
+컨트롤러 컨테이너 안에서 돈 탐색은 호스트가 주기적으로 그 폴더를 가져오므로, 실행 중에도
+호스트의 출력 폴더에서 진행과 위반 케이스를 볼 수 있습니다. 가져오기 실패는 탐색을 멈추지 않고
+`fetch.json`에 남습니다.
+
+### 위반 케이스 폴더 읽기
+
+각 `violations/run-NNNNNN/`에는 `input.tar`(그 실행에 쓴 정확한 입력)와 `case.json`이 있습니다.
+`case.json`에는 케이스·seed·부모·적용된 변이, C0/C1/C2 판정, 종료 상태와 관찰 완결 여부,
+fingerprint, 입력의 SHA-256, 그리고 **그 한 건을 같은 이미지에서 다시 돌리는 명령**이 들어 있습니다.
+
+### 종료 상태와 판정은 별개입니다
+
+추출기가 어떻게 끝났는가(종료 상태: success·rejected·failed·timed_out)와 오라클이 무엇을
+보았는가(판정: C0/C1/C2)는 서로 다른 축입니다. 오라클은 실행 전후 파일시스템 스냅샷을 비교하므로
+추출이 거절·실패·시간 초과로 끝났어도 그 스냅샷으로 판정합니다. 그래서 **입력이 많이 거절되거나
+시간 초과가 많다고 해서 결과가 ERROR가 되지는 않습니다.** 오라클이 아예 평가되지 못한 실행(유효한
+관찰이 없는 실행 기반 오류)만 "미판정"이고, 캠페인이 ERROR가 되는 것은 그 미판정이 전부이거나
+정한 상한을 넘을 때뿐입니다. 거절·실패·시간 초과 중에 난 위반도 위반이므로 FAIL로 잡힙니다.
+
+**깨끗하게 끝나지 않은 실행에서 난 위반은 "재현 확인 필요"로 구분해 표시합니다.** 성공으로 끝나지
+않았거나 관찰이 완결되지 않은 상태에서 난 위반은 그대로 위반이지만, 같은 입력을 다시 돌려 같은
+위반이 나는지 먼저 확인하는 것이 맞습니다.
+
+### 위반 후보 재실행(재현 확인)
+
+위반은 **위반 후보**이지 확정된 취약점이 아닙니다. 처리 규칙은 "같은 입력을 같은 조건에서 다시
+돌려 재현되는지 본다"입니다.
+
+```bash
+# 위반 케이스 폴더 하나를 그 case.json이 가리키는 정확한 이미지에서 3회(기본) 다시 돌립니다.
+inodefence replay ~/inodefence-explore/target-explore/<run>/live/violations/run-NNNNNN --rounds 3
+```
+
+재실행은 탐색과 같은 격리로 돌고, 회차별 판정과 **같은 계약을 다시 위반한 비율**·**fingerprint가
+일치한 비율**을 케이스 폴더 **옆** `run-NNNNNN.replay-<UTC>/replay.json`에 씁니다(원본 폴더는
+건드리지 않습니다). `case.json`에 기록된 이미지 id가 이 호스트에 없으면 **다시 준비하거나 다른
+이미지로 바꾸지 않고 멈춥니다**(다른 이미지로 돌린 것을 재현이라고 적지 않기 위해서). 재실행에는
+탐색의 실행 설정이 `case.json`에 있어야 하며, 없는 옛 케이스는 거부합니다.
+
+### 한계와 주의
+
+- **스냅샷 판정은 지속 상태만 봅니다.** 오라클은 실행 전후의 파일시스템 상태를 비교하므로,
+  실행 도중에만 존재한 일시적 operation이나 sandbox 밖의 상태는 증명하지 못합니다. 위반은
+  재현과 원인 분석이 따로 필요한 후보입니다.
+- **이어 하기(resume)는 아직 없습니다.** 멈춘 탐색을 중간부터 이어서 돌릴 수는 없습니다.
+  다만 그때까지 캡처된 위반 케이스는 남습니다.
+- **미공개로 보이는 문제를 찾으면 공개 저장소에 올리기 전에 해당 추출기의 유지보수자에게 먼저
+  알립니다**(책임 있는 공개). 위반 입력과 결과는 저장소 밖 출력 폴더에만 두고, 위반 입력 자체를
+  커밋하지 않습니다.
+
+> 위 예시의 버전은 모두 `latest`입니다. 공개 권고문의 영향 범위 안에 있는 특정 버전에서 나온
+> 탐색 수치(위반 수·종료 상태 분포 등)는 이 문서에 적지 않습니다.
+
 ## 팀 개발 방식
 
 InodeFence는 coding agents를 적극 활용하는 **AI-assisted development** 프로젝트입니다.

@@ -379,7 +379,7 @@ inodefence targets          # 추출기와 각 추출기가 지원하는 것(옵
 설치 후에는 저장소 밖 어느 폴더에서 실행해도 됩니다. `pip install .`(editable 아님)로 설치하면
 `summary`·`status`만 그대로 되고, 대상을 돌리는 `targets`·`verify`·`explore`·`replay`는 아래
 `INODEFENCE_HOME`으로 클론 위치를 알려 줘야 합니다. 이때 대상 실행 코드(드라이버와 엔진)는 그 클론에서
-돌고, 결과의 `engine_commit`·`engine_sha`는 그 클론의 `git rev-parse HEAD`(수정분이 있으면 `-dirty`)입니다.
+돌고, 결과의 `engine_commit`·`engine_sha`는 그 클론의 `git rev-parse HEAD`(추적 파일 수정이나 `src`·`scripts`·`tools` 아래 추적 안 된 파일이 있으면 `-dirty`)입니다.
 `status`·`summary`·`doctor`는 설치된 패키지 코드로 돕니다.
 
 `doctor`는 각 항목을 `OK`·`FAIL`·`WARN`·`INFO`·`UNKNOWN`으로 출력합니다. 확인하지 못한 것은 `OK`가

@@ -28,8 +28,8 @@
 - `explore`는 `--auto-prepare` 없이 실제 실행을 요청하면 아무것도 실행하지 않고 이유를 출력한다(종료 코드 3, 드라이버의
   "판정 없음"과 같음). 저장소 안 `--out`·설정 파일 오류, 그리고 `verify`·`explore`·`replay`의 사용법 오류(예:
   `--budget -5`)도 3이다 — 이 명령들에서 2는 결과(ERROR 판정, 재실행 불가)에만 쓴다. 드라이버의 오류 메시지는
-  `inodefence verify` 같은 명령 이름으로 나온다.
-- `--budget`·`--rounds`는 1 이상만 받는다(대상별 최소 예산, 예: seed 수 이상은 실제 실행 때 드라이버가 검사한다).
+  `inodefence verify` 같은 명령 이름으로 나오고, 이미지 준비 안내도 `AUTO_PREPARE=1` 대신 `--auto-prepare`로 나온다.
+- `--budget`·`--rounds`는 1 이상만 받는다(대상별 최소 예산 — 탐색 루프의 seed 수 이상 — 은 드라이버가 `--dry-run`에서도 검사해 3으로 거부한다).
   `status`는 `--out` 폴더 자체도 받고, 읽을 수 없는 `result.json`이 있으면 2로 끝나며, 끝난 실행의 host pull 실패에는
   판정 오류가 아니라는 설명을 붙인다. `summary -o`는 쓸 수 없는 경로면 traceback 대신 오류 메시지와 2로 끝난다.
 - `INODEFENCE_HOME`으로 클론을 가리키면 대상 실행 코드는 그 클론에서 돌고, 결과의 엔진 커밋은 그 클론의 HEAD다.

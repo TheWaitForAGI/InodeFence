@@ -119,6 +119,10 @@ def load_user_config(environ: Mapping[str, str] | None = None) -> UserConfig:
     path = config_path(env)
     file_values: dict[str, str] = {}
     found = path.is_file()
+    if not found and env.get("INODEFENCE_CONFIG"):
+        # Named explicitly: a missing file is an error, not "no settings" (silent defaults would
+        # hide a typo in the path).
+        raise UserConfigError(f"INODEFENCE_CONFIG={env['INODEFENCE_CONFIG']}: no such file")
     if found:
         try:
             text = path.read_text(encoding="utf-8")

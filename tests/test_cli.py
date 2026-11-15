@@ -11,8 +11,8 @@ from inodefence import cli, locate
 @pytest.fixture(autouse=True)
 def _no_user_config(tmp_path_factory, monkeypatch) -> None:
     """Keep the developer's own ~/.config/inodefence and environment out of these tests."""
-    missing = tmp_path_factory.mktemp("cfg") / "absent.env"
-    monkeypatch.setenv("INODEFENCE_CONFIG", str(missing))
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path_factory.mktemp("cfg")))  # no config.env
+    monkeypatch.delenv("INODEFENCE_CONFIG", raising=False)
     monkeypatch.delenv("INODEFENCE_OUTPUT_DIR", raising=False)
 
 
@@ -238,13 +238,55 @@ def test_doctor_all_ok_still_says_image_readiness_is_unverified(
     monkeypatch.setattr(cli, "repo_root", lambda: tmp_path / "repo")
     monkeypatch.setattr(cli.shutil, "which", lambda name: "/usr/bin/docker")
     monkeypatch.setenv("INODEFENCE_OUTPUT_DIR", str(tmp_path / "outputs"))
-    monkeypatch.setenv("INODEFENCE_RUNTIME_ROOT", str(tmp_path))
+    monkeypatch.setattr(cli, "_runtime_check", lambda: "OK")  # host-dependent; tested below
     assert cli.main(["doctor"]) == 0
     out = capsys.readouterr().out
     assert "[OK] Docker daemon access: server 29.0.0" in out
-    assert "inodefence-node-tar-registry:7.5.2" in out
+    # Present images are listed as present; which version each serves is said to be unchecked.
+    assert "[OK] prepared images: 1 inodefence-* image(s) present: inodefence-node" in out
+    assert "is not checked here" in out
     assert "[OK] output folder base (environment)" in out
-    assert "1 UNKNOWN" in out
+    assert "no check failed" in out
+
+
+def test_doctor_with_no_images_is_info_not_failure(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(cli.shutil, "which", lambda name: "/usr/bin/docker")
+    monkeypatch.setattr(cli, "_docker_server", lambda: ("OK", "server 29.9.3"))
+    monkeypatch.setattr(cli, "_local_images", lambda: [])
+    cli.main(["doctor"])
+    assert "[INFO] prepared images: none yet" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [("/tmp/zz", "[FAIL]"), ("relative/x", "[FAIL]"), ("/var/lib/inodefence/../x", "[FAIL]")],
+)
+def test_doctor_runtime_root_outside_the_allowed_base_is_a_fail_without_sudo_advice(
+    monkeypatch, capsys, value: str, expected: str
+) -> None:
+    monkeypatch.setenv("INODEFENCE_RUNTIME_ROOT", value)
+    assert cli._runtime_check() == "FAIL"
+    out = capsys.readouterr().out
+    assert out.startswith(f"{expected} runtime directory") and "not allowed" in out
+    assert "sudo" not in out
+
+
+def test_explicit_missing_config_file_is_an_error(monkeypatch, tmp_path: Path, capsys) -> None:
+    monkeypatch.setenv("INODEFENCE_CONFIG", str(tmp_path / "typo.env"))
+    assert cli.main(["explore", "--version", "latest", "--dry-run"]) == 3
+    assert "no such file" in capsys.readouterr().err
+    cli.main(["doctor"])
+    assert "[FAIL] user config: INODEFENCE_CONFIG=" in capsys.readouterr().out
+
+
+def test_verify_dry_run_also_refuses_an_out_inside_the_repo(
+    monkeypatch, tmp_path: Path, capsys
+) -> None:
+    calls = _capture_driver(monkeypatch, tmp_path)
+    assert (
+        cli.main(["verify", "--version", "7.5.2", "--dry-run", "--out", str(tmp_path / "o")]) == 3
+    )
+    assert calls == []
 
 
 def test_doctor_flags_an_output_base_inside_the_repo(monkeypatch, capsys, tmp_path: Path) -> None:
@@ -453,13 +495,13 @@ def test_summary_to_a_missing_folder_is_an_error_not_a_traceback(
 @pytest.mark.parametrize(
     ("argv", "code"),
     [
-        # verify/explore exit codes carry the verdict (2 = ERROR), so usage errors are refusals: 3.
+        # verify/explore/replay exit codes carry the result (2 = ERROR), so usage errors are 3.
         (["explore", "--version", "latest", "--dry-run", "--budget", "-5"], 3),
         (["explore", "--version", "latest", "--budget", "x"], 3),
         (["explore"], 3),  # --version missing
         (["verify", "--no-such-flag-is-forwarded", "--dry-run", "--out"], 3),  # --out needs a value
-        # replay/status/summary/targets/doctor keep argparse's 2 for usage errors.
-        (["replay", "x", "--rounds", "0"], 2),
+        # status/summary/targets/doctor keep argparse's 2 for usage errors.
+        (["replay", "x", "--rounds", "0"], 3),
         (["summary"], 2),
     ],
 )

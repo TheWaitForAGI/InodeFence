@@ -221,17 +221,52 @@ def _docker_checks() -> list[str]:
             _check("prepared images", "UNKNOWN", "could not list images (daemon not usable)")
         )
         return statuses
-    listed = ", ".join(images) if images else "none yet"
-    statuses.append(
-        _check(
-            "prepared images",
-            "UNKNOWN",
-            f"inodefence-* images present: {listed}. Whether a given target/version is ready is "
-            "not checked here; `inodefence verify --target T --version V --dry-run` shows it "
-            "(read-only), and --auto-prepare builds a missing one",
-        )
+    readiness = (
+        "which target/version each one serves is not checked here; "
+        "`inodefence verify --target T --version V --dry-run` shows reuse/prepare per version "
+        "(read-only), and --auto-prepare builds a missing one"
     )
+    if images:
+        statuses.append(
+            _check(
+                "prepared images",
+                "OK",
+                f"{len(images)} inodefence-* image(s) present: {', '.join(images)}; {readiness}",
+            )
+        )
+    else:
+        # Not a failure: images are built on first use with --auto-prepare.
+        statuses.append(_check("prepared images", "INFO", f"none yet; {readiness}"))
     return statuses
+
+
+def _runtime_check() -> str:
+    """Same rule as :func:`inodefence.runtime.open_runtime_directory` (meaning unchanged)."""
+    from inodefence.runtime import RUNTIME_BASE
+
+    runtime = Path(os.environ.get("INODEFENCE_RUNTIME_ROOT", RUNTIME_ROOT_DEFAULT))
+    label = "runtime directory (development only: make check / tests; not used by verify / explore)"
+    if (
+        not runtime.is_absolute()
+        or ".." in runtime.parts
+        or not runtime.is_relative_to(RUNTIME_BASE)
+    ):
+        return _check(
+            label,
+            "FAIL",
+            f"INODEFENCE_RUNTIME_ROOT={runtime} is not allowed: it must be an absolute path within "
+            f"{RUNTIME_BASE} (unset it to use {RUNTIME_BASE})",
+        )
+    if runtime.is_symlink():
+        return _check(label, "FAIL", f"{runtime} is a symlink; the runtime root must not be one")
+    if runtime.is_dir():
+        return _check(label, "OK", str(runtime))
+    return _check(
+        label,
+        "WARN",
+        f"{runtime} missing; for development create it with: "
+        f'sudo mkdir -p {runtime} && sudo chown "$(id -u):$(id -g)" {runtime}',
+    )
 
 
 def cmd_doctor(args: argparse.Namespace) -> int:
@@ -270,19 +305,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 
     statuses += _docker_checks()
 
-    runtime = Path(os.environ.get("INODEFENCE_RUNTIME_ROOT", RUNTIME_ROOT_DEFAULT))
-    runtime_ok = runtime.is_dir()
-    statuses.append(
-        _check(
-            "runtime directory (development only: make check / tests; not used by "
-            "verify / explore)",
-            "OK" if runtime_ok else "WARN",
-            f"{runtime}"
-            if runtime_ok
-            else f"{runtime} missing; for development create it with: "
-            f'sudo mkdir -p {runtime} && sudo chown "$(id -u):$(id -g)" {runtime}',
-        )
-    )
+    statuses.append(_runtime_check())
 
     failed = "FAIL" in statuses
     unknown = statuses.count("UNKNOWN")
@@ -492,7 +515,7 @@ def _positive_int(text: str) -> int:
 class _RefusalParser(argparse.ArgumentParser):
     """A subcommand parser whose usage errors exit 3, not argparse's 2.
 
-    For ``verify`` / ``explore`` the exit code carries the verdict (0 PASS, 1 FAIL, 2 ERROR), so a
+    For ``verify`` / ``explore`` (and ``replay``) the exit code carries the result, so a
     usage error must not exit 2 and be read as an ERROR verdict; it is a refusal like the drivers'.
     """
 
@@ -575,6 +598,7 @@ def build_parser() -> argparse.ArgumentParser:
     replay.add_argument(
         "--dry-run", action="store_true", help="check input, image and support; run nothing"
     )
+    replay.__class__ = _RefusalParser
     replay.set_defaults(func=cmd_replay)
 
     status = sub.add_parser(

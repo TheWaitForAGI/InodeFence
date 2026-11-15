@@ -378,15 +378,19 @@ inodefence targets          # 추출기와 각 추출기가 지원하는 것(옵
 
 설치 후에는 저장소 밖 어느 폴더에서 실행해도 됩니다. `pip install .`(editable 아님)로 설치하면
 `summary`·`status`만 그대로 되고, 대상을 돌리는 `targets`·`verify`·`explore`·`replay`는 아래
-`INODEFENCE_HOME`으로 클론 위치를 알려 줘야 합니다.
+`INODEFENCE_HOME`으로 클론 위치를 알려 줘야 합니다. 이때 대상 실행 코드(드라이버와 엔진)는 그 클론에서
+돌고, 결과의 `engine_commit`·`engine_sha`는 그 클론의 `git rev-parse HEAD`(수정분이 있으면 `-dirty`)입니다.
+`status`·`summary`·`doctor`는 설치된 패키지 코드로 돕니다.
 
-`doctor`는 각 항목을 `OK`·`FAIL`·`WARN`·`UNKNOWN`으로 출력합니다. 확인하지 못한 것은 `OK`가 아니라
-`UNKNOWN`입니다. 예를 들어 특정 대상·버전의 이미지가 준비됐는지는 `doctor`가 판단하지 않고,
-`inodefence verify --target node-tar --version 7.5.2 --dry-run`(읽기 전용)이 셀마다 재사용/준비
-계획을 보여 줍니다. 이미지가 없으면 `--auto-prepare`를 줄 때만 Docker로 빌드합니다(네트워크 필요).
-`explore`는 실제 실행에 `--auto-prepare`가 필수이고(없으면 아무것도 실행하지 않고 이유를 출력),
-`--dry-run`에는 필요 없습니다. `$INODEFENCE_RUNTIME_ROOT`(`/var/lib/inodefence`)는 `make check`·테스트용
-개발 전제라 `doctor`에서 없으면 `WARN`입니다.
+`doctor`는 각 항목을 `OK`·`FAIL`·`WARN`·`INFO`·`UNKNOWN`으로 출력합니다. 확인하지 못한 것은 `OK`가
+아니라 `UNKNOWN`입니다. 로컬 `inodefence-*` 이미지는 있으면 `OK`로 이름을 나열하고, 없으면 `INFO`
+(처음 쓸 때 `--auto-prepare`로 빌드)입니다. 다만 어느 이미지가 어느 대상·버전용으로 바로 쓸 수 있는지는
+`doctor`가 판단하지 않고, `inodefence verify --target node-tar --version 7.5.2 --dry-run`(읽기 전용)이
+셀마다 재사용/준비 계획을 보여 줍니다. 이미지가 없으면 `--auto-prepare`를 줄 때만 Docker로 빌드합니다
+(네트워크 필요). `explore`는 실제 실행에 `--auto-prepare`가 필수이고(없으면 아무것도 실행하지 않고 이유를
+출력), `--dry-run`에는 필요 없습니다. `$INODEFENCE_RUNTIME_ROOT`(기본 `/var/lib/inodefence`)는 `make check`·
+테스트용 개발 전제라 `doctor`에서 없으면 `WARN`이고, `/var/lib/inodefence` 밖이나 symlink로 설정돼 있으면
+`FAIL`입니다(그 규칙은 바뀌지 않았습니다).
 
 ### 설정과 출력 위치
 
@@ -396,7 +400,8 @@ inodefence targets          # 추출기와 각 추출기가 지원하는 것(옵
 | 저장소 위치 | editable 설치면 자동 | `INODEFENCE_HOME=<클론 경로>` |
 
 두 값은 환경 변수로 주거나, [`.env.example`](.env.example)을 `~/.config/inodefence/config.env`로
-복사해 적습니다(환경 변수가 파일보다 우선, 다른 파일은 `INODEFENCE_CONFIG`로 지정). 현재 적용된 값과
+복사해 적습니다(환경 변수가 파일보다 우선, 다른 파일은 `INODEFENCE_CONFIG`로 지정하며 그 파일이 없으면
+오류). 현재 적용된 값과
 출처는 `inodefence doctor`가 보여 줍니다.
 
 - **출력은 저장소 밖이어야 합니다.** `--out`이나 기준 폴더가 저장소 안이면 실행 전에 거부합니다
@@ -417,8 +422,8 @@ inodefence targets          # 추출기와 각 추출기가 지원하는 것(옵
   준비→실행→판정을 같은 드라이버의 `make target-run`으로 확인했습니다(2026-11-14 demo run, 대상·버전별
   결과는 [CHANGELOG](CHANGELOG.md)). `inodefence verify`는 그 드라이버를 그대로 호출합니다.
 - **탐색(`explore`)·도중 확인(`status`)·재실행(`replay`):** 네 대상 모두 탐색 hook이 등록돼 있지만
-  (`inodefence targets`), 이 릴리스 노트 작성 시점에 대상별 실제 탐색 실행 확인 결과는 CHANGELOG에
-  싣지 않았습니다. 확인 전까지 후속 검증 대상으로 봅니다.
+  (`inodefence targets`), 실제 탐색은 node-tar 7.5.23 engineering smoke(Windows + WSL2, budget 20·60, 위반 0)만
+  확인했습니다. 나머지 세 대상의 탐색과, 위반 케이스가 있는 실행의 `replay`는 후속 검증 대상입니다.
 - 이 문서의 실행 예는 모두 `demo run` 수준이며 사전등록 실험이나 자격 검증 결과가 아닙니다.
 
 ### 탐색 돌리기
@@ -524,12 +529,12 @@ inodefence summary ~/inodefence-explore/target-explore/<실행>-result/result.js
 | --- | --- | --- | --- | --- | --- |
 | 0 | PASS | 재실행 완료 | 정상 | FAIL 없음(`UNKNOWN`은 있을 수 있음) | 정상 |
 | 1 | FAIL(위반 판정) | 재실행 미완료(끝난 회차는 남음) | — | FAIL 하나 이상 | — |
-| 2 | ERROR 판정(만) | 같은 입력·조건으로 재실행 불가 / 사용법 오류 | 사용법 오류 | 사용법 오류 | 읽기·쓰기 실패 / 사용법 오류 |
-| 3 | 실행 전 거부 — 판정 없음: 사용법 오류(없는 옵션 값, `--budget 0` 등), 저장소 안 `--out`, `--auto-prepare` 없음, 설정 파일 오류, 이미지·준비 문제 등 | 이미지가 이 호스트에 없음, 저장소 안 폴더, 저장소를 못 찾음, 설정 파일 오류 | 저장소를 못 찾음, 설정 파일 오류 | — | — |
+| 2 | ERROR 판정(만) | 같은 입력·조건으로 재실행 불가 | 사용법 오류 | 사용법 오류 | 읽기·쓰기 실패 / 사용법 오류 |
+| 3 | 실행 전 거부 — 판정 없음: 사용법 오류(없는 옵션 값, `--budget 0` 등), 저장소 안 `--out`, `--auto-prepare` 없음, 설정 파일 오류, 이미지·준비 문제 등 | 사용법 오류(`--rounds 0` 등), 이미지가 이 호스트에 없음, 저장소 안 폴더, 저장소를 못 찾음, 설정 파일 오류 | 저장소를 못 찾음, 설정 파일 오류 | — | — |
 | 4 | — | 이 대상은 재실행 미지원 | — | — | — |
 
-`verify`·`explore`는 종료 코드가 판정을 싣기 때문에 2는 ERROR 판정에만 씁니다. 그래서 이 두 명령의 사용법 오류는
-아무것도 실행하지 않았다는 뜻의 3입니다(대상 드라이버와 같은 규칙). 판정을 싣지 않는 명령의 사용법 오류와, 하위
+`verify`·`explore`·`replay`는 종료 코드가 결과를 싣기 때문에 사용법 오류를 2로 내지 않고, 아무것도 실행하지
+않았다는 뜻의 3으로 냅니다(대상 드라이버와 같은 규칙). 판정을 싣지 않는 명령의 사용법 오류와, 하위
 명령 없이 `inodefence`만 잘못 부른 경우는 argparse 관례대로 2입니다. `make`를 거쳐 부르면 `make` 자체는 실패 시
 2로 끝나므로, 판정 코드는 `inodefence`를 직접 부를 때의 값을 보세요.
 

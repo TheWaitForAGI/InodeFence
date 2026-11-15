@@ -50,7 +50,7 @@ def test_environment_wins_over_file_and_loading_leaves_environ_alone(tmp_path: P
 
 
 def test_default_output_base_is_home(tmp_path: Path) -> None:
-    loaded = load_user_config({"INODEFENCE_CONFIG": str(tmp_path / "absent.env")})
+    loaded = load_user_config({"XDG_CONFIG_HOME": str(tmp_path)})  # no config.env there
     assert not loaded.config_found
     assert loaded.output_base.source == "default"
     assert loaded.default_out("inodefence-explore") == Path.home() / "inodefence-explore"

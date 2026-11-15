@@ -20,20 +20,30 @@
   거부한다(`--dry-run` 포함). 기본값은 `~/inodefence-target-run`·`~/inodefence-explore`, 사용자 설정
   `INODEFENCE_OUTPUT_DIR`로 기준 폴더를 바꾼다.
 - 사용자 설정(`~/.config/inodefence/config.env`, 예시 `.env.example`)은 `INODEFENCE_HOME`·`INODEFENCE_OUTPUT_DIR`만
-  받고 다른 키(seed·budget·`INODEFENCE_RUNTIME_ROOT` 등)는 오류로 거부한다. 실험 조건과 runtime 폴더는 설정 파일로
-  바뀌지 않는다.
+  받고 다른 키(seed·budget·`INODEFENCE_RUNTIME_ROOT` 등)는 오류로 거부한다. `INODEFENCE_CONFIG`로 지정한 파일이
+  없으면 오류다. 실험 조건과 runtime 폴더는 설정 파일로 바뀌지 않는다.
 - `doctor`는 Python, 사용자 설정, 저장소, 출력 폴더, Docker CLI와 daemon 접근(`docker info`), 로컬 `inodefence-*`
-  이미지, runtime 폴더를 `OK`·`FAIL`·`WARN`·`UNKNOWN`으로 출력한다. 대상·버전별 이미지 준비 여부는 판단하지 않고
-  `UNKNOWN`으로 두며 `verify --dry-run`을 안내한다.
-- `explore`는 `--auto-prepare` 없이 실제 실행을 요청하면 아무것도 실행하지 않고 이유를 출력한다(종료 코드 3, 드라이버의 "판정 없음"과 같음). 저장소 안 `--out`·설정 파일 오류, 그리고 `verify`·`explore`의 사용법 오류(예: `--budget -5`)도 3이다 — 이 두 명령에서 2는 ERROR 판정에만 쓴다.
-  `--budget`·`--rounds`는 1 이상만 받는다. `status`는 읽을 수 없는 `result.json`이 있으면 2로 끝나고, `summary -o`는
-  쓸 수 없는 경로면 traceback 대신 오류 메시지와 2로 끝난다.
+  이미지(있으면 `OK`로 나열, 없으면 `INFO`), runtime 폴더(없으면 `WARN`, `/var/lib/inodefence` 밖·symlink면 `FAIL`)를
+  출력한다. 어느 이미지가 어느 대상·버전용으로 준비됐는지는 판단하지 않고 `verify --dry-run`을 안내한다.
+- `explore`는 `--auto-prepare` 없이 실제 실행을 요청하면 아무것도 실행하지 않고 이유를 출력한다(종료 코드 3, 드라이버의
+  "판정 없음"과 같음). 저장소 안 `--out`·설정 파일 오류, 그리고 `verify`·`explore`·`replay`의 사용법 오류(예:
+  `--budget -5`)도 3이다 — 이 명령들에서 2는 결과(ERROR 판정, 재실행 불가)에만 쓴다. 드라이버의 오류 메시지는
+  `inodefence verify` 같은 명령 이름으로 나온다.
+- `--budget`·`--rounds`는 1 이상만 받는다(대상별 최소 예산, 예: seed 수 이상은 실제 실행 때 드라이버가 검사한다).
+  `status`는 `--out` 폴더 자체도 받고, 읽을 수 없는 `result.json`이 있으면 2로 끝나며, 끝난 실행의 host pull 실패에는
+  판정 오류가 아니라는 설명을 붙인다. `summary -o`는 쓸 수 없는 경로면 traceback 대신 오류 메시지와 2로 끝난다.
+- `INODEFENCE_HOME`으로 클론을 가리키면 대상 실행 코드는 그 클론에서 돌고, 결과의 엔진 커밋은 그 클론의 HEAD다.
 
-**이 RC에서 실제로 확인한 것(2026-11-16, Windows + WSL2 x86_64, Docker Engine 29.9.3, 이미지 0개).** 깨끗한 venv에
+**이 RC에서 실제로 확인한 것(2026-11-16, Windows + WSL2 x86_64, Docker Engine 29.9.3).** 깨끗한 venv에
 `pip install .`과 `pip install -e .`을 각각 하고 저장소 밖 폴더에서 `--version`·`doctor`·`targets`·`status`·`summary`,
-`explore`/`verify --dry-run`, 저장소 안 `--out` 거부, 설정 파일의 `INODEFENCE_HOME`·금지 키 거부를 실행했다. `doctor`는
-daemon 접근 `OK`, 이미지 `UNKNOWN`(none yet), runtime 폴더 없음 `WARN`으로 이 호스트 상태를 그대로 보였다. 이
-확인에서 Docker로 이미지를 준비하거나 대상을 실행하지는 않았다.
+`explore`/`verify --dry-run`, 저장소 안 `--out` 거부, 설정 파일의 `INODEFENCE_HOME`·금지 키 거부를 실행했다. 이미지가
+0개이던 때 `doctor`는 daemon 접근 `OK`, runtime 폴더 없음 `WARN`으로 그 호스트 상태를 그대로 보였다. 이 확인에서
+W2가 Docker로 이미지를 준비하거나 대상을 실행하지는 않았다.
+
+**HOST4 engineering smoke(demo run).** node-tar 7.5.23, seed 123, budget 20·60, 엔진 61afb3f에서 `inodefence explore`
+두 번: 둘 다 PASS, 위반 0, 미판정 0(budget 20: success 17·rejected 3). 위반 0은 안전성 증명이 아니다. 위반 케이스가
+없어 `replay`는 이 smoke로 검증하지 않았다. 그 산출물에 대해 `inodefence status`·`summary`가 동작하는 것을 확인했고,
+README의 출력 폴더 구조는 이 산출물에 맞췄다.
 
 ### 고정 입력 회귀 검사
 
@@ -131,7 +141,8 @@ node-tar 7.0.1·7.1.0·7.2.0·7.3.0·7.4.4는 진행 중인 실험과 겹쳐, �
 ### 후속 검증(이 릴리스에서 확인 결과를 싣지 않은 것)
 
 - **탐색 `explore`와 `status`·`replay`.** 네 대상 모두 탐색 hook이 등록돼 있고(`inodefence targets`), 명령은
-  이 RC에 들어 있다. 이 릴리스 노트에는 대상별 실제 탐색 실행 결과를 싣지 않았다. 통합 smoke로 확인한 뒤 적는다.
+  이 RC에 들어 있다. 실제 탐색 실행은 위 HOST4 smoke(node-tar 7.5.23)만 확인했고, 나머지 세 대상과 위반 케이스가 있는
+  실행의 `replay`는 아직 확인 결과가 없다.
 - **이어 하기(resume)는 없다.** 멈춘 탐색을 중간부터 이어서 돌릴 수 없다.
 - **위 고정 입력 회귀 결과는 #400 브랜치의 `make target-run`으로 확인한 것이다.** 같은 드라이버를 부르는
   `inodefence verify`로 이 RC에서 다시 실행하지는 않았다.

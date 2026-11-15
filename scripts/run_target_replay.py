@@ -15,14 +15,14 @@
 
 Exit codes: 0 replay complete; 1 replay incomplete or the hook failed (finished rounds are kept);
 2 the case folder cannot be replayed as the same input/conditions; 3 the image is not on this
-host or the folder is inside the repository; 4 the target has no replay support.
+host, the folder is inside the repository, or the arguments are refused (usage error; 2 is kept for
+the case folder); 4 the target has no replay support.
 
     python -m scripts.run_target_replay <case folder> [--rounds 3] [--dry-run]
 """
 
 from __future__ import annotations
 
-import argparse
 import json
 import subprocess
 import sys
@@ -30,7 +30,7 @@ import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 
-from scripts.run_target import TARGETS, _git, load_adapter
+from scripts.run_target import TARGETS, RefusalParser, _git, load_adapter
 
 from inodefence.case_replay import (
     DEFAULT_ROUNDS,
@@ -72,7 +72,7 @@ def engine_commit() -> str | None:
 
 
 def main(argv: list[str] | None = None, *, runner=subprocess.run) -> int:
-    parser = argparse.ArgumentParser(
+    parser = RefusalParser(
         prog="inodefence replay",
         description="Re-run one violation case folder N times on the same image (same isolation, "
         "same run settings) and record how often it reproduces.",

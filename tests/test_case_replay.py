@@ -550,3 +550,12 @@ def test_node_tar_adapter_replays_end_to_end_through_the_driver(
     assert record["summary"]["same_contracts"] == 3
     assert record["replay"]["runner"]["path"].endswith("effect-replay-case")
     assert "replayed 3/3" in capsys.readouterr().out
+
+
+def test_replay_usage_error_is_a_refusal_not_the_case_folder_code(capsys) -> None:
+    # 2 means "the case folder cannot be replayed"; a bad argument is a refusal (3), as in
+    # verify/explore (RefusalParser).
+    with pytest.raises(SystemExit) as stopped:
+        driver.main(["some-folder", "--rounds", "not-a-number"])
+    assert stopped.value.code == 3
+    assert "inodefence replay: error:" in capsys.readouterr().err

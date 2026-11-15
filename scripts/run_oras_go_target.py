@@ -324,6 +324,13 @@ def ensure_image(spec: str, *, image_tag_suffix: str = "") -> PreparedOrasGo:
     return PreparedOrasGo(spec, version, ref, ready[ref], cell.exploratory)
 
 
+def _explore_min_budget() -> int:
+    """The explore hook's own budget floor (lazy import, same reason as the hook)."""
+    from scripts.oras_go_explore import MIN_BUDGET
+
+    return MIN_BUDGET
+
+
 def _explore_hook(prepared, options):  # type: ignore[no-untyped-def]
     """oras-go exploration (lazy import so the fixture-regression path has no extra deps)."""
     from scripts.oras_go_explore import explore
@@ -373,6 +380,7 @@ ADAPTER = TargetAdapter(
     describe=_describe,
     resolve=_resolve,
     explore=_explore_hook,
+    explore_min_budget=_explore_min_budget,
     # Late-bound so a test (or a caller) can replace ``_verify_existing``.
     verify_existing=lambda cell, image: _verify_existing(cell, image),
 )

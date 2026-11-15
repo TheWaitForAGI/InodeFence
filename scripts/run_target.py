@@ -232,6 +232,10 @@ class TargetAdapter:
     #: write the common campaign result. ``None`` (default) means this target does not support
     #: exploration yet; the driver then reports that and stops.
     explore: ExploreHook | None = None
+    #: Optional: the smallest ``--budget`` the explore hook accepts (its seed count), read from the
+    #: hook's own module (lazy, so no rule is duplicated). The driver checks it before preparing
+    #: anything and on ``--dry-run``; ``None`` means the hook has no such floor.
+    explore_min_budget: Callable[[], int] | None = None
     #: Target-specific options this target declares (default none). The common driver accepts
     #: them as ``--<name>``, validates against the declaration, and passes them to ``cells`` as
     #: the ``filters`` list in declaration order.
@@ -298,10 +302,25 @@ def _git(*args: str) -> str | None:
     return done.stdout.strip()
 
 
+#: Paths whose untracked files make the engine dirty (the code a run executes).
+ENGINE_SOURCE_PATHS = ("src", "scripts", "tools")
+
+
+def auto_prepare_hint() -> str:
+    """How to ask for preparation: the CLI flag via ``inodefence``, else the make variable too."""
+    if os.environ.get("INODEFENCE_PROG"):
+        return "--auto-prepare"
+    return "AUTO_PREPARE=1 (--auto-prepare)"
+
+
 def engine_provenance(image_ref: str | None) -> Provenance:
     """The engine revision that ran (HEAD + dirty flag) and the image's local id, when known."""
     sha = _git("rev-parse", "HEAD")
     status = _git("status", "--porcelain", "--untracked-files=no")
+    # Untracked files count only under the engine's source paths: a new, uncommitted module there
+    # changes what ran, so the clone is not clean. (Untracked files elsewhere -- notes, outputs --
+    # do not.) The record format is unchanged: still one bool.
+    untracked = _git("status", "--porcelain", "--untracked-files=all", "--", *ENGINE_SOURCE_PATHS)
     image_id = None
     if image_ref is not None:
         try:
@@ -317,7 +336,7 @@ def engine_provenance(image_ref: str | None) -> Provenance:
             image_id = None
     return Provenance(
         engine_sha=sha or None,
-        engine_dirty=status is None or bool(status),
+        engine_dirty=status is None or bool(status) or untracked is None or bool(untracked),
         image_ref=image_ref,
         image_id=image_id,
     )
@@ -425,7 +444,7 @@ def resolve_images(
         step = adapter.prepare(cell)
         if not auto_prepare:
             hint = (
-                "rerun with AUTO_PREPARE=1 (--auto-prepare) to prepare it"
+                f"rerun with {auto_prepare_hint()} to prepare it"
                 if step.commands is not None
                 else f"automatic preparation unavailable: {step.reason}"
             )
@@ -452,7 +471,7 @@ def image_status(adapter: TargetAdapter, cell: RunCell, docker_ok: bool) -> dict
     if step.commands is None:
         return {"action": "missing-unsupported", "reason": step.reason}
     return {
-        "action": "prepare (needs AUTO_PREPARE=1)",
+        "action": f"prepare (needs {auto_prepare_hint()})",
         "reason": step.reason,
         "commands": [shlex.join(c) for c in step.commands],
     }

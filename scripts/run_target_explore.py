@@ -31,6 +31,7 @@ from scripts.run_target import (
     PreparedTargetImage,
     RefusalParser,
     TargetAdapter,
+    auto_prepare_hint,
     load_adapter,
     resolve_images,
     with_tag_suffix,
@@ -137,6 +138,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 3
 
+    min_budget = adapter.explore_min_budget() if adapter.explore_min_budget else None
+    if min_budget is not None and args.budget < min_budget:
+        parser.error(f"--budget must be >= {min_budget} for {args.target} (the loop's seed count)")
+
     if args.dry_run:
         print(
             json.dumps(
@@ -155,7 +160,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
     if not args.auto_prepare:
-        parser.error("pass AUTO_PREPARE=1 (--auto-prepare) to prepare the image and run")
+        parser.error(f"pass {auto_prepare_hint()} to prepare the image and run")
 
     out = args.out.expanduser().resolve()
     if out.is_relative_to(REPO_ROOT):

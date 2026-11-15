@@ -267,3 +267,62 @@ def test_controller_abort_exits_error_2_with_a_reason(
     assert (
         "TARGET-EXPLORE ERROR" in err and "controller run failed" in err and "Traceback" not in err
     )
+
+
+# ---- driver minor fixes (W3 via W2/ORCH, 2026-11-16) ----
+
+
+@pytest.mark.parametrize("target", ["node-tar", "oras-go"])
+def test_dry_run_refuses_a_budget_below_the_hooks_floor(target: str, capsys) -> None:
+    # The floor is read from the hook module (adapter.explore_min_budget), not duplicated here.
+    floor = rte.load_adapter(target).explore_min_budget()  # type: ignore[misc]
+    argv = ["--target", target, "--version", "latest", "--budget", str(floor - 1), "--dry-run"]
+    with pytest.raises(SystemExit) as stopped:
+        rte.main(argv)
+    assert stopped.value.code == 3
+    assert f"--budget must be >= {floor} for {target}" in capsys.readouterr().err
+    ok = ["--target", target, "--version", "latest", "--budget", str(floor), "--dry-run"]
+    assert rte.main(ok) == 0
+
+
+def test_python_tarfile_floor_is_its_hook_modules() -> None:
+    from scripts import python_tarfile_explore
+
+    adapter = rte.load_adapter("python-tarfile")
+    assert adapter.explore_min_budget is not None
+    assert adapter.explore_min_budget() == python_tarfile_explore.MIN_BUDGET
+
+
+def test_auto_prepare_hint_names_the_cli_flag_when_run_through_inodefence(
+    monkeypatch: pytest.MonkeyPatch, capsys
+) -> None:
+    from scripts import run_target
+
+    monkeypatch.delenv("INODEFENCE_PROG", raising=False)
+    assert run_target.auto_prepare_hint() == "AUTO_PREPARE=1 (--auto-prepare)"
+    monkeypatch.setenv("INODEFENCE_PROG", "inodefence explore")
+    assert run_target.auto_prepare_hint() == "--auto-prepare"
+    with pytest.raises(SystemExit):
+        rte.main(["--target", "node-tar", "--version", "latest"])  # no --auto-prepare
+    err = capsys.readouterr().err
+    assert "pass --auto-prepare to prepare" in err and "AUTO_PREPARE=1" not in err
+
+
+def test_untracked_source_file_makes_the_engine_dirty(monkeypatch: pytest.MonkeyPatch) -> None:
+    from scripts import run_target
+
+    def fake_git(untracked: str):  # type: ignore[no-untyped-def]
+        def git(*args: str) -> str:
+            if args[0] == "rev-parse":
+                return "a" * 40
+            if "--untracked-files=all" in args:
+                assert args[-3:] == ("src", "scripts", "tools")  # only the engine's source paths
+                return untracked
+            return ""  # no tracked change
+
+        return git
+
+    monkeypatch.setattr(run_target, "_git", fake_git(""))
+    assert run_target.engine_provenance(None).engine_dirty is False
+    monkeypatch.setattr(run_target, "_git", fake_git("?? scripts/new_module.py"))
+    assert run_target.engine_provenance(None).engine_dirty is True

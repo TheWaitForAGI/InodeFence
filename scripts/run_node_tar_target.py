@@ -221,6 +221,13 @@ def ensure_image(spec: str, *, image_tag_suffix: str = "") -> PreparedNodeTar:
     return PreparedNodeTar(spec, version, ref, ready[ref], cell.exploratory)
 
 
+def _explore_min_budget() -> int:
+    """The explore hook's own budget floor (lazy import, same reason as the hook)."""
+    from scripts.node_tar_explore import MIN_BUDGET
+
+    return MIN_BUDGET
+
+
 def _explore_hook(prepared, options):  # type: ignore[no-untyped-def]
     """node-tar exploration (lazy import so the fixture-regression path has no extra deps)."""
     from scripts.node_tar_explore import explore
@@ -261,6 +268,7 @@ ADAPTER = TargetAdapter(
     describe=_describe,
     resolve=_resolve,
     explore=_explore_hook,
+    explore_min_budget=_explore_min_budget,
     verify_existing=_verify_existing,
     replay=_replay_hook,
 )

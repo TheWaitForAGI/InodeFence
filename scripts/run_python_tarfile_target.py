@@ -526,6 +526,13 @@ def _existing_recipe(cell: RunCell) -> ip.Recipe:
     return image_recipe(cell.axes.runtime_version or "")
 
 
+def _explore_min_budget() -> int:
+    """The explore hook's own budget floor (lazy import, same reason as the hook)."""
+    from scripts.python_tarfile_explore import MIN_BUDGET
+
+    return MIN_BUDGET
+
+
 def _explore_hook(prepared, options):  # type: ignore[no-untyped-def]
     """python-tarfile exploration (lazy import so the fixture-regression path has no extra deps)."""
     from scripts.python_tarfile_explore import explore
@@ -543,6 +550,7 @@ ADAPTER = TargetAdapter(
     describe=_describe,
     resolve=_resolve,
     explore=_explore_hook,
+    explore_min_budget=_explore_min_budget,
     options=(EXTRACTION_FILTER_OPTION,),
     # Before a present runtime image is reused, it must still report its exact X.Y.Z offline.
     # (The exploration producer image adds the worker on top; its reuse check -- version, worker

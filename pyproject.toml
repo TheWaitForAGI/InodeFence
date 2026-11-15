@@ -4,14 +4,16 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "inodefence"
-version = "0.1.0"
+version = "0.2.0"
 description = "Filesystem-security-state-guided fuzzing for TAR extraction"
+readme = "README.md"
 requires-python = ">=3.12,<3.13"
 license = { text = "MIT" }
 dependencies = []
 
-# The user-facing command. Today it needs an editable install from a clone (the drivers under
-# scripts/ and the build assets under tools/ are not packaged); it locates the repo explicitly.
+# The user-facing command. Commands that run targets need a clone (editable install, or
+# INODEFENCE_HOME set): the drivers under scripts/ and the build assets under tools/ are not
+# packaged. `summary` and `status` work from any install. See README.
 [project.scripts]
 inodefence = "inodefence.cli:main"
 

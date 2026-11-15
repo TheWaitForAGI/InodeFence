@@ -26,7 +26,8 @@ _MARKER_ASSETS = Path("tools")
 
 REPO_NOT_FOUND = (
     "InodeFence repository not found. Install from a clone with `pip install -e .`, or set "
-    "INODEFENCE_HOME to the repository root (it must contain scripts/run_target.py and tools/)."
+    "INODEFENCE_HOME (environment or the user config file) to the repository root "
+    "(it must contain scripts/run_target.py and tools/)."
 )
 
 
@@ -37,16 +38,27 @@ def _is_repo(root: Path) -> bool:
 def repo_root() -> Path | None:
     """Locate the repository explicitly, or ``None``; never a guess.
 
-    ``INODEFENCE_HOME`` wins when set. Otherwise, in an editable install this file is
+    ``INODEFENCE_HOME`` wins when set (environment first, then the user config file, see
+    :mod:`inodefence.user_config`). Otherwise, in an editable install this file is
     ``<repo>/src/inodefence/locate.py``, so its grandparent's parent is the repository root; a
     wheel install has no such layout and returns ``None`` (the drivers are not bundled there).
     """
-    env = os.environ.get("INODEFENCE_HOME")
+    env = os.environ.get("INODEFENCE_HOME") or _configured_home()
     if env:
         root = Path(env).expanduser()
         return root if _is_repo(root) else None
     candidate = Path(__file__).resolve().parents[2]
     return candidate if _is_repo(candidate) else None
+
+
+def _configured_home() -> str | None:
+    from inodefence.user_config import UserConfigError, load_user_config
+
+    try:
+        setting = load_user_config().get("INODEFENCE_HOME")
+    except UserConfigError:
+        return None  # the CLI reports a broken config file up front; here: not configured
+    return setting.value if setting is not None else None
 
 
 def _driver_env(root: Path) -> dict[str, str]:

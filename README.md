@@ -358,15 +358,68 @@ Codex CLI는 exact version으로 고정하지 않는 **rolling latest** 정책�
 
 ## 추출기를 골라 탐색·도중 확인·재실행하기 (`inodefence` 명령)
 
-`make install`로 editable 설치를 하면 `inodefence` 명령이 생깁니다. 추출기 하나를 골라 최신
-버전을 준비하고, 상태 기반 피드백 탐색을 돌리고, 산출물을 저장소 밖에 쓰는 사용자용 진입점입니다.
-실제 target 실행은 docker가 있는 호스트에서만 되고, Dev Container 안에서는 `--dry-run`으로
-계획만 볼 수 있습니다.
+추출기 하나를 골라 버전을 준비하고, 상태 기반 피드백 탐색을 돌리고, 산출물을 저장소 밖에 쓰는
+사용자용 진입점입니다. 실제 target 실행은 docker가 도는 호스트 셸(macOS 터미널, WSL 셸)에서만 되고,
+Dev Container 안에서는 `--dry-run`으로 계획만 볼 수 있습니다.
+
+### 설치
+
+Python 3.12와 저장소 클론이 필요합니다(대상 실행 드라이버 `scripts/`와 이미지 레시피 `tools/`는
+패키지에 들어 있지 않습니다).
 
 ```bash
-inodefence targets           # 추출기와 각 추출기가 지원하는 것(옵션·탐색·재실행) 표로 보기
-inodefence doctor            # Python·저장소·docker·런타임 폴더 점검과 고치는 법
+git clone <저장소 URL> InodeFence && cd InodeFence
+python3.12 -m venv .venv && . .venv/bin/activate   # WSL2 Ubuntu 24.04는 python3 = 3.12
+pip install -e .            # 개발까지 하려면 make install (= pip install -e '.[dev]')
+inodefence --version
+inodefence doctor           # 무엇이 준비됐고 무엇이 빠졌는지, 고치는 법
+inodefence targets          # 추출기와 각 추출기가 지원하는 것(옵션·탐색) 표
 ```
+
+설치 후에는 저장소 밖 어느 폴더에서 실행해도 됩니다. `pip install .`(editable 아님)로 설치하면
+`summary`·`status`만 그대로 되고, 대상을 돌리는 `targets`·`verify`·`explore`·`replay`는 아래
+`INODEFENCE_HOME`으로 클론 위치를 알려 줘야 합니다.
+
+`doctor`는 각 항목을 `OK`·`FAIL`·`WARN`·`UNKNOWN`으로 출력합니다. 확인하지 못한 것은 `OK`가 아니라
+`UNKNOWN`입니다. 예를 들어 특정 대상·버전의 이미지가 준비됐는지는 `doctor`가 판단하지 않고,
+`inodefence verify --target node-tar --version 7.5.2 --dry-run`(읽기 전용)이 셀마다 재사용/준비
+계획을 보여 줍니다. 이미지가 없으면 `--auto-prepare`를 줄 때만 Docker로 빌드합니다(네트워크 필요).
+`explore`는 실제 실행에 `--auto-prepare`가 필수이고(없으면 아무것도 실행하지 않고 이유를 출력),
+`--dry-run`에는 필요 없습니다. `$INODEFENCE_RUNTIME_ROOT`(`/var/lib/inodefence`)는 `make check`·테스트용
+개발 전제라 `doctor`에서 없으면 `WARN`입니다.
+
+### 설정과 출력 위치
+
+| 무엇 | 기본값 | 바꾸는 법 |
+| --- | --- | --- |
+| 출력 폴더 | `verify`: `~/inodefence-target-run`, `explore`: `~/inodefence-explore` | `--out <폴더>`(상대 경로는 **명령을 실행한 폴더** 기준), 또는 `INODEFENCE_OUTPUT_DIR=<기준 폴더>` → `<기준>/inodefence-target-run`, `<기준>/inodefence-explore` |
+| 저장소 위치 | editable 설치면 자동 | `INODEFENCE_HOME=<클론 경로>` |
+
+두 값은 환경 변수로 주거나, [`.env.example`](.env.example)을 `~/.config/inodefence/config.env`로
+복사해 적습니다(환경 변수가 파일보다 우선, 다른 파일은 `INODEFENCE_CONFIG`로 지정). 현재 적용된 값과
+출처는 `inodefence doctor`가 보여 줍니다.
+
+- **출력은 저장소 밖이어야 합니다.** `--out`이나 기준 폴더가 저장소 안이면 실행 전에 거부합니다
+  (위반 입력이 공개 저장소에 섞이지 않도록). 클라우드 동기화 폴더(Google Drive 등)도 피하세요.
+  `doctor`와 `verify`·`explore`는 경로에 `Drive`(예: `~/Drive`)·Google Drive·OneDrive·Dropbox 등의 폴더 이름이 보이면
+  경고하지만(실행은 막지 않음), 이름이 다른 동기화
+  폴더는 알아채지 못합니다.
+- **설정 파일로 실험 조건을 바꿀 수 없습니다.** 설정 파일은 위 두 키만 받고, 그 밖의 키(예: seed·budget,
+  `INODEFENCE_RUNTIME_ROOT`)는 오류로 거부합니다. seed·arm·budget·실행 SHA·격리 정책은 명령 옵션이나
+  동결된 사전등록 파일(`experiments/preregistration/`)에서만 오고, 실험 runtime 폴더
+  `INODEFENCE_RUNTIME_ROOT`는 지금처럼 환경 변수로만 정합니다.
+
+### 지원 환경과 확인 수준
+
+- **확인한 호스트:** macOS(arm64) + Docker Desktop, Windows + WSL2(x86_64) + Docker Desktop. 그 밖의
+  Linux 호스트는 따로 확인하지 않았습니다.
+- **고정 입력 회귀 검사(`verify`):** 네 대상(node-tar·python-tarfile·oras-go·decompress)에서 버전별
+  준비→실행→판정을 같은 드라이버의 `make target-run`으로 확인했습니다(2026-11-14 demo run, 대상·버전별
+  결과는 [CHANGELOG](CHANGELOG.md)). `inodefence verify`는 그 드라이버를 그대로 호출합니다.
+- **탐색(`explore`)·도중 확인(`status`)·재실행(`replay`):** 네 대상 모두 탐색 hook이 등록돼 있지만
+  (`inodefence targets`), 이 릴리스 노트 작성 시점에 대상별 실제 탐색 실행 확인 결과는 CHANGELOG에
+  싣지 않았습니다. 확인 전까지 후속 검증 대상으로 봅니다.
+- 이 문서의 실행 예는 모두 `demo run` 수준이며 사전등록 실험이나 자격 검증 결과가 아닙니다.
 
 ### 탐색 돌리기
 
@@ -381,13 +434,28 @@ inodefence explore --target node-tar --version latest --budget 400 --seed 7 \
 seed입니다. 탐색 정책·sentinel 구성은 등록 실험 설정을 기본값으로 쓰며, 끝나면 공통 형식
 `result.json`(`inodefence-target-result-v1`, mode=campaign)과 한 장짜리 `summary.md`를 씁니다.
 
+node-tar 탐색(`--version 7.5.23 --seed 123 --budget 20`, engineering smoke 2026-11-16)에서 실제로 생긴 구조:
+
+```text
+<--out>/target-explore/
+  7.5.23-123-20/live/                 실행 중 갱신: progress.json, fetch.json, violations/run-NNNNNN/
+  7.5.23-123-20-result/               끝난 뒤: result.json, summary.md, inputs/
+  inodefence-effect-explore-7.5.23-123-20.json (.steps.jsonl, .calls.jsonl)   엔진 원시 기록
+```
+
+(`<버전>-<seed>-<budget>` 이름은 node-tar에서 관찰한 것입니다. 다른 대상의 폴더 이름은 아직 실측으로 대조하지 않았습니다.)
+
 ### 도중 확인
 
-긴 탐색은 끝나기를 기다리지 않고 실행 중에 봅니다.
+긴 탐색은 끝나기를 기다리지 않고 실행 중에 봅니다. `--out`에 준 폴더, 그 아래 `target-explore`, 실행 폴더
+하나(`…/7.5.23-123-20`), 결과 폴더(`…-result`) 중 아무것이나 줄 수 있습니다.
 
 ```bash
-inodefence status ~/inodefence-explore/target-explore   # 진행 스냅샷 + 위반 케이스 목록
+inodefence status ~/inodefence-explore   # 진행 스냅샷 + 위반 케이스 목록 (+ 끝났으면 판정 한 줄)
 ```
+
+끝난 실행에서 `host pull: … failed`가 보일 수 있습니다. 컨트롤러가 뜨기 전이나 지워진 뒤의 복사 실패로,
+호스트 쪽 live 사본에 관한 것이고 판정 오류가 아닙니다(`status`가 그 설명을 함께 출력합니다).
 
 탐색은 실행 중에 출력 폴더의 `…/<run>/live/`에 두 가지를 씁니다.
 
@@ -428,7 +496,7 @@ fingerprint, 입력의 SHA-256, 그리고 **그 한 건을 같은 이미지에�
 
 ```bash
 # 위반 케이스 폴더 하나를 그 case.json이 가리키는 정확한 이미지에서 3회(기본) 다시 돌립니다.
-inodefence replay ~/inodefence-explore/target-explore/<run>/live/violations/run-NNNNNN --rounds 3
+inodefence replay ~/inodefence-explore/target-explore/<실행>/live/violations/run-NNNNNN --rounds 3   # <실행> 예: 7.5.23-123-20
 ```
 
 재실행은 탐색과 같은 격리로 돌고, 회차별 판정과 **같은 계약을 다시 위반한 비율**·**fingerprint가
@@ -436,6 +504,34 @@ inodefence replay ~/inodefence-explore/target-explore/<run>/live/violations/run-
 건드리지 않습니다). `case.json`에 기록된 이미지 id가 이 호스트에 없으면 **다시 준비하거나 다른
 이미지로 바꾸지 않고 멈춥니다**(다른 이미지로 돌린 것을 재현이라고 적지 않기 위해서). 재실행에는
 탐색의 실행 설정이 `case.json`에 있어야 하며, 없는 옛 케이스는 거부합니다.
+
+### 결과 요약과 재현 정보 남기기
+
+별도의 "내보내기" 명령은 없습니다. 공유·보고에 쓰는 것은 출력 폴더의 파일과 `summary`입니다.
+
+```bash
+# result.json 하나를 한 장짜리 Markdown 요약으로(입력 TAR의 SHA-256을 다시 대조; 생략은 --no-verify-inputs)
+inodefence summary ~/inodefence-explore/target-explore/<실행>-result/result.json -o ~/report.md
+```
+
+- **재현 정보:** 위반 케이스마다 `case.json`(입력 SHA-256, 이미지 id, 다시 돌리는 명령)과 `input.tar`,
+  재실행 결과는 그 옆 `run-NNNNNN.replay-<UTC>/replay.json`에 있습니다.
+- 보고서나 케이스 폴더를 밖으로 보낼 때는 위반 입력이 들어 있다는 점을 기억하세요(아래 책임 있는 공개).
+
+### 종료 코드
+
+| 코드 | `verify`·`explore` | `replay` | `targets` | `doctor` | `status`·`summary` |
+| --- | --- | --- | --- | --- | --- |
+| 0 | PASS | 재실행 완료 | 정상 | FAIL 없음(`UNKNOWN`은 있을 수 있음) | 정상 |
+| 1 | FAIL(위반 판정) | 재실행 미완료(끝난 회차는 남음) | — | FAIL 하나 이상 | — |
+| 2 | ERROR 판정(만) | 같은 입력·조건으로 재실행 불가 / 사용법 오류 | 사용법 오류 | 사용법 오류 | 읽기·쓰기 실패 / 사용법 오류 |
+| 3 | 실행 전 거부 — 판정 없음: 사용법 오류(없는 옵션 값, `--budget 0` 등), 저장소 안 `--out`, `--auto-prepare` 없음, 설정 파일 오류, 이미지·준비 문제 등 | 이미지가 이 호스트에 없음, 저장소 안 폴더, 저장소를 못 찾음, 설정 파일 오류 | 저장소를 못 찾음, 설정 파일 오류 | — | — |
+| 4 | — | 이 대상은 재실행 미지원 | — | — | — |
+
+`verify`·`explore`는 종료 코드가 판정을 싣기 때문에 2는 ERROR 판정에만 씁니다. 그래서 이 두 명령의 사용법 오류는
+아무것도 실행하지 않았다는 뜻의 3입니다(대상 드라이버와 같은 규칙). 판정을 싣지 않는 명령의 사용법 오류와, 하위
+명령 없이 `inodefence`만 잘못 부른 경우는 argparse 관례대로 2입니다. `make`를 거쳐 부르면 `make` 자체는 실패 시
+2로 끝나므로, 판정 코드는 `inodefence`를 직접 부를 때의 값을 보세요.
 
 ### 한계와 주의
 

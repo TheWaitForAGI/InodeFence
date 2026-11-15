@@ -299,6 +299,31 @@ def test_find_live_dirs_and_cli_status_on_a_running_exploration(tmp_path: Path, 
     assert printed.startswith("live: running") and "violation cases on disk: 1" in printed
 
 
+def test_finished_run_status_explains_pull_failures_and_says_none(tmp_path: Path, capsys) -> None:
+    # The b20 smoke shape: finished, no violations, some pulls failed (controller absent).
+    out = tmp_path / "out"
+    live = out / "target-explore" / "7.5.23-123-20" / "live"
+    LiveRecorder(live, META, clock=Clock()).close()
+    (live / "fetch.json").write_text(
+        json.dumps(
+            {
+                "schema": FETCH_SCHEMA,
+                "pulls_ok": 3,
+                "pulls_failed": 8,
+                "last_ok_at": "2026-11-15T21:31:36+00:00",
+                "last_error_at": "2026-11-15T21:30:50+00:00",
+                "last_error": "RuntimeError: docker cp exit 1: No such container: c",
+            }
+        )
+    )
+    text = render_live_status(live, display="live")
+    assert "violation cases on disk: none" in text and "none yet" not in text
+    assert "they are not run errors" in text
+    assert "last error (" in text  # its time is shown, so its order vs. the last ok is visible
+    assert cli.main(["status", str(out)]) == 0  # the --out folder itself is accepted
+    assert "7.5.23-123-20/live: finished" in capsys.readouterr().out
+
+
 # -- node-tar adapter (real effect loop, synthetic producer: no Docker) --------------------------
 
 

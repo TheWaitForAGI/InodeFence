@@ -731,8 +731,18 @@ def render_live_status(
             f"last ok {_ago(None if last_ok is None else now - last_ok)}"
         )
         if fetch.get("last_error"):
-            text += f"; last error: {fetch['last_error']}"
+            last_error = _parse_iso(fetch.get("last_error_at"))
+            when = "" if last_error is None else f" ({_ago(now - last_error)})"
+            text += f"; last error{when}: {fetch['last_error']}"
         lines.append(text)
+        state = None if progress is None else progress.get("state")
+        if fetch.get("pulls_failed") and state not in (None, "running"):
+            # A pull fails while the controller does not exist yet or is already gone; that only
+            # affects how current this host copy was, never the run's judgment.
+            lines.append(
+                "    (pull failures only concern copying this live folder to the host -- e.g. "
+                "before the controller started or after it was removed; they are not run errors)"
+            )
     cases = list_violation_cases(live_dir)
     if cases:
         lines.append(
@@ -758,7 +768,8 @@ def render_live_status(
         if len(cases) > max_cases:
             lines.append(f"    ... {len(cases) - max_cases} earlier case(s) not listed")
     elif progress is not None:
-        lines.append("  violation cases on disk: none yet")
+        running = progress.get("state") == "running"
+        lines.append(f"  violation cases on disk: {'none yet' if running else 'none'}")
     return "\n".join(lines)
 
 

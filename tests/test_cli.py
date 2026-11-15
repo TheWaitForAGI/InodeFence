@@ -8,6 +8,20 @@ import pytest
 from inodefence import cli, locate
 
 
+@pytest.fixture(autouse=True)
+def _no_user_config(tmp_path_factory, monkeypatch) -> None:
+    """Keep the developer's own ~/.config/inodefence and environment out of these tests."""
+    missing = tmp_path_factory.mktemp("cfg") / "absent.env"
+    monkeypatch.setenv("INODEFENCE_CONFIG", str(missing))
+    monkeypatch.delenv("INODEFENCE_OUTPUT_DIR", raising=False)
+
+
+@pytest.fixture
+def _docker_ok(monkeypatch) -> None:
+    monkeypatch.setattr(cli, "_docker_server", lambda: ("OK", "server 29.0.0"))
+    monkeypatch.setattr(cli, "_local_images", lambda: ["inodefence-node-tar-registry:7.5.2"])
+
+
 def _make_repo(tmp_path: Path) -> Path:
     (tmp_path / "scripts").mkdir()
     (tmp_path / "scripts" / "run_target.py").write_text("TARGETS = {}\n", encoding="utf-8")
@@ -39,20 +53,11 @@ def test_verify_forwards_the_regression_driver_argv(monkeypatch) -> None:
     monkeypatch.setattr(
         cli,
         "run_driver",
-        lambda root, driver, argv, prog: calls.append((driver, argv, prog)) or 0,
+        lambda root, driver, argv, prog=None: calls.append((driver, argv, prog)) or 0,
     )
     out = Path("/elsewhere/verify-out")
-    argv_in = [
-        "verify",
-        "--target",
-        "node-tar",
-        "--version",
-        "7.5.2",
-        "--dry-run",
-        "--out",
-        str(out),
-    ]
-    assert cli.main(argv_in) == 0
+    argv_in = ["verify", "--target", "node-tar", "--version", "7.5.2", "--dry-run", "--out"]
+    assert cli.main([*argv_in, str(out)]) == 0
     driver, argv, prog = calls[0]
     assert driver == cli.VERIFY_DRIVER and prog == "inodefence verify"
     # --out is forwarded on --dry-run too, so the plan shows where it would write (as explore).
@@ -63,9 +68,7 @@ def test_explore_forwards_the_exploration_driver_argv(monkeypatch, tmp_path: Pat
     calls: list = []
     monkeypatch.setattr(cli, "repo_root", lambda: Path("/repo"))
     monkeypatch.setattr(
-        cli,
-        "run_driver",
-        lambda root, driver, argv, prog: calls.append((driver, argv)) or 0,
+        cli, "run_driver", lambda root, driver, argv, prog=None: calls.append((driver, argv)) or 0
     )
     assert (
         cli.main(
@@ -103,7 +106,7 @@ def test_explore_forwards_the_exploration_driver_argv(monkeypatch, tmp_path: Pat
 
 def test_explore_without_repo_explains_and_fails(monkeypatch, capsys) -> None:
     monkeypatch.setattr(cli, "repo_root", lambda: None)
-    assert cli.main(["explore", "--version", "latest"]) == 3
+    assert cli.main(["explore", "--version", "latest", "--auto-prepare"]) == 3
     assert "repository not found" in capsys.readouterr().err
 
 
@@ -153,7 +156,9 @@ def test_targets_table_lists_support_reasons_and_options(monkeypatch, capsys) ->
 def test_explore_forwards_target_specific_options_as_extra(monkeypatch) -> None:
     calls: list = []
     monkeypatch.setattr(cli, "repo_root", lambda: Path("/repo"))
-    monkeypatch.setattr(cli, "run_driver", lambda root, driver, argv, prog: calls.append(argv) or 0)
+    monkeypatch.setattr(
+        cli, "run_driver", lambda root, driver, argv, prog=None: calls.append(argv) or 0
+    )
     assert (
         cli.main(
             [
@@ -192,7 +197,7 @@ def test_targets_without_repo_explains_and_fails(monkeypatch, capsys) -> None:
     assert "repository not found" in capsys.readouterr().err
 
 
-def test_doctor_reports_each_check_and_exit_code(monkeypatch, capsys) -> None:
+def test_doctor_reports_each_check_and_exit_code(monkeypatch, capsys, _docker_ok) -> None:
     monkeypatch.setattr(cli, "repo_root", lambda: Path("/repo"))
     monkeypatch.setattr(cli.shutil, "which", lambda name: "/usr/bin/docker")
     monkeypatch.setattr(cli.Path, "is_dir", lambda self: True)
@@ -208,7 +213,124 @@ def test_doctor_missing_repo_and_docker_fails(monkeypatch, capsys) -> None:
     monkeypatch.setattr(cli.Path, "is_dir", lambda self: False)
     assert cli.main(["doctor"]) == 1
     out = capsys.readouterr().out
-    assert "[FAIL] repository" in out and "[FAIL] Docker" in out
+    assert "[FAIL] repository" in out and "[FAIL] Docker CLI" in out
+    assert "[UNKNOWN] Docker daemon access" in out  # not asked, so not reported as OK
+    assert "[WARN] runtime directory" in out  # development-only, not a user-command failure
+
+
+def test_doctor_reports_daemon_failure_and_unknown_image_readiness(
+    monkeypatch, capsys, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(cli, "repo_root", lambda: tmp_path / "repo")
+    monkeypatch.setattr(cli.shutil, "which", lambda name: "/usr/bin/docker")
+    monkeypatch.setattr(cli, "_docker_server", lambda: ("FAIL", "permission denied; fix"))
+    assert cli.main(["doctor"]) == 1
+    out = capsys.readouterr().out
+    assert "[FAIL] Docker daemon access: permission denied" in out
+    assert "[UNKNOWN] prepared images" in out
+
+
+def test_doctor_all_ok_still_says_image_readiness_is_unverified(
+    monkeypatch, capsys, tmp_path: Path, _docker_ok
+) -> None:
+    if cli.sys.version_info[:2] != (3, 12):
+        pytest.skip("doctor fails on a non-3.12 interpreter by design")
+    monkeypatch.setattr(cli, "repo_root", lambda: tmp_path / "repo")
+    monkeypatch.setattr(cli.shutil, "which", lambda name: "/usr/bin/docker")
+    monkeypatch.setenv("INODEFENCE_OUTPUT_DIR", str(tmp_path / "outputs"))
+    monkeypatch.setenv("INODEFENCE_RUNTIME_ROOT", str(tmp_path))
+    assert cli.main(["doctor"]) == 0
+    out = capsys.readouterr().out
+    assert "[OK] Docker daemon access: server 29.0.0" in out
+    assert "inodefence-node-tar-registry:7.5.2" in out
+    assert "[OK] output folder base (environment)" in out
+    assert "1 UNKNOWN" in out
+
+
+def test_doctor_flags_an_output_base_inside_the_repo(monkeypatch, capsys, tmp_path: Path) -> None:
+    monkeypatch.setattr(cli, "repo_root", lambda: tmp_path)
+    monkeypatch.setenv("INODEFENCE_OUTPUT_DIR", str(tmp_path / "out"))
+    cli.main(["doctor"])
+    assert "[FAIL] output folder base (environment)" in capsys.readouterr().out
+
+
+def _capture_driver(monkeypatch, root: Path) -> list:
+    calls: list = []
+    monkeypatch.setattr(cli, "repo_root", lambda: root)
+    monkeypatch.setattr(
+        cli, "run_driver", lambda root, driver, argv, prog=None: calls.append((driver, argv)) or 0
+    )
+    return calls
+
+
+@pytest.mark.parametrize("folder", ["Drive", "Google Drive", "OneDrive - Org"])
+def test_output_in_a_synced_looking_folder_warns(
+    monkeypatch, tmp_path: Path, capsys, folder: str
+) -> None:
+    calls = _capture_driver(monkeypatch, tmp_path / "repo")
+    monkeypatch.setenv("INODEFENCE_OUTPUT_DIR", str(tmp_path / folder / "if"))
+    assert cli.main(["explore", "--version", "latest", "--auto-prepare"]) == 0
+    assert calls and "cloud-synced" in capsys.readouterr().err
+    cli.main(["doctor"])
+    assert "[WARN] output folder base (environment)" in capsys.readouterr().out
+
+
+def test_relative_out_is_resolved_against_the_callers_cwd(monkeypatch, tmp_path: Path) -> None:
+    calls = _capture_driver(monkeypatch, tmp_path / "repo")
+    work = tmp_path / "work"
+    work.mkdir()
+    monkeypatch.chdir(work)
+    assert cli.main(["verify", "--version", "7.5.2", "--out", "results"]) == 0
+    assert cli.main(["explore", "--version", "latest", "--auto-prepare", "--out", "ex"]) == 0
+    assert calls[0][1][-2:] == ["--out", str(work / "results")]
+    explore_argv = calls[1][1]
+    assert explore_argv[explore_argv.index("--out") + 1] == str(work / "ex")
+
+
+def test_out_inside_the_repo_is_refused_before_the_driver(
+    monkeypatch, tmp_path: Path, capsys
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    calls = _capture_driver(monkeypatch, repo)
+    monkeypatch.chdir(repo)
+    assert cli.main(["verify", "--version", "7.5.2", "--out", "results"]) == 3
+    assert calls == []
+    assert "inside the repository" in capsys.readouterr().err
+
+
+def test_default_out_follows_the_configured_output_base(monkeypatch, tmp_path: Path) -> None:
+    calls = _capture_driver(monkeypatch, tmp_path / "repo")
+    config = tmp_path / "config.env"
+    config.write_text(f"# mine\nINODEFENCE_OUTPUT_DIR={tmp_path / 'base'}\n", encoding="utf-8")
+    monkeypatch.setenv("INODEFENCE_CONFIG", str(config))
+    assert cli.main(["explore", "--version", "latest", "--auto-prepare"]) == 0
+    argv = calls[0][1]
+    assert argv[argv.index("--out") + 1] == str(tmp_path / "base" / "inodefence-explore")
+
+
+def test_explore_without_auto_prepare_explains_and_runs_nothing(
+    monkeypatch, tmp_path: Path, capsys
+) -> None:
+    calls = _capture_driver(monkeypatch, tmp_path / "repo")
+    assert cli.main(["explore", "--version", "latest"]) == 3
+    assert calls == []
+    assert "--auto-prepare" in capsys.readouterr().err
+    assert cli.main(["explore", "--version", "latest", "--dry-run"]) == 0  # plan needs no consent
+
+
+def test_a_research_setting_in_the_user_config_is_refused(
+    monkeypatch, tmp_path: Path, capsys
+) -> None:
+    calls = _capture_driver(monkeypatch, tmp_path / "repo")
+    config = tmp_path / "config.env"
+    config.write_text("SEED=7\n", encoding="utf-8")
+    monkeypatch.setenv("INODEFENCE_CONFIG", str(config))
+    assert cli.main(["explore", "--version", "latest", "--auto-prepare"]) == 3
+    assert calls == []
+    assert "Research settings" in capsys.readouterr().err
+    cli.main(["doctor"])  # doctor still runs and reports it
+    assert "[FAIL] user config" in capsys.readouterr().out
 
 
 def test_summary_renders_a_result_file(tmp_path: Path, capsys) -> None:
@@ -308,6 +430,51 @@ def test_status_reads_a_finished_result_folder(tmp_path, capsys) -> None:
 def test_status_without_a_result_explains(tmp_path, capsys) -> None:
     assert cli.main(["status", str(tmp_path)]) == 2
     assert "no result.json" in capsys.readouterr().err
+
+
+def test_status_with_an_unreadable_result_is_not_a_clean_exit(tmp_path, capsys) -> None:
+    (tmp_path / "bad").mkdir()
+    (tmp_path / "bad" / "result.json").write_text("{bad", encoding="utf-8")
+    assert cli.main(["status", str(tmp_path / "bad")]) == 2
+    assert "unreadable" in capsys.readouterr().err
+
+
+def test_summary_to_a_missing_folder_is_an_error_not_a_traceback(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    import inodefence.target_result_summary as summary_module
+
+    monkeypatch.setattr(summary_module, "summarize_file", lambda path, verify_inputs: "# s\n")
+    out = tmp_path / "missing" / "s.md"
+    assert cli.main(["summary", str(tmp_path / "r.json"), "-o", str(out)]) == 2
+    assert "cannot write" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("argv", "code"),
+    [
+        # verify/explore exit codes carry the verdict (2 = ERROR), so usage errors are refusals: 3.
+        (["explore", "--version", "latest", "--dry-run", "--budget", "-5"], 3),
+        (["explore", "--version", "latest", "--budget", "x"], 3),
+        (["explore"], 3),  # --version missing
+        (["verify", "--no-such-flag-is-forwarded", "--dry-run", "--out"], 3),  # --out needs a value
+        # replay/status/summary/targets/doctor keep argparse's 2 for usage errors.
+        (["replay", "x", "--rounds", "0"], 2),
+        (["summary"], 2),
+    ],
+)
+def test_usage_errors_exit_code_by_command(argv: list[str], code: int) -> None:
+    with pytest.raises(SystemExit) as raised:
+        cli.main(argv)
+    assert raised.value.code == code
+
+
+def test_explore_dry_run_also_refuses_an_out_inside_the_repo(
+    monkeypatch, tmp_path: Path, capsys
+) -> None:
+    calls = _capture_driver(monkeypatch, tmp_path)
+    assert cli.main(["explore", "--version", "latest", "--dry-run", "--out", str(tmp_path)]) == 3
+    assert calls == []
 
 
 @pytest.mark.parametrize("command", ["verify", "explore"])

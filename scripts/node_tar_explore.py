@@ -168,12 +168,18 @@ def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOu
         python=python,
     )
     report = json.loads(report_path.read_text(encoding="utf-8"))
+    # The loop wrote each violation to this folder as it happened (pulled to the host during the
+    # run); for a streaming report the result reads its violating cases and inputs from there, not
+    # from the report, so a large or force-stopped run keeps every saved violation. Same path as
+    # ``run_controller`` builds; absent only if no live folder was produced (then the report path).
+    host_live_dir = options.out / "target-explore" / run_id / "live"
     result, tar_files = build_campaign_result(
         report,
         prepared,
         seed=options.seed,
         budget=options.budget,
         max_unjudged_ratio=options.max_unjudged_ratio,
+        live_dir=host_live_dir if host_live_dir.is_dir() else None,
     )
     result_path = write_result(report_path.parent / f"{run_id}-result", result, tar_files)
     try:  # the result is written; a summary failure must not lose it

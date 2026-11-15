@@ -228,6 +228,14 @@ class CampaignInfo:
     unjudged_steps: int | None = None
     max_unjudged_ratio: float | None = None
     terminations: dict[str, int] | None = None
+    #: Streaming exploration's violation-capture aggregate, so a large run's dropped-at-cap count is
+    #: visible in the result itself (the inputs live on disk, pointed to by ``repro_inputs``). A
+    #: nested block ``{total, retained, dropped, per_fingerprint_cap, unique_fingerprints,
+    #: by_fingerprint: {<fp>: {total, retained}}, by_fingerprint_truncated?}`` where ``total`` is
+    #: every violating run, ``retained`` the ones whose input was saved (== ``len(repro_inputs)``)
+    #: and ``dropped = total - retained`` the ones the per-fingerprint cap held back. ``None`` on a
+    #: non-streaming or no-violation run, so older/fixture results serialize byte-identically.
+    violation_capture: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -368,6 +376,11 @@ class TargetResult:
                 "max_unjudged_ratio": self.campaign.max_unjudged_ratio,
                 "unjudged_ratio": self.unjudged_ratio,
             }
+            # Omit the key entirely when absent so results without a capture block (fixture
+            # regression, non-streaming, and every explore result written before this field)
+            # serialize byte-identically.
+            if self.campaign.violation_capture is not None:
+                data["campaign"]["violation_capture"] = self.campaign.violation_capture
         return data
 
     def dumps(self) -> str:
@@ -568,6 +581,7 @@ _CAMPAIGN_OPTIONAL = {
     "max_unjudged_ratio",
     "unjudged_ratio",
     "terminations",
+    "violation_capture",
 }
 
 _TOP_KEYS = {
@@ -646,6 +660,7 @@ def from_json_dict(data: object) -> TargetResult:
             unjudged_steps=campaign_block.get("unjudged_steps"),
             max_unjudged_ratio=campaign_block.get("max_unjudged_ratio"),
             terminations=campaign_block.get("terminations"),
+            violation_capture=campaign_block.get("violation_capture"),
         )
     axes = _keys(top["axes"], {"target_version", "runtime_version", "extraction_filter"}, "axes")
     prov = _keys(
@@ -692,7 +707,90 @@ def from_json_dict(data: object) -> TargetResult:
                 f"campaign.unjudged_ratio {stored_ratio!r} does not match the runs "
                 f"({result.unjudged_ratio!r})"
             )
+    if campaign_block is not None and "violation_capture" in campaign_block:
+        _check_violation_capture(campaign_block["violation_capture"], len(result.repro_inputs))
     return result
+
+
+#: ``by_fingerprint`` key for cap-exempt, no-fingerprint violations (mirrors
+#: ``live_exploration.UNFINGERPRINTED_BUCKET``; duplicated to avoid importing that module here).
+_UNFINGERPRINTED_BUCKET = "(unfingerprinted)"
+
+
+def _check_violation_capture(block: object, repro_count: int) -> None:
+    """Strict-reader checks for the streaming violation-capture aggregate.
+
+    ``total == retained + dropped``; ``retained`` equals the number of saved inputs
+    (``repro_inputs``); ``per_fingerprint_cap`` is a non-negative integer. ``unique_fingerprints``
+    counts real fingerprints only (the ``(unfingerprinted)`` bucket, when present, is one extra
+    ``by_fingerprint`` entry that does not count). Unless the listing was truncated to an item cap:
+    ``unique_fingerprints`` equals the real-fingerprint entry count, and the ``by_fingerprint``
+    totals/retained sum to exactly ``total``/``retained`` -- or to AT LEAST them when
+    ``multi_fingerprint_steps`` > 0 (a run with several fingerprints is counted under each). A real
+    fingerprint's retained stays within the cap when no multi-fingerprint run occurred.
+    """
+    block = _keys_optional(
+        block,
+        {
+            "total",
+            "retained",
+            "dropped",
+            "per_fingerprint_cap",
+            "unique_fingerprints",
+            "by_fingerprint",
+        },
+        {"by_fingerprint_truncated", "multi_fingerprint_steps"},
+        "campaign.violation_capture",
+    )
+    total, retained, dropped = block["total"], block["retained"], block["dropped"]
+    cap = block["per_fingerprint_cap"]
+    multi = block.get("multi_fingerprint_steps", 0)
+    for name, value in (
+        ("total", total),
+        ("retained", retained),
+        ("dropped", dropped),
+        ("per_fingerprint_cap", cap),
+        ("unique_fingerprints", block["unique_fingerprints"]),
+        ("multi_fingerprint_steps", multi),
+    ):
+        if type(value) is not int or value < 0:
+            raise TargetResultError(f"campaign.violation_capture.{name} must be a non-negative int")
+    if total != retained + dropped:
+        raise TargetResultError(
+            f"campaign.violation_capture: total {total} != retained {retained} + dropped {dropped}"
+        )
+    if retained != repro_count:
+        raise TargetResultError(
+            f"campaign.violation_capture.retained {retained} != repro_inputs count {repro_count}"
+        )
+    by_fp = block["by_fingerprint"]
+    if not isinstance(by_fp, Mapping):
+        raise TargetResultError("campaign.violation_capture.by_fingerprint must be an object")
+    real = {fp: entry for fp, entry in by_fp.items() if fp != _UNFINGERPRINTED_BUCKET}
+    if multi == 0:
+        for fp, entry in real.items():
+            if entry.get("retained", 0) > cap:
+                raise TargetResultError(
+                    f"campaign.violation_capture.by_fingerprint[{fp!r}].retained exceeds cap {cap}"
+                )
+    if block.get("by_fingerprint_truncated") is not True:
+        if len(real) != block["unique_fingerprints"]:
+            raise TargetResultError(
+                "campaign.violation_capture.unique_fingerprints does not match by_fingerprint"
+            )
+        fp_total = sum(entry.get("total", 0) for entry in by_fp.values())
+        fp_retained = sum(entry.get("retained", 0) for entry in by_fp.values())
+        ok = (
+            (fp_total == total and fp_retained == retained)
+            if multi == 0
+            else (fp_total >= total and fp_retained >= retained)
+        )
+        if not ok:
+            raise TargetResultError(
+                "campaign.violation_capture.by_fingerprint sums "
+                f"({fp_total} total, {fp_retained} retained) inconsistent with the block "
+                f"({total} total, {retained} retained, multi_fingerprint_steps={multi})"
+            )
 
 
 def _as_list(value: object, where: str) -> list[Any]:

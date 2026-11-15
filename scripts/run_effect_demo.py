@@ -698,11 +698,15 @@ def exploration_demo_report(
             unjudged_steps += 1
         is_violation = bool(record["c0"] or record["c1"] or record["c2"])
         if stream:
-            if is_violation:
+            # With a live recorder the violating cases and their inputs are read back from the live
+            # folder (written as they occurred), so nothing about a violation is kept in memory --
+            # a long or force-stopped run stays O(1) in the run count and loses no saved violation.
+            # The recorder-less fallback (tests, no --live-dir) keeps the old in-memory shape.
+            if is_violation and recorder is None:
                 violation_cases.append(record)  # streaming lists only the violating cases
         else:
             case_records.append(record)  # streaming off: every case, like the small-budget shape
-        if is_violation:
+        if is_violation and recorder is None:
             tar = build_tar(case)
             # termination and observation_complete live on the case record; the converter's
             # CaseVerdict.needs_repro_check flags a violation from a non-clean or incomplete run.
@@ -757,8 +761,10 @@ def exploration_demo_report(
     if stream:
         # retain_steps=False returns the lightweight result (aggregate counts, no steps).
         light = cast(LightCampaignResult, result)
-        # Aggregate + violating cases only (the result's main off-report home for a large run's
-        # violation inputs is the live folder; ``violation_inputs`` here still carries the TARs).
+        # Aggregate only. With a recorder the violating cases live on disk (``violation_cases`` and
+        # ``violation_inputs`` stay empty) and the capture aggregate (total / retained / dropped at
+        # the per-fingerprint cap) rides in ``violation_capture``; the recorder-less fallback keeps
+        # the violating cases and their TARs in ``violation_cases`` / ``violation_inputs`` instead.
         report = {
             "demo_report_schema": DEMO_REPORT_SCHEMA,
             "producer": "native",
@@ -771,6 +777,10 @@ def exploration_demo_report(
             },
             "violation_cases": violation_cases,
         }
+        if recorder is not None:
+            capture = recorder.violation_capture()
+            if capture is not None:
+                report["violation_capture"] = capture
     else:
         full = cast(EffectCampaignResult, result)  # on_step path keeps the full result
         report = effect_campaign_report(full, "native")

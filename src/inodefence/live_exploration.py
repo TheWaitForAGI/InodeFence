@@ -48,6 +48,10 @@ FETCH_FILE = "fetch.json"
 VIOLATIONS_DIR = "violations"
 CASE_FILE = "case.json"
 CASE_TAR = "input.tar"
+#: ``by_fingerprint`` key for violations the oracle gave no fingerprint class. These are always
+#: saved (exempt from ``per_fingerprint_cap``). The parenthesized form cannot collide with a real
+#: fingerprint id (``<contract>-<16 hex>``).
+UNFINGERPRINTED_BUCKET = "(unfingerprinted)"
 #: Run states written to ``progress.json``. ``failed`` means the loop raised; files so far remain.
 STATES = ("running", "finished", "stopped", "failed")
 #: Execution statuses a step may report (mirrors ``model.results.ExecutionStatus`` values).
@@ -198,6 +202,19 @@ class _Counters:
     last_violation_run: int | None = None
     case_dirs_written: int = 0
     by_fingerprint: dict[str, int] = field(default_factory=dict)
+    #: Per-fingerprint count of violations whose input was actually saved (cases written), for the
+    #: result's violation-capture breakdown. Stays exact alongside ``by_fingerprint`` when every
+    #: violating step carries exactly one fingerprint (node-tar's case); ``capture_exact`` records
+    #: when it did not, so the breakdown is marked truncated instead of summing wrong.
+    retained_by_fingerprint: dict[str, int] = field(default_factory=dict)
+    #: Violating runs that showed more than one fingerprint. Such a run is one saved case counted
+    #: under each of its fingerprints, so the per-fingerprint totals/retained then sum to AT LEAST
+    #: (not exactly) the step totals; the capture block carries this count so a reader knows why.
+    multi_fingerprint_steps: int = 0
+    #: Violations the oracle flagged with no fingerprint class: always kept (cap-exempt), reported
+    #: under the synthetic :data:`UNFINGERPRINTED_BUCKET` key in the capture block.
+    unfingerprinted_total: int = 0
+    unfingerprinted_retained: int = 0
     write_errors: int = 0
     last_write_error: str | None = None
 
@@ -260,12 +277,21 @@ class LiveRecorder:
             c.first_violation_run = c.first_violation_run or run
             c.last_violation_run = run
             keep = not step.fingerprints  # a violation with no fingerprint is always kept
+            if len(step.fingerprints) > 1:
+                c.multi_fingerprint_steps += 1
             for fp in step.fingerprints:
                 c.by_fingerprint[fp] = c.by_fingerprint.get(fp, 0) + 1
                 if c.by_fingerprint[fp] <= self.per_fingerprint_cap:
                     keep = True
             if keep and self.per_fingerprint_cap > 0:
                 wrote_case = self._write_case(step)
+            if not step.fingerprints:
+                c.unfingerprinted_total += 1
+                if wrote_case:
+                    c.unfingerprinted_retained += 1
+            elif wrote_case:
+                for fp in step.fingerprints:
+                    c.retained_by_fingerprint[fp] = c.retained_by_fingerprint.get(fp, 0) + 1
         now = self._clock()
         due = (
             wrote_case
@@ -322,6 +348,52 @@ class LiveRecorder:
             "snapshot_every": {"runs": self.every_runs, "seconds": self.every_seconds},
             **self.meta.as_dict(),
         }
+
+    def violation_capture(self, *, max_fingerprints: int = 200) -> dict[str, Any] | None:
+        """Aggregate for the result's ``campaign.violation_capture`` block (``None``: no violation).
+
+        ``total`` is every violating run (== progress.json ``violations.steps``); ``retained`` the
+        runs whose input was saved (== ``violations.case_dirs_written`` == ``len(repro_inputs)``);
+        ``dropped = total - retained`` the runs the per-fingerprint cap held back.
+        ``by_fingerprint`` maps a fingerprint id to ``{total, retained}``: ``total`` is how many
+        violating runs showed that fingerprint, ``retained`` how many of those were saved. A run
+        the oracle gave no fingerprint is always saved (exempt from the cap) and reported under
+        :data:`UNFINGERPRINTED_BUCKET`. ``unique_fingerprints`` counts real fingerprints ONLY -- not
+        that bucket -- taken before truncation, so when not truncated
+        ``unique_fingerprints == len(by_fingerprint) - (UNFINGERPRINTED_BUCKET in by_fingerprint)``.
+        ``by_fingerprint_truncated`` (present only when True) means solely that the listing was cut
+        to ``max_fingerprints`` entries. ``multi_fingerprint_steps`` (present only when > 0) counts
+        violating runs with more than one fingerprint: one saved case counted under each, so the
+        per-fingerprint totals then sum to at least (not exactly) ``total``/``retained``. Such a run
+        is saved if ANY of its fingerprints is still under the cap.
+        """
+        c = self._counters
+        if c.violation_steps == 0:
+            return None
+        real_items = sorted(c.by_fingerprint.items())
+        truncated = len(real_items) > max_fingerprints
+        by_fp: dict[str, dict[str, int]] = {
+            fp: {"total": total, "retained": c.retained_by_fingerprint.get(fp, 0)}
+            for fp, total in real_items[:max_fingerprints]
+        }
+        if c.unfingerprinted_total:
+            by_fp[UNFINGERPRINTED_BUCKET] = {
+                "total": c.unfingerprinted_total,
+                "retained": c.unfingerprinted_retained,
+            }
+        block: dict[str, Any] = {
+            "total": c.violation_steps,
+            "retained": c.case_dirs_written,
+            "dropped": c.violation_steps - c.case_dirs_written,
+            "per_fingerprint_cap": self.per_fingerprint_cap,
+            "unique_fingerprints": len(c.by_fingerprint),
+            "by_fingerprint": by_fp,
+        }
+        if truncated:
+            block["by_fingerprint_truncated"] = True
+        if c.multi_fingerprint_steps:
+            block["multi_fingerprint_steps"] = c.multi_fingerprint_steps
+        return block
 
     # -- writing ---------------------------------------------------------------------------------
     def _note_write_error(self, what: str, error: OSError) -> None:

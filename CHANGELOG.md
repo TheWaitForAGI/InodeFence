@@ -40,27 +40,33 @@
 0개이던 때 `doctor`는 daemon 접근 `OK`, runtime 폴더 없음 `WARN`으로 그 호스트 상태를 그대로 보였다. 이 확인에서
 W2가 Docker로 이미지를 준비하거나 대상을 실행하지는 않았다.
 
-**HOST4 engineering 검증(demo run, 2026-11-16).** WSL2 Ubuntu 24.04, Docker Desktop 4.99.0 / Engine 29.9.3, seed 123,
-순차 실행. **RC 이전 커밋 기준**(node-tar 61afb3f, 나머지 c55b7ef — 모두 D1 판정 규칙 반영 전)이며, RC 후보에서의
-Docker 회귀 수치로 바뀔 자리다. "실행 성공" = 하너스가 실행을 끝내고 결과를 남긴 수, "유효 추출" = 추출기가
-`success`로 끝난 수.
+**RC 실측(HOST4, demo run, 2026-11-16 08:00~08:04 KST).** WSL2 Ubuntu 24.04, Docker Desktop 4.99.0 / Engine 29.9.3,
+엔진 커밋 a5499de(작업 트리 깨끗), seed 123, 순차 실행. "실행 성공" = 하너스가 실행을 끝내고 결과를 남긴 수,
+"유효 추출" = 추출기가 `success`로 끝난 수.
 
-| 대상·버전 | 엔진 | 모드 | 실행 성공 | 유효 추출 | 미판정 | 위반 | replay | 지원 수준 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| oras-go 2.6.2 | c55b7ef | verify | 6/6 | 0/6 (전부 declined) | 0 | 0 | — | 고정 입력 회귀 |
-| oras-go 2.6.2 | c55b7ef | explore 20 | 20/20 | **0/20** (전부 rejected) | 0 | 0 | 미검증 | **실험적 — 유의미한 보안 커버리지를 주장하지 않음** |
-| python-tarfile 3.12.16 `data` | c55b7ef | verify | 5/5 | 0/5 (전부 declined) | 0 | 0 | — | 고정 입력 회귀 |
-| python-tarfile 3.12.16 `data` | c55b7ef | explore 20 | 20/20 | 12/20 | 0 | 0 | 미검증 | 탐색 |
-| decompress `@xhmikosr/decompress@11.1.4` | c55b7ef | verify | 5/5 | 0/5 (전부 declined) | 0 | 0 | — | 고정 입력 회귀 |
-| decompress `@xhmikosr/decompress@11.1.4` | c55b7ef | explore 20 | 20/20 | 11/20 | 0 | 0 | 미검증 | 탐색 |
-| node-tar 7.5.23 | — | verify | 실행 안 함 | — | — | — | — | — |
-| node-tar 7.5.23 | 61afb3f | explore 20 / 60 | 20/20 / 60/60 | 17/20 / 42/60 | 0 / 0 | 0 / 0 | 미검증 | 탐색 |
+| 대상·버전 | 모드 | 실행 성공 | 유효 추출 | 미판정 | 위반 | replay | 지원 수준 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| node-tar 7.5.23 | verify | 5/5 | 0/5 (전부 declined) | 0 | 0 | — | 고정 입력 회귀 (exploratory 버전) |
+| node-tar 7.5.23 | explore 20 | 20/20 | 17/20 (rejected 3) | 0 | 0 | 지원, 실제 위반 E2E 미검증 | 탐색 |
+| python-tarfile 3.12.16 `data` | verify | 5/5 | 0/5 (전부 declined) | 0 | 0 | — | 고정 입력 회귀 |
+| python-tarfile 3.12.16 `data` | explore 20 | 20/20 | 12/20 (failed 5, rejected 3) | 0 | 0 | 미지원 | 탐색 |
+| decompress `@xhmikosr/decompress@11.1.4` | verify | 5/5 | 0/5 (전부 declined) | 0 | 0 | — | 고정 입력 회귀 |
+| decompress `@xhmikosr/decompress@11.1.4` | explore 20 | 20/20 | 11/20 (rejected 9) | 0 | 0 | 미지원 | 탐색 |
+| oras-go 2.6.2 | verify | 6/6 | 0/6 (전부 declined) | 0 | 0 | — | 고정 입력 회귀 |
+| oras-go 2.6.2 | explore 20 | 20/20 | **0/20** (전부 rejected, "추출 성공 0건" 경고) | 0 | 0 | 미지원 | **실험적 — 유의미한 보안 커버리지를 주장하지 않음** |
 
-실행 후 컨테이너·볼륨 잔여 0. 증거는 HOST4 로컬에 sha256 목록과 함께 보관(저장소 밖). **위반 0은 안전성 증명이
-아니다.** 고정 입력 회귀에서는 세 대상 모두 모든 입력을 거부(declined)해 추출된 것이 없었다(관찰 사실). oras-go
-탐색은 추출 성공 0건이라 실험적 지원으로만 둔다(알려진 한계). **replay는 실제 위반 E2E를 검증하지 않았고, 합성
-사례 기능 테스트만 있다.** **macOS는 이 후보에서 확인하지 않았다.** node-tar 산출물로 `inodefence status`·`summary`가
-동작하는 것을 확인했고, README의 출력 폴더 구조는 그 산출물에 맞췄다.
+- python-tarfile failed 5건: worker 보고 예외 IsADirectoryError 3, FileExistsError 1, KeyError 1 — 종료 상태와 일치해
+  판정 유지(D1 편차).
+- 탐색 출력 줄과 `inodefence status` 결과 줄의 "추출 성공 0건" 경고는 이 실측에서 실제로 출력됐다. node-tar `status`:
+  host pull 3 ok / 0 failed, "violation cases on disk: none".
+- 실행 후 컨테이너·볼륨 잔여 0. 증거는 HOST4 로컬에 sha256 목록과 함께 보관(저장소 밖).
+- **위반 0은 안전성 증명이 아니다.**
+- **고정 입력 회귀의 한계:** 고정 입력은 모두 공격 형태이고 정상 입력 대조군이 없다. 네 대상 모두 모든 입력을
+  거부(declined)했는데, 이것만으로는 모든 입력을 거부하는 고장 난 추출기와 구분할 수 없다(탐색의 유효 추출 수로 보완).
+- **replay:** 현재 node-tar만 지원하고 나머지 셋은 미지원으로 보고한다(종료 4). 실제 위반 E2E는 검증하지 않았고
+  합성 사례 기능 테스트만 있다.
+- **macOS는 이 후보에서 확인하지 않았다.**
+- RC 이전 커밋(61afb3f·c55b7ef)의 같은 조건 engineering smoke도 판정은 같았다(위반 0).
 
 ### 탐색 결과의 판정 규칙(D1, 사용자 결정 2026-11-16)
 
@@ -148,6 +154,8 @@ node-tar 7.0.1·7.1.0·7.2.0·7.3.0·7.4.4는 진행 중인 실험과 겹쳐, �
 
 ### 알려진 한계
 
+- **알려진 표시 문제:** `live/`와 결과가 함께 있는 폴더에서 `inodefence status`는 "추출 성공 0건" 경고를 진행 블록과
+  결과 줄에 두 번 출력한다(판정·종료 코드 영향 없음).
 - **oras-go 탐색의 "위반 없음"은 근거가 제한적이다.** oras-go 탐색은 공통 seed가 oras-go 디렉터리 아티팩트 제목
   접두(`d/`) 없이 만들어져 대부분의 실행이 oras-go에서 거부된다(HOST4 seed 123·budget 20에서 20/20 거부,
   2026-11-15 맥북 실행 budget 60에서 성공 6건·9건). 엔트리를 `d/` 아래로 옮기는 변경은 탐색 대상의 의미를 바꾸므로
@@ -179,8 +187,8 @@ node-tar 7.0.1·7.1.0·7.2.0·7.3.0·7.4.4는 진행 중인 실험과 겹쳐, �
 ### 후속 검증(이 릴리스에서 확인 결과를 싣지 않은 것)
 
 - **탐색 `explore`와 `status`·`replay`.** 네 대상 모두 탐색 hook이 등록돼 있고(`inodefence targets`), 명령은
-  이 RC에 들어 있다. 실제 탐색은 위 HOST4 검증(네 대상 각 한 버전, seed 123, D1 반영 전 커밋)만 확인했다. D1 반영
-  후 커밋에서의 재실행, 위반 케이스가 있는 실행의 `replay`, macOS는 아직 확인 결과가 없다.
+  이 RC에 들어 있다. 실제 탐색은 위 RC 실측(네 대상 각 한 버전, seed 123, budget 20, 엔진 a5499de)만 확인했다. 다른 버전·
+  seed·예산, 위반 케이스가 있는 실행의 `replay`, macOS는 아직 확인 결과가 없다.
 - **이어 하기(resume)는 없다.** 멈춘 탐색을 중간부터 이어서 돌릴 수 없다.
 - **위 고정 입력 회귀 결과는 #400 브랜치의 `make target-run`으로 확인한 것이다.** 같은 드라이버를 부르는
   `inodefence verify`로 이 RC에서 다시 실행하지는 않았다.

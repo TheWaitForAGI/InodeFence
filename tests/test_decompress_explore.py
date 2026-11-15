@@ -74,6 +74,49 @@ def test_every_step_without_a_frame_is_error_not_pass() -> None:
     assert "no step produced a worker frame" in summary["not_readable_as_pass"]
 
 
+def test_no_frame_on_any_step_is_error_even_when_every_step_succeeded() -> None:
+    # A worker that never produced a frame is not a clean negative, whatever the exit status.
+    steps = [_step(i, frame_error="no stdout frame") for i in range(5)]
+    result, _, summary = _convert(_report(steps))
+    assert result.verdict is Verdict.ERROR
+    assert {(c.outcome, c.termination) for c in result.cases} == {(RUN_ERROR, "success")}
+    assert "no step produced a worker frame" in summary["not_readable_as_pass"]
+
+
+def test_no_frame_keeps_an_oracle_violation_recorded() -> None:
+    # The run is ERROR (unjudged share over the ceiling ranks first), but the judged hit and its
+    # input are kept, never erased into a run error.
+    steps = [_step(i, frame_error="no stdout frame") for i in range(4)]
+    steps.append(_step(4, violated=True, frame_error="no stdout frame"))
+    tar = b"x" * 512
+    inputs = [
+        {
+            "index": 4,
+            "tar_b64": base64.b64encode(tar).decode(),
+            "tar_sha256": sha256(tar).hexdigest(),
+        }
+    ]
+    result, tars, _ = _convert(_report(steps, inputs))
+    assert result.verdict is Verdict.ERROR and result.violating_cases == ("step-4",)
+    assert tars == {"inputs/step-4.tar": tar}
+
+
+@pytest.mark.parametrize("count", [0, 3])
+def test_report_short_of_the_budget_gives_no_result(count: int) -> None:
+    with pytest.raises(ValueError, match=f"has {count} steps, budget was 20"):
+        dx.build_campaign_result(
+            _report([_step(i) for i in range(count)]),
+            spec=SPEC,
+            image_ref="img:1",
+            image_id="sha256:" + "a" * 64,
+            preparation=None,
+            max_unjudged_ratio=0.2,
+            seed=1,
+            budget=20,
+            engine=ENGINE,
+        )
+
+
 def test_unjudged_ratio_over_the_limit_is_error() -> None:
     steps = [_step(i) for i in range(8)] + [_step(8 + i, termination="timed_out") for i in range(2)]
     result, _, summary = _convert(_report(steps), ratio=0.1)

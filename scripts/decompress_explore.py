@@ -172,15 +172,30 @@ def build_campaign_result(
     ``termination`` the step's execution status. The report has no trace-integrity field, so
     ``observation_complete`` stays unknown (``None``), and a violation then reads as "reproduction
     check needed". Decompress-specific: the image ``preparation`` is attached to the common record.
+
+    Fail-closed on the gate's two whole-run conditions (the module docstring's contract):
+    a report with no step, or fewer/more steps than the budget, gives no result (``ValueError``,
+    as oras-go's ``check_report``), and when no step produced a
+    worker frame every frameless step without an observed violation becomes a run error, so the
+    verdict is ``ERROR``, never ``PASS``. A violation the oracle judged from the snapshots is kept
+    as a judged case with its saved input (a run error cannot carry one), so the hit is not hidden.
     """
     from scripts import explore_result
 
     counts = tally(report)
     stop = gate(counts, max_unjudged_ratio)
+    if counts.steps != budget:  # also "no step ran"; the campaign always runs the whole budget
+        raise ValueError(
+            f"decompress campaign report has {counts.steps} steps, budget was {budget}"
+            + (f" ({stop})" if counts.steps == 0 else "")
+        )
+    no_frame_at_all = counts.frame_errors == counts.steps
     records = []
     for step in report.get("steps") or []:
         oracle = step.get("oracle") or {}
         judged = bool(step.get("judged", step.get("termination") in JUDGED))
+        if judged and no_frame_at_all and True not in (oracle.get(c) for c in ("C0", "C1", "C2")):
+            judged = False
         records.append(
             {
                 "run_index": step["index"],

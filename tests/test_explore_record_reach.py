@@ -2,7 +2,8 @@
 
 ``exploration_demo_report`` (node-tar) and ``python_tarfile_explore.case_record`` /
 ``python_tarfile_exploration_report`` decide how an exploration *records* each run (judged or
-run_error). They are exploration-only: the registered EXP runs go through ``run_exp0`` ->
+run_error). They are exploration-only: the registered EXP runs go through ``run_exp0`` (and the
+hazard pilot ``run_hazard_pilot``) ->
 ``local_node_tar_smoke.sh demo-historical`` -> the controller's historical mode, and the RDS cells
 through ``inodefence.evaluation.rds``. This test pins that wiring statically, so a change to the
 exploration record cannot silently alter a registered run.
@@ -12,6 +13,8 @@ from __future__ import annotations
 
 import ast
 from pathlib import Path
+
+import pytest
 
 REPO = Path(__file__).resolve().parents[1]
 EXPLORE_RECORD_NAMES = {
@@ -43,8 +46,9 @@ def test_only_the_explore_modes_of_the_controller_call_the_record_code() -> None
     assert _callers(controller, "historical_demo_report") == {"run_native_historical_demo"}
 
 
-def test_the_registered_runner_launches_only_the_historical_mode() -> None:
-    text = (REPO / "scripts" / "run_exp0.py").read_text(encoding="utf-8")
+@pytest.mark.parametrize("runner", ["run_exp0.py", "run_hazard_pilot.py"])
+def test_the_registered_runners_launch_only_the_historical_mode(runner: str) -> None:
+    text = (REPO / "scripts" / runner).read_text(encoding="utf-8")
     assert "demo-historical" in text
     assert "effect-demo-explore" not in text and "python-tarfile-effect-campaign" not in text
 
@@ -52,6 +56,7 @@ def test_the_registered_runner_launches_only_the_historical_mode() -> None:
 def test_registered_modules_do_not_reference_the_exploration_record() -> None:
     registered = [
         REPO / "scripts" / "run_exp0.py",
+        REPO / "scripts" / "run_hazard_pilot.py",
         REPO / "scripts" / "run_rds_cell.py",
         *sorted((REPO / "src" / "inodefence" / "evaluation").glob("rds*.py")),
     ]

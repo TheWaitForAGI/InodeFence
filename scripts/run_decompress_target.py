@@ -460,11 +460,19 @@ ADAPTER = TargetAdapter(
     describe=_describe,
     resolve=_resolve,
     explore=lambda prepared, options: _explore(prepared, options),
+    explore_min_budget=lambda: _explore_min_budget(),
     # Reuse check (#435): the exploration worker's offline identify+frame check, which also
     # compares the identified package and version; a version-only check would pass an image
     # whose worker predates ``frame``.
     verify_existing=lambda cell, image: verify_existing(cell, image),
 )
+
+
+def _explore_min_budget() -> int:
+    """The explore hook's own budget floor (lazy import, same reason as the hook)."""
+    from scripts.decompress_explore import MIN_BUDGET
+
+    return MIN_BUDGET
 
 
 def _explore(prepared: Any, options: Any) -> Any:

@@ -48,6 +48,7 @@ from scripts.run_target import (
 )
 
 from inodefence.feedback import EffectSearchPolicy
+from inodefence.generator import minimal_seed_corpus
 from inodefence.mutator import MutationPolicy
 from inodefence.target_result import JUDGED as JUDGED_OUTCOME
 from inodefence.target_result import (
@@ -60,6 +61,11 @@ from inodefence.target_result import (
 )
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+#: The campaign's own floor: the controller starts decompress-effect-campaign from
+#: ``minimal_seed_corpus()`` (container_controller.run_native_decompress_campaign) and
+#: ``run_decompress_effect_campaign`` refuses a budget below its seed count. Read from the same
+#: source, never a copied number.
+MIN_BUDGET = len(minimal_seed_corpus())
 SCRIPT = REPO_ROOT / "scripts" / "local_decompress_selfdiscover.sh"
 RESULT_NAME = "result.json"
 EXPLORATION_NAME = "exploration.json"
@@ -341,6 +347,8 @@ def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOu
     The worker check runs here on every image (also one the common layer reused unchecked), so an
     image whose worker cannot run ``frame`` is refused before any budget is spent.
     """
+    if options.budget < MIN_BUDGET:
+        raise ValueError(f"budget must be >= {MIN_BUDGET} (the loop's seed count)")
     search_policy, mutation_policy = check_policies(
         getattr(options, "search_policy", None), getattr(options, "mutation_policy", None)
     )

@@ -140,6 +140,14 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 3
 
+    # The target's own version/option validation (the same ``cells`` verify uses), also on
+    # --dry-run, so a malformed version is refused (3) before a plan is printed.
+    filters = [target_options[opt.name] for opt in adapter.options if opt.name in target_options]
+    try:
+        adapter.cells([args.version], filters)
+    except ValueError as error:
+        print(f"TARGET-EXPLORE SETUP: {error}", file=sys.stderr)
+        return 3
     min_budget = adapter.explore_min_budget() if adapter.explore_min_budget else None
     if min_budget is not None and args.budget < min_budget:
         parser.error(f"--budget must be >= {min_budget} for {args.target} (the loop's seed count)")
@@ -173,7 +181,6 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 3
 
-    filters = [target_options[opt.name] for opt in adapter.options if opt.name in target_options]
     try:
         prepared = prepare_target_image(
             adapter,

@@ -14,15 +14,26 @@ Two separate steps, in this order:
    ``written_to_local_drive_folder``; cloud sync is always ``unverified`` -- this script cannot see
    it and never claims it.
 
+Ownership: each record carries ``machine``, a salted SHA-256 of ``/etc/machine-id`` (never the raw
+value). The drive copy refuses to replace ``<HOST_ID>.json`` when that file was written by another
+machine or carries no fingerprint (a mistyped ``--host-id`` must not overwrite another host's
+ledger): the record then says ``refused_not_ours``. ``--adopt`` takes such a file over once; it is
+never put in the timer. The local record is unaffected.
+
 Every failure after argument parsing is a WARNING and exits 0: the ledger is advisory and must not
 block git work. Do not install it as a git hook.
 
 Recorded: host id and observation time; for each repository, every worktree with branch, HEAD,
 upstream and its SHA, commits not pushed, and uncommitted paths (status code + path only); the
-remote base branch SHA from ``git ls-remote`` with its own check time and ok/failed status (on
-failure the last successful check is carried over from the previous local record, labelled as
-such, never as the current value); the PRs for each branch when ``gh`` answers; caller-reported
-test results / artifact paths, labelled as reported. Never recorded: file contents, ``.git``
+remote base branch SHA from ``git ls-remote`` with its own check time and status (``ok``, ``remote
+check failed``, ``remote branch not found`` or ``not checked``; otherwise than ``ok`` the last
+successful check is carried over from the previous local record as ``last_success``, never as the
+current value); the PRs for each branch when ``gh`` answers; caller-reported test results and
+artifact paths (``PATH`` or ``PATH|note``) under ``reported`` with ``reported_at`` = when they were
+given (fixed at timer install, not refreshed per run) and, per artifact, ``exists`` as checked on
+this run. The timer unit gets every record-shaping option of the install command (``--remote``,
+``--base-branch``, ``--no-remote``, ``--no-pr``, reported items); ``%`` is escaped for systemd.
+Never recorded: file contents, ``.git``
 contents, tokens, keys, environment-variable values.
 
 Read-only toward git: ``git --no-optional-locks status`` (no index refresh lock), ``rev-parse``,
@@ -51,11 +62,13 @@ without ``loginctl enable-linger`` the timer runs only while the distro has a us
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
 import shlex
 import shutil
+import socket
 import subprocess
 import sys
 import tempfile
@@ -67,6 +80,7 @@ from typing import Any
 SCHEMA = "inodefence-host-ledger/v2"
 HOST_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
 REMOTE_FAILED = "remote check failed"
+REMOTE_BRANCH_MISSING = "remote branch not found"
 DRIVE_FSTYPES = frozenset({"9p", "drvfs"})
 DEFAULT_STATE_DIR = "~/.local/state/inodefence/host-ledger"
 UNIT = "inodefence-host-ledger"
@@ -175,15 +189,19 @@ def remote_base(
     sha = out.split()[0] if code == 0 and out.split() else None
     if sha is not None:
         return {"ref": ref, "checked_at": checked_at, "status": "ok", "sha": sha}
-    record: dict[str, Any] = {"ref": ref, "checked_at": checked_at, "status": REMOTE_FAILED}
-    last = None
-    if previous:
-        if previous.get("status") == "ok":
-            last = {"checked_at": previous.get("checked_at"), "sha": previous.get("sha")}
-        else:
-            last = previous.get("last_success")
-    record["last_success"] = last  # from the previous local record; None if never succeeded
+    status = REMOTE_BRANCH_MISSING if code == 0 else REMOTE_FAILED
+    record: dict[str, Any] = {"ref": ref, "checked_at": checked_at, "status": status}
+    record["last_success"] = last_success(previous)  # None if never succeeded
     return record
+
+
+def last_success(previous: dict[str, Any] | None) -> dict[str, Any] | None:
+    """The last successful remote check carried by the previous local record."""
+    if not previous:
+        return None
+    if previous.get("status") == "ok":
+        return {"checked_at": previous.get("checked_at"), "sha": previous.get("sha")}
+    return previous.get("last_success")
 
 
 def pull_requests(path: Path, branch: str, run: Runner) -> dict[str, Any]:
@@ -216,7 +234,11 @@ def repo_record(
     record["remote_base"] = (
         remote_base(repo, remote, base_branch, run, prev_remote)
         if check_remote
-        else {"ref": f"{remote}/{base_branch}", "status": "not checked (--no-remote)"}
+        else {
+            "ref": f"{remote}/{base_branch}",
+            "status": "not checked (--no-remote)",
+            "last_success": last_success(prev_remote),
+        }
     )
     code, out = run(["git", "worktree", "list", "--porcelain"], repo)
     worktrees = parse_worktrees(out) if code == 0 else []
@@ -231,6 +253,17 @@ def repo_record(
     return record
 
 
+def artifact_record(text: str) -> dict[str, Any]:
+    """``PATH`` or ``PATH|note`` -> path, note, and whether the path exists right now."""
+    path, _, note = text.partition("|")
+    path = path.strip()
+    return {
+        "path": path,
+        "note": note.strip() or None,
+        "exists": Path(path).expanduser().exists() if path else False,
+    }
+
+
 def build_ledger(
     host_id: str,
     repos: Sequence[Path],
@@ -241,6 +274,7 @@ def build_ledger(
     check_pr: bool = True,
     test_results: Sequence[str] = (),
     artifacts: Sequence[str] = (),
+    reported_at: str | None = None,
     previous: dict[str, Any] | None = None,
     run: Runner = run_command,
 ) -> dict[str, Any]:
@@ -248,6 +282,7 @@ def build_ledger(
     return {
         "schema": SCHEMA,
         "host_id": host_id,
+        "machine": machine_fingerprint(),
         "observed_at": now(),
         "repositories": [
             repo_record(
@@ -263,8 +298,11 @@ def build_ledger(
         ],
         "reported": {
             "note": "given by the caller on the command line; not re-run by the ledger",
+            # When the caller gave them (fixed at timer install), not when this record was made.
+            "reported_at": (reported_at or now()) if (test_results or artifacts) else None,
             "test_results": list(test_results),
-            "artifacts": list(artifacts),
+            # ``PATH`` or ``PATH|note``; ``exists`` is checked on every run (observed_at).
+            "artifacts": [artifact_record(text) for text in artifacts],
         },
     }
 
@@ -272,7 +310,34 @@ def build_ledger(
 # ---- writing ----
 
 
-def write_atomic(record: dict[str, Any], directory: Path) -> Path:
+def machine_fingerprint() -> str:
+    """A salted SHA-256 of this machine's id (``/etc/machine-id``, else the hostname).
+
+    Only the hash is recorded, never the raw id; it lets a ledger file say which machine wrote it.
+    """
+    try:
+        raw = Path("/etc/machine-id").read_text(encoding="utf-8").strip()
+    except OSError:
+        raw = ""
+    raw = raw or socket.gethostname()
+    return hashlib.sha256(f"inodefence-host-ledger:{raw}".encode()).hexdigest()
+
+
+def existing_owner(target: Path) -> str | None:
+    """None if ``target`` is absent; else its machine fingerprint ("" if none or unreadable)."""
+    if not target.exists() and not target.is_symlink():
+        return None
+    try:
+        data = json.loads(target.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return ""
+    owner = data.get("machine") if isinstance(data, dict) else None
+    return owner if isinstance(owner, str) else ""
+
+
+def write_atomic(
+    record: dict[str, Any], directory: Path, *, guard_owner: bool = False, adopt: bool = False
+) -> Path:
     """Atomically replace ``directory/<host_id>.json``; never writes any other final file."""
     host_id = record["host_id"]
     if not HOST_ID_PATTERN.fullmatch(host_id):
@@ -280,6 +345,15 @@ def write_atomic(record: dict[str, Any], directory: Path) -> Path:
     if not directory.is_dir():
         raise FileNotFoundError(f"directory {directory} does not exist")
     target = directory / f"{host_id}.json"
+    if guard_owner:
+        owner = existing_owner(target)
+        mine = record.get("machine")
+        if owner is not None and not adopt and owner != mine:
+            raise PermissionError(
+                f"{target} exists and was written by "
+                + ("an unidentified writer" if owner == "" else "another machine")
+                + "; refusing to overwrite it (wrong --host-id? pass --adopt once to take it over)"
+            )
     fd, tmp = tempfile.mkstemp(prefix=f".{host_id}.", suffix=".tmp", dir=directory)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
@@ -334,8 +408,13 @@ def record_and_copy(
     drive_dir: Path | None,
     *,
     mountinfo: str | None = None,
+    adopt: bool = False,
 ) -> dict[str, Any]:
-    """Step 1: local atomic write. Step 2: drive copy. Returns the final record; never raises."""
+    """Step 1: local atomic write. Step 2: drive copy. Returns the final record; never raises.
+
+    The drive copy never replaces a file another machine wrote, nor one with no machine
+    fingerprint, unless ``adopt`` (``--adopt``, one-off, never put in the timer) is given.
+    """
     drive: dict[str, Any] = {"cloud_sync": "unverified"}
     if drive_dir is None:
         drive["local_drive_folder"] = "not configured"
@@ -357,7 +436,9 @@ def record_and_copy(
         else:
             drive["local_drive_folder"] = "written_to_local_drive_folder"
             try:
-                write_atomic(record, drive_dir)
+                write_atomic(record, drive_dir, guard_owner=True, adopt=adopt)
+            except PermissionError as error:
+                drive.update(local_drive_folder="refused_not_ours", problem=str(error))
             except (OSError, ValueError) as error:
                 drive.update(local_drive_folder="write_failed", problem=str(error))
         if drive["local_drive_folder"] != "written_to_local_drive_folder":
@@ -382,7 +463,7 @@ def load_previous(state_dir: Path, host_id: str) -> dict[str, Any] | None:
 
 
 def unit_files(python: str, script: Path, args: Sequence[str], minutes: int) -> dict[str, str]:
-    command = shlex.join([python, str(script), *args])
+    command = shlex.join([python, str(script), *args]).replace("%", "%%")
     service = (
         "[Unit]\nDescription=InodeFence host ledger (advisory; read-only git)\n\n"
         f"[Service]\nType=oneshot\nExecStart={command}\n"
@@ -449,9 +530,17 @@ def main(argv: Sequence[str] | None = None, run: Runner = run_command) -> int:
     parser.add_argument("--test-result", action="append", default=[], help="repeatable")
     parser.add_argument("--artifact", action="append", default=[], help="repeatable")
     parser.add_argument("--stdout", action="store_true", help="print the ledger; write nothing")
+    parser.add_argument(
+        "--adopt",
+        action="store_true",
+        help="one-off: take over an existing drive file with no/other machine fingerprint",
+    )
     parser.add_argument("--install-user-timer", action="store_true")
     parser.add_argument("--uninstall-user-timer", action="store_true")
     parser.add_argument("--every-minutes", type=int, default=5)
+    parser.add_argument(
+        "--reported-at", help="when --test-result/--artifact were given (default: now)"
+    )
     args = parser.parse_args(argv)
     if not args.host_id or not HOST_ID_PATTERN.fullmatch(args.host_id):
         parser.error("--host-id (or INODEFENCE_HOST_ID) must be a plain name like HOST4")
@@ -467,7 +556,11 @@ def main(argv: Sequence[str] | None = None, run: Runner = run_command) -> int:
         forwarded += ["--drive-dir", str(drive_dir)] if drive_dir is not None else []
         for repo in repos:
             forwarded += ["--repo", str(repo)]
+        forwarded += ["--remote", args.remote, "--base-branch", args.base_branch]
+        forwarded += ["--no-remote"] if args.no_remote else []
         forwarded += ["--no-pr"] if args.no_pr else []
+        if args.test_result or args.artifact:  # fixed at install: record when they were given
+            forwarded += ["--reported-at", args.reported_at or now()]
         for text in args.test_result:
             forwarded += ["--test-result", text]
         for path in args.artifact:
@@ -484,13 +577,14 @@ def main(argv: Sequence[str] | None = None, run: Runner = run_command) -> int:
         check_pr=not args.no_pr,
         test_results=args.test_result,
         artifacts=args.artifact,
+        reported_at=args.reported_at,
         previous=load_previous(state_dir, args.host_id),
         run=run,
     )
     if args.stdout:
         print(json.dumps(ledger, indent=2, ensure_ascii=False, sort_keys=True))
         return 0
-    record = record_and_copy(ledger, state_dir, drive_dir)
+    record = record_and_copy(ledger, state_dir, drive_dir, adopt=args.adopt)
     print(
         f"host ledger {args.host_id}: local {state_dir}; "
         f"drive {record['drive']['local_drive_folder']}; cloud sync unverified"

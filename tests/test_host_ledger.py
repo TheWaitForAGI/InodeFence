@@ -178,10 +178,10 @@ def test_drive_write_failure_is_a_status_and_main_exits_zero(
     monkeypatch.setattr(ledger, "drive_problem", lambda d, m=None: None)
     real_write = ledger.write_atomic
 
-    def flaky(record, directory):  # type: ignore[no-untyped-def]
+    def flaky(record, directory, **kw):  # type: ignore[no-untyped-def]
         if directory == drive:
             raise OSError("drive went away")
-        return real_write(record, directory)
+        return real_write(record, directory, **kw)
 
     monkeypatch.setattr(ledger, "write_atomic", flaky)
     state = tmp_path / "state"
@@ -229,3 +229,107 @@ def test_install_forwards_the_record_arguments_to_the_unit(
 def test_main_requires_a_plain_host_id(tmp_path: Path) -> None:
     with pytest.raises(SystemExit):
         ledger.main(["--host-id", "../x", "--state-dir", str(tmp_path), "--no-remote", "--no-pr"])
+
+
+# ---- review fixes (INFRA cross-review of #462) ----
+
+
+def _mounted(tmp_path: Path) -> tuple[Path, str]:
+    drive = tmp_path / "g" / "hosts"
+    drive.mkdir(parents=True)
+    return drive, ROOT_EXT4 + DRVFS.format(point=tmp_path / "g")
+
+
+def test_drive_copy_refuses_a_file_written_by_another_machine(tmp_path: Path) -> None:
+    drive, mounts = _mounted(tmp_path)
+    other = drive / "HOST1.json"
+    other.write_text(json.dumps({"host_id": "HOST1", "machine": "f" * 64}))
+    before = other.read_text()
+    mine = {"host_id": "HOST1", "machine": "a" * 64}  # mistyped --host-id on this machine
+    record = ledger.record_and_copy(mine, tmp_path / "state", drive, mountinfo=mounts)
+    assert record["drive"]["local_drive_folder"] == "refused_not_ours"
+    assert other.read_text() == before
+    assert (tmp_path / "state" / "HOST1.json").is_file()  # the local record is unaffected
+
+
+def test_drive_copy_refuses_a_file_without_fingerprint_unless_adopted(tmp_path: Path) -> None:
+    drive, mounts = _mounted(tmp_path)
+    old = drive / "HOST4.json"
+    old.write_text(json.dumps({"host_id": "HOST4"}))  # written before fingerprints existed
+    mine = {"host_id": "HOST4", "machine": "a" * 64}
+    record = ledger.record_and_copy(mine, tmp_path / "s", drive, mountinfo=mounts)
+    assert record["drive"]["local_drive_folder"] == "refused_not_ours"
+    assert json.loads(old.read_text()) == {"host_id": "HOST4"}
+    record = ledger.record_and_copy(mine, tmp_path / "s", drive, mountinfo=mounts, adopt=True)
+    assert record["drive"]["local_drive_folder"] == "written_to_local_drive_folder"
+    record = ledger.record_and_copy(mine, tmp_path / "s", drive, mountinfo=mounts)  # now ours
+    assert record["drive"]["local_drive_folder"] == "written_to_local_drive_folder"
+    assert json.loads(old.read_text())["machine"] == "a" * 64
+
+
+def test_fingerprint_is_a_hash_not_the_raw_machine_id() -> None:
+    fingerprint = ledger.machine_fingerprint()
+    assert len(fingerprint) == 64 and int(fingerprint, 16) >= 0
+    try:
+        raw = Path("/etc/machine-id").read_text().strip()
+    except OSError:
+        raw = ""
+    assert not raw or raw not in fingerprint
+    assert ledger.build_ledger("HOST4", [], check_pr=False)["machine"] == fingerprint
+
+
+def test_last_success_survives_a_no_remote_run_then_a_failure(repo: tuple[Path, Path]) -> None:
+    work, remote = repo
+    ok = ledger.build_ledger("HOST4", [work], check_pr=False)
+    sha = ok["repositories"][0]["remote_base"]["sha"]
+    skipped = ledger.build_ledger("HOST4", [work], check_pr=False, check_remote=False, previous=ok)
+    assert skipped["repositories"][0]["remote_base"]["last_success"]["sha"] == sha
+    remote.rename(remote.with_suffix(".gone"))
+    failed = ledger.build_ledger("HOST4", [work], check_pr=False, previous=skipped)
+    base = failed["repositories"][0]["remote_base"]
+    assert base["status"] == ledger.REMOTE_FAILED and base["last_success"]["sha"] == sha
+
+
+def test_missing_remote_branch_is_its_own_status(repo: tuple[Path, Path]) -> None:
+    work, _ = repo
+    record = ledger.build_ledger("HOST4", [work], base_branch="nope", check_pr=False)
+    assert record["repositories"][0]["remote_base"]["status"] == ledger.REMOTE_BRANCH_MISSING
+
+
+def test_reported_items_keep_their_given_time_and_artifacts_are_checked(tmp_path: Path) -> None:
+    present = tmp_path / "smoke"
+    present.mkdir()
+    artifacts = [f"{present}|engineering smoke", str(tmp_path / "gone")]
+    record = ledger.build_ledger(
+        "HOST4", [], check_pr=False, artifacts=artifacts, reported_at="2026-11-16T00:00:00+00:00"
+    )
+    reported = record["reported"]
+    assert reported["reported_at"] == "2026-11-16T00:00:00+00:00" != record["observed_at"]
+    assert reported["artifacts"] == [
+        {"path": str(present), "note": "engineering smoke", "exists": True},
+        {"path": str(tmp_path / "gone"), "note": None, "exists": False},
+    ]
+    assert ledger.build_ledger("HOST4", [], check_pr=False)["reported"]["reported_at"] is None
+
+
+def test_install_forwards_remote_options_and_fixes_the_report_time(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: dict = {}
+    monkeypatch.setattr(ledger, "user_unit_dir", lambda: tmp_path / "units")
+    monkeypatch.setattr(ledger, "install_timer", lambda units, d, run: seen.update(units) or 0)
+    argv = ["--host-id", "HOST4", "--state-dir", str(tmp_path / "s"), "--repo", str(tmp_path)]
+    argv += ["--remote", "upstream", "--base-branch", "develop", "--no-remote", "--adopt"]
+    argv += ["--artifact", "/x/a", "--install-user-timer"]
+    assert ledger.main(argv) == 0
+    service = seen[f"{ledger.UNIT}.service"]
+    assert "--remote upstream --base-branch develop --no-remote" in service
+    assert "--reported-at " in service
+    assert "--adopt" not in service  # one-off by design
+
+
+def test_percent_in_paths_is_escaped_for_systemd() -> None:
+    script = Path("/x/100%/host_ledger.py")
+    units = ledger.unit_files("/usr/bin/python3", script, ["--a", "b%c"], 5)
+    service = units[f"{ledger.UNIT}.service"]
+    assert "/x/100%%/host_ledger.py" in service and "b%%c" in service

@@ -227,6 +227,8 @@ arm을 비교한다. 결과는 `<output>/<run-id>.json`(demo 모드는 `.steps.j
 조회 시각)를 보도록 호스트당 JSON 한 개를 쓴다. 먼저 로컬(`~/.local/state/inodefence/host-ledger/`)에
 원자적으로 쓰고, 그 다음 `--drive-dir`가 실제 마운트된 Windows 드라이브(9p/drvfs) 위에 이미 있을 때만
 같은 파일을 복사한다. 마운트·링크·폴더 생성은 하지 않으며 클라우드 동기화는 항상 `unverified`로 남긴다.
+각 기록에는 머신 식별 해시(`machine`, `/etc/machine-id`의 salted SHA-256, 원문 미기록)가 들어가고, Drive의
+같은 이름 파일이 다른 머신이 썼거나 식별이 없으면 덮어쓰지 않는다(`refused_not_ours`; 최초 1회 `--adopt`).
 저장소 조회는 읽기 전용(`--no-optional-locks status`, `ls-remote`; fetch 없음)이고, 실패는 경고와
 exit 0이다. 커밋 훅으로 걸지 않는다. 5분 주기 systemd user timer 설치·제거 명령은 스크립트 docstring에
 있다. N04 preflight의 실행 증거용 host ledger(아래 절)와는 다른 것이다.

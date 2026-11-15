@@ -40,10 +40,34 @@
 0개이던 때 `doctor`는 daemon 접근 `OK`, runtime 폴더 없음 `WARN`으로 그 호스트 상태를 그대로 보였다. 이 확인에서
 W2가 Docker로 이미지를 준비하거나 대상을 실행하지는 않았다.
 
-**HOST4 engineering smoke(demo run).** node-tar 7.5.23, seed 123, budget 20·60, 엔진 61afb3f에서 `inodefence explore`
-두 번: 둘 다 PASS, 위반 0, 미판정 0(budget 20: success 17·rejected 3). 위반 0은 안전성 증명이 아니다. 위반 케이스가
-없어 `replay`는 이 smoke로 검증하지 않았다. 그 산출물에 대해 `inodefence status`·`summary`가 동작하는 것을 확인했고,
-README의 출력 폴더 구조는 이 산출물에 맞췄다.
+**HOST4 engineering 검증(demo run, 2026-11-16).** WSL2 Ubuntu 24.04, Docker Desktop 4.99.0 / Engine 29.9.3, seed 123,
+순차 실행. 모두 **D1 판정 규칙(아래) 반영 전 커밋**에서 돌렸다.
+
+| 대상·버전 | 엔진 | `verify` (고정 입력) | `explore` | 탐색 종료 상태 |
+| --- | --- | --- | --- | --- |
+| oras-go 2.6.2 | c55b7ef | PASS, 위반 0/6, 오류 0 | 20회 PASS, 위반 0, 미판정 0 | rejected 20, success 0 |
+| python-tarfile 3.12.16 `data` | c55b7ef | PASS, 위반 0/5, 오류 0 | 20회 PASS, 위반 0, 미판정 0 | success 12, failed 5, rejected 3 |
+| decompress `@xhmikosr/decompress@11.1.4` | c55b7ef | PASS, 위반 0/5, 오류 0 | 20회 PASS, 위반 0, 미판정 0 | success 11, rejected 9 |
+| node-tar 7.5.23 | 61afb3f | 이 후보에서 실행 안 함 | 20회·60회 PASS, 위반 0, 미판정 0 | (20회) success 17, rejected 3 |
+
+실행 후 컨테이너·볼륨 잔여 0. 증거는 HOST4 로컬에 sha256 목록과 함께 보관(저장소 밖). **위반 0은 안전성 증명이
+아니다.** oras-go는 추출 성공 0건이라 근거가 특히 약하다(알려진 한계). 위반 케이스가 없어 **`replay`의 실제 위반
+재실행(E2E)은 검증하지 않았다.** **macOS는 이 후보에서 확인하지 않았다.** node-tar 산출물로 `inodefence status`·
+`summary`가 동작하는 것을 확인했고, README의 출력 폴더 구조는 그 산출물에 맞췄다.
+
+### 탐색 결과의 판정 규칙(D1, 사용자 결정 2026-11-16)
+
+탐색(`explore`) 결과 기록에서, 위반이 보인 실행은 종료 상태와 상관없이 위반으로 판정한다. 위반이 보이지 않은 실행은
+다음일 때 **미판정**이다(깨끗한 음성으로 세지 않음).
+
+- node-tar·decompress: `failed`, `timed_out`, trace가 온전하지 않은 `success`(decompress는 worker 기록이 없는 실행도).
+  `rejected`는 판정 유지.
+- python-tarfile: `timed_out`, worker 보고가 없거나 종료 상태와 어긋나는 실행, trace가 온전하지 않은 `success`.
+  **편차:** worker 보고가 종료 상태와 일치하는 `failed`(tarfile이 예외로 거부)는 판정 유지 — 문자 그대로의 D1이면
+  `data` 필터의 정상 거부가 미판정 상한(0.2)을 넘어 ERROR가 되기 때문(로컬 측정 seed 1·7·123에서 8%·8%·28%).
+- oras-go: `success`·`rejected`만 판정, 그 밖은 미판정이며 미판정이 하나라도 있으면 ERROR(상한 옵션으로 완화 안 됨).
+- 캠페인: 위반이 있으면 FAIL, 판정된 실행이 0이거나 미판정 비율이 상한을 넘으면 ERROR, 그 밖은 PASS. 종료 코드는
+  0 PASS / 1 FAIL / 2 ERROR / 3 실행 전 거부(판정 없음). 탐색 루프·피드백·등록 실험 경로는 바뀌지 않았다.
 
 ### 고정 입력 회귀 검사
 
@@ -115,6 +139,11 @@ node-tar 7.0.1·7.1.0·7.2.0·7.3.0·7.4.4는 진행 중인 실험과 겹쳐, �
 
 ### 알려진 한계
 
+- **oras-go 탐색의 "위반 없음"은 근거가 제한적이다.** oras-go 탐색은 공통 seed가 oras-go 디렉터리 아티팩트 제목
+  접두(`d/`) 없이 만들어져 대부분의 실행이 oras-go에서 거부된다(HOST4 seed 123·budget 20에서 20/20 거부,
+  2026-11-15 맥북 실행 budget 60에서 성공 6건·9건). 엔트리를 `d/` 아래로 옮기는 변경은 탐색 대상의 의미를 바꾸므로
+  사용자 결정 전까지 하지 않는다.
+
 - **입력은 하드링크 중심이다.** 고정 입력은 하드링크 2건과 심볼릭 링크 뒤 쓰기 3건(oras-go는 하드링크 1건 추가)뿐이고,
   `make target-run`은 입력을 바꿔 가며 탐색하지 않는다. node-tar와 oras-go에서 나온 위반은 모두 하드링크 입력이다.
 - **decompress 4.2.1의 입력 1건(`nested_symlink_write`)은 실행마다 결과가 다르다.** 대상 프로그램 자체의 확인과 사용
@@ -141,8 +170,8 @@ node-tar 7.0.1·7.1.0·7.2.0·7.3.0·7.4.4는 진행 중인 실험과 겹쳐, �
 ### 후속 검증(이 릴리스에서 확인 결과를 싣지 않은 것)
 
 - **탐색 `explore`와 `status`·`replay`.** 네 대상 모두 탐색 hook이 등록돼 있고(`inodefence targets`), 명령은
-  이 RC에 들어 있다. 실제 탐색 실행은 위 HOST4 smoke(node-tar 7.5.23)만 확인했고, 나머지 세 대상과 위반 케이스가 있는
-  실행의 `replay`는 아직 확인 결과가 없다.
+  이 RC에 들어 있다. 실제 탐색은 위 HOST4 검증(네 대상 각 한 버전, seed 123, D1 반영 전 커밋)만 확인했다. D1 반영
+  후 커밋에서의 재실행, 위반 케이스가 있는 실행의 `replay`, macOS는 아직 확인 결과가 없다.
 - **이어 하기(resume)는 없다.** 멈춘 탐색을 중간부터 이어서 돌릴 수 없다.
 - **위 고정 입력 회귀 결과는 #400 브랜치의 `make target-run`으로 확인한 것이다.** 같은 드라이버를 부르는
   `inodefence verify`로 이 RC에서 다시 실행하지는 않았다.

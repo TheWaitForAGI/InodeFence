@@ -424,14 +424,23 @@ wheel로 설치했다면 `INODEFENCE_HOME`(환경 변수 또는 아래 설정 �
 
 ### 지원 환경과 확인 수준
 
-- **확인한 호스트:** macOS(arm64) + Docker Desktop, Windows + WSL2(x86_64) + Docker Desktop. 그 밖의
-  Linux 호스트는 따로 확인하지 않았습니다.
-- **고정 입력 회귀 검사(`verify`):** 네 대상(node-tar·python-tarfile·oras-go·decompress)에서 버전별
-  준비→실행→판정을 같은 드라이버의 `make target-run`으로 확인했습니다(2026-11-14 demo run, 대상·버전별
-  결과는 [CHANGELOG](CHANGELOG.md)). `inodefence verify`는 그 드라이버를 그대로 호출합니다.
-- **탐색(`explore`)·도중 확인(`status`)·재실행(`replay`):** 네 대상 모두 탐색 hook이 등록돼 있지만
-  (`inodefence targets`), 실제 탐색은 node-tar 7.5.23 engineering smoke(Windows + WSL2, budget 20·60, 위반 0)만
-  확인했습니다. 나머지 세 대상의 탐색과, 위반 케이스가 있는 실행의 `replay`는 후속 검증 대상입니다.
+- **이 릴리스 후보에서 확인한 호스트:** Windows + WSL2(Ubuntu 24.04, x86_64) + Docker Desktop
+  4.99.0 / Engine 29.9.3(HOST4). **macOS는 이 후보에서 확인하지 않았습니다**(아래 #400 기록만 있음).
+  그 밖의 Linux 호스트도 확인하지 않았습니다.
+- **HOST4 engineering 검증(demo run, 2026-11-16, seed 123, 순차 실행):**
+
+  | 대상·버전 | `verify` (고정 입력) | `explore` (예산) | 탐색 종료 상태 |
+  | --- | --- | --- | --- |
+  | oras-go 2.6.2 | PASS, 위반 0/6 | PASS, 위반 0, 미판정 0 (20) | rejected 20, success 0 |
+  | python-tarfile 3.12.16 `data` | PASS, 위반 0/5 | PASS, 위반 0, 미판정 0 (20) | success 12, failed 5, rejected 3 |
+  | decompress `@xhmikosr/decompress@11.1.4` | PASS, 위반 0/5 | PASS, 위반 0, 미판정 0 (20) | success 11, rejected 9 |
+  | node-tar 7.5.23 | 이 후보에서 실행 안 함 | PASS, 위반 0 (20, 60) | (20회) success 17, rejected 3 |
+
+  엔진 커밋은 node-tar가 61afb3f, 나머지 셋이 c55b7ef로, **모두 D1 판정 규칙(위 표) 반영 전 커밋**입니다.
+  **위반 0은 안전성 증명이 아닙니다.** oras-go는 추출 성공이 0건이라 이 탐색의 근거가 특히 약합니다
+  (아래 한계). 위반 케이스가 없었으므로 **`replay`의 실제 위반 재실행(E2E)은 검증하지 않았습니다.**
+- **이전 기록:** #400 브랜치의 `make target-run`(같은 드라이버)으로 macOS(arm64)와 WSL2에서 네 대상 고정 입력
+  결과를 확인한 기록이 [CHANGELOG](CHANGELOG.md)에 있습니다(2026-11-14, 이 후보에서 재실행 안 함).
 - 이 문서의 실행 예는 모두 `demo run` 수준이며 사전등록 실험이나 자격 검증 결과가 아닙니다.
 
 ### 탐색 돌리기
@@ -440,6 +449,10 @@ wheel로 설치했다면 `INODEFENCE_HOME`(환경 변수 또는 아래 설정 �
 # node-tar의 최신 버전을 준비해 탐색. --out은 반드시 저장소 밖(위반 입력이 섞일 수 있어
 # 공개 저장소 안이면 실행 전 거부됩니다). --dry-run이면 계획만 출력하고 아무것도 실행하지 않습니다.
 inodefence explore --target node-tar --version latest --budget 400 --seed 7 \
+  --out ~/inodefence-explore --auto-prepare
+
+# decompress는 버전 칸에 패키지까지 씁니다: <패키지>@<X.Y.Z> (11.1.4만 주면 거부됩니다)
+inodefence explore --target decompress --version @xhmikosr/decompress@11.1.4 --budget 20 \
   --out ~/inodefence-explore --auto-prepare
 ```
 
@@ -492,11 +505,23 @@ fingerprint, 입력의 SHA-256, 그리고 **그 한 건을 같은 이미지에�
 ### 종료 상태와 판정은 별개입니다
 
 추출기가 어떻게 끝났는가(종료 상태: success·rejected·failed·timed_out)와 오라클이 무엇을
-보았는가(판정: C0/C1/C2)는 서로 다른 축입니다. 오라클은 실행 전후 파일시스템 스냅샷을 비교하므로
-추출이 거절·실패·시간 초과로 끝났어도 그 스냅샷으로 판정합니다. 그래서 **입력이 많이 거절되거나
-시간 초과가 많다고 해서 결과가 ERROR가 되지는 않습니다.** 오라클이 아예 평가되지 못한 실행(유효한
-관찰이 없는 실행 기반 오류)만 "미판정"이고, 캠페인이 ERROR가 되는 것은 그 미판정이 전부이거나
-정한 상한을 넘을 때뿐입니다. 거절·실패·시간 초과 중에 난 위반도 위반이므로 FAIL로 잡힙니다.
+보았는가(판정: C0/C1/C2)는 서로 다른 축입니다. 오라클은 실행 전후 파일시스템 스냅샷을 비교하므로,
+**위반이 보이면 종료 상태와 상관없이 그 실행은 위반으로 판정**되고 FAIL로 잡힙니다(입력도 보존).
+
+위반이 보이지 않은 실행을 "깨끗한 음성"으로 셀지는 탐색(`explore`)에서 다음 규칙(사용자 결정 D1,
+2026-11-16)을 따릅니다. 이렇게 세지 않는 실행은 **미판정**입니다.
+
+| 대상 | 위반 없음이 판정(깨끗한 음성)으로 남는 실행 | 미판정이 되는 실행 |
+| --- | --- | --- |
+| node-tar, decompress | `rejected`; trace가 온전한 `success` | `failed`, `timed_out`; trace가 온전하지 않은 `success` (decompress는 worker 기록이 없는 실행도) |
+| python-tarfile | `rejected`; worker 보고가 종료 상태와 일치하는 `failed`(tarfile이 예외로 거부한 것, D1과의 의도된 편차); trace가 온전한 `success`; 빈 아카이브 | `timed_out`; worker 보고가 없거나 종료 상태와 어긋나는 실행; trace가 온전하지 않은 `success` |
+| oras-go | `success`, `rejected` | 그 밖의 모든 실행 |
+
+캠페인 판정: 위반이 하나라도 있으면 FAIL. 판정된 실행이 하나도 없거나 미판정 비율이 상한
+(`--max-unjudged-ratio`, 기본 0.2)을 넘으면 ERROR. oras-go는 더 엄격해서 미판정이 하나라도 있으면
+ERROR입니다(상한 옵션으로 완화되지 않음). 그 밖에는 PASS입니다. 그래서 거절이 많은 것만으로는 ERROR가
+되지 않지만, 실패·시간 초과가 많으면 ERROR가 될 수 있습니다. 이 규칙은 탐색 결과 기록에만 적용되며
+탐색 루프와 피드백, 등록 실험 경로는 바뀌지 않습니다.
 
 **깨끗하게 끝나지 않은 실행에서 난 위반은 "재현 확인 필요"로 구분해 표시합니다.** 성공으로 끝나지
 않았거나 관찰이 완결되지 않은 상태에서 난 위반은 그대로 위반이지만, 같은 입력을 다시 돌려 같은
@@ -548,6 +573,10 @@ inodefence summary ~/inodefence-explore/target-explore/<실행>-result/result.js
 
 ### 한계와 주의
 
+- **oras-go 탐색의 "위반 없음"은 근거가 제한적입니다.** oras-go 탐색은 공통 seed가 oras-go 디렉터리
+  아티팩트 제목 접두(`d/`) 없이 만들어져 대부분의 실행이 oras-go에서 거부됩니다(HOST4 seed 123·budget 20에서
+  20/20 거부, 2026-11-15 맥북 실행 budget 60에서 성공 6건·9건). 엔트리를 `d/` 아래로 옮기는 변경은 탐색 대상의
+  의미를 바꾸므로 사용자 결정 전까지 하지 않습니다.
 - **스냅샷 판정은 지속 상태만 봅니다.** 오라클은 실행 전후의 파일시스템 상태를 비교하므로,
   실행 도중에만 존재한 일시적 operation이나 sandbox 밖의 상태는 증명하지 못합니다. 위반은
   재현과 원인 분석이 따로 필요한 후보입니다.

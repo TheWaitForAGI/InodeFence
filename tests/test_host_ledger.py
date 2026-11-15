@@ -212,6 +212,20 @@ def test_timer_units_run_the_copied_script_every_five_minutes(tmp_path: Path) ->
     assert "OnUnitActiveSec=5min" in timer and "WantedBy=timers.target" in timer
 
 
+def test_install_forwards_the_record_arguments_to_the_unit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: dict = {}
+    monkeypatch.setattr(ledger, "user_unit_dir", lambda: tmp_path / "units")
+    monkeypatch.setattr(ledger, "install_timer", lambda units, d, run: seen.update(units) or 0)
+    argv = ["--host-id", "HOST4", "--state-dir", str(tmp_path / "s"), "--repo", str(tmp_path)]
+    argv += ["--artifact", "/x/smoke dir", "--test-result", "pytest ok", "--install-user-timer"]
+    assert ledger.main(argv) == 0
+    service = seen[f"{ledger.UNIT}.service"]
+    assert "--artifact '/x/smoke dir'" in service and "--test-result 'pytest ok'" in service
+    assert "--install-user-timer" not in service
+
+
 def test_main_requires_a_plain_host_id(tmp_path: Path) -> None:
     with pytest.raises(SystemExit):
         ledger.main(["--host-id", "../x", "--state-dir", str(tmp_path), "--no-remote", "--no-pr"])

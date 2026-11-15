@@ -468,6 +468,10 @@ def main(argv: Sequence[str] | None = None, run: Runner = run_command) -> int:
         for repo in repos:
             forwarded += ["--repo", str(repo)]
         forwarded += ["--no-pr"] if args.no_pr else []
+        for text in args.test_result:
+            forwarded += ["--test-result", text]
+        for path in args.artifact:
+            forwarded += ["--artifact", path]
         script = Path(__file__).resolve()
         units = unit_files(sys.executable, script, forwarded, args.every_minutes)
         return install_timer(units, user_unit_dir(), run)

@@ -160,6 +160,12 @@ def check_report(report: dict, prepared: PreparedTargetImage, budget: int | None
     runs = len(report["case_records"])
     if budget is not None and runs != budget:
         raise RuntimeError(f"campaign report has {runs} run records, budget was {budget}")
+    # The per-step frame status lives in ``steps``; without it the frame rule of
+    # ``common_case_records`` could not apply and a frameless run would read as judged.
+    steps = report.get("steps")
+    if not isinstance(steps, list) or len(steps) != runs:
+        have = len(steps) if isinstance(steps, list) else "no"
+        raise RuntimeError(f"campaign report has {have} steps for {runs} run records")
 
 
 #: How the oras-go loop retains cases; fixed in ``OrasGoEffectSearchState`` (no selectable policy).

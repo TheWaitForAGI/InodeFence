@@ -133,20 +133,23 @@ class Tally:
 def step_judged(step: dict[str, Any]) -> bool:
     """Whether a step counts as judged -- the ONE rule; the tally and the records both use it.
 
-    The worker finished (``success`` / ``rejected``) AND either it emitted its frame or the oracle
-    saw a violation in the real BEFORE/AFTER snapshots. A finished step with no frame and no
-    observed violation is NOT a clean negative (a worker that never produced its frame -- e.g. a
-    stale image -- would otherwise read as PASS), so it counts as unjudged and feeds the ceiling.
-    A violation the oracle saw stays judged: a run error cannot carry one, and hiding a hit is
-    worse than flagging the run (the frame never decides the oracle verdict, see
-    ``effect_pipeline_decompress``).
+    1. The oracle saw a violation in the real BEFORE/AFTER snapshots -> judged, whatever the exit
+       status or frame: the effect is on disk, the controller saved its input, a run error cannot
+       carry a violation, and node-tar / python-tarfile also judge every exit status. A violation
+       from a ``failed`` / ``timed_out`` / frameless step reads as "reproduction check needed".
+    2. Otherwise judged only if the worker finished (``success`` / ``rejected``) AND emitted its
+       frame. A finished step without a frame is NOT a clean negative (a worker that never produced
+       it -- e.g. a stale image -- would otherwise read as PASS); it is unjudged and feeds the
+       ceiling. (The frame never decides the oracle verdict, see ``effect_pipeline_decompress``.)
     """
+    oracle = step.get("oracle") or {}
+    if True in (oracle.get(name) for name in ("C0", "C1", "C2")):
+        return True
     if not step.get("judged", step.get("termination") in JUDGED):
         return False
-    if not step.get("frame_error"):
-        return True
-    oracle = step.get("oracle") or {}
-    return True in (oracle.get(name) for name in ("C0", "C1", "C2"))
+    if all(oracle.get(name) is None for name in ("C0", "C1", "C2")):
+        return False  # no contract value at all: unjudged, as CaseVerdict.is_unjudged counts it
+    return not step.get("frame_error")
 
 
 def tally(report: dict[str, Any]) -> Tally:

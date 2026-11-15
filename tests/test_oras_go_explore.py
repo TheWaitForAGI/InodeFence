@@ -57,6 +57,15 @@ def _report(*, runs: int, violating: int | None, image_id: str = IMAGE_ID) -> di
         "image_id": image_id,
         "case_records": records,
         "violation_inputs": inputs,
+        # The real report always carries steps; a frame was emitted on every step here.
+        "steps": [
+            {
+                "index": i,
+                "termination": "rejected" if i == violating else "success",
+                "frame_error": None,
+            }
+            for i in range(runs)
+        ],
     }
 
 
@@ -240,6 +249,18 @@ def test_frameless_clean_run_is_unjudged_and_the_verdict_error(
     assert "unjudged runs 1/5 = 20%" in capsys.readouterr().out
     records = oge.common_case_records(report)
     assert records[2]["outcome"] == "run_error" and records[2]["c1"] is None
+
+
+@pytest.mark.parametrize("steps", [None, []])
+def test_report_without_per_step_data_is_an_error_not_a_pass(steps: Any) -> None:
+    # W3: without steps the frame rule could not apply and every run would read as judged.
+    report = _report(runs=5, violating=None)
+    if steps is None:
+        del report["steps"]
+    else:
+        report["steps"] = steps
+    with pytest.raises(RuntimeError, match="steps for 5 run records"):
+        oge.check_report(report, _prepared(), 5)
 
 
 def test_frameless_run_keeps_an_observed_violation() -> None:

@@ -148,6 +148,31 @@ def test_frameless_steps_count_as_unjudged_against_the_ceiling() -> None:
     assert [c.outcome for c in result.cases] == ["judged", RUN_ERROR, "judged", RUN_ERROR]
 
 
+@pytest.mark.parametrize("termination", ["failed", "timed_out"])
+def test_violation_on_a_failed_or_timed_out_step_is_kept_as_fail(termination: str) -> None:
+    # W3: the oracle saw a violation on a step whose worker failed; the controller saved its input.
+    # Before, that step became unjudged and the result failed validation (SETUP exit 3, no result).
+    tar = b"v" * 512
+    hit = {
+        "index": 0,
+        "tar_b64": base64.b64encode(tar).decode(),
+        "tar_sha256": sha256(tar).hexdigest(),
+    }
+    steps = [_step(0, termination=termination, violated=True)] + [_step(i) for i in range(1, 10)]
+    result, tars, summary = _convert(_report(steps, [hit]), ratio=0.1)
+    assert result.verdict is Verdict.FAIL and result.violating_cases == ("step-0",)
+    case = result.cases[0]
+    assert (case.outcome, case.termination) == ("judged", termination) and case.needs_repro_check
+    assert tars == {"inputs/step-0.tar": tar} and summary["not_readable_as_pass"] is None
+
+
+def test_finished_step_with_no_oracle_values_is_counted_unjudged() -> None:
+    steps = [{**_step(i), "oracle": {}} for i in range(5)]
+    result, _, summary = _convert(_report(steps))
+    assert result.verdict is Verdict.ERROR and summary["unjudged_steps"] == 5
+    assert summary["not_readable_as_pass"] == "no step was judged (5/5)"
+
+
 def test_four_of_five_frameless_success_steps_is_error() -> None:
     # W3 case 3: the gate used to stay silent when only some steps lacked a frame.
     steps = [_step(0)] + [_step(i, frame_error="no stdout frame") for i in range(1, 5)]

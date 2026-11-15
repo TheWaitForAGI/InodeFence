@@ -304,3 +304,144 @@ def test_streaming_off_keeps_the_full_per_case_report(monkeypatch: pytest.Monkey
     report = _violation_capture_report(monkeypatch, violating=True, stream=False)
     assert report["streaming"] is False
     assert len(report["case_records"]) == 1 and "aggregate" not in report
+
+
+# ---- untrusted trace with no violation is unjudged, not a clean negative (W1, 2026-11-16) ----
+
+
+def _many_runs_report(
+    monkeypatch: pytest.MonkeyPatch, runs: list[tuple[Any, bool, bool]], *, stream: bool
+) -> dict:
+    """``runs`` = (status, integrity_valid, violating) per run; drives the real record code."""
+
+    class _Verdict:
+        def __init__(self, cid: str, hit: bool) -> None:
+            self.contract_id = type("C", (), {"value": cid})()
+            self.violated = hit
+
+    fakes = []
+    for status, intact, hit in runs:
+        verdicts = [_Verdict("C0", False), _Verdict("C1", hit), _Verdict("C2", False)]
+        execution = type("E", (), {"status": status})()
+        base = type("B", (), {"violations": verdicts, "execution": execution})()
+        trace = type("T", (), {"integrity_valid": intact, "observation_failures": ()})()
+        fakes.append(type("R", (), {"base_result": base, "trace": trace})())
+    queue = iter(fakes)
+
+    def producer(*a: Any, **k: Any) -> Any:
+        # Like the real producer: one native check per run, and the streaming run counter.
+        def produce(case: Any) -> Any:
+            k["checks"].append({})
+            if k.get("run_counter") is not None:
+                k["run_counter"][0] += 1
+            return next(queue)
+
+        return produce
+
+    monkeypatch.setattr(rd, "_native_effect_producer", producer)
+
+    def fake_campaign(
+        cases: Any, produce: Any, config: object, on_step: object = None, hooks: object = None
+    ) -> object:
+        seed = list(cases)[0]
+        for _ in runs:
+            produce(seed)
+        return _FakeResult(executed=len(runs))
+
+    monkeypatch.setattr(rd, "run_effect_campaign", fake_campaign)
+    monkeypatch.setattr(rd, "effect_campaign_report", lambda r, p: {"demo_report_schema": 4})
+    monkeypatch.setattr(rd, "_historical_oracle_events", lambda r: [])
+    monkeypatch.setattr(
+        rd.NodeTarEffectTarget, "bind", classmethod(lambda cls, b, i, **k: _FakeTarget("7.5.23"))
+    )
+    budget = len(runs)
+    return exploration_demo_report(BACKEND, IMAGE, "7.5.23", seed=1, budget=budget, stream=stream)
+
+
+def _verdict(report: dict, budget: int) -> str:
+    from scripts.explore_result import build_campaign_result
+    from scripts.run_target import PreparedTargetImage
+
+    prepared = PreparedTargetImage(
+        "node-tar", "7.5.23", "7.5.23", "img", "sha256:" + "a" * 64, True
+    )
+    result, _ = build_campaign_result(report, prepared, seed=1, budget=budget)
+    return result.verdict.value
+
+
+@pytest.mark.parametrize("stream", [True, False])
+def test_twenty_successes_without_an_intact_trace_are_error_not_pass(
+    monkeypatch: pytest.MonkeyPatch, stream: bool
+) -> None:
+    # W3 probe5 shape: 20 runs, every observation_complete False, no violation. Before: all
+    # "judged" with C values -> PASS. Now each is run_error, so the result is ERROR.
+    runs = [(rd.ExecutionStatus.SUCCESS, False, False)] * 20
+    report = _many_runs_report(monkeypatch, runs, stream=stream)
+    if stream:
+        assert report["aggregate"]["unjudged_steps"] == 20
+        assert report["aggregate"]["errors"] == 20
+    else:
+        assert {c["outcome"] for c in report["case_records"]} == {"run_error"}
+    assert _verdict(report, 20) == "ERROR"
+
+
+def test_untrusted_trace_keeps_a_violation_and_rejection_keeps_its_judgment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ok, rej, tmo = (
+        rd.ExecutionStatus.SUCCESS,
+        rd.ExecutionStatus.REJECTED,
+        rd.ExecutionStatus.TIMED_OUT,
+    )
+    runs = [(ok, False, True), (rej, False, False), (tmo, False, False)] + [(ok, True, False)] * 7
+    report = _many_runs_report(monkeypatch, runs, stream=False)
+    outcomes = [(c["outcome"], c["c1"]) for c in report["case_records"]][:4]
+    # D1: the clean timed-out run is unjudged; the rejection stays judged; the violation is kept.
+    assert outcomes == [("judged", True), ("judged", False), ("run_error", None), ("judged", False)]
+    assert _verdict(report, 10) == "FAIL"  # 1/10 unjudged is under the 0.2 ceiling
+
+
+# ---- D1 regression matrix (user decision 2026-11-16): node-tar exploration record ----
+
+_S, _R, _F, _T = (
+    rd.ExecutionStatus.SUCCESS,
+    rd.ExecutionStatus.REJECTED,
+    rd.ExecutionStatus.FAILED,
+    rd.ExecutionStatus.TIMED_OUT,
+)
+_CLEAN = (_S, True, False)  # success, intact trace, no violation
+
+D1_CASES = [
+    # (name, runs as (status, integrity_valid, violating), expected verdict)
+    ("only normal rejections", [(_R, True, False)] * 10, "PASS"),
+    ("all failed", [(_F, True, False)] * 10, "ERROR"),
+    ("all timed out", [(_T, False, False)] * 10, "ERROR"),
+    ("failed with an observed violation", [(_F, False, True)] + [_CLEAN] * 9, "FAIL"),
+    ("success, broken trace, violation", [(_S, False, True)] + [_CLEAN] * 9, "FAIL"),
+    ("unjudged exactly at the ceiling", [(_F, True, False)] * 2 + [_CLEAN] * 8, "PASS"),
+    ("unjudged over the ceiling", [(_T, True, False)] * 3 + [_CLEAN] * 7, "ERROR"),
+    ("nothing judgeable", [(_F, True, False)] * 5 + [(_S, False, False)] * 5, "ERROR"),
+]
+
+
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.parametrize(("name", "runs", "expected"), D1_CASES, ids=[c[0] for c in D1_CASES])
+def test_d1_matrix_record_aggregate_and_verdict_agree(
+    monkeypatch: pytest.MonkeyPatch, stream: bool, name: str, runs: list, expected: str
+) -> None:
+    report = _many_runs_report(monkeypatch, runs, stream=stream)
+    unjudged = sum(
+        1
+        for status, intact, hit in runs
+        if not hit and (status in (_F, _T) or (status is _S and not intact))
+    )
+    if stream:
+        agg = report["aggregate"]
+        assert agg["unjudged_steps"] == unjudged == agg["errors"]
+    else:
+        records = report["case_records"]
+        assert sum(r["outcome"] == "run_error" for r in records) == unjudged
+    assert _verdict(report, len(runs)) == expected
+    violating = [i for i, (_, _, hit) in enumerate(runs) if hit]
+    # An observed violation is never lost: its input is saved whatever the exit or trace.
+    assert [v["run_index"] for v in report["violation_inputs"]] == violating

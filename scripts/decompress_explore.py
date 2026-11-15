@@ -49,6 +49,7 @@ from scripts.run_target import (
 
 from inodefence.feedback import EffectSearchPolicy
 from inodefence.mutator import MutationPolicy
+from inodefence.target_result import JUDGED as JUDGED_OUTCOME
 from inodefence.target_result import (
     RUN_ERROR,
     Preparation,
@@ -166,8 +167,11 @@ def build_campaign_result(
     The decompress loop report (``steps`` / ``violation_inputs`` keyed by ``index``) is reshaped
     into the target-agnostic loop shape (``case_records`` / ``violation_inputs`` keyed by
     ``run_index``) and converted by the shared ``scripts.explore_result.build_campaign_result``.
-    Decompress-specific: unjudged steps carry no contract values (run errors when the gate trips),
-    and the image ``preparation`` is attached to the common record.
+    Each record is on the two separate axes of the common format (as node-tar / python-tarfile):
+    ``outcome`` is the judgment (``judged``, or ``run_error`` with no contract values) and
+    ``termination`` the step's execution status. The report has no trace-integrity field, so
+    ``observation_complete`` stays unknown (``None``), and a violation then reads as "reproduction
+    check needed". Decompress-specific: the image ``preparation`` is attached to the common record.
     """
     from scripts import explore_result
 
@@ -177,13 +181,11 @@ def build_campaign_result(
     for step in report.get("steps") or []:
         oracle = step.get("oracle") or {}
         judged = bool(step.get("judged", step.get("termination") in JUDGED))
-        outcome = str(step.get("termination"))
-        if not judged and stop is not None:
-            outcome = RUN_ERROR
         records.append(
             {
                 "run_index": step["index"],
-                "outcome": outcome,
+                "outcome": JUDGED_OUTCOME if judged else RUN_ERROR,
+                "termination": step.get("termination"),
                 "c0": oracle.get("C0") if judged else None,
                 "c1": oracle.get("C1") if judged else None,
                 "c2": oracle.get("C2") if judged else None,

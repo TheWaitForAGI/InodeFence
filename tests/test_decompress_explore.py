@@ -86,7 +86,11 @@ def test_unjudged_under_the_limit_is_counted_and_not_observed() -> None:
     result, _, summary = _convert(_report(steps), ratio=0.2)
     assert result.verdict is Verdict.PASS
     failed = result.cases[-1]
-    assert failed.outcome == "failed" and (failed.c1, failed.c2) == (None, None)
+    # Common format (#443/#445): judgment and termination are separate axes.
+    assert (failed.outcome, failed.termination) == (RUN_ERROR, "failed")
+    assert (failed.c1, failed.c2) == (None, None)
+    assert {c.outcome for c in result.cases[:-1]} == {"judged"}
+    assert {c.termination for c in result.cases[:-1]} == {"success"}
     assert summary["unjudged_steps"] == 1 and summary["not_readable_as_pass"] is None
 
 

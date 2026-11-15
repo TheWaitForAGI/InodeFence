@@ -34,7 +34,7 @@ from scripts.run_target import ExploreOptions, ExploreOutcome, PreparedTargetIma
 from inodefence.feedback import EffectSearchPolicy
 from inodefence.generator import minimal_seed_corpus
 from inodefence.mutator import MutationPolicy
-from inodefence.target_result import RUN_ERROR
+from inodefence.target_result import JUDGED, RUN_ERROR
 from inodefence.target_result_summary import write_cell_summaries
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -111,6 +111,27 @@ def unjudged(report: dict) -> tuple[int, int]:
     """(runs with no verdict because the run program did not start cleanly, all runs)."""
     records = report.get("case_records", [])
     return sum(1 for r in records if r.get("outcome") == RUN_ERROR), len(records)
+
+
+def common_case_records(report: dict) -> list[dict]:
+    """The controller's ``case_records`` on the common format's two axes (as node-tar).
+
+    The oras-go controller writes ``outcome`` as the execution status for a judged run
+    (``success`` / ``rejected``) and ``run_error`` otherwise. Here ``outcome`` becomes the judgment
+    axis (``judged`` / ``run_error``) and ``termination`` the status: the judged run's own value, or
+    the matching ``steps[].termination`` for a run error when the report carries steps. The report
+    has no trace-integrity field, so ``observation_complete`` stays unknown (``None``).
+    """
+    steps = {s.get("index"): s for s in report.get("steps") or []}
+    records = []
+    for record in report.get("case_records", []):
+        run_error = record.get("outcome") == RUN_ERROR
+        step = steps.get(record["run_index"]) or {}
+        termination = step.get("termination") or (None if run_error else record.get("outcome"))
+        records.append(
+            {**record, "outcome": RUN_ERROR if run_error else JUDGED, "termination": termination}
+        )
+    return records
 
 
 def check_report(report: dict, prepared: PreparedTargetImage, budget: int | None = None) -> None:
@@ -258,7 +279,7 @@ def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOu
             f"campaign ran mutation vocabulary {ran!r}, requested {mutation_policy!r}"
         )
     result, tar_files = build_campaign_result(
-        report,
+        {**report, "case_records": common_case_records(report)},
         prepared,
         seed=options.seed,
         budget=options.budget,

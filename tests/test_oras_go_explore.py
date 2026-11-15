@@ -208,6 +208,24 @@ def test_unjudged_runs_make_the_verdict_error_never_pass(
     assert "unjudged runs 1/5 = 20%" in capsys.readouterr().out
 
 
+def test_records_use_the_common_judgment_and_termination_axes() -> None:
+    # #443/#445: outcome is the judgment (judged / run_error), termination the execution status.
+    report = _report(runs=3, violating=1)
+    report["case_records"][2] = {
+        "run_index": 2, "outcome": "run_error", "c0": None, "c1": None, "c2": None,
+    }  # fmt: skip
+    statuses = ("success", "rejected", "timed_out")
+    report["steps"] = [{"index": i, "termination": t} for i, t in enumerate(statuses)]
+    records = oge.common_case_records(report)
+    assert [(r["outcome"], r["termination"]) for r in records] == [
+        ("judged", "success"),
+        ("judged", "rejected"),
+        ("run_error", "timed_out"),
+    ]
+    del report["steps"]  # without steps a run error's termination is unknown, never invented
+    assert oge.common_case_records(report)[2]["termination"] is None
+
+
 def test_all_runs_unjudged_is_error(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     report = _report(runs=5, violating=None)
     report["case_records"] = [

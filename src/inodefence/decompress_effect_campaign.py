@@ -34,9 +34,15 @@ node-tar, and the feasible channel here is narrower than node-tar's ordered effe
 import random
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import ClassVar
+from typing import ClassVar, overload
 
 from inodefence.campaign import CampaignOrigin
+from inodefence.campaign_hooks import (
+    CampaignHooks,
+    LightCampaignResult,
+    ensure_no_unwired_hooks,
+    resolve_on_step,
+)
 from inodefence.effect_pipeline_decompress import DecompressFrameRun
 from inodefence.effect_scheduler import (
     EffectAdaptiveMutationScheduler,
@@ -408,17 +414,44 @@ def _observed_name_segments(run: DecompressFrameRun, *, exclude_external: bool) 
     return names
 
 
+@overload
 def run_decompress_effect_campaign(
     initial_cases: Sequence[ArchiveCase],
     produce_result: DecompressResultProducer,
     config: DecompressEffectCampaignConfig,
     on_step: DecompressStepObserver | None = None,
-) -> DecompressEffectCampaignResult:
+    hooks: None = None,
+) -> DecompressEffectCampaignResult: ...
+
+
+@overload
+def run_decompress_effect_campaign(
+    initial_cases: Sequence[ArchiveCase],
+    produce_result: DecompressResultProducer,
+    config: DecompressEffectCampaignConfig,
+    on_step: DecompressStepObserver | None = None,
+    *,
+    hooks: CampaignHooks,
+) -> DecompressEffectCampaignResult | LightCampaignResult: ...
+
+
+def run_decompress_effect_campaign(
+    initial_cases: Sequence[ArchiveCase],
+    produce_result: DecompressResultProducer,
+    config: DecompressEffectCampaignConfig,
+    on_step: DecompressStepObserver | None = None,
+    hooks: CampaignHooks | None = None,
+) -> DecompressEffectCampaignResult | LightCampaignResult:
     """Drive the generic fuzz loop over a real-decompress producer; self-discover C0/C1/C2 hits.
 
     ``on_step`` receives each completed step right after feedback and scheduler bookkeeping, so a
     caller can persist the loop record incrementally; an aborting producer then leaves every
     finished step behind.
+
+    ``hooks`` (``CampaignHooks``, shared with the node-tar and oras-go loops) optionally streams
+    steps instead of retaining them (``retain_steps=False`` -> ``LightCampaignResult``), stops early
+    (``should_stop``, checked after each completed step, before the next selection) and carries the
+    checkpoint slot. With ``hooks`` ``None`` the result and order are byte-identical to before.
     """
     if not callable(produce_result) or not isinstance(config, DecompressEffectCampaignConfig):
         raise ValueError("campaign requires a producer and typed config")
@@ -432,6 +465,12 @@ def run_decompress_effect_campaign(
     initial_ids = tuple(case.case_id for case in cases)
     if len(set(initial_ids)) != len(initial_ids):
         raise ValueError("initial cases contain duplicate case IDs")
+    ensure_no_unwired_hooks(hooks)
+    effective_on_step = resolve_on_step(hooks, on_step)
+    should_stop = hooks.should_stop if hooks is not None else None
+    retain = hooks is None or hooks.retain_steps
+    executed = 0
+    stop_reason: str | None = None
 
     state = DecompressEffectSearchState(cases, config.search_policy)
     steps: list[DecompressEffectStep] = []
@@ -453,6 +492,7 @@ def run_decompress_effect_campaign(
         attempt: MutationAttempt | None = None,
         selection: MutationSelection | None = None,
     ) -> None:
+        nonlocal executed
         run = produce_result(case)
         if not isinstance(run, DecompressFrameRun) or run.base_result.case != case:
             raise ValueError("producer must return a DecompressFrameRun for the requested case")
@@ -470,17 +510,24 @@ def run_decompress_effect_campaign(
                 decision.new_violation_fingerprints,
             )
         step = DecompressEffectStep(
-            len(steps), origin, parent, run, decision, attempt, scheduler_evidence
+            executed, origin, parent, run, decision, attempt, scheduler_evidence
         )
-        steps.append(step)
-        if on_step is not None:
-            on_step(step)
+        if retain:
+            steps.append(step)
+        executed += 1
+        if effective_on_step is not None:
+            effective_on_step(step)
 
     for case in cases:
         observe(case, CampaignOrigin.SEED, None)
 
     rng = random.Random(config.random_seed)
-    while len(steps) < config.execution_budget:
+    while executed < config.execution_budget:
+        if should_stop is not None:
+            reason = should_stop(executed)
+            if reason is not None:
+                stop_reason = reason
+                break
         parent = state.select_case(rng)
         selection = scheduler.choose_operator(operator_ids(config.mutation_policy), rng)
         attempt = apply_operator(
@@ -492,12 +539,17 @@ def run_decompress_effect_campaign(
         )
         observe(attempt.child_case, CampaignOrigin.MUTATION, parent.case_id, attempt, selection)
 
+    retained = tuple(entry.case_id for entry in state.entries)
+    # The full result type requires a complete run (len(steps) == budget), so a non-retaining run
+    # OR an early stop returns the lightweight aggregate instead (same rule as the node-tar loop).
+    if not retain or stop_reason is not None:
+        return LightCampaignResult(executed, config.execution_budget, stop_reason, retained)
     return DecompressEffectCampaignResult(
         config,
         initial_ids,
         tuple(steps),
         state.stats,
-        tuple(entry.case_id for entry in state.entries),
+        retained,
     )
 
 

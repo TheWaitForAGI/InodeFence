@@ -191,9 +191,76 @@ def _decompress_spec() -> LoopSpec:
     )
 
 
-# IF-MAC-D adds oras-go once its loop accepts `hooks`, with its own ``golden`` minted from
-# GOLDEN_COMMIT the same way (see module header).
-LOOP_SPECS = [_node_tar_spec(), _decompress_spec()]
+def _oras_go_trajectory_digest(result: Any) -> str:
+    """SHA-256 over the oras-go loop's per-step decision and scheduler weights plus the retained
+    corpus -- the oras-go counterpart of ``_trajectory_digest`` (its steps carry a ``decision``
+    over boundary-attempt keys, violation fingerprints and full-state novelty)."""
+    sha = hashlib.sha256()
+    for step in result.steps:
+        d = step.decision
+        weights = (
+            ""
+            if step.scheduler_evidence is None
+            else ",".join(f"{op.name}:{wt}" for op, wt in step.scheduler_evidence.weights_after)
+        )
+        row = "\x1f".join(
+            [
+                str(step.index),
+                step.origin.name,
+                step.parent_case_id or "",
+                d.case_id,
+                "|".join(str(k) for k in d.new_attempt_keys),
+                "|".join(str(x) for x in d.new_violation_fingerprints),
+                str(d.full_state_novel),
+                str(d.contract_violated),
+                str(d.frame_observed),
+                str(d.eligible),
+                str(d.already_retained),
+                str(d.admission_eligible),
+                "" if step.mutation_attempt is None else step.mutation_attempt.operator_id.name,
+                weights,
+            ]
+        )
+        sha.update((row + "\x1e").encode())
+    sha.update(("R:" + "|".join(result.retained_case_ids)).encode())
+    return sha.hexdigest()
+
+
+def _oras_go_config(seed: int, budget: int) -> Any:
+    from inodefence.oras_go_effect_campaign import OrasGoEffectCampaignConfig
+
+    return OrasGoEffectCampaignConfig(random_seed=seed, execution_budget=budget)
+
+
+def _oras_go_spec() -> LoopSpec:
+    from tests.test_oras_go_effect_campaign import _benign_run, _seeds
+
+    from inodefence.oras_go_effect_campaign import run_oras_go_effect_campaign
+
+    return LoopSpec(
+        "oras-go",
+        run_oras_go_effect_campaign,
+        _seeds(),
+        _benign_run,
+        12,
+        _oras_go_config(7, 12),
+        case_id_of=lambda step: step.run.base_result.case.case_id,
+        make_config=_oras_go_config,
+        golden=ORAS_GO_GOLDEN,
+        digest=_oras_go_trajectory_digest,
+    )
+
+
+#: Minted from GOLDEN_COMMIT the same way as node-tar's (see module header), with
+#: ``_oras_go_trajectory_digest`` over ``_oras_go_config`` and the oras-go test producer.
+ORAS_GO_GOLDEN: dict[str, str] = {
+    "123:16": "5c2e74bd5746144f109e96197b78af689484c0ea9097dc1ec1819391c99d6bb2",
+    "7:24": "d606b14cfc3b746e0577ed52dfec9dc73054c6d783aaa7ea781941f8e5c46413",
+    "999:32": "2f174d0f3504e6b5d8394b5b752b508d5f091506983bd164dc47ff5792f82c90",
+}
+
+
+LOOP_SPECS = [_node_tar_spec(), _decompress_spec(), _oras_go_spec()]
 IDS = [spec.name for spec in LOOP_SPECS]
 
 

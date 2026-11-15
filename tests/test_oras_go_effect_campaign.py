@@ -42,6 +42,7 @@ from inodefence.observer import compare_states
 from inodefence.oracle import evaluate_contracts
 from inodefence.oras_go_effect_campaign import (
     OrasGoEffectCampaignConfig,
+    OrasGoEffectCampaignResult,
     OrasGoEffectSearchState,
     oras_go_effect_campaign_report,
     run_oras_go_effect_campaign,
@@ -528,3 +529,27 @@ def test_controller_campaign_report_carries_case_records_and_violation_inputs(
     for item in report["violation_inputs"]:
         tar = base64.b64decode(item["tar_b64"])
         assert sha256(tar).hexdigest() == item["tar_sha256"]
+
+
+# --- shared CampaignHooks: no hooks -> byte-identical report -------------------------------------
+
+
+def test_no_hooks_report_is_byte_identical_and_legacy_on_step_still_works() -> None:
+    from inodefence.campaign_hooks import CampaignHooks
+
+    config = OrasGoEffectCampaignConfig(random_seed=5, execution_budget=9)
+
+    def dumped(**kwargs) -> str:  # type: ignore[no-untyped-def]
+        result = run_oras_go_effect_campaign(_seeds(), _benign_run, config, **kwargs)
+        assert isinstance(result, OrasGoEffectCampaignResult)
+        report = oras_go_effect_campaign_report(result, producer="unit-test", label="demo run")
+        return json.dumps(report, indent=2, sort_keys=True)
+
+    legacy: list[int] = []
+    hooked: list[int] = []
+    baseline = dumped()
+    assert dumped(hooks=None) == baseline
+    assert dumped(hooks=CampaignHooks()) == baseline
+    assert dumped(on_step=lambda step: legacy.append(step.index)) == baseline
+    assert dumped(hooks=CampaignHooks(on_step=lambda step: hooked.append(step.index))) == baseline
+    assert legacy == hooked == list(range(9))

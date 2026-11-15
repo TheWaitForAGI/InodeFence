@@ -56,20 +56,40 @@ def effect_verdict_fields(result: Any) -> dict[str, Any]:
     }
 
 
+def exploration_unobserved(status: str, integrity_valid: bool, contracts: tuple) -> bool:
+    """Exploration only (user decision D1, 2026-11-16): is this run NOT a judged clean negative?
+
+    The ONE rule the node-tar exploration result record and its live progress both use, so they
+    cannot disagree. A run in which the oracle saw a violation is always judged (the effect is on
+    disk; it is kept, shown as "reproduction check needed"). Otherwise the run is unjudged when the
+    extractor ``failed`` or ``timed_out`` (no reason to trust the post-state as a clean outcome),
+    or when it reports ``success`` but its trace is not intact. A ``rejected`` run -- an explicit,
+    normal refusal -- stays judged. Registered experiments never call this (they do not record
+    exploration results); the loop and its feedback receive the unchanged ``EffectRunResult``.
+    """
+    if any(value is True for value in contracts):
+        return False
+    if status in (ExecutionStatus.FAILED.value, ExecutionStatus.TIMED_OUT.value):
+        return True
+    return status == ExecutionStatus.SUCCESS.value and not integrity_valid
+
+
 def live_step_from_effect(step: Any) -> LiveStep:
     """Convert an ``EffectCampaignStep`` (attributes only) into a :class:`LiveStep`."""
     base = step.result.base_result
     fields = effect_verdict_fields(step.result)
     contracts = (fields["c0"], fields["c1"], fields["c2"])
+    if exploration_unobserved(fields["termination"], fields["observation_complete"], contracts):
+        contracts = (None, None, None)  # same as the result record: unjudged, no clean verdict
     violated = any(value is True for value in contracts)
     attempt = step.mutation_attempt
     return LiveStep(
         index=step.index,
         case_id=base.case.case_id,
         status=fields["termination"],
-        c0=fields["c0"],
-        c1=fields["c1"],
-        c2=fields["c2"],
+        c0=contracts[0],
+        c1=contracts[1],
+        c2=contracts[2],
         unjudged=all(value is None for value in contracts),
         parent_case_id=step.parent_case_id,
         origin=str(getattr(step.origin, "value", step.origin)),

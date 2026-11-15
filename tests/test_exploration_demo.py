@@ -385,7 +385,7 @@ def test_twenty_successes_without_an_intact_trace_are_error_not_pass(
     assert _verdict(report, 20) == "ERROR"
 
 
-def test_untrusted_trace_keeps_a_violation_and_non_success_keeps_its_judgment(
+def test_untrusted_trace_keeps_a_violation_and_rejection_keeps_its_judgment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     ok, rej, tmo = (
@@ -393,8 +393,55 @@ def test_untrusted_trace_keeps_a_violation_and_non_success_keeps_its_judgment(
         rd.ExecutionStatus.REJECTED,
         rd.ExecutionStatus.TIMED_OUT,
     )
-    runs = [(ok, False, True), (rej, False, False), (tmo, False, False), (ok, True, False)]
+    runs = [(ok, False, True), (rej, False, False), (tmo, False, False)] + [(ok, True, False)] * 7
     report = _many_runs_report(monkeypatch, runs, stream=False)
-    outcomes = [(c["outcome"], c["c1"]) for c in report["case_records"]]
-    assert outcomes == [("judged", True), ("judged", False), ("judged", False), ("judged", False)]
-    assert _verdict(report, 4) == "FAIL"
+    outcomes = [(c["outcome"], c["c1"]) for c in report["case_records"]][:4]
+    # D1: the clean timed-out run is unjudged; the rejection stays judged; the violation is kept.
+    assert outcomes == [("judged", True), ("judged", False), ("run_error", None), ("judged", False)]
+    assert _verdict(report, 10) == "FAIL"  # 1/10 unjudged is under the 0.2 ceiling
+
+
+# ---- D1 regression matrix (user decision 2026-11-16): node-tar exploration record ----
+
+_S, _R, _F, _T = (
+    rd.ExecutionStatus.SUCCESS,
+    rd.ExecutionStatus.REJECTED,
+    rd.ExecutionStatus.FAILED,
+    rd.ExecutionStatus.TIMED_OUT,
+)
+_CLEAN = (_S, True, False)  # success, intact trace, no violation
+
+D1_CASES = [
+    # (name, runs as (status, integrity_valid, violating), expected verdict)
+    ("only normal rejections", [(_R, True, False)] * 10, "PASS"),
+    ("all failed", [(_F, True, False)] * 10, "ERROR"),
+    ("all timed out", [(_T, False, False)] * 10, "ERROR"),
+    ("failed with an observed violation", [(_F, False, True)] + [_CLEAN] * 9, "FAIL"),
+    ("success, broken trace, violation", [(_S, False, True)] + [_CLEAN] * 9, "FAIL"),
+    ("unjudged exactly at the ceiling", [(_F, True, False)] * 2 + [_CLEAN] * 8, "PASS"),
+    ("unjudged over the ceiling", [(_T, True, False)] * 3 + [_CLEAN] * 7, "ERROR"),
+    ("nothing judgeable", [(_F, True, False)] * 5 + [(_S, False, False)] * 5, "ERROR"),
+]
+
+
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.parametrize(("name", "runs", "expected"), D1_CASES, ids=[c[0] for c in D1_CASES])
+def test_d1_matrix_record_aggregate_and_verdict_agree(
+    monkeypatch: pytest.MonkeyPatch, stream: bool, name: str, runs: list, expected: str
+) -> None:
+    report = _many_runs_report(monkeypatch, runs, stream=stream)
+    unjudged = sum(
+        1
+        for status, intact, hit in runs
+        if not hit and (status in (_F, _T) or (status is _S and not intact))
+    )
+    if stream:
+        agg = report["aggregate"]
+        assert agg["unjudged_steps"] == unjudged == agg["errors"]
+    else:
+        records = report["case_records"]
+        assert sum(r["outcome"] == "run_error" for r in records) == unjudged
+    assert _verdict(report, len(runs)) == expected
+    violating = [i for i, (_, _, hit) in enumerate(runs) if hit]
+    # An observed violation is never lost: its input is saved whatever the exit or trace.
+    assert [v["run_index"] for v in report["violation_inputs"]] == violating

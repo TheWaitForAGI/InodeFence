@@ -428,3 +428,112 @@ def test_empty_archive_and_rejection_stay_judged_though_their_trace_is_incomplet
     rejected = run_python_tarfile_contained_case(_FIX["c1"].case, _target("data"))
     assert rejected.trace.integrity_valid is False
     assert case_record(0, rejected)["outcome"] == "judged"
+
+
+# ---- D1 regression matrix (user decision 2026-11-16, python-tarfile deviation) ----
+
+
+def _real_stdouts() -> dict[str, str]:
+    """Genuine worker outputs (local backend) for a success, a rejection and a reported failure."""
+    return {
+        "success": run_python_tarfile_contained_case(
+            _FIX["normal"].case, _target()
+        ).base_result.execution.stdout,
+        "rejected": run_python_tarfile_contained_case(
+            _FIX["c1"].case, _target("data")
+        ).base_result.execution.stdout,
+        "failed": run_python_tarfile_contained_case(
+            _DANGLING_HARDLINK, _target("data")
+        ).base_result.execution.stdout,
+    }
+
+
+def _fake_run(status: str, stdout: str, *, intact: bool, hit: bool, entries: bool = True):  # type: ignore[no-untyped-def]
+    from inodefence.model import ExecutionStatus as ES
+
+    class _V:
+        def __init__(self, cid: str, violated: bool) -> None:
+            self.contract_id = type("C", (), {"value": cid})()
+            self.violated = violated
+
+    execution = type("E", (), {"status": ES(status), "stdout": stdout})()
+    case = type("K", (), {"entries": (1,) if entries else ()})()
+    violations = (_V("C0", False), _V("C1", hit), _V("C2", False))
+    base = type("B", (), {"execution": execution, "violations": violations, "case": case})()
+    trace = type("T", (), {"integrity_valid": intact})()
+    return type("R", (), {"base_result": base, "trace": trace})()
+
+
+def _py_verdict(records: list[dict]) -> str:
+    import base64
+    from hashlib import sha256
+
+    from scripts.explore_result import build_campaign_result
+    from scripts.run_target import PreparedTargetImage
+
+    tar = b"t" * 512
+    inputs = [
+        {
+            "run_index": r["run_index"],
+            "tar_b64": base64.b64encode(tar).decode(),
+            "tar_sha256": sha256(tar).hexdigest(),
+        }
+        for r in records
+        if r["c1"]
+    ]
+    prepared = PreparedTargetImage(
+        "python-tarfile", "x", "3.12.3", "img", "sha256:" + "a" * 64, True
+    )
+    result, _ = build_campaign_result(
+        {"case_records": records, "violation_inputs": inputs}, prepared, seed=1, budget=len(records)
+    )
+    return result.verdict.value
+
+
+def test_d1_python_matrix() -> None:
+    out = _real_stdouts()
+    ok = ("success", out["success"])
+    rej = ("rejected", out["rejected"])
+    failed = ("failed", out["failed"])
+    garbled = ("failed", "not a worker report")
+    timeout = ("timed_out", out["success"])
+
+    def records(spec):  # type: ignore[no-untyped-def]
+        return [
+            case_record(i, _fake_run(s, o, intact=intact, hit=hit))  # type: ignore[arg-type]
+            for i, ((s, o), intact, hit) in enumerate(spec)
+        ]
+
+    clean = [(ok, True, False)]
+    # Rejections (explicit refusal) and reported failures (deviation) stay judged.
+    assert _py_verdict(records([(rej, False, False)] * 10)) == "PASS"
+    assert _py_verdict(records([(failed, False, False)] * 10)) == "PASS"
+    # Timeouts, unreadable reports, and successes with a broken trace are unjudged.
+    assert _py_verdict(records([(timeout, False, False)] * 10)) == "ERROR"
+    assert _py_verdict(records([(garbled, False, False)] * 10)) == "ERROR"
+    assert _py_verdict(records([(ok, False, False)] * 10)) == "ERROR"
+    # Observed violations are kept, whatever the exit, report or trace.
+    for bad in (timeout, garbled, failed, ok):
+        recs = records([(bad, False, True)] + clean * 9)
+        assert recs[0]["outcome"] == "judged" and recs[0]["c1"] is True
+        assert _py_verdict(recs) == "FAIL"
+    # The ceiling: 2/10 unjudged passes, 3/10 is ERROR.
+    assert _py_verdict(records([(timeout, False, False)] * 2 + clean * 8)) == "PASS"
+    assert _py_verdict(records([(timeout, False, False)] * 3 + clean * 7)) == "ERROR"
+
+
+def test_d1_python_failed_record_names_the_worker_exception() -> None:
+    result = run_python_tarfile_contained_case(_DANGLING_HARDLINK, _target("data"))
+    record = case_record(0, result)
+    assert record["termination"] == "failed" and record["outcome"] == "judged"
+    assert record["worker_error"] == "KeyError"
+
+
+def test_d1_python_literal_switch(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The single switch back to D1's literal wording: a reported failure becomes unjudged.
+    import inodefence.python_tarfile_explore as pe
+
+    result = run_python_tarfile_contained_case(_DANGLING_HARDLINK, _target("data"))
+    assert pe.case_record(0, result)["outcome"] == "judged"
+    monkeypatch.setattr(pe, "REPORTED_FAILURE_IS_JUDGED", False)
+    assert pe.case_record(0, result)["outcome"] == "run_error"

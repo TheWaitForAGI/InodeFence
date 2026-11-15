@@ -388,13 +388,23 @@ def test_progress_json_is_plain_json_on_disk(tmp_path: Path) -> None:
 
 
 def test_adapter_unjudged_uses_the_result_file_rule() -> None:
-    # Same rule as CaseVerdict.is_unjudged: observed, but no contract verdict at all.
+    # Same rule as the exploration result record (live_effect.exploration_unobserved, user decision
+    # D1 2026-11-16): no contract verdict at all is unjudged; a clean (no-violation) failed or
+    # timed-out run is unjudged too; a clean success / rejection stays judged.
     clean = ViolationResult(ContractId.C0, False, (), "ok", ())
-    for status in (ExecutionStatus.SUCCESS, ExecutionStatus.REJECTED, ExecutionStatus.TIMED_OUT):
+    statuses = (
+        ExecutionStatus.SUCCESS,
+        ExecutionStatus.REJECTED,
+        ExecutionStatus.FAILED,
+        ExecutionStatus.TIMED_OUT,
+    )
+    for status in statuses:
         no_verdict = live_step_from_effect(_stand_in(status, ()))
         assert (no_verdict.c0, no_verdict.c1, no_verdict.c2) == (None, None, None)
         assert no_verdict.unjudged is True
-        assert live_step_from_effect(_stand_in(status, (clean,))).unjudged is False
+        judged = live_step_from_effect(_stand_in(status, (clean,)))
+        expect_unjudged = status in (ExecutionStatus.FAILED, ExecutionStatus.TIMED_OUT)
+        assert judged.unjudged is expect_unjudged
 
 
 def test_repro_check_and_observation_completeness_reach_the_case_file(tmp_path: Path) -> None:

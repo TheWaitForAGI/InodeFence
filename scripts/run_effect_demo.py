@@ -38,7 +38,7 @@ from inodefence.execution.base import ExecutionBackend
 from inodefence.execution.stall_recovery import StallRecovery
 from inodefence.feedback import EffectSearchPolicy
 from inodefence.generator import minimal_seed_corpus
-from inodefence.live_effect import live_step_from_effect
+from inodefence.live_effect import exploration_unobserved, live_step_from_effect
 from inodefence.live_exploration import REPLAY_COMMAND_TEMPLATE, LiveRecorder, LiveRunMeta
 from inodefence.model import (
     ArchiveCase,
@@ -711,17 +711,17 @@ def exploration_demo_report(
         # separately). Termination: how the extractor exited, its own column. observation_complete:
         # whether the trace behind the verdicts was whole (integrity_valid already subsumes
         # completeness, no observation failures and flush). The converter derives needs_repro_check.
-        # Exploration record only (the loop receives `result` unchanged): a case the extractor
-        # reports as a success but whose trace is not intact, and in which the oracle saw no
-        # violation, is NOT a clean negative -- it is recorded as run_error (unjudged), so the
-        # unjudged ceiling decides instead of a silent PASS. A rejected / failed / timed-out case
-        # keeps its snapshot verdict (its trace may end early by construction), and a violation is
-        # kept whatever the trace (shown as "reproduction check needed").
+        # Exploration record only (the loop receives `result` unchanged): the ONE rule shared
+        # with live progress (live_effect.exploration_unobserved, user decision D1) -- a failed /
+        # timed-out run, or a success whose trace is not intact, in which the oracle saw no
+        # violation is NOT a clean negative; it is recorded as run_error (unjudged), so the
+        # unjudged ceiling decides instead of a silent PASS. A rejected run stays judged, and a
+        # violation is kept whatever the exit or trace (shown as "reproduction check needed").
         hit = {v.contract_id.value: v.violated for v in base.violations}
-        unobserved = (
-            base.execution.status is ExecutionStatus.SUCCESS
-            and not result.trace.integrity_valid
-            and True not in hit.values()
+        unobserved = exploration_unobserved(
+            base.execution.status.value,
+            bool(result.trace.integrity_valid),
+            (hit.get("C0"), hit.get("C1"), hit.get("C2")),
         )
         if unobserved:
             trace_run_errors += 1

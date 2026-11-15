@@ -490,3 +490,16 @@ def test_defaults_and_supported_values_reach_the_controller(
         dx.explore(_prepared(tmp_path), ExploreOptions(5, 1, tmp_path))
     assert seen["search_policy"] == dx.DEFAULT_SEARCH_POLICY
     assert seen["mutation_policy"] == dx.DEFAULT_MUTATION_POLICY
+
+
+@pytest.mark.parametrize(
+    ("termination", "expected"),
+    [("rejected", Verdict.PASS), ("failed", Verdict.ERROR), ("timed_out", Verdict.ERROR)],
+)
+def test_d1_only_one_termination_kind(termination: str, expected: Verdict) -> None:
+    # D1 matrix (2026-11-16): normal rejections stay judged; clean failed / timed_out runs are
+    # unjudged, so a run made only of them is ERROR (nothing judgeable), never PASS.
+    steps = [_step(i, termination=termination) for i in range(10)]
+    result, _, summary = _convert(_report(steps), ratio=0.2)
+    assert result.verdict is expected
+    assert (result.verdict is Verdict.ERROR) == bool(summary["not_readable_as_pass"])

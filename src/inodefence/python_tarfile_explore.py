@@ -21,6 +21,7 @@ the host side must report ERROR, never PASS.
 from __future__ import annotations
 
 import base64
+import json
 from collections.abc import Callable
 from hashlib import sha256
 from time import perf_counter
@@ -63,29 +64,67 @@ _WORKER_STATUS = {
 }
 
 
+#: User decision D1 (2026-11-16) with an ORCH-recorded deviation for python-tarfile: a ``failed``
+#: run whose worker report agrees with the exit status (tarfile raised and the worker caught and
+#: reported it -- an observed, explicit refusal by the extractor) stays judged on its snapshot
+#: verdict. Set to ``False`` to apply D1 literally (every failed run without a violation is
+#: unjudged), the single switch if the user overrules the deviation. Measured with the local
+#: backend, data filter, budget 40: such failures were 8% / 8% / 28% of runs for seeds 1 / 7 / 123
+#: (FileExistsError, IsADirectoryError, unresolvable/missing link) -- literal D1 would turn the
+#: seed-123 clean exploration into ERROR (over the 0.2 ceiling).
+REPORTED_FAILURE_IS_JUDGED = True
+
+
+def worker_error_class(stdout: str) -> str | None:
+    """The exception class the worker reported for a failed run (``"FileExistsError"``), if any."""
+    lines = [line for line in stdout.splitlines() if line.strip()]
+    try:
+        error = json.loads(lines[-1]).get("error") if lines else None
+    except (ValueError, AttributeError):
+        return None
+    if not isinstance(error, str) or not error:
+        return None
+    return error.split(":", 1)[0].strip() or None
+
+
+def run_unjudged(result: EffectRunResult) -> bool:
+    """Exploration only -- the ONE python-tarfile rule (D1, with the reported-failure deviation).
+
+    1. The oracle saw a violation in the snapshots -> judged, always (kept with its input, read as
+       "reproduction check needed" when the run was not clean).
+    2. Otherwise unjudged when: the worker report is unreadable or contradicts the exit status
+       (crash, truncation) for a non-timeout run; the run ``timed_out``; or it is a ``success`` of a
+       non-empty archive whose trace is not intact.
+    3. A ``rejected`` run, and a ``failed`` run whose report agrees (see
+       :data:`REPORTED_FAILURE_IS_JUDGED`), stays judged; so does an empty archive (incomplete
+       trace by construction, nothing to extract).
+    """
+    base = result.base_result
+    status = base.execution.status
+    if any(v.violated for v in base.violations):
+        return False
+    if status is ExecutionStatus.TIMED_OUT:
+        return True
+    if worker_reported_status(base.execution.stdout) != _WORKER_STATUS.get(status):
+        return True
+    if status is ExecutionStatus.FAILED:
+        return not REPORTED_FAILURE_IS_JUDGED
+    return (
+        status is ExecutionStatus.SUCCESS
+        and bool(base.case.entries)
+        and not result.trace.integrity_valid
+    )
+
+
 def case_record(run_index: int, result: EffectRunResult) -> dict[str, object]:
     """One step on the two separate axes of the common result format (#414).
 
     ``outcome`` is the judgment axis only: ``judged`` (C0/C1/C2 from the real host BEFORE/AFTER
-    snapshots) or ``run_error`` (no verdict, all None). ``termination`` is the execution status
-    (``success`` / ``rejected`` / ``failed`` / ``timed_out``); ``observation_complete`` is the
-    trace's ``integrity_valid``, as for node-tar.
-
-    Every status is judged, including an extractor failure (tarfile raised; the worker reported
-    it) and a timeout (the backend stopped the extractor). Exploration record only (the loop gets
-    the unchanged ``EffectRunResult``):
-
-    - A violation the oracle saw in the snapshots is always judged and its input kept, even when
-      the worker report is unreadable or the trace incomplete -- the effect is on disk, and a run
-      error cannot carry a violation (it then reads as "reproduction check needed").
-    - Without a violation, a non-timeout run whose worker report cannot be read or contradicts the
-      exit status (crash, truncation) is ``run_error``: it cannot be told apart from a worker that
-      never extracted, so judging it clean could hide a silent negative. So is a ``success`` run of
-      a non-empty archive whose trace is not intact (``integrity_valid`` False): the worker claims
-      it finished but its per-entry report does not show every entry. Incomplete by construction
-      (see ``_build_trace``) and so NOT unjudged: a rejected / failed / timed-out run (the
-      extractor stopped -- a rejection of the first entry is a clean negative) and an empty
-      archive (nothing to extract).
+    snapshots) or ``run_error`` (no verdict, all None), decided by :func:`run_unjudged`.
+    ``termination`` is the execution status; ``observation_complete`` is the trace's
+    ``integrity_valid``, as for node-tar. A failed run also carries ``worker_error`` (the
+    exception class the worker reported), so the report shows why it failed and was still judged.
+    Exploration record only: the loop receives the unchanged ``EffectRunResult``.
     """
     base = result.base_result
     status = base.execution.status
@@ -95,17 +134,11 @@ def case_record(run_index: int, result: EffectRunResult) -> dict[str, object]:
         # Same definition as node-tar: complete, no observation failure, flushed to the end.
         "observation_complete": result.trace.integrity_valid,
     }
-    hit = {v.contract_id.value: v.violated for v in base.violations}
-    report_mismatch = status is not ExecutionStatus.TIMED_OUT and worker_reported_status(
-        base.execution.stdout
-    ) != _WORKER_STATUS.get(status)
-    unobserved_success = (
-        status is ExecutionStatus.SUCCESS
-        and bool(base.case.entries)
-        and not result.trace.integrity_valid
-    )
-    if True not in hit.values() and (report_mismatch or unobserved_success):
+    if status is ExecutionStatus.FAILED:
+        record["worker_error"] = worker_error_class(base.execution.stdout)
+    if run_unjudged(result):
         return {**record, "outcome": "run_error", "c0": None, "c1": None, "c2": None}
+    hit = {v.contract_id.value: v.violated for v in base.violations}
     return {
         **record,
         "outcome": "judged",

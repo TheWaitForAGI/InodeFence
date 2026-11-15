@@ -107,7 +107,9 @@ def test_explore_forwards_the_exploration_driver_argv(monkeypatch, tmp_path: Pat
 def test_explore_without_repo_explains_and_fails(monkeypatch, capsys) -> None:
     monkeypatch.setattr(cli, "repo_root", lambda: None)
     assert cli.main(["explore", "--version", "latest", "--auto-prepare"]) == 3
-    assert "repository not found" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "repository not found" in err and "need a clone" in err
+    assert "status and summary work without it" in err  # says what still works
 
 
 _FAKE_SUPPORT = {

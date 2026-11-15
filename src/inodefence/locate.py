@@ -25,9 +25,11 @@ _MARKER_DRIVER = Path(VERIFY_DRIVER)
 _MARKER_ASSETS = Path("tools")
 
 REPO_NOT_FOUND = (
-    "InodeFence repository not found. Install from a clone with `pip install -e .`, or set "
-    "INODEFENCE_HOME (environment or the user config file) to the repository root "
-    "(it must contain scripts/run_target.py and tools/)."
+    "InodeFence repository not found. targets / verify / explore / replay need a clone of the "
+    "repository (the target drivers and image recipes are not in the installed package): install "
+    "from the clone with `pip install -e .`, or set INODEFENCE_HOME (environment or the user "
+    "config file) to the clone's root (it must contain scripts/run_target.py and tools/). "
+    "--version, doctor, status and summary work without it."
 )
 
 

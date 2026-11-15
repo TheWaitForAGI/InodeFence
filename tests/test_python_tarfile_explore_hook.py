@@ -125,7 +125,7 @@ def test_hook_refuses_before_preparing_anything(
     ("mutate", "message"),
     [
         ({"aborted": {"reason": "backend gone"}}, "aborted: backend gone"),
-        ({"all_undetermined": True}, "undetermined"),
+        ({"case_records": []}, "no steps"),
         ({"extraction_filter": "fully_trusted"}, "different runtime or filter"),
     ],
 )
@@ -138,9 +138,23 @@ def test_untrustworthy_reports_give_no_result(
     assert not list(tmp_path.rglob("result.json"))
 
 
-def test_steps_without_verdict_make_the_result_error_not_pass(tmp_path: Path) -> None:
+def test_all_undetermined_steps_are_written_as_error_not_pass(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     runner, _ = _controller(backend=_LocalBackend(crash=True))
-    with pytest.raises(ValueError, match="aborted|undetermined"):
+    options = _options(tmp_path, budget=pte.MIN_BUDGET)  # seeds only: every step is a run error
+    outcome = pte.explore(PREPARED, options, runner=runner, ensure=_ensure)
+    result = load_target_result(outcome.result_path)
+    assert outcome.verdict == "ERROR"
+    assert result.errored == result.executed == pte.MIN_BUDGET
+    assert (
+        f"undetermined steps: {pte.MIN_BUDGET}/{pte.MIN_BUDGET} (100%)" in capsys.readouterr().out
+    )
+
+
+def test_a_crash_past_the_seeds_aborts_the_loop_and_gives_no_result(tmp_path: Path) -> None:
+    runner, _ = _controller(backend=_LocalBackend(crash=True))
+    with pytest.raises(ValueError, match="aborted"):
         pte.explore(PREPARED, _options(tmp_path), runner=runner, ensure=_ensure)
 
 

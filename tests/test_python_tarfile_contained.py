@@ -22,14 +22,18 @@ import scripts.python_tarfile_producer as producer
 from scripts.oracle_fixture_check import ORACLE_FIXTURES
 
 from inodefence.effect_pipeline_python_tarfile import run_python_tarfile_contained_case
+from inodefence.evaluation.rds import RdsArm, RdsCellConfig
 from inodefence.execution.base import ContainerOutcome, ExecutionBackend
 from inodefence.generator import minimal_seed_corpus
 from inodefence.model import (
+    ArchiveCase,
+    ArchiveEntry,
     EffectStreamCompleteness,
     EffectTargetTermination,
+    EntryType,
     ExecutionStatus,
 )
-from inodefence.python_tarfile_explore import python_tarfile_exploration_report
+from inodefence.python_tarfile_explore import case_record, python_tarfile_exploration_report
 from inodefence.targets.python_tarfile_contained import (
     CONTAINER_MECHANISM,
     PYTHON,
@@ -193,10 +197,17 @@ def test_exploration_runs_the_shared_loop_on_one_runtime_and_one_filter() -> Non
     )
     assert report["runtime_version"] == RUNTIME and report["extraction_filter"] == "data"
     assert report["label"] == "exploratory demo run" and report["qualification"] is False
+    # Defaults are the registered S-u arm with the observed-names vocabulary.
+    s_u = RdsCellConfig(RdsArm.S_U, 7, budget)
+    assert report["search_policy"] == s_u.search_policy.value
+    assert report["config"]["search_policy"] == s_u.search_policy.value
+    assert report["config"]["mutation_policy"] == s_u.mutation_policy.value
+    assert report["vocabulary_mode"] == "observed-names"
     assert len(report["case_records"]) == budget == len(steps)
     assert report["undetermined_steps"] == 0 and report["all_undetermined"] is False
     for record in report["case_records"]:
-        assert record["outcome"] in ("extracted", "declined")
+        assert record["outcome"] == "judged"
+        assert record["termination"] in ("success", "rejected", "failed")
     assert len(report["violation_inputs"]) == sum(
         bool(r["c0"] or r["c1"] or r["c2"]) for r in report["case_records"]
     )
@@ -320,3 +331,58 @@ def test_producer_needs_exact_version_and_a_prepared_base() -> None:
         producer.ensure_producer_image(
             "python:3.13.18-slim", "3.13.18", runner=docker, present=docker.present
         )
+
+
+# ---- found in the first real run: extractor errors are outcomes, not undetermined steps ----
+
+_DANGLING_HARDLINK = ArchiveCase(
+    (
+        ArchiveEntry("dir", EntryType.DIRECTORY, mode=0o755),
+        ArchiveEntry("dir/link", EntryType.HARDLINK, link_target="a.txt"),
+    )
+)
+
+
+def test_worker_reports_a_non_tarerror_exception_instead_of_crashing() -> None:
+    # tarfile raises KeyError for a hard link whose target is not in the archive; the worker must
+    # report it (errored member line + final line), never crash without its report.
+    result = run_python_tarfile_contained_case(_DANGLING_HARDLINK, _target("data"))
+    execution = result.base_result.execution
+    assert execution.status is ExecutionStatus.FAILED
+    members, error = parse_worker_output(execution.stdout.encode(), False)
+    assert error is None
+    assert [m.succeeded for m in members] == [True, False]
+    assert members[1].error == "KeyError"
+    assert "Traceback" not in execution.stderr
+
+
+def test_a_reported_extraction_failure_keeps_its_oracle_verdict() -> None:
+    result = run_python_tarfile_contained_case(_DANGLING_HARDLINK, _target("data"))
+    record = case_record(0, result)
+    assert (record["outcome"], record["termination"]) == ("judged", "failed")
+    assert (record["c0"], record["c1"], record["c2"]) == (False, False, False)
+
+
+def test_an_unreadable_report_is_still_undetermined() -> None:
+    result = run_python_tarfile_contained_case(
+        _FIX["normal"].case, _target("data", _LocalBackend(broken=True))
+    )
+    assert case_record(0, result)["outcome"] == "run_error"
+
+
+def test_judgment_and_termination_are_separate_axes() -> None:
+    rejected = case_record(0, run_python_tarfile_contained_case(_FIX["c1"].case, _target("data")))
+    assert (rejected["outcome"], rejected["termination"]) == ("judged", "rejected")
+    # Refused at the first member: no entry was observed, so the trace is not integrity-valid.
+    assert rejected["observation_complete"] is False
+    extracted = case_record(0, run_python_tarfile_contained_case(_FIX["normal"].case, _target()))
+    assert (extracted["outcome"], extracted["termination"]) == ("judged", "success")
+    assert extracted["observation_complete"] is True
+    unread = case_record(
+        0,
+        run_python_tarfile_contained_case(
+            _FIX["normal"].case, _target("data", _LocalBackend(broken=True))
+        ),
+    )
+    assert unread["outcome"] == "run_error" and unread["observation_complete"] is False
+    assert (unread["c0"], unread["c1"], unread["c2"]) == (None, None, None)

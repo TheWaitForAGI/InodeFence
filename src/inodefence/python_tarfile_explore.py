@@ -30,29 +30,68 @@ from inodefence.builder import build_tar
 from inodefence.effect_campaign import EffectCampaignConfig, run_effect_campaign
 from inodefence.effect_demo import EffectStepReporter, effect_campaign_report
 from inodefence.effect_pipeline_python_tarfile import run_python_tarfile_contained_case
+from inodefence.evaluation.rds import (
+    VOCABULARY_MUTATION_POLICY,
+    RdsArm,
+    VocabularyMode,
+    arm_search_policy,
+)
 from inodefence.execution.base import ExecutionBackend
 from inodefence.feedback import EffectSearchPolicy
 from inodefence.generator import minimal_seed_corpus
 from inodefence.model import ArchiveCase, EffectRunResult, ExecutionStatus
 from inodefence.mutator import MutationPolicy
 from inodefence.runtime import SentinelSpec
-from inodefence.targets.python_tarfile_contained import PythonTarfileContainedTarget
+from inodefence.targets.python_tarfile_contained import (
+    PythonTarfileContainedTarget,
+    worker_reported_status,
+)
 
 EXPLORATION_LABEL = "exploratory demo run"
-#: Same defaults as node-tar exploration (``scripts.run_effect_demo``), so the loop runs alike.
-DEFAULT_SEARCH_POLICY = EffectSearchPolicy.P2_EFFECT_ADAPTIVE
-DEFAULT_MUTATION_POLICY = MutationPolicy.M1_PROTECTED_COMPONENTS_ESCAPE_HARDLINK
+#: Defaults are the registered experiment's S-u arm, read from its definition (not copied):
+#: state-retention uniform search over the observed-names (fixed-baseline) vocabulary.
+DEFAULT_VOCABULARY = VocabularyMode.OBSERVED_NAMES
+DEFAULT_SEARCH_POLICY = arm_search_policy(RdsArm.S_U)
+DEFAULT_MUTATION_POLICY = VOCABULARY_MUTATION_POLICY[DEFAULT_VOCABULARY]
+
+
+#: What the worker's own final line must say for the step to be attributed to the extractor.
+_WORKER_STATUS = {
+    ExecutionStatus.SUCCESS: "success",
+    ExecutionStatus.REJECTED: "rejected",
+    ExecutionStatus.FAILED: "failed",
+}
 
 
 def case_record(run_index: int, result: EffectRunResult) -> dict[str, object]:
-    """One step's verdict; a run that did not complete has no verdict (``run_error``)."""
+    """One step on the two separate axes of the common result format (#414).
+
+    ``outcome`` is the judgment axis only: ``judged`` (C0/C1/C2 from the real host BEFORE/AFTER
+    snapshots) or ``run_error`` (no verdict, all None). ``termination`` is the execution status
+    (``success`` / ``rejected`` / ``failed`` / ``timed_out``); ``observation_complete`` is the
+    trace's ``integrity_valid``, as for node-tar.
+
+    Every status is judged, including an extractor failure (tarfile raised; the worker reported
+    it) and a timeout (the backend stopped the extractor). A non-timeout run whose worker report
+    cannot be read or contradicts the exit status (crash, truncation) is ``run_error``: it cannot
+    be told apart from a worker that never extracted, so judging it could hide a silent negative.
+    """
     base = result.base_result
-    if base.execution.status not in (ExecutionStatus.SUCCESS, ExecutionStatus.REJECTED):
-        return {"run_index": run_index, "outcome": "run_error", "c0": None, "c1": None, "c2": None}
+    status = base.execution.status
+    record: dict[str, object] = {
+        "run_index": run_index,
+        "termination": status.value,
+        # Same definition as node-tar: complete, no observation failure, flushed to the end.
+        "observation_complete": result.trace.integrity_valid,
+    }
+    if status is not ExecutionStatus.TIMED_OUT and worker_reported_status(
+        base.execution.stdout
+    ) != _WORKER_STATUS.get(status):
+        return {**record, "outcome": "run_error", "c0": None, "c1": None, "c2": None}
     hit = {v.contract_id.value: v.violated for v in base.violations}
     return {
-        "run_index": run_index,
-        "outcome": "extracted" if base.execution.status is ExecutionStatus.SUCCESS else "declined",
+        **record,
+        "outcome": "judged",
         "c0": hit.get("C0"),
         "c1": hit.get("C1"),
         "c2": hit.get("C2"),
@@ -128,6 +167,16 @@ def python_tarfile_exploration_report(
         runtime_version=target.python_version,
         extraction_filter=extraction_filter,
         requested_spec=requested_spec,
+        search_policy=policy.value,
+        # The registered vocabulary mode this mutation policy realizes, or None if none does.
+        vocabulary_mode=next(
+            (
+                mode.value
+                for mode, mp in VOCABULARY_MUTATION_POLICY.items()
+                if mp is mutation_policy
+            ),
+            None,
+        ),
         image_id=image_id,
         worker_sha256=target.worker_sha256,
         tarfile_sha256=target.tarfile_sha256,

@@ -97,6 +97,22 @@ def parse_worker_output(
     return tuple(members), None
 
 
+def worker_reported_status(stdout: str) -> str | None:
+    """The worker's own final status (success/rejected/failed) if its whole report is readable.
+
+    ``None`` means the run cannot be attributed to the extractor (crash, truncation, garbage):
+    such a step has no verdict. A readable ``failed`` is the extractor's outcome -- tarfile raised
+    while extracting -- and the host snapshots of that run are as valid as any other.
+    """
+    members, error = parse_worker_output(stdout.encode("utf-8", "surrogateescape"), False)
+    del members
+    if error is not None:
+        return None
+    final = json.loads(stdout.strip().splitlines()[-1])
+    status = final.get("status")
+    return status if status in ("success", "rejected", "failed") else None
+
+
 @dataclass(frozen=True, slots=True)
 class PythonTarfileContainedTarget:
     """Pinned contained invocation of the python-tarfile effect worker."""

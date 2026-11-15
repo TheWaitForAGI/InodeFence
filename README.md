@@ -451,7 +451,7 @@ wheel로 설치했다면 `INODEFENCE_HOME`(환경 변수 또는 아래 설정 �
 inodefence explore --target node-tar --version latest --budget 400 --seed 7 \
   --out ~/inodefence-explore --auto-prepare
 
-# decompress는 버전 칸에 패키지까지 씁니다: <패키지>@<X.Y.Z> (11.1.4만 주면 거부됩니다)
+# decompress는 버전 칸에 패키지까지 씁니다: <패키지>@<X.Y.Z> (11.1.4만 주면 --dry-run에서도 종료 3으로 거부)
 inodefence explore --target decompress --version @xhmikosr/decompress@11.1.4 --budget 20 \
   --out ~/inodefence-explore --auto-prepare
 ```
@@ -522,6 +522,10 @@ fingerprint, 입력의 SHA-256, 그리고 **그 한 건을 같은 이미지에�
 ERROR입니다(상한 옵션으로 완화되지 않음). 그 밖에는 PASS입니다. 그래서 거절이 많은 것만으로는 ERROR가
 되지 않지만, 실패·시간 초과가 많으면 ERROR가 될 수 있습니다. 이 규칙은 탐색 결과 기록에만 적용되며
 탐색 루프와 피드백, 등록 실험 경로는 바뀌지 않습니다.
+
+**추출 성공 0건 경고.** 탐색의 모든 실행이 `success` 없이 끝나면(예: 전부 `rejected`) 판정·종료 코드는 그대로 두고
+`summary.md`, 탐색 출력 줄(`TARGET-EXPLORE WARNING`), `inodefence status`에 "추출 성공 0건 … 위반 없음의 근거가
+제한적" 경고를 붙입니다. 이때의 PASS는 아카이브를 실제로 풀어 본 실행이 없다는 뜻이므로 약한 근거입니다.
 
 **깨끗하게 끝나지 않은 실행에서 난 위반은 "재현 확인 필요"로 구분해 표시합니다.** 성공으로 끝나지
 않았거나 관찰이 완결되지 않은 상태에서 난 위반은 그대로 위반이지만, 같은 입력을 다시 돌려 같은

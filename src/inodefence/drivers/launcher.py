@@ -8,7 +8,8 @@ arguments a hook passes, or the environment (each hook still builds its own ``en
 
 The runtime execution policy enters here, the one place every hook's run passes through: a hook
 passes its ``RuntimeSession`` (``ExploreOptions.runtime``) and the launch runs through
-:meth:`inodefence.drivers.runtime.session.RuntimeSession.launch`, which times and records it.
+:meth:`inodefence.drivers.runtime.session.RuntimeSession.launch`, which times and records it and
+runs the diagnostics around it.
 Under STRICT ``runner`` still gets exactly the argv, environment and keyword arguments the hook
 passed; without a session the call is the plain one.
 """
@@ -20,6 +21,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from inodefence.drivers.runtime.hooks import LaunchArtifacts
     from inodefence.drivers.runtime.session import RuntimeSession
 
 #: The controller shell launcher of each target (under ``<repository>/scripts/``; never moved).
@@ -29,6 +31,26 @@ LAUNCHERS: dict[str, str] = {
     "oras-go": "local_oras_go_selfdiscover.sh",
     "python-tarfile": "local_python_tarfile_explore.sh",
 }
+
+
+#: The names each launcher gives its disposable controller and runtime volume, before the
+#: ``-<RUN_ID>`` suffix (``CONTROLLER=`` / ``VOLUME=`` in the launcher; a test keeps them in step).
+RUN_RESOURCES: dict[str, tuple[str, str]] = {
+    "node-tar": ("inodefence-local-controller", "inodefence-local-runtime"),
+    "decompress": ("inodefence-decompress-controller", "inodefence-decompress-runtime"),
+    "oras-go": ("inodefence-oras-go-controller", "inodefence-oras-go-runtime"),
+    "python-tarfile": ("inodefence-python-tarfile-controller", "inodefence-python-tarfile-runtime"),
+}
+
+
+def run_resources(target: str, run_id: str | None) -> tuple[str, str]:
+    """``(controller, volume)`` of ``target``'s launcher for ``RUN_ID`` = ``run_id``.
+
+    The launcher's ``${RUN_ID:+-$RUN_ID}``: the suffix only when ``RUN_ID`` is set and non-empty.
+    """
+    suffix = f"-{run_id}" if run_id else ""
+    controller, volume = RUN_RESOURCES[target]
+    return controller + suffix, volume + suffix
 
 
 def launcher_path(target: str, repo_root: Path) -> Path:
@@ -43,14 +65,16 @@ def run_launcher(
     runner: Callable[..., Any],
     env: dict[str, str],
     session: RuntimeSession | None = None,
+    artifacts: LaunchArtifacts | None = None,
     **kwargs: Any,
 ) -> Any:
     """Run ``bash <script> <args...>`` through ``runner`` (``subprocess.run`` or a test fake).
 
     ``kwargs`` (``cwd``, ``check``) pass through unchanged, so each hook's call is exactly what it
-    was. With a ``session`` the launch is recorded by it; the call is the same.
+    was. With a ``session`` the launch is recorded and diagnosed by it (``artifacts``: where the
+    run leaves its evidence, for the diagnostics); the call is the same.
     Returns whatever ``runner`` returns (a ``CompletedProcess``).
     """
     if session is not None:
-        return session.launch(script, args, runner=runner, env=env, **kwargs)
+        return session.launch(script, args, runner=runner, env=env, artifacts=artifacts, **kwargs)
     return runner(["bash", str(script), *args], env=env, **kwargs)

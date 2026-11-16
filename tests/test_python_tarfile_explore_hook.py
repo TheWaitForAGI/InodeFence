@@ -169,6 +169,7 @@ def test_driver_validates_the_declared_option_and_hands_it_to_cells_and_hook(
 
     runner, calls = _controller()
     original = pte.run_controller
+    monkeypatch.setattr(rte, "docker_problem", lambda: None)  # no docker call
     monkeypatch.setattr(rte, "prepare_target_image", fake_prepare)
     monkeypatch.setattr(pte.producer, "ensure_producer_image", _ensure)
     monkeypatch.setattr(

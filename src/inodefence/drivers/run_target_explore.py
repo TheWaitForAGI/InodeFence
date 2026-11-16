@@ -33,6 +33,7 @@ from inodefence.drivers.run_target import (
     RefusalParser,
     TargetAdapter,
     auto_prepare_hint,
+    docker_problem,
     load_adapter,
     resolve_images,
     with_tag_suffix,
@@ -78,8 +79,9 @@ def prepare_target_image(
     )
 
 
-def write_runtime_record(session: RuntimeSession, out: Path) -> None:
+def write_runtime_record(session: RuntimeSession, out: Path, *, result_written: bool) -> None:
     """Write the session's runtime record (if it launched anything); a failure: one stderr line."""
+    session.finish(result_written=result_written)
     try:
         session.write(out.expanduser().resolve())
     except OSError as error:
@@ -191,7 +193,15 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 3
 
+    # Docker first, with the same check and wording as verify: a missing or unresponsive daemon
+    # fails here with the fix, instead of later inside preparation or the launcher.
+    problem = docker_problem()
+    if problem is not None:
+        print(f"TARGET-EXPLORE SETUP: {problem}", file=sys.stderr)
+        return 3
+
     session = RuntimeSession(target=args.target)  # STRICT: the verified execution
+    result_written = False  # the hook returns only after writing its result
     try:
         prepared = prepare_target_image(
             adapter,
@@ -212,6 +222,7 @@ def main(argv: list[str] | None = None) -> int:
                 runtime=session,
             ),
         )
+        result_written = True
     except ValueError as error:
         print(f"TARGET-EXPLORE SETUP: {error}", file=sys.stderr)
         return 3
@@ -224,7 +235,7 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         # Also after a failed or interrupted launch: that is when the record is needed most. An
         # additional file; it never changes the result, the verdict or the exit code.
-        write_runtime_record(session, args.out)
+        write_runtime_record(session, args.out, result_written=result_written)
 
     print(
         f"TARGET-EXPLORE {outcome.verdict} {args.target} version={prepared.version} "

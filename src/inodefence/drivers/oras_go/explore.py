@@ -35,6 +35,7 @@ from inodefence.drivers.explore_result import build_campaign_result, write_resul
 from inodefence.drivers.launcher import launcher_path, run_launcher
 from inodefence.drivers.repo import code_checkout
 from inodefence.drivers.run_target import ExploreOptions, ExploreOutcome, PreparedTargetImage
+from inodefence.drivers.runtime.hooks import LaunchArtifacts
 from inodefence.feedback import EffectSearchPolicy
 from inodefence.generator import minimal_seed_corpus
 from inodefence.mutator import MutationPolicy
@@ -82,8 +83,15 @@ def run_controller(
     }
     if mutation_policy:
         env["DEMO_MUTATION_POLICY"] = mutation_policy
-    done = run_launcher(SCRIPT, runner=runner, env=env, session=session, cwd=str(REPO_ROOT))
     report = controller_report_path(out, run_id)
+    done = run_launcher(
+        SCRIPT,
+        runner=runner,
+        env=env,
+        session=session,
+        artifacts=LaunchArtifacts(report=report),
+        cwd=str(REPO_ROOT),
+    )
     if done.returncode != 0:
         raise RuntimeError(f"controller run failed (exit {done.returncode}); see output above")
     if not report.is_file():

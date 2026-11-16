@@ -195,6 +195,7 @@ def test_driver_prepares_then_calls_the_oras_go_hook(
         seen["hook"] = (prepared.target, options.budget, options.seed)
         return rt.ExploreOutcome(tmp_path / "result.json", "PASS", options.budget, 0)
 
+    monkeypatch.setattr(rte, "docker_problem", lambda: None)  # no docker call
     monkeypatch.setattr(rte, "prepare_target_image", prepare)
     monkeypatch.setattr(oge, "explore", hook)
     argv = ["--target", "oras-go", "--version", "latest", "--auto-prepare", "--budget", "6"]

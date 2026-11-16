@@ -13,6 +13,12 @@ from inodefence.drivers.run_target import ExploreOutcome, PreparedTargetImage, T
 from inodefence.target_result import ResultMode
 
 
+@pytest.fixture(autouse=True)
+def _docker_is_available(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The driver's Docker check passes (no docker call); its refusal is tested on its own."""
+    monkeypatch.setattr(rte, "docker_problem", lambda: None)
+
+
 def test_unsupported_target_reports_and_exits_3(
     capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:

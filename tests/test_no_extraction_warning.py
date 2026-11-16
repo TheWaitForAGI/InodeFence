@@ -100,6 +100,7 @@ def test_explore_driver_prints_the_warning_and_keeps_the_exit_code(
     adapter = dataclasses.replace(
         rte.load_adapter("oras-go"), explore=hook, explore_min_budget=None
     )
+    monkeypatch.setattr(rte, "docker_problem", lambda: None)  # no docker call
     monkeypatch.setattr(rte, "prepare_target_image", prepare)
     monkeypatch.setattr(rte, "load_adapter", lambda name: adapter)
     argv = ["--target", "oras-go", "--version", "2.6.2", "--auto-prepare", "--budget", "5"]

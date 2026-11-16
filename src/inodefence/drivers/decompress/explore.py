@@ -48,6 +48,7 @@ from inodefence.drivers.run_target import (
     PreparedTargetImage,
     RunCell,
 )
+from inodefence.drivers.runtime.hooks import LaunchArtifacts
 from inodefence.feedback import EffectSearchPolicy
 from inodefence.generator import minimal_seed_corpus
 from inodefence.mutator import MutationPolicy
@@ -337,8 +338,11 @@ def run_controller(
         env["DEMO_MUTATION_POLICY"] = mutation_policy
     if search_policy:
         env["DEMO_POLICY"] = search_policy
-    done = run_launcher(SCRIPT, runner=runner, env=env, session=session, check=False)
     path = controller_report_path(evidence_dir, run_id)
+    artifacts = LaunchArtifacts(report=path)
+    done = run_launcher(
+        SCRIPT, runner=runner, env=env, session=session, artifacts=artifacts, check=False
+    )
     if done.returncode != 0 or not path.is_file():
         raise RuntimeError(f"controller run failed (exit {done.returncode}); report {path}")
     return path

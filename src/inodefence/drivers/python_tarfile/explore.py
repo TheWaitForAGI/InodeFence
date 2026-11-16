@@ -45,6 +45,7 @@ from inodefence.drivers.python_tarfile import adapter as rpt
 from inodefence.drivers.python_tarfile import producer
 from inodefence.drivers.repo import code_checkout
 from inodefence.drivers.run_target import ExploreOptions, ExploreOutcome, PreparedTargetImage
+from inodefence.drivers.runtime.hooks import LaunchArtifacts
 from inodefence.drivers.runtime.session import RuntimeSession
 from inodefence.generator import minimal_seed_corpus
 from inodefence.target_result import Preparation, TargetAxes, TargetResult
@@ -101,8 +102,15 @@ def run_controller(
         "RUN_ID": run_id,
         "PYTHON": os.environ.get("PYTHON", sys.executable),
     }
-    done = run_launcher(LAUNCHER, runner=runner, env=env, session=session, cwd=str(REPO_ROOT))
     report = report_path(out, run_id)
+    done = run_launcher(
+        LAUNCHER,
+        runner=runner,
+        env=env,
+        session=session,
+        artifacts=LaunchArtifacts(report=report),
+        cwd=str(REPO_ROOT),
+    )
     if done.returncode != 0 and not report.is_file():
         raise ValueError(f"controller run failed (exit {done.returncode}); see output above")
     if not report.is_file():

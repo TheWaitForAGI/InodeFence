@@ -29,6 +29,7 @@ from inodefence.drivers.run_target import (
     PreparedTargetImage,
     engine_provenance,
 )
+from inodefence.drivers.runtime.hooks import LaunchArtifacts
 from inodefence.evaluation.rds_preregistration import parse_preregistration
 from inodefence.generator import minimal_seed_corpus
 from inodefence.live_exploration import LivePuller
@@ -145,7 +146,15 @@ def run_controller(
     puller = LivePuller(controller_name, CONTROLLER_LIVE_DIR, host_live_dir).start()
     try:
         done = run_launcher(
-            SMOKE, ["explore"], runner=runner, env=env, session=session, cwd=str(REPO_ROOT)
+            SMOKE,
+            ["explore"],
+            runner=runner,
+            env=env,
+            session=session,
+            artifacts=LaunchArtifacts(
+                report=controller_report_path(out, run_id), live=host_live_dir
+            ),
+            cwd=str(REPO_ROOT),
         )
     finally:
         puller.stop(final_pull=False)  # the smoke script's pre-removal copy is the final snapshot

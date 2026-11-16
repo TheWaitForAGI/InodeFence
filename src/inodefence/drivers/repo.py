@@ -41,6 +41,30 @@ REPO_NOT_FOUND_HINT = (
     "`pip install -e .`, or set INODEFENCE_HOME to the clone's root."
 )
 
+#: Where a clone keeps the packaged drivers (absent in a clone from before they moved there).
+DRIVERS_PACKAGE = Path("src/inodefence/drivers")
+
+#: The refusal for a chosen clone with no packaged drivers to run -- damaged, or a clone older than
+#: this ``inodefence`` (it still has the drivers under ``scripts/`` only). One wording, used by
+#: ``locate`` before it starts a driver; ``{root}`` is the chosen clone.
+OLD_LAYOUT_REFUSAL = (
+    "the selected repository has no InodeFence code to run: {root} has no "
+    f"{DRIVERS_PACKAGE.as_posix()}/ (damaged, or a clone older than this version of inodefence). "
+    "Update that clone (`git pull`), or set INODEFENCE_HOME to a current clone."
+)
+
+#: The guidance when the driver code runs from a clone but that clone's ``experiments/`` (the
+#: committed repro programs the fixture paths use) is not importable: the clone root is not on
+#: ``sys.path``, e.g. an editable install run directly from another working directory.
+REPOSITORY_CODE_NOT_ON_PATH = (
+    "InodeFence repository code `{module}` is not importable: the driver runs from the clone at "
+    "{root}, but that clone's root is not on the Python path. Run it as "
+    "`inodefence verify / explore / replay`, or from the clone's root directory."
+)
+
+#: Exit status for :data:`REPOSITORY_CODE_NOT_ON_PATH` (a setup error, as for a missing clone).
+REPOSITORY_CODE_EXIT = 3
+
 
 def is_repo(root: Path) -> bool:
     """``root`` holds the driver entry point and the build assets."""

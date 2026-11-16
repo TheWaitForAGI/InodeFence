@@ -590,6 +590,8 @@ def cmd_replay(args: argparse.Namespace) -> int:
     # The driver runs with the repository as its working directory, while the recorded command
     # (``inodefence replay violations/run-NNNNNN``) is run from the live folder: resolve here.
     argv = [str(args.case_dir.expanduser().resolve()), "--rounds", str(args.rounds)]
+    if args.case:
+        argv += ["--case", args.case]
     if args.dry_run:
         argv.append("--dry-run")
     return _forward(REPLAY_DRIVER, argv, "replay")
@@ -828,11 +830,18 @@ def build_parser() -> argparse.ArgumentParser:
 
     replay = sub.add_parser(
         "replay",
-        help="re-run one violation case N times on the same image and record the reproduction rate",
+        help="re-run one explored case N times on the same image and record the reproduction rate",
         epilog=_REPLAY_EXIT_CODES,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    replay.add_argument("case_dir", type=Path, help="a live/violations/run-NNNNNN folder")
+    replay.add_argument(
+        "case_dir",
+        type=Path,
+        help="a live/violations/run-NNNNNN folder, or an exploration result folder (with --case)",
+    )
+    replay.add_argument(
+        "--case", help="with a result folder: the saved input to replay (e.g. step-7)"
+    )
     replay.add_argument(
         "--rounds", type=_positive_int, default=3, help="how many re-runs (default 3)"
     )

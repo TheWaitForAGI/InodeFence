@@ -16,6 +16,19 @@ during exploration (``live/violations/run-NNNNNN/``: ``input.tar`` + ``case.json
 3. :func:`build_replay_record` + :func:`publish_replay` write ``replay.json`` in a new folder
    *beside* the case folder (``run-NNNNNN.replay-<UTC>/``); the original folder is never touched.
 
+Two inputs are accepted (:func:`load_request`): a live violation case folder as above, or an
+exploration *result folder* (``result.json``, ``mode=campaign``) plus the id of one saved input
+(``inputs/step-N.tar``; :func:`load_result_replay_request`) -- the form the targets without a live
+folder (python-tarfile, decompress, oras-go) write. Either way the input bytes are checked against
+the recorded SHA-256 before anything else, and the record is published beside the original, never
+inside it.
+
+Every round is also put in exactly one class (:func:`classify_round`), and the record's
+``summary.conclusion`` names the whole replay: a reproduced violation, a violation that did not
+reproduce, a run without a violation (the original had none either), an un-judged run (the
+extractor ran but its outcome is not trusted as a verdict) and an infrastructure failure (no run
+to judge) are never folded into one another.
+
 Reproduction is reported two ways, separately: rounds that violated the same contracts again
 (every contract the original violated is violated again), and rounds whose violation fingerprints
 equal the original's. Rates are over *judged* rounds; an un-judged round (the oracle was not
@@ -85,6 +98,11 @@ class ReplayRequest:
     #: launches through, or ``None``. Never serialized into the replay record or the controller
     #: input; not part of equality.
     runtime: Any = field(default=None, compare=False)
+    #: Where the request was read from: :data:`SOURCE_CASE_FOLDER` (``case_dir`` is the case
+    #: folder) or :data:`SOURCE_RESULT_FOLDER` (``case_dir`` is ``<result folder>.<case id>``, a
+    #: path that need not exist: the replay is published beside the result folder under that
+    #: name, and the result folder itself is never written to).
+    source: str = "case-folder"
 
 
 @dataclass(frozen=True, slots=True)
@@ -186,6 +204,198 @@ def load_replay_request(case_dir: Path, *, rounds: int = DEFAULT_ROUNDS) -> Repl
     )
 
 
+SOURCE_CASE_FOLDER = "case-folder"
+SOURCE_RESULT_FOLDER = "result-folder"
+RESULT_FILE = "result.json"
+
+
+def load_result_replay_request(
+    result_dir: Path, case_id: str | None, *, rounds: int = DEFAULT_ROUNDS
+) -> ReplayRequest:
+    """Read one saved input of an exploration result folder as a replay request.
+
+    ``result_dir`` holds a ``mode=campaign`` ``result.json`` (strictly read, so its derived fields
+    are consistent) and the saved inputs it names in ``repro_inputs``. ``case_id`` picks one
+    (``step-N``); it may be omitted only when exactly one input was saved. Refused, with the
+    reason: a fixture-regression (``verify``) result -- its inputs ran through the fixed-input
+    program, not the exploration path, so they cannot be re-run under exploration's conditions; a
+    case without a saved input (exploration keeps the input of violating steps only); an input
+    whose SHA-256 differs from the recorded one or that the builder cannot reproduce byte for
+    byte; a result without an exact image id.
+
+    ``run_settings`` are the result's non-null axes (``target_version`` / ``runtime_version`` /
+    ``extraction_filter``): what the target's replay hook needs to pin the same extractor, version
+    and options. The original verdict comes from the result's case record; the result format
+    stores no violation fingerprints, so fingerprint comparison is unavailable for this source.
+    """
+    from inodefence.target_result import ResultMode, TargetResultError, from_json_dict
+
+    if type(rounds) is not int or not 1 <= rounds <= MAX_ROUNDS:
+        raise CaseReplayError(f"rounds must be an integer in 1..{MAX_ROUNDS}")
+    result_dir = result_dir.resolve()
+    path = result_dir / RESULT_FILE
+    try:
+        result = from_json_dict(json.loads(path.read_text(encoding="utf-8")))
+    except FileNotFoundError as error:
+        raise CaseReplayError(f"{result_dir} has no {RESULT_FILE}") from error
+    except (OSError, ValueError) as error:  # TargetResultError is a ValueError
+        kind = "invalid" if isinstance(error, TargetResultError) else "unreadable"
+        raise CaseReplayError(f"{path} is {kind}: {error}") from error
+    if result.mode is not ResultMode.CAMPAIGN:
+        raise CaseReplayError(
+            f"{path} is a {result.mode.value} (verify) result: its inputs ran through the "
+            "fixed-input program, not the exploration path, so there are no exploration "
+            "conditions to re-run them under. Replay takes an exploration (campaign) result"
+        )
+    saved = {item.case_id: item for item in result.repro_inputs}
+    if case_id is None:
+        if len(saved) != 1:
+            raise CaseReplayError(
+                f"{path} has {len(saved)} saved input(s)"
+                + (f" ({', '.join(sorted(saved))})" if saved else "")
+                + "; name one with --case"
+                + ("" if saved else " (exploration saves the input of violating steps only)")
+            )
+        case_id = next(iter(saved))
+    if case_id not in saved:
+        known = any(case.case_id == case_id for case in result.cases)
+        raise CaseReplayError(
+            f"{case_id} has no saved input in {result_dir.name}"
+            + (
+                " (exploration saves the input of violating steps only, so a non-violating "
+                "step cannot be replayed from the result folder)"
+                if known
+                else f" (not a case of this result; saved: {', '.join(sorted(saved)) or 'none'})"
+            )
+        )
+    item = saved[case_id]
+    image_id = result.provenance.image_id
+    if not isinstance(image_id, str) or _IMAGE_ID.fullmatch(image_id) is None:
+        raise CaseReplayError(
+            f"{RESULT_FILE} has no exact image id (got {image_id!r}); the case cannot be "
+            "replayed on the same image"
+        )
+    try:
+        tar_bytes = (result_dir / item.tar_path).read_bytes()
+    except OSError as error:
+        raise CaseReplayError(f"input TAR unreadable: {error}") from error
+    actual_sha = sha256(tar_bytes).hexdigest()
+    if actual_sha != item.tar_sha256:
+        raise CaseReplayError(f"{item.tar_path} sha256 {actual_sha} != recorded {item.tar_sha256}")
+    try:
+        case = read_builder_tar(tar_bytes)
+    except TarReadError as error:
+        raise CaseReplayError(f"not the same input: {error}") from error
+    verdict = next(entry for entry in result.cases if entry.case_id == case_id)
+    axes = {
+        "target_version": result.axes.target_version,
+        "runtime_version": result.axes.runtime_version,
+        "extraction_filter": result.axes.extraction_filter,
+    }
+    version = result.axes.target_version or result.axes.runtime_version
+    if version is None:
+        raise CaseReplayError(f"{RESULT_FILE} names no target or runtime version")
+    sha = result.provenance.engine_sha
+    engine = None if sha is None else f"{sha}{'-dirty' if result.provenance.engine_dirty else ''}"
+    return ReplayRequest(
+        case_dir=result_dir.parent / f"{result_dir.name}.{case_id}",
+        case=case,
+        tar_bytes=tar_bytes,
+        tar_sha256=actual_sha,
+        case_id=case.case_id,
+        target=result.target,
+        version=version,
+        image_id=image_id,
+        engine_commit=engine,
+        run_settings={key: value for key, value in axes.items() if value is not None},
+        original={
+            "run": case_id,
+            "termination": verdict.termination,
+            "observation_complete": verdict.observation_complete,
+            "fingerprints": [],
+            "c0": verdict.c0,
+            "c1": verdict.c1,
+            "c2": verdict.c2,
+        },
+        rounds=rounds,
+        source=SOURCE_RESULT_FOLDER,
+    )
+
+
+def load_request(
+    path: Path, *, case: str | None = None, rounds: int = DEFAULT_ROUNDS
+) -> ReplayRequest:
+    """A case folder (``case.json``) or a result folder (``result.json`` + ``case``) -> request."""
+    resolved = path.resolve()
+    if (resolved / CASE_FILE).exists():
+        if case is not None:
+            raise CaseReplayError(
+                f"--case names an input of a result folder; {resolved} is a case folder"
+            )
+        return load_replay_request(resolved, rounds=rounds)
+    if (resolved / RESULT_FILE).exists():
+        return load_result_replay_request(resolved, case, rounds=rounds)
+    raise CaseReplayError(
+        f"{resolved} is neither a violation case folder ({CASE_FILE}) nor an exploration "
+        f"result folder ({RESULT_FILE})"
+    )
+
+
+# -- what one round, and the whole replay, showed ------------------------------------------------
+
+#: Every original contract violation was violated again.
+REPRODUCED_VIOLATION = "reproduced_violation"
+#: The original violated; this judged round did not violate all of the same contracts.
+NOT_REPRODUCED = "not_reproduced"
+#: Judged, no contract violated, and the original had no violation either (with termination
+#: ``success``: the extraction succeeded without a violation).
+NO_VIOLATION = "no_violation"
+#: Judged and violated, though the original recorded no violation.
+NEW_VIOLATION = "new_violation"
+#: The extractor ran (it has a termination) but the round carries no verdict: the target's own
+#: exploration rule does not trust that outcome as a judged result. Not a "did not reproduce".
+UNJUDGED = "unjudged"
+#: No run to judge: the round could not be produced or trusted at all (no termination).
+INFRASTRUCTURE_FAILURE = "infrastructure_failure"
+CLASSIFICATIONS = (
+    REPRODUCED_VIOLATION,
+    NOT_REPRODUCED,
+    NO_VIOLATION,
+    NEW_VIOLATION,
+    UNJUDGED,
+    INFRASTRUCTURE_FAILURE,
+)
+
+
+def classify_round(original: Mapping[str, Any], entry: Mapping[str, Any]) -> str:
+    """The one class of a normalized round against the original verdict (see the constants)."""
+    if not _judged(entry):
+        return INFRASTRUCTURE_FAILURE if entry.get("termination") is None else UNJUDGED
+    wanted, seen = _violated(original), _violated(entry)
+    if wanted:
+        return REPRODUCED_VIOLATION if wanted <= seen else NOT_REPRODUCED
+    return NEW_VIOLATION if seen else NO_VIOLATION
+
+
+def conclude(original: Mapping[str, Any], counts: Mapping[str, int]) -> str:
+    """One word for the rounds that ran. With no judged round it is ``unjudged`` or
+    ``infrastructure_failure`` -- never "not reproduced"; a violation original whose judged rounds
+    disagree is ``partially_reproduced``."""
+    judged = sum(
+        counts.get(name, 0)
+        for name in (REPRODUCED_VIOLATION, NOT_REPRODUCED, NO_VIOLATION, NEW_VIOLATION)
+    )
+    if judged == 0:
+        if counts.get(UNJUDGED, 0):
+            return UNJUDGED
+        return INFRASTRUCTURE_FAILURE if counts.get(INFRASTRUCTURE_FAILURE, 0) else "no_rounds"
+    if _violated(original):
+        if counts.get(REPRODUCED_VIOLATION, 0) == judged:
+            return REPRODUCED_VIOLATION
+        return NOT_REPRODUCED if not counts.get(REPRODUCED_VIOLATION, 0) else "partially_reproduced"
+    return NEW_VIOLATION if counts.get(NEW_VIOLATION, 0) else NO_VIOLATION
+
+
 def normalize_round(raw: Mapping[str, Any], index: int) -> dict[str, Any]:
     """Check one round from a hook and return it in the record's shape."""
     outcome = raw.get("outcome")
@@ -238,7 +448,28 @@ def summarize_rounds(original: Mapping[str, Any], rounds: Sequence[Mapping[str, 
     def rate(count: int) -> float | None:
         return round(count / len(judged), 6) if judged else None
 
+    counts = {name: 0 for name in CLASSIFICATIONS}
+    for entry in rounds:
+        counts[classify_round(original, entry)] += 1
+    original_verdict = tuple(original.get(key) for key in CONTRACT_KEYS)
+    clean_terminations: dict[str, int] = {}
+    for entry in judged:
+        if not _violated(entry):
+            name = str(entry.get("termination"))
+            clean_terminations[name] = clean_terminations.get(name, 0) + 1
     return {
+        "conclusion": conclude(original, counts),
+        "classification": counts,
+        "original_violation": bool(target_contracts),
+        #: False when the record carries no verdict at all (c0/c1/c2 all null): the input has no
+        #: judged original run to compare with, so "no violation" then describes the replay only.
+        "original_judged": any(value is not None for value in original_verdict),
+        #: judged rounds whose (c0, c1, c2) equal the original's, value for value
+        "verdict_match": sum(
+            tuple(entry.get(key) for key in CONTRACT_KEYS) == original_verdict for entry in judged
+        ),
+        #: judged rounds without a violation, by how the extractor ended
+        "no_violation_terminations": dict(sorted(clean_terminations.items())),
         "rounds_done": len(rounds),
         "judged": len(judged),
         "unjudged": len(rounds) - len(judged),
@@ -264,6 +495,8 @@ def build_replay_record(
     finished_at: datetime,
 ) -> dict[str, Any]:
     rounds = [normalize_round(raw, index + 1) for index, raw in enumerate(run.rounds)]
+    for entry in rounds:
+        entry["classification"] = classify_round(request.original, entry)
     if len(rounds) > request.rounds:
         raise CaseReplayError(f"hook returned {len(rounds)} rounds, {request.rounds} requested")
     complete = run.complete and len(rounds) == request.rounds
@@ -276,6 +509,7 @@ def build_replay_record(
         "schema": REPLAY_SCHEMA,
         "note": NOTE,
         "original": {
+            "source": request.source,
             "case_dir": request.case_dir.name,
             "case_id": request.case_id,
             "tar_sha256": request.tar_sha256,
@@ -388,11 +622,35 @@ def replay_brief(record: Mapping[str, Any]) -> str:
     done, wanted = summary.get("rounds_done", 0), replay.get("rounds_requested", 0)
     judged = summary.get("judged", 0)
     head = "replayed" if replay.get("complete") else "replay INCOMPLETE"
-    text = (
-        f"{head} {done}/{wanted}: same contracts {summary.get('same_contracts', 0)}/{judged}, "
-        f"fingerprints {summary.get('same_fingerprints', 0)}/{judged}"
-    )
-    if summary.get("unjudged"):
+    counts = summary.get("classification") or {}
+    if "original_violation" in summary and not summary["original_violation"]:
+        # The original recorded no violation: say what the rounds showed, never "same contracts".
+        ended = ", ".join(
+            f"{name} {count}"
+            for name, count in (summary.get("no_violation_terminations") or {}).items()
+        )
+        lead = (
+            "no violation originally; no violation again"
+            if summary.get("original_judged", True)
+            else "no original verdict recorded; no violation"
+        )
+        text = f"{head} {done}/{wanted}: {lead} {counts.get(NO_VIOLATION, 0)}/{judged}" + (
+            f" ({ended})" if ended else ""
+        )
+        if counts.get(NEW_VIOLATION):
+            text += f", NEW violation {counts[NEW_VIOLATION]}"
+    else:
+        text = (
+            f"{head} {done}/{wanted}: same contracts {summary.get('same_contracts', 0)}/{judged}, "
+            f"fingerprints {summary.get('same_fingerprints', 0)}/{judged}"
+        )
+    if counts.get(INFRASTRUCTURE_FAILURE):
+        # Told apart from an un-judged run: nothing ran to a judgeable end.
+        unjudged_only = summary.get("unjudged", 0) - counts[INFRASTRUCTURE_FAILURE]
+        if unjudged_only > 0:
+            text += f", un-judged {unjudged_only}"
+        text += f", infrastructure failure {counts[INFRASTRUCTURE_FAILURE]}"
+    elif summary.get("unjudged"):
         text += f", un-judged {summary['unjudged']}"
     if replay.get("engine_differs"):
         text += " (engine commit differs)"

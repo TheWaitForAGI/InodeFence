@@ -27,7 +27,7 @@
 ### 추가된 사용자 기능
 
 - **`inodefence` 명령.** 하위 명령 `targets`(대상과 지원 기능 표), `doctor`(환경 점검), `verify`(고정 입력 회귀 검사),
-  `explore`(피드백 탐색), `status`(실행 중·끝난 탐색 확인), `replay`(위반 케이스 재실행, node-tar만), `summary`(결과
+  `explore`(피드백 탐색), `status`(실행 중·끝난 탐색 확인), `replay`(탐색 케이스 재실행, 네 대상), `summary`(결과
   한 장 요약). `--version`은 패키지 버전을 출력한다. (#457)
 - **고정 입력 회귀 검사(`verify`).** 대상과 버전을 주면 이미지를 준비하거나 다시 쓰고(`--auto-prepare`), 일회용 격리
   컨테이너에서 고정 입력 TAR를 하나씩 풀어 보호 대상 외부 파일과의 객체 동일성(C1)과 외부 영향(C2)을 판정한다. 셀마다
@@ -54,6 +54,13 @@
   `--quiet`가 진행 줄 없는 출력을 낸다. 종료 코드와 결과 줄은 같다. live 폴더가 없는 세 대상은 실행 중 수가 `?`다.
 - **`replay`(node-tar).** 입력 SHA·이미지 ID·컨트롤러 보고서를 다시 대조하고, 원본 case 폴더는 바꾸지 않으며 새 폴더에
   발행한다. 재현 증거(컨트롤러 보고서·단계 기록·호출 기록)와 실행 기록을 replay 폴더 `evidence/`에 보존한다. (#457, #466)
+- **네 대상 `replay`와 `verify` 정상 입력 대조군(PR-B, REPLAY 레인).** `replay`가 python-tarfile·decompress·oras-go도
+  받는다: 탐색 결과 폴더의 저장 입력(`<결과 폴더> --case step-N`)을 SHA-256 대조 뒤, 기록된 정확한 이미지와 그 대상의
+  조건(추출 필터·런타임, `<패키지>@<버전>`, oras-go 버전; `fully_trusted`는 거부, oras-go 입력은 고치지 않음)으로 그
+  대상 탐색의 실행 함수·판정 규칙 그대로 다시 돌린다. 회차마다 분류(위반 재현 / 재현 안 됨 / 위반 없음 / 새 위반 /
+  미판정 / 실행 기반 오류)와 원자료 위치를 남긴다. `verify`는 같은 실행·같은 이미지에서 정상 아카이브 하나를 먼저
+  풀어 `BENIGN-CONTROL` 한 줄과 `result.json`의 `benign_control`로 기록하고, 풀리지 않으면 PASS 대신 ERROR(종료 2)다.
+  실제 위반 케이스의 native 재실행은 실행하지 않았다(통제·합성 테스트만). 상세는 [사용 안내](docs/USAGE.md).
 
 ### 제품 CLI와 설치 방식
 
@@ -93,9 +100,9 @@
 | 대상 | 바꾸는 축 | 이미지 자동 준비(`--auto-prepare`) 범위 | 탐색 | replay |
 | --- | --- | --- | --- | --- |
 | node-tar | 대상 버전 | 커밋된 lock이 있는 10개(7.0.1·7.1.0·7.2.0·7.3.0·7.4.4·7.5.2·7.5.3·7.5.6·7.5.7·7.5.8). 그 밖의 정확한 버전·`latest`는 exploratory | 지원 | 지원(실제 위반 E2E 미검증) |
-| python-tarfile | 추출 필터 또는 런타임 버전(한 번에 하나) | 정확한 `X.Y.Z`의 공식 `python:X.Y.Z-slim` | 지원(`fully_trusted` 필터는 탐색 보류) | 미지원(종료 4) |
-| decompress | 패키지와 버전(`decompress@4.2.1` 원본, `@xhmikosr/decompress@11.1.4` fork) | 두 패키지 버전 | 지원 | 미지원(종료 4) |
-| oras-go | 대상 버전 | 2.6.1·2.6.2 | **실험적**(아래 알려진 제한) | 미지원(종료 4) |
+| python-tarfile | 추출 필터 또는 런타임 버전(한 번에 하나) | 정확한 `X.Y.Z`의 공식 `python:X.Y.Z-slim` | 지원(`fully_trusted` 필터는 탐색 보류) | 지원: 결과 폴더 `--case`(실제 위반 E2E 미검증) |
+| decompress | 패키지와 버전(`decompress@4.2.1` 원본, `@xhmikosr/decompress@11.1.4` fork) | 두 패키지 버전 | 지원 | 지원: 결과 폴더 `--case`(실제 위반 E2E 미검증) |
+| oras-go | 대상 버전 | 2.6.1·2.6.2 | **실험적**(아래 알려진 제한) | 지원: 결과 폴더 `--case`(실제 위반 E2E 미검증) |
 
 - node-tar를 뺀 세 대상은 표에 없는 버전을 거부한다(종료 3). node-tar에서 커밋된 lock이 없는 정확한 버전이나 `latest`는
   **exploratory** 셀이 된다: npm registry에서 그 버전의 lock을 받아 점검한 뒤 커밋된 레시피로

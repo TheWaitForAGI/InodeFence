@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests import benign_control_stub
 
 import inodefence.drivers.oras_go.adapter as rog
 import inodefence.drivers.oras_go.registry_prepare as prep
@@ -779,3 +780,9 @@ def test_refused_reuse_gives_no_verdict(
     assert rt.main(["--target", "oras-go", "--version", "2.6.2", "--out", str(tmp_path)]) == 3
     assert "refused: stale worker; rebuild it" in capsys.readouterr().err
     assert not list(tmp_path.rglob("result.json"))
+
+
+@pytest.fixture(autouse=True)
+def _benign_control_extracted(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Not about the benign-input control (see test_verify_benign_control): it extracted."""
+    benign_control_stub.install(monkeypatch, rog)

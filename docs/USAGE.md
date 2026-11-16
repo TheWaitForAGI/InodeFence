@@ -132,22 +132,30 @@ wheel로 설치했다면 `INODEFENCE_HOME`(환경 변수 또는 아래 설정 �
   | 대상·버전 | 모드 | 실행 성공 | 유효 추출 | 미판정 | 위반 | replay | 지원 수준 |
   | --- | --- | --- | --- | --- | --- | --- | --- |
   | node-tar 7.5.23 | verify | 5/5 | 0/5 (전부 declined) | 0 | 0 | — | 고정 입력 회귀 (exploratory 버전) |
-  | node-tar 7.5.23 | explore 20 | 20/20 | 17/20 (rejected 3) | 0 | 0 | 지원, 실제 위반 E2E 미검증 | 탐색 |
+  | node-tar 7.5.23 | explore 20 | 20/20 | 17/20 (rejected 3) | 0 | 0 | 지원(케이스 폴더), 실제 위반 E2E 미검증 | 탐색 |
   | python-tarfile 3.12.16 `data` | verify | 5/5 | 0/5 (전부 declined) | 0 | 0 | — | 고정 입력 회귀 |
-  | python-tarfile 3.12.16 `data` | explore 20 | 20/20 | 12/20 (failed 5, rejected 3) | 0 | 0 | 미지원 | 탐색 |
+  | python-tarfile 3.12.16 `data` | explore 20 | 20/20 | 12/20 (failed 5, rejected 3) | 0 | 0 | 지원(결과 폴더 `--case`), 실제 위반 E2E 미검증 | 탐색 |
   | decompress `@xhmikosr/decompress@11.1.4` | verify | 5/5 | 0/5 (전부 declined) | 0 | 0 | — | 고정 입력 회귀 |
-  | decompress `@xhmikosr/decompress@11.1.4` | explore 20 | 20/20 | 11/20 (rejected 9) | 0 | 0 | 미지원 | 탐색 |
+  | decompress `@xhmikosr/decompress@11.1.4` | explore 20 | 20/20 | 11/20 (rejected 9) | 0 | 0 | 지원(결과 폴더 `--case`), 실제 위반 E2E 미검증 | 탐색 |
   | oras-go 2.6.2 | verify | 6/6 | 0/6 (전부 declined) | 0 | 0 | — | 고정 입력 회귀 |
-  | oras-go 2.6.2 | explore 20 | 20/20 | **0/20** (전부 rejected, "추출 성공 0건" 경고) | 0 | 0 | 미지원 | **실험적 — 유의미한 보안 커버리지를 주장하지 않음**(공통 seed가 `d/` 접두 없이 생성돼 대부분 거부) |
+  | oras-go 2.6.2 | explore 20 | 20/20 | **0/20** (전부 rejected, "추출 성공 0건" 경고) | 0 | 0 | 지원(결과 폴더 `--case`), 실제 위반 E2E 미검증 | **실험적 — 유의미한 보안 커버리지를 주장하지 않음**(공통 seed가 `d/` 접두 없이 생성돼 대부분 거부) |
 
   - python-tarfile의 failed 5건은 worker가 보고한 예외(IsADirectoryError 3, FileExistsError 1, KeyError 1)가 종료
     상태와 일치해 판정을 유지했습니다(D1 편차, 아래 판정 규칙).
   - **위반 0은 안전성 증명이 아닙니다.**
-  - **고정 입력 회귀의 한계:** `verify`의 고정 입력은 모두 공격 형태이고 정상 입력 대조군이 없습니다. 네 대상 모두
-    모든 입력을 거부(declined)했는데, 이것만으로는 모든 입력을 거부하는 고장 난 추출기와 구분할 수 없습니다.
-    같은 대상의 탐색에서 나온 유효 추출 수로 보완해 읽으세요.
-  - **replay:** 현재 node-tar만 지원하고, 나머지 세 대상은 `replay`가 미지원으로 보고합니다(종료 4). 실제 위반
-    케이스에 대한 E2E 재실행은 검증하지 않았고(이 실측에서 위반이 없었음), 합성 사례에 대한 기능 테스트만 있습니다.
+  - **고정 입력 회귀와 정상 입력 대조군:** `verify`의 고정 입력은 모두 공격 형태라서, 위 표처럼 네 대상이 전부
+    거부(declined)한 PASS는 그것만으로는 모든 입력을 거부하는 고장 난 이미지와 구분되지 않습니다. 그래서 `verify`는
+    같은 실행에서 같은 이미지로 **정상 아카이브 하나를 먼저 풀어 봅니다**(아래 "정상 입력 대조군"). 위 표의 실측은
+    대조군이 생기기 전 것입니다. 대조군 실측(2026-11-17, 같은 호스트, REPLAY 레인 작업 트리, demo run): 네 대상 모두
+    `BENIGN-CONTROL ok`(node-tar·python-tarfile `data`·decompress는 `ok.txt`, oras-go는 `d/ok.txt` 추출)이고 판정은
+    그대로 PASS였습니다. 대조군이 실패하는 경로는 Docker 없는 단위 테스트로만 확인했습니다.
+  - **replay:** 네 대상 모두 지원합니다(종료 4를 내는 등록 대상은 없음). 실측(2026-11-17, 같은 호스트, REPLAY 레인
+    작업 트리, demo run, 각 3회): 위 탐색들의 0번째 실행(seed 입력)을 손으로 조립한 **통제 케이스 폴더**(입력의
+    `case_id`가 탐색 기록과 같고, 원래 판정은 그 탐색의 기록)로 다시 돌려, 원래 판정(위반 없음)과 3회 모두
+    일치했습니다 — node-tar `success` 3/3, python-tarfile `success` 3/3, decompress `success` 3/3, oras-go `rejected`
+    3/3(`d/` 밖 입력), 그리고 `d/` 틀 안의 정상 입력(탐색된 적 없는 손으로 만든 입력)은 oras-go에서 `success` 3/3.
+    **실제 위반 케이스에 대한 native 재실행은 어느 대상에서도 실행하지 않았습니다**(탐색에서 위반이 없었음). 위반이
+    재현되는 경로는 통제·합성 단위 테스트(테스트용 backend가 하드링크 탈출을 흉내 냄)로만 확인했습니다.
   - **macOS:** 이 후보에서는 확인하지 않았습니다.
   - RC 이전 커밋(61afb3f·c55b7ef)에서도 같은 조건의 engineering smoke를 돌렸고 판정은 같았습니다(위반 0).
 - **이전 기록:** #400 브랜치의 `make target-run`(같은 드라이버)으로 macOS(arm64)와 WSL2에서 네 대상 고정 입력
@@ -297,9 +305,53 @@ ERROR입니다(상한 옵션으로 완화되지 않음). 그 밖에는 PASS입�
 돌려 재현되는지 본다"입니다.
 
 ```bash
-# 위반 케이스 폴더 하나를 그 case.json이 가리키는 정확한 이미지에서 3회(기본) 다시 돌립니다.
+# 위반 케이스 폴더 하나를 그 case.json이 가리키는 정확한 이미지에서 3회(기본) 다시 돌립니다. (node-tar)
 inodefence replay ~/inodefence-explore/target-explore/<실행>/live/violations/run-NNNNNN --rounds 3   # <실행> 예: 7.5.23-123-20
+# 결과 폴더에 저장된 위반 입력 하나를 다시 돌립니다. (python-tarfile·decompress·oras-go)
+inodefence replay ~/inodefence-explore/target-explore/<실행>-result --case step-7 --rounds 3
 ```
+
+네 대상 모두 재실행을 지원합니다. 입력은 두 형태입니다. node-tar 탐색은 위반 케이스 폴더(`case.json` +
+`input.tar`)를 남기고, python-tarfile·decompress·oras-go 탐색은 결과 폴더의 `inputs/step-N.tar`와 `result.json`을
+남기므로 결과 폴더와 `--case step-N`으로 지정합니다(저장된 입력이 하나뿐이면 `--case` 생략 가능). 어느 쪽이든
+먼저 **입력의 SHA-256을 기록과 대조**하고, 엔진 builder가 바이트 단위로 같은 TAR를 다시 만들 수 있는지 확인합니다.
+결과 폴더로 돌린 재실행 기록은 결과 폴더 **옆** `<결과 폴더>.step-N.replay-<UTC>/`에 씁니다.
+
+대상별 조건은 기록에서 읽고, 명령 옵션으로 바꿀 수 없습니다(다른 조건으로 돌린 것을 재현이라고 적지 않기 위해).
+
+| 대상 | 기록에서 고정하는 것 | 실행 전에 거부하는 것(종료 2, 이유 출력) |
+| --- | --- | --- |
+| node-tar | 이미지 id, sentinel 집합(seed·개수), 관찰 무결성 정책, 프로필 | 이 값들이 없는 기록. **결과 폴더는 이 값을 담지 않으므로 node-tar는 케이스 폴더로만** 재실행 |
+| python-tarfile | 이미지 id(producer 이미지), 런타임 `X.Y.Z`, 추출 필터 하나 | 정확하지 않은 런타임, 없는 필터, **`fully_trusted`**(탐색이 보류된 필터라 탐색된 케이스가 있을 수 없음 — 우회 수단을 두지 않음) |
+| decompress | 이미지 id, `<패키지>@<X.Y.Z>` 전체(원본 `decompress`와 포크 `@xhmikosr/decompress`는 다른 대상) | 패키지 없는 버전, `@latest`. 이미지가 보고하는 패키지·버전이 기록과 다르면 실행 중 멈춤 |
+| oras-go | 이미지 id, 버전 `X.Y.Z` | 정확하지 않은 버전. **입력은 고치지 않습니다**: oras-go는 `d/` 틀 밖의 항목을 거부하므로, 탐색에서 거부된 입력은 재실행에서도 거부됩니다(`runner.members_outside_artifact_dir`에 틀 밖 항목 수 기록) |
+
+공통으로 거부하는 것: SHA-256이 기록과 다른 입력, 정확한 이미지 id가 없는 기록, `verify`(고정 입력 회귀) 결과 —
+탐색 경로가 아니라 고정 입력 프로그램으로 돌린 것이라 "탐색 때와 같은 조건"이 없습니다 —, 그리고 입력이 저장되지
+않은 실행(탐색은 **위반한 실행의 입력만** 저장하므로 위반 없는 실행은 결과 폴더에서 재실행할 수 없음).
+`--dry-run`은 이 확인을 모두 하고 계획(`source`, `refusal`, 이미지 유무)만 출력합니다.
+
+**회차 분류와 결론.** `replay.json`의 회차마다 `classification` 하나가 붙고, 원래 판정(`original`)과 회차 판정이
+같은 파일에 나란히 있습니다. `summary.conclusion`은 전체 결론입니다.
+
+| 분류 | 뜻 |
+| --- | --- |
+| `reproduced_violation` | 원래 위반한 계약을 모두 다시 위반 |
+| `not_reproduced` | 원래는 위반했는데 이 회차는 판정됐고 같은 계약을 다 위반하지는 않음 |
+| `no_violation` | 원래도 이 회차도 위반 없음(종료 상태별 수는 `summary.no_violation_terminations`; `success`면 위반 없는 추출 성공) |
+| `new_violation` | 원래는 위반이 없었는데 이 회차는 위반 |
+| `unjudged` | 추출기는 돌았지만 그 대상의 탐색 규칙이 판정으로 믿지 않는 실행(위 "종료 상태와 판정" 표와 같은 규칙) |
+| `infrastructure_failure` | 판정할 실행 자체가 없음(실행 기반 오류) |
+
+판정된 회차가 하나도 없으면 결론은 `unjudged`나 `infrastructure_failure`이지 `not_reproduced`가 아닙니다. 끝까지 못
+돈 재실행은 `replay.complete: false`로 따로 표시합니다. 회차마다 `evidence`(`evidence/<기록>.steps.jsonl`의 몇 번째
+줄인지)가 있고, `replay.evidence`에 보존한 원자료 파일의 크기와 SHA-256이 있습니다.
+
+네 대상의 재실행은 모두 **같은 런처의 재실행 모드**(`scripts/local_node_tar_smoke.sh replay`: 정확한 이미지 id와 입력
+한 줄만 받고 대상 이미지를 빌드하지 않음)를 거쳐 같은 컨트롤러·호스트 broker·backend로 돕니다. 컨트롤러 안에서 그
+대상의 탐색이 쓰는 실행 함수와 판정 규칙을 그대로 부릅니다. 그래서 재실행 컨트롤러 이름은 대상과 무관하게
+`inodefence-local-controller-replay-…`이고, 런처의 마지막 줄은 어느 대상이든 `PASSED: node-tar replay`로 나옵니다
+(런처 문구이며 대상 표시가 아닙니다).
 
 재실행은 탐색과 같은 격리로 돌고, 회차별 판정과 **같은 계약을 다시 위반한 비율**·**fingerprint가
 일치한 비율**을 케이스 폴더 **옆** `run-NNNNNN.replay-<UTC>/replay.json`에 씁니다(원본 폴더는
@@ -338,6 +390,14 @@ inodefence summary ~/inodefence-explore/target-explore/<실행>-result/result.js
 
 - **재현 정보:** 위반 케이스마다 `case.json`(입력 SHA-256, 이미지 id, 다시 돌리는 명령)과 `input.tar`,
   재실행 결과는 그 옆 `run-NNNNNN.replay-<UTC>/replay.json`에 있습니다.
+- **정상 입력 대조군(`verify`):** `verify`는 셀마다 고정 입력보다 먼저, 같은 이미지에서 같은 실행 프로그램으로 정상
+  아카이브 하나(일반 파일 `ok.txt` 하나; oras-go는 `d/ok.txt`)를 풀어 보고 `TARGET-RUN BENIGN-CONTROL ok …` 한 줄을
+  냅니다. 결과는 `result.json`의 `benign_control`(추출 여부, 기대 경로, 입력 SHA-256, 설명)에, 입력과 원자료는 셀
+  폴더의 `benign/`에 남고, `summary`의 "한 줄 결론" 아래에 적힙니다. 대조군이 풀리지 않으면
+  `TARGET-RUN BENIGN-CONTROL FAILED …`(이미지를 다시 준비하라는 안내)를 내고, **PASS가 될 결과를 ERROR(종료 2)로**
+  냅니다 — 정상 입력도 못 푸는 이미지가 공격 입력을 거부한 것은 방어의 근거가 아니기 때문입니다. 관찰된 위반은
+  그대로 FAIL입니다. 대조군 아카이브는 `verify` 전용이며 `make regression`의 공용 고정 입력이나 탐색 seed·변이
+  어휘에 들어가지 않습니다. `benign_control`이 없는 이전 결과 파일도 그대로 읽힙니다.
 - 보고서나 케이스 폴더를 밖으로 보낼 때는 위반 입력이 들어 있다는 점을 기억하세요(아래 책임 있는 공개).
 
 ## 종료 코드
@@ -348,7 +408,7 @@ inodefence summary ~/inodefence-explore/target-explore/<실행>-result/result.js
 | 1 | FAIL(위반 판정) | 재실행 미완료(끝난 회차는 남음) | — | FAIL 하나 이상 | — |
 | 2 | ERROR 판정. `explore`는 컨트롤러가 시작된 뒤의 중단(런처 비정상 종료, 루프 abort, 루프 보고서 없음)도 2이며 결과를 발행하지 않음(네 대상 공통) | 같은 입력·조건으로 재실행 불가 | 사용법 오류 | 사용법 오류 | 읽기·쓰기 실패 / 사용법 오류 |
 | 3 | 실행 전 거부 — 판정 없음: 사용법 오류(없는 옵션 값, `--budget 0` 등), 저장소 안 `--out`, 쓸 수 없는 `--out`(파일이거나 권한 없음), 상대 경로 `INODEFENCE_OUTPUT_DIR`, `--auto-prepare` 없음, 설정 파일 오류, 이미지·준비 문제, Docker가 이미지 질문에 답하지 않음(준비하지 않음), 같은 `--out`에 이 실행의 결과가 이미 있음(덮어쓰지 않음) 등 | 사용법 오류(`--rounds 0` 등), 이미지가 이 호스트에 없음, Docker가 이미지 질문에 답하지 않음, 같은 실행 이름의 컨트롤러·볼륨이 이미 있음, 저장소 안 폴더, 저장소를 못 찾음, 설정 파일 오류 | 저장소를 못 찾음, 설정 파일 오류 | — | — |
-| 4 | — | 이 대상은 재실행 미지원 | — | — | — |
+| 4 | — | 이 대상은 재실행 미지원(지금 등록된 네 대상에는 해당 없음) | — | — | — |
 
 `verify`·`explore`·`replay`는 종료 코드가 결과를 싣기 때문에 사용법 오류를 2로 내지 않고, 아무것도 실행하지
 않았다는 뜻의 3으로 냅니다(대상 드라이버와 같은 규칙). 판정을 싣지 않는 명령의 사용법 오류와, 하위
@@ -396,7 +456,7 @@ make target-run TARGET=node-tar TARGET_VERSIONS="7.5.2 7.5.3" AUTO_PREPARE=1 PYT
   FAST 1.33 s[1.16~1.52]), 케이스당 시간은 그대로였습니다(STRICT 1.96 s, FAST 1.92 s). 전체 실행 시간은 호스트 부하에 따른
   편차(STRICT 42~61 s, FAST 42~56 s)가 이 차이보다 커서 구분되지 않았습니다. 케이스당 비용(약 2 s, docker CLI 호출 약 23회)은 보호
   영역인 격리 실행 경로 안에 있어 이 프로필이 건드리지 않습니다. REPLAY는 프로필이 아니라 위
-  재실행 절차이며, node-tar만 지원하고 탐색과 같은 STRICT 실행 세션으로 돕니다.
+  재실행 절차이며, 네 대상을 지원하고 탐색과 같은 STRICT 실행 세션으로 돕니다.
 - **인프라 중단의 표시:** `explore`가 깨끗하게 끝나지 않으면(런처 종료 코드가 0이 아니거나 중단됨) 종료 코드와
   판정은 그대로 두고 stderr에 한 줄을 더 냅니다.
   `TARGET-EXPLORE DIAGNOSIS: stage=<controller-setup|loop|cleanup|UNKNOWN> category=<범주> result=<written|not-written> evidence=<남은 파일>; <설명>`.

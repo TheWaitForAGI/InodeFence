@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests import benign_control_stub
 
 import inodefence.drivers.decompress.adapter as dt
 import inodefence.drivers.decompress.registry_prepare as reg
@@ -464,3 +465,9 @@ def test_harness_accepts_a_package_that_refuses_the_internal_link() -> None:
         "regression program ok (regular file extracted, internal link not created: ENOENT" in x
         for x in lines
     )
+
+
+@pytest.fixture(autouse=True)
+def _benign_control_extracted(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Not about the benign-input control (see test_verify_benign_control): it extracted."""
+    benign_control_stub.install(monkeypatch, dt)

@@ -7,9 +7,11 @@ from typing import Any
 
 import pytest
 from scripts import check_dev_env
+from tests import benign_control_stub
 
 import inodefence.drivers.image_prepare as ip
 import inodefence.drivers.node_tar.adapter as nt
+import inodefence.drivers.python_tarfile.adapter as pt_adapter
 import inodefence.drivers.regression_check as rc
 import inodefence.drivers.run_target as rt
 from inodefence.target_result import RUN_ERROR, Provenance, Verdict, load_target_result
@@ -26,6 +28,12 @@ DECLINED = {
     "reference_before": {"ino": "5", "nlink": 1, "size": 10, "type": "reg"},
     "reference_after": {"ino": "5", "nlink": 1, "size": 10, "type": "reg"},
 }
+
+
+@pytest.fixture(autouse=True)
+def _benign_control_extracted(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Not about the benign-input control (see test_verify_benign_control): it extracted."""
+    benign_control_stub.install(monkeypatch, nt, pt_adapter)
 
 
 def _fake_run_one(raw_by_version: dict[str, dict[str, Any]]):

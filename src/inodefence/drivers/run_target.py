@@ -20,6 +20,16 @@ mix in one run. For each cell this writes, under ``DIR/<cell dirname>/``:
 
 A cell directory that already has a ``result.json`` is refused; nothing is overwritten.
 
+Benign-input control: the regression fixtures are all attack-shaped, so a target that declines
+every one of them is ``PASS`` -- and so would be an image that cannot extract anything. Each cell
+therefore first extracts ONE benign archive through the target's own run program, on the cell's
+image, in this invocation (``TargetAdapter.benign``), prints ``TARGET-RUN BENIGN-CONTROL ok|FAILED``
+and records it as ``benign_control`` in ``result.json`` (its archive and raw observation go to
+``benign/``). A control that did not extract makes a cell that would be ``PASS`` an ``ERROR``
+(exit 2); an observed violation stays ``FAIL``. The control archive is built here for this command
+only; it is not a regression fixture (``make regression`` and ``regression_check.build_fixtures``
+are unchanged) and not a search seed.
+
 Targets are registered in ``TARGETS`` as ``"module:ATTRIBUTE"`` and loaded on use. Each entry is
 a target-specific ``TargetAdapter`` in its own module (``scripts/run_<target>_target.py``), never
 in this file or the common format module. All registered targets run in mode
@@ -48,7 +58,8 @@ tag is what ``provenance.image_ref`` records. Nothing here removes or retags an 
 ``--dry-run`` prints, per cell, whether its image would be reused or prepared (read-only image
 lookups only); it pulls, builds, runs and writes nothing.
 
-Exit codes: 0 PASS, 1 FAIL, 2 ERROR (worst verdict over cells), 3 nothing judged for some or all
+Exit codes: 0 PASS, 1 FAIL, 2 ERROR (worst verdict over cells; a failed benign-input control is
+ERROR: it is an observation failure after the run started), 3 nothing judged for some or all
 cells (refused input or existing result, setup, preparation or image problem).
 """
 
@@ -57,6 +68,7 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import importlib
+import io
 import json
 import os
 import re
@@ -64,8 +76,10 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tarfile
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, NoReturn
 
@@ -76,6 +90,7 @@ from inodefence.drivers.runtime import health
 from inodefence.drivers.runtime.session import RuntimeSession
 from inodefence.target_result import (
     RUN_ERROR,
+    BenignControl,
     CaseVerdict,
     Preparation,
     Provenance,
@@ -97,6 +112,69 @@ class CaseRun:
     verdict: CaseVerdict
     tar: bytes
     raw: dict[str, Any]
+
+
+#: Where a cell keeps its benign-control archive and raw observation (beside ``inputs/``).
+BENIGN_TAR_PATH = "benign/benign-control.tar"
+BENIGN_RAW_PATH = "benign/benign-control.json"
+
+
+@dataclass(frozen=True, slots=True)
+class BenignRun:
+    """The benign-input control of one cell: the record, the archive and the raw observation."""
+
+    control: BenignControl
+    tar: bytes
+    raw: dict[str, Any]
+
+
+#: The benign control's one regular file (three bytes; nothing an extractor could object to).
+BENIGN_NAME = "ok.txt"
+BENIGN_CONTENT = b"ok\n"
+
+
+def benign_archive(name: str = BENIGN_NAME) -> bytes:
+    """The benign control archive: ONE regular file ``name``, deterministic bytes (ustar, mtime 0).
+
+    Built for ``verify`` only -- never added to the regression fixtures or the search seeds.
+    """
+    out = io.BytesIO()
+    with tarfile.open(fileobj=out, mode="w:", format=tarfile.USTAR_FORMAT) as archive:
+        info = tarfile.TarInfo(name)
+        info.size, info.mode = len(BENIGN_CONTENT), 0o644
+        archive.addfile(info, io.BytesIO(BENIGN_CONTENT))
+    return out.getvalue()
+
+
+def benign_from_raw(tar: bytes, raw: object, expected_path: str) -> BenignRun:
+    """Judge a benign-control run from the run program's raw observation (all four targets' run
+    programs report the same two fields): the extractor declined nothing and ``expected_path`` is
+    in the extracted tree. Anything else -- a run error, a refusal, a missing file -- is "not
+    extracted", with the reason in ``detail``."""
+    record = raw if isinstance(raw, dict) else {"_run_error": True, "_reason": repr(raw)[:200]}
+    tree = record.get("extract_tree")
+    declined = record.get("declined")
+    if record.get("_run_error"):
+        why = record.get("_reason") or record.get("_stderr") or f"exit {record.get('_rc')}"
+        extracted, detail = False, f"the run program gave no observation ({str(why)[:200]})"
+    elif declined is not None:
+        message = declined.get("message") if isinstance(declined, dict) else declined
+        extracted, detail = (
+            False,
+            f"the extractor declined the benign archive ({str(message)[:200]})",
+        )
+    elif not isinstance(tree, dict) or expected_path not in tree:
+        extracted, detail = False, f"{expected_path} was not extracted"
+    else:
+        extracted, detail = True, f"{expected_path} extracted, nothing declined"
+    control = BenignControl(
+        extracted=extracted,
+        expected_path=expected_path,
+        tar_path=BENIGN_TAR_PATH,
+        tar_sha256=sha256(tar).hexdigest(),
+        detail=detail,
+    )
+    return BenignRun(control, tar, record)
 
 
 @dataclass(frozen=True, slots=True)
@@ -255,6 +333,15 @@ class TargetAdapter:
     #: path as exploration (``inodefence replay``; see ``inodefence.case_replay.ReplayHook``).
     #: ``None`` (default) means this target does not support replay yet.
     replay: ReplayHook | None = None
+    #: Optional: before a replay runs anything (and on ``--dry-run``), check that the request is
+    #: one this target can re-run under the exploration's own conditions -- its options and input
+    #: constraints, read from ``request.run_settings``. ``CaseReplayError(reason)`` refuses the
+    #: replay (exit 2, nothing runs); ``None`` (default) means the hook has no such check.
+    replay_check: Callable[[Any], None] | None = None
+    #: Optional: the benign-input control of a cell -- extract ONE benign archive through the same
+    #: run program and image ``run`` uses and report whether it was extracted (see the module
+    #: docstring). ``None`` (default): the cell records no control, as before.
+    benign: Callable[[RunCell], BenignRun] | None = None
 
 
 def fixture_case(fixture: rc.RegressionFixture, raw: dict[str, Any]) -> CaseRun:
@@ -533,6 +620,7 @@ def build_result(
     runs: list[CaseRun],
     provenance: Provenance,
     preparation: Preparation | None = None,
+    benign: BenignRun | None = None,
 ) -> TargetResult:
     return TargetResult(
         target=target,
@@ -546,14 +634,23 @@ def build_result(
         ),
         provenance=provenance,
         preparation=preparation,
+        benign_control=None if benign is None else benign.control,
     )
 
 
-def write_result(out_dir: Path, result: TargetResult, runs: list[CaseRun]) -> Path:
+def write_result(
+    out_dir: Path, result: TargetResult, runs: list[CaseRun], benign: BenignRun | None = None
+) -> Path:
     """Write inputs, raw observations, then result.json last (its presence means complete)."""
     result_path = out_dir / RESULT_NAME
     if result_path.exists():
         raise FileExistsError(f"refusing to overwrite {result_path}")
+    if benign is not None:
+        (out_dir / BENIGN_TAR_PATH).parent.mkdir(parents=True, exist_ok=True)
+        (out_dir / BENIGN_TAR_PATH).write_bytes(benign.tar)
+        (out_dir / BENIGN_RAW_PATH).write_text(
+            json.dumps(benign.raw, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
     (out_dir / "inputs").mkdir(parents=True, exist_ok=True)
     (out_dir / "raw").mkdir(parents=True, exist_ok=True)
     for run, item in zip(runs, result.repro_inputs, strict=True):
@@ -575,11 +672,28 @@ def summary_line(result: TargetResult) -> str:
         )
         if value is not None
     )
+    control = result.benign_control
+    benign = "" if control is None else f" benign={'ok' if control.extracted else 'FAILED'}"
     return (
         f"TARGET-RUN {result.verdict.value} target={result.target} {axis} "
         f"image={result.provenance.image_ref} "
         f"mode={result.mode.value} violating={len(result.violating_cases)}/{result.executed} "
-        f"errored={result.errored} ({result.label})"
+        f"errored={result.errored}{benign} ({result.label})"
+    )
+
+
+def benign_line(cell: RunCell, benign: BenignRun) -> str:
+    """The one terminal line of a cell's benign-input control."""
+    control = benign.control
+    if control.extracted:
+        return (
+            f"TARGET-RUN BENIGN-CONTROL ok {cell.dirname}: {control.detail} on {cell.image_ref} "
+            f"(tar sha256 {control.tar_sha256[:12]})"
+        )
+    return (
+        f"TARGET-RUN BENIGN-CONTROL FAILED {cell.dirname}: {control.detail}. {cell.image_ref} "
+        "does not extract a benign archive, so declined attack inputs prove nothing: the cell "
+        "cannot be PASS (ERROR). Remove the image and prepare it again (--auto-prepare), then rerun"
     )
 
 
@@ -672,6 +786,7 @@ def main(argv: list[str] | None = None) -> int:
                     "image": cell.image_ref,
                     "exploratory": cell.exploratory,
                     "image_plan": image_status(adapter, cell, docker_ok),
+                    "benign_control": adapter.benign is not None,
                     "would_run": adapter.plan(cell),
                 }
                 for cell in cells
@@ -721,6 +836,14 @@ def main(argv: list[str] | None = None) -> int:
             print(f"TARGET-RUN IMAGE-MISMATCH {cell.dirname}: {message}", file=sys.stderr)
             worst = max(worst, SETUP_ERROR)
             continue
+        # The benign-input control comes first: same image, same run program, this invocation.
+        benign = adapter.benign(cell) if adapter.benign is not None else None
+        if benign is not None:
+            print(
+                benign_line(cell, benign),
+                file=sys.stdout if benign.control.extracted else sys.stderr,
+                flush=True,
+            )
         runs = adapter.run(cell)
         try:
             after = image_id(ref) if ref is not None else None
@@ -745,8 +868,8 @@ def main(argv: list[str] | None = None) -> int:
             print(f"TARGET-RUN PREPARE-ERROR {cell.dirname}: {error}; no verdict", file=sys.stderr)
             worst = max(worst, SETUP_ERROR)
             continue
-        result = build_result(args.target, adapter, cell, runs, provenance, preparation)
-        path = write_result(args.out / cell.dirname, result, runs)
+        result = build_result(args.target, adapter, cell, runs, provenance, preparation, benign)
+        path = write_result(args.out / cell.dirname, result, runs, benign)
         written.append((cell, result, path))
         print(f"{summary_line(result)} -> {path}")
         worst = max(worst, {"PASS": 0, "FAIL": 1, "ERROR": 2}[result.verdict.value])

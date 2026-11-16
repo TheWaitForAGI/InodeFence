@@ -86,14 +86,14 @@ mutation 선택)가 `make demo`(node-tar 7.5.22, 정상 입력)로 돌고 같은
 ## 지원 대상과 검증 수준
 
 `inodefence targets`가 지원 목록의 기준입니다. 네 대상 모두 고정 입력 회귀(`verify`)·이미지 자동 준비·탐색
-(`explore`)을 지원하고, 위반 케이스 재실행(`replay`)은 현재 node-tar만 지원합니다.
+(`explore`)·케이스 재실행(`replay`)을 지원합니다. `verify`는 같은 실행에서 정상 입력 대조군도 풉니다.
 
 | 대상 | 대상 옵션 | `replay` | 비고 |
 | --- | --- | --- | --- |
-| node-tar | — | 지원 (실제 위반 E2E 미검증) | 7.5.23은 `verify`에서 exploratory 버전으로 표시 |
-| python-tarfile | `--extraction-filter` | 미지원(종료 4) | |
-| decompress | — | 미지원(종료 4) | `--version`에 패키지까지: `@xhmikosr/decompress@11.1.4` |
-| oras-go | — | 미지원(종료 4) | **실험적**: 공통 seed가 `d/` 접두 없이 생성돼 탐색 실행 대부분이 거부됨. 유의미한 보안 커버리지를 주장하지 않음 |
+| node-tar | — | 지원: 위반 케이스 폴더 (실제 위반 E2E 미검증) | 7.5.23은 `verify`에서 exploratory 버전으로 표시 |
+| python-tarfile | `--extraction-filter` | 지원: 결과 폴더 `--case` (실제 위반 E2E 미검증) | 필터는 기록에서 고정, `fully_trusted` 재실행은 거부 |
+| decompress | — | 지원: 결과 폴더 `--case` (실제 위반 E2E 미검증) | `--version`에 패키지까지: `@xhmikosr/decompress@11.1.4` |
+| oras-go | — | 지원: 결과 폴더 `--case` (실제 위반 E2E 미검증) | **실험적**: 공통 seed가 `d/` 접두 없이 생성돼 탐색 실행 대부분이 거부됨. 유의미한 보안 커버리지를 주장하지 않음 |
 
 대상 실행을 확인한 호스트는 **Windows + WSL2(Ubuntu 24.04, x86_64) + Docker Desktop 호스트 한 대**입니다. macOS와
 그 밖의 Linux 호스트는 이 후보에서 확인하지 않았습니다. 네 대상의 실제 실행은 이 스택 head가 아니라 **이전 커밋
@@ -161,10 +161,10 @@ inodefence summary ~/inodefence-explore/target-explore/7.5.23-123-20-result/resu
 | --- | --- | --- |
 | `inodefence doctor` | 환경 점검(`OK`·`FAIL`·`WARN`·`INFO`·`UNKNOWN`)과 고치는 법. 확인하지 못한 것은 `OK`가 아니라 `UNKNOWN`. 읽기만 함 | 0 FAIL 없음, 1 FAIL 있음 |
 | `inodefence targets [--json]` | 추출기와 각 추출기가 지원하는 것 | 0 정상, 3 저장소 없음·설정 파일 오류 |
-| `inodefence verify --target T --version V` | 고정 입력 회귀(`--version` 반복 가능) | 0 PASS, 1 FAIL, 2 ERROR, 3 실행 전 거부 |
+| `inodefence verify --target T --version V` | 고정 입력 회귀(`--version` 반복 가능) + 정상 입력 대조군(실패하면 PASS 대신 ERROR) | 0 PASS, 1 FAIL, 2 ERROR, 3 실행 전 거부 |
 | `inodefence explore --target T --version V [--budget N] [--seed S] [--quiet\|--verbose] [--profile fast]` | 상태 기반 feedback 탐색(기본 budget 20, seed 123). 실행 중 진행 줄을 stderr에 출력(`--quiet` 없음, `--verbose` 런처 원시 출력) | 0 PASS, 1 FAIL, 2 ERROR, 3 실행 전 거부 |
 | `inodefence status <폴더>` | 실행 중 진행·위반 케이스, 끝난 뒤 판정 | 0 표시, 2 보일 것 없음·읽기 실패 |
-| `inodefence replay <위반 케이스 폴더> [--rounds 3]` | 위반 케이스를 같은 이미지에서 다시 돌려 재현 비율 기록 | 0 완료, 1 미완료, 2 재실행 불가, 3 실행 전 멈춤, 4 미지원 |
+| `inodefence replay <위반 케이스 폴더> [--rounds 3]`<br>`inodefence replay <결과 폴더> --case step-N` | 탐색 케이스를 같은 이미지·같은 조건에서 다시 돌려 회차별 분류와 재현 비율 기록(네 대상) | 0 완료, 1 미완료, 2 재실행 불가, 3 실행 전 멈춤, 4 미지원 |
 | `inodefence summary <result.json> [-o 파일]` | 결과를 한 장짜리 Markdown 요약으로(입력 TAR SHA-256 재대조) | 0 작성, 2 읽기·쓰기 실패 |
 
 공통 옵션: `--dry-run`(계획만), `--out <폴더>`(저장소 밖), `--auto-prepare`, `--image-tag-suffix`. 각 명령의 옵션과

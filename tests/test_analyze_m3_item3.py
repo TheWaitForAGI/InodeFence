@@ -10,7 +10,7 @@ the re-derivation drifted, this fails.
 
 import json
 
-from scripts.analyze_m3_item3 import (
+from scripts.analysis.analyze_m3_item3 import (
     _load_step_records,
     analyze_cell,
     boundary_attempt_keys_from_record,

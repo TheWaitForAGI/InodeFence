@@ -9,7 +9,7 @@ the two wall-clocks side by side (EXP-0 measurement 4).
 
 Usage:
 
-    PYTHONPATH=src python3.12 -m scripts.compare_wp_parity \
+    PYTHONPATH=src python3.12 -m scripts.analysis.compare_wp_parity \
         --baseline <per-case>.json --candidate <worker-pool>.json \
         --output ~/inodefence-evidence/wp-parity-20261104/
 """

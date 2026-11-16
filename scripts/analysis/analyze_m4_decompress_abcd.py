@@ -2,8 +2,8 @@
 
 Consumes the native ``decompress-effect-campaign`` reports of an A/C/D matrix (one JSON per
 arm x seed cell, written by ``scripts.container_controller``) and computes, per the node-tar
-item-3 method (``scripts/analyze_m3_item3.py``), the PRIMARY intermediate-state metrics on each
-campaign's per-step frame observation:
+item-3 method (``scripts/analysis/analyze_m3_item3.py``), the PRIMARY intermediate-state metrics
+on each campaign's per-step frame observation:
 
 - boundary-attempt rate + executions-to-first-boundary-attempt  (the coverage rung, arm D)
 - observed-external-resolve rate + executions-to-first          (the identity-state rung, arm C)
@@ -26,7 +26,7 @@ intermediate states; any terminal self-discovery is reported as a right-censored
 superiority claim.
 
 Run (host, where the evidence lives):
-  PYTHONPATH=src python -m scripts.analyze_m4_decompress_abcd \\
+  PYTHONPATH=src python -m scripts.analysis.analyze_m4_decompress_abcd \\
     --evidence-dir ~/inodefence-evidence \\
     --glob 'inodefence-decompress-selfdiscover-m4abcd-*.json' \\
     --output ~/inodefence-evidence/m4-decompress-abcd-<stamp>/primary-metric-rollup.json

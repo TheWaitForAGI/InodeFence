@@ -28,7 +28,7 @@ cells, so no superiority claim is made from a hit count; the arms are contrasted
 how they explore intermediate states, with the informative-censoring bias stated.
 
 Run (host, where the evidence lives):
-  PYTHONPATH=src python -m scripts.analyze_m3_item3 \
+  PYTHONPATH=src python -m scripts.analysis.analyze_m3_item3 \
     --evidence-dir ~/inodefence-evidence/m3-item3-abcd-20261030 \
     --output ~/inodefence-evidence/m3-item3-abcd-20261030/primary-metric-rollup.json
 """

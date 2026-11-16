@@ -18,7 +18,7 @@ It is generic over the oracle output fields (``contract_violated`` and the
 referenced; the bound is a property of the oracle, not of any one target.
 
 Run:
-    PYTHONPATH=src python -m scripts.analyze_oracle_fp_bound ~/inodefence-evidence/*.json
+    PYTHONPATH=src python -m scripts.analysis.analyze_oracle_fp_bound ~/inodefence-evidence/*.json
 """
 
 from __future__ import annotations

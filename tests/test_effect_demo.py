@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 from scripts import run_effect_demo
-from scripts.compare_effect_policies import synthetic_policy_comparison
+from scripts.analysis.compare_effect_policies import synthetic_policy_comparison
 from scripts.run_effect_demo import (
     HISTORICAL_DEMO_MODE,
     HISTORICAL_MUTATION_POLICY,

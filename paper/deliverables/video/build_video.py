@@ -1,7 +1,9 @@
 """Build the capstone intro video from the recording script, recorded takes and verified slides.
 
 One block of the recording script = one segment of the video, in the order of the storyboard
-``paper/deliverables/demo-video-script.md`` (stage B, 2026-11-14; blocks s01..s10 and end).
+``paper/deliverables/demo-video-script.md`` (product demo version, 2026-11-17; blocks s01..s10 and
+end). The CLI scenes replay ``script`` recordings of real ``inodefence`` runs byte for byte
+(``--recordings``; made outside the repository, see ``README.md``).
 For each block the builder looks for a take named ``<block>-t<n>.<ext>`` in ``--incoming``
 (highest n wins unless ``--takes`` pins one). A face block takes a camera clip (mp4/mov/m4v with
 sound); a voice block takes audio (wav/m4a/mp3/flac) laid over the block's slides or terminal
@@ -23,8 +25,11 @@ take exists), video.srt, video.ass (burned in) and build.json (blocks, takes wit
 ASR similarity, warnings). Never opens sealed experiment outputs. Run at low priority, e.g.
 
     nice -n 19 python3 paper/deliverables/video/build_video.py \\
-        --script <recording-script-v2.md> \\
-        --values <values.json> --d12 <d12-conclusions.md> --out <dir> [--incoming <dir>]
+        --script <recording-script-v2.md> --recordings <dir of rec0*.typescript> \\
+        [--values <values.json> --d12 <d12-conclusions.md>] --out <dir> [--incoming <dir>]
+
+Without ``--values`` the build is a sealed draft: scenes 6 and 9 stay result slots and build.json
+carries a warning. A submission build always passes the W3 values file.
 """
 
 import argparse
@@ -57,9 +62,11 @@ TERM_FG = "#E6E6E6"
 BAND = "#101218"
 NOTE = "#FFD479"
 # Screen columns per recording, wide enough that one run is one screen line (storyboard v2).
-REPLAY_COLUMNS = {"scene4-take1": 152, "scene5-take1": 140}
+# The 2026-11-17 recordings were made at 140 columns (COLUMNS=140, see the .meta.json sidecars).
+REPLAY_COLUMNS: dict[str, int] = {}
+DEFAULT_REPLAY_COLUMNS = 140
 SGR_COLORS = {"34": "#7AA7FF", "32": "#8BD17C", "90": "#8A8F98", "39": TERM_FG}
-REPLAY_LABEL = "실행 기록 재생(2026-11-07)"
+REPLAY_LABEL = "실행 기록 재생(2026-11-17)"
 TITLE = "InodeFence: TAR 추출 경계위반 탐색 프로토타입"
 # Arm names as in the claim list C-DESIGN and the storyboard s07b.
 ARMS = (
@@ -104,23 +111,41 @@ class Block:
 PLAN = (
     Block("s01", "face", 20, "face-title"),
     Block("s02", "voice", 25, "problem+contracts"),
-    Block("s02b", "voice", 10, "slide:s02b", "판정기 검증 · node-tar 결과 아님"),
-    Block("s03", "voice", 20, "slide:s03", "측정 사슬 점검 · 탐색 성능 아님"),
-    Block("s04", "voice", 30, "replay4+demo", "demo run · 동작 확인, 탐색 성능 아님"),
-    Block(
-        "s05", "voice", 30, "replay5+m2", "통제 재현 · 사람이 만든 고정 입력, 퍼저의 탐색 결과 아님"
-    ),
-    Block("s05b", "voice", 20, "slide:s05b", "오라클·어댑터 수준"),
+    Block("s03", "voice", 15, "seq:s03", "demo run · 환경 점검과 대상 목록"),
+    Block("s04", "voice", 32, "seq:s04", "demo run · 동작 확인, 탐색 성능 아님"),
+    Block("s04b", "voice", 15, "seq:s04b", "demo run · 실행 확인과 요약"),
+    Block("s04c", "voice", 10, "seq:s04c", "위반 케이스 없음 · 위반 재현 화면 아님"),
+    Block("s05", "voice", 17, "m2", "통제 재현 · 사람이 만든 고정 입력, 퍼저의 탐색 결과 아님"),
+    Block("s05b", "voice", 25, "seq:s05b", "demo run · 호스트 한 대 · 위반 0은 안전 증명 아님"),
     Block("s06", "card", 5, "result-slot"),
     Block("s07a", "face", 5, "face"),
     Block("s07b", "voice", 30, "design"),
     Block("s07c", "voice", 5, "design"),
     Block("s07d", "voice", 20, "slide:s07d", "측정 사슬 점검 · 탐색 성능 아님"),
-    Block("s08", "voice", 35, "slide:s08", "합산값 · arm별 값은 봉인"),
-    Block("s09", "voice", 10, "result-slot"),
-    Block("s10", "face", 20, "face"),
+    Block("s08", "voice", 30, "slide:s08", "합산값 · arm별 값은 봉인"),
+    Block("s09", "voice", 5, "result-slot"),
+    Block("s10", "face", 27, "face"),
     Block("end", "card", 4, "end"),
 )
+
+#: Parts of the CLI scenes, in order: ("replay", recording stem, share of the block, pan) or
+#: ("slide", SLIDES key, share of the block). The shares of one block add up to 1. A replay is a
+#: byte-for-byte ``script`` recording of a real run (2026-11-17, fresh clone of ``aa4cda3``); it is
+#: sped up only when it cannot fit, and the speed is then shown in the header (``emit_replay``).
+SEQUENCES: dict[str, tuple[tuple, ...]] = {
+    "s03": (("replay", "rec01-doctor-targets", 1.0, True),),
+    "s04": (
+        ("replay", "rec02-verify-node-tar", 0.28, False),
+        ("replay", "rec03-explore-node-tar", 0.50, False),
+        ("slide", "s04long", 0.22),
+    ),
+    "s04b": (("replay", "rec04-status-summary-node-tar", 1.0, True),),
+    "s04c": (("replay", "rec06-replay-no-violation-case", 1.0, False),),
+    "s05b": (
+        ("replay", "rec05-explore-three-targets", 0.56, False),
+        ("slide", "s05b", 0.44),
+    ),
+}
 
 #: The result-slot wording shared by the report, the paper and this video (claim list, stage B).
 RESULT_SLOT = "본실험 결과 자리(봉인 해제 뒤 기입)"
@@ -128,48 +153,30 @@ RESULT_SLOT = "본실험 결과 자리(봉인 해제 뒤 기입)"
 #: Slide text of the storyboard scenes that have no recording: (heading, lines). Every line comes
 #: from the storyboard screen notes, which cite the claim IDs; values only from the claim list.
 SLIDES: dict[str, tuple[str, tuple[str, ...]]] = {
-    "s02b": (
-        "판정기 대조 (통제용 테스트 추출기)",
+    "s04long": (
+        "node-tar 7.5.23 더 긴 탐색 (budget 300)",
         (
-            "경계 검사 없이 entry를 그대로 따르는 통제용 테스트 추출기, 일회용 샌드박스 안",
-            "정상 입력 → 위반 없음",
-            "추출 루트를 벗어나는 경로의 파일 → C0",
-            "sentinel을 가리키는 하드링크 → C1 · C2",
-            "symlink를 만든 뒤 그 경로에 쓰기 → C2",
-            "판정기 검증이며 node-tar 결과가 아님",
-        ),
-    ),
-    "s04demo": (
-        "현재 main 데모 (main ff83fbe, seed 123, 실행 20)",
-        (
-            "node-tar 7.5.22 · 20 step (성공 18, 거부 2) · 위반 0",
-            "고유 effect 키 25 · 보상 step 3회 · 코퍼스 4 → 7",
-            "비교 방식이 없는 seed 1개 데모: 탐색 성능이나 방식 비교의 수치가 아님",
-            "위반 0은 이 예산에서 관찰되지 않았다는 뜻: node-tar 7.5.22가 안전하다는 근거가 아님",
-            "앞의 화면은 2026-11-07 실행 기록의 재생",
-        ),
-    ),
-    "s03": (
-        "고정 입력 점검",
-        (
-            "make regression TAR_VERSION=<x>",
-            "알려진 경계 고정 입력이 그 릴리스에서 아직 C1/C2를 내는지 확인",
-            "holdout 후보 7.0.1 · 7.1.0 · 7.2.0 · 7.3.0 · 7.4.4",
-            "하드링크 입력 2개 위반 · symlink 입력 3개 통과 · 오류 0 (다섯 후보 모두)",
-            "이 입력으로는 후보를 구분할 수 없어, 가장 높은 버전 규칙으로 7.4.4 선정",
+            "seed 20261117 · 커밋 6a2031f · 300/300 완주 · 약 10분 · 0.518 runs/s",
+            "success 200 · rejected 99 · failed 1 · 미판정 1 · 위반 0 · 남긴 corpus 17",
+            "step 기록마다 입력 해시 · 부모 · 변이 · 선택 · 관찰 trace · 판정 · 피드백이 연결됨",
+            "위반 0은 이 예산에서 관찰되지 않았다는 뜻: node-tar 7.5.23이 안전하다는 근거가 아님",
+            "비교 방식이 없는 seed 1개 실행: 탐색 성능이나 방식 비교의 수치가 아님",
+            "앞의 화면은 2026-11-17 실행 기록(seed 123, budget 40)의 재생",
         ),
     ),
     "s05b": (
-        "다른 추출기 적용",
+        "네 대상의 검증 수준 (budget 20, seed 123)",
         (
-            "python-tarfile: 추출 필터 설정 fully_trusted 대 data (설정 토글 비교)",
-            "oras-go: v2.6.1 대 v2.6.2 (릴리스 비교)",
-            "decompress: 4.2.1 대 유지보수 포크 11.1.4 (릴리스 비교)",
-            "세 경우 모두 영향 쪽 위반 · 대조 쪽 비위반",
-            "oras-go · decompress: 실제 추출기 동작은 프로브 기록, 오라클 판정은 그 사후 상태를"
-            " 일회용 샌드박스에서 재현한 것",
-            "Rust tar 0.4.35 · 0.4.36: 같은 방식의 고정 입력 프로브 적용",
-            "퍼저 탐색의 일반성이나 효과에 대한 주장이 아님",
+            "커밋 f108e36의 깨끗한 클론에서 explore를 대상마다 한 번씩 실행",
+            "node-tar 7.5.23: success 17 · rejected 3 → 탐색",
+            "python-tarfile 3.12.16 data: success 12 · failed 5 · rejected 3 → 탐색",
+            "decompress 11.1.4: success 11 · rejected 9 → 탐색",
+            "oras-go 2.6.2: success 0 · rejected 20 + 경고 → 실험적,"
+            " 유의미한 보안 커버리지 주장 안 함",
+            "verify: 네 대상 모두 정상 입력 대조군 ok · 고정 공격 입력 위반 0/5 (oras-go 0/6)",
+            "네 대상 모두 위반 0 · 미판정 0. 위반 0은 안전 증명이 아님",
+            "실행 중 수치 표시는 node-tar만, 나머지 셋은 실행 중 ? 표시",
+            "Windows + WSL2 + Docker Desktop 호스트 한 대 · 0.2.0은 릴리스 후보(태그·릴리스 없음)",
         ),
     ),
     "s07d": (
@@ -191,6 +198,7 @@ SLIDES: dict[str, tuple[str, tuple[str, ...]]] = {
             "판정 시각 2026-11-13 23:37 KST",
             "train 중 HOST2 정지 1회 → 원인 기록 → 재개",
             "holdout 중 HOST2 정지 1회 → 원인 기록 → 재개 승인",
+            "원시 출력은 SHA-256 목록으로 보존",
         ),
     ),
 }
@@ -309,18 +317,27 @@ class Terminal:
     columns: int = 100
     lines: list[list[tuple[str, str]]] = field(default_factory=lambda: [[]])
     column: int = 0
+    cursor: int = 0  # index in the current line; a carriage return moves it back to 0
     color: str = TERM_FG
     pending: str = ""
 
     def _newline(self) -> None:
         self.lines.append([])
         self.column = 0
+        self.cursor = 0
 
     def _put(self, char: str) -> None:
         width = 2 if unicodedata.east_asian_width(char) in "WF" else 1
         if self.column + width > self.columns:
             self._newline()
-        self.lines[-1].append((char, self.color))
+        line = self.lines[-1]
+        if self.cursor < len(line):
+            # After a carriage return the next characters overwrite the line in place, as a
+            # terminal does (the progress line of ``inodefence explore`` is redrawn this way).
+            line[self.cursor] = (char, self.color)
+        else:
+            line.append((char, self.color))
+        self.cursor += 1
         self.column += width
 
     def feed(self, text: str) -> None:
@@ -344,6 +361,7 @@ class Terminal:
                 self._newline()
             elif char == "\r":
                 self.column = 0
+                self.cursor = 0
             elif ord(char) >= 32:
                 self._put(char)
             index += 1
@@ -383,17 +401,18 @@ class Canvas:
                 )
         return image, draw
 
-    def finish(self, image: Image.Image, band: bool = True) -> Image.Image:
+    def finish(self, image: Image.Image, band: bool = True, note_low: bool = False) -> Image.Image:
         draw = ImageDraw.Draw(image)
         if band:
             draw.rectangle((0, CONTENT_BOTTOM, WIDTH, HEIGHT), fill=BAND)
         if self.draft_note:
+            # A terminal screen is full width: its draft note sits under the last row instead.
             draw.text(
-                (WIDTH - 20, 104),
+                (WIDTH - 20, CONTENT_BOTTOM - 6 if note_low else 104),
                 self.draft_note,
                 font=self.fonts.body(22),
                 fill=ACCENT,
-                anchor="ra",
+                anchor="rd" if note_low else "ra",
             )
         return image
 
@@ -635,7 +654,7 @@ class Canvas:
                         anchor="ls",
                     )
                 x += grid.cell_w * (2 if wide else 1)
-        return self.finish(image)
+        return self.finish(image, note_low=True)
 
 
 # ---------------------------------------------------------------- frames
@@ -685,7 +704,7 @@ def emit_replay(
         clock += delay / speed
         arrivals.append((clock, decoder.decode(payload)))
     replay_end = clock + 0.2
-    grid = Grid(REPLAY_COLUMNS.get(stem.name, 100))
+    grid = Grid(REPLAY_COLUMNS.get(stem.name, DEFAULT_REPLAY_COLUMNS))
     terminal = Terminal(columns=grid.columns)
     frames = round(length * FPS)
     nxt = 0
@@ -907,19 +926,22 @@ def render_visual(block: Block, canvas: Canvas, ctx: dict, length: float, out: P
     if block.visual == "problem+contracts":
         encoder.hold(canvas.problem(), length * 0.45)
         encoder.hold(canvas.contracts(), length - length * 0.45)
-    elif block.visual == "replay4+demo":
-        first = length * 0.7
-        facts["replay"] = emit_replay(
-            encoder, canvas, recordings / "scene4-take1", first, block.label, False
-        )
-        heading, lines = SLIDES["s04demo"]
-        encoder.hold(canvas.text_slide(heading, block.label, lines), length - first)
-    elif block.visual == "replay5+m2":
-        first = length * 0.55
-        facts["replay"] = emit_replay(
-            encoder, canvas, recordings / "scene5-take1", first, block.label, True
-        )
-        encoder.hold(canvas.m2("통제 재현"), length - first)
+    elif block.visual.startswith("seq:"):
+        replays = []
+        for part in SEQUENCES[block.visual.removeprefix("seq:")]:
+            share = length * part[2]
+            if part[0] == "replay":
+                label = emit_replay(
+                    encoder, canvas, recordings / part[1], share, block.label, part[3]
+                )
+                source = (recordings / part[1]).with_suffix(".typescript")
+                replays.append({"recording": part[1], "sha256": sha256(source), "shown": label})
+            else:
+                heading, lines = SLIDES[part[1]]
+                encoder.hold(canvas.text_slide(heading, block.label, lines), share)
+        facts["replays"] = replays
+    elif block.visual == "m2":
+        encoder.hold(canvas.m2(block.label), length)
     elif block.visual == "design":
         encoder.hold(canvas.design(), length)
     elif block.visual.startswith("slide:"):
@@ -942,11 +964,17 @@ def build(args: argparse.Namespace) -> None:
     markdown = args.script.read_text(encoding="utf-8")
     script = parse_script(markdown)
     checker = load_checker()
-    values = json.loads(args.values.read_text(encoding="utf-8"))
-    got = checker.result_sentences(values, args.d12.read_text(encoding="utf-8"))
-    if not got:
-        raise SystemExit("no result sentence for this values file")
-    status, _written, spoken = got
+    if args.values is None:
+        # Draft without the W3 values file: sealed, scenes 6 and 9 stay result slots.
+        status, spoken = "미해제", ""
+    else:
+        if args.d12 is None:
+            raise SystemExit("--values needs --d12")
+        values = json.loads(args.values.read_text(encoding="utf-8"))
+        got = checker.result_sentences(values, args.d12.read_text(encoding="utf-8"))
+        if not got:
+            raise SystemExit("no result sentence for this values file")
+        status, _written, spoken = got
     plan = PLAN
     if status == "미해제" and not args.s09_running:
         # Result slot: a card with the slot phrase only and no narration (claim list slot rule).
@@ -978,11 +1006,13 @@ def build(args: argparse.Namespace) -> None:
 
     report: dict = {
         "script_sha256": sha256(args.script),
-        "values": args.values.name,
+        "values": args.values.name if args.values else None,
         "status": status,
         "blocks": [],
         "warnings": [],
     }
+    if args.values is None:
+        report["warnings"].append("no --values: sealed draft, not a submission build")
     all_cues: list[Cue] = []
     segments: list[Path] = []
     clock = 0.0
@@ -1175,8 +1205,10 @@ def main() -> None:
     parser.add_argument(
         "--script", type=Path, required=True, help="recording script (v1.1 or later)"
     )
-    parser.add_argument("--values", type=Path, required=True, help="W3 submission values file")
-    parser.add_argument("--d12", type=Path, required=True, help="d12-conclusions.md")
+    parser.add_argument(
+        "--values", type=Path, help="W3 submission values file (omit only for a sealed draft)"
+    )
+    parser.add_argument("--d12", type=Path, help="d12-conclusions.md (needed with --values)")
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--incoming", type=Path, help="folder of recorded takes <block>-t<n>.<ext>")
     parser.add_argument("--takes", type=Path, help='JSON {"s03": "s03-t2.wav"} to pin takes')
@@ -1191,7 +1223,8 @@ def main() -> None:
     parser.add_argument(
         "--recordings",
         type=Path,
-        default=Path.home() / "inodefence-evidence/demo-recordings-20261107",
+        required=True,
+        help="folder of the 2026-11-17 CLI recordings (rec0*.typescript + .timing)",
     )
     parser.add_argument("--font-dir", type=Path, default=Path("/mnt/c/Windows/Fonts"))
     parser.add_argument(

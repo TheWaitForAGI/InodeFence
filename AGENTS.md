@@ -64,7 +64,7 @@ Issue·Task Contract 범위와 Ledger 마일스톤을 넘는 기능을 임의로
 
 - **PR 병합**(아래 [PR](#pr) 절).
 - `BREAKING`: Oracle 판정 의미가 바뀌는 변경.
-- 가드·격리·allowlist 설정 변경(`.claude/settings.json`, `.claude/hooks/`, 격리 정책 파일). 격리 정책과 Docker 실행
+- 가드·격리·allowlist 설정 변경(`.claude/settings.json`·`settings.local.json`, `.claude/hooks/`, 격리 정책 파일). 격리 정책과 Docker 실행
   경계를 완화하지 않는다.
 - FROZEN 변경: 동결된 사전등록, 등록 실험 설정, 본실험 실행 SHA.
 - 미공개 보안 증거의 공개, 외부 공개, 실제 릴리스(태그·GitHub Release·패키지 게시).
@@ -89,7 +89,7 @@ Issue·Task Contract 범위와 Ledger 마일스톤을 넘는 기능을 임의로
 - `main`에서 직접 개발하지 않고 `main`으로 직접 push하지 않는다. 브랜치 이름은 `<이름>/p0-<번호>-<요약>`.
 - 한 PR에 한 목적. 관계없는 문서 수정·refactor·기능을 섞지 않는다.
 - 설명 첫 항목은 "이 PR을 병합하면 어떤 기능을 실제로 실행하거나 검증할 수 있게 되는가?"에 대한 답이다. 답이
-  "~에 대한 문서/감사"뿐이면 PR이 아니라 STATUS 갱신이다(사람이 문서 정비를 PR로 지시한 경우는 그 지시를 따른다).
+  "~에 대한 문서/감사"뿐이면 PR이 아니라 STATUS 갱신이다(예외는 사람이 문서 정비를 PR로 내라고 직접 지시한 경우뿐이며, 에이전트 판단으로 넓히지 않는다).
 - 병합 요청의 최소 요건: CI 두 job(`check`, `container-integration`) 통과와 작성자가 아닌 검토자(verifier 에이전트
   또는 사람)의 판정. verifier 판정은 PR 코멘트로 남긴다.
 - **HEAD SHA가 바뀐 PR은 과거 검증 결과를 재사용하지 않는다.** 최신 SHA 기준으로 CI와 변경분 검증을 다시 받는다.
@@ -197,7 +197,8 @@ inodefence (cli.py) -> locate.py -> 제품 드라이버 (src/inodefence/drivers/
 - 변경 대상 계층의 책임 안에서만 구현한다.
 - 변경 이유를 사람이 이해할 수 있는 이름/구조로 남긴다.
 - generic logic과 target-specific logic을 분리한다.
-- 숨은 magic value보다 명시적인 data model/config를 사용한다.
+- 숨은 magic value보다 명시적인 data model/config와 typed interface를 사용한다.
+- 실험 seed와 configuration은 재현 가능하게 명시한다.
 - 복잡한 추상화보다 읽기 쉬운 작은 interface를 우선한다.
 - 새 공통 개념을 만들면 문서 또는 docstring으로 의미를 남긴다.
 

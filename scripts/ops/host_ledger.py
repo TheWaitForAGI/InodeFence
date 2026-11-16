@@ -42,14 +42,14 @@ run cannot collide with another session's git work.
 
 Usage::
 
-    python scripts/host_ledger.py --host-id HOST4 \
+    python scripts/ops/host_ledger.py --host-id HOST4 \
         --drive-dir "$HOME/Drive/00-Team-Ops/hosts/HOST4" --repo ~/Projects/InodeFence
 
 Every 5 minutes with a systemd user timer (no sudo; WSL needs ``systemd=true`` in wsl.conf, and
 without ``loginctl enable-linger`` the timer runs only while the distro has a user session)::
 
     # install: copy the script out of the checkout so branch switches do not change what runs
-    install -D -m 0644 scripts/host_ledger.py ~/.local/lib/inodefence/host_ledger.py
+    install -D -m 0644 scripts/ops/host_ledger.py ~/.local/lib/inodefence/host_ledger.py
     python3 ~/.local/lib/inodefence/host_ledger.py --host-id HOST4 \
         --drive-dir "$HOME/Drive/00-Team-Ops/hosts/HOST4" --repo ~/Projects/InodeFence \
         --install-user-timer

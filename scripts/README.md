@@ -221,7 +221,7 @@ arm을 비교한다. 결과는 `<output>/<run-id>.json`(demo 모드는 `.steps.j
 돌릴 수 없다 — 그런 환경에는 코드·분석만 보내고 docker 실험은 호스트 터미널이나 이 GHA 팬아웃으로
 돌린다.
 
-## 호스트 상태 원장 (`scripts/host_ledger.py`)
+## 호스트 상태 원장 (`scripts/ops/host_ledger.py`)
 
 여러 호스트가 서로의 저장소 상태(worktree별 브랜치·HEAD·미푸시 커밋·미커밋 경로·PR, 원격 기준 SHA와
 조회 시각)를 보도록 호스트당 JSON 한 개를 쓴다. 먼저 로컬(`~/.local/state/inodefence/host-ledger/`)에

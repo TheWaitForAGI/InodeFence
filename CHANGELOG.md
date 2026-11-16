@@ -226,6 +226,7 @@ RC(#457) 이후 스택에서 의도적으로 바뀐 동작:
 ### 상세 문서
 
 - [README.md](README.md): 설치, 빠른 시작, 설정, 종료 코드
+- [docs/USAGE.md](docs/USAGE.md): 설치 방식별 차이, 설정과 출력 위치, 탐색·재실행, 종료 코드(`make target-run` 포함), 한계
 - [docs/START_HERE.md](docs/START_HERE.md), [docs/STATUS.md](docs/STATUS.md): 현재 상태와 다음 할 일
 - [docs/LOG.md](docs/LOG.md): 작업·검증 기록
 - [scripts/README.md](scripts/README.md): `scripts/` 분류와 옮긴 경로

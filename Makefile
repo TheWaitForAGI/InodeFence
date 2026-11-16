@@ -124,6 +124,9 @@ regression:
 #   make target-run TARGET=oras-go TARGET_VERSIONS="2.6.1 2.6.2"
 #   make target-run TARGET=decompress TARGET_VERSIONS="decompress@4.2.1 @xhmikosr/decompress@11.1.4"
 TARGET ?= node-tar
+# Non-empty only when the caller gave TARGET_VERSIONS (command line or environment) with a value.
+# Read before the `?=` below fills in the target-run default; target-explore requires it.
+TARGET_VERSIONS_GIVEN := $(if $(filter undefined,$(origin TARGET_VERSIONS)),,$(strip $(TARGET_VERSIONS)))
 TARGET_VERSIONS ?= $(TAR_VERSION)
 TARGET_FILTERS ?=
 AUTO_PREPARE ?= 0
@@ -155,9 +158,16 @@ target-run:
 # so a distributor can try their version before release. Prepares the image host-side
 # (AUTO_PREPARE=1 required; network) then runs the loop inside the isolated controller. Output is
 # OUTSIDE the repo (EXPLORE_OUT). Host terminal only (docker + controller build).
+# TARGET_VERSIONS is required here (command line or environment): there is no default version, and
+# without it the target stops before Docker or `inodefence` runs (also with TARGET_ARGS=--dry-run).
+# target-run keeps its TARGET_VERSIONS default ($(TAR_VERSION)).
 # Defaults (set above the `export` line): BUDGET=20, SEED=123, EXPLORE_OUT=$(HOME)/inodefence-explore.
 #   make target-explore TARGET=node-tar TARGET_VERSIONS="latest" AUTO_PREPARE=1 BUDGET=20 SEED=123
+#   make target-explore TARGET=node-tar TARGET_VERSIONS=7.5.2 AUTO_PREPARE=1   # controlled run, explicit
 target-explore:
+ifndef TARGET_VERSIONS_GIVEN
+	@echo 'target-explore: TARGET_VERSIONS is required (no default version), e.g. TARGET_VERSIONS="latest" or TARGET_VERSIONS=7.5.2' >&2; exit 2
+else
 	@set -euf; \
 	set -- explore --target "$$TARGET"; \
 	for v in $$TARGET_VERSIONS; do set -- "$$@" --version "$$v"; done; \
@@ -165,6 +175,7 @@ target-explore:
 	if [ "$$AUTO_PREPARE" = 1 ]; then set -- "$$@" --auto-prepare; fi; \
 	if [ -n "$$IMAGE_TAG_SUFFIX" ]; then set -- "$$@" --image-tag-suffix "$$IMAGE_TAG_SUFFIX"; fi; \
 	PYTHONPATH=src:. "$$PYTHON" -m inodefence.cli "$$@" $$TARGET_ARGS
+endif
 
 # Offline replay planner: read a demo report (REPORT=<path>) and reproduce its run
 # command, binding the recorded image recipe to the committed one and checking the

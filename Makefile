@@ -152,9 +152,9 @@ target-run:
 # OUTSIDE the repo (EXPLORE_OUT). Host terminal only (docker + controller build).
 # KNOWN DEFECT (GNU Make 4.3, since the `export` line above was added): BUDGET, SEED and
 # EXPLORE_OUT are exported before the `?=` lines below, which defines them empty, so the three
-# defaults never apply. Give all three on the command line, or the command refuses before
-# running (exit 3: empty --budget / --seed, or --out resolving to the repository):
-#   make target-explore TARGET=node-tar TARGET_VERSIONS="latest" AUTO_PREPARE=1 BUDGET=20 SEED=123 EXPLORE_OUT=$$HOME/inodefence-explore
+# defaults never apply. Give all three (command line or environment), or the command refuses
+# before running (exit 3: empty --budget / --seed, or --out resolving to the repository):
+#   make target-explore TARGET=node-tar TARGET_VERSIONS="latest" AUTO_PREPARE=1 BUDGET=20 SEED=123 EXPLORE_OUT="$HOME/inodefence-explore"
 BUDGET ?= 20
 SEED ?= 123
 EXPLORE_OUT ?= $(HOME)/inodefence-explore

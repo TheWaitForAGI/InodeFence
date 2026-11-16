@@ -12,6 +12,7 @@ controller shell launchers (``scripts/local_*.sh``) are not packaged.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -83,16 +84,40 @@ def run_driver(root: Path, driver: str, argv: list[str], *, prog: str | None = N
     return completed.returncode
 
 
+#: Flag of this module's own entry point that prints :func:`_read_registry` as JSON.
+_SUPPORT_FLAG = "--target-support-json"
+
+
 def target_support(root: Path) -> dict[str, dict[str, Any]]:
     """What each registered target supports, read from the drivers (the single source of truth).
 
-    Reads the packaged registry in-process (no ``sys.path`` change): the adapters are the installed
-    package's own. ``root`` is the checkout the CLI found; the adapters resolve their asset paths
-    from it through :mod:`inodefence.drivers.repo`. Exploration support is read from the adapter's
-    ``explore`` hook, so it updates on its own as a target's owner fills the hook in; a target with
-    no hook reports why.
+    The registry is read in a subprocess run exactly like a driver (``cwd`` = the clone, the
+    clone's ``src`` and root first on ``PYTHONPATH``), not in this process: the adapters import the
+    clone's fixture modules (``experiments/repro``), which are not packaged, and reading them here
+    would mix this install's engine with the clone's files. So ``targets`` reports the same code
+    ``verify`` / ``explore`` run. Raises ``RuntimeError`` when the registry cannot be read.
     """
-    del root  # the registry is packaged; the checkout matters only to the drivers' asset paths
+    completed = subprocess.run(
+        [sys.executable, "-m", "inodefence.locate", _SUPPORT_FLAG],
+        cwd=root,
+        env=_driver_env(root),
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=120,
+    )
+    if completed.returncode != 0:
+        lines = [line for line in completed.stderr.splitlines() if line.strip()]
+        raise RuntimeError(lines[-1] if lines else f"exit {completed.returncode}")
+    return json.loads(completed.stdout)
+
+
+def _read_registry() -> dict[str, dict[str, Any]]:
+    """The registry as plain data (run inside the clone's environment by :func:`target_support`).
+
+    Exploration support is read from the adapter's ``explore`` hook, so it updates on its own as a
+    target's owner fills the hook in; a target with no hook reports why.
+    """
     from inodefence.drivers import run_target
 
     support: dict[str, dict[str, Any]] = {}
@@ -117,3 +142,9 @@ def target_support(root: Path) -> dict[str, dict[str, Any]]:
             "options": options,
         }
     return support
+
+
+if __name__ == "__main__":
+    if sys.argv[1:] != [_SUPPORT_FLAG]:
+        raise SystemExit(f"usage: python -m inodefence.locate {_SUPPORT_FLAG}")
+    json.dump(_read_registry(), sys.stdout)

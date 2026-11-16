@@ -49,6 +49,24 @@ def test_repo_root_is_none_without_markers(monkeypatch) -> None:
     assert locate.repo_root() is None
 
 
+def test_target_support_reads_the_registry_in_the_clone_environment() -> None:
+    # A subprocess with the clone first on PYTHONPATH, as for verify/explore: the adapters import
+    # the clone's experiments/repro fixtures, which are not packaged.
+    root = drivers_repo.repo_root() or Path.cwd()
+    support = locate.target_support(root)
+    assert set(support) == {"decompress", "node-tar", "oras-go", "python-tarfile"}
+    assert all(entry["regression"] is True for entry in support.values())
+
+
+def test_target_support_reports_an_unreadable_registry(tmp_path: Path, monkeypatch) -> None:
+    import subprocess
+
+    failed = subprocess.CompletedProcess([], 1, "", "Traceback\nModuleNotFoundError: experiments\n")
+    monkeypatch.setattr(locate.subprocess, "run", lambda *a, **k: failed)
+    with pytest.raises(RuntimeError, match="ModuleNotFoundError: experiments"):
+        locate.target_support(_make_repo(tmp_path))
+
+
 def test_locate_and_the_drivers_share_one_resolver_without_a_cycle() -> None:
     # cli -> locate -> drivers; drivers.repo is a leaf (stdlib + user_config only).
     import ast

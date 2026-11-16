@@ -84,7 +84,9 @@ def run_driver(root: Path, driver: str, argv: list[str], *, prog: str | None = N
     return completed.returncode
 
 
-#: Flag of this module's own entry point that prints :func:`_read_registry` as JSON.
+#: Flag of this module's own entry point that prints :func:`_read_registry` as JSON. Internal: only
+#: :func:`target_support` runs it; it is not a user command and ``inodefence --help`` does not list
+#: it.
 _SUPPORT_FLAG = "--target-support-json"
 
 
@@ -144,7 +146,23 @@ def _read_registry() -> dict[str, dict[str, Any]]:
     return support
 
 
-if __name__ == "__main__":
-    if sys.argv[1:] != [_SUPPORT_FLAG]:
-        raise SystemExit(f"usage: python -m inodefence.locate {_SUPPORT_FLAG}")
+def _support_main(argv: list[str]) -> int:
+    """Internal entry point (run by :func:`target_support` only): registry JSON on stdout.
+
+    Refuses (exit 3) unless the running code belongs to the resolved repository tree -- the same
+    invariant the drivers enforce -- so ``targets`` never reports another checkout's registry.
+    """
+    if argv != [_SUPPORT_FLAG]:
+        print(f"internal: python -m inodefence.locate {_SUPPORT_FLAG}", file=sys.stderr)
+        return 3
+    try:
+        _repo.require_repository()
+    except RuntimeError as error:
+        print(error, file=sys.stderr)
+        return 3
     json.dump(_read_registry(), sys.stdout)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(_support_main(sys.argv[1:]))

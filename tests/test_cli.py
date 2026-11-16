@@ -67,6 +67,47 @@ def test_target_support_reports_an_unreadable_registry(tmp_path: Path, monkeypat
         locate.target_support(_make_repo(tmp_path))
 
 
+def test_targets_subprocess_passes_the_same_tree_invariant() -> None:
+    # The CLI path (cwd = clone, clone src first) satisfies "running code = resolved repository".
+    import subprocess
+    import sys
+
+    root = drivers_repo.repo_root() or Path.cwd()
+    done = subprocess.run(
+        [sys.executable, "-m", "inodefence.locate", "--target-support-json"],
+        cwd=root,
+        env=locate._driver_env(root),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert done.returncode == 0, done.stderr
+    assert "node-tar" in done.stdout
+
+
+def test_targets_internal_entry_refuses_another_tree(tmp_path: Path, monkeypatch) -> None:
+    # Code from this checkout, repository resolved to a different tree: refused with 3.
+    monkeypatch.setenv("INODEFENCE_HOME", str(_make_repo(tmp_path)))
+    assert locate._support_main(["--target-support-json"]) == 3
+    assert locate._support_main(["--bogus"]) == 3
+
+
+def test_targets_on_a_damaged_clone_exits_3_with_the_baseline_message(
+    tmp_path: Path, monkeypatch, capsys
+) -> None:
+    # A marker-only tree: the subprocess cannot read a registry there (same exit and message
+    # format as before the drivers moved into the package).
+    monkeypatch.setenv("INODEFENCE_HOME", str(_make_repo(tmp_path)))
+    assert cli.main(["targets"]) == 3
+    assert f"could not read the target registry from {tmp_path}" in capsys.readouterr().err
+
+
+def test_the_internal_registry_entry_is_not_a_user_command(capsys) -> None:
+    with pytest.raises(SystemExit):
+        cli.main(["--help"])
+    assert "target-support-json" not in capsys.readouterr().out
+
+
 def test_locate_and_the_drivers_share_one_resolver_without_a_cycle() -> None:
     # cli -> locate -> drivers; drivers.repo is a leaf (stdlib + user_config only).
     import ast

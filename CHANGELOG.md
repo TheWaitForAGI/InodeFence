@@ -2,14 +2,15 @@
 
 이 파일은 InodeFence의 버전별 사용자 관점 변경을 적는다. 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를,
 버전은 [Semantic Versioning](https://semver.org/lang/ko/)의 0.x 규칙(0.x에서는 하위 호환을 약속하지 않음)을 따른다.
-실험 결과와 호스트별 검증 기록은 여기에 옮겨 적지 않고 [docs/LOG.md](docs/LOG.md)·[docs/STATUS.md](docs/STATUS.md)·PR 본문에
-둔다.
+실험 결과와 호스트별 반복 로그 전문은 싣지 않고, 각 버전의 검증은 요약과 출처만 둔다. 실행별 기록은
+[docs/LOG.md](docs/LOG.md)·[docs/STATUS.md](docs/STATUS.md)·PR 본문에 있다.
 
 ## [0.2.0] — Unreleased(릴리스 후보, 태그·릴리스 없음)
 
 **아직 릴리스되지 않았다.** `0.2.0` 태그와 GitHub Release가 없고, 아래 내용은 `main`에 없다. 0.2.0 RC 통합
 [#457](https://github.com/TheWaitForAGI/InodeFence/pull/457)(Draft, head `2e947d3`)과 그 위의 PRODUCT 직렬 스택에
-병합되지 않은 채 쌓여 있다. main 병합·태그·Release는 본실험 봉인 해제 절차와 승인 뒤에만 한다.
+병합되지 않은 채 쌓여 있다. main 병합, `0.2.0` 태그, GitHub Release는 하지 않았고 시점은 정해지지 않았다. 통합 PR
+#457은 병합 금지 Draft다(조건은 그 PR 참조).
 
 | 순서 | PR | 내용 | 상태 (2026-11-16) |
 | --- | --- | --- | --- |
@@ -69,9 +70,8 @@
   `--dry-run`을 포함해 실행 전에 거부한다. 기본값은 `~/inodefence-target-run`·`~/inodefence-explore`이고
   `INODEFENCE_OUTPUT_DIR`로 기준 폴더를 바꾼다. (#457, #467)
 - **`doctor`.** Python, 사용자 설정(값의 출처 포함), 저장소(대상 명령과 같은 판정), 실행 중인 코드 위치, 출력 폴더, Docker
-  CLI와 daemon 접근, 로컬 `inodefence-*` 이미지, 잔존 컨테이너·볼륨(조회만), 디스크 여유(2 GiB 미만이면 WARN), 메모리(WSL에서는
-  UNKNOWN),
-  runtime 폴더를 출력한다. 어느 이미지가 어느 대상·버전용인지는 판단하지 않고 `verify --dry-run`을 안내한다. (#457,
+  CLI와 daemon 접근, 로컬 `inodefence-*` 이미지, 잔존 컨테이너·볼륨(조회만), 디스크 여유(2 GiB 미만이면 WARN), 메모리(항상
+  UNKNOWN, 종료 코드 무관), runtime 폴더를 출력한다. 어느 이미지가 어느 대상·버전용인지는 판단하지 않고 `verify --dry-run`을 안내한다. (#457,
   #466, #467)
 - **`--help`.** 기본값·필수 여부와 명령별 종료 코드를 보여 준다. 드라이버의 오류 메시지는 `inodefence verify` 같은 명령
   이름으로 나오고, 이미지 준비 안내는 `--auto-prepare`로 나온다. (#457, #467)
@@ -182,7 +182,7 @@ RC(#457) 이후 스택에서 의도적으로 바뀐 동작:
   컨트롤러 쪽 `BrokenPipeError` traceback이 그대로 나온다. decompress의 개발용 직접 진입점은 Runtime 세션 없이 실행된다.
   python-tarfile의 "loop report has no steps"·"different runtime or filter"는 아직 종료 3이다.
 - **환경.** 호스트에 Python 3.12가 필요하다. macOS 기본 `python3`(3.9)으로 `make`를 부르면 실행 전 점검 없이
-  ImportError로 멈추므로 `PYTHON=python3.12`를 준다. WSL에서는 `doctor`의 메모리 줄이 항상 UNKNOWN이다. 클라우드 동기화
+  ImportError로 멈추므로 `PYTHON=python3.12`를 준다. `doctor`의 메모리 줄은 항상 UNKNOWN이다(종료 코드 무관). 클라우드 동기화
   폴더 감지는 폴더 이름 추측이다. `python -m inodefence`는 지원하지 않는다.
 
 ### 확인된 테스트·검증 범위

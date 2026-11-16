@@ -92,7 +92,8 @@ CI가 실패한 상태로 병합을 요청하지 않는다.
 
 ## 문서 변경 기준
 
-공통 data model·interface, Security Contract, 큰 설계 결정, 현재 단계·다음 작업, 프로젝트 이해 흐름이 바뀌면 코드만
-병합하지 않고 관련 문서를 같은 PR에서 고친다. 어느 문서를 고치는지는 [AGENTS.md의 변경 영향 규칙](AGENTS.md#변경-영향-규칙)에
-있다. 실험 결과는 [summaries 규칙](experiments/summaries/README.md)에 따라 raw → validated summary → finding으로
-연결하고, 공개 전 finding은 [SECURITY.md](SECURITY.md)를 따른다.
+공통 data model·interface, Security Contract, target 우선순위, 실험 방법론, 프로젝트 범위, 큰 설계 결정, 현재 단계·다음
+작업, 프로젝트 이해 흐름이 바뀌면 코드만 병합하지 않고 관련 문서를 같은 PR에서 고친다. 어느 문서를 고치는지는
+[AGENTS.md의 변경 영향 규칙](AGENTS.md#변경-영향-규칙)에, 작업 기록 방식(STATUS 갱신·LOG 한 줄)은
+[AGENTS.md의 금지 절](AGENTS.md#금지)에 있다. 실험 결과는 [summaries 규칙](experiments/summaries/README.md)에 따라
+raw → validated summary → finding으로 연결하고, 공개 전 finding은 [SECURITY.md](SECURITY.md)를 따른다.

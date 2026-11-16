@@ -130,6 +130,11 @@ AUTO_PREPARE ?= 0
 IMAGE_TAG_SUFFIX ?=
 # Default output is OUTSIDE the repo and OUTSIDE the experiment-evidence tree.
 TARGET_OUT ?= $(HOME)/inodefence-target-run
+# target-explore defaults. They are set here, before the `export` line: GNU Make defines a variable
+# exported before its `?=` as empty, and the default would then never apply.
+BUDGET ?= 20
+SEED ?= 123
+EXPLORE_OUT ?= $(HOME)/inodefence-explore
 # The two targets below are thin shells over the `inodefence` command: user values go through
 # the environment and are placed as double-quoted shell positionals under `set -f`, so a value
 # with spaces, `;`, `$$(...)`, quotes or globs is one literal argument the command never
@@ -150,14 +155,8 @@ target-run:
 # so a distributor can try their version before release. Prepares the image host-side
 # (AUTO_PREPARE=1 required; network) then runs the loop inside the isolated controller. Output is
 # OUTSIDE the repo (EXPLORE_OUT). Host terminal only (docker + controller build).
-# KNOWN DEFECT (GNU Make 4.3, since the `export` line above was added): BUDGET, SEED and
-# EXPLORE_OUT are exported before the `?=` lines below, which defines them empty, so the three
-# defaults never apply. Give all three on the command line, or the command refuses before
-# running (exit 3: empty --budget / --seed, or --out resolving to the repository):
-#   make target-explore TARGET=node-tar TARGET_VERSIONS="latest" AUTO_PREPARE=1 BUDGET=20 SEED=123 EXPLORE_OUT=$$HOME/inodefence-explore
-BUDGET ?= 20
-SEED ?= 123
-EXPLORE_OUT ?= $(HOME)/inodefence-explore
+# Defaults (set above the `export` line): BUDGET=20, SEED=123, EXPLORE_OUT=$(HOME)/inodefence-explore.
+#   make target-explore TARGET=node-tar TARGET_VERSIONS="latest" AUTO_PREPARE=1 BUDGET=20 SEED=123
 target-explore:
 	@set -euf; \
 	set -- explore --target "$$TARGET"; \

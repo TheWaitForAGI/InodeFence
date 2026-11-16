@@ -88,8 +88,10 @@ def test_targets_subprocess_passes_the_same_tree_invariant() -> None:
     assert "node-tar" in done.stdout
 
 
-def test_targets_internal_entry_refuses_another_tree(tmp_path: Path, monkeypatch) -> None:
-    # Code from this checkout, repository resolved to a different tree: refused with 3.
+def test_targets_internal_entry_refuses_code_outside_a_clone(tmp_path: Path, monkeypatch) -> None:
+    # Running code not inside a clone (an installed copy run directly): refused with 3, even with
+    # a clone named by INODEFENCE_HOME -- the same invariant as the drivers.
+    monkeypatch.setattr(drivers_repo, "_CHECKOUT", tmp_path / "site-packages-like")
     monkeypatch.setenv("INODEFENCE_HOME", str(_make_repo(tmp_path)))
     assert locate._support_main(["--target-support-json"]) == 3
     assert locate._support_main(["--bogus"]) == 3

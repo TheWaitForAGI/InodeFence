@@ -16,10 +16,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import scripts.regression_check as rc
-import scripts.run_python_tarfile_target as rpt
 from experiments.repro import python_tarfile_identity as pti
 
+import inodefence.drivers.python_tarfile.adapter as rpt
+import inodefence.drivers.regression_check as rc
 from inodefence.target_result import load_target_result
 
 RUNTIME = platform.python_version()

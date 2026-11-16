@@ -1,4 +1,4 @@
-"""oras-go target for ``scripts.run_target`` (``make target-run TARGET=oras-go``).
+"""oras-go target for ``inodefence.drivers.run_target`` (``make target-run TARGET=oras-go``).
 
     make target-run TARGET=oras-go TARGET_VERSIONS="2.6.1 2.6.2"
 
@@ -21,7 +21,8 @@ extraction run never does. A missing image is a run error, never a result::
 
 Versions without a committed recipe (any other exact ``X.Y.Z``, or ``latest`` resolved from the
 Go module proxy before any cell exists) are prepared with ``AUTO_PREPARE=1`` by
-``scripts.oras_go_registry_prepare`` into ``inodefence-oras-go-registry:<version>`` (never the
+``inodefence.drivers.oras_go.registry_prepare`` into ``inodefence-oras-go-registry:<version>``
+(never the
 committed-recipe name): go.mod/go.sum generated in a disposable Go container against
 ``proxy.golang.org`` with ``GOSUMDB=sum.golang.org``, the unchanged Dockerfile and worker built,
 then checked offline (``identify``, the probe below and the campaign's ``frame`` subcommand).
@@ -56,11 +57,12 @@ from pathlib import Path
 from typing import Any
 
 from experiments.repro import oras_go_cwd_hardlink as ogh
-from scripts import image_prepare as ip
-from scripts import oras_go_registry_prepare as proxy
-from scripts import regression_check as rc
-from scripts.run_target import CaseRun, PrepareStep, RunCell, TargetAdapter, fixture_case
 
+from inodefence.drivers import image_prepare as ip
+from inodefence.drivers import regression_check as rc
+from inodefence.drivers.oras_go import registry_prepare as proxy
+from inodefence.drivers.repo import repository_root
+from inodefence.drivers.run_target import CaseRun, PrepareStep, RunCell, TargetAdapter, fixture_case
 from inodefence.target_result import Preparation, ResultMode, TargetAxes
 
 TARGET = "oras-go"
@@ -194,7 +196,7 @@ def _run(cell: RunCell) -> list[CaseRun]:
 
 # ---- image preparation (build from the committed per-role go.mod/go.sum) ----
 
-TOOLS_DIR = Path(__file__).resolve().parents[1] / "tools" / "oras-go"
+TOOLS_DIR = repository_root() / "tools" / "oras-go"
 _ORAS_REQUIRE = re.compile(r"^\s*oras\.land/oras-go/v2\s+v([0-9]+\.[0-9]+\.[0-9]+)\s*$", re.M)
 
 
@@ -242,7 +244,7 @@ def _prepare(cell: RunCell) -> PrepareStep:
         proxy.check_inputs(version, image)
     except proxy.RegistryPrepareError as error:
         return PrepareStep(image_ref=image, commands=None, reason=str(error))
-    command = (sys.executable, "-m", "scripts.oras_go_registry_prepare")
+    command = (sys.executable, "-m", "inodefence.drivers.oras_go.registry_prepare")
     return PrepareStep(
         image_ref=image,
         commands=((*command, "--version", version, "--image", image),),
@@ -304,12 +306,13 @@ def ensure_image(spec: str, *, image_tag_suffix: str = "") -> PreparedOrasGo:
 
     ``spec`` is ``latest`` or an exact version. A committed go.mod/go.sum selects the verified
     recipe; otherwise the image is prepared from the Go module proxy
-    (``scripts.oras_go_registry_prepare``) with all of its offline checks (installed version, the
+    (``inodefence.drivers.oras_go.registry_prepare``) with all of its offline checks (installed
+    version, the
     regression probe, the campaign's ``frame`` worker). This is the path
     ``make target-run ... AUTO_PREPARE=1`` takes; it may use the network. Raises ``ValueError``
     with the reason when the version is refused or preparation fails (no image is tagged then).
     """
-    from scripts.run_target import resolve_images, with_tag_suffix
+    from inodefence.drivers.run_target import resolve_images, with_tag_suffix
 
     (version,) = _resolve([spec])
     (cell,) = _cells([version], [])
@@ -326,14 +329,14 @@ def ensure_image(spec: str, *, image_tag_suffix: str = "") -> PreparedOrasGo:
 
 def _explore_min_budget() -> int:
     """The explore hook's own budget floor (lazy import, same reason as the hook)."""
-    from scripts.oras_go_explore import MIN_BUDGET
+    from inodefence.drivers.oras_go.explore import MIN_BUDGET
 
     return MIN_BUDGET
 
 
 def _explore_hook(prepared, options):  # type: ignore[no-untyped-def]
     """oras-go exploration (lazy import so the fixture-regression path has no extra deps)."""
-    from scripts.oras_go_explore import explore
+    from inodefence.drivers.oras_go.explore import explore
 
     return explore(prepared, options)
 

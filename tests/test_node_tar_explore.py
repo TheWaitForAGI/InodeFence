@@ -9,9 +9,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import scripts.node_tar_explore as nte
-from scripts.run_target import ExploreOptions, PreparedTargetImage
 
+import inodefence.drivers.node_tar.explore as nte
+from inodefence.drivers.run_target import ExploreOptions, PreparedTargetImage
 from inodefence.target_result import Verdict, load_target_result
 
 TAR = b"ustar-ish bytes for a violating case"
@@ -56,8 +56,8 @@ def _report(*, runs: int, violating_index: int | None) -> dict:
 
 @pytest.fixture(autouse=True)
 def _fixed_provenance(monkeypatch: pytest.MonkeyPatch) -> None:
-    import scripts.explore_result as er
-    import scripts.run_target as rt
+    import inodefence.drivers.explore_result as er
+    import inodefence.drivers.run_target as rt
 
     monkeypatch.setattr(
         er, "engine_provenance", lambda image: rt.Provenance("b" * 40, False, image, None)

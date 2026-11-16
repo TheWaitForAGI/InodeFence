@@ -8,20 +8,20 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import scripts.decompress_image as dci
-import scripts.image_prepare as ip
-import scripts.node_tar_image as nti
-import scripts.run_oras_go_target as rog
-import scripts.run_python_tarfile_target as rpt
-import scripts.run_target as rt
 
+import inodefence.drivers.decompress.image as dci
+import inodefence.drivers.image_prepare as ip
+import inodefence.drivers.node_tar.image as nti
+import inodefence.drivers.oras_go.adapter as rog
+import inodefence.drivers.python_tarfile.adapter as rpt
+import inodefence.drivers.run_target as rt
 from inodefence.target_result import TargetAxes
 
 ADAPTERS = {
-    "node-tar": "scripts.run_node_tar_target:ADAPTER",
-    "python-tarfile": "scripts.run_python_tarfile_target:ADAPTER",
-    "oras-go": "scripts.run_oras_go_target:ADAPTER",
-    "decompress": "scripts.run_decompress_target:ADAPTER",
+    "node-tar": "inodefence.drivers.node_tar.adapter:ADAPTER",
+    "python-tarfile": "inodefence.drivers.python_tarfile.adapter:ADAPTER",
+    "oras-go": "inodefence.drivers.oras_go.adapter:ADAPTER",
+    "decompress": "inodefence.drivers.decompress.adapter:ADAPTER",
 }
 
 
@@ -63,14 +63,14 @@ def test_build_step_builds_unverified_then_checks_then_tags(
     assert step.image_ref == ref and step.commands is not None
     build, check, tag, untag = step.commands
     assert build[:3] == ("docker", "build", "-q") and build[-3:] == ("-t", f"{ref}-unverified", ".")
-    assert check[1:4] == ("-m", "scripts.image_prepare", "check")
+    assert check[1:4] == ("-m", "inodefence.drivers.image_prepare", "check")
     assert check[check.index("--expect") + 1] == expect
     assert f"{ref}-unverified" in check and ref not in check
     assert tag == ("docker", "tag", f"{ref}-unverified", ref)
     assert untag == ("docker", "rmi", "--no-prune", f"{ref}-unverified")
     # nothing in the step touches a tag other than image_ref and its own staging tag
     for command in step.commands:
-        refs = [a for a in command if a.startswith("inodefence")]
+        refs = [a for a in command if a.startswith("inodefence-")]  # image refs, not the module
         assert set(refs) <= {ref, f"{ref}-unverified"}
 
 
@@ -209,7 +209,7 @@ def test_present_image_is_reused_without_prepare(monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(rt, "image_id", lambda ref: "sha256:present")
     monkeypatch.setattr(rt, "prepare_image", lambda step: pytest.fail("must not prepare"))
     # oras-go's reuse check runs docker; stub it (tested in test_oras_go_registry_prepare.py).
-    import scripts.run_oras_go_target as rog
+    import inodefence.drivers.oras_go.adapter as rog
 
     monkeypatch.setattr(rog, "_verify_existing", lambda cell, image: None)
     ready, errors = rt.resolve_images(adapter, cells, auto_prepare=True)

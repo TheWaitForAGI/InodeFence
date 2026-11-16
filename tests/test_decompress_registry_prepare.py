@@ -9,11 +9,11 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import scripts.decompress_registry_prepare as reg
-import scripts.npm_registry as npm
-import scripts.run_decompress_target as dt
-import scripts.run_target as rt
 
+import inodefence.drivers.decompress.adapter as dt
+import inodefence.drivers.decompress.registry_prepare as reg
+import inodefence.drivers.npm_registry as npm
+import inodefence.drivers.run_target as rt
 from inodefence.target_result import EXPLORATORY_LABEL, LABEL
 
 FORK = "@xhmikosr/decompress"
@@ -371,7 +371,7 @@ def test_prepare_step_calls_the_registry_module() -> None:
     (cell,) = dt.ADAPTER.cells([SPEC], [])
     step = dt.ADAPTER.prepare(cell)
     assert step.commands is not None
-    assert step.commands[0][1:3] == ("-m", "scripts.decompress_registry_prepare")
+    assert step.commands[0][1:3] == ("-m", "inodefence.drivers.decompress.registry_prepare")
 
 
 def test_generic_npm_helper_names_no_target() -> None:

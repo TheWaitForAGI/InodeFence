@@ -7,9 +7,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import scripts.run_target_explore as rte
-from scripts.run_target import ExploreOutcome, PreparedTargetImage, TargetAdapter
 
+import inodefence.drivers.run_target_explore as rte
+from inodefence.drivers.run_target import ExploreOutcome, PreparedTargetImage, TargetAdapter
 from inodefence.target_result import ResultMode
 
 
@@ -130,7 +130,7 @@ def test_setup_error_from_prepare_is_exit_3(
 
 
 def _adapter_with_option() -> tuple[TargetAdapter, dict[str, Any]]:
-    from scripts.run_target import TargetOption
+    from inodefence.drivers.run_target import TargetOption
 
     captured: dict[str, Any] = {}
 
@@ -194,7 +194,7 @@ def test_declared_option_rejects_missing_and_unknown_values(
 
 
 def test_targets_without_declared_options_are_unaffected() -> None:
-    from scripts.run_target import load_adapter
+    from inodefence.drivers.run_target import load_adapter
 
     assert load_adapter("node-tar").options == ()
     assert load_adapter("oras-go").options == ()
@@ -234,7 +234,7 @@ def test_help_lists_declared_target_options(
 
 
 def test_multi_value_option_is_refused_in_explore(monkeypatch: pytest.MonkeyPatch) -> None:
-    from scripts.run_target import TargetOption
+    from inodefence.drivers.run_target import TargetOption
 
     base, _ = _adapter_with_option()
     import dataclasses
@@ -293,7 +293,7 @@ def test_dry_run_refuses_a_budget_below_the_hooks_floor(target: str, capsys) -> 
 
 
 def test_python_tarfile_floor_is_its_hook_modules() -> None:
-    from scripts import python_tarfile_explore
+    from inodefence.drivers.python_tarfile import explore as python_tarfile_explore
 
     adapter = rte.load_adapter("python-tarfile")
     assert adapter.explore_min_budget is not None
@@ -303,7 +303,7 @@ def test_python_tarfile_floor_is_its_hook_modules() -> None:
 def test_auto_prepare_hint_names_the_cli_flag_when_run_through_inodefence(
     monkeypatch: pytest.MonkeyPatch, capsys
 ) -> None:
-    from scripts import run_target
+    from inodefence.drivers import run_target
 
     monkeypatch.delenv("INODEFENCE_PROG", raising=False)
     assert run_target.auto_prepare_hint() == "AUTO_PREPARE=1 (--auto-prepare)"
@@ -316,7 +316,7 @@ def test_auto_prepare_hint_names_the_cli_flag_when_run_through_inodefence(
 
 
 def test_untracked_source_file_makes_the_engine_dirty(monkeypatch: pytest.MonkeyPatch) -> None:
-    from scripts import run_target
+    from inodefence.drivers import run_target
 
     def fake_git(untracked: str):  # type: ignore[no-untyped-def]
         def git(*args: str) -> str:
@@ -346,8 +346,7 @@ def test_dry_run_checks_the_version_format_like_verify(capsys) -> None:
 
 
 def test_decompress_declares_its_campaign_floor(capsys) -> None:
-    from scripts import decompress_explore
-
+    from inodefence.drivers.decompress import explore as decompress_explore
     from inodefence.generator import minimal_seed_corpus
 
     floor = rte.load_adapter("decompress").explore_min_budget()  # type: ignore[misc]

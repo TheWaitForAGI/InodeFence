@@ -12,12 +12,11 @@ import base64
 from hashlib import sha256
 from pathlib import Path
 
-from scripts.run_target import (
+from inodefence.drivers.run_target import (
     DEFAULT_MAX_UNJUDGED_RATIO,
     PreparedTargetImage,
     engine_provenance,
 )
-
 from inodefence.live_exploration import list_violation_cases
 from inodefence.target_result import (
     JUDGED,

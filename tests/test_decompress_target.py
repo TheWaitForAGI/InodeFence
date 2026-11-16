@@ -7,10 +7,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import scripts.regression_check as rc
-import scripts.run_decompress_target as dt
-import scripts.run_target as rt
 
+import inodefence.drivers.decompress.adapter as dt
+import inodefence.drivers.regression_check as rc
+import inodefence.drivers.run_target as rt
 from inodefence.target_result import RUN_ERROR, Provenance, Verdict, load_target_result
 
 ORIGINAL = "decompress@4.2.1"

@@ -1,4 +1,4 @@
-"""node-tar target for ``scripts.run_target`` (``make target-run TARGET=node-tar``).
+"""node-tar target for ``inodefence.drivers.run_target`` (``make target-run TARGET=node-tar``).
 
     make target-run TARGET=node-tar TARGET_VERSIONS="7.5.2 7.5.3"
 
@@ -10,11 +10,13 @@ image (``cell.image_ref``; by default ``inodefence-node-tar-effect:<version>``).
 observes C1 and C2, not C0 (``null``). The version is a plain input; no release id or CVE id is a
 decision condition.
 
-Image preparation (``ADAPTER.prepare``) is ``scripts.node_tar_image.prepare``: versions with a
+Image preparation (``ADAPTER.prepare``) is ``inodefence.drivers.node_tar.image.prepare``: versions
+with a
 committed lock in ``tools/node-tar/versions/<v>/`` are built and checked offline; others are
 refused.
 
-(Moved out of ``scripts/run_target.py`` so the common command holds no target-specific code.)
+(Moved out of ``inodefence.drivers.run_target`` so the common command holds no target-specific
+code.)
 """
 
 from __future__ import annotations
@@ -28,10 +30,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from experiments.repro import cross_release_identity as cri
-from scripts import node_tar_image
-from scripts import node_tar_registry_prepare as registry
-from scripts import regression_check as rc
-from scripts.run_target import (
+
+from inodefence.drivers import regression_check as rc
+from inodefence.drivers.node_tar import image as node_tar_image
+from inodefence.drivers.node_tar import registry_prepare as registry
+from inodefence.drivers.run_target import (
     CaseRun,
     PrepareStep,
     RunCell,
@@ -39,7 +42,6 @@ from scripts.run_target import (
     fixture_case,
     fixture_plan,
 )
-
 from inodefence.target_result import Preparation, ResultMode, TargetAxes
 
 TARGET = "node-tar"
@@ -122,7 +124,7 @@ def _prepare(cell: RunCell) -> PrepareStep:
         registry.check_inputs(version, image)
     except registry.RegistryPrepareError as error:
         return PrepareStep(image_ref=image, commands=None, reason=str(error))
-    command = (sys.executable, "-m", "scripts.node_tar_registry_prepare")
+    command = (sys.executable, "-m", "inodefence.drivers.node_tar.registry_prepare")
     return PrepareStep(
         image_ref=image,
         commands=((*command, "--version", version, "--image", image),),
@@ -201,12 +203,13 @@ def ensure_image(spec: str, *, image_tag_suffix: str = "") -> PreparedNodeTar:
     """One call for other commands: resolve ``spec``, reuse or prepare its image, return its id.
 
     ``spec`` is ``latest`` or an exact/dotted version. A committed lock selects the verified recipe;
-    otherwise the image is prepared from the registry (``scripts.node_tar_registry_prepare``) with
+    otherwise the image is prepared from the registry
+    (``inodefence.drivers.node_tar.registry_prepare``) with
     all of its offline checks (installed version, harness, effect producer). This is the same path
     ``make target-run ... AUTO_PREPARE=1`` takes; it may use the network. Raises ``ValueError`` with
     the reason when the version is refused or preparation fails (no image is tagged then).
     """
-    from scripts.run_target import resolve_images, with_tag_suffix
+    from inodefence.drivers.run_target import resolve_images, with_tag_suffix
 
     (version,) = _resolve([spec])
     (cell,) = _cells([version], [])
@@ -223,21 +226,21 @@ def ensure_image(spec: str, *, image_tag_suffix: str = "") -> PreparedNodeTar:
 
 def _explore_min_budget() -> int:
     """The explore hook's own budget floor (lazy import, same reason as the hook)."""
-    from scripts.node_tar_explore import MIN_BUDGET
+    from inodefence.drivers.node_tar.explore import MIN_BUDGET
 
     return MIN_BUDGET
 
 
 def _explore_hook(prepared, options):  # type: ignore[no-untyped-def]
     """node-tar exploration (lazy import so the fixture-regression path has no extra deps)."""
-    from scripts.node_tar_explore import explore
+    from inodefence.drivers.node_tar.explore import explore
 
     return explore(prepared, options)
 
 
 def _replay_hook(request, work_dir):  # type: ignore[no-untyped-def]
     """node-tar case replay (lazy import, like exploration)."""
-    from scripts.node_tar_replay import replay
+    from inodefence.drivers.node_tar.replay import replay
 
     return replay(request, work_dir)
 

@@ -1,7 +1,8 @@
 """node-tar's replay hook: re-run one recorded case on its exact image through the controller.
 
 This is the node-tar implementation of ``TargetAdapter.replay`` (see
-:mod:`inodefence.case_replay`). The common driver (``scripts.run_target_replay``) has already
+:mod:`inodefence.case_replay`). The common driver (``inodefence.drivers.run_target_replay``) has
+already
 checked the input (byte-identical case, same ``case_id``), the exact image id being present, and
 the recorded run settings. Here:
 
@@ -27,8 +28,9 @@ from pathlib import Path
 from typing import Any
 
 from inodefence.case_replay import CaseReplayError, ReplayRequest, ReplayRun, replay_input_line
+from inodefence.drivers.repo import repository_root
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = repository_root()
 SMOKE = REPO_ROOT / "scripts" / "local_node_tar_smoke.sh"
 
 

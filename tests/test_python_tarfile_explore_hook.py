@@ -13,13 +13,13 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import scripts.python_tarfile_explore as pte
-import scripts.run_python_tarfile_target as rpt
-import scripts.run_target_explore as rte
-from scripts.python_tarfile_producer import ProducerImage
-from scripts.run_target import ExploreOptions, PreparedTargetImage
 from tests.test_python_tarfile_contained import IMAGE, _LocalBackend
 
+import inodefence.drivers.python_tarfile.adapter as rpt
+import inodefence.drivers.python_tarfile.explore as pte
+import inodefence.drivers.run_target_explore as rte
+from inodefence.drivers.python_tarfile.producer import ProducerImage
+from inodefence.drivers.run_target import ExploreOptions, PreparedTargetImage
 from inodefence.python_tarfile_explore import python_tarfile_exploration_report
 from inodefence.target_result import ResultMode, load_target_result
 

@@ -18,9 +18,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import scripts.python_tarfile_producer as producer
 from scripts.oracle_fixture_check import ORACLE_FIXTURES
 
+import inodefence.drivers.python_tarfile.producer as producer
 from inodefence.effect_pipeline_python_tarfile import run_python_tarfile_contained_case
 from inodefence.evaluation.rds import RdsArm, RdsCellConfig
 from inodefence.execution.base import ContainerOutcome, ExecutionBackend
@@ -468,8 +468,8 @@ def _py_verdict(records: list[dict]) -> str:
     import base64
     from hashlib import sha256
 
-    from scripts.explore_result import build_campaign_result
-    from scripts.run_target import PreparedTargetImage
+    from inodefence.drivers.explore_result import build_campaign_result
+    from inodefence.drivers.run_target import PreparedTargetImage
 
     tar = b"t" * 512
     inputs = [

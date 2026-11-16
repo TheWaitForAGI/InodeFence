@@ -10,10 +10,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import scripts.regression_check as rc
-import scripts.run_oras_go_target as rog
-import scripts.run_target as rt
 
+import inodefence.drivers.oras_go.adapter as rog
+import inodefence.drivers.regression_check as rc
+import inodefence.drivers.run_target as rt
 from inodefence.target_result import load_target_result
 
 
@@ -23,7 +23,7 @@ def _members(tar_bytes: bytes) -> list[tarfile.TarInfo]:
 
 
 def test_registered_in_common_command() -> None:
-    assert rt.TARGETS["oras-go"] == "scripts.run_oras_go_target:ADAPTER"
+    assert rt.TARGETS["oras-go"] == "inodefence.drivers.oras_go.adapter:ADAPTER"
     assert rt.load_adapter("oras-go") is rog.ADAPTER
 
 

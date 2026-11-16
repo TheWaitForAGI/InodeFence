@@ -80,15 +80,15 @@ def test_live_status_shows_the_same_warning(tmp_path: Path) -> None:
 def test_explore_driver_prints_the_warning_and_keeps_the_exit_code(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    import scripts.run_target_explore as rte
-    from scripts.explore_result import write_result
-    from scripts.run_target import ExploreOutcome
+    import inodefence.drivers.run_target_explore as rte
+    from inodefence.drivers.explore_result import write_result
+    from inodefence.drivers.run_target import ExploreOutcome
 
     result = _campaign({"rejected": 5})
     result_path = write_result(tmp_path / "res", result, {})
 
     def prepare(adapter, target, spec, *, image_tag_suffix, filters=()):  # type: ignore[no-untyped-def]
-        from scripts.run_target import PreparedTargetImage
+        from inodefence.drivers.run_target import PreparedTargetImage
 
         return PreparedTargetImage(target, spec, spec, "img", "sha256:" + "b" * 64, True)
 

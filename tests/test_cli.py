@@ -559,7 +559,7 @@ def test_bad_target_is_a_refusal_named_after_the_command(command: str, capfd) ->
 
 
 def test_verify_dry_run_plan_shows_the_out_folder(tmp_path: Path, capsys, monkeypatch) -> None:
-    from scripts import run_target
+    from inodefence.drivers import run_target
 
     monkeypatch.setattr(run_target, "docker_problem", lambda: "docker not consulted in this test")
 

@@ -8,7 +8,8 @@ import io
 import tarfile
 
 import pytest
-import scripts.regression_check as rc
+
+import inodefence.drivers.regression_check as rc
 
 
 def test_build_fixtures_assembles_hand_and_fn_placements() -> None:

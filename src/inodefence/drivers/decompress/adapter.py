@@ -1,4 +1,4 @@
-"""decompress target adapter for ``scripts/run_target.py`` (fixture-regression, demo run).
+"""decompress target adapter for ``inodefence.drivers.run_target`` (fixture-regression, demo run).
 
 Target: the npm ``decompress`` family. The original package (``decompress``, kevva/decompress) is
 unmaintained: its last release is 4.2.1 and it has no in-package fix for its hard-link handling.
@@ -11,7 +11,7 @@ patched release). Because the two are different packages, a version alone is amb
 
 There is no runtime or extraction-filter axis (``runtime_version`` / ``extraction_filter`` are
 ``null``). Mode is ``fixture-regression`` with the same five fixtures every registered target runs
-(``scripts.regression_check.build_fixtures``) in the same ``/work/extract`` + external
+(``inodefence.drivers.regression_check.build_fixtures``) in the same ``/work/extract`` + external
 ``/work/ext/reference.bin`` layout, judged by the same ``regression_check.c1_from_raw`` /
 ``c2_from_raw`` through ``run_target.fixture_case``. C0 is not observed (``null``). No package
 name, version, CVE id or reference-file name is a decision condition.
@@ -21,7 +21,8 @@ Execution reuses the existing decompress path (``experiments.repro.decompress_ha
 - Install and run are separate steps. The pinned images ``inodefence-decompress:<X.Y.Z>`` are built
   beforehand from ``tools/decompress/Dockerfile`` (``npm ci`` from a committed, checksum-verified
   ``package-lock.json``; the only step that uses the network), by hand or with ``AUTO_PREPARE=1``
-  (``scripts.decompress_image.prepare``). The run step never builds or pulls (``--pull never``).
+  (``inodefence.drivers.decompress.image.prepare``). The run step never builds or pulls (``--pull
+  never``).
 - Each fixture is extracted in a fresh container with the same flags as
   ``decompress_hardlink.run_probe``: ``--rm --network none --read-only``, tmpfs ``/work`` and
   ``/tmp`` only, ``--cap-drop ALL``, the image's non-root user, no mounts; inputs arrive in
@@ -52,10 +53,12 @@ from pathlib import Path
 from typing import Any
 
 from experiments.repro import decompress_hardlink as dh
-from scripts import decompress_image
-from scripts import decompress_registry_prepare as registry
-from scripts import regression_check as rc
-from scripts.run_target import (
+
+from inodefence.drivers import regression_check as rc
+from inodefence.drivers.decompress import image as decompress_image
+from inodefence.drivers.decompress import registry_prepare as registry
+from inodefence.drivers.repo import repository_root
+from inodefence.drivers.run_target import (
     CaseRun,
     PrepareStep,
     RunCell,
@@ -63,11 +66,10 @@ from scripts.run_target import (
     fixture_case,
     fixture_plan,
 )
-
 from inodefence.target_result import Preparation, ResultMode, TargetAxes
 
 TARGET = "decompress"
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = repository_root()
 TOOLS_DIR = REPO_ROOT / "tools" / "decompress"
 SPEC_RE = re.compile(
     r"(?P<package>(?:@[a-z0-9][a-z0-9._-]*/)?decompress)@(?P<version>[0-9]+\.[0-9]+\.[0-9]+)"
@@ -323,7 +325,7 @@ def _prepare(cell: RunCell) -> PrepareStep:
         registry.check_inputs(package, version, image)
     except registry.RegistryPrepareError as error:
         return PrepareStep(image_ref=image, commands=None, reason=str(error))
-    command = (sys.executable, "-m", "scripts.decompress_registry_prepare")
+    command = (sys.executable, "-m", "inodefence.drivers.decompress.registry_prepare")
     return PrepareStep(
         image_ref=image,
         commands=((*command, "--spec", spec, "--image", image),),
@@ -430,7 +432,7 @@ def ensure_image(spec: str, *, image_tag_suffix: str = "") -> PreparedDecompress
     Same path as ``make target-run TARGET=decompress ... AUTO_PREPARE=1``; may use the network.
     Raises ``ValueError`` with the reason (no image is tagged by a failed preparation).
     """
-    from scripts.run_target import resolve_images, with_tag_suffix
+    from inodefence.drivers.run_target import resolve_images, with_tag_suffix
 
     (exact,) = _resolve([spec])
     (cell,) = _cells([exact], [])
@@ -470,12 +472,12 @@ ADAPTER = TargetAdapter(
 
 def _explore_min_budget() -> int:
     """The explore hook's own budget floor (lazy import, same reason as the hook)."""
-    from scripts.decompress_explore import MIN_BUDGET
+    from inodefence.drivers.decompress.explore import MIN_BUDGET
 
     return MIN_BUDGET
 
 
 def _explore(prepared: Any, options: Any) -> Any:
-    from scripts.decompress_explore import explore
+    from inodefence.drivers.decompress.explore import explore
 
     return explore(prepared, options)

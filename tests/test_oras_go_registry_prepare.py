@@ -9,10 +9,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import scripts.oras_go_registry_prepare as prep
-import scripts.run_oras_go_target as rog
-import scripts.run_target as rt
 
+import inodefence.drivers.oras_go.adapter as rog
+import inodefence.drivers.oras_go.registry_prepare as prep
+import inodefence.drivers.run_target as rt
 from inodefence.target_result import EXPLORATORY_LABEL, LABEL, load_target_result
 
 V = "2.6.0"
@@ -432,7 +432,7 @@ def test_uncommitted_exact_version_is_an_exploratory_proxy_cell() -> None:
     assert step.commands is not None
     assert step.commands[0][1:] == (
         "-m",
-        "scripts.oras_go_registry_prepare",
+        "inodefence.drivers.oras_go.registry_prepare",
         "--version",
         "2.6.4",
         "--image",

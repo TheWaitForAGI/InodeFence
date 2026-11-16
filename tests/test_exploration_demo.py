@@ -359,8 +359,8 @@ def _many_runs_report(
 
 
 def _verdict(report: dict, budget: int) -> str:
-    from scripts.explore_result import build_campaign_result
-    from scripts.run_target import PreparedTargetImage
+    from inodefence.drivers.explore_result import build_campaign_result
+    from inodefence.drivers.run_target import PreparedTargetImage
 
     prepared = PreparedTargetImage(
         "node-tar", "7.5.23", "7.5.23", "img", "sha256:" + "a" * 64, True

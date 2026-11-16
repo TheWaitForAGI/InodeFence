@@ -6,12 +6,12 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import scripts.image_prepare as ip
-import scripts.regression_check as rc
-import scripts.run_node_tar_target as nt
-import scripts.run_target as rt
 from scripts import check_dev_env
 
+import inodefence.drivers.image_prepare as ip
+import inodefence.drivers.node_tar.adapter as nt
+import inodefence.drivers.regression_check as rc
+import inodefence.drivers.run_target as rt
 from inodefence.target_result import RUN_ERROR, Provenance, Verdict, load_target_result
 
 SHARED = {
@@ -190,7 +190,7 @@ def _fake_py_run_one(raw_by_cell: dict[tuple[str, str], dict[str, Any]]):
 def test_python_tarfile_filter_axis_through_common_command(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    import scripts.run_python_tarfile_target as pyt
+    import inodefence.drivers.python_tarfile.adapter as pyt
 
     monkeypatch.setattr(
         pyt.pti,

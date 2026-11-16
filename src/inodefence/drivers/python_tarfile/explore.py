@@ -1,7 +1,9 @@
 """python-tarfile's exploration hook: the shared effect loop on one prepared runtime + one filter.
 
-This is the python-tarfile implementation of ``TargetAdapter.explore`` (``scripts.run_target``).
-The common driver (``scripts.run_target_explore``) resolves ``latest`` / ``X.Y`` / ``X.Y.Z``,
+This is the python-tarfile implementation of ``TargetAdapter.explore``
+(``inodefence.drivers.run_target``).
+The common driver (``inodefence.drivers.run_target_explore``) resolves ``latest`` / ``X.Y`` /
+``X.Y.Z``,
 validates the declared ``--extraction-filter`` option (``run_python_tarfile_target``), prepares
 the official ``python:X.Y.Z-slim`` image, and passes the option in
 ``ExploreOptions.target_options``. This hook then
@@ -9,12 +11,14 @@ the official ``python:X.Y.Z-slim`` image, and passes the option in
 1. refuses a filter exploration does not take yet (``EXPLORE_FILTERS``; ``fully_trusted`` is held,
    the reason is in the message);
 2. builds or reuses the producer image on top of the runtime image
-   (``scripts.python_tarfile_producer``: only the worker file is added; checked offline before it
+   (``inodefence.drivers.python_tarfile.producer``: only the worker file is added; checked offline
+   before it
    is named and again before every reuse);
 3. runs the ``python-tarfile-effect-campaign`` controller mode through
    ``scripts/local_python_tarfile_explore.sh`` -- the target runs only inside the disposable
    controller via the common container backend;
-4. converts the loop report with the common converter (``scripts.explore_result``) and only then
+4. converts the loop report with the common converter (``inodefence.drivers.explore_result``) and
+   only then
    sets what is python-specific: the two axes (``runtime_version`` + ``extraction_filter``, one of
    each), the producer image as the run image, and the ``preparation`` record.
 
@@ -35,16 +39,16 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from scripts import explore_result
-from scripts import python_tarfile_producer as producer
-from scripts import run_python_tarfile_target as rpt
-from scripts.run_target import ExploreOptions, ExploreOutcome, PreparedTargetImage
-
+from inodefence.drivers import explore_result
+from inodefence.drivers.python_tarfile import adapter as rpt
+from inodefence.drivers.python_tarfile import producer
+from inodefence.drivers.repo import repository_root
+from inodefence.drivers.run_target import ExploreOptions, ExploreOutcome, PreparedTargetImage
 from inodefence.generator import minimal_seed_corpus
 from inodefence.target_result import Preparation, TargetAxes, TargetResult
 from inodefence.target_result_summary import write_cell_summaries
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = repository_root()
 LAUNCHER = REPO_ROOT / "scripts" / "local_python_tarfile_explore.sh"
 MIN_BUDGET = len(minimal_seed_corpus())
 

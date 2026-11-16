@@ -9,10 +9,10 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import scripts.node_tar_registry_prepare as reg
-import scripts.run_node_tar_target as nt
-import scripts.run_target as rt
 
+import inodefence.drivers.node_tar.adapter as nt
+import inodefence.drivers.node_tar.registry_prepare as reg
+import inodefence.drivers.run_target as rt
 from inodefence.target_result import (
     EXPLORATORY_LABEL,
     LABEL,
@@ -279,7 +279,7 @@ def test_unregistered_exact_version_is_an_exploratory_registry_cell() -> None:
     assert (cell.image_ref, cell.exploratory) == ("inodefence-node-tar-registry:9.9.9", True)
     step = nt.ADAPTER.prepare(cell)
     assert step.commands is not None
-    assert step.commands[0][1:3] == ("-m", "scripts.node_tar_registry_prepare")
+    assert step.commands[0][1:3] == ("-m", "inodefence.drivers.node_tar.registry_prepare")
 
 
 def test_unregistered_without_auto_prepare_stops_with_the_hint(
@@ -308,7 +308,7 @@ def test_dry_run_contacts_no_registry(
     assert rt.main(argv) == 0
     plan = json.loads(capsys.readouterr().out)["cells"]["node-tar-9.9.9-exploratory"]
     assert plan["exploratory"] is True
-    assert "scripts.node_tar_registry_prepare" in plan["image_plan"]["commands"][0]
+    assert "inodefence.drivers.node_tar.registry_prepare" in plan["image_plan"]["commands"][0]
 
 
 def _fake_evidence(installed: str = "9.9.9"):

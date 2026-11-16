@@ -2,13 +2,15 @@
 
 A target module describes how one image version is obtained with a ``Recipe`` (``docker build``
 arguments from a recipe committed in this repository, or one image to pull) plus an offline
-version check. ``prepare_step`` turns it into the common ``scripts.run_target.PrepareStep``
+version check. ``prepare_step`` turns it into the common
+``inodefence.drivers.run_target.PrepareStep``
 command list, which ``run_target`` runs from the repository root only when the cell's image is
 missing (an existing image is reused untouched):
 
 1. build into ``<image_ref>-unverified`` (or: pull the official image if it is absent locally,
    then tag it ``<image_ref>-unverified``) -- the only steps that use the network;
-2. ``python -m scripts.image_prepare check`` runs that image with ``--network none`` and fails
+2. ``python -m inodefence.drivers.image_prepare check`` runs that image with ``--network none`` and
+   fails
    unless it reports exactly the expected version;
 3. tag it ``<image_ref>`` and untag ``<image_ref>-unverified``.
 
@@ -32,7 +34,7 @@ import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from scripts.run_target import PrepareStep, RunCell, image_id
+from inodefence.drivers.run_target import PrepareStep, RunCell, image_id
 
 EXACT_VERSION = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+")
 IMAGE_SLOT = "{image}"
@@ -98,7 +100,7 @@ def prepare_step(
         if present(recipe.pull) is None:
             commands.append(("docker", "pull", "-q", recipe.pull))
         commands.append(("docker", "tag", recipe.pull, staging))
-    check = [python, "-m", "scripts.image_prepare", "check", "--expect", recipe.expected]
+    check = [python, "-m", "inodefence.drivers.image_prepare", "check", "--expect", recipe.expected]
     if recipe.json_key:
         check += ["--json-key", recipe.json_key]
     check += ["--", *(staging if part == IMAGE_SLOT else part for part in recipe.check)]
@@ -133,7 +135,7 @@ def observed(stdout: str, json_key: str | None) -> str:
 def check(
     argv: list[str], runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run
 ) -> int:
-    parser = argparse.ArgumentParser(prog="python -m scripts.image_prepare check")
+    parser = argparse.ArgumentParser(prog="python -m inodefence.drivers.image_prepare check")
     parser.add_argument("--expect", required=True)
     parser.add_argument("--json-key")
     parser.add_argument("docker_run_args", nargs=argparse.REMAINDER)
@@ -217,6 +219,7 @@ def recipe_verify_existing(
 if __name__ == "__main__":
     if sys.argv[1:2] != ["check"]:
         raise SystemExit(
-            "usage: python -m scripts.image_prepare check --expect V [--json-key K] -- ARGS"
+            "usage: python -m inodefence.drivers.image_prepare check --expect V [--json-key K] "
+            "-- ARGS"
         )
     raise SystemExit(check(sys.argv[2:]))

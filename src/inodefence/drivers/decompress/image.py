@@ -15,16 +15,17 @@ import json
 import re
 from pathlib import Path
 
-from scripts.image_prepare import (
+from inodefence.drivers.image_prepare import (
     IMAGE_SLOT,
     Recipe,
     UnsupportedVersionError,
     recipe_step,
     single_dependency,
 )
-from scripts.run_target import PrepareStep, RunCell
+from inodefence.drivers.repo import repository_root
+from inodefence.drivers.run_target import PrepareStep, RunCell
 
-_REPO_ROOT = Path(__file__).resolve().parents[1]
+_REPO_ROOT = repository_root()
 TOOLS_DIR = _REPO_ROOT / "tools" / "decompress"
 SPEC = re.compile(
     r"(?P<package>(?:@[a-z0-9][a-z0-9._-]*/)?decompress)@(?P<version>[0-9]+\.[0-9]+\.[0-9]+)"

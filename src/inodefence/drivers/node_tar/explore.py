@@ -1,7 +1,8 @@
 """node-tar's exploration hook: open the state-aware effect loop on a prepared node-tar image.
 
-This is the node-tar implementation of ``TargetAdapter.explore`` (``scripts.run_target``). The
-common driver (``scripts.run_target_explore``) prepares the image and passes a
+This is the node-tar implementation of ``TargetAdapter.explore``
+(``inodefence.drivers.run_target``). The
+common driver (``inodefence.drivers.run_target_explore``) prepares the image and passes a
 ``PreparedTargetImage`` plus target-agnostic ``ExploreOptions``; everything here is node-tar
 specific -- the controller mode (``effect-demo-explore``), the run program, and the node-tar
 observation -- and it emits the common ``inodefence-target-result-v1`` campaign result.
@@ -19,20 +20,20 @@ import subprocess
 import sys
 from pathlib import Path
 
-from scripts.explore_result import build_campaign_result, write_result
-from scripts.run_target import (
+from inodefence.drivers.explore_result import build_campaign_result, write_result
+from inodefence.drivers.repo import repository_root
+from inodefence.drivers.run_target import (
     ExploreOptions,
     ExploreOutcome,
     PreparedTargetImage,
     engine_provenance,
 )
-
 from inodefence.evaluation.rds_preregistration import parse_preregistration
 from inodefence.generator import minimal_seed_corpus
 from inodefence.live_exploration import LivePuller
 from inodefence.target_result_summary import write_cell_summaries
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = repository_root()
 SMOKE = REPO_ROOT / "scripts" / "local_node_tar_smoke.sh"
 # Writable tmpfs path inside the controller (root is read-only); the host pulls it with docker cp.
 CONTROLLER_LIVE_DIR = "/tmp/inodefence-live"

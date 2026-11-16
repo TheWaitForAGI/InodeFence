@@ -1,6 +1,6 @@
 """decompress exploration: latest (or any) version prepared, then the existing mutation loop.
 
-    python -m scripts.decompress_explore --version @xhmikosr/decompress@latest \
+    python -m inodefence.drivers.decompress.explore --version @xhmikosr/decompress@latest \
         --budget 20 --seed 123 --out ~/inodefence-explore/decompress-run
 
 Flow, host side (the shape of the node-tar exploration driver):
@@ -39,14 +39,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from scripts import run_decompress_target as dt
-from scripts.run_target import (
+from inodefence.drivers.decompress import adapter as dt
+from inodefence.drivers.repo import repository_root
+from inodefence.drivers.run_target import (
     ExploreOptions,
     ExploreOutcome,
     PreparedTargetImage,
     RunCell,
 )
-
 from inodefence.feedback import EffectSearchPolicy
 from inodefence.generator import minimal_seed_corpus
 from inodefence.mutator import MutationPolicy
@@ -60,7 +60,7 @@ from inodefence.target_result import (
     Verdict,
 )
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = repository_root()
 #: The campaign's own floor: the controller starts decompress-effect-campaign from
 #: ``minimal_seed_corpus()`` (container_controller.run_native_decompress_campaign) and
 #: ``run_decompress_effect_campaign`` refuses a budget below its seed count. Read from the same
@@ -201,7 +201,8 @@ def build_campaign_result(
 
     The decompress loop report (``steps`` / ``violation_inputs`` keyed by ``index``) is reshaped
     into the target-agnostic loop shape (``case_records`` / ``violation_inputs`` keyed by
-    ``run_index``) and converted by the shared ``scripts.explore_result.build_campaign_result``.
+    ``run_index``) and converted by the shared
+    ``inodefence.drivers.explore_result.build_campaign_result``.
     Each record is on the two separate axes of the common format (as node-tar / python-tarfile):
     ``outcome`` is the judgment (``judged``, or ``run_error`` with no contract values) and
     ``termination`` the step's execution status. The report has no trace-integrity field, so
@@ -215,7 +216,7 @@ def build_campaign_result(
     violation is a run error -- and the common ceiling rule then decides ``ERROR``. The summary's
     ``not_readable_as_pass`` is derived from that verdict, never decided separately.
     """
-    from scripts import explore_result
+    from inodefence.drivers import explore_result
 
     counts = tally(report)
     if counts.steps != budget:  # also "no step ran"
@@ -295,7 +296,7 @@ def build_campaign_result(
 def write_outputs(
     out_dir: Path, result: TargetResult, tars: dict[str, bytes], summary: dict[str, Any]
 ) -> Path:
-    from scripts import explore_result
+    from inodefence.drivers import explore_result
 
     if (out_dir / RESULT_NAME).exists():
         raise FileExistsError(f"refusing to overwrite {out_dir / RESULT_NAME}")

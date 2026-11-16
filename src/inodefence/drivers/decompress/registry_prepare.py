@@ -42,10 +42,11 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from scripts import npm_registry as npm
-from scripts.npm_registry import EXACT, REGISTRY, RegistryPrepareError, Runner
+from inodefence.drivers import npm_registry as npm
+from inodefence.drivers.npm_registry import EXACT, REGISTRY, RegistryPrepareError, Runner
+from inodefence.drivers.repo import repository_root
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = repository_root()
 TOOLS_DIR = REPO_ROOT / "tools" / "decompress"
 DOCKERFILE = TOOLS_DIR / "Dockerfile"
 WORKER = "tools/decompress/worker/worker.cjs"
@@ -88,7 +89,7 @@ def split_spec(spec: str) -> tuple[str, str]:
 
 
 def committed_specs(tools_dir: Path = TOOLS_DIR) -> set[str]:
-    from scripts.decompress_image import pinned_specs
+    from inodefence.drivers.decompress.image import pinned_specs
 
     return set(pinned_specs(tools_dir))
 
@@ -188,7 +189,7 @@ def harness_check(runner: Runner, image: str, package: str, version: str) -> str
     behaviour (some versions resolve the link target elsewhere or race and refuse); the program
     reporting it is what matters. Returns a one-line description.
     """
-    from scripts.run_decompress_target import JS_PROGRAM, REFERENCE_CONTENT
+    from inodefence.drivers.decompress.adapter import JS_PROGRAM, REFERENCE_CONTENT
 
     ref = base64.b64encode(REFERENCE_CONTENT).decode()
     done, raw = _run_offline(

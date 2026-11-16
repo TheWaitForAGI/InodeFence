@@ -1,8 +1,8 @@
 """Python tarfile target run: isolated run -> C1/C2 judgment -> common result file (demo run).
 
-    python -m scripts.run_python_tarfile_target --runtime-version 3.12.16 \
+    python -m inodefence.drivers.python_tarfile.adapter --runtime-version 3.12.16 \
         --extraction-filter fully_trusted --extraction-filter data --out DIR
-    python -m scripts.run_python_tarfile_target --runtime-version 3.12.10 \
+    python -m inodefence.drivers.python_tarfile.adapter --runtime-version 3.12.10 \
         --runtime-version 3.12.16 --extraction-filter data --out DIR
 
 Python tarfile has two independent axes, recorded in separate ``axes`` fields of
@@ -17,7 +17,8 @@ comparisons never mix in one run. ``target_version`` stays ``null`` (the library
 runtime; its version is the runtime version).
 
 Mode is ``fixture-regression`` with the same hand-built hard-link and symlink-write fixtures that
-``make regression`` sends to node-tar (``scripts.regression_check.build_fixtures``), each extracted
+``make regression`` sends to node-tar (``inodefence.drivers.regression_check.build_fixtures``),
+each extracted
 in a fresh ``python:<runtime>-slim`` container (``experiments.repro.python_tarfile_identity``) in
 the same ``extract/`` + ``ext/reference.bin`` layout. That path observes C1 and C2, not C0, so C0
 is ``null`` ("not observed"). For each (runtime, filter) cell this writes, under
@@ -25,7 +26,8 @@ is ``null`` ("not observed"). For each (runtime, filter) cell this writes, under
 ``raw/<case>.json``. Existing results are never overwritten. ``--dry-run`` runs nothing.
 
 The output layout, the no-overwrite rule and the provenance (engine HEAD, dirty flag, local image
-id) are the node-tar command's own (``scripts.run_target``), imported unchanged. ``ADAPTER`` at the
+id) are the node-tar command's own (``inodefence.drivers.run_target``), imported unchanged.
+``ADAPTER`` at the
 end registers this target in the common command, where ``--version`` is the runtime version:
 
     make target-run TARGET=python-tarfile TARGET_VERSIONS=3.12.16 TARGET_FILTERS=data
@@ -54,9 +56,10 @@ from pathlib import Path
 from typing import Any
 
 from experiments.repro import python_tarfile_identity as pti
-from scripts import image_prepare as ip
-from scripts import regression_check as rc
-from scripts.run_target import (
+
+from inodefence.drivers import image_prepare as ip
+from inodefence.drivers import regression_check as rc
+from inodefence.drivers.run_target import (
     RESULT_NAME,
     CaseRun,
     PrepareStep,
@@ -67,7 +70,6 @@ from scripts.run_target import (
     fixture_plan,
     write_result,
 )
-
 from inodefence.target_result import (
     RUN_ERROR,
     CaseVerdict,
@@ -242,7 +244,8 @@ def main(argv: list[str] | None = None) -> int:
 
 # ---- target option: declared once (TargetOption), read by fixture regression and exploration ----
 
-#: The extraction-filter axis, declared to the common driver (``scripts.run_target.TargetOption``).
+#: The extraction-filter axis, declared to the common driver
+#: (``inodefence.drivers.run_target.TargetOption``).
 #: ``make target-run`` may compare several values on one runtime (a setting comparison, never a
 #: version comparison); one exploration takes exactly one value.
 EXTRACTION_FILTER_OPTION = TargetOption(
@@ -260,7 +263,7 @@ EXPLORE_HELD_REASON = (
 )
 
 
-# ---- registration in the common command (scripts.run_target TARGETS) ----
+# ---- registration in the common command (inodefence.drivers.run_target TARGETS) ----
 
 
 def _adapter_cells(versions: list[str], filters: list[str]) -> list[RunCell]:
@@ -528,14 +531,14 @@ def _existing_recipe(cell: RunCell) -> ip.Recipe:
 
 def _explore_min_budget() -> int:
     """The explore hook's own budget floor (lazy import, same reason as the hook)."""
-    from scripts.python_tarfile_explore import MIN_BUDGET
+    from inodefence.drivers.python_tarfile.explore import MIN_BUDGET
 
     return MIN_BUDGET
 
 
 def _explore_hook(prepared, options):  # type: ignore[no-untyped-def]
     """python-tarfile exploration (lazy import so the fixture-regression path has no extra deps)."""
-    from scripts.python_tarfile_explore import explore
+    from inodefence.drivers.python_tarfile.explore import explore
 
     return explore(prepared, options)
 
@@ -554,7 +557,7 @@ ADAPTER = TargetAdapter(
     options=(EXTRACTION_FILTER_OPTION,),
     # Before a present runtime image is reused, it must still report its exact X.Y.Z offline.
     # (The exploration producer image adds the worker on top; its reuse check -- version, worker
-    # SHA-256 and a self-test -- is in scripts.python_tarfile_producer.)
+    # SHA-256 and a self-test -- is in inodefence.drivers.python_tarfile.producer.)
     verify_existing=ip.recipe_verify_existing(_existing_recipe),
 )
 

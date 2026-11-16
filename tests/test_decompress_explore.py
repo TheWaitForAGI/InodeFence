@@ -10,9 +10,9 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
-import scripts.decompress_explore as dx
-import scripts.run_decompress_target as dt
 
+import inodefence.drivers.decompress.adapter as dt
+import inodefence.drivers.decompress.explore as dx
 from inodefence.target_result import RUN_ERROR, Provenance, Verdict, load_target_result
 
 SPEC = "@xhmikosr/decompress@11.1.4"
@@ -270,7 +270,7 @@ def test_setup_refusal_is_exit_3(monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 def test_ensure_image_refuses_a_stale_worker_even_for_an_existing_image(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import scripts.run_target as rt
+    import inodefence.drivers.run_target as rt
 
     monkeypatch.setattr(rt, "image_id", lambda ref: "sha256:existing")  # reused, not rebuilt
     monkeypatch.setattr(
@@ -301,7 +301,7 @@ def test_selfdiscover_script_explore_branch_skips_target_build() -> None:
 
 
 def _prepared(tmp_path: Path) -> Any:
-    from scripts.run_target import PreparedTargetImage
+    from inodefence.drivers.run_target import PreparedTargetImage
 
     return PreparedTargetImage(
         target="decompress",
@@ -324,7 +324,7 @@ def test_hook_is_registered_on_the_adapter() -> None:
 def test_hook_refuses_a_stale_worker_before_any_run(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from scripts.run_target import ExploreOptions
+    from inodefence.drivers.run_target import ExploreOptions
 
     monkeypatch.setattr(
         dt.registry,
@@ -339,7 +339,7 @@ def test_hook_refuses_a_stale_worker_before_any_run(
 def test_hook_runs_the_controller_and_writes_the_common_campaign_result(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from scripts.run_target import ExploreOptions
+    from inodefence.drivers.run_target import ExploreOptions
 
     archive = b"bytes"
     report = _report(
@@ -364,7 +364,7 @@ def test_hook_runs_the_controller_and_writes_the_common_campaign_result(
 
     monkeypatch.setattr(dt.registry, "worker_check", _ok_check)
     monkeypatch.setattr(dx, "run_controller", controller)
-    import scripts.explore_result as er
+    import inodefence.drivers.explore_result as er
 
     monkeypatch.setattr(er, "engine_provenance", lambda image: ENGINE)
     outcome = dt.ADAPTER.explore(_prepared(tmp_path), ExploreOptions(5, 7, tmp_path))  # type: ignore[misc]
@@ -397,7 +397,7 @@ def test_report_steps_carry_the_judged_flag() -> None:
 def test_decompress_registers_the_worker_check_as_its_reuse_check(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import scripts.run_target as rt
+    import inodefence.drivers.run_target as rt
 
     assert dt.ADAPTER.verify_existing is not None
     (cell,) = dt.ADAPTER.cells([SPEC], [])
@@ -413,7 +413,7 @@ def test_decompress_registers_the_worker_check_as_its_reuse_check(
 
 
 def test_conversion_goes_through_the_shared_converter(monkeypatch: pytest.MonkeyPatch) -> None:
-    import scripts.explore_result as er
+    import inodefence.drivers.explore_result as er
 
     seen: list[dict] = []
     original = er.build_campaign_result
@@ -484,7 +484,7 @@ def test_defaults_and_supported_values_reach_the_controller(
 
     monkeypatch.setattr(dt.registry, "worker_check", _ok_check)
     monkeypatch.setattr(dx, "run_controller", controller)
-    from scripts.run_target import ExploreOptions
+    from inodefence.drivers.run_target import ExploreOptions
 
     with pytest.raises(RuntimeError, match="stop after recording"):
         dx.explore(_prepared(tmp_path), ExploreOptions(5, 1, tmp_path))

@@ -1,7 +1,9 @@
 """oras-go's exploration hook: open the existing oras-go campaign on a prepared oras-go image.
 
-This is the oras-go implementation of ``TargetAdapter.explore`` (``scripts.run_target``). The
-common driver (``scripts.run_target_explore``) prepares the image (``latest`` or an exact version,
+This is the oras-go implementation of ``TargetAdapter.explore``
+(``inodefence.drivers.run_target``). The
+common driver (``inodefence.drivers.run_target_explore``) prepares the image (``latest`` or an
+exact version,
 through the same prepare layer as ``make target-run``: a committed go.mod/go.sum or the Go module
 proxy with its offline checks, including the campaign's ``frame`` worker) and passes a
 ``PreparedTargetImage`` plus target-agnostic ``ExploreOptions``.
@@ -11,7 +13,8 @@ Everything oras-go specific stays here: the host script (``local_oras_go_selfdis
 loop over the ``frame`` worker inside the controller's disposable sandbox and isolated target
 containers, unchanged), and the check that the run used exactly the prepared image. The report's
 ``case_records`` / ``violation_inputs`` have the shape node-tar's exploration report uses, so the
-common converter ``scripts.explore_result`` (keyed on ``prepared.target``) turns them into
+common converter ``inodefence.drivers.explore_result`` (keyed on ``prepared.target``) turns them
+into
 ``inodefence-target-result-v1`` (``mode=campaign``) and saves only the violating inputs.
 Before the campaign, the (possibly reused) image's ``frame`` worker is checked offline
 (``verify_existing``); after it, a report with fewer run records than the budget is refused,
@@ -28,16 +31,16 @@ import subprocess
 import sys
 from pathlib import Path
 
-from scripts.explore_result import build_campaign_result, write_result
-from scripts.run_target import ExploreOptions, ExploreOutcome, PreparedTargetImage
-
+from inodefence.drivers.explore_result import build_campaign_result, write_result
+from inodefence.drivers.repo import repository_root
+from inodefence.drivers.run_target import ExploreOptions, ExploreOutcome, PreparedTargetImage
 from inodefence.feedback import EffectSearchPolicy
 from inodefence.generator import minimal_seed_corpus
 from inodefence.mutator import MutationPolicy
 from inodefence.target_result import JUDGED, RUN_ERROR
 from inodefence.target_result_summary import write_cell_summaries
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = repository_root()
 SCRIPT = REPO_ROOT / "scripts" / "local_oras_go_selfdiscover.sh"
 TARGET = "oras-go"
 # One campaign must cover all initial seed cases, so a budget below the seed count is refused.
@@ -94,7 +97,7 @@ def verify_existing(prepared: PreparedTargetImage, runner=None) -> str:
     reported oras-go version and that the identity binds as the campaign target. Raises
     ``RuntimeError`` with the reason; returns the check's description.
     """
-    from scripts import oras_go_registry_prepare as proxy
+    from inodefence.drivers.oras_go import registry_prepare as proxy
 
     try:
         check = proxy.frame_check(runner or subprocess.run, prepared.image_ref, prepared.version)

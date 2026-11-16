@@ -10,13 +10,13 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import scripts.explore_result as er
-import scripts.oras_go_explore as oge
-import scripts.run_oras_go_target as rog
-import scripts.run_target as rt
-import scripts.run_target_explore as rte
-from scripts.run_target import ExploreOptions, PreparedTargetImage
 
+import inodefence.drivers.explore_result as er
+import inodefence.drivers.oras_go.adapter as rog
+import inodefence.drivers.oras_go.explore as oge
+import inodefence.drivers.run_target as rt
+import inodefence.drivers.run_target_explore as rte
+from inodefence.drivers.run_target import ExploreOptions, PreparedTargetImage
 from inodefence.target_result import Verdict, load_target_result
 
 TAR = b"bytes of a violating oras-go case"
@@ -295,7 +295,7 @@ def test_shortened_campaign_is_refused(tmp_path: Path, monkeypatch: pytest.Monke
 def test_reused_image_without_a_working_frame_worker_stops_before_the_campaign(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    import scripts.oras_go_registry_prepare as proxy
+    import inodefence.drivers.oras_go.registry_prepare as proxy
 
     monkeypatch.setattr(
         proxy,
@@ -315,7 +315,7 @@ def test_reused_image_without_a_working_frame_worker_stops_before_the_campaign(
 def test_verify_existing_reports_a_docker_failure_as_the_reason(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    import scripts.oras_go_registry_prepare as proxy
+    import inodefence.drivers.oras_go.registry_prepare as proxy
 
     def broken(runner, image, version):  # type: ignore[no-untyped-def]
         raise proxy.RegistryPrepareError("identify failed in x")

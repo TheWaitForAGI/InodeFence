@@ -12,9 +12,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import scripts.run_python_tarfile_target as rpt
-import scripts.run_target as rt
 
+import inodefence.drivers.python_tarfile.adapter as rpt
+import inodefence.drivers.run_target as rt
 from inodefence.target_result import Verdict, load_target_result
 
 DIGEST = "sha256:" + "a" * 64

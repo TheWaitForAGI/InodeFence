@@ -22,9 +22,9 @@ from typing import Any
 
 import pytest
 import scripts.run_effect_demo as rd
-from scripts.explore_result import build_campaign_result, write_result
-from scripts.run_target import PreparedTargetImage
 
+from inodefence.drivers.explore_result import build_campaign_result, write_result
+from inodefence.drivers.run_target import PreparedTargetImage
 from inodefence.effect_synthetic import _result as synthetic_result
 from inodefence.live_exploration import list_violation_cases, read_progress
 from inodefence.model import (

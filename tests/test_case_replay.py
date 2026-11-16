@@ -13,10 +13,10 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-import scripts.run_target_replay as driver
 from scripts.effect_replay import node_tar_conditions, run_rounds
 from scripts.run_effect_demo import NativeDemoAborted
 
+import inodefence.drivers.run_target_replay as driver
 from inodefence import cli
 from inodefence.builder import build_tar
 from inodefence.case_replay import (
@@ -470,7 +470,7 @@ def _fake_smoke(
     def run(argv, env, cwd):
         import re
 
-        from scripts.node_tar_replay import report_paths
+        from inodefence.drivers.node_tar.replay import report_paths
 
         seen.update(argv=argv, env=env, cwd=cwd)
         assert re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", env["RUN_ID"])
@@ -499,7 +499,7 @@ def _fake_smoke(
 
 
 def test_node_tar_hook_runs_the_smoke_replay_and_reads_the_report(tmp_path: Path) -> None:
-    from scripts.node_tar_replay import replay
+    from inodefence.drivers.node_tar.replay import replay
 
     request = load_replay_request(_case_folder(tmp_path), rounds=2)
     work = tmp_path / "work"
@@ -515,7 +515,7 @@ def test_node_tar_hook_runs_the_smoke_replay_and_reads_the_report(tmp_path: Path
 
 
 def test_node_tar_hook_keeps_journal_rounds_when_the_controller_died(tmp_path: Path) -> None:
-    from scripts.node_tar_replay import replay
+    from inodefence.drivers.node_tar.replay import replay
 
     request = load_replay_request(_case_folder(tmp_path), rounds=3)
     (tmp_path / "work").mkdir()
@@ -526,7 +526,7 @@ def test_node_tar_hook_keeps_journal_rounds_when_the_controller_died(tmp_path: P
 
 
 def test_node_tar_hook_refuses_a_report_about_another_case(tmp_path: Path) -> None:
-    from scripts.node_tar_replay import replay
+    from inodefence.drivers.node_tar.replay import replay
 
     request = load_replay_request(_case_folder(tmp_path), rounds=1)
     (tmp_path / "work").mkdir()
@@ -538,7 +538,7 @@ def test_node_tar_hook_refuses_a_report_about_another_case(tmp_path: Path) -> No
 def test_node_tar_adapter_replays_end_to_end_through_the_driver(
     tmp_path: Path, monkeypatch, capsys
 ) -> None:
-    import scripts.node_tar_replay as ntr
+    import inodefence.drivers.node_tar.replay as ntr
 
     real = ntr.replay
     run, _ = _fake_smoke([_round(round=i) for i in (1, 2, 3)], complete=True)

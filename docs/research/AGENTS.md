@@ -2,6 +2,8 @@
 
 root [AGENTS.md](../../AGENTS.md)와 함께 따른다.
 
+- 현재 연구 질문과 가설의 기준은 [research-questions v2](design/research-questions.md)(핵심 RQ, H-A/H-B/H-C)와
+  [D038](../DECISIONS.md)이다. v1의 RQ1~RQ6·H1~H4는 폐기·대체 기록이며 현재 기준으로 쓰지 않는다.
 - 관찰된 사실, 가설, 예상 결과를 명시적으로 구분한다.
 - novel / first / no prior work 및 같은 의미의 표현은 문헌 근거 없이는 사용하지 않는다.
 - CVE 분석을 proposed InodeFence logic으로 옮기지 않는다. 알려진 사례의 분석과 generic 설계를 구분한다.

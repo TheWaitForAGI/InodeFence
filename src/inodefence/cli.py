@@ -14,7 +14,8 @@ re-parsed as shell syntax.
 - ``verify`` — run the fixed-input regression check on a target (wraps the regression driver).
 - ``explore`` — run a feedback-search exploration on a target's prepared image (wraps the
   exploration driver). More options (search / mutation policy, stop conditions, mirror, resume)
-  are added here as the driver gains them; none is shown before it works.
+  are added here as the driver gains them; none is shown before it works. It prints live progress
+  lines; ``--quiet`` / ``--verbose`` change that (:mod:`inodefence.drivers.progress`).
 - ``summary`` — render a result file as a one-page summary.
 
 ``status`` (live progress of a running exploration) follows the driver's streaming output.
@@ -574,6 +575,9 @@ def cmd_explore(args: argparse.Namespace) -> int:
         argv += ["--image-tag-suffix", args.image_tag_suffix]
     if args.dry_run:
         argv.append("--dry-run")
+    # Terminal output (drivers.progress): progress lines by default, --quiet none, --verbose the
+    # launcher's raw output as before. Exit codes and the result lines are the same in all three.
+    argv += ["--output", "quiet" if args.quiet else "stream" if args.verbose else "progress"]
     return _forward(EXPLORE_DRIVER, argv + args.extra, "explore")
 
 
@@ -796,6 +800,17 @@ def build_parser() -> argparse.ArgumentParser:
         f"(default: <output base>/{EXPLORE_OUT_NAME}; see `doctor`)",
     )
     explore.add_argument("--dry-run", action="store_true", help="print the plan; run nothing")
+    noise = explore.add_mutually_exclusive_group()
+    noise.add_argument(
+        "--quiet",
+        action="store_true",
+        help="no progress lines (the result lines and errors still print)",
+    )
+    noise.add_argument(
+        "--verbose",
+        action="store_true",
+        help="show the launcher's raw output instead of progress lines",
+    )
     explore.__class__ = _RefusalParser
     explore.set_defaults(func=cmd_explore)
 

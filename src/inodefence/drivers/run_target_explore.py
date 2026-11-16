@@ -25,6 +25,7 @@ import os
 import sys
 from pathlib import Path
 
+from inodefence.drivers import progress as progress_display
 from inodefence.drivers.repo import code_checkout, require_repository_or_exit
 from inodefence.drivers.run_target import (
     DEFAULT_MAX_UNJUDGED_RATIO,
@@ -127,6 +128,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--dry-run", action="store_true", help="print the plan; prepare/run nothing"
     )
+    parser.add_argument(
+        "--output",
+        choices=progress_display.MODES,
+        default=progress_display.STREAM,
+        help="terminal output: stream = the launcher's raw output (default here); progress = "
+        "progress lines, raw output to a log under <out>/runtime/ (the `inodefence explore` "
+        "default); quiet = progress without the progress lines",
+    )
     # The target's declared options become the `filters` passed to `cells`, in declaration order.
     # Exploration runs one configuration, so it takes one value per option: a multi-value option
     # (``single=False``, a target-run concept) has no meaning here and is refused up front.
@@ -205,6 +214,16 @@ def main(argv: list[str] | None = None) -> int:
 
     session = RuntimeSession(target=args.target)  # STRICT: the verified execution
     result_written = False  # the hook returns only after writing its result
+    progress = progress_display.ExploreProgress(
+        args.output,
+        session=session,
+        target=args.target,
+        requested=args.version,
+        seed=args.seed,
+        budget=args.budget,
+        out=out,
+    )
+    progress.start()  # nothing in stream mode
     try:
         prepared = prepare_target_image(
             adapter,
@@ -213,6 +232,7 @@ def main(argv: list[str] | None = None) -> int:
             image_tag_suffix=args.image_tag_suffix,
             filters=filters,
         )
+        progress.prepared(prepared.version)
         outcome = adapter.explore(
             prepared,
             ExploreOptions(
@@ -226,10 +246,13 @@ def main(argv: list[str] | None = None) -> int:
             ),
         )
         result_written = True
+        progress.completed(outcome.result_path, outcome.verdict)
     except ValueError as error:
+        progress.failed(error)
         print(f"TARGET-EXPLORE SETUP: {error}", file=sys.stderr)
         return 3
     except RuntimeError as error:
+        progress.failed(error)
         # The controller aborted or failed to run (e.g. the loop could not finish). That is an
         # ERROR, not a FAIL (no violation was judged), and it exits 2 like a worst-verdict ERROR --
         # a one-line reason, not a traceback.
@@ -239,6 +262,7 @@ def main(argv: list[str] | None = None) -> int:
         # Also after a failed or interrupted launch: that is when the record is needed most. An
         # additional file; it never changes the result, the verdict or the exit code.
         write_runtime_record(session, args.out, result_written=result_written)
+        progress.finish()  # last progress line; on a failure the cause and the log's last lines
 
     print(
         f"TARGET-EXPLORE {outcome.verdict} {args.target} version={prepared.version} "

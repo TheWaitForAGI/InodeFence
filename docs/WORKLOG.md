@@ -1,12 +1,12 @@
 # 자율 작업 목록 (WORKLOG)
 
-자율 루프가 끝낸 작업을 누적한다. 머지는 사람 게이트가 아니다(D035): PR·CI·verifier 통과 후 루프가 스스로
-squash 머지한다. 머지 여부의 기준은 PR 상태다(`gh pr list --state merged --search <브랜치>`).
+자율 루프가 끝낸 작업을 누적한다. 병합은 지웅이 한다(D037, [AGENTS.md PR 절](../AGENTS.md#pr)): 루프는 PR·CI·verifier 통과 후
+병합 요청을 내고 스스로 머지하지 않는다(D035의 자율 머지는 보류). 머지 여부의 기준은 PR 상태다(`gh pr list --state merged --search <브랜치>`).
 한 작업 = 한 행. 작업 브랜치의 커밋에 함께 넣는다. 실행 상세는 [LOG](LOG.md), 할 일은 [BACKLOG](BACKLOG.md).
 
-상태: `검토대기`(검증 통과, PR·CI·verifier 검토 후 자율 머지 대상) / `BREAKING`(기존 테스트·판정을 깸, 사람 판단 전 머지 금지, 후속 진행 금지) / `막힘`(진행 불가, 필요한 것을 요약에 적음)
+상태: `검토대기`(검증 통과, PR·CI·verifier 검토 후 병합 요청 대상; 병합은 지웅) / `BREAKING`(기존 테스트·판정을 깸, 사람 판단 전 머지 금지, 후속 진행 금지) / `막힘`(진행 불가, 필요한 것을 요약에 적음)
 
-비교 명령: `git diff main...<브랜치> --stat`
+비교 명령: `git diff origin/<PR base>...<브랜치> --stat` (스택 PR은 base가 직전 브랜치다. PR·스택이 없을 때만 `main`)
 
 | 날짜 | 브랜치명 | P0/Phase | 한 줄 요약 | main 대비 핵심 변경 | 상태 |
 | --- | --- | --- | --- | --- | --- |

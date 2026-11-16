@@ -1,123 +1,111 @@
 # InodeFence 에이전트 가이드
 
-이 문서는 InodeFence 저장소에서 사람과 코딩 에이전트가 공통으로 따라야 할 규칙을 정의한다.
-
-## 현재 집중 (Capability Ledger 기준)
-
-현재 능력과 다음 할 일의 **단일 기준은 [STATUS의 Capability Ledger](docs/STATUS.md)**다.
-날짜가 아니라 마일스톤(M1~M4)으로 관리한다. 기한은 팀 일정으로 두고 문서에 박제하지 않는다.
-(`docs/MIDTERM_GOALS.md`는 배경 문서로 남긴다.)
-
-**수술 기간(2026-11-03~11-30)의 계획 기준은 Claude Doc 「InodeFence 독립 연구 감사 및 실험 설계 재정립」
-(https://claude.ai/artifact/JJtsK3VowEGuBFN3YXZDFq)이다.** 이 문서와 STATUS·BACKLOG가 다르면 문서가 맞고 STATUS는 그에
-맞춰 갱신 중이다. 실험 실행 기준은 Git에 동결된 사전등록 파일(`experiments/preregistration/`), 증거 기준은
-raw + SHA-256 목록(`experiments/summaries/raw-manifest-*.sha256`)이다. 저장소에 문서 복사본을 두지 않고
-포인터만 둔다.
-
-### 목표
-
-실제 node-tar에서 다음 루프가 하나의 명령(`make demo`)으로 재현 가능하게 돌아가는 것:
-
-입력 생성 → node-tar 실행 → 중간 상태 관찰 → Oracle 평가 → Feedback 생성 → 다음 Mutation 선택
-
-이 루프(M1)는 돈다. 지금 집중은 M2(실제 경계위반 통제 재현, 실증됨) → M3(퍼저 자력 발견, H1 본체)
-→ M4(2번째 extractor 일반성)다.
-
-### 우선순위
-
-실제 동작 → 재현 가능성 → 기능 정확성 → 실험적 검증 → 문서화
-
-### 작업 시작 전
-
-1. 이 작업이 Ledger의 어느 마일스톤(M2~M4)·상시 태스크에 해당하는지 밝힌다. 어디에도 안 맞으면
-   무엇을 하려는지 LOG에 적고 진행한다(안전경계·연구 불변식은 항상 유지).
-2. 이미 있는 코드를 먼저 찾는다. 루프의 부품은 대부분 존재한다:
-   `effect_campaign.run_effect_campaign`, `effect_pipeline.run_node_tar_effect_case`,
-   `effect_scheduler`, `feedback/effect.py`, `oracle`, `observer`.
-   새로 만들기보다 연결을 우선한다.
-
-### 금지
-
-- 새 audit / readiness / handoff / qualification / "preserve" 문서 파일을 만들지 않는다.
-  기록은 `docs/STATUS.md` 갱신 또는 `docs/LOG.md`에 한 줄 추가로 한다.
-- 다른 **레인**의 미머지 브랜치 위에 함부로 스택하지 않는다(진짜 의존이 없으면 `main`에서 분기). 단 **같은 레인 안에서는** 머지를 기다리지 말고 자기 직전 브랜치 위에 스택해 계속 진행한다 — 아래 `## PR`의 스택 규칙을 따른다.
-- 발표 데모만을 위한 임시 구현으로 기존 기능 안정성을 해치지 않는다.
-- 실제로 적용되지 않은 feedback/결과를 적용된 것처럼 기록하지 않는다.
-  관찰한 상태와 추론·재구성한 상태를 구분한다.
-
-### PR
-
-- 설명 첫 항목은 "이 PR을 병합하면 어떤 기능을 실제로 실행하거나 검증할 수 있게 되는가?"에 대한 답이다.
-  답이 "~에 대한 문서/감사"뿐이면 PR이 아니라 STATUS 갱신이다.
-- 브랜치 이름: `<이름>/p0-<번호>-<요약>`. 한 PR에 한 목적.
-- 머지는 PR·CI·검토(verifier 또는 사람) 통과 후 작성자가 squash 머지한다. 사람 승인은 BREAKING·가드·격리·FROZEN·외부 공개에만 둔다(D035).
-- 스택 PR(머지 대기 해소용): 같은 레인의 다음 작업은 앞 PR의 머지를 기다리지 말고 자기 직전 브랜치에서 분기하고 `gh pr create --base <직전-브랜치>`로 베이스를 명시한다. 한 PR 한 목적은 유지한다. 스택은 아래부터 순서대로 머지된다(위 규칙대로 각 PR이 CI·검토 통과 후 자가 squash; 아래가 수정되면 그 위 스택을 rebase). `BREAKING` 브랜치 위에는 쌓지 않는다.
-
-### 레인 (우선 책임자)
-
-- 지웅: Core / Architecture / Integration (통합 책임; 머지는 사람 게이트가 아니다, D035)
-- 주언: Feedback / Evaluation (P0-4, P1 조건)
-- 규민: Runtime / Target Execution (P0-1, N05)
-- 민찬: Observation / Oracle / Demo (P0-2, P0-3, 시연)
-
-### 안전 경계 (변경 없음)
-
-아래 `## 안전 규칙`과 isolation contract를 그대로 따른다.
-실제 node-tar 데모 캠페인은 팀이 승인한 범위(고정 버전, 실행 예산 상한,
-disposable sandbox + sentinel)에서만 실행하고, 결과는 `demo run`으로 라벨링한다(qualification 아님).
-
-## 가장 먼저 할 일
-
-코딩 에이전트는 작업을 시작하기 전에 다음 순서로 문맥을 확인한다.
-
-1. `docs/START_HERE.md`
-2. `docs/STATUS.md`
-3. 이 `AGENTS.md`
-4. 작업과 직접 관련된 design 문서만 추가로 읽는다.
-
-모든 연구 문서를 무조건 읽고 과도하게 구현하지 않는다.
-
-현재 Layer보다 앞선 기능을 임의로 추가하지 않는다.
-
-작업을 시작하기 전 관련 Issue를 확인하고 Issue의 수정 가능 영역과 금지 영역을 따른다.
-사용자가 직접 확정한 작업 명세가 있으면 이를 Task Contract로 따른다.
-하위 scoped `AGENTS.md`가 존재하면 root 규칙과 scoped 규칙을 모두 따른다.
+이 문서는 InodeFence 저장소에서 사람과 코딩 에이전트가 공통으로 따르는 행동 계약이다. 작업 규칙의 진입점이며
+연구 설계서나 작업 일지가 아니다. 개발 절차는 [CONTRIBUTING.md](CONTRIBUTING.md), 현재 상태는
+[docs/STATUS.md](docs/STATUS.md), 연구 설계는 `docs/research/`, 실험은 `experiments/`에 있다. 하위 폴더에 scoped
+`AGENTS.md`(`src/inodefence/`, `experiments/`, `docs/research/`)가 있으면 이 문서와 함께 따른다.
 
 ## 프로젝트 목적
 
-InodeFence는 TAR 압축 해제 보안을 연구하기 위한 프로토타입이다.
+InodeFence는 TAR 압축 해제 보안을 연구하는 프로토타입이자, 그 검사를 실제 extractor에 돌리는 도구다.
 
-핵심 연구 질문:
+- TAR extraction이 만든 filesystem 보안 상태를 관찰하고, object identity(C1)와 external effect(C2)로 경계 위반을 판정한다.
+- 실제 extractor를 격리 컨테이너에서 실행한다.
+- 사용자용 명령(`inodefence` CLI, 제품 드라이버)과 연구용 실험 인프라(등록 실험 러너, 사전등록, 증거)는 구분한다.
+  제품 쪽 편의가 연구 실행 조건을 바꾸지 않는다.
+- 주장은 기록된 증거 수준까지만 한다.
+
+핵심 연구 질문([research-questions v2](docs/research/design/research-questions.md)):
 
 > 피해 경로 이름을 아는 **동일 어휘·동일 예산** 아래서, filesystem security state(C1 identity·C2 effect)를
 > retention·스케줄링 피드백으로 쓰는 탐색이 **무작위 탐색**과 **구조 커버리지 탐색**보다 첫 경계위반까지의
 > 실행 수를 줄이고 고유 위반 입력을 더 많이 찾는가?
-> (핵심 RQ, [research-questions v2](docs/research/design/research-questions.md). 위협 모델 전제: 공격자는
-> 피해 경로 이름 — 보호 대상 외부 객체의 추출 루트 기준 상대 경로 — 을 알며 세 arm 어휘에 동일하게 포함한다.
-> blind 발견을 주장하지 않는다. CVE PoC·고정 공격 패턴·대상 경로·sentinel 이름은 oracle·feedback에 넣지 않는다.)
 
-(2026-11-03 정정: 이전 v1 질문 — "특정 CVE PoC나 고정된 공격 패턴을 하드코딩하지 않고, filesystem security
-state(특히 object identity와 external effect)를 feedback으로 사용하면 archive extraction의 보안 경계 위반을 더
-효과적으로 탐색할 수 있는가?" — 는 폐기, v2 참조.)
+위협 모델 전제: 공격자는 피해 경로 이름(보호 대상 외부 객체의 추출 루트 기준 상대 경로)을 알며 세 arm 어휘에
+동일하게 포함한다. blind 발견을 주장하지 않는다. CVE PoC·고정 공격 패턴·대상 경로·sentinel 이름은 oracle·feedback에
+넣지 않는다. v1 질문은 2026-11-03에 폐기했다(research-questions 문서 참조).
 
-이 프로젝트는 TAR fuzzing, hardlink, symlink, entry order, filesystem-state fuzzing, outside-root write 자체가 새롭다고 주장하지 않는다.
+## 현재 기준
 
-## 연구 포지셔닝
+- 현재 능력과 다음 할 일의 **단일 기준은 [STATUS의 Capability Ledger](docs/STATUS.md)**다. 날짜가 아니라
+  마일스톤(M1~M4)으로 관리한다. 마일스톤별 상태는 Ledger에서 읽고 이 문서에 복사하지 않는다.
+- 수술 기간(2026-11-03~11-30)의 계획 기준은 Claude Doc 「InodeFence 독립 연구 감사 및 실험 설계 재정립」
+  (https://claude.ai/artifact/JJtsK3VowEGuBFN3YXZDFq)이다. 이 문서와 STATUS·BACKLOG가 다르면 문서가 맞고 STATUS는
+  그에 맞춰 갱신 중이다. 저장소에 문서 복사본을 두지 않고 포인터만 둔다.
+- 실험 실행 기준은 Git에 동결된 사전등록 파일(`experiments/preregistration/`), 증거 기준은 raw + SHA-256 목록
+  (`experiments/summaries/raw-manifest-*.sha256`)이다.
+- 우선순위: 실제 동작 → 재현 가능성 → 기능 정확성 → 실험적 검증 → 문서화.
+- Layer 0~6과 중간발표 P0 단계는 지난 개발 단계의 기록이며 현재 작업 기준이 아니다
+  ([docs/MIDTERM_GOALS.md](docs/MIDTERM_GOALS.md)는 배경 문서로 남긴다).
 
-새로움(novelty)은 이미 확정된 사실이 아니라 **검증해야 할 가설**로 취급한다.
+## 작업 시작 전
 
-관련 선행연구는 이미 중요한 부분을 다루고 있다.
+모든 문서를 읽지 않는다. 최소 문맥만 확인하고 작업과 직접 관련된 문서를 더한다.
 
-- Jana & Shmatikov: TAR 공격을 포함한 file-processing semantic gap
-- ZIPDiff: feedback-guided archive differential fuzzing
-- LinkZard: link 관련 상태를 포함한 feedback-driven file-state fuzzing
-- Wormholes: symlink composition, hardlink, path resolution, creation order를 이용한 archive extraction 공격
+1. 최소 문맥: [docs/START_HERE.md](docs/START_HERE.md), [docs/STATUS.md](docs/STATUS.md)의 Ledger, 이 문서.
+2. 관련 Issue의 수정 가능 영역과 금지 영역을 따른다. 사용자가 직접 확정한 작업 명세는 Task Contract로 따른다.
+3. 변경 대상 폴더의 scoped `AGENTS.md`.
+4. 작업에 필요한 것만 추가: 설계 문서(`docs/research/design/`), 결정 기록([docs/DECISIONS.md](docs/DECISIONS.md)),
+   실험 규칙(`experiments/`), 안전·공개 규칙([SECURITY.md](SECURITY.md)).
+5. 이 작업이 Ledger의 어느 마일스톤이나 상시 태스크에 해당하는지 밝힌다. 어디에도 안 맞으면 무엇을 하려는지
+   `docs/LOG.md`에 적고 진행한다. 안전 경계와 연구 불변식은 항상 유지한다.
+6. 이미 있는 코드를 먼저 찾는다. 루프의 부품은 대부분 존재한다(`effect_campaign.run_effect_campaign`,
+   `effect_pipeline.run_node_tar_effect_case`, `effect_scheduler`, `feedback/effect.py`, `oracle`, `observer`).
+   새로 만들기보다 연결을 우선한다.
 
-현재 InodeFence는 다음 가능성을 검증한다.
+Issue·Task Contract 범위와 Ledger 마일스톤을 넘는 기능을 임의로 추가하지 않는다.
 
-> generic TAR-entry mutation + filesystem-security-state feedback
+## 권한
 
-관련 문헌 근거가 명확하지 않은 상태에서 "최초", "새로운", "기존 연구에 없음" 같은 표현을 만들지 않는다.
+에이전트가 스스로 하는 일: 코드·문서 수정, 테스트 작성과 실행, 브랜치 생성과 push, PR 생성·갱신, CI 확인, 독립
+검증, 충돌 해소, BACKLOG·STATUS·LOG 갱신, 병합 요청 제출.
+
+사람(지웅)이 결정하는 일. 에이전트는 PR을 열어 두고 "사람 결정"으로 기록하며, 스스로 진행하지 않는다.
+
+- **PR 병합**(아래 [PR](#pr) 절).
+- `BREAKING`: Oracle 판정 의미가 바뀌는 변경.
+- 가드·격리·allowlist 설정 변경(`.claude/settings.json`, `.claude/hooks/`, 격리 정책 파일). 격리 정책과 Docker 실행
+  경계를 완화하지 않는다.
+- FROZEN 변경: 동결된 사전등록, 등록 실험 설정, 본실험 실행 SHA.
+- 미공개 보안 증거의 공개, 외부 공개, 실제 릴리스(태그·GitHub Release·패키지 게시).
+- 승인된 범위를 넘는 실험 실행과 예산.
+
+가드 훅(`.claude/hooks/guard.py`)은 이 가운데 일부만 기술적으로 막는다(`docs/` 아래 금지된 이름의 새 문서, `main`으로
+가는 push, 컨테이너 격리 완화 플래그, 가드 설정과 격리 정책 파일 편집). **가드가 막지 않는다고 허용된 것이 아니다.**
+가드나 훅이 막으면 우회하지 않고 보고한다. 빠르게 끝내려고 위 경계를 완화하지 않는다.
+
+## PR
+
+병합 운영 규칙은 이 절 한 곳에만 쓴다. 결정 원문은 [docs/DECISIONS.md](docs/DECISIONS.md)의 D037(수술 기간 병합
+정책)이고, 사람 결정 범위는 D035·D036에서 온다.
+
+- **병합은 지웅이 한다.** 수술 기간(2026-11-03~11-30) 동안 최종 squash merge는 지웅만 직접 수행한다(D037). 에이전트는
+  `gh pr merge` 등으로 스스로 병합하지 않는다. D035의 자율 머지는 보류 상태이고, 수술 기간이 끝난 뒤에도 지웅의
+  별도 결정이 기록되기 전에는 재개하지 않는다.
+- 머지 대기는 작업 중단 사유가 아니다. 같은 레인의 다음 작업은 자기 직전 브랜치에서 분기하고
+  `gh pr create --base <직전-브랜치>`로 base를 명시한 스택 PR로 계속한다(D035의 스택 PR 금지는 이 범위에서 D037이
+  대체한다). 다른 레인의 미머지 브랜치 위에는 진짜 의존이 있을 때만 쌓고, 의존이 없으면 `main`에서 분기한다.
+  `BREAKING` 브랜치 위에는 쌓지 않는다. 스택은 아래부터 순서대로 병합된다.
+- `main`에서 직접 개발하지 않고 `main`으로 직접 push하지 않는다. 브랜치 이름은 `<이름>/p0-<번호>-<요약>`.
+- 한 PR에 한 목적. 관계없는 문서 수정·refactor·기능을 섞지 않는다.
+- 설명 첫 항목은 "이 PR을 병합하면 어떤 기능을 실제로 실행하거나 검증할 수 있게 되는가?"에 대한 답이다. 답이
+  "~에 대한 문서/감사"뿐이면 PR이 아니라 STATUS 갱신이다(사람이 문서 정비를 PR로 지시한 경우는 그 지시를 따른다).
+- 병합 요청의 최소 요건: CI 두 job(`check`, `container-integration`) 통과와 작성자가 아닌 검토자(verifier 에이전트
+  또는 사람)의 판정. verifier 판정은 PR 코멘트로 남긴다.
+- **HEAD SHA가 바뀐 PR은 과거 검증 결과를 재사용하지 않는다.** 최신 SHA 기준으로 CI와 변경분 검증을 다시 받는다.
+- 충돌과 아래 브랜치의 변경 반영은 `git merge`로 한다. rebase와 force-push는 하지 않는다. 충돌(특히 `docs/LOG.md`
+  끝 추가 충돌)은 양쪽 기록을 보존해 해소하고 재검증한 뒤 최신 SHA로 병합을 요청한다.
+- 병합 요청은 PR 번호, HEAD SHA, 목적, 변경 범위, CI, verifier 판정, 선행 PR, 권장 순서를 표로 낸다.
+- 검토 전이거나 병합을 보류하는 PR은 Draft로 둔다.
+
+## 금지
+
+- 새 audit / readiness / handoff / qualification / "preserve" 문서 파일을 만들지 않는다. 기록은 `docs/STATUS.md`
+  갱신 또는 `docs/LOG.md`에 한 줄 추가로 한다.
+- 발표 데모만을 위한 임시 구현으로 기존 기능 안정성을 해치지 않는다.
+- 실제로 적용되지 않은 feedback/결과를 적용된 것처럼 기록하지 않는다.
+- 결과를 본 뒤 방법·지표·예산을 바꾸지 않는다.
+- 기존 architecture를 임의로 재설계하지 않는다. 모호하면 [docs/DECISIONS.md](docs/DECISIONS.md)의 기존 결정이 우선한다.
 
 ## 연구 규칙
 
@@ -125,83 +113,51 @@ state(특히 object identity와 external effect)를 feedback으로 사용하면 
 2. 알려진 CVE PoC를 rediscovery 실험의 기본 fuzzing seed로 사용하지 않는다.
 3. Known CVE는 benchmark ground truth와 root-cause 분석에는 사용할 수 있다.
 4. 보안 판정은 가능한 한 일반화된 Security Contract로 표현한다.
-5. 관찰된 사실과 가설/예상 결과를 구분한다.
-6. raw experiment output과 논문에 사용할 결론을 분리한다.
-7. 성능 관련 논문 주장은 기록된 실험 설정과 결과로 재현 가능해야 한다.
+5. 관찰된 사실과 가설/예상 결과를 구분한다. 관찰한 상태(observed)와 추론·재구성한 상태(inferred)를 구분한다.
+6. raw experiment output과 논문에 사용할 결론을 분리한다. raw는 손으로 고치지 않는다.
+7. 성능 관련 논문 주장은 기록된 실험 설정과 결과로 재현 가능해야 한다. 실측과 비교 없이 우위를 주장하지 않는다.
+8. synthetic 실행 결과를 native(실제 extractor) 증거로 올려 쓰지 않는다.
+9. 구현됨, 테스트됨, 실험으로 검증됨을 구분한다(DESIGNED · IMPLEMENTED · TESTED · VALIDATED,
+   [Research Contract](docs/research/design/research-contract-v1.md)).
+10. 재현되지 않은 finding이나 위반 후보를 확인된 취약점이라고 부르지 않는다. 통제 재현과 퍼저의 자력 발견을
+    구분한다.
+
+## 연구 포지셔닝
+
+새로움(novelty)은 확정된 사실이 아니라 **검증해야 할 가설**이다. 이 프로젝트는 TAR fuzzing, hardlink, symlink, entry
+order, filesystem-state fuzzing, outside-root write 자체가 새롭다고 주장하지 않는다. 관련 선행연구가 중요한 부분을
+이미 다룬다.
+
+- Jana & Shmatikov: TAR 공격을 포함한 file-processing semantic gap
+- ZIPDiff: feedback-guided archive differential fuzzing
+- LinkZard: link 관련 상태를 포함한 feedback-driven file-state fuzzing
+- Wormholes: symlink composition, hardlink, path resolution, creation order를 이용한 archive extraction 공격
+
+InodeFence가 검증하는 가능성은 "generic TAR-entry mutation + filesystem-security-state feedback"이다. 문헌 근거가
+명확하지 않은 상태에서 "최초", "새로운", "기존 연구에 없음" 같은 표현을 만들지 않는다.
 
 ## Security Contract 우선순위
 
-1. **Path Boundary Confinement**
-   - 가장 기본적인 path 경계 sanity/baseline
-   - 중요하지만 InodeFence의 novelty는 아님
+1. **Path Boundary Confinement** — 기본 path 경계 sanity/baseline. 중요하지만 InodeFence의 novelty는 아니다.
+2. **Object Identity Confinement** — extraction 내부 object가 보호된 외부 sentinel과 의도하지 않게 동일 filesystem
+   identity를 공유하면 안 된다.
+3. **External Effect Noninterference** — archive extraction으로 보호된 외부 sentinel의 content/metadata가 의도하지 않게
+   변경되면 안 된다.
+4. **Extraction Root Integrity** — 최소 pipeline 이후 확장.
+5. **Check/Use Coherence** — instrumentation이 필요한 후속 단계.
 
-2. **Object Identity Confinement**
-   - extraction 내부 object가 보호된 외부 sentinel과 의도하지 않게 동일 filesystem identity를 공유하면 안 됨
-
-3. **External Effect Noninterference**
-   - archive extraction으로 인해 보호된 외부 sentinel의 content/metadata가 의도하지 않게 변경되면 안 됨
-
-4. **Extraction Root Integrity**
-   - 최소 pipeline 이후 확장
-
-5. **Check/Use Coherence**
-   - instrumentation이 필요한 후속 단계
-
-정의는 `docs/research/design/security-contracts.md`를 따른다.
+정의는 [security-contracts.md](docs/research/design/security-contracts.md)를 따른다.
 
 ## 범위
 
-### 초기 범위에 포함
+포함: TAR extraction, Linux filesystem semantics, regular file·directory·hardlink·필요한 범위의 symlink, entry path·link
+target·type·order·dependency mutation, filesystem object identity, external effect, feedback-guided corpus evolution, 알려진
+취약점의 통제 재현과 재발견 실험, 여러 extractor 간 적용 가능성 평가. 연구 MVP 대상과 확장 대상은 D038을 따른다
+(node-tar와 Python `tarfile`이 MVP, decompress는 확장, oras-go는 oracle 일반성 증거).
 
-- TAR extraction
-- Linux filesystem semantics
-- regular file, directory, hardlink, 필요한 범위의 symlink
-- entry path, link target, type, order, dependency mutation
-- filesystem object identity
-- external effect
-- feedback-guided corpus evolution
-- known vulnerability rediscovery
-- 여러 extractor 간 적용 가능성 평가
-
-### 초기 범위에서 제외
-
-- 모든 archive format
-- Windows NTFS semantics
-- 일반적인 kernel filesystem vulnerability
-- 전체 TOCTOU/race-condition 분석
-- 완전한 symbolic execution
-- Wormholes의 모든 bypass 재구현
-- 전체 archive-parser ambiguity 분석
-
-## 개발 환경
-
-지원 환경:
-
-- macOS + 저장소 Dev Container
-- Windows + WSL2 + 동일 Dev Container
-- 필요 시 클라우드 세션 허용(단일 호스트가 docker 실험으로 포화될 때 병렬화용). 코드·분석은 클라우드에서 자유롭게 팬아웃한다. docker 기반 node-tar 실험은 **격리 완화 없이** 동일 잠긴 하너스가 그대로 도는 클라우드 환경에서만 돌린다. 안 되면 실험은 docker 호스트(또는 docker 되는 2번째 머신)에 두고, 클라우드로는 코드·분석만 보낸다.
-
-기준 container는 Ubuntu 24.04 + Python 3.12이다.
-
-소스:
-
-`/workspaces/InodeFence`
-
-Filesystem-security 실험:
-
-`$INODEFENCE_RUNTIME_ROOT`
-
-현재 값:
-
-`/var/lib/inodefence`
-
-소스 bind mount를 filesystem semantics 실험 공간으로 사용하지 않는다.
-
-환경 확인:
-
-```bash
-python scripts/check_dev_env.py
-```
+제외: 모든 archive format, GNU tar, entry 전이 관찰 계열, Windows NTFS semantics, 일반적인 kernel filesystem
+vulnerability, 전체 TOCTOU/race-condition 분석, 완전한 symbolic execution, Wormholes의 모든 bypass 재구현, 전체
+archive-parser ambiguity 분석.
 
 ## 안전 규칙
 
@@ -209,116 +165,74 @@ python scripts/check_dev_env.py
 - disposable sandbox와 sentinel만 사용한다.
 - 테스트와 실험은 host를 손상시키지 않고 재현 가능해야 한다.
 - 파괴적인 filesystem operation은 runtime sandbox 내부로 제한한다.
-
-## 바이브코딩 규칙
-
-이 프로젝트는 코딩 에이전트를 적극 사용한다.
-
-그래서 에이전트는 단순히 "작동하는 코드"를 만드는 것보다 다음을 지켜야 한다.
-
-- 현재 Layer의 책임 안에서만 구현한다.
-- 변경 이유를 사람이 이해할 수 있는 이름/구조로 남긴다.
-- generic logic과 target-specific logic을 분리한다.
-- 숨은 magic value보다 명시적인 data model/config를 사용한다.
-- 복잡한 추상화보다 읽기 쉬운 작은 interface를 우선한다.
-- 새 공통 개념을 만들면 문서 또는 docstring으로 의미를 남긴다.
-- 기존 architecture를 임의로 재설계하지 않는다.
-- 모호하면 기존 결정은 `docs/DECISIONS.md`를 우선한다.
-
-## 변경 영향 규칙
-
-다음이 바뀌면 코드만 수정하지 않는다.
-
-- 공통 data model/interface → 관련 design 문서 갱신
-- Security Contract → `security-contracts.md` 갱신
-- 큰 설계 결정 → `docs/DECISIONS.md` 갱신
-- 현재 단계/다음 작업 → `docs/STATUS.md` 갱신
-- 프로젝트 이해 흐름 → `docs/START_HERE.md` 갱신
-
-## 코드 품질
-
-완료 전 Dev Container에서 canonical validation command를 실행한다:
-
-```bash
-make check
-```
-
-개별 검사 명령:
-
-```bash
-python -m ruff check .
-python -m ruff format --check .
-python -m pytest
-```
-
-모든 텍스트 파일은 LF 줄바꿈을 사용한다.
-
-권장:
-
-- `pathlib.Path`
-- Python 표준 라이브러리 filesystem API
-- 명시적인 data model과 typed interface
-- 재현 가능한 experiment seed/configuration
-
-Python API로 충분한 경우 불필요한 shell-specific 동작을 피한다.
+- 소스 bind mount를 filesystem semantics 실험 공간으로 쓰지 않는다. 실험 공간은 `$INODEFENCE_RUNTIME_ROOT`
+  (기본 `/var/lib/inodefence`)다.
+- 실제 extractor 실행은 팀이 승인한 범위(고정 버전, 실행 예산 상한, disposable sandbox + sentinel)에서만 하고, 결과는
+  `demo run`으로 라벨링한다(qualification 아님). 등록 실험은 사전등록과 isolation contract를 그대로 따른다.
+- docker 기반 실험은 격리 완화 없이 동일한 잠긴 하너스가 그대로 도는 환경에서만 돌린다. 클라우드 세션은 코드와
+  분석의 병렬화에 쓰고, 그 조건을 만족하지 못하면 실험은 docker 호스트에 둔다.
+- 미공개로 보이는 문제의 처리와 공개는 [SECURITY.md](SECURITY.md)를 따른다.
 
 ## 아키텍처 경계
 
-상위 pipeline:
-
 ```text
-Seed Generator
-    -> Structure Mutator
-    -> TAR Builder
-    -> Target Adapter
-    -> State Observer
-    -> Security Oracle
-    -> Feedback / Corpus
-    -> next mutation
+Seed Generator -> Structure Mutator -> TAR Builder -> Target Adapter
+    -> State Observer -> Security Oracle -> Feedback / Corpus -> next mutation
 ```
 
-각 책임을 분리한다.
+각 책임을 분리한다. 특정 target/CVE 로직이 generic mutation, observer, oracle, feedback 모듈에 섞이지 않도록 한다.
 
-특정 target/CVE 로직이 generic mutation, observer, oracle, feedback 모듈에 섞이지 않도록 한다.
-
-사용자 명령 계층은 위 pipeline 바깥에 있다:
+사용자 명령 계층은 위 pipeline 바깥에 있다.
 
 ```text
 inodefence (cli.py) -> locate.py -> 제품 드라이버 (src/inodefence/drivers/) -> 위 엔진 모듈
 ```
 
 제품 드라이버(`inodefence.drivers`)는 대상별 verify/explore/replay 실행을 엔진 조합으로 구성한다. 엔진 모듈은
-드라이버·`locate`·`cli`를 import하지 않는다. 저장소 경로는 `drivers/repo.py` 한 곳에서 얻는다. 옛
-`scripts/` 경로 일부는 호환 별칭으로 남아 있다([scripts/README](scripts/README.md)).
+드라이버·`locate`·`cli`를 import하지 않는다. 저장소 경로는 `drivers/repo.py` 한 곳에서 얻는다. 옛 `scripts/` 경로
+일부는 호환 별칭으로 남아 있다([scripts/README](scripts/README.md)).
 
-## Git 작업 규칙
+## 구현 규칙
 
-- `main`에서 직접 개발하지 않는다.
-- 작업 단위별 branch를 만든다.
-- `main` 대상 PR을 생성한다.
-- 한 PR에는 가능하면 하나의 목적만 둔다.
-- 관계없는 문서 수정, refactor, feature를 한 PR에 섞지 않는다.
+- 변경 대상 계층의 책임 안에서만 구현한다.
+- 변경 이유를 사람이 이해할 수 있는 이름/구조로 남긴다.
+- generic logic과 target-specific logic을 분리한다.
+- 숨은 magic value보다 명시적인 data model/config를 사용한다.
+- 복잡한 추상화보다 읽기 쉬운 작은 interface를 우선한다.
+- 새 공통 개념을 만들면 문서 또는 docstring으로 의미를 남긴다.
 
-자세한 workflow는 `CONTRIBUTING.md`를 따른다.
+## 변경 영향 규칙
 
-## 문서 우선순위
+다음이 바뀌면 코드만 수정하지 않고 같은 PR에서 문서를 고친다.
 
-문서가 많아져도 읽는 순서는 단순하게 유지한다.
+- 공통 data model/interface, 계층 책임 → 관련 design 문서
+- Security Contract → `security-contracts.md`
+- 큰 설계 결정, target 우선순위, 프로젝트 범위, experiment methodology → `docs/DECISIONS.md`와 관련 design 문서
+- 현재 단계/다음 작업 → `docs/STATUS.md`
+- 프로젝트 이해 흐름 → `docs/START_HERE.md`
 
-```text
-START_HERE
-    ↓
-STATUS
-    ↓
-AGENTS
-    ↓
-필요한 design 문서
-    ↓
-research notes / CVE analysis
-```
+## 개발 환경과 검사
+
+기준 환경은 저장소 Dev Container(Ubuntu 24.04 + Python 3.12, 소스 `/workspaces/InodeFence`)이고 macOS와 Windows +
+WSL2에서 같은 컨테이너를 쓴다. 완료 전에 canonical validation command `make check`를 실행한다. 환경 준비, 검사 단계,
+CI는 [CONTRIBUTING.md](CONTRIBUTING.md)에 있다. 사용자 명령 `inodefence`의 설치와 실행은
+[docs/USAGE.md](docs/USAGE.md)에 있다.
+
+## 문서 책임
+
+읽는 순서: START_HERE → STATUS → 이 문서 → 필요한 design 문서 → research notes / CVE analysis.
 
 - `docs/research/`: 연구 근거, 설계, 선행연구, CVE 분석
 - `experiments/`: 실험 설정과 결과
 - `paper/`: 실제 논문에 사용할 준비가 된 내용
 
 연구 메모가 자동으로 논문 주장이 되는 것은 아니다.
+
+## 레인 (우선 책임자)
+
+- 지웅: Core / Architecture / Integration (통합 책임, 병합)
+- 주언: Feedback / Evaluation
+- 규민: Runtime / Target Execution
+- 민찬: Observation / Oracle / Demo
+
+담당 영역은 우선 책임자를 뜻하며, 인터페이스 연결과 최종 검증은 서로 협력한다.

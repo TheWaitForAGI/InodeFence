@@ -97,7 +97,7 @@ mutation 선택)가 `make demo`(node-tar 7.5.22, 정상 입력)로 돌고 같은
 
 대상 실행을 확인한 호스트는 **Windows + WSL2(Ubuntu 24.04, x86_64) + Docker Desktop 호스트 한 대**입니다. macOS와
 그 밖의 Linux 호스트는 이 후보에서 확인하지 않았습니다. 네 대상의 실제 실행은 이 스택 head가 아니라 **이전 커밋
-(`a5499de`, 이후 PR 1~3 커밋에서 같은 범위 재확인)에서의 engineering smoke(demo run)**입니다(seed 123, `verify` 5~6
+(`a5499de`; 이후 PR 1·2 커밋에서 같은 범위, PR 3 커밋에서는 `explore`만 재확인)에서의 engineering smoke(demo run)**입니다(seed 123, `verify` 5~6
 입력·`explore` budget 20). 그때 네 대상 모두 실행을 끝냈고 위반 0건이었습니다. 이후 변경은 런처 인자·환경과 드라이버
 실행부를 바꾸지 않았고, 이 head에서는 실제 대상 실행을 하지 않았습니다([CHANGELOG](CHANGELOG.md)의 검증 범위). **위반 0은 안전성 증명이 아니며**, `verify`의 고정
 입력은 모두 공격 형태라 정상 입력 대조군이 없습니다. 대상별 수치·종료 상태 분포·한계는
@@ -225,7 +225,7 @@ inodefence summary ~/inodefence-explore/target-explore/7.5.23-123-20-result/resu
 
 위협 모델은 공격자가 피해 경로 이름(보호 대상 외부 객체의 추출 루트 기준 상대 경로)을 알고, 세 arm 어휘에 그
 이름이 똑같이 들어간다고 전제합니다. blind 발견을 주장하지 않으며, CVE PoC·고정 공격 패턴·대상 경로·sentinel 이름은
-oracle·feedback에 넣지 않습니다.
+oracle·feedback에 넣지 않고, 알려진 CVE PoC를 탐색의 기본 seed로도 쓰지 않습니다.
 
 - **H-A (주 가설):** 어휘·seed·예산·이미지·oracle·operator 선택(uniform)이 같고 retention 정책만 다른 세 arm —
   **R**(무작위), **D**(구조 커버리지), **S-u**(identity/effect/boundary-attempt 상태 retention) — 을 비교합니다.

@@ -2,7 +2,7 @@
 
 [README](../README.md)의 [빠른 시작](../README.md#빠른-시작) 다음에 읽는 상세 안내입니다. 설치 방식별 차이,
 설정과 출력 위치, 대상별 검증 수준, 탐색·도중 확인·위반 케이스 읽기, 재실행, 종료 코드, 한계를 다룹니다.
-명령과 옵션의 기준은 각 명령의 `--help`입니다. 아래 본문은 README에 있던 문장을 그대로 옮긴 것이며, 실측 수치는
+명령과 옵션의 기준은 각 명령의 `--help`입니다. 아래 본문은 README에 있던 문장을 그대로 옮긴 것이며(예외: 호스트 이름·버전 라벨·실제 저장소 URL 표기 정정, 측정 시점 명시, CHANGELOG에서 옮긴 `make target-run` 예시), 실측 수치는
 각 절에 적힌 확인 시점·호스트·커밋 기준입니다. 개발용 명령(`make check`, `make demo`, 등록 실험 러너)은 [START_HERE](START_HERE.md)와
 [CONTRIBUTING](../CONTRIBUTING.md)에 있습니다.
 
@@ -121,10 +121,11 @@ wheel로 설치했다면 `INODEFENCE_HOME`(환경 변수 또는 아래 설정 �
 
 ## 지원 환경과 확인 수준
 
-- **이 릴리스 후보에서 확인한 호스트:** Windows + WSL2(Ubuntu 24.04, x86_64) + Docker Desktop
+- 이 절의 실측은 이전 커밋(RC #457, `a5499de`)의 측정이며, 현재 head에서는 대상 실행을 하지 않았습니다.
+- **이전 커밋 `a5499de`에서 확인한 호스트:** Windows + WSL2(Ubuntu 24.04, x86_64) + Docker Desktop
   4.99.0 / Engine 29.9.3 호스트 한 대. **macOS는 이 후보에서 확인하지 않았습니다**(아래 #400 기록만 있음).
   그 밖의 Linux 호스트도 확인하지 않았습니다.
-- **대상별 검증 수준 (RC 실측: 위 호스트, demo run, 2026-11-16 08:00~08:04 KST, 엔진 커밋 a5499de, seed 123,
+- **대상별 검증 수준 (이전 커밋 실측: 위 호스트, demo run, 2026-11-16 08:00~08:04 KST, 엔진 커밋 a5499de, seed 123,
   순차 실행).** "실행 성공"은 하너스가 실행을 끝내고 결과를 남긴 수, "유효 추출"은 추출기가 `success`로 끝난
   수입니다.
 
@@ -305,11 +306,14 @@ inodefence summary ~/inodefence-explore/target-explore/<실행>-result/result.js
 명령 없이 `inodefence`만 잘못 부른 경우는 argparse 관례대로 2입니다. `make`를 거쳐 부르면 `make` 자체는 실패 시
 2로 끝나므로, 판정 코드는 `inodefence`를 직접 부를 때의 값을 보세요.
 
-`inodefence verify`와 `make target-run`은 같은 드라이버를 부릅니다(개발용 경로, CHANGELOG @ 2b06730에서 옮김).
+`inodefence verify`와 `make target-run`은 같은 드라이버(`inodefence.drivers.run_target`)를 부릅니다(개발용 경로, CHANGELOG @ 2b06730에서 옮김).
 
 ```bash
 make target-run TARGET=node-tar TARGET_VERSIONS="7.5.2 7.5.3" AUTO_PREPARE=1 PYTHON=python3.12   # WSL2: PYTHON=python3
 ```
+
+종료 코드: 0 PASS, 1 FAIL, 2 ERROR(셀 중 가장 나쁜 판정), 3 일부 또는 모든 셀이 판정되지 않음(거부된 입력, 이미 있는 결과,
+설정·준비·이미지 문제).
 
 `make`는 실패하면 항상 2로 끝나므로, 판정 코드는 `make: *** … Error N`의 N으로 읽습니다.
 

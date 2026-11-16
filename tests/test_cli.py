@@ -231,6 +231,8 @@ def test_explore_forwards_the_exploration_driver_argv(monkeypatch, tmp_path: Pat
         "--out",
         str(tmp_path),
         "--auto-prepare",
+        "--output",
+        "progress",  # the default terminal output; --quiet / --verbose change it
     ]
 
 
@@ -308,6 +310,31 @@ def test_explore_forwards_target_specific_options_as_extra(monkeypatch) -> None:
     )
     # The unknown target option flows through to the driver, which declares it from adapter.options.
     assert calls[0][-2:] == ["--extraction-filter", "data"]
+
+
+@pytest.mark.parametrize(
+    ("flags", "mode"),
+    [([], "progress"), (["--quiet"], "quiet"), (["--verbose"], "stream")],
+)
+def test_explore_maps_quiet_and_verbose_to_the_drivers_output_mode(
+    monkeypatch, tmp_path: Path, flags: list[str], mode: str
+) -> None:
+    calls: list = []
+    monkeypatch.setattr(cli, "repo_root", lambda: Path("/repo"))
+    monkeypatch.setattr(
+        cli, "run_driver", lambda root, driver, argv, prog=None: calls.append(argv) or 0
+    )
+    base = ["explore", "--version", "latest", "--auto-prepare", "--out", str(tmp_path)]
+    assert cli.main(base + flags) == 0
+    argv = calls[0]
+    assert argv[argv.index("--output") + 1] == mode and argv.count("--output") == 1
+
+
+def test_explore_refuses_quiet_together_with_verbose(tmp_path: Path, capsys) -> None:
+    with pytest.raises(SystemExit) as stop:
+        cli.main(["explore", "--version", "latest", "--quiet", "--verbose", "--dry-run"])
+    assert stop.value.code == 3  # a usage error is a refusal, as for every explore option
+    assert "not allowed with" in capsys.readouterr().err
 
 
 def test_unknown_flag_on_a_non_forwarding_command_is_rejected(capsys) -> None:

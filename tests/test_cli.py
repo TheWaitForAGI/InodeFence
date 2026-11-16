@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from inodefence import cli, locate
+from inodefence.drivers import repo as drivers_repo
 
 
 @pytest.fixture(autouse=True)
@@ -43,8 +44,31 @@ def test_repo_root_rejects_a_non_repository(tmp_path: Path, monkeypatch) -> None
 def test_repo_root_is_none_without_markers(monkeypatch) -> None:
     monkeypatch.delenv("INODEFENCE_HOME", raising=False)
     # The installed-location path only resolves in an editable checkout; force the not-found path.
-    monkeypatch.setattr(locate, "_is_repo", lambda root: False)
+    # The resolver lives in inodefence.drivers.repo (locate only delegates to it).
+    monkeypatch.setattr(drivers_repo, "is_repo", lambda root: False)
     assert locate.repo_root() is None
+
+
+def test_locate_and_the_drivers_share_one_resolver_without_a_cycle() -> None:
+    # cli -> locate -> drivers; drivers.repo is a leaf (stdlib + user_config only).
+    import ast
+    import inspect
+
+    tree = ast.parse(inspect.getsource(drivers_repo))
+    imported = {
+        node.module
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("inodefence")
+    } | {
+        alias.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Import)
+        for alias in node.names
+        if alias.name.startswith("inodefence")
+    }
+    assert imported <= {"inodefence.user_config"}
+    assert locate._MARKER_DRIVER == drivers_repo.MARKER_DRIVER == Path("scripts/run_target.py")
+    assert locate.VERIFY_DRIVER == "inodefence.drivers.run_target"
 
 
 def test_verify_forwards_the_regression_driver_argv(monkeypatch) -> None:

@@ -40,6 +40,7 @@ from inodefence.drivers.run_target import (
     resolve_images,
     with_tag_suffix,
 )
+from inodefence.drivers.runtime.policy import PROFILES, STRICT
 from inodefence.drivers.runtime.session import RuntimeSession
 from inodefence.target_result import load_target_result, no_extraction_warning
 
@@ -90,6 +91,29 @@ def write_runtime_record(session: RuntimeSession, out: Path, *, result_written: 
         print(f"TARGET-EXPLORE RUNTIME: runtime record not written ({error})", file=sys.stderr)
 
 
+#: The runtime record's copy inside the result folder of a run that was not STRICT (the same name
+#: a replay publishes it under), so the result names the profile and flags it ran with.
+RESULT_RUNTIME_RECORD = "runtime-record.json"
+
+
+def publish_runtime_record(session: RuntimeSession, result_path: Path) -> None:
+    """Beside ``result.json`` of a non-STRICT run: the runtime record (profile, flags, launches).
+
+    STRICT's result folder is unchanged (no such file there means STRICT). A failure is one stderr
+    line; it never changes the result, the verdict or the exit code.
+    """
+    if session.policy is STRICT:
+        return
+    try:
+        (result_path.parent / RESULT_RUNTIME_RECORD).write_text(session.render(), encoding="utf-8")
+    except OSError as error:
+        print(
+            f"TARGET-EXPLORE RUNTIME: {RESULT_RUNTIME_RECORD} not written beside the result "
+            f"({error})",
+            file=sys.stderr,
+        )
+
+
 def main(argv: list[str] | None = None) -> int:
     # Discover --target first with a help-free parser so it does NOT consume -h/--help: the real
     # parser below is built with the target's declared options already added, so --help lists them
@@ -126,6 +150,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--dry-run", action="store_true", help="print the plan; prepare/run nothing"
+    )
+    parser.add_argument(
+        "--profile",
+        choices=sorted(PROFILES),
+        default=STRICT.profile.value,
+        help="runtime profile (default strict: the verified execution). fast leaves out the "
+        "launcher's rebuild of the shared controller/helper images when they are verified to be "
+        "this checkout's; what is run and judged is the same",
     )
     # The target's declared options become the `filters` passed to `cells`, in declaration order.
     # Exploration runs one configuration, so it takes one value per option: a multi-value option
@@ -166,22 +198,20 @@ def main(argv: list[str] | None = None) -> int:
     if min_budget is not None and args.budget < min_budget:
         parser.error(f"--budget must be >= {min_budget} for {args.target} (the loop's seed count)")
 
+    policy = PROFILES[args.profile]
     if args.dry_run:
-        print(
-            json.dumps(
-                {
-                    "target": args.target,
-                    "version": args.version,
-                    "seed": args.seed,
-                    "budget": args.budget,
-                    "out": str(args.out),
-                    "target_options": target_options,
-                    "note": "dry-run: nothing resolved, prepared, run or written",
-                },
-                indent=2,
-                sort_keys=True,
-            )
-        )
+        plan = {
+            "target": args.target,
+            "version": args.version,
+            "seed": args.seed,
+            "budget": args.budget,
+            "out": str(args.out),
+            "target_options": target_options,
+            "note": "dry-run: nothing resolved, prepared, run or written",
+        }
+        if policy is not STRICT:  # the default plan is unchanged
+            plan["runtime_profile"] = {"profile": policy.profile.value, "policy": policy.flags()}
+        print(json.dumps(plan, indent=2, sort_keys=True))
         return 0
     if not args.auto_prepare:
         parser.error(f"pass {auto_prepare_hint()} to prepare the image and run")
@@ -203,7 +233,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"TARGET-EXPLORE SETUP: {problem}", file=sys.stderr)
         return 3
 
-    session = RuntimeSession(target=args.target)  # STRICT: the verified execution
+    # STRICT (the verified execution) unless the user chose another profile with --profile.
+    session = RuntimeSession(target=args.target, policy=policy)
     result_written = False  # the hook returns only after writing its result
     try:
         prepared = prepare_target_image(
@@ -239,6 +270,7 @@ def main(argv: list[str] | None = None) -> int:
         # Also after a failed or interrupted launch: that is when the record is needed most. An
         # additional file; it never changes the result, the verdict or the exit code.
         write_runtime_record(session, args.out, result_written=result_written)
+    publish_runtime_record(session, outcome.result_path)
 
     print(
         f"TARGET-EXPLORE {outcome.verdict} {args.target} version={prepared.version} "

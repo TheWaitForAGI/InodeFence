@@ -63,6 +63,9 @@ RUNTIME_ROOT_DEFAULT = "/var/lib/inodefence"
 DOCKER_TIMEOUT_SECONDS = 30
 #: Exit code for a refusal before anything runs (drivers' "nothing judged"); see README 종료 코드.
 REFUSED = 3
+#: ``explore --profile`` choices, the default first (``drivers.runtime.policy.PROFILES``; a test
+#: keeps the two in step -- the drivers are not imported here).
+RUNTIME_PROFILES = ("strict", "fast")
 
 
 def cmd_targets(args: argparse.Namespace) -> int:
@@ -574,6 +577,8 @@ def cmd_explore(args: argparse.Namespace) -> int:
         argv += ["--image-tag-suffix", args.image_tag_suffix]
     if args.dry_run:
         argv.append("--dry-run")
+    if args.profile != RUNTIME_PROFILES[0]:  # the default (strict) forwards nothing
+        argv += ["--profile", args.profile]
     return _forward(EXPLORE_DRIVER, argv + args.extra, "explore")
 
 
@@ -794,6 +799,15 @@ def build_parser() -> argparse.ArgumentParser:
         f"(default: <output base>/{EXPLORE_OUT_NAME}; see `doctor`)",
     )
     explore.add_argument("--dry-run", action="store_true", help="print the plan; run nothing")
+    explore.add_argument(
+        "--profile",
+        choices=RUNTIME_PROFILES,
+        default=RUNTIME_PROFILES[0],
+        help="runtime profile (default: strict, the verified execution). fast skips the per-run "
+        "rebuild of the shared controller/helper images when they are verified to be this "
+        "checkout's (a fixed saving of a few seconds per run; nothing per case changes). The "
+        "same inputs are run and judged; `replay` always runs strict",
+    )
     explore.__class__ = _RefusalParser
     explore.set_defaults(func=cmd_explore)
 

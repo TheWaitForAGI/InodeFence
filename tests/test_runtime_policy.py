@@ -73,10 +73,12 @@ def test_strict_session_calls_the_runner_exactly_like_a_plain_launch() -> None:
     assert plain.calls[0][0] == ["bash", str(SCRIPT), "explore"]
 
 
-def test_strict_is_the_only_profile_and_has_no_flags() -> None:
-    # a later profile is added only with a measured flag (no FAST in name only)
-    assert [p.value for p in policy.RuntimeProfile] == ["strict"]
+def test_strict_is_the_default_profile_and_has_no_flags() -> None:
+    # a profile is added only with a measured flag: FAST has exactly one (tests/test_runtime_fast)
+    assert [p.value for p in policy.RuntimeProfile] == ["strict", "fast"]
     assert policy.STRICT.flags() == {} and RuntimeSession(target="x").policy is policy.STRICT
+    assert policy.FAST.flags() == {"reuse_shared_images": True}
+    assert policy.PROFILES == {"strict": policy.STRICT, "fast": policy.FAST}
 
 
 def test_session_returns_the_runners_result_and_records_the_launch() -> None:
@@ -199,13 +201,24 @@ def test_explore_writes_the_record_when_interrupted(
     assert record["launches"][0]["error"] == "KeyboardInterrupt"
 
 
-def test_no_runtime_profile_option_is_offered(
+def test_an_unknown_profile_is_refused_before_anything_runs(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    # one profile only: an option with a single choice is not offered (neither driver nor CLI)
-    with pytest.raises(SystemExit):
-        _main(tmp_path, monkeypatch, Recorder(), "--runtime-profile", "strict")
-    assert "unrecognized arguments: --runtime-profile" in capsys.readouterr().err
+    runner = Recorder()
+    with pytest.raises(SystemExit) as stopped:
+        _main(tmp_path, monkeypatch, runner, "--profile", "turbo")
+    assert stopped.value.code == 3 and runner.calls == []
+    assert "invalid choice: 'turbo'" in capsys.readouterr().err
+
+
+def test_explicit_strict_is_the_default_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    default, explicit = Recorder(), Recorder()
+    assert _main(tmp_path / "a", monkeypatch, default) == 0
+    assert _main(tmp_path / "b", monkeypatch, explicit, "--profile", "strict") == 0
+    assert default.calls == explicit.calls
+    assert "RUNTIME" not in capsys.readouterr().err
 
 
 def test_a_record_that_cannot_be_written_never_changes_the_exit_code(

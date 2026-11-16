@@ -12,6 +12,15 @@ calls :meth:`RuntimeSession.finish`, which classifies each launch and runs the d
 ``<out>/runtime/<run_id>-<UTC time>.json`` (schema :data:`SCHEMA`). It is an additional file: no
 existing result file changes, and an existing record is never overwritten. It holds no absolute
 path and no environment beyond the whitelisted run parameters (``hooks.RECORDED_ENV``).
+
+Under FAST (``policy.FAST``, chosen by the user; never for a replay) the session applies the
+policy's one flag before the launch, in :meth:`RuntimeSession._reuse_shared_images`: the launch
+gets ``SKIP_BUILD=1`` only when ``runtime.shared_images`` verifies the two shared images. If they
+are not verified it first runs the launcher's own build-only run (recorded as a launch of its own)
+and verifies what that built; a launcher without a build-only run is launched as STRICT launches
+it, and that fallback is printed and recorded. A failed build stops the run before any controller
+exists (:class:`hooks.LaunchBlocked`, exit 3). The argv, every other environment key and the
+keyword arguments are STRICT's, and so is everything after the launcher returns.
 """
 
 from __future__ import annotations
@@ -28,7 +37,7 @@ from pathlib import Path
 from typing import Any
 
 from inodefence.drivers.launcher import run_resources
-from inodefence.drivers.runtime import diagnostics
+from inodefence.drivers.runtime import diagnostics, shared_images
 from inodefence.drivers.runtime.hooks import (
     Finding,
     LaunchArtifacts,
@@ -38,7 +47,7 @@ from inodefence.drivers.runtime.hooks import (
     LaunchRequest,
     recorded_env,
 )
-from inodefence.drivers.runtime.policy import STRICT, RuntimePolicy
+from inodefence.drivers.runtime.policy import STRICT, RuntimePolicy, RuntimeProfile
 
 SCHEMA = "inodefence-runtime-v1"
 #: Each kind's driver output prefix (the default of :attr:`RuntimeSession.prefix`).
@@ -59,8 +68,16 @@ class LaunchRecord:
     findings: list[Finding] = field(default_factory=list)
     diagnostic_failures: list[str] = field(default_factory=list)
     finished: bool = False
+    #: What the policy's flags did to this launch, by flag name (empty under STRICT: not recorded).
+    policy_applied: dict[str, Any] = field(default_factory=dict)
 
     def to_json(self) -> dict[str, Any]:
+        recorded = self._to_json()
+        if self.policy_applied:  # a key STRICT's record does not have
+            recorded["policy_applied"] = dict(self.policy_applied)
+        return recorded
+
+    def _to_json(self) -> dict[str, Any]:
         request = self.request
         return {  # no artifacts: they are absolute host paths
             "target": request.target,
@@ -102,6 +119,11 @@ class RuntimeSession:
     def __post_init__(self) -> None:
         if not self.prefix:
             self.prefix = PREFIXES[self.kind]
+        if self.kind == "replay" and self.policy.profile is not RuntimeProfile.STRICT:
+            # a replay is an independent verification: it never runs under another profile
+            raise ValueError(
+                f"a replay always runs under the strict profile (got {self.policy.profile.value})"
+            )
 
     # ---- one launch ----
 
@@ -119,6 +141,25 @@ class RuntimeSession:
 
         A ``block`` finding of a ``before`` check stops the launch first (:class:`LaunchBlocked`).
         """
+        applied: dict[str, Any] = {}
+        if self.policy.reuse_shared_images:
+            env, applied = self._reuse_shared_images(script, args, runner, env, kwargs)
+        record = self._record(script, args, env, artifacts)
+        record.policy_applied = applied
+        done = self._run(record, script, args, runner, env, kwargs)
+        if applied.get("reuse_shared_images", {}).get("applied"):
+            self._shared_images_unchanged(record, applied["reuse_shared_images"])
+        return done
+
+    def _record(
+        self,
+        script: Path,
+        args: Sequence[str],
+        env: dict[str, str],
+        artifacts: LaunchArtifacts | None,
+    ) -> LaunchRecord:
+        """A new launch record for ``bash <script> <args...>`` with ``env``; runs the ``before``
+        checks, and a ``block`` finding stops the launch here (:class:`LaunchBlocked`)."""
         run_id = env.get("RUN_ID")
         controller, volume = run_resources(self.target, run_id)
         request = LaunchRequest(
@@ -142,6 +183,18 @@ class RuntimeSession:
             record.classification = "blocked"
             record.finished = True
             raise LaunchBlocked("; ".join(f"{f.code}: {f.message}" for f in blocks))
+        return record
+
+    @staticmethod
+    def _run(
+        record: LaunchRecord,
+        script: Path,
+        args: Sequence[str],
+        runner: Callable[..., Any],
+        env: dict[str, str],
+        kwargs: dict[str, Any],
+    ) -> Any:
+        """Call ``runner`` exactly as given and note how it ended (an exception is re-raised)."""
         started = time.monotonic()
         try:
             done = runner(["bash", str(script), *args], env=env, **kwargs)
@@ -153,6 +206,104 @@ class RuntimeSession:
         returncode = getattr(done, "returncode", None)
         record.returncode = returncode if isinstance(returncode, int) else None
         return done
+
+    # ---- FAST: the reuse_shared_images flag ----
+
+    def _say(self, text: str) -> None:
+        print(f"{self.prefix} RUNTIME: profile={self.policy.profile.value} {text}", file=sys.stderr)
+
+    def _reuse_shared_images(
+        self,
+        script: Path,
+        args: Sequence[str],
+        runner: Callable[..., Any],
+        env: dict[str, str],
+        kwargs: dict[str, Any],
+    ) -> tuple[dict[str, str], dict[str, Any]]:
+        """The environment to launch with, and what was decided (for the record and the user).
+
+        ``SKIP_BUILD=1`` is added only for verified images. Not verified: build them with the
+        launcher's build-only run and verify that; no such run: launch as STRICT does, said and
+        recorded. A build that fails raises :class:`LaunchBlocked` -- nothing else is launched.
+        """
+        flag = "reuse_shared_images"
+
+        def decided(
+            applied: bool, reason: str, images: shared_images.SharedImages | None
+        ) -> dict[str, Any]:
+            detail: dict[str, Any] = {"applied": applied, "reason": reason}
+            if images is not None:
+                detail["shared_images"] = images.as_record()
+            self._say(f"{flag}={'applied' if applied else 'not-applied'} ({reason})")
+            return {flag: detail}
+
+        if env.get("SKIP_BUILD") or env.get("BUILD_ONLY"):
+            reason = (
+                "SKIP_BUILD / BUILD_ONLY is already set in the environment; launched as given, "
+                "the shared images were not verified by this profile"
+            )
+            return env, decided(False, reason, None)
+        if script.name not in shared_images.SKIP_BUILD_LAUNCHERS:
+            reason = f"{script.name} has no SKIP_BUILD switch; launched as strict launches it"
+            return env, decided(False, reason, None)
+        repo_root = script.resolve().parent.parent
+        images = shared_images.check(repo_root, env)
+        if not images.verified:
+            if script.name not in shared_images.BUILD_ONLY_LAUNCHERS:
+                reason = (
+                    f"{images.reason}, and {script.name} has no build-only run to verify them "
+                    "with; launched as strict launches it (the launcher builds them). An explore "
+                    "of another target under this profile verifies them"
+                )
+                return env, decided(False, reason, images)
+            self._say(f"{flag}: {images.reason}; building them first (launcher build-only run)")
+            build_env = {**env, "BUILD_ONLY": "1"}
+            build = self._record(script, args, build_env, None)
+            build.finished = True  # not a run: no outcome diagnosis, no leftovers to look for
+            build.classification = "shared-image-build-error"
+            self._run(build, script, args, runner, build_env, kwargs)
+            if build.returncode != 0:
+                build.classification = "shared-image-build-failed"
+                raise LaunchBlocked(
+                    f"profile {self.policy.profile.value}: the shared-image build failed "
+                    f"(launcher exit {build.returncode}); no controller was created and nothing "
+                    "was run. See the output above, or run with --profile strict"
+                )
+            build.classification = "shared-image-build"
+            images = shared_images.record(repo_root, env)
+            build.policy_applied = {flag: {"shared_images": images.as_record()}}
+            if not images.verified:
+                raise LaunchBlocked(
+                    f"profile {self.policy.profile.value}: {images.reason}; nothing was run. "
+                    "Run with --profile strict"
+                )
+        return {**env, "SKIP_BUILD": "1"}, decided(True, f"SKIP_BUILD=1: {images.reason}", images)
+
+    def _shared_images_unchanged(self, record: LaunchRecord, detail: dict[str, Any]) -> None:
+        """After a launch that reused the images: are the two tags still the verified ids?
+
+        The tags are host-global, so another checkout's build can move them while this run is
+        going. Recorded (and one stderr line) when they moved or Docker cannot say; never changes
+        the exit code or a verdict.
+        """
+        verified = detail.get("shared_images", {})
+        context = verified.get("docker_context")
+        try:
+            now = shared_images.image_ids(context) if context else None
+        except Exception as error:  # noqa: BLE001 - recorded as a diagnostic failure, not hidden
+            self._failed(record, "shared_images.image_ids", error)
+            return
+        detail["unchanged_after_launch"] = now == verified.get("image_ids")
+        if not detail["unchanged_after_launch"]:
+            finding = Finding(
+                "warn",
+                "shared-images-changed",
+                "a shared image tag no longer resolves to the verified id (rebuilt from another "
+                "checkout while this run was going, or Docker did not answer): this run's "
+                "controller / helper image may not be the verified one -- repeat the run",
+            )
+            record.findings.append(finding)
+            print(f"RUNTIME DIAGNOSTIC WARN {finding.code}: {finding.message}", file=sys.stderr)
 
     # ---- after the run ----
 

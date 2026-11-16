@@ -16,3 +16,18 @@ indent_size = 2
 
 [*.md]
 trim_trailing_whitespace = false
+
+# Trailing whitespace is part of a patch's context lines.
+[*.patch]
+trim_trailing_whitespace = false
+
+# Recorded evidence, frozen experiment inputs and test fixtures are pinned byte for byte (SHA-256
+# lists, frozen files). Some are not UTF-8, have trailing whitespace or no final newline, so an
+# editor must save them unchanged. Keep this section last: it overrides the ones above.
+[{experiments/summaries/**,experiments/repro/evidence/**,experiments/preregistration/**,tests/fixtures/**}]
+charset = unset
+end_of_line = unset
+insert_final_newline = unset
+trim_trailing_whitespace = unset
+indent_style = unset
+indent_size = unset

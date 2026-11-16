@@ -32,6 +32,7 @@ experiments/results/
 # Experiment runtime output
 experiments/raw/*
 !experiments/raw/.gitkeep
+!experiments/raw/README.md
 
 # Generated artifacts
 artifacts/*

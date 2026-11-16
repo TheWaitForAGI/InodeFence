@@ -7,7 +7,7 @@ import json
 import subprocess
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 import pytest
 
@@ -391,3 +391,29 @@ def test_supported_vocabulary_reaches_the_script_and_must_be_what_ran(
     report["config"]["mutation_policy"] = oge.DEFAULT_MUTATION_POLICY
     with pytest.raises(RuntimeError, match="campaign ran mutation vocabulary"):
         oge.explore(_prepared(), _options(tmp_path / "b", mutation_policy=blind))
+
+
+class _Reached(Exception):
+    """The controller was reached (the run would start)."""
+
+
+def _reach(*_: object, **__: object) -> NoReturn:
+    raise _Reached
+
+
+@pytest.mark.parametrize("existing", ["report", "result"])
+def test_hook_refuses_this_runs_existing_output_before_any_docker_call(
+    existing: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(oge, "verify_existing", _reach)  # the first docker call of the hook
+    options = ExploreOptions(budget=oge.MIN_BUDGET, seed=1, out=tmp_path)
+    run_id = f"oras-go-2.7.0-1-{oge.MIN_BUDGET}"
+    report = oge.controller_report_path(tmp_path, run_id)
+    path = report if existing == "report" else report.parent / f"{run_id}-result" / "result.json"
+    path.parent.mkdir(parents=True)
+    path.write_text("{}", encoding="utf-8")
+    with pytest.raises(er.ResultExistsError, match="nothing was run or overwritten"):
+        oge.explore(_prepared(), options)
+    path.unlink()  # without it the run starts exactly as before
+    with pytest.raises(_Reached):
+        oge.explore(_prepared(), options)

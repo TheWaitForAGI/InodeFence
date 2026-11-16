@@ -296,18 +296,27 @@ def build_campaign_result(
 
 
 def write_outputs(
-    out_dir: Path, result: TargetResult, tars: dict[str, bytes], summary: dict[str, Any]
+    out_dir: Path,
+    result: TargetResult,
+    tars: dict[str, bytes],
+    summary: dict[str, Any],
+    *,
+    report: Path | None = None,
 ) -> Path:
     from inodefence.drivers import explore_result
 
     if (out_dir / RESULT_NAME).exists():
-        raise FileExistsError(f"refusing to overwrite {out_dir / RESULT_NAME}")
+        # a FileExistsError as before; also a ValueError, so the driver reports it as setup (3)
+        kept = f"; the loop report of this run is kept at {report}" if report is not None else ""
+        raise explore_result.ResultExistsError(
+            f"refusing to overwrite {out_dir / RESULT_NAME}{kept}"
+        )
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / EXPLORATION_NAME).write_text(
         json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
     # The shared writer saves the violating inputs and writes result.json last.
-    return explore_result.write_result(out_dir, result, tars)
+    return explore_result.write_result(out_dir, result, tars, report=report)
 
 
 def controller_report_path(evidence_dir: Path, run_id: str) -> Path:
@@ -371,6 +380,13 @@ def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOu
     ratio = getattr(options, "max_unjudged_ratio", DEFAULT_MAX_UNJUDGED_RATIO)
     run_id = f"{dt._slug(package)}-{version}-{options.seed}-{options.budget}"
     run_id += options.image_tag_suffix
+    # This run's report and result must not be there yet: refuse now (exit 3), not after the loop.
+    from inodefence.drivers import explore_result
+
+    explore_result.refuse_existing(
+        controller_report_path(options.out / "controller", run_id),
+        options.out / f"{run_id}-result" / RESULT_NAME,
+    )
     options.out.mkdir(parents=True, exist_ok=True)
     report_path = run_controller(
         prepared.image_id,
@@ -404,7 +420,7 @@ def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOu
         worker_check=check["reason"],
         controller_report=str(report_path),
     )
-    path = write_outputs(out_dir, result, tars, summary)
+    path = write_outputs(out_dir, result, tars, summary, report=report_path)
     try:  # the result is written; a summary failure must not lose it
         from inodefence.target_result_summary import write_cell_summaries
 

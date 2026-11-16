@@ -31,7 +31,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-from inodefence.drivers.explore_result import build_campaign_result, write_result
+from inodefence.drivers.explore_result import (
+    build_campaign_result,
+    refuse_existing,
+    write_result,
+)
 from inodefence.drivers.launcher import launcher_path, run_launcher
 from inodefence.drivers.repo import code_checkout
 from inodefence.drivers.run_target import ExploreOptions, ExploreOutcome, PreparedTargetImage
@@ -288,6 +292,9 @@ def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOu
     )
     options.out.mkdir(parents=True, exist_ok=True)
     run_id = f"oras-go-{prepared.version}-{options.seed}-{options.budget}{options.image_tag_suffix}"
+    # This run's report and result must not be there yet: refuse now (exit 3), not after the loop.
+    planned = controller_report_path(options.out, run_id)
+    refuse_existing(planned, planned.parent / f"{run_id}-result" / "result.json")
     python = os.environ.get("PYTHON", sys.executable)
     print(f"TARGET-EXPLORE CHECK {verify_existing(prepared)}")
     report_path = run_controller(
@@ -316,7 +323,9 @@ def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOu
             MAX_UNJUDGED_RATIO, getattr(options, "max_unjudged_ratio", MAX_UNJUDGED_RATIO)
         ),
     )
-    result_path = write_result(report_path.parent / f"{run_id}-result", result, tar_files)
+    result_path = write_result(
+        report_path.parent / f"{run_id}-result", result, tar_files, report=report_path
+    )
     settings = settings_record(report, prepared, options)
     settings["loop_report"] = report_path.name
     (result_path.parent / SETTINGS_NAME).write_text(

@@ -189,6 +189,9 @@ def explore(
         f"py{prepared.version}-{extraction_filter}-{options.seed}-{options.budget}"
         f"{options.image_tag_suffix}"
     )
+    # This run's report and result must not be there yet: refuse now (exit 3), not after the loop.
+    planned = report_path(options.out, run_id)
+    explore_result.refuse_existing(planned, planned.parent / f"{run_id}-result" / "result.json")
     path = run_controller(
         made.image_ref,
         prepared.version,
@@ -204,7 +207,9 @@ def explore(
     result, tar_files = build_campaign_result(
         report, prepared, made, extraction_filter, seed=options.seed, budget=options.budget
     )
-    result_path = explore_result.write_result(path.parent / f"{run_id}-result", result, tar_files)
+    result_path = explore_result.write_result(
+        path.parent / f"{run_id}-result", result, tar_files, report=path
+    )
     try:  # the result is written; a summary failure must not lose it
         write_cell_summaries([result_path])
     except Exception as error:  # noqa: BLE001

@@ -20,7 +20,11 @@ import subprocess
 import sys
 from pathlib import Path
 
-from inodefence.drivers.explore_result import build_campaign_result, write_result
+from inodefence.drivers.explore_result import (
+    build_campaign_result,
+    refuse_existing,
+    write_result,
+)
 from inodefence.drivers.launcher import launcher_path, run_launcher
 from inodefence.drivers.repo import code_checkout
 from inodefence.drivers.run_target import (
@@ -172,6 +176,9 @@ def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOu
         raise ValueError(f"budget must be >= {MIN_BUDGET} (the loop's seed count)")
     options.out.mkdir(parents=True, exist_ok=True)
     run_id = f"{prepared.version}-{options.seed}-{options.budget}{options.image_tag_suffix}"
+    # This run's report and result must not be there yet: refuse now (exit 3), not after the loop.
+    planned = controller_report_path(options.out, run_id)
+    refuse_existing(planned, planned.parent / f"{run_id}-result" / "result.json")
     python = os.environ.get("PYTHON", sys.executable)
     report_path = run_controller(
         prepared,
@@ -196,7 +203,9 @@ def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOu
         max_unjudged_ratio=options.max_unjudged_ratio,
         live_dir=host_live_dir if host_live_dir.is_dir() else None,
     )
-    result_path = write_result(report_path.parent / f"{run_id}-result", result, tar_files)
+    result_path = write_result(
+        report_path.parent / f"{run_id}-result", result, tar_files, report=report_path
+    )
     try:  # the result is written; a summary failure must not lose it
         write_cell_summaries([result_path])
     except Exception as error:  # noqa: BLE001

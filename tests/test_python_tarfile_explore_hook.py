@@ -10,7 +10,7 @@ from __future__ import annotations
 import json
 import platform
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 import pytest
 from tests.test_python_tarfile_contained import IMAGE, _LocalBackend
@@ -18,6 +18,7 @@ from tests.test_python_tarfile_contained import IMAGE, _LocalBackend
 import inodefence.drivers.python_tarfile.adapter as rpt
 import inodefence.drivers.python_tarfile.explore as pte
 import inodefence.drivers.run_target_explore as rte
+from inodefence.drivers.explore_result import ResultExistsError
 from inodefence.drivers.python_tarfile.producer import ProducerImage
 from inodefence.drivers.run_target import ExploreOptions, PreparedTargetImage
 from inodefence.python_tarfile_explore import python_tarfile_exploration_report
@@ -206,3 +207,29 @@ def test_python_adapter_registers_the_hook_and_declares_its_filter_option() -> N
         rpt.ADAPTER.cells(["3.14.10"], [])  # the filter axis is required, never defaulted
     with pytest.raises(ValueError, match="one of"):  # regression reads the same declaration
         rpt.ADAPTER.cells(["3.14.10"], ["tar"])
+
+
+class _Reached(Exception):
+    """The controller was reached (the run would start)."""
+
+
+def _reach(*_: object, **__: object) -> NoReturn:
+    raise _Reached
+
+
+@pytest.mark.parametrize("existing", ["report", "result"])
+def test_hook_refuses_this_runs_existing_output_before_the_controller(
+    existing: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(pte, "run_controller", _reach)
+    options = _options(tmp_path)
+    run_id = f"py{RUNTIME}-data-{options.seed}-{options.budget}"
+    report = pte.report_path(tmp_path, run_id)
+    path = report if existing == "report" else report.parent / f"{run_id}-result" / "result.json"
+    path.parent.mkdir(parents=True)
+    path.write_text("{}", encoding="utf-8")
+    with pytest.raises(ResultExistsError, match="nothing was run or overwritten"):
+        pte.explore(PREPARED, options, ensure=_ensure)
+    path.unlink()  # without it the run starts exactly as before
+    with pytest.raises(_Reached):
+        pte.explore(PREPARED, options, ensure=_ensure)

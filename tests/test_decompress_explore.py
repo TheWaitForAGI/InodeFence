@@ -7,12 +7,13 @@ import json
 import subprocess
 from hashlib import sha256
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, NoReturn, cast
 
 import pytest
 
 import inodefence.drivers.decompress.adapter as dt
 import inodefence.drivers.decompress.explore as dx
+from inodefence.drivers.explore_result import ResultExistsError
 from inodefence.target_result import RUN_ERROR, Provenance, Verdict, load_target_result
 
 SPEC = "@xhmikosr/decompress@11.1.4"
@@ -503,3 +504,44 @@ def test_d1_only_one_termination_kind(termination: str, expected: Verdict) -> No
     result, _, summary = _convert(_report(steps), ratio=0.2)
     assert result.verdict is expected
     assert (result.verdict is Verdict.ERROR) == bool(summary["not_readable_as_pass"])
+
+
+class _Reached(Exception):
+    """The controller was reached (the run would start)."""
+
+
+def _reach(*_: object, **__: object) -> NoReturn:
+    raise _Reached
+
+
+@pytest.mark.parametrize("existing", ["report", "result"])
+def test_hook_refuses_this_runs_existing_output_before_the_controller(
+    existing: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from inodefence.drivers.run_target import ExploreOptions
+
+    monkeypatch.setattr(dt.registry, "worker_check", _ok_check)
+    monkeypatch.setattr(dx, "run_controller", _reach)
+    options = ExploreOptions(dx.MIN_BUDGET, 1, tmp_path)
+    package, version = dt.parse_spec(SPEC)
+    run_id = f"{dt._slug(package)}-{version}-1-{dx.MIN_BUDGET}"
+    if existing == "report":
+        path = dx.controller_report_path(tmp_path / "controller", run_id)
+    else:
+        path = tmp_path / f"{run_id}-result" / dx.RESULT_NAME
+    path.parent.mkdir(parents=True)
+    path.write_text("{}", encoding="utf-8")
+    with pytest.raises(ResultExistsError, match="nothing was run or overwritten"):
+        dx.explore(_prepared(tmp_path), options)
+    path.unlink()  # without it the run starts exactly as before
+    with pytest.raises(_Reached):
+        dx.explore(_prepared(tmp_path), options)
+
+
+def test_an_existing_result_is_a_setup_refusal_that_names_the_kept_report(tmp_path: Path) -> None:
+    (tmp_path / dx.RESULT_NAME).write_text("{}", encoding="utf-8")
+    report = tmp_path / "report.json"
+    with pytest.raises(ResultExistsError) as refused:
+        dx.write_outputs(tmp_path, None, {}, {}, report=report)  # type: ignore[arg-type]
+    assert isinstance(refused.value, FileExistsError) and isinstance(refused.value, ValueError)
+    assert f"loop report of this run is kept at {report}" in str(refused.value)

@@ -6,11 +6,12 @@ import base64
 import json
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 import pytest
 
 import inodefence.drivers.node_tar.explore as nte
+from inodefence.drivers.explore_result import ResultExistsError
 from inodefence.drivers.run_target import ExploreOptions, PreparedTargetImage
 from inodefence.target_result import Verdict, load_target_result
 
@@ -315,3 +316,29 @@ def test_streaming_aggregate_and_per_case_reports_agree() -> None:
     assert r1.campaign is not None and r2.campaign is not None
     assert r1.campaign.runs_to_first_violation == r2.campaign.runs_to_first_violation == 3
     assert r2.campaign.terminations == {"success": 3, "rejected": 1}
+
+
+class _Reached(Exception):
+    """The controller was reached (the run would start)."""
+
+
+def _reach(*_: object, **__: object) -> NoReturn:
+    raise _Reached
+
+
+@pytest.mark.parametrize("existing", ["report", "result"])
+def test_hook_refuses_this_runs_existing_output_before_the_controller(
+    existing: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(nte, "run_controller", _reach)
+    options = ExploreOptions(budget=nte.MIN_BUDGET, seed=1, out=tmp_path)
+    run_id = f"7.5.23-1-{nte.MIN_BUDGET}"
+    report = nte.controller_report_path(tmp_path, run_id)
+    path = report if existing == "report" else report.parent / f"{run_id}-result" / "result.json"
+    path.parent.mkdir(parents=True)
+    path.write_text("{}", encoding="utf-8")
+    with pytest.raises(ResultExistsError, match="nothing was run or overwritten"):
+        nte.explore(_prepared(), options)
+    path.unlink()  # without it the run starts exactly as before
+    with pytest.raises(_Reached):
+        nte.explore(_prepared(), options)

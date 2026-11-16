@@ -21,10 +21,10 @@ from inodefence.drivers.image_prepare import (
     recipe_step,
     single_dependency,
 )
-from inodefence.drivers.repo import repository_root
+from inodefence.drivers.repo import code_checkout
 from inodefence.drivers.run_target import PrepareStep, RunCell
 
-_REPO_ROOT = repository_root()
+_REPO_ROOT = code_checkout()
 VERSIONS_DIR = _REPO_ROOT / "tools" / "node-tar" / "versions"
 
 

@@ -24,7 +24,7 @@ import json
 import sys
 from pathlib import Path
 
-from inodefence.drivers.repo import repository_root
+from inodefence.drivers.repo import code_checkout
 from inodefence.drivers.run_target import (
     DEFAULT_MAX_UNJUDGED_RATIO,
     TARGETS,
@@ -42,7 +42,7 @@ from inodefence.target_result import load_target_result, no_extraction_warning
 # Outside the repo AND outside ~/inodefence-evidence (confirmatory evidence lives there).
 DEFAULT_OUT = Path.home() / "inodefence-explore"
 # This repository is public; a violating-case TAR written inside it could be committed and leak.
-REPO_ROOT = repository_root()
+REPO_ROOT = code_checkout()
 
 
 def prepare_target_image(

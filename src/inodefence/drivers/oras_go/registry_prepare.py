@@ -62,9 +62,9 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from inodefence.drivers.repo import repository_root
+from inodefence.drivers.repo import code_checkout
 
-REPO_ROOT = repository_root()
+REPO_ROOT = code_checkout()
 TOOLS_DIR = REPO_ROOT / "tools" / "oras-go"
 DOCKERFILE = TOOLS_DIR / "Dockerfile"
 WORKER_SOURCE = TOOLS_DIR / "worker" / "main.go"

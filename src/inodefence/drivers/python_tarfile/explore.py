@@ -43,13 +43,13 @@ from inodefence.drivers import explore_result
 from inodefence.drivers.launcher import launcher_path, run_launcher
 from inodefence.drivers.python_tarfile import adapter as rpt
 from inodefence.drivers.python_tarfile import producer
-from inodefence.drivers.repo import repository_root
+from inodefence.drivers.repo import code_checkout
 from inodefence.drivers.run_target import ExploreOptions, ExploreOutcome, PreparedTargetImage
 from inodefence.generator import minimal_seed_corpus
 from inodefence.target_result import Preparation, TargetAxes, TargetResult
 from inodefence.target_result_summary import write_cell_summaries
 
-REPO_ROOT = repository_root()
+REPO_ROOT = code_checkout()
 LAUNCHER = launcher_path("python-tarfile", REPO_ROOT)
 MIN_BUDGET = len(minimal_seed_corpus())
 

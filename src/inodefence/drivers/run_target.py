@@ -71,7 +71,7 @@ from typing import Any, NoReturn
 
 from inodefence.case_replay import ReplayHook
 from inodefence.drivers import regression_check as rc
-from inodefence.drivers.repo import repository_root
+from inodefence.drivers.repo import code_checkout
 from inodefence.target_result import (
     RUN_ERROR,
     CaseVerdict,
@@ -84,7 +84,7 @@ from inodefence.target_result import (
 )
 from inodefence.target_result_summary import write_cell_summaries
 
-REPO_ROOT = repository_root()
+REPO_ROOT = code_checkout()
 RESULT_NAME = "result.json"
 
 

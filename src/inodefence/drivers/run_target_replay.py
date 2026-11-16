@@ -40,10 +40,10 @@ from inodefence.case_replay import (
     publish_replay,
     replay_brief,
 )
-from inodefence.drivers.repo import repository_root
+from inodefence.drivers.repo import code_checkout
 from inodefence.drivers.run_target import TARGETS, RefusalParser, _git, load_adapter
 
-REPO_ROOT = repository_root()
+REPO_ROOT = code_checkout()
 
 
 def local_image_id(image_id: str, runner=subprocess.run) -> str | None:

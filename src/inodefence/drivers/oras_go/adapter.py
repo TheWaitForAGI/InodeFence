@@ -60,7 +60,7 @@ from inodefence.drivers import image_prepare as ip
 from inodefence.drivers import regression_check as rc
 from inodefence.drivers.lazy_import import LazyModule
 from inodefence.drivers.oras_go import registry_prepare as proxy
-from inodefence.drivers.repo import repository_root
+from inodefence.drivers.repo import code_checkout
 from inodefence.drivers.run_target import CaseRun, PrepareStep, RunCell, TargetAdapter, fixture_case
 from inodefence.target_result import Preparation, ResultMode, TargetAxes
 
@@ -200,7 +200,7 @@ def _run(cell: RunCell) -> list[CaseRun]:
 
 # ---- image preparation (build from the committed per-role go.mod/go.sum) ----
 
-TOOLS_DIR = repository_root() / "tools" / "oras-go"
+TOOLS_DIR = code_checkout() / "tools" / "oras-go"
 _ORAS_REQUIRE = re.compile(r"^\s*oras\.land/oras-go/v2\s+v([0-9]+\.[0-9]+\.[0-9]+)\s*$", re.M)
 
 

@@ -44,9 +44,9 @@ from typing import Any
 
 from inodefence.drivers import npm_registry as npm
 from inodefence.drivers.npm_registry import EXACT, REGISTRY, RegistryPrepareError, Runner
-from inodefence.drivers.repo import repository_root
+from inodefence.drivers.repo import code_checkout
 
-REPO_ROOT = repository_root()
+REPO_ROOT = code_checkout()
 TOOLS_DIR = REPO_ROOT / "tools" / "decompress"
 DOCKERFILE = TOOLS_DIR / "Dockerfile"
 WORKER = "tools/decompress/worker/worker.cjs"

@@ -31,10 +31,10 @@ from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 
-from inodefence.drivers.repo import repository_root
+from inodefence.drivers.repo import code_checkout
 from inodefence.drivers.run_target import image_id
 
-REPO_ROOT = repository_root()
+REPO_ROOT = code_checkout()
 RECIPE_DIR = REPO_ROOT / "tools" / "python-tarfile" / "effect"
 WORKER = RECIPE_DIR / "worker.py"
 DOCKERFILE = RECIPE_DIR / "Dockerfile"

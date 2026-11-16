@@ -22,7 +22,7 @@ from pathlib import Path
 
 from inodefence.drivers.explore_result import build_campaign_result, write_result
 from inodefence.drivers.launcher import launcher_path, run_launcher
-from inodefence.drivers.repo import repository_root
+from inodefence.drivers.repo import code_checkout
 from inodefence.drivers.run_target import (
     ExploreOptions,
     ExploreOutcome,
@@ -34,7 +34,7 @@ from inodefence.generator import minimal_seed_corpus
 from inodefence.live_exploration import LivePuller
 from inodefence.target_result_summary import write_cell_summaries
 
-REPO_ROOT = repository_root()
+REPO_ROOT = code_checkout()
 SMOKE = launcher_path("node-tar", REPO_ROOT)
 # Writable tmpfs path inside the controller (root is read-only); the host pulls it with docker cp.
 CONTROLLER_LIVE_DIR = "/tmp/inodefence-live"

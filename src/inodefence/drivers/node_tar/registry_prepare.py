@@ -59,9 +59,9 @@ from inodefence.drivers.npm_registry import (
     lock_specs,
     npm_failure,
 )
-from inodefence.drivers.repo import repository_root
+from inodefence.drivers.repo import code_checkout
 
-REPO_ROOT = repository_root()
+REPO_ROOT = code_checkout()
 DOCKERFILE = REPO_ROOT / "tools" / "node-tar" / "effect" / "Dockerfile"
 VERSIONS_DIR = REPO_ROOT / "tools" / "node-tar" / "versions"
 WORKER_FILES = (

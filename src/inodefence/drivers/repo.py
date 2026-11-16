@@ -58,6 +58,16 @@ def repo_root() -> Path | None:
     return _CHECKOUT if is_repo(_CHECKOUT) else None
 
 
+def code_checkout() -> Path:
+    """The tree that holds the running ``inodefence`` code (``<tree>/src/inodefence``); no I/O.
+
+    Pure path arithmetic, so module constants derived from it (``REPO_ROOT``, launcher and
+    ``tools/`` paths) cost nothing at import and never raise. It is the same value as the old
+    ``scripts/`` drivers' ``Path(__file__).parents[1]``.
+    """
+    return _CHECKOUT
+
+
 def repository_root() -> Path:
     """The checkout a driver reads its assets from (the drivers' view).
 

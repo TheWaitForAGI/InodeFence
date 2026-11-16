@@ -56,7 +56,7 @@ from inodefence.drivers import regression_check as rc
 from inodefence.drivers.decompress import image as decompress_image
 from inodefence.drivers.decompress import registry_prepare as registry
 from inodefence.drivers.lazy_import import LazyModule
-from inodefence.drivers.repo import repository_root
+from inodefence.drivers.repo import code_checkout
 from inodefence.drivers.run_target import (
     CaseRun,
     PrepareStep,
@@ -73,7 +73,7 @@ else:  # imported on first use: a plain import of this driver needs no clone
     dh = LazyModule("experiments.repro.decompress_hardlink")
 
 TARGET = "decompress"
-REPO_ROOT = repository_root()
+REPO_ROOT = code_checkout()
 TOOLS_DIR = REPO_ROOT / "tools" / "decompress"
 SPEC_RE = re.compile(
     r"(?P<package>(?:@[a-z0-9][a-z0-9._-]*/)?decompress)@(?P<version>[0-9]+\.[0-9]+\.[0-9]+)"

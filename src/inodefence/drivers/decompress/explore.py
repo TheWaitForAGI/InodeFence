@@ -41,7 +41,7 @@ from typing import Any
 
 from inodefence.drivers.decompress import adapter as dt
 from inodefence.drivers.launcher import launcher_path, run_launcher
-from inodefence.drivers.repo import repository_root
+from inodefence.drivers.repo import code_checkout
 from inodefence.drivers.run_target import (
     ExploreOptions,
     ExploreOutcome,
@@ -61,7 +61,7 @@ from inodefence.target_result import (
     Verdict,
 )
 
-REPO_ROOT = repository_root()
+REPO_ROOT = code_checkout()
 #: The campaign's own floor: the controller starts decompress-effect-campaign from
 #: ``minimal_seed_corpus()`` (container_controller.run_native_decompress_campaign) and
 #: ``run_decompress_effect_campaign`` refuses a budget below its seed count. Read from the same

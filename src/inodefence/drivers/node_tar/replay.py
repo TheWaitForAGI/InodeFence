@@ -29,9 +29,9 @@ from typing import Any
 
 from inodefence.case_replay import CaseReplayError, ReplayRequest, ReplayRun, replay_input_line
 from inodefence.drivers.launcher import launcher_path, run_launcher
-from inodefence.drivers.repo import repository_root
+from inodefence.drivers.repo import code_checkout
 
-REPO_ROOT = repository_root()
+REPO_ROOT = code_checkout()
 SMOKE = launcher_path("node-tar", REPO_ROOT)
 
 

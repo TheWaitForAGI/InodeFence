@@ -33,7 +33,7 @@ from pathlib import Path
 
 from inodefence.drivers.explore_result import build_campaign_result, write_result
 from inodefence.drivers.launcher import launcher_path, run_launcher
-from inodefence.drivers.repo import repository_root
+from inodefence.drivers.repo import code_checkout
 from inodefence.drivers.run_target import ExploreOptions, ExploreOutcome, PreparedTargetImage
 from inodefence.feedback import EffectSearchPolicy
 from inodefence.generator import minimal_seed_corpus
@@ -41,7 +41,7 @@ from inodefence.mutator import MutationPolicy
 from inodefence.target_result import JUDGED, RUN_ERROR
 from inodefence.target_result_summary import write_cell_summaries
 
-REPO_ROOT = repository_root()
+REPO_ROOT = code_checkout()
 SCRIPT = launcher_path("oras-go", REPO_ROOT)
 TARGET = "oras-go"
 # One campaign must cover all initial seed cases, so a budget below the seed count is refused.

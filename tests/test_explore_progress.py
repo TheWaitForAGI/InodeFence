@@ -313,10 +313,13 @@ def test_line_mode_prints_on_phase_change_and_rate_limits_count_changes() -> Non
     assert display.update(_view(_live_counts(runs=18)))
     now[0] += pg.LINE_INTERVAL + 1
     assert not display.update(_view(_live_counts(runs=18)))  # no change: no line
+    assert display.update(_view(_live_counts(runs=18), step="cleanup"))  # a new launcher step
+    now[0] += pg.LINE_INTERVAL + 1
+    assert not display.update(_view(_live_counts(runs=18), step="cleanup"))
     now[0] += pg.HEARTBEAT_INTERVAL
-    assert display.update(_view(_live_counts(runs=18)))  # heartbeat
+    assert display.update(_view(_live_counts(runs=18), step="cleanup"))  # heartbeat
     lines = stream.getvalue().splitlines()
-    assert len(lines) == 4 and "\r" not in stream.getvalue()
+    assert len(lines) == 5 and "\r" not in stream.getvalue()
     assert all(line.startswith("[explore] ") and "success=" in line for line in lines)
 
 
@@ -460,10 +463,15 @@ def test_launcher_log_takes_child_output_and_leaves_prints_on_the_terminal(
 
 
 def test_an_empty_launcher_log_is_removed(tmp_path: Path) -> None:
-    log = pg.LauncherLog(tmp_path / "runtime" / "launcher.log")
+    log = pg.LauncherLog(tmp_path / "out" / "runtime" / "launcher.log")
     log.start()
     log.stop()
-    assert not (tmp_path / "runtime").exists()
+    assert not (tmp_path / "out").exists()  # nor the folders it had to create
+    (tmp_path / "kept").mkdir()
+    log = pg.LauncherLog(tmp_path / "kept" / "runtime" / "launcher.log")
+    log.start()
+    log.stop()
+    assert (tmp_path / "kept").is_dir() and not (tmp_path / "kept" / "runtime").exists()
 
 
 # ---- the driver's --output modes ---------------------------------------------------------------
@@ -596,3 +604,20 @@ def test_a_setup_refusal_keeps_exit_3_and_leaves_no_log(
     assert "TARGET-EXPLORE SETUP: result.json already exists" in err
     assert "[explore] aborted" in err and "cause: result.json already exists" in err
     assert not (tmp_path / "runtime").exists()  # nothing ran: the empty log was removed
+
+
+def test_an_interrupt_is_named_as_the_cause_and_the_terminal_is_restored(
+    driver: None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capfd: pytest.CaptureFixture[str]
+) -> None:
+    def interrupted(prepared: Any, options: Any) -> Any:
+        raise KeyboardInterrupt
+
+    before = (sys.stdout, sys.stderr)
+    monkeypatch.setattr(rte, "load_adapter", lambda t: _adapter(interrupted))
+    with pytest.raises(KeyboardInterrupt):  # propagates exactly as in stream mode
+        _run(tmp_path, "progress")
+    assert (sys.stdout, sys.stderr) == before
+    err = capfd.readouterr().err
+    assert "[explore] aborted" in err and "cause: interrupted (Ctrl-C)" in err
+    subprocess.run(["sh", "-c", "echo BACK"], check=True)  # descriptors 1 and 2 are restored
+    assert capfd.readouterr().out == "BACK\n"

@@ -20,9 +20,9 @@ is a host-side thread that stats one small file on a timer.
 **Display.** One line. On a terminal (stderr is a TTY and ``TERM`` is not ``dumb``) it is redrawn
 in place with a plain ``\\r`` at most once per :data:`TTY_INTERVAL` seconds and cut to the terminal
 width. Otherwise (pipe, file, CI) a full line is printed when the phase changes, when the counts
-changed and :data:`LINE_INTERVAL` seconds have passed since the last line, and as a heartbeat every
-:data:`HEARTBEAT_INTERVAL` seconds. No colour or escape sequence is ever written, so ``NO_COLOR``
-is honoured trivially.
+or the launcher step changed and :data:`LINE_INTERVAL` seconds have passed since the last line,
+and as a heartbeat every :data:`HEARTBEAT_INTERVAL` seconds. No colour or escape sequence is ever
+written, so ``NO_COLOR`` is honoured trivially.
 
 **Unknown is not zero.** A value the files do not hold is shown as ``?``, never as ``0``:
 
@@ -452,8 +452,9 @@ class Display:
         """Show ``view`` if the mode's rate limit allows it; returns whether anything was written.
 
         Terminal: redraw in place (the caller polls once per :data:`TTY_INTERVAL`). Elsewhere: a
-        line on a phase change, on changed counts once :data:`LINE_INTERVAL` has passed since the
-        last line, and as a heartbeat after :data:`HEARTBEAT_INTERVAL`.
+        line on a phase change, on changed counts (or a new launcher step) once
+        :data:`LINE_INTERVAL` has passed since the last line, and as a heartbeat after
+        :data:`HEARTBEAT_INTERVAL`.
         """
         with self._lock:
             if self.terminal:
@@ -463,7 +464,7 @@ class Display:
                 self._drawn = len(line)
                 return True
             now = self._clock()
-            key = (view.phase, view.counts)
+            key = (view.phase, view.counts, view.step)
             since = None if self._last_line_at is None else now - self._last_line_at
             due = (
                 since is None
@@ -554,11 +555,12 @@ class LauncherLog:
         self.err: TextIO | None = None
         self._saved: tuple[TextIO, TextIO] | None = None
         self._fds: tuple[int, int] | None = None
-        self._created_dir = False
+        self._created_dirs: list[Path] = []  # folders start() had to create, deepest first
 
     def start(self) -> None:
-        self._created_dir = not self.path.parent.exists()
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        folder = self.path.parent
+        self._created_dirs = [p for p in (folder, *folder.parents) if not p.exists()]
+        folder.mkdir(parents=True, exist_ok=True)
         log_fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o644)
         try:
             sys.stdout.flush()
@@ -598,8 +600,8 @@ class LauncherLog:
         try:
             if self.path.stat().st_size == 0:
                 self.path.unlink()
-                if self._created_dir:
-                    self.path.parent.rmdir()
+                for folder in self._created_dirs:  # nothing ran: leave no empty folder behind
+                    folder.rmdir()
         except OSError:
             pass
 

@@ -45,6 +45,7 @@ from inodefence.drivers.python_tarfile import adapter as rpt
 from inodefence.drivers.python_tarfile import producer
 from inodefence.drivers.repo import code_checkout
 from inodefence.drivers.run_target import ExploreOptions, ExploreOutcome, PreparedTargetImage
+from inodefence.drivers.runtime.session import RuntimeSession
 from inodefence.generator import minimal_seed_corpus
 from inodefence.target_result import Preparation, TargetAxes, TargetResult
 from inodefence.target_result_summary import write_cell_summaries
@@ -86,6 +87,7 @@ def run_controller(
     budget: int,
     seed: int,
     runner: Runner = subprocess.run,
+    session: RuntimeSession | None = None,
 ) -> Path:
     """Run the controller mode via the launcher script; return the report path it wrote."""
     env = {
@@ -99,7 +101,7 @@ def run_controller(
         "RUN_ID": run_id,
         "PYTHON": os.environ.get("PYTHON", sys.executable),
     }
-    done = run_launcher(LAUNCHER, runner=runner, env=env, cwd=str(REPO_ROOT))
+    done = run_launcher(LAUNCHER, runner=runner, env=env, session=session, cwd=str(REPO_ROOT))
     report = report_path(out, run_id)
     if done.returncode != 0 and not report.is_file():
         raise ValueError(f"controller run failed (exit {done.returncode}); see output above")
@@ -188,6 +190,7 @@ def explore(
         budget=options.budget,
         seed=options.seed,
         runner=runner or subprocess.run,
+        session=getattr(options, "runtime", None),
     )
     report = json.loads(path.read_text(encoding="utf-8"))
     result, tar_files = build_campaign_result(

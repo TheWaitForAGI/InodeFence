@@ -6,17 +6,21 @@ launcher under ``scripts/`` builds the controller, starts it and delegates throu
 only names those launchers and makes the call; it does not change what a launcher does, the
 arguments a hook passes, or the environment (each hook still builds its own ``env``).
 
-Insertion point for the runtime execution policy (later PR): a policy (for example a strict /
-fast / replay mode) belongs in :func:`run_launcher`, the one place every hook's run passes
-through, instead of in each hook. Today it adds nothing: it calls ``runner`` with exactly the
-argv and keyword arguments the hook used before.
+The runtime execution policy enters here, the one place every hook's run passes through: a hook
+passes its ``RuntimeSession`` (``ExploreOptions.runtime``) and the launch runs through
+:meth:`inodefence.drivers.runtime.session.RuntimeSession.launch`, which times and records it.
+Under STRICT ``runner`` still gets exactly the argv, environment and keyword arguments the hook
+passed; without a session the call is the plain one.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from inodefence.drivers.runtime.session import RuntimeSession
 
 #: The controller shell launcher of each target (under ``<repository>/scripts/``; never moved).
 LAUNCHERS: dict[str, str] = {
@@ -38,11 +42,15 @@ def run_launcher(
     *,
     runner: Callable[..., Any],
     env: dict[str, str],
+    session: RuntimeSession | None = None,
     **kwargs: Any,
 ) -> Any:
     """Run ``bash <script> <args...>`` through ``runner`` (``subprocess.run`` or a test fake).
 
     ``kwargs`` (``cwd``, ``check``) pass through unchanged, so each hook's call is exactly what it
-    was. Returns whatever ``runner`` returns (a ``CompletedProcess``).
+    was. With a ``session`` the launch is recorded by it; the call is the same.
+    Returns whatever ``runner`` returns (a ``CompletedProcess``).
     """
+    if session is not None:
+        return session.launch(script, args, runner=runner, env=env, **kwargs)
     return runner(["bash", str(script), *args], env=env, **kwargs)

@@ -63,6 +63,7 @@ def run_controller(
     python: str,
     mutation_policy: str | None = None,
     runner=subprocess.run,
+    session=None,
 ) -> Path:
     """Run the oras-go campaign in the controller on the prepared image; return the report path.
 
@@ -81,7 +82,7 @@ def run_controller(
     }
     if mutation_policy:
         env["DEMO_MUTATION_POLICY"] = mutation_policy
-    done = run_launcher(SCRIPT, runner=runner, env=env, cwd=str(REPO_ROOT))
+    done = run_launcher(SCRIPT, runner=runner, env=env, session=session, cwd=str(REPO_ROOT))
     report = controller_report_path(out, run_id)
     if done.returncode != 0:
         raise RuntimeError(f"controller run failed (exit {done.returncode}); see output above")
@@ -289,6 +290,7 @@ def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOu
         seed=options.seed,
         python=python,
         mutation_policy=mutation_policy,
+        session=getattr(options, "runtime", None),
     )
     report = json.loads(report_path.read_text(encoding="utf-8"))
     check_report(report, prepared, options.budget)

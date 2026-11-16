@@ -323,6 +323,7 @@ def run_controller(
     mutation_policy: str | None,
     search_policy: str | None,
     runner: Any = subprocess.run,
+    session: Any = None,
 ) -> Path:
     env = {
         **os.environ,
@@ -336,7 +337,7 @@ def run_controller(
         env["DEMO_MUTATION_POLICY"] = mutation_policy
     if search_policy:
         env["DEMO_POLICY"] = search_policy
-    done = run_launcher(SCRIPT, runner=runner, env=env, check=False)
+    done = run_launcher(SCRIPT, runner=runner, env=env, session=session, check=False)
     path = controller_report_path(evidence_dir, run_id)
     if done.returncode != 0 or not path.is_file():
         raise RuntimeError(f"controller run failed (exit {done.returncode}); report {path}")
@@ -375,6 +376,7 @@ def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOu
         budget=options.budget,
         mutation_policy=mutation_policy,
         search_policy=search_policy,
+        session=getattr(options, "runtime", None),
     )
     report = json.loads(report_path.read_text(encoding="utf-8"))
     if "aborted" in report:

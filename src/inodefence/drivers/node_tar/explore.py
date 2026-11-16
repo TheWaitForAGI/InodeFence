@@ -95,6 +95,7 @@ def run_controller(
     seed: int,
     python: str,
     runner=subprocess.run,
+    session=None,
 ) -> Path:
     """Run the loop in the controller via the smoke script; return the report path it wrote.
 
@@ -143,7 +144,9 @@ def run_controller(
     # the smoke script's copy before it removes the controller, so stop() skips a last pull.
     puller = LivePuller(controller_name, CONTROLLER_LIVE_DIR, host_live_dir).start()
     try:
-        done = run_launcher(SMOKE, ["explore"], runner=runner, env=env, cwd=str(REPO_ROOT))
+        done = run_launcher(
+            SMOKE, ["explore"], runner=runner, env=env, session=session, cwd=str(REPO_ROOT)
+        )
     finally:
         puller.stop(final_pull=False)  # the smoke script's pre-removal copy is the final snapshot
     if done.returncode != 0:
@@ -168,6 +171,7 @@ def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOu
         budget=options.budget,
         seed=options.seed,
         python=python,
+        session=getattr(options, "runtime", None),
     )
     report = json.loads(report_path.read_text(encoding="utf-8"))
     # The loop wrote each violation to this folder as it happened (pulled to the host during the

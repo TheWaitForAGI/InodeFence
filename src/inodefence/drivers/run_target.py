@@ -72,6 +72,7 @@ from typing import Any, NoReturn
 from inodefence.case_replay import ReplayHook
 from inodefence.drivers import regression_check as rc
 from inodefence.drivers.repo import code_checkout, require_repository_or_exit
+from inodefence.drivers.runtime.session import RuntimeSession
 from inodefence.target_result import (
     RUN_ERROR,
     CaseVerdict,
@@ -184,6 +185,9 @@ class ExploreOptions:
     target_options: dict[str, str] = field(default_factory=dict)
     #: ERROR ceiling for the un-judged ratio (see ``DEFAULT_MAX_UNJUDGED_RATIO``).
     max_unjudged_ratio: float = DEFAULT_MAX_UNJUDGED_RATIO
+    #: The runtime session the hook passes to ``run_launcher`` (``None``: a plain, unrecorded
+    #: launch, as before). The explore driver always passes one (STRICT by default).
+    runtime: RuntimeSession | None = None
 
 
 @dataclass(frozen=True, slots=True)

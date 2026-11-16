@@ -37,6 +37,7 @@ from inodefence.drivers.run_target import (
     resolve_images,
     with_tag_suffix,
 )
+from inodefence.drivers.runtime.session import RuntimeSession
 from inodefence.target_result import load_target_result, no_extraction_warning
 
 # Outside the repo AND outside ~/inodefence-evidence (confirmatory evidence lives there).
@@ -75,6 +76,14 @@ def prepare_target_image(
         image_id=ready[cell.image_ref],
         exploratory=cell.exploratory,
     )
+
+
+def write_runtime_record(session: RuntimeSession, out: Path) -> None:
+    """Write the session's runtime record (if it launched anything); a failure: one stderr line."""
+    try:
+        session.write(out.expanduser().resolve())
+    except OSError as error:
+        print(f"TARGET-EXPLORE RUNTIME: runtime record not written ({error})", file=sys.stderr)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -182,6 +191,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 3
 
+    session = RuntimeSession(target=args.target)  # STRICT: the verified execution
     try:
         prepared = prepare_target_image(
             adapter,
@@ -199,6 +209,7 @@ def main(argv: list[str] | None = None) -> int:
                 image_tag_suffix=args.image_tag_suffix,
                 target_options=target_options,
                 max_unjudged_ratio=args.max_unjudged_ratio,
+                runtime=session,
             ),
         )
     except ValueError as error:
@@ -210,6 +221,10 @@ def main(argv: list[str] | None = None) -> int:
         # a one-line reason, not a traceback.
         print(f"TARGET-EXPLORE ERROR: {error}", file=sys.stderr)
         return 2
+    finally:
+        # Also after a failed or interrupted launch: that is when the record is needed most. An
+        # additional file; it never changes the result, the verdict or the exit code.
+        write_runtime_record(session, args.out)
 
     print(
         f"TARGET-EXPLORE {outcome.verdict} {args.target} version={prepared.version} "

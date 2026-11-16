@@ -1,12 +1,14 @@
 ---
 name: autoloop
-description: InodeFence 자율 작업 루프 규칙. docs/BACKLOG.md 맨 위부터 작업 1개씩 브랜치에서 진행하고, make check 통과 후 커밋·LOG·WORKLOG 기록까지 하고, PR·CI·verifier 통과 후 스스로 squash 머지한 뒤 다음 작업으로 간다. 큐가 비면 Ledger 빈 칸에서 다음 항목을 보충하며, 끝은 BACKLOG 소진이 아니라 프로젝트 완료(가설 검증·M1~M4)다. "자율로 진행", "backlog 이어서", "autoloop" 요청 시 사용.
+description: InodeFence 자율 작업 루프 규칙. docs/BACKLOG.md 맨 위부터 작업 1개씩 브랜치에서 진행하고, make check 통과 후 커밋·LOG·WORKLOG 기록까지 하고, PR·CI·verifier 통과 후 병합 요청을 내고(병합은 지웅이 한다, D037) 다음 작업으로 간다. 큐가 비면 Ledger 빈 칸에서 다음 항목을 보충하며, 끝은 BACKLOG 소진이 아니라 프로젝트 완료(가설 검증·M1~M4)다. "자율로 진행", "backlog 이어서", "autoloop" 요청 시 사용.
 ---
 
 # autoloop — 자율 루프 규칙서
 
-작업 선택·구현·검증·기록·PR·**머지까지** 이 규칙대로 자율로 진행한다(D035). 사람에게 돌리는 것은
-안전경계·연구 불변식에 걸리는 결정만이다: `BREAKING`(5절 4항), 가드·격리·allowlist 설정, FROZEN 변경, 외부 공개.
+작업 선택·구현·검증·기록·PR·**병합 요청까지** 이 규칙대로 자율로 진행한다. **병합은 지웅이 한다**(D037,
+`AGENTS.md`의 PR 절). `gh pr merge` 등으로 스스로 병합하지 않는다. D035의 자율 머지는 보류 상태이며 지웅의 별도
+결정이 기록되기 전에는 재개하지 않는다. 그 밖에 사람에게 돌리는 것은 안전경계·연구 불변식에 걸리는 결정이다:
+`BREAKING`(5절 4항), 가드·격리·allowlist 설정, FROZEN 변경, 외부 공개.
 `AGENTS.md`, `docs/MIDTERM_GOALS.md`의 규칙이 이 문서보다 우선한다. 이 문서는 그 위에 자율 실행 절차를 더한다.
 
 기계적 안전장치: `.claude/hooks/guard.py` (`.claude/settings.json` PreToolUse, 서브에이전트 포함).
@@ -17,7 +19,7 @@ description: InodeFence 자율 작업 루프 규칙. docs/BACKLOG.md 맨 위부�
 | 역할 | 정의 | 모델 | 하는 일 | 가드 |
 | --- | --- | --- | --- | --- |
 | 지휘관 | `.claude/agents/orchestrator.md` | claude-opus-4-8 | BACKLOG에서 작업 선택, 환경 판단, 위임, 보고 수신 | R6: 메타데이터 문서·`git status/branch/log/diff --stat`만. 소스·diff·실행 출력 접근 차단, 작업자 3종 외 위임·모델 override 차단 |
-| builder | `.claude/agents/builder.md` | claude-opus-4-8 | 코드 작성·수정, `make check`, 커밋, 기록, PR 생성·머지 | R1–R5 |
+| builder | `.claude/agents/builder.md` | claude-opus-4-8 | 코드 작성·수정, `make check`, 커밋, 기록, PR 생성·병합 요청 | R1–R5 |
 | runtime | `.claude/agents/runtime.md` | claude-opus-4-8 | docker 실제 실행(호스트) | R1–R5, R7: 기록 문서만 쓰기 |
 | verifier | `.claude/agents/verifier.md` | claude-opus-4-8 | 브랜치 검토, PASS/ISSUES | R1–R5, R8: 읽기 전용 |
 
@@ -32,25 +34,27 @@ description: InodeFence 자율 작업 루프 규칙. docs/BACKLOG.md 맨 위부�
 BACKLOG 맨 위의 "대기" 항목 1개 선택
   → 분류 밝히기 (어느 마일스톤 M2~M4 / 상시 태스크인지, 아니면 해당 없음+이유)
   → 게이트 확인 (선행 항목 결과, 차단 조건)
-  → main에서 새 브랜치 1개
+  → 새 브랜치 1개 (같은 레인의 직전 브랜치가 미머지면 그 위에서, 아니면 main에서)
   → 환경 선택 후 구현·실행
   → 검증 (make check 등)
   → 브랜치에 커밋 (+ 브랜치 push)
   → docs/LOG.md 한 줄 + docs/WORKLOG.md 한 행 + BACKLOG 항목 상태 갱신
-  → PR 생성 → CI 통과 + verifier PASS 확인 → squash 머지 (BREAKING·가드·FROZEN·외부 공개는 사람)
+  → PR 생성 → CI 통과 + verifier PASS 확인 → 병합 요청 (병합은 지웅, D037)
   → 다음 항목
 ```
 
-- **브랜치 1개 = 작업 1개.** 기본은 최신 `main`에서 분기한다. 단 머지를 기다리느라 멈추지 않는다: 앞 작업이 아직 미머지면 그 브랜치 위에 스택해(다음 작업을 그 위에서 분기) 계속 진행한다.
-- 앞 항목의 결과가 필요한데 그 브랜치가 미머지면, 그 브랜치 위에 스택해서 이어서 작업한다. 스택은 아래부터 순서대로 머지된다(각 PR이 CI·verifier 통과 후 자가 squash, D035). `BREAKING` 브랜치 위에는 쌓지 않는다.
+- **브랜치 1개 = 작업 1개.** 머지를 기다리느라 멈추지 않는다: 같은 레인의 앞 작업이 아직 미머지면 그 브랜치 위에 스택해(다음 작업을 그 위에서 분기) 계속 진행한다. 미머지 선행 작업이 없으면 최신 `main`에서 분기한다.
+- 앞 항목의 결과가 필요한데 그 브랜치가 미머지면, 그 브랜치 위에 스택해서 이어서 작업한다. 스택은 아래부터 순서대로 머지되며 병합은 지웅이 한다(D037). 아래 브랜치의 변경 반영과 충돌 해소는 `git merge`로 하고 rebase·force-push는 하지 않는다. `BREAKING` 브랜치 위에는 쌓지 않는다.
 - **순서대로 진행한다.** BACKLOG 맨 위부터. 게이트가 막힌 항목은 건너뛰되 건너뛴 이유를 LOG에 남긴다.
 - 진행할 수 있는 안전한 항목이 더 없으면 **7절 보충 규칙**으로 다음 항목을 뽑는다. 루프의 끝은 BACKLOG 소진이 아니라
   프로젝트 완료다(7.1). Ledger 빈 칸에 닿지 않는 일은 만들지 않는다(새 감사 문서, 범위 밖 refactor 금지; 7.2).
-- **PR을 만들고 스스로 머지한다.** 기록 커밋까지 끝난 브랜치로 `gh pr create --base main`(본문은 `--body-file`;
-  첫 항목은 AGENTS.md PR 규칙의 질문에 대한 답) → CI 두 job 통과(`gh pr checks <n> --watch`) + verifier `PASS`
-  → `gh pr merge <n> --squash --delete-branch`. **main 직접 push는 여전히 하지 않는다**(가드 R2).
-  머지하지 않고 PR만 열어 두는 것: `BREAKING`(5절 4항), 가드·격리·allowlist 설정 변경, FROZEN 변경, 외부 공개가
-  걸린 변경. 이건 WORKLOG `NEXT`/요약에 "사람 결정"으로 적고 다음 항목으로 간다.
+- **PR을 만들고 병합을 요청한다. 스스로 머지하지 않는다.** 기록 커밋까지 끝난 브랜치로
+  `gh pr create --base <직전-브랜치 또는 main>`(본문은 `--body-file`; 첫 항목은 AGENTS.md PR 규칙의 질문에 대한 답)
+  → CI 두 job 통과(`gh pr checks <n> --watch`) + verifier `PASS`(PR 코멘트로 기록) → 병합 요청 표(AGENTS.md PR 절)를
+  내고 다음 항목으로 간다. `gh pr merge`는 실행하지 않는다(가드가 막지 않더라도 허용된 것이 아니다).
+  **main 직접 push도 하지 않는다**(가드 R2). HEAD SHA가 바뀌면 이전 검증을 재사용하지 않고 다시 받는다.
+  병합 요청 대상에서 빼고 PR만 열어 두는 것: `BREAKING`(5절 4항), 가드·격리·allowlist 설정 변경, FROZEN 변경,
+  외부 공개가 걸린 변경. 이건 WORKLOG `NEXT`/요약에 "사람 결정"으로 적고 다음 항목으로 간다.
 
 ## 2. 작업 시작 시 밝힐 것
 
@@ -83,7 +87,7 @@ BACKLOG 맨 위의 "대기" 항목 1개 선택
 4. `docs/WORKLOG.md` 표에 한 행 추가(양식은 그 파일 참고). 상태는 `검토대기` / `BREAKING` / `막힘` 중 하나.
 5. `docs/BACKLOG.md`에서 해당 항목 상태를 갱신한다(`완료(브랜치명)` / `막힘` / `BREAKING`).
 6. P0 현황이 바뀌었으면 `docs/STATUS.md` 표를 갱신한다.
-7. PR을 만들고 머지한다(1절). CI가 실패하면 같은 브랜치에서 고쳐 다시 push한다. 테스트를 지우거나 약화해서
+7. PR을 만들고 병합을 요청한다(1절, 병합은 지웅). CI가 실패하면 같은 브랜치에서 고쳐 다시 push한다. 테스트를 지우거나 약화해서
    통과시키지 않는다. 못 고치면 PR을 draft로 돌리고 "막힘 처리". 머지 여부의 기준은 PR 상태다
    (`gh pr view <n> --json state,mergedAt`); WORKLOG 행은 머지 뒤에 고치지 않는다(main 직접 push 금지).
 

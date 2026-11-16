@@ -21,6 +21,7 @@ import sys
 from pathlib import Path
 
 from inodefence.drivers.explore_result import build_campaign_result, write_result
+from inodefence.drivers.launcher import launcher_path, run_launcher
 from inodefence.drivers.repo import repository_root
 from inodefence.drivers.run_target import (
     ExploreOptions,
@@ -34,7 +35,7 @@ from inodefence.live_exploration import LivePuller
 from inodefence.target_result_summary import write_cell_summaries
 
 REPO_ROOT = repository_root()
-SMOKE = REPO_ROOT / "scripts" / "local_node_tar_smoke.sh"
+SMOKE = launcher_path("node-tar", REPO_ROOT)
 # Writable tmpfs path inside the controller (root is read-only); the host pulls it with docker cp.
 CONTROLLER_LIVE_DIR = "/tmp/inodefence-live"
 OBSERVED_CONTRACTS = ("C0", "C1", "C2")  # the effect path takes a full before/after snapshot
@@ -142,7 +143,7 @@ def run_controller(
     # the smoke script's copy before it removes the controller, so stop() skips a last pull.
     puller = LivePuller(controller_name, CONTROLLER_LIVE_DIR, host_live_dir).start()
     try:
-        done = runner(["bash", str(SMOKE), "explore"], env=env, cwd=str(REPO_ROOT))
+        done = run_launcher(SMOKE, ["explore"], runner=runner, env=env, cwd=str(REPO_ROOT))
     finally:
         puller.stop(final_pull=False)  # the smoke script's pre-removal copy is the final snapshot
     if done.returncode != 0:

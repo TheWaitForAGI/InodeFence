@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import Any
 
 from inodefence.drivers.decompress import adapter as dt
+from inodefence.drivers.launcher import launcher_path, run_launcher
 from inodefence.drivers.repo import repository_root
 from inodefence.drivers.run_target import (
     ExploreOptions,
@@ -66,7 +67,7 @@ REPO_ROOT = repository_root()
 #: ``run_decompress_effect_campaign`` refuses a budget below its seed count. Read from the same
 #: source, never a copied number.
 MIN_BUDGET = len(minimal_seed_corpus())
-SCRIPT = REPO_ROOT / "scripts" / "local_decompress_selfdiscover.sh"
+SCRIPT = launcher_path("decompress", REPO_ROOT)
 RESULT_NAME = "result.json"
 EXPLORATION_NAME = "exploration.json"
 JUDGED = ("success", "rejected")
@@ -335,7 +336,7 @@ def run_controller(
         env["DEMO_MUTATION_POLICY"] = mutation_policy
     if search_policy:
         env["DEMO_POLICY"] = search_policy
-    done = runner(["bash", str(SCRIPT)], env=env, check=False)
+    done = run_launcher(SCRIPT, runner=runner, env=env, check=False)
     path = controller_report_path(evidence_dir, run_id)
     if done.returncode != 0 or not path.is_file():
         raise RuntimeError(f"controller run failed (exit {done.returncode}); report {path}")

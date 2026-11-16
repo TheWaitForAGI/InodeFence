@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import Any
 
 from inodefence.drivers import explore_result
+from inodefence.drivers.launcher import launcher_path, run_launcher
 from inodefence.drivers.python_tarfile import adapter as rpt
 from inodefence.drivers.python_tarfile import producer
 from inodefence.drivers.repo import repository_root
@@ -49,7 +50,7 @@ from inodefence.target_result import Preparation, TargetAxes, TargetResult
 from inodefence.target_result_summary import write_cell_summaries
 
 REPO_ROOT = repository_root()
-LAUNCHER = REPO_ROOT / "scripts" / "local_python_tarfile_explore.sh"
+LAUNCHER = launcher_path("python-tarfile", REPO_ROOT)
 MIN_BUDGET = len(minimal_seed_corpus())
 
 Runner = Callable[..., subprocess.CompletedProcess[Any]]
@@ -98,7 +99,7 @@ def run_controller(
         "RUN_ID": run_id,
         "PYTHON": os.environ.get("PYTHON", sys.executable),
     }
-    done = runner(["bash", str(LAUNCHER)], env=env, cwd=str(REPO_ROOT))
+    done = run_launcher(LAUNCHER, runner=runner, env=env, cwd=str(REPO_ROOT))
     report = report_path(out, run_id)
     if done.returncode != 0 and not report.is_file():
         raise ValueError(f"controller run failed (exit {done.returncode}); see output above")

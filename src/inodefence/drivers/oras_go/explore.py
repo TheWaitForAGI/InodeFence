@@ -32,6 +32,7 @@ import sys
 from pathlib import Path
 
 from inodefence.drivers.explore_result import build_campaign_result, write_result
+from inodefence.drivers.launcher import launcher_path, run_launcher
 from inodefence.drivers.repo import repository_root
 from inodefence.drivers.run_target import ExploreOptions, ExploreOutcome, PreparedTargetImage
 from inodefence.feedback import EffectSearchPolicy
@@ -41,7 +42,7 @@ from inodefence.target_result import JUDGED, RUN_ERROR
 from inodefence.target_result_summary import write_cell_summaries
 
 REPO_ROOT = repository_root()
-SCRIPT = REPO_ROOT / "scripts" / "local_oras_go_selfdiscover.sh"
+SCRIPT = launcher_path("oras-go", REPO_ROOT)
 TARGET = "oras-go"
 # One campaign must cover all initial seed cases, so a budget below the seed count is refused.
 MIN_BUDGET = len(minimal_seed_corpus())
@@ -80,7 +81,7 @@ def run_controller(
     }
     if mutation_policy:
         env["DEMO_MUTATION_POLICY"] = mutation_policy
-    done = runner(["bash", str(SCRIPT)], env=env, cwd=str(REPO_ROOT))
+    done = run_launcher(SCRIPT, runner=runner, env=env, cwd=str(REPO_ROOT))
     report = controller_report_path(out, run_id)
     if done.returncode != 0:
         raise RuntimeError(f"controller run failed (exit {done.returncode}); see output above")

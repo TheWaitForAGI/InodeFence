@@ -28,10 +28,11 @@ from pathlib import Path
 from typing import Any
 
 from inodefence.case_replay import CaseReplayError, ReplayRequest, ReplayRun, replay_input_line
+from inodefence.drivers.launcher import launcher_path, run_launcher
 from inodefence.drivers.repo import repository_root
 
 REPO_ROOT = repository_root()
-SMOKE = REPO_ROOT / "scripts" / "local_node_tar_smoke.sh"
+SMOKE = launcher_path("node-tar", REPO_ROOT)
 
 
 def run_id_for(request: ReplayRequest) -> str:
@@ -71,7 +72,7 @@ def replay(request: ReplayRequest, work_dir: Path, *, runner=subprocess.run) -> 
         "REPLAY_INPUT": str(input_path),
         "PYTHON": os.environ.get("PYTHON", sys.executable),
     }
-    done = runner(["bash", str(SMOKE), "replay"], env=env, cwd=str(REPO_ROOT))
+    done = run_launcher(SMOKE, ["replay"], runner=runner, env=env, cwd=str(REPO_ROOT))
     report_path, journal_path = report_paths(evidence_dir, run_id)
     report: dict[str, Any] | None = None
     if report_path.is_file():

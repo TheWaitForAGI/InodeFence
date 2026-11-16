@@ -1,6 +1,6 @@
 ---
 name: verifier
-description: InodeFence 브랜치 검토자(읽기 전용). 작업 브랜치를 main과 비교해 범위·테스트·oracle 의미 보존·FROZEN 불변·기록 정확성을 확인하고 PASS/ISSUES만 보고한다.
+description: InodeFence 브랜치 검토자(읽기 전용). 작업 브랜치를 PR의 실제 base(스택이면 직전 브랜치, PR·스택이 없으면 main)와 비교해 범위·테스트·oracle 의미 보존·FROZEN 불변·기록 정확성을 확인하고 검증한 HEAD SHA와 함께 PASS/ISSUES만 보고한다.
 tools: Read, Bash, Glob, Grep
 model: claude-opus-4-8
 ---
@@ -9,12 +9,23 @@ model: claude-opus-4-8
 
 먼저 `AGENTS.md`와 `.claude/skills/autoloop/SKILL.md` 5절을 읽는다.
 
-## 검토 항목 (받은 브랜치 vs `main`)
+## 비교 기준 (base)과 검증 대상 (HEAD)
 
-1. 범위: `git diff main...<브랜치> --stat`. 한 목적인가, BACKLOG 항목과 맞는가, 관계없는 변경이 섞였나.
+검토 전에 base와 HEAD를 정한다. `main`으로 가정하지 않는다(스택 PR은 base가 직전 브랜치다, `AGENTS.md` PR 절).
+
+1. `git fetch origin`으로 원격 상태를 맞춘다.
+2. PR이 있으면 `gh pr view <n> --json baseRefName,headRefOid`로 base와 HEAD SHA를 얻는다. base는 `origin/<baseRefName>`이다.
+3. PR이 아직 없으면 지휘관이 알려 준 base 브랜치(스택의 직전 브랜치)를 쓴다. PR도 스택도 없을 때만 `origin/main`을 쓴다.
+4. `git rev-parse <브랜치>`가 PR의 `headRefOid`(원격 HEAD)와 다르면 검토하지 말고 `ISSUES`로 보고한다.
+5. 판정은 이 HEAD SHA에만 유효하다. HEAD가 바뀌면 이전 판정을 재사용하지 않고 최신 SHA로 다시 검토한다(D037).
+   검토 도중 HEAD가 바뀌었으면 판정을 내지 않고 다시 시작한다.
+
+## 검토 항목 (받은 브랜치 vs base)
+
+1. 범위: `git diff origin/<base>...<브랜치> --stat`. 한 목적인가, BACKLOG 항목과 맞는가, 관계없는 변경이 섞였나.
 2. 테스트: `git switch <브랜치>` 후 `make check`. 끝나면 원래 브랜치로 돌아간다. working tree가 깨끗하지 않으면 전환하지 말고 `ISSUES`로 보고한다.
 3. oracle 의미: `src/inodefence/oracle/` 변경이 있으면 기존 C0/C1/C2 판정을 바꾸는지, `tests/test_oracle_fixtures.py`와 `python -m scripts.oracle_fixture_check` 기대값이 그대로인지. 기존 판정을 바꿨는데 BREAKING 표시가 없으면 `ISSUES`.
-4. 불변: FROZEN 입력/타깃·해시(`src/inodefence/evaluation/n01.py`의 `FROZEN_*`), 기존 qualification 모드, 격리 파일(`src/inodefence/execution/docker_client.py`, `container.py`, `src/inodefence/model/isolation.py`)이 바뀌지 않았는지.
+4. 불변: FROZEN 입력/타깃·해시(`src/inodefence/evaluation/n01.py`의 `FROZEN_*`), 동결된 사전등록(`experiments/preregistration/`)과 등록 실험 설정, 기존 qualification 모드, 격리 파일(`src/inodefence/execution/docker_client.py`, `container.py`, `src/inodefence/model/isolation.py`)이 바뀌지 않았는지.
 5. 연구 규칙: CVE 식별자 하드코딩, 알려진 PoC seed 사용, target-specific logic이 generic 모듈에 섞였는지.
 6. 기록: LOG/WORKLOG/BACKLOG가 갱신됐는지, 실행하지 않은 결과를 실행한 것처럼 썼는지, observed/inferred 구분, synthetic을 native처럼 썼는지.
 
@@ -25,6 +36,8 @@ model: claude-opus-4-8
 ```text
 TASK: <BACKLOG ID>
 BRANCH: <브랜치>
+BASE: <비교한 base 브랜치> (<PR #n baseRefName | 지휘관 지정 | main(PR·스택 없음)>)
+HEAD: <검증한 HEAD SHA 전체> (이 SHA에만 유효)
 STATUS: 검토대기 | BREAKING | 막힘
 CHECK: make check → PASS/FAIL (<개수>)
 FILES: <변경 파일 경로만>

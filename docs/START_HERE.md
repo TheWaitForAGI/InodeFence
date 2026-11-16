@@ -78,8 +78,12 @@ qualification에서 실패했고, 지금은 v2 "effect event" 방식을 쓴다)�
 C0/C1/C2 판정 → feedback → 다음 mutation 선택" 루프가 `make demo` 한 명령으로 돌아간다.**
 같은 조건(seed 123, budget 20)으로 다시 돌리면 같은 루프가 나온다(호스트에서 4회 확인).
 
-현재 능력은 [STATUS](STATUS.md)의 Capability Ledger가 기준이다. 11/2 중간발표 목표는 배경 문서
-[MIDTERM_GOALS](MIDTERM_GOALS.md)에 있고, 할 일 순서는 [BACKLOG](BACKLOG.md), 실행 기록은 [LOG](LOG.md)다.
+현재 능력과 다음 할 일은 [STATUS](STATUS.md)의 Capability Ledger(마일스톤 M1~M4)가 기준이다. 아래 한 줄 요약과 표는
+2026-10-24 시점의 기록이고, 그 뒤 상태는 Ledger에서 읽는다. 수술 기간(2026-11-03~11-30)의 계획 기준은 Claude Doc
+「InodeFence 독립 연구 감사 및 실험 설계 재정립」(https://claude.ai/artifact/JJtsK3VowEGuBFN3YXZDFq)이고, 실험 실행 기준은 Git에
+동결된 사전등록(`experiments/preregistration/`)이다([AGENTS.md 현재 기준](../AGENTS.md#현재-기준)). 11/2 중간발표 목표는 배경 문서
+[MIDTERM_GOALS](MIDTERM_GOALS.md)에 있고(Layer 0~6·P0 단계는 지난 개발 단계의 기록), 할 일 순서는 [BACKLOG](BACKLOG.md),
+실행 기록은 [LOG](LOG.md)다.
 
 지금 돌아가는 것:
 
@@ -222,6 +226,7 @@ Git에서 복구하려면 `git show 2e947d3:<경로>`를 쓴다(2e947d3에 원�
 ```
 
 작업 단위는 [BACKLOG](BACKLOG.md)에서 고르고, 끝나면 [LOG](LOG.md)에 한 줄 남긴다.
+PR은 에이전트가 열고 병합 요청까지 낸다. 병합은 지웅이 한다(D037, [AGENTS.md PR 절](../AGENTS.md#pr)). 에이전트는 스스로 병합하지 않는다.
 새 감사·계획 문서를 만들지 않는다(AGENTS.md 금지 사항).
 
 ## 8. 한 작업의 완료 조건
@@ -239,6 +244,6 @@ Git에서 복구하려면 `git show 2e947d3:<경로>`를 쓴다(2e947d3에 원�
 
 ## 9. 가장 중요한 원칙
 
-> **AI가 코드를 많이 만드는 것보다, 팀원이 그 코드가 프로젝트의 어느 Layer에 있고 왜 필요한지 설명할 수 있는 상태를 유지한다.**
+> **AI가 코드를 많이 만드는 것보다, 팀원이 그 코드가 프로젝트의 어느 계층(architecture의 모듈 책임)에 있고 왜 필요한지 설명할 수 있는 상태를 유지한다.**
 
 이 프로젝트에서는 문서도 구현의 일부다.

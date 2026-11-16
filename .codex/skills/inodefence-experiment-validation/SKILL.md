@@ -109,7 +109,9 @@ baseline과 InodeFence를 비교할 때 가능한 한 다음을 동일하게 유
 - repetition count
 - success definition
 
-달라지는 독립 변수는 명확하게 선언한다.
+달라지는 독립 변수는 명확하게 선언한다. 등록 실험의 비교군·지표·예산은 Git에 동결된 사전등록
+(`experiments/preregistration/`)과 `docs/research/design/research-questions.md` v2(동일 어휘·동일 예산의 R/D/S-u,
+1차 지표 T_first·U_viol)를 그대로 따르고, 결과를 본 뒤 바꾸지 않는다. 아래는 독립 변수 선언의 일반 예시다.
 
 예:
 

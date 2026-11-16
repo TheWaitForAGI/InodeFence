@@ -13,7 +13,7 @@ model: claude-opus-4-8
 
 1. 받은 BACKLOG 항목 ID의 본문(`docs/BACKLOG.md`)에서 할 일·완료 조건·게이트를 확인한다. 게이트가 닫혀 있으면 아무것도 바꾸지 말고 `막힘`으로 보고한다.
 2. 받은 이름의 브랜치를 만든다. 같은 레인의 직전 작업 브랜치가 미머지면 그 위에서, 아니면 최신 `main`에서 분기한다(`AGENTS.md` PR 절). 다른 레인의 미머지 브랜치 위에는 진짜 의존이 있을 때만, `BREAKING` 브랜치 위에는 쌓지 않는다.
-3. 구현한다. 현재 Layer 책임 안에서만, generic logic과 target-specific logic을 섞지 않고.
+3. 구현한다. 변경 대상 계층의 책임 안에서만(`AGENTS.md` 구현 규칙), generic logic과 target-specific logic을 섞지 않고.
 4. `make check`를 돌린다. 실패하면 고친다. 테스트를 지우거나 약화하지 않는다. 못 고치면 커밋하지 않고 `막힘`.
 5. oracle 판정 로직을 건드렸으면 autoloop 5절 4항(영향 조사, 추가 방식, BREAKING)을 따른다.
 6. 기록: `docs/LOG.md` 한 줄, `docs/WORKLOG.md` 한 행, `docs/BACKLOG.md` 상태, 필요하면 `docs/STATUS.md`. observed와 inferred를 나눈다.

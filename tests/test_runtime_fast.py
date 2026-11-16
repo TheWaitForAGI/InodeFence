@@ -616,3 +616,19 @@ def test_cli_forwards_only_a_non_default_profile(
     with pytest.raises(SystemExit) as refused:  # replay has no such option: it always runs strict
         cli.main(["replay", str(tmp_path), "--profile", "fast"])
     assert refused.value.code == 2 and len(calls) == 3  # the top-level usage error, as before
+
+
+def test_a_build_only_run_is_listed_only_once_it_is_over(
+    env: dict[str, str], docker: FakeDocker
+) -> None:
+    # the progress display reads the session's last launch: a finished build is not a finished run
+    session = fast()
+    listed: list[list[str | None]] = []
+
+    class Watching(Launcher):
+        def __call__(self, argv: list[str], **kwargs: Any) -> Any:
+            listed.append([launch.classification for launch in session.launches])
+            return super().__call__(argv, **kwargs)
+
+    run_launcher(NODE_TAR, ["explore"], runner=Watching(docker), env=dict(env), session=session)
+    assert listed == [[], ["shared-image-build", None]]

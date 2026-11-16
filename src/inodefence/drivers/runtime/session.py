@@ -257,27 +257,50 @@ class RuntimeSession:
                 )
                 return env, decided(False, reason, images)
             self._say(f"{flag}: {images.reason}; building them first (launcher build-only run)")
-            build_env = {**env, "BUILD_ONLY": "1"}
-            build = self._record(script, args, build_env, None)
-            build.finished = True  # not a run: no outcome diagnosis, no leftovers to look for
-            build.classification = "shared-image-build-error"
+            images = self._build_shared_images(script, args, runner, env, kwargs, repo_root)
+        return {**env, "SKIP_BUILD": "1"}, decided(True, f"SKIP_BUILD=1: {images.reason}", images)
+
+    def _build_shared_images(
+        self,
+        script: Path,
+        args: Sequence[str],
+        runner: Callable[..., Any],
+        env: dict[str, str],
+        kwargs: dict[str, Any],
+        repo_root: Path,
+    ) -> shared_images.SharedImages:
+        """The launcher's build-only run, recorded as a launch of its own, then the verification.
+
+        Anything but a successful build of both images raises :class:`LaunchBlocked`.
+        """
+        flag, profile = "reuse_shared_images", self.policy.profile.value
+        build_env = {**env, "BUILD_ONLY": "1"}
+        build = self._record(script, args, build_env, None)
+        build.finished = True  # not a run: no outcome diagnosis, no leftovers to look for
+        build.classification = "shared-image-build-error"
+        # Listed only once it is over: a reader of the session's last launch (the progress
+        # display) then never takes a finished build for a finished run.
+        self.launches.remove(build)
+        try:
             self._run(build, script, args, runner, build_env, kwargs)
             if build.returncode != 0:
                 build.classification = "shared-image-build-failed"
                 raise LaunchBlocked(
-                    f"profile {self.policy.profile.value}: the shared-image build failed "
-                    f"(launcher exit {build.returncode}); no controller was created and nothing "
-                    "was run. See the output above, or run with --profile strict"
+                    f"profile {profile}: the shared-image build failed (launcher exit "
+                    f"{build.returncode}); no controller was created and nothing was run. See "
+                    "the launcher output, or run with --profile strict"
                 )
             build.classification = "shared-image-build"
             images = shared_images.record(repo_root, env)
             build.policy_applied = {flag: {"shared_images": images.as_record()}}
             if not images.verified:
                 raise LaunchBlocked(
-                    f"profile {self.policy.profile.value}: {images.reason}; nothing was run. "
+                    f"profile {profile}: {images.reason}; nothing was run. "
                     "Run with --profile strict"
                 )
-        return {**env, "SKIP_BUILD": "1"}, decided(True, f"SKIP_BUILD=1: {images.reason}", images)
+            return images
+        finally:
+            self.launches.append(build)
 
     def _shared_images_unchanged(self, record: LaunchRecord, detail: dict[str, Any]) -> None:
         """After a launch that reused the images: are the two tags still the verified ids?

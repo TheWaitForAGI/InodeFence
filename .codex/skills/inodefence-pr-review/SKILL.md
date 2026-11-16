@@ -5,7 +5,8 @@ description: Review an InodeFence pull request for Task Contract compliance, arc
 
 # InodeFence PR Review
 
-InodeFence PR을 merge하기 전에 사용하는 repository-specific review 절차다.
+InodeFence PR의 병합 요청 전에 사용하는 repository-specific review 절차다. 리뷰어는 판정만 낸다. 병합은 지웅이 한다
+(D037, `AGENTS.md`의 PR 절). `gh pr merge` 등으로 스스로 병합하지 않는다.
 
 스타일 취향보다 **correctness, security semantics, research validity, regression risk**를 우선한다.
 
@@ -22,7 +23,8 @@ InodeFence PR을 merge하기 전에 사용하는 repository-specific review 절�
 7. `AGENTS.md`
 8. 변경 영역의 scoped `AGENTS.md`와 design 문서
 
-stacked PR이면 base branch를 반드시 확인한다.
+stacked PR이면 base branch를 반드시 확인한다(`gh pr view <n> --json baseRefName,headRefOid`). diff는 `main`이 아니라
+PR의 실제 base 기준(`origin/<base>...HEAD`)으로 본다. PR·스택이 없을 때만 `main`과 비교한다.
 main 기준으로 이미 해결된 문제를 다시 지적하거나, 아직 base에 없는 API를 있다고 가정하지 않는다.
 
 ## 2. Task Contract 일치
@@ -112,7 +114,7 @@ Linux filesystem 의미를 코드가 단순화하지 않았는지 본다.
 - architecture responsibility
 - Security Contract
 - experiment methodology
-- current Layer/status
+- 현재 상태(`docs/STATUS.md` Ledger·마일스톤)
 - major design decision
 
 코드와 문서가 충돌하면 코드가 동작하더라도 merge-ready로 보지 않는다.
@@ -172,4 +174,7 @@ merge하면 security/research contract 또는 architecture가 명백히 깨짐.
 
 finding이 없다면 "LGTM"만 쓰지 말고 무엇을 검토했고 남은 limitation이 무엇인지 짧게 기록한다.
 
-사람 reviewer가 최종 merge 판단을 할 수 있도록 사실과 근거를 우선 제공한다.
+판정에는 검토한 HEAD SHA와 base를 적고 PR 코멘트로 남긴다. HEAD SHA가 바뀌면 이전 판정을 재사용하지 않고 최신 SHA로
+다시 검토한다.
+
+지웅이 최종 병합 판단을 할 수 있도록 사실과 근거를 우선 제공한다.

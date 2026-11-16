@@ -13,7 +13,7 @@ Python 3.12와 저장소 클론이 필요합니다. 대상 실행 드라이버(`
 (`experiments/repro/`)은 들어 있지 않습니다.
 
 ```bash
-git clone <저장소 URL> InodeFence && cd InodeFence
+git clone https://github.com/TheWaitForAGI/InodeFence.git InodeFence && cd InodeFence
 python3.12 -m venv .venv && . .venv/bin/activate   # WSL2 Ubuntu 24.04는 python3 = 3.12
 pip install -e .            # 개발까지 하려면 make install (= pip install -e '.[dev]')
 inodefence --version
@@ -122,9 +122,9 @@ wheel로 설치했다면 `INODEFENCE_HOME`(환경 변수 또는 아래 설정 �
 ## 지원 환경과 확인 수준
 
 - **이 릴리스 후보에서 확인한 호스트:** Windows + WSL2(Ubuntu 24.04, x86_64) + Docker Desktop
-  4.99.0 / Engine 29.9.3(HOST4). **macOS는 이 후보에서 확인하지 않았습니다**(아래 #400 기록만 있음).
+  4.99.0 / Engine 29.9.3 호스트 한 대. **macOS는 이 후보에서 확인하지 않았습니다**(아래 #400 기록만 있음).
   그 밖의 Linux 호스트도 확인하지 않았습니다.
-- **대상별 검증 수준 (RC 실측: HOST4, demo run, 2026-11-16 08:00~08:04 KST, 엔진 커밋 a5499de, seed 123,
+- **대상별 검증 수준 (RC 실측: 위 호스트, demo run, 2026-11-16 08:00~08:04 KST, 엔진 커밋 a5499de, seed 123,
   순차 실행).** "실행 성공"은 하너스가 실행을 끝내고 결과를 남긴 수, "유효 추출"은 추출기가 `success`로 끝난
   수입니다.
 
@@ -316,7 +316,7 @@ make target-run TARGET=node-tar TARGET_VERSIONS="7.5.2 7.5.3" AUTO_PREPARE=1 PYT
 ## 한계와 주의
 
 - **oras-go 탐색의 "위반 없음"은 근거가 제한적입니다.** oras-go 탐색은 공통 seed가 oras-go 디렉터리
-  아티팩트 제목 접두(`d/`) 없이 만들어져 대부분의 실행이 oras-go에서 거부됩니다(HOST4 seed 123·budget 20에서
+  아티팩트 제목 접두(`d/`) 없이 만들어져 대부분의 실행이 oras-go에서 거부됩니다(위 WSL2 호스트, seed 123·budget 20에서
   20/20 거부, 2026-11-15 맥북 실행 budget 60에서 성공 6건·9건). 엔트리를 `d/` 아래로 옮기는 변경은 탐색 대상의
   의미를 바꾸므로 사용자 결정 전까지 하지 않습니다.
 - **알려진 표시 문제:** `live/`와 결과가 함께 있는 폴더에서 `inodefence status`는 "추출 성공 0건" 경고를 진행 블록과
@@ -329,7 +329,7 @@ make target-run TARGET=node-tar TARGET_VERSIONS="7.5.2 7.5.3" AUTO_PREPARE=1 PYT
   오래 진척이 없으면 몇 초째인지와 함께 `STALE` 경고만 출력하고, 실행 중에는 처리량(runs/min)과 남은 예산의
   예상 시간을 보여 줍니다(관찰만).
 - **실행 프로필:** 지원하는 것은 STRICT 하나입니다(기본이자 유일한 프로필이며 `--runtime-profile` 옵션은 없습니다).
-  FAST는 구현하지 않았습니다(후속 작업). HOST4 engineering smoke(demo run, node-tar 7.5.23, budget 20, 3회)에서
+  FAST는 구현하지 않았습니다(후속 작업). WSL2 호스트 한 대의 engineering smoke(demo run, node-tar 7.5.23, budget 20, 3회)에서
   케이스당 약 1.88 s 가운데 약 93%가 호스트 docker CLI 호출(케이스당 23회)이었고, 그 비용은 보호 영역인
   격리 실행 경로 안에 있어 제품 계층에서 줄일 수 있는 몫은 약 1.6%였습니다(단일 호스트·3회 측정이며 호스트
   부하에 민감합니다). FAST는 그 경로의 변경과 격리 동등성 검증이 먼저입니다. REPLAY는 프로필이 아니라 위

@@ -6,6 +6,7 @@
 InodeFence는 TAR 입력을 만들고 변형해 실제 extractor(압축 해제 프로그램)를 격리 컨테이너에서 실행하고, 실행 전후의
 filesystem 상태를 관찰해 보안 경계 위반을 판정합니다. 사용자 진입점은 `inodefence` 명령(`doctor`, `targets`,
 `verify`, `explore`, `status`, `replay`, `summary`)입니다. 버전은 0.2.0 (릴리스 후보, 태그·릴리스 없음)입니다.
+이 문서는 0.2.0 릴리스 후보 브랜치 기준이며 태그·릴리스 전입니다.
 
 [빠른 시작](#빠른-시작) · [사용 안내](docs/USAGE.md) · [현재 상태(Capability Ledger)](docs/STATUS.md) ·
 [시작 안내](docs/START_HERE.md) · [Security Contracts](docs/research/design/security-contracts.md) ·
@@ -94,9 +95,11 @@ mutation 선택)가 `make demo`(node-tar 7.5.22, 정상 입력)로 돌고 같은
 | decompress | — | 미지원(종료 4) | `--version`에 패키지까지: `@xhmikosr/decompress@11.1.4` |
 | oras-go | — | 미지원(종료 4) | **실험적**: 공통 seed가 `d/` 접두 없이 생성돼 탐색 실행 대부분이 거부됨. 유의미한 보안 커버리지를 주장하지 않음 |
 
-대상 실행을 확인한 호스트는 **Windows + WSL2(Ubuntu 24.04, x86_64) + Docker Desktop 하나(HOST4)**입니다. macOS와 그
-밖의 Linux 호스트는 이 후보에서 확인하지 않았습니다. HOST4 실측(demo run, seed 123, `verify` 5~6 입력·`explore`
-budget 20)에서 네 대상 모두 실행을 끝냈고 위반 0건이었습니다. **위반 0은 안전성 증명이 아니며**, `verify`의 고정
+대상 실행을 확인한 호스트는 **Windows + WSL2(Ubuntu 24.04, x86_64) + Docker Desktop 호스트 한 대**입니다. macOS와
+그 밖의 Linux 호스트는 이 후보에서 확인하지 않았습니다. 네 대상의 실제 실행은 이 스택 head가 아니라 **이전 커밋
+(`a5499de`, 이후 PR 1~3 커밋에서 같은 범위 재확인)에서의 engineering smoke(demo run)**입니다(seed 123, `verify` 5~6
+입력·`explore` budget 20). 그때 네 대상 모두 실행을 끝냈고 위반 0건이었습니다. 이후 변경은 런처 인자·환경과 드라이버
+실행부를 바꾸지 않았고, 이 head에서는 실제 대상 실행을 하지 않았습니다([CHANGELOG](CHANGELOG.md)의 검증 범위). **위반 0은 안전성 증명이 아니며**, `verify`의 고정
 입력은 모두 공격 형태라 정상 입력 대조군이 없습니다. 대상별 수치·종료 상태 분포·한계는
 [사용 안내: 지원 환경과 확인 수준](docs/USAGE.md#지원-환경과-확인-수준)에 있습니다. 이 문서의 실행 예는 모두 `demo run`
 수준이며 사전등록 실험이나 자격 검증 결과가 아닙니다.
@@ -118,11 +121,11 @@ budget 20)에서 네 대상 모두 실행을 끝냈고 위반 0건이었습니�
 
 ## 빠른 시작
 
-처음 한 번은 이 순서로 갑니다. 대상 실행을 확인한 호스트는 Windows + WSL2(Ubuntu 24.04) + Docker 하나(HOST4)뿐입니다.
+처음 한 번은 이 순서로 갑니다. 대상 실행을 확인한 호스트는 Windows + WSL2(Ubuntu 24.04, x86_64) + Docker Desktop 호스트 한 대뿐입니다.
 
 ```bash
 # 1. 설치: 저장소 클론에서, Python 3.12
-git clone <저장소 URL> InodeFence && cd InodeFence
+git clone https://github.com/TheWaitForAGI/InodeFence.git InodeFence && cd InodeFence
 python3.12 -m venv .venv && . .venv/bin/activate
 pip install -e .
 

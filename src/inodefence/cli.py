@@ -43,6 +43,7 @@ from inodefence.locate import (
     REPLAY_DRIVER,
     REPO_NOT_FOUND,
     VERIFY_DRIVER,
+    RepositoryCodeMissing,
     repo_root,
     run_driver,
     target_support,
@@ -70,6 +71,9 @@ def cmd_targets(args: argparse.Namespace) -> int:
         return 3
     try:
         support = target_support(root)
+    except RepositoryCodeMissing as error:  # markers only: never run another tree instead
+        print(error, file=sys.stderr)
+        return 3
     except Exception as error:  # a broken or partial checkout: say so, do not pretend
         print(f"could not read the target registry from {root}: {error}", file=sys.stderr)
         return 3
@@ -324,7 +328,11 @@ def _forward(driver: str, argv: list[str], command: str) -> int:
     if root is None:
         print(REPO_NOT_FOUND, file=sys.stderr)
         return REFUSED
-    return run_driver(root, driver, argv, prog=f"inodefence {command}")
+    try:
+        return run_driver(root, driver, argv, prog=f"inodefence {command}")
+    except RepositoryCodeMissing as error:
+        print(error, file=sys.stderr)
+        return REFUSED
 
 
 def _resolve_out(args: argparse.Namespace, default_name: str) -> Path | None:

@@ -53,6 +53,26 @@ def repo_root() -> Path | None:
     return _repo.repo_root()
 
 
+class RepositoryCodeMissing(RuntimeError):
+    """The chosen repository has no InodeFence code to run (damaged, or older than this CLI)."""
+
+
+def check_repository_code(root: Path) -> None:
+    """Refuse before a subprocess when ``root`` has no package to run (fail closed).
+
+    A tree with the markers but without ``src/inodefence/__init__.py`` and
+    ``src/inodefence/drivers`` would make ``python -m inodefence.drivers.…`` resolve to whatever
+    ``inodefence`` is installed, i.e. silently run another tree than the one the user chose. Raises
+    :class:`RepositoryCodeMissing`.
+    """
+    package = root / "src" / "inodefence"
+    if not ((package / "__init__.py").is_file() and (package / "drivers").is_dir()):
+        raise RepositoryCodeMissing(
+            "the selected repository has no InodeFence code to run (damaged, or a clone older "
+            f"than this version of inodefence): {root}"
+        )
+
+
 def _driver_env(root: Path) -> dict[str, str]:
     env = dict(os.environ)
     env["PYTHONPATH"] = os.pathsep.join([str(root / "src"), str(root), env.get("PYTHONPATH", "")])
@@ -75,6 +95,7 @@ def run_driver(root: Path, driver: str, argv: list[str], *, prog: str | None = N
     when ``inodefence`` itself is installed from a wheel) and its relative asset paths resolve. No
     shell: argv is passed as a list, so user values are never re-parsed as shell syntax.
     """
+    check_repository_code(root)
     env = _driver_env(root)
     if prog:
         env[PROG_ENV] = prog
@@ -97,8 +118,10 @@ def target_support(root: Path) -> dict[str, dict[str, Any]]:
     clone's ``src`` and root first on ``PYTHONPATH``), not in this process: the adapters import the
     clone's fixture modules (``experiments/repro``), which are not packaged, and reading them here
     would mix this install's engine with the clone's files. So ``targets`` reports the same code
-    ``verify`` / ``explore`` run. Raises ``RuntimeError`` when the registry cannot be read.
+    ``verify`` / ``explore`` run. Raises :class:`RepositoryCodeMissing` when ``root`` has no code to
+    run and ``RuntimeError`` when the registry cannot be read.
     """
+    check_repository_code(root)
     completed = subprocess.run(
         [sys.executable, "-m", "inodefence.locate", _SUPPORT_FLAG],
         cwd=root,

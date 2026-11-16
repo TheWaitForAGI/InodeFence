@@ -63,8 +63,11 @@ def test_target_support_reports_an_unreadable_registry(tmp_path: Path, monkeypat
 
     failed = subprocess.CompletedProcess([], 1, "", "Traceback\nModuleNotFoundError: experiments\n")
     monkeypatch.setattr(locate.subprocess, "run", lambda *a, **k: failed)
+    repo = _make_repo(tmp_path)
+    (repo / "src" / "inodefence" / "drivers").mkdir(parents=True)
+    (repo / "src" / "inodefence" / "__init__.py").write_text("", encoding="utf-8")
     with pytest.raises(RuntimeError, match="ModuleNotFoundError: experiments"):
-        locate.target_support(_make_repo(tmp_path))
+        locate.target_support(repo)
 
 
 def test_targets_subprocess_passes_the_same_tree_invariant() -> None:
@@ -92,14 +95,32 @@ def test_targets_internal_entry_refuses_another_tree(tmp_path: Path, monkeypatch
     assert locate._support_main(["--bogus"]) == 3
 
 
-def test_targets_on_a_damaged_clone_exits_3_with_the_baseline_message(
-    tmp_path: Path, monkeypatch, capsys
+def _no_subprocess(*args, **kwargs):
+    raise AssertionError("no subprocess may start for a repository without code")
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["targets"],
+        ["verify", "--target", "node-tar", "--version", "7.5.23", "--dry-run"],
+        ["explore", "--target", "node-tar", "--version", "7.5.23", "--dry-run"],
+    ],
+)
+def test_a_marker_only_clone_is_refused_before_any_subprocess(
+    tmp_path: Path, monkeypatch, capsys, argv
 ) -> None:
-    # A marker-only tree: the subprocess cannot read a registry there (same exit and message
-    # format as before the drivers moved into the package).
+    # The user chose B (markers, no src/inodefence): never run another installed tree instead.
     monkeypatch.setenv("INODEFENCE_HOME", str(_make_repo(tmp_path)))
-    assert cli.main(["targets"]) == 3
-    assert f"could not read the target registry from {tmp_path}" in capsys.readouterr().err
+    monkeypatch.setattr(locate.subprocess, "run", _no_subprocess)
+    assert cli.main(argv) == 3
+    err = capsys.readouterr().err
+    assert "no InodeFence code to run" in err and str(tmp_path) in err
+
+
+def test_check_repository_code_accepts_a_real_clone() -> None:
+    root = drivers_repo.repo_root() or Path.cwd()
+    locate.check_repository_code(root)  # no exception: a normal clone is unaffected
 
 
 def test_the_internal_registry_entry_is_not_a_user_command(capsys) -> None:

@@ -9,30 +9,33 @@ description: InodeFence 자율 작업 루프 규칙. docs/BACKLOG.md 맨 위부�
 `AGENTS.md`의 PR 절). `gh pr merge` 등으로 스스로 병합하지 않는다. D035의 자율 머지는 보류 상태이며 지웅의 별도
 결정이 기록되기 전에는 재개하지 않는다. 그 밖에 사람에게 돌리는 것은 안전경계·연구 불변식에 걸리는 결정이다:
 `BREAKING`(5절 4항), 가드·격리·allowlist 설정, FROZEN 변경, 외부 공개.
-`AGENTS.md`, `docs/MIDTERM_GOALS.md`의 규칙이 이 문서보다 우선한다. 이 문서는 그 위에 자율 실행 절차를 더한다.
+`AGENTS.md`의 규칙이 이 문서보다 우선한다. 이 문서는 그 위에 자율 실행 절차를 더한다. 현재 작업 기준은
+`docs/STATUS.md`의 Capability Ledger(M1~M4)와 `docs/BACKLOG.md`이고, 수술 기간(2026-11-03~11-30)의 계획 기준은
+`AGENTS.md` "현재 기준"이 가리키는 Claude Doc이다. Layer 0~6과 `docs/MIDTERM_GOALS.md`의 중간발표 P0 단계는 지난
+개발 단계의 기록(배경)이며 작업 기준이 아니다.
 
 기계적 안전장치: `.claude/hooks/guard.py` (`.claude/settings.json` PreToolUse, 서브에이전트 포함).
 훅이 막으면 **우회하지 않는다.** 아래 "막힘 처리"로 간다. 훅·allowlist·격리 설정 수정은 사람만 한다.
 
 ## 0. 역할 (멀티 에이전트)
 
-| 역할 | 정의 | 모델 | 하는 일 | 가드 |
+| 역할 | 정의 | 모델(기준은 각 정의의 frontmatter) | 하는 일 | 가드 |
 | --- | --- | --- | --- | --- |
-| 지휘관 | `.claude/agents/orchestrator.md` | claude-opus-4-8 | BACKLOG에서 작업 선택, 환경 판단, 위임, 보고 수신 | R6: 메타데이터 문서·`git status/branch/log/diff --stat`만. 소스·diff·실행 출력 접근 차단, 작업자 3종 외 위임·모델 override 차단 |
+| 지휘관 | `.claude/agents/orchestrator.md` | claude-fable-5-1 | BACKLOG에서 작업 선택, 환경 판단, 위임, 보고 수신 | R6: 메타데이터 문서·`git status/branch/log/diff --stat`만. 소스·diff·실행 출력 접근 차단, 작업자 3종 외 위임·모델 override 차단 |
 | builder | `.claude/agents/builder.md` | claude-opus-4-8 | 코드 작성·수정, `make check`, 커밋, 기록, PR 생성·병합 요청 | R1–R5 |
-| runtime | `.claude/agents/runtime.md` | claude-opus-4-8 | docker 실제 실행(호스트) | R1–R5, R7: 기록 문서만 쓰기 |
-| verifier | `.claude/agents/verifier.md` | claude-opus-4-8 | 브랜치 검토, PASS/ISSUES | R1–R5, R8: 읽기 전용 |
+| runtime | `.claude/agents/runtime.md` | claude-opus-4-8 | docker 실제 실행(docker가 있는 호스트) | R1–R5, R7: 기록 문서만 쓰기 |
+| verifier | `.claude/agents/verifier.md` | claude-opus-4-8 | 브랜치 검토(PR의 실제 base 기준), 검증한 HEAD SHA와 PASS/ISSUES | R1–R5, R8: 읽기 전용 |
 
 - 시작: `claude --agent orchestrator` (메인 세션이 지휘관 정의와 모델로 뜬다). 이 플래그 없이 시작한 세션은 지휘관 제한(R6)이 걸리지 않는 일반 세션이다.
 - 작업자 보고는 메타데이터 형식(`orchestrator.md`의 "작업자 보고 형식")만 쓴다. 코드·diff·payload·취약점 세부는 커밋과 LOG에 남기고 보고에 넣지 않는다. 이 부분은 지시로만 지켜지고 훅으로 강제되지 않는다.
 - 세션 하나는 한 환경(Dev Container 또는 호스트)에서만 돈다. 작업자도 같은 환경이다.
-- 지휘관을 fable로 두지 않는 이유(observed, 2026-10-23): 이 저장소에서 `--agent orchestrator`를 fable로 띄우면 첫 요청에서 `model_refusal_fallback`(category cyber, scope session)이 나고 세션 전체가 claude-opus-4-8로 넘어갔다. 도구 호출 전이라 자동 로드되는 프로젝트 문맥이 원인으로 추정(inferred)되며, 메타데이터 제한으로는 피할 수 없다.
+- 지휘관 모델 이력: 2026-10-23에는 이 저장소에서 `--agent orchestrator`를 fable로 띄우면 첫 요청에서 `model_refusal_fallback`(category cyber, scope session)이 나고 세션 전체가 claude-opus-4-8로 넘어갔다(observed). 도구 호출 전이라 자동 로드되는 프로젝트 문맥이 원인으로 추정(inferred)됐다. 2026-10-30 #172에서 지휘관 정의를 `claude-fable-5-1`로 바꿨다(현재 정의). 같은 fallback이 다시 나면 우회하지 말고 LOG에 기록한다. 모델 이름을 바꾸는 것은 정의 파일에서만 한다.
 
 ## 1. 루프
 
 ```text
 BACKLOG 맨 위의 "대기" 항목 1개 선택
-  → 분류 밝히기 (어느 마일스톤 M2~M4 / 상시 태스크인지, 아니면 해당 없음+이유)
+  → 분류 밝히기 (어느 마일스톤 M1~M4 / 수술 단계 / 상시 태스크인지, 아니면 해당 없음+이유)
   → 게이트 확인 (선행 항목 결과, 차단 조건)
   → 새 브랜치 1개 (같은 레인의 직전 브랜치가 미머지면 그 위에서, 아니면 main에서)
   → 환경 선택 후 구현·실행
@@ -60,23 +63,23 @@ BACKLOG 맨 위의 "대기" 항목 1개 선택
 
 브랜치를 만들기 전에 LOG/커밋 메시지에 남길 수 있게 다음을 정한다.
 
-1. 분류: BACKLOG의 어느 마일스톤(M2~M4)·상시 태스크인지.
-   둘 다 아니면 진행하지 않고 그 이유를 LOG에 기록한다.
+1. 분류: BACKLOG의 어느 마일스톤(M1~M4, STATUS Ledger와 같음)·수술 단계·상시 태스크인지.
+   어디에도 해당하지 않으면 진행하지 않고 그 이유를 LOG에 기록한다.
 2. 완료 조건: BACKLOG 항목에 적힌 것을 그대로 쓴다. 바꾸지 않는다.
 3. "이 작업이 끝나면 무엇을 실제로 실행/검증할 수 있게 되는가" 한 줄.
 
-브랜치 이름: `jiwoong/<p0-N|pN>-<요약>` (예: `jiwoong/p2-c1-impact`).
+브랜치 이름: `<이름>/p0-<번호>-<요약>`(`AGENTS.md` PR 절).
 
 ## 3. 환경 선택
 
 | 필요한 것 | 환경 | 근거 |
 | --- | --- | --- |
-| docker: `make demo`(별칭 `make demo-native`), `make node-tar-smoke`, `make node-tar-effect-check`, node-tar 실제 실행, native 캠페인 | **호스트 터미널** (macOS + OrbStack) | Dev Container에는 `docker`가 없다(`DEVCONTAINER=true`, `which docker` 없음). LOG의 native 실행은 모두 `context=orbstack` |
+| docker: `make demo`(별칭 `make demo-native`), `make node-tar-smoke`, `make node-tar-effect-check`, node-tar 실제 실행, native 캠페인 | **docker가 있는 호스트 터미널** — 격리 완화 없이 같은 잠긴 하너스가 그대로 도는 환경(`AGENTS.md` 안전 규칙). 호스트 종류를 가정하지 않는다(기록된 예: macOS + OrbStack, Windows + WSL2 + Docker Desktop) | Dev Container에는 `docker`가 없다(`DEVCONTAINER=true`, `which docker` 없음). 실제로 쓴 호스트·docker context는 실행 기록(LOG)에 남긴다 |
 | `make check`, `make demo-synthetic`(synthetic, node-tar 아님), `make probe`, `python -m scripts.oracle_fixture_check`, 코드 작업, pytest | **Dev Container** | 기준 환경 Ubuntu 24.04 + Python 3.12, `$INODEFENCE_RUNTIME_ROOT=/var/lib/inodefence` |
 
 - 지금 세션이 어느 쪽인지 먼저 확인한다: `echo $DEVCONTAINER; command -v docker`.
 - 필요한 환경이 아니면 실행을 흉내 내지 않는다. "호스트 실행 필요 — 미실행"으로 LOG에 남기고, 그 실행이 필요 없는 부분만 진행하거나 다음 항목으로 간다.
-- native 실행은 **안전경계 안에서 자율로 한다**: 고정 node-tar 버전, 실행 예산 상한, disposable sandbox + sentinel, 격리 완화 플래그 금지. 이 경계 안의 실행(재현 probe, historical 캠페인 포함)은 따로 사람 승인을 기다리지 않는다. 결과는 `demo run`으로 라벨링하고 qualification으로 부르지 않는다. 경계를 벗어나는 일(외부 공개, 격리 완화, 민감 파일)만 멈추고 사람에게 돌린다.
+- native 실행은 **안전경계 안에서 자율로 한다**: 고정 대상 버전(MVP는 node-tar와 Python `tarfile`, D038), 실행 예산 상한, disposable sandbox + sentinel, 격리 완화 플래그 금지. 이 경계 안의 실행(재현 probe, historical 캠페인 포함)은 따로 사람 승인을 기다리지 않는다. 결과는 `demo run`으로 라벨링하고 qualification으로 부르지 않는다. 경계를 벗어나는 일(외부 공개, 격리 완화, 민감 파일, 승인된 범위를 넘는 실행·예산)만 멈추고 사람에게 돌린다. 등록 실험은 Git에 동결된 사전등록(`experiments/preregistration/`)과 isolation contract를 그대로 따르고, 사전등록·등록 실험 설정·본실험 실행 SHA는 바꾸지 않는다(FROZEN, 사람 결정).
 
 ## 4. 완료 처리
 
@@ -86,7 +89,7 @@ BACKLOG 맨 위의 "대기" 항목 1개 선택
 3. `docs/LOG.md`에 한 줄 추가: `YYYY-MM-DD HH:MM | 지웅 (Claude Code, autoloop) | 무엇을 실행 | 결과 | 산출물 경로`.
 4. `docs/WORKLOG.md` 표에 한 행 추가(양식은 그 파일 참고). 상태는 `검토대기` / `BREAKING` / `막힘` 중 하나.
 5. `docs/BACKLOG.md`에서 해당 항목 상태를 갱신한다(`완료(브랜치명)` / `막힘` / `BREAKING`).
-6. P0 현황이 바뀌었으면 `docs/STATUS.md` 표를 갱신한다.
+6. Ledger의 능력·증거 수준이나 마일스톤 상태가 바뀌었으면 `docs/STATUS.md`를 갱신한다.
 7. PR을 만들고 병합을 요청한다(1절, 병합은 지웅). CI가 실패하면 같은 브랜치에서 고쳐 다시 push한다. 테스트를 지우거나 약화해서
    통과시키지 않는다. 못 고치면 PR을 draft로 돌리고 "막힘 처리". 머지 여부의 기준은 PR 상태다
    (`gh pr view <n> --json state,mergedAt`); WORKLOG 행은 머지 뒤에 고치지 않는다(main 직접 push 금지).
@@ -101,7 +104,7 @@ LOG·WORKLOG·BACKLOG 기록은 작업 브랜치의 커밋에 함께 넣는다.
 4. **oracle 판정 로직을 바꾸는 작업**(`src/inodefence/oracle/`, C0/C1/C2 의미, Security Contract):
    - 먼저 영향 조사: N01 재현 경로, 기존 fixture(`tests/test_oracle_fixtures.py`, `scripts/oracle_fixture_check.py`), 전체 테스트가 깨지는지 실행해서 확인한다.
    - 깨뜨리면 기존 판정은 그대로 두고 **추가하는 방식**(새 contract id/새 evidence 필드/새 함수)으로만 바꾼다.
-   - 그래도 기존 테스트를 깨는 변경은 WORKLOG 상태를 `BREAKING`으로 두고, 커밋 메시지와 LOG에 "BREAKING"을 명시하고, **그 위에 후속 작업을 진행하지 않는다.** 사람 판단 전까지 머지 대기다. 자동 머지 경로에 올리지 않는다.
+   - 그래도 기존 테스트를 깨는 변경은 WORKLOG 상태를 `BREAKING`으로 두고, 커밋 메시지와 LOG에 "BREAKING"을 명시하고, **그 위에 후속 작업을 진행하지 않는다.** 사람 판단 전까지 PR만 열어 두고 병합 요청 대상에 올리지 않는다.
    - 영향 조사 결과가 "깨뜨린다"이면 구현 항목으로 넘어가지 않는다. 조사 결과만 기록하고 다음 안전한 항목으로 간다.
 5. **바꾸지 않는 것:** FROZEN 해시와 frozen 입력/타깃(`FROZEN_*`, 예: `src/inodefence/evaluation/n01.py`), 기존 qualification 모드와 그 계약, `docs/research/` 아래 동결된 보고서. 새 동작이 필요하면 새 모드/새 이름으로 추가한다.
 6. **문서:** 새 audit/readiness/handoff/qualification/preserve 문서를 만들지 않는다. 기록은 STATUS 갱신과 LOG 한 줄로 한다.
@@ -120,15 +123,18 @@ BACKLOG: 항목 상태 = 막힘(<날짜>, <한 줄 이유>)
 ## 7. 끝과 지속 — 루프는 프로젝트 완료까지 돈다
 
 루프의 끝은 **BACKLOG 소진이 아니라 프로젝트 완료**다(D036). 설계(`docs/STATUS.md` Capability Ledger,
-`docs/research/design/research-questions.md` H1~H4, `docs/research/benchmarks/evaluation-protocol-v1.md`)가
-정한 목적 — 가설 검증과 M1~M4 완료 — 에 안전경계·연구 불변식 안에서 **최대치의 노력**을 들인다.
+`docs/research/design/research-questions.md` v2의 핵심 RQ와 H-A/H-B/H-C, D038, Git에 동결된 사전등록
+`experiments/preregistration/`)가 정한 목적 — 가설 검증과 M1~M4 완료 — 에 안전경계·연구 불변식 안에서 **최대치의 노력**을 들인다.
 
 ### 7.1 완료 기준 (이 셋이 모두 참일 때만 루프를 끝낸다)
 
-1. **마일스톤**: STATUS의 M1~M4가 모두 `완료`다. M3은 H1 판정이 **사전 고정된 지표·예산·반복**으로 기록된 것을
-   뜻한다 — 양성이든 정직한 음성이든. 단, **검정력이 없는 음성은 판정이 아니다**(seed-rare·우측센서만 남은 상태는
-   "미판정"이고 다음 항목은 더 큰 사전고정 예산의 독립 반복이다). M4는 2번째 extractor에서 동일 generic oracle
-   적용 + 자력 발견 시도 결과(양성/음성)가 기록된 것을 뜻한다.
+1. **마일스톤**: STATUS의 M1~M4가 모두 `완료`다(상태는 Ledger에서 읽는다). M3은 H-A 판정(동일 어휘·동일 예산의
+   R/D/S-u 비교, 1차 지표 T_first·U_viol)이 **사전등록으로 고정된 지표·예산·반복**으로 기록된 것을 뜻한다 — 양성이든
+   정직한 음성이든. 단, **검정력이 없는 음성은 판정이 아니다**(seed-rare·우측센서만 남은 상태는
+   "미판정"이고 다음 항목은 더 큰 사전고정 예산의 독립 반복이다 — 승인된 범위를 넘는 예산은 사람 결정). M4는 H-B다:
+   동일 generic oracle(코드 불변)이 ≥3 extractor의 취약/수정 쌍을 구분함이 기록된 것(research-questions v2). 연구 MVP는 node-tar와
+   Python `tarfile`이고 decompress는 확장, oras-go는 oracle 일반성 증거로만 쓴다(D038). 자력발견(H-A) 타깃은
+   node-tar 하나이므로 다른 extractor에서의 자력 발견 시도는 M4 완료 조건이 아니다.
 2. **증거 사슬**: 주장할 결론마다 raw → validated summary → finding(`experiments/summaries/README.md` 규칙)이
    이어지고 `paper/`가 Ledger 행을 가리킨다. 논문에 쓸 수 없는 결론은 완료가 아니다.
 3. **큐**: BACKLOG의 모든 항목이 `완료` 또는 `막힘(사람 결정: …)`이고, 7.2의 보충 규칙으로 더 뽑을 항목이 없다.
@@ -139,9 +145,8 @@ BACKLOG: 항목 상태 = 막힘(<날짜>, <한 줄 이유>)
 
 1. `막힘` 항목 중 막힌 이유가 해소된 것(의존 브랜치 머지됨, 호스트 환경으로 바뀜 등) → 상태를 `대기`로 되돌려 재개.
 2. STATUS Ledger에서 **증거 수준이 가장 낮은 미완 마일스톤**(M3 → M4 순)의 다음 gate. 근거는 STATUS "다음 연구
-   gate"의 순서(G0 → oracle → harness → fuzzer correctness → synthetic → historical qualification → pilot →
-   experiment freeze → main experiments → candidate triage → analysis → paper → independent reproduction)와
-   H1~H4다. DESIGNED/IMPLEMENTED인데 TESTED/VALIDATED가 아닌 행, `NOT_RUN`인 실험이 후보다.
+   gate"의 수술 기준·MVP 범위와 BACKLOG 수술 큐, 그리고 H-A/H-B/H-C다. 범위 밖(entry-transition 계열, GNU tar,
+   Windows)과 폐기된 v1 질문(RQ1~RQ6·H1~H4)에서는 항목을 뽑지 않는다. DESIGNED/IMPLEMENTED인데 TESTED/VALIDATED가 아닌 행, `NOT_RUN`인 실험이 후보다.
 3. 상시(레인) 표의 미완 항목.
 
 보충 항목은 BACKLOG 해당 마일스톤 표에 **한 행**으로 적는다: 태스크(무엇을 실행/검증할 수 있게 되는가 한 줄 포함),
@@ -151,7 +156,7 @@ BACKLOG: 항목 상태 = 막힘(<날짜>, <한 줄 이유>)
 
 **만들지 않는 일**(1절의 "일을 만들어 내지 않는다"의 정확한 뜻): Ledger 빈 칸에 닿지 않는 일. 새 감사·readiness류
 문서, 범위 밖 refactor, 결과를 본 뒤 지표·예산을 바꾸는 일, 발표용 임시 구현, 가설과 무관한 기능. 반대로 가설에
-닿는 일(독립 반복, 사전고정 예산 확대, 대조군, 2번째 extractor, 증거 사슬 보강)은 만든다.
+닿는 일(독립 반복, 사전고정 예산 확대, 대조군, D038 범위 안의 extractor 일반성 증거, 증거 사슬 보강)은 만든다.
 
 ### 7.3 끊김 없이 돌리기
 

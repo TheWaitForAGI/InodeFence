@@ -182,6 +182,53 @@ node-tar 탐색(`--version 7.5.23 --seed 123 --budget 20`, engineering smoke 202
 
 (`<버전>-<seed>-<budget>` 이름은 node-tar에서 관찰한 것입니다. 다른 대상의 폴더 이름은 아직 실측으로 대조하지 않았습니다.)
 
+## 실행 중 터미널 진행 표시
+
+`inodefence explore`는 기본으로 진행 줄을 **stderr**에 출력합니다. 숫자는 `inodefence status`와 같은 파일
+(`live/progress.json`, 위반 케이스 폴더, 끝난 뒤 `result.json`)에서 읽으므로 둘은 같은 값을 보여 줍니다. 컨테이너
+안에는 아무것도 더하지 않고, 호스트에서 작은 파일 하나를 주기적으로 읽을 뿐입니다. `progress.json`·`result.json`·
+원시 기록의 형식은 그대로입니다.
+
+```text
+[explore] node-tar 7.5.23(requested) profile=strict seed=321 budget=40; results: <--out>; launcher output: <--out>/runtime/explore-launcher-<UTC>-<pid>.log (--verbose shows it here)
+[explore] running step=effect-demo-explore runs=29/40 | success=15 rejected=14 failed=0 timed_out=0 un-judged=0 | violations=0 C0=0 C1=0 C2=0 | 0.476 runs/s eta~23s | elapsed=76s
+[explore] completed verdict=PASS runs=40/40 | node-tar 7.5.23 profile=strict seed=321 | success=24 rejected=16 failed=0 timed_out=0 un-judged=0 | violations=0 C0=0 C1=0 C2=0 | 0.486 runs/s | elapsed=94s | out=<--out>
+```
+
+(2026-11-17 node-tar 7.5.23 seed 321 budget 40 engineering smoke(demo run)를 폭 200 터미널에서 돌린 실제 출력이며 경로만
+`<--out>`으로 줄였습니다. 가운데 줄은 제자리 갱신되는 줄의 한 시점입니다. 성능 측정이 아닙니다.)
+
+| 옵션 | 진행 줄 | 런처 원시 출력(이미지 빌드·컨트롤러 단계) |
+| --- | --- | --- |
+| (기본) | 출력 | `<--out>/runtime/explore-launcher-<UTC>-<pid>.log`에 저장(경로를 첫 줄에 출력) |
+| `--quiet` | 없음 | 같은 로그 파일에 저장 |
+| `--verbose` | 없음 | 터미널에 그대로(이 기능 이전과 같은 출력) |
+
+세 경우 모두 종료 코드, stdout의 `TARGET-EXPLORE …` 결과 줄과 `result: …` 줄, stderr의 오류·진단 줄은 같습니다.
+`--quiet`와 `--verbose`는 함께 줄 수 없습니다(종료 3). 드라이버를 직접 부르거나(`python -m
+inodefence.drivers.run_target_explore`) 옛 `scripts/` 경로로 부르면 기본은 `--verbose`와 같은 출력(`--output stream`)입니다.
+
+- **표시 방식.** stderr가 터미널이고 `TERM`이 `dumb`이 아니면 한 줄을 `\r`로 제자리 갱신합니다(1초마다, 터미널
+  폭에 맞춰 덜 중요한 칸부터 생략). 그 밖(파이프·파일·CI)에는 줄 단위로 출력합니다: 단계가 바뀔 때 즉시, 숫자나 런처 단계가
+  바뀌었으면 마지막 줄에서 30초가 지난 뒤, 아무 변화가 없어도 300초마다 한 줄. 색과 이스케이프 문자는 쓰지 않으므로
+  `NO_COLOR`와 무관하게 같은 출력입니다.
+- **단계.** `prepare`(이미지 확인·준비) → `running`(런처 실행 중; 탐색 루프 전의 컨트롤러 준비도 포함하며
+  `step=`이 런처가 출력한 현재 단계 이름을 보여 줌) → `cleanup`(루프가 끝났거나 보고서가 호스트에 도착, 결과 기록
+  중) → `completed` 또는 `aborted`.
+- **모르는 값은 `?`입니다(0이 아님).** live 폴더는 현재 node-tar만 씁니다. python-tarfile·decompress·oras-go는
+  실행 중 모든 수가 `?`이고(`step=`과 경과 시간만 갱신), 마지막 줄만 `result.json`에서 읽습니다. 그 줄의 처리량은
+  `result.json`에 없으므로 `? runs/s`입니다.
+- **C0/C1/C2.** `progress.json`에는 계약별 수가 없어서 호스트에 있는 위반 케이스 폴더(`case.json`)를 셉니다. 위반
+  실행 전부가 폴더로 있으면 정확한 수이고, fingerprint당 저장 상한이나 아직 가져오지 않은 케이스가 있으면 하한
+  (`C1>=2`)으로 표시합니다. 위반은 oracle이 표시한 후보이며 확인된 취약점이 아닙니다.
+- **처리량과 ETA.** 처리량은 스냅샷의 `runs_per_second`(`status`가 보여 주는 값)입니다. ETA는 루프가 도는 동안,
+  budget을 알고, 10회 이상 실행했고, 서로 다른 스냅샷 두 개의 처리량 차이가 25% 이내일 때만
+  `(budget - 실행 수) / 처리량`으로 표시하고, 그 밖에는 표시하지 않습니다.
+- **숫자의 시점.** 스냅샷은 25회마다 또는 30초마다(위반 직후 즉시) 쓰이고 호스트는 15초마다 가져오므로, 실행 중
+  숫자는 최대 수십 초 전 것입니다(`snapshot=21s ago`). 같은 폴더에 남은 이전 실행의 스냅샷은 무시합니다.
+- **멈췄을 때.** `[explore] aborted … | cause: <오류 한 줄> [stage=… category=…]` 한 줄(기존 실행 진단의 단계·분류를
+  그대로 인용)과 로그 파일 경로, 로그의 마지막 15줄을 stderr에 출력합니다.
+
 ## 도중 확인
 
 긴 탐색은 끝나기를 기다리지 않고 실행 중에 봅니다. `--out`에 준 폴더, 그 아래 `target-explore`, 실행 폴더

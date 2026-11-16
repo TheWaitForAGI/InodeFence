@@ -40,6 +40,40 @@ REPO_NOT_FOUND = (
 )
 
 
+def repo_not_found_message() -> str:
+    """Why :func:`repo_root` found no clone, for the user: :data:`REPO_NOT_FOUND`, or more exact.
+
+    When ``INODEFENCE_HOME`` is set (environment or user config file) the generic advice "set
+    INODEFENCE_HOME" is wrong -- it is set, to something that is not a clone -- so this says
+    which value, where it came from and what that folder lacks.
+    """
+    setting = _repo.home_setting()
+    if setting is None:
+        return REPO_NOT_FOUND
+    value, source = setting
+    root = _repo.home_path(value)
+    if not root.is_dir():
+        lacks = "that folder does not exist"
+    else:
+        missing = [
+            f"{marker.as_posix()}{'/' if marker == _MARKER_ASSETS else ''}"
+            for marker, present in (
+                (_MARKER_DRIVER, (root / _MARKER_DRIVER).is_file()),
+                (_MARKER_ASSETS, (root / _MARKER_ASSETS).is_dir()),
+            )
+            if not present
+        ]
+        if not missing:  # it is a clone (called although repo_root() found it)
+            return REPO_NOT_FOUND
+        lacks = f"it has no {' and no '.join(missing)}"
+    return (
+        f"INODEFENCE_HOME ({source}) is {value!r} -> {root}, which is not an InodeFence clone: "
+        f"{lacks}. targets / verify / explore / replay need one: set INODEFENCE_HOME to the "
+        "clone's root (the folder with scripts/run_target.py and tools/), or unset it to use an "
+        "editable install's own clone. --version, doctor, status and summary work without it."
+    )
+
+
 def _is_repo(root: Path) -> bool:
     return _repo.is_repo(root)
 

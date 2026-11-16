@@ -35,10 +35,17 @@ MARKER_ASSETS = Path("tools")
 #: ``src/inodefence/drivers/repo.py`` -> the checkout root, in a source / editable layout.
 _CHECKOUT = Path(__file__).resolve().parents[3]
 
+#: The refusal for driver code run directly (``python -m inodefence.drivers.…``) from outside a
+#: clone, e.g. from an installed wheel. ``{code}`` is the running driver code's folder. A driver
+#: run directly uses only its own clone, so the advice must not be "set INODEFENCE_HOME" or "run
+#: from the clone": neither is consulted here.
 REPO_NOT_FOUND_HINT = (
-    "InodeFence repository not found: the target drivers need a clone (tools/ and the controller "
-    "launchers under scripts/ are not packaged). Run from the clone, install it with "
-    "`pip install -e .`, or set INODEFENCE_HOME to the clone's root."
+    "InodeFence repository not found for this driver: its code at {code} is not inside a clone, "
+    "and a driver run directly uses only its own clone's tools/ and scripts/ (INODEFENCE_HOME "
+    "and the working directory are not consulted here; the build assets and controller "
+    "launchers are not packaged). Run it as `inodefence verify / explore / replay`, which runs "
+    "the drivers of the clone chosen by INODEFENCE_HOME or by an editable install "
+    "(`pip install -e .` in the clone)."
 )
 
 #: Where a clone keeps the packaged drivers (absent in a clone from before they moved there).
@@ -82,17 +89,40 @@ def configured_home() -> str | None:
     return setting.value if setting is not None else None
 
 
+def home_setting() -> tuple[str, str] | None:
+    """``(value, where it was set)`` of ``INODEFENCE_HOME``, or ``None`` when it is not set.
+
+    The same precedence as :func:`repo_root`: the environment first, then the user config file.
+    """
+    if os.environ.get("INODEFENCE_HOME"):
+        return os.environ["INODEFENCE_HOME"], "environment"
+    value = configured_home()
+    return (value, "user config file") if value else None
+
+
+def home_path(value: str) -> Path:
+    """The clone an ``INODEFENCE_HOME`` value names, as an absolute path.
+
+    Absolute because the CLI runs the driver with the clone as its working directory and the
+    clone's ``src`` on ``PYTHONPATH``: a relative path would be re-read from inside the clone,
+    miss its ``src`` and silently run whichever ``inodefence`` is installed instead. A relative
+    value is taken against the working directory the command was started in.
+    """
+    return Path(value).expanduser().absolute()
+
+
 def repo_root() -> Path | None:
     """Which clone the CLI runs (``locate`` only), or ``None``; never a guess.
 
-    ``INODEFENCE_HOME`` wins when set (environment first, then the user config file). Otherwise,
-    in an editable install this file is ``<repo>/src/inodefence/drivers/repo.py``, so its
-    ``parents[3]`` is the repository root; a wheel install has no such layout and returns
-    ``None``. The working directory is not consulted (as in ``locate`` before the move).
+    ``INODEFENCE_HOME`` wins when set (environment first, then the user config file); it is made
+    absolute (:func:`home_path`). Otherwise, in an editable install this file is
+    ``<repo>/src/inodefence/drivers/repo.py``, so its ``parents[3]`` is the repository root; a
+    wheel install has no such layout and returns ``None``. The working directory is not consulted
+    as a fallback (as in ``locate`` before the move).
     """
-    env = os.environ.get("INODEFENCE_HOME") or configured_home()
-    if env:
-        root = Path(env).expanduser()
+    setting = home_setting()
+    if setting is not None:
+        root = home_path(setting[0])
         return root if is_repo(root) else None
     return _CHECKOUT if is_repo(_CHECKOUT) else None
 
@@ -116,11 +146,7 @@ def require_repository() -> Path:
     """
     if is_repo(_CHECKOUT):
         return _CHECKOUT
-    raise RuntimeError(
-        f"{REPO_NOT_FOUND_HINT} (The running driver code at {Path(__file__).resolve().parent} is "
-        "not inside a clone; run it as `inodefence verify / explore / replay`, which runs the "
-        "chosen clone's own drivers.)"
-    )
+    raise RuntimeError(REPO_NOT_FOUND_HINT.format(code=Path(__file__).resolve().parent))
 
 
 def require_repository_or_exit(parser: object, status: int) -> Path:

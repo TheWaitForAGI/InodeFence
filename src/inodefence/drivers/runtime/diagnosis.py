@@ -42,6 +42,7 @@ class Stage(enum.StrEnum):
     CONTROLLER_SETUP = "controller-setup"  # the launcher ran but left no loop report
     LOOP = "loop"  # the loop started and stopped (its report says aborted)
     CLEANUP = "cleanup"  # the loop finished, the launcher did not: cleanup state unknown
+    UNKNOWN = "UNKNOWN"  # the files cannot say where it stopped (e.g. exit 0 and no report)
 
 
 @dataclass(frozen=True)
@@ -162,6 +163,16 @@ def run_diagnosis(
                 Stage.LOOP,
                 UNKNOWN,
                 "the launcher exited 0 but its loop report is not readable JSON",
+                present,
+                result_written,
+            )
+        if not report.is_file():
+            # Exit 0 with no report is an ERROR (no result is published); where it stopped cannot
+            # be told from the files, so the stage is not guessed.
+            return Diagnosis(
+                Stage.UNKNOWN,
+                UNKNOWN,
+                "the launcher exited 0 but left no loop report; no result is published",
                 present,
                 result_written,
             )

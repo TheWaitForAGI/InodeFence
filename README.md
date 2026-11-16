@@ -616,7 +616,7 @@ inodefence summary ~/inodefence-explore/target-explore/<실행>-result/result.js
 | --- | --- | --- | --- | --- | --- |
 | 0 | PASS | 재실행 완료 | 정상 | FAIL 없음(`UNKNOWN`은 있을 수 있음) | 정상 |
 | 1 | FAIL(위반 판정) | 재실행 미완료(끝난 회차는 남음) | — | FAIL 하나 이상 | — |
-| 2 | ERROR 판정(만) | 같은 입력·조건으로 재실행 불가 | 사용법 오류 | 사용법 오류 | 읽기·쓰기 실패 / 사용법 오류 |
+| 2 | ERROR 판정. `explore`는 컨트롤러가 시작된 뒤의 중단(런처 비정상 종료, 루프 abort, 루프 보고서 없음)도 2이며 결과를 발행하지 않음(네 대상 공통) | 같은 입력·조건으로 재실행 불가 | 사용법 오류 | 사용법 오류 | 읽기·쓰기 실패 / 사용법 오류 |
 | 3 | 실행 전 거부 — 판정 없음: 사용법 오류(없는 옵션 값, `--budget 0` 등), 저장소 안 `--out`, `--auto-prepare` 없음, 설정 파일 오류, 이미지·준비 문제, Docker가 이미지 질문에 답하지 않음(준비하지 않음), 같은 `--out`에 이 실행의 결과가 이미 있음(덮어쓰지 않음) 등 | 사용법 오류(`--rounds 0` 등), 이미지가 이 호스트에 없음, Docker가 이미지 질문에 답하지 않음, 같은 실행 이름의 컨트롤러·볼륨이 이미 있음, 저장소 안 폴더, 저장소를 못 찾음, 설정 파일 오류 | 저장소를 못 찾음, 설정 파일 오류 | — | — |
 | 4 | — | 이 대상은 재실행 미지원 | — | — | — |
 
@@ -648,7 +648,7 @@ inodefence summary ~/inodefence-explore/target-explore/<실행>-result/result.js
   재실행 절차이며, node-tar만 지원하고 탐색과 같은 STRICT 실행 세션으로 돕니다.
 - **인프라 중단의 표시:** `explore`가 깨끗하게 끝나지 않으면(런처 종료 코드가 0이 아니거나 중단됨) 종료 코드와
   판정은 그대로 두고 stderr에 한 줄을 더 냅니다.
-  `TARGET-EXPLORE DIAGNOSIS: stage=<controller-setup|loop|cleanup> category=<범주> result=<written|not-written> evidence=<남은 파일>; <설명>`.
+  `TARGET-EXPLORE DIAGNOSIS: stage=<controller-setup|loop|cleanup|UNKNOWN> category=<범주> result=<written|not-written> evidence=<남은 파일>; <설명>`.
   (런처 실행 전의 Docker 무응답·이미지 판정 불가는 이 줄이 아니라 `TARGET-EXPLORE SETUP:` 사유로 나옵니다.)
   범주는 컨트롤러 보고서의 `aborted.category`(공유 abort 분류기 값, 예: `cleanup_inspect`), 없으면 같은 분류기로
   분류한 사유, Docker가 답하지 않으면 `daemon-timeout`·`daemon-unreachable`, 그래도 모르면 `UNKNOWN`입니다. 루프
@@ -658,13 +658,17 @@ inodefence summary ~/inodefence-explore/target-explore/<실행>-result/result.js
   전에 `TARGET-EXPLORE SETUP: run-resources-exist: …`, 종료 3으로 멈춥니다(런처가 원래 종료 1로 멈추던 조건을
   앞당긴 것이며, 아무것도 지우지 않습니다). 진단은 런처의 종료 코드와 남은 파일만 보고 판단합니다. 런처의 터미널 출력은 캡처하거나
   해석하지 않으므로, 출력에만 나온 원인(예: node-tar 런처의 `INODEFENCE_CLEANUP_UNKNOWN`)은 범주 `UNKNOWN`으로
-  남습니다. python-tarfile 탐색은 루프 도중 인프라 abort도 `TARGET-EXPLORE SETUP`, 종료 3으로 보고합니다
-  (node-tar·oras-go는 `ERROR`, 종료 2). 종료 코드를 맞출지는 정해지지 않았으며 지금은 바꾸지 않았습니다.
+  남습니다. 종료 코드는 네 대상이 같습니다: 컨트롤러가 시작된 뒤의 중단(런처 비정상 종료, 루프 abort,
+  루프 보고서 없음)은 `TARGET-EXPLORE ERROR`, 종료 2이고 결과를 발행하지 않으며(루프 보고서가 완주했어도
+  런처가 실패하면 발행하지 않음), 실행 전 거부만 종료 3입니다. 런처가 0으로 끝났는데 루프 보고서가 없으면
+  `stage=UNKNOWN`(어디서 멈췄는지 파일로는 알 수 없음)으로 진단하고 역시 종료 2입니다. python-tarfile에서 종료 3으로
+  남은 경우는 둘입니다: 루프 보고서에 단계가 하나도 없음, 보고서가 다른 runtime·extraction filter의 것. 0.3 이전
+  python-tarfile은 루프 abort와 보고서 없음을 `SETUP` 3으로, 완주 보고서 + 런처 실패를 PASS로 보고했습니다.
 - **decompress·oras-go·python-tarfile 런처의 정리:** 이 세 셸 런처는 컨트롤러·볼륨 제거 실패를 종료 코드에
   반영하지 않고, 소유 라벨도 붙이지 않으며, docker 호출에 시간 제한이 없습니다. 그래서 정리 상태가 불명확해도
   실행이 성공으로 끝날 수 있습니다. 제품 계층은 실행이 끝날 때마다 그 실행의 컨트롤러·볼륨 이름이 아직 있는지
   조회해 `RUNTIME DIAGNOSTIC WARN leftover-resources`로 알리고(`inodefence doctor`도 같은 이름으로 조회),
-  거기까지만 합니다. 지우지 않으며, 런처 수정은 격리 인접 변경이라 이번에 하지 않았습니다.
+  거기까지만 합니다. 지우지 않으며, 런처 수정은 격리 인접 변경이라 방향만 승인됐고 실행은 보류 중입니다(2026-11-16 결정).
 - **미공개로 보이는 문제를 찾으면 공개 저장소에 올리기 전에 해당 추출기의 유지보수자에게 먼저
   알립니다**(책임 있는 공개). 위반 입력과 결과는 저장소 밖 출력 폴더에만 두고, 위반 입력 자체를
   커밋하지 않습니다.

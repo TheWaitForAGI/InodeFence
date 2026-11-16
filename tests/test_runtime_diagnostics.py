@@ -126,7 +126,13 @@ def test_a_clean_launch_prints_nothing_but_still_checks_its_names(
 
 def test_leftover_names_after_a_launch_are_a_warning(tmp_path, shipped, monkeypatch, capsys):
     monkeypatch.setattr(health, "run_leftovers", lambda c, v, **kw: [f"this run's volume {v} x"])
-    session = _session_run(tmp_path, Runner(0), result_written=True)
+
+    def write():  # a clean run: exit 0 and a complete report, so only the leftover is reported
+        folder = tmp_path / "target-explore"
+        folder.mkdir(parents=True)
+        (folder / "inodefence-python-tarfile-explore-r.json").write_text('{"case_records": []}')
+
+    session = _session_run(tmp_path, Runner(0, write=write), result_written=True)
     (finding,) = session.launches[0].findings
     assert (finding.severity, finding.code) == ("warn", "leftover-resources")
     assert (

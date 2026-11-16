@@ -87,6 +87,15 @@ def test_clean_run_has_no_diagnosis(tmp_path: Path) -> None:
     assert diagnosis.run_diagnosis(0, report, result_written=True) is None
 
 
+def test_exit_0_without_a_report_is_diagnosed_without_guessing_the_stage(tmp_path: Path) -> None:
+    found = diagnosis.run_diagnosis(0, tmp_path / "missing.json")
+    assert found is not None
+    assert (found.stage.value, found.category, found.result_written) == ("UNKNOWN", UNKNOWN, False)
+    assert "the launcher exited 0 but left no loop report" in found.detail
+    line = found.line("TARGET-EXPLORE")
+    assert "stage=UNKNOWN category=UNKNOWN result=not-written evidence=none" in line
+
+
 def test_unreadable_report(tmp_path: Path) -> None:
     report = tmp_path / "r.json"
     report.write_text("{not json", encoding="utf-8")

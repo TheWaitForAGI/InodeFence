@@ -179,7 +179,9 @@ class RuntimeSession:
             return
         for finding in findings:
             record.findings.append(finding)
-            if finding.severity != "info":
+            # warn: one stderr line here. block: the driver prints it once as its SETUP refusal
+            # (LaunchBlocked); info: recorded only.
+            if finding.severity == "warn":
                 print(
                     f"RUNTIME DIAGNOSTIC {finding.severity.upper()} {finding.code}: "
                     f"{finding.message}",

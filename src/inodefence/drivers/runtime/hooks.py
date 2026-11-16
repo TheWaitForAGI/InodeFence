@@ -6,7 +6,8 @@ launcher: each observer gets a :class:`LaunchRequest` right before the launcher 
 returns :class:`Finding` s; ``classify`` names how a launch ended. The rules that keep STRICT
 unchanged:
 
-* findings are recorded (runtime record; ``warn`` / ``block`` also one stderr line each);
+* findings are recorded (runtime record); a ``warn`` is also one stderr line, a ``block`` is
+  printed once, by the driver, as its setup refusal;
 * only a ``block`` finding *before* the launch stops it -- :class:`LaunchBlocked`, a setup error
   (exit 3) -- and a block is added only for a condition that already fails today, moved earlier
   (agreed with the integrator first);

@@ -292,7 +292,9 @@ def test_a_block_finding_stops_the_launch_as_a_setup_error(
     runner = Recorder()
     assert _main(tmp_path, monkeypatch, runner) == 3
     assert runner.calls == []
-    assert "TARGET-EXPLORE SETUP: stale: stale controller" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert err.count("stale controller") == 1  # printed once, as the driver's setup refusal
+    assert "TARGET-EXPLORE SETUP: stale: stale controller" in err
     (record,) = _records(tmp_path)
     assert record["launches"][0]["classification"] == "blocked"
     assert issubclass(LaunchBlocked, ValueError)
@@ -422,3 +424,14 @@ def test_explore_checks_docker_first_like_verify(
     assert rte.main(argv) == 3
     assert "TARGET-EXPLORE SETUP: docker daemon not reachable; start it" in capsys.readouterr().err
     assert runner.calls == [] and not (tmp_path / "out").exists()
+
+
+def test_a_launch_without_a_session_is_never_blocked(monkeypatch: pytest.MonkeyPatch) -> None:
+    # node-tar replay and decompress's own entry launch with no session: no observer runs there,
+    # so no block can arise on a path whose driver would not print it as its setup refusal
+    monkeypatch.setattr(
+        diagnostics, "OBSERVERS", (Observer([Finding("block", "stale", "stale controller")]),)
+    )
+    runner = Recorder()
+    assert run_launcher(SCRIPT, ["replay"], runner=runner, env=dict(ENV)).returncode == 0
+    assert len(runner.calls) == 1

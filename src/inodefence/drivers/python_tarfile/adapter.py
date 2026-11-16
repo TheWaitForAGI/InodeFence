@@ -58,6 +58,7 @@ from typing import TYPE_CHECKING, Any
 from inodefence.drivers import image_prepare as ip
 from inodefence.drivers import regression_check as rc
 from inodefence.drivers.lazy_import import LazyModule
+from inodefence.drivers.repo import require_repository_or_exit
 from inodefence.drivers.run_target import (
     RESULT_NAME,
     CaseRun,
@@ -187,6 +188,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, help="output directory (required unless --dry-run)")
     parser.add_argument("--dry-run", action="store_true", help="print the plan, run nothing")
     args = parser.parse_args(argv)
+    require_repository_or_exit(parser, 2)
     runtimes, filters = args.runtime_version, args.extraction_filter
     for runtime in runtimes:
         if pti.RUNTIME_RE.fullmatch(runtime) is None:

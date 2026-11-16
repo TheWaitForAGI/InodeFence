@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING, Any
 
 from inodefence.builder import build_tar as build_case_tar
 from inodefence.drivers.lazy_import import LazyModule
+from inodefence.drivers.repo import require_repository_or_exit
 from inodefence.model import ArchiveCase, ArchiveEntry, EntryType
 
 if TYPE_CHECKING:
@@ -180,6 +181,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", help="also write the JSON summary to this path")
     args = parser.parse_args(argv)
     _validate_version(parser, args.tar_version)
+    require_repository_or_exit(parser, 2)
 
     if args.dry_run:
         summary = dry_run(args.tar_version)

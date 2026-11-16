@@ -40,7 +40,7 @@ from inodefence.case_replay import (
     publish_replay,
     replay_brief,
 )
-from inodefence.drivers.repo import code_checkout
+from inodefence.drivers.repo import code_checkout, require_repository_or_exit
 from inodefence.drivers.run_target import TARGETS, RefusalParser, _git, load_adapter
 
 REPO_ROOT = code_checkout()
@@ -90,6 +90,7 @@ def main(argv: list[str] | None = None, *, runner=subprocess.run) -> int:
         help="check everything (input, image, support) and print the plan; run nothing",
     )
     args = parser.parse_args(argv)
+    require_repository_or_exit(parser, 3)
 
     try:
         request = load_replay_request(args.case_dir.expanduser(), rounds=args.rounds)

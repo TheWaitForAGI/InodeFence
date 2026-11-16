@@ -62,7 +62,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from inodefence.drivers.repo import code_checkout
+from inodefence.drivers.repo import code_checkout, require_repository_or_exit
 
 REPO_ROOT = code_checkout()
 TOOLS_DIR = REPO_ROOT / "tools" / "oras-go"
@@ -699,6 +699,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--version", required=True)
     parser.add_argument("--image", required=True)
     args = parser.parse_args(argv)
+    require_repository_or_exit(parser, 2)
     try:
         prepare(args.version, args.image)
     except RegistryPrepareError as error:

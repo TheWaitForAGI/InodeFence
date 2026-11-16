@@ -41,7 +41,7 @@ from typing import Any
 
 from inodefence.drivers.decompress import adapter as dt
 from inodefence.drivers.launcher import launcher_path, run_launcher
-from inodefence.drivers.repo import code_checkout
+from inodefence.drivers.repo import code_checkout, require_repository_or_exit
 from inodefence.drivers.run_target import (
     ExploreOptions,
     ExploreOutcome,
@@ -426,6 +426,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--image-tag-suffix", default="")
     parser.add_argument("--dry-run", action="store_true", help="print the plan; no network/docker")
     args = parser.parse_args(argv)
+    require_repository_or_exit(parser, 2)
     if args.budget < 1:
         parser.error("--budget must be positive")
     if args.dry_run:

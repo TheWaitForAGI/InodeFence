@@ -71,7 +71,7 @@ from typing import Any, NoReturn
 
 from inodefence.case_replay import ReplayHook
 from inodefence.drivers import regression_check as rc
-from inodefence.drivers.repo import code_checkout
+from inodefence.drivers.repo import code_checkout, require_repository_or_exit
 from inodefence.target_result import (
     RUN_ERROR,
     CaseVerdict,
@@ -580,6 +580,7 @@ def main(argv: list[str] | None = None) -> int:
         help="append this to every cell image tag (development; existing tags are untouched)",
     )
     args = parser.parse_args(argv)
+    require_repository_or_exit(parser, 3)
     if args.image_tag_suffix and _TAG_SUFFIX_RE.fullmatch(args.image_tag_suffix) is None:
         parser.error("--image-tag-suffix must be 1-40 characters of [A-Za-z0-9_.-]")
     versions, filters = args.version, args.extraction_filter

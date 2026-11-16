@@ -44,7 +44,7 @@ from typing import Any
 
 from inodefence.drivers import npm_registry as npm
 from inodefence.drivers.npm_registry import EXACT, REGISTRY, RegistryPrepareError, Runner
-from inodefence.drivers.repo import code_checkout
+from inodefence.drivers.repo import code_checkout, require_repository_or_exit
 
 REPO_ROOT = code_checkout()
 TOOLS_DIR = REPO_ROOT / "tools" / "decompress"
@@ -384,6 +384,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--spec", required=True, help="<package>@<X.Y.Z>")
     parser.add_argument("--image", required=True)
     args = parser.parse_args(argv)
+    require_repository_or_exit(parser, 2)
     try:
         prepare(args.spec, args.image)
     except RegistryPrepareError as error:

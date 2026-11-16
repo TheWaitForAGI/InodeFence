@@ -24,7 +24,7 @@ import json
 import sys
 from pathlib import Path
 
-from inodefence.drivers.repo import code_checkout
+from inodefence.drivers.repo import code_checkout, require_repository_or_exit
 from inodefence.drivers.run_target import (
     DEFAULT_MAX_UNJUDGED_RATIO,
     TARGETS,
@@ -127,6 +127,7 @@ def main(argv: list[str] | None = None) -> int:
             f"--{opt.name}", required=opt.required, choices=opt.choices, help=opt.description
         )
     args = parser.parse_args(argv)
+    require_repository_or_exit(parser, 3)
 
     target_options = {
         opt.name: getattr(args, opt.name.replace("-", "_"))

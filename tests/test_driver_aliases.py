@@ -133,27 +133,96 @@ def test_repo_resolver_is_a_leaf() -> None:
     assert inodefence_imports <= {"inodefence.user_config"}
 
 
-def test_repository_root_is_the_checkout_the_scripts_drivers_used() -> None:
-    from inodefence.drivers import run_target
-    from inodefence.drivers.repo import is_repo, repository_root
+def _fake_clone(path: Path) -> Path:
+    (path / "scripts").mkdir(parents=True)
+    (path / "scripts" / "run_target.py").write_text("")
+    (path / "tools").mkdir()
+    return path
 
+
+def test_constants_are_the_checkout_the_scripts_drivers_used(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from inodefence.drivers import repo, run_target
+
+    monkeypatch.delenv("INODEFENCE_HOME", raising=False)
+    monkeypatch.setattr(repo, "configured_home", lambda: None)
     # before the move: Path(scripts/run_target.py).parents[1], i.e. this checkout
-    assert repository_root() == REPO == run_target.REPO_ROOT
-    assert is_repo(REPO) and not is_repo(REPO / "src")
+    assert repo.code_checkout() == REPO == run_target.REPO_ROOT
+    assert repo.repository_root() == REPO == repo.require_repository()
+    assert repo.is_repo(REPO) and not repo.is_repo(REPO / "src")
 
 
-def test_repository_root_prefers_the_running_checkout_over_inodefence_home(
+def test_one_resolution_order_for_the_cli_and_the_drivers(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from inodefence.drivers import repo
 
-    other = tmp_path / "other-clone"
-    (other / "scripts").mkdir(parents=True)
-    (other / "scripts" / "run_target.py").write_text("")
-    (other / "tools").mkdir()
+    other = _fake_clone(tmp_path / "other-clone")
     monkeypatch.setenv("INODEFENCE_HOME", str(other))
-    assert repo.repo_root() == other  # the CLI's view: INODEFENCE_HOME wins
-    assert repo.repository_root() == REPO  # the drivers' view: the code's own checkout
+    assert repo.repo_root() == other == repo.repository_root()  # INODEFENCE_HOME first, both
+    monkeypatch.delenv("INODEFENCE_HOME")
+    monkeypatch.setattr(repo, "configured_home", lambda: None)
+    assert repo.repo_root() == REPO == repo.repository_root()  # then the code's checkout
+    monkeypatch.setattr(repo, "_CHECKOUT", tmp_path / "site-packages")
+    monkeypatch.chdir(other)
+    assert repo.repo_root() is None  # the CLI never guesses from the cwd
+    assert repo.repository_root() == other  # the drivers then try the cwd
+    monkeypatch.chdir(tmp_path)
+    with pytest.raises(RuntimeError, match="repository not found"):
+        repo.repository_root()
+
+
+def test_invariant_refuses_code_from_another_tree(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from inodefence.drivers import repo
+
+    other = _fake_clone(tmp_path / "other-clone")
+    monkeypatch.setenv("INODEFENCE_HOME", str(other))  # resolves to a tree that is not this code
+    with pytest.raises(RuntimeError, match="different trees"):
+        repo.require_repository()
+    monkeypatch.setenv("INODEFENCE_HOME", str(REPO))  # the code's own tree passes
+    assert repo.require_repository() == REPO
+
+
+def test_refusal_is_a_setup_error_before_anything_runs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from inodefence.drivers import run_target, run_target_explore, run_target_replay
+
+    monkeypatch.setenv("INODEFENCE_HOME", str(_fake_clone(tmp_path / "other-clone")))
+    argv = ["--target", "node-tar", "--version", "7.5.2", "--out", str(tmp_path / "out")]
+    for main, args in (
+        (run_target.main, argv),
+        (run_target_explore.main, [*argv, "--auto-prepare", "--budget", "5"]),
+        (run_target_replay.main, [str(tmp_path / "case")]),
+    ):
+        with pytest.raises(SystemExit) as stop:
+            main(args)
+        assert stop.value.code == 3
+        assert "different trees" in capsys.readouterr().err
+    assert not (tmp_path / "out").exists()
+
+
+def test_cli_style_subprocess_passes_the_invariant(tmp_path: Path) -> None:
+    # what locate.run_driver does: cwd = root, PYTHONPATH = root/src:root, INODEFENCE_HOME = root
+    env = {**os.environ, "PYTHONPATH": os.pathsep.join([str(REPO / "src"), str(REPO)])}
+    env["INODEFENCE_HOME"] = str(REPO)
+    probe = (
+        "from inodefence.drivers import repo, run_target as r;"
+        "print(repo.require_repository(), r.REPO_ROOT, r.engine_provenance(None).engine_sha)"
+    )
+    done = subprocess.run(
+        [sys.executable, "-c", probe], cwd=REPO, env=env, capture_output=True, text=True
+    )
+    assert done.returncode == 0, done.stderr
+    root, constant, sha = done.stdout.split()
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True, check=True
+    ).stdout.strip()
+    # the recorded engine revision is the running code's tree's
+    assert root == constant == str(REPO) and sha == head
 
 
 def test_launcher_passes_the_hook_call_through_unchanged(tmp_path: Path) -> None:
@@ -207,6 +276,79 @@ def test_targets_registry_points_into_the_package() -> None:
     for name, spec in run_target.TARGETS.items():
         module, _, attribute = spec.partition(":")
         assert run_target.load_adapter(name) is getattr(importlib.import_module(module), attribute)
+
+
+# ---- a wheel-like install: the package alone, no clone (no experiments/, scripts/, tools/) ----
+
+_WHEEL_PROBE = r"""
+import importlib, json, pathlib, pkgutil, sys
+import inodefence, inodefence.drivers
+names = sorted(
+    m.name for m in pkgutil.walk_packages(inodefence.drivers.__path__, "inodefence.drivers.")
+)
+for name in names + ["inodefence.cli"]:
+    importlib.import_module(name)
+from inodefence.drivers import repo, run_target
+code = None
+try:
+    run_target.main(["--target", "node-tar", "--version", "7.5.2", "--out", "out"])
+except SystemExit as stop:
+    code = stop.code
+package_tree = pathlib.Path(inodefence.__file__).resolve().parents[2]
+print(json.dumps({
+    "modules": len(names),
+    "experiments": any(m == "experiments" or m.startswith("experiments.") for m in sys.modules),
+    "scripts": any(m == "scripts" or m.startswith("scripts.") for m in sys.modules),
+    "constant_is_code_tree": run_target.REPO_ROOT == package_tree,
+    "main_exit": code,
+}))
+"""
+
+
+def _wheel_like(tmp_path: Path, *, cwd: Path, home: Path | None = None) -> dict[str, object]:
+    import json
+    import shutil
+
+    site = tmp_path / "site"
+    if not site.exists():
+        shutil.copytree(
+            REPO / "src" / "inodefence",
+            site / "inodefence",
+            ignore=shutil.ignore_patterns("__pycache__"),
+        )
+    env = {k: v for k, v in os.environ.items() if not k.startswith(("PYTHON", "INODEFENCE"))}
+    env["PYTHONPATH"] = str(site)
+    env["HOME"] = str(tmp_path)  # no user config file
+    if home is not None:
+        env["INODEFENCE_HOME"] = str(home)
+    done = subprocess.run(  # -S: no site-packages, so the editable install cannot leak in
+        [sys.executable, "-S", "-c", _WHEEL_PROBE],
+        cwd=cwd,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert done.returncode == 0, done.stderr
+    return {**json.loads(done.stdout.splitlines()[-1]), "stderr": done.stderr}
+
+
+def test_wheel_like_install_imports_every_driver_without_a_clone(tmp_path: Path) -> None:
+    probe = _wheel_like(tmp_path, cwd=tmp_path)
+    assert int(str(probe["modules"])) >= 25
+    assert probe["experiments"] is False and probe["scripts"] is False
+    assert probe["constant_is_code_tree"] is True
+    assert probe["main_exit"] == 3  # refused before any target work: no repository
+    assert "repository not found" in str(probe["stderr"])
+
+
+@pytest.mark.parametrize("via", ["cwd", "INODEFENCE_HOME"])
+def test_wheel_like_code_never_runs_against_a_clone(tmp_path: Path, via: str) -> None:
+    # A clone exists (this checkout, by cwd or INODEFENCE_HOME) but the running code is the
+    # installed copy: refused, so code, assets and the recorded engine revision never mix trees.
+    probe = _wheel_like(tmp_path, cwd=REPO, home=REPO if via == "INODEFENCE_HOME" else None)
+    assert probe["main_exit"] == 3
+    assert "different trees" in str(probe["stderr"])
 
 
 def test_python_tarfile_filters_mirror_the_repro_program() -> None:

@@ -59,7 +59,7 @@ from inodefence.drivers.npm_registry import (
     lock_specs,
     npm_failure,
 )
-from inodefence.drivers.repo import code_checkout
+from inodefence.drivers.repo import code_checkout, require_repository_or_exit
 
 REPO_ROOT = code_checkout()
 DOCKERFILE = REPO_ROOT / "tools" / "node-tar" / "effect" / "Dockerfile"
@@ -379,6 +379,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--version", required=True)
     parser.add_argument("--image", required=True)
     args = parser.parse_args(argv)
+    require_repository_or_exit(parser, 2)
     try:
         prepare(args.version, args.image)
     except RegistryPrepareError as error:

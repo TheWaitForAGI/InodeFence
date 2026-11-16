@@ -81,6 +81,10 @@ class ReplayRequest:
     #: The original step: run number, termination, verdicts, fingerprints, observation_complete.
     original: dict[str, Any]
     rounds: int
+    #: The product driver's runtime session (``inodefence.drivers.runtime.session``) the hook
+    #: launches through, or ``None``. Never serialized into the replay record or the controller
+    #: input; not part of equality.
+    runtime: Any = field(default=None, compare=False)
 
 
 @dataclass(frozen=True, slots=True)

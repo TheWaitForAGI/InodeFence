@@ -9,7 +9,8 @@ One observer, :class:`HealthObserver`, read-only throughout (nothing is removed 
 * **before** a launch: this run's controller / volume name already taken (or Docker cannot say)
   -> ``block``. The launcher stops on that today anyway (exit 1, after building images); the block
   only moves the same refusal first (a setup error, exit 3).
-* **after** a launch: one ``<PREFIX> DIAGNOSIS:`` line on stderr when the launch did not end
+* **after** a launch: one ``<PREFIX> DIAGNOSIS:`` line on stderr (explore only: a replay's driver
+  diagnoses it from the replay report and prints the one ``REPLAY DIAGNOSIS``) when it did not end
   cleanly -- the stage it reached, the category (the shared abort classifier's, or
   ``daemon-unreachable`` / ``daemon-timeout``, else ``UNKNOWN``) and which evidence files exist --
   plus a ``warn`` when this run's controller / volume is still there or its state is unknown. The
@@ -82,9 +83,13 @@ class HealthObserver:
 
     def after(self, outcome: LaunchOutcome) -> list[Finding]:
         findings: list[Finding] = []
-        failed = outcome.returncode != 0
-        daemon = health.probe_daemon() if failed else None
-        diagnosis = _diagnose(outcome, daemon)
+        # A replay is diagnosed by its driver from the replay report (rounds, stop_reason) into
+        # replay.json and one "REPLAY DIAGNOSIS" line; here only its leftovers are checked.
+        replay = getattr(outcome.request, "kind", "explore") == "replay"
+        diagnosis = None
+        if not replay:
+            failed = outcome.returncode != 0
+            diagnosis = _diagnose(outcome, health.probe_daemon() if failed else None)
         if diagnosis is not None:
             run_id = outcome.request.run_id or "<run>"
             print(

@@ -55,6 +55,11 @@ from inodefence.drivers.repo import code_checkout, require_repository_or_exit
 from inodefence.drivers.run_target import TARGETS, RefusalParser, _git, load_adapter
 from inodefence.drivers.runtime import health
 from inodefence.drivers.runtime.diagnosis import replay_diagnosis
+from inodefence.drivers.runtime.hooks import LaunchBlocked
+from inodefence.drivers.runtime.session import RuntimeSession
+
+#: The session's runtime record, kept in the published replay folder's ``evidence/``.
+RUNTIME_RECORD_NAME = "runtime-record.json"
 
 REPO_ROOT = code_checkout()
 
@@ -91,7 +96,11 @@ def _evidence_report(evidence: Path) -> Path | None:
     """The one controller report (``*.json``) the hook copied back, if there is exactly one."""
     if not evidence.is_dir():
         return None
-    reports = sorted(path for path in evidence.iterdir() if path.suffix == ".json")
+    reports = sorted(
+        path
+        for path in evidence.iterdir()
+        if path.suffix == ".json" and path.name != RUNTIME_RECORD_NAME
+    )
     return reports[0] if len(reports) == 1 else None
 
 
@@ -182,15 +191,35 @@ def main(argv: list[str] | None = None, *, runner=subprocess.run) -> int:
         return 0
 
     started = datetime.now(UTC)
+    # STRICT, the same session type explore launches through; the hook gets it on the request.
+    session = new_session(request.target)
+    request = dataclasses.replace(request, runtime=session)
     with tempfile.TemporaryDirectory(prefix="inodefence-replay-") as work:
         try:
             run = adapter.replay(request, Path(work))
             failure = None
+        except LaunchBlocked as error:
+            # Nothing ran (a condition the launcher would refuse anyway, checked first): no
+            # replay folder is published. One line, exit 3 like the other "nothing ran" stops.
+            session.finish(result_written=False)
+            print(f"REPLAY STOPPED: {error}. Nothing was run.", file=sys.stderr)
+            return 3
         except Exception as error:  # noqa: BLE001 -- the record must say why it stopped
             run = ReplayRun(rounds=(), complete=False)
             failure = f"{type(error).__name__}: {error}"
         finished = datetime.now(UTC)
-        return _record(request, run, failure, started, finished, Path(work) / "evidence")
+        session.finish(result_written=run.complete and failure is None)
+        evidence = Path(work) / "evidence"
+        runtime_record = session.render() if session.launches else None
+        if runtime_record is not None:
+            evidence.mkdir(exist_ok=True)
+            (evidence / RUNTIME_RECORD_NAME).write_text(runtime_record, encoding="utf-8")
+        return _record(request, run, failure, started, finished, evidence, runtime_record)
+
+
+def new_session(target: str) -> RuntimeSession:
+    """The replay's runtime session: STRICT, kind ``replay`` (output prefix ``REPLAY``)."""
+    return RuntimeSession(target=target, kind="replay")
 
 
 def _record(
@@ -200,6 +229,7 @@ def _record(
     started: datetime,
     finished: datetime,
     evidence: Path,
+    runtime_record: str | None = None,
 ) -> int:
     """Build, annotate and publish the replay record (``evidence`` is still on disk here)."""
     if run.engine_commit is None:
@@ -245,6 +275,12 @@ def _record(
             file=sys.stderr,
         )
         print(json.dumps(record, indent=2, sort_keys=True))
+        if runtime_record is not None:
+            print(
+                "REPLAY RUNTIME RECORD (not published; publish failed): "
+                + json.dumps(json.loads(runtime_record), sort_keys=True),
+                file=sys.stderr,
+            )
         return 1
     print(f"{replay_brief(record)}\nrecord: {folder / 'replay.json'}")
     if diagnosis is not None:

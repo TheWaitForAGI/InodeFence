@@ -587,6 +587,13 @@ inodefence replay ~/inodefence-explore/target-explore/<실행>/live/violations/r
 - **실행한 클론:** `replay.repository`에 `checkout_id`(클론 경로의 SHA-256 앞 12자리)와 수정된 추적 파일 수를
   적습니다. 경로 자체는 파일에 쓰지 않습니다. `checkout_id`는 같은 클론인지 구분하는 용도이지 비밀 보호 수단이
   아닙니다(짐작 가능한 경로는 해시를 대조해 알아낼 수 있습니다).
+- **실행 세션:** 재실행도 탐색과 같은 STRICT 실행 세션을 거칩니다. 같은 실행 이름의 컨트롤러·볼륨
+  (`inodefence-local-controller-replay-…`)이 이미 있으면 런처를 돌리지 않고 `REPLAY STOPPED: run-resources-exist: …`
+  한 줄과 종료 3으로 멈추며, 재실행 폴더를 만들지 않습니다. 실행이 끝나면 그 이름이 남았는지 조회해
+  `RUNTIME DIAGNOSTIC WARN leftover-resources`로 알립니다(지우지 않음). 진단 줄은 `REPLAY DIAGNOSIS` 하나뿐입니다.
+  세션 기록(프로필, 실행별 종료 코드·분류·진단 결과, 경로 없음)은 원본 케이스 폴더가 아니라 새 재실행 폴더의
+  `evidence/runtime-record.json`에 같은 발행(한 번의 rename)으로 들어갑니다. 발행에 실패하면 이 기록은
+  stderr에 `REPLAY RUNTIME RECORD (not published; publish failed): …` 한 줄로 나옵니다.
 - 같은 케이스를 같은 초에 두 번 재실행하면 두 번째 폴더는 `….replay-<UTC>-2`가 됩니다(덮어쓰지 않음).
   기록을 폴더에 쓰지 못하면 기록 전체를 표준 출력에 내고 종료 1로 끝냅니다(이미 돈 회차를 잃지 않기 위해).
 
@@ -610,7 +617,7 @@ inodefence summary ~/inodefence-explore/target-explore/<실행>-result/result.js
 | 0 | PASS | 재실행 완료 | 정상 | FAIL 없음(`UNKNOWN`은 있을 수 있음) | 정상 |
 | 1 | FAIL(위반 판정) | 재실행 미완료(끝난 회차는 남음) | — | FAIL 하나 이상 | — |
 | 2 | ERROR 판정(만) | 같은 입력·조건으로 재실행 불가 | 사용법 오류 | 사용법 오류 | 읽기·쓰기 실패 / 사용법 오류 |
-| 3 | 실행 전 거부 — 판정 없음: 사용법 오류(없는 옵션 값, `--budget 0` 등), 저장소 안 `--out`, `--auto-prepare` 없음, 설정 파일 오류, 이미지·준비 문제, Docker가 이미지 질문에 답하지 않음(준비하지 않음), 같은 `--out`에 이 실행의 결과가 이미 있음(덮어쓰지 않음) 등 | 사용법 오류(`--rounds 0` 등), 이미지가 이 호스트에 없음, Docker가 이미지 질문에 답하지 않음, 저장소 안 폴더, 저장소를 못 찾음, 설정 파일 오류 | 저장소를 못 찾음, 설정 파일 오류 | — | — |
+| 3 | 실행 전 거부 — 판정 없음: 사용법 오류(없는 옵션 값, `--budget 0` 등), 저장소 안 `--out`, `--auto-prepare` 없음, 설정 파일 오류, 이미지·준비 문제, Docker가 이미지 질문에 답하지 않음(준비하지 않음), 같은 `--out`에 이 실행의 결과가 이미 있음(덮어쓰지 않음) 등 | 사용법 오류(`--rounds 0` 등), 이미지가 이 호스트에 없음, Docker가 이미지 질문에 답하지 않음, 같은 실행 이름의 컨트롤러·볼륨이 이미 있음, 저장소 안 폴더, 저장소를 못 찾음, 설정 파일 오류 | 저장소를 못 찾음, 설정 파일 오류 | — | — |
 | 4 | — | 이 대상은 재실행 미지원 | — | — | — |
 
 `verify`·`explore`·`replay`는 종료 코드가 결과를 싣기 때문에 사용법 오류를 2로 내지 않고, 아무것도 실행하지
@@ -638,7 +645,7 @@ inodefence summary ~/inodefence-explore/target-explore/<실행>-result/result.js
   케이스당 약 1.88 s 가운데 약 93%가 호스트 docker CLI 호출(케이스당 23회)이었고, 그 비용은 보호 영역인
   격리 실행 경로 안에 있어 제품 계층에서 줄일 수 있는 몫은 약 1.6%였습니다(단일 호스트·3회 측정이며 호스트
   부하에 민감합니다). FAST는 그 경로의 변경과 격리 동등성 검증이 먼저입니다. REPLAY는 프로필이 아니라 위
-  재실행 절차이며, node-tar만 지원하고 STRICT로 돕니다.
+  재실행 절차이며, node-tar만 지원하고 탐색과 같은 STRICT 실행 세션으로 돕니다.
 - **인프라 중단의 표시:** `explore`가 깨끗하게 끝나지 않으면(런처 종료 코드가 0이 아니거나 중단됨) 종료 코드와
   판정은 그대로 두고 stderr에 한 줄을 더 냅니다.
   `TARGET-EXPLORE DIAGNOSIS: stage=<controller-setup|loop|cleanup> category=<범주> result=<written|not-written> evidence=<남은 파일>; <설명>`.

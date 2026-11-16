@@ -28,10 +28,10 @@ import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-
-from experiments.repro import cross_release_identity as cri
+from typing import TYPE_CHECKING
 
 from inodefence.drivers import regression_check as rc
+from inodefence.drivers.lazy_import import LazyModule
 from inodefence.drivers.node_tar import image as node_tar_image
 from inodefence.drivers.node_tar import registry_prepare as registry
 from inodefence.drivers.run_target import (
@@ -43,6 +43,11 @@ from inodefence.drivers.run_target import (
     fixture_plan,
 )
 from inodefence.target_result import Preparation, ResultMode, TargetAxes
+
+if TYPE_CHECKING:
+    from experiments.repro import cross_release_identity as cri
+else:  # imported on first use: a plain import of this driver needs no clone
+    cri = LazyModule("experiments.repro.cross_release_identity")
 
 TARGET = "node-tar"
 #: Images built from a registry-generated lock never share a name with committed-recipe images.

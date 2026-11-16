@@ -207,3 +207,24 @@ def test_targets_registry_points_into_the_package() -> None:
     for name, spec in run_target.TARGETS.items():
         module, _, attribute = spec.partition(":")
         assert run_target.load_adapter(name) is getattr(importlib.import_module(module), attribute)
+
+
+def test_python_tarfile_filters_mirror_the_repro_program() -> None:
+    from experiments.repro import python_tarfile_identity as pti
+
+    from inodefence.drivers.python_tarfile import adapter
+
+    assert adapter.FILTERS == pti.FILTERS
+    assert adapter.EXTRACTION_FILTER_OPTION.choices == pti.FILTERS
+
+
+def test_lazy_repro_reference_patches_the_real_module(monkeypatch: pytest.MonkeyPatch) -> None:
+    from experiments.repro import cross_release_identity
+
+    from inodefence.drivers import regression_check
+
+    original = cross_release_identity.run_one
+    monkeypatch.setattr(regression_check.cri, "run_one", "patched")
+    assert cross_release_identity.run_one == "patched"
+    monkeypatch.undo()
+    assert cross_release_identity.run_one is original

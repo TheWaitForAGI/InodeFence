@@ -54,16 +54,20 @@ import tarfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
-
-from experiments.repro import oras_go_cwd_hardlink as ogh
+from typing import TYPE_CHECKING, Any
 
 from inodefence.drivers import image_prepare as ip
 from inodefence.drivers import regression_check as rc
+from inodefence.drivers.lazy_import import LazyModule
 from inodefence.drivers.oras_go import registry_prepare as proxy
 from inodefence.drivers.repo import repository_root
 from inodefence.drivers.run_target import CaseRun, PrepareStep, RunCell, TargetAdapter, fixture_case
 from inodefence.target_result import Preparation, ResultMode, TargetAxes
+
+if TYPE_CHECKING:
+    from experiments.repro import oras_go_cwd_hardlink as ogh
+else:  # imported on first use: a plain import of this driver needs no clone
+    ogh = LazyModule("experiments.repro.oras_go_cwd_hardlink")
 
 TARGET = "oras-go"
 ARTIFACT_DIR = "d"  # oras-go unpacks a directory artifact under its title (worker artifactDir)

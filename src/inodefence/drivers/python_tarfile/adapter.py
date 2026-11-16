@@ -53,12 +53,11 @@ import subprocess
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
-
-from experiments.repro import python_tarfile_identity as pti
+from typing import TYPE_CHECKING, Any
 
 from inodefence.drivers import image_prepare as ip
 from inodefence.drivers import regression_check as rc
+from inodefence.drivers.lazy_import import LazyModule
 from inodefence.drivers.run_target import (
     RESULT_NAME,
     CaseRun,
@@ -80,6 +79,11 @@ from inodefence.target_result import (
     TargetResult,
     repro_input,
 )
+
+if TYPE_CHECKING:
+    from experiments.repro import python_tarfile_identity as pti
+else:  # imported on first use: a plain import of this driver needs no clone
+    pti = LazyModule("experiments.repro.python_tarfile_identity")
 
 TARGET = "python-tarfile"
 MODE = ResultMode.FIXTURE_REGRESSION
@@ -179,7 +183,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--runtime-version", required=True, action="append", help="exact X.Y.Z; repeatable"
     )
-    parser.add_argument("--extraction-filter", required=True, action="append", choices=pti.FILTERS)
+    parser.add_argument("--extraction-filter", required=True, action="append", choices=FILTERS)
     parser.add_argument("--out", type=Path, help="output directory (required unless --dry-run)")
     parser.add_argument("--dry-run", action="store_true", help="print the plan, run nothing")
     args = parser.parse_args(argv)
@@ -244,6 +248,11 @@ def main(argv: list[str] | None = None) -> int:
 
 # ---- target option: declared once (TargetOption), read by fixture regression and exploration ----
 
+#: The extraction filters the repro program accepts: the same tuple as
+#: ``experiments.repro.python_tarfile_identity.FILTERS`` (a test asserts equality), declared here
+#: so that reading this adapter's options (``inodefence targets``) does not import ``experiments``.
+FILTERS = ("fully_trusted", "data")
+
 #: The extraction-filter axis, declared to the common driver
 #: (``inodefence.drivers.run_target.TargetOption``).
 #: ``make target-run`` may compare several values on one runtime (a setting comparison, never a
@@ -253,7 +262,7 @@ EXTRACTION_FILTER_OPTION = TargetOption(
     "tarfile extraction filter (one value per exploration; target-run compares settings on one "
     "runtime, never versions)",
     required=True,
-    choices=pti.FILTERS,
+    choices=FILTERS,
 )
 #: Values exploration accepts now, and why the others are held.
 EXPLORE_FILTERS = ("data",)

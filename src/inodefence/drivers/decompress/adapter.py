@@ -50,13 +50,12 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
-
-from experiments.repro import decompress_hardlink as dh
+from typing import TYPE_CHECKING, Any
 
 from inodefence.drivers import regression_check as rc
 from inodefence.drivers.decompress import image as decompress_image
 from inodefence.drivers.decompress import registry_prepare as registry
+from inodefence.drivers.lazy_import import LazyModule
 from inodefence.drivers.repo import repository_root
 from inodefence.drivers.run_target import (
     CaseRun,
@@ -67,6 +66,11 @@ from inodefence.drivers.run_target import (
     fixture_plan,
 )
 from inodefence.target_result import Preparation, ResultMode, TargetAxes
+
+if TYPE_CHECKING:
+    from experiments.repro import decompress_hardlink as dh
+else:  # imported on first use: a plain import of this driver needs no clone
+    dh = LazyModule("experiments.repro.decompress_hardlink")
 
 TARGET = "decompress"
 REPO_ROOT = repository_root()

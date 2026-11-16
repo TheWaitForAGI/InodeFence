@@ -29,12 +29,16 @@ import base64
 import json
 import re
 from dataclasses import dataclass
-from typing import Any
-
-from experiments.repro import cross_release_identity as cri
+from typing import TYPE_CHECKING, Any
 
 from inodefence.builder import build_tar as build_case_tar
+from inodefence.drivers.lazy_import import LazyModule
 from inodefence.model import ArchiveCase, ArchiveEntry, EntryType
+
+if TYPE_CHECKING:
+    from experiments.repro import cross_release_identity as cri
+else:  # imported on first use: a plain import of this driver needs no clone
+    cri = LazyModule("experiments.repro.cross_release_identity")
 
 # The external reference the repro node program creates beside extract/ is ext/reference.bin.
 _REF = "../ext/reference.bin"

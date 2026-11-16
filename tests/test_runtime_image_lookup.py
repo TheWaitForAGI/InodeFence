@@ -101,3 +101,31 @@ def test_existing_outputs_refusal_before_a_run(tmp_path) -> None:
     assert explore_result.existing_outputs(report, result) == [report]
     with pytest.raises(explore_result.ResultExistsError, match="nothing was run or overwritten"):
         explore_result.refuse_existing(report, result)
+
+
+def test_docker_not_found_advice_names_the_calling_command(monkeypatch) -> None:
+    monkeypatch.setattr(rt.shutil, "which", lambda name: None)
+    verify = rt.docker_problem()
+    assert verify == (
+        "docker not found on PATH; install Docker (Linux: Docker Engine; Windows: Docker "
+        "Desktop with WSL integration) and run target-run on that host "
+        "(the Dev Container has no docker)"
+    )  # verify's wording, byte for byte
+    explore = rt.docker_advice_for(verify, "inodefence explore")
+    assert explore == verify.replace("run target-run", "run inodefence explore")
+    assert rt.docker_advice_for(None, "x") is None
+
+
+def test_explore_preflight_does_not_tell_the_user_to_run_target_run(monkeypatch, capsys, tmp_path):
+    import inodefence.drivers.run_target_explore as rte
+
+    monkeypatch.setattr(rt.shutil, "which", lambda name: None)
+    monkeypatch.setenv("INODEFENCE_PROG", "inodefence explore")
+    argv = ["--version", "7.5.2", "--auto-prepare", "--out", str(tmp_path / "out")]
+    assert rte.main(argv) == 3
+    err = capsys.readouterr().err
+    assert "TARGET-EXPLORE SETUP: docker not found on PATH" in err
+    assert "run inodefence explore on that host" in err and "target-run" not in err
+    monkeypatch.delenv("INODEFENCE_PROG")
+    assert rte.main(argv) == 3
+    assert "run target-explore on that host" in capsys.readouterr().err

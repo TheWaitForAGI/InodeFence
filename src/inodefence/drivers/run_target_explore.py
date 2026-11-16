@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -33,6 +34,7 @@ from inodefence.drivers.run_target import (
     RefusalParser,
     TargetAdapter,
     auto_prepare_hint,
+    docker_advice_for,
     docker_problem,
     load_adapter,
     resolve_images,
@@ -193,9 +195,10 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 3
 
-    # Docker first, with the same check and wording as verify: a missing or unresponsive daemon
-    # fails here with the fix, instead of later inside preparation or the launcher.
-    problem = docker_problem()
+    # Docker first, with the same check as verify: a missing or unresponsive daemon fails here with
+    # the fix, instead of later inside preparation or the launcher. The advice names this command.
+    command = parser.prog if os.environ.get("INODEFENCE_PROG") else "target-explore"
+    problem = docker_advice_for(docker_problem(), command)
     if problem is not None:
         print(f"TARGET-EXPLORE SETUP: {problem}", file=sys.stderr)
         return 3

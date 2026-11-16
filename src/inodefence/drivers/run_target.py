@@ -354,6 +354,20 @@ SETUP_ERROR = 3  # nothing judged for the affected cells: refused input, setup, 
 _TAG_SUFFIX_RE = re.compile(r"[A-Za-z0-9_.-]{1,40}")
 
 
+#: The command the "docker not found" advice names; another driver substitutes its own
+#: (:func:`docker_advice_for`), so verify's wording stays byte for byte.
+DOCKER_ADVICE_COMMAND = "target-run"
+
+
+def docker_advice_for(problem: str | None, command: str) -> str | None:
+    """``problem`` (from :func:`docker_problem`) with its advice naming ``command`` instead."""
+    if problem is None:
+        return None
+    return problem.replace(
+        f"run {DOCKER_ADVICE_COMMAND} on that host", f"run {command} on that host"
+    )
+
+
 def docker_problem() -> str | None:
     """Why docker cannot run containers here, with the fix, or None if it can.
 
@@ -363,7 +377,7 @@ def docker_problem() -> str | None:
     if shutil.which("docker") is None:
         return (
             "docker not found on PATH; install Docker (Linux: Docker Engine; Windows: Docker "
-            "Desktop with WSL integration) and run target-run on that host "
+            f"Desktop with WSL integration) and run {DOCKER_ADVICE_COMMAND} on that host "
             "(the Dev Container has no docker)"
         )
     try:

@@ -190,6 +190,10 @@ def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOu
         session=getattr(options, "runtime", None),
     )
     report = json.loads(report_path.read_text(encoding="utf-8"))
+    if "aborted" in report:  # the loop stopped after it started: ERROR (exit 2), no result
+        aborted = report["aborted"]
+        reason = aborted.get("reason") if isinstance(aborted, dict) else aborted
+        raise RuntimeError(f"exploration aborted: {reason}")
     # The loop wrote each violation to this folder as it happened (pulled to the host during the
     # run); for a streaming report the result reads its violating cases and inputs from there, not
     # from the report, so a large or force-stopped run keeps every saved violation. Same path as

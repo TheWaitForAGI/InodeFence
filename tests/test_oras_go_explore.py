@@ -417,3 +417,38 @@ def test_hook_refuses_this_runs_existing_output_before_any_docker_call(
     path.unlink()  # without it the run starts exactly as before
     with pytest.raises(_Reached):
         oge.explore(_prepared(), options)
+
+
+# ---- launcher exit x loop report: only a clean exit with a complete report gives a result ----
+#: (returncode, report kind) -> None (published as before) or the ERROR message (exit 2, no result)
+EXIT_MATRIX = [
+    (0, "complete", None),
+    (1, "complete", "controller run failed \\(exit {rc}\\)"),
+    (125, "complete", "controller run failed \\(exit {rc}\\)"),
+    (137, "complete", "controller run failed \\(exit {rc}\\)"),
+    (1, "aborted", "controller run failed \\(exit {rc}\\)"),
+    (1, "none", "controller run failed \\(exit {rc}\\)"),
+    (0, "aborted", "aborted"),
+]
+
+
+@pytest.mark.parametrize(("returncode", "kind", "error"), EXIT_MATRIX)
+def test_launcher_exit_and_report_decide_the_outcome(
+    returncode: int, kind: str, error: str | None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    complete = _report(runs=5, violating=None)
+    report = {
+        "complete": complete,
+        "aborted": {**complete, "aborted": {"reason": "backend gone"}},
+        "none": None,
+    }[kind]
+    if error is None:
+        outcome = _explore(tmp_path, FakeScript(report, returncode), monkeypatch)
+        assert (outcome.verdict, outcome.runs, outcome.violations) == ("PASS", 5, 0)
+        return
+    with pytest.raises(RuntimeError, match=error.format(rc=returncode)):
+        _explore(tmp_path, FakeScript(report, returncode), monkeypatch)
+    assert not list(tmp_path.rglob("result.json"))
+    if report is not None:  # the loop report is kept as the launcher left it
+        (kept,) = (tmp_path / "target-explore").glob("*.json")
+        assert json.loads(kept.read_text(encoding="utf-8")) == report

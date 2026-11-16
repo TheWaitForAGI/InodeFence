@@ -123,18 +123,20 @@ def test_hook_refuses_before_preparing_anything(
 
 
 @pytest.mark.parametrize(
-    ("mutate", "message"),
+    ("mutate", "error", "message"),
     [
-        ({"aborted": {"reason": "backend gone"}}, "aborted: backend gone"),
-        ({"case_records": []}, "no steps"),
-        ({"extraction_filter": "fully_trusted"}, "different runtime or filter"),
+        # stopped after the controller started: ERROR (exit 2)
+        ({"aborted": {"reason": "backend gone"}}, RuntimeError, "aborted: backend gone"),
+        # unchanged in this PR: refused as the report's own checks (exit 3)
+        ({"case_records": []}, ValueError, "no steps"),
+        ({"extraction_filter": "fully_trusted"}, ValueError, "different runtime or filter"),
     ],
 )
 def test_untrustworthy_reports_give_no_result(
-    tmp_path: Path, mutate: dict[str, Any], message: str
+    tmp_path: Path, mutate: dict[str, Any], error: type[Exception], message: str
 ) -> None:
     runner, _ = _controller(mutate)
-    with pytest.raises(ValueError, match=message):
+    with pytest.raises(error, match=message):
         pte.explore(PREPARED, _options(tmp_path), runner=runner, ensure=_ensure)
     assert not list(tmp_path.rglob("result.json"))
 
@@ -155,7 +157,7 @@ def test_all_undetermined_steps_are_written_as_error_not_pass(
 
 def test_a_crash_past_the_seeds_aborts_the_loop_and_gives_no_result(tmp_path: Path) -> None:
     runner, _ = _controller(backend=_LocalBackend(crash=True))
-    with pytest.raises(ValueError, match="aborted"):
+    with pytest.raises(RuntimeError, match="aborted"):
         pte.explore(PREPARED, _options(tmp_path), runner=runner, ensure=_ensure)
 
 
@@ -233,3 +235,86 @@ def test_hook_refuses_this_runs_existing_output_before_the_controller(
     path.unlink()  # without it the run starts exactly as before
     with pytest.raises(_Reached):
         pte.explore(PREPARED, options, ensure=_ensure)
+
+
+# ---- the launcher's exit code decides first: a non-zero exit never yields a result ----
+
+
+def _launcher(returncode: int, report: dict[str, Any] | None):
+    """A launcher that exits ``returncode`` after leaving ``report`` (or none)."""
+
+    def runner(cmd: list[str], *, env: dict[str, str], cwd: str) -> Any:
+        if report is not None:
+            path = pte.report_path(Path(env["INODEFENCE_EVIDENCE_DIR"]), env["RUN_ID"])
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(report), encoding="utf-8")
+
+        class Done:
+            pass
+
+        done = Done()
+        done.returncode = returncode  # type: ignore[attr-defined]
+        return done
+
+    return runner
+
+
+def _complete_report(tmp_path: Path) -> dict[str, Any]:
+    """A complete loop report, as the real controller mode writes it (rc 0 publishes it)."""
+    runner, _ = _controller()
+    outcome = pte.explore(PREPARED, _options(tmp_path / "ok"), runner=runner, ensure=_ensure)
+    (report,) = (tmp_path / "ok" / "target-explore").glob("*.json")
+    assert outcome.result_path.is_file()
+    return json.loads(report.read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize(
+    ("returncode", "kind", "message"),
+    [
+        (1, "complete", "launcher exited 1 after the loop report was written"),
+        (125, "complete", "launcher exited 125 after the loop report was written"),
+        (137, "complete", "launcher exited 137 after the loop report was written"),
+        (1, "aborted", "exploration aborted: backend gone"),
+        (1, "none", r"controller run failed \(exit 1\)"),
+        (0, "aborted", "exploration aborted: backend gone"),
+        (0, "none", "controller run produced no report"),
+    ],
+)
+def test_a_stop_after_the_controller_started_is_error_and_publishes_nothing(
+    tmp_path: Path, returncode: int, kind: str, message: str
+) -> None:
+    complete = _complete_report(tmp_path)
+    report = {
+        "complete": complete,
+        "aborted": {**complete, "aborted": {"reason": "backend gone"}},
+        "none": None,
+    }[kind]
+    out = tmp_path / "run"
+    with pytest.raises(RuntimeError, match=message):
+        pte.explore(PREPARED, _options(out), runner=_launcher(returncode, report), ensure=_ensure)
+    assert not list(out.rglob("result.json"))
+    kept = list((out / "target-explore").glob("*.json")) if report is not None else []
+    if report is not None:  # the loop report stays where the launcher left it, unchanged
+        (path,) = kept
+        assert json.loads(path.read_text(encoding="utf-8")) == report
+
+
+def test_the_driver_exits_2_for_a_launcher_failure_after_a_complete_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    complete = _complete_report(tmp_path)
+    monkeypatch.setattr(rte, "docker_problem", lambda: None)  # no docker call
+    monkeypatch.setattr(rte, "prepare_target_image", lambda *a, **k: PREPARED)
+    monkeypatch.setattr(pte.producer, "ensure_producer_image", _ensure)
+    original = pte.run_controller
+
+    def failing(*a: Any, **k: Any) -> Path:
+        return original(*a, **{**k, "runner": _launcher(1, complete)})
+
+    monkeypatch.setattr(pte, "run_controller", failing)
+    argv = ["--target", "python-tarfile", "--version", RUNTIME, "--extraction-filter", "data"]
+    out = tmp_path / "drv"
+    assert rte.main([*argv, "--auto-prepare", "--budget", "8", "--out", str(out)]) == 2
+    err = capsys.readouterr().err
+    assert "TARGET-EXPLORE ERROR: launcher exited 1 after the loop report was written" in err
+    assert not list(out.rglob("result.json"))

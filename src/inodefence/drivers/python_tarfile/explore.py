@@ -90,7 +90,12 @@ def run_controller(
     runner: Runner = subprocess.run,
     session: RuntimeSession | None = None,
 ) -> Path:
-    """Run the controller mode via the launcher script; return the report path it wrote."""
+    """Run the controller mode via the launcher script; return the report path it wrote.
+
+    Past this point the controller has started, so a failure is an infrastructure stop of the run
+    (``RuntimeError``: verdict ERROR, exit 2), not a setup refusal. A launcher that exits non-zero
+    never yields a result, whatever report it left: the report is kept where it is, unread.
+    """
     env = {
         **os.environ,
         "EXPLORE_IMAGE": producer_ref,
@@ -111,11 +116,31 @@ def run_controller(
         artifacts=LaunchArtifacts(report=report),
         cwd=str(REPO_ROOT),
     )
-    if done.returncode != 0 and not report.is_file():
-        raise ValueError(f"controller run failed (exit {done.returncode}); see output above")
+    if done.returncode != 0:
+        if not report.is_file():
+            raise RuntimeError(f"controller run failed (exit {done.returncode}); see output above")
+        reason = _aborted_reason(report)
+        if reason is not None:
+            raise RuntimeError(f"exploration aborted: {reason}")
+        raise RuntimeError(
+            f"launcher exited {done.returncode} after the loop report was written (its cleanup "
+            f"state is unknown); no result written, loop report kept at {report}"
+        )
     if not report.is_file():
-        raise ValueError(f"controller run produced no report at {report}")
+        raise RuntimeError(f"controller run produced no report at {report}")
     return report
+
+
+def _aborted_reason(report: Path) -> str | None:
+    """The ``aborted`` reason a loop report carries, or ``None`` (also for an unreadable report)."""
+    try:
+        loaded = json.loads(report.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(loaded, dict) or "aborted" not in loaded:
+        return None
+    aborted = loaded["aborted"]
+    return str(aborted.get("reason") if isinstance(aborted, dict) else aborted)
 
 
 def _preparation(prepared: PreparedTargetImage, made: producer.ProducerImage) -> Preparation:
@@ -204,6 +229,8 @@ def explore(
         session=getattr(options, "runtime", None),
     )
     report = json.loads(path.read_text(encoding="utf-8"))
+    if "aborted" in report:  # the loop stopped after it started: ERROR (exit 2), not a setup error
+        raise RuntimeError(f"exploration aborted: {report['aborted'].get('reason')}")
     result, tar_files = build_campaign_result(
         report, prepared, made, extraction_filter, seed=options.seed, budget=options.budget
     )

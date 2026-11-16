@@ -545,3 +545,55 @@ def test_an_existing_result_is_a_setup_refusal_that_names_the_kept_report(tmp_pa
         dx.write_outputs(tmp_path, None, {}, {}, report=report)  # type: ignore[arg-type]
     assert isinstance(refused.value, FileExistsError) and isinstance(refused.value, ValueError)
     assert f"loop report of this run is kept at {report}" in str(refused.value)
+
+
+# ---- launcher exit x loop report: only a clean exit with a complete report gives a result ----
+#: (returncode, report kind) -> None (published as before) or the ERROR message (exit 2, no result)
+EXIT_MATRIX = [
+    (0, "complete", None),
+    (1, "complete", "controller run failed \\(exit {rc}\\)"),
+    (125, "complete", "controller run failed \\(exit {rc}\\)"),
+    (137, "complete", "controller run failed \\(exit {rc}\\)"),
+    (1, "aborted", "controller run failed \\(exit {rc}\\)"),
+    (1, "none", "controller run failed \\(exit {rc}\\)"),
+    (0, "aborted", "controller aborted"),
+]
+
+
+@pytest.mark.parametrize(("returncode", "kind", "error"), EXIT_MATRIX)
+def test_launcher_exit_and_report_decide_the_outcome(
+    returncode: int, kind: str, error: str | None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import inodefence.drivers.explore_result as er
+    from inodefence.drivers.run_target import ExploreOptions
+
+    complete = _report([_step(i) for i in range(5)], [])
+    report = {
+        "complete": complete,
+        "aborted": {**complete, "aborted": {"reason": "backend gone"}},
+        "none": None,
+    }[kind]
+
+    def runner(cmd: list[str], *, env: dict[str, str], check: bool) -> Any:
+        if report is not None:
+            evidence = Path(env["INODEFENCE_EVIDENCE_DIR"])
+            path = dx.controller_report_path(evidence, env["RUN_ID"])
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(report), encoding="utf-8")
+        return subprocess.CompletedProcess(cmd, returncode)
+
+    monkeypatch.setattr(dt.registry, "worker_check", _ok_check)
+    monkeypatch.setattr(er, "engine_provenance", lambda image: ENGINE)
+    real = dx.run_controller
+    monkeypatch.setattr(dx, "run_controller", lambda *a, **kw: real(*a, **{**kw, "runner": runner}))
+    options = ExploreOptions(5, 7, tmp_path)
+    if error is None:
+        outcome = dx.explore(_prepared(tmp_path), options)
+        assert (outcome.verdict, outcome.runs, outcome.violations) == ("PASS", 5, 0)
+        return
+    with pytest.raises(RuntimeError, match=error.format(rc=returncode)):
+        dx.explore(_prepared(tmp_path), options)
+    assert not list(tmp_path.rglob("result.json"))
+    if report is not None:  # the loop report is kept as the launcher left it
+        (kept,) = (tmp_path / "controller").glob("*.json")
+        assert json.loads(kept.read_text(encoding="utf-8")) == report

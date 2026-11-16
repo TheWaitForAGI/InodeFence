@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import subprocess
 from hashlib import sha256
 from pathlib import Path
 from typing import Any, NoReturn
@@ -342,3 +343,68 @@ def test_hook_refuses_this_runs_existing_output_before_the_controller(
     path.unlink()  # without it the run starts exactly as before
     with pytest.raises(_Reached):
         nte.explore(_prepared(), options)
+
+
+# ---- launcher exit x loop report: only a clean exit with a complete report gives a result ----
+#: (returncode, report kind) -> None (published as before) or the ERROR message (exit 2, no result)
+EXIT_MATRIX = [
+    (0, "complete", None),
+    (1, "complete", "controller run failed \\(exit {rc}\\)"),
+    (125, "complete", "controller run failed \\(exit {rc}\\)"),
+    (137, "complete", "controller run failed \\(exit {rc}\\)"),
+    (1, "aborted", "controller run failed \\(exit {rc}\\)"),
+    (1, "none", "controller run failed \\(exit {rc}\\)"),
+    (0, "aborted", "exploration aborted: backend gone"),
+]
+
+
+def _node_launcher(returncode: int, report: dict[str, Any] | None):
+    def runner(cmd: list[str], *, env: dict[str, str], cwd: str) -> Any:
+        if report is not None:
+            path = nte.controller_report_path(Path(env["INODEFENCE_EVIDENCE_DIR"]), env["RUN_ID"])
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(report), encoding="utf-8")
+        return subprocess.CompletedProcess(cmd, returncode)
+
+    return runner
+
+
+class _NoPull:
+    def __init__(self, *a: Any, **k: Any) -> None: ...
+
+    def start(self) -> _NoPull:
+        return self
+
+    def stop(self, **k: Any) -> None: ...
+
+
+@pytest.mark.parametrize(("returncode", "kind", "error"), EXIT_MATRIX)
+def test_launcher_exit_and_report_decide_the_outcome(
+    returncode: int, kind: str, error: str | None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    complete = _report(runs=4, violating_index=None)
+    report = {
+        "complete": complete,
+        "aborted": {**complete, "aborted": {"reason": "backend gone"}},
+        "none": None,
+    }[kind]
+    monkeypatch.setattr(nte, "LivePuller", _NoPull)  # no docker cp
+    real = nte.run_controller
+    monkeypatch.setattr(
+        nte,
+        "run_controller",
+        lambda prepared, **kw: real(
+            prepared, **{**kw, "runner": _node_launcher(returncode, report)}
+        ),
+    )
+    options = ExploreOptions(budget=4, seed=1, out=tmp_path)
+    if error is None:
+        outcome = nte.explore(_prepared(), options)
+        assert (outcome.verdict, outcome.runs, outcome.violations) == ("PASS", 4, 0)
+        return
+    with pytest.raises(RuntimeError, match=error.format(rc=returncode)):
+        nte.explore(_prepared(), options)
+    assert not list(tmp_path.rglob("result.json"))
+    if report is not None:  # the loop report is kept as the launcher left it
+        (kept,) = (tmp_path / "target-explore").glob("*.json")
+        assert json.loads(kept.read_text(encoding="utf-8")) == report

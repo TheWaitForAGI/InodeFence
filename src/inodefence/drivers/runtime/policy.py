@@ -12,7 +12,8 @@ once each flag's effect has been measured, never in name only.
 :data:`FAST` sets one flag, ``reuse_shared_images``: the launcher is told to leave out its rebuild
 of the two shared images (controller, helper) when ``runtime.shared_images`` proves they are the
 ones this checkout builds. Measured on the reference host (node-tar 7.5.23, budget 20): the
-rebuild is a fixed cost per run of about 2.4 s; nothing per case changes. The per-case cost (Docker
+rebuild is a fixed cost per run of about 1.5 s (2.78 s -> 1.33 s before the controller is prepared,
+5 interleaved runs each); nothing per case changes. The per-case cost (Docker
 calls of the isolation layer) and the controller's per-run ``pip install`` are outside what a
 host-side profile may touch and are unchanged.
 """

@@ -170,6 +170,8 @@ inodefence explore --target decompress --version @xhmikosr/decompress@11.1.4 --b
 `--version`은 `latest`나 정확한 버전, `--budget`은 실행 수(seed 케이스 수 이상), `--seed`는 난수
 seed입니다. 탐색 정책·sentinel 구성은 등록 실험 설정을 기본값으로 쓰며, 끝나면 공통 형식
 `result.json`(`inodefence-target-result-v1`, mode=campaign)과 한 장짜리 `summary.md`를 씁니다.
+`--profile fast`(기본 `strict`)는 실행마다 하는 공용 이미지 재빌드만 건너뛰는 선택 옵션이며, 조건·기록·측정값은
+[한계와 주의](#한계와-주의)의 "실행 프로필"에 있습니다.
 
 node-tar 탐색(`--version 7.5.23 --seed 123 --budget 20`, engineering smoke 2026-11-16)에서 실제로 생긴 구조:
 
@@ -332,11 +334,21 @@ make target-run TARGET=node-tar TARGET_VERSIONS="7.5.2 7.5.3" AUTO_PREPARE=1 PYT
   다만 그때까지 캡처된 위반 케이스는 남습니다. 자동 재시도와 멈춘 실행의 강제 종료도 없습니다. `status`는
   오래 진척이 없으면 몇 초째인지와 함께 `STALE` 경고만 출력하고, 실행 중에는 처리량(runs/min)과 남은 예산의
   예상 시간을 보여 줍니다(관찰만).
-- **실행 프로필:** 지원하는 것은 STRICT 하나입니다(기본이자 유일한 프로필이며 `--runtime-profile` 옵션은 없습니다).
-  FAST는 구현하지 않았습니다(후속 작업). WSL2 호스트 한 대의 engineering smoke(demo run, node-tar 7.5.23, budget 20, 3회)에서
-  케이스당 약 1.88 s 가운데 약 93%가 호스트 docker CLI 호출(케이스당 23회)이었고, 그 비용은 보호 영역인
-  격리 실행 경로 안에 있어 제품 계층에서 줄일 수 있는 몫은 약 1.6%였습니다(단일 호스트·3회 측정이며 호스트
-  부하에 민감합니다). FAST는 그 경로의 변경과 격리 동등성 검증이 먼저입니다. REPLAY는 프로필이 아니라 위
+- **실행 프로필(`explore --profile`):** 기본은 STRICT(검증된 실행 그대로)이고, `--profile fast`는 사용자가 직접
+  골라야만 켜집니다. FAST가 바꾸는 것은 한 가지입니다. 런처가 실행마다 다시 하는 공용 이미지 두 개(컨트롤러·helper)의
+  빌드를, 그 이미지가 이 checkout의 빌드 입력(Dockerfile 두 개와 helper 한 파일의 SHA-256)으로 런처 자신이 빌드한
+  것임이 확인된 경우에만 건너뜁니다(`SKIP_BUILD=1`). 확인 기록은 사용자 캐시(`$XDG_CACHE_HOME/inodefence/`,
+  기본 `~/.cache`)에 Docker context별로 남고 24시간 동안만 유효하며, 입력·이미지 ID가 달라지면 무효입니다. 확인이
+  안 되면 런처의 빌드 전용 실행으로 먼저 빌드해 확인하고, 그런 실행이 없는 python-tarfile 런처는 STRICT와 똑같이
+  실행하면서 그 사실을 `TARGET-EXPLORE RUNTIME: profile=fast reuse_shared_images=not-applied (…)`로 알리고
+  기록합니다(조용히 STRICT로 돌지 않음). 빌드가 실패하면 아무것도 실행하지 않고 종료 3입니다. 입력·판정(C0·C1·C2)·격리·
+  결과 형식·종료 코드는 STRICT와 같고, 적용 내역은 실행 기록과 결과 폴더의 `runtime-record.json`(FAST일 때만)에
+  남습니다. `replay`는 항상 STRICT입니다.
+  **얻는 것은 작습니다.** WSL2 호스트 한 대의 engineering smoke(demo run, node-tar 7.5.23, seed 123, budget 20, 같은
+  코드로 번갈아 5회씩, 2026-11-17)에서 FAST는 컨트롤러 준비 전 구간을 실행당 평균 1.5 s(짝지은 차이 1.0~2.0 s) 줄였고(STRICT 평균 2.78 s[2.25~3.43],
+  FAST 1.33 s[1.16~1.52]), 케이스당 시간은 그대로였습니다(STRICT 1.96 s, FAST 1.92 s). 전체 실행 시간은 호스트 부하에 따른
+  편차(STRICT 42~61 s, FAST 42~56 s)가 이 차이보다 커서 구분되지 않았습니다. 케이스당 비용(약 2 s, docker CLI 호출 약 23회)은 보호
+  영역인 격리 실행 경로 안에 있어 이 프로필이 건드리지 않습니다. REPLAY는 프로필이 아니라 위
   재실행 절차이며, node-tar만 지원하고 탐색과 같은 STRICT 실행 세션으로 돕니다.
 - **인프라 중단의 표시:** `explore`가 깨끗하게 끝나지 않으면(런처 종료 코드가 0이 아니거나 중단됨) 종료 코드와
   판정은 그대로 두고 stderr에 한 줄을 더 냅니다.

@@ -77,7 +77,7 @@ IMPLEMENTED · TESTED · VALIDATED)는 [Research Contract](docs/research/design/
 | (2) generic Oracle이 **알려진 위반을 판정** | TESTED. identity oracle 하나가 위 두 쌍을 릴리스 id·정답 경로 하드코딩 없이 구분하고, 손 probe 판정과 production Observer+Oracle 판정이 일치. oracle·adapter 수준에서 3 추출기에 적용: Python `tarfile`은 필터 토글 비교(`fully_trusted` → C1+C2, `data` → 거부), oras-go·decompress는 adapter 통제 차분(#176·#177) | `tests/test_cross_release_oracle_agreement.py`, `tests/test_python_tarfile_generality.py`, Ledger M2.2·M4 |
 | (3) 퍼저의 **자력 발견** | 본실험 결과 자리(봉인 해제 뒤 기입) | [사전등록](experiments/preregistration/) exp3-v1·exp2-v1, Ledger M3 |
 | (4) 통계적으로 입증된 **성능 우위** | 주장하지 않음. 본실험 결과 자리(봉인 해제 뒤 기입) | — |
-| (5) **미검증 기능·가설** | C3·C4 미구현. entry 단위 native 전이 관찰은 관찰 경계를 확보하지 못해 미구현(honest negative). `replay`의 실제 위반 케이스 E2E는 미검증. FAST 실행 프로필 없음. macOS·기타 Linux 호스트는 이 후보에서 미확인 | Ledger, [사용 안내 한계](docs/USAGE.md#한계와-주의) |
+| (5) **미검증 기능·가설** | C3·C4 미구현. entry 단위 native 전이 관찰은 관찰 경계를 확보하지 못해 미구현(honest negative). `replay`의 실제 위반 케이스 E2E는 미검증. FAST 실행 프로필(`explore --profile fast`)은 실행당 고정 준비 비용만 줄이고 케이스당 비용은 그대로. macOS·기타 Linux 호스트는 이 후보에서 미확인 | Ledger, [사용 안내 한계](docs/USAGE.md#한계와-주의) |
 
 그 밖에 TESTED인 것: 실제 node-tar 루프(입력 → 격리 실행 → entry별 중간 상태 관찰 → C0/C1/C2 → feedback → 다음
 mutation 선택)가 `make demo`(node-tar 7.5.22, 정상 입력)로 돌고 같은 seed·budget이면 재현됩니다. 이 데모의 정상
@@ -162,7 +162,7 @@ inodefence summary ~/inodefence-explore/target-explore/7.5.23-123-20-result/resu
 | `inodefence doctor` | 환경 점검(`OK`·`FAIL`·`WARN`·`INFO`·`UNKNOWN`)과 고치는 법. 확인하지 못한 것은 `OK`가 아니라 `UNKNOWN`. 읽기만 함 | 0 FAIL 없음, 1 FAIL 있음 |
 | `inodefence targets [--json]` | 추출기와 각 추출기가 지원하는 것 | 0 정상, 3 저장소 없음·설정 파일 오류 |
 | `inodefence verify --target T --version V` | 고정 입력 회귀(`--version` 반복 가능) | 0 PASS, 1 FAIL, 2 ERROR, 3 실행 전 거부 |
-| `inodefence explore --target T --version V [--budget N] [--seed S]` | 상태 기반 feedback 탐색(기본 budget 20, seed 123) | 0 PASS, 1 FAIL, 2 ERROR, 3 실행 전 거부 |
+| `inodefence explore --target T --version V [--budget N] [--seed S] [--profile fast]` | 상태 기반 feedback 탐색(기본 budget 20, seed 123) | 0 PASS, 1 FAIL, 2 ERROR, 3 실행 전 거부 |
 | `inodefence status <폴더>` | 실행 중 진행·위반 케이스, 끝난 뒤 판정 | 0 표시, 2 보일 것 없음·읽기 실패 |
 | `inodefence replay <위반 케이스 폴더> [--rounds 3]` | 위반 케이스를 같은 이미지에서 다시 돌려 재현 비율 기록 | 0 완료, 1 미완료, 2 재실행 불가, 3 실행 전 멈춤, 4 미지원 |
 | `inodefence summary <result.json> [-o 파일]` | 결과를 한 장짜리 Markdown 요약으로(입력 TAR SHA-256 재대조) | 0 작성, 2 읽기·쓰기 실패 |
@@ -206,7 +206,7 @@ inodefence summary ~/inodefence-explore/target-explore/7.5.23-123-20-result/resu
 
 - 실제 host의 민감 파일, SSH key, 사용자 문서, secret을 실험 대상으로 쓰지 않습니다. disposable sandbox와 실험용
   sentinel만 쓰고, 파괴적인 filesystem 작업은 runtime sandbox 안으로 제한합니다.
-- 대상 추출기는 격리 컨테이너에서 돕니다. 지원하는 실행 프로필은 STRICT 하나이며 격리를 완화하는 옵션은 없습니다.
+- 대상 추출기는 격리 컨테이너에서 돕니다. 실행 프로필은 STRICT(기본)와 FAST(`explore --profile fast`, 공용 이미지 재빌드만 생략)이며 격리를 완화하는 옵션은 없습니다.
 - **출력은 저장소 밖이어야 합니다.** `--out`이 저장소 안이면 실행 전에 거부합니다(위반 입력이 공개 저장소에 섞이지
   않도록). 클라우드 동기화 폴더도 피하세요.
 - **책임 있는 공개:** 미공개로 보이는 문제를 찾으면 공개 저장소에 올리기 전에 해당 추출기의 유지보수자에게 먼저

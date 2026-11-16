@@ -107,8 +107,15 @@
 
 ### Runtime 진단·신뢰성 개선 (#466)
 
-- 모든 컨트롤러 실행(explore·replay)이 하나의 Runtime 세션을 거친다. 실행 프로필은 **STRICT 하나**(검증된 Docker 실행을
-  그대로 씀)이며 FAST 프로필과 `--runtime-profile` 옵션은 없다.
+- 모든 컨트롤러 실행(explore·replay)이 하나의 Runtime 세션을 거친다. 기본 실행 프로필은 **STRICT**(검증된 Docker 실행을
+  그대로 씀)이다.
+- **`explore --profile fast`(PR-B, 선택 옵션, 기본은 strict).** 런처가 실행마다 하는 공용 이미지 두 개(컨트롤러·helper)
+  재빌드를, 그 이미지가 이 checkout의 빌드 입력으로 런처가 빌드한 것임이 확인된 때에만 건너뛴다(확인은 Docker
+  context별 24시간, 입력·이미지 ID가 바뀌면 무효). 확인이 안 되면 런처의 빌드 전용 실행으로 먼저 빌드하고, 그런 실행이
+  없는 python-tarfile 런처는 STRICT처럼 실행하되 그 사실을 출력·기록하며, 빌드 실패는 종료 3이다. 입력·판정·격리·결과
+  형식·종료 코드는 STRICT와 같고 `replay`는 항상 STRICT다. 실측(WSL2 한 대, node-tar 7.5.23, budget 20, 번갈아 5회씩):
+  컨트롤러 준비 전 구간이 실행당 평균 1.5 s(2.78 s → 1.33 s) 줄고 케이스당 시간(약 1.9 s)과 전체 처리량은 그대로다. 케이스당 비용은 격리 실행 경로 안에 있어 이
+  프로필의 범위 밖이다. ([사용 안내](docs/USAGE.md#한계와-주의))
 - 실행 기록 `<out>/runtime/<run_id>-<UTC>.json`(replay는 `evidence/runtime-record.json`)을 실패·중단에도 쓰고 덮어쓰지
   않는다. 절대 경로와 사용자 환경은 기록하지 않는다. 기존 결과 파일은 바뀌지 않는다.
 - Docker 응답을 정상 / 연결 불가 / 시간 초과로 구분하고, 이미지 조회를 있음 / 없음 / 판정 불가로 구분한다. 판정 불가면

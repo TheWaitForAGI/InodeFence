@@ -1,7 +1,7 @@
 """Offline tests for the worker-pool parity judgement over emitted reports (no Docker)."""
 
 import pytest
-from scripts.compare_wp_parity import compare_reports
+from scripts.analysis.compare_wp_parity import compare_reports
 
 from inodefence.effect_campaign import EffectCampaignConfig, run_effect_campaign
 from inodefence.effect_synthetic import synthetic_effect_result

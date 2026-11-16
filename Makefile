@@ -41,7 +41,7 @@ isolation-support:
 	$(PYTHON) scripts/check_linux_isolation_support.py
 
 docs-check:
-	$(PYTHON) scripts/check_docs.py
+	$(PYTHON) scripts/dev/check_docs.py
 
 # Verify each validated summary's raw pointer resolves to a committed manifest or
 # in-repo file. Reads only committed files (no raw bytes), so it runs on any host.
@@ -60,7 +60,7 @@ ifneq ($(words $(CASE)),1)
 else ifeq ($(filter $(BASELINE_CASES),$(CASE)),)
 	$(error CASE must be one of: $(BASELINE_CASES))
 else
-	$(PYTHON) scripts/manual_tar_probe.py tests/fixtures/tar/$(CASE)/fixture.tar
+	$(PYTHON) scripts/dev/manual_tar_probe.py tests/fixtures/tar/$(CASE)/fixture.tar
 endif
 
 node-entry-timing-probe:

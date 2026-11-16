@@ -8,7 +8,7 @@ dependency-free binomial-tail bisection.
 import math
 
 import pytest
-from scripts.analyze_oracle_fp_bound import (
+from scripts.analysis.analyze_oracle_fp_bound import (
     CONTRACTS,
     ReportCounts,
     clopper_pearson_upper,

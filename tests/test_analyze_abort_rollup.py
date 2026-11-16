@@ -7,7 +7,7 @@ raw stubs deliberately omit a ``category`` field to prove the roll-up classifies
 
 import json
 
-from scripts.analyze_abort_rollup import (
+from scripts.analysis.analyze_abort_rollup import (
     arm_from_filename,
     build_contingency,
     build_rollup,

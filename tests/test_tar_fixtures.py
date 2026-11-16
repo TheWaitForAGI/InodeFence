@@ -9,8 +9,8 @@ import tempfile
 from pathlib import Path
 
 import pytest
+from scripts.dev.manual_tar_probe import extract_archive, print_state, runtime_root
 from scripts.generate_tar_fixtures import CASE_NAMES, CONTENT, FIXTURE_ROOT, generate_fixtures
-from scripts.manual_tar_probe import extract_archive, print_state, runtime_root
 
 
 def test_regular_file_fixture() -> None:
@@ -118,7 +118,7 @@ def test_probe_reports_filesystem_metadata(
 
 
 def test_probe_cli() -> None:
-    script = FIXTURE_ROOT.parents[2] / "scripts" / "manual_tar_probe.py"
+    script = FIXTURE_ROOT.parents[2] / "scripts" / "dev" / "manual_tar_probe.py"
     result = subprocess.run(
         [sys.executable, str(script), str(FIXTURE_ROOT / "hardlink" / "fixture.tar")],
         check=True,

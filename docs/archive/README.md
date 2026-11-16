@@ -36,6 +36,10 @@
   `n04-namespace-rebinding-sequence-v3-task-contract.md`,
   `effect-replacement-qualification-task-proposal.md`
 
+이 중 `docs/research/diagnostics/n01-autonomous-execution-final-review.md`와
+`n01-historical-execution-progress-2026-10-15.md`는 저장소에서 빼고 팀 Drive `InodeFence/Archive/`에 보관했다(목록·sha256은 그 폴더의 `MANIFEST.tsv`). 원본은
+`git show 2e947d3:<경로>`로 복구한다.
+
 ## 계속 살아있는 참고 문서 (archive 아님)
 
 방법론·정의는 M3 이후에도 쓰므로 그대로 둔다:

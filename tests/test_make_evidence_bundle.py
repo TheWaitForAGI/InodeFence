@@ -6,7 +6,8 @@ from hashlib import sha256
 from pathlib import Path
 
 import pytest
-from scripts.make_evidence_bundle import (
+from scripts.make_raw_manifest import manifest_lines
+from scripts.ops.make_evidence_bundle import (
     MANIFEST_MEMBER,
     create_bundle,
     default_output,
@@ -14,7 +15,6 @@ from scripts.make_evidence_bundle import (
     manifest_bytes,
     verify_bundle,
 )
-from scripts.make_raw_manifest import manifest_lines
 
 
 def _tree(base: Path) -> Path:

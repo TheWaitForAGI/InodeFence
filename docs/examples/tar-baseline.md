@@ -13,10 +13,10 @@ filesystem 상태를 사람이 비교하는 기초 실험이다. 취약점 발�
 python scripts/check_dev_env.py
 python scripts/generate_tar_fixtures.py
 
-python scripts/manual_tar_probe.py tests/fixtures/tar/regular-file/fixture.tar
-python scripts/manual_tar_probe.py tests/fixtures/tar/directory/fixture.tar
-python scripts/manual_tar_probe.py tests/fixtures/tar/hardlink/fixture.tar
-python scripts/manual_tar_probe.py tests/fixtures/tar/symlink/fixture.tar
+python scripts/dev/manual_tar_probe.py tests/fixtures/tar/regular-file/fixture.tar
+python scripts/dev/manual_tar_probe.py tests/fixtures/tar/directory/fixture.tar
+python scripts/dev/manual_tar_probe.py tests/fixtures/tar/hardlink/fixture.tar
+python scripts/dev/manual_tar_probe.py tests/fixtures/tar/symlink/fixture.tar
 
 python -m pytest
 python -m ruff check .

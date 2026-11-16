@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from scripts.check_docs import CANONICAL_DOCUMENTS, check_canonical_documents, check_document
+from scripts.dev.check_docs import CANONICAL_DOCUMENTS, check_canonical_documents, check_document
 
 
 def test_local_links_and_references(tmp_path: Path) -> None:

@@ -1,12 +1,59 @@
-# 개발 보조 명령
+# scripts — 드라이버·러너·분석·개발·운영 명령
 
 ## 이 폴더는 무엇인가
 
-개발환경 확인 등 저장소 작업을 보조하는 명령을 둔다.
+`src/inodefence/`(패키지, 엔진 하나)를 부르는 저장소 명령을 둔다. 대상 드라이버, 컨트롤러·host broker,
+등록 실험 러너, 분석·보고, 개발·운영 도구가 여기 있다. `scripts`는 `__init__.py`가 없는 namespace
+package다. 하위 폴더도 `python -m scripts.<폴더>.<이름>`으로 실행된다. `__init__.py`를 추가하면
+namespace 의미가 바뀌므로 추가하지 않는다.
+
+## 폴더 구성과 분류
+
+| 폴더 | 태그 | 들어가는 것 |
+|---|---|---|
+| `scripts/analysis/` | 분석 | 동결 문서(experiments/·paper/)가 명령으로 부르지 않는 분석·비교 도구 |
+| `scripts/dev/` | 개발 | 개발자 로컬 검증 도구(`make docs-check`, `make probe`) |
+| `scripts/ops/` | 운영 | 호스트 운영 도구(호스트 상태 원장, 증거 백업 번들) |
+| `scripts/`(최상위) | 동결·제품·연구 검증 | 아래 표의 사유로 경로를 바꾸지 않는 파일 |
+
+하위 폴더로 옮긴 파일(PR 1, product/p0-01-repository-layout):
+
+| 전 | 후 |
+|---|---|
+| `analyze_abort_rollup.py`, `analyze_m3_item3.py`, `analyze_m4_decompress_abcd.py`, `analyze_oracle_fp_bound.py`, `compare_effect_policies.py`, `compare_wp_parity.py` | `analysis/` |
+| `check_docs.py`, `manual_tar_probe.py` | `dev/` |
+| `host_ledger.py`, `make_evidence_bundle.py` | `ops/` |
+
+새 파일을 둘 때는 다음 순서로 판단한다.
+1. 아래 동결 기준에 걸리면 최상위에 둔다.
+2. 사용자 명령(`inodefence ...`)이 거치는 드라이버는 최상위에 둔다(제품, PR 2에서 재배치 예정).
+3. 나머지는 analysis·dev·ops 중 하나에 둔다.
+
+최상위에 남는 파일과 이유는 아래 표다(A~I는 책임 분류다). 동결 기준은 다음 중 하나다.
+- 등록 실험·컨트롤러가 도달하는 경로다.
+- 실행 결과가 의존하는 `launcher_guards.SHARED_PATH_FILES` 16개에 들어 있다.
+- 이미지 레시피 입력이다.
+- holdout 분석 도구다.
+- experiments/·paper/의 동결 문서, CI 또는 하드코딩된 `-m scripts.X`가 이 경로를 명령으로 부른다.
+
+| 분류 | 태그 | 파일 | 최상위에 남는 이유 |
+|---|---|---|---|
+| A 컨트롤러·host broker·격리 런처 | 동결 | `container_controller`, `container_host`, `broker_call_log`, `effect_replay`, `run_effect_demo`, `launcher_guards`, `bounded_cleanup_command`, `local_node_tar_smoke.sh`, `local_decompress_selfdiscover.sh`, `local_oras_go_selfdiscover.sh`, `local_python_tarfile_explore.sh` | 격리 실행 경로다. container_host가 `-m scripts.container_controller`를 하드코딩하고 CI가 `-m scripts.container_host`를 부른다. 일부는 SHARED_PATH_FILES에 들어 있고, experiments/ 참조도 있다 |
+| B 대상 드라이버·어댑터 | 제품 | `run_target`, `run_node_tar_target`, `run_decompress_target`, `run_oras_go_target`, `run_python_tarfile_target` | `run_target.TARGETS`가 `scripts.run_*_target` 문자열을 쓴다. `inodefence.locate`가 경로를 고정한다(PR 2) |
+| B | 동결 | `regression_check` | CI(repro-evidence)·Makefile·paper가 명령으로 부른다 |
+| C 탐색·verify·replay 드라이버 | 제품 | `run_target_explore`, `run_target_replay`, `explore_result`, `node_tar_explore`, `decompress_explore`, `oras_go_explore`, `python_tarfile_explore`, `node_tar_replay` | `inodefence.locate`의 드라이버 경로와 어댑터 import가 걸려 있다(PR 2) |
+| D 이미지 준비 | 제품 | `image_prepare`, `npm_registry`, `node_tar_image`, `node_tar_registry_prepare`, `decompress_image`, `decompress_registry_prepare`, `oras_go_registry_prepare`, `python_tarfile_producer`, `attest_demo_image_recipe` | 어댑터가 import한다. image_prepare는 자신을 `-m scripts.image_prepare`로 재호출한다(PR 2) |
+| E 등록 실험 러너·운영 판정 | 동결 | `run_exp0`, `run_g1_smoke`, `run_parallel_native`, `run_hazard_pilot`, `run_concurrency_benchmark`, `run_rds_cell`, `fill_run_registration`, `make_seed_assignment`, `make_run_criteria`, `qualify_host`, `partial_go_check`, `exp_operating_check`, `check_stop_path_smoke`, `merge_host_indexes`, `measure_clock_offset`, `check_native_determinism`, `determine_m3_powered_cells`, `freeze_preregistration` | 사전등록·run registration·experiments/ 문서가 명령으로 부른다. SHARED_PATH_FILES이거나 holdout 도구인 것도 있다 |
+| E | 동결 인접 | `run_worker_pool`, `measure_worker_pool_throughput`, `extract_stage_a_abort_keys` | 실험 실행 계획·처리량·호스트 적격성 증거용이다. 차례대로 `run_parallel_native`를 import하고, `src/inodefence/evaluation/throughput.py`가 경로를 언급하고, 적격성 키 파일을 만든다 |
+| F 연구 검증·probe·oracle | 동결 | `qualify_node_causal_effects`, `qualify_node_internal_completion`, `qualify_node_transition_observation`, `qualify_libarchive_entry_boundary`, `oracle_fixture_check`, `reference_campaign_pilot`, `run_configured_reference` | experiments/ 참조 또는 CI(repro-evidence) 호출이 있다. reference_campaign_pilot은 자기 파일 해시를 증거에 기록한다 |
+| F | 연구 검증 | `qualify_node_effect_observation`, `probe_node_entry_timing`, `evaluation_gnu_container`, `benign_validation`, `minchan_rebinding_capture`, `oracle_fn_matrix`, `run_abcd_comparison`, `verify_node_effect_evidence` | 대상 실행 probe이거나, `tests/container_integration`(컨트롤러 안 실행)이 import하거나, tools/·src 문서가 경로를 언급하거나, 자기 파일 해시를 증거에 기록한다(run_abcd_comparison `runner_sha256`) |
+| G 분석·보고·증거 | 동결 | `analyze_concurrency_benchmark`, `analyze_exp0`, `analyze_hazard_pilot`, `analyze_m3_3_control`, `analyze_m4_5_selfdiscover`, `analyze_m4_5_unified`, `analyze_m4_7_oras_go_selfdiscover`, `analyze_node_causal_effects`, `analyze_node_internal_completion`, `compare_cell_paths`, `compare_pilot_rerun_paths`, `gen_exp3_tables`, `gen_table_m2`, `gen_table_m3`, `regenerate_paper_artifacts`, `check_evidence_chain`, `make_raw_manifest`, `replay_report` | experiments/·paper/ 명령 참조, holdout 도구 또는 그 import 대상(compare_cell_paths ← merge_host_indexes), `regenerate_paper_artifacts`의 생성기 경로 목록, `make check`(evidence-chain)·Makefile 호출 중 하나 이상에 걸린다 |
+| H 개발 | 동결 | `check_dev_env`, `generate_tar_fixtures` | AGENTS.md·experiments/가 명령으로 부른다. generate_tar_fixtures는 oracle_fixture_check 등 동결 도구가 import한다 |
+| I 호스트 운영 | 동결 | `check_linux_isolation_support` | experiments/ 요약이 명령으로 부른다 |
 
 ## 입력
 
-Python 환경과 INODEFENCE_RUNTIME_ROOT를 읽는다. manual_tar_probe.py는 작은 baseline TAR 경로를 입력받는다.
+Python 환경과 INODEFENCE_RUNTIME_ROOT를 읽는다. dev/manual_tar_probe.py는 작은 baseline TAR 경로를 입력받는다.
 
 ## 출력
 
@@ -16,9 +63,9 @@ Python 환경과 INODEFENCE_RUNTIME_ROOT를 읽는다. manual_tar_probe.py는 �
 
 check_dev_env.py는 임시 sandbox에서 hardlink identity, symlink, 공유 object write effect를 확인한다.
 
-check_docs.py는 Git-visible Markdown의 상대경로 링크와 canonical 문서 존재를 검사한다. fenced/indented/inline code와 외부 URL, anchor-only 링크는 제외한다. 완전한 Markdown parser나 anchor 검사는 아니다.
+dev/check_docs.py는 Git-visible Markdown의 상대경로 링크와 canonical 문서 존재를 검사한다. fenced/indented/inline code와 외부 URL, anchor-only 링크는 제외한다. 완전한 Markdown parser나 anchor 검사는 아니다.
 
-generate_tar_fixtures.py는 4종 TAR baseline과 C0/C1/C2 oracle-check fixture 3종을 재생성한다. oracle_fixture_check.py는 정상 1·C0/C1/C2 각 1 fixture를 경계 검사 없는 통제 extractor로 실행해 실제 Observer/Oracle 판정을 출력한다(controlled oracle check, node-tar 결과 아님). manual_tar_probe.py는 Linux runtime sandbox에 TAR를 풀고 lstat/readlink 결과를 출력한 뒤 sandbox를 삭제한다.
+generate_tar_fixtures.py는 4종 TAR baseline과 C0/C1/C2 oracle-check fixture 3종을 재생성한다. oracle_fixture_check.py는 정상 1·C0/C1/C2 각 1 fixture를 경계 검사 없는 통제 extractor로 실행해 실제 Observer/Oracle 판정을 출력한다(controlled oracle check, node-tar 결과 아님). dev/manual_tar_probe.py는 Linux runtime sandbox에 TAR를 풀고 lstat/readlink 결과를 출력한 뒤 sandbox를 삭제한다.
 
 ## 하지 않는 것
 
@@ -221,7 +268,7 @@ arm을 비교한다. 결과는 `<output>/<run-id>.json`(demo 모드는 `.steps.j
 돌릴 수 없다 — 그런 환경에는 코드·분석만 보내고 docker 실험은 호스트 터미널이나 이 GHA 팬아웃으로
 돌린다.
 
-## 호스트 상태 원장 (`scripts/host_ledger.py`)
+## 호스트 상태 원장 (`scripts/ops/host_ledger.py`)
 
 여러 호스트가 서로의 저장소 상태(worktree별 브랜치·HEAD·미푸시 커밋·미커밋 경로·PR, 원격 기준 SHA와
 조회 시각)를 보도록 호스트당 JSON 한 개를 쓴다. 먼저 로컬(`~/.local/state/inodefence/host-ledger/`)에

@@ -15,8 +15,8 @@ only builds the bundle locally and never uploads or transmits anything. It:
 Raw originals are only read, never modified. The bundle lands outside the repository
 (default ``~/inodefence-evidence-bundles/``).
 
-    python -m scripts.make_evidence_bundle --root ~/inodefence-evidence --host win
-    python -m scripts.make_evidence_bundle --verify ~/inodefence-evidence-bundles/win-....tar.gz
+    python -m scripts.ops.make_evidence_bundle --root ~/inodefence-evidence --host win
+    python -m scripts.ops.make_evidence_bundle --verify ~/inodefence-evidence-bundles/win-....tar.gz
 """
 
 from __future__ import annotations

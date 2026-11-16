@@ -43,6 +43,17 @@ RUN_RESOURCES: dict[str, tuple[str, str]] = {
 }
 
 
+#: The launcher every target's case replay goes through. ``local_node_tar_smoke.sh replay`` is
+#: target-neutral at the shell level: it takes an exact image id and one input line, builds only
+#: the controller and helper images (never a target image), creates the same non-root controller
+#: with the same two mounts as the other three launchers, and runs the one controller mode
+#: ``effect-replay-case``. The other launchers have no replay mode and no way to pass an input,
+#: so a replay of their targets uses this one; which target runs is decided inside the
+#: controller from the input line (``scripts.effect_replay_targets``). The controller and volume
+#: of a replay are therefore this launcher's (``inodefence-local-controller-<RUN_ID>``).
+REPLAY_LAUNCHER_TARGET = "node-tar"
+
+
 def run_resources(target: str, run_id: str | None) -> tuple[str, str]:
     """``(controller, volume)`` of ``target``'s launcher for ``RUN_ID`` = ``run_id``.
 

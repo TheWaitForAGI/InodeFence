@@ -58,10 +58,14 @@ from inodefence.drivers.decompress import registry_prepare as registry
 from inodefence.drivers.lazy_import import LazyModule
 from inodefence.drivers.repo import code_checkout
 from inodefence.drivers.run_target import (
+    BENIGN_NAME,
+    BenignRun,
     CaseRun,
     PrepareStep,
     RunCell,
     TargetAdapter,
+    benign_archive,
+    benign_from_raw,
     fixture_case,
     fixture_plan,
 )
@@ -400,6 +404,29 @@ def _run(cell: RunCell) -> list[CaseRun]:
     return runs
 
 
+def _benign(cell: RunCell) -> BenignRun:
+    """The benign-input control: one regular file through ``run_one``, the fixtures' own program,
+    on the cell's image; ``run_one`` also checks the package and version the image reports."""
+    assert cell.axes.target_version is not None and cell.image_ref is not None
+    package, version = parse_spec(cell.axes.target_version)
+    tar = benign_archive()
+    raw = run_one(package, version, base64.b64encode(tar).decode(), image=cell.image_ref)
+    return benign_from_raw(tar, raw, BENIGN_NAME)
+
+
+def _replay_hook(request: Any, work_dir: Path) -> Any:
+    """decompress case replay (lazy import, like exploration)."""
+    from inodefence.drivers.decompress.replay import replay
+
+    return replay(request, work_dir)
+
+
+def _replay_check(request: Any) -> None:
+    from inodefence.drivers.decompress.replay import check
+
+    check(request)
+
+
 # ---- one call for exploration: resolve, reuse-or-prepare, then check the exploration worker ----
 
 
@@ -471,6 +498,9 @@ ADAPTER = TargetAdapter(
     # compares the identified package and version; a version-only check would pass an image
     # whose worker predates ``frame``.
     verify_existing=lambda cell, image: verify_existing(cell, image),
+    replay=_replay_hook,
+    replay_check=_replay_check,
+    benign=lambda cell: _benign(cell),
 )
 
 

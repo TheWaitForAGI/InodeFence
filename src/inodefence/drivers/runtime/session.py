@@ -94,6 +94,9 @@ class RuntimeSession:
     kind: LaunchKind = "explore"
     #: the driver's output prefix, for any line a diagnostic prints (default: the kind's)
     prefix: str = ""
+    #: whose launcher the launches go through, when it is not ``target``'s own (case replay of
+    #: every target uses one launcher): names the controller and volume the diagnostics look for.
+    resources_target: str | None = None
     started_at: str = field(
         default_factory=lambda: datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     )
@@ -120,7 +123,7 @@ class RuntimeSession:
         A ``block`` finding of a ``before`` check stops the launch first (:class:`LaunchBlocked`).
         """
         run_id = env.get("RUN_ID")
-        controller, volume = run_resources(self.target, run_id)
+        controller, volume = run_resources(self.resources_target or self.target, run_id)
         request = LaunchRequest(
             target=self.target,
             profile=self.policy.profile.value,

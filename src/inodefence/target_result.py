@@ -35,6 +35,15 @@ optional ``campaign`` block: the RNG seed, the execution budget, and the 1-based
 first observed-contract violation (``None`` if the budget ran out with none). Run count and
 violation count stay derivable from ``cases``; the block adds only what the cases cannot show. The
 block is absent on ``fixture-regression`` results, which serialize exactly as before.
+
+Optional ``benign_control`` (absent in older files and in every campaign result; a file without it
+reads and serializes exactly as before) records the benign-input control a ``fixture-regression``
+run made on the same image in the same invocation: one benign archive extracted through the run's
+own extraction program. The regression fixtures are all attack-shaped, so a target that declines
+every one of them reads as ``PASS``; the control tells that apart from an image that rejects (or
+cannot extract) everything. When the control did not extract, a result that would be ``PASS``
+is ``ERROR`` instead: declined attack inputs cannot be attributed to the extractor's checks. An
+observed violation stays ``FAIL`` (the effect is on disk whatever the control showed).
 """
 
 from __future__ import annotations
@@ -260,6 +269,22 @@ class CampaignInfo:
 
 
 @dataclass(frozen=True, slots=True)
+class BenignControl:
+    """The benign-input control of one fixture-regression cell (see the module docstring).
+
+    ``extracted``: the benign archive's ``expected_path`` appeared under the extraction root and
+    the extractor declined nothing. ``tar_path`` (relative to the cell folder) and ``tar_sha256``
+    name the exact archive; ``detail`` is one line for people (what was seen, or why it failed).
+    """
+
+    extracted: bool
+    expected_path: str
+    tar_path: str
+    tar_sha256: str
+    detail: str
+
+
+@dataclass(frozen=True, slots=True)
 class TargetResult:
     target: str
     axes: TargetAxes
@@ -271,6 +296,8 @@ class TargetResult:
     preparation: Preparation | None = None
     #: Optional; only a campaign (feedback search) sets it. Absent (``None``) for regression.
     campaign: CampaignInfo | None = None
+    #: Optional; only a fixture-regression run that made the benign-input control sets it.
+    benign_control: BenignControl | None = None
 
     def __post_init__(self) -> None:
         _validate(self)
@@ -324,7 +351,8 @@ class TargetResult:
     def verdict(self) -> Verdict:
         """Campaign: ERROR only from un-judged steps (all of them, or above the stored ceiling) --
         rejections, crashes and timeouts the oracle judged never make it ERROR. Fixture-regression
-        keeps its rule unchanged: any run error is ERROR. Then any violation is FAIL, else PASS."""
+        keeps its rule unchanged: any run error is ERROR. Then any violation is FAIL, else PASS --
+        except that a recorded benign control that did not extract makes that PASS an ERROR."""
         if self.mode is ResultMode.CAMPAIGN:
             executed = self.executed
             all_unjudged = executed > 0 and self.unjudged_steps == executed
@@ -336,6 +364,8 @@ class TargetResult:
             return Verdict.ERROR
         if any(case.violated for case in self.cases):
             return Verdict.FAIL
+        if self.benign_control is not None and not self.benign_control.extracted:
+            return Verdict.ERROR
         return Verdict.PASS
 
     @property
@@ -407,6 +437,15 @@ class TargetResult:
             # serialize byte-identically.
             if self.campaign.violation_capture is not None:
                 data["campaign"]["violation_capture"] = self.campaign.violation_capture
+        if self.benign_control is not None:
+            b = self.benign_control
+            data["benign_control"] = {
+                "extracted": b.extracted,
+                "expected_path": b.expected_path,
+                "tar_path": b.tar_path,
+                "tar_sha256": b.tar_sha256,
+                "detail": b.detail,
+            }
         return data
 
     def dumps(self) -> str:
@@ -480,9 +519,33 @@ def _validate(result: TargetResult) -> None:
             raise TargetResultError(f"tar_sha256 must be 64 lowercase hex: {item.tar_sha256!r}")
     _validate_preparation(result.preparation)
     _validate_campaign(result)
+    _validate_benign_control(result, seen_paths)
     sha = result.provenance.engine_sha
     if sha is not None and _GIT_SHA_RE.fullmatch(sha) is None:
         raise TargetResultError(f"engine_sha must be a 40-hex git commit or null: {sha!r}")
+
+
+def _validate_benign_control(result: TargetResult, case_paths: set[str]) -> None:
+    control = result.benign_control
+    if control is None:
+        return
+    if result.mode is not ResultMode.FIXTURE_REGRESSION:
+        raise TargetResultError("benign_control is only valid when mode is fixture-regression")
+    if type(control.extracted) is not bool:
+        raise TargetResultError("benign_control.extracted must be true/false")
+    for name in ("expected_path", "tar_path", "detail"):
+        value = getattr(control, name)
+        if not isinstance(value, str) or not value:
+            raise TargetResultError(f"benign_control.{name} must be a non-empty string")
+    path = PurePosixPath(control.tar_path)
+    if path.is_absolute() or ".." in path.parts or "\\" in control.tar_path:
+        raise TargetResultError(
+            f"benign_control.tar_path must be relative and inside: {control.tar_path!r}"
+        )
+    if control.tar_path in case_paths:
+        raise TargetResultError("benign_control.tar_path must not be a case input path")
+    if not isinstance(control.tar_sha256, str) or _SHA256_RE.fullmatch(control.tar_sha256) is None:
+        raise TargetResultError("benign_control.tar_sha256 must be 64 lowercase hex")
 
 
 def _validate_campaign(result: TargetResult) -> None:
@@ -610,6 +673,8 @@ _CAMPAIGN_OPTIONAL = {
     "violation_capture",
 }
 
+_BENIGN_CONTROL_KEYS = {"extracted", "expected_path", "tar_path", "tar_sha256", "detail"}
+
 _TOP_KEYS = {
     "schema",
     "label",
@@ -656,7 +721,11 @@ def _keys_optional(
 
 def from_json_dict(data: object) -> TargetResult:
     """Strict reader: exact keys, and the derived fields must match what the cases imply."""
-    optional = {"preparation", "campaign"} & set(data) if isinstance(data, Mapping) else set()
+    optional = (
+        {"preparation", "campaign", "benign_control"} & set(data)
+        if isinstance(data, Mapping)
+        else set()
+    )
     top = _keys(data, _TOP_KEYS | optional, "result")
     if top["schema"] != SCHEMA:
         raise TargetResultError(f"schema must be {SCHEMA!r}, got {top['schema']!r}")
@@ -688,6 +757,11 @@ def from_json_dict(data: object) -> TargetResult:
             terminations=campaign_block.get("terminations"),
             violation_capture=campaign_block.get("violation_capture"),
         )
+    benign_control = None
+    if "benign_control" in top:
+        benign_control = BenignControl(
+            **_keys(top["benign_control"], _BENIGN_CONTROL_KEYS, "benign_control")
+        )
     axes = _keys(top["axes"], {"target_version", "runtime_version", "extraction_filter"}, "axes")
     prov = _keys(
         top["provenance"], {"engine_sha", "engine_dirty", "image_ref", "image_id"}, "provenance"
@@ -717,6 +791,7 @@ def from_json_dict(data: object) -> TargetResult:
         ),
         preparation=preparation,
         campaign=campaign,
+        benign_control=benign_control,
     )
     expected = result.to_json_dict()
     for derived in ("label", "runs", "verdict", "violating_cases"):

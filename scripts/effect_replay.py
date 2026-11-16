@@ -14,6 +14,11 @@ A round whose run the producer refuses to trust (``NativeDemoAborted``: an infra
 or an untrustworthy trace under the default ``stop`` policy) is recorded as an un-judged
 ``run_error`` round with its reason, and the remaining rounds still run. Any other exception
 propagates: the controller then reports the replay as incomplete, keeping the finished rounds.
+
+The same controller mode also replays python-tarfile, decompress and oras-go cases: when the
+host's ``run_settings`` name a ``target``, :func:`run_case_replay` hands the input to
+:mod:`scripts.effect_replay_targets` (each target's own exploration pipeline and judging rule).
+node-tar's settings never carry that key, so everything described above is unchanged for it.
 """
 
 from __future__ import annotations
@@ -181,6 +186,11 @@ def run_case_replay(
     starts, so a replay that dies part-way still leaves its finished rounds. The report written to
     ``evidence`` says ``complete: false`` and why when the rounds did not all finish.
     """
+    if "target" in replay_input.run_settings:
+        # python-tarfile / decompress / oras-go: their own pipeline, on this same backend.
+        from scripts.effect_replay_targets import run_target_case_replay
+
+        return run_target_case_replay(backend, image, evidence, replay_input)
     _sentinels, _continue, profile = node_tar_conditions(replay_input.run_settings)
     rounds_path = replay_rounds_path(evidence)
     finished: list[dict[str, Any]] = []

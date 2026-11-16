@@ -36,6 +36,36 @@ REPO_ROOT = code_checkout()
 SMOKE = launcher_path("node-tar", REPO_ROOT)
 
 
+#: The ``run_settings`` keys node-tar exploration records in a live case folder (the controller
+#: requires exactly these: ``scripts.effect_replay.NODE_TAR_SETTINGS``; a test keeps them in step).
+NODE_TAR_SETTINGS = ("sentinel_count", "sentinel_seed", "observer_integrity_policy", "profile")
+
+
+def check(request: ReplayRequest) -> None:
+    """``TargetAdapter.replay_check`` for node-tar: the recorded conditions must be complete.
+
+    A node-tar exploration's sandbox (sentinel set), observer-integrity policy and profile are
+    recorded only in the live case folder's ``case.json``. A result folder's ``result.json`` holds
+    the axes alone, so a case read from it cannot be re-run under the same conditions and is
+    refused here, naming where the replayable record is.
+    """
+    given = set(request.run_settings)
+    if given == set(NODE_TAR_SETTINGS):
+        return
+    where = (
+        " A node-tar result folder does not record them; replay the live case folder instead "
+        "(<out>/target-explore/<run>/live/violations/run-NNNNNN)."
+        if request.source == "result-folder"
+        else ""
+    )
+    raise CaseReplayError(
+        f"node-tar run_settings must be exactly {sorted(NODE_TAR_SETTINGS)} (the sentinel set, "
+        f"observer policy and profile the exploration ran under); missing "
+        f"{sorted(set(NODE_TAR_SETTINGS) - given)}, unexpected "
+        f"{sorted(given - set(NODE_TAR_SETTINGS))}.{where}"
+    )
+
+
 def run_id_for(request: ReplayRequest) -> str:
     """A RUN_ID unique per replay process (the smoke script names controller/volume after it)."""
     return f"replay-{request.case_id[:12]}-{os.getpid()}"

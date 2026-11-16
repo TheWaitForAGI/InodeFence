@@ -35,10 +35,14 @@ from inodefence.drivers.lazy_import import LazyModule
 from inodefence.drivers.node_tar import image as node_tar_image
 from inodefence.drivers.node_tar import registry_prepare as registry
 from inodefence.drivers.run_target import (
+    BENIGN_NAME,
+    BenignRun,
     CaseRun,
     PrepareStep,
     RunCell,
     TargetAdapter,
+    benign_archive,
+    benign_from_raw,
     fixture_case,
     fixture_plan,
 )
@@ -193,6 +197,19 @@ def _run(cell: RunCell) -> list[CaseRun]:
     return runs
 
 
+def _benign(cell: RunCell) -> BenignRun:
+    """The benign-input control: one regular file through the same program and flags as ``_run``."""
+    version = cell.axes.target_version
+    assert version is not None and cell.image_ref is not None
+    tar = benign_archive()
+    tar_b64 = base64.b64encode(tar).decode()
+    if cell.exploratory:
+        raw = cri.run_one(version, tar_b64, image=cell.image_ref, network_none=True)
+    else:
+        raw = cri.run_one(version, tar_b64, image=cell.image_ref)
+    return benign_from_raw(tar, raw, BENIGN_NAME)
+
+
 @dataclass(frozen=True, slots=True)
 class PreparedNodeTar:
     """A node-tar image that exists locally and passed its offline checks."""
@@ -250,6 +267,13 @@ def _replay_hook(request, work_dir):  # type: ignore[no-untyped-def]
     return replay(request, work_dir)
 
 
+def _replay_check(request) -> None:  # type: ignore[no-untyped-def]
+    """node-tar replay conditions, checked before anything runs (lazy import, like the hook)."""
+    from inodefence.drivers.node_tar.replay import check
+
+    check(request)
+
+
 def _verify_existing(cell: RunCell, image_id: str) -> str | None:
     """Before the explore path reuses a prepared registry image, confirm its effect producer runs.
 
@@ -279,4 +303,7 @@ ADAPTER = TargetAdapter(
     explore_min_budget=_explore_min_budget,
     verify_existing=_verify_existing,
     replay=_replay_hook,
+    replay_check=_replay_check,
+    # Late-bound, like oras-go's verify_existing, so a test (or a caller) can replace it.
+    benign=lambda cell: _benign(cell),
 )

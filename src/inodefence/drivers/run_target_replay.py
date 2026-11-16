@@ -1,17 +1,26 @@
-"""Re-run one recorded violation case N times on the same image and record how often it repeats.
+"""Re-run one recorded exploration case N times on the same image and record how often it repeats.
 
-``inodefence replay <violation case folder>`` (this driver) is target-agnostic:
+``inodefence replay <case folder>`` / ``inodefence replay <result folder> --case step-N`` (this
+driver) is target-agnostic; all four targets have a replay hook:
 
-1. read and check the case folder (:func:`inodefence.case_replay.load_replay_request`): the TAR's
-   SHA-256, a byte-identical reconstruction with the same ``case_id``, an exact image id and the
-   exploration's ``run_settings``;
+1. read and check the input (:func:`inodefence.case_replay.load_request`): a live violation case
+   folder (``case.json`` + ``input.tar``, what node-tar exploration writes) or an exploration
+   result folder plus one saved input (``result.json`` + ``inputs/step-N.tar``, what python-tarfile,
+   decompress and oras-go exploration write). Either way: the TAR's SHA-256 against the record, a
+   byte-identical reconstruction, an exact image id and the exploration's ``run_settings``; then
+   the target's own check of those settings (``TargetAdapter.replay_check``: its options and
+   input constraints) -- a refusal names the reason and nothing runs;
 2. refuse a case folder inside this repository (it is public; results may hold real violating
    inputs), like ``run_target_explore`` refuses ``--out`` inside it;
 3. confirm the exact image id is present on this host -- it is never prepared again or replaced by
    another image (that would not be the same conditions);
 4. call the target's replay hook (``TargetAdapter.replay``), which re-runs the case through the
    same isolation path as exploration;
-5. write ``replay.json`` in a new folder beside the case folder; the case folder is not touched.
+5. write ``replay.json`` in a new folder beside the case (or result) folder; the original folder
+   is not touched. Every round carries its class (reproduced violation / not reproduced / no
+   violation / new violation / un-judged / infrastructure failure), the original and replay
+   verdicts side by side, and where its raw record is (``evidence/<journal>`` line N);
+   ``replay.evidence`` lists the kept files with their SHA-256.
    The files the hook copied back under ``<work>/evidence/`` (controller report, round journal)
    are kept in that folder's ``evidence/``; an incomplete replay also records where and why it
    stopped (``replay.diagnosis``: stage x category, the shared abort classifier's categories), and
@@ -24,9 +33,10 @@ with a follow-up ``docker info`` to tell a stalled daemon from a stopped one).
 Exit codes: 0 replay complete; 1 replay incomplete or the hook failed (finished rounds are kept);
 2 the case folder cannot be replayed as the same input/conditions; 3 the image is not on this
 host, the folder is inside the repository, or the arguments are refused (usage error; 2 is kept for
-the case folder); 4 the target has no replay support.
+the case folder); 4 the target has no replay support (no registered target today).
 
     python -m inodefence.drivers.run_target_replay <case folder> [--rounds 3] [--dry-run]
+    python -m inodefence.drivers.run_target_replay <result folder> --case step-N [--rounds 3]
 """
 
 from __future__ import annotations
@@ -47,10 +57,11 @@ from inodefence.case_replay import (
     ReplayRequest,
     ReplayRun,
     build_replay_record,
-    load_replay_request,
+    load_request,
     publish_replay,
     replay_brief,
 )
+from inodefence.drivers.launcher import REPLAY_LAUNCHER_TARGET
 from inodefence.drivers.repo import code_checkout, require_repository_or_exit
 from inodefence.drivers.run_target import TARGETS, RefusalParser, _git, load_adapter
 from inodefence.drivers.runtime import health
@@ -104,6 +115,40 @@ def _evidence_report(evidence: Path) -> Path | None:
     return reports[0] if len(reports) == 1 else None
 
 
+def link_evidence(record: dict, evidence: Path) -> None:
+    """Tie the record to the raw files kept beside it (paths relative to the replay folder).
+
+    ``replay.evidence``: every kept file with its size and SHA-256. Each round gets
+    ``evidence = {"file": "evidence/<journal>", "line": N}`` when the controller's round journal
+    (``*.steps.jsonl``, one line per finished round, written before the next round starts) holds
+    that round; ``None`` when there is no such line (the journal was not copied back).
+    """
+    files = (
+        sorted(path for path in evidence.iterdir() if path.is_file()) if evidence.is_dir() else []
+    )
+    record["replay"]["evidence"] = [
+        {
+            "file": f"evidence/{path.name}",
+            "bytes": path.stat().st_size,
+            "sha256": sha256(path.read_bytes()).hexdigest(),
+        }
+        for path in files
+    ]
+    journals = [path for path in files if path.name.endswith(".steps.jsonl")]
+    lines = (
+        [line for line in journals[0].read_text(encoding="utf-8").splitlines() if line.strip()]
+        if len(journals) == 1
+        else []
+    )
+    for entry in record["rounds"]:
+        number = entry["round"]
+        entry["evidence"] = (
+            {"file": f"evidence/{journals[0].name}", "line": number}
+            if number <= len(lines)
+            else None
+        )
+
+
 def engine_commit() -> str | None:
     sha = _git("rev-parse", "HEAD")
     if sha is None:
@@ -115,10 +160,19 @@ def engine_commit() -> str | None:
 def main(argv: list[str] | None = None, *, runner=subprocess.run) -> int:
     parser = RefusalParser(
         prog="inodefence replay",
-        description="Re-run one violation case folder N times on the same image (same isolation, "
+        description="Re-run one exploration case N times on the same image (same isolation, "
         "same run settings) and record how often it reproduces.",
     )
-    parser.add_argument("case_dir", type=Path, help="a live/violations/run-NNNNNN folder")
+    parser.add_argument(
+        "case_dir",
+        type=Path,
+        help="a live/violations/run-NNNNNN folder, or an exploration result folder (with --case)",
+    )
+    parser.add_argument(
+        "--case",
+        help="with a result folder: which saved input to replay (e.g. step-7); may be omitted "
+        "when the result saved exactly one",
+    )
     parser.add_argument(
         "--rounds",
         type=int,
@@ -134,7 +188,7 @@ def main(argv: list[str] | None = None, *, runner=subprocess.run) -> int:
     require_repository_or_exit(parser, 3)
 
     try:
-        request = load_replay_request(args.case_dir.expanduser(), rounds=args.rounds)
+        request = load_request(args.case_dir.expanduser(), case=args.case, rounds=args.rounds)
     except CaseReplayError as error:
         print(f"REPLAY REFUSED: {error}", file=sys.stderr)
         return 2
@@ -151,7 +205,16 @@ def main(argv: list[str] | None = None, *, runner=subprocess.run) -> int:
     adapter = load_adapter(request.target)
     lookup = local_image_lookup(request.image_id, runner)
     present = lookup.image_id
+    refusal = None
+    check = getattr(adapter, "replay_check", None)
+    if adapter.replay is not None and check is not None:
+        try:
+            check(request)
+        except CaseReplayError as error:
+            refusal = str(error)
     plan = {
+        "source": request.source,
+        "refusal": refusal,
         "case_dir": str(request.case_dir),
         "case_id": request.case_id,
         "tar_sha256": request.tar_sha256,
@@ -171,6 +234,10 @@ def main(argv: list[str] | None = None, *, runner=subprocess.run) -> int:
             f"REPLAY UNSUPPORTED: target {request.target} has no replay hook yet", file=sys.stderr
         )
         return 4
+    if refusal is not None:
+        # The target cannot re-run this record under its exploration's conditions: nothing runs.
+        print(f"REPLAY REFUSED: {refusal}", file=sys.stderr)
+        return 2
     if lookup.state is health.ImageState.UNKNOWN:
         daemon = health.probe_daemon(runner=runner)
         cause = daemon.problem or "the daemon answers `docker info` but not the image question"
@@ -218,8 +285,12 @@ def main(argv: list[str] | None = None, *, runner=subprocess.run) -> int:
 
 
 def new_session(target: str) -> RuntimeSession:
-    """The replay's runtime session: STRICT, kind ``replay`` (output prefix ``REPLAY``)."""
-    return RuntimeSession(target=target, kind="replay")
+    """The replay's runtime session: STRICT, kind ``replay`` (output prefix ``REPLAY``).
+
+    Every target's replay goes through one launcher, so the controller and volume the session's
+    diagnostics look for are that launcher's (``REPLAY_LAUNCHER_TARGET``), whatever the target.
+    """
+    return RuntimeSession(target=target, kind="replay", resources_target=REPLAY_LAUNCHER_TARGET)
 
 
 def _record(
@@ -254,6 +325,7 @@ def _record(
         print(f"REPLAY FAILED: the target returned an invalid round: {error}", file=sys.stderr)
         return 1
     record["replay"]["repository"] = checkout_record()
+    link_evidence(record, evidence)
     diagnosis = None
     if not record["replay"]["complete"]:
         smoke_exit = run.runner.get("smoke_exit") if failure is None else None

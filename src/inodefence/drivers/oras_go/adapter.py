@@ -61,7 +61,15 @@ from inodefence.drivers import regression_check as rc
 from inodefence.drivers.lazy_import import LazyModule
 from inodefence.drivers.oras_go import registry_prepare as proxy
 from inodefence.drivers.repo import code_checkout
-from inodefence.drivers.run_target import CaseRun, PrepareStep, RunCell, TargetAdapter, fixture_case
+from inodefence.drivers.run_target import (
+    BenignRun,
+    CaseRun,
+    PrepareStep,
+    RunCell,
+    TargetAdapter,
+    benign_from_raw,
+    fixture_case,
+)
 from inodefence.target_result import Preparation, ResultMode, TargetAxes
 
 if TYPE_CHECKING:
@@ -196,6 +204,35 @@ def _run(cell: RunCell) -> list[CaseRun]:
             raw = {"_run_error": True, "_reason": f"{type(error).__name__}: {error}"[:400]}
         runs.append(fixture_case(fixture, raw))
     return runs
+
+
+def _benign(cell: RunCell) -> BenignRun:
+    """The benign-input control: the existing one-file archive under oras-go's directory-artifact
+    title (``registry_prepare.BENIGN``, ``d/ok.txt``) through ``_run``'s own probe and image."""
+    version = cell.axes.target_version
+    assert version is not None
+    tar = ogh.build_tar(proxy.BENIGN)
+    sentinel_b64 = base64.b64encode(ogh.SENTINEL_CONTENT).decode()
+    try:
+        raw = ogh.run_probe(
+            version, base64.b64encode(tar).decode(), sentinel_b64, image=cell.image_ref
+        )
+    except (OSError, subprocess.SubprocessError) as error:  # docker missing / timeout
+        raw = {"_run_error": True, "_reason": f"{type(error).__name__}: {error}"[:400]}
+    return benign_from_raw(tar, raw, str(proxy.BENIGN[0]["name"]))
+
+
+def _replay_hook(request, work_dir):  # type: ignore[no-untyped-def]
+    """oras-go case replay (lazy import, like exploration)."""
+    from inodefence.drivers.oras_go.replay import replay
+
+    return replay(request, work_dir)
+
+
+def _replay_check(request) -> None:  # type: ignore[no-untyped-def]
+    from inodefence.drivers.oras_go.replay import check
+
+    check(request)
 
 
 # ---- image preparation (build from the committed per-role go.mod/go.sum) ----
@@ -390,4 +427,7 @@ ADAPTER = TargetAdapter(
     explore_min_budget=_explore_min_budget,
     # Late-bound so a test (or a caller) can replace ``_verify_existing``.
     verify_existing=lambda cell, image: _verify_existing(cell, image),
+    replay=_replay_hook,
+    replay_check=_replay_check,
+    benign=lambda cell: _benign(cell),
 )

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests import benign_control_stub
 
 import inodefence.drivers.node_tar.adapter as nt
 import inodefence.drivers.node_tar.registry_prepare as reg
@@ -735,3 +736,9 @@ def test_verify_existing_does_not_guard_committed_reuse(monkeypatch: pytest.Monk
 def test_verify_existing_skips_a_cell_with_no_image() -> None:
     cell = rt.RunCell(dirname="x", axes=TargetAxes(target_version=V), image_ref=None)
     assert nt._verify_existing(cell, "") is None
+
+
+@pytest.fixture(autouse=True)
+def _benign_control_extracted(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Not about the benign-input control (see test_verify_benign_control): it extracted."""
+    benign_control_stub.install(monkeypatch, nt)

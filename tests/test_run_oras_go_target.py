@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests import benign_control_stub
 
 import inodefence.drivers.oras_go.adapter as rog
 import inodefence.drivers.regression_check as rc
@@ -20,6 +21,12 @@ from inodefence.target_result import load_target_result
 def _members(tar_bytes: bytes) -> list[tarfile.TarInfo]:
     with tarfile.open(fileobj=io.BytesIO(tar_bytes), mode="r:") as archive:
         return archive.getmembers()
+
+
+@pytest.fixture(autouse=True)
+def _benign_control_extracted(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Not about the benign-input control (see test_verify_benign_control): it extracted."""
+    benign_control_stub.install(monkeypatch, rog)
 
 
 def test_registered_in_common_command() -> None:

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests import benign_control_stub
 
 import inodefence.drivers.decompress.adapter as dt
 import inodefence.drivers.regression_check as rc
@@ -28,6 +29,12 @@ def _raw(package: str, version: str, *, shared: bool) -> dict[str, Any]:
         "reference_after": after,
         "shared_identity": ["extract/link"] if shared else [],
     }
+
+
+@pytest.fixture(autouse=True)
+def _benign_control_extracted(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Not about the benign-input control (see test_verify_benign_control): it extracted."""
+    benign_control_stub.install(monkeypatch, dt)
 
 
 def test_registered_in_common_command() -> None:

@@ -60,12 +60,16 @@ from inodefence.drivers import regression_check as rc
 from inodefence.drivers.lazy_import import LazyModule
 from inodefence.drivers.repo import require_repository_or_exit
 from inodefence.drivers.run_target import (
+    BENIGN_NAME,
     RESULT_NAME,
+    BenignRun,
     CaseRun,
     PrepareStep,
     RunCell,
     TargetAdapter,
     TargetOption,
+    benign_archive,
+    benign_from_raw,
     engine_provenance,
     fixture_plan,
     write_result,
@@ -308,6 +312,18 @@ def _adapter_cells(versions: list[str], filters: list[str]) -> list[RunCell]:
             cell = Cell(runtime, extraction_filter)
             cells.append(RunCell(cell.dirname, cell.axes, pti.image_ref(cell.runtime_version)))
     return cells
+
+
+def _benign(cell: RunCell) -> BenignRun:
+    """The benign-input control: one regular file through ``run_cell``'s own program, with the
+    cell's runtime, extraction filter and image (the filter applies to the control too)."""
+    runtime, extraction_filter = cell.axes.runtime_version, cell.axes.extraction_filter
+    assert runtime is not None and extraction_filter is not None
+    tar = benign_archive()
+    raw = pti.run_one(
+        runtime, extraction_filter, base64.b64encode(tar).decode(), image=cell.image_ref
+    )
+    return benign_from_raw(tar, raw, BENIGN_NAME)
 
 
 def _adapter_run(cell: RunCell) -> list[CaseRun]:
@@ -554,6 +570,19 @@ def _explore_hook(prepared, options):  # type: ignore[no-untyped-def]
     return explore(prepared, options)
 
 
+def _replay_hook(request, work_dir):  # type: ignore[no-untyped-def]
+    """python-tarfile case replay (lazy import, like exploration)."""
+    from inodefence.drivers.python_tarfile.replay import replay
+
+    return replay(request, work_dir)
+
+
+def _replay_check(request) -> None:  # type: ignore[no-untyped-def]
+    from inodefence.drivers.python_tarfile.replay import check
+
+    check(request)
+
+
 ADAPTER = TargetAdapter(
     mode=MODE,
     observed_contracts=OBSERVED,
@@ -570,6 +599,9 @@ ADAPTER = TargetAdapter(
     # (The exploration producer image adds the worker on top; its reuse check -- version, worker
     # SHA-256 and a self-test -- is in inodefence.drivers.python_tarfile.producer.)
     verify_existing=ip.recipe_verify_existing(_existing_recipe),
+    replay=_replay_hook,
+    replay_check=_replay_check,
+    benign=lambda cell: _benign(cell),
 )
 
 

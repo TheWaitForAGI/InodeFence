@@ -95,15 +95,53 @@ def _termination_line(result: TargetResult) -> str:
     return " · ".join(parts)
 
 
+#: Which no-violation runs an exploration leaves un-judged, per target (docs/USAGE.md "종료 상태와
+#: 판정은 별개입니다"; the rules live with each target's exploration, this is only their wording).
+#: A target not named here gets the node-tar / decompress wording, the rule D1 states.
+_UNJUDGED_RULE = {
+    "python-tarfile": (
+        "위반이 관찰되지 않은 시간 초과, worker 보고가 없거나 종료 상태와 어긋나는 실행, trace가 "
+        "온전하지 않은 성공은 미판정이다. worker가 보고한 예외로 끝난 실패는 tarfile의 명시적 "
+        "거부로 보아 판정된 실행으로 남는다"
+    ),
+    "oras-go": "성공·거절로 끝나지 않은 실행은 모두 미판정이다",
+}
+_UNJUDGED_RULE_DEFAULT = "탐색에서 위반이 관찰되지 않은 실패·시간 초과는 미판정이다"
+
+
+def unjudged_rule(target: str) -> str:
+    """One clause: which no-violation exploration runs are un-judged for ``target``."""
+    return _UNJUDGED_RULE.get(target, _UNJUDGED_RULE_DEFAULT)
+
+
+def _benign_line(result: TargetResult) -> str | None:
+    control = result.benign_control
+    if control is None:
+        return None
+    state = "추출됨" if control.extracted else "**추출되지 않음**"
+    return (
+        f"정상 입력 대조군: {state} — 같은 이미지에서 같은 실행 프로그램으로 정상 아카이브 "
+        f"{_code(control.tar_path)}(SHA-256 {_code(control.tar_sha256)})를 풀어 "
+        f"{_code(control.expected_path)}가 생기는지 확인했다. {_cell(control.detail)}"
+    )
+
+
 def _headline(result: TargetResult) -> str:
     total, errored = result.executed, result.errored
     violating = len(result.violating_cases)
+    benign_failed = result.benign_control is not None and not result.benign_control.extracted
+    if result.verdict is Verdict.ERROR and benign_failed and not errored:
+        return (
+            "**ERROR** — 정상 입력 대조군이 추출되지 않았다. 이 이미지는 정상 아카이브도 풀지 "
+            "못하므로, 공격 형태 입력을 거부한 결과를 추출기의 방어로 읽을 수 없다(PASS를 내지 "
+            "않는다). 이미지를 다시 준비한 뒤 재실행한다."
+        )
     if result.verdict is Verdict.ERROR and result.campaign is not None:
         return (
             f"**ERROR** — {total}건 중 {result.unjudged_steps}건에서 오라클이 평가되지 못했다"
             f"(미판정 비율 {result.unjudged_ratio}). 보지 못한 실행이 너무 많아 위반 없음으로 "
-            "읽을 수 없다. 정상 거절은 판정된 실행이라 이 수에 들지 않는다(탐색에서 위반이 "
-            "관찰되지 않은 실패·시간 초과는 미판정이다)."
+            "읽을 수 없다. 정상 거절은 판정된 실행이라 이 수에 들지 않는다"
+            f"({unjudged_rule(result.target)})."
         )
     if result.verdict is Verdict.ERROR:
         return (
@@ -141,6 +179,16 @@ def render_summary(result: TargetResult, *, source_name: str, inputs_verified: b
     add("")
     add(_headline(result))
     add("")
+    benign = _benign_line(result)
+    if benign is not None:
+        add(benign)
+        add("")
+    elif result.campaign is None:
+        add(
+            "정상 입력 대조군: 기록 없음 — 이 결과 파일은 대조군을 남기지 않았다. 고정 입력이 "
+            "모두 거부된 PASS는 모든 입력을 거부하는 고장 난 이미지와 구분되지 않는다."
+        )
+        add("")
     warning = no_extraction_warning(result.termination_counts) if result.campaign else None
     if warning:
         add(f"> **주의** — {warning}")
@@ -173,7 +221,7 @@ def render_summary(result: TargetResult, *, source_name: str, inputs_verified: b
         add(
             f"| 미판정 실행 | {result.unjudged_steps}건 (비율 {result.unjudged_ratio}) "
             "— 오라클이 평가되지 못했거나 깨끗한 결과로 믿을 수 없는 실행(실행 기반 오류·관찰 "
-            "없음·사후 스냅샷 없음, 탐색에서 위반이 관찰되지 않은 실패·시간 초과), "
+            f"없음·사후 스냅샷 없음; 이 대상의 규칙: {unjudged_rule(result.target)}), "
             "‘위반 없음’과 다름. 정상 거절은 판정된 실행이라 여기 들지 않음 |"
         )
         if campaign.max_unjudged_ratio is not None:

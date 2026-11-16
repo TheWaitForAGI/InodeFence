@@ -302,14 +302,35 @@ def replay_dir_name(case_dir: Path, moment: datetime) -> str:
     return f"{case_dir.name}.replay-{moment.astimezone(UTC).strftime('%Y%m%dT%H%M%SZ')}"
 
 
-def publish_replay(case_dir: Path, record: Mapping[str, Any], *, moment: datetime) -> Path:
+#: Highest ``-N`` suffix tried for a same-second replay folder name (with ``evidence`` given).
+_MAX_NAME_SUFFIX = 99
+
+
+def publish_replay(
+    case_dir: Path,
+    record: Mapping[str, Any],
+    *,
+    moment: datetime,
+    evidence: Path | None = None,
+) -> Path:
     """Write ``replay.json`` in a new folder beside the case folder, in one rename.
 
     The case folder itself is never written to, and an existing replay folder is never reused.
+
+    ``evidence`` (the product driver passes it): a folder whose files are kept as ``evidence/``
+    inside the replay folder (the controller report and round journal the hook copied back), in the
+    same rename, so a replay that stopped on an infrastructure error keeps more than its
+    ``stop_reason``. With it, a name already taken (two replays of one case in the same second)
+    gets the next free ``-2``, ``-3``, ... suffix instead of an error, so the record of rounds that
+    already ran is not lost; :func:`read_replays` reads those names too. Without it (``None``) the
+    behaviour, output and errors are exactly as before.
     """
-    final = case_dir.parent / replay_dir_name(case_dir, moment)
+    base = replay_dir_name(case_dir, moment)
+    final = case_dir.parent / base
     if final.exists():
-        raise CaseReplayError(f"{final} already exists; a replay never overwrites another")
+        if evidence is None:
+            raise CaseReplayError(f"{final} already exists; a replay never overwrites another")
+        final = _free_replay_dir(case_dir.parent, base)
     tmp = case_dir.parent / f".tmp-{final.name}-{os.getpid()}"
     shutil.rmtree(tmp, ignore_errors=True)
     tmp.mkdir()
@@ -317,11 +338,29 @@ def publish_replay(case_dir: Path, record: Mapping[str, Any], *, moment: datetim
         (tmp / REPLAY_FILE).write_text(
             json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
-        os.rename(tmp, final)
+        if evidence is not None and evidence.is_dir() and any(evidence.iterdir()):
+            shutil.copytree(evidence, tmp / "evidence", symlinks=True)
+        while True:
+            try:
+                os.rename(tmp, final)
+                break
+            except OSError:
+                # Taken between the check and the rename (a non-empty folder refuses the rename).
+                if evidence is None or not final.exists():
+                    raise
+                final = _free_replay_dir(case_dir.parent, base)
     except OSError:
         shutil.rmtree(tmp, ignore_errors=True)
         raise
     return final
+
+
+def _free_replay_dir(parent: Path, base: str) -> Path:
+    for number in range(2, _MAX_NAME_SUFFIX + 1):
+        candidate = parent / f"{base}-{number}"
+        if not candidate.exists():
+            return candidate
+    raise CaseReplayError(f"{parent / base} and its -2..-{_MAX_NAME_SUFFIX} names are all taken")
 
 
 def read_replays(case_dir: Path) -> list[dict[str, Any]]:

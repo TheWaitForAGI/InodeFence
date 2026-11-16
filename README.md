@@ -390,9 +390,10 @@ inodefence targets          # 추출기와 각 추출기가 지원하는 것(옵
 wheel로 설치했다면 `INODEFENCE_HOME`(환경 변수 또는 아래 설정 파일)으로 클론 위치를 알려 줍니다. 이때 `targets`·`verify`·`explore`·`replay`는
 그 클론을 작업 폴더로 하고 클론의 `src`를 먼저 읽는 하위 프로세스(`python -m inodefence.drivers.…`)에서 돌므로,
 드라이버·엔진·이미지 레시피가 모두 그 클론의 것입니다. 결과의 `engine_commit`·`engine_sha`는 그 클론의 `git rev-parse HEAD`(추적 파일 수정이나 `src`·`scripts`·`tools` 아래 추적 안 된 파일이 있으면 `-dirty`)입니다.
-`status`·`summary`·`doctor`는 설치된 패키지 코드로 돌고, 드라이버를 import하지 않습니다.
+`status`·`summary`·`doctor`는 설치된 패키지 코드로 돌고, 대상 드라이버(`run_target`·어댑터)를 import하지 않습니다.
+이 셋이 `drivers` 안에서 쓰는 것은 표준 라이브러리만 쓰는 `drivers/repo.py`(저장소 위치)와 `drivers/runtime/health.py`(Docker·호스트 점검)뿐입니다.
 `targets`도 `verify`·`explore`와 같은 clone 코드로 돕니다(0.2.0 RC까지는 CLI 프로세스 안에서 설치본 엔진과 clone 드라이버가 섞였습니다).
-고른 clone에 `src/inodefence/__init__.py`와 `src/inodefence/drivers/`가 둘 다 있어야 합니다. 하나라도 없으면(손상된 clone, 또는 `src/inodefence`는 있지만 `drivers/`가 없는 이 버전 이전 레이아웃의 clone) 다른 설치본으로 대신 돌리지 않고 종료 3으로 거부합니다.
+고른 clone에 `src/inodefence/__init__.py`와 `src/inodefence/drivers/`가 둘 다 있어야 합니다. 하나라도 없으면(손상된 clone, 또는 `src/inodefence`는 있지만 `drivers/`가 없는 이 버전 이전 레이아웃의 clone) 다른 설치본으로 대신 돌리지 않고 종료 3으로 거부하며, 그 clone을 갱신(`git pull`)하거나 `INODEFENCE_HOME`을 최신 clone으로 바꾸라고 안내합니다.
 
 `doctor`는 각 항목을 `OK`·`FAIL`·`WARN`·`INFO`·`UNKNOWN`으로 출력합니다. 확인하지 못한 것은 `OK`가
 아니라 `UNKNOWN`입니다. 로컬 `inodefence-*` 이미지는 있으면 `OK`로 이름을 나열하고, 없으면 `INFO`
@@ -403,6 +404,18 @@ wheel로 설치했다면 `INODEFENCE_HOME`(환경 변수 또는 아래 설정 �
 출력), `--dry-run`에는 필요 없습니다. `$INODEFENCE_RUNTIME_ROOT`(기본 `/var/lib/inodefence`)는 `make check`·
 테스트용 개발 전제라 `doctor`에서 없으면 `WARN`이고, `/var/lib/inodefence` 밖이나 symlink로 설정돼 있으면
 `FAIL`입니다(그 규칙은 바뀌지 않았습니다).
+
+`doctor`는 끝에 세 줄을 더 출력합니다. 모두 읽기만 하며 아무것도 바꾸거나 지우지 않습니다.
+
+- **남은 컨테이너·볼륨:** InodeFence 소유 라벨(`org.inodefence.smoke-owner`·`org.inodefence.execution-owner`)이
+  붙었거나 이름이 런처의 컨트롤러·볼륨 이름(`inodefence-local-controller`, `inodefence-decompress-controller`,
+  `inodefence-oras-go-runtime` 등)인 것을 조회합니다. 있으면 `WARN`과 함께 확인 명령
+  (`docker container inspect <이름>`)과, 내 것이고 쓰는 실행이 없을 때만 쓸 제거 명령을 보여 줍니다. 도구가
+  직접 지우지는 않습니다. Docker가 답하지 않으면 `UNKNOWN`입니다(정리됐다고 보지 않습니다).
+- **출력 폴더 디스크 여유:** 2 GiB 미만이면 `WARN`입니다(거부하지 않습니다).
+- **Docker 메모리 여유:** 항상 `UNKNOWN`입니다. Windows + WSL2에서 Docker Desktop backend의 메모리는 Windows
+  커밋 한도에 걸리는데, WSL 안에서는 그 한도를 볼 수 없습니다(2026-11-16 HOST2 정지 4: WSL 쪽 여유는 충분했지만
+  Windows 쪽 가상 메모리 부족과 함께 backend가 사라졌습니다). 이 `UNKNOWN`은 종료 코드에 영향이 없습니다.
 
 ### 설정과 출력 위치
 
@@ -564,6 +577,19 @@ inodefence replay ~/inodefence-explore/target-explore/<실행>/live/violations/r
 이미지로 바꾸지 않고 멈춥니다**(다른 이미지로 돌린 것을 재현이라고 적지 않기 위해서). 재실행에는
 탐색의 실행 설정이 `case.json`에 있어야 하며, 없는 옛 케이스는 거부합니다.
 
+- **이미지 확인은 세 상태입니다.** 있음, 없음(Docker가 "No such image"라고 답함), 판정 불가(시간 초과, daemon
+  없음)입니다. 판정 불가면 "이미지가 없다"고 하지 않고 "Docker가 답하지 않았다"고, `docker info`로 멈춘 daemon인지
+  꺼진 daemon인지를 덧붙여 출력하고 종료 3으로 멈춥니다(준비하지 않습니다).
+- **증거 보존:** 재실행 컨트롤러가 돌려준 보고서와 회차 기록(`*.steps.jsonl`)을 `run-NNNNNN.replay-<UTC>/evidence/`에
+  함께 남깁니다. 끝까지 못 돈 재실행은 `replay.json`의 `replay.diagnosis`에 멈춘 단계(`controller-setup`·`loop`·
+  `cleanup`)와 범주(공유 abort 분류기 범주, 모르면 `UNKNOWN`)를 적고, 같은 내용을 `REPLAY DIAGNOSIS:` 한 줄로
+  출력합니다. 인프라 정지는 "재현 안 됨"이 아닙니다(비율은 판정된 회차로만 셉니다).
+- **실행한 클론:** `replay.repository`에 `checkout_id`(클론 경로의 SHA-256 앞 12자리)와 수정된 추적 파일 수를
+  적습니다. 경로 자체는 파일에 쓰지 않습니다. `checkout_id`는 같은 클론인지 구분하는 용도이지 비밀 보호 수단이
+  아닙니다(짐작 가능한 경로는 해시를 대조해 알아낼 수 있습니다).
+- 같은 케이스를 같은 초에 두 번 재실행하면 두 번째 폴더는 `….replay-<UTC>-2`가 됩니다(덮어쓰지 않음).
+  기록을 폴더에 쓰지 못하면 기록 전체를 표준 출력에 내고 종료 1로 끝냅니다(이미 돈 회차를 잃지 않기 위해).
+
 ### 결과 요약과 재현 정보 남기기
 
 별도의 "내보내기" 명령은 없습니다. 공유·보고에 쓰는 것은 출력 폴더의 파일과 `summary`입니다.
@@ -584,7 +610,7 @@ inodefence summary ~/inodefence-explore/target-explore/<실행>-result/result.js
 | 0 | PASS | 재실행 완료 | 정상 | FAIL 없음(`UNKNOWN`은 있을 수 있음) | 정상 |
 | 1 | FAIL(위반 판정) | 재실행 미완료(끝난 회차는 남음) | — | FAIL 하나 이상 | — |
 | 2 | ERROR 판정(만) | 같은 입력·조건으로 재실행 불가 | 사용법 오류 | 사용법 오류 | 읽기·쓰기 실패 / 사용법 오류 |
-| 3 | 실행 전 거부 — 판정 없음: 사용법 오류(없는 옵션 값, `--budget 0` 등), 저장소 안 `--out`, `--auto-prepare` 없음, 설정 파일 오류, 이미지·준비 문제 등 | 사용법 오류(`--rounds 0` 등), 이미지가 이 호스트에 없음, 저장소 안 폴더, 저장소를 못 찾음, 설정 파일 오류 | 저장소를 못 찾음, 설정 파일 오류 | — | — |
+| 3 | 실행 전 거부 — 판정 없음: 사용법 오류(없는 옵션 값, `--budget 0` 등), 저장소 안 `--out`, `--auto-prepare` 없음, 설정 파일 오류, 이미지·준비 문제, Docker가 이미지 질문에 답하지 않음(준비하지 않음), 같은 `--out`에 이 실행의 결과가 이미 있음(덮어쓰지 않음) 등 | 사용법 오류(`--rounds 0` 등), 이미지가 이 호스트에 없음, Docker가 이미지 질문에 답하지 않음, 저장소 안 폴더, 저장소를 못 찾음, 설정 파일 오류 | 저장소를 못 찾음, 설정 파일 오류 | — | — |
 | 4 | — | 이 대상은 재실행 미지원 | — | — | — |
 
 `verify`·`explore`·`replay`는 종료 코드가 결과를 싣기 때문에 사용법 오류를 2로 내지 않고, 아무것도 실행하지
@@ -604,7 +630,34 @@ inodefence summary ~/inodefence-explore/target-explore/<실행>-result/result.js
   실행 도중에만 존재한 일시적 operation이나 sandbox 밖의 상태는 증명하지 못합니다. 위반은
   재현과 원인 분석이 따로 필요한 후보입니다.
 - **이어 하기(resume)는 아직 없습니다.** 멈춘 탐색을 중간부터 이어서 돌릴 수는 없습니다.
-  다만 그때까지 캡처된 위반 케이스는 남습니다.
+  다만 그때까지 캡처된 위반 케이스는 남습니다. 자동 재시도와 멈춘 실행의 강제 종료도 없습니다. `status`는
+  오래 진척이 없으면 몇 초째인지와 함께 `STALE` 경고만 출력하고, 실행 중에는 처리량(runs/min)과 남은 예산의
+  예상 시간을 보여 줍니다(관찰만).
+- **실행 프로필:** 지원하는 것은 STRICT 하나입니다(기본이자 유일한 프로필이며 `--runtime-profile` 옵션은 없습니다).
+  FAST는 구현하지 않았습니다(후속 작업). HOST4 engineering smoke(demo run, node-tar 7.5.23, budget 20, 3회)에서
+  케이스당 약 1.88 s 가운데 약 93%가 호스트 docker CLI 호출(케이스당 23회)이었고, 그 비용은 보호 영역인
+  격리 실행 경로 안에 있어 제품 계층에서 줄일 수 있는 몫은 약 1.6%였습니다(단일 호스트·3회 측정이며 호스트
+  부하에 민감합니다). FAST는 그 경로의 변경과 격리 동등성 검증이 먼저입니다. REPLAY는 프로필이 아니라 위
+  재실행 절차이며, node-tar만 지원하고 STRICT로 돕니다.
+- **인프라 중단의 표시:** `explore`가 깨끗하게 끝나지 않으면(런처 종료 코드가 0이 아니거나 중단됨) 종료 코드와
+  판정은 그대로 두고 stderr에 한 줄을 더 냅니다.
+  `TARGET-EXPLORE DIAGNOSIS: stage=<controller-setup|loop|cleanup> category=<범주> result=<written|not-written> evidence=<남은 파일>; <설명>`.
+  (런처 실행 전의 Docker 무응답·이미지 판정 불가는 이 줄이 아니라 `TARGET-EXPLORE SETUP:` 사유로 나옵니다.)
+  범주는 컨트롤러 보고서의 `aborted.category`(공유 abort 분류기 값, 예: `cleanup_inspect`), 없으면 같은 분류기로
+  분류한 사유, Docker가 답하지 않으면 `daemon-timeout`·`daemon-unreachable`, 그래도 모르면 `UNKNOWN`입니다. 루프
+  보고서는 완주했는데 런처가 실패한 경우는 `stage=cleanup`이며 정리 상태 불명으로 보고 성공으로 치지 않습니다. 실행
+  기록(프로필, 실행마다 종료 코드·분류·진단 결과, 경로 없음)은 `<--out>/runtime/<run_id>-<UTC>.json`에 남습니다
+  (덮어쓰지 않고, 이름이 겹치면 `.1`, `.2`). 같은 실행의 컨트롤러·볼륨 이름이 이미 있으면 런처가 이미지를 빌드하기
+  전에 `TARGET-EXPLORE SETUP: run-resources-exist: …`, 종료 3으로 멈춥니다(런처가 원래 종료 1로 멈추던 조건을
+  앞당긴 것이며, 아무것도 지우지 않습니다). 진단은 런처의 종료 코드와 남은 파일만 보고 판단합니다. 런처의 터미널 출력은 캡처하거나
+  해석하지 않으므로, 출력에만 나온 원인(예: node-tar 런처의 `INODEFENCE_CLEANUP_UNKNOWN`)은 범주 `UNKNOWN`으로
+  남습니다. python-tarfile 탐색은 루프 도중 인프라 abort도 `TARGET-EXPLORE SETUP`, 종료 3으로 보고합니다
+  (node-tar·oras-go는 `ERROR`, 종료 2). 종료 코드를 맞출지는 정해지지 않았으며 지금은 바꾸지 않았습니다.
+- **decompress·oras-go·python-tarfile 런처의 정리:** 이 세 셸 런처는 컨트롤러·볼륨 제거 실패를 종료 코드에
+  반영하지 않고, 소유 라벨도 붙이지 않으며, docker 호출에 시간 제한이 없습니다. 그래서 정리 상태가 불명확해도
+  실행이 성공으로 끝날 수 있습니다. 제품 계층은 실행이 끝날 때마다 그 실행의 컨트롤러·볼륨 이름이 아직 있는지
+  조회해 `RUNTIME DIAGNOSTIC WARN leftover-resources`로 알리고(`inodefence doctor`도 같은 이름으로 조회),
+  거기까지만 합니다. 지우지 않으며, 런처 수정은 격리 인접 변경이라 이번에 하지 않았습니다.
 - **미공개로 보이는 문제를 찾으면 공개 저장소에 올리기 전에 해당 추출기의 유지보수자에게 먼저
   알립니다**(책임 있는 공개). 위반 입력과 결과는 저장소 밖 출력 폴더에만 두고, 위반 입력 자체를
   커밋하지 않습니다.
@@ -666,6 +719,7 @@ Git 이력과 CI 로그도 향후 공개될 수 있는 자료로 취급합니다
 ```text
 src/inodefence/      엔진 소스와 모듈 책임 안내
 src/inodefence/drivers/  제품 실행 계층: inodefence verify/explore/replay/targets가 거치는 대상별 드라이버
+                         (runtime/: 읽기 전용 Docker·호스트 점검과 중단 진단)
 tests/             자동 테스트와 안전한 TAR fixture
 scripts/           컨트롤러·셸 런처, 등록 실험 러너, 분석(analysis/)·개발(dev/)·운영(ops/) 도구, 드라이버 옛 경로 별칭
 docs/research/     연구 근거와 상세 설계

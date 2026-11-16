@@ -670,6 +670,29 @@ def _contracts_hit(record: Mapping[str, Any]) -> str:
     return "+".join(hit) or "-"
 
 
+def _throughput_line(progress: Mapping[str, Any], rate: object) -> str | None:
+    """``  throughput: N runs/min; budget left M (about T at this rate)`` for a running loop.
+
+    Observation only (from the snapshot's own ``runs_per_second``); it never stops a run.
+    """
+    if progress.get("state") != "running" or not isinstance(rate, int | float) or rate <= 0:
+        return None
+    text = f"  throughput: {rate * 60:.1f} runs/min"
+    budget, runs = progress.get("budget"), progress.get("runs_executed")
+    if isinstance(budget, int) and isinstance(runs, int) and budget >= runs:
+        left = budget - runs
+        text += f"; budget left {left} (about {_duration(left / rate)} at this rate)"
+    return text
+
+
+def _duration(seconds: float) -> str:
+    if seconds < 120:
+        return f"{seconds:.0f}s"
+    if seconds < 7200:
+        return f"{seconds / 60:.0f}m"
+    return f"{seconds / 3600:.1f}h"
+
+
 def render_live_status(
     live_dir: Path, *, now: float | None = None, max_cases: int = 20, display: str | None = None
 ) -> str:
@@ -692,7 +715,11 @@ def render_live_status(
             head += f" ({progress['stop_reason']})"
         head += f", snapshot {_ago(age)}"
         if state == "running" and age is not None and age > stale_after:
-            head += "  ** STALE: no new step written for a while -- is the run stuck? **"
+            head += (
+                "  ** STALE: no new step written for a while -- is the run stuck? ** "
+                f"(no snapshot for {age:.0f}s, limit {stale_after:.0f}s; nothing is stopped "
+                "automatically -- check Docker with `inodefence doctor`)"
+            )
         lines.append(head)
         ident = (
             f"  target={progress.get('target')} version={progress.get('version')} "
@@ -712,6 +739,9 @@ def render_live_status(
             + f" violations={v.get('steps', 0)} steps / {v.get('unique_fingerprints', 0)} unique"
             + f" un-judged={u.get('steps', 0)} (ratio {u.get('ratio', 0.0)})"
         )
+        throughput = _throughput_line(progress, rate)
+        if throughput:
+            lines.append(throughput)
         t = progress.get("terminations") or {}
         lines.append(
             "  ended: "

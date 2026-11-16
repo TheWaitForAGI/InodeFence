@@ -17,6 +17,14 @@ def _no_user_config(tmp_path_factory, monkeypatch) -> None:
     monkeypatch.delenv("INODEFENCE_OUTPUT_DIR", raising=False)
 
 
+@pytest.fixture(autouse=True)
+def _no_real_docker_listing(monkeypatch) -> None:
+    """doctor's leftover listing would ask the host's real daemon; answer "none" instead."""
+    from inodefence.drivers.runtime import health
+
+    monkeypatch.setattr(cli, "_find_residue", lambda: health.Residue())
+
+
 @pytest.fixture
 def _docker_ok(monkeypatch) -> None:
     monkeypatch.setattr(cli, "_docker_server", lambda: ("OK", "server 29.0.0"))
@@ -675,3 +683,62 @@ def test_verify_dry_run_plan_shows_the_out_folder(tmp_path: Path, capsys, monkey
     assert json.loads(capsys.readouterr().out)["out"] == str(out)
     assert run_target.main(argv[:-2]) == 0  # still optional on --dry-run
     assert json.loads(capsys.readouterr().out)["out"] is None
+
+
+def test_doctor_adds_leftover_disk_and_memory_lines_and_keeps_the_old_ones(
+    monkeypatch, capsys, tmp_path: Path, _docker_ok
+) -> None:
+    from inodefence.drivers.runtime import health
+
+    monkeypatch.setattr(cli, "repo_root", lambda: tmp_path / "repo")
+    monkeypatch.setattr(cli.shutil, "which", lambda name: "/usr/bin/docker")
+    monkeypatch.setenv("INODEFENCE_OUTPUT_DIR", str(tmp_path / "outputs"))
+    monkeypatch.setattr(cli, "_runtime_check", lambda: "OK")
+    leftover = health.Residue(containers=("inodefence-local-controller-x (Exited (255))",))
+    monkeypatch.setattr(cli, "_find_residue", lambda: leftover)
+    cli.main(["doctor"])
+    out = capsys.readouterr().out
+    # The existing lines are all still there, unchanged.
+    assert "[OK] Docker daemon access: server 29.0.0" in out
+    assert "[OK] output folder base (environment)" in out
+    assert "[WARN] leftover containers / volumes (read-only; nothing is removed): " in out
+    assert "inodefence-local-controller-x" in out and "nothing was removed" in out
+    assert "free disk at the output folder base: " in out and "GiB free at" in out
+    assert "[UNKNOWN] memory headroom for Docker: " in out and "Windows commit limit" in out
+    lines = [line for line in out.splitlines() if line.startswith("[")]
+    added = [
+        i
+        for i, line in enumerate(lines)
+        if line.split("] ", 1)[1].startswith(("leftover containers", "memory headroom"))
+    ]
+    assert added and min(added) > lines.index(
+        next(line for line in lines if "prepared images" in line)
+    )
+
+
+def test_doctor_does_not_list_leftovers_without_a_usable_daemon(monkeypatch, capsys) -> None:
+    asked: list = []
+    monkeypatch.setattr(cli, "_find_residue", lambda: asked.append(1))
+    monkeypatch.setattr(cli.shutil, "which", lambda name: "/usr/bin/docker")
+    monkeypatch.setattr(cli, "_docker_server", lambda: ("UNKNOWN", "did not answer in 30s"))
+    cli.main(["doctor"])
+    out = capsys.readouterr().out
+    assert not asked
+    assert (
+        "[UNKNOWN] leftover containers / volumes (read-only; nothing is removed): not asked" in out
+    )
+
+
+def test_doctor_memory_unknown_never_changes_the_exit_code(
+    monkeypatch, capsys, tmp_path: Path, _docker_ok
+) -> None:
+    if cli.sys.version_info[:2] != (3, 12):
+        pytest.skip("doctor fails on a non-3.12 interpreter by design")
+    monkeypatch.setattr(cli, "repo_root", lambda: tmp_path / "repo")
+    monkeypatch.setattr(cli.shutil, "which", lambda name: "/usr/bin/docker")
+    monkeypatch.setenv("INODEFENCE_OUTPUT_DIR", str(tmp_path / "outputs"))
+    monkeypatch.setattr(cli, "_runtime_check", lambda: "OK")
+    assert cli.main(["doctor"]) == 0
+    out = capsys.readouterr().out
+    assert "[UNKNOWN] memory headroom for Docker: not checked: inside WSL the Windows commit" in out
+    assert "no check failed; 1 UNKNOWN (not verified, see above)" in out

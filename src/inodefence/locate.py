@@ -67,10 +67,7 @@ def check_repository_code(root: Path) -> None:
     """
     package = root / "src" / "inodefence"
     if not ((package / "__init__.py").is_file() and (package / "drivers").is_dir()):
-        raise RepositoryCodeMissing(
-            "the selected repository has no InodeFence code to run (damaged, or a clone older "
-            f"than this version of inodefence): {root}"
-        )
+        raise RepositoryCodeMissing(_repo.OLD_LAYOUT_REFUSAL.format(root=root))
 
 
 def _driver_env(root: Path) -> dict[str, str]:

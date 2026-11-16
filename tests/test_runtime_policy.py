@@ -298,8 +298,9 @@ def test_a_block_finding_stops_the_launch_as_a_setup_error(
     assert issubclass(LaunchBlocked, ValueError)
 
 
-def test_shipped_diagnostics_are_empty() -> None:
-    assert diagnostics.OBSERVERS == ()
+def test_shipped_diagnostics_are_the_read_only_health_observer() -> None:
+    # OBSERVERS is emptied for every test (tests/conftest.py); the shipped default is this.
+    assert [type(o).__name__ for o in diagnostics.DEFAULT_OBSERVERS] == ["HealthObserver"]
     request = LaunchRequest("node-tar", "strict", "s.sh", (), None)
     assert diagnostics.classify(LaunchOutcome(request, 0, 1.0)) == "completed"
     assert diagnostics.classify(LaunchOutcome(request, 2, 1.0)) == "failed"
@@ -330,8 +331,13 @@ def test_the_engine_never_imports_the_runtime_policy() -> None:
 
 
 def test_the_runtime_package_uses_only_the_standard_library_itself_and_the_launcher() -> None:
-    # (the launcher module is itself stdlib-only: it names the launchers and their resources)
-    allowed = ("inodefence.drivers.runtime", "inodefence.drivers.launcher")
+    # (the launcher module is itself stdlib-only: it names the launchers and their resources;
+    # the shared abort classifier is a stdlib-only engine leaf the diagnosis reuses unchanged)
+    allowed = (
+        "inodefence.drivers.runtime",
+        "inodefence.drivers.launcher",
+        "inodefence.evaluation.abort_classification",
+    )
     for path in [*(SRC / "drivers" / "runtime").glob("*.py"), SRC / "drivers" / "launcher.py"]:
         for name in _imports(path):
             top = name.partition(".")[0]

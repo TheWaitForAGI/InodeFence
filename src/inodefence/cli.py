@@ -244,6 +244,42 @@ def _docker_checks() -> list[str]:
     return statuses
 
 
+def _find_residue():
+    """Leftover InodeFence containers / volumes (read-only listing; see drivers.runtime.health)."""
+    from inodefence.drivers.runtime import health  # stdlib-only leaf, loaded only by doctor
+
+    return health.find_residue()
+
+
+def _host_checks(config: UserConfig | None, daemon_ok: bool) -> list[str]:
+    """Doctor lines added in 0.3 (PR 3): leftovers, free disk, memory. Nothing is changed.
+
+    A leftover is WARN (reported with the commands a person may run; never removed); a listing
+    Docker did not answer is UNKNOWN. Memory is always UNKNOWN: the Docker Desktop backend's
+    memory (Windows commit limit) is not visible from inside WSL/Linux.
+    """
+    from inodefence.drivers.runtime import health
+
+    statuses = []
+    label = "leftover containers / volumes (read-only; nothing is removed)"
+    if not daemon_ok:
+        statuses.append(_check(label, "UNKNOWN", "not asked (daemon not usable)"))
+    else:
+        residue = _find_residue()
+        if residue.clean:
+            statuses.append(_check(label, "OK", "none labelled or named as InodeFence's"))
+        else:
+            status = "WARN" if residue.containers or residue.volumes else "UNKNOWN"
+            statuses.append(_check(label, status, "; ".join(residue.lines())))
+    if config is not None:
+        disk = health.disk_free(Path(config.output_base.value))
+        status = "UNKNOWN" if disk.free_bytes is None else "WARN" if disk.low else "OK"
+        statuses.append(_check("free disk at the output folder base", status, disk.detail))
+    memory = health.memory_status()
+    statuses.append(_check("memory headroom for Docker", memory.state, memory.detail))
+    return statuses
+
+
 def _runtime_check() -> str:
     """Same rule as :func:`inodefence.runtime.open_runtime_directory` (meaning unchanged)."""
     from inodefence.runtime import RUNTIME_BASE
@@ -307,7 +343,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     if config is not None:
         statuses.append(_output_base_check(config, root))
 
-    statuses += _docker_checks()
+    docker = _docker_checks()
+    statuses += docker
+    statuses += _host_checks(config, daemon_ok=len(docker) > 1 and docker[1] == "OK")
 
     statuses.append(_runtime_check())
 

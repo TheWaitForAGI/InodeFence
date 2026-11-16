@@ -152,11 +152,54 @@ def build_campaign_result(
     return result, tar_files
 
 
-def write_result(out_dir: Path, result: TargetResult, tar_files: dict[str, bytes]) -> Path:
-    """Write result.json and the violating TARs under ``out_dir``; refuse to overwrite."""
+class ResultExistsError(FileExistsError, ValueError):
+    """An exploration result (or this run's loop report) is already there; nothing is overwritten.
+
+    A ``FileExistsError`` as before, and also a ``ValueError`` so the explore drivers' existing
+    setup path reports it in one line with exit 3 -- the code ``verify`` uses when its result
+    already exists -- instead of a traceback.
+    """
+
+
+def existing_outputs(*paths: Path) -> list[Path]:
+    """Which of this run's output paths (loop report, result folder's result.json) already exist.
+
+    For a refusal before the run: an explore whose report or result is already in ``--out`` fails
+    today only after the whole loop (the host copy of the report will not replace a file, and
+    :func:`write_result` refuses), so the same condition can be refused first.
+    """
+    return [path for path in paths if path.exists()]
+
+
+def refuse_existing(*paths: Path) -> None:
+    """Raise :class:`ResultExistsError` naming what is already there (nothing is touched)."""
+    found = existing_outputs(*paths)
+    if found:
+        raise ResultExistsError(
+            f"{', '.join(str(path) for path in found)} already exists; choose another --out "
+            "(nothing was run or overwritten)"
+        )
+
+
+def write_result(
+    out_dir: Path,
+    result: TargetResult,
+    tar_files: dict[str, bytes],
+    *,
+    report: Path | None = None,
+) -> Path:
+    """Write result.json and the violating TARs under ``out_dir``; refuse to overwrite.
+
+    ``report`` (the loop report this result was built from) is only named in the refusal, so the
+    reader knows the run's own record was kept.
+    """
     result_path = out_dir / "result.json"
     if result_path.exists():
-        raise FileExistsError(f"refusing to overwrite {result_path}")
+        kept = f"; the loop report of this run is kept at {report}" if report is not None else ""
+        raise ResultExistsError(
+            f"refusing to overwrite {result_path}: choose another --out (nothing was "
+            f"overwritten{kept})"
+        )
     (out_dir / "inputs").mkdir(parents=True, exist_ok=True)
     for tar_path, data in tar_files.items():
         (out_dir / tar_path).write_bytes(data)

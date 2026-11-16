@@ -178,6 +178,7 @@ src/inodefence/evaluation/ completed raw validation / qualification / dataset / 
 src/inodefence/transition_campaign.py  transition v1 P0/P1/P2 composition (현재 demo 경로 아님)
 src/inodefence/replay/     allowlisted benign clean replay
 src/inodefence/drivers/    제품 실행 계층: inodefence verify/explore/replay/targets의 대상별 드라이버 (엔진은 이 계층을 import하지 않음)
+src/inodefence/drivers/runtime/  실행 주변 읽기 전용 점검(health)과 중단 진단(diagnosis); 지우거나 판정을 바꾸지 않음
 src/inodefence/cli.py, locate.py  사용자 명령 inodefence (cli → locate → drivers → 엔진)
 
 tests/                      코드 테스트

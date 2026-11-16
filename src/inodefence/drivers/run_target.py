@@ -72,6 +72,7 @@ from typing import Any, NoReturn
 from inodefence.case_replay import ReplayHook
 from inodefence.drivers import regression_check as rc
 from inodefence.drivers.repo import code_checkout, require_repository_or_exit
+from inodefence.drivers.runtime import health
 from inodefence.drivers.runtime.session import RuntimeSession
 from inodefence.target_result import (
     RUN_ERROR,
@@ -354,7 +355,11 @@ _TAG_SUFFIX_RE = re.compile(r"[A-Za-z0-9_.-]{1,40}")
 
 
 def docker_problem() -> str | None:
-    """Why docker cannot run containers here, with the fix, or None if it can."""
+    """Why docker cannot run containers here, with the fix, or None if it can.
+
+    An unanswered ``docker info`` (time limit) is named as such, apart from "not reachable": the
+    daemon may be alive but stalled (the holdout stops of 2026-11-14..16), and nothing is started.
+    """
     if shutil.which("docker") is None:
         return (
             "docker not found on PATH; install Docker (Linux: Docker Engine; Windows: Docker "
@@ -368,6 +373,11 @@ def docker_problem() -> str | None:
             text=True,
             timeout=30,
         )
+    except subprocess.TimeoutExpired:
+        return (
+            "docker daemon did not answer `docker info` within 30s (stalled?); nothing was "
+            "started. Check Docker (Docker Desktop) and retry"
+        )
     except (OSError, subprocess.SubprocessError) as error:
         return f"docker daemon not reachable ({type(error).__name__}); start Docker and retry"
     if done.returncode != 0:
@@ -378,18 +388,28 @@ def docker_problem() -> str | None:
     return None
 
 
+class ImageStateUnknown(ValueError):
+    """Docker gave no usable answer to "is this image here?" (timeout, no daemon, odd output).
+
+    A ``ValueError`` so every driver's existing setup path (exit 3) reports it; it is never read
+    as "absent", so an image is never prepared (built) because Docker was silent.
+    """
+
+
 def image_id(image_ref: str) -> str | None:
-    """The local image id for ``image_ref`` (read-only lookup), or None if it is not present."""
-    try:
-        done = subprocess.run(
-            ["docker", "image", "inspect", "--format", "{{.Id}}", image_ref],
-            capture_output=True,
-            text=True,
-            timeout=30,
+    """The local image id for ``image_ref`` (read-only lookup), or None if Docker says it is absent.
+
+    Raises :class:`ImageStateUnknown` when the question had no usable answer: before, a timeout or
+    a stopped daemon returned None too, and an ``--auto-prepare`` run then tried to build the image
+    and failed with a misleading "preparing ... failed".
+    """
+    lookup = health.lookup_image(image_ref, timeout=30)
+    if lookup.state is health.ImageState.UNKNOWN:
+        raise ImageStateUnknown(
+            f"could not tell whether image {image_ref} is on this host: {lookup.detail}. "
+            "Nothing was prepared or run"
         )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return (done.stdout.strip() or None) if done.returncode == 0 else None
+    return lookup.image_id
 
 
 def with_tag_suffix(cell: RunCell, suffix: str) -> RunCell:
@@ -417,7 +437,10 @@ def prepare_image(step: PrepareStep) -> str:
             raise PrepareError(
                 f"preparing {step.image_ref} failed (exit {done.returncode}): {shlex.join(command)}"
             )
-    prepared = image_id(step.image_ref)
+    try:
+        prepared = image_id(step.image_ref)
+    except ImageStateUnknown as error:
+        raise PrepareError(f"preparing {step.image_ref} finished but {error}") from error
     if prepared is None:
         raise PrepareError(f"preparing {step.image_ref} finished but the image is not present")
     return prepared
@@ -433,7 +456,11 @@ def resolve_images(
         ref = cell.image_ref
         if ref is None or ref in ready or ref in errors:
             continue
-        present = image_id(ref)
+        try:
+            present = image_id(ref)
+        except ImageStateUnknown as error:
+            errors[ref] = str(error)  # not "missing": never prepare because Docker was silent
+            continue
         if present is not None:
             reason = (
                 adapter.verify_existing(cell, present)
@@ -469,7 +496,10 @@ def image_status(adapter: TargetAdapter, cell: RunCell, docker_ok: bool) -> dict
         return {"action": "none"}
     if not docker_ok:
         return {"action": "unknown", "reason": "docker unavailable; image presence not checked"}
-    present = image_id(cell.image_ref)
+    try:
+        present = image_id(cell.image_ref)
+    except ImageStateUnknown as error:
+        return {"action": "unknown", "reason": str(error)}
     if present is not None:
         return {"action": "reuse", "image_id": present}
     step = adapter.prepare(cell)
@@ -666,13 +696,27 @@ def main(argv: list[str] | None = None) -> int:
             worst = max(worst, SETUP_ERROR)
             continue
         expected = ready.get(ref) if ref is not None else None
-        if ref is not None and image_id(ref) != expected:
+        try:
+            before = image_id(ref) if ref is not None else None
+        except ImageStateUnknown as error:
+            print(f"TARGET-RUN IMAGE-UNKNOWN {cell.dirname}: {error}", file=sys.stderr)
+            worst = max(worst, SETUP_ERROR)
+            continue
+        if ref is not None and before != expected:
             message = f"image {ref} changed before the run (expected {expected})"
             print(f"TARGET-RUN IMAGE-MISMATCH {cell.dirname}: {message}", file=sys.stderr)
             worst = max(worst, SETUP_ERROR)
             continue
         runs = adapter.run(cell)
-        after = image_id(ref) if ref is not None else None
+        try:
+            after = image_id(ref) if ref is not None else None
+        except ImageStateUnknown as error:
+            print(
+                f"TARGET-RUN IMAGE-UNKNOWN {cell.dirname}: after the run, {error}; no verdict",
+                file=sys.stderr,
+            )
+            worst = max(worst, SETUP_ERROR)
+            continue
         if after != expected:
             message = f"image {ref} is {after} after the run, expected {expected}; no verdict"
             print(f"TARGET-RUN IMAGE-MISMATCH {cell.dirname}: {message}", file=sys.stderr)

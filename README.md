@@ -392,7 +392,7 @@ wheel로 설치했다면 `INODEFENCE_HOME`(환경 변수 또는 아래 설정 �
 드라이버·엔진·이미지 레시피가 모두 그 클론의 것입니다. 결과의 `engine_commit`·`engine_sha`는 그 클론의 `git rev-parse HEAD`(추적 파일 수정이나 `src`·`scripts`·`tools` 아래 추적 안 된 파일이 있으면 `-dirty`)입니다.
 `status`·`summary`·`doctor`는 설치된 패키지 코드로 돌고, 드라이버를 import하지 않습니다.
 `targets`도 `verify`·`explore`와 같은 clone 코드로 돕니다(0.2.0 RC까지는 CLI 프로세스 안에서 설치본 엔진과 clone 드라이버가 섞였습니다).
-고른 clone에 `src/inodefence`가 없으면(손상됐거나 이 버전보다 오래된 clone) 다른 설치본으로 대신 돌리지 않고 종료 3으로 거부합니다.
+고른 clone에 `src/inodefence/__init__.py`와 `src/inodefence/drivers/`가 둘 다 있어야 합니다. 하나라도 없으면(손상된 clone, 또는 `src/inodefence`는 있지만 `drivers/`가 없는 이 버전 이전 레이아웃의 clone) 다른 설치본으로 대신 돌리지 않고 종료 3으로 거부합니다.
 
 `doctor`는 각 항목을 `OK`·`FAIL`·`WARN`·`INFO`·`UNKNOWN`으로 출력합니다. 확인하지 못한 것은 `OK`가
 아니라 `UNKNOWN`입니다. 로컬 `inodefence-*` 이미지는 있으면 `OK`로 이름을 나열하고, 없으면 `INFO`

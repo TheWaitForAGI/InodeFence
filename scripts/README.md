@@ -43,9 +43,16 @@ CLI는 `python -m inodefence.drivers.run_target`(verify)·`run_target_explore`·
 
 옛 경로 7개(`scripts/run_target.py`, `run_target_explore.py`, `run_target_replay.py`, `regression_check.py`,
 `node_tar_registry_prepare.py`, `oras_go_registry_prepare.py`, `python_tarfile_producer.py`)는 새 모듈의
-별칭(wrapper)이다. `python scripts/X.py`와 `python -m scripts.X`가 그대로 동작한다. CI·Makefile·
-experiments/·paper/·tools/ 문서·셸 런처가 이 경로를 명령으로 부르기 때문에 남겼다. `scripts/run_target.py`는
-저장소 판별 표식(`scripts/run_target.py` + `tools/`)이기도 하다. 이미지 검사 하위 명령은
+별칭(wrapper)이다. `python scripts/<이름>.py`와 `python -m scripts.<이름>`이 그대로 동작한다. 남긴 이유는
+별칭마다 다르다.
+- `run_target`, `run_target_explore`, `run_target_replay`: `scripts/run_target.py`는 저장소 판별 표식
+  (`scripts/run_target.py` + `tools/`)이고, 세 경로 모두 기존 직접 실행 명령과의 호환을 위해 남겼다.
+- `regression_check`: CI(repro-evidence)·Makefile(`make regression`)·experiments/·paper/가 이 경로를 명령으로 부른다.
+- `node_tar_registry_prepare`, `oras_go_registry_prepare`, `python_tarfile_producer`: tools/ 문서
+  (`tools/node-tar/versions/README.md`, `tools/oras-go/README.md`), 셸 런처(`scripts/local_python_tarfile_explore.sh`),
+  Dockerfile 주석(`tools/python-tarfile/effect/Dockerfile`)이 이 경로를 언급한다.
+
+이미지 검사 하위 명령은
 `python -m inodefence.drivers.image_prepare check ...`다.
 
 드라이버를 실행하려면 여전히 저장소 클론이 필요하다. 대상별 이미지 레시피(`tools/`), 컨트롤러 셸 런처

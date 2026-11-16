@@ -66,3 +66,79 @@ def test_repo_root_reads_inodefence_home_from_the_config_file(tmp_path: Path, mo
     monkeypatch.delenv("INODEFENCE_HOME", raising=False)
     monkeypatch.setenv("INODEFENCE_CONFIG", str(config))
     assert locate.repo_root() == repo
+
+
+@pytest.mark.parametrize(
+    ("line", "reason"),
+    [
+        ("INODEFENCE_OUTPUT_DIR=/data/if # mine", "inline comment"),
+        ("INODEFENCE_OUTPUT_DIR=/data/if\t# mine", "inline comment"),
+        ("INODEFENCE_OUTPUT_DIR='/data/if", "unmatched quote"),
+        ('INODEFENCE_HOME=/src/if"', "unmatched quote"),
+    ],
+)
+def test_parse_refuses_values_that_would_silently_become_another_path(
+    line: str, reason: str
+) -> None:
+    # Before 0.4 these were accepted as "/data/if # mine" and "'/data/if" (a different path).
+    with pytest.raises(UserConfigError, match=reason):
+        parse_config_text(line + "\n", "f")
+
+
+def test_parse_keeps_a_quoted_hash_and_a_hash_inside_a_word() -> None:
+    text = 'INODEFENCE_OUTPUT_DIR="/data/my #1"\nINODEFENCE_HOME=/src/if#2\n'
+    assert parse_config_text(text, "f") == {
+        "INODEFENCE_OUTPUT_DIR": "/data/my #1",
+        "INODEFENCE_HOME": "/src/if#2",
+    }
+
+
+def test_a_config_path_that_is_a_directory_is_named_as_such(tmp_path: Path) -> None:
+    with pytest.raises(UserConfigError, match="is a directory or another non-file"):
+        load_user_config({"INODEFENCE_CONFIG": str(tmp_path)})
+    (tmp_path / "inodefence" / "config.env").mkdir(parents=True)  # the default location, too
+    with pytest.raises(UserConfigError, match="is a directory or another non-file"):
+        load_user_config({"XDG_CONFIG_HOME": str(tmp_path)})
+
+
+def test_an_empty_value_means_not_set_and_the_next_source_applies(tmp_path: Path) -> None:
+    config = tmp_path / "c.env"
+    config.write_text("INODEFENCE_OUTPUT_DIR=\n", encoding="utf-8")
+    loaded = load_user_config({"INODEFENCE_CONFIG": str(config), "INODEFENCE_OUTPUT_DIR": ""})
+    assert loaded.get("INODEFENCE_OUTPUT_DIR") is None
+    assert loaded.output_base.source == "default"
+
+
+def test_an_environment_value_records_the_file_value_it_overrides(tmp_path: Path) -> None:
+    config = tmp_path / "c.env"
+    config.write_text("INODEFENCE_HOME=/from/file\n", encoding="utf-8")
+    env = {"INODEFENCE_CONFIG": str(config), "INODEFENCE_HOME": "/from/env"}
+    setting = load_user_config(env).get("INODEFENCE_HOME")
+    assert setting is not None
+    assert (setting.value, setting.source, setting.overridden) == (
+        "/from/env",
+        "environment",
+        "/from/file",
+    )
+    env["INODEFENCE_HOME"] = "/from/file"  # the same value: nothing is overridden
+    same = load_user_config(env).get("INODEFENCE_HOME")
+    assert same is not None and same.overridden is None
+
+
+def test_the_shipped_env_example_parses_as_is_and_with_its_keys_uncommented() -> None:
+    text = (Path(__file__).resolve().parents[1] / ".env.example").read_text(encoding="utf-8")
+    assert parse_config_text(text, ".env.example") == {}
+    uncommented = text.replace("# INODEFENCE_HOME=", "INODEFENCE_HOME=").replace(
+        "# INODEFENCE_OUTPUT_DIR=", "INODEFENCE_OUTPUT_DIR="
+    )
+    assert set(parse_config_text(uncommented, ".env.example")) == {
+        "INODEFENCE_HOME",
+        "INODEFENCE_OUTPUT_DIR",
+    }
+
+
+def test_a_config_file_saved_with_a_utf8_bom_reads_its_first_key(tmp_path: Path) -> None:
+    config = tmp_path / "c.env"
+    config.write_bytes("\ufeffINODEFENCE_OUTPUT_DIR=/data/if\r\n".encode())
+    loaded = load_user_config({"INODEFENCE_CONFIG": str(config)})
+    assert loaded.output_base.value == "/data/if"

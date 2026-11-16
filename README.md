@@ -253,9 +253,10 @@ macOS 또는 Windows + WSL2에서 저장소를 **VS Code Dev Container**로 엽�
 
 **필요한 것:** Docker와 Dev Container를 열 수 있는 편집기(VS Code + Dev Containers 확장).
 아래 `make` 명령은 Dev Container 안을 전제로 하며, `make demo`처럼 실제 node-tar를 돌리는 명령만
-호스트 터미널에서 docker로 실행합니다. 호스트 Python에서 바로 돌리는 경로는 지원하지 않습니다
-(`make check`의 환경 검사는 Python 3.12와 Linux runtime 디렉터리 `$INODEFENCE_RUNTIME_ROOT`의
-hardlink·symlink 의미론을 요구합니다).
+호스트 터미널에서 docker로 실행합니다. 이 개발 명령들(`make check` 등)을 호스트 Python에서 바로 돌리는
+경로는 지원하지 않습니다(`make check`의 환경 검사는 Python 3.12와 Linux runtime 디렉터리
+`$INODEFENCE_RUNTIME_ROOT`의 hardlink·symlink 의미론을 요구합니다). 사용자 명령 `inodefence`는 별개로, 호스트
+셸에서 venv에 설치해 씁니다([아래](#추출기를-골라-탐색도중-확인재실행하기-inodefence-명령)).
 
 ```text
 macOS / Windows + WSL2
@@ -362,6 +363,43 @@ Codex CLI는 exact version으로 고정하지 않는 **rolling latest** 정책�
 사용자용 진입점입니다. 실제 target 실행은 docker가 도는 호스트 셸(macOS 터미널, WSL 셸)에서만 되고,
 Dev Container 안에서는 `--dry-run`으로 계획만 볼 수 있습니다.
 
+### 빠른 시작
+
+처음 한 번은 이 순서로 갑니다. 대상 실행을 확인한 호스트는 Windows + WSL2(Ubuntu 24.04) + Docker 하나(HOST4)뿐입니다
+([지원 환경과 확인 수준](#지원-환경과-확인-수준)). 각 단계의 자세한 설명은 아래 절에 있습니다.
+
+```bash
+# 1. 설치: 저장소 클론에서, Python 3.12
+git clone <저장소 URL> InodeFence && cd InodeFence
+python3.12 -m venv .venv && . .venv/bin/activate
+pip install -e .
+
+# 2. 환경 점검: FAIL 줄은 그 줄의 안내대로 고치고 다시 실행합니다(종료 0 = FAIL 없음)
+inodefence doctor
+
+# 3. 추출기와 각 추출기가 지원하는 것
+inodefence targets
+
+# 4. 계획만 보기: 아무것도 내려받거나 빌드하거나 실행하지 않습니다
+inodefence verify  --target node-tar --version 7.5.23 --dry-run
+inodefence explore --target node-tar --version 7.5.23 --budget 20 --seed 123 --dry-run
+
+# 5. 실제 실행(Docker 필요). 이미지가 없으면 --auto-prepare가 Docker로 빌드합니다(네트워크 사용)
+inodefence verify  --target node-tar --version 7.5.23 --auto-prepare
+inodefence explore --target node-tar --version 7.5.23 --budget 20 --seed 123 --auto-prepare
+
+# 6. 결과 보기(기본 출력 폴더; 바꾸려면 --out 또는 INODEFENCE_OUTPUT_DIR)
+inodefence status ~/inodefence-target-run
+inodefence status ~/inodefence-explore
+inodefence summary ~/inodefence-explore/target-explore/7.5.23-123-20-result/result.json
+```
+
+- 출력은 저장소 밖에 씁니다. 같은 출력 폴더에 같은 실행의 결과가 이미 있으면 덮어쓰지 않고 종료 3으로
+  거부하므로, 다시 돌릴 때는 `--out`을 바꿉니다.
+- 종료 코드는 각 명령의 `--help` 끝과 아래 [종료 코드](#종료-코드) 표에 있습니다. 판정(0 PASS·1 FAIL·2 ERROR)과
+  실행 전 거부(3)를 구분합니다.
+- node-tar 7.5.23은 `verify`에서 exploratory 버전(고정 입력의 기대값이 이 버전용으로 확정되지 않음)으로 표시됩니다.
+
 ### 설치
 
 Python 3.12와 저장소 클론이 필요합니다. 대상 실행 드라이버(`inodefence.drivers`)는 패키지에 들어 있지만,
@@ -425,9 +463,38 @@ wheel로 설치했다면 `INODEFENCE_HOME`(환경 변수 또는 아래 설정 �
 | 저장소 위치 | editable 설치면 자동 | `INODEFENCE_HOME=<클론 경로>` |
 
 두 값은 환경 변수로 주거나, [`.env.example`](.env.example)을 `~/.config/inodefence/config.env`로
-복사해 적습니다(환경 변수가 파일보다 우선, 다른 파일은 `INODEFENCE_CONFIG`로 지정하며 그 파일이 없으면
-오류). 현재 적용된 값과
-출처는 `inodefence doctor`가 보여 줍니다.
+복사해 적습니다(환경 변수가 파일보다 우선, 다른 파일은 `INODEFENCE_CONFIG`로 지정하며 그 파일이 없거나
+디렉터리면 오류). 저장소 루트의 `.env`는 읽지 않습니다. 파일은 `KEY=VALUE` 줄로 읽기만 하고 셸로 실행하지
+않습니다.
+
+현재 적용된 값과 출처는 `inodefence doctor`가 보여 줍니다.
+
+- `user config` 줄: 읽은 설정 파일 경로(없으면 "not present", 기본값 사용). 파일 오류는 몇 번째 줄인지와 함께
+  `FAIL`이고, 이때 `doctor` 말고 다른 명령은 실행 전에 거부합니다(대상 명령은 종료 3).
+- `repository` 줄: 고른 클론과 그 출처(`INODEFENCE_HOME from the environment`, `INODEFENCE_HOME from <설정 파일>`,
+  또는 설치한 클론). 환경 변수가 설정 파일 값을 덮으면 덮인 값을 함께 적고, 설치한 클론과 다른 클론을 고르면
+  대상 명령이 그 클론의 코드로 돈다고 적습니다. `INODEFENCE_HOME`이 클론이 아니면 그 값과 출처를 적어 `FAIL`,
+  클론이지만 실행할 코드(`src/inodefence/drivers/`)가 없으면 대상 명령과 같은 거부 문구로 `FAIL`, 상대 경로면
+  (실행한 폴더에 따라 바뀌므로) `WARN`입니다.
+- `output folder base` 줄: 출력 기준 폴더와 출처, 그리고 `verify`·`explore`의 기본 `--out` 두 개. 기준 폴더가
+  이미 있는 파일이면 `FAIL`입니다.
+- `inodefence code running doctor / status / summary` 줄(`runtime directory` 줄 바로 앞): 지금 돌고 있는
+  `inodefence` 패키지 폴더(`INFO`). `PYTHONPATH`가 설정돼 있고 패키지가 그 아래에서 읽혔으면, 설치본이 아니라
+  그 경로의 코드가 돈다는 `WARN`입니다. 이 줄은 종료 코드에 영향이 없고, `PYTHONPATH`를 무시하거나 막지 않습니다.
+
+설정 파일에서 다음은 짐작하지 않고 오류로 거부합니다(그대로 받으면 사용자가 뜻한 것과 다른 경로가 조용히 쓰임).
+
+- 값 뒤 주석(`INODEFENCE_OUTPUT_DIR=/data/if # 메모`): 주석은 따로 한 줄에 쓰거나 값을 따옴표로 감쌉니다.
+- 한쪽만 있는 따옴표(`INODEFENCE_OUTPUT_DIR='/data/if`).
+- 상대 경로 `INODEFENCE_OUTPUT_DIR`(환경 변수도 같음): `doctor`는 `FAIL`, `verify`·`explore`는 `--out` 없이
+  부르면 종료 3으로 거부합니다(실행한 폴더에 따라 출력 위치가 바뀌지 않도록). `--out`으로 직접 준 상대
+  경로는 지금처럼 실행한 폴더 기준입니다. `~`로 시작하는 값은 홈 폴더로 풉니다.
+
+빈 값(`INODEFENCE_OUTPUT_DIR=`)은 파일·환경 변수 모두 "설정 안 함"이고 다음 출처(파일, 기본값)가 쓰입니다. 공백이
+든 경로는 따옴표 없이도, 따옴표로 감싸도 됩니다. UTF-8 BOM이 붙은 파일(Windows 메모장 저장)과 CRLF 줄 끝도 읽습니다.
+
+`verify`·`explore`는 출력 폴더(`--out` 또는 기본값)를 쓸 수 없으면 `--dry-run`이어도 실행 전에 종료 3으로
+거부합니다: 이미 있는 파일이거나, 그 위 폴더 중 하나가 파일이거나, 만들 위치에 쓰기 권한이 없을 때입니다.
 
 - **출력은 저장소 밖이어야 합니다.** `--out`이나 기준 폴더가 저장소 안이면 실행 전에 거부합니다
   (위반 입력이 공개 저장소에 섞이지 않도록). 클라우드 동기화 폴더(Google Drive 등)도 피하세요.
@@ -617,7 +684,7 @@ inodefence summary ~/inodefence-explore/target-explore/<실행>-result/result.js
 | 0 | PASS | 재실행 완료 | 정상 | FAIL 없음(`UNKNOWN`은 있을 수 있음) | 정상 |
 | 1 | FAIL(위반 판정) | 재실행 미완료(끝난 회차는 남음) | — | FAIL 하나 이상 | — |
 | 2 | ERROR 판정. `explore`는 컨트롤러가 시작된 뒤의 중단(런처 비정상 종료, 루프 abort, 루프 보고서 없음)도 2이며 결과를 발행하지 않음(네 대상 공통) | 같은 입력·조건으로 재실행 불가 | 사용법 오류 | 사용법 오류 | 읽기·쓰기 실패 / 사용법 오류 |
-| 3 | 실행 전 거부 — 판정 없음: 사용법 오류(없는 옵션 값, `--budget 0` 등), 저장소 안 `--out`, `--auto-prepare` 없음, 설정 파일 오류, 이미지·준비 문제, Docker가 이미지 질문에 답하지 않음(준비하지 않음), 같은 `--out`에 이 실행의 결과가 이미 있음(덮어쓰지 않음) 등 | 사용법 오류(`--rounds 0` 등), 이미지가 이 호스트에 없음, Docker가 이미지 질문에 답하지 않음, 같은 실행 이름의 컨트롤러·볼륨이 이미 있음, 저장소 안 폴더, 저장소를 못 찾음, 설정 파일 오류 | 저장소를 못 찾음, 설정 파일 오류 | — | — |
+| 3 | 실행 전 거부 — 판정 없음: 사용법 오류(없는 옵션 값, `--budget 0` 등), 저장소 안 `--out`, 쓸 수 없는 `--out`(파일이거나 권한 없음), 상대 경로 `INODEFENCE_OUTPUT_DIR`, `--auto-prepare` 없음, 설정 파일 오류, 이미지·준비 문제, Docker가 이미지 질문에 답하지 않음(준비하지 않음), 같은 `--out`에 이 실행의 결과가 이미 있음(덮어쓰지 않음) 등 | 사용법 오류(`--rounds 0` 등), 이미지가 이 호스트에 없음, Docker가 이미지 질문에 답하지 않음, 같은 실행 이름의 컨트롤러·볼륨이 이미 있음, 저장소 안 폴더, 저장소를 못 찾음, 설정 파일 오류 | 저장소를 못 찾음, 설정 파일 오류 | — | — |
 | 4 | — | 이 대상은 재실행 미지원 | — | — | — |
 
 `verify`·`explore`·`replay`는 종료 코드가 결과를 싣기 때문에 사용법 오류를 2로 내지 않고, 아무것도 실행하지

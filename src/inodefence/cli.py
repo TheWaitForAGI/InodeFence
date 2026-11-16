@@ -41,9 +41,10 @@ from pathlib import Path
 from inodefence.locate import (
     EXPLORE_DRIVER,
     REPLAY_DRIVER,
-    REPO_NOT_FOUND,
     VERIFY_DRIVER,
     RepositoryCodeMissing,
+    check_repository_code,
+    repo_not_found_message,
     repo_root,
     run_driver,
     target_support,
@@ -67,7 +68,7 @@ REFUSED = 3
 def cmd_targets(args: argparse.Namespace) -> int:
     root = repo_root()
     if root is None:
-        print(REPO_NOT_FOUND, file=sys.stderr)
+        print(repo_not_found_message(), file=sys.stderr)
         return 3
     try:
         support = target_support(root)
@@ -173,12 +174,28 @@ def _looks_cloud_synced(path: Path) -> str | None:
     return None
 
 
+def _relative_output_base(config: UserConfig) -> str | None:
+    """Why the configured output base cannot be used, or None (one wording: doctor and commands).
+
+    A relative ``INODEFENCE_OUTPUT_DIR`` would move the default ``--out`` with the working
+    directory, so it is refused rather than resolved (an explicit ``--out`` may be relative).
+    """
+    base = config.output_base
+    if Path(base.value).is_absolute():
+        return None
+    return (
+        f"INODEFENCE_OUTPUT_DIR={base.value} ({base.source}) is not absolute; set it to an "
+        "absolute path (a relative one would move with the working directory)"
+    )
+
+
 def _output_base_check(config: UserConfig, root: Path | None) -> str:
     base = config.output_base
     path = Path(base.value)
     label = f"output folder base ({base.source})"
-    if not path.is_absolute():
-        return _check(label, "FAIL", f"{path} is not absolute; set INODEFENCE_OUTPUT_DIR to one")
+    relative = _relative_output_base(config)
+    if relative:
+        return _check(label, "FAIL", relative)
     if root is not None and path.resolve().is_relative_to(root.resolve()):
         return _check(
             label, "FAIL", f"{path} is inside the repository {root}; outputs must be outside it"
@@ -186,6 +203,8 @@ def _output_base_check(config: UserConfig, root: Path | None) -> str:
     existing = path
     while not existing.exists() and existing != existing.parent:
         existing = existing.parent
+    if not existing.is_dir():
+        return _check(label, "FAIL", f"{path}: {existing} exists and is not a folder")
     if not os.access(existing, os.W_OK):
         return _check(label, "FAIL", f"{path}: {existing} is not writable by you")
     synced = _looks_cloud_synced(path.resolve())
@@ -271,7 +290,11 @@ def _host_checks(config: UserConfig | None, daemon_ok: bool) -> list[str]:
         else:
             status = "WARN" if residue.containers or residue.volumes else "UNKNOWN"
             statuses.append(_check(label, status, "; ".join(residue.lines())))
-    if config is not None:
+    if config is not None and _relative_output_base(config):
+        statuses.append(
+            _check("free disk at the output folder base", "UNKNOWN", "not checked (see above)")
+        )
+    elif config is not None:
         disk = health.disk_free(Path(config.output_base.value))
         status = "UNKNOWN" if disk.free_bytes is None else "WARN" if disk.low else "OK"
         statuses.append(_check("free disk at the output folder base", status, disk.detail))
@@ -309,6 +332,82 @@ def _runtime_check() -> str:
     )
 
 
+def _repository_code_problem(root: Path) -> str | None:
+    """The refusal every target command would print for ``root`` (marker-only / old clone)."""
+    try:
+        check_repository_code(root)
+    except RepositoryCodeMissing as error:
+        return str(error)
+    return None
+
+
+def _repository_check(config: UserConfig | None) -> tuple[str, Path | None]:
+    """The repository line: the clone in use, where that choice came from, and why it is refused.
+
+    Same resolution as every target command (:func:`inodefence.locate.repo_root`); this only adds
+    the source (``INODEFENCE_HOME`` from the environment or the config file, else this install's
+    checkout) and the check the commands make before running a driver.
+    """
+    label = "repository (needed by targets / verify / explore / replay)"
+    setting = config.get("INODEFENCE_HOME") if config is not None else None
+    env_home = os.environ.get("INODEFENCE_HOME")
+    if env_home:
+        home, source = env_home, "INODEFENCE_HOME from the environment"
+    elif setting is not None:
+        home, source = setting.value, f"INODEFENCE_HOME from {setting.source}"
+    else:
+        home, source = None, "the checkout this inodefence is installed from"
+    root = repo_root()
+    if root is None:
+        return _check(label, "FAIL", repo_not_found_message()), None
+    problem = _repository_code_problem(root)
+    if problem:
+        return _check(label, "FAIL", f"{root} ({source}): {problem}"), None
+    notes = []
+    if setting is not None and setting.overridden is not None:
+        notes.append(
+            f"the config file's INODEFENCE_HOME={setting.overridden} is overridden by the "
+            "environment"
+        )
+    if home is not None and root.resolve() != _running_code().parents[1].resolve():
+        notes.append("target commands run this clone's code, not the code doctor runs from")
+    status = "OK"
+    if home is not None and not Path(home).expanduser().is_absolute():
+        status = "WARN"
+        notes.append(
+            f"INODEFENCE_HOME={home} is relative, so the clone it names depends on the working "
+            "directory; set an absolute path"
+        )
+    return _check(label, status, "; ".join([f"{root} ({source})", *notes])), root
+
+
+def _running_code() -> Path:
+    """The folder of the ``inodefence`` package this process runs (``.../inodefence``)."""
+    import inodefence
+
+    return Path(inodefence.__file__).resolve().parent
+
+
+def _running_code_check() -> str:
+    """Read-only: where the running ``inodefence`` code comes from (doctor; never changes rc).
+
+    WARN only when ``PYTHONPATH`` is set and the package was loaded from under one of its entries:
+    then the code running is that path's, not the installed one. Nothing is ignored or blocked.
+    """
+    code = _running_code()
+    label = "inodefence code running doctor / status / summary"
+    for entry in filter(None, os.environ.get("PYTHONPATH", "").split(os.pathsep)):
+        base = Path(entry).expanduser().resolve()
+        if code.is_relative_to(base):
+            return _check(
+                label,
+                "WARN",
+                f"{code} is loaded from PYTHONPATH entry {entry}, not from the installed package; "
+                "unset PYTHONPATH if that is not intended",
+            )
+    return _check(label, "INFO", str(code))
+
+
 def cmd_doctor(args: argparse.Namespace) -> int:
     statuses: list[str] = []
     version = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
@@ -332,14 +431,8 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         )
         statuses.append(_check("user config", "OK", detail))
 
-    root = repo_root()
-    statuses.append(
-        _check(
-            "repository (needed by targets / verify / explore / replay)",
-            "OK" if root is not None else "FAIL",
-            f"{root}" if root is not None else REPO_NOT_FOUND,
-        )
-    )
+    status, root = _repository_check(config)
+    statuses.append(status)
     if config is not None:
         statuses.append(_output_base_check(config, root))
 
@@ -347,6 +440,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     statuses += docker
     statuses += _host_checks(config, daemon_ok=len(docker) > 1 and docker[1] == "OK")
 
+    _running_code_check()  # INFO/WARN only: not counted (never changes the exit code)
     statuses.append(_runtime_check())
 
     failed = "FAIL" in statuses
@@ -364,13 +458,28 @@ def cmd_doctor(args: argparse.Namespace) -> int:
 def _forward(driver: str, argv: list[str], command: str) -> int:
     root = repo_root()
     if root is None:
-        print(REPO_NOT_FOUND, file=sys.stderr)
+        print(repo_not_found_message(), file=sys.stderr)
         return REFUSED
     try:
         return run_driver(root, driver, argv, prog=f"inodefence {command}")
     except RepositoryCodeMissing as error:
         print(error, file=sys.stderr)
         return REFUSED
+
+
+def _out_problem(out: Path) -> str | None:
+    """Why ``out`` cannot be the output folder, or None (checked before anything runs)."""
+    if out.exists() and not out.is_dir():
+        return f"--out {out} exists and is not a folder"
+    probe = out
+    while not probe.exists():
+        probe = probe.parent
+    if not probe.is_dir():
+        return f"--out {out} cannot be created: {probe} is not a folder"
+    if not os.access(probe, os.W_OK | os.X_OK):
+        where = "is not writable" if probe == out else f"cannot be created: {probe} is not writable"
+        return f"--out {out} {where}"
+    return None
 
 
 def _resolve_out(args: argparse.Namespace, default_name: str) -> Path | None:
@@ -385,6 +494,10 @@ def _resolve_out(args: argparse.Namespace, default_name: str) -> Path | None:
         if config is None:
             print(f"error: no --out given and {args.user_config_error}", file=sys.stderr)
             return None
+        relative = _relative_output_base(config)
+        if relative:
+            print(f"error: no --out given and {relative}", file=sys.stderr)
+            return None
         out = config.default_out(default_name)
     out = Path(os.path.abspath(out.expanduser()))
     root = repo_root()
@@ -394,6 +507,10 @@ def _resolve_out(args: argparse.Namespace, default_name: str) -> Path | None:
             "inputs and the repository is public; choose a folder outside it.",
             file=sys.stderr,
         )
+        return None
+    problem = _out_problem(out)
+    if problem is not None:
+        print(f"error: {problem}; choose another folder", file=sys.stderr)
         return None
     synced = _looks_cloud_synced(out.resolve())
     if synced:
@@ -579,6 +696,21 @@ class _RefusalParser(argparse.ArgumentParser):
         self.exit(REFUSED, f"{self.prog}: error: {message}\n")
 
 
+#: Exit codes shown under ``--help`` (help text only; the codes are the drivers', unchanged).
+_RUN_EXIT_CODES = (
+    "exit codes: 0 PASS, 1 FAIL (a violation was judged), 2 ERROR (no verdict, e.g. the run\n"
+    "stopped after its controller started; no result is published), 3 refused before anything\n"
+    "ran (bad option, no repository, missing image without --auto-prepare, existing result)."
+)
+_REPLAY_EXIT_CODES = (
+    "exit codes: 0 every round ran, 1 not every round ran (finished rounds are kept),\n"
+    "2 cannot replay, 3 stopped before running (image absent, Docker did not answer,\n"
+    "run name taken), 4 unsupported."
+)
+_TARGET_HELP = "extractor to run (default: node-tar; `inodefence targets` lists them)"
+_SUFFIX_HELP = "suffix for the target image tag, to keep a separate prepared image (default: none)"
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog=PROG, description="run extractor targets and read their results"
@@ -590,19 +722,35 @@ def build_parser() -> argparse.ArgumentParser:
     targets.add_argument("--json", action="store_true", help="machine-readable output")
     targets.set_defaults(func=cmd_targets)
 
-    doctor = sub.add_parser("doctor", help="check the environment and say how to fix problems")
+    doctor = sub.add_parser(
+        "doctor",
+        help="check the environment and say how to fix problems",
+        epilog="exit codes: 0 no check failed (UNKNOWN lines are not failures), 1 a check failed.",
+    )
     doctor.set_defaults(func=cmd_doctor)
 
-    verify = sub.add_parser("verify", help="run the fixed-input regression check on a target")
-    verify.add_argument("--target", default="node-tar")
-    verify.add_argument("--version", action="append", default=[], help="repeatable")
-    verify.add_argument("--extraction-filter", action="append", default=[], help="repeatable")
+    verify = sub.add_parser(
+        "verify",
+        help="run the fixed-input regression check on a target",
+        epilog=_RUN_EXIT_CODES,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    verify.add_argument("--target", default="node-tar", help=_TARGET_HELP)
+    verify.add_argument(
+        "--version", action="append", default=[], help="target version (required; repeatable)"
+    )
+    verify.add_argument(
+        "--extraction-filter",
+        action="append",
+        default=[],
+        help="python-tarfile only (repeatable); see `inodefence targets`",
+    )
     verify.add_argument(
         "--auto-prepare",
         action="store_true",
         help="build a missing target image with Docker (else a missing image stops the run)",
     )
-    verify.add_argument("--image-tag-suffix", default="")
+    verify.add_argument("--image-tag-suffix", default="", help=_SUFFIX_HELP)
     verify.add_argument(
         "--out",
         type=Path,
@@ -614,11 +762,18 @@ def build_parser() -> argparse.ArgumentParser:
     verify.__class__ = _RefusalParser  # usage errors exit 3 (see _RefusalParser)
     verify.set_defaults(func=cmd_verify)
 
-    explore = sub.add_parser("explore", help="run a feedback-search exploration on a target")
-    explore.add_argument("--target", default="node-tar")
-    explore.add_argument("--version", required=True, help="latest or an exact version")
-    explore.add_argument("--budget", type=_positive_int, default=20)
-    explore.add_argument("--seed", type=int, default=123)
+    explore = sub.add_parser(
+        "explore",
+        help="run a feedback-search exploration on a target",
+        epilog=_RUN_EXIT_CODES,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    explore.add_argument("--target", default="node-tar", help=_TARGET_HELP)
+    explore.add_argument("--version", required=True, help="latest or an exact version (required)")
+    explore.add_argument(
+        "--budget", type=_positive_int, default=20, help="number of runs (default: 20)"
+    )
+    explore.add_argument("--seed", type=int, default=123, help="search seed (default: 123)")
     explore.add_argument(
         "--max-unjudged-ratio",
         type=float,
@@ -630,7 +785,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="required for a real run: reuse the prepared image or build it with Docker",
     )
-    explore.add_argument("--image-tag-suffix", default="")
+    explore.add_argument("--image-tag-suffix", default="", help=_SUFFIX_HELP)
     explore.add_argument(
         "--out",
         type=Path,
@@ -645,6 +800,8 @@ def build_parser() -> argparse.ArgumentParser:
     replay = sub.add_parser(
         "replay",
         help="re-run one violation case N times on the same image and record the reproduction rate",
+        epilog=_REPLAY_EXIT_CODES,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     replay.add_argument("case_dir", type=Path, help="a live/violations/run-NNNNNN folder")
     replay.add_argument(
@@ -659,13 +816,18 @@ def build_parser() -> argparse.ArgumentParser:
     status = sub.add_parser(
         "status",
         help="show a run's live progress and violation cases while it runs, and its result after",
+        epilog="exit codes: 0 shown, 2 nothing to show, an unreadable result, or a usage error.",
     )
     status.add_argument(
         "folder", type=Path, help="an exploration output folder (live/ and/or result.json)"
     )
     status.set_defaults(func=cmd_status)
 
-    summary = sub.add_parser("summary", help="render a result file as a one-page summary")
+    summary = sub.add_parser(
+        "summary",
+        help="render a result file as a one-page summary",
+        epilog="exit codes: 0 written, 2 unreadable result, output not written, or a usage error.",
+    )
     summary.add_argument("result", type=Path, help="a result.json")
     summary.add_argument("-o", "--output", type=Path, help="write to this file (else stdout)")
     summary.add_argument(

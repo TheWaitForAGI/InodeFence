@@ -17,6 +17,12 @@ Settings are read from the process environment first, then from an optional ``KE
 key is refused with a reason (it is not silently ignored), so a research setting placed there is
 visible as an error rather than a no-op that looks applied. The file is parsed, never executed,
 and loading it does not modify ``os.environ`` (so nothing in it reaches the drivers' environment).
+
+What the parser refuses rather than guesses (each would otherwise become a different path than the
+user meant, silently): a value with an inline `` #`` comment (put comments on their own line, or
+quote the value), and a value with an unmatched quote. An empty value (``KEY=``), in the file or
+the environment, means "not set" and the next source applies; ``inodefence doctor`` names the
+source in effect. A path given as ``INODEFENCE_CONFIG`` that is a directory is an error.
 """
 
 from __future__ import annotations
@@ -52,6 +58,8 @@ class UserConfigError(ValueError):
 class Setting:
     value: str
     source: str  # "environment", the config file path, or "default"
+    #: The config file's value for the same key when the environment overrides it, else None.
+    overridden: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,6 +107,15 @@ def parse_config_text(text: str, source: str) -> dict[str, str]:
             raise UserConfigError(f"{source}:{number}: expected KEY=VALUE, got {raw!r}")
         if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
             value = value[1:-1]
+        elif value[:1] in ("'", '"') or value[-1:] in ("'", '"'):
+            raise UserConfigError(
+                f"{source}:{number}: unmatched quote in {raw!r}; quote all of the value or none"
+            )
+        elif " #" in value or "\t#" in value:
+            raise UserConfigError(
+                f"{source}:{number}: inline comment in {raw!r} is not supported (it would become "
+                "part of the value); put the comment on its own line, or quote the value"
+            )
         if key in PROTECTED_KEYS:
             raise UserConfigError(
                 f"{source}:{number}: {key} cannot be set in the user config ({PROTECTED_KEYS[key]})"
@@ -119,20 +136,26 @@ def load_user_config(environ: Mapping[str, str] | None = None) -> UserConfig:
     path = config_path(env)
     file_values: dict[str, str] = {}
     found = path.is_file()
+    if path.exists() and not found:
+        raise UserConfigError(
+            f"{path}: is a directory or another non-file; the config must be a file"
+        )
     if not found and env.get("INODEFENCE_CONFIG"):
         # Named explicitly: a missing file is an error, not "no settings" (silent defaults would
         # hide a typo in the path).
         raise UserConfigError(f"INODEFENCE_CONFIG={env['INODEFENCE_CONFIG']}: no such file")
     if found:
         try:
-            text = path.read_text(encoding="utf-8")
+            text = path.read_text(encoding="utf-8-sig")  # a leading BOM is not part of a key
         except OSError as error:
             raise UserConfigError(f"{path}: unreadable ({error})") from error
         file_values = parse_config_text(text, str(path))
     settings: dict[str, Setting] = {}
     for key in USER_KEYS:
         if env.get(key):
-            settings[key] = Setting(env[key], "environment")
+            shadowed = file_values.get(key) or None
+            overridden = shadowed if shadowed != env[key] else None
+            settings[key] = Setting(env[key], "environment", overridden)
         elif file_values.get(key):
             settings[key] = Setting(file_values[key], str(path))
     return UserConfig(config_path=path, config_found=found, settings=settings)

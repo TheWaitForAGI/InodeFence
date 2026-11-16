@@ -90,6 +90,7 @@ C0/C1/C2 판정 → feedback → 다음 mutation 선택" 루프가 `make demo` �
 | `make node-tar-smoke` | 호스트 터미널 | node-tar 실행 환경이 되는지 확인 |
 | `python -m scripts.oracle_fixture_check` | Dev Container | C0/C1/C2 판정이 의도한 fixture에서 맞게 나오는지 확인 (통제 extractor, node-tar 아님) |
 | `make check` | Dev Container | lint·타입·테스트·환경·문서 링크 검사 |
+| `inodefence doctor` → `targets` → `verify`/`explore` → `status`/`summary` | 호스트 터미널 (대상 실행은 docker 필요, `--dry-run`은 어디서나) | 추출기를 골라 고정 입력 회귀·탐색을 돌리는 사용자 명령. 설치부터 첫 실행까지는 [README 빠른 시작](../README.md#빠른-시작) |
 
 아직 안 된 것, 그리고 주장하지 않는 것:
 

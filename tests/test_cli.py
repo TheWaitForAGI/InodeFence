@@ -8,6 +8,9 @@ import pytest
 from inodefence import cli, locate
 from inodefence.drivers import repo as drivers_repo
 
+#: The real check, kept before the autouse fixture below replaces it for faked repo roots.
+_REAL_CODE_PROBLEM = cli._repository_code_problem
+
 
 @pytest.fixture(autouse=True)
 def _no_user_config(tmp_path_factory, monkeypatch) -> None:
@@ -15,6 +18,16 @@ def _no_user_config(tmp_path_factory, monkeypatch) -> None:
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path_factory.mktemp("cfg")))  # no config.env
     monkeypatch.delenv("INODEFENCE_CONFIG", raising=False)
     monkeypatch.delenv("INODEFENCE_OUTPUT_DIR", raising=False)
+    monkeypatch.delenv("INODEFENCE_HOME", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _fake_repo_roots_have_code(monkeypatch) -> None:
+    """Doctor tests fake ``repo_root`` with an empty folder; treat it as having the package.
+
+    The marker-only check itself is tested below with the real :func:`cli._repository_code_problem`.
+    """
+    monkeypatch.setattr(cli, "_repository_code_problem", lambda root: None)
 
 
 @pytest.fixture(autouse=True)
@@ -23,6 +36,9 @@ def _no_real_docker_listing(monkeypatch) -> None:
     from inodefence.drivers.runtime import health
 
     monkeypatch.setattr(cli, "_find_residue", lambda: health.Residue())
+    # Nor the host's daemon itself: tests that need an answer set their own fake.
+    monkeypatch.setattr(cli, "_docker_server", lambda: ("UNKNOWN", "not asked in tests"))
+    monkeypatch.setattr(cli, "_local_images", lambda: None)
 
 
 @pytest.fixture
@@ -161,7 +177,7 @@ def test_locate_and_the_drivers_share_one_resolver_without_a_cycle() -> None:
     assert locate.VERIFY_DRIVER == "inodefence.drivers.run_target"
 
 
-def test_verify_forwards_the_regression_driver_argv(monkeypatch) -> None:
+def test_verify_forwards_the_regression_driver_argv(monkeypatch, tmp_path: Path) -> None:
     calls: list = []
     monkeypatch.setattr(cli, "repo_root", lambda: Path("/repo"))
     monkeypatch.setattr(
@@ -169,7 +185,7 @@ def test_verify_forwards_the_regression_driver_argv(monkeypatch) -> None:
         "run_driver",
         lambda root, driver, argv, prog=None: calls.append((driver, argv, prog)) or 0,
     )
-    out = Path("/elsewhere/verify-out")
+    out = tmp_path / "elsewhere" / "verify-out"  # creatable: the --out check passes
     argv_in = ["verify", "--target", "node-tar", "--version", "7.5.2", "--dry-run", "--out"]
     assert cli.main([*argv_in, str(out)]) == 0
     driver, argv, prog = calls[0]
@@ -742,3 +758,200 @@ def test_doctor_memory_unknown_never_changes_the_exit_code(
     out = capsys.readouterr().out
     assert "[UNKNOWN] memory headroom for Docker: not checked: inside WSL the Windows commit" in out
     assert "no check failed; 1 UNKNOWN (not verified, see above)" in out
+
+
+# --- PR 4: where the settings in effect come from, and the refusals doctor and commands share ---
+
+
+def _repository_line(capsys) -> str:
+    out = capsys.readouterr().out
+    return next(line for line in out.splitlines() if "] repository (" in line)
+
+
+def test_doctor_names_an_inodefence_home_that_is_not_a_clone(
+    monkeypatch, capsys, tmp_path: Path
+) -> None:
+    monkeypatch.setenv("INODEFENCE_HOME", str(tmp_path))  # no scripts/ or tools/
+    assert cli.main(["doctor"]) == 1
+    line = _repository_line(capsys)
+    assert line.startswith("[FAIL] repository")
+    assert f"INODEFENCE_HOME (environment) is '{tmp_path}' -> {tmp_path}, which is not" in line
+
+
+def test_doctor_names_the_config_file_as_the_source_of_inodefence_home(
+    monkeypatch, capsys, tmp_path: Path
+) -> None:
+    config = tmp_path / "c.env"
+    config.write_text(f"INODEFENCE_HOME={tmp_path / 'nope'}\n", encoding="utf-8")
+    monkeypatch.setenv("INODEFENCE_CONFIG", str(config))
+    cli.main(["doctor"])
+    line = _repository_line(capsys)
+    assert "INODEFENCE_HOME (user config file" in line and "that folder does not exist" in line
+
+
+def test_doctor_says_which_clone_runs_and_what_the_environment_overrides(
+    monkeypatch, capsys, tmp_path: Path
+) -> None:
+    (tmp_path / "other-clone").mkdir()
+    repo = _make_repo(tmp_path / "other-clone")  # a clone other than this install's checkout
+    config = tmp_path / "c.env"
+    config.write_text("INODEFENCE_HOME=/from/the/file\n", encoding="utf-8")
+    monkeypatch.setenv("INODEFENCE_CONFIG", str(config))
+    monkeypatch.setenv("INODEFENCE_HOME", str(repo))
+    cli.main(["doctor"])
+    line = _repository_line(capsys)
+    assert line.startswith(
+        f"[OK] repository (needed by targets / verify / explore / replay): {repo}"
+    )
+    assert "(INODEFENCE_HOME from the environment)" in line
+    assert (
+        "the config file's INODEFENCE_HOME=/from/the/file is overridden by the environment" in line
+    )
+    assert "target commands run this clone's code, not the code doctor runs from" in line
+
+
+def test_doctor_fails_a_marker_only_clone_like_the_commands_do(
+    monkeypatch, capsys, tmp_path: Path
+) -> None:
+    # Before 0.4 doctor said OK here while every target command refused the same clone.
+    monkeypatch.setattr(cli, "_repository_code_problem", _REAL_CODE_PROBLEM)
+    (tmp_path / "old").mkdir()
+    repo = _make_repo(tmp_path / "old")
+    monkeypatch.setenv("INODEFENCE_HOME", str(repo))
+    cli.main(["doctor"])
+    line = _repository_line(capsys)
+    assert line.startswith("[FAIL] repository") and "has no src/inodefence/drivers/" in line
+    assert cli.main(["targets"]) == 3  # the same refusal
+    assert "has no src/inodefence/drivers/" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("source", ["environment", "file"])
+def test_a_relative_output_base_is_refused_by_the_commands_as_by_doctor(
+    monkeypatch, capsys, tmp_path: Path, source: str
+) -> None:
+    # Before 0.4 doctor said FAIL but verify / explore used <working directory>/rel/out silently.
+    calls = _capture_driver(monkeypatch, tmp_path / "repo")
+    if source == "environment":
+        monkeypatch.setenv("INODEFENCE_OUTPUT_DIR", "rel/out")
+    else:
+        config = tmp_path / "c.env"
+        config.write_text("INODEFENCE_OUTPUT_DIR=rel/out\n", encoding="utf-8")
+        monkeypatch.setenv("INODEFENCE_CONFIG", str(config))
+    monkeypatch.chdir(tmp_path)
+    assert cli.main(["verify", "--version", "7.5.2", "--dry-run"]) == 3
+    assert cli.main(["explore", "--version", "latest", "--dry-run"]) == 3
+    assert calls == []
+    err = capsys.readouterr().err
+    assert err.count("error: no --out given and INODEFENCE_OUTPUT_DIR=rel/out (") == 2
+    assert "is not absolute" in err
+    cli.main(["doctor"])
+    out = capsys.readouterr().out
+    assert "[FAIL] output folder base (" in out and "INODEFENCE_OUTPUT_DIR=rel/out (" in out
+    assert "[UNKNOWN] free disk at the output folder base: not checked (see above)" in out
+    # An explicit relative --out is still taken against the working directory (unchanged).
+    assert cli.main(["verify", "--version", "7.5.2", "--dry-run", "--out", "x"]) == 0
+    assert calls[0][1][-2:] == ["--out", str(tmp_path / "x")]
+
+
+@pytest.mark.parametrize(
+    ("command", "text"),
+    [
+        ("verify", "3 refused before anything"),
+        ("explore", "2 ERROR (no verdict"),
+        ("replay", "4 unsupported"),
+        ("doctor", "1 a check failed"),
+        ("status", "2 nothing to show"),
+        ("summary", "0 written"),
+    ],
+)
+def test_help_states_each_commands_exit_codes(command: str, text: str, capsys) -> None:
+    with pytest.raises(SystemExit) as raised:
+        cli.main([command, "--help"])
+    assert raised.value.code == 0
+    out = " ".join(capsys.readouterr().out.split())
+    assert "exit codes:" in out and text in out
+
+
+def test_help_names_defaults_and_required_options(capsys) -> None:
+    with pytest.raises(SystemExit):
+        cli.main(["explore", "--help"])
+    out = " ".join(capsys.readouterr().out.split())
+    assert "(default: node-tar;" in out and "(default: 20)" in out and "(default: 123)" in out
+    assert "latest or an exact version (required)" in out
+    with pytest.raises(SystemExit):
+        cli.main(["verify", "--help"])
+    assert "target version (required; repeatable)" in " ".join(capsys.readouterr().out.split())
+
+
+def test_doctor_warns_on_a_relative_inodefence_home(monkeypatch, capsys, tmp_path: Path) -> None:
+    (tmp_path / "clone").mkdir()
+    _make_repo(tmp_path / "clone")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("INODEFENCE_HOME", "clone")
+    cli.main(["doctor"])
+    line = _repository_line(capsys)
+    assert line.startswith("[WARN] repository") and "INODEFENCE_HOME=clone is relative" in line
+
+
+def test_doctor_names_the_running_code_and_warns_only_for_pythonpath(
+    monkeypatch, capsys, tmp_path: Path
+) -> None:
+    code = cli._running_code()
+    monkeypatch.setattr(cli, "_docker_checks", lambda: [])  # never the host's daemon
+    monkeypatch.delenv("PYTHONPATH", raising=False)
+    cli.main(["doctor"])
+    lines = [x for x in capsys.readouterr().out.splitlines() if x.startswith("[")]
+    (line,) = [x for x in lines if "inodefence code running" in x]
+    assert line == f"[INFO] inodefence code running doctor / status / summary: {code}"
+    assert lines[lines.index(line) + 1].split("] ", 1)[1].startswith("runtime directory")
+
+    monkeypatch.setenv("PYTHONPATH", str(tmp_path))  # unrelated entry: still INFO
+    cli.main(["doctor"])
+    assert "[INFO] inodefence code running" in capsys.readouterr().out
+
+    monkeypatch.setenv("PYTHONPATH", str(code.parent))
+    rc_with = cli.main(["doctor"])
+    out = capsys.readouterr().out
+    assert "[WARN] inodefence code running" in out and "loaded from PYTHONPATH entry" in out
+    monkeypatch.delenv("PYTHONPATH")
+    assert cli.main(["doctor"]) == rc_with  # the WARN never changes the exit code
+
+
+@pytest.mark.parametrize("kind", ["file", "under-a-file", "read-only"])
+def test_an_unusable_out_is_refused_before_anything_runs(
+    monkeypatch, capsys, tmp_path: Path, kind: str
+) -> None:
+    calls = _capture_driver(monkeypatch, tmp_path / "repo")
+    blocker = tmp_path / "blocker"
+    if kind == "read-only":
+        if cli.os.geteuid() == 0:
+            pytest.skip("root can write anywhere")
+        blocker.mkdir()
+        blocker.chmod(0o500)
+        out = blocker / "sub"
+    else:
+        blocker.write_text("x", encoding="utf-8")
+        out = blocker if kind == "file" else blocker / "sub"
+    try:
+        for command in (["verify", "--version", "7.5.2"], ["explore", "--version", "latest"]):
+            assert cli.main([*command, "--dry-run", "--out", str(out)]) == 3
+    finally:
+        if kind == "read-only":
+            blocker.chmod(0o700)
+    assert calls == []
+    err = capsys.readouterr().err
+    assert err.count("; choose another folder") == 2
+
+
+def test_a_new_nested_out_under_a_writable_folder_passes(monkeypatch, tmp_path: Path) -> None:
+    calls = _capture_driver(monkeypatch, tmp_path / "repo")
+    out = tmp_path / "a" / "b" / "c"
+    assert cli.main(["verify", "--version", "7.5.2", "--dry-run", "--out", str(out)]) == 0
+    assert calls and calls[0][1][-2:] == ["--out", str(out)]
+
+
+def test_doctor_fails_an_output_base_that_is_a_file(monkeypatch, capsys, tmp_path: Path) -> None:
+    (tmp_path / "f").write_text("x", encoding="utf-8")
+    monkeypatch.setenv("INODEFENCE_OUTPUT_DIR", str(tmp_path / "f"))
+    cli.main(["doctor"])
+    assert "[FAIL] output folder base (environment)" in capsys.readouterr().out

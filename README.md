@@ -416,13 +416,20 @@ inodefence targets          # 추출기와 각 추출기가 지원하는 것(옵
 ```
 
 설치 후에는 저장소 밖 어느 폴더에서 실행해도 됩니다. 설치 방식에 따라 되는 명령이 다릅니다
-(2026-11-16, 깨끗한 venv·저장소 밖 폴더에서 확인):
+(2026-11-16, Python 3.12 깨끗한 venv·저장소 밖 폴더·빈 환경에서 확인, 0.4 작업 커밋 e71a534에서 다시 확인):
 
 | 명령 | `pip install -e .`(클론에서) | `pip install .`(wheel)만 | wheel + `INODEFENCE_HOME=<클론>` |
 | --- | --- | --- | --- |
 | `--version`, `status`, `summary` | 됨 | 됨 | 됨 |
 | `doctor` | 됨 | 실행되지만 repository `FAIL`(종료 1) | 됨 |
 | `targets`, `verify`, `explore`, `replay` | 됨 | 안 됨: "repository not found", 종료 3 | 됨 |
+
+- Python 3.13에서는 `pip`이 설치를 거부합니다("requires a different Python"). 3.12만 지원합니다.
+- `INODEFENCE_HOME`을 상대 경로로 주면 그 시점의 작업 폴더 기준 절대 경로로 풀어, 세 설치 방식 모두 그 클론의
+  코드를 돌립니다(171b0ba 이전 editable 설치는 자기 클론의 코드를 돌렸습니다). 작업 폴더에 따라 가리키는
+  클론이 바뀌므로 `doctor`는 `WARN`입니다.
+- wheel에 든 드라이버를 직접(`python -m inodefence.drivers.run_target`) 돌리면 클론이 없어 종료 3으로 거부하고
+  `inodefence verify / explore / replay`로 돌리라고 안내합니다.
 
 대상을 돌리는 명령은 이미지 레시피(`tools/`)와 셸 런처(`scripts/`)가 있는 **저장소 클론이 꼭 필요**합니다.
 wheel로 설치했다면 `INODEFENCE_HOME`(환경 변수 또는 아래 설정 파일)으로 클론 위치를 알려 줍니다. 이때 `targets`·`verify`·`explore`·`replay`는

@@ -278,6 +278,7 @@ def _complete_report(tmp_path: Path) -> dict[str, Any]:
         (1, "none", r"controller run failed \(exit 1\)"),
         (0, "aborted", "exploration aborted: backend gone"),
         (0, "none", "controller run produced no report"),
+        (0, "aborted-text", "exploration aborted: backend gone"),  # not a dict: no traceback
     ],
 )
 def test_a_stop_after_the_controller_started_is_error_and_publishes_nothing(
@@ -287,6 +288,7 @@ def test_a_stop_after_the_controller_started_is_error_and_publishes_nothing(
     report = {
         "complete": complete,
         "aborted": {**complete, "aborted": {"reason": "backend gone"}},
+        "aborted-text": {**complete, "aborted": "backend gone"},
         "none": None,
     }[kind]
     out = tmp_path / "run"

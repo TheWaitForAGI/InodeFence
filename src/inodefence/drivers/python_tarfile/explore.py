@@ -230,7 +230,9 @@ def explore(
     )
     report = json.loads(path.read_text(encoding="utf-8"))
     if "aborted" in report:  # the loop stopped after it started: ERROR (exit 2), not a setup error
-        raise RuntimeError(f"exploration aborted: {report['aborted'].get('reason')}")
+        aborted = report["aborted"]
+        reason = aborted.get("reason") if isinstance(aborted, dict) else aborted
+        raise RuntimeError(f"exploration aborted: {reason}")
     result, tar_files = build_campaign_result(
         report, prepared, made, extraction_filter, seed=options.seed, budget=options.budget
     )

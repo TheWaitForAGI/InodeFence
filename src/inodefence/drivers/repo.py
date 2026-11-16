@@ -1,25 +1,26 @@
-"""Where the repository checkout is: the ONE resolver for the drivers (and, through it, ``locate``).
+"""Where the repository checkout is: the ONE module for both views of it (leaf module).
 
 The drivers need the clone for three things that are not packaged: the per-target build assets
 (``tools/``), the controller shell launchers (``scripts/local_*.sh``) and the docker build context
-(the repository root).
+(the repository root). Two questions, two functions, the same meaning as before the move:
 
-One resolution order, the CLI's (``INODEFENCE_HOME`` -> the checkout of this code -> for the
-drivers, the working directory): :func:`repo_root` (what ``locate`` uses) and
-:func:`repository_root` (the drivers).
-
-One invariant, as before the move (the drivers were ``scripts/*.py`` inside the repository): the
-code that runs, the assets and launchers it uses and the engine revision it records
-(``engine_provenance``) come from **one tree**. A driver's ``main`` checks it at run time with
-:func:`require_repository` and refuses otherwise (exit 3). The CLI satisfies it by construction:
-it runs drivers with the resolved clone's ``src`` first on ``PYTHONPATH``.
+* **Which clone the CLI runs** -- :func:`repo_root`, used only by ``locate``: ``INODEFENCE_HOME``
+  (environment, then the user config file), else the checkout this installed code belongs to;
+  never the working directory. ``locate`` then runs the drivers with that clone's ``src`` first on
+  ``PYTHONPATH``, so in the subprocess the driver code *is* that clone's.
+* **The driver's own repository** -- :func:`require_repository`: always the checkout of the
+  running code (:func:`code_checkout`), exactly like the old ``scripts/*.py`` drivers'
+  ``Path(__file__).parents[1]``. ``INODEFENCE_HOME`` and the working directory are not
+  consulted, so the code that runs, the assets and launchers it uses and the engine revision it
+  records (``engine_provenance``) are one tree by definition. Driver code that is not inside a
+  clone (an installed wheel run directly) is refused at run time.
 
 Nothing here runs at import: module constants derive from :func:`code_checkout` (pure path
 arithmetic), so importing any driver works in any install (e.g. ``inodefence targets`` reading an
-adapter's options); in a run that passes the check, that value is the resolved repository.
+adapter's options).
 
-This module is a leaf: it imports only the standard library and :mod:`inodefence.user_config`
-(itself stdlib-only), so ``locate`` can import it without a cycle.
+This module imports only the standard library and :mod:`inodefence.user_config` (itself
+stdlib-only), so ``locate`` can import it without a cycle.
 """
 
 from __future__ import annotations
@@ -58,12 +59,12 @@ def configured_home() -> str | None:
 
 
 def repo_root() -> Path | None:
-    """Locate the repository explicitly, or ``None``; never a guess (the CLI's view).
+    """Which clone the CLI runs (``locate`` only), or ``None``; never a guess.
 
     ``INODEFENCE_HOME`` wins when set (environment first, then the user config file). Otherwise,
     in an editable install this file is ``<repo>/src/inodefence/drivers/repo.py``, so its
     ``parents[3]`` is the repository root; a wheel install has no such layout and returns
-    ``None``.
+    ``None``. The working directory is not consulted (as in ``locate`` before the move).
     """
     env = os.environ.get("INODEFENCE_HOME") or configured_home()
     if env:
@@ -77,45 +78,25 @@ def code_checkout() -> Path:
 
     Pure path arithmetic, so module constants derived from it (``REPO_ROOT``, launcher and
     ``tools/`` paths) cost nothing at import and never raise. It is the same value as the old
-    ``scripts/`` drivers' ``Path(__file__).parents[1]``; :func:`require_repository` guarantees it
-    equals the resolved repository whenever a driver actually runs.
+    ``scripts/`` drivers' ``Path(__file__).parents[1]``.
     """
     return _CHECKOUT
 
 
-def repository_root() -> Path:
-    """The repository the drivers use: :func:`repo_root` (the CLI's order), then the cwd.
-
-    Raises ``RuntimeError`` when none is a repository. On its own this may name a tree other than
-    the running code's; drivers go through :func:`require_repository`, which refuses that.
-    """
-    found = repo_root()
-    if found is not None:
-        return found
-    cwd = Path.cwd()
-    if is_repo(cwd):
-        return cwd
-    raise RuntimeError(REPO_NOT_FOUND_HINT)
-
-
 def require_repository() -> Path:
-    """The resolved repository, checked to be the tree of the running code (fail-closed).
+    """The driver's own repository: :func:`code_checkout`, which must be a clone.
 
-    The invariant of the drivers (as before the move, when they were ``scripts/*.py`` inside the
-    repository): the code that runs, the assets and launchers it uses and the engine revision it
-    records all come from one tree. ``RuntimeError`` when the repository is not found, or when the
-    running ``inodefence`` package is not ``<repository>/src/inodefence``. The CLI path satisfies
-    it by construction (it runs drivers with ``<root>/src`` first on ``PYTHONPATH``).
+    ``RuntimeError`` when the running code is not inside a clone (an installed copy run
+    directly), even if a clone exists elsewhere (``INODEFENCE_HOME``, the working directory):
+    the drivers never read the assets, launchers or git revision of a tree other than their own.
     """
-    root = repository_root()
-    running = Path(__file__).resolve().parents[1]
-    if (root / "src" / "inodefence").resolve() != running:
-        raise RuntimeError(
-            f"the running code and the repository are different trees (code: {running}; "
-            f"repository: {root}). Run it as `inodefence verify / explore / replay`, which runs "
-            f"the drivers with that clone's own code, or with `PYTHONPATH={root / 'src'}`."
-        )
-    return root
+    if is_repo(_CHECKOUT):
+        return _CHECKOUT
+    raise RuntimeError(
+        f"{REPO_NOT_FOUND_HINT} (The running driver code at {Path(__file__).resolve().parent} is "
+        "not inside a clone; run it as `inodefence verify / explore / replay`, which runs the "
+        "chosen clone's own drivers.)"
+    )
 
 
 def require_repository_or_exit(parser: object, status: int) -> Path:

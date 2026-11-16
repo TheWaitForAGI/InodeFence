@@ -364,8 +364,9 @@ Dev Container 안에서는 `--dry-run`으로 계획만 볼 수 있습니다.
 
 ### 설치
 
-Python 3.12와 저장소 클론이 필요합니다(대상 실행 드라이버 `scripts/`와 이미지 레시피 `tools/`는
-패키지에 들어 있지 않습니다).
+Python 3.12와 저장소 클론이 필요합니다. 대상 실행 드라이버(`inodefence.drivers`)는 패키지에 들어 있지만,
+이미지 레시피(`tools/`), 컨트롤러 셸 런처(`scripts/local_*.sh`), 어댑터가 쓰는 고정 입력 모듈
+(`experiments/repro/`)은 들어 있지 않습니다.
 
 ```bash
 git clone <저장소 URL> InodeFence && cd InodeFence
@@ -385,10 +386,11 @@ inodefence targets          # 추출기와 각 추출기가 지원하는 것(옵
 | `doctor` | 됨 | 실행되지만 repository `FAIL`(종료 1) | 됨 |
 | `targets`, `verify`, `explore`, `replay` | 됨 | 안 됨: "repository not found", 종료 3 | 됨 |
 
-대상을 돌리는 명령은 드라이버(`scripts/`)와 이미지 레시피(`tools/`)가 있는 **저장소 클론이 꼭 필요**합니다.
-wheel로 설치했다면 `INODEFENCE_HOME`(환경 변수 또는 아래 설정 파일)으로 클론 위치를 알려 줍니다. 이때 대상 실행 코드(드라이버와 엔진)는 그 클론에서
-돌고, 결과의 `engine_commit`·`engine_sha`는 그 클론의 `git rev-parse HEAD`(추적 파일 수정이나 `src`·`scripts`·`tools` 아래 추적 안 된 파일이 있으면 `-dirty`)입니다.
-`status`·`summary`·`doctor`는 설치된 패키지 코드로 돕니다.
+대상을 돌리는 명령은 이미지 레시피(`tools/`)와 셸 런처(`scripts/`)가 있는 **저장소 클론이 꼭 필요**합니다.
+wheel로 설치했다면 `INODEFENCE_HOME`(환경 변수 또는 아래 설정 파일)으로 클론 위치를 알려 줍니다. 이때 `targets`·`verify`·`explore`·`replay`는
+그 클론을 작업 폴더로 하고 클론의 `src`를 먼저 읽는 하위 프로세스(`python -m inodefence.drivers.…`)에서 돌므로,
+드라이버·엔진·이미지 레시피가 모두 그 클론의 것입니다. 결과의 `engine_commit`·`engine_sha`는 그 클론의 `git rev-parse HEAD`(추적 파일 수정이나 `src`·`scripts`·`tools` 아래 추적 안 된 파일이 있으면 `-dirty`)입니다.
+`status`·`summary`·`doctor`는 설치된 패키지 코드로 돌고, 드라이버를 import하지 않습니다.
 
 `doctor`는 각 항목을 `OK`·`FAIL`·`WARN`·`INFO`·`UNKNOWN`으로 출력합니다. 확인하지 못한 것은 `OK`가
 아니라 `UNKNOWN`입니다. 로컬 `inodefence-*` 이미지는 있으면 `OK`로 이름을 나열하고, 없으면 `INFO`
@@ -661,8 +663,9 @@ Git 이력과 CI 로그도 향후 공개될 수 있는 자료로 취급합니다
 
 ```text
 src/inodefence/      엔진 소스와 모듈 책임 안내
+src/inodefence/drivers/  제품 실행 계층: inodefence verify/explore/replay/targets가 거치는 대상별 드라이버
 tests/             자동 테스트와 안전한 TAR fixture
-scripts/           개발·검증·수동 probe 도구
+scripts/           컨트롤러·셸 런처, 등록 실험 러너, 분석(analysis/)·개발(dev/)·운영(ops/) 도구, 드라이버 옛 경로 별칭
 docs/research/     연구 근거와 상세 설계
 experiments/       configs / raw / validated summaries
 findings/          private / published finding 보관 흐름

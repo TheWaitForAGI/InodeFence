@@ -177,9 +177,11 @@ src/inodefence/minimizer.py bounded generic / USTAR / evidence-bound minimizatio
 src/inodefence/evaluation/ completed raw validation / qualification / dataset / statistics
 src/inodefence/transition_campaign.py  transition v1 P0/P1/P2 composition (현재 demo 경로 아님)
 src/inodefence/replay/     allowlisted benign clean replay
+src/inodefence/drivers/    제품 실행 계층: inodefence verify/explore/replay/targets의 대상별 드라이버 (엔진은 이 계층을 import하지 않음)
+src/inodefence/cli.py, locate.py  사용자 명령 inodefence (cli → locate → drivers → 엔진)
 
 tests/                      코드 테스트
-scripts/                    개발/실험 보조 명령
+scripts/                    컨트롤러·셸 런처, 등록 실험 러너, analysis/·dev/·ops/ 도구, 드라이버 옛 경로 별칭 (scripts/README.md)
 docs/research/              연구 근거와 설계
 experiments/                실험 설정과 결과
 findings/                   재현 가능한 finding

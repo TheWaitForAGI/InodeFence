@@ -44,6 +44,8 @@ builder.build_tar → disposable runtime → before snapshot
 | [minimizer.py](minimizer.py) | bounded deterministic generic/USTAR reduction and evidence binding |
 | [evaluation](evaluation/README.md) | verified raw/config, passive ledger/journal, qualification/matrix, datasets/statistics |
 | [replay](replay/README.md) | allowlisted benign fresh-runtime reproduction |
+| [drivers](drivers/__init__.py) | 제품 실행 계층. `inodefence verify / explore / replay / targets`가 거치는 대상별 드라이버(대상 레지스트리 `run_target.TARGETS`, 어댑터, 탐색·replay·이미지 준비 훅)다. 엔진을 조합만 하고 다시 구현하지 않는다. 엔진은 이 계층을 import하지 않는다. 저장소 위치는 [drivers/repo.py](drivers/repo.py) 한 곳에서 정한다. 실행에는 여전히 저장소 클론(`tools/`, `scripts/local_*.sh`, `experiments/repro/`)이 필요하다 |
+| [cli.py](cli.py) · [locate.py](locate.py) | 사용자 명령 `inodefence`. 의존 방향은 `cli → locate → drivers → 엔진`이다. locate는 드라이버 모듈을 `python -m`으로 실행하고(클론의 `src` 우선), 대상 목록도 같은 환경의 하위 프로세스에서 읽는다 |
 
 Observer는 사실만 기록하고 Oracle은 사실에 계약을 적용한다. Signature 계산은 계약 판정과 독립적이다. Pipeline은 각 알고리즘을 호출할 뿐 target 옵션이나 mutation 전략을 소유하지 않는다.
 

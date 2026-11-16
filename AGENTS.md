@@ -281,6 +281,16 @@ Seed Generator
 
 특정 target/CVE 로직이 generic mutation, observer, oracle, feedback 모듈에 섞이지 않도록 한다.
 
+사용자 명령 계층은 위 pipeline 바깥에 있다:
+
+```text
+inodefence (cli.py) -> locate.py -> 제품 드라이버 (src/inodefence/drivers/) -> 위 엔진 모듈
+```
+
+제품 드라이버(`inodefence.drivers`)는 대상별 verify/explore/replay 실행을 엔진 조합으로 구성한다. 엔진 모듈은
+드라이버·`locate`·`cli`를 import하지 않는다. 저장소 경로는 `drivers/repo.py` 한 곳에서 얻는다. 옛
+`scripts/` 경로 일부는 호환 별칭으로 남아 있다([scripts/README](scripts/README.md)).
+
 ## Git 작업 규칙
 
 - `main`에서 직접 개발하지 않는다.

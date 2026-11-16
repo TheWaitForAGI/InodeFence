@@ -2,8 +2,9 @@
 
 ## 이 폴더는 무엇인가
 
-`src/inodefence/`(패키지, 엔진 하나)를 부르는 저장소 명령을 둔다. 대상 드라이버, 컨트롤러·host broker,
-등록 실험 러너, 분석·보고, 개발·운영 도구가 여기 있다. `scripts`는 `__init__.py`가 없는 namespace
+`src/inodefence/`(패키지: 엔진과 제품 드라이버 `inodefence.drivers`)를 부르는 저장소 명령을 둔다.
+컨트롤러·host broker와 셸 런처, 등록 실험 러너, 분석·보고, 개발·운영 도구가 여기 있다. 제품 드라이버의
+옛 경로 7개는 패키지 모듈의 별칭으로 남아 있다(아래). `scripts`는 `__init__.py`가 없는 namespace
 package다. 하위 폴더도 `python -m scripts.<폴더>.<이름>`으로 실행된다. `__init__.py`를 추가하면
 namespace 의미가 바뀌므로 추가하지 않는다.
 
@@ -24,9 +25,36 @@ namespace 의미가 바뀌므로 추가하지 않는다.
 | `check_docs.py`, `manual_tar_probe.py` | `dev/` |
 | `host_ledger.py`, `make_evidence_bundle.py` | `ops/` |
 
+패키지로 옮긴 제품 드라이버(PR 2, product/p0-02-driver-engine-integration): 사용자 명령
+`inodefence verify / explore / replay / targets`가 거치는 드라이버 22개는 이제 `src/inodefence/drivers/`
+(`inodefence.drivers`) 안에 있다. 구성은 [drivers 패키지 설명](../src/inodefence/drivers/__init__.py)을 본다.
+CLI는 `python -m inodefence.drivers.run_target`(verify)·`run_target_explore`·`run_target_replay`를
+실행한다.
+
+| 전(`scripts/`) | 후(`inodefence.drivers.`) | 옛 경로 |
+|---|---|---|
+| `run_target`, `run_target_explore`, `run_target_replay` | `run_target`, `run_target_explore`, `run_target_replay` | 호환 별칭 유지 |
+| `regression_check` | `regression_check` | 호환 별칭 유지 |
+| `explore_result`, `image_prepare`, `npm_registry` | 같은 이름 | 없음 |
+| `run_node_tar_target`, `node_tar_explore`, `node_tar_replay`, `node_tar_image`, `node_tar_registry_prepare` | `node_tar.adapter`, `.explore`, `.replay`, `.image`, `.registry_prepare` | `node_tar_registry_prepare`만 별칭 |
+| `run_decompress_target`, `decompress_explore`, `decompress_image`, `decompress_registry_prepare` | `decompress.adapter`, `.explore`, `.image`, `.registry_prepare` | 없음 |
+| `run_oras_go_target`, `oras_go_explore`, `oras_go_registry_prepare` | `oras_go.adapter`, `.explore`, `.registry_prepare` | `oras_go_registry_prepare`만 별칭 |
+| `run_python_tarfile_target`, `python_tarfile_explore`, `python_tarfile_producer` | `python_tarfile.adapter`, `.explore`, `.producer` | `python_tarfile_producer`만 별칭 |
+
+옛 경로 7개(`scripts/run_target.py`, `run_target_explore.py`, `run_target_replay.py`, `regression_check.py`,
+`node_tar_registry_prepare.py`, `oras_go_registry_prepare.py`, `python_tarfile_producer.py`)는 새 모듈의
+별칭(wrapper)이다. `python scripts/X.py`와 `python -m scripts.X`가 그대로 동작한다. CI·Makefile·
+experiments/·paper/·tools/ 문서·셸 런처가 이 경로를 명령으로 부르기 때문에 남겼다. `scripts/run_target.py`는
+저장소 판별 표식(`scripts/run_target.py` + `tools/`)이기도 하다. 이미지 검사 하위 명령은
+`python -m inodefence.drivers.image_prepare check ...`다.
+
+드라이버를 실행하려면 여전히 저장소 클론이 필요하다. 대상별 이미지 레시피(`tools/`), 컨트롤러 셸 런처
+(`scripts/local_*.sh`), 어댑터가 쓰는 고정 입력 모듈(`experiments/repro/`)은 패키지에 들어 있지 않다.
+저장소 위치는 `inodefence.drivers.repo` 한 곳에서 정한다.
+
 새 파일을 둘 때는 다음 순서로 판단한다.
 1. 아래 동결 기준에 걸리면 최상위에 둔다.
-2. 사용자 명령(`inodefence ...`)이 거치는 드라이버는 최상위에 둔다(제품, PR 2에서 재배치 예정).
+2. 사용자 명령(`inodefence ...`)이 거치는 드라이버는 `src/inodefence/drivers/`에 둔다(제품).
 3. 나머지는 analysis·dev·ops 중 하나에 둔다.
 
 최상위에 남는 파일과 이유는 아래 표다(A~I는 책임 분류다). 동결 기준은 다음 중 하나다.
@@ -39,10 +67,10 @@ namespace 의미가 바뀌므로 추가하지 않는다.
 | 분류 | 태그 | 파일 | 최상위에 남는 이유 |
 |---|---|---|---|
 | A 컨트롤러·host broker·격리 런처 | 동결 | `container_controller`, `container_host`, `broker_call_log`, `effect_replay`, `run_effect_demo`, `launcher_guards`, `bounded_cleanup_command`, `local_node_tar_smoke.sh`, `local_decompress_selfdiscover.sh`, `local_oras_go_selfdiscover.sh`, `local_python_tarfile_explore.sh` | 격리 실행 경로다. container_host가 `-m scripts.container_controller`를 하드코딩하고 CI가 `-m scripts.container_host`를 부른다. 일부는 SHARED_PATH_FILES에 들어 있고, experiments/ 참조도 있다 |
-| B 대상 드라이버·어댑터 | 제품 | `run_target`, `run_node_tar_target`, `run_decompress_target`, `run_oras_go_target`, `run_python_tarfile_target` | `run_target.TARGETS`가 `scripts.run_*_target` 문자열을 쓴다. `inodefence.locate`가 경로를 고정한다(PR 2) |
-| B | 동결 | `regression_check` | CI(repro-evidence)·Makefile·paper가 명령으로 부른다 |
-| C 탐색·verify·replay 드라이버 | 제품 | `run_target_explore`, `run_target_replay`, `explore_result`, `node_tar_explore`, `decompress_explore`, `oras_go_explore`, `python_tarfile_explore`, `node_tar_replay` | `inodefence.locate`의 드라이버 경로와 어댑터 import가 걸려 있다(PR 2) |
-| D 이미지 준비 | 제품 | `image_prepare`, `npm_registry`, `node_tar_image`, `node_tar_registry_prepare`, `decompress_image`, `decompress_registry_prepare`, `oras_go_registry_prepare`, `python_tarfile_producer`, `attest_demo_image_recipe` | 어댑터가 import한다. image_prepare는 자신을 `-m scripts.image_prepare`로 재호출한다(PR 2) |
+| B·C 대상·탐색·replay 드라이버 별칭 | 제품(별칭) | `run_target`, `run_target_explore`, `run_target_replay` | `inodefence.drivers`의 같은 이름 모듈 별칭이다. `run_target`은 저장소 판별 표식이다 |
+| B | 동결(별칭) | `regression_check` | `inodefence.drivers.regression_check` 별칭이다. CI(repro-evidence)·Makefile·paper가 이 경로를 명령으로 부른다 |
+| D 이미지 준비 | 제품(별칭) | `node_tar_registry_prepare`, `oras_go_registry_prepare`, `python_tarfile_producer` | `inodefence.drivers.<대상>.*` 별칭이다. tools/ 문서와 셸 런처가 경로를 언급한다 |
+| D | 동결 | `attest_demo_image_recipe` | `make demo` 이미지 레시피 증명 도구다. `replay_report`가 import한다 |
 | E 등록 실험 러너·운영 판정 | 동결 | `run_exp0`, `run_g1_smoke`, `run_parallel_native`, `run_hazard_pilot`, `run_concurrency_benchmark`, `run_rds_cell`, `fill_run_registration`, `make_seed_assignment`, `make_run_criteria`, `qualify_host`, `partial_go_check`, `exp_operating_check`, `check_stop_path_smoke`, `merge_host_indexes`, `measure_clock_offset`, `check_native_determinism`, `determine_m3_powered_cells`, `freeze_preregistration` | 사전등록·run registration·experiments/ 문서가 명령으로 부른다. SHARED_PATH_FILES이거나 holdout 도구인 것도 있다 |
 | E | 동결 인접 | `run_worker_pool`, `measure_worker_pool_throughput`, `extract_stage_a_abort_keys` | 실험 실행 계획·처리량·호스트 적격성 증거용이다. 차례대로 `run_parallel_native`를 import하고, `src/inodefence/evaluation/throughput.py`가 경로를 언급하고, 적격성 키 파일을 만든다 |
 | F 연구 검증·probe·oracle | 동결 | `qualify_node_causal_effects`, `qualify_node_internal_completion`, `qualify_node_transition_observation`, `qualify_libarchive_entry_boundary`, `oracle_fixture_check`, `reference_campaign_pilot`, `run_configured_reference` | experiments/ 참조 또는 CI(repro-evidence) 호출이 있다. reference_campaign_pilot은 자기 파일 해시를 증거에 기록한다 |

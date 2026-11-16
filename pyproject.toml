@@ -11,9 +11,10 @@ requires-python = ">=3.12,<3.13"
 license = { text = "MIT" }
 dependencies = []
 
-# The user-facing command. Commands that run targets need a clone (editable install, or
-# INODEFENCE_HOME set): the drivers under scripts/ and the build assets under tools/ are not
-# packaged. `summary` and `status` work from any install. See README.
+# The user-facing command. The product drivers (inodefence.drivers) are packaged, but commands
+# that run targets still need a clone (editable install, or INODEFENCE_HOME set): the build assets
+# under tools/ and the controller launchers under scripts/ are not packaged. `doctor`, `status`
+# and `summary` work from any install. See README.
 [project.scripts]
 inodefence = "inodefence.cli:main"
 

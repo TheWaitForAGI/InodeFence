@@ -305,6 +305,14 @@ inodefence summary ~/inodefence-explore/target-explore/<실행>-result/result.js
 명령 없이 `inodefence`만 잘못 부른 경우는 argparse 관례대로 2입니다. `make`를 거쳐 부르면 `make` 자체는 실패 시
 2로 끝나므로, 판정 코드는 `inodefence`를 직접 부를 때의 값을 보세요.
 
+`inodefence verify`와 `make target-run`은 같은 드라이버를 부릅니다(개발용 경로, CHANGELOG @ 2b06730에서 옮김).
+
+```bash
+make target-run TARGET=node-tar TARGET_VERSIONS="7.5.2 7.5.3" AUTO_PREPARE=1 PYTHON=python3.12   # WSL2: PYTHON=python3
+```
+
+`make`는 실패하면 항상 2로 끝나므로, 판정 코드는 `make: *** … Error N`의 N으로 읽습니다.
+
 ## 한계와 주의
 
 - **oras-go 탐색의 "위반 없음"은 근거가 제한적입니다.** oras-go 탐색은 공통 seed가 oras-go 디렉터리

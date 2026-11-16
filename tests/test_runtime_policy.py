@@ -435,3 +435,78 @@ def test_a_launch_without_a_session_is_never_blocked(monkeypatch: pytest.MonkeyP
     runner = Recorder()
     assert run_launcher(SCRIPT, ["replay"], runner=runner, env=dict(ENV)).returncode == 0
     assert len(runner.calls) == 1
+
+
+# ---- replay: the node-tar replay launch runs through the driver's STRICT session ----
+
+
+def _replay_request(runtime: Any = None) -> Any:
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        case_id="c" * 64, tar_sha256="t" * 64, image_id="sha256:" + "i" * 64, runtime=runtime
+    )
+
+
+def _replay(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, request: Any) -> Recorder:
+    import inodefence.drivers.node_tar.replay as nr
+
+    monkeypatch.setattr(nr, "replay_input_line", lambda request: "{}\n")
+    monkeypatch.setattr(nr.os, "getpid", lambda: 4242)
+    runner = Recorder(returncode=1)  # no report: an incomplete replay, as the hook reads it
+    work = tmp_path / ("with" if request.runtime else "plain")
+    work.mkdir()
+    nr.replay(request, work, runner=runner)
+    return runner
+
+
+def test_replay_launch_is_the_same_call_with_and_without_a_session(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    plain = _replay(tmp_path, monkeypatch, _replay_request())
+    session = RuntimeSession(target="node-tar", kind="replay")
+    recorded = _replay(tmp_path, monkeypatch, _replay_request(session))
+    (plain_argv, plain_kwargs), (argv, kwargs) = plain.calls[0], recorded.calls[0]
+    assert argv == plain_argv and argv[-1] == "replay"
+    # the scratch folder differs between the two calls; nothing else does
+    strip = {"INODEFENCE_EVIDENCE_DIR", "REPLAY_INPUT"}
+    assert {k: v for k, v in kwargs["env"].items() if k not in strip} == {
+        k: v for k, v in plain_kwargs["env"].items() if k not in strip
+    }
+    assert {k: v for k, v in kwargs.items() if k != "env"} == {
+        k: v for k, v in plain_kwargs.items() if k != "env"
+    }
+
+
+def test_replay_launch_is_recorded_as_a_replay_with_the_launchers_names(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import inodefence.drivers.node_tar.replay as nr
+
+    session = RuntimeSession(target="node-tar", kind="replay")
+    assert session.prefix == "REPLAY"
+    _replay(tmp_path, monkeypatch, _replay_request(session))
+    (launch,) = session.launches
+    run_id = f"replay-{'c' * 12}-4242"
+    assert launch.request.kind == "replay" and launch.request.run_id == run_id
+    # local_node_tar_smoke.sh names controller/volume from RUN_ID the same way in every mode
+    assert (launch.request.controller, launch.request.volume) == (
+        f"inodefence-local-controller-{run_id}",
+        f"inodefence-local-runtime-{run_id}",
+    )
+    report, _journal = nr.report_paths(tmp_path / "with" / "evidence", run_id)
+    assert launch.request.artifacts.report == report
+    session.finish(result_written=False)
+    record = json.loads(session.render())
+    assert record["kind"] == "replay" and record["launches"][0]["kind"] == "replay"
+    assert str(tmp_path) not in session.render()
+
+
+def test_the_launcher_names_its_resources_once_for_every_mode() -> None:
+    text = SCRIPT.read_text(encoding="utf-8")
+    assert text.count("\nCONTROLLER=") == 1 and text.count("\nVOLUME=") == 1
+
+
+def test_an_explore_session_keeps_its_prefix() -> None:
+    assert RuntimeSession(target="node-tar").prefix == "TARGET-EXPLORE"
+    assert RuntimeSession(target="node-tar", prefix="X").prefix == "X"

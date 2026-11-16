@@ -30,6 +30,7 @@ from typing import Any
 from inodefence.case_replay import CaseReplayError, ReplayRequest, ReplayRun, replay_input_line
 from inodefence.drivers.launcher import launcher_path, run_launcher
 from inodefence.drivers.repo import code_checkout
+from inodefence.drivers.runtime.hooks import LaunchArtifacts
 
 REPO_ROOT = code_checkout()
 SMOKE = launcher_path("node-tar", REPO_ROOT)
@@ -72,8 +73,17 @@ def replay(request: ReplayRequest, work_dir: Path, *, runner=subprocess.run) -> 
         "REPLAY_INPUT": str(input_path),
         "PYTHON": os.environ.get("PYTHON", sys.executable),
     }
-    done = run_launcher(SMOKE, ["replay"], runner=runner, env=env, cwd=str(REPO_ROOT))
     report_path, journal_path = report_paths(evidence_dir, run_id)
+    # The driver's STRICT runtime session rides on the request (none: a plain launch, as before).
+    done = run_launcher(
+        SMOKE,
+        ["replay"],
+        runner=runner,
+        env=env,
+        session=getattr(request, "runtime", None),
+        artifacts=LaunchArtifacts(report=report_path),
+        cwd=str(REPO_ROOT),
+    )
     report: dict[str, Any] | None = None
     if report_path.is_file():
         loaded: dict[str, Any] = json.loads(report_path.read_text(encoding="utf-8"))

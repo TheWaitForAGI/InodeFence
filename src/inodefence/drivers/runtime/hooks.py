@@ -28,6 +28,8 @@ from pathlib import Path
 from typing import Literal, Protocol
 
 Severity = Literal["info", "warn", "block"]
+#: What a launch is for: an exploration campaign, or the replay of one recorded case.
+LaunchKind = Literal["explore", "replay"]
 
 #: The launcher environment keys a request (and the runtime record) carries: run parameters only.
 #: Path-valued keys (``INODEFENCE_EVIDENCE_DIR``, ``DEMO_HOST_LIVE_DIR``, ...) are left out.
@@ -100,6 +102,8 @@ class LaunchRequest:
     controller: str | None = None
     volume: str | None = None
     artifacts: LaunchArtifacts = field(default_factory=LaunchArtifacts)
+    #: explore or replay; a diagnostic tells its output apart by it (each driver prints its own)
+    kind: LaunchKind = "explore"
 
 
 @dataclass(frozen=True, slots=True)

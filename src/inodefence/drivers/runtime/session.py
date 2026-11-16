@@ -33,6 +33,7 @@ from inodefence.drivers.runtime.hooks import (
     Finding,
     LaunchArtifacts,
     LaunchBlocked,
+    LaunchKind,
     LaunchOutcome,
     LaunchRequest,
     recorded_env,
@@ -40,6 +41,8 @@ from inodefence.drivers.runtime.hooks import (
 from inodefence.drivers.runtime.policy import STRICT, RuntimePolicy
 
 SCHEMA = "inodefence-runtime-v1"
+#: Each kind's driver output prefix (the default of :attr:`RuntimeSession.prefix`).
+PREFIXES: dict[str, str] = {"explore": "TARGET-EXPLORE", "replay": "REPLAY"}
 #: The folder under the run's output folder that holds the runtime records.
 RECORD_DIR = "runtime"
 
@@ -68,6 +71,7 @@ class LaunchRecord:
             "env": dict(request.env),
             "controller": request.controller,
             "volume": request.volume,
+            "kind": request.kind,
             "returncode": self.returncode,
             "duration_seconds": self.duration_seconds,
             "error": self.error,
@@ -86,12 +90,18 @@ class RuntimeSession:
 
     target: str
     policy: RuntimePolicy = STRICT
-    #: the driver's output prefix, for any line a diagnostic prints
-    prefix: str = "TARGET-EXPLORE"
+    #: what the session's launches are for (``replay``: ``inodefence replay``)
+    kind: LaunchKind = "explore"
+    #: the driver's output prefix, for any line a diagnostic prints (default: the kind's)
+    prefix: str = ""
     started_at: str = field(
         default_factory=lambda: datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
     )
     launches: list[LaunchRecord] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if not self.prefix:
+            self.prefix = PREFIXES[self.kind]
 
     # ---- one launch ----
 
@@ -121,6 +131,7 @@ class RuntimeSession:
             controller=controller,
             volume=volume,
             artifacts=artifacts or LaunchArtifacts(),
+            kind=self.kind,
         )
         record = LaunchRecord(request)
         self.launches.append(record)
@@ -200,11 +211,16 @@ class RuntimeSession:
         return {
             "schema": SCHEMA,
             "target": self.target,
+            "kind": self.kind,
             "profile": self.policy.profile.value,
             "policy": self.policy.flags(),
             "started_at": self.started_at,
             "launches": [launch.to_json() for launch in self.launches],
         }
+
+    def render(self) -> str:
+        """The record as JSON text (what :meth:`write` writes; the replay driver publishes it)."""
+        return json.dumps(self.to_json(), indent=2, sort_keys=True) + "\n"
 
     def write(self, out: Path) -> Path | None:
         """Write the record under ``<out>/runtime/`` (never overwriting); ``None`` if no launch."""
@@ -215,7 +231,7 @@ class RuntimeSession:
         stem = f"{run_id}-{stamp}" if run_id else stamp
         folder = out / RECORD_DIR
         folder.mkdir(parents=True, exist_ok=True)
-        data = json.dumps(self.to_json(), indent=2, sort_keys=True) + "\n"
+        data = self.render()
         handle, temporary = tempfile.mkstemp(dir=folder, prefix=".tmp-", suffix=".json")
         try:
             with os.fdopen(handle, "w", encoding="utf-8") as stream:

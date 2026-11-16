@@ -108,12 +108,15 @@ regression:
 # One command per target (common result format inodefence-target-result-v1, label demo run):
 # isolated run -> C0/C1/C2 judgment -> DIR/<cell>/{result.json,inputs/*.tar,raw/}.
 # Targets: node-tar, python-tarfile (both fixture-regression: the make regression fixtures;
-# C0 not observed = null). Host terminal only (docker). TARGET_VERSIONS is the target's version
+# C0 not observed = null), oras-go, decompress; `inodefence targets` lists what each supports.
+# Host terminal only (docker). TARGET_VERSIONS is the target's version
 # axis (node-tar package; python-tarfile exact runtime X.Y.Z); TARGET_FILTERS is the
 # extraction-filter axis (python-tarfile: fully_trusted / data). Vary one axis per run.
 # TARGET_ARGS=--dry-run pulls, builds, runs and writes nothing (prints reuse/prepare per cell).
 # Existing results are not overwritten. A missing image stops the run (exit 3) unless
 # AUTO_PREPARE=1, which prepares it with the target's own recipe first (default 0).
+# Exit codes here are the `inodefence` command's: make prints it as "Error N" and itself exits 2
+# for any non-zero N. Call `inodefence verify` directly when a script needs the code.
 # IMAGE_TAG_SUFFIX=-x runs on "<tag>-x" images instead (development; existing tags untouched).
 #   make target-run TARGET=node-tar TARGET_VERSIONS="7.5.2 7.5.3"
 #   make target-run TARGET=python-tarfile TARGET_VERSIONS=3.12.16 TARGET_FILTERS="fully_trusted data"
@@ -142,11 +145,16 @@ target-run:
 	case " $$TARGET_ARGS " in *" --dry-run "*) ;; *) set -- "$$@" --out "$$TARGET_OUT" ;; esac; \
 	PYTHONPATH=src:. "$$PYTHON" -m inodefence.cli "$$@" $$TARGET_ARGS
 
-# Point the fuzzer at a node-tar version (latest or exact) and run the existing effect loop on it,
+# Point the fuzzer at a target version (latest or exact; node-tar first, now every target that
+# `inodefence targets` marks explore=yes) and run the existing effect loop on it,
 # so a distributor can try their version before release. Prepares the image host-side
 # (AUTO_PREPARE=1 required; network) then runs the loop inside the isolated controller. Output is
 # OUTSIDE the repo (EXPLORE_OUT). Host terminal only (docker + controller build).
-#   make target-explore TARGET=node-tar TARGET_VERSIONS="latest" AUTO_PREPARE=1 BUDGET=20 SEED=123
+# KNOWN DEFECT (GNU Make 4.3, since the `export` line above was added): BUDGET, SEED and
+# EXPLORE_OUT are exported before the `?=` lines below, which defines them empty, so the three
+# defaults never apply. Give all three on the command line, or the command refuses before
+# running (exit 3: empty --budget / --seed, or --out resolving to the repository):
+#   make target-explore TARGET=node-tar TARGET_VERSIONS="latest" AUTO_PREPARE=1 BUDGET=20 SEED=123 EXPLORE_OUT=$$HOME/inodefence-explore
 BUDGET ?= 20
 SEED ?= 123
 EXPLORE_OUT ?= $(HOME)/inodefence-explore

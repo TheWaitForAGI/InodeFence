@@ -19,7 +19,7 @@ model: claude-opus-4-8
 4. `git rev-parse <브랜치>`가 PR의 `headRefOid`(원격 HEAD)와 다르면 검토하지 말고 `ISSUES`로 보고한다.
 5. 판정은 이 HEAD SHA에만 유효하다. HEAD가 바뀌면 이전 판정을 재사용하지 않고 최신 SHA로 다시 검토한다(D037).
    주제 PR에는 마지막으로 검증한 SHA가 코멘트로 남아 있다. 그 SHA 뒤에 바뀐 구간(`git diff <마지막 검증 SHA>..<HEAD>`)을
-   검토하고, 판정에 "어느 SHA까지 검증했는지"를 적는다(D050). 지휘관이 이 판정을 PR 코멘트로 남긴다(verifier는 읽기 전용).
+   검토하고, 판정에 "어느 SHA까지 검증했는지"를 적는다(D050). verifier는 읽기 전용이므로 이 판정은 지휘관의 지시로 builder가 주제 PR의 코멘트로 옮겨 남긴다(`orchestrator.md` 6항).
    검토 도중 HEAD가 바뀌었으면 판정을 내지 않고 다시 시작한다.
 
 ## 검토 항목 (받은 브랜치 vs base)

@@ -152,13 +152,17 @@ def d12_abstract(d12: str, cell: str) -> str | None:
     return None
 
 
-def holdout_row_sentences(claims: Path = CLAIMS) -> list[str]:
+def holdout_row_sentences(claims: Path | None = None) -> list[str]:
     """The quoted sentences of the S-HOLDOUT row (full form and 요약) in the claim list."""
+    claims = claims or CLAIMS
     if not claims.exists():
         return []
     for line in claims.read_text(encoding="utf-8").splitlines():
         if line.startswith("| S-HOLDOUT |"):
-            return re.findall(r"「([^」]*)」", line)
+            # only the last column (the sentences to write); the status column quotes the
+            # d12 cell name, which alone is not a result sentence
+            last = line.strip().strip("|").split(" | ")[-1]
+            return [q for q in re.findall(r"「([^」]*)」", last) if len(q) >= 40]
     return []
 
 

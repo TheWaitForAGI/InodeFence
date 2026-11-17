@@ -89,6 +89,14 @@ class DecompressEffectCampaignConfig:
             raise ValueError("mutation_policy must be a supported MutationPolicy")
         if not isinstance(self.search_policy, EffectSearchPolicy):
             raise ValueError("search_policy must be a supported EffectSearchPolicy")
+        if self.search_policy in (
+            EffectSearchPolicy.R_UNRETAINED_SEED_CHAIN_M4,
+            EffectSearchPolicy.R_UNRETAINED_SEED_CHAIN_M6,
+        ):
+            raise ValueError(
+                "v2 chain search policies are not supported by the decompress campaign loop "
+                "(v2 사슬 정책은 이 대상 루프에서 지원하지 않는다)"
+            )
         if type(self.adaptive_scheduler) is not bool:
             raise ValueError("adaptive_scheduler must be a bool")
 

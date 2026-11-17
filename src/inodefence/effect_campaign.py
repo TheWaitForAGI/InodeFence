@@ -1,5 +1,6 @@
 """Synthetic v2 closed loop over a caller-owned EffectRunResult producer."""
 
+import functools
 import random
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -16,6 +17,7 @@ from inodefence.campaign_hooks import (
 )
 from inodefence.effect_scheduler import (
     EffectAdaptiveMutationScheduler,
+    EffectMutationScheduler,
     EffectMutationSchedulerEvidence,
     EffectUniformMutationScheduler,
 )
@@ -28,7 +30,26 @@ from inodefence.feedback import (
 from inodefence.model import ArchiveCase, EffectRunResult
 from inodefence.model.filesystem import Region, path_region
 from inodefence.mutation_scheduler import MutationSelection
-from inodefence.mutator import MutationAttempt, MutationPolicy, apply_operator, operator_ids
+from inodefence.mutator import (
+    MutationAttempt,
+    MutationOperatorId,
+    MutationPolicy,
+    apply_operator,
+    operator_ids,
+)
+from inodefence.mutator.chain import MutationChainAttempt, apply_chain
+
+# v2 random-chain R (D062, ATTEMPTS convention, see inodefence.mutator.chain): attempts per
+# execution are drawn uniformly in 1..m_max, m_max fixed by the search policy ID.
+CHAIN_MAX_ATTEMPTS: dict[EffectSearchPolicy, int] = {
+    EffectSearchPolicy.R_UNRETAINED_SEED_CHAIN_M4: 4,
+    EffectSearchPolicy.R_UNRETAINED_SEED_CHAIN_M6: 6,
+}
+# The chain's search state (parent selection, admission, diagnostic channel) is exactly the
+# seed-restart R: a seed every execution, nothing retained, the R/D/S-u boundary-attempt channel.
+# effect_search.py only gained the two enum members (D062), so the loop builds the state with this
+# policy and records the chain ID as the configuration's search policy.
+CHAIN_SEARCH_STATE_POLICY = EffectSearchPolicy.R_UNRETAINED_SEED_RESTART
 
 
 class BuildInvalidPolicy(StrEnum):
@@ -173,6 +194,8 @@ class EffectCampaignResult:
     retained_case_ids: tuple[str, ...]
     # RECORD only; empty under ABORT. ``steps`` + these fill the budget, indexes interleave.
     build_invalid_steps: tuple[BuildInvalidStep, ...] = ()
+    # Chain R only: one per mutation execution (executed or build-invalid), by step index.
+    mutation_chains: tuple[MutationChainAttempt, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.config, EffectCampaignConfig):
@@ -200,6 +223,19 @@ class EffectCampaignResult:
         invalid = [step.index for step in self.build_invalid_steps]
         if executed != sorted(executed) or sorted(executed + invalid) != list(range(total)):
             raise ValueError("effect campaign step indexes must be contiguous")
+        if not isinstance(self.mutation_chains, tuple) or not all(
+            isinstance(chain, MutationChainAttempt) for chain in self.mutation_chains
+        ):
+            raise ValueError("effect campaign result requires typed mutation chains")
+        if self.config.search_policy in CHAIN_MAX_ATTEMPTS:
+            seeds = len(self.initial_case_ids)
+            if [chain.index for chain in self.mutation_chains] != list(range(seeds, total)):
+                raise ValueError("a chain policy records one chain per mutation execution")
+            maximum = CHAIN_MAX_ATTEMPTS[self.config.search_policy]
+            if any(chain.chain_length > maximum for chain in self.mutation_chains):
+                raise ValueError("a chain exceeds its policy's maximum attempts")
+        elif self.mutation_chains:
+            raise ValueError("mutation chains require a chain search policy")
         if not isinstance(self.final_search_stats, EffectSearchStats):
             raise ValueError("effect campaign result requires final search stats")
         if not isinstance(self.retained_case_ids, tuple) or not all(
@@ -211,6 +247,19 @@ class EffectCampaignResult:
 EffectResultProducer = Callable[[ArchiveCase], EffectRunResult]
 EffectStepObserver = Callable[[EffectCampaignStep], None]
 BuildInvalidObserver = Callable[[BuildInvalidStep], None]
+MutationChainObserver = Callable[[MutationChainAttempt], None]
+
+
+def _choose_recorded(
+    scheduler: EffectMutationScheduler,
+    operators: tuple[MutationOperatorId, ...],
+    drawn: list[MutationSelection],
+    rng: random.Random,
+) -> tuple[MutationOperatorId, int]:
+    """One chain attempt's operator draw (the scheduler's own draw); keeps the selection."""
+    chosen = scheduler.choose_operator(operators, rng)
+    drawn.append(chosen)
+    return chosen.operator_id, chosen.selected_weight
 
 
 def _observed_name_segments(
@@ -255,6 +304,7 @@ def run_effect_campaign(
     hooks: None = None,
     *,
     on_build_invalid: BuildInvalidObserver | None = None,
+    on_mutation_chain: MutationChainObserver | None = None,
 ) -> EffectCampaignResult: ...
 @overload
 def run_effect_campaign(
@@ -265,6 +315,7 @@ def run_effect_campaign(
     *,
     hooks: CampaignHooks,
     on_build_invalid: BuildInvalidObserver | None = None,
+    on_mutation_chain: MutationChainObserver | None = None,
 ) -> EffectCampaignResult | LightCampaignResult: ...
 def run_effect_campaign(
     initial_cases: Sequence[ArchiveCase],
@@ -274,6 +325,7 @@ def run_effect_campaign(
     hooks: CampaignHooks | None = None,
     *,
     on_build_invalid: BuildInvalidObserver | None = None,
+    on_mutation_chain: MutationChainObserver | None = None,
 ) -> EffectCampaignResult | LightCampaignResult:
     """Exercise v2 policy causality without claiming a qualified native producer.
 
@@ -290,6 +342,12 @@ def run_effect_campaign(
     :class:`BuildInvalidStep` (one budget unit, reward 0, no corpus) passed to
     ``on_build_invalid``; ``ABORT`` (default) leaves the loop exactly as before and never
     calls the builder itself. Seeds are never recorded as build-invalid.
+
+    A chain search policy (``CHAIN_MAX_ATTEMPTS``, v2 R, D062) runs each execution as a chain:
+    a seed, ``m = rng.randint(1, m_max)`` operator attempts (no-op attempts count), one execution
+    of the final child, one budget unit. Its search state is the seed-restart R
+    (``CHAIN_SEARCH_STATE_POLICY``); every chain is passed to ``on_mutation_chain`` and kept in
+    ``EffectCampaignResult.mutation_chains``. Every other policy takes exactly the path above.
     """
     if not callable(produce_result) or not isinstance(config, EffectCampaignConfig):
         raise ValueError("effect campaign requires a producer and typed config")
@@ -297,6 +355,8 @@ def run_effect_campaign(
         raise ValueError("on_step must be callable when given")
     if on_build_invalid is not None and not callable(on_build_invalid):
         raise ValueError("on_build_invalid must be callable when given")
+    if on_mutation_chain is not None and not callable(on_mutation_chain):
+        raise ValueError("on_mutation_chain must be callable when given")
     cases = tuple(initial_cases)
     if not cases or not all(isinstance(case, ArchiveCase) for case in cases):
         raise ValueError("initial cases must be nonempty ArchiveCase records")
@@ -312,9 +372,13 @@ def run_effect_campaign(
     executed = 0
     stop_reason: str | None = None
 
-    state = EffectSearchState(cases, config.search_policy)
+    chain_max = CHAIN_MAX_ATTEMPTS.get(config.search_policy)
+    state = EffectSearchState(
+        cases, CHAIN_SEARCH_STATE_POLICY if chain_max is not None else config.search_policy
+    )
     steps: list[EffectCampaignStep] = []
     build_invalid_steps: list[BuildInvalidStep] = []
+    mutation_chains: list[MutationChainAttempt] = []
     record_build_invalid = config.build_invalid == BuildInvalidPolicy.RECORD
     # The state-aware escape policy composes link targets from names the run has
     # observed in the general filesystem tree (not the protected list). We
@@ -403,14 +467,34 @@ def run_effect_campaign(
                 stop_reason = reason
                 break
         parent = state.select_case(rng)
-        selection = scheduler.choose_operator(operator_ids(config.mutation_policy), rng)
-        attempt = apply_operator(
-            parent,
-            rng,
-            config.mutation_policy,
-            selection.operator_id,
-            extra_components=tuple(sorted(observed_names)) if state_aware else (),
-        )
+        if chain_max is None:
+            selection = scheduler.choose_operator(operator_ids(config.mutation_policy), rng)
+            attempt = apply_operator(
+                parent,
+                rng,
+                config.mutation_policy,
+                selection.operator_id,
+                extra_components=tuple(sorted(observed_names)) if state_aware else (),
+            )
+        else:
+            attempts = rng.randint(1, chain_max)
+            drawn: list[MutationSelection] = []
+            links, attempt = apply_chain(
+                parent,
+                rng,
+                config.mutation_policy,
+                attempts,
+                functools.partial(
+                    _choose_recorded, scheduler, operator_ids(config.mutation_policy), drawn
+                ),
+                extra_components=tuple(sorted(observed_names)) if state_aware else (),
+            )
+            selection = drawn[-1]
+            chain = MutationChainAttempt(executed, parent.case_id, attempt.child_case, tuple(links))
+            if retain:
+                mutation_chains.append(chain)
+            if on_mutation_chain is not None:
+                on_mutation_chain(chain)
         if record_build_invalid:
             try:
                 build_tar(attempt.child_case)
@@ -444,4 +528,5 @@ def run_effect_campaign(
         state.stats,
         retained,
         tuple(build_invalid_steps),
+        tuple(mutation_chains),
     )

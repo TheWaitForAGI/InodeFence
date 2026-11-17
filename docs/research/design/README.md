@@ -29,7 +29,7 @@
 
 v2 문법이 하는 모든 추첨의 축과 분포(공식 p_R 전에 고정, 최종 정책 id)는 [v2 문법 추첨 축](v2-grammar-axes.md)에 있다.
 
-step마다 기록하는 입력 구조 분류의 정의는 [입력 구조 분류기 v1](input-structure-class-v1.md)(`input-structure-class-v1-freeze-1`, W4 서명, 구현은 v2 U3)에 있다.
+step마다 기록하는 입력 구조 분류의 정의는 [입력 구조 분류기 v1](input-structure-class-v1.md)(`input-structure-class-v1-freeze-1`, W4 서명, 구현은 v2 U3)에 있다. 정오표: [input-structure-class-v1-freeze-1.erratum](input-structure-class-v1-freeze-1.erratum.md).
 
 ## 현재 상태
 

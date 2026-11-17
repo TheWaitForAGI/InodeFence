@@ -41,5 +41,4 @@
 | [BACKLOG](BACKLOG.md) | 마일스톤 아래 할 일과 상태(대기/진행/완료/막힘). 맨 위부터 집는다 |
 | [LOG](LOG.md) | 실제로 무엇을 언제 돌려 어떤 결과였는지 한 줄씩. 관찰과 추론을 구분한다 |
 | [WORKLOG](WORKLOG.md) | 자율 루프가 끝낸 브랜치 목록. 루프는 PR·CI·verifier 통과 후 병합 요청을 내고, 병합은 지웅이 한다(D037) |
-| [MIDTERM_GOALS](MIDTERM_GOALS.md) | 중간발표 배경 문서. 현재 기준은 STATUS Ledger |
 | [archive](archive/README.md) | 과거 리비전의 감사·자격 기록이 동결 기록임을 선언 |

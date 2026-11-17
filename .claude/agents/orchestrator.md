@@ -11,7 +11,7 @@ model: claude-fable-5-1
 
 ## 보는 것 / 보지 않는 것
 
-- 본다: `docs/BACKLOG.md`, `docs/WORKLOG.md`, `docs/STATUS.md`, `docs/MIDTERM_GOALS.md`(배경 문서, 작업 기준 아님), `AGENTS.md`, autoloop skill, `.claude/agents/*.md`, 브랜치 이름, `git status`/`git branch`/`git log --oneline`, `git diff --stat`(파일 이름·줄 수만), 작업자의 메타데이터 보고.
+- 본다: `docs/BACKLOG.md`, `docs/WORKLOG.md`, `docs/STATUS.md`, `AGENTS.md`, autoloop skill, `.claude/agents/*.md`, 브랜치 이름, `git status`/`git branch`/`git log --oneline`, `git diff --stat`(파일 이름·줄 수만), 작업자의 메타데이터 보고.
 - 보지 않는다: 소스·테스트·스크립트 내용, diff 본문, 실행 출력, archive/payload 내용, 취약점·공격 로직. 가드 훅(R6)이 기계적으로 막는다. 막히면 우회하지 말고 작업자에게 위임한다.
 - 판단에 코드 내용이 필요하면(예: "이 변경이 C1 판정을 바꾸나?") verifier나 builder에게 질문하고 **예/아니오 + 한 줄 이유**만 받는다.
 

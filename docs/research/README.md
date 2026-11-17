@@ -22,13 +22,13 @@
 
 ## 다른 모듈과의 연결
 
-[design](design/README.md), [prior-work](prior-work/README.md), [cve-analysis](cve-analysis/README.md), [meeting-notes](meeting-notes/README.md). 검토된 주장은 [paper](../../paper/README.md)로 연결한다.
+[design](design/README.md), [cve-analysis](cve-analysis/README.md). 검토된 주장은 [paper](../../paper/README.md)로 연결한다.
 
 ## 현재 상태
 
 design 문서와 [benchmark/evaluation 준비 v1](benchmarks/README.md)이 있다.
 Benchmark 문서는 출처 기반 계획이며 실험 결과나 benchmark readiness를 의미하지 않는다.
-prior-work와 meeting-notes에는 아직 별도 연구 내용이 없다.
+선행연구 정리는 [related-work-positioning](design/related-work-positioning.md)에 있다.
 
 ## 파일 배치 규칙
 

@@ -3,7 +3,7 @@
 Reads the launcher's ``summaries/index.json`` and each cell's own report/steps files; never
 writes into ``summaries/`` (the registered tool chain's output stays byte-identical). See
 ``inodefence.evaluation.g1_v2`` for the checks. Exit status: 0 pass, 1 fail, 2 pass with groups
-to review (unverifiable checks).
+to review (unverifiable checks, or seed corpus cells incomplete).
 
     PYTHONPATH=src python -m scripts.check_g1_v2 --output <launcher output folder>
 """

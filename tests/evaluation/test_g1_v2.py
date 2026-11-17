@@ -200,6 +200,7 @@ def _write_output(
     mutation_override: str | None = None,
     initial_ids_override: dict[str, list[str] | None] | None = None,
     stream_only: frozenset[str] = frozenset(),
+    mutation_policy: MutationPolicy = V21,
 ) -> None:
     """A launcher-like output folder: summaries/index.json and per-cell report + steps.
 
@@ -209,7 +210,7 @@ def _write_output(
     cells = []
     for target, seed in targets.items():
         for arm, policy in ARM_POLICIES.items():
-            config = EffectCampaignConfig(seed, 12, policy, V21)
+            config = EffectCampaignConfig(seed, 12, policy, mutation_policy)
             result = run_effect_campaign(minimal_seed_corpus(), synthetic_effect_result, config)
             report: dict[str, Any] = effect_campaign_report(result, "synthetic")
             if initial_ids_override and arm in initial_ids_override:
@@ -301,7 +302,9 @@ def test_seed_corpus_matches_in_every_arm(tmp_path: Path) -> None:
         "equal": 1,
         "different": 0,
         "unverifiable": 0,
+        "incomplete": 0,
     }
+    assert document["seed_corpus_incomplete"] == []
     for cell in document["cells"]:
         assert cell["initial_case_ids"] == _ids(SeedCorpusId.MINIMAL_EMPTY_REG)
 
@@ -361,3 +364,77 @@ def test_report_and_seed_steps_that_disagree_fail_the_cell() -> None:
     assert seed_corpus_cell_check(dict(cell, seed_steps_agree=True, mutation_policies=[])) == (
         "unverifiable"
     )
+
+
+def test_registered_v1_policy_output_is_unverifiable_and_marked_for_review(tmp_path: Path) -> None:
+    # Intended change: a registered v1 policy binds no seed corpus, so on v1 output the seed corpus
+    # check cannot be verified; the gate still passes but asks for review (exit 2, was 0).
+    fixed = MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_FIXED_BASELINE
+    _write_output(tmp_path, {"t1": 5}, mutation_policy=fixed)
+    document = check_output(tmp_path)
+    assert document["pass"] is True and document["review_required"] is True
+    assert document["groups"]["5"]["seed_corpus_check"] == "unverifiable"
+    assert set(document["seed_corpus_cells"].values()) == {"unverifiable"}
+    for name in ("mutation_policy", "archive_format", "arm_identity"):
+        assert document["groups"]["5"][f"{name}_check"] == "equal"
+    assert check_main(["--output", str(tmp_path)]) == 2
+
+
+def _stop_after_first_seed_step(root: Path, arm: str) -> None:
+    stream = next(root.rglob(f"*-t1-{arm}-s5.steps.jsonl"))
+    lines = stream.read_text(encoding="utf-8").splitlines(keepends=True)
+    stream.write_text(lines[0], encoding="utf-8")
+
+
+def test_a_cell_stopped_in_its_seed_phase_is_incomplete(tmp_path: Path) -> None:
+    # W4 2026-11-18: only the first seed step written (no report) -> "incomplete", counted and
+    # listed apart, review_required, exit 2; not "different" (a stop is not a corpus violation).
+    _write_output(tmp_path, {"t1": 5}, stream_only=frozenset({"R"}))
+    _stop_after_first_seed_step(tmp_path, "R")
+    document = check_output(tmp_path)
+    cell = next(c for c in document["cells"] if c["arm"] == "R")
+    assert cell["initial_case_ids"] == _ids(SeedCorpusId.MINIMAL_EMPTY_REG)[:1]
+    assert cell["mutation_policies"] == []  # seed steps carry no policy: the group's is used
+    assert document["seed_corpus_cells"]["t1-R-s5"] == "incomplete"
+    assert document["groups"]["5"]["seed_corpus_check"] == "incomplete"
+    assert document["seed_corpus_incomplete"] == [
+        {"target": "t1", "seed": 5, "arm": "R", "run_id": "t1-R-s5"}
+    ]
+    summary = document["summaries"]["seed_corpus"]
+    assert summary["counts"]["incomplete"] == 1 and summary["incomplete_groups"] == ["5"]
+    assert document["review_required"] is True
+    assert check_main(["--output", str(tmp_path)]) == 2
+
+
+def test_a_seed_phase_prefix_from_another_corpus_is_different(tmp_path: Path) -> None:
+    # The recorded seed step differs from the bound corpus at its position: "different" wins.
+    _write_output(
+        tmp_path,
+        {"t1": 5},
+        initial_ids_override={"R": _ids(SeedCorpusId.REGISTERED)},
+        stream_only=frozenset({"R"}),
+    )
+    _stop_after_first_seed_step(tmp_path, "R")
+    document = check_output(tmp_path)
+    assert document["seed_corpus_cells"]["t1-R-s5"] == "different"
+    assert document["seed_corpus_incomplete"] == []
+    assert check_main(["--output", str(tmp_path)]) == 1
+
+
+def test_seed_corpus_cell_values_for_prefixes() -> None:
+    ids = _ids(SeedCorpusId.MINIMAL_EMPTY_REG)
+    stopped = {
+        "mutation_policies": [],
+        "initial_case_ids": ids[:1],
+        "initial_ids_from_report": False,
+        "non_seed_steps": 0,
+    }
+    assert seed_corpus_cell_check(stopped, V21.value) == "incomplete"
+    # Without the group's policy the bound corpus is unknown.
+    assert seed_corpus_cell_check(stopped) == "unverifiable"
+    # A prefix followed by mutation steps, or a report listing fewer ids, is not a seed-phase stop.
+    assert seed_corpus_cell_check(dict(stopped, non_seed_steps=3), V21.value) == "different"
+    assert seed_corpus_cell_check(dict(stopped, initial_ids_from_report=True), V21.value) == (
+        "different"
+    )
+    assert seed_corpus_cell_check(dict(stopped, initial_case_ids=ids), V21.value) == "equal"

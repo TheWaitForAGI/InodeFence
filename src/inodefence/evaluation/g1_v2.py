@@ -25,12 +25,32 @@ Per (target, seed) group the gate checks:
   a record): each cell's recorded initial case ids must equal the case ids fixed by the corpus
   its recorded policy binds (``mutator.policy.SEED_CORPUS`` -> ``generator.seed_corpus``; the
   ids are imported from there, never copied), and the arms of a group must have recorded the
-  same ids. A cell that records other ids is ``different`` and fails (listed per cell in
-  ``seed_corpus_cells``); a cell with no recorded ids, no single recorded policy, or a policy
-  that binds no corpus is ``unverifiable``.
-``different`` fails the group; ``unverifiable`` does not, but is counted and listed for review
-(``review_required``): a gate must not read "no recorded ids" as "same ids". Across the run, each
-arm label must map to exactly one recorded search policy (``arm_policy_map``).
+  same ids. Four values per cell (``seed_corpus_cells``), W4 2026-11-18:
+  - ``equal``: the recorded ids are exactly the bound corpus ids, in order.
+  - ``different`` (fails): any recorded id differs from the bound id at its position, more ids
+    than the corpus, a report whose ``initial_case_ids`` contradicts its own seed steps, or a
+    proper prefix that cannot be a stop in the seed phase (it comes from the report's complete
+    list, or mutation steps follow it).
+  - ``incomplete`` (seed phase not finished): the ids come from the seed steps alone (no report
+    list -- no report, or an abort stub), they are a nonempty proper prefix of the bound corpus
+    ids, and no non-seed step is recorded after them. ``different`` takes precedence: a prefix
+    with one wrong id is ``different``. Kept apart from ``different`` because an infrastructure
+    stop and a corpus violation are handled by different stop rules.
+  - ``unverifiable``: no recorded ids, or the bound corpus is unknown -- the cell records no
+    single mutation policy and the group's recording cells do not agree on exactly one (a
+    seed-phase stop records no policy of its own: seed steps carry none, so the group's policy
+    is used), or the policy binds no corpus.
+  - Registered v1 policies bind no corpus (``SEED_CORPUS`` maps only v2 policies), so running
+    this gate on v1 output gives ``unverifiable`` seed corpus groups and ``review_required``
+    (``check_g1_v2`` exit 2, not 0). This is intended.
+  Group value: ``different`` if any cell is ``different`` or two complete recorded lists differ
+  between arms; else ``incomplete`` if any cell is; else ``unverifiable`` if any cell is; else
+  ``equal``. ``seed_corpus_incomplete`` lists the incomplete cells as (target, seed, arm).
+``different`` fails the group. ``unverifiable`` and ``incomplete`` do not fail it but are never a
+pass of the check: they are counted and listed apart and set ``review_required`` (exit 2 of
+``check_g1_v2``; exit 1 stays reserved for a recorded contradiction, so the 0/1/2 scheme holds).
+A gate must not read "no recorded ids" as "same ids". Across the run, each arm label must map to
+exactly one recorded search policy (``arm_policy_map``).
 """
 
 from __future__ import annotations
@@ -47,6 +67,8 @@ from inodefence.mutator.policy import SEED_CORPUS, MutationPolicy
 EQUAL = "equal"
 DIFFERENT = "different"
 UNVERIFIABLE = "unverifiable"
+INCOMPLETE = "incomplete"
+VALUES = (EQUAL, DIFFERENT, UNVERIFIABLE, INCOMPLETE)
 CHECKS = ("mutation_policy", "archive_format", "arm_identity", "seed_corpus")
 SINGLE_TARGET = "__single__"
 
@@ -113,33 +135,60 @@ def bound_corpus_case_ids(policy: str) -> tuple[str, ...] | None:
     return tuple(case.case_id for case in seed_corpus(corpus))
 
 
-def seed_corpus_cell_check(cell: Mapping[str, Any]) -> str:
-    """One cell: its recorded initial ids against its recorded policy's bound corpus."""
+def _cell_policy(cell: Mapping[str, Any], group_policy: str | None) -> str | None:
+    policies = cell.get("mutation_policies") or ()
+    if len(policies) == 1:
+        return str(policies[0])
+    if not policies:
+        return group_policy
+    return None
+
+
+def seed_corpus_cell_check(cell: Mapping[str, Any], group_policy: str | None = None) -> str:
+    """One cell: its recorded initial ids against the bound corpus (module docstring)."""
     recorded = cell.get("initial_case_ids")
     if cell.get("seed_steps_agree") is False:
         return DIFFERENT
     if recorded is None:
         return UNVERIFIABLE
-    policies = cell.get("mutation_policies") or ()
-    if len(policies) != 1:
-        return UNVERIFIABLE
-    expected = bound_corpus_case_ids(str(policies[0]))
+    policy = _cell_policy(cell, group_policy)
+    expected = bound_corpus_case_ids(policy) if policy is not None else None
     if expected is None:
         return UNVERIFIABLE
-    return EQUAL if tuple(str(item) for item in recorded) == expected else DIFFERENT
+    ids = tuple(str(item) for item in recorded)
+    if ids == expected:
+        return EQUAL
+    if len(ids) > len(expected) or any(a != b for a, b in zip(ids, expected, strict=False)):
+        return DIFFERENT
+    from_seed_steps = cell.get("initial_ids_from_report") is False
+    if from_seed_steps and ids and not cell.get("non_seed_steps"):
+        return INCOMPLETE
+    return DIFFERENT
+
+
+def _group_policy(cells: Sequence[Mapping[str, Any]]) -> str | None:
+    """The one mutation policy the group's recording cells agree on, else ``None``."""
+    found = [tuple(c.get("mutation_policies") or ()) for c in cells]
+    evidence = {item for item in found if item}
+    if len(evidence) == 1 and len(next(iter(evidence))) == 1:
+        return next(iter(evidence))[0]
+    return None
 
 
 def _seed_corpus_group_check(cells: Sequence[Mapping[str, Any]], per_cell: Sequence[str]) -> str:
     if DIFFERENT in per_cell:
         return DIFFERENT
-    recorded = {
+    complete = {
         tuple(cell["initial_case_ids"])
-        for cell in cells
-        if cell.get("initial_case_ids") is not None
+        for cell, value in zip(cells, per_cell, strict=True)
+        if cell.get("initial_case_ids") is not None and value != INCOMPLETE
     }
-    if len(recorded) > 1:
+    if len(complete) > 1:
         return DIFFERENT
-    return EQUAL if per_cell and all(value == EQUAL for value in per_cell) else UNVERIFIABLE
+    for value in (INCOMPLETE, UNVERIFIABLE):
+        if value in per_cell:
+            return value
+    return EQUAL if per_cell else UNVERIFIABLE
 
 
 def _same_id_check(recorded: Sequence[tuple[str, ...] | None]) -> str:
@@ -197,6 +246,7 @@ def g1_v2_equality(
     multiple_targets = len(pools_by_group) > 1
     groups: dict[str, dict[str, Any]] = {}
     seed_corpus_cells: dict[str, str] = {}
+    seed_corpus_incomplete: list[dict[str, Any]] = []
     for target, by_seed in sorted(pools_by_group.items()):
         expected = expected_arms_by_target.get(target)
         for seed, pools in sorted(by_seed.items()):
@@ -208,9 +258,19 @@ def g1_v2_equality(
                 "arm_identity": _arm_identity_check(recorded["arm_identity"][(target, seed)]),
             }
             members = group_cells[(target, seed)]
-            per_cell = [seed_corpus_cell_check(cell) for cell in members]
+            group_policy = _group_policy(members)
+            per_cell = [seed_corpus_cell_check(cell, group_policy) for cell in members]
             for cell, value in zip(members, per_cell, strict=True):
                 seed_corpus_cells[str(cell.get("run_id", f"{target}/{seed}/{cell['arm']}"))] = value
+                if value == INCOMPLETE:
+                    seed_corpus_incomplete.append(
+                        {
+                            "target": target,
+                            "seed": seed,
+                            "arm": str(cell["arm"]),
+                            "run_id": cell.get("run_id"),
+                        }
+                    )
             checks["seed_corpus"] = _seed_corpus_group_check(members, per_cell)
             vocabulary_equal = (
                 expected is not None
@@ -249,21 +309,24 @@ def g1_v2_equality(
         "summaries": {check: check_summary(groups, check) for check in CHECKS},
         "arm_policy_map": arm_policy_map,
         "seed_corpus_cells": seed_corpus_cells,
+        "seed_corpus_incomplete": seed_corpus_incomplete,
     }
 
 
 def check_summary(groups: Mapping[str, Mapping[str, Any]], check: str) -> dict[str, Any]:
-    """Counts of the three values for one check, the unverifiable groups and review_required."""
+    """Counts per value for one check, the unverifiable and incomplete groups, review_required.
+
+    ``incomplete`` occurs only for the seed corpus check (its count is 0 elsewhere).
+    """
     field = f"{check}_check"
-    counts = {
-        value: sum(1 for item in groups.values() if item[field] == value)
-        for value in (EQUAL, DIFFERENT, UNVERIFIABLE)
-    }
+    counts = {value: sum(1 for item in groups.values() if item[field] == value) for value in VALUES}
     unverifiable = sorted(key for key, item in groups.items() if item[field] == UNVERIFIABLE)
+    incomplete = sorted(key for key, item in groups.items() if item[field] == INCOMPLETE)
     return {
         "counts": counts,
         "unverifiable_groups": unverifiable,
-        "review_required": bool(unverifiable),
+        "incomplete_groups": incomplete,
+        "review_required": bool(unverifiable or incomplete),
     }
 
 
@@ -318,6 +381,11 @@ def load_g1_cells(output: Path) -> tuple[list[dict[str, Any]], dict[str, frozens
             cell["search_policies"] = recorded_ids(loaded.report, loaded.records, "search_policy")
             cell["initial_case_ids"] = recorded_initial_case_ids(loaded.report, loaded.records)
             cell["seed_steps_agree"] = seed_steps_agree(loaded.report, loaded.records)
+            report_ids = loaded.report is not None and isinstance(
+                loaded.report.get("initial_case_ids"), list
+            )
+            cell["initial_ids_from_report"] = report_ids
+            cell["non_seed_steps"] = sum(1 for r in loaded.records if r.get("origin") != "seed")
         cells.append(cell)
     return cells, {target: frozenset(arms) for target, arms in expected.items()}
 

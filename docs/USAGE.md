@@ -203,7 +203,7 @@ node-tar 탐색(`--version 7.5.23 --seed 123 --budget 20`, engineering smoke 202
   inodefence-effect-explore-7.5.23-123-20.json (.steps.jsonl, .calls.jsonl)   엔진 원시 기록
 ```
 
-(`<버전>-<seed>-<budget>` 이름은 node-tar에서 관찰한 것입니다. 다른 대상의 폴더 이름은 아직 실측으로 대조하지 않았습니다.)
+(`<버전>-<seed>-<budget>` 이름은 node-tar에서 관찰한 것입니다. 다른 대상의 결과 폴더 위치는 [도중 확인](#도중-확인) 절에 실측을 적었습니다.)
 
 ## 실행 중 터미널 진행 표시
 
@@ -263,7 +263,7 @@ inodefence status ~/inodefence-explore   # 진행 스냅샷 + 위반 케이스 �
 
 진행 스냅샷과 위반 케이스 목록은 **node-tar 탐색에서만** 나옵니다. python-tarfile·decompress·oras-go 탐색은
 `live/` 폴더를 쓰지 않아, 실행 중 진행 줄의 수치가 `?`로 표시되고 끝난 뒤 `status`는 판정 한 줄만 출력합니다
-(2026-11-18 두 번째 호스트에서도 같았습니다). 결과 폴더 위치도 대상마다 다릅니다. node-tar와 oras-go는
+(2026-11-18 두 번째 호스트에서도 같았습니다). 결과 폴더 위치도 대상마다 다릅니다. node-tar·python-tarfile·oras-go는
 `<out>/target-explore/` 아래, decompress는 `<out>/<패키지-버전>-<seed>-<실행 수>-result/`처럼 `<out>` 바로 아래에
 생깁니다(예: `xhmikosr-decompress-11.1.4-123-20-result`). 정확한 경로는 `explore`가 마지막에 출력하는 `result:` 줄을
 따르세요.

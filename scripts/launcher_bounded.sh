@@ -5,7 +5,8 @@
 # This is the node-tar launcher's cleanup rule (scripts/local_node_tar_smoke.sh `cleanup_dk` and
 # `cleanup`), without its start gate (concurrent registered cells only):
 #
-# * every host Docker call except the campaign itself has a client deadline, through
+# * every host Docker daemon call except the campaign itself (and the local, daemon-free
+#   `docker context show` the launcher runs before sourcing this) has a client deadline, through
 #   scripts/bounded_cleanup_command.py (called unchanged: on a deadline it kills the CLI's process
 #   group and returns 124; a CLI that cannot start returns 125). A deadline bounds the client, not
 #   the daemon's completion;
@@ -158,8 +159,15 @@ launcher_cleanup() {
       bdk "$DEADLINE_COPY" cp "$container_id:$source" "$temporary" >/dev/null
       rc=$?
       if [ "$rc" -eq 0 ]; then
-        ln "$temporary" "$destination"
-        rc=$?
+        # Publish without replacing an existing file: a hard link from the temporary file in the
+        # same folder; where the filesystem has no hard links, a no-clobber rename instead.
+        if [ -e "$destination" ]; then
+          echo "evidence destination already exists: $destination" >&2
+          rc=1
+        elif ! ln "$temporary" "$destination" 2>/dev/null; then
+          mv -n "$temporary" "$destination" && [ ! -e "$temporary" ]
+          rc=$?
+        fi
       fi
       rm -f "$temporary"
       if [ "$rc" -ne 0 ]; then

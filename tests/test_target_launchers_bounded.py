@@ -127,12 +127,26 @@ class Run:
     campaign: list[str]
 
 
-def run_launcher(tmp_path: Path, name: str, **overrides: str) -> Run:
+#: Where each launcher publishes its controller report on the host (under INODEFENCE_EVIDENCE_DIR).
+REPORT = {
+    "python-tarfile": "target-explore/inodefence-python-tarfile-explore-test.json",
+    "decompress": "inodefence-decompress-selfdiscover-test.json",
+    "oras-go": "inodefence-oras-go-selfdiscover-test.json",
+}
+
+
+def run_launcher(tmp_path: Path, name: str, *, no_hardlinks: bool = False, **overrides: str) -> Run:
+    """Run one launcher; ``no_hardlinks`` replaces ``ln`` with one that always fails (as on a
+    filesystem without hard links)."""
     launcher = LAUNCHERS[name]
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
-    for tool in ("dirname", "date", "rm", "mkdir", "mktemp", "ln"):
+    for tool in ("dirname", "date", "rm", "mkdir", "mktemp", "ln", "mv"):
         (bin_dir / tool).symlink_to(Path("/usr/bin") / tool)
+    if no_hardlinks:
+        (bin_dir / "ln").unlink()
+        (bin_dir / "ln").write_text("#!/bin/bash\necho 'ln: Operation not permitted' >&2\nexit 1\n")
+        (bin_dir / "ln").chmod(0o755)
     (bin_dir / "docker").write_text(FAKE_DOCKER)
     (bin_dir / "docker").chmod(0o755)
     (bin_dir / "fake-python").write_text(FAKE_PYTHON)
@@ -316,3 +330,25 @@ def test_evidence_is_copied_when_present(tmp_path: Path, name: str) -> None:
     assert run.result.returncode == 0, run.result.stderr
     assert "evidence: " in run.result.stdout
     assert any(call.startswith(f"cp {CONTAINER_ID}:") for call in run.calls)
+
+
+@pytest.mark.parametrize("name", LAUNCHERS)
+def test_evidence_is_published_where_hard_links_are_unavailable(tmp_path: Path, name: str) -> None:
+    # An output folder on a filesystem without hard links (some FUSE or cloud mounts): the report
+    # is still published (no-clobber rename), and the run succeeds.
+    run = run_launcher(tmp_path, name, no_hardlinks=True, EVIDENCE_PRESENT="1")
+    assert run.result.returncode == 0, run.result.stderr
+    report = tmp_path / "evidence" / REPORT[name]
+    assert report.read_text() == "evidence"
+    assert not list(report.parent.glob(".inodefence-copy.*"))
+
+
+@pytest.mark.parametrize("name", LAUNCHERS)
+def test_existing_evidence_is_never_overwritten(tmp_path: Path, name: str) -> None:
+    report = tmp_path / "evidence" / REPORT[name]
+    report.parent.mkdir(parents=True)
+    report.write_text("earlier run")
+    run = run_launcher(tmp_path, name, EVIDENCE_PRESENT="1")
+    assert run.result.returncode == 125, run.result.stderr
+    assert "evidence destination already exists" in run.result.stderr
+    assert report.read_text() == "earlier run"

@@ -8,7 +8,7 @@ from typing import ClassVar
 
 from inodefence.model import ArchiveCase
 
-from . import m1, m1_addressing, operators
+from . import m1, m1_addressing, operators, v2_freeze3
 from .policy import MutationPolicy
 
 
@@ -21,6 +21,9 @@ class MutationOperatorId(StrEnum):
     ADD_HARDLINK = "add_hardlink"
     ADD_SYMLINK = "add_symlink"
     MUTATE_LINK_TARGET = "mutate_link_target"
+    # v2 (`b-grammar-v2-freeze-3`) only; appended so every V1 slot keeps its position.
+    SET_MODE = "set_mode"
+    SET_CONTENT = "set_content"
 
 
 OPERATOR_ORDER = tuple(MutationOperatorId)
@@ -43,7 +46,25 @@ OPERATOR_ORDER_V1: tuple[MutationOperatorId, ...] = (
 # Every operator table a scheduler or a weight snapshot may use. A new table is added
 # here together with the policy that draws from it; weights over any other ordering
 # are rejected.
-OPERATOR_TABLES: tuple[tuple[MutationOperatorId, ...], ...] = (OPERATOR_ORDER_V1,)
+# `b-grammar-v2-freeze-3`: the eight V1 slot meanings (slot 5 = hardlink with target
+# depth 0..3, path slots with the O1 extend branch) plus the two H1 field changes.
+OPERATOR_ORDER_V2: tuple[MutationOperatorId, ...] = (
+    *OPERATOR_ORDER_V1,
+    MutationOperatorId.SET_MODE,
+    MutationOperatorId.SET_CONTENT,
+)
+
+OPERATOR_TABLES: tuple[tuple[MutationOperatorId, ...], ...] = (
+    OPERATOR_ORDER_V1,
+    OPERATOR_ORDER_V2,
+)
+
+_V2_POLICIES = (MutationPolicy.V2_FREEZE3_FIXED_BASELINE,)
+
+# Parameter distribution bound to each v2 policy id (provisional uniform; D061).
+V2_PARAMETERS: dict[MutationPolicy, v2_freeze3.GrammarParameters] = {
+    MutationPolicy.V2_FREEZE3_FIXED_BASELINE: v2_freeze3.PROVISIONAL_UNIFORM,
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -68,10 +89,10 @@ class MutationAttempt:
 
 
 def operator_ids(policy: MutationPolicy) -> tuple[MutationOperatorId, ...]:
-    """The operator table the policy's scheduler draws from (every policy today: V1)."""
+    """The operator table the policy's scheduler draws from (V2 for v2 policies, else V1)."""
     if not isinstance(policy, MutationPolicy):
         raise ValueError("policy must be a supported MutationPolicy")
-    return OPERATOR_ORDER_V1
+    return OPERATOR_ORDER_V2 if policy in _V2_POLICIES else OPERATOR_ORDER_V1
 
 
 def _operator_table(
@@ -98,6 +119,8 @@ def _operator_table(
         # per-call in apply_operator when the caller provides extra_components. The
         # blind control differs only in which observed names the caller accumulates.
         return m1_addressing.GENERIC_ESCAPE_OPERATORS
+    if policy in _V2_POLICIES:
+        return v2_freeze3.operators((), V2_PARAMETERS[policy])
     raise AssertionError(f"unhandled mutation policy: {policy}")
 
 
@@ -115,6 +138,7 @@ _STATE_AWARE_POLICIES = (
     MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK,
     MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_BLIND,
     MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_FIXED_BASELINE,
+    MutationPolicy.V2_FREEZE3_FIXED_BASELINE,
 )
 
 
@@ -139,8 +163,13 @@ def apply_operator(
         raise ValueError("operator_id must be a MutationOperatorId")
     if extra_components and policy not in _STATE_AWARE_POLICIES:
         raise ValueError("extra_components apply only to the state-aware escape policies")
-    index = OPERATOR_ORDER.index(operator_id)
-    if policy in _STATE_AWARE_POLICIES and extra_components:
+    slots = operator_ids(policy)
+    if operator_id not in slots:
+        raise ValueError(f"{operator_id.value} is not a slot of {policy.value}")
+    index = slots.index(operator_id)
+    if policy in _V2_POLICIES:
+        table = v2_freeze3.operators(tuple(extra_components), V2_PARAMETERS[policy])
+    elif policy in _STATE_AWARE_POLICIES and extra_components:
         table = m1_addressing.state_aware_escape_operators(tuple(extra_components))
     else:
         table = _operator_table(policy)
@@ -162,7 +191,7 @@ def mutate_attempt_with_policy(
         raise ValueError("policy must be a supported MutationPolicy")
     table = _operator_table(policy)
     operator = rng.choice(table)
-    operator_id = OPERATOR_ORDER[table.index(operator)]
+    operator_id = operator_ids(policy)[table.index(operator)]
     child = operator(case, rng)
     if policy in _NO_REORDER_POLICIES and operator_id == MutationOperatorId.REORDER_ENTRIES:
         child = case

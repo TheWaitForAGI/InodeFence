@@ -29,6 +29,7 @@ from inodefence.model import ArchiveCase, EffectRunResult
 from inodefence.model.filesystem import Region, path_region
 from inodefence.mutation_scheduler import MutationSelection
 from inodefence.mutator import MutationAttempt, MutationPolicy, apply_operator, operator_ids
+from inodefence.mutator.policy import RECORDS_BUILD_INVALID
 
 
 class BuildInvalidPolicy(StrEnum):
@@ -52,7 +53,9 @@ class EffectCampaignConfig:
     execution_budget: int
     search_policy: EffectSearchPolicy
     mutation_policy: MutationPolicy = MutationPolicy.LEGACY
-    build_invalid: BuildInvalidPolicy = BuildInvalidPolicy.ABORT
+    # None: the mutation policy's profile decides (RECORDS_BUILD_INVALID -> record, else
+    # abort). Read it through ``build_invalid_policy``.
+    build_invalid: BuildInvalidPolicy | None = None
 
     def __post_init__(self) -> None:
         if type(self.random_seed) is not int:
@@ -63,8 +66,19 @@ class EffectCampaignConfig:
             raise ValueError("search_policy must be a supported EffectSearchPolicy")
         if not isinstance(self.mutation_policy, MutationPolicy):
             raise ValueError("mutation_policy must be a supported MutationPolicy")
-        if not isinstance(self.build_invalid, BuildInvalidPolicy):
-            raise ValueError("build_invalid must be a BuildInvalidPolicy")
+        if self.build_invalid is not None and not isinstance(
+            self.build_invalid, BuildInvalidPolicy
+        ):
+            raise ValueError("build_invalid must be a BuildInvalidPolicy or None")
+
+    @property
+    def build_invalid_policy(self) -> BuildInvalidPolicy:
+        """The effective policy: the explicit value, else the mutation policy's profile."""
+        if self.build_invalid is not None:
+            return self.build_invalid
+        if self.mutation_policy in RECORDS_BUILD_INVALID:
+            return BuildInvalidPolicy.RECORD
+        return BuildInvalidPolicy.ABORT
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,7 +205,9 @@ class EffectCampaignResult:
             isinstance(step, BuildInvalidStep) for step in self.build_invalid_steps
         ):
             raise ValueError("effect campaign result requires typed build-invalid steps")
-        if self.build_invalid_steps and self.config.build_invalid != BuildInvalidPolicy.RECORD:
+        if self.build_invalid_steps and (
+            self.config.build_invalid_policy != BuildInvalidPolicy.RECORD
+        ):
             raise ValueError("build-invalid steps require the RECORD policy")
         total = len(self.steps) + len(self.build_invalid_steps)
         if total != self.config.execution_budget or len(self.initial_case_ids) > len(self.steps):
@@ -286,7 +302,7 @@ def run_effect_campaign(
     (``retain_steps=False`` -> a ``LightCampaignResult``), stops early (``should_stop``)
     and checkpoints; with ``hooks`` ``None`` the result and order are byte-identical to before.
 
-    ``config.build_invalid`` = ``RECORD`` turns an unrepresentable mutation child into a
+    ``config.build_invalid_policy`` = ``RECORD`` turns an unrepresentable mutation child into a
     :class:`BuildInvalidStep` (one budget unit, reward 0, no corpus) passed to
     ``on_build_invalid``; ``ABORT`` (default) leaves the loop exactly as before and never
     calls the builder itself. Seeds are never recorded as build-invalid.
@@ -315,7 +331,7 @@ def run_effect_campaign(
     state = EffectSearchState(cases, config.search_policy)
     steps: list[EffectCampaignStep] = []
     build_invalid_steps: list[BuildInvalidStep] = []
-    record_build_invalid = config.build_invalid == BuildInvalidPolicy.RECORD
+    record_build_invalid = config.build_invalid_policy == BuildInvalidPolicy.RECORD
     # The state-aware escape policy composes link targets from names the run has
     # observed in the general filesystem tree (not the protected list). We
     # accumulate them here and feed them to the mutator; every other policy leaves
@@ -324,6 +340,7 @@ def run_effect_campaign(
         MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK,
         MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_BLIND,
         MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_FIXED_BASELINE,
+        MutationPolicy.V2_FREEZE3_FIXED_BASELINE,
     )
     # The blind control observes the same tree but drops EXTERNAL-region names, so it
     # cannot learn the identity (name) of a pre-existing external object.
@@ -333,19 +350,21 @@ def run_effect_campaign(
     # The fixed-baseline variant reads the pool exactly once, from the first seed
     # run's BEFORE snapshot, and never updates it: the vocabulary is then a property
     # of the harness layout shared by every arm, not of the arm's own search history.
-    fixed_baseline = (
-        config.mutation_policy == MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_FIXED_BASELINE
+    fixed_baseline = config.mutation_policy in (
+        MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_FIXED_BASELINE,
+        MutationPolicy.V2_FREEZE3_FIXED_BASELINE,
     )
     observed_names: set[str] = set()
+    table = operator_ids(config.mutation_policy)
     scheduler = (
-        EffectAdaptiveMutationScheduler()
+        EffectAdaptiveMutationScheduler(operators=table)
         if config.search_policy
         in (
             EffectSearchPolicy.P2_EFFECT_ADAPTIVE,
             EffectSearchPolicy.P3_BOUNDARY_ATTEMPT_GRADIENT,
             EffectSearchPolicy.P3_EXTERNAL_RESOLVE_GRADIENT,
         )
-        else EffectUniformMutationScheduler()
+        else EffectUniformMutationScheduler(table)
     )
 
     def observe(

@@ -26,12 +26,13 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
-from inodefence.evaluation.rds import RdsCellConfig
+from inodefence.evaluation.rds import FIXED_BASELINE_MODES, RdsCellConfig, VocabularyMode
 from inodefence.evaluation.rds_report import (
     ReportFormatError,
     ReportSummary,
     check_report_config,
     summarize_report_records,
+    vocabulary_pools_from_records,
 )
 
 OUTCOME_EXECUTED = "executed"
@@ -62,6 +63,20 @@ class ReportSummaryV2:
     executed_steps: int
     build_invalid_steps: int
     archive_formats: tuple[str, ...] | None
+
+
+def vocabulary_pools_from_records_v2(
+    mode: VocabularyMode, records: Sequence[Mapping[str, Any]], initial_count: int
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """``rds_report.vocabulary_pools_from_records`` that also knows the v2 modes.
+
+    The preregistration-named reader treats any mode it does not list as accumulated;
+    a v2 fixed-baseline mode is read here as fixed (step-0 BEFORE names), exactly like
+    ``OBSERVED_NAMES``.
+    """
+    if mode in FIXED_BASELINE_MODES:
+        mode = VocabularyMode.OBSERVED_NAMES
+    return vocabulary_pools_from_records(mode, records, initial_count)
 
 
 def mutation_chain_length(record: Mapping[str, Any]) -> int | None:

@@ -139,6 +139,11 @@ class VocabularyMode(StrEnum):
     PROTECTED_COMPONENTS = "protected-components"
     OBSERVED_NAMES = "observed-names"
     OBSERVED_NAMES_ACCUMULATED = "observed-names-accumulated"
+    # v2 (#512, D061): the observed-names pool of OBSERVED_NAMES (fixed at the seed
+    # baseline run) over grammar `b-grammar-v2-freeze-3`. The preregistration-named
+    # report reader does not know this value and would read it as accumulated; v2
+    # reports are read with ``rds_report_v2.vocabulary_pools_from_records_v2``.
+    OBSERVED_NAMES_V2_FREEZE3 = "observed-names-b-grammar-v2-freeze-3"
 
 
 VOCABULARY_MUTATION_POLICY: Mapping[VocabularyMode, MutationPolicy] = MappingProxyType(
@@ -147,6 +152,7 @@ VOCABULARY_MUTATION_POLICY: Mapping[VocabularyMode, MutationPolicy] = MappingPro
         VocabularyMode.PROTECTED_COMPONENTS: MutationPolicy.M1_PROTECTED_COMPONENTS_ESCAPE_HARDLINK,
         VocabularyMode.OBSERVED_NAMES: MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_FIXED_BASELINE,
         VocabularyMode.OBSERVED_NAMES_ACCUMULATED: MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK,
+        VocabularyMode.OBSERVED_NAMES_V2_FREEZE3: MutationPolicy.V2_FREEZE3_FIXED_BASELINE,
     }
 )
 
@@ -228,6 +234,12 @@ def _pool(observed: set[str]) -> tuple[str, ...]:
     return m1.COMPONENTS + tuple(sorted(observed))
 
 
+# Modes whose pool is fixed once from the seed baseline run's BEFORE snapshot.
+FIXED_BASELINE_MODES: frozenset[VocabularyMode] = frozenset(
+    {VocabularyMode.OBSERVED_NAMES, VocabularyMode.OBSERVED_NAMES_V2_FREEZE3}
+)
+
+
 def vocabulary_pools(
     mode: VocabularyMode, steps: Sequence[EffectCampaignStep], initial_count: int
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
@@ -242,7 +254,7 @@ def vocabulary_pools(
         return m1.COMPONENTS, m1.COMPONENTS
     if mode == VocabularyMode.PROTECTED_COMPONENTS:
         return PROTECTED_COMPONENTS, PROTECTED_COMPONENTS
-    if mode == VocabularyMode.OBSERVED_NAMES:
+    if mode in FIXED_BASELINE_MODES:
         if not steps:
             return m1.COMPONENTS, m1.COMPONENTS
         fixed = _pool(_observed_name_segments(steps[0].result, before_only=True))

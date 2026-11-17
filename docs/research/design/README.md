@@ -31,6 +31,8 @@ v2 문법이 하는 모든 추첨의 축과 분포(공식 p_R 전에 고정, 최
 
 step마다 기록하는 입력 구조 분류의 정의는 [입력 구조 분류기 v1](input-structure-class-v1.md)(`input-structure-class-v1-freeze-1`, W4 서명, 구현은 v2 U3)에 있다. 정오표: [input-structure-class-v1-freeze-1.erratum](input-structure-class-v1-freeze-1.erratum.md).
 
+위반 이전 신호를 쓰는 탐색 정책(#511, exploratory, 합성 생산자에서만 테스트됨)은 [탐색 정책 pre-violation-signal-v1](exploration-pre-violation-v1.md)에 있다.
+
 ## 현재 상태
 
 Layer 2 공통 데이터 모델, Layer 3 최소 pipeline, Layer 4 Generic Mutation v1과

@@ -759,13 +759,18 @@ def worktree_write_problems(paths: Mapping[str, Path], root: Path) -> list[str]:
 
 
 def start_host_recording(
-    directory: Path, recorders: Any, docker: Callable[..., str]
+    directory: Path,
+    recorders: Any,
+    docker: Callable[..., str],
+    on_foreign: Callable[[int], None] | None = None,
 ) -> Callable[[], list[str]]:
-    """Record-only host instruments; they never stop a cell. Returns the stopper.
+    """Host instruments; they never stop a running cell. Returns the stopper.
 
     The host sampler (memory, pressure, disk, docker responsiveness) and the docker event
     collector always run; the ping and Desktop-log recorders only when asked. A failure is
-    written to ``recorder-failures.jsonl`` and is never a stop.
+    written to ``recorder-failures.jsonl`` and is never a stop. Containers the run did not
+    start are always recorded (``foreign-containers.jsonl``); ``on_foreign`` (opt-in,
+    ``--stop-on-foreign-containers``) gets their count once, to stop new attempts (#515 C2).
     """
     directory.mkdir(parents=True, exist_ok=True)
     stop = threading.Event()
@@ -780,7 +785,9 @@ def start_host_recording(
         args=(directory / "samples.jsonl", stop),
         kwargs={
             "disk_fraction": lambda: disk_usage_fraction(directory),
-            "on_sample": None,
+            "on_sample": guards.foreign_container_policy(
+                directory / guards.FOREIGN_CONTAINERS, on_foreign
+            ),
             "on_failure": failed,
             "docker": docker,
             "seconds": HOST_SAMPLE_SECONDS,
@@ -814,12 +821,13 @@ def start_host_recording(
     return stopper
 
 
-def recording_settings(recorders: Any) -> dict[str, Any]:
-    """What both hosts' records must agree on for the record-only instruments."""
+def recording_settings(recorders: Any, stop_on_foreign: bool = False) -> dict[str, Any]:
+    """What both hosts' records must agree on for the host instruments."""
     return {
         "host_sampler": {
             "enabled": True,
-            "stop_policy": None,
+            "stop_policy": "foreign-containers" if stop_on_foreign else None,
+            "foreign_containers_record": True,
             "seconds": HOST_SAMPLE_SECONDS,
             "probe_seconds": HOST_PROBE_SECONDS,
         },
@@ -1687,6 +1695,13 @@ def main(argv: list[str] | None = None) -> int:
         "denominator; never re-run); the manual classification step until #203 lands",
     )
     parser.add_argument(
+        "--stop-on-foreign-containers",
+        action="store_true",
+        help="when a container the run did not start is seen running (1-min docker ps "
+        "probe), start no new attempt and record an infrastructure stop; running cells "
+        "finish (#515 C2). Without it such containers are only recorded",
+    )
+    parser.add_argument(
         "--resume-after-stop",
         default=None,
         metavar="APPROVAL_REF",
@@ -2138,6 +2153,12 @@ def main(argv: list[str] | None = None) -> int:
     host_records: dict[str, Any] = {}
     host_dir = output / HOST_RECORD_DIR
     recorders = guards.Recorders(ping_socket=args.ping_socket, desktop_log=args.desktop_log)
+    if args.stop_on_foreign_containers and not plan.multi_target:
+        # Only the target-cell path consults the stop guard before each attempt.
+        print(
+            "--stop-on-foreign-containers needs a target-cell (multi-target) plan", file=sys.stderr
+        )
+        return 2
     docker = guard_docker(args.context)
     host_engine: str | None = None
     expected_images: dict[str, str] | None = None
@@ -2193,7 +2214,7 @@ def main(argv: list[str] | None = None) -> int:
             },
             "clocks": _clock_stamp(),
             **({"clock_reference": clock_reference} if clock_reference is not None else {}),
-            "recording": recording_settings(recorders),
+            "recording": recording_settings(recorders, args.stop_on_foreign_containers),
             "problems": problems,
             **plan.host_fields(),
         }
@@ -2428,7 +2449,18 @@ def main(argv: list[str] | None = None) -> int:
     if pending:
         run_cell = run_target_cell if plan.multi_target else run_one
         stop_recording = (
-            start_host_recording(host_dir, recorders, docker) if "facts" in host_records else None
+            start_host_recording(
+                host_dir,
+                recorders,
+                docker,
+                on_foreign=(
+                    (lambda count: gate_stop(f"other containers running during the run: {count}"))
+                    if args.stop_on_foreign_containers
+                    else None
+                ),
+            )
+            if "facts" in host_records
+            else None
         )
         try:
             with ThreadPoolExecutor(max_workers=args.jobs) as pool:

@@ -148,6 +148,34 @@ def test_docker_events_append_across_resumes(
     assert path.read_bytes() == b'{"time":1}\n{"time":2}\n'
 
 
+def test_foreign_containers_are_those_without_the_run_prefix() -> None:
+    names = ["inodefence-abc", "other-b", "inodefence-local-controller-x", "other-a"]
+    assert guards.foreign_containers(names) == ["other-a", "other-b"]
+    assert guards.foreign_containers([]) == []
+
+
+def test_foreign_container_policy_records_changes_and_reports_once(tmp_path: Path) -> None:
+    path = tmp_path / guards.FOREIGN_CONTAINERS
+    counts: list[int] = []
+    policy = guards.foreign_container_policy(path, counts.append)
+    policy({"monotonic": 1.0})  # no docker probe in this sample: nothing to judge
+    policy({"containers": ["inodefence-1"]})
+    assert not path.exists() and counts == []
+    policy({"containers": ["inodefence-1", "x"]})
+    policy({"containers": ["inodefence-1", "x"]})
+    policy({"containers": ["x", "y"]})
+    policy({"containers": []})
+    records = [json.loads(line) for line in path.read_text().splitlines()]
+    assert [(r["count"], r["names"]) for r in records] == [(1, ["x"]), (2, ["x", "y"]), (0, [])]
+    assert counts == [1]
+
+
+def test_foreign_container_policy_without_callback_only_records(tmp_path: Path) -> None:
+    path = tmp_path / guards.FOREIGN_CONTAINERS
+    guards.foreign_container_policy(path)({"containers": ["x"]})
+    assert json.loads(path.read_text())["count"] == 1
+
+
 def test_publish_json_once_never_replaces(tmp_path: Path) -> None:
     path = tmp_path / "evidence.json"
     guards.publish_json_once(path, {"first": 1})

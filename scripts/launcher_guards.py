@@ -67,7 +67,50 @@ SHARED_PATH_FILES = (
     "scripts/launcher_guards.py",
 )
 
+#: Every container a launcher or its cells start is named with this prefix
+#: (controllers and target containers alike); :func:`residual_resources` uses it too.
+RUN_CONTAINER_PREFIX = "inodefence-"
+FOREIGN_CONTAINERS = "foreign-containers.jsonl"
+
 Docker = Callable[..., str]
+
+
+def foreign_containers(names: Sequence[str], prefix: str = RUN_CONTAINER_PREFIX) -> list[str]:
+    """Running containers the run did not start: the run-time half of preflight's rule.
+
+    Preflight refuses any running container; during a run only the run's own
+    (``prefix``) containers may exist. Resume checks go through the same preflight.
+    """
+    return sorted(name for name in names if not name.startswith(prefix))
+
+
+def foreign_container_policy(
+    path: Path, on_foreign: Callable[[int], None] | None = None
+) -> Callable[[dict[str, Any]], None]:
+    """A sampler ``on_sample`` that records foreign containers and reports them once.
+
+    Each change of the foreign set is appended to ``path`` (names stay in the local
+    evidence; callers report only the count). ``on_foreign`` gets the count the first
+    time the set is non-empty; ``None`` = record only.
+    """
+    last: list[str] = []
+    reported = False
+
+    def policy(sample: dict[str, Any]) -> None:
+        nonlocal last, reported
+        if "containers" not in sample:
+            return
+        found = foreign_containers(sample["containers"])
+        if found != last:
+            with path.open("a", encoding="utf-8") as stream:
+                record = {**clock_stamp(), "count": len(found), "names": found}
+                stream.write(json.dumps(record, sort_keys=True) + "\n")
+            last = found
+        if found and not reported and on_foreign is not None:
+            reported = True
+            on_foreign(len(found))
+
+    return policy
 
 
 def clock_stamp() -> dict[str, float]:
@@ -158,7 +201,9 @@ def host_postflight(
 
 def residual_resources(docker: Docker = docker_cli) -> list[str]:
     """InodeFence containers or volumes left behind; a stale one blocks the next cell."""
-    containers = docker("ps", "-a", "--filter", "name=inodefence-", "--format", "{{.Names}}")
+    containers = docker(
+        "ps", "-a", "--filter", f"name={RUN_CONTAINER_PREFIX}", "--format", "{{.Names}}"
+    )
     volumes = docker("volume", "ls", "--filter", "name=inodefence-local-", "--format", "{{.Name}}")
     return [*containers.split(), *volumes.split()]
 

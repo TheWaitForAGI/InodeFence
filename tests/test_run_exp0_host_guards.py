@@ -194,10 +194,13 @@ def test_record_only_settings_are_the_same_on_every_host() -> None:
     assert settings["host_sampler"] == {
         "enabled": True,
         "stop_policy": None,
+        "foreign_containers_record": True,
         "seconds": guards.PROC_SAMPLE_SECONDS,
         "probe_seconds": guards.DOCKER_PROBE_SECONDS,
     }
     assert settings["docker_events"]["enabled"] is True
+    stopping = run_exp0.recording_settings(guards.Recorders(), stop_on_foreign=True)
+    assert stopping["host_sampler"]["stop_policy"] == "foreign-containers"
 
 
 def test_guard_images_cover_targets_and_local_images(tmp_path: Path) -> None:
@@ -212,3 +215,34 @@ def test_guard_images_cover_targets_and_local_images(tmp_path: Path) -> None:
         "inodefence-helper:local": None,
     }
     assert subprocess  # imported for the Child double's interface
+
+
+@pytest.mark.usefixtures("admit_fixture_holdout")
+@pytest.mark.parametrize("stop_flag", [False, True])
+def test_foreign_containers_stop_new_attempts_only_when_asked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, real_guards: FakeDocker, stop_flag: bool
+) -> None:
+    """#515 C2: a foreign container seen before the first attempt stops every start (opt-in)."""
+    out, args, _ = _deadline_setup(tmp_path, monkeypatch, BEFORE, jobs="1")
+    monkeypatch.setattr(run_exp0, "run_cell_with_watchdog", _fake_runner(TARGET_IMAGES))
+    seen: list[Any] = []
+
+    def recording(*_: Any, on_foreign: Any = None) -> Any:
+        seen.append(on_foreign)
+        if on_foreign is not None:
+            on_foreign(2)
+        return lambda: []
+
+    monkeypatch.setattr(run_exp0, "start_host_recording", recording)
+    run_exp0.main([*args, "--stop-on-foreign-containers"] if stop_flag else args)
+    results = out / run_exp0.CELL_RESULTS_FILE
+    lines = results.read_text().splitlines() if results.exists() else []
+    events = [json.loads(line) for line in lines]
+    stops = [e for e in events if e["event"] == run_exp0.INFRASTRUCTURE_STOP_EVENT]
+    starts = [e for e in events if e["event"] == "start"]
+    if stop_flag:
+        assert seen != [None]
+        assert [s["reason"] for s in stops] == ["other containers running during the run: 2"]
+        assert starts == []
+    else:
+        assert seen == [None] and stops == [] and starts

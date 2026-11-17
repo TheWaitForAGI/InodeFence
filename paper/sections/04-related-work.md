@@ -93,10 +93,10 @@ state(C1 identity·C2 effect) retention을 더한 탐색이 무작위 탐색과 
 | ZIPDiff 2025 | archive-aware + byte-level mutation (ZIP) | extraction-output 비교 | parser 간 differential | feedback-guided corpus evolution + interesting-seed retention | 50 parser / 19개 언어 대규모 differential, 공개 아티팩트 |
 | LinkZard 2025 | Windows 파일 연산(링크 추종; archive corpus 아님) | file-operation sequence + hardlink/link-count state | link-following 취약점 탐지 | feedback-driven file-state fuzzing + state-query-driven mutation | 120개 상용 프로그램, 55 zero-day, 15 CVE |
 | Wormholes 2026 | archive extraction(symlink composition·entry order·dangling·update·extraction-root manipulation·symlink 경유 hardlink) | — (명시 없음) | arbitrary file read/write effect | — (명시 없음) | 85개 프로젝트, 16 arbitrary file write, 2 high-severity CVE |
-| InodeFence (현재) | generic archive-entry mutation (TAR; 8 generic operator + escape-hardlink 문법; 피해 경로 이름은 세 arm 어휘에 동일 포함, blind 아님) | object identity `(st_dev, st_ino)`·external effect·boundary-attempt | generic C0/C1/C2 Security Contract (CVE 비하드코딩) | S-u 입회: effect 키(boundary-attempt 포함) 신규 또는 새 위반 fingerprint. StateSignature 파생 구조 특징으로 입회하는 것은 대조군 D | 등록 실험: R/D/S-u T_first(§4.6) — 본실험 결과 자리(봉인 해제 뒤 기입); 현재: M1·M2·M4 좁은 명제 |
+| InodeFence (현재) | generic archive-entry mutation (TAR; 8 generic operator + escape-hardlink 문법; 피해 경로 이름은 세 arm 어휘에 동일 포함, blind 아님) | object identity `(st_dev, st_ino)`·external effect·boundary-attempt | generic C0/C1/C2 Security Contract (CVE 비하드코딩) | S-u 입회: effect 키(boundary-attempt 포함) 신규 또는 새 위반 fingerprint. StateSignature 파생 구조 특징으로 입회하는 것은 대조군 D | 등록 실험: R/D/S-u T_first(§4.6) — 비기각(분리 실패, HR 2 배제, §5.9); M1·M2·M4 좁은 명제 |
 
-이 표는 신규성 주장이 아니라 **포지셔닝**이다(§3.6 금지 목록 준수). InodeFence 행의 평가 칸 결과는
-봉인 해제 뒤에만 채운다.
+이 표는 신규성 주장이 아니라 **포지셔닝**이다(§3.6 금지 목록 준수). InodeFence 행의 평가 칸은
+등록 판정(§5.9)이며 [S-HOLDOUT], 이 표의 다른 행과 성능을 비교하지 않는다.
 
 ### 3.7.2 평가 방법론 기준
 

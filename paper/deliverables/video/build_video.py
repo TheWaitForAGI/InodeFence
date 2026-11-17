@@ -79,6 +79,9 @@ ENV_LINES = (
     "x86_64 네이티브 Linux와 macOS는 확인하지 않았다.",
     "0.2.0은 릴리스 후보이며 태그와 릴리스가 없다.",
 )
+#: Heading of the s10 band: the two environments are where the tool was installed and run, not
+#: where every value was measured (the 300-run and verify values are x86_64 only, C-PLIM).
+ENV_LABEL = "도구 설치·실행 확인 환경"
 CLAIMS = Path(__file__).resolve().parents[2] / "sections" / "claims-evidence-status-v1.md"
 
 
@@ -529,13 +532,23 @@ class Canvas:
         return image
 
     def env_overlay(self, image: Image.Image) -> None:
-        font = self.fonts.bold(30)
-        lines = [part for s in ENV_LINES for part in wrap_pixels(s, font, WIDTH - 160)]
-        top = 810 - 44 * len(lines) - 20
+        # sits just above the caption band, small type, so the face stays visible
+        font = self.fonts.body(26)
+        lines = [ENV_LABEL] + [
+            part for s in ENV_LINES for part in wrap_pixels(s, font, WIDTH - 160)
+        ]
+        bottom = CONTENT_BOTTOM - 5
+        top = bottom - 36 * len(lines) - 16
         draw = ImageDraw.Draw(image, "RGBA")
-        draw.rectangle((0, top, WIDTH, 810), fill=(43, 45, 99, 220))
+        draw.rectangle((0, top, WIDTH, bottom), fill=(43, 45, 99, 210))
         for i, line in enumerate(lines):
-            draw.text((80, top + 32 + 44 * i), line, font=font, fill="white", anchor="lm")
+            draw.text(
+                (80, top + 26 + 36 * i),
+                line,
+                font=self.fonts.bold(26) if i == 0 else font,
+                fill="white",
+                anchor="lm",
+            )
 
     def problem(self) -> Image.Image:
         image, draw = self.base("문제: 경로만 보면 놓치는 관계", "예시")
@@ -1111,6 +1124,17 @@ def build(args: argparse.Namespace) -> None:
     env_problems = env_line_problems()
     if env_problems:
         raise SystemExit("ENV_LINES not in the C-PLIM row: " + " | ".join(env_problems))
+    head = subprocess.run(
+        ["git", "-C", str(HERE), "rev-parse", "HEAD"], capture_output=True, text=True, check=False
+    )
+    dirty = subprocess.run(
+        ["git", "-C", str(HERE), "status", "--porcelain"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    report["repo_head"] = head.stdout.strip() or "unknown"
+    report["repo_dirty"] = bool(dirty.stdout.strip())
     report["env_line_check"] = f"PASS ({len(ENV_LINES)} sentences in C-PLIM, {CLAIMS.name})"
     if args.values is None:
         report["warnings"].append("no --values: sealed draft, not a submission build")

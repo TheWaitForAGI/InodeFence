@@ -5,8 +5,7 @@
 
 InodeFence는 TAR 입력을 만들고 변형해 실제 extractor(압축 해제 프로그램)를 격리 컨테이너에서 실행하고, 실행 전후의
 filesystem 상태를 관찰해 보안 경계 위반을 판정합니다. 사용자 진입점은 `inodefence` 명령(`doctor`, `targets`,
-`verify`, `explore`, `status`, `replay`, `summary`)입니다. 버전은 0.2.0 (릴리스 후보, 태그·릴리스 없음)입니다.
-이 문서는 0.2.0 릴리스 후보 브랜치 기준이며 태그·릴리스 전입니다.
+`verify`, `explore`, `status`, `replay`, `summary`)입니다. 버전은 0.2.0입니다(변경 내용은 [CHANGELOG](CHANGELOG.md)).
 
 [빠른 시작](#빠른-시작) · [사용 안내](docs/USAGE.md) · [현재 상태(Capability Ledger)](docs/STATUS.md) ·
 [시작 안내](docs/START_HERE.md) · [Security Contracts](docs/research/design/security-contracts.md) ·

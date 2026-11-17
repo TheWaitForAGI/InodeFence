@@ -261,8 +261,11 @@ RC(#457) 이후 스택에서 의도적으로 바뀐 동작:
 **CI의 제품 E2E(`product-e2e`, P-2).** `pip install -e .`로 설치한 `inodefence`를 네 대상의 실제 추출기에 돌려 종료 코드와
 `result.json`을 확인한다(`scripts/dev/product_e2e.py`, demo run). 네 대상 모두 추출 성공이 1건 이상이어야 통과한다.
 
-**확인하지 않은 것:** replay의 실제 Docker E2E, 이 스택에서의 macOS 실행, WSL2가 아닌 Linux, Python 3.11 이하, README 빠른
-시작의 실제 `verify`/`explore` 단계(#467), 여러 seed·예산·버전의 탐색.
+**릴리스 시점에 확인하지 않은 것:** macOS 실행, x86_64 네이티브 Linux(WSL2가 아닌 Linux는 Ubuntu arm64 VM 한 대에서만 확인),
+Python 3.11 이하, 여러 seed·예산·버전의 탐색, node-tar·oras-go·python-tarfile에서의 실제 위반 케이스 `replay`(decompress 한 건만
+확인), README 빠른 시작을 문장 그대로 따라 한 실행(확인한 것은 USAGE의 설치 절차와 같은 명령들이다). 병합 전 RC 스택에서는
+`replay`의 실제 Docker E2E도 확인하지 않았고, 그 뒤 2026-11-17~18의 깨끗한 클론 실행에서 `verify`·`explore`·`replay`의 실제
+Docker 실행을 확인했다.
 
 ### 상세 문서
 

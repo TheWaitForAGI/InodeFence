@@ -14,6 +14,7 @@ from scripts.run_g1_smoke import (
     g1_verdict,
     main,
     summarize_output,
+    vocabulary_equality,
 )
 
 from inodefence.evaluation.rds import RdsArm, RVariant, VocabularyMode, arm_search_policy
@@ -48,6 +49,74 @@ def test_completion_plan_is_three_equal_vocabulary_cells() -> None:
 
 def test_smoke_plan_default_seeds_give_at_least_ten_cells() -> None:
     assert len(_plan("smoke", (9001, 9002, 9003, 9004)).cells()) == 12
+
+
+def test_vocabulary_equality_groups_the_same_seed_by_target() -> None:
+    cells = [
+        {
+            "target_id": target,
+            "seed": 42,
+            "arm": arm,
+            "vocabulary_pool_final": [pool],
+        }
+        for target, pool in (("target-a", "a"), ("target-b", "b"))
+        for arm in ("R", "S-u")
+    ]
+    expected = {"target-a": frozenset({"R", "S-u"}), "target-b": frozenset({"R", "S-u"})}
+    result = vocabulary_equality(cells, expected_arms_by_target=expected)
+    assert result["equal"] is True
+    assert set(result["per_seed"]) == {"target-a/42", "target-b/42"}
+    assert result["per_seed"]["target-a/42"]["pool_sizes"] == {"R": 1, "S-u": 1}
+
+
+def test_another_target_with_the_same_seed_cannot_mask_an_unequal_pool() -> None:
+    # #524: grouping by seed alone let target-b's cells overwrite target-a's, so
+    # target-a's differing D pool was never compared and the check passed.
+    cells = [
+        {"target_id": "a", "seed": 42, "arm": "R", "vocabulary_pool_final": ["x"]},
+        {"target_id": "a", "seed": 42, "arm": "D", "vocabulary_pool_final": ["other"]},
+        {"target_id": "a", "seed": 42, "arm": "S-u", "vocabulary_pool_final": ["x"]},
+        *(
+            {"target_id": "b", "seed": 42, "arm": arm, "vocabulary_pool_final": ["y"]}
+            for arm in ("R", "D", "S-u")
+        ),
+    ]
+    expected = {target: frozenset({"R", "D", "S-u"}) for target in ("a", "b")}
+    result = vocabulary_equality(cells, expected_arms_by_target=expected)
+    assert result["equal"] is False
+    assert result["per_seed"]["a/42"]["equal"] is False
+    assert result["per_seed"]["b/42"]["equal"] is True
+
+
+def test_vocabulary_equality_requires_every_declared_arm_and_nonempty_pools() -> None:
+    cells = [
+        {"target_id": "one", "seed": 1, "arm": "R", "vocabulary_pool_final": ["a"]},
+        {"target_id": "one", "seed": 1, "arm": "S-u", "vocabulary_pool_final": ["a"]},
+    ]
+    expected = {"one": frozenset({"R", "S-u"})}
+    assert vocabulary_equality(cells, expected_arms_by_target=expected)["equal"] is True
+    assert vocabulary_equality(cells[:1], expected_arms_by_target=expected)["equal"] is False
+    assert (
+        vocabulary_equality(cells, expected_arms_by_target={"one": frozenset({"R", "D", "S-u"})})[
+            "equal"
+        ]
+        is False
+    )
+    duplicate = [*cells, dict(cells[1])]
+    assert vocabulary_equality(duplicate, expected_arms_by_target=expected)["equal"] is False
+    empty = [dict(cell, vocabulary_pool_final=[]) for cell in cells]
+    assert vocabulary_equality(empty, expected_arms_by_target=expected)["equal"] is False
+
+
+def test_legacy_single_target_vocabulary_result_shape_and_three_arm_gate() -> None:
+    cells = [
+        {"seed": 5, "arm": arm, "vocabulary_pool_final": ["outside"]} for arm in ("R", "D", "S-u")
+    ]
+    result = vocabulary_equality(cells)
+    assert set(result) == {"equal", "per_seed", "basis"}
+    assert set(result["per_seed"]) == {"5"}
+    assert result["equal"] is True
+    assert vocabulary_equality(cells[:2])["equal"] is False
 
 
 def test_dry_run_prints_commands_env_and_paths_without_docker(
@@ -185,6 +254,55 @@ def test_vocabulary_equality_is_asserted_per_seed_from_recorded_pools(tmp_path: 
     assert document["g1_verdict"]["pass"] is False
     sizes = document["vocabulary_equality"]["per_seed"]["5"]["pool_sizes"]
     assert sizes["D"] == sizes["R"] + 1
+
+
+def test_recorded_mutation_policy_ids_are_compared_across_arms(tmp_path: Path) -> None:
+    plan = _plan("completion", (5,), budget=5)
+    out = tmp_path / "g1"
+    _write_cells(plan, out)
+    document = summarize_output(plan, out)
+    planned = plan.cell_config(plan.cells()[0]).mutation_policy.value
+    assert all(cell["mutation_policies"] == [planned] for cell in document["cells"])
+    assert document["vocabulary_equality"]["per_seed"]["5"]["mutation_policy_equal"] is True
+    assert document["vocabulary_equal_across_arms"] is True
+    # One arm's steps record another operator table (the report config is absent, so
+    # check_report_config cannot catch it): same token pool, but G1 must fail.
+    paths = cell_paths(plan.cells()[1], out)
+    report = json.loads(paths["report"].read_text())
+    del report["config"]
+    for step in report["steps"]:
+        if step.get("mutation_attempt"):
+            step["mutation_attempt"]["mutation_policy"] = "some-other-table-v1"
+    paths["report"].write_text(json.dumps(report))
+    document = summarize_output(plan, out)
+    detail = document["vocabulary_equality"]["per_seed"]["5"]
+    assert detail["mutation_policy_equal"] is False and not detail["equal"]
+    assert document["vocabulary_equal_across_arms"] is False
+    assert document["g1_verdict"]["pass"] is False
+
+
+def test_mutation_policy_ids_must_be_single_and_equal_when_recorded() -> None:
+    def cells(*policies: list[str] | None) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        for arm, recorded in zip(("R", "D", "S-u"), policies, strict=True):
+            cell: dict[str, Any] = {"seed": 1, "arm": arm, "vocabulary_pool_final": ["a"]}
+            if recorded is not None:
+                cell["mutation_policies"] = recorded
+            out.append(cell)
+        return out
+
+    same = vocabulary_equality(cells(["m"], ["m"], ["m"]))
+    assert same["equal"] and same["per_seed"]["1"]["mutation_policy_equal"] is True
+    legacy = vocabulary_equality(cells(None, None, None))
+    assert legacy["equal"] and legacy["per_seed"]["1"]["mutation_policy_equal"] is None
+    # A cell that recorded no id (stopped before any mutation) is skipped, not a mismatch.
+    for partial in (cells(["m"], None, ["m"]), cells(["m"], [], ["m"])):
+        result = vocabulary_equality(partial)
+        assert result["equal"] and result["per_seed"]["1"]["mutation_policy_equal"] is True
+    for bad in (cells(["m"], ["m"], ["n"]), cells(["m"], ["m", "n"], ["m"])):
+        result = vocabulary_equality(bad)
+        assert result["equal"] is False
+        assert result["per_seed"]["1"]["mutation_policy_equal"] is False
 
 
 def test_config_nonconformant_cell_is_the_invalid_bucket(tmp_path: Path) -> None:

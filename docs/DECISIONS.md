@@ -1216,3 +1216,38 @@ PRODUCT 절)으로 보낸다.
 
 **고려한 대안.** MVP 두 대상(node-tar·python-tarfile)만 지원하고 나머지를 실험적으로 표시하는 안은 채택하지 않았다.
 이 결정은 제품 범위만 정한다. 연구 MVP 대상(D038)과 등록 실험 조건은 바꾸지 않는다.
+
+## D060 — v2 엔진의 build-invalid 처리
+
+**상태:** 확정 (2026-11-18, 방법 검토 IF-W4-METHOD 서명; 사전등록 v2 #510에서 인용)
+
+빌더가 표현할 수 없는 변이 자식(USTAR로 쓸 수 없는 아카이브)은 캠페인 abort가 아니라 **기록된 step 결과**(`build-invalid`)로 둔다.
+
+- 이 step의 예산·영향
+  - 예산 1단위를 쓴다.
+  - 스케줄러 보상은 0이다.
+  - corpus에 들어가지 않고, 생산자·oracle·feedback에 닿지 않는다.
+  - seed는 build-invalid가 될 수 없다.
+- 세 arm 공통이다.
+  - 설정 값(`EffectCampaignConfig.build_invalid`)의 기본값은 `abort`(등록 동작, 루프가 빌더를 미리 부르지 않음)다.
+  - v2 실행은 모든 arm에서 `record`를 쓴다.
+  - v2 보고서 설정 검사(`rds_report_v2.check_report_config_v2`)가 기록된 `config.build_invalid`·`config.builder_format`을 셀 계획과 대조하고, 다르거나 없으면 거부한다.
+- 기록 형식: demo 보고서 스키마 4→5(추가만). step 모델(`EffectCampaignStep`)의 직렬화 스키마와 canonical JSON은 바뀌지 않는다. build-invalid는 별도 타입(`BuildInvalidStep`)이다.
+- 등록 경로에서는 그런 abort가 여전히 `other`로 분류된다.
+  - `InvalidReason`에 값을 더하면 사전등록이 가리키는 분석 스크립트의 출력과 불변식이 바뀐다.
+  - 그래서 v2 분류는 `evaluation/abort_classification_v2.py`가 한다.
+- 근거 문서: [build-invalid와 보고서 스키마 5](research/design/build-invalid-and-report-schema-v5.md).
+
+## D061 — v2 변이 문법과 입력 구조 분류의 동결
+
+**상태:** 확정 (2026-11-18, 방법 검토 IF-W4-METHOD 서명; 사전등록 v2 #510에서 인용)
+
+v2 실험의 문법과 구조 분류는 아래 동결본을 기준으로 한다.
+
+- 문법 `b-grammar-v2-freeze-3`(커밋 `9a64dd6`): [변이 어휘 목록 v1](research/design/mutation-vocabulary-inventory-v1.md)의 세는 규칙과 계열 목록.
+  "v2 엔진 미구현"으로 표시한 계열(H1 owner, H1 size·링크 content 불일치, H1 PAX/USTAR 필드 불일치, P1의 새 변형 토큰)은 v2 엔진에 넣지 않는다.
+- 입력 구조 분류 `input-structure-class-v1-freeze-1`(커밋 `bca6d3a`, 사다리 L4): [입력 구조 분류기 v1](research/design/input-structure-class-v1.md).
+  - 분석용 기록이며 판정·feedback·변이에 들어가지 않는다.
+  - 문서에 사전 고지한 freeze-2 조건을 따른다.
+- 이후 변경은 새 id와 방법 검토로만 한다.
+- 등록 arm·실행 커밋 E(`bed077a`)·수정 금지 파일(공유 경로 파일과 사전등록이 가리키는 파일)은 바이트 동일하게 둔다. v2는 새 정책 id와 새 모듈로 구현한다.

@@ -258,6 +258,11 @@ def test_v2_reader_reports_build_invalid_as_its_own_category(refusing_builder: l
     check_report_config_v2(report, cell, build_invalid="record", builder_format=BUILDER_FORMAT)
     with pytest.raises(ReportFormatError):
         check_report_config_v2(report, cell, build_invalid="abort", builder_format=BUILDER_FORMAT)
+    # A report without the v2 key (e.g. schema 4, or a launcher that omits it) is refused.
+    missing = copy.deepcopy(report)
+    del missing["config"]["build_invalid"]
+    with pytest.raises(ReportFormatError, match="build_invalid"):
+        check_report_config_v2(missing, cell, build_invalid="record", builder_format=BUILDER_FORMAT)
 
 
 def test_v2_reader_reads_schema4_records() -> None:

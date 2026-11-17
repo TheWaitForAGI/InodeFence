@@ -51,9 +51,8 @@ PINS: dict[str, dict[str, object]] = {
         "args": [],
         "extraction_expected": True,
     },
-    # Common seeds lack the ``d/`` title prefix oras-go requires, so every run is rejected
-    # (BACKLOG P-3). Flip this to True in the change that fixes the seeds.
-    "oras-go": {"version": "2.6.2", "args": [], "extraction_expected": False},
+    # The product sends oras-go cases under its artifact directory ``d/`` (BACKLOG P-3).
+    "oras-go": {"version": "2.6.2", "args": [], "extraction_expected": True},
 }
 
 DEFAULT_BUDGET = 20

@@ -287,6 +287,7 @@ DEMO_FORWARDED_ARGUMENTS = (
     "engine_commit",
     "runtime_version",
     "extraction_filter",
+    "oras_go_artifact_layout",
 )
 
 
@@ -321,6 +322,14 @@ def add_demo_arguments(parser: argparse.ArgumentParser) -> None:
         "--extraction-filter",
         choices=PYTHON_TARFILE_FILTERS,
         help="the ONE tarfile extraction filter of this campaign; python-tarfile campaign only",
+    )
+    parser.add_argument(
+        "--oras-go-artifact-layout",
+        choices=("artifact-dir",),
+        help=(
+            "opt-in, oras-go campaign only: send each case with its relative entry names under "
+            "oras-go's artifact directory (d/). Default: names are sent as generated"
+        ),
     )
     parser.add_argument(
         "--observer-integrity-policy",
@@ -368,6 +377,11 @@ def check_demo_arguments(parser: argparse.ArgumentParser, args: argparse.Namespa
         parser.error(f"{args.mode} requires --runtime-version and --extraction-filter")
     if runtime is not None and re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", runtime) is None:
         parser.error(f"--runtime-version must be exact X.Y.Z, got {runtime!r}")
+    if (
+        getattr(args, "oras_go_artifact_layout", None) is not None
+        and args.mode != ORAS_GO_CAMPAIGN_MODE
+    ):
+        parser.error("--oras-go-artifact-layout is restricted to the oras-go campaign")
     count = getattr(args, "sentinel_count", None)
     seed = getattr(args, "sentinel_seed", None)
     if (count is None) != (seed is None):

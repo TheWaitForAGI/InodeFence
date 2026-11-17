@@ -93,7 +93,7 @@ mutation 선택)가 `make demo`(node-tar 7.5.22, 정상 입력)로 돌고 같은
 | node-tar | — | 지원: 위반 케이스 폴더 (실제 위반 E2E 미검증) | 7.5.23은 `verify`에서 exploratory 버전으로 표시 |
 | python-tarfile | `--extraction-filter` | 지원: 결과 폴더 `--case` (실제 위반 E2E 미검증) | 필터는 기록에서 고정, `fully_trusted` 재실행은 거부 |
 | decompress | — | 지원: 결과 폴더 `--case` (실제 위반 E2E 미검증) | `--version`에 패키지까지: `@xhmikosr/decompress@11.1.4` |
-| oras-go | — | 지원: 결과 폴더 `--case` (실제 위반 E2E 미검증) | **실험적**: 공통 seed가 `d/` 접두 없이 생성돼 탐색 실행 대부분이 거부됨. 유의미한 보안 커버리지를 주장하지 않음 |
+| oras-go | — | 지원: 결과 폴더 `--case` (실제 위반 E2E 미검증) | 탐색 입력은 엔트리 이름을 oras-go 아티팩트 디렉터리 `d/` 아래로 옮겨 보냄(케이스는 그대로). 탈출에 `../`가 하나 더 필요함. 확인은 2.6.2 한 버전의 demo run 1회([USAGE 한계](docs/USAGE.md#한계와-주의)) |
 
 대상 실행을 확인한 호스트는 **Windows + WSL2(Ubuntu 24.04, x86_64) + Docker Desktop 호스트 한 대**입니다. macOS와
 그 밖의 Linux 호스트는 이 후보에서 확인하지 않았습니다. 네 대상의 실제 실행은 **커밋 `f108e36`의 깨끗한 클론과

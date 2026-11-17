@@ -2,9 +2,12 @@
 
 oras-go unpacks a directory artifact under its title, ``d/`` (``adapter.ARTIFACT_DIR``): a member
 outside that frame is refused by the library before it extracts anything. ``verify`` relocates its
-fixtures under ``d/`` for that reason; exploration does not, and neither does replay -- a replay
-re-runs the recorded bytes, so an input the exploration saw rejected is rejected again. The hook
-never rewrites member names; it records how many members lie outside the frame
+fixtures under ``d/`` for that reason, and the product's exploration sends each case with its
+relative entry names under ``d/`` (``targets.oras_go_effect.under_artifact_dir``); the input it
+stores for a violating run is those sent bytes. A replay re-runs the recorded bytes as they are,
+so it never adds the prefix again: an input stored with ``d/`` runs with ``d/``, and an input an
+older exploration saw rejected for lacking it is rejected again. The hook never rewrites member
+names; it records how many members lie outside the frame
 (``runner.members_outside_artifact_dir``) so a rejected replay can be read for what it is.
 
 :func:`check` (before anything runs, and on ``--dry-run``) refuses settings that are not exactly

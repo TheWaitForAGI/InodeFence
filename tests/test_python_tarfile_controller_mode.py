@@ -113,6 +113,9 @@ def test_exactly_one_mode_and_two_forwarded_arguments_were_added() -> None:
         "engine_commit",
         "runtime_version",
         "extraction_filter",
+        # oras-go opt-in wire layout (BACKLOG P-3): appended last, forwarded only when given and
+        # refused outside the oras-go campaign (tests/test_oras_go_artifact_layout.py).
+        "oras_go_artifact_layout",
     )
 
 

@@ -383,8 +383,12 @@ def run_native_decompress_campaign(
     return returncode
 
 
-def oras_go_recording_producer(produce):
+def oras_go_recording_producer(produce, wire_tar=None):
     """Wrap an oras-go case producer to keep a per-run verdict and the violating inputs.
+
+    ``wire_tar(case)`` returns the bytes the producer hands to oras-go for a case; it is what a
+    violating run stores, so a stored input is the input that ran. ``None`` (default) is
+    ``build_tar``, the bytes of the case as generated (unchanged behaviour).
 
     Additive only: the wrapped producer returns ``produce(case)`` unchanged, so the loop, feedback
     and oracle see exactly what they saw before. Every run gets a record ``{run_index, outcome,
@@ -417,7 +421,7 @@ def oras_go_recording_producer(produce):
         }
         case_records.append(record)
         if record["c0"] or record["c1"] or record["c2"]:
-            tar = build_tar(case)
+            tar = build_tar(case) if wire_tar is None else wire_tar(case)
             violation_inputs.append(
                 {
                     "run_index": run_index,
@@ -444,7 +448,7 @@ def run_native_oras_go_campaign(
     oracle/feedback) is written to evidence; on an infrastructure abort a stub is written so the run
     is still recorded.
     """
-    from inodefence.effect_pipeline_oras_go import run_oras_go_frame_case
+    from inodefence.effect_pipeline_oras_go import oras_go_wire_tar, run_oras_go_frame_case
     from inodefence.generator.minimal import minimal_seed_corpus
     from inodefence.model import ArchiveCase
     from inodefence.mutator import MutationPolicy
@@ -472,10 +476,20 @@ def run_native_oras_go_campaign(
         f"policy={policy.value} extractor={target.provenance.target_version}"
     )
 
-    def frame_case(case: ArchiveCase):
-        return run_oras_go_frame_case(case, target)
+    # Opt-in wire layout (see ``under_artifact_dir``); absent, every byte below is as before.
+    artifact_layout = getattr(args, "oras_go_artifact_layout", None) is not None
 
-    produce, case_records, violation_inputs = oras_go_recording_producer(frame_case)
+    def frame_case(case: ArchiveCase):
+        if not artifact_layout:
+            return run_oras_go_frame_case(case, target)
+        return run_oras_go_frame_case(case, target, artifact_layout=True)
+
+    def wire_tar(case: ArchiveCase) -> bytes:
+        return oras_go_wire_tar(case, artifact_layout=True)
+
+    produce, case_records, violation_inputs = oras_go_recording_producer(
+        frame_case, wire_tar if artifact_layout else None
+    )
     try:
         result = run_oras_go_effect_campaign(minimal_seed_corpus(), produce, config)
         report = oras_go_effect_campaign_report(result, producer=producer, label="demo run")
@@ -485,6 +499,8 @@ def run_native_oras_go_campaign(
             case_records=case_records,
             violation_inputs=violation_inputs,
         )
+        if artifact_layout:  # recorded only when on, so a default report is byte-identical
+            report["artifact_layout"] = args.oras_go_artifact_layout
         stats = result.final_stats
         _announce(
             f"oras-go self-discovery: discovered_violation={result.discovered_violation} "

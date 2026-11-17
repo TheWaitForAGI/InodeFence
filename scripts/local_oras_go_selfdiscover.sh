@@ -18,6 +18,8 @@
 # INODEFENCE_EVIDENCE_DIR (default ~/inodefence-evidence), ORAS_GO_ROLE (default affected),
 # DEMO_SEED, DEMO_BUDGET, DEMO_MUTATION_POLICY (campaign arm; e.g. the state-aware identity arm
 # uniform-generic-m1-state-aware-escape-hardlink-v1, or the random control uniform-generic-v1).
+# ORAS_GO_ARTIFACT_LAYOUT=artifact-dir (opt-in) sends each case with its relative entry names under
+# oras-go's artifact directory d/; unset, names are sent as generated (unchanged).
 # Parallel-safe: set RUN_ID to a unique token (e.g. m4sd-oras-<arm>-<seed>); the controller, volume
 # and evidence filename all carry that suffix, so concurrent arms never collide and each removes
 # only what it created. SKIP_BUILD=1 reuses prebuilt images; BUILD_ONLY=1 builds and exits.
@@ -159,5 +161,6 @@ DEMO_ARGS=()
 [ -n "${DEMO_SEED:-}" ] && DEMO_ARGS+=(--seed "$DEMO_SEED")
 [ -n "${DEMO_BUDGET:-}" ] && DEMO_ARGS+=(--budget "$DEMO_BUDGET")
 [ -n "${DEMO_MUTATION_POLICY:-}" ] && DEMO_ARGS+=(--mutation-policy "$DEMO_MUTATION_POLICY")
+[ -n "${ORAS_GO_ARTIFACT_LAYOUT:-}" ] && DEMO_ARGS+=(--oras-go-artifact-layout "$ORAS_GO_ARTIFACT_LAYOUT")
 host --image "$IF_ORAS_GO_IMAGE" --evidence "$CONTROLLER_EVIDENCE" \
   ${DEMO_ARGS[@]+"${DEMO_ARGS[@]}"} oras-go-effect-campaign

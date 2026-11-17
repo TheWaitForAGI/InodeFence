@@ -45,6 +45,7 @@ from inodefence.generator import minimal_seed_corpus
 from inodefence.mutator import MutationPolicy
 from inodefence.target_result import JUDGED, RUN_ERROR
 from inodefence.target_result_summary import write_cell_summaries
+from inodefence.targets.oras_go_effect import ARTIFACT_LAYOUT
 
 REPO_ROOT = code_checkout()
 SCRIPT = launcher_path("oras-go", REPO_ROOT)
@@ -87,6 +88,9 @@ def run_controller(
     }
     if mutation_policy:
         env["DEMO_MUTATION_POLICY"] = mutation_policy
+    # The product always explores inside oras-go's artifact directory: without it the library
+    # refuses every generated member name before extracting (see ``under_artifact_dir``).
+    env["ORAS_GO_ARTIFACT_LAYOUT"] = ARTIFACT_LAYOUT
     report = controller_report_path(out, run_id)
     done = run_launcher(
         SCRIPT,

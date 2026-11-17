@@ -95,7 +95,7 @@ CVE-2026-24842(CVE-2026-23745 수정이 도입한 check/use 회귀; catalog N02�
 | --- | --- | --- |
 | P-1 호환 약속 고정(종료 코드·`result.json` v1 golden 테스트, `targets`가 어댑터 값을 읽음, CHANGELOG replay 문구 정정) | 완료(product/p0-06a-release-contract) | 없음 |
 | P-2 설치된 `inodefence`를 네 대상 실제 extractor에 돌리는 E2E를 CI에 추가(`scripts/dev/product_e2e.py`, CI `product-e2e`) | 완료(product/p0-06b-product-e2e-ci) | 없음(격리·하너스 불변) |
-| P-3 oras-go 탐색에서 실제 추출(공통 seed의 `d/` 접두) | 대기 | 지웅 승인됨(2026-11-17). 등록 실험 seed·어휘는 바꾸지 않음 |
+| P-3 oras-go 탐색에서 실제 추출(넘기는 TAR에서만 이름을 `d/` 아래로, 옵션 기본 꺼짐) | 완료(product/p0-06c-oras-go-artifact-layout) | 지웅 지시(2026-11-17): 별도 브랜치, 본실험 체크아웃에 적용하지 않음. SHARED_PATH_FILES 두 개와 보호 런처 한 줄 변경이라 착지 전 확인 필요 |
 | P-4 python-tarfile·decompress·oras-go 런처의 Docker 시간 제한과 정리 실패 종료 코드 | 대기 | 지웅 승인됨(2026-11-17). 파일별 변경 명세와 격리 동등성 검증을 PR에 첨부, 가드가 막으면 보고 |
 | P-5 네 대상 실제 위반 케이스 `replay` 1회씩(demo run) | 대기 | 사람(재현할 대상·버전 결정) |
 | P-6 `main` 착지: #457 병합 뒤 스택 tip을 `main`과 merge한 착지 PR 하나 | 대기 | 사람(11/26 제출과 봉인 해제 뒤, 지웅 병합) |

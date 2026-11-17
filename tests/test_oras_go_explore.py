@@ -134,6 +134,8 @@ def test_violating_run_writes_oras_go_campaign_result(
     assert env["EXPLORE_IMAGE"] == "inodefence-oras-go-registry:2.7.0"
     assert (env["DEMO_BUDGET"], env["DEMO_SEED"]) == ("5", "7")
     assert env["RUN_ID"] == "oras-go-2.7.0-7-5"
+    # The product always explores inside oras-go's artifact directory (BACKLOG P-3).
+    assert env["ORAS_GO_ARTIFACT_LAYOUT"] == "artifact-dir"
 
 
 def test_clean_run_passes_with_no_saved_input(

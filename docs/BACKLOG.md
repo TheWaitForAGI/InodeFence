@@ -99,7 +99,7 @@ CVE-2026-24842(CVE-2026-23745 수정이 도입한 check/use 회귀; catalog N02�
 | P-4 python-tarfile·decompress·oras-go 런처의 Docker 시간 제한과 정리 실패 종료 코드 | 대기 | 지웅 승인됨(2026-11-17). 파일별 변경 명세와 격리 동등성 검증을 PR에 첨부, 가드가 막으면 보고 |
 | P-5 네 대상 실제 위반 케이스 `replay` 1회씩(demo run) | 대기 | 사람(재현할 대상·버전 결정) |
 | P-6 `main` 착지: 착지 PR 하나(#484, `product/p0-07-landing`; RC #457은 닫았고 이 브랜치가 포함한다, D049 2026-11-17 정정) | 대기 | 사람(11/26 제출과 봉인 해제 뒤, 지웅 병합) |
-| P-7 RC 소크: 두 번째 호스트(WSL2가 아닌 Linux) 깨끗한 클론에서 USAGE 그대로 실행, 약 1주 버그 수정만 | 대기 | P-6 |
+| P-7 RC 소크: 두 번째 호스트(WSL2가 아닌 Linux) 깨끗한 클론에서 USAGE 그대로 실행, 약 1주 버그 수정만 | 두 번째 호스트 확인 완료(2026-11-18, 맥북의 Ubuntu 24.04 arm64 VM, demo run, 지웅 판정: 조건 6 충족). x86_64 네이티브 Linux는 미확인. 소크(약 1주)는 대기 | P-6 |
 | P-8 `v0.2.0` 태그와 GitHub Release, CHANGELOG 날짜 기입 | 대기 | 사람(지웅) |
 
 0.3 목록(0.2.0에서 하지 않음): 탐색 재개(RESUME), FAST의 보호 경로 변경, wheel/PyPI 설치, macOS 확인, `explore`의 탐색·변이

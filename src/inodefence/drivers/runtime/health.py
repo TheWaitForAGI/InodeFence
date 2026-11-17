@@ -367,7 +367,8 @@ def memory_status(meminfo: Path = Path("/proc/meminfo")) -> MemoryStatus:
     )
     return MemoryStatus(
         "UNKNOWN",
-        f"not checked: inside WSL the Windows commit limit (where the Docker Desktop backend's "
-        f"memory lives) cannot be seen; {seen}",
+        f"not checked: under Windows + WSL2 the Windows commit limit (where the Docker Desktop "
+        f"backend's memory lives) cannot be seen from here, and on other hosts no check is made; "
+        f"{seen}",
         available,
     )

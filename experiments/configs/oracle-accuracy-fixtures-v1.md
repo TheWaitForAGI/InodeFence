@@ -25,7 +25,7 @@
 | F05 | 같은 이름 entry 두 번(루트 안 덮어쓰기) | n | n | n | 제자리 쓰기, 루트 안 |
 | F06 | 일반 파일 `../escape.txt` | y | n | n | 루트 밖 새 이름 생성(기존 `c0`) |
 | F07 | 일반 파일 `../outside/new.txt`(sentinel 옆 새 파일) | y | n | n | 루트 밖 새 이름, sentinel은 그대로 |
-| F08 | 일반 파일 `../outside/sentinel.txt`(sentinel 덮어쓰기) | n | n | y | 통제 추출기는 제자리에 쓴다: 이름·identity 그대로, 내용·크기·mtime 변경 |
+| F08 | 일반 파일 `../outside/sentinel.txt`(sentinel 덮어쓰기) | n | n | y | 통제 추출기는 제자리에 쓴다: 이름·identity 그대로, 내용·크기·mtime 변경. 라벨은 제자리 쓰기에 달려 있다: 지우고 새로 만드는 추출기라면 identity가 바뀌어 C0도 y |
 | F09 | 하드링크 `alias -> ../outside/sentinel.txt` | n | y | y | inode 공유 + sentinel nlink·ctime 변경(기존 `c1`) |
 | F10 | F09 뒤 `alias`에 일반 파일 쓰기 | n | y | y | F09 + 내용 변경 |
 | F11 | symlink `link -> ../outside/sentinel.txt`만 | n | n | n | symlink 객체는 루트 안, sentinel 변화 없음 |

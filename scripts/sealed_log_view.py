@@ -31,24 +31,29 @@ from pathlib import Path
 DEFAULT_AUDIT = Path.home() / ".inodefence" / "sealed-access.jsonl"
 MASK = "[가림] {n}줄"
 
-#: Anchored infrastructure lines. Only these can be shown.
+#: Infrastructure lines. Only these can be shown. Each pattern is anchored after an optional
+#: traceback gutter (``  |``, ``  +``) and an optional one-word label (``effect-demo-historical``),
+#: because the real lines carry those prefixes.
+PREFIX = r"^[\s|+]*(?:[\w.-]+ )?"
 ALLOW = tuple(
-    re.compile(pattern)
+    re.compile(PREFIX + pattern)
     for pattern in (
         r"==> \[[^\]]+\]$",
         r"inodefence-infra-reexecution\b",
         r"inodefence-docker-call\b",
-        r"([\w.]+\.)?BackendError\b",
-        r"Traceback \(most recent call last\):$",
+        r"([\w.]+\.)?(BackendError|ExceptionGroup)\b",
+        r"(Exception Group )?Traceback \(most recent call last\):$",
         r'File "[^"]+", line \d+',
         r"start gate: ",
         r"FAILED at step: ",
         r"aborted: step \d+ case [0-9a-f]+",
         r"evidence: ",
+        r"INODEFENCE_CLEANUP_UNKNOWN: ",
     )
 )
 
-#: Verdict-bearing text. A line that matches is hidden even when it is on the allowlist.
+#: Verdict-bearing text. A line that matches is hidden even when it is on the allowlist. A bare
+#: ``verdict`` is not here on purpose: start-gate lines say "verdict not recorded" and must show.
 DENY = re.compile(
     r"\bC[012]\b|violat|reward|corpus|new-keys|nlink>|\"verdict\"|\"oracle\"|\bhits?\b",
     re.IGNORECASE,
@@ -57,8 +62,7 @@ DENY = re.compile(
 
 def shown(line: str) -> bool:
     """Whether ``line`` may be printed: on the allowlist and free of verdict-bearing text."""
-    text = line.strip()
-    return any(p.match(text) for p in ALLOW) and not DENY.search(text)
+    return any(p.search(line) for p in ALLOW) and not DENY.search(line)
 
 
 def view(lines: Iterable[str]) -> tuple[list[str], int, int]:

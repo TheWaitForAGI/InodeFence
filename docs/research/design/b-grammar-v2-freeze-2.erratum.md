@@ -12,3 +12,5 @@
    - 128행(`mutate_link_target`의 새 대상)
 
 정의는 바뀌지 않는다. 다음 id에서 본문에 반영한다. (IF-W4-METHOD 판정 2026-11-18)
+
+위 두 항목은 `b-grammar-v2-freeze-3`에서 본문에 반영됐다.

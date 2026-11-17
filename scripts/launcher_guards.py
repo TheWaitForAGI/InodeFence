@@ -325,9 +325,14 @@ def sample_host(
 def start_docker_events(
     path: Path, actions: Sequence[str] = EVENT_ACTIONS
 ) -> subprocess.Popen[bytes]:
-    """Collect container events as JSON lines into ``path`` until stopped."""
+    """Append container events as JSON lines to ``path`` until stopped.
+
+    Append, not truncate: a resumed run reopens the same file, and the events
+    of earlier attempts are part of the run's evidence (#515). Each line carries
+    its own ``time``, so segments stay distinguishable.
+    """
     filters = [item for action in actions for item in ("--filter", f"event={action}")]
-    with path.open("wb") as stream:
+    with path.open("ab") as stream:
         return subprocess.Popen(
             ["docker", "events", "--format", "{{json .}}", "--filter", "type=container", *filters],
             stdout=stream,

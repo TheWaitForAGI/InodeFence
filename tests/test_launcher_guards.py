@@ -130,6 +130,24 @@ def test_terminate_started_reports_its_own_failure() -> None:
     assert note.startswith("started process cleanup failed: OSError: no such process table")
 
 
+def test_docker_events_append_across_resumes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A resumed run reopens events.jsonl; earlier attempts' events must survive (#515)."""
+    lines = iter([b'{"time":1}\n', b'{"time":2}\n'])
+
+    def fake_popen(argv: list[str], stdout: Any, stderr: Any) -> Any:
+        assert argv[:2] == ["docker", "events"]
+        stdout.write(next(lines))
+        return object()
+
+    monkeypatch.setattr(guards.subprocess, "Popen", fake_popen)
+    path = tmp_path / "events.jsonl"
+    guards.start_docker_events(path)
+    guards.start_docker_events(path)
+    assert path.read_bytes() == b'{"time":1}\n{"time":2}\n'
+
+
 def test_publish_json_once_never_replaces(tmp_path: Path) -> None:
     path = tmp_path / "evidence.json"
     guards.publish_json_once(path, {"first": 1})

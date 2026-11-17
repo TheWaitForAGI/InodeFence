@@ -11,6 +11,22 @@ from scripts import sealed_lineage_lock as tool
 from inodefence import sealed_lineage as sl
 from inodefence import v2_reservations
 
+#: The tracked module as committed (before any test patches it).
+COMMITTED = (v2_reservations.RESERVED_SOURCE, v2_reservations.RESERVED)
+
+#: RESERVED v1.2 rows. The range and override logic is tested on these; the committed module is
+#: empty since the v2.0 release.
+V12_ROWS = (
+    ("v2-R-A", "node-tar", "7.0.0", "7.4.4"),
+    ("v2-R-B", "node-tar", "6.0.0", "6.2.2"),
+    ("v2-R-C", "node-tar", "4.4.0", "5.1.0"),
+)
+
+
+@pytest.fixture(autouse=True)
+def v12_rows(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(v2_reservations, "RESERVED", V12_ROWS)
+
 
 @pytest.fixture(autouse=True)
 def lock_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
@@ -27,11 +43,18 @@ def audit_lines() -> list[dict]:
 QUAL = sl.Override("RESERVED 고정 입력 점검", "탐색-실행-원장.tsv#509-q3", inputs=5)
 
 
-def test_reserved_source_pinned_to_reserved_v12() -> None:
-    assert v2_reservations.RESERVED_SOURCE[1] == (
-        "90017217352b54d9f35454375377c260f0a9e8f83a59d79de1841c46e0a56835"
-    )
-    assert [r[0] for r in v2_reservations.RESERVED] == ["v2-R-A", "v2-R-B", "v2-R-C"]
+def test_committed_module_is_the_v20_release() -> None:
+    source, rows = COMMITTED
+    assert source[1] == "f5bb23c95269f9be992df155ae413c0305d336da08ab05815b810287e898409c"
+    assert "v2.0" in source[0] and rows == ()
+
+
+def test_after_release_reserved_versions_pass(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(v2_reservations, "RESERVED", COMMITTED[1])
+    for version in ("7.0.0", "7.2.0", "6.1.0", "4.4.0", "7.0.0-rc.1"):
+        assert sl.sealed_conflict("node-tar", version, mode="explore") is None
+    assert sl.sealed_conflict("node-tar", "latest", mode="explore") is None  # no entries left
+    assert audit_lines() == []
 
 
 def test_no_host_lock_still_refuses_reserved(lock_env: Path) -> None:

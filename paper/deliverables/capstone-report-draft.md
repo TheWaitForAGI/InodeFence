@@ -4,58 +4,58 @@
 >
 > - **서식과 제출 요건.** 서식 9와 제출 요건은 학교 붙임 원문에서 확인했다(HWP+PDF, 사진 포함 5장 내외, 영상 5분 이내,
 >   생성형 AI 사용 내역 기입). 서식 칸별 본문은 [서식 본문](capstone-report-form-body.md)이고, 이 문서는 그 원재료인 긴 판이다.
-> - **일정.** 팀은 결과보고서·영상 제출 준비 완료를 2026-11-26으로 운영한다. 공식 결과물 기한은 2026-11-30이다.
-> - **수치 규칙.** 정량 문장 끝에 증거 각주를 둔다. 미머지 PR을 가리키는 각주는 머지 후 경로를 다시 확인한다.
-> - **미실행.** EXP-3 본실험과 EXP-2는 실행 전이다. §7.6의 표 7-A(holdout)·7-B(train)·7-B2(GO 입력)와 §7.7은 자리만 있다. 표 7-P는 동결 전 탐색 파일럿의 실측값이다.
+> - **일정.** 결과보고서·영상의 공식 제출 기한은 2026-11-26이다(지웅 확인 2026-11-14, 개최 안내 붙임1의 11/30은 실제 제출일이 아니다). 최종 파일은 11/25 저녁까지 고정한다.
+> - **주장 규칙.** 주장 문장은 단일 주장 목록 [claims-evidence-status-v1](../sections/claims-evidence-status-v1.md)의
+>   "쓸 수 있는 말" 범위 안에서만 쓰고, 문장이나 문단 끝에 주장 ID(`[C-M2]` 등)를 붙인다. 근거 경로·증거 수준·용도 제한은
+>   그 표의 같은 ID 행에 있다. ID가 없는 문장은 배경·정의·절차·행정 내용이다.
+> - **본실험 결과 자리.** EXP-3 train과 EXP-2 holdout의 결과가 들어갈 곳은 `본실험 결과 자리(봉인 해제 뒤 기입)`로 둔다.
 > - **표·그림 요구 사항**은 [표·그림 요구 목록](results-artifact-requirements.md)에 있다.
 
 | 항목 | 내용 |
 | --- | --- |
 | 과제명 | InodeFence: 파일시스템 보안 상태를 피드백으로 쓰는 TAR 추출 경계위반 탐색 프로토타입 |
-| 팀명·학과·학번·지도교수 | TBD (사람이 기입) |
+| 팀명·학과·학번·지도교수 | `[사람]` (제출 서식에서 기입) |
 | 역할 | 지웅: Core·Integration / 주언: Feedback·Evaluation / 규민: Runtime·Target / 민찬: Observation·Oracle·Demo |
-| 저장소 공개 범위 | TBD (외부 공개는 사람 승인 사항) |
+| 저장소 공개 범위 | `[사람]` (외부 공개는 사람 승인 사항) |
 
 ## 1. 요약
 
-InodeFence는 TAR 아카이브 추출 과정의 보안 경계위반을 탐색하는 연구 프로토타입이다. 판정과 피드백에 CVE 식별자·PoC·고정 공격 패턴·대상 경로·sentinel 이름을
-넣지 않고, 추출 결과의 파일시스템 보안 상태(외부 객체와의 identity 공유, 보호 대상 sentinel의 변화)를
-관찰해 쓴다. 피해 경로 이름은 위협 모델 전제로 어휘에 포함하므로 blind 발견은 주장하지 않는다.
+InodeFence는 TAR 아카이브 추출 과정의 보안 경계위반을 탐색하는 연구 프로토타입이다. 판정과 피드백에 CVE 식별자·PoC·고정
+공격 패턴·대상 경로·sentinel 이름을 넣지 않고, 추출 결과의 파일시스템 보안 상태(외부 객체와의 identity 공유, 보호 대상
+sentinel의 변화)를 관찰해 쓴다. 피해 경로 이름은 위협 모델 전제로 어휘에 포함하므로 blind 발견은 주장하지 않는다.
 
-지금까지 확인한 것은 다음 네 가지다.
+지금까지 확인한 것은 다음과 같다.
 
-1. 실제 node-tar에서 입력 생성부터 다음 mutation 선택까지의 루프가 `make demo` 하나로 돈다(M1, TESTED).[^m1]
-2. 손으로 만든 하드링크 fixture로 경계위반을 통제 재현했다. node-tar 7.5.2에서는 추출 객체가 외부 참조 파일과
-   inode를 공유하고 7.5.3은 같은 입력을 거부한다(M2, TESTED).[^m2]
-3. 퍼저의 자력 경계위반은 **이름 획득 조건의 관찰(피드백 인과 미입증)** 수준이다(M3).[^m3]
-4. 같은 generic oracle이 3개 extractor에 adapter 수준으로 적용된다(M4, oracle 수준 일반성).[^m4]
+1. 실제 node-tar에서 입력 생성부터 다음 변이 선택까지의 루프가 `make demo` 한 명령으로 반복 실행된다. [C-M1]
+2. 판정기 하나가 node-tar 5개 릴리스와 고정 입력 2개의 통제 차분에서 서로 다른 두 결함을 구분한다. 통제 재현이며 퍼저의
+   탐색 결과가 아니다. [C-M2]
+3. 같은 판정기를 코드 변경 없이 다른 추출기 3개에 어댑터로 적용했다. 퍼저 탐색의 일반성이나 효과에 대한 주장이 아니다. [C-M4a]
+4. 세 방식이 같은 어휘·같은 예산을 쓰는 비교를 결과를 보기 전에 동결했고(2026-11-13), train과 holdout을 나눴다. [C-DESIGN]
 
-**이 보고서는 핵심 연구 질문에 아직 답하지 않는다.** 동일 어휘·동일 예산 비교는 등록 파일 2개(train `exp3-v1`,
-holdout `exp2-v1`)를 함께 동결한 뒤 실행한다. 동결은 선행 조건 완료와 검증 24시간 뒤에 한다(목표 11/14~15, exp2-v1 §7). EXP-0 등록 실행은 15셀을 모두 완주했지만 인프라 측정이고 가설 검정이 아니다.[^exp0-run]
+**이 보고서는 핵심 연구 질문에 아직 답하지 않는다.** H-A는 등록 실험으로 판정하며 지금은 미검증이다. [C-HA]
+본실험 결과는 §7.11의 `본실험 결과 자리(봉인 해제 뒤 기입)`에 둔다.
 
 ## 2. 연구 배경과 필요성
 
 TAR 추출은 공격자가 제어하는 입력이 신뢰 경계를 넘어 파일시스템에 객체를 만들고 연결하는 통로다. 하드링크와
 심볼릭 링크, entry 순서, 링크 타깃이 결합되면 추출된 객체가 추출 디렉터리 밖 객체와 같은 `(st_dev, st_ino)`를
 공유하거나 보호 대상 외부 객체를 바꿀 수 있다. 서로 다른 경로가 같은 객체를 가리킬 수 있으므로, 경로 문자열만
-검사하면 이런 identity 관계를 놓칠 수 있다.
+검사하면 이런 identity 관계를 놓칠 수 있다. 추출 라이브러리의 경계 처리는 릴리스마다 고쳐지거나 다시 바뀔 수 있으므로,
+특정 취약점 번호가 아닌 일반 규칙으로 릴리스마다 다시 검사할 도구가 필요하다.
 
 ## 3. 연구 목표와 연구 질문
 
-**핵심 연구 질문.** 피해 경로 이름을 아는 동일 어휘·동일 예산 아래서, filesystem security state(C1 identity·C2
-effect)를 retention·스케줄링 피드백으로 쓰는 탐색이 무작위 탐색과 구조 커버리지 탐색보다 첫 경계위반까지의 실행
-수를 줄이고 고유 위반 입력을 더 많이 찾는가?[^rq]
+**핵심 연구 질문(H-A).** 피해 경로 이름을 아는 동일 어휘·동일 예산 아래서, 파일시스템 보안 상태(C1 identity·C2 effect)를
+retention·스케줄링 피드백으로 쓰는 탐색(S-u)이 무작위 탐색(R)과 구조 커버리지 탐색(D)보다 첫 경계위반까지의 실행 수를
+줄이는가? 이 질문은 등록 실험으로 판정하며 지금은 미검증이다. [C-HA]
 
-**위협 모델 전제.** 공격자는 피해 경로 이름을 안다고 가정하고 그 이름을 세 arm의 어휘에 똑같이 넣는다. 따라서 이
-연구는 blind 발견을 주장하지 않는다.
-
-**가설.** H-A(주 가설)는 위 질문의 피드백 정책 비교이고, H-B는 generic oracle이 여러 extractor의 취약·수정 쌍을
-손 fixture로 구분하는지 묻는다.[^rq] H-A는 미판정이다. 참신성은 확정된 사실이 아니라 검증 대상 가설로 둔다.
+**위협 모델 전제.** 공격자는 피해 경로 이름을 안다고 가정하고 그 이름을 세 방식의 어휘에 똑같이 넣는다. 따라서 이
+연구는 blind 발견을 주장하지 않는다. 참신성은 확정된 사실이 아니라 검증 대상 가설로 둔다.
 
 ## 4. 위협 모델과 판정 기준
 
 대상은 고정 버전의 TAR extractor이고 공격면은 공격자가 제어하는 아카이브 바이트다. 실제 host의 민감 파일은 대상으로
-쓰지 않으며, disposable sandbox 안의 sentinel만 쓴다.[^contracts]
+쓰지 않으며, disposable sandbox 안의 sentinel만 쓴다.
 
 | 계약 | 이름 | 위반 후보 조건 |
 | --- | --- | --- |
@@ -63,8 +63,9 @@ effect)를 retention·스케줄링 피드백으로 쓰는 탐색이 무작위 �
 | C1 | Object Identity Confinement | 추출 내부 객체가 보호된 외부 sentinel과 같은 `(st_dev, st_ino)`를 공유함 |
 | C2 | External Effect Noninterference | 보호된 sentinel의 존재·종류·inode·내용·크기·mode·nlink·uid/gid·mtime/ctime이 바뀜 |
 
-Oracle의 위반 판정은 후보다. 확정 취약점으로 보려면 재현과 root-cause 검토가 따로 필요하다. 판정 조건에는 CVE
-식별자, 릴리스 번호, 정답 경로를 넣지 않는다.[^contracts]
+판정기의 위반 판정은 후보다. 확정 취약점으로 보려면 재현과 root-cause 검토가 따로 필요하다. 판정 조건에는 CVE
+식별자, 릴리스 번호, 정답 경로를 넣지 않는다. 정의는 [security-contracts](../../docs/research/design/security-contracts.md)와
+[threat-model](../../docs/research/design/threat-model.md)을 따른다.
 
 ## 5. 시스템 설계와 구현
 
@@ -75,224 +76,171 @@ Seed Generator -> Structure Mutator -> TAR Builder -> Target Adapter
   -> State Observer -> Security Oracle -> Feedback / Corpus -> 다음 mutation
 ```
 
-- **generic 부분**(mutator, observer, oracle, feedback)은 대상 extractor를 모른다. Observer는 사실만 기록하고,
-  Oracle은 계약을 적용할 뿐 파일시스템에 접근하지 않는다.
-- **target 부분**(adapter, worker, recipe)만 extractor별 실행 방법을 안다. 격리된 컨테이너에서 실행한다.
-- **피드백**은 관찰된 상태의 정규화 키를 받아 새 상태나 새 위반이면 입력을 corpus에 남기고 다음 mutation의 바탕으로
-  쓴다. 새 상태 키의 수는 탐색 거동이며 효과의 척도가 아니다(EN-008).
+- **generic 부분**(mutator, observer, oracle, feedback)은 대상 extractor를 모르도록 나눴다. Observer는 관찰 사실을 기록하고,
+  Oracle은 그 기록에 계약을 적용하도록 설계했다.
+- **target 부분**(adapter, worker, recipe)에 extractor별 실행 방법을 두었다. node-tar는 격리된 컨테이너에서 실행한다.
+- **피드백**은 관찰된 상태의 정규화 키를 받아 새 상태나 새 위반이면 입력을 corpus에 남기고 다음 변이의 바탕으로 쓴다.
+  새 상태 키의 수는 탐색 거동이며 효과의 척도가 아니다.
 
 상세 설계는 [§4 Method](../sections/05-method.md)에 있다.
 
 ## 6. 실험 설계
 
+세 방식(R 무작위, D 구조 커버리지, S-u 상태 피드백)이 같은 어휘와 같은 예산을 쓰도록 설계했다. S-u의 경계 키는 특정 패턴이나 경로를 담지 않지만 결함 계열 수준의 사전 지식이고, D는 구조 커버리지 유도 퍼징의 대리이며 코드 커버리지 기준선이 아니다. 가설·방식·표본 수·분석·
+판정표는 결과를 보기 전에 Git에 동결했다(2026-11-13, 동결 커밋 `72de299`). train(7.5.2, 탐색)과 holdout(7.4.4, 확증)을
+나눴고, 결과는 해제 기록 전까지 가린다. 표본 수는 동결 전 위험도 파일럿(§7.8)을 보고 정했고, holdout seed는 9026–9185(N=160)이다. [C-DESIGN]
+
+동결 전에 등록을 고친 내용(예측 문장, 판정표의 비기각 행, N 결정 규칙, 범위 문구, 동결일 정의)은 등록 실행을 시작하기 전의 개정이며 사전등록 변경 이력(exp2-v1 §8)에 공개돼 있다. 그 가운데 2026-11-13 개정은 팀 책임자의 결정으로 동결일 정의를 "선행 조건 완료 + 검증 24 h"에서 "선행 조건 완료 + 독립 검증 완료"로, N 규칙의 날짜 조건 "동결이 2026-11-14이고"를 "동결이 2026-11-14 이전(당일 포함)이고"로 바꿨다. 옛 문구대로 그날 동결했다면 N=120이었고, 이 개정으로 N=160이 유지됐다. 근거는 등록된 일정 조건이며 결과 정보는 쓰지 않았다. [C-DESIGN]
+등록 파일은 [exp3-v1](../../experiments/preregistration/exp3-v1.md)(train)과
+[exp2-v1](../../experiments/preregistration/exp2-v1.md)(holdout)이다.
+
 | 실험 | 목적 | 상태 |
 | --- | --- | --- |
-| EXP-0 | 인프라 측정(처리량, abort, dense 신호). H-A 검정 아님 | 등록 실행 완료 |
-| EXP-3 동결 전 위험도 파일럿 | 규모·R 변형 결정의 입력(탐색, 비등록). H-A 검정 아님 | 실행 완료(40캠페인) |
-| 동시 실행 점검 단계 A | jobs 선택 입력(D047로 jobs=2 고정) | 실행됨 |
-| holdout 후보 상태 확인 | 미노출 릴리스의 고정 입력 점검(탐색 아님, D045) | 실행됨, 7.4.4 선정 |
-| 정지·재개 점검 | 인프라 정지와 승인 재개 경로 확인(D042) | 1차 실행(판정 도구 23/24, B9는 기준 문구 결함으로 사후 정정), 2차 대기 |
-| 호스트 적격성 검증 | 호스트별 사전 고정 기준(D047) | 진행 중 |
-| EXP-3 | train(7.5.2, 탐색). R/D/S-u, 동일 어휘·동일 예산 | **동결 뒤 실행** |
-| EXP-2 | holdout(7.4.4) 확증. train GO 성립 때만 수행 | 조건부 |
-
-- **비교 arm.** R(입력을 남기지 않고 매번 시드 입력에서 다시 변형, seed-restart), D(구조 커버리지), S-u(identity/effect/boundary-attempt 상태 키, 정의는 동결 때 확정). 어휘, seed, 예산,
-  이미지, oracle, operator 선택은 같고 retention 정책만 다르다.[^rq]
-- **지표.** T_first는 첫 `C1 ∨ C2`까지의 실행 수이고 우측중도절단한다(무hit는 예산에서, abort는 abort 시점에서).
-  확증 종단점은 T_first 하나다. U_viol(고유 위반 입력 수)은 가속을 주장할 때 방향 일치만 요구한다(D040-D13).
-  C0만 나온 step은 hit가 아니다.[^rq]
-- **판정.** 결과를 본 뒤 규칙을 바꾸지 않고 D040-D12 판정표(9행)와 exp2-v1 §5를 그대로 적용한다. 전 arm 위반 0이나
-  S ≤ R도 그대로 보고한다.
-- **EXP-3 초안 설계.** 예산 2000, 1차 지표 T_first, 확증 검정은 seed-block 순열 로그랭크와 holdout 패밀리의 Holm
-  보정이다. train은 7.5.2 seed 9006–9025(n=20, 탐색), holdout은 7.4.4 seed 9026–9145(상한 120, 마감에서 잘림)이고
-  sentinel k=5다. 정보 블록이 7 미만이면 미검정이다(D040-D1·D7·D8·D14, D045).[^exp3-draft]
+| EXP-0 | 인프라 측정. 가설 판정 아님 | 등록 실행 완료 [C-EXP0] |
+| 위험도 파일럿 | 표본 수 산정 입력(비등록, 탐색) | 실행 완료 [C-PILOT] |
+| holdout 릴리스 선정 점검 | 후보 5개의 고정 입력 상태 확인 | 실행 완료, 7.4.4 선정 [C-HOSEL] |
+| 측정 사슬 양성·음성 대조 | 판정기·측정 경로 확인(비등록) | 실행 완료 [C-PC] |
+| 호스트 적격성·교차 호스트 비교 | 참여 호스트 기준 충족 확인 | 두 호스트 통과 [C-INFRA] |
+| EXP-3 train | 7.5.2, 탐색. GO 판정 입력 | 실행 완료, GO [C-GO] |
+| EXP-2 holdout | 7.4.4, H-A 확증 | 실행 중, 결과 봉인 [C-HA] |
 
 ## 7. 결과
 
 증거 수준 어휘(TESTED 등)는 [Capability Ledger](../../docs/STATUS.md)를 따른다. observed는 실행 출력으로 확인한 것,
-inferred는 추론한 것이다.
+inferred는 관찰에서 끌어낸 해석이다.
 
-### 7.1 M1: 실제 node-tar 루프 (TESTED)
+결과는 세 묶음으로 나눈다. **가. 동작·판정기·측정 사슬**(§7.1–§7.7)의 항목은 루프 동작, 판정기, 측정 사슬의 근거이며
+탐색 성능이나 피드백 효과의 근거가 아니다. **나. 실험 진행, 인프라, 운영**(§7.8–§7.10)의 항목은 실험 진행·인프라·운영 기록이며
+방식 간 우열이나 피드백 효과의 근거가 아니다. **다. 본실험 결과**(§7.11)는 결과 자리만 둔다. 항목마다 다른 제한은 그 항목 안에 적는다.
 
-입력 생성 → node-tar 실행 → entry별 중간 상태 관찰 → C0/C1/C2 판정 → 피드백 → 다음 mutation 선택이 `make demo` 하나로
-돈다.[^m1]
+### 7.1 루프 동작 (M1, TESTED)
 
-2026-11-06 재실행(observed): node-tar 7.5.22에서 20 step을 완주했고 C0/C1/C2 위반은 0건이다. 두 번 실행한 20개 step 줄이
-서로 같았다.[^m1-run] 피드백이 선택에 연결되는 것도 출력으로 확인된다. corpus가 4에서 7로 늘고
-`add_entry` 가중치가 1에서 3으로 올랐다.[^m1-run] 이는 동작 확인이며 탐색 성능이나 취약점 발견을 뜻하지 않는다.
+실제 node-tar에서 입력 생성 → 실행 → entry별 중간 상태 관찰 → C0/C1/C2 판정 → 피드백 → 다음 변이 선택의 루프가 한
+명령(`make demo`)으로 반복 실행된다. 현재 main(`ff83fbe`)에서 `make demo`의 기본 입력(seed 123, 실행 20)으로 돌린 데모는
+node-tar 7.5.22에서 20 step(성공 18, 거부 2)을 실행했고 위반 0, 고유 effect 키 25, 보상 step 3회(데모가 찍는 번호로 step 6·13·20), 코퍼스 4 → 7이었다.
+비교 방식이 없는 seed 1개 데모의 값이므로 탐색 성능이나 방식 비교의 수치가 아니다. 위반 0은 이 데모 예산에서 관찰되지 않았다는
+뜻이며 node-tar 7.5.22가 안전하다는 근거가 아니다. [C-M1]
 
-### 7.2 M2: 실제 경계위반 통제 재현 (TESTED)
+### 7.2 판정기 대조 (통제용 테스트 추출기)
 
-손으로 만든 결정론적 하드링크 fixture 2종을 고정 릴리스 5개에 넣어, 추출 객체가 외부 참조 파일과 inode를
-공유하는지 봤다.[^m2]
+경계 검사 없이 entry를 그대로 따르는 통제용 테스트 추출기(in-process, 일회용 샌드박스 안)에 고정 입력 4개를 넣어 판정기를
+대조했다. 정상 입력은 위반 없음, 추출 루트를 벗어나는 경로의 파일은 C0, sentinel을 가리키는 하드링크는 C1과 C2, symlink를 만든 뒤
+그 경로에 쓰는 입력은 C2로 판정된다. 판정기 검증이며 node-tar 결과가 아니다. [C-ORACLE]
 
-| 릴리스 | 최상위 하드링크 | 중첩 하드링크 |
-| --- | --- | --- |
-| 7.5.2 | **공유** (nlink 1→2) | **공유** (nlink 1→2) |
-| 7.5.3 | 거부 | 거부 |
-| 7.5.6 | 거부 | **공유** (nlink 1→2) |
-| 7.5.7 | 거부 | 거부 |
-| 7.5.8 | 거부 | 거부 |
+### 7.3 릴리스 간 통제 재현 (M2, TESTED)
+
+릴리스 번호나 정답 경로를 판정 조건에 넣지 않은 identity 판정기 하나가, node-tar 5개 릴리스(7.5.2·7.5.3·7.5.6·7.5.7·7.5.8)와
+고정 입력 2개의 통제 차분에서 서로 다른 두 결함(CVE-2026-23745, CVE-2026-24842)을 구분한다. 판정 결과는 observed이고
+릴리스별 원인 서술은 inferred다. 사람이 만든 고정 입력의 통제 재현이며 퍼저의 탐색 결과가 아니다. [C-M2]
 
 ![node-tar 릴리스별 하드링크 identity verdict 그리드](../figures/m2-cross-release-evidence.png)
 
-*그림 7-1. 릴리스별 verdict(observed). CVE 대응과 회귀 원인 서술은 inferred다.*
+*그림 7-1. 릴리스별 판정(통제 재현). [C-M2]*
 
-- **observed:** 위 표, nlink 전이, 거부 메시지. 2026-11-06 재실행의 `summary.json`은 저장소의 raw와 같았다.[^m2]
-- **production 경로 일치:** 같은 외부 하드링크를 production Observer+Oracle로 판정한 결과가 C1+C2로 일치함을 테스트로
-  고정했다.[^m2-oracle]
-- **inferred:** 고정 쌍과 CVE의 대응(7.5.2→7.5.3 = CVE-2026-23745, 7.5.6→7.5.7 = CVE-2026-24842)과 "7.5.6 회귀를
-  앞선 수정이 도입했다"는 서술. 이 fixture의 거동과 advisory 범위는 다를 수 있어 exact 하한은 미검증이다.[^m2]
-- **범위:** 통제 재현이며 퍼저 자력 발견이 아니다.
+### 7.4 회귀 검사 명령 (TESTED)
 
-### 7.3 M3: 이름 획득 조건의 관찰(피드백 인과 미입증)
+`make regression TAR_VERSION=<x>` 한 명령으로, 알려진 경계 고정 입력이 그 릴리스에서 아직 C1/C2를 내는지 확인할 수 있다.
+고정 입력 회귀 확인이다. [C-REG]
 
-Ledger 판정: 외부 객체 이름을 어휘에 획득한 조건에서 자율 C1 관찰 (A3 21 vs A1 0 vs identity-blind 0); 어휘 미통제라
-retention·effect 피드백 인과는 미입증.[^m3] 인용의 A1은 generic 어휘에 effect retention을 쓰는 셀로 이름을 철자할 수 없고, 표 M3의 "A1 random floor"는 기존 셀 이름이다.
+### 7.5 다른 추출기 적용 (M4, 판정기·어댑터 수준)
 
-![M3 대조 막대그래프: 외부 이름을 어휘에 넣은 A3full s11 21 hits, 이름을 뺀 A3blind s11 0, 이름을 철자할 수 없는 A1 0](../figures/m3-blind-ablation.png)
+같은 판정기를 코드 변경 없이 다른 추출기 3개(python-tarfile, oras-go, decompress)에 어댑터로 적용했고, 각 통제 차분에서
+영향 쪽은 위반, 대조 쪽은 비위반으로 판정했다. python-tarfile은 같은 라이브러리의 추출 필터 설정(`fully_trusted` 대 `data`)
+토글 비교이고, oras-go(v2.6.1 대 v2.6.2)와 decompress(4.2.1 대 유지보수 포크 11.1.4)는 릴리스 비교다. 이 둘은 실제 추출기의 동작을 프로브로 관찰한 기록이 있고, 저장소 테스트의 판정은 그 사후 상태를 일회용 샌드박스에서 재현한 것에 내린 판정이다. 판정기·어댑터 수준의
+주장이며 퍼저 탐색의 일반성이나 효과에 대한 주장이 아니다. [C-M4a]
 
-*그림 7-2. 이름 획득 조건의 관찰(피드백 인과 미입증). 어휘가 다른 셀의 대조이며 rate 비교가 아니다.*
+같은 방식의 고정 입력 프로브를 Rust `tar` 0.4.35와 0.4.36에도 적용했다. 생성 스크립트가 아직 main에 없어 감사 이후 기록으로만 쓴다. [C-RUST]
 
-- 이 대조는 피드백이 아니라 **어휘**(이름 포함 여부)를 달리했다. 피드백의 기여는 어휘를 맞춘 R/D/S-u 비교(EXP-3)로 아직 분리되지
-  않았다.[^m3]
-- **blind 발견이 아니다.** 기존 외부 객체에 하드링크하려면 이름이 필요하고 퍼저는 그것을 관찰로 얻는다.[^m3]
-- **seed-rare다.** 예산 1500에서 자율 C1은 65 seed 중 s11 1개였다. 21건은 그 run의 1 lineage이고, run은 step 416에서 abort했다.
-  막대마다 분모(step 수)도 다르다.[^m3]
-- **hit 정의가 다르다.** 그림 7-2의 hit는 C1 ∧ contract_violated다. 표 7-P의 C1 ∨ C2와 다르다. A3full-s60에는 C2만 위반인 step 14개가 있어 여기에 세지 않았다.[^m3]
-- **rate 우위는 미입증이다.** 사전등록 매칭 대조의 Wilson 구간이 겹쳤다.[^m3-rate]
+### 7.6 측정 사슬 점검 (holdout 선정, 양성·음성 대조)
 
-### 7.4 M4: oracle 수준 일반성
+holdout 릴리스를 정하려고 후보 5개(7.0.1·7.1.0·7.2.0·7.3.0·7.4.4)에 고정 입력 5개를 한 번씩 실행해 상태를 확인했고, 규칙에
+따라 7.4.4를 골랐다. 다섯 후보 모두 하드링크 입력 2개는 위반, symlink 입력 3개는 통과, 오류 0이다. 이 고정 입력 5개로는 7.0–7.4 후보를
+서로 구분할 수 없고, 7.4.4는 가장 높은 버전을 고르는 규칙으로 정했다. [C-HOSEL]
 
-동일 generic C0/C1/C2 oracle(코드 불변)이 python-tarfile, oras-go, decompress 3개 extractor에서 통제 차분을 구분했다
-(일부 TESTED, oracle·adapter 수준).[^m4] 이는 fuzzer 자력 발견의 일반성이나 효과 주장이 아니다. decompress(사후 분석)와 oras-go(1 seed)의
-자력 실행에서 C1/C2는 관찰되지 않았다.[^m4-neg]
+측정 사슬의 양성·음성 대조를 했다. 등록 실행과 같은 캠페인 경로로 7.5.2에서 S-u 1셀(seed 8002, 실행 2000)을 돌려 HOST1에서
+위반 사건을 기록했다(첫 사건 step 685, 계약 C2). HOST2도 같은 값이다. 등록 실행 경로 밖에서 돌린 고정 입력 1개는 7.5.2와 7.4.4에서 C1·C2 위반으로, 수정 릴리스 7.5.3에서는
+거부·비위반으로 판정됐다. 측정 사슬의 근거로만 쓰며 탐색 성능의 근거가 아니다. 캠페인 경로 대조의 첫 사건은 C2뿐이라 탐색이 C1에 닿는다는
+근거도 아니다. [C-PC]
 
-### 7.5 EXP-0 등록 실행: 인프라 측정
+### 7.7 EXP-0 등록 실행: 인프라 측정
 
-**인프라 측정이다. 가설 검정이 아니고 효과 주장도 아니다.** 사전등록 조건은 R/D/S-u × seed 9001–9005 × budget 200,
-node-tar 7.5.2다.[^exp0-prereg]
+등록 실행 EXP-0은 15셀(R·D·S-u × seed 9001–9005, 캠페인당 실행 200)이 모두 유효했고 abort 0, 경계위반 사건 0이었다. 가설을
+판정하지 않는다. 사건 0은 그 예산에서 관찰되지 않았다는 뜻이며 방식 비교의 근거가 아니다. [C-EXP0] EXP-0 seed 9001–9004는 EXP-0 사전등록 동결 전
+도구 검증 실행에 이미 쓰였다(v2.1 사전 노출 절·공식 리포트 편차 9).
 
-| 항목 | 값 (observed) | 주석 |
-| --- | --- | --- |
-| 셀 / 실행 수 | 15셀 / 3,000 실행 | [^exp0-run] |
-| 완주 | 15/15 | abort 0, invalid 셀 0, arm 간 어휘 동등. 셀 판정과 별개로 trace가 invalid인 step 11개(D 8, S-u 3)와 failed step 10개(D 4, S-u 6)가 있다 [^exp0-run] [^exp0-analysis] |
-| C1/C2 hit | 0 | 사전등록의 zero-hit 기본 결과 [^exp0-prereg] |
-| rule-of-three 참고 상한 (사전등록 v2 (a)) | arm당 캠페인 단위 3/5 = 0.6, 실행 단위 3/1000 = 0.003(탐색적) | 판정 입력 아님 [^exp0-analysis] |
-| p95 full-step | 기록값 1.549 s / 실시간 환산 1.419 s | 3,000 step 합산, nearest-rank [^exp0-analysis] [^exp0-clock] |
-| 처리량 (스트림당) | 기록값 2428 exec/h / 실시간 환산 2650 exec/h | 리포트 내부 시간 합 기준, 셀 준비 시간 제외. 런처 wall 합 기준(준비 포함)은 기록값 2307 / 환산 2518이다. 호스트 전체 처리량이 아니다 [^exp0-analysis] [^exp0-clock] |
-| 처리량 (호스트 전체) | ≈4760 exec/h | jobs 2, 실제 경과에서 직접 계산(배율 환산 아님) [^exp0-clock] |
-| raw 무결성 | 66 파일 verify 통과 | 66 ok, 0 mismatched, 0 missing, 0 extra [^exp0-manifest] |
+### 7.8 동결 전 위험도 파일럿 (비등록, 탐색)
 
-**시간 지표 주의.** 기록값은 monotonic clock(`perf_counter`) 기준이다. EXP-0 당시 이 호스트의 monotonic clock은 실시간보다
-1.091배 빠르게 갔다(셀별 1.086–1.096).[^exp0-clock] 환산값은 실시간 기준이며, `CLOCK_REALTIME`의 장기 편차는 검증 중이다. T_first와
-hazard proxy는 실행 수로 세므로 시계와 무관하다(관찰). oracle과 U_viol은 파일 시각을 포함한 파일시스템 스냅샷을 보지만 파일 시각은
-실시간 시계로 찍히므로 이 배율의 영향을 받지 않는다고 본다(추론).[^exp0-clock]
+비등록 위험도 파일럿(7.5.2, 40 캠페인, 캠페인당 실행 2000)에서 네 방식 모두 첫 C1∨C2 사건이 있었고, 신뢰구간이 크게 겹쳐 방식의 순서를 말할 수 없다(R-walk 1/10,
+R-restart 4/10, D 4/10, S-u 6/10). abort는 11/40이다. 이 값은 표본 수 산정, R 변형 선택(D6), 사전등록 예측의 개정에 썼다. [C-PILOT]
 
-위 수치의 기준은 공식 리포트이고, 사전등록 대비 편차 11건도 그 리포트에 공개돼 있다.[^exp0-analysis]
+### 7.9 EXP-3 train과 GO 판정
 
-### 7.6 EXP-3 본실험: 동결(선행 조건 완료 뒤, 목표 11/14~15) 뒤 실행
+EXP-3 train이 끝난 뒤 등록 규칙을 기계적으로 적용해 GO를 냈다(2026-11-13 23:37:16 KST). 세 방식을 합친 첫 C1∨C2 캠페인 수 31
+(기준 1 이상), 처리 용량 554(기준 76 이상), 인프라 실패 비율 .033(기준 .45 이하)이다. 합산값이며 방식별 값은 봉인돼 있고,
+방식 간 비교가 아니다. [C-GO]
 
-**동결 전 위험도 파일럿 (탐색 · 비등록 · 확증 아님).** 본실험 규모와 R 변형을 정할 입력을 얻으려고 40캠페인을 돌렸다. 대상은 train 타깃
-node-tar 7.5.2뿐이고 holdout은 실행하지 않았다. 설계는 seed 8101–8110 × {R-walk, R-restart, D, S-u}, budget 2000, sentinel k=5, 동일 어휘이고,
-실행 전에 판정 규칙을 고정했다.[^pilot-design] 결과는 EXP-0·EXP-3 추정에 합치지 않는다.
+### 7.10 재현성 인프라와 운영 기록
 
-**어떤 값도 확증 검정력을 뜻하지 않는다.** 아래 표는 설계 입력이며 arm 우위의 근거가 아니다.
+원자료 출력의 SHA-256 매니페스트, 요약이 원자료까지 닿는지 검사하는 증거 사슬 점검(`make check`에 연결), 표 생성기와 커밋된
+표의 바이트 대조, 호스트 적격성 검증(호스트별 12 캠페인, 두 호스트 통과)과 교차 호스트 비교(공통 셀 12개 중 12개 일치)를
+갖췄다. 적격성은 그 호스트·실행 SHA `bed077a`·동시 실행 2·캠페인당 실행 2000·12 캠페인 조건에서 기준을 충족했다는 뜻이다. [C-INFRA]
 
-**표 7-P. 위험도 파일럿 (탐색, node-tar 7.5.2, k=5)**[^pilot-report]
+운영 사실로, EXP-3 train 중 HOST2 인프라 정지 1회(2026-11-13, 원인 기록 #366 뒤 재개, 정지에 걸린 2셀은 재실행하지 않음)와
+EXP-2 holdout 중 HOST2 인프라 정지 1회(2026-11-14, 원인 기록 #370 머지로 재개 승인)가 있었다. 확인된 직접 원인은 Docker Desktop API
+무응답이고 근본 원인은 확인하지 못했다. [C-OPS]
 
-| arm | 캠페인 | 완주 | abort | 첫 C1∨C2 사건 | 95% CI (양측, 계획 분모) | 노출 (캠페인분) | 점추정 (노출 기준) |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| R-walk | 10 | 7 | 3 | 1 | .003–.445 | 8.89 | .106 |
-| R-restart | 10 | 8 | 2 | 4 | .122–.738 | 7.51 | .413 |
-| D | 10 | 7 | 3 | 4 | .122–.738 | 7.81 | .401 |
-| S-u | 10 | 7 | 3 | 6 | .262–.878 | 5.41 | .670 |
+### 7.11 본실험 결과
 
-읽는 법:
+| 자리 | 내용 |
+| --- | --- |
+| EXP-3 train(7.5.2) 방식별 결과(탐색, S-TRAIN) | 본실험 결과 자리(봉인 해제 뒤 기입) |
+| EXP-2 holdout(7.4.4) 확증 판정(H-A, S-HOLDOUT) | 본실험 결과 자리(봉인 해제 뒤 기입) |
 
-- **우위를 주장하지 않는다.** S-u의 사건 수가 가장 많지만 CI가 크게 겹치고 이 표본에서 검정을 하지 않았다. abort 가정에 따라 순서도 바뀐다. 비교
-  arm의 무사건 abort만 사건으로 치면 S-u 6 대 D 7이다.[^pilot-rule-c]
-- **`R=D=0` 가정은 폐기했다.** R-walk, R-restart, D 모두 사건이 나와 사전 규칙 A대로 이 가정을 버리고 필요 n을 다시 계산했다.[^pilot-report]
-- **규칙 C 기계 출력은 "가능", n/arm 114다.** 8호스트-일 용량은 n/arm 151이다(holdout 1타깃, 3 arm, 호스트 1대 기준). 계획 기준은 약 76~80이고, 지금은 두 호스트가 jobs=2로 참여한다(D047). 한 호스트만 참여하면 holdout 상한은 마감에서 잘린다. 이는 사전 고정 규칙의 출력이고 규모 결정의 입력일 뿐이다.
-  규칙의 "S-u가 앞선다"는 점추정 비교이지 유의한 차이가 아니다. 규칙의 검정력 모델은 등록 검정의 근사이고, 등록 통계량으로 다시 계산한 값은 약 76~80이다.
-  어느 값도 확증 검정력을 뜻하지 않는다.[^pilot-rule-c] train의 hazard가 holdout에도 같다는 것은 미검증 가정이다.
-- **abort는 11/40 = .275다.** 전부 컨테이너 런타임 inspect 실패로 멈췄고, 같은 순간에 난 2건을 묶으면 10회차다. 컨테이너 상태를 보면 6건은 create 뒤 start
-  없이 destroy됐고, 2건은 마지막 컨테이너가 종료된 뒤 멈췄으며(그 step의 결과는 기록이 없다), 3건은 기록기 시작 전이라 상태를 모른다.[^pilot-aborts]
-  abort 시점이 사건 시점과 독립이라는 비정보적 중도절단 가정은 입증되지 않았다. 첫 실패 경로도 확인하지 못했다.
-- **시간 값은 실행마다 시계가 다르다.** 셀별 monotonic/실시간 배율은 1.00~1.10이었다(합산 1.051). 처리량 약 4750 exec/h는 실시간에서 직접
-  계산했다(실경과 15.17 h, jobs 2). 사건까지의 실행 수는 시계와 무관하다.[^pilot-clock]
-- **집계 제외.** 리허설과 사전점검은 40캠페인에 넣지 않았다(S-u s8001 k=3 사건 없음, S-u s8002 k=5 T_first 685, R-restart s8003 budget 20 사건 없음).[^pilot-preflight]
-
-**본실험은 아직 실행하지 않았다. 아래 표의 값은 모두 자리다.** 역할은 train(7.5.2)과 holdout(7.4.4) 둘뿐이고 섞지 않는다.[^exp3-draft]
-표 번호와 생성기의 대응은 [표·그림 요구 목록](results-artifact-requirements.md)에 있다.
-
-**표 7-A. `role=holdout` (확증)**
-
-| arm | n | T_first 중앙값 | U_viol | p(Holm) |
-| --- | --- | --- | --- | --- |
-| R | TBD | TBD | TBD | S-u vs R: TBD |
-| D | TBD | TBD | TBD | S-u vs D: TBD |
-| S-u | TBD | TBD | TBD | 기준 arm |
-
-**표 7-B. `role=train` (탐색적, 기노출)**
-
-| arm | n | T_first 중앙값 | U_viol | p(Holm) |
-| --- | --- | --- | --- | --- |
-| R | TBD | TBD | TBD | 해당 없음 |
-| D | TBD | TBD | TBD | 해당 없음 |
-| S-u | TBD | TBD | TBD | 해당 없음 |
-
-읽는 법:
-
-- 확증 결과는 holdout 패밀리의 Holm 판정뿐이다. 나머지 역할은 확증이 아니다.
-- 검정은 양측이다. 기각되어도 어느 arm이 빠른지(`faster_arm`)를 함께 읽는다. 두 대비가 모두 비기각일 때의 해석 규칙(미검정, 분리 실패, HR 2 배제 조건)은 동결 때 확정한다(D040-D12 개정 검토 중). 두 대비의 값이 다르면 작은 쪽을 쓴다(exp2-v1 §5).
-- T_first 중앙값은 Kaplan–Meier 중앙값이고, 사건이 절반에 못 미치면 "미도달"로 적는다.
-- 전 arm 위반 0이면 미관찰로 보고하고 캠페인 단위 rule-of-three 상한을 참고로 병기한다.
-
-### 7.7 EXP-2: 조건부
-
-train에서 사건이 난 캠페인이 1개 이상이고, 용량이 76 이상이며, train abort 비율이 .45 이하이고, 가동 호스트의 train 기록 완전성이 통과할 때(GO)만 수행한다(D040-D11, D043, exp3-v1 §5). 보류 조건(정지 원인 미확인, 입력 종속 abort, 기록 손상, oracle 열람 뒤 결정) 중 하나에 해당하면 GO를 내지 않고 지웅이 판단한다(D047 결정 1). 재개되지 않은 정지 호스트는 처리량 r에서 빼고 "부분 완료"로 적는다(D047). GO 결과만 대기다.
+결과 문장은 해제 기록 뒤 사전등록 판정표의 문장으로만 채운다. 해제 전에 방향이나 크기를 쓰지 않는다. [C-HA]
 
 ## 8. 한계
 
-- **핵심 RQ 미판정.** EXP-3 전이므로 피드백의 효과에 대해 어떤 주장도 하지 않는다.
-- **검정력.** 파일럿의 사건 수는 탐색 입력이고 train 7.5.2, k=5에서만 측정됐다. holdout에서 hazard가 다르면 전 arm 위반 0(시나리오 ⑤)이나
-  검정력 부족 판정도 가능한 결과다.[^exp3-sizing] [^pilot-report]
-- **파일럿 abort.** 11/40이 컨테이너 런타임 inspect 실패로 멈췄고 비정보적 중도절단은 입증되지 않았다. 정지로 판정된 case를 버리고 다시 실행하는 통제(D046)와 시작 게이트를 넣었으므로 본실험 경로는 파일럿과 다르다.[^pilot-aborts]
-- **판정의 범위.** snapshot 기반 oracle은 중간 변화, transient 생성 후 삭제, 외부 경로 직접 사용을 복구하지 못한다.
-  `violated=False`는 관찰 범위에서 위반 증거가 없다는 뜻이지 안전 증명이 아니다.[^contracts]
-- **M2.** 손 fixture 범위의 통제 재현이며 CVE 대응은 추론이다.[^m2]
-- **M3.** blind 발견이 아니고 seed-rare이며 피드백 인과는 미입증이다.[^m3]
-- **M4.** 일반성은 oracle·adapter 수준에 한정된다.[^m4]
-- **EXP-0 seed 사전 노출.** seed 9001–9004는 동결 전 비등록 실행에 이미 노출됐고, 그 관찰은 등록 결과로 집계하지 않는다. seed 9001은
-  이 호스트 raw 기준 10런이며, 사전등록 공개에서 6런이, 노출 원장에서 3런이 빠져 공식 리포트에 공개했다.[^exp0-analysis] EXP-3 seed는 train
-  9006–9025, holdout 9026–9145로 정해 겹치지 않는다.[^exp3-draft]
-- **EXP-0 측정 항목 미충족.** 사전등록 측정 4(per-case 대 워커 풀 처리량 비교)는 미충족이다. 등록 실행은 per-case뿐이다.[^exp0-analysis]
-- **EXP-0 편차.** invalid trace, 시계 배율을 포함한 사전등록 대비 편차 11건은 공식 리포트 §3에 있다.[^exp0-analysis]
-- **EXP-0 시간 지표.** 기록값은 빠르게 간 monotonic clock 기준이고 환산값은 실시간 기준이다. 실시간의 장기 편차는 검증
-  중이다(§7.5).[^exp0-clock]
-- **raw 보존.** raw는 호스트 로컬에 있고 저장소에는 체크섬 목록만 들어간다.[^exp0-manifest]
+- **핵심 RQ 미판정.** H-A는 등록 실험으로 판정하며 지금은 미검증이다. 피드백의 효과에 대해 어떤 주장도 하지 않는다. [C-HA]
+- **탐색 난이도.** 현재 변이 문법에서 경계위반 입력은 seed에서 변이 1회 거리에 있다. [C-LIM1]
+- **확증 범위.** 확증 범위는 node-tar 한 계보(train 7.5.2, holdout 7.4.4)와 하드링크 identity 공유 계열이다. holdout 7.4.4는
+  고정 입력에서 train과 같은 계열의 위반을 내는 릴리스다. [C-LIM2]
+- **통제 재현과 적용 범위.** 릴리스 간 통제 재현은 사람이 만든 고정 입력이다. [C-M2] 추출기 적용은 판정기·어댑터 수준이다. [C-M4a]
+- **판정의 범위.** 판정기는 추출 전후 두 스냅숏을 비교하는 탐지기다. 위반 없음(`violated=False`)은 관찰 범위 안에서 위반 증거가
+  없다는 뜻일 뿐이며, 두 시점 사이에 생겼다 사라진 변화, inode 번호 재사용, 샌드박스 밖 접근은 판정하지 못한다. entry 사이의 중간
+  상태 전이는 피드백 근거로만 쓰고 C0/C1/C2 판정으로 올리지 않는다. [C-LIM3]
+- **운영.** 두 실험 중 HOST2 인프라 정지가 한 번씩 있었고 근본 원인은 확인하지 못했다. [C-OPS]
 
 ## 9. 결론과 향후 계획
 
-현재 방어하는 명제는 좁다. 루프가 실제 node-tar에서 돌고(M1), 하나의 generic oracle이 통제 fixture의 affected/fixed를
-릴리스 번호 없이 구분하며(M2), 자력 경계위반은 이름 획득 조건에서 관찰됐고(M3), oracle은 adapter 수준에서 여러
-extractor에 적용된다(M4). 피드백 정책의 효과는 아직 판정하지 않았다.
+현재 방어하는 명제는 좁다. 루프가 실제 node-tar에서 반복 실행되고 [C-M1], 하나의 generic identity 판정기가 통제 차분에서
+두 결함을 릴리스 번호 없이 구분하며 [C-M2], 판정기는 어댑터 수준에서 다른 추출기 3개에 적용된다 [C-M4a]. 피드백 정책의 효과는
+아직 판정하지 않았다. [C-HA]
 
-**결론 TBD.** EXP-3 결과가 나오면 판정 시나리오에 따라 이 절을 갱신한다.
+**결론 자리.** 본실험 결과 자리(봉인 해제 뒤 기입)
 
 | 다음 단계 | 내부 일정 |
 | --- | --- |
-| 호스트 적격성 검증 | 진행 중 |
-| exp3-v1·exp2-v1 동결 | 선행 조건 완료 뒤(목표 11/14~15) |
-| train → GO 판정 → holdout | 동결 뒤 |
-| 실행 마감 | 11/25 12:00 KST |
-| 결과보고서·영상 제출 준비 완료 | 11/26 (공식 기한 11/30) |
+| EXP-2 holdout 종료 | 실행 마감 11/25 12:00 KST |
+| 해제 기록 PR과 결과 칸 기입 | holdout 종료 뒤 |
+| 결과보고서·영상 공식 제출 기한 | 11/26 (최종 파일 고정 11/25 저녁) |
+
+### 9.1 활용방안
+
+- node-tar 유지보수자는 릴리스 전에 해당 버전 이미지를 만든 뒤 `make regression TAR_VERSION=<x>`로 알려진 경계 고정 입력이
+  그 릴리스에서 아직 C1/C2를 내는지 확인할 수 있다. [C-REG]
+- 다른 추출기를 다루는 유지보수자와 연구자는 추출기별 실행 부분(어댑터)을 더해 같은 판정기를 적용하는 데 쓸 수 있을 것으로
+  기대한다. 지금까지 적용한 것은 세 추출기이며 판정기·어댑터 수준이다. [C-M4a]
+- 다른 연구팀은 결과를 보기 전에 가설·방식·표본 수·분석·판정표를 Git에 동결하고, train과 holdout을 나누고, 해제 기록 전까지 결과를
+  가리는 절차를 참고할 수 있을 것으로 기대한다. [C-DESIGN]
+- 실험 재현을 확인하려는 사람은 원자료 SHA-256 매니페스트와 증거 사슬 점검을 다시 돌릴 수 있다. [C-INFRA]
+
+릴리스마다 같은 규칙으로 점검하면 릴리스 간 재발을 더 일찍 볼 수 있을 것으로 기대한다. 효과의 크기는 측정하지 않았다.
 
 ## 10. 선행연구와의 관계
 
 TAR fuzzing, hardlink·symlink 공격, entry 순서, 파일 상태 기반 fuzzing은 선행연구가 이미 다뤘다. 이 연구는 그 영역 자체를
-기여로 주장하지 않으며, 선행연구 대비 우선권도 주장하지 않는다.[^related]
+기여로 주장하지 않으며, 선행연구 대비 우선권도 주장하지 않는다. 포지셔닝은
+[related-work-positioning](../../docs/research/design/related-work-positioning.md)과 [§3](../sections/04-related-work.md)을 따른다.
 
 - Jana & Shmatikov, "Abusing File Processing in Malware Detectors for Fun and Profit", IEEE S&P 2012: TAR를 포함한 file-processing semantic gap.
 - ZIPDiff, "My ZIP isn't your ZIP", USENIX Security 2025: feedback-guided archive differential testing.
@@ -307,47 +255,26 @@ TAR fuzzing, hardlink·symlink 공격, entry 순서, 파일 상태 기반 fuzzin
 | --- | --- |
 | 도구 | Claude Code (Anthropic Claude 코딩 에이전트) |
 | 사용 범위 | 코드 작성, 분석 스크립트, 실험 실행 보조, 문서 작성. 이 보고서 초안도 에이전트 세션이 작성했고 사람 검토 전이다 |
-| 검토 방식 | 브랜치 → PR → CI → 검토(verifier 또는 사람) → 머지. 수술 기간 머지는 사람이 수행한다 |
-| 변경 불가 경계 | 안전경계, 격리, oracle 정의, 사전등록 동결 값은 에이전트가 임의로 바꾸지 않는다 |
-| 정량 (main `f32947d` 기준, 2026-11-12 집계, 제출 직전 재집계) | 전체 507 커밋 중 158 커밋이 Claude를 co-author로 명시 [^ai] |
-| 증거 규율 | 에이전트가 낸 수치는 raw와 요약으로 추적될 때만 보고한다 |
+| 검토 방식 | 브랜치 → PR → CI → 검토(verifier 또는 사람) → 머지. 머지는 사람이 수행한다 |
+| 변경 불가 경계 | 안전경계, 격리, 판정기 정의, 사전등록 동결 값은 에이전트가 임의로 바꾸지 않는다 |
+| 정량 (main `909aec6` 기준, 2026-11-13 집계, 제출 직전 재집계) | 전체 513 커밋 중 161 커밋이 Claude를 co-author로 명시(`git rev-list --count`, `git log --grep='Co-Authored-By: Claude'`) |
+| 증거 규율 | 에이전트가 낸 수치는 원자료와 요약으로 추적될 때만 보고한다 |
 
 ## 12. 재현 방법
 
-명령, 전제 조건, 기대 출력은 [시연 영상 대본](demo-video-script.md)에 있다. 네 명령 모두 2026-11-06에 호스트에서 실행해
-확인했다. `make demo`는 공유 이미지를 다시 만들지 않도록 `SKIP_BUILD=1`로 확인했다.[^m1-run]
+| 무엇을 | 명령 | 주장 |
+| --- | --- | --- |
+| 실제 node-tar 루프 | `make demo` | C-M1 |
+| 판정기 대조(통제용 테스트 추출기) | `PYTHONPATH=src python3 -m scripts.oracle_fixture_check` | C-ORACLE |
+| 릴리스 간 통제 재현 | `python3 experiments/repro/cross_release_identity.py --out <dir>` | C-M2 |
+| 고정 입력 회귀 검사 | `make regression TAR_VERSION=<x>` | C-REG |
+| 원자료 무결성 | `python3 scripts/make_raw_manifest.py --verify <manifest> --root <raw 폴더>` | C-INFRA |
 
-| 무엇을 | 명령 |
-| --- | --- |
-| Oracle 판정과 fixture 일치 | `PYTHONPATH=src python3 -m scripts.oracle_fixture_check` |
-| 실제 node-tar 루프 | `make demo` |
-| 통제 재현 | `python3 experiments/repro/cross_release_identity.py --out <dir>` |
-| EXP-0 raw 무결성 | `python3 scripts/make_raw_manifest.py --verify <manifest> --root ~/inodefence-evidence/exp0-20261105` |
+**기대 출력과 검증 기록.**
 
-## 증거 각주
+| 명령 | 기대 출력(요약) | 검증 기록 |
+| --- | --- | --- |
+| `make demo` | node-tar 7.5.22, 20 step(성공 18, 거부 2), 위반 0, 고유 effect 키 25, 보상 step 3회, 코퍼스 4 → 7 | GHA 실행 43565892214(main `ff83fbe`, 2026-11-14, 아티팩트 `campaign-native-make-demo-s123`); CI 실행 43565082671(main `d954387`)의 container-integration 작업(같은 경로, 실행 6) [C-M1] |
+| `PYTHONPATH=src python3 -m scripts.oracle_fixture_check` | 정상 입력 위반 없음, 루트 밖 경로 C0, sentinel 하드링크 C1·C2, symlink 경유 쓰기 C2 | CI 실행 43565082671(main `d954387`)의 check 작업 [C-ORACLE] |
 
-[^m1]: evidence: [Capability Ledger](../../docs/STATUS.md) 1–6행, 마일스톤 M1.
-[^m1-run]: evidence: `~/inodefence-evidence/w4-script-verification-20261106/`의 `demo-run1`, `demo-run2`, `stdout/`(MANIFEST sha256 `88ac345e…`). [LOG](../../docs/LOG.md) 같은 날짜 W4 항목.
-[^m2]: evidence: `experiments/repro/evidence/summary.json`, [cross-release-identity-repro-v1](../../experiments/summaries/cross-release-identity-repro-v1.md), Ledger 마일스톤 M2. 2026-11-06 재실행은 `~/inodefence-evidence/w4-script-verification-20261106/repro/`, [LOG](../../docs/LOG.md) 같은 날짜 W4 항목.
-[^m2-oracle]: evidence: `tests/test_cross_release_oracle_agreement.py`, `tests/container_integration/check_cross_release_oracle_agreement.py`, Ledger M2.2.
-[^m3]: evidence: [Capability Ledger](../../docs/STATUS.md) "퍼저가 자력으로 경계위반을 발견" 행과 마일스톤 M3, PR #151, [§5.3.2 정정](../sections/06-results.md), [node-self-discovery-mechanism-v1](../../experiments/summaries/node-self-discovery-mechanism-v1.md). raw는 Mac 호스트 보관, 체크섬 `experiments/summaries/raw-manifest-mac-20261103.sha256`, 2026-11-03 감사 재집계. 이 표는 요약에서 생성.
-[^m3-rate]: evidence: [m3-powered-matched-verdict-v2](../../experiments/summaries/m3-powered-matched-verdict-v2.md), PR #200.
-[^m4]: evidence: [Capability Ledger](../../docs/STATUS.md) cross-implementation 행과 마일스톤 M4, `tests/test_python_tarfile_generality.py`, PR #176, PR #177.
-[^m4-neg]: evidence: [m4-5 통합 verdict](../../experiments/summaries/m4-5-decompress-selfdiscover-unified-v1.md), [m4-7 oras-go](../../experiments/summaries/m4-7-oras-go-selfdiscover-v1.md), PR #197, PR #198.
-[^rq]: evidence: [research-questions v2](../../docs/research/design/research-questions.md), [DECISIONS D040](../../docs/DECISIONS.md).
-[^contracts]: evidence: [security-contracts](../../docs/research/design/security-contracts.md), [threat-model](../../docs/research/design/threat-model.md), [§2](../sections/03-background-threat-model.md).
-[^exp0-prereg]: evidence: [exp0-pilot-v2.1](../../experiments/preregistration/exp0-pilot-v2.1.md) '사전 노출 공개'·'zero-hit 방침' 절, 동결 커밋 23e5c66 (PR #258).
-[^exp0-run]: evidence: `~/inodefence-evidence/exp0-20261105/summaries/index.json`(abort_count 0, invalid_count 0, cells 15), `registration.json`(last_status), 매니페스트 PR #262.
-[^exp0-analysis]: evidence: `experiments/summaries/exp0-20261105-report.md`와 `.json`(PR #268)의 §2 측정 상태, §3 편차 2·3·9. 분석 코드는 main `f3e6035`의 `scripts/analyze_exp0.py`.
-[^exp0-clock]: evidence: `experiments/summaries/exp0-20261105-report.md` 편차 1(합산 1.0914, 셀별 1.0855~1.0964; 표기 1.091). 다른 실행에서는 이 배율이 1.00~1.10으로 변했다([파일럿 결과 메모](../../experiments/summaries/exp3-hazard-pilot-v1-result.md) §5). p95 환산값 1.419 s는 셀 안에서 배율이 일정하다고 가정한다. 셀 안 변동은 측정하지 않았고, EXP-0 셀은 짧고 셀별 범위가 좁아 영향은 작을 것으로 본다(추론). 호스트 전체 처리량은 셀 구간 4763, 해시 고정 타임스탬프 4758 exec/h. 실시간 기준, 장기 편차 검증 중.
-[^exp0-manifest]: evidence: `experiments/summaries/raw-manifest-win-20261105-20261105.sha256`(PR #262, sha256 `a9dc149c…`), `scripts/make_raw_manifest.py --verify` 2026-11-06 재실행.
-[^exp3-draft]: evidence: #332 `bf0dc2e`의 `experiments/preregistration/exp3-v1.md`·`exp2-v1.md`(동결 전 초안, main 미수록), PR #248과 #257의 confirmatory 출력.
-[^exp3-sizing]: evidence: [§4.6.3](../sections/05-method.md) "계획 단계 검정력 한계"(PR #216), PR #263 '규모 산정 입력' 절(미머지).
-[^pilot-design]: evidence: [exp3-hazard-pilot-v1](../../experiments/preregistration/exp3-hazard-pilot-v1.md)(PR #267, 설계 sha256 `06b3408c…`) §1 구속 조건, §6 판정 규칙.
-[^pilot-report]: evidence: [파일럿 결과 메모](../../experiments/summaries/exp3-hazard-pilot-v1-result.md) §1·§2. raw 체크섬은 [raw-manifest-exp3-hazard-pilot-v1](../../experiments/summaries/raw-manifest-exp3-hazard-pilot-v1.sha256)(123개). 분석 산출물은 매니페스트 밖의 `~/inodefence-evidence/exp3-hazard-pilot-20261106/analysis/pilot-report.json`(sha256 `2a94bf3c…`)이다.
-[^pilot-rule-c]: evidence: [파일럿 결과 메모](../../experiments/summaries/exp3-hazard-pilot-v1-result.md) §3(기계 출력 114, 용량 151, 양쪽 가정 민감도, 등록 통계량 재계산). 재계산 스크립트 `exp3_power_registered.py`(sha256 `5f02b06b…`)는 후속 PR로 수록 예정이다.
-[^pilot-aborts]: evidence: [파일럿 결과 메모](../../experiments/summaries/exp3-hazard-pilot-v1-result.md) §4(§4.2 abort율, §4.5 첫 실패 경로).
-[^pilot-clock]: evidence: [파일럿 결과 메모](../../experiments/summaries/exp3-hazard-pilot-v1-result.md) §5·§6.
-[^pilot-preflight]: evidence: [파일럿 결과 메모](../../experiments/summaries/exp3-hazard-pilot-v1-result.md) §8.
-[^related]: evidence: [related-work-positioning](../../docs/research/design/related-work-positioning.md), [§3](../sections/04-related-work.md).
-[^ai]: evidence: `git rev-list --count f32947d` = 507, `git log f32947d --grep='Co-Authored-By: Claude' --oneline | wc -l` = 158 (2026-11-12 재실행). [§4.7](../sections/05-method.md)(PR #216).
+릴리스 간 통제 재현, 회귀 검사, 원자료 무결성 명령의 현재 main 재검증 기록은 아직 없다.

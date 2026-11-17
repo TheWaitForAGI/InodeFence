@@ -27,16 +27,12 @@
 ## 현재 상태
 
 조립본 드래프트 v1이 있다. 읽는 순서·상태 범례는 [sections/00-outline.md](sections/00-outline.md)를
-본다. 드래프트는 방어 가능한 좁은 주장(M1 동작·M2 통제 재현·M3 메커니즘 인과·M4 oracle/adapter
-일반성)만 적고, **effectiveness/성능 우위(rate)는 주장하지 않는다**(powered 판정 결과 rate CI
-미분리·자력발견 음성으로 효과 우위 미입증). 능력
+본다. 드래프트는 방어 가능한 좁은 주장(M1 동작·M2 통제 재현·M4 oracle/adapter 일반성)만 적고,
+**effectiveness/성능 우위는 주장하지 않는다**(본실험 결과는 봉인 해제 뒤 기입). 능력
 판정의 단일 기준은 [Capability Ledger](../docs/STATUS.md)이고, 주장↔증거 매핑은
 [sections/claims-evidence-status-v1.md](sections/claims-evidence-status-v1.md)다.
-(2026-11-03 정정: 위 "M3 메커니즘 인과"는 "이름 획득 조건의 관찰"로 읽는다 — 관찰된 것은 외부 객체
-이름을 어휘에 넣은 조건의 자율 C1과 그 조건 밖의 미관찰이고(구조적 불가로 단정하지 않는다) retention·스케줄링 피드백 기여는 R/D/S-u로 미분리.
-상세 sections/06-results.md §5.3.2 정정.)
 
 ## 파일 배치 규칙
 
-본문은 sections/, 그림은 figures/, 표는 tables/에 둔다. 교내 제출 결과물 초안(결과보고서·시연 대본)은 deliverables/에 둔다.
+본문은 sections/, 그림은 figures/, 표는 tables/에 둔다. 교내 제출 결과물(결과보고서 원고·HWP 파이프라인·영상 빌드)은 deliverables/에 둔다.
 각 주장·수치는 출처와 실험 설정에 추적 가능해야 한다.

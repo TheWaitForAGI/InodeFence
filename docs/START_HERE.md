@@ -60,13 +60,14 @@ InodeFence는 이런 **object identity와 external effect를 fuzzing feedback으
 - feedback-guided fuzzing
 - outside-root write
 
-현재 검증할 가설은 다음이다.
+현재 검증할 핵심 연구 질문은 다음이다([research-questions v2](research/design/research-questions.md)).
 
-> 고정된 공격 recipe 없이 generic TAR mutation을 수행하면서 filesystem security state를 feedback으로 쓰면 보안 경계 위반을 더 잘 탐색할 수 있는가?
+> 피해 경로 이름을 아는 **동일 어휘·동일 예산** 아래서, filesystem security state(C1 identity·C2 effect)를
+> retention·스케줄링 피드백으로 쓰는 탐색이 **무작위 탐색**과 **구조 커버리지 탐색**보다 첫 경계위반까지의
+> 실행 수를 줄이고 고유 위반 입력을 더 많이 찾는가?
 
-여기에 더해 "extraction이 다 끝난 뒤의 상태"뿐 아니라 **"entry 하나하나가 처리되는 동안의
-중간 상태"**를 feedback으로 쓰면 같은 budget에서 더 나은 다음 입력을 고를 수 있는지도 묻는다.
-이것도 **가설**이며 아직 **결과**가 아니다. 중간 상태를 어떻게 관찰하기로 했는지(v1 방식은
+위협 모델 전제: 공격자는 피해 경로 이름을 알며 세 arm 어휘에 동일하게 포함한다. blind 발견을 주장하지 않는다.
+entry별 중간 상태를 어떻게 관찰하기로 했는지(v1 방식은
 qualification에서 실패했고, 지금은 v2 "effect event" 방식을 쓴다)와 그 한계는
 [STATUS](STATUS.md)의 상세 기록과
 [entry-effect-observation-v2](research/design/entry-effect-observation-v2.md)를 따른다.
@@ -77,8 +78,8 @@ qualification에서 실패했고, 지금은 v2 "effect event" 방식을 쓴다)�
 C0/C1/C2 판정 → feedback → 다음 mutation 선택" 루프가 `make demo` 한 명령으로 돌아간다.**
 같은 조건(seed 123, budget 20)으로 다시 돌리면 같은 루프가 나온다(호스트에서 4회 확인).
 
-11/2 중간발표 목표(P0-1~P0-5)별 상태는 [STATUS 맨 위 표](STATUS.md)가 기준이다. 목표 정의는
-[MIDTERM_GOALS](MIDTERM_GOALS.md), 할 일 순서는 [BACKLOG](BACKLOG.md), 실행 기록은 [LOG](LOG.md)다.
+현재 능력은 [STATUS](STATUS.md)의 Capability Ledger가 기준이다. 11/2 중간발표 목표는 배경 문서
+[MIDTERM_GOALS](MIDTERM_GOALS.md)에 있고, 할 일 순서는 [BACKLOG](BACKLOG.md), 실행 기록은 [LOG](LOG.md)다.
 
 지금 돌아가는 것:
 
@@ -93,9 +94,9 @@ C0/C1/C2 판정 → feedback → 다음 mutation 선택" 루프가 `make demo` �
 아직 안 된 것, 그리고 주장하지 않는 것:
 
 - 취약점을 찾았다거나 재발견했다는 주장은 없다. `make demo`의 정상 입력 20개에서 C0/C1/C2 위반은 0건이다.
-- N01(과거 취약 버전 node-tar 7.5.2/7.5.3 재발견)은 자동 replay까지 끝났고 사람 검토를 기다린다.
-  재발견 실행은 사람 승인 뒤(10/27~)에만 한다.
-- A/B/C/D(random / structure / state-aware / coverage) 비교는 실행됐다(Ledger M3.2 item-3 단일경로 A/B/C/D, M3.3 powered matched #196). 결과는 effectiveness 우위 없음 — rate CI 미분리(검정력 부족)이고, M3는 "이름 획득 조건의 관찰(피드백 인과 미입증)"이다(claims 원장·Ledger M3). *(2026-11-03 정정: 이전 "A/B/C 비교 실험은 하지 않았다" 폐기.)*
+- N01(과거 취약 버전 node-tar 7.5.2/7.5.3 재발견)은 자동 replay까지 끝났다. N01 사람 대응 검토는 더 이상 다음
+  gate가 아니고([STATUS](STATUS.md) 수술 기준), 재발견(v1 RQ1)은 성공 조건이 아니라 EXP-5 산출물로 옮겼다([research-questions v2](research/design/research-questions.md)).
+- 초기 비교는 arm 간 어휘가 달라 폐기했고, 어휘를 맞춘 R/D/S-u 설계로 다시 실험했다.
 - node-tar가 거부한 입력(`..` 경로, 절대 경로)에서는 중간 상태 event가 0개로 남는다.
   이 한계를 어떻게 표현할지 아직 정하지 않았다.
 
@@ -191,7 +192,7 @@ paper/                      논문에 실제로 사용할 자료
 복잡한 프롬프트가 필요하지 않다. 최소한 다음 정보를 준다.
 
 ```text
-해당 P0 (또는 Layer):
+해당 마일스톤(M1~M4) 또는 수술 단계:
 작업 목표:
 수정 가능한 모듈:
 건드리면 안 되는 모듈:
@@ -202,7 +203,7 @@ paper/                      논문에 실제로 사용할 자료
 예:
 
 ```text
-해당 P0: P0-4
+해당 마일스톤: M1
 작업 목표: demo report의 selection에 parent 선택 근거 한 줄 추가
 수정 가능한 모듈: scripts/run_effect_demo.py, src/inodefence/effect_demo.py
 건드리면 안 되는 모듈: oracle, effect_scheduler (판정·선택 의미 변경 금지)

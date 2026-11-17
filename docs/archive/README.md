@@ -11,6 +11,8 @@
 - `8ad07b8…` 등 고정 SHA는 그 동결이 본 리비전일 뿐 최신 main이 아니다.
 - 새 감사/계획 문서를 만들어 늘리지 않는다(AGENTS 금지). 새 사실은 Ledger 갱신 또는 LOG 한 줄로.
 
+2026-11-03 이전 설계의 결과 기록(STATUS 행·서술, BACKLOG 옛 마일스톤 행)은 [pre-20261103-results](pre-20261103-results.md)로 옮겼다(2026-11-14); 동결 파일의 줄 번호 포인터(`experiments/preregistration/exposure-ledger.md:57` → `docs/STATUS.md:198`, `exp0-pilot-v2.1.md:89` → `research-questions.md` L50)는 `12fa02f` 트리 기준이다.
+
 ## 동결로 간주하는 기록
 
 아직 파일은 원래 위치에 있다(가드 R1이 `audit`/`qualification` 경로의 이동을 사람 작업으로 두기 때문).

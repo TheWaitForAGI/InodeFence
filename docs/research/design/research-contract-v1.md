@@ -1,5 +1,7 @@
 # Research Contract v1 — G0 documentation freeze
 
+v2(D038)로 대체된 역사 기록이다. 현재 비교 설계는 R/D/S-u다.
+
 Freeze date: **2026-10-06**. Capability baseline: main
 **`8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`**. This is the source revision
 reviewed for this contract, not the eventual documentation PR commit or a moving

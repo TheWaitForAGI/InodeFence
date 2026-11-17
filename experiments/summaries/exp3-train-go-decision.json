@@ -1,0 +1,51 @@
+{
+  "decided_at": "2026-11-13T23:37:16+09:00",
+  "excluded_hosts": [],
+  "exclusions": {},
+  "frozen_participants": [
+    "HOST1",
+    "HOST2"
+  ],
+  "partial_completion": {
+    "HOST1": {
+      "node-tar-7.5.2": {
+        "finished_seeds": [
+          9006,
+          9008,
+          9010,
+          9012,
+          9014,
+          9016,
+          9018,
+          9020,
+          9022,
+          9024
+        ],
+        "unfinished_seeds": []
+      }
+    },
+    "HOST2": {
+      "node-tar-7.5.2": {
+        "finished_seeds": [
+          9007,
+          9009,
+          9011,
+          9013,
+          9015,
+          9017,
+          9019,
+          9021,
+          9023,
+          9025
+        ],
+        "unfinished_seeds": []
+      }
+    }
+  },
+  "rates_exec_per_hour": {
+    "HOST1": "4522.921560",
+    "HOST2": "7520.429139"
+  },
+  "seed_assignment_sha256": "6095e526c5c129d84dab0d7ffcf6cf17290357834a7369fb79d59d70dc3415fe",
+  "train_assignment_sha256": "06f4c7e0398cd788fa8dfb2f9db0087be273d16f2d668d5e784823a86eb27ad5"
+}

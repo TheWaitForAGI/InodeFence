@@ -798,7 +798,7 @@ def test_doctor_memory_unknown_never_changes_the_exit_code(
     monkeypatch.setattr(cli, "_runtime_check", lambda: "OK")
     assert cli.main(["doctor"]) == 0
     out = capsys.readouterr().out
-    assert "[UNKNOWN] memory headroom for Docker: not checked: inside WSL the Windows commit" in out
+    assert "[UNKNOWN] memory headroom for Docker: not checked: under Windows + WSL2 the" in out
     assert "no check failed; 1 UNKNOWN (not verified, see above)" in out
 
 

@@ -212,8 +212,12 @@ def vocabulary_equality(
     under different ``MutationPolicy`` ids. When cells carry ``mutation_policies``
     (the ids their own records show, see ``recorded_mutation_policies``), every
     cell of a (target, seed) group must record exactly one id and all must be the
-    same; ``mutation_policy_equal`` reports it. Cells that record no id are skipped;
-    a group where no cell records one (a legacy direct call) reports ``None``.
+    same. ``mutation_policy_check`` reports one of three values (``MUTATION_POLICY_*``):
+    ``equal``, ``different`` (fails ``equal``), or ``unverifiable`` when fewer than two
+    cells of the group record an id. ``unverifiable`` does not fail ``equal`` (so a
+    legacy direct call and a cell that stopped before its first mutation keep their
+    verdict) but is never a pass of the check: ``mutation_policy_check_summary``
+    counts and lists those groups for review.
     """
     per_seed: dict[str, dict[str, Any]] = {}
     by_target: dict[str, dict[int, dict[str, frozenset[str]]]] = {}
@@ -241,9 +245,9 @@ def vocabulary_equality(
         for seed, pools in sorted(by_seed.items()):
             arms = sorted(pools)
             distinct = set(pools.values())
-            policy_equal = _mutation_policy_equal(policies_by_group[(target, seed)])
+            policy_check = _mutation_policy_check(policies_by_group[(target, seed)])
             equal = (
-                policy_equal is not False
+                policy_check != MUTATION_POLICY_DIFFERENT
                 and expected is not None
                 and set(arms) == set(expected)
                 and len(arms) >= 2
@@ -256,31 +260,64 @@ def vocabulary_equality(
                 "equal": equal,
                 "arms": arms,
                 "pool_sizes": {arm: len(pools[arm]) for arm in arms},
-                "mutation_policy_equal": policy_equal,
+                "mutation_policy_check": policy_check,
             }
     return {
         "equal": bool(per_seed) and all(item["equal"] for item in per_seed.values()),
         "per_seed": per_seed,
         "basis": "vocabulary_pool_final reconstructed from each cell's recorded step "
         "name_segments (fixed at step 0 BEFORE for observed-names); empty pools fail; "
-        "recorded mutation_policy ids, where a cell records any, must be one and the "
-        "same per group",
+        "recorded mutation_policy ids must not differ within a group; fewer than two "
+        "recording cells is unverifiable, not equal",
     }
 
 
-def _mutation_policy_equal(recorded: Sequence[tuple[str, ...] | None]) -> bool | None:
-    """None when no cell recorded any id; else each recording cell one id, all the same.
+MUTATION_POLICY_EQUAL = "equal"
+MUTATION_POLICY_DIFFERENT = "different"
+MUTATION_POLICY_UNVERIFIABLE = "unverifiable"
+
+
+def _mutation_policy_check(recorded: Sequence[tuple[str, ...] | None]) -> str:
+    """Three-valued check of one (target, seed) group's recorded policy ids.
 
     A cell with no recorded id (key absent, or a cell that stopped before its first
-    mutation step and has no report config) used no operator table, so it has
-    nothing to compare; it is skipped, not counted as a mismatch.
+    mutation step and has no report config) gives no evidence. A cell recording more
+    than one id is a mismatch on its own. Otherwise fewer than two recording cells
+    cannot show equality, so the group is unverifiable, not equal.
     """
     evidence = [item for item in recorded if item]
-    if not evidence:
-        return None
     if any(len(item) != 1 for item in evidence):
-        return False
-    return len(set(evidence)) == 1
+        return MUTATION_POLICY_DIFFERENT
+    if len(evidence) < 2:
+        return MUTATION_POLICY_UNVERIFIABLE
+    return MUTATION_POLICY_EQUAL if len(set(evidence)) == 1 else MUTATION_POLICY_DIFFERENT
+
+
+def mutation_policy_check_summary(equality: Mapping[str, Any]) -> dict[str, Any]:
+    """Counts of the three values over ``vocabulary_equality`` groups, for review.
+
+    ``review_required`` is true when any group is unverifiable: a gate must not
+    read "no recorded ids" as "same ids".
+    """
+    per_seed: Mapping[str, Mapping[str, Any]] = equality["per_seed"]
+    counts = {
+        value: sum(1 for item in per_seed.values() if item["mutation_policy_check"] == value)
+        for value in (
+            MUTATION_POLICY_EQUAL,
+            MUTATION_POLICY_DIFFERENT,
+            MUTATION_POLICY_UNVERIFIABLE,
+        )
+    }
+    unverifiable = sorted(
+        key
+        for key, item in per_seed.items()
+        if item["mutation_policy_check"] == MUTATION_POLICY_UNVERIFIABLE
+    )
+    return {
+        "counts": counts,
+        "unverifiable_groups": unverifiable,
+        "review_required": bool(unverifiable),
+    }
 
 
 def recorded_mutation_policies(
@@ -515,6 +552,7 @@ def summarize_output(
         "outcomes_redacted": redact_outcomes,
         "vocabulary_equal_across_arms": equality["equal"],
         "vocabulary_equality": equality,
+        "mutation_policy_check_summary": mutation_policy_check_summary(equality),
         "g1_verdict": verdict,
     }
     (summaries_dir / "index.json").write_text(

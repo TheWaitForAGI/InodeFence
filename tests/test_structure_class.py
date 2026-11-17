@@ -259,6 +259,28 @@ def test_class_id_is_independent_of_hash_seed() -> None:
     assert len(outputs) == 1
 
 
+ABSOLUTE_FORMS = {
+    "hardlink target": (
+        case((REG, "a", None), (HARD, "h", "/x")),
+        case((REG, "a", None), (HARD, "h", "/../x")),
+    ),
+    "symlink target": (case((SYM, "l", "/x")), case((SYM, "l", "/../x"))),
+    "entry path": (case((REG, "/x", None)), case((REG, "/../x", None))),
+}
+
+
+@pytest.mark.parametrize("form", sorted(ABSOLUTE_FORMS))
+def test_absolute_forms_are_escape_relevant_with_reach_zero(form: str) -> None:
+    # W4 2026-11-18: an absolute path or target is escape-relevant by its absolute form alone
+    # (section 3 rules 1-2, "abs(...) or reach > 0"), and an absolute string counts reach 0
+    # (section 4, "absolute면 0"), also when it starts with "/..". See the freeze-1 erratum.
+    plain, dotted = ABSOLUTE_FORMS[form]
+    value = label(plain)
+    assert value != NONE
+    assert value["a2"]["reach"] == "0"
+    assert label(dotted) == value
+
+
 def _imports(path: Path) -> set[str]:
     tree = ast.parse(path.read_text(encoding="utf-8"))
     names: set[str] = set()

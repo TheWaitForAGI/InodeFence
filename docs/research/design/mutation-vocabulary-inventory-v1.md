@@ -5,6 +5,10 @@
 > [#499](https://github.com/TheWaitForAGI/InodeFence/issues/499)(작업 폴더 기준 하드링크)의 첫 단계다.
 > 계열 목록은 #510에서 v2 holdout을 정하기 전에 동결한다(방법 검토 W4, 2026-11-18). 깊이 정의는 #509(레인 A)에서 받아 채운다.
 
+**문법 버전 id: `b-grammar-draft-0`.** draft-0은 후보 계열 목록이며 엔진 동작을 바꾸지 않는다. 계열이나 연산(원시 연산의 목록,
+매개변수의 범위)이 바뀌면 id를 올린다(`b-grammar-draft-1`, …). 레인 A(#509)의 결함 깊이 d*(이 문법에서 등록 seed corpus로부터
+위반 입력에 닿는 데 필요한 최소 연산 적용 횟수)는 이 id와 아래 1.3의 원시 연산 단위로 센다.
+
 이 문서는 (1) 지금 문법이 실제로 내는 entry 종류와 변이 연산을 코드에서 읽어 정리하고, (2) 지금 못 만들거나 드물게만
 만드는 구조를 계열별로 적는다. 새 변이의 구현은 이 문서의 범위가 아니다.
 
@@ -46,6 +50,43 @@
 (`src/inodefence/feedback/effect_search.py` `RDS_POLICIES`).
 G1 어휘 동등성 검사는 `scripts/run_g1_smoke.py` `vocabulary_equality`가 셀별 최종 토큰 풀을 seed마다 arm 사이에서 비교한다.
 
+### 1.3 원시 연산과 매개변수 (d* 계산 단위)
+
+**원시(primitive) 연산**은 entry 열에 대한 편집 한 번이다: entry 하나 삽입, entry 하나 제거, 두 entry 자리 바꿈, entry 하나의 필드
+하나 교체. **복합(composite) 연산**은 원시 연산 여러 번을 하나로 묶은 것이며, 분해를 함께 적는다. d*는 원시 연산 횟수로 센다.
+지금 코드의 8슬롯은 모두 원시 연산 하나에 해당한다. 슬롯 안에서 무작위로 정하는 값(경로, 대상, 위치, 타입)은 그 연산의 **매개변수**다.
+
+| 지금 슬롯 (코드) | 원시/복합 | 원시 연산 | 매개변수와 그 범위 (지금 코드) |
+| --- | --- | --- | --- |
+| add_entry (`m1.add_entry`) | 원시 | INSERT(entry) | 위치 0..n, 타입 {regular, directory}, 경로 = `_raw_path`, content 0~16바이트 무작위, mode 0o644 고정 |
+| remove_entry | 원시 | DELETE(i) | 위치 i |
+| duplicate_entry | 원시 | INSERT(기존 entry의 사본) | 고를 entry, 위치 |
+| reorder_entries | 원시 | SWAP(i, j) | 서로 다른 값의 두 위치. (SWAP을 MOVE 둘로 볼 수도 있으나 이 문법에서는 원시 1회로 센다) |
+| mutate_path (`m1.mutate_path`) | 원시 | SET(i.path) | 새 경로 = `_raw_path` |
+| add_hardlink (`m1.add_hardlink`, M1 표) | 원시 | INSERT(hardlink) | 대상 = 기존 entry 경로 중 하나, 경로 = `_raw_path`, 위치 |
+| add_escaping_hardlink (`m1.add_escaping_hardlink`, 등록 arm 표의 슬롯 5) | **원시** | INSERT(hardlink) | 대상 = `"../" × depth + 토큰 1~3개`, **depth 범위 1..3**(0 없음), 경로·위치. add_hardlink와 같은 원시 연산이고 대상 생성 규칙(매개변수 분포)만 다르다 |
+| add_symlink (`m1.add_symlink`) | 원시 | INSERT(symlink) | 대상·경로 = `_raw_path`, mode 0o777, 위치 |
+| mutate_link_target (`m1.mutate_link_target`) | 원시 | SET(i.link_target) | 절반은 기존 대상에 affix, 절반은 `_raw_path`로 교체 |
+| LEGACY 슬롯들 (`operators.py`) | 원시 | 위와 같은 종류(삽입은 끝에만) | 경로·affix 목록이 더 좁다 |
+
+**이름 어휘와 링크 대상 기준은 연산이 아니라 매개변수다(지금 코드 기준).**
+- 토큰 풀(`m1.COMPONENTS`, protected 풀의 `outside`·`sentinel.txt`, 등록 arm의 step 0 관찰 이름)은 연산 함수의 `components=` 인자다.
+  `_raw_path`와 escape 대상 생성의 **매개변수 공간**을 정할 뿐이고 새 연산을 만들지 않는다.
+  같은 연산이라도 풀에 어떤 이름이 있느냐에 따라 한 번에 닿는 입력이 달라지므로 d*는 풀에 의존한다.
+  등록 arm의 풀은 step 0의 추출 전 스냅숏에서 정해지므로, d*는 "그 풀을 고정한 문법" 기준으로 센다.
+  피해 경로 이름은 연산이나 고정 토큰이 아니고, 관찰 이름으로 풀에 들어갈 때만 매개변수 값이 된다.
+- 링크 대상 기준(추출 루트 / 작업 폴더 / entry 위치)은 코드에 **명시적인 개념으로 없다.**
+  대상은 원문 문자열이고, 어느 기준으로 풀릴지는 추출기가 정한다.
+  문법 쪽에서 기준을 정하는 것은 사실상 대상 문자열의 앞 `..` 개수(escape 슬롯의 `depth`)와 접두(`/`, `""`)다.
+- #499는 이 **매개변수 범위의 문제**다. escape 슬롯의 depth가 1..3이라 "작업 폴더 기준으로 형제를 가리키는 대상"(depth 0, 접두 `""`)이
+  이 원시 연산의 매개변수 공간에 없다. 그 대상은 SET(link_target) 원시 연산(mutate_link_target의 `_raw_path` 교체)으로만 만들 수 있다.
+  즉 지금 문법에서 그런 하드링크는 INSERT(hardlink) + SET(link_target)의 원시 2회가 필요하다.
+  depth 0을 허용하면 원시 1회가 되어 d*가 바뀐다.
+- **예외(d* 규약, W3와 맞춤):** 어떤 기준이나 이름을 쓰려면 그것을 만드는 **별도 entry**(디렉터리나 symlink 등)가 아카이브 안에
+  있어야 하는 경우, 그 entry를 넣는 것은 매개변수 선택이 아니라 **독립된 원시 연산 적용(INSERT)**이다.
+  예: entry 위치 기준으로 바깥을 가리키려고 디렉터리 symlink를 먼저 두는 경우 → INSERT(symlink) 1회 + 그 뒤 연산.
+- 이 절은 표시만 더한 것이라 문법 id는 `b-grammar-draft-0` 그대로다.
+
 ## 2. 지금 못 만들거나 드물게만 만드는 구조
 
 "만듦" 칸은 코드로 본 가능성이다. 실행 빈도는 측정하지 않았다(가능 = 확률이 0이 아님, 드묾 = 여러 조건이 같은 변이 열에서 맞아야 함).
@@ -72,6 +113,22 @@ G1 어휘 동등성 검사는 `scripts/run_g1_smoke.py` `vocabulary_equality`가
 | | mode의 setuid·setgid·sticky와 경계 값 | 모델은 허용(0..0o7777)하지만 **변이가 mode를 바꾸지 않는다**(add_entry 0o644 기본, symlink 0o777) |
 | | 하드링크·symlink entry에 size·content가 붙은 경우, size와 실제 길이 불일치 | **못 만듦**: 모델이 링크의 content를 금지하고 빌더가 size를 content 길이로 둔다 |
 | | 다른 type flag(장치, FIFO, 연속 파일, GNU sparse), uid·gid·mtime 변형 | **못 만듦**: `EntryType` 네 가지, 메타데이터 0 고정 |
+
+### 2.1 후보 계열의 원시/복합 표시 (draft-0)
+
+새 계열을 연산으로 넣을 때 원시 하나로 넣을지, 기존 원시 연산의 묶음(복합)으로 넣을지가 d*를 바꾼다.
+draft-0의 후보는 아래와 같다. 복합으로 넣는 경우 d*는 분해한 원시 횟수로 센다.
+
+| 후보 | 원시/복합 | 분해 또는 매개변수 |
+| --- | --- | --- |
+| L1 하드링크 대상 기준 확장 | 원시(매개변수 확장) | INSERT(hardlink)의 대상 생성에서 depth 범위를 0..3으로 넓히고 접두 `""`를 허용한다. 새 연산 없음 |
+| L2 symlink 사슬 k단 | 복합 | INSERT(symlink) × k (각 대상 = 직전 symlink 경로) |
+| L2 같은 경로 타입 교체 (directory → symlink) | 복합 | INSERT(directory, p) + INSERT(symlink, p). 원시로 넣으려면 "기존 entry의 타입·대상 교체" SET(i.type, i.link_target)을 새 원시 연산으로 정의해야 한다(draft-0에서는 미정) |
+| O1 선행 객체를 통과하는 후행 경로 | 원시(매개변수 확장) 또는 복합 | 원시로 넣으면 INSERT(entry)의 경로 생성에 "기존 이름 + 하위 조각" 분기를 더한다(매개변수 확장). 지금 문법에서는 INSERT(symlink, d) + INSERT(entry, d/x) 복합이며, 두 번째 경로가 우연에 맡겨진다 |
+| O1 부모보다 먼저 오는 자식 | 원시 | SWAP 또는 위치 매개변수(지금도 있음) |
+| P1 긴 경로·정규화·대소문자 | 원시(매개변수 확장) | SET(path)·INSERT의 경로 생성 매개변수 공간 확장 + 빌더 형식 변경 |
+| H1 mode 경계 | 원시(새 연산) | SET(i.mode) — 지금 없는 원시 연산 |
+| H1 PAX·GNU long 헤더 | 원시(새 연산) 또는 빌더 형식 | SET(i.header_form) 또는 빌더 형식 id 변경. 논리 모델에 헤더 형식 필드가 없어 draft-0에서는 미정 |
 
 ## 3. 계열별 판단 칸
 

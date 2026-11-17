@@ -20,6 +20,7 @@ from inodefence.mutation_scheduler import (
 )
 from inodefence.mutator import (
     OPERATOR_ORDER_V1,
+    OPERATOR_ORDER_V2,
     OPERATOR_TABLES,
     MutationOperatorId,
     MutationPolicy,
@@ -46,10 +47,13 @@ SCHEDULERS = (
 
 def test_v1_table_is_the_eight_existing_slots_in_order() -> None:
     assert [operator.value for operator in OPERATOR_ORDER_V1] == V1_VALUES
-    assert OPERATOR_TABLES == (OPERATOR_ORDER_V1,)
+    # V2 (`b-grammar-v2-freeze-3`, #512 U3) is appended; V1 stays first and unchanged.
+    assert OPERATOR_TABLES == (OPERATOR_ORDER_V1, OPERATOR_ORDER_V2)
 
 
-@pytest.mark.parametrize("policy", list(MutationPolicy))
+@pytest.mark.parametrize(
+    "policy", [p for p in MutationPolicy if p != MutationPolicy.V2_FREEZE3_FIXED_BASELINE]
+)
 def test_every_existing_policy_draws_from_v1(policy: MutationPolicy) -> None:
     assert operator_ids(policy) == OPERATOR_ORDER_V1
 

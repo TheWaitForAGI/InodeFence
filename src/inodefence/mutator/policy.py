@@ -54,6 +54,18 @@ class MutationPolicy(StrEnum):
     M1_STATE_AWARE_ESCAPE_HARDLINK_FIXED_BASELINE = (
         "uniform-generic-m1-state-aware-escape-hardlink-fixed-baseline-v1"
     )
+    # Additive, v2 (#512, D061): grammar `b-grammar-v2-freeze-3` (mutator/v2_freeze3.py),
+    # ten uniform slots, observed-name pool fixed at the seed baseline run as in
+    # M1_STATE_AWARE_ESCAPE_HARDLINK_FIXED_BASELINE, provisional uniform parameters.
+    # Not a default anywhere and not in any product allow-list.
+    V2_FREEZE3_FIXED_BASELINE = "uniform-b-grammar-v2-freeze-3-fixed-baseline-provisional-v1"
+
+
+# Policies whose campaign records an unrepresentable child as a build-invalid step
+# (D060) unless the campaign config says otherwise. Every other policy aborts, as before.
+RECORDS_BUILD_INVALID: frozenset[MutationPolicy] = frozenset(
+    {MutationPolicy.V2_FREEZE3_FIXED_BASELINE}
+)
 
 
 def mutate_with_policy(

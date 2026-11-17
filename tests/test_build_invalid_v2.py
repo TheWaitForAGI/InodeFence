@@ -126,7 +126,7 @@ def test_default_policy_is_abort_and_never_calls_builder(monkeypatch: pytest.Mon
 
     monkeypatch.setattr(effect_campaign, "build_tar", forbidden)
     config = _cell("D").campaign_config()
-    assert config.build_invalid == BuildInvalidPolicy.ABORT
+    assert config.build_invalid is None and config.build_invalid_policy == BuildInvalidPolicy.ABORT
     result = run_effect_campaign(minimal_seed_corpus(), synthetic_effect_result, config)
     assert result.build_invalid_steps == ()
     assert len(result.steps) == BUDGET

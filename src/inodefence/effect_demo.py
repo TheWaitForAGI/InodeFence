@@ -498,7 +498,7 @@ def effect_campaign_report(result: EffectCampaignResult, producer: str) -> dict[
             "search_policy": config.search_policy.value,
             "mutation_policy": config.mutation_policy.value,
             # Additive (schema 5).
-            "build_invalid": config.build_invalid.value,
+            "build_invalid": config.build_invalid_policy.value,
             "builder_format": BUILDER_FORMAT,
         },
         "initial_case_ids": list(result.initial_case_ids),

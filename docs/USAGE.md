@@ -169,9 +169,10 @@ wheel로 설치했다면 `INODEFENCE_HOME`(환경 변수 또는 아래 설정 �
     oras-go 2.6.1 탐색(seed 123, 실행 200)은 위반이 0건이라 재실행할 케이스가 없었고(고정 입력 회귀는 1/6 위반 판정),
     node-tar 7.5.2 탐색(seed 123, 실행 40과 200)도 위반이 0건이었습니다(등록 실험의 캠페인 예산 2000보다 작은 예산입니다).
     python-tarfile은 취약 설정(`fully_trusted`) 탐색을 받지 않아 케이스를 얻을 수 없습니다.
-    이 재실행에서 본 표시 문제 두 가지: decompress 재실행 로그에 `node-tar replay`라는 문구가 나오고, node-tar가 아닌
-    대상은 탐색 결과에 fingerprint가 없어 `fingerprints 0/3`으로 표시됩니다(계약 일치는 3/3). 위반이
-    재현되는 경로는 통제·합성 단위 테스트(테스트용 backend가 하드링크 탈출을 흉내 냄)로만 확인했습니다.
+    이 재실행에서 본 표시 문제 두 가지: decompress 재실행 로그에 `node-tar replay`라는 문구가 나오고, 결과 폴더(`--case`)에서
+    재실행하면 원래 기록에 fingerprint가 없어 `fingerprints 0/3`으로 표시됩니다(계약 일치는 3/3). 실제 추출기에서 재현을
+    확인한 위반은 이 decompress의 C0(경로 경계) 한 건입니다. 하드링크 탈출(C1·C2) 위반이 재현되는 경로는 통제·합성 단위
+    테스트(테스트용 backend가 하드링크 탈출을 흉내 냄)로만 확인했습니다.
   - **node-tar 더 긴 탐색:** 7.5.23, seed 20261117, budget 300을 완주했습니다(커밋 `6a2031f`, 2026-11-17, demo run,
     약 10분, 0.518 runs/s): `success` 200 · `rejected` 99 · `failed` 1, 미판정 1(비율 0.0033), 위반 0, 남긴 corpus 17.
     실행 중 `inodefence status`의 수치와 끝난 뒤 결과가 일치했습니다.

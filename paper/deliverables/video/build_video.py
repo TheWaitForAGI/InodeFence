@@ -77,7 +77,6 @@ ENV_LINES = (
     "Windows + WSL2(x86_64) + Docker Desktop 호스트 한 대와, "
     "맥북 위 가상머신인 Ubuntu 24.04 arm64 VM(Multipass, WSL 아님) + Docker Engine 한 대다.",
     "x86_64 네이티브 Linux와 macOS는 확인하지 않았다.",
-    "0.2.0은 릴리스 후보이며 태그와 릴리스가 없다.",
 )
 #: Heading of the s10 band: the two environments are where the tool was installed and run, not
 #: where every value was measured (the 300-run and verify values are x86_64 only, C-PLIM).
@@ -237,7 +236,7 @@ SLIDES: dict[str, tuple[str, tuple[str, ...]]] = {
             "verify: 네 대상 모두 정상 입력 대조군 ok · 고정 공격 입력 위반 0/5 (oras-go 0/6)",
             "네 대상 모두 위반 0 · 미판정 0. 위반 0은 안전 증명이 아님",
             "실행 중 수치 표시는 node-tar만, 나머지 셋은 실행 중 ? 표시",
-            "이 값은 Windows + WSL2(x86_64) 호스트 한 대 · 0.2.0은 릴리스 후보(태그·릴리스 없음)",
+            "이 값은 Windows + WSL2(x86_64) 호스트 한 대 · 0.2.0은 태그 v0.2.0 전까지 릴리스 후보",
         ),
     ),
     "s07d": (

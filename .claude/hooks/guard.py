@@ -273,7 +273,6 @@ ORCHESTRATOR_READABLE = (
     "docs/BACKLOG.md",
     "docs/WORKLOG.md",
     "docs/STATUS.md",
-    "docs/MIDTERM_GOALS.md",
     ".claude/skills/autoloop/SKILL.md",
 )
 ORCHESTRATOR_TOOLS = (

@@ -417,12 +417,25 @@ def test_the_settings_names_match_between_host_and_controller() -> None:
 # -- the replay launcher creates the same controller the explore launchers create ---------------
 
 
+#: How the launchers that source ``scripts/launcher_bounded.sh`` create the controller:
+#: ``launcher_run_controller <arguments>`` runs ``run -d --name "$CONTROLLER" --label <owner>``
+#: followed by exactly those arguments (``tests/test_target_launchers_bounded.py`` checks the
+#: resulting argv).
+BOUNDED_RUN = "launcher_run_controller "
+
+
 def _controller_run(script: str) -> list[str]:
     """The ``dk run -d`` command that creates the controller, minus the owner label."""
     text = (REPO / "scripts" / script).read_text(encoding="utf-8")
-    start = text.index('dk run -d --name "$CONTROLLER"')
+    if BOUNDED_RUN in text:
+        start = text.index(BOUNDED_RUN) + len(BOUNDED_RUN)
+        head = ["dk", "run", "-d", "--name", '"$CONTROLLER"']
+    else:
+        start = text.index('dk run -d --name "$CONTROLLER"')
+        head = []
     command = text[start : text.index("sleep infinity", start)].replace("\\\n", " ").split()
-    return [word for word in command if not word.startswith(("--label", '"org.inodefence'))]
+    words = head + command
+    return [word for word in words if not word.startswith(("--label", '"org.inodefence'))]
 
 
 @pytest.mark.parametrize("target", sorted(set(launcher.LAUNCHERS) - {"node-tar"}))

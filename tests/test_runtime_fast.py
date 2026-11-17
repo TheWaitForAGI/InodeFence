@@ -166,7 +166,11 @@ def test_launcher_tables_match_the_launcher_scripts() -> None:
         build_only = 'if [ "$BUILD_ONLY" = 1 ]; then' in text
         assert build_only == (name in shared_images.BUILD_ONLY_LAUNCHERS)
         if build_only:  # it leaves before any volume or controller is created
-            assert text.index('if [ "$BUILD_ONLY" = 1 ]; then') < text.index("dk volume create")
+            # (launchers sourcing scripts/launcher_bounded.sh create it with launcher_create_volume)
+            create = (
+                "launcher_create_volume" if "launcher_create_volume" in text else "dk volume create"
+            )
+            assert text.index('if [ "$BUILD_ONLY" = 1 ]; then') < text.index(create)
 
 
 def test_not_verified_without_images_a_stamp_or_an_answer(

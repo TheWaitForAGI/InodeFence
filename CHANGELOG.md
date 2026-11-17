@@ -149,6 +149,13 @@
 ([USAGE 호환 약속](docs/USAGE.md#호환-약속)). `inodefence targets`는 `replay` 열을 보여 주고, `auto-prepare`·`replay` 값을
 대상 어댑터에서 읽는다(이전에는 `auto-prepare`가 항상 yes였다. 지금 등록된 네 대상의 값은 그대로 yes다).
 
+**python-tarfile·decompress·oras-go 런처의 Docker 시간 제한과 정리 실패(D049 조건 3).** 세 대상의 호스트 런처는 탐색
+본체를 뺀 모든 Docker 호출에 시간 제한을 둔다(조회 30초, 설정 exec 60초, pip 300초, 생성 60초, 이미지 build 1800초,
+정리는 node-tar와 같은 값). 컨트롤러와 볼륨에는 실행별 소유 label이 붙고, 정리는 그 label이 있는 것만 지운다. 정리가
+실패하거나 시간을 넘기거나 제거를 확인하지 못하면 `INODEFENCE_CLEANUP_UNKNOWN`/`FAILED cleanup` 줄을 남기고, 성공이던
+런처 종료를 125로 바꾼다. `explore`는 그 경우 ERROR(종료 2)로 끝나고 결과를 발행하지 않는다(이전에는 정리 실패가 무시돼
+PASS/FAIL이 그대로 나왔다). 컨트롤러의 격리 인자는 소유 label 하나 외에 바뀌지 않았다.
+
 종료 코드(`--help`에도 표시):
 
 | 명령 | 0 | 1 | 2 | 3 | 4 |

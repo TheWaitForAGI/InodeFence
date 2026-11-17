@@ -14,6 +14,11 @@ ruling 7, D062 stays a one-time exception). Consequences, accepted by W4:
 
 ``pre-violation-signal-v1-novelty-applied-split-v1``:
 
+W4 (2026-11-18), the asymmetry with the registered S-u: the retention of this exploration
+policy does not look at protected-object information; the registered S-u retention uses effect
+keys that include the protected/external flag. This is a different retention rule, not "S-u
+plus signals"; S-u is computed here for the recorded channel only.
+
 * Retention: the seeds (base corpus) plus every executed case that shows a pre-violation signal
   (:mod:`inodefence.feedback.pre_violation`) not seen before in the campaign. Nothing else: no
   effect key (the effect signature reads the protected list), no violation fingerprint, no

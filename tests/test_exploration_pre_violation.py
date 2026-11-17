@@ -64,7 +64,9 @@ def _absent(path: str) -> EffectPathEvidence:
     return EffectPathEvidence(path, synthetic._observation(None), synthetic._observation(None))
 
 
-def _snapshots(sentinels: tuple[str, ...]) -> tuple[StateSnapshot, StateSnapshot]:
+def _snapshots(
+    sentinels: tuple[str, ...], protected: tuple[str, ...] | None = None
+) -> tuple[StateSnapshot, StateSnapshot]:
     root = "/var/lib/inodefence/effect-feedback"
     # Snapshots keep objects sorted by path; the given order still decides the inode numbers, so
     # a reordered list is a different layout of the same names.
@@ -73,14 +75,17 @@ def _snapshots(sentinels: tuple[str, ...]) -> tuple[StateSnapshot, StateSnapshot
         synthetic._object(name, dev=9, ino=inode[name], content=b"sentinel")
         for name in sorted(sentinels)
     )
-    protected = tuple(sorted(sentinels))
+    protected = tuple(sorted(sentinels if protected is None else protected))
     return (
         StateSnapshot(root, SnapshotPhase.BEFORE, objects, protected),
         StateSnapshot(root, SnapshotPhase.AFTER, objects, protected),
     )
 
 
-def _producer(sentinels: tuple[str, ...] = ("outside/sentinel",)):
+def _producer(
+    sentinels: tuple[str, ...] = ("outside/sentinel",),
+    protected: tuple[str, ...] | None = None,
+):
     """Synthetic results; an escaping hardlink is a refused external LINK, an absolute symlink an
     external SYMLINK; the protected list and sentinel names are ``sentinels``."""
 
@@ -109,7 +114,7 @@ def _producer(sentinels: tuple[str, ...] = ("outside/sentinel",)):
                     object_evidence=(_absent(ESCAPE_PATH),),
                 )
             events.append(event)
-        before, after = _snapshots(sentinels)
+        before, after = _snapshots(sentinels, protected)
         trace = replace(trace, effect_events=tuple(events), before=before, after=after)
         base = RunResult(
             case,
@@ -258,10 +263,13 @@ NON_OBSERVING = MutationPolicy.M1_GENERIC_ESCAPE_HARDLINK
 
 
 def _exploration_trajectory(
-    sentinels: tuple[str, ...], seed: int, mutation_policy: MutationPolicy = NON_OBSERVING
+    sentinels: tuple[str, ...],
+    seed: int,
+    mutation_policy: MutationPolicy = NON_OBSERVING,
+    protected: tuple[str, ...] | None = None,
 ) -> tuple[list[Any], list[ArchiveCase]]:
     config = EffectCampaignConfig(seed, 60, S_U, mutation_policy, exploration_policy=EXPLORE)
-    result = run_effect_campaign(_escape_corpus(), _producer(sentinels), config)
+    result = run_effect_campaign(_escape_corpus(), _producer(sentinels, protected), config)
     report: dict[str, Any] = effect_campaign_report(result, "synthetic")
     trajectory: list[Any] = [result.retained_case_ids]
     for step in report["steps"]:
@@ -311,6 +319,41 @@ def test_b_renaming_or_reordering_protected_list_and_sentinels_changes_no_decisi
         for sentinels in (("outside/sentinel",), *VARIANTS)
     }
     assert len(protected) == 4 and (ESCAPE_PATH,) in protected
+
+
+#: A fixed name pool (the objects the harness lays out, i.e. the v2 vocabulary source) and
+#: permutations of the protected list over it: which names are marked protected, and the order
+#: (inode numbers) the harness created them in. The vocabulary is the same in every variant.
+NAME_POOL = ("outside/another", "outside/sentinel", "outside/third")
+PROTECTED_VARIANTS = (
+    (NAME_POOL, ("outside/sentinel",)),
+    (NAME_POOL, ("outside/another",)),
+    (NAME_POOL, ("outside/another", "outside/third")),
+    (NAME_POOL, NAME_POOL),
+    (tuple(reversed(NAME_POOL)), ("outside/sentinel",)),
+    (tuple(reversed(NAME_POOL)), ("outside/third",)),
+)
+
+
+@pytest.mark.parametrize("seed", [5, 777])
+def test_b_v2_policy_whole_campaign_with_a_fixed_name_pool_and_permuted_protected_list(
+    seed: int,
+) -> None:
+    # W4 2026-11-18: with the name pool fixed, permuting the protected list (membership and
+    # order) changes no feedback decision of the whole v2 campaign: signals, admissions, parent
+    # draws, rewards and weights. This isolates exactly what feedback must not see.
+    pool, protected = PROTECTED_VARIANTS[0]
+    reference, _ = _exploration_trajectory(pool, seed, V2, protected)
+    assert any(item[2] and item[2]["new_signals"] for item in reference[1:])
+    for pool, protected in PROTECTED_VARIANTS[1:]:
+        assert _exploration_trajectory(pool, seed, V2, protected)[0] == reference, protected
+    # Not vacuous: the recorded protected lists differ across the variants.
+    escape = _escape_corpus()[-1]
+    recorded = {
+        _producer(pool, protected)(escape).trace.before.protected_paths
+        for pool, protected in PROTECTED_VARIANTS
+    }
+    assert len(recorded) == 5  # five memberships; two variants share one and differ in order
 
 
 def test_b_v2_policy_signals_per_case_do_not_depend_on_protected_list_or_sentinels() -> None:

@@ -244,6 +244,9 @@ RC(#457) 이후 스택에서 의도적으로 바뀐 동작:
   3.12.10(pull·버전 확인만), oras-go 2.6.1·2.6.2, decompress 두 패키지를 확인했다. node-tar의 나머지 lock 7개와
   exploratory registry 경로의 실제 실행 결과는 싣지 않는다.
 
+**CI의 제품 E2E(`product-e2e`, P-2).** `pip install -e .`로 설치한 `inodefence`를 네 대상의 실제 추출기에 돌려 종료 코드와
+`result.json`을 확인한다(`scripts/dev/product_e2e.py`, demo run). oras-go는 추출 0건이어도 통과한다(아래 한계, D049 조건 1).
+
 **확인하지 않은 것:** replay의 실제 Docker E2E, 이 스택에서의 macOS 실행, WSL2가 아닌 Linux, Python 3.11 이하, README 빠른
 시작의 실제 `verify`/`explore` 단계(#467), 여러 seed·예산·버전의 탐색.
 

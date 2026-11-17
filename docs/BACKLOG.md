@@ -94,7 +94,7 @@ CVE-2026-24842(CVE-2026-23745 수정이 도입한 check/use 회귀; catalog N02�
 | 태스크 | 상태 | 게이트 |
 | --- | --- | --- |
 | P-1 호환 약속 고정(종료 코드·`result.json` v1 golden 테스트, `targets`가 어댑터 값을 읽음, CHANGELOG replay 문구 정정) | 완료(product/p0-06a-release-contract) | 없음 |
-| P-2 설치된 `inodefence`를 네 대상 실제 extractor에 돌리는 E2E를 CI에 추가 | 대기 | 없음(격리·하너스 불변) |
+| P-2 설치된 `inodefence`를 네 대상 실제 extractor에 돌리는 E2E를 CI에 추가(`scripts/dev/product_e2e.py`, CI `product-e2e`) | 완료(product/p0-06b-product-e2e-ci) | 없음(격리·하너스 불변) |
 | P-3 oras-go 탐색에서 실제 추출(공통 seed의 `d/` 접두) | 대기 | 지웅 승인됨(2026-11-17). 등록 실험 seed·어휘는 바꾸지 않음 |
 | P-4 python-tarfile·decompress·oras-go 런처의 Docker 시간 제한과 정리 실패 종료 코드 | 대기 | 지웅 승인됨(2026-11-17). 파일별 변경 명세와 격리 동등성 검증을 PR에 첨부, 가드가 막으면 보고 |
 | P-5 네 대상 실제 위반 케이스 `replay` 1회씩(demo run) | 대기 | 사람(재현할 대상·버전 결정) |

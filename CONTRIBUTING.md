@@ -67,6 +67,11 @@ case만 허용)다.
 - **`container-integration`**: 신뢰된 컨트롤러를 만들어 실제 컨테이너 경계 회귀, 고정 Node 이미지의 효과 producer smoke
   (`make node-tar-effect-check`), 작은 node-tar 효과 demo를 실행하고 산출 증거를 artifact로 올린다. Docker가 필요해 Dev
   Container에서는 재현되지 않으므로, 실패 단계 이름과 올라온 증거를 먼저 읽고 docker 호스트에서 재현한다.
+- **`product-e2e`** (대상별 4개): `pip install -e .`로 설치한 `inodefence` 명령을 실제 추출기에 돌린다
+  (`scripts/dev/product_e2e.py`). 대상마다 고정 버전 하나에 `verify` → 작은 `explore`(budget 20) → `status` → `summary`를
+  실행하고 종료 코드와 `result.json`을 확인한다. 사용자와 같은 드라이버·런처를 쓰며 demo run이다. 공개 로그이므로
+  FAIL 판정이 나오면 사실만 출력하고 케이스 내용은 출력하지 않는다. Docker 호스트에서
+  `python scripts/dev/product_e2e.py --target <대상> --out <빈 폴더>`로 재현한다.
 - `repro-evidence`·`experiment-fanout`은 수동 실행(`workflow_dispatch`) workflow이며 PR 검사가 아니다.
 
 CI가 실패한 상태로 병합을 요청하지 않는다.

@@ -39,6 +39,29 @@ jobs:
       - name: Check
         run: make check
 
+  product-e2e:
+    # The installed `inodefence` command against each real extractor (demo run, D049 condition 2).
+    # Same drivers and launchers a user runs; no isolation setting is set here.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [node-tar, python-tarfile, decompress, oras-go]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Python 3.12
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.12'
+      - name: Install the user command as USAGE says (pip install -e .)
+        run: python -m pip install -e .
+      - name: verify, explore, status and summary on the real extractor
+        run: python scripts/dev/product_e2e.py --target "${{ matrix.target }}" --out "$RUNNER_TEMP/inodefence-e2e"
+
   container-integration:
     runs-on: ubuntu-24.04
     timeout-minutes: 20

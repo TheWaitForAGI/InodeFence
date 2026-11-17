@@ -69,17 +69,17 @@ InodeFence는 이런 **object identity와 external effect를 fuzzing feedback으
 위협 모델 전제: 공격자는 피해 경로 이름을 알며 세 arm 어휘에 동일하게 포함한다. blind 발견을 주장하지 않는다.
 entry별 중간 상태를 어떻게 관찰하기로 했는지(v1 방식은
 qualification에서 실패했고, 지금은 v2 "effect event" 방식을 쓴다)와 그 한계는
-[STATUS](STATUS.md)의 상세 기록과
+[STATUS 상세 기록](archive/status-detail-20261117.md)과
 [entry-effect-observation-v2](research/design/entry-effect-observation-v2.md)를 따른다.
 
-## 4. 현재 어디까지 했는가? (2026-10-24 기준)
+## 4. 현재 어디까지 했는가? (2026-11-17 갱신)
 
 한 줄 요약: **실제 node-tar 7.5.22를 대상으로 "입력 생성 → 실행 → entry별 중간 상태 관찰 →
 C0/C1/C2 판정 → feedback → 다음 mutation 선택" 루프가 `make demo` 한 명령으로 돌아간다.**
 같은 조건(seed 123, budget 20)으로 다시 돌리면 같은 루프가 나온다(호스트에서 4회 확인).
 
-현재 능력과 다음 할 일은 [STATUS](STATUS.md)의 Capability Ledger(마일스톤 M1~M4)가 기준이다. 아래 한 줄 요약과 표는
-2026-10-24 시점의 기록이고, 그 뒤 상태는 Ledger에서 읽는다. 수술 기간(2026-11-03~11-30)의 계획 기준은 Claude Doc
+현재 능력과 다음 할 일은 [STATUS](STATUS.md)의 Capability Ledger(마일스톤 M1~M4)가 기준이다. 아래 한 줄 요약은
+2026-10-24에 확인한 기록이고, 그 뒤 상태는 Ledger에서 읽는다. 수술 기간(2026-11-03~11-30)의 계획 기준은 Claude Doc
 「InodeFence 독립 연구 감사 및 실험 설계 재정립」(https://claude.ai/artifact/JJtsK3VowEGuBFN3YXZDFq)이고, 실험 실행 기준은 Git에
 동결된 사전등록(`experiments/preregistration/`)이다([AGENTS.md 현재 기준](../AGENTS.md#현재-기준)). 11/2 중간발표 목표는 배경 문서
 [MIDTERM_GOALS](MIDTERM_GOALS.md)에 있고(Layer 0~6·P0 단계는 지난 개발 단계의 기록), 할 일 순서는 [BACKLOG](BACKLOG.md),
@@ -100,14 +100,14 @@ C0/C1/C2 판정 → feedback → 다음 mutation 선택" 루프가 `make demo` �
 
 - 취약점을 찾았다거나 재발견했다는 주장은 없다. `make demo`의 정상 입력 20개에서 C0/C1/C2 위반은 0건이다.
 - N01(과거 취약 버전 node-tar 7.5.2/7.5.3 재발견)은 자동 replay까지 끝났다. N01 사람 대응 검토는 더 이상 다음
-  gate가 아니고([STATUS](STATUS.md) 수술 기준), 재발견(v1 RQ1)은 성공 조건이 아니라 EXP-5 산출물로 옮겼다([research-questions v2](research/design/research-questions.md)).
+  gate가 아니고([STATUS 상세 기록](archive/status-detail-20261117.md)의 수술 기준), 재발견(v1 RQ1)은 성공 조건이 아니라 EXP-5 산출물로 옮겼다([research-questions v2](research/design/research-questions.md)).
 - 초기 비교는 arm 간 어휘가 달라 폐기했고, 어휘를 맞춘 R/D/S-u 설계로 다시 실험했다.
 - node-tar가 거부한 입력(`..` 경로, 절대 경로)에서는 중간 상태 event가 0개로 남는다.
   이 한계를 어떻게 표현할지 아직 정하지 않았다.
 
 **DESIGNED ≠ IMPLEMENTED ≠ TESTED ≠ EXPERIMENTALLY VALIDATED.**
 "구현돼서 돌아간다"와 "연구 가설이 맞다"는 다르다. 지금은 앞쪽이다.
-2026-10-18 이전의 Layer별 상세 이력과 영어 용어가 많은 기록은 [STATUS](STATUS.md) 하단에 있다.
+2026-10-18 이전의 Layer별 상세 이력과 영어 용어가 많은 기록은 [STATUS 상세 기록](archive/status-detail-20261117.md)에 있다.
 
 ## 5. 코딩하기 전에 딱 이것만 읽기
 

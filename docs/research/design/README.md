@@ -23,7 +23,7 @@
 ## 다른 모듈과의 연결
 
 [범위](project-scope.md), [연구 질문](research-questions.md), [위협 모델](threat-model.md), [선행연구 포지셔닝](related-work-positioning.md), [환경](development-environment.md).
-변이 문법이 지금 내는 것과 못 내는 것은 [변이 어휘 목록 v1](mutation-vocabulary-inventory-v1.md)(#512 초안, exploratory)에 있다.
+변이 문법이 지금 내는 것과 못 내는 것은 [변이 어휘 목록 v1](mutation-vocabulary-inventory-v1.md)(#512, 동결 `b-grammar-v2-freeze-2`, exploratory)에 있다.
 
 ## 현재 상태
 

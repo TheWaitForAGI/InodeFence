@@ -1,16 +1,23 @@
-# 변이 어휘 목록 v1 (#512 초안)
+# 변이 어휘 목록 v1 (#512)
 
-> **상태:** 초안(문서만). 엔진 동작은 바꾸지 않는다. 표시: exploratory(등록 밖) 설계 메모.
+> **상태:** 동결 `b-grammar-v2-freeze-2`(문서만). 엔진 동작은 바꾸지 않는다. 표시: exploratory(등록 밖) 설계 메모.
 > 이슈 [#512](https://github.com/TheWaitForAGI/InodeFence/issues/512)(변이 문법 확장)와
 > [#499](https://github.com/TheWaitForAGI/InodeFence/issues/499)(작업 폴더 기준 하드링크)의 첫 단계다.
 > 계열 목록은 #510에서 v2 holdout을 정하기 전에 동결한다(방법 검토 W4, 2026-11-18). 깊이 정의는 #509(레인 A)에서 받아 채운다.
 
-## 동결: `b-grammar-v2-freeze-1` (2026-11-18)
+## 동결: `b-grammar-v2-freeze-2` (2026-11-18, 정정 발행)
 
-**문법 id: `b-grammar-v2-freeze-1`.** 동결 날짜 2026-11-18.
-- 서명: IF-W4-METHOD(방법 검토) 서명, 42fbbf7의 계열 목록과 세는 규칙 기준.
-- 이력: `b-grammar-draft-0`(커밋 `35afa67`·`d02615e`) → `b-grammar-draft-1`(`7e1b667`·`42fbbf7`, W4 판정 반영: 세는 규칙 고정, L2·O1·H1·#499 적용) → 이 동결.
-- 동결은 머리말과 표시만 더했다. 계열 목록과 세는 수는 `42fbbf7`과 같다. 현재 엔진 동작은 바꾸지 않는다(문서만).
+**문법 id: `b-grammar-v2-freeze-2`.** 동결 날짜 2026-11-18.
+- 서명: IF-W4-METHOD(방법 검토). freeze-1 서명(42fbbf7의 계열 목록과 세는 규칙 기준)과 freeze-2 판정(2026-11-18, 정정 발행 승인).
+- 이력: `b-grammar-draft-0`(커밋 `35afa67`·`d02615e`) → `b-grammar-draft-1`(`7e1b667`·`42fbbf7`, W4 판정 반영: 세는 규칙 고정, L2·O1·H1·#499 적용)
+  → `b-grammar-v2-freeze-1`(`9edbf87`) → 이 정정 발행.
+- **변경 메모(freeze-1 → freeze-2)**, IF-H4-QA 대조(PR #530)에서 나온 "현재 구현" 서술과 표시만 고쳤다:
+  1. §1.1 길이 상한 행: 100바이트 검사가 있는 곳을 명시했다(m1.py 네 곳). 검사 없는 생성 경로와 넘을 때의 빌드 동작을 적었다.
+  2. §2 P1 긴 경로 행: "못 만듦" → "기본 풀에서는 못 만듦, 관찰 이름 풀에서는 이름 길이에 달림".
+  3. 표시: 문서 머리의 "상태: 초안"을 동결 상태로, design README 연결 줄에 동결 id.
+  4. 사소한 문구 3건: reorder no-op 조건(entry 2개 미만 포함), `applied = False` 조건(child == case인 모든 경우),
+     §1.3의 코드 상수 두 개를 이름 없이 가리키는 문장으로.
+- **v2 정의(세는 규칙·계열 목록·연산 수·대응표)는 freeze-1과 같다.** 현재 엔진 동작은 바꾸지 않는다(문서만).
 
 1. **이 동결이 v2 문법을 정의한다.** v2 엔진은 이 목록과 세는 법을 그대로 구현해야 한다. v2 동결 전에 IF-H4-QA가 구현을 freeze-1과
    대조한다. 어긋남은 새 id와 W4 검토로만 처리하며 조용히 고치지 않는다.
@@ -48,13 +55,13 @@ d*(#509)는 문법의 **원시 연산**을 센다. #507의 경험적 계보 거�
 | `add_entry` (LEGACY `operators.add_entry`, M1 `m1.add_entry`) | 1 | INSERT. LEGACY는 끝에, M1은 임의 위치에 |
 | `remove_entry` | 1 | DELETE |
 | `duplicate_entry` | 1 | INSERT(기존 entry의 사본) |
-| `reorder_entries` | **위치 의존: 인접 1, 비인접 2** | swap = MOVE 1 또는 2. 같은 값의 두 entry뿐이면 no-op(0) |
+| `reorder_entries` | **위치 의존: 인접 1, 비인접 2** | swap = MOVE 1 또는 2. entry가 2개 미만이거나 서로 다른 값의 entry가 없으면 no-op(0) |
 | `mutate_path` (LEGACY affix, M1 `_raw_path` 교체) | 1 | SET(path) |
 | `add_hardlink` (LEGACY, M1) | 1 | INSERT(hardlink) |
 | `add_escaping_hardlink` (등록 arm 표의 슬롯 5) | 1 | INSERT(hardlink). depth는 매개변수 |
 | `add_symlink` | 1 | INSERT(symlink) |
 | `mutate_link_target` | 1 | SET(linkname) |
-| 적용 불가·길이 상한 초과로 원본을 돌려준 적용 (모든 슬롯) | 0 | 엔진은 적용 1회로 세지만(`MutationAttempt.applied = False`) 문법의 원시 연산은 없다 |
+| 결과가 원본과 같은 적용 (모든 슬롯: 적용 불가, 길이 상한 초과, 같은 값으로 바꾼 경우 등) | 0 | 엔진은 적용 1회로 센다. `MutationAttempt.applied = False`는 child == case인 모든 경우다. 문법의 원시 연산은 없다 |
 | no-reorder 정책(`*-no-reorder-v1`)의 reorder 슬롯 | 0 | 엔진은 슬롯을 실행하고 결과를 버린다(RNG 소비는 같음) |
 
 지금 엔진에는 "삽입 두 번을 한 슬롯으로 묶은 연산"이 없다. 그런 연산을 새로 넣으면 이 표에 원시 수 2로 적는다.
@@ -71,7 +78,7 @@ d*(#509)는 문법의 **원시 연산**을 센다. #507의 경험적 계보 거�
 | entry 종류 | `src/inodefence/model/archive.py` `EntryType` | `regular`, `directory`, `hardlink`, `symlink` 네 가지뿐이다. FIFO·장치·연속 파일·sparse 같은 다른 TAR 타입은 없다 |
 | entry 값 | `ArchiveEntry(path, entry_type, content, link_target, mode)` | 경로·링크 대상은 정규화하지 않은 원문 텍스트(NUL 금지, UTF-8). `mode`는 0..0o7777. 순서와 중복이 의미를 가진다 |
 | 인코딩 | `src/inodefence/builder.py` `build_tar`(`BUILDER_FORMAT = "ustar-utf8-v1"`) | USTAR만 쓴다. uid·gid·mtime 0, uname·gname 빈 문자열, size는 content 길이. PAX·GNU long name/link로 넘어가지 않고 표현 불가면 실패한다. USTAR name/prefix 분할이 원문을 바꾸면 거부한다 |
-| 길이 상한 | `src/inodefence/mutator/m1.py` `MAX_TEXT_BYTES = 100` | 변이가 만드는 경로·링크 대상은 UTF-8 100바이트 이하. 넘으면 그 변이는 no-op다 |
+| 길이 상한 | `src/inodefence/mutator/m1.py` `MAX_TEXT_BYTES = 100` | UTF-8 100바이트 검사는 **네 곳에만** 있다: 32행 `_raw_path`의 기존 경로 재사용 선택(넘는 경로는 재사용 후보에서 뺌), 72행 `add_hardlink`의 대상 선택(M1 표, 등록 표에는 이 슬롯이 없음), 98행 `add_escaping_hardlink`의 대상(넘으면 no-op), 128행 `mutate_link_target`의 새 대상(넘으면 no-op). `_raw_path`가 **새로 만드는** 경로(add_entry·mutate_path·add_hardlink·add_escaping_hardlink·add_symlink의 entry 경로와 add_symlink의 대상)는 검사하지 않는다. 기본 풀(`m1.COMPONENTS`)로는 최대 25바이트(접두 3 + 토큰 4×4 + 구분자 2×3)라 넘지 않는다. 등록 arm의 풀(기본 풀 + step 0 관찰 이름)은 이름 길이를 거르지 않으므로 긴 관찰 이름이 있으면 넘을 수 있다. 넘을 때 빌드 동작(`builder.build_tar`): entry 경로는 USTAR name/prefix 분할이 원문을 그대로 재구성하면 빌드되고 아니면 실패한다. 링크 대상(linkname 100바이트 필드)이 넘으면 빌드 실패(`ValueError`)다 |
 | seed | `src/inodefence/generator/minimal.py` `minimal_seed_corpus` | 네 seed: 파일 1개 / 디렉터리+그 안 파일 / 파일+그 파일로의 하드링크 / 파일+그 파일로의 symlink. 모두 아카이브 안쪽을 가리킨다 |
 
 ### 1.2 변이 정책과 슬롯
@@ -120,7 +127,7 @@ G1 어휘 동등성 검사는 `scripts/run_g1_smoke.py` `vocabulary_equality`가
 | LEGACY 슬롯들 (`operators.py`) | 원시 | 위와 같은 종류(삽입은 끝에만) | 경로·affix 목록이 더 좁다 |
 
 **이름 어휘와 링크 대상 기준은 연산이 아니라 매개변수다(지금 코드 기준).**
-- 토큰 풀(`m1.COMPONENTS`, protected 풀의 `outside`·`sentinel.txt`, 등록 arm의 step 0 관찰 이름)은 연산 함수의 `components=` 인자다.
+- 토큰 풀(`m1.COMPONENTS`, 등록 표가 쓰지 않는 옛 구성 요소 목록(`m1_addressing.COMPONENTS`)이 더하는 상수 두 개, 등록 arm의 step 0 관찰 이름)은 연산 함수의 `components=` 인자다.
   `_raw_path`와 escape 대상 생성의 **매개변수 공간**을 정할 뿐이고 새 연산을 만들지 않는다.
   같은 연산이라도 풀에 어떤 이름이 있느냐에 따라 한 번에 닿는 입력이 달라지므로 d*는 풀에 의존한다.
   등록 arm의 풀은 step 0의 추출 전 스냅숏에서 정해지므로, d*는 "그 풀을 고정한 문법" 기준으로 센다.
@@ -157,7 +164,7 @@ G1 어휘 동등성 검사는 `scripts/run_g1_smoke.py` `vocabulary_equality`가
 | | 부모 디렉터리보다 먼저 오는 자식 | 가능: 삽입 위치가 임의고 슬롯 3이 순서를 바꾼다. 부모·자식 관계를 의식해 고르지는 않는다 |
 | | 하드링크가 자기보다 뒤에 오는 대상을 가리킴(앞 참조) | 가능(M1 문서가 허용함) |
 | **P1 경로 표현** | `..` 조각, `./`, 중복 구분자(`//`), 끝 구분자 | 만듦: 접두·구분자·affix |
-| | 긴 경로(100바이트 초과, USTAR prefix 사용, PAX path) | **못 만듦**: `MAX_TEXT_BYTES = 100`이고 빌더는 PAX로 넘어가지 않는다 |
+| | 긴 경로(100바이트 초과, USTAR prefix 사용, PAX path) | **기본 풀에서는 못 만듦; 관찰 이름 풀에서는 이름 길이에 달림.** 기본 풀의 생성 경로는 최대 25바이트다. 관찰 이름이 길면 `_raw_path`의 새 경로가 100바이트를 넘을 수 있다(검사하는 곳은 §1.1의 네 곳뿐). 그 경우 entry 경로는 USTAR prefix 분할이 원문을 보존할 때만 빌드되고, symlink 대상은 빌드 실패다. 빌더는 PAX로 넘어가지 않는다 |
 | | 대소문자 차이, 유니코드 정규화 차이(NFC/NFD), 비ASCII | **못 만듦**: 토큰이 ASCII 고정 목록이다. 관찰된 이름이 비ASCII면 그대로 쓸 수 있으나 정규화 변형을 만들지 않는다 |
 | | 백슬래시·드라이브 문자 같은 다른 OS 구분자 | **못 만듦**(범위 밖: Windows 의미는 초기 범위에서 제외, AGENTS) |
 | **H1 헤더 변형 (보안 경계에 닿는 것만)** | PAX 확장 헤더의 path·linkpath가 USTAR 필드와 다른 경우 | **못 만듦**: USTAR만 쓴다 |

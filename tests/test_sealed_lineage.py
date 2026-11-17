@@ -60,7 +60,12 @@ def test_no_host_lock_still_refuses_reserved(lock_env: Path) -> None:
         ("5.0.9", True),
         ("5.1.0", False),
         ("4.3.9", False),
-        ("6.0.0-beta.1", False),
+        ("6.0.0-beta.1", True),
+        ("7.0.0-rc.1", True),
+        ("4.4.0-alpha", True),
+        ("5.1.0-rc.1", True),
+        ("6.2.2-rc.1", True),
+        ("3.9.9", False),
         ("7.4.3+build.5", True),
     ],
 )

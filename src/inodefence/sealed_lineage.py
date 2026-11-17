@@ -4,6 +4,7 @@ Two kinds of entries:
 
 * **reserved** (``inodefence.v2_reservations``, tracked in the repository): v2 holdout candidate
   ranges. Every clone enforces them; there is no host setup step to forget.
+  Pre-releases at either end of a range count as inside (fail-closed).
 * **sealed** (per host, ``lock_path()``): the target versions of a registered run that is still
   sealed. Written when the run starts, removed when its unseal record is merged.
 
@@ -104,7 +105,10 @@ class Entry:
     def covers(self, version: tuple) -> bool:
         if self.kind == "reserved":
             assert self.min is not None and self.below is not None
-            return self.min <= version < self.below
+            # Lower bound on the base triple, so pre-releases of ``min`` (7.0.0-rc.1) are inside;
+            # upper bound in full SemVer order, so 7.4.4-rc.1 is inside too. This also puts
+            # pre-releases of ``below`` (5.1.0-rc.1) inside: it errs toward refusing (W4 PASS).
+            return version[:3] >= self.min[:3] and version < self.below
         return any(parse_version(v) == version for v in self.versions)
 
 

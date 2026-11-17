@@ -92,3 +92,26 @@ trial index는 실제 실행 순서대로 남는다. Candidate omissions는 선�
 `minimize_violation`의 default reduction policy는 USTAR다. Result의 `reduction.policy_id`에
 이를 명시하며, `reduction_policy=ReductionPolicy.GENERIC`으로 최초 raw candidate/exception
 동작을 재현할 수 있다. Preservation condition의 version과 기존 result record shape는 같다.
+
+## Entry-level triage of a saved violation case (#519, exploratory)
+
+`src/inodefence/violation_triage.py`(policy `entry-ddmin-contract-set-v1`)는 이 문서의 minimizer와 별개의 후처리다.
+위 모듈은 바꾸지 않는다. 탐색 루프 밖에서, 탐색 결과 폴더에 저장된 위반 step 하나를 받아 다음을 한다.
+
+- **entry 단위 delta debugging(ddmin).** entry의 부분집합을 원래 순서로만 시도하고, entry 내부(path·target·mode·content)는 바꾸지 않는다.
+  더 잘게 줄이는 일은 위 `minimize_case`의 몫이다.
+- **보존 조건.** evaluator가 판정한 결과이고, 위반 계약 집합(C0/C1/C2)이 원래와 정확히 같아야 한다.
+  위 `ViolationCondition`(fingerprint 정확 일치)보다 느슨한 조건이다. 경로가 바뀐 같은 계약 위반도 보존으로 본다.
+  미판정 실행은 보존으로 보지 않는다.
+- **실행 처리.** USTAR로 표현할 수 없는 후보는 실행하지 않고 건너뛴다. 한 최소화 안에서 같은 후보는 다시 실행하지 않는다
+  (기록에 `reused`로 남김). 예산은 실제 실행 수(기준 실행 포함)로 센다.
+- **재실행 확인.** `verify`가 원본과 최소 입력을 각각 여러 번 다시 돌려 모두 같은 계약 집합인지 본다.
+  일치하지 않으면(비결정) 최소 입력을 결과로 쓰지 않는다.
+- **원인 서명 1차안.** 계약 집합 + 남은 entry의 종류와 링크 대상 모양(절대, 상위 N, 상대, 다른 entry를 가리킴)의 순서열이다.
+  경로·대상 문자열·sentinel·피해 경로 이름은 넣지 않는다.
+- **사용 제한.** 최소 입력과 서명은 어떤 탐색·벤치마크·arm의 seed나 corpus로도 쓰지 않는다(모듈 docstring에 명시).
+
+엔진 모듈은 실행하지 않고 product driver를 import하지 않는다. 실제 추출기 실행은
+`scripts/analysis/triage_violation_case.py`가 조합한다. 이 스크립트는 저장 케이스 읽기(`case_replay.load_request`),
+대상 어댑터의 replay check·hook(`inodefence replay`와 같은 런처·컨트롤러·격리, 기록된 이미지 id), 이 모듈을 엮는다.
+출력은 저장소 밖에만 쓰고 v2 예약 node-tar 버전은 거부한다. 제품 명령이 아니며(0.2.0 기능 동결) 등록 실험과 무관하다.

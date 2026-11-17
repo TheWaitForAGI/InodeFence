@@ -29,9 +29,10 @@ interface 변경은 PR로 알린다. 하위 폴더의 scoped `AGENTS.md`가 있�
 
 ## 브랜치와 PR
 
-- `main`에서 직접 개발하지 않는다. 브랜치 이름과 스택 PR 규칙은 [AGENTS.md의 PR 절](AGENTS.md#pr)을 따른다.
-- 한 PR에는 한 목적만 둔다. 관계없는 문서 수정·refactor·기능을 섞지 않는다(예: model·mutator·oracle·README를 한
-  PR에 몰아 넣지 않는다).
+- `main`에서 직접 개발하지 않는다. 주제 하나에 브랜치 하나와 PR 하나를 둔다. 브랜치 이름과 운영 규칙은
+  [AGENTS.md의 PR 절](AGENTS.md#pr)을 따른다(D050).
+- 주제 PR에는 그 주제의 변경만 둔다. 관계없는 문서 수정·refactor·기능을 섞지 않는다(예: model·mutator·oracle·README를 한
+  PR에 몰아 넣지 않는다). 작업 하나마다 PR을 열지 않고 주제 브랜치에 커밋으로 쌓는다.
 - PR 설명의 첫 항목은 "이 PR을 병합하면 무엇을 실제로 실행하거나 검증할 수 있게 되는가"에 대한 답이다. 그 밖에 관련
   Issue, 실제로 실행한 검사와 결과, 실행하지 않은 검사, 사람이 확인한 설계 판단을 적는다.
 

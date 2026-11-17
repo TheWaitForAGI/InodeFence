@@ -28,14 +28,15 @@ model: claude-fable-5-1
    - docker가 필요한 실제 실행·probe → `runtime`
    - builder 커밋 후 브랜치 검토 → `verifier`
    - `subagent_type`은 이 셋만 쓴다. `model`은 덮어쓰지 않는다 — 각 정의의 `claude-opus-4-8`을 그대로 쓴다(Agent 도구의 제네릭 `opus`는 다른 Opus 버전으로 해석될 수 있으므로 반드시 정의에 맡긴다). 추론 레벨은 위임할 때 `effort: "max"`로 지정한다(작업자를 최상위 추론으로 돌린다).
-   - 머지 대기로 레인을 멈추지 않는다: 앞 작업 브랜치가 미머지면 같은 레인에서 그 위에 스택해 다음 작업을 진행한다(AGENTS `## PR` 스택 규칙; builder에게 `--base <직전-브랜치>`로 PR을 내도록 지시한다). 스택은 아래부터 순서대로 지웅이 머지한다(D037).
-5. 위임 프롬프트에는 메타데이터만 넣는다: BACKLOG 항목 ID와 제목, 완료 조건, 브랜치 이름, 환경, 그리고 "보고는 아래 형식, 코드·diff·payload 없이". verifier에게는 비교 기준도 준다: PR 번호(있으면)와 base 브랜치(스택이면 직전 브랜치, 아니면 `main`). verifier는 `main`이 아니라 그 base와 비교한다.
+   - 머지 대기로 레인을 멈추지 않는다: 다음 작업은 같은 주제 브랜치에 이어서 커밋하게 한다(AGENTS `## PR`, D050). 작업마다 브랜치나 PR을 만들게 하지 않고 스택 PR을 쓰지 않는다. 주제 브랜치(`research/<주제>`, `product/<주제>`)와 그 Draft PR은 주제당 하나다. 여러 작업자가 한 주제를 동시에 고칠 때만 짧은 하위 브랜치를 지정하고, PR 없이 `git merge`로 주제 브랜치에 합친 뒤 바로 지우게 한다. 병합은 주제 단위로 지웅이 한다(D037).
+5. 위임 프롬프트에는 메타데이터만 넣는다: BACKLOG 항목 ID와 제목, 완료 조건, 브랜치 이름, 환경, 그리고 "보고는 아래 형식, 코드·diff·payload 없이". verifier에게는 비교 기준도 준다: 주제 PR 번호(있으면), base 브랜치(주제 PR은 `main`), 그 PR에서 마지막으로 검증된 SHA(있으면). verifier는 그 SHA 뒤 구간을 검토한다.
 6. 결과 처리:
-   - verifier `PASS` → builder에게 같은 브랜치의 PR 생성·CI 확인·병합 요청을 지시(보고 `PR: #n 병합 요청`) → 다음 항목.
+   - verifier `PASS` → 판정과 검증한 SHA를 주제 PR의 코멘트로 남기게 하고(builder에게 지시; 주제 PR이 없으면 Draft로 하나 열게 한다) 다음 항목으로 간다.
+     주제가 `main`에 들어갈 만큼 됐고 HEAD SHA까지 CI와 verifier 판정이 있을 때만 builder에게 병합 요청을 지시한다(보고 `PR: #n 병합 요청`).
      머지는 지시하지 않는다(D037). `STATUS: BREAKING`이거나 가드·격리·FROZEN·외부 공개가 걸린 변경이면 병합 요청
-     대상에서도 뺀다(PR만 열고 `NEXT`에 "사람 결정"으로 적는다).
-     verifier `PASS`는 보고의 `HEAD` SHA에만 유효하다. 그 뒤 브랜치 HEAD가 바뀌면(수정 커밋, 아래 브랜치 merge-in 등)
-     이전 판정을 재사용하지 않고 최신 SHA로 verifier 재검토와 CI를 다시 받은 뒤 병합 요청을 낸다(`AGENTS.md` PR 절).
+     대상에서도 뺀다(PR만 열어 두고 `NEXT`에 "사람 결정"으로 적는다).
+     verifier `PASS`는 보고의 `HEAD` SHA에만 유효하다. 그 뒤 브랜치 HEAD가 바뀌면(다음 작업 커밋, `main` merge-in 등)
+     이전 판정을 재사용하지 않고 바뀐 구간의 verifier 재검토와 최신 SHA의 CI를 받은 뒤에만 병합 요청을 낸다(`AGENTS.md` PR 절).
    - verifier `ISSUES` → builder에게 같은 브랜치에서 1회 수정 지시 → verifier 재검토. 또 `ISSUES`면 builder에게 WORKLOG `막힘` 기록을 지시하고 다음 항목.
    - 보고 `GATE: 깨뜨린다` 또는 `STATUS: BREAKING` → 후속 항목(BACKLOG가 그 결과에 걸린 항목) 진행 금지. 다음 안전한 항목으로 가거나, 없으면 대기한다.
 7. 진행할 안전한 항목이 없으면 autoloop 7.2(보충)로 간다: builder에게 "Ledger 빈 칸에서 BACKLOG 항목 1개 보충 후

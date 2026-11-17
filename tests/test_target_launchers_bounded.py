@@ -135,9 +135,13 @@ REPORT = {
 }
 
 
-def run_launcher(tmp_path: Path, name: str, *, no_hardlinks: bool = False, **overrides: str) -> Run:
-    """Run one launcher; ``no_hardlinks`` replaces ``ln`` with one that always fails (as on a
-    filesystem without hard links)."""
+def run_launcher(tmp_path: Path, name: str, **overrides: str) -> Run:
+    """Run one launcher with environment ``overrides``.
+
+    ``NO_HARDLINKS="1"`` (test-only, not passed to the launcher) replaces ``ln`` with one that
+    always fails, as on a filesystem without hard links.
+    """
+    no_hardlinks = overrides.pop("NO_HARDLINKS", "") == "1"
     launcher = LAUNCHERS[name]
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -336,7 +340,7 @@ def test_evidence_is_copied_when_present(tmp_path: Path, name: str) -> None:
 def test_evidence_is_published_where_hard_links_are_unavailable(tmp_path: Path, name: str) -> None:
     # An output folder on a filesystem without hard links (some FUSE or cloud mounts): the report
     # is still published (no-clobber rename), and the run succeeds.
-    run = run_launcher(tmp_path, name, no_hardlinks=True, EVIDENCE_PRESENT="1")
+    run = run_launcher(tmp_path, name, NO_HARDLINKS="1", EVIDENCE_PRESENT="1")
     assert run.result.returncode == 0, run.result.stderr
     report = tmp_path / "evidence" / REPORT[name]
     assert report.read_text() == "evidence"

@@ -1,8 +1,11 @@
 """Explicit versioned mutation dispatch; legacy draws and behavior stay stable."""
 
 import random
+from collections.abc import Mapping
 from enum import StrEnum
+from types import MappingProxyType
 
+from inodefence.generator.corpora import SeedCorpusId
 from inodefence.model.archive import ArchiveCase
 
 
@@ -60,12 +63,35 @@ class MutationPolicy(StrEnum):
     # W3/W4 fixed before p_R (v2_freeze3.FINAL_UNIFORM). Not a default anywhere and not in
     # any product allow-list. Replaces the never-run provisional id of 4303075.
     V2_FREEZE3_FIXED_BASELINE = "uniform-b-grammar-v2-freeze-3-fixed-baseline-v1"
+    # Additive, v2.1: V2_FREEZE3_FIXED_BASELINE with the seed corpus `minimal-empty-reg-v1`
+    # (an empty archive and one regular file) instead of the registered four seeds. Grammar,
+    # axis list, draws and build-invalid handling are those of V2_FREEZE3_FIXED_BASELINE;
+    # only SEED_CORPUS differs.
+    V2_FREEZE3_FIXED_BASELINE_MINIMAL_EMPTY_REG = (
+        "uniform-b-grammar-v2-freeze-3-fixed-baseline-minimal-empty-reg-v1"
+    )
 
 
 # Policies whose campaign records an unrepresentable child as a build-invalid step
 # (D060) unless the campaign config says otherwise. Every other policy aborts, as before.
 RECORDS_BUILD_INVALID: frozenset[MutationPolicy] = frozenset(
-    {MutationPolicy.V2_FREEZE3_FIXED_BASELINE}
+    {
+        MutationPolicy.V2_FREEZE3_FIXED_BASELINE,
+        MutationPolicy.V2_FREEZE3_FIXED_BASELINE_MINIMAL_EMPTY_REG,
+    }
+)
+
+# Policies bound to a seed corpus other than the caller's (v2.1). The campaign replaces the
+# registered seeds a launcher passes with this corpus, so every arm of a cell runs it without
+# the launcher knowing (as with RECORDS_BUILD_INVALID). A policy not listed runs the cases its
+# caller passes, exactly as before; the v2 policy is bound to the registered corpus.
+SEED_CORPUS: Mapping[MutationPolicy, SeedCorpusId] = MappingProxyType(
+    {
+        MutationPolicy.V2_FREEZE3_FIXED_BASELINE: SeedCorpusId.REGISTERED,
+        MutationPolicy.V2_FREEZE3_FIXED_BASELINE_MINIMAL_EMPTY_REG: (
+            SeedCorpusId.MINIMAL_EMPTY_REG
+        ),
+    }
 )
 
 

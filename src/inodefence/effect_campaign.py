@@ -27,6 +27,7 @@ from inodefence.feedback import (
     EffectSearchState,
     EffectSearchStats,
 )
+from inodefence.generator import SeedCorpusId, minimal_seed_corpus, seed_corpus
 from inodefence.model import ArchiveCase, EffectRunResult
 from inodefence.model.filesystem import Region, path_region
 from inodefence.mutation_scheduler import MutationSelection
@@ -38,7 +39,7 @@ from inodefence.mutator import (
     operator_ids,
 )
 from inodefence.mutator.chain import MutationChainAttempt, apply_chain
-from inodefence.mutator.policy import RECORDS_BUILD_INVALID
+from inodefence.mutator.policy import RECORDS_BUILD_INVALID, SEED_CORPUS
 
 # v2 random-chain R (D062, ATTEMPTS convention, see inodefence.mutator.chain): attempts per
 # execution are drawn uniformly in 1..m_max, m_max fixed by the search policy ID.
@@ -311,6 +312,30 @@ def _observed_name_segments(
     return names
 
 
+def bound_seed_cases(
+    cases: tuple[ArchiveCase, ...], mutation_policy: MutationPolicy
+) -> tuple[ArchiveCase, ...]:
+    """The seeds a campaign runs: the caller's, or the corpus the policy binds (v2.1).
+
+    A policy whose profile binds a non-registered corpus (``SEED_CORPUS``) runs that corpus
+    when the caller passes the registered seeds (what the shared launchers always pass) or
+    that corpus itself; any other caller corpus is refused rather than silently replaced.
+    Every other policy, the registered ones included, runs exactly the caller's cases.
+    """
+    if not cases or not all(isinstance(case, ArchiveCase) for case in cases):
+        raise ValueError("initial cases must be nonempty ArchiveCase records")
+    corpus = SEED_CORPUS.get(mutation_policy, SeedCorpusId.REGISTERED)
+    if corpus == SeedCorpusId.REGISTERED:
+        return cases
+    bound = seed_corpus(corpus)
+    if cases not in (minimal_seed_corpus(), bound):
+        raise ValueError(
+            f"{mutation_policy.value} binds seed corpus {corpus.value}; "
+            "pass the registered seeds or that corpus"
+        )
+    return bound
+
+
 @overload
 def run_effect_campaign(
     initial_cases: Sequence[ArchiveCase],
@@ -376,9 +401,7 @@ def run_effect_campaign(
         raise ValueError("on_build_invalid must be callable when given")
     if on_mutation_chain is not None and not callable(on_mutation_chain):
         raise ValueError("on_mutation_chain must be callable when given")
-    cases = tuple(initial_cases)
-    if not cases or not all(isinstance(case, ArchiveCase) for case in cases):
-        raise ValueError("initial cases must be nonempty ArchiveCase records")
+    cases = bound_seed_cases(tuple(initial_cases), config.mutation_policy)
     if config.execution_budget < len(cases):
         raise ValueError("execution_budget must cover all initial cases")
     initial_ids = tuple(case.case_id for case in cases)
@@ -408,6 +431,7 @@ def run_effect_campaign(
         MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_BLIND,
         MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_FIXED_BASELINE,
         MutationPolicy.V2_FREEZE3_FIXED_BASELINE,
+        MutationPolicy.V2_FREEZE3_FIXED_BASELINE_MINIMAL_EMPTY_REG,
     )
     # The blind control observes the same tree but drops EXTERNAL-region names, so it
     # cannot learn the identity (name) of a pre-existing external object.
@@ -420,6 +444,7 @@ def run_effect_campaign(
     fixed_baseline = config.mutation_policy in (
         MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_FIXED_BASELINE,
         MutationPolicy.V2_FREEZE3_FIXED_BASELINE,
+        MutationPolicy.V2_FREEZE3_FIXED_BASELINE_MINIMAL_EMPTY_REG,
     )
     observed_names: set[str] = set()
     table = operator_ids(config.mutation_policy)

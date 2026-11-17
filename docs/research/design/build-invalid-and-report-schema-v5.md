@@ -30,7 +30,9 @@ v2는 이것을 기록된 step으로 바꿀 수 있다.
 
 모든 변경은 추가다.
 - step 레코드: `step_record_schema`(2), `archive_format`(실행 step: `RunResult.archive_format`), `outcome`(`executed` | `build-invalid`).
-- 보고서 `config`: `build_invalid`, `builder_format`.
+- 보고서 `config`: `build_invalid`, `builder_format`, `seed_corpus`.
+  - `seed_corpus`는 v2.1에서 더했다. `initial_case_ids`와 ID가 같은 이름 있는 코퍼스이고, 없으면 `custom`이다.
+  - 스트림 보고서에는 없으므로 seed step의 `case_id`로 확인한다.
   - `effect_campaign_report`가 쓰는 보고서에만 있다.
   - 공유 경로 런처가 직접 만드는 보고서의 `config`에는 이 두 키가 없다. 그 파일은 바꾸지 않는다.
 - build-invalid 레코드

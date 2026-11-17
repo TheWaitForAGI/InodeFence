@@ -73,7 +73,8 @@ def _inserted(case: ArchiveCase, child: ArchiveCase) -> tuple[int, ArchiveEntry]
 
 def test_registered_and_v1_policies_keep_the_v1_table() -> None:
     for policy in MutationPolicy:
-        expected = OPERATOR_ORDER_V2 if policy == POLICY else OPERATOR_ORDER_V1
+        v2 = (POLICY, MutationPolicy.V2_FREEZE3_FIXED_BASELINE_MINIMAL_EMPTY_REG)
+        expected = OPERATOR_ORDER_V2 if policy in v2 else OPERATOR_ORDER_V1
         assert operator_ids(policy) == expected
     assert OPERATOR_ORDER_V1 == tuple(MutationOperatorId)[:8]
     # The historic name stays the registered eight slots (external tools import it).

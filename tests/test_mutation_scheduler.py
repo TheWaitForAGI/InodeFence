@@ -76,7 +76,16 @@ def _legacy_reference(case: ArchiveCase, rng: random.Random, policy: MutationPol
 
 
 @pytest.mark.parametrize(
-    "policy", [p for p in MutationPolicy if p != MutationPolicy.V2_FREEZE3_FIXED_BASELINE]
+    "policy",
+    [
+        p
+        for p in MutationPolicy
+        if p
+        not in (
+            MutationPolicy.V2_FREEZE3_FIXED_BASELINE,
+            MutationPolicy.V2_FREEZE3_FIXED_BASELINE_MINIMAL_EMPTY_REG,
+        )
+    ],
 )
 def test_inspectable_uniform_dispatch_preserves_existing_rng_semantics(policy) -> None:
     case = _case()

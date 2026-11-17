@@ -56,3 +56,32 @@
 - `add_entry` directory의 mode는 기본값 0o644다.
 - 링크 entry에는 content가 없다.
 - 100바이트 USTAR 길이 검사(`m1.MAX_TEXT_BYTES`)를 넘으면 no-op이다. 확장 경로가 100바이트를 넘는 경우는 빌더가 판단하고, 표현할 수 없으면 build-invalid step이 된다(D060).
+
+## 4. seed 코퍼스 (정책 id의 매개변수, v2.1)
+
+v2와 v2.1은 seed 코퍼스만 다르다. 문법, 축, 분포, 사슬 R의 m, build-invalid 처리는 같다.
+
+- 코퍼스는 정책 프로필(`mutator.policy.SEED_CORPUS`)이 정한다.
+- 공유 런처는 언제나 등록 seed 4개를 넘긴다. 캠페인(`effect_campaign.bound_seed_cases`)이 그것을 정책의 코퍼스로 바꾼다.
+- 그 밖의 코퍼스가 넘어오면 바꾸지 않고 거부한다.
+- 세 arm이 같은 정책 id를 쓰므로 같은 코퍼스가 돈다. 사슬 R의 seed 추첨도 이 코퍼스 위에서 균등이다.
+
+| 정책 id | 어휘 모드(사전등록 `vocabulary`) | 코퍼스 id | 내용 |
+| --- | --- | --- | --- |
+| `uniform-b-grammar-v2-freeze-3-fixed-baseline-v1` | `observed-names-b-grammar-v2-freeze-3` | `minimal-seed-corpus-v1` | 등록 seed 4개(bed077a와 바이트 동일) |
+| `uniform-b-grammar-v2-freeze-3-fixed-baseline-minimal-empty-reg-v1` | `observed-names-b-grammar-v2-freeze-3-minimal-empty-reg-v1` | `minimal-empty-reg-v1` | 빈 아카이브, 일반 파일 `a.txt` 하나 |
+
+- 코퍼스 id는 모든 seed entry의 논리 내용 전체를 고정한다: 이름, 종류, mode, content 바이트, 링크 대상(W4).
+  - `set_content`는 이미 있는 바이트를 뽑으면 no-op이 된다. 그래서 content 바이트도 추첨에 영향을 준다.
+- `minimal-empty-reg-v1`의 `a.txt` 값은 `generator/corpora.py`의 `MINIMAL_EMPTY_REG_REGULAR` 한 곳에 있다.
+  - 지금은 임시값이다: 등록 `a.txt`와 같은 바이트, mode 0o644.
+  - W3가 p_R 계산에 실제로 쓴 값을 보고하면 이 상수만 바꾼다.
+- 빈 아카이브는 USTAR 끝 블록만 있는 10240바이트로 빌드되고, 다시 읽으면 같은 case가 된다.
+- 빈 입력에서 slot별 동작:
+  - `add_entry`, `add_hardlink`, `add_symlink`는 적용된다.
+  - 나머지 7개 slot은 no-op이고 `applied` = False로 기록된다.
+  - 사슬에서 no-op은 m에 세지만 깊이에는 더하지 않는다.
+- 보고서 `config.seed_corpus`에 코퍼스 id가 기록된다. G1 v2는 세 arm의 이 값(또는 seed step의 `case_id`)이 같은지 본다.
+- 테스트:
+  - `tests/test_seed_corpus_v21.py`
+  - `tests/test_seed_corpus_golden_v21.py`: 회귀 golden이다. bed077a에 대응하는 코드가 없으므로 이 커밋에서 만든 값을 고정한다.

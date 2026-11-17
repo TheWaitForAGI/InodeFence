@@ -148,6 +148,11 @@ class VocabularyMode(StrEnum):
     # report reader does not know this value and would read it as accumulated; v2
     # reports are read with ``rds_report_v2.vocabulary_pools_from_records_v2``.
     OBSERVED_NAMES_V2_FREEZE3 = "observed-names-b-grammar-v2-freeze-3"
+    # v2.1: OBSERVED_NAMES_V2_FREEZE3 with the seed corpus `minimal-empty-reg-v1` (bound by
+    # the mutation policy id; generator.corpora). Read like OBSERVED_NAMES_V2_FREEZE3.
+    OBSERVED_NAMES_V2_FREEZE3_MINIMAL_EMPTY_REG = (
+        "observed-names-b-grammar-v2-freeze-3-minimal-empty-reg-v1"
+    )
 
 
 VOCABULARY_MUTATION_POLICY: Mapping[VocabularyMode, MutationPolicy] = MappingProxyType(
@@ -157,6 +162,9 @@ VOCABULARY_MUTATION_POLICY: Mapping[VocabularyMode, MutationPolicy] = MappingPro
         VocabularyMode.OBSERVED_NAMES: MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_FIXED_BASELINE,
         VocabularyMode.OBSERVED_NAMES_ACCUMULATED: MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK,
         VocabularyMode.OBSERVED_NAMES_V2_FREEZE3: MutationPolicy.V2_FREEZE3_FIXED_BASELINE,
+        VocabularyMode.OBSERVED_NAMES_V2_FREEZE3_MINIMAL_EMPTY_REG: (
+            MutationPolicy.V2_FREEZE3_FIXED_BASELINE_MINIMAL_EMPTY_REG
+        ),
     }
 )
 
@@ -244,7 +252,11 @@ def _pool(observed: set[str]) -> tuple[str, ...]:
 
 # Modes whose pool is fixed once from the seed baseline run's BEFORE snapshot.
 FIXED_BASELINE_MODES: frozenset[VocabularyMode] = frozenset(
-    {VocabularyMode.OBSERVED_NAMES, VocabularyMode.OBSERVED_NAMES_V2_FREEZE3}
+    {
+        VocabularyMode.OBSERVED_NAMES,
+        VocabularyMode.OBSERVED_NAMES_V2_FREEZE3,
+        VocabularyMode.OBSERVED_NAMES_V2_FREEZE3_MINIMAL_EMPTY_REG,
+    }
 )
 
 

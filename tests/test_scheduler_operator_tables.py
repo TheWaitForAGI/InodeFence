@@ -52,7 +52,16 @@ def test_v1_table_is_the_eight_existing_slots_in_order() -> None:
 
 
 @pytest.mark.parametrize(
-    "policy", [p for p in MutationPolicy if p != MutationPolicy.V2_FREEZE3_FIXED_BASELINE]
+    "policy",
+    [
+        p
+        for p in MutationPolicy
+        if p
+        not in (
+            MutationPolicy.V2_FREEZE3_FIXED_BASELINE,
+            MutationPolicy.V2_FREEZE3_FIXED_BASELINE_MINIMAL_EMPTY_REG,
+        )
+    ],
 )
 def test_every_existing_policy_draws_from_v1(policy: MutationPolicy) -> None:
     assert operator_ids(policy) == OPERATOR_ORDER_V1

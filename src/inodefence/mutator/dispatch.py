@@ -61,11 +61,15 @@ OPERATOR_TABLES: tuple[tuple[MutationOperatorId, ...], ...] = (
     OPERATOR_ORDER_V2,
 )
 
-_V2_POLICIES = (MutationPolicy.V2_FREEZE3_FIXED_BASELINE,)
+_V2_POLICIES = (
+    MutationPolicy.V2_FREEZE3_FIXED_BASELINE,
+    MutationPolicy.V2_FREEZE3_FIXED_BASELINE_MINIMAL_EMPTY_REG,
+)
 
 # Parameter distribution bound to each v2 policy id (D061; W3/W4 axis list, all uniform).
 V2_PARAMETERS: dict[MutationPolicy, v2_freeze3.GrammarParameters] = {
     MutationPolicy.V2_FREEZE3_FIXED_BASELINE: v2_freeze3.FINAL_UNIFORM,
+    MutationPolicy.V2_FREEZE3_FIXED_BASELINE_MINIMAL_EMPTY_REG: v2_freeze3.FINAL_UNIFORM,
 }
 
 
@@ -140,7 +144,7 @@ _STATE_AWARE_POLICIES = (
     MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK,
     MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_BLIND,
     MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_FIXED_BASELINE,
-    MutationPolicy.V2_FREEZE3_FIXED_BASELINE,
+    *_V2_POLICIES,
 )
 
 

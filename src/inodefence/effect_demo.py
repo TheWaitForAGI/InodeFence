@@ -20,6 +20,7 @@ from inodefence.effect_campaign import (
 )
 from inodefence.effect_synthetic import SYNTHETIC_MECHANISM
 from inodefence.feedback import violation_fingerprints
+from inodefence.generator import seed_corpus_label
 from inodefence.model import (
     ContractId,
     EffectEventTrace,
@@ -531,6 +532,8 @@ def effect_campaign_report(result: EffectCampaignResult, producer: str) -> dict[
             # Additive (schema 5).
             "build_invalid": config.build_invalid_policy.value,
             "builder_format": BUILDER_FORMAT,
+            # Additive (schema 5, v2.1): the named corpus whose IDs equal initial_case_ids.
+            "seed_corpus": seed_corpus_label(result.initial_case_ids),
         },
         "initial_case_ids": list(result.initial_case_ids),
         "steps": steps,

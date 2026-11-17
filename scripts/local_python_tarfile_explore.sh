@@ -18,6 +18,9 @@
 # (default ~/inodefence-explore, outside the confirmatory-evidence tree), DEMO_SEED, DEMO_BUDGET,
 # DEMO_POLICY, DEMO_MUTATION_POLICY, RUN_ID (unique suffix for controller/volume/evidence),
 # SKIP_BUILD=1 (reuse controller/helper images).
+# Bounded Docker calls (D049 condition 3): every host Docker call except the campaign has a client
+# deadline and cleanup removes only what carries this run's owner label; a cleanup that fails or
+# cannot confirm removal turns a successful exit into 125 (scripts/launcher_bounded.sh).
 set -euo pipefail
 
 RUN_ID="${RUN_ID:-}"
@@ -64,11 +67,10 @@ HOST_EVIDENCE="$EVIDENCE_DIR/target-explore/inodefence-python-tarfile-explore-$L
 HOST_STEPS="$EVIDENCE_DIR/target-explore/inodefence-python-tarfile-explore-$LABEL.steps.jsonl"
 
 STEP="setup"
-CREATED_VOLUME=0
-CREATED_CONTROLLER=0
 
-dk() { docker --context "$CONTEXT" "$@"; }
 step() { STEP="$1"; echo "==> [$STEP]"; }
+# shellcheck source=scripts/launcher_bounded.sh
+. "$REPO_ROOT/scripts/launcher_bounded.sh"
 host() {
   (cd "$REPO_ROOT" && PYTHONPATH=src "$PYTHON" -m scripts.container_host \
     --context "$CONTEXT" --controller "$CONTROLLER" --volume "$VOLUME" "$@")
@@ -77,39 +79,20 @@ host() {
 cleanup() {
   local status=$?
   set +e
-  if [ "$status" -ne 0 ]; then
-    echo "FAILED at step: $STEP (exit $status)" >&2
-  fi
-  if [ "$CREATED_CONTROLLER" -eq 1 ]; then
-    mkdir -p "$EVIDENCE_DIR/target-explore"
-    for pair in "$CONTROLLER_EVIDENCE:$HOST_EVIDENCE" "$CONTROLLER_STEPS:$HOST_STEPS"; do
-      src="${pair%%:*}"
-      dst="${pair#*:}"
-      if dk exec "$CONTROLLER" test -e "$src"; then
-        if dk cp "$CONTROLLER:$src" "$dst" >/dev/null; then
-          echo "evidence: $dst"
-        else
-          echo "evidence copy failed: $src" >&2
-        fi
-      fi
-    done
-    dk rm -f "$CONTROLLER" >/dev/null
-  fi
-  if [ "$CREATED_VOLUME" -eq 1 ]; then
-    dk volume rm "$VOLUME" >/dev/null
-  fi
-  exit "$status"
+  launcher_cleanup "$status" "$CONTROLLER_EVIDENCE:$HOST_EVIDENCE" "$CONTROLLER_STEPS:$HOST_STEPS"
+  exit "$LAUNCHER_STATUS"
 }
 trap cleanup EXIT
 
 step "preflight"
-echo "context=$CONTEXT engine=$(dk version --format '{{.Server.Version}}')"
 command -v "$PYTHON" >/dev/null || { echo "host Python not found: $PYTHON" >&2; exit 1; }
-IF_EXPLORE_IMAGE="$(dk image inspect "$EXPLORE_IMAGE" --format '{{.Id}}' 2>/dev/null)" || {
+echo "context=$CONTEXT engine=$(bdk "$DEADLINE_QUERY" version --format '{{.Server.Version}}')"
+IF_EXPLORE_IMAGE="$(bdk "$DEADLINE_QUERY" image inspect "$EXPLORE_IMAGE" --format '{{.Id}}' 2>/dev/null)" || {
   echo "missing $EXPLORE_IMAGE; prepare it first (scripts/python_tarfile_producer.py)" >&2
   exit 1
 }
-if dk container inspect "$CONTROLLER" >/dev/null 2>&1 || dk volume inspect "$VOLUME" >/dev/null 2>&1; then
+if bdk "$DEADLINE_QUERY" container inspect "$CONTROLLER" >/dev/null 2>&1 ||
+  bdk "$DEADLINE_QUERY" volume inspect "$VOLUME" >/dev/null 2>&1; then
   echo "stale $CONTROLLER or $VOLUME exists; inspect and remove it manually:" >&2
   echo "  docker --context $CONTEXT rm -f $CONTROLLER; docker --context $CONTEXT volume rm $VOLUME" >&2
   exit 1
@@ -120,22 +103,21 @@ if [ "$SKIP_BUILD" = 1 ]; then
 else
   step "build controller/helper images"
   export BUILDX_NO_DEFAULT_ATTESTATIONS=1
-  dk build --quiet -f "$REPO_ROOT/.devcontainer/Dockerfile" -t "$CONTROLLER_IMAGE" "$REPO_ROOT"
-  dk build --quiet -f "$REPO_ROOT/tools/container-helper/Dockerfile" -t "$HELPER_IMAGE" "$REPO_ROOT"
+  bdk "$DEADLINE_BUILD" build --quiet -f "$REPO_ROOT/.devcontainer/Dockerfile" -t "$CONTROLLER_IMAGE" "$REPO_ROOT"
+  bdk "$DEADLINE_BUILD" build --quiet -f "$REPO_ROOT/tools/container-helper/Dockerfile" -t "$HELPER_IMAGE" "$REPO_ROOT"
 fi
 
 step "prepare controller"
-dk volume create "$VOLUME" >/dev/null
-CREATED_VOLUME=1
-dk run -d --name "$CONTROLLER" --user vscode --workdir /workspaces/InodeFence \
+launcher_new_owner_token
+launcher_create_volume
+launcher_run_controller --user vscode --workdir /workspaces/InodeFence \
   --env PYTHONPATH=/workspaces/InodeFence/src \
   --mount "type=bind,src=$REPO_ROOT,dst=/workspaces/InodeFence,readonly" \
   --mount "type=volume,src=$VOLUME,dst=/var/lib/inodefence" \
-  "$CONTROLLER_IMAGE" sleep infinity >/dev/null
-CREATED_CONTROLLER=1
-dk exec --user root "$CONTROLLER" chown vscode:vscode /var/lib/inodefence
-dk exec "$CONTROLLER" python -m pip install --quiet --disable-pip-version-check pytest
-dk exec --workdir / "$CONTROLLER" git config --global --add safe.directory /workspaces/InodeFence
+  "$CONTROLLER_IMAGE" sleep infinity
+bdk "$DEADLINE_EXEC" exec --user root "$CONTROLLER" chown vscode:vscode /var/lib/inodefence
+bdk "$DEADLINE_PIP" exec "$CONTROLLER" python -m pip install --quiet --disable-pip-version-check pytest
+bdk "$DEADLINE_EXEC" exec --workdir / "$CONTROLLER" git config --global --add safe.directory /workspaces/InodeFence
 
 step "python-tarfile-effect-campaign"
 DEMO_ARGS=(--runtime-version "$RUNTIME_VERSION" --extraction-filter "$EXTRACTION_FILTER")

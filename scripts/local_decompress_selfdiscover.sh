@@ -22,6 +22,9 @@
 # Parallel-safe: set RUN_ID to a unique token (e.g. m4sd-<arm>-<seed>); the controller, volume and
 # evidence filename all carry that suffix, so concurrent arms never collide and each removes only
 # what it created. SKIP_BUILD=1 reuses prebuilt images; BUILD_ONLY=1 builds and exits.
+# Bounded Docker calls (D049 condition 3): every host Docker call except the campaign has a client
+# deadline and cleanup removes only what carries this run's owner label; a cleanup that fails or
+# cannot confirm removal turns a successful exit into 125 (scripts/launcher_bounded.sh).
 set -euo pipefail
 
 RUN_ID="${RUN_ID:-}"
@@ -68,11 +71,10 @@ CONTROLLER_EVIDENCE="/tmp/inodefence-decompress-selfdiscover-$LABEL.json"
 HOST_EVIDENCE="$EVIDENCE_DIR/inodefence-decompress-selfdiscover-$LABEL.json"
 
 STEP="setup"
-CREATED_VOLUME=0
-CREATED_CONTROLLER=0
 
-dk() { docker --context "$CONTEXT" "$@"; }
 step() { STEP="$1"; echo "==> [$STEP]"; }
+# shellcheck source=scripts/launcher_bounded.sh
+. "$REPO_ROOT/scripts/launcher_bounded.sh"
 host() {
   (cd "$REPO_ROOT" && PYTHONPATH=src "$PYTHON" -m scripts.container_host \
     --context "$CONTEXT" --controller "$CONTROLLER" --volume "$VOLUME" "$@")
@@ -81,35 +83,19 @@ host() {
 cleanup() {
   local status=$?
   set +e
-  if [ "$status" -ne 0 ]; then
-    echo "FAILED at step: $STEP (exit $status)" >&2
-  fi
-  if [ "$CREATED_CONTROLLER" -eq 1 ] && dk exec "$CONTROLLER" test -e "$CONTROLLER_EVIDENCE"; then
-    mkdir -p "$EVIDENCE_DIR"
-    if dk cp "$CONTROLLER:$CONTROLLER_EVIDENCE" "$HOST_EVIDENCE" >/dev/null; then
-      echo "evidence: $HOST_EVIDENCE"
-    else
-      echo "evidence copy failed: $CONTROLLER_EVIDENCE" >&2
-    fi
-  fi
-  if [ "$CREATED_CONTROLLER" -eq 1 ]; then
-    dk rm -f "$CONTROLLER" >/dev/null
-  fi
-  if [ "$CREATED_VOLUME" -eq 1 ]; then
-    dk volume rm "$VOLUME" >/dev/null
-  fi
-  if [ "$status" -eq 0 ]; then
+  launcher_cleanup "$status" "$CONTROLLER_EVIDENCE:$HOST_EVIDENCE"
+  if [ "$LAUNCHER_STATUS" -eq 0 ]; then
     echo "PASSED: decompress self-discovery (context=$CONTEXT role=$DECOMPRESS_ROLE)"
   fi
-  exit "$status"
+  exit "$LAUNCHER_STATUS"
 }
 trap cleanup EXIT
 
 step "preflight"
-echo "context=$CONTEXT engine=$(dk version --format '{{.Server.Version}}') role=$DECOMPRESS_ROLE"
 command -v "$PYTHON" >/dev/null || { echo "host Python not found: $PYTHON" >&2; exit 1; }
-if [ "$BUILD_ONLY" != 1 ] && { dk container inspect "$CONTROLLER" >/dev/null 2>&1 ||
-  dk volume inspect "$VOLUME" >/dev/null 2>&1; }; then
+echo "context=$CONTEXT engine=$(bdk "$DEADLINE_QUERY" version --format '{{.Server.Version}}') role=$DECOMPRESS_ROLE"
+if [ "$BUILD_ONLY" != 1 ] && { bdk "$DEADLINE_QUERY" container inspect "$CONTROLLER" >/dev/null 2>&1 ||
+  bdk "$DEADLINE_QUERY" volume inspect "$VOLUME" >/dev/null 2>&1; }; then
   echo "stale $CONTROLLER or $VOLUME exists; inspect and remove it manually:" >&2
   echo "  docker --context $CONTEXT rm -f $CONTROLLER; docker --context $CONTEXT volume rm $VOLUME" >&2
   exit 1
@@ -123,14 +109,14 @@ else
   export BUILDX_NO_DEFAULT_ATTESTATIONS=1
   BUILD_FLAGS=(--quiet)
   [ "${VERBOSE:-0}" = 1 ] && BUILD_FLAGS=()
-  dk build "${BUILD_FLAGS[@]}" -f "$REPO_ROOT/.devcontainer/Dockerfile" -t "$CONTROLLER_IMAGE" "$REPO_ROOT"
-  dk build "${BUILD_FLAGS[@]}" -f "$REPO_ROOT/tools/container-helper/Dockerfile" -t "$HELPER_IMAGE" "$REPO_ROOT"
+  bdk "$DEADLINE_BUILD" build "${BUILD_FLAGS[@]}" -f "$REPO_ROOT/.devcontainer/Dockerfile" -t "$CONTROLLER_IMAGE" "$REPO_ROOT"
+  bdk "$DEADLINE_BUILD" build "${BUILD_FLAGS[@]}" -f "$REPO_ROOT/tools/container-helper/Dockerfile" -t "$HELPER_IMAGE" "$REPO_ROOT"
   if [ -z "$EXPLORE_IMAGE" ]; then
-    dk build "${BUILD_FLAGS[@]}" --build-arg "ROLE=$DECOMPRESS_ROLE" \
+    bdk "$DEADLINE_BUILD" build "${BUILD_FLAGS[@]}" --build-arg "ROLE=$DECOMPRESS_ROLE" \
       -f "$REPO_ROOT/tools/decompress/Dockerfile" -t "$DECOMPRESS_IMAGE" "$REPO_ROOT"
   fi
 fi
-if [ -n "$EXPLORE_IMAGE" ] && ! dk image inspect "$EXPLORE_IMAGE" >/dev/null 2>&1; then
+if [ -n "$EXPLORE_IMAGE" ] && ! bdk "$DEADLINE_QUERY" image inspect "$EXPLORE_IMAGE" >/dev/null 2>&1; then
   echo "EXPLORE_IMAGE $EXPLORE_IMAGE is not present; prepare it first (AUTO_PREPARE=1)" >&2
   exit 1
 fi
@@ -141,19 +127,18 @@ if [ "$BUILD_ONLY" = 1 ]; then
 fi
 
 step "prepare controller"
-dk volume create "$VOLUME" >/dev/null
-CREATED_VOLUME=1
-dk run -d --name "$CONTROLLER" --user vscode --workdir /workspaces/InodeFence \
+launcher_new_owner_token
+launcher_create_volume
+launcher_run_controller --user vscode --workdir /workspaces/InodeFence \
   --env PYTHONPATH=/workspaces/InodeFence/src \
   --mount "type=bind,src=$REPO_ROOT,dst=/workspaces/InodeFence,readonly" \
   --mount "type=volume,src=$VOLUME,dst=/var/lib/inodefence" \
-  "$CONTROLLER_IMAGE" sleep infinity >/dev/null
-CREATED_CONTROLLER=1
-dk exec --user root "$CONTROLLER" chown vscode:vscode /var/lib/inodefence
-dk exec "$CONTROLLER" python -m pip install --quiet --disable-pip-version-check pytest
-dk exec --workdir / "$CONTROLLER" git config --global --add safe.directory /workspaces/InodeFence
+  "$CONTROLLER_IMAGE" sleep infinity
+bdk "$DEADLINE_EXEC" exec --user root "$CONTROLLER" chown vscode:vscode /var/lib/inodefence
+bdk "$DEADLINE_PIP" exec "$CONTROLLER" python -m pip install --quiet --disable-pip-version-check pytest
+bdk "$DEADLINE_EXEC" exec --workdir / "$CONTROLLER" git config --global --add safe.directory /workspaces/InodeFence
 
-IF_DECOMPRESS_IMAGE="$(dk image inspect "$DECOMPRESS_IMAGE" --format '{{.Id}}')"
+IF_DECOMPRESS_IMAGE="$(bdk "$DEADLINE_QUERY" image inspect "$DECOMPRESS_IMAGE" --format '{{.Id}}')"
 
 step "decompress-effect-campaign"
 DEMO_ARGS=()

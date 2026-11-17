@@ -73,7 +73,7 @@ CLI는 `python -m inodefence.drivers.run_target`(verify)·`run_target_explore`·
 
 | 분류 | 태그 | 파일 | 최상위에 남는 이유 |
 |---|---|---|---|
-| A 컨트롤러·host broker·격리 런처 | 동결 | `container_controller`, `container_host`, `broker_call_log`, `effect_replay`, `run_effect_demo`, `launcher_guards`, `bounded_cleanup_command`, `local_node_tar_smoke.sh`, `local_decompress_selfdiscover.sh`, `local_oras_go_selfdiscover.sh`, `local_python_tarfile_explore.sh` | 격리 실행 경로다. container_host가 `-m scripts.container_controller`를 하드코딩하고 CI가 `-m scripts.container_host`를 부른다. 일부는 SHARED_PATH_FILES에 들어 있고, experiments/ 참조도 있다 |
+| A 컨트롤러·host broker·격리 런처 | 동결 | `container_controller`, `container_host`, `broker_call_log`, `effect_replay`, `run_effect_demo`, `launcher_guards`, `bounded_cleanup_command`, `local_node_tar_smoke.sh`, `local_decompress_selfdiscover.sh`, `local_oras_go_selfdiscover.sh`, `local_python_tarfile_explore.sh`, `launcher_bounded.sh` | 격리 실행 경로다. container_host가 `-m scripts.container_controller`를 하드코딩하고 CI가 `-m scripts.container_host`를 부른다. 일부는 SHARED_PATH_FILES에 들어 있고, experiments/ 참조도 있다. python-tarfile·decompress·oras-go 런처에는 D049 조건 3으로 Docker 데몬 호출 시간 제한과 정리 실패 처리를 추가했다(2026-11-18, 지웅 승인; 공통 부분은 `launcher_bounded.sh`). 컨트롤러 격리 인자는 소유 label 외에 바뀌지 않았다 |
 | B·C 대상·탐색·replay 드라이버 별칭 | 제품(별칭) | `run_target`, `run_target_explore`, `run_target_replay` | `inodefence.drivers`의 같은 이름 모듈 별칭이다. `run_target`은 저장소 판별 표식이다 |
 | B | 동결(별칭) | `regression_check` | `inodefence.drivers.regression_check` 별칭이다. CI(repro-evidence)·Makefile·paper가 이 경로를 명령으로 부른다 |
 | D 이미지 준비 | 제품(별칭) | `node_tar_registry_prepare`, `oras_go_registry_prepare`, `python_tarfile_producer` | `inodefence.drivers.<대상>.*` 별칭이다. tools/ 문서와 셸 런처가 경로를 언급한다 |

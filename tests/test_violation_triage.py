@@ -6,14 +6,27 @@ import json
 from types import SimpleNamespace
 
 import pytest
-from scripts.analysis.triage_violation_case import reserved, verdict_of
+from scripts.analysis.triage_violation_case import (
+    EXIT_CONSISTENT,
+    EXIT_NONDETERMINISTIC,
+    EXIT_NOT_REPRODUCED,
+    exit_code,
+    reserved,
+    summary_line,
+    verdict_of,
+)
 
 from inodefence.model import ArchiveCase, ArchiveEntry, EntryType
 from inodefence.violation_triage import (
+    NONDETERMINISTIC_LABEL,
+    Determinism,
+    KeepRule,
     Termination,
+    TriagePolicy,
     TrialVerdict,
     cause_signature,
     minimize_entries,
+    triage,
     triage_record,
     verify,
 )
@@ -165,13 +178,118 @@ def test_signature_marks_targets_that_point_at_another_entry() -> None:
 
 def test_record_is_json_and_states_the_seed_restriction() -> None:
     case = case_of([NOISE[0], LINK, THROUGH])
-    run = minimize_entries(case, Evaluator(), execution_budget=50)
-    record = triage_record(run, verify(run, Evaluator(), rounds=1), label="exploratory test")
+    outcome = triage(case, Evaluator(), TriagePolicy(baseline_runs=3, verify_rounds=1))
+    record = triage_record(outcome, label="exploratory test")
     text = json.dumps(record)
     assert "never a seed or corpus entry" in record["use_restriction"]
-    assert record["original"]["entries"] == 3 and record["minimal"]["entries"] == 2
+    minimization = record["minimization"]
+    assert minimization["original"]["entries"] == 3 and minimization["minimal"]["entries"] == 2
     assert record["verification"]["consistent"] is True
+    assert record["determinism"] == "deterministic" and record["reference_only"] is False
+    assert record["counts"]["baseline_runs"] == 3
     assert "tar_b64" not in text  # no TAR bytes in the record
+
+
+# -- nondeterministic targets (W4 ruling 2026-11-18): k-of-n rule -----------------------------
+
+
+class Flaky:
+    """The C2 structure (LINK before THROUGH) violates on every ``period``-th call only."""
+
+    def __init__(self, period: int = 2) -> None:
+        self.calls = 0
+        self.period = period
+
+    def __call__(self, case: ArchiveCase) -> TrialVerdict:
+        self.calls += 1
+        entries = list(case.entries)
+        structure = (
+            LINK in entries and THROUGH in entries and entries.index(LINK) < entries.index(THROUGH)
+        )
+        hit = structure and self.calls % self.period == 0
+        termination = "success" if hit else "rejected"
+        return TrialVerdict(True, frozenset({"C2"}) if hit else frozenset(), {"t": termination})
+
+
+def test_default_counts_are_the_w4_numbers() -> None:
+    policy = TriagePolicy()
+    assert policy.baseline_runs == 10
+    assert policy.nondeterministic_keep == KeepRule(5, 1)
+    assert policy.final_runs == 20
+
+
+@pytest.mark.parametrize(("runs", "min_hits"), [(0, 1), (5, 0), (5, 6)])
+def test_keep_rule_bounds(runs: int, min_hits: int) -> None:
+    with pytest.raises(ValueError):
+        KeepRule(runs, min_hits)
+
+
+def test_a_deterministic_case_keeps_the_original_rule() -> None:
+    case = case_of([NOISE[0], LINK, NOISE[1], THROUGH, ESCAPE])
+    outcome = triage(case, Evaluator(), TriagePolicy())
+    assert outcome.determinism is Determinism.DETERMINISTIC
+    assert outcome.baseline.hits == outcome.baseline.runs == 10
+    assert outcome.run is not None and outcome.run.keep == KeepRule(1, 1)
+    assert outcome.run.minimal.entries == (LINK, THROUGH, ESCAPE)
+    assert outcome.consistent is True and outcome.final is None
+    assert exit_code(outcome) == EXIT_CONSISTENT
+    assert summary_line(outcome, "t", "1").startswith("TRIAGE CONSISTENT")
+
+
+def test_a_nondeterministic_case_is_marked_and_minimized_k_of_n() -> None:
+    case = case_of([NOISE[0], LINK, NOISE[1], THROUGH, NOISE[2]])
+    outcome = triage(case, Flaky(period=2), TriagePolicy())
+    assert outcome.determinism is Determinism.NONDETERMINISTIC
+    assert outcome.baseline.runs == 10 and 0 < outcome.baseline.hits < 10
+    run = outcome.run
+    assert run is not None and run.keep == KeepRule(5, 1)
+    assert run.minimal.entries == (LINK, THROUGH)
+    # every candidate was run 5 times and its hit count recorded
+    assert all(len(trial.verdicts) == 5 for trial in run.trials if not trial.reused)
+    assert all(trial.kept == (trial.hits >= 1) for trial in run.trials)
+    final = outcome.final
+    assert final is not None and final.runs == 20 and final.case_id == run.minimal.case_id
+    assert outcome.verification is None and outcome.consistent is None
+    record = triage_record(outcome, label="t")
+    assert record["reference_only"] is True and record["note"] == NONDETERMINISTIC_LABEL
+    assert record["final"]["runs"] == 20 and record["baseline"]["runs"] == 10
+    assert all("rate" in trial for trial in record["minimization"]["trials"])
+    assert exit_code(outcome) == EXIT_NONDETERMINISTIC
+    line = summary_line(outcome, "t", "1")
+    assert line.startswith("TRIAGE NONDETERMINISTIC")
+    assert f"original {outcome.baseline.hits}/10" in line and f"minimal {final.hits}/20" in line
+    assert "reference only" in line
+
+
+def test_a_rare_violation_can_fall_below_the_keep_rule() -> None:
+    # Hits only every 7th call: a 1-of-5 candidate may see none and be rejected; that is the
+    # documented looseness the n = 20 re-measurement makes visible, not an error.
+    case = case_of([NOISE[0], LINK, THROUGH])
+    outcome = triage(case, Flaky(period=7), TriagePolicy())
+    assert outcome.determinism is Determinism.NONDETERMINISTIC
+    assert outcome.final is not None and outcome.final.runs == 20
+
+
+def test_an_original_that_never_violates_is_not_minimized() -> None:
+    outcome = triage(case_of([NOISE[0], NOISE[1]]), Evaluator(), TriagePolicy(baseline_runs=4))
+    assert outcome.determinism is Determinism.NOT_REPRODUCED
+    assert outcome.run is None and outcome.final is None and outcome.verification is None
+    assert exit_code(outcome) == EXIT_NOT_REPRODUCED
+    assert summary_line(outcome, "t", "1").startswith("TRIAGE NOT REPRODUCED")
+
+
+def test_budget_counts_every_run_of_a_k_of_n_candidate() -> None:
+    case = case_of([*NOISE, LINK, THROUGH])
+    flaky = Flaky(period=2)
+    run = minimize_entries(
+        case,
+        flaky,
+        execution_budget=12,
+        contracts=frozenset({"C2"}),
+        keep=KeepRule(5, 1),
+    )
+    assert run.termination is Termination.BUDGET
+    assert run.executions == flaky.calls <= 12
 
 
 # -- the real-extractor script's pure helpers (no Docker) ----------------------------------------

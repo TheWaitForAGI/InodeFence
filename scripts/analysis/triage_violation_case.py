@@ -1,7 +1,8 @@
 """Minimize one saved violation case on its exact image and re-check it (#519, exploratory).
 
     python scripts/analysis/triage_violation_case.py <result folder> --case step-N \
-        --out <folder outside the repository> [--budget 40] [--rounds 3]
+        --out <folder outside the repository> [--baseline-runs 10] [--keep-runs 5]
+        [--keep-min-hits 1] [--final-runs 20] [--rounds 3] [--budget 200]
     python scripts/analysis/triage_violation_case.py <case folder> --out <...>
 
 Composes, without changing them:
@@ -12,14 +13,21 @@ Composes, without changing them:
   every candidate runs through the same launcher, controller, broker and isolation as
   ``inodefence replay``, one fresh controller per run, on the recorded image id (never prepared
   again or replaced);
-* :mod:`inodefence.violation_triage` — entry-level ddmin keeping the exact C0/C1/C2 set, the
-  re-run check of original and minimum, and the cause signature.
+* :mod:`inodefence.violation_triage` — :func:`~inodefence.violation_triage.triage`: measure the
+  original n times, classify it (deterministic / nondeterministic / not reproduced), minimize
+  under that class's keep rule (1-of-1, or k-of-n for nondeterministic cases), then check the
+  minimum (re-run check, or an n-run re-measurement beside the original's rate).
 
 Writes to ``--out`` (refused inside the repository): ``triage.json`` (record without TAR bytes),
 ``original.tar`` and ``minimal.tar`` (violating inputs: private, never published; SECURITY.md),
-and one work folder per run. Exit codes: 0 done and consistent, 1 done but the re-run check did
-not reproduce the verdict (do not use the minimum), 2 refused/stopped before running, 3 a run
-failed.
+and one work folder per run. Exit codes and summary line (first word after ``TRIAGE``):
+
+* 0 ``CONSISTENT`` — deterministic original (n/n), minimized, re-run check matches;
+* 1 ``NOT REPRODUCED`` — the original never showed a violation in n runs, or a deterministic
+  minimum failed its re-run check (do not use the minimum);
+* 4 ``NONDETERMINISTIC`` — 0 < original rate < 1: k-of-n minimization ran and the minimum was
+  re-measured; the line shows both rates; the result is reference only;
+* 2 refused/stopped before running; 3 a run failed.
 
 **The minimized input and its signature are never used as a seed or corpus entry of any
 exploration, benchmark or comparison arm.** This is not a product command (0.2.0 feature freeze)
@@ -47,11 +55,17 @@ from inodefence.drivers.runtime import health
 from inodefence.model import ArchiveCase
 from inodefence.violation_triage import (
     CONTRACTS,
+    Determinism,
+    KeepRule,
+    TriagePolicy,
     TrialVerdict,
-    minimize_entries,
+    triage,
     triage_record,
-    verify,
 )
+
+EXIT_CONSISTENT = 0
+EXIT_NOT_REPRODUCED = 1
+EXIT_NONDETERMINISTIC = 4
 
 #: node-tar ranges reserved for the v2 holdout (RESERVED.md 46cc970f): no run of any kind.
 RESERVED_NODE_TAR = ((7, 0, 0, 7, 4, 3), (6, 0, 0, 6, 2, 1), (4, 4, 0, 5, 0, 999))
@@ -110,8 +124,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("path", type=Path, help="exploration result folder or case folder")
     parser.add_argument("--case", help="step-N of a result folder")
     parser.add_argument("--out", type=Path, required=True, help="new folder outside the repository")
-    parser.add_argument("--budget", type=int, default=40, help="max minimization runs (default 40)")
-    parser.add_argument("--rounds", type=int, default=3, help="re-run check rounds (default 3)")
+    parser.add_argument("--baseline-runs", type=int, default=10, help="original runs (10)")
+    parser.add_argument("--keep-runs", type=int, default=5, help="nondeterministic: runs (5)")
+    parser.add_argument("--keep-min-hits", type=int, default=1, help="... of which hits (1)")
+    parser.add_argument("--final-runs", type=int, default=20, help="minimum re-measure (20)")
+    parser.add_argument("--rounds", type=int, default=3, help="deterministic re-run check (3)")
+    parser.add_argument("--budget", type=int, default=200, help="max minimization runs (200)")
     parser.add_argument("--label", default="exploratory (demo run, not registered)")
     args = parser.parse_args(argv)
 
@@ -149,6 +167,17 @@ def main(argv: list[str] | None = None) -> int:
         print(f"TRIAGE STOPPED: image {request.image_id} is not on this host", file=sys.stderr)
         return 2
 
+    try:
+        policy = TriagePolicy(
+            baseline_runs=args.baseline_runs,
+            nondeterministic_keep=KeepRule(args.keep_runs, args.keep_min_hits),
+            final_runs=args.final_runs,
+            verify_rounds=args.rounds,
+            execution_budget=args.budget,
+        )
+    except ValueError as error:
+        print(f"TRIAGE REFUSED: {error}", file=sys.stderr)
+        return 2
     out.mkdir(parents=True, exist_ok=True)
     runs = out / "runs"
     runs.mkdir()
@@ -184,12 +213,11 @@ def main(argv: list[str] | None = None) -> int:
         return verdict
 
     try:
-        result = minimize_entries(request.case, evaluate, execution_budget=args.budget)
-        checked = verify(result, evaluate, rounds=args.rounds)
+        outcome = triage(request.case, evaluate, policy)
     except ValueError as error:
         print(f"TRIAGE STOPPED: {error}", file=sys.stderr)
         return 3
-    record = triage_record(result, checked, label=args.label)
+    record = triage_record(outcome, label=args.label)
     record["source"] = {
         "target": request.target,
         "version": version,
@@ -199,16 +227,45 @@ def main(argv: list[str] | None = None) -> int:
         "engine_commit_of_exploration": request.engine_commit,
         "run_settings": request.run_settings,
     }
-    (out / "original.tar").write_bytes(build_tar(result.original))
-    (out / "minimal.tar").write_bytes(build_tar(result.minimal))
+    (out / "original.tar").write_bytes(build_tar(request.case))
+    if outcome.run is not None:
+        (out / "minimal.tar").write_bytes(build_tar(outcome.run.minimal))
     (out / "triage.json").write_text(json.dumps(record, indent=1, sort_keys=True), "utf-8")
-    print(
-        f"TRIAGE {'CONSISTENT' if checked.consistent else 'NOT REPRODUCED'} "
-        f"{request.target} {version}: contracts={','.join(sorted(result.contracts))} "
-        f"entries {len(result.original.entries)} -> {len(result.minimal.entries)} "
-        f"executions={result.executions} rounds={args.rounds} signature={record['signature']['id']}"
+    print(summary_line(outcome, request.target, version))
+    return exit_code(outcome)
+
+
+def exit_code(outcome) -> int:
+    if outcome.determinism is Determinism.NONDETERMINISTIC:
+        return EXIT_NONDETERMINISTIC
+    if outcome.determinism is Determinism.DETERMINISTIC and outcome.consistent:
+        return EXIT_CONSISTENT
+    return EXIT_NOT_REPRODUCED
+
+
+def summary_line(outcome, target: str, version: str) -> str:
+    base = outcome.baseline
+    head = (
+        f"{target} {version}: contracts={','.join(sorted(base.contracts)) or '-'} "
+        f"original {base.hits}/{base.runs}"
     )
-    return 0 if checked.consistent else 1
+    if outcome.determinism is Determinism.NOT_REPRODUCED:
+        return (
+            f"TRIAGE NOT REPRODUCED {head} (no violation in the baseline runs; nothing minimized)"
+        )
+    run = outcome.run
+    assert run is not None
+    sizes = f"entries {len(run.original.entries)} -> {len(run.minimal.entries)}"
+    if outcome.determinism is Determinism.NONDETERMINISTIC:
+        final = outcome.final
+        assert final is not None
+        return (
+            f"TRIAGE NONDETERMINISTIC {head} minimal {final.hits}/{final.runs} {sizes} "
+            f"keep={run.keep.min_hits}-of-{run.keep.runs} executions={run.executions} "
+            "(reference only)"
+        )
+    word = "CONSISTENT" if outcome.consistent else "NOT REPRODUCED"
+    return f"TRIAGE {word} {head} {sizes} executions={run.executions}"
 
 
 if __name__ == "__main__":

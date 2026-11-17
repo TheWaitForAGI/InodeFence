@@ -68,13 +68,38 @@ DEFAULT_REPLAY_COLUMNS = 140
 SGR_COLORS = {"34": "#7AA7FF", "32": "#8BD17C", "90": "#8A8F98", "39": TERM_FG}
 REPLAY_LABEL = "실행 기록 재생(2026-11-17)"
 TITLE = "InodeFence: TAR 추출 경계위반 탐색 프로토타입"
-#: Environment line shown over the s10 camera clip, copied verbatim from the C-PLIM row of the
-#: claim list on main at build time. The narration only says the environments are on screen,
-#: so this line can change (second host, tag) without a new recording.
-ENV_LINE = (
-    "확인한 호스트는 Windows + WSL2 + Docker Desktop 한 대다."
-    " 0.2.0은 릴리스 후보이며 태그와 릴리스가 없다."
+#: Environment lines shown over the s10 camera clip. Each one is a sentence copied verbatim
+#: from the C-PLIM row of the claim list; ``env_line_problems`` checks that at build time and
+#: the build stops on a mismatch. The narration only says the environments are on screen, so
+#: these lines can change (second host, tag) without a new recording.
+ENV_LINES = (
+    "확인한 환경은 둘이다.",
+    "Windows + WSL2(x86_64) + Docker Desktop 호스트 한 대와, "
+    "맥북 위 가상머신인 Ubuntu 24.04 arm64 VM(Multipass, WSL 아님) + Docker Engine 한 대다.",
+    "x86_64 네이티브 Linux와 macOS는 확인하지 않았다.",
 )
+#: Heading of the s10 band: the two environments are where the tool was installed and run, not
+#: where every value was measured (the 300-run and verify values are x86_64 only, C-PLIM).
+ENV_LABEL = "도구 설치·실행 확인 환경"
+CLAIMS = Path(__file__).resolve().parents[2] / "sections" / "claims-evidence-status-v1.md"
+
+
+def env_line_problems(claims: Path = CLAIMS) -> list[str]:
+    """Sentences of ``ENV_LINES`` that are not in the C-PLIM row text ("쓸 수 있는 말")."""
+    row = next(
+        (
+            line
+            for line in claims.read_text(encoding="utf-8").splitlines()
+            if line.startswith("| C-PLIM |")
+        ),
+        None,
+    )
+    if row is None:
+        return ["no C-PLIM row in " + str(claims)]
+    text = row.split(" | ")[1]
+    return [sentence for sentence in ENV_LINES if sentence not in text]
+
+
 # Arm names as in the claim list C-DESIGN and the storyboard s07b.
 ARMS = (
     ("R", "무작위 재시작"),
@@ -211,7 +236,7 @@ SLIDES: dict[str, tuple[str, tuple[str, ...]]] = {
             "verify: 네 대상 모두 정상 입력 대조군 ok · 고정 공격 입력 위반 0/5 (oras-go 0/6)",
             "네 대상 모두 위반 0 · 미판정 0. 위반 0은 안전 증명이 아님",
             "실행 중 수치 표시는 node-tar만, 나머지 셋은 실행 중 ? 표시",
-            "Windows + WSL2 + Docker Desktop 호스트 한 대 · 0.2.0은 릴리스 후보(태그·릴리스 없음)",
+            "이 값은 Windows + WSL2(x86_64) 호스트 한 대 · 0.2.0은 태그 v0.2.0 전까지 릴리스 후보",
         ),
     ),
     "s07d": (
@@ -485,7 +510,7 @@ class Canvas:
         if title:
             self.title_overlay(image)
         if env:
-            self.title_overlay(image, ENV_LINE, 32)
+            self.env_overlay(image)
         return self.finish(image, band=False)
 
     def title_overlay(self, image: Image.Image, text: str = TITLE, size: int = 50) -> None:
@@ -500,10 +525,29 @@ class Canvas:
         return image
 
     def env_png(self) -> Image.Image:
-        """Transparent lower-third with ``ENV_LINE``, laid over the s10 camera clip."""
+        """Transparent lower-third with ``ENV_LINES``, laid over the s10 camera clip."""
         image = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
-        self.title_overlay(image, ENV_LINE, 32)
+        self.env_overlay(image)
         return image
+
+    def env_overlay(self, image: Image.Image) -> None:
+        # sits just above the caption band, small type, so the face stays visible
+        font = self.fonts.body(26)
+        lines = [ENV_LABEL] + [
+            part for s in ENV_LINES for part in wrap_pixels(s, font, WIDTH - 160)
+        ]
+        bottom = CONTENT_BOTTOM - 5
+        top = bottom - 36 * len(lines) - 16
+        draw = ImageDraw.Draw(image, "RGBA")
+        draw.rectangle((0, top, WIDTH, bottom), fill=(43, 45, 99, 210))
+        for i, line in enumerate(lines):
+            draw.text(
+                (80, top + 26 + 36 * i),
+                line,
+                font=self.fonts.bold(26) if i == 0 else font,
+                fill="white",
+                anchor="lm",
+            )
 
     def problem(self) -> Image.Image:
         image, draw = self.base("문제: 경로만 보면 놓치는 관계", "예시")
@@ -1076,6 +1120,21 @@ def build(args: argparse.Namespace) -> None:
         "blocks": [],
         "warnings": [],
     }
+    env_problems = env_line_problems()
+    if env_problems:
+        raise SystemExit("ENV_LINES not in the C-PLIM row: " + " | ".join(env_problems))
+    head = subprocess.run(
+        ["git", "-C", str(HERE), "rev-parse", "HEAD"], capture_output=True, text=True, check=False
+    )
+    dirty = subprocess.run(
+        ["git", "-C", str(HERE), "status", "--porcelain"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    report["repo_head"] = head.stdout.strip() or "unknown"
+    report["repo_dirty"] = bool(dirty.stdout.strip())
+    report["env_line_check"] = f"PASS ({len(ENV_LINES)} sentences in C-PLIM, {CLAIMS.name})"
     if args.values is None:
         report["warnings"].append("no --values: sealed draft, not a submission build")
     all_cues: list[Cue] = []

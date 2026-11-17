@@ -101,7 +101,7 @@ def audit_record(log: Path, read: int, hidden: int, tail: int | None) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument("log", type=Path)
     parser.add_argument("--tail", type=int, default=None, help="only the last N lines")
     parser.add_argument("--audit", type=Path, default=DEFAULT_AUDIT)

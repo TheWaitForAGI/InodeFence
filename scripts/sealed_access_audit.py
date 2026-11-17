@@ -157,7 +157,7 @@ def audit(
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser = argparse.ArgumentParser(description=(__doc__ or "").splitlines()[0])
     parser.add_argument("--sealed", action="append", required=True, help="sealed path prefix")
     parser.add_argument("--sessions", action="append", type=Path, default=[])
     parser.add_argument("--history", action="append", type=Path, default=[])

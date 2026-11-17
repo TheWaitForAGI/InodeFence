@@ -85,6 +85,34 @@ class MutationChainAttempt:
         return sum(link.applied for link in self.links)
 
 
+@dataclass(frozen=True, slots=True)
+class ChainedMutationAttempt(MutationAttempt):
+    """The composite attempt of a chain step: seed -> final child, plus every attempt's link.
+
+    A subtype of :class:`MutationAttempt`, so a chain step is an ordinary ``EffectCampaignStep``
+    (or ``BuildInvalidStep``) and reaches every ``on_step`` consumer -- including the shared
+    launcher's step stream -- with its chain. ``MutationAttempt`` itself is unchanged, so every
+    non-chain step serializes exactly as before. ``operator_id`` is the last attempt's operator.
+    """
+
+    links: tuple[ChainLink, ...] = ()
+
+    def __post_init__(self) -> None:
+        MutationAttempt.__post_init__(self)
+        if (
+            not isinstance(self.links, tuple)
+            or not self.links
+            or not all(isinstance(link, ChainLink) for link in self.links)
+        ):
+            raise ValueError("a chained attempt requires at least one typed link")
+        if self.links[-1].operator_id != self.operator_id:
+            raise ValueError("a chained attempt's operator must be its last link's operator")
+
+    @property
+    def chain_length(self) -> int:
+        return len(self.links)
+
+
 def apply_chain(
     parent: ArchiveCase,
     rng: random.Random,
@@ -93,7 +121,7 @@ def apply_chain(
     choose: Callable[[random.Random], tuple[MutationOperatorId, int]],
     *,
     extra_components: tuple[str, ...] = (),
-) -> tuple[list[ChainLink], MutationAttempt]:
+) -> tuple[list[ChainLink], ChainedMutationAttempt]:
     """Apply ``m`` attempts; return the links and the composite attempt seed -> final child.
 
     ``choose(rng)`` draws one operator and returns it with its scheduler weight (the uniform
@@ -113,5 +141,7 @@ def apply_chain(
         links.append(ChainLink(operator_id, attempt.applied, weight))
         current = attempt.child_case
     assert operator_id is not None
-    composite = MutationAttempt(operator_id, policy, parent.case_id, current, current != parent)
+    composite = ChainedMutationAttempt(
+        operator_id, policy, parent.case_id, current, current != parent, tuple(links)
+    )
     return links, composite

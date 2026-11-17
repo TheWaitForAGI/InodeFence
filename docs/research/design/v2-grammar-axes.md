@@ -81,7 +81,7 @@ v2와 v2.1은 seed 코퍼스만 다르다. 문법, 축, 분포, 사슬 R의 m, b
   - `add_entry`, `add_hardlink`, `add_symlink`는 적용된다.
   - 나머지 7개 slot은 no-op이고 `applied` = False로 기록된다.
   - 사슬에서 no-op은 m에 세지만 깊이에는 더하지 않는다.
-- 보고서 `config.seed_corpus`에 코퍼스 id가 기록된다(읽기 편의 라벨). **G1 v2 관문**(W4 2026-11-18, 기록만이 아니라 관문)은 셀마다 기록된 초기 case id(보고서 `initial_case_ids`, 보고서가 없으면 seed step의 `case_id` 순서)가 그 셀의 기록된 정책이 묶는 코퍼스(`mutator.policy.SEED_CORPUS` → `generator.seed_corpus`, 값은 그곳에서 import)의 case id와 같은지, 묶음의 arm 사이에 같은지 본다. 다르면 그 셀의 실패이고, 기록이 없거나 정책이 코퍼스를 묶지 않으면 확인 불가(`review_required`)다. 셀별 값은 `seed_corpus_cells`.
+- 보고서 `config.seed_corpus`에 코퍼스 id가 기록된다(읽기 편의 라벨). **G1 v2 관문**(W4 2026-11-18, 기록만이 아니라 관문)은 셀마다 기록된 초기 case id(보고서 `initial_case_ids`, 보고서가 없으면 seed step의 `case_id` 순서)가 그 셀의 기록된 정책이 묶는 코퍼스(`mutator.policy.SEED_CORPUS` → `generator.seed_corpus`, 값은 그곳에서 import)의 case id와 같은지, 묶음의 arm 사이에 같은지 본다. 다르면 그 셀의 실패이고, 기록이 없거나 정책이 코퍼스를 묶지 않으면 확인 불가(`review_required`)다. 셀별 값은 `seed_corpus_cells`. 등록 v1 정책의 출력에 G1 v2 검사를 돌리면 seed 코퍼스가 확인 불가로 나와 검토 표시가 된다(v1은 코퍼스를 정책에 묶지 않음, `check_g1_v2` 종료 코드 2). seed 단계에서 중단된 셀은 W4 판정(2026-11-18)에 따라 별도 값 **incomplete**다: 보고서 목록 없이(보고서 없음 또는 중단 stub) seed step만 기록됐고, 그 id들이 묶인 코퍼스 id 목록의 비지 않은 진부분 앞부분이며, 그 뒤에 seed가 아닌 step이 없다. seed step에는 정책이 없으므로 묶음의 기록된 정책(하나로 일치할 때)으로 코퍼스를 정한다. 기록된 seed id 가운데 하나라도 코퍼스의 같은 위치와 다르면 different가 우선한다. incomplete는 따로 집계(`seed_corpus_incomplete`, 대상·seed·arm)하고 `review_required`로 표시하며 통과로 세지 않는다. 종료 코드는 unverifiable과 같은 2(검토)다: 1은 기록된 모순에만 쓰고, 0/1/2 체계를 그대로 둔다.
 - 테스트:
   - `tests/test_seed_corpus_v21.py`
   - `tests/test_seed_corpus_golden_v21.py`: 회귀 golden이다. bed077a에 대응하는 코드가 없으므로 이 커밋에서 만든 값을 고정한다.

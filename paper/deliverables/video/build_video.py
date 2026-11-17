@@ -14,11 +14,11 @@ with captions spread over the block by sentence length and a "무음 초안" cor
 block gets caption times from local speech recognition (``asr_align.py`` in its own venv, passed
 as ``--asr-python``); caption TEXT is always the script sentence.
 
-Scenes 6 and 9 are result slots: their screen shows only ``RESULT_SLOT`` until the unseal. Before
-the unseal (values status 미해제) scene 9 is a card like scene 6: the slot phrase, no narration.
-With ``--s09-running`` (ORCH's call, submission before the unseal) it reads the d12 running
-sentence (block ``s09-대기``). Any other status uses ``s09-결과`` with the spoken d12 sentence.
-Narration and captions carry no values.
+After the unseal (a values file with a status other than 미해제) scene 6 is the confirmatory
+result slide (``SLIDES['s06']``, narrated) and scene 9 the conclusion slide, narrated as
+``s09-결과`` with the spoken d12 abstract. Without a values file (sealed draft) both scenes fall
+back to cards that show only ``RESULT_SLOT`` with no narration. With ``--s09-running`` (submission
+before the unseal) scene 9 reads the d12 running sentence (block ``s09-대기``).
 
 Outputs in ``--out``: video.mp4 (1920x1080, 30 fps, H.264 + AAC 48 kHz, loudness -16 LUFS when any
 take exists), video.srt, video.ass (burned in) and build.json (blocks, takes with SHA-256, trims,
@@ -87,7 +87,15 @@ DESIGN_NOTES = (
 # Reading hints in the script, e.g. "7.5.2(칠 점 오 점 이)", are spoken only.
 READING_HINT = re.compile(r"\((?:[영공일이삼사오육칠팔구십 ]+점)+[영공일이삼사오육칠팔구십 ]+\)")
 # Spoken spellings in the script and how captions show them.
-DISPLAY = {"씨제로": "C0", "씨원": "C1", "씨투": "C2", "아이노드": "inode"}
+DISPLAY = {
+    "씨제로": "C0",
+    "씨원": "C1",
+    "씨투": "C2",
+    "아이노드": "inode",
+    "일 점 영일오": "1.015",
+    "영 점 팔팔칠": ".887",
+    "점 영삼삼": ".033",
+}
 AUDIO_EXT = (".wav", ".m4a", ".mp3", ".flac")
 VIDEO_EXT = (".mp4", ".mov", ".m4v")
 PAGE_CHARS = 64  # one caption page = at most two lines in the band
@@ -117,13 +125,13 @@ PLAN = (
     Block("s04c", "voice", 10, "seq:s04c", "위반 케이스 없음 · 위반 재현 화면 아님"),
     Block("s05", "voice", 17, "m2", "통제 재현 · 사람이 만든 고정 입력, 퍼저의 탐색 결과 아님"),
     Block("s05b", "voice", 25, "seq:s05b", "demo run · 호스트 한 대 · 위반 0은 안전 증명 아님"),
-    Block("s06", "card", 5, "result-slot"),
     Block("s07a", "face", 5, "face"),
     Block("s07b", "voice", 30, "design"),
     Block("s07c", "voice", 5, "design"),
     Block("s07d", "voice", 20, "slide:s07d", "측정 사슬 점검 · 탐색 성능 아님"),
-    Block("s08", "voice", 30, "slide:s08", "합산값 · arm별 값은 봉인"),
-    Block("s09", "voice", 5, "result-slot"),
+    Block("s08", "voice", 25, "slide:s08", "합산값 · 진행 판정용, 효과의 근거 아님"),
+    Block("s06", "voice", 12, "slide:s06", "등록 확증 실험 · 이 벤치마크에 한정"),
+    Block("s09", "voice", 10, "slide:s09", "결함 깊이 1(변이 1회) 벤치마크에 한정"),
     Block("s10", "face", 27, "face"),
     Block("end", "card", 4, "end"),
 )
@@ -153,6 +161,26 @@ RESULT_SLOT = "본실험 결과 자리(봉인 해제 뒤 기입)"
 #: Slide text of the storyboard scenes that have no recording: (heading, lines). Every line comes
 #: from the storyboard screen notes, which cite the claim IDs; values only from the claim list.
 SLIDES: dict[str, tuple[str, tuple[str, ...]]] = {
+    "s06": (
+        "확증 판정 (EXP-2 holdout, node-tar 7.4.4)",
+        (
+            "R 무작위 재시작 · D 구조 커버리지 · S-u 상태 피드백",
+            "N 160 · seed 블록 순열 검정 · 결함 깊이 1(변이 1회)",
+            "S-u 대 R: 순열 p(Holm) .9306 · HR 1.015 [.735, 1.425]",
+            "S-u 대 D: 순열 p(Holm) .9048 · HR .887 [.658, 1.219]",
+            "판정: 구분되지 않음 · HR 2 이상 배제",
+            "HR은 Peto 위험률 비, 구간은 seed 블록 부트스트랩 95%, 순열 p는 몬테카를로 10만 회",
+            "탐색적, 판정 없음: train 7.5.2 S-u 대 R p .54, S-u 대 D p .43",
+        ),
+    ),
+    "s09": (
+        "핵심 질문의 판정",
+        (
+            "S-u는 R·D 어느 쪽과도 구분되지 않았고,",
+            "위험률 비 2 이상의 가속은 구간으로 배제됐다",
+            "결함 깊이 1(변이 1회) 벤치마크에 한정 · 상태 피드백 일반의 결론이 아님",
+        ),
+    ),
     "s04long": (
         "node-tar 7.5.23 더 긴 탐색 (budget 300)",
         (
@@ -197,7 +225,8 @@ SLIDES: dict[str, tuple[str, tuple[str, ...]]] = {
             "인프라 실패 비율 .033  ·  기준 .45 이하",
             "판정 시각 2026-11-13 23:37 KST",
             "train 중 HOST2 정지 1회 → 원인 기록 → 재개",
-            "holdout 중 HOST2 정지 1회 → 원인 기록 → 재개 승인",
+            "holdout 중 HOST1 정지 2회·재개 2회, HOST2 정지 5회·재개 5회 (재개 시도 거부 1회)",
+            "정지마다 원인 기록 PR 머지 뒤 재개 · 직접 원인은 인프라 층, 근본 원인 미확인",
             "원시 출력은 SHA-256 목록으로 보존",
         ),
     ),
@@ -979,10 +1008,23 @@ def build(args: argparse.Namespace) -> None:
     if status == "미해제" and not args.s09_running:
         # Result slot: a card with the slot phrase only and no narration (claim list slot rule).
         s09_id, s09_text = "s09", ""
-        plan = tuple(replace(b, mode="card") if b.block == "s09" else b for b in PLAN)
+        plan = tuple(
+            replace(b, mode="card", visual="result-slot", label="")
+            if b.block in ("s06", "s09")
+            else b
+            for b in PLAN
+        )
     elif status == "미해제":
         # Fallback chosen by ORCH when submission comes before the unseal.
         s09_id, s09_text = "s09-대기", script["s09-대기"]
+        plan = tuple(
+            replace(b, mode="card", visual="result-slot", label="")
+            if b.block == "s06"
+            else replace(b, visual="result-slot", label="")
+            if b.block == "s09"
+            else b
+            for b in PLAN
+        )
         if checker.nows(s09_text) != checker.nows(checker.RUNNING_SPOKEN):
             raise SystemExit("script s09-대기 differs from the d12 running sentence")
     else:

@@ -256,6 +256,55 @@ def test_vocabulary_equality_is_asserted_per_seed_from_recorded_pools(tmp_path: 
     assert sizes["D"] == sizes["R"] + 1
 
 
+def test_recorded_mutation_policy_ids_are_compared_across_arms(tmp_path: Path) -> None:
+    plan = _plan("completion", (5,), budget=5)
+    out = tmp_path / "g1"
+    _write_cells(plan, out)
+    document = summarize_output(plan, out)
+    planned = plan.cell_config(plan.cells()[0]).mutation_policy.value
+    assert all(cell["mutation_policies"] == [planned] for cell in document["cells"])
+    assert document["vocabulary_equality"]["per_seed"]["5"]["mutation_policy_equal"] is True
+    assert document["vocabulary_equal_across_arms"] is True
+    # One arm's steps record another operator table (the report config is absent, so
+    # check_report_config cannot catch it): same token pool, but G1 must fail.
+    paths = cell_paths(plan.cells()[1], out)
+    report = json.loads(paths["report"].read_text())
+    del report["config"]
+    for step in report["steps"]:
+        if step.get("mutation_attempt"):
+            step["mutation_attempt"]["mutation_policy"] = "some-other-table-v1"
+    paths["report"].write_text(json.dumps(report))
+    document = summarize_output(plan, out)
+    detail = document["vocabulary_equality"]["per_seed"]["5"]
+    assert detail["mutation_policy_equal"] is False and not detail["equal"]
+    assert document["vocabulary_equal_across_arms"] is False
+    assert document["g1_verdict"]["pass"] is False
+
+
+def test_mutation_policy_ids_must_be_single_and_equal_when_recorded() -> None:
+    def cells(*policies: list[str] | None) -> list[dict[str, Any]]:
+        out: list[dict[str, Any]] = []
+        for arm, recorded in zip(("R", "D", "S-u"), policies, strict=True):
+            cell: dict[str, Any] = {"seed": 1, "arm": arm, "vocabulary_pool_final": ["a"]}
+            if recorded is not None:
+                cell["mutation_policies"] = recorded
+            out.append(cell)
+        return out
+
+    same = vocabulary_equality(cells(["m"], ["m"], ["m"]))
+    assert same["equal"] and same["per_seed"]["1"]["mutation_policy_equal"] is True
+    legacy = vocabulary_equality(cells(None, None, None))
+    assert legacy["equal"] and legacy["per_seed"]["1"]["mutation_policy_equal"] is None
+    # A cell that recorded no id (stopped before any mutation) is skipped, not a mismatch.
+    for partial in (cells(["m"], None, ["m"]), cells(["m"], [], ["m"])):
+        result = vocabulary_equality(partial)
+        assert result["equal"] and result["per_seed"]["1"]["mutation_policy_equal"] is True
+    for bad in (cells(["m"], ["m"], ["n"]), cells(["m"], ["m", "n"], ["m"])):
+        result = vocabulary_equality(bad)
+        assert result["equal"] is False
+        assert result["per_seed"]["1"]["mutation_policy_equal"] is False
+
+
 def test_config_nonconformant_cell_is_the_invalid_bucket(tmp_path: Path) -> None:
     plan = _plan("completion", (3,), budget=5)
     out = tmp_path / "g1"

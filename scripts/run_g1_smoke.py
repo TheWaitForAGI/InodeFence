@@ -207,9 +207,17 @@ def vocabulary_equality(
     The optional expected-arm map comes from the preregistered plan, not from
     whichever cells happened to produce usable reports. The legacy G1 direct
     call still requires the three MAIN_ARMS and keeps its single-target schema.
+
+    A token pool alone does not fix the operator table: two cells can share a pool
+    under different ``MutationPolicy`` ids. When cells carry ``mutation_policies``
+    (the ids their own records show, see ``recorded_mutation_policies``), every
+    cell of a (target, seed) group must record exactly one id and all must be the
+    same; ``mutation_policy_equal`` reports it. Cells that record no id are skipped;
+    a group where no cell records one (a legacy direct call) reports ``None``.
     """
     per_seed: dict[str, dict[str, Any]] = {}
     by_target: dict[str, dict[int, dict[str, frozenset[str]]]] = {}
+    policies_by_group: dict[tuple[str, int], list[tuple[str, ...] | None]] = {}
     duplicate_groups: set[tuple[str, int]] = set()
     for cell in cells:
         target = str(cell.get("target_id", "__single__"))
@@ -219,6 +227,10 @@ def vocabulary_equality(
         if arm in pools:
             duplicate_groups.add((target, seed))
         pools[arm] = frozenset(cell.get("vocabulary_pool_final", ()))
+        recorded = cell.get("mutation_policies")
+        policies_by_group.setdefault((target, seed), []).append(
+            None if recorded is None else tuple(str(item) for item in recorded)
+        )
     multiple_targets = len(by_target) > 1
     for target, by_seed in sorted(by_target.items()):
         expected = (
@@ -229,8 +241,10 @@ def vocabulary_equality(
         for seed, pools in sorted(by_seed.items()):
             arms = sorted(pools)
             distinct = set(pools.values())
+            policy_equal = _mutation_policy_equal(policies_by_group[(target, seed)])
             equal = (
-                expected is not None
+                policy_equal is not False
+                and expected is not None
                 and set(arms) == set(expected)
                 and len(arms) >= 2
                 and len(distinct) == 1
@@ -242,13 +256,52 @@ def vocabulary_equality(
                 "equal": equal,
                 "arms": arms,
                 "pool_sizes": {arm: len(pools[arm]) for arm in arms},
+                "mutation_policy_equal": policy_equal,
             }
     return {
         "equal": bool(per_seed) and all(item["equal"] for item in per_seed.values()),
         "per_seed": per_seed,
         "basis": "vocabulary_pool_final reconstructed from each cell's recorded step "
-        "name_segments (fixed at step 0 BEFORE for observed-names); empty pools fail",
+        "name_segments (fixed at step 0 BEFORE for observed-names); empty pools fail; "
+        "recorded mutation_policy ids, where a cell records any, must be one and the "
+        "same per group",
     }
+
+
+def _mutation_policy_equal(recorded: Sequence[tuple[str, ...] | None]) -> bool | None:
+    """None when no cell recorded any id; else each recording cell one id, all the same.
+
+    A cell with no recorded id (key absent, or a cell that stopped before its first
+    mutation step and has no report config) used no operator table, so it has
+    nothing to compare; it is skipped, not counted as a mismatch.
+    """
+    evidence = [item for item in recorded if item]
+    if not evidence:
+        return None
+    if any(len(item) != 1 for item in evidence):
+        return False
+    return len(set(evidence)) == 1
+
+
+def recorded_mutation_policies(
+    report: Mapping[str, Any] | None, records: Sequence[Mapping[str, Any]]
+) -> list[str]:
+    """Distinct ``MutationPolicy`` ids a cell's own files record, sorted.
+
+    Read from the report's ``config.mutation_policy`` (when a report exists) and
+    every mutation step's ``mutation_attempt.mutation_policy``. Observed from the
+    records, not taken from the plan: within one plan the planned id is the same
+    for every cell by construction, so only the recorded ids can disagree.
+    """
+    found: set[str] = set()
+    config = report.get("config") if report is not None else None
+    if isinstance(config, Mapping) and config.get("mutation_policy") is not None:
+        found.add(str(config["mutation_policy"]))
+    for record in records:
+        attempt = record.get("mutation_attempt")
+        if isinstance(attempt, Mapping) and attempt.get("mutation_policy") is not None:
+            found.add(str(attempt["mutation_policy"]))
+    return sorted(found)
 
 
 def g1_verdict(
@@ -410,6 +463,7 @@ def summarize_output(
                 t_first_event=None,
                 t_first_censored=None,
                 vocabulary_pool_final=[],
+                mutation_policies=[],
             )
         else:
             record["source"].update(
@@ -428,6 +482,7 @@ def summarize_output(
                 t_first_event=summary.t_first_event,
                 t_first_censored=summary.t_first_censored,
                 vocabulary_pool_final=list(summary.vocabulary_pool_final),
+                mutation_policies=recorded_mutation_policies(loaded.report, loaded.records),
             )
         if redact_outcomes:
             for key in ("hit", "t_first", "t_first_event", "t_first_censored"):

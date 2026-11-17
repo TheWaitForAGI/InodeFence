@@ -68,6 +68,13 @@ DEFAULT_REPLAY_COLUMNS = 140
 SGR_COLORS = {"34": "#7AA7FF", "32": "#8BD17C", "90": "#8A8F98", "39": TERM_FG}
 REPLAY_LABEL = "실행 기록 재생(2026-11-17)"
 TITLE = "InodeFence: TAR 추출 경계위반 탐색 프로토타입"
+#: Environment line shown over the s10 camera clip, copied verbatim from the C-PLIM row of the
+#: claim list on main at build time. The narration only says the environments are on screen,
+#: so this line can change (second host, tag) without a new recording.
+ENV_LINE = (
+    "확인한 호스트는 Windows + WSL2 + Docker Desktop 한 대다."
+    " 0.2.0은 릴리스 후보이며 태그와 릴리스가 없다."
+)
 # Arm names as in the claim list C-DESIGN and the storyboard s07b.
 ARMS = (
     ("R", "무작위 재시작"),
@@ -132,7 +139,7 @@ PLAN = (
     Block("s08", "voice", 25, "slide:s08", "합산값 · 진행 판정용, 효과의 근거 아님"),
     Block("s06", "voice", 12, "slide:s06", "등록 확증 실험 · 이 벤치마크에 한정"),
     Block("s09", "voice", 10, "slide:s09", "결함 깊이 1(변이 1회) 벤치마크에 한정"),
-    Block("s10", "face", 27, "face"),
+    Block("s10", "face", 27, "face-env"),
     Block("end", "card", 4, "end"),
 )
 
@@ -462,7 +469,7 @@ class Canvas:
             fig, (left + (right - left - fig.width) // 2, top + (bottom - top - fig.height) // 2)
         )
 
-    def face_placeholder(self, block: str, title: bool) -> Image.Image:
+    def face_placeholder(self, block: str, title: bool, env: bool = False) -> Image.Image:
         image = Image.new("RGB", (WIDTH, HEIGHT), "#3A3D45")
         draw = ImageDraw.Draw(image)
         draw.text(
@@ -477,17 +484,25 @@ class Canvas:
         )
         if title:
             self.title_overlay(image)
+        if env:
+            self.title_overlay(image, ENV_LINE, 32)
         return self.finish(image, band=False)
 
-    def title_overlay(self, image: Image.Image) -> None:
+    def title_overlay(self, image: Image.Image, text: str = TITLE, size: int = 50) -> None:
         draw = ImageDraw.Draw(image, "RGBA")
         draw.rectangle((0, 700, WIDTH, 810), fill=(43, 45, 99, 220))
-        draw.text((80, 755), TITLE, font=self.fonts.bold(50), fill="white", anchor="lm")
+        draw.text((80, 755), text, font=self.fonts.bold(size), fill="white", anchor="lm")
 
     def title_png(self) -> Image.Image:
         """Transparent lower-third laid over the s01 camera clip."""
         image = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
         self.title_overlay(image)
+        return image
+
+    def env_png(self) -> Image.Image:
+        """Transparent lower-third with ``ENV_LINE``, laid over the s10 camera clip."""
+        image = Image.new("RGBA", (WIDTH, HEIGHT), (0, 0, 0, 0))
+        self.title_overlay(image, ENV_LINE, 32)
         return image
 
     def problem(self) -> Image.Image:
@@ -981,7 +996,12 @@ def render_visual(block: Block, canvas: Canvas, ctx: dict, length: float, out: P
     elif block.visual == "end":
         encoder.hold(canvas.end_card(), length)
     else:
-        encoder.hold(canvas.face_placeholder(block.block, block.visual == "face-title"), length)
+        encoder.hold(
+            canvas.face_placeholder(
+                block.block, block.visual == "face-title", block.visual == "face-env"
+            ),
+            length,
+        )
     encoder.close()
     return facts
 
@@ -1045,6 +1065,9 @@ def build(args: argparse.Namespace) -> None:
     }
     title_png = work / "title.png"
     canvas.title_png().save(title_png)
+    env_png = work / "env.png"
+    canvas.env_png().save(env_png)
+    overlays = {"face-title": title_png, "face-env": env_png}
 
     report: dict = {
         "script_sha256": sha256(args.script),
@@ -1153,7 +1176,7 @@ def build(args: argparse.Namespace) -> None:
                 length,
                 seg,
                 "black",
-                title_png if block.visual == "face-title" else None,
+                overlays.get(block.visual),
             )
         else:
             if block.mode == "face" and take is not None:

@@ -5,20 +5,23 @@
 실험 결과와 호스트별 반복 로그 전문은 싣지 않고, 각 버전의 검증은 요약과 출처만 둔다. 실행별 기록은
 [docs/LOG.md](docs/LOG.md)·[docs/STATUS.md](docs/STATUS.md)·PR 본문에 있다.
 
-## [0.2.0] — Unreleased(릴리스 후보, 태그·릴리스 없음)
+## [0.2.0] — 2026-11-18
 
-**아직 릴리스되지 않았다.** `0.2.0` 태그와 GitHub Release가 없고, 아래 내용은 `main`에 없다. 0.2.0 RC 통합
-[#457](https://github.com/TheWaitForAGI/InodeFence/pull/457)(Draft, head `2e947d3`)과 그 위의 PRODUCT 직렬 스택에
-병합되지 않은 채 쌓여 있다. main 병합, `0.2.0` 태그, GitHub Release는 하지 않았고 시점은 정해지지 않았다. 통합 PR
-#457은 병합 금지 Draft다(조건은 그 PR 참조).
+첫 릴리스다. 아래 내용은 `main`에 있다(착지 [#484](https://github.com/TheWaitForAGI/InodeFence/pull/484), 그 뒤
+[#489](https://github.com/TheWaitForAGI/InodeFence/pull/489)·[#506](https://github.com/TheWaitForAGI/InodeFence/pull/506)).
+태그 `v0.2.0`와 GitHub Release는 지웅이 만든다. 범위와 릴리스 조건은 [D049](docs/DECISIONS.md)에 있고, 조건 6개의 근거는 다음과 같다.
 
-| 순서 | PR | 내용 | 상태 (2026-11-16) |
-| --- | --- | --- | --- |
-| 0 | [#457](https://github.com/TheWaitForAGI/InodeFence/pull/457) | 0.2.0 RC 통합(설치·`inodefence` 명령·네 대상·탐색 판정 규칙) | Draft, `main` 대상 |
-| 1 | [#464](https://github.com/TheWaitForAGI/InodeFence/pull/464) | `scripts/` 역할별 분리, 대체된 자료 정리 | `product/integration`에 병합(`430b802`) |
-| 2 | [#465](https://github.com/TheWaitForAGI/InodeFence/pull/465) | 제품 드라이버를 `inodefence.drivers` 패키지로 통합 | Draft, head `561b54d` |
-| 3 | [#466](https://github.com/TheWaitForAGI/InodeFence/pull/466) | Runtime 신뢰성 계층(STRICT 세션, 진단, replay 증거 보존) | Draft, head `eca9bf8` |
-| 4 | [#467](https://github.com/TheWaitForAGI/InodeFence/pull/467) | 패키징·CLI 사용성·사용자 설정 | Draft, head `2b06730` |
+| 조건 | 근거 |
+| --- | --- |
+| 1 oras-go 탐색에서 실제 추출 | 제품 탐색 입력을 아티팩트 디렉터리 `d/` 아래로 보냄. 2.6.2 demo run에서 11/20 추출 |
+| 2 네 대상 E2E가 CI에 있고 통과 | CI `product-e2e` job(`scripts/dev/product_e2e.py`) |
+| 3 런처의 Docker 시간 제한과 정리 실패 종료 코드 | 아래 「변경된 동작과 호환성」의 런처 항목, `tests/test_target_launchers_bounded.py` |
+| 4 실제 위반 케이스 `replay` 기록 | 2026-11-18 정정된 문구 기준. 알려진 취약 버전 `decompress@4.2.1` 탐색의 C0 위반 케이스를 3회 재실행해 3/3 재현(통제 재현, demo run). node-tar·oras-go·python-tarfile은 케이스를 얻지 못함([USAGE](docs/USAGE.md#지원-환경과-확인-수준)) |
+| 5 호환 약속 고정 | 아래 「호환 약속」, `tests/test_result_contract.py` |
+| 6 두 번째 호스트 | 맥북의 Ubuntu 24.04 arm64 VM에서 깨끗한 클론으로 USAGE 그대로 실행(2026-11-18, demo run) |
+
+확인한 환경은 Windows + WSL2(x86_64) + Docker Desktop 한 대와 Ubuntu 24.04 arm64 VM 한 대다. x86_64 네이티브 Linux와 macOS는
+이 릴리스에서 확인하지 않았다. 위반 0은 안전성 증명이 아니다.
 
 버전 번호: `pyproject.toml`은 2026-10-03부터 `0.1.0`이었지만 그 번호로 태그나 릴리스를 낸 적이 없고, 그동안 개발 중인
 모든 상태가 `0.1.0`으로 설치됐다. 같은 번호가 서로 다른 코드를 가리키지 않도록 첫 태그는 `0.2.0`으로 한다.
@@ -222,7 +225,7 @@ RC(#457) 이후 스택에서 의도적으로 바뀐 동작:
 
 ### 확인된 테스트·검증 범위
 
-**이 릴리스 후보 스택 head에서 확인한 것**(#467, 독립 QA clean checkout `e71a534`; `e71a534..2b06730`은 README만):
+**병합 전 RC 스택 head에서 확인한 것**(#467, 독립 QA clean checkout `e71a534`; `e71a534..2b06730`은 README만):
 
 - `make check` 5765 passed / 4 skipped, 기존 nodeid 삭제·상태 변화 0. GitHub CI(`check`, `container-integration`)는
   `e71a534`·`2b06730`에서 통과.

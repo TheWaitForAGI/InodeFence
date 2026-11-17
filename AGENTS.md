@@ -29,7 +29,7 @@ InodeFence는 TAR 압축 해제 보안을 연구하는 프로토타입이자, �
 
 - 현재 능력과 다음 할 일의 **단일 기준은 [STATUS의 Capability Ledger](docs/STATUS.md)**다. 날짜가 아니라
   마일스톤(M1~M4)으로 관리한다. 마일스톤별 상태는 Ledger에서 읽고 이 문서에 복사하지 않는다.
-- 수술 기간(2026-11-03~11-30)의 계획 기준은 Claude Doc 「InodeFence 독립 연구 감사 및 실험 설계 재정립」
+- 수술 기간(2026-11-03~11-26)의 계획 기준은 Claude Doc 「InodeFence 독립 연구 감사 및 실험 설계 재정립」
   (https://claude.ai/artifact/JJtsK3VowEGuBFN3YXZDFq)이다. 이 문서와 STATUS·BACKLOG가 다르면 문서가 맞고 STATUS는
   그에 맞춰 갱신 중이다. 저장소에 문서 복사본을 두지 않고 포인터만 둔다.
 - 실험 실행 기준은 Git에 동결된 사전등록 파일(`experiments/preregistration/`), 증거 기준은 raw + SHA-256 목록
@@ -79,7 +79,7 @@ Issue·Task Contract 범위와 Ledger 마일스톤을 넘는 기능을 임의로
 병합 운영 규칙은 이 절 한 곳에만 쓴다. 결정 원문은 [docs/DECISIONS.md](docs/DECISIONS.md)의 D037(수술 기간 병합
 정책)이고, 사람 결정 범위는 D035·D036에서 온다.
 
-- **병합은 지웅이 한다.** 수술 기간(2026-11-03~11-30) 동안 최종 squash merge는 지웅만 직접 수행한다(D037). 에이전트는
+- **병합은 지웅이 한다.** 수술 기간(2026-11-03~11-26) 동안 최종 squash merge는 지웅만 직접 수행한다(D037). 에이전트는
   `gh pr merge` 등으로 스스로 병합하지 않는다. D035의 자율 머지는 보류 상태이고, 수술 기간이 끝난 뒤에도 지웅의
   별도 결정이 기록되기 전에는 재개하지 않는다.
 - 머지 대기는 작업 중단 사유가 아니다. 같은 레인의 다음 작업은 자기 직전 브랜치에서 분기하고

@@ -19,7 +19,7 @@ M1~M4와 같고, 날짜가 아니라 "증거가 모이면 찍는" 지점이다. 
 - 연구 불변식(변경 없음): CVE-specific oracle 금지(D005), 알려진 PoC를 fuzzing seed로 안 씀(D006),
   observed/inferred 구분, synthetic을 native로 승격하지 않음, 비교 없이 effectiveness 주장 안 함.
 
-## 수술 (2026-11-03 ~ 11-30) — 단일 기준: Claude Doc
+## 수술 (2026-11-03 ~ 11-26) — 단일 기준: Claude Doc
 
 계획 기준은 Claude Doc 「InodeFence 독립 연구 감사 및 실험 설계 재정립」(https://claude.ai/artifact/JJtsK3VowEGuBFN3YXZDFq)이다
 ([STATUS 다음 연구 gate](STATUS.md) 수술 기준·[D038](DECISIONS.md)·[research-questions v2](research/design/research-questions.md)).

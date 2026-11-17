@@ -66,6 +66,15 @@ TRIAGE_POLICY = "entry-ddmin-contract-set-v2"
 SIGNATURE_SCHEMA = "inodefence-violation-signature-v1"
 RECORD_SCHEMA = "inodefence-violation-triage-v2"
 NONDETERMINISTIC_LABEL = "nondeterministic target; minimization is for reference only"
+NOT_A_RESULT_LABEL = "not reproduced; not a result (no minimum or signature is published)"
+
+
+class ResultStatus(StrEnum):
+    """What a triage record may be used for (QA note 2026-11-18)."""
+
+    RESULT = "result"  # deterministic and the re-run check matched
+    REFERENCE_ONLY = "reference-only"  # nondeterministic target
+    NOT_A_RESULT = "not-a-result"  # never reproduced, or the re-run check failed
 
 
 @dataclass(frozen=True, slots=True)
@@ -402,6 +411,14 @@ class TriageOutcome:
             return self.verification.consistent
         return None
 
+    @property
+    def status(self) -> ResultStatus:
+        if self.determinism is Determinism.NONDETERMINISTIC:
+            return ResultStatus.REFERENCE_ONLY
+        if self.consistent:
+            return ResultStatus.RESULT
+        return ResultStatus.NOT_A_RESULT
+
 
 def triage(case: ArchiveCase, evaluate: Evaluate, policy: TriagePolicy) -> TriageOutcome:
     """Measure → classify → minimize under the class's keep rule → check the minimum."""
@@ -517,10 +534,13 @@ def triage_record(outcome: TriageOutcome, *, label: str) -> dict[str, Any]:
             "execution_budget": policy.execution_budget,
         },
         "determinism": outcome.determinism.value,
-        "reference_only": outcome.determinism is Determinism.NONDETERMINISTIC,
-        "note": NONDETERMINISTIC_LABEL
-        if outcome.determinism is Determinism.NONDETERMINISTIC
-        else None,
+        "result_status": outcome.status.value,
+        "reference_only": outcome.status is ResultStatus.REFERENCE_ONLY,
+        "note": {
+            ResultStatus.REFERENCE_ONLY: NONDETERMINISTIC_LABEL,
+            ResultStatus.NOT_A_RESULT: NOT_A_RESULT_LABEL,
+            ResultStatus.RESULT: None,
+        }[outcome.status],
         "baseline": _measurement_record(outcome.baseline),
         "minimization": None,
         "verification": None,
@@ -543,7 +563,10 @@ def triage_record(outcome: TriageOutcome, *, label: str) -> dict[str, Any]:
                 "entries": len(run.minimal.entries),
                 "by_type": _entry_count_by_type(run.minimal),
             },
-            "signature": cause_signature(run.minimal, run.contracts),
+            # No signature for a record that is not a result (QA note): nothing to cite.
+            "signature": None
+            if outcome.status is ResultStatus.NOT_A_RESULT
+            else cause_signature(run.minimal, run.contracts),
             "trials": [
                 {
                     "index": trial.index,

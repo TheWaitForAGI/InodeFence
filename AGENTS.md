@@ -90,7 +90,7 @@ Issue·Task Contract 범위와 Ledger 마일스톤을 넘는 기능을 임의로
 - 한 PR에 한 목적. 관계없는 문서 수정·refactor·기능을 섞지 않는다.
 - 설명 첫 항목은 "이 PR을 병합하면 어떤 기능을 실제로 실행하거나 검증할 수 있게 되는가?"에 대한 답이다. 답이
   "~에 대한 문서/감사"뿐이면 PR이 아니라 STATUS 갱신이다(예외는 사람이 문서 정비를 PR로 내라고 직접 지시한 경우뿐이며, 에이전트 판단으로 넓히지 않는다).
-- 병합 요청의 최소 요건: CI job 전부(`check`, `container-integration`, `product-e2e` 4개) 통과와 작성자가 아닌 검토자(verifier 에이전트
+- 병합 요청의 최소 요건: CI 두 job(`check`, `container-integration`) 통과와 작성자가 아닌 검토자(verifier 에이전트
   또는 사람)의 판정. verifier 판정은 PR 코멘트로 남긴다.
 - **HEAD SHA가 바뀐 PR은 과거 검증 결과를 재사용하지 않는다.** 최신 SHA 기준으로 CI와 변경분 검증을 다시 받는다.
 - 충돌과 아래 브랜치의 변경 반영은 `git merge`로 한다. rebase와 force-push는 하지 않는다. 충돌(특히 `docs/LOG.md`

@@ -72,6 +72,9 @@ case만 허용)다.
   실행하고 종료 코드와 `result.json`을 확인한다. 사용자와 같은 드라이버·런처를 쓰며 demo run이다. 공개 로그이므로
   FAIL 판정이 나오면 사실만 출력하고 케이스 내용은 출력하지 않는다. Docker 호스트에서
   `python scripts/dev/product_e2e.py --target <대상> --out <빈 폴더>`로 재현한다.
+  **이 job을 병합 요청의 필수 조건으로 채택할지는 아직 정하지 않았다**(지웅 결정 대기). 지금의 필수 조건은 위 두 job이다
+  ([AGENTS.md PR 절](AGENTS.md#pr)). 이 job은 Docker 데몬과 이미지 준비용 외부 네트워크에 의존하므로, 필수로 삼으면 코드와
+  무관한 레지스트리·네트워크 장애도 병합을 막는다. 실패하면 원인이 코드인지 인프라인지 PR에 적는다.
 - `repro-evidence`·`experiment-fanout`은 수동 실행(`workflow_dispatch`) workflow이며 PR 검사가 아니다.
 
 CI가 실패한 상태로 병합을 요청하지 않는다.

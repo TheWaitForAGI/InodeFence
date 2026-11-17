@@ -14,10 +14,17 @@ ruling 7, D062 stays a one-time exception). Consequences, accepted by W4:
 
 ``pre-violation-signal-v1-novelty-applied-split-v1``:
 
-W4 (2026-11-18), the asymmetry with the registered S-u: the retention of this exploration
-policy does not look at protected-object information; the registered S-u retention uses effect
-keys that include the protected/external flag. This is a different retention rule, not "S-u
-plus signals"; S-u is computed here for the recorded channel only.
+W4 (2026-11-18), the asymmetry with the registered S-u, in W4's words:
+
+    이 탐색 정책의 보존은 보호 객체 정보를 보지 않는다.
+    등록 S-u의 보존은 보호 목록에서 계산한 '보호된 외부 객체' 표시(하나의 참/거짓)를 포함한
+    effect 키(경계 시도 키 포함)와 oracle의 위반 지문을 쓴다.
+    둘 다 경로 이름·패턴·CVE를 담지 않는다.
+
+(The mark is ``normalized_effect_signature``'s single ``protected_external`` boolean.) In addition,
+this policy uses no oracle verdict either: its reward is only whether a new pre-violation signal
+appeared. This is a different retention rule, not "S-u plus signals"; S-u is computed here for
+the recorded channel only.
 
 * Retention: the seeds (base corpus) plus every executed case that shows a pre-violation signal
   (:mod:`inodefence.feedback.pre_violation`) not seen before in the campaign. Nothing else: no

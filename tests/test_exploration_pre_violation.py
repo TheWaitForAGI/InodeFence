@@ -85,9 +85,17 @@ def _snapshots(
 def _producer(
     sentinels: tuple[str, ...] = ("outside/sentinel",),
     protected: tuple[str, ...] | None = None,
+    *,
+    realized: bool = False,
 ):
     """Synthetic results; an escaping hardlink is a refused external LINK, an absolute symlink an
-    external SYMLINK; the protected list and sentinel names are ``sentinels``."""
+    external SYMLINK; the protected list and sentinel names are ``sentinels``.
+
+    ``realized``: the escaping hardlink instead **succeeds** as a verified identity relation
+    between ``ESCAPE_PATH`` and the in-root path. That is a realized external effect, so the
+    recorded S-u channel's effect key carries the protected-external mark, which follows the
+    protected list; the exploration signals must not.
+    """
 
     def produce(case: ArchiveCase) -> EffectRunResult:
         trace = synthetic._trace_for_case(case)
@@ -95,7 +103,26 @@ def _producer(
         for event in trace.effect_events:
             entry = case.entries[event.entry.entry_index]
             target = entry.link_target or ""
-            if entry.entry_type == HARD and target.startswith(".."):
+            if entry.entry_type == HARD and target.startswith("..") and realized:
+                inner = event.affected_paths[1]
+                ino = 100 + event.entry.entry_index
+                outside = synthetic._object(ESCAPE_PATH, dev=7, ino=ino)
+                linked = synthetic._object(inner, dev=7, ino=ino)
+                event = replace(
+                    event,
+                    affected_paths=(ESCAPE_PATH, inner),
+                    object_evidence=(
+                        EffectPathEvidence(
+                            ESCAPE_PATH,
+                            synthetic._observation(outside),
+                            synthetic._observation(outside),
+                        ),
+                        EffectPathEvidence(
+                            inner, synthetic._observation(None), synthetic._observation(linked)
+                        ),
+                    ),
+                )
+            elif entry.entry_type == HARD and target.startswith(".."):
                 inner = event.affected_paths[1]
                 event = replace(
                     event,
@@ -267,9 +294,13 @@ def _exploration_trajectory(
     seed: int,
     mutation_policy: MutationPolicy = NON_OBSERVING,
     protected: tuple[str, ...] | None = None,
-) -> tuple[list[Any], list[ArchiveCase]]:
+    *,
+    realized: bool = False,
+) -> tuple[list[Any], list[ArchiveCase], list[Any]]:
+    """(exploration decisions, executed cases, recorded S-u channel per step)."""
     config = EffectCampaignConfig(seed, 60, S_U, mutation_policy, exploration_policy=EXPLORE)
-    result = run_effect_campaign(_escape_corpus(), _producer(sentinels, protected), config)
+    produce = _producer(sentinels, protected, realized=realized)
+    result = run_effect_campaign(_escape_corpus(), produce, config)
     report: dict[str, Any] = effect_campaign_report(result, "synthetic")
     trajectory: list[Any] = [result.retained_case_ids]
     for step in report["steps"]:
@@ -284,7 +315,8 @@ def _exploration_trajectory(
             )
         )
     cases = [step.result.base_result.case for step in result.steps]
-    return trajectory, cases
+    recorded = [step["feedback"] for step in report["steps"]]
+    return trajectory, cases, recorded
 
 
 def _escape_corpus() -> tuple[ArchiveCase, ...]:
@@ -307,7 +339,7 @@ def test_b_renaming_or_reordering_protected_list_and_sentinels_changes_no_decisi
     seed: int,
 ) -> None:
     # Whole campaign: signals, admissions, parent draws, rewards and weights are byte-identical.
-    reference, _ = _exploration_trajectory(("outside/sentinel",), seed)
+    reference, _, _ = _exploration_trajectory(("outside/sentinel",), seed)
     assert any(item[2] and item[2]["new_signals"] for item in reference[1:])  # signals exercised
     for sentinels in VARIANTS:
         assert _exploration_trajectory(sentinels, seed)[0] == reference, sentinels
@@ -343,7 +375,7 @@ def test_b_v2_policy_whole_campaign_with_a_fixed_name_pool_and_permuted_protecte
     # order) changes no feedback decision of the whole v2 campaign: signals, admissions, parent
     # draws, rewards and weights. This isolates exactly what feedback must not see.
     pool, protected = PROTECTED_VARIANTS[0]
-    reference, _ = _exploration_trajectory(pool, seed, V2, protected)
+    reference, _, _ = _exploration_trajectory(pool, seed, V2, protected)
     assert any(item[2] and item[2]["new_signals"] for item in reference[1:])
     for pool, protected in PROTECTED_VARIANTS[1:]:
         assert _exploration_trajectory(pool, seed, V2, protected)[0] == reference, protected
@@ -356,8 +388,28 @@ def test_b_v2_policy_whole_campaign_with_a_fixed_name_pool_and_permuted_protecte
     assert len(recorded) == 5  # five memberships; two variants share one and differ in order
 
 
+@pytest.mark.parametrize("seed", [5, 777])
+def test_b_v2_realized_external_effect_moves_the_s_u_record_but_no_exploration_decision(
+    seed: int,
+) -> None:
+    # QA check 37: with a realized external effect on a path whose protection changes, the
+    # channel that reads the protected list (the recorded S-u effect keys) does move across the
+    # variants, while every exploration decision stays byte-identical.
+    pool, protected = PROTECTED_VARIANTS[0]
+    reference, _, reference_record = _exploration_trajectory(
+        pool, seed, V2, protected, realized=True
+    )
+    assert any(item[2] and item[2]["new_signals"] for item in reference[1:])
+    records = [reference_record]
+    for pool, protected in PROTECTED_VARIANTS[1:]:
+        trajectory, _, record = _exploration_trajectory(pool, seed, V2, protected, realized=True)
+        assert trajectory == reference, protected
+        records.append(record)
+    assert any(record != reference_record for record in records[1:])
+
+
 def test_b_v2_policy_signals_per_case_do_not_depend_on_protected_list_or_sentinels() -> None:
-    _, cases = _exploration_trajectory(("outside/sentinel",), 5, V2)
+    _, cases, _ = _exploration_trajectory(("outside/sentinel",), 5, V2)
     for case in cases:
         reference = pre_violation_signals(_producer()(case).trace)
         for sentinels in VARIANTS:
@@ -412,6 +464,33 @@ def test_weights_are_capped_and_more_than_six_applied_operators_are_refused() ->
     assert dict(evidence.weights_after)[ADD] == 2 * WEIGHT_UNIT
     with pytest.raises(ValueError, match="at most 6"):
         _observe(scheduler, ADD, (ADD,) * 7, (SIGNAL,))
+
+
+def test_observe_signals_reward_and_weights_ignore_effect_keys_and_fingerprints() -> None:
+    # QA check 37 note a: effect_scheduler.py is outside the import-graph check, so pin it here:
+    # in observe_signals the recorded-channel arguments only pass through to the evidence.
+    source = (SRC / "effect_scheduler.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    method = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "observe_signals"
+    )
+    passthrough = {"new_effect_keys", "new_violation_fingerprints"}
+    evidence_call = next(
+        node
+        for node in ast.walk(method)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "PreViolationSchedulerEvidence"
+    )
+    allowed = {id(arg) for arg in evidence_call.args}
+    uses = [
+        node
+        for node in ast.walk(method)
+        if isinstance(node, ast.Name) and node.id in passthrough and isinstance(node.ctx, ast.Load)
+    ]
+    assert uses and all(id(node) in allowed for node in uses)
 
 
 def test_evidence_reward_must_match_new_signals() -> None:

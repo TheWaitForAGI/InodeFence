@@ -18,6 +18,7 @@ from scripts.run_g1_smoke import (
 )
 
 from inodefence.evaluation.rds import RdsArm, RVariant, VocabularyMode, arm_search_policy
+from inodefence.generator import minimal_seed_corpus
 from inodefence.mutator import MutationPolicy
 
 
@@ -263,7 +264,12 @@ def test_recorded_mutation_policy_ids_are_compared_across_arms(tmp_path: Path) -
     document = summarize_output(plan, out)
     planned = plan.cell_config(plan.cells()[0]).mutation_policy.value
     assert all(cell["mutation_policies"] == [planned] for cell in document["cells"])
-    assert document["vocabulary_equality"]["per_seed"]["5"]["mutation_policy_equal"] is True
+    assert document["vocabulary_equality"]["per_seed"]["5"]["mutation_policy_check"] == "equal"
+    assert document["mutation_policy_check_summary"] == {
+        "counts": {"equal": 1, "different": 0, "unverifiable": 0},
+        "unverifiable_groups": [],
+        "review_required": False,
+    }
     assert document["vocabulary_equal_across_arms"] is True
     # One arm's steps record another operator table (the report config is absent, so
     # check_report_config cannot catch it): same token pool, but G1 must fail.
@@ -276,12 +282,31 @@ def test_recorded_mutation_policy_ids_are_compared_across_arms(tmp_path: Path) -
     paths["report"].write_text(json.dumps(report))
     document = summarize_output(plan, out)
     detail = document["vocabulary_equality"]["per_seed"]["5"]
-    assert detail["mutation_policy_equal"] is False and not detail["equal"]
+    assert detail["mutation_policy_check"] == "different" and not detail["equal"]
+    assert document["mutation_policy_check_summary"]["counts"]["different"] == 1
     assert document["vocabulary_equal_across_arms"] is False
     assert document["g1_verdict"]["pass"] is False
 
 
-def test_mutation_policy_ids_must_be_single_and_equal_when_recorded() -> None:
+def test_group_with_fewer_than_two_recording_cells_is_unverifiable(tmp_path: Path) -> None:
+    # Two arms stop before their first mutation step (no report config, no attempt):
+    # one recording cell cannot show equality. The vocabulary verdict is unchanged,
+    # but the group is listed for review instead of counted as equal.
+    plan = _plan("completion", (5,), budget=5)
+    out = tmp_path / "g1"
+    seeds = len(minimal_seed_corpus())
+    _write_cells(plan, out, abort={"7.5.2-R-s5": seeds, "7.5.2-D-s5": seeds})
+    document = summarize_output(plan, out)
+    detail = document["vocabulary_equality"]["per_seed"]["5"]
+    assert detail["mutation_policy_check"] == "unverifiable" and detail["equal"]
+    assert document["mutation_policy_check_summary"] == {
+        "counts": {"equal": 0, "different": 0, "unverifiable": 1},
+        "unverifiable_groups": ["5"],
+        "review_required": True,
+    }
+
+
+def test_mutation_policy_check_is_three_valued() -> None:
     def cells(*policies: list[str] | None) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
         for arm, recorded in zip(("R", "D", "S-u"), policies, strict=True):
@@ -291,18 +316,23 @@ def test_mutation_policy_ids_must_be_single_and_equal_when_recorded() -> None:
             out.append(cell)
         return out
 
-    same = vocabulary_equality(cells(["m"], ["m"], ["m"]))
-    assert same["equal"] and same["per_seed"]["1"]["mutation_policy_equal"] is True
-    legacy = vocabulary_equality(cells(None, None, None))
-    assert legacy["equal"] and legacy["per_seed"]["1"]["mutation_policy_equal"] is None
-    # A cell that recorded no id (stopped before any mutation) is skipped, not a mismatch.
-    for partial in (cells(["m"], None, ["m"]), cells(["m"], [], ["m"])):
-        result = vocabulary_equality(partial)
-        assert result["equal"] and result["per_seed"]["1"]["mutation_policy_equal"] is True
-    for bad in (cells(["m"], ["m"], ["n"]), cells(["m"], ["m", "n"], ["m"])):
+    def check(result: dict[str, Any]) -> str:
+        return result["per_seed"]["1"]["mutation_policy_check"]
+
+    for same in (cells(["m"], ["m"], ["m"]), cells(["m"], None, ["m"]), cells(["m"], [], ["m"])):
+        result = vocabulary_equality(same)
+        assert result["equal"] and check(result) == "equal"
+    # Zero or one recording cell: not a pass of the check, and not a vocabulary failure.
+    for unverifiable in (cells(None, None, None), cells(["m"], None, []), cells([], [], [])):
+        result = vocabulary_equality(unverifiable)
+        assert result["equal"] and check(result) == "unverifiable"
+    for bad in (
+        cells(["m"], ["m"], ["n"]),
+        cells(["m"], ["m", "n"], ["m"]),
+        cells(["m", "n"], None, None),
+    ):
         result = vocabulary_equality(bad)
-        assert result["equal"] is False
-        assert result["per_seed"]["1"]["mutation_policy_equal"] is False
+        assert result["equal"] is False and check(result) == "different"
 
 
 def test_config_nonconformant_cell_is_the_invalid_bucket(tmp_path: Path) -> None:

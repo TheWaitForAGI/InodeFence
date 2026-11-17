@@ -38,6 +38,16 @@ RUNNING_WRITTEN = (
     "확증 실험은 제출 시점에 진행 중이며, 판정은 미리 등록한 규칙에 따라 실험이 끝난 뒤에 낸다."
 )
 
+#: Spoken form of a d12 abstract: arm tags are read as the method names shown on the s06 key,
+#: and the sentence ends politely. Only these fixed swaps; the content stays the d12 sentence.
+SPEAKABLE = (
+    ("S-u는 R·D 어느 쪽과도", "상태 피드백 방식은 무작위 재시작과 구조 커버리지 어느 쪽과도"),
+    ("위험률 비 2 이상의", "위험률 비 2배 이상의"),
+    # the scope parenthetical is shown on the s09 slide and spoken in s10 (C-LIM1)
+    ("배제됐다(결함 깊이 1 벤치마크).", "배제됐습니다."),
+    ("배제됐다.", "배제됐습니다."),
+)
+
 results: list[tuple[str, str, str]] = []
 
 
@@ -48,6 +58,12 @@ def record(status: str, name: str, detail: str = "") -> None:
 
 def flat(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
+
+
+def spoken_form(text: str) -> str:
+    for written, spoken in SPEAKABLE:
+        text = text.replace(written, spoken)
+    return text
 
 
 def nows(text: str) -> str:
@@ -152,7 +168,7 @@ def result_sentences(values: dict, d12: str) -> tuple[str, str, str] | None:
     if left:
         record("FAIL", "result sentence placeholders", ", ".join(left))
     spoken = re.sub(r"\((?:[^()]*<[^()]*>[^()]*)\)", "", abstract)
-    return status, filled, flat(spoken)
+    return status, filled, spoken_form(flat(spoken))
 
 
 def check_result(

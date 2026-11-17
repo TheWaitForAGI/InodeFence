@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import ast
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -10,6 +12,7 @@ from scripts.analysis.triage_violation_case import (
     EXIT_CONSISTENT,
     EXIT_NONDETERMINISTIC,
     EXIT_NOT_REPRODUCED,
+    MINIMUM_FILE,
     exit_code,
     reserved,
     summary_line,
@@ -19,8 +22,10 @@ from scripts.analysis.triage_violation_case import (
 from inodefence.model import ArchiveCase, ArchiveEntry, EntryType
 from inodefence.violation_triage import (
     NONDETERMINISTIC_LABEL,
+    NOT_A_RESULT_LABEL,
     Determinism,
     KeepRule,
+    ResultStatus,
     Termination,
     TriagePolicy,
     TrialVerdict,
@@ -346,3 +351,67 @@ def test_a_judged_round_becomes_its_contract_set() -> None:
 def test_incomplete_or_unjudged_runs_are_unjudged(run: SimpleNamespace) -> None:
     verdict = verdict_of(run)
     assert not verdict.judged and not verdict.violated
+
+
+# -- seed/corpus contamination guard and result status (QA notes 2026-11-18) -------------------
+
+REPO = Path(__file__).resolve().parents[1]
+#: The only non-test modules allowed to import the triage module (analysis output, not search).
+TRIAGE_IMPORTERS = {Path("scripts/analysis/triage_violation_case.py")}
+
+
+def _imports_triage(path: Path) -> bool:
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import) and any(
+            alias.name.endswith("violation_triage") for alias in node.names
+        ):
+            return True
+        if isinstance(node, ast.ImportFrom) and (
+            (node.module or "").endswith("violation_triage")
+            or any(alias.name == "violation_triage" for alias in node.names)
+        ):
+            return True
+    return False
+
+
+def test_no_engine_search_corpus_or_registered_path_imports_the_triage_module() -> None:
+    """Minimized inputs and signatures can never reach a seed or corpus: nothing that searches,
+    keeps a corpus, generates seeds or runs a registered experiment imports this module."""
+    offenders = sorted(
+        str(path.relative_to(REPO))
+        for root in ("src", "scripts")
+        for path in (REPO / root).rglob("*.py")
+        if path.relative_to(REPO) not in TRIAGE_IMPORTERS
+        and path.name != "violation_triage.py"
+        and _imports_triage(path)
+    )
+    assert offenders == []
+
+
+def test_status_and_minimum_file_name() -> None:
+    deterministic = triage(case_of([NOISE[0], LINK, THROUGH]), Evaluator(), TriagePolicy())
+    assert deterministic.status is ResultStatus.RESULT
+    assert MINIMUM_FILE[deterministic.status] == "minimal.tar"
+    flaky = triage(case_of([NOISE[0], LINK, THROUGH]), Flaky(period=2), TriagePolicy())
+    assert flaky.status is ResultStatus.REFERENCE_ONLY
+    assert MINIMUM_FILE[flaky.status] == "minimal.reference-only.tar"
+    never = triage(case_of([NOISE[0]]), Evaluator(), TriagePolicy(baseline_runs=2))
+    assert never.status is ResultStatus.NOT_A_RESULT and never.status not in MINIMUM_FILE
+
+
+def test_a_failed_recheck_is_not_a_result_and_has_no_signature() -> None:
+    class FlipsAfterBaseline(Evaluator):
+        def __call__(self, case: ArchiveCase) -> TrialVerdict:
+            verdict = super().__call__(case)
+            # deterministic for the 10 baseline runs, then the verdict disappears
+            return verdict if self.calls <= 10 else TrialVerdict(True, frozenset(), {})
+
+    outcome = triage(case_of([LINK, THROUGH]), FlipsAfterBaseline(), TriagePolicy())
+    assert outcome.determinism is Determinism.DETERMINISTIC and outcome.consistent is False
+    assert outcome.status is ResultStatus.NOT_A_RESULT
+    record = triage_record(outcome, label="t")
+    assert record["result_status"] == "not-a-result"
+    assert record["note"] == NOT_A_RESULT_LABEL
+    assert record["minimization"]["signature"] is None
+    assert exit_code(outcome) == EXIT_NOT_REPRODUCED

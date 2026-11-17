@@ -19,7 +19,10 @@ Composes, without changing them:
   minimum (re-run check, or an n-run re-measurement beside the original's rate).
 
 Writes to ``--out`` (refused inside the repository): ``triage.json`` (record without TAR bytes),
-``original.tar`` and ``minimal.tar`` (violating inputs: private, never published; SECURITY.md),
+``original.tar`` and the minimum (violating inputs: private, never published; SECURITY.md) --
+``minimal.tar`` only for a result, ``minimal.reference-only.tar`` for a nondeterministic target,
+and no minimum file (and no signature) when the case is not reproduced -- the record's
+``code`` field names the commit and dirty flag of the code that ran,
 and one work folder per run. Exit codes and summary line (first word after ``TRIAGE``):
 
 * 0 ``CONSISTENT`` — deterministic original (n/n), minimized, re-run check matches;
@@ -49,7 +52,7 @@ from typing import Any
 from inodefence.builder import build_tar
 from inodefence.case_replay import CaseReplayError, ReplayRequest, load_request
 from inodefence.drivers.repo import code_checkout
-from inodefence.drivers.run_target import load_adapter
+from inodefence.drivers.run_target import engine_provenance, load_adapter
 from inodefence.drivers.run_target_replay import local_image_lookup
 from inodefence.drivers.runtime import health
 from inodefence.model import ArchiveCase
@@ -57,11 +60,18 @@ from inodefence.violation_triage import (
     CONTRACTS,
     Determinism,
     KeepRule,
+    ResultStatus,
     TriagePolicy,
     TrialVerdict,
     triage,
     triage_record,
 )
+
+#: Where the minimum is written per status; none for a case that is not a result.
+MINIMUM_FILE = {
+    ResultStatus.RESULT: "minimal.tar",
+    ResultStatus.REFERENCE_ONLY: "minimal.reference-only.tar",
+}
 
 EXIT_CONSISTENT = 0
 EXIT_NOT_REPRODUCED = 1
@@ -227,9 +237,12 @@ def main(argv: list[str] | None = None) -> int:
         "engine_commit_of_exploration": request.engine_commit,
         "run_settings": request.run_settings,
     }
+    provenance = engine_provenance(None)
+    record["code"] = {"commit": provenance.engine_sha, "dirty": provenance.engine_dirty}
     (out / "original.tar").write_bytes(build_tar(request.case))
-    if outcome.run is not None:
-        (out / "minimal.tar").write_bytes(build_tar(outcome.run.minimal))
+    name = MINIMUM_FILE.get(outcome.status)
+    if outcome.run is not None and name is not None:
+        (out / name).write_bytes(build_tar(outcome.run.minimal))
     (out / "triage.json").write_text(json.dumps(record, indent=1, sort_keys=True), "utf-8")
     print(summary_line(outcome, request.target, version))
     return exit_code(outcome)

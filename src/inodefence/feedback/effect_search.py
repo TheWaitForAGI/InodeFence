@@ -74,6 +74,8 @@ class EffectSearchPolicy(StrEnum):
     S_U_STATE_RETENTION_UNIFORM = (
         "effect-feedback-v2-or-violation-v1-boundary-attempt-v1-uniform-mutation-v1"
     )
+    R_UNRETAINED_SEED_CHAIN_M4 = "unretained-seed-chain-m4-v1-uniform-mutation-v1"
+    R_UNRETAINED_SEED_CHAIN_M6 = "unretained-seed-chain-m6-v1-uniform-mutation-v1"
 
 
 # The equal-vocabulary arms (uniform scheduler, shared diagnostic channel).

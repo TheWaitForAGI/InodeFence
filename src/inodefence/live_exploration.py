@@ -58,6 +58,10 @@ UNFINGERPRINTED_BUCKET = "(unfingerprinted)"
 STATES = ("running", "finished", "stopped", "failed")
 #: Execution statuses a step may report (mirrors ``model.results.ExecutionStatus`` values).
 STATUSES = ("success", "rejected", "failed", "timed_out")
+#: Live status of a v2 build-invalid step (D060): the builder could not represent the input, so
+#: no extractor ran. Not a termination and not "unjudged" (a stop rule on the unjudged ratio must
+#: not see it); counted under ``build_invalid`` in progress.json, which appears only when > 0.
+BUILD_INVALID_STATUS = "build-invalid"
 CONTRACT_KEYS = ("c0", "c1", "c2")
 REPLAY_NOTE = (
     "no single-TAR replay entry exists yet; the input and its run identity are recorded here"
@@ -128,8 +132,12 @@ class LiveStep:
             raise ValueError("LiveStep.index must be a non-negative integer")
         if not isinstance(self.case_id, str) or not self.case_id:
             raise ValueError("LiveStep.case_id must be a non-empty string")
-        if self.status not in STATUSES:
+        if self.status not in (*STATUSES, BUILD_INVALID_STATUS):
             raise ValueError(f"LiveStep.status must be one of {STATUSES}, got {self.status!r}")
+        if self.status == BUILD_INVALID_STATUS and (
+            self.unjudged or any(value is not None for value in (self.c0, self.c1, self.c2))
+        ):
+            raise ValueError("a build-invalid LiveStep has no verdicts and is not unjudged")
         if self.violated and self.tar_bytes is None:
             raise ValueError("a violating LiveStep must carry its input tar_bytes")
 
@@ -199,6 +207,7 @@ class _Counters:
     runs: int = 0
     violation_steps: int = 0
     unjudged: int = 0
+    build_invalid: int = 0
     terminations: dict[str, int] = field(default_factory=lambda: {status: 0 for status in STATUSES})
     first_violation_run: int | None = None
     last_violation_run: int | None = None
@@ -269,9 +278,12 @@ class LiveRecorder:
             raise RuntimeError("LiveRecorder is closed")
         c = self._counters
         c.runs = max(c.runs, step.index + 1)
-        if step.unjudged:
-            c.unjudged += 1
-        c.terminations[step.status] += 1
+        if step.status == BUILD_INVALID_STATUS:
+            c.build_invalid += 1
+        else:
+            if step.unjudged:
+                c.unjudged += 1
+            c.terminations[step.status] += 1
         wrote_case = False
         if step.violated:
             run = step.index + 1
@@ -346,6 +358,9 @@ class LiveRecorder:
             # "nothing could be judged" must read differently at a glance.
             "terminations": dict(c.terminations),
             "success_runs": int(c.terminations.get("success", 0)),
+            # v2 only (D060); absent when zero, so every existing run's snapshot is unchanged.
+            # runs_executed counts budget units; extractor runs = runs_executed - this.
+            **({"build_invalid": {"steps": c.build_invalid}} if c.build_invalid else {}),
             "write_errors": c.write_errors,
             "last_write_error": c.last_write_error,
             "snapshot_every": {"runs": self.every_runs, "seconds": self.every_seconds},
@@ -738,6 +753,11 @@ def render_live_status(
             + (f" ({rate}/s)" if rate is not None else "")
             + f" violations={v.get('steps', 0)} steps / {v.get('unique_fingerprints', 0)} unique"
             + f" un-judged={u.get('steps', 0)} (ratio {u.get('ratio', 0.0)})"
+            + (
+                f" build-invalid={progress['build_invalid'].get('steps', 0)}"
+                if isinstance(progress.get("build_invalid"), dict)
+                else ""
+            )
         )
         throughput = _throughput_line(progress, rate)
         if throughput:

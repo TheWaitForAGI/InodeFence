@@ -58,7 +58,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, fields
 from enum import StrEnum
 from types import MappingProxyType
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from inodefence.campaign import CampaignOrigin
 from inodefence.effect_campaign import (
@@ -527,12 +527,31 @@ def run_rds_cell(
 
     try:
         campaign = run_effect_campaign(
-            initial_cases, produce_result, config.campaign_config(), collect
+            initial_cases,
+            produce_result,
+            config.campaign_config(),
+            collect,
+            # Typed consumer: build-invalid steps (v2 RECORD only) never reach ``collect``;
+            # they stay on ``campaign.build_invalid_steps``.
+            on_build_invalid=lambda _step: None,
         )
     except Exception as error:
         raise RdsCellAborted(
             config, tuple(steps), f"{type(error).__name__}: {error}", sentinel_set
         ) from error
+    if campaign.build_invalid_steps:
+        # v2 RECORD only: a build-invalid step is a budget unit the in-memory summary cannot
+        # express, and v2 analysis reads it from the record's ``outcome`` (W4). Summarize from
+        # the same records a report holds (local imports: those modules import this one).
+        from inodefence.effect_demo import effect_campaign_report
+        from inodefence.evaluation.rds_report_v2 import summarize_report_records_v2
+
+        report: dict[str, Any] = effect_campaign_report(campaign, "in-memory")
+        records: list[Mapping[str, Any]] = report["steps"]
+        summary = summarize_report_records_v2(
+            records, config, sentinel_set=sentinel_set
+        ).base.summary
+        return RdsCellResult(config, campaign, summary)
     return RdsCellResult(
         config, campaign, summarize_rds_steps(campaign.steps, config, sentinel_set=sentinel_set)
     )

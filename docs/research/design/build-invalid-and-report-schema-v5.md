@@ -53,6 +53,32 @@ v2는 이것을 기록된 step으로 바꿀 수 있다.
   - `check_report_config_v2`는 v2 키를 확인한다.
 - 스키마 4 보고서와 스키마 5 보고서는 서로 비교하지 않는다(`_require_comparable`가 거부한다). 의도된 동작이다.
 
+### 3.1 공유 런처 경로 (W4 판정 2026-11-18)
+
+공유 런처는 이 동작을 바꾸지 않은 채(바이트 동일) 다음과 같이 v2를 처리한다.
+
+- **설정 값.** 공유 런처는 `build_invalid`를 넘기지 않는다. 그래서 `EffectCampaignConfig.build_invalid`는 `None`이고, 실제 값(`build_invalid_policy`)은 변이 정책의 프로필이 정한다.
+  - v2 정책(`RECORDS_BUILD_INVALID`)은 record, 그 밖의 정책은 abort다.
+  - 명시적으로 넘긴 값은 프로필보다 우선한다.
+- **step 스트림.** `on_build_invalid`가 없으면 build-invalid step은 일반 step 콜백(`on_step` 또는 hook)으로 index 순서대로 간다.
+  - `EffectStepReporter`는 두 타입을 모두 받는다. 그래서 스트림 JSONL에는 예산 단위마다 레코드가 하나씩 있다.
+  - 형 주석이 있는 내부 소비자는 전용 콜백으로 따로 받는다(`rds.run_rds_cell`).
+  - `rds.run_rds_cell`은 build-invalid가 있으면 셀 요약을 레코드에서 만든다(`rds_report_v2`).
+- **`runs_executed` = 예산 단위 수; 추출 실행 수는 기록의 `outcome`에서 센다.** 공유 런처 스트림 보고서의 `aggregate.runs_executed`와 live `progress.json`의 `runs_executed`가 모두 이 뜻이다.
+  공유 런처 집계의 `terminations`·`unjudged_steps`는 실제로 실행된 step만 센다.
+  v2 판독기(`rds_report_v2`)는 추출 실행 수를 `outcome`에서 센다. v2 분석은 build-invalid를 step 레코드의 `outcome` 필드에서만 읽는다.
+- **live 상태.** build-invalid step의 live 상태는 `build-invalid`다. 판정은 없고, **미판정(`unjudged`)이 아니다**.
+  - `progress.json`은 이 step을 `terminations`·`unjudged`가 아니라 `build_invalid.steps`에 센다. 이 키는 0보다 클 때만 나타나므로, build-invalid가 없는 실행(모든 제품·등록 실행)의 출력은 그대로다.
+  - `status` 표시 줄에도 그때만 `build-invalid=N`이 붙는다.
+  - 미판정 비율에 걸린 중단 규칙은 build-invalid를 보지 않는다.
+  - 공유 파일 안에서만 정해지는 집계 가운데 build-invalid를 미판정으로 세는 곳은 없다. 공유 런처의 `unjudged_steps`는 생산자 안에서 실행된 step만 센다.
+- **설정 확인.** `config`가 있는 보고서는 `check_report_config_v2`(config 키)로 확인한다.
+  공유 런처의 스트림 보고서에는 `config`가 없다. 그런 보고서는 `check_records_policy_v2`로 기록에서 확인한다.
+  - 모든 mutation 레코드의 `mutation_policy`가 계획한 v2 id 하나다.
+  - 그 id가 `RECORDS_BUILD_INVALID`에 있다.
+  - 모든 레코드에 `step_record_schema`가 있다.
+- **제품.** 제품 드라이버의 기본·허용 정책은 어느 것도 `RECORDS_BUILD_INVALID`에 없다(테스트). 그래서 제품 실행에는 build-invalid가 생기지 않고, `result.json`과 종료 코드는 그대로다.
+
 ## 4. abort 분류
 
 `abort_classification.InvalidReason`에는 값을 더하지 않는다. `scripts/analyze_exp0.py`(사전등록이 가리키는 파일)의 대체 목록이 enum의 모든 값을 나열해야 하고, 그 파일이 enum에서 어휘를 읽기 때문이다.

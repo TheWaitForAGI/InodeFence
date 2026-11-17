@@ -13,9 +13,9 @@ Implements the families the freeze marks for the v2 engine
 * O1 order dependence: :func:`raw_path` has a third branch, an existing path +
   separator + 1..3 tokens, so a later entry can pass through an object an earlier
   entry created. The path is a parameter of the one INSERT/SET that uses it.
-* H1 field changes kept in v2: ``set_mode`` (SET mode = 1, any entry, 0..0o7777
-  including setuid/setgid/sticky) and ``set_content`` (SET content = 1, a regular
-  entry, 0..16 bytes).
+* H1 field changes kept in v2: ``set_mode`` (SET mode = 1, any entry, one of the five
+  pinned modes) and ``set_content`` (SET content = 1, a regular entry, one of the three
+  pinned contents).
 
 Not implemented here (freeze-3 "v2 engine not implemented"): H1 owner, size/link
 content mismatch, PAX/GNU headers, P1 variant tokens. The USTAR text bound and its four
@@ -24,8 +24,11 @@ branch is not repaired -- the builder decides, and the campaign records a refusa
 build-invalid step (D060).
 
 Every parameter draw comes from :class:`GrammarParameters`, bound to the policy id
-(``PARAMETERS``). Until W3/W4 fix the distributions they are uniform (provisional);
-changing them means a new policy id. No target, CVE, path or sentinel name appears:
+(``dispatch.V2_PARAMETERS``). :data:`FINAL_UNIFORM` is the axis list W3/W4 fixed before
+p_R (W4 ruling 2026-11-18 on the rng-draw table): every draw is ``rng.choice`` over a
+finite tuple (or ``randrange`` over a position range), i.e. uniform over that domain.
+The axes, their domains and the code sites are in docs/research/design/v2-grammar-axes.md.
+Changing any domain means a new policy id. No target, CVE, path or sentinel name appears:
 the only tokens are ``m1.COMPONENTS`` plus the caller's observed names.
 """
 
@@ -50,21 +53,27 @@ _PATH_NEW = "new"
 
 @dataclass(frozen=True, slots=True)
 class GrammarParameters:
-    """Parameter domains of one v2 policy; every draw is uniform over its tuple/range.
+    """Parameter domains of one v2 policy; every draw is uniform over its tuple.
 
-    Provisional (uniform) until W3/W4 decide; a different distribution is a new policy id.
+    A different domain is a new policy id.
     """
 
     path_branches: tuple[str, ...] = (_PATH_REUSE, _PATH_EXTEND, _PATH_NEW)
+    new_path_prefixes: tuple[str, ...] = m1._PREFIXES
     new_path_depths: tuple[int, ...] = (1, 2, 3, 4)
+    separators: tuple[str, ...] = m1._SEPARATORS
     extend_token_counts: tuple[int, ...] = (1, 2, 3)
     hardlink_depths: tuple[int, ...] = (0, 1, 2, 3)
     hardlink_token_counts: tuple[int, ...] = (1, 2, 3)
-    mode_max: int = 0o7777
-    content_max_bytes: int = 16
+    link_target_ways: tuple[bool, ...] = (False, True)
+    link_target_affixes: tuple[tuple[str, str], ...] = m1._AFFIXES
+    entry_kinds: tuple[EntryType, ...] = (EntryType.REGULAR, EntryType.DIRECTORY)
+    # W3 axis list (pinned before p_R): five modes, three regular-file contents.
+    modes: tuple[int, ...] = (0o644, 0o755, 0o4755, 0o2755, 0o1777)
+    contents: tuple[bytes, ...] = (b"", b"x" * 8, b"x" * 16)
 
 
-PROVISIONAL_UNIFORM = GrammarParameters()
+FINAL_UNIFORM = GrammarParameters()
 
 Operator = Callable[[ArchiveCase, random.Random], ArchiveCase]
 
@@ -94,12 +103,12 @@ def raw_path(
         return rng.choice(paths)
     if branch == _PATH_EXTEND:
         base = rng.choice(paths)
-        separator = rng.choice(m1._SEPARATORS)
+        separator = rng.choice(parameters.separators)
         count = rng.choice(parameters.extend_token_counts)
         return base + separator + separator.join(rng.choice(components) for _ in range(count))
-    prefix = rng.choice(m1._PREFIXES)
+    prefix = rng.choice(parameters.new_path_prefixes)
     depth = rng.choice(parameters.new_path_depths)
-    separator = rng.choice(m1._SEPARATORS)
+    separator = rng.choice(parameters.separators)
     return prefix + separator.join(rng.choice(components) for _ in range(depth))
 
 
@@ -111,12 +120,8 @@ def add_entry(
     parameters: GrammarParameters,
 ) -> ArchiveCase:
     path = raw_path(case, rng, components=components, parameters=parameters)
-    kind = rng.choice((EntryType.REGULAR, EntryType.DIRECTORY))
-    content = (
-        rng.randbytes(rng.randrange(parameters.content_max_bytes + 1))
-        if kind == EntryType.REGULAR
-        else None
-    )
+    kind = rng.choice(parameters.entry_kinds)
+    content = rng.choice(parameters.contents) if kind == EntryType.REGULAR else None
     return m1._insert(case, ArchiveEntry(path, kind, content=content), rng)
 
 
@@ -184,8 +189,8 @@ def mutate_link_target(
     index = rng.choice(indices)
     entry = case.entries[index]
     assert entry.link_target is not None
-    if rng.choice((False, True)):
-        prefix, suffix = rng.choice(m1._AFFIXES)
+    if rng.choice(parameters.link_target_ways):
+        prefix, suffix = rng.choice(parameters.link_target_affixes)
         target = prefix + entry.link_target + suffix
     else:
         target = raw_path(case, rng, components=components, parameters=parameters)
@@ -202,11 +207,11 @@ def set_mode(
     components: tuple[str, ...],
     parameters: GrammarParameters,
 ) -> ArchiveCase:
-    """H1: SET(mode) on one entry, uniform over 0..mode_max (special bits included)."""
+    """H1: SET(mode) on one entry, uniform over the pinned modes."""
     if not case.entries:
         return case
     index = rng.randrange(len(case.entries))
-    changed = replace(case.entries[index], mode=rng.randrange(parameters.mode_max + 1))
+    changed = replace(case.entries[index], mode=rng.choice(parameters.modes))
     return ArchiveCase(case.entries[:index] + (changed,) + case.entries[index + 1 :])
 
 
@@ -217,15 +222,14 @@ def set_content(
     components: tuple[str, ...],
     parameters: GrammarParameters,
 ) -> ArchiveCase:
-    """H1: SET(content) on one regular entry, 0..content_max_bytes random bytes."""
+    """H1: SET(content) on one regular entry, uniform over the pinned contents."""
     indices = tuple(
         index for index, entry in enumerate(case.entries) if entry.entry_type == EntryType.REGULAR
     )
     if not indices:
         return case
     index = rng.choice(indices)
-    content = rng.randbytes(rng.randrange(parameters.content_max_bytes + 1))
-    changed = replace(case.entries[index], content=content)
+    changed = replace(case.entries[index], content=rng.choice(parameters.contents))
     return ArchiveCase(case.entries[:index] + (changed,) + case.entries[index + 1 :])
 
 
@@ -262,6 +266,11 @@ SLOTS: tuple[Callable[..., ArchiveCase], ...] = (
 def operators(
     observed_components: tuple[str, ...], parameters: GrammarParameters
 ) -> tuple[Operator, ...]:
-    """The ten slots over ``m1.COMPONENTS`` + the caller's observed names."""
-    pool = m1.COMPONENTS + tuple(observed_components)
+    """The ten slots over ``m1.COMPONENTS`` + the caller's observed names.
+
+    An observed name equal to a ``COMPONENTS`` token is not added again (W3 axis list: one
+    uniform draw over the distinct pool), and repeated observed names count once.
+    """
+    extra = tuple(dict.fromkeys(n for n in observed_components if n not in m1.COMPONENTS))
+    pool = m1.COMPONENTS + extra
     return tuple(functools.partial(slot, components=pool, parameters=parameters) for slot in SLOTS)

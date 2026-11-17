@@ -23,7 +23,7 @@ from inodefence.evaluation.rds import RdsArm, RdsCellConfig, RVariant, Vocabular
 from inodefence.evaluation.rds_report_v2 import vocabulary_pools_from_records_v2
 from inodefence.generator.minimal import minimal_seed_corpus
 from inodefence.model import ArchiveCase, ArchiveEntry, EntryType
-from inodefence.mutator import MutationPolicy, apply_operator, operator_ids
+from inodefence.mutator import MutationPolicy, apply_operator, dispatch, operator_ids
 from inodefence.mutator import v2_freeze3 as v2
 from inodefence.mutator.dispatch import (
     OPERATOR_ORDER_V1,
@@ -76,6 +76,8 @@ def test_registered_and_v1_policies_keep_the_v1_table() -> None:
         expected = OPERATOR_ORDER_V2 if policy == POLICY else OPERATOR_ORDER_V1
         assert operator_ids(policy) == expected
     assert OPERATOR_ORDER_V1 == tuple(MutationOperatorId)[:8]
+    # The historic name stays the registered eight slots (external tools import it).
+    assert dispatch.OPERATOR_ORDER == OPERATOR_ORDER_V1
     assert OPERATOR_ORDER_V2[:8] == OPERATOR_ORDER_V1
     assert OPERATOR_ORDER_V2[8:] == (MutationOperatorId.SET_MODE, MutationOperatorId.SET_CONTENT)
 
@@ -183,7 +185,7 @@ def test_l1_hardlink_target_depth_domain_is_zero_to_three() -> None:
     case = _rich_case()
     depths, counts = Counter(), Counter()
     for _ in range(DRAWS):
-        child = v2.add_hardlink(case, rng, components=pool, parameters=v2.PROVISIONAL_UNIFORM)
+        child = v2.add_hardlink(case, rng, components=pool, parameters=v2.FINAL_UNIFORM)
         _, entry = _inserted(case, child)
         assert entry.entry_type == EntryType.HARDLINK and entry.link_target is not None
         parts = entry.link_target.split("/")
@@ -196,26 +198,27 @@ def test_l1_hardlink_target_depth_domain_is_zero_to_three() -> None:
     assert set(counts) == {1, 2, 3}
 
 
-def test_h1_mode_domain_includes_special_bits() -> None:
+PINNED_MODES = (0o644, 0o755, 0o4755, 0o2755, 0o1777)
+PINNED_CONTENTS = (b"", b"x" * 8, b"x" * 16)
+
+
+def test_h1_mode_values_are_the_pinned_five() -> None:
     modes = set()
     for case, attempt in _attempts(MutationOperatorId.SET_MODE):
-        if attempt.applied:
-            for a, b in zip(case.entries, attempt.child_case.entries, strict=True):
-                if a != b:
-                    modes.add(b.mode)
-    assert all(0 <= mode <= 0o7777 for mode in modes)
-    assert any(mode & 0o7000 for mode in modes)
-
-
-def test_h1_content_domain_is_zero_to_sixteen_bytes_on_regular_entries() -> None:
-    lengths = set()
-    for case, attempt in _attempts(MutationOperatorId.SET_CONTENT):
         for a, b in zip(case.entries, attempt.child_case.entries, strict=True):
             if a != b:
-                assert a.entry_type == EntryType.REGULAR
-                assert b.content is not None
-                lengths.add(len(b.content))
-    assert lengths <= set(range(17)) and {0, 16} <= lengths
+                modes.add(b.mode)
+    assert modes <= set(PINNED_MODES) and len(modes) >= 4  # a no-op if the mode was already it
+
+
+def test_regular_contents_are_the_pinned_three() -> None:
+    seen = set()
+    for slot in (MutationOperatorId.SET_CONTENT, MutationOperatorId.ADD_ENTRY):
+        for case, attempt in _attempts(slot):
+            for entry in attempt.child_case.entries:
+                if entry.entry_type == EntryType.REGULAR and entry not in case.entries:
+                    seen.add(entry.content)
+    assert seen <= set(PINNED_CONTENTS) and len(seen) >= 2
 
 
 # --- L2 / O1 reachability --------------------------------------------------------------------
@@ -258,7 +261,7 @@ def test_new_paths_use_only_the_pool() -> None:
     rng = random.Random(9)
     empty = ArchiveCase(())
     for _ in range(500):
-        path = v2.raw_path(empty, rng, components=POOL, parameters=v2.PROVISIONAL_UNIFORM)
+        path = v2.raw_path(empty, rng, components=POOL, parameters=v2.FINAL_UNIFORM)
         body = path.lstrip("./") if not path.startswith("../") else path[3:]
         tokens = [t for t in body.replace("//", "/").split("/") if t]
         assert all(token in POOL for token in tokens), path
@@ -299,3 +302,103 @@ def test_v2_vocabulary_pool_is_fixed_and_pinned_reader_would_misread_it() -> Non
     )
     as_v1 = rds_report.vocabulary_pools_from_records(VocabularyMode.OBSERVED_NAMES, steps, initial)
     assert fixed == as_v1 and fixed[0] == fixed[1]
+
+
+# --- per-axis: every draw is a uniform draw over the pinned domain (W4 condition (c)) ------------
+
+
+class _RecordingRandom(random.Random):
+    """Records each draw's method and domain; the draws themselves are the stdlib ones."""
+
+    def __init__(self, seed: int) -> None:
+        super().__init__(seed)
+        self.calls: list[tuple[str, object]] = []
+
+    def choice(self, seq):  # type: ignore[override]
+        self.calls.append(("choice", tuple(seq[i] for i in range(len(seq)))))
+        return super().choice(seq)
+
+    def randrange(self, start, stop=None, step=1):  # type: ignore[override]
+        self.calls.append(("randrange", (start, stop)))
+        return (
+            super().randrange(start, stop, step) if stop is not None else super().randrange(start)
+        )
+
+    def randbytes(self, n):  # type: ignore[override]
+        self.calls.append(("randbytes", n))
+        return super().randbytes(n)
+
+    def randint(self, a, b):  # type: ignore[override]
+        self.calls.append(("randint", (a, b)))
+        return super().randint(a, b)
+
+
+P = v2.FINAL_UNIFORM
+_PATH_DOMAINS = {
+    P.path_branches,
+    P.new_path_prefixes,
+    P.new_path_depths,
+    P.separators,
+    P.extend_token_counts,
+}
+_SLOT_DOMAINS = {
+    MutationOperatorId.ADD_ENTRY: {P.entry_kinds, P.contents},
+    MutationOperatorId.ADD_HARDLINK: {P.hardlink_depths, P.hardlink_token_counts},
+    MutationOperatorId.MUTATE_LINK_TARGET: {P.link_target_ways, P.link_target_affixes},
+    MutationOperatorId.SET_MODE: {P.modes},
+    MutationOperatorId.SET_CONTENT: {P.contents},
+}
+
+
+def test_pinned_axis_domains() -> None:
+    """The domains W3/W4 recorded (axis list amended 2026-11-18). Changing one = new policy id."""
+    assert POLICY.value == "uniform-b-grammar-v2-freeze-3-fixed-baseline-v1"
+    assert len(OPERATOR_ORDER_V2) == 10
+    assert P.hardlink_depths == (0, 1, 2, 3)
+    assert P.modes == PINNED_MODES and P.contents == PINNED_CONTENTS
+    assert P.path_branches == ("reuse", "extend", "new")
+    assert P.new_path_prefixes == ("", "./", "../", "/") and P.new_path_depths == (1, 2, 3, 4)
+    assert P.separators == ("/", "//") and P.extend_token_counts == (1, 2, 3)
+    assert P.hardlink_token_counts == (1, 2, 3)
+    assert P.link_target_ways == (False, True) and len(P.link_target_affixes) == 5
+    assert P.entry_kinds == (EntryType.REGULAR, EntryType.DIRECTORY)
+    assert len(set(P.modes)) == 5 and len(set(P.contents)) == 3
+
+
+@pytest.mark.parametrize("slot", OPERATOR_ORDER_V2)
+def test_every_draw_is_uniform_over_a_pinned_domain(slot: MutationOperatorId) -> None:
+    """Each rng call in a slot is choice() over a pinned tuple, the name pool or the case's own
+    entries/paths, or randrange() over a position range. No randbytes, no weighted draw."""
+    case = _rich_case()
+    pool = (*v2.m1.COMPONENTS, *OBSERVED)
+    allowed = _PATH_DOMAINS | _SLOT_DOMAINS.get(slot, set()) | {pool}
+    for seed in range(300):
+        rng = _RecordingRandom(seed)
+        apply_operator(case, rng, POLICY, slot, extra_components=OBSERVED)
+        for method, domain in rng.calls:
+            assert method in ("choice", "randrange"), (slot, method)
+            if method == "randrange":
+                start, stop = domain  # type: ignore[misc]
+                assert stop is None and start in (len(case.entries), len(case.entries) + 1)
+                continue
+            assert isinstance(domain, tuple)
+            if domain in allowed:
+                continue
+            # target selection: the case's own entries, paths or indices (uniform over them)
+            entries, paths = case.entries, tuple(e.path for e in case.entries)
+            indices = tuple(range(len(entries)))
+            assert set(domain) <= set(entries) | set(paths) | set(indices), (slot, domain)
+
+
+def test_pool_is_components_plus_distinct_observed_names() -> None:
+    ops = v2.operators(("outside", "a", "outside", ".."), P)
+    pools = {op.keywords["components"] for op in ops}  # type: ignore[attr-defined]
+    assert pools == {(*v2.m1.COMPONENTS, "outside")}
+
+
+def test_scheduler_draws_the_slot_uniformly_over_ten() -> None:
+    from inodefence.effect_scheduler import EffectUniformMutationScheduler
+
+    rng = _RecordingRandom(1)
+    EffectUniformMutationScheduler(OPERATOR_ORDER_V2).choose_operator(OPERATOR_ORDER_V2, rng)
+    assert rng.calls == [("choice", OPERATOR_ORDER_V2)]

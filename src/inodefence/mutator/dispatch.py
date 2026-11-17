@@ -26,8 +26,6 @@ class MutationOperatorId(StrEnum):
     SET_CONTENT = "set_content"
 
 
-OPERATOR_ORDER = tuple(MutationOperatorId)
-
 # The eight-slot table every existing MutationPolicy draws from, in its stable order.
 # Schedulers take their operator table as an argument (default: this one) and record
 # weights over exactly that table, so a later grammar can add slots to
@@ -46,6 +44,10 @@ OPERATOR_ORDER_V1: tuple[MutationOperatorId, ...] = (
 # Every operator table a scheduler or a weight snapshot may use. A new table is added
 # here together with the policy that draws from it; weights over any other ordering
 # are rejected.
+# Historic name kept for code outside this repository: the eight registered slots. It is no
+# longer the whole enum (v2 appended two slots), so it must not be derived from it.
+OPERATOR_ORDER: tuple[MutationOperatorId, ...] = OPERATOR_ORDER_V1
+
 # `b-grammar-v2-freeze-3`: the eight V1 slot meanings (slot 5 = hardlink with target
 # depth 0..3, path slots with the O1 extend branch) plus the two H1 field changes.
 OPERATOR_ORDER_V2: tuple[MutationOperatorId, ...] = (
@@ -61,9 +63,9 @@ OPERATOR_TABLES: tuple[tuple[MutationOperatorId, ...], ...] = (
 
 _V2_POLICIES = (MutationPolicy.V2_FREEZE3_FIXED_BASELINE,)
 
-# Parameter distribution bound to each v2 policy id (provisional uniform; D061).
+# Parameter distribution bound to each v2 policy id (D061; W3/W4 axis list, all uniform).
 V2_PARAMETERS: dict[MutationPolicy, v2_freeze3.GrammarParameters] = {
-    MutationPolicy.V2_FREEZE3_FIXED_BASELINE: v2_freeze3.PROVISIONAL_UNIFORM,
+    MutationPolicy.V2_FREEZE3_FIXED_BASELINE: v2_freeze3.FINAL_UNIFORM,
 }
 
 

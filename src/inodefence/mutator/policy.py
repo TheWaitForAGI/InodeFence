@@ -56,9 +56,10 @@ class MutationPolicy(StrEnum):
     )
     # Additive, v2 (#512, D061): grammar `b-grammar-v2-freeze-3` (mutator/v2_freeze3.py),
     # ten uniform slots, observed-name pool fixed at the seed baseline run as in
-    # M1_STATE_AWARE_ESCAPE_HARDLINK_FIXED_BASELINE, provisional uniform parameters.
-    # Not a default anywhere and not in any product allow-list.
-    V2_FREEZE3_FIXED_BASELINE = "uniform-b-grammar-v2-freeze-3-fixed-baseline-provisional-v1"
+    # M1_STATE_AWARE_ESCAPE_HARDLINK_FIXED_BASELINE, every draw uniform over the axis list
+    # W3/W4 fixed before p_R (v2_freeze3.FINAL_UNIFORM). Not a default anywhere and not in
+    # any product allow-list. Replaces the never-run provisional id of 4303075.
+    V2_FREEZE3_FIXED_BASELINE = "uniform-b-grammar-v2-freeze-3-fixed-baseline-v1"
 
 
 # Policies whose campaign records an unrepresentable child as a build-invalid step

@@ -27,6 +27,8 @@
 
 변이 자식을 빌더가 표현할 수 없을 때의 기록(`build-invalid` step)과 demo 보고서 스키마 5는 [build-invalid와 보고서 스키마 5](build-invalid-and-report-schema-v5.md)(#512 v2 U2, exploratory)에 있다.
 
+step마다 기록하는 입력 구조 분류의 정의는 [입력 구조 분류기 v1](input-structure-class-v1.md)(`input-structure-class-v1-freeze-1`, W4 서명, 구현은 v2 U3)에 있다.
+
 ## 현재 상태
 
 Layer 2 공통 데이터 모델, Layer 3 최소 pipeline, Layer 4 Generic Mutation v1과

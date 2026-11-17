@@ -25,6 +25,26 @@ class MutationOperatorId(StrEnum):
 
 OPERATOR_ORDER = tuple(MutationOperatorId)
 
+# The eight-slot table every existing MutationPolicy draws from, in its stable order.
+# Schedulers take their operator table as an argument (default: this one) and record
+# weights over exactly that table, so a later grammar can add slots to
+# MutationOperatorId without changing any existing policy's draws or weight records.
+OPERATOR_ORDER_V1: tuple[MutationOperatorId, ...] = (
+    MutationOperatorId.ADD_ENTRY,
+    MutationOperatorId.REMOVE_ENTRY,
+    MutationOperatorId.DUPLICATE_ENTRY,
+    MutationOperatorId.REORDER_ENTRIES,
+    MutationOperatorId.MUTATE_PATH,
+    MutationOperatorId.ADD_HARDLINK,
+    MutationOperatorId.ADD_SYMLINK,
+    MutationOperatorId.MUTATE_LINK_TARGET,
+)
+
+# Every operator table a scheduler or a weight snapshot may use. A new table is added
+# here together with the policy that draws from it; weights over any other ordering
+# are rejected.
+OPERATOR_TABLES: tuple[tuple[MutationOperatorId, ...], ...] = (OPERATOR_ORDER_V1,)
+
 
 @dataclass(frozen=True, slots=True)
 class MutationAttempt:
@@ -48,9 +68,10 @@ class MutationAttempt:
 
 
 def operator_ids(policy: MutationPolicy) -> tuple[MutationOperatorId, ...]:
+    """The operator table the policy's scheduler draws from (every policy today: V1)."""
     if not isinstance(policy, MutationPolicy):
         raise ValueError("policy must be a supported MutationPolicy")
-    return OPERATOR_ORDER
+    return OPERATOR_ORDER_V1
 
 
 def _operator_table(

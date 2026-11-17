@@ -22,7 +22,7 @@ from inodefence.mutation_scheduler import (
     TransitionAdaptiveScheduler,
     UniformMutationScheduler,
 )
-from inodefence.mutator import MutationOperatorId, apply_operator, operator_ids
+from inodefence.mutator import OPERATOR_ORDER_V1, MutationOperatorId, apply_operator, operator_ids
 from inodefence.transition_campaign import (
     TransitionCampaignConfig,
     TransitionCampaignResult,
@@ -315,7 +315,7 @@ def _summary(verified: VerifiedTransitionEvidence) -> dict:
     snapshot_evidence_bytes = 0
     incomplete = 0
     first_novel = None
-    final_weights = tuple((operator.value, 1) for operator in MutationOperatorId)
+    final_weights = tuple((operator.value, 1) for operator in OPERATOR_ORDER_V1)
     scheduler_weight_entropy = 0.0
     for step in result.steps:
         trace = step.result.trace
@@ -346,7 +346,7 @@ def _summary(verified: VerifiedTransitionEvidence) -> dict:
                 yields[operator] / attempts[operator] if attempts[operator] else None
             ),
         }
-        for operator in MutationOperatorId
+        for operator in OPERATOR_ORDER_V1
     )
     return {
         "schema_version": 1,

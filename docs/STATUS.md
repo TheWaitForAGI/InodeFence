@@ -45,8 +45,9 @@ inferred(추론)를 구분하고, synthetic은 native 증거로 승격하지 않
   사전등록(`experiments/preregistration/`, 태그 `prereg-exp3-exp2-freeze-20261113`), 증거는 raw + SHA-256 목록
   (`experiments/summaries/raw-manifest-*.sha256`, 기준선 태그 `audit-baseline-20261103`)이다. 결정은
   [DECISIONS](DECISIONS.md), 실행 기록은 [LOG](LOG.md)에 있다.
-- **본실험(M3).** EXP-3 train과 GO 판정은 끝났고 EXP-2 holdout 결과는 봉인돼 있다. 봉인 해제 PR이 병합되기 전에는
-  결과·요약을 push하지 않고, 호스트별 부분 분석과 holdout 후보 버전 탐색을 하지 않는다.
+- **본실험(M3).** EXP-3 train과 GO 판정, EXP-2 holdout 실행이 끝났고 봉인 해제 기록이 병합됐다(#485,
+  `experiments/summaries/exp2-holdout-unseal-record.json`). 결과 값과 판정 문장은 결과 PR과 주장 목록
+  (`paper/sections/claims-evidence-status-v1.md`)에서 채운다. 이 문서의 "본실험 결과 자리"는 그때 갱신한다.
 - **제품 0.2.0.** `main`에 올리는 길은 착지 PR 하나다(D049). 릴리스 조건 6개 가운데 런처 시간 제한(3), 실제 위반
   `replay` 기록(4), 두 번째 호스트 확인(6)이 남았다. 남은 일은 [BACKLOG PRODUCT 절](BACKLOG.md).
 - **제출물.** 결과보고서와 소개 영상의 일정과 상태는 [BACKLOG](BACKLOG.md), 초안은 `paper/deliverables/`에 있다.

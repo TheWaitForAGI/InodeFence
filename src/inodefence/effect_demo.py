@@ -33,6 +33,8 @@ from inodefence.model import (
     canonical_json,
 )
 from inodefence.mutation_scheduler import WeightSnapshot
+from inodefence.mutator.chain import ChainedMutationAttempt
+from inodefence.structure_class import class_record
 
 # 2: name_segments/before_protected_paths; 3: step validity (observer-integrity policy,
 # #207); 4: oracle_fingerprints; 5: per-step step_record_schema/archive_format/outcome,
@@ -467,8 +469,37 @@ class EffectStepReporter:
             record["selection"] = _selection_report(record, self._corpus)
             if step.feedback.retained:
                 self._corpus.append(step.result.base_result.case.case_id)
+        _add_v2_keys(record, step)
         self._next_index += 1
         return record
+
+
+def _add_v2_keys(record: dict[str, object], step: EffectCampaignStep | BuildInvalidStep) -> None:
+    """Schema-5 optional keys filled at one place for every record (executed or build-invalid).
+
+    ``input_structure``: the analysis-only input structure class of the step's logical input
+    (``input-structure-class-v1-freeze-1``); for a build-invalid step the child that could not be
+    built. It never enters the oracle, feedback or mutation. Chain R steps additionally get
+    ``mutation_attempt.chain_length`` and ``operator_chain`` (one entry per attempt, in order).
+    """
+    if isinstance(step, BuildInvalidStep):
+        case = step.mutation_attempt.child_case
+    else:
+        case = step.result.base_result.case
+    record["input_structure"] = class_record(case)
+    attempt = step.mutation_attempt
+    if isinstance(attempt, ChainedMutationAttempt):
+        mutation = record["mutation_attempt"]
+        assert isinstance(mutation, dict)
+        mutation["chain_length"] = attempt.chain_length
+        mutation["operator_chain"] = [
+            {
+                "operator_id": link.operator_id.value,
+                "applied": link.applied,
+                "selected_weight": link.selected_weight,
+            }
+            for link in attempt.links
+        ]
 
 
 def render_effect_step_line(record: Mapping[str, object]) -> str:

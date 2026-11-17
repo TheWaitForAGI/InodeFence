@@ -57,6 +57,7 @@ from inodefence.evaluation.rds_report_v2 import (
 )
 from inodefence.generator.minimal import minimal_seed_corpus
 from inodefence.model import ArchiveCase, ArchiveEntry, EntryType, canonical_json
+from inodefence.structure_class import class_record
 
 # Git blob id of src/inodefence/evaluation/rds_report.py at the run SHA bed077a. The file
 # is byte-identical on main (the preregistration names it), so importing the current
@@ -328,7 +329,7 @@ def test_v2_classifier_names_builder_refusals() -> None:
     assert classify_abort_reason_v2("") == "other"
 
 
-def test_reserved_chain_and_structure_slots_read_as_not_recorded() -> None:
+def test_reserved_chain_slots_read_as_not_recorded_and_structure_is_recorded() -> None:
     cell = _cell("D")
     result = run_effect_campaign(
         minimal_seed_corpus(), synthetic_effect_result, cell.campaign_config()
@@ -338,7 +339,13 @@ def test_reserved_chain_and_structure_slots_read_as_not_recorded() -> None:
     seeds = len(minimal_seed_corpus())
     assert [mutation_chain_length(step) for step in steps[:seeds]] == [None] * seeds
     assert {mutation_chain_length(step) for step in steps[seeds:]} == {1}
-    assert all(input_structure(step) is None for step in steps)
+    # U2 reserved the slot (asserted absent); v2 U3/C8 fills it on every step. Replaced here by
+    # agreement (IF-H4-CORE, 2026-11-18): the slot is recorded and the reader reads it.
+    cases = [step.result.base_result.case for step in result.steps]
+    assert [input_structure(step) for step in steps] == [class_record(case) for case in cases]
+    assert (
+        input_structure({}) is None
+    )  # an older record without the key still reads as not recorded
     for step in steps[seeds:]:
         assert "chain_length" not in step["mutation_attempt"]
         assert "operator_chain" not in step["mutation_attempt"]

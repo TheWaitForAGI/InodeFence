@@ -20,7 +20,7 @@ from typing import Any
 
 from inodefence.builder import build_tar
 from inodefence.feedback.fingerprint import ViolationFingerprint, violation_fingerprints
-from inodefence.live_exploration import LiveStep, fingerprint_id
+from inodefence.live_exploration import BUILD_INVALID_STATUS, LiveStep, fingerprint_id
 from inodefence.model.results import ExecutionStatus
 
 
@@ -75,7 +75,22 @@ def exploration_unobserved(status: str, integrity_valid: bool, contracts: tuple)
 
 
 def live_step_from_effect(step: Any) -> LiveStep:
-    """Convert an ``EffectCampaignStep`` (attributes only) into a :class:`LiveStep`."""
+    """Convert an ``EffectCampaignStep`` (attributes only) into a :class:`LiveStep`.
+
+    A v2 build-invalid step (no ``result``: the builder refused the input, nothing ran) becomes
+    status ``build-invalid`` with no verdicts -- never "unjudged" (D060, W4).
+    """
+    if getattr(step, "result", None) is None and hasattr(step, "reason"):
+        attempt = step.mutation_attempt
+        return LiveStep(
+            index=step.index,
+            case_id=step.case_id,
+            status=BUILD_INVALID_STATUS,
+            parent_case_id=step.parent_case_id,
+            origin=str(getattr(step.origin, "value", step.origin)),
+            mutation=attempt.operator_id.value,
+            mutation_applied=bool(attempt.applied),
+        )
     base = step.result.base_result
     fields = effect_verdict_fields(step.result)
     contracts = (fields["c0"], fields["c1"], fields["c2"])

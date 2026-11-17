@@ -34,6 +34,7 @@ from inodefence.evaluation.rds_report import (
     summarize_report_records,
     vocabulary_pools_from_records,
 )
+from inodefence.mutator.policy import RECORDS_BUILD_INVALID, MutationPolicy
 
 OUTCOME_EXECUTED = "executed"
 OUTCOME_BUILD_INVALID = "build-invalid"
@@ -157,6 +158,35 @@ def summarize_report_records_v2(
         len(steps) - len(executed),
         archive_formats,
     )
+
+
+def check_records_policy_v2(
+    records: Sequence[Mapping[str, Any]], *, mutation_policy: MutationPolicy
+) -> None:
+    """Build settings of a report without ``config`` (the shared launcher's stream report).
+
+    The shared launcher cannot override ``build_invalid``; it follows the mutation policy's
+    profile. So the records prove the setting: every mutation record carries the planned v2
+    policy id, that id is in ``RECORDS_BUILD_INVALID``, and every record has
+    ``step_record_schema`` (schema 5). Refuses otherwise.
+    """
+    if mutation_policy not in RECORDS_BUILD_INVALID:
+        raise ReportFormatError(f"{mutation_policy.value} does not record build-invalid steps")
+    steps = tuple(records)
+    if not steps:
+        raise ReportFormatError("no step records to check")
+    missing = [step.get("index") for step in steps if "step_record_schema" not in step]
+    if missing:
+        raise ReportFormatError(f"step records without step_record_schema: {missing[:5]}")
+    policies = {
+        step["mutation_attempt"].get("mutation_policy")
+        for step in steps
+        if isinstance(step.get("mutation_attempt"), Mapping)
+    }
+    if policies != {mutation_policy.value}:
+        raise ReportFormatError(
+            f"mutation records carry {sorted(map(str, policies))}, planned {mutation_policy.value}"
+        )
 
 
 def check_report_config_v2(

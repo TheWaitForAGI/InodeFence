@@ -357,7 +357,10 @@ def run_effect_campaign(
     ``config.build_invalid_policy`` = ``RECORD`` turns an unrepresentable mutation child into a
     :class:`BuildInvalidStep` (one budget unit, reward 0, no corpus) passed to
     ``on_build_invalid``; ``ABORT`` (default) leaves the loop exactly as before and never
-    calls the builder itself. Seeds are never recorded as build-invalid.
+    calls the builder itself. Seeds are never recorded as build-invalid. Without
+    ``on_build_invalid`` the step goes to the step callback (``on_step`` or the hook's) in
+    index order, so a caller that only streams steps sees every budget unit (W4, D060);
+    such a callback must accept both step types when ``RECORD`` can apply.
 
     A chain search policy (``CHAIN_MAX_ATTEMPTS``, v2 R, D062) runs each execution as a chain:
     a seed, ``m = rng.randint(1, m_max)`` operator attempts (no-op attempts count), one execution
@@ -526,6 +529,8 @@ def run_effect_campaign(
                 executed += 1
                 if on_build_invalid is not None:
                     on_build_invalid(invalid)
+                elif effective_on_step is not None:
+                    effective_on_step(invalid)
                 continue
         observe(
             attempt.child_case,

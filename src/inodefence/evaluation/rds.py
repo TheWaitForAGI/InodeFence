@@ -118,6 +118,10 @@ class RVariant(StrEnum):
 
     WALK = "walk"
     SEED_RESTART = "seed-restart"
+    # v2 random-chain R (D062): a seed per execution, m ~ U{1..m_max} operator attempts, no
+    # retention. CHAIN_M4 is the primary policy; CHAIN_M6 the declared sensitivity policy.
+    CHAIN_M4 = "chain-m4"
+    CHAIN_M6 = "chain-m6"
 
 
 class VocabularyMode(StrEnum):
@@ -160,6 +164,10 @@ _R_VARIANT_POLICY: Mapping[RVariant, EffectSearchPolicy] = MappingProxyType(
     {
         RVariant.WALK: EffectSearchPolicy.R_UNRETAINED_WALK,
         RVariant.SEED_RESTART: EffectSearchPolicy.R_UNRETAINED_SEED_RESTART,
+        # Appended (D062): existing variants keep their position, so arm_for_policy resolves
+        # every registered policy exactly as before.
+        RVariant.CHAIN_M4: EffectSearchPolicy.R_UNRETAINED_SEED_CHAIN_M4,
+        RVariant.CHAIN_M6: EffectSearchPolicy.R_UNRETAINED_SEED_CHAIN_M6,
     }
 )
 _ARM_POLICY: Mapping[RdsArm, EffectSearchPolicy] = MappingProxyType(

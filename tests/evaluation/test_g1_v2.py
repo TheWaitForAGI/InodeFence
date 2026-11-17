@@ -438,3 +438,57 @@ def test_seed_corpus_cell_values_for_prefixes() -> None:
         "different"
     )
     assert seed_corpus_cell_check(dict(stopped, initial_case_ids=ids), V21.value) == "equal"
+
+
+def _group(lists: list[list[str]], *, complete: bool = False) -> dict[str, Any]:
+    cells = [
+        {
+            "seed": 1,
+            "arm": arm,
+            "vocabulary_pool_final": ["a"],
+            "mutation_policies": [],
+            "initial_case_ids": ids,
+            "initial_ids_from_report": complete,
+            "non_seed_steps": 0,
+            "seed_steps_agree": True,
+        }
+        for arm, ids in zip(("R", "D", "S-u"), lists, strict=True)
+    ]
+    return g1_v2_equality(cells, expected_arms_by_target={SINGLE_TARGET: THREE})
+
+
+def test_a_whole_group_stopped_in_its_seed_phase_is_not_a_contradiction() -> None:
+    # QA check 35: no arm records a policy and all three stopped in the seed phase with prefixes
+    # of different lengths. Each cell is unverifiable, and so is the group (exit 2), not different.
+    s0, s1 = "s0", "s1"
+    result = _group([[s0], [s0, s1], [s0]])
+    assert set(result["seed_corpus_cells"].values()) == {"unverifiable"}
+    assert result["groups"]["1"]["seed_corpus_check"] == "unverifiable"
+    assert result["equal"] is True and result["summaries"]["seed_corpus"]["review_required"]
+
+
+def test_end_to_end_whole_group_stopped_in_its_seed_phase_exits_2(tmp_path: Path) -> None:
+    _write_output(tmp_path, {"t1": 5}, stream_only=frozenset({"R", "D", "S-u"}))
+    for arm in ("R", "S-u"):
+        _stop_after_first_seed_step(tmp_path, arm)
+    stream = next(tmp_path.rglob("*-t1-D-s5.steps.jsonl"))
+    lines = stream.read_text(encoding="utf-8").splitlines(keepends=True)
+    stream.write_text("".join(lines[:2]), encoding="utf-8")  # both seeds, no mutation step
+    document = check_output(tmp_path)
+    assert set(document["seed_corpus_cells"].values()) == {"unverifiable"}
+    assert document["groups"]["5"]["seed_corpus_check"] == "unverifiable"
+    assert check_main(["--output", str(tmp_path)]) == 2
+
+
+def test_stopped_lists_that_differ_at_one_position_are_different() -> None:
+    # [s0] and [t0]: they cannot both be prefixes of one corpus, policy or not.
+    assert _group([["s0"], ["t0"], ["s0"]])["groups"]["1"]["seed_corpus_check"] == "different"
+    # Two complete lists that differ, one a prefix of the other, are a contradiction too.
+    complete = _group([["s0"], ["s0", "s1"], ["s0", "s1"]], complete=True)
+    assert complete["groups"]["1"]["seed_corpus_check"] == "different"
+
+
+def test_more_ids_than_the_corpus_stay_different() -> None:
+    ids = _ids(SeedCorpusId.MINIMAL_EMPTY_REG)
+    longer = {"mutation_policies": [V21.value], "initial_case_ids": [*ids, "extra"]}
+    assert seed_corpus_cell_check(longer) == "different"

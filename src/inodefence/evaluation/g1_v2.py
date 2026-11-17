@@ -43,9 +43,19 @@ Per (target, seed) group the gate checks:
   - Registered v1 policies bind no corpus (``SEED_CORPUS`` maps only v2 policies), so running
     this gate on v1 output gives ``unverifiable`` seed corpus groups and ``review_required``
     (``check_g1_v2`` exit 2, not 0). This is intended.
-  Group value: ``different`` if any cell is ``different`` or two complete recorded lists differ
-  between arms; else ``incomplete`` if any cell is; else ``unverifiable`` if any cell is; else
-  ``equal``. ``seed_corpus_incomplete`` lists the incomplete cells as (target, seed, arm).
+  Group value: ``different`` if any cell is ``different``, or the arms' recorded lists
+  contradict each other; else ``incomplete`` if any cell is; else ``unverifiable`` if any cell
+  is; else ``equal``. ``seed_corpus_incomplete`` lists the incomplete cells as (target, seed,
+  arm). Arms contradict each other (QA check 35, 2026-11-18) when
+  - two **complete** lists differ (complete = from the report's ``initial_case_ids``, or seed
+    steps followed by a non-seed step), or
+  - any two recorded lists, complete or not, hold different ids at the same position.
+  A list that stopped in the seed phase (seed steps only, nothing after) and is a prefix of
+  another arm's list is not compared further: a stop is not a contradiction, so a whole group
+  stopped in its seed phase is ``incomplete`` (policy known) or ``unverifiable`` (unknown),
+  never ``different`` because its prefixes have different lengths. Two lists that differ at
+  one position cannot both be prefixes of one corpus, whatever the policy, so that is recorded
+  evidence of a corpus mismatch, not of a stop.
 ``different`` fails the group. ``unverifiable`` and ``incomplete`` do not fail it but are never a
 pass of the check: they are counted and listed apart and set ``review_required`` (exit 2 of
 ``check_g1_v2``; exit 1 stays reserved for a recorded contradiction, so the 0/1/2 scheme holds).
@@ -175,16 +185,25 @@ def _group_policy(cells: Sequence[Mapping[str, Any]]) -> str | None:
     return None
 
 
+def _complete_list(cell: Mapping[str, Any]) -> bool:
+    """The cell's recorded initial ids are its whole seed phase (see the module docstring)."""
+    return cell.get("initial_ids_from_report") is not False or bool(cell.get("non_seed_steps"))
+
+
 def _seed_corpus_group_check(cells: Sequence[Mapping[str, Any]], per_cell: Sequence[str]) -> str:
     if DIFFERENT in per_cell:
         return DIFFERENT
-    complete = {
-        tuple(cell["initial_case_ids"])
-        for cell, value in zip(cells, per_cell, strict=True)
-        if cell.get("initial_case_ids") is not None and value != INCOMPLETE
-    }
-    if len(complete) > 1:
+    recorded = [
+        (tuple(str(item) for item in cell["initial_case_ids"]), _complete_list(cell))
+        for cell in cells
+        if cell.get("initial_case_ids") is not None
+    ]
+    if len({ids for ids, complete in recorded if complete}) > 1:
         return DIFFERENT
+    for i, (left, _) in enumerate(recorded):
+        for right, _ in recorded[i + 1 :]:
+            if any(x != y for x, y in zip(left, right, strict=False)):
+                return DIFFERENT
     for value in (INCOMPLETE, UNVERIFIABLE):
         if value in per_cell:
             return value

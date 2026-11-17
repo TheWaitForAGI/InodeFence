@@ -74,8 +74,9 @@ v2와 v2.1은 seed 코퍼스만 다르다. 문법, 축, 분포, 사슬 R의 m, b
 - 코퍼스 id는 모든 seed entry의 논리 내용 전체를 고정한다: 이름, 종류, mode, content 바이트, 링크 대상(W4).
   - `set_content`는 이미 있는 바이트를 뽑으면 no-op이 된다. 그래서 content 바이트도 추첨에 영향을 준다.
 - `minimal-empty-reg-v1`의 `a.txt` 값은 `generator/corpora.py`의 `MINIMAL_EMPTY_REG_REGULAR` 한 곳에 있다.
-  - 지금은 임시값이다: 등록 `a.txt`와 같은 바이트, mode 0o644.
-  - W3가 p_R 계산에 실제로 쓴 값을 보고하면 이 상수만 바꾼다.
+  - 값은 등록 `a.txt`와 같은 바이트 `b"hello inodefence"`, mode 0o644다.
+  - 이 값은 W3의 p_R 계산이 쓴 값으로 확정됐다(2026-11-18).
+  - 값을 바꾸려면 새 corpus id, 정책 id, 어휘 id를 만든다.
 - 빈 아카이브는 USTAR 끝 블록만 있는 10240바이트로 빌드되고, 다시 읽으면 같은 case가 된다.
 - 빈 입력에서 slot별 동작:
   - `add_entry`, `add_hardlink`, `add_symlink`는 적용된다.
@@ -85,3 +86,25 @@ v2와 v2.1은 seed 코퍼스만 다르다. 문법, 축, 분포, 사슬 R의 m, b
 - 테스트:
   - `tests/test_seed_corpus_v21.py`
   - `tests/test_seed_corpus_golden_v21.py`: 회귀 golden이다. bed077a에 대응하는 코드가 없으므로 이 커밋에서 만든 값을 고정한다.
+
+### 4.1 빈 아카이브 seed: 관찰된 대상 동작 (가정 정정)
+
+정의를 만들 때의 가정은 "추출기는 아무것도 추출하지 않고 오류 없이 끝난다"였다. 관찰 결과는 다르다. 코퍼스는 정의대로 유지하고 새 코퍼스 id는 만들지 않는다(W4·연구 총괄, D-ORCH-1118-154·155).
+
+W4 문구:
+
+> node-tar 7.5.23은 항목 0개 아카이브(빌더 출력: 0바이트 10,240개)를 TAR_BAD_ARCHIVE로 거부한다. 이런 실행은 유효·거부·위반 없음으로 기록되고 예산 1단위를 쓴다. 빈 입력은 어떤 추출기 동작에서도 위반 확률이 0이므로 p_R·d*에 영향이 없다.
+
+- 근거: 비공개 Drive `Research/02-엔진/20261118-HOST4-zero-entry-check/RUN.md`와 `SHA256SUMS`.
+  - 엔진 fd25d6f, 고정 입력 점검이며 arm 실행이 아니다. 실행 전에 원장 줄을 적었다.
+  - 관찰한 node-tar 버전은 7.5.23 하나다. 다른 버전의 동작은 확인하지 않았다.
+- 대상 한계:
+  - python-tarfile 3.12.16(`data`)에서는 빈 아카이브 실행의 기록이 무효다(validity invalid, `observer_integrity`).
+  - 원인은 worker가 아니라 호스트 판독기다(이슈 #533). `targets/python_tarfile_effect.py`의 완결 판정이 "참조가 하나 이상"을 요구해서, entry 0개의 정상 종료를 미완결로 판정한다.
+  - 판독기 수정은 제품 판정을 바꾸므로 W4 검토 뒤 별도 단위로 한다.
+  - 고치기 전에는 node-tar가 아닌 대상에서 `minimal-empty-reg-v1`을 쓰지 않는다. 이 정책은 python-tarfile, decompress, oras-go 루프가 설정 단계에서 거부한다.
+- 그 밖의 루프:
+  - decompress와 oras-go 루프는 v2 문법 정책(두 id 모두)을 설정 단계에서 거부한다. 이 루프들은 V1 표 스케줄러를 쓰고 코퍼스를 치환하지 않는다.
+  - python-tarfile 루프는 v2(등록 코퍼스) 정책을 지금처럼 받는다.
+- 탐색 미판정 규칙(`python_tarfile_explore.run_unjudged`)에는 빈 아카이브를 판정됨으로 보는 예외가 있다. 보고서 `validity`에는 그 예외가 없어 둘이 어긋난다. 어긋남은 그 docstring에 적었고, 예외는 넓히지 않는다.
+- live progress의 미판정 비율은 분모에 build-invalid 단위를 포함한다(QA 33 참고). v2에서 build-invalid가 많으면 비율이 희석되므로, HOST3 점검표에서 비율을 읽을 때 build-invalid 수를 함께 본다.

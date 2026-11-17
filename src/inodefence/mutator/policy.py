@@ -72,6 +72,17 @@ class MutationPolicy(StrEnum):
     )
 
 
+# The v2 grammar policies (`b-grammar-v2-freeze-3`, ten slots). Only the node-tar effect campaign
+# (``effect_campaign.run_effect_campaign``) and loops built on it run them; the decompress and
+# oras-go campaign loops refuse them at configuration (their scheduler is the V1 table and they do
+# not bind a policy's seed corpus).
+V2_GRAMMAR_POLICIES: frozenset[MutationPolicy] = frozenset(
+    {
+        MutationPolicy.V2_FREEZE3_FIXED_BASELINE,
+        MutationPolicy.V2_FREEZE3_FIXED_BASELINE_MINIMAL_EMPTY_REG,
+    }
+)
+
 # Policies whose campaign records an unrepresentable child as a build-invalid step
 # (D060) unless the campaign config says otherwise. Every other policy aborts, as before.
 RECORDS_BUILD_INVALID: frozenset[MutationPolicy] = frozenset(

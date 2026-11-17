@@ -60,7 +60,7 @@ from inodefence.model import ArchiveCase
 from inodefence.mutator import MutationOperatorId, MutationPolicy, apply_operator
 from inodefence.mutator.chain import apply_chain
 from inodefence.mutator.dispatch import operator_ids
-from inodefence.mutator.policy import RECORDS_BUILD_INVALID, SEED_CORPUS
+from inodefence.mutator.policy import RECORDS_BUILD_INVALID, SEED_CORPUS, V2_GRAMMAR_POLICIES
 from inodefence.tar_reader import read_builder_tar
 from inodefence.target_result import no_extraction_warning
 
@@ -295,3 +295,63 @@ def test_no_extraction_warning_ignores_successful_empty_extractions() -> None:
     # An empty archive that extracts nothing still terminates "success".
     assert no_extraction_warning({"success": 2}) is None
     assert no_extraction_warning({"success": 1, "rejected": 5}) is None
+
+
+# --- QA 33: loops that do not run the v2 grammar or bind a seed corpus refuse at configuration ---
+
+
+@pytest.mark.parametrize("policy", sorted(V2_GRAMMAR_POLICIES))
+def test_decompress_and_oras_go_refuse_v2_grammar_policies(policy: MutationPolicy) -> None:
+    from inodefence.decompress_effect_campaign import DecompressEffectCampaignConfig
+    from inodefence.oras_go_effect_campaign import OrasGoEffectCampaignConfig
+
+    with pytest.raises(ValueError, match="v2 grammar mutation policies are not supported"):
+        DecompressEffectCampaignConfig(1, 8, mutation_policy=policy)
+    with pytest.raises(ValueError, match="v2 grammar mutation policies are not supported"):
+        OrasGoEffectCampaignConfig(1, 8, mutation_policy=policy)
+
+
+def test_decompress_and_oras_go_still_accept_v1_policies() -> None:
+    from inodefence.decompress_effect_campaign import DecompressEffectCampaignConfig
+    from inodefence.oras_go_effect_campaign import OrasGoEffectCampaignConfig
+
+    for policy in MutationPolicy:
+        if policy in V2_GRAMMAR_POLICIES:
+            continue
+        DecompressEffectCampaignConfig(1, 8, mutation_policy=policy)
+        OrasGoEffectCampaignConfig(1, 8, mutation_policy=policy)
+
+
+def test_v2_grammar_policy_set_matches_dispatch() -> None:
+    from inodefence.mutator import dispatch
+
+    assert set(dispatch._V2_POLICIES) == V2_GRAMMAR_POLICIES  # noqa: SLF001
+    assert {p for p in MutationPolicy if operator_ids(p) == operator_ids(V2)} == V2_GRAMMAR_POLICIES
+
+
+def test_python_tarfile_refuses_v21_before_binding() -> None:
+    from inodefence.python_tarfile_explore import python_tarfile_exploration_report
+
+    with pytest.raises(ValueError, match="non-registered seed corpus"):
+        python_tarfile_exploration_report(
+            None,  # type: ignore[arg-type]  # refused before the backend is touched
+            "image",
+            "data",
+            "3.12.16",
+            mutation_policy=V21,
+        )
+
+
+def test_python_tarfile_accepts_v2_on_registered_corpus() -> None:
+    from inodefence.python_tarfile_explore import python_tarfile_exploration_report
+
+    # v2 passes the corpus check and only then fails on the missing backend.
+    with pytest.raises(Exception) as caught:
+        python_tarfile_exploration_report(
+            None,  # type: ignore[arg-type]
+            "image",
+            "data",
+            "3.12.16",
+            mutation_policy=V2,
+        )
+    assert "non-registered seed corpus" not in str(caught.value)

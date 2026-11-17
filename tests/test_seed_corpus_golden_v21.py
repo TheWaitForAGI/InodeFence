@@ -13,6 +13,13 @@ fixture, not native evidence). Four digests per cell: that file's ``trajectory``
 and ``steps``, plus ``extra`` over the initial case IDs, every build-invalid step and every
 mutation chain (``canonical_json``), which the other three do not cover.
 
+Build-invalid cells (QA 33): the ``long-`` cells use the same producer with one extra
+BEFORE-snapshot object whose name is 90 ASCII ``n`` characters (a generic long name, no target
+or sentinel name). The fixed-baseline pool then holds that name, extended paths outgrow what
+USTAR can encode, and the builder refuses some children, so these cells pin real build-invalid
+steps (the plain cells have none). ``test_long_cells_contain_build_invalid_steps`` keeps that
+true.
+
 Seeds 5 and 777 are not registered and not in the exploration ledger (see the variable golden).
 Regenerate with ``python tests/test_seed_corpus_golden_v21.py`` only when a change to these
 cells is intended and recorded.
@@ -20,6 +27,7 @@ cells is intended and recorded.
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import sys
 from pathlib import Path
@@ -36,8 +44,19 @@ from inodefence.evaluation.rds import (  # noqa: E402
     VocabularyMode,
     run_rds_cell,
 )
+from inodefence.feedback import state_signature  # noqa: E402
 from inodefence.generator import minimal_seed_corpus  # noqa: E402
-from inodefence.model import canonical_json  # noqa: E402
+from inodefence.model import (  # noqa: E402
+    ArchiveCase,
+    EffectRunResult,
+    ObjectSnapshot,
+    ObjectType,
+    RunResult,
+    StateSnapshot,
+    canonical_json,
+)
+from inodefence.observer import compare_states  # noqa: E402
+from inodefence.oracle import evaluate_contracts  # noqa: E402
 from test_registered_arms_golden_variable import (  # noqa: E402
     _inputs_digest,
     _steps_digest,
@@ -56,12 +75,19 @@ CORPORA = {
 }
 SEEDS = (5, 777)
 BUDGETS = (16, 64)
-CELLS = tuple(
-    f"{corpus}:{arm}:{seed}:{budget}"
-    for corpus in CORPORA
-    for arm in ARMS
-    for seed in SEEDS
-    for budget in BUDGETS
+LONG_NAME = "n" * 90
+LONG_CELLS = tuple(
+    f"long-{corpus}:{arm}:{seed}:64" for corpus in CORPORA for arm in ARMS for seed in SEEDS
+)
+CELLS = (
+    *(
+        f"{corpus}:{arm}:{seed}:{budget}"
+        for corpus in CORPORA
+        for arm in ARMS
+        for seed in SEEDS
+        for budget in BUDGETS
+    ),
+    *LONG_CELLS,
 )
 
 #: ``"<corpus>:<arm>:<seed>:<budget>" -> (trajectory, inputs, steps, extra)``.
@@ -210,15 +236,130 @@ GOLDEN: dict[str, tuple[str, str, str, str]] = {
         "6e4939a17c968b5b566353366cbd4fd24fd7b26d2cea9ed5cbe9cfe8005e6fa9",
         "b25323c457c3c1858fb79e130fe6ecc729c1ace6de2dfca21276e43cc8e94585",
     ),
+    "long-v2:R:5:64": (
+        "c4a1d4b83dde721cac6970130f363da9c9d9aebe4b5f7f6fa2799683ef90d3b9",
+        "e97890184c762e980bdf3f3c4311f4b2c7f6107bb39325bb20a5a19873e939b6",
+        "8ebd1ab4ebe6359b35c2cf82394cc673fab199be02243a878d5fb965287d6682",
+        "f24a58e16f3ad4b9bc9bfc40ad0dcafc69e26d2b22255d55edac3d3f25575e21",
+    ),
+    "long-v2:R:777:64": (
+        "504359f23d2c26277f6d652e89df81218a9785fb4de8868d90092f4edbca1521",
+        "19433def01c8d53e380731e811c4067c60bcaca91af250fb6d1133346ccc25ca",
+        "000862eb65084a3ab940ed65c553efb5dbab235718a3fdad467fc8b57d68418a",
+        "340a1dce8231464f64689999ac0659df39534e2b627a3488ada1e93483178c1a",
+    ),
+    "long-v2:D:5:64": (
+        "be1a211a15aa1da3935b71d30266617e5f12726763ba18839a0bb32a71662b09",
+        "cfbb1c7647b6bc651f5eb7beaafdd4ce84290ed7144bc72edf8efbe63345de62",
+        "12ff6414941aad813120db0614695e8790cb7437c3a4c2873cafdf1956ae4a59",
+        "60268e1e1fd8183a5037d27992e5729066921d1719f3340554451a0f9fef1b2f",
+    ),
+    "long-v2:D:777:64": (
+        "fca41254fd6aac82fd45c3a2027bc95693b3768090e5652ff53e5f84bf908b89",
+        "5cdedb6e4347892f5eddb8a9153cad50a0e9b37b2d3c6fea9065f535cdbd18dd",
+        "f27df1a1b7dd63978dacde1d948725e70318e3be0db7d4c052926dd7c58cf1fd",
+        "60268e1e1fd8183a5037d27992e5729066921d1719f3340554451a0f9fef1b2f",
+    ),
+    "long-v2:S-u:5:64": (
+        "3be388487dd23034afd80d6aa752124aa55b16226e129ece8a89c4cc05de5fe4",
+        "1e0ed3cff3121b2e3caa32491719d9a81df17f54bf8983e2baec7e5123f100ef",
+        "526f0fc2bbe7a3eab04c57d6f8cff85f213c09cb344ea7fe49018004fdbb89ef",
+        "60268e1e1fd8183a5037d27992e5729066921d1719f3340554451a0f9fef1b2f",
+    ),
+    "long-v2:S-u:777:64": (
+        "82b710937c2f4c4414979833d6d15630654680fa8dc1a064e356fdc5c530ebaf",
+        "d2526f0e2cbe204329d99bf8cca6ac8dd5780ddf83829e64b0862960d49dea1e",
+        "ad1d169ca1217757bce7eafab8272b7883655dc871c0bd6f6676a14e18735508",
+        "60268e1e1fd8183a5037d27992e5729066921d1719f3340554451a0f9fef1b2f",
+    ),
+    "long-v2.1:R:5:64": (
+        "6a25449bca04a7abdab91ef1468c9428c34e67d05ecc50123abb856c8693204f",
+        "31c4e4003c7bc43ff78267045bddebc81223430b2f3295a923456b632c7ab794",
+        "afd393d59d788543199890355f0e62ecbae15a14e4287832bcfe172781e44cbe",
+        "f952b46f8092f8b572fc3de4b3c65d4e9f5901c7957429c85bcf16c349c42991",
+    ),
+    "long-v2.1:R:777:64": (
+        "466aa0c10a3ee2debc5acd2ae7186644ff850a42a733434918e6a41576891636",
+        "3121b3f8a8f63adfe47e9448b14ee234682cb2dbae66c9ea6c0fae8bad3c2c2b",
+        "fbace9663792ca678a74c307c43bd0d951e4d9fbe93d2833e59e6c9c8c481804",
+        "4c63b818707de23e7f02602a91b9832a48533b77b3c4a7a503b2ff560489a582",
+    ),
+    "long-v2.1:D:5:64": (
+        "45eea08a6584ffa73fd9ea8fc6fd984609e27378aade1e9381175e453fdb236f",
+        "e73c5d39e2549c65258b33defb71508e883f2b9c016a91e4797f06076950f970",
+        "caba92c6b7ba99fd78970b98adbf00b78b09974ac5057a1d8a55e98905308bb8",
+        "81b0c1f765db2bdd270e6d8ad4c6318744d70004ca2db0d5fba3906d5f95b48e",
+    ),
+    "long-v2.1:D:777:64": (
+        "adf2cc82a57509e79428c153d1a82d15bcce4d13c7d924509315e151bda155b0",
+        "3b80e60e3d730a5f32d69a54443232fbd3ffc4a6e710061818b336ac0f9f000b",
+        "e9eb48087404b4255d61fea177f2e5038d574887f1c597c4207ce310be16b3b1",
+        "331888cd9a5e2da2f3b185960b8af9b86e024fcea6a15d9fdae5af391922cc68",
+    ),
+    "long-v2.1:S-u:5:64": (
+        "7574dcf76d78b51190e640788da19f345f7879ccd13e9772b82218a209b0e752",
+        "82c8e2407d4369d02409e1f2a67838404a29b9a524169d2b0a9c5f5979619fe1",
+        "9298cf2cf427983305d87a6c87a3af243cc75e837a2cea3f8fd82f4b1a934f30",
+        "3b7515abf0cd9cb90986e6f7c1906164708caec083aef370054595adf922adf1",
+    ),
+    "long-v2.1:S-u:777:64": (
+        "a0d36ed853345a334812602c332f20189b14603ab0ae888798e02b27c14feff1",
+        "1500e5583834a08f5dd3a1fdf69fd330027920177afe04f970227a2313244624",
+        "b2d6dea30197422e2d8759bba3d9bd01c53dd7a942a97e934e0453b19a16e8b4",
+        "331888cd9a5e2da2f3b185960b8af9b86e024fcea6a15d9fdae5af391922cc68",
+    ),
 }
+
+
+def _with_long_name(snapshot: StateSnapshot) -> StateSnapshot:
+    top = snapshot.objects[0].path.split("/")[0]
+    extra = ObjectSnapshot(
+        f"{top}/{LONG_NAME}",
+        ObjectType.DIRECTORY,
+        7,
+        900,
+        1,
+        0o755,
+        1,
+        1000,
+        1000,
+        1,
+        1,
+        None,
+        None,
+    )
+    objects = tuple(sorted((*snapshot.objects, extra), key=lambda obj: obj.path))
+    return StateSnapshot(snapshot.sandbox_root, snapshot.phase, objects, snapshot.protected_paths)
+
+
+def _long_name_result(case: ArchiveCase) -> EffectRunResult:
+    """``_variable_result`` plus one long-named object in both snapshots (fixture only)."""
+    shaped = _variable_result(case)
+    run = shaped.base_result
+    before, after = _with_long_name(run.before), _with_long_name(run.after)
+    base = RunResult(
+        case,
+        run.archive_sha256,
+        run.archive_format,
+        run.execution,
+        before,
+        after,
+        compare_states(before, after),
+        state_signature(before, after),
+        evaluate_contracts(before, after),
+    )
+    return EffectRunResult(base, dataclasses.replace(shaped.trace, before=before, after=after))
 
 
 def _run(cell: str) -> Any:
     corpus, arm, seed, budget = cell.split(":")
+    producer = _variable_result
+    if corpus.startswith("long-"):
+        corpus, producer = corpus.removeprefix("long-"), _long_name_result
     rds_arm, variant = ARMS[arm]
     config = RdsCellConfig(rds_arm, int(seed), int(budget), CORPORA[corpus], variant)
     # The launcher's argument: the campaign binds the policy's corpus itself.
-    return run_rds_cell(minimal_seed_corpus(), _variable_result, config).campaign
+    return run_rds_cell(minimal_seed_corpus(), producer, config).campaign
 
 
 def _extra_digest(result: Any) -> str:
@@ -245,11 +386,17 @@ def test_golden_covers_every_cell() -> None:
     assert set(GOLDEN) == set(CELLS)
 
 
+def test_long_cells_contain_build_invalid_steps() -> None:
+    counts = {cell: len(_run(cell).build_invalid_steps) for cell in LONG_CELLS}
+    assert sum(counts.values()) > 0
+    assert all(counts[f"long-v2.1:{arm}:{seed}:64"] > 0 for arm in ARMS for seed in SEEDS)
+
+
 @pytest.mark.parametrize("cell", CELLS)
 def test_v2_corpus_cell_matches_regression_golden(cell: str) -> None:
     assert _digests(cell) == GOLDEN[cell]
 
 
 if __name__ == "__main__":
-    for cell in CELLS:
+    for cell in LONG_CELLS if "--long" in sys.argv else CELLS:
         print(f"    {cell!r}: {_digests(cell)!r},")

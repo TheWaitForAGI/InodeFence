@@ -10,7 +10,11 @@ policy's own corpus.
   (regular, directory, hardlink, symlink). Every registered setting and the v2 policy
   use it; its bytes are unchanged.
 * ``minimal-empty-reg-v1``: an empty archive (no entries) and one regular file
-  ``a.txt`` (:data:`MINIMAL_EMPTY_REG_REGULAR`).
+  ``a.txt`` (:data:`MINIMAL_EMPTY_REG_REGULAR`). Observed, not assumed (2026-11-18): node-tar
+  7.5.23 rejects the empty archive (the builder's 10,240 zero bytes) with ``TAR_BAD_ARCHIVE``;
+  the run is recorded valid, rejected, no violation, and spends one budget unit. On
+  python-tarfile 3.12.16 the run is recorded invalid (#533), so policies bound to this corpus
+  are refused by the python-tarfile, decompress and oras-go loops.
 
 A corpus id fixes the whole logical content of every seed entry: name, type, mode,
 content bytes and, for a link, its target (W4, 2026-11-18). Content bytes matter to the
@@ -34,10 +38,9 @@ class SeedCorpusId(StrEnum):
     MINIMAL_EMPTY_REG = "minimal-empty-reg-v1"
 
 
-#: The one regular entry of ``minimal-empty-reg-v1``: the single place its values live.
-#: Provisional (RES1's assumption, ORCH 2026-11-18): the bytes and mode of the registered
-#: ``a.txt`` seed. W3 reports the values its p_R computation used; if they differ, only this
-#: constant changes (values already used, not chosen after seeing p_R).
+#: The one regular entry of ``minimal-empty-reg-v1``: the single place its values live. These
+#: are the values W3's p_R computation used, confirmed 2026-11-18 (the bytes and mode of the
+#: registered ``a.txt`` seed). Changing them needs a new corpus, policy and vocabulary id.
 MINIMAL_EMPTY_REG_REGULAR = ArchiveEntry(
     "a.txt", EntryType.REGULAR, content=b"hello inodefence", mode=0o644
 )

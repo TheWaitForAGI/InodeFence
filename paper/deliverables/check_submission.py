@@ -28,6 +28,7 @@ import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+CLAIMS = HERE.parent / "sections" / "claims-evidence-status-v1.md"
 FILL = HERE / "hwp" / "fill_form.py"
 BRACKET = re.compile(r"\[(?:사람|대기|갱신)[^\]]*\]")
 PLACEHOLDER = re.compile(r"<[^<>\s]{1,20}>")  # d12 value places, only inside the result sentence
@@ -151,6 +152,20 @@ def d12_abstract(d12: str, cell: str) -> str | None:
     return None
 
 
+def holdout_row_sentences(claims: Path | None = None) -> list[str]:
+    """The quoted sentences of the S-HOLDOUT row (full form and 요약) in the claim list."""
+    claims = claims or CLAIMS
+    if not claims.exists():
+        return []
+    for line in claims.read_text(encoding="utf-8").splitlines():
+        if line.startswith("| S-HOLDOUT |"):
+            # only the last column (the sentences to write); the status column quotes the
+            # d12 cell name, which alone is not a result sentence
+            last = line.strip().strip("|").split(" | ")[-1]
+            return [q for q in re.findall(r"「([^」]*)」", last) if len(q) >= 40]
+    return []
+
+
 def result_sentences(values: dict, d12: str) -> tuple[str, str, str] | None:
     """(status, written sentence, spoken sentence) the deliverables must carry."""
     status = values.get("status")
@@ -190,9 +205,15 @@ def check_result(
     if not got:
         return
     _, written, spoken = got
+    # A document carries the result when it has the filled d12 abstract or one of the S-HOLDOUT
+    # row sentences (the form body carries the row's full form, the draft its 요약). Only when
+    # the values are released: sealed or synthetic runs only accept the d12 sentence.
+    accepted = [written] + (
+        holdout_row_sentences() if status not in ("미해제", "synthetic") else []
+    )
     for name, text in texts.items():
         if text:
-            ok = nows(written) in nows(text)  # PDF line wraps split words
+            ok = any(nows(s) in nows(text) for s in accepted)  # PDF line wraps split words
             record(
                 "PASS" if ok else "FAIL", f"{name} carries the result sentence", written[:60] + "…"
             )

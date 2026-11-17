@@ -17,8 +17,31 @@
 > 아카이브 전체 형식(ustar/PAX/GNU)은 연산이 아니라 셀마다 기록하는 빌더 형식 id다.
 
 이 규칙은 대상과 무관하게 기계적으로 적용한다. 아래 표는 모두 이 규칙을 적용한 결과다.
-- 해석 메모: entry 이름(path)도 entry의 필드다. 지금 코드의 경로 교체(SET path)는 "필드 하나 변경" 1회로 센다.
-  괄호 안 필드 목록은 예시로 읽었다(W4 확인 필요).
+- 해석 메모: 괄호 안 필드 목록은 예시이며 전부가 아니다. path(이름)도 entry 필드다(W4 확인 2026-11-18).
+  지금 코드의 경로 교체(SET path)는 "필드 하나 변경" 1회로 센다.
+- 위치 이동의 원시 연산은 **MOVE(entry, 목표 위치) = 1**이다. 엔진의 swap(`reorder_entries`)은 복합이다:
+  인접한 두 entry의 swap은 MOVE 1회, 인접하지 않은 두 entry의 swap은 MOVE 2회와 같다.
+
+#### 엔진 연산 → 원시 연산 수 대응표
+
+d*(#509)는 문법의 **원시 연산**을 센다. #507의 경험적 계보 거리 d와 v2의 d_R은 **엔진의 연산 적용 횟수**를 센다.
+엔진 연산이 복합이거나 no-op인 곳에서는 두 측도가 달라지므로, #509가 d*와 d_R을 비교할 때 이 표를 거친다.
+
+| 엔진 연산 (슬롯, 코드) | 적용 1회의 원시 연산 수 | 비고 |
+| --- | --- | --- |
+| `add_entry` (LEGACY `operators.add_entry`, M1 `m1.add_entry`) | 1 | INSERT. LEGACY는 끝에, M1은 임의 위치에 |
+| `remove_entry` | 1 | DELETE |
+| `duplicate_entry` | 1 | INSERT(기존 entry의 사본) |
+| `reorder_entries` | **위치 의존: 인접 1, 비인접 2** | swap = MOVE 1 또는 2. 같은 값의 두 entry뿐이면 no-op(0) |
+| `mutate_path` (LEGACY affix, M1 `_raw_path` 교체) | 1 | SET(path) |
+| `add_hardlink` (LEGACY, M1) | 1 | INSERT(hardlink) |
+| `add_escaping_hardlink` (등록 arm 표의 슬롯 5) | 1 | INSERT(hardlink). depth는 매개변수 |
+| `add_symlink` | 1 | INSERT(symlink) |
+| `mutate_link_target` | 1 | SET(linkname) |
+| 적용 불가·길이 상한 초과로 원본을 돌려준 적용 (모든 슬롯) | 0 | 엔진은 적용 1회로 세지만(`MutationAttempt.applied = False`) 문법의 원시 연산은 없다 |
+| no-reorder 정책(`*-no-reorder-v1`)의 reorder 슬롯 | 0 | 엔진은 슬롯을 실행하고 결과를 버린다(RNG 소비는 같음) |
+
+지금 엔진에는 "삽입 두 번을 한 슬롯으로 묶은 연산"이 없다. 그런 연산을 새로 넣으면 이 표에 원시 수 2로 적는다.
 
 이 문서는 (1) 지금 문법이 실제로 내는 entry 종류와 변이 연산을 코드에서 읽어 정리하고, (2) 지금 못 만들거나 드물게만
 만드는 구조를 계열별로 적는다. 새 변이의 구현은 이 문서의 범위가 아니다.

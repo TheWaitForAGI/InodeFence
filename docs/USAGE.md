@@ -125,7 +125,14 @@ wheel로 설치했다면 `INODEFENCE_HOME`(환경 변수 또는 아래 설정 �
   이전 커밋 `a5499de`(2026-11-16)의 측정과 대상별 수치가 같았습니다.
 - **확인한 호스트:** Windows + WSL2(Ubuntu 24.04, x86_64) + Docker Desktop
   4.99.0 / Engine 29.9.3 호스트 한 대. **macOS는 이 후보에서 확인하지 않았습니다**(아래 #400 기록만 있음).
-  그 밖의 Linux 호스트도 확인하지 않았습니다.
+  x86_64 네이티브 Linux 호스트는 확인하지 않았습니다.
+- **두 번째 호스트(2026-11-18, demo run, D049 조건 6):** 맥북(Apple Silicon)의 Ubuntu 24.04.5 **arm64** VM(Multipass,
+  WSL 아님, x86 에뮬레이션 없음) + Docker Engine 29.1.3, 커밋 `8620d54`의 깨끗한 클론. 위 [설치](#설치) 명령을 고치지
+  않고 실행해 `doctor`에 `FAIL`이 없었고(`UNKNOWN` 1: Docker 메모리 여유, `WARN` 1: 개발용 runtime directory),
+  네 대상의 `verify`·`explore`(seed 123, 실행 20)·`status`·`summary`가 모두 종료 0이었습니다. `verify`는 네 대상 모두
+  PASS와 `BENIGN-CONTROL ok`, `explore`의 유효 추출은 node-tar 7.5.23 17/20, python-tarfile 3.12.16 `data` 12/20
+  (failed 5), decompress `@xhmikosr/decompress@11.1.4` 11/20, oras-go 2.6.2 11/20이고 위반 0, 미판정 0이었습니다.
+  실행 도중의 `status`와 `replay`는 이 호스트에서 확인하지 않았습니다.
 - **대상별 검증 수준 (위 호스트, demo run, 2026-11-17, 엔진 커밋 f108e36, seed 123, 순차 실행; `verify`의 정상 입력
   대조군은 네 대상 모두 `BENIGN-CONTROL ok`).** "실행 성공"은 하너스가 실행을 끝내고 결과를 남긴 수, "유효 추출"은 추출기가 `success`로 끝난
   수입니다.
@@ -253,6 +260,13 @@ inodefence.drivers.run_target_explore`) 옛 `scripts/` 경로로 부르면 기�
 ```bash
 inodefence status ~/inodefence-explore   # 진행 스냅샷 + 위반 케이스 목록 (+ 끝났으면 판정 한 줄)
 ```
+
+진행 스냅샷과 위반 케이스 목록은 **node-tar 탐색에서만** 나옵니다. python-tarfile·decompress·oras-go 탐색은
+`live/` 폴더를 쓰지 않아, 실행 중 진행 줄의 수치가 `?`로 표시되고 끝난 뒤 `status`는 판정 한 줄만 출력합니다
+(2026-11-18 두 번째 호스트에서도 같았습니다). 결과 폴더 위치도 대상마다 다릅니다. node-tar와 oras-go는
+`<out>/target-explore/` 아래, decompress는 `<out>/<패키지-버전>-<seed>-<실행 수>-result/`처럼 `<out>` 바로 아래에
+생깁니다(예: `xhmikosr-decompress-11.1.4-123-20-result`). 정확한 경로는 `explore`가 마지막에 출력하는 `result:` 줄을
+따르세요.
 
 끝난 실행에서 `host pull: … failed`가 보일 수 있습니다. 컨트롤러가 뜨기 전이나 지워진 뒤의 복사 실패로,
 호스트 쪽 live 사본에 관한 것이고 판정 오류가 아닙니다(`status`가 그 설명을 함께 출력합니다).

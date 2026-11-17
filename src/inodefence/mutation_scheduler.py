@@ -6,7 +6,12 @@ from typing import ClassVar, Protocol
 
 from inodefence.feedback import ViolationFingerprint
 from inodefence.model import TransitionFeedbackKey
-from inodefence.mutator import MutationAttempt, MutationOperatorId
+from inodefence.mutator import (
+    OPERATOR_ORDER_V1,
+    OPERATOR_TABLES,
+    MutationAttempt,
+    MutationOperatorId,
+)
 
 WeightSnapshot = tuple[tuple[MutationOperatorId, int], ...]
 
@@ -15,10 +20,17 @@ def _validate_weights(weights: WeightSnapshot) -> None:
     if (
         not isinstance(weights, tuple)
         or not weights
-        or tuple(operator for operator, _ in weights) != tuple(MutationOperatorId)
+        or tuple(operator for operator, _ in weights) not in OPERATOR_TABLES
         or any(type(weight) is not int or weight <= 0 for _, weight in weights)
     ):
         raise ValueError("weights must cover every operator in stable order")
+
+
+def operator_table(operators: tuple[MutationOperatorId, ...]) -> tuple[MutationOperatorId, ...]:
+    """Return ``operators`` if it is a known operator table (``OPERATOR_TABLES``)."""
+    if not isinstance(operators, tuple) or operators not in OPERATOR_TABLES:
+        raise ValueError("scheduler requires a known operator table")
+    return operators
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,16 +99,23 @@ class MutationScheduler(Protocol):
 
 
 class UniformMutationScheduler:
-    """Stateless legacy uniform choice; outcomes never change weights."""
+    """Stateless legacy uniform choice; outcomes never change weights.
+
+    ``operators`` is the table this scheduler draws from and records weights over
+    (default: the eight-slot V1 table every existing policy uses).
+    """
+
+    def __init__(self, operators: tuple[MutationOperatorId, ...] = OPERATOR_ORDER_V1) -> None:
+        self._operators = operator_table(operators)
 
     @property
     def weights(self) -> WeightSnapshot:
-        return tuple((operator, 1) for operator in MutationOperatorId)
+        return tuple((operator, 1) for operator in self._operators)
 
     def choose_operator(
         self, operators: tuple[MutationOperatorId, ...], rng: random.Random
     ) -> MutationSelection:
-        if operators != tuple(MutationOperatorId):
+        if operators != self._operators:
             raise ValueError("uniform scheduler requires the stable complete operator table")
         selected = rng.choice(operators)
         return MutationSelection(selected, self.weights, 1)
@@ -125,11 +144,17 @@ class UniformMutationScheduler:
 class TransitionAdaptiveScheduler:
     """Bounded integer reward for operators yielding any new transition key."""
 
-    def __init__(self, *, maximum_weight: int = 8) -> None:
+    def __init__(
+        self,
+        *,
+        maximum_weight: int = 8,
+        operators: tuple[MutationOperatorId, ...] = OPERATOR_ORDER_V1,
+    ) -> None:
         if type(maximum_weight) is not int or maximum_weight < 1:
             raise ValueError("maximum_weight must be a positive integer")
         self._maximum_weight = maximum_weight
-        self._weights = {operator: 1 for operator in MutationOperatorId}
+        self._operators = operator_table(operators)
+        self._weights = {operator: 1 for operator in self._operators}
 
     @property
     def maximum_weight(self) -> int:
@@ -137,12 +162,12 @@ class TransitionAdaptiveScheduler:
 
     @property
     def weights(self) -> WeightSnapshot:
-        return tuple((operator, self._weights[operator]) for operator in MutationOperatorId)
+        return tuple((operator, self._weights[operator]) for operator in self._operators)
 
     def choose_operator(
         self, operators: tuple[MutationOperatorId, ...], rng: random.Random
     ) -> MutationSelection:
-        if operators != tuple(MutationOperatorId):
+        if operators != self._operators:
             raise ValueError("adaptive scheduler requires the stable complete operator table")
         before = self.weights
         total = sum(weight for _, weight in before)

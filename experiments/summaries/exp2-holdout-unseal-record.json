@@ -1,0 +1,26 @@
+{
+  "approval_ref": "",
+  "approved_by": "지웅",
+  "assignment_sha256": "6095e526c5c129d84dab0d7ffcf6cf17290357834a7369fb79d59d70dc3415fe",
+  "e_cell_completeness_sha256": "5b3912fd251a48b5162e2caaf86f28c68454cb4af0b89aff4996db20cdcbd191",
+  "index_sha256": "3d690599e5a8f7f547b71e8055f0872655d5e30bbaf4bbf997b04247664d140b",
+  "received_at": "",
+  "tool_sha256": "1930479c1f9c04cd23d7d8316783ee47386a5de9ac4775b12dbbf8f4beaf268d",
+  "unseal_condition": {
+    "basis": "all-final",
+    "hosts": {
+      "HOST1": {
+        "integrity": "pass",
+        "manifest_sha256": "ffeda73998f30b011acab0164ff987c20fcb486d81702d25bb7f3c91645e9825",
+        "seeds_assigned": 60,
+        "seeds_final": 60
+      },
+      "HOST2": {
+        "integrity": "pass",
+        "manifest_sha256": "7ccacc6957d854b6091257bdff53fee78a1fe119b6d20dc4ab8553c0d566b3ac",
+        "seeds_assigned": 100,
+        "seeds_final": 100
+      }
+    }
+  }
+}

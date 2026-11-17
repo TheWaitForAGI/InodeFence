@@ -81,7 +81,7 @@ v2와 v2.1은 seed 코퍼스만 다르다. 문법, 축, 분포, 사슬 R의 m, b
   - `add_entry`, `add_hardlink`, `add_symlink`는 적용된다.
   - 나머지 7개 slot은 no-op이고 `applied` = False로 기록된다.
   - 사슬에서 no-op은 m에 세지만 깊이에는 더하지 않는다.
-- 보고서 `config.seed_corpus`에 코퍼스 id가 기록된다. G1 v2는 세 arm의 이 값(또는 seed step의 `case_id`)이 같은지 본다.
+- 보고서 `config.seed_corpus`에 코퍼스 id가 기록된다(읽기 편의 라벨). **G1 v2 관문**(W4 2026-11-18, 기록만이 아니라 관문)은 셀마다 기록된 초기 case id(보고서 `initial_case_ids`, 보고서가 없으면 seed step의 `case_id` 순서)가 그 셀의 기록된 정책이 묶는 코퍼스(`mutator.policy.SEED_CORPUS` → `generator.seed_corpus`, 값은 그곳에서 import)의 case id와 같은지, 묶음의 arm 사이에 같은지 본다. 다르면 그 셀의 실패이고, 기록이 없거나 정책이 코퍼스를 묶지 않으면 확인 불가(`review_required`)다. 셀별 값은 `seed_corpus_cells`.
 - 테스트:
   - `tests/test_seed_corpus_v21.py`
   - `tests/test_seed_corpus_golden_v21.py`: 회귀 golden이다. bed077a에 대응하는 코드가 없으므로 이 커밋에서 만든 값을 고정한다.

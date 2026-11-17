@@ -19,11 +19,14 @@ from inodefence.effect_demo import effect_campaign_report, render_effect_step_li
 from inodefence.effect_synthetic import synthetic_effect_result
 from inodefence.evaluation.g1_v2 import (
     SINGLE_TARGET,
+    bound_corpus_case_ids,
     check_output,
     g1_v2_equality,
     recorded_ids,
+    seed_corpus_cell_check,
 )
 from inodefence.feedback import EffectSearchPolicy
+from inodefence.generator import SeedCorpusId, seed_corpus
 from inodefence.generator.minimal import minimal_seed_corpus
 from inodefence.mutator import MutationPolicy
 
@@ -183,18 +186,42 @@ ARM_POLICIES = {
 }
 
 
+V21 = MutationPolicy.V2_FREEZE3_FIXED_BASELINE_MINIMAL_EMPTY_REG
+
+
+def _ids(corpus: SeedCorpusId) -> list[str]:
+    return [case.case_id for case in seed_corpus(corpus)]
+
+
 def _write_output(
-    root: Path, targets: dict[str, int], *, mutation_override: str | None = None
+    root: Path,
+    targets: dict[str, int],
+    *,
+    mutation_override: str | None = None,
+    initial_ids_override: dict[str, list[str] | None] | None = None,
+    stream_only: frozenset[str] = frozenset(),
 ) -> None:
-    """A launcher-like output folder: summaries/index.json and per-cell report + steps."""
+    """A launcher-like output folder: summaries/index.json and per-cell report + steps.
+
+    ``initial_ids_override`` rewrites one arm's recorded initial ids (report list and seed
+    steps; ``None`` removes both). ``stream_only`` arms keep only the steps JSONL.
+    """
     cells = []
     for target, seed in targets.items():
         for arm, policy in ARM_POLICIES.items():
-            config = EffectCampaignConfig(
-                seed, 12, policy, MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_FIXED_BASELINE
-            )
+            config = EffectCampaignConfig(seed, 12, policy, V21)
             result = run_effect_campaign(minimal_seed_corpus(), synthetic_effect_result, config)
             report: dict[str, Any] = effect_campaign_report(result, "synthetic")
+            if initial_ids_override and arm in initial_ids_override:
+                ids = initial_ids_override[arm]
+                seeds = [step for step in report["steps"] if step["origin"] == "seed"]
+                if ids is None:
+                    del report["initial_case_ids"]
+                    report["steps"] = [s for s in report["steps"] if s["origin"] != "seed"]
+                else:
+                    report["initial_case_ids"] = ids
+                    for step, case_id in zip(seeds, ids, strict=False):
+                        step["case_id"] = case_id
             if mutation_override and arm == "D":
                 for step in report["steps"]:
                     if step.get("mutation_attempt"):
@@ -204,7 +231,8 @@ def _write_output(
             folder = root / target
             folder.mkdir(parents=True, exist_ok=True)
             base = folder / f"inodefence-effect-demo-historical-{run_id}"
-            Path(f"{base}.json").write_text(json.dumps(report), encoding="utf-8")
+            if arm not in stream_only:
+                Path(f"{base}.json").write_text(json.dumps(report), encoding="utf-8")
             Path(f"{base}.steps.jsonl").write_text(
                 "".join(render_effect_step_line(s) for s in report["steps"]), encoding="utf-8"
             )
@@ -230,6 +258,8 @@ def test_end_to_end_over_a_launcher_output_folder(tmp_path: Path) -> None:
         assert group["mutation_policy_check"] == "equal"
         assert group["archive_format_check"] == "equal"
         assert group["arm_identity_check"] == "equal"
+        assert group["seed_corpus_check"] == "equal"
+    assert set(document["seed_corpus_cells"].values()) == {"equal"}
     assert document["arm_policy_map"]["by_arm"]["R"] == [
         EffectSearchPolicy.R_UNRETAINED_SEED_CHAIN_M4.value
     ]
@@ -247,3 +277,87 @@ def test_end_to_end_detects_a_different_operator_table(tmp_path: Path) -> None:
     assert document["pass"] is False
     assert document["groups"]["5"]["mutation_policy_check"] == "different"
     assert check_main(["--output", str(tmp_path)]) == 1
+
+
+# Seed corpus check (W4 2026-11-18: the corpus is a property of the v2 policy id, and a gate).
+
+
+def test_bound_corpus_ids_come_from_the_policy_profile() -> None:
+    assert bound_corpus_case_ids(V21.value) == tuple(_ids(SeedCorpusId.MINIMAL_EMPTY_REG))
+    assert bound_corpus_case_ids(MutationPolicy.V2_FREEZE3_FIXED_BASELINE.value) == tuple(
+        _ids(SeedCorpusId.REGISTERED)
+    )
+    # Registered v1 policies bind no corpus; an unknown id binds none either.
+    fixed = MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_FIXED_BASELINE.value
+    assert bound_corpus_case_ids(fixed) is None
+    assert bound_corpus_case_ids("no-such-policy") is None
+
+
+def test_seed_corpus_matches_in_every_arm(tmp_path: Path) -> None:
+    _write_output(tmp_path, {"t1": 5})
+    document = check_output(tmp_path)
+    assert document["pass"] is True
+    assert document["summaries"]["seed_corpus"]["counts"] == {
+        "equal": 1,
+        "different": 0,
+        "unverifiable": 0,
+    }
+    for cell in document["cells"]:
+        assert cell["initial_case_ids"] == _ids(SeedCorpusId.MINIMAL_EMPTY_REG)
+
+
+def test_one_arm_with_another_corpus_fails_that_cell(tmp_path: Path) -> None:
+    registered = _ids(SeedCorpusId.REGISTERED)
+    _write_output(tmp_path, {"t1": 5}, initial_ids_override={"D": registered})
+    document = check_output(tmp_path)
+    assert document["pass"] is False
+    assert document["groups"]["5"]["seed_corpus_check"] == "different"
+    assert document["seed_corpus_cells"] == {
+        "t1-R-s5": "equal",
+        "t1-D-s5": "different",
+        "t1-S-u-s5": "equal",
+    }
+    assert check_main(["--output", str(tmp_path)]) == 1
+
+
+def test_a_streamed_cell_is_checked_from_its_seed_steps(tmp_path: Path) -> None:
+    _write_output(tmp_path, {"t1": 5}, stream_only=frozenset({"S-u"}))
+    document = check_output(tmp_path)
+    streamed = next(c for c in document["cells"] if c["arm"] == "S-u")
+    assert streamed["initial_case_ids"] == _ids(SeedCorpusId.MINIMAL_EMPTY_REG)
+    assert document["seed_corpus_cells"]["t1-S-u-s5"] == "equal"
+    assert document["groups"]["5"]["seed_corpus_check"] == "equal"
+    # A streamed cell whose seed steps name another corpus fails the same way.
+    other = tmp_path / "other"
+    _write_output(
+        other,
+        {"t1": 5},
+        initial_ids_override={"S-u": _ids(SeedCorpusId.REGISTERED)[:2]},
+        stream_only=frozenset({"S-u"}),
+    )
+    assert check_output(other)["seed_corpus_cells"]["t1-S-u-s5"] == "different"
+
+
+def test_no_recorded_initial_ids_is_unverifiable_not_a_pass(tmp_path: Path) -> None:
+    _write_output(tmp_path, {"t1": 5}, initial_ids_override={"D": None})
+    document = check_output(tmp_path)
+    assert document["seed_corpus_cells"]["t1-D-s5"] == "unverifiable"
+    assert document["groups"]["5"]["seed_corpus_check"] == "unverifiable"
+    assert document["summaries"]["seed_corpus"]["review_required"] is True
+    assert document["review_required"] is True and document["pass"] is True
+    assert check_main(["--output", str(tmp_path)]) == 2
+
+
+def test_report_and_seed_steps_that_disagree_fail_the_cell() -> None:
+    ids = _ids(SeedCorpusId.MINIMAL_EMPTY_REG)
+    cell = {
+        "mutation_policies": [V21.value],
+        "initial_case_ids": ids,
+        "seed_steps_agree": False,
+    }
+    assert seed_corpus_cell_check(cell) == "different"
+    assert seed_corpus_cell_check(dict(cell, seed_steps_agree=True)) == "equal"
+    # No single recorded policy: the bound corpus is unknown.
+    assert seed_corpus_cell_check(dict(cell, seed_steps_agree=True, mutation_policies=[])) == (
+        "unverifiable"
+    )

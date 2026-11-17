@@ -1170,3 +1170,34 @@ v3 벤치마크는 D047로 본실험 선행 조건에서 빠졌다. 아래는 �
 소스 벤더링이 없어 MIT와 충돌하지 않는다. 저작권자 표기 줄은 지웅이 확인한다.
 
 저장소는 이미 공개 상태이며(2026-11-14 `gh repo view --json visibility` = PUBLIC) 이 결정은 라이선스만 정한다. 공개 설정은 바꾸지 않는다.
+
+## D049 — 제품 0.2.0의 범위와 릴리스 조건
+
+**상태:** 확정 (2026-11-17, 지웅 결정)
+
+사용자 명령 `inodefence`의 첫 안정 버전은 `0.2.0`이다. 기능을 더 쌓지 않고 아래 범위를 `main`에 올린 뒤 검사로 묶어
+태그를 찍는다. 이 결정이 내려진 뒤 0.2.0에는 버그 수정과 테스트만 넣고, 새 기능은 0.3 목록([BACKLOG](BACKLOG.md)
+PRODUCT 절)으로 보낸다.
+
+**범위.**
+
+- 지원 대상: node-tar, python-tarfile, decompress, oras-go 네 대상 모두. 명령은 `doctor`·`targets`·`verify`·`explore`·
+  `status`·`summary`·`replay`.
+- 제외: 탐색 재개(RESUME), wheel/PyPI 설치(클론에서 `pip install -e .`만 지원), macOS.
+- 호환 약속: 종료 코드와 `result.json`(`inodefence-target-result-v1`). 나머지 출력은 0.x에서 약속하지 않는다
+  ([USAGE 호환 약속](USAGE.md#호환-약속)).
+
+**릴리스 조건.** 아래가 `main`의 같은 SHA에서 모두 성립해야 한다. 태그와 GitHub Release는 지웅이 만든다.
+
+1. oras-go 탐색에서 추출이 실제로 일어난다(공통 seed의 `d/` 접두 문제 해결).
+2. 설치된 `inodefence` 명령을 네 대상의 실제 extractor에 돌리는 E2E가 CI에 있고 통과한다.
+3. python-tarfile·decompress·oras-go 런처가 Docker 호출에 시간 제한을 두고 정리 실패를 종료 코드에 반영한다. 격리는
+   완화하지 않으며, PR에 파일별 변경 명세와 격리 동등성 검증 결과를 붙인다.
+4. 네 대상 각각에서 실제 위반 케이스의 `replay`를 끝까지 한 번 실행한 기록이 있다(demo run).
+5. 호환 약속이 문서와 테스트로 고정돼 있고 README·USAGE·CHANGELOG가 구현과 일치한다.
+6. 두 번째 호스트(WSL2가 아닌 Linux)의 깨끗한 클론에서 USAGE를 그대로 따라 할 수 있다.
+
+**착지.** RC #457을 병합한 뒤 제품 스택 tip을 `main`과 `git merge`한 착지 PR 하나로 올린다. 병합은 지웅이 한다(D037).
+
+**고려한 대안.** MVP 두 대상(node-tar·python-tarfile)만 지원하고 나머지를 실험적으로 표시하는 안은 채택하지 않았다.
+이 결정은 제품 범위만 정한다. 연구 MVP 대상(D038)과 등록 실험 조건은 바꾸지 않는다.

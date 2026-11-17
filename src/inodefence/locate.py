@@ -171,8 +171,10 @@ def target_support(root: Path) -> dict[str, dict[str, Any]]:
 def _read_registry() -> dict[str, dict[str, Any]]:
     """The registry as plain data (run inside the clone's environment by :func:`target_support`).
 
-    Exploration support is read from the adapter's ``explore`` hook, so it updates on its own as a
-    target's owner fills the hook in; a target with no hook reports why.
+    Every field is read from the adapter, so it updates on its own as a target's owner fills a
+    hook in: ``regression`` is always true (``run`` is a required hook), ``auto_prepare`` is true
+    unless ``prepare`` is still the ``prepare_unsupported`` default, and ``explore`` / ``replay``
+    are true when the hook is set. A target with no exploration hook reports why.
     """
     from inodefence.drivers import run_target
 
@@ -180,6 +182,8 @@ def _read_registry() -> dict[str, dict[str, Any]]:
     for name in sorted(run_target.TARGETS):
         adapter = run_target.load_adapter(name)
         explores = getattr(adapter, "explore", None) is not None
+        prepares = getattr(adapter, "prepare", None) is not run_target.prepare_unsupported
+        replays = getattr(adapter, "replay", None) is not None
         options = [
             {
                 "name": opt.name,
@@ -192,9 +196,10 @@ def _read_registry() -> dict[str, dict[str, Any]]:
         ]
         support[name] = {
             "regression": True,
-            "auto_prepare": True,
+            "auto_prepare": prepares,
             "explore": explores,
             "explore_reason": None if explores else "no exploration hook for this target yet",
+            "replay": replays,
             "options": options,
         }
     return support

@@ -421,6 +421,20 @@ inodefence summary ~/inodefence-explore/target-explore/<실행>-result/result.js
 명령 없이 `inodefence`만 잘못 부른 경우는 argparse 관례대로 2입니다. `make`를 거쳐 부르면 `make` 자체는 실패 시
 2로 끝나므로, 판정 코드는 `inodefence`를 직접 부를 때의 값을 보세요.
 
+### 호환 약속
+
+0.2.x 안에서 바뀌지 않는 것은 다음 두 가지입니다([D049](DECISIONS.md)). 스크립트나 CI에서 기대도 되는 것은 이것뿐입니다.
+
+- **종료 코드.** 위 표의 코드와 뜻.
+- **`result.json`.** `schema`는 `inodefence-target-result-v1`이고 최상위 키 `schema`·`label`·`target`·`axes`·`mode`·
+  `observed_contracts`·`runs`·`verdict`·`violating_cases`·`cases`·`repro_inputs`·`provenance`와 케이스의 `case_id`·
+  `outcome`·`c0`·`c1`·`c2`는 이름과 뜻이 그대로입니다. 0.2.0이 쓴 파일은 이후 0.2.x에서도 읽힙니다
+  (`tests/test_result_contract.py`가 저장해 둔 파일로 확인). 선택 키는 늘어날 수 있으므로 모르는 키는 무시하고
+  읽으세요. 키를 없애거나 뜻을 바꿀 때는 `schema` 이름을 바꿉니다.
+
+터미널 출력 문구, `summary.md`, `live/`와 `runtime/` 아래 파일, `replay.json`, 출력 폴더 이름은 약속에 들어가지
+않으며 0.x에서 바뀔 수 있습니다.
+
 `inodefence verify`와 `make target-run`은 같은 드라이버(`inodefence.drivers.run_target`)를 부릅니다(개발용 경로, CHANGELOG @ 2b06730에서 옮김).
 
 ```bash

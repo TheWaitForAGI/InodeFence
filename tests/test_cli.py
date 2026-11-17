@@ -80,6 +80,12 @@ def test_target_support_reads_the_registry_in_the_clone_environment() -> None:
     support = locate.target_support(root)
     assert set(support) == {"decompress", "node-tar", "oras-go", "python-tarfile"}
     assert all(entry["regression"] is True for entry in support.values())
+    # The 0.2.0 support scope (D049): every registered target prepares its image, explores and
+    # replays. These are read from the adapters' hooks, so dropping a hook fails here.
+    for name, entry in support.items():
+        assert entry["auto_prepare"] is True, name
+        assert entry["explore"] is True and entry["explore_reason"] is None, name
+        assert entry["replay"] is True, name
 
 
 def test_target_support_reports_an_unreadable_registry(tmp_path: Path, monkeypatch) -> None:
@@ -254,9 +260,10 @@ _FAKE_SUPPORT = {
     },
     "node-tar": {
         "regression": True,
-        "auto_prepare": True,
+        "auto_prepare": False,
         "explore": True,
         "explore_reason": None,
+        "replay": True,
         "options": [],
     },
     "python-tarfile": {
@@ -285,6 +292,14 @@ def test_targets_table_lists_support_reasons_and_options(monkeypatch, capsys) ->
     assert "node-tar" in out and "decompress" in out
     assert "no (no exploration hook for this target yet)" in out
     assert "--extraction-filter?" in out  # optional target option, shown with a trailing ?
+    rows: dict[str, list[str]] = {}
+    for line in out.splitlines():
+        if line[:1].isalpha():
+            rows.setdefault(line.split()[0], line.split())  # the header, not the footnote
+    assert rows["target"][:5] == ["target", "regression", "auto-prepare", "explore", "replay"]
+    # Each column is the registry's value, not a constant: node-tar's fake entry cannot prepare.
+    assert rows["node-tar"][1:5] == ["yes", "no", "yes", "yes"]
+    assert rows["decompress"][1:3] == ["yes", "yes"] and rows["decompress"][-2] == "no"
 
 
 def test_explore_forwards_target_specific_options_as_extra(monkeypatch) -> None:

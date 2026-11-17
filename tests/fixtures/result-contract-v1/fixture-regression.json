@@ -1,0 +1,52 @@
+{
+  "axes": {
+    "extraction_filter": null,
+    "runtime_version": null,
+    "target_version": "7.5.2"
+  },
+  "cases": [
+    {
+      "c0": null,
+      "c1": true,
+      "c2": true,
+      "case_id": "toplevel_hardlink",
+      "outcome": "resolved"
+    },
+    {
+      "c0": null,
+      "c1": false,
+      "c2": false,
+      "case_id": "nested_hardlink",
+      "outcome": "declined"
+    }
+  ],
+  "label": "demo run",
+  "mode": "fixture-regression",
+  "observed_contracts": [
+    "C1",
+    "C2"
+  ],
+  "provenance": {
+    "engine_dirty": false,
+    "engine_sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "image_id": null,
+    "image_ref": "inodefence-node-tar-effect:7.5.2"
+  },
+  "repro_inputs": [
+    {
+      "case_id": "toplevel_hardlink",
+      "tar_path": "inputs/toplevel_hardlink.tar",
+      "tar_sha256": "1ed8b2e2d3283f3502e382049d711de6ef844d5b683a0e091c0a9a9680cce674"
+    }
+  ],
+  "runs": {
+    "errored": 0,
+    "executed": 2
+  },
+  "schema": "inodefence-target-result-v1",
+  "target": "node-tar",
+  "verdict": "FAIL",
+  "violating_cases": [
+    "toplevel_hardlink"
+  ]
+}

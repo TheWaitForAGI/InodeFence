@@ -87,14 +87,20 @@ def cmd_targets(args: argparse.Namespace) -> int:
 
         print(json.dumps(support, indent=2, sort_keys=True))
         return 0
-    header = f"{'target':16} {'regression':11} {'auto-prepare':13} {'explore':8} target options"
+    header = (
+        f"{'target':16} {'regression':11} {'auto-prepare':13} {'explore':8} {'replay':7} "
+        "target options"
+    )
     print(header)
     print("-" * len(header))
     for name, feats in support.items():
         explore = "yes" if feats["explore"] else f"no ({feats['explore_reason']})"
         opts = feats.get("options") or []
         names = ", ".join(f"--{o['name']}" + ("" if o["required"] else "?") for o in opts) or "—"
-        print(f"{name:16} {'yes':11} {'yes':13} {explore:8} {names}")
+        regression = "yes" if feats.get("regression", True) else "no"
+        prepare = "yes" if feats.get("auto_prepare", True) else "no"
+        replay = "yes" if feats.get("replay") else "no"
+        print(f"{name:16} {regression:11} {prepare:13} {explore:8} {replay:7} {names}")
     print("\ntarget options: a trailing '?' marks optional. Pass them to `verify` / `explore`.")
     return 0
 
@@ -648,7 +654,7 @@ def cmd_status(args: argparse.Namespace) -> int:
         if campaign is not None:
             if campaign.runs_to_first_violation is not None:
                 line += f" first-violation={campaign.runs_to_first_violation}"
-            if getattr(campaign, "stopped_early", False):  # set once the large-campaign fields land
+            if campaign.stopped_early:
                 line += " (stopped early)"
         print(line)
         # Same wording as summary.md, the explore output line and the live view (one function);

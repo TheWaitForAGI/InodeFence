@@ -86,6 +86,25 @@ CVE-2026-24842(CVE-2026-23745 수정이 도입한 check/use 회귀; catalog N02�
 | M4.2 | (감사 제안) decompress(JS; CVE-2026-39243/39246 = symlink + absolute hardlink, CWE-59) 또는 2026 CWE-59 군집(adm-zip·Archive::Tar·HF datasets·borg) 중 1개를 2번째 target으로 — 동일 generic oracle 재사용. | 완료(jiwoong/m4-2-decompress) | 규민·민찬 협의 |
 | M4.1b | (감사 전진, 완료) generic oracle 2번째 extractor 일반성: Python stdlib tarfile 통제 차분(fully_trusted=C1+C2, data=거부). `tests/test_python_tarfile_generality.py`. oracle 코드 불변·target-agnostic. | 완료(jiwoong/p-generality-python-tarfile) | 없음 |
 
+## PRODUCT — 제품 0.2.0 릴리스 (D049)
+
+마일스톤 M1~M4와 별개인 제품 레인이다. 범위와 릴리스 조건은 [D049](DECISIONS.md)에 있다. 여기에는 **0.2.0을 막는
+항목만** 올린다. 새 기능은 아래 0.3 목록에 한 줄로 적고 0.2.0에서는 만들지 않는다. 병합·태그·릴리스는 지웅이 한다.
+
+| 태스크 | 상태 | 게이트 |
+| --- | --- | --- |
+| P-1 호환 약속 고정(종료 코드·`result.json` v1 golden 테스트, `targets`가 어댑터 값을 읽음, CHANGELOG replay 문구 정정) | 완료(product/p0-06a-release-contract) | 없음 |
+| P-2 설치된 `inodefence`를 네 대상 실제 extractor에 돌리는 E2E를 CI에 추가 | 대기 | 없음(격리·하너스 불변) |
+| P-3 oras-go 탐색에서 실제 추출(공통 seed의 `d/` 접두) | 대기 | 지웅 승인됨(2026-11-17). 등록 실험 seed·어휘는 바꾸지 않음 |
+| P-4 python-tarfile·decompress·oras-go 런처의 Docker 시간 제한과 정리 실패 종료 코드 | 대기 | 지웅 승인됨(2026-11-17). 파일별 변경 명세와 격리 동등성 검증을 PR에 첨부, 가드가 막으면 보고 |
+| P-5 네 대상 실제 위반 케이스 `replay` 1회씩(demo run) | 대기 | 사람(재현할 대상·버전 결정) |
+| P-6 `main` 착지: #457 병합 뒤 스택 tip을 `main`과 merge한 착지 PR 하나 | 대기 | 사람(11/26 제출과 봉인 해제 뒤, 지웅 병합) |
+| P-7 RC 소크: 두 번째 호스트(WSL2가 아닌 Linux) 깨끗한 클론에서 USAGE 그대로 실행, 약 1주 버그 수정만 | 대기 | P-6 |
+| P-8 `v0.2.0` 태그와 GitHub Release, CHANGELOG 날짜 기입 | 대기 | 사람(지웅) |
+
+0.3 목록(0.2.0에서 하지 않음): 탐색 재개(RESUME), FAST의 보호 경로 변경, wheel/PyPI 설치, macOS 확인, `explore`의 탐색·변이
+정책 옵션.
+
 ## 상시 (레인 담당)
 
 | 태스크 | 상태 | 게이트 |

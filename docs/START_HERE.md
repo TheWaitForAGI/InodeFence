@@ -81,8 +81,8 @@ C0/C1/C2 판정 → feedback → 다음 mutation 선택" 루프가 `make demo` �
 현재 능력과 다음 할 일은 [STATUS](STATUS.md)의 Capability Ledger(마일스톤 M1~M4)가 기준이다. 아래 한 줄 요약은
 2026-10-24에 확인한 기록이고, 그 뒤 상태는 Ledger에서 읽는다. 수술 기간(2026-11-03~11-26)의 계획 기준은 Claude Doc
 「InodeFence 독립 연구 감사 및 실험 설계 재정립」(https://claude.ai/artifact/JJtsK3VowEGuBFN3YXZDFq)이고, 실험 실행 기준은 Git에
-동결된 사전등록(`experiments/preregistration/`)이다([AGENTS.md 현재 기준](../AGENTS.md#현재-기준)). 11/2 중간발표 목표는 배경 문서
-[MIDTERM_GOALS](MIDTERM_GOALS.md)에 있고(Layer 0~6·P0 단계는 지난 개발 단계의 기록), 할 일 순서는 [BACKLOG](BACKLOG.md),
+동결된 사전등록(`experiments/preregistration/`)이다([AGENTS.md 현재 기준](../AGENTS.md#현재-기준)). 11/2 중간발표 목표 문서는
+저장소에서 내렸고(이력: `git show 4cdfbe2:docs/MIDTERM_GOALS.md`, Layer 0~6·P0 단계는 지난 개발 단계의 기록), 할 일 순서는 [BACKLOG](BACKLOG.md),
 실행 기록은 [LOG](LOG.md)다.
 
 지금 돌아가는 것:

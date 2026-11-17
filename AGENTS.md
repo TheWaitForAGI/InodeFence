@@ -36,7 +36,7 @@ InodeFence는 TAR 압축 해제 보안을 연구하는 프로토타입이자, �
   (`experiments/summaries/raw-manifest-*.sha256`)이다.
 - 우선순위: 실제 동작 → 재현 가능성 → 기능 정확성 → 실험적 검증 → 문서화.
 - Layer 0~6과 중간발표 P0 단계는 지난 개발 단계의 기록이며 현재 작업 기준이 아니다
-  ([docs/MIDTERM_GOALS.md](docs/MIDTERM_GOALS.md)는 배경 문서로 남긴다).
+  (중간발표 목표 문서는 저장소에서 내렸다. 이력: `git show 4cdfbe2:docs/MIDTERM_GOALS.md`).
 
 ## 작업 시작 전
 

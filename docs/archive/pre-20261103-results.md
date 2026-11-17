@@ -11,7 +11,7 @@
 #### 중간발표 P0 현황 (M1 세부 이력 — 현재 단일 기준은 아래 Capability Ledger)
 
 기준: 현재 능력은 아래 **Capability Ledger**가 단일 기준이다. 이 P0 표는 M1(루프 동작)의 세부
-이력이며 날짜·게이트를 현재 제약으로 읽지 않는다. 배경 [MIDTERM_GOALS](../MIDTERM_GOALS.md) · 실행 기록: [LOG](../LOG.md)
+이력이며 날짜·게이트를 현재 제약으로 읽지 않는다. 배경 `git show 4cdfbe2:docs/MIDTERM_GOALS.md` · 실행 기록: [LOG](../LOG.md)
 
 | P0 | 담당 | 상태 (10/23) | 다음 할 일 |
 | --- | --- | --- | --- |

@@ -11,7 +11,7 @@ description: InodeFence 자율 작업 루프 규칙. docs/BACKLOG.md 맨 위부�
 `BREAKING`(5절 4항), 가드·격리·allowlist 설정, FROZEN 변경, 외부 공개.
 `AGENTS.md`의 규칙이 이 문서보다 우선한다. 이 문서는 그 위에 자율 실행 절차를 더한다. 현재 작업 기준은
 `docs/STATUS.md`의 Capability Ledger(M1~M4)와 `docs/BACKLOG.md`이고, 수술 기간(2026-11-03~11-26)의 계획 기준은
-`AGENTS.md` "현재 기준"이 가리키는 Claude Doc이다. Layer 0~6과 `docs/MIDTERM_GOALS.md`의 중간발표 P0 단계는 지난
+`AGENTS.md` "현재 기준"이 가리키는 Claude Doc이다. Layer 0~6과 중간발표 P0 단계는 지난
 개발 단계의 기록(배경)이며 작업 기준이 아니다.
 
 기계적 안전장치: `.claude/hooks/guard.py` (`.claude/settings.json` PreToolUse, 서브에이전트 포함).

@@ -40,9 +40,7 @@ experiments/raw/*
 !experiments/raw/README.md
 
 # Generated artifacts
-artifacts/*
-!artifacts/.gitkeep
-!artifacts/README.md
+artifacts/
 # Legacy in-repo staging dir of scripts/regenerate_paper_artifacts.py (now stages to a temp dir)
 .paper-artifacts-stage/
 

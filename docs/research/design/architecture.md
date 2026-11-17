@@ -1337,7 +1337,6 @@ Repository 역할:
 
 - [experiments/](../../../experiments/README.md): 설정과 raw/aggregated 실험 결과
 - [findings/](../../../findings/README.md): 재현·분석 가능한 개별 사례
-- [artifacts/](../../../artifacts/README.md): 의도적으로 보존한 생성물
 - [paper/](../../../paper/README.md): 검토된 표·그림·논문 문장
 
 연구 메모가 자동으로 paper evidence가 되지 않는다.

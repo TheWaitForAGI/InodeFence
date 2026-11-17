@@ -1,9 +1,0 @@
-{
-  "name": "inodefence-node-tar-validation",
-  "private": true,
-  "version": "1.0.0",
-  "description": "Pinned dependency for benign node-tar adapter validation only",
-  "dependencies": {
-    "tar": "7.5.22"
-  }
-}

@@ -1,8 +1,0 @@
-{
-  "name": "inodefence-node-benchmark",
-  "version": "1.0.0",
-  "private": true,
-  "dependencies": {
-    "tar": "7.5.7"
-  }
-}

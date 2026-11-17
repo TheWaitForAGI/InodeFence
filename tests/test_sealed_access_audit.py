@@ -93,3 +93,45 @@ def test_since_window(tmp_path):
     report = saa.audit([SEALED], [sessions], [], since).as_json()
     assert report["command_side"]["점검 필요"] == 1
     assert report["command_side"]["점검 필요 시각"] == ["2026-11-16T00:00:00Z"]
+
+
+def test_d3_overrides_counted_with_inputs_per_reserved_version(tmp_path: Path) -> None:
+    log = tmp_path / "sealed-overrides.jsonl"
+    rows = [
+        {
+            "time": "2026-11-18T10:00:00Z",
+            "kind": "reserved",
+            "target": "node-tar",
+            "version": "7.4.0",
+            "inputs": 1,
+            "kind_of_input": "readiness",
+        },
+        {
+            "time": "2026-11-18T10:01:00Z",
+            "kind": "reserved",
+            "target": "node-tar",
+            "version": "7.4.0",
+            "inputs": 5,
+            "kind_of_input": "fixed",
+        },
+        {
+            "time": "2026-11-18T10:02:00Z",
+            "kind": "sealed",
+            "target": "node-tar",
+            "version": "7.5.30",
+            "inputs": None,
+        },
+        {
+            "time": "2026-11-01T00:00:00Z",
+            "kind": "reserved",
+            "target": "node-tar",
+            "version": "6.1.0",
+            "inputs": 9,
+        },
+    ]
+    log.write_text("".join(json.dumps(r) + "\n" for r in rows) + "not json\n")
+    since = datetime(2026, 11, 18, tzinfo=UTC)
+    out = saa.audit([SEALED], [], [], since, overrides=log).as_json()["overrides"]
+    assert out["건수"] == 3
+    assert out["예약 버전별 입력 수"] == {"node-tar 7.4.0": 6}
+    assert out["5개 초과"] == ["node-tar 7.4.0"]

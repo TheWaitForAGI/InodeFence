@@ -1,4 +1,8 @@
-PYTHON ?= python
+# Default interpreter: `python`, else `python3` (plain Ubuntu/WSL ships only python3).
+# An explicit PYTHON=... (command line or environment) is used as given.
+ifeq ($(origin PYTHON),undefined)
+PYTHON := $(if $(shell command -v python 2>/dev/null),python,python3)
+endif
 CASE ?= regular-file
 BASELINE_CASES := regular-file directory hardlink symlink
 DEMO_POLICY ?= effect-feedback-v2-or-violation-v1-adaptive-mutation-v1
@@ -10,7 +14,7 @@ DEMO_OUT ?= $(or $(INODEFENCE_RUNTIME_ROOT),/var/lib/inodefence)/demo/effect-dem
 TAR_VERSION ?= 7.5.2
 HISTORICAL_IMAGE ?= inodefence-node-tar-effect:$(TAR_VERSION)
 
-.PHONY: install target-tools lint format-check typecheck test env-check docs-check evidence-chain check fixtures probe isolation-support node-entry-timing-probe node-tar-smoke node-tar-effect-check demo demo-native demo-synthetic demo-native-historical regression replay paper-artifacts
+.PHONY: install target-tools lint format-check typecheck test env-check docs-check evidence-chain check fixtures probe isolation-support node-entry-timing-probe node-tar-smoke node-tar-effect-check demo demo-native demo-synthetic demo-native-historical regression target-run replay paper-artifacts
 
 target-tools:
 	npm ci --prefix tools/node-tar --ignore-scripts --no-audit --no-fund
@@ -37,7 +41,7 @@ isolation-support:
 	$(PYTHON) scripts/check_linux_isolation_support.py
 
 docs-check:
-	$(PYTHON) scripts/check_docs.py
+	$(PYTHON) scripts/dev/check_docs.py
 
 # Verify each validated summary's raw pointer resolves to a committed manifest or
 # in-repo file. Reads only committed files (no raw bytes), so it runs on any host.
@@ -56,7 +60,7 @@ ifneq ($(words $(CASE)),1)
 else ifeq ($(filter $(BASELINE_CASES),$(CASE)),)
 	$(error CASE must be one of: $(BASELINE_CASES))
 else
-	$(PYTHON) scripts/manual_tar_probe.py tests/fixtures/tar/$(CASE)/fixture.tar
+	$(PYTHON) scripts/dev/manual_tar_probe.py tests/fixtures/tar/$(CASE)/fixture.tar
 endif
 
 node-entry-timing-probe:
@@ -100,6 +104,78 @@ demo-native-historical:
 #   make regression TAR_VERSION=7.5.2 REGRESSION_ARGS=--dry-run
 regression:
 	PYTHONPATH=src:. $(PYTHON) scripts/regression_check.py --tar-version $(TAR_VERSION) $(REGRESSION_ARGS)
+
+# One command per target (common result format inodefence-target-result-v1, label demo run):
+# isolated run -> C0/C1/C2 judgment -> DIR/<cell>/{result.json,inputs/*.tar,raw/}.
+# Targets: node-tar, python-tarfile (both fixture-regression: the make regression fixtures;
+# C0 not observed = null), oras-go, decompress; `inodefence targets` lists what each supports.
+# Host terminal only (docker). TARGET_VERSIONS is the target's version
+# axis (node-tar package; python-tarfile exact runtime X.Y.Z); TARGET_FILTERS is the
+# extraction-filter axis (python-tarfile: fully_trusted / data). Vary one axis per run.
+# TARGET_ARGS=--dry-run pulls, builds, runs and writes nothing (prints reuse/prepare per cell).
+# Existing results are not overwritten. A missing image stops the run (exit 3) unless
+# AUTO_PREPARE=1, which prepares it with the target's own recipe first (default 0).
+# Exit codes here are the `inodefence` command's: make prints it as "Error N" and itself exits 2
+# for any non-zero N. Call `inodefence verify` directly when a script needs the code.
+# IMAGE_TAG_SUFFIX=-x runs on "<tag>-x" images instead (development; existing tags untouched).
+#   make target-run TARGET=node-tar TARGET_VERSIONS="7.5.2 7.5.3"
+#   make target-run TARGET=python-tarfile TARGET_VERSIONS=3.12.16 TARGET_FILTERS="fully_trusted data"
+#   make target-run TARGET=python-tarfile TARGET_VERSIONS="3.12.3 3.12.16" TARGET_FILTERS=data
+#   make target-run TARGET=oras-go TARGET_VERSIONS="2.6.1 2.6.2"
+#   make target-run TARGET=decompress TARGET_VERSIONS="decompress@4.2.1 @xhmikosr/decompress@11.1.4"
+TARGET ?= node-tar
+# Non-empty only when the caller gave TARGET_VERSIONS (command line or environment) with a value.
+# Read before the `?=` below fills in the target-run default; target-explore requires it.
+TARGET_VERSIONS_GIVEN := $(if $(filter undefined,$(origin TARGET_VERSIONS)),,$(strip $(TARGET_VERSIONS)))
+TARGET_VERSIONS ?= $(TAR_VERSION)
+TARGET_FILTERS ?=
+AUTO_PREPARE ?= 0
+IMAGE_TAG_SUFFIX ?=
+# Default output is OUTSIDE the repo and OUTSIDE the experiment-evidence tree.
+TARGET_OUT ?= $(HOME)/inodefence-target-run
+# target-explore defaults. They are set here, before the `export` line: GNU Make defines a variable
+# exported before its `?=` as empty, and the default would then never apply.
+BUDGET ?= 20
+SEED ?= 123
+EXPLORE_OUT ?= $(HOME)/inodefence-explore
+# The two targets below are thin shells over the `inodefence` command: user values go through
+# the environment and are placed as double-quoted shell positionals under `set -f`, so a value
+# with spaces, `;`, `$$(...)`, quotes or globs is one literal argument the command never
+# re-parses. `inodefence` passes argv straight to the driver (no shell string assembly).
+export TARGET TARGET_VERSIONS TARGET_FILTERS TARGET_OUT IMAGE_TAG_SUFFIX AUTO_PREPARE TARGET_ARGS PYTHON BUDGET SEED EXPLORE_OUT
+target-run:
+	@set -euf; \
+	set -- verify --target "$$TARGET"; \
+	for v in $$TARGET_VERSIONS; do set -- "$$@" --version "$$v"; done; \
+	for f in $$TARGET_FILTERS; do set -- "$$@" --extraction-filter "$$f"; done; \
+	if [ "$$AUTO_PREPARE" = 1 ]; then set -- "$$@" --auto-prepare; fi; \
+	if [ -n "$$IMAGE_TAG_SUFFIX" ]; then set -- "$$@" --image-tag-suffix "$$IMAGE_TAG_SUFFIX"; fi; \
+	case " $$TARGET_ARGS " in *" --dry-run "*) ;; *) set -- "$$@" --out "$$TARGET_OUT" ;; esac; \
+	PYTHONPATH=src:. "$$PYTHON" -m inodefence.cli "$$@" $$TARGET_ARGS
+
+# Point the fuzzer at a target version (latest or exact; node-tar first, now every target that
+# `inodefence targets` marks explore=yes) and run the existing effect loop on it,
+# so a distributor can try their version before release. Prepares the image host-side
+# (AUTO_PREPARE=1 required; network) then runs the loop inside the isolated controller. Output is
+# OUTSIDE the repo (EXPLORE_OUT). Host terminal only (docker + controller build).
+# TARGET_VERSIONS is required here (command line or environment): there is no default version, and
+# without it the target stops before Docker or `inodefence` runs (also with TARGET_ARGS=--dry-run).
+# target-run keeps its TARGET_VERSIONS default ($(TAR_VERSION)).
+# Defaults (set above the `export` line): BUDGET=20, SEED=123, EXPLORE_OUT=$(HOME)/inodefence-explore.
+#   make target-explore TARGET=node-tar TARGET_VERSIONS="latest" AUTO_PREPARE=1 BUDGET=20 SEED=123
+#   make target-explore TARGET=node-tar TARGET_VERSIONS=7.5.2 AUTO_PREPARE=1   # controlled run, explicit
+target-explore:
+ifndef TARGET_VERSIONS_GIVEN
+	@echo 'target-explore: TARGET_VERSIONS is required (no default version), e.g. TARGET_VERSIONS="latest" or TARGET_VERSIONS=7.5.2' >&2; exit 2
+else
+	@set -euf; \
+	set -- explore --target "$$TARGET"; \
+	for v in $$TARGET_VERSIONS; do set -- "$$@" --version "$$v"; done; \
+	set -- "$$@" --budget "$$BUDGET" --seed "$$SEED" --out "$$EXPLORE_OUT"; \
+	if [ "$$AUTO_PREPARE" = 1 ]; then set -- "$$@" --auto-prepare; fi; \
+	if [ -n "$$IMAGE_TAG_SUFFIX" ]; then set -- "$$@" --image-tag-suffix "$$IMAGE_TAG_SUFFIX"; fi; \
+	PYTHONPATH=src:. "$$PYTHON" -m inodefence.cli "$$@" $$TARGET_ARGS
+endif
 
 # Offline replay planner: read a demo report (REPORT=<path>) and reproduce its run
 # command, binding the recorded image recipe to the committed one and checking the

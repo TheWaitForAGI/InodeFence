@@ -26,6 +26,7 @@ from inodefence.observer import capture_state, compare_states
 from inodefence.oracle import evaluate_contracts
 from inodefence.runtime import SentinelSpec, disposable_sandbox
 from inodefence.targets.isolated import IsolatedTarget
+from inodefence.targets.oras_go_effect import under_artifact_dir
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,11 +72,23 @@ def _parse_frame(stdout: str) -> tuple[dict | None, str | None]:
     return frame, None
 
 
+def oras_go_wire_tar(case: ArchiveCase, *, artifact_layout: bool = False) -> bytes:
+    """The TAR bytes handed to oras-go for ``case``.
+
+    Default: the case as built (unchanged behaviour). With ``artifact_layout`` the entry names are
+    first moved under oras-go's artifact directory (``targets.oras_go_effect.under_artifact_dir``).
+    Anything that stores or re-runs a run's input must use this one function, so the stored bytes
+    are the bytes that ran.
+    """
+    return build_tar(under_artifact_dir(case) if artifact_layout else case)
+
+
 def run_oras_go_frame_case(
     case: ArchiveCase,
     target: IsolatedTarget,
     *,
     sentinels: tuple[SentinelSpec, ...] = (SentinelSpec(),),
+    artifact_layout: bool = False,
 ) -> OrasGoFrameRun:
     """Build the case's TAR, run real oras-go, and compose the oracle verdict plus the frame.
 
@@ -84,7 +97,8 @@ def run_oras_go_frame_case(
     """
     if not isinstance(target, IsolatedTarget):
         raise ValueError("oras-go frame run requires a bound IsolatedTarget")
-    archive = build_tar(case)
+    # RunResult keeps the logical ``case``; the recorded archive hash is of the bytes that ran.
+    archive = oras_go_wire_tar(case, artifact_layout=artifact_layout)
     with disposable_sandbox(sentinels) as sandbox:
         sandbox.archive_path.write_bytes(archive)
         with target.prepare(sandbox.archive_path, sandbox.extraction_root) as execute:

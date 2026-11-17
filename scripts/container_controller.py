@@ -12,21 +12,27 @@ from contextlib import redirect_stdout
 from pathlib import Path
 
 import pytest
+from scripts.effect_replay import CASE_REPLAY_MODE, run_case_replay
 from scripts.run_effect_demo import (
     DECOMPRESS_CAMPAIGN_MODE,
     DEFAULT_NATIVE_BUDGET,
+    EXPLORATION_LABEL,
+    EXPLORE_DEMO_MODE,
     HISTORICAL_DEMO_MODE,
     HISTORICAL_LABEL,
     ORAS_GO_CAMPAIGN_MODE,
+    PYTHON_TARFILE_CAMPAIGN_MODE,
     NativeDemoAborted,
     add_demo_arguments,
     check_demo_arguments,
     demo_options,
+    exploration_demo_report,
     historical_demo_report,
     native_demo_report,
     sentinel_set_from_args,
 )
 
+from inodefence.case_replay import MAX_INPUT_LINE_BYTES, parse_replay_input
 from inodefence.effect_demo import (
     render_effect_campaign_report,
     render_effect_campaign_summary,
@@ -224,6 +230,74 @@ def run_native_historical_demo(
     return returncode
 
 
+def run_native_exploration_demo(
+    backend: ContainerExecutionBackend,
+    image: str,
+    evidence: Path,
+    args: argparse.Namespace,
+    stall_recovery: StallRecovery | None = None,
+) -> int:
+    """State-aware feedback loop on an arbitrary caller-prepared node-tar image (exploration).
+
+    Identical control flow to run_native_historical_demo (per-step JSONL journalling, abort still
+    leaves evidence), but calls exploration_demo_report: there is no version allowlist and the
+    report is labelled an exploratory, non-qualification run. The image was prepared and verified
+    host-side; args.tar_version is the version it resolved.
+    """
+    steps_path = demo_steps_path(evidence)
+    options = demo_options(args)
+    budget = int(options.get("budget", DEFAULT_NATIVE_BUDGET))
+    _announce_demo_start(f"effect-demo-explore tar-version={args.tar_version}", options)
+    with steps_path.open("x", encoding="ascii") as steps_stream:
+
+        def persist_step(record: dict[str, object]) -> None:
+            steps_stream.write(render_effect_step_line(record))
+            steps_stream.flush()
+            os.fsync(steps_stream.fileno())
+            _announce(render_effect_step_summary(record, budget))
+
+        try:
+            report = exploration_demo_report(
+                backend,
+                image,
+                args.tar_version,
+                step_sink=persist_step,
+                sentinel_set=sentinel_set_from_args(args),
+                stall_recovery=stall_recovery,
+                live_dir=Path(args.live_dir) if getattr(args, "live_dir", None) else None,
+                engine_commit=getattr(args, "engine_commit", None),
+                **options,
+            )
+            _announce(render_effect_campaign_summary(report))
+            returncode = 0
+        except NativeDemoAborted as error:
+            report = {
+                "label": EXPLORATION_LABEL,
+                "producer": "native",
+                "mode": "exploration",
+                "qualification": False,
+                "requested_tar_version": args.tar_version,
+                "aborted": {
+                    "step_index": error.step_index,
+                    "case_id": error.case_id,
+                    "reason": error.reason,
+                    "category": classify_abort_reason(error.reason).value,
+                    "observed": error.observed,
+                    "error_chain": error.error_chain,
+                    "case_shape": error.case_shape,
+                },
+            }
+            apply_aborted_infra_reexecutions(report, stall_recovery)
+            apply_last_anomalous_call(report, stall_recovery)
+            print(f"effect-demo-explore aborted: {error}", file=sys.stderr)
+            returncode = 1
+    with evidence.open("x", encoding="ascii") as stream:
+        stream.write(render_effect_campaign_report(report))
+    print(f"effect demo report: {evidence}", file=sys.stderr)
+    print(f"effect demo completed steps: {steps_path}", file=sys.stderr)
+    return returncode
+
+
 def run_native_decompress_campaign(
     backend: ContainerExecutionBackend, image: str, evidence: Path, args: argparse.Namespace
 ) -> int:
@@ -309,6 +383,57 @@ def run_native_decompress_campaign(
     return returncode
 
 
+def oras_go_recording_producer(produce, wire_tar=None):
+    """Wrap an oras-go case producer to keep a per-run verdict and the violating inputs.
+
+    ``wire_tar(case)`` returns the bytes the producer hands to oras-go for a case; it is what a
+    violating run stores, so a stored input is the input that ran. ``None`` (default) is
+    ``build_tar``, the bytes of the case as generated (unchanged behaviour).
+
+    Additive only: the wrapped producer returns ``produce(case)`` unchanged, so the loop, feedback
+    and oracle see exactly what they saw before. Every run gets a record ``{run_index, outcome,
+    c0, c1, c2}`` (a run that did not start cleanly -- neither success nor an explicit refusal --
+    is ``run_error`` with no verdict, the campaign's own eligibility rule). Only runs the oracle
+    flags keep their input TAR (base64 + SHA-256), the same shape node-tar's exploration report
+    uses, so one converter can read both.
+    """
+    from hashlib import sha256
+
+    from inodefence.builder import build_tar
+    from inodefence.model import ExecutionStatus
+
+    eligible = (ExecutionStatus.SUCCESS, ExecutionStatus.REJECTED)
+    case_records: list[dict[str, object]] = []
+    violation_inputs: list[dict[str, object]] = []
+
+    def recorded(case):
+        run_index = len(case_records)
+        run = produce(case)
+        base = run.base_result
+        clean = base.execution.status in eligible
+        hit = {v.contract_id.value: v.violated for v in base.violations} if clean else {}
+        record = {
+            "run_index": run_index,
+            "outcome": base.execution.status.value if clean else "run_error",
+            "c0": hit.get("C0"),
+            "c1": hit.get("C1"),
+            "c2": hit.get("C2"),
+        }
+        case_records.append(record)
+        if record["c0"] or record["c1"] or record["c2"]:
+            tar = build_tar(case) if wire_tar is None else wire_tar(case)
+            violation_inputs.append(
+                {
+                    "run_index": run_index,
+                    "tar_sha256": sha256(tar).hexdigest(),
+                    "tar_b64": base64.b64encode(tar).decode("ascii"),
+                }
+            )
+        return run
+
+    return recorded, case_records, violation_inputs
+
+
 def run_native_oras_go_campaign(
     backend: ContainerExecutionBackend, image: str, evidence: Path, args: argparse.Namespace
 ) -> int:
@@ -323,7 +448,7 @@ def run_native_oras_go_campaign(
     oracle/feedback) is written to evidence; on an infrastructure abort a stub is written so the run
     is still recorded.
     """
-    from inodefence.effect_pipeline_oras_go import run_oras_go_frame_case
+    from inodefence.effect_pipeline_oras_go import oras_go_wire_tar, run_oras_go_frame_case
     from inodefence.generator.minimal import minimal_seed_corpus
     from inodefence.model import ArchiveCase
     from inodefence.mutator import MutationPolicy
@@ -351,12 +476,31 @@ def run_native_oras_go_campaign(
         f"policy={policy.value} extractor={target.provenance.target_version}"
     )
 
-    def produce(case: ArchiveCase):
-        return run_oras_go_frame_case(case, target)
+    # Opt-in wire layout (see ``under_artifact_dir``); absent, every byte below is as before.
+    artifact_layout = getattr(args, "oras_go_artifact_layout", None) is not None
 
+    def frame_case(case: ArchiveCase):
+        if not artifact_layout:
+            return run_oras_go_frame_case(case, target)
+        return run_oras_go_frame_case(case, target, artifact_layout=True)
+
+    def wire_tar(case: ArchiveCase) -> bytes:
+        return oras_go_wire_tar(case, artifact_layout=True)
+
+    produce, case_records, violation_inputs = oras_go_recording_producer(
+        frame_case, wire_tar if artifact_layout else None
+    )
     try:
         result = run_oras_go_effect_campaign(minimal_seed_corpus(), produce, config)
         report = oras_go_effect_campaign_report(result, producer=producer, label="demo run")
+        report.update(
+            image_id=image,
+            oras_go_version=target.provenance.target_version,
+            case_records=case_records,
+            violation_inputs=violation_inputs,
+        )
+        if artifact_layout:  # recorded only when on, so a default report is byte-identical
+            report["artifact_layout"] = args.oras_go_artifact_layout
         stats = result.final_stats
         _announce(
             f"oras-go self-discovery: discovered_violation={result.discovered_violation} "
@@ -380,6 +524,71 @@ def run_native_oras_go_campaign(
     with evidence.open("x", encoding="ascii") as stream:
         stream.write(json.dumps(report, indent=2, sort_keys=True, ensure_ascii=True) + "\n")
     _announce(f"oras-go campaign report: {evidence}")
+    return returncode
+
+
+def run_native_python_tarfile_campaign(
+    backend: ContainerExecutionBackend, image: str, evidence: Path, args: argparse.Namespace
+) -> int:
+    """Exploration over python-tarfile: one prepared runtime image, ONE extraction filter.
+
+    Binds the caller-prepared image (official python:X.Y.Z-slim + the effect worker) through the
+    production backend and runs the shared effect loop (``run_effect_campaign``) via
+    ``python_tarfile_exploration_report``; the per-step JSONL journal and the abort stub follow
+    ``run_native_exploration_demo``. ``fully_trusted`` is refused there until approved.
+    """
+    from inodefence.python_tarfile_explore import python_tarfile_exploration_report
+
+    steps_path = demo_steps_path(evidence)
+    options = demo_options(args)
+    budget = int(options.get("budget", DEFAULT_NATIVE_BUDGET))
+    options.pop("observer_integrity_continue", None)
+    _announce_demo_start(
+        f"{PYTHON_TARFILE_CAMPAIGN_MODE} runtime={args.runtime_version} "
+        f"filter={args.extraction_filter}",
+        options,
+    )
+    with steps_path.open("x", encoding="ascii") as steps_stream:
+
+        def persist_step(record: dict[str, object]) -> None:
+            steps_stream.write(render_effect_step_line(record))
+            steps_stream.flush()
+            os.fsync(steps_stream.fileno())
+            _announce(render_effect_step_summary(record, budget))
+
+        try:
+            report = python_tarfile_exploration_report(
+                backend,
+                image,
+                args.extraction_filter,
+                args.runtime_version,
+                step_sink=persist_step,
+                **options,
+            )
+            _announce(render_effect_campaign_summary(report))
+            returncode = 0
+        except (
+            Exception
+        ) as error:  # infrastructure/backend failure: record the abort, do not invent
+            report = {
+                "label": EXPLORATION_LABEL,
+                "producer": "native-python-tarfile-container",
+                "mode": "exploration",
+                "qualification": False,
+                "target": "python-tarfile",
+                "runtime_version": args.runtime_version,
+                "extraction_filter": args.extraction_filter,
+                "aborted": {
+                    "reason": str(error),
+                    "category": classify_abort_reason(str(error)).value,
+                },
+            }
+            print(f"{PYTHON_TARFILE_CAMPAIGN_MODE} aborted: {error}", file=sys.stderr)
+            returncode = 1
+    with evidence.open("x", encoding="ascii") as stream:
+        stream.write(render_effect_campaign_report(report))
+    print(f"python-tarfile campaign report: {evidence}", file=sys.stderr)
+    print(f"python-tarfile campaign completed steps: {steps_path}", file=sys.stderr)
     return returncode
 
 
@@ -426,8 +635,11 @@ def main() -> int:
             "preflight-node-n04-5s",
             "effect-demo",
             HISTORICAL_DEMO_MODE,
+            EXPLORE_DEMO_MODE,
+            CASE_REPLAY_MODE,
             DECOMPRESS_CAMPAIGN_MODE,
             ORAS_GO_CAMPAIGN_MODE,
+            PYTHON_TARFILE_CAMPAIGN_MODE,
         ),
     )
     args = parser.parse_args()
@@ -438,8 +650,11 @@ def main() -> int:
         "preflight-node-n04-5s",
         "effect-demo",
         HISTORICAL_DEMO_MODE,
+        EXPLORE_DEMO_MODE,
+        CASE_REPLAY_MODE,
         DECOMPRESS_CAMPAIGN_MODE,
         ORAS_GO_CAMPAIGN_MODE,
+        PYTHON_TARFILE_CAMPAIGN_MODE,
     }
     if (args.mode in evidence_modes) != (args.evidence is not None):
         parser.error("evidence mode requires --evidence; validation modes do not export")
@@ -463,6 +678,11 @@ def main() -> int:
     if pair_mode:
         line = sys.stdin.readline(16 * 1024 * 1024)
         pair_initial_value = json.loads(line)
+    replay_input = None
+    if args.mode == CASE_REPLAY_MODE:
+        # Same input path as the pair modes: one JSON line on stdin before brokering starts. It is
+        # re-validated here (size, SHA-256 recomputed, byte-identical case with the same case_id).
+        replay_input = parse_replay_input(sys.stdin.readline(MAX_INPUT_LINE_BYTES))
     client = StdioDockerClient(sys.stdin, sys.stdout)
     with redirect_stdout(sys.stderr):
         if args.mode == "preflight-node-n04-5s":
@@ -640,7 +860,7 @@ def main() -> int:
             print(verified.stdout, end="")
             print(verified.stderr, end="", file=sys.stderr)
             return verified.returncode
-        if args.mode in ("effect-demo", HISTORICAL_DEMO_MODE):
+        if args.mode in ("effect-demo", HISTORICAL_DEMO_MODE, EXPLORE_DEMO_MODE, CASE_REPLAY_MODE):
             # Node-tar effect campaigns re-execute a case after a Docker stall; the
             # journaling client passes every call through unchanged.
             observed = ObservedDockerClient(client)
@@ -649,6 +869,15 @@ def main() -> int:
             assert args.evidence is not None
             if args.mode == "effect-demo":
                 return run_native_effect_demo(backend, args.image[0], args.evidence, args, recovery)
+            if args.mode == CASE_REPLAY_MODE:
+                assert replay_input is not None
+                return run_case_replay(
+                    backend, args.image[0], args.evidence, replay_input, recovery
+                )
+            if args.mode == EXPLORE_DEMO_MODE:
+                return run_native_exploration_demo(
+                    backend, args.image[0], args.evidence, args, recovery
+                )
             return run_native_historical_demo(backend, args.image[0], args.evidence, args, recovery)
         backend = ContainerExecutionBackend(client, args.controller, args.volume, args.owner)
         if args.mode == DECOMPRESS_CAMPAIGN_MODE:
@@ -657,6 +886,9 @@ def main() -> int:
         if args.mode == ORAS_GO_CAMPAIGN_MODE:
             assert args.evidence is not None
             return run_native_oras_go_campaign(backend, args.image[0], args.evidence, args)
+        if args.mode == PYTHON_TARFILE_CAMPAIGN_MODE:
+            assert args.evidence is not None
+            return run_native_python_tarfile_campaign(backend, args.image[0], args.evidence, args)
         suite = {
             "validate": "check_boundary.py",
             "validate-node-image": "check_node_image.py",

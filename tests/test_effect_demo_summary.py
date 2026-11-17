@@ -140,6 +140,42 @@ def test_campaign_summary_rejects_an_aborted_report() -> None:
         render_effect_campaign_summary({"label": "demo run", "producer": "native", "aborted": {}})
 
 
+def test_campaign_summary_renders_a_streaming_report_from_its_aggregate() -> None:
+    # A streaming report keeps no steps (O(1) memory); the summary comes from the aggregate block
+    # and the violating cases it lists, not from a per-step scan.
+    report = {
+        "producer": "native",
+        "streaming": True,
+        "label": "exploration",
+        "node_tar_version": "7.5.23",
+        "retained_case_ids": ["step-0", "step-3"],
+        "aggregate": {
+            "runs_executed": 60,
+            "terminations": {"success": 42, "rejected": 18},
+            "unjudged_steps": 0,
+            "errors": 0,
+        },
+        "violation_cases": [
+            {"run_index": 5, "outcome": "judged", "c0": False, "c1": True, "c2": True},
+        ],
+    }
+    lines = render_effect_campaign_summary(report).splitlines()
+    assert lines[0] == (
+        "demo summary: producer=native runs=60 (streaming) label='exploration' node-tar=7.5.23"
+    )
+    assert lines[1] == "  termination: rejected 18, success 42"
+    assert lines[2] == "  oracle violations: 1 cases (C0 0, C1 1, C2 1)"
+    assert "retained corpus 2" in lines[3]
+    assert "unjudged steps 0" in lines[3] and "errors 0" in lines[3]
+
+
+def test_campaign_summary_still_rejects_a_streaming_report_with_no_aggregate() -> None:
+    # The streaming flag alone is not enough -- without the aggregate block there is nothing to
+    # summarise, so it is rejected like an aborted report.
+    with pytest.raises(ValueError, match="finished report"):
+        render_effect_campaign_summary({"producer": "native", "streaming": True})
+
+
 def test_controller_demo_prints_each_step_and_the_summary_to_stderr(
     monkeypatch, capsys, tmp_path: Path
 ) -> None:

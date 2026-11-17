@@ -5,7 +5,7 @@ count, and the C-vs-D contrast) against synthetic reports, so the scientific ver
 from a careless edit. They do not run decompress; the native run produces the real reports.
 """
 
-from scripts.analyze_m4_decompress_abcd import arm_label, cd_contrast, cell_metrics
+from scripts.analysis.analyze_m4_decompress_abcd import arm_label, cd_contrast, cell_metrics
 
 from inodefence.feedback import EffectSearchPolicy
 

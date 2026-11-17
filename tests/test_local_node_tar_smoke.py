@@ -98,6 +98,7 @@ def run_fake_docker(
     host_error: int = 0,
     create_error: str = "",
     extra_env: dict[str, str] | None = None,
+    mode: str = "demo",
 ) -> tuple[subprocess.CompletedProcess[str], list[str]]:
     """Execute the complete host script with a closed PATH and inert executables."""
     bin_dir = tmp_path / "bin"
@@ -171,7 +172,7 @@ exit 0
         **(extra_env or {}),
     }
     result = subprocess.run(
-        ["/bin/bash", str(SCRIPT), "demo"], env=env, text=True, capture_output=True, check=False
+        ["/bin/bash", str(SCRIPT), mode], env=env, text=True, capture_output=True, check=False
     )
     return result, log.read_text().splitlines()
 
@@ -368,3 +369,56 @@ def test_gated_record_failure_with_unknown_keeps_marker(tmp_path: Path) -> None:
     assert result.returncode != 0
     assert "INODEFENCE_CLEANUP_UNKNOWN: volume creation ownership" in result.stderr
     assert "start gate: U not recorded" in result.stderr
+
+
+def _explore_env(tmp_path: Path, **extra: str) -> dict[str, str]:
+    return {
+        "TAR_VERSION": "7.5.23",
+        "DEMO_LIVE_DIR": "/tmp/inodefence-live",
+        "DEMO_HOST_LIVE_DIR": str(tmp_path / "host-live"),
+        **extra,
+    }
+
+
+def _live_copied(calls: list[str], tmp_path: Path) -> bool:
+    return any(
+        call.startswith("cp ") and call.endswith(f"{tmp_path / 'host-live'}/") for call in calls
+    )
+
+
+def test_explore_failure_still_copies_live_folder_and_keeps_its_exit(tmp_path: Path) -> None:
+    # The loop aborts (e.g. a Docker stall past the re-execution bounds): the live folder
+    # (violations so far + the state=failed snapshot) must still reach the host before the
+    # controller is removed, and the loop's own exit code is what the script returns.
+    result, calls = run_fake_docker(
+        tmp_path, host_error=37, mode="explore", extra_env=_explore_env(tmp_path)
+    )
+    assert result.returncode == 37
+    assert _live_copied(calls, tmp_path)
+    assert "FAILED to copy live folder" not in result.stderr
+
+
+def test_explore_failure_and_copy_failure_keep_the_original_exit(tmp_path: Path) -> None:
+    result, calls = run_fake_docker(
+        tmp_path,
+        host_error=37,
+        mode="explore",
+        extra_env=_explore_env(tmp_path, COPY_ERROR="42"),
+    )
+    assert result.returncode == 37  # the loop's failure wins over the copy's
+    assert "FAILED to copy live folder" in result.stderr
+    assert "already failed with exit 37" in result.stderr
+
+
+def test_explore_success_with_copy_failure_fails_loudly(tmp_path: Path) -> None:
+    result, _ = run_fake_docker(
+        tmp_path, mode="explore", extra_env=_explore_env(tmp_path, COPY_ERROR="42")
+    )
+    assert result.returncode == 1
+    assert "FAILED to copy live folder" in result.stderr
+
+
+def test_explore_success_copies_live_folder_and_exits_zero(tmp_path: Path) -> None:
+    result, calls = run_fake_docker(tmp_path, mode="explore", extra_env=_explore_env(tmp_path))
+    assert result.returncode == 0, result.stderr
+    assert _live_copied(calls, tmp_path)

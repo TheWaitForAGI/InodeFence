@@ -22,6 +22,11 @@ node_modules/
 .vscode/
 .idea/
 
+# Per-user agent tooling state (local permission allowlist, session worktrees). The shared
+# settings.json, hooks, agents and skills in the same folder stay tracked.
+/.claude/settings.local.json
+/.claude/worktrees/
+
 # InodeFence runtime data
 findings/private/*
 !findings/private/.gitkeep
@@ -32,6 +37,7 @@ experiments/results/
 # Experiment runtime output
 experiments/raw/*
 !experiments/raw/.gitkeep
+!experiments/raw/README.md
 
 # Generated artifacts
 artifacts/*

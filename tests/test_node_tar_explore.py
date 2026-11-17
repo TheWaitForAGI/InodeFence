@@ -1,0 +1,410 @@
+"""node_tar_explore: loop report -> common campaign result, and the explore hook (no docker)."""
+
+from __future__ import annotations
+
+import base64
+import json
+import subprocess
+from hashlib import sha256
+from pathlib import Path
+from typing import Any, NoReturn
+
+import pytest
+
+import inodefence.drivers.node_tar.explore as nte
+from inodefence.drivers.explore_result import ResultExistsError
+from inodefence.drivers.run_target import ExploreOptions, PreparedTargetImage
+from inodefence.target_result import Verdict, load_target_result
+
+TAR = b"ustar-ish bytes for a violating case"
+
+
+def _prepared(version: str = "7.5.23", requested: str = "latest") -> PreparedTargetImage:
+    return PreparedTargetImage(
+        "node-tar", requested, version, f"inodefence-node-tar-registry:{version}",
+        "sha256:" + "a" * 64, True,
+    )  # fmt: skip
+
+
+def _report(*, runs: int, violating_index: int | None) -> dict:
+    records = [
+        {
+            "run_index": i,
+            "outcome": "judged",
+            "c0": False,
+            "c1": False,
+            "c2": False,
+            "termination": "success",
+            "observation_complete": True,
+        }  # fmt: skip
+        for i in range(runs)
+    ]
+    violation_inputs: list[dict] = []
+    if violating_index is not None:
+        records[violating_index] = {
+            "run_index": violating_index, "outcome": "judged",
+            "c0": False, "c1": True, "c2": True,
+            "termination": "success", "observation_complete": True,
+        }  # fmt: skip
+        violation_inputs.append(
+            {
+                "run_index": violating_index,
+                "tar_sha256": sha256(TAR).hexdigest(),
+                "tar_b64": base64.b64encode(TAR).decode(),
+            }  # fmt: skip
+        )
+    return {"demo_report_schema": 4, "case_records": records, "violation_inputs": violation_inputs}
+
+
+@pytest.fixture(autouse=True)
+def _fixed_provenance(monkeypatch: pytest.MonkeyPatch) -> None:
+    import inodefence.drivers.explore_result as er
+    import inodefence.drivers.run_target as rt
+
+    monkeypatch.setattr(
+        er, "engine_provenance", lambda image: rt.Provenance("b" * 40, False, image, None)
+    )
+
+
+def test_violating_run_writes_result_with_only_violating_inputs(tmp_path: Path) -> None:
+    result, tar_files = nte.build_campaign_result(
+        _report(runs=5, violating_index=2), _prepared(), seed=1, budget=5
+    )
+    assert result.verdict is Verdict.FAIL
+    assert result.executed == 5  # cases[] lists every run
+    assert result.violating_cases == ("step-2",)
+    assert result.campaign is not None and result.campaign.runs_to_first_violation == 3
+    assert list(tar_files) == ["inputs/step-2.tar"] and tar_files["inputs/step-2.tar"] == TAR
+    path = nte.write_result(tmp_path / "r", result, tar_files)
+    reread = load_target_result(path)
+    assert reread.executed == 5 and reread.provenance.image_id == "sha256:" + "a" * 64
+
+
+def test_no_violation_writes_result_with_empty_inputs(tmp_path: Path) -> None:
+    result, tar_files = nte.build_campaign_result(
+        _report(runs=4, violating_index=None), _prepared(), seed=1, budget=4
+    )
+    assert result.verdict is Verdict.PASS and result.executed == 4
+    assert result.campaign is not None and result.campaign.runs_to_first_violation is None
+    assert tar_files == {}
+    path = nte.write_result(tmp_path / "r", result, tar_files)
+    assert not any((tmp_path / "r" / "inputs").iterdir())
+    assert load_target_result(path).violating_cases == ()
+
+
+def test_tampered_violation_input_is_rejected() -> None:
+    report = _report(runs=3, violating_index=1)
+    report["violation_inputs"][0]["tar_b64"] = base64.b64encode(b"different bytes").decode()
+    with pytest.raises(ValueError, match="SHA-256"):
+        nte.build_campaign_result(report, _prepared(), seed=1, budget=3)
+
+
+def test_hook_runs_the_controller_and_writes_result_and_summary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fake_controller(prepared: Any, *, out: Path, run_id: str, **k: Any) -> Path:
+        path = nte.controller_report_path(out, run_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(_report(runs=4, violating_index=0)), encoding="utf-8")
+        return path
+
+    monkeypatch.setattr(nte, "run_controller", fake_controller)
+    outcome = nte.explore(_prepared(), ExploreOptions(budget=4, seed=1, out=tmp_path))
+    assert outcome.verdict == "FAIL" and outcome.runs == 4 and outcome.violations == 1
+    assert load_target_result(outcome.result_path).verdict is Verdict.FAIL
+    assert (outcome.result_path.parent / "inputs" / "step-0.tar").read_bytes() == TAR
+    assert (outcome.result_path.parent / "summary.md").is_file()
+
+
+def test_hook_rejects_budget_below_the_seed_count(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(nte, "run_controller", lambda *a, **k: pytest.fail("must not run"))
+    with pytest.raises(ValueError, match="seed count"):
+        nte.explore(_prepared(), ExploreOptions(budget=nte.MIN_BUDGET - 1, seed=1, out=tmp_path))
+
+
+def test_converter_uses_prepared_target_not_a_hardcoded_name() -> None:
+    # build_campaign_result is target-agnostic: the result target comes from prepared.target.
+    result, _ = nte.build_campaign_result(
+        _report(runs=4, violating_index=1), _prepared(), seed=1, budget=4
+    )
+    assert result.target == "node-tar"
+    oras = PreparedTargetImage("oras-go", "latest", "2.6.2", "img", "sha256:" + "a" * 64, True)
+    result2, _ = nte.build_campaign_result(
+        _report(runs=4, violating_index=1), oras, seed=1, budget=4
+    )
+    assert result2.target == "oras-go"
+
+
+def test_all_unjudged_campaign_is_error_not_pass() -> None:
+    # Every run observed but the oracle judged nothing (all run_error): the campaign is ERROR, not
+    # a silent PASS -- the #414 unjudged verdict rule, exercised through the common converter.
+    report = {
+        "demo_report_schema": 4,
+        "case_records": [
+            {"run_index": i, "outcome": "run_error", "c0": None, "c1": None, "c2": None}
+            for i in range(4)
+        ],
+        "violation_inputs": [],
+    }
+    result, _ = nte.build_campaign_result(report, _prepared(), seed=1, budget=4)
+    assert result.verdict is Verdict.ERROR
+
+
+def test_unjudged_ratio_above_the_ceiling_is_error_not_pass() -> None:
+    # Not every run un-judged (that is always ERROR), but enough that the PASS is untrustworthy:
+    # 2 of 5 un-judged = 0.4, above the 0.2 default ceiling -> ERROR, not a quiet PASS. The ceiling
+    # is recorded on the campaign so the verdict is reproducible from the file.
+    report = {
+        "demo_report_schema": 4,
+        "streaming": True,
+        "aggregate": {
+            "runs_executed": 5,
+            "terminations": {"success": 5},
+            "unjudged_steps": 2,
+            "errors": 0,
+        },
+        "violation_cases": [],
+        "violation_inputs": [],
+    }
+    result, _ = nte.build_campaign_result(report, _prepared(), seed=1, budget=5)
+    assert result.campaign is not None and result.campaign.max_unjudged_ratio == 0.2
+    assert result.unjudged_ratio == 0.4
+    assert result.verdict is Verdict.ERROR
+    # A looser ceiling lets the same run read PASS (the value is the operator's choice, recorded).
+    result2, _ = nte.build_campaign_result(
+        report, _prepared(), seed=1, budget=5, max_unjudged_ratio=0.5
+    )
+    assert result2.verdict is Verdict.PASS
+
+
+def test_rejected_and_timed_out_terminations_reach_the_case_verdict() -> None:
+    # termination is carried through the converter onto each CaseVerdict (judged, not errored).
+    report = {
+        "demo_report_schema": 4,
+        "case_records": [
+            {
+                "run_index": 0,
+                "outcome": "judged",
+                "c0": False,
+                "c1": False,
+                "c2": False,
+                "termination": "rejected",
+                "observation_complete": True,
+            },
+            {
+                "run_index": 1,
+                "outcome": "judged",
+                "c0": False,
+                "c1": False,
+                "c2": False,
+                "termination": "timed_out",
+                "observation_complete": False,
+            },
+        ],  # fmt: skip
+        "violation_inputs": [],
+    }
+    result, _ = nte.build_campaign_result(report, _prepared(), seed=1, budget=2)
+    assert result.verdict is Verdict.PASS  # rejected/timed-out without violation is not an error
+    assert [c.termination for c in result.cases] == ["rejected", "timed_out"]
+    assert [c.observation_complete for c in result.cases] == [True, False]
+
+
+def test_registered_sandbox_defaults_match_the_preregistration() -> None:
+    # Read (not copied) from the frozen EXP-2 holdout preregistration.
+    seed, count, policy = nte.registered_sandbox_defaults()
+    assert seed == "20261104" and count == "5" and policy == "invalid-continue"
+
+
+def test_registered_sandbox_defaults_stop_when_a_field_is_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # A preregistration that dropped a sandbox field must stop with the reason, not fall back to a
+    # hardcoded default (or the literal string "None") -- that would be a silent stale-config run.
+    from types import SimpleNamespace
+
+    def fake_parse(_text: str) -> Any:
+        return SimpleNamespace(
+            sentinel_generator_seed=20261104,
+            sentinel_count=5,
+            observer_integrity_policy=None,  # dropped from the preregistration
+        )
+
+    monkeypatch.setattr(nte, "parse_preregistration", fake_parse)
+    with pytest.raises(ValueError, match="observer_integrity_policy"):
+        nte.registered_sandbox_defaults()
+
+
+def test_run_controller_defaults_the_registered_sandbox_env(tmp_path: Path) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_runner(cmd: Any, env: Any, cwd: Any) -> Any:
+        captured["env"] = env
+        rp = nte.controller_report_path(tmp_path, "rid")
+        rp.parent.mkdir(parents=True, exist_ok=True)
+        rp.write_text("{}", encoding="utf-8")
+        return type("R", (), {"returncode": 0})()
+
+    nte.run_controller(
+        _prepared(), out=tmp_path, run_id="rid", budget=20, seed=123, python="x", runner=fake_runner
+    )
+    env = captured["env"]
+    assert env["DEMO_SENTINEL_SEED"] == "20261104" and env["DEMO_SENTINEL_COUNT"] == "5"
+    assert env["DEMO_OBSERVER_INTEGRITY_POLICY"] == "invalid-continue"
+
+
+def test_run_controller_sandbox_env_is_overridable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DEMO_SENTINEL_COUNT", "3")
+    captured: dict[str, Any] = {}
+
+    def fake_runner(cmd: Any, env: Any, cwd: Any) -> Any:
+        captured["env"] = env
+        rp = nte.controller_report_path(tmp_path, "rid")
+        rp.parent.mkdir(parents=True, exist_ok=True)
+        rp.write_text("{}", encoding="utf-8")
+        return type("R", (), {"returncode": 0})()
+
+    nte.run_controller(
+        _prepared(), out=tmp_path, run_id="rid", budget=20, seed=123, python="x", runner=fake_runner
+    )
+    assert captured["env"]["DEMO_SENTINEL_COUNT"] == "3"  # operator override wins
+
+
+def test_streaming_aggregate_and_per_case_reports_agree() -> None:
+    # The same run two ways -- per-case (streaming off) and aggregate + violations (streaming on) --
+    # builds to the same verdict, run count and violation set (orchestrator's parity requirement).
+    cr = lambda i, c1, term: {  # noqa: E731
+        "run_index": i, "outcome": "judged", "c0": False, "c1": c1, "c2": False,
+        "termination": term, "observation_complete": True,
+    }  # fmt: skip
+    vin = [
+        {
+            "run_index": 2,
+            "tar_sha256": sha256(TAR).hexdigest(),
+            "tar_b64": base64.b64encode(TAR).decode(),
+        }
+    ]
+    per_case = {
+        "demo_report_schema": 4,
+        "case_records": [
+            cr(0, False, "success"),
+            cr(1, False, "rejected"),
+            cr(2, True, "success"),
+            cr(3, False, "success"),
+        ],
+        "violation_inputs": vin,
+    }
+    aggregate = {
+        "demo_report_schema": 4,
+        "streaming": True,
+        "aggregate": {
+            "runs_executed": 4,
+            "terminations": {"success": 3, "rejected": 1},
+            "unjudged_steps": 0,
+            "errors": 0,
+        },
+        "violation_cases": [cr(2, True, "success")],
+        "violation_inputs": vin,
+    }
+    r1, _ = nte.build_campaign_result(per_case, _prepared(), seed=1, budget=4)
+    r2, _ = nte.build_campaign_result(aggregate, _prepared(), seed=1, budget=4)
+    assert r1.verdict is r2.verdict is Verdict.FAIL
+    assert r1.executed == r2.executed == 4  # aggregate's runs_executed, not len(cases)=1
+    assert r1.violating_cases == r2.violating_cases == ("step-2",)
+    assert r1.campaign is not None and r2.campaign is not None
+    assert r1.campaign.runs_to_first_violation == r2.campaign.runs_to_first_violation == 3
+    assert r2.campaign.terminations == {"success": 3, "rejected": 1}
+
+
+class _Reached(Exception):
+    """The controller was reached (the run would start)."""
+
+
+def _reach(*_: object, **__: object) -> NoReturn:
+    raise _Reached
+
+
+@pytest.mark.parametrize("existing", ["report", "result"])
+def test_hook_refuses_this_runs_existing_output_before_the_controller(
+    existing: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(nte, "run_controller", _reach)
+    options = ExploreOptions(budget=nte.MIN_BUDGET, seed=1, out=tmp_path)
+    run_id = f"7.5.23-1-{nte.MIN_BUDGET}"
+    report = nte.controller_report_path(tmp_path, run_id)
+    path = report if existing == "report" else report.parent / f"{run_id}-result" / "result.json"
+    path.parent.mkdir(parents=True)
+    path.write_text("{}", encoding="utf-8")
+    with pytest.raises(ResultExistsError, match="nothing was run or overwritten"):
+        nte.explore(_prepared(), options)
+    path.unlink()  # without it the run starts exactly as before
+    with pytest.raises(_Reached):
+        nte.explore(_prepared(), options)
+
+
+# ---- launcher exit x loop report: only a clean exit with a complete report gives a result ----
+#: (returncode, report kind) -> None (published as before) or the ERROR message (exit 2, no result)
+EXIT_MATRIX = [
+    (0, "complete", None),
+    (1, "complete", "controller run failed \\(exit {rc}\\)"),
+    (125, "complete", "controller run failed \\(exit {rc}\\)"),
+    (137, "complete", "controller run failed \\(exit {rc}\\)"),
+    (1, "aborted", "controller run failed \\(exit {rc}\\)"),
+    (1, "none", "controller run failed \\(exit {rc}\\)"),
+    (0, "aborted", "exploration aborted: backend gone"),
+]
+
+
+def _node_launcher(returncode: int, report: dict[str, Any] | None):
+    def runner(cmd: list[str], *, env: dict[str, str], cwd: str) -> Any:
+        if report is not None:
+            path = nte.controller_report_path(Path(env["INODEFENCE_EVIDENCE_DIR"]), env["RUN_ID"])
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(report), encoding="utf-8")
+        return subprocess.CompletedProcess(cmd, returncode)
+
+    return runner
+
+
+class _NoPull:
+    def __init__(self, *a: Any, **k: Any) -> None: ...
+
+    def start(self) -> _NoPull:
+        return self
+
+    def stop(self, **k: Any) -> None: ...
+
+
+@pytest.mark.parametrize(("returncode", "kind", "error"), EXIT_MATRIX)
+def test_launcher_exit_and_report_decide_the_outcome(
+    returncode: int, kind: str, error: str | None, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    complete = _report(runs=4, violating_index=None)
+    report = {
+        "complete": complete,
+        "aborted": {**complete, "aborted": {"reason": "backend gone"}},
+        "none": None,
+    }[kind]
+    monkeypatch.setattr(nte, "LivePuller", _NoPull)  # no docker cp
+    real = nte.run_controller
+    monkeypatch.setattr(
+        nte,
+        "run_controller",
+        lambda prepared, **kw: real(
+            prepared, **{**kw, "runner": _node_launcher(returncode, report)}
+        ),
+    )
+    options = ExploreOptions(budget=4, seed=1, out=tmp_path)
+    if error is None:
+        outcome = nte.explore(_prepared(), options)
+        assert (outcome.verdict, outcome.runs, outcome.violations) == ("PASS", 4, 0)
+        return
+    with pytest.raises(RuntimeError, match=error.format(rc=returncode)):
+        nte.explore(_prepared(), options)
+    assert not list(tmp_path.rglob("result.json"))
+    if report is not None:  # the loop report is kept as the launcher left it
+        (kept,) = (tmp_path / "target-explore").glob("*.json")
+        assert json.loads(kept.read_text(encoding="utf-8")) == report

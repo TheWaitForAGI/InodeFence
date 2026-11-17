@@ -31,6 +31,8 @@ builder.build_tar → disposable runtime → before snapshot
 | [mutation_scheduler.py](mutation_scheduler.py) | 재현 가능한 mutation operator 선택 (mutation 함수와 분리) |
 | [transition_campaign.py](transition_campaign.py) | transition v1 P0/P1/P2 in-memory composition (현재 demo 경로 아님) |
 | [campaign_export.py](campaign_export.py) | 완료된 결과의 manifest JSON / canonical step JSONL |
+| [target_result.py](target_result.py) | 대상별 실행 명령의 공통 결과 형식 `inodefence-target-result-v1`(대상·축 3개·실행 수·C0/C1/C2 판정·재현 입력 sha256·엔진 SHA, `demo run`). 대상별 로직 없음 |
+| [target_result_summary.py](target_result_summary.py) | `inodefence-target-result-v1` 결과 파일 하나를 비전공자용 한 장 Markdown 요약(대상·버전·판정·케이스별 C0/C1/C2·재현 방법)으로 바꾼다. `python -m inodefence.target_result_summary RESULT.json`. 입력은 결과 파일뿐, 실행 없음, 같은 파일이면 같은 출력 |
 | [provenance.py](provenance.py) | 실행 전 source/environment/target/sentinel configuration 고정 |
 | [experiment_config.py](experiment_config.py) | strict JSON config / SHA-256 ID / seed-target binding |
 | [generator](generator/README.md) | explicit deterministic minimal_seed_corpus |
@@ -42,6 +44,8 @@ builder.build_tar → disposable runtime → before snapshot
 | [minimizer.py](minimizer.py) | bounded deterministic generic/USTAR reduction and evidence binding |
 | [evaluation](evaluation/README.md) | verified raw/config, passive ledger/journal, qualification/matrix, datasets/statistics |
 | [replay](replay/README.md) | allowlisted benign fresh-runtime reproduction |
+| [drivers](drivers/__init__.py) | 제품 실행 계층. `inodefence verify / explore / replay / targets`가 거치는 대상별 드라이버(대상 레지스트리 `run_target.TARGETS`, 어댑터, 탐색·replay·이미지 준비 훅)다. 엔진을 조합만 하고 다시 구현하지 않는다. 엔진은 이 계층을 import하지 않는다. 저장소 위치는 [drivers/repo.py](drivers/repo.py) 한 곳에서 정한다. [drivers/runtime/](drivers/runtime/)은 실행 주변의 읽기 전용 점검(`health`: Docker 응답 3상태·이미지 3상태·남은 자원·디스크, 지우는 것 없음)과 중단 진단(`diagnosis`: 단계 × 공유 abort 범주 × 보존된 증거, 종료 코드·판정 불변), 그리고 explore·replay가 모두 거치는 STRICT 실행 세션(`session`·`hooks`·`diagnostics`)이다. 실행에는 여전히 저장소 클론(`tools/`, `scripts/local_*.sh`, `experiments/repro/`)이 필요하다 |
+| [cli.py](cli.py) · [locate.py](locate.py) · [user_config.py](user_config.py) | 사용자 명령 `inodefence`. 의존 방향은 `cli → locate → drivers → 엔진`이다. locate는 드라이버 모듈을 `python -m`으로 실행하고(클론의 `src` 우선), 대상 목록도 같은 환경의 하위 프로세스에서 읽는다. user_config는 사용자 설정 두 키(`INODEFENCE_HOME`, `INODEFENCE_OUTPUT_DIR`)만 환경 변수 → 설정 파일 → 기본값 순으로 읽고, 연구 실행 설정(seed·arm·budget·실행 SHA·격리·`INODEFENCE_RUNTIME_ROOT`)은 받지 않는다 |
 
 Observer는 사실만 기록하고 Oracle은 사실에 계약을 적용한다. Signature 계산은 계약 판정과 독립적이다. Pipeline은 각 알고리즘을 호출할 뿐 target 옵션이나 mutation 전략을 소유하지 않는다.
 

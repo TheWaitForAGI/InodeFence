@@ -1,12 +1,12 @@
 # 자율 작업 목록 (WORKLOG)
 
-자율 루프가 끝낸 작업을 누적한다. 머지는 사람 게이트가 아니다(D035): PR·CI·verifier 통과 후 루프가 스스로
-squash 머지한다. 머지 여부의 기준은 PR 상태다(`gh pr list --state merged --search <브랜치>`).
+자율 루프가 끝낸 작업을 누적한다. 병합은 지웅이 한다(D037, [AGENTS.md PR 절](../AGENTS.md#pr)): 루프는 PR·CI·verifier 통과 후
+병합 요청을 내고 스스로 머지하지 않는다(D035의 자율 머지는 보류). 머지 여부의 기준은 PR 상태다(`gh pr list --state merged --search <브랜치>`).
 한 작업 = 한 행. 작업 브랜치의 커밋에 함께 넣는다. 실행 상세는 [LOG](LOG.md), 할 일은 [BACKLOG](BACKLOG.md).
 
-상태: `검토대기`(검증 통과, PR·CI·verifier 검토 후 자율 머지 대상) / `BREAKING`(기존 테스트·판정을 깸, 사람 판단 전 머지 금지, 후속 진행 금지) / `막힘`(진행 불가, 필요한 것을 요약에 적음)
+상태: `검토대기`(검증 통과, PR·CI·verifier 검토 후 병합 요청 대상; 병합은 지웅) / `BREAKING`(기존 테스트·판정을 깸, 사람 판단 전 머지 금지, 후속 진행 금지) / `막힘`(진행 불가, 필요한 것을 요약에 적음)
 
-비교 명령: `git diff main...<브랜치> --stat`
+비교 명령: `git diff origin/<PR base>...<브랜치> --stat` (스택 PR은 base가 직전 브랜치다. PR·스택이 없을 때만 `main`)
 
 | 날짜 | 브랜치명 | P0/Phase | 한 줄 요약 | main 대비 핵심 변경 | 상태 |
 | --- | --- | --- | --- | --- | --- |
@@ -158,3 +158,10 @@ success 케이스(exit 0)에서 발생한 native 관찰 무결성 결함(malform
 - 격리·단일경로·synthetic sha256 전부 불변. R4 실행 백엔드(컨테이너 백엔드·브로커 전송·isolation 정책 모델) 편집 0건 — 변경 없이 조합만.
 - make check(기본 루트 `/var/lib/inodefence`): ruff/format/pyright 0, pytest 2227 passed/4 skip, env-check·docs-check PASS. (per-worktree 루트는 하드코딩 때문에 백엔드 테스트 10건 결정론 실패라 기본 루트 사용.)
 - 2026-11-07 **막힘(가드 R4):** hazard 파일럿 abort 조사에서 R4 파일을 grep으로 읽는 구문과 로그를 awk로 읽는 구문을 한 셸 명령에 묶었다가 차단됨. 수정 의도는 없었고 파일 변경도 0. 우회하지 않고 그 단계를 멈춤. `create_command` 인자 재확인은 하지 않았으므로, abort가 입력 내용과 무관하다는 판단은 추론으로 남김.
+### PR-A: python-tarfile in-process effect producer (EXP-3 다중타깃)
+- M4.1b 신뢰 레퍼런스(Python stdlib tarfile)를 effect 캠페인 producer로 배선 — 동일 generic C0/C1/C2 oracle·observer·feedback·#203 abort 분류가 2번째 extractor에도 작동(일반성 H-B). node-tar run_node_tar_effect_case와 동형, EffectEventTrace는 실제 BEFORE/AFTER 관측에서 직접 조립(전송 프레임 크립토 경로 미사용 — 신뢰 레퍼런스), mechanism="python-tarfile-inprocess".
+- 통제 재현: fully_trusted → extract/alias가 sentinel inode 공유(C1+C2), data(PEP 706) → 거부. producer 경로에서 M4.1b 차분 재현 + summarize_report_records(레코드 스키마) 호환(#240 parity 자동 적용).
+- 안전 경계(보수): fully_trusted in-process는 `..` 탈출이 disposable sandbox(tempdir)를 넘어 호스트에 쓸 수 있어(컨테이너 경계 없음) trusted_fixture=True(고정 통제 fixture)에만 허용. 임의/퍼징 입력 + fully_trusted = ValueError fail-closed. 퍼징은 data 필터만 — 단 in-process data 필터의 confine 보장은 CPython 패치 수준에 의존(PEP 706 필터 우회 수정 upstream 3.12.11; lock은 인터프리터 버전 문자열·tarfile.py 해시만 기록하고 수정 포함 여부는 검증하지 않음)하므로 확정 안전이 아니며, 등록 캠페인 사용은 D022(컨테이너 경계)에 따른 지웅 승인 필요(미결정). fully_trusted 퍼징은 컨테이너 격리 경로로만(별도 설계·지웅 승인). 테스트로 거부 고정.
+- 인터페이스(PR-B/레인5): provenance에 lock 원재료(python_version·tarfile_sha256·uname_sr)만 노출, lock_digest 산출·report 기록·post_check 대조는 PR-B(execution_mode=per-case-subprocess, env DEMO_EXTRACTOR=python-tarfile). 레인4 가드레일: in-process는 ResettingProducer 미적용, parity same-mode만.
+
+- 2026-11-16 막힘(IF-H4-CORE W1): 가드 R4가 새 테스트 파일 이름의 부분 문자열로 셸 명령을 차단(오탐, 보호 파일 무변경). 이름 변경 허용 여부 사람 결정 대기. 스택 PR(탐색 결과 기록) 나머지는 그 파일 없이 진행 가능.

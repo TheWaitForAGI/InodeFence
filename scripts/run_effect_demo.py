@@ -6,7 +6,9 @@ evidence. `native_demo_report` runs inside the trusted Linux controller
 """
 
 import argparse
+import base64
 import json
+import re
 import sys
 import traceback
 from collections import Counter
@@ -14,23 +16,30 @@ from collections.abc import Callable, Mapping
 from hashlib import sha256
 from pathlib import Path, PurePosixPath
 from time import perf_counter
+from typing import cast
 
+from inodefence.builder import build_tar
+from inodefence.campaign_hooks import CampaignHooks, LightCampaignResult
 from inodefence.effect_campaign import (
     EffectCampaignConfig,
     EffectCampaignResult,
     run_effect_campaign,
 )
 from inodefence.effect_demo import (
+    DEMO_REPORT_SCHEMA,
     EffectStepReporter,
     effect_campaign_report,
     render_effect_campaign_report,
 )
 from inodefence.effect_pipeline import NativeEffectRun, run_node_tar_effect_case
 from inodefence.effect_synthetic import synthetic_effect_result
+from inodefence.evaluation import rds as _rds
 from inodefence.execution.base import ExecutionBackend
 from inodefence.execution.stall_recovery import StallRecovery
 from inodefence.feedback import EffectSearchPolicy
 from inodefence.generator import minimal_seed_corpus
+from inodefence.live_effect import exploration_unobserved, live_step_from_effect
+from inodefence.live_exploration import REPLAY_COMMAND_TEMPLATE, LiveRecorder, LiveRunMeta
 from inodefence.model import (
     ArchiveCase,
     EffectRunResult,
@@ -44,6 +53,7 @@ from inodefence.sentinel_set import (
     GeneratedSentinelSet,
     generate_sentinel_set,
 )
+from inodefence.target_result import JUDGED, RUN_ERROR
 from inodefence.targets.node_tar_effect import (
     NativeEffectProfile,
     NodeTarEffectTarget,
@@ -85,6 +95,7 @@ HOLDOUT_TARGET: tuple[str, str] | None = (
     "38b636640f941953189084d01a37db2f919049d6e0c7388cf86af1bc07e19c84",
 )
 HISTORICAL_DEMO_MODE = "effect-demo-historical"
+EXPLORE_DEMO_MODE = "effect-demo-explore"
 # M4 self-discovery: the effect campaign over a second extractor (decompress). Shares the
 # --seed/--budget/--mutation-policy demo arguments. --policy (EffectSearchPolicy) now selects the
 # decompress search arm on the same gradient-rung ladder node-tar uses: P3_EXTERNAL_RESOLVE (C,
@@ -96,11 +107,32 @@ DECOMPRESS_CAMPAIGN_MODE = "decompress-effect-campaign"
 # demo arguments; --policy (EffectSearchPolicy) does not apply (its own novelty channels) and is
 # ignored for this mode, exactly like the decompress campaign.
 ORAS_GO_CAMPAIGN_MODE = "oras-go-effect-campaign"
-DEMO_MODES = ("effect-demo", HISTORICAL_DEMO_MODE, DECOMPRESS_CAMPAIGN_MODE, ORAS_GO_CAMPAIGN_MODE)
+# Exploration over python-tarfile on one caller-prepared runtime image (official python:X.Y.Z-slim
+# + the effect worker) and ONE extraction filter; the shared effect loop (run_effect_campaign),
+# unchanged. Requires --runtime-version and --extraction-filter; shares --seed/--budget/--policy/
+# --mutation-policy.
+PYTHON_TARFILE_CAMPAIGN_MODE = "python-tarfile-effect-campaign"
+DEMO_MODES = (
+    "effect-demo",
+    HISTORICAL_DEMO_MODE,
+    EXPLORE_DEMO_MODE,
+    DECOMPRESS_CAMPAIGN_MODE,
+    ORAS_GO_CAMPAIGN_MODE,
+    PYTHON_TARFILE_CAMPAIGN_MODE,
+)
+PYTHON_TARFILE_FILTERS = ("data", "fully_trusted")
 HISTORICAL_LABEL = "demo run"
+EXPLORATION_LABEL = "exploratory demo run"
 HISTORICAL_SEARCH_POLICY = EffectSearchPolicy.P2_EFFECT_ADAPTIVE
 HISTORICAL_MUTATION_POLICY = MutationPolicy.M1_PROTECTED_COMPONENTS_ESCAPE_HARDLINK
 
+# Exploration defaults to the registered experiment's S-u arm (state-retention + observed-names
+# vocabulary), taken from ``evaluation.rds`` by reference -- not copied values -- so the two can
+# never drift. The registered-experiment path (rds.py's arm/vocabulary definitions, run_exp0,
+# FROZEN_TARGETS) is only read here, never modified. The demo paths keep HISTORICAL_* above.
+EXPLORE_SEARCH_POLICY = _rds.arm_search_policy(_rds.RdsArm.S_U)
+EXPLORE_VOCABULARY_MODE = _rds.VocabularyMode.OBSERVED_NAMES
+EXPLORE_MUTATION_POLICY = _rds.VOCABULARY_MUTATION_POLICY[EXPLORE_VOCABULARY_MODE]
 
 #: An exception chain longer than this is cut; the record says so.
 ERROR_CHAIN_LIMIT = 8
@@ -240,7 +272,7 @@ def synthetic_demo_json(
 DEMO_ARGUMENTS = ("seed", "budget", "policy", "mutation_policy")
 # The opt-in multi-sentinel flags are restricted to the node-tar effect demos
 # (both go through run_node_tar_effect_case over a disposable sandbox).
-SENTINEL_DEMO_MODES = ("effect-demo", HISTORICAL_DEMO_MODE)
+SENTINEL_DEMO_MODES = ("effect-demo", HISTORICAL_DEMO_MODE, EXPLORE_DEMO_MODE)
 # Arguments the host broker forwards verbatim to the controller. tar_version is
 # historical-only; the four DEMO_ARGUMENTS are shared by both effect demos;
 # observer-integrity-policy and the two opt-in sentinel flags default to the
@@ -251,6 +283,11 @@ DEMO_FORWARDED_ARGUMENTS = (
     "observer_integrity_policy",
     "sentinel_count",
     "sentinel_seed",
+    "live_dir",
+    "engine_commit",
+    "runtime_version",
+    "extraction_filter",
+    "oras_go_artifact_layout",
 )
 
 
@@ -278,6 +315,23 @@ def add_demo_arguments(parser: argparse.ArgumentParser) -> None:
         help="opt-in: PRNG seed for generated sentinel names; requires --sentinel-count",
     )
     parser.add_argument(
+        "--runtime-version",
+        help="exact python runtime X.Y.Z of the prepared image; python-tarfile campaign only",
+    )
+    parser.add_argument(
+        "--extraction-filter",
+        choices=PYTHON_TARFILE_FILTERS,
+        help="the ONE tarfile extraction filter of this campaign; python-tarfile campaign only",
+    )
+    parser.add_argument(
+        "--oras-go-artifact-layout",
+        choices=("artifact-dir",),
+        help=(
+            "opt-in, oras-go campaign only: send each case with its relative entry names under "
+            "oras-go's artifact directory (d/). Default: names are sent as generated"
+        ),
+    )
+    parser.add_argument(
         "--observer-integrity-policy",
         choices=("stop", "invalid-continue"),
         help=(
@@ -286,19 +340,48 @@ def add_demo_arguments(parser: argparse.ArgumentParser) -> None:
             "trace; 'invalid-continue' keeps the step as validity=invalid and continues"
         ),
     )
+    parser.add_argument(
+        "--live-dir",
+        help="exploration only: the controller writes live progress/violation snapshots here",
+    )
+    parser.add_argument(
+        "--engine-commit",
+        help="exploration only: host-side engine revision, recorded in the live meta for replay",
+    )
 
 
 def check_demo_arguments(parser: argparse.ArgumentParser, args: argparse.Namespace) -> None:
     given = [name for name in DEMO_ARGUMENTS if getattr(args, name) is not None]
     if given and args.mode not in DEMO_MODES:
         parser.error("--seed/--budget/--policy/--mutation-policy are restricted to effect demos")
-    if args.budget is not None and not 1 <= args.budget <= MAX_NATIVE_BUDGET:
-        parser.error(f"effect demo budget must be in 1..{MAX_NATIVE_BUDGET}")
+    if args.budget is not None:
+        if args.budget < 1:
+            parser.error("effect demo budget must be >= 1")
+        # Exploration has NO upper budget cap: it streams steps (retain_steps=False) so memory does
+        # not grow with the run count, and a long single campaign is the point. Every other mode
+        # (demo, historical, qualification) keeps the cap so a bounded run cannot be asked for an
+        # unbounded one by mistake. This is the only budget rule the explore mode relaxes.
+        if args.mode != EXPLORE_DEMO_MODE and args.budget > MAX_NATIVE_BUDGET:
+            parser.error(f"effect demo budget must be in 1..{MAX_NATIVE_BUDGET}")
     tar_version = getattr(args, "tar_version", None)
-    if tar_version is not None and args.mode != HISTORICAL_DEMO_MODE:
-        parser.error("--tar-version is restricted to effect-demo-historical")
-    if args.mode == HISTORICAL_DEMO_MODE and tar_version is None:
-        parser.error("effect-demo-historical requires --tar-version")
+    if tar_version is not None and args.mode not in (HISTORICAL_DEMO_MODE, EXPLORE_DEMO_MODE):
+        parser.error("--tar-version is restricted to effect-demo-historical / effect-demo-explore")
+    if args.mode in (HISTORICAL_DEMO_MODE, EXPLORE_DEMO_MODE) and tar_version is None:
+        parser.error(f"{args.mode} requires --tar-version (the resolved node-tar version)")
+    runtime = getattr(args, "runtime_version", None)
+    extraction_filter = getattr(args, "extraction_filter", None)
+    python_mode = args.mode == PYTHON_TARFILE_CAMPAIGN_MODE
+    if (runtime is not None or extraction_filter is not None) and not python_mode:
+        parser.error("--runtime-version/--extraction-filter are restricted to the python campaign")
+    if python_mode and (runtime is None or extraction_filter is None):
+        parser.error(f"{args.mode} requires --runtime-version and --extraction-filter")
+    if runtime is not None and re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", runtime) is None:
+        parser.error(f"--runtime-version must be exact X.Y.Z, got {runtime!r}")
+    if (
+        getattr(args, "oras_go_artifact_layout", None) is not None
+        and args.mode != ORAS_GO_CAMPAIGN_MODE
+    ):
+        parser.error("--oras-go-artifact-layout is restricted to the oras-go campaign")
     count = getattr(args, "sentinel_count", None)
     seed = getattr(args, "sentinel_seed", None)
     if (count is None) != (seed is None):
@@ -311,6 +394,7 @@ def check_demo_arguments(parser: argparse.ArgumentParser, args: argparse.Namespa
     if getattr(args, "observer_integrity_policy", None) is not None and args.mode not in (
         "effect-demo",
         HISTORICAL_DEMO_MODE,
+        EXPLORE_DEMO_MODE,
     ):
         parser.error("--observer-integrity-policy is restricted to the effect demos")
 
@@ -488,63 +572,14 @@ def native_demo_report(
     checks: list[dict[str, object]] = []
     timing: list[dict[str, object]] = []
 
-    def produce(case: ArchiveCase) -> EffectRunResult:
-        index = len(checks)
-        started = perf_counter()
-        try:
-            run = _run_native_case(case, target, sentinels, stall_recovery, index)
-        except Exception as error:
-            reason = f"{type(error).__module__}.{type(error).__qualname__}: {error}"
-            raise NativeDemoAborted(
-                index,
-                case.case_id,
-                reason,
-                error_chain=exception_chain(error),
-                case_shape=case_shape(case),
-            ) from error
-        check = _native_check(case, run.result, run.controller_flush_verified, run.transport_error)
-        checks.append(check)
-        timing.append(
-            {
-                "case_id": case.case_id,
-                "wall_seconds": perf_counter() - started,
-                "target_seconds": run.result.base_result.execution.duration_seconds,
-            }
-        )
-        if run.result.base_result.execution.status == ExecutionStatus.SUCCESS and not (
-            check["integrity_valid"]
-            and run.result.trace.completeness == EffectStreamCompleteness.COMPLETE
-            and run.controller_flush_verified
-            and run.transport_error is None
-            and check["archive_entries_match"]
-        ):
-            # Only a pure observer-integrity failure is eligible for the
-            # continue policy: the trace itself is not integrity_valid while the
-            # host/transport trust signals are all good. Flush/transport/
-            # archive-identity failures are infrastructure trust failures the
-            # runtime lane classifies, so they keep aborting regardless of policy
-            # and are never recorded as observer_integrity or fed back.
-            observer_integrity_only = (
-                not check["integrity_valid"]
-                and run.controller_flush_verified
-                and run.transport_error is None
-                and check["archive_entries_match"]
-            )
-            if not (observer_integrity_continue and observer_integrity_only):
-                execution = run.result.base_result.execution
-                raise NativeDemoAborted(
-                    index,
-                    case.case_id,
-                    f"evidence integrity failed after target success: {check}",
-                    {
-                        "raw_stream": run.raw_stream.decode("utf-8", "surrogateescape"),
-                        "target_stderr": execution.stderr,
-                    },
-                    case_shape=case_shape(case),
-                )
-            # Kept as an observer-integrity invalid step; the trace is not
-            # integrity_valid, so feedback and corpus admission already exclude it.
-        return run.result
+    produce = _native_effect_producer(
+        target,
+        sentinels,
+        stall_recovery,
+        checks=checks,
+        timing=timing,
+        observer_integrity_continue=observer_integrity_continue,
+    )
 
     reporter = EffectStepReporter()
 
@@ -569,6 +604,263 @@ def native_demo_report(
         native_checks=checks,
         # Wall-clock values differ per run; keep them apart from the loop record.
         timing={"total_seconds": total, "per_case": timing},
+    )
+    apply_sentinel_set_record(report, sentinel_set)
+    apply_infra_reexecutions(report, stall_recovery)
+    return report
+
+
+def exploration_demo_report(
+    backend: ExecutionBackend,
+    image_id: str,
+    tar_version: str,
+    *,
+    seed: int = 123,
+    budget: int = DEFAULT_NATIVE_BUDGET,
+    policy: EffectSearchPolicy = EXPLORE_SEARCH_POLICY,
+    mutation_policy: MutationPolicy = EXPLORE_MUTATION_POLICY,
+    step_sink: Callable[[dict[str, object]], None] | None = None,
+    sentinel_set: GeneratedSentinelSet | None = None,
+    observer_integrity_continue: bool = False,
+    stall_recovery: StallRecovery | None = None,
+    requested_spec: str | None = None,
+    live_dir: Path | None = None,
+    engine_commit: str | None = None,
+    stream: bool = True,
+) -> dict[str, object]:
+    """Run the state-aware effect loop on an arbitrary caller-prepared node-tar image.
+
+    This is active exploration, NOT a qualification and NOT a historical demo: there is no
+    version allow/deny list and no catalog check -- the host side prepared and verified the
+    image (``inodefence-node-tar-registry:*``), and ``tar_version`` is the version it resolved
+    (``requested_spec`` keeps the raw request such as "latest"). The report is labelled
+    "exploratory demo run" and carries ``mode="exploration"`` and ``qualification=False`` so no
+    consumer mistakes it for a qualified or historical result.
+
+    Everything the loop does is the historical path, unchanged: the same ``run_effect_campaign``,
+    the same per-case producer (``_native_effect_producer``), the same disposable sandbox,
+    sentinels and strict container isolation (the controller's, applied by ``backend``), and the
+    same mutator, scheduler, feedback, oracle and observer. The ONLY differences from
+    ``historical_demo_report`` are the two absent allowlist gates and the exploration labelling.
+    Seeds are RNG integers only; no PoC input is accepted.
+    """
+    sentinels = sentinel_set.specs if sentinel_set is not None else (SentinelSpec(),)
+    config = EffectCampaignConfig(
+        random_seed=seed,
+        execution_budget=budget,
+        search_policy=policy,
+        mutation_policy=mutation_policy,
+    )
+    target = NodeTarEffectTarget.bind(backend, image_id, profile=NativeEffectProfile.FULL)
+    vocab_mode = next(
+        (
+            mode.value
+            for mode, mp in _rds.VOCABULARY_MUTATION_POLICY.items()
+            if mp == mutation_policy
+        ),
+        None,
+    )
+    recorder: LiveRecorder | None = None
+    if live_dir is not None:
+        described = sentinel_set.describe() if sentinel_set is not None else {}
+        recorder = LiveRecorder(
+            live_dir,
+            LiveRunMeta(
+                target="node-tar",
+                version=target.tar_version,
+                seed=seed,
+                budget=budget,
+                image_id=image_id,
+                search_policy=policy.value,
+                vocab_mode=vocab_mode,
+                engine_commit=engine_commit,
+                replay_template=REPLAY_COMMAND_TEMPLATE,
+                # The conditions a single case depends on, so a saved violation can be replayed
+                # exactly (the same keys node-tar's replay accepts, with the values actually used).
+                run_settings={
+                    "sentinel_count": described.get("count"),
+                    "sentinel_seed": described.get("generator_seed"),
+                    "observer_integrity_policy": (
+                        "invalid-continue" if observer_integrity_continue else "stop"
+                    ),
+                    "profile": "full",
+                },
+            ),
+        )
+    checks: list[dict[str, object]] = []
+    timing: list[dict[str, object]] = []
+    # Streaming (the explore default) keeps memory O(1) in the run count: the producer drops the
+    # per-case check/timing (it uses ``run_counter`` for the index instead of ``len(checks)``), the
+    # loop retains no steps, and the report below carries only aggregate counts plus the violating
+    # cases. Streaming off reproduces the small-budget shape (every case listed) for a short run.
+    run_counter = [0]
+    base_produce = _native_effect_producer(
+        target,
+        sentinels,
+        stall_recovery,
+        checks=checks,
+        timing=timing,
+        observer_integrity_continue=observer_integrity_continue,
+        run_counter=run_counter if stream else None,
+    )
+    # Keep the input of every case the oracle flags as a violation so a maintainer can reproduce it
+    # off-repo; only violating cases are saved (a large budget makes keeping every case's TAR
+    # wasteful). ``case_records`` lists every case only when streaming is off; when on, only the
+    # aggregate counters and the violating cases are kept. The loop/feedback/oracle are unchanged.
+    case_records: list[dict[str, object]] = []
+    violation_cases: list[dict[str, object]] = []
+    violation_inputs: list[dict[str, object]] = []
+    terminations: Counter[str] = Counter()
+    unjudged_steps = 0
+    trace_run_errors = 0
+
+    def produce(case: ArchiveCase) -> EffectRunResult:
+        nonlocal unjudged_steps, trace_run_errors
+        run_index = run_counter[0] if stream else len(checks)
+        result = base_produce(case)
+        base = result.base_result
+        # Two independent axes (inodefence-target-result contract). Judgment: the oracle ran on the
+        # before/after snapshots whatever the extractor's exit was, so every case here is "judged"
+        # and keeps its C0/C1/C2 (RUN_ERROR -- oracle not evaluated -- is the abort path, recorded
+        # separately). Termination: how the extractor exited, its own column. observation_complete:
+        # whether the trace behind the verdicts was whole (integrity_valid already subsumes
+        # completeness, no observation failures and flush). The converter derives needs_repro_check.
+        # Exploration record only (the loop receives `result` unchanged): the ONE rule shared
+        # with live progress (live_effect.exploration_unobserved, user decision D1) -- a failed /
+        # timed-out run, or a success whose trace is not intact, in which the oracle saw no
+        # violation is NOT a clean negative; it is recorded as run_error (unjudged), so the
+        # unjudged ceiling decides instead of a silent PASS. A rejected run stays judged, and a
+        # violation is kept whatever the exit or trace (shown as "reproduction check needed").
+        hit = {v.contract_id.value: v.violated for v in base.violations}
+        unobserved = exploration_unobserved(
+            base.execution.status.value,
+            bool(result.trace.integrity_valid),
+            (hit.get("C0"), hit.get("C1"), hit.get("C2")),
+        )
+        if unobserved:
+            trace_run_errors += 1
+        record = {
+            "run_index": run_index,
+            "outcome": RUN_ERROR if unobserved else JUDGED,
+            "c0": None if unobserved else hit.get("C0"),
+            "c1": None if unobserved else hit.get("C1"),
+            "c2": None if unobserved else hit.get("C2"),
+            "termination": base.execution.status.value,
+            "observation_complete": bool(result.trace.integrity_valid),
+        }
+        # Aggregates kept in O(1) whether or not every case is listed below.
+        terminations[str(record["termination"])] += 1
+        if (record["c0"], record["c1"], record["c2"]) == (None, None, None):
+            unjudged_steps += 1
+        is_violation = bool(record["c0"] or record["c1"] or record["c2"])
+        if stream:
+            # With a live recorder the violating cases and their inputs are read back from the live
+            # folder (written as they occurred), so nothing about a violation is kept in memory --
+            # a long or force-stopped run stays O(1) in the run count and loses no saved violation.
+            # The recorder-less fallback (tests, no --live-dir) keeps the old in-memory shape.
+            if is_violation and recorder is None:
+                violation_cases.append(record)  # streaming lists only the violating cases
+        else:
+            case_records.append(record)  # streaming off: every case, like the small-budget shape
+        if is_violation and recorder is None:
+            tar = build_tar(case)
+            # termination and observation_complete live on the case record; the converter's
+            # CaseVerdict.needs_repro_check flags a violation from a non-clean or incomplete run.
+            violation_inputs.append(
+                {
+                    "run_index": run_index,
+                    "tar_sha256": sha256(tar).hexdigest(),
+                    "tar_b64": base64.b64encode(tar).decode("ascii"),
+                }
+            )
+        return result
+
+    reporter = EffectStepReporter()
+
+    def record_step(step) -> None:
+        record = reporter.add(step)
+        if step_sink is not None:
+            step_sink(record)
+        if recorder is not None:
+            # Live progress + immediate violation capture; the C0/C1/C2 are the producer's own,
+            # so the live case.json never disagrees with the final result.json.
+            recorder.on_step(live_step_from_effect(step))
+
+    started = perf_counter()
+    try:
+        # Streaming retains no steps, so memory stays O(1) in the run count; the report is then
+        # built from the aggregate counters, not from ``result.steps``. Streaming off keeps today's
+        # full per-step result for a short run.
+        if stream:
+            result = run_effect_campaign(
+                minimal_seed_corpus(),
+                produce,
+                config,
+                hooks=CampaignHooks(on_step=record_step, retain_steps=False),
+            )
+        else:
+            result = run_effect_campaign(
+                minimal_seed_corpus(), produce, config, on_step=record_step
+            )
+    except KeyboardInterrupt as error:
+        if recorder is not None:
+            recorder.close(state="stopped", stop_reason=repr(error))
+        raise
+    except BaseException as error:
+        if recorder is not None:
+            recorder.close(state="failed", stop_reason=repr(error))
+        raise
+    else:
+        if recorder is not None:
+            recorder.close(state="finished")
+    total = perf_counter() - started
+    if stream:
+        # retain_steps=False returns the lightweight result (aggregate counts, no steps).
+        light = cast(LightCampaignResult, result)
+        # Aggregate only. With a recorder the violating cases live on disk (``violation_cases`` and
+        # ``violation_inputs`` stay empty) and the capture aggregate (total / retained / dropped at
+        # the per-fingerprint cap) rides in ``violation_capture``; the recorder-less fallback keeps
+        # the violating cases and their TARs in ``violation_cases`` / ``violation_inputs`` instead.
+        report = {
+            "demo_report_schema": DEMO_REPORT_SCHEMA,
+            "producer": "native",
+            "retained_case_ids": list(light.retained_case_ids),
+            "aggregate": {
+                "runs_executed": light.executed,
+                "terminations": dict(terminations),
+                "unjudged_steps": unjudged_steps,
+                # run_error cases: an untrusted trace with no violation (an abort is
+                # NativeDemoAborted, not a case here)
+                "errors": trace_run_errors,
+            },
+            "violation_cases": violation_cases,
+        }
+        if recorder is not None:
+            capture = recorder.violation_capture()
+            if capture is not None:
+                report["violation_capture"] = capture
+    else:
+        full = cast(EffectCampaignResult, result)  # on_step path keeps the full result
+        report = effect_campaign_report(full, "native")
+        report.update(
+            native_checks=checks,
+            oracle_detected_events=_historical_oracle_events(full),
+            case_records=case_records,
+        )
+    report.update(
+        label=EXPLORATION_LABEL,
+        mode="exploration",
+        qualification=False,
+        streaming=stream,
+        observer_integrity_policy="invalid-continue" if observer_integrity_continue else "stop",
+        vocabulary_mode=vocab_mode,
+        node_tar_version=target.tar_version,
+        requested_tar_version=tar_version,
+        requested_spec=tar_version if requested_spec is None else requested_spec,
+        node_version=target.node_version,
+        image_id=image_id,
+        timing={"total_seconds": total, "per_case": timing},
+        violation_inputs=violation_inputs,
     )
     apply_sentinel_set_record(report, sentinel_set)
     apply_infra_reexecutions(report, stall_recovery)
@@ -654,6 +946,93 @@ def _historical_oracle_events(result: EffectCampaignResult) -> list[dict[str, ob
                     }
                 )
     return events
+
+
+def _native_effect_producer(
+    target: NodeTarEffectTarget,
+    sentinels: tuple[SentinelSpec, ...],
+    stall_recovery: StallRecovery | None,
+    *,
+    checks: list[dict[str, object]],
+    timing: list[dict[str, object]],
+    observer_integrity_continue: bool,
+    run_counter: list[int] | None = None,
+) -> Callable[[ArchiveCase], EffectRunResult]:
+    """Per-case producer shared by both node-tar effect demos (historical and exploration).
+
+    Runs the case, checks evidence integrity, and returns the result or raises
+    ``NativeDemoAborted``. This is the producer native_demo_report uses (historical_demo_report
+    keeps an equivalent inline copy); the loop, feedback, oracle and observer are unchanged.
+
+    ``run_counter`` is the streaming escape hatch: when ``None`` (the demo/historical default) the
+    case index is ``len(checks)`` and each case's native check and timing are appended to the
+    caller's ``checks``/``timing`` lists -- byte-identical to before. When a one-element counter is
+    passed (exploration streaming), the index comes from it instead and the per-case check/timing
+    are NOT retained, so memory does not grow with the run count; the integrity decision below still
+    uses the check locally."""
+
+    def produce(case: ArchiveCase) -> EffectRunResult:
+        index = run_counter[0] if run_counter is not None else len(checks)
+        started = perf_counter()
+        try:
+            run = _run_native_case(case, target, sentinels, stall_recovery, index)
+        except Exception as error:
+            reason = f"{type(error).__module__}.{type(error).__qualname__}: {error}"
+            raise NativeDemoAborted(
+                index,
+                case.case_id,
+                reason,
+                error_chain=exception_chain(error),
+                case_shape=case_shape(case),
+            ) from error
+        check = _native_check(case, run.result, run.controller_flush_verified, run.transport_error)
+        if run_counter is None:
+            checks.append(check)
+            timing.append(
+                {
+                    "case_id": case.case_id,
+                    "wall_seconds": perf_counter() - started,
+                    "target_seconds": run.result.base_result.execution.duration_seconds,
+                }
+            )
+        else:
+            run_counter[0] += 1
+        if run.result.base_result.execution.status == ExecutionStatus.SUCCESS and not (
+            check["integrity_valid"]
+            and run.result.trace.completeness == EffectStreamCompleteness.COMPLETE
+            and run.controller_flush_verified
+            and run.transport_error is None
+            and check["archive_entries_match"]
+        ):
+            # Only a pure observer-integrity failure is eligible for the
+            # continue policy: the trace itself is not integrity_valid while the
+            # host/transport trust signals are all good. Flush/transport/
+            # archive-identity failures are infrastructure trust failures the
+            # runtime lane classifies, so they keep aborting regardless of policy
+            # and are never recorded as observer_integrity or fed back.
+            observer_integrity_only = (
+                not check["integrity_valid"]
+                and run.controller_flush_verified
+                and run.transport_error is None
+                and check["archive_entries_match"]
+            )
+            if not (observer_integrity_continue and observer_integrity_only):
+                execution = run.result.base_result.execution
+                raise NativeDemoAborted(
+                    index,
+                    case.case_id,
+                    f"evidence integrity failed after target success: {check}",
+                    {
+                        "raw_stream": run.raw_stream.decode("utf-8", "surrogateescape"),
+                        "target_stderr": execution.stderr,
+                    },
+                    case_shape=case_shape(case),
+                )
+            # Kept as an observer-integrity invalid step; the trace is not
+            # integrity_valid, so feedback and corpus admission already exclude it.
+        return run.result
+
+    return produce
 
 
 def historical_demo_report(

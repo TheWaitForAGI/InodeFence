@@ -520,14 +520,54 @@ def render_effect_step_summary(record: Mapping[str, Any], budget: int | None = N
     return "  ".join(parts)
 
 
+def _render_streaming_campaign_summary(report: Mapping[str, Any]) -> str:
+    """Closing lines for a streaming report, which keeps no steps.
+
+    A streaming run drops ``steps`` to stay O(1) in memory, so the counts come from the
+    ``aggregate`` block (runs, terminations, unjudged, errors) and from the violating cases it
+    does list -- not from per-step scans. There are no per-step scheduler weights to show.
+    """
+    aggregate = report["aggregate"]
+    cases = report.get("violation_cases", [])
+    violated: Counter[str] = Counter()
+    for record in cases:
+        for contract in ("c0", "c1", "c2"):
+            if record.get(contract):
+                violated[contract.upper()] += 1
+    terminations = aggregate.get("terminations") or {}
+    head = (
+        f"demo summary: producer={report['producer']} "
+        f"runs={aggregate.get('runs_executed')} (streaming)"
+    )
+    if report.get("label"):
+        head += f" label={report['label']!r}"
+    if report.get("node_tar_version"):
+        head += f" node-tar={report['node_tar_version']}"
+    lines = [
+        head,
+        "  termination: "
+        + ", ".join(f"{name} {count}" for name, count in sorted(terminations.items())),
+        f"  oracle violations: {len(cases)} cases ("
+        + ", ".join(f"{contract} {violated[contract]}" for contract in ("C0", "C1", "C2"))
+        + ")",
+        f"  unjudged steps {aggregate.get('unjudged_steps')}, "
+        f"errors {aggregate.get('errors')}, "
+        f"retained corpus {len(report.get('retained_case_ids', []))}",
+    ]
+    return "\n".join(lines)
+
+
 def render_effect_campaign_summary(report: Mapping[str, Any]) -> str:
     """Closing terminal lines for a finished demo report: what the whole loop did.
 
-    Counts come from the report's own steps and final_search_stats. An aborted report
-    has no steps and is rejected: the abort message already says what happened.
+    Counts come from the report's own steps and final_search_stats. A streaming report keeps no
+    steps (it stays O(1) in memory) and is summarised from its aggregate block instead. An aborted
+    report has neither and is rejected: the abort message already says what happened.
     """
     steps = report.get("steps")
     if not isinstance(steps, list):
+        if report.get("streaming") and isinstance(report.get("aggregate"), dict):
+            return _render_streaming_campaign_summary(report)
         raise ValueError("campaign summary requires a finished report with steps")
     terminations = Counter(str(step["feedback"]["trace_termination"]) for step in steps)
     contracts = sorted({contract for step in steps for contract in step["oracle"]})

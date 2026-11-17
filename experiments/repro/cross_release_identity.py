@@ -130,11 +130,19 @@ def build_tar(entries: list[dict]) -> bytes:
     return buf.getvalue()
 
 
-def run_one(release: str, tar_b64: str) -> dict:
+def run_one(
+    release: str, tar_b64: str, image: str | None = None, *, network_none: bool = False
+) -> dict:
+    """Extract one TAR in a fresh container of ``image`` (default: the release's own tag).
+
+    ``network_none`` adds ``--network none`` (used for registry-prepared images; the default keeps
+    the historical command unchanged).
+    """
     cmd = [
         "docker",
         "run",
         "--rm",
+        *(["--network", "none"] if network_none else []),
         "--user",
         "0:0",
         "-e",
@@ -143,7 +151,7 @@ def run_one(release: str, tar_b64: str) -> dict:
         f"REF_B64={base64.b64encode(REFERENCE_CONTENT).decode()}",
         "--entrypoint",
         "node",
-        IMAGE.format(release=release),
+        image or IMAGE.format(release=release),
         "-e",
         NODE_PROGRAM,
     ]

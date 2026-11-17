@@ -1,0 +1,322 @@
+"""python-tarfile exploration hook: prepare producer -> controller mode -> common campaign result.
+
+No docker. The controller run is replaced by a runner that produces the loop report exactly as the
+controller mode would (``python_tarfile_exploration_report`` over the local fake backend that runs
+the real worker), and writes it where the launcher script would put it.
+"""
+
+from __future__ import annotations
+
+import json
+import platform
+from pathlib import Path
+from typing import Any, NoReturn
+
+import pytest
+from tests.test_python_tarfile_contained import IMAGE, _LocalBackend
+
+import inodefence.drivers.python_tarfile.adapter as rpt
+import inodefence.drivers.python_tarfile.explore as pte
+import inodefence.drivers.run_target_explore as rte
+from inodefence.drivers.explore_result import ResultExistsError
+from inodefence.drivers.python_tarfile.producer import ProducerImage
+from inodefence.drivers.run_target import ExploreOptions, PreparedTargetImage
+from inodefence.python_tarfile_explore import python_tarfile_exploration_report
+from inodefence.target_result import ResultMode, load_target_result
+
+RUNTIME = platform.python_version()
+PREPARED = PreparedTargetImage(
+    "python-tarfile", "latest", RUNTIME, f"python:{RUNTIME}-slim", "sha256:" + "a" * 64, False
+)
+MADE = ProducerImage(
+    f"inodefence-python-tarfile-effect:{RUNTIME}",
+    IMAGE,
+    RUNTIME,
+    "b" * 64,
+    "e" * 64,
+    "built, checked",
+)
+
+
+def _ensure(*_: Any, **__: Any) -> ProducerImage:
+    return MADE
+
+
+def _controller(mutate: dict[str, Any] | None = None, *, backend: Any = None):
+    calls: list[dict[str, str]] = []
+
+    def runner(cmd: list[str], *, env: dict[str, str], cwd: str) -> Any:
+        assert cmd == ["bash", str(pte.LAUNCHER)]
+        calls.append(env)
+        try:  # what the controller mode does: an exception becomes an aborted report
+            report = python_tarfile_exploration_report(
+                backend or _LocalBackend(),
+                IMAGE,
+                env["EXTRACTION_FILTER"],
+                env["RUNTIME_VERSION"],
+                seed=int(env["DEMO_SEED"]),
+                budget=int(env["DEMO_BUDGET"]),
+            )
+        except Exception as error:  # noqa: BLE001
+            report = {"aborted": {"reason": str(error)}}
+        report.update(mutate or {})
+        path = pte.report_path(Path(env["INODEFENCE_EVIDENCE_DIR"]), env["RUN_ID"])
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(report), encoding="utf-8")
+
+        class Done:
+            returncode = 0
+
+        return Done()
+
+    return runner, calls
+
+
+def _options(tmp_path: Path, target_options: Any = None, **kw: Any) -> ExploreOptions:
+    base: dict[str, Any] = {"budget": pte.MIN_BUDGET + 1, "seed": 5, "out": tmp_path}
+    base.update(kw)
+    bundle = {"extraction-filter": "data"} if target_options is None else target_options
+    return ExploreOptions(**base, target_options=bundle)
+
+
+def test_hook_writes_a_common_campaign_result_for_one_runtime_and_one_filter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setitem(rpt._RESOLVED, RUNTIME, ("latest", "2026-11-15T00:00:00Z", "a", "b"))
+    runner, calls = _controller()
+    outcome = pte.explore(PREPARED, _options(tmp_path), runner=runner, ensure=_ensure)
+    (env,) = calls
+    assert env["EXPLORE_IMAGE"] == MADE.image_ref
+    assert (env["RUNTIME_VERSION"], env["EXTRACTION_FILTER"]) == (RUNTIME, "data")
+    result = load_target_result(outcome.result_path)
+    assert result.mode is ResultMode.CAMPAIGN
+    assert result.axes.runtime_version == RUNTIME and result.axes.extraction_filter == "data"
+    assert result.axes.target_version is None
+    assert result.executed == outcome.runs == pte.MIN_BUDGET + 1
+    assert result.campaign is not None and result.campaign.seed == 5
+    assert result.preparation is not None
+    assert result.preparation.method == "official-image"
+    assert result.preparation.requested_spec == "latest"
+    assert result.preparation.producer_check == "built, checked"
+    assert result.provenance.image_id == IMAGE
+    assert outcome.verdict == result.verdict.value
+    assert (outcome.result_path.parent / "summary.md").is_file()
+
+
+@pytest.mark.parametrize(
+    ("bundle", "kw", "message"),
+    [
+        ({}, {}, "needs --extraction-filter"),
+        ({"extraction-filter": "tar"}, {}, "must be one of"),
+        ({"extraction-filter": "fully_trusted"}, {}, "not approved yet .D022"),
+        ({"extraction-filter": "data"}, {"budget": 1}, "budget must be"),
+    ],
+)
+def test_hook_refuses_before_preparing_anything(
+    tmp_path: Path, bundle: dict[str, Any], kw: dict[str, Any], message: str
+) -> None:
+    def no_ensure(*_: Any, **__: Any) -> ProducerImage:
+        raise AssertionError("must not prepare")
+
+    with pytest.raises(ValueError, match=message):
+        pte.explore(PREPARED, _options(tmp_path, bundle, **kw), ensure=no_ensure)
+
+
+@pytest.mark.parametrize(
+    ("mutate", "error", "message"),
+    [
+        # stopped after the controller started: ERROR (exit 2)
+        ({"aborted": {"reason": "backend gone"}}, RuntimeError, "aborted: backend gone"),
+        # unchanged in this PR: refused as the report's own checks (exit 3)
+        ({"case_records": []}, ValueError, "no steps"),
+        ({"extraction_filter": "fully_trusted"}, ValueError, "different runtime or filter"),
+    ],
+)
+def test_untrustworthy_reports_give_no_result(
+    tmp_path: Path, mutate: dict[str, Any], error: type[Exception], message: str
+) -> None:
+    runner, _ = _controller(mutate)
+    with pytest.raises(error, match=message):
+        pte.explore(PREPARED, _options(tmp_path), runner=runner, ensure=_ensure)
+    assert not list(tmp_path.rglob("result.json"))
+
+
+def test_all_undetermined_steps_are_written_as_error_not_pass(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    runner, _ = _controller(backend=_LocalBackend(crash=True))
+    options = _options(tmp_path, budget=pte.MIN_BUDGET)  # seeds only: every step is a run error
+    outcome = pte.explore(PREPARED, options, runner=runner, ensure=_ensure)
+    result = load_target_result(outcome.result_path)
+    assert outcome.verdict == "ERROR"
+    assert result.errored == result.executed == pte.MIN_BUDGET
+    assert (
+        f"undetermined steps: {pte.MIN_BUDGET}/{pte.MIN_BUDGET} (100%)" in capsys.readouterr().out
+    )
+
+
+def test_a_crash_past_the_seeds_aborts_the_loop_and_gives_no_result(tmp_path: Path) -> None:
+    runner, _ = _controller(backend=_LocalBackend(crash=True))
+    with pytest.raises(RuntimeError, match="aborted"):
+        pte.explore(PREPARED, _options(tmp_path), runner=runner, ensure=_ensure)
+
+
+def test_driver_validates_the_declared_option_and_hands_it_to_cells_and_hook(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    seen: dict[str, Any] = {}
+
+    def fake_prepare(adapter: Any, target: str, spec: str, **kw: Any) -> PreparedTargetImage:
+        seen["filters"] = kw["filters"]
+        return PREPARED
+
+    runner, calls = _controller()
+    original = pte.run_controller
+    monkeypatch.setattr(rte, "docker_problem", lambda: None)  # no docker call
+    monkeypatch.setattr(rte, "prepare_target_image", fake_prepare)
+    monkeypatch.setattr(pte.producer, "ensure_producer_image", _ensure)
+    monkeypatch.setattr(
+        pte, "run_controller", lambda *a, **k: original(*a, **{**k, "runner": runner})
+    )
+    argv = ["--target", "python-tarfile", "--version", "latest", "--auto-prepare"]
+    argv += ["--extraction-filter", "data", "--budget", str(pte.MIN_BUDGET), "--out", str(tmp_path)]
+    assert rte.main(argv) in (0, 1)
+    assert seen["filters"] == ["data"]
+    assert calls[0]["EXTRACTION_FILTER"] == "data"
+    assert "TARGET-EXPLORE" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "extra",
+    [
+        [],  # the declared option is required
+        ["--extraction-filter", "tar"],  # not a declared choice
+    ],
+)
+def test_driver_refuses_a_missing_or_unknown_filter(extra: list[str]) -> None:
+    with pytest.raises(SystemExit):
+        rte.main(["--target", "python-tarfile", "--version", "latest", "--dry-run", *extra])
+
+
+def test_python_adapter_registers_the_hook_and_declares_its_filter_option() -> None:
+    assert rpt.ADAPTER.explore is not None
+    (option,) = rpt.ADAPTER.options
+    assert option is rpt.EXTRACTION_FILTER_OPTION
+    assert option.name == "extraction-filter" and option.required and option.single
+    assert option.choices == ("fully_trusted", "data")
+    assert rpt.EXPLORE_FILTERS == ("data",) and "D022" in rpt.EXPLORE_HELD_REASON
+    with pytest.raises(ValueError):
+        rpt.ADAPTER.cells(["3.14.10"], [])  # the filter axis is required, never defaulted
+    with pytest.raises(ValueError, match="one of"):  # regression reads the same declaration
+        rpt.ADAPTER.cells(["3.14.10"], ["tar"])
+
+
+class _Reached(Exception):
+    """The controller was reached (the run would start)."""
+
+
+def _reach(*_: object, **__: object) -> NoReturn:
+    raise _Reached
+
+
+@pytest.mark.parametrize("existing", ["report", "result"])
+def test_hook_refuses_this_runs_existing_output_before_the_controller(
+    existing: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(pte, "run_controller", _reach)
+    options = _options(tmp_path)
+    run_id = f"py{RUNTIME}-data-{options.seed}-{options.budget}"
+    report = pte.report_path(tmp_path, run_id)
+    path = report if existing == "report" else report.parent / f"{run_id}-result" / "result.json"
+    path.parent.mkdir(parents=True)
+    path.write_text("{}", encoding="utf-8")
+    with pytest.raises(ResultExistsError, match="nothing was run or overwritten"):
+        pte.explore(PREPARED, options, ensure=_ensure)
+    path.unlink()  # without it the run starts exactly as before
+    with pytest.raises(_Reached):
+        pte.explore(PREPARED, options, ensure=_ensure)
+
+
+# ---- the launcher's exit code decides first: a non-zero exit never yields a result ----
+
+
+def _launcher(returncode: int, report: dict[str, Any] | None):
+    """A launcher that exits ``returncode`` after leaving ``report`` (or none)."""
+
+    def runner(cmd: list[str], *, env: dict[str, str], cwd: str) -> Any:
+        if report is not None:
+            path = pte.report_path(Path(env["INODEFENCE_EVIDENCE_DIR"]), env["RUN_ID"])
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(report), encoding="utf-8")
+
+        class Done:
+            pass
+
+        done = Done()
+        done.returncode = returncode  # type: ignore[attr-defined]
+        return done
+
+    return runner
+
+
+def _complete_report(tmp_path: Path) -> dict[str, Any]:
+    """A complete loop report, as the real controller mode writes it (rc 0 publishes it)."""
+    runner, _ = _controller()
+    outcome = pte.explore(PREPARED, _options(tmp_path / "ok"), runner=runner, ensure=_ensure)
+    (report,) = (tmp_path / "ok" / "target-explore").glob("*.json")
+    assert outcome.result_path.is_file()
+    return json.loads(report.read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize(
+    ("returncode", "kind", "message"),
+    [
+        (1, "complete", "launcher exited 1 after the loop report was written"),
+        (125, "complete", "launcher exited 125 after the loop report was written"),
+        (137, "complete", "launcher exited 137 after the loop report was written"),
+        (1, "aborted", "exploration aborted: backend gone"),
+        (1, "none", r"controller run failed \(exit 1\)"),
+        (0, "aborted", "exploration aborted: backend gone"),
+        (0, "none", "controller run produced no report"),
+        (0, "aborted-text", "exploration aborted: backend gone"),  # not a dict: no traceback
+    ],
+)
+def test_a_stop_after_the_controller_started_is_error_and_publishes_nothing(
+    tmp_path: Path, returncode: int, kind: str, message: str
+) -> None:
+    complete = _complete_report(tmp_path)
+    report = {
+        "complete": complete,
+        "aborted": {**complete, "aborted": {"reason": "backend gone"}},
+        "aborted-text": {**complete, "aborted": "backend gone"},
+        "none": None,
+    }[kind]
+    out = tmp_path / "run"
+    with pytest.raises(RuntimeError, match=message):
+        pte.explore(PREPARED, _options(out), runner=_launcher(returncode, report), ensure=_ensure)
+    assert not list(out.rglob("result.json"))
+    kept = list((out / "target-explore").glob("*.json")) if report is not None else []
+    if report is not None:  # the loop report stays where the launcher left it, unchanged
+        (path,) = kept
+        assert json.loads(path.read_text(encoding="utf-8")) == report
+
+
+def test_the_driver_exits_2_for_a_launcher_failure_after_a_complete_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    complete = _complete_report(tmp_path)
+    monkeypatch.setattr(rte, "docker_problem", lambda: None)  # no docker call
+    monkeypatch.setattr(rte, "prepare_target_image", lambda *a, **k: PREPARED)
+    monkeypatch.setattr(pte.producer, "ensure_producer_image", _ensure)
+    original = pte.run_controller
+
+    def failing(*a: Any, **k: Any) -> Path:
+        return original(*a, **{**k, "runner": _launcher(1, complete)})
+
+    monkeypatch.setattr(pte, "run_controller", failing)
+    argv = ["--target", "python-tarfile", "--version", RUNTIME, "--extraction-filter", "data"]
+    out = tmp_path / "drv"
+    assert rte.main([*argv, "--auto-prepare", "--budget", "8", "--out", str(out)]) == 2
+    err = capsys.readouterr().err
+    assert "TARGET-EXPLORE ERROR: launcher exited 1 after the loop report was written" in err
+    assert not list(out.rglob("result.json"))

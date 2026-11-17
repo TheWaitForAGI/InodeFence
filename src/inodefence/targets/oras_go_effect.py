@@ -28,12 +28,52 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from inodefence.execution.base import BackendError, ContainerOutcome, ExecutionBackend
-from inodefence.model import ExecutionResult, ExecutionStatus
+from inodefence.model import ArchiveCase, ArchiveEntry, ExecutionResult, ExecutionStatus
 from inodefence.model.isolation import ArtifactDigest
 from inodefence.model.provenance import TargetProvenance
 
 from .isolated import IsolatedTarget
 from .oras_go import _GO_VERSION, _ORAS_GO_VERSION, WORKER, _identify, _validate_binding
+
+#: oras-go unpacks a directory artifact under its title (the worker's ``artifactDir``). A member
+#: whose name is not under it is refused by the library before anything is extracted. This is
+#: extractor geometry, not a security decision.
+ARTIFACT_DIR = "d"
+#: The one supported value of the opt-in wire layout (``--oras-go-artifact-layout``).
+ARTIFACT_LAYOUT = "artifact-dir"
+
+
+def under_artifact_dir(case: ArchiveCase) -> ArchiveCase:
+    """The case as oras-go must receive it: relative entry names moved under ``d/``.
+
+    The generic case names its entries relative to the place the archive is unpacked. oras-go
+    unpacks under ``<dest>/d`` and requires that prefix in every member name, so the same case is
+    sent with ``d/`` in front of each relative entry path. Nothing else is rewritten:
+
+    - absolute entry paths stay as they are (they do not depend on where the archive unpacks);
+    - hard-link targets stay as they are: oras-go resolves them itself, under ``<dest>/d`` in
+      fixed releases, so the generic "relative to the unpack place" reading already holds;
+    - symlink targets stay as they are: they are relative to the link's own location, and every
+      entry moves together.
+
+    The observer and oracle are untouched: the judged extraction region is still ``<dest>``, so a
+    path that leaves ``d/`` but stays under ``<dest>`` is still inside it.
+    """
+    return ArchiveCase(
+        tuple(
+            entry
+            if entry.path.startswith("/")
+            else ArchiveEntry(
+                path=f"{ARTIFACT_DIR}/{entry.path}",
+                entry_type=entry.entry_type,
+                content=entry.content,
+                link_target=entry.link_target,
+                mode=entry.mode,
+            )
+            for entry in case.entries
+        )
+    )
+
 
 # A distinct target id so the ExecutionResult/provenance never reads as the generality `extract`
 # adapter; the version string keeps the same oras-go=<exact>;go=<exact> identity shape.

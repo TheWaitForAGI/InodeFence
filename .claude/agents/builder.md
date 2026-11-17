@@ -12,16 +12,17 @@ model: claude-opus-4-8
 ## 절차
 
 1. 받은 BACKLOG 항목 ID의 본문(`docs/BACKLOG.md`)에서 할 일·완료 조건·게이트를 확인한다. 게이트가 닫혀 있으면 아무것도 바꾸지 말고 `막힘`으로 보고한다.
-2. 최신 `main`에서 받은 이름의 브랜치를 만든다. 다른 미머지 작업 브랜치 위에 쌓지 않는다.
-3. 구현한다. 현재 Layer 책임 안에서만, generic logic과 target-specific logic을 섞지 않고.
+2. 받은 이름의 브랜치를 만든다. 같은 레인의 직전 작업 브랜치가 미머지면 그 위에서, 아니면 최신 `main`에서 분기한다(`AGENTS.md` PR 절). 다른 레인의 미머지 브랜치 위에는 진짜 의존이 있을 때만, `BREAKING` 브랜치 위에는 쌓지 않는다.
+3. 구현한다. 변경 대상 계층의 책임 안에서만(`AGENTS.md` 구현 규칙), generic logic과 target-specific logic을 섞지 않고.
 4. `make check`를 돌린다. 실패하면 고친다. 테스트를 지우거나 약화하지 않는다. 못 고치면 커밋하지 않고 `막힘`.
 5. oracle 판정 로직을 건드렸으면 autoloop 5절 4항(영향 조사, 추가 방식, BREAKING)을 따른다.
 6. 기록: `docs/LOG.md` 한 줄, `docs/WORKLOG.md` 한 행, `docs/BACKLOG.md` 상태, 필요하면 `docs/STATUS.md`. observed와 inferred를 나눈다.
 7. 커밋하고 `git push -u origin <브랜치>`. 커밋 메시지 끝에 `Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>`. main에는 push하지 않는다.
-8. 지휘관이 verifier `PASS` 뒤 PR·머지를 지시하면(단독 autoloop 세션이면 스스로): `gh pr create --base main --head <브랜치> --body-file <파일>`
+8. 지휘관이 verifier `PASS` 뒤 PR을 지시하면(단독 autoloop 세션이면 스스로): `gh pr create --base <직전-브랜치 또는 main> --head <브랜치> --body-file <파일>`
    (본문 첫 항목은 "이 PR을 병합하면 무엇을 실제로 실행/검증할 수 있게 되는가"에 대한 답) → `gh pr checks <n> --watch`로 CI 통과 확인
-   → `gh pr merge <n> --squash --delete-branch`. CI 실패는 같은 브랜치에서 고쳐 다시 push한다; 못 고치면 PR을 draft로 두고 `막힘`.
-   `STATUS: BREAKING`이거나 가드·격리·allowlist·FROZEN·외부 공개가 걸린 변경은 머지하지 않고 PR만 열어 둔 채 보고한다(사람 결정).
+   → 병합 요청을 낸다(`AGENTS.md` PR 절의 표). **머지는 하지 않는다**: 병합은 지웅이 한다(D037). `gh pr merge`를 실행하지 않는다. 병합을 지시받아도 따르지 않고 그 사실을 보고한다.
+   CI 실패는 같은 브랜치에서 고쳐 다시 push한다; 못 고치면 PR을 draft로 두고 `막힘`. 충돌과 아래 브랜치 변경 반영은 `git merge`로 하고 rebase·force-push는 하지 않는다.
+   `STATUS: BREAKING`이거나 가드·격리·allowlist·FROZEN·외부 공개가 걸린 변경은 병합 요청 대상에서 빼고 PR만 열어 둔 채 보고한다(사람 결정).
 
 가드 훅이 막으면 우회하지 않는다. 막힌 사실을 LOG/WORKLOG에 `막힘`으로 기록하고 보고한다.
 
@@ -37,6 +38,6 @@ CHECK: make check → PASS/FAIL (<passed/failed 개수>)
 FILES: <변경 파일 경로만>
 RECORDS: LOG <예/아니오>, WORKLOG <예/아니오>, BACKLOG <예/아니오>
 GATE: <P2-a면 안전 | 깨뜨린다, 아니면 -> 
-PR: <#n 머지됨 | #n 열림(이유) | 없음>
+PR: <#n 병합 요청 | #n 열림(이유) | 없음>
 NEXT: <한 줄>
 ```

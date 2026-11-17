@@ -1,13 +1,23 @@
 [build-system]
-requires = ["setuptools>=75"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "inodefence"
-version = "0.1.0"
+version = "0.2.0"
 description = "Filesystem-security-state-guided fuzzing for TAR extraction"
+readme = "README.md"
 requires-python = ">=3.12,<3.13"
+license = "MIT"
+license-files = ["LICENSE"]
 dependencies = []
+
+# The user-facing command. The product drivers (inodefence.drivers) are packaged, but commands
+# that run targets still need a clone (editable install, or INODEFENCE_HOME set): the build assets
+# under tools/ and the controller launchers under scripts/ are not packaged. `doctor`, `status`
+# and `summary` work from any install. See README.
+[project.scripts]
+inodefence = "inodefence.cli:main"
 
 [project.optional-dependencies]
 dev = [

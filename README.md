@@ -1,434 +1,282 @@
 # InodeFence
 
-**TAR 압축 해제 이후의 filesystem 보안 상태를 탐색하는 state-guided fuzzing 연구 프로토타입**
+**TAR 압축 해제 뒤의 filesystem 보안 상태(객체 identity·외부 영향)를 관찰하고 판정하는 extractor 검사 도구이자,
+그 상태를 탐색 feedback으로 쓰는 연구 프로토타입**
 
-InodeFence는 TAR archive entry를 생성·변형하고, 실제 extractor(압축 해제 프로그램)를 실행한 뒤, filesystem의 보안 관련 상태를 관찰해 archive extraction의 보안 경계 위반을 탐색하려는 프로젝트입니다.
-경로뿐 아니라 **파일 객체의 identity와 외부 상태 변화**를 다음 입력을 선택하는 feedback으로 활용할 가치가 있는지 연구합니다.
+InodeFence는 TAR 입력을 만들고 변형해 실제 extractor(압축 해제 프로그램)를 격리 컨테이너에서 실행하고, 실행 전후의
+filesystem 상태를 관찰해 보안 경계 위반을 판정합니다. 사용자 진입점은 `inodefence` 명령(`doctor`, `targets`,
+`verify`, `explore`, `status`, `replay`, `summary`)입니다. 버전은 0.2.0 (릴리스 후보, 태그·릴리스 없음)입니다.
+이 문서는 0.2.0 릴리스 후보 브랜치 기준이며 태그·릴리스 전입니다.
 
-**지금 돌아가는 것 (2026-10-24):** `make demo` 한 명령으로 실제 node-tar **7.5.22**를 격리
-컨테이너에서 실행하며 "입력 생성 → 실행 → entry별 중간 상태 관찰 → C0/C1/C2 판정 → feedback →
-다음 mutation 선택" 루프를 돌립니다. 같은 seed·budget이면 같은 루프가 재현됩니다.
-현재 능력은 [STATUS](docs/STATUS.md)의 Capability Ledger가 기준이고, 11/2 중간발표 목표는
-배경 문서 [MIDTERM_GOALS](docs/MIDTERM_GOALS.md)에 있습니다.
+[빠른 시작](#빠른-시작) · [사용 안내](docs/USAGE.md) · [현재 상태(Capability Ledger)](docs/STATUS.md) ·
+[시작 안내](docs/START_HERE.md) · [Security Contracts](docs/research/design/security-contracts.md) ·
+[개발 참여](CONTRIBUTING.md) · [보안 정책](SECURITY.md)
 
-연구 정의와 claim 범위는 [Research Contract v1](docs/research/design/research-contract-v1.md)이
-관리합니다. 2026-10-18 이전 Layer별 이력(capability baseline `8ad07b8`)은 STATUS 하단에 있습니다.
+## 어떤 보안 문제를 푸는가
 
-**DESIGNED / IMPLEMENTED / TESTED / EXPERIMENTALLY VALIDATED는 서로 다릅니다.**
-Historical vulnerability rediscovery(N01)는 성공 조건으로 실행·주장하지 않습니다. 초기 비교는 arm 간 어휘가 달라 폐기했고, 어휘를 맞춘 R/D/S-u 설계로 다시 실험했다. 역사적 취약점을 재발견한 적이
-없고 현재 취약점을 주장하지 않습니다. 첫 intended qualification pair는 **N01 node-tar
-7.5.2 / 7.5.3**입니다. 과거 감사·요약은 자체 revision의 기록이며 현재 capability baseline이 아닙니다.
-
-[현재 상태](docs/STATUS.md) · [시작 안내](docs/START_HERE.md) · [아키텍처](docs/research/design/architecture.md) · [Security Contracts](docs/research/design/security-contracts.md) · [개발 가이드](CONTRIBUTING.md)
-
-## 우리가 해결하려는 문제
-
-TAR는 파일 내용과 함께 경로, 링크, 처리 순서를 담습니다. 압축 해제는 이 정보를 읽어 실제 filesystem을 바꾸는 작업입니다.
-신뢰할 수 없는 archive를 처리할 때는 지정된 extraction root(압축 해제 목적지) 밖의 파일이 보호되어야 합니다.
-
-기본적인 보안 질문은 다음과 같습니다.
-
-> 압축 파일 안의 경로가 extraction root 밖으로 나갔는가?
-
-InodeFence는 여기에 한 가지 질문을 더합니다.
+TAR는 파일 내용과 함께 경로, 링크, 처리 순서를 담고, 압축 해제는 이 정보로 실제 filesystem을 바꿉니다. 신뢰할 수
+없는 archive를 풀 때는 지정된 extraction root(압축 해제 목적지) 밖의 파일이 보호되어야 합니다. 기본 질문은
+"archive 안의 경로가 extraction root 밖으로 나갔는가?"입니다. InodeFence는 한 가지를 더 묻습니다.
 
 > 경로가 내부에 있어 보여도, 결과적으로 외부 파일 객체와 연결되거나 외부 상태에 영향을 준 것은 아닌가?
 
-다음은 실제 취약점 재현이 아닌, 확인하려는 객체 관계의 개념 예입니다.
-
 ```text
 extract/result.txt ─┐
-                   ├── 같은 filesystem object
+                   ├── 같은 filesystem object      (개념 예, 실제 취약점 재현 아님)
 outside/sentinel ──┘
 ```
 
-두 경로가 같은 파일 객체를 가리키면 내부 파일에 대한 쓰기가 외부 파일의 내용에도 영향을 줄 수 있습니다.
-**Object Identity는 경로 이름이 아니라 실제 filesystem object가 같은지 보는 것**입니다. hardlink는 서로 다른 경로가 같은 객체를 가리킬 수 있는 한 예입니다.
-symlink도 경로가 실제로 향하는 대상에 영향을 주므로, 경로 문자열만으로 모든 보안 관계를 설명하기는 어렵습니다.
+두 경로가 같은 파일 객체를 가리키면 내부 파일에 대한 쓰기가 외부 파일에도 닿습니다. hardlink가 대표적인 예이고,
+symlink도 경로가 실제로 향하는 대상을 바꿉니다. `outside/sentinel`은 실제 사용자 파일이 아니라 disposable
+sandbox(실행 후 버리는 실험 공간) 안의 **실험용 보호 파일**입니다.
 
-여기서 `outside/sentinel`은 실제 사용자 파일이 아닌 **실험용 보호 파일**입니다. extraction root 밖이지만 disposable sandbox(실행 후 버리는 실험 공간) 안에 둡니다.
+## 경로 중심 검사와 무엇이 다른가
 
-## 핵심 아이디어: 입력보다 입력이 만든 상태도 본다
+경로 문자열만 보는 검사는 "어디에 썼는가"를 봅니다. InodeFence의 Observer는 **객체 사이의 관계와 변화**를
+기록합니다. 판정은 압축 해제 전후 snapshot으로 하고, 탐색 feedback은 그에 더해 entry별 중간 상태(trace)도 근거로
+씁니다. 기록하는 것: path·type, `st_dev`/`st_ino`(같은 객체인가), `st_nlink`, mode·size, symlink
+link text(`lstat`만, referent를 따라가지 않음), content hash, 보호 sentinel의 전후 상태. raw inode 번호보다
+"내부 파일과 외부 sentinel이 같은 객체다", "외부 sentinel의 내용이 변했다" 같은 관계가 판정과 탐색에 쓰입니다.
 
-Fuzzing은 입력을 반복해서 바꾸고 실행하며 예상하지 못한 동작을 찾는 탐색 방법입니다.
-InodeFence는 TAR를 filesystem을 변화시키는 entry sequence(항목의 순서)로 보고, 그 결과 만들어진 보안 관련 상태를 다음 탐색에 사용하려 합니다.
+Oracle은 이 관찰을 일반화된 Security Contract와 비교합니다. 특정 CVE 식별자나 PoC byte sequence를 조건으로
+쓰지 않습니다. 정확한 정의는 [security-contracts.md](docs/research/design/security-contracts.md)가 기준입니다.
 
-아래 루프는 bounded Python reference campaign에서 실행 가능합니다. Third-party generated-input campaign은 검증된 OS 격리 전까지 허용하지 않습니다.
+| ID | Contract | 뜻 | 상태 |
+| --- | --- | --- | --- |
+| C0 | Path Boundary Confinement | extraction root 밖의 persistent namespace 생성·삭제·identity/type 교체가 없어야 함 | 구현 (기본 검사, 신규 기여로 주장하지 않음) |
+| C1 | Object Identity Confinement | 내부 객체가 보호된 외부 sentinel과 같은 객체를 공유하면 안 됨 | 구현 (post-state `lstat` identity) |
+| C2 | External Effect Noninterference | 외부 sentinel의 내용·metadata가 의도치 않게 변하면 안 됨 | 구현 (sentinel 전후 비교) |
+| C3 | Extraction Root Integrity | 목적지 자체가 교체·redirect되면 안 됨 | 설계만, 미구현 |
+| C4 | Check/Use Coherence | 검증한 대상과 실제 operation 대상이 일관되어야 함 | instrumentation이 필요한 후속 단계 |
 
-```mermaid
-flowchart TD
-    A["Seed / ArchiveCase"] --> M["구조 변형"]
-    M --> B["TAR 생성"]
-    B --> T["실제 Extractor 실행"]
-    T --> O["Filesystem 상태 관찰"]
-    O --> Q["Security Contract 판정"]
-    O --> F["새로운 보안 관련 상태인가?"]
-    Q --> F
-    F --> C["선택한 입력을 Corpus에 보존"]
-    C --> M
+C0/C1/C2는 **persistent snapshot** 판정입니다. 두 capture 사이의 일시적 operation, sandbox 밖 접근, direct-use,
+symlink referent identity, inode 재사용은 완전히 판정하지 못합니다. **위반 없음(`violated=False`)은 관찰 범위 안에
+증거가 없다는 뜻이며 안전성 증명이 아닙니다.**
+
+탐색 루프와 책임 분리:
+
+```text
+Seed / ArchiveCase → Structure Mutator → TAR Builder → Target Adapter
+  → State Observer → Security Oracle → Feedback / Corpus → 다음 mutation
 ```
 
-`ArchiveCase`는 순서와 중복을 보존하는 immutable TAR 입력 모델입니다.
-Mutation(입력 변형)은 entry의 경로, type, link target, 순서, 의존 관계 등을 일반적인 규칙으로 바꾸는 것을 뜻합니다.
-Corpus는 다음 변형의 출발점으로 남기는 입력 모음입니다.
+**Observer = 사실 기록 · Oracle = 계약 판정 · Feedback = 탐색 가치 판단.** 새롭거나 탐색 가치가 있는 상태가 곧
+취약점은 아닙니다(Interesting ≠ Vulnerable). 대상별 실행 로직은 adapter에 두고 generic mutation·observer·oracle·
+feedback에 특정 target/CVE 로직을 섞지 않습니다. 상세는 [architecture.md](docs/research/design/architecture.md),
+모듈 지도와 내부 API 예는 [src/inodefence/README](src/inodefence/README.md)에 있습니다.
 
-특정 CVE의 공격 순서를 생성기에 넣는 대신, 작은 일반 입력에서 출발해 상태에 따라 입력을 선택하는 방식이 목표입니다.
-상세 데이터 흐름과 interface 책임은 [architecture.md](docs/research/design/architecture.md)를 따릅니다.
+## 지금 구현·검증된 것
 
-## 무엇을 관찰하는가
+능력과 증거 수준의 단일 기준은 [STATUS의 Capability Ledger](docs/STATUS.md)입니다. 수준 어휘(DESIGNED ·
+IMPLEMENTED · TESTED · VALIDATED)는 [Research Contract](docs/research/design/research-contract-v1.md)를 따릅니다.
+아래 다섯 종류의 주장은 서로 다르며, 섞어 읽지 않습니다.
 
-초기 Observer(관찰 모듈)는 압축 해제 **전후 snapshot**, 즉 각 시점의 filesystem 상태 기록을 우선합니다.
-현재 Observer는 다음 정보를 기록합니다. symlink는 `lstat`과 link text만 관찰하고 referent를 따라 읽지 않습니다.
+| 종류 | 현재 상태 | 근거 |
+| --- | --- | --- |
+| (1) 알려진 CVE의 **통제 재현** | TESTED. node-tar 5 릴리스 × 고정 입력 2개의 통제 차분: 최상위 hardlink는 7.5.2에서 외부 참조 파일과 inode 공유(nlink 1→2)·7.5.3 거부, 중첩 hardlink는 7.5.6 공유·7.5.7 거부(7.5.8도 거부). 판정은 observed이고, 각각 CVE-2026-23745·CVE-2026-24842에 대응한다는 것과 회귀 원인은 inferred. **통제 재현이며 퍼저의 탐색 결과가 아닙니다.** | [`experiments/repro/evidence/summary.json`](experiments/repro/evidence/summary.json) → [cross-release-identity-repro-v1](experiments/summaries/cross-release-identity-repro-v1.md) → Ledger M2 |
+| (2) generic Oracle이 **알려진 위반을 판정** | TESTED. identity oracle 하나가 위 두 쌍을 릴리스 id·정답 경로 하드코딩 없이 구분하고, 손 probe 판정과 production Observer+Oracle 판정이 일치. oracle·adapter 수준에서 3 추출기에 적용: Python `tarfile`은 필터 토글 비교(`fully_trusted` → C1+C2, `data` → 거부), oras-go·decompress는 adapter 통제 차분(#176·#177) | `tests/test_cross_release_oracle_agreement.py`, `tests/test_python_tarfile_generality.py`, Ledger M2.2·M4 |
+| (3) 퍼저의 **자력 발견** | 본실험 결과 자리(봉인 해제 뒤 기입) | [사전등록](experiments/preregistration/) exp3-v1·exp2-v1, Ledger M3 |
+| (4) 통계적으로 입증된 **성능 우위** | 주장하지 않음. 본실험 결과 자리(봉인 해제 뒤 기입) | — |
+| (5) **미검증 기능·가설** | C3·C4 미구현. entry 단위 native 전이 관찰은 관찰 경계를 확보하지 못해 미구현(honest negative). `replay`의 실제 위반 케이스 E2E는 미검증. FAST 실행 프로필(`explore --profile fast`)은 실행당 고정 준비 비용만 줄이고 케이스당 비용은 그대로. macOS·기타 Linux 호스트는 이 후보에서 미확인 | Ledger, [사용 안내 한계](docs/USAGE.md#한계와-주의) |
 
-| 관찰 정보 | 확인하려는 의미 |
-| --- | --- |
-| path, object type | 어디에 어떤 종류의 객체가 생겼는가? |
-| `st_dev`, `st_ino` | 두 경로가 같은 filesystem의 같은 객체를 가리키는가? |
-| `st_nlink` | 객체에 연결된 hardlink 수는 얼마인가? |
-| mode, size | 권한과 크기가 어떻게 달라졌는가? |
-| symlink target | 링크에 기록된 대상은 무엇인가? |
-| content hash | 파일 내용이 바뀌었는가? |
-| 보호된 sentinel의 전후 상태 | 외부 객체의 존재·내용·metadata에 변화가 있는가? |
+그 밖에 TESTED인 것: 실제 node-tar 루프(입력 → 격리 실행 → entry별 중간 상태 관찰 → C0/C1/C2 → feedback → 다음
+mutation 선택)가 `make demo`(node-tar 7.5.22, 정상 입력)로 돌고 같은 seed·budget이면 재현됩니다. 이 데모의 정상
+입력에서 위반은 0건입니다. 위 어느 것도 퍼저가 취약점을 찾았거나 재발견했다는 주장이 아닙니다.
 
-**중요한 것은 raw inode 번호 자체보다 객체 사이의 관계와 변화입니다.**
-예를 들어 “inode 번호가 123이다”보다 “내부 파일과 외부 sentinel이 같은 객체다”, “외부 sentinel의 내용이 변했다”가 탐색에 의미 있는 정보입니다.
+## 지원 대상과 검증 수준
 
-`StateSnapshot = full raw observation/evidence`입니다. Sandbox 전체를 기록하므로 `archive/input.tar`의 SHA-256과 harness metadata도 그대로 보존합니다.
-`StateSignature = normalized security-state representation for feedback/corpus`입니다. `extract/**` 결과와 external 상태·effect, 보호 sentinel 및 내부↔sentinel identity 관계를 사용합니다. `.`과 `archive/**`는 `Region.HARNESS`로 제외하며, 그 외 extraction 밖 경로는 EXTERNAL이므로 root-level `escape.txt`도 유지합니다.
+`inodefence targets`가 지원 목록의 기준입니다. 네 대상 모두 고정 입력 회귀(`verify`)·이미지 자동 준비·탐색
+(`explore`)·케이스 재실행(`replay`)을 지원합니다. `verify`는 같은 실행에서 정상 입력 대조군도 풉니다.
 
-**StateSignature는 ArchiveCase identity나 TAR artifact identity를 직접 포함하지 않습니다.** 서로 다른 case/TAR가 같은 의미의 filesystem/security state를 만들면 같은 signature여야 합니다. 실제 Python reference extraction에서 독립 regular entry의 순서를 바꾸는 E2E regression으로 이 invariant를 확인합니다.
-Schema v3는 정렬된 path/type/mode, regular nlink/size/content digest, scope 안의 same-object group, link text와 외부 변경 종류를 담습니다. Symlink target은 `run:<raw suffix>` 또는 `literal:<raw target>`으로 tag하며 반복 slash와 `..` spelling을 보존하고 referent를 resolve하지 않습니다. V2 key 호환성이나 migration은 제공하지 않습니다. Directory를 포함한 nonregular nlink는 `None`이며 raw inode·timestamp·ownership 값과 nonregular size를 제외합니다. Raw nlink와 외부 metadata-change labels는 보존합니다.
-
-**Region.HARNESS는 security trust boundary가 아닙니다.** Signature에서 HARNESS를 제외하는 것은 input/harness novelty 오염을 막기 위한 normalization 정책입니다. C0는 별도로 extraction root 밖의 persistent namespace 생성·삭제·identity/type 교체를 검사하므로 `archive/escaped.txt` 생성이나 기존 `archive/input.tar` 삭제·교체도 evidence입니다. Content/metadata-only 변화는 기존 C0/C2 구분에 따라 C0 조건으로 삼지 않습니다.
-
-**Corpus는 state novelty와 violation novelty를 독립적으로 추적합니다.** 같은 signature라도
-새 C0/HARNESS evidence class면 보존할 수 있습니다. Stable violation fingerprint는 contract ID와
-path/changed-field 또는 internal/sentinel path 관계만 담으며 raw dev/inode allocation은 제외합니다.
-Case/TAR identity와 execution status/duration은 novelty가 아닙니다. 같은 case_id는 한 번만 보존하되
-새 outcome의 seen indexes는 갱신하므로 interesting observation이 항상 새 corpus entry는 아닙니다.
-상세 API와 정책은 [Feedback / Corpus v1](src/inodefence/feedback/README.md)을 따릅니다.
-
-`run_case()`는 layout·sentinel·input TAR setup 완료 후 BEFORE를 찍고, `target.run()` 종료 직후 bookkeeping/cleanup 이전에 AFTER를 찍습니다. 정상 setup은 baseline에 이미 있으므로 C0가 아닙니다. Snapshot은 생성 주체를 알 수 없으므로 adapter의 harness bookkeeping도 이 관찰 구간 밖에서 처리해야 합니다. 이 lifecycle 없이 HARNESS 변화를 면제하면 실제 boundary escape를 숨길 수 있습니다.
-
-## Security Contracts: 무엇을 위반으로 볼 것인가
-
-Security Contract는 안전한 압축 해제가 지켜야 할 일반화된 보안 규칙입니다.
-아래는 이해를 돕는 요약이며, **정확한 정의와 우선순위는 [security-contracts.md](docs/research/design/security-contracts.md)가 기준**입니다.
-
-| ID | Contract | 쉽게 말하면 | 현재 구현 / 설계 범위 |
+| 대상 | 대상 옵션 | `replay` | 비고 |
 | --- | --- | --- | --- |
-| C0 | Path Boundary Confinement | 생성하거나 직접 사용하는 경로가 의도한 extraction boundary를 벗어나면 안 됨 | HARNESS 포함 extraction 밖 persistent namespace 변화; direct-use tracing은 이후 |
-| C1 | Object Identity Confinement | 내부 객체가 보호된 외부 sentinel과 의도치 않게 같은 객체를 공유하면 안 됨 | post-state lstat identity 공유 판정 |
-| C2 | External Effect Noninterference | 압축 해제로 외부 sentinel의 내용·metadata가 의도치 않게 변하면 안 됨 | sentinel 전후 변화 판정 |
-| C3 | Extraction Root Integrity | 목적지 자체가 교체·redirect되어 이후 추출이 경계 밖으로 향하면 안 됨 | DESIGNED, 미구현 |
-| C4 | Check/Use Coherence | 검증한 경로·객체와 실제 operation에서 사용한 대상의 의미가 일관되어야 함 | instrumentation이 필요한 후속 단계 |
+| node-tar | — | 지원: 위반 케이스 폴더 (실제 위반 E2E 미검증) | 7.5.23은 `verify`에서 exploratory 버전으로 표시 |
+| python-tarfile | `--extraction-filter` | 지원: 결과 폴더 `--case` (실제 위반 E2E 미검증) | 필터는 기록에서 고정, `fully_trusted` 재실행은 거부 |
+| decompress | — | 지원: 결과 폴더 `--case` (실제 위반 E2E 미검증) | `--version`에 패키지까지: `@xhmikosr/decompress@11.1.4` |
+| oras-go | — | 지원: 결과 폴더 `--case` (실제 위반 E2E 미검증) | 탐색 입력은 엔트리 이름을 oras-go 아티팩트 디렉터리 `d/` 아래로 옮겨 보냄(케이스는 그대로). 탈출에 `../`가 하나 더 필요함. 확인은 2.6.2 한 버전의 demo run 1회([USAGE 한계](docs/USAGE.md#한계와-주의)) |
 
-현재 C0/C1/C2는 **persistent snapshot** detector입니다. 두 capture 사이의 transient effect,
-sandbox 밖 접근, direct-use, symlink referent identity와 inode reuse를 완전히 판정하지 못합니다.
-`violated=False`는 관찰 범위 내 증거가 없다는 뜻이며 safety proof가 아닙니다.
+대상 실행을 확인한 호스트는 **Windows + WSL2(Ubuntu 24.04, x86_64) + Docker Desktop 호스트 한 대**입니다. macOS와
+그 밖의 Linux 호스트는 이 후보에서 확인하지 않았습니다. 네 대상의 실제 실행은 **커밋 `f108e36`의 깨끗한 클론과
+새 venv에서 돌린 engineering smoke(demo run, 2026-11-17)**입니다(seed 123, `verify` 5~6 입력 + 정상 입력 대조군,
+`explore` budget 20). 네 대상 모두 실행을 끝냈고 위반 0건, 정상 입력 대조군은 네 대상 모두 추출에 성공했습니다.
+node-tar 7.5.23은 따로 budget 300(seed 20261117, 커밋 `6a2031f`) 탐색을 완주했고 위반 0건이었습니다(성공 200·거부
+99·실패 1, 미판정 1). 이 커밋 뒤에 바뀐 것이 있으면 그 변경은 [CHANGELOG](CHANGELOG.md)의 검증 범위에 적습니다.
+**위반 0은 안전성 증명이 아니며**, 실제 위반 케이스의 `replay`는 어느 대상에서도 native로 실행하지 못했습니다(탐색에서
+위반이 없었음). 대상별 수치·종료 상태 분포·한계는
+[사용 안내: 지원 환경과 확인 수준](docs/USAGE.md#지원-환경과-확인-수준)에 있습니다. 이 문서의 실행 예는 모두 `demo run`
+수준이며 사전등록 실험이나 자격 검증 결과가 아닙니다.
 
-C0는 중요한 기본 검사이며 InodeFence의 신규 기여로 주장하지 않습니다.
-Oracle(계약 판정 모듈)은 특정 CVE 식별자나 알려진 PoC byte sequence를 조건으로 삼지 않고, 관찰 사실과 계약을 비교해야 합니다.
+## 설치 요구사항
 
-## 연구 질문과 검증 기준
+- **Python 3.12** (`requires-python >=3.12,<3.13`; 3.13에서는 `pip`이 설치를 거부합니다).
+- **Docker**: 대상 실행(`verify`·`explore`·`replay`)과 이미지 준비에 필요합니다. `--dry-run`·`status`·`summary`에는
+  필요 없습니다.
+- **저장소 클론**: 대상을 돌리는 명령은 이미지 레시피(`tools/`)와 셸 런처(`scripts/`)가 있는 클론이 꼭 필요합니다.
 
-핵심 연구 질문은 다음과 같습니다([research-questions v2](docs/research/design/research-questions.md)).
+| 명령 | `pip install -e .`(클론에서) | `pip install .`(wheel)만 | wheel + `INODEFENCE_HOME=<클론>` |
+| --- | --- | --- | --- |
+| `--version`, `status`, `summary` | 됨 | 됨 | 됨 |
+| `doctor` | 됨 | 실행되지만 repository `FAIL`(종료 1) | 됨 |
+| `targets`, `verify`, `explore`, `replay` | 됨 | 안 됨: "repository not found", 종료 3 | 됨 |
+
+설치 방식별 세부(어느 코드가 도는지, 이전 레이아웃 클론 거부 등)는 [사용 안내: 설치](docs/USAGE.md#설치)에 있습니다.
+
+## 빠른 시작
+
+처음 한 번은 이 순서로 갑니다. 대상 실행을 확인한 호스트는 Windows + WSL2(Ubuntu 24.04, x86_64) + Docker Desktop 호스트 한 대뿐입니다.
+
+```bash
+# 1. 설치: 저장소 클론에서, Python 3.12
+git clone https://github.com/TheWaitForAGI/InodeFence.git InodeFence && cd InodeFence
+python3.12 -m venv .venv && . .venv/bin/activate
+pip install -e .
+
+# 2. 환경 점검: FAIL 줄은 그 줄의 안내대로 고치고 다시 실행합니다(종료 0 = FAIL 없음)
+inodefence doctor
+
+# 3. 추출기와 각 추출기가 지원하는 것
+inodefence targets
+
+# 4. 계획만 보기: 아무것도 내려받거나 빌드하거나 실행하지 않습니다
+inodefence verify  --target node-tar --version 7.5.23 --dry-run
+inodefence explore --target node-tar --version 7.5.23 --budget 20 --seed 123 --dry-run
+
+# 5. 실제 실행(Docker 필요). 이미지가 없으면 --auto-prepare가 Docker로 빌드합니다(네트워크 사용)
+inodefence verify  --target node-tar --version 7.5.23 --auto-prepare
+inodefence explore --target node-tar --version 7.5.23 --budget 20 --seed 123 --auto-prepare
+
+# 6. 결과 보기(기본 출력 폴더; 바꾸려면 --out 또는 INODEFENCE_OUTPUT_DIR)
+inodefence status ~/inodefence-target-run
+inodefence status ~/inodefence-explore
+inodefence summary ~/inodefence-explore/target-explore/7.5.23-123-20-result/result.json
+```
+
+- 출력은 저장소 밖에 씁니다. 같은 출력 폴더에 같은 실행의 결과가 이미 있으면 덮어쓰지 않고 종료 3으로
+  거부하므로, 다시 돌릴 때는 `--out`을 바꿉니다.
+- `explore`의 실제 실행에는 `--auto-prepare`가 필수입니다(없으면 아무것도 실행하지 않고 이유를 출력). `verify`는
+  이미지가 없을 때 `--auto-prepare`가 있어야 빌드합니다. 빌드는 Docker와 네트워크를 씁니다.
+- node-tar 7.5.23은 `verify`에서 exploratory 버전(고정 입력의 기대값이 이 버전용으로 확정되지 않음)으로 표시됩니다.
+
+## 주요 CLI 명령
+
+| 명령 | 하는 일 | 종료 코드 |
+| --- | --- | --- |
+| `inodefence doctor` | 환경 점검(`OK`·`FAIL`·`WARN`·`INFO`·`UNKNOWN`)과 고치는 법. 확인하지 못한 것은 `OK`가 아니라 `UNKNOWN`. 읽기만 함 | 0 FAIL 없음, 1 FAIL 있음 |
+| `inodefence targets [--json]` | 추출기와 각 추출기가 지원하는 것 | 0 정상, 3 저장소 없음·설정 파일 오류 |
+| `inodefence verify --target T --version V` | 고정 입력 회귀(`--version` 반복 가능) + 정상 입력 대조군(실패하면 PASS 대신 ERROR) | 0 PASS, 1 FAIL, 2 ERROR, 3 실행 전 거부 |
+| `inodefence explore --target T --version V [--budget N] [--seed S] [--quiet\|--verbose] [--profile fast]` | 상태 기반 feedback 탐색(기본 budget 20, seed 123). 실행 중 진행 줄을 stderr에 출력(`--quiet` 없음, `--verbose` 런처 원시 출력) | 0 PASS, 1 FAIL, 2 ERROR, 3 실행 전 거부 |
+| `inodefence status <폴더>` | 실행 중 진행·위반 케이스, 끝난 뒤 판정 | 0 표시, 2 보일 것 없음·읽기 실패 |
+| `inodefence replay <위반 케이스 폴더> [--rounds 3]`<br>`inodefence replay <결과 폴더> --case step-N` | 탐색 케이스를 같은 이미지·같은 조건에서 다시 돌려 회차별 분류와 재현 비율 기록(네 대상) | 0 완료, 1 미완료, 2 재실행 불가, 3 실행 전 멈춤, 4 미지원 |
+| `inodefence summary <result.json> [-o 파일]` | 결과를 한 장짜리 Markdown 요약으로(입력 TAR SHA-256 재대조) | 0 작성, 2 읽기·쓰기 실패 |
+
+공통 옵션: `--dry-run`(계획만), `--out <폴더>`(저장소 밖), `--auto-prepare`, `--image-tag-suffix`. 각 명령의 옵션과
+종료 코드는 `--help` 끝에 있습니다. 판정(0 PASS·1 FAIL·2 ERROR)과 실행 전 거부(3)는 다른 뜻이며, `verify`·
+`explore`·`replay`는 사용법 오류도 "아무것도 실행하지 않음"인 3으로 냅니다. 전체 표는
+[사용 안내: 종료 코드](docs/USAGE.md#종료-코드)에 있습니다.
+
+## 출력 결과와 재현
+
+`explore`는 실행 중 `<--out>/target-explore/<실행>/live/`에 진행 스냅샷 `progress.json`과 위반 케이스
+`violations/run-NNNNNN/`을 **발생 즉시** 쓰고, 끝나면 `<실행>-result/`에 공통 형식 `result.json`
+(`inodefence-target-result-v1`)과 `summary.md`를 씁니다. 탐색이 중간에 멈춰도 그때까지 쓴 위반 케이스는 남습니다
+(이어 하기는 아직 없습니다).
+
+- 위반 케이스 폴더에는 그 실행의 정확한 입력 `input.tar`와 `case.json`(케이스·seed·적용된 변이, C0/C1/C2 판정,
+  종료 상태, fingerprint, 입력 SHA-256, 이미지 id, 다시 돌리는 명령)이 있습니다.
+- 추출기의 종료 상태(success·rejected·failed·timed_out)와 오라클 판정은 별개 축입니다. 위반이 보이면 종료 상태와
+  상관없이 위반이고, 위반 없음을 깨끗한 음성으로 셀 수 없는 실행은 **미판정**으로 셉니다. 대상별 규칙은
+  [사용 안내](docs/USAGE.md#종료-상태와-판정은-별개입니다)에 있습니다.
+- **위반은 위반 후보이지 확정된 취약점이 아닙니다.** `inodefence replay`가 `case.json`에 기록된 정확한 이미지에서
+  다시 돌려 같은 계약 위반·fingerprint 일치 비율을 케이스 폴더 옆 `run-NNNNNN.replay-<UTC>/replay.json`에 씁니다.
+  그 이미지가 없으면 다른 이미지로 바꾸지 않고 멈춥니다.
+
+도중 확인, 케이스 폴더 읽기, 재실행 증거 보존, 인프라 중단 진단 줄의 상세는 [사용 안내](docs/USAGE.md)에 있습니다.
+
+## 설정
+
+설정은 두 키뿐입니다: `INODEFENCE_HOME`(클론 위치; editable 설치면 자동)과 `INODEFENCE_OUTPUT_DIR`(출력 기준
+폴더, 절대 경로; 기본 출력은 `~/inodefence-target-run`·`~/inodefence-explore`). 환경 변수가 설정 파일보다
+우선하고, 설정 파일은 `~/.config/inodefence/config.env`(또는 `$XDG_CONFIG_HOME/inodefence/config.env`, 다른 파일은
+`INODEFENCE_CONFIG`)입니다. 형식은 [`.env.example`](.env.example)에 있습니다. 저장소 루트의 `.env`는 읽지 않고,
+파일을 셸로 실행하지 않습니다. 적용된 값과 출처는 `inodefence doctor`가 보여 줍니다.
+
+**설정 파일로 실험 조건을 바꿀 수 없습니다.** 그 밖의 키(seed·budget, `INODEFENCE_RUNTIME_ROOT` 등)는 오류로
+거부합니다. seed·arm·budget·실행 SHA·격리 정책은 명령 옵션이나 동결된 사전등록 파일에서만 옵니다. 거부 규칙
+전체는 [사용 안내: 설정과 출력 위치](docs/USAGE.md#설정과-출력-위치)에 있습니다.
+
+## 보안 및 실행 제한
+
+- 실제 host의 민감 파일, SSH key, 사용자 문서, secret을 실험 대상으로 쓰지 않습니다. disposable sandbox와 실험용
+  sentinel만 쓰고, 파괴적인 filesystem 작업은 runtime sandbox 안으로 제한합니다.
+- 대상 추출기는 격리 컨테이너에서 돕니다. 실행 프로필은 STRICT(기본)와 FAST(`explore --profile fast`, 공용 이미지 재빌드만 생략)이며 격리를 완화하는 옵션은 없습니다.
+- **출력은 저장소 밖이어야 합니다.** `--out`이 저장소 안이면 실행 전에 거부합니다(위반 입력이 공개 저장소에 섞이지
+  않도록). 클라우드 동기화 폴더도 피하세요.
+- **책임 있는 공개:** 미공개로 보이는 문제를 찾으면 공개 저장소에 올리기 전에 해당 추출기의 유지보수자에게 먼저
+  알립니다. 확인되지 않은 finding은 공개 Issue에 올리지 않고, vendor coordination 전 exploit/PoC를 public branch에
+  commit하지 않습니다. Git 이력과 CI 로그도 공개될 수 있는 자료로 취급합니다. 기준은 [SECURITY.md](SECURITY.md)입니다.
+- 탐색 수치 중 공개 권고문의 영향 범위 안에 있는 특정 버전의 것(위반 수·종료 상태 분포 등)은 문서에 적지 않습니다.
+- 에이전트·개발자가 지키는 안전 규칙과 연구 불변식은 [AGENTS.md](AGENTS.md)에 있습니다.
+
+## 연구 질문, 성과와 한계
+
+핵심 연구 질문([research-questions v2](docs/research/design/research-questions.md)):
 
 > 피해 경로 이름을 아는 **동일 어휘·동일 예산** 아래서, filesystem security state(C1 identity·C2 effect)를
 > retention·스케줄링 피드백으로 쓰는 탐색이 **무작위 탐색**과 **구조 커버리지 탐색**보다 첫 경계위반까지의
 > 실행 수를 줄이고 고유 위반 입력을 더 많이 찾는가?
 
-**아직 검증 전인 연구 가설입니다.** 초기 비교는 arm 간 어휘가 달라 폐기했고, 어휘를 맞춘 R/D/S-u 설계로 다시 실험했다.
-
-| 연구 질문 | 확인할 내용 |
-| --- | --- |
-| 알려진 취약점 재발견 | 해당 CVE PoC를 기본 seed로 주지 않고도 알려진 보안 위반에 도달하는가? |
-| 여러 구현에 대한 적용 | 같은 상태 표현과 generic oracle을 여러 extractor에 적용할 수 있는가? |
-| 미지 상태 탐색 | patched/current target에서도 기존에 정의하지 않은 위반 후보를 찾는가? |
-
-발견 성공률, 첫 위반까지의 시간·실행 수, 서로 다른 보안 상태 등을 측정 후보로 삼되, 정확한 지표와 benchmark version은 평가 전에 고정합니다.
-동일 initial corpus, 가능한 동일 mutation operator, 반복 실행과 기록된 random seed로 비교합니다.
-Zero-day 발견은 필수 성공 조건이 아닙니다.
-
-정확한 연구 질문과 실험 원칙은 [research-questions.md](docs/research/design/research-questions.md)를 참고하세요.
-
-### 무엇이 새로운 것이라고 주장하지 않는가
-
-다음 각각 자체는 InodeFence의 novelty(신규 연구 기여)가 아닙니다.
-
-- TAR fuzzing, feedback-guided fuzzing
-- hardlink 공격, symlink 공격, path traversal
-- entry order mutation
-- filesystem-state observation, outside-root write detection
-
-Jana & Shmatikov, ZIPDiff, LinkZard, Wormholes 등은 관련 요소를 이미 다루고 있습니다.
-InodeFence의 기여 여부는 **선행연구 비교, baseline, ablation, known-vulnerability rediscovery, cross-target experiment**로 평가해야 합니다.
-현재 단계에서 “최초”, “기존 fuzzer보다 우수함”, “새로움이 입증됨” 같은 연구 성과를 주장하지 않습니다.
-선행연구와의 관계는 [related-work-positioning.md](docs/research/design/related-work-positioning.md)에 정리합니다.
-
-## 범위
-
-| 초기 범위에 포함 | 지금 다루지 않는 것 |
-| --- | --- |
-| TAR archive extraction | 모든 archive format |
-| Linux filesystem semantics | Windows NTFS와 모든 filesystem |
-| regular file, directory, hardlink, 필요한 범위의 symlink | 모든 symlink bypass의 재구현 |
-| entry path, type, link target, 순서, 의존 관계 변형 | 전체 archive-parser ambiguity 분석 |
-| 객체 identity와 external effect, 전후 snapshot | 일반적인 kernel vulnerability, 모든 TOCTOU/race 분석 |
-| 상태 기반 corpus 발전과 여러 extractor 적용 평가 | full symbolic execution, 처음부터 eBPF/fanotify full tracing |
-
-Target 구현 우선순위는 **node-tar → oras-go → 일정이 허용하면 GNU tar**입니다.
-처음부터 모든 target을 동시에 지원하지 않으며, benchmark용 target version은 별도로 고정합니다.
-Node-tar는 disposable target container에서 정상 fixture와 tiny benign configured campaign을 실행합니다. Uncontained target은 gate가 거부합니다. GNU-tar adapter와 fuzzing 기반 security evaluation은 다음 단계입니다. oras-go adapter는 구현됐습니다(#176, Ledger M4; adapter 수준 일반성 — affected/fixed 통제 reference 차분과 container-integration 체크, self-discovery native run은 right-censored 음성이라 effectiveness 주장 아님).
-
-공격자가 TAR entry를 제어한다고 가정하되, 실행 중 외부 process로 filesystem을 바꾸는 race 모델은 초기 범위에서 제외합니다.
-자세한 경계는 [project-scope.md](docs/research/design/project-scope.md)와 [threat-model.md](docs/research/design/threat-model.md)를 따릅니다.
-
-## 전체 시스템 구조와 책임
-
-Runtime Stage는 입력 하나가 처리되는 순서입니다. 개발 진척도를 나타내는 Layer와는 다릅니다.
-
-```text
-Seed / ArchiveCase
-→ Structure Mutator
-→ TAR Builder
-→ Target Adapter
-→ State Observer
-→ Security Oracle
-→ Feedback / Corpus
-→ next mutation
-```
-
-| 모듈 | 책임 |
-| --- | --- |
-| Seed Generator | 작고 설명 가능한 초기 입력 생성 |
-| Structure Mutator | target에 종속되지 않은 entry 구조 변형 |
-| TAR Builder | 논리적 입력을 실제 TAR로 표현 |
-| Target Adapter | 실제 extractor 실행과 프로세스 결과 기록 |
-| State Observer | filesystem에서 관찰한 사실 기록 |
-| Security Oracle | Security Contract 위반 여부 판정 |
-| Feedback / Corpus | 상태 표현과 판정 결과를 바탕으로 다음 탐색에 남길 입력 선택 |
-
-**Observer = 사실 기록 · Oracle = 계약 판정 · Feedback = 탐색 가치 판단**
-
-> **Interesting ≠ Vulnerable**
->
-> 새롭거나 탐색 가치가 있는 상태가 곧 취약점은 아닙니다. 위반 후보는 재현과 원인 분석을 거쳐야 합니다.
-
-관찰 상태는 계약 판정과 비교 가능한 State Signature(상태 요약)로 나뉘어 활용됩니다.
-Target-specific 실행 로직은 adapter에 두고, generic mutation·observer·oracle·feedback에 특정 target/CVE 로직을 섞지 않습니다.
-상세 구조의 기준은 [architecture.md](docs/research/design/architecture.md)입니다.
-
-## 현재 구현 상태
-
-실제 node-tar 루프는 `make demo`(호스트, docker 필요)로, node-tar 없는 synthetic 루프는
-`make demo-synthetic`(Dev Container)으로 돌립니다. 결과 JSON은 step마다 entry별 중간 상태(`trace`),
-C0/C1/C2 판정(`oracle`), 다음 mutation 선택 근거(`selection`)를 담습니다. 정상 입력에서 위반은
-0건이며, 취약점 발견이나 재발견을 주장하지 않습니다. M1~M4 상태는 [STATUS](docs/STATUS.md)
-Capability Ledger가 기준입니다.
-
-아래 표는 2026-10-18 기준 Layer별 이력입니다.
-
-| 개발 Layer | 기준 main의 capability와 evidence |
-| --- | --- |
-| Layer 0–2 | Dev Container / 연구 정의 / 공통 model 구현, canonical checks |
-| Layer 3 | fresh Linux runtime, actual reference worker, snapshot C0/C1/C2, contained Node benign full path |
-| Layer 4 | legacy/M1 eight uniform slots와 A3 no-reorder versions 구현/테스트 |
-| Layer 5 | signature v3, independent novelty, B0/B1/B3, A1/A2 keys, deterministic bounded search 구현/테스트 |
-| Layer 6 | minimizer, verified export/replay/qualification/dataset/statistics infrastructure 구현/테스트; historical/formal experiments와 paper는 미검증 |
-
-`run_search_campaign` / `SearchCampaignConfig`가 alternative policies를 실행합니다.
-Legacy `ExperimentConfig` v1/v2는 B3/legacy mutation만 지원하며 별도 `PolicyEvaluationConfig`는
-완료된 policy result의 binding/export/검증을 지원합니다. Automatic policy journal/repetition,
-interrupted evidence와 full-pipeline timing의 한계는 [STATUS](docs/STATUS.md)를 따릅니다.
-현재 verification/statistics는 관찰된 contract evidence이며 known-class rediscovery나 vulnerability를
-자동 판정하지 않습니다. Python reference는 architecture 검증용이고 최종 benchmark target이 아닙니다.
-GNU invocation은 benign fixture allowlist에 제한돼 있습니다. oras-go adapter는 구현됐습니다(#176, Ledger M4; adapter 수준 일반성).
-Canonical baseline 검증 근거는 [main CI](https://github.com/TheWaitForAGI/InodeFence/actions/runs/37248955432)입니다.
-
-## 개발 환경과 현재 실행 가능한 명령
-
-macOS 또는 Windows + WSL2에서 저장소를 **VS Code Dev Container**로 엽니다.
-기준 환경은 Ubuntu 24.04 + Python 3.12입니다.
-
-```text
-macOS / Windows + WSL2
-        ↓
-VS Code Dev Container
-        ↓
-Ubuntu 24.04 + Python 3.12
-```
-
-소스는 `/workspaces/InodeFence`, filesystem 실험은 `$INODEFENCE_RUNTIME_ROOT`(현재 `/var/lib/inodefence`)에 둡니다.
-Host와 공유하는 source bind mount를 실험 공간으로 쓰지 않고 Linux runtime volume을 사용해 filesystem 의미론과 소스 보관 영역을 분리합니다.
-
-컨테이너 안에서 실행합니다.
-
-```bash
-# 최초 개발 의존성 설치
-make install
-make target-tools  # pinned Node/node-tar lock tooling; target 실행은 별도 image/backend
-
-# 코드·타입·환경·문서 통합 검증
-make check
-
-# 안전한 baseline TAR 4종 재생성
-make fixtures
-
-# hardlink baseline 압축 해제 후 상태 출력
-make probe CASE=hardlink
-```
-
-Probe는 Python `tarfile`의 `data` filter를 사용하는 학습·관찰 도구입니다.
-임시 sandbox를 사용하고 실행 후 정리합니다. 기본 CASE는 `regular-file`이며 `directory`, `hardlink`, `symlink`도 지원합니다.
-이 명령은 node-tar/ oras-go adapter나 자동 security oracle을 실행하지 않습니다. 이 reference campaign CLI는 safe Python reference만 지원합니다. 실제 node-tar effect 캠페인은 `container_host` 컨트롤러 모드(effect-campaign·effect-demo-historical)로 실행합니다(Ledger M1). [개발 pilot](scripts/reference_campaign_pilot.py)과 [설정 기반 CLI](scripts/run_configured_reference.py)가 있습니다.
-
-Exact Python version이 설정과 일치하는 Linux 환경에서 작은 설정 기반 실행을 기록합니다. 예제는 Python 3.12.3이며 다른 patch version에서는 [설정](experiments/configs/README.md)을 명시적으로 갱신해야 합니다.
-
-```bash
-python -m scripts.run_configured_reference experiments/configs/reference-smoke-v1.json --output experiments/raw/configured-reference
-```
-
-새 output에 `experiment.json`, `manifest.json`, `steps.jsonl`을 보존합니다. Existing output은 거부합니다. Portable Node invocation 검증은 `make check`에 포함되고 실제 fixture 검증은
-`container_host ... validate-node-target`와 별도 CI job에서 container로 실행합니다.
-Node campaign CLI는 아직 없습니다.
-
-최초 `make install` 후 Dev Container의 Python에서 내부 API를 실행할 수 있습니다.
-
-```python
-import random
-from pathlib import Path
-
-from inodefence.campaign import CampaignConfig, run_campaign
-from inodefence.campaign_export import export_campaign
-from inodefence.feedback import Corpus
-from inodefence.generator import minimal_seed_corpus
-from inodefence.model import ArchiveCase, ArchiveEntry, EntryType, canonical_json
-from inodefence.mutator import mutate
-from inodefence.pipeline import run_case
-from inodefence.targets import PythonTarfileTarget
-
-case = ArchiveCase(
-    (
-        ArchiveEntry("a.txt", EntryType.REGULAR, content=b"hello inodefence"),
-        ArchiveEntry("b.txt", EntryType.HARDLINK, link_target="a.txt"),
-    )
-)
-result = run_case(case, PythonTarfileTarget())
-assert result.execution.succeeded
-assert all(not verdict.violated for verdict in result.violations)
-record = canonical_json(result)  # sandbox 정리 후에도 case·snapshot·evidence 보존
-
-corpus = Corpus()  # 한 caller-controlled campaign context에 속하는 in-memory search state
-decision = corpus.consider(result)
-rng = random.Random(1234)
-parent = corpus.select_case(rng)
-child = mutate(parent, rng)  # 개별 API도 caller 수준에서 조합 가능
-
-campaign = run_campaign((case,), PythonTarfileTarget(), CampaignConfig(1234, 25))
-assert len(campaign.steps) == 25
-
-# 고정된 4종 정상 seed를 사용할 때도 명시적으로 전달
-seeded = run_campaign(minimal_seed_corpus(), PythonTarfileTarget(), CampaignConfig(11, 25))
-manifest, steps = export_campaign(seeded, Path("experiments/raw/example-campaign"))
-```
-
-Corpus retention은 다음 mutation parent로 보존한다는 뜻입니다. 새로운 normalized state나
-contract-violation evidence class가 자동으로 취약점은 아닙니다. Campaign은 명시적 initial cases를 먼저 순서대로 실행합니다. Seed 실행도 budget에 포함하며
-중복 initial case ID, 빈 seed와 부족한 budget은 거부합니다. Parent 선택과 mutation은 하나의
-campaign-owned RNG를 사용하고 no-op도 재시도 없이 한 번 실행합니다. 네 target status는 모두
-기록하고 harness 오류는 그대로 전달합니다. Steps는 zero-based index, parent ID, full RunResult와
-feedback을 보존하므로 메모리는 O(execution_budget)이며 개별 evidence 크기에도 비례합니다.
-Config/initial IDs와 admission order는 결과에 남습니다. `export_campaign`은 새 directory에
-`manifest.json`과 canonical `steps.jsonl`을 staging 후 공개하고 기존/동시 output을 덮어쓰지 않습니다. Optional immutable config JSON도 stored config ID와 비교해 같은 bundle로 공개합니다. Raw inode/time과
-모든 status를 그대로 보존하며 결과를 분석/claim으로 승격하지 않습니다. Manifest의
-export_environment는 export한 process의 환경이고 과거 target 실행 환경이 아닙니다.
-Campaign은 실행 전 source revision/dirty, process 환경, target/version/timeout/safety와 sentinel digest/mode를 고정해 결과와 manifest에 보존합니다. Supplied source/environment의 정확성은 caller 책임이고 dirty bit는 source patch를 보존하지 않습니다. Formal config ID는 실제 execution provenance와 별개입니다. Corpus v1은 persistence나 완전한 campaign key를 제공하지 않습니다.
-
-`violated=False`는 관찰 범위 안에서 증거가 없다는 뜻입니다. Snapshot은 일시적 operation이나 sandbox 밖의 상태를 증명하지 못합니다. C0 namespace 변화와 C2 content/metadata effect를 구분하며, 관찰 오류는 harness 오류로 올립니다. Runtime directory는 cleanup 경계이고 임의 executable을 가두는 OS sandbox가 아닙니다. Isolation-required target은 validated backend/policy binding이 필요합니다. Snapshot 증거와 OS 실행 경계의 policy/한계는 별도로 기록합니다. 상세 API와 한계는 [architecture](docs/research/design/architecture.md)와 [계약 구현 범위](docs/research/design/security-contracts.md)를 따릅니다.
-
-Codex CLI는 exact version으로 고정하지 않는 **rolling latest** 정책입니다.
-설정·업데이트 방법은 [.devcontainer/README.md](.devcontainer/README.md), baseline 설명은 [TAR baseline 안내](docs/examples/tar-baseline.md)를 참고하세요.
-
-## 팀 개발 방식
-
-InodeFence는 coding agents를 적극 활용하는 **AI-assisted development** 프로젝트입니다.
-작업 목표, 현재 Layer, 수정 가능·금지 영역, 완료 조건을 Task Contract로 확정한 뒤 작은 작업 단위로 진행합니다.
-
-```text
-Issue → Task Contract → Branch → Human / Coding Agent implementation
-→ make check → PR → CI → Review (verifier agent or human) → Squash Merge
-```
-
-CI 통과만으로 merge하지 않습니다. architecture 경계·모듈 책임·연구 규칙 검토(autoloop verifier 또는 사람)를
-통과한 PR은 작성자가 직접 squash merge합니다. 머지는 사람 게이트가 아닙니다(D035).
-oracle 판정을 바꾸는 BREAKING 변경, 가드·격리 설정, FROZEN 변경, 외부 공개만 사람이 결정합니다.
-코딩 에이전트는 `START_HERE → STATUS → AGENTS` 순서로 문맥을 확인하고 현재 Layer 범위에서 작업합니다.
-협업 규칙은 [CONTRIBUTING.md](CONTRIBUTING.md)와 [AGENTS.md](AGENTS.md)를 따릅니다.
-
-## 실험에서 논문 근거까지
-
-실험 설정과 실행 기록, 확인된 결과, 논문 주장을 구분해 보관합니다.
-설계한 evidence 흐름은 다음과 같습니다. 검증·요약 APIs는 구현됐지만 formal dataset과 figure/paper reproduction은 아직 검증되지 않았습니다.
-
-```text
-Experiment Config → Raw Execution → Validated Summary
-→ Finding / Measurement → Figure / Table → Paper Claim
-```
-
-> **Raw result ≠ Paper claim**
-
-실행 로그에 보인 현상을 바로 연구 결론으로 쓰지 않습니다.
-위반 후보는 재현·최소화·원인 분석을 거치고, 측정 결과는 설정과 원본 근거를 연결해 검토한 뒤 논문에 사용합니다.
-
-실험 재현성에는 InodeFence commit, target/version, Python/runtime, config, random seed, execution budget, OS/architecture와 결과에 영향을 주는 dependency version을 기록합니다.
-Codex CLI 버전은 formal experiment reproducibility 기준에 포함하지 않습니다.
-
-[experiments](experiments/README.md)는 설정·raw 기록과 [검증 요약](experiments/summaries/README.md), [findings](findings/README.md)는 개별 사례의 재현·검토 근거, [paper](paper/README.md)는 논문에 사용할 준비가 된 자료를 담당합니다.
-Safe Python reference의 [개발 pilot 요약](experiments/summaries/reference-campaign-pilot-v1.md)이 있습니다. Formal effectiveness 결과나 확인된 finding은 아직 없습니다.
-
-## 보안 연구 안전 정책
-
-- 실제 host의 민감 파일, SSH key, 사용자 문서, secret을 실험 대상으로 사용하지 않습니다.
-- Disposable sandbox와 실험용 sentinel만 사용하며 파괴적인 filesystem 작업은 runtime sandbox 안으로 제한합니다.
-- 확인되지 않은 finding은 공개 Issue에 올리지 않습니다.
-- Vendor coordination 전 실제 취약점 exploit/PoC를 public branch에 commit하지 않습니다. 공개 시점과 범위는 별도 팀 검토·공개 결정을 따릅니다.
-
-Git 이력과 CI 로그도 향후 공개될 수 있는 자료로 취급합니다.
-재현·검토·vendor coordination·공개 절차의 기준은 [SECURITY.md](SECURITY.md)입니다.
-
-## Repository Map
-
-아래 엔진 경로는 책임 배치이며 전체 pipeline 구현 완료를 의미하지 않습니다.
-
-```text
-src/inodefence/      엔진 소스와 모듈 책임 안내
-tests/             자동 테스트와 안전한 TAR fixture
-scripts/           개발·검증·수동 probe 도구
-docs/research/     연구 근거와 상세 설계
-experiments/       configs / raw / validated summaries
-findings/          private / published finding 보관 흐름
-paper/             논문용 자료와 검토된 evidence
-```
-
-폴더별 상세 책임은 [엔진 모듈 지도](src/inodefence/README.md)와 [문서 지도](docs/README.md)를 참고하세요.
-
-## 어디부터 읽으면 되는가
+위협 모델은 공격자가 피해 경로 이름(보호 대상 외부 객체의 추출 루트 기준 상대 경로)을 알고, 세 arm 어휘에 그
+이름이 똑같이 들어간다고 전제합니다. blind 발견을 주장하지 않으며, CVE PoC·고정 공격 패턴·대상 경로·sentinel 이름은
+oracle·feedback에 넣지 않고, 알려진 CVE PoC를 탐색의 기본 seed로도 쓰지 않습니다.
+
+- **H-A (주 가설):** 어휘·seed·예산·이미지·oracle·operator 선택(uniform)이 같고 retention 정책만 다른 세 arm —
+  **R**(무작위), **D**(구조 커버리지), **S-u**(identity/effect/boundary-attempt 상태 retention) — 을 비교합니다.
+  1차 지표는 **T_first**(첫 C1 ∨ C2까지 실행 수, 우측중도절단 생존분석)와 **U_viol**(정규화 서명 기준 고유 위반
+  입력 수)입니다. 사전등록(EXP-3·EXP-2)은 Git에 동결돼 있습니다. 결과: 본실험 결과 자리(봉인 해제 뒤 기입).
+- **H-B:** CVE 문자열·버전·PoC 바이트를 넣지 않은 generic C0/C1/C2가 여러 추출기의 취약/수정 쌍을 손 fixture로
+  구분하는가 — 위 (1)·(2)의 통제 차분이 그 근거입니다.
+- **H-C (보조):** 어휘 음성 통제. 감사 이후 이를 검정한 실행은 없습니다.
+
+초기 비교는 arm 간 어휘가 달라 폐기했습니다(이전 기록은 [STATUS archive](docs/archive/pre-20261103-results.md)).
+
+**새롭다고 주장하지 않는 것.** 다음 각각은 그 자체로 InodeFence의 기여가 아닙니다: TAR fuzzing, feedback-guided
+fuzzing, hardlink·symlink 공격, path traversal, entry order mutation, filesystem-state observation, outside-root write
+detection. Jana & Shmatikov, ZIPDiff, LinkZard, Wormholes 등이 관련 요소를 이미 다룹니다. 기여 여부는 선행연구 비교,
+baseline, ablation, 사전등록 실험으로 평가하며, 그 전에는 우위나 새로움을 주장하지 않습니다
+([related-work-positioning](docs/research/design/related-work-positioning.md)).
+
+**범위.** TAR extraction, Linux filesystem 의미론, regular file·directory·hardlink·필요한 범위의 symlink, entry
+path·type·link target·순서·의존 관계 변형. 연구 MVP 대상은 node-tar 7.5.2/7.5.3·7.5.6/7.5.7과 Python `tarfile`
+`fully_trusted`/`data`이고, 자력 발견 실험 대상은 node-tar 하나입니다. decompress는 확장, oras-go는 oracle 일반성
+증거로만 씁니다(D038). GNU tar, entry 전이 관찰 계열, 모든 archive format, Windows NTFS, kernel 취약점 일반, 전체
+TOCTOU/race 분석, full symbolic execution은 다루지 않습니다. 실행 중 외부 process가 filesystem을 바꾸는 race 모델도 제외합니다
+([project-scope](docs/research/design/project-scope.md), [threat-model](docs/research/design/threat-model.md)).
+
+**raw 결과 ≠ 논문 주장.** 실행 로그에 보인 현상을 바로 연구 결론으로 쓰지 않습니다. 위반 후보는 재현·최소화·원인
+분석을 거치고, 측정 결과는 설정과 원본 근거(raw + SHA-256 목록)를 연결해 검토한 뒤 씁니다
+([experiments](experiments/README.md), [findings](findings/README.md), [paper](paper/README.md)).
+
+## 문서, 개발 참여, 라이선스
 
 | 읽는 목적 | 문서 |
 | --- | --- |
-| 처음 프로젝트 이해하기 | [START_HERE](docs/START_HERE.md) |
-| 현재 단계와 다음 작업 확인 | [STATUS](docs/STATUS.md) · [BACKLOG](docs/BACKLOG.md) |
-| 11/2 중간발표 목표(배경 문서) | [MIDTERM_GOALS](docs/MIDTERM_GOALS.md) |
-| 실제 실행 기록 (무엇을 언제 돌려 어떤 결과였나) | [LOG](docs/LOG.md) |
-| G0 연구 계약과 evidence 수준 | [Research Contract v1](docs/research/design/research-contract-v1.md) |
-| 전체 시스템과 모듈 책임 | [architecture](docs/research/design/architecture.md) |
-| 보안 판정의 정확한 기준 | [security-contracts](docs/research/design/security-contracts.md) |
-| 연구 질문과 선행연구 관계 | [research-questions](docs/research/design/research-questions.md) · [related-work-positioning](docs/research/design/related-work-positioning.md) |
-| 개발 참여와 에이전트 작업 규칙 | [CONTRIBUTING](CONTRIBUTING.md) · [AGENTS](AGENTS.md) |
-| 개발환경 설정 | [.devcontainer](.devcontainer/README.md) |
-| 실험 설정과 결과 보관 | [experiments](experiments/README.md) |
-| Finding 검토와 공개 | [SECURITY](SECURITY.md) · [findings](findings/README.md) |
-| 논문용 근거와 자료 | [paper](paper/README.md) |
+| `inodefence` 상세 사용법(설정, 출력, 탐색·도중 확인, 재실행, 종료 코드, 한계) | [docs/USAGE.md](docs/USAGE.md) |
+| 처음 프로젝트 이해하기, 개발용 명령(`make demo` 등) | [START_HERE](docs/START_HERE.md) |
+| 현재 능력과 다음 작업 | [STATUS](docs/STATUS.md) · [BACKLOG](docs/BACKLOG.md) |
+| 실제 실행 기록 | [LOG](docs/LOG.md) |
+| 변경 내역 | [CHANGELOG](CHANGELOG.md) |
+| 연구 계약·질문·선행연구 | [Research Contract v1](docs/research/design/research-contract-v1.md) · [research-questions](docs/research/design/research-questions.md) · [related-work-positioning](docs/research/design/related-work-positioning.md) |
+| 시스템 구조와 보안 판정 기준 | [architecture](docs/research/design/architecture.md) · [security-contracts](docs/research/design/security-contracts.md) |
+| 엔진 모듈·스크립트 지도 | [src/inodefence](src/inodefence/README.md) · [scripts](scripts/README.md) · [문서 지도](docs/README.md) |
+| 개발 참여, PR·병합 규칙, 에이전트 규칙 | [CONTRIBUTING](CONTRIBUTING.md) · [DECISIONS](docs/DECISIONS.md) · [AGENTS](AGENTS.md) |
+| 개발 환경(Dev Container) | [.devcontainer](.devcontainer/README.md) |
+| finding 검토와 공개 | [SECURITY](SECURITY.md) · [findings](findings/README.md) |
 
-README는 프로젝트의 입구입니다. 세부 정의는 각 canonical 문서를 따르며, 연구 메모나 계획을 검증된 성과로 취급하지 않습니다.
+**개발 환경.** 개발 명령(`make install`, `make check` 등)은 저장소를 VS Code Dev Container(Ubuntu 24.04 + Python
+3.12)로 열어 실행합니다. 호스트 Python에서 바로 돌리는 경로는 지원하지 않습니다(`make check`의 환경 검사는 Linux
+runtime 디렉터리 `$INODEFENCE_RUNTIME_ROOT`의 hardlink·symlink 의미론을 요구합니다). 사용자 명령 `inodefence`는
+별개로 호스트 셸의 venv에 설치해 씁니다. 작업 흐름과 PR 전 검사는 [CONTRIBUTING](CONTRIBUTING.md)을 따릅니다.
+
+README는 프로젝트의 입구입니다. 세부 정의는 각 기준 문서를 따르며, 연구 메모나 계획을 검증된 성과로 취급하지 않습니다.
+
+[MIT License](LICENSE). 실험 대상 extractor(node-tar 등)와 의존성은 각자의 라이선스를 따릅니다.

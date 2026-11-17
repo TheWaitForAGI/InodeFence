@@ -6,17 +6,20 @@ M1~M4와 같고, 날짜가 아니라 "증거가 모이면 찍는" 지점이다. 
 완료 기록은 [WORKLOG](WORKLOG.md), 실행 기록은 [LOG](LOG.md)에 남긴다.
 
 상태 값: `대기` / `진행` / `완료(<브랜치>)` / `완료(머지됨 #<PR>, main)` / `막힘(<날짜>, <이유>)` / `BREAKING(<브랜치>)` / `대기(머지 필요: <브랜치>)`
+(`대기(머지 필요)`는 옛 행에 남은 값이다. 머지 대기는 작업 중단 사유가 아니며 같은 레인의 직전 브랜치 위 스택 PR로 계속한다 — AGENTS.md PR 절)
 
 - 루프의 끝은 BACKLOG 소진이 아니라 **프로젝트 완료**(가설 검증·M1~M4; autoloop 7.1, D036)다. 큐가 비면 루프가
   STATUS Ledger의 빈 칸(증거 수준이 가장 낮은 미완 마일스톤의 다음 gate)에서 항목을 보충한다(autoloop 7.2).
-- 게이트 `사람`은 안전경계·연구 불변식에 걸리는 결정(외부 공개, 가드·격리·allowlist 설정, FROZEN 변경, BREAKING 판정)에만 쓴다.
-  머지는 사람 게이트가 아니다(D035): PR·CI·verifier 통과 후 자율 머지. 그 외는 안전경계 안에서 자율 진행한다.
+- 게이트 `사람`은 안전경계·연구 불변식에 걸리는 결정(외부 공개, 가드·격리·allowlist 설정, FROZEN 변경, BREAKING 판정,
+  승인된 범위를 넘는 실험 실행과 예산)에 쓴다. **PR 병합도 사람이 한다**(D037, [AGENTS.md PR 절](../AGENTS.md#pr)): 에이전트는
+  PR·CI·verifier 통과 후 병합 요청을 내고, 최종 squash merge는 지웅이 직접 한다. 스스로 머지하지 않는다. D035의 자율
+  머지는 보류 상태다. 머지 대기는 작업 중단 사유가 아니다(스택 PR로 계속). 그 외는 안전경계 안에서 자율 진행한다.
 - 안전경계(변경 없음): disposable sandbox + sentinel만, 고정 node-tar 버전, 격리 완화 플래그 금지,
   가드 훅 우회 금지, 실제 민감 파일 대상 금지. 이건 느슨하게 하지 않는다.
 - 연구 불변식(변경 없음): CVE-specific oracle 금지(D005), 알려진 PoC를 fuzzing seed로 안 씀(D006),
   observed/inferred 구분, synthetic을 native로 승격하지 않음, 비교 없이 effectiveness 주장 안 함.
 
-## 수술 (2026-11-03 ~ 11-30) — 단일 기준: Claude Doc
+## 수술 (2026-11-03 ~ 11-26) — 단일 기준: Claude Doc
 
 계획 기준은 Claude Doc 「InodeFence 독립 연구 감사 및 실험 설계 재정립」(https://claude.ai/artifact/JJtsK3VowEGuBFN3YXZDFq)이다
 ([STATUS 다음 연구 gate](STATUS.md) 수술 기준·[D038](DECISIONS.md)·[research-questions v2](research/design/research-questions.md)).
@@ -82,6 +85,27 @@ CVE-2026-24842(CVE-2026-23745 수정이 도입한 check/use 회귀; catalog N02�
 | M4.1 | oras-go adapter 설계(isolated CWD 포함), 동일 generic 모델·oracle로 연결. CVE/target-specific 로직을 generic 모듈에 섞지 않는다 | 완료(jiwoong/m4-1-oras-go-adapter) | 규민·민찬 협의 |
 | M4.2 | (감사 제안) decompress(JS; CVE-2026-39243/39246 = symlink + absolute hardlink, CWE-59) 또는 2026 CWE-59 군집(adm-zip·Archive::Tar·HF datasets·borg) 중 1개를 2번째 target으로 — 동일 generic oracle 재사용. | 완료(jiwoong/m4-2-decompress) | 규민·민찬 협의 |
 | M4.1b | (감사 전진, 완료) generic oracle 2번째 extractor 일반성: Python stdlib tarfile 통제 차분(fully_trusted=C1+C2, data=거부). `tests/test_python_tarfile_generality.py`. oracle 코드 불변·target-agnostic. | 완료(jiwoong/p-generality-python-tarfile) | 없음 |
+
+## PRODUCT — 제품 0.2.0 릴리스 (D049)
+
+마일스톤 M1~M4와 별개인 제품 레인이다. 범위와 릴리스 조건은 [D049](DECISIONS.md)에 있다. 여기에는 **0.2.0을 막는
+항목만** 올린다. 새 기능은 아래 0.3 목록에 한 줄로 적고 0.2.0에서는 만들지 않는다. 병합·태그·릴리스는 지웅이 한다.
+
+| 태스크 | 상태 | 게이트 |
+| --- | --- | --- |
+| P-1 호환 약속 고정(종료 코드·`result.json` v1 golden 테스트, `targets`가 어댑터 값을 읽음, CHANGELOG replay 문구 정정) | 완료(product/p0-06a-release-contract) | 없음 |
+| P-2 설치된 `inodefence`를 네 대상 실제 extractor에 돌리는 E2E를 CI에 추가(`scripts/dev/product_e2e.py`, CI `product-e2e`) | 완료(product/p0-06b-product-e2e-ci) | 없음(격리·하너스 불변) |
+| P-3 oras-go 탐색에서 실제 추출(넘기는 TAR에서만 이름을 `d/` 아래로, 옵션 기본 꺼짐) | 완료(product/p0-06c-oras-go-artifact-layout) | 지웅 지시(2026-11-17): 별도 브랜치, 본실험 체크아웃에 적용하지 않음. SHARED_PATH_FILES 두 개와 보호 런처 한 줄 변경이라 착지 전 확인 필요 |
+| P-4 python-tarfile·decompress·oras-go 런처의 Docker 시간 제한과 정리 실패 종료 코드 | 대기 | 지웅 승인됨(2026-11-17). 파일별 변경 명세와 격리 동등성 검증을 PR에 첨부, 가드가 막으면 보고 |
+| P-5 네 대상 실제 위반 케이스 `replay` 1회씩(demo run) | 대기 | 사람(재현할 대상·버전 결정) |
+| P-6 `main` 착지: 착지 PR 하나(#484, `product/p0-07-landing`; RC #457은 닫았고 이 브랜치가 포함한다, D049 2026-11-17 정정) | 대기 | 사람(11/26 제출과 봉인 해제 뒤, 지웅 병합) |
+| P-7 RC 소크: 두 번째 호스트(WSL2가 아닌 Linux) 깨끗한 클론에서 USAGE 그대로 실행, 약 1주 버그 수정만 | 대기 | P-6 |
+| P-8 `v0.2.0` 태그와 GitHub Release, CHANGELOG 날짜 기입 | 대기 | 사람(지웅) |
+
+0.3 목록(0.2.0에서 하지 않음): 탐색 재개(RESUME), FAST의 보호 경로 변경, wheel/PyPI 설치, macOS 확인, `explore`의 탐색·변이
+정책 옵션.
+지웅 등록(2026-11-17): 주기적 버전 감시 자동화(고정 회귀 버전과 별개로 네 대상의 최신 버전을 정기 실행하고 차이를 알림),
+oras-go v3 대응(v3.0.0은 Go 모듈 경로가 바뀌어 별도 대상으로 검토). 0.2.0의 고정 회귀 버전(oras-go 2.6.2)은 바꾸지 않는다.
 
 ## 상시 (레인 담당)
 

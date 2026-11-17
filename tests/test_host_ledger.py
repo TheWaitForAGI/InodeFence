@@ -1,11 +1,11 @@
-"""Host Ledger (scripts/host_ledger.py): local first, drive copy only on a mounted drive, honest."""
+"""Host Ledger (scripts/ops/host_ledger.py): local first, drive copy only on a mounted drive."""
 
 import json
 import subprocess
 from pathlib import Path
 
 import pytest
-from scripts import host_ledger as ledger
+from scripts.ops import host_ledger as ledger
 
 DRVFS = "248 170 0:125 / {point} rw,relatime - 9p G: rw,aname=drvfs;path=G:\n"
 ROOT_EXT4 = "1 0 8:1 / / rw,relatime - ext4 /dev/sdd rw\n"

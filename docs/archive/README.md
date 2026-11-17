@@ -11,6 +11,10 @@
 - `8ad07b8…` 등 고정 SHA는 그 동결이 본 리비전일 뿐 최신 main이 아니다.
 - 새 감사/계획 문서를 만들어 늘리지 않는다(AGENTS 금지). 새 사실은 Ledger 갱신 또는 LOG 한 줄로.
 
+2026-11-17 이전 STATUS의 상세 본문(단계별 판정, evidence 경계, 수술 기준·실험 순서·게이트 표, 문서 모순 목록)은
+[status-detail-20261117](status-detail-20261117.md)로 옮겼다(2026-11-17, STATUS 1페이지 축소). 다른 문서가 `docs/STATUS.md`의
+줄 번호로 가리키던 포인터는 옮기기 전 트리 기준이다.
+
 2026-11-03 이전 설계의 결과 기록(STATUS 행·서술, BACKLOG 옛 마일스톤 행)은 [pre-20261103-results](pre-20261103-results.md)로 옮겼다(2026-11-14); 동결 파일의 줄 번호 포인터(`experiments/preregistration/exposure-ledger.md:57` → `docs/STATUS.md:198`, `exp0-pilot-v2.1.md:89` → `research-questions.md` L50)는 `12fa02f` 트리 기준이다.
 
 ## 동결로 간주하는 기록
@@ -35,6 +39,10 @@
   `n03-b0-b1-b3-pilot-task-proposal.md`, `n04-five-second-preflight-task-contract-v1.md`,
   `n04-namespace-rebinding-sequence-v3-task-contract.md`,
   `effect-replacement-qualification-task-proposal.md`
+
+이 중 `docs/research/diagnostics/n01-autonomous-execution-final-review.md`와
+`n01-historical-execution-progress-2026-10-15.md`는 저장소에서 빼고 팀 Drive `InodeFence/Archive/`에 보관했다(목록·sha256은 그 폴더의 `MANIFEST.tsv`). 원본은
+`git show 2e947d3:<경로>`로 복구한다.
 
 ## 계속 살아있는 참고 문서 (archive 아님)
 

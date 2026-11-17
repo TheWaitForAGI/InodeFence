@@ -69,17 +69,21 @@ InodeFence는 이런 **object identity와 external effect를 fuzzing feedback으
 위협 모델 전제: 공격자는 피해 경로 이름을 알며 세 arm 어휘에 동일하게 포함한다. blind 발견을 주장하지 않는다.
 entry별 중간 상태를 어떻게 관찰하기로 했는지(v1 방식은
 qualification에서 실패했고, 지금은 v2 "effect event" 방식을 쓴다)와 그 한계는
-[STATUS](STATUS.md)의 상세 기록과
+[STATUS 상세 기록](archive/status-detail-20261117.md)과
 [entry-effect-observation-v2](research/design/entry-effect-observation-v2.md)를 따른다.
 
-## 4. 현재 어디까지 했는가? (2026-10-24 기준)
+## 4. 현재 어디까지 했는가? (2026-11-17 갱신)
 
 한 줄 요약: **실제 node-tar 7.5.22를 대상으로 "입력 생성 → 실행 → entry별 중간 상태 관찰 →
 C0/C1/C2 판정 → feedback → 다음 mutation 선택" 루프가 `make demo` 한 명령으로 돌아간다.**
 같은 조건(seed 123, budget 20)으로 다시 돌리면 같은 루프가 나온다(호스트에서 4회 확인).
 
-현재 능력은 [STATUS](STATUS.md)의 Capability Ledger가 기준이다. 11/2 중간발표 목표는 배경 문서
-[MIDTERM_GOALS](MIDTERM_GOALS.md)에 있고, 할 일 순서는 [BACKLOG](BACKLOG.md), 실행 기록은 [LOG](LOG.md)다.
+현재 능력과 다음 할 일은 [STATUS](STATUS.md)의 Capability Ledger(마일스톤 M1~M4)가 기준이다. 아래 한 줄 요약은
+2026-10-24에 확인한 기록이고, 그 뒤 상태는 Ledger에서 읽는다. 수술 기간(2026-11-03~11-26)의 계획 기준은 Claude Doc
+「InodeFence 독립 연구 감사 및 실험 설계 재정립」(https://claude.ai/artifact/JJtsK3VowEGuBFN3YXZDFq)이고, 실험 실행 기준은 Git에
+동결된 사전등록(`experiments/preregistration/`)이다([AGENTS.md 현재 기준](../AGENTS.md#현재-기준)). 11/2 중간발표 목표는 배경 문서
+[MIDTERM_GOALS](MIDTERM_GOALS.md)에 있고(Layer 0~6·P0 단계는 지난 개발 단계의 기록), 할 일 순서는 [BACKLOG](BACKLOG.md),
+실행 기록은 [LOG](LOG.md)다.
 
 지금 돌아가는 것:
 
@@ -90,19 +94,20 @@ C0/C1/C2 판정 → feedback → 다음 mutation 선택" 루프가 `make demo` �
 | `make node-tar-smoke` | 호스트 터미널 | node-tar 실행 환경이 되는지 확인 |
 | `python -m scripts.oracle_fixture_check` | Dev Container | C0/C1/C2 판정이 의도한 fixture에서 맞게 나오는지 확인 (통제 extractor, node-tar 아님) |
 | `make check` | Dev Container | lint·타입·테스트·환경·문서 링크 검사 |
+| `inodefence doctor` → `targets` → `verify`/`explore` → `status`/`summary` | 호스트 터미널 (대상 실행은 docker 필요, `--dry-run`은 어디서나) | 추출기를 골라 고정 입력 회귀·탐색을 돌리는 사용자 명령. 설치부터 첫 실행까지는 [README 빠른 시작](../README.md#빠른-시작) |
 
 아직 안 된 것, 그리고 주장하지 않는 것:
 
 - 취약점을 찾았다거나 재발견했다는 주장은 없다. `make demo`의 정상 입력 20개에서 C0/C1/C2 위반은 0건이다.
 - N01(과거 취약 버전 node-tar 7.5.2/7.5.3 재발견)은 자동 replay까지 끝났다. N01 사람 대응 검토는 더 이상 다음
-  gate가 아니고([STATUS](STATUS.md) 수술 기준), 재발견(v1 RQ1)은 성공 조건이 아니라 EXP-5 산출물로 옮겼다([research-questions v2](research/design/research-questions.md)).
+  gate가 아니고([STATUS 상세 기록](archive/status-detail-20261117.md)의 수술 기준), 재발견(v1 RQ1)은 성공 조건이 아니라 EXP-5 산출물로 옮겼다([research-questions v2](research/design/research-questions.md)).
 - 초기 비교는 arm 간 어휘가 달라 폐기했고, 어휘를 맞춘 R/D/S-u 설계로 다시 실험했다.
 - node-tar가 거부한 입력(`..` 경로, 절대 경로)에서는 중간 상태 event가 0개로 남는다.
   이 한계를 어떻게 표현할지 아직 정하지 않았다.
 
 **DESIGNED ≠ IMPLEMENTED ≠ TESTED ≠ EXPERIMENTALLY VALIDATED.**
 "구현돼서 돌아간다"와 "연구 가설이 맞다"는 다르다. 지금은 앞쪽이다.
-2026-10-18 이전의 Layer별 상세 이력과 영어 용어가 많은 기록은 [STATUS](STATUS.md) 하단에 있다.
+2026-10-18 이전의 Layer별 상세 이력과 영어 용어가 많은 기록은 [STATUS 상세 기록](archive/status-detail-20261117.md)에 있다.
 
 ## 5. 코딩하기 전에 딱 이것만 읽기
 
@@ -177,15 +182,24 @@ src/inodefence/minimizer.py bounded generic / USTAR / evidence-bound minimizatio
 src/inodefence/evaluation/ completed raw validation / qualification / dataset / statistics
 src/inodefence/transition_campaign.py  transition v1 P0/P1/P2 composition (현재 demo 경로 아님)
 src/inodefence/replay/     allowlisted benign clean replay
+src/inodefence/drivers/    제품 실행 계층: inodefence verify/explore/replay/targets의 대상별 드라이버 (엔진은 이 계층을 import하지 않음)
+src/inodefence/drivers/runtime/  실행 주변 읽기 전용 점검(health)과 중단 진단(diagnosis); 지우거나 판정을 바꾸지 않음
+src/inodefence/cli.py, locate.py  사용자 명령 inodefence (cli → locate → drivers → 엔진)
 
 tests/                      코드 테스트
-scripts/                    개발/실험 보조 명령
+scripts/                    컨트롤러·셸 런처, 등록 실험 러너, analysis/·dev/·ops/ 도구, 드라이버 옛 경로 별칭 (scripts/README.md)
 docs/research/              연구 근거와 설계
 experiments/                실험 설정과 결과
 findings/                   재현 가능한 finding
 artifacts/                  의도적으로 보존할 생성물 (실행 sandbox 아님)
 paper/                      논문에 실제로 사용할 자료
 ```
+
+### 보관 자료
+
+실행·테스트·재현에 쓰이지 않는 과거 기록 일부는 저장소에서 빼고 팀 Drive `InodeFence/Archive/`에 원래 경로
+구조 그대로 보관했다. 목록·커밋·sha256은 그 폴더의 `MANIFEST.tsv`에 있다. Drive 사본은 공식 실험 증거가 아니다.
+Git에서 복구하려면 `git show 2e947d3:<경로>`를 쓴다(2e947d3에 원본이 있다).
 
 ## 7. AI에게 작업시킬 때 기본 요청 형식
 
@@ -212,6 +226,7 @@ paper/                      논문에 실제로 사용할 자료
 ```
 
 작업 단위는 [BACKLOG](BACKLOG.md)에서 고르고, 끝나면 [LOG](LOG.md)에 한 줄 남긴다.
+PR은 에이전트가 열고 병합 요청까지 낸다. 병합은 지웅이 한다(D037, [AGENTS.md PR 절](../AGENTS.md#pr)). 에이전트는 스스로 병합하지 않는다.
 새 감사·계획 문서를 만들지 않는다(AGENTS.md 금지 사항).
 
 ## 8. 한 작업의 완료 조건
@@ -229,6 +244,6 @@ paper/                      논문에 실제로 사용할 자료
 
 ## 9. 가장 중요한 원칙
 
-> **AI가 코드를 많이 만드는 것보다, 팀원이 그 코드가 프로젝트의 어느 Layer에 있고 왜 필요한지 설명할 수 있는 상태를 유지한다.**
+> **AI가 코드를 많이 만드는 것보다, 팀원이 그 코드가 프로젝트의 어느 계층(architecture의 모듈 책임)에 있고 왜 필요한지 설명할 수 있는 상태를 유지한다.**
 
 이 프로젝트에서는 문서도 구현의 일부다.

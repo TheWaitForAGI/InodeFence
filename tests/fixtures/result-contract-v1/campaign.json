@@ -1,0 +1,64 @@
+{
+  "axes": {
+    "extraction_filter": null,
+    "runtime_version": null,
+    "target_version": "7.5.1"
+  },
+  "campaign": {
+    "budget": 20,
+    "errors": null,
+    "max_unjudged_ratio": null,
+    "runs_executed": null,
+    "runs_to_first_violation": 2,
+    "seed": 1234,
+    "stopped_early": false,
+    "terminations": null,
+    "unjudged_ratio": 0.0,
+    "unjudged_steps": null
+  },
+  "cases": [
+    {
+      "c0": null,
+      "c1": false,
+      "c2": false,
+      "case_id": "step-0",
+      "outcome": "declined"
+    },
+    {
+      "c0": null,
+      "c1": true,
+      "c2": true,
+      "case_id": "step-1",
+      "outcome": "resolved"
+    }
+  ],
+  "label": "demo run",
+  "mode": "campaign",
+  "observed_contracts": [
+    "C1",
+    "C2"
+  ],
+  "provenance": {
+    "engine_dirty": false,
+    "engine_sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "image_id": null,
+    "image_ref": "inodefence-node-tar-effect:7.5.1-dev"
+  },
+  "repro_inputs": [
+    {
+      "case_id": "step-1",
+      "tar_path": "inputs/step-1.tar",
+      "tar_sha256": "d5df39b1b993763c3402b694547ae1cd57a8158995c80e8426c74508b7c4fe5d"
+    }
+  ],
+  "runs": {
+    "errored": 0,
+    "executed": 2
+  },
+  "schema": "inodefence-target-result-v1",
+  "target": "node-tar",
+  "verdict": "FAIL",
+  "violating_cases": [
+    "step-1"
+  ]
+}

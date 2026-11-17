@@ -49,7 +49,7 @@ inferred(추론)를 구분하고, synthetic은 native 증거로 승격하지 않
   `experiments/summaries/exp2-holdout-unseal-record.json`). 결과 값과 판정 문장은 결과 PR과 주장 목록
   (`paper/sections/claims-evidence-status-v1.md`)에서 채운다. 이 문서의 "본실험 결과 자리"는 그때 갱신한다.
 - **제품 0.2.0.** `main`에 올리는 길은 착지 PR 하나다(D049). 릴리스 조건 6개 가운데 런처 시간 제한(3), 실제 위반
-  `replay` 기록(4)이 남았다. 두 번째 호스트 확인(6)은 2026-11-18 맥북의 Ubuntu arm64 VM에서 했다(demo run, 지웅 판정). 남은 일은 [BACKLOG PRODUCT 절](BACKLOG.md).
+  `replay` 기록(4)은 2026-11-18 정정된 문구 기준으로 decompress에서 했다(demo run; node-tar·oras-go는 탐색 200회에서 위반 케이스 없음). 두 번째 호스트 확인(6)은 2026-11-18 맥북의 Ubuntu arm64 VM에서 했다(demo run, 지웅 판정). 남은 일은 [BACKLOG PRODUCT 절](BACKLOG.md).
 - **제출물.** 결과보고서와 소개 영상의 일정과 상태는 [BACKLOG](BACKLOG.md), 초안은 `paper/deliverables/`에 있다.
 - **이전 상세.** 2026-11-17 이전의 단계별 판정, evidence 경계, 수술 기준·실험 순서·게이트 표, 문서 모순 목록은
   [archive/status-detail-20261117](archive/status-detail-20261117.md)로 옮겼다. 새 작업의 게이트가 아니다.

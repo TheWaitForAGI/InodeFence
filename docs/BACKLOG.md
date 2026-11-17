@@ -97,7 +97,7 @@ CVE-2026-24842(CVE-2026-23745 수정이 도입한 check/use 회귀; catalog N02�
 | P-2 설치된 `inodefence`를 네 대상 실제 extractor에 돌리는 E2E를 CI에 추가(`scripts/dev/product_e2e.py`, CI `product-e2e`) | 완료(product/p0-06b-product-e2e-ci) | 없음(격리·하너스 불변) |
 | P-3 oras-go 탐색에서 실제 추출(넘기는 TAR에서만 이름을 `d/` 아래로, 옵션 기본 꺼짐) | 완료(product/p0-06c-oras-go-artifact-layout) | 지웅 지시(2026-11-17): 별도 브랜치, 본실험 체크아웃에 적용하지 않음. SHARED_PATH_FILES 두 개와 보호 런처 한 줄 변경이라 착지 전 확인 필요 |
 | P-4 python-tarfile·decompress·oras-go 런처의 Docker 시간 제한과 정리 실패 종료 코드 | 대기 | 지웅 승인됨(2026-11-17). 파일별 변경 명세와 격리 동등성 검증을 PR에 첨부, 가드가 막으면 보고 |
-| P-5 네 대상 실제 위반 케이스 `replay` 1회씩(demo run) | 대기 | 사람(재현할 대상·버전 결정) |
+| P-5 실제 위반 케이스 `replay`(demo run; D049 조건 4, 2026-11-18 정정: 탐색이 위반 케이스를 낸 대상에서) | decompress 완료(2026-11-18, `decompress@4.2.1` 탐색의 C0 위반 케이스를 3회 재실행해 3/3 재현). oras-go 2.6.1과 node-tar 7.5.2는 탐색 200회 위반 0으로 케이스 없음, python-tarfile은 취약 설정 탐색이 D022로 보류돼 케이스 없음. node-tar를 등록 실험과 같은 예산(2000)으로 확인하는 일은 이슈 #502 | 조건 4 충족(정정 문구 기준). 보강은 #502 |
 | P-6 `main` 착지: 착지 PR 하나(#484, `product/p0-07-landing`; RC #457은 닫았고 이 브랜치가 포함한다, D049 2026-11-17 정정) | 대기 | 사람(11/26 제출과 봉인 해제 뒤, 지웅 병합) |
 | P-7 RC 소크: 두 번째 호스트(WSL2가 아닌 Linux) 깨끗한 클론에서 USAGE 그대로 실행, 약 1주 버그 수정만 | 두 번째 호스트 확인 완료(2026-11-18, 맥북의 Ubuntu 24.04 arm64 VM, demo run, 지웅 판정: 조건 6 충족). x86_64 네이티브 Linux는 미확인. 소크(약 1주)는 대기 | P-6 |
 | P-8 `v0.2.0` 태그와 GitHub Release, CHANGELOG 날짜 기입 | 대기 | 사람(지웅) |

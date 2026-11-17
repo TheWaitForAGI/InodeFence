@@ -130,11 +130,10 @@
 - **화면:** ① 실행 기록 `rec05` 재생(배속 표시): python-tarfile, decompress, oras-go의 `explore`가 차례로 돌고, 대상마다 `completed verdict=PASS … violations=0` 줄이 나온다. oras-go 끝에는 `TARGET-EXPLORE WARNING: 추출 성공 0건` 줄이 나온다. 세 대상은 실행 중 수치가 `?`로 표시된다. ② 뒤 약 11초는 슬라이드(머리말 "네 대상의 검증 수준 (budget 20, seed 123)"): "커밋 f108e36의 깨끗한 클론에서 explore를 대상마다 한 번씩 실행", "node-tar 7.5.23: success 17 · rejected 3 → 탐색", "python-tarfile 3.12.16 data: success 12 · failed 5 · rejected 3 → 탐색", "decompress 11.1.4: success 11 · rejected 9 → 탐색", "oras-go 2.6.2: success 0 · rejected 20 + 경고 → 실험적, 유의미한 보안 커버리지 주장 안 함", "verify: 네 대상 모두 정상 입력 대조군 ok · 고정 공격 입력 위반 0/5 (oras-go 0/6)", "네 대상 모두 위반 0 · 미판정 0. 위반 0은 안전 증명이 아님", "실행 중 수치 표시는 node-tar만, 나머지 셋은 실행 중 ? 표시", "Windows + WSL2 + Docker Desktop 호스트 한 대 · 0.2.0은 릴리스 후보(태그·릴리스 없음)". 머리말 라벨 "demo run · 호스트 한 대 · 위반 0은 안전 증명 아님".
 - **내레이션:**
   > 네 추출기의 검증 수준은 서로 다릅니다.
-  > node-tar와 파이썬 tarfile, decompress는 스무 번 탐색에서 추출 성공과 거부가 섞여 나왔습니다.
-  > oras-go는 스무 번이 모두 거부되어 경고가 붙었고, 실험적 지원으로 표시합니다.
+  > 네 추출기를 스무 번씩 탐색했고, 대상별 수치는 화면에 있습니다. oras-go 탐색은 실험적입니다.
   > 네 대상 모두 위반은 관찰되지 않았습니다. 이 화면은 한 호스트의 실행 기록이고, 안전하다는 증명은 아닙니다.
 - **자막:** 내레이션 문장.
-- **근거 주장:** C-PTGT (첫~셋째 문장과 넷째 문장 앞부분), C-PLIM (넷째 문장 뒷부분), C-PREC (화면 ①)
+- **근거 주장:** C-PTGT (첫째·둘째 문장과 셋째 문장 앞부분; 둘째 문장은 수를 말하지 않고 화면에 맡긴다. 실행 기록을 다시 남겨도 참이다), C-PLIM (셋째 문장 뒷부분), C-PREC (화면 ①)
 
 ### s07a — 장면 7 핵심 질문 시작 [얼굴] 5초
 

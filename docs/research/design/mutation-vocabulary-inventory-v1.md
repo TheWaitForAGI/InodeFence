@@ -1,0 +1,96 @@
+# 변이 어휘 목록 v1 (#512 초안)
+
+> **상태:** 초안(문서만). 엔진 동작은 바꾸지 않는다. 표시: exploratory(등록 밖) 설계 메모.
+> 이슈 [#512](https://github.com/TheWaitForAGI/InodeFence/issues/512)(변이 문법 확장)와
+> [#499](https://github.com/TheWaitForAGI/InodeFence/issues/499)(작업 폴더 기준 하드링크)의 첫 단계다.
+> 계열 목록은 #510에서 v2 holdout을 정하기 전에 동결한다(방법 검토 W4, 2026-11-18). 깊이 정의는 #509(레인 A)에서 받아 채운다.
+
+이 문서는 (1) 지금 문법이 실제로 내는 entry 종류와 변이 연산을 코드에서 읽어 정리하고, (2) 지금 못 만들거나 드물게만
+만드는 구조를 계열별로 적는다. 새 변이의 구현은 이 문서의 범위가 아니다.
+
+## 1. 지금 문법이 내는 것 (코드 기준, main `5cc002b`)
+
+### 1.1 논리 모델과 인코딩
+
+| 층 | 코드 | 내용 |
+| --- | --- | --- |
+| entry 종류 | `src/inodefence/model/archive.py` `EntryType` | `regular`, `directory`, `hardlink`, `symlink` 네 가지뿐이다. FIFO·장치·연속 파일·sparse 같은 다른 TAR 타입은 없다 |
+| entry 값 | `ArchiveEntry(path, entry_type, content, link_target, mode)` | 경로·링크 대상은 정규화하지 않은 원문 텍스트(NUL 금지, UTF-8). `mode`는 0..0o7777. 순서와 중복이 의미를 가진다 |
+| 인코딩 | `src/inodefence/builder.py` `build_tar`(`BUILDER_FORMAT = "ustar-utf8-v1"`) | USTAR만 쓴다. uid·gid·mtime 0, uname·gname 빈 문자열, size는 content 길이. PAX·GNU long name/link로 넘어가지 않고 표현 불가면 실패한다. USTAR name/prefix 분할이 원문을 바꾸면 거부한다 |
+| 길이 상한 | `src/inodefence/mutator/m1.py` `MAX_TEXT_BYTES = 100` | 변이가 만드는 경로·링크 대상은 UTF-8 100바이트 이하. 넘으면 그 변이는 no-op다 |
+| seed | `src/inodefence/generator/minimal.py` `minimal_seed_corpus` | 네 seed: 파일 1개 / 디렉터리+그 안 파일 / 파일+그 파일로의 하드링크 / 파일+그 파일로의 symlink. 모두 아카이브 안쪽을 가리킨다 |
+
+### 1.2 변이 정책과 슬롯
+
+모든 정책은 같은 8슬롯 순서(`src/inodefence/mutator/dispatch.py` `MutationOperatorId`, `OPERATOR_ORDER`)를 균등하게 뽑는다.
+적용할 수 없으면 한 번의 no-op이고 재시도하지 않는다.
+
+| 슬롯 | `operators.py`(LEGACY `uniform-generic-v1`) | `m1.py`(M1) | `m1_addressing.GENERIC_ESCAPE_OPERATORS`(등록 arm이 쓰는 표) |
+| --- | --- | --- | --- |
+| 0 add_entry | 끝에 regular 추가(`_PATH_PREFIXES`+`_PATH_STEMS`) | 임의 위치에 regular 또는 directory 추가, 이름은 `_raw_path` | m1 add_entry(어휘 = 아래 풀) |
+| 1 remove_entry | entry 하나 제거 | 같음 | 같음 |
+| 2 duplicate_entry | entry 하나를 임의 위치에 그대로 복제 | 같음 | 같음 |
+| 3 reorder_entries | 서로 다른 두 entry 자리 바꿈 | 같음 | 같음 |
+| 4 mutate_path | 한 entry 경로에 affix(`../`, `./`, `/`, `/..`, `x`) | 한 entry 경로를 `_raw_path`로 바꿈 | m1 mutate_path |
+| 5 add_hardlink | 기존 경로를 가리키는 하드링크를 끝에 | 기존 경로(링크 포함)를 가리키는 하드링크를 임의 위치에 | **`m1.add_escaping_hardlink`**: 대상이 항상 `..`(1~3번)로 시작하고 1~3개 토큰이 뒤따름. 기존 경로를 가리키는 하드링크는 이 표에서 만들지 않는다 |
+| 6 add_symlink | 기존 경로 또는 짧은 원문을 가리키는 symlink | 대상·경로 모두 `_raw_path`(기존 이름 재사용 포함) | m1 add_symlink |
+| 7 mutate_link_target | 링크 대상에 affix | 절반은 affix(`../`, `./`, `/`, `/..`, `/`), 절반은 `_raw_path`로 교체 | m1 mutate_link_target |
+
+`_raw_path`(m1.py): 경로가 있으면 절반은 기존 entry 경로(링크·중복 포함)를 재사용한다. 나머지는 접두(`""`, `./`, `../`, `/`)
++ 깊이 1~4 + 구분자(`/` 또는 `//`) + 토큰이다. 토큰 기본 풀은 `m1.COMPONENTS = (a, b, dir, file, item, ., ..)`다.
+
+등록 arm(R, D, S-u)의 어휘는 하나다(`src/inodefence/evaluation/rds.py` `VocabularyMode.OBSERVED_NAMES` →
+`MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_FIXED_BASELINE`). 토큰 풀은 `m1.COMPONENTS` + **step 0의 추출 전 스냅숏에서
+관찰한 이름**(외부 영역 이름 포함)이다. 캠페인 시작 때 한 번 정하고 늘리지 않는다(`effect_campaign.py`, `rds.vocabulary_pools`).
+세 arm은 같은 표, 같은 균등 가중치(슬롯 가중치 1), 같은 seed·예산을 쓰고 보존(admission) 정책만 다르다
+(`src/inodefence/feedback/effect_search.py` `RDS_POLICIES`).
+G1 어휘 동등성 검사는 `scripts/run_g1_smoke.py` `vocabulary_equality`가 셀별 최종 토큰 풀을 seed마다 arm 사이에서 비교한다.
+
+## 2. 지금 못 만들거나 드물게만 만드는 구조
+
+"만듦" 칸은 코드로 본 가능성이다. 실행 빈도는 측정하지 않았다(가능 = 확률이 0이 아님, 드묾 = 여러 조건이 같은 변이 열에서 맞아야 함).
+
+| 계열 | 구조 | 지금 만드는가 (근거) |
+| --- | --- | --- |
+| **L1 링크 대상 기준** | 하드링크 대상이 추출 루트 기준으로 풀리는 경우 | 만듦: 등록 표의 슬롯 5가 `..`로 시작하는 대상을 만든다 |
+| | 하드링크 대상이 **작업 폴더 기준**으로 풀리는 추출기에서 그 폴더의 형제 객체를 가리키는 경우(`..` 없이 시작하는 상대 대상, #499) | 드묾: 슬롯 5는 항상 `..`로 시작한다. 슬롯 7(`mutate_link_target`)의 `_raw_path` 교체는 접두 `""`와 관찰된 이름으로 만들 수 있다. 다만 등록 표에는 기존 경로를 가리키는 하드링크 슬롯이 없어, 바꿀 하드링크는 seed의 하드링크와 슬롯 5의 결과뿐이다 |
+| | 링크 대상이 **entry 위치 기준**(링크 entry가 있는 디렉터리 기준)으로 풀리는 경우(symlink의 표준 의미) | 만듦: 슬롯 6·7이 상대 대상을 만들고, 추출기가 entry 위치 기준으로 푼다. 다만 "링크가 놓인 깊이에 맞춘 `..` 수"를 고르는 장치는 없어 우연에 맡긴다 |
+| | 절대 경로 대상 | 만듦: `_raw_path` 접두 `/` |
+| **L2 symlink 사슬·type 교체** | symlink → symlink 사슬(2단 이상) | 가능: `_raw_path`가 기존 symlink 경로를 대상으로 재사용할 수 있다. 3단 이상은 드묾 |
+| | 같은 경로를 디렉터리 → symlink로 바꿔 쓰기(그리고 그 반대) | 가능: add_entry(directory)·add_symlink가 기존 경로를 재사용하고 임의 위치에 삽입한다 |
+| | 같은 경로를 regular ↔ hardlink ↔ symlink로 바꿔 쓰기 | 가능(같은 이유). 등록 표에서는 하드링크 쪽이 슬롯 5(탈출 대상)뿐이라 "기존 파일 자리에 안쪽 하드링크"는 seed 하드링크의 복제·이동으로만 생긴다 |
+| **O1 순서 의존** | 선행 entry가 만든 객체(디렉터리 symlink)를 후행 entry가 경로로 통과(`d → ..` 뒤에 `d/x`) | 드묾: 후행 경로가 선행 symlink 이름을 첫 조각으로 가져야 한다. `_raw_path`의 재사용은 경로 전체 단위라 "기존 이름 + 하위 조각"을 일부러 만들지 않는다 |
+| | 같은 경로 중복 | 만듦: 슬롯 2(duplicate), 이름 재사용 |
+| | 부모 디렉터리보다 먼저 오는 자식 | 가능: 삽입 위치가 임의고 슬롯 3이 순서를 바꾼다. 부모·자식 관계를 의식해 고르지는 않는다 |
+| | 하드링크가 자기보다 뒤에 오는 대상을 가리킴(앞 참조) | 가능(M1 문서가 허용함) |
+| **P1 경로 표현** | `..` 조각, `./`, 중복 구분자(`//`), 끝 구분자 | 만듦: 접두·구분자·affix |
+| | 긴 경로(100바이트 초과, USTAR prefix 사용, PAX path) | **못 만듦**: `MAX_TEXT_BYTES = 100`이고 빌더는 PAX로 넘어가지 않는다 |
+| | 대소문자 차이, 유니코드 정규화 차이(NFC/NFD), 비ASCII | **못 만듦**: 토큰이 ASCII 고정 목록이다. 관찰된 이름이 비ASCII면 그대로 쓸 수 있으나 정규화 변형을 만들지 않는다 |
+| | 백슬래시·드라이브 문자 같은 다른 OS 구분자 | **못 만듦**(범위 밖: Windows 의미는 초기 범위에서 제외, AGENTS) |
+| **H1 헤더 변형 (보안 경계에 닿는 것만)** | PAX 확장 헤더의 path·linkpath가 USTAR 필드와 다른 경우 | **못 만듦**: USTAR만 쓴다 |
+| | GNU long name/long link | **못 만듦** |
+| | mode의 setuid·setgid·sticky와 경계 값 | 모델은 허용(0..0o7777)하지만 **변이가 mode를 바꾸지 않는다**(add_entry 0o644 기본, symlink 0o777) |
+| | 하드링크·symlink entry에 size·content가 붙은 경우, size와 실제 길이 불일치 | **못 만듦**: 모델이 링크의 content를 금지하고 빌더가 size를 content 길이로 둔다 |
+| | 다른 type flag(장치, FIFO, 연속 파일, GNU sparse), uid·gid·mtime 변형 | **못 만듦**: `EntryType` 네 가지, 메타데이터 0 고정 |
+
+## 3. 계열별 판단 칸
+
+공통 확인: 아래 어느 계열을 넣더라도 **새 연산은 `MutationPolicy` 하나의 슬롯 표에 들어간다.** 등록 arm 셋은 `VocabularyMode` →
+`MutationPolicy` 대응 하나로 같은 표·같은 균등 가중치를 쓰게 되어 있다(`rds.py` 148행대, `RdsCellConfig.mutation_policy`).
+arm 전용 연산은 만들지 않는다. 새 표는 **새 `MutationPolicy` id**로만 추가한다. 등록 실행 E(`bed077a`)의
+`M1_STATE_AWARE_ESCAPE_HARDLINK_FIXED_BASELINE`는 그대로 둔다.
+
+| 계열 | 일반 구조로서의 근거 | 특정 공개 권고 지식이 동기였는가 (솔직하게) | 세 arm 동등 (같은 어휘·같은 가중치) | G1 어휘 동등성 검사에 미치는 영향 | 깊이 (#509) |
+| --- | --- | --- | --- | --- | --- |
+| L1 링크 대상 기준 | TAR의 링크 대상은 상대 경로이고, 무엇을 기준으로 푸는지(추출 루트·작업 폴더·entry 위치)는 추출기 구현의 선택이다. 기준이 다르면 같은 바이트가 다른 객체를 가리킨다 | **예.** 작업 폴더 기준 변형은 decompress@4.2.1·oras-go 2.6.1의 통제 재현(#499, 2026-11-18 조건 4)에서 탐색이 하드링크 계열 위반을 내지 못한 것을 보고 고른 계열이다. 두 버전의 공개 권고를 알고 있었다. 탈출 하드링크 슬롯 자체도 node-tar 통제 재현(M2)을 알고 만든 것이다 | 예: 대상 기준을 슬롯 하나의 대상 생성 규칙으로 표현한다(예: 접두 `..` 수 0..3을 같은 분포로). 추출기별 분기는 넣지 않는다(대상별 로직 금지) | 토큰 풀은 바뀌지 않는다(같은 토큰 조합). 연산 표가 바뀌므로 G1에 "셀들의 `mutation_policy` id가 같다" 비교를 더해야 한다(지금은 구성상 같아서 검사하지 않음) | (비움) |
+| L2 symlink 사슬·type 교체 | 링크를 따라가는 경로 해석과 같은 경로의 타입 교체는 추출기가 경로를 검사한 뒤 실제로 쓰는 사이의 일관성(Check/Use)과 닿는 일반 구조다 | **예, 일부.** node-tar 6.x 계열의 공개 권고(symlink·디렉터리 캐시)는 v2 예약 범위에 있다. 이 계열을 목록에 올린 데 그 지식이 작용했다. 어휘 계열은 v2 holdout을 정하기 전에 동결하고, 이 사실을 v2 한계로 밝힌다 | 예: 사슬 길이·교체 순서를 슬롯 안의 균등 선택으로 둔다 | 토큰 풀 불변. 연산 표 변경 → 위와 같음 | (비움) |
+| O1 순서 의존 | TAR는 순서가 있는 연산 열이고, 선행 entry가 만든 객체를 후행 entry가 통과하는 구성은 아카이브 형식 자체의 성질이다 | 부분: 일반 형식 성질로 고른 계열이다. 다만 위 symlink 권고들이 순서 의존을 포함한다는 것을 알고 있다 | 예: "기존 이름 + 하위 조각" 경로 생성을 `_raw_path` 재사용 분기의 변형으로 넣으면 모든 arm에 같다 | 토큰 풀 불변(기존 이름 재사용). 연산 표 변경 → 위와 같음 | (비움) |
+| P1 경로 표현 | 경로 정규화 차이(긴 경로, 정규화 형식, 대소문자)는 검사 경로와 사용 경로가 갈리는 일반 원인이다 | 아니오(특정 권고를 보고 고르지 않음). 긴 경로는 빌더 형식(PAX) 확장과 묶인다 | 예: 토큰·길이 분포를 셀 공통으로 둔다 | **토큰 풀이 바뀐다**(예: 비ASCII·대소문자 변형 토큰). 풀이 셀 공통 상수면 G1 비교는 그대로 통과하고, 검사 기준(풀 목록)이 새 정책 id와 함께 기록돼야 한다 | (비움) |
+| H1 헤더 변형 | 헤더 필드 사이의 불일치(PAX 대 USTAR, size 대 실제 길이, mode 경계)는 파서가 서로 다른 값을 믿게 만드는 일반 구조다. 보안 경계에 닿는 것만 둔다 | 아니오(특정 권고에서 오지 않음). 범위는 "파서 모호성 전체가 아니라 경계에 닿는 것"으로 좁힌다(AGENTS 초기 범위) | 예: 빌더 형식을 새 id(`ustar-utf8-v1` 옆의 새 형식)로 두고 모든 arm이 같은 형식을 쓴다 | 토큰 풀 불변일 수 있음. 빌더 형식이 바뀌면 같은 논리 입력의 TAR 바이트가 달라지므로 G1·재현 기록에 빌더 형식 id를 남겨야 한다 | (비움) |
+
+## 4. 지키는 것
+
+- 특정 CVE의 PoC를 변이로 옮기지 않는다. 위 계열은 구조로만 표현하고, 대상 경로·sentinel 이름·버전을 변이에 넣지 않는다.
+- 등록 arm 정의, 실행 커밋 E(`bed077a`), 동결 태그 기준 재현, 사전등록 파일은 바꾸지 않는다. 새 변이는 새 정책 id로만 추가한다.
+- 새 비교 실행은 사전등록하거나 exploratory로 표시한다. node-tar v2 예약 버전(7.0.0–7.4.3, 6.0.0–6.2.1, 4.4.0–5.0.x)은 어떤 실행도 하지 않는다.
+- 이 목록은 "무엇을 아직 못 만드는가"의 기록이다. 어느 계열이 위반을 더 낸다는 주장이 아니다.

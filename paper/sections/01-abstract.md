@@ -26,8 +26,8 @@ train(node-tar 7.5.2, 탐색)과 holdout(7.4.4, 확증)을 나누고 결과는 �
    적격성 검증을 갖췄다 [C-INFRA].
 
 등록 실행 EXP-0(인프라 측정)은 15셀이 모두 유효했고 경계위반 사건 0이었다 [C-EXP0]. EXP-3 train이 끝난 뒤 등록 규칙을
-기계적으로 적용해 GO를 냈다(세 arm 합산 첫 C1∨C2 캠페인 수 31) [C-GO]. 탐색 성능에 대한 결과는
-본실험 결과 자리(봉인 해제 뒤 기입)다 [S-HOLDOUT].
+기계적으로 적용해 GO를 냈다(세 arm 합산 첫 C1∨C2 캠페인 수 31) [C-GO]. 등록 holdout(node-tar 7.4.4)의
+확증 검정에서 S-u는 R·D 어느 쪽과도 구분되지 않았고, 위험률 비 2 이상의 가속은 구간으로 배제됐다(결함 깊이 1 벤치마크). [S-HOLDOUT] [C-HA] 봉인 기간의 편차 두 건과 열람 감사는 §6.6에 공개한다 [C-DEV1] [C-DEV2] [C-AUDIT].
 
 한계: 현재 변이 문법에서 경계위반 입력은 seed에서 변이 1회 거리에 있고 [C-LIM1], 확증 범위는 node-tar 한 계보와 하드링크
 identity 공유 계열이다 [C-LIM2]. 관련 선행연구(Jana & Shmatikov, ZIPDiff, LinkZard, Wormholes)와의 중첩을 명시하며

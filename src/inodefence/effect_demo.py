@@ -11,7 +11,9 @@ from collections.abc import Callable, Mapping, Sequence
 from enum import StrEnum
 from typing import Any
 
+from inodefence.builder import BUILDER_FORMAT
 from inodefence.effect_campaign import (
+    BuildInvalidStep,
     EffectCampaignResult,
     EffectCampaignStep,
     _observed_name_segments,
@@ -33,8 +35,18 @@ from inodefence.model import (
 from inodefence.mutation_scheduler import WeightSnapshot
 
 # 2: name_segments/before_protected_paths; 3: step validity (observer-integrity policy,
-# #207); 4: oracle_fingerprints. Every bump is additive.
-DEMO_REPORT_SCHEMA = 4
+# #207); 4: oracle_fingerprints; 5: per-step step_record_schema/archive_format/outcome,
+# config.build_invalid/builder_format and build-invalid step records (v2 U2, #512).
+# Every bump is additive: a schema-4 reader ignores the new keys, and a build-invalid
+# record carries the mappings it requires (empty), so it reads as one run, no violation.
+# Two reports of different schemas are never compared (_require_comparable refuses).
+DEMO_REPORT_SCHEMA = 5
+# Version of one step record's layout, written into every record (from report schema 5).
+# Kept outside the step model: the canonical JSON of EffectCampaignStep is unchanged.
+STEP_RECORD_SCHEMA = 2
+STEP_OUTCOME_EXECUTED = "executed"
+STEP_OUTCOME_BUILD_INVALID = "build-invalid"
+BUILD_INVALID_REASON = "build_invalid"
 POLICY_COMPARISON_SCHEMA = 1
 
 # Reasons a recorded step's effect-trace observation is not trustworthy. Only
@@ -318,6 +330,11 @@ def _step_report(step: EffectCampaignStep) -> dict[str, object]:
         },
         "before_protected_paths": list(step.result.trace.before.protected_paths),
         "target_stderr": _stderr_record(base.execution.stderr),
+        # Additive (schema 5): record layout version, the archive format the run
+        # recorded, and the step outcome (always "executed" for an EffectCampaignStep).
+        "step_record_schema": STEP_RECORD_SCHEMA,
+        "archive_format": base.archive_format,
+        "outcome": STEP_OUTCOME_EXECUTED,
         "index": step.index,
         "origin": step.origin.value,
         "case_id": base.case.case_id,
@@ -366,6 +383,61 @@ def _step_report(step: EffectCampaignStep) -> dict[str, object]:
     }
 
 
+def _build_invalid_report(step: BuildInvalidStep) -> dict[str, object]:
+    """Record of a mutation child the builder could not represent (schema 5, RECORD only).
+
+    It carries every mapping a schema-4 reader requires, empty: ``oracle`` {} (no
+    verdict), ``feedback`` (nothing new, not retained), ``trace`` {} and empty
+    ``name_segments`` lists (not a missing key, which would void the vocabulary pool).
+    So ``rds_report.summarize_report_records`` counts it as one execution with no
+    violation; ``rds_report_v2`` reports it as its own category. ``validity`` is
+    ``invalid`` with reason ``build_invalid``.
+    """
+    attempt, evidence = step.mutation_attempt, step.scheduler_evidence
+    return {
+        "trace": {},
+        "name_segments": {"before": [], "observed": []},
+        "before_protected_paths": [],
+        "step_record_schema": STEP_RECORD_SCHEMA,
+        "archive_format": None,
+        "builder_format": BUILDER_FORMAT,
+        "outcome": STEP_OUTCOME_BUILD_INVALID,
+        "build_invalid_reason": step.reason,
+        "index": step.index,
+        "origin": step.origin.value,
+        "case_id": step.case_id,
+        "parent_case_id": step.parent_case_id,
+        "validity": "invalid",
+        "invalid_reason": BUILD_INVALID_REASON,
+        "oracle": {},
+        "oracle_fingerprints": [],
+        "feedback": {
+            "new_effect_keys": [],
+            "new_violation_fingerprints": [],
+            "effect_novel": False,
+            "full_state_novel": False,
+            "contract_violated": False,
+            "feedback_eligible": False,
+            "admission_eligible": False,
+            "retained": False,
+            "trace_completeness": None,
+            "trace_termination": None,
+        },
+        "mutation_attempt": {
+            "operator_id": attempt.operator_id.value,
+            "mutation_policy": attempt.mutation_policy.value,
+            "applied": attempt.applied,
+        },
+        "scheduler_evidence": {
+            "selected_operator_id": evidence.selected_operator_id.value,
+            "weights_before": _weights(evidence.weights_before),
+            "selected_weight": evidence.selected_weight,
+            "reward": evidence.reward,
+            "weights_after": _weights(evidence.weights_after),
+        },
+    }
+
+
 class EffectStepReporter:
     """Build the per-step records of a demo report one step at a time.
 
@@ -380,17 +452,21 @@ class EffectStepReporter:
         self._corpus: list[str] = []
         self._next_index = 0
 
-    def add(self, step: EffectCampaignStep) -> dict[str, object]:
-        if not isinstance(step, EffectCampaignStep):
-            raise ValueError("step reporter requires an EffectCampaignStep")
+    def add(self, step: EffectCampaignStep | BuildInvalidStep) -> dict[str, object]:
+        if not isinstance(step, (EffectCampaignStep, BuildInvalidStep)):
+            raise ValueError("step reporter requires an EffectCampaignStep or BuildInvalidStep")
         if step.index != self._next_index:
             raise ValueError(
                 f"step reporter expected step {self._next_index}, got step {step.index}"
             )
-        record = _step_report(step)
-        record["selection"] = _selection_report(record, self._corpus)
-        if step.feedback.retained:
-            self._corpus.append(step.result.base_result.case.case_id)
+        if isinstance(step, BuildInvalidStep):
+            record = _build_invalid_report(step)
+            record["selection"] = _selection_report(record, self._corpus)
+        else:
+            record = _step_report(step)
+            record["selection"] = _selection_report(record, self._corpus)
+            if step.feedback.retained:
+                self._corpus.append(step.result.base_result.case.case_id)
         self._next_index += 1
         return record
 
@@ -410,7 +486,8 @@ def effect_campaign_report(result: EffectCampaignResult, producer: str) -> dict[
         raise ValueError("demo report requires a producer label")
     config = result.config
     reporter = EffectStepReporter()
-    steps = [reporter.add(step) for step in result.steps]
+    ordered = sorted((*result.steps, *result.build_invalid_steps), key=lambda step: step.index)
+    steps = [reporter.add(step) for step in ordered]
     return {
         "demo_report_schema": DEMO_REPORT_SCHEMA,
         "producer": producer,
@@ -420,6 +497,9 @@ def effect_campaign_report(result: EffectCampaignResult, producer: str) -> dict[
             "execution_budget": config.execution_budget,
             "search_policy": config.search_policy.value,
             "mutation_policy": config.mutation_policy.value,
+            # Additive (schema 5).
+            "build_invalid": config.build_invalid.value,
+            "builder_format": BUILDER_FORMAT,
         },
         "initial_case_ids": list(result.initial_case_ids),
         "steps": steps,

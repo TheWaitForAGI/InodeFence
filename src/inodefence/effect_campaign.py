@@ -3,8 +3,10 @@
 import random
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import ClassVar, overload
 
+from inodefence.builder import build_tar
 from inodefence.campaign import CampaignOrigin
 from inodefence.campaign_hooks import (
     CampaignHooks,
@@ -29,12 +31,28 @@ from inodefence.mutation_scheduler import MutationSelection
 from inodefence.mutator import MutationAttempt, MutationPolicy, apply_operator, operator_ids
 
 
+class BuildInvalidPolicy(StrEnum):
+    """What the loop does with a mutation child the TAR builder cannot represent.
+
+    ``ABORT`` (default, every existing and registered configuration): nothing changes --
+    the producer's own ``build_tar`` raises and the campaign stops as before.
+    ``RECORD`` (v2 only): the loop tries ``build_tar`` before the producer; on
+    ``ValueError`` the step is recorded as a :class:`BuildInvalidStep`, spends one budget
+    unit, gives the scheduler no reward and joins no corpus. It never reaches the
+    producer, oracle or feedback. A configuration sets one value for all three arms.
+    """
+
+    ABORT = "abort"
+    RECORD = "record"
+
+
 @dataclass(frozen=True, slots=True)
 class EffectCampaignConfig:
     random_seed: int
     execution_budget: int
     search_policy: EffectSearchPolicy
     mutation_policy: MutationPolicy = MutationPolicy.LEGACY
+    build_invalid: BuildInvalidPolicy = BuildInvalidPolicy.ABORT
 
     def __post_init__(self) -> None:
         if type(self.random_seed) is not int:
@@ -45,6 +63,8 @@ class EffectCampaignConfig:
             raise ValueError("search_policy must be a supported EffectSearchPolicy")
         if not isinstance(self.mutation_policy, MutationPolicy):
             raise ValueError("mutation_policy must be a supported MutationPolicy")
+        if not isinstance(self.build_invalid, BuildInvalidPolicy):
+            raise ValueError("build_invalid must be a BuildInvalidPolicy")
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,6 +116,53 @@ class EffectCampaignStep:
 
 
 @dataclass(frozen=True, slots=True)
+class BuildInvalidStep:
+    """A mutation step whose child the TAR builder could not represent (``RECORD`` only).
+
+    A separate type, not a variant of :class:`EffectCampaignStep`, so that type's
+    serialized form (and every digest over it) is unchanged. There is no result, oracle
+    verdict or feedback: the archive never existed. ``reason`` is the builder's message.
+    """
+
+    serialization_schema: ClassVar[int] = 1
+
+    index: int
+    parent_case_id: str
+    mutation_attempt: MutationAttempt
+    scheduler_evidence: EffectMutationSchedulerEvidence
+    reason: str
+
+    def __post_init__(self) -> None:
+        if type(self.index) is not int or self.index < 0:
+            raise ValueError("build-invalid step index must be nonnegative")
+        if not isinstance(self.parent_case_id, str) or not self.parent_case_id:
+            raise ValueError("build-invalid step requires a parent case ID")
+        if not isinstance(self.mutation_attempt, MutationAttempt) or not isinstance(
+            self.scheduler_evidence, EffectMutationSchedulerEvidence
+        ):
+            raise ValueError("build-invalid step requires a mutation attempt and evidence")
+        if self.mutation_attempt.parent_case_id != self.parent_case_id or (
+            self.scheduler_evidence.parent_case_id != self.parent_case_id
+            or self.scheduler_evidence.child_case_id != self.mutation_attempt.child_case.case_id
+        ):
+            raise ValueError("build-invalid step lineage differs from its attempt/evidence")
+        if self.scheduler_evidence.new_effect_keys or (
+            self.scheduler_evidence.new_violation_fingerprints
+        ):
+            raise ValueError("a build-invalid step observed nothing")
+        if not isinstance(self.reason, str) or not self.reason:
+            raise ValueError("build-invalid step requires the builder's reason")
+
+    @property
+    def origin(self) -> CampaignOrigin:
+        return CampaignOrigin.MUTATION
+
+    @property
+    def case_id(self) -> str:
+        return self.mutation_attempt.child_case.case_id
+
+
+@dataclass(frozen=True, slots=True)
 class EffectCampaignResult:
     serialization_schema: ClassVar[int] = 2
 
@@ -104,6 +171,8 @@ class EffectCampaignResult:
     steps: tuple[EffectCampaignStep, ...]
     final_search_stats: EffectSearchStats
     retained_case_ids: tuple[str, ...]
+    # RECORD only; empty under ABORT. ``steps`` + these fill the budget, indexes interleave.
+    build_invalid_steps: tuple[BuildInvalidStep, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.config, EffectCampaignConfig):
@@ -118,11 +187,18 @@ class EffectCampaignResult:
             isinstance(step, EffectCampaignStep) for step in self.steps
         ):
             raise ValueError("effect campaign result requires typed steps")
-        if len(self.steps) != self.config.execution_budget or len(self.initial_case_ids) > len(
-            self.steps
+        if not isinstance(self.build_invalid_steps, tuple) or not all(
+            isinstance(step, BuildInvalidStep) for step in self.build_invalid_steps
         ):
+            raise ValueError("effect campaign result requires typed build-invalid steps")
+        if self.build_invalid_steps and self.config.build_invalid != BuildInvalidPolicy.RECORD:
+            raise ValueError("build-invalid steps require the RECORD policy")
+        total = len(self.steps) + len(self.build_invalid_steps)
+        if total != self.config.execution_budget or len(self.initial_case_ids) > len(self.steps):
             raise ValueError("effect campaign steps must fill the execution budget")
-        if tuple(step.index for step in self.steps) != tuple(range(len(self.steps))):
+        executed = [step.index for step in self.steps]
+        invalid = [step.index for step in self.build_invalid_steps]
+        if executed != sorted(executed) or sorted(executed + invalid) != list(range(total)):
             raise ValueError("effect campaign step indexes must be contiguous")
         if not isinstance(self.final_search_stats, EffectSearchStats):
             raise ValueError("effect campaign result requires final search stats")
@@ -134,6 +210,7 @@ class EffectCampaignResult:
 
 EffectResultProducer = Callable[[ArchiveCase], EffectRunResult]
 EffectStepObserver = Callable[[EffectCampaignStep], None]
+BuildInvalidObserver = Callable[[BuildInvalidStep], None]
 
 
 def _observed_name_segments(
@@ -176,6 +253,8 @@ def run_effect_campaign(
     config: EffectCampaignConfig,
     on_step: EffectStepObserver | None = None,
     hooks: None = None,
+    *,
+    on_build_invalid: BuildInvalidObserver | None = None,
 ) -> EffectCampaignResult: ...
 @overload
 def run_effect_campaign(
@@ -185,6 +264,7 @@ def run_effect_campaign(
     on_step: EffectStepObserver | None = None,
     *,
     hooks: CampaignHooks,
+    on_build_invalid: BuildInvalidObserver | None = None,
 ) -> EffectCampaignResult | LightCampaignResult: ...
 def run_effect_campaign(
     initial_cases: Sequence[ArchiveCase],
@@ -192,6 +272,8 @@ def run_effect_campaign(
     config: EffectCampaignConfig,
     on_step: EffectStepObserver | None = None,
     hooks: CampaignHooks | None = None,
+    *,
+    on_build_invalid: BuildInvalidObserver | None = None,
 ) -> EffectCampaignResult | LightCampaignResult:
     """Exercise v2 policy causality without claiming a qualified native producer.
 
@@ -203,11 +285,18 @@ def run_effect_campaign(
     `hooks` (``CampaignHooks``) optionally streams steps instead of retaining them
     (``retain_steps=False`` -> a ``LightCampaignResult``), stops early (``should_stop``)
     and checkpoints; with ``hooks`` ``None`` the result and order are byte-identical to before.
+
+    ``config.build_invalid`` = ``RECORD`` turns an unrepresentable mutation child into a
+    :class:`BuildInvalidStep` (one budget unit, reward 0, no corpus) passed to
+    ``on_build_invalid``; ``ABORT`` (default) leaves the loop exactly as before and never
+    calls the builder itself. Seeds are never recorded as build-invalid.
     """
     if not callable(produce_result) or not isinstance(config, EffectCampaignConfig):
         raise ValueError("effect campaign requires a producer and typed config")
     if on_step is not None and not callable(on_step):
         raise ValueError("on_step must be callable when given")
+    if on_build_invalid is not None and not callable(on_build_invalid):
+        raise ValueError("on_build_invalid must be callable when given")
     cases = tuple(initial_cases)
     if not cases or not all(isinstance(case, ArchiveCase) for case in cases):
         raise ValueError("initial cases must be nonempty ArchiveCase records")
@@ -225,6 +314,8 @@ def run_effect_campaign(
 
     state = EffectSearchState(cases, config.search_policy)
     steps: list[EffectCampaignStep] = []
+    build_invalid_steps: list[BuildInvalidStep] = []
+    record_build_invalid = config.build_invalid == BuildInvalidPolicy.RECORD
     # The state-aware escape policy composes link targets from names the run has
     # observed in the general filesystem tree (not the protected list). We
     # accumulate them here and feed them to the mutator; every other policy leaves
@@ -320,6 +411,19 @@ def run_effect_campaign(
             selection.operator_id,
             extra_components=tuple(sorted(observed_names)) if state_aware else (),
         )
+        if record_build_invalid:
+            try:
+                build_tar(attempt.child_case)
+            except ValueError as error:
+                evidence = scheduler.observe_outcome(selection, attempt, (), ())
+                reason = str(error) or type(error).__name__
+                invalid = BuildInvalidStep(executed, parent.case_id, attempt, evidence, reason)
+                if retain:
+                    build_invalid_steps.append(invalid)
+                executed += 1
+                if on_build_invalid is not None:
+                    on_build_invalid(invalid)
+                continue
         observe(
             attempt.child_case,
             CampaignOrigin.MUTATION,
@@ -339,4 +443,5 @@ def run_effect_campaign(
         tuple(steps),
         state.stats,
         retained,
+        tuple(build_invalid_steps),
     )

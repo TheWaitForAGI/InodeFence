@@ -347,3 +347,60 @@ def test_variable_producer_exercises_d_retention_and_r_walk() -> None:
     walk, restart = _run("R-walk:777:64"), _run("R:777:64")
     assert _inputs_digest(walk) != _inputs_digest(restart)
     assert _inputs_digest(d) != _inputs_digest(restart)
+
+
+def _lineage_depths(result: Any) -> dict[int, int]:
+    """Lineage depth per executed step index, from the run record only.
+
+    Fields: ``step.origin`` (seed -> depth 0), ``step.parent_case_id`` and
+    ``step.mutation_attempt.applied``. A child's depth is its parent's depth + 1 when the
+    attempt was applied, else the parent's depth (``applied=False`` returns the parent
+    unchanged, so it is not a lineage step). A parent's depth is the depth recorded the
+    first time that case ID was executed.
+    """
+    by_case: dict[str, int] = {}
+    depths: dict[int, int] = {}
+    for step in result.steps:
+        case_id = step.result.base_result.case.case_id
+        if step.parent_case_id is None:
+            depth = 0
+        else:
+            parent = by_case[step.parent_case_id]
+            depth = parent + 1 if step.mutation_attempt.applied else parent
+        depths[step.index] = depth
+        by_case.setdefault(case_id, depth)
+    return depths
+
+
+@pytest.mark.parametrize("seed", SEEDS)
+def test_d_admits_non_seed_non_violating_inputs_and_reaches_depth_two(seed: int) -> None:
+    """D can reach lineage depth >= 2 under the registered logic (W4, before v2 freeze).
+
+    Shown with the bed077a-pinned variable producer, not on any target. D differs from S-u
+    only in its admission rule: the cell configs are equal except ``search_policy`` (same
+    grammar/vocabulary, seed corpus, parent selection, operator distribution, budget).
+    Asserts, within budget 64: (1) D's corpus holds a mutation child that is not a seed
+    and violated no contract; (2) some executed step has such a retained child as its
+    parent and lineage depth >= 2.
+    """
+    d_cell = RdsCellConfig(RdsArm.D, seed, 64, VocabularyMode.OBSERVED_NAMES, RVariant.WALK)
+    s_cell = RdsCellConfig(RdsArm.S_U, seed, 64, VocabularyMode.OBSERVED_NAMES, RVariant.WALK)
+    d_config, s_config = d_cell.campaign_config(), s_cell.campaign_config()
+    assert d_config.search_policy != s_config.search_policy
+    assert dataclasses.replace(d_config, search_policy=s_config.search_policy) == s_config
+
+    result = _run(f"D:{seed}:64")
+    seed_ids = {case.case_id for case in minimal_seed_corpus()}
+    steps = {step.result.base_result.case.case_id: step for step in result.steps}
+    admitted = [
+        case_id
+        for case_id in result.retained_case_ids
+        if case_id not in seed_ids
+        and not any(verdict.violated for verdict in steps[case_id].result.base_result.violations)
+    ]
+    assert admitted, "D admitted no non-seed, non-violating input"
+    depths = _lineage_depths(result)
+    deep = [
+        step for step in result.steps if step.parent_case_id in admitted and depths[step.index] >= 2
+    ]
+    assert deep, "no child of an admitted non-seed input reached depth 2"

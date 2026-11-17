@@ -429,8 +429,10 @@ inodefence summary ~/inodefence-explore/target-explore/<실행>-result/result.js
 - **`result.json`.** `schema`는 `inodefence-target-result-v1`이고 최상위 키 `schema`·`label`·`target`·`axes`·`mode`·
   `observed_contracts`·`runs`·`verdict`·`violating_cases`·`cases`·`repro_inputs`·`provenance`와 케이스의 `case_id`·
   `outcome`·`c0`·`c1`·`c2`는 이름과 뜻이 그대로입니다. 0.2.0이 쓴 파일은 이후 0.2.x에서도 읽힙니다
-  (`tests/test_result_contract.py`가 저장해 둔 파일로 확인). 선택 키는 늘어날 수 있으므로 모르는 키는 무시하고
-  읽으세요. 키를 없애거나 뜻을 바꿀 때는 `schema` 이름을 바꿉니다.
+  (`tests/test_result_contract.py`가 저장해 둔 파일로 확인). 이후 0.2.x가 선택 키를 더할 수 있습니다. JSON을 직접
+  읽는 스크립트는 모르는 키를 무시하세요. `inodefence status`·`summary`는 자기가 아는 키만 받으므로, 결과 파일은
+  그 파일을 쓴 버전과 같거나 더 새 `inodefence`로 읽습니다(더 옛 버전은 새 키가 든 파일을 거부할 수 있습니다).
+  키를 없애거나 뜻을 바꿀 때는 `schema` 이름을 바꿉니다.
 
 터미널 출력 문구, `summary.md`, `live/`와 `runtime/` 아래 파일, `replay.json`, 출력 폴더 이름은 약속에 들어가지
 않으며 0.x에서 바뀔 수 있습니다.

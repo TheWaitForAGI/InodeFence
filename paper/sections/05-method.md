@@ -131,10 +131,9 @@ holdout 확증 분석은 exp2-v1 §5를 따른다 [C-DESIGN].
 U_sim ≈ HR 1.1–1.3이고, 등록된 기대 결말은 비기각과 HR 2 배제다(exp2-v1 §1). 같은 계산의 R 캠페인당 사건 확률은
 .445(.38–.50)다(exp2-v1 §6) [C-DESIGN].
 
-### 4.6.5 본실험 결과 자리
+### 4.6.5 본실험 결과의 위치
 
-- EXP-3 train의 arm별 결과: 본실험 결과 자리(봉인 해제 뒤 기입) [S-TRAIN]
-- EXP-2 holdout 확증 판정: 본실험 결과 자리(봉인 해제 뒤 기입) [S-HOLDOUT]
+EXP-2 holdout 확증 판정과 EXP-3 train 탐색 대비는 §5.9에 둔다 [S-HOLDOUT] [S-TRAIN].
 
 ## 4.7 AI 도구 사용 (재현성·공개)
 

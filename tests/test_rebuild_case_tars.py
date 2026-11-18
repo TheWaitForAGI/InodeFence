@@ -40,6 +40,7 @@ def _progress(steps: int, **change: object) -> dict:
         "image_id": IMAGE,
         "engine_commit": ENGINE,
         "run_settings": dict(SETTINGS),
+        "vocab_mode": "observed-names-b-grammar-v2-freeze-3",
     }
     meta.update(change)
     return {k: v for k, v in meta.items() if v is not None}
@@ -303,3 +304,14 @@ def test_a_policy_other_than_the_recorded_one_is_exit_2(tmp_path: Path, capsys) 
     (run / "result.json").write_text(json.dumps({"campaign": {"mutation_policy": other}}))
     code, payload = _main(capsys, *_args(policy, journal, run, settings, listing, tmp_path / "out"))
     assert code == 2 and "the run records mutation policy" in payload["error"]
+
+
+def test_a_progress_vocab_mode_of_another_policy_is_exit_2(tmp_path: Path, capsys) -> None:
+    """Without result.json (a stopped run) the policy is still checked: progress.json records
+    the vocabulary mode explore derives one-to-one from the mutation policy."""
+    other = "observed-names-b-grammar-v2-freeze-3-minimal-empty-reg-v1"
+    policy, journal, run, settings, listing, _ = _setup(
+        tmp_path, progress=_progress(64, vocab_mode=other)
+    )
+    code, payload = _main(capsys, *_args(policy, journal, run, settings, listing, tmp_path / "out"))
+    assert code == 2 and "vocab_mode" in payload["error"]

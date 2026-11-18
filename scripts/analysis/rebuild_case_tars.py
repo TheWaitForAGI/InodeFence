@@ -23,7 +23,10 @@ Refused (exit 2):
 * the journal is incomplete: step indices not 0..n-1, or n differs from the recorded budget, or
   no budget is recorded;
 * ``--mutation-policy`` is not a v2 grammar policy (v1/M1 contents are random bytes, not a
-  pinned set), or differs from the policy the run records;
+  pinned set), or differs from the policy the run records (``result.json`` campaign, or the
+  ``vocab_mode`` in ``progress.json`` that explore derives from it one-to-one). A run with
+  neither record is not checked against a recorded policy; the ``case_id`` match is then the
+  only guarantee;
 * ``--out`` inside the repository or a Drive mount, or an existing folder;
 * ``--target``/``--version``/``--image-id`` differing from what the run records, or a
   ``--run-settings-missing`` key differing from the recorded value.
@@ -66,6 +69,7 @@ from inodefence.case_replay import (
 )
 from inodefence.drivers.run_target import load_adapter
 from inodefence.effect_campaign import bound_seed_cases
+from inodefence.evaluation.rds import VOCABULARY_MUTATION_POLICY
 from inodefence.generator.minimal import minimal_seed_corpus
 from inodefence.model import ArchiveCase, ArchiveEntry, EntryType
 from inodefence.mutator.policy import V2_GRAMMAR_POLICIES, MutationPolicy
@@ -106,7 +110,15 @@ def run_records(run_dir: Path) -> dict[str, Any]:
     ``budget``, ``target``, ``version``, ``image_id``, ``run_settings`` -- ``LiveRunMeta``) and
     ``result.json`` (``provenance.engine_sha``/``engine_dirty``, ``campaign.budget`` /
     ``mutation_policy``). Two records of one key that disagree are a precondition failure."""
-    keys = ("engine_commit", "budget", "mutation_policy", "target", "version", "image_id")
+    keys = (
+        "engine_commit",
+        "budget",
+        "mutation_policy",
+        "target",
+        "version",
+        "image_id",
+        "vocab_mode",
+    )
     found: dict[str, set[Any]] = {key: set() for key in keys}
     settings: set[str] = set()
     for path in sorted(run_dir.rglob("*.json")):
@@ -121,7 +133,7 @@ def run_records(run_dir: Path) -> dict[str, Any]:
                 found["engine_commit"].add(data["engine_commit"])
             if isinstance(data.get("budget"), int):
                 found["budget"].add(data["budget"])
-            for key in ("target", "version", "image_id"):
+            for key in ("target", "version", "image_id", "vocab_mode"):
                 if isinstance(data.get(key), str) and data[key]:
                     found[key].add(data[key])
             if isinstance(data.get("run_settings"), dict):
@@ -412,6 +424,15 @@ def _main(args: argparse.Namespace) -> int:
         )
     if records["mutation_policy"] is not None and records["mutation_policy"] != policy.value:
         raise Precondition(f"the run records mutation policy {records['mutation_policy']}")
+    if records["vocab_mode"] is not None:
+        # progress.json records the vocabulary mode explore derives from the mutation policy
+        # (one-to-one, ``evaluation.rds.VOCABULARY_MUTATION_POLICY``): a run without result.json
+        # (stopped) is still checked against its record.
+        modes = {mode.value: p for mode, p in VOCABULARY_MUTATION_POLICY.items()}
+        if modes.get(records["vocab_mode"]) != policy:
+            raise Precondition(
+                f"the run records vocab_mode {records['vocab_mode']}, which is not {policy.value}'s"
+            )
     if records["budget"] is None:
         raise Precondition("the run records no budget; journal completeness cannot be checked")
     for key, given in (

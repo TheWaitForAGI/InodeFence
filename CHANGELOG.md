@@ -39,6 +39,13 @@
   두 인자로 나뉘어 실행 전에 거부되던 문제([#528](https://github.com/TheWaitForAGI/InodeFence/issues/528)). 이제 하나의
   값으로 전달된다. 공백 형식(`--image-tag-suffix -win`)은 여전히 받을 수 없고, 거부 메시지(종료 3)가 `=` 형식을 안내한다.
   옵션을 주지 않은 실행과 `-`로 시작하지 않는 값의 동작은 그대로다.
+- python-tarfile 판정: entry가 0개인 아카이브를 오류 없이 끝낸 실행이 trace 미완결(`execution_backend_failure`)로 기록돼,
+  탐색에서는 예외 조항으로 판정되면서 루프 보고서의 step은 무효(`observer_integrity`)로 갈리던 문제
+  ([#533](https://github.com/TheWaitForAGI/InodeFence/issues/533)). 이제 `success`의 trace는 모든 entry가 성공하고 worker가
+  보고한 처리 member 수가 entry 수와 같을 때 완결이다. 빈 아카이브는 worker가 `members: 0`을 보고하면 완결·유효이고, 탐색에서
+  피드백 대상이 될 수 있다(새 효과 키는 없다). worker 보고가 없거나 읽을 수 없는 `success`는 entry 수와 상관없이 미완결이다.
+  탐색 규칙의 빈 아카이브 예외는 없앴다. C0/C1/C2 판정은 바뀌지 않는다. 같은 seed의 python-tarfile 탐색이 빈 아카이브를
+  만나는 경우 이전 결과와 바이트가 같다고 보장하지 않는다.
 
 ## [0.2.0] — 2026-11-18
 

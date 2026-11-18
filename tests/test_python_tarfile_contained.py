@@ -480,16 +480,111 @@ def test_success_of_a_non_empty_archive_without_an_intact_trace_is_unjudged() ->
     assert case_record(0, result)["outcome"] == "judged"  # the intact trace stays judged
 
 
-def test_empty_archive_and_rejection_stay_judged_though_their_trace_is_incomplete() -> None:
+def _empty_case() -> ArchiveCase:
     from dataclasses import replace as dc_replace
 
-    empty_case = dc_replace(_FIX["normal"].case, entries=())
-    empty = run_python_tarfile_contained_case(empty_case, _target())
-    assert empty.trace.integrity_valid is False  # incomplete by construction: no entry
+    return dc_replace(_FIX["normal"].case, entries=())
+
+
+def test_empty_archive_success_is_complete_and_judged_and_rejection_stays_judged() -> None:
+    """#533: a zero-entry success whose worker reports ``members: 0`` is a complete trace (0/0),
+    judged, and valid in the report; a rejection before any entry stays judged as before."""
+    from inodefence.effect_demo import observer_integrity_validity
+
+    empty = run_python_tarfile_contained_case(_empty_case(), _target())
+    assert empty.base_result.execution.status is ExecutionStatus.SUCCESS
+    assert json.loads(empty.base_result.execution.stdout.splitlines()[-1])["members"] == 0
+    assert empty.trace.completeness is EffectStreamCompleteness.COMPLETE
+    assert empty.trace.integrity_valid is True
+    assert empty.trace.last_produced_sequence == -1  # nothing produced (the model's empty stream)
     assert case_record(0, empty)["outcome"] == "judged"
+    assert observer_integrity_validity(empty)["validity"] == "valid"
     rejected = run_python_tarfile_contained_case(_FIX["c1"].case, _target("data"))
     assert rejected.trace.integrity_valid is False
     assert case_record(0, rejected)["outcome"] == "judged"
+
+
+def test_a_success_without_a_readable_member_report_is_incomplete_even_with_zero_entries() -> None:
+    """#533 (W4): completeness needs the worker's own member count; an unreadable report is
+    ``None`` -> INCOMPLETE, for an empty archive too (it no longer passes as "0 of 0")."""
+    for case in (_empty_case(), _FIX["normal"].case):
+        result = run_python_tarfile_contained_case(
+            case, _target(backend=_LocalBackend(broken=True))
+        )
+        assert result.trace.completeness is EffectStreamCompleteness.INCOMPLETE
+        assert result.trace.integrity_valid is False
+
+
+@pytest.mark.parametrize("members", [None, 1])
+def test_reader_completeness_requires_the_worker_member_count_to_match(
+    members: int | None,
+) -> None:
+    from inodefence.targets.python_tarfile_effect import _build_trace
+
+    base = run_python_tarfile_contained_case(_empty_case(), _target()).base_result
+    root = Path(base.before.sandbox_root)
+
+    def trace(count: int | None):  # type: ignore[no-untyped-def]
+        return _build_trace(
+            base.before,
+            base.after,
+            (),
+            (),
+            ExecutionStatus.SUCCESS,
+            root,
+            root / "extract",
+            worker_members=count,
+        )
+
+    assert trace(0).completeness is EffectStreamCompleteness.COMPLETE
+    assert trace(members).completeness is EffectStreamCompleteness.INCOMPLETE
+
+
+def _zero_entry_rejection(empty) -> Any:  # type: ignore[no-untyped-def]
+    """A node-tar-7.5.23-shaped record of the same zero-entry input: rejected before any entry
+    (``TAR_BAD_ARCHIVE``), with a valid worker report -- synthetic, from the HOST4 zero-entry
+    check's fields (exit status, final line ``members: 0``, stderr); nothing is run."""
+    from dataclasses import replace as dc_replace
+
+    from inodefence.model import EffectRunResult, SnapshotPhase
+    from inodefence.targets.python_tarfile_contained import RUN_FORMAT
+    from inodefence.targets.python_tarfile_effect import _build_trace
+
+    base = empty.base_result
+    final = {"format": RUN_FORMAT, "status": "rejected", "members": 0}
+    execution = dc_replace(
+        base.execution,
+        status=ExecutionStatus.REJECTED,
+        exit_code=2,
+        stdout=json.dumps(final) + "\n",
+        stderr="TAR_BAD_ARCHIVE: Unrecognized archive format",
+    )
+    assert base.before.phase is SnapshotPhase.BEFORE
+    trace = _build_trace(
+        base.before,
+        base.after,
+        (),
+        (),
+        ExecutionStatus.REJECTED,
+        Path(base.before.sandbox_root),
+        Path(base.before.sandbox_root) / "extract",
+        worker_members=0,
+    )
+    return EffectRunResult(dc_replace(base, execution=execution), trace)
+
+
+def test_zero_entry_input_agrees_between_the_exploration_rule_and_report_validity() -> None:
+    """#533 (W4 7.2): without the empty-archive exception, the same zero-entry input gives the
+    same state on the exploration rule (case_record) and the report's validity, both for the
+    node-tar-shaped rejection and for the python-tarfile success."""
+    from inodefence.effect_demo import observer_integrity_validity
+
+    success = run_python_tarfile_contained_case(_empty_case(), _target())
+    rejection = _zero_entry_rejection(success)
+    for result in (success, rejection):
+        judged = case_record(0, result)["outcome"] == "judged"
+        valid = observer_integrity_validity(result)["validity"] == "valid"
+        assert judged and valid
 
 
 # ---- D1 regression matrix (user decision 2026-11-16, python-tarfile deviation) ----

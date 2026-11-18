@@ -130,7 +130,7 @@ raw experiment output → validated summary → finding → 이 매핑 → Capab
 동결: `experiments/preregistration/exp517-host3-cells-v1.md`. W4 방법 검토 PR 코멘트 참조·ORCH 예산 D-235.
 
 | 행 | 셀 | engine | seed 블록 | 상태 | 도달 k/n · replay · 포화/candidate |
-| --- | --- | --- | --- | --- |
+| --- | --- | --- | --- | --- | --- |
 | X-Q1 | 7.5.23 v1 (Q1) | 5cc002b | 51600번대 9 seed | 채움 대기(HOST3 종료표) | 누적 85 distinct(개별 35), 외부변화 0, 포화 발동 [0,0,0]; number-check PASS |
 | X-517-7.5.7-v2 | 7.5.7 v2 | e1098d6 | 56601–56610 | 대기(실행 전) | — |
 | X-517-7.5.7-v1 | 7.5.7 v1 | e1098d6 | 56611–56620 | 대기(실행 전) | — |

@@ -78,6 +78,9 @@ def _setup(tmp_path: Path, rounds: dict[str, list[dict]], *, labels=None, comple
         run_settings=SETTINGS,
         fixtures=FIXTURES,
     )
+    settings_sha = table._sha256(_settings_path(tmp_path / "514-labels-v1.json"))
+    for row in rows:
+        row["run_settings_sha256"] = settings_sha
     cases.write_manifest(out, rows)
     replays = tmp_path / "replays"
     for row in rows:
@@ -123,7 +126,15 @@ def _settings_path(label_path: Path) -> Path:
     return path
 
 
-def _table(capsys, label_path: Path, manifest: Path, replays: Path) -> tuple[int, dict]:
+def _table(
+    capsys,
+    label_path: Path,
+    manifest: Path,
+    replays: Path,
+    *,
+    labels_sha: str | None = None,
+    settings_sha: str | None = None,
+) -> tuple[int, dict]:
     code = table.main(
         [
             "--labels",
@@ -134,9 +145,24 @@ def _table(capsys, label_path: Path, manifest: Path, replays: Path) -> tuple[int
             str(replays),
             "--settings-file",
             str(_settings_path(label_path)),
+            "--labels-sha256",
+            labels_sha or table._sha256(label_path),
+            "--settings-sha256",
+            settings_sha or table._sha256(_settings_path(label_path)),
         ]
     )
     return code, json.loads(capsys.readouterr().out)
+
+
+def _rewrite_settings(tmp_path: Path, content: dict, manifest: Path) -> None:
+    """Replace the settings file and re-stamp the manifest rows with its hash, so a test reaches
+    the per-replay value check (the manifest hash check is pinned separately)."""
+    path = tmp_path / "514-run-settings-v1.json"
+    path.write_text(json.dumps(content), encoding="utf-8")
+    data = json.loads(manifest.read_text())
+    for row in data["cases"]:
+        row["run_settings_sha256"] = table._sha256(path)
+    manifest.write_text(json.dumps(data), encoding="utf-8")
 
 
 def _classes(out: dict) -> dict[str, str]:
@@ -187,7 +213,7 @@ def test_each_class_in_order(tmp_path: Path, capsys) -> None:
     member = summary["claim_by_membership"]
     assert member["external (A or D)"]["불일치"] == 1
     assert member["ours (O and I only)"]["일치"] == 1
-    assert out["header"] == "판정 대상은 손 라벨 기대값이지 파일시스템 진실이 아니다."
+    assert out["header"][0] == "판정 대상은 손 라벨 기대값이지 파일시스템 진실이 아니다."
     assert "%" not in json.dumps(out["summary"], ensure_ascii=False)
 
 
@@ -364,6 +390,9 @@ def test_python_tarfile_cells_are_keyed_by_filter(tmp_path: Path, capsys) -> Non
         run_settings=settings,
         fixtures=("F06",),
     )
+    stamp = table._sha256(_settings_path(tmp_path / "labels.json"))
+    for row in rows:
+        row["run_settings_sha256"] = stamp
     cases.write_manifest(out_dir, rows)
     assert rows[0]["extraction_filter"] == "data"
     request = load_replay_request(out_dir / rows[0]["case_dir"])
@@ -408,7 +437,7 @@ def test_replay_settings_must_equal_the_settings_file(tmp_path: Path, capsys) ->
     label_path, manifest, replays = _setup(tmp_path, {"F01": THREE_OK})
     other = json.loads(json.dumps(SETTINGS_FILE))
     other["cells"][0]["run_settings"]["observer_integrity_policy"] = "invalid-continue"
-    (tmp_path / "514-run-settings-v1.json").write_text(json.dumps(other))
+    _rewrite_settings(tmp_path, other, manifest)
     code, out = _table(capsys, label_path, manifest, replays)
     assert code == 2 and "differ from the file" in out["error"]
 
@@ -416,7 +445,7 @@ def test_replay_settings_must_equal_the_settings_file(tmp_path: Path, capsys) ->
 def test_a_replay_cell_missing_from_the_settings_file_is_refused(tmp_path: Path, capsys) -> None:
     label_path, manifest, replays = _setup(tmp_path, {"F01": THREE_OK})
     other = {**SETTINGS_FILE, "cells": SETTINGS_FILE["cells"][1:]}  # no node-tar 7.5.2
-    (tmp_path / "514-run-settings-v1.json").write_text(json.dumps(other))
+    _rewrite_settings(tmp_path, other, manifest)
     code, out = _table(capsys, label_path, manifest, replays)
     assert code == 2 and "not in the run-settings file" in out["error"]
 
@@ -426,3 +455,39 @@ def test_the_settings_file_hash_is_in_the_header(tmp_path: Path, capsys) -> None
     code, out = _table(capsys, label_path, manifest, replays)
     path = tmp_path / "514-run-settings-v1.json"
     assert out["inputs"]["run_settings_sha256"] == table._sha256(path)
+
+
+def test_the_two_header_lines_are_printed_in_order(tmp_path: Path, capsys) -> None:
+    """W5 v3.9 §3: the scope line follows the first header line verbatim."""
+    code, out = _table(capsys, *_setup(tmp_path, {"F01": THREE_OK}))
+    assert out["header"] == [
+        "판정 대상은 손 라벨 기대값이지 파일시스템 진실이 아니다.",
+        "이 정확도는 기록 verdict 범위(C0 외부 namespace, C1/C2 보호 센티넬)다. "
+        "비보호 루트 밖 객체 경유 효과는 additive·이 표 밖이라 '정확도'를 완전성으로 읽지 "
+        "않는다(상세: 분석설계 범위 주의).",
+    ]
+
+
+@pytest.mark.parametrize("which", ["labels", "settings"])
+def test_a_file_other_than_the_ledger_hash_is_refused(tmp_path: Path, capsys, which: str) -> None:
+    label_path, manifest, replays = _setup(tmp_path, {"F01": THREE_OK})
+    wrong = {"labels_sha": "0" * 64} if which == "labels" else {"settings_sha": "0" * 64}
+    code, out = _table(capsys, label_path, manifest, replays, **wrong)
+    assert code == 2 and "!= expected" in out["error"]
+
+
+def test_manifest_written_with_another_settings_file_is_refused(tmp_path: Path, capsys) -> None:
+    """Same values, different file: the manifest's recorded hash must match the given file."""
+    label_path, manifest, replays = _setup(tmp_path, {"F01": THREE_OK})
+    path = tmp_path / "514-run-settings-v1.json"
+    path.write_text(json.dumps(SETTINGS_FILE, indent=1), encoding="utf-8")  # same values
+    code, out = _table(capsys, label_path, manifest, replays)
+    assert code == 2 and "was written with run-settings sha256" in out["error"]
+
+
+def test_a_cell_listed_twice_in_the_settings_file_is_refused(tmp_path: Path) -> None:
+    doubled = {**SETTINGS_FILE, "cells": SETTINGS_FILE["cells"] + SETTINGS_FILE["cells"][:1]}
+    path = tmp_path / "settings.json"
+    path.write_text(json.dumps(doubled), encoding="utf-8")
+    with pytest.raises(table.InputError, match="listed twice"):
+        table.load_run_settings(path)

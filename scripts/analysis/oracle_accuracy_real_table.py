@@ -15,6 +15,9 @@ Inputs (standard library only; no InodeFence import):
 * ``--settings-file``: W5's run-settings file (``514-run-settings-v1.json``, §2b-10). Each
   replay's ``original.run_settings`` must equal the file's value for its cell, else exit 2. Its
   SHA-256 goes in the output header.
+* ``--labels-sha256`` and ``--settings-sha256`` (required): the two files' SHA-256 as written in
+  the ledger before the run; a file that differs is exit 2. Every manifest row must record the
+  same run-settings SHA-256 (the folders were written with the file the reader is given).
 * ``--replays``: a folder searched for ``replay.json`` (``inodefence-case-replay-v1``). Each file
   is read, reduced to its cell summary and dropped (memory stays flat in the file count).
 
@@ -41,7 +44,8 @@ Scored cells are 일치 and 불일치 only. Two grade tables (§2b-2): a descrip
 label's ``primary`` grade (checked against the fixed priority A > D > O > I), and a claim table by
 membership -- external (A or D present) vs ours (O and I only) -- with the count of cells whose
 only grade is I. Every other class is left out of both denominators and listed in one line. No
-percentages. Header sentence: "판정 대상은 손 라벨 기대값이지 파일시스템 진실이 아니다."
+percentages. Two header lines (v3.9 §3): the hand-label sentence and the scope of the
+accuracy (recorded verdicts only; not completeness).
 
 This table holds controlled reproduction only (fixed fixtures on fixed versions); there is no
 self-discovery column. Advisory identifiers appear only in the ``basis`` column copied from the
@@ -71,7 +75,13 @@ CONTRACTS = ("c0", "c1", "c2")
 TERMINATIONS = ("success", "rejected", "failed", "timed_out")
 GRADE_PRIORITY = ("A", "D", "O", "I")
 EXTERNAL_GRADES = frozenset({"A", "D"})
-HEADER = "판정 대상은 손 라벨 기대값이지 파일시스템 진실이 아니다."
+#: Printed in this order (W5 design v3.9 §3; the second line at W4's request).
+HEADER = (
+    "판정 대상은 손 라벨 기대값이지 파일시스템 진실이 아니다.",
+    "이 정확도는 기록 verdict 범위(C0 외부 namespace, C1/C2 보호 센티넬)다. "
+    "비보호 루트 밖 객체 경유 효과는 additive·이 표 밖이라 '정확도'를 완전성으로 읽지 "
+    "않는다(상세: 분석설계 범위 주의).",
+)
 LABEL = "exploratory (등록 밖)"
 
 UNFINISHED = "미완료·미판정"
@@ -183,6 +193,15 @@ def load_labels(path: Path) -> tuple[dict[str, Any], dict[CellKey, Label]]:
     return header, labels
 
 
+def check_sha256(path: Path, expected: str, what: str) -> str:
+    """The file's SHA-256, which must equal ``expected`` (the value written in the ledger before
+    the run; given as an argument, never stored in code), else :class:`InputError`."""
+    actual = _sha256(path)
+    if actual != expected.strip().lower():
+        raise InputError(f"{what} {path.name} sha256 {actual} != expected {expected}")
+    return actual
+
+
 def load_run_settings(path: Path) -> dict[tuple[str, str], dict[str, Any]]:
     """W5's run-settings file (§2b-10, fixed by its SHA-256 before any run):
     ``(target, version) -> run_settings``. Shared by the case generator and this reader."""
@@ -215,8 +234,12 @@ def settings_mismatch(
     return None
 
 
-def load_manifest(path: Path) -> dict[tuple[str, str, str, str], CellKey]:
-    """``(tar_sha256, target, version, filter) -> (fixture, target, version, filter)``."""
+def load_manifest(
+    path: Path, settings_sha256: str | None = None
+) -> dict[tuple[str, str, str, str], CellKey]:
+    """``(tar_sha256, target, version, filter) -> (fixture, target, version, filter)``. With
+    ``settings_sha256``, every row must record that run-settings file (the folders were written
+    with the same file the reader is given), else :class:`InputError`."""
     data = _read(path)
     if not isinstance(data, dict) or data.get("schema") != MANIFEST_SCHEMA:
         raise InputError(f"{path}: not an {MANIFEST_SCHEMA} manifest")
@@ -228,6 +251,11 @@ def load_manifest(path: Path) -> dict[tuple[str, str, str, str], CellKey]:
             str(row["version"]),
             str(row.get("extraction_filter") or ""),
         )
+        if settings_sha256 is not None and row.get("run_settings_sha256") != settings_sha256:
+            raise InputError(
+                f"{path}: {key} was written with run-settings sha256 "
+                f"{row.get('run_settings_sha256')!r}, not the given file's {settings_sha256}"
+            )
         lookup = (str(row["tar_sha256"]), key[1], key[2], key[3])
         if lookup in index:
             raise InputError(f"{path}: two fixtures of one cell share tar {lookup[0][:12]}")
@@ -451,17 +479,25 @@ def summarize(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
 
 
 def run(
-    labels_path: Path, manifest_path: Path, replays: Path, settings_path: Path
+    labels_path: Path,
+    manifest_path: Path,
+    replays: Path,
+    settings_path: Path,
+    *,
+    labels_sha256: str,
+    settings_sha256: str,
 ) -> dict[str, Any]:
+    check_sha256(labels_path, labels_sha256, "label file")
+    settings_sha = check_sha256(settings_path, settings_sha256, "run-settings file")
     header, labels = load_labels(labels_path)
     settings = load_run_settings(settings_path)
-    manifest = load_manifest(manifest_path)
+    manifest = load_manifest(manifest_path, settings_sha)
     summaries = read_replays(replays, manifest, labels, settings)
     table = build_table(labels, summaries)
     rows = table["rows"]
     output = {
         "label": LABEL,
-        "header": HEADER,
+        "header": list(HEADER),
         "scope": "통제 재현만(정해진 fixture, 정해진 버전). 자력 발견 열 없음.",
         "inputs": {
             "labels_sha256": _sha256(labels_path),
@@ -482,13 +518,28 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--replays", type=Path, required=True)
     parser.add_argument("--settings-file", type=Path, required=True, help="514-run-settings-v1")
+    parser.add_argument(
+        "--labels-sha256", required=True, help="the label file's SHA-256 as written in the ledger"
+    )
+    parser.add_argument(
+        "--settings-sha256",
+        required=True,
+        help="the run-settings file's SHA-256 as written in the ledger",
+    )
     parser.add_argument("--json", type=Path, help="write the table here too")
     try:
         args = parser.parse_args(argv)
     except SystemExit as error:
         return 2 if error.code else 0
     try:
-        output = run(args.labels, args.manifest, args.replays, args.settings_file)
+        output = run(
+            args.labels,
+            args.manifest,
+            args.replays,
+            args.settings_file,
+            labels_sha256=args.labels_sha256,
+            settings_sha256=args.settings_sha256,
+        )
     except InputError as error:
         print(json.dumps({"verdict": "input_error", "error": str(error)}))
         print(f"input error: {error}", file=sys.stderr)

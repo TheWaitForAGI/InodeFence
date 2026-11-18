@@ -35,8 +35,10 @@ SETTINGS_FILE = {
 }
 
 
-def _settings_file(folder: Path, content: dict | None = None) -> Path:
-    path = folder.parent / f"{folder.name}-run-settings.json"
+def _settings_file(folder: Path, content: dict | None = None, where: Path | None = None) -> Path:
+    """Write the settings file beside ``folder`` (or in ``where``); never inside the repository."""
+    path = (where or folder.parent) / f"{folder.name}-run-settings.json"
+    assert not path.resolve().is_relative_to(cases.REPO_ROOT), path
     path.write_text(json.dumps(content or SETTINGS_FILE), encoding="utf-8")
     return path
 
@@ -48,7 +50,10 @@ def _main(
     version: str = "7.5.11",
     image: str = IMAGE,
     settings: dict | None = None,
+    settings_dir: Path | None = None,
+    settings_sha: str | None = None,
 ) -> int:
+    path = _settings_file(out, settings, settings_dir)
     return cases.main(
         [
             "--target",
@@ -58,7 +63,9 @@ def _main(
             "--image-id",
             image,
             "--settings-file",
-            str(_settings_file(out, settings)),
+            str(path),
+            "--settings-sha256",
+            settings_sha or sha256(path.read_bytes()).hexdigest(),
             "--out",
             str(out),
             *extra,
@@ -123,9 +130,9 @@ def test_existing_cell_folder_is_never_overwritten(tmp_path: Path) -> None:
     assert (tmp_path / "manifest.json").read_text() == before
 
 
-def test_out_inside_the_repository_is_refused(capsys) -> None:
+def test_out_inside_the_repository_is_refused(tmp_path: Path, capsys) -> None:
     inside = cases.REPO_ROOT / "build" / "fixture-cases-test"
-    assert _run(inside) == 2
+    assert _main(inside, settings_dir=tmp_path) == 2  # the settings file stays in tmp_path
     assert not inside.exists()
     assert "outside the repository" in capsys.readouterr().err
 
@@ -246,3 +253,9 @@ def test_the_replay_check_runs_nothing(
         tmp_path, target=target, version=version, image_id=IMAGE, run_settings=settings
     )
     assert len(rows) == 14
+
+
+def test_a_settings_file_other_than_the_ledger_hash_is_refused(tmp_path: Path, capsys) -> None:
+    assert _main(tmp_path / "out", settings_sha="0" * 64) == 2
+    assert "!= expected" in capsys.readouterr().err
+    assert not (tmp_path / "out").exists()

@@ -11,7 +11,8 @@ each ``replay.json`` against. Nothing is extracted or run here.
 The run conditions are never defaulted. ``--image-id`` (exact ``sha256:…``, the value W1 wrote
 in the ledger) is required, and ``run_settings`` are taken from ``--settings-file``, W5's
 run-settings file (``514-run-settings-v1.json``, §2b-10): a cell (target, version) the file does not
-list is refused, and the manifest records the file's SHA-256. Every folder is
+list is refused, the file must have the SHA-256 given as ``--settings-sha256`` (the ledger
+value), and the manifest records it. Every folder is
 read back with ``case_replay.load_replay_request`` and checked with the target's own
 ``replay_check`` (what ``inodefence replay`` does before it runs anything) before the manifest is
 written, so a folder the replay driver would refuse is refused here. The case record says it is a
@@ -29,7 +30,8 @@ Usage::
 
     PYTHONPATH=src python -m scripts.analysis.oracle_accuracy_real_cases \\
         --target node-tar --version 7.5.11 --image-id sha256:<64 hex> \\
-        --settings-file 514-run-settings-v1.json --out <folder outside the repo>
+        --settings-file 514-run-settings-v1.json --settings-sha256 <ledger value> \\
+        --out <folder outside the repo>
 
 Exit codes: 0 written, 2 refused (bad argument, folder exists, or a written folder that replay
 would not accept).
@@ -46,7 +48,11 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
-from scripts.analysis.oracle_accuracy_real_table import InputError, load_run_settings
+from scripts.analysis.oracle_accuracy_real_table import (
+    InputError,
+    check_sha256,
+    load_run_settings,
+)
 from scripts.oracle_accuracy_fixtures import CASES
 
 from inodefence.builder import build_tar
@@ -205,6 +211,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="W5's run-settings file (514-run-settings-v1.json); the cell's settings come from it",
     )
+    parser.add_argument(
+        "--settings-sha256",
+        required=True,
+        help="the run-settings file's SHA-256 as written in the ledger (another file is refused)",
+    )
     parser.add_argument("--out", required=True, type=Path, help="folder outside the repository")
     parser.add_argument("--fixtures", nargs="+", default=list(FIXTURES))
     return parser
@@ -218,6 +229,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2 if error.code else 0
     try:
         try:
+            file_sha = check_sha256(args.settings_file, args.settings_sha256, "run-settings file")
             cells = load_run_settings(args.settings_file)
         except InputError as error:
             raise Refused(str(error)) from error
@@ -232,7 +244,6 @@ def main(argv: list[str] | None = None) -> int:
             run_settings=settings,
             fixtures=args.fixtures,
         )
-        file_sha = sha256(args.settings_file.read_bytes()).hexdigest()
         for row in rows:
             row["run_settings_sha256"] = file_sha
         manifest = write_manifest(args.out, rows)

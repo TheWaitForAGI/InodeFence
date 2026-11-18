@@ -492,3 +492,27 @@ def test_more_ids_than_the_corpus_stay_different() -> None:
     ids = _ids(SeedCorpusId.MINIMAL_EMPTY_REG)
     longer = {"mutation_policies": [V21.value], "initial_case_ids": [*ids, "extra"]}
     assert seed_corpus_cell_check(longer) == "different"
+
+
+def test_a_complete_list_that_is_a_proper_prefix_of_another_complete_list_is_different() -> None:
+    # QA check 35 recommendation, as its own test: complete lists are whole seed phases, so a
+    # complete list that only starts another arm's complete list is a contradiction.
+    result = _group([["s0", "s1"], ["s0", "s1", "s2"], ["s0", "s1"]], complete=True)
+    assert result["groups"]["1"]["seed_corpus_check"] == "different"
+
+
+def test_arm_identity_reads_the_exploration_policy_with_the_search_policy() -> None:
+    su = EffectSearchPolicy.S_U_STATE_RETENTION_UNIFORM.value
+    plain = {"config": {"search_policy": su}}
+    explored = {"config": {"search_policy": su, "exploration_policy": "pre-violation-x"}}
+    assert recorded_ids(plain, [], "search_policy") == [su]
+    assert recorded_ids(explored, [], "search_policy") == [f"{su}+exploration=pre-violation-x"]
+    # Two arms that share S-u but differ in exploration policy are distinguished.
+    cells = _cells(
+        "search_policies",
+        [su],
+        [f"{su}+exploration=pre-violation-x"],
+        ["structure-coverage-v1-uniform-mutation-v1"],
+    )
+    equal, check, _ = _check(cells, "arm_identity")
+    assert equal and check == "equal"

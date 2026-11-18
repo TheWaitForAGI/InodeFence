@@ -446,6 +446,7 @@ if [ "$MODE" = explore ]; then
   # under the read-only root); the host pulls this folder with docker cp while the loop runs.
   [ -n "${DEMO_LIVE_DIR:-}" ] && DEMO_ARGS+=(--live-dir "$DEMO_LIVE_DIR")
   [ -n "${DEMO_ENGINE_COMMIT:-}" ] && DEMO_ARGS+=(--engine-commit "$DEMO_ENGINE_COMMIT")
+  [ -n "${DEMO_IDENTITY_CHECK_EVERY:-}" ] && DEMO_ARGS+=(--identity-check-every "$DEMO_IDENTITY_CHECK_EVERY")
   # The loop may end abnormally (e.g. a Docker stall past the re-execution bounds); its live folder
   # then holds the violations written so far and the final state=failed snapshot. Capture the exit
   # code instead of letting `set -e` leave before the copy below, which would lose them when the

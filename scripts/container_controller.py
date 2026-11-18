@@ -47,6 +47,7 @@ from inodefence.execution.call_diagnostics import (
     last_anomaly,
 )
 from inodefence.execution.stall_recovery import ObservedDockerClient, StallRecovery
+from inodefence.targets.identity_schedule import apply_identity_schedule, finish_identity_schedule
 
 
 def demo_steps_path(evidence: Path) -> Path:
@@ -338,6 +339,7 @@ def run_native_decompress_campaign(
         else EffectSearchPolicy.P3_EXTERNAL_RESOLVE_GRADIENT
     )
     target = DecompressFrameTarget.bind(backend, image)
+    target, schedule = apply_identity_schedule(target, getattr(args, "identity_check_every", None))
     producer = f"native-decompress[{target.provenance.target_version}]"
     config = DecompressEffectCampaignConfig(
         random_seed=seed,
@@ -357,6 +359,7 @@ def run_native_decompress_campaign(
     try:
         result = run_decompress_effect_campaign(minimal_seed_corpus(), produce, config)
         report = decompress_effect_campaign_report(result, producer=producer, label="demo run")
+        report.update(finish_identity_schedule(target, schedule))
         stats = result.final_stats
         _announce(
             f"decompress self-discovery: discovered_violation={result.discovered_violation} "
@@ -467,6 +470,7 @@ def run_native_oras_go_campaign(
         else MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK
     )
     target = OrasGoFrameTarget.bind(backend, image)
+    target, schedule = apply_identity_schedule(target, getattr(args, "identity_check_every", None))
     producer = f"native-oras-go[{target.provenance.target_version}]"
     config = OrasGoEffectCampaignConfig(
         random_seed=seed, execution_budget=budget, mutation_policy=policy
@@ -501,6 +505,7 @@ def run_native_oras_go_campaign(
         )
         if artifact_layout:  # recorded only when on, so a default report is byte-identical
             report["artifact_layout"] = args.oras_go_artifact_layout
+        report.update(finish_identity_schedule(target, schedule))
         stats = result.final_stats
         _announce(
             f"oras-go self-discovery: discovered_violation={result.discovered_violation} "

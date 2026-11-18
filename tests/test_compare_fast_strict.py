@@ -428,6 +428,91 @@ def test_unpaired_reports_are_an_input_error(tmp_path: Path, capsys) -> None:
     assert code == 2 and "without a partner" in out["error"]
 
 
+# -- sensitivity control, case B (W4): --mode control-sensitivity ------------------------------
+
+
+def _version_pair() -> tuple[dict, dict]:
+    """Case B shape: two STRICT runs of the same seed on different extractor versions. The
+    7.5.2-like run violates C1 from step 2; the 7.5.11-like (fixed) run never does."""
+    old = _report()
+    old["node_tar_version"] = "7.5.2"
+    for step in old["steps"][2:]:
+        step["oracle"]["C1"] = True
+    new = _report()
+    new["node_tar_version"] = "7.5.11"
+    return old, new
+
+
+def _control(capsys, a: Path, b: Path) -> tuple[int, dict, str]:
+    code = cfs.main(["--mode", "control-sensitivity", "--strict", str(a), "--fast", str(b)])
+    captured = capsys.readouterr()
+    return code, json.loads(captured.out), captured.err
+
+
+def test_control_identical_pair_is_equivalent(tmp_path: Path, capsys) -> None:
+    report = _report()
+    code, out, _ = _control(capsys, _write(tmp_path / "a", report), _write(tmp_path / "b", report))
+    assert code == 0 and out["verdict"] == "equivalent"
+
+
+def test_control_version_pair_diverges_at_the_first_changed_verdict(tmp_path: Path, capsys) -> None:
+    old, new = _version_pair()
+    code, out, err = _control(capsys, _write(tmp_path / "a", old), _write(tmp_path / "b", new))
+    assert code == 1 and out["verdict"] == "divergent"
+    first = out["first_divergence"]
+    assert (first["dimension"], first["step_index"]) == ("oracle_and_feedback", 2)
+    assert first["case_id"] == old["steps"][2]["case_id"]
+    assert (first["strict"], first["fast"]) == ("C1", "none")
+    assert err.startswith("CONTROL (not an acceptance verdict) divergent")
+
+
+def test_control_output_is_labelled_and_is_no_acceptance_verdict(tmp_path: Path, capsys) -> None:
+    old, new = _version_pair()
+    _, out, _ = _control(capsys, _write(tmp_path / "a", old), _write(tmp_path / "b", new))
+    assert out["mode"] == "control-sensitivity"
+    assert out["acceptance_evidence"] is False and "not an acceptance verdict" in out["control"]
+    assert "fast_kind" not in out and "fast_interval" not in out
+
+
+def test_control_uses_the_one_trajectory_comparison(
+    tmp_path: Path, capsys, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Mutation (W4): with the trajectory comparison disabled, control mode no longer finds the
+    case B divergence -- so the exit-1 test depends on the same comparison as acceptance."""
+    old, new = _version_pair()
+    monkeypatch.setattr(cfs, "_step_divergences", lambda strict, fast: [])
+    code, out, _ = _control(capsys, _write(tmp_path / "a", old), _write(tmp_path / "b", new))
+    assert code == 0 and out["verdict"] == "equivalent"
+
+
+def test_acceptance_path_still_refuses_the_case_b_pair(tmp_path: Path, capsys) -> None:
+    """The normal path is unchanged: a STRICT-STRICT, different-version pair is an input error."""
+    old, new = _version_pair()
+    code, out = _trajectory(capsys, _write(tmp_path / "s", old), _write(tmp_path / "s2", new))
+    assert code == 2 and out["verdict"] == "input_error"
+
+
+def test_control_still_refuses_an_invalid_run(tmp_path: Path, capsys) -> None:
+    report = _report()
+    b = _write(tmp_path / "b", report)
+    _remove(b, "result.json")
+    code, out, _ = _control(capsys, _write(tmp_path / "a", report), b)
+    assert code == 2 and out["verdict"] == "invalid"
+
+
+def test_a_launch_with_only_one_build_mark_is_not_skipped(tmp_path: Path, capsys) -> None:
+    """W4: the build-only skip needs BOTH marks (BUILD_ONLY=1 and a shared-image-build
+    classification); a run launch mis-classified as a build is still read, here as STRICT-shaped."""
+    report = _report()
+    fast_dir = _write(tmp_path / "f", report)
+    (record_path,) = (fast_dir / "runtime").glob("*T000000Z.json")
+    record = json.loads(record_path.read_text())
+    record["launches"].insert(0, {"classification": "shared-image-build", "env": {}})
+    record_path.write_text(json.dumps(record))
+    code, out = _trajectory(capsys, _write(tmp_path / "s", report), fast_dir)
+    assert code == 2 and "STRICT shape" in out["error"]
+
+
 def test_unknown_option_exits_2() -> None:
     assert cfs.main(["--mode", "trajectory", "--bogus"]) == 2
 

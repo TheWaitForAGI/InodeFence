@@ -92,6 +92,14 @@ check.
 Scope: an ``isolated`` trajectory verdict does not cover snapshots or isolation/reset (they are
 the same by construction for a FAST that shares no state); the output says so.
 
+``--mode control-sensitivity`` (W4, case B) is the sensitivity control of the comparison, not an
+acceptance test: the same trajectory dimensions (:func:`compare_pairs`, one code path) on two
+given runs, skipping only the acceptance preconditions (one STRICT + one FAST, same campaign).
+For example a 7.5.11 STRICT run against a 7.5.2 STRICT run must diverge (exit 1). Its JSON says
+``"mode": "control-sensitivity"`` and ``"acceptance_evidence": false``, and the summary line
+starts ``CONTROL (not an acceptance verdict)``. In the acceptance modes a STRICT-STRICT or
+different-version pair is still refused (exit 2).
+
 Exit codes: 0 equivalent, 1 not equivalent (a divergence, a rule (i) mismatch or a TOST
 failure), 2 input error or invalid run (missing/unreadable/unpaired evidence, a shared FAST
 without ``parity_subject``, too few rounds, or an invalid run).
@@ -310,7 +318,8 @@ def _build_only(launch: object) -> bool:
         return False
     env = launch.get("env") or {}
     classification = str(launch.get("classification") or "")
-    return (isinstance(env, dict) and env.get("BUILD_ONLY") == "1") or classification.startswith(
+    # Both marks (W4): a run launch with only one of them is not skipped.
+    return (isinstance(env, dict) and env.get("BUILD_ONLY") == "1") and classification.startswith(
         "shared-image-build"
     )
 
@@ -399,8 +408,10 @@ def check_fast_layers(folder: Path, side: str) -> int | None:
 
 
 def pair_campaigns(
-    strict: Mapping[str, Campaign], fast: Mapping[str, Campaign]
+    strict: Mapping[str, Campaign], fast: Mapping[str, Campaign], *, check: bool = True
 ) -> list[tuple[Campaign, Campaign]]:
+    """Pair the reports (the single report of each side, or by file name). ``check`` applies
+    :func:`check_pair` (the acceptance path); only the sensitivity control passes ``False``."""
     if len(strict) == 1 and len(fast) == 1:
         pairs = [(next(iter(strict.values())), next(iter(fast.values())))]
     else:
@@ -408,8 +419,9 @@ def pair_campaigns(
         if missing:
             raise InputError(f"reports without a partner on the other side: {missing}")
         pairs = [(strict[name], fast[name]) for name in sorted(strict)]
-    for strict_campaign, fast_campaign in pairs:
-        check_pair(strict_campaign, fast_campaign)
+    if check:
+        for strict_campaign, fast_campaign in pairs:
+            check_pair(strict_campaign, fast_campaign)
     return pairs
 
 
@@ -576,6 +588,40 @@ def _identity_partition_differences(strict: Campaign, fast: Campaign) -> list[in
 FAST_KINDS = ("isolated", "shared")
 
 
+def compare_pairs(
+    pairs: Sequence[tuple[Campaign, Campaign]], *, include_parity: bool
+) -> tuple[list[str], dict[str, object] | None, list[dict[str, object]]]:
+    """The trajectory dimensions over paired campaigns: (dimensions judged, first divergence or
+    None, per-campaign detail). The one comparison both the acceptance path
+    (:func:`compare_trajectory`) and the sensitivity control (:func:`compare_control`) use."""
+    judged = [d for d in TRAJECTORY_DIMENSIONS if include_parity or d not in PARITY_ONLY_DIMENSIONS]
+    campaigns: list[dict[str, object]] = []
+    first: tuple[tuple[int, int], dict[str, object]] | None = None
+    for strict, fast in pairs:
+        found = _step_divergences(strict, fast)
+        if include_parity:
+            found += _parity_divergences(strict, fast)
+        found.sort(key=Divergence.order)
+        per_dimension = {name: sum(1 for d in found if d.dimension == name) for name in judged}
+        campaigns.append(
+            {
+                "strict": strict.name,
+                "fast": fast.name,
+                "steps": [len(strict.steps), len(fast.steps)],
+                "divergences_per_dimension": per_dimension,
+                "first_divergence": found[0].as_dict(strict.name) if found else None,
+                "descriptive": {
+                    "identity_partition_differing_steps": _identity_partition_differences(
+                        strict, fast
+                    )
+                },
+            }
+        )
+        if found and (first is None or found[0].order() < first[0]):
+            first = (found[0].order(), found[0].as_dict(strict.name))
+    return judged, (first[1] if first else None), campaigns
+
+
 def compare_trajectory(
     strict_dir: Path, fast_dir: Path, *, stop_first: bool, fast_kind: str
 ) -> tuple[int, dict[str, object]]:
@@ -604,31 +650,7 @@ def compare_trajectory(
             "snapshot and isolation/reset dimensions, which only parity_subject carries, so "
             "equivalence cannot be shown (design §8)"
         )
-    judged = [d for d in TRAJECTORY_DIMENSIONS if not (lacking and d in PARITY_ONLY_DIMENSIONS)]
-    campaigns: list[dict[str, object]] = []
-    first: tuple[tuple[int, int], dict[str, object]] | None = None
-    for strict, fast in pairs:
-        found = _step_divergences(strict, fast)
-        if not lacking:
-            found += _parity_divergences(strict, fast)
-        found.sort(key=Divergence.order)
-        per_dimension = {name: sum(1 for d in found if d.dimension == name) for name in judged}
-        campaigns.append(
-            {
-                "strict": strict.name,
-                "fast": fast.name,
-                "steps": [len(strict.steps), len(fast.steps)],
-                "divergences_per_dimension": per_dimension,
-                "first_divergence": found[0].as_dict(strict.name) if found else None,
-                "descriptive": {
-                    "identity_partition_differing_steps": _identity_partition_differences(
-                        strict, fast
-                    )
-                },
-            }
-        )
-        if found and (first is None or found[0].order() < first[0]):
-            first = (found[0].order(), found[0].as_dict(strict.name))
+    judged, first, campaigns = compare_pairs(pairs, include_parity=not lacking)
     verdict = "divergent" if first else "equivalent"
     output: dict[str, object] = {
         "mode": "trajectory",
@@ -643,7 +665,46 @@ def compare_trajectory(
             "not cover them; sufficient for an isolated FAST only (design §8)"
         )
     if first:
-        output["first_divergence"] = first[1]
+        output["first_divergence"] = first
+    if not stop_first:
+        output["campaigns"] = campaigns
+    return (DIVERGENT if first else EQUIVALENT), output
+
+
+CONTROL_MODE = "control-sensitivity"
+CONTROL_LABEL = "control (sensitivity check of the comparison; not an acceptance verdict)"
+
+
+def compare_control(a_dir: Path, b_dir: Path, *, stop_first: bool) -> tuple[int, dict[str, object]]:
+    """Sensitivity control (W4, case B): the same trajectory comparison (:func:`compare_pairs`) on
+    two given runs, skipping only the acceptance preconditions -- one STRICT + one FAST
+    (:func:`check_fast_layers`) and the same-campaign check (:func:`check_pair`). For example a
+    7.5.11 STRICT run against a 7.5.2 STRICT run, which must diverge (exit 1). Invalid runs are
+    still refused. The output is labelled a control and carries no acceptance verdict."""
+    invalid = [
+        f"{side}: {reason}"
+        for side, folder in (("a", a_dir), ("b", b_dir))
+        if folder.is_dir()
+        for reason in invalid_reasons(folder)
+    ]
+    if invalid:
+        raise InvalidCampaign("run not a valid finished campaign: " + "; ".join(invalid))
+    pairs = pair_campaigns(load_campaigns(a_dir), load_campaigns(b_dir), check=False)
+    with_parity = all(
+        isinstance(campaign.report.get("parity_subject"), dict)
+        for pair in pairs
+        for campaign in pair
+    )
+    judged, first, campaigns = compare_pairs(pairs, include_parity=with_parity)
+    output: dict[str, object] = {
+        "mode": CONTROL_MODE,
+        "control": CONTROL_LABEL,
+        "acceptance_evidence": False,
+        "verdict": "divergent" if first else "equivalent",
+        "dimensions_judged": judged,
+    }
+    if first:
+        output["first_divergence"] = first
     if not stop_first:
         output["campaigns"] = campaigns
     return (DIVERGENT if first else EQUIVALENT), output
@@ -935,6 +996,15 @@ def compare_replay(
 
 def _summary(output: Mapping[str, Any]) -> str:
     verdict = output["verdict"]
+    if output["mode"] == CONTROL_MODE:
+        first = output.get("first_divergence")
+        where = (
+            f": first divergence {first['dimension']} at step {first['step_index']} "
+            f"(case {first['case_id']})"
+            if first
+            else ": no divergence"
+        )
+        return f"CONTROL (not an acceptance verdict) {verdict}{where}"
     if output["mode"] == "trajectory":
         first = output.get("first_divergence")
         if first:
@@ -964,7 +1034,14 @@ def build_parser() -> argparse.ArgumentParser:
         "parity_subject in both reports (else exit 2).",
         epilog="exit codes: 0 equivalent, 1 not equivalent, 2 input error",
     )
-    parser.add_argument("--mode", choices=("trajectory", "replay"), required=True)
+    parser.add_argument(
+        "--mode",
+        choices=("trajectory", "replay", CONTROL_MODE),
+        required=True,
+        help=f"{CONTROL_MODE}: the trajectory comparison on two given runs (--strict A --fast B) "
+        "without the STRICT/FAST and same-campaign preconditions; a sensitivity control, never "
+        "an acceptance verdict",
+    )
     parser.add_argument("--strict", type=Path, required=True, help="STRICT run folder")
     parser.add_argument("--fast", type=Path, required=True, help="FAST run folder")
     parser.add_argument(
@@ -991,7 +1068,9 @@ def main(argv: list[str] | None = None) -> int:
     except SystemExit as error:
         return INPUT_ERROR if error.code else EQUIVALENT
     try:
-        if args.mode == "trajectory":
+        if args.mode == CONTROL_MODE:
+            code, output = compare_control(args.strict, args.fast, stop_first=args.stop_first)
+        elif args.mode == "trajectory":
             if args.fast_kind is None:
                 raise InputError("--mode trajectory needs --fast-kind isolated|shared")
             code, output = compare_trajectory(

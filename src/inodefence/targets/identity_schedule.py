@@ -11,13 +11,20 @@ A target given an :class:`IdentitySchedule` probes instead:
 * at the end: the campaign calls the target's ``verify_identity_at_end()``. A mismatch there
   raises, and the caller marks the whole campaign invalid (fail-closed).
 
-Why this keeps the guarantee within the existing trust model: every archive-run container is
-created from the immutable ``sha256:`` image ID, the backend re-inspects that ID on every
-prepare and rejects a different one, and containers run ``--read-only``, so the image files the
-probe hashes cannot differ between cases without the ID changing. The per-case probe therefore
-adds evidence of the same fact, not a different check; what FAST gives up is detecting a change
-at the case where it happened (it is detected at the next periodic or the end probe instead).
-Image contents and the probe implementation stay trusted, as before.
+What remains between probes differs by target (HOST4 QA, PR #535):
+
+* node-tar: the archive-run command carries the six expected hashes and the worker recomputes
+  the same identity in the same container before extracting (exit 3 -> "identity changed"), so
+  skipping the separate probe container loses no detection.
+* python-tarfile, decompress, oras-go: the archive-run command carries no expected hashes; between
+  probes the protection is the pinned image: every archive-run container is created from the
+  immutable ``sha256:`` image ID, the backend re-inspects that ID on every prepare and rejects a
+  different one, and containers run ``--read-only`` from a fresh filesystem, so the files the probe
+  hashes cannot differ between cases without the ID changing. A change is detected at the next
+  periodic or the end probe instead of at the case where it happened.
+
+Image contents and the probe implementation stay trusted, as before. Any failed probe, periodic
+or final, aborts the whole campaign, as a failed per-case probe does in STRICT.
 
 Isolation is unchanged: archive-run containers, their policy check and their removal are the
 backend's and run per case exactly as in STRICT. Replay always runs STRICT.

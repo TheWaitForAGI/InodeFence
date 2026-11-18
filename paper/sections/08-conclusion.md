@@ -2,8 +2,8 @@
 
 ## 7.1 현재 방어하는 명제
 
-InodeFence는 CVE 식별자·PoC·고정 공격 패턴·대상 경로·sentinel 이름을 oracle과 feedback에 넣지 않고
-(S-u의 보존 키는 영향 경로가 보호 대상인지를 나타내는 플래그를 쓴다, §4.3)
+InodeFence는 CVE 식별자·PoC·고정 공격 패턴·대상 경로·sentinel 이름을 oracle 조건이나 feedback에 미리 주지 않고
+(S-u의 보존은 영향 경로가 보호 대상인지를 나타내는 플래그와, 관찰된 보호 객체 경로를 담을 수 있는 위반 지문을 쓴다, §4.3)
 filesystem-security-state(object identity + external effect)를 feedback으로 쓰는 archive-extraction 탐색 접근을 조사한다.
 이 드래프트가 지금 방어하는 것은 다음이다.
 

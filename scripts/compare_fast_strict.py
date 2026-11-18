@@ -67,20 +67,27 @@ decompress and oras-go controllers write an ``aborted`` report; in every target 
 driver then publishes no ``result.json`` (ERROR, exit 2). Any ``progress.json`` state other
 than ``finished`` (or an unreadable one) is invalid too.
 
-The two folders must be one STRICT and one FAST run of the same campaign (design §8.3), else
-exit 2: in trajectory mode the paired reports must agree on ``config``, ``image_id``,
-``node_tar_version``, ``vocabulary_mode``, ``engine_commit`` and ``initial_case_ids``, and only
-the FAST report carries the ``identity_checks`` record (the FAST end check writes it; STRICT
-writes none). In replay mode ``inodefence replay`` always runs STRICT, so the FAST side accepts
+The two folders must be one STRICT and one FAST run of the same campaign (design §8.3, §8.4),
+else exit 2: in trajectory mode the paired reports must agree on ``config``, ``image_id``,
+``node_tar_version``, ``vocabulary_mode``, ``engine_commit`` and ``initial_case_ids``. FAST is
+recognised from the records, never from an argument: on the FAST side all three layers must
+record it with the same probe interval -- the loop report's ``identity_checks.interval``,
+``result.json``'s ``campaign.identity_checks.interval`` and the runtime record's
+``policy_applied.identity_check_every`` -- and on the STRICT side none may
+(:func:`check_fast_layers`). ``per_case_identity_check`` is not read (null for decompress/oras-go
+by design). In replay mode ``inodefence replay`` always runs STRICT, so the FAST side accepts
 only verdict lines marked ``"profile": "fast"`` (from FAST campaigns on the pinned case set) and
 the STRICT side refuses lines marked ``fast``.
 
 Trajectory mode reads ``demo_report_schema`` 5 reports: node-tar and python-tarfile exploration
 and run_exp0 cells. decompress and oras-go reports have another format (per-step feedback
-counts, not keys); they go through ``--mode replay`` with a reduced reader (design §8.3): each
-step of a campaign report (``decompress_campaign_schema`` / ``oras_go_campaign_schema``) is one
-verdict for its ``case_id`` (any C0/C1/C2 true; no verdict unless the extractor finished), FAST
-reports recognised by ``identity_checks``. Replay mode applies the same invalid-run check.
+counts, not keys); they go through ``--mode replay`` with a reduced reader (design §8.3, §8.4).
+For them FAST option 1 means: identity-check frequency reduced, observation path identical,
+per-case verdict agreement measured. Each step of a campaign report
+(``decompress_campaign_schema`` / ``oras_go_campaign_schema``) is one verdict for its ``case_id``
+(any C0/C1/C2 true; no verdict unless the extractor finished), and a folder of such reports gets
+the same three-layer FAST/STRICT check as trajectory. Replay mode applies the same invalid-run
+check.
 
 Scope: an ``isolated`` trajectory verdict does not cover snapshots or isolation/reset (they are
 the same by construction for a FAST that shares no state); the output says so.
@@ -100,6 +107,7 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import random
@@ -283,6 +291,111 @@ def check_pair(strict: Campaign, fast: Campaign) -> None:
         raise InputError(f"strict:{strict.name} carries {FAST_RECORD}: it is a FAST run")
     if FAST_RECORD not in fast.report:
         raise InputError(f"fast:{fast.name} has no {FAST_RECORD} record: it is not a FAST run")
+
+
+RUNTIME_SCHEMA = "inodefence-runtime-v1"
+#: The three layers that record a FAST run (design §8.4), each read for its probe interval.
+FAST_LAYERS = ("loop report", "result.json", "runtime record")
+
+
+def _interval(value: object) -> int | None:
+    return value if type(value) is int else None
+
+
+def _build_only(launch: object) -> bool:
+    """A FAST session's build-only launch of the shared images (``drivers/runtime/session.py``):
+    recorded as a launch of its own, with ``BUILD_ONLY=1`` and a ``shared-image-build*``
+    classification. The identity interval applies to the run's own launch only, by design."""
+    if not isinstance(launch, dict):
+        return False
+    env = launch.get("env") or {}
+    classification = str(launch.get("classification") or "")
+    return (isinstance(env, dict) and env.get("BUILD_ONLY") == "1") or classification.startswith(
+        "shared-image-build"
+    )
+
+
+def fast_layer_intervals(folder: Path) -> dict[str, list[int | None]]:
+    """Per layer, the FAST probe interval each record of ``folder`` shows (``None``: STRICT shape).
+
+    * loop report (``demo_report_schema`` 5, decompress/oras-go campaign reports):
+      ``identity_checks.interval``;
+    * ``result.json``: ``campaign.identity_checks.interval``;
+    * runtime record (``inodefence-runtime-v1``): the interval of each explore launch's
+      ``policy_applied.identity_check_every`` (``"<env>=N"``).
+
+    Byte-identical copies (the runtime record is also published beside ``result.json``) count once.
+    Aborted reports are left to :func:`invalid_reasons`.
+    """
+    layers: dict[str, list[int | None]] = {name: [] for name in FAST_LAYERS}
+    seen: set[str] = set()
+    for path in sorted(folder.rglob("*.json")):
+        try:
+            raw = path.read_bytes()
+            data = json.loads(raw)
+        except (OSError, ValueError):
+            continue
+        if not isinstance(data, dict) or "aborted" in data:
+            continue
+        digest = hashlib.sha256(raw).hexdigest()
+        if digest in seen:
+            continue
+        seen.add(digest)
+        if data.get("demo_report_schema") == REPORT_SCHEMA or any(
+            data.get(key) == 1 for key in REDUCED_REPORT_SCHEMAS
+        ):
+            record = data.get(FAST_RECORD)
+            layers["loop report"].append(
+                _interval(record.get("interval")) if isinstance(record, dict) else None
+            )
+        elif data.get("schema") == RESULT_SCHEMA:
+            record = (data.get("campaign") or {}).get(FAST_RECORD)
+            layers["result.json"].append(
+                _interval(record.get("interval")) if isinstance(record, dict) else None
+            )
+        elif data.get("schema") == RUNTIME_SCHEMA and data.get("kind", "explore") == "explore":
+            for launch in data.get("launches") or []:
+                if _build_only(launch):
+                    continue  # FAST's shared-image build: not a run, never carries the interval
+                applied = ((launch or {}).get("policy_applied") or {}).get("identity_check_every")
+                value = None
+                if isinstance(applied, dict) and applied.get("applied") is True:
+                    detail = str(applied.get("detail", ""))
+                    tail = detail.rsplit("=", 1)[-1]
+                    value = int(tail) if tail.isdigit() else None
+                layers["runtime record"].append(value)
+    return layers
+
+
+def check_fast_layers(folder: Path, side: str) -> int | None:
+    """``side`` is ``fast``: every layer present and every record shows the same interval
+    (returned). ``side`` is ``strict``: no record in any layer shows FAST. Else
+    :class:`InputError` (exit 2).
+
+    ``per_case_identity_check`` is not read: it is null for decompress/oras-go by design.
+    """
+    layers = fast_layer_intervals(folder)
+    if side == "strict":
+        fast_shaped = [
+            name for name, values in layers.items() if any(v is not None for v in values)
+        ]
+        if fast_shaped:
+            raise InputError(
+                f"strict: {', '.join(fast_shaped)} record a FAST run (identity checks)"
+            )
+        return None
+    missing = [name for name, values in layers.items() if not values]
+    if missing:
+        raise InputError(f"fast: no {', '.join(missing)} to confirm the FAST run (design §8.4)")
+    strict_shaped = [name for name, values in layers.items() if None in values]
+    if strict_shaped:
+        raise InputError(f"fast: {', '.join(strict_shaped)} in STRICT shape (no identity checks)")
+    intervals = {
+        name: sorted({v for v in values if v is not None}) for name, values in layers.items()
+    }
+    if len({v for values in layers.values() for v in values}) != 1:
+        raise InputError(f"fast: the layers disagree on the probe interval: {intervals}")
+    return layers["loop report"][0]
 
 
 def pair_campaigns(
@@ -477,6 +590,8 @@ def compare_trajectory(
     if invalid:
         raise InvalidCampaign("run not a valid finished campaign: " + "; ".join(invalid))
     pairs = pair_campaigns(load_campaigns(strict_dir), load_campaigns(fast_dir))
+    check_fast_layers(strict_dir, "strict")
+    fast_interval = check_fast_layers(fast_dir, "fast")
     lacking = [
         f"{side}:{campaign.name}"
         for strict, fast in pairs
@@ -518,6 +633,7 @@ def compare_trajectory(
     output: dict[str, object] = {
         "mode": "trajectory",
         "fast_kind": fast_kind,
+        "fast_interval": fast_interval,
         "verdict": verdict,
         "dimensions_judged": judged,
     }
@@ -603,6 +719,10 @@ def load_replay_counts(folder: Path, side: str) -> dict[str, list[bool | None]]:
 #: termination and C0/C1/C2 only, feedback as counts (design §8.3, reduced reader).
 REDUCED_REPORT_SCHEMAS = ("decompress_campaign_schema", "oras_go_campaign_schema")
 _JUDGED_TERMINATIONS = ("success", "rejected")
+
+
+def folder_has_reduced_reports(folder: Path) -> bool:
+    return folder.is_dir() and bool(_reduced_campaign_reports(folder))
 
 
 def _reduced_campaign_reports(folder: Path) -> list[tuple[Path, dict[str, Any]]]:
@@ -733,6 +853,13 @@ def compare_replay(
     ]
     if invalid:
         raise InvalidCampaign("run not a valid finished campaign: " + "; ".join(invalid))
+    # Campaign reports (decompress / oras-go FAST campaigns on the pinned case set): the same
+    # three-layer FAST/STRICT check as trajectory. Verdict lines alone carry only their profile
+    # mark.
+    if folder_has_reduced_reports(fast_dir):
+        check_fast_layers(fast_dir, "fast")
+    if folder_has_reduced_reports(strict_dir):
+        check_fast_layers(strict_dir, "strict")
     strict_rounds = load_replay_counts(strict_dir, "strict")
     fast_rounds = load_replay_counts(fast_dir, "fast")
     per_input: list[dict[str, object]] = []

@@ -73,6 +73,38 @@ def _report(
     return report
 
 
+def _product_records(folder: Path, *, fast: bool, name: str = "run", interval: int = 4) -> None:
+    """What the product exploration writes beside the loop report: ``result.json`` (FAST adds
+    ``campaign.identity_checks``) and the runtime record under ``runtime/`` (FAST: profile fast and
+    ``policy_applied.identity_check_every`` on the explore launch)."""
+    result = folder / "target-explore" / f"{name}-result"
+    result.mkdir(parents=True, exist_ok=True)
+    campaign: dict[str, object] = {"runs_executed": BUDGET}
+    if fast:
+        campaign[cfs.FAST_RECORD] = {**_FAST_RECORD, "interval": interval}
+    (result / "result.json").write_text(
+        json.dumps({"schema": cfs.RESULT_SCHEMA, "verdict": "PASS", "campaign": campaign}),
+        encoding="utf-8",
+    )
+    launch: dict[str, object] = {"classification": "completed"}
+    if fast:
+        launch["policy_applied"] = {
+            "identity_check_every": {
+                "applied": True,
+                "detail": f"INODEFENCE_IDENTITY_CHECK_EVERY={interval}",
+            }
+        }
+    runtime = {
+        "schema": cfs.RUNTIME_SCHEMA,
+        "kind": "explore",
+        "profile": "fast" if fast else "strict",
+        "policy": {"identity_check_every": interval} if fast else {},
+        "launches": [launch],
+    }
+    (folder / "runtime").mkdir(parents=True, exist_ok=True)
+    (folder / "runtime" / f"{name}-20261118T000000Z.json").write_text(json.dumps(runtime))
+
+
 def _write(folder: Path, report: dict, *, streaming: bool = True, name: str = "run") -> Path:
     """Write a campaign the way exploration does or run_exp0 does.
 
@@ -98,11 +130,7 @@ def _write(folder: Path, report: dict, *, streaming: bool = True, name: str = "r
         "".join(json.dumps(step, sort_keys=True) + "\n" for step in steps), encoding="utf-8"
     )
     (run / f"{base}.json").write_text(json.dumps(report), encoding="utf-8")
-    result = folder / "target-explore" / f"{name}-result"
-    result.mkdir()
-    (result / "result.json").write_text(
-        json.dumps({"schema": cfs.RESULT_SCHEMA, "verdict": "PASS"}), encoding="utf-8"
-    )
+    _product_records(folder, fast=cfs.FAST_RECORD in report, name=name)
     return folder
 
 
@@ -137,8 +165,8 @@ def test_f1_identical_campaigns_are_equivalent(tmp_path: Path, capsys, streaming
     fast["timing"] = {"total_seconds": 3.0, "per_case": [{"container_id": "other"}]}
     code, out = _trajectory(
         capsys,
-        _write(tmp_path / "s", strict, streaming=streaming),
-        _write(tmp_path / "f", fast, streaming=streaming),
+        _write(tmp_path / "s", strict, streaming=streaming),  # STRICT: explore or run_exp0 layout
+        _write(tmp_path / "f", fast),  # FAST exists only as a product exploration (three layers)
     )
     assert code == 0
     assert out["verdict"] == "equivalent"
@@ -442,6 +470,129 @@ def test_runs_of_different_campaigns_are_refused(
     assert code == 2 and "not the same campaign" in out["error"] and field in out["error"]
 
 
+def _remove(folder: Path, pattern: str) -> None:
+    for path in folder.rglob(pattern):
+        path.unlink()
+
+
+@pytest.mark.parametrize(
+    ("damage", "message"),
+    [
+        (lambda f: _remove(f, "result.json"), "no result.json"),
+        (lambda f: _remove(f, "*T000000Z.json"), "no runtime record"),
+        (lambda f: _product_records(f, fast=True, interval=7), "disagree on the probe interval"),
+        (lambda f: _product_records(f, fast=False), "STRICT shape"),
+    ],
+)
+def test_fast_needs_three_layers_agreeing_on_the_interval(
+    tmp_path: Path, capsys, damage, message: str
+) -> None:
+    """Design §8.4: FAST is read from the loop report, result.json and the runtime record, which
+    must all record it with the same interval; any missing layer, STRICT-shaped layer or
+    disagreement is an input error, never a comparison."""
+    report = _report()
+    fast_dir = _write(tmp_path / "f", report)
+    damage(fast_dir)
+    if message == "no result.json":  # a product folder without result.json is an invalid run
+        code, out = _trajectory(capsys, _write(tmp_path / "s", report), fast_dir)
+        assert code == 2 and out["verdict"] == "invalid"
+        return
+    code, out = _trajectory(capsys, _write(tmp_path / "s", report), fast_dir)
+    assert code == 2 and out["verdict"] == "input_error" and message in out["error"]
+
+
+def test_strict_side_with_a_fast_runtime_record_is_refused(tmp_path: Path, capsys) -> None:
+    report = _report()
+    strict_dir = _write(tmp_path / "s", report)
+    _product_records(strict_dir, fast=True)  # the run claimed STRICT but ran FAST
+    code, out = _trajectory(capsys, strict_dir, _write(tmp_path / "f", report))
+    assert code == 2 and "strict:" in out["error"] and "record a FAST run" in out["error"]
+
+
+def test_fasts_shared_image_build_launch_is_not_a_layer(tmp_path: Path, capsys) -> None:
+    """QA: under FAST the session may first record a build-only launch (BUILD_ONLY=1,
+    classification shared-image-build); it carries no interval by design and must not read as a
+    STRICT-shaped runtime record."""
+    report = _report()
+    fast_dir = _write(tmp_path / "f", report)
+    (record_path,) = (fast_dir / "runtime").glob("*T000000Z.json")
+    record = json.loads(record_path.read_text())
+    build = {
+        "classification": "shared-image-build",
+        "env": {"RUN_ID": "run", "BUILD_ONLY": "1"},
+        "policy_applied": {"reuse_shared_images": {"shared_images": {}}},
+    }
+    record["launches"].insert(0, build)
+    record_path.write_text(json.dumps(record))
+    code, out = _trajectory(capsys, _write(tmp_path / "s", report), fast_dir)
+    assert code == 0 and out["fast_interval"] == 4
+
+
+def _with_build_launch(fast_dir: Path, *, run_launch_interval: bool = True) -> None:
+    """Put FAST's shared-image build launch first in the runtime record; optionally strip the
+    run launch's own identity_check_every (a "FAST" folder without its own identity record)."""
+    (record_path,) = (fast_dir / "runtime").glob("*T000000Z.json")
+    record = json.loads(record_path.read_text())
+    if not run_launch_interval:
+        record["launches"][0].pop("policy_applied", None)
+    build = {
+        "classification": "shared-image-build",
+        "env": {"RUN_ID": "run", "BUILD_ONLY": "1"},
+        "policy_applied": {"reuse_shared_images": {"shared_images": {}}},
+    }
+    record["launches"].insert(0, build)
+    record_path.write_text(json.dumps(record))
+
+
+def test_w4_identical_pair_with_build_launch_is_equivalent(tmp_path: Path, capsys) -> None:
+    """W4 condition (2), pass side: the same campaign, FAST with its build launch -> exit 0."""
+    report = _report()
+    fast_dir = _write(tmp_path / "f", report)
+    _with_build_launch(fast_dir)
+    code, out = _trajectory(capsys, _write(tmp_path / "s", report), fast_dir)
+    assert code == 0 and out["verdict"] == "equivalent"
+
+
+def test_w4_image_swap_with_build_launch_still_fails(tmp_path: Path, capsys) -> None:
+    """W4 condition (2), control: §8.1 case B (image swapped mid-campaign, end check off) with the
+    build launch present still diverges -> exit 1 at the first changed verdict."""
+    strict, fast = _image_swap_pair()
+    fast_dir = _write(tmp_path / "f", fast)
+    _with_build_launch(fast_dir)
+    code, out = _trajectory(capsys, _write(tmp_path / "s", strict), fast_dir)
+    assert code == 1
+    assert (out["first_divergence"]["dimension"], out["first_divergence"]["step_index"]) == (
+        "oracle_and_feedback",
+        4,
+    )
+
+
+def test_w4_fast_without_its_own_identity_record_is_refused(tmp_path: Path, capsys) -> None:
+    """W4 condition (3): only the build launch may lack the interval. A "FAST" folder whose run
+    launch has no identity_check_every -> exit 2; one whose loop report has no identity_checks
+    -> exit 2."""
+    report = _report()
+    no_run_interval = _write(tmp_path / "f", report)
+    _with_build_launch(no_run_interval, run_launch_interval=False)
+    code, out = _trajectory(capsys, _write(tmp_path / "s", report), no_run_interval)
+    assert code == 2 and "runtime record" in out["error"]
+
+    no_report_record = _write(tmp_path / "x" / "f", report)
+    _with_build_launch(no_report_record)
+    for path in no_report_record.rglob("inodefence-effect-explore-*.json"):
+        data = json.loads(path.read_text())
+        data.pop(cfs.FAST_RECORD)
+        path.write_text(json.dumps(data))
+    code, out = _trajectory(capsys, _write(tmp_path / "x" / "s", report), no_report_record)
+    assert code == 2 and "FAST" in out["error"]
+
+
+def test_the_agreed_interval_is_reported(tmp_path: Path, capsys) -> None:
+    report = _report()
+    code, out = _trajectory(capsys, _write(tmp_path / "s", report), _write(tmp_path / "f", report))
+    assert code == 0 and out["fast_interval"] == 4
+
+
 @pytest.mark.parametrize("state", ["stopped", "running", None])
 def test_a_progress_state_other_than_finished_is_invalid(
     tmp_path: Path, capsys, state: str | None
@@ -701,6 +852,9 @@ def _reduced_reports(folder: Path, schema: str, runs: list[dict[str, int]], *, f
         if fast:
             report[cfs.FAST_RECORD] = _FAST_RECORD
         (folder / f"campaign-{number}.json").write_text(json.dumps(report))
+    if fast:
+        for number in range(len(runs)):
+            _product_records(folder, fast=True, name=f"c{number}")
     return folder
 
 
@@ -742,7 +896,7 @@ def test_reduced_reports_need_one_strict_and_one_fast_side(tmp_path: Path, capsy
     strict = _reduced_reports(tmp_path / "s", schema, [{"x": 0}] * 10, fast=False)
     not_fast = _reduced_reports(tmp_path / "f", schema, [{"x": 0}] * 10, fast=False)
     code, out = _reduced_replay(capsys, tmp_path, strict, not_fast, ["x"])
-    assert code == 2 and "not a FAST run" in out["error"]
+    assert code == 2 and "FAST run" in out["error"]
 
 
 def test_unfinished_reduced_steps_have_no_verdict(tmp_path: Path, capsys) -> None:

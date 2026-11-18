@@ -509,6 +509,25 @@ def test_strict_side_with_a_fast_runtime_record_is_refused(tmp_path: Path, capsy
     assert code == 2 and "strict:" in out["error"] and "record a FAST run" in out["error"]
 
 
+def test_fasts_shared_image_build_launch_is_not_a_layer(tmp_path: Path, capsys) -> None:
+    """QA: under FAST the session may first record a build-only launch (BUILD_ONLY=1,
+    classification shared-image-build); it carries no interval by design and must not read as a
+    STRICT-shaped runtime record."""
+    report = _report()
+    fast_dir = _write(tmp_path / "f", report)
+    (record_path,) = (fast_dir / "runtime").glob("*T000000Z.json")
+    record = json.loads(record_path.read_text())
+    build = {
+        "classification": "shared-image-build",
+        "env": {"RUN_ID": "run", "BUILD_ONLY": "1"},
+        "policy_applied": {"reuse_shared_images": {"shared_images": {}}},
+    }
+    record["launches"].insert(0, build)
+    record_path.write_text(json.dumps(record))
+    code, out = _trajectory(capsys, _write(tmp_path / "s", report), fast_dir)
+    assert code == 0 and out["fast_interval"] == 4
+
+
 def test_the_agreed_interval_is_reported(tmp_path: Path, capsys) -> None:
     report = _report()
     code, out = _trajectory(capsys, _write(tmp_path / "s", report), _write(tmp_path / "f", report))

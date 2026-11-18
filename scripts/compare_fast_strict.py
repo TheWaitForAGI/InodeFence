@@ -302,6 +302,19 @@ def _interval(value: object) -> int | None:
     return value if type(value) is int else None
 
 
+def _build_only(launch: object) -> bool:
+    """A FAST session's build-only launch of the shared images (``drivers/runtime/session.py``):
+    recorded as a launch of its own, with ``BUILD_ONLY=1`` and a ``shared-image-build*``
+    classification. The identity interval applies to the run's own launch only, by design."""
+    if not isinstance(launch, dict):
+        return False
+    env = launch.get("env") or {}
+    classification = str(launch.get("classification") or "")
+    return (isinstance(env, dict) and env.get("BUILD_ONLY") == "1") or classification.startswith(
+        "shared-image-build"
+    )
+
+
 def fast_layer_intervals(folder: Path) -> dict[str, list[int | None]]:
     """Per layer, the FAST probe interval each record of ``folder`` shows (``None``: STRICT shape).
 
@@ -342,6 +355,8 @@ def fast_layer_intervals(folder: Path) -> dict[str, list[int | None]]:
             )
         elif data.get("schema") == RUNTIME_SCHEMA and data.get("kind", "explore") == "explore":
             for launch in data.get("launches") or []:
+                if _build_only(launch):
+                    continue  # FAST's shared-image build: not a run, never carries the interval
                 applied = ((launch or {}).get("policy_applied") or {}).get("identity_check_every")
                 value = None
                 if isinstance(applied, dict) and applied.get("applied") is True:

@@ -25,7 +25,8 @@ backend's and run per case exactly as in STRICT. Replay always runs STRICT.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from typing import Protocol
 
 DEFAULT_INTERVAL = 200
 
@@ -64,3 +65,27 @@ class IdentitySchedule:
             # STRICT would have probed before each of these cases as well.
             "per_case_checks_skipped": self.prepared - self.periodic_checks,
         }
+
+
+class _Scheduled(Protocol):
+    def verify_identity_at_end(self) -> None: ...
+
+
+def apply_identity_schedule[T](target: T, every: int | None) -> tuple[T, IdentitySchedule | None]:
+    """Give a freshly bound target the FAST schedule; ``every=None`` returns it unchanged."""
+    if every is None:
+        return target, None
+    schedule = IdentitySchedule(every)
+    return replace(target, identity_schedule=schedule), schedule  # type: ignore[type-var]
+
+
+def finish_identity_schedule(target: _Scheduled, schedule: IdentitySchedule | None) -> dict:
+    """End-of-campaign probe for FAST; returns the report entry. STRICT: ``{}``, no probe.
+
+    A mismatch raises from the target, so the caller's existing failure path ends the whole
+    campaign without a result (fail-closed).
+    """
+    if schedule is None:
+        return {}
+    target.verify_identity_at_end()
+    return {"identity_checks": schedule.record()}

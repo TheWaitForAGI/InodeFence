@@ -228,3 +228,26 @@ def test_isolated_target_strict_and_fast_counts(sandbox, monkeypatch) -> None:
     assert calls["n"] == 2  # cases 2 and 4
     fast.verify_identity_at_end()
     assert calls["n"] == 3 and schedule.end_checked
+
+
+def test_helpers_leave_strict_untouched_and_report_fast(sandbox) -> None:
+    from inodefence.targets.identity_schedule import (
+        apply_identity_schedule,
+        finish_identity_schedule,
+    )
+
+    backend, strict = _node_tar()
+    same, schedule = apply_identity_schedule(strict, None)
+    assert same is strict and schedule is None
+    probes = backend.probes
+    assert finish_identity_schedule(strict, None) == {}
+    assert backend.probes == probes  # STRICT: no extra probe at the end
+
+    fast, schedule = apply_identity_schedule(strict, 3)
+    assert schedule is not None and fast.identity_schedule is schedule
+    _prepare_cases(fast, 6, sandbox)
+    record = finish_identity_schedule(fast, schedule)
+    assert record["identity_checks"]["total_checks"] == 1 + 2 + 1
+    backend.drift("unpack_sha256")
+    with pytest.raises(RuntimeError):
+        finish_identity_schedule(fast, schedule)

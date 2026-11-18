@@ -10,6 +10,9 @@ the policy's seed corpus:
 * the child's entries that match the (already rebuilt) parent keep the parent's content and
   mode;
 * the other values are drawn from the v2 grammar's pinned sets plus the seed corpus's values;
+* when the parent has several entries of one shape (path, type, link target) that differ only in
+  content or mode, a reorder or a duplicate can make the alignment pair the wrong ones; a plan
+  where each entry may take the values of any same-shape parent entry covers that (D-324);
 * a candidate is accepted **only** when its ``case_id`` equals the recorded one. That match is
   the sole criterion -- the tool imports the current engine's builder and grammar, which it
   cannot itself prove equal to the cell's engine, so nothing leaves without it. ``build_tar``
@@ -41,8 +44,11 @@ written folder back, so incomplete settings fail there and are listed.
 Which steps to rebuild is an input (``--steps-list``: one step index per line); no selection
 rule lives in this tool. Output, on the run host's local disk only: ``step-NNNNNN/`` with
 ``input.tar`` and ``case.json`` (the live-violation schema, read back with the replay loader),
-``failures.json`` (step index and reason), and a summary of counts on stdout (no paths, no entry
-content). Exit codes: 0 every requested step verified, 1 some failed, 2 a precondition failed.
+``failures.json`` (step index and reason; a "parent not rebuilt" step also names, as
+``blocked_by_step`` and ``blocked_by_reason``, the ancestor step that failed first along its
+lineage, which may be outside the requested list), and a summary of counts on stdout (no paths,
+no entry content). Exit codes: 0 every requested step verified, 1 some failed, 2 a precondition
+failed.
 """
 
 from __future__ import annotations
@@ -248,13 +254,30 @@ def rebuild(
             return [(c, m) for c in contents for m in modes]
         return [(None, m) for m in modes]
 
+    def same_shape(i: int) -> list[tuple[bytes | None, int]]:
+        """The values of every parent entry with entry ``i``'s shape (path, type, link target).
+
+        The alignment above pairs equal shapes by position. When the parent has several entries
+        of one shape that differ only in content or mode, a reorder or a duplicate can pair the
+        child with the wrong one; this pool lets each entry take any of them (D-324)."""
+        values = {
+            (entry.content, entry.mode)
+            for entry, shape in zip(parent.entries, parent_shapes, strict=True)
+            if shape == tuple(shapes[i])
+        }
+        return sorted(values, key=repr) if values else options(i)
+
     unmatched = [i for i, value in enumerate(copied) if value is None]
     plans: list[list[int]] = [unmatched]
     plans += [[*unmatched, i] for i in range(len(shapes)) if i not in unmatched]
     plans.append(list(range(len(shapes))))
+    pool_plans: list[list[list[Any]]] = [
+        [options(i) if i in vary else [copied[i]] for i in range(len(shapes))] for vary in plans
+    ]
+    # Before the full space: every entry from its same-shape parent values (D-324).
+    pool_plans.insert(-1, [same_shape(i) for i in range(len(shapes))])
     too_large = False
-    for vary in plans:
-        pools = [options(i) if i in vary else [copied[i]] for i in range(len(shapes))]
+    for pools in pool_plans:
         size = 1
         for pool in pools:
             size *= len(pool)
@@ -286,17 +309,28 @@ def _shapes(record: Mapping[str, Any]) -> list[Shape]:
     ]
 
 
+#: Where a "parent not rebuilt" failure comes from: the ancestor step (requested or not) whose
+#: own rebuild failed, and its reason. ``None`` step: the parent case_id is not earlier in the
+#: journal (D-324).
+Blocker = tuple[int | None, str]
+NO_PARENT_IN_JOURNAL = "parent case_id not earlier in the journal"
+
+
 def rebuild_journal(
     journal: Path, policy: MutationPolicy, wanted: set[int]
-) -> tuple[dict[int, tuple[ArchiveCase, dict[str, Any]]], dict[int, str], int]:
+) -> tuple[dict[int, tuple[ArchiveCase, dict[str, Any]]], dict[int, str], int, dict[int, Blocker]]:
     """Walk the journal once in order, rebuilding every executed case (parents are needed);
-    keep the wanted ones. Returns (rebuilt wanted, failures by index, steps seen)."""
+    keep the wanted ones. Returns (rebuilt wanted, failures by index, steps seen, and for each
+    wanted "parent not rebuilt" failure the ancestor step that failed first and its reason)."""
     seeds = bound_seed_cases(minimal_seed_corpus(), policy)
     seed_by_id = {case.case_id: case for case in seeds}
     contents, modes = candidate_values(seeds)
     known: dict[str, ArchiveCase] = {}
     rebuilt: dict[int, tuple[ArchiveCase, dict[str, Any]]] = {}
     failures: dict[int, str] = {}
+    # Every failed case_id (requested or not) -> the first failing ancestor along its lineage.
+    failed_root: dict[str, Blocker] = {}
+    blocked: dict[int, Blocker] = {}
     expected = 0
     for line in _lines(journal):
         if not line.strip():
@@ -312,13 +346,16 @@ def rebuild_journal(
             continue
         case_id = str(record.get("case_id"))
         case: ArchiveCase | None
+        root: Blocker | None = None
         if record.get("origin") == "seed":
             case = seed_by_id.get(case_id)
             reason = None if case is not None else NOT_SEED
         else:
-            parent = known.get(str(record.get("parent_case_id")))
+            parent_id = str(record.get("parent_case_id"))
+            parent = known.get(parent_id)
             if parent is None:
                 case, reason = None, NO_PARENT
+                root = failed_root.get(parent_id, (None, NO_PARENT_IN_JOURNAL))
             else:
                 case, reason = rebuild(parent, _shapes(record), case_id, contents, modes)
         if case is not None:
@@ -329,12 +366,27 @@ def rebuild_journal(
                     "trace_termination": (record.get("feedback") or {}).get("trace_termination"),
                 }
                 rebuilt[index] = (case, summary)
-        elif index in wanted:
+            continue
+        if root is None:
+            root = (index, str(reason))
+        failed_root.setdefault(case_id, root)
+        if index in wanted:
             failures[index] = str(reason)
-    return rebuilt, failures, expected
+            if reason == NO_PARENT:
+                blocked[index] = root
+    return rebuilt, failures, expected, blocked
 
 
 # -- output ----------------------------------------------------------------------------------------
+
+
+def failure_item(step: int, reason: str, blocker: Blocker | None) -> dict[str, Any]:
+    """One ``failures.json`` item. A "parent not rebuilt" step also names the ancestor step that
+    failed first along its lineage (possibly outside the requested list) and that step's reason."""
+    item: dict[str, Any] = {"step": step, "reason": reason}
+    if blocker is not None:
+        item["blocked_by_step"], item["blocked_by_reason"] = blocker
+    return item
 
 
 def case_record(
@@ -456,7 +508,7 @@ def _main(args: argparse.Namespace) -> int:
     out = check_out(args.out)
     wanted = read_steps_list(args.steps_list)
 
-    rebuilt, failures, seen = rebuild_journal(args.journal, policy, set(wanted))
+    rebuilt, failures, seen, blocked = rebuild_journal(args.journal, policy, set(wanted))
     if seen != records["budget"]:
         raise Precondition(
             f"journal incomplete: {seen} steps, the run's budget is {records['budget']}"
@@ -499,7 +551,10 @@ def _main(args: argparse.Namespace) -> int:
             continue
         written += 1
     (out / "failures.json").write_text(
-        json.dumps([{"step": i, "reason": failures[i]} for i in sorted(failures)], indent=2) + "\n",
+        json.dumps(
+            [failure_item(i, failures[i], blocked.get(i)) for i in sorted(failures)], indent=2
+        )
+        + "\n",
         encoding="utf-8",
     )
     reasons = Counter(reason.split(":", 1)[0] for reason in failures.values())

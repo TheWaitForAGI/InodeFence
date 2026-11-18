@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
+from collections.abc import Callable
 from hashlib import sha256
 from typing import Any
 
@@ -61,7 +62,7 @@ def _has_hardlink(case: Any) -> bool:
     return any(entry.entry_type == EntryType.HARDLINK for entry in case.entries)
 
 
-def _mixed(module: Any, violating_after: tuple, attempt: dict) -> Any:
+def _mixed(module: Any, violating_after: Callable[[Any], tuple], attempt: dict) -> Any:
     """A deterministic producer over every step-record branch, for one module's fakes."""
 
     def produce(case: Any) -> Any:
@@ -202,7 +203,8 @@ def test_the_mixed_producer_reaches_violations_unjudged_and_failed_steps() -> No
     report = decompress_effect_campaign_report(full, producer="unit-test")
     steps = report["steps"]
     assert isinstance(steps, list)
-    assert len(report["violation_inputs"]) >= 2  # more than the seed alone
+    inputs = report["violation_inputs"]
+    assert isinstance(inputs, list) and len(inputs) >= 2  # more than the seed alone
     assert any(step.get("frame_error") for step in steps)
     assert any(step.get("termination") == ExecutionStatus.FAILED.value for step in steps)
 
@@ -244,5 +246,6 @@ def test_the_oras_go_collector_refuses_a_result_that_does_not_match_its_steps() 
         config,
         hooks=CampaignHooks(on_step=lambda s: None, retain_steps=False),
     )
+    assert isinstance(light, OrasGoLightResult)
     with pytest.raises(ValueError, match="collected 0 steps"):
         collector.report(light)

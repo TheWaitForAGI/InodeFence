@@ -460,7 +460,8 @@ def load_replay_counts(folder: Path) -> dict[str, list[bool | None]]:
             continue
         original = data.get("original") or {}
         verdicts = [_round_violated(entry) for entry in data.get("rounds") or []]
-        for key in {original.get("case_id"), original.get("tar_sha256")} - {None}:
+        keys = {original.get("case_id"), original.get("tar_sha256")}
+        for key in sorted(str(key) for key in keys if key is not None):
             rounds.setdefault(key, []).extend(verdicts)
     for path in sorted(folder.rglob("*.verdicts.jsonl")):
         for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):

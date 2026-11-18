@@ -12,9 +12,11 @@ policy's own corpus.
 * ``minimal-empty-reg-v1``: an empty archive (no entries) and one regular file
   ``a.txt`` (:data:`MINIMAL_EMPTY_REG_REGULAR`). Observed, not assumed (2026-11-18): node-tar
   7.5.23 rejects the empty archive (the builder's 10,240 zero bytes) with ``TAR_BAD_ARCHIVE``;
-  the run is recorded valid, rejected, no violation, and spends one budget unit. On
-  python-tarfile 3.12.16 the run is recorded invalid (#533), so policies bound to this corpus
-  are refused by the python-tarfile, decompress and oras-go loops.
+  the run is recorded valid, rejected, no violation, and spends one budget unit. Policies
+  bound to this corpus are refused off node-tar, for two separate reasons. The python-tarfile
+  loop refuses them because no exploration plan is approved for them (the #533 reason is
+  resolved). The decompress and oras-go loops refuse them because those loops cannot run a v2
+  grammar policy (``v2-grammar-axes.md`` §4.1, "그 밖의 루프").
 
 A corpus id fixes the whole logical content of every seed entry: name, type, mode,
 content bytes and, for a link, its target (W4, 2026-11-18). Content bytes matter to the

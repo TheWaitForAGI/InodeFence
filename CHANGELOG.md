@@ -16,6 +16,11 @@
   `summary.md`에 한 줄로 보인다. 수는 루프 보고서의 실행 수 − 종료 상태 합이고, 셀 수 없거나 live 스냅숏과 어긋나면
   결과 없이 종료 2다(키를 빼서 비율을 낮게 적지 않는다).
 
+- `inodefence replay --additive-detectors`(node-tar, 기록 전용): 판정된 라운드마다 두 추가 검출기의 요약을
+  `additive_detectors` 열로 남긴다(수·영역·근거·증거 해시, 경로 없음). 판정(C0/C1/C2·지문)과 실행 조건은 그대로이고,
+  옵션이 없으면 입력 줄·라운드·`replay.json`이 전과 같다. 0보다 큰 수는 후보 선별 신호이며 위반 판정이 아니다.
+  [USAGE](docs/USAGE.md)
+
 ### 변경된 동작과 호환성
 - 탐색 드라이버(네 대상 모두)가 호출자 환경의 `DEMO_MUTATION_POLICY`를 런처에 넘기지 않는다. 전에는 node-tar와
   python-tarfile 탐색에서 이 변수가 그대로 전달돼, 문서에 없는 방법으로 변이 정책이 바뀌고 `result.json`에는 남지 않았다.
@@ -24,8 +29,9 @@
 - 같은 방식으로 호출자 환경의 `DEMO_POLICY`(search 정책)도 넘기지 않고 경고 한 줄을 낸다. 전에는 node-tar와 python-tarfile
   탐색의 search 정책이 이 변수로 바뀌었다. 탐색의 search 정책은 대상마다 고정이며 고르는 옵션은 없다.
 - 미판정 비율(`campaign.unjudged_ratio`)의 분모에서 build-invalid 실행을 뺀다(분모 = 실행 수 − `build_invalid`). 이 키가
-  없는 결과(기본 정책의 모든 실행과 0.2.0이 쓴 파일)는 값이 그대로다. 옵션 없는 실행의 `result.json`·`summary.md`는 0.2.0
-  뒤의 `main`(`e1098d6`)과 바이트 동일하다(`tests/test_explore_mutation_policy.py`).
+  없는 결과(기본 정책의 모든 실행과 0.2.0이 쓴 파일)는 값이 그대로다. 옵션 없는 실행의 `result.json`·`summary.md`는
+  `main`(`fccdf35`) 코드가 같은 입력으로 쓴 것과 바이트 동일하다(node-tar 탐색 4경우, python-tarfile 탐색, verify 셀;
+  `tests/test_explore_mutation_policy.py`). 예외는 아래 #533 항목(python-tarfile 탐색이 빈 아카이브를 만나는 경우)이다.
 - `--profile fast`가 이미지 신원 확인 컨테이너를 케이스마다가 아니라 캠페인 시작·200건마다·끝에만 띄운다(네 대상,
   [D064](docs/DECISIONS.md)). 실행 컨테이너와 격리·판정은 그대로이고, 끝 확인이 실패하면 결과 없이 종료 2다. FAST 결과에는
   `campaign.identity_checks`(확인 기록)가 남고 runtime 기록에 `identity_check_every`가 남는다. 기본(`strict`)과 `replay`는

@@ -200,7 +200,10 @@ inodefence explore --target decompress --version @xhmikosr/decompress@11.1.4 --b
 `--version`은 `latest`나 정확한 버전, `--budget`은 실행 수(seed 케이스 수 이상), `--seed`는 난수
 seed입니다. 탐색 정책·sentinel 구성은 등록 실험 설정을 기본값으로 쓰며, 끝나면 공통 형식
 `result.json`(`inodefence-target-result-v1`, mode=campaign)과 한 장짜리 `summary.md`를 씁니다.
-`--profile fast`(기본 `strict`)는 실행마다 하는 공용 이미지 재빌드만 건너뛰는 선택 옵션이며, 조건·기록·측정값은
+`--image-tag-suffix`(따로 준비한 이미지 태그)의 값이 `-`로 시작하면 `--image-tag-suffix=-win`처럼 `=` 형식으로 줍니다
+(다음 버전; 공백 형식은 종료 3으로 거부되며 메시지가 `=` 형식을 안내합니다. 0.2.0에서는 `=` 형식도 거부됨).
+`--profile fast`(기본 `strict`)는 실행마다 하는 공용 이미지 재빌드를 건너뛰고, 다음 버전부터는 이미지 신원 확인을 캠페인
+단위(시작·200건마다·끝)로 줄이는 선택 옵션이며, 조건·기록·측정값은
 [한계와 주의](#한계와-주의)의 "실행 프로필"에 있습니다.
 
 **변이 정책 선택(다음 버전, 탐색용).** `--mutation-policy uniform-b-grammar-v2-freeze-3-fixed-baseline-v1`은
@@ -297,7 +300,8 @@ inodefence status ~/inodefence-explore   # 진행 스냅샷 + 위반 케이스 �
 
 - `progress.json` — 주기적으로(실행 N회마다·일정 시간마다·위반 직후) 갱신되는 한 시점 스냅샷:
   실행 수, 초당 실행, **종료 상태별 수(success·rejected·failed·timed_out)**, 미판정 수와 비율,
-  위반 step 수와 고유 fingerprint 수, 쓰기 오류. `status`는 갱신이 오래 멈추면 `STALE`로 경고합니다.
+  위반 step 수와 고유 fingerprint 수, 쓰기 오류, v2 변이 정책이면 build-invalid 수(0이면 없음, `status` 줄의
+  `build-invalid=N`). `status`는 갱신이 오래 멈추면 `STALE`로 경고합니다.
 - `violations/run-NNNNNN/` — 위반이 난 케이스를 **발생 즉시** 기록합니다(끝을 기다리지 않음).
   같은 fingerprint의 반복은 개수만 세고 파일은 fingerprint당 처음 몇 개만 남깁니다. 탐색이
   중간에 죽어도 그때까지 쓴 파일은 남습니다.
@@ -360,6 +364,14 @@ inodefence replay ~/inodefence-explore/target-explore/<실행>-result --case ste
 결과 폴더로 돌린 재실행 기록은 결과 폴더 **옆** `<결과 폴더>.step-N.replay-<UTC>/`에 씁니다.
 
 대상별 조건은 기록에서 읽고, 명령 옵션으로 바꿀 수 없습니다(다른 조건으로 돌린 것을 재현이라고 적지 않기 위해).
+
+**추가 검출기 기록(다음 버전, node-tar만, 기록 전용).** `--additive-detectors`를 주면 판정된 라운드마다 두 추가 검출기의
+요약을 `additive_detectors` 열로 남깁니다(계열 `additive-detectors-v1 (record-only)`). 실행 조건·판정(C0/C1/C2, 지문)은
+바뀌지 않고, 옵션이 없으면 기록은 전과 같습니다. 열에는 경로를 쓰지 않고 수·영역·근거·증거 해시만 씁니다.
+`generalized_identity`는 물리 기준(추출 객체와 바깥 객체의 장치·inode 일치)이지만 사후 스냅숏에 든 객체만 비교하므로
+0은 "그 범위에서 없음"입니다. `symlink_referent`는 어휘 기준이라, 앞서 디스크에 만들어진 심링크를 거쳐서만 밖으로
+나가는 사슬은 루트 안으로 읽혀 0일 수 있습니다. 0보다 큰 수는 **후보 선별 신호**이며 위반 판정이 아닙니다.
+요약의 `additive_candidate_signal_rounds`는 검출기별로 그런 라운드 수를 셉니다. 다른 대상에 주면 종료 3입니다.
 
 | 대상 | 기록에서 고정하는 것 | 실행 전에 거부하는 것(종료 2, 이유 출력) |
 | --- | --- | --- |
@@ -452,7 +464,7 @@ inodefence summary ~/inodefence-explore/target-explore/<실행>-result/result.js
 | 0 | PASS | 재실행 완료 | 정상 | FAIL 없음(`UNKNOWN`은 있을 수 있음) | 정상 |
 | 1 | FAIL(위반 판정) | 재실행 미완료(끝난 회차는 남음) | — | FAIL 하나 이상 | — |
 | 2 | ERROR 판정. `explore`는 컨트롤러가 시작된 뒤의 중단(런처 비정상 종료, 루프 abort, 루프 보고서 없음)도 2이며 결과를 발행하지 않음(네 대상 공통) | 같은 입력·조건으로 재실행 불가 | 사용법 오류 | 사용법 오류 | 읽기·쓰기 실패 / 사용법 오류 |
-| 3 | 실행 전 거부 — 판정 없음: 사용법 오류(없는 옵션 값, `--budget 0` 등), 저장소 안 `--out`, 쓸 수 없는 `--out`(파일이거나 권한 없음), 상대 경로 `INODEFENCE_OUTPUT_DIR`, `--auto-prepare` 없음, 설정 파일 오류, 이미지·준비 문제, Docker가 이미지 질문에 답하지 않음(준비하지 않음), 같은 `--out`에 이 실행의 결과가 이미 있음(덮어쓰지 않음) 등 | 사용법 오류(`--rounds 0` 등), 이미지가 이 호스트에 없음, Docker가 이미지 질문에 답하지 않음, 같은 실행 이름의 컨트롤러·볼륨이 이미 있음, 저장소 안 폴더, 저장소를 못 찾음, 설정 파일 오류 | 저장소를 못 찾음, 설정 파일 오류 | — | — |
+| 3 | 실행 전 거부 — 판정 없음: 사용법 오류(없는 옵션 값, `--budget 0`, node-tar가 아닌 대상의 `--mutation-policy` 등), 저장소 안 `--out`, 쓸 수 없는 `--out`(파일이거나 권한 없음), 상대 경로 `INODEFENCE_OUTPUT_DIR`, `--auto-prepare` 없음, 설정 파일 오류, 이미지·준비 문제, Docker가 이미지 질문에 답하지 않음(준비하지 않음), 같은 `--out`에 이 실행의 결과가 이미 있음(덮어쓰지 않음) 등 | 사용법 오류(`--rounds 0` 등), 이미지가 이 호스트에 없음, Docker가 이미지 질문에 답하지 않음, 같은 실행 이름의 컨트롤러·볼륨이 이미 있음, 저장소 안 폴더, 저장소를 못 찾음, 설정 파일 오류 | 저장소를 못 찾음, 설정 파일 오류 | — | — |
 | 4 | — | 이 대상은 재실행 미지원(지금 등록된 네 대상에는 해당 없음) | — | — | — |
 
 `verify`·`explore`·`replay`는 종료 코드가 결과를 싣기 때문에 사용법 오류를 2로 내지 않고, 아무것도 실행하지

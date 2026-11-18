@@ -73,7 +73,7 @@ CLI는 `python -m inodefence.drivers.run_target`(verify)·`run_target_explore`·
 
 | 분류 | 태그 | 파일 | 최상위에 남는 이유 |
 |---|---|---|---|
-| A 컨트롤러·host broker·격리 런처 | 동결 | `container_controller`, `container_host`, `broker_call_log`, `effect_replay`, `run_effect_demo`, `launcher_guards`, `bounded_cleanup_command`, `local_node_tar_smoke.sh`, `local_decompress_selfdiscover.sh`, `local_oras_go_selfdiscover.sh`, `local_python_tarfile_explore.sh`, `launcher_bounded.sh` | 격리 실행 경로다. container_host가 `-m scripts.container_controller`를 하드코딩하고 CI가 `-m scripts.container_host`를 부른다. 일부는 SHARED_PATH_FILES에 들어 있고, experiments/ 참조도 있다. python-tarfile·decompress·oras-go 런처에는 D049 조건 3으로 Docker 데몬 호출 시간 제한과 정리 실패 처리를 추가했다(2026-11-18, 지웅 승인; 공통 부분은 `launcher_bounded.sh`). 컨트롤러 격리 인자는 소유 label 외에 바뀌지 않았다 |
+| A 컨트롤러·host broker·격리 런처 | 동결 | `container_controller`, `container_host`, `broker_call_log`, `effect_replay`, `run_effect_demo`, `launcher_guards`, `bounded_cleanup_command`, `local_node_tar_smoke.sh`, `local_decompress_selfdiscover.sh`, `local_oras_go_selfdiscover.sh`, `local_python_tarfile_explore.sh`, `launcher_bounded.sh` | 격리 실행 경로다. container_host가 `-m scripts.container_controller`를 하드코딩하고 CI가 `-m scripts.container_host`를 부른다. 일부는 SHARED_PATH_FILES에 들어 있고, experiments/ 참조도 있다. python-tarfile·decompress·oras-go 런처에는 D049 조건 3으로 Docker 데몬 호출 시간 제한과 정리 실패 처리를 추가했다(2026-11-18, 지웅 승인; 공통 부분은 `launcher_bounded.sh`). 컨트롤러 격리 인자는 소유 label 외에 바뀌지 않았다. #536 FAST 방안 1 배선으로 `run_effect_demo`·`container_controller`·네 런처에 승인된 줄만 더했다([D064](../docs/DECISIONS.md), 2026-11-18 지웅 승인; `tests/test_fast_wiring_shared_lines.py`가 main `fccdf35` 대비 그 줄만 다름을 고정) |
 | B·C 대상·탐색·replay 드라이버 별칭 | 제품(별칭) | `run_target`, `run_target_explore`, `run_target_replay` | `inodefence.drivers`의 같은 이름 모듈 별칭이다. `run_target`은 저장소 판별 표식이다 |
 | B | 동결(별칭) | `regression_check` | `inodefence.drivers.regression_check` 별칭이다. CI(repro-evidence)·Makefile·paper가 이 경로를 명령으로 부른다 |
 | D 이미지 준비 | 제품(별칭) | `node_tar_registry_prepare`, `oras_go_registry_prepare`, `python_tarfile_producer` | `inodefence.drivers.<대상>.*` 별칭이다. tools/ 문서와 셸 런처가 경로를 언급한다 |
@@ -85,6 +85,7 @@ CLI는 `python -m inodefence.drivers.run_target`(verify)·`run_target_explore`·
 | G 분석·보고·증거 | 동결 | `analyze_concurrency_benchmark`, `analyze_exp0`, `analyze_hazard_pilot`, `analyze_m3_3_control`, `analyze_m4_5_selfdiscover`, `analyze_m4_5_unified`, `analyze_m4_7_oras_go_selfdiscover`, `analyze_node_causal_effects`, `analyze_node_internal_completion`, `compare_cell_paths`, `compare_pilot_rerun_paths`, `gen_exp3_tables`, `gen_table_m2`, `gen_table_m3`, `regenerate_paper_artifacts`, `check_evidence_chain`, `make_raw_manifest`, `replay_report` | experiments/·paper/ 명령 참조, holdout 도구 또는 그 import 대상(compare_cell_paths ← merge_host_indexes), `regenerate_paper_artifacts`의 생성기 경로 목록, `make check`(evidence-chain)·Makefile 호출 중 하나 이상에 걸린다 |
 | H 개발 | 동결 | `check_dev_env`, `generate_tar_fixtures` | AGENTS.md·experiments/가 명령으로 부른다. generate_tar_fixtures는 oracle_fixture_check 등 동결 도구가 import한다 |
 | I 호스트 운영 | 동결 | `check_linux_isolation_support` | experiments/ 요약이 명령으로 부른다 |
+| J FAST 수락 비교 | 수용 시험 | `compare_fast_strict` | #536 FAST 방안 1의 수락 비교 도구다. 규칙상 `analysis/` 대상이지만, W3 설계 문서·W1 실행 계획·QA 판정 코멘트와 그 Drive 사본이 이 경로와 도구 SHA `f523f63`을 기록한 채 수용 실행에 들어가므로 옮기지 않는다. 재배치는 #501의 `scripts/` 재배치 때 함께 한다 |
 
 ## 입력
 

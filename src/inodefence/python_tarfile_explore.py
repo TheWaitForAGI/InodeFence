@@ -184,15 +184,16 @@ def python_tarfile_exploration_report(
     baseline: both give the same ``case_records``, ``violation_inputs`` and retained corpus.
 
     A mutation policy bound to a seed corpus other than the registered one (v2.1
-    ``minimal-empty-reg-v1``) is refused before the target is bound: its empty-archive seed is
-    recorded invalid on this target (#533; W4: not used off node-tar until fixed). The v2 policy
-    on the registered corpus is accepted as before.
+    ``minimal-empty-reg-v1``) is refused before the target is bound: no exploration plan is
+    approved for it on this target (W4). The earlier reason, the empty-archive seed recorded
+    invalid here, is resolved (#533). The v2 policy on the registered corpus is accepted as before.
     """
     if SEED_CORPUS.get(mutation_policy, SeedCorpusId.REGISTERED) != SeedCorpusId.REGISTERED:
         raise ValueError(
-            f"{mutation_policy.value} binds a non-registered seed corpus; it is not supported "
-            "by the python-tarfile loop until #533 is fixed "
-            "(등록 코퍼스가 아닌 v2.1 코퍼스 정책은 이 대상 루프에서 지원하지 않는다)"
+            f"{mutation_policy.value} binds a non-registered seed corpus; the python-tarfile "
+            "loop refuses it because no exploration plan is approved for it "
+            "(the #533 reason is resolved) "
+            "(v2.1(비등록 코퍼스)은 승인된 탐색 계획이 없어 거부한다(#533 사유는 해소))"
         )
     if extraction_filter == "fully_trusted" and not allow_fully_trusted:
         raise ValueError(

@@ -614,6 +614,8 @@ def cmd_replay(args: argparse.Namespace) -> int:
         argv += ["--case", args.case]
     if args.dry_run:
         argv.append("--dry-run")
+    if args.additive_detectors:  # nothing forwarded without the option
+        argv.append("--additive-detectors")
     return _forward(REPLAY_DRIVER, argv, "replay")
 
 
@@ -880,6 +882,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     replay.add_argument(
         "--dry-run", action="store_true", help="check input, image and support; run nothing"
+    )
+    replay.add_argument(
+        "--additive-detectors",
+        action="store_true",
+        help="node-tar only, record-only: also record the two additive detectors' counts per "
+        "judged round (candidate signals, not verdicts; off by default)",
     )
     replay.__class__ = _RefusalParser
     replay.set_defaults(func=cmd_replay)

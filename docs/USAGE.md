@@ -365,6 +365,14 @@ inodefence replay ~/inodefence-explore/target-explore/<실행>-result --case ste
 
 대상별 조건은 기록에서 읽고, 명령 옵션으로 바꿀 수 없습니다(다른 조건으로 돌린 것을 재현이라고 적지 않기 위해).
 
+**추가 검출기 기록(다음 버전, node-tar만, 기록 전용).** `--additive-detectors`를 주면 판정된 라운드마다 두 추가 검출기의
+요약을 `additive_detectors` 열로 남깁니다(계열 `additive-detectors-v1 (record-only)`). 실행 조건·판정(C0/C1/C2, 지문)은
+바뀌지 않고, 옵션이 없으면 기록은 전과 같습니다. 열에는 경로를 쓰지 않고 수·영역·근거·증거 해시만 씁니다.
+`generalized_identity`는 물리 기준(추출 객체와 바깥 객체의 장치·inode 일치)이지만 사후 스냅숏에 든 객체만 비교하므로
+0은 "그 범위에서 없음"입니다. `symlink_referent`는 어휘 기준이라, 앞서 디스크에 만들어진 심링크를 거쳐서만 밖으로
+나가는 사슬은 루트 안으로 읽혀 0일 수 있습니다. 0보다 큰 수는 **후보 선별 신호**이며 위반 판정이 아닙니다.
+요약의 `additive_candidate_signal_rounds`는 검출기별로 그런 라운드 수를 셉니다. 다른 대상에 주면 종료 3입니다.
+
 | 대상 | 기록에서 고정하는 것 | 실행 전에 거부하는 것(종료 2, 이유 출력) |
 | --- | --- | --- |
 | node-tar | 이미지 id, sentinel 집합(seed·개수), 관찰 무결성 정책, 프로필 | 이 값들이 없는 기록. **결과 폴더는 이 값을 담지 않으므로 node-tar는 케이스 폴더로만** 재실행 |

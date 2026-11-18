@@ -32,7 +32,8 @@ from typing import Any
 
 from scripts.run_effect_demo import NativeDemoAborted, _native_effect_producer
 
-from inodefence.case_replay import CaseReplayError, ReplayInput
+from inodefence.additive_detectors import additive_detector_fields
+from inodefence.case_replay import ADDITIVE_KEY, CaseReplayError, ReplayInput
 from inodefence.execution.stall_recovery import StallRecovery
 from inodefence.live_effect import effect_verdict_fields
 from inodefence.model import ArchiveCase
@@ -90,8 +91,14 @@ def run_rounds(
     rounds: int,
     *,
     round_sink: Callable[[dict[str, Any]], None] | None = None,
+    additive_detectors: bool = False,
 ) -> list[dict[str, Any]]:
-    """Run ``case`` ``rounds`` times through ``produce``; one record per finished round."""
+    """Run ``case`` ``rounds`` times through ``produce``; one record per finished round.
+
+    ``additive_detectors`` (D-258, record-only, off by default): a judged round also carries
+    the two additive detectors' summary, read from the run's AFTER snapshot after the verdict
+    fields are taken. Off, the AFTER snapshot is not read and the round is as before.
+    """
     records: list[dict[str, Any]] = []
     for number in range(1, rounds + 1):
         try:
@@ -119,6 +126,8 @@ def run_rounds(
                 "observation": list(fields["observation"]),
                 "reason": None,
             }
+            if additive_detectors:
+                record[ADDITIVE_KEY] = additive_detector_fields(result.base_result.after)
         records.append(record)
         if round_sink is not None:
             round_sink(record)
@@ -150,7 +159,13 @@ def replay_case_report(
         timing=timing,
         observer_integrity_continue=observer_continue,
     )
-    rounds = run_rounds(produce, replay_input.case, replay_input.rounds, round_sink=round_sink)
+    rounds = run_rounds(
+        produce,
+        replay_input.case,
+        replay_input.rounds,
+        round_sink=round_sink,
+        additive_detectors=bool(replay_input.options.get(ADDITIVE_KEY)),
+    )
     return {
         "schema": REPLAY_RUN_SCHEMA,
         "case_id": replay_input.case.case_id,
@@ -186,6 +201,8 @@ def run_case_replay(
     starts, so a replay that dies part-way still leaves its finished rounds. The report written to
     ``evidence`` says ``complete: false`` and why when the rounds did not all finish.
     """
+    if "target" in replay_input.run_settings and replay_input.options:
+        raise CaseReplayError("replay options are available for node-tar only (D-258)")
     if "target" in replay_input.run_settings:
         # python-tarfile / decompress / oras-go: their own pipeline, on this same backend.
         from scripts.effect_replay_targets import run_target_case_replay

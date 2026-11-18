@@ -16,6 +16,11 @@
   `summary.md`에 한 줄로 보인다. 수는 루프 보고서의 실행 수 − 종료 상태 합이고, 셀 수 없거나 live 스냅숏과 어긋나면
   결과 없이 종료 2다(키를 빼서 비율을 낮게 적지 않는다).
 
+- `inodefence replay --additive-detectors`(node-tar, 기록 전용): 판정된 라운드마다 두 추가 검출기의 요약을
+  `additive_detectors` 열로 남긴다(수·영역·근거·증거 해시, 경로 없음). 판정(C0/C1/C2·지문)과 실행 조건은 그대로이고,
+  옵션이 없으면 입력 줄·라운드·`replay.json`이 전과 같다. 0보다 큰 수는 후보 선별 신호이며 위반 판정이 아니다.
+  [USAGE](docs/USAGE.md)
+
 ### 변경된 동작과 호환성
 - 탐색 드라이버(네 대상 모두)가 호출자 환경의 `DEMO_MUTATION_POLICY`를 런처에 넘기지 않는다. 전에는 node-tar와
   python-tarfile 탐색에서 이 변수가 그대로 전달돼, 문서에 없는 방법으로 변이 정책이 바뀌고 `result.json`에는 남지 않았다.

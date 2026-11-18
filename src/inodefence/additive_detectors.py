@@ -40,6 +40,8 @@ BASIS = {"generalized_identity": "physical", "symlink_referent": "lexical"}
 IDENTITY_FIELDS = ("internal_path", "external_path")
 REFERENT_FIELDS = ("internal_path", "referent_target", "referent_region")
 DETECTORS = tuple(BASIS)
+#: The region-list field each detector's block carries.
+REGIONS_KEY = {"generalized_identity": "external_regions", "symlink_referent": "referent_regions"}
 
 
 def evidence_digest(after: StateSnapshot) -> str:
@@ -83,7 +85,7 @@ def check_fields(value: Any) -> dict[str, Any]:
         raise ValueError("additive_detectors must hold schema, both detectors and evidence_sha256")
     if value["schema"] != SCHEMA:
         raise ValueError(f"additive_detectors schema must be {SCHEMA}")
-    regions_key = {"generalized_identity": "external_regions", "symlink_referent": "referent_regions"}
+    regions_key = REGIONS_KEY
     for name in DETECTORS:
         block = value[name]
         if not isinstance(block, dict) or set(block) != {"count", regions_key[name], "basis"}:

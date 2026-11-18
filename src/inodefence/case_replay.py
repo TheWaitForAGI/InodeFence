@@ -51,6 +51,8 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
+from inodefence.additive_detectors import DETECTORS as ADDITIVE_DETECTORS
+from inodefence.additive_detectors import check_fields as check_additive_fields
 from inodefence.model import ArchiveCase
 from inodefence.tar_reader import MAX_TAR_BYTES, TarReadError, read_builder_tar
 
@@ -62,6 +64,10 @@ CASE_TAR = "input.tar"
 DEFAULT_ROUNDS = 3
 MAX_ROUNDS = 20
 CONTRACT_KEYS = ("c0", "c1", "c2")
+#: D-258: the record-only round column, and how the host switches it on in the input line.
+ADDITIVE_KEY = "additive_detectors"
+REPLAY_OPTIONS_KEY = "replay_options"
+REPLAY_OPTIONS = (ADDITIVE_KEY,)
 OUTCOMES = ("judged", "run_error")
 TERMINATIONS = ("success", "rejected", "failed", "timed_out")
 _IMAGE_ID = re.compile(r"sha256:[0-9a-f]{64}")
@@ -94,6 +100,10 @@ class ReplayRequest:
     #: The original step: run number, termination, verdicts, fingerprints, observation_complete.
     original: dict[str, Any]
     rounds: int
+    #: D-258 (record-only, opt-in): each judged node-tar round also carries the two additive
+    #: detectors' summary (:mod:`inodefence.additive_detectors`). Off by default; when off the
+    #: input line, the rounds and the record are exactly as before.
+    additive_detectors: bool = False
     #: The product driver's runtime session (``inodefence.drivers.runtime.session``) the hook
     #: launches through, or ``None``. Never serialized into the replay record or the controller
     #: input; not part of equality.
@@ -412,7 +422,7 @@ def normalize_round(raw: Mapping[str, Any], index: int) -> dict[str, Any]:
     complete = raw.get("observation_complete")
     if complete is not None and type(complete) is not bool:
         raise CaseReplayError(f"round {index}: observation_complete must be true/false/null")
-    return {
+    entry = {
         "round": index,
         "outcome": outcome,
         "termination": termination,
@@ -422,6 +432,15 @@ def normalize_round(raw: Mapping[str, Any], index: int) -> dict[str, Any]:
         "observation": [str(line) for line in raw.get("observation") or ()],
         "reason": None if raw.get("reason") is None else str(raw["reason"]),
     }
+    # D-258: present only when the replay was run with the switch on, and only on judged rounds.
+    if ADDITIVE_KEY in raw:
+        if outcome != "judged":
+            raise CaseReplayError(f"round {index}: only a judged round has {ADDITIVE_KEY}")
+        try:
+            entry[ADDITIVE_KEY] = check_additive_fields(raw[ADDITIVE_KEY])
+        except ValueError as error:
+            raise CaseReplayError(f"round {index}: {error}") from error
+    return entry
 
 
 def _violated(entry: Mapping[str, Any]) -> set[str]:
@@ -483,6 +502,21 @@ def summarize_rounds(original: Mapping[str, Any], rounds: Sequence[Mapping[str, 
         "fingerprint_match_rate": rate(same_fps) if target_fps else None,
         "original_contracts": sorted(target_contracts),
         "original_fingerprints": sorted(target_fps),
+        **_additive_summary(rounds),
+    }
+
+
+def _additive_summary(rounds: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """D-258: per-detector count of rounds with a candidate signal (count > 0), only when a
+    round carries the record-only column. A candidate signal is not a violation."""
+    carrying = [entry[ADDITIVE_KEY] for entry in rounds if ADDITIVE_KEY in entry]
+    if not carrying:
+        return {}
+    return {
+        "additive_candidate_signal_rounds": {
+            name: sum(1 for value in carrying if value[name]["count"] > 0)
+            for name in ADDITIVE_DETECTORS
+        }
     }
 
 
@@ -533,6 +567,7 @@ def build_replay_record(
             "engine_commit": run.engine_commit,
             "engine_differs": engine_differs,
             "runner": dict(run.runner),
+            **({"options": {ADDITIVE_KEY: True}} if request.additive_detectors else {}),
         },
         "rounds": rounds,
         "summary": summarize_rounds(request.original, rounds),
@@ -682,7 +717,11 @@ def replay_input_line(request: ReplayRequest) -> str:
             "tar_sha256": request.tar_sha256,
             "tar_b64": base64.b64encode(request.tar_bytes).decode("ascii"),
             "rounds": request.rounds,
-            "run_settings": request.run_settings,
+            "run_settings": (
+                {**request.run_settings, REPLAY_OPTIONS_KEY: {ADDITIVE_KEY: True}}
+                if request.additive_detectors
+                else request.run_settings
+            ),
         },
         sort_keys=True,
         separators=(",", ":"),
@@ -700,6 +739,8 @@ class ReplayInput:
     tar_sha256: str
     rounds: int
     run_settings: dict[str, Any]
+    #: Replay options carried beside the run settings (never part of them); D-258 only.
+    options: dict[str, Any] = field(default_factory=dict)
 
 
 def parse_replay_input(line: str) -> ReplayInput:
@@ -739,4 +780,12 @@ def parse_replay_input(line: str) -> ReplayInput:
         case = read_builder_tar(tar_bytes, expected_case_id=data["case_id"])
     except TarReadError as error:
         raise CaseReplayError(f"not the same input: {error}") from error
-    return ReplayInput(case, actual, rounds, dict(data["run_settings"]))
+    settings = dict(data["run_settings"])
+    options = settings.pop(REPLAY_OPTIONS_KEY, {})
+    if (
+        not isinstance(options, dict)
+        or set(options) - set(REPLAY_OPTIONS)
+        or any(value is not True for value in options.values())
+    ):
+        raise CaseReplayError(f"{REPLAY_OPTIONS_KEY} may only switch on {list(REPLAY_OPTIONS)}")
+    return ReplayInput(case, actual, rounds, settings, dict(options))

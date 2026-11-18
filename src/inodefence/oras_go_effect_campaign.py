@@ -330,6 +330,18 @@ class OrasGoEffectCampaignResult:
         return any(step.decision.contract_violated for step in self.steps)
 
 
+@dataclass(frozen=True, slots=True)
+class OrasGoLightResult(LightCampaignResult):
+    """A non-retaining (or early-stopped) oras-go campaign: the common aggregate plus config,
+    seeds, final stats and the hit flag for the report. Still a :class:`LightCampaignResult`;
+    the per-step records are streamed to ``on_step`` (:class:`OrasGoReportCollector`, #542)."""
+
+    config: OrasGoEffectCampaignConfig | None = None
+    initial_case_ids: tuple[str, ...] = ()
+    final_stats: OrasGoEffectStats | None = None
+    discovered_violation: bool = False
+
+
 OrasGoResultProducer = Callable[[ArchiveCase], OrasGoFrameRun]
 OrasGoStepObserver = Callable[[OrasGoEffectStep], None]
 
@@ -417,6 +429,7 @@ def run_oras_go_effect_campaign(
     should_stop = hooks.should_stop if hooks is not None else None
     retain = hooks is None or hooks.retain_steps
     executed = 0
+    discovered = False  # any step's generic oracle verdict violated (for a non-retaining result)
     stop_reason: str | None = None
 
     state = OrasGoEffectSearchState(cases)
@@ -439,13 +452,14 @@ def run_oras_go_effect_campaign(
         attempt: MutationAttempt | None = None,
         selection: MutationSelection | None = None,
     ) -> None:
-        nonlocal executed
+        nonlocal executed, discovered
         run = produce_result(case)
         if not isinstance(run, OrasGoFrameRun) or run.base_result.case != case:
             raise ValueError("producer must return an OrasGoFrameRun for the requested case")
         if state_aware:
             observed_names.update(_observed_name_segments(run, exclude_external=blind_observation))
         decision = state.consider(run)
+        discovered = discovered or decision.contract_violated
         if (attempt is None) != (selection is None):
             raise ValueError("mutation attempt and scheduler selection must appear together")
         scheduler_evidence = None
@@ -490,7 +504,16 @@ def run_oras_go_effect_campaign(
     # The full result type requires a complete run (len(steps) == budget), so a non-retaining
     # run OR an early stop returns the lightweight aggregate instead (same rule as node-tar).
     if not retain or stop_reason is not None:
-        return LightCampaignResult(executed, config.execution_budget, stop_reason, retained)
+        return OrasGoLightResult(
+            executed,
+            config.execution_budget,
+            stop_reason,
+            retained,
+            config=config,
+            initial_case_ids=initial_ids,
+            final_stats=state.stats,
+            discovered_violation=discovered,
+        )
     return OrasGoEffectCampaignResult(
         config,
         initial_ids,
@@ -514,52 +537,112 @@ def oras_go_effect_campaign_report(
         raise ValueError("report requires an OrasGoEffectCampaignResult")
     if not isinstance(producer, str) or not producer:
         raise ValueError("report requires a producer label")
-    steps: list[dict[str, object]] = []
-    for step in result.steps:
-        base = step.run.base_result
-        decision = step.decision
-        steps.append(
-            {
-                "index": step.index,
-                "origin": step.origin.value,
-                "case_id": base.case.case_id,
-                "parent_case_id": step.parent_case_id,
-                "termination": base.execution.status.value,
-                "oracle": {v.contract_id.value: v.violated for v in base.violations},
-                "frame_observed": decision.frame_observed,
-                "frame_attempts": len(step.run.frame["attempts"]) if step.run.frame else 0,
-                "frame_error": step.run.frame_error,
-                "new_attempt_keys": len(decision.new_attempt_keys),
-                "new_violation_fingerprints": len(decision.new_violation_fingerprints),
-                "full_state_novel": decision.full_state_novel,
-                "contract_violated": decision.contract_violated,
-                "reward": decision.reward,
-                "retained": decision.retained,
-                "operator_id": (
-                    step.mutation_attempt.operator_id.value if step.mutation_attempt else None
-                ),
-            }
-        )
+    return _report_dict(
+        result.config,
+        result.initial_case_ids,
+        [oras_go_step_record(step) for step in result.steps],
+        result.discovered_violation,
+        result.final_stats,
+        result.retained_case_ids,
+        producer=producer,
+        label=label,
+    )
+
+
+def oras_go_step_record(step: OrasGoEffectStep) -> dict[str, object]:
+    """One step of the oras-go campaign report (the ``steps`` entry), from the typed step."""
+    base = step.run.base_result
+    decision = step.decision
+    return {
+        "index": step.index,
+        "origin": step.origin.value,
+        "case_id": base.case.case_id,
+        "parent_case_id": step.parent_case_id,
+        "termination": base.execution.status.value,
+        "oracle": {v.contract_id.value: v.violated for v in base.violations},
+        "frame_observed": decision.frame_observed,
+        "frame_attempts": len(step.run.frame["attempts"]) if step.run.frame else 0,
+        "frame_error": step.run.frame_error,
+        "new_attempt_keys": len(decision.new_attempt_keys),
+        "new_violation_fingerprints": len(decision.new_violation_fingerprints),
+        "full_state_novel": decision.full_state_novel,
+        "contract_violated": decision.contract_violated,
+        "reward": decision.reward,
+        "retained": decision.retained,
+        "operator_id": (step.mutation_attempt.operator_id.value if step.mutation_attempt else None),
+    }
+
+
+def _report_dict(
+    config: OrasGoEffectCampaignConfig,
+    initial_case_ids: tuple[str, ...],
+    steps: list[dict[str, object]],
+    discovered_violation: bool,
+    final_stats: OrasGoEffectStats,
+    retained_case_ids: tuple[str, ...],
+    *,
+    producer: str,
+    label: str | None,
+) -> dict[str, object]:
+    """The report's one shape, shared by the full-result path and the streaming collector."""
     return {
         "oras_go_campaign_schema": 1,
         "producer": producer,
         "label": label,
         "config": {
-            "random_seed": result.config.random_seed,
-            "execution_budget": result.config.execution_budget,
-            "mutation_policy": result.config.mutation_policy.value,
-            "adaptive_scheduler": result.config.adaptive_scheduler,
+            "random_seed": config.random_seed,
+            "execution_budget": config.execution_budget,
+            "mutation_policy": config.mutation_policy.value,
+            "adaptive_scheduler": config.adaptive_scheduler,
         },
-        "initial_case_ids": list(result.initial_case_ids),
-        "discovered_violation": result.discovered_violation,
+        "initial_case_ids": list(initial_case_ids),
+        "discovered_violation": discovered_violation,
         "final_stats": {
-            "observations": result.final_stats.observations,
-            "eligible_observations": result.final_stats.eligible_observations,
-            "retained_cases": result.final_stats.retained_cases,
-            "unique_attempt_keys": result.final_stats.unique_attempt_keys,
-            "unique_violation_fingerprints": result.final_stats.unique_violation_fingerprints,
-            "unique_full_states": result.final_stats.unique_full_states,
+            "observations": final_stats.observations,
+            "eligible_observations": final_stats.eligible_observations,
+            "retained_cases": final_stats.retained_cases,
+            "unique_attempt_keys": final_stats.unique_attempt_keys,
+            "unique_violation_fingerprints": final_stats.unique_violation_fingerprints,
+            "unique_full_states": final_stats.unique_full_states,
         },
         "steps": steps,
-        "retained_case_ids": list(result.retained_case_ids),
+        "retained_case_ids": list(retained_case_ids),
     }
+
+
+class OrasGoReportCollector:
+    """Streaming report (#542): ``add`` keeps each step's report record and drops the full run
+    (snapshots, frames); ``report`` builds the same report as
+    :func:`oras_go_effect_campaign_report` does from a retained result. The controller's per-run
+    ``case_records`` / ``violation_inputs`` come from its recording producer, as before.
+
+    Use as ``hooks=CampaignHooks(on_step=collector.add, retain_steps=False)``.
+    """
+
+    def __init__(self, *, producer: str, label: str | None = None) -> None:
+        if not isinstance(producer, str) or not producer:
+            raise ValueError("report requires a producer label")
+        self.producer = producer
+        self.label = label
+        self.steps: list[dict[str, object]] = []
+
+    def add(self, step: OrasGoEffectStep) -> None:
+        self.steps.append(oras_go_step_record(step))
+
+    def report(self, result: OrasGoLightResult) -> dict[str, object]:
+        if not isinstance(result, OrasGoLightResult):
+            raise ValueError("collector report requires an OrasGoLightResult")
+        if result.config is None or result.final_stats is None:
+            raise ValueError("light result lacks config or final stats")
+        if result.executed != len(self.steps):
+            raise ValueError(f"collected {len(self.steps)} steps, the loop ran {result.executed}")
+        return _report_dict(
+            result.config,
+            result.initial_case_ids,
+            self.steps,
+            result.discovered_violation,
+            result.final_stats,
+            result.retained_case_ids,
+            producer=self.producer,
+            label=self.label,
+        )

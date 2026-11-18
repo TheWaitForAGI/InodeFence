@@ -52,19 +52,51 @@ class Report:
     command_side: Counts = field(default_factory=Counts)
     output_side: Counts = field(default_factory=Counts)
     records_scanned: int = 0
+    overrides: list[dict] = field(default_factory=list)
 
     def as_json(self) -> dict:
         def side(c: Counts) -> dict:
             return {"allowed": c.allowed, "점검 필요": c.check, "점검 필요 시각": c.check_times}
 
+        per_version: dict[str, int] = {}
+        for o in self.overrides:
+            if o.get("kind") == "reserved":
+                key = f"{o.get('target')} {o.get('version')}"
+                per_version[key] = per_version.get(key, 0) + int(o.get("inputs") or 0)
         return {
             "records_scanned": self.records_scanned,
+            "overrides": {
+                "건수": len(self.overrides),
+                "시각": [o.get("time", "") for o in self.overrides],
+                "예약 버전별 입력 수": per_version,
+                "5개 초과": sorted(
+                    k for k, n in per_version.items() if n > MAX_QUALIFICATION_INPUTS
+                ),
+            },
             "command_side": side(self.command_side),
             "output_side": {
                 "점검 필요": self.output_side.check,
                 "점검 필요 시각": self.output_side.check_times,
             },
         }
+
+
+MAX_QUALIFICATION_INPUTS = 5
+
+
+def read_overrides(path: Path, since: datetime | None = None) -> list[dict]:
+    """Lines of the D3 ``sealed-overrides.jsonl`` (allowed overrides) inside the window."""
+    if not path.exists():
+        return []
+    out = []
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        try:
+            line = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(line, dict) and in_window(str(line.get("time", "")), since):
+            out.append(line)
+    return out
 
 
 def names_sealed(text: str, sealed: Iterable[str]) -> bool:
@@ -126,8 +158,11 @@ def audit(
     sessions: list[Path],
     histories: list[Path],
     since: datetime | None = None,
+    overrides: Path | None = None,
 ) -> Report:
     report = Report()
+    if overrides is not None:
+        report.overrides = read_overrides(overrides, since)
     for directory in sessions:
         for path in sorted(directory.rglob("*.jsonl")):
             for kind, time, text in session_events(path):
@@ -162,8 +197,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--sessions", action="append", type=Path, default=[])
     parser.add_argument("--history", action="append", type=Path, default=[])
     parser.add_argument("--since", type=datetime.fromisoformat, default=None)
+    parser.add_argument(
+        "--overrides", type=Path, default=None, help="D3 sealed-overrides.jsonl to count"
+    )
     args = parser.parse_args(argv)
-    report = audit(args.sealed, args.sessions, args.history, args.since)
+    report = audit(args.sealed, args.sessions, args.history, args.since, args.overrides)
     json.dump(report.as_json(), sys.stdout, ensure_ascii=False, indent=1)
     sys.stdout.write("\n")
     return 0

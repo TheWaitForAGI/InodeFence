@@ -36,6 +36,9 @@ RECORD = {
     "end_checks": 1,
     "total_checks": 4,
     "per_case_checks_skipped": 448,
+    # W5 937c8aa: what the probes cover, and the target's own per-case check if any
+    "artifact_identity_basis": "campaign-probes",
+    "per_case_identity_check": "in-container-source-hashes",
 }
 
 
@@ -178,6 +181,12 @@ def test_fast_records_the_loops_identity_checks() -> None:
     assert result.campaign is not None and result.campaign.identity_checks == RECORD
     data = json.loads(result.dumps())
     assert data["campaign"]["identity_checks"] == RECORD
+    # The provenance distinction is carried as the loop recorded it; no declared artifacts are
+    # added (W4: a declaration must not be recorded as an observation).
+    carried = data["campaign"]["identity_checks"]
+    assert carried["artifact_identity_basis"] == "campaign-probes"
+    assert carried["per_case_identity_check"] == "in-container-source-hashes"
+    assert not {"artifacts", "artifact_origin"} & set(carried)
     assert from_json_dict(data).campaign == result.campaign
     summary = render_summary(result, source_name="result.json", inputs_verified=True)
     assert "| 이미지 신원 확인 | 캠페인 단위(시작·200건마다·끝), 총 4회" in summary

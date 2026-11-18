@@ -213,7 +213,8 @@ node-tar 탐색에서만 기본 변이 정책 대신 v2 문법 정책(탈출 깊
 전과 같습니다. 호출자 환경의 `DEMO_MUTATION_POLICY`와 `DEMO_POLICY`(search 정책)는 어느 대상의 탐색에도 전달되지
 않으며, 설정돼 있으면 stderr에 무시한다는 경고(`TARGET-EXPLORE WARNING`) 한 줄이 나옵니다. 반대로 node-tar 탐색은
 `DEMO_SENTINEL_SEED`·`DEMO_SENTINEL_COUNT`·`DEMO_OBSERVER_INTEGRITY_POLICY`를 일부러 받습니다. 없으면 등록 실험의
-sandbox 값(사전등록에서 읽음)을 쓰고, 있으면 그 값을 쓰며 쓴 값은 live `case.json`의 `run_settings`에 남습니다.
+sandbox 값(사전등록에서 읽음)을 쓰고, 있으면 그 값을 씁니다. 쓴 값은 live `case.json`의 `run_settings`와, live 폴더가
+없는 실행에서도 `<--out>/runtime/`의 실행 기록(launch의 `env`)에 남습니다. `result.json`은 덮어쓰기로 바뀌지 않습니다.
 
 node-tar 탐색(`--version 7.5.23 --seed 123 --budget 20`, engineering smoke 2026-11-16)에서 실제로 생긴 구조:
 

@@ -9,6 +9,7 @@ report (``case_records`` + ``violation_inputs``) and wants the same common
 from __future__ import annotations
 
 import base64
+import dataclasses
 from hashlib import sha256
 from pathlib import Path
 
@@ -220,6 +221,37 @@ def _no_aggregate_policy(mutation_policy: str | None) -> str | None:
             "without the aggregate; no result written"
         )
     return None
+
+
+class IdentityRecordError(RuntimeError):
+    """A FAST run whose loop report does not show the identity probe schedule it asked for.
+
+    A ``RuntimeError``: the run happened, so the drivers report ERROR (exit 2) and publish no
+    result rather than one that does not say how often the image identity was probed.
+    """
+
+
+def with_identity_checks(
+    result: TargetResult, report: dict, identity_check_every: int | None
+) -> TargetResult:
+    """``result`` with the loop's identity-probe record when the run asked for FAST probing.
+
+    ``identity_check_every`` is the interval the session requested (``None``: STRICT, a probe
+    before every case; ``result`` is returned unchanged and its bytes are today's). Requested,
+    the report's ``identity_checks`` record must be there with the same interval.
+    """
+    if identity_check_every is None:
+        return result
+    record = report.get("identity_checks")
+    if not isinstance(record, dict) or record.get("interval") != identity_check_every:
+        raise IdentityRecordError(
+            f"the run asked for an image identity probe every {identity_check_every} cases but "
+            f"its loop report records {record!r}; no result written"
+        )
+    assert result.campaign is not None  # every exploration result is a campaign
+    return dataclasses.replace(
+        result, campaign=dataclasses.replace(result.campaign, identity_checks=dict(record))
+    )
 
 
 class ResultExistsError(FileExistsError, ValueError):

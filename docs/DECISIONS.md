@@ -1339,3 +1339,78 @@ v2 엔진은 탐색과 후속 분석용이며, 확증 실험의 실행 커밋으
 새 동작은 정책 id를 명시해야만 켜진다. 제품 기본값은 바뀌지 않는다. 기본값 변경은 0.3 범위에서 지웅이 정한다.
 
 D060·D062는 기록으로 남는다. D061의 동결본은 정의 문서로 남는다(D061의 2026-11-18 정정).
+
+## D064 — FAST 방안 1: 이미지 신원 확인을 캠페인 단위로, 공유 경로 파일 여섯 개의 배선 예외 (#536)
+
+**상태:** 확정 (2026-11-18, 지웅 승인 세 번: "방안 1 승인", "배선 승인", "2하자". IF-H4-ORCH 전달)
+
+### 무엇을 바꾸는가
+
+- `--profile fast`일 때만 대상이 이미지 신원 확인 컨테이너를 덜 띄운다:
+  - 확인 시점은 bind 때, N번째 케이스마다, 캠페인 끝이다. N은 200이다(`identity_schedule.DEFAULT_INTERVAL` = `drivers/runtime/policy.FAST_IDENTITY_CHECK_EVERY`).
+  - 지금(STRICT)은 케이스마다 확인 전용 컨테이너를 하나 더 띄운다. 이것이 케이스당 docker CLI 21회 가운데 11회, 컨테이너 생애 2개 가운데 1개다.
+- 다음은 STRICT와 같다:
+  - 실행 컨테이너의 생성·정책 대조·실행·제거
+  - 격리 설정
+  - 보호 파일 세 개(`execution/docker_client.py`, `execution/container.py`, `model/isolation.py`)
+  - 판정
+- 끝 확인이 실패하면 캠페인 전체가 무효다. 보고서가 쓰이지 않고, 제품 explore는 결과 없이 종료 2다.
+- 기본값은 STRICT이고 replay는 항상 STRICT다. 등록 러너는 이 값을 넘기지 않는다.
+- 네 대상(node-tar, python-tarfile, decompress, oras-go)에 적용한다.
+
+### 공유 경로 파일 여섯 개의 예외
+
+이 파일들은 수정 금지 합집합(SHARED_PATH_FILES)에 있다. 대상 객체는 컨트롤러 안에서 만들어지고 런처는 정해진 `DEMO_*` 값만 넘기므로, 값을 전달할 기존 통로가 없다. 그래서 다음 줄의 추가만 예외로 허용한다. 로직은 공유 파일 밖 `targets/identity_schedule.py`에 있다.
+
+| 파일 | 승인 상한 | 실제 | 내용 |
+| --- | --- | --- | --- |
+| `scripts/run_effect_demo.py` | +9, 삭제 0 | +9, 삭제 0 | import 1, 전달 인자 이름 1, `--identity-check-every` 1, `demo_options` 2, 매개변수 1, `apply_identity_schedule` 1, `finish_identity_schedule` 1, `report.update` 1 |
+| `scripts/container_controller.py` | +7 | +5, 삭제 0 | import 1, decompress·oras-go 각 `apply_identity_schedule` 1과 `report.update(finish_identity_schedule(...))` 1 |
+| `scripts/local_node_tar_smoke.sh` | +1 | +1 | `DEMO_IDENTITY_CHECK_EVERY` → `--identity-check-every` |
+| `scripts/local_python_tarfile_explore.sh`, `scripts/local_decompress_selfdiscover.sh`, `scripts/local_oras_go_selfdiscover.sh` | 각 +1 | 각 +1 | 같은 한 줄 |
+| `scripts/container_host.py` | 0 | 0 | — |
+
+- 값(`DEMO_IDENTITY_CHECK_EVERY`)이 없으면 인자열과 동작이 지금과 같다.
+- **이 여섯 파일은 main `fccdf35`과도, 등록 실행본과도 바이트 동일하지 않게 된다.** 공유 경로 대조의 이 여섯 파일 항목은 "승인된 줄만 다름"으로 바뀐다. 이것은 `tests/test_fast_wiring_shared_lines.py`가 고정한다:
+  - 승인된 줄을 빼면 각 파일이 `fccdf35` blob의 sha256과 같아야 한다.
+  - 줄 diff가 추가뿐이어야 한다.
+- 참고: 이 여섯 파일은 이 변경 전에도 이미 `bed077a`(등록 실행 SHA)와 같지 않았다. 대조 기준은 main이다.
+
+### 대상별로 확인 사이에 남는 보호 (QA 사실 확인)
+
+- **node-tar**: 실행 명령이 기대 해시 여섯 개를 넘긴다(`targets/node_tar_effect.py` `command()`). 같은 실행 컨테이너 안의 worker가 추출 전에 같은 identity를 다시 계산하고, 다르면 종료 3이며 `classify`가 오류를 낸다. 별도 확인 컨테이너를 줄여도 잃는 탐지가 없다.
+- **python-tarfile, decompress, oras-go**: 실행 명령에 기대 해시가 없다. 확인 사이의 보호는 고정된 이미지 ID뿐이다:
+  - 실행 컨테이너는 sha256 이미지 ID로 만든다(`execution/container.py`: create 인자, 생성 직후 `Image` 대조, `image inspect`의 `Id` 대조).
+  - 컨테이너는 `--read-only`다.
+  - 그래서 이미지 안 파일이 ID 변화 없이 케이스 사이에 바뀔 수 없다. 바뀌면 다음 주기 확인이나 끝 확인에서, 그 케이스가 아니라 나중에 탐지된다.
+- 이미지 내용과 확인 구현은 지금처럼 trusted다.
+
+### 케이스마다 확인은 문서화된 설계 속성이다: FAST가 유지하는 것과 완화하는 것
+
+- 근거: 케이스마다 확인은 런타임 감사 수정 `adb43c0`(#45, 2026-10-04, "frozen runtime audit findings")에서 들어왔고, node-tar effect 대상은 `2b4ec27`(2026-10-13)에서 같은 방식을 따랐다. 설계 문서 `docs/research/design/architecture.md`가 이것을 속성으로 적는다:
+  > "Invocation artifact digests are **declarations/expectations**. `bind()` discovery does not authorize later constructed/replaced values. The wrapper executes the invocation's identity probe through the inspected backend image and verifies versions/digests before campaign freeze and before each standalone/prepared archive execution. … mismatches abort before extraction, including when ExperimentConfig matches the false declaration."
+- **FAST가 유지하는 것:**
+  - 거짓 선언(대상 객체의 선언 값이 이미지 내용과 다름)은 캠페인 시작 확인(bind)에서 추출 전에 잡힌다.
+  - node-tar는 케이스마다 실행 컨테이너 안에서 worker가 같은 identity를 다시 확인한다(위 절).
+  - 끝 확인이 실패하면 캠페인 전체가 무효다.
+- **FAST가 완화하는 것:** "before each … prepared archive execution"이 FAST에서만 "시작·N번째마다·끝"이 된다.
+  - python-tarfile·decompress·oras-go에서는 캠페인 도중 선언과 이미지 내용이 어긋나도 다음 확인까지 추출이 계속된다. 다만 결과는 발행되지 않는다(끝 확인).
+  - STRICT는 이 속성을 그대로 지킨다.
+  - `architecture.md`의 그 문단에 이 예외를 한 문장으로 더한다.
+- 태그 재지정과 로컬 재빌드는 실행이 이미지 ID로 고정되므로 이 확인의 대상이 아니다.
+
+### 등록 실험과의 관계
+
+- 동결된 EXP-3 규모 pilot(`experiments/preregistration/exp3-sizing-20261107/pilot_w3_items.py:195`, "4001 = 1 + 2 * 2000")은 step당 컨테이너 두 개를 셌다. 등록 처리량 수치는 케이스마다 확인을 전제한다.
+- FAST는 등록과 다른 실행 조건이다. 실행 기록(`runtime-record.json`의 `identity_check_every`, 결과의 `campaign.identity_checks`)에 그렇게 남는다.
+- 등록 경로, 사전등록, golden은 바뀌지 않는다.
+
+### 안전장치
+
+1. 대상 생성자의 기본값은 케이스마다 확인이다. STRICT 보고서·결과는 바이트 동일하다(테스트).
+2. 드라이버만 FAST에서 값을 넣는다. 호출자 환경에서 상속된 `DEMO_IDENTITY_CHECK_EVERY`는 STRICT·replay·FAST 모두 버리고 경고 한 줄을 낸다.
+3. FAST 결과는 루프가 보고한 확인 기록(`identity_checks`)이 요청한 N과 같을 때만 발행한다. 없거나 다르면 종료 2다.
+4. 승인된 줄 고정 테스트(위)가 있다.
+5. FAST 수용(판정 동일성)은 W3의 동등성 시험 설계(`20261118-HOST1-536-FAST-동등성-시험-설계.md`, 비공개 Drive)를 따른다. 실측(W1) 전에는 속도 주장을 하지 않는다. USAGE의 "실행 프로필"과 주장 행 C-PFAST는 실측 뒤 숫자와 함께 고친다.
+
+**범위.** 이 여섯 파일의 위 줄에만 해당하는 예외다. 같은 파일의 다른 변경, 다른 수정 금지 파일, 보호 파일 세 개에는 적용되지 않는다. 새 필요가 생기면 새 결정이 필요하다.

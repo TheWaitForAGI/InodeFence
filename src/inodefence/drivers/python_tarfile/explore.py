@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import Any
 
 from inodefence.drivers import explore_result
+from inodefence.drivers.explore_result import with_identity_checks
 from inodefence.drivers.launcher import launcher_path, run_launcher
 from inodefence.drivers.python_tarfile import adapter as rpt
 from inodefence.drivers.python_tarfile import producer
@@ -50,6 +51,7 @@ from inodefence.drivers.run_target import (
     PreparedTargetImage,
     drop_inherited_mutation_policy,
     drop_inherited_search_policy,
+    requested_identity_check_every,
 )
 from inodefence.drivers.runtime.hooks import LaunchArtifacts
 from inodefence.drivers.runtime.session import RuntimeSession
@@ -246,6 +248,8 @@ def explore(
     result, tar_files = build_campaign_result(
         report, prepared, made, extraction_filter, seed=options.seed, budget=options.budget
     )
+    # FAST (#536): the loop's identity-probe record; STRICT: unchanged.
+    result = with_identity_checks(result, report, requested_identity_check_every(options))
     result_path = explore_result.write_result(
         path.parent / f"{run_id}-result", result, tar_files, report=path
     )

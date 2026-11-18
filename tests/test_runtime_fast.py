@@ -253,6 +253,11 @@ def strict_call(env: dict[str, str]) -> tuple[list[str], dict[str, Any]]:
     return call
 
 
+#: FAST's second flag (#536 option 1): its main launch also carries the identity probe
+#: interval; a build-only launch before it does not.
+FAST_IDENTITY = {"DEMO_IDENTITY_CHECK_EVERY": "200"}
+
+
 def test_verified_images_add_skip_build_and_nothing_else(
     env: dict[str, str], docker: FakeDocker, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -265,12 +270,18 @@ def test_verified_images_add_skip_build_and_nothing_else(
     (argv, kwargs) = runner.calls[0]
     strict_argv, strict_kwargs = strict_call(env)
     assert len(runner.calls) == 1 and argv == strict_argv
-    assert kwargs == {**strict_kwargs, "env": {**strict_kwargs["env"], "SKIP_BUILD": "1"}}
+    assert kwargs == {
+        **strict_kwargs,
+        "env": {**strict_kwargs["env"], "SKIP_BUILD": "1", **FAST_IDENTITY},
+    }
     assert "SKIP_BUILD" not in env  # the hook's own environment is not modified
 
     session.finish(result_written=True)
     record = session.to_json()
-    assert record["profile"] == "fast" and record["policy"] == {"reuse_shared_images": True}
+    assert record["profile"] == "fast" and record["policy"] == {
+        "reuse_shared_images": True,
+        "identity_check_every": 200,
+    }
     (launch,) = record["launches"]
     assert launch["env"]["SKIP_BUILD"] == "1" and launch["profile"] == "fast"
     applied = launch["policy_applied"]["reuse_shared_images"]
@@ -289,7 +300,7 @@ def test_unverified_images_are_built_by_the_launcher_first_then_reused(
     assert [argv for argv, _ in runner.calls] == [strict_argv, strict_argv]
     build_env, run_env = runner.envs()
     assert build_env == {**strict_kwargs["env"], "BUILD_ONLY": "1"}
-    assert run_env == {**strict_kwargs["env"], "SKIP_BUILD": "1"}
+    assert run_env == {**strict_kwargs["env"], "SKIP_BUILD": "1", **FAST_IDENTITY}
     assert all(kwargs["cwd"] == "/r" for _, kwargs in runner.calls)
 
     session.finish(result_written=True)
@@ -337,7 +348,10 @@ def test_a_launcher_without_a_build_only_run_falls_back_visibly(
     run_launcher(PYTHON_TARFILE, runner=runner, env=dict(env), session=session, check=False)
     plain = Launcher(FakeDocker())
     run_launcher(PYTHON_TARFILE, runner=plain, env=dict(env), check=False)
-    assert runner.calls == plain.calls  # exactly STRICT's launch: the launcher builds the images
+    # exactly STRICT's launch (the launcher builds the images) plus the identity interval
+    ((fast_argv, fast_kwargs),), ((plain_argv, plain_kwargs),) = runner.calls, plain.calls
+    assert fast_argv == plain_argv
+    assert fast_kwargs == {**plain_kwargs, "env": {**plain_kwargs["env"], **FAST_IDENTITY}}
     session.finish(result_written=True)
     (launch,) = session.to_json()["launches"]
     applied = launch["policy_applied"]["reuse_shared_images"]
@@ -358,7 +372,7 @@ def test_an_operator_set_switch_is_left_alone_and_said(
     preset = {**env, "SKIP_BUILD": "1"}
     runner, session = Launcher(docker), fast()
     run_launcher(NODE_TAR, ["explore"], runner=runner, env=dict(preset), session=session)
-    assert runner.envs() == [preset] and docker.asked == []
+    assert runner.envs() == [{**preset, **FAST_IDENTITY}] and docker.asked == []
     applied = session.to_json()["launches"][0]["policy_applied"]["reuse_shared_images"]
     assert applied["applied"] is False and "already set" in applied["reason"]
     assert "reuse_shared_images=not-applied" in capsys.readouterr().err
@@ -493,7 +507,7 @@ def test_the_result_folder_names_the_profile_only_when_it_is_not_strict(
     published = json.loads((fast_dir / rte.RESULT_RUNTIME_RECORD).read_text(encoding="utf-8"))
     (record,) = _records(tmp_path / "f")
     assert published == record and published["profile"] == "fast"
-    assert published["policy"] == {"reuse_shared_images": True}
+    assert published["policy"] == {"reuse_shared_images": True, "identity_check_every": 200}
     assert published["launches"][0]["classification"] == "completed"
     (strict_record,) = _records(tmp_path / "s")
     assert strict_record["profile"] == "strict" and strict_record["policy"] == {}
@@ -516,7 +530,7 @@ def test_dry_run_names_the_profile_only_when_it_is_not_strict(
     planned = json.loads(capsys.readouterr().out)
     assert planned.pop("runtime_profile") == {
         "profile": "fast",
-        "policy": {"reuse_shared_images": True},
+        "policy": {"reuse_shared_images": True, "identity_check_every": 200},
     }
     assert planned == default and runner.calls == [] and docker.asked == []
 
@@ -574,6 +588,8 @@ def test_node_tar_hook_hands_the_loop_the_same_inputs_under_both_profiles(
     strict_env, fast_env = dict(strict_kwargs.pop("env")), dict(fast_kwargs.pop("env"))
     assert fast_kwargs == strict_kwargs
     assert fast_env.pop("SKIP_BUILD") == "1" and "SKIP_BUILD" not in strict_env
+    assert fast_env.pop("DEMO_IDENTITY_CHECK_EVERY") == "200"
+    assert "DEMO_IDENTITY_CHECK_EVERY" not in strict_env
     # the only other difference is where each run writes (two output folders)
     paths = ("INODEFENCE_EVIDENCE_DIR", "DEMO_HOST_LIVE_DIR")
     assert {k: v for k, v in fast_env.items() if k not in paths} == {

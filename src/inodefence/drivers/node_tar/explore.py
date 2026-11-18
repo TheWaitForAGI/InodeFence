@@ -23,6 +23,7 @@ from pathlib import Path
 from inodefence.drivers.explore_result import (
     build_campaign_result,
     refuse_existing,
+    with_identity_checks,
     write_result,
 )
 from inodefence.drivers.launcher import launcher_path, run_launcher
@@ -35,6 +36,7 @@ from inodefence.drivers.run_target import (
     drop_inherited_mutation_policy,
     drop_inherited_search_policy,
     engine_provenance,
+    requested_identity_check_every,
 )
 from inodefence.drivers.runtime.hooks import LaunchArtifacts
 from inodefence.evaluation.rds import VOCABULARY_MUTATION_POLICY, VocabularyMode
@@ -242,6 +244,8 @@ def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOu
         live_dir=host_live_dir if host_live_dir.is_dir() else None,
         mutation_policy=options.mutation_policy,
     )
+    # FAST (#536): the loop's identity-probe record; STRICT: unchanged.
+    result = with_identity_checks(result, report, requested_identity_check_every(options))
     result_path = write_result(
         report_path.parent / f"{run_id}-result", result, tar_files, report=report_path
     )

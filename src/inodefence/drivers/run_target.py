@@ -320,6 +320,13 @@ class ExploreOptions:
     mutation_policy: str | None = None
 
 
+def requested_identity_check_every(options: ExploreOptions) -> int | None:
+    """The identity probe interval this exploration's runtime session asked for (FAST), or
+    ``None``: a probe before every case (STRICT, or no session)."""
+    runtime = getattr(options, "runtime", None)
+    return runtime.policy.identity_check_every if runtime is not None else None
+
+
 @dataclass(frozen=True, slots=True)
 class ExploreOutcome:
     """What a target's explore hook reports back: where it wrote the common campaign result."""

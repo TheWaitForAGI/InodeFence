@@ -275,6 +275,10 @@ class CampaignInfo:
     #: The mutation policy an exploration ran when it was chosen with ``--mutation-policy``
     #: (checked against the loop's report); ``None`` (the key absent) for the target's default.
     mutation_policy: str | None = None
+    #: FAST exploration only (#536 option 1): the loop's record of the image identity probes it
+    #: ran instead of one before every case (``interval``, ``total_checks``, ... as the targets'
+    #: ``identity_schedule`` writes it). ``None`` (the key absent): a probe before every case.
+    identity_checks: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -467,6 +471,8 @@ class TargetResult:
                 data["campaign"]["build_invalid"] = self.campaign.build_invalid
             if self.campaign.mutation_policy is not None:
                 data["campaign"]["mutation_policy"] = self.campaign.mutation_policy
+            if self.campaign.identity_checks is not None:
+                data["campaign"]["identity_checks"] = self.campaign.identity_checks
         if self.benign_control is not None:
             b = self.benign_control
             data["benign_control"] = {
@@ -611,6 +617,18 @@ def _validate_campaign(result: TargetResult) -> None:
         not isinstance(mutation_policy, str) or not mutation_policy
     ):
         raise TargetResultError("campaign.mutation_policy must be absent or a non-empty string")
+    checks = campaign.identity_checks
+    if checks is not None and (
+        not isinstance(checks, dict)
+        or type(checks.get("interval")) is not int
+        or checks["interval"] < 1
+        or type(checks.get("total_checks")) is not int
+        or checks["total_checks"] < 1
+    ):
+        raise TargetResultError(
+            "campaign.identity_checks must be absent or a record with integer interval and "
+            "total_checks >= 1"
+        )
     stored = campaign.unjudged_steps
     if stored is not None:
         if type(stored) is not int or not 0 <= stored <= extracted:
@@ -722,6 +740,7 @@ _CAMPAIGN_OPTIONAL = {
     "violation_capture",
     "build_invalid",
     "mutation_policy",
+    "identity_checks",
 }
 
 _BENIGN_CONTROL_KEYS = {"extracted", "expected_path", "tar_path", "tar_sha256", "detail"}
@@ -809,6 +828,7 @@ def from_json_dict(data: object) -> TargetResult:
             violation_capture=campaign_block.get("violation_capture"),
             build_invalid=campaign_block.get("build_invalid"),
             mutation_policy=campaign_block.get("mutation_policy"),
+            identity_checks=campaign_block.get("identity_checks"),
         )
     benign_control = None
     if "benign_control" in top:

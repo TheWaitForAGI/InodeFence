@@ -40,6 +40,7 @@ from pathlib import Path
 from typing import Any
 
 from inodefence.drivers.decompress import adapter as dt
+from inodefence.drivers.explore_result import with_identity_checks
 from inodefence.drivers.launcher import launcher_path, run_launcher
 from inodefence.drivers.repo import code_checkout, require_repository_or_exit
 from inodefence.drivers.run_target import (
@@ -50,6 +51,7 @@ from inodefence.drivers.run_target import (
     RunCell,
     drop_inherited_mutation_policy,
     drop_inherited_search_policy,
+    requested_identity_check_every,
 )
 from inodefence.drivers.runtime.hooks import LaunchArtifacts
 from inodefence.feedback import EffectSearchPolicy
@@ -420,6 +422,8 @@ def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOu
         seed=options.seed,
         budget=options.budget,
     )
+    # FAST (#536): the loop's identity-probe record; STRICT: unchanged.
+    result = with_identity_checks(result, report, requested_identity_check_every(options))
     summary.update(
         requested=prepared.requested,
         worker_check=check["reason"],

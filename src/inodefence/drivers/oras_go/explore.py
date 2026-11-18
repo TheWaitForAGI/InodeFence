@@ -34,6 +34,7 @@ from pathlib import Path
 from inodefence.drivers.explore_result import (
     build_campaign_result,
     refuse_existing,
+    with_identity_checks,
     write_result,
 )
 from inodefence.drivers.launcher import launcher_path, run_launcher
@@ -45,6 +46,7 @@ from inodefence.drivers.run_target import (
     PreparedTargetImage,
     drop_inherited_mutation_policy,
     drop_inherited_search_policy,
+    requested_identity_check_every,
 )
 from inodefence.drivers.runtime.hooks import LaunchArtifacts
 from inodefence.feedback import EffectSearchPolicy
@@ -336,6 +338,8 @@ def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOu
             MAX_UNJUDGED_RATIO, getattr(options, "max_unjudged_ratio", MAX_UNJUDGED_RATIO)
         ),
     )
+    # FAST (#536): the loop's identity-probe record; STRICT: unchanged.
+    result = with_identity_checks(result, report, requested_identity_check_every(options))
     result_path = write_result(
         report_path.parent / f"{run_id}-result", result, tar_files, report=report_path
     )

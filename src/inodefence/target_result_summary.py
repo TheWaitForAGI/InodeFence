@@ -234,6 +234,12 @@ def render_summary(result: TargetResult, *, source_name: str, inputs_verified: b
             add(f"| 미판정 상한 | {campaign.max_unjudged_ratio} (넘으면 판정은 ERROR) |")
         if campaign.stopped_early:
             add("| 중단 | 사람이 예산 소진 전에 멈춤 (그때까지의 결과) |")
+        checks = campaign.identity_checks
+        if checks is not None:  # FAST (#536 option 1) only; absent: a probe before every case
+            add(
+                f"| 이미지 신원 확인 | 캠페인 단위(시작·{checks.get('interval')}건마다·끝), "
+                f"총 {checks.get('total_checks')}회 — STRICT는 케이스마다 |"
+            )
         if campaign.mutation_policy is not None:  # only when --mutation-policy chose it
             add(f"| 변이 정책 | {_code(campaign.mutation_policy)} (선택한 탐색용 정책) |")
     prep = result.preparation

@@ -1785,6 +1785,11 @@ campaign freeze and before each standalone/prepared archive execution. Nonempty 
 declarations without an observation protocol are rejected. Node compares its fixed
 worker/package-lock probe output against every declared identity field; mismatches abort
 before extraction, including when ExperimentConfig matches the false declaration.
+Exception (D064, approved by Jiwoong 2026-11-18, #536): under the `fast` runtime profile
+only, an exploration probes at bind, before every N-th prepared execution (N = 200) and at
+the end of the campaign instead of before each prepared execution; a failed probe voids the
+campaign. node-tar's worker still re-checks the declared identity inside every archive-run
+container. STRICT (the default), replay and the registered runners are unchanged.
 
 `IsolationProvenance` v2 stores only those verified artifact observations, with
 `artifact_origin="image-identification-v1"` (or null with no artifacts). Policy image ID

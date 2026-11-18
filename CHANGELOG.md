@@ -26,6 +26,10 @@
 - 미판정 비율(`campaign.unjudged_ratio`)의 분모에서 build-invalid 실행을 뺀다(분모 = 실행 수 − `build_invalid`). 이 키가
   없는 결과(기본 정책의 모든 실행과 0.2.0이 쓴 파일)는 값이 그대로다. 옵션 없는 실행의 `result.json`·`summary.md`는 0.2.0
   뒤의 `main`(`e1098d6`)과 바이트 동일하다(`tests/test_explore_mutation_policy.py`).
+- `--profile fast`가 이미지 신원 확인 컨테이너를 케이스마다가 아니라 캠페인 시작·200건마다·끝에만 띄운다(네 대상,
+  [D064](docs/DECISIONS.md)). 실행 컨테이너와 격리·판정은 그대로이고, 끝 확인이 실패하면 결과 없이 종료 2다. FAST 결과에는
+  `campaign.identity_checks`(확인 기록)가 남고 runtime 기록에 `identity_check_every`가 남는다. 기본(`strict`)과 `replay`는
+  그대로다. 호출자 환경의 `DEMO_IDENTITY_CHECK_EVERY`는 무시하고 경고 한 줄을 낸다. 시간 효과는 아직 재지 않았다.
 - 새 선택 키가 든 `result.json`은 이 버전 이상의 `inodefence status`·`summary`로 읽는다([호환 약속](docs/USAGE.md#호환-약속)).
 
 ### 고친 문제

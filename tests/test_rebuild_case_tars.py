@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import gzip
 import json
-from hashlib import sha256
 from pathlib import Path
 
 import pytest
@@ -28,10 +27,24 @@ SETTINGS = {
     "observer_integrity_policy": "stop",
     "profile": "full",
 }
-SETTINGS_FILE = {
-    "schema": "inodefence-514-run-settings-v1",
-    "cells": [{"target": "node-tar", "version": "7.5.7", "run_settings": SETTINGS}],
-}
+
+
+#: What node-tar exploration writes into live/progress.json (LiveRunMeta.as_dict()).
+def _progress(steps: int, **change: object) -> dict:
+    meta = {
+        "state": "finished",
+        "target": "node-tar",
+        "version": "7.5.7",
+        "seed": 5,
+        "budget": steps,
+        "image_id": IMAGE,
+        "engine_commit": ENGINE,
+        "run_settings": dict(SETTINGS),
+    }
+    meta.update(change)
+    return {k: v for k, v in meta.items() if v is not None}
+
+
 _CACHE: dict[str, tuple] = {}
 
 
@@ -60,10 +73,9 @@ def _setup(
     with gzip.open(journal, "wt", encoding="utf-8") as stream:
         for record in records:
             stream.write(json.dumps(record) + "\n")
-    meta = {"state": "finished", "budget": len(base_records), "engine_commit": ENGINE}
-    (run / "live" / "progress.json").write_text(json.dumps(meta if progress is None else progress))
-    settings = tmp_path / "run-settings.json"
-    settings.write_text(json.dumps(SETTINGS_FILE), encoding="utf-8")
+    meta = _progress(len(base_records)) if progress is None else progress
+    (run / "live" / "progress.json").write_text(json.dumps(meta))
+    settings = None
     listing = tmp_path / "steps.txt"
     chosen = steps if steps is not None else sorted(truth)[4:24]
     listing.write_text("".join(f"{i}\n" for i in chosen), encoding="utf-8")
@@ -80,8 +92,6 @@ def _args(policy, journal, run, settings, listing, out, **change):  # type: igno
         "--target": "node-tar",
         "--version": "7.5.7",
         "--image-id": IMAGE,
-        "--settings-file": str(settings),
-        "--settings-sha256": sha256(settings.read_bytes()).hexdigest(),
         "--out": str(out),
     }
     values.update(change)
@@ -106,6 +116,8 @@ def test_requested_steps_are_rebuilt_byte_identical(tmp_path: Path, capsys, cell
         "failed": 0,
         "failed_by_reason": {},
         "requested": len(chosen),
+        "run_settings_from_argument": [],
+        "run_settings_from_record": sorted(SETTINGS),
         "verified": len(chosen),
     }
     for index in chosen:
@@ -114,7 +126,9 @@ def test_requested_steps_are_rebuilt_byte_identical(tmp_path: Path, capsys, cell
         assert tar == build_tar(truth[index])  # byte-identical to the original input
         request = load_replay_request(folder)  # the replay loader reads it back
         assert request.case_id == truth[index].case_id
-        assert request.run_settings == SETTINGS
+        assert request.run_settings == SETTINGS  # the run's own record
+        record = json.loads((folder / "case.json").read_text())
+        assert record["run_settings_source"] == {"record": sorted(SETTINGS), "argument": []}
     assert json.loads((out / "failures.json").read_text()) == []
 
 
@@ -164,8 +178,11 @@ def test_build_invalid_and_missing_steps_are_listed(tmp_path: Path, capsys) -> N
         ({"--expected-engine": "d" * 40}, "!= --expected-engine"),
         ({"--mutation-policy": "uniform-generic-m1-v1"}, "not a v2 grammar policy"),
         ({"--mutation-policy": "no-such-policy"}, "unknown mutation policy"),
-        ({"--settings-sha256": "0" * 64}, "!= expected"),
-        ({"--version": "7.5.11"}, "not in the run-settings file"),
+        ({"--version": "7.5.11"}, "--version 7.5.11 != the run's record"),
+        ({"--target": "python-tarfile"}, "--target python-tarfile != the run's record"),
+        ({"--image-id": "sha256:" + "b" * 64}, "--image-id"),
+        ({"--run-settings-missing": '{"profile": "fast"}'}, "differs from the run's record"),
+        ({"--run-settings-missing": "[1]"}, "must be a JSON object"),
     ],
 )
 def test_preconditions_are_exit_2(tmp_path: Path, capsys, change: dict, message: str) -> None:
@@ -179,9 +196,9 @@ def test_preconditions_are_exit_2(tmp_path: Path, capsys, change: dict, message:
 @pytest.mark.parametrize(
     ("progress", "message"),
     [
-        ({"state": "finished", "budget": 64}, "no engine commit"),
-        ({"state": "finished", "engine_commit": ENGINE}, "no budget"),
-        ({"state": "finished", "budget": 65, "engine_commit": ENGINE}, "journal incomplete"),
+        (_progress(64, engine_commit=None), "no engine commit"),
+        (_progress(64, budget=None), "no budget"),
+        (_progress(65), "journal incomplete"),
     ],
 )
 def test_run_records_are_required(tmp_path: Path, capsys, progress: dict, message: str) -> None:
@@ -215,5 +232,52 @@ def test_the_summary_carries_no_paths_or_content(tmp_path: Path, capsys) -> None
     """Counts only: the summary's keys are fixed and its values are numbers or reasons."""
     policy, journal, run, settings, listing, _ = _setup(tmp_path)
     code, summary = _main(capsys, *_args(policy, journal, run, settings, listing, tmp_path / "out"))
-    assert set(summary) == {"criterion", "failed", "failed_by_reason", "requested", "verified"}
+    assert set(summary) == {
+        "criterion",
+        "failed",
+        "failed_by_reason",
+        "requested",
+        "run_settings_from_argument",
+        "run_settings_from_record",
+        "verified",
+    }
     assert all(isinstance(summary[k], int) for k in ("failed", "requested", "verified"))
+
+
+def test_keys_the_record_lacks_come_from_the_argument(tmp_path: Path, capsys) -> None:
+    partial = {k: v for k, v in SETTINGS.items() if k != "profile"}
+    policy, journal, run, settings, listing, truth = _setup(
+        tmp_path, progress=_progress(64, run_settings=partial)
+    )
+    out = tmp_path / "out"
+    argv = _args(
+        policy,
+        journal,
+        run,
+        settings,
+        listing,
+        out,
+        **{"--run-settings-missing": '{"profile": "full"}'},
+    )
+    code, summary = _main(capsys, *argv)
+    assert code == 0
+    assert summary["run_settings_from_record"] == sorted(partial)
+    assert summary["run_settings_from_argument"] == ["profile"]
+    index = sorted(truth)[4]
+    record = json.loads((out / f"step-{index:06d}" / "case.json").read_text())
+    assert record["run_settings"] == SETTINGS
+    assert record["run_settings_source"]["argument"] == ["profile"]
+
+
+def test_settings_the_replay_check_refuses_are_listed_failures(tmp_path: Path, capsys) -> None:
+    """No run_settings recorded and none given: every written folder fails the target's replay
+    check and is listed (exit 1), never silently kept."""
+    policy, journal, run, settings, listing, truth = _setup(
+        tmp_path, progress=_progress(64, run_settings=None)
+    )
+    out = tmp_path / "out"
+    code, summary = _main(capsys, *_args(policy, journal, run, settings, listing, out))
+    assert code == 1
+    assert summary["verified"] == 0
+    assert summary["failed_by_reason"] == {rct.REPLAY_REFUSED: summary["requested"]}
+    assert not any(p.name.startswith("step-") for p in out.iterdir())

@@ -24,8 +24,16 @@ Refused (exit 2):
   no budget is recorded;
 * ``--mutation-policy`` is not a v2 grammar policy (v1/M1 contents are random bytes, not a
   pinned set), or differs from the policy the run records;
-* ``--out`` inside the repository or a Drive mount, or an existing folder; the run-settings file
-  not matching its ledger hash (``--settings-sha256``) or not listing the cell.
+* ``--out`` inside the repository or a Drive mount, or an existing folder;
+* ``--target``/``--version``/``--image-id`` differing from what the run records, or a
+  ``--run-settings-missing`` key differing from the recorded value.
+
+Run settings come from the run itself: node-tar exploration writes ``run_settings`` (sentinel
+count and seed, observer-integrity policy, profile) into the live ``progress.json`` through
+``LiveRunMeta`` (``scripts/run_effect_demo.py`` builds them; ``live_exploration.py`` snapshots
+them). Only keys the record lacks may come from ``--run-settings-missing``; the summary and
+each ``case.json`` say which keys came from where. The target's own ``replay_check`` reads each
+written folder back, so incomplete settings fail there and are listed.
 
 Which steps to rebuild is an input (``--steps-list``: one step index per line); no selection
 rule lives in this tool. Output, on the run host's local disk only: ``step-NNNNNN/`` with
@@ -48,12 +56,6 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
-from scripts.analysis.oracle_accuracy_real_table import (
-    InputError,
-    check_sha256,
-    load_run_settings,
-)
-
 from inodefence.builder import build_tar
 from inodefence.case_replay import (
     CASE_FILE,
@@ -62,6 +64,7 @@ from inodefence.case_replay import (
     CaseReplayError,
     load_replay_request,
 )
+from inodefence.drivers.run_target import load_adapter
 from inodefence.effect_campaign import bound_seed_cases
 from inodefence.generator.minimal import minimal_seed_corpus
 from inodefence.model import ArchiveCase, ArchiveEntry, EntryType
@@ -99,10 +102,13 @@ def _lines(path: Path) -> Iterator[str]:
 
 
 def run_records(run_dir: Path) -> dict[str, Any]:
-    """The run's engine commit, budget and mutation policy, from the records exploration writes
-    beside the journal: live ``progress.json`` (``engine_commit``, ``budget``) and ``result.json``
-    (``provenance.engine_sha``/``engine_dirty``, ``campaign.budget``/``mutation_policy``)."""
-    found: dict[str, set[Any]] = {"engine_commit": set(), "budget": set(), "mutation_policy": set()}
+    """What the run records beside the journal: live ``progress.json`` (``engine_commit``,
+    ``budget``, ``target``, ``version``, ``image_id``, ``run_settings`` -- ``LiveRunMeta``) and
+    ``result.json`` (``provenance.engine_sha``/``engine_dirty``, ``campaign.budget`` /
+    ``mutation_policy``). Two records of one key that disagree are a precondition failure."""
+    keys = ("engine_commit", "budget", "mutation_policy", "target", "version", "image_id")
+    found: dict[str, set[Any]] = {key: set() for key in keys}
+    settings: set[str] = set()
     for path in sorted(run_dir.rglob("*.json")):
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
@@ -115,6 +121,11 @@ def run_records(run_dir: Path) -> dict[str, Any]:
                 found["engine_commit"].add(data["engine_commit"])
             if isinstance(data.get("budget"), int):
                 found["budget"].add(data["budget"])
+            for key in ("target", "version", "image_id"):
+                if isinstance(data.get(key), str) and data[key]:
+                    found[key].add(data[key])
+            if isinstance(data.get("run_settings"), dict):
+                settings.add(json.dumps(data["run_settings"], sort_keys=True))
         elif path.name == "result.json":
             provenance = data.get("provenance") or {}
             if provenance.get("engine_sha"):
@@ -128,7 +139,29 @@ def run_records(run_dir: Path) -> dict[str, Any]:
     for key, values in found.items():
         if len(values) > 1:
             raise Precondition(f"the run's records disagree on {key}: {sorted(map(str, values))}")
-    return {key: next(iter(values)) if values else None for key, values in found.items()}
+    if len(settings) > 1:
+        raise Precondition("the run's records disagree on run_settings")
+    out: dict[str, Any] = {key: next(iter(v)) if v else None for key, v in found.items()}
+    out["run_settings"] = json.loads(next(iter(settings))) if settings else None
+    return out
+
+
+def merge_run_settings(
+    recorded: Mapping[str, Any] | None, given: Mapping[str, Any]
+) -> tuple[dict[str, Any], list[str], list[str]]:
+    """(settings, keys from the record, keys from the argument). A given key the record also
+    holds must carry the same value (else a precondition failure); only absent keys are filled."""
+    merged = dict(recorded or {})
+    for key, value in given.items():
+        if key in merged and merged[key] != value:
+            raise Precondition(
+                f"run_settings[{key!r}] differs from the run's record; only keys the record "
+                "lacks may be given"
+            )
+    from_argument = sorted(key for key in given if key not in merged)
+    for key in from_argument:
+        merged[key] = given[key]
+    return merged, sorted(recorded or {}), from_argument
 
 
 def check_out(out: Path) -> Path:
@@ -302,6 +335,7 @@ def case_record(
     version: str,
     image_id: str,
     run_settings: Mapping[str, Any],
+    settings_source: Mapping[str, Sequence[str]],
     engine_commit: str,
 ) -> dict[str, Any]:
     oracle = summary.get("oracle") or {}
@@ -314,6 +348,7 @@ def case_record(
         "version": version,
         "image_id": image_id,
         "run_settings": dict(run_settings),
+        "run_settings_source": {key: list(value) for key, value in settings_source.items()},
         "engine_commit": engine_commit,
         "status": None,
         "c0": oracle.get("C0"),
@@ -340,8 +375,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--target", required=True)
     parser.add_argument("--version", required=True)
     parser.add_argument("--image-id", required=True, help="exact sha256:<64 hex> (ledger value)")
-    parser.add_argument("--settings-file", type=Path, required=True)
-    parser.add_argument("--settings-sha256", required=True, help="the file's ledger SHA-256")
+    parser.add_argument(
+        "--run-settings-missing",
+        default="{}",
+        help="JSON object: only run_settings keys the run's record lacks (default none)",
+    )
     parser.add_argument("--out", type=Path, required=True, help="local disk, outside the repo")
     try:
         args = parser.parse_args(argv)
@@ -349,7 +387,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2 if error.code else 0
     try:
         return _main(args)
-    except (Precondition, InputError, ValueError) as error:
+    except (Precondition, ValueError) as error:
         print(json.dumps({"verdict": "precondition", "error": str(error)}))
         print(f"refused: {error}", file=sys.stderr)
         return 2
@@ -376,10 +414,24 @@ def _main(args: argparse.Namespace) -> int:
         raise Precondition(f"the run records mutation policy {records['mutation_policy']}")
     if records["budget"] is None:
         raise Precondition("the run records no budget; journal completeness cannot be checked")
-    check_sha256(args.settings_file, args.settings_sha256, "run-settings file")
-    settings = load_run_settings(args.settings_file).get((args.target, args.version))
-    if settings is None:
-        raise Precondition(f"{args.target} {args.version} is not in the run-settings file")
+    for key, given in (
+        ("target", args.target),
+        ("version", args.version),
+        ("image_id", args.image_id),
+    ):
+        if records[key] is not None and records[key] != given:
+            raise Precondition(
+                f"--{key.replace('_', '-')} {given} != the run's record {records[key]}"
+            )
+    try:
+        extra = json.loads(args.run_settings_missing)
+    except ValueError as error:
+        raise Precondition(f"--run-settings-missing is not JSON: {error}") from error
+    if not isinstance(extra, dict):
+        raise Precondition("--run-settings-missing must be a JSON object")
+    settings, from_record, from_argument = merge_run_settings(records["run_settings"], extra)
+    source = {"record": from_record, "argument": from_argument}
+    check = getattr(load_adapter(args.target), "replay_check", None)
     out = check_out(args.out)
     wanted = read_steps_list(args.steps_list)
 
@@ -408,13 +460,16 @@ def _main(args: argparse.Namespace) -> int:
             version=args.version,
             image_id=args.image_id,
             run_settings=settings,
+            settings_source=source,
             engine_commit=str(records["engine_commit"]),
         )
         (folder / CASE_FILE).write_text(
             json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
         try:
-            load_replay_request(folder)
+            request = load_replay_request(folder)
+            if check is not None:
+                check(request)  # the target's own settings check, as `inodefence replay` does
         except CaseReplayError as error:
             for item in folder.iterdir():
                 item.unlink()
@@ -435,6 +490,8 @@ def _main(args: argparse.Namespace) -> int:
                 "failed": len(failures),
                 "failed_by_reason": dict(sorted(reasons.items())),
                 "criterion": "case_id match only",
+                "run_settings_from_record": from_record,
+                "run_settings_from_argument": from_argument,
             },
             sort_keys=True,
             ensure_ascii=False,

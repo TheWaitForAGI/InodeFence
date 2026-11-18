@@ -535,6 +535,15 @@ def _resolve_out(args: argparse.Namespace, default_name: str) -> Path | None:
     return out
 
 
+def _suffix_arg(suffix: str) -> str:
+    """``--image-tag-suffix`` as one ``--option=value`` item for the driver (#528).
+
+    Two items (``--image-tag-suffix``, ``-win``) would make the driver's parser read a suffix that
+    starts with ``-`` as an option and refuse the run; the ``=`` form keeps it one value.
+    """
+    return f"--image-tag-suffix={suffix}"
+
+
 def cmd_verify(args: argparse.Namespace) -> int:
     argv = ["--target", args.target]
     for version in args.version:
@@ -544,7 +553,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
     if args.auto_prepare:
         argv.append("--auto-prepare")
     if args.image_tag_suffix:
-        argv += ["--image-tag-suffix", args.image_tag_suffix]
+        argv.append(_suffix_arg(args.image_tag_suffix))
     if args.dry_run:
         argv.append("--dry-run")
     # Resolved and checked on --dry-run too, so the plan shows (and refuses) where it would write.
@@ -584,7 +593,7 @@ def cmd_explore(args: argparse.Namespace) -> int:
     if args.auto_prepare:
         argv.append("--auto-prepare")
     if args.image_tag_suffix:
-        argv += ["--image-tag-suffix", args.image_tag_suffix]
+        argv.append(_suffix_arg(args.image_tag_suffix))
     if args.mutation_policy is not None:  # nothing forwarded without the option
         argv += ["--mutation-policy", args.mutation_policy]
     if args.dry_run:
@@ -714,6 +723,9 @@ class _RefusalParser(argparse.ArgumentParser):
     """
 
     def error(self, message: str):  # type: ignore[override]
+        if message.startswith("argument --image-tag-suffix: expected one argument"):
+            # argparse reads a value starting with '-' (e.g. -win) as an option (#528).
+            message += "; a value starting with '-' needs the = form, e.g. --image-tag-suffix=-win"
         self.print_usage(sys.stderr)
         self.exit(REFUSED, f"{self.prog}: error: {message}\n")
 
@@ -730,7 +742,10 @@ _REPLAY_EXIT_CODES = (
     "run name taken), 4 unsupported."
 )
 _TARGET_HELP = "extractor to run (default: node-tar; `inodefence targets` lists them)"
-_SUFFIX_HELP = "suffix for the target image tag, to keep a separate prepared image (default: none)"
+_SUFFIX_HELP = (
+    "suffix for the target image tag, to keep a separate prepared image (default: none); "
+    "a value starting with '-' needs the = form: --image-tag-suffix=-win"
+)
 
 
 def build_parser() -> argparse.ArgumentParser:

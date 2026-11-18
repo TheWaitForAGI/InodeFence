@@ -26,6 +26,12 @@
   뒤의 `main`(`e1098d6`)과 바이트 동일하다(`tests/test_explore_mutation_policy.py`).
 - 새 선택 키가 든 `result.json`은 이 버전 이상의 `inodefence status`·`summary`로 읽는다([호환 약속](docs/USAGE.md#호환-약속)).
 
+### 고친 문제
+- `inodefence verify`·`explore`: `-`로 시작하는 `--image-tag-suffix`(예: `--image-tag-suffix=-win`)가 드라이버로 넘어가며
+  두 인자로 나뉘어 실행 전에 거부되던 문제([#528](https://github.com/TheWaitForAGI/InodeFence/issues/528)). 이제 하나의
+  값으로 전달된다. 공백 형식(`--image-tag-suffix -win`)은 여전히 받을 수 없고, 거부 메시지(종료 3)가 `=` 형식을 안내한다.
+  옵션을 주지 않은 실행과 `-`로 시작하지 않는 값의 동작은 그대로다.
+
 ## [0.2.0] — 2026-11-18
 
 첫 릴리스다. 아래 내용은 `main`에 있다(착지 [#484](https://github.com/TheWaitForAGI/InodeFence/pull/484), 그 뒤

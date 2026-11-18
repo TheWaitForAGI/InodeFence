@@ -22,6 +22,7 @@ from pathlib import Path
 
 from inodefence.drivers.explore_result import (
     build_campaign_result,
+    check_ran_mutation_policy,
     refuse_existing,
     with_identity_checks,
     write_result,
@@ -39,7 +40,6 @@ from inodefence.drivers.run_target import (
     requested_identity_check_every,
 )
 from inodefence.drivers.runtime.hooks import LaunchArtifacts
-from inodefence.evaluation.rds import VOCABULARY_MUTATION_POLICY, VocabularyMode
 from inodefence.evaluation.rds_preregistration import parse_preregistration
 from inodefence.generator import minimal_seed_corpus
 from inodefence.live_exploration import LivePuller
@@ -183,24 +183,6 @@ def run_controller(
     if not report.is_file():
         raise RuntimeError(f"controller run produced no report at {report}")
     return report
-
-
-def check_ran_mutation_policy(report: dict, requested: str) -> None:
-    """The loop report must show it ran ``requested`` (its ``vocabulary_mode``), or no result.
-
-    The result records the policy only after this check, so ``campaign.mutation_policy`` is what
-    the loop ran, not just what was asked for. A mismatch is an ERROR (exit 2): the run happened.
-    """
-    mode = report.get("vocabulary_mode")
-    try:
-        ran = VOCABULARY_MUTATION_POLICY[VocabularyMode(mode)].value
-    except (ValueError, KeyError):
-        ran = None
-    if ran != requested:
-        raise RuntimeError(
-            f"the loop ran vocabulary mode {mode!r} (mutation policy {ran!r}), requested "
-            f"{requested!r}; no result written"
-        )
 
 
 def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOutcome:

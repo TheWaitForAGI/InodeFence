@@ -207,12 +207,12 @@ seed입니다. 탐색 정책·sentinel 구성은 등록 실험 설정을 기본�
 [한계와 주의](#한계와-주의)의 "실행 프로필"에 있습니다.
 
 **변이 정책 선택(다음 버전, 탐색용).** `--mutation-policy uniform-b-grammar-v2-freeze-3-fixed-baseline-v1`은
-node-tar 탐색에서만 기본 변이 정책 대신 v2 문법 정책(탈출 깊이 0..3)을 씁니다. 받는 값은 이것 하나이고, 다른 대상에
-주면 아무것도 준비·실행하지 않고 종료 3으로 거부합니다. 옵션을 주면 `result.json`의 `campaign.mutation_policy`에 정책이
+node-tar와 python-tarfile 탐색에서 기본 변이 정책 대신 v2 문법 정책(탈출 깊이 0..3)을 씁니다. 받는 값은 이것 하나이고,
+decompress·oras-go에 주면 아무것도 준비·실행하지 않고 종료 3으로 거부합니다. 옵션을 주면 `result.json`의 `campaign.mutation_policy`에 정책이
 적힙니다(루프 보고서가 그 정책을 돌렸는지 확인한 뒤; 다르면 결과 없이 종료 2). v2 정책은 TAR로 만들 수 없는 입력을 낼 수
 있는데, 그런 실행(build-invalid)은 예산 1단위를 쓰고 추출하지 않으며 미판정이 아닙니다. 그 수는 `campaign.build_invalid`에
-적히고(0이면 키 없음) 미판정 비율의 분모에서 빠집니다. 이 수는 루프 보고서의 실행 수 − 종료 상태 합으로 정확히
-셉니다. 셀 수 없거나 live 스냅숏과 어긋나면 비율을 낮게 적는 대신 결과 없이 종료 2입니다. 루프 보고서는 스키마 5입니다. 옵션이 없으면 실행과 `result.json`은
+적히고(0이면 키 없음) 미판정 비율의 분모에서 빠집니다. 이 수는 루프 보고서의 실행 수 − 종료 상태 합(python-tarfile은 실행 수 − 케이스 기록 수)으로 정확히
+셉니다. 케이스 번호(`step-N`)와 첫 위반까지 실행 수는 build-invalid를 포함한 step 수입니다. 셀 수 없거나 live 스냅숏과 어긋나면 비율을 낮게 적는 대신 결과 없이 종료 2입니다. 루프 보고서는 스키마 5입니다. 옵션이 없으면 실행과 `result.json`은
 전과 같습니다. 호출자 환경의 `DEMO_MUTATION_POLICY`와 `DEMO_POLICY`(search 정책)는 어느 대상의 탐색에도 전달되지
 않으며, 설정돼 있으면 stderr에 무시한다는 경고(`TARGET-EXPLORE WARNING`) 한 줄이 나옵니다. 반대로 node-tar 탐색은
 `DEMO_SENTINEL_SEED`·`DEMO_SENTINEL_COUNT`·`DEMO_OBSERVER_INTEGRITY_POLICY`를 일부러 받습니다. 없으면 등록 실험의
@@ -456,7 +456,7 @@ inodefence summary ~/inodefence-explore/target-explore/<실행>-result/result.js
 | 0 | PASS | 재실행 완료 | 정상 | FAIL 없음(`UNKNOWN`은 있을 수 있음) | 정상 |
 | 1 | FAIL(위반 판정) | 재실행 미완료(끝난 회차는 남음) | — | FAIL 하나 이상 | — |
 | 2 | ERROR 판정. `explore`는 컨트롤러가 시작된 뒤의 중단(런처 비정상 종료, 루프 abort, 루프 보고서 없음)도 2이며 결과를 발행하지 않음(네 대상 공통) | 같은 입력·조건으로 재실행 불가 | 사용법 오류 | 사용법 오류 | 읽기·쓰기 실패 / 사용법 오류 |
-| 3 | 실행 전 거부 — 판정 없음: 사용법 오류(없는 옵션 값, `--budget 0`, node-tar가 아닌 대상의 `--mutation-policy` 등), 저장소 안 `--out`, 쓸 수 없는 `--out`(파일이거나 권한 없음), 상대 경로 `INODEFENCE_OUTPUT_DIR`, `--auto-prepare` 없음, 설정 파일 오류, 이미지·준비 문제, Docker가 이미지 질문에 답하지 않음(준비하지 않음), 같은 `--out`에 이 실행의 결과가 이미 있음(덮어쓰지 않음) 등 | 사용법 오류(`--rounds 0` 등), 이미지가 이 호스트에 없음, Docker가 이미지 질문에 답하지 않음, 같은 실행 이름의 컨트롤러·볼륨이 이미 있음, 저장소 안 폴더, 저장소를 못 찾음, 설정 파일 오류 | 저장소를 못 찾음, 설정 파일 오류 | — | — |
+| 3 | 실행 전 거부 — 판정 없음: 사용법 오류(없는 옵션 값, `--budget 0`, decompress·oras-go의 `--mutation-policy` 등), 저장소 안 `--out`, 쓸 수 없는 `--out`(파일이거나 권한 없음), 상대 경로 `INODEFENCE_OUTPUT_DIR`, `--auto-prepare` 없음, 설정 파일 오류, 이미지·준비 문제, Docker가 이미지 질문에 답하지 않음(준비하지 않음), 같은 `--out`에 이 실행의 결과가 이미 있음(덮어쓰지 않음) 등 | 사용법 오류(`--rounds 0` 등), 이미지가 이 호스트에 없음, Docker가 이미지 질문에 답하지 않음, 같은 실행 이름의 컨트롤러·볼륨이 이미 있음, 저장소 안 폴더, 저장소를 못 찾음, 설정 파일 오류 | 저장소를 못 찾음, 설정 파일 오류 | — | — |
 | 4 | — | 이 대상은 재실행 미지원(지금 등록된 네 대상에는 해당 없음) | — | — | — |
 
 `verify`·`explore`·`replay`는 종료 코드가 결과를 싣기 때문에 사용법 오류를 2로 내지 않고, 아무것도 실행하지

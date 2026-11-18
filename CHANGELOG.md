@@ -8,9 +8,9 @@
 ## [Unreleased]
 
 ### 추가된 사용자 기능
-- `inodefence explore --mutation-policy uniform-b-grammar-v2-freeze-3-fixed-baseline-v1`: node-tar 탐색에서 v2 문법
-  변이 정책(탐색용)을 고른다. 받는 값은 이것 하나이고(v2.1 seed 코퍼스 변형은 열지 않음), 다른 대상은 실행 전 종료 3으로
-  거부한다. 옵션을 주면 `result.json`의 `campaign.mutation_policy`에 적는다(루프 보고서가 그 정책을 돌렸는지 확인한 뒤).
+- `inodefence explore --mutation-policy uniform-b-grammar-v2-freeze-3-fixed-baseline-v1`: node-tar와 python-tarfile 탐색에서
+  v2 문법 변이 정책(탐색용)을 고른다. 받는 값은 이것 하나이고(v2.1 seed 코퍼스 변형은 열지 않음), decompress·oras-go는
+  실행 전 종료 3으로 거부한다. python-tarfile의 build-invalid 수는 루프의 step 수 − 케이스 기록 수다. 옵션을 주면 `result.json`의 `campaign.mutation_policy`에 적는다(루프 보고서가 그 정책을 돌렸는지 확인한 뒤).
   기본값은 바뀌지 않는다. [USAGE](docs/USAGE.md#탐색-돌리기)
 - `result.json` 선택 키 `campaign.build_invalid`: TAR로 만들 수 없어 추출하지 않은 실행 수(v2 정책에서만, 0이면 키 없음).
   `summary.md`에 한 줄로 보인다. 수는 루프 보고서의 실행 수 − 종료 상태 합이고, 셀 수 없거나 live 스냅숏과 어긋나면

@@ -68,7 +68,8 @@ REFUSED = 3
 #: keeps the two in step -- the drivers are not imported here).
 RUNTIME_PROFILES = ("strict", "fast")
 #: ``explore --mutation-policy`` choices (``drivers.run_target.EXPLORE_MUTATION_POLICIES``; a test
-#: keeps the two in step). Exploratory and node-tar only; the driver refuses other targets.
+#: keeps the two in step). Exploratory, node-tar and python-tarfile; the driver refuses other
+#: targets.
 EXPLORE_MUTATION_POLICIES = ("uniform-b-grammar-v2-freeze-3-fixed-baseline-v1",)
 
 
@@ -827,8 +828,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--mutation-policy",
         choices=EXPLORE_MUTATION_POLICIES,
         default=None,
-        help="node-tar only, exploratory: the v2 grammar mutation policy instead of the default; "
-        "recorded in result.json (other targets: refused, exit 3)",
+        help="node-tar and python-tarfile, exploratory: the v2 grammar mutation policy instead "
+        "of the default; recorded in result.json (other targets: refused, exit 3)",
     )
     explore.add_argument(
         "--out",

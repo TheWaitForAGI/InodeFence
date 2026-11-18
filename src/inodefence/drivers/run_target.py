@@ -252,12 +252,12 @@ DEFAULT_MAX_UNJUDGED_RATIO = 0.2
 #: ``--mutation-policy`` values exploration accepts (exploratory, opt-in): only the v2 grammar
 #: policy ``MutationPolicy.V2_FREEZE3_FIXED_BASELINE`` (escape depth 0..3; a test pins the value
 #: to the enum). Without the option a run uses each target's own default, unchanged. The v2.1
-#: seed-corpus variant is not offered (its empty seed is refused by node-tar and its python-tarfile
-#: record is not valid, #533).
+#: seed-corpus variant is not offered (node-tar rejects its empty seed; the python-tarfile loop
+#: refuses it for want of an approved exploration plan, #533).
 EXPLORE_MUTATION_POLICIES = ("uniform-b-grammar-v2-freeze-3-fixed-baseline-v1",)
 #: The targets whose exploration can run a ``--mutation-policy`` value; the explore driver refuses
 #: the option for any other target before anything is prepared or run (exit 3).
-MUTATION_POLICY_TARGETS = ("node-tar",)
+MUTATION_POLICY_TARGETS = ("node-tar", "python-tarfile")
 #: The launcher environment variable that selects the mutation policy. An explore driver never
 #: passes the caller's own value through: it sets it from ``ExploreOptions.mutation_policy`` (or
 #: its target's default) and otherwise removes it, so a run without the option is the default run

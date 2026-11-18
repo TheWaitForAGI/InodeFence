@@ -150,7 +150,8 @@ def main(argv: list[str] | None = None) -> int:
         "--mutation-policy",
         choices=EXPLORE_MUTATION_POLICIES,
         default=None,
-        help="node-tar only, exploratory: run this mutation policy instead of the default "
+        help="node-tar and python-tarfile, exploratory: run this mutation policy instead of the "
+        "default "
         "(recorded in result.json's campaign block)",
     )
     parser.add_argument(

@@ -242,6 +242,60 @@ def test_explore_forwards_the_exploration_driver_argv(monkeypatch, tmp_path: Pat
     ]
 
 
+def _driver_suffix_parser():
+    """The drivers' own ``--image-tag-suffix`` declaration (run_target / run_target_explore)."""
+    import argparse
+
+    parser = argparse.ArgumentParser(exit_on_error=False)
+    parser.add_argument("--image-tag-suffix", default="")
+    return parser
+
+
+@pytest.mark.parametrize("command", ["verify", "explore"])
+@pytest.mark.parametrize("suffix", ["-win", "-ifdev", "win", "_x.1"])
+def test_image_tag_suffix_reaches_the_driver_as_one_value(
+    command: str, suffix: str, monkeypatch, tmp_path: Path
+) -> None:
+    """#528: a suffix starting with '-' (e.g. the Windows-host ``-win``) given in the ``=`` form
+    must reach the driver as one value; it used to be split into two argv items again."""
+    calls: list = []
+    monkeypatch.setattr(cli, "repo_root", lambda: Path("/repo"))
+    monkeypatch.setattr(
+        cli, "run_driver", lambda root, driver, argv, prog=None: calls.append(argv) or 0
+    )
+    argv_in = [command, "--version", "latest", "--dry-run", "--out", str(tmp_path / "o")]
+    assert cli.main([*argv_in, f"--image-tag-suffix={suffix}"]) == 0
+    (forwarded,) = calls
+    tokens = [a for a in forwarded if a.startswith("--image-tag-suffix")]
+    assert tokens == [f"--image-tag-suffix={suffix}"]
+    parsed, _ = _driver_suffix_parser().parse_known_args(forwarded)
+    assert parsed.image_tag_suffix == suffix
+
+
+@pytest.mark.parametrize("command", ["verify", "explore"])
+def test_no_image_tag_suffix_forwards_nothing(command: str, monkeypatch, tmp_path: Path) -> None:
+    calls: list = []
+    monkeypatch.setattr(cli, "repo_root", lambda: Path("/repo"))
+    monkeypatch.setattr(
+        cli, "run_driver", lambda root, driver, argv, prog=None: calls.append(argv) or 0
+    )
+    assert cli.main([command, "--version", "latest", "--dry-run", "--out", str(tmp_path)]) == 0
+    assert not any(a.startswith("--image-tag-suffix") for a in calls[0])
+
+
+@pytest.mark.parametrize("command", ["verify", "explore"])
+def test_dash_suffix_in_the_space_form_is_refused_with_the_equals_hint(
+    command: str, monkeypatch, capsys
+) -> None:
+    """``--image-tag-suffix -win`` cannot be parsed (argparse reads ``-win`` as an option); the
+    refusal (exit 3, nothing run) says to use the ``=`` form."""
+    monkeypatch.setattr(cli, "run_driver", lambda *a, **k: pytest.fail("must not run"))
+    with pytest.raises(SystemExit) as exc:
+        cli.main([command, "--version", "latest", "--dry-run", "--image-tag-suffix", "-win"])
+    assert exc.value.code == 3
+    assert "--image-tag-suffix=-win" in capsys.readouterr().err
+
+
 def test_explore_without_repo_explains_and_fails(monkeypatch, capsys) -> None:
     monkeypatch.setattr(cli, "repo_root", lambda: None)
     assert cli.main(["explore", "--version", "latest", "--auto-prepare"]) == 3

@@ -138,7 +138,9 @@ def test_an_inherited_interval_is_ignored_on_the_two_targets(
 
     def explore(prepared: Any, options: rt.ExploreOptions) -> rt.ExploreOutcome:
         seen["requested"] = rt.requested_identity_check_every(options)
-        seen["policy"] = options.runtime.policy
+        session = options.runtime
+        assert isinstance(session, RuntimeSession)
+        seen["policy"] = session.policy
         envs: list[dict[str, str]] = []
 
         def runner(argv: Any, env: Any = None, **_: Any) -> Any:
@@ -146,9 +148,9 @@ def test_an_inherited_interval_is_ignored_on_the_two_targets(
             seen["argv"] = list(argv)
             return subprocess.CompletedProcess(argv, 1)
 
-        _launch(target, options.runtime, runner, tmp_path / "launch")
+        _launch(target, session, runner, tmp_path / "launch")
         seen["envs"] = envs
-        seen["applied"] = [record.policy_applied for record in options.runtime.launches]
+        seen["applied"] = [record.policy_applied for record in session.launches]
         return rt.ExploreOutcome(tmp_path / "absent" / "result.json", "PASS", 4, 0)
 
     adapter = dataclasses.replace(
@@ -280,8 +282,10 @@ def _result() -> Any:
 def test_the_marker_is_written_only_for_fast_without_an_interval() -> None:
     result = _result()
     marked = er.with_per_case_identity_marker(result, _session(FAST_2B))
-    assert marked.campaign.identity_checks == PER_CASE_IDENTITY_MARKER
-    assert "total_checks" not in marked.campaign.identity_checks
+    assert marked.campaign is not None
+    checks = marked.campaign.identity_checks
+    assert checks is not None and checks == PER_CASE_IDENTITY_MARKER
+    assert "total_checks" not in checks
     assert er.with_per_case_identity_marker(result, _session(pol.STRICT)) is result
     assert er.with_per_case_identity_marker(result, _session(pol.FAST, "node-tar")) is result
     assert er.with_per_case_identity_marker(result, None) is result
@@ -329,6 +333,7 @@ def test_the_summary_says_per_case_for_the_marker_only() -> None:
 
 def test_both_drivers_write_the_marker_after_the_identity_record() -> None:
     for module in (dce, oge):
+        assert module.__file__ is not None
         tree = ast.parse(Path(module.__file__).read_text(encoding="utf-8"))
         calls = [
             node.func.id

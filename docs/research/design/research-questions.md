@@ -13,6 +13,8 @@ SHA-256 목록이다. DESIGNED / IMPLEMENTED / TESTED / EXPERIMENTALLY VALIDATED
 > retention·스케줄링 피드백으로 쓰는 탐색이 **무작위 탐색**과 **구조 커버리지 탐색**보다 첫 경계위반까지의
 > 실행 수를 줄이고 고유 위반 입력을 더 많이 찾는가?
 
+> 주(2026-11-18, #511): 등록 실험(EXP-3/EXP-2)의 S-u는 retention 피드백만 썼다. 연산 선택은 세 arm 모두 균등이었고, 스케줄링 피드백은 시험하지 않았다.
+
 ### 하위 질문
 
 - **SQ-a (oracle 일반성).** 같은 generic oracle(C0/C1/C2, CVE 문자열 없음)이 여러 extractor의 취약/수정 쌍을

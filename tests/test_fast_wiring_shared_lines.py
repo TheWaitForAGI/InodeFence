@@ -13,12 +13,12 @@ is passed, so STRICT runs keep today's argument lists (pinned by the targets' ow
 from __future__ import annotations
 
 import hashlib
-import subprocess
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+#: The baseline commit (main fccdf35); its blobs are pinned below by sha256 and line count.
 BASELINE = "fccdf35"
 _IMPORT = (
     "from inodefence.targets.identity_schedule import apply_identity_schedule, "
@@ -115,19 +115,35 @@ def test_only_the_approved_lines_differ_from_the_baseline(path: str) -> None:
     assert hashlib.sha256(stripped.encode("utf-8")).hexdigest() == baseline_sha256, path
 
 
+#: Line count of each BASELINE blob, so the additions-only check needs no git history (a shallow
+#: CI checkout has none; a check that skips there is no evidence -- W4, CI 44228097180).
+BASELINE_LINES = {
+    "scripts/run_effect_demo.py": 1209,
+    "scripts/container_controller.py": 907,
+    "scripts/local_node_tar_smoke.sh": 539,
+    "scripts/local_python_tarfile_explore.sh": 129,
+    "scripts/local_decompress_selfdiscover.sh": 150,
+    "scripts/local_oras_go_selfdiscover.sh": 151,
+}
+
+
+def test_every_file_has_a_complete_baseline() -> None:
+    # A missing or malformed baseline fails here instead of being skipped.
+    assert set(BASELINE_LINES) == set(APPROVED)
+    for path, (baseline_sha256, added) in APPROVED.items():
+        assert len(baseline_sha256) == 64 and int(baseline_sha256, 16) >= 0, path
+        assert added and all(line.endswith("\n") for line in added), path
+        assert BASELINE_LINES[path] > 0, path
+
+
 @pytest.mark.parametrize("path", sorted(APPROVED))
-def test_line_diff_against_the_baseline_blob_is_additions_only(path: str) -> None:
-    done = subprocess.run(
-        ["git", "-C", str(ROOT), "show", f"{BASELINE}:{path}"],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    if done.returncode != 0:  # no history in this checkout: the sha256 test above still binds
-        pytest.skip(f"{BASELINE} is not in this checkout's history")
-    old = done.stdout.splitlines(keepends=True)
+def test_the_diff_is_additions_only_without_git_history(path: str) -> None:
+    # With the previous test (the rest hashes to the baseline blob) this pins the whole diff:
+    # every removed-for-the-check line is one of the approved lines, each counted exactly as
+    # approved (no baseline line equal to an approved line was dropped, none was added twice),
+    # and nothing was deleted.
+    _, added = APPROVED[path]
     new = (ROOT / path).read_text(encoding="utf-8").splitlines(keepends=True)
-    added = APPROVED[path][1]
     kept = [line for line in new if line not in added]
-    assert kept == old, path  # the order of every baseline line is unchanged
-    assert len(new) - len(old) == len(added), path
+    assert len(kept) == BASELINE_LINES[path], path
+    assert len(new) - BASELINE_LINES[path] == len(added), path

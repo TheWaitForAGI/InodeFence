@@ -59,13 +59,20 @@ violation when any of C0/C1/C2 is true; rounds with no verdict make the input's 
 
 Fisher's exact test (Holm-adjusted) and |Δk| per input are descriptive only.
 
-A report whose top-level ``campaign_invalid`` is set (a reason string: the run's own end check
-failed, e.g. the target image changed mid-campaign) is not comparable: verdict ``invalid``,
-exit 2 (design §8.1 (b), fail-closed).
+A run that did not finish as a valid campaign is not comparable: verdict ``invalid``, exit 2
+(design §8.1 (b), fail-closed). A failed FAST end check (the image identity changed) leaves no
+new marker; it is read from what the run leaves (:func:`invalid_reasons`): node-tar raises
+inside the loop (``live/progress.json`` state ``failed``, no engine report), python-tarfile
+raises before its report, decompress and oras-go write an ``aborted`` report; in every target
+the product driver then publishes no ``result.json`` (ERROR, exit 2).
+
+Trajectory mode reads ``demo_report_schema`` 5 reports: node-tar and python-tarfile exploration
+and run_exp0 cells. decompress and oras-go reports have another format (per-step feedback
+counts, not keys) and are not read; those targets go through ``--mode replay`` (design §4).
 
 Exit codes: 0 equivalent, 1 not equivalent (a divergence, a rule (i) mismatch or a TOST
-failure), 2 input error or invalid campaign (missing/unreadable/unpaired evidence, a shared FAST
-without ``parity_subject``, too few rounds, or ``campaign_invalid``).
+failure), 2 input error or invalid run (missing/unreadable/unpaired evidence, a shared FAST
+without ``parity_subject``, too few rounds, or an invalid run).
 
 Usage::
 
@@ -129,12 +136,49 @@ class InputError(Exception):
 
 
 class InvalidCampaign(InputError):
-    """A campaign marked itself invalid (fail-closed); not comparable (exit 2, verdict invalid)."""
+    """A run that did not finish as a valid campaign; not comparable (exit 2, verdict invalid)."""
 
 
-#: Top-level report key a run sets (to a reason string) when its own end check failed, e.g. the
-#: target image changed mid-campaign. Such a campaign is never compared (design §8.1 (b)).
-INVALID_KEY = "campaign_invalid"
+RESULT_SCHEMA = "inodefence-target-result-v1"
+RUNTIME_DIR = "runtime"  # the product exploration always writes <out>/runtime/, also on failure
+
+
+def invalid_reasons(folder: Path) -> list[str]:
+    """Why ``folder`` is not a valid finished campaign (empty when it is), from what the runs
+    actually leave behind (design §8.1 (b); FAST end check of research/b-engine-fast-w5):
+
+    * a ``live/progress.json`` whose state is ``failed`` (node-tar: the loop raised);
+    * a report carrying ``aborted`` (decompress / oras-go controller abort record);
+    * a product exploration folder (it has ``runtime/`` or a ``result.json``) whose run wrote no
+      ``result.json``, or one whose verdict is ``ERROR`` (every target: a controller failure or
+      abort is ERROR, exit 2, and no result is published).
+    """
+    reasons: list[str] = []
+    for path in sorted(folder.rglob("progress.json")):
+        try:
+            state = json.loads(path.read_text(encoding="utf-8")).get("state")
+        except (OSError, ValueError, AttributeError):
+            continue
+        if state == "failed":
+            reasons.append(f"{path.relative_to(folder)}: live state failed")
+    results: list[Path] = []
+    for path in sorted(folder.rglob("*.json")):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        if "aborted" in data:
+            reasons.append(f"{path.relative_to(folder)}: report aborted ({data['aborted']})")
+        if data.get("schema") == RESULT_SCHEMA:
+            results.append(path)
+            if data.get("verdict") == "ERROR":
+                reasons.append(f"{path.relative_to(folder)}: verdict ERROR")
+    product = (folder / RUNTIME_DIR).is_dir() or bool(results)
+    if product and not results:
+        reasons.append("no result.json (the exploration did not publish a result)")
+    return reasons
 
 
 def _canonical(value: object) -> str:
@@ -374,15 +418,15 @@ def compare_trajectory(
 ) -> tuple[int, dict[str, object]]:
     if fast_kind not in FAST_KINDS:
         raise InputError(f"--fast-kind must be one of {FAST_KINDS}")
-    pairs = pair_campaigns(load_campaigns(strict_dir), load_campaigns(fast_dir))
     invalid = [
-        f"{side}:{campaign.name} ({campaign.report[INVALID_KEY]})"
-        for strict, fast in pairs
-        for side, campaign in (("strict", strict), ("fast", fast))
-        if campaign.report.get(INVALID_KEY)
+        f"{side}: {reason}"
+        for side, folder in (("strict", strict_dir), ("fast", fast_dir))
+        if folder.is_dir()
+        for reason in invalid_reasons(folder)
     ]
     if invalid:
-        raise InvalidCampaign("campaign marked invalid, not comparable: " + ", ".join(invalid))
+        raise InvalidCampaign("run not a valid finished campaign: " + "; ".join(invalid))
+    pairs = pair_campaigns(load_campaigns(strict_dir), load_campaigns(fast_dir))
     lacking = [
         f"{side}:{campaign.name}"
         for strict, fast in pairs

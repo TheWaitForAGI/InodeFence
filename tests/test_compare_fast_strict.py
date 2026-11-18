@@ -63,17 +63,33 @@ def _report(
 
 
 def _write(folder: Path, report: dict, *, streaming: bool = True, name: str = "run") -> Path:
-    """Write a campaign the way exploration does (steps in .steps.jsonl) or run_exp0 does."""
+    """Write a campaign the way exploration does or run_exp0 does.
+
+    streaming=True is the product exploration layout (``inodefence explore --out <folder>``):
+    ``runtime/``, ``target-explore/<run>/`` with the engine report and its ``.steps.jsonl``, and
+    ``target-explore/<run>-result/result.json`` (verdict PASS). streaming=False is a run_exp0
+    cell: the report with its steps array, no result.json.
+    """
     folder.mkdir(parents=True, exist_ok=True)
     report = copy.deepcopy(report)
     base = f"inodefence-effect-explore-{name}"
-    if streaming:
-        steps = report.pop("steps")
-        (folder / f"{base}.steps.jsonl").write_text(
-            "".join(json.dumps(step, sort_keys=True) + "\n" for step in steps), encoding="utf-8"
-        )
-    (folder / f"{base}.json").write_text(json.dumps(report), encoding="utf-8")
-    (folder / "result.json").write_text('{"schema": "not a campaign report"}', encoding="utf-8")
+    if not streaming:
+        (folder / f"{base}.json").write_text(json.dumps(report), encoding="utf-8")
+        return folder
+    (folder / "runtime").mkdir(exist_ok=True)
+    (folder / "runtime" / "explore-launcher-x.log").write_text("launcher output\n")
+    run = folder / "target-explore" / name
+    run.mkdir(parents=True)
+    steps = report.pop("steps")
+    (run / f"{base}.steps.jsonl").write_text(
+        "".join(json.dumps(step, sort_keys=True) + "\n" for step in steps), encoding="utf-8"
+    )
+    (run / f"{base}.json").write_text(json.dumps(report), encoding="utf-8")
+    result = folder / "target-explore" / f"{name}-result"
+    result.mkdir()
+    (result / "result.json").write_text(
+        json.dumps({"schema": cfs.RESULT_SCHEMA, "verdict": "PASS"}), encoding="utf-8"
+    )
     return folder
 
 
@@ -238,13 +254,53 @@ def test_image_swap_without_end_check_is_divergent(tmp_path: Path, capsys) -> No
     )
 
 
-def test_image_swap_with_end_check_marks_the_campaign_invalid(tmp_path: Path, capsys) -> None:
-    """§8.1 (b): end check enabled -> the run marks itself invalid; never compared (exit 2)."""
+def _failed_end_check(folder: Path, shape: str) -> None:
+    """What a failed FAST end check leaves (research/b-engine-fast-w5 ba57db8), per target:
+    the product driver raises RuntimeError -> ERROR, exit 2, no result.json in every case."""
+    for result in folder.glob("target-explore/*-result"):
+        for item in result.iterdir():
+            item.unlink()
+        result.rmdir()
+    run = folder / "target-explore" / "run"
+    if shape == "node-tar":  # raises inside the loop: live state failed, no engine report
+        for report in run.glob("*.json"):
+            report.unlink()
+        (run / "live").mkdir()
+        (run / "live" / "progress.json").write_text(json.dumps({"state": "failed"}))
+    elif shape == "python-tarfile":  # raises before the report is written
+        for report in run.glob("*.json"):
+            report.unlink()
+    elif shape == "decompress/oras-go":  # the controller writes an aborted report
+        (run / "inodefence-decompress-campaign-run.json").write_text(
+            json.dumps({"decompress_campaign_schema": 1, "aborted": {"reason": "identity changed"}})
+        )
+    else:
+        raise AssertionError(shape)
+
+
+@pytest.mark.parametrize("shape", ["node-tar", "python-tarfile", "decompress/oras-go"])
+def test_image_swap_with_end_check_is_an_invalid_run(tmp_path: Path, capsys, shape: str) -> None:
+    """§8.1 (b): end check enabled -> the run fails closed and is never compared (exit 2)."""
     strict, fast = _image_swap_pair()
-    fast[cfs.INVALID_KEY] = "target image changed during the campaign"
-    code, out = _trajectory(capsys, _write(tmp_path / "s", strict), _write(tmp_path / "f", fast))
+    fast_dir = _write(tmp_path / "f", fast)
+    _failed_end_check(fast_dir, shape)
+    code, out = _trajectory(capsys, _write(tmp_path / "s", strict), fast_dir)
     assert code == 2 and out["verdict"] == "invalid"
-    assert "target image changed" in out["error"]
+    assert "no result.json" in out["error"]
+    if shape == "node-tar":
+        assert "live state failed" in out["error"]
+    if shape == "decompress/oras-go":
+        assert "report aborted" in out["error"]
+
+
+def test_a_result_with_verdict_error_is_an_invalid_run(tmp_path: Path, capsys) -> None:
+    report = _report()
+    fast_dir = _write(tmp_path / "f", report)
+    (fast_dir / "target-explore" / "run-result" / "result.json").write_text(
+        json.dumps({"schema": cfs.RESULT_SCHEMA, "verdict": "ERROR"})
+    )
+    code, out = _trajectory(capsys, _write(tmp_path / "s", report), fast_dir)
+    assert code == 2 and out["verdict"] == "invalid" and "verdict ERROR" in out["error"]
 
 
 # -- state-sharing FAST controls (must exit 1; need parity_subject) ------------------------------

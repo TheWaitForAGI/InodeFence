@@ -27,7 +27,9 @@ def head_or_none() -> str | None:
         )
     except OSError:  # no git executable
         return None
-    return done.stdout.strip() or None if done.returncode == 0 else None
+    if done.returncode != 0:
+        return None
+    return done.stdout.strip() or None
 
 
 def require_git_checkout(reason: str) -> None:

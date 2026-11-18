@@ -29,7 +29,9 @@
 - `--profile fast`가 이미지 신원 확인 컨테이너를 케이스마다가 아니라 캠페인 시작·200건마다·끝에만 띄운다(네 대상,
   [D064](docs/DECISIONS.md)). 실행 컨테이너와 격리·판정은 그대로이고, 끝 확인이 실패하면 결과 없이 종료 2다. FAST 결과에는
   `campaign.identity_checks`(확인 기록)가 남고 runtime 기록에 `identity_check_every`가 남는다. 기본(`strict`)과 `replay`는
-  그대로다. 호출자 환경의 `DEMO_IDENTITY_CHECK_EVERY`는 무시하고 경고 한 줄을 낸다. 시간 효과는 아직 재지 않았다.
+  그대로다. N=200은 고정이고 고르는 옵션은 없다. 호출자 환경의 `DEMO_IDENTITY_CHECK_EVERY`는 무시하고 경고 한 줄을 낸다.
+  확인 사이에 남는 보호는 대상마다 다르다. node-tar는 실행 컨테이너 안의 worker가 매번 다시 확인하고, 나머지 셋은
+  고정된 이미지 ID뿐이다. 시간 효과는 아직 재지 않았다.
 - 새 선택 키가 든 `result.json`은 이 버전 이상의 `inodefence status`·`summary`로 읽는다([호환 약속](docs/USAGE.md#호환-약속)).
 
 ### 고친 문제

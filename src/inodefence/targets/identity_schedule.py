@@ -95,4 +95,10 @@ def finish_identity_schedule(target: _Scheduled, schedule: IdentitySchedule | No
     if schedule is None:
         return {}
     target.verify_identity_at_end()
-    return {"identity_checks": schedule.record()}
+    record = schedule.record()
+    # What a case between probes rests on: node-tar re-checks its six source hashes inside every
+    # archive container; the other targets have no per-case observation, only the campaign probes
+    # and the pinned image ID. No per-case record claims an observation that did not happen.
+    record["artifact_identity_basis"] = "campaign-probes"
+    record["per_case_identity_check"] = getattr(target, "PER_CASE_IDENTITY_CHECK", None)
+    return {"identity_checks": record}

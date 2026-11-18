@@ -179,6 +179,8 @@ this Linux filesystem-contract benchmark, so were not promoted to serious
 candidate records. Resource failures remain campaign data, not rediscovery.
 No additional extractor family is needed to explain the selected classes.
 
+> #517 참고: 31802의 Linux 적용 여부는 이 행렬이 Windows 계열로 제외했으나 코드 경로는 플랫폼 공통이라 **미확인**이다. #517 freeze는 7.5.8을 깨끗 통제로도 도달-기대로도 라벨하지 않고 "적용 미확인"으로 둔다(W4 ruling; exp517-host3-cells-v1.md).
+
 ## Selected artifact qualification refresh
 
 [Static artifact qualification](artifact-qualification-v1.md) records all six

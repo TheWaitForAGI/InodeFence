@@ -1426,3 +1426,31 @@ D060·D062는 기록으로 남는다. D061의 동결본은 정의 문서로 남�
 5. FAST 수용(판정 동일성)은 W3의 동등성 시험 설계(`20261118-HOST1-536-FAST-동등성-시험-설계.md`, 비공개 Drive)를 따른다. 실측(W1) 전에는 속도 주장을 하지 않는다. USAGE의 "실행 프로필"과 주장 행 C-PFAST는 실측 뒤 숫자와 함께 고친다.
 
 **범위.** 이 여섯 파일의 위 줄에만 해당하는 예외다. 같은 파일의 다른 변경, 다른 수정 금지 파일, 보호 파일 세 개에는 적용되지 않는다. 새 필요가 생기면 새 결정이 필요하다.
+
+## D066 — #542 decompress·oras-go 탐색의 스트리밍과 예산 상한 해제 (결정 A)
+
+**상태:** 확정 (지웅 승인 2026-11-19: "승인"(결정 A, IF-H4-ORCH 세션에서 직접 확인))
+
+**결정.** `decompress-effect-campaign`·`oras-go-effect-campaign` 모드가 step을 보고서 수집기(`DecompressReportCollector`, `OrasGoReportCollector`)로 스트리밍하고, 두 모드의 예산 상한(`MAX_NATIVE_BUDGET` 2000)을 푼다. 보고서 형식은 바꾸지 않는다.
+
+**공유 실행 경로 예외(D064의 "새 필요는 새 결정").** 이 두 파일의 아래 줄에만 해당한다.
+
+| 파일 | 승인 상한 | 실제 |
+| --- | --- | --- |
+| `scripts/container_controller.py` | 추가 ≤12(교체 포함)·변경 ≤6 | +12 / −6 (순수 추가 6, 교체 6) |
+| `scripts/run_effect_demo.py` | 추가 1·변경 1 | 추가 1(`UNCAPPED_BUDGET_MODES`), 변경 1(상한 조건) |
+
+상한을 넘는 변경은 다시 여쭌다. 같은 파일의 다른 변경, 다른 수정 금지 파일에는 적용되지 않는다.
+
+**D064와의 관계.** D066은 D064와 별개의 새 결정이다. D064가 "이 여섯 파일의 위 줄에만" 허락한 줄은 그대로이고, D066은 그 줄을 바꾸지 않는다. 같은 두 파일에 D066의 줄이 따로 더해지며, 승인 줄 고정 테스트가 둘을 함께 기록한다.
+
+**적용 모드.** `decompress-effect-campaign`, `oras-go-effect-campaign`(상한 해제와 스트리밍), 그리고 이미 상한이 없던 `effect-demo-explore`. `effect-demo`, `effect-demo-historical`, `python-tarfile-effect-campaign`과 등록 실행의 상한은 그대로다.
+
+**불변식과 고정.**
+1. 기존 동작 바이트 동일: M4 기록 모드 자체에서 옛 경로와 새 경로의 증거 바이트가 같다. `tests/test_542_m4_record_mode_identity.py`가 두 컨트롤러 캠페인 함수를 끝까지 돌려 40 구성의 증거 sha256을 변경 전 컨트롤러에서 만든 golden(`tests/fixtures/m4-record-mode-542/golden.json`)과 대조한다.
+2. 상한 해제의 범위(W4 ①): 저장소에서 두 모드에 2000 넘는 예산을 넣는 경로는 탐색 드라이버(`drivers/decompress/explore.py`, `drivers/oras_go/explore.py`)뿐이다(`tests/test_542_budget_cap_scope.py`). 사람이 런처나 컨트롤러를 직접 불러 상한을 넘기는 실행은 막지 않는다. 스트리밍이라 메모리는 실행 수에 비례해 늘지 않는다. 과거 M4 결과를 다시 만들 때는 그 설정의 예산(2000 이하)을 쓴다.
+3. 승인된 줄 고정: `tests/test_fast_wiring_shared_lines.py`가 결정 A의 줄을 추가와 교체 쌍으로 기록한다. 되돌리면 main fccdf35 blob과 같다.
+
+**남은 것.** `run_effect_demo.py` `:363–366`의 주석은 이 변경 뒤 사실과 다르다(두 모드도 상한을 푼다). 주석 정정은 공유 파일 변경이라 이 승인에 넣지 않았고, 공유 파일 묶음에 주석 정정 행으로 올린다.
+
+**등록 경로.** 등록 arm(EXP-0·2·3)은 node-tar뿐이라 이 두 모드에 닿지 않는다.

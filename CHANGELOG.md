@@ -35,6 +35,7 @@
 - python-tarfile 탐색이 실행 중 스텝 전체(스냅숏·trace)를 메모리에 쌓지 않는다(#542). `result.json`과 `summary.md`는
   그대로다. 엔진 원시 보고서(`inodefence-python-tarfile-explore-*.json`)에서는 `steps` 배열이 빠지고 `streaming: true`가 붙는다.
   스텝 기록은 옆의 `.steps.jsonl`에 있다.
+- decompress·oras-go 탐색이 2000을 넘는 `--budget`을 받는다([D066](docs/DECISIONS.md), #542). 두 대상의 루프 보고서는 실행 중 스텝 전체를 메모리에 쌓지 않고 스텝 기록만 모아 쓴다. 보고서·`result.json`·`summary.md`의 바이트는 그대로다. 다른 모드의 예산 상한(2000)은 그대로다.
 - 새 선택 키가 든 `result.json`은 이 버전 이상의 `inodefence status`·`summary`로 읽는다([호환 약속](docs/USAGE.md#호환-약속)).
 
 ### 고친 문제

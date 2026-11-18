@@ -45,10 +45,10 @@ from inodefence.drivers.python_tarfile import adapter as rpt
 from inodefence.drivers.python_tarfile import producer
 from inodefence.drivers.repo import code_checkout
 from inodefence.drivers.run_target import (
-    MUTATION_POLICY_ENV,
     ExploreOptions,
     ExploreOutcome,
     PreparedTargetImage,
+    drop_inherited_mutation_policy,
 )
 from inodefence.drivers.runtime.hooks import LaunchArtifacts
 from inodefence.drivers.runtime.session import RuntimeSession
@@ -114,7 +114,7 @@ def run_controller(
     }
     # python-tarfile exploration has no mutation policy option: the caller's own
     # DEMO_MUTATION_POLICY never reaches the launcher (run_target.MUTATION_POLICY_ENV).
-    env.pop(MUTATION_POLICY_ENV, None)
+    drop_inherited_mutation_policy(env)
     report = report_path(out, run_id)
     done = run_launcher(
         LAUNCHER,

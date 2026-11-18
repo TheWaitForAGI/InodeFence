@@ -48,6 +48,7 @@ from inodefence.drivers.run_target import (
     ExploreOutcome,
     PreparedTargetImage,
     RunCell,
+    drop_inherited_mutation_policy,
 )
 from inodefence.drivers.runtime.hooks import LaunchArtifacts
 from inodefence.feedback import EffectSearchPolicy
@@ -344,7 +345,7 @@ def run_controller(
         "DEMO_SEED": str(seed),
         "DEMO_BUDGET": str(budget),
     }
-    env.pop(MUTATION_POLICY_ENV, None)  # never the caller's own value
+    drop_inherited_mutation_policy(env)
     if mutation_policy:
         env[MUTATION_POLICY_ENV] = mutation_policy
     if search_policy:

@@ -357,3 +357,26 @@ def test_the_new_keys_round_trip() -> None:
 def test_default_policy_outputs_are_byte_identical_to_main(tmp_path: Path) -> None:
     expected = json.loads(FIXTURE.read_text(encoding="utf-8"))
     assert explore_default_outputs.default_outputs(tmp_path) == expected
+
+
+@pytest.mark.parametrize("inherited", [None, "uniform-b-grammar-v2-freeze-3-fixed-baseline-v1"])
+def test_a_dropped_inherited_policy_is_warned_about_on_stderr(
+    inherited: str | None, monkeypatch, capsys, tmp_path: Path
+) -> None:
+    # A caller that used to choose the policy through the environment must not silently run the
+    # default policy: the drop is one stderr line naming the variable and the option.
+    if inherited is None:
+        monkeypatch.delenv("DEMO_MUTATION_POLICY", raising=False)
+    else:
+        monkeypatch.setenv("DEMO_MUTATION_POLICY", inherited)
+    captured, runner = _capture_env(nte.controller_report_path(tmp_path, "rid"))
+    nte.run_controller(
+        _prepared(), out=tmp_path, run_id="rid", budget=20, seed=1, python="x", runner=runner
+    )
+    out, err = capsys.readouterr()
+    assert "DEMO_MUTATION_POLICY" not in captured["env"] and out == ""
+    if inherited is None:
+        assert "DEMO_MUTATION_POLICY" not in err
+    else:
+        assert err.count("TARGET-EXPLORE WARNING") == 1
+        assert f"DEMO_MUTATION_POLICY={inherited} is ignored; use --mutation-policy" in err

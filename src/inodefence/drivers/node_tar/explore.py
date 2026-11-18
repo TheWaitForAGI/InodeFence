@@ -32,6 +32,7 @@ from inodefence.drivers.run_target import (
     ExploreOptions,
     ExploreOutcome,
     PreparedTargetImage,
+    drop_inherited_mutation_policy,
     engine_provenance,
 )
 from inodefence.drivers.runtime.hooks import LaunchArtifacts
@@ -149,7 +150,7 @@ def run_controller(
         # reaches the host reliably instead of a post-removal pull failing with "No such container".
         "DEMO_HOST_LIVE_DIR": str(host_live_dir),
     }
-    env.pop(MUTATION_POLICY_ENV, None)
+    drop_inherited_mutation_policy(env)
     if mutation_policy is not None:
         env[MUTATION_POLICY_ENV] = mutation_policy
     # Pull the controller's live folder to the host on a timer while the loop runs, so progress and

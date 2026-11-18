@@ -209,7 +209,8 @@ node-tar 탐색에서만 기본 변이 정책 대신 v2 문법 정책(탈출 깊
 적힙니다(루프 보고서가 그 정책을 돌렸는지 확인한 뒤; 다르면 결과 없이 종료 2). v2 정책은 TAR로 만들 수 없는 입력을 낼 수
 있는데, 그런 실행(build-invalid)은 예산 1단위를 쓰고 추출하지 않으며 미판정이 아닙니다. 그 수는 `campaign.build_invalid`에
 적히고(0이면 키 없음) 미판정 비율의 분모에서 빠집니다. 루프 보고서는 스키마 5입니다. 옵션이 없으면 실행과 `result.json`은
-전과 같습니다. 호출자 환경의 `DEMO_MUTATION_POLICY`는 어느 대상의 탐색에도 전달되지 않습니다.
+전과 같습니다. 호출자 환경의 `DEMO_MUTATION_POLICY`는 어느 대상의 탐색에도 전달되지 않으며, 설정돼 있으면
+stderr에 무시한다는 경고(`TARGET-EXPLORE WARNING`) 한 줄이 나옵니다.
 
 node-tar 탐색(`--version 7.5.23 --seed 123 --budget 20`, engineering smoke 2026-11-16)에서 실제로 생긴 구조:
 

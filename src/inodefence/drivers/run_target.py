@@ -265,6 +265,22 @@ MUTATION_POLICY_TARGETS = ("node-tar",)
 MUTATION_POLICY_ENV = "DEMO_MUTATION_POLICY"
 
 
+def drop_inherited_mutation_policy(env: dict[str, str]) -> None:
+    """Remove the caller's ``DEMO_MUTATION_POLICY`` from a launcher env, saying so on stderr.
+
+    A run that used to pick its policy through this variable must not silently fall back to the
+    default policy: one warning line names the variable and the option to use instead. stdout,
+    the result and the exit code are unchanged.
+    """
+    inherited = env.pop(MUTATION_POLICY_ENV, None)
+    if inherited is not None:
+        print(
+            f"TARGET-EXPLORE WARNING: environment variable {MUTATION_POLICY_ENV}={inherited} is "
+            "ignored; use --mutation-policy (node-tar exploration only)",
+            file=sys.stderr,
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class ExploreOptions:
     """Target-agnostic exploration options. Later PRs extend this (search / mutation policy, stop

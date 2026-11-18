@@ -22,24 +22,52 @@ NODE_SETTINGS = {
     "observer_integrity_policy": "stop",
     "profile": "full",
 }
+PY_SETTINGS = {"extraction_filter": "data", "runtime_version": "3.12.16"}
+#: The shape of W5's 514-run-settings-v1.json (§2b-10).
+SETTINGS_FILE = {
+    "schema": "inodefence-514-run-settings-v1",
+    "label": "exploratory",
+    "cells": [
+        {"target": "node-tar", "version": "7.5.2", "run_settings": NODE_SETTINGS},
+        {"target": "node-tar", "version": "7.5.11", "run_settings": NODE_SETTINGS},
+        {"target": "python-tarfile", "version": "3.12.16", "run_settings": PY_SETTINGS},
+    ],
+}
 
 
-def _run(out: Path, *extra: str, version: str = "7.5.11", image: str = IMAGE) -> int:
+def _settings_file(folder: Path, content: dict | None = None) -> Path:
+    path = folder.parent / f"{folder.name}-run-settings.json"
+    path.write_text(json.dumps(content or SETTINGS_FILE), encoding="utf-8")
+    return path
+
+
+def _main(
+    out: Path,
+    *extra: str,
+    target: str = "node-tar",
+    version: str = "7.5.11",
+    image: str = IMAGE,
+    settings: dict | None = None,
+) -> int:
     return cases.main(
         [
             "--target",
-            "node-tar",
+            target,
             "--version",
             version,
             "--image-id",
             image,
-            "--run-settings",
-            json.dumps(NODE_SETTINGS),
+            "--settings-file",
+            str(_settings_file(out, settings)),
             "--out",
             str(out),
             *extra,
         ]
     )
+
+
+def _run(out: Path, *extra: str, version: str = "7.5.11", image: str = IMAGE) -> int:
+    return _main(out, *extra, version=version, image=image)
 
 
 def test_writes_one_replayable_folder_per_fixture(tmp_path: Path, capsys) -> None:
@@ -102,10 +130,26 @@ def test_out_inside_the_repository_is_refused(capsys) -> None:
     assert "outside the repository" in capsys.readouterr().err
 
 
-def test_settings_must_be_a_json_object(tmp_path: Path) -> None:
-    common = ["--target", "node-tar", "--version", "7.5.11", "--image-id", IMAGE]
-    assert cases.main([*common, "--run-settings", "[1]", "--out", str(tmp_path)]) == 2
-    assert cases.main([*common, "--run-settings", "{", "--out", str(tmp_path)]) == 2
+def test_settings_come_from_the_settings_file(tmp_path: Path) -> None:
+    out = tmp_path / "out"
+    assert _main(out, "--fixtures", "F01") == 0
+    row = json.loads((out / "manifest.json").read_text())["cases"][0]
+    request = load_replay_request(out / row["case_dir"])
+    assert request.run_settings == NODE_SETTINGS
+    file_bytes = (tmp_path / "out-run-settings.json").read_bytes()
+    assert row["run_settings_sha256"] == sha256(file_bytes).hexdigest()
+
+
+def test_a_cell_missing_from_the_settings_file_is_refused(tmp_path: Path, capsys) -> None:
+    assert _main(tmp_path / "out", version="7.5.10") == 2
+    assert "not in" in capsys.readouterr().err
+    assert not (tmp_path / "out").exists()
+
+
+def test_a_settings_file_of_another_schema_is_refused(tmp_path: Path, capsys) -> None:
+    other = {**SETTINGS_FILE, "schema": "something-else"}
+    assert _main(tmp_path / "out", settings=other) == 2
+    assert "not an inodefence-514-run-settings-v1" in capsys.readouterr().err
 
 
 def test_a_fixture_listed_twice_for_one_cell_is_refused(tmp_path: Path) -> None:
@@ -143,26 +187,17 @@ def test_a_fixture_listed_twice_for_one_cell_is_refused(tmp_path: Path) -> None:
 def test_a_folder_the_replay_check_refuses_is_exit_2(
     tmp_path: Path, capsys, target: str, version: str, settings: dict, message: str
 ) -> None:
-    """The target's own replay_check runs on every written folder (no extraction)."""
-    code = cases.main(
-        [
-            "--target",
-            target,
-            "--version",
-            version,
-            "--image-id",
-            IMAGE,
-            "--run-settings",
-            json.dumps(settings),
-            "--out",
-            str(tmp_path),
-            "--fixtures",
-            "F01",
-        ]
-    )
+    """The target's own replay_check runs on every written folder (no extraction): a settings
+    file whose value the hook refuses is caught here, before any run."""
+    bad = {
+        "schema": "inodefence-514-run-settings-v1",
+        "cells": [{"target": target, "version": version, "run_settings": settings}],
+    }
+    out = tmp_path / "out"
+    code = _main(out, "--fixtures", "F01", target=target, version=version, settings=bad)
     err = capsys.readouterr().err
     assert code == 2 and "replay would refuse" in err and message in err
-    assert not (tmp_path / "manifest.json").exists()
+    assert not (out / "manifest.json").exists()
 
 
 def test_a_folder_the_replay_loader_refuses_is_exit_2(tmp_path: Path, capsys, monkeypatch) -> None:

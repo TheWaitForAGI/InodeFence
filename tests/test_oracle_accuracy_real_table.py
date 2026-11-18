@@ -103,9 +103,38 @@ def _setup(tmp_path: Path, rounds: dict[str, list[dict]], *, labels=None, comple
     return label_path, out / "manifest.json", replays
 
 
+PY_SETTINGS = {"extraction_filter": "data", "runtime_version": "3.12.16"}
+#: The shape of W5's 514-run-settings-v1.json (§2b-10).
+SETTINGS_FILE = {
+    "schema": "inodefence-514-run-settings-v1",
+    "cells": [
+        {"target": "node-tar", "version": "7.5.2", "run_settings": SETTINGS},
+        {"target": "node-tar", "version": "7.5.11", "run_settings": SETTINGS},
+        {"target": "python-tarfile", "version": "3.12.16", "run_settings": PY_SETTINGS},
+    ],
+}
+
+
+def _settings_path(label_path: Path) -> Path:
+    """The run-settings file beside the labels; written with SETTINGS_FILE unless a test did."""
+    path = label_path.parent / "514-run-settings-v1.json"
+    if not path.exists():
+        path.write_text(json.dumps(SETTINGS_FILE), encoding="utf-8")
+    return path
+
+
 def _table(capsys, label_path: Path, manifest: Path, replays: Path) -> tuple[int, dict]:
     code = table.main(
-        ["--labels", str(label_path), "--manifest", str(manifest), "--replays", str(replays)]
+        [
+            "--labels",
+            str(label_path),
+            "--manifest",
+            str(manifest),
+            "--replays",
+            str(replays),
+            "--settings-file",
+            str(_settings_path(label_path)),
+        ]
     )
     return code, json.loads(capsys.readouterr().out)
 
@@ -364,3 +393,36 @@ def test_uncertain_comes_before_split_rounds(tmp_path: Path, capsys) -> None:
     split = [_round(), _round(), _round((True, False, False))]
     code, out = _table(capsys, *_setup(tmp_path, {"F13": split}))
     assert _classes(out)["F13"] == "불확실"
+
+
+def test_benign_fixtures_all_rejected_are_blocked_and_flagged(tmp_path: Path, capsys) -> None:
+    """W5 v3.8: §2b-8 ④ governs. F01 (L_design = L_expect = n n n, expected success) all
+    rejected with n n n -> 추출기가 막음 (out of the denominator) plus the termination flag."""
+    code, out = _table(capsys, *_setup(tmp_path, {"F01": THREE_REJECTED}))
+    row = next(r for r in out["rows"] if r["fixture"] == "F01")
+    assert (row["class"], row["flags"]) == ("추출기가 막음", ["종료 기대와 다름"])
+    assert out["summary"]["node-tar 7.5.2"]["scored_cells"] == 0
+
+
+def test_replay_settings_must_equal_the_settings_file(tmp_path: Path, capsys) -> None:
+    label_path, manifest, replays = _setup(tmp_path, {"F01": THREE_OK})
+    other = json.loads(json.dumps(SETTINGS_FILE))
+    other["cells"][0]["run_settings"]["observer_integrity_policy"] = "invalid-continue"
+    (tmp_path / "514-run-settings-v1.json").write_text(json.dumps(other))
+    code, out = _table(capsys, label_path, manifest, replays)
+    assert code == 2 and "differ from the file" in out["error"]
+
+
+def test_a_replay_cell_missing_from_the_settings_file_is_refused(tmp_path: Path, capsys) -> None:
+    label_path, manifest, replays = _setup(tmp_path, {"F01": THREE_OK})
+    other = {**SETTINGS_FILE, "cells": SETTINGS_FILE["cells"][1:]}  # no node-tar 7.5.2
+    (tmp_path / "514-run-settings-v1.json").write_text(json.dumps(other))
+    code, out = _table(capsys, label_path, manifest, replays)
+    assert code == 2 and "not in the run-settings file" in out["error"]
+
+
+def test_the_settings_file_hash_is_in_the_header(tmp_path: Path, capsys) -> None:
+    label_path, manifest, replays = _setup(tmp_path, {"F01": THREE_OK})
+    code, out = _table(capsys, label_path, manifest, replays)
+    path = tmp_path / "514-run-settings-v1.json"
+    assert out["inputs"]["run_settings_sha256"] == table._sha256(path)

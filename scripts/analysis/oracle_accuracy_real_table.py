@@ -12,6 +12,9 @@ Inputs (standard library only; no InodeFence import):
 * ``--manifest``: ``manifest.json`` of ``oracle_accuracy_real_cases`` (``{fixture, tar_sha256,
   case_dir, target, version}``). A replay is tied to its fixture by ``original.tar_sha256``
   against this list, never by folder name (§2b-6).
+* ``--settings-file``: W5's run-settings file (``514-run-settings-v1.json``, §2b-10). Each
+  replay's ``original.run_settings`` must equal the file's value for its cell, else exit 2. Its
+  SHA-256 goes in the output header.
 * ``--replays``: a folder searched for ``replay.json`` (``inodefence-case-replay-v1``). Each file
   is read, reduced to its cell summary and dropped (memory stays flat in the file count).
 
@@ -63,6 +66,7 @@ from typing import Any
 REPLAY_SCHEMA = "inodefence-case-replay-v1"
 MANIFEST_SCHEMA = "inodefence-514-fixture-cases-v1"
 LABELS_SCHEMA = "inodefence-514-labels-v1"
+SETTINGS_SCHEMA = "inodefence-514-run-settings-v1"
 CONTRACTS = ("c0", "c1", "c2")
 TERMINATIONS = ("success", "rejected", "failed", "timed_out")
 GRADE_PRIORITY = ("A", "D", "O", "I")
@@ -179,6 +183,38 @@ def load_labels(path: Path) -> tuple[dict[str, Any], dict[CellKey, Label]]:
     return header, labels
 
 
+def load_run_settings(path: Path) -> dict[tuple[str, str], dict[str, Any]]:
+    """W5's run-settings file (§2b-10, fixed by its SHA-256 before any run):
+    ``(target, version) -> run_settings``. Shared by the case generator and this reader."""
+    data = _read(path)
+    if not isinstance(data, dict) or data.get("schema") != SETTINGS_SCHEMA:
+        raise InputError(f"{path}: not an {SETTINGS_SCHEMA} file")
+    cells: dict[tuple[str, str], dict[str, Any]] = {}
+    for index, raw in enumerate(data.get("cells") or []):
+        if not isinstance(raw, dict) or not isinstance(raw.get("run_settings"), dict):
+            raise InputError(f"{path.name} cells[{index}]: needs target, version, run_settings")
+        key = (str(raw.get("target")), str(raw.get("version")))
+        if key in cells:
+            raise InputError(f"{path.name}: cell {key} listed twice")
+        cells[key] = dict(raw["run_settings"])
+    return cells
+
+
+def settings_mismatch(
+    settings: Mapping[tuple[str, str], Mapping[str, Any]],
+    target: str,
+    version: str,
+    given: object,
+) -> str | None:
+    """Why ``given`` is not exactly the file's run_settings for the cell (None when it is)."""
+    wanted = settings.get((target, version))
+    if wanted is None:
+        return f"{target} {version} is not in the run-settings file"
+    if given != wanted:
+        return f"run_settings {given!r} differ from the file's {dict(wanted)!r}"
+    return None
+
+
 def load_manifest(path: Path) -> dict[tuple[str, str, str, str], CellKey]:
     """``(tar_sha256, target, version, filter) -> (fixture, target, version, filter)``."""
     data = _read(path)
@@ -254,6 +290,7 @@ def read_replays(
     folder: Path,
     manifest: Mapping[tuple[str, str, str, str], CellKey],
     labels: Mapping[CellKey, Label],
+    settings: Mapping[tuple[str, str], Mapping[str, Any]],
 ) -> dict[CellKey, CellSummary]:
     """One summary per cell; every replay.json is read and dropped in turn."""
     if not folder.is_dir():
@@ -264,13 +301,16 @@ def read_replays(
         if not isinstance(data, dict) or data.get("schema") != REPLAY_SCHEMA:
             raise InputError(f"{path}: not an {REPLAY_SCHEMA} record")
         original = data.get("original") or {}
-        settings = original.get("run_settings") or {}
+        replay_settings = original.get("run_settings") or {}
         sha, target, version, extraction_filter = (
             str(original.get("tar_sha256")),
             str(original.get("target")),
             str(original.get("version")),
-            str(settings.get("extraction_filter") or ""),
+            str(replay_settings.get("extraction_filter") or ""),
         )
+        problem = settings_mismatch(settings, target, version, original.get("run_settings"))
+        if problem is not None:
+            raise InputError(f"{path}: {problem}")
         key = manifest.get((sha, target, version, extraction_filter))
         if key is None:
             raise InputError(
@@ -410,10 +450,13 @@ def summarize(rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     return out
 
 
-def run(labels_path: Path, manifest_path: Path, replays: Path) -> dict[str, Any]:
+def run(
+    labels_path: Path, manifest_path: Path, replays: Path, settings_path: Path
+) -> dict[str, Any]:
     header, labels = load_labels(labels_path)
+    settings = load_run_settings(settings_path)
     manifest = load_manifest(manifest_path)
-    summaries = read_replays(replays, manifest, labels)
+    summaries = read_replays(replays, manifest, labels, settings)
     table = build_table(labels, summaries)
     rows = table["rows"]
     output = {
@@ -423,6 +466,7 @@ def run(labels_path: Path, manifest_path: Path, replays: Path) -> dict[str, Any]
         "inputs": {
             "labels_sha256": _sha256(labels_path),
             "labels_header": header,
+            "run_settings_sha256": _sha256(settings_path),
             "manifest_sha256": _sha256(manifest_path),
             "replays_read": len(summaries),
         },
@@ -437,13 +481,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--labels", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--replays", type=Path, required=True)
+    parser.add_argument("--settings-file", type=Path, required=True, help="514-run-settings-v1")
     parser.add_argument("--json", type=Path, help="write the table here too")
     try:
         args = parser.parse_args(argv)
     except SystemExit as error:
         return 2 if error.code else 0
     try:
-        output = run(args.labels, args.manifest, args.replays)
+        output = run(args.labels, args.manifest, args.replays, args.settings_file)
     except InputError as error:
         print(json.dumps({"verdict": "input_error", "error": str(error)}))
         print(f"input error: {error}", file=sys.stderr)

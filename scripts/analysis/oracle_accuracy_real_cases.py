@@ -8,8 +8,10 @@ folder that ``inodefence replay`` accepts (``case.json`` in the live-violation s
 reader (``oracle_accuracy_real_table``) checks
 each ``replay.json`` against. Nothing is extracted or run here.
 
-The run conditions are never defaulted: ``--image-id`` (exact ``sha256:…``) and ``--run-settings``
-(a JSON object, exactly the keys the target's replay hook requires) are required. Every folder is
+The run conditions are never defaulted. ``--image-id`` (exact ``sha256:…``, the value W1 wrote
+in the ledger) is required, and ``run_settings`` are taken from ``--settings-file``, W5's
+run-settings file (``514-run-settings-v1.json``, §2b-10): a cell (target, version) the file does not
+list is refused, and the manifest records the file's SHA-256. Every folder is
 read back with ``case_replay.load_replay_request`` and checked with the target's own
 ``replay_check`` (what ``inodefence replay`` does before it runs anything) before the manifest is
 written, so a folder the replay driver would refuse is refused here. The case record says it is a
@@ -27,7 +29,7 @@ Usage::
 
     PYTHONPATH=src python -m scripts.analysis.oracle_accuracy_real_cases \\
         --target node-tar --version 7.5.11 --image-id sha256:<64 hex> \\
-        --run-settings '{"sentinel_count": null, ...}' --out <folder outside the repo>
+        --settings-file 514-run-settings-v1.json --out <folder outside the repo>
 
 Exit codes: 0 written, 2 refused (bad argument, folder exists, or a written folder that replay
 would not accept).
@@ -44,6 +46,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 
+from scripts.analysis.oracle_accuracy_real_table import InputError, load_run_settings
 from scripts.oracle_accuracy_fixtures import CASES
 
 from inodefence.builder import build_tar
@@ -197,9 +200,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", required=True, help="the cell's version (as replay reads it)")
     parser.add_argument("--image-id", required=True, help="exact sha256:<64 hex> of the image")
     parser.add_argument(
-        "--run-settings",
+        "--settings-file",
         required=True,
-        help="JSON object: exactly the keys the target's replay hook requires (no defaults)",
+        type=Path,
+        help="W5's run-settings file (514-run-settings-v1.json); the cell's settings come from it",
     )
     parser.add_argument("--out", required=True, type=Path, help="folder outside the repository")
     parser.add_argument("--fixtures", nargs="+", default=list(FIXTURES))
@@ -214,11 +218,12 @@ def main(argv: list[str] | None = None) -> int:
         return 2 if error.code else 0
     try:
         try:
-            settings = json.loads(args.run_settings)
-        except ValueError as error:
-            raise Refused(f"--run-settings is not JSON: {error}") from error
-        if not isinstance(settings, dict):
-            raise Refused("--run-settings must be a JSON object")
+            cells = load_run_settings(args.settings_file)
+        except InputError as error:
+            raise Refused(str(error)) from error
+        settings = cells.get((args.target, args.version))
+        if settings is None:
+            raise Refused(f"{args.target} {args.version} is not in {args.settings_file.name}")
         rows = write_cases(
             args.out,
             target=args.target,
@@ -227,6 +232,9 @@ def main(argv: list[str] | None = None) -> int:
             run_settings=settings,
             fixtures=args.fixtures,
         )
+        file_sha = sha256(args.settings_file.read_bytes()).hexdigest()
+        for row in rows:
+            row["run_settings_sha256"] = file_sha
         manifest = write_manifest(args.out, rows)
     except Refused as error:
         print(f"refused: {error}", file=sys.stderr)

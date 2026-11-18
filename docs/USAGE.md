@@ -210,8 +210,10 @@ node-tar 탐색에서만 기본 변이 정책 대신 v2 문법 정책(탈출 깊
 있는데, 그런 실행(build-invalid)은 예산 1단위를 쓰고 추출하지 않으며 미판정이 아닙니다. 그 수는 `campaign.build_invalid`에
 적히고(0이면 키 없음) 미판정 비율의 분모에서 빠집니다. 이 수는 루프 보고서의 실행 수 − 종료 상태 합으로 정확히
 셉니다. 셀 수 없거나 live 스냅숏과 어긋나면 비율을 낮게 적는 대신 결과 없이 종료 2입니다. 루프 보고서는 스키마 5입니다. 옵션이 없으면 실행과 `result.json`은
-전과 같습니다. 호출자 환경의 `DEMO_MUTATION_POLICY`는 어느 대상의 탐색에도 전달되지 않으며, 설정돼 있으면
-stderr에 무시한다는 경고(`TARGET-EXPLORE WARNING`) 한 줄이 나옵니다.
+전과 같습니다. 호출자 환경의 `DEMO_MUTATION_POLICY`와 `DEMO_POLICY`(search 정책)는 어느 대상의 탐색에도 전달되지
+않으며, 설정돼 있으면 stderr에 무시한다는 경고(`TARGET-EXPLORE WARNING`) 한 줄이 나옵니다. 반대로 node-tar 탐색은
+`DEMO_SENTINEL_SEED`·`DEMO_SENTINEL_COUNT`·`DEMO_OBSERVER_INTEGRITY_POLICY`를 일부러 받습니다. 없으면 등록 실험의
+sandbox 값(사전등록에서 읽음)을 쓰고, 있으면 그 값을 쓰며 쓴 값은 live `case.json`의 `run_settings`에 남습니다.
 
 node-tar 탐색(`--version 7.5.23 --seed 123 --budget 20`, engineering smoke 2026-11-16)에서 실제로 생긴 구조:
 

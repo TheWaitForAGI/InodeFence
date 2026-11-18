@@ -6,7 +6,8 @@
 - The result records the policy only when the option was given, after checking the loop ran it.
 - Build-invalid runs (v2 only) are recorded and left out of the un-judged ratio's denominator.
 - A run without the option writes byte-identical ``result.json`` and ``summary.md``: compared with
-  what main e1098d6 wrote for the same reports (``tests/fixtures/explore-default-v1``).
+  what main fccdf35 wrote for the same inputs (``tests/fixtures/explore-default-v1``: node-tar
+  explore, python-tarfile explore and a verify cell).
 """
 
 from __future__ import annotations
@@ -434,3 +435,61 @@ def test_a_dropped_inherited_policy_is_warned_about_on_stderr(
     else:
         assert err.count("TARGET-EXPLORE WARNING") == 1
         assert f"DEMO_MUTATION_POLICY={inherited} is ignored; use --mutation-policy" in err
+
+
+def _launch_env(target: str, tmp_path: Path, **kwargs: Any) -> dict[str, str]:
+    """The env each explore driver hands its launcher (no option, no policy)."""
+    if target == "node-tar":
+        captured, runner = _capture_env(nte.controller_report_path(tmp_path, "rid"))
+        nte.run_controller(_prepared(), out=tmp_path, run_id="rid", budget=20, seed=1,
+                           python="x", runner=runner)  # fmt: skip
+    elif target == "python-tarfile":
+        captured, runner = _capture_env(pte.report_path(tmp_path, "rid"))
+        pte.run_controller("ref", "3.12.7", "data", out=tmp_path, run_id="rid", budget=8,
+                           seed=1, runner=runner)  # fmt: skip
+    elif target == "decompress":
+        captured, runner = _capture_env(dce.controller_report_path(tmp_path, "rid"))
+        dce.run_controller("img", tmp_path, "rid", seed=1, budget=8, mutation_policy=None,
+                           runner=runner, **({"search_policy": None} | kwargs))  # fmt: skip
+    else:
+        captured, runner = _capture_env(oge.controller_report_path(tmp_path, "rid"))
+        try:
+            oge.run_controller(_prepared(), out=tmp_path, run_id="rid", budget=8, seed=1,
+                               python="x", runner=runner)  # fmt: skip
+        except RuntimeError:
+            pass  # "{}" is no loop report; the env was already captured
+    return captured["env"]
+
+
+TARGETS = ["node-tar", "python-tarfile", "decompress", "oras-go"]
+
+
+@pytest.mark.parametrize("target", TARGETS)
+def test_an_inherited_search_policy_is_dropped_with_a_warning(
+    target: str, monkeypatch, capsys, tmp_path: Path
+) -> None:
+    # QA check 42 (2): DEMO_POLICY changed node-tar and python-tarfile runs when inherited; no
+    # explore driver passes it through now, and the drop is one stderr line.
+    monkeypatch.delenv("DEMO_MUTATION_POLICY", raising=False)
+    monkeypatch.setenv("DEMO_POLICY", "inherited-search-policy")
+    env = _launch_env(target, tmp_path)
+    out, err = capsys.readouterr()
+    assert "DEMO_POLICY" not in env and out == ""
+    assert err.count("TARGET-EXPLORE WARNING") == 1
+    assert "DEMO_POLICY=inherited-search-policy is ignored" in err
+
+
+def test_decompress_still_passes_its_own_search_policy(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("DEMO_POLICY", "inherited-search-policy")
+    env = _launch_env("decompress", tmp_path, search_policy="its-own")
+    assert env["DEMO_POLICY"] == "its-own"
+
+
+@pytest.mark.parametrize("target", TARGETS)
+def test_no_warning_without_inherited_policies(
+    target: str, monkeypatch, capsys, tmp_path: Path
+) -> None:
+    monkeypatch.delenv("DEMO_POLICY", raising=False)
+    monkeypatch.delenv("DEMO_MUTATION_POLICY", raising=False)
+    _launch_env(target, tmp_path)
+    assert "TARGET-EXPLORE WARNING" not in capsys.readouterr().err

@@ -265,20 +265,36 @@ MUTATION_POLICY_TARGETS = ("node-tar",)
 MUTATION_POLICY_ENV = "DEMO_MUTATION_POLICY"
 
 
-def drop_inherited_mutation_policy(env: dict[str, str]) -> None:
-    """Remove the caller's ``DEMO_MUTATION_POLICY`` from a launcher env, saying so on stderr.
+#: The launcher environment variable that selects the search policy. Exploration runs each
+#: target's fixed search policy; no explore driver passes the caller's own value through.
+SEARCH_POLICY_ENV = "DEMO_POLICY"
 
-    A run that used to pick its policy through this variable must not silently fall back to the
-    default policy: one warning line names the variable and the option to use instead. stdout,
-    the result and the exit code are unchanged.
+
+def _drop_inherited(env: dict[str, str], name: str, instead: str) -> None:
+    """Remove the caller's ``name`` from a launcher env, saying so in one stderr line.
+
+    A run that used to choose a setting through this variable must not silently fall back to the
+    default: the warning names the variable and what to do instead. stdout, the result and the
+    exit code are unchanged.
     """
-    inherited = env.pop(MUTATION_POLICY_ENV, None)
+    inherited = env.pop(name, None)
     if inherited is not None:
         print(
-            f"TARGET-EXPLORE WARNING: environment variable {MUTATION_POLICY_ENV}={inherited} is "
-            "ignored; use --mutation-policy (node-tar exploration only)",
+            f"TARGET-EXPLORE WARNING: environment variable {name}={inherited} is ignored; "
+            f"{instead}",
             file=sys.stderr,
         )
+
+
+def drop_inherited_mutation_policy(env: dict[str, str]) -> None:
+    """The caller's ``DEMO_MUTATION_POLICY`` never reaches a launcher (``--mutation-policy``)."""
+    _drop_inherited(env, MUTATION_POLICY_ENV, "use --mutation-policy (node-tar exploration only)")
+
+
+def drop_inherited_search_policy(env: dict[str, str]) -> None:
+    """The caller's ``DEMO_POLICY`` never reaches a launcher (exploration's search policy is
+    fixed per target; there is no option to change it)."""
+    _drop_inherited(env, SEARCH_POLICY_ENV, "exploration runs the target's fixed search policy")
 
 
 @dataclass(frozen=True, slots=True)

@@ -44,6 +44,7 @@ from inodefence.drivers.run_target import (
     ExploreOutcome,
     PreparedTargetImage,
     drop_inherited_mutation_policy,
+    drop_inherited_search_policy,
 )
 from inodefence.drivers.runtime.hooks import LaunchArtifacts
 from inodefence.feedback import EffectSearchPolicy
@@ -93,6 +94,7 @@ def run_controller(
         "PYTHON": python,
     }
     drop_inherited_mutation_policy(env)
+    drop_inherited_search_policy(env)
     if mutation_policy:
         env[MUTATION_POLICY_ENV] = mutation_policy
     # The product always explores inside oras-go's artifact directory: without it the library

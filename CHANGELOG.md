@@ -21,6 +21,8 @@
   python-tarfile 탐색에서 이 변수가 그대로 전달돼, 문서에 없는 방법으로 변이 정책이 바뀌고 `result.json`에는 남지 않았다.
   정책을 바꾸려면 `--mutation-policy`를 쓴다. 이 변수가 설정돼 있으면 무시하면서 stderr에 경고 한 줄
   (`TARGET-EXPLORE WARNING: environment variable DEMO_MUTATION_POLICY=… is ignored; use --mutation-policy …`)을 낸다.
+- 같은 방식으로 호출자 환경의 `DEMO_POLICY`(search 정책)도 넘기지 않고 경고 한 줄을 낸다. 전에는 node-tar와 python-tarfile
+  탐색의 search 정책이 이 변수로 바뀌었다. 탐색의 search 정책은 대상마다 고정이며 고르는 옵션은 없다.
 - 미판정 비율(`campaign.unjudged_ratio`)의 분모에서 build-invalid 실행을 뺀다(분모 = 실행 수 − `build_invalid`). 이 키가
   없는 결과(기본 정책의 모든 실행과 0.2.0이 쓴 파일)는 값이 그대로다. 옵션 없는 실행의 `result.json`·`summary.md`는 0.2.0
   뒤의 `main`(`e1098d6`)과 바이트 동일하다(`tests/test_explore_mutation_policy.py`).

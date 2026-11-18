@@ -94,17 +94,16 @@ def run_unjudged(result: EffectRunResult) -> bool:
     1. The oracle saw a violation in the snapshots -> judged, always (kept with its input, read as
        "reproduction check needed" when the run was not clean).
     2. Otherwise unjudged when: the worker report is unreadable or contradicts the exit status
-       (crash, truncation) for a non-timeout run; the run ``timed_out``; or it is a ``success`` of a
-       non-empty archive whose trace is not intact.
+       (crash, truncation) for a non-timeout run; the run ``timed_out``; or it is a ``success``
+       whose trace is not intact. A complete trace needs the worker's own member count to equal
+       the entries (#533), so an empty archive's success is intact exactly when the worker
+       reports ``members: 0``.
     3. A ``rejected`` run, and a ``failed`` run whose report agrees (see
-       :data:`REPORTED_FAILURE_IS_JUDGED`), stays judged; so does an empty archive (incomplete
-       trace by construction, nothing to extract).
+       :data:`REPORTED_FAILURE_IS_JUDGED`), stays judged.
 
-    Known mismatch (#533, observed 2026-11-18 on 3.12.16 ``data``): this empty-archive exception
-    exists only here. The report's per-step ``validity``
-    (``effect_demo.observer_integrity_validity``) has no such exception and records a successful
-    empty-archive run as ``invalid`` (``observer_integrity``), because the trace reader marks a
-    zero-entry success incomplete. The exception is not widened to cover it; the fix is #533.
+    The same rule decides the report's per-step ``validity``
+    (``effect_demo.observer_integrity_validity``: a ``success`` without an intact trace is
+    invalid), so the two records agree; there is no empty-archive exception (#533).
     """
     base = result.base_result
     status = base.execution.status
@@ -116,11 +115,7 @@ def run_unjudged(result: EffectRunResult) -> bool:
         return True
     if status is ExecutionStatus.FAILED:
         return not REPORTED_FAILURE_IS_JUDGED
-    return (
-        status is ExecutionStatus.SUCCESS
-        and bool(base.case.entries)
-        and not result.trace.integrity_valid
-    )
+    return status is ExecutionStatus.SUCCESS and not result.trace.integrity_valid
 
 
 def case_record(run_index: int, result: EffectRunResult) -> dict[str, object]:

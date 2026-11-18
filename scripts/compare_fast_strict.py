@@ -77,7 +77,10 @@ the STRICT side refuses lines marked ``fast``.
 
 Trajectory mode reads ``demo_report_schema`` 5 reports: node-tar and python-tarfile exploration
 and run_exp0 cells. decompress and oras-go reports have another format (per-step feedback
-counts, not keys) and are not read here; those targets go through ``--mode replay`` (design §4).
+counts, not keys); they go through ``--mode replay`` with a reduced reader (design §8.3): each
+step of a campaign report (``decompress_campaign_schema`` / ``oras_go_campaign_schema``) is one
+verdict for its ``case_id`` (any C0/C1/C2 true; no verdict unless the extractor finished), FAST
+reports recognised by ``identity_checks``. Replay mode applies the same invalid-run check.
 
 Scope: an ``isolated`` trajectory verdict does not cover snapshots or isolation/reset (they are
 the same by construction for a FAST that shares no state); the output says so.
@@ -581,9 +584,54 @@ def load_replay_counts(folder: Path, side: str) -> dict[str, list[bool | None]]:
             if side == "strict" and profile not in (None, "strict"):
                 raise InputError(f"{path}:{number}: STRICT side line marked profile {profile!r}")
             rounds.setdefault(str(key), []).append(violated)
+    for path, report in _reduced_campaign_reports(folder):
+        is_fast = FAST_RECORD in report
+        if side == "fast" and not is_fast:
+            raise InputError(f"fast: {path} has no {FAST_RECORD} record: it is not a FAST run")
+        if side == "strict" and is_fast:
+            raise InputError(f"strict: {path} carries {FAST_RECORD}: it is a FAST run")
+        for case_id, violated in _reduced_step_verdicts(report):
+            rounds.setdefault(case_id, []).append(violated)
     if not rounds:
-        raise InputError(f"{folder}: no replay.json or *.verdicts.jsonl records")
+        raise InputError(
+            f"{folder}: no replay.json, *.verdicts.jsonl or decompress/oras-go campaign report"
+        )
     return rounds
+
+
+#: decompress / oras-go campaign reports (not demo_report_schema 5): per-step case_id,
+#: termination and C0/C1/C2 only, feedback as counts (design §8.3, reduced reader).
+REDUCED_REPORT_SCHEMAS = ("decompress_campaign_schema", "oras_go_campaign_schema")
+_JUDGED_TERMINATIONS = ("success", "rejected")
+
+
+def _reduced_campaign_reports(folder: Path) -> list[tuple[Path, dict[str, Any]]]:
+    found = []
+    for path in sorted(folder.rglob("*.json")):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(data, dict) and any(data.get(key) == 1 for key in REDUCED_REPORT_SCHEMAS):
+            if not isinstance(data.get("steps"), list):
+                raise InputError(f"{path}: campaign report without steps")
+            found.append((path, data))
+    return found
+
+
+def _reduced_step_verdicts(report: Mapping[str, Any]) -> list[tuple[str, bool | None]]:
+    """One verdict per step, keyed by case_id: violated if any of C0/C1/C2 is true; ``None``
+    (no verdict) unless the extractor finished (decompress's own ``judged`` when present)."""
+    out = []
+    for step in report["steps"]:
+        judged = step.get("judged")
+        if judged is None:
+            judged = step.get("termination") in _JUDGED_TERMINATIONS
+        oracle = step.get("oracle") or {}
+        out.append(
+            (str(step.get("case_id")), any(v is True for v in oracle.values()) if judged else None)
+        )
+    return out
 
 
 def _load_inputs(path: Path) -> list[tuple[str, str]]:
@@ -677,6 +725,14 @@ def compare_replay(
     strict_dir: Path, fast_dir: Path, inputs_path: Path, *, n: int, margin: float, alpha: float
 ) -> tuple[int, dict[str, object]]:
     inputs = _load_inputs(inputs_path)
+    invalid = [
+        f"{side}: {reason}"
+        for side, folder in (("strict", strict_dir), ("fast", fast_dir))
+        if folder.is_dir()
+        for reason in invalid_reasons(folder)
+    ]
+    if invalid:
+        raise InvalidCampaign("run not a valid finished campaign: " + "; ".join(invalid))
     strict_rounds = load_replay_counts(strict_dir, "strict")
     fast_rounds = load_replay_counts(fast_dir, "fast")
     per_input: list[dict[str, object]] = []

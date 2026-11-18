@@ -677,3 +677,89 @@ def test_holm_adjustment() -> None:
 def test_tost_zero_difference_passes_and_large_difference_fails() -> None:
     assert cfs.tost([3, 5, 7, 4, 6], [3, 5, 7, 4, 6], 10, 0.10, 0.05)["pass"] is True
     assert cfs.tost([1, 1, 1, 1, 1], [5, 5, 5, 5, 5], 10, 0.10, 0.05)["pass"] is False
+
+
+# -- decompress / oras-go reduced reader (design §8.3) -----------------------------------------
+
+
+def _reduced_reports(folder: Path, schema: str, runs: list[dict[str, int]], *, fast: bool) -> Path:
+    """Campaign reports of the pinned case set: one report per campaign, each step one run of a
+    case; ``runs`` maps case -> 1 (violated) / 0 (not) / -1 (extractor did not finish)."""
+    folder.mkdir(parents=True, exist_ok=True)
+    for number, campaign in enumerate(runs):
+        steps = [
+            {
+                "index": index,
+                "case_id": case,
+                "termination": "failed" if value < 0 else "success",
+                "oracle": {"C0": value > 0, "C1": False, "C2": False},
+                "new_attempt_keys": 1,
+            }
+            for index, (case, value) in enumerate(campaign.items())
+        ]
+        report: dict[str, object] = {schema: 1, "steps": steps, "config": {"random_seed": number}}
+        if fast:
+            report[cfs.FAST_RECORD] = _FAST_RECORD
+        (folder / f"campaign-{number}.json").write_text(json.dumps(report))
+    return folder
+
+
+def _reduced_replay(capsys, tmp_path: Path, strict: Path, fast: Path, cases: list[str]):  # type: ignore[no-untyped-def]
+    (tmp_path / "inputs.json").write_text(
+        json.dumps([{"input_id": f"in-{c}", "case": c} for c in cases])
+    )
+    return _run(
+        capsys,
+        "--mode",
+        "replay",
+        "--strict",
+        str(strict),
+        "--fast",
+        str(fast),
+        "--inputs",
+        str(tmp_path / "inputs.json"),
+    )
+
+
+@pytest.mark.parametrize("schema", list(cfs.REDUCED_REPORT_SCHEMAS))
+def test_reduced_reports_feed_replay_counts(tmp_path: Path, capsys, schema: str) -> None:
+    strict = _reduced_reports(tmp_path / "s", schema, [{"x": 0, "y": 1}] * 10, fast=False)
+    fast_runs = [{"x": 1 if i < 3 else 0, "y": 1} for i in range(10)]
+    fast = _reduced_reports(tmp_path / "f", schema, fast_runs, fast=True)
+    code, out = _reduced_replay(capsys, tmp_path, strict, fast, ["x", "y"])
+    assert code == 1  # x: STRICT k=0, FAST k=3 -> rule (i) mismatch
+    rows = {row["input_id"]: row for row in out["per_input"]}
+    assert (rows["in-x"]["k_strict"], rows["in-x"]["k_fast"], rows["in-x"]["pass"]) == (0, 3, False)
+    assert (rows["in-y"]["k_strict"], rows["in-y"]["k_fast"], rows["in-y"]["pass"]) == (
+        10,
+        10,
+        True,
+    )
+
+
+def test_reduced_reports_need_one_strict_and_one_fast_side(tmp_path: Path, capsys) -> None:
+    schema = "decompress_campaign_schema"
+    strict = _reduced_reports(tmp_path / "s", schema, [{"x": 0}] * 10, fast=False)
+    not_fast = _reduced_reports(tmp_path / "f", schema, [{"x": 0}] * 10, fast=False)
+    code, out = _reduced_replay(capsys, tmp_path, strict, not_fast, ["x"])
+    assert code == 2 and "not a FAST run" in out["error"]
+
+
+def test_unfinished_reduced_steps_have_no_verdict(tmp_path: Path, capsys) -> None:
+    schema = "oras_go_campaign_schema"
+    runs = [{"x": 0}] * 10
+    strict = _reduced_reports(tmp_path / "s", schema, runs, fast=False)
+    fast = _reduced_reports(tmp_path / "f", schema, [{"x": -1}] + runs[1:], fast=True)
+    code, out = _reduced_replay(capsys, tmp_path, strict, fast, ["x"])
+    assert code == 2 and "9 judged rounds" in out["error"]
+
+
+def test_an_aborted_reduced_report_makes_the_replay_side_invalid(tmp_path: Path, capsys) -> None:
+    schema = "decompress_campaign_schema"
+    strict = _reduced_reports(tmp_path / "s", schema, [{"x": 0}] * 10, fast=False)
+    fast = _reduced_reports(tmp_path / "f", schema, [{"x": 0}] * 10, fast=True)
+    (fast / "campaign-aborted.json").write_text(
+        json.dumps({schema: 1, "aborted": {"reason": "identity changed"}})
+    )
+    code, out = _reduced_replay(capsys, tmp_path, strict, fast, ["x"])
+    assert code == 2 and out["verdict"] == "invalid" and "report aborted" in out["error"]

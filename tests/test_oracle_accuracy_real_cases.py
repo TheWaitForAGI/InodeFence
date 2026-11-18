@@ -71,17 +71,6 @@ def test_two_cells_share_one_manifest(tmp_path: Path) -> None:
     ]
 
 
-@pytest.mark.parametrize("version", ["7.4.3", "7.0.0", "6.1.0", "4.4.5", "5.0.2"])
-def test_reserved_node_tar_versions_are_refused(tmp_path: Path, version: str) -> None:
-    assert _run(tmp_path, version=version) == 2
-    assert not any(tmp_path.iterdir())
-
-
-@pytest.mark.parametrize("version", ["7.5.2", "7.4.4", "6.2.2", "5.1.0"])
-def test_versions_outside_the_reservations_pass(version: str) -> None:
-    assert not cases.reserved("node-tar", version)
-
-
 @pytest.mark.parametrize(
     "extra",
     [
@@ -124,3 +113,74 @@ def test_a_fixture_listed_twice_for_one_cell_is_refused(tmp_path: Path) -> None:
     cases.write_manifest(tmp_path, rows)
     with pytest.raises(cases.Refused, match="already lists"):
         cases.write_manifest(tmp_path, rows)
+
+
+@pytest.mark.parametrize(
+    ("target", "version", "settings", "message"),
+    [
+        (
+            "node-tar",
+            "7.5.11",
+            {k: v for k, v in NODE_SETTINGS.items() if k != "profile"},
+            "profile",
+        ),
+        (
+            "python-tarfile",
+            "3.12.16",
+            {"extraction_filter": "fully_trusted", "runtime_version": "3.12.16"},
+            "not explored",
+        ),
+        (
+            "python-tarfile",
+            "3.12.16",
+            {"extraction_filter": "data", "runtime_version": "3.12.10"},
+            "runtime_version",
+        ),
+    ],
+)
+def test_a_folder_the_replay_check_refuses_is_exit_2(
+    tmp_path: Path, capsys, target: str, version: str, settings: dict, message: str
+) -> None:
+    """The target's own replay_check runs on every written folder (no extraction)."""
+    code = cases.main(
+        [
+            "--target",
+            target,
+            "--version",
+            version,
+            "--image-id",
+            IMAGE,
+            "--run-settings",
+            json.dumps(settings),
+            "--out",
+            str(tmp_path),
+            "--fixtures",
+            "F01",
+        ]
+    )
+    err = capsys.readouterr().err
+    assert code == 2 and "replay would refuse" in err and message in err
+    assert not (tmp_path / "manifest.json").exists()
+
+
+def test_a_folder_the_replay_loader_refuses_is_exit_2(tmp_path: Path, capsys, monkeypatch) -> None:
+    """If the written record disagreed with its input, the read-back catches it."""
+    real = cases.case_record
+
+    def wrong_hash(*args, **kwargs):  # type: ignore[no-untyped-def]
+        record = real(*args, **kwargs)
+        record["tar_sha256"] = "0" * 64
+        return record
+
+    monkeypatch.setattr(cases, "case_record", wrong_hash)
+    assert _run(tmp_path, "--fixtures", "F01") == 2
+    assert "replay would refuse" in capsys.readouterr().err
+    assert not (tmp_path / "manifest.json").exists()
+
+
+def test_python_tarfile_data_cells_pass_the_replay_check(tmp_path: Path) -> None:
+    settings = {"extraction_filter": "data", "runtime_version": "3.12.16"}
+    rows = cases.write_cases(
+        tmp_path, target="python-tarfile", version="3.12.16", image_id=IMAGE, run_settings=settings
+    )
+    assert len(rows) == 14 and {row["extraction_filter"] for row in rows} == {"data"}

@@ -10,11 +10,11 @@ each ``replay.json`` against. Nothing is extracted or run here.
 
 The run conditions are never defaulted: ``--image-id`` (exact ``sha256:…``) and ``--run-settings``
 (a JSON object, exactly the keys the target's replay hook requires) are required. Every folder is
-read back with ``case_replay.load_replay_request`` before the manifest is written, so a folder the
-replay driver would refuse is refused here. The case record says it is a fixture
-(``origin: fixture``, ``fixture: Fxx``) and carries no original verdict.
+read back with ``case_replay.load_replay_request`` and checked with the target's own
+``replay_check`` (what ``inodefence replay`` does before it runs anything) before the manifest is
+written, so a folder the replay driver would refuse is refused here. The case record says it is a
+fixture (``origin: fixture``, ``fixture: Fxx``) and carries no original verdict.
 
-Reserved node-tar versions (7.0.0-7.4.3, 6.0.0-6.2.1, 4.4.0-5.0.x) are refused.
 
 Usage::
 
@@ -22,8 +22,8 @@ Usage::
         --target node-tar --version 7.5.11 --image-id sha256:<64 hex> \\
         --run-settings '{"sentinel_count": null, ...}' --out <folder outside the repo>
 
-Exit codes: 0 written, 2 refused (bad argument, folder exists, reserved version, or a written
-folder that replay would not accept).
+Exit codes: 0 written, 2 refused (bad argument, folder exists, or a written folder that replay
+would not accept).
 """
 
 from __future__ import annotations
@@ -47,6 +47,7 @@ from inodefence.case_replay import (
     CaseReplayError,
     load_replay_request,
 )
+from inodefence.drivers.run_target import load_adapter
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MANIFEST = "manifest.json"
@@ -54,21 +55,10 @@ MANIFEST_SCHEMA = "inodefence-514-fixture-cases-v1"
 FIXTURES = tuple(f"F{i:02d}" for i in range(1, 15))
 TARGETS = ("node-tar", "python-tarfile", "decompress", "oras-go")
 _IMAGE_ID = re.compile(r"sha256:[0-9a-f]{64}")
-_VERSION = re.compile(r"(\d+)\.(\d+)\.(\d+)")
-#: node-tar ranges no run may touch (holdout reservations), as [low, high] inclusive.
-RESERVED_NODE_TAR = (((7, 0, 0), (7, 4, 3)), ((6, 0, 0), (6, 2, 1)), ((4, 4, 0), (5, 0, 999)))
 
 
 class Refused(Exception):
     """An argument or written folder that cannot be used (exit 2)."""
-
-
-def reserved(target: str, version: str) -> bool:
-    match = _VERSION.fullmatch(version)
-    if target != "node-tar" or match is None:
-        return False
-    parts = tuple(int(x) for x in match.groups())
-    return any(low <= parts <= high for low, high in RESERVED_NODE_TAR)
 
 
 def case_record(
@@ -115,11 +105,10 @@ def write_cases(
     fixtures: Sequence[str] = FIXTURES,
 ) -> list[dict[str, str]]:
     """Write one case folder per fixture under ``out/<target>-<version>/`` and return the
-    manifest rows. Refuses an existing folder; checks each with ``load_replay_request``."""
+    manifest rows. Refuses an existing folder; checks each with ``load_replay_request`` and the
+    target's ``replay_check``."""
     if target not in TARGETS:
         raise Refused(f"--target must be one of {TARGETS}")
-    if reserved(target, version):
-        raise Refused(f"node-tar {version} is in a reserved range; no fixture folder is written")
     if _IMAGE_ID.fullmatch(image_id) is None:
         raise Refused("--image-id must be an exact sha256:<64 hex> image id")
     unknown = [f for f in fixtures if f not in FIXTURES]
@@ -131,6 +120,7 @@ def write_cases(
     cell = out / f"{target}-{version}"
     if cell.exists():
         raise Refused(f"{cell} exists; case folders are never overwritten")
+    check = getattr(load_adapter(target), "replay_check", None)
     rows: list[dict[str, str]] = []
     cell.mkdir(parents=True)
     for fixture in fixtures:
@@ -150,7 +140,9 @@ def write_cases(
             json.dumps(record, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
         try:
-            load_replay_request(folder)
+            request = load_replay_request(folder)
+            if check is not None:
+                check(request)
         except CaseReplayError as error:
             raise Refused(f"{fixture}: replay would refuse this folder: {error}") from error
         rows.append(

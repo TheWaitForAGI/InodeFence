@@ -308,11 +308,19 @@ def test_a_label_file_of_another_schema_is_refused(tmp_path: Path, capsys) -> No
     assert code == 2 and "label file" in out["error"]
 
 
-def test_one_judged_round_is_flagged_without_changing_the_class(tmp_path: Path, capsys) -> None:
+def test_one_judged_round_is_flagged_k_of_n(tmp_path: Path, capsys) -> None:
     rounds = [_round(), *[_round(outcome="run_error", termination=None, reason="x")] * 2]
     code, out = _table(capsys, *_setup(tmp_path, {"F01": rounds}))
     row = next(r for r in out["rows"] if r["fixture"] == "F01")
-    assert (row["class"], row["flags"]) == ("일치", ["판정 1라운드"])
+    assert (row["class"], row["flags"]) == ("일치", ["판정 1/3"])
+
+
+def test_two_judged_of_three_are_flagged_and_still_scored(tmp_path: Path, capsys) -> None:
+    rounds = [_round(), _round(), _round(outcome="run_error", termination=None, reason="x")]
+    code, out = _table(capsys, *_setup(tmp_path, {"F01": rounds}))
+    row = next(r for r in out["rows"] if r["fixture"] == "F01")
+    assert (row["class"], row["flags"]) == ("일치", ["판정 2/3"])
+    assert out["summary"]["node-tar 7.5.2"]["scored_cells"] == 1
 
 
 def test_python_tarfile_cells_are_keyed_by_filter(tmp_path: Path, capsys) -> None:
@@ -349,3 +357,10 @@ def test_python_tarfile_cells_are_keyed_by_filter(tmp_path: Path, capsys) -> Non
     assert code == 0
     assert out["rows"][0]["cell"] == "python-tarfile 3.12.16 data"
     assert out["rows"][0]["class"] == "거부 동작 일치"
+
+
+def test_uncertain_comes_before_split_rounds(tmp_path: Path, capsys) -> None:
+    """§2b order: ② 불확실 is checked before ③ 라운드 갈림."""
+    split = [_round(), _round(), _round((True, False, False))]
+    code, out = _table(capsys, *_setup(tmp_path, {"F13": split}))
+    assert _classes(out)["F13"] == "불확실"

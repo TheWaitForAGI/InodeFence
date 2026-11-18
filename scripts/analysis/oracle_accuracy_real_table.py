@@ -30,8 +30,9 @@ Per cell, the first matching class from the top (§2b-8):
 Accuracy counts are 일치 and 불일치 only; every cell caught by 1-4 is outside the denominator.
 
 Termination is a flag, not a score (§2b-9): when the expected termination is set and differs from
-the observed one, the cell gets "종료 기대와 다름" and keeps its class. Rounds with ``run_error``
-are counted in their own column; the cell is classified on its judged rounds.
+the observed one, the cell gets "종료 기대와 다름" and keeps its class. A cell scored on fewer
+judged rounds k than the n requested gets the display flag "판정 k/n" (§2b-11). Rounds with
+``run_error`` are counted in their own column; the cell is classified on its judged rounds.
 
 Scored cells are 일치 and 불일치 only. Two grade tables (§2b-2): a descriptive table by the
 label's ``primary`` grade (checked against the fixed priority A > D > O > I), and a claim table by
@@ -81,7 +82,8 @@ SCORED = (MATCH, MISMATCH)
 #: Out of every denominator, in the order of the line the output prints (§2b, v3.7).
 EXCLUDED = (SPLIT, REFUSAL_MATCH, BLOCKED, BLOCKED_EXPECTED, UNCERTAIN, UNFINISHED)
 TERMINATION_FLAG = "종료 기대와 다름"
-ONE_ROUND_FLAG = "판정 1라운드"  # display only (W4): determinism not checked on one round
+#: Display only (§2b-11): judged rounds k below the requested n. Class, score and denominator stay.
+PARTIAL_ROUNDS_FLAG = "판정 {k}/{n}"
 DESCRIPTIVE_FOOTNOTE = (
     "[A] 열은 주 근거가 A인 칸이다. A를 다른 근거와 함께 가진 칸은 그 주 등급 열에 있다."
 )
@@ -320,8 +322,8 @@ def build_table(
         label, summary = labels[key], summaries.get(key)
         cls, flags = classify(label, summary)
         judged = summary.judged if summary else []
-        if len(judged) == 1:
-            flags = [*flags, ONE_ROUND_FLAG]
+        if summary is not None and judged and len(judged) < summary.rounds_requested:
+            flags = [*flags, PARTIAL_ROUNDS_FLAG.format(k=len(judged), n=summary.rounds_requested)]
         rows.append(
             {
                 "fixture": key[0],

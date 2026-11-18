@@ -131,7 +131,7 @@ raw experiment output → validated summary → finding → 이 매핑 → Capab
 
 | 행 | 셀 | engine | seed 블록 | 상태 | 도달 k/n · replay · 포화/candidate |
 | --- | --- | --- | --- | --- | --- |
-| X-Q1 | 7.5.23 v1 (Q1) | 5cc002b | 51600번대 9 seed | 채움 대기(HOST3 종료표) | 누적 85 distinct(개별 35), 외부변화 0, 포화 발동 [0,0,0]; number-check PASS |
+| X-Q1 | 7.5.23 v1 (Q1, 제품 explore 기본) | 5cc002b | 51601–51610 (10 seed) | 채움(2026-11-18 닫음, 포화 규칙) | 20,000 run, 위반 0(C0/C1/C2), success/rejected/failed 12724/7188/88, unjudged 95(0.475%); 누적 85 distinct(개별 35, 마지막 새 키 51602), funnel 외부변화 0; 포화 [0,0,0] 발동; **number-check PASS**(표 sha 345b250f, raw 92/92 OK sha 5f94e551) |
 | X-517-7.5.7-v2 | 7.5.7 v2 | e1098d6 | 56601–56610 | 대기(실행 전) | — |
 | X-517-7.5.7-v1 | 7.5.7 v1 | e1098d6 | 56611–56620 | 대기(실행 전) | — |
 | X-517-7.5.8-v2 | 7.5.8 v2 | e1098d6 | 56621–56630 | 대기(실행 전) | — |

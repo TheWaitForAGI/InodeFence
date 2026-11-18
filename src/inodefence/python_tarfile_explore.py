@@ -44,6 +44,7 @@ from inodefence.model import ArchiveCase, EffectRunResult, ExecutionStatus
 from inodefence.mutator import MutationPolicy
 from inodefence.mutator.policy import SEED_CORPUS
 from inodefence.runtime import SentinelSpec
+from inodefence.targets.identity_schedule import apply_identity_schedule, finish_identity_schedule
 from inodefence.targets.python_tarfile_contained import (
     PythonTarfileContainedTarget,
     worker_reported_status,
@@ -169,8 +170,12 @@ def python_tarfile_exploration_report(
     allow_fully_trusted: bool = False,
     step_sink: Callable[[dict[str, object]], None] | None = None,
     requested_spec: str | None = None,
+    identity_check_every: int | None = None,
 ) -> dict[str, Any]:
     """Run the shared effect loop on one prepared python runtime image and one filter.
+
+    ``identity_check_every`` (FAST exploration only, #536): probe the image identity every N cases
+    and at the end instead of before every case; ``None`` keeps the per-case probe (STRICT).
 
     A mutation policy bound to a seed corpus other than the registered one (v2.1
     ``minimal-empty-reg-v1``) is refused before the target is bound: its empty-archive seed is
@@ -191,6 +196,7 @@ def python_tarfile_exploration_report(
     target = PythonTarfileContainedTarget.bind(
         backend, image_id, extraction_filter, expected_python=expected_python
     )
+    target, schedule = apply_identity_schedule(target, identity_check_every)
     config = EffectCampaignConfig(
         random_seed=seed,
         execution_budget=budget,
@@ -225,6 +231,7 @@ def python_tarfile_exploration_report(
 
     started = perf_counter()
     result = run_effect_campaign(minimal_seed_corpus(), produce, config, on_step=record_step)
+    identity_record = finish_identity_schedule(target, schedule)  # FAST: mismatch raises
     total = perf_counter() - started
     undetermined = sum(1 for record in case_records if record["outcome"] == "run_error")
     report = effect_campaign_report(result, "native-python-tarfile-container")
@@ -255,4 +262,5 @@ def python_tarfile_exploration_report(
         undetermined_steps=undetermined,
         all_undetermined=bool(case_records) and undetermined == len(case_records),
     )
+    report.update(identity_record)
     return report

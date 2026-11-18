@@ -330,15 +330,15 @@ class OrasGoEffectCampaignResult:
         return any(step.decision.contract_violated for step in self.steps)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class OrasGoLightResult(LightCampaignResult):
     """A non-retaining (or early-stopped) oras-go campaign: the common aggregate plus config,
     seeds, final stats and the hit flag for the report. Still a :class:`LightCampaignResult`;
     the per-step records are streamed to ``on_step`` (:class:`OrasGoReportCollector`, #542)."""
 
-    config: OrasGoEffectCampaignConfig | None = None
+    config: OrasGoEffectCampaignConfig
     initial_case_ids: tuple[str, ...] = ()
-    final_stats: OrasGoEffectStats | None = None
+    final_stats: OrasGoEffectStats
     discovered_violation: bool = False
 
 
@@ -389,7 +389,7 @@ def run_oras_go_effect_campaign(
     on_step: OrasGoStepObserver | None = None,
     *,
     hooks: CampaignHooks,
-) -> OrasGoEffectCampaignResult | LightCampaignResult: ...
+) -> OrasGoEffectCampaignResult | OrasGoLightResult: ...
 
 
 def run_oras_go_effect_campaign(
@@ -398,7 +398,7 @@ def run_oras_go_effect_campaign(
     config: OrasGoEffectCampaignConfig,
     on_step: OrasGoStepObserver | None = None,
     hooks: CampaignHooks | None = None,
-) -> OrasGoEffectCampaignResult | LightCampaignResult:
+) -> OrasGoEffectCampaignResult | OrasGoLightResult:
     """Drive the generic fuzz loop over a real-oras-go producer; self-discover C0/C1/C2 hits.
 
     ``on_step`` receives each completed step right after feedback and scheduler bookkeeping, so a
@@ -629,7 +629,8 @@ class OrasGoReportCollector:
     def add(self, step: OrasGoEffectStep) -> None:
         self.steps.append(oras_go_step_record(step))
 
-    def report(self, result: OrasGoLightResult) -> dict[str, object]:
+    def report(self, result: OrasGoLightResult | OrasGoEffectCampaignResult) -> dict[str, object]:
+        """The report for a non-retaining run; a retained result is refused."""
         if not isinstance(result, OrasGoLightResult):
             raise ValueError("collector report requires an OrasGoLightResult")
         if result.config is None or result.final_stats is None:

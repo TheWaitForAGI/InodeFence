@@ -121,6 +121,7 @@ DEMO_MODES = (
     ORAS_GO_CAMPAIGN_MODE,
     PYTHON_TARFILE_CAMPAIGN_MODE,
 )
+UNCAPPED_BUDGET_MODES = (EXPLORE_DEMO_MODE, DECOMPRESS_CAMPAIGN_MODE, ORAS_GO_CAMPAIGN_MODE)  # #542
 PYTHON_TARFILE_FILTERS = ("data", "fully_trusted")
 HISTORICAL_LABEL = "demo run"
 EXPLORATION_LABEL = "exploratory demo run"
@@ -364,7 +365,7 @@ def check_demo_arguments(parser: argparse.ArgumentParser, args: argparse.Namespa
         # not grow with the run count, and a long single campaign is the point. Every other mode
         # (demo, historical, qualification) keeps the cap so a bounded run cannot be asked for an
         # unbounded one by mistake. This is the only budget rule the explore mode relaxes.
-        if args.mode != EXPLORE_DEMO_MODE and args.budget > MAX_NATIVE_BUDGET:
+        if args.mode not in UNCAPPED_BUDGET_MODES and args.budget > MAX_NATIVE_BUDGET:
             parser.error(f"effect demo budget must be in 1..{MAX_NATIVE_BUDGET}")
     tar_version = getattr(args, "tar_version", None)
     if tar_version is not None and args.mode not in (HISTORICAL_DEMO_MODE, EXPLORE_DEMO_MODE):

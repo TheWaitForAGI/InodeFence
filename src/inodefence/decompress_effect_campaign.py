@@ -399,7 +399,7 @@ class DecompressEffectCampaignResult:
         return any(step.decision.contract_violated for step in self.steps)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class DecompressLightResult(LightCampaignResult):
     """A non-retaining (or early-stopped) decompress campaign: the common aggregate plus what the
     report needs besides the per-step records -- config, seeds, final stats and the hit flag.
@@ -408,9 +408,9 @@ class DecompressLightResult(LightCampaignResult):
     streamed to ``on_step`` (see :class:`DecompressReportCollector`), never kept here (#542).
     """
 
-    config: DecompressEffectCampaignConfig | None = None
+    config: DecompressEffectCampaignConfig
     initial_case_ids: tuple[str, ...] = ()
-    final_stats: DecompressEffectStats | None = None
+    final_stats: DecompressEffectStats
     discovered_violation: bool = False
 
 
@@ -461,7 +461,7 @@ def run_decompress_effect_campaign(
     on_step: DecompressStepObserver | None = None,
     *,
     hooks: CampaignHooks,
-) -> DecompressEffectCampaignResult | LightCampaignResult: ...
+) -> DecompressEffectCampaignResult | DecompressLightResult: ...
 
 
 def run_decompress_effect_campaign(
@@ -470,7 +470,7 @@ def run_decompress_effect_campaign(
     config: DecompressEffectCampaignConfig,
     on_step: DecompressStepObserver | None = None,
     hooks: CampaignHooks | None = None,
-) -> DecompressEffectCampaignResult | LightCampaignResult:
+) -> DecompressEffectCampaignResult | DecompressLightResult:
     """Drive the generic fuzz loop over a real-decompress producer; self-discover C0/C1/C2 hits.
 
     ``on_step`` receives each completed step right after feedback and scheduler bookkeeping, so a
@@ -715,7 +715,10 @@ class DecompressReportCollector:
         if step.decision.contract_violated:
             self.violation_inputs.append(_violation_input(step))
 
-    def report(self, result: DecompressLightResult) -> dict[str, object]:
+    def report(
+        self, result: DecompressLightResult | DecompressEffectCampaignResult
+    ) -> dict[str, object]:
+        """The report for a non-retaining run; a retained result is refused."""
         if not isinstance(result, DecompressLightResult):
             raise ValueError("collector report requires a DecompressLightResult")
         if result.config is None or result.final_stats is None:

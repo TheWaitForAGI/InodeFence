@@ -226,6 +226,8 @@ def test_fast_identity_schedule_same_steps_fewer_probes_and_recorded() -> None:
     assert "identity_checks" not in strict
     record = fast.pop("identity_checks")
     assert record["interval"] == 3 and record["end_checks"] == 1
+    assert record["artifact_identity_basis"] == "campaign-probes"
+    assert record["per_case_identity_check"] is None  # no per-case observation on python-tarfile
     for key in ("case_records", "steps", "retained_case_ids"):
         assert fast.get(key) == strict.get(key)
 

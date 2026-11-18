@@ -12,7 +12,7 @@ from dataclasses import field as dataclass_field
 from enum import StrEnum
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar
 
 from inodefence.execution.base import ContainerOutcome, ContainerRequest, ExecutionBackend
 from inodefence.model import (
@@ -86,6 +86,9 @@ class NativeEffectCapture:
 @dataclass(frozen=True, slots=True)
 class NodeTarEffectTarget:
     """Pinned contained invocation for the v2 node-tar effect worker."""
+
+    #: The worker recomputes and checks the six source hashes in the archive container (exit 3).
+    PER_CASE_IDENTITY_CHECK: ClassVar[str] = "in-container-source-hashes"
 
     backend: ExecutionBackend
     image_id: str

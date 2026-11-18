@@ -248,6 +248,10 @@ def test_helpers_leave_strict_untouched_and_report_fast(sandbox) -> None:
     _prepare_cases(fast, 6, sandbox)
     record = finish_identity_schedule(fast, schedule)
     assert record["identity_checks"]["total_checks"] == 1 + 2 + 1
+    # Skipped cases are covered by the campaign probes, never reported as observed per case;
+    # node-tar names its real per-case check, the other targets have none.
+    assert record["identity_checks"]["artifact_identity_basis"] == "campaign-probes"
+    assert record["identity_checks"]["per_case_identity_check"] == "in-container-source-hashes"
     backend.drift("unpack_sha256")
     with pytest.raises(RuntimeError):
         finish_identity_schedule(fast, schedule)

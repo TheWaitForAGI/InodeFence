@@ -85,6 +85,7 @@ CLI는 `python -m inodefence.drivers.run_target`(verify)·`run_target_explore`·
 | G 분석·보고·증거 | 동결 | `analyze_concurrency_benchmark`, `analyze_exp0`, `analyze_hazard_pilot`, `analyze_m3_3_control`, `analyze_m4_5_selfdiscover`, `analyze_m4_5_unified`, `analyze_m4_7_oras_go_selfdiscover`, `analyze_node_causal_effects`, `analyze_node_internal_completion`, `compare_cell_paths`, `compare_pilot_rerun_paths`, `gen_exp3_tables`, `gen_table_m2`, `gen_table_m3`, `regenerate_paper_artifacts`, `check_evidence_chain`, `make_raw_manifest`, `replay_report` | experiments/·paper/ 명령 참조, holdout 도구 또는 그 import 대상(compare_cell_paths ← merge_host_indexes), `regenerate_paper_artifacts`의 생성기 경로 목록, `make check`(evidence-chain)·Makefile 호출 중 하나 이상에 걸린다 |
 | H 개발 | 동결 | `check_dev_env`, `generate_tar_fixtures` | AGENTS.md·experiments/가 명령으로 부른다. generate_tar_fixtures는 oracle_fixture_check 등 동결 도구가 import한다 |
 | I 호스트 운영 | 동결 | `check_linux_isolation_support` | experiments/ 요약이 명령으로 부른다 |
+| J FAST 수락 비교 | 수용 시험 | `compare_fast_strict` | #536 FAST 방안 1의 수락 비교 도구다. 규칙상 `analysis/` 대상이지만, W3 설계 문서·W1 실행 계획·QA 판정 코멘트와 그 Drive 사본이 이 경로와 도구 SHA `f523f63`을 기록한 채 수용 실행에 들어가므로 옮기지 않는다. 재배치는 #501의 `scripts/` 재배치 때 함께 한다 |
 
 ## 입력
 

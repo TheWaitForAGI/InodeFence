@@ -47,7 +47,7 @@ object identity(§2.1)와 보호된 외부 sentinel에 대한 external effect(§
 **target-agnostic boundary-attempt 신호**가 effect key에 추가된다("extraction root
 밖에 새 네임스페이스 객체/identity 관계가 생기려는 시도"). 거부된 외부-하드링크 시도도 valid
 trace로 관찰(producer abort-drain)해 이 키로 기록한다.
-sentinel 경로·CVE를 feedback에 심지 않으며, EXTERNAL 판정은 region 기준 target-agnostic이다. 이
+sentinel 경로·CVE를 feedback에 심지 않으며, EXTERNAL 판정은 region 기준 target-agnostic이다. S-u의 effect 키에는 영향 경로가 보호 대상이며 추출 루트 밖인지를 나타내는 플래그가 들어간다(경로 이름은 넣지 않는다). 플래그는 관찰된 영향 경로 가운데 하나라도 실행 전 스냅숏의 보호 경로 목록에 있고 추출 루트 밖이면 참이다. 이 키는 모든 arm의 관찰에서 계산·기록되지만 보존 판단에는 S-u만 쓴다(D는 구조 커버리지 특징, R은 보존 없음) [C-DESIGN]. 이
 신호는 M1 경로에 additive로 들어가며 기존 C0/C1/C2 판정·fixture 경로를 바꾸지 않는다. 이 boundary 키는 특정 패턴이나
 경로를 담지 않지만 결함 계열 수준의 사전 지식이다(exp2-v1 §6) [C-DESIGN].
 

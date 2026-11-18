@@ -67,6 +67,9 @@ REFUSED = 3
 #: ``explore --profile`` choices, the default first (``drivers.runtime.policy.PROFILES``; a test
 #: keeps the two in step -- the drivers are not imported here).
 RUNTIME_PROFILES = ("strict", "fast")
+#: ``explore --mutation-policy`` choices (``drivers.run_target.EXPLORE_MUTATION_POLICIES``; a test
+#: keeps the two in step). Exploratory and node-tar only; the driver refuses other targets.
+EXPLORE_MUTATION_POLICIES = ("uniform-b-grammar-v2-freeze-3-fixed-baseline-v1",)
 
 
 def cmd_targets(args: argparse.Namespace) -> int:
@@ -582,6 +585,8 @@ def cmd_explore(args: argparse.Namespace) -> int:
         argv.append("--auto-prepare")
     if args.image_tag_suffix:
         argv += ["--image-tag-suffix", args.image_tag_suffix]
+    if args.mutation_policy is not None:  # nothing forwarded without the option
+        argv += ["--mutation-policy", args.mutation_policy]
     if args.dry_run:
         argv.append("--dry-run")
     # Terminal output (drivers.progress): progress lines by default, --quiet none, --verbose the
@@ -803,6 +808,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="required for a real run: reuse the prepared image or build it with Docker",
     )
     explore.add_argument("--image-tag-suffix", default="", help=_SUFFIX_HELP)
+    explore.add_argument(
+        "--mutation-policy",
+        choices=EXPLORE_MUTATION_POLICIES,
+        default=None,
+        help="node-tar only, exploratory: the v2 grammar mutation policy instead of the default; "
+        "recorded in result.json (other targets: refused, exit 3)",
+    )
     explore.add_argument(
         "--out",
         type=Path,

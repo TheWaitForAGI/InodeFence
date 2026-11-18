@@ -28,12 +28,14 @@ from inodefence.drivers.explore_result import (
 from inodefence.drivers.launcher import launcher_path, run_launcher
 from inodefence.drivers.repo import code_checkout
 from inodefence.drivers.run_target import (
+    MUTATION_POLICY_ENV,
     ExploreOptions,
     ExploreOutcome,
     PreparedTargetImage,
     engine_provenance,
 )
 from inodefence.drivers.runtime.hooks import LaunchArtifacts
+from inodefence.evaluation.rds import VOCABULARY_MUTATION_POLICY, VocabularyMode
 from inodefence.evaluation.rds_preregistration import parse_preregistration
 from inodefence.generator import minimal_seed_corpus
 from inodefence.live_exploration import LivePuller
@@ -99,6 +101,7 @@ def run_controller(
     budget: int,
     seed: int,
     python: str,
+    mutation_policy: str | None = None,
     runner=subprocess.run,
     session=None,
 ) -> Path:
@@ -107,6 +110,10 @@ def run_controller(
     The image is already prepared host-side; the script only builds the controller/helper images,
     creates the disposable controller, and drives ``effect-demo-explore``. The target containers'
     isolation is the controller's, unchanged.
+
+    ``mutation_policy`` (``--mutation-policy``) is the only way a policy reaches the launcher: the
+    caller's own ``DEMO_MUTATION_POLICY`` is not passed through, so a run without the option is
+    the default run whatever the environment holds.
     """
     sentinel_seed, sentinel_count, observer_policy = registered_sandbox_defaults()
     # The engine revision is read host-side (the controller's read-only repo mount cannot run git)
@@ -142,6 +149,9 @@ def run_controller(
         # reaches the host reliably instead of a post-removal pull failing with "No such container".
         "DEMO_HOST_LIVE_DIR": str(host_live_dir),
     }
+    env.pop(MUTATION_POLICY_ENV, None)
+    if mutation_policy is not None:
+        env[MUTATION_POLICY_ENV] = mutation_policy
     # Pull the controller's live folder to the host on a timer while the loop runs, so progress and
     # violation cases appear during the run (and survive a forced stop). The controller name matches
     # the smoke script's ``inodefence-local-controller[-RUN_ID]``; a pull before it exists fails
@@ -170,6 +180,24 @@ def run_controller(
     return report
 
 
+def check_ran_mutation_policy(report: dict, requested: str) -> None:
+    """The loop report must show it ran ``requested`` (its ``vocabulary_mode``), or no result.
+
+    The result records the policy only after this check, so ``campaign.mutation_policy`` is what
+    the loop ran, not just what was asked for. A mismatch is an ERROR (exit 2): the run happened.
+    """
+    mode = report.get("vocabulary_mode")
+    try:
+        ran = VOCABULARY_MUTATION_POLICY[VocabularyMode(mode)].value
+    except (ValueError, KeyError):
+        ran = None
+    if ran != requested:
+        raise RuntimeError(
+            f"the loop ran vocabulary mode {mode!r} (mutation policy {ran!r}), requested "
+            f"{requested!r}; no result written"
+        )
+
+
 def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOutcome:
     """``TargetAdapter.explore`` for node-tar: run the loop in the controller, write the result."""
     if options.budget < MIN_BUDGET:
@@ -187,6 +215,7 @@ def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOu
         budget=options.budget,
         seed=options.seed,
         python=python,
+        mutation_policy=options.mutation_policy,
         session=getattr(options, "runtime", None),
     )
     report = json.loads(report_path.read_text(encoding="utf-8"))
@@ -194,6 +223,8 @@ def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOu
         aborted = report["aborted"]
         reason = aborted.get("reason") if isinstance(aborted, dict) else aborted
         raise RuntimeError(f"exploration aborted: {reason}")
+    if options.mutation_policy is not None:
+        check_ran_mutation_policy(report, options.mutation_policy)
     # The loop wrote each violation to this folder as it happened (pulled to the host during the
     # run); for a streaming report the result reads its violating cases and inputs from there, not
     # from the report, so a large or force-stopped run keeps every saved violation. Same path as
@@ -206,6 +237,7 @@ def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOu
         budget=options.budget,
         max_unjudged_ratio=options.max_unjudged_ratio,
         live_dir=host_live_dir if host_live_dir.is_dir() else None,
+        mutation_policy=options.mutation_policy,
     )
     result_path = write_result(
         report_path.parent / f"{run_id}-result", result, tar_files, report=report_path

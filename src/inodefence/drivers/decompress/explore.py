@@ -43,6 +43,7 @@ from inodefence.drivers.decompress import adapter as dt
 from inodefence.drivers.launcher import launcher_path, run_launcher
 from inodefence.drivers.repo import code_checkout, require_repository_or_exit
 from inodefence.drivers.run_target import (
+    MUTATION_POLICY_ENV,
     ExploreOptions,
     ExploreOutcome,
     PreparedTargetImage,
@@ -343,8 +344,9 @@ def run_controller(
         "DEMO_SEED": str(seed),
         "DEMO_BUDGET": str(budget),
     }
+    env.pop(MUTATION_POLICY_ENV, None)  # never the caller's own value
     if mutation_policy:
-        env["DEMO_MUTATION_POLICY"] = mutation_policy
+        env[MUTATION_POLICY_ENV] = mutation_policy
     if search_policy:
         env["DEMO_POLICY"] = search_policy
     path = controller_report_path(evidence_dir, run_id)

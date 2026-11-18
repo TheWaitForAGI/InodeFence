@@ -266,6 +266,15 @@ class CampaignInfo:
     #: and ``dropped = total - retained`` the ones the per-fingerprint cap held back. ``None`` on a
     #: non-streaming or no-violation run, so older/fixture results serialize byte-identically.
     violation_capture: dict[str, Any] | None = None
+    #: v2 grammar exploration only: runs whose child the TAR builder could not represent, so
+    #: nothing was extracted (a budget unit, never un-judged; D060). Counted in ``runs_executed``
+    #: and left out of the un-judged ratio's denominator (see
+    #: :attr:`TargetResult.extraction_runs`). ``None`` (the key absent) when there were none, so
+    #: every other result serializes byte-identically.
+    build_invalid: int | None = None
+    #: The mutation policy an exploration ran when it was chosen with ``--mutation-policy``
+    #: (checked against the loop's report); ``None`` (the key absent) for the target's default.
+    mutation_policy: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -340,12 +349,28 @@ class TargetResult:
         return {name: sum(case.termination == name for case in self.cases) for name in TERMINATIONS}
 
     @property
+    def build_invalid(self) -> int:
+        """Runs with no extraction because the builder refused the child (v2 only; else 0)."""
+        if self.campaign is not None and self.campaign.build_invalid is not None:
+            return self.campaign.build_invalid
+        return 0
+
+    @property
+    def extraction_runs(self) -> int:
+        """Runs that reached the extractor: ``executed`` minus build-invalid runs."""
+        return self.executed - self.build_invalid
+
+    @property
     def unjudged_ratio(self) -> float:
-        """Fraction of executions that went un-judged, to 6 decimals; ``0.0`` when none ran."""
-        executed = self.executed
-        if executed == 0:
+        """Fraction of extraction runs that went un-judged, to 6 decimals; ``0.0`` when none ran.
+
+        The denominator leaves out build-invalid runs (nothing was extracted, so there was
+        nothing to judge); without them it is ``executed``, as before.
+        """
+        extracted = self.extraction_runs
+        if extracted == 0:
             return 0.0
-        return round(self.unjudged_steps / executed, 6)
+        return round(self.unjudged_steps / extracted, 6)
 
     @property
     def verdict(self) -> Verdict:
@@ -354,8 +379,8 @@ class TargetResult:
         keeps its rule unchanged: any run error is ERROR. Then any violation is FAIL, else PASS --
         except that a recorded benign control that did not extract makes that PASS an ERROR."""
         if self.mode is ResultMode.CAMPAIGN:
-            executed = self.executed
-            all_unjudged = executed > 0 and self.unjudged_steps == executed
+            extracted = self.extraction_runs
+            all_unjudged = extracted > 0 and self.unjudged_steps == extracted
             max_ratio = self.campaign.max_unjudged_ratio if self.campaign is not None else None
             over_ratio = max_ratio is not None and self.unjudged_ratio > max_ratio
             if all_unjudged or over_ratio:
@@ -437,6 +462,11 @@ class TargetResult:
             # serialize byte-identically.
             if self.campaign.violation_capture is not None:
                 data["campaign"]["violation_capture"] = self.campaign.violation_capture
+            # Likewise only when set: v1 and default-policy results are byte-identical.
+            if self.campaign.build_invalid is not None:
+                data["campaign"]["build_invalid"] = self.campaign.build_invalid
+            if self.campaign.mutation_policy is not None:
+                data["campaign"]["mutation_policy"] = self.campaign.mutation_policy
         if self.benign_control is not None:
             b = self.benign_control
             data["benign_control"] = {
@@ -567,10 +597,27 @@ def _validate_campaign(result: TargetResult) -> None:
         type(campaign.errors) is not int or not 0 <= campaign.errors <= executed
     ):
         raise TargetResultError("campaign.errors must be an integer in 0..runs")
+    build_invalid = campaign.build_invalid
+    if build_invalid is not None and (
+        type(build_invalid) is not int or not 1 <= build_invalid <= executed
+    ):
+        raise TargetResultError(
+            "campaign.build_invalid must be absent or an integer in 1..runs "
+            "(0 is written as absent)"
+        )
+    extracted = result.extraction_runs
+    mutation_policy = campaign.mutation_policy
+    if mutation_policy is not None and (
+        not isinstance(mutation_policy, str) or not mutation_policy
+    ):
+        raise TargetResultError("campaign.mutation_policy must be absent or a non-empty string")
     stored = campaign.unjudged_steps
     if stored is not None:
-        if type(stored) is not int or not 0 <= stored <= executed:
-            raise TargetResultError("campaign.unjudged_steps must be null or an integer in 0..runs")
+        if type(stored) is not int or not 0 <= stored <= extracted:
+            raise TargetResultError(
+                "campaign.unjudged_steps must be null or an integer in 0..runs "
+                "(build-invalid runs excluded)"
+            )
         listed_unjudged = sum(case.is_unjudged for case in result.cases)
         if stored < listed_unjudged:
             raise TargetResultError(
@@ -588,8 +635,10 @@ def _validate_campaign(result: TargetResult) -> None:
             raise TargetResultError(f"campaign.terminations keys must be from {TERMINATIONS}")
         if not all(type(n) is int and n >= 0 for n in terminations.values()):
             raise TargetResultError("campaign.terminations counts must be non-negative integers")
-        if sum(terminations.values()) > executed:
-            raise TargetResultError("campaign.terminations add up to more than the runs")
+        if sum(terminations.values()) > extracted:
+            raise TargetResultError(
+                "campaign.terminations add up to more than the runs (build-invalid runs excluded)"
+            )
         for name in TERMINATIONS:
             listed = sum(case.termination == name for case in result.cases)
             if terminations.get(name, 0) < listed:
@@ -671,6 +720,8 @@ _CAMPAIGN_OPTIONAL = {
     "unjudged_ratio",
     "terminations",
     "violation_capture",
+    "build_invalid",
+    "mutation_policy",
 }
 
 _BENIGN_CONTROL_KEYS = {"extracted", "expected_path", "tar_path", "tar_sha256", "detail"}
@@ -756,6 +807,8 @@ def from_json_dict(data: object) -> TargetResult:
             max_unjudged_ratio=campaign_block.get("max_unjudged_ratio"),
             terminations=campaign_block.get("terminations"),
             violation_capture=campaign_block.get("violation_capture"),
+            build_invalid=campaign_block.get("build_invalid"),
+            mutation_policy=campaign_block.get("mutation_policy"),
         )
     benign_control = None
     if "benign_control" in top:

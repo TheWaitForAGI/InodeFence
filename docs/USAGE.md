@@ -203,6 +203,14 @@ seed입니다. 탐색 정책·sentinel 구성은 등록 실험 설정을 기본�
 `--profile fast`(기본 `strict`)는 실행마다 하는 공용 이미지 재빌드만 건너뛰는 선택 옵션이며, 조건·기록·측정값은
 [한계와 주의](#한계와-주의)의 "실행 프로필"에 있습니다.
 
+**변이 정책 선택(다음 버전, 탐색용).** `--mutation-policy uniform-b-grammar-v2-freeze-3-fixed-baseline-v1`은
+node-tar 탐색에서만 기본 변이 정책 대신 v2 문법 정책(탈출 깊이 0..3)을 씁니다. 받는 값은 이것 하나이고, 다른 대상에
+주면 아무것도 준비·실행하지 않고 종료 3으로 거부합니다. 옵션을 주면 `result.json`의 `campaign.mutation_policy`에 정책이
+적힙니다(루프 보고서가 그 정책을 돌렸는지 확인한 뒤; 다르면 결과 없이 종료 2). v2 정책은 TAR로 만들 수 없는 입력을 낼 수
+있는데, 그런 실행(build-invalid)은 예산 1단위를 쓰고 추출하지 않으며 미판정이 아닙니다. 그 수는 `campaign.build_invalid`에
+적히고(0이면 키 없음) 미판정 비율의 분모에서 빠집니다. 루프 보고서는 스키마 5입니다. 옵션이 없으면 실행과 `result.json`은
+전과 같습니다. 호출자 환경의 `DEMO_MUTATION_POLICY`는 어느 대상의 탐색에도 전달되지 않습니다.
+
 node-tar 탐색(`--version 7.5.23 --seed 123 --budget 20`, engineering smoke 2026-11-16)에서 실제로 생긴 구조:
 
 ```text

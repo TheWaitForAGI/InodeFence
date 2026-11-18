@@ -17,7 +17,7 @@ from inodefence.drivers.run_target import (
     PreparedTargetImage,
     engine_provenance,
 )
-from inodefence.live_exploration import list_violation_cases
+from inodefence.live_exploration import list_violation_cases, read_progress
 from inodefence.target_result import (
     JUDGED,
     CampaignInfo,
@@ -39,6 +39,7 @@ def build_campaign_result(
     budget: int,
     max_unjudged_ratio: float | None = DEFAULT_MAX_UNJUDGED_RATIO,
     live_dir: Path | None = None,
+    mutation_policy: str | None = None,
 ) -> tuple[TargetResult, dict[str, bytes]]:
     """Convert the loop report into the common campaign result, plus the violating TARs to save.
 
@@ -56,6 +57,13 @@ def build_campaign_result(
     dropped at the per-fingerprint cap) then rides in the campaign block. Without ``live_dir``
     (non-streaming, other targets, or a recorder-less test) the report's own
     ``violation_inputs`` are used, unchanged.
+
+    Build-invalid runs (v2 grammar policy only: the builder could not represent the child, so
+    nothing was extracted) are counted in the live folder's final ``progress.json`` -- the loop
+    report's aggregate does not carry them. They become ``campaign.build_invalid`` when the
+    snapshot covers the same runs as the aggregate, and stay absent otherwise (and always for a
+    run without any, so a v1 result is unchanged). ``mutation_policy`` is recorded as given; the
+    caller passes it only after checking the loop ran it.
     """
     aggregate = report.get("aggregate")
     disk_sourced = aggregate is not None and live_dir is not None
@@ -131,6 +139,8 @@ def build_campaign_result(
             terminations=aggregate.get("terminations"),
             max_unjudged_ratio=max_unjudged_ratio,
             violation_capture=report.get("violation_capture"),
+            build_invalid=_build_invalid_runs(live_dir, aggregate) if disk_sourced else None,
+            mutation_policy=mutation_policy,
         )
     else:
         campaign = CampaignInfo(
@@ -138,6 +148,7 @@ def build_campaign_result(
             budget=budget,
             runs_to_first_violation=first_violation,
             max_unjudged_ratio=max_unjudged_ratio,
+            mutation_policy=mutation_policy,
         )
     result = TargetResult(
         target=prepared.target,
@@ -150,6 +161,20 @@ def build_campaign_result(
         campaign=campaign,
     )
     return result, tar_files
+
+
+def _build_invalid_runs(live_dir: Path | None, aggregate: dict) -> int | None:
+    """Build-invalid runs from the live folder's final snapshot, or ``None`` (none, or unknown).
+
+    Read only when the snapshot's ``runs_executed`` equals the aggregate's, so a stale snapshot
+    never gives a count for a different number of runs.
+    """
+    progress = read_progress(live_dir) if live_dir is not None else None
+    if progress is None or progress.get("runs_executed") != aggregate.get("runs_executed"):
+        return None
+    block = progress.get("build_invalid")
+    steps = block.get("steps") if isinstance(block, dict) else None
+    return steps if type(steps) is int and steps > 0 else None
 
 
 class ResultExistsError(FileExistsError, ValueError):

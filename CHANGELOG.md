@@ -5,6 +5,25 @@
 실험 결과와 호스트별 반복 로그 전문은 싣지 않고, 각 버전의 검증은 요약과 출처만 둔다. 실행별 기록은
 [docs/LOG.md](docs/LOG.md)·[docs/STATUS.md](docs/STATUS.md)·PR 본문에 있다.
 
+## [Unreleased]
+
+### 추가된 사용자 기능
+- `inodefence explore --mutation-policy uniform-b-grammar-v2-freeze-3-fixed-baseline-v1`: node-tar 탐색에서 v2 문법
+  변이 정책(탐색용)을 고른다. 받는 값은 이것 하나이고(v2.1 seed 코퍼스 변형은 열지 않음), 다른 대상은 실행 전 종료 3으로
+  거부한다. 옵션을 주면 `result.json`의 `campaign.mutation_policy`에 적는다(루프 보고서가 그 정책을 돌렸는지 확인한 뒤).
+  기본값은 바뀌지 않는다. [USAGE](docs/USAGE.md#탐색-돌리기)
+- `result.json` 선택 키 `campaign.build_invalid`: TAR로 만들 수 없어 추출하지 않은 실행 수(v2 정책에서만, 0이면 키 없음).
+  `summary.md`에 한 줄로 보인다.
+
+### 변경된 동작과 호환성
+- 탐색 드라이버(네 대상 모두)가 호출자 환경의 `DEMO_MUTATION_POLICY`를 런처에 넘기지 않는다. 전에는 node-tar와
+  python-tarfile 탐색에서 이 변수가 그대로 전달돼, 문서에 없는 방법으로 변이 정책이 바뀌고 `result.json`에는 남지 않았다.
+  정책을 바꾸려면 `--mutation-policy`를 쓴다.
+- 미판정 비율(`campaign.unjudged_ratio`)의 분모에서 build-invalid 실행을 뺀다(분모 = 실행 수 − `build_invalid`). 이 키가
+  없는 결과(기본 정책의 모든 실행과 0.2.0이 쓴 파일)는 값이 그대로다. 옵션 없는 실행의 `result.json`·`summary.md`는 0.2.0
+  뒤의 `main`(`e1098d6`)과 바이트 동일하다(`tests/test_explore_mutation_policy.py`).
+- 새 선택 키가 든 `result.json`은 이 버전 이상의 `inodefence status`·`summary`로 읽는다([호환 약속](docs/USAGE.md#호환-약속)).
+
 ## [0.2.0] — 2026-11-18
 
 첫 릴리스다. 아래 내용은 `main`에 있다(착지 [#484](https://github.com/TheWaitForAGI/InodeFence/pull/484), 그 뒤

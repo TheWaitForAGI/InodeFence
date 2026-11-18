@@ -38,7 +38,12 @@ from inodefence.drivers.explore_result import (
 )
 from inodefence.drivers.launcher import launcher_path, run_launcher
 from inodefence.drivers.repo import code_checkout
-from inodefence.drivers.run_target import ExploreOptions, ExploreOutcome, PreparedTargetImage
+from inodefence.drivers.run_target import (
+    MUTATION_POLICY_ENV,
+    ExploreOptions,
+    ExploreOutcome,
+    PreparedTargetImage,
+)
 from inodefence.drivers.runtime.hooks import LaunchArtifacts
 from inodefence.feedback import EffectSearchPolicy
 from inodefence.generator import minimal_seed_corpus
@@ -86,8 +91,9 @@ def run_controller(
         "RUN_ID": run_id,
         "PYTHON": python,
     }
+    env.pop(MUTATION_POLICY_ENV, None)  # never the caller's own value
     if mutation_policy:
-        env["DEMO_MUTATION_POLICY"] = mutation_policy
+        env[MUTATION_POLICY_ENV] = mutation_policy
     # The product always explores inside oras-go's artifact directory: without it the library
     # refuses every generated member name before extracting (see ``under_artifact_dir``).
     env["ORAS_GO_ARTIFACT_LAYOUT"] = ARTIFACT_LAYOUT

@@ -138,7 +138,8 @@ def _headline(result: TargetResult) -> str:
         )
     if result.verdict is Verdict.ERROR and result.campaign is not None:
         return (
-            f"**ERROR** — {total}건 중 {result.unjudged_steps}건에서 오라클이 평가되지 못했다"
+            f"**ERROR** — {result.extraction_runs}건 중 {result.unjudged_steps}건에서 "
+            "오라클이 평가되지 못했다"
             f"(미판정 비율 {result.unjudged_ratio}). 보지 못한 실행이 너무 많아 위반 없음으로 "
             "읽을 수 없다. 정상 거절은 판정된 실행이라 이 수에 들지 않는다"
             f"({unjudged_rule(result.target)})."
@@ -218,6 +219,11 @@ def render_summary(result: TargetResult, *, source_name: str, inputs_verified: b
         add(f"| 위반 수 | {len(result.violating_cases)}건 |")
         add(f"| 종료 상태 | {_termination_line(result)} |")
         add(f"| 추출 성공 | {result.success_runs}건 |")
+        if campaign.build_invalid is not None:  # v2 grammar policy only; absent otherwise
+            add(
+                f"| 빌드 불가(build-invalid) | {campaign.build_invalid}건 — TAR로 만들 수 없는 "
+                "입력이라 추출하지 않음(예산 1단위씩, 미판정 아님; 미판정 비율의 분모에서 뺌) |"
+            )
         add(
             f"| 미판정 실행 | {result.unjudged_steps}건 (비율 {result.unjudged_ratio}) "
             "— 오라클이 평가되지 못했거나 깨끗한 결과로 믿을 수 없는 실행(실행 기반 오류·관찰 "
@@ -228,6 +234,8 @@ def render_summary(result: TargetResult, *, source_name: str, inputs_verified: b
             add(f"| 미판정 상한 | {campaign.max_unjudged_ratio} (넘으면 판정은 ERROR) |")
         if campaign.stopped_early:
             add("| 중단 | 사람이 예산 소진 전에 멈춤 (그때까지의 결과) |")
+        if campaign.mutation_policy is not None:  # only when --mutation-policy chose it
+            add(f"| 변이 정책 | {_code(campaign.mutation_policy)} (선택한 탐색용 정책) |")
     prep = result.preparation
     if prep is not None:
         method = (

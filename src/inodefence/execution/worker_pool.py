@@ -36,7 +36,7 @@ import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
-from inodefence.effect_campaign import EffectCampaignConfig, run_effect_campaign
+from inodefence.effect_campaign import BuildInvalidStep, EffectCampaignConfig, run_effect_campaign
 from inodefence.effect_demo import EffectStepReporter
 from inodefence.evaluation.abort_classification import (
     INFRASTRUCTURE_REASONS,
@@ -436,6 +436,9 @@ def run_worker_campaign(
 
     def on_step(step: object) -> None:
         record = reporter.add(step)  # type: ignore[arg-type]
+        if isinstance(step, BuildInvalidStep):  # v2 RECORD only: nothing ran, no retries
+            steps.append(record)
+            return
         case_id = step.result.base_result.case.case_id  # type: ignore[attr-defined]
         retries = producer.retries_for(case_id)
         if retries:

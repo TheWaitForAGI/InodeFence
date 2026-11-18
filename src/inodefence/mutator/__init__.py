@@ -1,6 +1,9 @@
 """Generic ArchiveCase transformations using caller-owned random state."""
 
 from .dispatch import (
+    OPERATOR_ORDER_V1,
+    OPERATOR_ORDER_V2,
+    OPERATOR_TABLES,
     MutationAttempt,
     MutationOperatorId,
     apply_operator,
@@ -21,6 +24,9 @@ from .operators import (
 from .policy import MutationPolicy, mutate_with_policy
 
 __all__ = [
+    "OPERATOR_ORDER_V1",
+    "OPERATOR_ORDER_V2",
+    "OPERATOR_TABLES",
     "MutationPolicy",
     "MutationAttempt",
     "MutationOperatorId",

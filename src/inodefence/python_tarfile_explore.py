@@ -39,9 +39,10 @@ from inodefence.evaluation.rds import (
 )
 from inodefence.execution.base import ExecutionBackend
 from inodefence.feedback import EffectSearchPolicy
-from inodefence.generator import minimal_seed_corpus
+from inodefence.generator import SeedCorpusId, minimal_seed_corpus
 from inodefence.model import ArchiveCase, EffectRunResult, ExecutionStatus
 from inodefence.mutator import MutationPolicy
+from inodefence.mutator.policy import SEED_CORPUS
 from inodefence.runtime import SentinelSpec
 from inodefence.targets.python_tarfile_contained import (
     PythonTarfileContainedTarget,
@@ -98,6 +99,12 @@ def run_unjudged(result: EffectRunResult) -> bool:
     3. A ``rejected`` run, and a ``failed`` run whose report agrees (see
        :data:`REPORTED_FAILURE_IS_JUDGED`), stays judged; so does an empty archive (incomplete
        trace by construction, nothing to extract).
+
+    Known mismatch (#533, observed 2026-11-18 on 3.12.16 ``data``): this empty-archive exception
+    exists only here. The report's per-step ``validity``
+    (``effect_demo.observer_integrity_validity``) has no such exception and records a successful
+    empty-archive run as ``invalid`` (``observer_integrity``), because the trace reader marks a
+    zero-entry success incomplete. The exception is not widened to cover it; the fix is #533.
     """
     base = result.base_result
     status = base.execution.status
@@ -163,7 +170,19 @@ def python_tarfile_exploration_report(
     step_sink: Callable[[dict[str, object]], None] | None = None,
     requested_spec: str | None = None,
 ) -> dict[str, Any]:
-    """Run the shared effect loop on one prepared python runtime image and one filter."""
+    """Run the shared effect loop on one prepared python runtime image and one filter.
+
+    A mutation policy bound to a seed corpus other than the registered one (v2.1
+    ``minimal-empty-reg-v1``) is refused before the target is bound: its empty-archive seed is
+    recorded invalid on this target (#533; W4: not used off node-tar until fixed). The v2 policy
+    on the registered corpus is accepted as before.
+    """
+    if SEED_CORPUS.get(mutation_policy, SeedCorpusId.REGISTERED) != SeedCorpusId.REGISTERED:
+        raise ValueError(
+            f"{mutation_policy.value} binds a non-registered seed corpus; it is not supported "
+            "by the python-tarfile loop until #533 is fixed "
+            "(등록 코퍼스가 아닌 v2.1 코퍼스 정책은 이 대상 루프에서 지원하지 않는다)"
+        )
     if extraction_filter == "fully_trusted" and not allow_fully_trusted:
         raise ValueError(
             "fully_trusted exploration is held until approved; pass allow_fully_trusted=True "

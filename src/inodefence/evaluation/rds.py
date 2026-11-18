@@ -58,7 +58,7 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, fields
 from enum import StrEnum
 from types import MappingProxyType
-from typing import ClassVar
+from typing import Any, ClassVar
 
 from inodefence.campaign import CampaignOrigin
 from inodefence.effect_campaign import (
@@ -118,6 +118,10 @@ class RVariant(StrEnum):
 
     WALK = "walk"
     SEED_RESTART = "seed-restart"
+    # v2 random-chain R (D062): a seed per execution, m ~ U{1..m_max} operator attempts, no
+    # retention. CHAIN_M4 is the primary policy; CHAIN_M6 the declared sensitivity policy.
+    CHAIN_M4 = "chain-m4"
+    CHAIN_M6 = "chain-m6"
 
 
 class VocabularyMode(StrEnum):
@@ -139,6 +143,16 @@ class VocabularyMode(StrEnum):
     PROTECTED_COMPONENTS = "protected-components"
     OBSERVED_NAMES = "observed-names"
     OBSERVED_NAMES_ACCUMULATED = "observed-names-accumulated"
+    # v2 (#512, D061): the observed-names pool of OBSERVED_NAMES (fixed at the seed
+    # baseline run) over grammar `b-grammar-v2-freeze-3`. The preregistration-named
+    # report reader does not know this value and would read it as accumulated; v2
+    # reports are read with ``rds_report_v2.vocabulary_pools_from_records_v2``.
+    OBSERVED_NAMES_V2_FREEZE3 = "observed-names-b-grammar-v2-freeze-3"
+    # v2.1: OBSERVED_NAMES_V2_FREEZE3 with the seed corpus `minimal-empty-reg-v1` (bound by
+    # the mutation policy id; generator.corpora). Read like OBSERVED_NAMES_V2_FREEZE3.
+    OBSERVED_NAMES_V2_FREEZE3_MINIMAL_EMPTY_REG = (
+        "observed-names-b-grammar-v2-freeze-3-minimal-empty-reg-v1"
+    )
 
 
 VOCABULARY_MUTATION_POLICY: Mapping[VocabularyMode, MutationPolicy] = MappingProxyType(
@@ -147,6 +161,10 @@ VOCABULARY_MUTATION_POLICY: Mapping[VocabularyMode, MutationPolicy] = MappingPro
         VocabularyMode.PROTECTED_COMPONENTS: MutationPolicy.M1_PROTECTED_COMPONENTS_ESCAPE_HARDLINK,
         VocabularyMode.OBSERVED_NAMES: MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK_FIXED_BASELINE,
         VocabularyMode.OBSERVED_NAMES_ACCUMULATED: MutationPolicy.M1_STATE_AWARE_ESCAPE_HARDLINK,
+        VocabularyMode.OBSERVED_NAMES_V2_FREEZE3: MutationPolicy.V2_FREEZE3_FIXED_BASELINE,
+        VocabularyMode.OBSERVED_NAMES_V2_FREEZE3_MINIMAL_EMPTY_REG: (
+            MutationPolicy.V2_FREEZE3_FIXED_BASELINE_MINIMAL_EMPTY_REG
+        ),
     }
 )
 
@@ -154,6 +172,10 @@ _R_VARIANT_POLICY: Mapping[RVariant, EffectSearchPolicy] = MappingProxyType(
     {
         RVariant.WALK: EffectSearchPolicy.R_UNRETAINED_WALK,
         RVariant.SEED_RESTART: EffectSearchPolicy.R_UNRETAINED_SEED_RESTART,
+        # Appended (D062): existing variants keep their position, so arm_for_policy resolves
+        # every registered policy exactly as before.
+        RVariant.CHAIN_M4: EffectSearchPolicy.R_UNRETAINED_SEED_CHAIN_M4,
+        RVariant.CHAIN_M6: EffectSearchPolicy.R_UNRETAINED_SEED_CHAIN_M6,
     }
 )
 _ARM_POLICY: Mapping[RdsArm, EffectSearchPolicy] = MappingProxyType(
@@ -228,6 +250,16 @@ def _pool(observed: set[str]) -> tuple[str, ...]:
     return m1.COMPONENTS + tuple(sorted(observed))
 
 
+# Modes whose pool is fixed once from the seed baseline run's BEFORE snapshot.
+FIXED_BASELINE_MODES: frozenset[VocabularyMode] = frozenset(
+    {
+        VocabularyMode.OBSERVED_NAMES,
+        VocabularyMode.OBSERVED_NAMES_V2_FREEZE3,
+        VocabularyMode.OBSERVED_NAMES_V2_FREEZE3_MINIMAL_EMPTY_REG,
+    }
+)
+
+
 def vocabulary_pools(
     mode: VocabularyMode, steps: Sequence[EffectCampaignStep], initial_count: int
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
@@ -242,7 +274,7 @@ def vocabulary_pools(
         return m1.COMPONENTS, m1.COMPONENTS
     if mode == VocabularyMode.PROTECTED_COMPONENTS:
         return PROTECTED_COMPONENTS, PROTECTED_COMPONENTS
-    if mode == VocabularyMode.OBSERVED_NAMES:
+    if mode in FIXED_BASELINE_MODES:
         if not steps:
             return m1.COMPONENTS, m1.COMPONENTS
         fixed = _pool(_observed_name_segments(steps[0].result, before_only=True))
@@ -515,12 +547,31 @@ def run_rds_cell(
 
     try:
         campaign = run_effect_campaign(
-            initial_cases, produce_result, config.campaign_config(), collect
+            initial_cases,
+            produce_result,
+            config.campaign_config(),
+            collect,
+            # Typed consumer: build-invalid steps (v2 RECORD only) never reach ``collect``;
+            # they stay on ``campaign.build_invalid_steps``.
+            on_build_invalid=lambda _step: None,
         )
     except Exception as error:
         raise RdsCellAborted(
             config, tuple(steps), f"{type(error).__name__}: {error}", sentinel_set
         ) from error
+    if campaign.build_invalid_steps:
+        # v2 RECORD only: a build-invalid step is a budget unit the in-memory summary cannot
+        # express, and v2 analysis reads it from the record's ``outcome`` (W4). Summarize from
+        # the same records a report holds (local imports: those modules import this one).
+        from inodefence.effect_demo import effect_campaign_report
+        from inodefence.evaluation.rds_report_v2 import summarize_report_records_v2
+
+        report: dict[str, Any] = effect_campaign_report(campaign, "in-memory")
+        records: list[Mapping[str, Any]] = report["steps"]
+        summary = summarize_report_records_v2(
+            records, config, sentinel_set=sentinel_set
+        ).base.summary
+        return RdsCellResult(config, campaign, summary)
     return RdsCellResult(
         config, campaign, summarize_rds_steps(campaign.steps, config, sentinel_set=sentinel_set)
     )

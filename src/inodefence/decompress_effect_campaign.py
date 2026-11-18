@@ -61,6 +61,7 @@ from inodefence.model import (
 from inodefence.model.filesystem import Region, path_region
 from inodefence.mutation_scheduler import MutationSelection
 from inodefence.mutator import MutationAttempt, MutationPolicy, apply_operator, operator_ids
+from inodefence.mutator.policy import V2_GRAMMAR_POLICIES
 
 # Only a cleanly started run (decompress ran to a success or an explicit refusal) is an eligible
 # observation. A harness/IO failure or timeout leaves the frame and post-state only partially
@@ -87,8 +88,21 @@ class DecompressEffectCampaignConfig:
             raise ValueError("execution_budget must be a positive integer")
         if not isinstance(self.mutation_policy, MutationPolicy):
             raise ValueError("mutation_policy must be a supported MutationPolicy")
+        if self.mutation_policy in V2_GRAMMAR_POLICIES:
+            raise ValueError(
+                "v2 grammar mutation policies are not supported by the decompress campaign loop "
+                "(v2 문법 정책은 이 대상 루프에서 지원하지 않는다)"
+            )
         if not isinstance(self.search_policy, EffectSearchPolicy):
             raise ValueError("search_policy must be a supported EffectSearchPolicy")
+        if self.search_policy in (
+            EffectSearchPolicy.R_UNRETAINED_SEED_CHAIN_M4,
+            EffectSearchPolicy.R_UNRETAINED_SEED_CHAIN_M6,
+        ):
+            raise ValueError(
+                "v2 chain search policies are not supported by the decompress campaign loop "
+                "(v2 사슬 정책은 이 대상 루프에서 지원하지 않는다)"
+            )
         if type(self.adaptive_scheduler) is not bool:
             raise ValueError("adaptive_scheduler must be a bool")
 

@@ -42,7 +42,7 @@ from inodefence.live_exploration import (
     render_live_status,
 )
 from inodefence.model import ArchiveCase, ArchiveEntry, EntryType
-from inodefence.mutator import MutationOperatorId, MutationPolicy, apply_operator
+from inodefence.mutator import OPERATOR_ORDER_V1, MutationPolicy, apply_operator
 from inodefence.runtime import SentinelSpec
 from inodefence.tar_reader import MAX_ENTRIES, TarReadError, read_builder_tar
 
@@ -66,7 +66,7 @@ def _grown_cases(count: int = 400) -> list[ArchiveCase]:
     out: list[ArchiveCase] = []
     while len(out) < count:
         case = rng.choice(pool)
-        operator = rng.choice(list(MutationOperatorId))
+        operator = rng.choice(OPERATOR_ORDER_V1)  # M1's table (the enum also has v2 slots)
         try:
             child = apply_operator(case, rng, MutationPolicy.M1, operator).child_case
             build_tar(child)

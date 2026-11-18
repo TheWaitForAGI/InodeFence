@@ -28,6 +28,17 @@ from inodefence.model.isolation import IsolationPolicy, IsolationProvenance, Res
 from inodefence.mutator import MutationPolicy
 
 BUDGET = 8
+#: The record the FAST end check adds (research/b-engine-fast-w5 identity_schedule.record()).
+_FAST_RECORD = {
+    "identity_checks": "campaign",
+    "interval": 4,
+    "cases_prepared": BUDGET,
+    "start_checks": 1,
+    "periodic_checks": 2,
+    "end_checks": 1,
+    "total_checks": 4,
+    "per_case_checks_skipped": 6,
+}
 
 
 def _isolation(image: str = "a") -> IsolationProvenance:
@@ -72,6 +83,8 @@ def _write(folder: Path, report: dict, *, streaming: bool = True, name: str = "r
     """
     folder.mkdir(parents=True, exist_ok=True)
     report = copy.deepcopy(report)
+    if folder.name == "f":  # test convention: folder "f" is the FAST run, "s" the STRICT run
+        report[cfs.FAST_RECORD] = _FAST_RECORD
     base = f"inodefence-effect-explore-{name}"
     if not streaming:
         (folder / f"{base}.json").write_text(json.dumps(report), encoding="utf-8")
@@ -122,7 +135,6 @@ def test_f1_identical_campaigns_are_equivalent(tmp_path: Path, capsys, streaming
     strict = _report()
     fast = copy.deepcopy(strict)
     fast["timing"] = {"total_seconds": 3.0, "per_case": [{"container_id": "other"}]}
-    fast["image_id"] = "sha256:" + "f" * 64  # never read by the trajectory dimensions
     code, out = _trajectory(
         capsys,
         _write(tmp_path / "s", strict, streaming=streaming),
@@ -392,6 +404,70 @@ def test_unknown_option_exits_2() -> None:
     assert cfs.main(["--mode", "trajectory", "--bogus"]) == 2
 
 
+# -- one STRICT and one FAST run of the same campaign (design §8.3, QA) -------------------------
+
+
+def test_two_strict_runs_are_refused_not_equivalent(tmp_path: Path, capsys) -> None:
+    report = _report()
+    code, out = _trajectory(capsys, _write(tmp_path / "s", report), _write(tmp_path / "s2", report))
+    assert code == 2 and out["verdict"] == "input_error"
+    assert "not a FAST run" in out["error"]
+
+
+def test_a_strict_side_carrying_the_fast_record_is_refused(tmp_path: Path, capsys) -> None:
+    report = _report()
+    code, out = _trajectory(capsys, _write(tmp_path / "f", report), _write(tmp_path / "f2", report))
+    # the strict folder ("f") carries identity_checks
+    assert code == 2 and "it is a FAST run" in out["error"]
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("config", {"random_seed": 99}),
+        ("image_id", "sha256:" + "f" * 64),
+        ("node_tar_version", "7.5.11"),
+        ("vocabulary_mode", "other"),
+        ("engine_commit", "0" * 40),
+        ("initial_case_ids", ["x"]),
+    ],
+)
+def test_runs_of_different_campaigns_are_refused(
+    tmp_path: Path, capsys, field: str, value: object
+) -> None:
+    strict = _report()
+    fast = copy.deepcopy(strict)
+    fast[field] = value
+    code, out = _trajectory(capsys, _write(tmp_path / "s", strict), _write(tmp_path / "f", fast))
+    assert code == 2 and "not the same campaign" in out["error"] and field in out["error"]
+
+
+@pytest.mark.parametrize("state", ["stopped", "running", None])
+def test_a_progress_state_other_than_finished_is_invalid(
+    tmp_path: Path, capsys, state: str | None
+) -> None:
+    report = _report()
+    fast_dir = _write(tmp_path / "f", report)
+    live = fast_dir / "target-explore" / "run" / "live"
+    live.mkdir()
+    body = "{not json" if state is None else json.dumps({"state": state})
+    (live / "progress.json").write_text(body)
+    code, out = _trajectory(capsys, _write(tmp_path / "s", report), fast_dir)
+    assert code == 2 and out["verdict"] == "invalid"
+    assert f"live state {state or 'unreadable'}" in out["error"]
+
+
+def test_a_finished_progress_state_is_fine(tmp_path: Path, capsys) -> None:
+    report = _report()
+    fast_dir = _write(tmp_path / "f", report)
+    (fast_dir / "target-explore" / "run" / "live").mkdir()
+    (fast_dir / "target-explore" / "run" / "live" / "progress.json").write_text(
+        json.dumps({"state": "finished"})
+    )
+    code, _ = _trajectory(capsys, _write(tmp_path / "s", report), fast_dir)
+    assert code == 0
+
+
 # -- descriptive identity partition -------------------------------------------------------------
 
 
@@ -414,7 +490,19 @@ def test_identity_partition_groups_paths_sharing_an_inode() -> None:
 
 
 def _replays(folder: Path, counts: dict[str, int], n: int) -> Path:
+    """STRICT ("s"): ``inodefence replay`` records. FAST ("f"): verdict lines from FAST campaigns
+    on the pinned case set, marked ``"profile": "fast"`` (replay always runs STRICT)."""
     folder.mkdir(parents=True, exist_ok=True)
+    if folder.name == "f":
+        lines = [
+            {"input_id": case, "run_index": i, "violated": i < k, "profile": "fast"}
+            for case, k in counts.items()
+            for i in range(n)
+        ]
+        (folder / "fast.verdicts.jsonl").write_text(
+            "".join(json.dumps(line) + "\n" for line in lines), encoding="utf-8"
+        )
+        return folder
     for case, k in counts.items():
         rounds = [{"round": i + 1, "c0": i < k, "c1": False, "c2": False} for i in range(n)]
         record = {
@@ -510,25 +598,67 @@ def test_rounds_without_a_verdict_make_the_count_short(tmp_path: Path, capsys) -
     assert code == 2 and "9 judged rounds" in out["error"]
 
 
-def test_verdict_lines_are_read_by_input_id(tmp_path: Path, capsys) -> None:
-    for side, k in (("s", 0), ("f", 0)):
-        (tmp_path / side).mkdir()
-        lines = [{"input_id": "x", "run_index": i, "violated": i < k} for i in range(10)]
-        (tmp_path / side / "set.verdicts.jsonl").write_text(
-            "".join(json.dumps(line) + "\n" for line in lines)
-        )
-    code, out = _run(
+def _verdict_lines(folder: Path, profile: str | None) -> Path:
+    folder.mkdir()
+    mark = {} if profile is None else {"profile": profile}
+    lines = [{"input_id": "x", "run_index": i, "violated": False, **mark} for i in range(10)]
+    (folder / "set.verdicts.jsonl").write_text("".join(json.dumps(line) + "\n" for line in lines))
+    return folder
+
+
+def _replay_dirs(capsys, tmp_path: Path, strict: Path, fast: Path):  # type: ignore[no-untyped-def]
+    return _run(
         capsys,
         "--mode",
         "replay",
         "--strict",
-        str(tmp_path / "s"),
+        str(strict),
         "--fast",
-        str(tmp_path / "f"),
+        str(fast),
         "--inputs",
         str(_inputs(tmp_path / "inputs.json", ["x"])),
     )
+
+
+@pytest.mark.parametrize("strict_profile", [None, "strict"])
+def test_verdict_lines_are_read_by_input_id(tmp_path: Path, capsys, strict_profile) -> None:
+    code, out = _replay_dirs(
+        capsys,
+        tmp_path,
+        _verdict_lines(tmp_path / "s", strict_profile),
+        _verdict_lines(tmp_path / "f", "fast"),
+    )
     assert code == 0 and out["per_input"][0]["k_fast"] == 0
+
+
+@pytest.mark.parametrize("fast_profile", [None, "strict"])
+def test_fast_side_needs_lines_marked_fast(tmp_path: Path, capsys, fast_profile) -> None:
+    code, out = _replay_dirs(
+        capsys,
+        tmp_path,
+        _verdict_lines(tmp_path / "s", None),
+        _verdict_lines(tmp_path / "f", fast_profile),
+    )
+    assert code == 2 and 'not marked "profile": "fast"' in out["error"]
+
+
+def test_strict_side_refuses_lines_marked_fast(tmp_path: Path, capsys) -> None:
+    code, out = _replay_dirs(
+        capsys,
+        tmp_path,
+        _verdict_lines(tmp_path / "s", "fast"),
+        _verdict_lines(tmp_path / "f", "fast"),
+    )
+    assert code == 2 and "STRICT side line marked profile 'fast'" in out["error"]
+
+
+def test_a_replay_record_on_the_fast_side_is_refused(tmp_path: Path, capsys) -> None:
+    """`inodefence replay` always runs STRICT: two replay folders would compare STRICT with
+    STRICT and pass trivially (QA)."""
+    strict = _replays(tmp_path / "s", {"x": 0}, 10)
+    fast = _replays(tmp_path / "s2", {"x": 0}, 10)  # replay.json records, used as the FAST side
+    code, out = _replay_dirs(capsys, tmp_path, strict, fast)
+    assert code == 2 and "always runs STRICT" in out["error"]
 
 
 # -- statistics helpers -------------------------------------------------------------------------

@@ -62,13 +62,25 @@ Fisher's exact test (Holm-adjusted) and |Δk| per input are descriptive only.
 A run that did not finish as a valid campaign is not comparable: verdict ``invalid``, exit 2
 (design §8.1 (b), fail-closed). A failed FAST end check (the image identity changed) leaves no
 new marker; it is read from what the run leaves (:func:`invalid_reasons`): node-tar raises
-inside the loop (``live/progress.json`` state ``failed``, no engine report), python-tarfile
-raises before its report, decompress and oras-go write an ``aborted`` report; in every target
-the product driver then publishes no ``result.json`` (ERROR, exit 2).
+inside the loop (``live/progress.json`` state ``failed``, no engine report); python-tarfile,
+decompress and oras-go controllers write an ``aborted`` report; in every target the product
+driver then publishes no ``result.json`` (ERROR, exit 2). Any ``progress.json`` state other
+than ``finished`` (or an unreadable one) is invalid too.
+
+The two folders must be one STRICT and one FAST run of the same campaign (design §8.3), else
+exit 2: in trajectory mode the paired reports must agree on ``config``, ``image_id``,
+``node_tar_version``, ``vocabulary_mode``, ``engine_commit`` and ``initial_case_ids``, and only
+the FAST report carries the ``identity_checks`` record (the FAST end check writes it; STRICT
+writes none). In replay mode ``inodefence replay`` always runs STRICT, so the FAST side accepts
+only verdict lines marked ``"profile": "fast"`` (from FAST campaigns on the pinned case set) and
+the STRICT side refuses lines marked ``fast``.
 
 Trajectory mode reads ``demo_report_schema`` 5 reports: node-tar and python-tarfile exploration
 and run_exp0 cells. decompress and oras-go reports have another format (per-step feedback
-counts, not keys) and are not read; those targets go through ``--mode replay`` (design §4).
+counts, not keys) and are not read here; those targets go through ``--mode replay`` (design §4).
+
+Scope: an ``isolated`` trajectory verdict does not cover snapshots or isolation/reset (they are
+the same by construction for a FAST that shares no state); the output says so.
 
 Exit codes: 0 equivalent, 1 not equivalent (a divergence, a rule (i) mismatch or a TOST
 failure), 2 input error or invalid run (missing/unreadable/unpaired evidence, a shared FAST
@@ -147,8 +159,9 @@ def invalid_reasons(folder: Path) -> list[str]:
     """Why ``folder`` is not a valid finished campaign (empty when it is), from what the runs
     actually leave behind (design §8.1 (b); FAST end check of research/b-engine-fast-w5):
 
-    * a ``live/progress.json`` whose state is ``failed`` (node-tar: the loop raised);
-    * a report carrying ``aborted`` (decompress / oras-go controller abort record);
+    * a ``progress.json`` whose state is not ``finished`` (``failed``: node-tar's loop raised;
+      ``stopped``/``running``: the run did not end; unreadable: fail closed);
+    * a report carrying ``aborted`` (python-tarfile / decompress / oras-go controller record);
     * a product exploration folder (it has ``runtime/`` or a ``result.json``) whose run wrote no
       ``result.json``, or one whose verdict is ``ERROR`` (every target: a controller failure or
       abort is ERROR, exit 2, and no result is published).
@@ -158,9 +171,9 @@ def invalid_reasons(folder: Path) -> list[str]:
         try:
             state = json.loads(path.read_text(encoding="utf-8")).get("state")
         except (OSError, ValueError, AttributeError):
-            continue
-        if state == "failed":
-            reasons.append(f"{path.relative_to(folder)}: live state failed")
+            state = "unreadable"
+        if state != "finished":
+            reasons.append(f"{path.relative_to(folder)}: live state {state}")
     results: list[Path] = []
     for path in sorted(folder.rglob("*.json")):
         try:
@@ -239,15 +252,49 @@ def load_campaigns(folder: Path) -> dict[str, Campaign]:
     return found
 
 
+#: Report fields a STRICT and a FAST run of the same campaign must share (design §8.3).
+SAME_CAMPAIGN_FIELDS = (
+    "config",
+    "image_id",
+    "node_tar_version",
+    "vocabulary_mode",
+    "engine_commit",
+    "initial_case_ids",
+)
+#: The record the FAST end check adds to a report (research/b-engine-fast-w5); STRICT has none.
+FAST_RECORD = "identity_checks"
+
+
+def check_pair(strict: Campaign, fast: Campaign) -> None:
+    """One STRICT and one FAST run of the same campaign, else :class:`InputError` (exit 2)."""
+    differing = [
+        field
+        for field in SAME_CAMPAIGN_FIELDS
+        if strict.report.get(field) != fast.report.get(field)
+    ]
+    if differing:
+        raise InputError(
+            f"{strict.name} vs {fast.name}: not the same campaign, these differ: {differing}"
+        )
+    if FAST_RECORD in strict.report:
+        raise InputError(f"strict:{strict.name} carries {FAST_RECORD}: it is a FAST run")
+    if FAST_RECORD not in fast.report:
+        raise InputError(f"fast:{fast.name} has no {FAST_RECORD} record: it is not a FAST run")
+
+
 def pair_campaigns(
     strict: Mapping[str, Campaign], fast: Mapping[str, Campaign]
 ) -> list[tuple[Campaign, Campaign]]:
     if len(strict) == 1 and len(fast) == 1:
-        return [(next(iter(strict.values())), next(iter(fast.values())))]
-    missing = sorted(set(strict) ^ set(fast))
-    if missing:
-        raise InputError(f"reports without a partner on the other side: {missing}")
-    return [(strict[name], fast[name]) for name in sorted(strict)]
+        pairs = [(next(iter(strict.values())), next(iter(fast.values())))]
+    else:
+        missing = sorted(set(strict) ^ set(fast))
+        if missing:
+            raise InputError(f"reports without a partner on the other side: {missing}")
+        pairs = [(strict[name], fast[name]) for name in sorted(strict)]
+    for strict_campaign, fast_campaign in pairs:
+        check_pair(strict_campaign, fast_campaign)
+    return pairs
 
 
 # -- trajectory comparison ---------------------------------------------------------------------
@@ -473,8 +520,8 @@ def compare_trajectory(
     }
     if lacking:
         output["scope"] = (
-            "snapshots and isolation_and_reset not judged (no parity_subject); sufficient for "
-            "an isolated FAST only (design §8)"
+            "snapshots and isolation_and_reset not judged (no parity_subject): this verdict does "
+            "not cover them; sufficient for an isolated FAST only (design §8)"
         )
     if first:
         output["first_divergence"] = first[1]
@@ -493,8 +540,13 @@ def _round_violated(entry: Mapping[str, Any]) -> bool | None:
     return any(value is True for value in values)
 
 
-def load_replay_counts(folder: Path) -> dict[str, list[bool | None]]:
-    """Per input key (case_id and TAR SHA-256 both map to the same list) the round verdicts."""
+def load_replay_counts(folder: Path, side: str) -> dict[str, list[bool | None]]:
+    """Per input key (case_id and TAR SHA-256 both map to the same list) the round verdicts.
+
+    ``side`` is ``strict`` or ``fast``. ``inodefence replay`` always runs STRICT, so on the FAST
+    side only verdict lines marked ``"profile": "fast"`` count; the STRICT side reads replay.json
+    and lines marked ``strict`` or unmarked, and refuses lines marked ``fast`` (design §8.3).
+    """
     if not folder.is_dir():
         raise InputError(f"{folder}: not a folder")
     rounds: dict[str, list[bool | None]] = {}
@@ -502,6 +554,11 @@ def load_replay_counts(folder: Path) -> dict[str, list[bool | None]]:
         data = _read_json(path)
         if not isinstance(data, dict) or data.get("schema") != REPLAY_SCHEMA:
             continue
+        if side == "fast":
+            raise InputError(
+                f"fast: {path} is an `inodefence replay` record, which always runs STRICT; the "
+                'FAST side needs verdict lines marked "profile": "fast"'
+            )
         original = data.get("original") or {}
         verdicts = [_round_violated(entry) for entry in data.get("rounds") or []]
         keys = {original.get("case_id"), original.get("tar_sha256")}
@@ -518,6 +575,11 @@ def load_replay_counts(folder: Path) -> dict[str, list[bool | None]]:
                 raise InputError(f"{path}:{number}: bad verdict line ({error})") from error
             if violated is not None and type(violated) is not bool:
                 raise InputError(f"{path}:{number}: violated must be true/false/null")
+            profile = record.get("profile")
+            if side == "fast" and profile != "fast":
+                raise InputError(f'{path}:{number}: FAST side line not marked "profile": "fast"')
+            if side == "strict" and profile not in (None, "strict"):
+                raise InputError(f"{path}:{number}: STRICT side line marked profile {profile!r}")
             rounds.setdefault(str(key), []).append(violated)
     if not rounds:
         raise InputError(f"{folder}: no replay.json or *.verdicts.jsonl records")
@@ -615,7 +677,8 @@ def compare_replay(
     strict_dir: Path, fast_dir: Path, inputs_path: Path, *, n: int, margin: float, alpha: float
 ) -> tuple[int, dict[str, object]]:
     inputs = _load_inputs(inputs_path)
-    strict_rounds, fast_rounds = load_replay_counts(strict_dir), load_replay_counts(fast_dir)
+    strict_rounds = load_replay_counts(strict_dir, "strict")
+    fast_rounds = load_replay_counts(fast_dir, "fast")
     per_input: list[dict[str, object]] = []
     stochastic: list[tuple[str, str]] = []
     for input_id, case in inputs:
@@ -727,8 +790,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--fast-kind",
         choices=FAST_KINDS,
-        help="trajectory (required): isolated = no state shared between cases (option 1); "
-        "shared = one container or a reused sandbox (needs parity_subject)",
+        help="trajectory (required): isolated = no state shared between cases (option 1; the "
+        "verdict does not cover snapshots or isolation/reset); shared = one container or a "
+        "reused sandbox (needs parity_subject)",
     )
     parser.add_argument("--inputs", type=Path, help="replay: fixed input set [{input_id, case}]")
     parser.add_argument("--n", type=int, default=DEFAULT_N, help="replay: rounds per input")

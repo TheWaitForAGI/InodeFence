@@ -169,8 +169,8 @@ wheel로 설치했다면 `INODEFENCE_HOME`(환경 변수 또는 아래 설정 �
     oras-go 2.6.1 탐색(seed 123, 실행 200)은 위반이 0건이라 재실행할 케이스가 없었고(고정 입력 회귀는 1/6 위반 판정),
     node-tar 7.5.2 탐색(seed 123, 실행 40과 200)도 위반이 0건이었습니다(등록 실험의 캠페인 예산 2000보다 작은 예산입니다).
     python-tarfile은 취약 설정(`fully_trusted`) 탐색을 받지 않아 케이스를 얻을 수 없습니다.
-    이 재실행에서 본 표시 문제 두 가지: decompress 재실행 로그에 `node-tar replay`라는 문구가 나오고, 결과 폴더(`--case`)에서
-    재실행하면 원래 기록에 fingerprint가 없어 `fingerprints 0/3`으로 표시됩니다(계약 일치는 3/3). 실제 추출기에서 재현을
+    이 재실행에서 본 표시 문제 두 가지(decompress 재실행 로그의 `node-tar replay` 문구, 결과 폴더 재실행의
+    `fingerprints 0/3` 표시, 계약 일치는 3/3)는 그 뒤 고쳤습니다([#494](https://github.com/TheWaitForAGI/InodeFence/issues/494)). 실제 추출기에서 재현을
     확인한 위반은 이 decompress의 C0(경로 경계) 한 건입니다. 하드링크 탈출(C1·C2) 위반이 재현되는 경로는 통제·합성 단위
     테스트(테스트용 backend가 하드링크 탈출을 흉내 냄)로만 확인했습니다.
   - **node-tar 더 긴 탐색:** 7.5.23, seed 20261117, budget 300을 완주했습니다(커밋 `6a2031f`, 2026-11-17, demo run,
@@ -391,11 +391,14 @@ inodefence replay ~/inodefence-explore/target-explore/<실행>-result --case ste
 네 대상의 재실행은 모두 **같은 런처의 재실행 모드**(`scripts/local_node_tar_smoke.sh replay`: 정확한 이미지 id와 입력
 한 줄만 받고 대상 이미지를 빌드하지 않음)를 거쳐 같은 컨트롤러·호스트 broker·backend로 돕니다. 컨트롤러 안에서 그
 대상의 탐색이 쓰는 실행 함수와 판정 규칙을 그대로 부릅니다. 그래서 재실행 컨트롤러 이름은 대상과 무관하게
-`inodefence-local-controller-replay-…`이고, 런처의 마지막 줄은 어느 대상이든 `PASSED: node-tar replay`로 나옵니다
-(런처 문구이며 대상 표시가 아닙니다).
+`inodefence-local-controller-replay-…`입니다. 런처의 마지막 줄은 런처 안에서 `PASSED: node-tar replay`로 고정돼 있어,
+python-tarfile·decompress·oras-go 재실행은 그 한 줄을 실제 대상 이름(`PASSED: decompress replay …`)으로 바꿔
+보여 줍니다(런처 파일은 바꾸지 않음).
 
 재실행은 탐색과 같은 격리로 돌고, 회차별 판정과 **같은 계약을 다시 위반한 비율**·**fingerprint가
-일치한 비율**을 케이스 폴더 **옆** `run-NNNNNN.replay-<UTC>/replay.json`에 씁니다(원본 폴더는
+일치한 비율**을 케이스 폴더 **옆** `run-NNNNNN.replay-<UTC>/replay.json`에 씁니다. 결과 폴더(`--case`)에서 재실행하면
+원래 기록에 fingerprint가 없으므로 일치 수·비율은 0이 아니라 비교 불가(`fingerprints_comparable: false`, 값 `null`,
+터미널은 `fingerprints n/a`)로 적습니다(원본 폴더는
 건드리지 않습니다). `case.json`에 기록된 이미지 id가 이 호스트에 없으면 **다시 준비하거나 다른
 이미지로 바꾸지 않고 멈춥니다**(다른 이미지로 돌린 것을 재현이라고 적지 않기 위해서). 재실행에는
 탐색의 실행 설정이 `case.json`에 있어야 하며, 없는 옛 케이스는 거부합니다.

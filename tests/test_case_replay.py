@@ -209,6 +209,27 @@ def test_rates_are_over_judged_rounds_and_kept_separate() -> None:
     assert summary["fingerprint_match_rate"] == 0.333333
 
 
+def test_without_original_fingerprints_the_fingerprint_match_is_not_comparable() -> None:
+    """#494: a result folder (python-tarfile, decompress, oras-go) stores no fingerprints, so the
+    match is "not comparable" -- never 0 matches -- in replay.json and in the one-line brief."""
+    original = {"c0": False, "c1": True, "c2": None, "fingerprints": []}
+    rounds = [normalize_round(_round(fps=()), i + 1) for i in range(3)]
+    summary = summarize_rounds(original, rounds)
+    assert summary["same_contracts"] == 3
+    assert summary["fingerprints_comparable"] is False
+    assert summary["same_fingerprints"] is None
+    assert summary["fingerprint_match_rate"] is None
+    record = {"replay": {"complete": True, "rounds_requested": 3}, "summary": summary}
+    assert replay_brief(record) == "replayed 3/3: same contracts 3/3, fingerprints n/a"
+
+
+def test_with_original_fingerprints_the_match_stays_counted() -> None:
+    original = {"c0": False, "c1": True, "c2": None, "fingerprints": ["C1-aa"]}
+    summary = summarize_rounds(original, [normalize_round(_round(), 1)])
+    assert summary["fingerprints_comparable"] is True
+    assert (summary["same_fingerprints"], summary["fingerprint_match_rate"]) == (1, 1.0)
+
+
 def test_record_is_published_beside_the_case_and_never_overwrites(tmp_path: Path) -> None:
     folder = _case_folder(tmp_path)
     before = {p.name: p.read_bytes() for p in folder.iterdir()}

@@ -42,6 +42,8 @@ v2는 이것을 기록된 step으로 바꿀 수 있다.
   - `name_segments {"before": [], "observed": []}`
   - `mutation_attempt`·`scheduler_evidence`·`selection`은 실행 step과 같은 형식이다.
 
+첫 위반까지 실행 수(`runs_to_first_violation`)와 케이스 번호(`run_index`, `step-N`)는 build-invalid를 포함한 step 수로 센다(D060: 예산 1단위). 추출 횟수가 아니다. 모든 대상에 같다. python-tarfile 루프는 99d132c 전까지 추출 횟수로 셌다. build-invalid가 없는 실행에서는 두 방식이 같고, 그 전 기록은 다시 세지 않는다.
+
 ## 3. 판독기
 
 - **`evaluation/rds_report.py`(사전등록이 가리키는 구현, bed077a와 같은 blob, 바꾸지 않음)**: 스키마 5를 그대로 읽는다.

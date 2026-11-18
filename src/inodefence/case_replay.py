@@ -475,9 +475,12 @@ def summarize_rounds(original: Mapping[str, Any], rounds: Sequence[Mapping[str, 
         "unjudged": len(rounds) - len(judged),
         "violated_again": violated_again,
         "same_contracts": same_contracts,
-        "same_fingerprints": same_fps,
+        #: False when the original recorded no fingerprints (a result-folder source stores none):
+        #: the match is then not comparable, so the count and rate are null, never 0 (#494).
+        "fingerprints_comparable": bool(target_fps),
+        "same_fingerprints": same_fps if target_fps else None,
         "same_contracts_rate": rate(same_contracts),
-        "fingerprint_match_rate": rate(same_fps),
+        "fingerprint_match_rate": rate(same_fps) if target_fps else None,
         "original_contracts": sorted(target_contracts),
         "original_fingerprints": sorted(target_fps),
     }
@@ -640,9 +643,14 @@ def replay_brief(record: Mapping[str, Any]) -> str:
         if counts.get(NEW_VIOLATION):
             text += f", NEW violation {counts[NEW_VIOLATION]}"
     else:
+        fingerprints = (
+            "n/a"  # the original recorded none: not comparable (#494)
+            if summary.get("fingerprints_comparable") is False
+            else f"{summary.get('same_fingerprints', 0)}/{judged}"
+        )
         text = (
             f"{head} {done}/{wanted}: same contracts {summary.get('same_contracts', 0)}/{judged}, "
-            f"fingerprints {summary.get('same_fingerprints', 0)}/{judged}"
+            f"fingerprints {fingerprints}"
         )
     if counts.get(INFRASTRUCTURE_FAILURE):
         # Told apart from an un-judged run: nothing ran to a judgeable end.

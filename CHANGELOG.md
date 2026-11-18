@@ -33,6 +33,12 @@
   두 인자로 나뉘어 실행 전에 거부되던 문제([#528](https://github.com/TheWaitForAGI/InodeFence/issues/528)). 이제 하나의
   값으로 전달된다. 공백 형식(`--image-tag-suffix -win`)은 여전히 받을 수 없고, 거부 메시지(종료 3)가 `=` 형식을 안내한다.
   옵션을 주지 않은 실행과 `-`로 시작하지 않는 값의 동작은 그대로다.
+- `inodefence replay`의 표시 두 가지([#494](https://github.com/TheWaitForAGI/InodeFence/issues/494)).
+  python-tarfile·decompress·oras-go 재실행의 런처 마지막 줄이 `PASSED: node-tar replay`로 나오던 것을 실제 대상
+  이름으로 보여 준다(공유 런처는 그대로, 재실행 쪽에서 그 한 줄만 바꿈). 원래 기록에 fingerprint가 없을 때(결과 폴더
+  재실행) `replay.json`의 `same_fingerprints`·`fingerprint_match_rate`를 0 대신 `null`로 적고 새 키
+  `fingerprints_comparable: false`를 더하며, 터미널은 `fingerprints n/a`로 보여 준다. 재현 판정(`conclusion`), 종료 코드,
+  `result.json`은 바뀌지 않는다.
 
 ## [0.2.0] — 2026-11-18
 

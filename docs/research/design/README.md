@@ -23,6 +23,13 @@
 ## 다른 모듈과의 연결
 
 [범위](project-scope.md), [연구 질문](research-questions.md), [위협 모델](threat-model.md), [선행연구 포지셔닝](related-work-positioning.md), [환경](development-environment.md).
+변이 문법이 지금 내는 것과 못 내는 것은 [변이 어휘 목록 v1](mutation-vocabulary-inventory-v1.md)(#512, 동결 `b-grammar-v2-freeze-3`, exploratory)에 있다. 정오표: [b-grammar-v2-freeze-2.erratum](b-grammar-v2-freeze-2.erratum.md).
+
+변이 자식을 빌더가 표현할 수 없을 때의 기록(`build-invalid` step)과 demo 보고서 스키마 5는 [build-invalid와 보고서 스키마 5](build-invalid-and-report-schema-v5.md)(#512 v2 U2, exploratory)에 있다.
+
+v2 문법이 하는 모든 추첨의 축과 분포(공식 p_R 전에 고정, 최종 정책 id)는 [v2 문법 추첨 축](v2-grammar-axes.md)에 있다.
+
+step마다 기록하는 입력 구조 분류의 정의는 [입력 구조 분류기 v1](input-structure-class-v1.md)(`input-structure-class-v1-freeze-1`, W4 서명, 구현은 v2 U3)에 있다. 정오표: [input-structure-class-v1-freeze-1.erratum](input-structure-class-v1-freeze-1.erratum.md).
 
 ## 현재 상태
 

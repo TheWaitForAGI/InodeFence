@@ -1253,3 +1253,89 @@ PRODUCT 절)으로 보낸다.
 브랜치 이름 `<이름>/p0-<번호>-<요약>`.
 
 **그대로인 것.** `main` 직접 push 금지, 병합 요청 표 형식, `BREAKING`·FROZEN·가드 관련 사람 결정 범위.
+
+## D060 — v2 엔진의 build-invalid 처리
+
+**상태:** 확정 (2026-11-18, 방법 검토 IF-W4-METHOD 서명; 사전등록 v2 #510에서 인용)
+
+빌더가 표현할 수 없는 변이 자식(USTAR로 쓸 수 없는 아카이브)은 캠페인 abort가 아니라 **기록된 step 결과**(`build-invalid`)로 둔다.
+
+- 이 step의 예산·영향
+  - 예산 1단위를 쓴다.
+  - 스케줄러 보상은 0이다.
+  - corpus에 들어가지 않고, 생산자·oracle·feedback에 닿지 않는다.
+  - seed는 build-invalid가 될 수 없다.
+- 세 arm 공통이다.
+  - 설정 값(`EffectCampaignConfig.build_invalid`)의 기본값은 `abort`(등록 동작, 루프가 빌더를 미리 부르지 않음)다.
+  - v2 실행은 모든 arm에서 `record`를 쓴다.
+  - v2 보고서 설정 검사(`rds_report_v2.check_report_config_v2`)가 기록된 `config.build_invalid`·`config.builder_format`을 셀 계획과 대조하고, 다르거나 없으면 거부한다.
+- 기록 형식: demo 보고서 스키마 4→5(추가만). step 모델(`EffectCampaignStep`)의 직렬화 스키마와 canonical JSON은 바뀌지 않는다. build-invalid는 별도 타입(`BuildInvalidStep`)이다.
+- 등록 경로에서는 그런 abort가 여전히 `other`로 분류된다.
+  - `InvalidReason`에 값을 더하면 사전등록이 가리키는 분석 스크립트의 출력과 불변식이 바뀐다.
+  - 그래서 v2 분류는 `evaluation/abort_classification_v2.py`가 한다.
+- 근거 문서: [build-invalid와 보고서 스키마 5](research/design/build-invalid-and-report-schema-v5.md).
+
+## D061 — v2 변이 문법과 입력 구조 분류의 동결
+
+**상태:** 확정 (2026-11-18, 방법 검토 IF-W4-METHOD 서명; 사전등록 v2 #510에서 인용)
+
+v2 실험의 문법과 구조 분류는 아래 동결본을 기준으로 한다.
+
+- 문법 `b-grammar-v2-freeze-3`(커밋 `9a64dd6`): [변이 어휘 목록 v1](research/design/mutation-vocabulary-inventory-v1.md)의 세는 규칙과 계열 목록.
+  "v2 엔진 미구현"으로 표시한 계열(H1 owner, H1 size·링크 content 불일치, H1 PAX/USTAR 필드 불일치, P1의 새 변형 토큰)은 v2 엔진에 넣지 않는다.
+- 입력 구조 분류 `input-structure-class-v1-freeze-1`(커밋 `bca6d3a`, 사다리 L4): [입력 구조 분류기 v1](research/design/input-structure-class-v1.md).
+  - 분석용 기록이며 판정·feedback·변이에 들어가지 않는다.
+  - 문서에 사전 고지한 freeze-2 조건을 따른다.
+- 이후 변경은 새 id와 방법 검토로만 한다.
+- 등록 arm·실행 커밋 E(`bed077a`)·수정 금지 파일(공유 경로 파일과 사전등록이 가리키는 파일)은 바이트 동일하게 둔다. v2는 새 정책 id와 새 모듈로 구현한다.
+
+> **2026-11-18 정정.** 상태 줄의 "사전등록 v2 #510에서 인용"은 더 이상 해당하지 않는다. 후속 확증 실험이 중단됐기 때문이다(D063). 문법 `b-grammar-v2-freeze-3`과 분류기 `input-structure-class-v1-freeze-1`은 정의 문서로 남는다. 분류기 freeze-2는 발행하지 않는다.
+
+## D062 — 수정 금지 파일 `feedback/effect_search.py`의 일회 예외: v2 사슬 R의 `EffectSearchPolicy` 멤버 추가
+
+**상태:** 확정 (2026-11-18, 방법 검토 IF-W4-METHOD 서명; 사전등록 v2 #510에 명시)
+
+v2 확증 비교의 R arm은 무작위 사슬 정책이다(실행마다 seed를 하나 추첨하고, 연산 m회를 적용하며, m은 1..m_max에서 균등하게 뽑고, 보존은 없다).
+이 정책의 id는 `EffectSearchPolicy`의 새 멤버 두 개(m_max 4, 6)로 둔다.
+`feedback/effect_search.py`는 수정 금지 합집합에 있지만, 이 멤버 추가만 기록된 예외로 허용한다.
+
+**이유.**
+- 사슬은 R의 탐색 방식이다. `MutationPolicy`로 두면 R만 다른 `mutation_policy`를 기록하게 되어 "세 arm 같은 정책" 조건과 G1의 동일 확인이 깨진다.
+- 새 모듈의 v2 전용 enum(D061의 "새 모듈" 원칙)으로 두면 공유 런처가 그 값을 받지 못한다(`--policy` 선택지가 이 enum에서 나온다). 그래서 실행에 새 호스트 런처·컨트롤러가 필요해지고, 이는 격리 경계에 닿는다.
+- 이 파일은 사전등록이 경로로 가리키는 파일이다. 해시로 고정한 것이 아니고, 지웅 지정 대상도 아니다. 이 예외는 방법 규칙에 대한 예외다.
+  더하는 멤버에는 논리가 없다. 등록 재현은 E(`bed077a`) 체크아웃에서 한다.
+
+**안전장치.**
+1. E의 이 파일 blob과 비교해, 추가된 enum 멤버 두 개 외의 변경이 없음을 단언하는 테스트를 둔다.
+2. `EffectSearchPolicy`의 모든 소비자를 감사한다. 전수 매핑하거나 순회하는 곳마다 기존 값의 출력이 바뀌지 않아야 한다. 수정 금지 파일 안의 소비자가 깨지면 중단한다.
+3. 모든 golden이 바이트 동일해야 한다.
+4. 이 결정 기록을 남긴다.
+5. 사전등록 v2(#510)에 이 예외를 명시한다.
+
+멤버 추가는 1~3과 같은 커밋에 들어간다.
+
+**범위.** 수정 금지 합집합의 다른 파일에는 적용되지 않는 일회 예외다. 이 파일의 다른 변경(기존 멤버, 정책 논리, `RDS_POLICIES` 밖의 동작)에도 적용되지 않는다.
+이후 같은 종류의 필요가 생기면 새 결정과 방법 검토를 거친다.
+
+## D063 — 후속 확증 실험 중단, v2 엔진은 탐색·후속 분석용
+
+**상태:** 확정 (2026-11-18, 연구 총괄·방법 검토 IF-W4-METHOD, IF-H4-ORCH 전달)
+
+후속 확증 실험(사전등록 v2·v2.1)은 사전에 고정한 정지 규칙으로 중단됐다.
+
+- v2: 벤치마크 입회에 실패했다.
+- v2.1: 채택 계열이 들어 있는 버전을 현재 producer로 실행할 수 없고, 검정력이 미달이다.
+- 세 번째 재설계는 없다.
+
+v2 엔진은 탐색과 후속 분석용이며, 확증 실험의 실행 커밋으로 고정되지 않았다. v2 엔진은 다음을 말한다.
+
+- 문법 `b-grammar-v2-freeze-3`(D061)
+- 사슬 R(D062)
+- 입력 구조 분류 기록
+- build-invalid step(D060)
+- seed 코퍼스 매개변수
+- G1 v2 검사
+
+새 동작은 정책 id를 명시해야만 켜진다. 제품 기본값은 바뀌지 않는다. 기본값 변경은 0.3 범위에서 지웅이 정한다.
+
+D060·D062는 기록으로 남는다. D061의 동결본은 정의 문서로 남는다(D061의 2026-11-18 정정).

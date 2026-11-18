@@ -19,6 +19,7 @@ from inodefence.mutation_scheduler import (
     UniformMutationScheduler,
 )
 from inodefence.mutator import (
+    OPERATOR_ORDER_V1,
     MutationOperatorId,
     MutationPolicy,
     apply_operator,
@@ -74,7 +75,18 @@ def _legacy_reference(case: ArchiveCase, rng: random.Random, policy: MutationPol
     return child
 
 
-@pytest.mark.parametrize("policy", tuple(MutationPolicy))
+@pytest.mark.parametrize(
+    "policy",
+    [
+        p
+        for p in MutationPolicy
+        if p
+        not in (
+            MutationPolicy.V2_FREEZE3_FIXED_BASELINE,
+            MutationPolicy.V2_FREEZE3_FIXED_BASELINE_MINIMAL_EMPTY_REG,
+        )
+    ],
+)
 def test_inspectable_uniform_dispatch_preserves_existing_rng_semantics(policy) -> None:
     case = _case()
     for seed in range(128):
@@ -101,7 +113,7 @@ def test_stable_operator_id_and_no_op_attempt() -> None:
         MutationOperatorId.REMOVE_ENTRY,
     )
 
-    assert operator_ids(MutationPolicy.M1) == tuple(MutationOperatorId)
+    assert operator_ids(MutationPolicy.M1) == OPERATOR_ORDER_V1
     assert attempt.operator_id == MutationOperatorId.REMOVE_ENTRY
     assert not attempt.applied and attempt.child_case is empty
 
@@ -133,9 +145,9 @@ def test_uniform_scheduler_matches_single_legacy_choice_and_never_rewards() -> N
     scheduler = UniformMutationScheduler()
     expected_rng = random.Random(99)
     actual_rng = random.Random(99)
-    expected = expected_rng.choice(tuple(MutationOperatorId))
+    expected = expected_rng.choice(OPERATOR_ORDER_V1)
 
-    selection = scheduler.choose_operator(tuple(MutationOperatorId), actual_rng)
+    selection = scheduler.choose_operator(OPERATOR_ORDER_V1, actual_rng)
     attempt = apply_operator(_case(), actual_rng, MutationPolicy.LEGACY, selection.operator_id)
     evidence = scheduler.observe_outcome(selection, attempt, (_transition_key(),), (_violation(),))
 
@@ -155,8 +167,8 @@ def test_adaptive_scheduler_is_deterministic_for_equal_outcomes() -> None:
     case = _case()
 
     for index in range(30):
-        left = first.choose_operator(tuple(MutationOperatorId), first_rng)
-        right = second.choose_operator(tuple(MutationOperatorId), second_rng)
+        left = first.choose_operator(OPERATOR_ORDER_V1, first_rng)
+        right = second.choose_operator(OPERATOR_ORDER_V1, second_rng)
         assert left == right
         left_attempt = apply_operator(case, first_rng, MutationPolicy.M1, left.operator_id)
         right_attempt = apply_operator(case, second_rng, MutationPolicy.M1, right.operator_id)

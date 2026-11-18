@@ -1,8 +1,11 @@
 """Explicit versioned mutation dispatch; legacy draws and behavior stay stable."""
 
 import random
+from collections.abc import Mapping
 from enum import StrEnum
+from types import MappingProxyType
 
+from inodefence.generator.corpora import SeedCorpusId
 from inodefence.model.archive import ArchiveCase
 
 
@@ -54,6 +57,53 @@ class MutationPolicy(StrEnum):
     M1_STATE_AWARE_ESCAPE_HARDLINK_FIXED_BASELINE = (
         "uniform-generic-m1-state-aware-escape-hardlink-fixed-baseline-v1"
     )
+    # Additive, v2 (#512, D061): grammar `b-grammar-v2-freeze-3` (mutator/v2_freeze3.py),
+    # ten uniform slots, observed-name pool fixed at the seed baseline run as in
+    # M1_STATE_AWARE_ESCAPE_HARDLINK_FIXED_BASELINE, every draw uniform over the axis list
+    # W3/W4 fixed before p_R (v2_freeze3.FINAL_UNIFORM). Not a default anywhere and not in
+    # any product allow-list. Replaces the never-run provisional id of 4303075.
+    V2_FREEZE3_FIXED_BASELINE = "uniform-b-grammar-v2-freeze-3-fixed-baseline-v1"
+    # Additive, v2.1: V2_FREEZE3_FIXED_BASELINE with the seed corpus `minimal-empty-reg-v1`
+    # (an empty archive and one regular file) instead of the registered four seeds. Grammar,
+    # axis list, draws and build-invalid handling are those of V2_FREEZE3_FIXED_BASELINE;
+    # only SEED_CORPUS differs.
+    V2_FREEZE3_FIXED_BASELINE_MINIMAL_EMPTY_REG = (
+        "uniform-b-grammar-v2-freeze-3-fixed-baseline-minimal-empty-reg-v1"
+    )
+
+
+# The v2 grammar policies (`b-grammar-v2-freeze-3`, ten slots). Only the node-tar effect campaign
+# (``effect_campaign.run_effect_campaign``) and loops built on it run them; the decompress and
+# oras-go campaign loops refuse them at configuration (their scheduler is the V1 table and they do
+# not bind a policy's seed corpus).
+V2_GRAMMAR_POLICIES: frozenset[MutationPolicy] = frozenset(
+    {
+        MutationPolicy.V2_FREEZE3_FIXED_BASELINE,
+        MutationPolicy.V2_FREEZE3_FIXED_BASELINE_MINIMAL_EMPTY_REG,
+    }
+)
+
+# Policies whose campaign records an unrepresentable child as a build-invalid step
+# (D060) unless the campaign config says otherwise. Every other policy aborts, as before.
+RECORDS_BUILD_INVALID: frozenset[MutationPolicy] = frozenset(
+    {
+        MutationPolicy.V2_FREEZE3_FIXED_BASELINE,
+        MutationPolicy.V2_FREEZE3_FIXED_BASELINE_MINIMAL_EMPTY_REG,
+    }
+)
+
+# Policies bound to a seed corpus other than the caller's (v2.1). The campaign replaces the
+# registered seeds a launcher passes with this corpus, so every arm of a cell runs it without
+# the launcher knowing (as with RECORDS_BUILD_INVALID). A policy not listed runs the cases its
+# caller passes, exactly as before; the v2 policy is bound to the registered corpus.
+SEED_CORPUS: Mapping[MutationPolicy, SeedCorpusId] = MappingProxyType(
+    {
+        MutationPolicy.V2_FREEZE3_FIXED_BASELINE: SeedCorpusId.REGISTERED,
+        MutationPolicy.V2_FREEZE3_FIXED_BASELINE_MINIMAL_EMPTY_REG: (
+            SeedCorpusId.MINIMAL_EMPTY_REG
+        ),
+    }
+)
 
 
 def mutate_with_policy(

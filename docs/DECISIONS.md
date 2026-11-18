@@ -1356,7 +1356,9 @@ D060·D062는 기록으로 남는다. D061의 동결본은 정의 문서로 남�
   - 격리 설정
   - 보호 파일 세 개(`execution/docker_client.py`, `execution/container.py`, `model/isolation.py`)
   - 판정
-- 끝 확인이 실패하면 캠페인 전체가 무효다. 보고서가 쓰이지 않고, 제품 explore는 결과 없이 종료 2다.
+- 끝 확인이 실패하면 캠페인 전체가 무효다. 네 대상 모두 `result.json`이 쓰이지 않고 제품 explore는 종료 2다. 루프 보고서는 대상마다 다르다(QA 검증 45):
+  - node-tar: 끝 확인의 오류가 그대로 올라가 루프 보고서가 쓰이지 않는다. 런처가 0이 아닌 코드로 끝나고, live 폴더의 마지막 스냅숏은 `state=failed`다.
+  - python-tarfile·decompress·oras-go: 컨트롤러가 오류를 받아 `aborted`(사유·분류)만 담은 루프 보고서를 쓰고 종료 1이다. 드라이버는 이것을 중단으로 읽어 결과를 쓰지 않는다.
 - 기본값은 STRICT이고 replay는 항상 STRICT다. 등록 러너는 이 값을 넘기지 않는다.
 - 네 대상(node-tar, python-tarfile, decompress, oras-go)에 적용한다.
 

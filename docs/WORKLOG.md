@@ -165,3 +165,4 @@ success 케이스(exit 0)에서 발생한 native 관찰 무결성 결함(malform
 - 인터페이스(PR-B/레인5): provenance에 lock 원재료(python_version·tarfile_sha256·uname_sr)만 노출, lock_digest 산출·report 기록·post_check 대조는 PR-B(execution_mode=per-case-subprocess, env DEMO_EXTRACTOR=python-tarfile). 레인4 가드레일: in-process는 ResettingProducer 미적용, parity same-mode만.
 
 - 2026-11-16 막힘(IF-H4-CORE W1): 가드 R4가 새 테스트 파일 이름의 부분 문자열로 셸 명령을 차단(오탐, 보호 파일 무변경). 이름 변경 허용 여부 사람 결정 대기. 스택 PR(탐색 결과 기록) 나머지는 그 파일 없이 진행 가능.
+- 2026-11-18 막힘(IF-H4-RES1 #519): 가드 R4가 스크래치 편집 스크립트 파일 이름의 부분 문자열(보호된 격리 정책 파일 이름과 같은 끝)로 셸 명령을 차단. 대상은 tests/test_violation_triage.py, 실행된 것 없음. ORCH에 보고.

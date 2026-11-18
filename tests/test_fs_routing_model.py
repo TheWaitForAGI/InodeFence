@@ -403,7 +403,8 @@ def test_a_missing_final_target_through_a_symlink_is_a_route_not_dangling() -> N
     )
     result = _model(step)
     assert (result.routes, result.escape_zone, result.unresolvable) == (True, "none", ())
-    assert result.target_missing is True
+    # W3 guard: a sub-division of routes, labelled apart, never an escape
+    assert (result.routes_leaf_present, result.routes_target_missing) == (False, True)
 
 
 def test_the_destination_is_computed_even_when_the_target_cannot_be() -> None:
@@ -470,3 +471,30 @@ def test_a_truncated_step_has_null_inferred_columns(tmp_path: Path, capsys) -> N
     routed = [r for r in out["rows"] if r["fs_routes"] is True]
     assert sum(r["steps"] for r in routed) == 1  # the truncated step is not a route
     assert sum(r["steps"] for r in out["rows"] if r["fs_routes"] is False) == 0
+
+
+def test_leaf_present_and_target_missing_routes_are_labelled_apart() -> None:
+    """Two hardlinks through the same symlink: one leaf exists, one is missing."""
+    step = _step(
+        [
+            _entry("d/f", "file"),
+            _entry("s1", "symlink", "d"),
+            _entry("s2", "symlink", "d"),
+            _entry("h1", "hardlink", "s1/f"),
+            _entry("h2", "hardlink", "s1/missing"),
+        ],
+        [
+            _event(0, "open", 1, "extract/d/f"),
+            _event(1, "symlink", 3, "extract/s1"),
+            _event(2, "symlink", 5, "extract/s2"),
+            _event(3, "link", 7, "extract/h1"),
+            _event(4, "link", 9, "extract/h2", outcome="not_found"),
+        ],
+    )
+    result = _model(step)
+    assert (result.routes, result.routes_leaf_present, result.routes_target_missing) == (
+        True,
+        True,
+        True,
+    )
+    assert result.escape_zone == "none"

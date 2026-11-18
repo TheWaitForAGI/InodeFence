@@ -15,6 +15,13 @@ read back with ``case_replay.load_replay_request`` and checked with the target's
 written, so a folder the replay driver would refuse is refused here. The case record says it is a
 fixture (``origin: fixture``, ``fixture: Fxx``) and carries no original verdict.
 
+Imports (read-only use; nothing here extracts, runs a container or reads host settings):
+
+* ``scripts.oracle_accuracy_fixtures.CASES`` -- the fixtures (not edited);
+* ``inodefence.builder.build_tar`` -- the input bytes;
+* ``inodefence.case_replay`` -- the case schema and the replay loader used for the read-back;
+* ``inodefence.drivers.run_target.load_adapter`` -- only for the target's ``replay_check``:
+  settings-key validation only, no run (a test fails if it starts a process or opens a socket).
 
 Usage::
 

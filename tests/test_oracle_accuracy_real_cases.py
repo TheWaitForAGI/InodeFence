@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import socket
+import subprocess
 from hashlib import sha256
 from pathlib import Path
 
@@ -184,3 +186,28 @@ def test_python_tarfile_data_cells_pass_the_replay_check(tmp_path: Path) -> None
         tmp_path, target="python-tarfile", version="3.12.16", image_id=IMAGE, run_settings=settings
     )
     assert len(rows) == 14 and {row["extraction_filter"] for row in rows} == {"data"}
+
+
+@pytest.mark.parametrize(
+    ("target", "version", "settings"),
+    [
+        ("node-tar", "7.5.11", NODE_SETTINGS),
+        ("python-tarfile", "3.12.16", {"extraction_filter": "data", "runtime_version": "3.12.16"}),
+    ],
+)
+def test_the_replay_check_runs_nothing(
+    tmp_path: Path, monkeypatch, target: str, version: str, settings: dict
+) -> None:
+    """load_adapter is used for replay_check only: no process, no Docker socket, no network."""
+
+    def forbidden(*args, **kwargs):  # type: ignore[no-untyped-def]
+        raise AssertionError("the case generator started a process or opened a connection")
+
+    monkeypatch.setattr(subprocess, "Popen", forbidden)
+    monkeypatch.setattr(subprocess, "run", forbidden)
+    monkeypatch.setattr(socket.socket, "connect", forbidden)
+    monkeypatch.setattr(socket, "create_connection", forbidden)
+    rows = cases.write_cases(
+        tmp_path, target=target, version=version, image_id=IMAGE, run_settings=settings
+    )
+    assert len(rows) == 14

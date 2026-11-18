@@ -22,15 +22,19 @@ What it computes, per step of the shell population (an archive with >= 2 symlink
   separate column (answer 1b): the destination is first normalised by the policy's lexical rules
   (answer 6, follow-up (가)); an entry those rules skip reads ``skipped``;
 * ``unresolvable`` -- ``loop``, ``limit`` (more than 40 symlinks followed, answer 9) or
-  ``dangling`` (a followed symlink leads to a missing component inside the extraction root), each
-  counted apart and never folded into a route or escape;
+  ``dangling`` (a followed symlink leads to a missing intermediate component inside the
+  extraction root), each counted apart and never folded into a route or escape;
+* ``target_missing`` [inferred] -- a route whose final object (what link() names) is missing:
+  link() would fail, but the attempt went through the symlink, so it stays a route (answer 4:
+  a refused hardlink is still judged), marked apart;
 * ``order`` -- whether the step's observed event order differs from the archive order; the
   hardlink's own order basis (``events`` or the ``entry_index`` fallback, answer 2);
 * oracle C0/C1/C2 [observed], copied from the step record. The additive detectors W3 asked for
   (answer 8) are computed from the AFTER snapshot, which the step record does not carry, so that
   column reads ``not recorded`` -- never 0.
 
-A step whose effect events were truncated (the 64-event cap) is ``판정 불가`` (answer 4).
+A step whose effect events were truncated (the 64-event cap) is ``판정 불가`` (answer 4); its
+[inferred] columns are ``null``, never false or zero.
 
 [inferred] means: POSIX resolution rules applied, in the recorded order, to the declared
 entries and the recorded symlink creations. It is a model, not the extractor's actual
@@ -163,6 +167,9 @@ class Resolution:
     above: bool  # left the sandbox root (container path): EXTERNAL
     followed: tuple[Position, ...]
     failure: str | None  # "loop" | "limit" | "dangling"
+    #: after a symlink, the last component (the object link() names) is missing under extract/.
+    #: link() then fails, but the attempt went through the symlink: a route, marked apart.
+    target_missing: bool = False
 
 
 def zone(position: Position, above: bool) -> str:
@@ -207,8 +214,10 @@ def resolve(
     target text); only positions under extract/ can hold one. A relative target is read from the
     symlink's directory, ``..`` after a symlink applies to where the symlink led (physical). A
     revisited (symlink, remaining path) state is a loop; more than SYMLINK_LIMIT follows is the
-    limit; after a symlink, a missing component under extract/ is dangling (positions outside
-    extract/ are not modelled and count as present).
+    limit; after a symlink, a missing *intermediate* component under extract/ is dangling (a
+    symlink that leads nowhere). A missing *last* component is not dangling: the resolution
+    reached the directory through the symlink, so it routes, with ``target_missing`` set.
+    Positions outside extract/ are not modelled and count as present.
     """
     pending: list[str] = list(start)
     current: list[str] = []
@@ -244,7 +253,9 @@ def resolve(
             pending = [p for p in target.split("/")] + pending
             continue
         if followed and candidate[0] == "extract" and candidate not in existing:
-            return Resolution(candidate, above, tuple(followed), "dangling")
+            if not last:
+                return Resolution(candidate, above, tuple(followed), "dangling")
+            return Resolution(candidate, above, tuple(followed), None, target_missing=True)
         current.append(part)
     return Resolution(tuple(current), above, tuple(followed), None)
 
@@ -258,14 +269,18 @@ def _components(path: str) -> Position:
 
 @dataclass(frozen=True)
 class StepModel:
+    """One step. On a 판정 불가 step (``judgeable`` false) every [inferred] field is ``None`` --
+    never false, "none" or zero (answer 4)."""
+
     shell: bool
     judgeable: bool
-    routes: bool
-    escape_zone: str  # "none" | HARNESS | EXTERNAL
-    unresolvable: tuple[str, ...]
-    dest: str  # "none" | "skipped" | "routes:<zone>" | "unresolvable:<kind>"
-    order_mismatch: bool
-    order_basis: str  # "events" | "entry_index" | "mixed"
+    routes: bool | None
+    escape_zone: str | None  # "none" | HARNESS | EXTERNAL
+    unresolvable: tuple[str, ...] | None
+    target_missing: bool | None  # a route whose final object was missing (link() would fail)
+    dest: str | None  # "none" | "skipped" | "routes:<zone>" | "unresolvable:<kind>"
+    order_mismatch: bool | None
+    order_basis: str | None  # "events" | "entry_index" | "mixed"
 
 
 def model_step(step: Mapping[str, Any], policy: Policy) -> StepModel:
@@ -276,9 +291,9 @@ def model_step(step: Mapping[str, Any], policy: Policy) -> StepModel:
     if policy.occupant_rule not in OCCUPANT_RULES:
         raise ValueError(f"policy {policy.name}: unknown occupant rule {policy.occupant_rule!r}")
     if not shell:
-        return StepModel(False, False, False, "none", (), "none", False, "none")
+        return StepModel(False, False, None, None, None, None, None, None, None)
     if trace.get("effect_events_truncated"):
-        return StepModel(True, False, False, "none", (), "none", False, "none")
+        return StepModel(True, False, None, None, None, None, None, None, None)
     events = list(trace.get("effect_events") or [])
 
     # Order: the first event of each entry, by start sequence, against entry_index (answer 2).
@@ -295,6 +310,7 @@ def model_step(step: Mapping[str, Any], policy: Policy) -> StepModel:
     applied: set[Position] = set()
     for event in events:
         index, start = event.get("entry_index"), event.get("start_sequence")
+        done = event.get("completion_sequence")
         if event.get("outcome") != SUCCEEDED or not isinstance(index, int):
             continue
         for item in event.get("paths") or []:
@@ -304,11 +320,12 @@ def model_step(step: Mapping[str, Any], policy: Policy) -> StepModel:
             applied.add(position)
             for depth in range(1, len(position)):
                 applied.add(position[:depth])
-            order = start if isinstance(start, int) else -1
+            # follow-up (나): an event counts from its completion (start when not recorded)
+            order = done if isinstance(done, int) else start if isinstance(start, int) else -1
             touched.setdefault(position, []).append((order, index, str(event.get("operation"))))
     existing = frozenset(applied | {("extract",), ("archive",), ("outside",)})
 
-    routes, worst, failures, bases, dests = False, "none", [], set(), []
+    routes, worst, failures, bases, dests, missing = False, "none", [], set(), [], False
     for index, entry in enumerate(entries):
         if entry.get("type") != "hardlink":
             continue
@@ -328,21 +345,23 @@ def model_step(step: Mapping[str, Any], policy: Policy) -> StepModel:
             if above
             else resolve(start, present, existing, follow_last=False)
         )
+        # answer 1b: the destination is its own vector, computed whatever the target gives.
+        dests.append(_destination(entry, present, existing, policy))
         if result.failure is not None:
             failures.append(result.failure)
             continue
         if result.followed:
             routes = True
+            missing = missing or result.target_missing
             where = zone(result.position, result.above)
             if where != EXTRACTION and (worst == "none" or where == EXTERNAL):
                 worst = where
-        dests.append(_destination(entry, present, existing, policy))
     basis = bases.pop() if len(bases) == 1 else ("mixed" if bases else "none")
     dest = next((d for d in dests if d.startswith("routes:")), None) or next(
         (d for d in dests if d != "none"), "none"
     )
     return StepModel(
-        True, True, routes, worst, tuple(sorted(failures)), dest, order_mismatch, basis
+        True, True, routes, worst, tuple(sorted(failures)), missing, dest, order_mismatch, basis
     )
 
 
@@ -456,6 +475,7 @@ def model_cell(cell: Path, policy: Policy) -> dict[str, Any]:
                     result.routes,
                     result.escape_zone,
                     result.unresolvable,
+                    result.target_missing,
                     result.dest,
                     result.order_mismatch,
                     result.order_basis,
@@ -471,6 +491,7 @@ def model_cell(cell: Path, policy: Policy) -> dict[str, Any]:
         "fs_routes",
         "fs_escape_zone",
         "unresolvable",
+        "target_missing",
         "dest",
         "order_mismatch",
         "order_basis",
@@ -490,7 +511,15 @@ def model_cell(cell: Path, policy: Policy) -> dict[str, Any]:
             "symlink_limit": SYMLINK_LIMIT,
         },
         "columns": {
-            "inferred": ["fs_routes", "fs_escape_zone", "unresolvable", "dest"],
+            "inferred": [
+                "fs_routes",
+                "fs_escape_zone",
+                "unresolvable",
+                "target_missing",
+                "dest",
+                "order_mismatch",
+                "order_basis",
+            ],
             "observed": ["outcome", "oracle_C0", "oracle_C1", "oracle_C2"],
         },
         "additive_detectors": NOT_RECORDED,

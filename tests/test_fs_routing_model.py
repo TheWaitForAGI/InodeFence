@@ -379,3 +379,94 @@ def test_the_model_touches_no_host_filesystem(tmp_path: Path, capsys, monkeypatc
     monkeypatch.setattr(Path, "hardlink_to", forbidden)
     code, out = _run(capsys, str(cell), "--policy", "node-tar-7.5.7")
     assert code == 0 and out["totals"]["shell"] == 1
+
+
+# -- QA on 7a98162 -------------------------------------------------------------------------------
+
+
+def test_a_missing_final_target_through_a_symlink_is_a_route_not_dangling() -> None:
+    """QA real-FS check: d (dir), s1 -> d, s2 -> d, h -> s1/missing. link() fails with ENOENT,
+    but the attempt went through s1 into extract/d: a route inside the root, marked apart."""
+    step = _step(
+        [
+            _entry("d", "directory"),
+            _entry("s1", "symlink", "d"),
+            _entry("s2", "symlink", "d"),
+            _entry("h", "hardlink", "s1/missing"),
+        ],
+        [
+            _event(0, "mkdir", 1, "extract/d"),
+            _event(1, "symlink", 3, "extract/s1"),
+            _event(2, "symlink", 5, "extract/s2"),
+            _event(3, "link", 7, "extract/h", outcome="not_found"),
+        ],
+    )
+    result = _model(step)
+    assert (result.routes, result.escape_zone, result.unresolvable) == (True, "none", ())
+    assert result.target_missing is True
+
+
+def test_the_destination_is_computed_even_when_the_target_cannot_be() -> None:
+    """Answer 1b: a separate vector. a <-> b loop on the link target; the destination o/h goes
+    through o -> ../outside."""
+    step = _step(
+        [
+            _entry("a", "symlink", "b"),
+            _entry("b", "symlink", "a"),
+            _entry("o", "symlink", "../outside"),
+            _entry("o/h", "hardlink", "a/x"),
+        ],
+        [
+            _event(0, "symlink", 1, "extract/a"),
+            _event(1, "symlink", 3, "extract/b"),
+            _event(2, "symlink", 5, "extract/o"),
+            _event(3, "link", 7, "extract/o/h"),
+        ],
+    )
+    result = _model(step)
+    assert result.unresolvable == ("loop",)
+    assert result.dest == "routes:EXTERNAL"
+
+
+def test_the_last_component_of_the_link_target_is_not_followed() -> None:
+    """link(2) names the symlink itself: h -> s1, where s1 -> .., is not a route."""
+    step = _step(
+        [
+            _entry("s1", "symlink", ".."),
+            _entry("s2", "symlink", "x"),
+            _entry("h", "hardlink", "s1"),
+        ],
+        [
+            _event(0, "symlink", 1, "extract/s1"),
+            _event(1, "symlink", 3, "extract/s2"),
+            _event(2, "link", 5, "extract/h"),
+        ],
+    )
+    assert _model(step).routes is False
+
+
+def test_a_symlink_completed_after_the_link_started_is_not_there() -> None:
+    """Follow-up (나) times the symlink by its completion."""
+    step = _chain_escape(order=(10, 20, 30))
+    step["trace"]["effect_events"][1]["completion_sequence"] = 35  # l2 done after link start
+    assert _model(step).routes is False
+
+
+def test_a_truncated_step_has_null_inferred_columns(tmp_path: Path, capsys) -> None:
+    truncated = _chain_escape()
+    truncated["trace"]["effect_events_truncated"] = True
+    result = _model(truncated)
+    assert (result.routes, result.escape_zone, result.unresolvable, result.dest) == (
+        None,
+        None,
+        None,
+        None,
+    )
+    cell = _cell(tmp_path, [truncated, _chain_escape()])
+    code, out = _run(capsys, str(cell), "--policy", "node-tar-7.5.7")
+    impossible = next(r for r in out["rows"] if not r["judgeable"])
+    for column in out["columns"]["inferred"]:
+        assert impossible[column] is None, column
+    routed = [r for r in out["rows"] if r["fs_routes"] is True]
+    assert sum(r["steps"] for r in routed) == 1  # the truncated step is not a route
+    assert sum(r["steps"] for r in out["rows"] if r["fs_routes"] is False) == 0

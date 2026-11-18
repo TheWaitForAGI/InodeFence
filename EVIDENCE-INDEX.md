@@ -46,3 +46,37 @@
 | 브랜치 | claude/p0-485-w3-exp2-unseal-record | 3bee69d65c9b29d492798c7691a18db148d28694 | #485(merged) | 봉인 해제 기록 |
 | 태그 | prereg-exp3-exp2-freeze-20261113 | 72de29912dbe061c998bf5baf61720eb74987f14 | - | 동결 태그가 가리키는 커밋(태그는 유지) |
 | 태그 | audit-baseline-20261103 | bb3fd7c889cb27684d3193b5e895978f97ba28c1 | - | 동결 태그가 가리키는 커밋(태그는 유지) |
+
+## 2026-11-18 추가: 실험·원장 문서가 인용하는 커밋 7개
+
+독립 검토(QA, 이슈 #496)에서 실험·원장 문서가 인용하지만 이 브랜치와 main 어디에서도 닿지 않던 커밋 7개를 찾았다.
+이 커밋 하나로 그 7개를 부모로 더했다. 첫 부모는 앞의 병합 커밋 `0fadbd1`이고, 앞의 내용은 바뀌지 않는다.
+7개 모두 예전에 공개 원격에 있던 브랜치의 조상이다(2026-11-17 mirror bundle에서 확인). 그 브랜치는 정리 때 지웠다.
+
+| 종류 | 그 커밋을 갖고 있던 옛 브랜치 | 커밋 SHA | 인용 | 비고 |
+| --- | --- | --- | --- | --- |
+| 인용 커밋 | jiwoong/p-m4-5-decompress-selfdiscover-win | 5361c6225e0f2694b47167197afdf2a707f20634 | M4.5 사전등록·실행 | |
+| 인용 커밋 | jiwoong/p-m4-5-decompress-selfdiscover-win | 746adc0a87f6c8146209d3a777930c4bf1aeb747 | M4.5 사전등록·실행 | |
+| 인용 커밋 | jiwoong/p-m4-5-decompress-selfdiscover-win | ad384e4bc7da2c9c3e44625034ccdab3a6ba458c | M4.5 사전등록·실행 | |
+| 인용 커밋 | claude/p0-355-exp-run-runbook | 89b63bad8f2a650f9ca9c3c4eb808174278b39d3 | #354 등록 | |
+| 인용 커밋 | minchan/p0-2-observation-capture | 1f6ca9022fda4d468d7b6ead2f0644f2cf5d9e09 | host2 validation | |
+| 인용 커밋 | codex/host-freeze-validation-20261109 | 6dddb7568ff3101a30eeba93cdabac5fccdfd369 | host2 validation | |
+| 인용 커밋 | claude/s3-exp0-confirmatory-direction | f655f185d778228b33d908ebf1d8f39f32fcd5a1 | EXP-0 premerge 리포트 코드 | |
+
+## 이 브랜치에 넣지 않은 인용 커밋 (Drive bundle에만 있음)
+
+등록 실험 증거가 아니라서 이 브랜치의 범위 밖이다. 원격에는 브랜치로 남아 있지 않다.
+되살릴 때는 Drive `InodeFence/Archive/Git-Refs-20261117/`의 bundle에서 `git fetch <bundle> <ref>`로 가져온다.
+
+- 주장 목록(`paper/sections/claims-evidence-status-v1.md`)의 측정 시점 커밋 5개:
+
+| 커밋 SHA | 들어 있는 Drive bundle |
+| --- | --- |
+| 0f37cfc5d17f1ee1e601e66e5daf7a03a833155f | InodeFence-github-mirror-all-20261118b.bundle(`refs/pull/490/head`, `refs/pull/506/head`. GitHub의 PR 참조로도 남아 있다) |
+| 6a2031f4a94b012374366f2cb430d0de9331baaa | InodeFence-github-mirror-all-20261118.bundle |
+| 7ee495be996cfec230502063b6cf83ad6e350a95 | InodeFence-github-mirror-all-20261118.bundle |
+| aa4cda3c6235949868e4c907500d0adc4cfc16d8 | InodeFence-github-mirror-all-20261118.bundle |
+| f108e361ca0b2aa54c79d665fbf6ad810048fe67 | InodeFence-github-mirror-all-20261118.bundle |
+
+- `docs/LOG.md`에만 나오는 개발 커밋 약 90개: 같은 폴더의 `InodeFence-github-mirror-all-20261117.bundle`과 `…-20261118.bundle`에 있다(QA 대조, 이슈 #496 코멘트).
+- 후속: main 쪽 문서(주장 목록 등)에 "Drive bundle에만 있음" 주석을 다는 일은 `paper/` 변경이라 이번에 하지 않았다.

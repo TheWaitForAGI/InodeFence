@@ -17,18 +17,21 @@ ruling 7, D062 stays a one-time exception). Consequences, accepted by W4:
 W4 (2026-11-18), the asymmetry with the registered S-u, in W4's words:
 
     이 탐색 정책의 보존은 보호 객체 정보를 보지 않는다.
-    등록 S-u의 보존은 보호 목록에서 계산한 '보호된 외부 객체' 표시(하나의 참/거짓)를 포함한
-    effect 키(경계 시도 키 포함)와 oracle의 위반 지문을 쓴다.
-    effect 키(경계 시도 키 포함)는 경로 이름을 담지 않고 '보호된 외부 객체' 표시 하나를 담는다.
+    등록 S-u의 보존은 effect 키(효과 키와 경계 시도 키)와 oracle의 위반 지문을 쓴다.
+    effect 키는 경로 이름을 담지 않는다.
+    효과 키(개별·묶음·motif)는 보호 목록에서 계산한 '보호된 외부 객체' 표시를 서명마다 하나씩
+    담고, 경계 시도 키는 그 표시 없이 엔트리 종류·영역·결과·탈출 모양만 담는다.
     S-u가 함께 쓰는 위반 지문(oracle 출력)은 관찰된 경로(보호 객체 경로 포함)를 담는다.
     둘 다 패턴·CVE를 담지 않으며, 위반 지문은 위반이 관찰된 뒤에만 생긴다.
 
-(The last three sentences are W4's correction after QA check 40: a violation fingerprint's
-evidence holds paths -- ``ChangeFingerprint(path)``, ``IdentityFingerprint(internal_path,
-sentinel_path)``. This policy does not use fingerprints for retention or reward, so that path
-information never reaches its feedback.)
+(From the second sentence on: W4's correction after QA checks 40 and 41. A violation
+fingerprint's evidence holds paths -- ``ChangeFingerprint(path)``,
+``IdentityFingerprint(internal_path, sentinel_path)``; a boundary-attempt key
+(``BoundaryAttemptSignature``) holds only entry type, region, outcome and shape. This policy does
+not use fingerprints or effect keys for retention or reward, so neither reaches its feedback.)
 
-(The mark is ``normalized_effect_signature``'s single ``protected_external`` boolean.) In addition,
+(The mark is ``normalized_effect_signature``'s ``protected_external`` boolean, one per
+signature.) In addition,
 this policy uses no oracle verdict either: its reward is only whether a new pre-violation signal
 appeared. This is a different retention rule, not "S-u plus signals"; S-u is computed here for
 the recorded channel only.

@@ -528,6 +528,65 @@ def test_fasts_shared_image_build_launch_is_not_a_layer(tmp_path: Path, capsys) 
     assert code == 0 and out["fast_interval"] == 4
 
 
+def _with_build_launch(fast_dir: Path, *, run_launch_interval: bool = True) -> None:
+    """Put FAST's shared-image build launch first in the runtime record; optionally strip the
+    run launch's own identity_check_every (a "FAST" folder without its own identity record)."""
+    (record_path,) = (fast_dir / "runtime").glob("*T000000Z.json")
+    record = json.loads(record_path.read_text())
+    if not run_launch_interval:
+        record["launches"][0].pop("policy_applied", None)
+    build = {
+        "classification": "shared-image-build",
+        "env": {"RUN_ID": "run", "BUILD_ONLY": "1"},
+        "policy_applied": {"reuse_shared_images": {"shared_images": {}}},
+    }
+    record["launches"].insert(0, build)
+    record_path.write_text(json.dumps(record))
+
+
+def test_w4_identical_pair_with_build_launch_is_equivalent(tmp_path: Path, capsys) -> None:
+    """W4 condition (2), pass side: the same campaign, FAST with its build launch -> exit 0."""
+    report = _report()
+    fast_dir = _write(tmp_path / "f", report)
+    _with_build_launch(fast_dir)
+    code, out = _trajectory(capsys, _write(tmp_path / "s", report), fast_dir)
+    assert code == 0 and out["verdict"] == "equivalent"
+
+
+def test_w4_image_swap_with_build_launch_still_fails(tmp_path: Path, capsys) -> None:
+    """W4 condition (2), control: §8.1 case B (image swapped mid-campaign, end check off) with the
+    build launch present still diverges -> exit 1 at the first changed verdict."""
+    strict, fast = _image_swap_pair()
+    fast_dir = _write(tmp_path / "f", fast)
+    _with_build_launch(fast_dir)
+    code, out = _trajectory(capsys, _write(tmp_path / "s", strict), fast_dir)
+    assert code == 1
+    assert (out["first_divergence"]["dimension"], out["first_divergence"]["step_index"]) == (
+        "oracle_and_feedback",
+        4,
+    )
+
+
+def test_w4_fast_without_its_own_identity_record_is_refused(tmp_path: Path, capsys) -> None:
+    """W4 condition (3): only the build launch may lack the interval. A "FAST" folder whose run
+    launch has no identity_check_every -> exit 2; one whose loop report has no identity_checks
+    -> exit 2."""
+    report = _report()
+    no_run_interval = _write(tmp_path / "f", report)
+    _with_build_launch(no_run_interval, run_launch_interval=False)
+    code, out = _trajectory(capsys, _write(tmp_path / "s", report), no_run_interval)
+    assert code == 2 and "runtime record" in out["error"]
+
+    no_report_record = _write(tmp_path / "x" / "f", report)
+    _with_build_launch(no_report_record)
+    for path in no_report_record.rglob("inodefence-effect-explore-*.json"):
+        data = json.loads(path.read_text())
+        data.pop(cfs.FAST_RECORD)
+        path.write_text(json.dumps(data))
+    code, out = _trajectory(capsys, _write(tmp_path / "x" / "s", report), no_report_record)
+    assert code == 2 and "FAST" in out["error"]
+
+
 def test_the_agreed_interval_is_reported(tmp_path: Path, capsys) -> None:
     report = _report()
     code, out = _trajectory(capsys, _write(tmp_path / "s", report), _write(tmp_path / "f", report))

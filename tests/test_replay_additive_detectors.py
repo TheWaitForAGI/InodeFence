@@ -208,6 +208,31 @@ def test_an_unknown_replay_option_is_refused() -> None:
         cr.parse_replay_input(json.dumps(line))
 
 
+@pytest.mark.parametrize("value", [False, "yes", 1, None])
+def test_a_replay_option_that_is_not_true_is_refused(value: Any) -> None:
+    # QA (2d1de05): only the literal true switches the column on; anything else is refused.
+    line = json.loads(cr.replay_input_line(_request()))
+    line["run_settings"]["replay_options"] = {"additive_detectors": value}
+    with pytest.raises(cr.CaseReplayError, match="replay_options"):
+        cr.parse_replay_input(json.dumps(line))
+
+
+def test_the_controller_refuses_replay_options_for_another_target(tmp_path) -> None:
+    # QA (2d1de05): the controller refuses on its own, not only because the driver does first.
+    from scripts.effect_replay import run_case_replay
+
+    replay_input = cr.ReplayInput(
+        minimal_seed_corpus()[0],
+        "a" * 64,
+        1,
+        {"target": "python-tarfile"},
+        {"additive_detectors": True},
+    )
+    with pytest.raises(cr.CaseReplayError, match="node-tar only"):
+        run_case_replay(None, "sha256:" + "b" * 64, tmp_path / "report.json", replay_input, None)
+    assert not (tmp_path / "report.json").exists()
+
+
 def test_the_record_names_the_option_only_when_on() -> None:
     from datetime import UTC, datetime
 

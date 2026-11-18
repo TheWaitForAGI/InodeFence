@@ -1,0 +1,493 @@
+"""#536 FAST vs STRICT comparison tool on synthetic evidence (no target run, no Docker).
+
+Fixtures follow design §7.1: F1 identical (exit 0), F2 a trajectory divergence at step 3
+(exit 1, first divergence reported), F3 a deterministic replay mismatch (exit 1), and broken
+FAST controls (skipped reset, stale image, injected false positives) that must exit 1.
+"""
+
+from __future__ import annotations
+
+import copy
+import json
+from pathlib import Path
+
+import pytest
+from scripts import compare_fast_strict as cfs
+
+from inodefence.effect_campaign import EffectCampaignConfig, run_effect_campaign
+from inodefence.effect_demo import effect_campaign_report
+from inodefence.effect_synthetic import synthetic_effect_result
+from inodefence.evaluation.execution_parity import (
+    ResetVerification,
+    extract_parity_subject,
+    parity_subject_to_dict,
+)
+from inodefence.feedback import EffectSearchPolicy
+from inodefence.generator.minimal import minimal_seed_corpus
+from inodefence.model.isolation import IsolationPolicy, IsolationProvenance, ResourcePolicy
+from inodefence.mutator import MutationPolicy
+
+BUDGET = 8
+
+
+def _isolation(image: str = "a") -> IsolationProvenance:
+    return IsolationProvenance(
+        IsolationPolicy("sha256:" + image * 64, 1000, 1000, ResourcePolicy()),
+        "docker-compatible",
+        "27.0.0",
+        "1.47",
+        "linux",
+        "amd64",
+        "amd64",
+    )
+
+
+def _report(
+    seed: int = 11, *, parity: bool = False, image: str = "a", reset_residual_at: int | None = None
+) -> dict:
+    config = EffectCampaignConfig(
+        seed, BUDGET, EffectSearchPolicy.P1_EFFECT_RETENTION, MutationPolicy.LEGACY
+    )
+    result = run_effect_campaign(minimal_seed_corpus(), synthetic_effect_result, config)
+    report = effect_campaign_report(result, "synthetic")
+    report["timing"] = {"total_seconds": 12.0, "per_case": []}
+    if parity:
+        resets = tuple(
+            ResetVerification(i, i == reset_residual_at, False) for i in range(len(result.steps))
+        )
+        subject = extract_parity_subject(
+            result, label="x", isolation=_isolation(image), resets=resets
+        )
+        report["parity_subject"] = parity_subject_to_dict(subject)
+    return report
+
+
+def _write(folder: Path, report: dict, *, streaming: bool = True, name: str = "run") -> Path:
+    """Write a campaign the way exploration does (steps in .steps.jsonl) or run_exp0 does."""
+    folder.mkdir(parents=True, exist_ok=True)
+    report = copy.deepcopy(report)
+    base = f"inodefence-effect-explore-{name}"
+    if streaming:
+        steps = report.pop("steps")
+        (folder / f"{base}.steps.jsonl").write_text(
+            "".join(json.dumps(step, sort_keys=True) + "\n" for step in steps), encoding="utf-8"
+        )
+    (folder / f"{base}.json").write_text(json.dumps(report), encoding="utf-8")
+    (folder / "result.json").write_text('{"schema": "not a campaign report"}', encoding="utf-8")
+    return folder
+
+
+def _run(capsys, *argv: str) -> tuple[int, dict]:
+    code = cfs.main(list(argv))
+    out = capsys.readouterr().out
+    return code, json.loads(out)
+
+
+def _trajectory(capsys, strict: Path, fast: Path, *extra: str, kind: str = "isolated"):
+    return _run(
+        capsys,
+        "--mode",
+        "trajectory",
+        "--fast-kind",
+        kind,
+        "--strict",
+        str(strict),
+        "--fast",
+        str(fast),
+        *extra,
+    )
+
+
+# -- F1: identical except fields allowed to differ ---------------------------------------------
+
+
+@pytest.mark.parametrize("streaming", [True, False])
+def test_f1_identical_campaigns_are_equivalent(tmp_path: Path, capsys, streaming: bool) -> None:
+    strict = _report()
+    fast = copy.deepcopy(strict)
+    fast["timing"] = {"total_seconds": 3.0, "per_case": [{"container_id": "other"}]}
+    fast["image_id"] = "sha256:" + "f" * 64  # never read by the trajectory dimensions
+    code, out = _trajectory(
+        capsys,
+        _write(tmp_path / "s", strict, streaming=streaming),
+        _write(tmp_path / "f", fast, streaming=streaming),
+    )
+    assert code == 0
+    assert out["verdict"] == "equivalent"
+    assert "first_divergence" not in out
+    assert out["dimensions_judged"] == [
+        "case_sequence",
+        "step_input_hash",
+        "oracle_and_feedback",
+        "outcome_class",
+        "corpus",
+    ]
+    assert "sufficient for an isolated FAST only" in out["scope"]
+
+
+def test_f1_with_parity_subjects_judges_all_dimensions(tmp_path: Path, capsys) -> None:
+    report = _report(parity=True)
+    code, out = _trajectory(
+        capsys,
+        _write(tmp_path / "s", report),
+        _write(tmp_path / "f", report),
+        kind="shared",
+    )
+    assert code == 0 and out["verdict"] == "equivalent"
+    assert "snapshots" in out["dimensions_judged"]
+    assert "isolation_and_reset" in out["dimensions_judged"]
+    assert "scope" not in out
+
+
+# -- F2: trajectory divergence at step 3 --------------------------------------------------------
+
+
+def test_f2_oracle_divergence_at_step_3(tmp_path: Path, capsys) -> None:
+    strict = _report()
+    fast = copy.deepcopy(strict)
+    assert not any(fast["steps"][3]["oracle"].values())  # the fixture's step 3 has no violation
+    fast["steps"][3]["oracle"]["C1"] = True
+    code, out = _trajectory(
+        capsys, _write(tmp_path / "s", strict), _write(tmp_path / "f", fast), "--stop-first"
+    )
+    assert code == 1 and out["verdict"] == "divergent"
+    first = out["first_divergence"]
+    assert first["dimension"] == "oracle_and_feedback"
+    assert first["step_index"] == 3
+    assert first["case_id"] == strict["steps"][3]["case_id"]
+    assert (first["field"], first["strict"], first["fast"]) == ("oracle", "none", "C1")
+    assert "campaigns" not in out  # --stop-first prints the first divergence only
+
+
+def test_f2_case_sequence_divergence_at_step_3(tmp_path: Path, capsys) -> None:
+    strict = _report()
+    fast = copy.deepcopy(strict)
+    fast["steps"][3]["case_id"] = "0" * 64
+    code, out = _trajectory(capsys, _write(tmp_path / "s", strict), _write(tmp_path / "f", fast))
+    assert code == 1
+    first = out["first_divergence"]
+    assert (first["dimension"], first["step_index"], first["field"]) == (
+        "case_sequence",
+        3,
+        "case_id",
+    )
+    counts = out["campaigns"][0]["divergences_per_dimension"]
+    assert counts["case_sequence"] == 1 and counts["step_input_hash"] == 1
+
+
+@pytest.mark.parametrize(
+    ("mutate", "dimension"),
+    [
+        (lambda s: s.__setitem__("archive_format", "other-format"), "step_input_hash"),
+        (lambda s: s["feedback"].__setitem__("new_effect_keys", [{"k": 1}]), "oracle_and_feedback"),
+        (lambda s: s.__setitem__("outcome", "run_error"), "outcome_class"),
+        (lambda s: s["feedback"].__setitem__("retained", not s["feedback"]["retained"]), "corpus"),
+    ],
+)
+def test_each_report_dimension_catches_its_difference(
+    tmp_path: Path, capsys, mutate, dimension: str
+) -> None:
+    strict = _report()
+    fast = copy.deepcopy(strict)
+    mutate(fast["steps"][5])
+    code, out = _trajectory(capsys, _write(tmp_path / "s", strict), _write(tmp_path / "f", fast))
+    assert code == 1
+    assert (out["first_divergence"]["dimension"], out["first_divergence"]["step_index"]) == (
+        dimension,
+        5,
+    )
+
+
+def test_incomplete_fast_side_diverges_where_it_stops(tmp_path: Path, capsys) -> None:
+    strict = _report()
+    fast = copy.deepcopy(strict)
+    fast["steps"] = fast["steps"][:5]
+    code, out = _trajectory(capsys, _write(tmp_path / "s", strict), _write(tmp_path / "f", fast))
+    assert code == 1
+    first = out["first_divergence"]
+    assert (first["dimension"], first["step_index"]) == ("case_sequence", 5)
+    assert (first["strict"], first["fast"]) == (BUDGET, 5)
+
+
+# -- option-1 negative control (design §8.1): target image swapped mid-campaign ----------------
+
+
+def _image_swap_pair() -> tuple[dict, dict]:
+    """STRICT on a violating release throughout; FAST swapped to a fixed release from step 4,
+    so the violating inputs after the swap are judged differently (7.5.2 -> 7.5.11 shape)."""
+    strict = _report()
+    for step in strict["steps"][4:]:
+        step["oracle"]["C1"] = True  # the violating release judges these inputs as C1
+    fast = copy.deepcopy(strict)
+    for step in fast["steps"][4:]:
+        step["oracle"]["C1"] = False  # after the swap the fixed release does not violate
+    return strict, fast
+
+
+def test_image_swap_without_end_check_is_divergent(tmp_path: Path, capsys) -> None:
+    """§8.1 (a): end check disabled -> the trajectory comparison itself must catch the swap."""
+    strict, fast = _image_swap_pair()
+    code, out = _trajectory(capsys, _write(tmp_path / "s", strict), _write(tmp_path / "f", fast))
+    assert code == 1
+    first = out["first_divergence"]
+    assert (first["dimension"], first["step_index"], first["strict"], first["fast"]) == (
+        "oracle_and_feedback",
+        4,
+        "C1",
+        "none",
+    )
+
+
+def test_image_swap_with_end_check_marks_the_campaign_invalid(tmp_path: Path, capsys) -> None:
+    """§8.1 (b): end check enabled -> the run marks itself invalid; never compared (exit 2)."""
+    strict, fast = _image_swap_pair()
+    fast[cfs.INVALID_KEY] = "target image changed during the campaign"
+    code, out = _trajectory(capsys, _write(tmp_path / "s", strict), _write(tmp_path / "f", fast))
+    assert code == 2 and out["verdict"] == "invalid"
+    assert "target image changed" in out["error"]
+
+
+# -- state-sharing FAST controls (must exit 1; need parity_subject) ------------------------------
+
+
+def test_broken_fast_skipped_reset_is_divergent(tmp_path: Path, capsys) -> None:
+    code, out = _trajectory(
+        capsys,
+        _write(tmp_path / "s", _report(parity=True)),
+        _write(tmp_path / "f", _report(parity=True, reset_residual_at=2)),
+        kind="shared",
+    )
+    assert code == 1
+    first = out["first_divergence"]
+    assert (first["dimension"], first["step_index"]) == ("isolation_and_reset", 2)
+
+
+def test_broken_fast_stale_image_is_divergent(tmp_path: Path, capsys) -> None:
+    code, out = _trajectory(
+        capsys,
+        _write(tmp_path / "s", _report(parity=True, image="a")),
+        _write(tmp_path / "f", _report(parity=True, image="b")),
+        kind="shared",
+    )
+    assert code == 1
+    first = out["first_divergence"]
+    assert first["dimension"] == "isolation_and_reset" and first["step_index"] is None
+    assert "image_id" in first["field"]
+
+
+def test_broken_fast_snapshot_difference_is_divergent(tmp_path: Path, capsys) -> None:
+    strict = _report(parity=True)
+    fast = copy.deepcopy(strict)
+    groups = fast["parity_subject"]["steps"][4]["after"]["identity_groups"]
+    groups.append(["leaked/a", "leaked/b"])
+    code, out = _trajectory(
+        capsys, _write(tmp_path / "s", strict), _write(tmp_path / "f", fast), kind="shared"
+    )
+    assert code == 1
+    assert (out["first_divergence"]["dimension"], out["first_divergence"]["step_index"]) == (
+        "snapshots",
+        4,
+    )
+
+
+# -- input errors (exit 2) ----------------------------------------------------------------------
+
+
+def test_shared_fast_without_parity_subject_is_input_insufficient(tmp_path: Path, capsys) -> None:
+    report = _report()
+    code, out = _trajectory(
+        capsys, _write(tmp_path / "s", report), _write(tmp_path / "f", report), kind="shared"
+    )
+    assert code == 2 and out["verdict"] == "input_error"
+    assert "parity_subject" in out["error"]
+
+
+def test_missing_fast_kind_is_an_input_error(tmp_path: Path, capsys) -> None:
+    report = _report()
+    code, out = _run(
+        capsys,
+        "--mode",
+        "trajectory",
+        "--strict",
+        str(_write(tmp_path / "s", report)),
+        "--fast",
+        str(_write(tmp_path / "f", report)),
+    )
+    assert code == 2 and "--fast-kind" in out["error"]
+
+
+def test_folder_without_reports_is_an_input_error(tmp_path: Path, capsys) -> None:
+    (tmp_path / "empty").mkdir()
+    code, out = _trajectory(capsys, _write(tmp_path / "s", _report()), tmp_path / "empty")
+    assert code == 2 and "no campaign report" in out["error"]
+
+
+def test_unpaired_reports_are_an_input_error(tmp_path: Path, capsys) -> None:
+    report = _report()
+    strict = _write(tmp_path / "s", report, name="a")
+    _write(strict, report, name="b")
+    fast = _write(tmp_path / "f", report, name="a")
+    _write(fast, report, name="c")
+    code, out = _trajectory(capsys, strict, fast)
+    assert code == 2 and "without a partner" in out["error"]
+
+
+def test_unknown_option_exits_2() -> None:
+    assert cfs.main(["--mode", "trajectory", "--bogus"]) == 2
+
+
+# -- descriptive identity partition -------------------------------------------------------------
+
+
+def test_identity_partition_groups_paths_sharing_an_inode() -> None:
+    def path(name: str, ino: int) -> dict:
+        return {"path": name, "after": {"status": "present", "st_dev": 1, "st_ino": ino}}
+
+    step = {
+        "trace": {
+            "effect_events": [
+                {"paths": [path("x/a", 7), path("outside/s", 7)]},
+                {"paths": [path("x/b", 9), {"path": "x/c", "after": None}]},
+            ]
+        }
+    }
+    assert cfs._identity_partition(step) == [["outside/s", "x/a"]]
+
+
+# -- replay mode (F3 and the TOST rule) ---------------------------------------------------------
+
+
+def _replays(folder: Path, counts: dict[str, int], n: int) -> Path:
+    folder.mkdir(parents=True, exist_ok=True)
+    for case, k in counts.items():
+        rounds = [{"round": i + 1, "c0": i < k, "c1": False, "c2": False} for i in range(n)]
+        record = {
+            "schema": cfs.REPLAY_SCHEMA,
+            "original": {"case_id": case, "tar_sha256": "t" + case},
+            "rounds": rounds,
+        }
+        sub = folder / f"{case}.replay"
+        sub.mkdir()
+        (sub / "replay.json").write_text(json.dumps(record), encoding="utf-8")
+    return folder
+
+
+def _inputs(path: Path, cases: list[str]) -> Path:
+    path.write_text(json.dumps([{"input_id": f"in-{c}", "case": c} for c in cases]))
+    return path
+
+
+def _replay(capsys, tmp_path: Path, strict: dict[str, int], fast: dict[str, int], n: int = 10):
+    return _run(
+        capsys,
+        "--mode",
+        "replay",
+        "--strict",
+        str(_replays(tmp_path / "s", strict, n)),
+        "--fast",
+        str(_replays(tmp_path / "f", fast, n)),
+        "--inputs",
+        str(_inputs(tmp_path / "inputs.json", sorted(strict))),
+        "--n",
+        str(n),
+    )
+
+
+def test_f3_deterministic_input_mismatch_is_non_equivalent(tmp_path: Path, capsys) -> None:
+    code, out = _replay(capsys, tmp_path, {"a": 0, "b": 10}, {"a": 3, "b": 10})
+    assert code == 1 and out["verdict"] == "non_equivalent"
+    row = next(r for r in out["per_input"] if r["case"] == "a")
+    assert (row["k_strict"], row["k_fast"], row["rule"], row["pass"]) == (
+        0,
+        3,
+        "(i)deterministic",
+        False,
+    )
+    assert out["tost"] is None
+
+
+def test_deterministic_inputs_with_equal_counts_are_equivalent(tmp_path: Path, capsys) -> None:
+    code, out = _replay(capsys, tmp_path, {"a": 0, "b": 10}, {"a": 0, "b": 10})
+    assert code == 0 and out["verdict"] == "equivalent"
+
+
+def test_stochastic_inputs_pass_tost_when_rates_match(tmp_path: Path, capsys) -> None:
+    strict = {c: k for c, k in zip("abcdef", (3, 5, 7, 4, 6, 2), strict=True)}
+    fast = {c: k for c, k in zip("abcdef", (4, 5, 6, 4, 6, 2), strict=True)}
+    code, out = _replay(capsys, tmp_path, strict, fast)
+    assert code == 0
+    assert out["tost"]["pass"] is True and out["tost"]["inputs"] == 6
+    assert all(r["rule"] == "(ii)stochastic-pooled" for r in out["per_input"])
+
+
+def test_broken_fast_raising_stochastic_rates_fails_tost(tmp_path: Path, capsys) -> None:
+    strict = {c: k for c, k in zip("abcdef", (3, 5, 7, 4, 6, 2), strict=True)}
+    fast = {c: min(10, k + 4) for c, k in strict.items()}
+    code, out = _replay(capsys, tmp_path, strict, fast)
+    assert code == 1 and out["tost"]["pass"] is False
+
+
+def test_fewer_than_five_stochastic_inputs_need_twenty_rounds(tmp_path: Path, capsys) -> None:
+    code, out = _replay(capsys, tmp_path, {"a": 3, "b": 0}, {"a": 3, "b": 0})
+    assert code == 2 and "20 needed" in out["error"]
+    code, out = _replay(capsys, tmp_path / "n20", {"a": 6, "b": 0}, {"a": 6, "b": 0}, n=20)
+    assert code == 0 and out["tost"]["n"] == 20
+
+
+def test_rounds_without_a_verdict_make_the_count_short(tmp_path: Path, capsys) -> None:
+    strict = _replays(tmp_path / "s", {"a": 0}, 10)
+    record_path = strict / "a.replay" / "replay.json"
+    record = json.loads(record_path.read_text())
+    record["rounds"][0].update(c0=None, c1=None, c2=None)
+    record_path.write_text(json.dumps(record))
+    code, out = _run(
+        capsys,
+        "--mode",
+        "replay",
+        "--strict",
+        str(strict),
+        "--fast",
+        str(_replays(tmp_path / "f", {"a": 0}, 10)),
+        "--inputs",
+        str(_inputs(tmp_path / "inputs.json", ["a"])),
+    )
+    assert code == 2 and "9 judged rounds" in out["error"]
+
+
+def test_verdict_lines_are_read_by_input_id(tmp_path: Path, capsys) -> None:
+    for side, k in (("s", 0), ("f", 0)):
+        (tmp_path / side).mkdir()
+        lines = [{"input_id": "x", "run_index": i, "violated": i < k} for i in range(10)]
+        (tmp_path / side / "set.verdicts.jsonl").write_text(
+            "".join(json.dumps(line) + "\n" for line in lines)
+        )
+    code, out = _run(
+        capsys,
+        "--mode",
+        "replay",
+        "--strict",
+        str(tmp_path / "s"),
+        "--fast",
+        str(tmp_path / "f"),
+        "--inputs",
+        str(_inputs(tmp_path / "inputs.json", ["x"])),
+    )
+    assert code == 0 and out["per_input"][0]["k_fast"] == 0
+
+
+# -- statistics helpers -------------------------------------------------------------------------
+
+
+def test_fisher_exact_matches_a_known_value() -> None:
+    # [[3, 1], [1, 3]]: two-sided p = 34/70 (the classic tea-tasting table).
+    assert cfs.fisher_exact(3, 1, 1, 3) == pytest.approx(34 / 70)
+    assert cfs.fisher_exact(5, 5, 5, 5) == pytest.approx(1.0)
+
+
+def test_holm_adjustment() -> None:
+    assert cfs.holm([0.01, 0.04, 0.03]) == pytest.approx([0.03, 0.06, 0.06])
+
+
+def test_tost_zero_difference_passes_and_large_difference_fails() -> None:
+    assert cfs.tost([3, 5, 7, 4, 6], [3, 5, 7, 4, 6], 10, 0.10, 0.05)["pass"] is True
+    assert cfs.tost([1, 1, 1, 1, 1], [5, 5, 5, 5, 5], 10, 0.10, 0.05)["pass"] is False

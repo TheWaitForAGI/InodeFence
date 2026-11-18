@@ -48,7 +48,7 @@ generic oracle은 위반을 CVE에 귀속 못 함 → 전체 패치 상태로 �
 ## 정지 규칙 (ORCH D-235)
 
 - 도달 셀(≥1 seed 위반 도달): **6 seed 전부** 실행, 포화로 멈추지 않음. 도달률 k/n(n = 실행 seed 수; 도달 셀은 6), 도달 case마다 replay k/10.
-- 도달 0 셀: 포화 규칙(3 seed 각각 누적 distinct effect 키 <1% 신규) 발동 시 정지 → "0/3, 규칙 정지"(0/6 아님).
+- 도달 0 셀: 포화 규칙(3 seed 각각 누적 distinct effect 키 <1% 신규) 발동 시 정지 → "0/n, 규칙 정지"(실제 정지 seed n; seed 1이 늘 큰 신규라 규칙상 n≥4, 0/6 아님).
   진척·포화 = saturation516.py 706c8c69, Q1 참조표 9d37ef08 형식.
 - 깨끗 통제(7.5.11) 위반 판정 = 유일한 candidate: seed 경계 정지, ORCH에 "candidate: yes"만 + §514 근본원인.
 

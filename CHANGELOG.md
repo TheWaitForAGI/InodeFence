@@ -32,6 +32,9 @@
   그대로다. N=200은 고정이고 고르는 옵션은 없다. 호출자 환경의 `DEMO_IDENTITY_CHECK_EVERY`는 무시하고 경고 한 줄을 낸다.
   확인 사이에 남는 보호는 대상마다 다르다. node-tar는 실행 컨테이너 안의 worker가 매번 다시 확인하고, 나머지 셋은
   고정된 이미지 ID뿐이다. 시간 효과는 아직 재지 않았다.
+- python-tarfile 탐색이 실행 중 스텝 전체(스냅숏·trace)를 메모리에 쌓지 않는다(#542). `result.json`과 `summary.md`는
+  그대로다. 엔진 원시 보고서(`inodefence-python-tarfile-explore-*.json`)에서는 `steps` 배열이 빠지고 `streaming: true`가 붙는다.
+  스텝 기록은 옆의 `.steps.jsonl`에 있다.
 - 새 선택 키가 든 `result.json`은 이 버전 이상의 `inodefence status`·`summary`로 읽는다([호환 약속](docs/USAGE.md#호환-약속)).
 
 ### 고친 문제

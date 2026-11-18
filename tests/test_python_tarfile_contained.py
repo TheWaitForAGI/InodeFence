@@ -248,12 +248,19 @@ def test_fast_identity_schedule_same_steps_fewer_probes_and_recorded() -> None:
     """#536: FAST probes start/every N/end; steps and verdicts equal STRICT on the same seed."""
     budget = len(minimal_seed_corpus()) + 4
     strict_backend, fast_backend = _LocalBackend(), _LocalBackend()
+    # The steps are streamed (#542): compare what each run hands the controller's .steps.jsonl.
+    strict_steps: list[dict[str, object]] = []
+    fast_steps: list[dict[str, object]] = []
     strict = python_tarfile_exploration_report(
-        strict_backend, IMAGE, "data", RUNTIME, seed=7, budget=budget
-    )
+        strict_backend, IMAGE, "data", RUNTIME, seed=7, budget=budget,
+        step_sink=strict_steps.append,
+    )  # fmt: skip
     fast = python_tarfile_exploration_report(
-        fast_backend, IMAGE, "data", RUNTIME, seed=7, budget=budget, identity_check_every=3
-    )
+        fast_backend, IMAGE, "data", RUNTIME, seed=7, budget=budget, identity_check_every=3,
+        step_sink=fast_steps.append,
+    )  # fmt: skip
+    strict["steps"], fast["steps"] = strict_steps, fast_steps
+    assert len(strict_steps) == budget
     assert "identity_checks" not in strict
     record = fast.pop("identity_checks")
     assert record["interval"] == 3 and record["end_checks"] == 1

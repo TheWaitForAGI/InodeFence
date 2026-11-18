@@ -27,9 +27,14 @@ from hashlib import sha256
 from time import perf_counter
 from typing import Any
 
-from inodefence.builder import build_tar
+from inodefence.builder import BUILDER_FORMAT, build_tar
+from inodefence.campaign_hooks import CampaignHooks, LightCampaignResult
 from inodefence.effect_campaign import EffectCampaignConfig, run_effect_campaign
-from inodefence.effect_demo import EffectStepReporter, effect_campaign_report
+from inodefence.effect_demo import (
+    DEMO_REPORT_SCHEMA,
+    EffectStepReporter,
+    effect_campaign_report,
+)
 from inodefence.effect_pipeline_python_tarfile import run_python_tarfile_contained_case
 from inodefence.evaluation.rds import (
     VOCABULARY_MUTATION_POLICY,
@@ -39,7 +44,7 @@ from inodefence.evaluation.rds import (
 )
 from inodefence.execution.base import ExecutionBackend
 from inodefence.feedback import EffectSearchPolicy
-from inodefence.generator import SeedCorpusId, minimal_seed_corpus
+from inodefence.generator import SeedCorpusId, minimal_seed_corpus, seed_corpus_label
 from inodefence.model import ArchiveCase, EffectRunResult, ExecutionStatus
 from inodefence.mutator import MutationPolicy
 from inodefence.mutator.policy import SEED_CORPUS
@@ -166,11 +171,17 @@ def python_tarfile_exploration_report(
     step_sink: Callable[[dict[str, object]], None] | None = None,
     requested_spec: str | None = None,
     identity_check_every: int | None = None,
+    stream: bool = True,
 ) -> dict[str, Any]:
     """Run the shared effect loop on one prepared python runtime image and one filter.
 
     ``identity_check_every`` (FAST exploration only, #536): probe the image identity every N cases
     and at the end instead of before every case; ``None`` keeps the per-case probe (STRICT).
+
+    ``stream`` (default, #542): the loop keeps no step in memory; the report then has no ``steps``
+    (they went to ``step_sink``, the controller's ``.steps.jsonl``) and says ``streaming: true``.
+    ``stream=False`` is the retaining run (full ``steps`` in the report), kept as the comparison
+    baseline: both give the same ``case_records``, ``violation_inputs`` and retained corpus.
 
     A mutation policy bound to a seed corpus other than the registered one (v2.1
     ``minimal-empty-reg-v1``) is refused before the target is bound: its empty-archive seed is
@@ -225,11 +236,26 @@ def python_tarfile_exploration_report(
             step_sink(line)
 
     started = perf_counter()
-    result = run_effect_campaign(minimal_seed_corpus(), produce, config, on_step=record_step)
+    corpus = minimal_seed_corpus()
+    # Streaming (#542): the loop keeps no step in memory (each one went to ``record_step`` and the
+    # controller's ``.steps.jsonl``), so memory no longer grows with full per-step snapshots and
+    # traces. ``case_records`` (one small verdict record per case) stays, so the common result
+    # built from it is byte-identical to the retaining run.
+    if stream:
+        light = run_effect_campaign(
+            corpus, produce, config, hooks=CampaignHooks(on_step=record_step, retain_steps=False)
+        )
+        assert isinstance(light, LightCampaignResult)
+    else:
+        full = run_effect_campaign(corpus, produce, config, on_step=record_step)
     identity_record = finish_identity_schedule(target, schedule)  # FAST: mismatch raises
     total = perf_counter() - started
     undetermined = sum(1 for record in case_records if record["outcome"] == "run_error")
-    report = effect_campaign_report(result, "native-python-tarfile-container")
+    report = (
+        _streaming_report(config, light, tuple(case.case_id for case in corpus))
+        if stream
+        else effect_campaign_report(full, PRODUCER)
+    )
     report.update(
         label=EXPLORATION_LABEL,
         mode="exploration",
@@ -259,3 +285,37 @@ def python_tarfile_exploration_report(
     )
     report.update(identity_record)
     return report
+
+
+PRODUCER = "native-python-tarfile-container"
+
+
+def _streaming_report(
+    config: EffectCampaignConfig, result: LightCampaignResult, initial_case_ids: tuple[str, ...]
+) -> dict[str, Any]:
+    """The loop report's common part without per-step records (#542).
+
+    The same keys as ``effect_campaign_report`` except the three derived from retained steps
+    (``steps``, ``observer_integrity_summary``, ``final_search_stats``), plus ``streaming: true``.
+    The steps are in the controller's ``<report>.steps.jsonl`` (one line per step, written as each
+    step completes), which is where step readers such as ``scripts/compare_fast_strict.py`` look
+    first.
+    """
+    return {
+        "demo_report_schema": DEMO_REPORT_SCHEMA,
+        "producer": PRODUCER,
+        "streaming": True,
+        "mutation_policy": config.mutation_policy.value,
+        "config": {
+            "random_seed": config.random_seed,
+            "execution_budget": config.execution_budget,
+            "search_policy": config.search_policy.value,
+            "mutation_policy": config.mutation_policy.value,
+            "build_invalid": config.build_invalid_policy.value,
+            "builder_format": BUILDER_FORMAT,
+            "seed_corpus": seed_corpus_label(initial_case_ids),
+        },
+        "initial_case_ids": list(initial_case_ids),
+        "retained_case_ids": list(result.retained_case_ids),
+        "executed": result.executed,
+    }

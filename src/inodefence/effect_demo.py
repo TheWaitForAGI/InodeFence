@@ -678,6 +678,21 @@ def render_effect_step_summary(record: Mapping[str, Any], budget: int | None = N
     return "  ".join(parts)
 
 
+def _case_records_view(report: Mapping[str, Any]) -> dict[str, Any]:
+    """A streaming report that lists every case's verdict record, seen as the aggregate block."""
+    records = [r for r in report["case_records"] if isinstance(r, Mapping)]
+    return {
+        **report,
+        "aggregate": {
+            "runs_executed": len(records),
+            "terminations": dict(Counter(str(r.get("termination")) for r in records)),
+            "unjudged_steps": sum(1 for r in records if r.get("outcome") == "run_error"),
+            "errors": sum(1 for r in records if r.get("outcome") == "run_error"),
+        },
+        "violation_cases": [r for r in records if r.get("c0") or r.get("c1") or r.get("c2")],
+    }
+
+
 def _render_streaming_campaign_summary(report: Mapping[str, Any]) -> str:
     """Closing lines for a streaming report, which keeps no steps.
 
@@ -726,6 +741,9 @@ def render_effect_campaign_summary(report: Mapping[str, Any]) -> str:
     if not isinstance(steps, list):
         if report.get("streaming") and isinstance(report.get("aggregate"), dict):
             return _render_streaming_campaign_summary(report)
+        if report.get("streaming") and isinstance(report.get("case_records"), list):
+            # python-tarfile streaming (#542): no steps, one verdict record per case instead.
+            return _render_streaming_campaign_summary(_case_records_view(report))
         raise ValueError("campaign summary requires a finished report with steps")
     terminations = Counter(str(step["feedback"]["trace_termination"]) for step in steps)
     contracts = sorted({contract for step in steps for contract in step["oracle"]})

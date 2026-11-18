@@ -38,6 +38,7 @@
   그대로다. N=200은 고정이고 고르는 옵션은 없다. 호출자 환경의 `DEMO_IDENTITY_CHECK_EVERY`는 무시하고 경고 한 줄을 낸다.
   확인 사이에 남는 보호는 대상마다 다르다. node-tar는 실행 컨테이너 안의 worker가 매번 다시 확인하고, 나머지 셋은
   고정된 이미지 ID뿐이다. 시간 효과는 아직 재지 않았다.
+- D065(위 항목의 범위 정정): decompress·oras-go: FAST는 D064 신원확인 간격(수용 측정 없음)을 적용하지 않고 케이스마다 확인; 공용 이미지 재빌드 생략(0.2.0, 타이밍은 node-tar에서만 측정, 두 대상 per-target 속도 미측정)만 적용; 두 대상 FAST 수용은 측정 안 됨(FAST 생산자 없음). 결과의 `campaign.identity_checks`는 `per-case`(`interval: 1`, `fast_acceptance: not_measured`, `acceptance_evidence: false`, `total_checks` 없음)이고 실행 시작에 stderr 한 줄이 나온다. 런처 직접 실행의 간격은 측정·수용된 모드가 아니며 그 출력은 수용 증거가 아니다. [D065](docs/DECISIONS.md)
 - python-tarfile 탐색이 실행 중 스텝 전체(스냅숏·trace)를 메모리에 쌓지 않는다(#542). `result.json`과 `summary.md`는
   그대로다. 엔진 원시 보고서(`inodefence-python-tarfile-explore-*.json`)에서는 `steps` 배열이 빠지고 `streaming: true`가 붙는다.
   스텝 기록은 옆의 `.steps.jsonl`에 있다.

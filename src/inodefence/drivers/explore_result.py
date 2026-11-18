@@ -18,9 +18,11 @@ from inodefence.drivers.run_target import (
     PreparedTargetImage,
     engine_provenance,
 )
+from inodefence.drivers.runtime.policy import RuntimeProfile
 from inodefence.live_exploration import list_violation_cases, read_progress
 from inodefence.target_result import (
     JUDGED,
+    PER_CASE_IDENTITY_MARKER,
     CampaignInfo,
     CaseVerdict,
     ResultMode,
@@ -251,6 +253,26 @@ def with_identity_checks(
     assert result.campaign is not None  # every exploration result is a campaign
     return dataclasses.replace(
         result, campaign=dataclasses.replace(result.campaign, identity_checks=dict(record))
+    )
+
+
+def with_per_case_identity_marker(result: TargetResult, session: object) -> TargetResult:
+    """D065: ``result`` with the per-case marker when the run was FAST without an interval.
+
+    That is decompress/oras-go FAST (the explore driver drops the interval for them). Any
+    other run -- STRICT, or a FAST run with an interval -- is returned unchanged.
+    """
+    policy = getattr(session, "policy", None)
+    if (
+        policy is None
+        or policy.profile is not RuntimeProfile.FAST
+        or policy.identity_check_every is not None
+    ):
+        return result
+    assert result.campaign is not None  # every exploration result is a campaign
+    marker = dict(PER_CASE_IDENTITY_MARKER)
+    return dataclasses.replace(
+        result, campaign=dataclasses.replace(result.campaign, identity_checks=marker)
     )
 
 

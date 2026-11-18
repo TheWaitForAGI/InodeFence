@@ -30,6 +30,7 @@ from inodefence.target_result import (
     TargetResult,
     TargetResultError,
     Verdict,
+    is_per_case_identity_marker,
     load_target_result,
     no_extraction_warning,
 )
@@ -235,7 +236,9 @@ def render_summary(result: TargetResult, *, source_name: str, inputs_verified: b
         if campaign.stopped_early:
             add("| 중단 | 사람이 예산 소진 전에 멈춤 (그때까지의 결과) |")
         checks = campaign.identity_checks
-        if checks is not None:  # FAST (#536 option 1) only; absent: a probe before every case
+        if checks is not None and is_per_case_identity_marker(checks):  # D065
+            add("| 이미지 신원 확인 | 케이스마다 (FAST 간격 미적용, FAST 수용 측정 없음) |")
+        elif checks is not None:  # FAST (#536 option 1) only; absent: a probe before every case
             add(
                 f"| 이미지 신원 확인 | 캠페인 단위(시작·{checks.get('interval')}건마다·끝), "
                 f"총 {checks.get('total_checks')}회 — STRICT는 케이스마다 |"

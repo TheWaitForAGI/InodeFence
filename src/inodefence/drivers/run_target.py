@@ -258,6 +258,10 @@ EXPLORE_MUTATION_POLICIES = ("uniform-b-grammar-v2-freeze-3-fixed-baseline-v1",)
 #: The targets whose exploration can run a ``--mutation-policy`` value; the explore driver refuses
 #: the option for any other target before anything is prepared or run (exit 3).
 MUTATION_POLICY_TARGETS = ("node-tar",)
+#: D065: the targets whose ``--profile fast`` keeps the shared-image rebuild skip only. The D064
+#: identity-probe interval is not applied there (no FAST acceptance was measured for them), so
+#: their image identity is probed before every case, as STRICT does.
+FAST_PER_CASE_IDENTITY_TARGETS = ("decompress", "oras-go")
 #: The launcher environment variable that selects the mutation policy. An explore driver never
 #: passes the caller's own value through: it sets it from ``ExploreOptions.mutation_policy`` (or
 #: its target's default) and otherwise removes it, so a run without the option is the default run

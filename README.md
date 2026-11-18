@@ -163,7 +163,7 @@ inodefence summary ~/inodefence-explore/target-explore/7.5.23-123-20-result/resu
 | `inodefence doctor` | 환경 점검(`OK`·`FAIL`·`WARN`·`INFO`·`UNKNOWN`)과 고치는 법. 확인하지 못한 것은 `OK`가 아니라 `UNKNOWN`. 읽기만 함 | 0 FAIL 없음, 1 FAIL 있음 |
 | `inodefence targets [--json]` | 추출기와 각 추출기가 지원하는 것 | 0 정상, 3 저장소 없음·설정 파일 오류 |
 | `inodefence verify --target T --version V` | 고정 입력 회귀(`--version` 반복 가능) + 정상 입력 대조군(실패하면 PASS 대신 ERROR) | 0 PASS, 1 FAIL, 2 ERROR, 3 실행 전 거부 |
-| `inodefence explore --target T --version V [--budget N] [--seed S] [--quiet\|--verbose] [--profile fast] [--mutation-policy P]` | 상태 기반 feedback 탐색(기본 budget 20, seed 123). 실행 중 진행 줄을 stderr에 출력(`--quiet` 없음, `--verbose` 런처 원시 출력). `--mutation-policy`는 다음 버전, node-tar 전용, v2 문법 정책 한 값(탐색용) | 0 PASS, 1 FAIL, 2 ERROR, 3 실행 전 거부 |
+| `inodefence explore --target T --version V [--budget N] [--seed S] [--quiet\|--verbose] [--profile fast] [--mutation-policy P]` | 상태 기반 feedback 탐색(기본 budget 20, seed 123). 실행 중 진행 줄을 stderr에 출력(`--quiet` 없음, `--verbose` 런처 원시 출력). `--mutation-policy`는 다음 버전, node-tar 전용, v2 문법 정책 한 값(탐색용). decompress·oras-go의 FAST는 재빌드 생략만(신원 확인은 케이스마다, FAST 수용 측정 없음, 다음 버전) | 0 PASS, 1 FAIL, 2 ERROR, 3 실행 전 거부 |
 | `inodefence status <폴더>` | 실행 중 진행·위반 케이스, 끝난 뒤 판정 | 0 표시, 2 보일 것 없음·읽기 실패 |
 | `inodefence replay <위반 케이스 폴더> [--rounds 3]`<br>`inodefence replay <결과 폴더> --case step-N` | 탐색 케이스를 같은 이미지·같은 조건에서 다시 돌려 회차별 분류와 재현 비율 기록(네 대상) | 0 완료, 1 미완료, 2 재실행 불가, 3 실행 전 멈춤, 4 미지원 |
 | `inodefence summary <result.json> [-o 파일]` | 결과를 한 장짜리 Markdown 요약으로(입력 TAR SHA-256 재대조) | 0 작성, 2 읽기·쓰기 실패 |
@@ -207,7 +207,7 @@ inodefence summary ~/inodefence-explore/target-explore/7.5.23-123-20-result/resu
 
 - 실제 host의 민감 파일, SSH key, 사용자 문서, secret을 실험 대상으로 쓰지 않습니다. disposable sandbox와 실험용
   sentinel만 쓰고, 파괴적인 filesystem 작업은 runtime sandbox 안으로 제한합니다.
-- 대상 추출기는 격리 컨테이너에서 돕니다. 실행 프로필은 STRICT(기본)와 FAST(`explore --profile fast`: 공용 이미지 재빌드 생략, 다음 버전부터는 이미지 신원 확인을 캠페인 단위(시작·200건마다·끝)로)이며 격리를 완화하는 옵션은 없습니다. 실행 컨테이너는 두 프로필에서 같습니다.
+- 대상 추출기는 격리 컨테이너에서 돕니다. 실행 프로필은 STRICT(기본)와 FAST(`explore --profile fast`: 공용 이미지 재빌드 생략, 다음 버전부터는 이미지 신원 확인을 캠페인 단위(시작·200건마다·끝)로; decompress·oras-go의 FAST는 재빌드 생략만(신원 확인은 케이스마다, FAST 수용 측정 없음))이며 격리를 완화하는 옵션은 없습니다. 실행 컨테이너는 두 프로필에서 같습니다.
 - **출력은 저장소 밖이어야 합니다.** `--out`이 저장소 안이면 실행 전에 거부합니다(위반 입력이 공개 저장소에 섞이지
   않도록). 클라우드 동기화 폴더도 피하세요.
 - **책임 있는 공개:** 미공개로 보이는 문제를 찾으면 공개 저장소에 올리기 전에 해당 추출기의 유지보수자에게 먼저

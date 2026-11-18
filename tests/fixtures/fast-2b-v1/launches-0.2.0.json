@@ -1,0 +1,38 @@
+{
+  "decompress": [
+    {
+      "argv": [
+        "bash",
+        "local_decompress_selfdiscover.sh"
+      ],
+      "changed": {
+        "DEMO_BUDGET": "4",
+        "DEMO_SEED": "1",
+        "EXPLORE_IMAGE": "img",
+        "INODEFENCE_EVIDENCE_DIR": "<tmp>",
+        "RUN_ID": "rid",
+        "SKIP_BUILD": "1"
+      },
+      "removed": []
+    }
+  ],
+  "oras-go": [
+    {
+      "argv": [
+        "bash",
+        "local_oras_go_selfdiscover.sh"
+      ],
+      "changed": {
+        "DEMO_BUDGET": "4",
+        "DEMO_SEED": "1",
+        "EXPLORE_IMAGE": "img",
+        "INODEFENCE_EVIDENCE_DIR": "<tmp>/target-explore",
+        "ORAS_GO_ARTIFACT_LAYOUT": "artifact-dir",
+        "PYTHON": "x",
+        "RUN_ID": "rid",
+        "SKIP_BUILD": "1"
+      },
+      "removed": []
+    }
+  ]
+}

@@ -20,6 +20,7 @@ FOUND A BOUNDARY VIOLATION ON A MAINTAINED VERSION? Handle it responsibly, in or
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import os
 import sys
@@ -30,6 +31,7 @@ from inodefence.drivers.repo import code_checkout, require_repository_or_exit
 from inodefence.drivers.run_target import (
     DEFAULT_MAX_UNJUDGED_RATIO,
     EXPLORE_MUTATION_POLICIES,
+    FAST_PER_CASE_IDENTITY_TARGETS,
     MUTATION_POLICY_TARGETS,
     TARGETS,
     ExploreOptions,
@@ -43,7 +45,7 @@ from inodefence.drivers.run_target import (
     resolve_images,
     with_tag_suffix,
 )
-from inodefence.drivers.runtime.policy import PROFILES, STRICT
+from inodefence.drivers.runtime.policy import PROFILES, STRICT, RuntimeProfile
 from inodefence.drivers.runtime.session import RuntimeSession
 from inodefence.target_result import load_target_result, no_extraction_warning
 
@@ -227,6 +229,15 @@ def main(argv: list[str] | None = None) -> int:
         parser.error(f"--budget must be >= {min_budget} for {args.target} (the loop's seed count)")
 
     policy = PROFILES[args.profile]
+    if policy.profile is RuntimeProfile.FAST and args.target in FAST_PER_CASE_IDENTITY_TARGETS:
+        # D065: keep the rebuild skip, drop the D064 interval (a probe before every case).
+        policy = dataclasses.replace(policy, identity_check_every=None)
+        print(
+            f"TARGET-EXPLORE: --profile fast on {args.target} skips the shared-image rebuild "
+            "only; the D064 identity-probe interval is not applied (no FAST acceptance for "
+            f"{args.target}), so the image identity is probed before every case.",
+            file=sys.stderr,
+        )
     if args.dry_run:
         plan = {
             "target": args.target,

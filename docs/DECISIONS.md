@@ -1426,3 +1426,21 @@ D060·D062는 기록으로 남는다. D061의 동결본은 정의 문서로 남�
 5. FAST 수용(판정 동일성)은 W3의 동등성 시험 설계(`20261118-HOST1-536-FAST-동등성-시험-설계.md`, 비공개 Drive)를 따른다. 실측(W1) 전에는 속도 주장을 하지 않는다. USAGE의 "실행 프로필"과 주장 행 C-PFAST는 실측 뒤 숫자와 함께 고친다.
 
 **범위.** 이 여섯 파일의 위 줄에만 해당하는 예외다. 같은 파일의 다른 변경, 다른 수정 금지 파일, 보호 파일 세 개에는 적용되지 않는다. 새 필요가 생기면 새 결정이 필요하다.
+
+**2026-11-19 정정 (D065).** 위 "네 대상에 적용한다"의 범위가 node-tar·python-tarfile로 좁혀졌다. decompress·oras-go의 FAST는 재빌드 생략만 적용하고 신원 확인 간격은 적용하지 않는다. D065 참조. 공유 경로 파일의 D064 줄은 그대로다.
+
+## D065 — FAST: decompress·oras-go에는 D064 신원 확인 간격을 적용하지 않는다 (#536)
+
+**상태:** 확정 (2026-11-19, 지웅 승인 2026-11-19: '2b'; W4·IF-ORCH 방법 이의 없음)
+
+- **배경**: decompress·oras-go의 FAST 수용 측정은 지금 실행할 수 없다. explore는 같은 case를 n회 반복하지 않고, replay는 항상 STRICT다.
+- **결정**: 두 대상의 `--profile fast`는 공용 이미지 재빌드 생략(0.2.0)만 적용한다. D064의 신원 확인 간격은 적용하지 않고, 케이스마다 확인한다.
+  - 정책 값 `reuse_shared_images=True, identity_check_every=None`으로 구현한다(`drivers/run_target_explore.py`, 대상 목록 `run_target.FAST_PER_CASE_IDENTITY_TARGETS`).
+  - 공유 실행 경로 파일은 바뀌지 않는다.
+- **기록**: 결과의 `campaign.identity_checks`에 `per-case`, `interval: 1`, `fast_acceptance: not_measured`, `acceptance_evidence: false`를 적는다.
+  - `total_checks`는 적지 않는다(세지 않은 수). 이 생략은 `acceptance_evidence: false`이고 `interval`이 1인 기록에만 허용된다.
+  - stderr에 한 줄을 낸다.
+  - 이 폴더는 FAST 수용 증거로도, STRICT 기준선으로도 쓰지 않는다(비교 도구 f523f63은 어느 쪽에 넣어도 종료 2).
+- **한계**: 런처 직접 실행의 간격은 측정·수용된 모드가 아니며 그 출력은 수용 증거가 아니다.
+- **바뀌지 않는 것**: node-tar·python-tarfile의 FAST와 네 대상의 STRICT.
+- **다시 여는 조건(대상별 독립)**: 해당 대상의 FAST 생산자(같은 case 집합을 FAST로 n회)가 생기고, 그 대상에서 #536 수용(STRICT 대 FAST, 비교 도구 f523f63 종료 0, 같은 핀)을 통과하면 그 대상만 연다. 한 대상의 통과가 다른 대상을 열지 않는다.

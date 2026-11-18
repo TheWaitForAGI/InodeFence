@@ -510,6 +510,48 @@ def repro_input(case_id: str, tar_path: str, tar_bytes: bytes) -> ReproInput:
     return ReproInput(case_id, tar_path, sha256(tar_bytes).hexdigest())
 
 
+#: D065: the ``campaign.identity_checks`` record of a decompress/oras-go FAST run, which keeps
+#: the shared-image rebuild skip only and probes the image identity before every case.
+PER_CASE_IDENTITY_MARKER: dict[str, Any] = {
+    "identity_checks": "per-case",
+    "interval": 1,
+    "fast_acceptance": "not_measured",
+    "acceptance_evidence": False,
+    "basis": "D065: decompress/oras-go FAST keeps reuse_shared_images only; "
+    "D064 interval not applied",
+}
+
+
+def is_per_case_identity_marker(checks: object) -> bool:
+    """Whether ``checks`` is the D065 marker (no acceptance evidence, a probe per case)."""
+    return isinstance(checks, dict) and checks.get("acceptance_evidence") is False
+
+
+def _check_identity_checks(checks: object) -> None:
+    """A FAST record needs an integer interval and ``total_checks >= 1``. Only the D065 marker
+    (``acceptance_evidence: false``) may leave ``total_checks`` out, and then its interval must
+    be 1: nothing was counted, so no count is written."""
+    if is_per_case_identity_marker(checks):
+        assert isinstance(checks, dict)
+        if checks.get("interval") != 1 or type(checks["interval"]) is not int:
+            raise TargetResultError(
+                "campaign.identity_checks with acceptance_evidence false must have interval 1 "
+                "(a probe before every case)"
+            )
+        return
+    if (
+        not isinstance(checks, dict)
+        or type(checks.get("interval")) is not int
+        or checks["interval"] < 1
+        or type(checks.get("total_checks")) is not int
+        or checks["total_checks"] < 1
+    ):
+        raise TargetResultError(
+            "campaign.identity_checks must be absent or a record with integer interval and "
+            "total_checks >= 1"
+        )
+
+
 def _validate(result: TargetResult) -> None:
     if not isinstance(result.target, str) or not result.target:
         raise TargetResultError("target must be a non-empty name")
@@ -618,17 +660,8 @@ def _validate_campaign(result: TargetResult) -> None:
     ):
         raise TargetResultError("campaign.mutation_policy must be absent or a non-empty string")
     checks = campaign.identity_checks
-    if checks is not None and (
-        not isinstance(checks, dict)
-        or type(checks.get("interval")) is not int
-        or checks["interval"] < 1
-        or type(checks.get("total_checks")) is not int
-        or checks["total_checks"] < 1
-    ):
-        raise TargetResultError(
-            "campaign.identity_checks must be absent or a record with integer interval and "
-            "total_checks >= 1"
-        )
+    if checks is not None:
+        _check_identity_checks(checks)
     stored = campaign.unjudged_steps
     if stored is not None:
         if type(stored) is not int or not 0 <= stored <= extracted:

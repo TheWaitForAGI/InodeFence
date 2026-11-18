@@ -40,7 +40,10 @@ from pathlib import Path
 from typing import Any
 
 from inodefence.drivers.decompress import adapter as dt
-from inodefence.drivers.explore_result import with_identity_checks
+from inodefence.drivers.explore_result import (
+    with_identity_checks,
+    with_per_case_identity_marker,
+)
 from inodefence.drivers.launcher import launcher_path, run_launcher
 from inodefence.drivers.repo import code_checkout, require_repository_or_exit
 from inodefence.drivers.run_target import (
@@ -424,6 +427,8 @@ def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOu
     )
     # FAST (#536): the loop's identity-probe record; STRICT: unchanged.
     result = with_identity_checks(result, report, requested_identity_check_every(options))
+    # D065: FAST here keeps the rebuild skip only; the result says the probe was per case.
+    result = with_per_case_identity_marker(result, getattr(options, "runtime", None))
     summary.update(
         requested=prepared.requested,
         worker_check=check["reason"],

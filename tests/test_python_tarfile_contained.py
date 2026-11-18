@@ -213,6 +213,29 @@ def test_exploration_runs_the_shared_loop_on_one_runtime_and_one_filter() -> Non
     )
 
 
+def test_fast_identity_schedule_same_steps_fewer_probes_and_recorded() -> None:
+    """#536: FAST probes start/every N/end; steps and verdicts equal STRICT on the same seed."""
+    budget = len(minimal_seed_corpus()) + 4
+    strict_backend, fast_backend = _LocalBackend(), _LocalBackend()
+    strict = python_tarfile_exploration_report(
+        strict_backend, IMAGE, "data", RUNTIME, seed=7, budget=budget
+    )
+    fast = python_tarfile_exploration_report(
+        fast_backend, IMAGE, "data", RUNTIME, seed=7, budget=budget, identity_check_every=3
+    )
+    assert "identity_checks" not in strict
+    record = fast.pop("identity_checks")
+    assert record["interval"] == 3 and record["end_checks"] == 1
+    for key in ("case_records", "steps", "retained_case_ids"):
+        assert fast.get(key) == strict.get(key)
+
+    def probes(backend: _LocalBackend) -> int:
+        return sum(1 for command in backend.commands if command[3] == "--identify")
+
+    assert probes(strict_backend) == 1 + budget
+    assert probes(fast_backend) == record["total_checks"] == 1 + budget // 3 + 1
+
+
 def test_all_steps_undetermined_is_flagged_not_a_pass() -> None:
     report = python_tarfile_exploration_report(
         _LocalBackend(crash=True), IMAGE, "data", RUNTIME, budget=len(minimal_seed_corpus())

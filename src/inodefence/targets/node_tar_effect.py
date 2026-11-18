@@ -8,6 +8,7 @@ import re
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
+from dataclasses import field as dataclass_field
 from enum import StrEnum
 from hashlib import sha256
 from pathlib import Path
@@ -52,6 +53,7 @@ from inodefence.model.isolation import ArtifactDigest, IsolationProvenance
 from inodefence.model.provenance import TargetProvenance
 
 from ._paths import validate_run_paths
+from .identity_schedule import IdentitySchedule
 from .isolated import identify_image
 
 NODE = "/usr/local/bin/node"
@@ -96,6 +98,8 @@ class NodeTarEffectTarget:
     profile: NativeEffectProfile = NativeEffectProfile.FULL
     event_bound: int = MAX_EVENT_BOUND
     timeout_seconds: float = 10.0
+    #: None = STRICT (identity probe before every archive). FAST exploration only (#536).
+    identity_schedule: IdentitySchedule | None = dataclass_field(default=None, compare=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.backend, ExecutionBackend):
@@ -210,6 +214,13 @@ class NodeTarEffectTarget:
         if observed != self:
             raise RuntimeError("node-tar effect identity changed after setup")
 
+    def verify_identity_at_end(self) -> None:
+        """FAST: the closing identity probe; raises on a mismatch. STRICT: nothing to do."""
+        if self.identity_schedule is None:
+            return
+        self._verify_identity()
+        self.identity_schedule.end_checked = True
+
     def capture_isolation(self) -> IsolationProvenance:
         captured = self.backend.capture_isolation(self.image_id)
         self._verify_identity()
@@ -267,7 +278,8 @@ class NodeTarEffectTarget:
         self, archive_path: Path, extraction_root: Path
     ) -> Iterator[Callable[[], NativeEffectCapture]]:
         validate_run_paths(archive_path, extraction_root)
-        self._verify_identity()
+        if self.identity_schedule is None or self.identity_schedule.due():
+            self._verify_identity()
         expected_archive_sha256 = sha256(archive_path.read_bytes()).hexdigest()
         command = self.command(archive_path, extraction_root)
         request = ContainerRequest(

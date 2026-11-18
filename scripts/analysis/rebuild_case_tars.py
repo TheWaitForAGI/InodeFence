@@ -12,7 +12,10 @@ the policy's seed corpus:
 * the other values are drawn from the v2 grammar's pinned sets plus the seed corpus's values;
 * when the parent has several entries of one shape (path, type, link target) that differ only in
   content or mode, a reorder or a duplicate can make the alignment pair the wrong ones; a plan
-  where each entry may take the values of any same-shape parent entry covers that (D-324);
+  where each entry may take the values of any same-shape parent entry covers that, and a further
+  plan per entry k (k from the full value set, the rest same-shape) covers an added entry whose
+  shape equals an existing one with a new value (D-324). A step whose plans are all exhausted or
+  skipped is a listed failure; a skip names the plans above the candidate limit;
 * a candidate is accepted **only** when its ``case_id`` equals the recorded one. That match is
   the sole criterion -- the tool imports the current engine's builder and grammar, which it
   cannot itself prove equal to the cell's engine, so nothing leaves without it. ``build_tar``
@@ -267,22 +270,36 @@ def rebuild(
         }
         return sorted(values, key=repr) if values else options(i)
 
+    every = range(len(shapes))
     unmatched = [i for i, value in enumerate(copied) if value is None]
-    plans: list[list[int]] = [unmatched]
-    plans += [[*unmatched, i] for i in range(len(shapes)) if i not in unmatched]
-    plans.append(list(range(len(shapes))))
-    pool_plans: list[list[list[Any]]] = [
-        [options(i) if i in vary else [copied[i]] for i in range(len(shapes))] for vary in plans
+    # The plans, in a fixed order (D-324). Each only adds candidates; the case_id match decides.
+    # 1. aligned: the entries the alignment did not pair get the full value set;
+    # 2. aligned+1: the same, plus one paired entry;
+    # 3. same-shape: every entry from its same-shape parent values;
+    # 4. same-shape+1: the same, but entry k from the full value set (an added entry whose shape
+    #    equals an existing one, with a new value);
+    # 5. full: every entry from the full value set.
+    pool_plans: list[tuple[str, list[list[Any]]]] = [
+        ("aligned", [options(i) if i in unmatched else [copied[i]] for i in every])
     ]
-    # Before the full space: every entry from its same-shape parent values (D-324).
-    pool_plans.insert(-1, [same_shape(i) for i in range(len(shapes))])
-    too_large = False
-    for pools in pool_plans:
+    pool_plans += [
+        ("aligned+1", [options(i) if i in (*unmatched, k) else [copied[i]] for i in every])
+        for k in every
+        if k not in unmatched
+    ]
+    pool_plans.append(("same-shape", [same_shape(i) for i in every]))
+    pool_plans += [
+        ("same-shape+1", [options(i) if i == k else same_shape(i) for i in every]) for k in every
+    ]
+    pool_plans.append(("full", [options(i) for i in every]))
+    over_limit: list[str] = []
+    for name, pools in pool_plans:
         size = 1
         for pool in pools:
             size *= len(pool)
         if size > SEARCH_LIMIT:
-            too_large = True
+            if name not in over_limit:
+                over_limit.append(name)
             continue
         for choice in itertools.product(*pools):
             candidate = ArchiveCase(
@@ -299,7 +316,10 @@ def rebuild(
             )
             if matches(candidate, recorded_case_id):
                 return candidate, None
-    return None, TOO_LARGE if too_large else NO_MATCH
+    if over_limit:
+        # Which plans were skipped as too large; the reason counts still group under TOO_LARGE.
+        return None, f"{TOO_LARGE}: {', '.join(over_limit)}"
+    return None, NO_MATCH
 
 
 def _shapes(record: Mapping[str, Any]) -> list[Shape]:

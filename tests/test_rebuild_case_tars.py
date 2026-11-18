@@ -344,6 +344,32 @@ def test_same_shape_entries_reordered_or_duplicated_are_rebuilt(order: tuple) ->
 CHAIN_CELL = "v2:S-u:5:64"
 
 
+def test_an_added_entry_of_an_existing_shape_with_a_new_value_is_rebuilt() -> None:
+    """add_entry puts, between two same-shape entries, a third of their shape with a new value.
+    The alignment pairs it with the second parent entry; the same-shape pool lacks the new value;
+    the full value set (only the new value here) lacks the parent's. Only the plan "entry k from
+    the full set, the rest same-shape" finds it. The rebuilt TAR is byte-identical."""
+    pair = (
+        ArchiveEntry("d/x", EntryType.REGULAR, content=b"one", mode=0o644),
+        ArchiveEntry("d/x", EntryType.REGULAR, content=b"two", mode=0o600),
+    )
+    added = ArchiveEntry("d/x", EntryType.REGULAR, content=b"three", mode=0o640)
+    parent = ArchiveCase(pair)
+    child = ArchiveCase((pair[0], added, pair[1]))
+    case, reason = rct.rebuild(parent, _shapes_of(child), child.case_id, (b"three",), (0o640,))
+    assert reason is None and case is not None and build_tar(case) == build_tar(child)
+
+
+def test_a_skipped_plan_is_named_in_the_reason(monkeypatch) -> None:
+    """Above the candidate limit a plan is skipped, and the reason names it."""
+    monkeypatch.setattr(rct, "SEARCH_LIMIT", 1)
+    entry = ArchiveEntry("d/x", EntryType.REGULAR, content=b"one", mode=0o644)
+    parent = ArchiveCase((entry,))
+    case, reason = rct.rebuild(parent, _shapes_of(parent), "0" * 64, (b"a", b"b"), (0o644,))
+    assert case is None
+    assert reason == f"{rct.TOO_LARGE}: aligned+1, same-shape+1, full"
+
+
 def _child_of_a_mutation(records: list) -> tuple[int, int]:  # type: ignore[type-arg]
     """A (parent step, child step) pair where the parent is itself a mutation step."""
     first_by_id: dict = {}  # type: ignore[type-arg]
@@ -384,6 +410,50 @@ def test_a_blocked_step_names_the_unrequested_ancestor_and_its_reason(
             "blocked_by_reason": rct.NO_MATCH,
         }
     ]
+
+
+def test_every_step_of_a_longer_chain_names_the_root_not_its_parent(tmp_path: Path, capsys) -> None:
+    """Root -> middle -> leaf: both the middle and the leaf name the root, not their parent."""
+    policy, records, truth = _campaign(CHAIN_CELL)
+    first_by_id: dict = {}  # type: ignore[type-arg]
+    for record in records:
+        first_by_id.setdefault(record.get("case_id"), record["index"])
+
+    def parent_of(index: int) -> int | None:
+        record = records[index]
+        if record.get("origin") != "mutation":
+            return None
+        return first_by_id.get(record.get("parent_case_id"))
+
+    chain = next(
+        (root, middle, leaf)
+        for leaf in range(len(records))
+        if (middle := parent_of(leaf)) is not None
+        and (root := parent_of(middle)) is not None
+        and records[root].get("origin") == "mutation"
+    )
+    root, middle, leaf = chain
+    tampered = json.loads(json.dumps(records))
+    old = tampered[root]["case_id"]
+    for record in tampered:
+        if record.get("case_id") == old:
+            record["case_id"] = "0" * 64
+        if record.get("parent_case_id") == old:
+            record["parent_case_id"] = "0" * 64
+    policy, journal, run, settings, listing, _ = _setup(
+        tmp_path, CHAIN_CELL, records=tampered, steps=[middle, leaf]
+    )
+    out = tmp_path / "out"
+    code, _ = _main(capsys, *_args(policy, journal, run, settings, listing, out))
+    assert code == 1
+    failures = json.loads((out / "failures.json").read_text())
+    assert [item["step"] for item in failures] == [middle, leaf]
+    assert all(
+        item["reason"] == rct.NO_PARENT
+        and item["blocked_by_step"] == root
+        and item["blocked_by_reason"] == rct.NO_MATCH
+        for item in failures
+    )
 
 
 def test_a_parent_absent_from_the_journal_is_named_as_such(tmp_path: Path, capsys) -> None:

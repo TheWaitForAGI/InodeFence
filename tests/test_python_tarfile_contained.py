@@ -22,6 +22,7 @@ from scripts.oracle_fixture_check import ORACLE_FIXTURES
 
 import inodefence.drivers.python_tarfile.producer as producer
 from inodefence.effect_pipeline_python_tarfile import run_python_tarfile_contained_case
+from inodefence.evaluation.execution_parity import EXCLUDED_OBJECT_FIELDS
 from inodefence.evaluation.rds import RdsArm, RdsCellConfig
 from inodefence.execution.base import ContainerOutcome, ExecutionBackend
 from inodefence.generator import minimal_seed_corpus
@@ -213,6 +214,36 @@ def test_exploration_runs_the_shared_loop_on_one_runtime_and_one_filter() -> Non
     )
 
 
+def _without_raw_identity(value: object) -> object:
+    """``value`` with each step's raw object identity replaced by its sharing partition.
+
+    The fields ``execution_parity`` excludes as raw values (``EXCLUDED_OBJECT_FIELDS``: st_dev,
+    st_ino, mtime_ns, ctime_ns) are dropped from every observed object; the ``(st_dev, st_ino)``
+    pair is replaced by a label numbered in first-appearance order within the step, so paths that
+    share one inode still share one label (the C1-relevant partition), while the raw numbers --
+    which differ per filesystem -- do not enter the comparison. Everything else is compared as is.
+    """
+    if isinstance(value, list) and value and all(isinstance(item, dict) for item in value):
+        return [_relabel(item, {}) for item in value]
+    return _relabel(value, {})
+
+
+def _relabel(value: object, labels: dict[tuple[object, object], int]) -> object:
+    if isinstance(value, dict):
+        out = {
+            key: _relabel(item, labels)
+            for key, item in value.items()
+            if key not in EXCLUDED_OBJECT_FIELDS
+        }
+        if "st_ino" in value or "st_dev" in value:
+            identity = (value.get("st_dev"), value.get("st_ino"))
+            out["inode_class"] = labels.setdefault(identity, len(labels))
+        return out
+    if isinstance(value, list):
+        return [_relabel(item, labels) for item in value]
+    return value
+
+
 def test_fast_identity_schedule_same_steps_fewer_probes_and_recorded() -> None:
     """#536: FAST probes start/every N/end; steps and verdicts equal STRICT on the same seed."""
     budget = len(minimal_seed_corpus()) + 4
@@ -226,8 +257,14 @@ def test_fast_identity_schedule_same_steps_fewer_probes_and_recorded() -> None:
     assert "identity_checks" not in strict
     record = fast.pop("identity_checks")
     assert record["interval"] == 3 and record["end_checks"] == 1
+    # Raw inode numbers, devices and times depend on the filesystem the local backend extracts
+    # on, so they are compared as the inode-sharing partition (QA check 44 follow-up), not raw.
     for key in ("case_records", "steps", "retained_case_ids"):
-        assert fast.get(key) == strict.get(key)
+        assert _without_raw_identity(fast.get(key)) == _without_raw_identity(strict.get(key))
+    assert _without_raw_identity(fast["steps"]) != _without_raw_identity(fast["steps"][:-1])
+    # Not vacuous: the steps carry observed objects whose identity became a partition label.
+    assert "inode_class" in repr(_without_raw_identity(strict["steps"]))
+    assert "st_ino" in repr(strict["steps"])
 
     def probes(backend: _LocalBackend) -> int:
         return sum(1 for command in backend.commands if command[3] == "--identify")

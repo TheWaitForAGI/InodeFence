@@ -281,3 +281,25 @@ def test_settings_the_replay_check_refuses_are_listed_failures(tmp_path: Path, c
     assert summary["verified"] == 0
     assert summary["failed_by_reason"] == {rct.REPLAY_REFUSED: summary["requested"]}
     assert not any(p.name.startswith("step-") for p in out.iterdir())
+
+
+@pytest.mark.parametrize("shape", ["swapped", "duplicated"])
+def test_out_of_order_indices_are_exit_2(tmp_path: Path, capsys, shape: str) -> None:
+    """Same step count as the budget, so only the index check can catch these."""
+    policy, records, _ = _campaign("v2:R:5:64")
+    changed = json.loads(json.dumps(records))
+    if shape == "swapped":
+        changed[10], changed[11] = changed[11], changed[10]
+    else:
+        changed[11] = json.loads(json.dumps(changed[10]))  # step 10 twice, step 11 gone
+    policy, journal, run, settings, listing, _ = _setup(tmp_path, records=changed)
+    code, payload = _main(capsys, *_args(policy, journal, run, settings, listing, tmp_path / "out"))
+    assert code == 2 and "journal incomplete" in payload["error"]
+
+
+def test_a_policy_other_than_the_recorded_one_is_exit_2(tmp_path: Path, capsys) -> None:
+    policy, journal, run, settings, listing, _ = _setup(tmp_path)
+    other = next(p.value for p in rct.V2_GRAMMAR_POLICIES if p.value != policy)
+    (run / "result.json").write_text(json.dumps({"campaign": {"mutation_policy": other}}))
+    code, payload = _main(capsys, *_args(policy, journal, run, settings, listing, tmp_path / "out"))
+    assert code == 2 and "the run records mutation policy" in payload["error"]

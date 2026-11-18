@@ -15,6 +15,7 @@ from types import SimpleNamespace
 import pytest
 from scripts.effect_replay import node_tar_conditions, run_rounds
 from scripts.run_effect_demo import NativeDemoAborted
+from tests.git_checkout import head_or_none
 
 import inodefence.drivers.run_target_replay as driver
 from inodefence import cli
@@ -378,7 +379,12 @@ def test_driver_runs_records_and_status_shows_it(tmp_path: Path, monkeypatch, ca
     out = capsys.readouterr().out
     assert out.startswith("replayed 3/3: same contracts 3/3, fingerprints 3/3")
     (record,) = read_replays(folder)
-    assert record["replay"]["complete"] is True and record["replay"]["engine_commit"]
+    assert record["replay"]["complete"] is True
+    # The engine revision that ran: HEAD ("-dirty" when the tree has changes), or null when
+    # the code does not run from a git checkout (a tarball copy) -- never a guess.
+    head = head_or_none()
+    commit = record["replay"]["engine_commit"]
+    assert commit is None if head is None else commit in (head, f"{head}-dirty")
     status = render_live_status(folder.parent.parent, display="live")
     assert "replayed 3/3: same contracts 3/3" in status
 

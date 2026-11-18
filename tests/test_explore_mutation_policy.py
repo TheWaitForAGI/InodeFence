@@ -292,13 +292,67 @@ def test_without_the_option_nothing_is_checked_or_recorded(monkeypatch, tmp_path
     assert "mutation_policy" not in campaign and "build_invalid" not in campaign
 
 
-def test_a_stale_live_snapshot_gives_no_build_invalid_count(tmp_path: Path) -> None:
+def _build(report: dict[str, Any], live: Path | None = None, policy: str | None = V2):
+    return er.build_campaign_result(
+        report, _prepared(), seed=1, budget=20, live_dir=live, mutation_policy=policy
+    )[0]
+
+
+def test_the_build_invalid_count_comes_from_the_aggregate(tmp_path: Path) -> None:
+    # QA check 42: runs_executed - sum(terminations) is exact (one termination per extraction);
+    # no live folder is needed, and a stale snapshot (other run count) is not consulted.
+    result = _build(_v2_report())
+    assert result.campaign is not None and result.campaign.build_invalid == 8
     _write_live(tmp_path, "rid", runs=15, build_invalid=4)  # the aggregate says 20 runs
-    live = tmp_path / "target-explore" / "rid" / "live"
-    result, _ = er.build_campaign_result(
-        _v2_report(), _prepared(), seed=1, budget=20, live_dir=live
-    )
+    stale = _build(_v2_report(), tmp_path / "target-explore" / "rid" / "live")
+    assert stale.campaign is not None and stale.campaign.build_invalid == 8
+    assert stale.unjudged_ratio == round(1 / 12, 6)
+
+
+def test_zero_build_invalid_runs_write_no_key() -> None:
+    report = _v2_report()
+    report["aggregate"]["terminations"] = {"success": 18, "rejected": 2}
+    result = _build(report)
     assert result.campaign is not None and result.campaign.build_invalid is None
+    assert "build_invalid" not in result.to_json_dict()["campaign"]
+
+
+def _no_terminations() -> dict[str, Any]:
+    report = _v2_report()
+    del report["aggregate"]["terminations"]
+    return report
+
+
+def _too_many_terminations() -> dict[str, Any]:
+    report = _v2_report()
+    report["aggregate"]["terminations"] = {"success": 21}
+    return report
+
+
+def _per_case() -> dict[str, Any]:
+    return {"demo_report_schema": 5, "case_records": [], "violation_inputs": []}
+
+
+@pytest.mark.parametrize("report", [_no_terminations, _too_many_terminations, _per_case])
+def test_an_unknown_build_invalid_count_is_an_error_not_a_silent_omission(report) -> None:
+    # Leaving the key out would put build-invalid runs back into the denominator and loosen the
+    # ERROR ceiling without saying so: a --mutation-policy run then gets no result (exit 2).
+    with pytest.raises(er.BuildInvalidUnknownError, match="build-invalid count unknown"):
+        _build(report())
+    assert issubclass(er.BuildInvalidUnknownError, RuntimeError)  # the drivers' ERROR path
+
+
+def test_a_live_snapshot_that_disagrees_with_the_aggregate_is_an_error(tmp_path: Path) -> None:
+    _write_live(tmp_path, "rid", runs=20, build_invalid=5)  # the aggregate gives 8
+    with pytest.raises(er.BuildInvalidUnknownError, match="live snapshot"):
+        _build(_v2_report(), tmp_path / "target-explore" / "rid" / "live")
+
+
+def test_without_the_option_no_count_is_derived() -> None:
+    # A default-policy report whose terminations do not add up to the runs keeps today's bytes.
+    result = _build(_v2_report(), policy=None)
+    assert result.campaign is not None and result.campaign.build_invalid is None
+    assert _build(_no_terminations(), policy=None).campaign is not None
 
 
 # -- the un-judged ratio and the contract --------------------------------------------------------

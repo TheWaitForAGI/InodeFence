@@ -58,12 +58,11 @@ def build_campaign_result(
     (non-streaming, other targets, or a recorder-less test) the report's own
     ``violation_inputs`` are used, unchanged.
 
-    Build-invalid runs (v2 grammar policy only: the builder could not represent the child, so
-    nothing was extracted) are counted in the live folder's final ``progress.json`` -- the loop
-    report's aggregate does not carry them. They become ``campaign.build_invalid`` when the
-    snapshot covers the same runs as the aggregate, and stay absent otherwise (and always for a
-    run without any, so a v1 result is unchanged). ``mutation_policy`` is recorded as given; the
-    caller passes it only after checking the loop ran it.
+    ``mutation_policy`` is recorded as given; the caller passes it only after checking the loop
+    ran it. Only such a run (the v2 grammar policy) can have build-invalid runs -- the builder
+    could not represent the child, so nothing was extracted -- and for it the count is required:
+    see :func:`build_invalid_runs`. ``campaign.build_invalid`` is then written when it is > 0. A
+    run without ``mutation_policy`` is unchanged (no count is derived, the key never appears).
     """
     aggregate = report.get("aggregate")
     disk_sourced = aggregate is not None and live_dir is not None
@@ -139,7 +138,11 @@ def build_campaign_result(
             terminations=aggregate.get("terminations"),
             max_unjudged_ratio=max_unjudged_ratio,
             violation_capture=report.get("violation_capture"),
-            build_invalid=_build_invalid_runs(live_dir, aggregate) if disk_sourced else None,
+            build_invalid=(
+                build_invalid_runs(aggregate, live_dir) or None
+                if mutation_policy is not None
+                else None
+            ),
             mutation_policy=mutation_policy,
         )
     else:
@@ -148,7 +151,7 @@ def build_campaign_result(
             budget=budget,
             runs_to_first_violation=first_violation,
             max_unjudged_ratio=max_unjudged_ratio,
-            mutation_policy=mutation_policy,
+            mutation_policy=_no_aggregate_policy(mutation_policy),
         )
     result = TargetResult(
         target=prepared.target,
@@ -163,18 +166,60 @@ def build_campaign_result(
     return result, tar_files
 
 
-def _build_invalid_runs(live_dir: Path | None, aggregate: dict) -> int | None:
-    """Build-invalid runs from the live folder's final snapshot, or ``None`` (none, or unknown).
+class BuildInvalidUnknownError(RuntimeError):
+    """A ``--mutation-policy`` run whose build-invalid count cannot be established exactly.
 
-    Read only when the snapshot's ``runs_executed`` equals the aggregate's, so a stale snapshot
-    never gives a count for a different number of runs.
+    A ``RuntimeError``: the run happened, so the explore drivers report it as ERROR (exit 2) and
+    publish no result -- instead of leaving the key out, which would put build-invalid runs back
+    into the un-judged ratio's denominator and loosen the ERROR ceiling without saying so.
     """
+
+
+def build_invalid_runs(aggregate: dict, live_dir: Path | None = None) -> int:
+    """The exact build-invalid count of a streaming run: ``runs_executed - sum(terminations)``.
+
+    The loop's aggregate counts one termination per executed extraction, and a build-invalid run
+    never reaches the extractor, so the difference is exact (QA check 33-B). When the live folder
+    has a final snapshot covering the same runs, its own ``build_invalid`` count must agree.
+    Anything that does not add up raises :class:`BuildInvalidUnknownError`.
+    """
+    runs = aggregate.get("runs_executed")
+    terminations = aggregate.get("terminations")
+    if (
+        type(runs) is not int
+        or not isinstance(terminations, dict)
+        or not all(type(n) is int and n >= 0 for n in terminations.values())
+    ):
+        raise BuildInvalidUnknownError(
+            "build-invalid count unknown: the loop report's aggregate has no runs/terminations; "
+            "no result written"
+        )
+    count = runs - sum(terminations.values())
+    if count < 0:
+        raise BuildInvalidUnknownError(
+            f"build-invalid count unknown: {sum(terminations.values())} terminations exceed "
+            f"{runs} runs; no result written"
+        )
     progress = read_progress(live_dir) if live_dir is not None else None
-    if progress is None or progress.get("runs_executed") != aggregate.get("runs_executed"):
-        return None
-    block = progress.get("build_invalid")
-    steps = block.get("steps") if isinstance(block, dict) else None
-    return steps if type(steps) is int and steps > 0 else None
+    if progress is not None and progress.get("runs_executed") == runs:
+        block = progress.get("build_invalid")
+        live = block.get("steps", 0) if isinstance(block, dict) else 0
+        if live != count:
+            raise BuildInvalidUnknownError(
+                f"build-invalid count unknown: the loop report gives {count}, the live snapshot "
+                f"{live}; no result written"
+            )
+    return count
+
+
+def _no_aggregate_policy(mutation_policy: str | None) -> str | None:
+    """A ``--mutation-policy`` run must stream (the count comes from the aggregate)."""
+    if mutation_policy is not None:
+        raise BuildInvalidUnknownError(
+            "build-invalid count unknown: a --mutation-policy run produced a per-case report "
+            "without the aggregate; no result written"
+        )
+    return None
 
 
 class ResultExistsError(FileExistsError, ValueError):

@@ -13,7 +13,8 @@
   거부한다. 옵션을 주면 `result.json`의 `campaign.mutation_policy`에 적는다(루프 보고서가 그 정책을 돌렸는지 확인한 뒤).
   기본값은 바뀌지 않는다. [USAGE](docs/USAGE.md#탐색-돌리기)
 - `result.json` 선택 키 `campaign.build_invalid`: TAR로 만들 수 없어 추출하지 않은 실행 수(v2 정책에서만, 0이면 키 없음).
-  `summary.md`에 한 줄로 보인다.
+  `summary.md`에 한 줄로 보인다. 수는 루프 보고서의 실행 수 − 종료 상태 합이고, 셀 수 없거나 live 스냅숏과 어긋나면
+  결과 없이 종료 2다(키를 빼서 비율을 낮게 적지 않는다).
 
 ### 변경된 동작과 호환성
 - 탐색 드라이버(네 대상 모두)가 호출자 환경의 `DEMO_MUTATION_POLICY`를 런처에 넘기지 않는다. 전에는 node-tar와

@@ -288,7 +288,12 @@ def _drop_inherited(env: dict[str, str], name: str, instead: str) -> None:
 
 def drop_inherited_mutation_policy(env: dict[str, str]) -> None:
     """The caller's ``DEMO_MUTATION_POLICY`` never reaches a launcher (``--mutation-policy``)."""
-    _drop_inherited(env, MUTATION_POLICY_ENV, "use --mutation-policy (node-tar exploration only)")
+    # The target list comes from MUTATION_POLICY_TARGETS so the message follows the option.
+    _drop_inherited(
+        env,
+        MUTATION_POLICY_ENV,
+        f"use --mutation-policy ({', '.join(MUTATION_POLICY_TARGETS)} exploration)",
+    )
 
 
 def drop_inherited_search_policy(env: dict[str, str]) -> None:

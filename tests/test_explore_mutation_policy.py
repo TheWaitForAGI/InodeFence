@@ -440,6 +440,20 @@ def test_a_dropped_inherited_policy_is_warned_about_on_stderr(
         assert f"DEMO_MUTATION_POLICY={inherited} is ignored; use --mutation-policy" in err
 
 
+def test_the_dropped_policy_warning_names_the_targets_that_take_the_option(capsys) -> None:
+    # QA (a9894e4): the warning must name every target the option is open to, from the same
+    # tuple the driver checks, so it cannot go stale when the option opens to another target.
+    env = {"DEMO_MUTATION_POLICY": "x"}
+    rt.drop_inherited_mutation_policy(env)
+    err = capsys.readouterr().err
+    assert err == (
+        "TARGET-EXPLORE WARNING: environment variable DEMO_MUTATION_POLICY=x is ignored; "
+        "use --mutation-policy (node-tar, python-tarfile exploration)\n"
+    )
+    assert all(target in err for target in rt.MUTATION_POLICY_TARGETS)
+    assert "only" not in err
+
+
 def _launch_env(target: str, tmp_path: Path, **kwargs: Any) -> dict[str, str]:
     """The env each explore driver hands its launcher (no option, no policy)."""
     if target == "node-tar":

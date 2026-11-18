@@ -32,6 +32,7 @@ v2 문법이 하는 모든 추첨의 축과 분포(공식 p_R 전에 고정, 최
 step마다 기록하는 입력 구조 분류의 정의는 [입력 구조 분류기 v1](input-structure-class-v1.md)(`input-structure-class-v1-freeze-1`, W4 서명, 구현은 v2 U3)에 있다. 정오표: [input-structure-class-v1-freeze-1.erratum](input-structure-class-v1-freeze-1.erratum.md).
 
 대상·운영체제·CPU 구조·컨테이너 런타임이 코드 어디에 묶여 있는지는 [경계 지도 v1](target-boundary-map-v1.md)(#537, 코드 읽기 기준)에 있다.
+새 추출기 대상을 더하는 절차와 대상마다 정할 항목은 [대상 추가 체크리스트 v1](target-addition-checklist-v1.md)(#518)에 있다.
 
 위반 이전 신호를 쓰는 탐색 정책(#511, exploratory, 합성 생산자에서만 테스트됨)은 [탐색 정책 pre-violation-signal-v1](exploration-pre-violation-v1.md)에 있다.
 

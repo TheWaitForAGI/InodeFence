@@ -24,9 +24,11 @@ What it computes, per step of the shell population (an archive with >= 2 symlink
 * ``unresolvable`` -- ``loop``, ``limit`` (more than 40 symlinks followed, answer 9) or
   ``dangling`` (a followed symlink leads to a missing intermediate component inside the
   extraction root), each counted apart and never folded into a route or escape;
-* ``target_missing`` [inferred] -- a route whose final object (what link() names) is missing:
-  link() would fail, but the attempt went through the symlink, so it stays a route (answer 4:
-  a refused hardlink is still judged), marked apart;
+* ``fs_routes_leaf_present`` / ``fs_routes_target_missing`` [inferred] -- the two parts of a
+  route, labelled apart (W3, confirmed): the final object (what link() names) existed, or was
+  missing (link() would fail, but the attempt went through the symlink, so it stays a route --
+  answer 4). ``fs_routes`` is either. Only leaf-present routes give ``fs_escape_zone``; a
+  target-missing route is never read as an escape or a success;
 * ``order`` -- whether the step's observed event order differs from the archive order; the
   hardlink's own order basis (``events`` or the ``entry_index`` fallback, answer 2);
 * oracle C0/C1/C2 [observed], copied from the step record. The additive detectors W3 asked for
@@ -274,10 +276,11 @@ class StepModel:
 
     shell: bool
     judgeable: bool
-    routes: bool | None
-    escape_zone: str | None  # "none" | HARNESS | EXTERNAL
+    routes: bool | None  # any route (leaf present or target missing)
+    routes_leaf_present: bool | None  # a route whose final object existed
+    routes_target_missing: bool | None  # a route whose final object was missing (link() fails)
+    escape_zone: str | None  # "none" | HARNESS | EXTERNAL -- leaf-present routes only (W3 guard)
     unresolvable: tuple[str, ...] | None
-    target_missing: bool | None  # a route whose final object was missing (link() would fail)
     dest: str | None  # "none" | "skipped" | "routes:<zone>" | "unresolvable:<kind>"
     order_mismatch: bool | None
     order_basis: str | None  # "events" | "entry_index" | "mixed"
@@ -291,9 +294,9 @@ def model_step(step: Mapping[str, Any], policy: Policy) -> StepModel:
     if policy.occupant_rule not in OCCUPANT_RULES:
         raise ValueError(f"policy {policy.name}: unknown occupant rule {policy.occupant_rule!r}")
     if not shell:
-        return StepModel(False, False, None, None, None, None, None, None, None)
+        return StepModel(False, False, None, None, None, None, None, None, None, None)
     if trace.get("effect_events_truncated"):
-        return StepModel(True, False, None, None, None, None, None, None, None)
+        return StepModel(True, False, None, None, None, None, None, None, None, None)
     events = list(trace.get("effect_events") or [])
 
     # Order: the first event of each entry, by start sequence, against entry_index (answer 2).
@@ -325,7 +328,10 @@ def model_step(step: Mapping[str, Any], policy: Policy) -> StepModel:
             touched.setdefault(position, []).append((order, index, str(event.get("operation"))))
     existing = frozenset(applied | {("extract",), ("archive",), ("outside",)})
 
-    routes, worst, failures, bases, dests, missing = False, "none", [], set(), [], False
+    present_route, missing_route, worst = False, False, "none"
+    failures: list[str] = []
+    bases: set[str] = set()
+    dests: list[str] = []
     for index, entry in enumerate(entries):
         if entry.get("type") != "hardlink":
             continue
@@ -350,18 +356,31 @@ def model_step(step: Mapping[str, Any], policy: Policy) -> StepModel:
         if result.failure is not None:
             failures.append(result.failure)
             continue
-        if result.followed:
-            routes = True
-            missing = missing or result.target_missing
-            where = zone(result.position, result.above)
-            if where != EXTRACTION and (worst == "none" or where == EXTERNAL):
-                worst = where
+        if not result.followed:
+            continue
+        if result.target_missing:
+            # W3 guard: a sub-division of routes, never an escape or a success.
+            missing_route = True
+            continue
+        present_route = True
+        where = zone(result.position, result.above)
+        if where != EXTRACTION and (worst == "none" or where == EXTERNAL):
+            worst = where
     basis = bases.pop() if len(bases) == 1 else ("mixed" if bases else "none")
     dest = next((d for d in dests if d.startswith("routes:")), None) or next(
         (d for d in dests if d != "none"), "none"
     )
     return StepModel(
-        True, True, routes, worst, tuple(sorted(failures)), missing, dest, order_mismatch, basis
+        True,
+        True,
+        present_route or missing_route,
+        present_route,
+        missing_route,
+        worst,
+        tuple(sorted(failures)),
+        dest,
+        order_mismatch,
+        basis,
     )
 
 
@@ -473,9 +492,10 @@ def model_cell(cell: Path, policy: Policy) -> dict[str, Any]:
                 (
                     result.judgeable,
                     result.routes,
+                    result.routes_leaf_present,
+                    result.routes_target_missing,
                     result.escape_zone,
                     result.unresolvable,
-                    result.target_missing,
                     result.dest,
                     result.order_mismatch,
                     result.order_basis,
@@ -489,9 +509,10 @@ def model_cell(cell: Path, policy: Policy) -> dict[str, Any]:
     keys = (
         "judgeable",
         "fs_routes",
+        "fs_routes_leaf_present",
+        "fs_routes_target_missing",
         "fs_escape_zone",
         "unresolvable",
-        "target_missing",
         "dest",
         "order_mismatch",
         "order_basis",
@@ -513,9 +534,10 @@ def model_cell(cell: Path, policy: Policy) -> dict[str, Any]:
         "columns": {
             "inferred": [
                 "fs_routes",
+                "fs_routes_leaf_present",
+                "fs_routes_target_missing",
                 "fs_escape_zone",
                 "unresolvable",
-                "target_missing",
                 "dest",
                 "order_mismatch",
                 "order_basis",

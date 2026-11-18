@@ -200,6 +200,8 @@ inodefence explore --target decompress --version @xhmikosr/decompress@11.1.4 --b
 `--version`은 `latest`나 정확한 버전, `--budget`은 실행 수(seed 케이스 수 이상), `--seed`는 난수
 seed입니다. 탐색 정책·sentinel 구성은 등록 실험 설정을 기본값으로 쓰며, 끝나면 공통 형식
 `result.json`(`inodefence-target-result-v1`, mode=campaign)과 한 장짜리 `summary.md`를 씁니다.
+`--image-tag-suffix`(따로 준비한 이미지 태그)의 값이 `-`로 시작하면 `--image-tag-suffix=-win`처럼 `=` 형식으로 줍니다
+(다음 버전; 공백 형식은 종료 3으로 거부되며 메시지가 `=` 형식을 안내합니다. 0.2.0에서는 `=` 형식도 거부됨).
 `--profile fast`(기본 `strict`)는 실행마다 하는 공용 이미지 재빌드를 건너뛰고, 다음 버전부터는 이미지 신원 확인을 캠페인
 단위(시작·200건마다·끝)로 줄이는 선택 옵션이며, 조건·기록·측정값은
 [한계와 주의](#한계와-주의)의 "실행 프로필"에 있습니다.

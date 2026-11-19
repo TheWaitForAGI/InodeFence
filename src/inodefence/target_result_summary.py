@@ -260,6 +260,15 @@ def render_summary(result: TargetResult, *, source_name: str, inputs_verified: b
                 f"| 이미지 신원 확인 | 캠페인 단위(시작·{checks.get('interval')}건마다·끝), "
                 f"총 {checks.get('total_checks')}회 — STRICT는 케이스마다 |"
             )
+            scope = checks.get("acceptance_scope")
+            if isinstance(scope, dict):  # W4 Q2 (ii): the record's own scope label, verbatim
+                add(
+                    f"| FAST 수용 표시 | {checks.get('fast_acceptance')} (측정 범위: 버전 "
+                    f"{scope.get('version')}, 정책 {scope.get('policy')}, "
+                    f"예산 {scope.get('budget')}) |"
+                )
+            else:  # written before the label existed
+                add("| FAST 수용 표시 | 표시 없음(옛 기록) |")
         if campaign.mutation_policy is not None:  # only when --mutation-policy chose it
             add(f"| 변이 정책 | {_code(campaign.mutation_policy)} (선택한 탐색용 정책) |")
     prep = result.preparation

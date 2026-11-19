@@ -23,12 +23,16 @@ from inodefence.drivers.runtime.policy import RuntimeProfile
 from inodefence.evaluation.rds import VOCABULARY_MUTATION_POLICY, VocabularyMode
 from inodefence.live_exploration import list_violation_cases, read_progress
 from inodefence.target_result import (
+    FAST_ACCEPTANCE_INTERVAL_ON_UNMEASURED_SCOPE,
+    FAST_ACCEPTANCE_PASSED,
     JUDGED,
+    NODE_TAR_ACCEPTED_FAST_SCOPE,
     CampaignInfo,
     CaseVerdict,
     ResultMode,
     TargetAxes,
     TargetResult,
+    in_accepted_scope,
     per_case_identity_marker,
     repro_input,
 )
@@ -328,6 +332,47 @@ def with_per_case_identity_marker(result: TargetResult, session: object) -> Targ
     marker = per_case_identity_marker(str(target), state)
     return dataclasses.replace(
         result, campaign=dataclasses.replace(result.campaign, identity_checks=marker)
+    )
+
+
+#: Targets whose FAST keeps the D064 interval and whose result must say which scope was measured.
+ACCEPTED_FAST_SCOPE: dict[str, dict] = {"node-tar": NODE_TAR_ACCEPTED_FAST_SCOPE}
+
+
+def with_fast_acceptance_scope(
+    result: TargetResult, session: object, *, version: str, policy: str, budget: int
+) -> TargetResult:
+    """W4 Q2 (ii): a FAST run WITH the interval on a target of :data:`ACCEPTED_FAST_SCOPE`
+    records ``fast_acceptance`` (``passed`` inside the measured scope, else
+    ``interval_on_unmeasured_scope``) and the measured ``acceptance_scope`` next to its probe
+    record. The interval stays on outside the scope (no version gating). Other runs unchanged.
+    """
+    run_policy = getattr(session, "policy", None)
+    scope = ACCEPTED_FAST_SCOPE.get(str(getattr(session, "target", None)))
+    if (
+        scope is None
+        or run_policy is None
+        or run_policy.profile is not RuntimeProfile.FAST
+        or run_policy.identity_check_every is None
+    ):
+        return result
+    assert result.campaign is not None  # every exploration result is a campaign
+    checks = result.campaign.identity_checks
+    if checks is None:
+        raise IdentityRecordError("a FAST run with an interval has no probe record to label")
+    if scope["counted_seeds"] is None or scope["rule_sha"] is None:
+        raise IdentityRecordError(
+            "the FAST acceptance scope is not filled yet (counted_seeds, "
+            "rule_sha); no result written"
+        )
+    state = (
+        FAST_ACCEPTANCE_PASSED
+        if in_accepted_scope(scope, version, policy, budget)
+        else FAST_ACCEPTANCE_INTERVAL_ON_UNMEASURED_SCOPE
+    )
+    labeled = {**checks, "fast_acceptance": state, "acceptance_scope": dict(scope)}
+    return dataclasses.replace(
+        result, campaign=dataclasses.replace(result.campaign, identity_checks=labeled)
     )
 
 

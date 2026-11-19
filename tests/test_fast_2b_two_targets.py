@@ -70,8 +70,9 @@ def _fixed_provenance(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-def test_the_two_targets_are_the_d065_list() -> None:
-    assert rt.FAST_PER_CASE_IDENTITY_TARGETS == TWO
+def test_the_two_targets_are_in_the_d065_list() -> None:
+    # The full table is pinned by tests/test_fast_per_case_widened.py.
+    assert set(TWO) <= set(rt.FAST_PER_CASE_IDENTITY_TARGETS)
 
 
 # -- the driver's one policy change --------------------------------------------------------------
@@ -99,8 +100,13 @@ def test_fast_on_the_two_targets_keeps_the_rebuild_skip_only(target: str, capsys
     )
 
 
-@pytest.mark.parametrize("target", ["node-tar", "python-tarfile"])
-def test_fast_on_node_tar_and_python_tarfile_is_unchanged(target: str, capsys) -> None:
+INTERVAL_TARGETS = [
+    t for t in ("node-tar", "python-tarfile") if t not in rt.FAST_PER_CASE_IDENTITY_TARGETS
+]
+
+
+@pytest.mark.parametrize("target", INTERVAL_TARGETS)
+def test_fast_keeps_the_interval_on_targets_outside_the_table(target: str, capsys) -> None:
     plan, err = _dry_run(target, capsys)
     assert plan["runtime_profile"]["policy"] == {
         "reuse_shared_images": True,
@@ -194,7 +200,8 @@ def test_the_launches_equal_0_2_0(monkeypatch) -> None:
             for item in seen:
                 item["changed"] = {k: v.replace(tmp, "<tmp>") for k, v in item["changed"].items()}
         records[target] = seen
-    assert records == json.loads(FIXTURE.read_text(encoding="utf-8"))
+    expected = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    assert records == {target: expected[target] for target in TWO}
 
 
 # -- condition 1 and 0.2.0 equivalence (2): probes and the loop report ---------------------------

@@ -525,6 +525,34 @@ FAST_ACCEPTANCE_CRITERION_MET_NO_VIOLATION_PATHS = "criterion_met_no_violation_p
 #: node-tar's follow-up measurement result; set in ONE place when the result is in.
 FAST_ACCEPTANCE_INDETERMINATE_F3 = "indeterminate_f3"
 FAST_ACCEPTANCE_FAILED = "failed"
+#: A FAST run WITH the D064 interval (W4 Q2 (ii), scope-conditional): ``passed`` only when the
+#: run is inside the scope the acceptance measured; any other run keeps the interval but says
+#: so with ``interval_on_unmeasured_scope``. Both carry the measured scope.
+FAST_ACCEPTANCE_PASSED = "passed"
+FAST_ACCEPTANCE_INTERVAL_ON_UNMEASURED_SCOPE = "interval_on_unmeasured_scope"
+INTERVAL_ACCEPTANCE_STATES = (
+    FAST_ACCEPTANCE_PASSED,
+    FAST_ACCEPTANCE_INTERVAL_ON_UNMEASURED_SCOPE,
+)
+#: The node-tar FAST acceptance scope (W4 rule v3). ``counted_seeds`` and ``rule_sha`` come with
+#: the follow-up result and are filled here, in this one place; a test fails while they are
+#: empty, so this branch cannot ship unfilled.
+NODE_TAR_ACCEPTED_FAST_SCOPE: dict[str, Any] = {
+    "version": "7.5.2",
+    "policy": "default",
+    "budget": 2000,
+    "counted_seeds": None,
+    "rule_sha": None,
+}
+SCOPE_KEYS = ("version", "policy", "budget", "counted_seeds", "rule_sha")
+
+
+def in_accepted_scope(scope: dict[str, Any], version: str, policy: str, budget: int) -> bool:
+    """Whether a run is inside the measured scope. The narrowest reading (decision pending,
+    W4): the exact version string, the exact policy name, the exact budget."""
+    return (version, policy, budget) == (scope["version"], scope["policy"], scope["budget"])
+
+
 PER_CASE_IDENTITY_MARKER: dict[str, Any] = {
     "identity_checks": "per-case",
     "interval": 1,
@@ -570,6 +598,8 @@ def _check_identity_checks(checks: object) -> None:
                 "(a probe before every case)"
             )
         return
+    if isinstance(checks, dict) and ("fast_acceptance" in checks or "acceptance_scope" in checks):
+        _check_acceptance_scope(checks)
     if (
         not isinstance(checks, dict)
         or type(checks.get("interval")) is not int
@@ -581,6 +611,31 @@ def _check_identity_checks(checks: object) -> None:
             "campaign.identity_checks must be absent or a record with integer interval and "
             "total_checks >= 1"
         )
+
+
+def _check_acceptance_scope(checks: dict[str, Any]) -> None:
+    """An interval record's scope label: both keys or neither (an older record has neither and
+    is read as unlabeled); a known state; the scope's fields."""
+    state, scope = checks.get("fast_acceptance"), checks.get("acceptance_scope")
+    if state not in INTERVAL_ACCEPTANCE_STATES:
+        raise TargetResultError(
+            f"campaign.identity_checks.fast_acceptance must be one of "
+            f"{INTERVAL_ACCEPTANCE_STATES} with an interval record"
+        )
+    if not isinstance(scope, dict) or tuple(sorted(scope)) != tuple(sorted(SCOPE_KEYS)):
+        raise TargetResultError(
+            f"campaign.identity_checks.acceptance_scope must hold exactly {SCOPE_KEYS}"
+        )
+    if not isinstance(scope["version"], str) or not isinstance(scope["policy"], str):
+        raise TargetResultError("acceptance_scope version and policy must be strings")
+    if type(scope["budget"]) is not int or scope["budget"] < 1:
+        raise TargetResultError("acceptance_scope budget must be a positive integer")
+    seeds, rule = scope["counted_seeds"], scope["rule_sha"]
+    # An unfilled scope (None) is refused: a record made from it must not exist.
+    if type(seeds) is not int or seeds < 1:
+        raise TargetResultError("acceptance_scope counted_seeds must be a positive integer")
+    if not isinstance(rule, str) or len(rule) != 64:
+        raise TargetResultError("acceptance_scope rule_sha must be a sha256 hex digest")
 
 
 def _validate(result: TargetResult) -> None:

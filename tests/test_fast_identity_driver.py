@@ -23,7 +23,12 @@ import inodefence.drivers.run_target as rt
 from inodefence.drivers.launcher import IDENTITY_CHECK_ENV, run_launcher
 from inodefence.drivers.runtime import policy
 from inodefence.drivers.runtime.session import RuntimeSession
-from inodefence.target_result import TargetResultError, from_json_dict, load_target_result
+from inodefence.target_result import (
+    NODE_TAR_ACCEPTED_FAST_SCOPE,
+    TargetResultError,
+    from_json_dict,
+    load_target_result,
+)
 from inodefence.target_result_summary import render_summary
 
 SCRIPT = Path("/no/such/launcher.sh")
@@ -211,6 +216,10 @@ def test_the_reader_checks_the_record(record: Any) -> None:
 
 
 def test_the_node_tar_hook_records_it_under_a_fast_session(monkeypatch, tmp_path: Path) -> None:
+    # a filled stand-in scope: the real one is empty until the follow-up result (W4 Q2 (ii))
+    filled = {**NODE_TAR_ACCEPTED_FAST_SCOPE, "counted_seeds": 3, "rule_sha": "0" * 64}
+    monkeypatch.setitem(er.ACCEPTED_FAST_SCOPE, "node-tar", filled)
+
     def fake(prepared: Any, *, out: Path, run_id: str, **_: Any) -> Path:
         path = nte.controller_report_path(out, run_id)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -221,7 +230,12 @@ def test_the_node_tar_hook_records_it_under_a_fast_session(monkeypatch, tmp_path
     fast = rt.ExploreOptions(budget=20, seed=1, out=tmp_path / "f", runtime=_session(policy.FAST))
     outcome = nte.explore(_prepared(), fast)
     campaign = load_target_result(outcome.result_path).campaign
-    assert campaign is not None and campaign.identity_checks == RECORD
+    # W4 Q2 (ii): the loop's record plus the scope label (7.5.23 is outside the measured scope)
+    assert campaign is not None and campaign.identity_checks == {
+        **RECORD,
+        "fast_acceptance": "interval_on_unmeasured_scope",
+        "acceptance_scope": filled,
+    }
     strict = rt.ExploreOptions(budget=20, seed=1, out=tmp_path / "s")
     raw = json.loads(nte.explore(_prepared(), strict).result_path.read_text(encoding="utf-8"))
     assert "identity_checks" not in raw["campaign"]  # STRICT: the report is not consulted

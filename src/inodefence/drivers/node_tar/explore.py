@@ -24,6 +24,7 @@ from inodefence.drivers.explore_result import (
     build_campaign_result,
     check_ran_mutation_policy,
     refuse_existing,
+    with_fast_acceptance_scope,
     with_identity_checks,
     with_per_case_identity_marker,
     write_result,
@@ -231,6 +232,14 @@ def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOu
     result = with_identity_checks(result, report, requested_identity_check_every(options))
     # D065: when this target's FAST keeps the rebuild skip only, the result says so per case.
     result = with_per_case_identity_marker(result, getattr(options, "runtime", None))
+    # W4 Q2 (ii): a FAST run with the interval says whether it is inside the measured scope.
+    result = with_fast_acceptance_scope(
+        result,
+        getattr(options, "runtime", None),
+        version=prepared.version,
+        policy=options.mutation_policy or "default",
+        budget=options.budget,
+    )
     result_path = write_result(
         report_path.parent / f"{run_id}-result", result, tar_files, report=report_path
     )

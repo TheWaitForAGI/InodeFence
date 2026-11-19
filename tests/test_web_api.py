@@ -187,6 +187,8 @@ def test_live_run_gone_quiet_is_stalled(tmp_path):
     # the progress bar is runs/budget (never max-normalized): both present, runs < budget
     assert run["status"]["runs"] is not None and run["status"]["budget"]
     assert run["status"]["runs"] < run["status"]["budget"]
+    # the run detail carries the same stall verdict, so its "state" row can match the table
+    assert client.get(f"/api/runs/{run['id']}").json()["stalled"] is True
 
 
 def test_fresh_live_run_is_not_stalled(tmp_path):

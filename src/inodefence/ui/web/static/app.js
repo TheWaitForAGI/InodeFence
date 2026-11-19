@@ -391,7 +391,7 @@ function runDetailCards(data) {
   const findings = (snap.findings || []).filter((f) => f.finding);
   const rows = [
     ["kind", snap.ref.kind], ["target", snap.ref.target], ["version", snap.ref.version],
-    ["state", p.state], ["runs / budget", (p.runs == null && p.budget == null) ? null : `${p.runs == null ? EM_DASH : p.runs} / ${p.budget == null ? EM_DASH : p.budget}`],
+    ["state", data.stalled === true ? "stalled" : p.state], ["runs / budget", (p.runs == null && p.budget == null) ? null : `${p.runs == null ? EM_DASH : p.runs} / ${p.budget == null ? EM_DASH : p.budget}`],
     ["runs/second", p.runs_per_second], ["verdict", s.verdict],
     ["validated", s.validated == null ? null : (s.validated === false ? "as stored (not validated)" : "validated")],
     ["executed", s.executed], ["unjudged steps", s.unjudged_steps],

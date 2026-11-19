@@ -41,6 +41,7 @@ from typing import Any
 
 from inodefence.drivers import explore_result
 from inodefence.drivers.explore_result import (
+    check_ran_mutation_policy,
     with_identity_checks,
     with_per_case_identity_marker,
 )
@@ -49,6 +50,7 @@ from inodefence.drivers.python_tarfile import adapter as rpt
 from inodefence.drivers.python_tarfile import producer
 from inodefence.drivers.repo import code_checkout
 from inodefence.drivers.run_target import (
+    MUTATION_POLICY_ENV,
     ExploreOptions,
     ExploreOutcome,
     PreparedTargetImage,
@@ -98,6 +100,7 @@ def run_controller(
     run_id: str,
     budget: int,
     seed: int,
+    mutation_policy: str | None = None,
     runner: Runner = subprocess.run,
     session: RuntimeSession | None = None,
 ) -> Path:
@@ -106,6 +109,10 @@ def run_controller(
     Past this point the controller has started, so a failure is an infrastructure stop of the run
     (``RuntimeError``: verdict ERROR, exit 2), not a setup refusal. A launcher that exits non-zero
     never yields a result, whatever report it left: the report is kept where it is, unread.
+
+    ``mutation_policy`` (``--mutation-policy``) is the only way a policy reaches the launcher: the
+    caller's own ``DEMO_MUTATION_POLICY`` is not passed through, so a run without the option is
+    the default run whatever the environment holds.
     """
     env = {
         **os.environ,
@@ -118,10 +125,10 @@ def run_controller(
         "RUN_ID": run_id,
         "PYTHON": os.environ.get("PYTHON", sys.executable),
     }
-    # python-tarfile exploration has no mutation policy option: the caller's own
-    # DEMO_MUTATION_POLICY never reaches the launcher (run_target.MUTATION_POLICY_ENV).
     drop_inherited_mutation_policy(env)
     drop_inherited_search_policy(env)
+    if mutation_policy is not None:
+        env[MUTATION_POLICY_ENV] = mutation_policy
     report = report_path(out, run_id)
     done = run_launcher(
         LAUNCHER,
@@ -186,8 +193,14 @@ def build_campaign_result(
     *,
     seed: int,
     budget: int,
+    mutation_policy: str | None = None,
 ) -> tuple[TargetResult, dict[str, bytes]]:
-    """Common conversion, then the python-specific axes, run image and preparation record."""
+    """Common conversion, then the python-specific axes, run image and preparation record.
+
+    ``mutation_policy`` is passed only after :func:`explore_result.check_ran_mutation_policy`; the
+    common conversion then records it and the build-invalid count (``executed`` minus the case
+    records).
+    """
     if "aborted" in report:
         raise ValueError(f"exploration aborted: {report['aborted'].get('reason')}")
     if not report.get("case_records"):
@@ -198,7 +211,7 @@ def build_campaign_result(
     ):
         raise ValueError("loop report is for a different runtime or filter")
     common, tar_files = explore_result.build_campaign_result(
-        report, prepared, seed=seed, budget=budget
+        report, prepared, seed=seed, budget=budget, mutation_policy=mutation_policy
     )
     result = dataclasses.replace(
         common,
@@ -240,6 +253,7 @@ def explore(
         run_id=run_id,
         budget=options.budget,
         seed=options.seed,
+        mutation_policy=getattr(options, "mutation_policy", None),
         runner=runner or subprocess.run,
         session=getattr(options, "runtime", None),
     )
@@ -248,8 +262,17 @@ def explore(
         aborted = report["aborted"]
         reason = aborted.get("reason") if isinstance(aborted, dict) else aborted
         raise RuntimeError(f"exploration aborted: {reason}")
+    mutation_policy = getattr(options, "mutation_policy", None)
+    if mutation_policy is not None:
+        check_ran_mutation_policy(report, mutation_policy)
     result, tar_files = build_campaign_result(
-        report, prepared, made, extraction_filter, seed=options.seed, budget=options.budget
+        report,
+        prepared,
+        made,
+        extraction_filter,
+        seed=options.seed,
+        budget=options.budget,
+        mutation_policy=mutation_policy,
     )
     # FAST (#536): the loop's identity-probe record; STRICT: unchanged.
     result = with_identity_checks(result, report, requested_identity_check_every(options))

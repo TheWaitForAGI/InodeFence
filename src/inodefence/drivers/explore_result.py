@@ -20,6 +20,7 @@ from inodefence.drivers.run_target import (
     engine_provenance,
 )
 from inodefence.drivers.runtime.policy import RuntimeProfile
+from inodefence.evaluation.rds import VOCABULARY_MUTATION_POLICY, VocabularyMode
 from inodefence.live_exploration import list_violation_cases, read_progress
 from inodefence.target_result import (
     JUDGED,
@@ -65,8 +66,10 @@ def build_campaign_result(
     ``mutation_policy`` is recorded as given; the caller passes it only after checking the loop
     ran it. Only such a run (the v2 grammar policy) can have build-invalid runs -- the builder
     could not represent the child, so nothing was extracted -- and for it the count is required:
-    see :func:`build_invalid_runs`. ``campaign.build_invalid`` is then written when it is > 0. A
-    run without ``mutation_policy`` is unchanged (no count is derived, the key never appears).
+    see :func:`build_invalid_runs` (streaming report) and :func:`per_case_build_invalid_runs`
+    (a ``case_records`` report: python-tarfile). ``campaign.build_invalid`` is then written when
+    it is > 0. A run without ``mutation_policy`` is unchanged (no count is derived, the key never
+    appears).
     """
     aggregate = report.get("aggregate")
     disk_sourced = aggregate is not None and live_dir is not None
@@ -149,13 +152,23 @@ def build_campaign_result(
             ),
             mutation_policy=mutation_policy,
         )
+    elif mutation_policy is not None:
+        executed, build_invalid = per_case_build_invalid_runs(report)
+        campaign = CampaignInfo(
+            seed=seed,
+            budget=budget,
+            runs_to_first_violation=first_violation,
+            runs_executed=executed,
+            max_unjudged_ratio=max_unjudged_ratio,
+            build_invalid=build_invalid or None,
+            mutation_policy=mutation_policy,
+        )
     else:
         campaign = CampaignInfo(
             seed=seed,
             budget=budget,
             runs_to_first_violation=first_violation,
             max_unjudged_ratio=max_unjudged_ratio,
-            mutation_policy=_no_aggregate_policy(mutation_policy),
         )
     result = TargetResult(
         target=prepared.target,
@@ -216,14 +229,46 @@ def build_invalid_runs(aggregate: dict, live_dir: Path | None = None) -> int:
     return count
 
 
-def _no_aggregate_policy(mutation_policy: str | None) -> str | None:
-    """A ``--mutation-policy`` run must stream (the count comes from the aggregate)."""
-    if mutation_policy is not None:
+def per_case_build_invalid_runs(report: dict) -> tuple[int, int]:
+    """``(steps, build-invalid)`` of a per-case report: ``executed - len(case_records)``.
+
+    A ``case_records`` report (python-tarfile) has one record per extracted step and the loop's
+    step count in ``executed``; a build-invalid step is never extracted, so it has no record
+    and the difference is exact. A report without that count, or whose records outnumber it,
+    raises :class:`BuildInvalidUnknownError`.
+    """
+    executed = report.get("executed")
+    records = report.get("case_records")
+    if type(executed) is not int or not isinstance(records, list):
         raise BuildInvalidUnknownError(
             "build-invalid count unknown: a --mutation-policy run produced a per-case report "
-            "without the aggregate; no result written"
+            "without its step count; no result written"
         )
-    return None
+    count = executed - len(records)
+    if count < 0:
+        raise BuildInvalidUnknownError(
+            f"build-invalid count unknown: {len(records)} case records exceed {executed} steps; "
+            "no result written"
+        )
+    return executed, count
+
+
+def check_ran_mutation_policy(report: dict, requested: str) -> None:
+    """The loop report must show it ran ``requested`` (its ``vocabulary_mode``), or no result.
+
+    The result records the policy only after this check, so ``campaign.mutation_policy`` is what
+    the loop ran, not just what was asked for. A mismatch is an ERROR (exit 2): the run happened.
+    """
+    mode = report.get("vocabulary_mode")
+    try:
+        ran = VOCABULARY_MUTATION_POLICY[VocabularyMode(mode)].value
+    except (ValueError, KeyError):
+        ran = None
+    if ran != requested:
+        raise RuntimeError(
+            f"the loop ran vocabulary mode {mode!r} (mutation policy {ran!r}), requested "
+            f"{requested!r}; no result written"
+        )
 
 
 class IdentityRecordError(RuntimeError):

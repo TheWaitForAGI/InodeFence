@@ -163,7 +163,7 @@ inodefence summary ~/inodefence-explore/target-explore/7.5.23-123-20-result/resu
 | `inodefence doctor` | 환경 점검(`OK`·`FAIL`·`WARN`·`INFO`·`UNKNOWN`)과 고치는 법. 확인하지 못한 것은 `OK`가 아니라 `UNKNOWN`. 읽기만 함 | 0 FAIL 없음, 1 FAIL 있음 |
 | `inodefence targets [--json]` | 추출기와 각 추출기가 지원하는 것 | 0 정상, 3 저장소 없음·설정 파일 오류 |
 | `inodefence verify --target T --version V` | 고정 입력 회귀(`--version` 반복 가능) + 정상 입력 대조군(실패하면 PASS 대신 ERROR) | 0 PASS, 1 FAIL, 2 ERROR, 3 실행 전 거부 |
-| `inodefence explore --target T --version V [--budget N] [--seed S] [--quiet\|--verbose] [--profile fast] [--mutation-policy P]` | 상태 기반 feedback 탐색(기본 budget 20, seed 123). 실행 중 진행 줄을 stderr에 출력(`--quiet` 없음, `--verbose` 런처 원시 출력). `--mutation-policy`는 다음 버전, node-tar 전용, v2 문법 정책 한 값(탐색용). decompress·oras-go의 FAST는 재빌드 생략만(신원 확인은 케이스마다, FAST 수용 측정 없음, 다음 버전) | 0 PASS, 1 FAIL, 2 ERROR, 3 실행 전 거부 |
+| `inodefence explore --target T --version V [--budget N] [--seed S] [--quiet\|--verbose] [--profile fast] [--mutation-policy P]` | 상태 기반 feedback 탐색(기본 budget 20, seed 123). 실행 중 진행 줄을 stderr에 출력(`--quiet` 없음, `--verbose` 런처 원시 출력). `--mutation-policy`는 다음 버전, node-tar·python-tarfile, v2 문법 정책 한 값(탐색용). decompress·oras-go의 FAST는 재빌드 생략만(신원 확인은 케이스마다, FAST 수용 측정 없음, 다음 버전) | 0 PASS, 1 FAIL, 2 ERROR, 3 실행 전 거부 |
 | `inodefence status <폴더>` | 실행 중 진행·위반 케이스, 끝난 뒤 판정 | 0 표시, 2 보일 것 없음·읽기 실패 |
 | `inodefence replay <위반 케이스 폴더> [--rounds 3]`<br>`inodefence replay <결과 폴더> --case step-N` | 탐색 케이스를 같은 이미지·같은 조건에서 다시 돌려 회차별 분류와 재현 비율 기록(네 대상) | 0 완료, 1 미완료, 2 재실행 불가, 3 실행 전 멈춤, 4 미지원 |
 | `inodefence summary <result.json> [-o 파일]` | 결과를 한 장짜리 Markdown 요약으로(입력 TAR SHA-256 재대조) | 0 작성, 2 읽기·쓰기 실패 |

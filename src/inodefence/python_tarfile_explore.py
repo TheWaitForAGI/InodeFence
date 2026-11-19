@@ -212,9 +212,15 @@ def python_tarfile_exploration_report(
     )
     case_records: list[dict[str, object]] = []
     violation_inputs: list[dict[str, object]] = []
+    # The loop's step counter, as seen through ``record_step`` (every step, a build-invalid one
+    # included, D060). A case's ``run_index`` is the index of the step it runs in, so case
+    # "step-N", its saved input and line N of ``.steps.jsonl`` agree, and the first-violation
+    # rank counts steps as node-tar does. Without a build-invalid step it equals
+    # ``len(case_records)``, so v1 policies number exactly as before.
+    steps_seen = [0]
 
     def produce(case: ArchiveCase) -> EffectRunResult:
-        run_index = len(case_records)
+        run_index = steps_seen[0]
         result = run_python_tarfile_contained_case(case, target, sentinels=sentinels)
         record = case_record(run_index, result)
         case_records.append(record)
@@ -232,6 +238,11 @@ def python_tarfile_exploration_report(
     reporter = EffectStepReporter()
 
     def record_step(step) -> None:  # type: ignore[no-untyped-def]
+        if step.index != steps_seen[0]:
+            raise RuntimeError(
+                f"loop step {step.index} arrived when step {steps_seen[0]} was expected"
+            )
+        steps_seen[0] += 1
         line = reporter.add(step)
         if step_sink is not None:
             step_sink(line)

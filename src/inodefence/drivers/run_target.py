@@ -253,12 +253,12 @@ DEFAULT_MAX_UNJUDGED_RATIO = 0.2
 #: ``--mutation-policy`` values exploration accepts (exploratory, opt-in): only the v2 grammar
 #: policy ``MutationPolicy.V2_FREEZE3_FIXED_BASELINE`` (escape depth 0..3; a test pins the value
 #: to the enum). Without the option a run uses each target's own default, unchanged. The v2.1
-#: seed-corpus variant is not offered (its empty seed is refused by node-tar and its python-tarfile
-#: record is not valid, #533).
+#: seed-corpus variant is not offered (node-tar rejects its empty seed; the python-tarfile loop
+#: refuses it for want of an approved exploration plan, #533).
 EXPLORE_MUTATION_POLICIES = ("uniform-b-grammar-v2-freeze-3-fixed-baseline-v1",)
 #: The targets whose exploration can run a ``--mutation-policy`` value; the explore driver refuses
 #: the option for any other target before anything is prepared or run (exit 3).
-MUTATION_POLICY_TARGETS = ("node-tar",)
+MUTATION_POLICY_TARGETS = ("node-tar", "python-tarfile")
 #: D065: the targets whose ``--profile fast`` keeps the shared-image rebuild skip only, each with
 #: the FAST acceptance state its result records (``campaign.identity_checks.fast_acceptance``).
 #: The D064 identity-probe interval is not applied to them, so their image identity is probed
@@ -298,7 +298,12 @@ def _drop_inherited(env: dict[str, str], name: str, instead: str) -> None:
 
 def drop_inherited_mutation_policy(env: dict[str, str]) -> None:
     """The caller's ``DEMO_MUTATION_POLICY`` never reaches a launcher (``--mutation-policy``)."""
-    _drop_inherited(env, MUTATION_POLICY_ENV, "use --mutation-policy (node-tar exploration only)")
+    # The target list comes from MUTATION_POLICY_TARGETS so the message follows the option.
+    _drop_inherited(
+        env,
+        MUTATION_POLICY_ENV,
+        f"use --mutation-policy ({', '.join(MUTATION_POLICY_TARGETS)} exploration)",
+    )
 
 
 def drop_inherited_search_policy(env: dict[str, str]) -> None:

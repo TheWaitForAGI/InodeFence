@@ -223,6 +223,9 @@ class CampaignInfo:
     ``seed`` is the RNG seed. ``budget`` is the execution budget, or ``None`` for a run with no
     fixed cap (``run until stopped``). ``runs_to_first_violation`` is the 1-based run index of the
     first case that violated an observed contract, or ``None`` when none did.
+    `runs_to_first_violation` and every case run index count recorded steps, build-invalid steps
+    included (D060: each spends one budget unit), not extractions. A target whose loop extracts
+    fewer times than it steps still counts steps.
 
     The remaining fields let a large or unbounded campaign keep aggregates without listing every
     run in ``cases`` (``cases`` may then hold only the violations, or be empty). All are optional

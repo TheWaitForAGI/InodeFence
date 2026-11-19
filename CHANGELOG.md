@@ -8,9 +8,9 @@
 ## [Unreleased]
 
 ### 추가된 사용자 기능
-- `inodefence explore --mutation-policy uniform-b-grammar-v2-freeze-3-fixed-baseline-v1`: node-tar 탐색에서 v2 문법
-  변이 정책(탐색용)을 고른다. 받는 값은 이것 하나이고(v2.1 seed 코퍼스 변형은 열지 않음), 다른 대상은 실행 전 종료 3으로
-  거부한다. 옵션을 주면 `result.json`의 `campaign.mutation_policy`에 적는다(루프 보고서가 그 정책을 돌렸는지 확인한 뒤).
+- `inodefence explore --mutation-policy uniform-b-grammar-v2-freeze-3-fixed-baseline-v1`: node-tar와 python-tarfile 탐색에서
+  v2 문법 변이 정책(탐색용)을 고른다. 받는 값은 이것 하나이고(v2.1 seed 코퍼스 변형은 열지 않음), decompress·oras-go는
+  실행 전 종료 3으로 거부한다. python-tarfile의 build-invalid 수는 루프의 step 수 − 케이스 기록 수다. 옵션을 주면 `result.json`의 `campaign.mutation_policy`에 적는다(루프 보고서가 그 정책을 돌렸는지 확인한 뒤).
   기본값은 바뀌지 않는다. [USAGE](docs/USAGE.md#탐색-돌리기)
 - `result.json` 선택 키 `campaign.build_invalid`: TAR로 만들 수 없어 추출하지 않은 실행 수(v2 정책에서만, 0이면 키 없음).
   `summary.md`에 한 줄로 보인다. 수는 루프 보고서의 실행 수 − 종료 상태 합이고, 셀 수 없거나 live 스냅숏과 어긋나면
@@ -42,6 +42,9 @@
 - python-tarfile 탐색이 실행 중 스텝 전체(스냅숏·trace)를 메모리에 쌓지 않는다(#542). `result.json`과 `summary.md`는
   그대로다. 엔진 원시 보고서(`inodefence-python-tarfile-explore-*.json`)에서는 `steps` 배열이 빠지고 `streaming: true`가 붙는다.
   스텝 기록은 옆의 `.steps.jsonl`에 있다.
+- python-tarfile 탐색의 케이스 번호(`step-N`, `run_index`)와 `campaign.runs_to_first_violation`을 추출 횟수가 아니라
+  build-invalid를 포함한 루프 step 수로 센다(node-tar와 같은 단위, D060). v2 정책에서만 드러나는 번호 정합이다: build-invalid
+  step이 없는 실행(기본 정책 전부)은 번호가 그대로이고, 이미 기록된 결과는 다시 세지 않는다.
 - 새 선택 키가 든 `result.json`은 이 버전 이상의 `inodefence status`·`summary`로 읽는다([호환 약속](docs/USAGE.md#호환-약속)).
 
 ### 고친 문제

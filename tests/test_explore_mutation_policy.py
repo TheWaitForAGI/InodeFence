@@ -1,7 +1,8 @@
-"""``explore --mutation-policy`` (node-tar only, exploratory) and the build-invalid count.
+"""``explore --mutation-policy`` (node-tar and python-tarfile, exploratory) and the build-invalid
+count.
 
 - The option opens exactly one value, the v2 grammar policy; v2.1 is not offered.
-- Other targets are refused before anything is prepared or run (exit 3).
+- Other targets (decompress, oras-go) are refused before anything is prepared or run (exit 3).
 - No explore driver passes the caller's own ``DEMO_MUTATION_POLICY`` to its launcher.
 - The result records the policy only when the option was given, after checking the loop ran it.
 - Build-invalid runs (v2 only) are recorded and left out of the un-judged ratio's denominator.
@@ -68,7 +69,7 @@ def test_the_option_opens_only_the_v2_policy_and_the_cli_copy_matches() -> None:
     assert MutationPolicy.V2_FREEZE3_FIXED_BASELINE_MINIMAL_EMPTY_REG.value not in (
         rt.EXPLORE_MUTATION_POLICIES
     )
-    assert rt.MUTATION_POLICY_TARGETS == ("node-tar",)
+    assert rt.MUTATION_POLICY_TARGETS == ("node-tar", "python-tarfile")
     assert rt.MUTATION_POLICY_ENV == "DEMO_MUTATION_POLICY"
 
 
@@ -104,7 +105,6 @@ def test_cli_refuses_any_other_value_with_exit_3(value: str, capsys, tmp_path: P
 @pytest.mark.parametrize(
     "target_argv",
     [
-        ["--target", "python-tarfile", "--version", "3.12.7", "--extraction-filter", "data"],
         ["--target", "decompress", "--version", "decompress@4.2.1"],
         ["--target", "oras-go", "--version", "2.6.2"],
     ],
@@ -117,7 +117,7 @@ def test_driver_refuses_the_option_for_other_targets_before_anything(
     for extra in (["--dry-run"], ["--auto-prepare"]):
         assert rte.main([*argv, *extra]) == 3
         err = capsys.readouterr().err
-        assert "available only for node-tar exploration" in err
+        assert "available only for node-tar, python-tarfile exploration" in err
         assert "nothing was prepared or run" in err
     assert not any(tmp_path.iterdir())
 
@@ -181,12 +181,15 @@ def test_node_tar_launcher_env_carries_only_the_option(
     assert captured["env"].get("DEMO_MUTATION_POLICY") == option
 
 
-def test_python_tarfile_launcher_env_drops_the_callers_policy(monkeypatch, tmp_path: Path) -> None:
+@pytest.mark.parametrize("option", [None, V2])
+def test_python_tarfile_launcher_env_carries_only_the_option(
+    option: str | None, monkeypatch, tmp_path: Path
+) -> None:
     monkeypatch.setenv("DEMO_MUTATION_POLICY", "inherited-from-the-caller")
     captured, runner = _capture_env(pte.report_path(tmp_path, "rid"))
     pte.run_controller("ref", "3.12.7", "data", out=tmp_path, run_id="rid", budget=8, seed=1,
-                       runner=runner)  # fmt: skip
-    assert "DEMO_MUTATION_POLICY" not in captured["env"]
+                       mutation_policy=option, runner=runner)  # fmt: skip
+    assert captured["env"].get("DEMO_MUTATION_POLICY") == option
 
 
 @pytest.mark.parametrize("module", ["decompress", "oras-go"])
@@ -435,6 +438,20 @@ def test_a_dropped_inherited_policy_is_warned_about_on_stderr(
     else:
         assert err.count("TARGET-EXPLORE WARNING") == 1
         assert f"DEMO_MUTATION_POLICY={inherited} is ignored; use --mutation-policy" in err
+
+
+def test_the_dropped_policy_warning_names_the_targets_that_take_the_option(capsys) -> None:
+    # QA (a9894e4): the warning must name every target the option is open to, from the same
+    # tuple the driver checks, so it cannot go stale when the option opens to another target.
+    env = {"DEMO_MUTATION_POLICY": "x"}
+    rt.drop_inherited_mutation_policy(env)
+    err = capsys.readouterr().err
+    assert err == (
+        "TARGET-EXPLORE WARNING: environment variable DEMO_MUTATION_POLICY=x is ignored; "
+        "use --mutation-policy (node-tar, python-tarfile exploration)\n"
+    )
+    assert all(target in err for target in rt.MUTATION_POLICY_TARGETS)
+    assert "only" not in err
 
 
 def _launch_env(target: str, tmp_path: Path, **kwargs: Any) -> dict[str, str]:

@@ -184,6 +184,9 @@ def test_live_run_gone_quiet_is_stalled(tmp_path):
     assert run["status"]["state"] == "running"
     assert run["status"]["source"] == "live"
     assert run["status"]["stalled"] is True
+    # the progress bar is runs/budget (never max-normalized): both present, runs < budget
+    assert run["status"]["runs"] is not None and run["status"]["budget"]
+    assert run["status"]["runs"] < run["status"]["budget"]
 
 
 def test_fresh_live_run_is_not_stalled(tmp_path):

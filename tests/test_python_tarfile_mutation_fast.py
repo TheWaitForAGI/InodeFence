@@ -115,6 +115,7 @@ def test_the_launch_carries_the_option_and_fast_and_nothing_inherited(
     # each dropped inherited value gets its own line; neither hides the other
     assert "use --mutation-policy (node-tar, python-tarfile exploration)" in err
     assert "exploration runs the target's fixed search policy" in err
+    assert "DEMO_IDENTITY_CHECK_EVERY=7 is ignored" in err
 
 
 def test_result_keeps_both_the_policy_and_the_fast_record(monkeypatch, tmp_path: Path) -> None:

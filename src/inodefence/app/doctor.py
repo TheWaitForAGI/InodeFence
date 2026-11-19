@@ -52,6 +52,8 @@ class Item:
     hints: tuple[str, ...] = ()
     parts: tuple[str, ...] = ()
     counted: bool = True
+    #: the group a screen shows the item under (:data:`SECTIONS`); set by :func:`run`
+    section: str = ""
 
     def __post_init__(self) -> None:
         if self.status not in STATUSES:
@@ -76,6 +78,10 @@ class Report:
     @property
     def unknown(self) -> int:
         return sum(1 for item in self.items if item.status == "UNKNOWN" and item.counted)
+
+    def count(self, status: str) -> int:
+        """How many items have ``status`` (all items, counted or not)."""
+        return sum(1 for item in self.items if item.status == status)
 
     @property
     def exit_code(self) -> int:
@@ -571,6 +577,24 @@ def _running_code_check(details: bool = False) -> Item:
     return Item(label, "INFO", str(code), more=about)
 
 
+#: The groups a screen shows, in order, and which item belongs to which.
+SECTIONS = ("Environment", "Storage", "Docker", "Development")
+_SECTION_OF = {
+    "Python 3.12": "Environment",
+    "user config": "Environment",
+    "repository": "Environment",
+    "inodefence code": "Environment",
+    "output folder": "Storage",
+    "free disk": "Storage",
+    "Docker CLI": "Docker",
+    "Docker daemon access": "Docker",
+    "prepared images": "Docker",
+    "leftover from old runs": "Docker",
+    "Docker memory": "Docker",
+    "runtime dir (dev only)": "Development",
+}
+
+
 def run(config: UserConfig | None, config_error: str | None, *, details: bool = False) -> Report:
     """Every check, in doctor's order. ``details`` adds the long lists and background lines;
     it never changes a verdict."""
@@ -614,4 +638,9 @@ def run(config: UserConfig | None, config_error: str | None, *, details: bool = 
     # INFO/WARN only: never changes the exit code.
     items.append(dataclasses.replace(_running_code_check(details), counted=False))
     items.append(_runtime_check(details))
-    return Report(tuple(items))
+    return Report(
+        tuple(
+            dataclasses.replace(item, section=_SECTION_OF.get(item.label, "Environment"))
+            for item in items
+        )
+    )

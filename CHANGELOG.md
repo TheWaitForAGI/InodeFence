@@ -28,7 +28,7 @@
 `pyproject.toml`의 버전은 이미 `0.2.0`이다.
 
 ### 추가된 사용자 기능
-- 화면용 선택 설치 `ui`(Rich)·`tui`(Textual)·`web`(FastAPI·uvicorn)·`all`. `ui`가 있으면 `doctor`·`targets`를
+- 화면용 선택 설치 `ui`(Rich)·`all`. `tui`·웹 대시보드 명령은 아직 없다(다음 단계). `ui`가 있으면 `doctor`·`targets`를
   터미널에서 Rich로 그린다(테두리 없는 표, 상태에만 색). 파이프·파일·`NO_COLOR`·`TERM=dumb`·Rich 없음에서는 지금의
   화면 그대로이고, `targets --json`·`result.json`·`summary` 마크다운은 Rich 유무와 관계없이 같은 바이트다. 기본 설치의
   의존성은 여전히 없다. [USAGE](docs/USAGE.md#설치)

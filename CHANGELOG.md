@@ -28,6 +28,10 @@
 `pyproject.toml`의 버전은 이미 `0.2.0`이다.
 
 ### 추가된 사용자 기능
+- 화면용 선택 설치 `ui`(Rich)·`tui`(Textual)·`web`(FastAPI·uvicorn)·`all`. `ui`가 있으면 `doctor`·`targets`를
+  터미널에서 Rich로 그린다(테두리 없는 표, 상태에만 색). 파이프·파일·`NO_COLOR`·`TERM=dumb`·Rich 없음에서는 지금의
+  화면 그대로이고, `targets --json`·`result.json`·`summary` 마크다운은 Rich 유무와 관계없이 같은 바이트다. 기본 설치의
+  의존성은 여전히 없다. [USAGE](docs/USAGE.md#설치)
 - `inodefence doctor`의 화면을 열로 맞췄다(상태·항목 이름·값). 긴 값은 같은 열에서 다음 줄로 이어지고, 다음에 할 일은
   `→`로 시작하는 다음 줄에 있다. 이미지와 남은 컨테이너·볼륨은 기본 화면에서 개수와 대상별 묶음만 보이고, 전체 이름과
   제거 안내는 새 옵션 `inodefence doctor --details`에 있다. 상태 표시는 터미널에서만 색이 들어간다(`NO_COLOR`가 있으면

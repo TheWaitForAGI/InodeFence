@@ -21,6 +21,19 @@ inodefence doctor           # 무엇이 준비됐고 무엇이 빠졌는지, 고
 inodefence targets          # 추출기와 각 추출기가 지원하는 것(옵션·탐색) 표
 ```
 
+화면을 더 보기 좋게 하는 선택 설치(명령의 동작·종료 코드·기계 출력은 같습니다):
+
+| 선택 | 설치 | 더해지는 것 |
+| --- | --- | --- |
+| `ui` | `pip install -e '.[ui]'` | 터미널 화면을 Rich로 그립니다(`doctor`·`targets`). 없으면 지금의 표준 라이브러리 화면입니다 |
+| `tui` | `pip install -e '.[tui]'` | `inodefence tui`(터미널 대시보드) |
+| `web` | `pip install -e '.[web]'` | `inodefence dashboard`(로컬 웹 대시보드, 127.0.0.1) |
+| `all` | `pip install -e '.[all]'` | 위 셋 |
+
+Rich는 stdout이 터미널이고 `NO_COLOR`가 없으며 `TERM`이 `dumb`가 아닐 때만 씁니다. 파이프·파일·`NO_COLOR`에서는
+Rich가 설치돼 있어도 표준 라이브러리 화면과 같은 글자가 나가고 색 코드는 없습니다. `targets --json`, `result.json`,
+`summary`의 마크다운은 Rich를 거치지 않으므로 Rich 유무와 관계없이 같은 바이트입니다.
+
 설치 후에는 저장소 밖 어느 폴더에서 실행해도 됩니다. 설치 방식에 따라 되는 명령이 다릅니다
 (2026-11-16, Python 3.12 깨끗한 venv·저장소 밖 폴더·빈 환경에서 확인, 후속 작업 커밋 e71a534에서 다시 확인):
 

@@ -84,11 +84,23 @@ def test_artifacts_are_metadata_only(client):
     ident = client.get("/api/runs").json()["runs"][0]["id"]
     data = client.get(f"/api/artifacts/{ident}").json()
     assert data["kind"] == "explore"
-    assert any(item["case_id"] == "step-2" for item in data["inputs"])
+    arts = data["artifacts"]
+    assert any(a["kind"] == "result" for a in arts)
+    tar = next((a for a in arts if a["kind"] == "input_tar" and a.get("case_id") == "step-2"), None)
+    assert tar is not None and tar["tar_sha256"]  # recorded hash, never file bytes
+    for a in arts:  # metadata only: a fixed set of keys, never a content field
+        assert set(a) <= {
+            "kind",
+            "path",
+            "read_state",
+            "size",
+            "mtime",
+            "tar_sha256",
+            "case_id",
+            "symlink",
+        }
+        assert "content" not in a and "bytes" not in a
     assert "contents are never served" in data["note"]
-    for item in data["inputs"]:
-        assert set(item) == {"case_id", "tar_sha256", "path", "rechecked"}
-        assert item["rechecked"] is False
     assert client.get("/api/artifacts/deadbeefdeadbeef").status_code == 404
 
 
@@ -122,7 +134,7 @@ def test_health_starts_checking_then_reports(run_out, monkeypatch):
     report = doctor_app.Report(
         items=(doctor_app.Item(label="docker", status="OK", value="server 1.2"),)
     )
-    monkeypatch.setattr(_app, "_default_health_check", lambda repo_root: report)
+    monkeypatch.setattr(_app, "_default_health_check", lambda repo_root: (report, {"node-tar": 2}))
     client = TestClient(web.create_app(roots=[run_out]))
     data = client.get("/api/health").json()
     assert data["state"] in ("checking", "ok")
@@ -134,6 +146,7 @@ def test_health_starts_checking_then_reports(run_out, monkeypatch):
     assert data["failed"] is False
     assert data["exit_code"] == 0
     assert data["age_seconds"] is not None
+    assert data["image_groups"] == {"node-tar": 2}
 
 
 def test_run_defaults_to_loopback_and_warns_on_other_host(run_out, monkeypatch, capsys):
@@ -158,3 +171,26 @@ def test_events_stream_is_event_stream(run_out):
         with client.stream("GET", "/api/events") as res:
             assert res.status_code == 200
             assert res.headers["content-type"].startswith("text/event-stream")
+
+
+def test_live_run_gone_quiet_is_stalled(tmp_path):
+    # an open live folder whose updated_at is far in the past: running but stalled, not active
+    out = syn.explore_out(tmp_path)
+    rid = syn.run_id(2)
+    syn.live_run(out, rid, [syn.step(1), syn.step(2)], clock=syn.Clock(start=1000.0), close=None)
+    client = TestClient(web.create_app(roots=[out]))
+    run = next(r for r in client.get("/api/runs").json()["runs"] if r["kind"] == "explore")
+    assert run["status"]["state"] == "running"
+    assert run["status"]["source"] == "live"
+    assert run["status"]["stalled"] is True
+
+
+def test_fresh_live_run_is_not_stalled(tmp_path):
+    # the synthetic clock default is far in the future, so progress_age clamps to 0 (fresh)
+    out = syn.explore_out(tmp_path)
+    rid = syn.run_id(3)
+    syn.live_run(out, rid, [syn.step(1)], close=None)
+    client = TestClient(web.create_app(roots=[out]))
+    run = next(r for r in client.get("/api/runs").json()["runs"] if r["kind"] == "explore")
+    assert run["status"]["state"] == "running"
+    assert run["status"]["stalled"] is False

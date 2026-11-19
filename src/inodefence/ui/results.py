@@ -366,3 +366,70 @@ def replay_screen(record: Any, *, version: str) -> list[RenderableType]:
     title = (conclusion or "no conclusion recorded").replace("_", " ")
     out.append(ui.result_panel(status, title, lines))
     return out
+
+
+def status_screen(
+    folder: Any, live: Sequence[str], rows: Sequence[Any], *, version: str
+) -> list[RenderableType]:
+    """``inodefence status``: the live blocks as the live view wrote them, then the results."""
+    out: list[RenderableType] = [ui.header("status", version=version, subject=str(folder))]
+    for block in live:
+        out.append(ui.section("Live (running or stopped before result.json)", Text(block)))
+    if not rows:
+        return out
+    verdicts = [str(row.get("verdict")) for row in rows]
+    out.append(
+        ui.cards(
+            [
+                ("results", str(len(rows)), "plain"),
+                ("PASS", str(verdicts.count("PASS")), "ok" if "PASS" in verdicts else "muted"),
+                ("FAIL", str(verdicts.count("FAIL")), "bad" if "FAIL" in verdicts else "muted"),
+                (
+                    "ERROR",
+                    str(verdicts.count("ERROR")),
+                    "bad" if "ERROR" in verdicts else "muted",
+                ),
+            ]
+        )
+    )
+
+    def cell(value: Any) -> Text:
+        return Text(UNKNOWN if value is None else str(value))
+
+    def note(row: Any) -> str:
+        return str(
+            row.get("error")
+            or row.get("warning")
+            or ("stopped early" if row.get("stopped_early") else "")
+        )
+
+    with_notes = any(note(row) for row in rows)  # a column of nothing is not drawn
+    columns = [
+        ("result", "left"),
+        ("verdict", "left"),
+        ("target", "left"),
+        ("runs", "right"),
+        ("violations", "right"),
+        ("first at", "right"),
+    ]
+    table_rows = []
+    for row in rows:
+        target = " ".join(str(row[k]) for k in ("target", "version") if row.get(k))
+        line = [
+            Text(str(row["cell"]), style="bold"),
+            ui.chip(str(row["verdict"])),
+            Text(target or UNKNOWN),
+            cell(row.get("runs")),
+            Text(
+                str(row.get("violations", UNKNOWN)), style="if.bad" if row.get("violations") else ""
+            ),
+            Text("" if row.get("first") is None else str(row["first"])),
+        ]
+        if with_notes:
+            line.append(Text(note(row), style="if.warn"))
+        table_rows.append(line)
+    if with_notes:
+        columns.append(("note", "left"))
+    table = ui.data_table(columns, table_rows, keep=(0, 1, 2, 3, 4, 5))  # only a note wraps
+    out.append(ui.section("Results", table))
+    return out

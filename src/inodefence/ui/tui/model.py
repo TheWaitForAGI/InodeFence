@@ -284,8 +284,8 @@ def header(state: DashboardState, selected: RunSnapshot | None) -> list[tuple[st
     return [
         ("", Cell("InodeFence", ACCENT)),
         ("engine", engine_cell(state)),
-        ("active", Cell(str(active), ACCENT if active else PLAIN)),
-        ("stalled", Cell(str(stalled), WARN if stalled else DIM)),
+        ("active runs", Cell(str(active), ACCENT if active else PLAIN)),
+        ("stalled runs", Cell(str(stalled), WARN if stalled else DIM)),
         ("selected", run),
         ("state", status),
     ]
@@ -864,7 +864,7 @@ def run_tail(run_id: str | None, version: str | None) -> str | None:
         return None
     if version and f"{version}-" in run_id:
         return run_id.split(f"{version}-", 1)[1] or None
-    return run_id[-8:]
+    return run_id if len(run_id) <= 8 else "…" + run_id[-8:]  # cut: say so
 
 
 def shorten_middle(value: str, width: int) -> str:

@@ -380,3 +380,23 @@ def test_outcomes_zero_is_observed_and_unknown_is_question_mark(tmp_path: Path) 
     other = {label: value for label, value, _, _ in
              model.outcome_rows(read_run(RunRef(RunKind.EXPLORE, out, "x-1-20")))}  # fmt: skip
     assert all(value is None for value in other.values())  # no file: unknown, not 0
+
+
+@_sync
+async def test_the_narrow_run_list_says_how_many_runs_do_not_fit(tmp_path: Path) -> None:
+    out, clock = syn.explore_out(tmp_path), syn.Clock()
+    for seed in range(1, 4):
+        syn.live_run(out, syn.run_id(seed), [syn.step(0)], clock=clock)
+    app = _app([out], clock)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await _settle(app, pilot)
+        await pilot.pause()
+        assert app.query_one("#p-runs").border_subtitle == "3 explore runs · all"  # all fit
+    for seed in range(4, 12):
+        syn.live_run(out, syn.run_id(seed), [syn.step(0)], clock=clock)
+    app = _app([out], clock)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await _settle(app, pilot)
+        await pilot.pause()
+        subtitle = app.query_one("#p-runs").border_subtitle or ""
+        assert subtitle.startswith("+") and subtitle.endswith("more (↑ ↓)")

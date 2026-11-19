@@ -98,6 +98,8 @@ def test_module_entry_exits_3_with_the_hint_without_textual(monkeypatch, capsys)
         raise tui.TuiUnavailable(tui.INSTALL_HINT)
 
     monkeypatch.setattr(entry, "run", unavailable)
+    monkeypatch.setattr(entry.sys.stdin, "isatty", lambda: True, raising=False)
+    monkeypatch.setattr(entry.sys.stdout, "isatty", lambda: True, raising=False)
     assert entry.main([]) == 3
     assert "inodefence[tui]" in capsys.readouterr().err
 
@@ -154,3 +156,46 @@ def test_g6_unknown_unjudged_stays_unknown(tmp_path: Path) -> None:
     snap = read_run(RunRef(RunKind.EXPLORE, out, "x-1-20"))
     rows = {label: value for label, value, _, _ in model.outcome_rows(snap)}
     assert rows["unjudged"] is None and rows["build-invalid"] is None
+
+
+# -- QA mutation gaps E2, E4, T1, T2 ------------------------------------------------------------
+
+
+def _progress_event(run_id: str, runs: int):
+    from inodefence.app.events import EVENT_SCHEMA, EventKind, TimeSource, UiEvent
+
+    return UiEvent(EVENT_SCHEMA, runs, "2026-01-01T00:00:00+00:00", TimeSource.UPDATED_AT,
+                   "explore", "/root", run_id, True, "node-tar", EventKind.PROGRESS,
+                   status="running", progress_current=runs, progress_total=20)  # fmt: skip
+
+
+def test_e2_progress_of_different_runs_is_not_folded() -> None:
+    folded = model.collapse_events([_progress_event("a", 1), _progress_event("b", 1)])
+    assert [(e.run_id, n) for e, n in folded] == [("a", 1), ("b", 1)]
+
+
+def test_e4_folding_keeps_the_newest_value() -> None:
+    folded = model.collapse_events([_progress_event("a", n) for n in (1, 2, 3)])
+    ((event, repeats),) = folded
+    assert event.progress_current == 3 and repeats == 3
+
+
+def test_t1_a_cut_value_says_it_was_cut() -> None:
+    cut = model.shorten_middle("abcdefghijklmnopqrstuvwxyz", 10)
+    assert len(cut) == 10 and "…" in cut and cut.startswith("abcd") and cut.endswith("wxyz")
+    assert model.shorten_middle("short", 10) == "short"
+    assert model.run_tail("abcdefghijklmnop", None) == "…ijklmnop"  # a cut id is marked
+    assert model.run_tail("abc", None) == "abc"
+
+
+def test_t2_percent_is_none_when_unknown() -> None:
+    assert model.percent(None, 20) is None and model.percent(3, None) is None
+    assert model.percent(3, 0) is None and model.percent(5, 20) == "25.0%"
+
+
+def test_the_module_entry_refuses_a_non_interactive_terminal(monkeypatch, capsys) -> None:
+    from inodefence.ui.tui import __main__ as entry
+
+    monkeypatch.setattr(entry.sys.stdin, "isatty", lambda: False, raising=False)
+    assert entry.main([]) == 3
+    assert "interactive terminal" in capsys.readouterr().err

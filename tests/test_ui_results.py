@@ -203,8 +203,82 @@ def test_replay_on_a_rich_terminal_counts_agreement_over_judged_rounds(
     assert "1 round(s) not judged" in seen
 
 
+def test_replay_shows_only_the_record_this_run_wrote(monkeypatch, capsys, tmp_path) -> None:
+    _rich_terminal(monkeypatch)
+    case_dir = tmp_path / "violations" / "run-000002"
+    case_dir.mkdir(parents=True)
+    original = {"c0": False, "c1": True, "c2": False, "fingerprints": []}
+    old = syn.replay(case_dir, original, [syn.failed_round()])  # an earlier replay
+    stale = old.parent.rename(old.parent.with_name(f"{case_dir.name}.replay-20250101T000000Z"))
+    __import__("os").utime(stale / old.name, (1, 1))
+    monkeypatch.setattr(cli, "_forward", _replay_driver(case_dir, [syn.judged_round(True)]))
+    assert cli.main(["replay", str(case_dir)]) == 0
+    seen = _visible(capsys.readouterr().out)
+    assert seen.count("›  replay") == 1 or seen.count("› replay") == 1
+    assert "20250101" not in seen and "RUN ERROR" not in seen  # the stale record is not shown
+    assert "REPRODUCED" in seen
+
+
+@pytest.mark.parametrize(
+    ("stored", "chip"),
+    [
+        ("reproduced_violation", "✓ REPRODUCED"),  # theme: REPRODUCED is the ok tone
+        ("partially_reproduced", "! PARTIAL"),
+        ("not_reproduced", "· NONE"),
+        ("infrastructure_failure", "✗ RUN ERROR"),
+    ],
+)
+def test_the_replay_chip_comes_from_the_stored_conclusion(tmp_path, stored, chip) -> None:
+    pytest.importorskip("rich")
+    from rich.console import Console as RichConsole
+
+    from inodefence.ui import results, theme
+
+    case_dir = tmp_path / "violations" / "run-000002"
+    case_dir.mkdir(parents=True)
+    original = {"c0": False, "c1": True, "c2": False, "fingerprints": []}
+    path = syn.replay(case_dir, original, [syn.judged_round(True)])
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["summary"]["conclusion"] = stored  # whatever the rounds say, the chip follows the file
+    path.write_text(json.dumps(data), encoding="utf-8")
+    record = runs.read_replay(path)
+    rich = RichConsole(file=__import__("io").StringIO(), width=100, theme=theme.rich_theme())
+    with rich.capture() as captured:
+        rich.print(*results.replay_screen(record, version="0.2.0"))
+    seen = _visible(captured.get())
+    assert f"{chip} {stored.replace('_', ' ')}" in seen
+
+
 def test_replay_dry_run_draws_nothing(monkeypatch, capsys, tmp_path) -> None:
     _rich_terminal(monkeypatch)
     monkeypatch.setattr(cli, "_forward", lambda *a: 0)
     assert cli.main(["replay", str(tmp_path), "--dry-run"]) == 0
     assert capsys.readouterr().out == ""
+
+
+def test_status_on_a_rich_terminal_and_plain(monkeypatch, capsys, tmp_path, two_results) -> None:
+    folder = two_results[0].parents[1]
+    assert cli.main(["status", str(folder)]) == 0
+    plain = capsys.readouterr().out
+    assert plain.startswith("node-tar-7.5.2: FAIL target=node-tar")  # the lines, unchanged
+    _rich_terminal(monkeypatch)
+    assert cli.main(["status", str(folder), "--plain"]) == 0
+    assert capsys.readouterr().out == plain  # --plain: the same lines on a terminal
+    assert cli.main(["status", str(folder)]) == 0
+    seen = _visible(capsys.readouterr().out)
+    assert "status" in seen and "Results" in seen
+    assert "node-tar-7.5.2 ✗ FAIL node-tar 7.5.2" in seen
+    assert "node-tar-7.5.3 ✓ PASS node-tar 7.5.3" in seen
+
+
+def test_summary_on_a_rich_terminal_draws_the_same_markdown(monkeypatch, capsys) -> None:
+    args = ["summary", str(FIXTURE), "--no-verify-inputs"]
+    assert cli.main(args) == 0
+    text = capsys.readouterr().out
+    _rich_terminal(monkeypatch)
+    assert cli.main([*args, "--plain"]) == 0
+    assert capsys.readouterr().out == text
+    assert cli.main(args) == 0
+    seen = _visible(capsys.readouterr().out)
+    title = next(line for line in text.splitlines() if line.startswith("# ")).lstrip("# ").strip()
+    assert "summary" in seen and title.split()[0] in seen and "\x1b" not in text

@@ -104,7 +104,7 @@ def bars(rows: Sequence[tuple[str, int, int, str]], *, width: int = 28) -> Table
                 width=width,
                 complete_style=f"if.{tone}",
                 finished_style=f"if.{tone}",
-                style="if.border",
+                style="if.muted",  # the track: grey, so the filled part reads
             )
         else:
             percent, bar = Text(""), Text("")
@@ -113,10 +113,14 @@ def bars(rows: Sequence[tuple[str, int, int, str]], *, width: int = 28) -> Table
 
 
 def data_table(
-    columns: Sequence[tuple[str, str]], rows: Iterable[Sequence[RenderableType]]
+    columns: Sequence[tuple[str, str]],
+    rows: Iterable[Sequence[RenderableType]],
+    *,
+    keep: Sequence[int] = (0,),
 ) -> Table:
     """A table with a thin header rule across its section: ``columns`` are ``(title,
-    justify)``; numbers go right."""
+    justify)``; numbers go right. Columns in ``keep`` (default: the first, which names the
+    row) never wrap; the others wrap when the screen is narrow (nothing is cropped)."""
     table = Table(
         box=box.SIMPLE_HEAD,
         header_style="if.label",
@@ -126,12 +130,11 @@ def data_table(
         expand=True,
     )
     for number, (title, justify) in enumerate(columns):
-        # The first column names the row (a target, a case id): it never wraps.
         table.add_column(
             title,
             justify=justify,  # type: ignore[arg-type]
             overflow="fold",
-            no_wrap=number == 0,
+            no_wrap=number in keep,
         )
     for row in rows:
         table.add_row(*row)

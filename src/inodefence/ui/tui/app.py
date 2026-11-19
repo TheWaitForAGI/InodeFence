@@ -192,7 +192,7 @@ class InodeFenceTui(App[None]):
     #p-campaign {{ height: 10; }}
     #ov-mid {{ height: auto; }}
     #p-outcomes, #p-oracle {{ width: 1fr; height: auto; min-height: 8; }}
-    #p-targets {{ height: auto; }}
+    #p-targets {{ height: 1fr; min-height: 6; }}
     #p-events {{ height: 7; }}
     #events-body {{ background: {PANEL}; }}
     #empty {{ height: auto; }}
@@ -207,6 +207,7 @@ class InodeFenceTui(App[None]):
     #ov-body.narrow #ov-left {{ width: 1fr; height: auto; }}
     #ov-body.narrow #p-runs {{ width: 1fr; min-width: 0; height: 1fr; }}
     #ov-body.narrow #recent-candidates {{ display: none; }}
+    #ov-body.narrow #runs-table {{ max-height: 100%; }}
     #find-split.narrow {{ layout: vertical; }}
     #find-split.narrow #p-finding-list, #find-split.narrow #p-finding-detail {{ width: 1fr; }}
     #findings-legend, #verify-title {{ height: 1; color: {PALETTE["muted"]}; }}
@@ -399,7 +400,9 @@ class InodeFenceTui(App[None]):
             panel.update(Text("\n").join(styled(cell) for cell in model.empty_lines(state)))
         self.query_one("#ov-body").display = not empty
         self.draw_selection()
-        self._fill("runs", model.runs_list(state) or [_empty_row(4, "no explore runs")])
+        runs = model.runs_list(state)
+        self._fill("runs", runs or [_empty_row(4, "no explore runs")])
+        self.call_after_refresh(self._runs_subtitle, len(runs), wide)
         self.query_one("#recent-candidates", Static).update(recent_candidates(state))
         targets = model.target_rows(state)
         if state.targets is None:
@@ -417,6 +420,15 @@ class InodeFenceTui(App[None]):
         events = self.query_one("#events-body", Static)
         events.update(events_view(state.events, max(events.size.height, 3), events.size.width))
         self.query_one("#status", Static).update(status_line(state, self.size.width))
+
+    def _runs_subtitle(self, total: int, wide: bool) -> None:
+        """``+n more`` when the narrow run list cannot show every run: the rows the table would
+        have to scroll to (its ``max_scroll_y``, one line per row), read after layout."""
+        table = self.query_one("#runs-table", DataTable)
+        hidden = 0 if wide else int(table.max_scroll_y)
+        self.query_one("#p-runs").border_subtitle = (
+            f"+{hidden} more (↑ ↓)" if hidden > 0 else f"{total} explore runs · all"
+        )
 
     def draw_selection(self) -> None:
         """Everything that follows the selected run: header, campaign/outcomes/oracle panels,
@@ -438,7 +450,7 @@ class InodeFenceTui(App[None]):
         outcomes = self.query_one("#p-outcomes", Static)
         outcomes.update(outcomes_text(followed, outcomes.size.width - 4))
         oracle = self.query_one("#p-oracle", Static)
-        oracle.border_subtitle = "case folders: lower bound" if followed else ""
+        oracle.border_subtitle = "selected run · per contract ≥" if followed else ""
         oracle.update(oracle_view(state, followed, oracle.size.width - 4))
         self.query_one("#p-run-detail", Static).update(run_detail_view(selected, state.now))
         detail = self.query_one("#p-finding-detail")
@@ -735,7 +747,7 @@ def verify_text(cell: Cell) -> Text:
     return out
 
 
-def recent_candidates(state: DashboardState) -> Table | Text:
+def recent_candidates(state: DashboardState) -> Group | Text:
     rows = model.finding_rows(state)
     if not rows:
         return Text("")
@@ -744,7 +756,7 @@ def recent_candidates(state: DashboardState) -> Table | Text:
     grid.add_column(no_wrap=True)
     grid.add_column(no_wrap=True)
     grid.add_column(no_wrap=True, overflow="ellipsis")
-    grid.add_row(Text("recent candidates", style=PALETTE["muted"]), "", "", "")
+
     for row in rows[-8:][::-1]:
         case, c0, c1, c2, cls, replay, _judged = row.cells
         verdicts = Text()
@@ -753,7 +765,7 @@ def recent_candidates(state: DashboardState) -> Table | Text:
         grid.add_row(
             Text(case.text, style=PALETTE["accent"]), verdicts, styled(cls), styled(replay)
         )
-    return grid
+    return Group(Text("recent candidates · all runs", style=PALETTE["muted"]), grid)
 
 
 def run_detail_view(snapshot: RunSnapshot | None, now: float) -> Text:

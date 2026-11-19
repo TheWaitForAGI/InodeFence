@@ -556,33 +556,108 @@ class RichDisplay:
         self.stream = stream
         self._width = width or Display(stream, terminal=True)._terminal_width
         self._lock = threading.RLock()
+        from inodefence.ui import theme
+
         self._console = Console(
-            file=stream, force_terminal=True, highlight=False, width=self._width()
+            file=stream,
+            force_terminal=True,
+            highlight=False,
+            width=self._width(),
+            theme=theme.rich_theme(),
         )
         self._live = Live(console=self._console, auto_refresh=False, transient=True)
         self._started = False
 
     def _render(self, view: View) -> Any:
+        """The live area, on the shared design system (header, run bar, cards, outcomes).
+
+        Every number is a field of ``view`` (the same ones :func:`format_line` shows); an
+        unknown one is ``?`` and draws no bar.
+        """
         from rich.console import Group
         from rich.progress_bar import ProgressBar
         from rich.table import Table
         from rich.text import Text
 
-        runs = view.counts.runs
-        head = Table.grid(padding=(0, 1))
+        from inodefence.ui import components as ui
+
+        counts = view.counts
+        version = view.version if view.version_exact else f"{view.version} (requested)"
+        parts = [f"{view.target} {version}", view.profile, f"seed {view.seed}"]
+        out: list[Any] = [
+            ui.header("explore", version=_package_version(), subject="  ·  ".join(parts))
+        ]
+        runs = counts.runs
+        head = Table.grid(padding=(0, 2), expand=True)
         head.add_column(no_wrap=True)
         head.add_column(ratio=1)
         head.add_column(no_wrap=True)
         label = Text(f"{PREFIX} {view.phase}", style="bold")
         if runs is None or view.budget <= 0:
-            bar: Any = Text("")
+            bar: Any = Text("no run count yet", style="if.label")
             done = f"runs {UNKNOWN}/{view.budget}"
         else:
-            bar = ProgressBar(total=view.budget, completed=min(runs, view.budget))
+            bar = ProgressBar(
+                total=view.budget,
+                completed=min(runs, view.budget),
+                complete_style="if.accent",
+                finished_style="if.ok",
+                style="if.muted",  # the track: grey, so the filled part reads
+            )
             done = f"{runs}/{view.budget} runs ({100 * runs // view.budget}%)"
-        head.add_row(label, bar, Text(done))
-        body = [Text(text, style=style) for style, text in _rich_lines(view)]
-        return Group(head, *body)
+        head.add_row(label, bar, Text(done, style="bold"))
+        out.append(head)
+        rate = counts.runs_per_second
+        violations = counts.violations
+        out.append(
+            ui.cards(
+                [
+                    (
+                        "violations",
+                        _show(violations),
+                        "warn" if violations is None else "bad" if violations else "muted",
+                    ),
+                    ("un-judged", _show(counts.unjudged), "warn" if counts.unjudged else "muted"),
+                    ("runs / s", UNKNOWN if rate is None else str(rate), "plain"),
+                    (
+                        "elapsed",
+                        UNKNOWN if view.elapsed_seconds is None else duration(view.elapsed_seconds),
+                        "plain",
+                    ),
+                ]
+            )
+        )
+        terminations = [counts.terminations.get(name) for name in STATUSES]
+        if runs and all(value is not None for value in terminations):
+            tones = {"success": "ok", "rejected": "info", "failed": "bad", "timed_out": "warn"}
+            outcome: Any = ui.bars(
+                [
+                    (name.replace("_", " "), value or 0, runs, tones.get(name, "info"))
+                    for name, value in zip(STATUSES, terminations, strict=True)
+                ]
+            )
+        else:
+            outcome = Text(_rich_lines(view)[1][1])  # counts not all known: the plain words
+        bound = "≥" if counts.contracts_lower_bound else "="
+        contracts = Text("contracts  ", style="if.label")
+        for number, key in enumerate(CONTRACT_KEYS):
+            value = counts.contracts.get(key)
+            if number:
+                contracts.append("  ·  ", style="if.label")
+            sign = "=" if value is None else bound
+            tone = "if.warn" if value is None else "if.bad" if value else "if.muted"
+            contracts.append(f"{key.upper()} {sign} {_show(value)}", style=tone)
+        out.append(ui.section("Outcomes (of the runs so far)", Group(outcome, contracts)))
+        notes = []
+        if view.eta_seconds is not None:
+            notes.append(f"eta ~{duration(view.eta_seconds)} (estimate)")
+        if view.snapshot_age is not None and view.phase == RUNNING:
+            notes.append(f"numbers as of {duration(view.snapshot_age)} ago")
+        if view.step and view.phase in (RUNNING, CLEANUP):
+            notes.append(f"launcher step: {view.step} (from the launcher log)")
+        if notes:
+            out.append(Text("  ·  ".join(notes), style="if.label"))
+        return Group(*out)
 
     def _start(self) -> None:
         if not self._started:
@@ -628,8 +703,43 @@ class RichDisplay:
             self._write(stream, text)
 
     def final(self, view: View) -> None:
-        """Clear the live area, then the same last line as :class:`Display` prints."""
+        """Clear the live area, show a result panel, then the same last line as :class:`Display`
+        prints (that line stays last, for people and tools alike)."""
+        with self._lock:
+            self._pause()
+            try:
+                self._console.print(self._result_panel(view))
+            except Exception:  # noqa: BLE001 - a display fault must never stop the run
+                pass
         self.message(format_line(view))
+
+    def _result_panel(self, view: View) -> Any:
+        from rich.text import Text
+
+        from inodefence.ui import components as ui
+
+        counts = view.counts
+        status = view.verdict or ("ERROR" if view.phase == ABORTED else "UNKNOWN")
+        version = view.version if view.version_exact else f"{view.version} (requested)"
+        lines: list[Any] = [
+            f"{_show(counts.runs)} of {view.budget} runs  ·  "
+            f"{_show(counts.violations)} violating run(s), oracle candidates (not confirmed)"
+        ]
+        if view.cause:
+            lines.append(Text(f"stopped: {view.cause}", style="if.warn"))
+        steps = []
+        if view.show_out:
+            steps.append(f"inodefence status {view.out}")
+        return ui.result_panel(status, f"explore  {view.target} {version}", lines, next_steps=steps)
+
+
+def _package_version() -> str:
+    try:
+        from importlib.metadata import version
+
+        return version("inodefence")
+    except Exception:  # noqa: BLE001 - the header only
+        return ""
 
 
 def select_display(

@@ -25,8 +25,8 @@ inodefence targets          # 추출기와 각 추출기가 지원하는 것(옵
 
 | 선택 | 설치 | 더해지는 것 |
 | --- | --- | --- |
-| `ui` | `pip install -e '.[ui]'` | 터미널 화면을 Rich로 그립니다(`doctor`·`targets`·`compare`, `verify`·`replay` 뒤 결과 화면, `explore` 진행 표시). 없으면 지금의 표준 라이브러리 화면입니다 |
-| `tui` | `pip install -e '.[tui]'` | 터미널 대시보드 `inodefence tui`(Textual). 아래 「터미널 대시보드」 |
+| `ui` | `pip install -e '.[ui]'` | 터미널 화면을 Rich로 그립니다(`doctor`·`targets`·`compare`·`status`·`summary`, `verify`·`replay` 뒤 결과 화면, `explore` 진행 표시). 없으면 지금의 표준 라이브러리 화면입니다 |
+| `tui` | `pip install -e '.[tui]'` | 터미널 대시보드 `inodefence tui`(Textual). 아래 [터미널 대시보드](#터미널-대시보드tui) |
 | `all` | `pip install -e '.[all]'` | 위의 것 전부 |
 
 로컬 웹 대시보드(`inodefence dashboard`)는 **아직 없습니다**(다음 단계). 명령과 실행 시험이 함께 들어올 때 이 표에 적습니다.
@@ -34,6 +34,8 @@ inodefence targets          # 추출기와 각 추출기가 지원하는 것(옵
 Rich는 stdout이 터미널이고 `NO_COLOR`가 없으며 `TERM`이 `dumb`가 아닐 때만 씁니다. 파이프·파일·`NO_COLOR`에서는
 Rich가 설치돼 있어도 표준 라이브러리 화면과 같은 글자가 나가고 색 코드는 없습니다. `targets --json`, `result.json`,
 `summary`의 마크다운은 Rich를 거치지 않으므로 Rich 유무와 관계없이 같은 바이트입니다.
+대화형 터미널에서 `status`는 결과 표로, `summary`는 같은 마크다운을 그려서 보여 줍니다. 원래의 줄·마크다운 텍스트가
+필요하면 `--plain`을 붙이거나 파이프·`-o`로 받으세요(그때는 Rich 유무와 관계없이 같은 바이트).
 
 설치 후에는 저장소 밖 어느 폴더에서 실행해도 됩니다. 설치 방식에 따라 되는 명령이 다릅니다
 (2026-11-16, Python 3.12 깨끗한 venv·저장소 밖 폴더·빈 환경에서 확인, 후속 작업 커밋 e71a534에서 다시 확인):
@@ -265,21 +267,6 @@ node-tar 탐색(`--version 7.5.23 --seed 123 --budget 20`, engineering smoke 202
 
 (`<버전>-<seed>-<budget>` 이름은 node-tar에서 관찰한 것입니다. 다른 대상의 결과 폴더 위치는 [도중 확인](#도중-확인) 절에 실측을 적었습니다.)
 
-## 터미널 대시보드(`tui`)
-
-```bash
-pip install -e '.[tui]'
-inodefence tui                       # 기본 출력 폴더(탐색·verify)를 읽습니다
-inodefence tui ~/other-out --refresh 2   # 폴더를 더하고, 2초마다 다시 읽기
-```
-
-이 호스트의 실행 폴더를 한 화면에서 보는 **읽기 전용** 대시보드입니다. 탭은 `1` Overview(선택한 실행의 관찰된
-처리량 그래프와 수치, 결과·oracle 패널, 대상, 실행 목록과 최근 후보, 이벤트 흐름), `2` Targets, `3` Campaigns,
-`4` Findings, `5` Artifacts이고, `r`은 바로 다시 읽기, `?`는 도움말, `q`는 종료입니다. 모든 값은 결과·진행 파일에서
-읽은 것이며(관찰된 표본이 없는 그래프는 그리지 않음), 키는 화면만 옮깁니다. 아무것도 시작·중지·삭제하거나 쓰지
-않습니다. 대화형 터미널(stdin·stdout)이 아니거나 Textual이 없으면 시작하지 않고 stderr에 한 줄(설치 안내 포함)을
-쓰고 종료 3입니다. `q`로 끝나면 0입니다.
-
 ## 실행 중 터미널 진행 표시
 
 `inodefence explore`는 기본으로 진행 줄을 **stderr**에 출력합니다. 숫자는 `inodefence status`와 같은 파일
@@ -310,6 +297,11 @@ inodefence.drivers.run_target_explore`) 옛 `scripts/` 경로로 부르면 기�
   폭에 맞춰 덜 중요한 칸부터 생략). 그 밖(파이프·파일·CI)에는 줄 단위로 출력합니다: 단계가 바뀔 때 즉시, 숫자나 런처 단계가
   바뀌었으면 마지막 줄에서 30초가 지난 뒤, 아무 변화가 없어도 300초마다 한 줄. 색과 이스케이프 문자는 쓰지 않으므로
   `NO_COLOR`와 무관하게 같은 출력입니다.
+- **Rich 화면(`ui` 선택 설치).** stderr가 대화형 터미널이고 Rich가 있으며 `NO_COLOR`가 없으면, 같은 숫자를 제자리
+  갱신되는 화면으로 그립니다: 실행 수 막대(budget 대비), 카드(위반·미판정·처리량·경과), 종료 상태별 막대와 C0/C1/C2,
+  그리고 ETA(추정)·숫자의 시점·런처 단계(런처 로그에서 읽음) 한 줄. 실행 수를 모르면(`?`) 막대를 그리지 않습니다. 끝나면
+  화면을 지우고 결과 패널(판정, 실행 수, 위반은 oracle 후보라는 표시, 다음 명령)을 낸 뒤, 위의 마지막 줄을 **그대로**
+  마지막에 남깁니다.
 - **단계.** `prepare`(이미지 확인·준비) → `running`(런처 실행 중; 탐색 루프 전의 컨트롤러 준비도 포함하며
   `step=`이 런처가 출력한 현재 단계 이름을 보여 줌) → `cleanup`(루프가 끝났거나 보고서가 호스트에 도착, 결과 기록
   중) → `completed` 또는 `aborted`.
@@ -359,11 +351,18 @@ inodefence status ~/inodefence-explore   # 진행 스냅샷 + 위반 케이스 �
 호스트의 출력 폴더에서 진행과 위반 케이스를 볼 수 있습니다. 가져오기 실패는 탐색을 멈추지 않고
 `fetch.json`에 남습니다.
 
-## 터미널 대시보드(`inodefence tui`, 다음 버전)
+## 터미널 대시보드(`tui`)
 
-`inodefence tui [폴더 ...]`는 이 호스트의 실행 폴더를 읽어 한 화면에 보여 주는 **읽기 전용** 대시보드입니다.
-선택 설치 `tui`(Textual 8 이상)가 필요하고, 없으면 설치 안내와 함께 종료 3입니다. `inodefence tui` 하위 명령이
-연결되기 전에는 같은 화면을 `python -m inodefence.ui.tui [폴더 ...]`로 엽니다(인자와 종료 코드가 같음). 실행을 시작·중지·삭제하거나
+```bash
+pip install -e '.[tui]'
+inodefence tui                           # 기본 출력 폴더(탐색·verify)를 읽습니다
+inodefence tui ~/other-out --refresh 2   # 폴더를 더하고, 2초마다 다시 읽기
+```
+
+`inodefence tui [폴더 ...] [--refresh 초]`는 이 호스트의 실행 폴더를 읽어 한 화면에 보여 주는 **읽기 전용**
+대시보드입니다. 선택 설치 `tui`(Textual 8 이상)가 필요합니다. Textual이 없거나, stdin·stdout이 대화형 터미널이
+아니거나(파이프), `--refresh`가 0 이하이면 시작하지 않고 stderr에 한 줄(Textual이 없을 때는 설치 안내)을 쓰고 종료
+3입니다. `q`로 끝나면 0입니다. 같은 화면을 `python -m inodefence.ui.tui [폴더 ...]`로도 엽니다. 실행을 시작·중지·삭제하거나
 replay를 돌리는 조작은 없고, 아무 파일도 쓰지 않습니다. 기본으로 탐색·verify의 기본 출력 폴더
 (`<출력 기준>/inodefence-explore`, `<출력 기준>/inodefence-target-run`)를 읽고, 인자로 준 폴더를 더 읽습니다.
 심볼릭 링크는 따라가지 않고 저장소 안은 읽지 않습니다. 읽는 위치는 화면(Overview 아래, 도움말)에 그대로 나옵니다.

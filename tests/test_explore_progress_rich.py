@@ -97,3 +97,37 @@ def test_the_drivers_own_output_goes_to_its_own_stream() -> None:
     display.passthrough(stdout, "result: /data/out/result.json\n")
     assert stdout.getvalue() == "result: /data/out/result.json\n"  # unchanged, not on stderr
     assert "result:" not in display_stream.getvalue()
+
+
+def test_the_end_screen_is_a_result_panel_then_the_unchanged_last_line() -> None:
+    stream = _Tty()
+    display = pg.RichDisplay(stream, width=lambda: 100)
+    display.update(_view(_live_counts(runs=18, violations=2)))
+    final = _view(
+        _live_counts(runs=40, violations=2, state="finished"),
+        phase=pg.COMPLETED,
+        verdict="FAIL",
+        show_out=True,
+    )
+    display.final(final)
+    out = stream.getvalue()
+    assert out.endswith(pg.format_line(final) + "\n")  # still the very last line
+    plain = _plain(out)
+    assert "✗ FAIL" in plain and "oracle candidates (not confirmed)" in plain
+    assert "inodefence status /data/out" in plain
+
+
+def test_the_live_area_is_drawn_on_the_design_system() -> None:
+    stream = _Tty()
+    display = pg.RichDisplay(stream, width=lambda: 100)
+    display.update(_view(_live_counts(runs=18, violations=2)))
+    plain = _plain(stream.getvalue())
+    assert "›  explore" in plain and "Outcomes (of the runs so far)" in plain
+    assert "15/18" in plain and "violations" in plain  # bars from the stored counts
+
+
+def test_unknown_terminations_draw_no_outcome_bars() -> None:
+    stream = _Tty()
+    pg.RichDisplay(stream, width=lambda: 100).update(_view(pg.Counts()))
+    plain = _plain(stream.getvalue())
+    assert "success ?" in plain and "%" not in plain

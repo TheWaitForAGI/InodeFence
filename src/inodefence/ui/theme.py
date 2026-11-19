@@ -119,7 +119,8 @@ def rich_styles(colours: Mapping[str, str] = TERMINAL) -> dict[str, str]:
 
     ``if.<meaning>`` (foreground), ``if.chip.<meaning>`` (bold, foreground: a chip is a word
     with a symbol, not a painted block, so it reads on any background), ``if.title``,
-    ``if.hint`` (a next step: dim accent), ``if.label``, ``if.value``, ``if.border``.
+    ``if.hint`` (a next step: dim accent), ``if.label``, ``if.value``, ``if.border``, and the
+    ``markdown.*`` styles Rich uses for a Markdown document.
     """
     styles = {f"if.{name}": colour for name, colour in colours.items()}
     for name in ("ok", "warn", "bad", "info", "muted", "accent"):
@@ -128,6 +129,19 @@ def rich_styles(colours: Mapping[str, str] = TERMINAL) -> dict[str, str]:
     styles["if.hint"] = f"dim {colours['accent']}"
     styles["if.label"] = colours["muted"]
     styles["if.value"] = "bold"
+    # Rich's own Markdown styles (``summary`` on a terminal), on the same palette.
+    styles["markdown.h1"] = f"bold {colours['accent']}"
+    styles["markdown.h1.border"] = colours["border"]
+    styles["markdown.h2"] = f"bold {colours['accent']}"
+    styles["markdown.h3"] = "bold"
+    styles["markdown.code"] = colours["accent"]
+    styles["markdown.block_quote"] = colours["muted"]
+    styles["markdown.item.bullet"] = colours["accent"]
+    styles["markdown.item.number"] = colours["accent"]
+    styles["markdown.table.header"] = f"bold {colours['muted']}"
+    styles["markdown.table.border"] = colours["border"]
+    styles["markdown.hr"] = colours["border"]
+    styles["markdown.link"] = colours["info"]
     return styles
 
 

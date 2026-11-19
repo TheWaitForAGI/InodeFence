@@ -344,10 +344,16 @@ def cmd_status(args: argparse.Namespace) -> int:
         and nested.is_dir()
     ):
         folder = nested
+    from inodefence.ui.console import Console
+
+    console = None if args.plain else Console(version=_package_version())
+    rich = console is not None and console.uses_rich
+    rows: list[dict[str, object]] = []  # the Rich screen's rows (the same values as the lines)
     # A running (or finished) exploration's live folder: progress snapshot + violation cases.
     live = live_dirs_status(folder)
-    for block in live:
-        print(block)
+    if not rich:
+        for block in live:
+            print(block)
     results = (
         [folder / "result.json"]
         if (folder / "result.json").is_file()
@@ -355,6 +361,8 @@ def cmd_status(args: argparse.Namespace) -> int:
     )
     if not results:
         if live:
+            if rich and console is not None:
+                console.status(folder, live, rows)
             return 0  # still running (or stopped before writing result.json): live view only
         print(
             f"no result.json and no live progress under {folder}. A running exploration writes "
@@ -369,6 +377,7 @@ def cmd_status(args: argparse.Namespace) -> int:
         except (TargetResultError, OSError, ValueError) as error:
             print(f"{result_path}: unreadable ({error})", file=sys.stderr)
             unreadable += 1
+            rows.append({"cell": result_path.parent.name, "verdict": "ERROR", "error": str(error)})
             continue
         line = f"{result_path.parent.name}: {result.verdict.value} target={result.target}"
         if result.axes.target_version:
@@ -380,12 +389,30 @@ def cmd_status(args: argparse.Namespace) -> int:
                 line += f" first-violation={campaign.runs_to_first_violation}"
             if campaign.stopped_early:
                 line += " (stopped early)"
-        print(line)
         # Same wording as summary.md, the explore output line and the live view (one function);
         # for exploration results only, as in the summary. Verdict and exit code are unchanged.
         warning = no_extraction_warning(result.termination_counts) if campaign else None
+        if rich:
+            rows.append(
+                {
+                    "cell": result_path.parent.name,
+                    "verdict": result.verdict.value,
+                    "target": result.target,
+                    "version": result.axes.target_version,
+                    "runs": result.executed,
+                    "violations": len(result.violating_cases),
+                    "first": campaign.runs_to_first_violation if campaign else None,
+                    "stopped_early": bool(campaign and campaign.stopped_early),
+                    "warning": warning,
+                    "path": str(result_path),
+                }
+            )
+            continue
+        print(line)
         if warning:
             print(f"  ** {warning} **")
+    if rich and console is not None:
+        console.status(folder, live, rows)
     return 2 if unreadable else 0  # a result that could not be read is not a clean status
 
 
@@ -399,6 +426,13 @@ def cmd_summary(args: argparse.Namespace) -> int:
         print(f"error: {error}", file=sys.stderr)
         return 2
     if args.output is None:
+        if not args.plain:
+            from inodefence.ui.console import Console
+
+            console = Console(version=_package_version())
+            if console.uses_rich:
+                console.markdown(text)  # the same Markdown, drawn; pipes and -o get the text
+                return 0
         sys.stdout.write(text)
     else:
         try:
@@ -594,6 +628,11 @@ def build_parser() -> argparse.ArgumentParser:
     status.add_argument(
         "folder", type=Path, help="an exploration output folder (live/ and/or result.json)"
     )
+    status.add_argument(
+        "--plain",
+        action="store_true",
+        help="the plain lines even on an interactive terminal (pipes always get them)",
+    )
     status.set_defaults(func=cmd_status)
 
     summary = sub.add_parser(
@@ -603,6 +642,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     summary.add_argument("result", type=Path, help="a result.json")
     summary.add_argument("-o", "--output", type=Path, help="write to this file (else stdout)")
+    summary.add_argument(
+        "--plain",
+        action="store_true",
+        help="print the Markdown text even on an interactive terminal (pipes and -o always do)",
+    )
     summary.add_argument(
         "--no-verify-inputs",
         action="store_true",

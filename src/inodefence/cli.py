@@ -275,7 +275,36 @@ def cmd_replay(args: argparse.Namespace) -> int:
         argv += ["--case", args.case]
     if args.dry_run:
         argv.append("--dry-run")
-    return _forward(REPLAY_DRIVER, argv, "replay")
+    started = time.time()
+    code = _forward(REPLAY_DRIVER, argv, "replay")
+    if not args.dry_run:
+        _replay_screen(args.case_dir.expanduser().resolve(), started)
+    return code
+
+
+def _replay_screen(case_dir: Path, started: float) -> None:
+    """On an interactive Rich terminal: the replay record(s) this run wrote, after the driver's
+    unchanged lines (``<case>.replay-<UTC>/replay.json`` beside the case folder, or inside a
+    result folder for ``--case``). Elsewhere nothing is added."""
+    from inodefence.ui.console import Console
+
+    console = Console(version=_package_version())
+    if not console.uses_rich:
+        return
+    from inodefence.app.runs import read_replay
+
+    found = {
+        *case_dir.parent.glob(f"{case_dir.name}.replay-*/replay.json"),
+        *case_dir.glob("**/*.replay-*/replay.json"),
+    }
+
+    def written_now(path: Path) -> bool:
+        try:
+            return path.stat().st_mtime >= started - 1
+        except OSError:
+            return False
+
+    console.replay_results([read_replay(p) for p in sorted(found) if written_now(p)])
 
 
 def cmd_status(args: argparse.Namespace) -> int:

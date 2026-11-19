@@ -24,7 +24,9 @@ UNKNOWN = "?"
 
 def _contract(value: bool | None) -> Text:
     if value is True:
-        return Text("V", style="bold if.bad")
+        mark = Text("V", style="if.bad")  # a theme name cannot be combined in one style string
+        mark.stylize("bold")
+        return mark
     if value is False:
         return Text("-", style="if.muted")
     return Text(UNKNOWN, style="if.warn")
@@ -99,8 +101,6 @@ def verify_screen(summary: RunSummary, *, version: str) -> list[RenderableType]:
     if summary.observed_contracts:
         cards.append(("contracts", " ".join(summary.observed_contracts), "plain"))
     out.append(ui.cards(cards))
-    if total:
-        out.append(ui.bars([("cases violating", violating, total, "bad")]))
     rows = [
         [
             Text(case.case_id, style="bold"),
@@ -121,7 +121,7 @@ def verify_screen(summary: RunSummary, *, version: str) -> list[RenderableType]:
             ("C0", "center"),
             ("C1", "center"),
             ("C2", "center"),
-            ("", "left"),
+            ("judgment", "left"),
         ],
         rows,
     )
@@ -138,7 +138,7 @@ def verify_screen(summary: RunSummary, *, version: str) -> list[RenderableType]:
             evidence.append(("image", Text(_short(integrity.image_id, 19))))
         if integrity.engine_sha:
             dirty = " (dirty tree)" if integrity.engine_dirty else ""
-            evidence.append(("engine", Text(_short(integrity.engine_sha) + dirty)))
+            evidence.append(("engine commit", Text(_short(integrity.engine_sha) + dirty)))
     if summary.benign_control:
         control = ", ".join(f"{k}={v}" for k, v in sorted(summary.benign_control.items()))
         evidence.append(("benign control", Text(control)))
@@ -186,13 +186,25 @@ def _where(summary: RunSummary) -> Text:
 
 
 def _verdict_cell(row: Any) -> Text:
+    """``outcome`` over ``C0 C1 C2``, each mark in its own colour (V red, - grey, ? amber)."""
     if row is None:
         return Text("—", style="if.muted")
-    marks = "".join(
-        "V" if v is True else "-" if v is False else UNKNOWN for v in row.contracts.values()
-    )
-    style = "bold if.bad" if row.violated else "if.muted"
-    return Text(f"{row.outcome or row.termination.value}  {marks}", style=style)
+    # outcome on the first line, the three marks under it: never cropped at a narrow width
+    text = Text(f"{row.outcome or row.termination.value}\n", style="bold" if row.violated else "")
+    for number, value in enumerate(row.contracts.values()):
+        if number:
+            text.append(" ")
+        text.append_text(_contract(value))
+    return text
+
+
+def _one_line(row: Any) -> str:
+    return _verdict_cell(row).plain.replace("\n", " ")
+
+
+def _side_heading(side: str, summary: RunSummary) -> str:
+    _, version = _identity(summary)
+    return f"{side} · {version}" if version else side
 
 
 def compare_screen(
@@ -235,8 +247,8 @@ def compare_screen(
             ("input", "left"),
             ("SHA-256 A", "left"),
             ("SHA-256 B", "left"),
-            ("A", "left"),
-            ("B", "left"),
+            (_side_heading("A", a), "left"),
+            (_side_heading("B", b), "left"),
         ],
         (
             [
@@ -290,7 +302,114 @@ def compare_plain_lines(a: RunSummary, b: RunSummary, rows: Sequence[Any]) -> li
         same = _same(row.same_input, row.in_a, row.in_b).plain
         lines.append(
             f"{row.case_id:24} {same:10} {_short(row.tar_sha256_a):14} "
-            f"{_short(row.tar_sha256_b):14} {_verdict_cell(row.a).plain:14} "
-            f"{_verdict_cell(row.b).plain}"
+            f"{_short(row.tar_sha256_b):14} {_one_line(row.a):14} {_one_line(row.b)}"
         )
     return lines
+
+
+_CONCLUSION_STATUS = {
+    # the chip says what the replay found, not whether the command "failed"
+    "reproduced_violation": "REPRODUCED",
+    "partially_reproduced": "PARTIAL",
+    "new_violation": "VIOLATION",
+    "not_reproduced": "NONE",
+    "no_violation": "NONE",
+    "unjudged": "UNJUDGED",
+    "infrastructure_failure": "RUN ERROR",
+    "no_rounds": "INCOMPLETE",
+}
+
+
+def _count(value: int | None, total: int | None) -> str:
+    """``n/m`` from stored counts; ``?`` for a count the record does not hold."""
+    return f"{UNKNOWN if value is None else value}/{UNKNOWN if total is None else total}"
+
+
+def replay_screen(record: Any, *, version: str) -> list[RenderableType]:
+    """A replay record (``app.runs.ReplayRecord``): rounds, agreement, conclusion.
+
+    Agreement is over the rounds the oracle judged (the record's own denominator), never over
+    the rounds run: 2 judged of 3 run reads ``2/2`` with ``1 not judged``, never ``3/3``."""
+    subject = record.original_case_id or record.path.parent.name
+    out: list[RenderableType] = [ui.header("replay", version=version, subject=subject)]
+    if record.read_state not in (ReadState.OK, ReadState.UNVALIDATED):
+        state = record.read_state.value.replace("_", " ")
+        return [
+            *out,
+            ui.result_panel("ERROR", f"replay {state}", [str(record.path), record.error or ""]),
+        ]
+    if record.read_state is ReadState.UNVALIDATED:
+        line = ui.chip("as stored")
+        line.append(
+            "  not validated — the values below are the file's, as stored: ", style="if.warn"
+        )
+        line.append(record.error or UNKNOWN)
+        out.append(line)
+    conclusion = record.conclusion.value if record.conclusion is not None else None
+    status = _CONCLUSION_STATUS.get(conclusion or "", "UNKNOWN")
+    every = (
+        record.judged is not None and record.same_contracts == record.judged and record.judged > 0
+    )
+    out.append(
+        ui.cards(
+            [
+                ("rounds run", _count(record.rounds_done, record.rounds_requested), "plain"),
+                ("judged", _count(record.judged, record.rounds_done), "plain"),
+                (
+                    "same contracts",
+                    _count(record.same_contracts, record.judged),
+                    "ok" if every else "plain",
+                ),
+                ("same fingerprint", _count(record.same_fingerprints, record.judged), "plain"),
+            ]
+        )
+    )
+    rows = [
+        [
+            Text(UNKNOWN if r.round is None else str(r.round), style="bold"),
+            Text(r.outcome or r.termination or UNKNOWN),
+            _contract(r.c0),
+            _contract(r.c1),
+            _contract(r.c2),
+            Text((r.classification or UNKNOWN).replace("_", " "), style="if.label"),
+            Text(r.reason or "", style="if.muted"),
+        ]
+        for r in record.rounds
+    ]
+    if rows:
+        table = ui.data_table(
+            [
+                ("round", "left"),
+                ("outcome", "left"),
+                ("C0", "center"),
+                ("C1", "center"),
+                ("C2", "center"),
+                ("class", "left"),
+                ("note", "left"),
+            ],
+            rows,
+        )
+        out.append(ui.section("Rounds (C0 C1 C2: V violated · - held · ? not judged)", table))
+    evidence: list[tuple[str, RenderableType]] = [("replay", Text(str(record.path)))]
+    if record.original_tar_sha256:
+        evidence.append(("input SHA-256", Text(_short(record.original_tar_sha256, 19))))
+    if record.image_id:
+        evidence.append(("image", Text(_short(record.image_id, 19))))
+    if record.engine_differs:
+        evidence.append(("engine commit", Text("differs from the original run", style="if.warn")))
+    out.append(ui.section("Evidence", _key_values(evidence)))
+    lines: list[str | Text] = [
+        f"same contracts in {_count(record.same_contracts, record.judged)} judged rounds"
+    ]
+    if record.unjudged:
+        lines.append(
+            Text(
+                f"{record.unjudged} round(s) not judged — not counted as agreeing", style="if.warn"
+            )
+        )
+    if record.complete is False:
+        reason = f": {record.stop_reason}" if record.stop_reason else ""
+        lines.append(Text(f"replay incomplete{reason} (finished rounds are kept)", style="if.warn"))
+    title = (conclusion or "no conclusion recorded").replace("_", " ")
+    out.append(ui.result_panel(status, title, lines))
+    return out

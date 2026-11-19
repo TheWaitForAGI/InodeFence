@@ -184,10 +184,7 @@ class Console:
         from inodefence.ui import components as ui
 
         items = report.items
-        self._print(
-            ui.header("doctor", version=self.version, subject=f"{len(items)} checks"),
-            "",
-        )
+        self._print(ui.header("doctor", version=self.version, subject=f"{len(items)} checks"))
         tones = {"OK": "ok", "WARN": "warn", "FAIL": "bad", "UNKNOWN": "warn", "INFO": "info"}
         tally = [
             (status, str(report.count(status)), tones[status] if report.count(status) else "muted")
@@ -276,7 +273,6 @@ class Console:
 
         self._print(
             ui.header("targets", version=self.version, subject=f"{total} extractors registered"),
-            "",
             ui.cards(
                 [
                     ("regression", f"{able(1)}/{total}", "plain"),
@@ -357,6 +353,15 @@ class Console:
                     f"no result.json was written under {out} by this run",
                 ),
             )
+
+    def replay_results(self, records: Sequence[Any]) -> None:
+        """One screen per replay record this run wrote (``app.runs.ReplayRecord``); Rich only."""
+        if self._rich is None:
+            return
+        from inodefence.ui import results
+
+        for record in records:
+            self._print("", *results.replay_screen(record, version=self.version))
 
     def compare(self, a: Any, b: Any, rows: Sequence[Any]) -> None:
         """Two results case by case (``app.runs.compare_results``)."""

@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from tests import app_synthetic as syn
 
 from inodefence import cli
 from inodefence.app import runs
@@ -165,3 +166,45 @@ def test_an_as_stored_result_is_marked_not_shown_as_validated(
     _rich_terminal(monkeypatch)
     cli.main(["compare", str(a), str(a)])
     assert "! AS STORED not validated" in _visible(capsys.readouterr().out)
+
+
+def _replay_driver(case_dir: Path, rounds: list[dict[str, Any]]):
+    def driver(driver: str, argv: list[str], command: str) -> int:
+        print("REPLAY done")
+        original = {"c0": False, "c1": True, "c2": False, "fingerprints": []}
+        syn.replay(case_dir, original, rounds)
+        return 0
+
+    return driver
+
+
+def test_replay_adds_nothing_off_a_terminal(monkeypatch, capsys, tmp_path) -> None:
+    case_dir = tmp_path / "violations" / "run-000002"
+    case_dir.mkdir(parents=True)
+    monkeypatch.setattr(cli, "_forward", _replay_driver(case_dir, [syn.judged_round(True)]))
+    assert cli.main(["replay", str(case_dir)]) == 0
+    assert capsys.readouterr().out == "REPLAY done\n"
+
+
+def test_replay_on_a_rich_terminal_counts_agreement_over_judged_rounds(
+    monkeypatch, capsys, tmp_path
+) -> None:
+    _rich_terminal(monkeypatch)
+    case_dir = tmp_path / "violations" / "run-000002"
+    case_dir.mkdir(parents=True)
+    rounds = [syn.judged_round(True), syn.judged_round(True), syn.failed_round()]
+    monkeypatch.setattr(cli, "_forward", _replay_driver(case_dir, rounds))
+    assert cli.main(["replay", str(case_dir)]) == 0
+    printed = capsys.readouterr().out
+    assert printed.startswith("REPLAY done\n")
+    seen = _visible(printed)
+    assert "› replay" in seen and "3/3 2/3 2/2" in seen  # run, judged, same contracts
+    assert "same contracts in 2/2 judged rounds" in seen  # never 3/3: one round not judged
+    assert "1 round(s) not judged" in seen
+
+
+def test_replay_dry_run_draws_nothing(monkeypatch, capsys, tmp_path) -> None:
+    _rich_terminal(monkeypatch)
+    monkeypatch.setattr(cli, "_forward", lambda *a: 0)
+    assert cli.main(["replay", str(tmp_path), "--dry-run"]) == 0
+    assert capsys.readouterr().out == ""

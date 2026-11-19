@@ -385,10 +385,203 @@ async function renderRunDetail(view, id) {
   view.appendChild(el("div", { class: "note" }, [el("a", { class: "go", href: "#/overview" }, ["‹ back to overview"])]));
 }
 
-/* -- placeholders for the pages still being built -- */
-function placeholder(view, title) {
-  view.appendChild(el("h2", { class: "page" }, [title]));
-  view.appendChild(el("div", { class: "card" }, [empty("coming in a later push", ["this view is being built; the Overview is live"])]));
+/* -- shared helpers for the secondary pages -- */
+function kv(label, node) { return el("div", { class: "rank-item" }, [el("div", { class: "meta" }, [label]), typeof node === "string" || node == null ? el("div", { class: "mono" }, [node == null ? EM_DASH : node]) : node]); }
+function fmtBytes(n) { if (n == null) return EM_DASH; if (n < 1024) return `${n} B`; const u = ["KB", "MB", "GB", "TB"]; let v = n, i = -1; do { v /= 1024; i++; } while (v >= 1024 && i < 3); return `${v.toFixed(1)} ${u[i]}`; }
+function fmtTime(epoch) { return epoch == null ? EM_DASH : new Date(epoch * 1000).toLocaleString(); }
+function selectEl(opts, value, onChange) {
+  const s = el("select", { class: "filt" }, opts.map((o) => { const op = el("option", { value: o.value }, [o.label]); if (o.value === value) op.setAttribute("selected", "selected"); return op; }));
+  s.addEventListener("change", (e) => onChange(e.target.value));
+  return s;
+}
+function truncNote(d) { return d && d.truncated ? el("div", { class: "note" }, [`most recent ${d.runs_scanned} of ${d.runs_total} runs`]) : null; }
+
+/* -- Targets -- */
+async function renderTargets(view) {
+  view.appendChild(el("h2", { class: "page" }, ["Targets"]));
+  let td, runsD, health;
+  try { [td, runsD, health] = await Promise.all([api("/api/targets"), api("/api/runs"), api("/api/health")]); }
+  catch (err) { view.appendChild(el("div", { class: "card" }, [empty("could not load targets", [String(err)])])); return; }
+  const reg = td.state === "ok" ? (td.targets || {}) : {};
+  const groups = (health && health.image_groups) || {};
+  const agg = {};
+  for (const r of runsD.runs || []) {
+    if (r.kind === "replay" || !r.target) continue;
+    const a = agg[r.target] || (agg[r.target] = { runs: 0, cand: 0, lastVerify: null });
+    a.runs += 1;
+    if (r.status) { a.cand += (r.status.candidates || 0) + (r.status.candidates_needs_repro || 0); if (r.kind === "verify" && r.status.verdict) a.lastVerify = { verdict: r.status.verdict, age: r.status.progress_age_seconds }; }
+  }
+  const names = Object.keys(reg).length ? Object.keys(reg) : Object.keys(agg);
+  if (names.length === 0) { view.appendChild(el("div", { class: "card" }, [empty("target registry not readable", td.state !== "ok" ? [td.reason || "no repository root configured"] : ["no targets registered"])])); return; }
+  const cards = el("div", { class: "grid-3" }, names.map((name) => {
+    const a = agg[name] || { runs: 0, cand: 0 };
+    const lv = a.lastVerify ? el("div", { class: "row-flex" }, [chip(a.lastVerify.verdict), el("span", { class: "muted" }, [fmtAge(a.lastVerify.age)])]) : null;
+    return el("div", { class: "labeled" }, [el("div", { class: "card-label" }, [name]), el("div", { class: "card" }, [el("div", { class: "rank-list" }, [
+      kv("runs", String(a.runs)), kv("candidates", String(a.cand)),
+      kv("last verify", lv || EM_DASH), kv("prepared images", groups[name] == null ? EM_DASH : String(groups[name])),
+    ])])]);
+  }));
+  view.appendChild(cards);
+  // registry table
+  if (Object.keys(reg).length) {
+    const head = el("tr", {}, ["target", "regression", "auto-prepare", "explore", "replay", "options"].map((h) => el("th", {}, [h])));
+    const body = el("tbody", {}, Object.entries(reg).map(([name, f]) => {
+      const opts = (f.options || []).map((o) => `--${o.name}${o.required ? "" : "?"}`).join(", ") || EM_DASH;
+      const yn = (v) => v ? chip("YES", "chip-ok chip-sm") : chip("NO", "chip-muted chip-sm");
+      return el("tr", {}, [
+        el("td", {}, [name]), el("td", {}, [yn(f.regression !== false)]), el("td", {}, [yn(f.auto_prepare !== false)]),
+        el("td", {}, [f.explore ? chip("YES", "chip-ok chip-sm") : el("span", { class: "chip chip-muted chip-sm", title: f.explore_reason || "" }, [`no`])]),
+        el("td", {}, [yn(f.replay)]), el("td", { class: "mono muted" }, [opts]),
+      ]);
+    }));
+    view.appendChild(cardLabeled("registry", el("div", { class: "table-wrap" }, [el("table", { class: "runs" }, [el("thead", {}, [head]), body])])));
+  }
+  // comparison bars
+  const barRows = names.map((n) => ({ name: n, value: (agg[n] || {}).runs || 0, color: targetColor(n) }));
+  view.appendChild(cardLabeled("runs by target", barChart(barRows)));
+}
+
+/* -- Findings -- */
+let findingsFilter = { target: "", contract: "", klass: "", conclusion: "" };
+let findingsSelected = null;
+async function renderFindings(view) {
+  view.appendChild(el("h2", { class: "page" }, ["Findings"]));
+  let fd, rd;
+  try { [fd, rd] = await Promise.all([api("/api/findings?limit=500"), api("/api/replays?limit=500")]); }
+  catch (err) { view.appendChild(el("div", { class: "card" }, [empty("could not load findings", [String(err)])])); return; }
+  const byCase = {};
+  for (const r of rd.replays || []) { const c = r.replay.original_case_id; if (c) byCase[c] = r.replay; }
+  let items = (fd.findings || []).filter((f) => f.case.finding);
+  const search = state.filter.trim().toLowerCase();
+  const uniq = (arr) => [...new Set(arr.filter(Boolean))];
+  const targets = uniq(items.map((f) => f.target));
+  const apply = (list) => list.filter((f) => {
+    if (findingsFilter.target && f.target !== findingsFilter.target) return false;
+    if (findingsFilter.contract && f.case[findingsFilter.contract] !== true) return false;
+    if (findingsFilter.klass && f.case.finding !== findingsFilter.klass) return false;
+    if (findingsFilter.conclusion) { const rp = byCase[f.case.case_id]; if (!rp || rp.conclusion !== findingsFilter.conclusion) return false; }
+    if (search && !JSON.stringify([f.case.case_id, f.target, f.version]).toLowerCase().includes(search)) return false;
+    return true;
+  });
+  const shown = apply(items);
+  const filters = el("div", { class: "filters" }, [
+    selectEl([{ value: "", label: "all targets" }, ...targets.map((t) => ({ value: t, label: t }))], findingsFilter.target, (v) => { findingsFilter.target = v; rerender(); }),
+    selectEl([{ value: "", label: "any contract" }, ...["c0", "c1", "c2"].map((c) => ({ value: c, label: c.toUpperCase() }))], findingsFilter.contract, (v) => { findingsFilter.contract = v; rerender(); }),
+    selectEl([{ value: "", label: "any class" }, { value: "candidate", label: "candidate" }, { value: "candidate_needs_repro_check", label: "needs repro check" }], findingsFilter.klass, (v) => { findingsFilter.klass = v; rerender(); }),
+    selectEl([{ value: "", label: "any replay" }, ...Object.keys(REPLAY_LABEL).map((k) => ({ value: k, label: REPLAY_LABEL[k] }))], findingsFilter.conclusion, (v) => { findingsFilter.conclusion = v; rerender(); }),
+  ]);
+  function rerender() { const v = $("#view"); v.innerHTML = ""; renderFindings(v); }
+  const list = el("div", { class: "rank-list" }, shown.slice(0, 300).map((f) => {
+    const c = f.case;
+    const marks = ["c0", "c1", "c2"].map((k) => c[k] === true ? el("span", { class: "chip chip-bad chip-sm" }, [k.toUpperCase()]) : null).filter(Boolean);
+    marks.push(chip(c.finding, null, c.finding));
+    if (f.validated === false) marks.push(chip("as stored", "chip-warn chip-sm"));
+    const item = el("div", { class: "rank-item sel", style: "cursor:pointer" }, [
+      el("div", { style: "min-width:0" }, [el("div", { class: "mono", style: "overflow:hidden;text-overflow:ellipsis" }, [dash(c.case_id)]), el("div", { class: "meta" }, [`${f.target || EM_DASH}${f.version ? "@" + f.version : ""}`])]),
+      el("div", { class: "row-flex wrap" }, marks),
+    ]);
+    item.addEventListener("click", () => { findingsSelected = { f, replay: byCase[c.case_id] || null }; rerender(); });
+    return item;
+  }));
+  const left = el("div", {}, [filters, shown.length ? list : empty("no findings match", []), truncNote(fd)]);
+  const right = findingsSelected ? findingDetail(findingsSelected.f, findingsSelected.replay) : el("div", { class: "card" }, [empty("select a finding", ["pick a candidate to see its contracts, input hash and replay rounds"])]);
+  view.appendChild(el("div", { class: "grid-2" }, [cardLabeled(`candidates (${shown.length})`, left), cardLabeled("detail", right)]));
+}
+function findingDetail(f, replay) {
+  const c = f.case;
+  const rows = [
+    kv("case", el("div", { class: "mono" }, [dash(c.case_id)])),
+    kv("target", `${f.target || EM_DASH}${f.version ? "@" + f.version : ""}`),
+    kv("contracts", el("div", { class: "row-flex" }, ["c0", "c1", "c2"].map((k) => el("span", { class: `chip chip-sm ${c[k] === true ? "chip-bad" : "chip-muted"}` }, [`${k.toUpperCase()} ${c[k] === true ? "✗" : c[k] === false ? "✓" : "?"}`])))),
+    kv("class", chip(c.finding)),
+    kv("input SHA-256", el("div", { class: "mono", style: "word-break:break-all" }, [dash(c.tar_sha256)])),
+    kv("input path", el("div", { class: "mono", style: "word-break:break-all" }, [dash(c.input_path)])),
+    kv("termination", dash(c.termination)),
+  ];
+  const body = el("div", {}, [el("div", { class: "rank-list" }, rows)]);
+  if (replay) body.appendChild(replayRoundsCard(replay));
+  else body.appendChild(el("div", { class: "note" }, ["no replay for this case (contents are never shown)"]));
+  return body;
+}
+function replayRoundsCard(rp) {
+  const denom = rp.judged;
+  const rate = (n) => denom == null || denom === 0 ? EM_DASH : `${n == null ? EM_DASH : n}/${denom}`;
+  const head = el("tr", {}, ["round", "classification", "termination", "c0", "c1", "c2"].map((h) => el("th", {}, [h])));
+  const body = el("tbody", {}, (rp.rounds || []).map((r) => el("tr", {}, [
+    el("td", { class: "num" }, [dash(r.round)]),
+    el("td", {}, [r.classification ? chip(r.classification, null, r.classification) : el("span", { class: "chip chip-muted chip-sm" }, ["not counted"])]),
+    el("td", {}, [dash(r.termination)]),
+    ...["c0", "c1", "c2"].map((k) => el("td", {}, [r[k] === true ? "✗" : r[k] === false ? "✓" : EM_DASH])),
+  ])));
+  return el("div", { style: "margin-top:10px" }, [
+    el("div", { class: "card-label" }, ["replay"]),
+    el("div", { class: "row-flex", style: "margin-bottom:6px" }, [chip(rp.conclusion || "no rounds"), el("span", { class: "muted" }, [`same contracts ${rate(rp.same_contracts)} · judged ${dash(rp.judged)} of ${dash(rp.rounds_done)} rounds`])]),
+    el("div", { class: "table-wrap" }, [el("table", { class: "runs" }, [el("thead", {}, [head]), body])]),
+  ]);
+}
+
+/* -- Replay -- */
+async function renderReplay(view) {
+  view.appendChild(el("h2", { class: "page" }, ["Replay"]));
+  let rd;
+  try { rd = await api("/api/replays?limit=500"); } catch (err) { view.appendChild(el("div", { class: "card" }, [empty("could not load replays", [String(err)])])); return; }
+  const reps = rd.replays || [];
+  if (reps.length === 0) { view.appendChild(el("div", { class: "card" }, [empty("no replays yet", [["run ", el("code", {}, ["inodefence replay <run-NNNNNN folder>"])]])])); view.appendChild(truncNote(rd)); return; }
+  const rows = reps.map((r) => {
+    const rp = r.replay; const denom = rp.judged;
+    const rate = denom == null || denom === 0 ? EM_DASH : `${rp.same_contracts == null ? EM_DASH : rp.same_contracts}/${denom}`;
+    return el("div", { class: "card", style: "margin-bottom:10px" }, [
+      el("div", { class: "row-flex", style: "justify-content:space-between" }, [
+        el("div", {}, [el("div", { class: "mono" }, [dash(rp.original_case_id)]), el("div", { class: "meta" }, [`${r.target || EM_DASH}${r.version ? "@" + r.version : ""}`])]),
+        el("div", { class: "row-flex" }, [chip(rp.conclusion || "no rounds"), el("span", { class: "muted" }, [`same contracts ${rate} · judged ${dash(rp.judged)} of ${dash(rp.rounds_done)}`])]),
+      ]),
+      replayRoundsCard(rp),
+    ]);
+  });
+  view.appendChild(el("div", {}, [...rows, truncNote(rd)]));
+}
+
+/* -- Experiments -- */
+async function renderExperiments(view) {
+  view.appendChild(el("h2", { class: "page" }, ["Experiments"]));
+  if (!state.runs) { try { state.runs = await api("/api/runs"); state.roots = state.runs.roots || []; } catch (err) { view.appendChild(el("div", { class: "card" }, [empty("could not load runs", [String(err)])])); return; } }
+  const campaigns = (state.runs.runs || []).filter((r) => r.kind !== "replay");
+  view.appendChild(cardLabeled(`campaigns (${campaigns.length})`, renderRunsTable(campaigns)));
+  view.appendChild(truncNote(state.runs));
+}
+
+/* -- Artifacts -- */
+let artifactsRun = null;
+async function renderArtifacts(view) {
+  view.appendChild(el("h2", { class: "page" }, ["Artifacts"]));
+  if (!state.runs) { try { state.runs = await api("/api/runs"); } catch (err) { view.appendChild(el("div", { class: "card" }, [empty("could not load runs", [String(err)])])); return; } }
+  const runs = (state.runs.runs || []);
+  if (runs.length === 0) { view.appendChild(el("div", { class: "card" }, [empty("no runs found", [], `scanned: ${(state.roots || []).join("  ")}`)])); return; }
+  const hashId = currentHash().split("/")[1];
+  const chosenId = hashId || artifactsRun || runs[0].id;
+  const picker = el("div", { class: "selector" }, runs.slice(0, 50).map((r) => {
+    const b = el("button", { class: "selbtn" + (r.id === chosenId ? " on" : "") }, [`${r.kind} ${r.target || "?"} ${(r.run_id || "").slice(-8)}`]);
+    b.addEventListener("click", () => { artifactsRun = r.id; location.hash = `#/artifacts/${r.id}`; });
+    return b;
+  }));
+  view.appendChild(picker);
+  let ad;
+  try { ad = await api(`/api/artifacts/${encodeURIComponent(chosenId)}`); } catch (err) { view.appendChild(el("div", { class: "card" }, [empty("run not found", [String(err)])])); return; }
+  const head = el("tr", {}, ["kind", "path", "read_state", "size", "mtime", "sha / case"].map((h) => el("th", { class: [3].includes(["kind", "path", "read_state", "size", "mtime", "sha / case"].indexOf(h)) ? "r" : "" }, [h])));
+  const body = el("tbody", {}, (ad.artifacts || []).map((a) => {
+    const readCell = a.symlink ? chip("link — not followed", "chip-warn chip-sm", a.read_state || "") : (a.read_state ? chip(a.read_state, a.read_state === "ok" ? "chip-ok chip-sm" : a.read_state === "missing" ? "chip-muted chip-sm" : "chip-warn chip-sm") : el("span", { class: "dash" }, [EM_DASH]));
+    const shaCase = a.tar_sha256 ? el("span", { class: "mono muted", title: a.case_id || "" }, [a.tar_sha256.slice(0, 16) + "…"]) : (a.case_id ? el("span", { class: "mono muted" }, [a.case_id]) : el("span", { class: "dash" }, [EM_DASH]));
+    return el("tr", {}, [
+      el("td", {}, [el("span", { class: "chip chip-sm chip-muted" }, [dash(a.kind)])]),
+      el("td", { class: "mono", style: "word-break:break-all;max-width:420px" }, [dash(a.path)]),
+      el("td", {}, [readCell]),
+      el("td", { class: "r num" }, [fmtBytes(a.size)]),
+      el("td", { class: "muted" }, [fmtTime(a.mtime)]),
+      el("td", {}, [shaCase]),
+    ]);
+  }));
+  view.appendChild(cardLabeled(`artifacts of ${ad.kind} run`, el("div", { class: "table-wrap" }, [el("table", { class: "runs" }, [el("thead", {}, [head]), body])])));
+  view.appendChild(el("div", { class: "note" }, [ad.note]));
 }
 
 const ROUTES = {
@@ -422,11 +615,16 @@ async function render() {
   } else if (route === "run") {
     view.innerHTML = "";
     await renderRunDetail(view, currentHash().split("/")[1] || "");
+  } else if (PAGES[route]) {
+    view.innerHTML = "";
+    await PAGES[route](view);
   } else {
     view.innerHTML = "";
     placeholder(view, (ROUTES[route] || ROUTES.overview).title);
   }
 }
+
+const PAGES = { targets: renderTargets, findings: renderFindings, replay: renderReplay, experiments: renderExperiments, artifacts: renderArtifacts };
 
 /* -- engine health chip -- */
 async function pollHealth() {
@@ -491,6 +689,8 @@ window.addEventListener("DOMContentLoaded", async () => {
   connectEvents();
   $("#search").addEventListener("input", (e) => {
     state.filter = e.target.value;
-    if (currentRoute() === "overview" && state.runs) { const v = $("#view"); v.innerHTML = ""; renderOverview(v); }
+    const r = currentRoute();
+    if (r === "overview" && state.runs) { const v = $("#view"); v.innerHTML = ""; renderOverview(v); }
+    else if (r === "findings" || r === "experiments") render();
   });
 });

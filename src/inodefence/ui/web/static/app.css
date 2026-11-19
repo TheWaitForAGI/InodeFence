@@ -118,6 +118,10 @@ table.runs tr:hover td { background: var(--faint-2); }
 .empty code { background: var(--if-surface); padding: 2px 6px; border-radius: 4px; color: var(--if-text); }
 .empty .where { margin-top: 8px; font-size: 12px; }
 
+.filters { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.filt { background: var(--if-surface); border: 1px solid var(--faint); color: var(--if-text); border-radius: 6px; padding: 5px 8px; font-size: 12px; }
+.filt:focus { outline: none; border-color: var(--if-accent); }
+.rank-item.sel:hover { background: var(--faint-2); }
 .row-flex { display: flex; align-items: center; gap: 6px; }
 h2.page { margin: 0 0 14px; font-size: 18px; }
 .note { color: var(--if-muted); font-size: 12px; margin: -6px 2px 14px; }

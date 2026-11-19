@@ -45,8 +45,12 @@ FOLLOW_INTERVAL_SECONDS = 1.0
 SSE_POLL_TIMEOUT_SECONDS = 1.0
 
 
-def _default_health_check(repo_root: Path | None) -> doctor_app.Report:
-    """The real doctor report (read-only checks). ``repo_root`` is accepted for a uniform seam."""
+#: One health check's result: the doctor report and the per-target prepared-image counts.
+HealthResult = tuple["doctor_app.Report", "dict[str, int] | None"]
+
+
+def _default_health_check(repo_root: Path | None) -> HealthResult:
+    """The real doctor report + image groups (read-only). ``repo_root`` keeps a uniform seam."""
     from inodefence.user_config import UserConfigError, load_user_config
 
     try:
@@ -54,20 +58,21 @@ def _default_health_check(repo_root: Path | None) -> doctor_app.Report:
         config_error = None
     except (UserConfigError, OSError) as exc:
         config, config_error = None, str(exc)
-    return doctor_app.run(config, config_error, details=False)
+    report = doctor_app.run(config, config_error, details=False)
+    return report, doctor_app.image_groups()
 
 
 class HealthCache:
-    """A memory-only, TTL cache of the doctor report; refreshed off-thread, never on disk.
+    """A memory-only, TTL cache of the doctor report (and image groups); off-thread, never on disk.
 
     The first read returns nothing (the route shows "checking") and starts the first check in the
-    background; later reads return the last report with its age, and start a refresh when it is
-    older than ``ttl``. A check that raises leaves the previous report in place.
+    background; later reads return the last result with its age, and start a refresh when it is
+    older than ``ttl``. A check that raises leaves the previous result in place.
     """
 
     def __init__(
         self,
-        check: Callable[[], doctor_app.Report],
+        check: Callable[[], HealthResult],
         *,
         ttl: float = HEALTH_TTL_SECONDS,
         clock: Callable[[], float] = time.time,
@@ -77,10 +82,11 @@ class HealthCache:
         self._clock = clock
         self._lock = threading.Lock()
         self._report: doctor_app.Report | None = None
+        self._groups: dict[str, int] | None = None
         self._checked_at: float | None = None
         self._refreshing = False
 
-    def snapshot(self) -> tuple[doctor_app.Report | None, float | None]:
+    def snapshot(self) -> tuple[doctor_app.Report | None, dict[str, int] | None, float | None]:
         now = self._clock()
         start = False
         with self._lock:
@@ -88,20 +94,20 @@ class HealthCache:
             if not fresh and not self._refreshing:
                 self._refreshing = True
                 start = True
-            report, checked_at = self._report, self._checked_at
+            report, groups, checked_at = self._report, self._groups, self._checked_at
         if start:
             threading.Thread(target=self._refresh, name="inodefence-ui-health", daemon=True).start()
-        return report, checked_at
+        return report, groups, checked_at
 
     def _refresh(self) -> None:
-        report: doctor_app.Report | None = None
+        result: HealthResult | None = None
         try:
-            report = self._check()
+            result = self._check()
         except Exception:  # noqa: BLE001 - a doctor failure must not kill the refresh thread
-            report = None
+            result = None
         with self._lock:
-            if report is not None:
-                self._report = report
+            if result is not None:
+                self._report, self._groups = result
                 self._checked_at = self._clock()
             self._refreshing = False
 
@@ -116,7 +122,7 @@ def _package_version() -> str | None:
 
 
 def _health_payload(cache: HealthCache) -> dict[str, Any]:
-    report, checked_at = cache.snapshot()
+    report, groups, checked_at = cache.snapshot()
     if report is None:
         return {
             "schema": API_SCHEMA,
@@ -127,6 +133,7 @@ def _health_payload(cache: HealthCache) -> dict[str, Any]:
             "exit_code": None,
             "failed": None,
             "unknown": None,
+            "image_groups": None,
             "checked_at": None,
             "age_seconds": None,
         }
@@ -140,6 +147,7 @@ def _health_payload(cache: HealthCache) -> dict[str, Any]:
         "exit_code": report.exit_code,
         "failed": report.failed,
         "unknown": report.unknown,
+        "image_groups": groups,
         "checked_at": checked_at,
         "age_seconds": age,
     }
@@ -159,31 +167,6 @@ def _listing_payload(listing: runs_app.RunListing) -> dict[str, Any]:
         "target": None if ref is None else ref.target,
         "version": None if ref is None else ref.version,
     }
-
-
-def _artifacts_for(snapshot: runs_app.RunSnapshot) -> list[dict[str, Any]]:
-    """Artifact paths already named in the snapshot (no new filesystem access, no size/mtime yet).
-
-    A richer list (kinds, size, mtime, shared with the TUI) belongs in the app layer; this derives
-    only what the read model already exposes. Contents are never read or served.
-    """
-    out: list[dict[str, Any]] = []
-    summary = snapshot.summary
-    if summary is not None and summary.result_path is not None:
-        out.append(
-            {
-                "kind": "result",
-                "path": str(summary.result_path),
-                "read_state": summary.read_state.value,
-            }
-        )
-    if snapshot.launcher_log is not None:
-        out.append({"kind": "launcher_log", "path": str(snapshot.launcher_log), "read_state": None})
-    for record in snapshot.replays:
-        out.append(
-            {"kind": "replay", "path": str(record.path), "read_state": record.read_state.value}
-        )
-    return out
 
 
 def _count_findings(snapshot: runs_app.RunSnapshot, finding: runs_app.FindingClass) -> int:
@@ -235,16 +218,6 @@ def _run_status(snapshot: runs_app.RunSnapshot) -> dict[str, Any]:
         "replays": len(snapshot.replays),
         "progress_age_seconds": snapshot.progress_age(),
     }
-
-
-def _inputs_for(snapshot: runs_app.RunSnapshot) -> list[dict[str, Any]]:
-    summary = snapshot.summary
-    if summary is None or summary.integrity is None:
-        return []
-    return [
-        {"case_id": case_id, "tar_sha256": sha, "path": str(path), "rechecked": False}
-        for case_id, sha, path in summary.integrity.inputs
-    ]
 
 
 def build_app(
@@ -440,9 +413,8 @@ def build_app(
             "schema": API_SCHEMA,
             "id": ident,
             "kind": ref.kind.value,
-            "artifacts": _artifacts_for(snapshot),
-            "inputs": _inputs_for(snapshot),
-            "note": "inputs not re-checked; file contents are never served",
+            "artifacts": [to_jsonable(entry) for entry in runs_app.list_artifacts(snapshot)],
+            "note": "metadata only; inputs are not re-checked and file contents are never served",
         }
 
     @app.get("/api/events")

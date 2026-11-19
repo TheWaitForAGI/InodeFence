@@ -89,6 +89,7 @@ from inodefence.drivers.repo import code_checkout, require_repository_or_exit
 from inodefence.drivers.runtime import health
 from inodefence.drivers.runtime.session import RuntimeSession
 from inodefence.target_result import (
+    FAST_ACCEPTANCE_CRITERION_MET_NO_VIOLATION_PATHS,
     FAST_ACCEPTANCE_NOT_MEASURED,
     RUN_ERROR,
     BenignControl,
@@ -266,6 +267,7 @@ MUTATION_POLICY_TARGETS = ("node-tar",)
 FAST_PER_CASE_IDENTITY: dict[str, str] = {
     "decompress": FAST_ACCEPTANCE_NOT_MEASURED,
     "oras-go": FAST_ACCEPTANCE_NOT_MEASURED,
+    "python-tarfile": FAST_ACCEPTANCE_CRITERION_MET_NO_VIOLATION_PATHS,
 }
 FAST_PER_CASE_IDENTITY_TARGETS = tuple(FAST_PER_CASE_IDENTITY)
 #: The launcher environment variable that selects the mutation policy. An explore driver never

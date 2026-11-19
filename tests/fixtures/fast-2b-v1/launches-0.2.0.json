@@ -16,6 +16,32 @@
       "removed": []
     }
   ],
+  "node-tar": [
+    {
+      "argv": [
+        "bash",
+        "local_node_tar_smoke.sh",
+        "explore"
+      ],
+      "changed": {
+        "DEMO_BUDGET": "4",
+        "DEMO_ENGINE_COMMIT": "<engine>",
+        "DEMO_HOST_LIVE_DIR": "<tmp>/target-explore/rid/live",
+        "DEMO_LIVE_DIR": "/tmp/inodefence-live",
+        "DEMO_OBSERVER_INTEGRITY_POLICY": "invalid-continue",
+        "DEMO_SEED": "1",
+        "DEMO_SENTINEL_COUNT": "5",
+        "DEMO_SENTINEL_SEED": "20261104",
+        "EXPLORE_IMAGE": "img",
+        "INODEFENCE_EVIDENCE_DIR": "<tmp>",
+        "PYTHON": "x",
+        "RUN_ID": "rid",
+        "SKIP_BUILD": "1",
+        "TAR_VERSION": "7.5.23"
+      },
+      "removed": []
+    }
+  ],
   "oras-go": [
     {
       "argv": [
@@ -29,6 +55,26 @@
         "INODEFENCE_EVIDENCE_DIR": "<tmp>/target-explore",
         "ORAS_GO_ARTIFACT_LAYOUT": "artifact-dir",
         "PYTHON": "x",
+        "RUN_ID": "rid",
+        "SKIP_BUILD": "1"
+      },
+      "removed": []
+    }
+  ],
+  "python-tarfile": [
+    {
+      "argv": [
+        "bash",
+        "local_python_tarfile_explore.sh"
+      ],
+      "changed": {
+        "DEMO_BUDGET": "4",
+        "DEMO_SEED": "1",
+        "EXPLORE_IMAGE": "img",
+        "EXTRACTION_FILTER": "data",
+        "INODEFENCE_EVIDENCE_DIR": "<tmp>",
+        "PYTHON": "/home/choijiwng/Projects/InodeFence/.claude/worktrees/host4-res1/.venv/bin/python",
+        "RUNTIME_VERSION": "3.12.7",
         "RUN_ID": "rid",
         "SKIP_BUILD": "1"
       },

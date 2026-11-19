@@ -25,7 +25,7 @@ inodefence targets          # 추출기와 각 추출기가 지원하는 것(옵
 
 | 선택 | 설치 | 더해지는 것 |
 | --- | --- | --- |
-| `ui` | `pip install -e '.[ui]'` | 터미널 화면을 Rich로 그립니다(`doctor`·`targets`·`compare`, `verify`·`replay` 뒤 결과 화면, `explore` 진행 표시). 없으면 지금의 표준 라이브러리 화면입니다 |
+| `ui` | `pip install -e '.[ui]'` | 터미널 화면을 Rich로 그립니다(`doctor`·`targets`·`compare`·`status`·`summary`, `verify`·`replay` 뒤 결과 화면, `explore` 진행 표시). 없으면 지금의 표준 라이브러리 화면입니다 |
 | `tui` | `pip install -e '.[tui]'` | 터미널 대시보드 `inodefence tui`(Textual). 아래 [터미널 대시보드](#터미널-대시보드tui) |
 | `all` | `pip install -e '.[all]'` | 위의 것 전부 |
 
@@ -34,6 +34,8 @@ inodefence targets          # 추출기와 각 추출기가 지원하는 것(옵
 Rich는 stdout이 터미널이고 `NO_COLOR`가 없으며 `TERM`이 `dumb`가 아닐 때만 씁니다. 파이프·파일·`NO_COLOR`에서는
 Rich가 설치돼 있어도 표준 라이브러리 화면과 같은 글자가 나가고 색 코드는 없습니다. `targets --json`, `result.json`,
 `summary`의 마크다운은 Rich를 거치지 않으므로 Rich 유무와 관계없이 같은 바이트입니다.
+대화형 터미널에서 `status`는 결과 표로, `summary`는 같은 마크다운을 그려서 보여 줍니다. 원래의 줄·마크다운 텍스트가
+필요하면 `--plain`을 붙이거나 파이프·`-o`로 받으세요(그때는 Rich 유무와 관계없이 같은 바이트).
 
 설치 후에는 저장소 밖 어느 폴더에서 실행해도 됩니다. 설치 방식에 따라 되는 명령이 다릅니다
 (2026-11-16, Python 3.12 깨끗한 venv·저장소 밖 폴더·빈 환경에서 확인, 후속 작업 커밋 e71a534에서 다시 확인):

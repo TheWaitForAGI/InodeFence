@@ -354,6 +354,21 @@ class Console:
                 ),
             )
 
+    def status(self, folder: Any, live: Sequence[str], rows: Sequence[Mapping[str, Any]]) -> None:
+        """``inodefence status`` on a Rich terminal: live blocks as written, then one row per
+        result (the same values the plain lines print)."""
+        from inodefence.ui import results
+
+        self._print(*results.status_screen(folder, live, rows, version=self.version))
+
+    def markdown(self, text: str) -> None:
+        """A Markdown document (``summary``) drawn with Rich; the text itself is unchanged."""
+        from rich.markdown import Markdown
+
+        from inodefence.ui import components as ui
+
+        self._print(ui.header("summary", version=self.version), Markdown(text))
+
     def replay_results(self, records: Sequence[Any]) -> None:
         """One screen per replay record this run wrote (``app.runs.ReplayRecord``); Rich only."""
         if self._rich is None:

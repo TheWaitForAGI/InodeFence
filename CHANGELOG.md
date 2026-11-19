@@ -28,6 +28,9 @@
 `pyproject.toml`의 버전은 이미 `0.2.0`이다.
 
 ### 추가된 사용자 기능
+- 대화형 터미널(선택 설치 `ui`)에서 `status`는 결과 표, `summary`는 마크다운을 그려서 보여 준다. `--plain`, 파이프,
+  `-o`는 지금의 텍스트 그대로다. `explore`의 진행 화면도 같은 디자인(실행 막대, 카드, 종료 상태 막대, 끝의 결과 패널)이고,
+  마지막 진행 줄은 그대로 마지막에 남는다.
 - `inodefence tui [FOLDER ...] [--refresh 초]`: 이 호스트의 실행 폴더를 읽기 전용으로 보는 터미널 대시보드
   (Overview·Targets·Campaigns·Findings·Artifacts 탭). 선택 설치 `tui`가 없거나 대화형 터미널이 아니면 한 줄과
   종료 3. [USAGE](docs/USAGE.md#터미널-대시보드tui)

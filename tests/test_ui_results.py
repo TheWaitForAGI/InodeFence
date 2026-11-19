@@ -254,3 +254,31 @@ def test_replay_dry_run_draws_nothing(monkeypatch, capsys, tmp_path) -> None:
     monkeypatch.setattr(cli, "_forward", lambda *a: 0)
     assert cli.main(["replay", str(tmp_path), "--dry-run"]) == 0
     assert capsys.readouterr().out == ""
+
+
+def test_status_on_a_rich_terminal_and_plain(monkeypatch, capsys, tmp_path, two_results) -> None:
+    folder = two_results[0].parents[1]
+    assert cli.main(["status", str(folder)]) == 0
+    plain = capsys.readouterr().out
+    assert plain.startswith("node-tar-7.5.2: FAIL target=node-tar")  # the lines, unchanged
+    _rich_terminal(monkeypatch)
+    assert cli.main(["status", str(folder), "--plain"]) == 0
+    assert capsys.readouterr().out == plain  # --plain: the same lines on a terminal
+    assert cli.main(["status", str(folder)]) == 0
+    seen = _visible(capsys.readouterr().out)
+    assert "status" in seen and "Results" in seen
+    assert "node-tar-7.5.2 ✗ FAIL node-tar 7.5.2" in seen
+    assert "node-tar-7.5.3 ✓ PASS node-tar 7.5.3" in seen
+
+
+def test_summary_on_a_rich_terminal_draws_the_same_markdown(monkeypatch, capsys) -> None:
+    args = ["summary", str(FIXTURE), "--no-verify-inputs"]
+    assert cli.main(args) == 0
+    text = capsys.readouterr().out
+    _rich_terminal(monkeypatch)
+    assert cli.main([*args, "--plain"]) == 0
+    assert capsys.readouterr().out == text
+    assert cli.main(args) == 0
+    seen = _visible(capsys.readouterr().out)
+    title = next(line for line in text.splitlines() if line.startswith("# ")).lstrip("# ").strip()
+    assert "summary" in seen and title.split()[0] in seen and "\x1b" not in text

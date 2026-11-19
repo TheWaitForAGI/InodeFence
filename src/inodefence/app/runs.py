@@ -666,8 +666,21 @@ def read_result(path: Path, ref: RunRef | None = None) -> RunSummary:
     try:
         result = from_json_dict(known)
     except (TargetResultError, TypeError, ValueError, KeyError) as refused:
+        ref = _ref_with_axes(ref, data)
         return _summary_as_stored(data, path, ref, extras, f"strict reader refused: {refused}")
-    return _summary_from_result(result, data, path, ref, extras)
+    return _summary_from_result(result, data, path, _ref_with_axes(ref, data), extras)
+
+
+def _ref_with_axes(ref: RunRef | None, data: Mapping[str, Any]) -> RunRef | None:
+    """``ref`` with the result's own target and version (``axes.target_version`` or, for
+    python-tarfile, ``axes.runtime_version``); values the file does not hold stay ``None``."""
+    if ref is None:
+        return None
+    axes = _map(data.get("axes"))
+    version = _str(axes.get("target_version")) or _str(axes.get("runtime_version"))
+    return replace(
+        ref, target=_str(data.get("target")) or ref.target, version=version or ref.version
+    )
 
 
 def recheck_inputs(summary: RunSummary) -> Integrity:
@@ -1055,7 +1068,131 @@ def read_verify(out_dir: Path) -> tuple[RunSummary, ...]:
     )
 
 
+# -- artifacts of one run (metadata only) ----------------------------------------------------------
+
+
+class ArtifactKind(StrEnum):
+    RESULT = "result"
+    INPUT_TAR = "input_tar"
+    LIVE_PROGRESS = "live_progress"
+    LIVE_FETCH = "live_fetch"
+    CASE_FOLDER = "case_folder"
+    LOOP_REPORT = "loop_report"
+    RUNTIME_RECORD = "runtime_record"
+    LAUNCHER_LOG = "launcher_log"
+    REPLAY = "replay"
+    REPLAY_EVIDENCE = "replay_evidence"
+    SUMMARY = "summary"
+
+
+@dataclass(frozen=True, slots=True)
+class ArtifactEntry:
+    """One file or folder a run left. Only metadata: nothing here reads a file's content (an input
+    TAR's ``tar_sha256`` is the one RECORDED for it, not a re-hash; see :func:`recheck_inputs`)."""
+
+    kind: ArtifactKind
+    path: Path
+    read_state: ReadState
+    #: bytes (a folder: ``None``); ``None`` when it could not be stat-ed
+    size: int | None = None
+    #: epoch seconds of the last modification; ``None`` when unknown
+    mtime: float | None = None
+    tar_sha256: str | None = None
+    case_id: str | None = None
+
+
+def _entry(
+    kind: ArtifactKind,
+    path: Path,
+    read_state: ReadState | None = None,
+    **extra: Any,
+) -> ArtifactEntry:
+    """Stat ``path`` (never open it). ``read_state`` given: what a reader already found."""
+    try:
+        info = path.stat()
+    except FileNotFoundError:
+        return ArtifactEntry(kind, path, ReadState.MISSING, **extra)
+    except OSError:
+        return ArtifactEntry(kind, path, ReadState.UNREADABLE, **extra)
+    size = None if path.is_dir() else info.st_size
+    return ArtifactEntry(kind, path, read_state or ReadState.OK, size, info.st_mtime, **extra)
+
+
+def _globbed(folder: Path, pattern: str) -> list[Path]:
+    try:
+        return sorted(p for p in folder.glob(pattern) if not p.is_symlink())
+    except OSError:
+        return []
+
+
+def list_artifacts(snapshot: RunSnapshot) -> tuple[ArtifactEntry, ...]:
+    """The files and folders one run left, with kind, path, read state, size and mtime.
+
+    Read-only and metadata only: files are stat-ed, never opened (the result and replay read
+    states are the ones :func:`read_run` already found). Missing expected files are listed as
+    :attr:`ReadState.MISSING`; nothing is invented for a file that does not exist.
+    """
+    ref, out = snapshot.ref, []
+    summary = snapshot.summary
+    if ref.kind is RunKind.EXPLORE:
+        base = ref.root / EXPLORE_DIR
+        run_id = ref.run_id or ""
+        result = base / f"{run_id}{RESULT_SUFFIX}" / RESULT_FILE
+        if summary is not None or result.exists():
+            state = summary.read_state if summary is not None else None
+            out.append(_entry(ArtifactKind.RESULT, result, state))
+            record = result.parent / "runtime-record.json"
+            if record.exists():
+                out.append(_entry(ArtifactKind.RUNTIME_RECORD, record))
+        out += [
+            _entry(ArtifactKind.LOOP_REPORT, path) for path in _globbed(base, f"*-{run_id}.json")
+        ]
+        live_dirs = find_live_dirs(base / run_id) if (base / run_id).is_dir() else []
+        for live in live_dirs[:1]:
+            progress = live / PROGRESS_FILE
+            if progress.exists():
+                # what read_run already found (no second read): live numbers came from this file
+                read = snapshot.progress is not None and snapshot.progress.source is Source.LIVE
+                state = ReadState.OK if read else ReadState.UNREADABLE
+                out.append(_entry(ArtifactKind.LIVE_PROGRESS, progress, state))
+            fetch = live / "fetch.json"
+            if fetch.exists():
+                out.append(_entry(ArtifactKind.LIVE_FETCH, fetch))
+            for row in snapshot.findings:
+                if row.source is Source.LIVE and row.input_path is not None:
+                    out.append(_entry(ArtifactKind.CASE_FOLDER, row.input_path.parent,
+                                      case_id=row.case_id))  # fmt: skip
+                    out.append(_entry(ArtifactKind.INPUT_TAR, row.input_path,
+                                      tar_sha256=row.tar_sha256, case_id=row.case_id))  # fmt: skip
+        out += [
+            _entry(ArtifactKind.RUNTIME_RECORD, path)
+            for path in _globbed(ref.root / RUNTIME_DIR, f"{run_id}-*.json")
+        ]
+        if snapshot.launcher_log is not None:
+            out.append(_entry(ArtifactKind.LAUNCHER_LOG, snapshot.launcher_log))
+    elif ref.kind is RunKind.VERIFY:
+        state = summary.read_state if summary is not None else None
+        out.append(_entry(ArtifactKind.RESULT, ref.root / RESULT_FILE, state))
+        summary_md = ref.root.parent / "summary.md"
+        if summary_md.exists():
+            out.append(_entry(ArtifactKind.SUMMARY, summary_md))
+    if summary is not None and summary.integrity is not None:
+        for case_id, sha, path in summary.integrity.inputs:
+            out.append(_entry(ArtifactKind.INPUT_TAR, path, tar_sha256=sha, case_id=case_id))
+    for record in snapshot.replays:
+        out.append(_entry(ArtifactKind.REPLAY, record.path, record.read_state))
+        out += [
+            _entry(ArtifactKind.REPLAY_EVIDENCE, path)
+            for path in _globbed(record.path.parent / "evidence", "*")
+            if path.is_file()
+        ]
+    return tuple(out)
+
+
 __all__ = [
+    "ArtifactEntry",
+    "ArtifactKind",
+    "list_artifacts",
     "LIVE_PULL_INTERVAL_SECONDS",
     "CaseComparison",
     "CaseRow",

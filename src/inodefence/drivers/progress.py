@@ -639,15 +639,23 @@ def select_display(
     ``NO_COLOR`` is not set, else :class:`Display` (in-place line on a terminal, lines elsewhere).
 
     The explore driver runs in the clone's interpreter; when Rich is not installed there (it is
-    the optional ``ui`` extra) the import fails and the plain display is used, silently.
+    the optional ``ui`` extra) the import fails and the plain display is used, silently. Any other
+    fault while starting the Rich display is reported in one stderr line, and the plain display
+    is used: the run itself is never stopped by its progress display.
     """
     env = os.environ if environ is None else environ
     terminal = is_terminal(stream, env)
     if terminal and "NO_COLOR" not in env:
         try:
             return RichDisplay(stream)
-        except Exception:  # noqa: BLE001 - ImportError, or Rich refusing the stream
+        except ImportError:  # Rich is the optional ``ui`` extra: expected, plain display
             pass
+        except Exception as error:  # noqa: BLE001 - a display fault must never stop the run
+            print(
+                f"progress: Rich display failed ({type(error).__name__}: {error}); "
+                "using the plain display",
+                file=sys.stderr,
+            )
     return Display(stream, terminal=terminal)
 
 

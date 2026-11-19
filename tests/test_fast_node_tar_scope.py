@@ -35,6 +35,8 @@ from inodefence.target_result import (
 from inodefence.target_result_summary import render_summary
 
 SCOPE = NODE_TAR_ACCEPTED_FAST_SCOPE
+#: A filled stand-in for the tests that write a record; the real values come with the result.
+FILLED = {**SCOPE, "counted_seeds": 3, "rule_sha": "0" * 64}
 
 
 @pytest.fixture(autouse=True)
@@ -42,6 +44,12 @@ def _fixed_provenance(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         er, "engine_provenance", lambda image: rt.Provenance("b" * 40, False, image, None)
     )
+
+
+@pytest.fixture
+def filled(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
+    monkeypatch.setitem(er.ACCEPTED_FAST_SCOPE, "node-tar", FILLED)
+    return FILLED
 
 
 def test_the_scope_is_filled() -> None:
@@ -90,16 +98,18 @@ def _explore(monkeypatch, tmp: Path, version: str, budget: int, session: Any) ->
     return campaign.identity_checks or {}
 
 
-def test_a_run_inside_the_scope_is_labeled_passed(monkeypatch, tmp_path: Path) -> None:
+def test_a_run_inside_the_scope_is_labeled_passed(monkeypatch, tmp_path: Path, filled) -> None:
     checks = _explore(monkeypatch, tmp_path, "7.5.2", 2000, _session(policy.FAST))
     assert checks["fast_acceptance"] == FAST_ACCEPTANCE_PASSED
-    assert checks["acceptance_scope"] == SCOPE and checks["interval"] == RECORD["interval"]
+    assert checks["acceptance_scope"] == filled and checks["interval"] == RECORD["interval"]
 
 
-def test_a_run_outside_the_scope_keeps_the_interval_and_says_so(monkeypatch, tmp_path) -> None:
+def test_a_run_outside_the_scope_keeps_the_interval_and_says_so(
+    monkeypatch, tmp_path, filled
+) -> None:
     checks = _explore(monkeypatch, tmp_path, "7.5.23", 20, _session(policy.FAST))
     assert checks["fast_acceptance"] == FAST_ACCEPTANCE_INTERVAL_ON_UNMEASURED_SCOPE
-    assert checks["acceptance_scope"] == SCOPE
+    assert checks["acceptance_scope"] == filled
     assert checks["interval"] == policy.FAST_IDENTITY_CHECK_EVERY  # no version gating
 
 
@@ -127,7 +137,10 @@ def _with(checks: dict[str, Any]) -> dict[str, Any]:
     [
         ({**RECORD, "fast_acceptance": "passed"}, "acceptance_scope"),
         ({**RECORD, "acceptance_scope": SCOPE}, "fast_acceptance"),
-        ({**RECORD, "fast_acceptance": "accepted", "acceptance_scope": SCOPE}, "fast_acceptance"),
+        ({**RECORD, "fast_acceptance": "accepted", "acceptance_scope": FILLED}, "fast_acceptance"),
+        ({**RECORD, "fast_acceptance": "passed", "acceptance_scope": SCOPE}, "counted_seeds"),
+        ({**RECORD, "fast_acceptance": "passed",
+          "acceptance_scope": {**FILLED, "rule_sha": None}}, "rule_sha"),
         ({**RECORD, "fast_acceptance": "passed", "acceptance_scope": {"version": "7.5.2"}},
          "acceptance_scope"),
     ],
@@ -144,6 +157,13 @@ def test_an_older_record_without_the_label_is_read_and_shown_unlabeled() -> None
 
 
 def test_a_labeled_record_shows_its_label_verbatim() -> None:
-    checks = {**RECORD, "fast_acceptance": FAST_ACCEPTANCE_PASSED, "acceptance_scope": SCOPE}
+    checks = {**RECORD, "fast_acceptance": FAST_ACCEPTANCE_PASSED, "acceptance_scope": FILLED}
     text = render_summary(from_json_dict(_with(checks)), source_name="r.json", inputs_verified=True)
     assert "| FAST 수용 표시 | passed (측정 범위: 버전 7.5.2, 정책 default, 예산 2000) |" in text
+
+
+def test_an_unfilled_scope_writes_no_result(monkeypatch, tmp_path: Path) -> None:
+    # The real constant, still empty: the driver refuses to label, so no record from it can exist.
+    with pytest.raises(er.IdentityRecordError, match="not filled"):
+        _explore(monkeypatch, tmp_path, "7.5.2", 2000, _session(policy.FAST))
+    assert not list(tmp_path.rglob("result.json"))

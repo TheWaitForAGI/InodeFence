@@ -628,9 +628,10 @@ def _check_acceptance_scope(checks: dict[str, Any]) -> None:
     if type(scope["budget"]) is not int or scope["budget"] < 1:
         raise TargetResultError("acceptance_scope budget must be a positive integer")
     seeds, rule = scope["counted_seeds"], scope["rule_sha"]
-    if seeds is not None and (type(seeds) is not int or seeds < 1):
+    # An unfilled scope (None) is refused: a record made from it must not exist.
+    if type(seeds) is not int or seeds < 1:
         raise TargetResultError("acceptance_scope counted_seeds must be a positive integer")
-    if rule is not None and (not isinstance(rule, str) or len(rule) != 64):
+    if not isinstance(rule, str) or len(rule) != 64:
         raise TargetResultError("acceptance_scope rule_sha must be a sha256 hex digest")
 
 

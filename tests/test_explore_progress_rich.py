@@ -131,3 +131,40 @@ def test_unknown_terminations_draw_no_outcome_bars() -> None:
     pg.RichDisplay(stream, width=lambda: 100).update(_view(pg.Counts()))
     plain = _plain(stream.getvalue())
     assert "success ?" in plain and "%" not in plain
+
+
+def test_the_end_keeps_the_final_frame_and_names_a_real_case_to_replay(tmp_path) -> None:
+    stream = _Tty()
+    display = pg.RichDisplay(stream, width=lambda: 120)
+    display.update(_view(_live_counts(runs=18, violations=2)))
+    final = _view(
+        _live_counts(runs=40, violations=2, state="finished"),
+        phase=pg.COMPLETED,
+        verdict="FAIL",
+        show_out=True,
+    )
+    cases = [tmp_path / "live" / "violations" / "run-000007", tmp_path / "x"]
+    display.final(final, case_dirs=cases)
+    out = stream.getvalue()
+    assert out.endswith(pg.format_line(final) + "\n")
+    tail = _plain(out.split("\x1b[2K")[-1] if "\x1b[2K" in out else out)
+    assert "40/40 runs (100%)" in tail and "Outcomes" in tail  # the final frame stays
+    joined = "".join(ch for ch in _plain(out) if ch not in "│\n ")
+    assert f"inodefencereplay{cases[0]}(oneof2)".replace(" ", "") in joined  # may wrap
+
+
+def test_no_case_no_replay_example() -> None:
+    stream = _Tty()
+    display = pg.RichDisplay(stream, width=lambda: 120)
+    final = _view(_live_counts(runs=40, state="finished"), phase=pg.COMPLETED, verdict="PASS")
+    display.final(final)
+    assert "inodefence replay" not in _plain(stream.getvalue())
+
+
+def test_estimates_and_log_derived_values_say_so() -> None:
+    stream = _Tty()
+    view = _view(_live_counts(runs=18), eta_seconds=38, step="explore")
+    pg.RichDisplay(stream, width=lambda: 120).update(view)
+    plain = _plain(stream.getvalue())
+    assert "eta ~38s (estimate)" in plain
+    assert "launcher step: explore (from the launcher log)" in plain

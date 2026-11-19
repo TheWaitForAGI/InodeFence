@@ -377,7 +377,10 @@ def cmd_status(args: argparse.Namespace) -> int:
         except (TargetResultError, OSError, ValueError) as error:
             print(f"{result_path}: unreadable ({error})", file=sys.stderr)
             unreadable += 1
-            rows.append({"cell": result_path.parent.name, "verdict": "ERROR", "error": str(error)})
+            # not a verdict: the file could not be read (ERROR is a verdict a result can hold)
+            rows.append(
+                {"cell": result_path.parent.name, "verdict": "UNREADABLE", "error": str(error)}
+            )
             continue
         line = f"{result_path.parent.name}: {result.verdict.value} target={result.target}"
         if result.axes.target_version:
@@ -402,6 +405,7 @@ def cmd_status(args: argparse.Namespace) -> int:
                     "runs": result.executed,
                     "violations": len(result.violating_cases),
                     "first": campaign.runs_to_first_violation if campaign else None,
+                    "explore": campaign is not None,
                     "stopped_early": bool(campaign and campaign.stopped_early),
                     "warning": warning,
                     "path": str(result_path),

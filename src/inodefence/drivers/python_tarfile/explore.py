@@ -40,7 +40,10 @@ from pathlib import Path
 from typing import Any
 
 from inodefence.drivers import explore_result
-from inodefence.drivers.explore_result import with_identity_checks
+from inodefence.drivers.explore_result import (
+    with_identity_checks,
+    with_per_case_identity_marker,
+)
 from inodefence.drivers.launcher import launcher_path, run_launcher
 from inodefence.drivers.python_tarfile import adapter as rpt
 from inodefence.drivers.python_tarfile import producer
@@ -250,6 +253,8 @@ def explore(
     )
     # FAST (#536): the loop's identity-probe record; STRICT: unchanged.
     result = with_identity_checks(result, report, requested_identity_check_every(options))
+    # D065: when this target's FAST keeps the rebuild skip only, the result says so per case.
+    result = with_per_case_identity_marker(result, getattr(options, "runtime", None))
     result_path = explore_result.write_result(
         path.parent / f"{run_id}-result", result, tar_files, report=path
     )

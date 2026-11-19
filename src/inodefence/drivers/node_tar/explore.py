@@ -24,6 +24,7 @@ from inodefence.drivers.explore_result import (
     build_campaign_result,
     refuse_existing,
     with_identity_checks,
+    with_per_case_identity_marker,
     write_result,
 )
 from inodefence.drivers.launcher import launcher_path, run_launcher
@@ -246,6 +247,8 @@ def explore(prepared: PreparedTargetImage, options: ExploreOptions) -> ExploreOu
     )
     # FAST (#536): the loop's identity-probe record; STRICT: unchanged.
     result = with_identity_checks(result, report, requested_identity_check_every(options))
+    # D065: when this target's FAST keeps the rebuild skip only, the result says so per case.
+    result = with_per_case_identity_marker(result, getattr(options, "runtime", None))
     result_path = write_result(
         report_path.parent / f"{run_id}-result", result, tar_files, report=report_path
     )

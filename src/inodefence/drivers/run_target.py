@@ -89,6 +89,7 @@ from inodefence.drivers.repo import code_checkout, require_repository_or_exit
 from inodefence.drivers.runtime import health
 from inodefence.drivers.runtime.session import RuntimeSession
 from inodefence.target_result import (
+    FAST_ACCEPTANCE_NOT_MEASURED,
     RUN_ERROR,
     BenignControl,
     CaseVerdict,
@@ -258,10 +259,15 @@ EXPLORE_MUTATION_POLICIES = ("uniform-b-grammar-v2-freeze-3-fixed-baseline-v1",)
 #: The targets whose exploration can run a ``--mutation-policy`` value; the explore driver refuses
 #: the option for any other target before anything is prepared or run (exit 3).
 MUTATION_POLICY_TARGETS = ("node-tar",)
-#: D065: the targets whose ``--profile fast`` keeps the shared-image rebuild skip only. The D064
-#: identity-probe interval is not applied there (no FAST acceptance was measured for them), so
-#: their image identity is probed before every case, as STRICT does.
-FAST_PER_CASE_IDENTITY_TARGETS = ("decompress", "oras-go")
+#: D065: the targets whose ``--profile fast`` keeps the shared-image rebuild skip only, each with
+#: the FAST acceptance state its result records (``campaign.identity_checks.fast_acceptance``).
+#: The D064 identity-probe interval is not applied to them, so their image identity is probed
+#: before every case, as STRICT does. ``not_measured``: no FAST acceptance measurement exists.
+FAST_PER_CASE_IDENTITY: dict[str, str] = {
+    "decompress": FAST_ACCEPTANCE_NOT_MEASURED,
+    "oras-go": FAST_ACCEPTANCE_NOT_MEASURED,
+}
+FAST_PER_CASE_IDENTITY_TARGETS = tuple(FAST_PER_CASE_IDENTITY)
 #: The launcher environment variable that selects the mutation policy. An explore driver never
 #: passes the caller's own value through: it sets it from ``ExploreOptions.mutation_policy`` (or
 #: its target's default) and otherwise removes it, so a run without the option is the default run

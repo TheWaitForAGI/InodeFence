@@ -31,6 +31,7 @@ from inodefence.drivers.repo import code_checkout, require_repository_or_exit
 from inodefence.drivers.run_target import (
     DEFAULT_MAX_UNJUDGED_RATIO,
     EXPLORE_MUTATION_POLICIES,
+    FAST_PER_CASE_IDENTITY,
     FAST_PER_CASE_IDENTITY_TARGETS,
     MUTATION_POLICY_TARGETS,
     TARGETS,
@@ -47,7 +48,11 @@ from inodefence.drivers.run_target import (
 )
 from inodefence.drivers.runtime.policy import PROFILES, STRICT, RuntimeProfile
 from inodefence.drivers.runtime.session import RuntimeSession
-from inodefence.target_result import load_target_result, no_extraction_warning
+from inodefence.target_result import (
+    FAST_ACCEPTANCE_NOT_MEASURED,
+    load_target_result,
+    no_extraction_warning,
+)
 
 # Outside the repo AND outside ~/inodefence-evidence (confirmatory evidence lives there).
 DEFAULT_OUT = Path.home() / "inodefence-explore"
@@ -232,10 +237,15 @@ def main(argv: list[str] | None = None) -> int:
     if policy.profile is RuntimeProfile.FAST and args.target in FAST_PER_CASE_IDENTITY_TARGETS:
         # D065: keep the rebuild skip, drop the D064 interval (a probe before every case).
         policy = dataclasses.replace(policy, identity_check_every=None)
+        reason = (
+            f" (no FAST acceptance for {args.target})"
+            if FAST_PER_CASE_IDENTITY[args.target] == FAST_ACCEPTANCE_NOT_MEASURED
+            else ""
+        )
         print(
             f"TARGET-EXPLORE: --profile fast on {args.target} skips the shared-image rebuild "
-            "only; the D064 identity-probe interval is not applied (no FAST acceptance for "
-            f"{args.target}), so the image identity is probed before every case.",
+            f"only; the D064 identity-probe interval is not applied{reason}, so the image "
+            "identity is probed before every case.",
             file=sys.stderr,
         )
     if args.dry_run:

@@ -25,6 +25,10 @@ from pathlib import Path
 
 from inodefence.target_result import (
     CONTRACTS,
+    FAST_ACCEPTANCE_CRITERION_MET_NO_VIOLATION_PATHS,
+    FAST_ACCEPTANCE_FAILED,
+    FAST_ACCEPTANCE_INDETERMINATE_F3,
+    FAST_ACCEPTANCE_NOT_MEASURED,
     RUN_ERROR,
     ResultMode,
     TargetResult,
@@ -34,6 +38,17 @@ from inodefence.target_result import (
     load_target_result,
     no_extraction_warning,
 )
+
+#: D065: the summary's words for each ``fast_acceptance`` value (one table, values from
+#: ``target_result``). A value without an entry is shown as per case only.
+PER_CASE_SUMMARY = {
+    FAST_ACCEPTANCE_NOT_MEASURED: "FAST 수용 측정 없음",
+    FAST_ACCEPTANCE_CRITERION_MET_NO_VIOLATION_PATHS: (
+        "사전 고정 기준은 충족, 모든 실행 위반 0건이라 위반 경로 근거 없음"
+    ),
+    FAST_ACCEPTANCE_INDETERMINATE_F3: "FAST 수용 판정 불가(F3)",
+    FAST_ACCEPTANCE_FAILED: "FAST 수용 실패",
+}
 
 #: Plain-language meaning of each contract (from docs/research/design/security-contracts.md).
 CONTRACT_PLAIN = {
@@ -237,7 +252,9 @@ def render_summary(result: TargetResult, *, source_name: str, inputs_verified: b
             add("| 중단 | 사람이 예산 소진 전에 멈춤 (그때까지의 결과) |")
         checks = campaign.identity_checks
         if checks is not None and is_per_case_identity_marker(checks):  # D065
-            add("| 이미지 신원 확인 | 케이스마다 (FAST 간격 미적용, FAST 수용 측정 없음) |")
+            state = PER_CASE_SUMMARY.get(str(checks.get("fast_acceptance")))
+            detail = f", {state}" if state else ""
+            add(f"| 이미지 신원 확인 | 케이스마다 (FAST 간격 미적용{detail}) |")
         elif checks is not None:  # FAST (#536 option 1) only; absent: a probe before every case
             add(
                 f"| 이미지 신원 확인 | 캠페인 단위(시작·{checks.get('interval')}건마다·끝), "

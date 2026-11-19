@@ -512,14 +512,42 @@ def repro_input(case_id: str, tar_path: str, tar_bytes: bytes) -> ReproInput:
 
 #: D065: the ``campaign.identity_checks`` record of a decompress/oras-go FAST run, which keeps
 #: the shared-image rebuild skip only and probes the image identity before every case.
+#: ``fast_acceptance`` values (INFRA's two-branch scope 771669d5; names under W4 review, so every
+#: reader takes them from here). The rule they share is the marker's: a probe per case.
+#: No FAST acceptance measurement exists (decompress, oras-go).
+FAST_ACCEPTANCE_NOT_MEASURED = "not_measured"
+#: The rule fixed before the run (compare exit 0) was met, but every run had 0 violations, so there
+#: is no evidence for violation paths (python-tarfile).
+FAST_ACCEPTANCE_CRITERION_MET_NO_VIOLATION_PATHS = "criterion_met_no_violation_path_evidence"
+#: node-tar's follow-up measurement result; set in ONE place when the result is in.
+FAST_ACCEPTANCE_INDETERMINATE_F3 = "indeterminate_f3"
+FAST_ACCEPTANCE_FAILED = "failed"
 PER_CASE_IDENTITY_MARKER: dict[str, Any] = {
     "identity_checks": "per-case",
     "interval": 1,
-    "fast_acceptance": "not_measured",
+    "fast_acceptance": FAST_ACCEPTANCE_NOT_MEASURED,
     "acceptance_evidence": False,
     "basis": "D065: decompress/oras-go FAST keeps reuse_shared_images only; "
     "D064 interval not applied",
 }
+
+
+def per_case_identity_marker(target: str, fast_acceptance: str) -> dict[str, Any]:
+    """The D065 marker for ``target``: a probe per case, the target's FAST acceptance state.
+
+    decompress/oras-go (``not_measured``) get :data:`PER_CASE_IDENTITY_MARKER` unchanged. Any other
+    target or state gets the same record with its own ``fast_acceptance`` and a ``basis`` that
+    states the rule only (no acceptance wording).
+    """
+    if fast_acceptance == FAST_ACCEPTANCE_NOT_MEASURED and target in ("decompress", "oras-go"):
+        return dict(PER_CASE_IDENTITY_MARKER)
+    if not isinstance(fast_acceptance, str) or not fast_acceptance:
+        raise ValueError("fast_acceptance must be a non-empty string")
+    return {
+        **PER_CASE_IDENTITY_MARKER,
+        "fast_acceptance": fast_acceptance,
+        "basis": f"D065: {target} FAST keeps reuse_shared_images only; D064 interval not applied",
+    }
 
 
 def is_per_case_identity_marker(checks: object) -> bool:

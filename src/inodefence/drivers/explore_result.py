@@ -15,6 +15,7 @@ from pathlib import Path
 
 from inodefence.drivers.run_target import (
     DEFAULT_MAX_UNJUDGED_RATIO,
+    FAST_PER_CASE_IDENTITY,
     PreparedTargetImage,
     engine_provenance,
 )
@@ -22,12 +23,12 @@ from inodefence.drivers.runtime.policy import RuntimeProfile
 from inodefence.live_exploration import list_violation_cases, read_progress
 from inodefence.target_result import (
     JUDGED,
-    PER_CASE_IDENTITY_MARKER,
     CampaignInfo,
     CaseVerdict,
     ResultMode,
     TargetAxes,
     TargetResult,
+    per_case_identity_marker,
     repro_input,
 )
 
@@ -259,8 +260,10 @@ def with_identity_checks(
 def with_per_case_identity_marker(result: TargetResult, session: object) -> TargetResult:
     """D065: ``result`` with the per-case marker when the run was FAST without an interval.
 
-    That is decompress/oras-go FAST (the explore driver drops the interval for them). Any
-    other run -- STRICT, or a FAST run with an interval -- is returned unchanged.
+    That is FAST on a target of ``run_target.FAST_PER_CASE_IDENTITY`` (the explore driver drops
+    the interval for them); the marker carries that target's FAST acceptance state. Any other
+    run -- STRICT, or a FAST run with an interval -- is returned unchanged. A FAST run without an
+    interval on a target outside the table cannot be described: no result (RuntimeError).
     """
     policy = getattr(session, "policy", None)
     if (
@@ -270,7 +273,14 @@ def with_per_case_identity_marker(result: TargetResult, session: object) -> Targ
     ):
         return result
     assert result.campaign is not None  # every exploration result is a campaign
-    marker = dict(PER_CASE_IDENTITY_MARKER)
+    target = getattr(session, "target", None)
+    state = FAST_PER_CASE_IDENTITY.get(str(target))
+    if state is None:
+        raise RuntimeError(
+            f"FAST without an identity-probe interval on {target!r}, which has no D065 entry; "
+            "no result written"
+        )
+    marker = per_case_identity_marker(str(target), state)
     return dataclasses.replace(
         result, campaign=dataclasses.replace(result.campaign, identity_checks=marker)
     )

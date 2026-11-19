@@ -156,6 +156,22 @@ raw experiment output → validated summary → finding → 이 매핑 → Capab
 - 조합3(7.5.8·v2)은 **다른 버전**(7.5.8)이라 위 7.5.7 행들과 **통제 arm 비교가 아니다**. 단일 예산 관찰이다. **관측 도달 0** — 7.5.8 라벨("적용 미확인/도달 시 귀속 불명")은 **도달 시에만** #514로 가며, 이 셀은 도달 0이라 해당 없음(FP·TP 아님). 라벨과 관측을 분리한다.
 - **키셋 부분집합 사실(대칭 서술)**: 조합3 관찰 effect 키셋 = 78 (compact-key-json sethash **d3a764ac99ce8da5**, W3·W4 독립 산출 일치). 7.5.7 관찰 집합(85, sethash 9a03cac5097d7523)의 **진부분집합**(subset True; 교집합 78, 조합3 고유 0, 7.5.7에만 7 = entry_effect_set 4 + individual_effect 3; causal_motif 10/10 동일). **config 다름(7.5.8 vs 7.5.7)의 사실적 차이**이지 "더 좁다/약하다"·능력·효율·순위·드리프트/발견이 아니다. (대안 canonicalization 153cad9d/8cfd4996 는 등식-불변 확인용이며 라벨 아님.)
 
+## 추가 탐지기 재확인 (additive-detectors-v1 · record-only · 비풀링 · 등록 결과 비합치)
+
+> 이 절은 **기록 전용**이다. 아래 수치는 기록 C0/C1/C2 oracle verdict·위반 수·등록 실험 결과에 **합치하지 않으며**, 위 X-·주장 표와 **풀링하지 않는다**. 추가 탐지기는 **advisory**(기록 판정 튜플 밖). 입력 바이트는 실행 호스트 로컬, 여기엔 counts/hash만.
+
+| id | 계열 | 핀·계획·엔진 | 재구성 | replay | generalized_identity(물리) | symlink_referent(어휘) | 매니페스트 |
+|---|---|---|---|---|---|---|---|
+| ADV-517-조합1-7.5.7-v2-242 | additive-detectors-v1 (record-only) | 핀 8203474 / 계획 18b011ec / 엔진 e1098d6 | 242/242 (실패 0) | 484 round · 2-replay-consistent 242 | k1 **0/242** | k2 **0/242** | SHA256SUMS 713173f6 · 결과표 dba3d748 |
+
+전부 "no violation originally; no violation again". 종료 분류(2 round) rejected 223·success 16·failed 3 = 구조클래스표 590936a0 분해. per-seed 33/41/24/72/53/19 = ④-a 박제 목록 `a31486929259d83b` 일치(재확인이 박제된 바로 그 242 step을 돌았음 교차 확인, W3·W4 독립 재집계).
+
+**범위 한계(필수)**: (1) 조합 1(7.5.7-v2)의 **242 shell-combo step(≥2 symlink ∧ ≥1 hardlink)에 한정** — 셀 전체 12000·다른 셀/버전 아님. (2) 추가 탐지기 **advisory**(기록 verdict 밖, 등록 결과 비합치). (3) **basis 분리**: generalized_identity=물리(st_dev/st_ino, AFTER 스냅숏-범위), symlink_referent=**어휘**(normpath, on-disk 미해소). (4) **한계 7**(재구성 후보공간 상한 200,000; 조합 1은 step당 1연산 → 0건). (5) 2-replay-consistent ≠ 결정론(#536 몫). **k1/k2 0은 안전 증명 아님**(관찰, 이 예산·이 242 step·이 재구성 범위).
+
+**#512 freeze-4 함의(해석 주의)**: 이 242 step에서 추가 탐지기 양성 0 — 기록 oracle 0과 같은 방향, 새 범위밖 사례 **없음**. 단 **"숨은 범위밖 사례 부재"의 증거는 아니다**: symlink_referent는 어휘라 on-disk 심링크 경유(26960 기작)에 **맹목·비구속**, generalized_identity는 **AFTER 스냅숏 범위**, 분모는 **재구성가능 242뿐**. freeze-4 동기(조합 motif 도달 확률↑로 탐지 범위 밖 사례 보기)를 **기각·확증·상충하지 않음**(인과·효율 주장 아님).
+
+이 절의 어떤 행도 novelty·effectiveness·일반성·안전 주장으로 승격하지 않는다.
+
 ## 선행연구 포지셔닝 (필수 준수)
 
 [related-work-positioning](../../docs/research/design/related-work-positioning.md)을 그대로 따른다.

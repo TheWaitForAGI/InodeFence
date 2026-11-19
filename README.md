@@ -74,9 +74,9 @@ IMPLEMENTED · TESTED · VALIDATED)는 [Research Contract](docs/research/design/
 | --- | --- | --- |
 | (1) 알려진 CVE의 **통제 재현** | TESTED. node-tar 5 릴리스 × 고정 입력 2개의 통제 차분: 최상위 hardlink는 7.5.2에서 외부 참조 파일과 inode 공유(nlink 1→2)·7.5.3 거부, 중첩 hardlink는 7.5.6 공유·7.5.7 거부(7.5.8도 거부). 판정은 observed이고, 각각 CVE-2026-23745·CVE-2026-24842에 대응한다는 것과 회귀 원인은 inferred. **통제 재현이며 퍼저의 탐색 결과가 아닙니다.** | [`experiments/repro/evidence/summary.json`](experiments/repro/evidence/summary.json) → [cross-release-identity-repro-v1](experiments/summaries/cross-release-identity-repro-v1.md) → Ledger M2 |
 | (2) generic Oracle이 **알려진 위반을 판정** | TESTED. identity oracle 하나가 위 두 쌍을 릴리스 id·정답 경로 하드코딩 없이 구분하고, 손 probe 판정과 production Observer+Oracle 판정이 일치. oracle·adapter 수준에서 3 추출기에 적용: Python `tarfile`은 필터 토글 비교(`fully_trusted` → C1+C2, `data` → 거부), oras-go·decompress는 adapter 통제 차분(#176·#177) | `tests/test_cross_release_oracle_agreement.py`, `tests/test_python_tarfile_generality.py`, Ledger M2.2·M4 |
-| (3) 퍼저의 **자력 발견** | 본실험 결과 자리(봉인 해제 뒤 기입) | [사전등록](experiments/preregistration/) exp3-v1·exp2-v1, Ledger M3 |
-| (4) 통계적으로 입증된 **성능 우위** | 주장하지 않음. 본실험 결과 자리(봉인 해제 뒤 기입) | — |
-| (5) **미검증 기능·가설** | C3·C4 미구현. entry 단위 native 전이 관찰은 관찰 경계를 확보하지 못해 미구현(honest negative). `replay`의 실제 위반 케이스 E2E는 미검증. FAST 실행 프로필(`explore --profile fast`)은 실행당 고정 준비 비용만 줄이고 케이스당 비용은 그대로. macOS·기타 Linux 호스트는 이 후보에서 미확인 | Ledger, [사용 안내 한계](docs/USAGE.md#한계와-주의) |
+| (3) 퍼저가 **스스로 위반에 도달** | 판정 완료: 비기각(분리 실패, HR 2 배제). S-u는 R·D 어느 쪽과도 구분되지 않았고, 위험률 비 2 이상의 가속은 구간으로 배제됐다(결함 깊이 1 벤치마크). | [주장 목록](paper/sections/claims-evidence-status-v1.md) C-HA·S-HOLDOUT, [대비 표](paper/tables/exp2-holdout-contrasts.md)(#487), [사전등록](experiments/preregistration/) exp3-v1·exp2-v1, Ledger M3 |
+| (4) 통계적으로 입증된 **성능 가속** | 주장하지 않음. H-A 확증 검정 결과는 (3)행 | — |
+| (5) **미검증 기능·가설** | C3·C4 미구현. entry 단위 native 전이 관찰은 관찰 경계를 확보하지 못해 미구현(honest negative). `replay`의 실제 위반 케이스 재실행은 decompress@4.2.1 C0 위반 케이스 하나만 기록이 있다: 같은 입력으로 60회 중 51회 같은 C0 위반, 9회는 추출기 거부. 3/3은 그 가운데 연속 세 번이다(나머지 세 대상은 탐색에서 위반 케이스가 없어 기록 없음). FAST 실행 프로필(`explore --profile fast`)은 실행당 고정 준비 비용만 줄이고 케이스당 비용은 그대로. macOS·기타 Linux 호스트는 이 후보에서 미확인 | Ledger, [사용 안내 한계](docs/USAGE.md#한계와-주의) |
 
 그 밖에 TESTED인 것: 실제 node-tar 루프(입력 → 격리 실행 → entry별 중간 상태 관찰 → C0/C1/C2 → feedback → 다음
 mutation 선택)가 `make demo`(node-tar 7.5.22, 정상 입력)로 돌고 같은 seed·budget이면 재현됩니다. 이 데모의 정상
@@ -89,10 +89,10 @@ mutation 선택)가 `make demo`(node-tar 7.5.22, 정상 입력)로 돌고 같은
 
 | 대상 | 대상 옵션 | `replay` | 비고 |
 | --- | --- | --- | --- |
-| node-tar | — | 지원: 위반 케이스 폴더 (실제 위반 E2E 미검증) | 7.5.23은 `verify`에서 exploratory 버전으로 표시 |
-| python-tarfile | `--extraction-filter` | 지원: 결과 폴더 `--case` (실제 위반 E2E 미검증) | 필터는 기록에서 고정, `fully_trusted` 재실행은 거부 |
-| decompress | — | 지원: 결과 폴더 `--case` (실제 위반 E2E 미검증) | `--version`에 패키지까지: `@xhmikosr/decompress@11.1.4` |
-| oras-go | — | 지원: 결과 폴더 `--case` (실제 위반 E2E 미검증) | 탐색 입력은 엔트리 이름을 oras-go 아티팩트 디렉터리 `d/` 아래로 옮겨 보냄(케이스는 그대로). 탈출에 `../`가 하나 더 필요함. 확인은 2.6.2 한 버전의 demo run 1회([USAGE 한계](docs/USAGE.md#한계와-주의)) |
+| node-tar | — | 지원: 위반 케이스 폴더 (실제 위반 케이스 재실행 기록 없음) | 7.5.23은 `verify`에서 exploratory 버전으로 표시 |
+| python-tarfile | `--extraction-filter` | 지원: 결과 폴더 `--case` (실제 위반 케이스 재실행 기록 없음) | 필터는 기록에서 고정, `fully_trusted` 재실행은 거부 |
+| decompress | — | 지원: 결과 폴더 `--case` (4.2.1 C0 위반 케이스 하나: 60회 중 51회 같은 C0 위반, 3/3은 그 가운데 연속 세 번) | `--version`에 패키지까지: `@xhmikosr/decompress@11.1.4` |
+| oras-go | — | 지원: 결과 폴더 `--case` (실제 위반 케이스 재실행 기록 없음) | 탐색 입력은 엔트리 이름을 oras-go 아티팩트 디렉터리 `d/` 아래로 옮겨 보냄(케이스는 그대로). 탈출에 `../`가 하나 더 필요함. 확인은 2.6.2 한 버전의 demo run 1회([USAGE 한계](docs/USAGE.md#한계와-주의)) |
 
 대상 실행을 확인한 호스트는 **Windows + WSL2(Ubuntu 24.04, x86_64) + Docker Desktop 호스트 한 대**입니다. macOS와
 그 밖의 Linux 호스트는 이 후보에서 확인하지 않았습니다. 네 대상의 실제 실행은 **커밋 `f108e36`의 깨끗한 클론과
@@ -231,7 +231,7 @@ oracle·feedback에 넣지 않고, 알려진 CVE PoC를 탐색의 기본 seed로
 - **H-A (주 가설):** 어휘·seed·예산·이미지·oracle·operator 선택(uniform)이 같고 retention 정책만 다른 세 arm —
   **R**(무작위), **D**(구조 커버리지), **S-u**(identity/effect/boundary-attempt 상태 retention) — 을 비교합니다.
   1차 지표는 **T_first**(첫 C1 ∨ C2까지 실행 수, 우측중도절단 생존분석)와 **U_viol**(정규화 서명 기준 고유 위반
-  입력 수)입니다. 사전등록(EXP-3·EXP-2)은 Git에 동결돼 있습니다. 결과: 본실험 결과 자리(봉인 해제 뒤 기입).
+  입력 수)입니다. 사전등록(EXP-3·EXP-2)은 Git에 동결돼 있습니다. 결과(EXP-2 holdout, #487): S-u는 R·D 어느 쪽과도 구분되지 않았고, 위험률 비 2 이상의 가속은 구간으로 배제됐다(결함 깊이 1 벤치마크). 근거는 [주장 목록](paper/sections/claims-evidence-status-v1.md) C-HA·S-HOLDOUT 행.
 - **H-B:** CVE 문자열·버전·PoC 바이트를 넣지 않은 generic C0/C1/C2가 여러 추출기의 취약/수정 쌍을 손 fixture로
   구분하는가 — 위 (1)·(2)의 통제 차분이 그 근거입니다.
 - **H-C (보조):** 어휘 음성 통제. 감사 이후 이를 검정한 실행은 없습니다.

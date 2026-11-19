@@ -62,7 +62,7 @@ Research Plane(무엇을 위험으로 볼지 정의) → Runtime Engine(생성·
 현재 capability baseline은 main **`8ad07b8e5f23f789d57ea50ba52c7acfcee951ea`**다.
 [Research Contract v1](research-contract-v1.md)은 G0 정의/claim scope를,
 [STATUS](../../STATUS.md)는 DESIGNED / IMPLEMENTED / TESTED / EXPERIMENTALLY VALIDATED를 구분한다.
-Core Layer 2–5와 Layer 6 evidence infrastructure가 구현됐다. 공개된 실험 결과는 EXP-0 등록 실행 리포트와 hazard 파일럿 메모이고([STATUS](../../STATUS.md) 실험 순서), 본실험 결과 자리(봉인 해제 뒤 기입)는 비어 있다.
+Core Layer 2–5와 Layer 6 evidence infrastructure가 구현됐다. 공개된 실험 결과는 EXP-0 등록 실행 리포트와 hazard 파일럿 메모이고([STATUS](../../STATUS.md) 실험 순서), 본실험(EXP-2 holdout) H-A 판정은 비기각(분리 실패, HR 2 배제)이다(#487, 주장 목록 C-HA·S-HOLDOUT 행).
 
 ArchiveCase → deterministic USTAR → fresh runtime/prepared target → BEFORE → target execution →
 AFTER → C0/C1/C2 → feedback pipeline과 minimal benign seeds가 구현됐다. `run_search_campaign`은 B0/B1/B3,

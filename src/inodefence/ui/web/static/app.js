@@ -252,7 +252,7 @@ function renderOverview(view) {
       || withSeries.slice().sort((a, b) => b.pts.length - a.pts.length)[0];
     const since = new Date(chosen.pts[0].t * 1000).toLocaleTimeString();
     const graph = areaGraph(chosen.pts, chosen.pts[chosen.pts.length - 1].budget, since);
-    progressNote = `${chosen.r.target || EM_DASH} ${(chosen.r.run_id || "").slice(-16)}`;
+    progressNote = `${chosen.r.target || EM_DASH} ${tailId(chosen.r.run_id, 16)}`;
     if (withSeries.length > 1) {
       const sel = el("div", { class: "selector" }, withSeries.map((x) => {
         const btn = el("button", { class: "selbtn" + (x.key === chosen.key ? " on" : ""), title: x.r.run_id || "" }, [`${x.r.target || "?"} ${tailId(x.r.run_id, 8)}`]);

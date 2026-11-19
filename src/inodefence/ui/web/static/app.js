@@ -286,18 +286,17 @@ function renderOverview(view) {
     progressCard,
     cardLabeled("campaign verdicts", scanned.length ? barChart(verdictRows) : empty("no runs found", ["no explore or verify runs in the scanned folders"])),
   ]);
-  const row2 = el("div", { class: "grid-3 auto" }, [
-    cardLabeled("runs by target", targetRunRows.length ? barChart(targetRunRows) : empty("no runs found", [])),
-    cardLabeled("candidates by target", targetCandRows.some((r) => r.value) ? barChart(targetCandRows) : empty("no candidates", ["no oracle-flagged cases in the scanned runs"])),
+  const lower = el("div", { class: "overview-lower" }, [
+    el("div", { class: "lower-left" }, [
+      cardLabeled("runs by target", targetRunRows.length ? barChart(targetRunRows) : empty("no runs found", [])),
+      cardLabeled("candidates by target", targetCandRows.some((r) => r.value) ? barChart(targetCandRows) : empty("no candidates", ["no oracle-flagged cases in the scanned runs"])),
+      cardLabeled("termination of extractor", termRows.length ? barChart(termRows) : empty("no termination counts", ["no termination counts in the scanned results (live mid-run numbers are node-tar only)"])),
+      cardLabeled("replays by conclusion", replays.length ? barChart(conclRows) : empty("no replays yet", [["run ", el("code", {}, ["inodefence replay <run-NNNNNN folder>"])]])),
+    ]),
     cardLabeled("recent candidates", renderRecentCandidates(findingsData)),
   ]);
-  const row3 = el("div", { class: "grid-3" }, [
-    cardLabeled("termination of extractor", termRows.length ? barChart(termRows) : empty("no termination counts", ["no termination counts in the scanned results (live mid-run numbers are node-tar only)"])),
-    cardLabeled("replays by conclusion", replays.length ? barChart(conclRows) : empty("no replays yet", [["run ", el("code", {}, ["inodefence replay <run-NNNNNN folder>"])]])),
-  ]);
   view.appendChild(row1);
-  view.appendChild(row2);
-  view.appendChild(row3);
+  view.appendChild(lower);
   view.appendChild(cardLabeled("runs", renderRunsTable(campaigns)));
 }
 
@@ -369,11 +368,7 @@ function renderRunsTable(campaigns) {
 }
 
 /* -- run detail (minimal) -- */
-async function renderRunDetail(view, id) {
-  view.appendChild(el("h2", { class: "page" }, ["Run"]));
-  let data;
-  try { data = await api(`/api/runs/${encodeURIComponent(id)}`); }
-  catch (err) { view.appendChild(el("div", { class: "card" }, [empty("run not found", [String(err)])])); return; }
+function runDetailCards(data) {
   const snap = data.snapshot;
   const s = snap.summary || {};
   const p = snap.progress || {};
@@ -382,21 +377,29 @@ async function renderRunDetail(view, id) {
   const rows = [
     ["kind", snap.ref.kind], ["target", snap.ref.target], ["version", snap.ref.version],
     ["state", p.state], ["runs / budget", (p.runs == null && p.budget == null) ? null : `${p.runs == null ? EM_DASH : p.runs} / ${p.budget == null ? EM_DASH : p.budget}`],
-    ["verdict", s.verdict],
+    ["runs/second", p.runs_per_second], ["verdict", s.verdict],
     ["validated", s.validated == null ? null : (s.validated === false ? "as stored (not validated)" : "validated")],
     ["executed", s.executed], ["unjudged steps", s.unjudged_steps],
     ["terminations", terms], ["candidates", (snap.findings || []).length ? findings.length : null],
     ["result", s.result_path],
   ];
   const dl = el("div", { class: "rank-list" }, rows.map(([k, v]) => el("div", { class: "rank-item" }, [el("div", { class: "meta" }, [k]), el("div", { class: "mono" }, [v == null ? EM_DASH : String(v)])])));
-  view.appendChild(cardLabeled("summary", dl));
+  const out = [cardLabeled("summary", dl)];
   if (findings.length) {
     const list = el("div", { class: "rank-list" }, findings.map((f) => el("div", { class: "rank-item" }, [
       el("div", { class: "mono", style: "overflow:hidden;text-overflow:ellipsis" }, [dash(f.case_id)]),
       el("div", { class: "row-flex" }, [...["c0", "c1", "c2"].map((k) => f[k] === true ? el("span", { class: "chip chip-bad chip-sm" }, [k.toUpperCase()]) : null).filter(Boolean), chip(f.finding, null, f.finding)]),
     ])));
-    view.appendChild(cardLabeled("candidates", list));
+    out.push(cardLabeled("candidates", list));
   }
+  return out;
+}
+async function renderRunDetail(view, id) {
+  view.appendChild(el("h2", { class: "page" }, ["Run"]));
+  let data;
+  try { data = await api(`/api/runs/${encodeURIComponent(id)}`); }
+  catch (err) { view.appendChild(el("div", { class: "card" }, [empty("run not found", [String(err)])])); return; }
+  for (const card of runDetailCards(data)) view.appendChild(card);
   view.appendChild(el("div", { class: "note" }, [el("a", { class: "go", href: "#/overview" }, ["‹ back to overview"])]));
 }
 
@@ -427,26 +430,41 @@ async function renderTargets(view) {
     if (r.status) {
       a.cand += (r.status.candidates || 0) + (r.status.candidates_needs_repro || 0);
       if (r.status.verdict && a.verdicts[r.status.verdict] != null) a.verdicts[r.status.verdict] += 1;
-      if (r.kind === "verify" && r.status.verdict) a.lastVerify = { verdict: r.status.verdict, age: r.status.progress_age_seconds, updated_at: r.status.updated_at, version: r.version };
+      if (r.kind === "verify" && r.status.verdict) {
+        const mt = r.status.result_mtime;
+        // pick the verify with the greatest result mtime (RES1). When mtimes are absent (field not
+        // yet in the base), keep the first seen and label it "a verify result", not "last".
+        if (!a.lastVerify || (mt != null && (a.lastVerify.mtime == null || mt > a.lastVerify.mtime))) {
+          a.lastVerify = { verdict: r.status.verdict, mtime: mt, version: r.version };
+        }
+      }
     }
   }
   const names = Object.keys(reg).length ? Object.keys(reg) : Object.keys(agg);
-  if (names.length === 0) { view.appendChild(el("div", { class: "card" }, [empty("target registry not readable", td.state !== "ok" ? [td.reason || "no repository root configured"] : ["no targets registered"])])); return; }
+  if (names.length === 0) {
+    const reasons = td.state !== "ok"
+      ? [td.reason || "no repository root configured", "the registry lives in a repository clone — run the dashboard from one"]
+      : ["no targets registered"];
+    view.appendChild(el("div", { class: "card" }, [empty("target registry not readable", reasons)]));
+    return;
+  }
   const cards = el("div", { class: "grid-4" }, names.map((name) => {
     const a = agg[name] || { runs: 0, cand: 0 };
     const lv = a.lastVerify;
     const dot = el("span", { class: "dot", style: `background:var(${targetColor(name)})` }, []);
-    const whenStr = lv ? (lv.updated_at != null ? fmtTime(lv.updated_at) : fmtAge(lv.age)) : null;
+    const whenStr = lv && lv.mtime != null ? `result written ${fmtTime(lv.mtime)}` : EM_DASH;
+    const verifyLabel = lv && lv.mtime != null ? "last verify" : "a verify result";
     const lastVerify = lv
       ? el("div", { class: "row-flex", style: "flex-wrap:wrap;gap:6px" }, [lv.version ? el("span", { class: "mono muted", style: "font-size:11px" }, [lv.version]) : null, chip(lv.verdict), el("span", { class: "muted", style: "font-size:11px" }, [whenStr])])
       : el("span", { class: "muted" }, ["no verify yet"]);
+    const candText = a.runs === 0 ? EM_DASH : String(a.cand);  // nothing to count when there are no runs
     return el("div", { class: "card tcard" }, [
       el("div", { class: "row-flex", style: "margin-bottom:10px" }, [dot, el("span", { style: "font-weight:600" }, [name])]),
       el("div", { class: "tnums" }, [
         el("div", {}, [el("div", { class: "big2" }, [String(a.runs)]), el("div", { class: "card-label" }, ["runs"])]),
-        el("div", {}, [el("div", { class: "big2", style: a.cand > 0 ? "color:var(--if-bad)" : "" }, [String(a.cand)]), el("div", { class: "card-label" }, ["candidates"])]),
+        el("div", {}, [el("div", { class: "big2", style: a.cand > 0 ? "color:var(--if-bad)" : "" }, [candText]), el("div", { class: "card-label" }, ["candidates"])]),
       ]),
-      el("div", { class: "rank-list", style: "margin-top:10px" }, [kv("last verify", lastVerify), kv("prepared images", groups[name] == null ? EM_DASH : String(groups[name]))]),
+      el("div", { class: "rank-list", style: "margin-top:10px" }, [kv(verifyLabel, lastVerify), kv("prepared images", groups[name] == null ? EM_DASH : String(groups[name]))]),
     ]);
   }));
   view.appendChild(cardLabeled("targets", cards));
@@ -530,20 +548,21 @@ async function renderFindings(view) {
   const left = el("div", {}, [filters, shown.length ? list : empty("no findings match", []), truncNote(fd)]);
   const right = findingsSelected ? findingDetail(findingsSelected.f, findingsSelected.replay) : el("div", { class: "card" }, [empty("select a finding", ["pick a candidate to see its contracts, input hash and replay rounds"])]);
   const label = anyFilter ? `candidates (${shown.length} of ${items.length}) · filtered` : `candidates (${shown.length})`;
-  view.appendChild(el("div", { class: "grid-2" }, [cardLabeled(label, left), cardLabeled("detail", right)]));
+  view.appendChild(el("div", { class: "split" }, [cardLabeled(label, left), cardLabeled("detail", right)]));
 }
 function findingDetail(f, replay) {
   const c = f.case;
-  const rows = [
+  const list = el("div", { class: "rank-list" }, [
     kv("case", el("div", { class: "mono" }, [dash(c.case_id)])),
     kv("target", `${f.target || EM_DASH}${f.version ? "@" + f.version : ""}`),
     kv("contracts", contractCell(c)),
-    kv("class", chip(c.finding)),
-    kv("input SHA-256", el("div", { class: "mono", style: "word-break:break-all" }, [dash(c.tar_sha256)])),
-    kv("input path", el("div", { class: "mono", style: "word-break:break-all" }, [dash(c.input_path)])),
-    kv("termination", dash(c.termination)),
-  ];
-  const body = el("div", {}, [el("div", { class: "rank-list" }, rows), contractLegend()]);
+  ]);
+  list.appendChild(el("div", { class: "note", style: "margin:0 0 4px" }, ["V violated · - judged, not violated · ? not judged / not observed"]));
+  list.appendChild(kv("class", chip(c.finding)));
+  list.appendChild(kv("input SHA-256", el("div", { class: "mono", style: "word-break:break-all" }, [dash(c.tar_sha256)])));
+  list.appendChild(kv("input path", el("div", { class: "mono", style: "word-break:break-all" }, [dash(c.input_path)])));
+  list.appendChild(kv("termination", dash(c.termination)));
+  const body = el("div", {}, [list]);
   if (replay) {
     const denom = replay.judged;
     const rate = denom == null || denom === 0 ? EM_DASH : `${replay.same_contracts == null ? EM_DASH : replay.same_contracts}/${denom}`;
@@ -552,7 +571,7 @@ function findingDetail(f, replay) {
       el("div", { class: "row-flex", style: "margin-bottom:6px" }, [conclusionChip(replay.conclusion), el("span", { class: "muted" }, [`same contracts ${rate} · judged ${dash(replay.judged)} of ${dash(replay.rounds_done)} rounds`])]),
       replayRoundsTable(replay),
     ]));
-  } else body.appendChild(el("div", { class: "note" }, ["no replay for this case (contents are never shown)"]));
+  } else body.appendChild(el("p", { class: "note", style: "margin-top:12px" }, ["no replay for this case (contents are never shown)"]));
   return body;
 }
 function replayRoundsTable(rp) {
@@ -601,14 +620,81 @@ async function renderReplay(view) {
   const tn = truncNote(rd); if (tn) view.appendChild(tn);
 }
 
-/* -- Experiments -- */
+/* -- Experiments (campaign timeline) -- */
+let experimentsFilter = { running: true, stalled: true, finished: true, "no result": true };
+let experimentsSelected = null;
+function runCategory(s) {
+  const rs = runState(s);
+  if (rs && rs.label === "stalled") return "stalled";
+  if (rs && rs.active) return "running";
+  if (s && s.verdict != null) return "finished";
+  return "no result";
+}
 async function renderExperiments(view) {
   view.appendChild(el("h2", { class: "page" }, ["Experiments"]));
   if (!state.runs) { try { state.runs = await api("/api/runs"); state.roots = state.runs.roots || []; } catch (err) { view.appendChild(el("div", { class: "card" }, [empty("could not load runs", [String(err)])])); return; } }
-  const campaigns = (state.runs.runs || []).filter((r) => r.kind !== "replay");
-  view.appendChild(cardLabeled(`campaigns (${campaigns.length})`, renderRunsTable(campaigns)));
-  const tn = truncNote(state.runs);
-  if (tn) view.appendChild(tn);
+  const search = state.filter.trim().toLowerCase();
+  const campaigns = (state.runs.runs || []).filter((r) => r.kind !== "replay").filter((r) => !search || JSON.stringify([r.target, r.version, r.kind, r.run_id]).toLowerCase().includes(search));
+  const counts = { running: 0, stalled: 0, finished: 0, "no result": 0 };
+  for (const r of campaigns) if (r.status) counts[runCategory(r.status)]++;
+  function rerender() { const v = $("#view"); v.innerHTML = ""; renderExperiments(v); }
+  const CAT_TONE = { running: "info", stalled: "warn", finished: "ok", "no result": "muted" };
+  const chips = el("div", { class: "filters" }, Object.keys(counts).map((cat) => {
+    const on = experimentsFilter[cat];
+    const b = el("span", { class: `chip chip-sm chip-${CAT_TONE[cat]} fchip${on ? "" : " off"}` }, [`${cat} ${counts[cat]}`]);
+    b.addEventListener("click", () => { experimentsFilter[cat] = !experimentsFilter[cat]; rerender(); });
+    return b;
+  }));
+  view.appendChild(chips);
+  const shown = campaigns.filter((r) => !r.status || experimentsFilter[runCategory(r.status)]);
+  // timeline: per-run runs/budget bars (no start/end times in the app layer -> no fabricated axis)
+  const tlRows = shown.filter((r) => r.status && r.status.runs != null && r.status.budget).slice(0, 40).map((r) => {
+    const pct = Math.min(100, Math.round((r.status.runs / r.status.budget) * 100));
+    const fill = el("div", { class: "bar-fill" }, []); fill.style.width = `${pct}%`; fill.style.background = `var(${targetColor(r.target)})`;
+    return el("div", { class: "tl-row" }, [
+      el("div", { class: "name", title: r.run_id || r.id }, [`${r.target || EM_DASH} ${tailId(r.run_id, 8)}`]),
+      el("div", { class: "bar-track" }, [fill]),
+      el("div", { class: "val num" }, [`${num(r.status.runs)}/${num(r.status.budget)}`]),
+    ]);
+  });
+  const timeline = tlRows.length ? el("div", { class: "timeline" }, tlRows) : empty("no progress to show", ["runs with a runs/budget reading appear here (start/end times are not recorded)"]);
+  view.appendChild(cardLabeled("timeline (runs / budget)", timeline));
+  // table + detail split
+  const table = experimentsTable(shown, (r) => { experimentsSelected = r.id; rerender(); });
+  const right = experimentsSelected ? experimentsDetail(experimentsSelected) : el("div", { class: "card" }, [empty("select a campaign", ["pick a row to see its progress, terminations and candidates"])]);
+  view.appendChild(el("div", { class: "split" }, [cardLabeled(`campaigns (${shown.length})`, table), cardLabeled("detail", right)]));
+  const tn = truncNote(state.runs); if (tn) view.appendChild(tn);
+}
+function experimentsTable(rows, onPick) {
+  if (rows.length === 0) return empty("no campaigns match", []);
+  const cols = ["run id", "target", "ver", "runs/budget", "rps", "state", "verdict", "term"];
+  const head = el("tr", {}, cols.map((h, i) => el("th", { class: [3, 4].includes(i) ? "r" : "" }, [h])));
+  const body = el("tbody", {}, rows.map((r) => {
+    const s = r.status || {};
+    const rs = runState(s);
+    const terms = Object.entries(s.terminations || {}).filter(([, n]) => n != null).map(([k, n]) => `${k[0]}${n}`).join(" ") || EM_DASH;
+    const tr = el("tr", { class: "sel", style: "cursor:pointer" }, [
+      el("td", { class: "mono", title: r.run_id || r.id }, [tailId(r.run_id, 12)]),
+      el("td", {}, [dash(r.target)]),
+      el("td", { class: "mono" }, [dash(r.version)]),
+      el("td", { class: "r num" }, [s.runs == null && s.budget == null ? EM_DASH : `${num(s.runs)}/${num(s.budget)}`]),
+      el("td", { class: "r num" }, [s.runs_per_second == null ? EM_DASH : s.runs_per_second.toFixed(2)]),
+      el("td", {}, [rs ? toneChip(rs.label, rs.tone, rs.age != null ? fmtAge(rs.age) : "") : (s.state ? chip(s.state) : el("span", { class: "dash" }, [EM_DASH]))]),
+      el("td", {}, [s.verdict ? chip(s.verdict) : (s.read_state === "unvalidated" ? chip("as stored", "chip-warn chip-sm") : el("span", { class: "dash" }, [EM_DASH]))]),
+      el("td", { class: "mono muted", title: "termination counts (s/r/f/t)" }, [terms]),
+    ]);
+    tr.addEventListener("click", () => onPick(r));
+    return tr;
+  }));
+  return el("div", { class: "table-wrap" }, [el("table", { class: "runs" }, [el("thead", {}, [head]), body])]);
+}
+function experimentsDetail(id) {
+  const holder = el("div", {}, [empty("loading…", [])]);
+  api(`/api/runs/${encodeURIComponent(id)}`).then((data) => {
+    holder.innerHTML = "";
+    for (const card of runDetailCards(data)) holder.appendChild(card);
+  }).catch((err) => { holder.innerHTML = ""; holder.appendChild(empty("run not found", [String(err)])); });
+  return holder;
 }
 
 /* -- Artifacts -- */
@@ -631,7 +717,7 @@ async function renderArtifacts(view) {
   const head = el("tr", {}, ["kind", "path", "read_state", "size", "mtime", "sha / case"].map((h) => el("th", { class: [3].includes(["kind", "path", "read_state", "size", "mtime", "sha / case"].indexOf(h)) ? "r" : "" }, [h])));
   const body = el("tbody", {}, (ad.artifacts || []).map((a) => {
     const readCell = a.symlink ? chip("link — not followed", "chip-warn chip-sm", a.read_state || "") : (a.read_state ? chip(a.read_state, a.read_state === "ok" ? "chip-ok chip-sm" : a.read_state === "missing" ? "chip-muted chip-sm" : "chip-warn chip-sm") : el("span", { class: "dash" }, [EM_DASH]));
-    const shaCase = a.tar_sha256 ? el("span", { class: "mono muted", title: a.case_id || "" }, [a.tar_sha256.slice(0, 16) + "…"]) : (a.case_id ? el("span", { class: "mono muted" }, [a.case_id]) : el("span", { class: "dash" }, [EM_DASH]));
+    const shaCase = a.tar_sha256 ? el("span", { class: "mono muted", title: a.tar_sha256 + (a.case_id ? `  (${a.case_id})` : "") }, [a.tar_sha256.slice(0, 16) + "…"]) : (a.case_id ? el("span", { class: "mono muted" }, [a.case_id]) : el("span", { class: "dash" }, [EM_DASH]));
     return el("tr", {}, [
       el("td", {}, [el("span", { class: "chip chip-sm chip-muted" }, [dash(a.kind)])]),
       el("td", { class: "mono", style: "word-break:break-all;max-width:420px" }, [dash(a.path)]),

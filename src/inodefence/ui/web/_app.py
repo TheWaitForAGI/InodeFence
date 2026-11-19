@@ -214,6 +214,9 @@ def _run_status(snapshot: runs_app.RunSnapshot) -> dict[str, Any]:
         "read_state": summary.read_state.value if summary else None,
         "label": summary.label if summary else None,
         "executed": summary.executed if summary else None,
+        # result file's mtime (RES1 RunSummary.result_mtime); getattr degrades to None until the
+        # field reaches this base, then auto-populates. UI label: "result written", not "verified".
+        "result_mtime": getattr(summary, "result_mtime", None) if summary else None,
         "terminations": to_jsonable(summary.terminations) if summary else {},
         "candidates": _count_findings(snapshot, runs_app.FindingClass.CANDIDATE),
         "candidates_needs_repro": _count_findings(

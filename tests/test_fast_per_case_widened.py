@@ -22,6 +22,7 @@ import dataclasses
 import json
 import os
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -176,7 +177,10 @@ def test_an_inherited_interval_never_reaches_the_launch(
 
 
 @pytest.mark.parametrize("target", WIDENED)
-def test_the_launch_equals_0_2_0(target: str) -> None:
+def test_the_launch_equals_0_2_0(target: str, monkeypatch) -> None:
+    # python-tarfile passes PYTHON from the environment or the running interpreter: unset it
+    # and record the interpreter as "<python>", as the fixture recording did.
+    monkeypatch.delenv("PYTHON", raising=False)
     seen: list[dict[str, Any]] = []
 
     def runner(argv: Any, env: Any = None, **_: Any) -> Any:
@@ -190,6 +194,8 @@ def test_the_launch_equals_0_2_0(target: str) -> None:
         _launch(target, RuntimeSession(target=target, policy=FAST_2B), runner, Path(tmp))
         for item in seen:
             item["changed"] = {k: v.replace(tmp, "<tmp>") for k, v in item["changed"].items()}
+            if item["changed"].get("PYTHON") == sys.executable:
+                item["changed"]["PYTHON"] = "<python>"
             if "DEMO_ENGINE_COMMIT" in item["changed"]:
                 item["changed"]["DEMO_ENGINE_COMMIT"] = "<engine>"
     assert seen == json.loads(FIXTURE.read_text(encoding="utf-8"))[target]

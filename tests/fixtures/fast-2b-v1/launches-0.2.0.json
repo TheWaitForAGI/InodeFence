@@ -73,7 +73,7 @@
         "EXPLORE_IMAGE": "img",
         "EXTRACTION_FILTER": "data",
         "INODEFENCE_EVIDENCE_DIR": "<tmp>",
-        "PYTHON": "/home/choijiwng/Projects/InodeFence/.claude/worktrees/host4-res1/.venv/bin/python",
+        "PYTHON": "<python>",
         "RUNTIME_VERSION": "3.12.7",
         "RUN_ID": "rid",
         "SKIP_BUILD": "1"

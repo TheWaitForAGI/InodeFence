@@ -115,6 +115,20 @@ function barChart(rows) {
   return box;
 }
 
+// A PROGRESS bar is ALWAYS normalized to budget (never to a max across runs): a full bar = done.
+// (Count-comparison bars like runs-by-target use barChart, which is max-normalized, on purpose.)
+function progressRow(target, runId, runs, budget) {
+  const name = `${target || EM_DASH} ${tailId(runId, 8)}`;
+  const right = el("div", { class: "val num" }, [runs == null && budget == null ? EM_DASH : `${num(runs)}/${num(budget)}`]);
+  if (runs == null || !budget) {
+    return el("div", { class: "tl-row" }, [el("div", { class: "name", title: runId || "" }, [name]), el("div", { class: "muted", style: "font-size:11px" }, [budget ? "" : "no budget"]), right]);
+  }
+  const fill = el("div", { class: "bar-fill" }, []);
+  fill.style.width = `${Math.min(100, Math.round((runs / budget) * 100))}%`;
+  fill.style.background = `var(${targetColor(target)})`;
+  return el("div", { class: "tl-row" }, [el("div", { class: "name", title: runId || "" }, [name]), el("div", { class: "bar-track" }, [fill]), right]);
+}
+
 /* area graph of observed runs over time for one active run (axes as HTML so text never distorts) */
 function areaGraph(points, budget, since) {
   if (!points || points.length < 2) return null;
@@ -250,9 +264,10 @@ function renderOverview(view) {
   } else if (activeRuns.length) {
     progressBody = empty("no observed values yet", ["values appear while an active run reports (node-tar writes live numbers; the others do not)"]);
   } else {
-    const rows = readable.filter((r) => r.status.runs != null && r.status.budget).slice(0, 8)
-      .map((r) => ({ name: `${r.target || EM_DASH} ${(r.run_id || "").slice(-8)}`, value: r.status.runs, color: targetColor(r.target), title: `${num(r.status.runs)}/${num(r.status.budget)}` }));
-    progressBody = rows.length ? barChart(rows) : empty("no active run", [["open this page while ", el("code", {}, ["inodefence explore --target node-tar --version latest"]), " runs to watch runs/budget climb"]]);
+    const prog = readable.filter((r) => r.status.runs != null && r.status.budget).slice(0, 8);
+    progressBody = prog.length
+      ? el("div", { class: "timeline" }, prog.map((r) => progressRow(r.target, r.run_id, r.status.runs, r.status.budget)))
+      : empty("no active run", [["open this page while ", el("code", {}, ["inodefence explore --target node-tar --version latest"]), " runs to watch runs/budget climb"]]);
   }
   const progressCard = cardLabeled(progressNote ? `campaign progress · ${progressNote}` : "campaign progress", progressBody, true);
 
@@ -383,7 +398,7 @@ function runDetailCards(data) {
     ["terminations", terms], ["candidates", (snap.findings || []).length ? findings.length : null],
     ["result", s.result_path],
   ];
-  const dl = el("div", { class: "rank-list" }, rows.map(([k, v]) => el("div", { class: "rank-item" }, [el("div", { class: "meta" }, [k]), el("div", { class: "mono" }, [v == null ? EM_DASH : String(v)])])));
+  const dl = el("div", { class: "rank-list" }, rows.map(([k, v]) => kv(k, v == null ? null : String(v))));
   const out = [cardLabeled("summary", dl)];
   if (findings.length) {
     const list = el("div", { class: "rank-list" }, findings.map((f) => el("div", { class: "rank-item" }, [
@@ -404,7 +419,7 @@ async function renderRunDetail(view, id) {
 }
 
 /* -- shared helpers for the secondary pages -- */
-function kv(label, node) { return el("div", { class: "rank-item" }, [el("div", { class: "meta" }, [label]), typeof node === "string" || node == null ? el("div", { class: "mono" }, [node == null ? EM_DASH : node]) : node]); }
+function kv(label, node) { return el("div", { class: "kvrow" }, [el("div", { class: "kvlabel" }, [label]), typeof node === "string" || node == null ? el("div", { class: "mono", style: "word-break:break-all;min-width:0" }, [node == null ? EM_DASH : node]) : node]); }
 function fmtBytes(n) { if (n == null) return EM_DASH; if (n < 1024) return `${n} B`; const u = ["KB", "MB", "GB", "TB"]; let v = n, i = -1; do { v /= 1024; i++; } while (v >= 1024 && i < 3); return `${v.toFixed(1)} ${u[i]}`; }
 function fmtTime(epoch) { return epoch == null ? EM_DASH : new Date(epoch * 1000).toLocaleString(); }
 function selectEl(opts, value, onChange) {
@@ -489,7 +504,7 @@ async function renderTargets(view) {
     const v = a.verdicts || {};
     return el("tr", {}, [
       el("td", {}, [el("span", { class: "row-flex", style: "gap:6px" }, [el("span", { class: "dot", style: `background:var(${targetColor(n)})` }, []), n])]),
-      el("td", { class: "r num" }, [String(a.runs || 0)]), el("td", { class: "r num" }, [String(a.cand || 0)]),
+      el("td", { class: "r num" }, [String(a.runs || 0)]), el("td", { class: "r num" }, [a.runs ? String(a.cand || 0) : EM_DASH]),
       el("td", { class: "r num" }, [String(v.PASS || 0)]), el("td", { class: "r num" }, [String(v.FAIL || 0)]), el("td", { class: "r num" }, [String(v.ERROR || 0)]),
     ]);
   }));
@@ -639,50 +654,51 @@ async function renderExperiments(view) {
   for (const r of campaigns) if (r.status) counts[runCategory(r.status)]++;
   function rerender() { const v = $("#view"); v.innerHTML = ""; renderExperiments(v); }
   const CAT_TONE = { running: "info", stalled: "warn", finished: "ok", "no result": "muted" };
-  const chips = el("div", { class: "filters" }, Object.keys(counts).map((cat) => {
+  const anyOff = Object.values(experimentsFilter).some((v) => !v) || !!search;
+  const chipEls = Object.keys(counts).map((cat) => {
     const on = experimentsFilter[cat];
     const b = el("span", { class: `chip chip-sm chip-${CAT_TONE[cat]} fchip${on ? "" : " off"}` }, [`${cat} ${counts[cat]}`]);
     b.addEventListener("click", () => { experimentsFilter[cat] = !experimentsFilter[cat]; rerender(); });
     return b;
-  }));
-  view.appendChild(chips);
+  });
+  if (anyOff) { const cb = el("button", { class: "selbtn" }, ["clear filters"]); cb.addEventListener("click", () => { experimentsFilter = { running: true, stalled: true, finished: true, "no result": true }; const s = $("#search"); if (s) s.value = ""; state.filter = ""; rerender(); }); chipEls.push(cb); }
+  view.appendChild(el("div", { class: "filters" }, chipEls));
   const shown = campaigns.filter((r) => !r.status || experimentsFilter[runCategory(r.status)]);
   // timeline: per-run runs/budget bars (no start/end times in the app layer -> no fabricated axis)
-  const tlRows = shown.filter((r) => r.status && r.status.runs != null && r.status.budget).slice(0, 40).map((r) => {
-    const pct = Math.min(100, Math.round((r.status.runs / r.status.budget) * 100));
-    const fill = el("div", { class: "bar-fill" }, []); fill.style.width = `${pct}%`; fill.style.background = `var(${targetColor(r.target)})`;
-    return el("div", { class: "tl-row" }, [
-      el("div", { class: "name", title: r.run_id || r.id }, [`${r.target || EM_DASH} ${tailId(r.run_id, 8)}`]),
-      el("div", { class: "bar-track" }, [fill]),
-      el("div", { class: "val num" }, [`${num(r.status.runs)}/${num(r.status.budget)}`]),
-    ]);
-  });
+  const tlRows = shown.filter((r) => r.status && r.status.runs != null && r.status.budget).slice(0, 40)
+    .map((r) => progressRow(r.target, r.run_id, r.status.runs, r.status.budget));
   const timeline = tlRows.length ? el("div", { class: "timeline" }, tlRows) : empty("no progress to show", ["runs with a runs/budget reading appear here (start/end times are not recorded)"]);
   view.appendChild(cardLabeled("timeline (runs / budget)", timeline));
-  // table + detail split
-  const table = experimentsTable(shown, (r) => { experimentsSelected = r.id; rerender(); });
-  const right = experimentsSelected ? experimentsDetail(experimentsSelected) : el("div", { class: "card" }, [empty("select a campaign", ["pick a row to see its progress, terminations and candidates"])]);
-  view.appendChild(el("div", { class: "split" }, [cardLabeled(`campaigns (${shown.length})`, table), cardLabeled("detail", right)]));
+  const onPick = (r) => { experimentsSelected = r.id; rerender(); };
+  const heading = anyOff ? `campaigns (${shown.length} of ${campaigns.length}) · filtered` : `campaigns (${shown.length})`;
+  if (experimentsSelected) {
+    // detail open: the table drops rps/ver (shown in the detail) and takes 2/3 so no chip clips
+    view.appendChild(el("div", { class: "split wide" }, [cardLabeled(heading, experimentsTable(shown, onPick, true)), cardLabeled("detail", experimentsDetail(experimentsSelected))]));
+  } else {
+    view.appendChild(cardLabeled(heading, experimentsTable(shown, onPick, false)));
+  }
   const tn = truncNote(state.runs); if (tn) view.appendChild(tn);
 }
-function experimentsTable(rows, onPick) {
+function experimentsTable(rows, onPick, compact) {
   if (rows.length === 0) return empty("no campaigns match", []);
-  const cols = ["run id", "target", "ver", "runs/budget", "rps", "state", "verdict", "term"];
-  const head = el("tr", {}, cols.map((h, i) => el("th", { class: [3, 4].includes(i) ? "r" : "" }, [h])));
+  const cols = compact ? ["run id", "target", "runs/budget", "state", "verdict", "term"] : ["run id", "target", "ver", "runs/budget", "rps", "state", "verdict", "term"];
+  const rightCols = compact ? ["runs/budget"] : ["runs/budget", "rps"];
+  const head = el("tr", {}, cols.map((h) => el("th", { class: rightCols.includes(h) ? "r" : "" }, [h])));
   const body = el("tbody", {}, rows.map((r) => {
     const s = r.status || {};
     const rs = runState(s);
     const terms = Object.entries(s.terminations || {}).filter(([, n]) => n != null).map(([k, n]) => `${k[0]}${n}`).join(" ") || EM_DASH;
-    const tr = el("tr", { class: "sel", style: "cursor:pointer" }, [
-      el("td", { class: "mono", title: r.run_id || r.id }, [tailId(r.run_id, 12)]),
+    const cells = [
+      el("td", { class: "mono nowrap", title: r.run_id || r.id }, [tailId(r.run_id, 12)]),
       el("td", {}, [dash(r.target)]),
-      el("td", { class: "mono" }, [dash(r.version)]),
-      el("td", { class: "r num" }, [s.runs == null && s.budget == null ? EM_DASH : `${num(s.runs)}/${num(s.budget)}`]),
-      el("td", { class: "r num" }, [s.runs_per_second == null ? EM_DASH : s.runs_per_second.toFixed(2)]),
-      el("td", {}, [rs ? toneChip(rs.label, rs.tone, rs.age != null ? fmtAge(rs.age) : "") : (s.state ? chip(s.state) : el("span", { class: "dash" }, [EM_DASH]))]),
-      el("td", {}, [s.verdict ? chip(s.verdict) : (s.read_state === "unvalidated" ? chip("as stored", "chip-warn chip-sm") : el("span", { class: "dash" }, [EM_DASH]))]),
+      ...(compact ? [] : [el("td", { class: "mono" }, [dash(r.version)])]),
+      el("td", { class: "r num nowrap" }, [s.runs == null && s.budget == null ? EM_DASH : `${num(s.runs)}/${num(s.budget)}`]),
+      ...(compact ? [] : [el("td", { class: "r num" }, [s.runs_per_second == null ? EM_DASH : s.runs_per_second.toFixed(2)])]),
+      el("td", { class: "nowrap" }, [rs ? toneChip(rs.label, rs.tone, rs.age != null ? fmtAge(rs.age) : "") : (s.state ? chip(s.state) : el("span", { class: "dash" }, [EM_DASH]))]),
+      el("td", { class: "nowrap" }, [s.verdict ? chip(s.verdict) : (s.read_state === "unvalidated" ? chip("as stored", "chip-warn chip-sm") : el("span", { class: "dash" }, [EM_DASH]))]),
       el("td", { class: "mono muted", title: "termination counts (s/r/f/t)" }, [terms]),
-    ]);
+    ];
+    const tr = el("tr", { class: "sel", style: "cursor:pointer" }, cells);
     tr.addEventListener("click", () => onPick(r));
     return tr;
   }));

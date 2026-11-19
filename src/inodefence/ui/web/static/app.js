@@ -142,11 +142,18 @@ function areaGraph(points, budget, since) {
       el("span", { class: "num", style: "color:var(--if-accent);font-weight:600" }, [`${num(last.runs)} / ${budget == null ? EM_DASH : num(budget)}`]),
     ]),
   ]);
+  const plot = el("div", { class: "area-plot" }, []);
   const holder = el("div", { class: "area" }, []); holder.innerHTML = svg;
-  wrap.appendChild(holder);
+  plot.appendChild(holder);
+  if (budget) {
+    const pct = (v) => `${((y(v) / H) * 100).toFixed(0)}%`;
+    plot.appendChild(el("span", { class: "ytick", style: `top:${pct(budget)}` }, [num(budget)]));
+    plot.appendChild(el("span", { class: "ytick", style: `top:${pct(budget / 2)}` }, [num(Math.round(budget / 2))]));
+    plot.appendChild(el("span", { class: "ytick", style: `top:${pct(0)}` }, ["0"]));
+  }
+  wrap.appendChild(plot);
   wrap.appendChild(el("div", { class: "area-foot" }, [
     el("span", {}, [`since ${since}`]),
-    el("span", {}, [budget == null ? "" : `budget ${num(budget)}`]),
     el("span", {}, [`now ${nowStr}`]),
   ]));
   return wrap;
@@ -168,6 +175,14 @@ function runState(s) {
   if (s && s.state) return { label: s.state, tone: tone(s.state), active: false };
   return null;
 }
+function tailId(id, n) { id = id || ""; n = n || 12; return id.length > n ? "…" + id.slice(-n) : id || EM_DASH; }
+
+// Contracts use the same legend as the TUI / CLI / compare: V violated, - judged-not-violated, ? not judged.
+function contractMark(v) { const t = v === true ? "bad" : v === false ? "muted" : "warn"; const s = v === true ? "V" : v === false ? "-" : "?"; return el("span", { class: `chip chip-sm chip-${t}` }, [s]); }
+function contractCell(c) { return el("div", { class: "row-flex" }, ["c0", "c1", "c2"].map((k) => el("span", { class: "row-flex", style: "gap:3px" }, [el("span", { class: "muted", style: "font-size:11px" }, [k.toUpperCase()]), contractMark(c[k])]))); }
+function contractLegend() { return el("div", { class: "note", style: "margin:6px 0 0" }, ["V violated · - judged, not violated · ? not judged / not observed"]); }
+const CONCLUSION_TONE = { reproduced_violation: "ok", partially_reproduced: "warn", not_reproduced: "muted", no_violation: "muted", new_violation: "warn", unjudged: "warn", infrastructure_failure: "warn", no_rounds: "muted" };
+function conclusionChip(conc) { const t = CONCLUSION_TONE[conc] || "muted"; return el("span", { class: `chip chip-sm chip-${t}`, title: conc || "" }, [REPLAY_LABEL[conc] || conc || "no rounds"]); }
 
 /* -- Overview -- */
 function renderOverview(view) {
@@ -226,7 +241,7 @@ function renderOverview(view) {
     progressNote = `${chosen.r.target || EM_DASH} ${(chosen.r.run_id || "").slice(-16)}`;
     if (withSeries.length > 1) {
       const sel = el("div", { class: "selector" }, withSeries.map((x) => {
-        const btn = el("button", { class: "selbtn" + (x.key === chosen.key ? " on" : "") }, [`${x.r.target || "?"} ${(x.r.run_id || "").slice(-8)}`]);
+        const btn = el("button", { class: "selbtn" + (x.key === chosen.key ? " on" : ""), title: x.r.run_id || "" }, [`${x.r.target || "?"} ${tailId(x.r.run_id, 8)}`]);
         btn.addEventListener("click", () => { state.selectedProgressKey = x.key; const v = $("#view"); v.innerHTML = ""; renderOverview(v); });
         return btn;
       }));
@@ -271,7 +286,7 @@ function renderOverview(view) {
     progressCard,
     cardLabeled("campaign verdicts", scanned.length ? barChart(verdictRows) : empty("no runs found", ["no explore or verify runs in the scanned folders"])),
   ]);
-  const row2 = el("div", { class: "grid-3" }, [
+  const row2 = el("div", { class: "grid-3 auto" }, [
     cardLabeled("runs by target", targetRunRows.length ? barChart(targetRunRows) : empty("no runs found", [])),
     cardLabeled("candidates by target", targetCandRows.some((r) => r.value) ? barChart(targetCandRows) : empty("no candidates", ["no oracle-flagged cases in the scanned runs"])),
     cardLabeled("recent candidates", renderRecentCandidates(findingsData)),
@@ -407,21 +422,34 @@ async function renderTargets(view) {
   const agg = {};
   for (const r of runsD.runs || []) {
     if (r.kind === "replay" || !r.target) continue;
-    const a = agg[r.target] || (agg[r.target] = { runs: 0, cand: 0, lastVerify: null });
+    const a = agg[r.target] || (agg[r.target] = { runs: 0, cand: 0, lastVerify: null, verdicts: { PASS: 0, FAIL: 0, ERROR: 0 } });
     a.runs += 1;
-    if (r.status) { a.cand += (r.status.candidates || 0) + (r.status.candidates_needs_repro || 0); if (r.kind === "verify" && r.status.verdict) a.lastVerify = { verdict: r.status.verdict, age: r.status.progress_age_seconds }; }
+    if (r.status) {
+      a.cand += (r.status.candidates || 0) + (r.status.candidates_needs_repro || 0);
+      if (r.status.verdict && a.verdicts[r.status.verdict] != null) a.verdicts[r.status.verdict] += 1;
+      if (r.kind === "verify" && r.status.verdict) a.lastVerify = { verdict: r.status.verdict, age: r.status.progress_age_seconds, updated_at: r.status.updated_at, version: r.version };
+    }
   }
   const names = Object.keys(reg).length ? Object.keys(reg) : Object.keys(agg);
   if (names.length === 0) { view.appendChild(el("div", { class: "card" }, [empty("target registry not readable", td.state !== "ok" ? [td.reason || "no repository root configured"] : ["no targets registered"])])); return; }
-  const cards = el("div", { class: "grid-3" }, names.map((name) => {
+  const cards = el("div", { class: "grid-4" }, names.map((name) => {
     const a = agg[name] || { runs: 0, cand: 0 };
-    const lv = a.lastVerify ? el("div", { class: "row-flex" }, [chip(a.lastVerify.verdict), el("span", { class: "muted" }, [fmtAge(a.lastVerify.age)])]) : null;
-    return el("div", { class: "labeled" }, [el("div", { class: "card-label" }, [name]), el("div", { class: "card" }, [el("div", { class: "rank-list" }, [
-      kv("runs", String(a.runs)), kv("candidates", String(a.cand)),
-      kv("last verify", lv || EM_DASH), kv("prepared images", groups[name] == null ? EM_DASH : String(groups[name])),
-    ])])]);
+    const lv = a.lastVerify;
+    const dot = el("span", { class: "dot", style: `background:var(${targetColor(name)})` }, []);
+    const whenStr = lv ? (lv.updated_at != null ? fmtTime(lv.updated_at) : fmtAge(lv.age)) : null;
+    const lastVerify = lv
+      ? el("div", { class: "row-flex", style: "flex-wrap:wrap;gap:6px" }, [lv.version ? el("span", { class: "mono muted", style: "font-size:11px" }, [lv.version]) : null, chip(lv.verdict), el("span", { class: "muted", style: "font-size:11px" }, [whenStr])])
+      : el("span", { class: "muted" }, ["no verify yet"]);
+    return el("div", { class: "card tcard" }, [
+      el("div", { class: "row-flex", style: "margin-bottom:10px" }, [dot, el("span", { style: "font-weight:600" }, [name])]),
+      el("div", { class: "tnums" }, [
+        el("div", {}, [el("div", { class: "big2" }, [String(a.runs)]), el("div", { class: "card-label" }, ["runs"])]),
+        el("div", {}, [el("div", { class: "big2", style: a.cand > 0 ? "color:var(--if-bad)" : "" }, [String(a.cand)]), el("div", { class: "card-label" }, ["candidates"])]),
+      ]),
+      el("div", { class: "rank-list", style: "margin-top:10px" }, [kv("last verify", lastVerify), kv("prepared images", groups[name] == null ? EM_DASH : String(groups[name]))]),
+    ]);
   }));
-  view.appendChild(cards);
+  view.appendChild(cardLabeled("targets", cards));
   // registry table
   if (Object.keys(reg).length) {
     const head = el("tr", {}, ["target", "regression", "auto-prepare", "explore", "replay", "options"].map((h) => el("th", {}, [h])));
@@ -436,9 +464,18 @@ async function renderTargets(view) {
     }));
     view.appendChild(cardLabeled("registry", el("div", { class: "table-wrap" }, [el("table", { class: "runs" }, [el("thead", {}, [head]), body])])));
   }
-  // comparison bars
-  const barRows = names.map((n) => ({ name: n, value: (agg[n] || {}).runs || 0, color: targetColor(n) }));
-  view.appendChild(cardLabeled("runs by target", barChart(barRows)));
+  // target comparison (not a dup of Overview's single-metric bars)
+  const chead = el("tr", {}, ["target", "runs", "candidates", "PASS", "FAIL", "ERROR"].map((h, i) => el("th", { class: i >= 1 ? "r" : "" }, [h])));
+  const cbody = el("tbody", {}, names.map((n) => {
+    const a = agg[n] || { runs: 0, cand: 0, verdicts: {} };
+    const v = a.verdicts || {};
+    return el("tr", {}, [
+      el("td", {}, [el("span", { class: "row-flex", style: "gap:6px" }, [el("span", { class: "dot", style: `background:var(${targetColor(n)})` }, []), n])]),
+      el("td", { class: "r num" }, [String(a.runs || 0)]), el("td", { class: "r num" }, [String(a.cand || 0)]),
+      el("td", { class: "r num" }, [String(v.PASS || 0)]), el("td", { class: "r num" }, [String(v.FAIL || 0)]), el("td", { class: "r num" }, [String(v.ERROR || 0)]),
+    ]);
+  }));
+  view.appendChild(cardLabeled("target comparison", el("div", { class: "table-wrap" }, [el("table", { class: "runs" }, [el("thead", {}, [chead]), cbody])])));
 }
 
 /* -- Findings -- */
@@ -464,59 +501,74 @@ async function renderFindings(view) {
     return true;
   });
   const shown = apply(items);
+  const anyFilter = !!(findingsFilter.target || findingsFilter.contract || findingsFilter.klass || findingsFilter.conclusion || search);
+  function rerender() { const v = $("#view"); v.innerHTML = ""; renderFindings(v); }
+  const clearBtn = el("button", { class: "selbtn" }, ["clear filters"]);
+  clearBtn.addEventListener("click", () => { findingsFilter = { target: "", contract: "", klass: "", conclusion: "" }; const s = $("#search"); if (s) s.value = ""; state.filter = ""; rerender(); });
   const filters = el("div", { class: "filters" }, [
     selectEl([{ value: "", label: "all targets" }, ...targets.map((t) => ({ value: t, label: t }))], findingsFilter.target, (v) => { findingsFilter.target = v; rerender(); }),
     selectEl([{ value: "", label: "any contract" }, ...["c0", "c1", "c2"].map((c) => ({ value: c, label: c.toUpperCase() }))], findingsFilter.contract, (v) => { findingsFilter.contract = v; rerender(); }),
     selectEl([{ value: "", label: "any class" }, { value: "candidate", label: "candidate" }, { value: "candidate_needs_repro_check", label: "needs repro check" }], findingsFilter.klass, (v) => { findingsFilter.klass = v; rerender(); }),
     selectEl([{ value: "", label: "any replay" }, ...Object.keys(REPLAY_LABEL).map((k) => ({ value: k, label: REPLAY_LABEL[k] }))], findingsFilter.conclusion, (v) => { findingsFilter.conclusion = v; rerender(); }),
+    anyFilter ? clearBtn : null,
   ]);
-  function rerender() { const v = $("#view"); v.innerHTML = ""; renderFindings(v); }
   const list = el("div", { class: "rank-list" }, shown.slice(0, 300).map((f) => {
     const c = f.case;
+    const rp = byCase[c.case_id];
     const marks = ["c0", "c1", "c2"].map((k) => c[k] === true ? el("span", { class: "chip chip-bad chip-sm" }, [k.toUpperCase()]) : null).filter(Boolean);
     marks.push(chip(c.finding, null, c.finding));
     if (f.validated === false) marks.push(chip("as stored", "chip-warn chip-sm"));
+    if (rp) { marks.push(conclusionChip(rp.conclusion)); if (rp.judged != null && rp.judged > 0) marks.push(el("span", { class: "chip chip-muted chip-sm" }, [`${rp.same_contracts == null ? EM_DASH : rp.same_contracts}/${rp.judged}`])); }
+    const sha = c.tar_sha256 ? el("span", { class: "mono", style: "font-size:11px" }, [c.tar_sha256.slice(0, 12) + "…"]) : null;
     const item = el("div", { class: "rank-item sel", style: "cursor:pointer" }, [
-      el("div", { style: "min-width:0" }, [el("div", { class: "mono", style: "overflow:hidden;text-overflow:ellipsis" }, [dash(c.case_id)]), el("div", { class: "meta" }, [`${f.target || EM_DASH}${f.version ? "@" + f.version : ""}`])]),
+      el("div", { style: "min-width:0" }, [el("div", { class: "mono", style: "overflow:hidden;text-overflow:ellipsis" }, [dash(c.case_id)]), el("div", { class: "meta" }, [`${f.target || EM_DASH}${f.version ? "@" + f.version : ""} `, sha])]),
       el("div", { class: "row-flex wrap" }, marks),
     ]);
-    item.addEventListener("click", () => { findingsSelected = { f, replay: byCase[c.case_id] || null }; rerender(); });
+    item.addEventListener("click", () => { findingsSelected = { f, replay: rp || null }; rerender(); });
     return item;
   }));
   const left = el("div", {}, [filters, shown.length ? list : empty("no findings match", []), truncNote(fd)]);
   const right = findingsSelected ? findingDetail(findingsSelected.f, findingsSelected.replay) : el("div", { class: "card" }, [empty("select a finding", ["pick a candidate to see its contracts, input hash and replay rounds"])]);
-  view.appendChild(el("div", { class: "grid-2" }, [cardLabeled(`candidates (${shown.length})`, left), cardLabeled("detail", right)]));
+  const label = anyFilter ? `candidates (${shown.length} of ${items.length}) · filtered` : `candidates (${shown.length})`;
+  view.appendChild(el("div", { class: "grid-2" }, [cardLabeled(label, left), cardLabeled("detail", right)]));
 }
 function findingDetail(f, replay) {
   const c = f.case;
   const rows = [
     kv("case", el("div", { class: "mono" }, [dash(c.case_id)])),
     kv("target", `${f.target || EM_DASH}${f.version ? "@" + f.version : ""}`),
-    kv("contracts", el("div", { class: "row-flex" }, ["c0", "c1", "c2"].map((k) => el("span", { class: `chip chip-sm ${c[k] === true ? "chip-bad" : "chip-muted"}` }, [`${k.toUpperCase()} ${c[k] === true ? "✗" : c[k] === false ? "✓" : "?"}`])))),
+    kv("contracts", contractCell(c)),
     kv("class", chip(c.finding)),
     kv("input SHA-256", el("div", { class: "mono", style: "word-break:break-all" }, [dash(c.tar_sha256)])),
     kv("input path", el("div", { class: "mono", style: "word-break:break-all" }, [dash(c.input_path)])),
     kv("termination", dash(c.termination)),
   ];
-  const body = el("div", {}, [el("div", { class: "rank-list" }, rows)]);
-  if (replay) body.appendChild(replayRoundsCard(replay));
-  else body.appendChild(el("div", { class: "note" }, ["no replay for this case (contents are never shown)"]));
+  const body = el("div", {}, [el("div", { class: "rank-list" }, rows), contractLegend()]);
+  if (replay) {
+    const denom = replay.judged;
+    const rate = denom == null || denom === 0 ? EM_DASH : `${replay.same_contracts == null ? EM_DASH : replay.same_contracts}/${denom}`;
+    body.appendChild(el("div", { style: "margin-top:10px" }, [
+      el("div", { class: "card-label" }, ["replay"]),
+      el("div", { class: "row-flex", style: "margin-bottom:6px" }, [conclusionChip(replay.conclusion), el("span", { class: "muted" }, [`same contracts ${rate} · judged ${dash(replay.judged)} of ${dash(replay.rounds_done)} rounds`])]),
+      replayRoundsTable(replay),
+    ]));
+  } else body.appendChild(el("div", { class: "note" }, ["no replay for this case (contents are never shown)"]));
   return body;
 }
-function replayRoundsCard(rp) {
-  const denom = rp.judged;
-  const rate = (n) => denom == null || denom === 0 ? EM_DASH : `${n == null ? EM_DASH : n}/${denom}`;
+function replayRoundsTable(rp) {
   const head = el("tr", {}, ["round", "classification", "termination", "c0", "c1", "c2"].map((h) => el("th", {}, [h])));
-  const body = el("tbody", {}, (rp.rounds || []).map((r) => el("tr", {}, [
-    el("td", { class: "num" }, [dash(r.round)]),
-    el("td", {}, [r.classification ? chip(r.classification, null, r.classification) : el("span", { class: "chip chip-muted chip-sm" }, ["not counted"])]),
-    el("td", {}, [dash(r.termination)]),
-    ...["c0", "c1", "c2"].map((k) => el("td", {}, [r[k] === true ? "✗" : r[k] === false ? "✓" : EM_DASH])),
-  ])));
-  return el("div", { style: "margin-top:10px" }, [
-    el("div", { class: "card-label" }, ["replay"]),
-    el("div", { class: "row-flex", style: "margin-bottom:6px" }, [chip(rp.conclusion || "no rounds"), el("span", { class: "muted" }, [`same contracts ${rate(rp.same_contracts)} · judged ${dash(rp.judged)} of ${dash(rp.rounds_done)} rounds`])]),
-    el("div", { class: "table-wrap" }, [el("table", { class: "runs" }, [el("thead", {}, [head]), body])]),
+  const rows = (rp.rounds || []).map((r) => {
+    const judged = r.outcome === "judged" || r.classification;
+    return el("tr", { class: judged ? "" : "muted" }, [
+      el("td", { class: "num" }, [dash(r.round)]),
+      el("td", {}, [r.classification ? chip(r.classification, null, r.classification) : el("span", { class: "chip chip-muted chip-sm", title: "the oracle did not judge this round" }, ["not counted"])]),
+      el("td", {}, [dash(r.termination)]),
+      ...["c0", "c1", "c2"].map((k) => el("td", {}, [contractMark(r[k])])),
+    ]);
+  });
+  return el("div", {}, [
+    el("div", { class: "table-wrap" }, [el("table", { class: "runs" }, [el("thead", {}, [head]), el("tbody", {}, rows)])]),
+    contractLegend(),
   ]);
 }
 
@@ -526,19 +578,27 @@ async function renderReplay(view) {
   let rd;
   try { rd = await api("/api/replays?limit=500"); } catch (err) { view.appendChild(el("div", { class: "card" }, [empty("could not load replays", [String(err)])])); return; }
   const reps = rd.replays || [];
-  if (reps.length === 0) { view.appendChild(el("div", { class: "card" }, [empty("no replays yet", [["run ", el("code", {}, ["inodefence replay <run-NNNNNN folder>"])]])])); view.appendChild(truncNote(rd)); return; }
-  const rows = reps.map((r) => {
+  if (reps.length === 0) {
+    view.appendChild(el("div", { class: "card" }, [empty("no replays yet", [["run ", el("code", {}, ["inodefence replay <run-NNNNNN folder>"])]])]));
+    const tn = truncNote(rd); if (tn) view.appendChild(tn);
+    return;
+  }
+  const cards = reps.map((r) => {
     const rp = r.replay; const denom = rp.judged;
     const rate = denom == null || denom === 0 ? EM_DASH : `${rp.same_contracts == null ? EM_DASH : rp.same_contracts}/${denom}`;
-    return el("div", { class: "card", style: "margin-bottom:10px" }, [
-      el("div", { class: "row-flex", style: "justify-content:space-between" }, [
-        el("div", {}, [el("div", { class: "mono" }, [dash(rp.original_case_id)]), el("div", { class: "meta" }, [`${r.target || EM_DASH}${r.version ? "@" + r.version : ""}`])]),
-        el("div", { class: "row-flex" }, [chip(rp.conclusion || "no rounds"), el("span", { class: "muted" }, [`same contracts ${rate} · judged ${dash(rp.judged)} of ${dash(rp.rounds_done)}`])]),
-      ]),
-      replayRoundsCard(rp),
+    const tv = `${r.target || EM_DASH}${r.version ? "@" + r.version : ""}`;
+    const head = el("div", { class: "row-flex", style: "justify-content:space-between;flex-wrap:wrap;gap:8px" }, [
+      el("div", { class: "row-flex", style: "gap:8px;min-width:0" }, [el("span", { class: "mono" }, [dash(rp.original_case_id)]), el("span", { class: "meta" }, [tv])]),
+      el("div", { class: "row-flex" }, [conclusionChip(rp.conclusion), el("span", { class: "muted" }, [`same contracts ${rate} · judged ${dash(rp.judged)} of ${dash(rp.rounds_done)} rounds`])]),
     ]);
+    const prov = el("div", { class: "note", style: "margin:6px 0" }, [
+      `input SHA-256 `, el("span", { class: "mono", title: rp.original_tar_sha256 || "" }, [rp.original_tar_sha256 ? rp.original_tar_sha256.slice(0, 12) + "…" : EM_DASH]),
+      `  ·  folder `, el("span", { class: "mono" }, [dash(rp.path)]),
+    ]);
+    return el("div", { class: "card", style: "margin-bottom:10px" }, [head, prov, replayRoundsTable(rp)]);
   });
-  view.appendChild(el("div", {}, [...rows, truncNote(rd)]));
+  view.appendChild(el("div", {}, cards));
+  const tn = truncNote(rd); if (tn) view.appendChild(tn);
 }
 
 /* -- Experiments -- */
@@ -547,7 +607,8 @@ async function renderExperiments(view) {
   if (!state.runs) { try { state.runs = await api("/api/runs"); state.roots = state.runs.roots || []; } catch (err) { view.appendChild(el("div", { class: "card" }, [empty("could not load runs", [String(err)])])); return; } }
   const campaigns = (state.runs.runs || []).filter((r) => r.kind !== "replay");
   view.appendChild(cardLabeled(`campaigns (${campaigns.length})`, renderRunsTable(campaigns)));
-  view.appendChild(truncNote(state.runs));
+  const tn = truncNote(state.runs);
+  if (tn) view.appendChild(tn);
 }
 
 /* -- Artifacts -- */
@@ -560,7 +621,7 @@ async function renderArtifacts(view) {
   const hashId = currentHash().split("/")[1];
   const chosenId = hashId || artifactsRun || runs[0].id;
   const picker = el("div", { class: "selector" }, runs.slice(0, 50).map((r) => {
-    const b = el("button", { class: "selbtn" + (r.id === chosenId ? " on" : "") }, [`${r.kind} ${r.target || "?"} ${(r.run_id || "").slice(-8)}`]);
+    const b = el("button", { class: "selbtn" + (r.id === chosenId ? " on" : ""), title: r.run_id || r.id }, [`${r.kind} ${r.target || "?"} ${tailId(r.run_id, 8)}`]);
     b.addEventListener("click", () => { artifactsRun = r.id; location.hash = `#/artifacts/${r.id}`; });
     return b;
   }));
@@ -603,7 +664,7 @@ async function loadOverviewData() {
 
 async function render() {
   const route = currentRoute();
-  $("#page-title").textContent = (ROUTES[route] || ROUTES.overview).title;
+  $("#page-title").textContent = route === "run" ? "Run" : (ROUTES[route] || ROUTES.overview).title;
   for (const a of document.querySelectorAll("#sidenav a")) a.classList.toggle("active", a.dataset.nav === route);
   const view = $("#view");
   if (route === "overview") {
@@ -633,6 +694,8 @@ async function pollHealth() {
     const h = await api("/api/health");
     const ver = document.querySelector(".nav-foot .ver");
     if (ver) ver.textContent = h.package_version ? `engine v${h.package_version}` : "engine (version unknown)";
+    const scan = $("#chip-scan");
+    if (scan && Array.isArray(h.roots)) { state.roots = h.roots; scan.textContent = h.roots.length ? `${h.roots.length} folders` : "— folders"; scan.title = h.roots.join("  "); }
     if (h.state === "checking") { chipEl.className = "chip chip-muted"; chipEl.textContent = `${SYMBOL.muted} engine checking…`; return; }
     const t = h.failed ? "bad" : (h.unknown ? "warn" : "ok");
     const word = h.failed ? "FAIL" : (h.unknown ? `WARN · ${h.unknown} unknown` : "OK");
@@ -682,9 +745,7 @@ window.addEventListener("DOMContentLoaded", async () => {
   for (const a of document.querySelectorAll("#sidenav a")) a.prepend(svgIcon(a.dataset.nav));
   await pollTargets();
   await render();
-  // scan-location chip
-  const scan = $("#chip-scan"); if (scan) { scan.textContent = `${(state.roots || []).length} folders`; scan.title = (state.roots || []).join("  "); }
-  pollHealth();
+  pollHealth();  // sets the scan-location chip and nav version on every page (roots come from /api/health)
   setInterval(pollHealth, 15000);
   connectEvents();
   $("#search").addEventListener("input", (e) => {

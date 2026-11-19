@@ -147,6 +147,7 @@ def test_health_starts_checking_then_reports(run_out, monkeypatch):
     assert data["exit_code"] == 0
     assert data["age_seconds"] is not None
     assert data["image_groups"] == {"node-tar": 2}
+    assert isinstance(data["roots"], list)  # the scan folders, shown on every page's chip
 
 
 def test_run_defaults_to_loopback_and_warns_on_other_host(run_out, monkeypatch, capsys):

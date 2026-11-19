@@ -70,8 +70,18 @@ svg.icon { width: 16px; height: 16px; display: inline-block; vertical-align: -3p
 /* chart grid, equal-height rows */
 .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 16px; align-items: stretch; }
 .span-2 { grid-column: span 2; }
+.grid-3.auto { align-items: start; }
+.grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 16px; }
 @media (max-width: 1024px) { .grid-3 { grid-template-columns: 1fr 1fr; } .span-2 { grid-column: span 2; } .stat-row { grid-template-columns: 1fr 1fr; } }
-@media (max-width: 680px) { .grid-3, .stat-row { grid-template-columns: 1fr; } .span-2 { grid-column: auto; } }
+@media (max-width: 1200px) { .grid-4 { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 680px) { .grid-3, .grid-2, .stat-row, .grid-4 { grid-template-columns: 1fr; } .span-2 { grid-column: auto; } }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: 0 0 auto; }
+.tcard { display: flex; flex-direction: column; }
+.tnums { display: flex; gap: 22px; }
+.big2 { font-size: 26px; font-weight: 300; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.area-plot { position: relative; }
+.ytick { position: absolute; left: 3px; font-size: 10px; color: var(--if-muted); transform: translateY(-50%); background: var(--if-surface-raised); padding: 0 3px; pointer-events: none; }
+table.runs tr.muted td { color: var(--if-muted); }
 
 /* bars */
 .bars { display: flex; flex-direction: column; gap: 7px; }

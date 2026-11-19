@@ -960,18 +960,20 @@ def read_run(ref: RunRef, *, now: float | None = None) -> RunSnapshot:
     result_dir = base / f"{run_id}{RESULT_SUFFIX}"
     live_dirs = find_live_dirs(base / run_id) if (base / run_id).is_dir() else []
     live = live_dirs[0] if live_dirs else None
-    log = _latest_launcher_log(ref.root)
-    step = progress_reader.last_launcher_step(log) if log is not None else None
     summary = None
     if (result_dir / RESULT_FILE).exists():
         summary = read_result(result_dir / RESULT_FILE, ref)
         if summary.error:
             errors.append(summary.error)
+    raw = read_progress(live) if live is not None else None
+    # The launcher log is named by time and process, not by run: attach its step only to a run that
+    # has not ended (no result file, no ended live state), and only as an estimate.
+    ended = summary is not None or (raw is not None and raw.get("state") != "running")
+    log = None if ended else _latest_launcher_log(ref.root)
+    step = progress_reader.last_launcher_step(log) if log is not None else None
     progress: RunProgress | None = None
     findings: list[CaseRow] = []
-    raw = None
     if live is not None:
-        raw = read_progress(live)
         if raw is None and (live / PROGRESS_FILE).exists():
             errors.append(f"{live / PROGRESS_FILE} could not be read")
         try:

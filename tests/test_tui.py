@@ -67,7 +67,12 @@ def _rows(app: InodeFenceTui, name: str) -> list[list[str]]:
 
 
 def _text(node: Any, selector: str) -> str:
-    return str(node.query_one(selector).render())
+    """The plain text a Static shows (Text, Table or Group), as a terminal would print it."""
+    from rich.console import Console
+
+    console = Console(width=200, record=True, color_system=None, file=open(os.devnull, "w"))
+    console.print(node.query_one(selector).content)
+    return console.export_text()
 
 
 def _overview(app: InodeFenceTui) -> dict[str, str]:
@@ -110,8 +115,10 @@ async def test_a_running_run_is_followed_and_a_live_candidate_appears(tmp_path, 
     async with app.run_test(size=size) as pilot:
         await _settle(app, pilot)
         (row,) = _rows(app, "runs")
-        assert row[0] == "node-tar@7.5.2" and row[1] == "● running" and row[2].endswith("1/20")
-        assert _rows(app, "campaigns")[0][3] == "● running"
+        assert (
+            row[0] == "node-tar@7.5.2 #1-20" and row[1] == "● running" and row[2].endswith("1/20")
+        )
+        assert _rows(app, "campaigns")[0][1] == "● running"
         assert _overview(app)["active campaigns"] == "1"
         assert app.query_one("#p-campaign").border_subtitle == "following the newest run"
         events_before = len(app.events)
@@ -119,8 +126,8 @@ async def test_a_running_run_is_followed_and_a_live_candidate_appears(tmp_path, 
         recorder.on_step(syn.step(1, c1=True, fp="c1-x"))
         await _settle(app, pilot)  # same app, no restart
         (finding,) = _rows(app, "findings")
-        assert finding[2:5] == ["-", "V", "-"] and finding[5] == "candidate"
-        assert finding[7] == "no replay"
+        assert finding[1:4] == ["-", "V", "-"] and finding[4] == "candidate"
+        assert finding[5] == "no replay" and finding[6] == "—"
         assert len(app.events) > events_before
         oracle = _text(app, "#p-oracle")
         assert "C1 1" in oracle and "candidates" in oracle
@@ -170,8 +177,8 @@ async def test_other_targets_show_no_live_data_and_question_marks(tmp_path: Path
     async with app.run_test(size=(160, 48)) as pilot:
         await _settle(app, pilot)
         (row,) = _rows(app, "campaigns")
-        assert row[3] == "· no live data" and row[4] == "?/?" and row[5] == "?" and row[6] == "?"
-        assert row[9].startswith("launcher-log est.")
+        assert row[1] == "· no live data" and row[2] == "?/?" and row[3] == "?" and row[4] == "?"
+        assert row[7].startswith("launcher-log est.")
         outcomes = _text(app, "#p-outcomes")
         assert "success" in outcomes and "?" in outcomes and "█" not in outcomes  # no bars
 
@@ -188,14 +195,15 @@ async def test_finished_result_with_a_replayed_candidate(tmp_path: Path) -> None
     app = _app([out], syn.Clock())
     async with app.run_test(size=(160, 48)) as pilot:
         await _settle(app, pilot)
-        assert _rows(app, "campaigns")[0][3] == "✓ finished"
+        assert _rows(app, "campaigns")[0][1] == "✓ finished"
         (finding,) = _rows(app, "findings")
-        assert finding[7] == "partial" and finding[8] == "1/2 judged · 3 rounds"
+        assert finding[5] == "partial" and finding[6] == "1/2 · 3 rounds"
         assert "partially 1" in _overview(app)["by replay"]
         await pilot.press("4")
         await pilot.pause()
-        side = _text(app, "#p-finding-detail")
-        assert "input SHA-256" in side and "round 3" in side
+        side = _text(app, "#finding-detail-body")
+        assert "input SHA-256" in side and "round 3" in side and "replay rounds" in side
+        assert "observation complete  yes" in side
         assert syn.TAR.decode() not in side  # the input's content is never shown
         await pilot.press("enter")
         await pilot.pause()
@@ -203,7 +211,10 @@ async def test_finished_result_with_a_replayed_candidate(tmp_path: Path) -> None
         assert "round 3" in detail and syn.TAR.decode() not in detail
         await pilot.press("escape", "3", "enter")
         await pilot.pause()
-        assert app.query_one("#tabs").active == "artifacts"  # enter on a run opens its artifacts
+        from textual.widgets import TabbedContent
+
+        # enter on a run opens its artifacts
+        assert app.query_one("#tabs", TabbedContent).active == "artifacts"
         artifacts = _text(app, "#artifacts-body")
         assert "not re-checked" in artifacts and "result.json" in artifacts
 
@@ -238,7 +249,7 @@ async def test_an_explore_run_with_an_unvalidated_result_is_marked(tmp_path: Pat
     app = _app([out], syn.Clock())
     async with app.run_test(size=(160, 48)) as pilot:
         await _settle(app, pilot)
-        assert _rows(app, "campaigns")[0][3] == "! finished (as stored, not validated)"
+        assert _rows(app, "campaigns")[0][1] == "! finished (as stored, not validated)"
         assert _rows(app, "runs")[0][1] == "! finished (as stored, not validated)"
         overview = _overview(app)
         assert overview["results as stored (not validated)"] == "1"
@@ -332,8 +343,40 @@ async def test_the_cursor_follows_the_same_run_not_the_row_number(tmp_path: Path
         await _settle(app, pilot)
         assert app._row_keys["campaigns"][table.cursor_row] == chosen
         current = app._row_keys["campaigns"]
-        reordered = [Row(k, tuple(model.Cell(c) for c in (k, *[""] * 9))) for k in current]
+        reordered = [Row(k, tuple(model.Cell(c) for c in (k, *[""] * 7))) for k in current]
         app._fill("campaigns", list(reversed(reordered)))
         assert app._row_keys["campaigns"][table.cursor_row] == chosen
         app._fill("campaigns", [r for r in reordered if r.key != chosen])
         assert 0 <= table.cursor_row < 2
+
+
+@_sync
+async def test_events_fold_consecutive_progress_and_keep_other_kinds(tmp_path: Path) -> None:
+    out, rid, clock = syn.explore_out(tmp_path), syn.run_id(), syn.Clock()
+    _, recorder = syn.live_run(out, rid, [syn.step(0)], clock=clock)
+    app = _app([out], clock)
+    async with app.run_test(size=(140, 40)) as pilot:
+        await _settle(app, pilot)
+        for index in range(1, 5):
+            clock.now += 1
+            recorder.on_step(syn.step(index, c1=index == 2, fp="c1-q" if index == 2 else ""))
+            await _settle(app, pilot)
+        folded = model.collapse_events(list(app.events))
+        kinds = [event.kind.value for event, _ in folded]
+        assert "violation_case" in kinds
+        assert max(n for _, n in folded) >= 2  # several progress snapshots on one line
+        shown = _text(app, "#events-body")
+        assert "violation_case" in shown and "×" in shown
+
+
+def test_outcomes_zero_is_observed_and_unknown_is_question_mark(tmp_path: Path) -> None:
+    from inodefence.app.runs import read_run
+
+    out, rid = syn.explore_out(tmp_path), syn.run_id()
+    syn.live_run(out, rid, [syn.step(0)])
+    live = {label: value for label, value, _, _ in
+            model.outcome_rows(read_run(RunRef(RunKind.EXPLORE, out, rid)))}  # fmt: skip
+    assert live["rejected"] == 0 and live["unjudged"] == 0  # the snapshot holds these zeros
+    other = {label: value for label, value, _, _ in
+             model.outcome_rows(read_run(RunRef(RunKind.EXPLORE, out, "x-1-20")))}  # fmt: skip
+    assert all(value is None for value in other.values())  # no file: unknown, not 0

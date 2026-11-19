@@ -1,10 +1,11 @@
 """The Textual dashboard: a tiled, read-only monitor over :mod:`inodefence.app` (see ``model.py``).
 
 Overview is a tiled screen: the selected campaign (an observed-throughput graph and its numbers),
-outcomes and oracle panels, targets, the run list, and the event stream -- all drawn from real
-values (a graph with no observed samples is not drawn). Targets, Campaigns, Findings and Artifacts
-use the same panel grammar (titled borders, bars, badges). Nothing here parses a run file or
-decides a verdict, and keys only move around: nothing is started, stopped, deleted or written.
+outcomes and oracle panels, targets, the run list with recent candidates, and the event stream --
+all drawn from real values (a graph with no observed samples is not drawn). Targets, Campaigns,
+Findings and Artifacts use the same panel grammar (titled borders, bars, badges). Nothing here
+parses a run file or decides a verdict, and keys only move around: nothing is started, stopped,
+deleted or written.
 """
 
 from __future__ import annotations
@@ -16,15 +17,16 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from rich.console import Group
 from rich.table import Table
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import DataTable, Footer, RichLog, Static, TabbedContent, TabPane
+from textual.widgets import DataTable, Footer, Static, TabbedContent, TabPane
 
-from inodefence.app.events import RunFollower, UiEvent
+from inodefence.app.events import EventKind, RunFollower, UiEvent
 from inodefence.app.runs import RunSnapshot, default_roots, discover_runs
 from inodefence.ui.tui import model
 from inodefence.ui.tui.model import Cell, DashboardState, Row, Sample
@@ -42,18 +44,31 @@ COLOURS = {
 EVENT_LINES = 200
 #: Below either of these the Overview keeps only campaign, runs and events.
 WIDE_MIN_COLUMNS, WIDE_MIN_ROWS = 110, 30
+#: Rows of the campaign graph (wide / narrow screens).
+GRAPH_ROWS, GRAPH_ROWS_NARROW = 5, 3
 
 COLUMNS = {
     "runs": ("run", "state", "progress", "cand."),
     "targets": ("target", "explore", "replay", "prepared images", "last verify"),
-    "campaigns": ("run", "target", "version", "state", "runs/budget", "rate", "violations",
-                  "unjudged", "updated", "source"),
+    "campaigns": ("run", "state", "runs/budget", "rate", "violations", "unjudged", "updated",
+                  "source"),
     "verify": ("cell", "verdict", "executed", "run errors", "unjudged", "warning"),
-    "findings": ("case", "target", "C0", "C1", "C2", "class", "termination", "replay",
-                 "judged rounds", "location"),
+    "findings": ("case", "C0", "C1", "C2", "class", "replay", "n/judged"),
 }  # fmt: skip
 #: Tables whose highlighted row selects the run the panels follow.
 SELECTING = ("runs", "campaigns", "verify", "findings")
+#: Which column of a table is a state shown as a badge (symbol + word).
+BADGE_COLUMNS = {"runs": 1, "campaigns": 1, "verify": 1}
+#: Which column is runs/budget, drawn as a coloured bar from the run's real numbers.
+PROGRESS_COLUMNS = {"runs": 2, "campaigns": 2}
+#: Event kinds and their colour in the events panel (progress stays plain, estimates dim).
+EVENT_STYLES = {
+    EventKind.VIOLATION_CASE: model.BAD,
+    EventKind.STATE_CHANGE: model.ACCENT,
+    EventKind.REPLAY_READY: model.OK,
+    EventKind.READ_ERROR: model.WARN,
+    EventKind.LAUNCHER_STEP: model.DIM,
+}
 
 
 def styled(cell: Cell) -> Text:
@@ -69,6 +84,10 @@ def badge(cell: Cell) -> Text:
     return styled(Cell(f"{symbol} {cell.text}", cell.style))
 
 
+def chip(word: str) -> Text:
+    return Text(f"[{word}]", style=PALETTE["accent"])
+
+
 def lines_text(lines: Sequence[tuple[str, Cell]], width: int | None = None) -> Text:
     out = Text()
     label_width = width or max((len(label) for label, _ in lines), default=0)
@@ -81,7 +100,7 @@ def lines_text(lines: Sequence[tuple[str, Cell]], width: int | None = None) -> T
 
 
 def bar_text(value: int | None, total: int | None, width: int) -> Text:
-    """A coloured bar from real numbers only; unknown gives no bar."""
+    """A coloured bar from real numbers only; unknown gives ``?`` and no bar."""
     drawn = model.bar(value, total, width)
     if drawn is None:
         return Text("?", style=PALETTE["muted"])
@@ -126,7 +145,7 @@ def default_targets() -> Mapping[str, Mapping[str, Any]]:
 class DetailScreen(ModalScreen[None]):
     BINDINGS = [Binding("escape,q,enter", "dismiss", "close")]
 
-    def __init__(self, title: str, body: Text) -> None:
+    def __init__(self, title: str, body: Any) -> None:
         super().__init__()
         self._title, self._body = title, body
 
@@ -152,6 +171,7 @@ class InodeFenceTui(App[None]):
          scrollbar-color: {PALETTE["border"]}; scrollbar-size-horizontal: 0;
          scrollbar-size-vertical: 1; }}
     #header {{ height: 1; background: {PALETTE["surface_alt"]}; padding: 0 1; }}
+    #status {{ height: 1; background: {DEEP}; color: {PALETTE["muted"]}; padding: 0 1; }}
     TabbedContent {{ height: 1fr; }}
     Tabs {{ background: {DEEP}; }}
     Tab {{ color: {PALETTE["muted"]}; }}
@@ -165,26 +185,28 @@ class InodeFenceTui(App[None]):
     DataTable {{ background: {PANEL}; height: auto; max-height: 100%; }}
     DataTable > .datatable--header {{ background: {PANEL}; color: {PALETTE["muted"]}; }}
     DataTable > .datatable--cursor {{ background: #164e63; }}
-    #ov-left {{ width: 2fr; }}
-    #p-runs {{ width: 1fr; min-width: 58; }}
-    #p-campaign {{ height: 9; }}
+    #ov-left {{ width: 4fr; }}
+    #p-runs {{ width: 3fr; min-width: 56; }}
+    #runs-table {{ max-height: 60%; }}
+    #recent-candidates {{ height: auto; margin-top: 1; }}
+    #p-campaign {{ height: 10; }}
     #ov-mid {{ height: auto; }}
-    #p-outcomes, #p-oracle {{ width: 1fr; height: auto; min-height: 9; }}
+    #p-outcomes, #p-oracle {{ width: 1fr; height: auto; min-height: 8; }}
     #p-targets {{ height: auto; }}
-    #p-scan {{ height: auto; color: {PALETTE["muted"]}; padding: 0 1; }}
-    #p-events {{ height: 8; }}
-    #events {{ background: {PANEL}; }}
+    #p-events {{ height: 7; }}
+    #events-body {{ background: {PANEL}; }}
     #empty {{ height: auto; }}
     #cmp-split, #find-split {{ height: 1fr; }}
     #p-campaign-list {{ width: 3fr; }}
     #p-run-detail {{ width: 2fr; min-width: 30; height: 1fr; }}
     #p-finding-list {{ width: 3fr; }}
-    #p-finding-detail {{ width: 2fr; min-width: 32; height: 1fr; }}
+    #p-finding-detail {{ width: 2fr; min-width: 40; height: 1fr; }}
     #ov-body.narrow {{ layout: vertical; }}
-    #ov-body.narrow #p-campaign {{ height: 6; }}
+    #ov-body.narrow #p-campaign {{ height: 7; }}
     Screen.narrow #p-events {{ height: 5; }}
     #ov-body.narrow #ov-left {{ width: 1fr; height: auto; }}
     #ov-body.narrow #p-runs {{ width: 1fr; min-width: 0; height: 1fr; }}
+    #ov-body.narrow #recent-candidates {{ display: none; }}
     #find-split.narrow {{ layout: vertical; }}
     #find-split.narrow #p-finding-list, #find-split.narrow #p-finding-detail {{ width: 1fr; }}
     #findings-legend, #verify-title {{ height: 1; color: {PALETTE["muted"]}; }}
@@ -248,10 +270,10 @@ class InodeFenceTui(App[None]):
                             yield _panel("p-outcomes", "outcomes")
                             yield _panel("p-oracle", "oracle")
                         yield _panel("p-targets", "targets")
-                        yield Static(id="p-scan")
                     with Vertical(id="p-runs", classes="box") as runs:
                         runs.border_title = "runs"
                         yield DataTable(id="runs-table", cursor_type="row")
+                        yield Static(id="recent-candidates")
             with TabPane("2 Targets", id="targets"):
                 with Vertical(classes="box") as box:
                     box.border_title = "targets"
@@ -272,7 +294,9 @@ class InodeFenceTui(App[None]):
                         box.border_subtitle = "oracle flags · not confirmed"
                         yield DataTable(id="findings-table", cursor_type="row")
                         yield Static(model.CONTRACT_LEGEND, id="findings-legend")
-                    yield _panel("p-finding-detail", "candidate")
+                    with VerticalScroll(id="p-finding-detail", classes="box") as box:
+                        box.border_title = "candidate"
+                        yield Static(id="finding-detail-body")
             with TabPane("5 Artifacts", id="artifacts"):
                 with VerticalScroll(id="artifacts-box", classes="box") as box:
                     box.border_title = "artifacts"
@@ -280,15 +304,17 @@ class InodeFenceTui(App[None]):
                     yield Static(id="artifacts-body")
         with Vertical(id="p-events", classes="box") as events:
             events.border_title = "events"
-            events.border_subtitle = "u updated_at · r recorded_at · m mtime · o observed"
-            yield RichLog(id="events", max_lines=EVENT_LINES, wrap=False, markup=False)
+            events.border_subtitle = (
+                "time source: u updated_at · r recorded_at · m mtime · o observed"
+            )
+            yield Static(id="events-body")
+        yield Static(id="status")
         yield Footer()
 
     def on_mount(self) -> None:
         for name, columns in COLUMNS.items():
             self.query_one(f"#{name}-table", DataTable).add_columns(*columns)
         self._columns_ready = True
-        self.query_one("#events", RichLog).write(Text(model.READ_ONLY_NOTE, style=PALETTE["muted"]))
         if self._background:
             self.follower.start()
             for loader in (self._load_engine, self._load_targets, self._load_images):
@@ -343,10 +369,8 @@ class InodeFenceTui(App[None]):
     # -- refresh ------------------------------------------------------------------------------
 
     def tick(self) -> None:
-        log = self.query_one("#events", RichLog)
         while (event := self._subscription.get(timeout=0)) is not None:
             self.events.append(event)
-            log.write(event_text(event))
         self.state.events = list(self.events)
         self.state.snapshots = self.follower.snapshots()
         for key, snapshot in self.state.snapshots.items():
@@ -363,36 +387,36 @@ class InodeFenceTui(App[None]):
             return
         state = self.state
         wide = self._wide()
-        self.draw_selection()
+        self.screen.set_class(not wide, "narrow")
+        self.query_one("#ov-body").set_class(not wide, "narrow")
+        self.query_one("#find-split").set_class(not wide, "narrow")
+        self.query_one("#ov-mid").display = wide
+        self.query_one("#p-targets").display = wide
         empty = model.is_empty(state)
         panel = self.query_one("#empty", Static)
         panel.display = empty
         if empty:
             panel.update(Text("\n").join(styled(cell) for cell in model.empty_lines(state)))
         self.query_one("#ov-body").display = not empty
-        self.query_one("#ov-mid").display = wide
-        self.query_one("#p-targets").display = wide
-        self.query_one("#p-scan").display = wide
-        self.query_one("#find-split").set_class(not wide, "narrow")
-        self.query_one("#ov-body").set_class(not wide, "narrow")
-        self.screen.set_class(not wide, "narrow")
+        self.draw_selection()
         self._fill("runs", model.runs_list(state) or [_empty_row(4, "no explore runs")])
+        self.query_one("#recent-candidates", Static).update(recent_candidates(state))
         targets = model.target_rows(state)
         if state.targets is None:
             reason = state.targets_error or "reading the registry…"
             targets = [_empty_row(5, f"targets unavailable: {reason}")]
         self._fill("targets", targets)
-        self.query_one("#p-targets", Static).update(targets_text(state))
-        scan = Text(model.READ_ONLY_NOTE, style=PALETTE["muted"])
-        for root in state.roots:
-            scan.append(f"\nscanning {root}", style=PALETTE["muted"])
-        self.query_one("#p-scan", Static).update(scan)
+        targets_panel = self.query_one("#p-targets", Static)
+        targets_panel.update(targets_view(state, targets_panel.size.width - 4))
         campaigns = model.campaign_rows(state)
-        self._fill("campaigns", campaigns or [_empty_row(10, "no explore runs found")])
+        self._fill("campaigns", campaigns or [_empty_row(8, "no explore runs found")])
         verify = model.verify_rows(state)
         self._fill("verify", verify or [_empty_row(6, "no verify cells found")])
         findings = model.finding_rows(state)
-        self._fill("findings", findings or [_empty_row(10, "no violation candidates")])
+        self._fill("findings", findings or [_empty_row(7, "no violation candidates")])
+        events = self.query_one("#events-body", Static)
+        events.update(events_view(state.events, max(events.size.height, 3), events.size.width))
+        self.query_one("#status", Static).update(status_line(state, self.size.width))
 
     def draw_selection(self) -> None:
         """Everything that follows the selected run: header, campaign/outcomes/oracle panels,
@@ -405,26 +429,31 @@ class InodeFenceTui(App[None]):
         campaign.border_subtitle = (
             "following the newest run" if selected is None and followed else "selected run"
         )
-        width = max(campaign.size.width - 42, 10)
         history = self.history.get(followed.ref.key, []) if followed else []
         campaign.update(
-            campaign_view(followed, history, state.now, width, compact=not self._wide())
+            campaign_view(
+                followed, history, state.now, campaign.size.width - 4, compact=not self._wide()
+            )  # fmt: skip
         )
-        self.query_one("#p-outcomes", Static).update(outcomes_text(followed))
+        outcomes = self.query_one("#p-outcomes", Static)
+        outcomes.update(outcomes_text(followed, outcomes.size.width - 4))
         oracle = self.query_one("#p-oracle", Static)
         oracle.border_subtitle = "case folders: lower bound" if followed else ""
-        oracle.update(lines_text(model.oracle_lines(state, followed)))
+        oracle.update(oracle_view(state, followed, oracle.size.width - 4))
         self.query_one("#p-run-detail", Static).update(run_detail_view(selected, state.now))
-        self.query_one("#p-finding-detail", Static).update(self._finding_detail())
+        detail = self.query_one("#p-finding-detail")
+        self.query_one("#finding-detail-body", Static).update(
+            self._finding_detail(detail.size.width - 4)
+        )
         self.query_one("#artifacts-body", Static).update(
             artifacts_text(model.artifact_lines(selected))
         )
 
-    def _finding_detail(self) -> Text:
+    def _finding_detail(self, width: int) -> Any:
         key = self.selected_key
         if key is None or "#" not in key:
             return Text("select a candidate (↑ ↓)", style=PALETTE["muted"])
-        return lines_text(model.finding_detail(self.state, key))
+        return detail_view(model.finding_detail(self.state, key), width)
 
     def on_resize(self) -> None:
         self.redraw()
@@ -468,15 +497,14 @@ class InodeFenceTui(App[None]):
             # on a hidden table and Textual switches back to that table's screen.
             self.query_one(f"#{tab}-box").focus()
             return
-        if tables:
-            table = tables.first()
-            table.focus()  # keys move rows right away
-            name = (table.id or "").removesuffix("-table")
-            keys = self._row_keys.get(name, [])
-            row = table.cursor_row
-            if name in SELECTING and 0 <= row < len(keys) and keys[row] != "-":
-                self.selected_key = keys[row]  # the panels follow the row the cursor is on
-                self.draw_selection()
+        table = tables.first()
+        table.focus()  # keys move rows right away
+        name = (table.id or "").removesuffix("-table")
+        keys = self._row_keys.get(name, [])
+        row = table.cursor_row
+        if name in SELECTING and 0 <= row < len(keys) and keys[row] != "-":
+            self.selected_key = keys[row]  # the panels follow the row the cursor is on
+            self.draw_selection()
 
     def action_refresh_now(self) -> None:
         self.follower.poll_once()
@@ -524,16 +552,10 @@ class InodeFenceTui(App[None]):
         self.selected_key = key
         self.draw_selection()
         if name == "findings":
-            lines = model.finding_detail(self.state, key)
-            self.push_screen(DetailScreen(f"candidate {key.split('#', 1)[-1]}", lines_text(lines)))
+            body = detail_view(model.finding_detail(self.state, key), max(self.size.width - 12, 40))
+            self.push_screen(DetailScreen(f"candidate {key.split('#', 1)[-1]}", body))
         elif name in ("runs", "campaigns", "verify"):
             self.action_show("artifacts")
-
-
-#: Which column of a table is a state shown as a badge (symbol + word).
-BADGE_COLUMNS = {"runs": 1, "campaigns": 3, "verify": 1}
-#: Which column is runs/budget, drawn as a coloured bar from the run's real numbers.
-PROGRESS_COLUMNS = {"runs": 2, "campaigns": 4}
 
 
 # -- panel renderers (Rich renderables from model values) ------------------------------------------
@@ -553,6 +575,15 @@ def header_text(state: DashboardState, selected: RunSnapshot | None, now: float)
     return out
 
 
+def status_line(state: DashboardState, width: int) -> Text:
+    out = Text("read-only · reads existing run folders", style=PALETTE["muted"])
+    if state.roots:
+        roots = " · ".join(str(root) for root in state.roots)
+        room = max(width - len(out) - 14, 10)
+        out.append(f" · scanning {model.shorten_middle(roots, room)}", style=PALETTE["muted"])
+    return out
+
+
 def campaign_view(
     snapshot: RunSnapshot | None,
     history: Sequence[Sample],
@@ -561,15 +592,17 @@ def campaign_view(
     *,
     compact: bool = False,
 ) -> Table:
+    side_width = 30 if compact else 34
+    graph_width = max(width - side_width - 9, 8)
     grid = Table.grid(expand=True, padding=(0, 2))
     grid.add_column(ratio=1)
-    grid.add_column(width=38)
+    grid.add_column(width=side_width)
     graph = Text()
     values = model.increments(history)
-    line = model.sparkline(values, width)
+    known = [v for v in values[-graph_width:] if v is not None]
     if snapshot is None:
         graph.append("no explore run found", style=PALETTE["muted"])
-    elif not line:
+    elif not known:
         live = snapshot.progress is not None and snapshot.progress.source.value == "live"
         graph.append(
             "waiting for a second progress snapshot" if live else "no live data for this run",
@@ -578,31 +611,42 @@ def campaign_view(
         if not live:
             graph.append("\n(only node-tar writes running numbers)", style=PALETTE["muted"])
     else:
-        top = max(v for v in values if v is not None)
-        rows = 3
+        rows = GRAPH_ROWS_NARROW if compact else GRAPH_ROWS
+        top, low = max(known), min(known)
+        tail = values[-graph_width:]
         if not compact:
-            graph.append(f"runs between snapshots · max {top:.0f}\n", style=PALETTE["muted"])
-        for row in range(rows, 0, -1):  # a 3-line graph from the same samples
-            graph.append(_graph_row(values[-width:], row) + "\n", style=PALETTE["accent"])
-        observed = f"{len(history)} snapshots observed by this screen"
-        graph.append(observed if not compact else f"max {top:.0f}/snapshot · {len(history)} seen",
-                     style=PALETTE["muted"])  # fmt: skip
+            graph.append("runs between snapshots\n", style=PALETTE["muted"])
+        for level in range(rows, 0, -1):
+            axis = (
+                f"{top:>5.0f} " if level == rows else (f"{low:>5.0f} " if level == 1 else " " * 6)
+            )
+            graph.append(axis, style=PALETTE["muted"])
+            graph.append(_graph_row(tail, level, rows) + "\n", style=PALETTE["accent"])
+        first = history[max(len(history) - len(tail) - 1, 0)].at
+        span = f"{datetime.fromtimestamp(first):%H:%M:%S} → {datetime.fromtimestamp(now):%H:%M:%S}"
+        graph.append(" " * 6 + f"{span} · {len(history)} seen", style=PALETTE["muted"])
     side = Text()
     details = model.run_detail(snapshot, now)[1:]
     if compact:
-        details = [d for d in details if d[0] in ("state", "runs", "rate")]
+        details = [d for d in details if d[0] in ("state", "rate")]
     for label, cell in details:
+        if label == "runs":
+            continue
         side.append(f"{label:<9}", style=PALETTE["muted"])
         side.append_text(badge(cell) if label == "state" else styled(cell))
         side.append("\n")
     p = snapshot.progress if snapshot else None
-    side.append(f"{'progress':<9}", style=PALETTE["muted"])
-    side.append_text(bar_text(p.runs if p else None, p.budget if p else None, 20))
+    runs, budget = (p.runs, p.budget) if p else (None, None)
+    side.append(f"{'runs':<9}", style=PALETTE["muted"])
+    pct = model.percent(runs, budget)
+    side.append(f"{model.count(runs)} / {model.count(budget)}" + (f" · {pct}" if pct else ""))
+    side.append("\n" + " " * 9)
+    side.append_text(bar_text(runs, budget, side_width - 10))
     grid.add_row(graph, side)
     return grid
 
 
-def _graph_row(values: Sequence[float | None], level: int) -> str:
+def _graph_row(values: Sequence[float | None], level: int, rows: int) -> str:
     known = [v for v in values if v is not None]
     if not known:
         return ""
@@ -612,7 +656,7 @@ def _graph_row(values: Sequence[float | None], level: int) -> str:
         if v is None:
             out.append(" ")
             continue
-        fill = v / top * 3 - (level - 1)  # this row's share of a 3-row column
+        fill = v / top * rows - (level - 1)  # this row's share of the column
         if fill >= 1:
             out.append("█")
         elif fill <= 0:
@@ -622,50 +666,94 @@ def _graph_row(values: Sequence[float | None], level: int) -> str:
     return "".join(out)
 
 
-def progress_cell(snapshot: RunSnapshot | None) -> Text:
-    """``███░░░ 91/200`` from real numbers; ``?/?`` and no bar when unknown."""
-    p = snapshot.progress if snapshot else None
-    runs, budget = (p.runs, p.budget) if p else (None, None)
-    numbers = f"{model.count(runs)}/{model.count(budget)}"
-    if model.bar(runs, budget, 10) is None:
-        return Text(numbers, style=PALETTE["muted"])
-    out = bar_text(runs, budget, 10)
-    out.append(f" {numbers}")
-    return out
-
-
-def outcomes_text(snapshot: RunSnapshot | None) -> Text:
-    if snapshot is None:
-        return Text("no run selected", style=PALETTE["muted"])
+def _bars(rows: Sequence[tuple[str, int | None, int | None, str]], width: int) -> Text:
+    """Label · right-aligned count · bar (only from a known count and total)."""
     out = Text()
-    for label, value, total, style in model.outcome_rows(snapshot):
-        out.append(f"{label:<14}", style=PALETTE["muted"])
+    label_width = max((len(label) for label, *_ in rows), default=0) + 1
+    bar_width = max(width - label_width - 8, 6)
+    for label, value, total, style in rows:
         tone = (COLOURS.get(style) or PALETTE["text"]) if value else PALETTE["muted"]
+        out.append(f"{label:<{label_width}}", style=PALETTE["muted"])
         out.append(f"{model.count(value):>6} ", style=tone)
-        drawn = model.bar(value, total, 14) if value is not None else None
-        if drawn is not None:
+        drawn = model.bar(value, total, bar_width) if value is not None else None
+        if drawn is not None and value:
             out.append(drawn.replace("░", " "), style=COLOURS.get(style) or PALETTE["accent"])
         out.append("\n")
     out.rstrip()
     return out
 
 
-def targets_text(state: DashboardState) -> Text:
+def outcomes_text(snapshot: RunSnapshot | None, width: int = 40) -> Text:
+    if snapshot is None:
+        return Text("no run selected", style=PALETTE["muted"])
+    return _bars(model.outcome_rows(snapshot), width)
+
+
+def oracle_view(state: DashboardState, snapshot: RunSnapshot | None, width: int) -> Text:
+    out = lines_text(model.oracle_lines(state, snapshot))
+    bars = [b for b in model.replay_bars(state, snapshot) if b[0] != "other" or b[1]]
+    if bars and any(count for _, count, _, _ in bars):
+        out.append("\n")
+        out.append_text(_bars([(f"replay: {name}", n, t, s) for name, n, t, s in bars], width))
+    return out
+
+
+def targets_view(state: DashboardState, width: int) -> Table | Text:
     lines = model.target_lines(state)
     if not lines:
         reason = state.targets_error or "reading the registry…"
         return Text(f"targets unavailable: {reason}", style=PALETTE["muted"])
-    out = Text()
+    grid = Table.grid(padding=(0, 2))
+    grid.add_column(width=15, no_wrap=True)
+    grid.add_column(width=19, no_wrap=True)
+    grid.add_column(width=8, no_wrap=True)
+    grid.add_column(no_wrap=True, overflow="ellipsis", max_width=max(width - 48, 12))
     for name, caps, images, verified in lines:
-        out.append(f"{name:<16}", style=PALETTE["accent"])
-        out.append(f"{caps.text:<16}", style=PALETTE["muted"])
-        out.append("images ", style=PALETTE["muted"])
-        out.append_text(styled(images))
-        out.append("   last verify ", style=PALETTE["muted"])
-        out.append_text(styled(verified))
-        out.append("\n")
-    out.rstrip()
+        chips = Text()
+        for word in caps.text.split():
+            if word != model.NONE:
+                chips.append_text(chip(word))
+                chips.append(" ")
+        image_text = Text("img ", style=PALETTE["muted"])
+        image_text.append_text(styled(images))
+        grid.add_row(Text(name, style=PALETTE["accent"]), chips, image_text, verify_text(verified))
+    return grid
+
+
+def verify_text(cell: Cell) -> Text:
+    """``7.5.3 · ✓ PASS · 11-19 19:14``; unknown stays ``—``."""
+    if cell.text == model.NONE:
+        return Text(f"verify {model.NONE}", style=PALETTE["muted"])
+    parts = cell.text.split(" · ")
+    out = Text("verify ", style=PALETTE["muted"])
+    out.append(parts[0])
+    if len(parts) > 1:
+        out.append(" · ")
+        out.append_text(badge(Cell(parts[1], cell.style)))
+    if len(parts) > 2:
+        out.append(f" · {parts[2][5:]}", style=PALETTE["muted"])  # MM-DD HH:MM
     return out
+
+
+def recent_candidates(state: DashboardState) -> Table | Text:
+    rows = model.finding_rows(state)
+    if not rows:
+        return Text("")
+    grid = Table.grid(padding=(0, 1))
+    grid.add_column(no_wrap=True, max_width=20, overflow="ellipsis")
+    grid.add_column(no_wrap=True)
+    grid.add_column(no_wrap=True)
+    grid.add_column(no_wrap=True, overflow="ellipsis")
+    grid.add_row(Text("recent candidates", style=PALETTE["muted"]), "", "", "")
+    for row in rows[-8:][::-1]:
+        case, c0, c1, c2, cls, replay, _judged = row.cells
+        verdicts = Text()
+        for value in (c0, c1, c2):
+            verdicts.append_text(styled(value))
+        grid.add_row(
+            Text(case.text, style=PALETTE["accent"]), verdicts, styled(cls), styled(replay)
+        )
+    return grid
 
 
 def run_detail_view(snapshot: RunSnapshot | None, now: float) -> Text:
@@ -673,12 +761,52 @@ def run_detail_view(snapshot: RunSnapshot | None, now: float) -> Text:
         return Text("select a run (↑ ↓)", style=PALETTE["muted"])
     out = lines_text(model.run_detail(snapshot, now), width=8)
     p = snapshot.progress
+    runs, budget = (p.runs, p.budget) if p else (None, None)
     out.append("\n\n")
     out.append(f"{'progress':<10}", style=PALETTE["muted"])
-    out.append_text(bar_text(p.runs if p else None, p.budget if p else None, 18))
+    out.append_text(bar_text(runs, budget, 18))
+    pct = model.percent(runs, budget)
+    if pct:
+        out.append(f" {pct}")
     out.append("\n\n")
-    out.append_text(outcomes_text(snapshot))
+    out.append_text(outcomes_text(snapshot, 44))
     return out
+
+
+def detail_view(lines: Sequence[tuple[str, Cell]], width: int) -> Group:
+    """A candidate: a label/value grid, long values (hashes, paths) as full-width blocks, and the
+    replay rounds as a small table. Values wrap only inside their own column."""
+    width = max(width, 30)
+    grid = Table.grid(padding=(0, 2))
+    grid.add_column(width=20, no_wrap=True, style=PALETTE["muted"])
+    grid.add_column(ratio=1, overflow="fold")
+    blocks: list[Any] = []
+    rounds = Table(box=None, show_edge=False, pad_edge=False, header_style=PALETTE["muted"])
+    for name in ("round", "result", "ended", "C0C1C2"):
+        rounds.add_column(name, no_wrap=True)
+    for label, cell in lines:
+        if label.startswith("  round "):
+            classification, termination, verdicts = (cell.text.split(" · ") + ["", "", ""])[:3]
+            tone = {"reproduced_violation": model.OK, "infrastructure_failure": model.BAD}.get(
+                classification, model.WARN if classification else model.PLAIN
+            )
+            rounds.add_row(label.strip(), styled(Cell(classification, tone)), termination, verdicts)
+        elif label in model.BLOCK_LABELS:
+            value = (
+                cell.text if label == "input SHA-256" else model.shorten_middle(cell.text, width)
+            )
+            block = Text(f"{label}\n", style=PALETTE["muted"])
+            block.append_text(styled(Cell(value, cell.style)))
+            blocks.append(block)
+        else:
+            grid.add_row(label, styled(cell))
+    parts: list[Any] = [grid, Text("")]
+    for block in blocks:
+        parts += [block, Text("")]
+    if rounds.row_count:
+        parts.append(Text("replay rounds", style=PALETTE["muted"]))
+        parts.append(rounds)
+    return Group(*parts)
 
 
 def artifacts_text(lines: Sequence[tuple[str, Cell]]) -> Text:
@@ -694,15 +822,44 @@ def artifacts_text(lines: Sequence[tuple[str, Cell]]) -> Text:
     return out
 
 
-def event_text(event: UiEvent) -> Text:
-    when, kind, run, content = model.event_cells(event)
-    out = Text()
+def events_view(events: Sequence[UiEvent], height: int, width: int = 0) -> Text:
+    """The newest events, consecutive progress of one run folded into one line (``×n``); each
+    event is one line, cut with ``…`` to ``width`` (0: no limit)."""
+    collapsed = model.collapse_events(events)[-height:]
+    if not collapsed:
+        return Text(model.READ_ONLY_NOTE, style=PALETTE["muted"])
     widths = model.EVENT_WIDTHS
-    out.append(f"{when.text:<{widths[0]}} ", style=PALETTE["muted"])
-    out.append_text(styled(Cell(f"{kind.text:<{widths[1]}} ", kind.style)))
-    out.append(f"{run.text:<{widths[2]}} ")
-    out.append_text(styled(content))
+    lines = []
+    for event, repeats in collapsed:
+        when, kind, run, content = model.event_cells(event)
+        style = EVENT_STYLES.get(event.kind, kind.style)
+        line = Text()
+        line.append(f"{when.text:<{widths[0]}} ", style=PALETTE["muted"])
+        line.append_text(styled(Cell(f"{kind.text:<{widths[1]}} ", style)))
+        line.append(f"{model.shorten_middle(run.text, widths[2]):<{widths[2]}} ")
+        line.append_text(styled(Cell(content.text, kind.style)))
+        if repeats > 1:
+            line.append(f"  ×{repeats}", style=PALETTE["muted"])
+        if width > 0:
+            line.truncate(width, overflow="ellipsis")
+        lines.append(line)
+    return Text("\n").join(lines)
+
+
+def progress_cell(snapshot: RunSnapshot | None) -> Text:
+    """``████░░░░ 91/200`` from real numbers; ``?/?`` and no bar when unknown."""
+    p = snapshot.progress if snapshot else None
+    runs, budget = (p.runs, p.budget) if p else (None, None)
+    numbers = f"{model.count(runs)}/{model.count(budget)}"
+    if model.bar(runs, budget, 6) is None:
+        return Text(numbers, style=PALETTE["muted"])
+    out = bar_text(runs, budget, 6)
+    out.append(f" {numbers}")
     return out
+
+
+def event_text(event: UiEvent) -> Text:
+    return events_view([event], 1)
 
 
 def _empty_row(width: int, message: str) -> Row:

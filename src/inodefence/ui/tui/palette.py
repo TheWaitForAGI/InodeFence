@@ -1,12 +1,11 @@
-"""The TUI's colours by meaning, from the shared :mod:`inodefence.ui.theme` when it exists.
-
-Until that module is on this branch the same semantic names and values (the ones the theme
-announces) are used here, so swapping is a no-op for the screen.
-"""
+"""The TUI's colours by meaning, from the shared :mod:`inodefence.ui.theme` (the same palette
+as the console and the web dashboard). ``_FALLBACK`` only supplies a name the theme lacks."""
 
 from __future__ import annotations
 
 from collections.abc import Mapping
+
+from inodefence.ui.theme import PALETTE as _THEME
 
 _FALLBACK: dict[str, str] = {
     "accent": "#22d3ee",
@@ -22,10 +21,6 @@ _FALLBACK: dict[str, str] = {
     "border": "#0e7490",
 }
 
-try:  # pragma: no cover - depends on which branch is merged
-    from inodefence.ui.theme import PALETTE as _THEME  # type: ignore[import-not-found]
-except ImportError:  # pragma: no cover
-    _THEME = {}
 
 PALETTE: Mapping[str, str] = {**_FALLBACK, **dict(_THEME)}
 #: Darker steps used only to separate regions (no meaning attached).

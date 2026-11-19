@@ -169,7 +169,8 @@ CONTRACT_LEGEND = "C0 C1 C2:  V violated  ·  - judged, not violated  ·  ? not 
 
 
 def replay_columns(records: Sequence[ReplayRecord]) -> tuple[Cell, Cell]:
-    """Findings' two replay columns: a short conclusion and ``n/judged judged · rounds``."""
+    """Findings' two replay columns: a short conclusion and ``n/judged · rounds`` (same
+    contracts in n of the judged rounds, then how many rounds ran)."""
     readable = [r for r in records if r.read_state is ReadState.OK]
     if not readable:
         return Cell("no replay", DIM), Cell(NONE, DIM)
@@ -178,8 +179,8 @@ def replay_columns(records: Sequence[ReplayRecord]) -> tuple[Cell, Cell]:
     name = record.conclusion.value if record.conclusion else UNKNOWN
     label = Cell(_SHORT_CONCLUSION.get(name, name), full.style)
     if record.judged == 0:
-        return label, Cell(f"0 judged · {count(record.rounds_done)} rounds", WARN)
-    numbers = f"{count(record.same_contracts)}/{count(record.judged)} judged"
+        return label, Cell(f"0/0 · {count(record.rounds_done)} rounds", WARN)
+    numbers = f"{count(record.same_contracts)}/{count(record.judged)}"
     return label, Cell(f"{numbers} · {count(record.rounds_done)} rounds")
 
 
@@ -472,9 +473,7 @@ def campaign_rows(state: DashboardState) -> list[Row]:
             Row(
                 ref.key,
                 (
-                    Cell(text(ref.run_id), ACCENT),
-                    Cell(text(ref.target)),
-                    Cell(text(ref.version)),
+                    Cell(run_name(snapshot), ACCENT),
                     run_state(snapshot, state.now),
                     Cell(runs),
                     Cell(rate),
@@ -526,25 +525,30 @@ def finding_rows(state: DashboardState) -> list[Row]:
     every = _replays(state)
     rows = []
     for snapshot, row in findings(state):
-        ref = snapshot.ref
-        location = row.input_path.parent if row.input_path is not None else None
         rows.append(
             Row(
                 finding_key(snapshot, row),
                 (
                     Cell(row.case_id, ACCENT),
-                    Cell(f"{text(ref.target)}@{text(ref.version)}"),
                     contract_cell(row.c0),
                     contract_cell(row.c1),
                     contract_cell(row.c2),
                     finding_class_cell(row.finding),
-                    Cell(row.termination.value),
                     *replay_columns(_replays_for(snapshot, row, every)),
-                    Cell(text(location), DIM),
                 ),
             )
         )
     return rows
+
+
+#: Detail lines whose value is long and gets its own full-width block (label above, value below).
+BLOCK_LABELS = ("input SHA-256", "input file", "replay folder")
+
+
+def yes_no(value: bool | None) -> Cell:
+    if value is None:
+        return Cell(NONE, DIM)
+    return Cell("yes" if value else "no", PLAIN if value else WARN)
 
 
 def finding_detail(state: DashboardState, key: str) -> list[tuple[str, Cell]]:
@@ -560,15 +564,21 @@ def finding_detail(state: DashboardState, key: str) -> list[tuple[str, Cell]]:
             ("C0 / C1 / C2", Cell(" ".join(contract_cell(v).text for v in row.contracts.values()))),
             ("termination", Cell(row.termination.value)),
             ("judgment", judgment_cell(row.judgment)),
-            ("observation complete", Cell(text(row.observation_complete))),
-            ("fingerprints", Cell(", ".join(row.fingerprints) or NONE)),
+            ("observation complete", yes_no(row.observation_complete)),
+            (
+                "fingerprints",
+                Cell(
+                    str(len(row.fingerprints)) if row.fingerprints else NONE,
+                    PLAIN if row.fingerprints else DIM,
+                ),
+            ),
+            ("recorded", Cell(text(row.recorded_at), PLAIN if row.recorded_at else DIM)),
             ("input SHA-256", Cell(text(row.tar_sha256))),
             ("input file", Cell(text(row.input_path), DIM)),
-            ("recorded", Cell(text(row.recorded_at), DIM)),
         ]
         for record in _replays_for(snapshot, row, every):
             lines.append(("replay", replay_cell([record])))
-            lines.append(("  folder", Cell(str(record.path.parent), DIM)))
+            lines.append(("replay folder", Cell(str(record.path.parent), DIM)))
             for entry in record.rounds:
                 verdicts = " ".join(contract_cell(v).text for v in (entry.c0, entry.c1, entry.c2))
                 lines.append(
@@ -792,17 +802,26 @@ def oracle_lines(state: DashboardState, snapshot: RunSnapshot | None) -> list[tu
     )
     needs = sum(r.finding is FindingClass.CANDIDATE_NEEDS_REPRO_CHECK for r in rows)
     lines.append(("needs repro check", Cell(str(needs), WARN if needs else PLAIN)))
-    every = _replays(state)
-    conclusions: dict[str, int] = {}
-    for row in rows:
-        label, numbers = replay_columns(_replays_for(snapshot, row, every))
-        conclusions[label.text] = conclusions.get(label.text, 0) + 1
-        if label.text != "no replay":
-            lines.append((f"  {row.case_id}", Cell(f"{label.text} · {numbers.text}", label.style)))
-    if conclusions:
-        summary = " · ".join(f"{k} {v}" for k, v in sorted(conclusions.items()))
-        lines.insert(3, ("replays", Cell(summary)))
     return lines
+
+
+def replay_bars(
+    state: DashboardState, snapshot: RunSnapshot | None
+) -> list[tuple[str, int, int, str]]:
+    """``(label, count, candidates, style)``: the selected run's candidates by their newest
+    replay's conclusion (``n/judged`` stays in Findings)."""
+    if snapshot is None:
+        return []
+    every = _replays(state)
+    order = ("reproduced", "partial", "not reproduced", "other", "no replay")
+    counts = dict.fromkeys(order, 0)
+    for row in snapshot.findings:
+        label, _ = replay_columns(_replays_for(snapshot, row, every))
+        counts[label.text if label.text in counts else "other"] += 1
+    total = len(snapshot.findings)
+    styles = {"reproduced": OK, "partial": WARN, "not reproduced": WARN, "other": DIM,
+              "no replay": DIM}  # fmt: skip
+    return [(name, counts[name], total, styles[name]) for name in order]
 
 
 def runs_list(state: DashboardState) -> list[Row]:
@@ -832,8 +851,29 @@ def runs_list(state: DashboardState) -> list[Row]:
 def run_name(snapshot: RunSnapshot, limit: int = 22) -> str:
     """``target@version``, or the run id when the files do not name the target yet."""
     ref = snapshot.ref
-    name = text(ref.run_id) if ref.target is None else f"{ref.target}@{text(ref.version)}"
-    return name if len(name) <= limit else name[: limit - 1] + "…"
+    if ref.target is None:
+        return shorten_middle(text(ref.run_id), limit)
+    name = f"{ref.target}@{text(ref.version)}"
+    tail = run_tail(ref.run_id, ref.version)
+    return shorten_middle(f"{name} #{tail}" if tail else name, limit)
+
+
+def run_tail(run_id: str | None, version: str | None) -> str | None:
+    """What follows the version in a run id (``…-7.5.2-1-20`` -> ``1-20``: seed and budget)."""
+    if not run_id:
+        return None
+    if version and f"{version}-" in run_id:
+        return run_id.split(f"{version}-", 1)[1] or None
+    return run_id[-8:]
+
+
+def shorten_middle(value: str, width: int) -> str:
+    """``value`` cut in the middle with ``…`` to fit ``width`` (the ends are what identify it)."""
+    if width <= 1 or len(value) <= width:
+        return value
+    keep = width - 1
+    head = keep // 2
+    return value[:head] + "…" + value[len(value) - (keep - head) :]
 
 
 def run_detail(snapshot: RunSnapshot | None, now: float) -> list[tuple[str, Cell]]:
@@ -866,3 +906,27 @@ def target_lines(state: DashboardState) -> list[tuple[str, Cell, Cell, Cell]]:
         )
         out.append((name.text, Cell(caps or NONE, DIM), images, verified))
     return out
+
+
+def collapse_events(events: Sequence[UiEvent]) -> list[tuple[UiEvent, int]]:
+    """Consecutive ``progress`` events of the same run folded into the last one with a count,
+    so they do not push the other kinds out of a short panel."""
+    out: list[tuple[UiEvent, int]] = []
+    for event in events:
+        if (
+            out
+            and event.kind is EventKind.PROGRESS
+            and out[-1][0].kind is EventKind.PROGRESS
+            and out[-1][0].run_id == event.run_id
+            and out[-1][0].run_root == event.run_root
+        ):
+            out[-1] = (event, out[-1][1] + 1)
+        else:
+            out.append((event, 1))
+    return out
+
+
+def percent(runs: int | None, budget: int | None) -> str | None:
+    if runs is None or budget is None or budget <= 0:
+        return None
+    return f"{runs / budget * 100:.1f}%"

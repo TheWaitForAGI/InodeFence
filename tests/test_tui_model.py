@@ -74,7 +74,7 @@ def test_replay_columns_split_label_and_counts() -> None:
     record = ReplayRecord(Path("r"), ReadState.OK, ReplayConclusion.REPRODUCED_VIOLATION,
                           rounds_done=3, judged=3, same_contracts=3)  # fmt: skip
     label, numbers = model.replay_columns([record])
-    assert (label.text, numbers.text) == ("reproduced", "3/3 judged · 3 rounds")
+    assert (label.text, numbers.text) == ("reproduced", "3/3 · 3 rounds")
     assert model.replay_columns([])[0].text == "no replay"
 
 
@@ -100,3 +100,57 @@ def test_module_entry_exits_3_with_the_hint_without_textual(monkeypatch, capsys)
     monkeypatch.setattr(entry, "run", unavailable)
     assert entry.main([]) == 3
     assert "inodefence[tui]" in capsys.readouterr().err
+
+
+# -- QA mutation gaps G2-G6 ------------------------------------------------------------------------
+
+
+def test_g2_only_live_progress_is_sampled_for_the_graph(tmp_path: Path) -> None:
+    out, rid = syn.explore_out(tmp_path), syn.run_id()
+    syn.write_result(out / "target-explore" / f"{rid}-result", syn.result())
+    finished = read_run(RunRef(RunKind.EXPLORE, out, rid))
+    history: list[model.Sample] = []
+    model.observe(history, finished)  # a result's numbers are not an observed snapshot
+    assert history == []
+
+
+def test_g3_unknown_increments_are_gaps_not_zero() -> None:
+    samples = [
+        model.Sample(1.0, 1, None),
+        model.Sample(2.0, None, None),
+        model.Sample(3.0, 5, None),
+    ]
+    assert model.increments(samples) == [None, None]
+    assert model.sparkline([None, 4.0, None, 2.0], 4)[0] == " "  # a gap, not the lowest block
+
+
+def test_g4_the_same_snapshot_is_sampled_once(tmp_path: Path) -> None:
+    out, rid, clock = syn.explore_out(tmp_path), syn.run_id(), syn.Clock()
+    syn.live_run(out, rid, [syn.step(0)], clock=clock)
+    snap = read_run(RunRef(RunKind.EXPLORE, out, rid))
+    history: list[model.Sample] = []
+    model.observe(history, snap)
+    model.observe(history, snap)  # same updated_at
+    assert len(history) == 1
+
+
+def test_g5_per_contract_counts_show_the_lower_bound_mark(tmp_path: Path) -> None:
+    from dataclasses import replace
+
+    out, rid = syn.explore_out(tmp_path), syn.run_id()
+    syn.live_run(out, rid, [syn.step(0, c1=True, fp="c1-a")])
+    snap = read_run(RunRef(RunKind.EXPLORE, out, rid))
+    assert snap.progress is not None
+    lower = replace(snap, progress=replace(snap.progress, contracts_lower_bound=True))
+    state = model.DashboardState(snapshots={lower.ref.key: lower})
+    by_contract = dict(model.oracle_lines(state, lower))["by contract"].text
+    assert "C1 ≥1" in by_contract and "(from case folders)" in by_contract
+    exact = dict(model.oracle_lines(state, snap))["by contract"].text
+    assert "≥" not in exact
+
+
+def test_g6_unknown_unjudged_stays_unknown(tmp_path: Path) -> None:
+    out = syn.explore_out(tmp_path)
+    snap = read_run(RunRef(RunKind.EXPLORE, out, "x-1-20"))
+    rows = {label: value for label, value, _, _ in model.outcome_rows(snap)}
+    assert rows["unjudged"] is None and rows["build-invalid"] is None

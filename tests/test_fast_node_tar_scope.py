@@ -22,6 +22,7 @@ import inodefence.drivers.explore_result as er
 import inodefence.drivers.node_tar.explore as nte
 import inodefence.drivers.run_target as rt
 from inodefence.drivers.runtime import policy
+from inodefence.evaluation.rds import VOCABULARY_MUTATION_POLICY
 from inodefence.target_result import (
     FAST_ACCEPTANCE_INTERVAL_ON_UNMEASURED_SCOPE,
     FAST_ACCEPTANCE_PASSED,
@@ -58,8 +59,8 @@ def test_the_scope_is_filled() -> None:
     assert isinstance(seeds, list) and len(seeds) >= 3 and len(set(seeds)) == len(seeds)
     assert seeds == [58005, 58006, 58009, 58010, 58014]  # the follow-up's counted seeds
     assert SCOPE["rule"] == "W4 v3"
-    assert isinstance(SCOPE["rule_sha"], str) and SCOPE["rule_sha"].startswith("37651dbe")
-    assert len(SCOPE["rule_sha"]) == 64
+    # the SHA-256 of W4 rule v3's start-frozen file, all 64 characters
+    assert SCOPE["rule_sha"] == "37651dbeb2aa6e353732fdb6640b7e7f375aa50c91053d0598ab2f6af18417a0"
 
 
 def test_the_measured_scope() -> None:
@@ -83,11 +84,22 @@ def test_inside_the_scope_means_an_exact_match(
     assert in_accepted_scope(SCOPE, version, policy_name, budget) is inside
 
 
-def _explore(monkeypatch, tmp: Path, version: str, budget: int, session: Any) -> dict[str, Any]:
+def _explore(
+    monkeypatch,
+    tmp: Path,
+    version: str,
+    budget: int,
+    session: Any,
+    mutation_policy: str | None = None,
+) -> dict[str, Any]:
     def fake(prepared: Any, *, out: Path, run_id: str, **_: Any) -> Path:
         path = nte.controller_report_path(out, run_id)
         path.parent.mkdir(parents=True, exist_ok=True)
         report = _report(identity_checks=RECORD)
+        if mutation_policy is not None:  # the loop reports the policy it ran
+            report["vocabulary_mode"] = next(
+                m.value for m, p in VOCABULARY_MUTATION_POLICY.items() if p.value == mutation_policy
+            )
         report["aggregate"] = {**report["aggregate"], "runs_executed": budget,
                                "terminations": {"success": budget}}  # fmt: skip
         path.write_text(json.dumps(report), encoding="utf-8")
@@ -95,7 +107,9 @@ def _explore(monkeypatch, tmp: Path, version: str, budget: int, session: Any) ->
 
     monkeypatch.setattr(nte, "run_controller", fake)
     prepared = dataclasses.replace(_prepared(), version=version, requested=version)
-    options = rt.ExploreOptions(budget=budget, seed=1, out=tmp, runtime=session)
+    options = rt.ExploreOptions(
+        budget=budget, seed=1, out=tmp, runtime=session, mutation_policy=mutation_policy
+    )
     outcome = nte.explore(prepared, options)
     campaign = load_target_result(outcome.result_path).campaign
     assert campaign is not None
@@ -152,6 +166,8 @@ def _with(checks: dict[str, Any]) -> dict[str, Any]:
           "acceptance_scope": {**FILLED, "counted_seeds": [1, 1, 2]}}, "counted_seeds"),
         ({**RECORD, "fast_acceptance": "passed",
           "acceptance_scope": {**FILLED, "counted_seeds": 5}}, "counted_seeds"),
+        ({**RECORD, "fast_acceptance": "passed",
+          "acceptance_scope": {**FILLED, "rule_sha": "g" * 64}}, "rule_sha"),  # not hex
         ({**RECORD, "fast_acceptance": "passed", "acceptance_scope": {"version": "7.5.2"}},
          "acceptance_scope"),
     ],
@@ -179,3 +195,18 @@ def test_an_unfilled_scope_writes_no_result(monkeypatch, tmp_path: Path) -> None
     with pytest.raises(er.IdentityRecordError, match="not filled"):
         _explore(monkeypatch, tmp_path, "7.5.2", 2000, _session(policy.FAST))
     assert not list(tmp_path.rglob("result.json"))
+
+
+def test_a_v2_policy_run_at_the_measured_numbers_is_outside_the_scope(
+    monkeypatch, tmp_path, filled
+) -> None:
+    # Same version and budget as the measured scope, but the v2 mutation policy: the policy is
+    # part of the scope, so the run keeps the interval and says the scope was not measured.
+    from inodefence.mutator import MutationPolicy
+
+    v2 = MutationPolicy.V2_FREEZE3_FIXED_BASELINE.value
+    checks = _explore(
+        monkeypatch, tmp_path, "7.5.2", 2000, _session(policy.FAST), mutation_policy=v2
+    )
+    assert checks["fast_acceptance"] == FAST_ACCEPTANCE_INTERVAL_ON_UNMEASURED_SCOPE
+    assert checks["acceptance_scope"] == filled

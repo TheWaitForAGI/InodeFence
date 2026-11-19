@@ -29,7 +29,8 @@
 
 ### 추가된 사용자 기능
 - `inodefence dashboard [FOLDER ...] [--host] [--port]`: 로컬 읽기 전용 웹 대시보드(기본 127.0.0.1:8765, GET만).
-  지금은 Overview 페이지이고 나머지는 다음 단계다. 선택 설치 `web`이 없거나 서버가 시작하지 못하면 한 줄과 종료 3.
+  페이지는 Overview·Targets·Experiments·Findings·Replay·Artifacts. 선택 설치 `web`이 없거나 서버가 시작하지 못하면
+  한 줄과 종료 3.
   [USAGE](docs/USAGE.md#웹-대시보드dashboard)
 - 대화형 터미널(선택 설치 `ui`)에서 `status`는 결과 표, `summary`는 마크다운을 그려서 보여 준다. `--plain`, 파이프,
   `-o`는 지금의 텍스트 그대로다. `explore`의 진행 화면도 같은 디자인(실행 막대, 카드, 종료 상태 막대, 끝의 결과 패널)이고,

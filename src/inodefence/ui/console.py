@@ -127,15 +127,31 @@ def plain_item_lines(item: Item, view: View) -> list[str]:
 class Console:
     """Where a command's human-readable output goes; picks Rich or plain once, per stream."""
 
-    def __init__(self, stream: TextIO | None = None, *, rich: Any | None = None) -> None:
+    def __init__(
+        self,
+        stream: TextIO | None = None,
+        *,
+        rich: Any | None = None,
+        version: str = "",
+        width: int | None = None,
+    ) -> None:
         self.stream = sys.stdout if stream is None else stream
         self.view = View.for_stream(self.stream)
+        self.version = version
         module = rich if rich is not None else rich_module()
-        self._rich = None
+        self._rich: Any = None
         if module is not None and interactive(self.stream):
             from rich.console import Console as RichConsole
 
-            self._rich = RichConsole(file=self.stream, highlight=False, soft_wrap=False)
+            from inodefence.ui import theme
+
+            self._rich = RichConsole(
+                file=self.stream,
+                highlight=False,
+                soft_wrap=False,
+                theme=theme.rich_theme(),
+                width=width,
+            )
 
     @property
     def uses_rich(self) -> bool:
@@ -145,46 +161,88 @@ class Console:
         """A plain line, identical in both renderers (summaries, notes)."""
         print(text, file=self.stream)
 
+    def _print(self, *renderables: Any) -> None:
+        assert self._rich is not None
+        for renderable in renderables:
+            self._rich.print(renderable)
+
     # -- doctor ------------------------------------------------------------------------------
 
-    def doctor(self, items: Sequence[Item], summary: str) -> None:
+    def doctor(self, report: Any) -> None:
+        """``report``: :class:`inodefence.app.doctor.Report`."""
         if self._rich is None:
-            for item in items:
+            for item in report.items:
                 for line in plain_item_lines(item, self.view):
                     print(line, file=self.stream)
+            self.line()
+            self.line(report.summary)
+            return
+        self._rich_doctor(report)
+
+    def _rich_doctor(self, report: Any) -> None:
+        from inodefence.app.doctor import SECTIONS
+        from inodefence.ui import components as ui
+
+        items = report.items
+        self._print(
+            ui.header("doctor", version=self.version, subject=f"{len(items)} checks"),
+            "",
+        )
+        tones = {"OK": "ok", "WARN": "warn", "FAIL": "bad", "UNKNOWN": "warn", "INFO": "info"}
+        tally = [
+            (status, str(report.count(status)), tones[status] if report.count(status) else "muted")
+            for status in ("OK", "WARN", "FAIL", "UNKNOWN", "INFO")
+            if status != "INFO" or report.count("INFO")
+        ]
+        self._print(ui.cards(tally))
+        for name in SECTIONS:
+            rows = [
+                (
+                    item.status,
+                    item.label,
+                    ui.value_text(
+                        item.value,
+                        parts=self._packed(item.parts),
+                        more=item.more,
+                        hints=item.hints,
+                    ),
+                )
+                for item in items
+                if item.section == name
+            ]
+            if rows:
+                self._print(ui.section(name, ui.item_grid(rows)))
+        if report.failed:
+            status, title = "FAIL", "Some checks failed"
+            steps = ["fix the FAIL items above (each has a → line), then run doctor again"]
         else:
-            self._rich_doctor(items)
-        self.line()
-        self.line(summary)
+            status, title = "OK", "Ready"
+            steps = [
+                "inodefence targets — the extractors and what each supports",
+                "inodefence verify --target node-tar --version <v> --dry-run — the plan, run "
+                "nothing",
+            ]
+        lines = [report.summary]
+        self._print(ui.result_panel(status, title, lines, next_steps=steps))
 
-    def _rich_doctor(self, items: Sequence[Item]) -> None:
-        from rich.table import Table
-        from rich.text import Text
-
+    def _packed(self, parts: Sequence[str]) -> list[str]:
+        if not parts:
+            return []
         assert self._rich is not None
-        # The value column: what is left after the status (7) and name (22) columns and padding.
-        value_width = max(self._rich.size.width - 7 - 22 - 4, 20)
-        table = Table(box=None, show_header=False, pad_edge=False, padding=(0, 2, 0, 0))
-        table.add_column(no_wrap=True)
-        table.add_column(no_wrap=True)
-        table.add_column(overflow="fold")
-        for item in items:
-            value = Text(item.value)
-            if item.parts:
-                # A part ("node-tar 39") never breaks inside: lines break only between parts.
-                for line in pack(item.parts, " · ", value_width):
-                    value.append("\n" + line)
-            for line in item.more:
-                value.append("\n" + line)
-            for hint in item.hints:
-                value.append("\n→ " + hint, style="dim")
-            table.add_row(Text(item.status, style=_RICH_STYLE[item.status]), item.label, value)
-        assert self._rich is not None
-        self._rich.print(table)
+        # The value column: what is left after the chip (10) and name (22) columns, padding and
+        # the section border; groups break only between groups.
+        width = max(self._rich.size.width - 10 - 22 - 4 - 4, 20)  # chip, name, padding, border
+        return pack(parts, " · ", width)
 
     # -- targets -----------------------------------------------------------------------------
 
-    def targets(self, rows: Sequence[Sequence[str]], header: Sequence[str], note: str) -> None:
+    def targets(
+        self,
+        rows: Sequence[Sequence[str]],
+        header: Sequence[str],
+        note: str,
+        support: Mapping[str, Mapping[str, Any]] | None = None,
+    ) -> None:
         """The target table. Plain: the fixed-width table the command has always printed."""
         if self._rich is None:
             widths = (16, 11, 13, 8, 7)
@@ -195,19 +253,87 @@ class Console:
             for row in rows:
                 cells = " ".join(f"{cell:{w}}" for cell, w in zip(row, widths, strict=False))
                 print(f"{cells} {row[-1]}", file=self.stream)
-        else:
-            from rich import box
-            from rich.table import Table
+            self.line()
+            self.line(note)
+            return
+        self._rich_targets(rows, header, note, support or {})
 
-            table = Table(box=box.SIMPLE_HEAD, pad_edge=False, header_style="bold")
-            for name in header:
-                table.add_column(name, overflow="fold")
-            for row in rows:
-                table.add_row(*row)
-            assert self._rich is not None
-            self._rich.print(table)
-        self.line()
-        self.line(note)
+    def _rich_targets(
+        self,
+        rows: Sequence[Sequence[str]],
+        header: Sequence[str],
+        note: str,
+        support: Mapping[str, Mapping[str, Any]],
+    ) -> None:
+        from rich.text import Text
+
+        from inodefence.ui import components as ui
+
+        total = len(rows)
+
+        def able(column: int) -> int:
+            return sum(1 for row in rows if row[column] == "yes")
+
+        self._print(
+            ui.header("targets", version=self.version, subject=f"{total} extractors registered"),
+            "",
+            ui.cards(
+                [
+                    ("regression check", f"{able(1)}/{total}", "plain"),
+                    ("auto-prepare", f"{able(2)}/{total}", "plain"),
+                    ("exploration", f"{able(3)}/{total}", "plain"),
+                    ("replay", f"{able(4)}/{total}", "plain"),
+                ]
+            ),
+        )
+
+        def capability(value: str) -> Text:
+            if value == "yes":
+                return ui.flag(True)
+            text = ui.flag(False)
+            if value.startswith("no ("):
+                text.append(f" {value[3:]}", style="if.label")
+            return text
+
+        table = ui.data_table(
+            [(header[0], "left"), *((name, "left") for name in header[1:5]), (header[5], "left")],
+            (
+                [Text(row[0], style="bold"), *(capability(cell) for cell in row[1:5]), row[5]]
+                for row in rows
+            ),
+        )
+        self._print(ui.section("Extractors", table))
+        options = [
+            (name, option)
+            for name, feats in support.items()
+            for option in feats.get("options") or []
+        ]
+        if options:
+            option_rows = []
+            for name, option in options:
+                needed = "required" if option.get("required") else "optional"
+                choices = option.get("choices")
+                detail = Text(option.get("description") or "")
+                if choices:
+                    detail.append(f"\nchoices: {', '.join(map(str, choices))}", style="if.label")
+                option_rows.append(
+                    [
+                        Text(name, style="bold"),
+                        Text(f"--{option['name']}", style="if.accent"),
+                        Text(needed, style="if.label"),
+                        detail,
+                    ]
+                )
+            self._print(
+                ui.section(
+                    "Target options",
+                    ui.data_table(
+                        [("target", "left"), ("option", "left"), ("", "left"), ("what", "left")],
+                        option_rows,
+                    ),
+                )
+            )
+        self._print(Text(note, style="if.label"))
 
     # -- errors ------------------------------------------------------------------------------
 

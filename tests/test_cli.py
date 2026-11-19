@@ -506,7 +506,7 @@ def test_doctor_runtime_root_outside_the_allowed_base_is_a_fail_without_sudo_adv
     monkeypatch.setenv("INODEFENCE_RUNTIME_ROOT", value)
     item = doctor._runtime_check()
     assert item.status == "FAIL"
-    console.Console().doctor([item], "")
+    console.Console().doctor(doctor.Report((item,)))
     out = _flat(capsys.readouterr().out)
     assert out.startswith(f"{expected} runtime dir (dev only)") and "not allowed" in out
     assert "sudo" not in out
@@ -1329,21 +1329,35 @@ def test_without_rich_and_with_rich_off_a_terminal_doctor_is_byte_identical(
     assert not any(ch in with_rich for ch in "─│┌┐└┘━┃")  # no box drawing off a terminal
 
 
-def test_doctor_on_a_terminal_with_rich_draws_a_borderless_table(
+_ANSI = __import__("re").compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+
+
+def _visible(text: str) -> str:
+    """What a person reads: escape codes removed, panel borders and wrapping undone."""
+    plain = _ANSI.sub("", text)
+    for ch in "│╭╮╰╯─":
+        plain = plain.replace(ch, " ")
+    return " ".join(plain.split())
+
+
+def test_doctor_on_a_terminal_with_rich_uses_the_design_system(
     _crowded_host, monkeypatch, capsys
 ) -> None:
     pytest.importorskip("rich")
     _terminal(monkeypatch, 120, rich=True)
     code = cli.main(["doctor"])
     out = capsys.readouterr().out
-    assert "\x1b[" in out  # coloured status
-    assert "prepared images" in out and "leftover from old runs" in out
-    assert "→ full list: inodefence doctor --details" in out.replace("\x1b[2m", "").replace(
-        "\x1b[0m", ""
-    )
-    assert not any(ch in out for ch in "┌┐└┘│")  # no borders
-    assert out.rstrip().endswith("no check failed; 1 UNKNOWN (not verified, see above)")
-    assert code == (0 if cli.sys.version_info[:2] == (3, 12) else 1)
+    seen = _visible(out)
+    assert "\x1b[" in out  # coloured chips
+    assert seen.startswith("InodeFence ") and "› doctor · 12 checks" in seen  # the brand header
+    for section in ("Environment", "Storage", "Docker", "Development"):
+        assert f" {section} " in seen  # a titled section panel each
+    assert "╭" in out and "╰" in out  # thin rounded panels (sections, cards, the result)
+    assert "✓ OK" in seen and "! WARN" in seen and "! UNKNOWN" in seen  # chips: word + symbol
+    assert "→ full list: inodefence doctor --details" in seen
+    assert "no check failed; 1 UNKNOWN (not verified, see above)" in seen  # the same sentence
+    assert "✓ OK Ready" in seen  # the result panel's title
+    assert code == (0 if cli.sys.version_info[:2] == (3, 12) else 1)  # unchanged
 
 
 def test_no_color_turns_rich_off_even_on_a_terminal(_crowded_host, monkeypatch, capsys) -> None:
@@ -1371,8 +1385,10 @@ def test_targets_rows_and_json_are_the_same_with_rich_on_a_terminal(monkeypatch,
     if console.rich_module() is not None:
         cli.main(["targets"])
         table = capsys.readouterr().out
-        assert "node-tar" in table and "target options" in table
-        assert targets.TABLE_NOTE in table
+        seen = _visible(table)
+        assert "› targets · 3 extractors registered" in seen  # the registry's count
+        assert "Extractors" in seen and "Target options" in seen
+        assert "--extraction-filter" in seen and targets.TABLE_NOTE in seen
 
 
 def test_prepared_images_are_data_grouped_by_target_or_unknown(monkeypatch) -> None:

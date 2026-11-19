@@ -88,7 +88,9 @@ def cmd_targets(args: argparse.Namespace) -> int:
     from inodefence.app.targets import TABLE_HEADER, TABLE_NOTE, table_rows
     from inodefence.ui.console import Console
 
-    Console().targets(table_rows(support), TABLE_HEADER, TABLE_NOTE)
+    Console(version=_package_version()).targets(
+        table_rows(support), TABLE_HEADER, TABLE_NOTE, support
+    )
     return 0
 
 
@@ -99,7 +101,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     report = doctor.run(
         args.user_config, args.user_config_error, details=getattr(args, "details", False)
     )
-    Console().doctor(report.items, report.summary)
+    Console(version=_package_version()).doctor(report)
     return report.exit_code
 
 

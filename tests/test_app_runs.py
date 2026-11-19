@@ -318,3 +318,39 @@ def test_read_verify_and_read_result_name_target_and_version(tmp_path: Path) -> 
     python = cells["python-tarfile-3.12.7-data"]
     assert (python.target, python.version) == ("python-tarfile", "3.12.7")
     assert runs.read_result(verify / "node-tar-7.5.2" / "result.json").ref is None  # no ref given
+
+
+def test_list_artifacts_is_metadata_only_and_marks_missing(tmp_path: Path, monkeypatch) -> None:
+    from inodefence.app.runs import ArtifactKind, list_artifacts
+
+    out, rid = syn.explore_out(tmp_path), syn.run_id()
+    syn.live_run(out, rid, [syn.step(0, c1=True, fp="c1-a")])
+    result_dir = out / "target-explore" / f"{rid}-result"
+    syn.write_result(result_dir, syn.result(cases=[syn.case("step-1", True)], saved=["step-1"]))
+    syn.replay(result_dir, {"case_id": "step-1", "c0": False, "c1": True, "c2": False},
+               [syn.judged_round(True)])  # fmt: skip
+    snap = runs.read_run(_explore_ref(out, rid))
+    opened: list[str] = []
+    real_open = Path.open
+
+    def spy(self: Path, *args: object, **kwargs: object):  # type: ignore[no-untyped-def]
+        opened.append(str(self))
+        return real_open(self, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Path, "open", spy)
+    monkeypatch.setattr(Path, "read_bytes", lambda self: (_ for _ in ()).throw(AssertionError))
+    entries = list_artifacts(snap)
+    assert opened == []  # stat only: no file is opened
+    kinds = [entry.kind for entry in entries]
+    for kind in (ArtifactKind.RESULT, ArtifactKind.LIVE_PROGRESS, ArtifactKind.CASE_FOLDER,
+                 ArtifactKind.INPUT_TAR, ArtifactKind.REPLAY):  # fmt: skip
+        assert kind in kinds
+    tar = next(e for e in entries if e.kind is ArtifactKind.INPUT_TAR and e.case_id == "step-1")
+    assert tar.tar_sha256 and tar.size == len(syn.TAR) and tar.mtime is not None
+    folder = next(e for e in entries if e.kind is ArtifactKind.CASE_FOLDER)
+    assert folder.size is None and folder.read_state is ReadState.OK
+    (tmp_path / "gone").mkdir()
+    gone = runs.read_run(RunRef(RunKind.VERIFY, tmp_path / "gone", "gone"))
+    (entry,) = list_artifacts(gone)
+    assert entry.kind is ArtifactKind.RESULT and entry.read_state is ReadState.MISSING
+    assert entry.size is None and entry.mtime is None

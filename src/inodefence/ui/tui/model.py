@@ -284,8 +284,8 @@ def header(state: DashboardState, selected: RunSnapshot | None) -> list[tuple[st
     return [
         ("", Cell("InodeFence", ACCENT)),
         ("engine", engine_cell(state)),
-        ("active", Cell(str(active), ACCENT if active else PLAIN)),
-        ("stalled", Cell(str(stalled), WARN if stalled else DIM)),
+        ("active runs", Cell(str(active), ACCENT if active else PLAIN)),
+        ("stalled runs", Cell(str(stalled), WARN if stalled else DIM)),
         ("selected", run),
         ("state", status),
     ]

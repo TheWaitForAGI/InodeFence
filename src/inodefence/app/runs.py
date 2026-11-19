@@ -847,7 +847,14 @@ def discover_runs(
         while stack and seen < max_entries:
             folder, depth = stack.pop()
             seen += 1
-            ref = _classify(folder)
+            try:
+                ref = _classify(folder)
+            except OSError as error:  # Path.is_file() raises on EACCES (only ENOENT is quiet)
+                found[f"error:{folder}"] = (
+                    0.0,
+                    RunListing(folder, None, ReadState.UNREADABLE, str(error)),
+                )
+                continue
             if ref is not None:
                 listing = RunListing(folder, ref, ReadState.OK)
                 found.setdefault(ref.key, (_mtime(folder), listing))

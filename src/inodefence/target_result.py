@@ -536,12 +536,13 @@ INTERVAL_ACCEPTANCE_STATES = (
 )
 #: The node-tar FAST acceptance scope (W4 rule v3). ``counted_seeds`` and ``rule_sha`` come with
 #: the follow-up result and are filled here, in this one place; a test fails while they are
-#: empty, so this branch cannot ship unfilled.
+#: empty, so this branch cannot ship unfilled. Follow-up measurement (2026-11-19, HOST1): 5
+#: counted seeds (58005, 58006, 58009, 58010, 58014), every compare exit 0, 0/2000 steps diverged.
 NODE_TAR_ACCEPTED_FAST_SCOPE: dict[str, Any] = {
     "version": "7.5.2",
     "policy": "default",
     "budget": 2000,
-    "counted_seeds": None,
+    "counted_seeds": 5,
     "rule_sha": None,
 }
 SCOPE_KEYS = ("version", "policy", "budget", "counted_seeds", "rule_sha")

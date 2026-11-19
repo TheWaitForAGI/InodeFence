@@ -138,7 +138,8 @@ def _with(checks: dict[str, Any]) -> dict[str, Any]:
         ({**RECORD, "fast_acceptance": "passed"}, "acceptance_scope"),
         ({**RECORD, "acceptance_scope": SCOPE}, "fast_acceptance"),
         ({**RECORD, "fast_acceptance": "accepted", "acceptance_scope": FILLED}, "fast_acceptance"),
-        ({**RECORD, "fast_acceptance": "passed", "acceptance_scope": SCOPE}, "counted_seeds"),
+        ({**RECORD, "fast_acceptance": "passed",
+          "acceptance_scope": {**FILLED, "counted_seeds": None}}, "counted_seeds"),
         ({**RECORD, "fast_acceptance": "passed",
           "acceptance_scope": {**FILLED, "rule_sha": None}}, "rule_sha"),
         ({**RECORD, "fast_acceptance": "passed", "acceptance_scope": {"version": "7.5.2"}},
@@ -163,7 +164,8 @@ def test_a_labeled_record_shows_its_label_verbatim() -> None:
 
 
 def test_an_unfilled_scope_writes_no_result(monkeypatch, tmp_path: Path) -> None:
-    # The real constant, still empty: the driver refuses to label, so no record from it can exist.
+    # An unfilled scope: the driver refuses to label, so no record from it can exist.
+    monkeypatch.setitem(er.ACCEPTED_FAST_SCOPE, "node-tar", {**SCOPE, "rule_sha": None})
     with pytest.raises(er.IdentityRecordError, match="not filled"):
         _explore(monkeypatch, tmp_path, "7.5.2", 2000, _session(policy.FAST))
     assert not list(tmp_path.rglob("result.json"))

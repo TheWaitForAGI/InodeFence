@@ -494,7 +494,7 @@ class Display:
             except (OSError, ValueError):
                 pass
 
-    def final(self, view: View) -> None:
+    def final(self, view: View, *, case_dirs: Sequence[Path] = ()) -> None:
         """The last progress line, always printed and left on the screen."""
         self.message(format_line(view))
 
@@ -592,7 +592,9 @@ class RichDisplay:
         head.add_column(no_wrap=True)
         head.add_column(ratio=1)
         head.add_column(no_wrap=True)
-        label = Text(f"{PREFIX} {view.phase}", style="bold")
+        tone = {RUNNING: "accent", CLEANUP: "accent", COMPLETED: "ok", ABORTED: "bad"}
+        label = Text(f"● {view.phase}", style=f"if.{tone.get(view.phase, 'muted')}")
+        label.stylize("bold")  # a theme name cannot be combined inside one style string
         if runs is None or view.budget <= 0:
             bar: Any = Text("no run count yet", style="if.label")
             done = f"runs {UNKNOWN}/{view.budget}"
@@ -602,7 +604,7 @@ class RichDisplay:
                 completed=min(runs, view.budget),
                 complete_style="if.accent",
                 finished_style="if.ok",
-                style="if.muted",  # the track: grey, so the filled part reads
+                style="if.track",  # a dark track, so any filled part reads
             )
             done = f"{runs}/{view.budget} runs ({100 * runs // view.budget}%)"
         head.add_row(label, bar, Text(done, style="bold"))
@@ -629,10 +631,17 @@ class RichDisplay:
         )
         terminations = [counts.terminations.get(name) for name in STATUSES]
         if runs and all(value is not None for value in terminations):
-            tones = {"success": "ok", "rejected": "info", "failed": "bad", "timed_out": "warn"}
+            # success ok; rejected neutral (a refusal is an outcome, not a fault); failed and
+            # timed out draw attention only when there are some
+            tones = {"success": "ok", "rejected": "muted", "failed": "bad", "timed_out": "warn"}
             outcome: Any = ui.bars(
                 [
-                    (name.replace("_", " "), value or 0, runs, tones.get(name, "info"))
+                    (
+                        name.replace("_", " "),
+                        value or 0,
+                        runs,
+                        tones.get(name, "muted") if value or name == "success" else "muted",
+                    )
                     for name, value in zip(STATUSES, terminations, strict=True)
                 ]
             )
@@ -647,7 +656,10 @@ class RichDisplay:
             sign = "=" if value is None else bound
             tone = "if.warn" if value is None else "if.bad" if value else "if.muted"
             contracts.append(f"{key.upper()} {sign} {_show(value)}", style=tone)
-        out.append(ui.section("Outcomes (of the runs so far)", Group(outcome, contracts)))
+        title = (
+            "Outcomes" if view.phase in (COMPLETED, ABORTED) else "Outcomes (of the runs so far)"
+        )
+        out.append(ui.section(title, Group(outcome, contracts)))
         notes = []
         if view.eta_seconds is not None:
             notes.append(f"eta ~{duration(view.eta_seconds)} (estimate)")
@@ -702,18 +714,20 @@ class RichDisplay:
             self._pause()
             self._write(stream, text)
 
-    def final(self, view: View) -> None:
-        """Clear the live area, show a result panel, then the same last line as :class:`Display`
-        prints (that line stays last, for people and tools alike)."""
+    def final(self, view: View, *, case_dirs: Sequence[Path] = ()) -> None:
+        """Clear the live area, print the final frame (the final counts) and a result panel,
+        then the same last line as :class:`Display` prints (it stays last, for people and
+        tools alike). ``case_dirs``: this run's violation case folders, for the replay example."""
         with self._lock:
             self._pause()
             try:
-                self._console.print(self._result_panel(view))
+                self._console.print(self._render(view))
+                self._console.print(self._result_panel(view, case_dirs))
             except Exception:  # noqa: BLE001 - a display fault must never stop the run
                 pass
         self.message(format_line(view))
 
-    def _result_panel(self, view: View) -> Any:
+    def _result_panel(self, view: View, case_dirs: Sequence[Path] = ()) -> Any:
         from rich.text import Text
 
         from inodefence.ui import components as ui
@@ -730,6 +744,9 @@ class RichDisplay:
         steps = []
         if view.show_out:
             steps.append(f"inodefence status {view.out}")
+        if case_dirs:
+            more = f"  (one of {len(case_dirs)})" if len(case_dirs) > 1 else ""
+            steps.append(f"inodefence replay {case_dirs[0]}{more}")
         return ui.result_panel(status, f"explore  {view.target} {version}", lines, next_steps=steps)
 
 
@@ -961,6 +978,16 @@ class ExploreProgress:
         launches = getattr(self.session, "launches", [])
         return launches[-1].request.artifacts if launches else None
 
+    def _case_dirs(self) -> list[Path]:
+        """This run's violation case folders (complete records only), oldest run first."""
+        live = getattr(self._artifacts(), "live", None)
+        if live is None:
+            return []
+        try:
+            return [live / record["dir"] for record in list_violation_cases(live)]
+        except Exception:  # noqa: BLE001 - the replay example is optional, never the run's fault
+            return []
+
     def _live_counts(self) -> Counts | None:
         """This run's live counts; re-read only when ``progress.json`` changed on disk."""
         artifacts = self._artifacts()
@@ -1111,7 +1138,7 @@ class ExploreProgress:
         view = self.view()
         err = self.log.err if self.log is not None else None
         if self.display is not None:
-            self.display.final(view)
+            self.display.final(view, case_dirs=self._case_dirs())
         elif not ok and err is not None:
             err.write(f"{PREFIX} {ABORTED} | cause: {view.cause}\n")
         if not ok and self.log is not None and err is not None:

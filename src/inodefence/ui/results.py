@@ -12,7 +12,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
-from rich.console import RenderableType
+from rich.console import Group, RenderableType
 from rich.table import Table
 from rich.text import Text
 
@@ -384,10 +384,11 @@ def status_screen(
                 ("results", str(len(rows)), "plain"),
                 ("PASS", str(verdicts.count("PASS")), "ok" if "PASS" in verdicts else "muted"),
                 ("FAIL", str(verdicts.count("FAIL")), "bad" if "FAIL" in verdicts else "muted"),
+                ("ERROR", str(verdicts.count("ERROR")), "bad" if "ERROR" in verdicts else "muted"),
                 (
-                    "ERROR",
-                    str(verdicts.count("ERROR")),
-                    "bad" if "ERROR" in verdicts else "muted",
+                    "unreadable",
+                    str(verdicts.count("UNREADABLE")),
+                    "warn" if "UNREADABLE" in verdicts else "muted",
                 ),
             ]
         )
@@ -403,15 +404,18 @@ def status_screen(
             or ("stopped early" if row.get("stopped_early") else "")
         )
 
-    with_notes = any(note(row) for row in rows)  # a column of nothing is not drawn
+    # "first at" is an exploration value; a verify result has none, so the column is drawn only
+    # when some result is an exploration (and then a missing value is "—")
+    with_first = any(row.get("explore") for row in rows)
     columns = [
         ("result", "left"),
         ("verdict", "left"),
         ("target", "left"),
         ("runs", "right"),
         ("violations", "right"),
-        ("first at", "right"),
     ]
+    if with_first:
+        columns.append(("first at", "right"))
     table_rows = []
     for row in rows:
         target = " ".join(str(row[k]) for k in ("target", "version") if row.get(k))
@@ -423,13 +427,17 @@ def status_screen(
             Text(
                 str(row.get("violations", UNKNOWN)), style="if.bad" if row.get("violations") else ""
             ),
-            Text("" if row.get("first") is None else str(row["first"])),
         ]
-        if with_notes:
-            line.append(Text(note(row), style="if.warn"))
+        if with_first:
+            line.append(Text("—" if row.get("first") is None else str(row["first"])))
         table_rows.append(line)
-    if with_notes:
-        columns.append(("note", "left"))
-    table = ui.data_table(columns, table_rows, keep=(0, 1, 2, 3, 4, 5))  # only a note wraps
-    out.append(ui.section("Results", table))
+    table = ui.data_table(columns, table_rows, keep=tuple(range(len(columns))))
+    # notes (an unreadable file's reason, a warning) go under the table, one line each, so a
+    # long reason never squeezes the columns
+    notes = [
+        Text.assemble((f"{row['cell']}: ", "bold"), (note(row), "if.warn"))
+        for row in rows
+        if note(row)
+    ]
+    out.append(ui.section("Results", Group(table, *notes) if notes else table))
     return out

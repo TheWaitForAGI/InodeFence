@@ -104,7 +104,7 @@ def bars(rows: Sequence[tuple[str, int, int, str]], *, width: int = 28) -> Table
                 width=width,
                 complete_style=f"if.{tone}",
                 finished_style=f"if.{tone}",
-                style="if.muted",  # the track: grey, so the filled part reads
+                style="if.track",  # a dark track, so any filled part reads
             )
         else:
             percent, bar = Text(""), Text("")

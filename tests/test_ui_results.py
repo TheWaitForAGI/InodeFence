@@ -282,3 +282,21 @@ def test_summary_on_a_rich_terminal_draws_the_same_markdown(monkeypatch, capsys)
     seen = _visible(capsys.readouterr().out)
     title = next(line for line in text.splitlines() if line.startswith("# ")).lstrip("# ").strip()
     assert "summary" in seen and title.split()[0] in seen and "\x1b" not in text
+
+
+def test_status_marks_an_unreadable_result_apart_from_an_error_verdict(
+    monkeypatch, capsys, tmp_path, two_results
+) -> None:
+    folder = two_results[0].parents[1]
+    (folder / "broken").mkdir()
+    (folder / "broken" / "result.json").write_text("{", encoding="utf-8")
+    assert cli.main(["status", str(folder)]) == 2  # plain: unchanged code
+    plain = capsys.readouterr()
+    _rich_terminal(monkeypatch)
+    assert cli.main(["status", str(folder)]) == 2
+    rich = capsys.readouterr()
+    assert rich.err == plain.err  # the same stderr line
+    seen = _visible(rich.out)
+    assert "! UNREADABLE" in seen and "✗ ERROR" not in seen
+    assert "results PASS FAIL ERROR unreadable" in seen or "unreadable" in seen
+    assert "first at" not in seen  # verify results: no exploration value, no column

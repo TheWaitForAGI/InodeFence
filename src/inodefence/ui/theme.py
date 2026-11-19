@@ -78,6 +78,7 @@ STATUS_TONE: Mapping[str, str] = {
     "STALLED": "warn",
     "CANDIDATE": "warn",
     "AS STORED": "warn",
+    "UNREADABLE": "warn",
     "INCOMPLETE": "warn",
     "PARTIAL": "warn",
     "FAIL": "bad",
@@ -129,6 +130,8 @@ def rich_styles(colours: Mapping[str, str] = TERMINAL) -> dict[str, str]:
     styles["if.hint"] = f"dim {colours['accent']}"
     styles["if.label"] = colours["muted"]
     styles["if.value"] = "bold"
+    # A bar's empty track: darker than every fill (muted included), on dark and light screens.
+    styles["if.track"] = colours.get("surface_raised", "#334155")
     # Rich's own Markdown styles (``summary`` on a terminal), on the same palette.
     styles["markdown.h1"] = f"bold {colours['accent']}"
     styles["markdown.h1.border"] = colours["border"]

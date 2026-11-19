@@ -155,6 +155,34 @@ def replay_cell(records: Sequence[ReplayRecord]) -> Cell:
     return Cell(f"{conclusion} · {detail}", style)
 
 
+_SHORT_CONCLUSION = {
+    "reproduced_violation": "reproduced",
+    "partially_reproduced": "partial",
+    "not_reproduced": "not reproduced",
+    "no_violation": "no violation",
+    "new_violation": "new violation",
+    "unjudged": "unjudged",
+    "infrastructure_failure": "infra failure",
+    "no_rounds": "no rounds",
+}
+CONTRACT_LEGEND = "C0 C1 C2:  V violated  ·  - judged, not violated  ·  ? not judged / not observed"
+
+
+def replay_columns(records: Sequence[ReplayRecord]) -> tuple[Cell, Cell]:
+    """Findings' two replay columns: a short conclusion and ``n/judged judged · rounds``."""
+    readable = [r for r in records if r.read_state is ReadState.OK]
+    if not readable:
+        return Cell("no replay", DIM), Cell(NONE, DIM)
+    full = replay_cell(readable)
+    record = readable[-1]
+    name = record.conclusion.value if record.conclusion else UNKNOWN
+    label = Cell(_SHORT_CONCLUSION.get(name, name), full.style)
+    if record.judged == 0:
+        return label, Cell(f"0 judged · {count(record.rounds_done)} rounds", WARN)
+    numbers = f"{count(record.same_contracts)}/{count(record.judged)} judged"
+    return label, Cell(f"{numbers} · {count(record.rounds_done)} rounds")
+
+
 def run_state(snapshot: RunSnapshot, now: float) -> Cell:
     """The run's state as the files say it; a running snapshot gone quiet is "stalled"."""
     progress = snapshot.progress
@@ -243,24 +271,70 @@ def engine_cell(state: DashboardState) -> Cell:
     return Cell(status, {"OK": OK, "FAIL": BAD}.get(status, WARN))
 
 
-def header(state: DashboardState, selected: RunSnapshot | None) -> tuple[Cell, ...]:
+def header(state: DashboardState, selected: RunSnapshot | None) -> list[tuple[str, Cell]]:
+    """``(label, value)`` pairs; the first is the name (empty label). Nothing selected: ``—``."""
     active = sum(is_active(s, state.now) for s in _explore(state))
     stalled = sum(is_stalled(s, state.now) for s in _explore(state))
-    run = NONE
-    status = Cell(NONE, DIM)
+    run, status = Cell(NONE, DIM), Cell(NONE, DIM)
     if selected is not None:
         ref = selected.ref
-        run = f"{text(ref.target)}@{text(ref.version)}"
+        run = Cell(f"{text(ref.target)}@{text(ref.version)}")
         status = run_state(selected, state.now)
-    return (
-        Cell("InodeFence", ACCENT),
-        Cell("engine "),
-        engine_cell(state),
-        Cell(f"active {active}", ACCENT if active else PLAIN),
-        Cell(f"stalled {stalled}", WARN if stalled else DIM),
-        Cell(run),
-        status,
-    )
+    return [
+        ("", Cell("InodeFence", ACCENT)),
+        ("engine", engine_cell(state)),
+        ("active", Cell(str(active), ACCENT if active else PLAIN)),
+        ("stalled", Cell(str(stalled), WARN if stalled else DIM)),
+        ("selected", run),
+        ("state", status),
+    ]
+
+
+def key_figures(state: DashboardState) -> list[tuple[str, Cell, str]]:
+    """The Overview's headline numbers: ``(label, value, detail)``; unknown is ``—``."""
+    explore = _explore(state)
+    every = findings(state)
+    needs = sum(r.finding is FindingClass.CANDIDATE_NEEDS_REPRO_CHECK for _, r in every)
+    stalled = sum(is_stalled(s, state.now) for s in explore)
+    engine = engine_cell(state)
+    targets = Cell(str(len(state.targets))) if state.targets is not None else Cell(NONE, DIM)
+    return [
+        ("system", engine, "doctor"),
+        ("targets", targets, "registered"),
+        ("active", Cell(str(sum(is_active(s, state.now) for s in explore)), ACCENT),
+         f"stalled {stalled}"),
+        ("candidates", Cell(str(len(every)), BAD if every else PLAIN), f"needs repro {needs}"),
+        ("replays", Cell(str(len(_replays(state)))), "replay.json"),
+    ]  # fmt: skip
+
+
+#: Width of the Campaigns progress bar (characters).
+BAR_WIDTH = 10
+
+
+def progress_bar(runs: int | None, budget: int | None, width: int = BAR_WIDTH) -> str | None:
+    """``███░░░░░░░`` from the real runs and budget only; ``None`` when either is unknown."""
+    if runs is None or budget is None or budget <= 0:
+        return None
+    filled = round(width * min(max(runs / budget, 0.0), 1.0))
+    return "█" * filled + "░" * (width - filled)
+
+
+EMPTY_TITLE = "no run folders found"
+EMPTY_HINT = "make a run: inodefence explore --target node-tar --version 7.5.2 --auto-prepare"
+
+
+def is_empty(state: DashboardState) -> bool:
+    return not state.snapshots and not any(item.ref for item in state.listings)
+
+
+def empty_lines(state: DashboardState) -> list[Cell]:
+    return [
+        Cell(EMPTY_TITLE, ACCENT),
+        *(Cell(f"scanned {root}", DIM) for root in state.roots),
+        Cell(EMPTY_HINT),
+        Cell("(or pass the folders to read: inodefence tui <folder> ...)", DIM),
+    ]
 
 
 def overview_rows(state: DashboardState) -> list[Row]:
@@ -275,7 +349,11 @@ def overview_rows(state: DashboardState) -> list[Row]:
         if state.targets is not None
         else Cell(f"unknown ({state.targets_error or 'registry not read'})", DIM)
     )
-    finished = sum(run_state(s, state.now).text == "finished" for s in explore)
+    finished = sum(run_state(s, state.now).text.startswith("finished") for s in explore)
+    as_stored = sum(
+        s.summary is not None and s.summary.read_state is ReadState.UNVALIDATED
+        for s in state.snapshots.values()
+    )
     rows = [
         ("system", Cell(engine_text, engine.style), "doctor"),
         ("targets registered", targets, "registry"),
@@ -283,6 +361,8 @@ def overview_rows(state: DashboardState) -> list[Row]:
         ("stalled", Cell(str(sum(is_stalled(s, state.now) for s in explore))), "live"),
         ("finished explore runs", Cell(str(finished)), "result"),
         ("verify cells", Cell(str(len(verify))), "result"),
+        ("results as stored (not validated)", Cell(str(as_stored), WARN if as_stored else PLAIN),
+         "result"),
         ("violation candidates", Cell(str(len(all_findings)), BAD if all_findings else PLAIN),
          "live / result"),
         ("  needing a repro check", Cell(str(needs), WARN if needs else PLAIN), "live / result"),
@@ -379,6 +459,9 @@ def campaign_rows(state: DashboardState) -> list[Row]:
     for snapshot in reversed(ordered):
         p, ref = snapshot.progress, snapshot.ref
         runs = f"{count(p.runs if p else None)}/{count(p.budget if p else None)}"
+        bar = progress_bar(p.runs if p else None, p.budget if p else None)
+        if bar is not None:
+            runs = f"{runs} {bar}"
         rate = (
             f"{p.runs_per_second * 60:.1f}/min"
             if p is not None and p.runs_per_second is not None
@@ -456,7 +539,7 @@ def finding_rows(state: DashboardState) -> list[Row]:
                     contract_cell(row.c2),
                     finding_class_cell(row.finding),
                     Cell(row.termination.value),
-                    replay_cell(_replays_for(snapshot, row, every)),
+                    *replay_columns(_replays_for(snapshot, row, every)),
                     Cell(text(location), DIM),
                 ),
             )
@@ -558,28 +641,42 @@ _TIME_ABBREV = {
 }
 
 
-def event_line(event: UiEvent) -> Cell:
+TIME_LEGEND = "time source: u updated_at · r recorded_at · m file mtime · o observed by this screen"
+
+
+def event_cells(event: UiEvent) -> tuple[Cell, Cell, Cell, Cell]:
+    """``time source``, ``kind``, ``run``, ``content``: aligned columns for the event strip."""
     clock = event.timestamp[11:19] if len(event.timestamp) >= 19 else event.timestamp
-    run = event.run_id or NONE
-    parts = [f"{clock}{_TIME_ABBREV.get(event.time_source, '?')}", event.kind.value, run]
+    when = Cell(f"{clock} {_TIME_ABBREV.get(event.time_source, '?')}", DIM)
+    parts = []
     if event.progress_current is not None or event.progress_total is not None:
         parts.append(f"{count(event.progress_current)}/{count(event.progress_total)}")
     for value in (event.status, event.verdict, event.case_id, event.message):
         if value:
             parts.append(str(value))
     if event.estimated:
-        parts.append("est.")
+        parts.append("(est.)")
+    kind = event.kind.value
     style = PLAIN
     if event.kind is EventKind.READ_ERROR:
-        parts[1] = "READ"
-        style = WARN
+        kind, style = "READ", WARN
     elif event.kind is EventKind.VIOLATION_CASE:
         style = BAD
     elif event.kind is EventKind.RESULT_READY:
         style = {"PASS": OK, "FAIL": BAD, "ERROR": WARN}.get(event.verdict or "", PLAIN)
     elif event.estimated:
         style = DIM
-    return Cell(" ".join(parts), style)
+    return when, Cell(kind, style), Cell(event.run_id or NONE), Cell(" ".join(parts), style)
+
+
+EVENT_WIDTHS = (10, 14, 26)
+
+
+def event_line(event: UiEvent) -> Cell:
+    """One event as a single aligned line (the content keeps the kind's style)."""
+    when, kind, run, content = event_cells(event)
+    head = f"{when.text:<{EVENT_WIDTHS[0]}} {kind.text:<{EVENT_WIDTHS[1]}} "
+    return Cell(head + f"{run.text:<{EVENT_WIDTHS[2]}} {content.text}".rstrip(), kind.style)
 
 
 def recent(events: Iterable[UiEvent], limit: int) -> list[UiEvent]:

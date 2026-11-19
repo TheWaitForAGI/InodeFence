@@ -346,7 +346,8 @@ inodefence status ~/inodefence-explore   # 진행 스냅샷 + 위반 케이스 �
 ## 터미널 대시보드(`inodefence tui`, 다음 버전)
 
 `inodefence tui [폴더 ...]`는 이 호스트의 실행 폴더를 읽어 한 화면에 보여 주는 **읽기 전용** 대시보드입니다.
-선택 설치 `tui`(Textual 8 이상)가 필요하고, 없으면 설치 안내와 함께 종료 3입니다. 실행을 시작·중지·삭제하거나
+선택 설치 `tui`(Textual 8 이상)가 필요하고, 없으면 설치 안내와 함께 종료 3입니다. `inodefence tui` 하위 명령이
+연결되기 전에는 같은 화면을 `python -m inodefence.ui.tui [폴더 ...]`로 엽니다(인자와 종료 코드가 같음). 실행을 시작·중지·삭제하거나
 replay를 돌리는 조작은 없고, 아무 파일도 쓰지 않습니다. 기본으로 탐색·verify의 기본 출력 폴더
 (`<출력 기준>/inodefence-explore`, `<출력 기준>/inodefence-target-run`)를 읽고, 인자로 준 폴더를 더 읽습니다.
 심볼릭 링크는 따라가지 않고 저장소 안은 읽지 않습니다. 읽는 위치는 화면(Overview 아래, 도움말)에 그대로 나옵니다.

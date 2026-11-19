@@ -22,6 +22,7 @@ from tests import app_synthetic as syn  # noqa: E402
 from inodefence.app.events import RunFollower  # noqa: E402
 from inodefence.app.runs import RunKind, RunRef  # noqa: E402
 from inodefence.ui import tui  # noqa: E402
+from inodefence.ui.tui import model  # noqa: E402
 from inodefence.ui.tui.app import InodeFenceTui  # noqa: E402
 
 REGISTRY = {
@@ -81,6 +82,12 @@ async def test_no_runs(tmp_path: Path, size: tuple[int, int]) -> None:
     async with app.run_test(size=size) as pilot:
         await _settle(app, pilot)
         assert _rows(app, "campaigns") == [["no explore runs found", *[""] * 9]]
+        assert app.query_one("#empty").display
+        empty = str(app.query_one("#empty").render())
+        assert "no run folders found" in empty and str(tmp_path) in empty
+        assert "inodefence explore --target" in empty
+        figures = {label: value.text for label, value, _ in model.key_figures(app.state)}
+        assert figures["targets"] == "4" and figures["active"] == "0"
         assert _rows(app, "findings")[0][0] == "no violation candidates"
         overview = _overview(app)
         assert overview["system"].startswith("OK")
@@ -98,7 +105,8 @@ async def test_a_running_node_tar_run_then_a_live_candidate(tmp_path, size) -> N
     async with app.run_test(size=size) as pilot:
         await _settle(app, pilot)
         (row,) = _rows(app, "campaigns")
-        assert row[0] == rid and row[3] == "running" and row[4] == "1/20" and row[9] == "live"
+        assert row[0] == rid and row[3] == "running" and row[9] == "live"
+        assert row[4] == "1/20 ░░░░░░░░░░"  # 1 of 20 is half a cell, rounded to none
         assert _overview(app)["active campaigns"] == "1"
         events_before = len(app.events)
         clock.now += 1
@@ -157,7 +165,7 @@ async def test_finished_result_with_a_replayed_candidate(tmp_path: Path) -> None
         (row,) = _rows(app, "campaigns")
         assert row[3] == "finished" and row[9] == "result"
         (finding,) = _rows(app, "findings")
-        assert finding[7] == "partially_reproduced · 1/2 judged, 3 rounds"
+        assert finding[7] == "partial" and finding[8] == "1/2 judged · 3 rounds"
         assert "partially 1" in _overview(app)["by replay"]
         await pilot.press("4")
         await pilot.press("enter")
@@ -222,3 +230,72 @@ async def test_targets_come_from_the_registry_and_last_verify(tmp_path: Path) ->
         rows = {row[0]: row for row in _rows(app, "targets")}
         assert rows["node-tar"][4].startswith("7.5.2 · PASS")
         assert rows["oras-go"][3] == "—" and rows["oras-go"][4] == "—"
+
+
+@_sync
+async def test_a_refresh_keeps_the_selected_row(tmp_path: Path) -> None:
+    from textual.widgets import DataTable
+
+    out, rid, clock = syn.explore_out(tmp_path), syn.run_id(), syn.Clock()
+    steps = [syn.step(0, c1=True, fp="c1-a"), syn.step(1, c1=True, fp="c1-b"), syn.step(2)]
+    syn.live_run(out, rid, steps, clock=clock)
+    app = _app([out], clock)
+    async with app.run_test(size=(120, 36)) as pilot:
+        await _settle(app, pilot)
+        await pilot.press("4", "down")
+        await pilot.pause()
+        table = app.query_one("#findings-table", DataTable)
+        assert table.cursor_row == 1
+        selected = app.selected_key
+        await _settle(app, pilot)  # a refresh redraws every table
+        assert table.cursor_row == 1 and app.selected_key == selected
+
+
+@_sync
+async def test_an_explore_run_with_an_unvalidated_result_is_marked(tmp_path: Path) -> None:
+    out, rid = syn.explore_out(tmp_path), syn.run_id()
+    data = syn.result(cases=[syn.case("step-1", False)]).to_json_dict()
+    data["runs"]["executed"] = 99
+    syn.write_result(out / "target-explore" / f"{rid}-result", syn.result(), text=json.dumps(data))
+    app = _app([out], syn.Clock())
+    async with app.run_test(size=(120, 36)) as pilot:
+        await _settle(app, pilot)
+        (row,) = _rows(app, "campaigns")
+        assert row[3] == "finished (as stored, not validated)"
+        overview = _overview(app)
+        assert overview["results as stored (not validated)"] == "1"
+        assert overview["finished explore runs"] == "1"
+
+
+@_sync
+async def test_the_cursor_follows_the_same_run_not_the_row_number(tmp_path: Path) -> None:
+    from textual.widgets import DataTable
+
+    from inodefence.ui.tui.model import Row
+
+    out, clock = syn.explore_out(tmp_path), syn.Clock()
+    recorders = []
+    for seed in (1, 2, 3):
+        _, recorder = syn.live_run(out, syn.run_id(seed), [syn.step(0)], clock=clock)
+        recorders.append(recorder)
+    app = _app([out], clock)
+    async with app.run_test(size=(120, 36)) as pilot:
+        await _settle(app, pilot)
+        await pilot.press("3", "down", "down")
+        await pilot.pause()
+        table = app.query_one("#campaigns-table", DataTable)
+        keys = app._row_keys["campaigns"]
+        chosen = keys[2]
+        assert table.cursor_row == 2
+        clock.now += 1
+        recorders[0].on_step(syn.step(1, c1=True, fp="c1-z"))  # an event from another run
+        await _settle(app, pilot)
+        assert app._row_keys["campaigns"][table.cursor_row] == chosen
+        # rows reordered: the cursor moves with the run
+        current = app._row_keys["campaigns"]
+        reordered = [Row(k, tuple(model.Cell(c) for c in (k, *[""] * 9))) for k in current]
+        app._fill("campaigns", list(reversed(reordered)))
+        assert app._row_keys["campaigns"][table.cursor_row] == chosen
+        # the run is gone: the cursor stays in range
+        app._fill("campaigns", [r for r in reordered if r.key != chosen])
+        assert 0 <= table.cursor_row < 2

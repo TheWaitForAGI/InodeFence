@@ -13,6 +13,7 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from rich.table import Table
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -44,7 +45,7 @@ COLUMNS = {
                   "unjudged", "updated", "source"),
     "verify": ("cell", "verdict", "executed", "run errors", "unjudged", "warning"),
     "findings": ("case", "target", "C0", "C1", "C2", "class", "termination", "replay",
-                 "location"),
+                 "judged rounds", "location"),
 }  # fmt: skip
 
 
@@ -111,7 +112,10 @@ class InodeFenceTui(App[None]):
     DataTable { background: #0f172a; height: 1fr; }
     DataTable > .datatable--header { background: #1e293b; color: #94a3b8; }
     DataTable > .datatable--cursor { background: #164e63; }
+    #kpis { height: auto; padding: 0 1; margin-bottom: 1; }
+    #empty { height: auto; padding: 1 2; border: round #334155; margin: 1 2; }
     #overview-table { height: auto; max-height: 14; }
+    #findings-legend { height: 1; color: #94a3b8; padding: 0 1; }
     #recent { height: 1fr; padding: 0 1; }
     #artifacts-body { padding: 0 1; }
     #events { height: 6; border-top: solid #334155; background: #0b1220; }
@@ -156,6 +160,7 @@ class InodeFenceTui(App[None]):
         self.selected_key: str | None = None
         self._subscription = self.follower.subscribe()
         self._row_keys: dict[str, list[str]] = {}
+        self._columns_ready = False
 
     # -- layout -------------------------------------------------------------------------------
 
@@ -163,6 +168,8 @@ class InodeFenceTui(App[None]):
         yield Static(id="header")
         with TabbedContent(id="tabs", initial="overview"):
             with TabPane("1 Overview", id="overview"):
+                yield Static(id="kpis")
+                yield Static(id="empty")
                 yield DataTable(id="overview-table", cursor_type="row", zebra_stripes=False)
                 yield Static(id="recent")
             with TabPane("2 Targets", id="targets"):
@@ -173,6 +180,7 @@ class InodeFenceTui(App[None]):
                 yield DataTable(id="verify-table", cursor_type="row")
             with TabPane("4 Findings", id="findings"):
                 yield DataTable(id="findings-table", cursor_type="row")
+                yield Static(model.CONTRACT_LEGEND, id="findings-legend")
             with TabPane("5 Artifacts", id="artifacts"):
                 with VerticalScroll():
                     yield Static(id="artifacts-body")
@@ -182,6 +190,7 @@ class InodeFenceTui(App[None]):
     def on_mount(self) -> None:
         for name, columns in COLUMNS.items():
             self.query_one(f"#{name}-table", DataTable).add_columns(*columns)
+        self._columns_ready = True
         self.query_one("#events", RichLog).write(Text(model.READ_ONLY_NOTE, style=COLOURS["dim"]))
         if self._background:
             self.follower.start()
@@ -233,7 +242,7 @@ class InodeFenceTui(App[None]):
         log = self.query_one("#events", RichLog)
         while (event := self._subscription.get(timeout=0)) is not None:
             self.events.append(event)
-            log.write(styled(model.event_line(event)))
+            log.write(event_text(event))
         self.state.events = list(self.events)
         self.state.snapshots = self.follower.snapshots()
         self.state.listings = discover_runs(self.roots, max_entries=2000)
@@ -244,9 +253,11 @@ class InodeFenceTui(App[None]):
         """The header and the Artifacts screen, which follow the selected run."""
         selected = self._selected_snapshot()
         header = Text()
-        for index, cell in enumerate(model.header(self.state, selected)):
-            if index == 1 or index > 2:  # "engine" and its status stay together
+        for index, (label, cell) in enumerate(model.header(self.state, selected)):
+            if index:
                 header.append(" │ ", style=COLOURS["dim"])
+            if label:
+                header.append(f"{label} ", style=COLOURS["dim"])
             header.append_text(styled(cell))
         self.query_one("#header", Static).update(header)
         self.query_one("#artifacts-body", Static).update(lines_text(model.artifact_lines(selected)))
@@ -254,10 +265,17 @@ class InodeFenceTui(App[None]):
     def redraw(self) -> None:
         state = self.state
         self.draw_selection()
+        self.query_one("#kpis", Static).update(kpi_view(state, self.size.width))
+        empty = model.is_empty(state)
+        panel = self.query_one("#empty", Static)
+        panel.display = empty
+        if empty:
+            panel.update(Text("\n").join(styled(cell) for cell in model.empty_lines(state)))
+        self.query_one("#overview-table", DataTable).display = not empty
         self._fill("overview", model.overview_rows(state))
         recent = Text("recent activity\n", style=COLOURS["dim"])
         for event in model.recent(state.events, RECENT_ACTIVITY):
-            recent.append_text(styled(model.event_line(event)))
+            recent.append_text(event_text(event))
             recent.append("\n")
         if not state.events:
             recent.append("no events yet", style=COLOURS["dim"])
@@ -277,15 +295,25 @@ class InodeFenceTui(App[None]):
         findings = model.finding_rows(state)
         self._fill("findings", findings or [_empty_row(9, "no violation candidates")])
 
+    def on_resize(self) -> None:
+        if self._columns_ready:  # tables have their columns (on_mount ran)
+            self.redraw()
+
     def _fill(self, name: str, rows: Sequence[Row]) -> None:
+        """Redraw a table in place, keeping the cursor on the same row KEY (the same run or
+        finding) when it is still there, else on the same position (clamped)."""
         table = self.query_one(f"#{name}-table", DataTable)
         cursor = table.cursor_row
+        old_keys = self._row_keys.get(name, [])
+        kept = old_keys[cursor] if 0 <= cursor < len(old_keys) else None
         table.clear()
         for row in rows:
             table.add_row(*(styled(cell) for cell in row.cells))
-        self._row_keys[name] = [row.key for row in rows]
+        keys = [row.key for row in rows]
+        self._row_keys[name] = keys
         if rows:
-            table.move_cursor(row=min(cursor, len(rows) - 1))
+            target = keys.index(kept) if kept is not None and kept in keys else cursor
+            table.move_cursor(row=min(max(target, 0), len(rows) - 1))
 
     def _selected_snapshot(self) -> RunSnapshot | None:
         if self.selected_key is None:
@@ -317,11 +345,12 @@ class InodeFenceTui(App[None]):
         ):
             body.append(f"{key:<10} {what}\n")
         body.append("\n")
-        body.append("V violated · - judged, not violated · ? not judged or not observed\n")
+        body.append(model.CONTRACT_LEGEND + "\n")
         body.append("? as a number: the files do not hold it (only node-tar writes live numbers)\n")
         body.append(
             "a violation is a candidate; a replay says in how many judged rounds it repeated\n"
         )
+        body.append(model.TIME_LEGEND + "\n")
         body.append("\n")
         for line in model.scanned_lines(self.state):
             body.append(line + "\n", style=COLOURS["dim"])
@@ -348,6 +377,45 @@ class InodeFenceTui(App[None]):
             self.push_screen(DetailScreen(f"finding {key.split('#', 1)[-1]}", lines_text(lines)))
         elif name in ("campaigns", "verify"):
             self.action_show("artifacts")
+
+
+#: Below this width the key figures fold into one line.
+KPI_BOXES_MIN_WIDTH = 100
+
+
+def kpi_view(state: DashboardState, width: int) -> Text | Table:
+    figures = model.key_figures(state)
+    if width < KPI_BOXES_MIN_WIDTH:
+        line = Text()
+        for index, (label, value, detail) in enumerate(figures):
+            if index:
+                line.append("  ·  ", style=COLOURS["dim"])
+            line.append(f"{label} ", style=COLOURS["dim"])
+            line.append_text(styled(value))
+            line.append(f" ({detail})", style=COLOURS["dim"])
+        return line
+    grid = Table.grid(expand=True, padding=(0, 2))
+    for _ in figures:
+        grid.add_column(ratio=1)
+    cells = []
+    for label, value, detail in figures:
+        box = Text(label.upper() + "\n", style=COLOURS["dim"])
+        box.append_text(Text(value.text, style=f"bold {COLOURS.get(value.style, '')}".strip()))
+        box.append(f"  {detail}", style=COLOURS["dim"])
+        cells.append(box)
+    grid.add_row(*cells)
+    return grid
+
+
+def event_text(event: UiEvent) -> Text:
+    when, kind, run, content = model.event_cells(event)
+    out = Text()
+    widths = model.EVENT_WIDTHS
+    out.append(f"{when.text:<{widths[0]}} ", style=COLOURS["dim"])
+    out.append_text(styled(Cell(f"{kind.text:<{widths[1]}} ", kind.style)))
+    out.append(f"{run.text:<{widths[2]}} ")
+    out.append_text(styled(content))
+    return out
 
 
 def _empty_row(width: int, message: str) -> Row:

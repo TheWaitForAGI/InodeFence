@@ -14,12 +14,7 @@ import time
 from collections.abc import Callable, Iterable
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
-
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, Response, StreamingResponse
-from fastapi.staticfiles import StaticFiles
-from starlette.concurrency import run_in_threadpool
+from typing import TYPE_CHECKING, Any
 
 from inodefence.app import doctor as doctor_app
 from inodefence.app import events as events_app
@@ -30,6 +25,9 @@ from inodefence.ui import theme
 from . import API_SCHEMA
 from ._ids import RunRegistry, run_id
 from ._serialize import to_jsonable
+
+if TYPE_CHECKING:  # the build_app return annotation only; real imports live inside build_app (lazy)
+    from fastapi import FastAPI
 
 STATIC_DIR = Path(__file__).parent / "static"
 HEALTH_TTL_SECONDS = 30.0
@@ -100,12 +98,22 @@ class HealthCache:
             self._refreshing = False
 
 
+def _package_version() -> str | None:
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version("inodefence")
+    except PackageNotFoundError:  # pragma: no cover - installed in every supported environment
+        return None
+
+
 def _health_payload(cache: HealthCache) -> dict[str, Any]:
     report, checked_at = cache.snapshot()
     if report is None:
         return {
             "schema": API_SCHEMA,
             "state": "checking",
+            "package_version": _package_version(),
             "report": None,
             "summary": None,
             "exit_code": None,
@@ -118,6 +126,7 @@ def _health_payload(cache: HealthCache) -> dict[str, Any]:
     return {
         "schema": API_SCHEMA,
         "state": "ok",
+        "package_version": _package_version(),
         "report": to_jsonable(report),
         "summary": report.summary,
         "exit_code": report.exit_code,
@@ -222,6 +231,14 @@ def build_app(
     extra: tuple[Path, ...],
     repo_root: Path | None,
 ) -> FastAPI:
+    # Imported here, never at module level: no module under inodefence/ui imports fastapi/uvicorn
+    # at module level (tests/test_ui_without_rich.py), and this submodule is loaded only by the
+    # lazy create_app()/run() entry.
+    from fastapi import FastAPI, HTTPException, Request
+    from fastapi.responses import FileResponse, Response, StreamingResponse
+    from fastapi.staticfiles import StaticFiles
+    from starlette.concurrency import run_in_threadpool
+
     resolved_roots: tuple[Path, ...] = (
         tuple(runs_app.default_roots()) if roots is None else tuple(Path(r) for r in roots)
     )
@@ -338,6 +355,7 @@ def build_app(
             assert ref is not None  # bounded_runs keeps only listings with a ref
             snapshot = read_snapshot(ref)
             ident = run_id(ref)
+            summary = snapshot.summary
             for row in snapshot.findings:
                 findings.append(
                     {
@@ -345,6 +363,8 @@ def build_app(
                         "run_kind": ref.kind.value,
                         "target": snapshot.ref.target,
                         "version": snapshot.ref.version,
+                        "validated": summary.validated if summary else None,
+                        "read_state": summary.read_state.value if summary else None,
                         "case": to_jsonable(row),
                     }
                 )

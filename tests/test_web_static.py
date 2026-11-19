@@ -37,3 +37,13 @@ def test_no_forbidden_labels():
         assert "confirmed" not in low, name
         assert "vulnerability" not in low, name
         assert "취약점" not in text, name  # 취약점
+
+
+def test_as_stored_label_is_present():
+    # an UNVALIDATED result must be shown with a visible "as stored" mark, not just a tooltip
+    assert "as stored" in (STATIC / "app.js").read_text(encoding="utf-8")
+
+
+def test_no_unicode_escape_literals_in_html():
+    # the HTML must use real characters / entities, not JS-style \\uXXXX escapes
+    assert "\\u" not in (STATIC / "index.html").read_text(encoding="utf-8")

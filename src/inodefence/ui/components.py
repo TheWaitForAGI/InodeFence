@@ -17,7 +17,6 @@ from collections.abc import Iterable, Sequence
 from typing import Any
 
 from rich import box
-from rich.columns import Columns
 from rich.console import Group, RenderableType
 from rich.panel import Panel
 from rich.progress_bar import ProgressBar
@@ -69,16 +68,21 @@ def section(title: str, body: RenderableType, *, subtitle: str | None = None) ->
     )
 
 
-def cards(items: Iterable[tuple[str, str, str]]) -> Columns:
-    """A row of small number cards: ``(label, value, tone)`` -> value bold in its tone, label
-    muted below. A value the data does not have is passed as ``?`` (never ``0``)."""
+def cards(items: Iterable[tuple[str, str, str]]) -> Table:
+    """A row of number cards of equal width across the screen: ``(label, value, tone)`` ->
+    value bold in its tone, label muted below. A value the data does not have is passed as ``?``
+    (never ``0``)."""
     panels = []
     for label, value, tone in items:
         body = Text(value, style="" if tone == "plain" else f"if.{tone}")
         body.stylize("bold")
         body.append(f"\n{label}", style="if.label")
-        panels.append(Panel(body, box=FRAME, border_style=BORDER, padding=(0, 2), expand=False))
-    return Columns(panels, padding=(0, 1))
+        panels.append(Panel(body, box=FRAME, border_style=BORDER, padding=(0, 2), expand=True))
+    row = Table.grid(expand=True, padding=(0, 1))
+    for _ in panels:
+        row.add_column(ratio=1)
+    row.add_row(*panels)
+    return row
 
 
 def bars(rows: Sequence[tuple[str, int, int, str]], *, width: int = 28) -> Table:
@@ -111,24 +115,31 @@ def bars(rows: Sequence[tuple[str, int, int, str]], *, width: int = 28) -> Table
 def data_table(
     columns: Sequence[tuple[str, str]], rows: Iterable[Sequence[RenderableType]]
 ) -> Table:
-    """A table with a thin header rule: ``columns`` are ``(title, justify)``; numbers go right."""
+    """A table with a thin header rule across its section: ``columns`` are ``(title,
+    justify)``; numbers go right."""
     table = Table(
         box=box.SIMPLE_HEAD,
         header_style="if.label",
         border_style=BORDER,
         pad_edge=False,
         show_edge=False,
-        expand=False,
+        expand=True,
     )
-    for title, justify in columns:
-        table.add_column(title, justify=justify, overflow="fold")  # type: ignore[arg-type]
+    for number, (title, justify) in enumerate(columns):
+        # The first column names the row (a target, a case id): it never wraps.
+        table.add_column(
+            title,
+            justify=justify,  # type: ignore[arg-type]
+            overflow="fold",
+            no_wrap=number == 0,
+        )
     for row in rows:
         table.add_row(*row)
     return table
 
 
 #: Fixed widths of an item grid's chip and name columns, so values line up across sections.
-CHIP_WIDTH = 10
+CHIP_WIDTH = 11  # the longest chip ("! UNKNOWN", 9) and two spaces
 NAME_WIDTH = 22
 
 
@@ -153,8 +164,7 @@ def value_text(
     for line in more:
         text.append(f"\n{line}", style="if.label")
     for hint in hints:
-        text.append("\n→ ", style="if.accent")
-        text.append(hint)
+        text.append(f"\n→ {hint}", style="if.hint")
     return text
 
 
@@ -168,9 +178,7 @@ def result_panel(
     """The closing panel: a status chip and a title on the border, what came out, what next."""
     body: list[Any] = [line if isinstance(line, Text) else Text(line) for line in lines]
     for step in next_steps:
-        text = Text("→ ", style="if.accent")
-        text.append(step)
-        body.append(text)
+        body.append(Text(f"→ {step}", style="if.hint"))
     head = chip(status)
     head.append(f"  {title}", style="bold")
     return Panel(

@@ -35,6 +35,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+import time
 from pathlib import Path
 
 from inodefence.app.doctor import looks_cloud_synced, relative_output_base
@@ -189,7 +190,41 @@ def cmd_verify(args: argparse.Namespace) -> int:
     if out is None:
         return REFUSED
     argv += ["--out", str(out)]
-    return _forward(VERIFY_DRIVER, argv + args.extra, "verify")
+    started = time.time()
+    code = _forward(VERIFY_DRIVER, argv + args.extra, "verify")
+    if not args.dry_run:
+        _verify_screen(out, started)
+    return code
+
+
+def _verify_screen(out: Path, started: float) -> None:
+    """On an interactive terminal with Rich: a result screen per cell this run wrote, after the
+    driver's own lines (which are unchanged). Elsewhere nothing is added, so the output and the
+    exit code are the driver's, byte for byte."""
+    from inodefence.ui.console import Console
+
+    console = Console(version=_package_version())
+    if not console.uses_rich:
+        return
+    from inodefence.app.runs import read_verify
+
+    def written_now(summary: object) -> bool:
+        path = getattr(summary, "result_path", None)
+        try:
+            return path is not None and path.stat().st_mtime >= started - 1
+        except OSError:
+            return False
+
+    console.verify_results([s for s in read_verify(out) if written_now(s)], out)
+
+
+def cmd_compare(args: argparse.Namespace) -> int:
+    from inodefence.app.runs import compare_results, read_result
+    from inodefence.ui.console import Console
+
+    a, b = read_result(args.a), read_result(args.b)
+    Console(version=_package_version()).compare(a, b, compare_results(a, b))
+    return 0 if a.has_values and b.has_values else 2
 
 
 def cmd_explore(args: argparse.Namespace) -> int:
@@ -525,6 +560,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="skip re-hashing the saved input TARs (the summary records that it was skipped)",
     )
     summary.set_defaults(func=cmd_summary)
+
+    compare = sub.add_parser(
+        "compare",
+        help="compare two results case by case: same input (SHA-256) and each verdict",
+        epilog="exit codes: 0 shown, 2 a result could not be read, or a usage error.",
+    )
+    compare.add_argument("a", type=Path, help="a result.json (shown as A)")
+    compare.add_argument("b", type=Path, help="another result.json (shown as B)")
+    compare.set_defaults(func=cmd_compare)
 
     return parser
 

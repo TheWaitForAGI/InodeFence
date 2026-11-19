@@ -119,12 +119,13 @@ def rich_styles(colours: Mapping[str, str] = TERMINAL) -> dict[str, str]:
 
     ``if.<meaning>`` (foreground), ``if.chip.<meaning>`` (bold, foreground: a chip is a word
     with a symbol, not a painted block, so it reads on any background), ``if.title``,
-    ``if.label``, ``if.value``, ``if.border``.
+    ``if.hint`` (a next step: dim accent), ``if.label``, ``if.value``, ``if.border``.
     """
     styles = {f"if.{name}": colour for name, colour in colours.items()}
     for name in ("ok", "warn", "bad", "info", "muted", "accent"):
         styles[f"if.chip.{name}"] = f"bold {colours[name]}"
     styles["if.title"] = f"bold {colours['accent']}"
+    styles["if.hint"] = f"dim {colours['accent']}"
     styles["if.label"] = colours["muted"]
     styles["if.value"] = "bold"
     return styles

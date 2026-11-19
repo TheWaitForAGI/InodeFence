@@ -231,7 +231,7 @@ class Console:
         assert self._rich is not None
         # The value column: what is left after the chip (10) and name (22) columns, padding and
         # the section border; groups break only between groups.
-        width = max(self._rich.size.width - 10 - 22 - 4 - 4, 20)  # chip, name, padding, border
+        width = max(self._rich.size.width - 11 - 22 - 4 - 4, 20)  # chip, name, padding, border
         return pack(parts, " · ", width)
 
     # -- targets -----------------------------------------------------------------------------
@@ -279,7 +279,7 @@ class Console:
             "",
             ui.cards(
                 [
-                    ("regression check", f"{able(1)}/{total}", "plain"),
+                    ("regression", f"{able(1)}/{total}", "plain"),
                     ("auto-prepare", f"{able(2)}/{total}", "plain"),
                     ("exploration", f"{able(3)}/{total}", "plain"),
                     ("replay", f"{able(4)}/{total}", "plain"),
@@ -328,12 +328,45 @@ class Console:
                 ui.section(
                     "Target options",
                     ui.data_table(
-                        [("target", "left"), ("option", "left"), ("", "left"), ("what", "left")],
+                        [
+                            ("target", "left"),
+                            ("option", "left"),
+                            ("need", "left"),
+                            ("what", "left"),
+                        ],
                         option_rows,
                     ),
                 )
             )
         self._print(Text(note, style="if.label"))
+
+    # -- verify / compare (Rich only: shown after the driver's own lines, never instead) -------
+
+    def verify_results(self, summaries: Sequence[Any], out: Any) -> None:
+        """One result screen per verify cell this run wrote (``app.runs.RunSummary``)."""
+        if self._rich is None:
+            return
+        from inodefence.ui import results
+
+        for summary in summaries:
+            self._print("", *results.verify_screen(summary, version=self.version))
+        if not summaries:
+            self._print(
+                "",
+                results.no_result_panel(
+                    f"no result.json was written under {out} by this run",
+                ),
+            )
+
+    def compare(self, a: Any, b: Any, rows: Sequence[Any]) -> None:
+        """Two results case by case (``app.runs.compare_results``)."""
+        from inodefence.ui import results
+
+        if self._rich is None:
+            for line in results.compare_plain_lines(a, b, rows):
+                print(line, file=self.stream)
+            return
+        self._print(*results.compare_screen(a, b, rows, version=self.version))
 
     # -- errors ------------------------------------------------------------------------------
 

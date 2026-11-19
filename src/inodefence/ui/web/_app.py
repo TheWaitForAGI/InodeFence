@@ -50,7 +50,11 @@ HealthResult = tuple["doctor_app.Report", "dict[str, int] | None"]
 
 
 def _default_health_check(repo_root: Path | None) -> HealthResult:
-    """The real doctor report + image groups (read-only). ``repo_root`` keeps a uniform seam."""
+    """The real doctor report + image groups (read-only). ``repo_root`` keeps a uniform seam.
+
+    ``image_groups()`` is its own ``docker images`` lookup, not a slice of the report; it runs once
+    per health refresh (the same TTL/background cadence as the report), never per request.
+    """
     from inodefence.user_config import UserConfigError, load_user_config
 
     try:
@@ -182,9 +186,9 @@ def _run_status(snapshot: runs_app.RunSnapshot) -> dict[str, Any]:
     progress = snapshot.progress
     summary = snapshot.summary
     # "stalled" is a live run that has gone quiet: the threshold is 4 x the live-pull interval,
-    # read from the app layer (never re-stated in the web). None when the question does not apply
-    # (not a live run, or the snapshot carries no age). RES1 will lift this to a shared app.runs
-    # function; swap to it when it lands.
+    # read from the app layer (never re-stated in the web) -- the same value the TUI uses for
+    # ACTIVE_MAX_AGE. None when the question does not apply (not a live run, or the snapshot carries
+    # no age). RES1 will lift this to a shared app.runs function; swap to it when it lands.
     stalled: bool | None = None
     if (
         progress is not None
@@ -275,7 +279,9 @@ def build_app(
 
     @app.get("/api/health")
     def api_health() -> dict[str, Any]:
-        return _health_payload(health)
+        payload = _health_payload(health)
+        payload["roots"] = [str(root) for root in scan_roots]
+        return payload
 
     @app.get("/api/targets")
     def api_targets() -> dict[str, Any]:

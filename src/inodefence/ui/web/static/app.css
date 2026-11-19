@@ -35,7 +35,8 @@ svg.icon { width: 16px; height: 16px; display: inline-block; vertical-align: -3p
 #topbar { display: grid; grid-template-columns: 170px 1fr auto; align-items: center; gap: 14px; padding: 11px 20px; border-bottom: 1px solid var(--faint); background: var(--if-surface-alt); position: sticky; top: 0; z-index: 5; }
 #topbar .title { font-weight: 600; font-size: 16px; }
 .search { display: flex; align-items: center; gap: 10px; }
-.search input { width: 100%; max-width: 480px; padding: 7px 12px; border-radius: 6px; background: var(--if-surface); border: 1px solid var(--faint); color: var(--if-text); font-size: 13px; }
+.search input { width: 100%; max-width: 480px; min-width: 120px; padding: 7px 12px; border-radius: 6px; background: var(--if-surface); border: 1px solid var(--faint); color: var(--if-text); font-size: 13px; }
+@media (max-width: 1100px) { #topbar { grid-template-columns: 1fr auto; } #topbar .title { display: none; } #chip-scan, .search .chip-accent { display: none; } }
 .search input:focus { outline: none; border-color: var(--if-accent); }
 .search input::placeholder { color: var(--if-muted); }
 .chips { display: flex; gap: 8px; align-items: center; }

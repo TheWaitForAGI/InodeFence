@@ -1373,3 +1373,23 @@ def test_targets_rows_and_json_are_the_same_with_rich_on_a_terminal(monkeypatch,
         table = capsys.readouterr().out
         assert "node-tar" in table and "target options" in table
         assert targets.TABLE_NOTE in table
+
+
+def test_prepared_images_are_data_grouped_by_target_or_unknown(monkeypatch) -> None:
+    monkeypatch.setattr(doctor, "_local_images", lambda: sorted(_MANY_IMAGES))
+    images = doctor.prepared_images()
+    assert images is not None and images.total == 71
+    assert images.counts == doctor._image_groups(_MANY_IMAGES)  # the same rule as doctor's line
+    assert list(images.by_target) == [
+        "node-tar",
+        "decompress",
+        "oras-go",
+        "python-tarfile",
+        "other",
+    ]
+    assert images.by_target["python-tarfile"] == ("inodefence-python-tarfile-runtime:3.15.2",)
+    assert doctor.image_groups() == images.counts
+    monkeypatch.setattr(doctor, "_local_images", lambda: None)  # Docker did not answer
+    assert doctor.prepared_images() is None and doctor.image_groups() is None  # unknown, not {}
+    monkeypatch.setattr(doctor, "_local_images", lambda: [])
+    assert doctor.image_groups() == {}  # answered: none

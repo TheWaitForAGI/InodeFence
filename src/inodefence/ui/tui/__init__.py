@@ -14,8 +14,8 @@ INSTALL_HINT = (
     "the TUI needs the optional 'tui' extra (Textual): pip install 'inodefence[tui]' "
     "(or: uv pip install 'inodefence[tui]')"
 )
-#: Lowest Textual this screen was written and tested against (8.2.8).
-TEXTUAL_MIN = "8"
+#: Lowest Textual this screen supports: the tested 8.2 line (8.2.8), the `tui` extra's floor.
+TEXTUAL_MIN = "8.2"
 
 
 class TuiUnavailable(ImportError):

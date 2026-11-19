@@ -681,3 +681,188 @@ def event_line(event: UiEvent) -> Cell:
 
 def recent(events: Iterable[UiEvent], limit: int) -> list[UiEvent]:
     return list(events)[-limit:]
+
+
+# -- tiled dashboard panels ------------------------------------------------------------------------
+
+SPARK = "▁▂▃▄▅▆▇█"
+#: How many observed progress samples a run keeps for its graph (this screen's own observation).
+HISTORY = 240
+
+
+@dataclass(frozen=True, slots=True)
+class Sample:
+    """One progress snapshot this screen saw: its own ``updated_at``, runs, runs per second."""
+
+    at: float
+    runs: int | None
+    rate: float | None
+
+
+def observe(history: list[Sample], snapshot: RunSnapshot) -> None:
+    """Append the snapshot's live progress when it is new (same ``updated_at``: nothing)."""
+    p = snapshot.progress
+    if p is None or p.source is not Source.LIVE or p.updated_at is None:
+        return
+    if history and history[-1].at == p.updated_at:
+        return
+    history.append(Sample(p.updated_at, p.runs, p.runs_per_second))
+    del history[:-HISTORY]
+
+
+def sparkline(values: Sequence[float | None], width: int) -> str:
+    """The last ``width`` values as block characters scaled to their maximum; unknown values are
+    gaps. Empty when nothing is known (nothing is drawn without data)."""
+    if width <= 0:
+        return ""
+    tail = list(values)[-width:]
+    known = [v for v in tail if v is not None]
+    if not known:
+        return ""
+    top = max(known)
+    if top <= 0:
+        return "".join(" " if v is None else SPARK[0] for v in tail)
+    steps = len(SPARK) - 1
+    return "".join(
+        " " if v is None else SPARK[min(steps, max(0, round(v / top * steps)))] for v in tail
+    )
+
+
+def increments(history: Sequence[Sample]) -> list[float | None]:
+    """Runs done between consecutive observed snapshots (the graph's values)."""
+    out: list[float | None] = []
+    for before, after in zip(history, history[1:], strict=False):
+        if before.runs is None or after.runs is None:
+            out.append(None)
+        else:
+            out.append(float(max(after.runs - before.runs, 0)))
+    return out
+
+
+def bar(value: int | None, total: int | None, width: int) -> str | None:
+    return progress_bar(value, total, width)
+
+
+def default_selection(state: DashboardState) -> RunSnapshot | None:
+    """The run the Overview follows when none is chosen: an active one, else the newest."""
+    explore = _explore(state)
+    active = [s for s in explore if is_active(s, state.now)]
+    pool = active or explore
+    if not pool:
+        return None
+    return max(pool, key=lambda s: (s.progress.updated_at if s.progress else None) or 0.0)
+
+
+def outcome_rows(snapshot: RunSnapshot | None) -> list[tuple[str, int | None, int | None, str]]:
+    """``(label, count, total, style)`` for the outcomes panel: each termination, unjudged,
+    build-invalid. Unknown counts are ``None`` (drawn as ``?`` with no bar)."""
+    p = snapshot.progress if snapshot else None
+    total = p.runs if p else None
+    terms = p.terminations if p else {}
+    rows = [
+        ("success", terms.get("success"), total, OK),
+        ("rejected", terms.get("rejected"), total, WARN),
+        ("failed", terms.get("failed"), total, BAD),
+        ("timed out", terms.get("timed_out"), total, BAD),
+        ("unjudged", p.unjudged if p else None, total, WARN),
+        ("build-invalid", p.build_invalid if p else None, total, DIM),
+    ]
+    return rows
+
+
+def oracle_lines(state: DashboardState, snapshot: RunSnapshot | None) -> list[tuple[str, Cell]]:
+    """The selected run's candidates: count, per-contract counts from its case folders (a lower
+    bound while some are held back), needs-repro-check, replay conclusions."""
+    if snapshot is None:
+        return [("run", Cell("no run selected", DIM))]
+    p = snapshot.progress
+    rows = snapshot.findings
+    lower = p.contracts_lower_bound if p else False
+    lines: list[tuple[str, Cell]] = [
+        ("candidates", Cell(count(p.violations if p else len(rows)), BAD if rows else PLAIN)),
+    ]
+    contracts = p.contracts if p else {}
+    marks = []
+    for key in ("c0", "c1", "c2"):
+        value = contracts.get(key) if contracts else None
+        prefix = "≥" if lower and value is not None else ""
+        marks.append(f"{key.upper()} {prefix}{count(value)}")
+    lines.append(
+        ("by contract", Cell("  ".join(marks) + ("  (from case folders)" if lower else "")))
+    )
+    needs = sum(r.finding is FindingClass.CANDIDATE_NEEDS_REPRO_CHECK for r in rows)
+    lines.append(("needs repro check", Cell(str(needs), WARN if needs else PLAIN)))
+    every = _replays(state)
+    conclusions: dict[str, int] = {}
+    for row in rows:
+        label, numbers = replay_columns(_replays_for(snapshot, row, every))
+        conclusions[label.text] = conclusions.get(label.text, 0) + 1
+        if label.text != "no replay":
+            lines.append((f"  {row.case_id}", Cell(f"{label.text} · {numbers.text}", label.style)))
+    if conclusions:
+        summary = " · ".join(f"{k} {v}" for k, v in sorted(conclusions.items()))
+        lines.insert(3, ("replays", Cell(summary)))
+    return lines
+
+
+def runs_list(state: DashboardState) -> list[Row]:
+    """The compact run list of the Overview: target@version, state, mini bar, candidates, age."""
+    rows = []
+    ordered = sorted(_explore(state), key=lambda s: (s.progress.updated_at if s.progress else None)
+                     or 0.0, reverse=True)  # fmt: skip
+    for snapshot in ordered:
+        p, ref = snapshot.progress, snapshot.ref
+        mini = bar(p.runs if p else None, p.budget if p else None, 6)
+        runs = f"{count(p.runs if p else None)}/{count(p.budget if p else None)}"
+        violations = p.violations if p else None
+        rows.append(
+            Row(
+                ref.key,
+                (
+                    Cell(run_name(snapshot), ACCENT),
+                    run_state(snapshot, state.now),
+                    Cell(f"{mini} {runs}" if mini else runs),
+                    Cell(count(violations), BAD if violations else PLAIN),
+                ),
+            )
+        )
+    return rows
+
+
+def run_name(snapshot: RunSnapshot, limit: int = 22) -> str:
+    """``target@version``, or the run id when the files do not name the target yet."""
+    ref = snapshot.ref
+    name = text(ref.run_id) if ref.target is None else f"{ref.target}@{text(ref.version)}"
+    return name if len(name) <= limit else name[: limit - 1] + "…"
+
+
+def run_detail(snapshot: RunSnapshot | None, now: float) -> list[tuple[str, Cell]]:
+    """The campaign box: state, runs/budget, rate, age, source, run id."""
+    if snapshot is None:
+        return [("run", Cell("no explore run found", DIM))]
+    p, ref = snapshot.progress, snapshot.ref
+    runs, budget = (p.runs, p.budget) if p else (None, None)
+    rate = f"{p.runs_per_second * 60:.1f} runs/min" if p and p.runs_per_second else UNKNOWN
+    return [
+        ("run", Cell(text(ref.run_id), ACCENT)),
+        ("target", Cell(f"{text(ref.target)}@{text(ref.version)}")),
+        ("state", run_state(snapshot, now)),
+        ("runs", Cell(f"{count(runs)} / {count(budget)}")),
+        ("rate", Cell(rate)),
+        ("updated", Cell(ago(snapshot.progress_age(now)), DIM)),
+        ("source", source_cell(snapshot)),
+    ]
+
+
+def target_lines(state: DashboardState) -> list[tuple[str, Cell, Cell, Cell]]:
+    """One line per registered target: capabilities, prepared images, last verify."""
+    out = []
+    for row in target_rows(state):
+        name, explore, replay, images, verified = row.cells
+        caps = " ".join(
+            label
+            for label, cell in (("explore", explore), ("replay", replay))
+            if cell.text == "yes"
+        )
+        out.append((name.text, Cell(caps or NONE, DIM), images, verified))
+    return out

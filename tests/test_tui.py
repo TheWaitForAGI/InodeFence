@@ -1,7 +1,8 @@
-"""``inodefence tui``: the five screens on SYNTHETIC run folders (Textual Pilot, no Docker).
+"""``inodefence tui``: the tiled screens on SYNTHETIC run folders (Textual Pilot, no Docker).
 
 Skipped with the reason when Textual is not installed (it is in the ``dev`` extra, so CI runs it).
-The follower is driven by hand (``poll_once`` + ``tick``) so every check is deterministic.
+The follower is driven by hand (``poll_once`` + ``tick``) so every check is deterministic. The
+checks pin content -- values, labels, how unknown is shown -- not pixels.
 """
 
 from __future__ import annotations
@@ -44,11 +45,16 @@ def _sync(test):
     return wrapper
 
 
-def _app(roots: list[Path], clock: syn.Clock, refs: list[RunRef] | None = None) -> InodeFenceTui:
+def _app(
+    roots: list[Path],
+    clock: syn.Clock,
+    refs: list[RunRef] | None = None,
+    images: dict[str, int] | None = None,
+) -> InodeFenceTui:
     follower = RunFollower(refs or (), roots=roots, clock=clock)
     app = InodeFenceTui(roots=roots, follower=follower, background=False, clock=clock,
                         doctor=lambda: ("OK", "no check failed (synthetic)"),
-                        targets=lambda: REGISTRY)  # fmt: skip
+                        targets=lambda: REGISTRY, images=lambda: images)  # fmt: skip
     app.load_now()
     return app
 
@@ -60,8 +66,12 @@ def _rows(app: InodeFenceTui, name: str) -> list[list[str]]:
     return [[str(cell) for cell in table.get_row_at(i)] for i in range(table.row_count)]
 
 
+def _text(node: Any, selector: str) -> str:
+    return str(node.query_one(selector).render())
+
+
 def _overview(app: InodeFenceTui) -> dict[str, str]:
-    return {row[0].strip(): row[1] for row in _rows(app, "overview")}
+    return {row.cells[0].text.strip(): row.cells[1].text for row in model.overview_rows(app.state)}
 
 
 async def _settle(app: InodeFenceTui, pilot: Any) -> None:
@@ -77,37 +87,33 @@ def test_the_package_imports_without_textual_and_names_the_extra() -> None:
 
 @pytest.mark.parametrize("size", SIZES)
 @_sync
-async def test_no_runs(tmp_path: Path, size: tuple[int, int]) -> None:
+async def test_no_runs_shows_the_empty_state(tmp_path: Path, size: tuple[int, int]) -> None:
     app = _app([tmp_path], syn.Clock())
     async with app.run_test(size=size) as pilot:
         await _settle(app, pilot)
-        assert _rows(app, "campaigns") == [["no explore runs found", *[""] * 9]]
-        assert app.query_one("#empty").display
-        empty = str(app.query_one("#empty").render())
+        assert app.query_one("#empty").display and not app.query_one("#ov-body").display
+        empty = _text(app, "#empty")
         assert "no run folders found" in empty and str(tmp_path) in empty
         assert "inodefence explore --target" in empty
         figures = {label: value.text for label, value, _ in model.key_figures(app.state)}
         assert figures["targets"] == "4" and figures["active"] == "0"
+        assert _overview(app)["system"].startswith("OK")
         assert _rows(app, "findings")[0][0] == "no violation candidates"
-        overview = _overview(app)
-        assert overview["system"].startswith("OK")
-        assert overview["targets registered"] == "4"
-        assert overview["violation candidates"] == "0"  # counted over the folders scanned
-        assert "read-only" in str(app.query_one("#recent").render())
 
 
 @pytest.mark.parametrize("size", SIZES)
 @_sync
-async def test_a_running_node_tar_run_then_a_live_candidate(tmp_path, size) -> None:
+async def test_a_running_run_is_followed_and_a_live_candidate_appears(tmp_path, size) -> None:
     out, rid, clock = syn.explore_out(tmp_path), syn.run_id(), syn.Clock()
     _, recorder = syn.live_run(out, rid, [syn.step(0)], clock=clock)
     app = _app([out], clock)
     async with app.run_test(size=size) as pilot:
         await _settle(app, pilot)
-        (row,) = _rows(app, "campaigns")
-        assert row[0] == rid and row[3] == "running" and row[9] == "live"
-        assert row[4] == "1/20 ░░░░░░░░░░"  # 1 of 20 is half a cell, rounded to none
+        (row,) = _rows(app, "runs")
+        assert row[0] == "node-tar@7.5.2" and row[1] == "● running" and row[2].endswith("1/20")
+        assert _rows(app, "campaigns")[0][3] == "● running"
         assert _overview(app)["active campaigns"] == "1"
+        assert app.query_one("#p-campaign").border_subtitle == "following the newest run"
         events_before = len(app.events)
         clock.now += 1
         recorder.on_step(syn.step(1, c1=True, fp="c1-x"))
@@ -116,8 +122,27 @@ async def test_a_running_node_tar_run_then_a_live_candidate(tmp_path, size) -> N
         assert finding[2:5] == ["-", "V", "-"] and finding[5] == "candidate"
         assert finding[7] == "no replay"
         assert len(app.events) > events_before
-        assert "reproduced 0" in _overview(app)["by replay"]
+        oracle = _text(app, "#p-oracle")
+        assert "C1 1" in oracle and "candidates" in oracle
         assert "no replay 1" in _overview(app)["by replay"]
+
+
+@_sync
+async def test_the_graph_draws_only_observed_snapshots(tmp_path: Path) -> None:
+    out, rid, clock = syn.explore_out(tmp_path), syn.run_id(), syn.Clock()
+    _, recorder = syn.live_run(out, rid, [syn.step(0)], clock=clock)
+    app = _app([out], clock)
+    async with app.run_test(size=(160, 48)) as pilot:
+        await _settle(app, pilot)
+        key = next(iter(app.state.snapshots))
+        assert len(app.history[key]) == 1  # one snapshot: nothing to draw yet
+        assert model.sparkline(model.increments(app.history[key]), 40) == ""
+        for index in range(1, 4):
+            clock.now += 1
+            recorder.on_step(syn.step(index))
+            await _settle(app, pilot)
+        assert [s.runs for s in app.history[key]] == [1, 2, 3, 4]
+        assert model.increments(app.history[key]) == [1.0, 1.0, 1.0]
 
 
 @_sync
@@ -128,8 +153,8 @@ async def test_a_quiet_running_snapshot_is_stalled_not_active(tmp_path: Path) ->
     app = _app([out], clock)
     async with app.run_test(size=(80, 24)) as pilot:
         await _settle(app, pilot)
-        (row,) = _rows(app, "campaigns")
-        assert row[3].startswith("stalled (")
+        (row,) = _rows(app, "runs")
+        assert row[1].startswith("! stalled (")
         assert _overview(app)["active campaigns"] == "0" and _overview(app)["stalled"] == "1"
 
 
@@ -142,12 +167,13 @@ async def test_other_targets_show_no_live_data_and_question_marks(tmp_path: Path
     log.parent.mkdir(parents=True)
     log.write_text("==> [run controller]\n", encoding="utf-8")
     app = _app([out], syn.Clock(), refs=[ref])
-    async with app.run_test(size=(80, 24)) as pilot:
+    async with app.run_test(size=(160, 48)) as pilot:
         await _settle(app, pilot)
         (row,) = _rows(app, "campaigns")
-        assert row[3] == "no live data" and row[4] == "?/?" and row[5] == "?" and row[6] == "?"
+        assert row[3] == "· no live data" and row[4] == "?/?" and row[5] == "?" and row[6] == "?"
         assert row[9].startswith("launcher-log est.")
-        assert "0" not in (row[4], row[6], row[7])
+        outcomes = _text(app, "#p-outcomes")
+        assert "success" in outcomes and "?" in outcomes and "█" not in outcomes  # no bars
 
 
 @_sync
@@ -157,26 +183,27 @@ async def test_finished_result_with_a_replayed_candidate(tmp_path: Path) -> None
     res = syn.result(cases=[syn.case("step-1", False), syn.case("step-2", True)], saved=["step-2"])
     syn.write_result(result_dir, res)
     original = {"case_id": "step-2", "c0": False, "c1": True, "c2": False}
-    syn.replay(result_dir, original,
-               [syn.judged_round(True), syn.judged_round(False), syn.failed_round()])  # fmt: skip
+    rounds = [syn.judged_round(True), syn.judged_round(False), syn.failed_round()]
+    syn.replay(result_dir, original, rounds)
     app = _app([out], syn.Clock())
     async with app.run_test(size=(160, 48)) as pilot:
         await _settle(app, pilot)
-        (row,) = _rows(app, "campaigns")
-        assert row[3] == "finished" and row[9] == "result"
+        assert _rows(app, "campaigns")[0][3] == "✓ finished"
         (finding,) = _rows(app, "findings")
         assert finding[7] == "partial" and finding[8] == "1/2 judged · 3 rounds"
         assert "partially 1" in _overview(app)["by replay"]
         await pilot.press("4")
+        await pilot.pause()
+        side = _text(app, "#p-finding-detail")
+        assert "input SHA-256" in side and "round 3" in side
+        assert syn.TAR.decode() not in side  # the input's content is never shown
         await pilot.press("enter")
         await pilot.pause()
-        detail = str(app.screen.query_one("#detail-body").render())
-        assert "round 3" in detail and "input SHA-256" in detail
-        assert syn.TAR.decode() not in detail  # the input's content is never shown
-        await pilot.press("escape")
-        await pilot.press("5")
+        detail = _text(app.screen, "#detail-body")
+        assert "round 3" in detail and syn.TAR.decode() not in detail
+        await pilot.press("escape", "3", "enter")
         await pilot.pause()
-        artifacts = str(app.query_one("#artifacts-body").render())
+        artifacts = _text(app, "#artifacts-body")
         assert "not re-checked" in artifacts and "result.json" in artifacts
 
 
@@ -202,6 +229,22 @@ async def test_unvalidated_and_unreadable_are_marked(tmp_path: Path) -> None:
 
 
 @_sync
+async def test_an_explore_run_with_an_unvalidated_result_is_marked(tmp_path: Path) -> None:
+    out, rid = syn.explore_out(tmp_path), syn.run_id()
+    data = syn.result(cases=[syn.case("step-1", False)]).to_json_dict()
+    data["runs"]["executed"] = 99
+    syn.write_result(out / "target-explore" / f"{rid}-result", syn.result(), text=json.dumps(data))
+    app = _app([out], syn.Clock())
+    async with app.run_test(size=(160, 48)) as pilot:
+        await _settle(app, pilot)
+        assert _rows(app, "campaigns")[0][3] == "! finished (as stored, not validated)"
+        assert _rows(app, "runs")[0][1] == "! finished (as stored, not validated)"
+        overview = _overview(app)
+        assert overview["results as stored (not validated)"] == "1"
+        assert overview["finished explore runs"] == "1"
+
+
+@_sync
 async def test_keys_switch_screens_and_help(tmp_path: Path) -> None:
     from textual.widgets import TabbedContent
 
@@ -214,22 +257,35 @@ async def test_keys_switch_screens_and_help(tmp_path: Path) -> None:
             assert app.query_one("#tabs", TabbedContent).active == tab
         await pilot.press("question_mark")
         await pilot.pause()
-        assert "read-only" in str(app.screen.query_one("#detail-body").render())
+        assert "read-only" in _text(app.screen, "#detail-body")
         await pilot.press("escape")
         await pilot.pause()
         assert app.screen is app.screen_stack[0]
 
 
 @_sync
-async def test_targets_come_from_the_registry_and_last_verify(tmp_path: Path) -> None:
+async def test_targets_come_from_registry_doctor_images_and_last_verify(tmp_path: Path) -> None:
     verify = tmp_path / f"{syn.SYNTHETIC}-verify"
     syn.write_result(verify / "node-tar-7.5.2", syn.result(mode=syn.ResultMode.FIXTURE_REGRESSION))
-    app = _app([verify], syn.Clock())
+    app = _app([verify], syn.Clock(), images={"node-tar": 3})
     async with app.run_test(size=(160, 48)) as pilot:
         await _settle(app, pilot)
         rows = {row[0]: row for row in _rows(app, "targets")}
-        assert rows["node-tar"][4].startswith("7.5.2 · PASS")
+        assert rows["node-tar"][3] == "3" and rows["node-tar"][4].startswith("7.5.2 · PASS")
         assert rows["oras-go"][3] == "—" and rows["oras-go"][4] == "—"
+
+
+@_sync
+async def test_narrow_and_wide_layouts(tmp_path: Path) -> None:
+    out, rid, clock = syn.explore_out(tmp_path), syn.run_id(), syn.Clock()
+    syn.live_run(out, rid, [syn.step(0)], clock=clock)
+    for size, wide in (((80, 24), False), ((140, 40), True)):
+        app = _app([out], clock)
+        async with app.run_test(size=size) as pilot:
+            await _settle(app, pilot)
+            assert app.query_one("#ov-mid").display is wide
+            assert app.query_one("#p-targets").display is wide
+            assert app.query_one("#ov-body").has_class("narrow") is not wide
 
 
 @_sync
@@ -252,22 +308,6 @@ async def test_a_refresh_keeps_the_selected_row(tmp_path: Path) -> None:
 
 
 @_sync
-async def test_an_explore_run_with_an_unvalidated_result_is_marked(tmp_path: Path) -> None:
-    out, rid = syn.explore_out(tmp_path), syn.run_id()
-    data = syn.result(cases=[syn.case("step-1", False)]).to_json_dict()
-    data["runs"]["executed"] = 99
-    syn.write_result(out / "target-explore" / f"{rid}-result", syn.result(), text=json.dumps(data))
-    app = _app([out], syn.Clock())
-    async with app.run_test(size=(120, 36)) as pilot:
-        await _settle(app, pilot)
-        (row,) = _rows(app, "campaigns")
-        assert row[3] == "finished (as stored, not validated)"
-        overview = _overview(app)
-        assert overview["results as stored (not validated)"] == "1"
-        assert overview["finished explore runs"] == "1"
-
-
-@_sync
 async def test_the_cursor_follows_the_same_run_not_the_row_number(tmp_path: Path) -> None:
     from textual.widgets import DataTable
 
@@ -284,18 +324,15 @@ async def test_the_cursor_follows_the_same_run_not_the_row_number(tmp_path: Path
         await pilot.press("3", "down", "down")
         await pilot.pause()
         table = app.query_one("#campaigns-table", DataTable)
-        keys = app._row_keys["campaigns"]
-        chosen = keys[2]
-        assert table.cursor_row == 2
+        chosen = app._row_keys["campaigns"][2]
+        assert table.cursor_row == 2 and app.selected_key == chosen
         clock.now += 1
         recorders[0].on_step(syn.step(1, c1=True, fp="c1-z"))  # an event from another run
         await _settle(app, pilot)
         assert app._row_keys["campaigns"][table.cursor_row] == chosen
-        # rows reordered: the cursor moves with the run
         current = app._row_keys["campaigns"]
         reordered = [Row(k, tuple(model.Cell(c) for c in (k, *[""] * 9))) for k in current]
         app._fill("campaigns", list(reversed(reordered)))
         assert app._row_keys["campaigns"][table.cursor_row] == chosen
-        # the run is gone: the cursor stays in range
         app._fill("campaigns", [r for r in reordered if r.key != chosen])
         assert 0 <= table.cursor_row < 2
